@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-266ad277cba8",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "266ad277cba84286b2429a1de093eadd",
+    "skillName": "韦斯·安德森风格短片",
+    "description": "适用：1–5分钟短片 · 视觉/声音语法基于安德森通用语言，提供涵盖全局参数设计、多模态输入分析、视觉规格转化、元素及分镜设计、视频/旁白/音效/BGM高一致性生成与自动合成的完整重置方案。",
+    "skillDescription": "适用：1–5分钟短片 · 视觉/声音语法基于安德森通用语言，提供涵盖全局参数设计、多模态输入分析、视觉规格转化、元素及分镜设计、视频/旁白/音效/BGM高一致性生成与自动合成的完整重置方案。",
+    "url": "https://www.flova.ai/zh-CN/skill/266ad277cba84286b2429a1de093eadd"
+  },
+  "meta": {
+    "title": "韦斯·安德森风格短片",
+    "summary": "适用：1–5分钟短片 · 视觉/声音语法基于安德森通用语言，提供涵盖全局参数设计、多模态输入分析、视觉规格转化、元素及分镜设计、视频/旁白/音效/BGM高一致性生成与自动合成的完整重置方案。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#0ea5e9",
+    "coverTo": "#22c55e"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n### 沟通规则（全局）\n禁止在对话中提及内部步骤编号。所有面向用户的表述使用功能性描述：\n\n### 第一步：收集用户创作信息\n**A. 创作素材**（任意组合）\n- 故事 idea / 完整剧本 / 参考素材（图片/视频）\n\n**B. 基本参数**\n1. 片名\n2. 目标时长：1 / 2 / 3 / 5 分钟\n3. 画幅：16:9（默认）/ 交给Flova自行判断 / 自定义\n   - 9:16 仅当用户输入含\"vlog/广告/宣传/短视频\"时才提供选项\n4. 视频生成模型：Seedance 2.0（默认）/ Kling 3.0 Omni / 其它\n5. 短片语言：中文 / 英文 / 其它\n   - 语言选择全片统一：旁白、画面文字、标题卡语言必须一致\n6. 是否需要旁白\n**C. 章节选择**：是否分章节？章节数（默认不超过4章）\n\n### 步骤流程\n步骤1：收集用户输入\\\n步骤2：分析输入内容 → 可与步骤1并行\\\n· 上传文件时执行 resource_prepare_and_analyze A/B/C节\\\n· 无论是否上传，均须执行完整性判断（D节）\\\n· 不完整时标记「需故事拓展」，步骤6前触发\\\n步骤3：生成 Final_Video_Spec.md ★暂停确认\\\n步骤4：色调设计咨询 ★暂停确认（循环至确认）\\\n步骤5：视觉规格转化为剧本（storyboard_designer ） → 元素图 （media_generator ）→ 融合关键帧（几个关键镜头的示意预览，让用户确认是否符合预期再继续生成） ★暂停确认\\\n步骤6：生成所有章节分镜图（media_generator ）\\\n· 若标记「需故事拓展」，先执行故事拓展\\\n· 询问生成方式：A·全部 / B·逐章 / C·先补角色侧背面再全部\\\n★暂停确认\\\n步骤7：生成视频片段 ★必须等用户明确确认\\\n步骤8：生成旁白（如启用，步骤7启动后并行）\\\n步骤9：生成音效（同上）\\\n步骤10：生成BGM（同上）\\\n步骤11：合成输出\n\n**工具映射与执行层级说明**：\n\n- **步骤1-2**：使用 **Resource Prepare and Analyze** (resource_prepare_and_analyze) 处理用户提供的素材。\n- **步骤3**：使用 **Text Editor** (text_editor) 创建并锁定 Final_Video_Spec.md 规格。\n- **步骤5-6**：使用 **Storyboard Designer** (storyboard_designer) 进行分镜及元素设计。\n- **步骤5（图生成）及步骤7-10**：调用 **Media Generator** (media_generator) 调度相应的图像/视频/音频模型生成资产。\n"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/266ad277cba84286b2429a1de093eadd.webp",
+      "ossKey": "media/seed/drama/recipes/flova/266ad277cba84286b2429a1de093eadd.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/266ad277cba84286b2429a1de093eadd.mp4",
+      "ossKey": "media/seed/flova/skills/266ad277cba84286b2429a1de093eadd.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/266ad277cba84286b2429a1de093eadd.mp4",
+      "durationSec": 42,
+      "width": 1280,
+      "height": 720,
+      "bytes": 9687455,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-apartment-mystery",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "对面公寓深夜的灯",
+    "summary": "都市白领每天目睹对面公寓的“命案”，最后发现这一切是为她量身设计的局。适合低成本都市悬疑。",
+    "typeKey": "mystery",
+    "type": "都市悬疑短剧",
+    "ratio": "9:16",
+    "episodes": 18,
+    "coverFrom": "#64748b",
+    "coverTo": "#1e293b"
+  },
+  "payload": {
+    "mainline": "女主搬入新公寓后，每晚 23:17 都看到对面房间灯亮和疑似命案片段。她调查越深，越发现对方像是在按照她的过去布置场景。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "固定时间亮灯",
+        "beat": "23:17 对面窗帘后出现挣扎剪影。"
+      },
+      {
+        "no": 2,
+        "hook": "报警无果",
+        "beat": "警方上门发现房间空无一人。"
+      },
+      {
+        "no": 3,
+        "hook": "第二晚复现",
+        "beat": "同一场景换了一个细节，像在回应她。"
+      },
+      {
+        "no": 4,
+        "hook": "过去重演",
+        "beat": "场景道具指向女主三年前隐瞒的事故。"
+      },
+      {
+        "no": 5,
+        "hook": "反向设局",
+        "beat": "女主假装入局，引出真正操盘者。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "谨慎都市白领",
+        "desc": "理性、压抑，背负旧事故秘密。"
+      },
+      {
+        "role": "key",
+        "archetype": "对面公寓操盘者",
+        "desc": "了解女主过去，用场景施压。"
+      },
+      {
+        "role": "extra",
+        "archetype": "社区保安/警员",
+        "desc": "提供现实锚点和误导。"
+      }
+    ],
+    "hooks": [
+      "每晚23:17亮灯",
+      "报警后房间空了",
+      "命案像在演给她看",
+      "旧事故反噬"
+    ],
+    "notes": "【模板脚本】\n空间限制：两栋楼、走廊、电梯、保安室。\n每集结构：窗外异常 → 女主验证 → 现实否认 → 新细节升级。\n最终反转：对面不是凶案现场，而是有人用女主的记忆搭建审判剧场。\n\n【提示词模板】\n生成 18 集低成本都市悬疑竖屏短剧。核心场景为“女主公寓”和“对面公寓窗口”。要求用光影、声音、时间点和物件推进悬疑；不依赖血腥画面；每集结尾必须出现一个可拍摄的新证据。输出分集大纲、关键道具表、前 3 集分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/apartment-mystery.jpg",
+      "ossKey": "media/seed/drama/recipes/home/apartment-mystery.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

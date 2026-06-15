@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-88ae8c5b62ba",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "88ae8c5b62ba4f1ca3500dafbcca7d35",
+    "skillName": "多宫格生视频",
+    "description": "GPT Image 2 x Seedance 2.0 视频创作工作流程，一次性生成多宫格图，直接生成视频。",
+    "skillDescription": "故事驱动型视频。使用 GPT Image（生成多面板网格帧）+ Seedance 2.0。在关键阶段暂停以供用户确认；这是基于单次工作流的人机协作。",
+    "url": "https://www.flova.ai/zh-CN/skill/88ae8c5b62ba4f1ca3500dafbcca7d35"
+  },
+  "meta": {
+    "title": "多宫格生视频",
+    "summary": "故事驱动型视频。使用 GPT Image（生成多面板网格帧）+ Seedance 2.0。在关键阶段暂停以供用户确认；这是基于单次工作流的人机协作。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#8b5cf6",
+    "coverTo": "#ec4899"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**完整视频的阶段逻辑和依赖关系：**\n1. 编写 `Final_Video_Spec.md`（标题、类型、宽高比、时长、视觉风格、语言）→ **text_editor**。\n2. 生成故事板 (storyboard)（关键元素 key_elements、镜头列表 shot_list、音频层 audio_layers）→ **storyboard_designer**。故事板准备好后，扫描上下文以查找用户提供的或先前的资源（元素图像、背景音乐等）；在生成步骤前，使用 **media_generator** 将每个资源绑定到匹配的故事板插槽中 → **media_generator**。\n3. **元素 (Elements)** - 如果用户已上传元素资源，请将其绑定到 `key_elements`。否则，生成元素图像 → **media_generator**。\n4. **生成所有多镜头参考合成图（每个镜头调用一次）：** 对于每个镜头，编写一个图像提示词，将该镜头故事板中的每个内部剪辑/节拍放置在**一个**画布上，作为一个**多镜头拼版 (multi-cut sheet)**（清晰的单元格边界）。**拼版上的空间平铺顺序并不定义剪辑顺序** —— **故事顺序仅由打印的剪辑索引携带**（与故事板剪辑列表中的编号相同）。**每个单元格的宽高比应与为该镜头 Seedance 生成锁定的宽高比相匹配**（参见 `Final_Video_Spec.md` / 流水线）。\n5. **生成所有镜头视频：** 引用多镜头合成图像 → **media_generator**。\n6. 从故事板生成所有 audio_layers → **media_generator**。\n7. 资源准备好后进行最终组装；引导导出 → **video_assembler**。\n\n**依赖关系：** 2→1；3→2；4→3；5→2,4；6→2；7→2,5,6。\n\n**何时暂停：** 不要一次性运行所有步骤。在规格说明、故事板、元素、**每批或每组多镜头合成图之后**（或所有合成图完成后）、镜头视频之后以及音频之后停止 —— 在阶段之间与用户确认。使用卡片或 `reply_to_user` 进行审核。\n\n**注意：** 用户提供的媒体：在重新生成前通过 **media_generator** 绑定；避免重复用户已经提供的内容。 \n**如何设计关键元素**\n- 根据需要包含**关键主体**（角色、物体）、**关键地点/场景**和**关键道具**。\n- **角色：** 多种外观（服装、年龄）→ 清晰描述（例如：外观 1：…；外观 2：…）。\n- **色调/色彩参考：** 如果项目使用全局调色或参考片段，请在生成时注明（保持参考时长实用，例如在 ~15 秒以内以进行色调提取）。\n- **地点/场景："
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/88ae8c5b62ba4f1ca3500dafbcca7d35.webp",
+      "ossKey": "media/seed/drama/recipes/flova/88ae8c5b62ba4f1ca3500dafbcca7d35.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/88ae8c5b62ba4f1ca3500dafbcca7d35.mp4",
+      "ossKey": "media/seed/flova/skills/88ae8c5b62ba4f1ca3500dafbcca7d35.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/88ae8c5b62ba4f1ca3500dafbcca7d35.mp4",
+      "durationSec": 15,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 3435301,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

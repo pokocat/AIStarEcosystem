@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-8dfa87bf72d6",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "8dfa87bf72d6493889b82031d97729db",
+    "skillName": "人文纪录短片",
+    "description": "适用于全球国际统一审美的人文纪录短片，聚焦真实人类生活的观察性影像；使用 GPT Image 2 生成首帧+Happy Horse 生成微动态纪录片镜头。",
+    "skillDescription": "适用于全球国际统一审美的人文纪录短片，聚焦真实人类生活的观察性影像；使用 GPT Image 2 生成首帧+Happy Horse 生成微动态纪录片镜头。",
+    "url": "https://www.flova.ai/zh-CN/skill/8dfa87bf72d6493889b82031d97729db"
+  },
+  "meta": {
+    "title": "人文纪录短片",
+    "summary": "适用于全球国际统一审美的人文纪录短片，聚焦真实人类生活的观察性影像；使用 GPT Image 2 生成首帧+Happy Horse 生成微动态纪录片镜头。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#14b8a6",
+    "coverTo": "#0ea5e9"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**全片流程与阶段依赖：**\n1. 和用户确认并建立 Final_Video_Spec.md（片名、题材地域、画幅比例、目标时长、视觉风格、输出语言）→ text_editor\n2. 生成故事板（关键元素、镜头列表、音频层）→ storyboard_designer。故事板准备就绪后，扫描当前上下文，查找用户提供或之前生成的、与故事板条目匹配的任何资产（例如元素图像、背景音乐）。对于每个匹配项，在进行生成步骤之前，通过 media_generator 将资产绑定并分配给相应的故事板插槽 → media_generator\n3. 设置元素：\n- 如果用户已经上传了元素资源（例如角色图像或引用的参考角色），直接将其绑定为相应 key_elements 的资产。\n- 否则，为所有元素生成图像 → media_generator。\n4. 为每个镜头生成首帧图（start_frame）→ media_generator\n5. 参考步骤4的首帧图生成视频 → **media_generator**（FirstFrameToVideo - Happy Horse）\n6. 生成 BGM 音频层 → **media_generator**\n7. 完成全片时间线组装 → **video_assembler**\n\n**依赖顺序：** 2→1；3→2；4→2；5→4；6→2；7→5,6\n**暂停节点：** 不得一次性跑完全部流程。在 Storyboard 完成、元素图/首帧图完成、视频完成、音频生成后各暂停，等待用户确认再继续。\n注意: 用户提供或预先存在的媒体（主要影响第 3-5 步）： 在填充生成内容之前，先通过 media_generator 将媒体绑定并分配到适当的故事板位置；避免重复生成用户已提供的内容。\n\n**建立 Final_Video_Spec.md 的指南**\n1. 片名：名称应契合“人文纪录片”调性，避免过度商业或浮夸的命名\n2. 题材地域\n- 地域限定范围：引导用户在以下区域中选择：亚洲、非洲、中东、南美、东欧、东南亚、海岛国家、发展中国家\n- 题材核心限制：题材必须聚焦“真实的人”与“普通人的生活”，拒绝“城市宣传片”\n3. 画幅比例：推荐 16:9 横屏，或纪录片常见的 2.35:1 宽银幕\n4. 视觉风格：锁定为“像真实摄影师长期驻扎拍摄”、“像奥斯卡/国际电影节纪录片”、“Netflix纪录片风格”或“国家地理式观察影像”。明确“不做”的风格（避雷清单）：严禁“AI感、商业广告感、强戏剧感、网红风”。\n5. 画面质感要求：\n- 包含空气感：灰尘、水汽、潮湿、热浪、风。\n- 光线限定：仅限自然光（晨光、黄昏、阴天、窗边光）。\n- 保留不完美：允许并刻意保留轻微失焦、曝光波动、真实混乱感。 \n- 若用户上传参考图片或视频，提取以下信号供下游使用：主体身份与"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/8dfa87bf72d6493889b82031d97729db.webp",
+      "ossKey": "media/seed/drama/recipes/flova/8dfa87bf72d6493889b82031d97729db.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/8dfa87bf72d6493889b82031d97729db.mp4",
+      "ossKey": "media/seed/flova/skills/8dfa87bf72d6493889b82031d97729db.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/8dfa87bf72d6493889b82031d97729db.mp4",
+      "durationSec": 15,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 4062045,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

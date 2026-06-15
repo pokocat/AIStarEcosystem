@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-9cc524791772",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "9cc5247917724cfa9d0d3ff597ce98d8",
+    "skillName": "百万爆款羊毛毡动画Skill",
+    "description": "AI 创意研习社动画羊毛毡同款创作 Skill，输入视频旁白即可生成高质量羊毛毡动画（竖屏）",
+    "skillDescription": "动画羊毛毡风格视频创作Skill，输入视频旁白即可生成高质量羊毛毡动画，使用Seedance 2.0",
+    "url": "https://www.flova.ai/zh-CN/skill/9cc5247917724cfa9d0d3ff597ce98d8"
+  },
+  "meta": {
+    "title": "百万爆款羊毛毡动画Skill",
+    "summary": "动画羊毛毡风格视频创作Skill，输入视频旁白即可生成高质量羊毛毡动画，使用Seedance 2.0",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "9:16",
+    "episodes": 1,
+    "coverFrom": "#ef4444",
+    "coverTo": "#f59e0b"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**推进顺序：** 文案接收 → 规格确认 → 故事板设计 → 角色/场景元素图生成 → 逐镜头视频生成 → BGM 生成 → 最终合成导出\n\n**步骤依赖关系：**\n\n- Final video spec.md 规格确认 依赖 用户提供的文案内容，生成比例固定为 9:16，风格基准使用内置羊毛毡标准（无需用户上传参考视频）→ planner \n- 生成故事板 依赖 Final video spec.md 规格的内置风格基准 + 用户上传的文案脚本（若有） →  storyboard_designer \n- 元素图生成 依赖 故事板（确定本次角色/场景定义） →  media_generator \n- 分镜视频生成 参考上步骤元素图 →  media_generator \n- BGM生成（可选）依赖 所有视频片段确认完成 + 用户确认需要 →  media_generator \n- 旁白/画外音（可选）依赖 故事板audio layer中旁白（画外音）文案 + 用户确认需要 →  media_generator \n- 最终合成 依赖 所有视频片段 + 已确认的可选音频（BGM / 旁白） →  video_assembler \n\n**文案接收：** 用户发来文案后，直接读取文案内容（纯文字脚本/旁白），无需上传任何参考视频，由 **text_editor** 将项目规格写入 Final_Video_Spec.md（标题、比例 9:16、预计时长、主题情绪等）。\n\n**与用户的交互节奏（暂停点）：**\n\n1. 规格写完后 → 确认时长/本次主题/旁白语言\n2. 故事板完成后 → 展示分镜结构，核对旁白对应关系\n3. 角色/场景元素图生成完 → 确认毛毡风格一致性\n4. **每生成一个镜头视频（镜头1、镜头2……）** → 确认毛毡质感/角色一致性/SFX/节奏\n5. 所有视频片段确认后 → 询问是否需要 BGM，是否需要旁白配音；用户确认各项后再分别生成，每项生成后单独确认\n6. 最终合成后 → 引导导出\n\n***必须逐节点暂停，每个阶段用户确认后再推进。*** \n**结构组成：**\n\n- **key_elements**（本次视频的角色/场景/道具定义）\n\n  - 每个元素包含：文字描述（外貌/材质/色彩）+ 后续绑定生成的参考图 asset_id\n  - 角色描述需包含：体型特征、服装颜色、毛毡造型风格（见下方风格分级）\n  - 场景/道具描述需包含：主色调、道具构成、光线类型；场景与道具以真实世界比例呈现（如正常大小的餐厅、街道、房间），整体视觉感是「现实世界用羊毛毡材质复刻」，而非微缩模型或玩偶舞台\n\n**角色造型风格分级（由设计师根据内容语境判断选用，不一刀切）：**\n\n- **写实感可爱（默认，适用于主要角色）**：比例接近正常人体（头身比约 1:"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/9cc5247917724cfa9d0d3ff597ce98d8.webp",
+      "ossKey": "media/seed/drama/recipes/flova/9cc5247917724cfa9d0d3ff597ce98d8.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/9cc5247917724cfa9d0d3ff597ce98d8.mp4",
+      "ossKey": "media/seed/flova/skills/9cc5247917724cfa9d0d3ff597ce98d8.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/9cc5247917724cfa9d0d3ff597ce98d8.mp4",
+      "durationSec": 34,
+      "width": 1440,
+      "height": 2560,
+      "bytes": 8996983,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-exam-summer",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "重回高考前那个夏天",
+    "summary": "37 岁的女主重回高考前夏天，这一次不只为自己改命，也想替妈妈活一次。适合催泪、家庭和青春题材。",
+    "typeKey": "rebirth",
+    "type": "重生情感短剧",
+    "ratio": "9:16",
+    "episodes": 20,
+    "coverFrom": "#10b981",
+    "coverTo": "#22d3ee"
+  },
+  "payload": {
+    "mainline": "中年失意的女主回到高考前暑假，发现母亲正处在人生崩溃前夜。她既要改变自己的考试命运，也要让年轻的母亲重新拥有选择。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "回到教室",
+        "beat": "她在蝉鸣中醒来，桌上是倒计时 30 天。"
+      },
+      {
+        "no": 2,
+        "hook": "看见妈妈",
+        "beat": "她第一次以成年人的眼光看见母亲的委屈。"
+      },
+      {
+        "no": 3,
+        "hook": "改变小事",
+        "beat": "她阻止一次家庭争吵，却引发成绩下滑。"
+      },
+      {
+        "no": 4,
+        "hook": "母女坦白",
+        "beat": "母亲发现女儿异常，二人第一次平等对话。"
+      },
+      {
+        "no": 5,
+        "hook": "高考当天",
+        "beat": "女主不再只为分数选择，也为母亲争取自由。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "37岁女主/高中生身体",
+        "desc": "成熟记忆与少女身份冲突。"
+      },
+      {
+        "role": "key",
+        "archetype": "年轻母亲",
+        "desc": "长期牺牲自我，内心仍有未完成梦想。"
+      },
+      {
+        "role": "extra",
+        "archetype": "父亲与班主任",
+        "desc": "代表家庭和升学压力。"
+      }
+    ],
+    "hooks": [
+      "重回倒计时30天",
+      "替妈妈活一次",
+      "改命的代价",
+      "母女双向拯救"
+    ],
+    "notes": "【模板脚本】\n前3集：重返高考倒计时，女主确认不是梦。\n4-10集：她用成年人经验修复家庭，但发现母亲的问题比考试更急。\n11-18集：母女共同反抗被安排的人生。\n19-20集：高考与母亲离家进修同一天完成情绪兑现。\n\n【提示词模板】\n生成 20 集竖屏重生家庭情感短剧。主题不是“考高分爽文”，而是“成年女儿重新理解母亲”。要求每集一个夏日生活细节：风扇、试卷、绿豆汤、旧自行车、录取通知书等；每集结尾留情绪钩子。输出分集大纲、母女关系曲线、前 3 集分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/exam-summer.jpg",
+      "ossKey": "media/seed/drama/recipes/home/exam-summer.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

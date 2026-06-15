@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-16cb3355db46",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "16cb3355db4642ca982c02d5f893d9dd",
+    "skillName": "故事驱动型视频-视频提示词复用故事板",
+    "description": "为具有故事线的视频而设计。核心亮点：   - 由Seedance 2.0（目前最强大的视频模型）驱动    - 每条镜头描述写全镜头内容和镜头语言，**Seedance 2.0** 的视频提示词直接复用该内容，只追加必要的模型约束与引用占位格式，无需重新撰写提示词。",
+    "skillDescription": "适合故事驱动的视频，使用 Seedance 2.0生成。成片视频提示词**直接复用**故事板的镜头描述——适合希望在生成前先把提示词锁定的创作者。",
+    "url": "https://www.flova.ai/zh-CN/skill/16cb3355db4642ca982c02d5f893d9dd"
+  },
+  "meta": {
+    "title": "故事驱动型视频-视频提示词复用故事板",
+    "summary": "适合故事驱动的视频，使用 Seedance 2.0生成。成片视频提示词**直接复用**故事板的镜头描述——适合希望在生成前先把提示词锁定的创作者。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "1:1",
+    "episodes": 1,
+    "coverFrom": "#f97316",
+    "coverTo": "#e11d48"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**完整成片阶段逻辑与依赖：**\n1. 撰写 `Final_Video_Spec.md`（标题、类型、画幅比、时长、视觉风格、语言）→ **text_editor**。\n2. 生成故事板（关键元素、镜头列表、音轨层）→ **storyboard_designer**。故事板就绪后，扫描当前上下文中用户已提供或此前已生成、且与故事板条目匹配的素材（如元素图、背景音乐）。每有一处匹配，在进入生成步骤前通过 **media_generator** 绑定并指派到对应故事板槽位 → **media_generator**。\n3. 配置元素：\n   * 若用户已上传元素素材（如角色图或参考角色），直接绑定为对应 `key_elements` 的素材。\n   * 否则，为所有元素生成图像 → **media_generator**。\n4. 逐镜头生成成片视频 → **media_generator**。\n5. 依据故事板生成全部音轨层 → **media_generator**。\n6. 素材齐备后进行最终合成；再引导用户导出 → **video_assembler**。\n\n**依赖关系：** 2→1；3→2；4→3；5→2；6→3,4,5。\n\n**何时暂停：** 不要一次性跑完所有步骤。在上述每一关键阶段后停下（如规格定稿后、故事板完成后、元素完成后、镜头视频生成后、音频生成后），与用户确认后再进入下一步。可用卡片或 `reply_to_user` 邀请用户审阅后再继续。\n\n**说明：** 用户自带或已存在的媒体（主要影响步骤 3–5）：在填入生成内容之前，先通过 `media_generator` 绑定并指派到故事板对应位置；避免对用户已提供的素材做重复生成。 \n**如何设计关键元素**\n- 须包含 **关键主体**（角色、物体等）、**关键场地/场景**，以及 **关键道具**（若有）。\n- **角色：** 若同一角色在项目中有多种状态或造型（如不同服装、年龄），在描述中写清（如 Look 1：…；Look 2：…）。写明角色的 **嗓音/音色**。\n- **关键场地/场景：** 说明场景中重要物体的位置与朝向，尤其是承载主要动作或表演的区域与道具。\n- **用户提供的素材：** 若用户提供参考媒体（图或语音）并指定为关键元素，描述 **必须与素材一致**；不得与画面或可闻内容矛盾。\n\n**如何设计镜头**\n- **优先长镜头 + 镜内分切**（如单条 10–15 秒）。在 **单条镜头内** 设计，不要拆成大量碎短镜头；剪切频率跟叙事节奏。单条镜头不得超过 15 秒（当前模型时长上限）。\n- **每条镜头描述须包含：**\n  - **场景：** 指明场次/空间（使用场景元素 ID，如 `[Element_Office_Noir]`）。\n  - **故事内容：** 节"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/16cb3355db4642ca982c02d5f893d9dd.webp",
+      "ossKey": "media/seed/drama/recipes/flova/16cb3355db4642ca982c02d5f893d9dd.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/16cb3355db4642ca982c02d5f893d9dd.mp4",
+      "ossKey": "media/seed/flova/skills/16cb3355db4642ca982c02d5f893d9dd.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/16cb3355db4642ca982c02d5f893d9dd.mp4",
+      "durationSec": 49,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 13362580,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

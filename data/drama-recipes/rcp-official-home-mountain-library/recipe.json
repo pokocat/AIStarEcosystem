@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-mountain-library",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "大山里的图书角",
+    "summary": "城市青年到山村支教三年，一间小小图书角点亮孩子们的远方。适合公益、品牌责任和温暖纪实。",
+    "typeKey": "public",
+    "type": "公益纪实短剧",
+    "ratio": "9:16",
+    "episodes": 12,
+    "coverFrom": "#34d399",
+    "coverTo": "#22d3ee"
+  },
+  "payload": {
+    "mainline": "城市青年到山村支教，发现孩子们缺少的不只是书，而是被认真倾听的机会。他用废旧教室搭起图书角，陪孩子们完成一次走出大山的展示。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "到校第一天",
+        "beat": "老师发现孩子把旧课本当课外书反复看。"
+      },
+      {
+        "no": 2,
+        "hook": "搭图书角",
+        "beat": "他用废木板和捐来的书做第一个书架。"
+      },
+      {
+        "no": 3,
+        "hook": "孩子心愿",
+        "beat": "每个孩子借书背后都有一个家庭困境。"
+      },
+      {
+        "no": 4,
+        "hook": "外界误解",
+        "beat": "有人质疑公益只是摆拍。"
+      },
+      {
+        "no": 5,
+        "hook": "山外展示",
+        "beat": "孩子们用自己的故事完成公开朗读。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "城市支教老师",
+        "desc": "理想主义但会被现实修正。"
+      },
+      {
+        "role": "key",
+        "archetype": "沉默学生代表",
+        "desc": "不敢表达，最后完成公开朗读。"
+      },
+      {
+        "role": "extra",
+        "archetype": "村小校长/家长",
+        "desc": "现实阻力与支持并存。"
+      }
+    ],
+    "hooks": [
+      "孩子把旧课本读了几十遍",
+      "一间废教室变图书角",
+      "公益被质疑摆拍",
+      "孩子第一次讲自己的故事"
+    ],
+    "notes": "【模板脚本】\n每集围绕一本书和一个孩子展开。避免口号化公益，用具体行为表达改变：修书架、登记借阅、夜访家庭、组织朗读。\n结尾不做夸张逆袭，以孩子“敢说出自己的愿望”作为情绪兑现。\n\n【提示词模板】\n生成 12 集竖屏公益纪实短剧。题材为山村图书角。要求温暖、克制、真实；冲突来自资源不足、误解和沟通困难，不制造恶人；每集一个孩子和一本书。输出分集大纲、人物群像、可拍摄场景清单、前 2 集分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/mountain-library.jpg",
+      "ossKey": "media/seed/drama/recipes/home/mountain-library.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

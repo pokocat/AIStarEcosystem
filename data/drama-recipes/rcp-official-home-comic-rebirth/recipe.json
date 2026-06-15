@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-comic-rebirth",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "重生进自己追的漫画",
+    "summary": "社畜重生进追了十年的漫画，成了第 3 话就领盒饭的反派，必须改剧本保命。适合漫剧、脑洞、轻悬疑。",
+    "typeKey": "comic",
+    "type": "漫剧脑洞",
+    "ratio": "9:16",
+    "episodes": 24,
+    "coverFrom": "#06b6d4",
+    "coverTo": "#3b82f6"
+  },
+  "payload": {
+    "mainline": "女主穿进漫画成为早死反派，她熟知剧情却发现世界会自动修正。她每改一次命运，漫画分镜就出现新的空白格，逼她找到真正的作者和被隐藏的结局。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "进入漫画",
+        "beat": "她发现同事变成漫画旁白框。"
+      },
+      {
+        "no": 2,
+        "hook": "死亡倒计时",
+        "beat": "第3话死亡节点逼近。"
+      },
+      {
+        "no": 3,
+        "hook": "剧情修正",
+        "beat": "她避开车祸，却触发另一个危机。"
+      },
+      {
+        "no": 4,
+        "hook": "反派洗白",
+        "beat": "她救下原女主，打破原剧情阵营。"
+      },
+      {
+        "no": 5,
+        "hook": "寻找作者",
+        "beat": "空白分镜指向现实世界的未完稿。"
+      },
+      {
+        "no": 6,
+        "hook": "重写结局",
+        "beat": "她用自己的选择补完最后一格。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "社畜读者反派",
+        "desc": "熟知套路但必须真正行动。"
+      },
+      {
+        "role": "key",
+        "archetype": "原漫画女主",
+        "desc": "从被保护对象变成盟友。"
+      },
+      {
+        "role": "extra",
+        "archetype": "剧情修正者",
+        "desc": "维持原剧情的神秘力量。"
+      }
+    ],
+    "hooks": [
+      "知道剧本却活不过第3话",
+      "世界自动修正",
+      "空白漫画格",
+      "反派改命"
+    ],
+    "notes": "【模板脚本】\n开场：女主加班睡着，醒来看到空中浮现“第1话”。\n核心规则：已知剧情只能提供方向，不能直接解决问题；每次改命都会产生更大代价。\n结尾：女主意识到自己不是闯入者，而是原作者删掉的真实主角。\n\n【提示词模板】\n生成 24 集竖屏漫剧脑洞短剧。设定：主角穿进自己追的漫画，成了早死反派。要求每集有“漫画规则”可视化设计，但不要使用真实漫画 IP；每 4 集升级一次规则；结局必须情感闭环而非纯爽文。输出规则表、人物弧光、分集大纲、前 3 集分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/comic-rebirth.jpg",
+      "ossKey": "media/seed/drama/recipes/home/comic-rebirth.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

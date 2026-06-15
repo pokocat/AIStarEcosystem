@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-4560862fb52b",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "4560862fb52b40c29f00f2631ad92132",
+    "skillName": "东亚文艺片——情绪氛围驱动",
+    "description": "适用于东亚文艺片风格的短片创作；以情绪为核心而非剧情驱动叙事，使用 Happy Horse 生成所有镜头视频，强调克制表演、长镜头节奏与声画分离策略。",
+    "skillDescription": "适用于东亚文艺片风格的短片创作；以情绪为核心而非剧情驱动叙事，使用 Happy Horse 生成所有镜头视频，强调克制表演、长镜头节奏与声画分离策略。",
+    "url": "https://www.flova.ai/zh-CN/skill/4560862fb52b40c29f00f2631ad92132"
+  },
+  "meta": {
+    "title": "东亚文艺片——情绪氛围驱动",
+    "summary": "适用于东亚文艺片风格的短片创作；以情绪为核心而非剧情驱动叙事，使用 Happy Horse 生成所有镜头视频，强调克制表演、长镜头节奏与声画分离策略。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#14b8a6",
+    "coverTo": "#0ea5e9"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n## **全片流程与阶段逻辑**\n\n1. 先和用户确认影片的“情绪轨迹”，而不是剧情梗概。\\\n   核心不是“观众看懂发生了什么”，而是“观众能感受到什么正在慢慢变化”。\\\n   将最终方向整理写入 Final_Video_Spec.md（片名、情绪主题、时长预估、画幅比例、语言、视觉气质等）→ **text_editor**\n2. 进入分镜设计阶段（key elements、shot 列表、audio layer）→ **storyboard_designer**。\\\n   重点不是推进事件，而是设计情绪的停顿、留白与流动。\\\n   完成后必须暂停，等待用户确认整体节奏与情绪结构。\n3. 生成 key element 图像（角色、场景、重要物件）→ **media_generator**。\\\n   重点确认“气质是否对”，而不是信息量是否足够。\\\n   完成后暂停，等待用户确认视觉方向。\n4. 按照分镜逐 shot 生成最终视频 → **media_generator**。\\\n   参考key element直接生成视频，严格遵循镜头中的情绪描述、空间关系与呼吸节奏，不以强剧情冲突作为驱动。\\\n   完成后暂停确认。\n5. 生成 audio layer（音乐、旁白）→ **media_generator**。\\\n   声音不只是补充画面，而是承担“情绪延续”的作用。\n6. 最终剪辑合成 → **video_assembler**。\\\n   整体遵循“呼吸感”剪辑逻辑：留白、停顿、余韵，优先保证情绪连续性，而不是信息效率。\n\n**依赖关系：** 2→1；3→2；4→3；5→2；6→3,4,5。\n\n## **执行原则**\n\n每个阶段完成后，必须暂停等待用户确认。\\\n禁止一次性连续执行完整流程。\n\n## **生成前质量自查**\n\n每次输出分镜或提示词后，必须逐条核对：\n\n- 是否存在“强行制造戏剧冲突”的镜头？\\\n  → 优先改为留白、转喻、声画分离或情绪余波表达。\n- 是否有角色直接进行激烈情绪表演（大哭、大喊、崩溃）？\\\n  → 改为空镜、环境变化、物件细节或声音承载情绪。\n- 所有镜头是否保留足够停留时间？\\\n  → 单镜头建议 ≥ 6 秒，避免MV式快速切换。\n- 镜头之间是否缺乏呼吸感？\\\n  → 必须加入空镜、黑场、环境音或节奏缓冲。\n- 情绪推进是否过于“解释性”？\\\n  → 减少说明感，增加观察感与感受空间。\n- 东亚场景是否被拍成“猎奇化”“观光化”视角？\\\n  → 回到本地人日常生活的观察视角。\n- 提示词是否出现破坏文艺气质的直给表达？\\\n  → 删除过度戏剧化、口号化、表演化描述。\n- 全片是否符合“呼吸结构”：\\\n  铺垫（吸气）→ 情绪停滞（屏息）→ 情绪释放（呼气）\\\n  → 若节奏始终单一，必须重新调整情绪曲线。 \n**参考素材分"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/4560862fb52b40c29f00f2631ad92132.webp",
+      "ossKey": "media/seed/drama/recipes/flova/4560862fb52b40c29f00f2631ad92132.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/4560862fb52b40c29f00f2631ad92132.mp4",
+      "ossKey": "media/seed/flova/skills/4560862fb52b40c29f00f2631ad92132.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/4560862fb52b40c29f00f2631ad92132.mp4",
+      "durationSec": 62,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 15406749,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

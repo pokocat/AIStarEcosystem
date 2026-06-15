@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-5ef6b8ad22b0",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "5ef6b8ad22b0495e8140ad97abae3572",
+    "skillName": "剧情短片(音色参考)",
+    "description": "核心亮点：- 角色语音锚定：每个角色在元素阶段都有专属的参考音频，确保整个过程中语调的一致性。- 由 Seedance 2.0驱动 — 省略关键帧步骤，直接从元素图像生成最终镜头。- 循序渐进的人机协作 — 在每个关键阶段进行确认，以保持完全掌控。",
+    "skillDescription": "支持两种启动方式：用户上传剧本，或由 agent 根据用户提供的主题/需求代写剧本。随后使用 Nano Banana + Seedance 2.0 生成视频。在关键阶段暂停以供用户确认；基于一镜到底工作流的人机协作。 ",
+    "url": "https://www.flova.ai/zh-CN/skill/5ef6b8ad22b0495e8140ad97abae3572"
+  },
+  "meta": {
+    "title": "剧情短片视频",
+    "summary": "支持两种启动方式：用户上传剧本，或由 agent 根据用户提供的主题/需求代写剧本。随后使用 Nano Banana + Seedance 2.0 生成视频。在关键阶段暂停以供用户确认；基于一镜到底工作流的人机协作。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#6366f1",
+    "coverTo": "#a855f7"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**完整视频的阶段逻辑和依赖关系：**\n\n1. **剧本获取（二选一）：**\n   - **用户已上传剧本文件（图片/PDF/文本）：** 使用 **resource_prepare_and_analyze** 解析并一句话总结剧本内容，提取故事结构、角色和场景信息，作为后续步骤的输入。解析完成后，向用户输出摘要并请确认内容理解无误，再进入步骤2。**确认前不得进入步骤2。**\n   - **用户未上传剧本：** 通过 reply_to_user 以**卡片引导**方式分组收集以下信息（分两轮卡片，第一轮收集核心需求，第二轮收集风格与约束）：\n     - **第一轮卡片（核心需求）：** ① 视频主题/故事核心一句话描述；② 视频类型（短片/广告/宣传片/微剧/其他）；③ 主要角色数量与大致背景。\n     - **第二轮卡片（风格与约束）：** ① 整体视觉风格与基调（例：写实、赛博朋克、温情、黑色电影等）；② 大致时长（例：30秒以内 / 1–2分钟 / 3分钟以上）；③ 特殊要求或参考作品（选填）。\n     - 收到两轮回复后，由 agent 起草完整剧本（含场景划分、角色对话、动作描述），**以 reply_to_user 完整输出给用户审阅**。\n     - **显式确认检查点：** 剧本草稿输出后，必须暂停并明确请用户确认——可通过卡片提供\"✅ 剧本确认，继续制作\"、\"✏️ 需要修改剧本\"两个选项。**收到明确确认前，不得进入步骤2。** 若用户要求修改，根据反馈修改剧本后重新请确认，循环直至确认通过。\n2. 编写 Final_Video_Spec.md（标题、类型、画幅、时长、视觉风格、语言、模型偏好） → **text_editor**。\n3. 生成与第1步剧本相符的故事板（关键元素、镜头列表、音频层） → **storyboard_designer**。\n4. 设置元素：\n\n- 如果用户已经上传了元素资源（例如角色图像或引用的参考角色），直接将其绑定为相应 key_elements 的资产。\n- 否则，为所有元素生成图像 → **media_generator**。\n\n4b. 为每个有对话台词的角色建立 **key_element_audio**（音色锚点），以保证 Seedance 2.0 跨镜头音色一致性：\n\n- **询问用户是否有角色的 voice reference 文件可上传。**\n  - **用户已上传 voice reference 文件：** 通过 **media_generator** 将音色参考注册并绑定到对应角色的 key_element_audio → **media_generator**。\n  - **用户未上传：** 向用户提供以下两条路径选择（通过卡片），并说明各自的积分消耗差异：\n    - **路径"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/5ef6b8ad22b0495e8140ad97abae3572.webp",
+      "ossKey": "media/seed/drama/recipes/flova/5ef6b8ad22b0495e8140ad97abae3572.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/5ef6b8ad22b0495e8140ad97abae3572.mp4",
+      "ossKey": "media/seed/flova/skills/5ef6b8ad22b0495e8140ad97abae3572.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/5ef6b8ad22b0495e8140ad97abae3572.mp4",
+      "durationSec": 62,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 16165398,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-wedding-missing",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "婚礼上掏出的不是戒指",
+    "summary": "婚礼高能反转：新郎拿出的不是戒指，而是一张失踪人口启事，失踪的人竟是新娘。适合强钩子悬疑爱情。",
+    "typeKey": "reversal",
+    "type": "反转悬疑短剧",
+    "ratio": "9:16",
+    "episodes": 18,
+    "coverFrom": "#f97316",
+    "coverTo": "#e11d48"
+  },
+  "payload": {
+    "mainline": "婚礼仪式上，新郎用失踪启事替代戒指，揭开新娘三年前身份空白。随着宾客、旧同学和警方线索进入，女主发现自己被替换的人生背后隐藏一场家族财产骗局。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "婚礼爆点",
+        "beat": "戒盒打开不是戒指，全场静音。"
+      },
+      {
+        "no": 2,
+        "hook": "身份空白",
+        "beat": "新娘发现自己的证件、毕业照和童年记忆互相矛盾。"
+      },
+      {
+        "no": 3,
+        "hook": "旧友现身",
+        "beat": "一位旧同学说真正的新娘三年前已经“死过一次”。"
+      },
+      {
+        "no": 4,
+        "hook": "家族棋局",
+        "beat": "新郎并非羞辱她，而是在逼幕后人现身。"
+      },
+      {
+        "no": 5,
+        "hook": "双人反击",
+        "beat": "男女主联手在补办婚礼上设局反杀。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "失忆新娘",
+        "desc": "温柔外壳下有强烈求真欲，身份被动摇。"
+      },
+      {
+        "role": "key",
+        "archetype": "冷静新郎",
+        "desc": "看似残忍，实际掌握关键证据。"
+      },
+      {
+        "role": "extra",
+        "archetype": "幕后亲属",
+        "desc": "用婚姻和身份操控财产流向。"
+      }
+    ],
+    "hooks": [
+      "婚礼戒盒反转",
+      "失踪的人是新娘",
+      "爱人还是审判者",
+      "补办婚礼反杀"
+    ],
+    "notes": "【模板脚本】\n开场：司仪请交换戒指，新郎打开戒盒，里面是一张泛黄寻人启事。镜头切新娘脸，宾客低语。\n中段：每集找到一个身份矛盾物：旧学籍、病历、合照、婚前协议。\n结尾：补办婚礼成为公开审判，女主亲手揭开真正替换她身份的人。\n\n【提示词模板】\n生成一部 18 集竖屏反转悬疑爱情短剧。核心设定：婚礼戒盒里不是戒指，而是失踪启事，失踪对象是新娘本人。要求每集一个证据反转；男女主关系从对抗到结盟；不得写成狗血误会，所有反转必须有前置物证。输出分集大纲和前两集详细分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/wedding-missing.jpg",
+      "ossKey": "media/seed/drama/recipes/home/wedding-missing.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

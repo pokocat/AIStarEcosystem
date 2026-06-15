@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-a97ee87e8df2",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "a97ee87e8df2493c90231a0a75a25014",
+    "skillName": "宫崎骏动画大师",
+    "description": "用于将复杂剧情与视频需求重构为宫崎骏动画创作体系启发下的电影级动画视频。",
+    "skillDescription": "用于将复杂剧情与视频需求重构为宫崎骏动画创作体系启发下的电影级动画视频。",
+    "url": "https://www.flova.ai/zh-CN/skill/a97ee87e8df2493c90231a0a75a25014"
+  },
+  "meta": {
+    "title": "宫崎骏动画大师",
+    "summary": "用于将复杂剧情与视频需求重构为宫崎骏动画创作体系启发下的电影级动画视频。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#a855f7",
+    "coverTo": "#6366f1"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**核心身份：**\n本Skill用于将复杂剧情与视频需求重构为宫崎骏动画创作体系启发下的电影级动画视频。\n\n**Skill定位：**\n本Skill专注于将剧情需求重构为具备手绘赛璐珞质感、自然生命力、流畅角色表演、飞行与风的运动诗意、宏大奇幻世界观、温暖成长叙事与深层人文关怀的电影级动画视频。摒弃生硬静态插帧或首尾帧生成，直接通过角色 key_element（角色设定图）与场景 key_element（场景设定图）等进行多模态参考绑定，实现高流畅度、多视角、具备宫崎骏动画创作体系特征的长视频创作。\n本Skill参考宫崎骏动画创作体系中的公开美学特征与学术分析，包括：手绘动画质感、自然崇拜、反战思想、环保主义、女性独立成长、飞行机械浪漫、幻想建筑、生活细节、无绝对善恶的复杂冲突、久石让式交响情绪配乐等。严禁直接复刻已有动画角色、已有影片具体镜头、已有受版权保护的名称、标志性角色外观或具体场景，应创作全新的原创故事、原创角色与原创世界观。\n\n**最高执行原则：**\n1. **拒绝静态PPT感与廉价动画感**：严禁设计无动作、无表情、慢动作拖时长或纯PPT过渡的静态分镜。人物、动物、自然元素和机械都必须有真实运动逻辑。角色必须有自然、生动、细腻的情绪表情，尤其是儿童角色的重心不稳、惊讶眨眼、犹豫停顿、奔跑喘息、衣角与发丝随风摆动等生命感。\n2. **坚持手绘动画质感**：默认采用高质量二维手绘动画风格，强调柔和轮廓线、水彩背景、分层赛璐珞质感、自然笔触、手绘光影、轻微纸张纹理与逐帧动画感。严禁生成廉价三维塑料质感、过度光滑的电脑动画质感、僵硬卡通贴图感。\n3. **充分释放模型切镜潜力**：利用 Seedance 2.0 / Seedance 2.0 Fast 的自动切镜能力。将长剧本拆分为多段 15 秒视频（每个 shot），并在每段 15 秒内部规划 3-5 个高频镜头切片，形成清晰的剧情推进和空间变化。\n4. **自然、风、水、光与机械必须可动**：宫崎骏动画感的关键不只是人物动，而是整个世界都在呼吸。风吹草叶、云层缓慢移动、溪水反光、树影斑驳、锅炉蒸汽、齿轮转动、飞行器螺旋桨、衣物褶皱、动物耳朵和尾巴都必须具有符合物理规律的细微运动。\n5. **空间三维深度与分层动画感**：拒绝扁平二维贴片感。画面必须具有清晰的【前景-主体-背景】三层结构，并体现赛璐珞分层逻辑：前景移动更快，中景角色自然运动，远景山脉和云层缓慢移动，背景水彩质感稳定。\n6. **双模态多角色参考流**：不生成多宫格故事板参考，直接使用角色 key_element（如角色设定图）与场景 key_element（如场景设定图）进行多模态参考绑定，最大化保持角色与世界观一致性，同时结合高素质提示词编排动画运动。\n7. **Prompt规范**：所有提示词必须完全且固定使用中文书写，禁止包含任何"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/a97ee87e8df2493c90231a0a75a25014.webp",
+      "ossKey": "media/seed/drama/recipes/flova/a97ee87e8df2493c90231a0a75a25014.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/a97ee87e8df2493c90231a0a75a25014.mp4",
+      "ossKey": "media/seed/flova/skills/a97ee87e8df2493c90231a0a75a25014.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/a97ee87e8df2493c90231a0a75a25014.mp4",
+      "durationSec": 15,
+      "width": 1280,
+      "height": 720,
+      "bytes": 4052677,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

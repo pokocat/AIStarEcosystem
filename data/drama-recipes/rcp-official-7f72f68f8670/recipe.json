@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-7f72f68f8670",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "7f72f68f86704599bf498993ff3b49a9",
+    "skillName": "贾樟柯电影风格短片",
+    "description": "适用于社会纪实、文艺独立短片创作，乡土纪实美学。用户上传剧本或提供一个文字场景想法，自动解析叙事基调（如进城务工、下岗、小镇青年、故土没落），生成贾樟柯式纪实美学短片：低饱和土灰调、手持微晃与固定长镜头、市井环境音主导、素颜无磨皮，聚焦时代洪流中的小人物漂泊。",
+    "skillDescription": "适用于社会纪实、文艺独立短片创作，乡土纪实美学，生成贾樟柯式纪实美学短片。",
+    "url": "https://www.flova.ai/zh-CN/skill/7f72f68f86704599bf498993ff3b49a9"
+  },
+  "meta": {
+    "title": "贾樟柯电影风格短片",
+    "summary": "适用于社会纪实、文艺独立短片创作，乡土纪实美学，生成贾樟柯式纪实美学短片。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#f59e0b",
+    "coverTo": "#ef4444"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n## 全局流程与确认节点\n**核心原则：** 分阶段推进，每个关键节点暂停并等待用户确认后再继续，不得一次性跑完全流程。\n\n### 输入类型判断\n开始前判断用户输入类型，按以下规则处理：\n- **完整剧本：** 保留原角色、关系、事件顺序、对白、场景和结局；只调整摄影、表演、环境细节、声音和剪辑，不擅自改写剧情。若剧本缺少人物行动或时代信息，先向用户提出修改建议，得到确认后才能改变剧情。\n- **故事梗概：** 补全场景和人物动作，保留核心冲突及结局。\n- **简短想法：** 允许按本 Skill 规则扩展完整故事。\n- **仅参考素材：** 先调用 **resource_prepare_and_analyze** 分析素材，再请用户确定故事方向。\n\n### 阶段 0：建立全局参数文档\n用 **text_editor** 创建 Final_Video_Spec.md，锁定以下全局参数：\n- 片名（用户提供或AI生成）\n- 画幅：16:9\n- 分辨率：1080p\n- 帧率：24fps\n- 时长意向（默认1–3分钟）\n- 叙事基调（进城务工 / 下岗 / 小镇青年 / 故土没落）\n- 视觉风格锚点：贾樟柯纪实美学（县城生活流，新旧并存，手持微晃/固定长镜头，环境音主导，不强制统一色调滤镜）\n- 语言：中文方言碎片环境音为主，无旁白，无字幕\n\n### 阶段 1：叙事基调解析（含用户输入分析）\n1. 若用户上传了音频文件，调用 **resource_prepare_and_analyze** 分析情感基调、语速节奏、有无人声碎片，输出推荐叙事基调。\n2. 若用户上传了人物参考图，调用 **resource_prepare_and_analyze** 提取外貌特征（脸型、肤色、发型、服装细节），输出结构化描述，供后续角色参考图生成使用。\n3. 按输入类型处理叙事内容：\n   - **完整剧本：** 提取角色、场景、人物任务、事件顺序、对白、结局和时代背景，生成剧本分析摘要，不重新编故事。\n   - **故事梗概：** 补全可见动作和场景关系，保留核心冲突及结局。\n   - **简短想法：** 扩展为具有具体任务、现实阻碍和可见选择的生活流故事。\n4. 将叙事内容呈现给用户，**等待确认或修改后**方可进入下一阶段。\n\n### 阶段 1.5：节奏、运镜与时长自定义（叙事线确认后、分镜生成前，不可跳过）\n叙事线经用户确认后，**一次性**向用户展示以下三个维度，统一收集参数后进入阶段 2。\n\n#### 节奏类型（三选一）\n- **A. 慢节奏（沉浸式长镜）**：固定长镜头占比 ≥70%，单镜 6–12 秒，适合情绪沉淀、环境留白、时代氛围铺陈。\n- **B. 中节奏（生活流）**：手持跟拍与固定长镜各约 50%，单镜 4–8 秒，模拟日常观察节奏。\n- **C. 快节奏（"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/7f72f68f86704599bf498993ff3b49a9.webp",
+      "ossKey": "media/seed/drama/recipes/flova/7f72f68f86704599bf498993ff3b49a9.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/7f72f68f86704599bf498993ff3b49a9.mp4",
+      "ossKey": "media/seed/flova/skills/7f72f68f86704599bf498993ff3b49a9.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/7f72f68f86704599bf498993ff3b49a9.mp4",
+      "durationSec": 69,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 17387924,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

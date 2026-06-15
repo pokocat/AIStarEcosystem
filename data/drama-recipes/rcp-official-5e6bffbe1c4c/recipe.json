@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-5e6bffbe1c4c",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "5e6bffbe1c4c457fa90a3658272da8bb",
+    "skillName": "第一人称 POV 沉浸式短片（通用）",
+    "description": "将剧本、故事或创意转化为严格第一人称 POV 视角的沉浸式短片。",
+    "skillDescription": "专门处理第一人称 POV 视频创作，保持主角视角一致，规划分镜、动作与视频生成流程，禁止第三人称镜头。",
+    "url": "https://www.flova.ai/zh-CN/skill/5e6bffbe1c4c457fa90a3658272da8bb"
+  },
+  "meta": {
+    "title": "第一人称 POV 沉浸式短片（通用）",
+    "summary": "专门处理第一人称 POV 视频创作，保持主角视角一致，规划分镜、动作与视频生成流程，禁止第三人称镜头。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#f97316",
+    "coverTo": "#e11d48"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n## 工具目的\n严格第一视角（first-person POV）现实主义短片的全流程生产Skill。从资产生成到逐条Clip视频输出到最终剪辑，全部在POV铁律下执行。\n\n## 全局硬锁规则\n1. 全片严格第一视角：first-person POV from protagonist; camera is his/her eyes; no external shot of protagonist.\n2. 主角不作为正脸角色资产。只允许出现手、鞋、衣袖、胸前物件边缘、局部倒影、玻璃或手机黑屏里的局部反光。\n3. 信息必须进入视野才算成立。关键道具必须在主角POV可见范围内出现。\n4. 主观运动必须写出来：视线起点 → 声音/动作触发 → 视线转向 → 手部动作 → 视线落点。\n5. 声音可以补画面，但不能替代关键画面。重大事件必须有视觉锚点成立。\n6. 不要求AI生成可读中文文字，手机界面/姓名条/作业纸等一律后期贴图或配音补足。\n7. 对白不要求模型生成准确口型，成片对白后期配音，视频生成时只保留环境声。\n\n## 执行链路\n用户给需求/剧本/图/片段问题\n↓\n反抽卡预检（Anti-Lottery Gate）\n↓\n锁参考图职责：人物 / 场景 / 道具 / 手部动作 / 状态\n↓\n判断任务类型：图片资产 / 图生视频 / 长段落 / 九宫格 / QC返修\n↓\n写可直接粘贴的正式提示词\n↓\n自动带上动作阶段、镜头运动、声音证据、禁止项、假点质检\n↓\n如果生成失败 → QC / 返修路线\n\n## 创作流程\n第1步：编写 Final_Video_Spec.md（视频规格书）\n第2步：生成角色/场景/道具/手部POV局部资产图（GPT Image 2.0），锁定视觉一致性\n第3步：生成九宫格总览图，确认全片节奏和关键画面（仅用于规划，不锁人物脸）\n第4步：编写分镜故事板，用户确认后方可进入生成\n第5步：对每条Clip执行反抽卡预检，通过后逐条生成视频（Seedance 2.0）\n第6步：每条Clip生成后立即QC，失败进入返修路线\n第7步：生成配乐和旁白（如需要）\n第8步：视频装配 — 时间轴拼接、转场、音轨对齐、导出\n\n## 依赖关系\n- 资产图必须在Clip视频生成之前完成并锁定\n- 九宫格在资产图之后、Clip生成之前完成\n- 分镜故事板未经用户确认，禁止进入素材生成\n- 每条Clip只承载一个主要故事转向，不要让模型自行补剧情\n- 后续Clip必须参考前序Clip的角色资产图，保持人物一致性\n- 音乐/配乐在全部视频生成后再处理\n\n## 暂停确认节点\n- 资产图生成完毕后暂停，等用户确认角色外貌\n- 分镜故事板完成后暂停，等用户确认内容\n- 每个Segment的Clip全部生成后暂停，用户审核QC\n\n## 反抽卡预检（Anti-Lottery Gate）\n每条C"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/5e6bffbe1c4c457fa90a3658272da8bb.webp",
+      "ossKey": "media/seed/drama/recipes/flova/5e6bffbe1c4c457fa90a3658272da8bb.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/5e6bffbe1c4c457fa90a3658272da8bb.mp4",
+      "ossKey": "media/seed/flova/skills/5e6bffbe1c4c457fa90a3658272da8bb.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/5e6bffbe1c4c457fa90a3658272da8bb.mp4",
+      "durationSec": 60,
+      "width": 1280,
+      "height": 720,
+      "bytes": 16082045,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

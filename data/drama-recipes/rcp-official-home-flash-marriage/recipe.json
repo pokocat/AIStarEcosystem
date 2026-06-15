@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-flash-marriage",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "相亲角随手指了个首富",
+    "summary": "被悔婚后在相亲角随手一指，指到一位藏着商业帝国的“穷小子”。适合甜宠、马甲、爽感短剧。",
+    "typeKey": "romance",
+    "type": "闪婚甜宠短剧",
+    "ratio": "9:16",
+    "episodes": 24,
+    "coverFrom": "#f472b6",
+    "coverTo": "#fb7185"
+  },
+  "payload": {
+    "mainline": "女主被悔婚后在相亲角赌气闪婚，男主表面普通，实则隐藏商业身份。两人从契约互助到真心并肩，揭开悔婚背后的利益交易。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "相亲角闪婚",
+        "beat": "女主当众指向最不起眼的男人。"
+      },
+      {
+        "no": 2,
+        "hook": "穷小子人设",
+        "beat": "男主骑旧车接她，却解决高端饭局危机。"
+      },
+      {
+        "no": 3,
+        "hook": "前任打脸",
+        "beat": "前未婚夫嘲讽她嫁错人，反被项目打脸。"
+      },
+      {
+        "no": 4,
+        "hook": "身份露线",
+        "beat": "女主发现男主的“普通工作”处处不普通。"
+      },
+      {
+        "no": 5,
+        "hook": "真心选择",
+        "beat": "马甲揭开后，女主拒绝只做豪门附属。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "清醒女主",
+        "desc": "受挫但不恋爱脑，擅长反击羞辱。"
+      },
+      {
+        "role": "key",
+        "archetype": "隐藏首富男主",
+        "desc": "低调、克制，用行动保护而非炫富。"
+      },
+      {
+        "role": "extra",
+        "archetype": "前未婚夫与家族",
+        "desc": "负责外部压力和打脸节点。"
+      }
+    ],
+    "hooks": [
+      "相亲角随手一指",
+      "穷小子马甲",
+      "前任连续打脸",
+      "契约变真心"
+    ],
+    "notes": "【模板脚本】\n开场：女主被前任带新欢羞辱，在相亲角随手指向男主：“就他了。”\n中段：每 2 集一次身份露线：名片、司机、会议、项目、旧照片。\n结尾：男主公开身份，女主公开自己的事业选择，二人平等成婚。\n\n【提示词模板】\n生成 24 集竖屏闪婚甜宠短剧。要求甜宠但不降智；女主有自己的职业目标；男主隐藏身份的每次露线都必须服务剧情，不做纯炫富。每集开头 3 秒用社交羞辱、误会或马甲线索做钩子。输出分集大纲、打脸节点表、前 3 集分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/flash-marriage.jpg",
+      "ossKey": "media/seed/drama/recipes/home/flash-marriage.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

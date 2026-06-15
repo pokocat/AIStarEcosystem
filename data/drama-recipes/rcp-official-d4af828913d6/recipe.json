@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-d4af828913d6",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "d4af828913d64c719caaca1fa1b33672",
+    "skillName": "Lana Del Rey × 了不起的盖茨比",
+    "description": "融合 1920s–1950s 美式 Art Deco 奢华感与 Lana 式美国梦破碎浪漫主义，全程使用电影级镜头语言（Anamorphic 2.39:1 宽画幅、体积光、16mm 胶片颗粒）。触发场景：用户要求生成具有 Lana 风格、盖茨比风格、旧好莱坞金色调、Americana / Art Deco 元素、Route 66 公路意象或美国公路片氛围的视频或图片，或为历史剧、美食剧、运动剧、爱情剧、公路片等任意题材套用该美学风格时。",
+    "skillDescription": "用户要求生成具有 Lana 风格、盖茨比风格、旧好莱坞金色调、Americana / Art Deco 元素、Route 66 公路意象或美国公路片氛围的视频或图片，或为历史剧、美食剧、运动剧、爱情剧、公路片等任意题材套用该美学风格时。",
+    "url": "https://www.flova.ai/zh-CN/skill/d4af828913d64c719caaca1fa1b33672"
+  },
+  "meta": {
+    "title": "Lana Del Rey × 了不起的盖茨比",
+    "summary": "用户要求生成具有 Lana 风格、盖茨比风格、旧好莱坞金色调、Americana / Art Deco 元素、Route 66 公路意象或美国公路片氛围的视频或图片，或为历史剧、美食剧、运动剧、爱情剧、公路片等任意题材套用该美学风格时。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#6366f1",
+    "coverTo": "#a855f7"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**任务阶段与依赖关系：**\n1. 与用户确认核心参数，并写入 Final_Video_Spec.md（题材类型、视频时长、输出语言、画幅锁定为 2.39:1 或 16:9、视觉风格锁定为\"Lana × 盖茨比金色怀旧\"）→ **text_editor**。\n2. 生成分镜（key elements、shot 列表、audio layers）→ **storyboard_designer**。完成后扫描上下文，将用户已上传或已生成的素材绑定到对应 Storyboard 槽位 → **media_generator**。\n3. 建立视觉元素：\n   - 若用户已上传角色/场景参考图，直接绑定为对应 key_element 的资产。\n   - 否则为所有 key elements 生成图像 → **media_generator**。\n   - 对所有有台词的角色，在元素图完成后立即处理 key_element_audio：若用户已提供声线参考音频，直接绑定；否则用 text to narration 按 element 描述中的声线风格生成一段短样本并绑定。此步骤须在任何含台词的 shot 视频生成前完成。\n4. 逐镜生成视频；以 element 图像为主要视觉参考；仅当与上一镜的视觉连续性极强时才追加上一镜的 reference_video → **media_generator**。\n5. 生成所有 audio layers（BGM、VO 旁白）→ **media_generator**。\n6. 完成所有媒体后执行时间线合成，引导用户导出 → **video_assembler**。\n\n**依赖关系：** 2→1；3→2；4→3；5→2；6→3,4,5。\n\n**里程碑确认：** 不得一次性跑完全流程。每个主要阶段（Spec 锁定 / 分镜完成 / 元素图完成 / 镜头视频完成 / 音频完成）后暂停，等待用户确认再继续。\n\n**题材路由：** 根据 Final_Video_Spec.md 中的题材类型，在调用 **storyboard_designer** 时传入对应题材的分镜节奏偏好（详见 Storyboard Designer 部分）。路由优先级规则如下：\n- **交叉题材优先判断：** 若用户描述中同时出现\"公路\"与\"悬疑\"（或其同义表达，如追车、夜路跟踪、荒漠失踪、公路惊悚等），**无论单独题材标签为何**，优先路由至「悬疑剧 × 公路片」交叉模板，而非分别路由至悬疑剧或公路片模板。\n- **单一题材路由：** 仅出现单一题材关键词时，按历史剧 / 美食剧 / 运动剧 / 爱情剧 / 悬疑剧 / 音乐 MV / 奇幻梦境剧 / 公路片各自对应模板路由。\n- **歧义处理：** 若题材信号不明确，在 Spec 确认阶段向用户明确询问，不得默认路由至任何"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/d4af828913d64c719caaca1fa1b33672.webp",
+      "ossKey": "media/seed/drama/recipes/flova/d4af828913d64c719caaca1fa1b33672.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/d4af828913d64c719caaca1fa1b33672.mp4",
+      "ossKey": "media/seed/flova/skills/d4af828913d64c719caaca1fa1b33672.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/d4af828913d64c719caaca1fa1b33672.mp4",
+      "durationSec": 55,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 14788669,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-royal-kitchen-maid",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "一觉醒来成了王府厨娘",
+    "summary": "现代美食博主穿越成王府厨娘，用一道麻辣烫征服王府，也卷入夺嫡棋局。适合轻喜剧、古装爽感和美食题材。",
+    "typeKey": "time-travel",
+    "type": "穿越爽剧",
+    "ratio": "9:16",
+    "episodes": 30,
+    "coverFrom": "#a78bfa",
+    "coverTo": "#6366f1"
+  },
+  "payload": {
+    "mainline": "美食博主穿越到王府后厨，从被责罚的低等厨娘开始，用现代供应链、短视频营销思路和一道道民间菜逆袭，逐步发现王府饮食背后的毒案和夺嫡阴谋。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "后厨危机",
+        "beat": "女主醒来就要为宴席背锅。"
+      },
+      {
+        "no": 2,
+        "hook": "麻辣烫破局",
+        "beat": "她用边角料做出新菜，救下宴席。"
+      },
+      {
+        "no": 3,
+        "hook": "王爷试探",
+        "beat": "冷面王爷怀疑她身份，却离不开她的菜。"
+      },
+      {
+        "no": 4,
+        "hook": "毒案入局",
+        "beat": "御膳中毒案指向后厨，女主用食材逻辑自证。"
+      },
+      {
+        "no": 5,
+        "hook": "美食联盟",
+        "beat": "她建立女厨小队，掌控王府供应链。"
+      },
+      {
+        "no": 6,
+        "hook": "夺嫡收束",
+        "beat": "终局宴席上用一道菜逼出真正下毒者。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "现代美食博主",
+        "desc": "反应快、懂传播、会把生活经验转化成解法。"
+      },
+      {
+        "role": "key",
+        "archetype": "冷面王爷",
+        "desc": "外冷内稳，政治压力下需要女主破局。"
+      },
+      {
+        "role": "extra",
+        "archetype": "后厨女工小队",
+        "desc": "从排挤到结盟，负责喜剧和群像。"
+      }
+    ],
+    "hooks": [
+      "穿越第一秒背锅",
+      "古代麻辣烫爆红",
+      "后厨破毒案",
+      "美食搅动夺嫡"
+    ],
+    "notes": "【模板脚本】\n前5集：穿越、背锅、用现代菜救宴席。\n6-15集：建立后厨口碑，每道菜解决一个人物困境。\n16-24集：毒案与夺嫡线并入，美食成为查案工具。\n25-30集：终局国宴反杀，女主决定留下或回去。\n\n【提示词模板】\n把用户给出的美食/古装想法扩写为 30 集竖屏穿越爽剧。每集必须有一道菜承担剧情功能：救场、试探、查案、结盟或反杀。语气轻喜剧，女主不靠金手指直接开挂，而靠现代经验解决古代问题。输出人物表、菜品剧情表、30 集大纲、前 3 集分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/royal-kitchen-maid.jpg",
+      "ossKey": "media/seed/drama/recipes/home/royal-kitchen-maid.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

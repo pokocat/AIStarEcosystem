@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-cold-palace",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "冷宫醒来的第一夜",
+    "summary": "被赐死的贵妃重生回入宫前夜，这一世不再隐忍，步步反杀。适合古装权谋、女性复仇和强爽点。",
+    "typeKey": "gongdou",
+    "type": "宫斗重生短剧",
+    "ratio": "9:16",
+    "episodes": 36,
+    "coverFrom": "#db2777",
+    "coverTo": "#9333ea"
+  },
+  "payload": {
+    "mainline": "前世贵妃被陷害赐死，重生回入宫前夜。她保留记忆却不能直接揭露未来，只能用礼制、人心和证据一步步拆掉陷害她的宫廷联盟。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "冷宫惊醒",
+        "beat": "女主从赐死记忆中醒来，回到入宫前夜。"
+      },
+      {
+        "no": 2,
+        "hook": "不再选旧路",
+        "beat": "她改变第一道请安礼，避开前世第一个陷阱。"
+      },
+      {
+        "no": 3,
+        "hook": "借力打力",
+        "beat": "她不争宠，先救下前世被害的宫女证人。"
+      },
+      {
+        "no": 4,
+        "hook": "证据成网",
+        "beat": "每次反杀都留下可追溯证据。"
+      },
+      {
+        "no": 5,
+        "hook": "终局殿审",
+        "beat": "她让皇帝亲眼看见整套陷害链条。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "重生贵妃",
+        "desc": "冷静、克制、善用制度反击。"
+      },
+      {
+        "role": "key",
+        "archetype": "贴身宫女证人",
+        "desc": "前世被灭口，今生成为关键同盟。"
+      },
+      {
+        "role": "extra",
+        "archetype": "皇后/权臣家族",
+        "desc": "外柔内狠，布置连环局。"
+      }
+    ],
+    "hooks": [
+      "赐死后重生",
+      "第一夜改命",
+      "不争宠先拿证据",
+      "殿审反杀"
+    ],
+    "notes": "【模板脚本】\n规则：女主不能直接说“我重生了”，所有预知都必须转化为行动准备。\n每 6 集一个宫廷局：礼仪局、药膳局、家书局、侍寝局、祭典局、殿审局。\n爽点来自证据闭环和制度反杀，不靠无脑开挂。\n\n【提示词模板】\n生成 36 集竖屏宫斗重生短剧。女主前世被赐死，今生回到入宫前夜。要求权谋逻辑严密；每集一个可视化宫廷细节：发簪、药碗、礼单、香灰、家书、玉佩等；反派不能脸谱化。输出六阶段大纲、人物权力关系图、前 3 集分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/cold-palace.jpg",
+      "ossKey": "media/seed/drama/recipes/home/cold-palace.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

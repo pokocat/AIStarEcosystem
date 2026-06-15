@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-e081971cc5a4",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "e081971cc5a4400590c0f6e571ad746d",
+    "skillName": "邵氏风格喜剧短片",
+    "description": "适用于抖音快节奏邵氏风格喜剧短片：以邵氏胶片港片为视觉底色，核心玩法是萌宠/动物拟人化+武侠壳+市井喜剧内核。用户上传角色参考图（人物/萌宠/动物）、剧本或一句话灵感，AI自动生成10—30秒（默认15秒）的复古港味短片。风格特征：暖黄偏暗复古调色+不均匀胶片颗粒+硬光轮廓+动态模糊+港式配音颗粒感处理。与纯邵氏武侠的区别：节奏更快、喜剧优先、萌宠为主角、音效轻快化。",
+    "skillDescription": "用于生成快节奏邵氏港片风格喜剧短片，将人物、萌宠或动物拟人化为武侠角色。",
+    "url": "https://www.flova.ai/zh-CN/skill/e081971cc5a4400590c0f6e571ad746d"
+  },
+  "meta": {
+    "title": "邵氏风格喜剧短片",
+    "summary": "用于生成快节奏邵氏港片风格喜剧短片，将人物、萌宠或动物拟人化为武侠角色。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#0ea5e9",
+    "coverTo": "#22c55e"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**全流程分阶段串行编排，每阶段完成后必须暂停确认。**\n**阶段 0 — 建立全局创作简报（Final_Video_Spec.md）**\\\n用 **text_editor** 创建 Final_Video_Spec.md，写入以下字段（从用户输入中推断，不足的项目用默认值填写）：\n- 片名（暂定或用户指定）\n- 风格基调：80年代邵氏胶片港味武侠喜剧，萌宠拟人化混搭\n- 总时长：默认 15 秒（用户可指定 10—30 秒或更长）\n- 输出分辨率：720p（默认）\n- 画面比例：16:9（固定，不可更改）\n- 叙事语言：中文\n- 全局硬性规则：全程无字幕、无背景音乐（除非用户明确要求 BGM）\n- 角色输入方式：参考图上传（人物/萌宠/动物）/ 文字描述 / 内置角色库（根据用户实际输入填写）\n- 叙事内核：喜剧优先，武侠为壳；萌宠/动物保留本能行为与武侠造型形成反差\n- 音频规则：默认保留环境音（市井嘈杂/刀剑/风声等），无 BGM；配音采用港式普通话腔调+老麦克风颗粒感处理；用户要求时可生成轻快武侠感 BGM\n完成后呈现给用户确认，再进入阶段 1。\n\n**阶段 1 — 剧本与故事大纲**\\\n调用 **resource_prepare_and_analyze**（如有上传素材），再由 Planner 自行生成邵氏风格故事大纲：\n- 按\"起—承—转—合\"四段结构展开，附情绪曲线与建议镜头数（4—8个，适配总时长）\n- 优化/扩写规则见下方\"剧本智能优化规则\"\n- 以 Markdown 表格呈现大纲，等待用户确认后进入阶段 2\n\n**剧本智能优化规则：**\n- 一句话灵感 → 扩展为：起（相遇/建置）→ 承（追杀/冲突）→ 转（身世秘密/反派阴谋）→ 合（决战/侠义传承）\n- 粗糙脚本 → 优化对话、补充武侠细节（剑穗、斗笠、酒壶、残阳、客栈、竹林、破庙等）\n- 如仅上传角色参考图无文字 → AI 自动为角色设计符合其视觉气质的侠义故事\n- 如未上传任何素材 → 回复\"编导好，请至少上传一张角色参考图或一段文字灵感，才能开始创作。\"\n\n**阶段 2 — 分镜设计**\\\n调用 **storyboard_designer** 生成结构化分镜表（key elements + shots + audio layers）。\\\n每批 4—6 个镜头呈现给用户，等待\"确认/修改/重生成\"后再继续。全部镜头确认后进入阶段 3。\n\n**阶段 3 — 元素资产建立**\\\n调用 **media_generator**：\n- 若用户已上传角色/动物/场景参考图，注册 asset_id 并绑定到对应 key_element\n- 若参考图为现代服饰，先提示用户确认风格转换，确认后使用 **ImageToImage** 转换为武侠造型\n- 若用户使用内置侠客库或仅提供文字描述，生成 key"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/e081971cc5a4400590c0f6e571ad746d.webp",
+      "ossKey": "media/seed/drama/recipes/flova/e081971cc5a4400590c0f6e571ad746d.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/e081971cc5a4400590c0f6e571ad746d.mp4",
+      "ossKey": "media/seed/flova/skills/e081971cc5a4400590c0f6e571ad746d.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/e081971cc5a4400590c0f6e571ad746d.mp4",
+      "durationSec": 24,
+      "width": 1280,
+      "height": 720,
+      "bytes": 6524994,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

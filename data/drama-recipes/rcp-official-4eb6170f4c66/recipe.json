@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-4eb6170f4c66",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "4eb6170f4c6645e9ae48e1ad09399227",
+    "skillName": "剧本生视频（需上传剧本）",
+    "description": "分析上传的剧本 (图片/PDF/文本），通过学习其电影语法——提取脚本、镜头结构、视觉语言和节奏——围绕您的主题生成全新的视频。使用 Nano Banana + Seedance 2.0 生成视觉素材。",
+    "skillDescription": "上传脚本以生成视频。使用 Nano Banana + Seedance 2.0。在关键阶段暂停以供用户确认；基于一镜到底工作流的人机协作。",
+    "url": "https://www.flova.ai/zh-CN/skill/4eb6170f4c6645e9ae48e1ad09399227"
+  },
+  "meta": {
+    "title": "剧本生视频（需上传剧本）",
+    "summary": "上传脚本以生成视频。使用 Nano Banana + Seedance 2.0。在关键阶段暂停以供用户确认；基于一镜到底工作流的人机协作。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#a855f7",
+    "coverTo": "#6366f1"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**完整视频的阶段逻辑和依赖关系：**\n1. 一句话总结剧本上传的剧本文件（图片/PDF/文本）。 → **resource_prepare_and_analyze**。\n2. 编写 `Final_Video_Spec.md`（标题、类型、画幅、时长、视觉风格、语言、模型偏好） → **text_editor**。\n3. 生成与第1步相符的故事板（关键元素、镜头列表、音频层） → **storyboard_designer**。\n4. 设置元素： \n  *   如果用户已经上传了元素资源（例如角色图像或引用的参考角色），直接将其绑定为相应 key_elements 的资产。\n  *   否则，为所有元素生成图像 → **media_generator**。\n5. 每个镜头生成最终视频；严格参考该镜头的元素图像（第4步） → **media_generator**。\n6. 基于故事板生成所有 audio_layers → **media_generator**。\n7. 当所有资源就绪后进行最终剪辑；然后引导用户导出 → **video_assembler**。\n\n**依赖关系：** 2→1；3→1,2；4→3；5→2,3,4；6→3；7→3,4,5,6。\n\n**注意 — 用户提供或预先存在的媒体（主要影响步骤3–6）：** 在填补生成内容之前，通过 **media_generator** 将其绑定并分配到适当的分镜位置；避免重复生成用户已提供的内容。\n\n**何时暂停：** 不要一次性完成所有步骤。在上述每个关键阶段（例如：规范确认后、故事板生成后、元素图像生成后、关键帧生成后、镜头视频生成后、音频生成后）停下来，与用户确认，然后再继续。在继续之前，使用卡片或 reply_to_user 邀请用户进行审阅。 \n一句话总结剧本的故事 \n**脚本忠实度（最高优先级）**\n- 分镜中的**对话、旁白、动作结果和场景顺序**必须与上传的脚本及第1步的分解一致。仅允许**技术性**编辑：**拆分镜头**（≤15s）或添加**镜头语言**字段。**不要**虚构情节或改写台词。\n\n**如何设计关键元素**\n- 始终包含**关键主体**（角色、物体等）、**关键地点/场景**和**关键道具**（如有）。\n- **如何规划 element_id：** 当每个角色、道具或场景是独立实体时，为每个实体分配一个 element_id（例如 `[Element_Detective_Li]`，`[Element_Boss_Zhao]`；`[Element_Observation_Room]`，`[Element_Chief_Office]`）。 \n- **如何编写描述：** \n   - **角色：** 如果角色在项目中具有多种状态或外观（例如不同的服装、年龄），请在描述中清晰地描述每一种（"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/4eb6170f4c6645e9ae48e1ad09399227.webp",
+      "ossKey": "media/seed/drama/recipes/flova/4eb6170f4c6645e9ae48e1ad09399227.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/4eb6170f4c6645e9ae48e1ad09399227.mp4",
+      "ossKey": "media/seed/flova/skills/4eb6170f4c6645e9ae48e1ad09399227.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/4eb6170f4c6645e9ae48e1ad09399227.mp4",
+      "durationSec": 74,
+      "width": 1920,
+      "height": 1080,
+      "bytes": 19667169,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-c00b1a9c42f5",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "c00b1a9c42f54a76b4afb9af92d8f127",
+    "skillName": "微缩世界创意短片",
+    "description": "适用于以微缩模型场景为舞台、讲述有人物弧光的温柔情感短片（如节日祝福、生活故事）；画面呈现移轴摄影美学，配轻音乐 BGM，视频比例 9:16，目标时长 60s～90s。",
+    "skillDescription": "适用于以微缩模型场景为舞台、讲述有人物弧光的温柔情感短片（如节日祝福、生活故事）；画面呈现移轴摄影美学，配轻音乐 BGM，视频比例 9:16，目标时长 60s～90s。",
+    "url": "https://www.flova.ai/zh-CN/skill/c00b1a9c42f54a76b4afb9af92d8f127"
+  },
+  "meta": {
+    "title": "微缩世界创意短片",
+    "summary": "适用于以微缩模型场景为舞台、讲述有人物弧光的温柔情感短片（如节日祝福、生活故事）；画面呈现移轴摄影美学，配轻音乐 BGM，视频比例 9:16，目标时长 60s～90s。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#f97316",
+    "coverTo": "#e11d48"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n### 目标\n以微型道具与模型场景为舞台，讲述有人物弧光的温柔小故事。画风精致细腻，镜头语言克制，适合情感短片与节日祝福视频。\n### 阶段 0 — 规格确认（必须首先完成，不得跳过）\n**在做任何内容规划之前**，先向用户展示以下选项，收到明确选择后方可继续：\n**① 画面比例**（单选）\n- 9:16（竖屏，推荐·适合手机观看）\n- 16:9（横屏，适合宽屏播放）\n- 1:1（方形，适合社交媒体）\n\n**② 视频分辨率**（单选）\n- 720p（标准画质，所有用户可用）\n- 1080p（高清，**需要会员**）\n\n**③ 目标时长**（单选）\n- 60s（精简版，约 10～12 个镜头）\n- 90s（标准版，约 14～18 个镜头）\n- 自定义（用户输入秒数）\n\n**④ 图片生成模型**（单选，用于关键元素图）\n- GPT Image 2 — **推荐**，微缩场景写实感与细节还原最佳\n- Nano Banana Pro（Gemini 3 Pro Image）— 提示词跟随强，复杂布局出色\n- Nano Banana 2（Gemini 3.1 Flash Image）— 速度较快\n- Seedream 4.5 — 风格化强\n- Midjourney V7 — 美学出色，一致性略弱\n\n**⑤ 视频生成模型**（单选，用于分镜视频）\n- Seedance 2.0 — 推荐，画质最佳（**需要会员**）\n- Seedance 2.0 Fast — 速度较快（**需要会员**）\n- Kling 3.0 Omni — 无会员可用\n\n收到用户选择后，通过 **text_editor** 建立 **Final_Video_Spec.md**，写入以下参数：\n- 视频类型：微缩生活故事片（情感短片）\n- 画面比例：\\[用户选择\\]\n- 目标时长：\\[用户选择\\]\n- 视频分辨率：\\[用户选择\\]\n- 图片生成模型：\\[用户选择\\]，分辨率 2K\n- 视频生成模型：\\[用户选择\\]，分辨率 \\[用户选择\\]\n- 视觉风格：微缩模型摄影风格，移轴镜头感，精致细腻，色调温暖柔和\n- 音频风格：轻音乐 BGM（钢琴/弦乐为主），温柔旁白或无旁白\n- 输出语言：与用户交互语言保持一致\n**强制暂停（Checkpoint 0）**：规格写入 Final_Video_Spec.md 后，向用户展示已确认参数摘要，请用户确认无误。收到明确确认前不得进入阶段 1。\n\n### 阶段 1 — 故事脚本规划 → 调用 **storyboard_designer**\n1. 引导用户提供故事梗概，或由 AI 自动起草（人物、场景、情感弧光）。\n2. 调用 **storyboard_designer** 完成：\n   - 关键元素定义（主角、配角、主要场景、核心道具）\n   - 分镜规划（景别、运镜"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/c00b1a9c42f54a76b4afb9af92d8f127.webp",
+      "ossKey": "media/seed/drama/recipes/flova/c00b1a9c42f54a76b4afb9af92d8f127.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/c00b1a9c42f54a76b4afb9af92d8f127.mp4",
+      "ossKey": "media/seed/flova/skills/c00b1a9c42f54a76b4afb9af92d8f127.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/c00b1a9c42f54a76b4afb9af92d8f127.mp4",
+      "durationSec": 30,
+      "width": 1280,
+      "height": 720,
+      "bytes": 8190168,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

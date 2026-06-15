@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-486a2483a403",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "flova",
+    "skillId": "486a2483a40346ca8607e1c16edf3c1f",
+    "skillName": "故事驱动型视频",
+    "description": "专为具有完整故事线的视频而设计。核心亮点：- 由 Seedance 2.0（目前最强大的视频模型）驱动 — 省略关键帧步骤，直接从元素图像生成最终镜头。- 循序渐进的人机协作 — 在每个关键阶段进行确认，以保持完全掌控。",
+    "skillDescription": "适用于所有故事驱动型视频。使用 Nano Banana + Seedance 2.0。在关键阶段暂停以获取用户确认；通过“一次性（one-shot）”工作流程实现人机协作。",
+    "url": "https://www.flova.ai/zh-CN/skill/486a2483a40346ca8607e1c16edf3c1f"
+  },
+  "meta": {
+    "title": "故事驱动型视频",
+    "summary": "适用于所有故事驱动型视频。使用 Nano Banana + Seedance 2.0。在关键阶段暂停以获取用户确认；通过“一次性（one-shot）”工作流程实现人机协作。",
+    "typeKey": "style",
+    "type": "风格短片",
+    "ratio": "16:9",
+    "episodes": 1,
+    "coverFrom": "#ef4444",
+    "coverTo": "#f59e0b"
+  },
+  "payload": {
+    "mainline": "",
+    "beats": [],
+    "characters": [],
+    "hooks": [],
+    "notes": "【创作方法 · 源自 flova skill】\n**完整视频的阶段逻辑与依赖关系：**\n1. 编写 `Final_Video_Spec.md`（标题、类型、宽高比、时长、视觉风格、语言）→ **text_editor**。\n2. 生成故事板（关键元素、镜头列表、音频层）→ **storyboard_designer**。故事板准备就绪后，扫描当前上下文，查找用户提供或之前生成的、与故事板条目匹配的任何资产（例如元素图像、背景音乐）。对于每个匹配项，在进行生成步骤之前，通过 **media_generator** 将资产绑定并分配给相应的故事板插槽 → **media_generator**。\n3. 设置元素： \n  *   如果用户已经上传了元素资源（例如角色图像或引用的参考角色），直接将其绑定为相应 key_elements 的资产。\n  *   否则，为所有元素生成图像 → **media_generator**。\n4. 为每个镜头生成最终视频；1) 参考与该镜头相关的所有元素图像；2)（可选）如果当前镜头与前一个镜头具有极高的连贯性，则仅将前一个镜头的视频作为参考。（第4步）→ **media_generator**。\n5. 基于故事板生成所有音频层 → **media_generator**。\n6. 在所有资源就绪后进行最终组装；然后引导用户导出 → **video_assembler**。\n\n**依赖关系：** 2→1；3→2；4→3；5→2；6→3,4,5。\n\n**何时暂停：** 不要一次性运行所有步骤。在上述提到的每个关键阶段（例如：规范定稿后、故事板完成后、元素完成后、镜头视频生成后、音频生成后）停下来，在进行下一步之前与用户确认。使用卡片或 reply_to_user 邀请用户在继续之前进行审查。\n\n**注意:**  用户提供或预先存在的媒体（主要影响第 3-5 步）： 在填充生成内容之前，先通过 media_generator 将媒体绑定并分配到适当的故事板位置；避免重复生成用户已提供的内容。 \n**如何设计关键元素**\n- 确保包含**关键主体**（角色、物体等）、**关键地点/场景**以及**关键道具**（如有）。\n- **角色：** 如果角色在项目中具有多种状态或外观（例如不同的服装、年龄），请在描述中明确说明（例如：Look 1：...；Look 2：...）。\n- **角色-音色参考：** 生成或处理用户上传的音色参考素材，音频时长要在15s之内。\n- **关键地点/场景：** 描述场景中重要物体的位置和朝向，特别是道具或发生重大动作/表演的区域。\n- **用户提供的资产：** 如果用户提供了参考媒体并将其指定为关键元素，则描述**必须与之匹配**；不要与所见或所听到的内容相矛盾。\n\n**如何设计镜头**\n- **优先考虑带有内部剪辑的长镜头**（例如，每个镜头 10–15 "
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.webp",
+      "publicFallback": "/recipes/486a2483a40346ca8607e1c16edf3c1f.webp",
+      "ossKey": "media/seed/drama/recipes/flova/486a2483a40346ca8607e1c16edf3c1f.webp"
+    },
+    "preview": {
+      "logicalKey": "seed/flova/skills/486a2483a40346ca8607e1c16edf3c1f.mp4",
+      "ossKey": "media/seed/flova/skills/486a2483a40346ca8607e1c16edf3c1f.mp4",
+      "publicUrl": "https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/seed/flova/skills/486a2483a40346ca8607e1c16edf3c1f.mp4",
+      "durationSec": 125,
+      "width": 1280,
+      "height": 720,
+      "bytes": 31755440,
+      "contentType": "video/mp4"
+    }
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "rcp-official-home-single-mother",
+  "origin": "official",
+  "status": "published",
+  "source": {
+    "provider": "manual",
+    "skillId": null,
+    "skillName": null,
+    "description": null,
+    "skillDescription": null,
+    "url": null
+  },
+  "meta": {
+    "title": "单亲妈妈的奋斗史",
+    "summary": "真实改编向励志短剧：单亲妈妈从外卖骑手到剪辑师，三年带着女儿搬进新家，适合个人自传、品牌人物故事和女性成长题材。",
+    "typeKey": "biography",
+    "type": "个人自传短剧",
+    "ratio": "9:16",
+    "episodes": 24,
+    "coverFrom": "#f59e0b",
+    "coverTo": "#fb7185"
+  },
+  "payload": {
+    "mainline": "女主离婚后独自抚养女儿，白天送外卖、晚上自学剪辑。她在一次客户误会、女儿生病和前夫争夺抚养权的连续压力中，靠短视频剪辑接到第一单，最终建立自己的小工作室，带女儿搬进新家。",
+    "beats": [
+      {
+        "no": 1,
+        "hook": "雨夜送餐",
+        "beat": "女主被客户刁难，孩子在电话里问妈妈什么时候回家，3 秒内建立处境。"
+      },
+      {
+        "no": 2,
+        "hook": "夜校自学",
+        "beat": "她在出租屋用旧电脑剪片，女儿睡在旁边，第一条作品只有 12 个播放。"
+      },
+      {
+        "no": 3,
+        "hook": "前夫逼迫",
+        "beat": "前夫以“你养不起孩子”为由提出争夺抚养权，女主被迫立下三个月收入证明。"
+      },
+      {
+        "no": 4,
+        "hook": "第一单剪辑",
+        "beat": "她帮餐馆老板剪出爆款短视频，拿到第一笔稳定订单。"
+      },
+      {
+        "no": 5,
+        "hook": "女儿生病",
+        "beat": "订单交付和女儿急诊撞在同一晚，她做出取舍并得到客户理解。"
+      },
+      {
+        "no": 6,
+        "hook": "搬进新家",
+        "beat": "三年后她开工作室，女儿把旧外卖箱贴纸贴到新家门口作为纪念。"
+      }
+    ],
+    "characters": [
+      {
+        "role": "key",
+        "archetype": "坚韧单亲妈妈",
+        "desc": "28-35 岁，疲惫但不认命，外卖骑手到剪辑师的成长弧光。"
+      },
+      {
+        "role": "key",
+        "archetype": "懂事女儿",
+        "desc": "6-8 岁，少说话但观察细腻，是女主坚持的情感锚点。"
+      },
+      {
+        "role": "extra",
+        "archetype": "现实压力角色",
+        "desc": "前夫、客户、房东、餐馆老板共同构成现实阻力。"
+      }
+    ],
+    "hooks": [
+      "真实改编开场",
+      "三个月抚养权倒计时",
+      "低谷逆袭",
+      "母女情绪兑现"
+    ],
+    "notes": "【模板脚本】\n第1集：雨夜送餐被误会，女主忍住委屈接女儿电话；结尾女儿问“妈妈，我们会有自己的家吗？”\n第2-4集：出租屋夜学剪辑，旧电脑卡顿，第一条视频无人观看；通过外卖路线观察小店痛点。\n第5-9集：前夫提出抚养权挑战，女主接下三个月收入证明目标；餐馆老板给她一次试单机会。\n第10-18集：试单爆红但女儿生病、客户催单、房东涨租并发；女主学会把自己的生活经验变成创作方法。\n第19-24集：工作室成型，前夫撤回争夺，女主带女儿搬入新家。\n\n【提示词模板】\n根据用户提供的真实经历，改写为竖屏 24 集励志短剧。要求：每集 70-90 秒；每集开头 3 秒有现实钩子；少用口号，多用可见行动和生活细节；角色不完美但可信；围绕“抚养权倒计时”和“靠技能重新站起来”推进。输出：logline、人物表、24 集分集梗概、前 3 集完整分场分镜。"
+  },
+  "assets": {
+    "cover": {
+      "local": "cover.jpg",
+      "publicFallback": "/recipes/home/single-mother.jpg",
+      "ossKey": "media/seed/drama/recipes/home/single-mother.jpg"
+    },
+    "preview": null
+  },
+  "distill": {
+    "method": "backfill",
+    "model": null,
+    "promptVersion": "drama.recipe_extract@v1",
+    "at": "2026-06-15T06:02:03.400Z",
+    "reviewed": true
+  }
+}
