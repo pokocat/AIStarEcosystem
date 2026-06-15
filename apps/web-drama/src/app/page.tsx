@@ -39,10 +39,44 @@ const FEATURES = [
   },
 ] as const;
 
+// 官方短剧模版案例 —— 真实封面取自 web-drama/public/recipes/home/*（与创意市场内置配方同源）。
 const SHOWREEL = [
-  { title: "《暮色未央》", role: "都市悬疑", episode: "EP01-03 上线", tone: "accent" as const },
-  { title: "《盛夏来信》", role: "青春治愈", episode: "EP12 制作中", tone: "violet" as const },
-  { title: "《摩天与月光》", role: "都市情感", episode: "5 月 17 日首映", tone: "info" as const },
+  {
+    title: "婚礼上掏出的不是戒指",
+    genre: "悬疑爱情",
+    cover: "/recipes/home/wedding-missing.jpg",
+    tone: "danger" as const,
+  },
+  {
+    title: "相亲角随手指了个首富",
+    genre: "甜宠爽剧",
+    cover: "/recipes/home/flash-marriage.jpg",
+    tone: "accent" as const,
+  },
+  {
+    title: "重回高考前那个夏天",
+    genre: "催泪青春",
+    cover: "/recipes/home/exam-summer.jpg",
+    tone: "info" as const,
+  },
+  {
+    title: "一觉醒来成了王府厨娘",
+    genre: "古装轻喜",
+    cover: "/recipes/home/royal-kitchen-maid.jpg",
+    tone: "warning" as const,
+  },
+  {
+    title: "冷宫醒来的第一夜",
+    genre: "古装权谋",
+    cover: "/recipes/home/cold-palace.jpg",
+    tone: "violet" as const,
+  },
+  {
+    title: "重生进自己追的漫画",
+    genre: "脑洞漫剧",
+    cover: "/recipes/home/comic-rebirth.jpg",
+    tone: "success" as const,
+  },
 ];
 
 export default function DramaLandingPage() {
@@ -252,6 +286,20 @@ export default function DramaLandingPage() {
             padding: "8px clamp(16px, 4vw, 48px) 48px",
           }}
         >
+          <div style={{ marginBottom: 24 }}>
+            <div className="eyebrow">官方短剧模版 · 开箱即用</div>
+            <h2
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "clamp(24px, 3vw, 34px)",
+                lineHeight: 1.15,
+                marginTop: 8,
+                color: "var(--fg-0)",
+              }}
+            >
+              一键套用爆款配方，从灵感到成片
+            </h2>
+          </div>
           <div
             style={{
               display: "grid",
@@ -259,7 +307,7 @@ export default function DramaLandingPage() {
               gap: 18,
             }}
           >
-            {SHOWREEL.map((s, i) => (
+            {SHOWREEL.map((s) => (
               <Card
                 key={s.title}
                 glass
@@ -267,41 +315,51 @@ export default function DramaLandingPage() {
                   padding: 0,
                   overflow: "hidden",
                   position: "relative",
-                  height: 220,
+                  height: 240,
                   cursor: "pointer",
                 }}
               >
-                <div
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={s.cover}
+                  alt={s.title}
                   style={{
                     position: "absolute",
                     inset: 0,
-                    background: [
-                      "linear-gradient(135deg, rgba(212,175,106,0.25), rgba(164,76,255,0.18))",
-                      "linear-gradient(135deg, rgba(164,76,255,0.3), rgba(61,224,255,0.18))",
-                      "linear-gradient(135deg, rgba(61,224,255,0.22), rgba(255,61,138,0.2))",
-                    ][i],
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
                   }}
                 />
                 <div
                   style={{
                     position: "absolute",
                     inset: 0,
-                    padding: "20px 22px",
+                    background:
+                      "linear-gradient(180deg, rgba(8,8,12,0.05) 0%, rgba(8,8,12,0.35) 50%, rgba(8,8,12,0.88) 100%)",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    padding: "18px 20px",
                     display: "flex",
                     flexDirection: "column",
                     justifyContent: "space-between",
                   }}
                 >
-                  <Chip tone={s.tone}>{s.episode}</Chip>
                   <div>
-                    <div className="eyebrow">{s.role}</div>
+                    <Chip tone={s.tone}>{s.genre}</Chip>
+                  </div>
+                  <div>
+                    <div className="eyebrow">短剧模版</div>
                     <div
                       style={{
                         fontFamily: "var(--font-serif)",
-                        fontSize: 30,
-                        lineHeight: 1.1,
-                        marginTop: 8,
-                        fontStyle: "italic",
+                        fontSize: 24,
+                        lineHeight: 1.15,
+                        marginTop: 6,
                         color: "var(--fg-0)",
                       }}
                     >
