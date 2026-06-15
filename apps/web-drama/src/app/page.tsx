@@ -336,7 +336,7 @@ export default function DramaLandingPage() {
                     position: "absolute",
                     inset: 0,
                     background:
-                      "linear-gradient(180deg, rgba(8,8,12,0.05) 0%, rgba(8,8,12,0.35) 50%, rgba(8,8,12,0.88) 100%)",
+                      "linear-gradient(180deg, rgba(6,6,10,0.30) 0%, rgba(6,6,10,0.10) 38%, rgba(6,6,10,0.70) 78%, rgba(6,6,10,0.95) 100%)",
                   }}
                 />
                 <div
@@ -352,15 +352,18 @@ export default function DramaLandingPage() {
                   <div>
                     <Chip tone={s.tone}>{s.genre}</Chip>
                   </div>
-                  <div>
-                    <div className="eyebrow">短剧模版</div>
+                  <div style={{ textShadow: "0 1px 8px rgba(0,0,0,0.85)" }}>
+                    <div className="eyebrow" style={{ color: "#fff", opacity: 0.82 }}>
+                      短剧模版
+                    </div>
                     <div
                       style={{
                         fontFamily: "var(--font-serif)",
                         fontSize: 24,
                         lineHeight: 1.15,
                         marginTop: 6,
-                        color: "var(--fg-0)",
+                        fontWeight: 600,
+                        color: "#fff",
                       }}
                     >
                       {s.title}
