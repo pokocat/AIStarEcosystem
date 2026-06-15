@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Boxes, Check, ChevronDown, ChevronRight, RefreshCw, X } from "lucide-react";
 import { RecipesApi } from "@/api";
 import type { DramaRecipe } from "@/api/recipes";
+import { RecipeSkeletonView } from "./recipe-skeleton-view";
 
 export function RecipeReviewSection() {
   const [pending, setPending] = React.useState<DramaRecipe[]>([]);
@@ -111,28 +112,7 @@ export function RecipeReviewSection() {
                     >
                       {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />} 看配方骨架（{r.data.beats.length} 段节拍）
                     </button>
-                    {open && (
-                      <div className="col gap-2" style={{ marginTop: 6, padding: "8px 10px", background: "var(--surface)", borderRadius: 8 }}>
-                        <div style={{ fontSize: 12 }}><b>主线模板：</b>{r.data.mainline || "—"}</div>
-                        {r.data.beats.length > 0 && (
-                          <div className="col gap-1">
-                            {r.data.beats.map((b) => (
-                              <div key={b.no} style={{ fontSize: 11.5, lineHeight: 1.5 }}>
-                                <span className="num" style={{ color: "var(--accent)" }}>第{b.no}集</span>
-                                {b.hook ? <span> · 钩子：{b.hook}</span> : null}
-                                {b.beat ? <span className="faint"> · {b.beat}</span> : null}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {r.data.characters.length > 0 && (
-                          <div style={{ fontSize: 11.5 }}>
-                            <b>角色原型：</b>{r.data.characters.map((c) => c.archetype).filter(Boolean).join("、") || "—"}
-                          </div>
-                        )}
-                        {r.data.notes && <div className="faint" style={{ fontSize: 11.5 }}>套用建议：{r.data.notes}</div>}
-                      </div>
-                    )}
+                    {open && <div style={{ marginTop: 6 }}><RecipeSkeletonView data={r.data} /></div>}
                     {isRejecting && (
                       <div className="row gap-2" style={{ marginTop: 6 }}>
                         <input
@@ -163,6 +143,39 @@ export function RecipeReviewSection() {
           })
         )}
       </div>
+
+      {/* 已上架创意（只读巡检）—— 运营可视化任意已发布配方的骨架，含官方内置 / 精选 / 用户自助。 */}
+      {!loading && published.length > 0 && (
+        <div className="col gap-2" style={{ padding: "12px 16px 16px", borderTop: "1px solid var(--line-soft)" }}>
+          <span className="faint" style={{ fontSize: 12, fontWeight: 700 }}>已上架创意 · 只读巡检（{published.length}）</span>
+          {published.map((r) => {
+            const open = expanded === r.id;
+            const originLabel = r.origin === "official" ? "官方内置" : r.origin === "featured" ? "精选" : "用户自助";
+            return (
+              <div key={r.id} className="card" style={{ padding: 12, background: "var(--surface-2)", border: "none" }}>
+                <button type="button" className="row gap-3" style={{ alignItems: "center", width: "100%", textAlign: "left" }} onClick={() => setExpanded(open ? null : r.id)}>
+                  <span style={{ width: 30, height: 40, borderRadius: 6, flex: "none", overflow: "hidden", background: `linear-gradient(140deg,${r.cover.from},${r.cover.to})` }}>
+                    {r.coverImage && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.coverImage} alt={r.title} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    )}
+                  </span>
+                  <div className="col grow" style={{ minWidth: 0, gap: 2 }}>
+                    <div className="row gap-2" style={{ alignItems: "center" }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>{r.title}</span>
+                      <span className="tag tag-gray" style={{ fontSize: 10 }}>{originLabel}</span>
+                      <span className="faint num" style={{ fontSize: 11 }}>{r.episodes} 集 · {r.ratio} · 套用 {r.useCount}</span>
+                    </div>
+                    <span className="muted" style={{ fontSize: 12, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.summary || "（无摘要）"}</span>
+                  </div>
+                  <span className="faint" style={{ flex: "none" }}>{open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</span>
+                </button>
+                {open && <div style={{ marginTop: 8 }}><RecipeSkeletonView data={r.data} /></div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
