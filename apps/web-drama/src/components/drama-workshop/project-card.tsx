@@ -3,7 +3,7 @@
 // 首页项目卡 — 设计真源:screens-entry.jsx `ProjectCard`。
 // 视觉:9:16 / 16:10 渐变缩略图占大头 + 类型 / 模式 chip + 进度条 + 上次更新时间。
 import * as React from "react";
-import { Clock } from "lucide-react";
+import { Clock, GitBranch } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import { STAGE_NAMES } from "./stages-config";
 import type { DramaProjectSummary } from "@/mocks/drama-workshop";
@@ -12,11 +12,13 @@ interface ProjectCardProps {
   p: DramaProjectSummary;
   delay?: number;
   onOpen?: (p: DramaProjectSummary) => void;
+  /** 提供后在卡片底部显示「转成互动剧」动作（整合进短剧工作流）。 */
+  onConvert?: (p: DramaProjectSummary) => void;
   /** 阶段名,用来显示"走到「剧集脚本」";默认取 v4 六阶段 */
   stageNames?: readonly string[];
 }
 
-export function ProjectCard({ p, delay = 0, onOpen, stageNames = STAGE_NAMES }: ProjectCardProps) {
+export function ProjectCard({ p, delay = 0, onOpen, onConvert, stageNames = STAGE_NAMES }: ProjectCardProps) {
   const [hover, setHover] = React.useState(false);
   const stageLabel = stageNames[p.stage - 1] ?? "选题立项";
   return (
@@ -131,8 +133,32 @@ export function ProjectCard({ p, delay = 0, onOpen, stageNames = STAGE_NAMES }: 
             />
           </div>
         </div>
-        <div className="faint row gap-2" style={{ fontSize: 11 }}>
-          <Clock size={12} /> {p.updated}更新
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <div className="faint row gap-2" style={{ fontSize: 11 }}>
+            <Clock size={12} /> {p.updated}更新
+          </div>
+          {onConvert && (
+            <span
+              role="button"
+              tabIndex={0}
+              title="把这部短剧转换成互动剧（剧集分支）"
+              onClick={(e) => {
+                e.stopPropagation();
+                onConvert(p);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onConvert(p);
+                }
+              }}
+              className="row gap-1"
+              style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", cursor: "pointer" }}
+            >
+              <GitBranch size={12} /> 转互动剧
+            </span>
+          )}
         </div>
       </div>
     </button>

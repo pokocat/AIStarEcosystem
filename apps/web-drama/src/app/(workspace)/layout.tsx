@@ -15,7 +15,6 @@ import {
   Coins,
   Compass,
   Film,
-  GitBranch,
   Image as ImageIcon,
   Layers,
   LogOut,
@@ -66,7 +65,6 @@ const GROUPS: NavGroup[] = [
       { href: "/dashboard", icon: Sparkles, label: "首页", exact: true },
       { href: "/projects", icon: Film, label: "短剧工坊" },
       { href: "/shorts", icon: Zap, label: "短视频工坊" },
-      { href: "/interactive", icon: GitBranch, label: "互动短剧" },
     ],
   },
   {

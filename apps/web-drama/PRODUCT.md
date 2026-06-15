@@ -77,7 +77,7 @@
 
 **后端契约不变**：仍走 `POST /api/me/drama/scripts*` + `POST /api/me/drama/episodes/generate`（v0.43）。前端 6 阶段工作台属于 UI 编排层，富数据先以 mock 演示，持久化由 `DramaScript.scenes[]` 承接（结构化扩展见 v0.45+ 后端契约规划）。
 
-**v0.74 互动短剧（剧情互动 · 创作端落地，独立模块）**：新业务模式 —— 一部剧 = 剧集有向图，某集播完插入「互动」（问题 + 选项），观众选择决定下一集播哪条分支（**互动在剧集之间，不在单集内**）。入口 `/interactive`。只做创作端：配置剧集分支图 → 生成每集视频 → 导出互动配置 manifest（`schema=ai-star-eco.interactive-drama/v1`）交社媒平台播放；消费侧播放器不在本期。前端 `api/interactive-drama.ts` + `lib/interactive-graph.ts`（mock 与真后端双通）；后端 `DramaInteractiveController`（`/api/me/drama/interactive/**`）+ `DramaInteractiveService` 真持久化 + AI 起草 + 按集生成。
+**v0.74 互动短剧（剧情互动 · 整合进短剧工坊）**：新业务模式 —— 一部剧 = 剧集有向图，某集播完插入「互动」（问题 + 选项），观众选择决定下一集播哪条分支（**互动在剧集之间，不在单集内**）。**整合进「短剧工坊」**(`/projects`)：同列表以「互动剧」标签展示 + 类型筛选（全部/短剧/互动剧），创建走任意短剧卡片/工作台「转成互动剧」（`convertProjectToInteractive` 按大纲铺线性链再接分支）或顶部「AI 起草 / 新建互动剧」；不再是一级页面，旧 `/interactive` 重定向。只做创作端：配置剧集分支图 → 生成每集视频 → 导出互动配置 manifest（`schema=ai-star-eco.interactive-drama/v1`）交社媒平台播放；消费侧播放器不在本期。前端 `api/interactive-drama.ts` + `lib/interactive-graph.ts`（mock 与真后端双通）；后端 `DramaInteractiveController`（`/api/me/drama/interactive/**`）+ `DramaInteractiveService` 真持久化 + AI 起草 + 按集生成。
 
 能力：**AI 起草**（一句话灵感 → 整张可玩剧集图，复用 `DRAMA_SCRIPT_DRAFT` 端点 + `drama.interactive_draft` 提示词）· **配置编辑器**（剧集分支地图 + 三种流转 + 校验）· **按集生成**（复用 `MaterialVideoJobService`，kind=`drama-interactive-node`）· **试玩走查**（创作端验证分支，复用 `MediaLightbox` 抽查成片）· **导出 manifest**。
 

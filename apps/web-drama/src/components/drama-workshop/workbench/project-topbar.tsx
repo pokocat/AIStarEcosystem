@@ -3,7 +3,7 @@
 // 顶部项目条 — 设计真源:app.jsx Workbench `header`(项目封面+标题+类型 chip+
 // 集数·时长·画幅+余额徽标)。
 import * as React from "react";
-import { ChevronLeft, LogOut, Zap } from "lucide-react";
+import { ChevronLeft, GitBranch, LogOut, Zap } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
 import type { DramaProjectSummary, ProjectInfo } from "@/mocks/drama-workshop";
 
@@ -17,6 +17,8 @@ interface ProjectTopbarProps {
   hideMeta?: boolean;
   onHome?: () => void;
   onLogout?: () => void;
+  /** 提供后显示「转成互动剧」：把本项目转换为互动剧并进编辑器。 */
+  onConvertInteractive?: () => void;
 }
 
 export function ProjectTopbar({
@@ -27,6 +29,7 @@ export function ProjectTopbar({
   hideMeta,
   onHome,
   onLogout,
+  onConvertInteractive,
 }: ProjectTopbarProps) {
   return (
     <header
@@ -89,6 +92,17 @@ export function ProjectTopbar({
         </div>
       )}
       <div className="grow" />
+      {onConvertInteractive && (
+        <button
+          type="button"
+          className="btn btn-line btn-sm"
+          title="把这部短剧转换成互动剧（剧集分支）"
+          onClick={onConvertInteractive}
+          style={{ flex: "none", whiteSpace: "nowrap" }}
+        >
+          <GitBranch size={14} /> 转成互动剧
+        </button>
+      )}
       <div className="cost">
         <Zap size={14} /> 余额{" "}
         <b className="num balance-pulse" key={balancePulseKey ?? balance}>
