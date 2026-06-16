@@ -1,8 +1,9 @@
 "use client";
 
-// 剧集分支画布 —— 把剧集图按「分支深度」自动左→右铺开，SVG 连线（互动选项标在线上），
-// 直观看清剧情走向。点节点 = 编辑；点节点上的「拉线」手柄进入连线模式，再点目标 = 直接接一条分支。
-// 无第三方图库：小规模剧集图用 BFS 分层 + 绝对定位 + SVG 贝塞尔即可，且完全贴合暖白主题。
+// 剧集分支画布 —— 把剧集图按「分支深度」自动从上往下铺开（竖向流：起始集在顶，越往后越往下），
+// SVG 连线（互动选项标在线上），直观看清剧情走向。点节点 = 编辑；点节点上的「拉线」手柄进入连线
+// 模式，再点目标 = 直接接一条分支。竖向流让画板更窄、向下生长，适合放左侧操控、右侧留给信息面板。
+// 无第三方图库：小规模剧集图用 BFS 分层 + 每层水平居中 + 绝对定位 + SVG 贝塞尔即可，且完全贴合暖白主题。
 
 import * as React from "react";
 import { Flag, Link2, Star, X } from "lucide-react";
@@ -11,8 +12,8 @@ import { episodeTargets } from "@/lib/interactive-graph";
 
 const NW = 208; // 节点宽
 const NH = 66; // 节点高
-const COL = 288; // 列间距（含节点宽）
-const ROW = 92; // 行间距
+const COL = 248; // 同层相邻节点的水平间距（含节点宽）
+const ROW = 132; // 相邻深度层的垂直间距（含节点高，留出连线 + 选项标签的竖向空间）
 const PAD = 28;
 
 const GEN_DOT: Record<EpisodeGenStatus, string> = {
@@ -123,12 +124,12 @@ export function BranchCanvas({ series, reachable, onEditNode, onConnect }: Props
             const s = pos.get(ed.from);
             const t = pos.get(ed.to);
             if (!s || !t) return null;
-            const sx = s.x + NW;
-            const sy = s.y + NH / 2;
-            const tx = t.x;
-            const ty = t.y + NH / 2;
-            const dx = Math.max(40, Math.abs(tx - sx) / 2);
-            const d = `M ${sx} ${sy} C ${sx + dx} ${sy}, ${tx - dx} ${ty}, ${tx} ${ty}`;
+            const sx = s.x + NW / 2;
+            const sy = s.y + NH;
+            const tx = t.x + NW / 2;
+            const ty = t.y;
+            const dy = Math.max(30, Math.abs(ty - sy) / 2);
+            const d = `M ${sx} ${sy} C ${sx} ${sy + dy}, ${tx} ${ty - dy}, ${tx} ${ty}`;
             const accent = ed.kind === "choice";
             return (
               <path
@@ -151,8 +152,8 @@ export function BranchCanvas({ series, reachable, onEditNode, onConnect }: Props
           const s = pos.get(ed.from);
           const t = pos.get(ed.to);
           if (!s || !t) return null;
-          const mx = (s.x + NW + t.x) / 2;
-          const my = (s.y + NH / 2 + t.y + NH / 2) / 2;
+          const mx = (s.x + t.x) / 2 + NW / 2;
+          const my = (s.y + NH + t.y) / 2;
           return (
             <div
               key={`l${i}`}
@@ -304,7 +305,7 @@ interface Edge {
   label?: string;
 }
 
-/** BFS 分层（深度=列，列内顺序=行），孤立节点放末列；返回坐标 + 画布尺寸 + 连线。 */
+/** BFS 分层（深度=行，自上而下；层内顺序=列，每层水平居中），孤立节点放末行；返回坐标 + 画布尺寸 + 连线。 */
 function layout(series: InteractiveSeries): {
   pos: Map<string, { x: number; y: number }>;
   width: number;
@@ -336,19 +337,27 @@ function layout(series: InteractiveSeries): {
   const orphanDepth = depth.size < eps.length ? maxReached + 1 : maxReached;
   for (const e of eps) if (!depth.has(e.id)) depth.set(e.id, orphanDepth);
 
-  const cols = new Map<number, string[]>();
+  // 每个深度 = 一行（竖向往下铺），行内节点水平排开。
+  const rows = new Map<number, string[]>();
   for (const e of eps) {
     const d = depth.get(e.id) ?? 0;
-    if (!cols.has(d)) cols.set(d, []);
-    cols.get(d)!.push(e.id);
+    if (!rows.has(d)) rows.set(d, []);
+    rows.get(d)!.push(e.id);
   }
-  const pos = new Map<string, { x: number; y: number }>();
-  let maxRows = 0;
+  let maxCols = 0;
   let maxDepth = 0;
-  cols.forEach((ids, d) => {
-    maxRows = Math.max(maxRows, ids.length);
+  rows.forEach((ids, d) => {
+    maxCols = Math.max(maxCols, ids.length);
     maxDepth = Math.max(maxDepth, d);
-    ids.forEach((id, r) => pos.set(id, { x: PAD + d * COL, y: PAD + r * ROW }));
+  });
+
+  // 最宽一行的像素宽度；每行据此水平居中，使整张图呈自上而下、左右对称的树形。
+  const contentW = Math.max(0, maxCols - 1) * COL + NW;
+  const pos = new Map<string, { x: number; y: number }>();
+  rows.forEach((ids, d) => {
+    const rowW = Math.max(0, ids.length - 1) * COL + NW;
+    const x0 = PAD + Math.max(0, (contentW - rowW) / 2);
+    ids.forEach((id, c) => pos.set(id, { x: x0 + c * COL, y: PAD + d * ROW }));
   });
 
   const edges: Edge[] = [];
@@ -365,7 +374,7 @@ function layout(series: InteractiveSeries): {
     }
   }
 
-  const width = PAD + maxDepth * COL + NW + PAD;
-  const height = PAD + Math.max(0, maxRows - 1) * ROW + NH + PAD;
+  const width = PAD + contentW + PAD;
+  const height = PAD + maxDepth * ROW + NH + PAD;
   return { pos, width: Math.max(width, NW + PAD * 2), height: Math.max(height, NH + PAD * 2), edges };
 }

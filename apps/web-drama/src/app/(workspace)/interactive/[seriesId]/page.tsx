@@ -291,7 +291,7 @@ export default function InteractiveEditorPage({ params }: { params: Promise<{ se
         {/* 左：剧集分支地图 */}
         <div style={{ flex: "3 1 460px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
           <SectionHeader
-            eyebrow={view === "canvas" ? "点节点编辑 · 用「拉线」手柄接分支" : "逐集配置"}
+            eyebrow={view === "canvas" ? "自上而下 · 点节点编辑，用「拉线」手柄接分支" : "逐集配置"}
             title="剧集分支地图"
             right={
               <div className="row gap-2">

@@ -70,6 +70,22 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.80 · 2026-06-16 · 互动短剧「剧集分支地图」改竖向流（自上而下）
+
+把互动剧编辑器的流程画板 `BranchCanvas` 从「按分支深度左→右横向铺开」改为 **自上而下的竖向流**：
+
+- **布局翻转**：BFS 分层后，深度 = 行（起始集在顶，越往后越往下），层内节点水平排开并 **每层水平居中**，
+  整张图呈对称树形；孤立节点落最末行。连线层（SVG 贝塞尔）改 **底部中点 → 顶部中点**，互动选项标签落在
+  上下两集之间的竖向间隙；箭头 marker 沿路径自动转向（无需改动）。
+- **动机**：竖向流让画板更窄、向下生长，天然契合编辑页「左侧操控画板 / 右侧信息面板（生成·校验·全局标记·导出）」
+  的两栏布局；容器 `overflow:auto` + `maxHeight:72vh` 提供自然竖向滚动，连线模式提示条 `sticky` 顶部常驻。
+- **零数据 / 逻辑改动**：仅节点坐标与连线端点是几何变更，未触碰数据模型、校验、manifest 导出、API 调用；
+  `interactive-graph.ts`（校验 / 可达性 / 导出 / 节点增删改）、`PlaythroughDialog`（试玩走查）、按集生成与
+  自动保存链路均不受影响。
+- 门禁：web-drama typecheck + 33 vitest + build（含 `/interactive/[seriesId]` 动态路由）+ `check:api-contract` 全绿；
+  后端互动剧域（`DramaInteractiveController` / `DramaInteractiveService` / `DramaInteractiveSeries`）与前端
+  7 个 API 调用 1:1 对齐，数据链路完整。
+
 ### v0.79 · 2026-06-15 · 互动短剧数据结构对齐抖音「互动视频」（时间轴互动点 + globalFlags + 条件触发）
 
 按抖音小程序「互动视频」Story Config 规范重构互动剧数据模型，并保留旧 row 平滑迁移：
