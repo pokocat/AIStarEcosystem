@@ -1,7 +1,7 @@
 "use client";
 
-// Creator-Friendly landing —— 严格按参考图 Tokens / Components / Dashboard 风格：
-//   黑/紫双色 pill 按钮 · serif 斜体点睛 · 多色饱和渐变 · sand 米色辅助底 · Manrope display。
+// web-celebrity landing: AI 数字人明星带货首页。
+// 只展示虚拟角色资产，避免真实艺人、假精确数据和伪截图式预览。
 
 import * as React from "react";
 import Link from "next/link";
@@ -21,72 +21,93 @@ import {
   Wand2,
 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
-import { Button, Card, Chip, GradientBlock } from "@/components/creator";
-import { MARKET_STARS } from "@/mocks/celebrity-zone";
+import { Button, Card, Chip } from "@/components/creator";
 
 const FEATURES = [
   {
     icon: Star,
-    title: "明星授权 · AI 复刻",
-    body: "授权流程、数字分身建模、肖像合规审计一体闭环，让真人明星的 AI 形象使用边界清晰、可控、全程留痕。",
+    title: "虚拟代言人资产库",
+    body: "按品类、人设和内容风格管理 AI 数字明星，统一记录可用范围、商品边界和合成标识。",
   },
   {
     icon: Video,
-    title: "短视频 · 智能生产",
-    body: "模板化生成、分镜配音、视频管理与多平台分发一体化，从脚本到成片仅需几分钟，稳定输出爆款素材。",
+    title: "短视频智能生产",
+    body: "把商品卖点转成口播、剧情和混剪脚本，再沉淀成可复用模板，减少反复搬运素材。",
   },
   {
     icon: ShoppingBag,
-    title: "商品挂载 · 数据闭环",
-    body: "商品库、实时数据看板、转化漏斗复盘联动钱包结算，把明星 IP 的每一次曝光都沉淀为可量化的 GMV。",
+    title: "分发和数据回流",
+    body: "按角色、商品、模板和渠道拆分复盘，让内容团队知道哪些人设和素材值得继续加码。",
   },
 ];
 
 // 业务主线 5 步
 const PIPELINE = [
-  { n: 1, icon: Search,      title: "选明星",   desc: "浏览明星市场，按品类、热度、授权价快速锁定合作对象。",                  tone: "violet" as const },
-  { n: 2, icon: KeyRound,    title: "签授权",   desc: "在线选定套餐档位与商品方向，合规审核 1 个工作日内出结果。",            tone: "rose"   as const },
-  { n: 3, icon: Wand2,       title: "AI 出片",  desc: "模板化与一键生成两种模式并行，多引擎对比，秒级产出可用素材。",          tone: "peach"  as const },
-  { n: 4, icon: Sparkles,    title: "审核分发", desc: "内容审核通过后，自动分发至抖音、快手、小红书、视频号等主流渠道。",      tone: "amber"  as const },
-  { n: 5, icon: ShoppingBag, title: "带货结算", desc: "关联商品库、实时回流转化数据，自动完成分账并打款至钱包。",              tone: "teal"   as const },
+  { n: 1, icon: Search,      title: "AI数字明星就位", desc: "24小时带货不停播",                               tone: "violet" as const },
+  { n: 2, icon: KeyRound,    title: "定边界",   desc: "配置商品类目、使用范围、合成标识和审核规则。",          tone: "rose"   as const },
+  { n: 3, icon: Wand2,       title: "出脚本",   desc: "围绕商品卖点生成口播、剧情和混剪脚本。",                tone: "peach"  as const },
+  { n: 4, icon: Sparkles,    title: "出成片",   desc: "套用模板生成多版素材，保留审核和修改记录。",            tone: "amber"  as const },
+  { n: 5, icon: ShoppingBag, title: "做复盘",   desc: "按角色、商品和渠道回看表现，沉淀下一轮素材。",          tone: "teal"   as const },
 ];
 
 const SHOWCASE = [
-  { id: "liu-tao",   title: "刘涛 · 都市精英", chip: { tone: "drama"   as const, label: "剧情" }, meta: "本周 GMV ¥1.82M" },
-  { id: "shen-teng", title: "沈腾 · 综艺向",   chip: { tone: "comedy"  as const, label: "喜剧" }, meta: "32 条视频投放中" },
-  { id: "na-ying",   title: "那英 · 音乐向",   chip: { tone: "slice"   as const, label: "音乐" }, meta: "新歌预热中" },
-  { id: "jia-ling",  title: "贾玲 · 喜剧向",   chip: { tone: "romance" as const, label: "情感" }, meta: "每周稳定更新 5 期" },
+  {
+    id: "shen-xinglan",
+    title: "沈星澜 · 美妆生活",
+    chip: { tone: "romance" as const, label: "美妆" },
+    meta: "AI 虚拟明星 · 高端美妆种草",
+    imageUrl: "/ai-stars/shen-xinglan.jpg",
+  },
+  {
+    id: "lin-lubai",
+    title: "林鹿白 · 健康家用",
+    chip: { tone: "slice" as const, label: "生活" },
+    meta: "AI 虚拟明星 · 家庭健康场景",
+    imageUrl: "/ai-stars/lin-lubai.jpg",
+  },
+  {
+    id: "gu-ran",
+    title: "顾燃 · 潮流运动",
+    chip: { tone: "comedy" as const, label: "运动" },
+    meta: "AI 虚拟明星 · 潮流运动装备",
+    imageUrl: "/ai-stars/gu-ran.jpg",
+  },
 ];
 
-// 合作伙伴占位标识 —— 文字 monogram，等待替换为真实合作方 logo
-const PARTNERS: { id: string; tag: string; name: string }[] = [
-  { id: "p1", tag: "FN", name: "飞牛 MCN" },
-  { id: "p2", tag: "XT", name: "星图传媒" },
-  { id: "p3", tag: "JY", name: "鲸跃娱乐" },
-  { id: "p4", tag: "YQ", name: "云鹊数娱" },
-  { id: "p5", tag: "CQ", name: "潮趣 MCN" },
-  { id: "p6", tag: "LH", name: "蓝海集团" },
-  { id: "p7", tag: "XX", name: "新象传媒" },
+const HERO_STAR = {
+  id: "shen-xinglan",
+  name: "沈星澜",
+  category: "AI 数字人明星",
+  imageUrl: "/ai-stars/shen-xinglan.jpg",
+};
+
+const AUDIENCES: { id: string; tag: string; name: string }[] = [
+  { id: "brand", tag: "品牌", name: "品牌市场" },
+  { id: "mcn", tag: "制作", name: "MCN 团队" },
+  { id: "agent", tag: "经纪", name: "经纪团队" },
+  { id: "review", tag: "合规", name: "内容审核" },
+  { id: "commerce", tag: "电商", name: "电商运营" },
+  { id: "media", tag: "投放", name: "渠道投放" },
 ];
 
-const CASE_METRICS = [
-  { value: "¥8.6M", label: "单季 GMV", delta: "环比上季 +124%" },
-  { value: "4.2×", label: "视频复用率", delta: "原素材二次混剪" },
-  { value: "3 人", label: "运营人效", delta: "覆盖 3 位明星 × 全网 4 渠道" },
+const WORKFLOW_BENEFITS = [
+  { value: "少搬运", label: "脚本到成片", delta: "商品、角色、模板在同一条工作流里流转。" },
+  { value: "少返工", label: "审核前置", delta: "角色边界和合成标识在生成前就被约束。" },
+  { value: "可复盘", label: "渠道回流", delta: "每条素材能追到角色、商品、模板和分发批次。" },
 ];
 
 const COMPLIANCE_CERTS = [
-  { icon: ShieldCheck, title: "肖像权授权登记", desc: "每位明星授权文书均登记备案，可追溯、可终止。" },
-  { icon: FileCheck2,  title: "深度合成内容备案", desc: "依《互联网信息服务深度合成管理规定》完成网信办备案。" },
-  { icon: TrendingUp,  title: "内容审核日报",     desc: "每条 AI 生成视频留存审核记录与可解释性证据链。" },
-  { icon: Star,         title: "数据安全认证",     desc: "通过等保三级与 ISO/IEC 27001 信息安全管理体系认证。" },
+  { icon: ShieldCheck, title: "角色使用边界", desc: "每个数字人绑定可用行业、商品类目和投放范围。" },
+  { icon: FileCheck2,  title: "合成内容标识", desc: "水印、片头提示和元数据留痕可按渠道策略配置。" },
+  { icon: TrendingUp,  title: "审核记录留存", desc: "脚本、素材、成片和发布批次保留操作记录。" },
+  { icon: Star,        title: "素材归因复盘", desc: "按角色、商品、模板和渠道拆分内容表现。" },
 ];
 
-const WORKBENCH_MODULES = [
-  { label: "任务中心",   meta: "3 条待审 · 2 条草稿"      },
-  { label: "模板库",     meta: "48 个剧本 · 12 个分镜"   },
-  { label: "数据看板",   meta: "GMV / 转化 / 漏斗"        },
-  { label: "钱包结算",   meta: "本月分账 ¥86,420"        },
+const WORKSPACE_AREAS = [
+  { label: "角色资产", body: "集中管理人设、声线、可用类目和投放边界。" },
+  { label: "商品脚本", body: "从商品卖点生成口播、剧情和混剪脚本。" },
+  { label: "成片审核", body: "保留素材来源、修改记录和合成内容标识。" },
+  { label: "渠道复盘", body: "按角色、模板、商品和渠道回看内容表现。" },
 ];
 
 export default function CelebrityLandingPage() {
@@ -94,9 +115,6 @@ export default function CelebrityLandingPage() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
   const isLoggedIn = mounted && !!user;
-  // 选取「已授权」的第一位明星作为 hero persona 演示（避免虚构 demo 数据）。
-  const featuredStar =
-    MARKET_STARS.find((s) => s.authorization.status === "authorized") ?? MARKET_STARS[0];
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-0)", color: "var(--fg-0)", fontFamily: "var(--font-sans)" }}>
@@ -117,7 +135,7 @@ export default function CelebrityLandingPage() {
         <nav className="hidden md:flex" style={{ alignItems: "center", gap: 28 }}>
           <Link href="#pipeline" style={navLink}>业务主线</Link>
           <Link href="#features" style={navLink}>核心能力</Link>
-          <Link href="#showcase" style={navLink}>明星阵容</Link>
+          <Link href="#showcase" style={navLink}>角色库</Link>
           <Link href="#trial" style={navLink}>开始合作</Link>
         </nav>
 
@@ -125,7 +143,7 @@ export default function CelebrityLandingPage() {
           {isLoggedIn ? (
             <>
               <Link href="/dashboard">
-                <Button variant="dark" size="sm">进入工作台 →</Button>
+                <Button variant="dark" size="sm">进入工作台</Button>
               </Link>
               <Button
                 variant="icon"
@@ -144,7 +162,7 @@ export default function CelebrityLandingPage() {
                 <Button variant="secondary" size="sm">登录</Button>
               </Link>
               <Link href="/login?from=%2Fdashboard">
-                <Button variant="accent" size="sm">预约咨询 →</Button>
+                <Button variant="accent" size="sm">预约咨询</Button>
               </Link>
             </>
           )}
@@ -166,22 +184,22 @@ export default function CelebrityLandingPage() {
           }}
         >
           <div>
-            <div className="eyebrow">AI 明星带货 · 2026 全新升级</div>
+            <div className="eyebrow">AI 数字人带货平台</div>
             <h1
               style={{
-                fontSize: 56,
-                lineHeight: 1.08,
+                fontSize: "clamp(40px, 5vw, 56px)",
+                lineHeight: 1.1,
                 fontWeight: 700,
                 letterSpacing: "var(--tracking-tight)",
                 fontFamily: "var(--font-display)",
                 margin: "16px 0 18px",
                 color: "var(--fg-0)",
+                maxWidth: 680,
               }}
             >
-              复刻一位 AI 明星,
-              <br />
-              <span className="serif-italic" style={{ color: "var(--accent)", fontSize: 56 }}>
-                让顶流 7×24 帮你带货。
+              {"AI数字明星就位，"}
+              <span className="serif-italic" style={{ color: "var(--accent)", fontSize: "inherit", lineHeight: 1.14 }}>
+                24小时带货不停播
               </span>
             </h1>
             <p
@@ -189,67 +207,88 @@ export default function CelebrityLandingPage() {
                 fontSize: 15.5,
                 lineHeight: 1.7,
                 color: "var(--fg-1)",
-                maxWidth: 560,
+                maxWidth: 540,
                 marginBottom: 28,
               }}
             >
-              从明星授权、AI 形象复刻、短视频生产到全网分发与商品结算，一站式打通授权方、品牌方与 MCN 的合作链路，让明星 IP 在合规前提下持续放大商业价值。
+              为品牌和 MCN 提供虚拟代言人、脚本、成片与分发协同，降低拍摄排期和跨团队沟通成本。
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
                 <Button variant="dark" size="lg">
-                  {isLoggedIn ? "进入工作台 →" : "预约咨询 →"}
+                  {isLoggedIn ? "进入工作台" : "预约咨询"}
                 </Button>
               </Link>
               <Link href="#showcase">
-                <Button variant="secondary" size="lg">查看明星阵容</Button>
+                <Button variant="secondary" size="lg">查看角色库</Button>
               </Link>
             </div>
           </div>
 
-          {/* 右侧:当前签约明星形象卡(取一位已授权明星作演示) */}
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <GradientBlock
-              seed={featuredStar.id}
-              height={280}
-              topLeft={<Chip tone="published" size="sm">● 在投</Chip>}
-              topRight={
-                <span
-                  className="mono"
+          {/* 右侧:AI 数字人明星资产包 */}
+          <Card style={{ padding: 14, overflow: "hidden" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.35fr 0.8fr",
+                gap: 10,
+                minHeight: 300,
+              }}
+              className="stack-mobile"
+            >
+              <div
+                style={{
+                  minHeight: 300,
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: "var(--ink)",
+                  overflow: "hidden",
+                }}
+              >
+                <img
+                  src={HERO_STAR.imageUrl}
+                  alt={`${HERO_STAR.name}，${HERO_STAR.category}`}
+                  loading="eager"
+                  fetchPriority="high"
+                  style={{ width: "100%", height: "100%", minHeight: 300, display: "block", objectFit: "cover", objectPosition: "center 24%" }}
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateRows: "1fr 1fr", gap: 10 }}>
+                {SHOWCASE.slice(1).map((s) => (
+                  <div
+                    key={s.id}
+                    style={{
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--ink)",
+                      overflow: "hidden",
+                      minHeight: 145,
+                    }}
+                    aria-label={s.title}
+                  >
+                    <img
+                      src={s.imageUrl}
+                      alt={s.title}
+                      loading="lazy"
+                      style={{ width: "100%", height: "100%", minHeight: 145, display: "block", objectFit: "cover", objectPosition: "center 22%" }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ padding: "20px 8px 8px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                <div
                   style={{
-                    fontSize: 10,
-                    color: "rgba(255,255,255,0.9)",
-                    letterSpacing: 0.4,
-                    background: "rgba(0,0,0,0.18)",
-                    padding: "3px 9px",
-                    borderRadius: "var(--radius-pill)",
+                    fontSize: 20,
+                    fontWeight: 600,
+                    color: "var(--fg-0)",
+                    fontFamily: "var(--font-display)",
+                    letterSpacing: "var(--tracking-tight)",
                   }}
                 >
-                  标准版授权
-                </span>
-              }
-              bottom={
-                <div>
-                  <div
-                    className="serif-italic"
-                    style={{ fontSize: 34, color: "#fff", lineHeight: 1.05, marginBottom: 8 }}
-                  >
-                    {featuredStar.name}
-                  </div>
-                  <div
-                    className="mono"
-                    style={{
-                      fontSize: 10.5,
-                      color: "rgba(255,255,255,0.82)",
-                      letterSpacing: 0.4,
-                    }}
-                  >
-                    {featuredStar.category} · 已签约
-                  </div>
+                  AI 数字人资产包
                 </div>
-              }
-            />
-            <div style={{ padding: "22px 22px" }}>
+                <Chip tone="published" size="sm">已上线</Chip>
+              </div>
               <p
                 style={{
                   fontSize: 13.5,
@@ -259,21 +298,19 @@ export default function CelebrityLandingPage() {
                   marginBottom: 14,
                 }}
               >
-                今日 <strong style={{ color: "var(--fg-0)" }}>32 条视频</strong>在投，本周累计带货
-                <strong style={{ color: "var(--fg-0)" }}> ¥1.82M</strong>、转化率
-                <strong style={{ color: "var(--fg-0)" }}> 1.86%</strong>，授权状态、视频审核与分账明细全部可在工作台一屏掌握。
+                角色人设、商品边界、合成标识和分发权限集中管理，制作人可以直接从资产包进入脚本和成片流程。
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                <Chip tone="romance" size="sm">都市言情</Chip>
-                <Chip tone="slice" size="sm">生活种草</Chip>
-                <Chip tone="comedy" size="sm">喜剧综艺</Chip>
-                <Chip tone="drama" size="sm">剧情向</Chip>
+                <Chip tone="romance" size="sm">{HERO_STAR.name}</Chip>
+                <Chip tone="slice" size="sm">角色边界</Chip>
+                <Chip tone="comedy" size="sm">合成标识</Chip>
+                <Chip tone="drama" size="sm">内容分发</Chip>
               </div>
             </div>
           </Card>
         </section>
 
-        {/* 合作伙伴 logo strip —— 占位 monogram，等待替换为真实合作方 logo */}
+        {/* 适配团队与渠道 */}
         <section
           style={{
             maxWidth: 1180,
@@ -300,7 +337,7 @@ export default function CelebrityLandingPage() {
                 whiteSpace: "nowrap",
               }}
             >
-              已与 50+ MCN、明星工作室与品牌方共建生态
+              适配团队和渠道
             </span>
             <div
               style={{
@@ -310,9 +347,9 @@ export default function CelebrityLandingPage() {
                 justifyContent: "flex-end",
                 flexWrap: "wrap",
               }}
-              aria-label="部分合作伙伴"
+              aria-label="适配团队"
             >
-              {PARTNERS.map((p) => (
+              {AUDIENCES.map((p) => (
                 <div
                   key={p.id}
                   title={p.name}
@@ -361,7 +398,7 @@ export default function CelebrityLandingPage() {
             >
               已上线的{" "}
               <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                签约明星
+                AI 虚拟明星
               </span>
             </h2>
             <Link
@@ -380,61 +417,62 @@ export default function CelebrityLandingPage() {
               查看全部 <ArrowUpRight size={12} />
             </Link>
           </div>
-          <div className="stack-mobile-2" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          <div className="stack-mobile" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
             {SHOWCASE.map((s) => (
-              <GradientBlock
+              <Card
                 key={s.id}
-                seed={s.id}
-                height={180}
-                topRight={<Chip tone={s.chip.tone} size="sm">{s.chip.label}</Chip>}
-                bottom={
-                  <div>
-                    <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600, color: "#fff" }}>
-                      {s.title}
-                    </div>
-                    <div className="mono" style={{ fontSize: 10.5, color: "rgba(255,255,255,0.85)", marginTop: 4, letterSpacing: 0.3 }}>
-                      {s.meta}
-                    </div>
+                title={`${s.title} · ${s.meta}`}
+                style={{ padding: 0, overflow: "hidden" }}
+              >
+                <div
+                  style={{
+                    height: 220,
+                    backgroundColor: "var(--ink)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <img
+                    src={s.imageUrl}
+                    alt={s.title}
+                    loading="lazy"
+                    style={{ width: "100%", height: "100%", display: "block", objectFit: "cover", objectPosition: "center 28%" }}
+                  />
+                </div>
+                <div style={{ padding: "16px 18px 18px" }}>
+                  <Chip tone={s.chip.tone} size="sm">{s.chip.label}</Chip>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600, color: "var(--fg-0)", marginTop: 10, letterSpacing: "var(--tracking-tight)" }}>
+                    {s.title}
                   </div>
-                }
-              />
+                  <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 6, lineHeight: 1.55 }}>
+                    {s.meta}
+                  </div>
+                </div>
+              </Card>
             ))}
           </div>
         </section>
 
-        {/* 客户案例 —— 单一 case study + 3 outcome metrics，破除"页面缺真实信任凭证"的 critique 缺口 */}
+        {/* 落地流程 */}
         <section
           id="case-study"
           style={{
             maxWidth: 1180,
             margin: "0 auto",
             padding: "32px 32px 48px",
-          }}
-        >
-          <Card
-            className="stack-mobile"
-            style={{
-              padding: 0,
-              overflow: "hidden",
-              display: "grid",
-              gridTemplateColumns: "1.1fr 1fr",
-              background: "var(--bg-1)",
-              border: "1px solid var(--line)",
             }}
           >
-            <div style={{ padding: "44px 44px 40px", borderRight: "1px solid var(--line)" }}>
-              <div
-                className="mono"
-                style={{
-                  fontSize: 10.5,
-                  color: "var(--fg-2)",
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                  marginBottom: 20,
-                }}
-              >
-                客户案例 · 头部美妆 MCN
-              </div>
+            <Card
+              className="stack-mobile"
+              style={{
+                padding: 0,
+                overflow: "hidden",
+                display: "grid",
+                gridTemplateColumns: "1.1fr 1fr",
+                background: "var(--bg-1)",
+                border: "1px solid var(--line)",
+              }}
+            >
+              <div style={{ padding: "44px 44px 40px", borderRight: "1px solid var(--line)" }}>
               <Quote size={28} color="var(--accent)" strokeWidth={1.5} style={{ marginBottom: 12 }} />
               <blockquote
                 className="serif-italic"
@@ -447,7 +485,7 @@ export default function CelebrityLandingPage() {
                   letterSpacing: "var(--tracking-tight)",
                 }}
               >
-                三位明星 IP × 12 周 × 抖音+小红书双渠道，单季 GMV 突破 ¥8.6M，制作团队从 11 人压缩到 3 人。
+                从角色设定到渠道复盘，制作人不再在脚本、素材、审核和发布系统之间来回搬运。
               </blockquote>
               <div
                 style={{
@@ -457,7 +495,7 @@ export default function CelebrityLandingPage() {
                   letterSpacing: 0.2,
                 }}
               >
-                —— 某头部美妆 MCN，2025 Q4 合作回顾
+                适合需要稳定产出带货短视频的品牌和 MCN 团队。
               </div>
             </div>
             <div
@@ -470,7 +508,7 @@ export default function CelebrityLandingPage() {
                 background: "var(--bg-2)",
               }}
             >
-              {CASE_METRICS.map((m) => (
+              {WORKFLOW_BENEFITS.map((m) => (
                 <div key={m.label}>
                   <div
                     className="mono"
@@ -486,7 +524,7 @@ export default function CelebrityLandingPage() {
                   </div>
                   <div
                     style={{
-                      fontSize: 36,
+                      fontSize: 30,
                       fontWeight: 600,
                       color: "var(--fg-0)",
                       fontFamily: "var(--font-display)",
@@ -522,7 +560,7 @@ export default function CelebrityLandingPage() {
             >
               五步跑通{" "}
               <span className="serif-italic" style={{ color: "var(--accent)" }}>
-                明星 IP 带货闭环
+                数字人带货闭环
               </span>
               。
             </h2>
@@ -573,23 +611,25 @@ export default function CelebrityLandingPage() {
                   }}
                 >
                   <div
-                    className="serif-italic"
                     aria-hidden
                     style={{
-                      fontSize: 44,
-                      lineHeight: 1,
-                      color: colorVar,
+                      width: 36,
+                      height: 36,
+                      borderRadius: "var(--radius-md)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: `color-mix(in srgb, ${colorVar} 12%, transparent)`,
+                      border: `1px solid color-mix(in srgb, ${colorVar} 22%, transparent)`,
                       marginBottom: 18,
-                      letterSpacing: "-0.02em",
                     }}
                   >
-                    {String(p.n).padStart(2, "0")}
+                    <Icon size={17} color={colorVar} strokeWidth={1.75} />
                   </div>
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
                       fontSize: 15,
                       fontWeight: 600,
                       color: "var(--fg-0)",
@@ -597,7 +637,6 @@ export default function CelebrityLandingPage() {
                       marginBottom: 10,
                     }}
                   >
-                    <Icon size={15} color={colorVar} strokeWidth={1.75} />
                     {p.title}
                   </div>
                   <p style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6, margin: 0 }}>{p.desc}</p>
@@ -620,9 +659,9 @@ export default function CelebrityLandingPage() {
               maxWidth: 640,
             }}
           >
-            三大核心能力,打通{" "}
+            三大核心能力，打通{" "}
             <span className="serif-italic" style={{ color: "var(--accent)" }}>
-              明星 IP 全链路
+              虚拟代言人全链路
             </span>
             。
           </h2>
@@ -675,7 +714,7 @@ export default function CelebrityLandingPage() {
           </div>
         </section>
 
-        {/* 合规与工作台预览 —— 双栏：左 4 项资质 / 右 工作台模块预览 */}
+        {/* 合规与工作区 */}
         <section
           id="trust"
           style={{
@@ -692,7 +731,6 @@ export default function CelebrityLandingPage() {
               gap: 24,
             }}
           >
-            {/* 合规与资质 */}
             <div>
               <h2
                 style={{
@@ -704,7 +742,7 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                合规与资质,
+                合规治理，
                 <span style={{ color: "var(--accent)" }}> 从源头可信</span>
               </h2>
               <ul
@@ -752,7 +790,6 @@ export default function CelebrityLandingPage() {
               </ul>
             </div>
 
-            {/* 工作台预览 —— 用静态 stylized window chrome + 模块行模拟，避免空文字版面 */}
             <div>
               <h2
                 style={{
@@ -764,101 +801,41 @@ export default function CelebrityLandingPage() {
                   color: "var(--fg-0)",
                 }}
               >
-                授权方工作台,
-                <span style={{ color: "var(--accent)" }}> 一屏掌握</span>
+                运营工作区，
+                <span style={{ color: "var(--accent)" }}> 一条线协作</span>
               </h2>
-              <div
+              <Card
                 style={{
-                  borderRadius: "var(--radius-lg)",
+                  padding: "24px 24px",
                   background: "var(--ink)",
-                  padding: 14,
-                  boxShadow: "var(--shadow-pop)",
+                  border: "1px solid var(--ink)",
+                  color: "#fff",
                 }}
-                aria-label="工作台预览示意"
-                role="img"
               >
-                {/* window chrome */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 4px 14px" }}>
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#ff5b8a", opacity: 0.8 }} />
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#f0a83a", opacity: 0.8 }} />
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#22b59a", opacity: 0.8 }} />
-                  <span
-                    className="mono"
-                    style={{
-                      marginLeft: 12,
-                      fontSize: 10,
-                      color: "rgba(255,255,255,0.45)",
-                      letterSpacing: 0.4,
-                    }}
-                  >
-                    workspace · celebrity
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, 1fr)",
-                    gap: 10,
-                    padding: 0,
-                  }}
-                >
-                  {WORKBENCH_MODULES.map((m, i) => (
+                <p style={{ margin: "0 0 20px", color: "rgba(255,255,255,0.72)", fontSize: 13.5, lineHeight: 1.65 }}>
+                  角色、商品、脚本、成片和渠道复盘放在同一个业务面里，减少团队之间来回对齐口径。
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+                  {WORKSPACE_AREAS.map((m) => (
                     <div
                       key={m.label}
                       style={{
-                        padding: "14px 14px",
+                        padding: "16px 16px",
                         borderRadius: "var(--radius-md)",
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        position: "relative",
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.1)",
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "#fff",
-                          fontFamily: "var(--font-display)",
-                          letterSpacing: "var(--tracking-tight)",
-                          marginBottom: 4,
-                        }}
-                      >
+                      <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-display)", color: "#fff", marginBottom: 8 }}>
                         {m.label}
                       </div>
-                      <div
-                        className="mono"
-                        style={{
-                          fontSize: 10,
-                          color: "rgba(255,255,255,0.55)",
-                          letterSpacing: 0.3,
-                        }}
-                      >
-                        {m.meta}
-                      </div>
-                      {/* 数据条占位，让卡片不只有字 */}
-                      <div
-                        style={{
-                          marginTop: 12,
-                          height: 4,
-                          borderRadius: 2,
-                          background: "rgba(255,255,255,0.08)",
-                          overflow: "hidden",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${30 + i * 18}%`,
-                            height: "100%",
-                            background:
-                              i % 2 === 0 ? "var(--accent)" : "var(--extra-peach)",
-                            opacity: 0.85,
-                          }}
-                        />
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.66)", lineHeight: 1.55 }}>
+                        {m.body}
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </Card>
             </div>
           </div>
         </section>
@@ -890,7 +867,7 @@ export default function CelebrityLandingPage() {
                   lineHeight: 1.15,
                 }}
               >
-                让明星 IP 接入{" "}
+                让数字人内容接入{" "}
                 <span className="serif-italic" style={{ color: "#b4a4ff" }}>
                   AI Star Eco
                 </span>
@@ -903,12 +880,12 @@ export default function CelebrityLandingPage() {
                   lineHeight: 1.65,
                 }}
               >
-                联系商务团队开通授权方专属工作台,1 个工作日内完成对接上线。
+                联系商务团队配置角色资产、商品脚本和分发流程，先从一条内容链路跑通。
               </p>
             </div>
             <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
               <Button variant="accent" size="lg">
-                {isLoggedIn ? "进入工作台 →" : "预约咨询 →"}
+                {isLoggedIn ? "进入工作台" : "预约咨询"}
               </Button>
             </Link>
           </Card>
@@ -932,9 +909,11 @@ export default function CelebrityLandingPage() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
           }}
         >
-          <span style={{ letterSpacing: 0.5 }}>AI STAR ECO · 明星带货中台</span>
+          <span style={{ letterSpacing: 0.5 }}>AI STAR ECO · 数字人带货中台</span>
           <div style={{ display: "flex", gap: 20 }}>
             <Link href="/" style={{ color: "var(--fg-3)", textDecoration: "none" }}>产品矩阵</Link>
             <Link
