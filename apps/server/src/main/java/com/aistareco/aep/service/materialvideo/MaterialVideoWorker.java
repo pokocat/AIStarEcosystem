@@ -92,7 +92,7 @@ public class MaterialVideoWorker {
         updateStatus(jobId, "submitting", 5, null);
 
         MaterialVideoModelClient.SubmitResult submit =
-                modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio());
+                modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(), job.getOwnerUserId());
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
         long start = System.currentTimeMillis();

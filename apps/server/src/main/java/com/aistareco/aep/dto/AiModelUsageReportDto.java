@@ -18,6 +18,8 @@ public record AiModelUsageReportDto(
         long totalTokens,
         long promptTokens,
         long completionTokens,
+        long totalBillableUnits,
+        long totalBillableSeconds,
         long estimatedCostMicros,
         long failedCalls,
         List<AiModelAlertDto> alerts,

@@ -36,6 +36,8 @@ export type AiModelPurpose =
   | "DAP_VIDEO"
   | "GENERAL";
 
+export type AiModelBillingMode = "TOKENS" | "PER_CALL" | "PER_SECOND";
+
 /** 单个可用模型条目（通常由 discover/fetch-models 拉取后写入配置）。 */
 export interface AiModelEntry {
   id: string;
@@ -68,11 +70,17 @@ export interface AiModelEndpoint {
   keyMasked?: string;
   hasKey: boolean;
   ownerUserId?: string;
+  /** 成本估算口径；为空表示自动：文本 token / 图片按次 / 视频按秒。 */
+  billingMode?: AiModelBillingMode | null;
   /** 输入 token 单价，人民币微元 / 1K Token。0 = 未配置成本价。 */
   promptTokenPriceMicros: number;
   /** 输出 token 单价，人民币微元 / 1K Token。0 = 未配置成本价。 */
   completionTokenPriceMicros: number;
+  /** 按次/按秒单价，人民币微元 / 次 或 / 秒。 */
+  unitPriceMicros: number;
   totalTokens: number;
+  totalBillableUnits: number;
+  totalBillableSeconds: number;
   totalCalls: number;
   lastUsedAt?: string;
   keyRevokedAt?: string;
@@ -102,10 +110,14 @@ export interface AdminAiModelEndpointUpsert {
   models?: AiModelEntry[];
   /** 计费归属用户；"" 清空为平台级（不计费）；省略 = 不修改。 */
   ownerUserId?: string;
+  /** null/"AUTO" = 自动；TOKENS / PER_CALL / PER_SECOND = 强制口径。 */
+  billingMode?: AiModelBillingMode | "AUTO" | null;
   /** 输入 token 单价，人民币微元 / 1K Token。 */
   promptTokenPriceMicros?: number;
   /** 输出 token 单价，人民币微元 / 1K Token。 */
   completionTokenPriceMicros?: number;
+  /** 按次/按秒单价，人民币微元 / 次 或 / 秒。 */
+  unitPriceMicros?: number;
   enabled?: boolean;
 }
 
@@ -152,6 +164,8 @@ export interface AiModelUsageStat {
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
+  billableUnits: number;
+  billableSeconds: number;
   estimatedCostMicros: number;
 }
 
@@ -162,6 +176,9 @@ export interface AiModelUsageDaily {
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
+  billableUnits: number;
+  billableSeconds: number;
+  estimatedCostMicros: number;
 }
 
 export interface AiModelAlert {
@@ -191,6 +208,8 @@ export interface AiModelUsageReport {
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
+  totalBillableUnits: number;
+  totalBillableSeconds: number;
   estimatedCostMicros: number;
   failedCalls: number;
   alerts: AiModelAlert[];
@@ -221,6 +240,10 @@ export interface AiModelUsageRecord {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  billingMode: AiModelBillingMode;
+  billableUnits: number;
+  billableSeconds: number;
+  unitPriceMicros: number;
   success: boolean;
   estimatedCostMicros: number;
   requestId?: string;

@@ -1,5 +1,6 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.cdn.CdnUploader;
@@ -221,8 +222,9 @@ public class DramaRenderService {
             }
             // 用量观测（best-effort，token 数图像接口通常不回）
             try {
-                usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
-                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, true,
+                usage.recordMeteredObserved(ep.getId(), ep.getName(), ep.getModel(),
+                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L,
+                        AiModelBillingMode.PER_CALL, 1L, 0L, true,
                         requestId, upstreamId, elapsedMs(startNanos), null, null);
             } catch (Exception ignore) { /* 观测旁路，不阻塞主链路 */ }
             return bytes;

@@ -1,7 +1,7 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 平台 · AI 模型与 Token
+// 平台 · AI 模型与用量
 //   · 模型接入端点 = 固定 {上游密钥 + 单模型 + 地址}，自带外部 API Token（sk-aep-*）。
 //   · AI 应用绑定 = 每个用途（脚本起草 / 卖点提取 / 变量抽取…）固定指向一个端点。
 //   上游密钥由 server AES-GCM 加密落库；外部 API Token 仅铸造瞬间返回明文一次（DB 存 bcrypt）。
@@ -39,6 +39,7 @@ import { AiModelsApi } from "@/api";
 import { cn } from "@/lib/utils";
 import type {
   AiModelEndpoint,
+  AiModelBillingMode,
   AiModelProviderType,
   AiModelPurpose,
   AiModelEntry,
@@ -84,6 +85,15 @@ const PROVIDER_LABEL: Record<AiModelProviderType, string> = {
 const SUPPORTED_PROVIDERS = new Set<AiModelProviderType>(["OPENAI", "OPENAI_COMPATIBLE"]);
 const NONE = "__none__";
 
+type BillingModeFormValue = "AUTO" | AiModelBillingMode;
+
+const BILLING_MODE_LABEL: Record<BillingModeFormValue, string> = {
+  AUTO: "自动",
+  TOKENS: "按 Token",
+  PER_CALL: "按次",
+  PER_SECOND: "按秒",
+};
+
 type EditMode = "create" | "edit" | "copy";
 
 interface FormDefaults {
@@ -101,8 +111,10 @@ interface FormDefaults {
   dailyTokenQuota?: string;
   dailyCostQuotaYuan?: string;
   alertFailureRatePct?: string;
+  billingMode?: BillingModeFormValue;
   promptPriceYuan?: string;
   completionPriceYuan?: string;
+  unitPriceYuan?: string;
   apiKeyHint?: string;
   sourceName?: string;
 }
@@ -125,11 +137,13 @@ interface FormState {
   dailyTokenQuota: string;
   dailyCostQuotaYuan: string;
   alertFailureRatePct: string;
+  billingMode: BillingModeFormValue;
   models: AiModelEntry[];
   ownerUserId: string;
   clearOwnerUserId: boolean;
   promptPriceYuan: string;
   completionPriceYuan: string;
+  unitPriceYuan: string;
   enabled: boolean;
   defaults?: FormDefaults;
 }
@@ -151,11 +165,13 @@ const EMPTY_FORM: FormState = {
   dailyTokenQuota: "",
   dailyCostQuotaYuan: "",
   alertFailureRatePct: "",
+  billingMode: "AUTO",
   models: [],
   ownerUserId: "",
   clearOwnerUserId: false,
   promptPriceYuan: "",
   completionPriceYuan: "",
+  unitPriceYuan: "",
   enabled: true,
   defaults: {
     baseUrl: "https://api.openai.com/v1",
@@ -280,6 +296,33 @@ function priceLabel(value: number | null | undefined): string {
   return text ? `¥${text} / 1K` : "¥0 / 1K";
 }
 
+function unitPriceLabel(value: number | null | undefined, mode?: AiModelBillingMode | null): string {
+  const text = microsToYuanText(value);
+  const suffix = mode === "PER_SECOND" ? "/秒" : mode === "PER_CALL" ? "/次" : mode === "TOKENS" ? "" : "/次或秒";
+  return text ? `¥${text}${suffix}` : `¥0${suffix}`;
+}
+
+function billingModeLabel(mode?: AiModelBillingMode | null): string {
+  return BILLING_MODE_LABEL[mode ?? "AUTO"];
+}
+
+function durationUsageLabel(seconds: number): string {
+  if (!seconds || seconds <= 0) return "0秒";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}小时${m}分`;
+  if (m > 0) return `${m}分${s}秒`;
+  return `${s}秒`;
+}
+
+function meteredUsageLabel(units: number, seconds: number): string {
+  const parts: string[] = [];
+  if (units > 0) parts.push(`${units.toLocaleString()} 次`);
+  if (seconds > 0) parts.push(durationUsageLabel(seconds));
+  return parts.length ? parts.join(" / ") : "0";
+}
+
 function microsCostLabel(value: number | null | undefined): string {
   if (!value || value <= 0) return "¥0";
   return `¥${(value / MICROS_PER_YUAN).toFixed(4).replace(/\.?0+$/, "")}`;
@@ -311,10 +354,12 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
     dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
     alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
+    billingMode: p.billingMode ?? "AUTO",
     models: p.models ?? [],
     ownerUserId: p.ownerUserId ?? "",
     promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
     completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
+    unitPriceYuan: microsToYuanText(p.unitPriceMicros),
     enabled: p.enabled,
     defaults: {
       name: p.name,
@@ -331,8 +376,10 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
       dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
       dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
       alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
+      billingMode: p.billingMode ?? "AUTO",
       promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
       completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
+      unitPriceYuan: microsToYuanText(p.unitPriceMicros),
       sourceName: p.name,
     },
   };
@@ -358,8 +405,10 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
     dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
     alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
     ownerUserId: p.ownerUserId ?? "",
+    billingMode: p.billingMode ?? "AUTO",
     promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
     completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
+    unitPriceYuan: microsToYuanText(p.unitPriceMicros),
     enabled: p.enabled,
     defaults: {
       name: `${p.name} 副本`,
@@ -376,8 +425,10 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
       dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
       dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
       alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
+      billingMode: p.billingMode ?? "AUTO",
       promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
       completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
+      unitPriceYuan: microsToYuanText(p.unitPriceMicros),
       sourceName: p.name,
     },
   };
@@ -556,6 +607,7 @@ export default function AdminAiModelsPage() {
     const ownerUserId = valueOrDefault(editing, "ownerUserId");
     const promptTokenPriceMicros = parsePriceMicros(editing.promptPriceYuan);
     const completionTokenPriceMicros = parsePriceMicros(editing.completionPriceYuan);
+    const unitPriceMicros = parsePriceMicros(editing.unitPriceYuan);
     const defaultTemperature = parseOptionalNumber(editing.defaultTemperature, 0, 2);
     const defaultMaxTokens = parseOptionalInt(editing.defaultMaxTokens, 1);
     const defaultTopP = parseOptionalNumber(editing.defaultTopP, 0, 1);
@@ -573,7 +625,7 @@ export default function AdminAiModelsPage() {
       toast.warning({ title: "新建时上游 API 密钥 必填" });
       return;
     }
-    if (promptTokenPriceMicros == null || completionTokenPriceMicros == null || dailyCostQuotaMicros == null) {
+    if (promptTokenPriceMicros == null || completionTokenPriceMicros == null || unitPriceMicros == null || dailyCostQuotaMicros == null) {
       toast.warning({ title: "计价和成本配额必须是大于等于 0 的数字" });
       return;
     }
@@ -608,8 +660,10 @@ export default function AdminAiModelsPage() {
         dailyCostQuotaMicros: dailyCostQuotaMicros > 0 ? dailyCostQuotaMicros : null,
         alertFailureRatePct,
         models: editing.models,
+        billingMode: editing.billingMode,
         promptTokenPriceMicros,
         completionTokenPriceMicros,
+        unitPriceMicros,
         enabled: editing.enabled,
       };
       if (editing.clearOwnerUserId) {
@@ -775,7 +829,7 @@ export default function AdminAiModelsPage() {
   return (
     <div className="admin-page space-y-6">
       <PageHeader
-        title="AI 模型与 Token"
+        title="AI 模型与用量"
         description="配置模型接入端点（固定上游密钥 + 单模型 + 地址，含外部 API Token），并把每个 AI 应用绑定到一个端点。密钥由服务端加密存储，列表仅显示脱敏值。"
       />
 
@@ -1092,6 +1146,34 @@ export default function AdminAiModelsPage() {
                         placeholder={editing.defaults?.alertFailureRatePct || "默认"}
                       />
                     </Field>
+                    <Field label="计费口径" hint="自动：文本按 Token，图片按次，视频按秒；也可强制指定。">
+                      <Select
+                        value={editing.billingMode}
+                        onValueChange={(v) => setEditing({ ...editing, billingMode: v as BillingModeFormValue })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(["AUTO", "TOKENS", "PER_CALL", "PER_SECOND"] as const).map((mode) => (
+                            <SelectItem key={mode} value={mode}>
+                              {BILLING_MODE_LABEL[mode]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="按次 / 按秒单价" hint="按次表示每张图/每条视频；按秒表示每秒视频。单位：元">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.000001"
+                        value={editing.unitPriceYuan}
+                        onChange={(e) => setEditing({ ...editing, unitPriceYuan: e.target.value })}
+                        placeholder={editing.defaults?.unitPriceYuan || "0"}
+                      />
+                    </Field>
                     <Field label="输入 Token 单价" hint="例如 0.0015 表示每 1K 输入 Token 0.0015 元">
                       <Input
                         type="number"
@@ -1200,7 +1282,7 @@ export default function AdminAiModelsPage() {
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}
               {!loading && !err && (
-                <Table className="min-w-[1900px] table-fixed">
+                <Table className="min-w-[2140px] table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[190px]">名称</TableHead>
@@ -1210,9 +1292,11 @@ export default function AdminAiModelsPage() {
                       <TableHead className="w-[150px]">固定模型</TableHead>
                       <TableHead className="w-[130px]">别名</TableHead>
                       <TableHead className="w-[128px]">API Token</TableHead>
+                      <TableHead className="w-[96px]">计费口径</TableHead>
                       <TableHead className="w-[112px] text-right">输入价</TableHead>
                       <TableHead className="w-[112px] text-right">输出价</TableHead>
-                      <TableHead className="w-[112px] text-right">累计 tokens</TableHead>
+                      <TableHead className="w-[116px] text-right">单位价</TableHead>
+                      <TableHead className="w-[148px] text-right">累计用量</TableHead>
                       <TableHead className="w-[92px] text-right">调用</TableHead>
                       <TableHead className="w-[88px]">状态</TableHead>
                       <TableHead className="w-[258px] text-right">操作</TableHead>
@@ -1247,9 +1331,18 @@ export default function AdminAiModelsPage() {
                               <span className="text-muted-foreground">未生成</span>
                             )}
                           </TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-xs">{billingModeLabel(p.billingMode)}</TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{priceLabel(p.promptTokenPriceMicros)}</TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{priceLabel(p.completionTokenPriceMicros)}</TableCell>
-                          <TableCell className="whitespace-nowrap py-3 text-right tabular-nums text-xs">{p.totalTokens.toLocaleString()}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{unitPriceLabel(p.unitPriceMicros, p.billingMode)}</TableCell>
+                          <TableCell className="py-3 text-right text-xs tabular-nums">
+                            <div>{p.totalTokens.toLocaleString()} Token</div>
+                            {(p.totalBillableUnits > 0 || p.totalBillableSeconds > 0) && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {meteredUsageLabel(p.totalBillableUnits, p.totalBillableSeconds)}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-right tabular-nums text-xs">{p.totalCalls.toLocaleString()}</TableCell>
                           <TableCell className="py-3">
                             {p.enabled ? (
@@ -1404,13 +1497,13 @@ export default function AdminAiModelsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-xs text-muted-foreground">
-                按每次调用响应里返回的 token 用量自行汇总（对所有端点通用，不依赖各家计费接口）。仅统计成功调用。
+                文本模型按 token 汇总；图片 / 视频按次或按秒记录计费用量。成本按端点配置的单价估算，仅统计成功调用。
               </p>
               {usageLoading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {usageErr && <div className="text-sm text-destructive">{usageErr}</div>}
               {!usageLoading && !usageErr && usage && (
                 <>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
                     <StatBox
                       label="调用次数"
                       value={usage.totalCalls.toLocaleString()}
@@ -1420,6 +1513,8 @@ export default function AdminAiModelsPage() {
                     <StatBox label="总 Token" value={usage.totalTokens.toLocaleString()} />
                     <StatBox label="输入 Token" value={usage.promptTokens.toLocaleString()} />
                     <StatBox label="输出 Token" value={usage.completionTokens.toLocaleString()} />
+                    <StatBox label="计费次数" value={usage.totalBillableUnits.toLocaleString()} />
+                    <StatBox label="计费时长" value={durationUsageLabel(usage.totalBillableSeconds)} />
                     <StatBox label="估算成本" value={microsCostLabel(usage.estimatedCostMicros)} />
                   </div>
                   {(usage.alerts ?? []).length > 0 && <AlertList alerts={usage.alerts ?? []} />}
@@ -1431,10 +1526,10 @@ export default function AdminAiModelsPage() {
                     <div className="space-y-6">
                       <UsageTrend data={usage.byDay} />
                       <div className="space-y-6">
-                        <UsageTable title="按端点" col="端点" rows={usage.byProvider} total={usage.totalTokens} />
-                        <UsageTable title="按模型" col="模型" rows={usage.byModel} total={usage.totalTokens} />
+                        <UsageTable title="按端点" col="端点" rows={usage.byProvider} totalCost={usage.estimatedCostMicros} />
+                        <UsageTable title="按模型" col="模型" rows={usage.byModel} totalCost={usage.estimatedCostMicros} />
                       </div>
-                      <UsageTable title="按用途" col="用途" rows={usage.byPurpose} total={usage.totalTokens} />
+                      <UsageTable title="按用途" col="用途" rows={usage.byPurpose} totalCost={usage.estimatedCostMicros} />
                       <FailureCategoryTable rows={usage.byFailureCategory ?? []} />
                     </div>
                   )}
@@ -1486,7 +1581,7 @@ export default function AdminAiModelsPage() {
                         <TableHead className="w-[150px]">模型</TableHead>
                         <TableHead className="w-[150px]">用途</TableHead>
                         <TableHead className="w-[120px]">来源</TableHead>
-                        <TableHead className="w-[92px] text-right">Token</TableHead>
+                        <TableHead className="w-[112px] text-right">用量</TableHead>
                         <TableHead className="w-[92px] text-right">成本</TableHead>
                         <TableHead className="w-[96px] text-right">延迟</TableHead>
                         <TableHead className="w-[120px]">状态</TableHead>
@@ -1510,7 +1605,14 @@ export default function AdminAiModelsPage() {
                             <div className="truncate font-mono text-[10px] text-muted-foreground">{record.purpose ?? "GENERAL"}</div>
                           </TableCell>
                           <TableCell className="py-3 text-xs">{record.appLabel}</TableCell>
-                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{record.totalTokens.toLocaleString()}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">
+                            <div>{record.totalTokens.toLocaleString()} Token</div>
+                            {(record.billableUnits > 0 || record.billableSeconds > 0) && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {meteredUsageLabel(record.billableUnits, record.billableSeconds)}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{microsCostLabel(record.estimatedCostMicros)}</TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{record.latencyMs != null ? `${record.latencyMs}ms` : "-"}</TableCell>
                           <TableCell className="py-3">
@@ -1734,19 +1836,27 @@ function FailureCategoryTable({ rows }: { rows: AiModelFailureStat[] }) {
   );
 }
 
-/** 按天用量趋势（总 Token / 天），用带点位标签的曲线图展示。 */
+function dailyTrendValue(day: AiModelUsageDaily): number {
+  if (day.estimatedCostMicros > 0) return day.estimatedCostMicros;
+  return day.totalTokens + day.billableUnits + day.billableSeconds;
+}
+
+/** 按天趋势：优先画成本；未配置成本时画 token+次数+秒数的综合用量。 */
 function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
   if (!data || data.length === 0) return null;
-  const max = Math.max(...data.map((d) => d.totalTokens), 1);
+  const values = data.map((d) => dailyTrendValue(d));
+  const max = Math.max(...values, 1);
+  const hasCost = data.some((d) => d.estimatedCostMicros > 0);
   const width = Math.max(560, data.length * 64);
   const height = 220;
   const pad = { left: 44, right: 24, top: 34, bottom: 38 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
   const points = data.map((d, index) => {
+    const value = dailyTrendValue(d);
     const x = pad.left + (data.length === 1 ? plotWidth / 2 : (index / (data.length - 1)) * plotWidth);
-    const y = pad.top + plotHeight - (d.totalTokens / max) * plotHeight;
-    return { x, y, d };
+    const y = pad.top + plotHeight - (value / max) * plotHeight;
+    return { x, y, d, value };
   });
   const labelEvery = data.length <= 8 ? 1 : Math.ceil(data.length / 7);
   return (
@@ -1754,7 +1864,7 @@ function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-medium">按天趋势</div>
         <div className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-          峰值 {max.toLocaleString()} Token / 天
+          峰值 {hasCost ? microsCostLabel(max) : max.toLocaleString()} / 天
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -1765,7 +1875,7 @@ function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
               <g key={step}>
                 <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} className="stroke-border" strokeDasharray={step === 0 ? undefined : "4 6"} />
                 <text x={pad.left - 10} y={y + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
-                  {Math.round(max * step).toLocaleString("zh-CN")}
+                  {hasCost ? microsCostLabel(Math.round(max * step)) : Math.round(max * step).toLocaleString("zh-CN")}
                 </text>
               </g>
             );
@@ -1779,7 +1889,7 @@ function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
                 {showLabel && (
                   <>
                     <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" className="fill-foreground text-[10px] font-medium tabular-nums">
-                      {p.d.totalTokens.toLocaleString("zh-CN")}
+                      {hasCost ? microsCostLabel(p.value) : p.value.toLocaleString("zh-CN")}
                     </text>
                     <text x={p.x} y={height - 12} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
                       {shortUsageDate(p.d.date)}
@@ -1824,12 +1934,12 @@ function UsageTable({
   title,
   col,
   rows,
-  total,
+  totalCost,
 }: {
   title: string;
   col: string;
   rows: AiModelUsageStat[];
-  total: number;
+  totalCost: number;
 }) {
   return (
     <div>
@@ -1843,12 +1953,14 @@ function UsageTable({
               <TableHead>{col}</TableHead>
               <TableHead className="text-right">调用</TableHead>
               <TableHead className="text-right">总 Token</TableHead>
-              <TableHead className="text-right">占比</TableHead>
+              <TableHead className="text-right">计费量</TableHead>
+              <TableHead className="text-right">成本</TableHead>
+              <TableHead className="text-right">成本占比</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((r) => {
-              const pct = total > 0 ? (r.totalTokens / total) * 100 : 0;
+              const pct = totalCost > 0 ? (r.estimatedCostMicros / totalCost) * 100 : 0;
               return (
                 <TableRow key={r.key}>
                   <TableCell className="max-w-[180px] truncate text-xs font-medium" title={r.label}>
@@ -1856,13 +1968,19 @@ function UsageTable({
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums text-xs">{r.calls.toLocaleString()}</TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums text-xs">{r.totalTokens.toLocaleString()}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-xs">
+                    {meteredUsageLabel(r.billableUnits, r.billableSeconds)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-xs">
+                    {microsCostLabel(r.estimatedCostMicros)}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <span className="h-1 w-12 overflow-hidden rounded-full bg-surface-muted">
                         <span className="block h-full rounded-full bg-primary/55" style={{ width: `${pct}%` }} />
                       </span>
                       <span className="w-10 whitespace-nowrap text-right tabular-nums text-xs text-muted-foreground">
-                        {total > 0 ? `${pct.toFixed(1)}%` : "0%"}
+                        {totalCost > 0 ? `${pct.toFixed(1)}%` : "0%"}
                       </span>
                     </div>
                   </TableCell>
@@ -1891,13 +2009,25 @@ function exportUsageCsv(usage: AiModelUsageReport) {
   lines.push(`总 Token,${usage.totalTokens}`);
   lines.push(`输入 Token,${usage.promptTokens}`);
   lines.push(`输出 Token,${usage.completionTokens}`);
+  lines.push(`计费次数,${usage.totalBillableUnits}`);
+  lines.push(`计费时长秒,${usage.totalBillableSeconds}`);
+  lines.push(`估算成本,${microsCostLabel(usage.estimatedCostMicros)}`);
   lines.push("");
 
   const section = (title: string, dim: string, rows: AiModelUsageStat[]) => {
     lines.push(`# ${title}`);
-    lines.push(`${dim},调用,总 Token,输入 Token,输出 Token`);
+    lines.push(`${dim},调用,总 Token,输入 Token,输出 Token,计费次数,计费时长秒,估算成本`);
     for (const r of rows) {
-      lines.push([r.label, r.calls, r.totalTokens, r.promptTokens, r.completionTokens].map(esc).join(","));
+      lines.push([
+        r.label,
+        r.calls,
+        r.totalTokens,
+        r.promptTokens,
+        r.completionTokens,
+        r.billableUnits,
+        r.billableSeconds,
+        microsCostLabel(r.estimatedCostMicros),
+      ].map(esc).join(","));
     }
     lines.push("");
   };
@@ -1928,9 +2058,18 @@ function exportUsageCsv(usage: AiModelUsageReport) {
   lines.push("");
 
   lines.push("# 按天趋势");
-  lines.push("日期,调用,总 Token,输入 Token,输出 Token");
+  lines.push("日期,调用,总 Token,输入 Token,输出 Token,计费次数,计费时长秒,估算成本");
   for (const d of usage.byDay) {
-    lines.push([d.date, d.calls, d.totalTokens, d.promptTokens, d.completionTokens].map(esc).join(","));
+    lines.push([
+      d.date,
+      d.calls,
+      d.totalTokens,
+      d.promptTokens,
+      d.completionTokens,
+      d.billableUnits,
+      d.billableSeconds,
+      microsCostLabel(d.estimatedCostMicros),
+    ].map(esc).join(","));
   }
 
   const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });

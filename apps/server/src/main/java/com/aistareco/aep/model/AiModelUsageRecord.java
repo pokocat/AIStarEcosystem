@@ -95,6 +95,23 @@ public class AiModelUsageRecord {
     @Column(name = "cost_micros")
     private Long costMicros;
 
+    /** 本次调用使用的成本估算口径快照。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_mode", length = 32)
+    private AiModelBillingMode billingMode;
+
+    /** 本次按次计费用量（图片张数 / 视频条数等）。 */
+    @Column(name = "billable_units")
+    private Long billableUnits;
+
+    /** 本次按秒计费用量（视频生成时长）。 */
+    @Column(name = "billable_seconds")
+    private Long billableSeconds;
+
+    /** 本次按次/按秒计费的单位价格快照，单位：人民币微元 / 次 或 / 秒。 */
+    @Column(name = "unit_price_micros")
+    private Long unitPriceMicros;
+
     /** 从失败明细点击重放时，指向原始 usage record id。 */
     @Column(name = "replay_of_record_id", length = 64)
     private String replayOfRecordId;

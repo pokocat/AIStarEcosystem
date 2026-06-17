@@ -13,5 +13,7 @@ public record AiModelUsageStatDto(
         long totalTokens,
         long promptTokens,
         long completionTokens,
+        long billableUnits,
+        long billableSeconds,
         long estimatedCostMicros
 ) {}

@@ -17,6 +17,9 @@ public record LlmUsageReportDto(
         long promptTokens,
         long completionTokens,
         long totalTokens,
+        String billingMode,
+        Long billableUnits,
+        Long billableSeconds,
         String requestBodyJson,
         String responseBodyJson,
         String replayOfRecordId

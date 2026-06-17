@@ -11,5 +11,8 @@ public record AiModelUsageDailyDto(
         long calls,
         long totalTokens,
         long promptTokens,
-        long completionTokens
+        long completionTokens,
+        long billableUnits,
+        long billableSeconds,
+        long estimatedCostMicros
 ) {}

@@ -1,9 +1,11 @@
 package com.aistareco.aep.service.materialvideo;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
+import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.AiModelUsageService;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 带货视频生成 —— 视频大模型的「提交 + 轮询」HTTP 客户端（单一可替换点）。
@@ -48,11 +51,15 @@ public class MaterialVideoModelClient {
 
     private final AiModelInvocationService invocation;
     private final MaterialVideoProperties props;
+    private final AiModelUsageService usage;
     private final HttpClient http;
 
-    public MaterialVideoModelClient(AiModelInvocationService invocation, MaterialVideoProperties props) {
+    public MaterialVideoModelClient(AiModelInvocationService invocation,
+                                    MaterialVideoProperties props,
+                                    AiModelUsageService usage) {
         this.invocation = invocation;
         this.props = props;
+        this.usage = usage;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
     }
 
@@ -68,7 +75,7 @@ public class MaterialVideoModelClient {
     }
 
     /** 提交一个生成任务，返回外部 task_id + 实际用到的端点 / model。 */
-    public SubmitResult submit(String prompt, int durationSec, String aspectRatio) {
+    public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId) {
         AiModelEndpoint p = requireEndpoint();
         String apiKey = requireKey(p);
         String model = (p.getModel() != null && !p.getModel().isBlank())
@@ -79,6 +86,7 @@ public class MaterialVideoModelClient {
 
         URI uri = URI.create(joinUrl(p.getBaseUrl(), submitPathFor(protocol)));
         long startNanos = System.nanoTime();
+        String requestId = "vid-" + UUID.randomUUID().toString().substring(0, 16);
         log.info("[material-video] submit start endpoint={} model={} protocol={} path={} durationSec={} aspectRatio={} promptLength={}",
                 p.getName(), model, protocol, uri.getPath(), durationSec, aspectRatio, prompt == null ? 0 : prompt.length());
         try {
@@ -92,6 +100,8 @@ public class MaterialVideoModelClient {
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
                 log.warn("[material-video] submit http-error endpoint={} model={} status={} durationMs={} body={}",
                         p.getName(), model, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
+                recordVideoUsage(p, model, durationSec, false, ownerUserId, requestId, null, elapsedMs(startNanos),
+                        "HTTP_" + resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                         "视频生成失败，请稍后重试",
                         "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
@@ -117,15 +127,60 @@ public class MaterialVideoModelClient {
             }
             log.info("[material-video] submit ok endpoint={} model={} protocol={} taskId={} videoId={} durationMs={}",
                     p.getName(), model, protocol, taskId, videoId, elapsedMs(startNanos));
+            recordVideoUsage(p, model, durationSec, true, ownerUserId, requestId,
+                    (taskId != null && !taskId.isBlank()) ? taskId : videoId,
+                    elapsedMs(startNanos), null, null);
             return new SubmitResult(taskId, videoId, p.getName(), model, protocol);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
             log.warn("[material-video] submit exception endpoint={} model={} durationMs={} err={}",
                     p.getName(), model, elapsedMs(startNanos), e.toString());
+            recordVideoUsage(p, model, durationSec, false, ownerUserId, requestId, null, elapsedMs(startNanos),
+                    e.getClass().getSimpleName(), e.getMessage());
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                     "视频生成失败，请稍后重试",
                     "endpoint=" + p.getName() + " err=" + e);
+        }
+    }
+
+    private void recordVideoUsage(AiModelEndpoint endpoint,
+                                  String model,
+                                  int durationSec,
+                                  boolean success,
+                                  String ownerUserId,
+                                  String requestId,
+                                  String upstreamId,
+                                  long latencyMs,
+                                  String errorCode,
+                                  String errorMessage) {
+        try {
+            long seconds = success ? Math.max(1, durationSec > 0 ? durationSec : props.getDefaultDurationSec()) : 0L;
+            usage.recordMeteredObservedWithAttribution(
+                    endpoint.getId(),
+                    endpoint.getName(),
+                    model,
+                    AiModelPurpose.VIDEO_GENERATION.name(),
+                    0L,
+                    0L,
+                    0L,
+                    AiModelBillingMode.PER_SECOND,
+                    success ? 1L : 0L,
+                    seconds,
+                    success,
+                    ownerUserId,
+                    null,
+                    null,
+                    requestId,
+                    upstreamId,
+                    latencyMs,
+                    errorCode,
+                    errorMessage,
+                    null,
+                    null,
+                    null);
+        } catch (Exception ignored) {
+            // 用量观测旁路，不影响视频任务主流程。
         }
     }
 

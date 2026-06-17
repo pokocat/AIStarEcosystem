@@ -327,7 +327,7 @@ export default function AiOverviewPage() {
                 <ManagementLinkRow
                   href="/platform/ai-models"
                   icon={KeyRound}
-                  label="LLM API 与 Token"
+                  label="LLM API 与用量"
                   detail="端点、上游密钥、外部 API Token、用途绑定"
                   metric={`${data.endpoints.length} 个端点`}
                 />

@@ -1,9 +1,11 @@
 package com.aistareco.aep.dap.service;
 
 import com.aistareco.aep.dap.config.DapProperties;
+import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.AiModelUsageService;
 import com.aistareco.common.AepCryptoUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +23,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 数字人资产平台多模态客户端 —— dap 领域唯一外部大模型出口。
@@ -49,11 +52,15 @@ public class DapMultimodalClient {
 
     private final DapProperties props;
     private final AiModelInvocationService aiModels;
+    private final AiModelUsageService usage;
     private final HttpClient http;
 
-    public DapMultimodalClient(DapProperties props, AiModelInvocationService aiModels) {
+    public DapMultimodalClient(DapProperties props,
+                               AiModelInvocationService aiModels,
+                               AiModelUsageService usage) {
         this.props = props;
         this.aiModels = aiModels;
+        this.usage = usage;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -63,7 +70,8 @@ public class DapMultimodalClient {
     // ── 接入点解析(admin 端点为唯一真源)─────────────────────────
 
     /** 一次调用的落地目标:baseUrl 不带尾斜杠;apiKey 明文(仅内存);source 用于日志。 */
-    record Target(String baseUrl, String apiKey, String model, String source) {}
+    record Target(String endpointId, String endpointName, String baseUrl, String apiKey,
+                  String model, String source, AiModelPurpose purpose) {}
 
     private Target resolveTarget(AiModelPurpose purpose) {
         AiModelEndpoint e = aiModels.resolveEndpoint(purpose).orElse(null);
@@ -81,7 +89,8 @@ public class DapMultimodalClient {
                         purpose.wire(), e.getName());
                 return null;
             }
-            return new Target(rstrip(e.getBaseUrl()), key, model, "endpoint:" + e.getName());
+            return new Target(e.getId(), e.getName(), rstrip(e.getBaseUrl()), key, model,
+                    "endpoint:" + e.getName(), purpose);
         } catch (Exception ex) {
             log.warn("[dap-ai] endpoint decrypt failed purpose={} endpoint={} err={} → unconfigured",
                     purpose.wire(), e.getName(), ex.getMessage());
@@ -158,6 +167,8 @@ public class DapMultimodalClient {
      */
     public byte[] generateImage(String prompt, String size, List<String> inputImages) {
         Target t = require(imageTarget(), "image");
+        String requestId = "dap-img-" + UUID.randomUUID().toString().substring(0, 12);
+        long startNanos = System.nanoTime();
         ObjectNode body = OM.createObjectNode();
         body.put("model", t.model());
         body.put("prompt", prompt);
@@ -169,17 +180,29 @@ public class DapMultimodalClient {
             inputImages.forEach(arr::add);
         }
 
-        JsonNode resp = postJson(t, "/v1/images/generations", body);
-        JsonNode data0 = resp.path("data").path(0);
-        String url = data0.path("url").asText(null);
-        if (url != null && !url.isBlank()) {
-            return download(url, 64 * 1024 * 1024);
+        try {
+            JsonNode resp = postJson(t, "/v1/images/generations", body);
+            JsonNode data0 = resp.path("data").path(0);
+            String upstreamId = resp.path("id").asText(null);
+            String url = data0.path("url").asText(null);
+            byte[] out;
+            if (url != null && !url.isBlank()) {
+                out = download(url, 64 * 1024 * 1024);
+            } else {
+                String b64 = data0.path("b64_json").asText(null);
+                if (b64 == null || b64.isBlank()) {
+                    throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "images 响应缺少 data[0].url / b64_json: " + truncate(resp.toString(), 300));
+                }
+                out = Base64.getDecoder().decode(b64);
+            }
+            recordMetered(t, AiModelBillingMode.PER_CALL, 1L, 0L, true,
+                    requestId, upstreamId, elapsedMs(startNanos), null, null);
+            return out;
+        } catch (DapModelException e) {
+            recordMetered(t, AiModelBillingMode.PER_CALL, 0L, 0L, false,
+                    requestId, null, elapsedMs(startNanos), e.getCode(), e.getMessage());
+            throw e;
         }
-        String b64 = data0.path("b64_json").asText(null);
-        if (b64 != null && !b64.isBlank()) {
-            return Base64.getDecoder().decode(b64);
-        }
-        throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "images 响应缺少 data[0].url / b64_json: " + truncate(resp.toString(), 300));
     }
 
     // ── 视频(异步)────────────────────────────────────────────
@@ -196,6 +219,8 @@ public class DapMultimodalClient {
     public String createVideoTask(String prompt, String inputImage, int width, int height,
                                   int numFrames, int frameRate) {
         Target t = require(videoTarget(), "video");
+        String requestId = "dap-vid-" + UUID.randomUUID().toString().substring(0, 12);
+        long startNanos = System.nanoTime();
         ObjectNode body = OM.createObjectNode();
         body.put("model", t.model());
         body.put("prompt", prompt);
@@ -206,18 +231,27 @@ public class DapMultimodalClient {
         if (inputImage != null && !inputImage.isBlank()) {
             body.put("image", inputImage);
         }
-        JsonNode resp = postJson(t, "/v1/videos", body);
-        String taskId = firstNonBlank(
-                resp.path("id").asText(null),
-                resp.path("task_id").asText(null),
-                resp.path("data").path("id").asText(null),
-                resp.path("data").path("task_id").asText(null));
-        if (taskId == null) {
-            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "videos 响应缺少任务 id: " + truncate(resp.toString(), 300));
+        try {
+            JsonNode resp = postJson(t, "/v1/videos", body);
+            String taskId = firstNonBlank(
+                    resp.path("id").asText(null),
+                    resp.path("task_id").asText(null),
+                    resp.path("data").path("id").asText(null),
+                    resp.path("data").path("task_id").asText(null));
+            if (taskId == null) {
+                throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "videos 响应缺少任务 id: " + truncate(resp.toString(), 300));
+            }
+            long seconds = secondsForFrames(normalizeFrames(numFrames), frameRate);
+            recordMetered(t, AiModelBillingMode.PER_SECOND, 1L, seconds, true,
+                    requestId, taskId, elapsedMs(startNanos), null, null);
+            log.info("[dap-ai] video-task created taskId={} model={} size={}x{} frames={} fps={}",
+                    taskId, t.model(), width, height, normalizeFrames(numFrames), frameRate);
+            return taskId;
+        } catch (DapModelException e) {
+            recordMetered(t, AiModelBillingMode.PER_SECOND, 0L, 0L, false,
+                    requestId, null, elapsedMs(startNanos), e.getCode(), e.getMessage());
+            throw e;
         }
-        log.info("[dap-ai] video-task created taskId={} model={} size={}x{} frames={} fps={}",
-                taskId, t.model(), width, height, normalizeFrames(numFrames), frameRate);
-        return taskId;
     }
 
     /** 查询视频任务(status 归一化为 queued|in_progress|completed|failed)。 */
@@ -330,6 +364,39 @@ public class DapMultimodalClient {
                 .header("Authorization", "Bearer " + t.apiKey())
                 .GET().build();
         return sendForJson(req, path, t.source(), null);
+    }
+
+    private void recordMetered(Target t,
+                               AiModelBillingMode mode,
+                               long units,
+                               long seconds,
+                               boolean success,
+                               String requestId,
+                               String upstreamId,
+                               long latencyMs,
+                               String errorCode,
+                               String errorMessage) {
+        try {
+            usage.recordMeteredObserved(
+                    t.endpointId(),
+                    t.endpointName(),
+                    t.model(),
+                    t.purpose().name(),
+                    0L,
+                    0L,
+                    0L,
+                    mode,
+                    success ? Math.max(0L, units) : 0L,
+                    success ? Math.max(0L, seconds) : 0L,
+                    success,
+                    requestId,
+                    upstreamId,
+                    latencyMs,
+                    errorCode,
+                    errorMessage);
+        } catch (Exception ignored) {
+            // usage 是观测旁路，不影响 DAP 生成主链路。
+        }
     }
 
     /** 发送 + 解析 JSON;IOException 自动重试 1 次;入参 / 返回 全量打日志(key 不打、dataURI 只打长度)。 */
@@ -448,6 +515,11 @@ public class DapMultimodalClient {
         int rem = (n - 1) % 8;
         if (rem != 0) n = n - rem;
         return n;
+    }
+
+    private static long secondsForFrames(int frames, int frameRate) {
+        int fps = Math.max(1, frameRate);
+        return Math.max(1L, (long) Math.ceil(Math.max(1, frames) / (double) fps));
     }
 
     private static String firstNonBlank(String... vals) {

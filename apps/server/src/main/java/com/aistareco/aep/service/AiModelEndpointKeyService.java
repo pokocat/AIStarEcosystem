@@ -5,6 +5,7 @@ import com.aistareco.aep.dto.AiModelEndpointKeyMintedDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.LlmKeyValidationDto;
 import com.aistareco.aep.dto.LlmUsageReportDto;
+import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.BusinessException;
@@ -120,32 +121,54 @@ public class AiModelEndpointKeyService {
         long tokens = report.totalTokens() > 0
                 ? report.totalTokens()
                 : (report.promptTokens() + report.completionTokens());
-        e.setTotalTokens(e.getTotalTokens() + (successful ? tokens : 0));
-        e.setTotalCalls(e.getTotalCalls() + 1);
-        e.setLastUsedAt(Instant.now());
-        repo.save(e);
-
-        usageService.recordObservedWithAttribution(
-                e.getId(),
-                e.getName(),
-                report.model(),
-                report.purpose(),
-                report.promptTokens(),
-                report.completionTokens(),
-                tokens,
-                successful,
-                firstNonBlank(report.userId(), e.getOwnerUserId()),
-                report.tenantId(),
-                firstNonBlank(report.appCode(), "external-api"),
-                report.requestId(),
-                report.upstreamId(),
-                report.latencyMs(),
-                report.errorCode(),
-                report.errorMessage(),
-                report.requestBodyJson(),
-                report.responseBodyJson(),
-                report.replayOfRecordId()
-        );
+        if (report.billingMode() != null || report.billableUnits() != null || report.billableSeconds() != null) {
+            usageService.recordMeteredObservedWithAttribution(
+                    e.getId(),
+                    e.getName(),
+                    report.model(),
+                    report.purpose(),
+                    report.promptTokens(),
+                    report.completionTokens(),
+                    tokens,
+                    AiModelBillingMode.fromWire(report.billingMode()),
+                    report.billableUnits(),
+                    report.billableSeconds(),
+                    successful,
+                    firstNonBlank(report.userId(), e.getOwnerUserId()),
+                    report.tenantId(),
+                    firstNonBlank(report.appCode(), "external-api"),
+                    report.requestId(),
+                    report.upstreamId(),
+                    report.latencyMs(),
+                    report.errorCode(),
+                    report.errorMessage(),
+                    report.requestBodyJson(),
+                    report.responseBodyJson(),
+                    report.replayOfRecordId()
+            );
+        } else {
+            usageService.recordObservedWithAttribution(
+                    e.getId(),
+                    e.getName(),
+                    report.model(),
+                    report.purpose(),
+                    report.promptTokens(),
+                    report.completionTokens(),
+                    tokens,
+                    successful,
+                    firstNonBlank(report.userId(), e.getOwnerUserId()),
+                    report.tenantId(),
+                    firstNonBlank(report.appCode(), "external-api"),
+                    report.requestId(),
+                    report.upstreamId(),
+                    report.latencyMs(),
+                    report.errorCode(),
+                    report.errorMessage(),
+                    report.requestBodyJson(),
+                    report.responseBodyJson(),
+                    report.replayOfRecordId()
+            );
+        }
 
         // 平台级端点（ownerUserId 空）只累计、不扣钱包
         if (!successful || e.getOwnerUserId() == null || e.getOwnerUserId().isBlank()) {

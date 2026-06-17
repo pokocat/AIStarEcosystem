@@ -106,6 +106,11 @@ public class AiModelEndpoint {
     @Column(name = "owner_user_id")
     private String ownerUserId;
 
+    /** 成本估算口径；null = 自动按用途推断（文本 token / 图片按次 / 视频按秒）。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_mode", length = 32)
+    private AiModelBillingMode billingMode;
+
     /** 输入 token 单价，单位：人民币微元 / 1K Token。0 = 未配置成本价。 */
     @ColumnDefault("0")
     @Builder.Default
@@ -118,10 +123,28 @@ public class AiModelEndpoint {
     @Column(name = "completion_token_price_micros")
     private long completionTokenPriceMicros = 0L;
 
+    /** 按次/按秒计费的单位价格，单位：人民币微元 / 次 或 / 秒。 */
+    @ColumnDefault("0")
+    @Builder.Default
+    @Column(name = "unit_price_micros")
+    private long unitPriceMicros = 0L;
+
     /** 外部 API Token 累计 token 消耗。 */
     @ColumnDefault("0")
     @Builder.Default
     private long totalTokens = 0L;
+
+    /** 累计按次用量（图片张数 / 视频条数等），仅成功调用累计。 */
+    @ColumnDefault("0")
+    @Builder.Default
+    @Column(name = "total_billable_units")
+    private long totalBillableUnits = 0L;
+
+    /** 累计按秒用量（视频生成时长），仅成功调用累计。 */
+    @ColumnDefault("0")
+    @Builder.Default
+    @Column(name = "total_billable_seconds")
+    private long totalBillableSeconds = 0L;
 
     @ColumnDefault("0")
     @Builder.Default

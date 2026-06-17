@@ -7,6 +7,7 @@ import com.aistareco.aep.dto.AiModelEndpointDto;
 import com.aistareco.aep.dto.AiModelEndpointKeyMintedDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
 import com.aistareco.aep.dto.AiModelProviderPresetDto;
+import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.repository.AiAppBindingRepository;
@@ -126,8 +127,10 @@ public class AiModelEndpointAdminService {
                         : null)
                 .modelsJson(serializeModels(req.models()))
                 .ownerUserId(blankToNull(req.ownerUserId()))
+                .billingMode(AiModelBillingMode.fromWire(req.billingMode()))
                 .promptTokenPriceMicros(nonNegative(req.promptTokenPriceMicros()))
                 .completionTokenPriceMicros(nonNegative(req.completionTokenPriceMicros()))
+                .unitPriceMicros(nonNegative(req.unitPriceMicros()))
                 .enabled(req.enabled() != null ? req.enabled() : true)
                 .build();
         return AiModelEndpointDto.from(repo.save(entity));
@@ -157,11 +160,15 @@ public class AiModelEndpointAdminService {
         if (req.models() != null) entity.setModelsJson(serializeModels(req.models()));
         // ownerUserId：null = 不改；"" = 清空为平台级；非空 = 设置
         if (req.ownerUserId() != null) entity.setOwnerUserId(blankToNull(req.ownerUserId()));
+        if (req.billingMode() != null) entity.setBillingMode(AiModelBillingMode.fromWire(req.billingMode()));
         if (req.promptTokenPriceMicros() != null) {
             entity.setPromptTokenPriceMicros(nonNegative(req.promptTokenPriceMicros()));
         }
         if (req.completionTokenPriceMicros() != null) {
             entity.setCompletionTokenPriceMicros(nonNegative(req.completionTokenPriceMicros()));
+        }
+        if (req.unitPriceMicros() != null) {
+            entity.setUnitPriceMicros(nonNegative(req.unitPriceMicros()));
         }
         if (req.enabled() != null) entity.setEnabled(req.enabled());
         return AiModelEndpointDto.from(repo.save(entity));

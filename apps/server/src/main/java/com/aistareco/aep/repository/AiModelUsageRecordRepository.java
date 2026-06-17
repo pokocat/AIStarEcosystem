@@ -13,7 +13,8 @@ import java.util.List;
 @Repository
 public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsageRecord, String> {
 
-    // 聚合查询返回 Object[]：[0]=分组键, [1]=分组名, [2]=调用次数, [3]=total, [4]=prompt, [5]=completion, [6]=costMicros。
+    // 聚合查询返回 Object[]：[0]=分组键, [1]=分组名, [2]=调用次数, [3]=total,
+    // [4]=prompt, [5]=completion, [6]=billableUnits, [7]=billableSeconds, [8]=costMicros。
     // 用 Object[] 而非构造器表达式，避开 Long → long 在 JPQL new 表达式里的拆箱兼容坑。
     // token 维度只统计成功调用（success=true）；失败调用单独由 countFailed 计数。
 
@@ -23,6 +24,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
                    COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.billableUnits), 0),
+                   COALESCE(SUM(r.billableSeconds), 0),
                    COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
@@ -36,6 +39,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
                    COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.billableUnits), 0),
+                   COALESCE(SUM(r.billableSeconds), 0),
                    COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
@@ -49,6 +54,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
                    COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.billableUnits), 0),
+                   COALESCE(SUM(r.billableSeconds), 0),
                    COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true AND r.providerId = :providerId
@@ -67,6 +74,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
                    COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.billableUnits), 0),
+                   COALESCE(SUM(r.billableSeconds), 0),
                    COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
@@ -82,6 +91,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
                    COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.billableUnits), 0),
+                   COALESCE(SUM(r.billableSeconds), 0),
                    COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
@@ -97,6 +108,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
                    COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.billableUnits), 0),
+                   COALESCE(SUM(r.billableSeconds), 0),
                    COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
@@ -115,6 +128,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
                    COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.billableUnits), 0),
+                   COALESCE(SUM(r.billableSeconds), 0),
                    COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
@@ -126,10 +141,12 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
 
     /**
      * 时间窗内成功调用的明细行（按天分桶用，分桶在 service 侧做，避开各 DB 的日期函数方言差异）。
-     * 返回 [0]=createdAt, [1]=total, [2]=prompt, [3]=completion。
+     * 返回 [0]=createdAt, [1]=total, [2]=prompt, [3]=completion, [4]=billableUnits,
+     * [5]=billableSeconds, [6]=costMicros。
      */
     @Query("""
-            SELECT r.createdAt, r.totalTokens, r.promptTokens, r.completionTokens
+            SELECT r.createdAt, r.totalTokens, r.promptTokens, r.completionTokens,
+                   r.billableUnits, r.billableSeconds, r.costMicros
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
               AND (:providerId IS NULL OR r.providerId = :providerId)

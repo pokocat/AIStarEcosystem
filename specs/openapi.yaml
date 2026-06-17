@@ -118,6 +118,10 @@ components:
         - promptTokens
         - completionTokens
         - totalTokens
+        - billingMode
+        - billableUnits
+        - billableSeconds
+        - unitPriceMicros
         - success
         - estimatedCostMicros
       properties:
@@ -137,11 +141,18 @@ components:
         promptTokens:        { type: integer, format: int64 }
         completionTokens:    { type: integer, format: int64 }
         totalTokens:         { type: integer, format: int64 }
+        billingMode:
+          type: string
+          enum: [TOKENS, PER_CALL, PER_SECOND]
+          description: 本次调用采用的成本估算口径；文本 token / 图片按次 / 视频按秒。
+        billableUnits:       { type: integer, format: int64, description: 按次计费用量，图片通常为张数，视频可为条数。 }
+        billableSeconds:     { type: integer, format: int64, description: 按秒计费用量，视频生成时长。 }
+        unitPriceMicros:     { type: integer, format: int64, description: 按次/按秒单价快照，人民币微元。 }
         success:             { type: boolean }
         estimatedCostMicros:
           type: integer
           format: int64
-          description: 按当前端点计价估算的人民币微元，非历史价格快照。
+          description: 按本次记录的 token/按次/按秒价格快照估算的人民币微元。
         requestId:           { type: string, nullable: true, description: 平台生成或上游透传的请求追踪号。 }
         upstreamId:          { type: string, nullable: true, description: 上游模型服务商返回的调用 id。 }
         latencyMs:           { type: integer, format: int64, nullable: true, description: 上游调用总耗时，毫秒。 }
@@ -6053,7 +6064,7 @@ paths:
       tags: [admin-ai-models]
       operationId: adminAiModelUsage
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
-      responses: { '200': { description: 全局大模型用量报表（自建 token 流水聚合；按服务商 / 模型 / 用途 / 用户 / 租户 / 来源应用 / 日期维度） } }
+      responses: { '200': { description: 全局大模型用量报表（自建调用流水聚合；文本 token，图片按次，视频按秒；按服务商 / 模型 / 用途 / 用户 / 租户 / 来源应用 / 日期维度） } }
   /admin/ai-models/usage-records:
     get:
       tags: [admin-ai-models]

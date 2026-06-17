@@ -269,6 +269,9 @@ public class EmbeddedLlmProxyService {
                     promptTokens,
                     completionTokens,
                     totalTokens,
+                    null,
+                    null,
+                    null,
                     requestBodyJson,
                     responseBodyJson,
                     replayOfRecordId
