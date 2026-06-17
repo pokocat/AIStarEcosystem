@@ -26,6 +26,8 @@ public record AiModelUsageRecordDto(
         String upstreamId,
         Long latencyMs,
         String errorCode,
+        String errorCategory,
+        String errorCategoryLabel,
         String errorMessage,
         String requestBodyJson,
         String responseBodyJson,

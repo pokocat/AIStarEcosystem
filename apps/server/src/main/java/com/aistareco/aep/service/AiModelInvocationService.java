@@ -54,16 +54,19 @@ public class AiModelInvocationService {
     private final AiModelEndpointRepository endpointRepo;
     private final AiAppBindingRepository bindingRepo;
     private final AiModelUsageService usage;
+    private final AiModelGuardService guard;
 
     @Value("${aep.llm.chat-timeout-seconds:90}")
     private long chatTimeoutSeconds = 90;
 
     public AiModelInvocationService(AiModelEndpointRepository endpointRepo,
                                     AiAppBindingRepository bindingRepo,
-                                    AiModelUsageService usage) {
+                                    AiModelUsageService usage,
+                                    AiModelGuardService guard) {
         this.endpointRepo = endpointRepo;
         this.bindingRepo = bindingRepo;
         this.usage = usage;
+        this.guard = guard;
     }
 
     /** purpose → 绑定端点（启用）。无绑定 / 端点停用 / 端点不存在 → empty。 */
@@ -238,6 +241,15 @@ public class AiModelInvocationService {
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
         String requestJson = OM.writeValueAsString(body);
+        try {
+            guard.checkBeforeCall(e, guard.estimateChatTokens(messages, body));
+        } catch (BusinessException ex) {
+            usage.recordObserved(e.getId(), e.getName(), model,
+                    purpose != null ? purpose.wire() : null, null, null, null, false,
+                    requestId, null, elapsedMs(startNanos), ex.getCode(), ex.getMessage(),
+                    requestJson, null, replayOfRecordId);
+            throw ex;
+        }
         log.info("[ai-chat] invoke start requestId={} purpose={} endpointId={} endpoint={} providerType={} model={} messages={} maxTokens={} jsonMode={}",
                 requestId,
                 purpose == null ? null : purpose.wire(),

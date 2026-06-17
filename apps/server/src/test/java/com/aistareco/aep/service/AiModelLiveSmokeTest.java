@@ -78,7 +78,8 @@ class AiModelLiveSmokeTest {
         options.put("max_tokens", 256);
 
         AiModelInvocationService.AiModelResponse resp =
-                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class))
+                new AiModelInvocationService(endpointRepo, bindingRepo,
+                        mock(AiModelUsageService.class), mock(AiModelGuardService.class))
                         .invokeChat(AiModelPurpose.GENERAL, messages, options);
 
         assertNotNull(resp, "response 不应为 null");
@@ -116,7 +117,8 @@ class AiModelLiveSmokeTest {
         when(endpointRepo.findById("live-conn"))
                 .thenReturn(Optional.of(liveEndpoint("live-conn", baseUrl, apiKey, model, type)));
 
-        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class))
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class))
                 .testConnection("live-conn");
         Path file = record("connection", baseUrl, model, result);
         System.out.println("[AiModelLiveSmokeTest] testConnection result=" + result

@@ -48,6 +48,8 @@ import type {
   AiModelUsageStat,
   AiModelUsageDaily,
   AiModelUsageRecord,
+  AiModelAlert,
+  AiModelFailureStat,
   AdminAiModelEndpointUpsert,
 } from "@/api/ai-models";
 
@@ -96,6 +98,9 @@ interface FormDefaults {
   defaultTopP?: string;
   rpmLimit?: string;
   tpmLimit?: string;
+  dailyTokenQuota?: string;
+  dailyCostQuotaYuan?: string;
+  alertFailureRatePct?: string;
   promptPriceYuan?: string;
   completionPriceYuan?: string;
   apiKeyHint?: string;
@@ -117,6 +122,9 @@ interface FormState {
   defaultTopP: string;
   rpmLimit: string;
   tpmLimit: string;
+  dailyTokenQuota: string;
+  dailyCostQuotaYuan: string;
+  alertFailureRatePct: string;
   models: AiModelEntry[];
   ownerUserId: string;
   clearOwnerUserId: boolean;
@@ -140,6 +148,9 @@ const EMPTY_FORM: FormState = {
   defaultTopP: "",
   rpmLimit: "",
   tpmLimit: "",
+  dailyTokenQuota: "",
+  dailyCostQuotaYuan: "",
+  alertFailureRatePct: "",
   models: [],
   ownerUserId: "",
   clearOwnerUserId: false,
@@ -212,7 +223,7 @@ const BINDING_GROUPS: Array<{
 // 故这里用集合判定「是否已声明」，而非 purpose→单一分组 的映射。
 const DECLARED_PURPOSES = new Set<AiModelPurpose>(BINDING_GROUPS.flatMap((group) => group.purposes));
 
-function valueOrDefault(form: FormState, key: keyof Pick<FormState, "name" | "baseUrl" | "apiVersion" | "model" | "modelAlias" | "ownerUserId" | "defaultTemperature" | "defaultMaxTokens" | "defaultTopP" | "rpmLimit" | "tpmLimit">): string {
+function valueOrDefault(form: FormState, key: keyof Pick<FormState, "name" | "baseUrl" | "apiVersion" | "model" | "modelAlias" | "ownerUserId" | "defaultTemperature" | "defaultMaxTokens" | "defaultTopP" | "rpmLimit" | "tpmLimit" | "dailyTokenQuota" | "dailyCostQuotaYuan" | "alertFailureRatePct">): string {
   const value = form[key].trim();
   if (value) return value;
   const fallback = form.defaults?.[key]?.trim();
@@ -256,6 +267,14 @@ function parseOptionalInt(value: string, min: number): number | null | undefined
   return n;
 }
 
+function parseOptionalLong(value: string, min: number): number | null | undefined {
+  const raw = value.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isSafeInteger(n) || n < min) return undefined;
+  return n;
+}
+
 function priceLabel(value: number | null | undefined): string {
   const text = microsToYuanText(value);
   return text ? `¥${text} / 1K` : "¥0 / 1K";
@@ -289,6 +308,9 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
+    dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
+    dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
+    alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
     models: p.models ?? [],
     ownerUserId: p.ownerUserId ?? "",
     promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
@@ -306,6 +328,9 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
       defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
       rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
       tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
+      dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
+      dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
+      alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
       promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
       completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
       sourceName: p.name,
@@ -329,6 +354,9 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
     defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
+    dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
+    dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
+    alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
     ownerUserId: p.ownerUserId ?? "",
     promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
     completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
@@ -345,6 +373,9 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
       defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
       rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
       tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
+      dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
+      dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
+      alertFailureRatePct: p.alertFailureRatePct != null ? String(p.alertFailureRatePct) : "",
       promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
       completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
       sourceName: p.name,
@@ -530,6 +561,9 @@ export default function AdminAiModelsPage() {
     const defaultTopP = parseOptionalNumber(editing.defaultTopP, 0, 1);
     const rpmLimit = parseOptionalInt(editing.rpmLimit, 1);
     const tpmLimit = parseOptionalInt(editing.tpmLimit, 1);
+    const dailyTokenQuota = parseOptionalLong(editing.dailyTokenQuota, 1);
+    const dailyCostQuotaMicros = parsePriceMicros(editing.dailyCostQuotaYuan);
+    const alertFailureRatePct = parseOptionalInt(editing.alertFailureRatePct, 1);
 
     if (!name || !baseUrl) {
       toast.warning({ title: "端点名称 / 调用地址 必填" });
@@ -539,8 +573,8 @@ export default function AdminAiModelsPage() {
       toast.warning({ title: "新建时上游 API 密钥 必填" });
       return;
     }
-    if (promptTokenPriceMicros == null || completionTokenPriceMicros == null) {
-      toast.warning({ title: "计价必须是大于等于 0 的数字" });
+    if (promptTokenPriceMicros == null || completionTokenPriceMicros == null || dailyCostQuotaMicros == null) {
+      toast.warning({ title: "计价和成本配额必须是大于等于 0 的数字" });
       return;
     }
     if (
@@ -548,9 +582,12 @@ export default function AdminAiModelsPage() {
       defaultMaxTokens === undefined ||
       defaultTopP === undefined ||
       rpmLimit === undefined ||
-      tpmLimit === undefined
+      tpmLimit === undefined ||
+      dailyTokenQuota === undefined ||
+      alertFailureRatePct === undefined ||
+      (alertFailureRatePct != null && alertFailureRatePct > 100)
     ) {
-      toast.warning({ title: "默认参数或限额格式不正确" });
+      toast.warning({ title: "默认参数、限速、配额或告警阈值格式不正确" });
       return;
     }
     try {
@@ -567,6 +604,9 @@ export default function AdminAiModelsPage() {
         defaultTopP,
         rpmLimit,
         tpmLimit,
+        dailyTokenQuota,
+        dailyCostQuotaMicros: dailyCostQuotaMicros > 0 ? dailyCostQuotaMicros : null,
+        alertFailureRatePct,
         models: editing.models,
         promptTokenPriceMicros,
         completionTokenPriceMicros,
@@ -955,9 +995,9 @@ export default function AdminAiModelsPage() {
 
                 <section className="rounded-md border border-border bg-surface px-3.5 py-3">
                   <div className="mb-3">
-                    <div className="text-sm font-medium">默认参数与计价</div>
+                    <div className="text-sm font-medium">默认参数、限速与计价</div>
                     <div className="text-xs text-muted-foreground">
-                      默认参数在业务 Prompt 未指定时生效。计价单位为元 / 1K Token，用于成本监控；不改变钱包扣费逻辑。
+                      默认参数在业务 Prompt 未指定时生效。RPM/TPM 会在调用前实时拦截；每日配额用于控制成本风险。
                     </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -996,7 +1036,7 @@ export default function AdminAiModelsPage() {
                         placeholder={editing.defaults?.defaultTopP || "留空"}
                       />
                     </Field>
-                    <Field label="软限额 RPM / TPM" hint="仅用于管理台巡检展示，本轮不做强制限速">
+                    <Field label="实时限速 RPM / TPM" hint="为空不限制；超过后会直接返回稍后重试">
                       <div className="grid grid-cols-2 gap-2">
                         <Input
                           type="number"
@@ -1017,6 +1057,40 @@ export default function AdminAiModelsPage() {
                           placeholder={editing.defaults?.tpmLimit || "TPM"}
                         />
                       </div>
+                    </Field>
+                    <Field label="每日 Token 配额" hint="按北京时间自然日统计，留空不限制">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        step="1"
+                        value={editing.dailyTokenQuota}
+                        onChange={(e) => setEditing({ ...editing, dailyTokenQuota: e.target.value })}
+                        placeholder={editing.defaults?.dailyTokenQuota || "留空"}
+                      />
+                    </Field>
+                    <Field label="每日成本配额" hint="单位：元；按北京时间自然日统计，留空不限制">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.000001"
+                        value={editing.dailyCostQuotaYuan}
+                        onChange={(e) => setEditing({ ...editing, dailyCostQuotaYuan: e.target.value })}
+                        placeholder={editing.defaults?.dailyCostQuotaYuan || "留空"}
+                      />
+                    </Field>
+                    <Field label="失败率告警阈值" hint="1-100，百分比；为空使用系统默认阈值">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={editing.alertFailureRatePct}
+                        onChange={(e) => setEditing({ ...editing, alertFailureRatePct: e.target.value })}
+                        placeholder={editing.defaults?.alertFailureRatePct || "默认"}
+                      />
                     </Field>
                     <Field label="输入 Token 单价" hint="例如 0.0015 表示每 1K 输入 Token 0.0015 元">
                       <Input
@@ -1336,7 +1410,7 @@ export default function AdminAiModelsPage() {
               {usageErr && <div className="text-sm text-destructive">{usageErr}</div>}
               {!usageLoading && !usageErr && usage && (
                 <>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                     <StatBox
                       label="调用次数"
                       value={usage.totalCalls.toLocaleString()}
@@ -1348,7 +1422,8 @@ export default function AdminAiModelsPage() {
                     <StatBox label="输出 Token" value={usage.completionTokens.toLocaleString()} />
                     <StatBox label="估算成本" value={microsCostLabel(usage.estimatedCostMicros)} />
                   </div>
-                  {usage.totalCalls === 0 ? (
+                  {(usage.alerts ?? []).length > 0 && <AlertList alerts={usage.alerts ?? []} />}
+                  {usage.totalCalls === 0 && usage.failedCalls === 0 ? (
                     <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
                       该时间窗内暂无调用记录。发起脚本起草 / 卖点提取 / 变量抽取等会调用大模型的操作后，这里会出现用量。
                     </div>
@@ -1360,6 +1435,7 @@ export default function AdminAiModelsPage() {
                         <UsageTable title="按模型" col="模型" rows={usage.byModel} total={usage.totalTokens} />
                       </div>
                       <UsageTable title="按用途" col="用途" rows={usage.byPurpose} total={usage.totalTokens} />
+                      <FailureCategoryTable rows={usage.byFailureCategory ?? []} />
                     </div>
                   )}
                 </>
@@ -1414,7 +1490,7 @@ export default function AdminAiModelsPage() {
                         <TableHead className="w-[92px] text-right">成本</TableHead>
                         <TableHead className="w-[96px] text-right">延迟</TableHead>
                         <TableHead className="w-[120px]">状态</TableHead>
-                        <TableHead className="w-[190px]">错误 / 质量</TableHead>
+                        <TableHead className="w-[190px]">失败原因 / 质量</TableHead>
                         <TableHead className="w-[120px] text-right">操作</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1444,8 +1520,11 @@ export default function AdminAiModelsPage() {
                           </TableCell>
                           <TableCell className="py-3">
                             <div className="truncate text-xs" title={record.errorMessage ?? record.qualityNote ?? undefined}>
-                              {record.errorCode ?? record.qualityLabel ?? "未标注"}
+                              {record.errorCategoryLabel ?? record.errorCode ?? record.qualityLabel ?? "未标注"}
                             </div>
+                            {record.errorCategoryLabel && record.errorCode && (
+                              <div className="truncate font-mono text-[10px] text-muted-foreground">{record.errorCode}</div>
+                            )}
                             {record.qualityScore != null && (
                               <div className="text-[10px] text-muted-foreground">质量 {record.qualityScore}/100</div>
                             )}
@@ -1582,6 +1661,74 @@ function StatBox({
         >
           {sub}
         </div>
+      )}
+    </div>
+  );
+}
+
+function AlertList({ alerts }: { alerts: AiModelAlert[] }) {
+  if (alerts.length === 0) return null;
+  return (
+    <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+      {alerts.map((alert) => (
+        <div
+          key={alert.id}
+          className={cn(
+            "rounded-md border px-3.5 py-3",
+            alert.severity === "critical"
+              ? "border-destructive/35 bg-destructive/8"
+              : "border-warning/35 bg-warning/8",
+          )}
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle
+              className={cn(
+                "mt-0.5 h-4 w-4 shrink-0",
+                alert.severity === "critical" ? "text-destructive" : "text-warning",
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-sm font-medium">{alert.title}</div>
+                <Badge tone={alert.severity === "critical" ? "danger" : "warning"} className="font-normal">
+                  {alert.severity === "critical" ? "严重" : "提醒"}
+                </Badge>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">{alert.message}</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FailureCategoryTable({ rows }: { rows: AiModelFailureStat[] }) {
+  return (
+    <div>
+      <div className="mb-2 text-sm font-medium">按失败原因</div>
+      {rows.length === 0 ? (
+        <div className="text-xs text-muted-foreground">暂无失败调用</div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>原因</TableHead>
+              <TableHead className="text-right">失败次数</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.category}>
+                <TableCell>
+                  <div className="text-sm">{row.label}</div>
+                  <div className="font-mono text-[10px] text-muted-foreground">{row.category}</div>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{row.calls.toLocaleString()}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </div>
   );
@@ -1757,6 +1904,28 @@ function exportUsageCsv(usage: AiModelUsageReport) {
   section("按端点", "端点", usage.byProvider);
   section("按模型", "模型", usage.byModel);
   section("按用途", "用途", usage.byPurpose);
+
+  lines.push("# 告警");
+  lines.push("等级,类型,端点,标题,说明,当前值,阈值");
+  for (const alert of usage.alerts ?? []) {
+    lines.push([
+      alert.severity === "critical" ? "严重" : "提醒",
+      alert.type,
+      alert.providerName,
+      alert.title,
+      alert.message,
+      alert.metricValue,
+      alert.threshold,
+    ].map(esc).join(","));
+  }
+  lines.push("");
+
+  lines.push("# 按失败原因");
+  lines.push("原因,枚举,失败次数");
+  for (const row of usage.byFailureCategory ?? []) {
+    lines.push([row.label, row.category, row.calls].map(esc).join(","));
+  }
+  lines.push("");
 
   lines.push("# 按天趋势");
   lines.push("日期,调用,总 Token,输入 Token,输出 Token");

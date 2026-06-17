@@ -4,6 +4,7 @@ import com.aistareco.aep.dto.AiModelUsageRecordDto;
 import com.aistareco.aep.dto.AiModelUsageReportDto;
 import com.aistareco.aep.dto.AiModelUsageStatDto;
 import com.aistareco.aep.model.AiModelEndpoint;
+import com.aistareco.aep.model.AiModelFailureCategory;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelUsageRecord;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
@@ -232,6 +233,91 @@ class AiModelUsageServiceTest {
         assertEquals("aic-test-001", dto.requestId());
         assertEquals("chatcmpl-test", dto.upstreamId());
         assertEquals(1280L, dto.latencyMs());
+    }
+
+    @Test
+    void recordObservedClassifiesFailureCategory() {
+        assertEquals(AiModelFailureCategory.RATE_LIMIT,
+                AiModelFailureCategory.classify("HTTP_429", "rate_limit_exceeded"));
+
+        repo.saveAndFlush(AiModelUsageRecord.builder()
+                .id("aiu-rate-limit")
+                .providerId("p-fail")
+                .providerName("限速端点")
+                .model("gpt-test")
+                .purpose("SCRIPT_DRAFT")
+                .requestId("aic-rate-limit")
+                .latencyMs(12L)
+                .errorCode("HTTP_429")
+                .errorCategory(AiModelFailureCategory.RATE_LIMIT)
+                .success(false)
+                .createdAt(Instant.now())
+                .build());
+
+        AiModelUsageRecordDto dto = service.records(30, null, null, null, null, "p-fail", false, null, 20)
+                .stream()
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(AiModelFailureCategory.RATE_LIMIT.name(), dto.errorCategory());
+        assertEquals(AiModelFailureCategory.RATE_LIMIT.label(), dto.errorCategoryLabel());
+        assertEquals(1, service.report(30).byFailureCategory().stream()
+                .filter(row -> AiModelFailureCategory.RATE_LIMIT.name().equals(row.category()))
+                .mapToLong(row -> row.calls())
+                .sum());
+    }
+
+    @Test
+    void reportBuildsQuotaAndFailureRateAlerts() {
+        Instant now = Instant.now();
+        endpointRepo.saveAndFlush(AiModelEndpoint.builder()
+                .id("p-alert")
+                .name("告警端点")
+                .providerType(AiModelProviderType.OPENAI_COMPATIBLE)
+                .baseUrl("https://llm.example.test/v1")
+                .upstreamApiKeyEncrypted("encrypted")
+                .model("alert-model")
+                .dailyTokenQuota(100L)
+                .dailyCostQuotaMicros(1000L)
+                .alertFailureRatePct(20)
+                .enabled(true)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+        for (int i = 0; i < 3; i++) {
+            repo.saveAndFlush(AiModelUsageRecord.builder()
+                    .id("aiu-alert-ok-" + i)
+                    .providerId("p-alert")
+                    .providerName("告警端点")
+                    .model("alert-model")
+                    .purpose("SCRIPT_DRAFT")
+                    .promptTokens(20L)
+                    .completionTokens(10L)
+                    .totalTokens(30L)
+                    .costMicros(300L)
+                    .success(true)
+                    .createdAt(now)
+                    .build());
+        }
+        for (int i = 0; i < 2; i++) {
+            repo.saveAndFlush(AiModelUsageRecord.builder()
+                    .id("aiu-alert-fail-" + i)
+                    .providerId("p-alert")
+                    .providerName("告警端点")
+                    .model("alert-model")
+                    .purpose("SCRIPT_DRAFT")
+                    .errorCode("HTTP_503")
+                    .errorCategory(AiModelFailureCategory.PROVIDER_UNAVAILABLE)
+                    .success(false)
+                    .createdAt(now)
+                    .build());
+        }
+
+        AiModelUsageReportDto report = service.reportForProvider("p-alert", 30);
+
+        assertTrue(report.alerts().stream().anyMatch(alert -> "daily_token_quota".equals(alert.type())));
+        assertTrue(report.alerts().stream().anyMatch(alert -> "daily_cost_quota".equals(alert.type())));
+        assertTrue(report.alerts().stream().anyMatch(alert -> "failure_rate".equals(alert.type())));
     }
 
     @Test

@@ -20,6 +20,9 @@ public record AdminAiModelEndpointUpsertDto(
         Double defaultTopP,
         Integer rpmLimit,
         Integer tpmLimit,
+        Long dailyTokenQuota,
+        Long dailyCostQuotaMicros,
+        Integer alertFailureRatePct,
         List<AiModelEntryDto> models,  // 可用模型列表（discover-models 拉取后写入）
         String ownerUserId,            // 计费归属用户；空 = 平台级不计费
         Long promptTokenPriceMicros,   // 输入 token 单价，人民币微元 / 1K Token

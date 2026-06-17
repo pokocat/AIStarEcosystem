@@ -99,7 +99,8 @@ class AiModelInvocationServiceTest {
         binding.setEndpointId(ep.getId());
         when(bindingRepo.findById(purpose)).thenReturn(Optional.of(binding));
         when(endpointRepo.findById(ep.getId())).thenReturn(Optional.of(ep));
-        return new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class));
+        return new AiModelInvocationService(endpointRepo, bindingRepo,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class));
     }
 
     @Test
@@ -163,7 +164,8 @@ class AiModelInvocationServiceTest {
         when(bindingRepo.findById(AiModelPurpose.SCRIPT_DRAFT)).thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).invokeChat(
+                new AiModelInvocationService(endpointRepo, bindingRepo,
+                        mock(AiModelUsageService.class), mock(AiModelGuardService.class)).invokeChat(
                         AiModelPurpose.SCRIPT_DRAFT,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
@@ -267,7 +269,8 @@ class AiModelInvocationServiceTest {
         AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
         when(endpointRepo.findById("pX")).thenReturn(Optional.of(ep));
 
-        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).testConnection("pX");
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class)).testConnection("pX");
 
         assertEquals(true, result.get("ok"));
         assertEquals(200, result.get("statusCode"));
@@ -288,7 +291,8 @@ class AiModelInvocationServiceTest {
         AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
         when(endpointRepo.findById("pY")).thenReturn(Optional.of(ep));
 
-        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).testConnection("pY");
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class)).testConnection("pY");
         assertEquals(false, result.get("ok"));
         assertEquals("AZURE_OPENAI", result.get("providerType"));
     }
@@ -300,7 +304,8 @@ class AiModelInvocationServiceTest {
         when(endpointRepo.findById("nope")).thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiModelUsageService.class)).testConnection("nope"));
+                new AiModelInvocationService(endpointRepo, bindingRepo,
+                        mock(AiModelUsageService.class), mock(AiModelGuardService.class)).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
         assertEquals("ENDPOINT_NOT_FOUND", ex.getCode());
     }
@@ -357,7 +362,7 @@ class AiModelInvocationServiceTest {
     private static AiModelInvocationService bareSvc() {
         return new AiModelInvocationService(
                 mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),
-                mock(AiModelUsageService.class));
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class));
     }
 
     /** JDK 内置 HTTP server：记录收到的请求，对任意路径返回预设 status + body。 */

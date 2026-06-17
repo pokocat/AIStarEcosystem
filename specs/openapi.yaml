@@ -146,6 +146,12 @@ components:
         upstreamId:          { type: string, nullable: true, description: 上游模型服务商返回的调用 id。 }
         latencyMs:           { type: integer, format: int64, nullable: true, description: 上游调用总耗时，毫秒。 }
         errorCode:           { type: string, nullable: true, description: 归一后的失败码，如 HTTP_429 或异常类名。 }
+        errorCategory:
+          type: string
+          nullable: true
+          enum: [RATE_LIMIT, QUOTA, TIMEOUT, AUTH, BILLING, CONTENT_POLICY, BAD_RESPONSE, NETWORK, CONFIG, PROVIDER_UNAVAILABLE, PROVIDER_ERROR, UNKNOWN]
+          description: 标准失败原因枚举。
+        errorCategoryLabel:  { type: string, nullable: true, description: 标准失败原因中文展示名。 }
         errorMessage:        { type: string, nullable: true, description: 脱敏后的错误摘要。 }
 
     # ── Enums ───────────────────────────────

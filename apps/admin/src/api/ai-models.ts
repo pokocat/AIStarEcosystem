@@ -59,6 +59,9 @@ export interface AiModelEndpoint {
   defaultTopP?: number;
   rpmLimit?: number;
   tpmLimit?: number;
+  dailyTokenQuota?: number;
+  dailyCostQuotaMicros?: number;
+  alertFailureRatePct?: number;
   models?: AiModelEntry[];
   // 内嵌外部 API Token
   keyPrefix?: string;
@@ -93,6 +96,9 @@ export interface AdminAiModelEndpointUpsert {
   defaultTopP?: number | null;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
+  dailyTokenQuota?: number | null;
+  dailyCostQuotaMicros?: number | null;
+  alertFailureRatePct?: number | null;
   models?: AiModelEntry[];
   /** 计费归属用户；"" 清空为平台级（不计费）；省略 = 不修改。 */
   ownerUserId?: string;
@@ -158,6 +164,25 @@ export interface AiModelUsageDaily {
   completionTokens: number;
 }
 
+export interface AiModelAlert {
+  id: string;
+  severity: "warning" | "critical";
+  type: string;
+  providerId: string;
+  providerName: string;
+  title: string;
+  message: string;
+  metricValue: number;
+  threshold: number;
+  createdAt: string;
+}
+
+export interface AiModelFailureStat {
+  category: string;
+  label: string;
+  calls: number;
+}
+
 /** 用量报表（最近 windowDays 天）。v0.41 新增；用途 / 按天 / 失败维度补全。 */
 export interface AiModelUsageReport {
   windowDays: number;
@@ -168,6 +193,8 @@ export interface AiModelUsageReport {
   completionTokens: number;
   estimatedCostMicros: number;
   failedCalls: number;
+  alerts: AiModelAlert[];
+  byFailureCategory: AiModelFailureStat[];
   byProvider: AiModelUsageStat[];
   byModel: AiModelUsageStat[];
   byPurpose: AiModelUsageStat[];
@@ -200,6 +227,8 @@ export interface AiModelUsageRecord {
   upstreamId?: string;
   latencyMs?: number;
   errorCode?: string;
+  errorCategory?: string;
+  errorCategoryLabel?: string;
   errorMessage?: string;
   requestBodyJson?: string;
   responseBodyJson?: string;

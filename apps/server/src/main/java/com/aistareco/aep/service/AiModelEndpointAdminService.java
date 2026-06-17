@@ -119,6 +119,11 @@ public class AiModelEndpointAdminService {
                 .defaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0))
                 .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
                 .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
+                .dailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null)
+                .dailyCostQuotaMicros(req.dailyCostQuotaMicros() != null && req.dailyCostQuotaMicros() > 0 ? req.dailyCostQuotaMicros() : null)
+                .alertFailureRatePct(req.alertFailureRatePct() != null && req.alertFailureRatePct() > 0
+                        ? Math.min(req.alertFailureRatePct(), 100)
+                        : null)
                 .modelsJson(serializeModels(req.models()))
                 .ownerUserId(blankToNull(req.ownerUserId()))
                 .promptTokenPriceMicros(nonNegative(req.promptTokenPriceMicros()))
@@ -142,8 +147,13 @@ public class AiModelEndpointAdminService {
         if (req.defaultTemperature() != null) entity.setDefaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0));
         if (req.defaultMaxTokens() != null) entity.setDefaultMaxTokens(req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null);
         if (req.defaultTopP() != null) entity.setDefaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0));
-        if (req.rpmLimit() != null) entity.setRpmLimit(req.rpmLimit() > 0 ? req.rpmLimit() : null);
-        if (req.tpmLimit() != null) entity.setTpmLimit(req.tpmLimit() > 0 ? req.tpmLimit() : null);
+        entity.setRpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null);
+        entity.setTpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null);
+        entity.setDailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null);
+        entity.setDailyCostQuotaMicros(req.dailyCostQuotaMicros() != null && req.dailyCostQuotaMicros() > 0 ? req.dailyCostQuotaMicros() : null);
+        entity.setAlertFailureRatePct(req.alertFailureRatePct() != null && req.alertFailureRatePct() > 0
+                ? Math.min(req.alertFailureRatePct(), 100)
+                : null);
         if (req.models() != null) entity.setModelsJson(serializeModels(req.models()));
         // ownerUserId：null = 不改；"" = 清空为平台级；非空 = 设置
         if (req.ownerUserId() != null) entity.setOwnerUserId(blankToNull(req.ownerUserId()));

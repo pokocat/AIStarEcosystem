@@ -68,13 +68,25 @@ public class AiModelEndpoint {
     @Column(name = "default_top_p")
     private Double defaultTopP;
 
-    /** 管理端配置的软限额，当前用于展示和运维巡检。 */
+    /** 每分钟请求数限制；为空表示不限制。 */
     @Column(name = "rpm_limit")
     private Integer rpmLimit;
 
-    /** 管理端配置的软限额，当前用于展示和运维巡检。 */
+    /** 每分钟 token 估算限制；为空表示不限制。 */
     @Column(name = "tpm_limit")
     private Integer tpmLimit;
+
+    /** 每日 token 配额；为空表示不限制。按 Asia/Shanghai 自然日统计。 */
+    @Column(name = "daily_token_quota")
+    private Long dailyTokenQuota;
+
+    /** 每日成本配额，单位人民币微元；为空表示不限制。按 Asia/Shanghai 自然日统计。 */
+    @Column(name = "daily_cost_quota_micros")
+    private Long dailyCostQuotaMicros;
+
+    /** 失败率告警阈值百分比；为空使用全局默认。 */
+    @Column(name = "alert_failure_rate_pct")
+    private Integer alertFailureRatePct;
 
     /** 可选模型列表 JSON：[{ id, label, contextWindow, supportsVision }]，仅做发现挑选用。 */
     @Column(name = "models_json", columnDefinition = "LONGTEXT")

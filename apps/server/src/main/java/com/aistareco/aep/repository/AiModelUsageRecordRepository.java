@@ -175,4 +175,40 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
             """)
     long countFailed(@Param("since") Instant since,
                      @Param("providerId") String providerId);
+
+    @Query("""
+            SELECT COALESCE(SUM(r.totalTokens), 0)
+            FROM AiModelUsageRecord r
+            WHERE r.createdAt >= :since AND r.success = true AND r.providerId = :providerId
+            """)
+    long sumTotalTokensByProviderSince(@Param("providerId") String providerId,
+                                       @Param("since") Instant since);
+
+    @Query("""
+            SELECT COALESCE(SUM(r.costMicros), 0)
+            FROM AiModelUsageRecord r
+            WHERE r.createdAt >= :since AND r.success = true AND r.providerId = :providerId
+            """)
+    long sumCostMicrosByProviderSince(@Param("providerId") String providerId,
+                                      @Param("since") Instant since);
+
+    @Query("""
+            SELECT COUNT(r) FROM AiModelUsageRecord r
+            WHERE r.createdAt >= :since
+              AND (:providerId IS NULL OR r.providerId = :providerId)
+            """)
+    long countTotal(@Param("since") Instant since,
+                    @Param("providerId") String providerId);
+
+    @Query("""
+            SELECT r.errorCategory, COUNT(r)
+            FROM AiModelUsageRecord r
+            WHERE r.createdAt >= :since AND r.success = false
+              AND (:providerId IS NULL OR r.providerId = :providerId)
+            GROUP BY r.errorCategory
+            """)
+    List<Object[]> aggregateFailuresByCategory(@Param("since") Instant since,
+                                               @Param("providerId") String providerId);
+
+    List<AiModelUsageRecord> findByProviderIdOrderByCreatedAtDesc(String providerId, Pageable pageable);
 }

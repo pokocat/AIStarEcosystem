@@ -1,11 +1,14 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.AiModelAlertDto;
+import com.aistareco.aep.dto.AiModelFailureStatDto;
 import com.aistareco.aep.dto.AiModelUsageDailyDto;
 import com.aistareco.aep.dto.AiModelUsageReportDto;
 import com.aistareco.aep.dto.AiModelUsageRecordDto;
 import com.aistareco.aep.dto.AiModelUsageStatDto;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.AiModelEndpoint;
+import com.aistareco.aep.model.AiModelFailureCategory;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.AiModelUsageRecord;
 import com.aistareco.aep.model.Membership;
@@ -17,6 +20,7 @@ import com.aistareco.aep.repository.MembershipRepository;
 import com.aistareco.aep.repository.TenantRepository;
 import com.aistareco.common.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +71,15 @@ public class AiModelUsageService {
     private final AepUserRepository userRepo;
     private final TenantRepository tenantRepo;
     private final MembershipRepository membershipRepo;
+
+    @Value("${aep.llm.alert.failure-rate-pct:20}")
+    private int defaultFailureRateAlertPct = 20;
+
+    @Value("${aep.llm.alert.min-calls:5}")
+    private int failureRateMinCalls = 5;
+
+    @Value("${aep.llm.alert.quota-warn-ratio:0.8}")
+    private double quotaWarnRatio = 0.8;
 
     public AiModelUsageService(AiModelUsageRecordRepository repo,
                                AiModelEndpointRepository endpointRepo,
@@ -186,6 +199,9 @@ public class AiModelUsageService {
             long prompt = safeLong(promptTokens);
             long completion = safeLong(completionTokens);
             Long costMicros = estimateCostMicros(prompt, completion, endpoint);
+            AiModelFailureCategory errorCategory = success
+                    ? null
+                    : AiModelFailureCategory.classify(errorCode, errorMessage);
             AiModelUsageRecord rec = AiModelUsageRecord.builder()
                     .id("aiu-" + UUID.randomUUID().toString().substring(0, 16))
                     .providerId(providerId)
@@ -199,6 +215,7 @@ public class AiModelUsageService {
                     .upstreamId(truncate(blankToNull(upstreamId), 128))
                     .latencyMs(latencyMs != null && latencyMs >= 0 ? latencyMs : null)
                     .errorCode(truncate(blankToNull(errorCode), 64))
+                    .errorCategory(errorCategory)
                     .errorMessage(truncate(blankToNull(errorMessage), 512))
                     .requestBodyJson(truncate(blankToNull(requestBodyJson), 16_000))
                     .responseBodyJson(truncate(blankToNull(responseBodyJson), 16_000))
@@ -228,11 +245,14 @@ public class AiModelUsageService {
         List<AiModelUsageStatDto> byAppCode = mapAppRows(repo.aggregateByAppCode(since, null));
         List<AiModelUsageDailyDto> byDay = buildDaily(repo.dailyRows(since, null));
         long failedCalls = repo.countFailed(since, null);
+        List<AiModelFailureStatDto> byFailureCategory = mapFailureRows(repo.aggregateFailuresByCategory(since, null));
+        List<AiModelAlertDto> alerts = buildAlerts(since, null);
         // 总计由分组行汇总（按服务商分组无重复计数），避开 Spring Data 单行 Object[] 聚合的包装坑。
         long[] totals = sumStats(byProvider);
         return new AiModelUsageReportDto(
                 window, since,
                 totals[0], totals[1], totals[2], totals[3], totals[4], failedCalls,
+                alerts, byFailureCategory,
                 byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay);
     }
 
@@ -297,10 +317,13 @@ public class AiModelUsageService {
         List<AiModelUsageStatDto> byAppCode = mapAppRows(repo.aggregateByAppCode(since, providerId));
         List<AiModelUsageDailyDto> byDay = buildDaily(repo.dailyRows(since, providerId));
         long failedCalls = repo.countFailed(since, providerId);
+        List<AiModelFailureStatDto> byFailureCategory = mapFailureRows(repo.aggregateFailuresByCategory(since, providerId));
+        List<AiModelAlertDto> alerts = buildAlerts(since, providerId);
         long[] totals = sumStats(byModel);
         return new AiModelUsageReportDto(
                 window, since,
                 totals[0], totals[1], totals[2], totals[3], totals[4], failedCalls,
+                alerts, byFailureCategory,
                 byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay);
     }
 
@@ -344,6 +367,120 @@ public class AiModelUsageService {
         }
         out.sort((a, b) -> Long.compare(b.totalTokens(), a.totalTokens()));
         return out;
+    }
+
+    private static List<AiModelFailureStatDto> mapFailureRows(List<Object[]> rows) {
+        List<AiModelFailureStatDto> out = new ArrayList<>();
+        if (rows == null) return out;
+        for (Object[] row : rows) {
+            AiModelFailureCategory category = failureCategory(row != null && row.length > 0 ? row[0] : null);
+            out.add(new AiModelFailureStatDto(category.name(), category.label(), asLongAt(row, 1)));
+        }
+        out.sort((a, b) -> Long.compare(b.calls(), a.calls()));
+        return out;
+    }
+
+    private List<AiModelAlertDto> buildAlerts(Instant since, String providerId) {
+        List<AiModelEndpoint> endpoints = providerId == null
+                ? endpointRepo.findAllByOrderByCreatedAtDesc()
+                : endpointRepo.findById(providerId).stream().toList();
+        List<AiModelAlertDto> out = new ArrayList<>();
+        Instant now = Instant.now();
+        Instant dayStart = todayStart();
+        for (AiModelEndpoint endpoint : endpoints) {
+            appendQuotaAlert(out, endpoint, "daily_token_quota",
+                    repo.sumTotalTokensByProviderSince(endpoint.getId(), dayStart),
+                    endpoint.getDailyTokenQuota(),
+                    "Token");
+            appendQuotaAlert(out, endpoint, "daily_cost_quota",
+                    repo.sumCostMicrosByProviderSince(endpoint.getId(), dayStart),
+                    endpoint.getDailyCostQuotaMicros(),
+                    "成本");
+
+            long total = repo.countTotal(since, endpoint.getId());
+            long failed = repo.countFailed(since, endpoint.getId());
+            int threshold = endpoint.getAlertFailureRatePct() != null && endpoint.getAlertFailureRatePct() > 0
+                    ? endpoint.getAlertFailureRatePct()
+                    : defaultFailureRateAlertPct;
+            if (total >= Math.max(1, failureRateMinCalls) && threshold > 0) {
+                long failureRatePct = Math.round((failed * 100.0d) / Math.max(1L, total));
+                if (failureRatePct >= threshold) {
+                    String severity = failureRatePct >= Math.max(threshold * 2L, 50L) ? "critical" : "warning";
+                    out.add(alert(endpoint, severity, "failure_rate",
+                            "失败率异常",
+                            endpoint.getName() + " 当前失败率 " + failureRatePct + "%，阈值 " + threshold + "%",
+                            failureRatePct, threshold, now));
+                }
+            }
+
+            List<AiModelUsageRecord> recent = repo.findByProviderIdOrderByCreatedAtDesc(endpoint.getId(), PageRequest.of(0, 3));
+            long recentFailures = recent.stream()
+                    .filter(r -> r.getCreatedAt() != null && !r.getCreatedAt().isBefore(since))
+                    .filter(r -> !r.isSuccess())
+                    .count();
+            if (recent.size() >= 3 && recentFailures >= 3) {
+                out.add(alert(endpoint, "critical", "consecutive_failures",
+                        "连续失败",
+                        endpoint.getName() + " 最近 3 次调用均失败，请检查模型配置或上游服务",
+                        recentFailures, 3, now));
+            }
+        }
+        out.sort((a, b) -> Integer.compare(severityRank(b.severity()), severityRank(a.severity())));
+        return out;
+    }
+
+    private void appendQuotaAlert(List<AiModelAlertDto> out, AiModelEndpoint endpoint, String type,
+                                  long used, Long quota, String unitLabel) {
+        if (quota == null || quota <= 0) return;
+        long warnAt = Math.max(1L, Math.round(quota * clampQuotaWarnRatio()));
+        if (used < warnAt) return;
+        boolean critical = used >= quota;
+        String title = critical ? unitLabel + "配额已用完" : unitLabel + "配额接近上限";
+        String usedLabel = "成本".equals(unitLabel) ? yuanLabel(used) : used + " Token";
+        String quotaLabel = "成本".equals(unitLabel) ? yuanLabel(quota) : quota + " Token";
+        out.add(alert(endpoint, critical ? "critical" : "warning", type, title,
+                endpoint.getName() + " 今日已用 " + usedLabel + " / " + quotaLabel,
+                used, quota, Instant.now()));
+    }
+
+    private static AiModelAlertDto alert(AiModelEndpoint endpoint, String severity, String type,
+                                         String title, String message, long metricValue, long threshold,
+                                         Instant now) {
+        return new AiModelAlertDto(
+                "llm-alert-" + type + "-" + endpoint.getId(),
+                severity,
+                type,
+                endpoint.getId(),
+                endpoint.getName(),
+                title,
+                message,
+                metricValue,
+                threshold,
+                now
+        );
+    }
+
+    private double clampQuotaWarnRatio() {
+        if (!Double.isFinite(quotaWarnRatio) || quotaWarnRatio <= 0 || quotaWarnRatio > 1) return 0.8;
+        return quotaWarnRatio;
+    }
+
+    private static int severityRank(String severity) {
+        return "critical".equals(severity) ? 2 : "warning".equals(severity) ? 1 : 0;
+    }
+
+    private static Instant todayStart() {
+        return LocalDate.now(BUCKET_ZONE).atStartOfDay(BUCKET_ZONE).toInstant();
+    }
+
+    private static AiModelFailureCategory failureCategory(Object raw) {
+        if (raw instanceof AiModelFailureCategory category) return category;
+        if (raw == null) return AiModelFailureCategory.UNKNOWN;
+        try {
+            return AiModelFailureCategory.valueOf(String.valueOf(raw));
+        } catch (Exception ignored) {
+            return AiModelFailureCategory.UNKNOWN;
+        }
     }
 
     private List<AiModelUsageStatDto> mapUserRows(List<Object[]> rows) {
@@ -438,6 +575,8 @@ public class AiModelUsageService {
                 record.getUpstreamId(),
                 record.getLatencyMs(),
                 record.getErrorCode(),
+                record.getErrorCategory() != null ? record.getErrorCategory().name() : null,
+                record.getErrorCategory() != null ? record.getErrorCategory().label() : null,
                 record.getErrorMessage(),
                 record.getRequestBodyJson(),
                 record.getResponseBodyJson(),
@@ -642,6 +781,12 @@ public class AiModelUsageService {
         long promptCost = (promptTokens * Math.max(0L, endpoint.getPromptTokenPriceMicros())) / 1000L;
         long completionCost = (completionTokens * Math.max(0L, endpoint.getCompletionTokenPriceMicros())) / 1000L;
         return promptCost + completionCost;
+    }
+
+    private static String yuanLabel(long micros) {
+        if (micros <= 0) return "¥0";
+        double yuan = micros / 1_000_000.0d;
+        return "¥" + String.format(java.util.Locale.ROOT, "%.4f", yuan).replaceFirst("\\.?0+$", "");
     }
 
     private static long safeLong(Long value) {

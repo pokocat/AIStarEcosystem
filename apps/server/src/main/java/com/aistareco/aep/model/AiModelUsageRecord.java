@@ -72,6 +72,11 @@ public class AiModelUsageRecord {
     @Column(name = "error_code", length = 64)
     private String errorCode;
 
+    /** 标准失败原因分类。成功调用为空。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "error_category", length = 32)
+    private AiModelFailureCategory errorCategory;
+
     /** 脱敏后的错误摘要，仅用于 admin 排障列表。 */
     @Column(name = "error_message", length = 512)
     private String errorMessage;

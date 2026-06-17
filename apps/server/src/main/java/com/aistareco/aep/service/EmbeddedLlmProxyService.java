@@ -43,11 +43,14 @@ public class EmbeddedLlmProxyService {
 
     private final AiModelEndpointRepository endpointRepo;
     private final AiModelEndpointKeyService keyService;
+    private final AiModelGuardService guard;
 
     public EmbeddedLlmProxyService(AiModelEndpointRepository endpointRepo,
-                                   AiModelEndpointKeyService keyService) {
+                                   AiModelEndpointKeyService keyService,
+                                   AiModelGuardService guard) {
         this.endpointRepo = endpointRepo;
         this.keyService = keyService;
+        this.guard = guard;
     }
 
     public ResponseEntity<String> chat(Map<String, Object> body,
@@ -62,6 +65,7 @@ public class EmbeddedLlmProxyService {
         long startNanos = System.nanoTime();
         String requestJson = toJson(upstreamBody);
         try {
+            guard.checkBeforeCall(endpoint, guard.estimateOpenAiBodyTokens(upstreamBody));
             HttpRequest req = HttpRequest.newBuilder(upstreamUri(endpoint, "/chat/completions"))
                     .timeout(Duration.ofSeconds(60))
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + AepCryptoUtil.decrypt(endpoint.getUpstreamApiKeyEncrypted()))
@@ -80,7 +84,10 @@ public class EmbeddedLlmProxyService {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(resp.body());
         } catch (BusinessException e) {
-            throw e;
+            report(auth.key(), endpoint, null, model, purpose, appCode, false,
+                    e.getCode(), snippet(e.getMessage(), 512),
+                    0, 0, 0, requestId, elapsedMs(startNanos), requestJson, null, null);
+            return openAiError(e.getStatus(), e.getCode(), e.getMessage());
         } catch (Exception e) {
             log.warn("[llm-api] non-stream proxy failed requestId={} endpoint={} model={} err={}",
                     requestId, endpoint.getId(), model, e.toString());
@@ -104,6 +111,7 @@ public class EmbeddedLlmProxyService {
         long startNanos = System.nanoTime();
         String requestJson = toJson(upstreamBody);
         try {
+            guard.checkBeforeCall(endpoint, guard.estimateOpenAiBodyTokens(upstreamBody));
             HttpRequest req = HttpRequest.newBuilder(upstreamUri(endpoint, "/chat/completions"))
                     .timeout(Duration.ofSeconds(60))
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + AepCryptoUtil.decrypt(endpoint.getUpstreamApiKeyEncrypted()))
@@ -156,7 +164,14 @@ public class EmbeddedLlmProxyService {
                     .contentType(MediaType.TEXT_EVENT_STREAM)
                     .body(responseBody);
         } catch (BusinessException e) {
-            throw e;
+            report(auth.key(), endpoint, null, model, purpose, appCode, false,
+                    e.getCode(), snippet(e.getMessage(), 512),
+                    0, 0, 0, requestId, elapsedMs(startNanos), requestJson, null, null);
+            return ResponseEntity.status(e.getStatus())
+                    .contentType(MediaType.TEXT_EVENT_STREAM)
+                    .body(out -> out.write(("data: " + toJson(Map.of(
+                            "error", Map.of("code", e.getCode(), "message", e.getMessage())
+                    )) + "\n\n").getBytes()));
         } catch (Exception e) {
             log.warn("[llm-api] stream setup failed requestId={} endpoint={} model={} err={}",
                     requestId, endpoint.getId(), model, e.toString());

@@ -20,6 +20,8 @@ public record AiModelUsageReportDto(
         long completionTokens,
         long estimatedCostMicros,
         long failedCalls,
+        List<AiModelAlertDto> alerts,
+        List<AiModelFailureStatDto> byFailureCategory,
         List<AiModelUsageStatDto> byProvider,
         List<AiModelUsageStatDto> byModel,
         List<AiModelUsageStatDto> byPurpose,
