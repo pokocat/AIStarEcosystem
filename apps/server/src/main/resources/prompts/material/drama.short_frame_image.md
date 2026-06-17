@@ -1,1 +1,1 @@
-{{metaPrefix}}{{visual}}。{{styleSuffix}}
+Vertical short-video first frame. {{metaPrefix}}{{visual}}. {{styleSuffix}} Clear main subject, strong opening hook, realistic lighting, clean composition, product or prop visible when relevant, no text, no subtitles, no watermark, no split screen.

@@ -1,1 +1,1 @@
-{{metaPrefix}}{{visual}}。{{lineClause}}{{styleSuffix}}
+Vertical short-video clip. {{metaPrefix}}{{visual}}. {{lineClause}}{{styleSuffix}} Natural performance, clear action, stable face and outfit, mobile-first composition, no text, no subtitles, no watermark, no split screen.

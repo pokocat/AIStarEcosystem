@@ -1,2 +1,2 @@
 ---
-Create a clean digital-avatar half-body portrait of this exact person. Faithfully preserve identity, facial features, hairstyle and skin tone. Exactly one person in one single view (no multi-view grid, no character sheet). Soft professional studio lighting, neutral light background, photorealistic, 4k.
+Create a high-fidelity digital avatar from the provided reference image. Preserve the same identity, facial structure, age impression, hairstyle and distinctive features. Produce one polished vertical portrait of exactly one person, head and shoulders, realistic lighting, clean background, natural skin texture, high quality. Do not create a collage, multi-view grid, character sheet, text, logo or watermark.

@@ -1,2 +1,2 @@
 ---
-Edit this portrait: {{instruction}}. Apply this change clearly and noticeably — the difference must be visible when compared with the input image. Keep the same person and identity (same facial structure, hairstyle, outfit and pose), but do not simply reproduce the input. One single view of one person, no multi-view, no character sheet, high quality.
+Edit this digital avatar portrait according to the instruction: {{instruction}}. Make the requested change clearly visible while preserving the same identity, facial structure, hairstyle, outfit, pose, lighting and composition unless explicitly requested otherwise. Exactly one person, single portrait view, high quality, no multi-view grid, no character sheet, no text, no watermark.
