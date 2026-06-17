@@ -228,7 +228,7 @@ export function GenSettingsBar({ defaultRatio, refs, setRefs }: GenSettingsBarPr
       {open && (
         <div className="col gap-4" style={{ borderTop: "1px solid var(--line-soft)", padding: "14px 16px 16px" }}>
           <div className="col gap-2">
-            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>生成模型</span>
+            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>出片方式</span>
             <div className="row gap-2" style={{ flexWrap: "wrap" }}>
               {GEN_MODELS.map((m) => {
                 const on = model.id === m.id;

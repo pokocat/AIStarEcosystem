@@ -61,7 +61,7 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
           no={6}
           scope="剧集"
           title={`第 ${state.ep} 集 · 成片合成`}
-          desc="把视频工厂已出片的镜头按顺序拼成完整一集 —— 不重渲、不抽卡，秒级交付。"
+          desc="把视频工厂已出片的镜头按顺序拼成完整一集，不重新生成画面。"
         />
 
         {/* 成片预览（已合成时置顶） */}
@@ -108,7 +108,7 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
               <Clapperboard size={26} />
             </div>
             <div className="muted" style={{ maxWidth: 360, fontSize: 13.5 }}>
-              第 {state.ep} 集还没有已出片的镜头。先去<b style={{ color: "var(--accent)" }}>视频工厂</b>把分镜渲染出片，再回来一键拼接。
+              第 {state.ep} 集还没有已出片的镜头。先去<b style={{ color: "var(--accent)" }}>视频工厂</b>生成分镜视频，再回来一键拼接。
             </div>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
               去视频工厂
@@ -145,7 +145,7 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
               <Package size={20} style={{ color: "var(--accent)", flex: "none" }} />
               <div className="grow">
                 <div style={{ fontWeight: 700 }}>{assembled ? "镜头有更新?重新拼一版" : "一键拼成完整片"}</div>
-                <div className="faint" style={{ fontSize: 12.5 }}>服务器按顺序无损拼接（编码一致时秒级完成），产物落 CDN 可直接分发</div>
+                <div className="faint" style={{ fontSize: 12.5 }}>按镜头顺序拼成完整一集，完成后可下载或直接分发</div>
               </div>
               <button type="button" className="btn btn-grad" disabled={busy} onClick={run}>
                 {busy ? (

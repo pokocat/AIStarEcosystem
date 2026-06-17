@@ -180,6 +180,19 @@ export async function apiFetch<T>(
           snippet,
       );
     }
+    if (!res.ok) {
+      throw new ApiError(
+        {
+          code: "HTTP_ERROR",
+          message:
+            res.status >= 500
+              ? `服务器处理请求失败（HTTP ${res.status}）`
+              : `请求失败（HTTP ${res.status}）`,
+          details: { contentType, snippet },
+        },
+        res.status,
+      );
+    }
     throw new ApiError(
       {
         code: "PARSE_ERROR",

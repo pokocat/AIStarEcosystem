@@ -1,6 +1,8 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.repository.PromptTemplateRepository;
+import com.aistareco.aep.repository.PromptTemplateVersionRepository;
+import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +22,12 @@ class PromptServiceDramaResourceTest {
     private PromptService realService() {
         PromptTemplateRepository repo = mock(PromptTemplateRepository.class);
         when(repo.findByPromptKey(anyString())).thenReturn(Optional.empty());
-        return new PromptService(repo, new ObjectMapper());
+        return new PromptService(
+                repo,
+                mock(PromptTemplateVersionRepository.class),
+                mock(AiModelEndpointRepository.class),
+                mock(AiModelInvocationService.class),
+                new ObjectMapper());
     }
 
     @Test

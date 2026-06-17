@@ -9,10 +9,10 @@ import java.time.Instant;
 /**
  * AI 模型接入端点（v0.41 统一：原 {@code AiModelProvider} 演化而来）。
  *
- * 一行 = 一个**固定的可调用模型** = {上游密钥 + 单个模型 + 地址}，且**自带一个网关 Key**：
+ * 一行 = 一个**固定的可调用模型** = {上游密钥 + 单个模型 + 地址}，且**自带一个外部 API Token**：
  *   - 上游：{@link #providerType} + {@link #baseUrl} + {@link #upstreamApiKeyEncrypted}(密文) + {@link #model}(单)
- *   - 网关 Key：{@link #keyPrefix} + {@link #keyHash}(bcrypt)，折叠自旧 {@code LlmApiKey}；
- *     内部 AI 应用经 {@code ai_app_binding} 路由到本端点，外部业务方持 {@code sk-aep-*} 经 llm-gateway 调用本端点并计费。
+ *   - 外部 API Token：{@link #keyPrefix} + {@link #keyHash}(bcrypt)；
+ *     内部 AI 应用经 {@code ai_app_binding} 路由到本端点，外部业务方持 {@code sk-aep-*} 调 server 内嵌 LLM API 并计费。
  *
  * 表名保留 {@code ai_model_providers}（JPA ddl-auto=update 重命名表会孤立旧数据）。
  * {@code api_key_encrypted} / {@code default_model} 两个物理列复用，零数据搬迁；
@@ -52,17 +52,41 @@ public class AiModelEndpoint {
     @Column(name = "default_model")
     private String model;
 
+    /** 业务别名：业务代码 / 外部 API 可传 default-chat 这类稳定名，实际落到 model。 */
+    @Column(name = "model_alias", length = 80)
+    private String modelAlias;
+
+    /** 默认 temperature。null 表示由 prompt 参数或调用方决定。 */
+    @Column(name = "default_temperature")
+    private Double defaultTemperature;
+
+    /** 默认 max_tokens。null 表示由 prompt 参数或调用方决定。 */
+    @Column(name = "default_max_tokens")
+    private Integer defaultMaxTokens;
+
+    /** 默认 top_p。null 表示由调用方决定。 */
+    @Column(name = "default_top_p")
+    private Double defaultTopP;
+
+    /** 管理端配置的软限额，当前用于展示和运维巡检。 */
+    @Column(name = "rpm_limit")
+    private Integer rpmLimit;
+
+    /** 管理端配置的软限额，当前用于展示和运维巡检。 */
+    @Column(name = "tpm_limit")
+    private Integer tpmLimit;
+
     /** 可选模型列表 JSON：[{ id, label, contextWindow, supportsVision }]，仅做发现挑选用。 */
     @Column(name = "models_json", columnDefinition = "LONGTEXT")
     private String modelsJson;
 
-    // ── 内嵌网关 Key（折叠自 LlmApiKey；按需铸造，可空） ──────────────────────────
+    // ── 内嵌外部 API Token（按需铸造，可空） ───────────────────────────────────
 
     /** sk-aep-XXXXX 前 12 位（明文 prefix），用于列表展示 + 验证索引检索。未铸造时为 null。 */
     @Column(name = "key_prefix", length = 16)
     private String keyPrefix;
 
-    /** 网关 Key 的 bcrypt 哈希。未铸造时为 null。 */
+    /** 外部 API Token 的 bcrypt 哈希。未铸造时为 null。 */
     @Column(name = "key_hash", length = 80)
     private String keyHash;
 
@@ -82,7 +106,7 @@ public class AiModelEndpoint {
     @Column(name = "completion_token_price_micros")
     private long completionTokenPriceMicros = 0L;
 
-    /** 累计 token 消耗，由 internal /usage 累加。 */
+    /** 外部 API Token 累计 token 消耗。 */
     @ColumnDefault("0")
     @Builder.Default
     private long totalTokens = 0L;
@@ -93,7 +117,7 @@ public class AiModelEndpoint {
 
     private Instant lastUsedAt;
 
-    /** 撤销网关 Key（不删端点；撤销后 validate 不再通过）。 */
+    /** 撤销外部 API Token（不删端点；撤销后 validate 不再通过）。 */
     @Column(name = "key_revoked_at")
     private Instant keyRevokedAt;
 

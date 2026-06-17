@@ -328,7 +328,7 @@ export default function AiOverviewPage() {
                   href="/platform/ai-models"
                   icon={KeyRound}
                   label="LLM API 与 Token"
-                  detail="端点、上游密钥、网关 Key、用途绑定"
+                  detail="端点、上游密钥、外部 API Token、用途绑定"
                   metric={`${data.endpoints.length} 个端点`}
                 />
                 <ManagementLinkRow
@@ -374,10 +374,10 @@ export default function AiOverviewPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <HealthLine
-                label="网关 Key"
+                label="外部 Token"
                 value={`${stats.activeKeys} / ${data.endpoints.length}`}
                 tone={stats.missingKey > 0 ? "warning" : "success"}
-                detail={stats.missingKey > 0 ? `${stats.missingKey} 个启用端点缺 Key 或已撤销` : "启用端点均可通过网关调用"}
+                detail={stats.missingKey > 0 ? `${stats.missingKey} 个启用端点缺 Token 或已撤销` : "启用端点均可通过内嵌 API 调用"}
               />
               <HealthLine
                 label="用途绑定"
@@ -389,7 +389,7 @@ export default function AiOverviewPage() {
                 label="调用失败"
                 value={formatTokens(stats.failedCalls)}
                 tone={stats.failedCalls > 0 ? "danger" : "success"}
-                detail={stats.failedCalls > 0 ? "优先检查端点连通性、上游额度和用途绑定" : "近 30 天没有网关失败调用"}
+                detail={stats.failedCalls > 0 ? "优先检查端点连通性、上游额度和用途绑定" : "近 30 天没有 LLM 失败调用"}
               />
               <HealthLine
                 label="审计失败"

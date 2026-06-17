@@ -8,5 +8,6 @@ public record PromptTemplateUpsertDto(
         String systemPrompt,
         String userTemplate,
         PromptParamsDto params,
-        Boolean enabled
+        Boolean enabled,
+        String changeNote
 ) {}

@@ -26,7 +26,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useToast } from "@/components/feedback";
 import { PromptsApi } from "@/api";
-import type { PromptTemplate, PromptDryRun } from "@/api/prompts";
+import type { PromptTemplate, PromptDryRun, PromptTemplateVersion, PromptTestRun } from "@/api/prompts";
 import { cn, formatDateTimeCN } from "@/lib/utils";
 
 // v0.53（审计 #7）：补全友好名，与 server PromptService.KNOWN_KEYS 对齐。
@@ -172,6 +172,10 @@ export default function PromptsPage() {
   const [sampleVars, setSampleVars] = React.useState("{}");
   const [dryRun, setDryRun] = React.useState<PromptDryRun | null>(null);
   const [dryRunning, setDryRunning] = React.useState(false);
+  const [testRun, setTestRun] = React.useState<PromptTestRun | null>(null);
+  const [testRunning, setTestRunning] = React.useState(false);
+  const [versions, setVersions] = React.useState<PromptTemplateVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -221,7 +225,17 @@ export default function PromptsPage() {
     setEnabled(active.enabled);
     setSampleVars(JSON.stringify(KEY_SAMPLE[canonicalPromptKey(active.promptKey)] ?? {}, null, 2));
     setDryRun(null);
+    setTestRun(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey]);
+
+  React.useEffect(() => {
+    if (!activeKey) return;
+    setVersionsLoading(true);
+    void PromptsApi.listPromptVersions(activeKey)
+      .then(setVersions)
+      .catch(() => setVersions([]))
+      .finally(() => setVersionsLoading(false));
   }, [activeKey]);
 
   const save = async () => {
@@ -237,6 +251,7 @@ export default function PromptsPage() {
           jsonMode,
         },
         enabled,
+        changeNote: "admin save",
       });
       toast.success({ title: "已保存", description: "1 分钟内全节点生效" });
       await load();
@@ -265,6 +280,39 @@ export default function PromptsPage() {
       toast.danger({ title: "试运行失败", description: (e as Error).message });
     } finally {
       setDryRunning(false);
+    }
+  };
+
+  const runTestRun = async () => {
+    if (!activeKey) return;
+    setTestRunning(true);
+    try {
+      let vars: Record<string, string> = {};
+      try {
+        vars = JSON.parse(sampleVars || "{}");
+      } catch {
+        toast.danger({ title: "样例参数不是合法 JSON" });
+        setTestRunning(false);
+        return;
+      }
+      const result = await PromptsApi.testRunPrompt(activeKey, { vars });
+      setTestRun(result);
+      toast.success({ title: "真试运行完成", description: `${result.endpointUsed ?? "端点"} · ${result.tokensUsed ?? 0} tokens` });
+    } catch (e) {
+      toast.danger({ title: "真试运行失败", description: (e as Error).message });
+    } finally {
+      setTestRunning(false);
+    }
+  };
+
+  const rollback = async (version: number) => {
+    if (!activeKey) return;
+    try {
+      await PromptsApi.rollbackPrompt(activeKey, version);
+      toast.success({ title: `已回滚到 v${version}` });
+      await load();
+    } catch (e) {
+      toast.danger({ title: "回滚失败", description: (e as Error).message });
     }
   };
 
@@ -398,6 +446,15 @@ export default function PromptsPage() {
                     <span className="rounded-md bg-surface-muted px-2 py-1">v{active.version}</span>
                     {active.updatedAt && <span className="rounded-md bg-surface-muted px-2 py-1">{formatDateTimeCN(active.updatedAt)}</span>}
                   </div>
+                  {active.variables.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {active.variables.map((name) => (
+                        <Badge key={name} tone="neutral" className="font-mono text-[10px] font-normal">
+                          {`{{${name}}}`}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
                   <label className="flex items-center gap-2 text-sm">
@@ -478,6 +535,9 @@ export default function PromptsPage() {
                   <Button size="sm" onClick={runDryRun} disabled={dryRunning}>
                     {dryRunning ? "运行中…" : "试运行"}
                   </Button>
+                  <Button size="sm" variant="outline" onClick={runTestRun} disabled={testRunning}>
+                    {testRunning ? "调用中…" : "真试运行"}
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -492,10 +552,56 @@ export default function PromptsPage() {
                 </div>
                 {dryRun && (
                   <div className="space-y-2">
+                    {dryRun.missingVariables.length > 0 && (
+                      <div className="rounded-md border border-warning/30 bg-warning/8 px-3 py-2 text-xs text-warning">
+                        缺少变量：{dryRun.missingVariables.join("、")}
+                      </div>
+                    )}
                     <div className="text-sm font-medium">填充后 system</div>
                     <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 font-mono text-xs">{dryRun.system}</pre>
                     <div className="text-sm font-medium">填充后 user</div>
                     <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 font-mono text-xs">{dryRun.user}</pre>
+                  </div>
+                )}
+                {testRun && (
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">模型输出</div>
+                    <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 font-mono text-xs">{testRun.output}</pre>
+                    <div className="text-xs text-muted-foreground">
+                      {testRun.endpointUsed ?? "端点"} · {testRun.modelUsed ?? "模型"} · {testRun.tokensUsed ?? 0} tokens
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">版本历史</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {versionsLoading && <div className="text-sm text-muted-foreground">加载中…</div>}
+                {!versionsLoading && versions.length === 0 && <div className="text-sm text-muted-foreground">暂无版本快照。下次保存后会自动生成。</div>}
+                {!versionsLoading && versions.length > 0 && (
+                  <div className="divide-y divide-border rounded-md border border-border">
+                    {versions.slice(0, 10).map((version) => (
+                      <div key={version.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">v{version.version}</span>
+                            <Badge tone={version.enabled ? "success" : "neutral"} className="font-normal">
+                              {version.enabled ? "启用" : "停用"}
+                            </Badge>
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {version.createdAt ? formatDateTimeCN(version.createdAt) : ""} · {version.createdBy ?? "admin"} · {version.changeNote ?? "保存"}
+                          </div>
+                        </div>
+                        <Button size="sm" variant="outline" disabled={version.version === active.version} onClick={() => void rollback(version.version)}>
+                          回滚
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>

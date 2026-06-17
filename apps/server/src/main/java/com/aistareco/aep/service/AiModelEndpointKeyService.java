@@ -21,11 +21,10 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * 端点内嵌网关 Key 的生命周期（v0.41）：铸造 / 撤销（admin）+ 验证 / usage 上报（internal，给 llm-gateway）。
+ * 端点内嵌外部 API Token 的生命周期：铸造 / 撤销（admin）+ 验证 / usage 上报。
  *
  * 统一 Key 概念（决策 3）：同一 {@code sk-aep-*} Key 既标识一个 {@link AiModelEndpoint}（=上游+单模型），
- * 又是业务方调 llm-gateway 的凭证。validate / usage 优先命中端点；
- * **未命中再回退到旧 {@link LlmApiKeyService}**（兼容 1 版：现网旧 sk-aep-* 不立刻失效）。
+ * 又是业务方调 server 内嵌 OpenAI-compatible API 的凭证。独立 gateway 已删除，验证只认端点 Token。
  *
  * 创建：返回明文一次，DB 只存 bcrypt 哈希。
  */
@@ -43,7 +42,6 @@ public class AiModelEndpointKeyService {
     private final AiModelEndpointRepository repo;
     private final PasswordEncoder encoder;
     private final CreditService creditService;
-    private final LlmApiKeyService legacy; // 兼容回退（旧 LlmApiKey）
     private final AiModelUsageService usageService;
 
     /** 每 100 tokens 扣 1 credit；可在 application.yml 调（沿用 v0.6 配置）。 */
@@ -52,20 +50,18 @@ public class AiModelEndpointKeyService {
     public AiModelEndpointKeyService(AiModelEndpointRepository repo,
                                      PasswordEncoder encoder,
                                      CreditService creditService,
-                                     LlmApiKeyService legacy,
                                      AiModelUsageService usageService,
                                      @Value("${aep.llm.credits-per-100-tokens:1}") long creditsPer100Tokens) {
         this.repo = repo;
         this.encoder = encoder;
         this.creditService = creditService;
-        this.legacy = legacy;
         this.usageService = usageService;
         this.creditsPer100Tokens = creditsPer100Tokens;
     }
 
     // ── admin：铸造 / 撤销 ─────────────────────────────────────────────────────
 
-    /** 给端点铸造（或重铸）一个网关 Key，返回明文一次。 */
+    /** 给端点铸造（或重铸）一个外部 API Token，返回明文一次。 */
     @Transactional
     public AiModelEndpointKeyMintedDto mintKey(String endpointId) {
         AiModelEndpoint e = load(endpointId);
@@ -78,7 +74,7 @@ public class AiModelEndpointKeyService {
         return new AiModelEndpointKeyMintedDto(AiModelEndpointDto.from(saved), plaintext);
     }
 
-    /** 撤销端点的网关 Key（不删端点；撤销后立即失效）。 */
+    /** 撤销端点的外部 API Token（不删端点；撤销后立即失效）。 */
     @Transactional
     public AiModelEndpointDto revokeKey(String endpointId) {
         AiModelEndpoint e = load(endpointId);
@@ -88,9 +84,9 @@ public class AiModelEndpointKeyService {
         return AiModelEndpointDto.from(saved);
     }
 
-    // ── internal：验证 / usage（给 llm-gateway） ───────────────────────────────
+    // ── server 内嵌 LLM API：验证 / usage ─────────────────────────────────────
 
-    /** 验证 sk-aep-* → 命中端点（keyId=端点 id, userId=ownerUserId 可空）；未命中回退旧 LlmApiKey。 */
+    /** 验证 sk-aep-* → 命中端点（keyId=端点 id, userId=ownerUserId 可空）。 */
     public LlmKeyValidationDto validate(String plaintext) {
         if (plaintext == null || !plaintext.startsWith(PLAINTEXT_PREFIX) || plaintext.length() < PREFIX_LEN) {
             return LlmKeyValidationDto.fail("malformed");
@@ -105,17 +101,11 @@ public class AiModelEndpointKeyService {
                 return LlmKeyValidationDto.ok(e.getId(), e.getOwnerUserId(), e.getName());
             }
         }
-        // 兼容回退：旧 LlmApiKey（1 版过渡）
-        LlmKeyValidationDto legacyResult = legacy.validate(plaintext);
-        if (legacyResult.ok()) {
-            log.debug("[ai-endpoint-key] validate fell back to legacy LlmApiKey keyId={}", legacyResult.keyId());
-        }
-        return legacyResult;
+        return LlmKeyValidationDto.fail("not_found");
     }
 
     /**
      * usage 上报：keyId 命中端点 → 累计 tokens/calls + 可选钱包扣减（ownerUserId 非空才扣）。
-     * 未命中端点 → 回退旧 LlmApiKeyService。失败仅 log（gateway 已回响应给客户端）。
      */
     @Transactional
     public LedgerEntryDto reportUsage(LlmUsageReportDto report) {
@@ -124,8 +114,7 @@ public class AiModelEndpointKeyService {
         }
         AiModelEndpoint e = repo.findById(report.keyId()).orElse(null);
         if (e == null) {
-            // 旧 LlmApiKey（keyId=llmkey-*）→ 回退
-            return legacy.reportUsage(report);
+            throw new BusinessException(HttpStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND", "AI 模型端点不存在");
         }
         boolean successful = report.success() == null || report.success();
         long tokens = report.totalTokens() > 0
@@ -147,12 +136,15 @@ public class AiModelEndpointKeyService {
                 successful,
                 firstNonBlank(report.userId(), e.getOwnerUserId()),
                 report.tenantId(),
-                firstNonBlank(report.appCode(), "llm-gateway"),
+                firstNonBlank(report.appCode(), "external-api"),
                 report.requestId(),
                 report.upstreamId(),
                 report.latencyMs(),
                 report.errorCode(),
-                report.errorMessage()
+                report.errorMessage(),
+                report.requestBodyJson(),
+                report.responseBodyJson(),
+                report.replayOfRecordId()
         );
 
         // 平台级端点（ownerUserId 空）只累计、不扣钱包

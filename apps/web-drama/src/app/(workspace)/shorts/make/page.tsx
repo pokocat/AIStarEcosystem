@@ -178,8 +178,8 @@ function ShortShotCard({
             <CreditButton
               cost={SHORT_FRAME_COST}
               onConfirm={onFrame}
-              confirmTitle="渲染首帧"
-              confirmBody="先渲首帧锁画面,稳妥省抽卡。"
+              confirmTitle="生成首帧"
+              confirmBody="先生成一张画面预览，确认后再出视频。"
               className="btn btn-grad btn-sm"
               style={{ height: 30, justifyContent: "center", fontSize: 11.5 }}
               disabled={!!busy}
@@ -197,7 +197,7 @@ function ShortShotCard({
               disabled={!!busy}
               markSize={11}
             >
-              <Zap size={11} /> 直出视频
+              <Zap size={11} /> 直接出片
             </CreditButton>
           </div>
         )}
@@ -584,7 +584,7 @@ function ShortMakerInner({
   };
   const updShot = (id: string, patch: Partial<ShortShot>) =>
     setShots((arr) => arr.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  /** 单镜真实渲染：frame=首帧（图像），clip=视频（异步任务 + 轮询）。 */
+  /** 单镜生成：文字同步等待；首帧 / 视频走后台任务 + 前台轮询。 */
   const render = async (id: string, to: ShotFlow, _cost: number) => {
     const shot = shots.find((s) => s.id === id);
     if (!shot || busy) return;
@@ -593,14 +593,22 @@ function ShortMakerInner({
     const metaCtx = metaPromptPrefix(meta);
     try {
       if (to === "frame") {
-        const frames = await RenderApi.renderFrame({
+        const job = await RenderApi.submitFrameJob({
           kind: "short",
           vars: { metaPrefix: metaCtx, visual: shot.visual, styleSuffix: `竖屏短视频画面，${fmt.name}风格。` },
           ratio: "9:16",
           count: 1,
+          projectId: draftId,
+          shotId: id,
+          name: `${displayName} 镜${shot.no} 首帧`,
         });
+        toast.success("首帧已加入后台生成");
+        const done = await RenderApi.pollFrameJob(job.id, { timeoutMs: 240_000 });
+        if (done.status === "failed") throw new Error(done.error_message || "首帧生成失败，请重试");
+        const frames = done.frames ?? done.result?.frames ?? [];
+        if (!frames.length) throw new Error("首帧生成完成但没有返回图片，请重试");
         updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url });
-        toast.success("首帧已出,确认后再生成视频");
+        toast.success("首帧已生成，确认后再生成视频");
       } else {
         const job = await RenderApi.renderClip({
           kind: "short",
@@ -611,6 +619,8 @@ function ShortMakerInner({
           name: `${fmt.name} 镜${shot.no}`,
           durationSec: shot.dur,
           ratio: "9:16",
+          projectId: draftId,
+          shotId: id,
           frameUrl: shot.frameUrl,
         });
         const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
@@ -619,7 +629,7 @@ function ShortMakerInner({
         toast.success("镜头视频已生成");
       }
     } catch (e) {
-      toast.error(aiErrorMessage(e, "渲染失败，请稍后重试"));
+      toast.error(aiErrorMessage(e, "生成失败，请稍后重试"));
     } finally {
       setBusy(null);
     }
@@ -934,7 +944,7 @@ function ShortMakerInner({
               <ImageIcon size={17} style={{ color: "var(--accent)" }} />
               <div className="grow">
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>逐镜出片 · 两条路任选</div>
-                <div className="faint" style={{ fontSize: 11.5 }}>稳妥:先渲首帧锁画面再出视频,省抽卡;赶时间:直接生成镜头视频</div>
+                <div className="faint" style={{ fontSize: 11.5 }}>稳妥：先生成首帧，确认画面后再出视频；赶时间：直接生成镜头视频</div>
               </div>
               <span className="tag tag-gray num">{doneCount}/{shots.length} 已成片</span>
             </div>

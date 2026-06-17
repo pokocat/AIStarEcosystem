@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/ai-models.ts: Admin AI 模型接入端点 + 内嵌网关 Key + AI 应用绑定（v0.41）。
+// api/ai-models.ts: Admin AI 模型接入端点 + 外部 API Token + AI 应用绑定。
 // 对应 AdminAiModelEndpointController + AdminAiAppBindingController。
-//   端点 = 固定 {上游密钥 + 单模型 + 地址}，自带网关 Key（sk-aep-*）。
+//   端点 = 固定 {上游密钥 + 单模型 + 地址}，自带外部 API Token（sk-aep-*）。
 //   AI 应用（用途）经「应用绑定」固定指向一个端点。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export interface AiModelEntry {
   supportsVision?: boolean;
 }
 
-/** 模型接入端点读 DTO（上游 apiKey / 网关 Key 均不返回明文）。 */
+/** 模型接入端点读 DTO（上游 apiKey / 外部 API Token 均不返回明文）。 */
 export interface AiModelEndpoint {
   id: string;
   name: string;
@@ -53,8 +53,14 @@ export interface AiModelEndpoint {
   upstreamApiKeyMasked: string;
   apiVersion?: string;
   model?: string;
+  modelAlias?: string;
+  defaultTemperature?: number;
+  defaultMaxTokens?: number;
+  defaultTopP?: number;
+  rpmLimit?: number;
+  tpmLimit?: number;
   models?: AiModelEntry[];
-  // 内嵌网关 Key
+  // 内嵌外部 API Token
   keyPrefix?: string;
   keyMasked?: string;
   hasKey: boolean;
@@ -81,6 +87,12 @@ export interface AdminAiModelEndpointUpsert {
   apiKey?: string;
   apiVersion?: string;
   model?: string;
+  modelAlias?: string;
+  defaultTemperature?: number | null;
+  defaultMaxTokens?: number | null;
+  defaultTopP?: number | null;
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
   models?: AiModelEntry[];
   /** 计费归属用户；"" 清空为平台级（不计费）；省略 = 不修改。 */
   ownerUserId?: string;
@@ -91,7 +103,7 @@ export interface AdminAiModelEndpointUpsert {
   enabled?: boolean;
 }
 
-/** 铸造网关 Key 的响应（plaintext 仅一次）。 */
+/** 铸造外部 API Token 的响应（plaintext 仅一次）。 */
 export interface AiModelEndpointKeyMinted {
   endpoint: AiModelEndpoint;
   plaintext: string;
@@ -134,6 +146,7 @@ export interface AiModelUsageStat {
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
+  estimatedCostMicros: number;
 }
 
 /** 用量「按天」聚合行（仅成功调用，date = Asia/Shanghai 自然日）。 */
@@ -153,6 +166,7 @@ export interface AiModelUsageReport {
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
+  estimatedCostMicros: number;
   failedCalls: number;
   byProvider: AiModelUsageStat[];
   byModel: AiModelUsageStat[];
@@ -187,6 +201,21 @@ export interface AiModelUsageRecord {
   latencyMs?: number;
   errorCode?: string;
   errorMessage?: string;
+  requestBodyJson?: string;
+  responseBodyJson?: string;
+  replayOfRecordId?: string;
+  qualityScore?: number;
+  qualityLabel?: string;
+  qualityNote?: string;
+}
+
+export interface AiModelReplayResult {
+  sourceRecordId: string;
+  output: string;
+  finishReason?: string;
+  tokensUsed?: number;
+  endpointUsed?: string;
+  modelUsed?: string;
 }
 
 const BASE = "/admin/ai-models";
@@ -212,12 +241,12 @@ export async function testConnection(id: string): Promise<{ ok: boolean; statusC
   return apiFetch(`${BASE}/${encodeURIComponent(id)}/test`, { method: "POST" });
 }
 
-// ── 网关 Key 铸造 / 撤销 ───────────────────────────────────────────────────────
-/** 给端点铸造（或重铸）网关 Key，唯一返回明文一次。 */
+// ── 外部 API Token 铸造 / 撤销 ───────────────────────────────────────────────
+/** 给端点铸造（或重铸）外部 API Token，唯一返回明文一次。 */
 export async function mintKey(id: string): Promise<AiModelEndpointKeyMinted> {
   return apiFetch<AiModelEndpointKeyMinted>(`${BASE}/${encodeURIComponent(id)}/mint-key`, { method: "POST" });
 }
-/** 撤销端点的网关 Key（不删端点）。 */
+/** 撤销端点的外部 API Token（不删端点）。 */
 export async function revokeKey(id: string): Promise<AiModelEndpoint> {
   return apiFetch<AiModelEndpoint>(`${BASE}/${encodeURIComponent(id)}/revoke-key`, { method: "POST" });
 }
@@ -240,7 +269,7 @@ export async function fetchModels(id: string): Promise<ModelDiscoveryResult> {
   return apiFetch<ModelDiscoveryResult>(`${BASE}/${encodeURIComponent(id)}/fetch-models`, { method: "POST" });
 }
 
-// ── 网关用量统计（v0.41） ───────────────────────────────────────────────────────
+// ── LLM 用量统计（v0.41） ───────────────────────────────────────────────────────
 /** 全局大模型用量报表（days：统计窗口天数，缺省 30，封顶 365）。 */
 export async function getUsage(days?: number): Promise<AiModelUsageReport> {
   return apiFetch<AiModelUsageReport>(BASE + "/usage", { query: { days } });
@@ -257,6 +286,18 @@ export async function getUsageRecords(params?: {
   size?: number;
 }): Promise<AiModelUsageRecord[]> {
   return apiFetch<AiModelUsageRecord[]>(BASE + "/usage-records", { query: params });
+}
+export async function replayUsageRecord(id: string): Promise<AiModelReplayResult> {
+  return apiFetch<AiModelReplayResult>(`${BASE}/usage-records/${encodeURIComponent(id)}/replay`, { method: "POST" });
+}
+export async function updateUsageRecordQuality(
+  id: string,
+  body: { score?: number | null; label?: string | null; note?: string | null },
+): Promise<AiModelUsageRecord> {
+  return apiFetch<AiModelUsageRecord>(`${BASE}/usage-records/${encodeURIComponent(id)}/quality`, {
+    method: "PUT",
+    body,
+  });
 }
 /** 单端点用量报表。 */
 export async function getProviderUsage(id: string, days?: number): Promise<AiModelUsageReport> {

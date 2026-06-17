@@ -166,6 +166,7 @@ public class DramaScriptService {
         options.put("max_tokens", prompt.params().maxTokens() != null && prompt.params().maxTokens() > 0
                 ? prompt.params().maxTokens() : 4096);
         options.put("response_format", Map.of("type", "json_object"));
+        options.put("timeout_seconds", 90);
 
         AiModelInvocationService.AiModelResponse resp;
         try {

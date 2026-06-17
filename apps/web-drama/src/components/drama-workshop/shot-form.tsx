@@ -180,7 +180,7 @@ export function ShotFormCard({
               </span>
             )}
             <span style={{ position: "absolute", top: 5, left: 5 }}>
-              {s.flow === "draft" && <span className="tag tag-gray" style={{ fontSize: 9.5, padding: "0 6px", height: 18 }}>待渲</span>}
+              {s.flow === "draft" && <span className="tag tag-gray" style={{ fontSize: 9.5, padding: "0 6px", height: 18 }}>待生成</span>}
               {s.flow === "frame" && !busy && <span className="tag tag-amber" style={{ fontSize: 9.5, padding: "0 6px", height: 18 }}>首帧</span>}
               {s.flow === "clip" && !busy && <span className="tag tag-amber" style={{ fontSize: 9.5, padding: "0 6px", height: 18 }}>待验收</span>}
               {s.flow === "done" && <span className="tag tag-green" style={{ fontSize: 9.5, padding: "0 6px", height: 18 }}><Check size={9} /> 成片</span>}
@@ -188,17 +188,17 @@ export function ShotFormCard({
           </div>
           {s.flow === "draft" && (
             <>
-              <CreditButton cost={FRAME_COST} onConfirm={onRenderFrame} confirmTitle="渲染首帧" confirmBody="先渲首帧锁画面,稳妥省抽卡。" className="btn btn-grad btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} markSize={11}>
+              <CreditButton cost={FRAME_COST} onConfirm={onRenderFrame} confirmTitle="生成首帧" confirmBody="先生成一张画面预览，确认人物和构图后再出视频。" className="btn btn-grad btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} markSize={11}>
                 <ImageIcon size={11} /> 首帧
               </CreditButton>
-              <CreditButton cost={DIRECT_COST} onConfirm={onRenderDirect} confirmTitle="直接生成视频" confirmBody="跳过首帧,直接生成这镜分镜视频。" className="btn btn-line btn-sm" style={{ height: 24, justifyContent: "center", fontSize: 10, padding: 0 }} disabled={!!busy} markSize={10}>
-                <Zap size={10} /> 直出
+              <CreditButton cost={DIRECT_COST} onConfirm={onRenderDirect} confirmTitle="直接生成视频" confirmBody="不先预览画面，直接生成这镜视频。" className="btn btn-line btn-sm" style={{ height: 24, justifyContent: "center", fontSize: 10, padding: 0 }} disabled={!!busy} markSize={10}>
+                <Zap size={10} /> 直接出片
               </CreditButton>
             </>
           )}
           {s.flow === "frame" && (
-            <CreditButton cost={CLIP_COST} onConfirm={onRenderClip} confirmTitle="渲染成片" confirmBody="基于已选首帧渲染动态成片。" className="btn btn-primary btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} markSize={11}>
-              <Film size={11} /> 渲成片
+            <CreditButton cost={CLIP_COST} onConfirm={onRenderClip} confirmTitle="生成成片" confirmBody="基于已选首帧生成这一镜视频。" className="btn btn-primary btn-sm" style={{ height: 26, justifyContent: "center", fontSize: 10.5, padding: 0 }} disabled={!!busy} markSize={11}>
+              <Film size={11} /> 生成视频
             </CreditButton>
           )}
           {s.flow === "clip" && (
@@ -208,7 +208,7 @@ export function ShotFormCard({
           )}
           {s.flow === "done" && (
             <button type="button" className="chip" style={{ height: 24, justifyContent: "center", fontSize: 10 }} onClick={onRenderFrame}>
-              <RefreshCw size={10} /> 回炉重渲
+              <RefreshCw size={10} /> 重新生成
             </button>
           )}
         </div>

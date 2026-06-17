@@ -64,6 +64,8 @@ export function RenderTaskDock() {
   const loadPct = Math.min(100, Math.round((running / limit) * 100));
   const isWorkshop = !!pathname?.match(/^\/projects\/[^/]+(\/.*)?$/) && !pathname.startsWith("/projects/new");
 
+  if (visible.length === 0) return null;
+
   return (
     <>
       <div className={`render-task-dock${isWorkshop ? " is-workshop" : ""}`} aria-live="polite">
@@ -71,13 +73,13 @@ export function RenderTaskDock() {
           type="button"
           className="render-task-head"
           onClick={() => setOpen((v) => !v)}
-          title="后台任务"
+          title="后台生成"
         >
           <span className="render-task-icon">
             {activeCount > 0 ? <Loader2 size={15} className="render-task-spin" /> : <Activity size={15} />}
           </span>
           <span className="render-task-title">
-            后台任务
+            后台生成
             <span>{activeCount > 0 ? `${activeCount} 个进行中` : "空闲"}</span>
           </span>
           <span className="render-task-load">
@@ -91,7 +93,7 @@ export function RenderTaskDock() {
           <div className="render-task-panel">
             <div className="render-task-meter">
               <div className="render-task-meter-top">
-                <span>系统负载</span>
+                <span>生成队列</span>
                 <span>{queued} 排队</span>
               </div>
               <div className="render-task-bar">
@@ -105,7 +107,7 @@ export function RenderTaskDock() {
 
             <div className="render-task-list">
               {visible.length === 0 ? (
-                <div className="render-task-empty">当前没有后台渲染任务</div>
+                <div className="render-task-empty">当前没有后台生成任务</div>
               ) : (
                 visible.map((task) => (
                   <div key={`${task.task_type}-${task.id}`} className="render-task-row">

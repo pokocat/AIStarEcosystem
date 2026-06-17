@@ -1,6 +1,6 @@
 package com.aistareco.aep.dto;
 
-/** /api/internal/llm-keys/validate 响应。 */
+/** 外部 API Token 校验结果。 */
 public record LlmKeyValidationDto(
         boolean ok,
         String reason,

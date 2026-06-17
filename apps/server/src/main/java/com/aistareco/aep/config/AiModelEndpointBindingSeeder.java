@@ -25,7 +25,7 @@ import java.util.List;
 
 /**
  * v0.41：把旧 {@code AiModelProvider}（多模型 + 多用途 + priority）迁移到
- * 「{@link AiModelEndpoint}（固定单模型 + 内嵌 Key）+ {@link AiAppBinding}（用途→端点）」。
+ * 「{@link AiModelEndpoint}（固定单模型 + 外部 API Token）+ {@link AiAppBinding}（用途→端点）」。
  *
  * 表 {@code ai_model_providers} 物理列复用（api_key_encrypted / default_model），旧行直接以
  * AiModelEndpoint 装载，无需搬迁。本 seeder 做两件加性、幂等的事：
@@ -34,10 +34,6 @@ import java.util.List;
  *   <li>绑定回填：读旧 {@code purposes} / {@code priority} 列（实体已不映射），按 priority 升序，
  *       为每个用途建 AiAppBinding（仅当该用途尚未绑定时；首个最低 priority 端点胜）。</li>
  * </ol>
- *
- * 旧 {@code LlmApiKey} 行**保留**（弃用），不自动迁移（key 无上游绑定，无法独立成端点）；
- * 现网旧 sk-aep-* 经 AiModelEndpointKeyService 的兼容回退继续可验。
- *
  * 全新 DB（无 purposes/priority 列）：native 读会失败 → 仅 log 跳过（无旧行可迁，正常）。
  */
 @Component

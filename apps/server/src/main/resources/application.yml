@@ -69,13 +69,15 @@ aep:
     secret: ${AEP_JWT_SECRET:aep-dev-secret-key-change-in-prod-32chars}
     expiration-ms: ${AEP_JWT_EXPIRATION_MS:604800000}
   internal:
-    # 内部服务（如 apps/llm-gateway）→ apps/server 调用的共享密钥
+    # 内部服务（如 sau-service）→ apps/server 调用的共享密钥
     # 生产环境 **必须** 用 env 注入；任何写到 git 的 default 都视同泄漏
     secret: ${AEP_INTERNAL_SECRET:aep-dev-internal-secret-change-in-prod}
   llm:
-    # llm-gateway 上报 usage 时的 credit 计费率（每 100 tokens 扣 1 credit）
-    # 简化模型；后续按 model 维度拆分
+    # server 内嵌外部 LLM API 计费率（每 100 tokens 扣 1 credit）。
+    # 成本监控另按端点 token 单价估算人民币成本。
     credits-per-100-tokens: ${AEP_LLM_CREDITS_PER_100_TOKENS:1}
+    # OpenAI-compatible chat/completions 调用默认超时；单次调用可用 timeout_seconds 覆盖。
+    chat-timeout-seconds: ${AEP_LLM_CHAT_TIMEOUT_SECONDS:90}
   dev-auth:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
   # v0.43+ 子产品平台访问隔离（music / drama / celebrity）。

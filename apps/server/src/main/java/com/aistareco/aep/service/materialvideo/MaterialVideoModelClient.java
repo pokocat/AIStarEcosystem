@@ -165,11 +165,13 @@ public class MaterialVideoModelClient {
             String status = normalizeStatus(rawStatus);
             String videoUrl = extractVideoUrl(root);
             String thumb = extractThumb(root);
+            Integer progressPct = extractProgressPct(root);
             if (!"processing".equals(status)) {
-                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} hasVideo={} durationMs={}",
-                        p.getName(), submit.protocol(), idForLog, status, rawStatus, videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
+                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} progress={} hasVideo={} durationMs={}",
+                        p.getName(), submit.protocol(), idForLog, status, rawStatus, progressPct,
+                        videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
             }
-            return new PollResult(status, videoUrl, thumb, rawStatus);
+            return new PollResult(status, videoUrl, thumb, rawStatus, progressPct);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -329,6 +331,49 @@ public class MaterialVideoModelClient {
         return firstText(root, "cover_image_url", "thumbnail_url", "thumbnailUrl");
     }
 
+    static Integer extractProgressPct(JsonNode root) {
+        Integer direct = firstProgress(root);
+        if (direct != null) return direct;
+        JsonNode data = root == null ? null : root.get("data");
+        Integer dataProgress = firstProgress(data);
+        if (dataProgress != null) return dataProgress;
+        JsonNode output = root == null ? null : root.get("output");
+        return firstProgress(output);
+    }
+
+    private static Integer firstProgress(JsonNode node) {
+        if (node == null) return null;
+        for (String key : new String[] {"progress_pct", "progressPct", "progress", "percent", "percentage"}) {
+            JsonNode value = node.get(key);
+            Integer pct = parseProgress(value);
+            if (pct != null) return pct;
+        }
+        return null;
+    }
+
+    private static Integer parseProgress(JsonNode value) {
+        if (value == null || value.isNull()) return null;
+        double n;
+        if (value.isNumber()) {
+            n = value.asDouble();
+        } else if (value.isTextual()) {
+            String text = value.asText("").trim();
+            if (text.isBlank()) return null;
+            boolean hasPercent = text.endsWith("%");
+            if (hasPercent) text = text.substring(0, text.length() - 1).trim();
+            try {
+                n = Double.parseDouble(text);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        } else {
+            return null;
+        }
+        if (!Double.isFinite(n)) return null;
+        if (!value.isTextual() && n >= 0 && n <= 1) n = n * 100;
+        return Math.max(0, Math.min(100, (int) Math.round(n)));
+    }
+
     static int normalizeFrames(int requested) {
         int n = Math.max(9, Math.min(441, requested));
         int rem = (n - 1) % 8;
@@ -439,7 +484,7 @@ public class MaterialVideoModelClient {
         }
     }
 
-    public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus) {
+    public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus, Integer progressPct) {
         public boolean succeeded() { return "succeeded".equals(status); }
         public boolean failed() { return "failed".equals(status); }
     }

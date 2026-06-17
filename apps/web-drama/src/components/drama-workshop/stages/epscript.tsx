@@ -326,7 +326,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         applyFrameResult(sceneId, id, done, cost, msg, spend);
       } catch (e) {
         clearBusy(id);
-        toast.error(aiErrorMessage(e, "首帧渲染失败，请稍后重试"));
+        toast.error(aiErrorMessage(e, "首帧生成失败，请稍后重试"));
       }
     },
     [applyFrameResult, clearBusy],
@@ -365,10 +365,10 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           const isActiveTask = task.status === "queued" || task.status === "running" || task.status === "rendering";
           if (isActiveTask) active[shotId] = task.task_type === "frame" ? "frame" : "clip";
           if (task.task_type === "frame" && task.status === "ready" && (task.frames?.length || task.result?.frames?.length)) {
-            if (!current?.frameUrls?.length) applyFrameResult(sceneId, shotId, task, cfg.prices.frame, "首帧已出,满意就渲成片", false);
+            if (!current?.frameUrls?.length) applyFrameResult(sceneId, shotId, task, cfg.prices.frame, "首帧已出，满意就生成视频", false);
           }
           if (task.task_type === "video" && task.status === "ready" && task.video_url) {
-            if (current?.videoUrl !== task.video_url) applyClipResult(sceneId, shotId, task, cfg.prices.clip, "成片已渲,验收看看", false);
+            if (current?.videoUrl !== task.video_url) applyClipResult(sceneId, shotId, task, cfg.prices.clip, "视频已生成，验收看看", false);
           }
         }
         setBusyMap((prev) => {
@@ -454,7 +454,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     }
   };
 
-  /** 单镜真实渲染：frame=首帧（图像），clip=直出/成片（视频任务 + 轮询）。 */
+  /** 单镜生成：frame=首帧（后台图片任务），clip=直接出片/成片（后台视频任务 + 轮询）。 */
   const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
     if (!shot || isBusy(id)) return;
@@ -472,7 +472,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           episodeNo: state.ep,
           name: `第${state.ep}集 镜${shot.no} 首帧`,
         });
-        toast.success("首帧任务已加入后台队列");
+        toast.success("首帧已加入后台生成");
         void watchFrameJob(job.id, sceneId, id, cost, msg, true);
       } else {
         const job = await RenderApi.renderClip({
@@ -492,12 +492,12 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           frameUrl: shot.frameUrl,
         });
         applyRenderPatch(sceneId, id, { jobId: job.id });
-        toast.success("视频任务已加入后台队列");
+        toast.success("视频已加入后台生成");
         void watchClipJob(job.id, sceneId, id, cost, msg, true);
       }
     } catch (e) {
       clearBusy(id);
-      toast.error(aiErrorMessage(e, "渲染失败，请稍后重试"));
+      toast.error(aiErrorMessage(e, "生成失败，请稍后重试"));
     }
   };
 

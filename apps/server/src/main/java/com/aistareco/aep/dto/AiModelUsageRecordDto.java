@@ -26,5 +26,11 @@ public record AiModelUsageRecordDto(
         String upstreamId,
         Long latencyMs,
         String errorCode,
-        String errorMessage
+        String errorMessage,
+        String requestBodyJson,
+        String responseBodyJson,
+        String replayOfRecordId,
+        Integer qualityScore,
+        String qualityLabel,
+        String qualityNote
 ) {}

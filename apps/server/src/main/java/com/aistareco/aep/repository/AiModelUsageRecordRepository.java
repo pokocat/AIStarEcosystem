@@ -13,7 +13,7 @@ import java.util.List;
 @Repository
 public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsageRecord, String> {
 
-    // 聚合查询返回 Object[]：[0]=分组键, [1]=分组名, [2]=调用次数, [3]=total, [4]=prompt, [5]=completion。
+    // 聚合查询返回 Object[]：[0]=分组键, [1]=分组名, [2]=调用次数, [3]=total, [4]=prompt, [5]=completion, [6]=costMicros。
     // 用 Object[] 而非构造器表达式，避开 Long → long 在 JPQL new 表达式里的拆箱兼容坑。
     // token 维度只统计成功调用（success=true）；失败调用单独由 countFailed 计数。
 
@@ -22,7 +22,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COUNT(r),
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
-                   COALESCE(SUM(r.completionTokens), 0)
+                   COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
             GROUP BY r.providerId, r.providerName
@@ -34,7 +35,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COUNT(r),
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
-                   COALESCE(SUM(r.completionTokens), 0)
+                   COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
             GROUP BY r.model
@@ -46,7 +48,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COUNT(r),
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
-                   COALESCE(SUM(r.completionTokens), 0)
+                   COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true AND r.providerId = :providerId
             GROUP BY r.model
@@ -63,7 +66,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COUNT(r),
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
-                   COALESCE(SUM(r.completionTokens), 0)
+                   COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
               AND (:providerId IS NULL OR r.providerId = :providerId)
@@ -77,7 +81,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COUNT(r),
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
-                   COALESCE(SUM(r.completionTokens), 0)
+                   COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
               AND (:providerId IS NULL OR r.providerId = :providerId)
@@ -91,7 +96,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COUNT(r),
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
-                   COALESCE(SUM(r.completionTokens), 0)
+                   COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
               AND (:providerId IS NULL OR r.providerId = :providerId)
@@ -108,7 +114,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                    COUNT(r),
                    COALESCE(SUM(r.totalTokens), 0),
                    COALESCE(SUM(r.promptTokens), 0),
-                   COALESCE(SUM(r.completionTokens), 0)
+                   COALESCE(SUM(r.completionTokens), 0),
+                   COALESCE(SUM(r.costMicros), 0)
             FROM AiModelUsageRecord r
             WHERE r.createdAt >= :since AND r.success = true
               AND (:providerId IS NULL OR r.providerId = :providerId)

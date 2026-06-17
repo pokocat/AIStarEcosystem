@@ -6035,8 +6035,8 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-template-scripts], operationId: adminUploadTemplateScriptClip, responses: { '200': { description: ok } } }
 
-  # ── AI 模型接入端点 + 网关 Key + AI 应用绑定（v0.5 §D8 起；v0.41 统一 endpoint+key+binding） ──
-  # 端点 = 固定 {上游密钥 + 单模型 + 地址}，自带网关 Key（sk-aep-*）；路由保留 /admin/ai-models。
+  # ── AI 模型接入端点 + 外部 API Token + AI 应用绑定 ──
+  # 端点 = 固定 {上游密钥 + 单模型 + 地址}，自带外部 API Token（sk-aep-*）；server 内嵌 OpenAI-compatible API。
   /admin/ai-models:
     get:  { tags: [admin-ai-models], operationId: adminListAiModelEndpoints,  responses: { '200': { description: ok } } }
     post: { tags: [admin-ai-models], operationId: adminCreateAiModelEndpoint, responses: { '201': { description: created } } }
@@ -6076,6 +6076,12 @@ paths:
                       data:
                         type: array
                         items: { $ref: '#/components/schemas/AiModelUsageRecord' }
+  /admin/ai-models/usage-records/{recordId}/replay:
+    parameters: [{ name: recordId, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-ai-models], operationId: adminReplayAiModelUsageRecord, responses: { '200': { description: 重放保存过 request body 的 LLM 调用，生成新的 usage record 并回指原记录 } } }
+  /admin/ai-models/usage-records/{recordId}/quality:
+    parameters: [{ name: recordId, in: path, required: true, schema: { type: string } }]
+    put: { tags: [admin-ai-models], operationId: adminUpdateAiModelUsageQuality, responses: { '200': { description: 更新调用质量评分 / 标签 / 坏案例备注 } } }
   /admin/ai-models/discover-models:
     post: { tags: [admin-ai-models], operationId: adminDiscoverAiModels, responses: { '200': { description: 用 baseUrl+apiKey 调服务商 GET /models 拉取可用模型 } } }
   /admin/ai-models/{id}:
@@ -6098,10 +6104,10 @@ paths:
       responses: { '200': { description: 单端点大模型用量报表（同样返回用户 / 租户 / 来源应用维度） } }
   /admin/ai-models/{id}/mint-key:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-    post: { tags: [admin-ai-models], operationId: adminMintEndpointKey, responses: { '200': { description: 'v0.41：给端点铸造/重铸网关 Key sk-aep-*，明文仅返回一次（DB 存 bcrypt）' } } }
+    post: { tags: [admin-ai-models], operationId: adminMintEndpointKey, responses: { '200': { description: '给端点铸造/重铸外部 API Token sk-aep-*，明文仅返回一次（DB 存 bcrypt）' } } }
   /admin/ai-models/{id}/revoke-key:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-    post: { tags: [admin-ai-models], operationId: adminRevokeEndpointKey, responses: { '200': { description: 'v0.41：撤销端点的网关 Key（不删端点）' } } }
+    post: { tags: [admin-ai-models], operationId: adminRevokeEndpointKey, responses: { '200': { description: '撤销端点的外部 API Token（不删端点）' } } }
 
   # ── AI 应用绑定（v0.41 新增；用途 → 端点，一用途一端点，无兜底） ──────────
   /admin/ai-app-bindings:
@@ -6132,7 +6138,26 @@ paths:
     put: { tags: [admin-prompts], operationId: adminUpsertPrompt, responses: { '200': { description: upsert（version 自增，1min 缓存立即失效） } } }
   /admin/prompts/{key}/dry-run:
     parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
-    post: { tags: [admin-prompts], operationId: adminDryRunPrompt, responses: { '200': { description: 用样例参数 fill 出最终 messages（不真调模型） } } }
+    post: { tags: [admin-prompts], operationId: adminDryRunPrompt, responses: { '200': { description: 用样例参数 fill 出最终 messages（不真调模型），返回变量列表与缺失变量 } } }
+  /admin/prompts/{key}/test-run:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-prompts], operationId: adminTestRunPrompt, responses: { '200': { description: 用样例参数填充后真实调用一次模型，返回输出与 token 用量 } } }
+  /admin/prompts/{key}/versions:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    get: { tags: [admin-prompts], operationId: adminListPromptVersions, responses: { '200': { description: prompt_template_version 快照列表 } } }
+  /admin/prompts/{key}/versions/{version}/rollback:
+    parameters:
+      - { name: key, in: path, required: true, schema: { type: string } }
+      - { name: version, in: path, required: true, schema: { type: integer } }
+    post: { tags: [admin-prompts], operationId: adminRollbackPromptVersion, responses: { '200': { description: 回滚到历史版本，并追加一个新的当前版本快照 } } }
+
+  # ── server 内嵌 OpenAI-compatible LLM API ────────────────────────────────
+  /llm/v1/chat/completions:
+    post: { tags: [llm-api], operationId: embeddedLlmChatCompletions, responses: { '200': { description: OpenAI-compatible chat completions；Authorization Bearer sk-aep-* } } }
+  /llm/v1/models:
+    get: { tags: [llm-api], operationId: embeddedLlmModels, responses: { '200': { description: 启用端点的模型/别名列表 } } }
+  /llm/v1/healthz:
+    get: { tags: [llm-api], operationId: embeddedLlmHealthz, responses: { '200': { description: ok } } }
 
   # ── 素材运营 · 文本类 AI（v0.40 新增；接真 LLM，失败降级，见 MaterialAiService） ──────────
   /material/scripts:

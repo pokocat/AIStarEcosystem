@@ -52,7 +52,7 @@ public class AiModelUsageRecord {
     @Column(name = "tenant_id", length = 64)
     private String tenantId;
 
-    /** 来源应用短码：music / drama / celebrity / aiavatar / star / celebrity-mp / admin / llm-gateway。 */
+    /** 来源应用短码：music / drama / celebrity / aiavatar / star / celebrity-mp / admin / external-api。 */
     @Column(name = "app_code", length = 32)
     private String appCode;
 
@@ -75,6 +75,34 @@ public class AiModelUsageRecord {
     /** 脱敏后的错误摘要，仅用于 admin 排障列表。 */
     @Column(name = "error_message", length = 512)
     private String errorMessage;
+
+    /** 发给模型的最终请求体 JSON。仅保存脱敏/截断后的文本，供 admin 排障/重放。 */
+    @Lob
+    @Column(name = "request_body_json", columnDefinition = "LONGTEXT")
+    private String requestBodyJson;
+
+    /** 上游原始响应体 JSON 或 SSE 摘要。仅保存截断后的文本，供 admin 排障/质量评估。 */
+    @Lob
+    @Column(name = "response_body_json", columnDefinition = "LONGTEXT")
+    private String responseBodyJson;
+
+    /** 本次调用估算成本，单位：人民币微元。保存快照，避免单价变化影响历史统计。 */
+    @Column(name = "cost_micros")
+    private Long costMicros;
+
+    /** 从失败明细点击重放时，指向原始 usage record id。 */
+    @Column(name = "replay_of_record_id", length = 64)
+    private String replayOfRecordId;
+
+    /** 人工或自动质量评分，0-100。 */
+    @Column(name = "quality_score")
+    private Integer qualityScore;
+
+    @Column(name = "quality_label", length = 32)
+    private String qualityLabel;
+
+    @Column(name = "quality_note", length = 512)
+    private String qualityNote;
 
     @Column(name = "prompt_tokens")
     private Long promptTokens;

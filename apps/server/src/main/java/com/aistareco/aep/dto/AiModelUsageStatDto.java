@@ -12,5 +12,6 @@ public record AiModelUsageStatDto(
         long calls,
         long totalTokens,
         long promptTokens,
-        long completionTokens
+        long completionTokens,
+        long estimatedCostMicros
 ) {}

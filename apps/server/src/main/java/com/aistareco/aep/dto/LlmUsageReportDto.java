@@ -1,6 +1,6 @@
 package com.aistareco.aep.dto;
 
-/** llm-gateway → server 的 usage 上报。 */
+/** server 内嵌 OpenAI-compatible API 的 usage 记录入参。 */
 public record LlmUsageReportDto(
         String keyId,
         String requestId,
@@ -16,5 +16,8 @@ public record LlmUsageReportDto(
         String errorMessage,
         long promptTokens,
         long completionTokens,
-        long totalTokens
+        long totalTokens,
+        String requestBodyJson,
+        String responseBodyJson,
+        String replayOfRecordId
 ) {}

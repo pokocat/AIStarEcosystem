@@ -4,6 +4,7 @@ import com.aistareco.aep.model.PromptTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Prompt 模板出 wire（admin GET / PUT 回包）。
@@ -15,12 +16,17 @@ public record PromptTemplateDto(
         String systemPrompt,
         String userTemplate,
         PromptParamsDto params,
+        List<String> variables,
         int version,
         boolean enabled,
         Instant updatedAt,
         String updatedBy
 ) {
     public static PromptTemplateDto from(PromptTemplate t, ObjectMapper om) {
+        return from(t, om, List.of());
+    }
+
+    public static PromptTemplateDto from(PromptTemplate t, ObjectMapper om, List<String> variables) {
         PromptParamsDto params = null;
         if (t.getParamsJson() != null && !t.getParamsJson().isBlank()) {
             try {
@@ -35,6 +41,7 @@ public record PromptTemplateDto(
                 t.getSystemPrompt(),
                 t.getUserTemplate(),
                 params,
+                variables == null ? List.of() : variables,
                 t.getVersion(),
                 t.isEnabled(),
                 t.getUpdatedAt(),

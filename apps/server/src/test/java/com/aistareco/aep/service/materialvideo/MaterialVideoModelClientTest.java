@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
- * 视频大模型响应解析的多形态兜底（normalizeStatus / extractVideoUrl）。
+ * 视频大模型响应解析的多形态兜底（normalizeStatus / extractVideoUrl / extractProgressPct）。
  * 纯函数，无 Spring / HTTP；保证换厂商时常见 wire 形态都能解析。
  */
 class MaterialVideoModelClientTest {
@@ -79,6 +79,22 @@ class MaterialVideoModelClientTest {
     void extractVideoUrl_returns_null_when_not_ready() {
         // 进行中：还没有成片 URL
         assertNull(MaterialVideoModelClient.extractVideoUrl(json("{\"task_status\":\"PROCESSING\"}")));
+    }
+
+    @Test
+    void extractProgressPct_accepts_common_shapes() {
+        assertEquals(42, MaterialVideoModelClient.extractProgressPct(json("{\"progress\":0.42}")));
+        assertEquals(55, MaterialVideoModelClient.extractProgressPct(json("{\"data\":{\"progress_pct\":55}}")));
+        assertEquals(66, MaterialVideoModelClient.extractProgressPct(json("{\"output\":{\"percentage\":\"66%\"}}")));
+        assertEquals(73, MaterialVideoModelClient.extractProgressPct(json("{\"progressPct\":\"73\"}")));
+    }
+
+    @Test
+    void extractProgressPct_clamps_and_ignores_invalid_values() {
+        assertEquals(100, MaterialVideoModelClient.extractProgressPct(json("{\"percent\":120}")));
+        assertEquals(1, MaterialVideoModelClient.extractProgressPct(json("{\"percent\":\"0.5%\"}")));
+        assertNull(MaterialVideoModelClient.extractProgressPct(json("{\"progress\":\"almost\"}")));
+        assertNull(MaterialVideoModelClient.extractProgressPct(json("{\"task_status\":\"PROCESSING\"}")));
     }
 
     @Test

@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * AI 模型接入端点读 DTO（v0.41）。
- * **永远不返回上游 apiKey 明文**（仅 upstreamApiKeyMasked），也**永远不返回网关 Key 明文**（仅 keyMasked）。
+ * **永远不返回上游 apiKey 明文**（仅 upstreamApiKeyMasked），也**永远不返回外部 API Token 明文**（仅 keyMasked）。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AiModelEndpointDto(
@@ -22,8 +22,14 @@ public record AiModelEndpointDto(
         String upstreamApiKeyMasked,
         String apiVersion,
         String model,
+        String modelAlias,
+        Double defaultTemperature,
+        Integer defaultMaxTokens,
+        Double defaultTopP,
+        Integer rpmLimit,
+        Integer tpmLimit,
         List<AiModelEntryDto> models,
-        // 内嵌网关 Key
+        // 外部 API Token
         String keyPrefix,
         String keyMasked,
         boolean hasKey,
@@ -55,6 +61,12 @@ public record AiModelEndpointDto(
                 plaintext != null ? AepCryptoUtil.mask(plaintext) : "***",
                 e.getApiVersion(),
                 e.getModel(),
+                e.getModelAlias(),
+                e.getDefaultTemperature(),
+                e.getDefaultMaxTokens(),
+                e.getDefaultTopP(),
+                e.getRpmLimit(),
+                e.getTpmLimit(),
                 parseModels(e.getModelsJson()),
                 e.getKeyPrefix(),
                 e.getKeyPrefix() != null ? e.getKeyPrefix() + "…" : null,

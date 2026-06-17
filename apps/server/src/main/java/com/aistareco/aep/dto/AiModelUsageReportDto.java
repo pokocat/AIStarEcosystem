@@ -18,6 +18,7 @@ public record AiModelUsageReportDto(
         long totalTokens,
         long promptTokens,
         long completionTokens,
+        long estimatedCostMicros,
         long failedCalls,
         List<AiModelUsageStatDto> byProvider,
         List<AiModelUsageStatDto> byModel,

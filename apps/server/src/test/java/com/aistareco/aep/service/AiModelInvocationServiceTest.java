@@ -195,8 +195,8 @@ class AiModelInvocationServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 svc.invokeChat(AiModelPurpose.GENERAL,
                         List.of(Map.of("role", "user", "content", "hi")), null));
-        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, ex.getStatus());
-        assertEquals("AI_PROVIDER_HTTP_500", ex.getCode());
+        assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatus());
+        assertEquals("AI_CALL_FAILED", ex.getCode());
         assertEquals(1, bad.requests.size(), "单端点被尝试一次，不回退");
     }
 
@@ -210,8 +210,8 @@ class AiModelInvocationServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 svc.invokeChat(AiModelPurpose.GENERAL,
                         List.of(Map.of("role", "user", "content", "hi")), null));
-        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
-        assertEquals("AI_PROVIDER_HTTP_400", ex.getCode());
+        assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatus());
+        assertEquals("AI_CALL_FAILED", ex.getCode());
         assertEquals(1, bad.requests.size());
     }
 

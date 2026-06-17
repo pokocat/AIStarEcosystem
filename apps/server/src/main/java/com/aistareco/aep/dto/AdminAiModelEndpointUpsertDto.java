@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * admin POST/PUT 端点请求体（v0.41）。上游 apiKey 走明文（service 层加密落库）。
- * 网关 Key 不在此处设置，走单独的 mint-key / revoke-key 端点。
+ * 外部 API Token 不在此处设置，走单独的 mint-key / revoke-key 端点。
  */
 public record AdminAiModelEndpointUpsertDto(
         String id,
@@ -14,6 +14,12 @@ public record AdminAiModelEndpointUpsertDto(
         String apiKey,                 // 上游明文密钥；PUT 时省略表示「不修改」
         String apiVersion,
         String model,                  // 固定单模型
+        String modelAlias,             // 业务别名；空字符串可清空
+        Double defaultTemperature,
+        Integer defaultMaxTokens,
+        Double defaultTopP,
+        Integer rpmLimit,
+        Integer tpmLimit,
         List<AiModelEntryDto> models,  // 可用模型列表（discover-models 拉取后写入）
         String ownerUserId,            // 计费归属用户；空 = 平台级不计费
         Long promptTokenPriceMicros,   // 输入 token 单价，人民币微元 / 1K Token

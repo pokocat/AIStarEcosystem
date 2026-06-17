@@ -18,6 +18,7 @@ export interface PromptTemplate {
   systemPrompt: string;
   userTemplate: string;
   params: PromptParams | null;
+  variables: string[];
   version: number;
   enabled: boolean;
   updatedAt: string | null;
@@ -29,6 +30,7 @@ export interface PromptUpsert {
   userTemplate?: string;
   params?: PromptParams | null;
   enabled?: boolean;
+  changeNote?: string;
 }
 
 export interface PromptDryRun {
@@ -36,6 +38,30 @@ export interface PromptDryRun {
   system: string;
   user: string;
   params: PromptParams | null;
+  variables: string[];
+  missingVariables: string[];
+  sampleVars: Record<string, string>;
+}
+
+export interface PromptTemplateVersion {
+  id: string;
+  promptKey: string;
+  version: number;
+  systemPrompt: string;
+  userTemplate: string;
+  params: PromptParams | null;
+  enabled: boolean;
+  createdAt: string;
+  createdBy?: string;
+  changeNote?: string;
+}
+
+export interface PromptTestRun extends PromptDryRun {
+  output: string;
+  finishReason?: string;
+  tokensUsed?: number;
+  endpointUsed?: string;
+  modelUsed?: string;
 }
 
 /** GET /admin/prompts */
@@ -58,5 +84,22 @@ export async function dryRunPrompt(key: string, sampleVars: Record<string, strin
   return apiFetch<PromptDryRun>(`/admin/prompts/${encodeURIComponent(key)}/dry-run`, {
     method: "POST",
     body: sampleVars,
+  });
+}
+export async function testRunPrompt(
+  key: string,
+  body: { vars: Record<string, string>; endpointId?: string },
+): Promise<PromptTestRun> {
+  return apiFetch<PromptTestRun>(`/admin/prompts/${encodeURIComponent(key)}/test-run`, {
+    method: "POST",
+    body,
+  });
+}
+export async function listPromptVersions(key: string): Promise<PromptTemplateVersion[]> {
+  return apiFetch<PromptTemplateVersion[]>(`/admin/prompts/${encodeURIComponent(key)}/versions`);
+}
+export async function rollbackPrompt(key: string, version: number): Promise<PromptTemplate> {
+  return apiFetch<PromptTemplate>(`/admin/prompts/${encodeURIComponent(key)}/versions/${version}/rollback`, {
+    method: "POST",
   });
 }

@@ -12,11 +12,13 @@ import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -53,6 +55,9 @@ public class AiModelInvocationService {
     private final AiAppBindingRepository bindingRepo;
     private final AiModelUsageService usage;
 
+    @Value("${aep.llm.chat-timeout-seconds:90}")
+    private long chatTimeoutSeconds = 90;
+
     public AiModelInvocationService(AiModelEndpointRepository endpointRepo,
                                     AiAppBindingRepository bindingRepo,
                                     AiModelUsageService usage) {
@@ -83,7 +88,34 @@ public class AiModelInvocationService {
                     "未为用途 " + purpose.wire() + " 绑定可用的 AI 模型端点");
         }
         try {
-            return doChat(endpoint, purpose, messages, options);
+            return doChat(endpoint, purpose, messages, options, null);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[ai-chat] invoke exception purpose={} endpointId={} endpoint={} err={}",
+                    purpose == null ? null : purpose.wire(), endpoint.getId(), endpoint.getName(), e.toString());
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_ERROR",
+                    "调用端点失败: " + endpoint.getName() + " - " + e.getMessage());
+        }
+    }
+
+    /** 管理端试运行 / 重放等场景：显式指定端点，仍使用同一调用与观测链路。 */
+    public AiModelResponse invokeChatOnEndpoint(AiModelEndpoint endpoint, AiModelPurpose purpose,
+                                                List<Map<String, String>> messages,
+                                                Map<String, Object> options) {
+        return invokeChatOnEndpoint(endpoint, purpose, messages, options, null);
+    }
+
+    public AiModelResponse invokeChatOnEndpoint(AiModelEndpoint endpoint, AiModelPurpose purpose,
+                                                List<Map<String, String>> messages,
+                                                Map<String, Object> options,
+                                                String replayOfRecordId) {
+        if (endpoint == null || !endpoint.isEnabled()) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                    "指定的 AI 模型端点不可用");
+        }
+        try {
+            return doChat(endpoint, purpose, messages, options, replayOfRecordId);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -172,7 +204,7 @@ public class AiModelInvocationService {
     // ── 内部 ───────────────────────────────────────────────────────────────
 
     private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<Map<String, String>> messages,
-                                   Map<String, Object> options) throws Exception {
+                                   Map<String, Object> options, String replayOfRecordId) throws Exception {
         AiModelProviderType type = e.getProviderType();
         if (!isOpenAiCompatible(type)) {
             log.warn("[ai-chat] provider unsupported purpose={} endpointId={} providerType={}",
@@ -181,22 +213,31 @@ public class AiModelInvocationService {
                     "providerType=" + type.wire() + " 暂未实现（ANTHROPIC / AZURE_OPENAI 需独立适配；其余走 OpenAI 兼容）");
         }
         String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
-        String model = options != null && options.get("model") != null
-                ? String.valueOf(options.get("model"))
-                : (e.getModel() != null ? e.getModel() : "gpt-4o");
+        String model = resolveModel(e, options);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages);
         if (options != null) {
             if (options.get("temperature") != null) body.put("temperature", options.get("temperature"));
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
+            if (options.get("top_p") != null) body.put("top_p", options.get("top_p"));
             // response_format 透传（如 {"type":"json_object"}）；端点不支持时会自行忽略或报错，
             // 由调用方（MaterialAiService）catch 后走解析重试 / 兜底。
             if (options.get("response_format") != null) body.put("response_format", options.get("response_format"));
         }
+        if (!body.containsKey("temperature") && e.getDefaultTemperature() != null) {
+            body.put("temperature", e.getDefaultTemperature());
+        }
+        if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
+            body.put("max_tokens", e.getDefaultMaxTokens());
+        }
+        if (!body.containsKey("top_p") && e.getDefaultTopP() != null) {
+            body.put("top_p", e.getDefaultTopP());
+        }
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
+        String requestJson = OM.writeValueAsString(body);
         log.info("[ai-chat] invoke start requestId={} purpose={} endpointId={} endpoint={} providerType={} model={} messages={} maxTokens={} jsonMode={}",
                 requestId,
                 purpose == null ? null : purpose.wire(),
@@ -215,26 +256,34 @@ public class AiModelInvocationService {
             } catch (Exception ignore) { /* 序列化失败不阻塞主链路 */ }
         }
         HttpRequest req = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(30))
+                .timeout(chatTimeout(options))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
+                .POST(HttpRequest.BodyPublishers.ofString(requestJson))
                 .build();
         HttpResponse<String> resp;
         try {
             resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
         } catch (Exception ex) {
-            // 网络层异常：记一条失败流水（best-effort），再原样抛出。
+            // 网络层异常：记一条失败流水（best-effort），再转成稳定业务错误。
             usage.recordObserved(e.getId(), e.getName(), model,
                     purpose != null ? purpose.wire() : null, null, null, null, false,
-                    requestId, null, elapsedMs(startNanos), ex.getClass().getSimpleName(), ex.getMessage());
-            throw ex;
+                    requestId, null, elapsedMs(startNanos), ex.getClass().getSimpleName(), ex.getMessage(),
+                    requestJson, null, replayOfRecordId);
+            String code = ex instanceof HttpTimeoutException ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
+            String message = ex instanceof HttpTimeoutException
+                    ? "AI 生成超时，请稍后重试或换一个模型端点"
+                    : "AI 生成失败，请稍后重试";
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, code, message,
+                    "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
+                            + " model=" + model + " err=" + ex);
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             // v0.41：失败也落一条流水（token 为空），供用量统计区分成功 / 失败调用。
             usage.recordObserved(e.getId(), e.getName(), model,
                     purpose != null ? purpose.wire() : null, null, null, null, false,
-                    requestId, null, elapsedMs(startNanos), "HTTP_" + resp.statusCode(), snippet(resp.body()));
+                    requestId, null, elapsedMs(startNanos), "HTTP_" + resp.statusCode(), snippet(resp.body()),
+                    requestJson, resp.body(), replayOfRecordId);
             log.warn("[ai-chat] invoke http-error requestId={} purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
                     requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
                     resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
@@ -278,7 +327,8 @@ public class AiModelInvocationService {
         usage.recordObserved(e.getId(), e.getName(), model,
                 purpose != null ? purpose.wire() : null,
                 promptTokens, completionTokens, tokensUsed, true,
-                requestId, upstreamId, elapsedMs(startNanos), null, null);
+                requestId, upstreamId, elapsedMs(startNanos), null, null,
+                requestJson, resp.body(), replayOfRecordId);
         log.info("[ai-chat] invoke ok requestId={} upstreamId={} purpose={} endpointId={} endpoint={} model={} finish={} tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
                 requestId,
                 upstreamId,
@@ -346,6 +396,39 @@ public class AiModelInvocationService {
             return type != null && "json_object".equalsIgnoreCase(String.valueOf(type));
         }
         return false;
+    }
+
+    private Duration chatTimeout(Map<String, Object> options) {
+        Object raw = options == null ? null : options.get("timeout_seconds");
+        if (raw instanceof Number n) {
+            return Duration.ofSeconds(clampTimeoutSeconds(n.longValue()));
+        }
+        if (raw != null) {
+            try {
+                return Duration.ofSeconds(clampTimeoutSeconds(Long.parseLong(String.valueOf(raw))));
+            } catch (NumberFormatException ignore) {
+                // 继续走全局默认值。
+            }
+        }
+        return Duration.ofSeconds(clampTimeoutSeconds(chatTimeoutSeconds));
+    }
+
+    private static long clampTimeoutSeconds(long seconds) {
+        return Math.max(10, Math.min(300, seconds));
+    }
+
+    private static String resolveModel(AiModelEndpoint e, Map<String, Object> options) {
+        String requested = options != null && options.get("model") != null
+                ? String.valueOf(options.get("model")).trim()
+                : null;
+        if (requested != null && !requested.isBlank()) {
+            String alias = e.getModelAlias();
+            if (alias != null && alias.equals(requested) && e.getModel() != null && !e.getModel().isBlank()) {
+                return e.getModel();
+            }
+            return requested;
+        }
+        return e.getModel() != null && !e.getModel().isBlank() ? e.getModel() : "gpt-4o";
     }
 
     /** chat 调用结果。 */

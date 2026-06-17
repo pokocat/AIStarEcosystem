@@ -25,7 +25,7 @@ import java.util.UUID;
 /**
  * AI 模型接入端点管理（v0.41，原 AiModelProviderAdminService）。
  * 上游 apiKey 走明文进 service，加密落库；DTO 出口剥离明文，仅返回脱敏值。
- * 网关 Key 铸造 / 撤销委派给 {@link AiModelEndpointKeyService}。
+ * 外部 API Token 铸造 / 撤销委派给 {@link AiModelEndpointKeyService}。
  */
 @Service
 @Transactional
@@ -113,6 +113,12 @@ public class AiModelEndpointAdminService {
                 .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt(req.apiKey()))
                 .apiVersion(req.apiVersion())
                 .model(req.model())
+                .modelAlias(blankToNull(req.modelAlias()))
+                .defaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0))
+                .defaultMaxTokens(req.defaultMaxTokens() != null && req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null)
+                .defaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0))
+                .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
+                .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
                 .modelsJson(serializeModels(req.models()))
                 .ownerUserId(blankToNull(req.ownerUserId()))
                 .promptTokenPriceMicros(nonNegative(req.promptTokenPriceMicros()))
@@ -132,6 +138,12 @@ public class AiModelEndpointAdminService {
         }
         if (req.apiVersion() != null) entity.setApiVersion(req.apiVersion());
         if (req.model() != null) entity.setModel(req.model());
+        if (req.modelAlias() != null) entity.setModelAlias(blankToNull(req.modelAlias()));
+        if (req.defaultTemperature() != null) entity.setDefaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0));
+        if (req.defaultMaxTokens() != null) entity.setDefaultMaxTokens(req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null);
+        if (req.defaultTopP() != null) entity.setDefaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0));
+        if (req.rpmLimit() != null) entity.setRpmLimit(req.rpmLimit() > 0 ? req.rpmLimit() : null);
+        if (req.tpmLimit() != null) entity.setTpmLimit(req.tpmLimit() > 0 ? req.tpmLimit() : null);
         if (req.models() != null) entity.setModelsJson(serializeModels(req.models()));
         // ownerUserId：null = 不改；"" = 清空为平台级；非空 = 设置
         if (req.ownerUserId() != null) entity.setOwnerUserId(blankToNull(req.ownerUserId()));
@@ -161,12 +173,12 @@ public class AiModelEndpointAdminService {
         return invocation.testConnection(id);
     }
 
-    /** 给端点铸造（或重铸）网关 Key，明文一次性返回。 */
+    /** 给端点铸造（或重铸）外部 API Token，明文一次性返回。 */
     public AiModelEndpointKeyMintedDto mintKey(String id) {
         return keyService.mintKey(id);
     }
 
-    /** 撤销端点的网关 Key。 */
+    /** 撤销端点的外部 API Token。 */
     public AiModelEndpointDto revokeKey(String id) {
         return keyService.revokeKey(id);
     }
@@ -212,6 +224,12 @@ public class AiModelEndpointAdminService {
 
     private static long nonNegative(Long value) {
         return value == null ? 0L : Math.max(0L, value);
+    }
+
+    private static Double clampDouble(Double value, double min, double max) {
+        if (value == null) return null;
+        if (value.isNaN() || value.isInfinite()) return null;
+        return Math.max(min, Math.min(max, value));
     }
 
     private AiModelEndpoint load(String id) {

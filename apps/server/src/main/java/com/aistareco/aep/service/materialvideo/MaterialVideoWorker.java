@@ -132,8 +132,12 @@ public class MaterialVideoWorker {
                 releaseCredits(job, "视频生成失败");
                 return;
             }
-            // 仍在生成：按 elapsed/maxWait 估算进度（封顶 95%，留给出片那一刻置 100）。
-            int pct = (int) Math.min(95, 10 + (elapsed * 85.0 / Math.max(1, maxWaitMs)));
+            // 仍在生成：优先采用服务商返回的真实进度；没有则按 elapsed/maxWait 估算。
+            // 封顶 95%，留给出片那一刻置 100。
+            int estimatedPct = (int) Math.min(95, 10 + (elapsed * 85.0 / Math.max(1, maxWaitMs)));
+            int pct = poll.progressPct() != null
+                    ? Math.min(95, Math.max(10, poll.progressPct()))
+                    : estimatedPct;
             updateStatus(jobId, "generating", pct, null);
 
             if (elapsed >= maxWaitMs) {

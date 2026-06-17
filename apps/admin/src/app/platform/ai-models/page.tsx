@@ -1,10 +1,10 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 平台 · AI 模型与 Key（v0.41 合并自「AI 模型」+「LLM 网关 Key」）
-//   · 模型接入端点 = 固定 {上游密钥 + 单模型 + 地址}，自带网关 Key（sk-aep-*）。
+// 平台 · AI 模型与 Token
+//   · 模型接入端点 = 固定 {上游密钥 + 单模型 + 地址}，自带外部 API Token（sk-aep-*）。
 //   · AI 应用绑定 = 每个用途（脚本起草 / 卖点提取 / 变量抽取…）固定指向一个端点。
-//   上游密钥由 server AES-GCM 加密落库；网关 Key 仅铸造瞬间返回明文一次（DB 存 bcrypt）。
+//   上游密钥由 server AES-GCM 加密落库；外部 API Token 仅铸造瞬间返回明文一次（DB 存 bcrypt）。
 //   本期仅 OpenAI / OpenAI 兼容协议 真实可用；其它类型可建档，连通性测试返回「暂不支持」。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,8 @@ import {
   AlertTriangle,
   Link2,
   BarChart3,
+  FileSearch,
+  RotateCcw,
 } from "lucide-react";
 import { useConfirm, useToast } from "@/components/feedback";
 import { AiModelsApi } from "@/api";
@@ -45,6 +47,7 @@ import type {
   AiModelUsageReport,
   AiModelUsageStat,
   AiModelUsageDaily,
+  AiModelUsageRecord,
   AdminAiModelEndpointUpsert,
 } from "@/api/ai-models";
 
@@ -86,7 +89,13 @@ interface FormDefaults {
   baseUrl?: string;
   apiVersion?: string;
   model?: string;
+  modelAlias?: string;
   ownerUserId?: string;
+  defaultTemperature?: string;
+  defaultMaxTokens?: string;
+  defaultTopP?: string;
+  rpmLimit?: string;
+  tpmLimit?: string;
   promptPriceYuan?: string;
   completionPriceYuan?: string;
   apiKeyHint?: string;
@@ -102,6 +111,12 @@ interface FormState {
   apiKey: string;
   apiVersion: string;
   model: string;
+  modelAlias: string;
+  defaultTemperature: string;
+  defaultMaxTokens: string;
+  defaultTopP: string;
+  rpmLimit: string;
+  tpmLimit: string;
   models: AiModelEntry[];
   ownerUserId: string;
   clearOwnerUserId: boolean;
@@ -119,6 +134,12 @@ const EMPTY_FORM: FormState = {
   apiKey: "",
   apiVersion: "",
   model: "",
+  modelAlias: "",
+  defaultTemperature: "",
+  defaultMaxTokens: "",
+  defaultTopP: "",
+  rpmLimit: "",
+  tpmLimit: "",
   models: [],
   ownerUserId: "",
   clearOwnerUserId: false,
@@ -191,7 +212,7 @@ const BINDING_GROUPS: Array<{
 // 故这里用集合判定「是否已声明」，而非 purpose→单一分组 的映射。
 const DECLARED_PURPOSES = new Set<AiModelPurpose>(BINDING_GROUPS.flatMap((group) => group.purposes));
 
-function valueOrDefault(form: FormState, key: keyof Pick<FormState, "name" | "baseUrl" | "apiVersion" | "model" | "ownerUserId">): string {
+function valueOrDefault(form: FormState, key: keyof Pick<FormState, "name" | "baseUrl" | "apiVersion" | "model" | "modelAlias" | "ownerUserId" | "defaultTemperature" | "defaultMaxTokens" | "defaultTopP" | "rpmLimit" | "tpmLimit">): string {
   const value = form[key].trim();
   if (value) return value;
   const fallback = form.defaults?.[key]?.trim();
@@ -219,9 +240,30 @@ function parsePriceMicros(value: string): number | null {
   return Math.round(n * MICROS_PER_YUAN);
 }
 
+function parseOptionalNumber(value: string, min: number, max: number): number | null | undefined {
+  const raw = value.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min || n > max) return undefined;
+  return n;
+}
+
+function parseOptionalInt(value: string, min: number): number | null | undefined {
+  const raw = value.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min) return undefined;
+  return n;
+}
+
 function priceLabel(value: number | null | undefined): string {
   const text = microsToYuanText(value);
   return text ? `¥${text} / 1K` : "¥0 / 1K";
+}
+
+function microsCostLabel(value: number | null | undefined): string {
+  if (!value || value <= 0) return "¥0";
+  return `¥${(value / MICROS_PER_YUAN).toFixed(4).replace(/\.?0+$/, "")}`;
 }
 
 function formTitle(form: FormState | null): string {
@@ -241,6 +283,12 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     baseUrl: p.baseUrl,
     apiVersion: p.apiVersion ?? "",
     model: p.model ?? "",
+    modelAlias: p.modelAlias ?? "",
+    defaultTemperature: p.defaultTemperature != null ? String(p.defaultTemperature) : "",
+    defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
+    defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
+    rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
     models: p.models ?? [],
     ownerUserId: p.ownerUserId ?? "",
     promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
@@ -251,7 +299,13 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
       baseUrl: p.baseUrl,
       apiVersion: p.apiVersion ?? "",
       model: p.model ?? "",
+      modelAlias: p.modelAlias ?? "",
       ownerUserId: p.ownerUserId ?? "",
+      defaultTemperature: p.defaultTemperature != null ? String(p.defaultTemperature) : "",
+      defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
+      defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
+      rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+      tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
       promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
       completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
       sourceName: p.name,
@@ -263,8 +317,19 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
   return {
     ...EMPTY_FORM,
     mode: "copy",
+    name: `${p.name} 副本`,
     providerType: p.providerType,
+    baseUrl: p.baseUrl,
+    apiVersion: p.apiVersion ?? "",
+    model: p.model ?? "",
     models: p.models ?? [],
+    modelAlias: p.modelAlias ?? "",
+    defaultTemperature: p.defaultTemperature != null ? String(p.defaultTemperature) : "",
+    defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
+    defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
+    rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
+    ownerUserId: p.ownerUserId ?? "",
     promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
     completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
     enabled: p.enabled,
@@ -273,7 +338,13 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
       baseUrl: p.baseUrl,
       apiVersion: p.apiVersion ?? "",
       model: p.model ?? "",
+      modelAlias: p.modelAlias ?? "",
       ownerUserId: p.ownerUserId ?? "",
+      defaultTemperature: p.defaultTemperature != null ? String(p.defaultTemperature) : "",
+      defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
+      defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
+      rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+      tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
       promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
       completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
       sourceName: p.name,
@@ -299,9 +370,12 @@ export default function AdminAiModelsPage() {
   const [mintedPlaintext, setMintedPlaintext] = React.useState<string | null>(null);
   // 用量统计（v0.41，合并自 goods_to_video）
   const [usage, setUsage] = React.useState<AiModelUsageReport | null>(null);
+  const [records, setRecords] = React.useState<AiModelUsageRecord[]>([]);
   const [usageDays, setUsageDays] = React.useState(30);
   const [usageLoading, setUsageLoading] = React.useState(true);
   const [usageErr, setUsageErr] = React.useState<string | null>(null);
+  const [recordQuery, setRecordQuery] = React.useState("");
+  const [replayingRecordId, setReplayingRecordId] = React.useState<string | null>(null);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
@@ -333,13 +407,18 @@ export default function AdminAiModelsPage() {
     setUsageLoading(true);
     setUsageErr(null);
     try {
-      setUsage(await AiModelsApi.getUsage(days));
+      const [report, latestRecords] = await Promise.all([
+        AiModelsApi.getUsage(days),
+        AiModelsApi.getUsageRecords({ days, q: recordQuery.trim() || undefined, size: 80 }),
+      ]);
+      setUsage(report);
+      setRecords(latestRecords);
     } catch (e) {
       setUsageErr(e instanceof Error ? e.message : "加载失败");
     } finally {
       setUsageLoading(false);
     }
-  }, []);
+  }, [recordQuery]);
 
   React.useEffect(() => {
     void loadUsage(usageDays);
@@ -442,9 +521,15 @@ export default function AdminAiModelsPage() {
     const baseUrl = valueOrDefault(editing, "baseUrl");
     const apiVersion = valueOrDefault(editing, "apiVersion");
     const model = valueOrDefault(editing, "model");
+    const modelAlias = valueOrDefault(editing, "modelAlias");
     const ownerUserId = valueOrDefault(editing, "ownerUserId");
     const promptTokenPriceMicros = parsePriceMicros(editing.promptPriceYuan);
     const completionTokenPriceMicros = parsePriceMicros(editing.completionPriceYuan);
+    const defaultTemperature = parseOptionalNumber(editing.defaultTemperature, 0, 2);
+    const defaultMaxTokens = parseOptionalInt(editing.defaultMaxTokens, 1);
+    const defaultTopP = parseOptionalNumber(editing.defaultTopP, 0, 1);
+    const rpmLimit = parseOptionalInt(editing.rpmLimit, 1);
+    const tpmLimit = parseOptionalInt(editing.tpmLimit, 1);
 
     if (!name || !baseUrl) {
       toast.warning({ title: "端点名称 / 调用地址 必填" });
@@ -458,6 +543,16 @@ export default function AdminAiModelsPage() {
       toast.warning({ title: "计价必须是大于等于 0 的数字" });
       return;
     }
+    if (
+      defaultTemperature === undefined ||
+      defaultMaxTokens === undefined ||
+      defaultTopP === undefined ||
+      rpmLimit === undefined ||
+      tpmLimit === undefined
+    ) {
+      toast.warning({ title: "默认参数或限额格式不正确" });
+      return;
+    }
     try {
       const body: AdminAiModelEndpointUpsert = {
         name,
@@ -466,6 +561,12 @@ export default function AdminAiModelsPage() {
         ...(editing.apiKey.trim() ? { apiKey: editing.apiKey.trim() } : {}),
         apiVersion: apiVersion || undefined,
         model: model || undefined,
+        modelAlias: modelAlias || "",
+        defaultTemperature,
+        defaultMaxTokens,
+        defaultTopP,
+        rpmLimit,
+        tpmLimit,
         models: editing.models,
         promptTokenPriceMicros,
         completionTokenPriceMicros,
@@ -549,10 +650,10 @@ export default function AdminAiModelsPage() {
   async function onMintKey(p: AiModelEndpoint) {
     if (p.hasKey) {
       const res = await confirm({
-        title: "重新生成网关 Key",
+        title: "重新生成外部 API Token",
         tone: "danger",
         confirmLabel: "重新生成",
-        description: "重新生成后，旧 Key 立即失效；正在用旧 Key 的业务方需更换。明文仅显示一次。",
+        description: "重新生成后，旧 Token 立即失效；正在使用旧 Token 的业务方需更换。明文仅显示一次。",
         affected: <div className="font-medium">{p.name}</div>,
       });
       if (!res.ok) return;
@@ -561,7 +662,7 @@ export default function AdminAiModelsPage() {
       const r = await AiModelsApi.mintKey(p.id);
       setMintedPlaintext(r.plaintext);
       await refresh();
-      toast.success({ title: "网关 Key 已生成", description: "请立即复制明文，离开本页后无法再查看。" });
+      toast.success({ title: "外部 API Token 已生成", description: "请立即复制明文，离开本页后无法再查看。" });
     } catch (e) {
       toast.danger({ title: "生成失败", description: e instanceof Error ? e.message : undefined });
     }
@@ -569,7 +670,7 @@ export default function AdminAiModelsPage() {
 
   async function onRevokeKey(p: AiModelEndpoint) {
     const res = await confirm({
-      title: "撤销网关 Key",
+      title: "撤销外部 API Token",
       tone: "danger",
       confirmLabel: "确认撤销",
       requireReason: true,
@@ -588,7 +689,7 @@ export default function AdminAiModelsPage() {
     try {
       await AiModelsApi.revokeKey(p.id);
       await refresh();
-      toast.success({ title: "网关 Key 已撤销" });
+      toast.success({ title: "外部 API Token 已撤销" });
     } catch (e) {
       toast.danger({ title: "撤销失败", description: e instanceof Error ? e.message : undefined });
     }
@@ -615,11 +716,27 @@ export default function AdminAiModelsPage() {
     }
   }
 
+  async function onReplayRecord(record: AiModelUsageRecord) {
+    setReplayingRecordId(record.id);
+    try {
+      const result = await AiModelsApi.replayUsageRecord(record.id);
+      await loadUsage(usageDays);
+      toast.success({
+        title: "已重放请求",
+        description: `${result.endpointUsed ?? record.providerName ?? "端点"} · ${result.tokensUsed ?? 0} tokens`,
+      });
+    } catch (e) {
+      toast.danger({ title: "重放失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setReplayingRecordId(null);
+    }
+  }
+
   return (
     <div className="admin-page space-y-6">
       <PageHeader
-        title="AI 模型与 Key"
-        description="配置模型接入端点（固定上游密钥 + 单模型 + 地址，含网关 Key），并把每个 AI 应用绑定到一个端点。密钥由服务端加密存储，列表仅显示脱敏值。"
+        title="AI 模型与 Token"
+        description="配置模型接入端点（固定上游密钥 + 单模型 + 地址，含外部 API Token），并把每个 AI 应用绑定到一个端点。密钥由服务端加密存储，列表仅显示脱敏值。"
       />
 
       {mintedPlaintext && (
@@ -627,7 +744,7 @@ export default function AdminAiModelsPage() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
             <div className="min-w-0 flex-1 space-y-2">
-              <div className="text-sm font-semibold text-foreground">网关 Key 明文仅此一次显示</div>
+              <div className="text-sm font-semibold text-foreground">外部 API Token 明文仅此一次显示</div>
               <p className="text-xs text-muted-foreground">
                 离开本页或刷新后将无法再查看。请立即复制并交付给业务方安全保管。
               </p>
@@ -652,6 +769,7 @@ export default function AdminAiModelsPage() {
           <TabsTrigger value="endpoints">模型接入端点（含 Key）</TabsTrigger>
           <TabsTrigger value="bindings">AI 应用绑定</TabsTrigger>
           <TabsTrigger value="usage">用量统计</TabsTrigger>
+          <TabsTrigger value="records">请求日志</TabsTrigger>
         </TabsList>
 
         {/* ── Tab 1：模型接入端点 ── */}
@@ -699,7 +817,7 @@ export default function AdminAiModelsPage() {
                       </>
                     ) : (
                       <>
-                        正在复制「{editing.defaults?.sourceName ?? editing.defaults?.name}」。placeholder 显示复制来源；上游 API 密钥不会复制，需要重新填写。
+                        正在复制「{editing.defaults?.sourceName ?? editing.defaults?.name}」。原配置已填入表单；上游 API 密钥不会复制，需要重新填写。
                       </>
                     )}
                   </div>
@@ -775,6 +893,13 @@ export default function AdminAiModelsPage() {
                       placeholder={placeholderFor(editing, "model", "gpt-4o")}
                     />
                   </Field>
+                  <Field label="模型别名" hint="业务调用可传别名，例如 default-chat；server 会映射到固定模型">
+                    <Input
+                      value={editing.modelAlias}
+                      onChange={(e) => setEditing({ ...editing, modelAlias: e.target.value })}
+                      placeholder={placeholderFor(editing, "modelAlias", "default-chat")}
+                    />
+                  </Field>
                   <Field label="启用" hint="停用后绑定到该端点的 AI 应用会报「未配置」">
                     <div className="flex h-9 items-center">
                       <Switch checked={editing.enabled} onCheckedChange={(v) => setEditing({ ...editing, enabled: v })} />
@@ -830,12 +955,69 @@ export default function AdminAiModelsPage() {
 
                 <section className="rounded-md border border-border bg-surface px-3.5 py-3">
                   <div className="mb-3">
-                    <div className="text-sm font-medium">计价</div>
+                    <div className="text-sm font-medium">默认参数与计价</div>
                     <div className="text-xs text-muted-foreground">
-                      按当前供应商成本填写，单位为元 / 1K Token。留空或 0 表示暂未配置成本价，不改变钱包扣费逻辑。
+                      默认参数在业务 Prompt 未指定时生效。计价单位为元 / 1K Token，用于成本监控；不改变钱包扣费逻辑。
                     </div>
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Field label="默认 temperature" hint="0-2，留空则由 Prompt 或调用方决定">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={editing.defaultTemperature}
+                        onChange={(e) => setEditing({ ...editing, defaultTemperature: e.target.value })}
+                        placeholder={editing.defaults?.defaultTemperature || "留空"}
+                      />
+                    </Field>
+                    <Field label="默认 max_tokens" hint="正整数，留空则由 Prompt 或调用方决定">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        step="1"
+                        value={editing.defaultMaxTokens}
+                        onChange={(e) => setEditing({ ...editing, defaultMaxTokens: e.target.value })}
+                        placeholder={editing.defaults?.defaultMaxTokens || "留空"}
+                      />
+                    </Field>
+                    <Field label="默认 top_p" hint="0-1，留空则不传">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={editing.defaultTopP}
+                        onChange={(e) => setEditing({ ...editing, defaultTopP: e.target.value })}
+                        placeholder={editing.defaults?.defaultTopP || "留空"}
+                      />
+                    </Field>
+                    <Field label="软限额 RPM / TPM" hint="仅用于管理台巡检展示，本轮不做强制限速">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min="1"
+                          step="1"
+                          value={editing.rpmLimit}
+                          onChange={(e) => setEditing({ ...editing, rpmLimit: e.target.value })}
+                          placeholder={editing.defaults?.rpmLimit || "RPM"}
+                        />
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min="1"
+                          step="1"
+                          value={editing.tpmLimit}
+                          onChange={(e) => setEditing({ ...editing, tpmLimit: e.target.value })}
+                          placeholder={editing.defaults?.tpmLimit || "TPM"}
+                        />
+                      </div>
+                    </Field>
                     <Field label="输入 Token 单价" hint="例如 0.0015 表示每 1K 输入 Token 0.0015 元">
                       <Input
                         type="number"
@@ -882,7 +1064,7 @@ export default function AdminAiModelsPage() {
                           placeholder={placeholderFor(editing, "apiVersion", "留空")}
                         />
                       </Field>
-                      <Field label="计费归属用户" hint="外部网关 Key 调用按 token 扣该用户钱包；留空 = 平台级，仅累计不扣费">
+                      <Field label="计费归属用户" hint="外部 API Token 调用按 token 扣该用户钱包；留空 = 平台级，仅累计不扣费">
                         <div className="flex gap-2">
                           <Input
                             value={editing.ownerUserId}
@@ -944,7 +1126,7 @@ export default function AdminAiModelsPage() {
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}
               {!loading && !err && (
-                <Table className="min-w-[1780px] table-fixed">
+                <Table className="min-w-[1900px] table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[190px]">名称</TableHead>
@@ -952,7 +1134,8 @@ export default function AdminAiModelsPage() {
                       <TableHead className="w-[190px]">调用地址</TableHead>
                       <TableHead className="w-[132px]">上游密钥</TableHead>
                       <TableHead className="w-[150px]">固定模型</TableHead>
-                      <TableHead className="w-[128px]">网关 Key</TableHead>
+                      <TableHead className="w-[130px]">别名</TableHead>
+                      <TableHead className="w-[128px]">API Token</TableHead>
                       <TableHead className="w-[112px] text-right">输入价</TableHead>
                       <TableHead className="w-[112px] text-right">输出价</TableHead>
                       <TableHead className="w-[112px] text-right">累计 tokens</TableHead>
@@ -978,6 +1161,7 @@ export default function AdminAiModelsPage() {
                           <TableCell className="truncate py-3 font-mono text-xs" title={p.baseUrl}>{p.baseUrl}</TableCell>
                           <TableCell className="truncate py-3 font-mono text-xs" title={p.upstreamApiKeyMasked}>{p.upstreamApiKeyMasked}</TableCell>
                           <TableCell className="truncate py-3 text-xs" title={p.model ?? undefined}>{p.model ?? "未设置"}</TableCell>
+                          <TableCell className="truncate py-3 text-xs font-mono" title={p.modelAlias ?? undefined}>{p.modelAlias ?? "未设置"}</TableCell>
                           <TableCell className="truncate py-3 text-xs">
                             {p.keyRevokedAt ? (
                               <Badge tone="danger" className="font-normal">
@@ -1162,6 +1346,7 @@ export default function AdminAiModelsPage() {
                     <StatBox label="总 Token" value={usage.totalTokens.toLocaleString()} />
                     <StatBox label="输入 Token" value={usage.promptTokens.toLocaleString()} />
                     <StatBox label="输出 Token" value={usage.completionTokens.toLocaleString()} />
+                    <StatBox label="估算成本" value={microsCostLabel(usage.estimatedCostMicros)} />
                   </div>
                   {usage.totalCalls === 0 ? (
                     <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
@@ -1178,6 +1363,110 @@ export default function AdminAiModelsPage() {
                     </div>
                   )}
                 </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tab 4：请求日志 ── */}
+        <TabsContent value="records" className="space-y-6">
+          <Card>
+            <CardHeader className="flex-col items-start gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="flex items-center gap-1.5 text-base">
+                <FileSearch className="h-4 w-4 text-primary" /> 请求日志
+              </CardTitle>
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                <div className="relative w-full sm:w-[260px]">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="h-8 pl-8"
+                    placeholder="搜索 requestId / 模型 / 错误…"
+                    value={recordQuery}
+                    onChange={(e) => setRecordQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void loadUsage(usageDays);
+                    }}
+                  />
+                </div>
+                <Button variant="outline" size="sm" onClick={() => void loadUsage(usageDays)}>
+                  刷新
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {usageLoading && <div className="text-sm text-muted-foreground">加载中…</div>}
+              {usageErr && <div className="text-sm text-destructive">{usageErr}</div>}
+              {!usageLoading && !usageErr && (
+                records.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                    暂无请求日志。
+                  </div>
+                ) : (
+                  <Table className="min-w-[1320px] table-fixed">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[150px]">时间 / 请求</TableHead>
+                        <TableHead className="w-[150px]">端点</TableHead>
+                        <TableHead className="w-[150px]">模型</TableHead>
+                        <TableHead className="w-[150px]">用途</TableHead>
+                        <TableHead className="w-[120px]">来源</TableHead>
+                        <TableHead className="w-[92px] text-right">Token</TableHead>
+                        <TableHead className="w-[92px] text-right">成本</TableHead>
+                        <TableHead className="w-[96px] text-right">延迟</TableHead>
+                        <TableHead className="w-[120px]">状态</TableHead>
+                        <TableHead className="w-[190px]">错误 / 质量</TableHead>
+                        <TableHead className="w-[120px] text-right">操作</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {records.map((record) => (
+                        <TableRow key={record.id} className="h-[72px]">
+                          <TableCell className="py-3">
+                            <div className="text-xs tabular-nums text-muted-foreground">{shortDateTime(record.createdAt)}</div>
+                            <div className="truncate font-mono text-[10px]" title={record.requestId ?? record.id}>
+                              {record.requestId ?? record.id}
+                            </div>
+                          </TableCell>
+                          <TableCell className="truncate py-3 text-xs" title={record.providerName ?? undefined}>{record.providerName ?? "未归属端点"}</TableCell>
+                          <TableCell className="truncate py-3 font-mono text-xs" title={record.model ?? undefined}>{record.model ?? "未记录"}</TableCell>
+                          <TableCell className="py-3">
+                            <div className="truncate text-xs">{record.purposeLabel}</div>
+                            <div className="truncate font-mono text-[10px] text-muted-foreground">{record.purpose ?? "GENERAL"}</div>
+                          </TableCell>
+                          <TableCell className="py-3 text-xs">{record.appLabel}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{record.totalTokens.toLocaleString()}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{microsCostLabel(record.estimatedCostMicros)}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{record.latencyMs != null ? `${record.latencyMs}ms` : "-"}</TableCell>
+                          <TableCell className="py-3">
+                            <Badge tone={record.success ? "success" : "danger"} className="font-normal">
+                              {record.success ? "成功" : "失败"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <div className="truncate text-xs" title={record.errorMessage ?? record.qualityNote ?? undefined}>
+                              {record.errorCode ?? record.qualityLabel ?? "未标注"}
+                            </div>
+                            {record.qualityScore != null && (
+                              <div className="text-[10px] text-muted-foreground">质量 {record.qualityScore}/100</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2"
+                              disabled={!record.requestBodyJson || replayingRecordId === record.id}
+                              onClick={() => void onReplayRecord(record)}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              {replayingRecordId === record.id ? "重放中" : "重放"}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
               )}
             </CardContent>
           </Card>
@@ -1376,6 +1665,12 @@ function smoothUsagePath(points: Array<{ x: number; y: number }>): string {
 function shortUsageDate(value: string): string {
   const parts = value.split("-");
   return parts.length === 3 ? `${parts[1]}/${parts[2]}` : value;
+}
+
+function shortDateTime(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function UsageTable({

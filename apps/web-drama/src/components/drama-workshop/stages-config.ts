@@ -25,7 +25,7 @@ export const STAGES: readonly StageDef[] = [
   { key: "outline",  no: 2, name: "大纲分集", scope: "项目", scopeHint: "跨集共享",   icon: List,      cost: 18 },
   { key: "cast",     no: 3, name: "角色与资产", scope: "项目", scopeHint: "跨集共享", icon: Users,     cost: 5 },
   { key: "epscript", no: 4, name: "剧集脚本", scope: "剧集", scopeHint: "针对当前集", sub: "剧本 + 分镜", icon: Film,    cost: 30 },
-  { key: "factory",  no: 5, name: "视频工厂", scope: "剧集", scopeHint: "针对当前集", sub: "渲染出片",   icon: ImageIcon, cost: 0 },
+  { key: "factory",  no: 5, name: "视频工厂", scope: "剧集", scopeHint: "针对当前集", sub: "逐镜出片",   icon: ImageIcon, cost: 0 },
   // v0.66：原「成片配方」退役 —— 分镜已真实出片，最后一步只需拼接交付（key 保留避免大改）
   { key: "prompt",   no: 6, name: "成片合成", scope: "剧集", scopeHint: "针对当前集", sub: "拼接完整片", icon: Package,  cost: 0 },
   // v0.79：互动剧分支编排（剧集图 + 时间轴互动点 + 全局标记 + 试玩 + 导出）。no=0 表示不在 1-6 线性进度里；

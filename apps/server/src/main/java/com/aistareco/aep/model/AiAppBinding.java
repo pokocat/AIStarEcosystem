@@ -10,7 +10,7 @@ import java.time.Instant;
  * {@link AiModelEndpoint}。用途即主键 = 一用途一端点，无优先级兜底链。
  *
  * 运行时 {@code AiModelInvocationService.resolveEndpoint(purpose)} 经本表解析端点；
- * 外部 llm-gateway 走端点自带的网关 Key，不经本表。
+ * 外部 API Token 直连端点，不经本表。
  */
 @Data
 @Builder

@@ -15,6 +15,7 @@ import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.aep.repository.AiModelUsageRecordRepository;
 import com.aistareco.aep.repository.MembershipRepository;
 import com.aistareco.aep.repository.TenantRepository;
+import com.aistareco.common.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.PageRequest;
 import org.slf4j.Logger;
@@ -99,15 +100,32 @@ public class AiModelUsageService {
                                Long promptTokens, Long completionTokens, Long totalTokens, boolean success,
                                String requestId, String upstreamId, Long latencyMs,
                                String errorCode, String errorMessage) {
+        recordObserved(providerId, providerName, model, purpose,
+                promptTokens, completionTokens, totalTokens, success,
+                requestId, upstreamId, latencyMs, errorCode, errorMessage,
+                null, null, null);
+    }
+
+    /**
+     * 记录一次带观测字段和请求/响应摘要的调用用量。
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordObserved(String providerId, String providerName, String model, String purpose,
+                               Long promptTokens, Long completionTokens, Long totalTokens, boolean success,
+                               String requestId, String upstreamId, Long latencyMs,
+                               String errorCode, String errorMessage,
+                               String requestBodyJson, String responseBodyJson,
+                               String replayOfRecordId) {
         Attribution attribution = currentAttribution();
         saveRecord(providerId, providerName, model, purpose,
                 promptTokens, completionTokens, totalTokens, success,
                 attribution.userId(), attribution.tenantId(), attribution.appCode(),
-                requestId, upstreamId, latencyMs, errorCode, errorMessage);
+                requestId, upstreamId, latencyMs, errorCode, errorMessage,
+                requestBodyJson, responseBodyJson, replayOfRecordId);
     }
 
     /**
-     * 记录一次带显式归属的调用。给 llm-gateway usage 回调等无 servlet 安全上下文的链路使用。
+     * 记录一次带显式归属的调用。给内嵌外部 LLM API 等无 servlet 安全上下文的链路使用。
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordWithAttribution(String providerId, String providerName, String model, String purpose,
@@ -120,7 +138,7 @@ public class AiModelUsageService {
     }
 
     /**
-     * 记录一次带显式归属与观测字段的调用。给 llm-gateway usage 回调等链路使用。
+     * 记录一次带显式归属与观测字段的调用。给内嵌外部 LLM API 等链路使用。
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordObservedWithAttribution(String providerId, String providerName, String model, String purpose,
@@ -128,21 +146,46 @@ public class AiModelUsageService {
                                              String userId, String tenantId, String appCode,
                                              String requestId, String upstreamId, Long latencyMs,
                                              String errorCode, String errorMessage) {
+        recordObservedWithAttribution(providerId, providerName, model, purpose,
+                promptTokens, completionTokens, totalTokens, success,
+                userId, tenantId, appCode,
+                requestId, upstreamId, latencyMs, errorCode, errorMessage,
+                null, null, null);
+    }
+
+    /**
+     * 记录一次带显式归属、观测字段和请求/响应摘要的调用。
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordObservedWithAttribution(String providerId, String providerName, String model, String purpose,
+                                             Long promptTokens, Long completionTokens, Long totalTokens, boolean success,
+                                             String userId, String tenantId, String appCode,
+                                             String requestId, String upstreamId, Long latencyMs,
+                                             String errorCode, String errorMessage,
+                                             String requestBodyJson, String responseBodyJson,
+                                             String replayOfRecordId) {
         saveRecord(providerId, providerName, model, purpose,
                 promptTokens, completionTokens, totalTokens, success,
                 userId, tenantId, appCode,
-                requestId, upstreamId, latencyMs, errorCode, errorMessage);
+                requestId, upstreamId, latencyMs, errorCode, errorMessage,
+                requestBodyJson, responseBodyJson, replayOfRecordId);
     }
 
     private void saveRecord(String providerId, String providerName, String model, String purpose,
                             Long promptTokens, Long completionTokens, Long totalTokens, boolean success,
                             String userId, String tenantId, String appCode,
                             String requestId, String upstreamId, Long latencyMs,
-                            String errorCode, String errorMessage) {
+                            String errorCode, String errorMessage,
+                            String requestBodyJson, String responseBodyJson,
+                            String replayOfRecordId) {
         try {
             String normalizedUserId = blankToNull(userId);
             String normalizedTenantId = firstNonBlank(tenantId, resolveTenantId(normalizedUserId));
             String normalizedAppCode = firstNonBlank(normalizeAppCode(appCode), inferAppCodeForPurpose(purpose));
+            AiModelEndpoint endpoint = endpointRepo.findById(blankToNull(providerId) == null ? "" : providerId).orElse(null);
+            long prompt = safeLong(promptTokens);
+            long completion = safeLong(completionTokens);
+            Long costMicros = estimateCostMicros(prompt, completion, endpoint);
             AiModelUsageRecord rec = AiModelUsageRecord.builder()
                     .id("aiu-" + UUID.randomUUID().toString().substring(0, 16))
                     .providerId(providerId)
@@ -157,6 +200,10 @@ public class AiModelUsageService {
                     .latencyMs(latencyMs != null && latencyMs >= 0 ? latencyMs : null)
                     .errorCode(truncate(blankToNull(errorCode), 64))
                     .errorMessage(truncate(blankToNull(errorMessage), 512))
+                    .requestBodyJson(truncate(blankToNull(requestBodyJson), 16_000))
+                    .responseBodyJson(truncate(blankToNull(responseBodyJson), 16_000))
+                    .costMicros(costMicros)
+                    .replayOfRecordId(truncate(blankToNull(replayOfRecordId), 64))
                     .promptTokens(promptTokens)
                     .completionTokens(completionTokens)
                     .totalTokens(totalTokens)
@@ -185,7 +232,7 @@ public class AiModelUsageService {
         long[] totals = sumStats(byProvider);
         return new AiModelUsageReportDto(
                 window, since,
-                totals[0], totals[1], totals[2], totals[3], failedCalls,
+                totals[0], totals[1], totals[2], totals[3], totals[4], failedCalls,
                 byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay);
     }
 
@@ -224,6 +271,17 @@ public class AiModelUsageService {
                 .toList();
     }
 
+    public AiModelUsageRecordDto recordDto(AiModelUsageRecord record) {
+        if (record == null) {
+            throw BusinessException.notFound("LLM_USAGE_RECORD_NOT_FOUND", "调用记录不存在");
+        }
+        List<AiModelUsageRecord> records = List.of(record);
+        Map<String, AiModelEndpoint> endpoints = endpointMap(records);
+        Map<String, String> userLabels = userLabels(records);
+        Map<String, String> tenantLabels = tenantLabels(records);
+        return toRecordDto(record, endpoints.get(record.getProviderId()), userLabels, tenantLabels);
+    }
+
     /** 单服务商用量报表。byProvider 仅该服务商一行；byModel / byPurpose / byDay 限定该端点。 */
     @Transactional(readOnly = true)
     public AiModelUsageReportDto reportForProvider(String providerId, Integer days) {
@@ -242,7 +300,7 @@ public class AiModelUsageService {
         long[] totals = sumStats(byModel);
         return new AiModelUsageReportDto(
                 window, since,
-                totals[0], totals[1], totals[2], totals[3], failedCalls,
+                totals[0], totals[1], totals[2], totals[3], totals[4], failedCalls,
                 byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay);
     }
 
@@ -266,7 +324,7 @@ public class AiModelUsageService {
             String label = r[1] != null ? String.valueOf(r[1]) : key;
             out.add(new AiModelUsageStatDto(
                     key, label,
-                    asLong(r[2]), asLong(r[3]), asLong(r[4]), asLong(r[5])));
+                    asLong(r[2]), asLong(r[3]), asLong(r[4]), asLong(r[5]), asLongAt(r, 6)));
         }
         out.sort((a, b) -> Long.compare(b.totalTokens(), a.totalTokens()));
         return out;
@@ -282,7 +340,7 @@ public class AiModelUsageService {
             String label = AiModelPurpose.fromWire(wire).label();
             out.add(new AiModelUsageStatDto(
                     key, label,
-                    asLong(r[2]), asLong(r[3]), asLong(r[4]), asLong(r[5])));
+                    asLong(r[2]), asLong(r[3]), asLong(r[4]), asLong(r[5]), asLongAt(r, 6)));
         }
         out.sort((a, b) -> Long.compare(b.totalTokens(), a.totalTokens()));
         return out;
@@ -375,12 +433,18 @@ public class AiModelUsageService {
                 completion,
                 total,
                 record.isSuccess(),
-                estimateCostMicros(prompt, completion, endpoint),
+                record.getCostMicros() != null ? Math.max(0L, record.getCostMicros()) : estimateCostMicros(prompt, completion, endpoint),
                 record.getRequestId(),
                 record.getUpstreamId(),
                 record.getLatencyMs(),
                 record.getErrorCode(),
-                record.getErrorMessage());
+                record.getErrorMessage(),
+                record.getRequestBodyJson(),
+                record.getResponseBodyJson(),
+                record.getReplayOfRecordId(),
+                record.getQualityScore(),
+                record.getQualityLabel(),
+                record.getQualityNote());
     }
 
     private static List<AiModelUsageStatDto> mapAppRows(List<Object[]> rows) {
@@ -392,7 +456,7 @@ public class AiModelUsageService {
                 "star", "明星商务工作台",
                 "celebrity-mp", "明星带货·小程序",
                 "admin", "管理后台",
-                "llm-gateway", "LLM Gateway"
+                "external-api", "外部 API"
         );
         Map<String, long[]> grouped = new HashMap<>();
         if (rows != null) {
@@ -400,11 +464,12 @@ public class AiModelUsageService {
                 String rawAppCode = row[0] != null ? String.valueOf(row[0]) : null;
                 String purpose = row[1] != null ? String.valueOf(row[1]) : null;
                 String key = firstNonBlank(normalizeAppCode(rawAppCode), inferAppCodeForPurpose(purpose), "unknown");
-                long[] agg = grouped.computeIfAbsent(key, ignored -> new long[4]);
+                long[] agg = grouped.computeIfAbsent(key, ignored -> new long[5]);
                 agg[0] += asLong(row[2]);
                 agg[1] += asLong(row[3]);
                 agg[2] += asLong(row[4]);
                 agg[3] += asLong(row[5]);
+                agg[4] += asLongAt(row, 6);
             }
         }
         List<AiModelUsageStatDto> out = new ArrayList<>();
@@ -414,7 +479,7 @@ public class AiModelUsageService {
             out.add(new AiModelUsageStatDto(
                     key,
                     labels.getOrDefault(key, "unknown".equals(key) ? "未标记来源" : key),
-                    agg[0], agg[1], agg[2], agg[3]));
+                    agg[0], agg[1], agg[2], agg[3], agg[4]));
         }
         out.sort((a, b) -> Long.compare(b.totalTokens(), a.totalTokens()));
         return out;
@@ -431,7 +496,7 @@ public class AiModelUsageService {
             String label = raw == null || raw.isBlank() ? nullLabel : labels.getOrDefault(key, fallback);
             out.add(new AiModelUsageStatDto(
                     key, label,
-                    asLong(r[2]), asLong(r[3]), asLong(r[4]), asLong(r[5])));
+                    asLong(r[2]), asLong(r[3]), asLong(r[4]), asLong(r[5]), asLongAt(r, 6)));
         }
         out.sort((a, b) -> Long.compare(b.totalTokens(), a.totalTokens()));
         return out;
@@ -462,20 +527,25 @@ public class AiModelUsageService {
         return out;
     }
 
-    /** 把分组行汇总成 [calls, total, prompt, completion]。 */
+    /** 把分组行汇总成 [calls, total, prompt, completion, costMicros]。 */
     private static long[] sumStats(List<AiModelUsageStatDto> rows) {
-        long calls = 0, total = 0, prompt = 0, completion = 0;
+        long calls = 0, total = 0, prompt = 0, completion = 0, cost = 0;
         for (AiModelUsageStatDto r : rows) {
             calls += r.calls();
             total += r.totalTokens();
             prompt += r.promptTokens();
             completion += r.completionTokens();
+            cost += r.estimatedCostMicros();
         }
-        return new long[]{calls, total, prompt, completion};
+        return new long[]{calls, total, prompt, completion, cost};
     }
 
     private static long asLong(Object o) {
         return o instanceof Number n ? n.longValue() : 0L;
+    }
+
+    private static long asLongAt(Object[] row, int index) {
+        return row != null && row.length > index ? asLong(row[index]) : 0L;
     }
 
     private Attribution currentAttribution() {
@@ -556,7 +626,7 @@ public class AiModelUsageService {
             case "star" -> "明星商务工作台";
             case "celebrity-mp" -> "明星带货·小程序";
             case "admin" -> "管理后台";
-            case "llm-gateway" -> "LLM Gateway";
+            case "external-api" -> "外部 API";
             default -> "未标记来源";
         };
     }

@@ -1,11 +1,19 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.PromptDryRunDto;
 import com.aistareco.aep.dto.PromptParamsDto;
 import com.aistareco.aep.dto.PromptTemplateDto;
 import com.aistareco.aep.dto.PromptTemplateUpsertDto;
+import com.aistareco.aep.dto.PromptTemplateVersionDto;
+import com.aistareco.aep.dto.PromptTestRunRequestDto;
+import com.aistareco.aep.dto.PromptTestRunResultDto;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.PromptTemplate;
+import com.aistareco.aep.model.PromptTemplateVersion;
+import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.aep.repository.PromptTemplateRepository;
+import com.aistareco.aep.repository.PromptTemplateVersionRepository;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -20,9 +28,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Prompt 模板解析与管理（MATERIAL_OPS_AI_TEXT_PLAN §6）。
@@ -41,6 +50,7 @@ public class PromptService {
     private static final Logger log = LoggerFactory.getLogger(PromptService.class);
     private static final long CACHE_TTL_MS = 60_000L;
     private static final String RESOURCE_DIR = "prompts/material/";
+    private static final Pattern VAR_PATTERN = Pattern.compile("\\{\\{\\s*([A-Za-z0-9_.-]+)\\s*}}");
 
     /** 素材运营文本三件的标准 promptKey（与 AiModelPurpose 对齐）。 */
     public static final String KEY_SCRIPT_DRAFT = "material.script_draft";
@@ -98,13 +108,23 @@ public class PromptService {
     private static final String CODE_FALLBACK_USER = "{{input}}";
 
     private final PromptTemplateRepository repo;
+    private final PromptTemplateVersionRepository versionRepo;
+    private final AiModelEndpointRepository endpointRepo;
+    private final AiModelInvocationService invocation;
     private final ObjectMapper om;
 
     private record CacheEntry(ResolvedPrompt prompt, long fetchedAt) {}
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
-    public PromptService(PromptTemplateRepository repo, ObjectMapper om) {
+    public PromptService(PromptTemplateRepository repo,
+                         PromptTemplateVersionRepository versionRepo,
+                         AiModelEndpointRepository endpointRepo,
+                         AiModelInvocationService invocation,
+                         ObjectMapper om) {
         this.repo = repo;
+        this.versionRepo = versionRepo;
+        this.endpointRepo = endpointRepo;
+        this.invocation = invocation;
         this.om = om;
     }
 
@@ -220,14 +240,18 @@ public class PromptService {
 
     // ── 占位符填充（纯字符串替换，不引模板引擎） ────────────────────────────────
 
-    /** 把 {{key}} 替换为 vars.get(key)；缺失的 key 替换为空串。 */
+    /** 把 {{key}} / {{ key }} 替换为 vars.get(key)；缺失的 key 替换为空串。 */
     public static String fill(String template, Map<String, String> vars) {
         if (template == null) return "";
-        String out = template;
-        for (Map.Entry<String, String> e : vars.entrySet()) {
-            out = out.replace("{{" + e.getKey() + "}}", e.getValue() == null ? "" : e.getValue());
+        Map<String, String> safeVars = vars == null ? Map.of() : vars;
+        Matcher matcher = VAR_PATTERN.matcher(template);
+        StringBuilder out = new StringBuilder();
+        while (matcher.find()) {
+            String value = safeVars.get(matcher.group(1));
+            matcher.appendReplacement(out, Matcher.quoteReplacement(value == null ? "" : value));
         }
-        return out;
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     // ── seeder 支持 ────────────────────────────────────────────────────────────
@@ -279,19 +303,19 @@ public class PromptService {
         // 已落库的 + 未落库但有 resource 默认的已知 key，都展示出来。
         Map<String, PromptTemplateDto> byKey = new LinkedHashMap<>();
         for (String key : KNOWN_KEYS) {
-            repo.findByPromptKey(key).ifPresent(r -> byKey.put(key, PromptTemplateDto.from(r, om)));
+            repo.findByPromptKey(key).ifPresent(r -> byKey.put(key, toDto(r)));
             byKey.computeIfAbsent(key, this::virtualDefaultDto);
         }
         // 其它（非已知）已落库的 key 也带上
         for (PromptTemplate r : repo.findAll()) {
-            byKey.putIfAbsent(r.getPromptKey(), PromptTemplateDto.from(r, om));
+            byKey.putIfAbsent(r.getPromptKey(), toDto(r));
         }
         return new ArrayList<>(byKey.values());
     }
 
     public PromptTemplateDto getForAdmin(String promptKey) {
         return repo.findByPromptKey(promptKey)
-                .map(r -> PromptTemplateDto.from(r, om))
+                .map(this::toDto)
                 .orElseGet(() -> {
                     PromptTemplateDto v = virtualDefaultDto(promptKey);
                     if (v == null) {
@@ -328,29 +352,155 @@ public class PromptService {
         row.setUpdatedAt(Instant.now());
         row.setUpdatedBy(updatedBy == null ? "admin" : updatedBy);
         repo.save(row);
+        saveVersion(row, row.getUpdatedBy(), in.changeNote());
         cache.remove(promptKey); // 立即失效
-        return PromptTemplateDto.from(row, om);
+        return toDto(row);
     }
 
     /** admin 试运行：用样例参数 fill 出最终 messages（不真调模型）。 */
-    public Map<String, Object> dryRun(String promptKey, Map<String, String> sampleVars) {
+    public PromptDryRunDto dryRun(String promptKey, Map<String, String> sampleVars) {
         ResolvedPrompt p = resolve(promptKey);
-        String user = fill(p.userTemplate(), sampleVars == null ? Map.of() : sampleVars);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("promptKey", promptKey);
-        out.put("system", p.system());
-        out.put("user", user);
-        out.put("params", p.params());
-        return out;
+        Map<String, String> vars = sampleVars == null ? Map.of() : sampleVars;
+        String user = fill(p.userTemplate(), vars);
+        List<String> variables = extractVariables(p.system(), p.userTemplate());
+        return new PromptDryRunDto(promptKey, p.system(), user, p.params(),
+                variables, missingVariables(variables, vars), vars);
+    }
+
+    /** admin 真试运行：填充模板后真实调一次模型。 */
+    public PromptTestRunResultDto testRun(String promptKey, PromptTestRunRequestDto req) {
+        PromptDryRunDto dry = dryRun(promptKey, req == null ? null : req.vars());
+        AiModelPurpose purpose = purposeForPromptKey(promptKey);
+        AiModelEndpoint endpoint = null;
+        if (req != null && req.endpointId() != null && !req.endpointId().isBlank()) {
+            endpoint = endpointRepo.findById(req.endpointId())
+                    .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND", "AI 模型端点不存在"));
+        } else {
+            endpoint = invocation.resolveEndpoint(purpose)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
+                            "未为该 Prompt 对应用途绑定可用端点"));
+        }
+        Map<String, Object> options = optionsFromParams(dry.params());
+        AiModelInvocationService.AiModelResponse response = invocation.invokeChatOnEndpoint(
+                endpoint,
+                purpose,
+                List.of(
+                        Map.of("role", "system", "content", dry.system()),
+                        Map.of("role", "user", "content", dry.user())
+                ),
+                options);
+        return new PromptTestRunResultDto(
+                dry.promptKey(), dry.system(), dry.user(), dry.params(),
+                dry.variables(), dry.missingVariables(), dry.sampleVars(),
+                response.content(), response.finishReason(), response.tokensUsed(),
+                response.endpointUsed(), response.modelUsed());
+    }
+
+    public List<PromptTemplateVersionDto> versions(String promptKey) {
+        return versionRepo.findByPromptKeyOrderByVersionDesc(promptKey).stream()
+                .map(v -> PromptTemplateVersionDto.from(v, om))
+                .toList();
+    }
+
+    public PromptTemplateDto rollback(String promptKey, int version, String updatedBy) {
+        PromptTemplateVersion snapshot = versionRepo.findByPromptKeyAndVersion(promptKey, version)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PROMPT_VERSION_NOT_FOUND",
+                        "指定 Prompt 版本不存在"));
+        PromptTemplate row = repo.findByPromptKey(promptKey).orElseGet(() -> PromptTemplate.builder()
+                .id(UUID.randomUUID().toString())
+                .promptKey(promptKey)
+                .version(0)
+                .enabled(true)
+                .build());
+        row.setSystemPrompt(snapshot.getSystemPrompt());
+        row.setUserTemplate(snapshot.getUserTemplate());
+        row.setParamsJson(snapshot.getParamsJson());
+        row.setEnabled(snapshot.isEnabled());
+        row.setVersion(row.getVersion() + 1);
+        row.setUpdatedAt(Instant.now());
+        row.setUpdatedBy(updatedBy == null ? "admin" : updatedBy);
+        repo.save(row);
+        saveVersion(row, row.getUpdatedBy(), "rollback to v" + version);
+        cache.remove(promptKey);
+        return toDto(row);
     }
 
     private PromptTemplateDto virtualDefaultDto(String promptKey) {
         String[] def = loadResource(promptKey);
         if (def == null) return null;
+        List<String> variables = extractVariables(def[0], def[1]);
         return new PromptTemplateDto(
                 null, promptKey, def[0], def[1],
                 new PromptParamsDto(null, null, null),
+                variables,
                 0, true, null, "default");
+    }
+
+    private PromptTemplateDto toDto(PromptTemplate row) {
+        return PromptTemplateDto.from(row, om, extractVariables(row.getSystemPrompt(), row.getUserTemplate()));
+    }
+
+    private void saveVersion(PromptTemplate row, String by, String note) {
+        versionRepo.save(PromptTemplateVersion.builder()
+                .id("ptv-" + UUID.randomUUID().toString().substring(0, 16))
+                .promptKey(row.getPromptKey())
+                .version(row.getVersion())
+                .systemPrompt(row.getSystemPrompt())
+                .userTemplate(row.getUserTemplate())
+                .paramsJson(row.getParamsJson())
+                .enabled(row.isEnabled())
+                .createdAt(Instant.now())
+                .createdBy(by == null ? "admin" : by)
+                .changeNote(note)
+                .build());
+    }
+
+    public static List<String> extractVariables(String... templates) {
+        LinkedHashMap<String, Boolean> out = new LinkedHashMap<>();
+        if (templates != null) {
+            for (String template : templates) {
+                if (template == null) continue;
+                Matcher matcher = VAR_PATTERN.matcher(template);
+                while (matcher.find()) out.put(matcher.group(1), Boolean.TRUE);
+            }
+        }
+        return new ArrayList<>(out.keySet());
+    }
+
+    private static List<String> missingVariables(List<String> variables, Map<String, String> vars) {
+        List<String> out = new ArrayList<>();
+        for (String key : variables) {
+            String value = vars.get(key);
+            if (value == null || value.isBlank()) out.add(key);
+        }
+        return out;
+    }
+
+    private static Map<String, Object> optionsFromParams(PromptParamsDto params) {
+        if (params == null) return Map.of();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("temperature", params.temperatureOrDefault());
+        out.put("max_tokens", params.maxTokensOrDefault());
+        if (params.jsonModeOrDefault()) {
+            out.put("response_format", Map.of("type", "json_object"));
+        }
+        return out;
+    }
+
+    private static AiModelPurpose purposeForPromptKey(String promptKey) {
+        if (promptKey == null) return AiModelPurpose.GENERAL;
+        if (promptKey.startsWith("drama.")) return AiModelPurpose.DRAMA_SCRIPT_DRAFT;
+        if (promptKey.startsWith("dap.video")) return AiModelPurpose.DAP_VIDEO;
+        if (promptKey.startsWith("dap.image")) return AiModelPurpose.DAP_IMAGE;
+        if (promptKey.startsWith("dap.")) return AiModelPurpose.DAP_PERSONA;
+        if (promptKey.startsWith("appearance.")) return AiModelPurpose.APPEARANCE_FORGE;
+        return switch (promptKey) {
+            case KEY_SCRIPT_DRAFT -> AiModelPurpose.SCRIPT_DRAFT;
+            case KEY_SELLING_POINTS -> AiModelPurpose.SELLING_POINTS;
+            case KEY_VARIABLE_EXTRACT -> AiModelPurpose.VARIABLE_EXTRACT;
+            case KEY_VIDEO_REF_ANALYSIS -> AiModelPurpose.VIDEO_REF_ANALYSIS;
+            default -> AiModelPurpose.GENERAL;
+        };
     }
 
     private String writeParams(PromptParamsDto params) {
