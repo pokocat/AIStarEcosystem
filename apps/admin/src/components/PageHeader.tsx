@@ -21,7 +21,7 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn("mb-6 flex flex-col gap-3 border-b border-border/80 pb-5", className)}>
+    <div className={cn("mb-5 flex flex-col gap-3 border-b border-border/80 pb-4 sm:mb-6 sm:pb-5", className)}>
       {breadcrumb && breadcrumb.length > 0 && (
         <nav aria-label="面包屑" className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
           {breadcrumb.map((b, i) => (
@@ -41,7 +41,7 @@ export function PageHeader({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-5">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <h1 className="text-[1.35rem] font-semibold leading-tight tracking-tight">{title}</h1>
+          <h1 className="text-[1.2rem] font-semibold leading-tight tracking-tight sm:text-[1.35rem]">{title}</h1>
           {description && (
             <p className="max-w-[72ch] text-sm leading-6 text-muted-foreground">
               {description}
@@ -49,13 +49,13 @@ export function PageHeader({
           )}
         </div>
         {actions && (
-          <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
+          <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:items-center sm:justify-end [&>*]:w-full sm:[&>*]:w-auto">
             {actions}
           </div>
         )}
       </div>
 
-      {meta && <div className="-mb-1">{meta}</div>}
+      {meta && <div className="-mb-1 min-w-0 overflow-x-auto">{meta}</div>}
     </div>
   );
 }

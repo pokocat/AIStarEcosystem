@@ -193,7 +193,7 @@ export default function PresetsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="max-h-[calc(100vh-320px)] overflow-y-auto space-y-3 pr-1">
+            <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1 md:max-h-[calc(100vh-320px)]">
               {GROUPS.map((g) => (
                 <div key={g.label} className="space-y-1">
                   <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground px-1">
@@ -248,13 +248,13 @@ export default function PresetsPage() {
               )}
             </div>
 
-            <div className="flex gap-2 pt-2 border-t border-border">
+            <div className="flex flex-col gap-2 border-t border-border pt-2 sm:flex-row">
               <Input
                 placeholder="新 key，如 forge.custom"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
               />
-              <Button size="sm" onClick={createNewKey} disabled={!newKey.trim()}>
+              <Button size="sm" className="sm:w-auto" onClick={createNewKey} disabled={!newKey.trim()}>
                 <Plus className="h-3.5 w-3.5" /> 新建
               </Button>
             </div>
@@ -264,7 +264,7 @@ export default function PresetsPage() {
         {/* 右侧：编辑器 */}
         <Card className="col-span-12 md:col-span-8 lg:col-span-9">
           <CardHeader>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="text-sm">
                   {meta?.label ?? active ?? "选择一个预设"}
@@ -281,7 +281,7 @@ export default function PresetsPage() {
                 )}
               </div>
               {active && (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                   <Button size="sm" variant="ghost" onClick={() => setShowAdvanced((v) => !v)}>
                     <Code2 className="h-3.5 w-3.5" /> {showAdvanced ? "结构化" : "JSON"}
                   </Button>

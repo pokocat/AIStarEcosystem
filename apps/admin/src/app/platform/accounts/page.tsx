@@ -149,18 +149,18 @@ export default function AccountsPage() {
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <CardTitle>账号列表</CardTitle>
-            <div className="flex items-center gap-2">
-              <div className="relative">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  className="pl-8 w-[220px]"
+                  className="w-full pl-8 sm:w-[220px]"
                   placeholder="用户名 / 展示名"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
               <Select value={kind} onValueChange={(v) => setKind(v as "all" | AccountKind)}>
-                <SelectTrigger className="w-[120px]"><SelectValue placeholder="身份" /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder="身份" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部身份</SelectItem>
                   <SelectItem value="personal">个人</SelectItem>
@@ -168,7 +168,7 @@ export default function AccountsPage() {
                 </SelectContent>
               </Select>
               <Select value={status} onValueChange={(v) => setStatus(v as "all" | AccountStatus)}>
-                <SelectTrigger className="w-[120px]"><SelectValue placeholder="状态" /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder="状态" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部状态</SelectItem>
                   <SelectItem value="active">启用</SelectItem>

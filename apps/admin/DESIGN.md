@@ -151,9 +151,12 @@ if (!res.ok) return;
 ## Mobile
 
 - Below `lg`: sidebar becomes a drawer; the topbar has a menu trigger.
-- Below `md`: topbar search collapses to icon; help is hidden.
-- Below `sm`: PageHeader actions wrap to a second row; the avatar block hides;
-  only the bell, command trigger, and logout remain.
+- Below `md`: phone layout is thumb-first. The topbar keeps only route context;
+  primary chrome actions move to the fixed bottom dock: menu, search, messages,
+  profile. Content gets bottom padding so final rows and dialogs are not hidden
+  behind the dock.
+- Below `sm`: PageHeader actions wrap to a second row and become full-width
+  rows where needed.
 
 ## Motion
 

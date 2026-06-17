@@ -237,7 +237,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="admin-page space-y-8">
+    <div className="admin-page space-y-6 sm:space-y-8">
       <PageHeader
         title="运营总览"
         description="先处理阻塞项，再看趋势与在途产能。"
@@ -282,20 +282,20 @@ export default function DashboardPage() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="group flex items-start gap-4 rounded-lg border border-border px-4 py-4 transition-colors hover:border-primary/25 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="group flex flex-col gap-3 rounded-lg border border-border px-4 py-4 transition-colors hover:border-primary/25 hover:bg-surface-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-[520px]:flex-row min-[520px]:items-start min-[520px]:gap-4"
                 >
                   <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-lg", queueToneClasses[item.tone])}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col gap-2 min-[520px]:flex-row min-[520px]:items-start min-[520px]:justify-between min-[520px]:gap-3">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{item.label}</span>
                         <span className="text-xs text-muted-foreground">
                           {loading ? "正在同步" : item.count > 0 ? "需要跟进" : "状态正常"}
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div className="text-left min-[520px]:text-right">
                         <div className="text-2xl font-semibold leading-none tracking-tight tabular-nums">
                           {loading ? <LoadingBlock className="h-7 w-10" /> : item.count}
                         </div>
@@ -303,7 +303,7 @@ export default function DashboardPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">{item.summary}</p>
                   </div>
-                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
+                  <ArrowRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-foreground min-[520px]:mt-1 min-[520px]:block" />
                 </Link>
               );
             })}
@@ -334,12 +334,12 @@ export default function DashboardPage() {
       </section>
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-foreground">运营趋势</h2>
             <p className="text-sm text-muted-foreground">趋势图保留全局视角，但不抢占待办判断。</p>
           </div>
-          <Button asChild variant="ghost" size="sm">
+          <Button asChild variant="ghost" size="sm" className="w-full sm:w-auto">
             <Link href="/finance/ledger">查看收入明细 <ArrowRight className="h-3.5 w-3.5" /></Link>
           </Button>
         </div>
@@ -384,7 +384,7 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Handshake className="h-4 w-4 text-destructive" />
@@ -392,7 +392,7 @@ export default function DashboardPage() {
                 </CardTitle>
                 <CardDescription>按到期日升序</CardDescription>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="w-full sm:w-auto">
                 <Link href="/platform/accounts">全部合约 <ArrowRight className="h-3.5 w-3.5" /></Link>
               </Button>
             </CardHeader>
@@ -405,7 +405,7 @@ export default function DashboardPage() {
                 </>
               )}
               {urgentContracts.map((c) => (
-                <div key={c.id} className="flex items-center gap-3 px-2 py-2.5">
+                <div key={c.id} className="flex items-start gap-3 px-2 py-2.5">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-muted text-lg">
                     {c.typeIcon}
                   </div>
@@ -418,7 +418,7 @@ export default function DashboardPage() {
                       {c.mcn} · 分成 {c.royaltyRate}% · 月均 {c.monthlyRevenue}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <div className="text-xs text-muted-foreground">到期</div>
                     <div
                       className={
@@ -440,7 +440,7 @@ export default function DashboardPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Send className="h-4 w-4 text-warning" />
@@ -448,7 +448,7 @@ export default function DashboardPage() {
                 </CardTitle>
                 <CardDescription>审核通过后推送至目标渠道</CardDescription>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="w-full sm:w-auto">
                 <Link href="/distribution/queue">发行中心 <ArrowRight className="h-3.5 w-3.5" /></Link>
               </Button>
             </CardHeader>
@@ -461,7 +461,7 @@ export default function DashboardPage() {
                 </>
               )}
               {distributionQueue.slice(0, 5).map((d) => (
-                <div key={d.id} className="flex items-center gap-3 px-2 py-2.5">
+                <div key={d.id} className="flex items-start gap-3 px-2 py-2.5">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-info/10 text-info ring-1 ring-inset ring-info/15">
                     {d.type === "Music" ? (
                       <Music2 className="h-4 w-4" />
@@ -477,7 +477,9 @@ export default function DashboardPage() {
                       {d.artist} · 目标 {d.platforms} 渠道 · {d.date}
                     </div>
                   </div>
-                  <StatusBadge meta={DISTRIBUTION_QUEUE_STATUS[d.status]} />
+                  <div className="shrink-0">
+                    <StatusBadge meta={DISTRIBUTION_QUEUE_STATUS[d.status]} />
+                  </div>
                 </div>
               ))}
               {!loading && distributionQueue.length === 0 && (
@@ -614,7 +616,7 @@ export default function DashboardPage() {
                   </>
                 )}
                 {actionableTxns.slice(0, 4).map((t) => (
-                  <div key={t.id} className="flex items-center gap-3 px-2 py-2.5">
+                  <div key={t.id} className="flex flex-wrap items-center gap-3 px-2 py-2.5">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{t.source}</div>
                       <div className="text-xs text-muted-foreground">{t.date}</div>

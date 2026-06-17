@@ -143,15 +143,15 @@ export default function AdminMixcutOfficialClipsPage() {
       </section>
 
       <Card className="mb-6">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+        <CardHeader className="flex flex-col items-start justify-between gap-3 pb-3 sm:flex-row sm:items-center">
           <CardTitle className="text-base">片段列表</CardTitle>
-          <Button onClick={() => setUploadOpen(true)}>
+          <Button className="w-full sm:w-auto" onClick={() => setUploadOpen(true)}>
             <Upload className="size-4" /> 上传新片段
           </Button>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <div className="relative flex-1 min-w-[240px]">
+            <div className="relative min-w-0 flex-1 basis-full sm:min-w-[240px] sm:basis-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
                 value={q}
