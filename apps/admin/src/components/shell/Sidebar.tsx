@@ -129,7 +129,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
           <div className="flex items-center justify-between">
             <span>Next 16 · 运营版</span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
               已连接
             </span>
           </div>

@@ -14,6 +14,7 @@ import java.time.temporal.ChronoUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * AiModelUsageService 聚合查询测试（H2 / @DataJpaTest）。
@@ -35,12 +36,17 @@ class AiModelUsageServiceTest {
 
     private void seed(String providerId, String providerName, String model,
                       long prompt, long completion, long total, Instant createdAt) {
+        seed(providerId, providerName, model, "SCRIPT_DRAFT", prompt, completion, total, true, createdAt);
+    }
+
+    private void seed(String providerId, String providerName, String model, String purpose,
+                      long prompt, long completion, long total, boolean success, Instant createdAt) {
         AiModelUsageRecord r = AiModelUsageRecord.builder()
                 .id("aiu-" + (seq++))
                 .providerId(providerId).providerName(providerName).model(model)
-                .purpose("SCRIPT_DRAFT")
+                .purpose(purpose)
                 .promptTokens(prompt).completionTokens(completion).totalTokens(total)
-                .success(true).createdAt(createdAt).build();
+                .success(success).createdAt(createdAt).build();
         repo.saveAndFlush(r);
     }
 
@@ -90,6 +96,36 @@ class AiModelUsageServiceTest {
         assertEquals("p1", report.byProvider().get(0).key());
         assertEquals(1, report.byModel().size());
         assertEquals("doubao", report.byModel().get(0).key());
+    }
+
+    @Test
+    void aggregatesByPurposeDailyAndFailures() {
+        Instant now = Instant.now();
+        // 两种用途 + 一条失败调用（token 空）+ 一条窗口外
+        seed("p1", "火山方舟", "doubao", "SCRIPT_DRAFT", 10, 20, 30, true, now);
+        seed("p1", "火山方舟", "doubao", "SELLING_POINTS", 5, 5, 10, true, now);
+        seed("p1", "火山方舟", "doubao", "SELLING_POINTS", 0, 0, 0, false, now);       // 失败
+        seed("p2", "DeepSeek", "deepseek-chat", "SCRIPT_DRAFT", 7, 3, 10, true, now.minus(2, ChronoUnit.DAYS));
+        seed("p2", "DeepSeek", "deepseek-chat", "SCRIPT_DRAFT", 999, 1, 1000, true, now.minus(40, ChronoUnit.DAYS)); // 窗口外
+
+        AiModelUsageReportDto report = service.report(30);
+
+        // 成功调用总计：3 次（失败与窗口外不计 token）
+        assertEquals(3, report.totalCalls());
+        assertEquals(1, report.failedCalls());
+
+        // byPurpose：脚本起草(40) 在 卖点提取(10) 前；标签为中文
+        assertEquals(2, report.byPurpose().size());
+        AiModelUsageStatDto topPurpose = report.byPurpose().get(0);
+        assertEquals("SCRIPT_DRAFT", topPurpose.key());
+        assertEquals("脚本起草", topPurpose.label());
+        assertEquals(40, topPurpose.totalTokens());
+
+        // byDay：两个有数据的自然日（今天 + 2 天前），仅成功调用，按日期升序
+        assertEquals(2, report.byDay().size());
+        long dailyCalls = report.byDay().stream().mapToLong(d -> d.calls()).sum();
+        assertEquals(3, dailyCalls); // 今天 2 次 + 2 天前 1 次（失败不计）
+        assertTrue(report.byDay().get(0).date().compareTo(report.byDay().get(1).date()) < 0);
     }
 
     @Test

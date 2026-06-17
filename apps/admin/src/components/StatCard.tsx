@@ -44,11 +44,11 @@ export function StatCard({ label, value, hint, icon: Icon, delta, tone = "defaul
       {delta && (
         <div className="mt-3 flex items-center gap-1 text-xs">
           {delta.positive ? (
-            <ArrowUpRight className="h-3.5 w-3.5 text-emerald-600" />
+            <ArrowUpRight className="h-3.5 w-3.5 text-success" />
           ) : (
-            <ArrowDownRight className="h-3.5 w-3.5 text-rose-600" />
+            <ArrowDownRight className="h-3.5 w-3.5 text-destructive" />
           )}
-          <span className={delta.positive ? "text-emerald-600" : "text-rose-600"}>{delta.value}</span>
+          <span className={delta.positive ? "text-success" : "text-destructive"}>{delta.value}</span>
           <span className="text-muted-foreground">较上月</span>
         </div>
       )}

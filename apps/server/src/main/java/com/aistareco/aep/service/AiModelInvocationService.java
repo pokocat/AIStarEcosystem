@@ -218,8 +218,19 @@ public class AiModelInvocationService {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
                 .build();
-        HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> resp;
+        try {
+            resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception ex) {
+            // 网络层异常：记一条失败流水（best-effort），再原样抛出。
+            usage.record(e.getId(), e.getName(), model,
+                    purpose != null ? purpose.wire() : null, null, null, null, false);
+            throw ex;
+        }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            // v0.41：失败也落一条流水（token 为空），供用量统计区分成功 / 失败调用。
+            usage.record(e.getId(), e.getName(), model,
+                    purpose != null ? purpose.wire() : null, null, null, null, false);
             log.warn("[ai-chat] invoke http-error purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
                     purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
                     resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));

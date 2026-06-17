@@ -128,7 +128,16 @@ export interface AiModelUsageStat {
   completionTokens: number;
 }
 
-/** 用量报表（最近 windowDays 天）。v0.41 新增。 */
+/** 用量「按天」聚合行（仅成功调用，date = Asia/Shanghai 自然日）。 */
+export interface AiModelUsageDaily {
+  date: string;
+  calls: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+}
+
+/** 用量报表（最近 windowDays 天）。v0.41 新增；用途 / 按天 / 失败维度补全。 */
 export interface AiModelUsageReport {
   windowDays: number;
   since: string;
@@ -136,8 +145,11 @@ export interface AiModelUsageReport {
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
+  failedCalls: number;
   byProvider: AiModelUsageStat[];
   byModel: AiModelUsageStat[];
+  byPurpose: AiModelUsageStat[];
+  byDay: AiModelUsageDaily[];
 }
 
 const BASE = "/admin/ai-models";

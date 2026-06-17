@@ -44,6 +44,7 @@ import type {
   AiAppBinding,
   AiModelUsageReport,
   AiModelUsageStat,
+  AiModelUsageDaily,
   AdminAiModelEndpointUpsert,
 } from "@/api/ai-models";
 
@@ -1042,6 +1043,14 @@ export default function AdminAiModelsPage() {
                     <SelectItem value="365">近 365 天</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!usage || usage.totalCalls === 0}
+                  onClick={() => usage && exportUsageCsv(usage)}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> 导出 CSV
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => void loadUsage(usageDays)}>
                   刷新
                 </Button>
@@ -1056,7 +1065,12 @@ export default function AdminAiModelsPage() {
               {!usageLoading && !usageErr && usage && (
                 <>
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <StatBox label="调用次数" value={usage.totalCalls.toLocaleString()} />
+                    <StatBox
+                      label="调用次数"
+                      value={usage.totalCalls.toLocaleString()}
+                      sub={usage.failedCalls > 0 ? `另有 ${usage.failedCalls.toLocaleString()} 次失败` : undefined}
+                      subTone="danger"
+                    />
                     <StatBox label="总 Token" value={usage.totalTokens.toLocaleString()} />
                     <StatBox label="输入 Token" value={usage.promptTokens.toLocaleString()} />
                     <StatBox label="输出 Token" value={usage.completionTokens.toLocaleString()} />
@@ -1066,9 +1080,13 @@ export default function AdminAiModelsPage() {
                       该时间窗内暂无调用记录。发起脚本起草 / 卖点提取 / 变量抽取等会调用大模型的操作后，这里会出现用量。
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                      <UsageTable title="按端点" rows={usage.byProvider} total={usage.totalTokens} />
-                      <UsageTable title="按模型" rows={usage.byModel} total={usage.totalTokens} />
+                    <div className="space-y-6">
+                      <UsageTrend data={usage.byDay} />
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <UsageTable title="按端点" col="端点" rows={usage.byProvider} total={usage.totalTokens} />
+                        <UsageTable title="按模型" col="模型" rows={usage.byModel} total={usage.totalTokens} />
+                      </div>
+                      <UsageTable title="按用途" col="用途" rows={usage.byPurpose} total={usage.totalTokens} />
                     </div>
                   )}
                 </>
@@ -1163,16 +1181,80 @@ function BindingStatusBadge({ binding }: { binding: AiAppBinding }) {
   );
 }
 
-function StatBox({ label, value }: { label: string; value: string }) {
+function StatBox({
+  label,
+  value,
+  sub,
+  subTone = "muted",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  subTone?: "muted" | "danger";
+}) {
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-0.5 text-lg font-semibold tabular-nums">{value}</div>
+      {sub && (
+        <div
+          className={cn(
+            "mt-0.5 text-[11px] tabular-nums",
+            subTone === "danger" ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
 
-function UsageTable({ title, rows, total }: { title: string; rows: AiModelUsageStat[]; total: number }) {
+/** 按天用量趋势（总 Token / 天）。纯 CSS 柱状，沿用设计 token，无第三方图表依赖。 */
+function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
+  if (!data || data.length === 0) return null;
+  const max = Math.max(...data.map((d) => d.totalTokens), 1);
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-medium">按天趋势</div>
+        <div className="text-xs text-muted-foreground tabular-nums">
+          峰值 {max.toLocaleString()} Token / 天
+        </div>
+      </div>
+      <div className="flex h-36 items-end gap-[3px] overflow-x-auto pb-1">
+        {data.map((d) => (
+          <div
+            key={d.date}
+            className="group flex h-full min-w-[6px] flex-1 flex-col justify-end"
+            title={`${d.date}\n调用 ${d.calls.toLocaleString()} 次 · ${d.totalTokens.toLocaleString()} Token`}
+          >
+            <div
+              className="w-full rounded-sm bg-primary/60 transition-colors group-hover:bg-primary"
+              style={{ height: `${Math.max(2, (d.totalTokens / max) * 100)}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex justify-between text-[10px] text-muted-foreground tabular-nums">
+        <span>{data[0]?.date}</span>
+        {data.length > 1 && <span>{data[data.length - 1]?.date}</span>}
+      </div>
+    </div>
+  );
+}
+
+function UsageTable({
+  title,
+  col,
+  rows,
+  total,
+}: {
+  title: string;
+  col: string;
+  rows: AiModelUsageStat[];
+  total: number;
+}) {
   return (
     <div>
       <div className="mb-2 text-sm font-medium">{title}</div>
@@ -1182,30 +1264,86 @@ function UsageTable({ title, rows, total }: { title: string; rows: AiModelUsageS
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{title.includes("模型") ? "模型" : "端点"}</TableHead>
+              <TableHead>{col}</TableHead>
               <TableHead className="text-right">调用</TableHead>
               <TableHead className="text-right">总 Token</TableHead>
               <TableHead className="text-right">占比</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r) => (
-              <TableRow key={r.key}>
-                <TableCell className="max-w-[180px] truncate text-xs font-medium" title={r.label}>
-                  {r.label}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-xs">{r.calls.toLocaleString()}</TableCell>
-                <TableCell className="text-right tabular-nums text-xs">{r.totalTokens.toLocaleString()}</TableCell>
-                <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
-                  {total > 0 ? `${((r.totalTokens / total) * 100).toFixed(1)}%` : "—"}
-                </TableCell>
-              </TableRow>
-            ))}
+            {rows.map((r) => {
+              const pct = total > 0 ? (r.totalTokens / total) * 100 : 0;
+              return (
+                <TableRow key={r.key}>
+                  <TableCell className="max-w-[180px] truncate text-xs font-medium" title={r.label}>
+                    {r.label}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">{r.calls.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-xs">{r.totalTokens.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="h-1 w-12 overflow-hidden rounded-full bg-surface-muted">
+                        <span className="block h-full rounded-full bg-primary/55" style={{ width: `${pct}%` }} />
+                      </span>
+                      <span className="w-10 text-right tabular-nums text-xs text-muted-foreground">
+                        {total > 0 ? `${pct.toFixed(1)}%` : "—"}
+                      </span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}
     </div>
   );
+}
+
+/** 把用量报表导出为 CSV（含汇总 + 按端点/模型/用途/天四张表）。客户端拼装，带 BOM 兼容 Excel 中文。 */
+function exportUsageCsv(usage: AiModelUsageReport) {
+  const esc = (v: string | number) => {
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines: string[] = [];
+  lines.push(`# 大模型用量报表（近 ${usage.windowDays} 天，自 ${usage.since}）`);
+  lines.push("");
+  lines.push("汇总,数值");
+  lines.push(`成功调用,${usage.totalCalls}`);
+  lines.push(`失败调用,${usage.failedCalls}`);
+  lines.push(`总 Token,${usage.totalTokens}`);
+  lines.push(`输入 Token,${usage.promptTokens}`);
+  lines.push(`输出 Token,${usage.completionTokens}`);
+  lines.push("");
+
+  const section = (title: string, dim: string, rows: AiModelUsageStat[]) => {
+    lines.push(`# ${title}`);
+    lines.push(`${dim},调用,总 Token,输入 Token,输出 Token`);
+    for (const r of rows) {
+      lines.push([r.label, r.calls, r.totalTokens, r.promptTokens, r.completionTokens].map(esc).join(","));
+    }
+    lines.push("");
+  };
+  section("按端点", "端点", usage.byProvider);
+  section("按模型", "模型", usage.byModel);
+  section("按用途", "用途", usage.byPurpose);
+
+  lines.push("# 按天趋势");
+  lines.push("日期,调用,总 Token,输入 Token,输出 Token");
+  for (const d of usage.byDay) {
+    lines.push([d.date, d.calls, d.totalTokens, d.promptTokens, d.completionTokens].map(esc).join(","));
+  }
+
+  const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ai-usage-${usage.windowDays}d.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function Field({
