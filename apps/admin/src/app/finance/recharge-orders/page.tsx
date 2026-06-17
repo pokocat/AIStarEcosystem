@@ -151,14 +151,14 @@ export default function AdminRechargeOrdersPage() {
       />
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+        <CardHeader className="flex flex-col items-start justify-between gap-3 space-y-0 sm:flex-row sm:items-center">
           <CardTitle className="text-base">
             订单列表（{list.length}）
             {filter === "pending" && pendingCount > 0 && (
               <span className="ml-2 text-xs font-normal text-amber-600">· {pendingCount} 笔待处理</span>
             )}
           </CardTitle>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto sm:justify-end">
             {FILTERS.map((f) => (
               <Button
                 key={f.key}

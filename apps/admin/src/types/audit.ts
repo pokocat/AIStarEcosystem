@@ -29,7 +29,7 @@ export interface AuditLog {
   userAgent?: string | null;
   /**
    * 来源子应用短码（由客户端 X-App-Code 头携带）：
-   * music / drama / celebrity / aiavatar / celebrity-mp（小程序）/ admin。
+   * music / drama / celebrity / aiavatar / star / celebrity-mp（小程序）/ admin。
    * 老数据 / 未带头时为 null（列表显示 "—"）。
    */
   appCode?: string | null;
@@ -58,13 +58,14 @@ export const AUTH_ACTION_KEYS = Object.keys(AUTH_ACTION_LABEL);
 
 /**
  * 来源子应用短码 → 中文展示字典。与各前端注入的 X-App-Code 取值严格对齐：
- * music/drama/celebrity/aiavatar（= server PlatformSupport.ALL）+ celebrity-mp（小程序）+ admin。
+ * music/drama/celebrity/aiavatar/star（web 子应用）+ celebrity-mp（小程序）+ admin。
  */
 export const APP_CODE_LABEL: Record<string, string> = {
   music: "AI 音乐人",
   drama: "AI 短剧",
   celebrity: "AI 明星带货",
   aiavatar: "AiAvatar 数字人",
+  star: "明星商务工作台",
   "celebrity-mp": "明星带货·小程序",
   admin: "管理后台",
 };

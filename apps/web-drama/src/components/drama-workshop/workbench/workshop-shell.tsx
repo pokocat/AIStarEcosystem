@@ -92,9 +92,11 @@ interface WorkshopShellProps {
   /** 渲染中央工作区。基于当前 state.stage 返回对应阶段视图。 */
   renderStage: (props: { state: WorkshopState; dispatch: React.Dispatch<WorkshopAction> }) => React.ReactNode;
   initialStage?: StageKey;
+  /** v0.79：把当前线性项目转换为互动剧（启用分支叠加层并落库）；非互动剧项目的左轨展示入口。 */
+  onConvertInteractive?: () => Promise<void>;
 }
 
-export function WorkshopShell({ meta, data, renderStage, initialStage }: WorkshopShellProps) {
+export function WorkshopShell({ meta, data, renderStage, initialStage, onConvertInteractive }: WorkshopShellProps) {
   const router = useRouter();
   const { logout } = useAuth();
   const [state, dispatch] = React.useReducer(reducer, undefined, () => ({
@@ -139,6 +141,17 @@ export function WorkshopShell({ meta, data, renderStage, initialStage }: Worksho
           current={state.stage}
           locked={state.lockedStages}
           ep={state.ep}
+          interactive={!!data.interactive?.enabled}
+          onConvert={
+            onConvertInteractive
+              ? () => {
+                  void (async () => {
+                    await onConvertInteractive();
+                    dispatch({ type: "jump", stage: "branch" });
+                  })();
+                }
+              : undefined
+          }
           onJump={(s) => dispatch({ type: "jump", stage: s })}
           onHome={handleHome}
         />

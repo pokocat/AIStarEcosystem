@@ -259,12 +259,12 @@ export default function AdminAgentBotsPage() {
       />
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+        <CardHeader className="flex-col items-start gap-3 space-y-0 pb-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base">
             {editing ? (editing.id ? "编辑 Bot" : "新建 Bot") : "操作"}
           </CardTitle>
           {!editing && (
-            <div className="flex gap-2">
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
               <Button variant="outline" onClick={() => void refresh()}>
                 刷新
               </Button>

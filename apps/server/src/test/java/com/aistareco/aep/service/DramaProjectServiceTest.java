@@ -264,4 +264,71 @@ class DramaProjectServiceTest {
         assertEquals(0.3, opts.getValue().get("temperature"), "运营设的 temperature 应覆盖默认");
         assertEquals(1234, opts.getValue().get("max_tokens"), "运营设的 max_tokens 应生效");
     }
+
+    // ── v0.79 互动剧（DramaProject 的形态） ─────────────────────────────────────
+
+    @Test
+    void createInteractiveSeedsOverlay() {
+        JsonNode detail = svc.createProject(
+                node("{\"title\":\"密室\",\"type\":\"互动剧\",\"typeKey\":\"interactive\",\"mode\":\"interactive\",\"episodes\":6}"),
+                "u1");
+        assertEquals("interactive", detail.path("meta").path("mode").asText());
+        JsonNode ov = detail.path("data").path("interactive");
+        assertTrue(ov.path("enabled").asBoolean(), "互动剧应叠加 overlay");
+        assertEquals("ep1", ov.path("startEpisodeId").asText());
+        assertTrue(ov.path("nodes").isObject());
+    }
+
+    @Test
+    void interactiveDraftThrowsWhenAiNotConfigured() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        String id = createReturningId("{\"type\":\"互动剧\",\"typeKey\":\"interactive\",\"mode\":\"interactive\"}", "u1");
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.interactiveDraft(id, node("{\"theme\":\"末日列车\"}"), "u1"));
+        assertEquals("AI_NOT_CONFIGURED", ex.getCode());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+    }
+
+    @Test
+    void interactiveDraftBuildsGraphAndOverlayFromLlm() {
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        String graph = "{\"title\":\"末日列车\",\"globalFlags\":{\"hasKey\":false},\"startEp\":1,\"episodes\":["
+                + "{\"no\":1,\"hook\":\"上车\",\"synopsis\":\"逃上末班车\",\"interactions\":["
+                + "  {\"triggerTime\":52,\"interactionType\":\"choice\",\"condition\":\"globalFlags.hasKey == true\","
+                + "   \"uiConfig\":{\"question\":\"开门？\",\"countdownSec\":10,\"options\":["
+                + "      {\"text\":\"开\",\"nextEp\":2,\"setFlags\":{\"hasKey\":true}},"
+                + "      {\"text\":\"不开\",\"nextEp\":3}]}},"
+                + "  {\"triggerTime\":20,\"interactionType\":\"choice\",\"uiConfig\":{\"question\":\"早\",\"options\":[{\"text\":\"x\",\"nextEp\":3}]}}],"
+                + "\"isEnding\":false},"
+                + "{\"no\":2,\"hook\":\"生还\",\"synopsis\":\"活下来\",\"interactions\":[],\"isEnding\":true,\"endingLabel\":\"生还结局\"},"
+                + "{\"no\":3,\"hook\":\"沦陷\",\"synopsis\":\"失败\",\"interactions\":[],\"isEnding\":true}]}";
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(graph, "stop", 100L, "ep", "fake-model"));
+
+        String id = createReturningId("{\"type\":\"互动剧\",\"typeKey\":\"interactive\",\"mode\":\"interactive\"}", "u1");
+        JsonNode out = svc.interactiveDraft(id, node("{\"theme\":\"末日列车\"}"), "u1");
+
+        // 大纲分集（图节点）
+        assertEquals(3, out.path("episodes").size());
+        assertEquals(1, out.path("episodes").get(0).path("no").asInt());
+        assertEquals("上车", out.path("episodes").get(0).path("hook").asText());
+        // overlay
+        JsonNode ov = out.path("interactive");
+        assertTrue(ov.path("enabled").asBoolean());
+        assertEquals("ep1", ov.path("startEpisodeId").asText());
+        assertTrue(ov.path("globalFlags").has("hasKey"));
+        JsonNode node1 = ov.path("nodes").path("ep1");
+        // 互动点按 triggerTime 升序
+        assertEquals(2, node1.path("interactions").size());
+        assertEquals(20, node1.path("interactions").get(0).path("triggerTime").asInt());
+        assertEquals(52, node1.path("interactions").get(1).path("triggerTime").asInt());
+        // 选项 nextEp → nextVideoId "ep"+no，稳定 id，setFlags 保留
+        JsonNode opt0 = node1.path("interactions").get(1).path("uiConfig").path("options").get(0);
+        assertEquals("A", opt0.path("id").asText());
+        assertEquals("ep2", opt0.path("nextVideoId").asText());
+        assertTrue(opt0.path("setFlags").has("hasKey"));
+        // 结局节点
+        assertTrue(ov.path("nodes").path("ep2").path("isEnding").asBoolean());
+        assertEquals("结局", ov.path("nodes").path("ep3").path("endingLabel").asText());
+    }
 }

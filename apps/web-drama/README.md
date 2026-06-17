@@ -68,6 +68,18 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.79 · 2026-06-15 · 互动剧（剧情互动短剧）—— 集成进短剧工坊，不另起炉灶
+
+互动剧不是独立工具，而是**短剧工坊（`/projects` 六阶段工作台）的一种形态**（`mode=interactive`）：剧集（图节点）就是项目大纲分集，**每一集仍走完整的「剧集脚本 → 视频工厂 → 成片合成」六阶段**（单集 AI 出脚本 / 分场分镜 / 逐镜出图出片全部复用），分支编排只是叠加在项目上的一层。
+
+- **数据形态**：`ProjectData.interactive`（叠加层）= `{enabled, startEpisodeId, globalFlags, nodes}`，按 `episodeId="ep"+集号` 键存每集的 `{interactions[], nextVideoId, isEnding, endingLabel}`。无新实体、无新表（沿用 `drama_projects`）。`lib/interactive-types.ts` 为契约真源；`lib/interactive-graph.ts` 的 `projectToStory` / `writeStoryToProject` 在「项目文档 ↔ 标准 story 视图」间互转（story 每集 `videoUrl/durationSec` 取自 `episodeDocs[no].assembled` 成片）。
+- **新阶段「互动编排」**（`stages/branch.tsx`，`scope=互动`，仅互动剧项目在左轨显示）：自绘 SVG 分支图（BFS 左→右分层 + 选项连线标文案 + 起始/结局/孤立高亮 + 拉线接分支）/ 图·列表双视图 / 单集时间轴互动点编辑（触发秒·选择/输入/倒计时·条件·选项→目标集 + `setFlags`）/ 全局标记声明 / 结构校验面板 / 试玩走查 / 导出。点节点「去制作这一集」→ 跳进六阶段 `epscript`（`dispatch setEp + jump`），复用单集全流程出片。
+- **创建 / 转换两入口**：新建对话框加「互动剧」开关（`mode=interactive`，进工作台直落「互动编排」）；既有线性短剧在左轨点「转换为互动剧」即把分集大纲铺成线性互动链（`defaultOverlay`）再编排。
+- **AI 起草整张图**：`POST /me/drama/projects/{id}/interactive/draft`（复用 `DRAMA_SCRIPT_DRAFT` 端点 + `drama.interactive_draft` 提示词，§8.0 未配置→503 不扣费）→ 一句话主题生成可玩、可达、含结局的有向图（大纲分集 + 叠加层，未落库，前端合并后 PUT 保存）；单价 `drama.credit.interactive-draft`（默认 18，admin「短剧专区」可配）。
+- **导出 Story Config v2**：结构校验通过（起点可达 / 选项接线齐全 / 至少一个可达结局 / `triggerTime≤成片时长` / `condition`·`setFlags` 引用的标记需先声明）才可下载，下发给抖音 / TikTok 小程序播放器消费。
+- **删除**前一版的独立实现（`DramaInteractive` 实体 / repo / service / controller / test、`/interactive` 路由 + api + mocks、`drama.interactive_clip_video` 提示词、侧栏「互动剧」一级入口）—— 收编进短剧工坊以复用全部单集制作能力。
+- 验收：四门全绿（web-drama `typecheck` + `build` 27 路由 / `typecheck:admin` / server `compile` / `check:api-contract`）；server drama 测试 51/51（`DramaProjectServiceTest` 16，含 3 条互动剧）；真机浏览器全链路（转换 → 互动编排 → AI 起草 6 节点分支图 → 去制作这一集进六阶段 → 导出含 `globalFlags`+`condition`+`setFlags` 的 Story Config v2）通过。
+
 ### v0.78 · 2026-06-14 · 统一 TipTap 输入组件 + 短视频新建流程重做（去重 + 引用 chip + 进工作台真扣费）
 
 - **TipTap 输入组件 `DramaComposer`**（`components/drama-workshop/composer.tsx` + `composer-ref.ts`）：全站点子 / 提示词输入复用同一套「引用 chip 托盘 + 富文本正文」。首个编辑器依赖 `@tiptap/*@2.27`（`immediatelyRender:false` 适配 Next 16 SSR）；命令式 `setText/focus/clear`（给我灵感 / 回填）；回车提交、Shift+回车换行、输入法合成中不拦截。引用类型经 `COMPOSER_REF_META` 注册表扩展（kind→图标/中文名，加类型只动一处）。本版先接入短视频新建，其余 20+ 输入后续分批迁。

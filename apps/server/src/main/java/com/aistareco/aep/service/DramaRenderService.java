@@ -168,6 +168,8 @@ public class DramaRenderService {
 
     /** OpenAI images 兼容调用：data[0].url（下载）或 b64_json（解码）→ 图像字节。 */
     private byte[] callImageModel(AiModelEndpoint ep, String prompt, String size, JsonNode refImages) {
+        String requestId = "img-" + UUID.randomUUID().toString().substring(0, 16);
+        long startNanos = System.nanoTime();
         try {
             ObjectNode req = om.createObjectNode();
             req.put("model", ep.getModel());
@@ -190,12 +192,16 @@ public class DramaRenderService {
             HttpResponse<String> resp = HTTP.send(httpReq, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {
                 log.warn("[drama-render] image http {} body={}", resp.statusCode(), truncate(resp.body(), 300));
+                usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
+                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
+                        requestId, null, elapsedMs(startNanos), "HTTP_" + resp.statusCode(), truncate(resp.body(), 300));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
                         "图像生成失败，请稍后重试",
                         "endpoint=" + ep.getName() + " model=" + ep.getModel()
                                 + " status=" + resp.statusCode() + " body=" + truncate(resp.body(), 300));
             }
             JsonNode root = om.readTree(resp.body());
+            String upstreamId = root.path("id").asText(null);
             JsonNode data0 = root.path("data").path(0);
             String url = data0.path("url").asText(null);
             byte[] bytes;
@@ -204,6 +210,10 @@ public class DramaRenderService {
             } else {
                 String b64 = data0.path("b64_json").asText(null);
                 if (b64 == null || b64.isBlank()) {
+                    usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
+                            AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
+                            requestId, upstreamId, elapsedMs(startNanos), "IMAGE_BAD_OUTPUT",
+                            "图像模型响应缺少 data[0].url / b64_json。");
                     throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_BAD_OUTPUT",
                             "图像模型响应缺少 data[0].url / b64_json。");
                 }
@@ -211,13 +221,17 @@ public class DramaRenderService {
             }
             // 用量观测（best-effort，token 数图像接口通常不回）
             try {
-                usage.record(ep.getId(), ep.getName(), ep.getModel(),
-                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, true);
+                usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
+                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, true,
+                        requestId, upstreamId, elapsedMs(startNanos), null, null);
             } catch (Exception ignore) { /* 观测旁路，不阻塞主链路 */ }
             return bytes;
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
+            usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
+                    AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
+                    requestId, null, elapsedMs(startNanos), e.getClass().getSimpleName(), e.getMessage());
             log.warn("[drama-render] image call failed: {}", e.toString());
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
                     "图像生成失败，请稍后重试",
@@ -252,6 +266,9 @@ public class DramaRenderService {
         String ratio = orDefault(text(body, "ratio"), "9:16");
         String name = orDefault(text(body, "name"), "短剧分镜");
         String projectId = text(body, "project_id");
+        String sceneId = text(body, "scene_id");
+        String shotId = text(body, "shot_id");
+        String target = text(body, "target");
         String frameUrl = text(body, "frame_url");
 
         StringBuilder full = new StringBuilder(prompt);
@@ -266,6 +283,11 @@ public class DramaRenderService {
         item.put("duration_sec", durationSec);
         item.put("aspect_ratio", ratio);
         if (projectId != null && !projectId.isBlank()) item.put("script_id", projectId);
+        ObjectNode vc = item.putObject("variant_config");
+        vc.put("target", orDefault(target, orDefault(text(body, "kind"), "shot")));
+        if (sceneId != null && !sceneId.isBlank()) vc.put("scene_id", sceneId);
+        if (shotId != null && !shotId.isBlank()) vc.put("shot_id", shotId);
+        if (body != null && body.hasNonNull("episode_no")) vc.put("episode_no", body.path("episode_no").asInt());
         ObjectNode submit = om.createObjectNode();
         ArrayNode items = submit.putArray("items");
         items.add(item);
@@ -296,6 +318,10 @@ public class DramaRenderService {
     private static String truncate(String s, int n) {
         if (s == null) return "";
         return s.length() > n ? s.substring(0, n) + "…" : s;
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 
     private static int clamp(int v, int lo, int hi) {

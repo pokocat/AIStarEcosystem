@@ -238,9 +238,9 @@ export default function DramaPromptsPage() {
         description="短剧各 AI 动作的 system + user 提示词，改完保存即生效（无需改代码或重启）。占位符形如 {{title}}，生成时由系统按项目数据填充——别删占位符，只改措辞 / 结构 / 输出要求。"
       />
 
-      <div className="grid grid-cols-[260px_1fr] gap-6">
+      <div className="grid gap-4 lg:grid-cols-[260px_1fr] lg:gap-6">
         {/* 左：drama prompt 列表 */}
-        <div className="space-y-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:block lg:space-y-2">
           {loading && <div className="px-2 text-sm text-muted-foreground">加载中…</div>}
           {!loading && list.length === 0 && (
             <div className="px-2 text-sm text-muted-foreground">
@@ -276,12 +276,12 @@ export default function DramaPromptsPage() {
         {active ? (
           <div className="space-y-4">
             <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">
+              <CardHeader className="flex-col items-start gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="min-w-0 text-base">
                   {meta?.label ?? active.promptKey}
                   <span className="ml-2 font-mono text-xs text-muted-foreground">{active.promptKey}</span>
                 </CardTitle>
-                <div className="flex items-center gap-3">
+                <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
                   <label className="flex items-center gap-2 text-sm">
                     <Switch checked={enabled} onCheckedChange={setEnabled} />
                     启用
@@ -338,7 +338,7 @@ export default function DramaPromptsPage() {
                 <div className="rounded-lg border border-border p-4">
                   <div className="mb-3 text-sm font-medium">调用参数（留空即用推荐默认，无需每次设置）</div>
                   <div className="flex flex-wrap items-start gap-6">
-                    <div className="max-w-[280px]">
+                    <div className="w-full sm:max-w-[280px]">
                       <div className="mb-1 text-sm font-medium">创意发散度 · temperature</div>
                       <Input
                         value={temperature}
@@ -350,7 +350,7 @@ export default function DramaPromptsPage() {
                         0–1。越低越稳、越守结构（分镜 / 拆镜 / 选角这类要严格 JSON 的建议 0.8 上下）；越高越发散有想象力（铺大纲建议 0.9）。不确定就留空。
                       </p>
                     </div>
-                    <div className="max-w-[280px]">
+                    <div className="w-full sm:max-w-[280px]">
                       <div className="mb-1 text-sm font-medium">单次最长输出 · max_tokens</div>
                       <Input
                         value={maxTokens}
@@ -362,7 +362,7 @@ export default function DramaPromptsPage() {
                         模型一次最多生成多少内容（≈ 字数 × 1.5）。整集分场分镜这种长输出可调高（如 6000）；调太高会更慢、更贵。
                       </p>
                     </div>
-                    <div className="max-w-[280px]">
+                    <div className="w-full sm:max-w-[280px]">
                       <label className="flex items-center gap-2 text-sm font-medium">
                         <Switch checked={jsonMode} onCheckedChange={setJsonMode} />
                         强制 JSON 输出
@@ -379,11 +379,11 @@ export default function DramaPromptsPage() {
 
             {/* 试运行 */}
             <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardHeader className="flex-col items-start gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <FlaskConical className="h-4 w-4" /> 试运行（仅填充占位符，不调模型 / 不扣费）
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                   <Button
                     variant="outline"
                     size="sm"

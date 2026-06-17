@@ -85,15 +85,19 @@ export function ProjectCard({ p, delay = 0, onOpen, stageNames = STAGE_NAMES }: 
       <div className="col gap-3" style={{ padding: 14 }}>
         <div className="row gap-2">
           <span className="tag tag-gray">{p.type}</span>
-          <span
-            className="tag"
-            style={{
-              background: p.mode === "guided" ? "var(--accent-soft)" : "var(--accent-2-soft)",
-              color: p.mode === "guided" ? "var(--accent)" : "var(--accent-2)",
-            }}
-          >
-            {p.mode === "guided" ? "AI 引导" : "套用模板"}
-          </span>
+          {p.mode === "interactive" ? (
+            <span className="tag" style={{ background: "#ede9fe", color: "#7c3aed" }}>互动剧</span>
+          ) : (
+            <span
+              className="tag"
+              style={{
+                background: p.mode === "guided" ? "var(--accent-soft)" : "var(--accent-2-soft)",
+                color: p.mode === "guided" ? "var(--accent)" : "var(--accent-2)",
+              }}
+            >
+              {p.mode === "guided" ? "AI 引导" : "套用模板"}
+            </span>
+          )}
           <span className="grow" />
           <span className="faint num" style={{ fontSize: 12 }}>{p.episodes} 集</span>
         </div>

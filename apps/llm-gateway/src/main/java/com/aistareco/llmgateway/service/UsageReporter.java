@@ -30,13 +30,36 @@ public class UsageReporter {
     }
 
     public void report(AuthenticatedKey key, String upstreamId, String model,
-                        long promptTokens, long completionTokens, String requestId) {
+                       long promptTokens, long completionTokens, String requestId,
+                       String purpose, String appCode, Long latencyMs) {
+        reportInternal(key, upstreamId, model, promptTokens, completionTokens, requestId, purpose, appCode,
+                true, null, null, latencyMs);
+    }
+
+    public void reportFailure(AuthenticatedKey key, String upstreamId, String model,
+                              String requestId, String purpose, String appCode,
+                              Long latencyMs, String errorCode, String errorMessage) {
+        reportInternal(key, upstreamId, model, 0, 0, requestId, purpose, appCode,
+                false, errorCode, errorMessage, latencyMs);
+    }
+
+    private void reportInternal(AuthenticatedKey key, String upstreamId, String model,
+                                long promptTokens, long completionTokens, String requestId,
+                                String purpose, String appCode, boolean success,
+                                String errorCode, String errorMessage, Long latencyMs) {
         if (key == null || !props.getBusinessAuth().isEnabled()) return;
         Map<String, Object> body = new HashMap<>();
         body.put("keyId", key.keyId());
         body.put("requestId", requestId);
-        body.put("upstreamId", upstreamId);
+        putIfPresent(body, "upstreamId", upstreamId);
         body.put("model", model);
+        putIfPresent(body, "purpose", purpose);
+        putIfPresent(body, "userId", key.userId());
+        putIfPresent(body, "appCode", appCode);
+        if (latencyMs != null && latencyMs >= 0) body.put("latencyMs", latencyMs);
+        body.put("success", success);
+        putIfPresent(body, "errorCode", errorCode);
+        putIfPresent(body, "errorMessage", errorMessage);
         body.put("promptTokens", promptTokens);
         body.put("completionTokens", completionTokens);
         body.put("totalTokens", promptTokens + completionTokens);
@@ -52,5 +75,9 @@ public class UsageReporter {
                 .subscribe(
                         ok -> log.debug("usage reported key={} tokens={}", key.keyId(), promptTokens + completionTokens),
                         err -> log.warn("usage report 失败 key={}: {}", key.keyId(), err.getMessage()));
+    }
+
+    private static void putIfPresent(Map<String, Object> body, String key, String value) {
+        if (value != null && !value.isBlank()) body.put(key, value.trim());
     }
 }

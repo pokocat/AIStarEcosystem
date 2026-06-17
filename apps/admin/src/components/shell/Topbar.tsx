@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, HelpCircle, LogOut, Menu, Search } from "lucide-react";
+import { Bell, HelpCircle, LogOut, Menu, Search, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -81,19 +81,30 @@ export function Topbar({
   const secondaryLabel =
     displayName === roleLabel && identity.username ? identity.username : roleLabel;
   const initials = getInitials(displayName, operator.initials);
+  const mobileDockItem =
+    "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-md px-2 text-[11px] font-medium text-muted-foreground transition-colors active:bg-accent/70 active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
     <TooltipProvider delayDuration={200}>
-      <header className="sticky top-0 z-30 flex h-[60px] items-center gap-3 border-b border-border bg-surface px-3 md:px-5">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-surface px-2.5 sm:h-[60px] sm:px-3 md:gap-3 md:px-5">
         <Button
           variant="ghost"
           size="icon"
-          className="lg:hidden -ml-1"
+          className="-ml-1 hidden h-10 w-10 md:inline-flex lg:hidden"
           aria-label="打开菜单"
           onClick={onMenuClick}
         >
           <Menu className="h-4 w-4" />
         </Button>
+
+        <div className="min-w-0 flex-1 md:hidden">
+          <span className="block truncate text-[11px] font-medium leading-4 text-muted-foreground">
+            {currentNav?.group ?? "控制台"}
+          </span>
+          <span className="block truncate text-sm font-semibold leading-5 tracking-tight">
+            {currentNav?.label ?? "运营总览"}
+          </span>
+        </div>
 
         <div className="hidden min-w-0 flex-col md:flex">
           <span className="text-[11px] font-medium leading-4 text-muted-foreground">
@@ -109,10 +120,10 @@ export function Topbar({
           aria-label="搜索页面"
           onClick={() => setPaletteOpen(true)}
           className={cn(
-            "group inline-flex items-center gap-2 rounded-md border border-border bg-surface-muted text-muted-foreground transition-colors",
+            "group hidden items-center gap-2 rounded-md border border-border bg-surface-muted text-muted-foreground transition-colors md:inline-flex",
             "hover:border-primary/25 hover:text-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            "h-9 w-9 justify-center",
+            "h-9 w-9 shrink-0 justify-center",
             "md:ml-2 md:h-9 md:w-auto md:max-w-md md:flex-1 md:justify-start md:px-3 xl:max-w-xl"
           )}
         >
@@ -128,7 +139,7 @@ export function Topbar({
           </span>
         </button>
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="hidden shrink-0 items-center gap-1 md:ml-auto md:flex">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -168,7 +179,7 @@ export function Topbar({
 
         <Link
           href="/profile"
-          className="ml-1 hidden items-center gap-2.5 rounded-md border border-transparent py-1 pl-2 pr-2 outline-none transition-colors hover:border-border hover:bg-surface-muted hover:text-primary focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+          className="ml-1 hidden items-center gap-2.5 rounded-md border border-transparent py-1 pl-2 pr-2 outline-none transition-colors hover:border-border hover:bg-surface-muted hover:text-primary focus-visible:ring-2 focus-visible:ring-ring md:flex"
           aria-label="个人设置"
         >
           <Avatar className="h-8 w-8">
@@ -184,13 +195,40 @@ export function Topbar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="退出登录" onClick={handleLogout}>
+            <Button variant="ghost" size="icon" className="hidden md:inline-flex" aria-label="退出登录" onClick={handleLogout}>
               <LogOut className="h-4 w-4 text-muted-foreground" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">退出登录</TooltipContent>
         </Tooltip>
       </header>
+
+      <nav
+        aria-label="移动端快捷操作"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 gap-1 border-t border-border bg-surface px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_-24px_rgb(20_44_54_/_0.45)] md:hidden"
+      >
+        <button type="button" className={mobileDockItem} onClick={onMenuClick}>
+          <Menu className="h-5 w-5" />
+          <span>菜单</span>
+        </button>
+        <button type="button" className={mobileDockItem} onClick={() => setPaletteOpen(true)}>
+          <Search className="h-5 w-5" />
+          <span>搜索</span>
+        </button>
+        <Link href="/notifications" className={mobileDockItem} aria-label={unread > 0 ? `消息，${unread} 条未读` : "消息"}>
+          <Bell className="h-5 w-5" />
+          <span>消息</span>
+          {unread > 0 && (
+            <span className="absolute right-[22%] top-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+              {unread > 99 ? "99+" : unread}
+            </span>
+          )}
+        </Link>
+        <Link href="/profile" className={mobileDockItem}>
+          <UserCircle className="h-5 w-5" />
+          <span>我的</span>
+        </Link>
+      </nav>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 

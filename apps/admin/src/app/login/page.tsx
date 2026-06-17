@@ -86,7 +86,7 @@ export default function AdminLoginPage() {
   const envClasses = ENV_TONE[env.tone];
 
   return (
-    <main className="grid min-h-screen place-items-center bg-background px-4 py-12">
+    <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8 sm:py-12">
       <div className="w-full max-w-sm space-y-5">
         <header className="flex items-center justify-between gap-3">
           <img src="/brand/logo.svg" alt="AI Star Eco 运营工作台" className="h-10 w-auto" />
@@ -99,7 +99,7 @@ export default function AdminLoginPage() {
           </span>
         </header>
 
-        <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-border bg-surface p-5 shadow-sm sm:p-6">
           <div className="mb-4 space-y-1">
             <h1 className="text-lg font-semibold tracking-tight">登录到运营工作台</h1>
             <p className="text-xs text-muted-foreground">
@@ -119,7 +119,7 @@ export default function AdminLoginPage() {
               role="tab"
               aria-selected={mode === "admin"}
               className={cn(
-                "inline-flex h-7 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex h-9 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-7",
                 mode === "admin" ? "bg-surface text-foreground shadow-sm" : "hover:text-foreground"
               )}
               onClick={() => handleModeChange("admin")}
@@ -132,7 +132,7 @@ export default function AdminLoginPage() {
               role="tab"
               aria-selected={mode === "operator"}
               className={cn(
-                "inline-flex h-7 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex h-9 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-7",
                 mode === "operator" ? "bg-surface text-foreground shadow-sm" : "hover:text-foreground"
               )}
               onClick={() => handleModeChange("operator")}

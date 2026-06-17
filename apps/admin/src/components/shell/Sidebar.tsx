@@ -30,7 +30,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
     <>
       <div
         className={cn(
-          "fixed inset-0 z-40 bg-slate-900/40 lg:hidden transition-opacity",
+          "fixed inset-0 z-40 bg-foreground/35 transition-opacity duration-150 ease-out lg:hidden",
           mobileOpen ? "opacity-100" : "pointer-events-none opacity-0"
         )}
         onClick={onMobileClose}
@@ -39,13 +39,13 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
 
       <aside
         className={cn(
-          "flex w-[268px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar",
+          "flex h-[100dvh] w-[min(88vw,288px)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar shadow-xl lg:h-[100dvh] lg:w-[268px] lg:shadow-none",
           // 窄屏下以抽屉形式出现
           "fixed inset-y-0 left-0 z-50 transform transition-transform duration-200 ease-out lg:static lg:translate-x-0 lg:z-auto",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-5">
+        <div className="flex items-center gap-3 border-b border-sidebar-border px-4 py-4 sm:px-5 sm:py-5">
           <img src="/icon.svg" alt="" className="h-9 w-9 rounded-md" />
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">{ADMIN_BRAND.title}</span>
@@ -54,14 +54,14 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
           <button
             type="button"
             aria-label="关闭菜单"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent/70 lg:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent/70 lg:hidden"
             onClick={onMobileClose}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+        <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 py-4">
           {navGroups.map((group) => (
             <div key={group.label} className="space-y-1">
               <div className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground">
@@ -81,7 +81,7 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
                     aria-current={active ? "page" : undefined}
                     onClick={onMobileClose}
                     className={cn(
-                      "group flex min-h-9 items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                      "group flex min-h-11 items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring lg:min-h-9 lg:px-2 lg:py-1.5",
                       active
                         ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
                         : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
@@ -125,11 +125,11 @@ export function Sidebar({ badges = {}, mobileOpen = false, onMobileClose }: Side
           ))}
         </nav>
 
-        <div className="border-t border-sidebar-border px-4 py-3 text-xs text-muted-foreground">
+        <div className="border-t border-sidebar-border px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 text-xs text-muted-foreground">
           <div className="flex items-center justify-between">
             <span>Next 16 · 运营版</span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
               已连接
             </span>
           </div>

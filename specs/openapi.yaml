@@ -105,6 +105,49 @@ components:
         pollIntervalMs:  { type: integer, example: 2000 }
         estimatedSeconds: { type: integer }
 
+    AiModelUsageRecord:
+      type: object
+      required:
+        - id
+        - createdAt
+        - purposeLabel
+        - userLabel
+        - tenantLabel
+        - appCode
+        - appLabel
+        - promptTokens
+        - completionTokens
+        - totalTokens
+        - success
+        - estimatedCostMicros
+      properties:
+        id:                  { type: string }
+        createdAt:           { type: string, format: date-time }
+        providerId:          { type: string, nullable: true }
+        providerName:        { type: string, nullable: true }
+        model:               { type: string, nullable: true }
+        purpose:             { type: string, nullable: true }
+        purposeLabel:        { type: string }
+        userId:              { type: string, nullable: true }
+        userLabel:           { type: string }
+        tenantId:            { type: string, nullable: true }
+        tenantLabel:         { type: string }
+        appCode:             { type: string }
+        appLabel:            { type: string }
+        promptTokens:        { type: integer, format: int64 }
+        completionTokens:    { type: integer, format: int64 }
+        totalTokens:         { type: integer, format: int64 }
+        success:             { type: boolean }
+        estimatedCostMicros:
+          type: integer
+          format: int64
+          description: 按当前端点计价估算的人民币微元，非历史价格快照。
+        requestId:           { type: string, nullable: true, description: 平台生成或上游透传的请求追踪号。 }
+        upstreamId:          { type: string, nullable: true, description: 上游模型服务商返回的调用 id。 }
+        latencyMs:           { type: integer, format: int64, nullable: true, description: 上游调用总耗时，毫秒。 }
+        errorCode:           { type: string, nullable: true, description: 归一后的失败码，如 HTTP_429 或异常类名。 }
+        errorMessage:        { type: string, nullable: true, description: 脱敏后的错误摘要。 }
+
     # ── Enums ───────────────────────────────
 
     UserRole:
@@ -2238,8 +2281,8 @@ components:
           type: string
           nullable: true
           description: |
-            v0.57：来源子应用短码，由客户端 X-App-Code 头携带。取值 music / drama / celebrity / aiavatar
-            （= server PlatformSupport.ALL）+ celebrity-mp（微信小程序）+ admin（后台）。老数据 / 未带头时为 null。
+            v0.57：来源子应用短码，由客户端 X-App-Code 头携带。取值 music / drama / celebrity / aiavatar / star
+            （web 子应用）+ celebrity-mp（微信小程序）+ admin（后台）。老数据 / 未带头时为 null。
         result:       { type: string, enum: [success, failure], description: 'wire 上小写' }
         detail:       { type: string, nullable: true, description: '人类可读详情（含上下文）' }
         createdAt:    { type: string, format: date-time }
@@ -6004,7 +6047,35 @@ paths:
       tags: [admin-ai-models]
       operationId: adminAiModelUsage
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
-      responses: { '200': { description: 全局大模型用量报表（自建 token 流水聚合；按服务商 + 模型维度） } }
+      responses: { '200': { description: 全局大模型用量报表（自建 token 流水聚合；按服务商 / 模型 / 用途 / 用户 / 租户 / 来源应用 / 日期维度） } }
+  /admin/ai-models/usage-records:
+    get:
+      tags: [admin-ai-models]
+      operationId: adminListAiModelUsageRecords
+      summary: LLM 调用用量明细列表
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }
+        - { name: appCode, in: query, required: false, schema: { type: string } }
+        - { name: userId, in: query, required: false, schema: { type: string } }
+        - { name: tenantId, in: query, required: false, schema: { type: string } }
+        - { name: purpose, in: query, required: false, schema: { type: string } }
+        - { name: providerId, in: query, required: false, schema: { type: string } }
+        - { name: success, in: query, required: false, schema: { type: boolean } }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: size, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AiModelUsageRecord' }
   /admin/ai-models/discover-models:
     post: { tags: [admin-ai-models], operationId: adminDiscoverAiModels, responses: { '200': { description: 用 baseUrl+apiKey 调服务商 GET /models 拉取可用模型 } } }
   /admin/ai-models/{id}:
@@ -6024,7 +6095,7 @@ paths:
       tags: [admin-ai-models]
       operationId: adminAiModelUsageForProvider
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
-      responses: { '200': { description: 单端点大模型用量报表 } }
+      responses: { '200': { description: 单端点大模型用量报表（同样返回用户 / 租户 / 来源应用维度） } }
   /admin/ai-models/{id}/mint-key:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-ai-models], operationId: adminMintEndpointKey, responses: { '200': { description: 'v0.41：给端点铸造/重铸网关 Key sk-aep-*，明文仅返回一次（DB 存 bcrypt）' } } }
@@ -7055,8 +7126,20 @@ paths:
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/frame:
     post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }
+  /me/drama/render/frame-jobs:
+    get:  { tags: [drama], operationId: listDramaFrameJobs, parameters: [{ name: project_id, in: query, required: false, schema: { type: string } }], summary: '列出当前用户首帧后台任务（可按项目/短视频草稿过滤）。', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: submitDramaFrameJob, summary: '提交首帧后台任务。body 同 /render/frame，额外支持 project_id/scene_id/shot_id/episode_no/name，返回可轮询任务卡。', responses: { '200': { description: ok } } }
+  /me/drama/render/frame-jobs/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:  { tags: [drama], operationId: getDramaFrameJob, summary: '查询首帧后台任务状态与 frames 结果。', responses: { '200': { description: ok } } }
   /me/drama/render/clip:
-    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）。v0.72 起 body={kind?,vars{},name?,duration_sec?,ratio?,project_id?,frame_url?}：出片提示词模板服务端化（drama.clip_video/drama.short_clip_video）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）。v0.72 起 body={kind?,vars{},name?,duration_sec?,ratio?,project_id?,scene_id?,shot_id?,episode_no?,frame_url?}：出片提示词模板服务端化（drama.clip_video/drama.short_clip_video）', responses: { '200': { description: ok } } }
+  /me/drama/render/tasks:
+    get:  { tags: [drama], operationId: listDramaRenderTasks, parameters: [{ name: project_id, in: query, required: false, schema: { type: string } }], summary: '统一渲染后台任务视图：首帧任务 + 视频任务 + 系统负载摘要。', responses: { '200': { description: ok } } }
+  # ── v0.79 互动剧（剧情互动短剧）= DramaProject 的形态（mode=interactive），不是独立实体：剧集（图节点）即项目大纲分集，每集视频复用六阶段成片，分支编排（互动点/接线/全局标记）叠加在 ProjectData.interactive。仅新增一个 AI 起草端点，其余复用 /me/drama/projects/**。 ──
+  /me/drama/projects/{id}/interactive/draft:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: interactiveDraftDramaProject, summary: '互动剧 AI 起草整张分支图（大模型，body:{theme?} → 大纲分集 + 分支叠加层 {episodes, interactive}，未落库，前端合并后 PUT 保存）。未配置 → 503 AI_NOT_CONFIGURED', responses: { '200': { description: ok } } }
   # ── v0.65 短剧分发（用户侧平台连接 + 发布任务）。DramaDistributionController。 ──
   /me/distribution/platforms:
     get: { tags: [distribution], operationId: listMyDistributionPlatforms, summary: '平台目录 + 我的连接状态', responses: { '200': { description: ok } } }

@@ -64,6 +64,9 @@ public class PromptService {
     public static final String KEY_DRAMA_SHORT_CLIP_VIDEO = "drama.short_clip_video";
     /** v0.73+: 把一部爆款短剧反向蒸馏成「可复用配方 Recipe」（抽 skill 飞轮）。 */
     public static final String KEY_DRAMA_RECIPE_EXTRACT = "drama.recipe_extract";
+    /** v0.79+: 互动剧（剧情互动短剧，DramaProject 的形态）—— 一句话主题起草整张剧集分支图。
+     *  各集视频仍走六阶段（drama.epscript / frame_image / clip_video），互动剧不另起出片提示词。 */
+    public static final String KEY_DRAMA_INTERACTIVE_DRAFT = "drama.interactive_draft";
     /** v0.51+: 数字人资产平台（dap）各大模型调用点位（DapMultimodalClient / DapJobRunner）。 */
     public static final String KEY_DAP_PERSONA = "dap.persona";
     public static final String KEY_DAP_TRANSLATE_EDIT = "dap.translate_edit";
@@ -84,6 +87,7 @@ public class PromptService {
                     KEY_DRAMA_FRAME_IMAGE, KEY_DRAMA_CLIP_VIDEO,
                     KEY_DRAMA_SHORT_FRAME_IMAGE, KEY_DRAMA_SHORT_CLIP_VIDEO,
                     KEY_DRAMA_RECIPE_EXTRACT,
+                    KEY_DRAMA_INTERACTIVE_DRAFT,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT);

@@ -33,6 +33,7 @@ import {
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
 import { PlatformAccessDenied } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
+import { RenderTaskDock } from "@/components/drama-workshop/render-task-dock";
 
 interface NavSubItem {
   href: string;
@@ -539,6 +540,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     return (
       <div className="ws-shell" style={{ display: "block", gridTemplateColumns: "none", overflow: "hidden" }}>
         {children}
+        <RenderTaskDock />
       </div>
     );
   }
@@ -560,6 +562,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       >
         <Topbar onMenuToggle={() => setDrawerOpen(true)} />
         <div className="ws-content">{children}</div>
+        <RenderTaskDock />
       </main>
 
       {/* 移动端抽屉导航 */}

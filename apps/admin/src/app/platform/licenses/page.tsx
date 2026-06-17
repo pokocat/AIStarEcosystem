@@ -96,7 +96,7 @@ export default function LicensesPage() {
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {Object.values(LICENSE_TIERS).map((t) => (
           <Card key={t.key}>
-            <CardHeader className="flex-row items-center justify-between pb-2">
+            <CardHeader className="flex-col items-start gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="flex items-center gap-2 text-base">
                 <StatusBadge meta={LICENSE_TIER[t.key]} />
                 <span>{t.label}</span>

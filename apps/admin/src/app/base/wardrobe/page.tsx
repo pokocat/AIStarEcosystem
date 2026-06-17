@@ -135,13 +135,13 @@ export default function WardrobePage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>物品清单</CardTitle>
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索名称 / 标签"
-              className="w-60"
+              className="w-full sm:w-60"
             />
           </div>
         </CardHeader>

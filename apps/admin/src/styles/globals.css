@@ -123,8 +123,12 @@
     font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC",
       "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
     font-feature-settings: "cv11", "ss01";
+    -webkit-text-size-adjust: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    overflow-x: hidden;
   }
   :focus-visible {
     outline: 2px solid var(--ring);
@@ -204,6 +208,12 @@
       transparent
     );
     animation: admin-shimmer 1.5s ease-out infinite;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-section {
+    gap: 0.75rem;
   }
 }
 

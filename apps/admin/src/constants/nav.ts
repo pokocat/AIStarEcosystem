@@ -35,6 +35,9 @@ import {
   Briefcase,
   UserCog,
   MessageSquareText,
+  BarChart3,
+  Bot,
+  FileSearch,
 } from "lucide-react";
 
 export interface NavItem {
@@ -79,6 +82,17 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/", label: "运营总览", icon: LayoutDashboard, description: "平台 KPI 与待办队列" },
       { href: "/profile", label: "个人设置", icon: UserCog, description: "当前登录身份与密码修改" },
+    ],
+  },
+  {
+    label: "AI 中台",
+    items: [
+      { href: "/ai/overview", label: "AI 总览", icon: Sparkles, description: "LLM 接入、Token、用途绑定、用量与审计的统一入口" },
+      { href: "/platform/ai-models", label: "LLM API 与 Token", icon: KeySquare, description: "模型端点、上游密钥、网关 Key、用途绑定与端点用量" },
+      { href: "/ai/usage", label: "租户 / 用户用量", icon: BarChart3, description: "按租户、用户、子产品查看 AI 调用归属与明细接入状态" },
+      { href: "/ai/audit", label: "子应用审计", icon: FileSearch, description: "按 web 子应用 / 小程序 / 后台拆分审计与登录事件" },
+      { href: "/platform/prompts", label: "Prompt 模板", icon: MessageSquareText, description: "平台级 Prompt 模板、灰度与回滚" },
+      { href: "/platform/agent-bots", label: "Agent 平台", icon: Bot, description: "Coze / Dify 等 Agent Bot 配置与 token 加密存储" },
     ],
   },
   {
@@ -186,9 +200,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "平台与配置",
     items: [
-      { href: "/platform/ai-models",  label: "AI 模型与 Key",  icon: Sparkles, description: "v0.41：模型接入端点（上游密钥+单模型+地址，含网关 Key）与 AI 应用绑定" },
-      { href: "/platform/prompts",    label: "Prompt 管理", icon: Sparkles, description: "素材运营文本三件（起稿/卖点/变量）的 system + user 模板，可改/灰度/回滚" },
-      { href: "/platform/agent-bots", label: "Agent 平台", icon: Sparkles, description: "v0.39：接入 Coze 等 agent 平台 bot（形象锻造等场景），token 加密存储" },
       { href: "/platform/config",     label: "平台配置", icon: KeySquare, description: "全站开关与文案" },
     ],
   },

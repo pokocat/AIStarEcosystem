@@ -3,10 +3,15 @@ import { cn } from "@/lib/utils";
 
 export const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="admin-scroll-shadow relative w-full overflow-x-auto overscroll-x-contain">
+    <div
+      className="admin-scroll-shadow relative w-full touch-pan-x overflow-x-auto overscroll-x-contain rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      role="region"
+      aria-label="可横向滚动的数据表"
+      tabIndex={0}
+    >
       <table
         ref={ref}
-        className={cn("w-full min-w-[720px] caption-bottom border-collapse text-sm", className)}
+        className={cn("w-full min-w-[640px] caption-bottom border-collapse text-sm sm:min-w-[720px]", className)}
         {...props}
       />
     </div>
@@ -39,7 +44,7 @@ export const TableRow = ({ className, ...props }: React.HTMLAttributes<HTMLTable
 export const TableHead = ({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
   <th
     className={cn(
-      "h-10 px-4 text-left align-middle text-xs font-medium text-muted-foreground",
+      "h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground sm:px-4",
       className
     )}
     {...props}
@@ -47,7 +52,7 @@ export const TableHead = ({ className, ...props }: React.ThHTMLAttributes<HTMLTa
 );
 
 export const TableCell = ({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
-  <td className={cn("p-4 align-middle", className)} {...props} />
+  <td className={cn("px-3 py-3 align-middle sm:p-4", className)} {...props} />
 );
 
 export const TableCaption = ({ className, ...props }: React.HTMLAttributes<HTMLTableCaptionElement>) => (

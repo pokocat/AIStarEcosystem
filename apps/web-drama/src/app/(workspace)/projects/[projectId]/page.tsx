@@ -13,6 +13,7 @@ import { ProjectsApi } from "@/api";
 import { useAsync } from "@/lib/drama-query";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
+import { defaultOverlay } from "@/lib/interactive-graph";
 import type { ProjectData } from "@/mocks/drama-workshop";
 import {
   WorkshopShell,
@@ -25,6 +26,7 @@ import {
   FactoryStage,
   OutlineStage,
   AssembleStage,
+  BranchStage,
   TopicStage,
   type StageContext,
 } from "@/components/drama-workshop/stages";
@@ -69,12 +71,23 @@ export default function ProjectWorkbench() {
     return <WorkbenchNotFound onBack={() => router.push("/projects")} />;
   }
 
+  // v0.79：互动剧项目进工作台直接落在「互动编排」中枢（剧集图 + 制作入口都在这里）。
+  const isInteractive = detail.meta.mode === "interactive" || !!detail.data.interactive?.enabled;
+
   return (
     <>
       <WorkshopShell
         meta={detail.meta}
         data={data}
-        initialStage={fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
+        initialStage={isInteractive ? "branch" : fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
+        onConvertInteractive={
+          isInteractive
+            ? undefined
+            : async () => {
+                await saveData({ ...data, interactive: defaultOverlay(data) });
+                toast.success("已转换为互动剧 —— 现在可以接分支、加时间轴互动点了");
+              }
+        }
         renderStage={({ state, dispatch }) => (
           <StageOutlet
             state={state}
@@ -129,6 +142,8 @@ function StageOutlet({
       return <FactoryStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "prompt":
       return <AssembleStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
+    case "branch":
+      return <BranchStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     default:
       return null;
   }

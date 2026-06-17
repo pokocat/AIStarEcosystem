@@ -7,7 +7,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronLeft, ChevronUp, Layers, Sparkles, Wand2, X, Zap } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Layers, Network, Sparkles, Wand2, X, Zap } from "lucide-react";
 import { VideoCover } from "@/components/drama-workshop/video-cover";
 import { PreviewModal } from "@/components/drama-workshop/preview-modal";
 import { getTplMeta, type ContentType, type Template } from "@/mocks/drama-workshop";
@@ -32,6 +32,8 @@ export function CreateDialog({
 
   const [idea, setIdea] = React.useState(initialIdea);
   const [picked, setPicked] = React.useState<Picked | null>(null);
+  // v0.79：做成互动剧 —— 立项为 interactive 形态，进工作台直接到「互动编排」（分支图 + 互动点），每集仍走六阶段出片。
+  const [interactive, setInteractive] = React.useState(false);
   const [previewTpl, setPreviewTpl] = React.useState<Picked | null>(null); // 先预览，确认后才套用
   const [overlayOpen, setOverlayOpen] = React.useState(focusTemplate);
   const [sparkN, setSparkN] = React.useState(0);
@@ -51,7 +53,7 @@ export function CreateDialog({
   const browseType = cat.contentTypes.find((t) => t.key === browseKey) ?? null;
   const browseTpls = browseType ? (cat.templates[browseType.key] ?? []).filter((tp) => tp.eps > 1) : [];
 
-  const canSubmit = idea.trim().length > 0 || !!picked;
+  const canSubmit = idea.trim().length > 0 || !!picked || interactive;
 
   const pickTpl = (p: Picked) => {
     setPicked(p);
@@ -69,11 +71,12 @@ export function CreateDialog({
   };
 
   const buildInput = (seed: string): CreateProjectInput => {
+    let base: CreateProjectInput;
     if (picked) {
       const { tpl, type } = picked;
       const vertical = !/16:9/.test(type.ratio);
       const cover = getTplMeta(tpl).cover;
-      return {
+      base = {
         title: (seed || tpl.name).slice(0, 24),
         type: type.name,
         typeKey: type.key,
@@ -85,19 +88,22 @@ export function CreateDialog({
         coverFrom: cover.from,
         coverTo: cover.to,
       };
+    } else {
+      const custom = cat.contentTypes.find((t) => t.key === "custom");
+      base = {
+        title: seed.slice(0, 24) || "未命名短剧",
+        type: custom?.name ?? "通用 / 自定义",
+        typeKey: custom?.key ?? "custom",
+        mode: "guided",
+        ratio: "9:16",
+        episodes: 12,
+        logline: seed,
+        coverFrom: custom?.from,
+        coverTo: custom?.to,
+      };
     }
-    const custom = cat.contentTypes.find((t) => t.key === "custom");
-    return {
-      title: seed.slice(0, 24) || "未命名短剧",
-      type: custom?.name ?? "通用 / 自定义",
-      typeKey: custom?.key ?? "custom",
-      mode: "guided",
-      ratio: "9:16",
-      episodes: 12,
-      logline: seed,
-      coverFrom: custom?.from,
-      coverTo: custom?.to,
-    };
+    // 互动剧形态：进工作台后由「互动编排」AI 起草整张分支图 / 手动搭，各集再走六阶段出片。
+    return interactive ? { ...base, mode: "interactive", title: base.title || "未命名互动剧" } : base;
   };
 
   const start = async () => {
@@ -109,8 +115,15 @@ export function CreateDialog({
     creating.current = true;
     try {
       const detail = await ProjectsApi.createProject(buildInput(idea.trim()));
-      router.push(`/projects/${detail.meta.id}${picked ? "?from=template" : ""}`);
-      toast.success(picked ? "已套用模板立项,接着改大纲就能用" : "AI 已据你的点子立项,接着补大纲就能开拍");
+      const q = interactive ? "" : picked ? "?from=template" : "";
+      router.push(`/projects/${detail.meta.id}${q}`);
+      toast.success(
+        interactive
+          ? "互动剧已立项,去「互动编排」起草分支图"
+          : picked
+            ? "已套用模板立项,接着改大纲就能用"
+            : "AI 已据你的点子立项,接着补大纲就能开拍",
+      );
     } catch (e) {
       creating.current = false;
       toast.error(aiErrorMessage(e, "立项失败，请重试"));
@@ -376,6 +389,14 @@ export function CreateDialog({
               >
                 <Sparkles size={13} /> 今日灵感
               </button>
+              <button
+                type="button"
+                className={"chip" + (interactive ? " on" : "")}
+                onClick={() => setInteractive((v) => !v)}
+                title="做成可分支的互动剧：观众的选择决定剧情走向与结局"
+              >
+                <Network size={13} /> 互动剧{interactive ? " ·已开" : ""}
+              </button>
               <span className="grow" />
               <button
                 type="button"
@@ -384,7 +405,7 @@ export function CreateDialog({
                 onClick={() => void start()}
                 style={{ height: 40, padding: "0 22px", flex: "none", opacity: canSubmit ? 1 : 0.5, cursor: canSubmit ? "pointer" : "not-allowed" }}
               >
-                <Wand2 size={16} /> 开始立项
+                <Wand2 size={16} /> {interactive ? "开始编排互动剧" : "开始立项"}
               </button>
             </div>
           </div>

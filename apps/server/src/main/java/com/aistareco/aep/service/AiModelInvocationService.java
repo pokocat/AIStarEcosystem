@@ -196,7 +196,9 @@ public class AiModelInvocationService {
         }
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
-        log.info("[ai-chat] invoke start purpose={} endpointId={} endpoint={} providerType={} model={} messages={} maxTokens={} jsonMode={}",
+        String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
+        log.info("[ai-chat] invoke start requestId={} purpose={} endpointId={} endpoint={} providerType={} model={} messages={} maxTokens={} jsonMode={}",
+                requestId,
                 purpose == null ? null : purpose.wire(),
                 e.getId(),
                 e.getName(),
@@ -208,8 +210,8 @@ public class AiModelInvocationService {
         // 发给大模型的最终提示词全文（排查用）。独立 logger，默认 INFO，可单独降级/落盘。
         if (ioLog.isInfoEnabled()) {
             try {
-                ioLog.info("[ai-chat-io] REQUEST purpose={} endpoint={} model={} messages={}",
-                        purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(messages));
+                ioLog.info("[ai-chat-io] REQUEST requestId={} purpose={} endpoint={} model={} messages={}",
+                        requestId, purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(messages));
             } catch (Exception ignore) { /* 序列化失败不阻塞主链路 */ }
         }
         HttpRequest req = HttpRequest.newBuilder(uri)
@@ -218,10 +220,23 @@ public class AiModelInvocationService {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
                 .build();
-        HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> resp;
+        try {
+            resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception ex) {
+            // 网络层异常：记一条失败流水（best-effort），再原样抛出。
+            usage.recordObserved(e.getId(), e.getName(), model,
+                    purpose != null ? purpose.wire() : null, null, null, null, false,
+                    requestId, null, elapsedMs(startNanos), ex.getClass().getSimpleName(), ex.getMessage());
+            throw ex;
+        }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            log.warn("[ai-chat] invoke http-error purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
-                    purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
+            // v0.41：失败也落一条流水（token 为空），供用量统计区分成功 / 失败调用。
+            usage.recordObserved(e.getId(), e.getName(), model,
+                    purpose != null ? purpose.wire() : null, null, null, null, false,
+                    requestId, null, elapsedMs(startNanos), "HTTP_" + resp.statusCode(), snippet(resp.body()));
+            log.warn("[ai-chat] invoke http-error requestId={} purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
+                    requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
                     resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
             // 不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏）；技术细节进 ErrorLog 供「追查号」排障。
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
@@ -230,6 +245,7 @@ public class AiModelInvocationService {
                             + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
         }
         Map<?, ?> parsed = OM.readValue(resp.body(), Map.class);
+        String upstreamId = parsed.get("id") != null ? String.valueOf(parsed.get("id")) : null;
         Object choices = parsed.get("choices");
         String content = "";
         String finishReason = null;
@@ -255,14 +271,17 @@ public class AiModelInvocationService {
         }
         // 模型原文返回全文（排查用）。
         if (ioLog.isInfoEnabled()) {
-            ioLog.info("[ai-chat-io] RESPONSE purpose={} model={} finish={} content={}",
-                    purpose == null ? null : purpose.wire(), model, finishReason, content);
+            ioLog.info("[ai-chat-io] RESPONSE requestId={} upstreamId={} purpose={} model={} finish={} content={}",
+                    requestId, upstreamId, purpose == null ? null : purpose.wire(), model, finishReason, content);
         }
         // v0.41：自建用量流水。best-effort，失败只 log，不阻断 chat 返回。
-        usage.record(e.getId(), e.getName(), model,
+        usage.recordObserved(e.getId(), e.getName(), model,
                 purpose != null ? purpose.wire() : null,
-                promptTokens, completionTokens, tokensUsed, true);
-        log.info("[ai-chat] invoke ok purpose={} endpointId={} endpoint={} model={} finish={} tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
+                promptTokens, completionTokens, tokensUsed, true,
+                requestId, upstreamId, elapsedMs(startNanos), null, null);
+        log.info("[ai-chat] invoke ok requestId={} upstreamId={} purpose={} endpointId={} endpoint={} model={} finish={} tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
+                requestId,
+                upstreamId,
                 purpose == null ? null : purpose.wire(),
                 e.getId(),
                 e.getName(),

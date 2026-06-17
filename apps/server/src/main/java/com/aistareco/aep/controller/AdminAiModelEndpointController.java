@@ -7,6 +7,7 @@ import com.aistareco.aep.dto.AiModelEndpointDto;
 import com.aistareco.aep.dto.AiModelEndpointKeyMintedDto;
 import com.aistareco.aep.dto.AiModelProviderPresetDto;
 import com.aistareco.aep.dto.AiModelUsageReportDto;
+import com.aistareco.aep.dto.AiModelUsageRecordDto;
 import com.aistareco.aep.service.AiModelEndpointAdminService;
 import com.aistareco.aep.service.AiModelUsageService;
 import com.aistareco.common.ApiResponse;
@@ -62,6 +63,20 @@ public class AdminAiModelEndpointController {
         return ApiResponse.of(usageService.report(days));
     }
 
+    @GetMapping("/usage-records")
+    public ApiResponse<List<AiModelUsageRecordDto>> usageRecords(
+            @RequestParam(required = false) Integer days,
+            @RequestParam(required = false) String appCode,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String purpose,
+            @RequestParam(required = false) String providerId,
+            @RequestParam(required = false) Boolean success,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer size) {
+        return ApiResponse.of(usageService.records(days, appCode, userId, tenantId, purpose, providerId, success, q, size));
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<AiModelEndpointDto> get(@PathVariable String id) {
         return ApiResponse.of(service.get(id));
@@ -103,7 +118,7 @@ public class AdminAiModelEndpointController {
         return ApiResponse.of(service.fetchModels(id));
     }
 
-    /** 给端点铸造（或重铸）网关 Key —— 唯一返回明文一次的接口。 */
+    /** 给端点铸造（或重铸）网关 Key，仅一次返回明文。 */
     @PostMapping("/{id}/mint-key")
     public ApiResponse<AiModelEndpointKeyMintedDto> mintKey(@PathVariable String id) {
         return ApiResponse.of(service.mintKey(id));

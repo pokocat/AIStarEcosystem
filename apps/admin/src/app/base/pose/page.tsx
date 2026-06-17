@@ -196,7 +196,7 @@ export default function PosePage() {
           <Card>
             <CardHeader><CardTitle>表情库</CardTitle></CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {expressions.map((e) => (
                   <div key={e.id} className="rounded-lg border border-border bg-card p-4 flex flex-col items-center gap-2 card-shadow">
                     <div className="text-4xl">{e.emoji}</div>
@@ -229,7 +229,7 @@ export default function PosePage() {
           <Card>
             <CardHeader><CardTitle>手势库</CardTitle></CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
                 {gestures.map((g) => (
                   <div key={g.id} className="rounded-lg border border-border bg-card p-4 flex flex-col items-center gap-2 card-shadow">
                     <div className="text-4xl">{g.icon}</div>

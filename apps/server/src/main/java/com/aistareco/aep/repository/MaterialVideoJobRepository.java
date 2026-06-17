@@ -14,4 +14,12 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
     List<MaterialVideoJob> findByOwnerUserIdAndScriptIdOrderByCreatedAtDesc(String ownerUserId, String scriptId);
 
     List<MaterialVideoJob> findByOwnerUserIdAndProductIdOrderByCreatedAtDesc(String ownerUserId, String productId);
+
+    long countByStatus(String status);
+
+    long countByStatusIn(java.util.Collection<String> statuses);
+
+    long countByOwnerUserIdAndStatus(String ownerUserId, String status);
+
+    long countByOwnerUserIdAndStatusIn(String ownerUserId, java.util.Collection<String> statuses);
 }

@@ -115,6 +115,8 @@ public class AiModelEndpointAdminService {
                 .model(req.model())
                 .modelsJson(serializeModels(req.models()))
                 .ownerUserId(blankToNull(req.ownerUserId()))
+                .promptTokenPriceMicros(nonNegative(req.promptTokenPriceMicros()))
+                .completionTokenPriceMicros(nonNegative(req.completionTokenPriceMicros()))
                 .enabled(req.enabled() != null ? req.enabled() : true)
                 .build();
         return AiModelEndpointDto.from(repo.save(entity));
@@ -133,6 +135,12 @@ public class AiModelEndpointAdminService {
         if (req.models() != null) entity.setModelsJson(serializeModels(req.models()));
         // ownerUserId：null = 不改；"" = 清空为平台级；非空 = 设置
         if (req.ownerUserId() != null) entity.setOwnerUserId(blankToNull(req.ownerUserId()));
+        if (req.promptTokenPriceMicros() != null) {
+            entity.setPromptTokenPriceMicros(nonNegative(req.promptTokenPriceMicros()));
+        }
+        if (req.completionTokenPriceMicros() != null) {
+            entity.setCompletionTokenPriceMicros(nonNegative(req.completionTokenPriceMicros()));
+        }
         if (req.enabled() != null) entity.setEnabled(req.enabled());
         return AiModelEndpointDto.from(repo.save(entity));
     }
@@ -200,6 +208,10 @@ public class AiModelEndpointAdminService {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
+    }
+
+    private static long nonNegative(Long value) {
+        return value == null ? 0L : Math.max(0L, value);
     }
 
     private AiModelEndpoint load(String id) {
