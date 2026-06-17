@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 把客户端的 OpenAI 格式 chat/completions 请求转发到对应 upstream。
@@ -41,10 +42,12 @@ public class ChatProxyService {
     }
 
     public Mono<ResponseEntity<String>> forwardNonStream(Map<String, Object> body,
-                                                          AuthenticatedKey key, String requestId) {
+                                                          AuthenticatedKey key, String requestId,
+                                                          String purpose, String appCode) {
         Upstream up = pick(body);
         String model = String.valueOf(body.get("model"));
         WebClient client = clientFor(up);
+        long startNanos = System.nanoTime();
         log.info("chat (non-stream) reqId={} upstream={} model={}", requestId, up.id(), model);
         return client.post()
                 .uri("/chat/completions")
@@ -52,24 +55,35 @@ public class ChatProxyService {
                 .bodyValue(body)
                 .retrieve()
                 .toEntity(String.class)
-                .doOnSuccess(resp -> tryReport(resp, up, model, key, requestId))
+                .doOnSuccess(resp -> tryReport(resp, model, key, requestId, purpose, appCode, elapsedMs(startNanos)))
                 .onErrorResume(WebClientResponseException.class, e -> {
                     log.warn("upstream {} HTTP {}: {}", up.id(), e.getStatusCode(), e.getResponseBodyAsString());
+                    usageReporter.reportFailure(key, null, model, requestId, purpose, appCode,
+                            elapsedMs(startNanos), "HTTP_" + e.getStatusCode().value(), truncate(e.getResponseBodyAsString(), 512));
                     return Mono.just(ResponseEntity.status(e.getStatusCode())
                             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                             .body(e.getResponseBodyAsString()));
+                })
+                .onErrorResume(Exception.class, e -> {
+                    log.warn("upstream {} exception: {}", up.id(), e.toString());
+                    usageReporter.reportFailure(key, null, model, requestId, purpose, appCode,
+                            elapsedMs(startNanos), e.getClass().getSimpleName(), truncate(e.getMessage(), 512));
+                    return Mono.error(e);
                 });
     }
 
     public Flux<String> forwardStream(Map<String, Object> body,
-                                       AuthenticatedKey key, String requestId) {
+                                       AuthenticatedKey key, String requestId,
+                                       String purpose, String appCode) {
         Upstream up = pick(body);
         String model = String.valueOf(body.get("model"));
         WebClient client = clientFor(up);
+        long startNanos = System.nanoTime();
         log.info("chat (stream) reqId={} upstream={} model={}", requestId, up.id(), model);
 
         AtomicLong promptTokens = new AtomicLong();
         AtomicLong completionTokens = new AtomicLong();
+        AtomicReference<String> upstreamId = new AtomicReference<>();
 
         return client.post()
                 .uri("/chat/completions")
@@ -78,41 +92,55 @@ public class ChatProxyService {
                 .bodyValue(body)
                 .retrieve()
                 .bodyToFlux(String.class)
-                .doOnNext(chunk -> sniffStreamUsage(chunk, promptTokens, completionTokens))
+                .doOnNext(chunk -> sniffStreamChunk(chunk, promptTokens, completionTokens, upstreamId))
                 .doOnComplete(() -> {
                     if (key != null && (promptTokens.get() > 0 || completionTokens.get() > 0)) {
-                        usageReporter.report(key, up.id(), model,
-                                promptTokens.get(), completionTokens.get(), requestId);
+                        usageReporter.report(key, upstreamId.get(), model,
+                                promptTokens.get(), completionTokens.get(), requestId, purpose, appCode, elapsedMs(startNanos));
                     }
                 })
                 .onErrorResume(WebClientResponseException.class, e -> {
                     log.warn("upstream {} stream HTTP {}: {}", up.id(), e.getStatusCode(), e.getResponseBodyAsString());
+                    usageReporter.reportFailure(key, upstreamId.get(), model, requestId, purpose, appCode,
+                            elapsedMs(startNanos), "HTTP_" + e.getStatusCode().value(), truncate(e.getResponseBodyAsString(), 512));
                     String errJson = String.format(
                             "{\"error\":{\"code\":\"upstream_%d\",\"message\":%s}}",
                             e.getStatusCode().value(),
                             quote(e.getResponseBodyAsString()));
                     return Flux.just(errJson);
+                })
+                .onErrorResume(Exception.class, e -> {
+                    log.warn("upstream {} stream exception: {}", up.id(), e.toString());
+                    usageReporter.reportFailure(key, upstreamId.get(), model, requestId, purpose, appCode,
+                            elapsedMs(startNanos), e.getClass().getSimpleName(), truncate(e.getMessage(), 512));
+                    return Flux.error(e);
                 });
     }
 
-    private void tryReport(ResponseEntity<String> resp, Upstream up, String model,
-                            AuthenticatedKey key, String requestId) {
+    private void tryReport(ResponseEntity<String> resp, String model,
+                           AuthenticatedKey key, String requestId,
+                           String purpose, String appCode, long latencyMs) {
         if (key == null) return;
         if (resp.getStatusCode().isError()) return;
         try {
-            JsonNode node = om.readTree(resp.getBody()).path("usage");
+            JsonNode root = om.readTree(resp.getBody());
+            JsonNode node = root.path("usage");
             long pt = node.path("prompt_tokens").asLong(0);
             long ct = node.path("completion_tokens").asLong(0);
+            String upstreamId = root.path("id").asText(null);
             if (pt > 0 || ct > 0) {
-                usageReporter.report(key, up.id(), model, pt, ct, requestId);
+                usageReporter.report(key, upstreamId, model, pt, ct, requestId, purpose, appCode, latencyMs);
             }
         } catch (Exception ignored) { /* 上游可能不返 usage，忽略 */ }
     }
 
-    private void sniffStreamUsage(String chunk, AtomicLong pt, AtomicLong ct) {
+    private void sniffStreamChunk(String chunk, AtomicLong pt, AtomicLong ct, AtomicReference<String> upstreamId) {
         if (chunk == null || chunk.isBlank() || chunk.startsWith("[DONE]")) return;
         try {
-            JsonNode usage = om.readTree(chunk).path("usage");
+            JsonNode root = om.readTree(chunk);
+            String id = root.path("id").asText(null);
+            if (id != null && !id.isBlank()) upstreamId.compareAndSet(null, id);
+            JsonNode usage = root.path("usage");
             if (!usage.isMissingNode() && !usage.isNull()) {
                 long p = usage.path("prompt_tokens").asLong(0);
                 long c = usage.path("completion_tokens").asLong(0);
@@ -137,6 +165,15 @@ public class ChatProxyService {
                 .baseUrl(up.baseUrl())
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + up.apiKey())
                 .build();
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) return value;
+        return value.substring(0, maxLength);
     }
 
     private String quote(String s) {

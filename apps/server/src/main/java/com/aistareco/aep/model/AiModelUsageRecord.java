@@ -23,7 +23,10 @@ import java.time.Instant;
 @Entity
 @Table(name = "ai_model_usage_record", indexes = {
         @Index(name = "idx_aiusage_created", columnList = "created_at"),
-        @Index(name = "idx_aiusage_provider", columnList = "provider_id")
+        @Index(name = "idx_aiusage_provider", columnList = "provider_id"),
+        @Index(name = "idx_aiusage_user", columnList = "user_id"),
+        @Index(name = "idx_aiusage_tenant", columnList = "tenant_id"),
+        @Index(name = "idx_aiusage_app", columnList = "app_code")
 })
 public class AiModelUsageRecord {
 
@@ -40,6 +43,38 @@ public class AiModelUsageRecord {
 
     /** 用途 wire（AiModelPurpose.name()）。 */
     private String purpose;
+
+    /** 真实调用人。可空：平台级端点、历史数据或无登录上下文。 */
+    @Column(name = "user_id", length = 64)
+    private String userId;
+
+    /** 用户所属租户快照。可空：用户无 membership、平台级调用或历史数据。 */
+    @Column(name = "tenant_id", length = 64)
+    private String tenantId;
+
+    /** 来源应用短码：music / drama / celebrity / aiavatar / star / celebrity-mp / admin / llm-gateway。 */
+    @Column(name = "app_code", length = 32)
+    private String appCode;
+
+    /** 平台生成或上游透传的请求追踪号，用于跨日志、账本、调用流水排障。 */
+    @Column(name = "request_id", length = 96)
+    private String requestId;
+
+    /** 上游服务商返回的调用 id。可空：部分国产兼容端点不返回。 */
+    @Column(name = "upstream_id", length = 128)
+    private String upstreamId;
+
+    /** 本次上游调用总耗时，毫秒。 */
+    @Column(name = "latency_ms")
+    private Long latencyMs;
+
+    /** 平台归一后的错误码，如 HTTP_429、SocketTimeoutException。成功调用为空。 */
+    @Column(name = "error_code", length = 64)
+    private String errorCode;
+
+    /** 脱敏后的错误摘要，仅用于 admin 排障列表。 */
+    @Column(name = "error_message", length = 512)
+    private String errorMessage;
 
     @Column(name = "prompt_tokens")
     private Long promptTokens;

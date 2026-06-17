@@ -36,11 +36,16 @@ public class ChatController {
         boolean stream = Boolean.TRUE.equals(body.get("stream"));
         AuthenticatedKey key = (AuthenticatedKey) exchange.getAttributes().get(AuthenticatedKey.ATTR);
         String requestId = "req-" + UUID.randomUUID().toString().substring(0, 12);
+        String appCode = exchange.getRequest().getHeaders().getFirst("X-App-Code");
+        String purpose = exchange.getRequest().getHeaders().getFirst("X-AI-Purpose");
+        if ((purpose == null || purpose.isBlank()) && body.get("purpose") instanceof String p) {
+            purpose = p;
+        }
         if (stream) {
-            return chatProxy.forwardStream(body, key, requestId)
+            return chatProxy.forwardStream(body, key, requestId, purpose, appCode)
                     .map(chunk -> ServerSentEvent.<String>builder(chunk).build());
         }
-        return chatProxy.forwardNonStream(body, key, requestId);
+        return chatProxy.forwardNonStream(body, key, requestId, purpose, appCode);
     }
 
     @GetMapping("/models")

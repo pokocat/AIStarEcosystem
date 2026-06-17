@@ -54,7 +54,7 @@ export function setAuthToken(token: string | null) {
 }
 
 /**
- * 来源子应用短码（music / drama / celebrity / aiavatar）。由 AuthProvider 在挂载时注入，
+ * 来源子应用短码（music / drama / celebrity / aiavatar / star）。由 AuthProvider 在挂载时注入，
  * apiFetch 自动作为 `X-App-Code` 头带上 —— 让 server 审计日志能区分登录来自哪个子应用。
  * 未设置时不带该头（server 端落 null）。
  */

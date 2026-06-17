@@ -44,6 +44,7 @@ public class AiModelEndpointKeyService {
     private final PasswordEncoder encoder;
     private final CreditService creditService;
     private final LlmApiKeyService legacy; // 兼容回退（旧 LlmApiKey）
+    private final AiModelUsageService usageService;
 
     /** 每 100 tokens 扣 1 credit；可在 application.yml 调（沿用 v0.6 配置）。 */
     private final long creditsPer100Tokens;
@@ -52,11 +53,13 @@ public class AiModelEndpointKeyService {
                                      PasswordEncoder encoder,
                                      CreditService creditService,
                                      LlmApiKeyService legacy,
+                                     AiModelUsageService usageService,
                                      @Value("${aep.llm.credits-per-100-tokens:1}") long creditsPer100Tokens) {
         this.repo = repo;
         this.encoder = encoder;
         this.creditService = creditService;
         this.legacy = legacy;
+        this.usageService = usageService;
         this.creditsPer100Tokens = creditsPer100Tokens;
     }
 
@@ -124,16 +127,36 @@ public class AiModelEndpointKeyService {
             // 旧 LlmApiKey（keyId=llmkey-*）→ 回退
             return legacy.reportUsage(report);
         }
+        boolean successful = report.success() == null || report.success();
         long tokens = report.totalTokens() > 0
                 ? report.totalTokens()
                 : (report.promptTokens() + report.completionTokens());
-        e.setTotalTokens(e.getTotalTokens() + tokens);
+        e.setTotalTokens(e.getTotalTokens() + (successful ? tokens : 0));
         e.setTotalCalls(e.getTotalCalls() + 1);
         e.setLastUsedAt(Instant.now());
         repo.save(e);
 
+        usageService.recordObservedWithAttribution(
+                e.getId(),
+                e.getName(),
+                report.model(),
+                report.purpose(),
+                report.promptTokens(),
+                report.completionTokens(),
+                tokens,
+                successful,
+                firstNonBlank(report.userId(), e.getOwnerUserId()),
+                report.tenantId(),
+                firstNonBlank(report.appCode(), "llm-gateway"),
+                report.requestId(),
+                report.upstreamId(),
+                report.latencyMs(),
+                report.errorCode(),
+                report.errorMessage()
+        );
+
         // 平台级端点（ownerUserId 空）只累计、不扣钱包
-        if (e.getOwnerUserId() == null || e.getOwnerUserId().isBlank()) {
+        if (!successful || e.getOwnerUserId() == null || e.getOwnerUserId().isBlank()) {
             return null;
         }
         long credits = Math.max(1, (tokens * creditsPer100Tokens + 99) / 100);
@@ -165,5 +188,11 @@ public class AiModelEndpointKeyService {
             sb.append(ALPHABET.charAt(RNG.nextInt(ALPHABET.length())));
         }
         return sb.toString();
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) return first.trim();
+        if (second != null && !second.isBlank()) return second.trim();
+        return null;
     }
 }

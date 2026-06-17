@@ -11,7 +11,7 @@ import java.time.Instant;
  *
  * 一行 = 一个**固定的可调用模型** = {上游密钥 + 单个模型 + 地址}，且**自带一个网关 Key**：
  *   - 上游：{@link #providerType} + {@link #baseUrl} + {@link #upstreamApiKeyEncrypted}(密文) + {@link #model}(单)
- *   - 网关 Key：{@link #keyPrefix} + {@link #keyHash}(bcrypt) —— 折叠自旧 {@code LlmApiKey}；
+ *   - 网关 Key：{@link #keyPrefix} + {@link #keyHash}(bcrypt)，折叠自旧 {@code LlmApiKey}；
  *     内部 AI 应用经 {@code ai_app_binding} 路由到本端点，外部业务方持 {@code sk-aep-*} 经 llm-gateway 调用本端点并计费。
  *
  * 表名保留 {@code ai_model_providers}（JPA ddl-auto=update 重命名表会孤立旧数据）。
@@ -52,7 +52,7 @@ public class AiModelEndpoint {
     @Column(name = "default_model")
     private String model;
 
-    /** 可选模型列表 JSON：[{ id, label, contextWindow, supportsVision }]——仅做发现挑选用。 */
+    /** 可选模型列表 JSON：[{ id, label, contextWindow, supportsVision }]，仅做发现挑选用。 */
     @Column(name = "models_json", columnDefinition = "LONGTEXT")
     private String modelsJson;
 
@@ -69,6 +69,18 @@ public class AiModelEndpoint {
     /** 计费归属用户（钱包）。**可空 = 平台级端点，usage 仅累计不扣钱包**。 */
     @Column(name = "owner_user_id")
     private String ownerUserId;
+
+    /** 输入 token 单价，单位：人民币微元 / 1K Token。0 = 未配置成本价。 */
+    @ColumnDefault("0")
+    @Builder.Default
+    @Column(name = "prompt_token_price_micros")
+    private long promptTokenPriceMicros = 0L;
+
+    /** 输出 token 单价，单位：人民币微元 / 1K Token。0 = 未配置成本价。 */
+    @ColumnDefault("0")
+    @Builder.Default
+    @Column(name = "completion_token_price_micros")
+    private long completionTokenPriceMicros = 0L;
 
     /** 累计 token 消耗，由 internal /usage 累加。 */
     @ColumnDefault("0")

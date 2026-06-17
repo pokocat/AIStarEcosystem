@@ -73,7 +73,7 @@ class ChatProxyServiceTest {
                 "messages", List.of(Map.of("role", "user", "content", "你好"))
         );
 
-        ResponseEntity<String> resp = proxy.forwardNonStream(body, null, "test-1").block();
+        ResponseEntity<String> resp = proxy.forwardNonStream(body, null, "test-1", null, null).block();
 
         assertThat(resp).isNotNull();
         assertThat(resp.getStatusCode().value()).isEqualTo(200);
@@ -100,7 +100,7 @@ class ChatProxyServiceTest {
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
         );
 
-        Flux<String> chunks = proxy.forwardStream(body, null, "test-2");
+        Flux<String> chunks = proxy.forwardStream(body, null, "test-2", null, null);
 
         StepVerifier.create(chunks)
                 .expectNextMatches(s -> s.contains("\"content\":\"a\""))
@@ -116,7 +116,7 @@ class ChatProxyServiceTest {
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
         );
         try {
-            proxy.forwardNonStream(body, null, "test-3").block();
+            proxy.forwardNonStream(body, null, "test-3", null, null).block();
         } catch (IllegalArgumentException e) {
             assertThat(e.getMessage()).contains("unknown-model");
             return;

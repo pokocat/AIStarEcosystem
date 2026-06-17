@@ -105,6 +105,49 @@ components:
         pollIntervalMs:  { type: integer, example: 2000 }
         estimatedSeconds: { type: integer }
 
+    AiModelUsageRecord:
+      type: object
+      required:
+        - id
+        - createdAt
+        - purposeLabel
+        - userLabel
+        - tenantLabel
+        - appCode
+        - appLabel
+        - promptTokens
+        - completionTokens
+        - totalTokens
+        - success
+        - estimatedCostMicros
+      properties:
+        id:                  { type: string }
+        createdAt:           { type: string, format: date-time }
+        providerId:          { type: string, nullable: true }
+        providerName:        { type: string, nullable: true }
+        model:               { type: string, nullable: true }
+        purpose:             { type: string, nullable: true }
+        purposeLabel:        { type: string }
+        userId:              { type: string, nullable: true }
+        userLabel:           { type: string }
+        tenantId:            { type: string, nullable: true }
+        tenantLabel:         { type: string }
+        appCode:             { type: string }
+        appLabel:            { type: string }
+        promptTokens:        { type: integer, format: int64 }
+        completionTokens:    { type: integer, format: int64 }
+        totalTokens:         { type: integer, format: int64 }
+        success:             { type: boolean }
+        estimatedCostMicros:
+          type: integer
+          format: int64
+          description: 按当前端点计价估算的人民币微元，非历史价格快照。
+        requestId:           { type: string, nullable: true, description: 平台生成或上游透传的请求追踪号。 }
+        upstreamId:          { type: string, nullable: true, description: 上游模型服务商返回的调用 id。 }
+        latencyMs:           { type: integer, format: int64, nullable: true, description: 上游调用总耗时，毫秒。 }
+        errorCode:           { type: string, nullable: true, description: 归一后的失败码，如 HTTP_429 或异常类名。 }
+        errorMessage:        { type: string, nullable: true, description: 脱敏后的错误摘要。 }
+
     # ── Enums ───────────────────────────────
 
     UserRole:
@@ -2238,8 +2281,8 @@ components:
           type: string
           nullable: true
           description: |
-            v0.57：来源子应用短码，由客户端 X-App-Code 头携带。取值 music / drama / celebrity / aiavatar
-            （= server PlatformSupport.ALL）+ celebrity-mp（微信小程序）+ admin（后台）。老数据 / 未带头时为 null。
+            v0.57：来源子应用短码，由客户端 X-App-Code 头携带。取值 music / drama / celebrity / aiavatar / star
+            （web 子应用）+ celebrity-mp（微信小程序）+ admin（后台）。老数据 / 未带头时为 null。
         result:       { type: string, enum: [success, failure], description: 'wire 上小写' }
         detail:       { type: string, nullable: true, description: '人类可读详情（含上下文）' }
         createdAt:    { type: string, format: date-time }
@@ -6004,7 +6047,35 @@ paths:
       tags: [admin-ai-models]
       operationId: adminAiModelUsage
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
-      responses: { '200': { description: 全局大模型用量报表（自建 token 流水聚合；按服务商 + 模型维度） } }
+      responses: { '200': { description: 全局大模型用量报表（自建 token 流水聚合；按服务商 / 模型 / 用途 / 用户 / 租户 / 来源应用 / 日期维度） } }
+  /admin/ai-models/usage-records:
+    get:
+      tags: [admin-ai-models]
+      operationId: adminListAiModelUsageRecords
+      summary: LLM 调用用量明细列表
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }
+        - { name: appCode, in: query, required: false, schema: { type: string } }
+        - { name: userId, in: query, required: false, schema: { type: string } }
+        - { name: tenantId, in: query, required: false, schema: { type: string } }
+        - { name: purpose, in: query, required: false, schema: { type: string } }
+        - { name: providerId, in: query, required: false, schema: { type: string } }
+        - { name: success, in: query, required: false, schema: { type: boolean } }
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: size, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AiModelUsageRecord' }
   /admin/ai-models/discover-models:
     post: { tags: [admin-ai-models], operationId: adminDiscoverAiModels, responses: { '200': { description: 用 baseUrl+apiKey 调服务商 GET /models 拉取可用模型 } } }
   /admin/ai-models/{id}:
@@ -6024,7 +6095,7 @@ paths:
       tags: [admin-ai-models]
       operationId: adminAiModelUsageForProvider
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
-      responses: { '200': { description: 单端点大模型用量报表 } }
+      responses: { '200': { description: 单端点大模型用量报表（同样返回用户 / 租户 / 来源应用维度） } }
   /admin/ai-models/{id}/mint-key:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-ai-models], operationId: adminMintEndpointKey, responses: { '200': { description: 'v0.41：给端点铸造/重铸网关 Key sk-aep-*，明文仅返回一次（DB 存 bcrypt）' } } }

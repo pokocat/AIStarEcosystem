@@ -87,6 +87,8 @@ interface FormDefaults {
   apiVersion?: string;
   model?: string;
   ownerUserId?: string;
+  promptPriceYuan?: string;
+  completionPriceYuan?: string;
   apiKeyHint?: string;
   sourceName?: string;
 }
@@ -103,6 +105,8 @@ interface FormState {
   models: AiModelEntry[];
   ownerUserId: string;
   clearOwnerUserId: boolean;
+  promptPriceYuan: string;
+  completionPriceYuan: string;
   enabled: boolean;
   defaults?: FormDefaults;
 }
@@ -118,6 +122,8 @@ const EMPTY_FORM: FormState = {
   models: [],
   ownerUserId: "",
   clearOwnerUserId: false,
+  promptPriceYuan: "",
+  completionPriceYuan: "",
   enabled: true,
   defaults: {
     baseUrl: "https://api.openai.com/v1",
@@ -128,6 +134,18 @@ const EMPTY_FORM: FormState = {
 type TestState = "idle" | "running" | "ok" | "fail";
 
 type BindingGroupKey = "celebrity" | "drama" | "aiavatar" | "creator" | "platform";
+
+const MICROS_PER_YUAN = 1_000_000;
+const USAGE_WINDOW_CHOICES = [
+  { value: 1, label: "近 1 天" },
+  { value: 7, label: "近 7 天" },
+  { value: 14, label: "近 14 天" },
+  { value: 30, label: "近 30 天" },
+  { value: 60, label: "近 60 天" },
+  { value: 90, label: "近 90 天" },
+  { value: 180, label: "近 180 天" },
+  { value: 365, label: "近 365 天" },
+] as const;
 
 const BINDING_GROUPS: Array<{
   key: BindingGroupKey;
@@ -188,6 +206,24 @@ function placeholderFor(form: FormState, key: keyof FormDefaults, fallback: stri
   return value;
 }
 
+function microsToYuanText(value: number | null | undefined): string {
+  if (!value || value <= 0) return "";
+  return (value / MICROS_PER_YUAN).toFixed(6).replace(/\.?0+$/, "");
+}
+
+function parsePriceMicros(value: string): number | null {
+  const raw = value.trim();
+  if (!raw) return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * MICROS_PER_YUAN);
+}
+
+function priceLabel(value: number | null | undefined): string {
+  const text = microsToYuanText(value);
+  return text ? `¥${text} / 1K` : "¥0 / 1K";
+}
+
 function formTitle(form: FormState | null): string {
   if (!form) return "操作";
   if (form.mode === "edit") return "编辑端点";
@@ -207,6 +243,8 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     model: p.model ?? "",
     models: p.models ?? [],
     ownerUserId: p.ownerUserId ?? "",
+    promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
+    completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
     enabled: p.enabled,
     defaults: {
       name: p.name,
@@ -214,6 +252,8 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
       apiVersion: p.apiVersion ?? "",
       model: p.model ?? "",
       ownerUserId: p.ownerUserId ?? "",
+      promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
+      completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
       sourceName: p.name,
     },
   };
@@ -225,6 +265,8 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
     mode: "copy",
     providerType: p.providerType,
     models: p.models ?? [],
+    promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
+    completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
     enabled: p.enabled,
     defaults: {
       name: `${p.name} 副本`,
@@ -232,6 +274,8 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
       apiVersion: p.apiVersion ?? "",
       model: p.model ?? "",
       ownerUserId: p.ownerUserId ?? "",
+      promptPriceYuan: microsToYuanText(p.promptTokenPriceMicros),
+      completionPriceYuan: microsToYuanText(p.completionTokenPriceMicros),
       sourceName: p.name,
     },
   };
@@ -399,6 +443,8 @@ export default function AdminAiModelsPage() {
     const apiVersion = valueOrDefault(editing, "apiVersion");
     const model = valueOrDefault(editing, "model");
     const ownerUserId = valueOrDefault(editing, "ownerUserId");
+    const promptTokenPriceMicros = parsePriceMicros(editing.promptPriceYuan);
+    const completionTokenPriceMicros = parsePriceMicros(editing.completionPriceYuan);
 
     if (!name || !baseUrl) {
       toast.warning({ title: "端点名称 / 调用地址 必填" });
@@ -406,6 +452,10 @@ export default function AdminAiModelsPage() {
     }
     if (!editing.id && !editing.apiKey.trim()) {
       toast.warning({ title: "新建时上游 API 密钥 必填" });
+      return;
+    }
+    if (promptTokenPriceMicros == null || completionTokenPriceMicros == null) {
+      toast.warning({ title: "计价必须是大于等于 0 的数字" });
       return;
     }
     try {
@@ -417,6 +467,8 @@ export default function AdminAiModelsPage() {
         apiVersion: apiVersion || undefined,
         model: model || undefined,
         models: editing.models,
+        promptTokenPriceMicros,
+        completionTokenPriceMicros,
         enabled: editing.enabled,
       };
       if (editing.clearOwnerUserId) {
@@ -527,7 +579,7 @@ export default function AdminAiModelsPage() {
         <div className="space-y-1">
           <div className="font-medium">{p.name}</div>
           <div className="text-xs text-muted-foreground">
-            前缀 <span className="font-mono">{p.keyMasked ?? "—"}</span>
+            前缀 <span className="font-mono">{p.keyMasked ?? "未生成"}</span>
           </div>
         </div>
       ),
@@ -605,10 +657,10 @@ export default function AdminAiModelsPage() {
         {/* ── Tab 1：模型接入端点 ── */}
         <TabsContent value="endpoints" className="space-y-6">
           <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+            <CardHeader className="flex-col items-start gap-3 space-y-0 pb-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="text-base">{formTitle(editing)}</CardTitle>
               {!editing && (
-                <div className="flex gap-2">
+                <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
                   <Button variant="outline" onClick={() => void refresh()}>
                     刷新
                   </Button>
@@ -776,6 +828,39 @@ export default function AdminAiModelsPage() {
                   )}
                 </section>
 
+                <section className="rounded-md border border-border bg-surface px-3.5 py-3">
+                  <div className="mb-3">
+                    <div className="text-sm font-medium">计价</div>
+                    <div className="text-xs text-muted-foreground">
+                      按当前供应商成本填写，单位为元 / 1K Token。留空或 0 表示暂未配置成本价，不改变钱包扣费逻辑。
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Field label="输入 Token 单价" hint="例如 0.0015 表示每 1K 输入 Token 0.0015 元">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.000001"
+                        value={editing.promptPriceYuan}
+                        onChange={(e) => setEditing({ ...editing, promptPriceYuan: e.target.value })}
+                        placeholder={editing.defaults?.promptPriceYuan || "0"}
+                      />
+                    </Field>
+                    <Field label="输出 Token 单价" hint="例如 0.006 表示每 1K 输出 Token 0.006 元">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.000001"
+                        value={editing.completionPriceYuan}
+                        onChange={(e) => setEditing({ ...editing, completionPriceYuan: e.target.value })}
+                        placeholder={editing.defaults?.completionPriceYuan || "0"}
+                      />
+                    </Field>
+                  </div>
+                </section>
+
                 <section className="rounded-md border border-border bg-surface-muted/40">
                   <button
                     type="button"
@@ -859,7 +944,7 @@ export default function AdminAiModelsPage() {
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}
               {!loading && !err && (
-                <Table className="min-w-[1180px] table-fixed">
+                <Table className="min-w-[1780px] table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[190px]">名称</TableHead>
@@ -868,7 +953,10 @@ export default function AdminAiModelsPage() {
                       <TableHead className="w-[132px]">上游密钥</TableHead>
                       <TableHead className="w-[150px]">固定模型</TableHead>
                       <TableHead className="w-[128px]">网关 Key</TableHead>
+                      <TableHead className="w-[112px] text-right">输入价</TableHead>
+                      <TableHead className="w-[112px] text-right">输出价</TableHead>
                       <TableHead className="w-[112px] text-right">累计 tokens</TableHead>
+                      <TableHead className="w-[92px] text-right">调用</TableHead>
                       <TableHead className="w-[88px]">状态</TableHead>
                       <TableHead className="w-[258px] text-right">操作</TableHead>
                     </TableRow>
@@ -889,7 +977,7 @@ export default function AdminAiModelsPage() {
                           </TableCell>
                           <TableCell className="truncate py-3 font-mono text-xs" title={p.baseUrl}>{p.baseUrl}</TableCell>
                           <TableCell className="truncate py-3 font-mono text-xs" title={p.upstreamApiKeyMasked}>{p.upstreamApiKeyMasked}</TableCell>
-                          <TableCell className="truncate py-3 text-xs" title={p.model ?? undefined}>{p.model ?? "—"}</TableCell>
+                          <TableCell className="truncate py-3 text-xs" title={p.model ?? undefined}>{p.model ?? "未设置"}</TableCell>
                           <TableCell className="truncate py-3 text-xs">
                             {p.keyRevokedAt ? (
                               <Badge tone="danger" className="font-normal">
@@ -901,10 +989,10 @@ export default function AdminAiModelsPage() {
                               <span className="text-muted-foreground">未生成</span>
                             )}
                           </TableCell>
-                          <TableCell className="py-3 text-right tabular-nums text-xs">
-                            {p.totalTokens.toLocaleString()}
-                            <div className="text-[10px] text-muted-foreground">{p.totalCalls.toLocaleString()} 次</div>
-                          </TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{priceLabel(p.promptTokenPriceMicros)}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{priceLabel(p.completionTokenPriceMicros)}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right tabular-nums text-xs">{p.totalTokens.toLocaleString()}</TableCell>
+                          <TableCell className="whitespace-nowrap py-3 text-right tabular-nums text-xs">{p.totalCalls.toLocaleString()}</TableCell>
                           <TableCell className="py-3">
                             {p.enabled ? (
                               <Badge tone="success" className="font-normal">
@@ -1026,21 +1114,21 @@ export default function AdminAiModelsPage() {
         {/* ── Tab 3：用量统计 ── */}
         <TabsContent value="usage" className="space-y-6">
           <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+            <CardHeader className="flex-col items-start gap-3 space-y-0 pb-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="flex items-center gap-1.5 text-base">
                 <BarChart3 className="h-4 w-4 text-primary" /> 用量统计
               </CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
                 <Select value={String(usageDays)} onValueChange={(v) => setUsageDays(Number(v))}>
-                  <SelectTrigger className="h-8 w-[120px]">
+                  <SelectTrigger className="w-full md:h-8 sm:w-[120px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">近 1 天</SelectItem>
-                    <SelectItem value="7">近 7 天</SelectItem>
-                    <SelectItem value="30">近 30 天</SelectItem>
-                    <SelectItem value="90">近 90 天</SelectItem>
-                    <SelectItem value="365">近 365 天</SelectItem>
+                    {USAGE_WINDOW_CHOICES.map((option) => (
+                      <SelectItem key={option.value} value={String(option.value)}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Button
@@ -1082,7 +1170,7 @@ export default function AdminAiModelsPage() {
                   ) : (
                     <div className="space-y-6">
                       <UsageTrend data={usage.byDay} />
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                      <div className="space-y-6">
                         <UsageTable title="按端点" col="端点" rows={usage.byProvider} total={usage.totalTokens} />
                         <UsageTable title="按模型" col="模型" rows={usage.byModel} total={usage.totalTokens} />
                       </div>
@@ -1210,38 +1298,84 @@ function StatBox({
   );
 }
 
-/** 按天用量趋势（总 Token / 天）。纯 CSS 柱状，沿用设计 token，无第三方图表依赖。 */
+/** 按天用量趋势（总 Token / 天），用带点位标签的曲线图展示。 */
 function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
   if (!data || data.length === 0) return null;
   const max = Math.max(...data.map((d) => d.totalTokens), 1);
+  const width = Math.max(560, data.length * 64);
+  const height = 220;
+  const pad = { left: 44, right: 24, top: 34, bottom: 38 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const points = data.map((d, index) => {
+    const x = pad.left + (data.length === 1 ? plotWidth / 2 : (index / (data.length - 1)) * plotWidth);
+    const y = pad.top + plotHeight - (d.totalTokens / max) * plotHeight;
+    return { x, y, d };
+  });
+  const labelEvery = data.length <= 8 ? 1 : Math.ceil(data.length / 7);
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-medium">按天趋势</div>
-        <div className="text-xs text-muted-foreground tabular-nums">
+        <div className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
           峰值 {max.toLocaleString()} Token / 天
         </div>
       </div>
-      <div className="flex h-36 items-end gap-[3px] overflow-x-auto pb-1">
-        {data.map((d) => (
-          <div
-            key={d.date}
-            className="group flex h-full min-w-[6px] flex-1 flex-col justify-end"
-            title={`${d.date}\n调用 ${d.calls.toLocaleString()} 次 · ${d.totalTokens.toLocaleString()} Token`}
-          >
-            <div
-              className="w-full rounded-sm bg-primary/60 transition-colors group-hover:bg-primary"
-              style={{ height: `${Math.max(2, (d.totalTokens / max) * 100)}%` }}
-            />
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 flex justify-between text-[10px] text-muted-foreground tabular-nums">
-        <span>{data[0]?.date}</span>
-        {data.length > 1 && <span>{data[data.length - 1]?.date}</span>}
+      <div className="overflow-x-auto">
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="block min-w-full">
+          {[0, 0.5, 1].map((step) => {
+            const y = pad.top + plotHeight - step * plotHeight;
+            return (
+              <g key={step}>
+                <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} className="stroke-border" strokeDasharray={step === 0 ? undefined : "4 6"} />
+                <text x={pad.left - 10} y={y + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
+                  {Math.round(max * step).toLocaleString("zh-CN")}
+                </text>
+              </g>
+            );
+          })}
+          <path d={smoothUsagePath(points)} fill="none" className="stroke-primary" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          {points.map((p, index) => {
+            const showLabel = index === 0 || index === points.length - 1 || index % labelEvery === 0;
+            return (
+              <g key={p.d.date}>
+                <circle cx={p.x} cy={p.y} r="3.5" className="fill-surface stroke-primary" strokeWidth="2" />
+                {showLabel && (
+                  <>
+                    <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" className="fill-foreground text-[10px] font-medium tabular-nums">
+                      {p.d.totalTokens.toLocaleString("zh-CN")}
+                    </text>
+                    <text x={p.x} y={height - 12} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
+                      {shortUsageDate(p.d.date)}
+                    </text>
+                  </>
+                )}
+              </g>
+            );
+          })}
+        </svg>
       </div>
     </div>
   );
+}
+
+function smoothUsagePath(points: Array<{ x: number; y: number }>): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const midX = (prev.x + curr.x) / 2;
+    d += ` Q ${prev.x} ${prev.y}, ${midX} ${(prev.y + curr.y) / 2}`;
+    d += ` T ${curr.x} ${curr.y}`;
+  }
+  return d;
+}
+
+function shortUsageDate(value: string): string {
+  const parts = value.split("-");
+  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : value;
 }
 
 function UsageTable({
@@ -1278,15 +1412,15 @@ function UsageTable({
                   <TableCell className="max-w-[180px] truncate text-xs font-medium" title={r.label}>
                     {r.label}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs">{r.calls.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums text-xs">{r.totalTokens.toLocaleString()}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-xs">{r.calls.toLocaleString()}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums text-xs">{r.totalTokens.toLocaleString()}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <span className="h-1 w-12 overflow-hidden rounded-full bg-surface-muted">
                         <span className="block h-full rounded-full bg-primary/55" style={{ width: `${pct}%` }} />
                       </span>
-                      <span className="w-10 text-right tabular-nums text-xs text-muted-foreground">
-                        {total > 0 ? `${pct.toFixed(1)}%` : "—"}
+                      <span className="w-10 whitespace-nowrap text-right tabular-nums text-xs text-muted-foreground">
+                        {total > 0 ? `${pct.toFixed(1)}%` : "0%"}
                       </span>
                     </div>
                   </TableCell>

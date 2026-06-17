@@ -1,8 +1,12 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.AiModelUsageRecordDto;
 import com.aistareco.aep.dto.AiModelUsageReportDto;
 import com.aistareco.aep.dto.AiModelUsageStatDto;
+import com.aistareco.aep.model.AiModelEndpoint;
+import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelUsageRecord;
+import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.aep.repository.AiModelUsageRecordRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +34,9 @@ class AiModelUsageServiceTest {
     private AiModelUsageRecordRepository repo;
 
     @Autowired
+    private AiModelEndpointRepository endpointRepo;
+
+    @Autowired
     private AiModelUsageService service;
 
     private int seq = 0;
@@ -47,6 +54,23 @@ class AiModelUsageServiceTest {
                 .purpose(purpose)
                 .promptTokens(prompt).completionTokens(completion).totalTokens(total)
                 .success(success).createdAt(createdAt).build();
+        repo.saveAndFlush(r);
+    }
+
+    private void seedAttr(String userId, String tenantId, String appCode,
+                          long prompt, long completion, long total, Instant createdAt) {
+        seedAttr(userId, tenantId, appCode, "SCRIPT_DRAFT", prompt, completion, total, createdAt);
+    }
+
+    private void seedAttr(String userId, String tenantId, String appCode, String purpose,
+                          long prompt, long completion, long total, Instant createdAt) {
+        AiModelUsageRecord r = AiModelUsageRecord.builder()
+                .id("aiu-" + (seq++))
+                .providerId("p1").providerName("火山方舟").model("doubao")
+                .purpose(purpose)
+                .userId(userId).tenantId(tenantId).appCode(appCode)
+                .promptTokens(prompt).completionTokens(completion).totalTokens(total)
+                .success(true).createdAt(createdAt).build();
         repo.saveAndFlush(r);
     }
 
@@ -126,6 +150,88 @@ class AiModelUsageServiceTest {
         long dailyCalls = report.byDay().stream().mapToLong(d -> d.calls()).sum();
         assertEquals(3, dailyCalls); // 今天 2 次 + 2 天前 1 次（失败不计）
         assertTrue(report.byDay().get(0).date().compareTo(report.byDay().get(1).date()) < 0);
+    }
+
+    @Test
+    void aggregatesByUserTenantAndAppCode() {
+        Instant now = Instant.now();
+        seedAttr("user-a", "tenant-a", "drama", 10, 20, 30, now);
+        seedAttr("user-a", "tenant-a", "drama", 5, 5, 10, now);
+        seedAttr("user-b", "tenant-b", "celebrity", 50, 50, 100, now);
+        seedAttr(null, null, null, 1, 1, 2, now);
+        seedAttr(null, null, null, null, 2, 1, 3, now);
+
+        AiModelUsageReportDto report = service.report(30);
+
+        AiModelUsageStatDto userA = report.byUser().stream()
+                .filter(s -> "user-a".equals(s.key())).findFirst().orElseThrow();
+        assertEquals(2, userA.calls());
+        assertEquals(40, userA.totalTokens());
+
+        AiModelUsageStatDto tenantB = report.byTenant().stream()
+                .filter(s -> "tenant-b".equals(s.key())).findFirst().orElseThrow();
+        assertEquals(100, tenantB.totalTokens());
+
+        AiModelUsageStatDto drama = report.byAppCode().stream()
+                .filter(s -> "drama".equals(s.key())).findFirst().orElseThrow();
+        assertEquals("AI 短剧", drama.label());
+        assertEquals(40, drama.totalTokens());
+
+        AiModelUsageStatDto celebrity = report.byAppCode().stream()
+                .filter(s -> "celebrity".equals(s.key())).findFirst().orElseThrow();
+        assertEquals("AI 明星带货", celebrity.label());
+        assertEquals(102, celebrity.totalTokens());
+
+        assertTrue(report.byUser().stream().anyMatch(s -> "unassigned".equals(s.key())));
+        assertTrue(report.byAppCode().stream().anyMatch(s -> "unknown".equals(s.key())));
+    }
+
+    @Test
+    void recordsInferAppCodeAndEstimateCost() {
+        Instant now = Instant.now();
+        endpointRepo.saveAndFlush(AiModelEndpoint.builder()
+                .id("p-cost")
+                .name("成本端点")
+                .providerType(AiModelProviderType.OPENAI_COMPATIBLE)
+                .baseUrl("https://llm.example.test/v1")
+                .upstreamApiKeyEncrypted("encrypted")
+                .model("drama-model")
+                .promptTokenPriceMicros(1000)
+                .completionTokenPriceMicros(2000)
+                .enabled(true)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+        AiModelUsageRecord record = AiModelUsageRecord.builder()
+                .id("aiu-cost")
+                .providerId("p-cost")
+                .model("drama-model")
+                .purpose("DRAMA_SCRIPT_DRAFT")
+                .promptTokens(1500L)
+                .completionTokens(500L)
+                .totalTokens(2000L)
+                .requestId("aic-test-001")
+                .upstreamId("chatcmpl-test")
+                .latencyMs(1280L)
+                .errorCode(null)
+                .success(true)
+                .createdAt(now)
+                .build();
+        repo.saveAndFlush(record);
+
+        AiModelUsageRecordDto dto = service.records(30, "drama", null, null, null, null, null, null, 20)
+                .stream()
+                .filter(row -> "aiu-cost".equals(row.id()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("drama", dto.appCode());
+        assertEquals("AI 短剧", dto.appLabel());
+        assertEquals("成本端点", dto.providerName());
+        assertEquals(2500, dto.estimatedCostMicros());
+        assertEquals("aic-test-001", dto.requestId());
+        assertEquals("chatcmpl-test", dto.upstreamId());
+        assertEquals(1280L, dto.latencyMs());
     }
 
     @Test
