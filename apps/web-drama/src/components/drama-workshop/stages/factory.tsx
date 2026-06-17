@@ -122,12 +122,39 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
   );
 
   const [openId, setOpenId] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState<{ id: string; to: FlowKey } | null>(null);
+  const [busyMap, setBusyMap] = React.useState<Record<string, FlowKey>>({});
   const [refs, setRefs] = React.useState<Material[]>(() => {
     const bound = state.chars.find((c) => c.bound);
     const a1 = matById("a1");
     return bound && a1 ? [a1] : [];
   });
+  const shotsRef = React.useRef(shots);
+  React.useEffect(() => {
+    shotsRef.current = shots;
+  }, [shots]);
+
+  const markBusy = React.useCallback((id: string, to: FlowKey) => {
+    setBusyMap((m) => ({ ...m, [id]: to }));
+  }, []);
+  const clearBusy = React.useCallback((id: string) => {
+    setBusyMap((m) => {
+      const next = { ...m };
+      delete next[id];
+      return next;
+    });
+  }, []);
+  const isBusy = React.useCallback((id: string) => !!busyMap[id], [busyMap]);
+
+  const applyShotPatch = React.useCallback(
+    (id: string, patch: Partial<FactoryShot>) => {
+      setShots((arr) => {
+        const next = arr.map((x) => (x.id === id ? { ...x, ...patch } : x));
+        void persistShots(next);
+        return next;
+      });
+    },
+    [persistShots],
+  );
 
   const stat = {
     total: shots.length,
@@ -156,39 +183,145 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     };
   };
 
+  const applyFrameResult = React.useCallback(
+    (id: string, job: RenderApi.DramaFrameJob | RenderApi.DramaRenderTask, spend: boolean) => {
+      const frames = job.frames ?? job.result?.frames ?? [];
+      if (job.status === "failed") {
+        clearBusy(id);
+        if (spend) toast.error(job.error_message || "首帧生成失败，请重试");
+        return;
+      }
+      if (job.status !== "ready" || frames.length === 0) return;
+      applyShotPatch(id, {
+        flow: "frame" as FlowKey,
+        frameUrls: frames.map((f) => f.url),
+        frameIdx: 0,
+        frameUrl: undefined,
+        videoUrl: undefined,
+      });
+      clearBusy(id);
+      if (spend) {
+        dispatch({ type: "spend", n: cfg.prices.frame });
+        toast.success(`首帧已出 ${frames.length} 版,挑一版锁定`);
+      }
+    },
+    [applyShotPatch, cfg.prices.frame, clearBusy, dispatch],
+  );
+
+  const applyClipResult = React.useCallback(
+    (id: string, job: RenderApi.DramaEpisodeJob | RenderApi.DramaRenderTask, spend: boolean) => {
+      if (job.status === "failed") {
+        clearBusy(id);
+        if (spend) toast.error(job.error_message || "视频生成失败，请重试");
+        return;
+      }
+      if (job.status !== "ready" || !job.video_url) return;
+      applyShotPatch(id, { flow: "clip" as FlowKey, videoUrl: job.video_url ?? undefined, jobId: job.id });
+      clearBusy(id);
+      if (spend) {
+        dispatch({ type: "spend", n: cfg.prices.clip });
+        toast.success("动态已渲染,验收看看");
+      }
+    },
+    [applyShotPatch, cfg.prices.clip, clearBusy, dispatch],
+  );
+
+  const watchFrameJob = React.useCallback(
+    async (jobId: string, shotId: string, spend: boolean) => {
+      try {
+        const done = await RenderApi.pollFrameJob(jobId, { timeoutMs: 240_000 });
+        applyFrameResult(shotId, done, spend);
+      } catch (e) {
+        clearBusy(shotId);
+        toast.error(aiErrorMessage(e, "首帧渲染失败，请稍后重试"));
+      }
+    },
+    [applyFrameResult, clearBusy],
+  );
+
+  const watchClipJob = React.useCallback(
+    async (jobId: string, shotId: string, spend: boolean) => {
+      try {
+        const done = await RenderApi.pollClipJob(jobId, { timeoutMs: 240_000 });
+        applyClipResult(shotId, done, spend);
+      } catch (e) {
+        clearBusy(shotId);
+        toast.error(aiErrorMessage(e, "视频生成失败，请稍后重试"));
+      }
+    },
+    [applyClipResult, clearBusy],
+  );
+
+  React.useEffect(() => {
+    if (!ctx?.projectId) return;
+    let cancelled = false;
+    const syncTasks = async () => {
+      try {
+        const snap = await RenderApi.listRenderTasks(ctx.projectId);
+        if (cancelled) return;
+        const known = new Set(shotsRef.current.map((s) => s.id));
+        const active: Record<string, FlowKey> = {};
+        for (const task of snap.tasks) {
+          const shotId = task.shot_id;
+          if (!shotId || !known.has(shotId)) continue;
+          if (task.episode_no && task.episode_no !== state.ep) continue;
+          const current = shotsRef.current.find((s) => s.id === shotId);
+          const isActiveTask = task.status === "queued" || task.status === "running" || task.status === "rendering";
+          if (isActiveTask) active[shotId] = task.task_type === "frame" ? "frame" : "clip";
+          if (task.task_type === "frame" && task.status === "ready" && (task.frames?.length || task.result?.frames?.length)) {
+            if (!current?.frameUrls?.length) applyFrameResult(shotId, task, false);
+          }
+          if (task.task_type === "video" && task.status === "ready" && task.video_url) {
+            if (current?.videoUrl !== task.video_url) applyClipResult(shotId, task, false);
+          }
+        }
+        setBusyMap((prev) => {
+          const next = { ...prev };
+          for (const shotId of known) delete next[shotId];
+          return { ...next, ...active };
+        });
+      } catch {
+        // 后台任务状态是辅助信息，失败不打断当前编辑。
+      }
+    };
+    void syncTasks();
+    const timer = window.setInterval(syncTasks, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [applyClipResult, applyFrameResult, ctx?.projectId, state.ep]);
+
   /** 首帧渲染（真实图像生成，出 4 版候选）。 */
   const renderFrame = async (id: string) => {
     const s = shots.find((x) => x.id === id);
-    if (!s || busy) return;
-    setBusy({ id, to: "frame" });
+    if (!s || isBusy(id)) return;
+    markBusy(id, "frame");
     try {
-      const frames = await RenderApi.renderFrame({
+      const job = await RenderApi.submitFrameJob({
         kind: "shot",
         vars: shotVars(s),
         ratio: data.projectInfo.ratio,
         count: 4,
+        projectId: ctx?.projectId,
+        sceneId: s.sceneId,
+        shotId: id,
+        episodeNo: state.ep,
+        name: `第${state.ep}集 镜${s.no} 首帧`,
       });
-      const next = shots.map((x) =>
-        x.id === id
-          ? { ...x, flow: "frame" as FlowKey, frameUrls: frames.map((f) => f.url), frameIdx: 0, frameUrl: undefined, videoUrl: undefined }
-          : x,
-      );
-      setShots(next);
-      await persistShots(next);
-      dispatch({ type: "spend", n: cfg.prices.frame });
-      toast.success(`首帧已出 ${frames.length} 版,挑一版锁定`);
+      toast.success("首帧任务已加入后台队列");
+      void watchFrameJob(job.id, id, true);
     } catch (e) {
+      clearBusy(id);
       toast.error(aiErrorMessage(e, "首帧渲染失败，请稍后重试"));
-    } finally {
-      setBusy(null);
     }
   };
 
   /** 视频渲染（直出或基于已锁首帧；异步任务 + 轮询）。 */
   const renderVideo = async (id: string, useFrame: boolean) => {
     const s = shots.find((x) => x.id === id);
-    if (!s || busy) return;
-    setBusy({ id, to: "clip" });
+    if (!s || isBusy(id)) return;
+    markBusy(id, "clip");
     try {
       const job = await RenderApi.renderClip({
         kind: "shot",
@@ -197,21 +330,18 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         durationSec: s.dur,
         ratio: data.projectInfo.ratio,
         projectId: ctx?.projectId,
+        sceneId: s.sceneId,
+        shotId: id,
+        episodeNo: state.ep,
+        target: useFrame ? "frame-clip" : "direct",
         frameUrl: useFrame ? s.frameUrl ?? s.frameUrls?.[s.frameIdx] : undefined,
       });
-      const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
-      if (done.status === "failed") throw new Error(done.error_message || "视频生成失败，请重试");
-      const next = shots.map((x) =>
-        x.id === id ? { ...x, flow: "clip" as FlowKey, videoUrl: done.video_url ?? undefined, jobId: job.id } : x,
-      );
-      setShots(next);
-      await persistShots(next);
-      dispatch({ type: "spend", n: cfg.prices.clip });
-      toast.success("动态已渲染,验收看看");
+      applyShotPatch(id, { jobId: job.id });
+      toast.success("视频任务已加入后台队列");
+      void watchClipJob(job.id, id, true);
     } catch (e) {
+      clearBusy(id);
       toast.error(aiErrorMessage(e, "视频生成失败，请稍后重试"));
-    } finally {
-      setBusy(null);
     }
   };
 
@@ -233,39 +363,37 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
   };
   const reframe = (id: string) => void renderFrame(id);
 
-  /** 批量首帧：顺序逐镜渲染（控制真实模型请求节奏）。 */
+  /** 批量首帧：批量入队，真实并发由后端任务池控制。 */
   const batchFrame = async () => {
-    const drafts = shots.filter((s) => s.flow === "draft");
+    const drafts = shots.filter((s) => s.flow === "draft" && !isBusy(s.id));
     if (!drafts.length) {
       toast.success("没有待渲首帧的镜头");
       return;
     }
     let okCount = 0;
-    let cur = shots;
     for (const d of drafts) {
-      setBusy({ id: d.id, to: "frame" });
+      markBusy(d.id, "frame");
       try {
-        const frames = await RenderApi.renderFrame({
+        const job = await RenderApi.submitFrameJob({
           kind: "shot",
           vars: shotVars(d),
           ratio: data.projectInfo.ratio,
           count: 4,
+          projectId: ctx?.projectId,
+          sceneId: d.sceneId,
+          shotId: d.id,
+          episodeNo: state.ep,
+          name: `第${state.ep}集 镜${d.no} 首帧`,
         });
-        cur = cur.map((x) =>
-          x.id === d.id ? { ...x, flow: "frame" as FlowKey, frameUrls: frames.map((f) => f.url), frameIdx: 0 } : x,
-        );
-        setShots(cur);
-        dispatch({ type: "spend", n: cfg.prices.frame });
+        void watchFrameJob(job.id, d.id, true);
         okCount++;
       } catch (e) {
+        clearBusy(d.id);
         toast.error(`镜 ${d.no} 首帧失败：${aiErrorMessage(e, "未知错误")}`);
-        break;
       }
     }
-    setBusy(null);
     if (okCount > 0) {
-      await persistShots(cur);
-      toast.success(`已为 ${okCount} 个镜头各出 4 版首帧`);
+      toast.success(`已提交 ${okCount} 个首帧任务,后台按并发自动排队`);
     }
   };
 
@@ -385,7 +513,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
                 frameCost={cfg.prices.frame}
                 clipCost={cfg.prices.clip}
                 active={openId === s.id}
-                busy={busy && busy.id === s.id ? busy.to : null}
+                busy={busyMap[s.id] ?? null}
                 onOpen={() => setOpenId(s.id)}
                 onRenderFrame={() => renderFrame(s.id)}
                 onRenderDirect={() => renderDirect(s.id)}
@@ -429,7 +557,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
           chars={state.chars}
           frameCost={cfg.prices.frame}
           clipCost={cfg.prices.clip}
-          busy={busy && busy.id === open.id ? busy.to : null}
+          busy={busyMap[open.id] ?? null}
           onClose={() => setOpenId(null)}
           onRenderFrame={() => renderFrame(open.id)}
           onRenderDirect={() => renderDirect(open.id)}

@@ -7126,8 +7126,16 @@ paths:
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/frame:
     post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }
+  /me/drama/render/frame-jobs:
+    get:  { tags: [drama], operationId: listDramaFrameJobs, parameters: [{ name: project_id, in: query, required: false, schema: { type: string } }], summary: '列出当前用户首帧后台任务（可按项目/短视频草稿过滤）。', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: submitDramaFrameJob, summary: '提交首帧后台任务。body 同 /render/frame，额外支持 project_id/scene_id/shot_id/episode_no/name，返回可轮询任务卡。', responses: { '200': { description: ok } } }
+  /me/drama/render/frame-jobs/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:  { tags: [drama], operationId: getDramaFrameJob, summary: '查询首帧后台任务状态与 frames 结果。', responses: { '200': { description: ok } } }
   /me/drama/render/clip:
-    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）。v0.72 起 body={kind?,vars{},name?,duration_sec?,ratio?,project_id?,frame_url?}：出片提示词模板服务端化（drama.clip_video/drama.short_clip_video）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: renderDramaClip, summary: '分镜视频生成（复用 MaterialVideoJob 管线 kind=drama-shot，轮询 /me/drama/episodes/jobs/{id}）。v0.72 起 body={kind?,vars{},name?,duration_sec?,ratio?,project_id?,scene_id?,shot_id?,episode_no?,frame_url?}：出片提示词模板服务端化（drama.clip_video/drama.short_clip_video）', responses: { '200': { description: ok } } }
+  /me/drama/render/tasks:
+    get:  { tags: [drama], operationId: listDramaRenderTasks, parameters: [{ name: project_id, in: query, required: false, schema: { type: string } }], summary: '统一渲染后台任务视图：首帧任务 + 视频任务 + 系统负载摘要。', responses: { '200': { description: ok } } }
   # ── v0.79 互动剧（剧情互动短剧）= DramaProject 的形态（mode=interactive），不是独立实体：剧集（图节点）即项目大纲分集，每集视频复用六阶段成片，分支编排（互动点/接线/全局标记）叠加在 ProjectData.interactive。仅新增一个 AI 起草端点，其余复用 /me/drama/projects/**。 ──
   /me/drama/projects/{id}/interactive/draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]

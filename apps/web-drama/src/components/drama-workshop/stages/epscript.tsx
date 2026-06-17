@@ -119,7 +119,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [scenes, setScenes] = React.useState<EpScene[]>(initScenes);
   const [shotsMap, setShotsMap] = React.useState<Record<string, FormShot[]>>(initShots);
   const [genScene, setGenScene] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState<{ id: string; to: FormShot["flow"] } | null>(null);
+  const [busyMap, setBusyMap] = React.useState<Record<string, FormShot["flow"]>>({});
   const [style, setStyle] = React.useState(() => `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`);
   const [chat, setChat] = React.useState<ChatMsg[]>([
     { who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` },
@@ -180,6 +180,18 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   React.useEffect(() => () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
   }, []);
+
+  const markBusy = React.useCallback((id: string, to: FormShot["flow"]) => {
+    setBusyMap((m) => ({ ...m, [id]: to }));
+  }, []);
+  const clearBusy = React.useCallback((id: string) => {
+    setBusyMap((m) => {
+      const next = { ...m };
+      delete next[id];
+      return next;
+    });
+  }, []);
+  const isBusy = React.useCallback((id: string) => !!busyMap[id], [busyMap]);
 
   /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（对话驱动改写用）。 */
   const runEpDraft = async (cost: number, instruction?: string, aiReply?: string) => {
@@ -262,6 +274,119 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)) }));
     queueSave();
   };
+  const applyRenderPatch = React.useCallback(
+    (sceneId: string, id: string, patch: Partial<FormShot>) => {
+      setShotsMap((m) => {
+        const next = { ...m, [sceneId]: (m[sceneId] ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)) };
+        void persist(scenesRef.current, next).catch(() => {});
+        return next;
+      });
+    },
+    [persist],
+  );
+  const applyFrameResult = React.useCallback(
+    (sceneId: string, id: string, job: RenderApi.DramaFrameJob | RenderApi.DramaRenderTask, cost: number, msg: string, spend: boolean) => {
+      const frames = job.frames ?? job.result?.frames ?? [];
+      if (job.status === "failed") {
+        clearBusy(id);
+        if (spend) toast.error(job.error_message || "首帧生成失败，请重试");
+        return;
+      }
+      if (job.status !== "ready" || frames.length === 0) return;
+      applyRenderPatch(sceneId, id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url });
+      clearBusy(id);
+      if (spend) {
+        dispatch({ type: "spend", n: cost });
+        toast.success(msg);
+      }
+    },
+    [applyRenderPatch, clearBusy, dispatch],
+  );
+  const applyClipResult = React.useCallback(
+    (sceneId: string, id: string, job: RenderApi.DramaEpisodeJob | RenderApi.DramaRenderTask, cost: number, msg: string, spend: boolean) => {
+      if (job.status === "failed") {
+        clearBusy(id);
+        if (spend) toast.error(job.error_message || "视频生成失败，请重试");
+        return;
+      }
+      if (job.status !== "ready" || !job.video_url) return;
+      applyRenderPatch(sceneId, id, { flow: "clip", videoUrl: job.video_url ?? undefined, jobId: job.id });
+      clearBusy(id);
+      if (spend) {
+        dispatch({ type: "spend", n: cost });
+        toast.success(msg);
+      }
+    },
+    [applyRenderPatch, clearBusy, dispatch],
+  );
+  const watchFrameJob = React.useCallback(
+    async (jobId: string, sceneId: string, id: string, cost: number, msg: string, spend: boolean) => {
+      try {
+        const done = await RenderApi.pollFrameJob(jobId, { timeoutMs: 240_000 });
+        applyFrameResult(sceneId, id, done, cost, msg, spend);
+      } catch (e) {
+        clearBusy(id);
+        toast.error(aiErrorMessage(e, "首帧渲染失败，请稍后重试"));
+      }
+    },
+    [applyFrameResult, clearBusy],
+  );
+  const watchClipJob = React.useCallback(
+    async (jobId: string, sceneId: string, id: string, cost: number, msg: string, spend: boolean) => {
+      try {
+        const done = await RenderApi.pollClipJob(jobId, { timeoutMs: 240_000 });
+        applyClipResult(sceneId, id, done, cost, msg, spend);
+      } catch (e) {
+        clearBusy(id);
+        toast.error(aiErrorMessage(e, "视频生成失败，请稍后重试"));
+      }
+    },
+    [applyClipResult, clearBusy],
+  );
+  React.useEffect(() => {
+    if (!ctx?.projectId) return;
+    let cancelled = false;
+    const syncTasks = async () => {
+      try {
+        const snap = await RenderApi.listRenderTasks(ctx.projectId);
+        if (cancelled) return;
+        const shotToScene = new Map<string, string>();
+        Object.entries(shotsRef.current).forEach(([sceneId, rows]) => {
+          rows.forEach((row) => shotToScene.set(row.id, sceneId));
+        });
+        const active: Record<string, FormShot["flow"]> = {};
+        for (const task of snap.tasks) {
+          const shotId = task.shot_id;
+          if (!shotId) continue;
+          const sceneId = shotToScene.get(shotId);
+          if (!sceneId) continue;
+          if (task.episode_no && task.episode_no !== state.ep) continue;
+          const current = (shotsRef.current[sceneId] ?? []).find((s) => s.id === shotId);
+          const isActiveTask = task.status === "queued" || task.status === "running" || task.status === "rendering";
+          if (isActiveTask) active[shotId] = task.task_type === "frame" ? "frame" : "clip";
+          if (task.task_type === "frame" && task.status === "ready" && (task.frames?.length || task.result?.frames?.length)) {
+            if (!current?.frameUrls?.length) applyFrameResult(sceneId, shotId, task, cfg.prices.frame, "首帧已出,满意就渲成片", false);
+          }
+          if (task.task_type === "video" && task.status === "ready" && task.video_url) {
+            if (current?.videoUrl !== task.video_url) applyClipResult(sceneId, shotId, task, cfg.prices.clip, "成片已渲,验收看看", false);
+          }
+        }
+        setBusyMap((prev) => {
+          const next = { ...prev };
+          for (const shotId of shotToScene.keys()) delete next[shotId];
+          return { ...next, ...active };
+        });
+      } catch {
+        // 辅助恢复失败不影响脚本编辑。
+      }
+    };
+    void syncTasks();
+    const timer = window.setInterval(syncTasks, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [applyClipResult, applyFrameResult, cfg.prices.clip, cfg.prices.frame, ctx?.projectId, state.ep]);
   const delShot = (sceneId: string, id: string) => {
     setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).filter((s) => s.id !== id).map((s, i) => ({ ...s, no: i + 1 })) }));
     queueSave();
@@ -332,18 +457,23 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   /** 单镜真实渲染：frame=首帧（图像），clip=直出/成片（视频任务 + 轮询）。 */
   const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
-    if (!shot) return;
-    setBusy({ id, to });
+    if (!shot || isBusy(id)) return;
+    markBusy(id, to);
     try {
-      let patch: Partial<FormShot>;
       if (to === "frame") {
-        const frames = await RenderApi.renderFrame({
+        const job = await RenderApi.submitFrameJob({
           kind: "shot",
           vars: { visual: shot.visual, size: shot.size, move: shot.move, lineClause: "", castClause: "", styleSuffix: "" },
           ratio: data.projectInfo.ratio,
           count: 1,
+          projectId: ctx?.projectId,
+          sceneId,
+          shotId: id,
+          episodeNo: state.ep,
+          name: `第${state.ep}集 镜${shot.no} 首帧`,
         });
-        patch = { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url };
+        toast.success("首帧任务已加入后台队列");
+        void watchFrameJob(job.id, sceneId, id, cost, msg, true);
       } else {
         const job = await RenderApi.renderClip({
           kind: "shot",
@@ -355,26 +485,19 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           durationSec: shot.dur,
           ratio: data.projectInfo.ratio,
           projectId: ctx?.projectId,
+          sceneId,
+          shotId: id,
+          episodeNo: state.ep,
+          target: shot.frameUrl ? "frame-clip" : "direct",
           frameUrl: shot.frameUrl,
         });
-        const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
-        if (done.status === "failed") {
-          throw new Error(done.error_message || "视频生成失败，请重试");
-        }
-        patch = { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id };
+        applyRenderPatch(sceneId, id, { jobId: job.id });
+        toast.success("视频任务已加入后台队列");
+        void watchClipJob(job.id, sceneId, id, cost, msg, true);
       }
-      const next = {
-        ...shotsMap,
-        [sceneId]: (shotsMap[sceneId] ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)),
-      };
-      setShotsMap(next);
-      await persist(scenes, next);
-      dispatch({ type: "spend", n: cost });
-      toast.success(msg);
     } catch (e) {
+      clearBusy(id);
       toast.error(aiErrorMessage(e, "渲染失败，请稍后重试"));
-    } finally {
-      setBusy(null);
     }
   };
 
@@ -547,7 +670,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                         start={starts.get(sh.id) ?? 0}
                         colors={sh.flow === "draft" ? { from: "#cbd5e1", to: "#94a3b8" } : { from: "#fb923c", to: "#f472b6" }}
                         speakerOptions={speakerOptions}
-                        busy={busy && busy.id === sh.id ? busy.to : null}
+                        busy={busyMap[sh.id] ?? null}
                         locked={locked}
                         onPatch={(patch) => updShot(s.id, sh.id, patch)}
                         onDelete={() => delShot(s.id, sh.id)}

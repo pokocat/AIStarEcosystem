@@ -266,6 +266,9 @@ public class DramaRenderService {
         String ratio = orDefault(text(body, "ratio"), "9:16");
         String name = orDefault(text(body, "name"), "短剧分镜");
         String projectId = text(body, "project_id");
+        String sceneId = text(body, "scene_id");
+        String shotId = text(body, "shot_id");
+        String target = text(body, "target");
         String frameUrl = text(body, "frame_url");
 
         StringBuilder full = new StringBuilder(prompt);
@@ -280,6 +283,11 @@ public class DramaRenderService {
         item.put("duration_sec", durationSec);
         item.put("aspect_ratio", ratio);
         if (projectId != null && !projectId.isBlank()) item.put("script_id", projectId);
+        ObjectNode vc = item.putObject("variant_config");
+        vc.put("target", orDefault(target, orDefault(text(body, "kind"), "shot")));
+        if (sceneId != null && !sceneId.isBlank()) vc.put("scene_id", sceneId);
+        if (shotId != null && !shotId.isBlank()) vc.put("shot_id", shotId);
+        if (body != null && body.hasNonNull("episode_no")) vc.put("episode_no", body.path("episode_no").asInt());
         ObjectNode submit = om.createObjectNode();
         ArrayNode items = submit.putArray("items");
         items.add(item);
