@@ -38,19 +38,33 @@ export function RenderTaskDock() {
 
   React.useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNext = (hasActive: boolean) => {
+      if (cancelled) return;
+      timer = setTimeout(load, hasActive ? 6000 : 30000);
+    };
+
     const load = async () => {
+      if (cancelled) return;
       try {
         const next = await RenderApi.listRenderTasks();
-        if (!cancelled) setSnapshot(next);
+        if (!cancelled) {
+          setSnapshot(next);
+          scheduleNext((next.tasks ?? []).some(isActiveTask));
+        }
       } catch {
-        if (!cancelled) setSnapshot(null);
+        if (!cancelled) {
+          setSnapshot(null);
+          scheduleNext(false);
+        }
       }
     };
+
     void load();
-    const timer = window.setInterval(load, 6000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (timer !== null) clearTimeout(timer);
     };
   }, []);
 
