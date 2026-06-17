@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="560" height="128" viewBox="0 0 560 128" role="img" aria-labelledby="title">
-  <title>AiAvatar logo</title>
-  <circle cx="64" cy="64" r="56" fill="oklch(0.62 0.12 190)" />
-  <path d="M40 46c0-12 10-21 24-21s24 9 24 21v11c0 19-10 35-24 35S40 76 40 57V46Z" fill="none" stroke="oklch(0.98 0.006 90)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-  <path d="M47 77c10 9 24 9 34 0M48 59h10M71 59h10" stroke="oklch(0.98 0.006 90)" stroke-width="7" stroke-linecap="round" />
-  <path d="M26 44V33c0-4 3-7 7-7h11M102 44V33c0-4-3-7-7-7H84M26 84v11c0 4 3 7 7 7h11M102 84v11c0 4-3 7-7 7H84" fill="none" stroke="oklch(0.98 0.006 90)" stroke-width="7" stroke-linecap="round" />
-  <text x="144" y="58" font-family="Inter, 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif" font-size="29" font-weight="800" fill="oklch(0.2 0.02 205)">AiAvatar</text>
-  <text x="146" y="88" font-family="Inter, 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="650" letter-spacing="2" fill="oklch(0.52 0.095 190)">数字人资产平台</text>
-</svg>

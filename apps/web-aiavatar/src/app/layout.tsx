@@ -6,8 +6,8 @@ export const metadata: Metadata = {
   title: "数字人资产平台 · AiAvatar",
   description: "真人授权复刻 / 纯 AI 原创，形象 · 声音 · 衍生物一站式沉淀的数字人资产平台。",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
+    icon: "/brand/logo.jpg",
+    shortcut: "/brand/logo.jpg",
   },
   appleWebApp: { capable: true, statusBarStyle: "default", title: "数字人" },
   formatDetection: { telephone: false, email: false, address: false },

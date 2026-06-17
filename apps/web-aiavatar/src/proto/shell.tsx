@@ -16,7 +16,7 @@ const { useState: useStateM, useEffect: useEffectM, useRef: useRefM } = React;
 //  title 居中；onBack 时左侧返回；left/right 为可选操作槽（真实可用，无胶囊占位）
 function WxNav({ title, onBack, left, right }) {
   const titleNode = !onBack && title === '数字人资产'
-    ? hM('img', { src: '/brand/logo.svg', alt: '数字人资产平台', style: { height: 28, width: 'auto', display: 'block' } })
+    ? hM('img', { src: '/brand/logo.jpg', alt: '数字人资产平台', style: { height: 30, width: 30, objectFit: 'contain', display: 'block', borderRadius: 8 } })
     : title;
 
   return hM('div', { className: 'wx-nav' },
