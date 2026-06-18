@@ -49,9 +49,23 @@ remote_exec() {
   fi
 }
 
+# 就绪重试：deploy-release.sh 在 restart 后立即调本脚本，而 Spring Boot ~10s 才 boot 完，
+# 期间 nginx 上游未就绪 → 502 / 本机 8080 拒连。对「还在启动」的瞬态码（000/502/503/504）
+# 轮询而非一次性判失败；其它码（404/500…）立即失败，既快又不误报。
+READINESS_RETRIES="${READINESS_RETRIES:-20}"     # 20 × 3s ≈ 60s 上限
+READINESS_INTERVAL="${READINESS_INTERVAL:-3}"
+
 log "public endpoints ($PUBLIC_BASE)"
 for path in $PUBLIC_PATHS; do
-  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$PUBLIC_BASE$path" || echo "000")"
+  code="000"
+  for ((attempt = 1; attempt <= READINESS_RETRIES; attempt++)); do
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$PUBLIC_BASE$path" || echo "000")"
+    case "$code" in
+      200|307|308) break ;;                            # 成功
+      000|502|503|504) sleep "$READINESS_INTERVAL" ;;  # 还在启动，重试
+      *) break ;;                                      # 真错误（404/500…），立即判失败
+    esac
+  done
   if [[ "$code" == "200" || "$code" == "307" || "$code" == "308" ]]; then
     ok "$path -> $code"
   else
@@ -88,7 +102,16 @@ check_unit aistareco-web-star
 check_unit aistareco-admin
 check_unit aistareco-sau-service
 
-if curl -fsS http://127.0.0.1:8080/api/celebrity/dictionaries >/dev/null; then
+# 就绪重试：restart 后 Spring Boot ~10s 才监听 8080，轮询最多 ~60s 再判失败。
+api_ready=0
+for _ in $(seq 1 20); do
+  if curl -fsS http://127.0.0.1:8080/api/celebrity/dictionaries >/dev/null 2>&1; then
+    api_ready=1
+    break
+  fi
+  sleep 3
+done
+if [ "$api_ready" = 1 ]; then
   echo "  ✓ server local API ok"
 else
   echo "  ✗ server local API failed"

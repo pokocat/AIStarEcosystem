@@ -1282,7 +1282,7 @@ export default function AdminAiModelsPage() {
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}
               {!loading && !err && (
-                <Table className="min-w-[2140px] table-fixed">
+                <Table className="min-w-[2270px] table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[190px]">名称</TableHead>
@@ -1299,7 +1299,7 @@ export default function AdminAiModelsPage() {
                       <TableHead className="w-[148px] text-right">累计用量</TableHead>
                       <TableHead className="w-[92px] text-right">调用</TableHead>
                       <TableHead className="w-[88px]">状态</TableHead>
-                      <TableHead className="w-[258px] text-right">操作</TableHead>
+                      <TableHead className="w-[388px] text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1356,7 +1356,7 @@ export default function AdminAiModelsPage() {
                             )}
                           </TableCell>
                           <TableCell className="py-3 text-right">
-                            <div className="flex flex-wrap justify-end gap-1">
+                            <div className="flex flex-nowrap justify-end gap-1 [&>*]:shrink-0 [&>*]:whitespace-nowrap">
                               <Button
                                 size="sm"
                                 variant="outline"
