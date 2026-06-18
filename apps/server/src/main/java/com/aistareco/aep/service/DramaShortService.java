@@ -357,8 +357,40 @@ public class DramaShortService {
     private ObjectNode toDetail(DramaShort s) {
         ObjectNode out = om.createObjectNode();
         out.set("meta", toSummary(s));
-        out.set("data", readPayload(s));
+        JsonNode data = readPayload(s);
+        resignPayloadAssets(data);
+        out.set("data", data);
         return out;
+    }
+
+    /**
+     * 草稿详情出 wire 前，把 payload 里 shots 的资源 URL（首帧 / 成片）统一重签。
+     *
+     * <p>生成接口返回的是带时效签名的 OSS URL，草稿原样存了下来；重开草稿若超过签名 TTL
+     * （默认 3600s），首帧 / 成片就 403 看不到。这里与 meta 卡片同口径走 {@link #resolveAssetUrl}
+     * （从存的 URL 反抽 key 再签，兼容历史草稿），保证草稿态素材始终关联得上。
+     * readPayload 每次返回新解析的可变树，原地改不影响落库。</p>
+     */
+    private void resignPayloadAssets(JsonNode payload) {
+        if (payload == null) return;
+        JsonNode shots = payload.path("shots");
+        if (!shots.isArray()) return;
+        for (JsonNode sh : shots) {
+            if (!(sh instanceof ObjectNode shot)) continue;
+            String one = nonBlank(text(shot, "frameUrl"));
+            if (one != null) shot.put("frameUrl", resolveAssetUrl(one));
+            String video = nonBlank(text(shot, "videoUrl"));
+            if (video != null) shot.put("videoUrl", resolveAssetUrl(video));
+            JsonNode arr = shot.get("frameUrls");
+            if (arr != null && arr.isArray() && !arr.isEmpty()) {
+                var resigned = om.createArrayNode();
+                for (JsonNode el : arr) {
+                    String u = nonBlank(el.asText(null));
+                    resigned.add(u != null ? resolveAssetUrl(u) : el.asText(null));
+                }
+                shot.set("frameUrls", resigned);
+            }
+        }
     }
 
     private static String relativeTime(OffsetDateTime t) {

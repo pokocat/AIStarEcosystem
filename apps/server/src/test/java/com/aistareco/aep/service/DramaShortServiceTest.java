@@ -3,13 +3,17 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.config.DramaConfigSeeder;
 import com.aistareco.aep.model.DramaShort;
 import com.aistareco.aep.repository.DramaShortRepository;
+import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -196,6 +200,45 @@ class DramaShortServiceTest {
         verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
         verify(creditService).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
         verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void getShort_resignsExpiredFrameAndVideoUrls() {
+        // 用带 fake uploader 的 signer：signedUrlFor(key) → "SIGNED::"+key
+        CdnUrlSigner signer = signerWithFakeOss("https://oss.test");
+        DramaShortService s = new DramaShortService(repo, OM, creditService, configs, signer);
+
+        // 历史草稿：shots 存的是带过期签名参数的 OSS URL（前端只存了 url，没存 key）
+        String payload = "{\"step\":\"factory\",\"meta\":null,\"chat\":[],\"refs\":[],"
+                + "\"shots\":[{\"id\":\"sh1\",\"flow\":\"done\","
+                + "\"frameUrl\":\"https://oss.test/media/drama/frames/a.png?Expires=1&Signature=stale\","
+                + "\"frameUrls\":[\"https://oss.test/media/drama/frames/a.png?Expires=1&Signature=stale\"],"
+                + "\"videoUrl\":\"https://oss.test/media/drama/clips/v.mp4?Expires=1&Signature=stale\"}]}";
+        db.put("dvs_x", DramaShort.builder().id("dvs_x").ownerUserId(USER).payloadJson(payload).build());
+
+        JsonNode shot = s.getShort("dvs_x", USER).get("data").get("shots").get(0);
+        // 过期签名参数被丢弃，key 反抽后重签（同 meta 卡片口径），重开草稿不再 403
+        assertEquals("SIGNED::media/drama/frames/a.png", shot.get("frameUrl").asText());
+        assertEquals("SIGNED::media/drama/frames/a.png", shot.get("frameUrls").get(0).asText());
+        assertEquals("SIGNED::media/drama/clips/v.mp4", shot.get("videoUrl").asText());
+    }
+
+    /** base-url 命中 → extractKey 砍 query → signedUrlFor 返回 "SIGNED::"+key 的测试用 signer。 */
+    private static CdnUrlSigner signerWithFakeOss(String baseUrl) {
+        CdnUploader fake = new CdnUploader() {
+            @Override public CdnUploadResult upload(Path f, String key, String ct) { return new CdnUploadResult(null, key, 0L, Instant.EPOCH); }
+            @Override public void delete(String key) {}
+            @Override public String publicUrlFor(String key) { return baseUrl + "/" + key; }
+            @Override public String signedUrlFor(String key, long ttl) { return "SIGNED::" + key; }
+            @Override public String driverName() { return "fake"; }
+        };
+        ObjectProvider<CdnUploader> provider = new ObjectProvider<>() {
+            @Override public CdnUploader getObject(Object... args) { return fake; }
+            @Override public CdnUploader getObject() { return fake; }
+            @Override public CdnUploader getIfAvailable() { return fake; }
+            @Override public CdnUploader getIfUnique() { return fake; }
+        };
+        return new CdnUrlSigner(provider, baseUrl, 3600L);
     }
 
     private static JsonNode readTree(String s) {
