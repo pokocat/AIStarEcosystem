@@ -91,8 +91,11 @@ public class MaterialVideoWorker {
         String jobId = job.getId();
         updateStatus(jobId, "submitting", 5, null);
 
+        // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余素材运营记到 celebrity。
+        String appCode = job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
         MaterialVideoModelClient.SubmitResult submit =
-                modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(), job.getOwnerUserId());
+                modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
+                        job.getOwnerUserId(), appCode);
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
         long start = System.currentTimeMillis();
@@ -128,7 +131,10 @@ public class MaterialVideoWorker {
                 return;
             }
             if (poll.failed()) {
-                markFailed(jobId, "视频大模型返回失败（status=" + poll.rawStatus() + "，taskId=" + submit.taskId() + "）");
+                String reason = poll.failReason() != null && !poll.failReason().isBlank()
+                        ? "：" + poll.failReason() : "";
+                markFailed(jobId, "视频大模型返回失败（status=" + poll.rawStatus() + reason
+                        + "，taskId=" + submit.taskId() + "）");
                 releaseCredits(job, "视频生成失败");
                 return;
             }

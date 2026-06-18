@@ -33,10 +33,18 @@ function TaskIcon({ task }: { task: DramaRenderTask }) {
 
 export function RenderTaskDock() {
   const pathname = usePathname();
+  // 仅在真正会触发渲染的页面出现：项目工作台 /projects/[id]、短视频制作 /shorts/make。
+  const onRenderPage =
+    !!pathname &&
+    ((/^\/projects\/[^/]+/.test(pathname) && !pathname.startsWith("/projects/new")) ||
+      pathname.startsWith("/shorts/make"));
+  const isWorkshop =
+    !!pathname && /^\/projects\/[^/]+/.test(pathname) && !pathname.startsWith("/projects/new");
   const [open, setOpen] = React.useState(false);
   const [snapshot, setSnapshot] = React.useState<RenderTaskSnapshot | null>(null);
 
   React.useEffect(() => {
+    if (!onRenderPage) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -66,19 +74,22 @@ export function RenderTaskDock() {
       cancelled = true;
       if (timer !== null) clearTimeout(timer);
     };
-  }, []);
+  }, [onRenderPage]);
 
   const tasks = snapshot?.tasks ?? [];
-  const visible = tasks.filter((t) => isActiveTask(t) || t.status === "failed" || t.status === "ready").slice(0, 6);
+  // 只展示活跃 + 最近的有限几个（活跃优先，最多 6 条）。
+  const visible = tasks
+    .filter((t) => isActiveTask(t) || t.status === "failed" || t.status === "ready")
+    .sort((a, b) => Number(isActiveTask(b)) - Number(isActiveTask(a)))
+    .slice(0, 6);
   const activeCount = tasks.filter(isActiveTask).length;
   const summary = snapshot?.summary;
   const running = summary?.total.running ?? 0;
   const queued = summary?.total.queued ?? 0;
   const limit = Math.max(1, summary?.total.limit ?? 1);
   const loadPct = Math.min(100, Math.round((running / limit) * 100));
-  const isWorkshop = !!pathname?.match(/^\/projects\/[^/]+(\/.*)?$/) && !pathname.startsWith("/projects/new");
 
-  if (visible.length === 0) return null;
+  if (!onRenderPage || visible.length === 0) return null;
 
   return (
     <>
@@ -130,7 +141,13 @@ export function RenderTaskDock() {
                     </span>
                     <span className="render-task-copy">
                       <strong>{taskLabel(task)}</strong>
-                      <span>{statusLabel(task)}</span>
+                      {task.status === "failed" && task.error_message ? (
+                        <span className="render-task-err" title={task.error_message}>
+                          失败 · {task.error_message}
+                        </span>
+                      ) : (
+                        <span>{statusLabel(task)}</span>
+                      )}
                     </span>
                     <span className="render-task-pct">{task.progress_pct ?? (task.status === "ready" ? 100 : 0)}%</span>
                   </div>
@@ -301,6 +318,10 @@ export function RenderTaskDock() {
           white-space: nowrap;
           color: var(--ink-3);
           font-size: 11px;
+        }
+        .render-task-copy span.render-task-err {
+          color: oklch(0.58 0.17 28);
+          cursor: help;
         }
         .render-task-pct {
           color: var(--ink-3);
