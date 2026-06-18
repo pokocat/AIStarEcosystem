@@ -16,6 +16,21 @@ export interface RenderedFrame {
   cdnKey: string;
 }
 
+/** v0.85：候选参考池里的一项（角色定妆图 / 场景参考图 / 本场历史帧）。 */
+export interface RefPoolItem {
+  url: string;
+  desc: string;
+}
+
+/** v0.85：一致性中间件回执 —— 本次首帧实际用到了哪些参考 + 改写出的参考使用说明。 */
+export interface ConsistencyInfo {
+  used: boolean;
+  clause?: string;
+  selected?: RefPoolItem[];
+  /** 未启用原因（text_model_not_configured / no_refs_selected / selection_call_failed …），仅排查用。 */
+  reason?: string;
+}
+
 // v0.72：出图/出片提示词模板在 server 端（admin「短剧专区·提示词设置」可改）。
 // 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
@@ -26,6 +41,12 @@ export interface RenderFrameInput {
   ratio?: string;
   count?: number;
   refImages?: string[];
+  /** v0.85：候选参考池（角色定妆三视图 + 场景参考图 + 本场历史帧）。传了即启用一致性中间件。 */
+  refPool?: RefPoolItem[];
+  /** v0.85：目标画面描述（供选参考图用）；缺省回退 vars.visual。 */
+  frameDesc?: string;
+  /** v0.85：是否启用一致性中间件（默认 true，仅在 refPool 非空时生效）。 */
+  consistency?: boolean;
   /** 当前项目 ID；短视频制作页传草稿 ID，用于刷新恢复。 */
   projectId?: string;
   sceneId?: string;
@@ -65,7 +86,7 @@ export interface DramaFrameJob {
   shot_id?: string;
   episode_no?: number;
   frames?: RenderedFrame[];
-  result?: { frames?: RenderedFrame[]; cost?: number };
+  result?: { frames?: RenderedFrame[]; cost?: number; consistency?: ConsistencyInfo };
   cost?: number;
   error_message?: string | null;
   created_at?: string;
@@ -86,7 +107,7 @@ export interface DramaRenderTask {
   shot_id?: string;
   episode_no?: number;
   frames?: RenderedFrame[];
-  result?: { frames?: RenderedFrame[]; cost?: number };
+  result?: { frames?: RenderedFrame[]; cost?: number; consistency?: ConsistencyInfo };
   video_url?: string | null;
   thumbnail_url?: string | null;
   duration_sec?: number;
@@ -133,17 +154,61 @@ export async function renderFrame(input: RenderFrameInput): Promise<RenderedFram
       1200,
     );
   }
-  const res = await apiFetch<{ frames: RenderedFrame[]; cost: number }>("/me/drama/render/frame", {
+  const res = await apiFetch<{ frames: RenderedFrame[]; cost: number; consistency?: ConsistencyInfo }>(
+    "/me/drama/render/frame",
+    {
+      method: "POST",
+      body: {
+        kind: input.kind ?? "shot",
+        vars: input.vars,
+        ratio: input.ratio,
+        count: input.count,
+        ref_images: input.refImages,
+        ref_pool: input.refPool,
+        frame_desc: input.frameDesc,
+        consistency: input.consistency,
+      },
+    },
+  );
+  return res.frames ?? [];
+}
+
+/** v0.85：角色定妆三视图（正/侧/背）一次性生成。 */
+export interface PortraitSet {
+  front?: RenderedFrame;
+  side?: RenderedFrame;
+  back?: RenderedFrame;
+}
+
+export interface GeneratePortraitsInput {
+  name: string;
+  features?: string;
+  style?: string;
+  ratio?: string;
+  /** 可选：基于已绑数字人底图，定妆更贴脸。 */
+  refImages?: string[];
+}
+
+export async function generatePortraits(
+  input: GeneratePortraitsInput,
+): Promise<{ portraits: PortraitSet; cost: number }> {
+  if (USE_MOCK) {
+    const mk = (seed: number): RenderedFrame => ({
+      url: mockFrameDataUri(seed),
+      cdnKey: `mock/portraits/${Date.now()}_${seed}.svg`,
+    });
+    return mockDelay({ portraits: { front: mk(0), side: mk(1), back: mk(2) }, cost: 6 }, 1400);
+  }
+  return apiFetch<{ portraits: PortraitSet; cost: number }>("/me/drama/render/portraits", {
     method: "POST",
     body: {
-      kind: input.kind ?? "shot",
-      vars: input.vars,
+      name: input.name,
+      features: input.features,
+      style: input.style,
       ratio: input.ratio,
-      count: input.count,
       ref_images: input.refImages,
     },
   });
-  return res.frames ?? [];
 }
 
 const mockFrameJobs = new Map<string, DramaFrameJob & { readyAt?: number }>();
@@ -201,6 +266,9 @@ export async function submitFrameJob(input: RenderFrameInput): Promise<DramaFram
       ratio: input.ratio,
       count: input.count,
       ref_images: input.refImages,
+      ref_pool: input.refPool,
+      frame_desc: input.frameDesc,
+      consistency: input.consistency,
       project_id: input.projectId,
       scene_id: input.sceneId,
       shot_id: input.shotId,

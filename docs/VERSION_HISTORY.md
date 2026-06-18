@@ -3314,3 +3314,40 @@ URL 仍带 id、步骤 / 分镜 / 出片产物 / meta 全部恢复（含 `step=s
 web-drama `typecheck` + `vitest` 28/28 + `build`（含 TipTap SSR）全绿。
 **契约**：路径/方法不变 —— 仅 `POST /me/drama/shorts` 行为加「进工作台扣费」、`GET /me/drama/config` 响应加
 `prices.shortEntry`（openapi summary 已同步）。
+
+### v0.85（2026-06-18）— 短剧视觉一致性中间件（移植 ViMax 参考注入思路，不引入其依赖）
+
+**背景**：视频大模型只能维持几秒一致性，多集短剧跨镜人物 / 场景易漂移。调研 [ViMax](https://github.com/HKUDS/ViMax)
+后确认其一致性 = 「角色定妆 bible + 逐帧选参考图 + 参考注入」的工程化（而非模型能力），价值密度在**提示词 + 数据流**；
+其 `ImageGenerator`/`VideoGenerator` 是鸭子类型 Protocol、无 `ConsistencyManager` 类、无模型自动降级。故**移植思路、
+不引入其依赖**：提示词搬进 `PromptService`，选择逻辑用既有 Java HTTP chat。
+
+**A. 角色定妆三视图（人物一致性地基）**
+- `PromptService` 新 key `drama.character_portrait`（图像单 prompt，占位符 `{{view}}`/`{{name}}`/`{{features}}`/`{{styleSuffix}}`，
+  并入 `KNOWN_KEYS` 由 `PromptTemplateSeeder` 自动 seed）。
+- `DramaRenderService.renderPortraits(body,userId)`：按正/侧/背三视角各 `callImageModel` → `uploadPng` 落 CDN（DB 真值 cdnKey）
+  → 返回 `{portraits:{front:{url,cdnKey},side,back},cost}`；单价 `drama.credit.portrait`（`DramaConfigSeeder` 默认 6，
+  admin「短剧专区」可配 + `/me/drama/config` 下发）。新端点 `POST /api/me/drama/render/portraits`。未配图像模型 → 503 `IMAGE_NOT_CONFIGURED`。
+
+**B. 出图前一致性选择中间件（可降级旁路）**
+- `PromptService` 新 key `drama.ref_select`（system + `---` + user，输出 JSON `{ref_indices,usage_clause}`）。
+- `DramaRenderService.renderFrame` 新增：body 可选 `ref_pool([{url,desc}])` / `frame_desc` / `consistency`。传 ref_pool 即调
+  `selectReferences` —— 文本 chat（`invokeChat(DRAMA_SCRIPT_DRAFT,…)`，**不需视觉模型**，因 `invokeChat` 仅支持 String content）
+  挑 ≤6 张 + 改写参考说明；选中 URL 作 `ref_images`、说明拼进出图 prompt；响应加 `consistency:{used,clause,selected,reason}`。
+  因 `DramaFrameJobWorker.generateAsync` 回放 body 进 `renderFrame`，sync `/frame` 与 async `/frame-jobs` 同一路径生效（worker 零改动）。
+- 纯函数 `buildCandidateBlock` / `sanitizeIndices`（越界 / 负数 / 去重保护，对应 ViMax `select_pairs_by_indices`）/ `stripFences`，
+  `DramaRenderServiceTest` 5/5。
+- **§8.0**：文本端点未绑 / 提示词 origin=code / 调用 / 解析失败 → `SelectionResult.degraded(reason)` → 退回原始出图
+  （真实产物，`used=false`，**不伪造、不阻断、不额外扣费**；图像模型本身仍严格 503 `IMAGE_NOT_CONFIGURED` / 502 `IMAGE_CALL_FAILED`）。
+
+**C. 场景参考图（可选，存素材场景库）**
+- `Material` 加 `url` / `cdnKey`（带真实图的素材才进参考池）。cast 阶段场景卡「AI 生成」→ `renderFrame` 出空镜建立镜头
+  → push 进 `MATERIALS`（cat=场景, kind=image, url）+ 锁定本场；工厂 `@素材参考` 选它即进 `buildRefPool`。
+
+**前端（web-drama）**：`CharacterDef.portraits` + `CharacterPortraits` 类型；`render.ts` `RenderFrameInput` 加
+`refPool/frameDesc/consistency` + `ConsistencyInfo`/`RefPoolItem` + `generatePortraits`；角色卡三视图槽 + 「AI 生成三视图」；
+工厂 `buildRefPool`（角色定妆 + `@素材`场景图 + 本场上一镜首帧）+ 抽屉「本帧一致性参考」面板 + 出图前「已就绪 N 张参考」提示。
+
+**门禁**：server compile + `DramaRenderServiceTest` 5/5 + `typecheck:all` + `typecheck:admin` + `check:api-contract`
++ web-drama `typecheck`/`build` 全绿。**契约**：新增 `POST /me/drama/render/portraits`；`/me/drama/render/frame` 请求体加
+`ref_pool`/`frame_desc`/`consistency`、响应加 `consistency`（openapi summary 同步）。

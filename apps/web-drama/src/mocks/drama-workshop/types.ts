@@ -82,6 +82,13 @@ export interface EpisodeOutline {
   locked?: boolean;
 }
 
+/** v0.85：角色定妆三视图参考（正/侧/背），出图时作为「人物一致性」参考注入。URL 由 signer 派生。 */
+export interface CharacterPortraits {
+  front?: string;
+  side?: string;
+  back?: string;
+}
+
 export interface CharacterDef {
   id: string;
   name: string;
@@ -92,6 +99,8 @@ export interface CharacterDef {
   avatar: string;
   bound: boolean;
   refCount?: number;
+  /** v0.85：定妆三视图参考图（前置生成，落 CharacterDef，每帧出图作角色参考）。 */
+  portraits?: CharacterPortraits;
 }
 
 export interface ScriptLine {

@@ -1,0 +1,1 @@
+角色定妆参考图 · {{view}}。角色「{{name}}」：{{features}}。{{styleSuffix}} 单人，纯色干净背景，半身或全身清晰可见，五官清晰、发型与服装明确、神情自然，统一柔光，写实质感，production still quality，no text, no subtitles, no watermark, no split screen, no extra props。

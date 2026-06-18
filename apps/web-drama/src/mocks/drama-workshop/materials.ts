@@ -11,6 +11,10 @@ export interface Material {
   from: string;
   to: string;
   tags?: string[];
+  /** v0.85：真实参考图 URL（AI 生成 / 上传的场景参考图等）。有 url 的素材才会进出图一致性参考池。 */
+  url?: string;
+  /** v0.85：OSS 真值 key（与 url 配对，url 为 signer 派生）。 */
+  cdnKey?: string;
 }
 
 export const MAT_CATS: { key: string }[] = [

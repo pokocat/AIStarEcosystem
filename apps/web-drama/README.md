@@ -68,6 +68,16 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.85 · 2026-06-18 · 短剧视觉一致性中间件（移植 ViMax 参考注入思路，不引入其依赖）
+
+视频大模型「近视」——人物 / 场景跨镜易漂移。本版把 [ViMax](https://github.com/HKUDS/ViMax) 的「角色定妆 bible + 选参考图 + 参考注入」思路移植成一层**可降级旁路中间件**，**不引入 ViMax 任何运行时依赖**（提示词搬进后端 `PromptService`，选择逻辑用既有 Java HTTP chat）。
+
+- **角色定妆三视图（人物一致性地基）**：角色与资产页角色卡新增「AI 生成三视图」→ `RenderApi.generatePortraits` → `POST /me/drama/render/portraits`（正/侧/背三图落 CDN）→ 存进 `CharacterDef.portraits`，三槽位实时显图。
+- **出图前一致性选择**：视频工厂出首帧时，前端 `buildRefPool` 组装候选池（出场角色定妆三视图 + `@素材参考` 里的场景图 + 本场上一镜已锁首帧），随 `submitFrameJob` 带 `ref_pool` / `frame_desc` / `consistency`。后端 `renderFrame` 用 `drama.ref_select`（文本 chat，复用 `DRAMA_SCRIPT_DRAFT` 端点，不需视觉模型）挑 ≤6 张 + 改写「参考使用说明」拼进出图 prompt + 选中图作 `ref_images` 注入。抽屉展示「本帧一致性参考 N 张 + 说明」、出图前展示「已就绪 N 张参考」。
+- **场景参考图（可选）**：角色与资产页场景卡新增「AI 生成」→ 生成空镜建立镜头 → 存进**素材场景库**（`Material.url`，cat=场景）+ 锁定本场；工厂 `@素材参考` 选它即进参考池。
+- **降级（§8.0）**：未绑文本端点 / 提示词未配 / 调用 / 解析失败 → `consistency.used=false` + reason，退回原始出图（真实产物，不伪造、不阻断、不额外扣费）。
+- 门禁：server compile + `DramaRenderServiceTest` 5/5 + `typecheck:all` + `typecheck:admin` + `check:api-contract` + web-drama `build` 全绿。
+
 ### v0.79 · 2026-06-15 · 互动剧（剧情互动短剧）—— 集成进短剧工坊，不另起炉灶
 
 互动剧不是独立工具，而是**短剧工坊（`/projects` 六阶段工作台）的一种形态**（`mode=interactive`）：剧集（图节点）就是项目大纲分集，**每一集仍走完整的「剧集脚本 → 视频工厂 → 成片合成」六阶段**（单集 AI 出脚本 / 分场分镜 / 逐镜出图出片全部复用），分支编排只是叠加在项目上的一层。

@@ -52,6 +52,12 @@ public class DramaRenderService {
             .build();
     /** 首帧单价（积分）。与前端 FRAME_COST 对齐；后续可挪 admin 定价。 */
     public static final long FRAME_COST = 2L;
+    /** 角色定妆三视图单价（积分）默认值（admin「短剧专区」可改 KEY_PORTRAIT）。 */
+    public static final long PORTRAIT_COST = 6L;
+    /** 一致性中间件单次最多注入的参考图数量（对应 ViMax 的「最多 8 张」，这里收敛到 6 控成本）。 */
+    private static final int MAX_REFS = 6;
+    /** 定妆三视图的视角键（与前端 CharacterDef.portraits 字段对齐）。 */
+    private static final String[] PORTRAIT_VIEWS = {"front", "side", "back"};
 
     private final AiModelInvocationService invocation;
     private final AiModelUsageService usage;
@@ -130,22 +136,33 @@ public class DramaRenderService {
         int count = clamp(body.path("count").asInt(1), 1, 4);
         String size = ratioToSize(orDefault(text(body, "ratio"), "9:16"));
 
+        // 视觉一致性中间件（可降级旁路；移植自 ViMax 的「参考注入」思路，不引入其依赖）：
+        // 出图前从候选参考池（角色定妆三视图 + 场景参考图 + 本场历史帧）里挑参考图 + 改写「参考使用说明」，
+        // 用文本 chat（复用 DRAMA_SCRIPT_DRAFT 端点）完成，不需要视觉模型。
+        // §8.0：未配置 / 调用失败 / 解析失败 → 退回原始出图（真实产物，consistency.used=false），不伪造、不阻断、不额外扣费。
+        JsonNode refImages = body.get("ref_images");
+        ObjectNode consistency = om.createObjectNode();
+        consistency.put("used", false);
+        boolean wantConsistency = body.path("consistency").asBoolean(true)
+                && body.get("ref_pool") != null && body.get("ref_pool").isArray() && body.get("ref_pool").size() > 0;
+        if (wantConsistency) {
+            String frameDesc = orDefault(text(body, "frame_desc"), varVisual(body));
+            SelectionResult sel = selectReferences(frameDesc, body.get("ref_pool"));
+            if (sel.used()) {
+                prompt = prompt + "\n" + sel.usageClause();
+                refImages = sel.selectedUrls();
+                consistency.put("used", true);
+                consistency.put("clause", sel.usageClause());
+                consistency.set("selected", sel.selected());
+            } else if (sel.reason() != null) {
+                consistency.put("reason", sel.reason());
+            }
+        }
+
         ArrayNode frames = om.createArrayNode();
         for (int i = 0; i < count; i++) {
-            byte[] bytes = callImageModel(ep, prompt, size, body.get("ref_images"));
-            String key = "drama/frames/" + UUID.randomUUID().toString().replace("-", "") + ".png";
-            try {
-                Path tmp = Files.createTempFile("drama-frame-", ".png");
-                try {
-                    Files.write(tmp, bytes);
-                    cdnUploader.upload(tmp, key, "image/png");
-                } finally {
-                    Files.deleteIfExists(tmp);
-                }
-            } catch (Exception e) {
-                throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED",
-                        "首帧已生成但存储失败，请重试。");
-            }
+            byte[] bytes = callImageModel(ep, prompt, size, refImages);
+            String key = uploadPng(bytes, "drama/frames/");
             ObjectNode f = om.createObjectNode();
             f.put("cdnKey", key);
             f.put("url", signer.signKey(key));
@@ -159,12 +176,201 @@ public class DramaRenderService {
                     "frame_" + UUID.randomUUID().toString().substring(0, 8),
                     "短剧首帧渲染（" + count + " 版）");
         }
-        log.info("[drama-render] frame ok user={} count={} endpoint={} size={}", userId, count, ep.getName(), size);
+        log.info("[drama-render] frame ok user={} count={} endpoint={} size={} consistency={}",
+                userId, count, ep.getName(), size, consistency.path("used").asBoolean(false));
 
         ObjectNode out = om.createObjectNode();
         out.set("frames", frames);
         out.put("cost", cost);
+        out.set("consistency", consistency);
         return out;
+    }
+
+    // ── 角色定妆三视图（视觉一致性地基） ────────────────────────────────────────
+
+    /**
+     * 角色定妆参考图（正 / 侧 / 背三视图）一次性生成。出图前置，落 CDN（DB 真值 = cdnKey，URL signer 派生）。
+     * body: { name, features?, style?, ratio?("3:4"...), ref_images?[]（可选：基于已绑数字人底图） }
+     * → { portraits: { front:{cdnKey,url}, side:{...}, back:{...} }, cost }
+     * 前端把 portraits 的 url 落进 CharacterDef.portraits，后续每帧出图作为角色参考注入。
+     */
+    public JsonNode renderPortraits(JsonNode body, String userId) {
+        AiModelEndpoint ep = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
+                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
+                        "角色定妆图还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+        PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_PORTRAIT);
+        if ("code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "角色定妆参考图的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_CHARACTER_PORTRAIT
+                            + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
+        }
+        String name = orDefault(text(body, "name"), "角色");
+        String features = orDefault(text(body, "features"), "");
+        String styleSuffix = orDefault(text(body, "style"), "");
+        String size = ratioToSize(orDefault(text(body, "ratio"), "3:4"));
+        JsonNode refImages = body.get("ref_images"); // 可选：基于已绑数字人底图，定妆更贴脸
+
+        ObjectNode portraits = om.createObjectNode();
+        for (String view : PORTRAIT_VIEWS) {
+            Map<String, String> vars = new LinkedHashMap<>();
+            vars.put("view", portraitViewLabel(view));
+            vars.put("name", name);
+            vars.put("features", features);
+            vars.put("styleSuffix", styleSuffix);
+            String prompt = PromptService.fill(p.userTemplate(), vars).replaceAll("\\{\\{[^}]*}}", "").trim();
+            byte[] bytes = callImageModel(ep, prompt, size, refImages);
+            String key = uploadPng(bytes, "drama/portraits/");
+            ObjectNode pv = om.createObjectNode();
+            pv.put("cdnKey", key);
+            pv.put("url", signer.signKey(key));
+            portraits.set(view, pv);
+        }
+
+        long cost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_PORTRAIT, PORTRAIT_COST);
+        if (cost > 0) {
+            creditService.debit(userId, cost, "DRAMA_PORTRAIT",
+                    "portrait_" + UUID.randomUUID().toString().substring(0, 8),
+                    "角色定妆三视图（" + name + "）");
+        }
+        log.info("[drama-render] portraits ok user={} name={} endpoint={}", userId, name, ep.getName());
+        ObjectNode out = om.createObjectNode();
+        out.set("portraits", portraits);
+        out.put("cost", cost);
+        return out;
+    }
+
+    private static String portraitViewLabel(String view) {
+        return switch (view) {
+            case "side" -> "侧面视角，标准侧脸";
+            case "back" -> "背面视角，背对镜头";
+            default -> "正面视角，面向镜头";
+        };
+    }
+
+    // ── 一致性参考选择（出图前的「挑参考图 + 改写参考说明」中间件） ──────────────────
+
+    /** 选择结果：used=true 才注入；selectedUrls=按选中顺序的 URL 数组；selected=对应 {url,desc} 明细。 */
+    private record SelectionResult(boolean used, ArrayNode selectedUrls, ArrayNode selected,
+                                   String usageClause, String reason) {
+        static SelectionResult degraded(String reason) {
+            return new SelectionResult(false, null, null, null, reason);
+        }
+    }
+
+    /**
+     * 从候选参考池里挑参考图 + 生成「参考使用说明」。文本 chat（复用 DRAMA_SCRIPT_DRAFT 端点），不需要视觉模型。
+     * 任一环节不可用即降级（返回 used=false + reason），由调用方退回原始出图。
+     */
+    private SelectionResult selectReferences(String frameDesc, JsonNode refPool) {
+        List<JsonNode> items = new java.util.ArrayList<>();
+        refPool.forEach(items::add);
+        if (items.isEmpty()) return SelectionResult.degraded("empty_pool");
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+            return SelectionResult.degraded("text_model_not_configured");
+        }
+        PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_REF_SELECT);
+        if ("code".equals(p.origin())) return SelectionResult.degraded("prompt_not_configured");
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("frame_desc", frameDesc == null ? "" : frameDesc);
+        vars.put("candidates", buildCandidateBlock(items));
+        String user = PromptService.fill(p.userTemplate(), vars);
+        try {
+            AiModelInvocationService.AiModelResponse resp = invocation.invokeChat(
+                    AiModelPurpose.DRAMA_SCRIPT_DRAFT,
+                    List.of(Map.of("role", "system", "content", p.system()),
+                            Map.of("role", "user", "content", user)),
+                    Map.of("temperature", 0.2, "max_tokens", 700,
+                            "response_format", Map.of("type", "json_object")));
+            return parseSelection(resp.content(), items);
+        } catch (Exception e) {
+            log.warn("[drama-render] ref-select degraded (call failed): {}", e.toString());
+            return SelectionResult.degraded("selection_call_failed");
+        }
+    }
+
+    /** 把候选参考池渲染成「候选N：描述」的编号清单（喂给选择模型）。 */
+    static String buildCandidateBlock(List<JsonNode> items) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < items.size(); i++) {
+            sb.append("候选").append(i).append("：").append(items.get(i).path("desc").asText("")).append('\n');
+        }
+        return sb.toString().strip();
+    }
+
+    /** 净化模型回的下标：丢弃越界 / 负数 / 重复，最多取 max 个（对应 ViMax 的 select_pairs_by_indices 越界保护）。 */
+    static List<Integer> sanitizeIndices(JsonNode idxArr, int size, int max) {
+        List<Integer> out = new java.util.ArrayList<>();
+        if (idxArr == null || !idxArr.isArray()) return out;
+        for (JsonNode n : idxArr) {
+            int i = n.asInt(-1);
+            if (i >= 0 && i < size && !out.contains(i)) {
+                out.add(i);
+                if (out.size() >= max) break;
+            }
+        }
+        return out;
+    }
+
+    private SelectionResult parseSelection(String content, List<JsonNode> items) {
+        try {
+            JsonNode root = om.readTree(stripFences(content));
+            List<Integer> idx = sanitizeIndices(root.get("ref_indices"), items.size(), MAX_REFS);
+            if (idx.isEmpty()) return SelectionResult.degraded("no_refs_selected");
+            ArrayNode urls = om.createArrayNode();
+            ArrayNode selected = om.createArrayNode();
+            for (int i : idx) {
+                String url = items.get(i).path("url").asText(null);
+                if (url == null || url.isBlank()) continue;
+                urls.add(url);
+                selected.add(items.get(i));
+            }
+            if (urls.isEmpty()) return SelectionResult.degraded("no_valid_refs");
+            String clause = root.path("usage_clause").asText("");
+            if (clause.isBlank()) clause = "请严格参照所提供的参考图，保持人物长相、场景与整体影调一致。";
+            return new SelectionResult(true, urls, selected, clause, null);
+        } catch (Exception e) {
+            log.warn("[drama-render] ref-select degraded (parse failed): {}", e.toString());
+            return SelectionResult.degraded("parse_failed");
+        }
+    }
+
+    /** 容错：模型偶尔把 JSON 包在 ```json ``` 代码块里，剥掉围栏再解析。 */
+    static String stripFences(String s) {
+        if (s == null) return "{}";
+        String t = s.strip();
+        if (t.startsWith("```")) {
+            int nl = t.indexOf('\n');
+            if (nl >= 0) t = t.substring(nl + 1);
+            if (t.endsWith("```")) t = t.substring(0, t.length() - 3);
+        }
+        return t.strip();
+    }
+
+    private static String varVisual(JsonNode body) {
+        JsonNode v = body == null ? null : body.get("vars");
+        if (v != null && v.isObject()) {
+            JsonNode visual = v.get("visual");
+            if (visual != null && !visual.isNull()) return visual.asText();
+        }
+        return "";
+    }
+
+    /** 图像字节 → 临时文件 → CDN（DB 真值 = cdnKey）。首帧 / 定妆图共用。 */
+    private String uploadPng(byte[] bytes, String keyPrefix) {
+        String key = keyPrefix + UUID.randomUUID().toString().replace("-", "") + ".png";
+        try {
+            Path tmp = Files.createTempFile("drama-img-", ".png");
+            try {
+                Files.write(tmp, bytes);
+                cdnUploader.upload(tmp, key, "image/png");
+            } finally {
+                Files.deleteIfExists(tmp);
+            }
+        } catch (Exception e) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED",
+                    "图像已生成但存储失败，请重试。");
+        }
+        return key;
     }
 
     /** OpenAI images 兼容调用：data[0].url（下载）或 b64_json（解码）→ 图像字节。 */

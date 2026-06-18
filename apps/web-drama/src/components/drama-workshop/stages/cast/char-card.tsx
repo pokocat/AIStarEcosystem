@@ -12,9 +12,18 @@ interface CharCardProps {
   delay?: number;
   onBind: () => void;
   onToggleRole: () => void;
+  /** v0.85：AI 生成定妆三视图（正/侧/背），锁住跨镜人物长相。 */
+  onGeneratePortraits?: () => void;
+  generating?: boolean;
 }
 
-export function CharCard({ c, delay = 0, onBind, onToggleRole }: CharCardProps) {
+const PORTRAIT_SLOTS: [keyof NonNullable<CharacterDef["portraits"]>, string][] = [
+  ["front", "正面"],
+  ["side", "侧面"],
+  ["back", "背面"],
+];
+
+export function CharCard({ c, delay = 0, onBind, onToggleRole, onGeneratePortraits, generating }: CharCardProps) {
   const isKey = c.role === "key";
   const theme = AVATAR_THEMES[c.avatar] ?? AVATAR_THEMES.default;
 
@@ -153,34 +162,56 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole }: CharCardProps) 
               className="faint"
               style={{ fontSize: 11, fontWeight: 700 }}
             >
-              真人参考图 · 拖入真实剧照锁形象
+              定妆三视图 · 出图时锁住跨镜人物长相
             </div>
             <div className="row gap-2" style={{ alignItems: "flex-end" }}>
-              {["正面", "侧面", "情绪"].map((lbl) => (
-                <div key={lbl} className="col center" style={{ gap: 3 }}>
-                  <div
-                    style={{
-                      width: 56,
-                      height: 72,
-                      borderRadius: 10,
-                      background: "var(--surface-2)",
-                      border: "1.5px dashed var(--line)",
-                      display: "grid",
-                      placeItems: "center",
-                      color: "var(--ink-3)",
-                      fontSize: 11,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {lbl}
+              {PORTRAIT_SLOTS.map(([key, lbl]) => {
+                const src = c.portraits?.[key];
+                return (
+                  <div key={key} className="col center" style={{ gap: 3 }}>
+                    <div
+                      style={{
+                        width: 56,
+                        height: 72,
+                        borderRadius: 10,
+                        overflow: "hidden",
+                        background: "var(--surface-2)",
+                        border: src ? "1.5px solid var(--accent)" : "1.5px dashed var(--line)",
+                        display: "grid",
+                        placeItems: "center",
+                        color: "var(--ink-3)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {src ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={src} alt={`${c.name} ${lbl}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        lbl
+                      )}
+                    </div>
+                    <span className="faint" style={{ fontSize: 10 }}>{lbl}</span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+            <div className="row gap-2">
+              <button
+                type="button"
+                className="btn btn-grad btn-sm grow"
+                style={{ justifyContent: "center" }}
+                onClick={onGeneratePortraits}
+                disabled={generating || !onGeneratePortraits}
+              >
+                <Sparkles size={13} fill="currentColor" strokeWidth={0} />
+                {generating ? "生成中…" : c.portraits ? "重生成三视图" : "AI 生成三视图"}
+              </button>
               <button
                 type="button"
                 className="btn btn-line btn-sm"
-                style={{ alignSelf: "flex-end" }}
                 onClick={onBind}
+                title="换一个数字人形象"
               >
                 <RefreshCw size={13} /> 换形象
               </button>

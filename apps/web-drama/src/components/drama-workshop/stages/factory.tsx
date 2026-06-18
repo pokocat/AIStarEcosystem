@@ -47,6 +47,8 @@ interface FactoryShot extends BoardShot {
   sceneNo: number;
   flow: FlowKey;
   frameIdx: number;
+  /** v0.85：本帧一致性中间件回执（用了哪些参考 + 参考说明）；仅会话内展示，不落库。 */
+  consistency?: RenderApi.ConsistencyInfo;
 }
 
 function shotColors(engine: BoardShot["engine"], dim?: boolean) {
@@ -183,6 +185,33 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     };
   };
 
+  /**
+   * v0.85：组装一致性参考候选池（后端据此挑参考图 + 改写参考说明）。
+   * 三类：① 出场角色定妆三视图 ② @素材参考里带真实图的场景/道具 ③ 本场上一镜已锁首帧。
+   */
+  const buildRefPool = React.useCallback(
+    (s: FactoryShot): RenderApi.RefPoolItem[] => {
+      const pool: RenderApi.RefPoolItem[] = [];
+      (s.cast ?? []).forEach((cid) => {
+        const c = state.chars.find((x) => x.id === cid);
+        const p = c?.portraits;
+        if (!c || !p) return;
+        if (p.front) pool.push({ url: p.front, desc: `角色「${c.name}」正面定妆照` });
+        if (p.side) pool.push({ url: p.side, desc: `角色「${c.name}」侧面定妆照` });
+        if (p.back) pool.push({ url: p.back, desc: `角色「${c.name}」背面定妆照` });
+      });
+      refs.forEach((m) => {
+        if (m.url) pool.push({ url: m.url, desc: `${m.cat}参考「${m.name}」` });
+      });
+      const prev = shots
+        .filter((x) => x.sceneId === s.sceneId && x.no < s.no && x.frameUrl)
+        .sort((a, b) => b.no - a.no)[0];
+      if (prev?.frameUrl) pool.push({ url: prev.frameUrl, desc: `本场上一镜（镜${prev.no}）首帧` });
+      return pool;
+    },
+    [refs, shots, state.chars],
+  );
+
   const applyFrameResult = React.useCallback(
     (id: string, job: RenderApi.DramaFrameJob | RenderApi.DramaRenderTask, spend: boolean) => {
       const frames = job.frames ?? job.result?.frames ?? [];
@@ -198,11 +227,13 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         frameIdx: 0,
         frameUrl: undefined,
         videoUrl: undefined,
+        consistency: job.result?.consistency,
       });
       clearBusy(id);
       if (spend) {
         dispatch({ type: "spend", n: cfg.prices.frame });
-        toast.success(`首帧已出 ${frames.length} 版,挑一版锁定`);
+        const used = job.result?.consistency?.used ? `（已注入 ${job.result.consistency.selected?.length ?? 0} 张一致性参考）` : "";
+        toast.success(`首帧已出 ${frames.length} 版,挑一版锁定${used}`);
       }
     },
     [applyShotPatch, cfg.prices.frame, clearBusy, dispatch],
@@ -298,18 +329,22 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     if (!s || isBusy(id)) return;
     markBusy(id, "frame");
     try {
+      const pool = buildRefPool(s);
       const job = await RenderApi.submitFrameJob({
         kind: "shot",
         vars: shotVars(s),
         ratio: data.projectInfo.ratio,
         count: 4,
+        refPool: pool,
+        frameDesc: s.desc,
+        consistency: pool.length > 0,
         projectId: ctx?.projectId,
         sceneId: s.sceneId,
         shotId: id,
         episodeNo: state.ep,
         name: `第${state.ep}集 镜${s.no} 首帧`,
       });
-      toast.success("首帧已加入后台生成");
+      toast.success(pool.length > 0 ? `首帧已入队（${pool.length} 张参考可用于保持一致）` : "首帧已加入后台生成");
       void watchFrameJob(job.id, id, true);
     } catch (e) {
       clearBusy(id);
@@ -374,11 +409,15 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     for (const d of drafts) {
       markBusy(d.id, "frame");
       try {
+        const pool = buildRefPool(d);
         const job = await RenderApi.submitFrameJob({
           kind: "shot",
           vars: shotVars(d),
           ratio: data.projectInfo.ratio,
           count: 4,
+          refPool: pool,
+          frameDesc: d.desc,
+          consistency: pool.length > 0,
           projectId: ctx?.projectId,
           sceneId: d.sceneId,
           shotId: d.id,
@@ -555,6 +594,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         <FactoryDrawer
           s={open}
           chars={state.chars}
+          availableRefs={buildRefPool(open).length}
           frameCost={cfg.prices.frame}
           clipCost={cfg.prices.clip}
           busy={busyMap[open.id] ?? null}
@@ -807,6 +847,7 @@ function FactoryCard({
 function FactoryDrawer({
   s,
   chars,
+  availableRefs,
   frameCost,
   clipCost,
   busy,
@@ -821,6 +862,7 @@ function FactoryDrawer({
 }: {
   s: FactoryShot;
   chars: WorkshopState["chars"];
+  availableRefs: number;
   frameCost: number;
   clipCost: number;
   busy: FlowKey | null;
@@ -1047,6 +1089,32 @@ function FactoryDrawer({
               </div>
             )}
           </div>
+
+          {/* v0.85 视觉一致性参考 */}
+          {s.consistency?.used && s.consistency.selected?.length ? (
+            <div className="card col gap-2" style={{ padding: 12, background: "var(--accent-soft)", border: "none" }}>
+              <div className="row gap-2" style={{ fontWeight: 700, fontSize: 12.5, color: "var(--accent)" }}>
+                <Sparkles size={14} fill="currentColor" strokeWidth={0} /> 本帧一致性参考 · {s.consistency.selected.length} 张
+              </div>
+              <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                {s.consistency.selected.map((r, idx) => (
+                  <span key={idx} className="tag tag-gray" style={{ fontSize: 11 }}>
+                    {r.desc}
+                  </span>
+                ))}
+              </div>
+              {s.consistency.clause && (
+                <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.5 }}>{s.consistency.clause}</div>
+              )}
+            </div>
+          ) : availableRefs > 0 && FLOW_ORDER.indexOf(s.flow) < FLOW_ORDER.indexOf("frame") ? (
+            <div className="row gap-2" style={{ fontSize: 12, color: "var(--accent)", padding: "0 2px" }}>
+              <Sparkles size={14} fill="currentColor" strokeWidth={0} style={{ flex: "none", marginTop: 1 }} />
+              <span>
+                已就绪 {availableRefs} 张一致性参考（角色定妆 / 场景 / 本场历史帧），生成首帧时自动挑选注入，锁住人物与场景一致。
+              </span>
+            </div>
+          ) : null}
 
           {/* 当前步骤提示 */}
           <div className="row gap-2" style={{ fontSize: 12, color: "var(--ink-3)", padding: "0 2px" }}>

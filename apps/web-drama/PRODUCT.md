@@ -3,7 +3,7 @@
 > 子产品：**AI Drama Studio** — 演员 IP 阵容 + 脚本工坊 + 短剧项目 + 多平台分发，一体化短剧工坊。
 > 本文件是产品形态 + 设计约束的真值源。技术 onboarding 在 [`README.md`](README.md)，业务规格在仓库根 [`product_spec.md`](../../product_spec.md)（数字人/数字 IP 主线，v2.7）。
 
-**Last reviewed**: 2026-06-12（v0.63 短剧工坊 v4:全局功能区导航 + AI 对话首页 + 剧本分镜合并 + 视频工厂 + 短视频工坊 / 模板库 / 剧本审阅 / 素材库）
+**Last reviewed**: 2026-06-18（v0.85 视觉一致性中间件:角色定妆三视图 + 出图前选参考图/改写参考说明 + 场景参考图存素材库;移植 ViMax 参考注入思路不引入其依赖）
 
 ---
 
@@ -66,7 +66,7 @@
 | `ProjectInfo` | 项目信息条（标题/类型/集数/时长/画幅/logline/mainline） |
 | `TopicCard` | 选题方向卡（AI 引导式三步的产物） |
 | `EpisodeOutline` | 分集大纲（钩子/梗概/beat;v0.63 起也驱动左侧分集导航） |
-| `CharacterDef` | 项目内角色（关键/龙套 + 数字人 avatar key 绑定） |
+| `CharacterDef` | 项目内角色（关键/龙套 + 数字人 avatar key 绑定;v0.85 加 `portraits` 定妆三视图，出图时作人物一致性参考注入） |
 | `ScriptScene` / `ScriptLine` | 剧集脚本场景（v0.63 与分镜合并呈现;场景挂 `refs`(素材引用)/`sub`(字幕开关)） |
 | `BoardScene` / `BoardShot` | 分镜（含 size/move/dur/engine/cast/line/voice/moods/done/overLimit;视频工厂逐镜推流水） |
 | `PromptShot` | 成片配方（style/timeline/sound/refs 四段式） |

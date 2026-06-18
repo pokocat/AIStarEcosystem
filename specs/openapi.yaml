@@ -7154,7 +7154,9 @@ paths:
     post: { tags: [drama], operationId: aiDraftDramaCast, summary: 'AI 从大纲重抽角色阵容（大模型）', responses: { '200': { description: ok } } }
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/frame:
-    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充。v0.80 起可选 body 增 ref_pool([{url,desc}])/frame_desc/consistency：传 ref_pool 即启用一致性中间件（出图前用 drama.ref_select 挑参考图 + 改写参考说明，复用 DRAMA_SCRIPT_DRAFT 端点；未配置/失败则降级，不阻断不额外扣费），响应增 consistency:{used,clause?,selected?,reason?}', responses: { '200': { description: ok } } }
+  /me/drama/render/portraits:
+    post: { tags: [drama], operationId: renderDramaPortraits, summary: '角色定妆三视图（正/侧/背）生成（v0.80 视觉一致性地基）。body={name,features?,style?,ratio?,ref_images?} → {portraits:{front:{url,cdnKey},side,back},cost}。IMAGE_GENERATION 图像模型 → CDN，按次扣积分（drama.credit.portrait）；提示词 drama.character_portrait。未配置图像模型 → 503 IMAGE_NOT_CONFIGURED', responses: { '200': { description: ok } } }
   /me/drama/render/frame-jobs:
     get:  { tags: [drama], operationId: listDramaFrameJobs, parameters: [{ name: project_id, in: query, required: false, schema: { type: string } }], summary: '列出当前用户首帧后台任务（可按项目/短视频草稿过滤）。', responses: { '200': { description: ok } } }
     post: { tags: [drama], operationId: submitDramaFrameJob, summary: '提交首帧后台任务。body 同 /render/frame，额外支持 project_id/scene_id/shot_id/episode_no/name，返回可轮询任务卡。', responses: { '200': { description: ok } } }

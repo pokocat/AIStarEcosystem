@@ -10,12 +10,16 @@ import { CreditButton, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../../workbench";
 import { STAGE_BY_KEY } from "../../stages-config";
 import type { WorkshopAction, WorkshopState } from "../../workbench";
-import type { CharacterDef, ProjectData } from "@/mocks/drama-workshop";
+import type { CharacterDef, Material, ProjectData, ScriptScene } from "@/mocks/drama-workshop";
+import { MATERIALS, setMaterials } from "@/mocks/drama-workshop";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import { CharCard } from "./char-card";
 import { AvatarPicker, ScenePicker } from "./avatar-picker";
-import { ProjectsApi } from "@/api";
+import { ProjectsApi, RenderApi } from "@/api";
 import type { StageContext } from "../stage-context";
+
+/** 场景锁：纯参考库选取只有渐变（from/to），AI 生成的有真实 url。 */
+type SceneLock = { name: string; url?: string; from?: string; to?: string };
 
 interface CastStageProps {
   state: WorkshopState;
@@ -37,10 +41,84 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
   const cfg = useDramaConfig();
   const [binding, setBinding] = React.useState<CharacterDef | null>(null);
   const [scenePick, setScenePick] = React.useState<{ id: string; name: string } | null>(null);
-  const [sceneLocks, setSceneLocks] = React.useState<Record<string, string>>({});
+  const [sceneLocks, setSceneLocks] = React.useState<Record<string, SceneLock>>({});
   const [drafting, setDrafting] = React.useState(false);
+  const [portraitBusy, setPortraitBusy] = React.useState<Record<string, boolean>>({});
+  const [sceneBusy, setSceneBusy] = React.useState<Record<string, boolean>>({});
 
   const unbound = state.chars.filter((c) => c.role === "key" && !c.bound).length;
+
+  /** AI 生成角色定妆三视图 → 落 CharacterDef.portraits + 保存。出图时作人物一致性参考注入。 */
+  const genPortraits = async (c: CharacterDef) => {
+    if (portraitBusy[c.id]) return;
+    setPortraitBusy((m) => ({ ...m, [c.id]: true }));
+    try {
+      const { portraits, cost } = await RenderApi.generatePortraits({
+        name: c.name,
+        features: c.desc,
+        style: `${data.projectInfo.type}风格`,
+      });
+      const next = state.chars.map((x) =>
+        x.id === c.id
+          ? {
+              ...x,
+              portraits: { front: portraits.front?.url, side: portraits.side?.url, back: portraits.back?.url },
+              refCount: 3,
+            }
+          : x,
+      );
+      dispatch({ type: "setChars", chars: next });
+      if (ctx) await ctx.saveData({ ...data, characters: next });
+      if (cost) dispatch({ type: "spend", n: cost });
+      toast.success(`已生成「${c.name}」定妆三视图，出图会自动锁人物长相`);
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "定妆图生成失败，请稍后重试"));
+    } finally {
+      setPortraitBusy((m) => ({ ...m, [c.id]: false }));
+    }
+  };
+
+  /** AI 生成场景参考图 → 存进素材场景库（cat=场景, 带真实 url）+ 锁定本场。出图时可在工厂 @素材参考 选用。 */
+  const genSceneRef = async (sceneId: string, s: ScriptScene, name: string) => {
+    if (sceneBusy[sceneId]) return;
+    setSceneBusy((m) => ({ ...m, [sceneId]: true }));
+    try {
+      const frames = await RenderApi.renderFrame({
+        kind: "shot",
+        vars: {
+          visual: `场景建立镜头（空镜，无人物）：${s.place}。${s.mood}。${s.action}`.slice(0, 280),
+          size: "全景/远景",
+          move: "固定",
+          lineClause: "",
+          castClause: "",
+          styleSuffix: `${data.projectInfo.type}风格。`,
+        },
+        ratio: "16:9",
+        count: 1,
+      });
+      const url = frames[0]?.url;
+      if (!url) throw new Error("未生成图像");
+      const mat: Material = {
+        id: `scn_${Date.now().toString(36)}`,
+        name: `${name} · 场景参考`,
+        cat: "场景",
+        kind: "image",
+        from: "#64748b",
+        to: "#1e293b",
+        tags: ["场景参考", "AI 生成"],
+        url,
+        cdnKey: frames[0]?.cdnKey,
+      };
+      setMaterials([...MATERIALS, mat]);
+      setSceneLocks((m) => ({ ...m, [sceneId]: { name, url } }));
+      dispatch({ type: "spend", n: cfg.prices.frame });
+      toast.success("已生成场景参考图并存入素材场景库");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "场景参考图生成失败，请稍后重试"));
+    } finally {
+      setSceneBusy((m) => ({ ...m, [sceneId]: false }));
+    }
+  };
 
   /** 真实 AI 重抽角色阵容 → 更新工作台 + 落库。 */
   const redraftCast = async () => {
@@ -125,6 +203,8 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
               delay={i * 40}
               onBind={() => setBinding(c)}
               onToggleRole={() => dispatch({ type: "toggleRole", charId: c.id })}
+              onGeneratePortraits={() => void genPortraits(c)}
+              generating={portraitBusy[c.id]}
             />
           ))}
         </div>
@@ -148,22 +228,23 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
             {data.script.scenes.map((s, i) => {
               const sceneId = "scn" + i;
               const name = s.place.replace(/^(内景|外景)\s*·\s*/, "");
-              const lockId = sceneLocks[sceneId];
-              const asset = lockId ? SCENE_LIB.find((a) => a.id === lockId) ?? null : null;
+              const lock = sceneLocks[sceneId];
+              const busy = sceneBusy[sceneId];
               return (
                 <div
                   key={sceneId}
                   className="card col"
                   style={{ padding: 0, overflow: "hidden" }}
                 >
-                  {asset ? (
+                  {lock ? (
                     <div style={{ position: "relative" }}>
                       <Thumb
-                        from={asset.from}
-                        to={asset.to}
+                        from={lock.from ?? "#64748b"}
+                        to={lock.to ?? "#1e293b"}
+                        src={lock.url}
                         ratio="16/9"
                         radius={0}
-                        label={asset.name}
+                        label={lock.url ? undefined : lock.name}
                         style={{ width: "100%" }}
                       />
                       <span
@@ -183,27 +264,46 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
                         borderBottom: "1px dashed var(--line)",
                       }}
                     >
-                      <button
-                        type="button"
-                        className="btn btn-line btn-sm"
-                        onClick={() => setScenePick({ id: sceneId, name })}
-                      >
-                        <ImageIcon size={14} /> 锁定参考图
-                      </button>
+                      <div className="row gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-line btn-sm"
+                          onClick={() => setScenePick({ id: sceneId, name })}
+                        >
+                          <ImageIcon size={14} /> 选参考
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-grad btn-sm"
+                          onClick={() => void genSceneRef(sceneId, s, name)}
+                          disabled={busy}
+                        >
+                          <Sparkles size={13} fill="currentColor" strokeWidth={0} /> {busy ? "生成中…" : "AI 生成"}
+                        </button>
+                      </div>
                     </div>
                   )}
                   <div className="col gap-1" style={{ padding: 13 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>{name}</div>
                     <div className="faint" style={{ fontSize: 12 }}>{s.mood}</div>
-                    {asset && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        style={{ alignSelf: "flex-start", marginTop: 4 }}
-                        onClick={() => setScenePick({ id: sceneId, name })}
-                      >
-                        <RefreshCw size={13} /> 换参考
-                      </button>
+                    {lock && (
+                      <div className="row gap-2" style={{ marginTop: 4 }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setScenePick({ id: sceneId, name })}
+                        >
+                          <RefreshCw size={13} /> 换参考
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => void genSceneRef(sceneId, s, name)}
+                          disabled={busy}
+                        >
+                          <Sparkles size={13} /> {busy ? "生成中…" : "AI 重生成"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -225,7 +325,11 @@ export function CastStage({ state, dispatch, data, ctx }: CastStageProps) {
           sceneName={scenePick.name}
           onClose={() => setScenePick(null)}
           onConfirm={(assetId) => {
-            setSceneLocks((m) => ({ ...m, [scenePick.id]: assetId }));
+            const a = SCENE_LIB.find((x) => x.id === assetId);
+            setSceneLocks((m) => ({
+              ...m,
+              [scenePick.id]: { name: a?.name ?? scenePick.name, from: a?.from, to: a?.to },
+            }));
             setScenePick(null);
             toast.success("已锁定场景参考,跨集一致");
           }}

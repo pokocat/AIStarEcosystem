@@ -26,11 +26,20 @@ public class DramaRenderController {
         this.frameJobs = frameJobs;
     }
 
-    /** 首帧渲染。body: { kind?("shot"|"short"), vars{}, ratio?, count?, ref_images? } → { frames:[{url,cdnKey}], cost }
-     *  v0.72：prompt 模板服务端化（drama.frame_image / drama.short_frame_image），前端传 vars 填充。 */
+    /** 首帧渲染。body: { kind?("shot"|"short"), vars{}, ratio?, count?, ref_images?, ref_pool?, frame_desc?, consistency? }
+     *  → { frames:[{url,cdnKey}], cost, consistency:{used,clause?,selected?,reason?} }
+     *  v0.72：prompt 模板服务端化（drama.frame_image / drama.short_frame_image），前端传 vars 填充。
+     *  v0.85：可降级的视觉一致性中间件 —— 传 ref_pool（候选参考池）即在出图前挑参考图 + 改写参考说明。 */
     @PostMapping("/frame")
     public ApiResponse<JsonNode> frame(Principal principal, @RequestBody JsonNode body) {
         return ApiResponse.of(service.renderFrame(body, principal.getName()));
+    }
+
+    /** 角色定妆三视图（正/侧/背）。body: { name, features?, style?, ratio?, ref_images? }
+     *  → { portraits:{front:{url,cdnKey},side,back}, cost }。v0.85 视觉一致性地基。 */
+    @PostMapping("/portraits")
+    public ApiResponse<JsonNode> portraits(Principal principal, @RequestBody JsonNode body) {
+        return ApiResponse.of(service.renderPortraits(body, principal.getName()));
     }
 
     /** 首帧后台任务。body 同 /frame，额外支持 project_id / scene_id / shot_id / episode_no / name。 */

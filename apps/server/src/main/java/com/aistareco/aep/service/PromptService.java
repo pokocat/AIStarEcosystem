@@ -72,6 +72,11 @@ public class PromptService {
     public static final String KEY_DRAMA_CLIP_VIDEO = "drama.clip_video";
     public static final String KEY_DRAMA_SHORT_FRAME_IMAGE = "drama.short_frame_image";
     public static final String KEY_DRAMA_SHORT_CLIP_VIDEO = "drama.short_clip_video";
+    /** v0.85+: 视觉一致性中间件（移植自 ViMax 的参考注入思路，不引入其依赖）。
+     *  ref_select=出图前从候选参考池里挑参考图 + 改写参考使用说明（文本 chat，复用 DRAMA_SCRIPT_DRAFT 端点）；
+     *  character_portrait=角色定妆三视图（正/侧/背）生成（图像，单 prompt 无 system）。 */
+    public static final String KEY_DRAMA_REF_SELECT = "drama.ref_select";
+    public static final String KEY_DRAMA_CHARACTER_PORTRAIT = "drama.character_portrait";
     /** v0.73+: 把一部爆款短剧反向蒸馏成「可复用配方 Recipe」（抽 skill 飞轮）。 */
     public static final String KEY_DRAMA_RECIPE_EXTRACT = "drama.recipe_extract";
     /** v0.79+: 互动剧（剧情互动短剧，DramaProject 的形态）—— 一句话主题起草整张剧集分支图。
@@ -96,6 +101,7 @@ public class PromptService {
                     KEY_DRAMA_OUTLINE, KEY_DRAMA_EPSCRIPT, KEY_DRAMA_SPLIT_SCENE, KEY_DRAMA_CAST,
                     KEY_DRAMA_FRAME_IMAGE, KEY_DRAMA_CLIP_VIDEO,
                     KEY_DRAMA_SHORT_FRAME_IMAGE, KEY_DRAMA_SHORT_CLIP_VIDEO,
+                    KEY_DRAMA_REF_SELECT, KEY_DRAMA_CHARACTER_PORTRAIT,
                     KEY_DRAMA_RECIPE_EXTRACT,
                     KEY_DRAMA_INTERACTIVE_DRAFT,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
