@@ -305,7 +305,22 @@ public class AiModelInvocationService {
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
                             + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
         }
-        Map<?, ?> parsed = OM.readValue(resp.body(), Map.class);
+        Map<?, ?> parsed;
+        try {
+            parsed = OM.readValue(resp.body(), Map.class);
+        } catch (Exception parseEx) {
+            // 2xx 但响应体无法解析：记原始响应（日志 + 流水），便于排查上游协议变化 / 网关插话。
+            usage.recordObserved(e.getId(), e.getName(), model,
+                    purpose != null ? purpose.wire() : null, null, null, null, false,
+                    requestId, null, elapsedMs(startNanos), "AI_BAD_OUTPUT", snippet(resp.body()),
+                    requestJson, resp.body(), replayOfRecordId);
+            log.warn("[ai-chat] invoke bad-output requestId={} purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
+                    requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
+                    resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+                    "AI 返回无法解析，请稍后重试",
+                    "endpoint=" + e.getName() + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
+        }
         String upstreamId = parsed.get("id") != null ? String.valueOf(parsed.get("id")) : null;
         Object choices = parsed.get("choices");
         String content = "";
