@@ -61,6 +61,7 @@ public class CelebrityZoneService {
     private final CelebrityStarAuthorizationRepository authRepo;
     private final CreditService creditService;
     private final PlatformConfigService platformConfig;
+    private final GenerationJobRepository generationJobRepo;
 
     public CelebrityZoneService(CelebrityStarRepository starRepo,
                                  CelebrityProjectRepository projectRepo,
@@ -69,7 +70,8 @@ public class CelebrityZoneService {
                                  CelebrityShowcaseRepository showcaseRepo,
                                  CelebrityStarAuthorizationRepository authRepo,
                                  CreditService creditService,
-                                 PlatformConfigService platformConfig) {
+                                 PlatformConfigService platformConfig,
+                                 GenerationJobRepository generationJobRepo) {
         this.starRepo = starRepo;
         this.projectRepo = projectRepo;
         this.videoRepo = videoRepo;
@@ -78,6 +80,7 @@ public class CelebrityZoneService {
         this.authRepo = authRepo;
         this.creditService = creditService;
         this.platformConfig = platformConfig;
+        this.generationJobRepo = generationJobRepo;
     }
 
     /** 启动时种子默认 pricing 到 PlatformConfig（首次启动；已存在则 no-op，保留 admin 编辑）。 */
@@ -352,7 +355,17 @@ public class CelebrityZoneService {
         };
         long totalSec = (long) estimatedMinutes * 60L / 30L; // 演示用：分钟压成秒
         if (totalSec < 8) totalSec = 8;
-        JOBS.put(jobId, new JobState(jobId, java.time.Instant.now(), totalSec, engine, userId, creditCost));
+        Instant now = Instant.now();
+        generationJobRepo.save(GenerationJob.builder()
+                .id(jobId)
+                .startedAt(now)
+                .totalSec(totalSec)
+                .engine(engine)
+                .userId(userId)
+                .creditCost(creditCost)
+                .committed(false)
+                .createdAt(now)
+                .build());
         log.info("[celebrity-gen] queued jobId={} user={} engine={} duration={}s factor={} cost={}",
                 jobId, userId, engine, durationSec, durationFactor, creditCost);
         return new AsyncJobStartedDto(
@@ -364,17 +377,10 @@ public class CelebrityZoneService {
         );
     }
 
-    // ── v0.5.1：任务进度跟踪（in-memory） ─────────────────────────────────────
-
-    /**
-     * 任务状态。startedAt + totalSec 决定进度；不依赖客户端 setInterval。
-     * v0.33+: 加 userId / creditCost，用于进度走到 done 时延迟 commit hold（idempotent）。
-     */
-    private record JobState(String jobId, java.time.Instant startedAt, long totalSec, String engine,
-                             String userId, long creditCost) {}
-
-    private static final java.util.concurrent.ConcurrentHashMap<String, JobState> JOBS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    // ── v0.5.1：任务进度跟踪（v0.80 起落 generation_jobs 表） ──────────────────
+    // startedAt + totalSec 决定进度；不依赖客户端 setInterval。
+    // v0.33+: 任务带 userId / creditCost，用于进度走到 done 时延迟 commit hold（idempotent）。
+    // v0.80: 由静态 ConcurrentHashMap 改为 GenerationJob 实体，重启后进度 / commit 不再丢。
 
     private static final List<String[]> PIPELINE_STEPS = List.of(
             new String[]{"脚本撰写", "AI 正在打磨分镜的台词"},
@@ -389,12 +395,12 @@ public class CelebrityZoneService {
      * 任务不存在时（重启或未提交）回退一个完成态，避免前端轮询失败。
      */
     public GenerationJobProgressDto getJobProgress(String jobId) {
-        JobState s = JOBS.get(jobId);
+        GenerationJob s = generationJobRepo.findById(jobId).orElse(null);
         long elapsed, total;
         boolean exists = s != null;
         if (exists) {
-            elapsed = java.time.Duration.between(s.startedAt(), java.time.Instant.now()).toSeconds();
-            total = s.totalSec();
+            elapsed = java.time.Duration.between(s.getStartedAt(), Instant.now()).toSeconds();
+            total = s.getTotalSec();
         } else {
             elapsed = 1;
             total = 1;
@@ -406,17 +412,19 @@ public class CelebrityZoneService {
         String state = progress >= 100 ? "done" : (progress > 0 ? "running" : "queued");
 
         // v0.33+: 看到 done 状态时，commit 对应 hold（幂等：commitHold 内部检查状态，
-        // 已 COMMITTED / RELEASED / 不存在均安全 return）。restart 后 JOBS 为空 → exists=false →
-        // 也 short-circuit 不 commit（因为没有 userId 上下文）；那种孤儿 hold 由
-        // 启动时的 sweep（@PostConstruct）或运营手动 release 处理。
-        if (state.equals("done") && exists && s.userId() != null && !s.userId().isBlank() && s.creditCost() > 0) {
+        // 已 COMMITTED / RELEASED / 不存在均安全 return）。v0.80 落表后 restart 仍能找到
+        // 任务并 commit，不再产生孤儿 hold；committed 标记避免重复 commit 尝试。
+        if (state.equals("done") && exists && !s.isCommitted()
+                && s.getUserId() != null && !s.getUserId().isBlank() && s.getCreditCost() > 0) {
             try {
                 creditService.commitHold(
                         "celebrity_generation",
                         jobId,
-                        s.creditCost(),
-                        "AI 明星视频生成完成 · " + s.engine()
+                        s.getCreditCost(),
+                        "AI 明星视频生成完成 · " + s.getEngine()
                 );
+                s.setCommitted(true);
+                generationJobRepo.save(s);
             } catch (Exception e) {
                 log.warn("[celebrity-gen] commit hold failed jobId={} err={}", jobId, e.getMessage());
             }

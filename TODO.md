@@ -92,9 +92,9 @@
 
 ### 持久化与基础设施
 
-- [ ] **engine-pricing 落表**：当前 `CelebrityZoneService.mutablePricing` 是 in-memory ConcurrentHashMap，admin PUT 立即生效但**重启失效**。落到 `PlatformConfig` key=`celebrity.engine-pricing`，启动时读取覆盖默认值。详 `product_spec_ai_celebrity.md` v0.5.x §D5。
-- [ ] **生成任务 JOBS 落表**：`CelebrityZoneService.JOBS` 同样 in-memory，重启丢失轮询进度。建表 `generation_jobs(id, started_at, total_sec, engine, status, created_at)`，progress 在 service 层从 `started_at + total_sec` 计算。
-- [ ] **真实微信支付**：`POST /me/wallet/recharge` 当前 mock 直接落账。线上需先 `wx.requestPayment` 走支付，回调 `notify_url` 验签后再调 server `/me/wallet/recharge`。
+- [x] ~~**engine-pricing 落表**~~（**已完成**，2026-06-17 审计发现实际早已落库）：`CelebrityZoneService.adminReplaceEnginePricing` 已 `platformConfig.upsert(ENGINE_PRICING_CONFIG_KEY, ...)` 落 `PlatformConfig` key=`celebrity.engine-pricing`，内存只是 1min TTL cache（`pricingCache` AtomicReference），重启自动从 config 读回。原 TODO 描述过时。
+- [x] ~~**生成任务 JOBS 落表**~~（**v0.80 完成**，2026-06-17）：新增 `GenerationJob` 实体（`generation_jobs` 表，ddl-auto 建）+ `GenerationJobRepository`，替换 `CelebrityZoneService` 的静态 `ConcurrentHashMap`。`startGeneration` 落表、`getJobProgress` 从 repo 读并按 `startedAt + totalSec` 算进度；重启后任务仍可恢复进度 + done 时幂等 commit hold（`committed` 标记守门，不再产生孤儿冻结额度）。`CelebrityZoneServiceTest` 5/5。
+- [ ] **真实微信支付**（**非漏洞，可后置** — 2026-06-17 澄清）：`POST /me/wallet/recharge` 并非「mock 直接落账」，而是 `RechargeService.createOrder` 建 **PENDING 订单**，必须运营在 admin「充值订单」`approveOrder` 才经 `CreditService.creditAccount` 落账。即当前已是「线下充值 / 对公转账 + 运营手动核准」过渡方案，无刷余额风险。自动化路径（任选）：① 微信支付 Native/JSAPI `wx.requestPayment` → `notify_url` 验签后自动 approve；② 支付宝；③ 保持运营手动核准（早期足够）。
 
 ### LLM provider 拓展
 
@@ -227,9 +227,9 @@
 
 ### admin 后台健全（v0.31 / v0.32）
 
-- [ ] **`AdminStaffController` self-protect 校验**（v0.32 注意事项）：当前 admin 能删/降级**自己**账号；前端 loose `isSelf` 判断形同无防护。server 端加 `if (id.equals(principal.getName())) throw ...`。
+- [x] ~~**`AdminStaffController` self-protect 校验**~~（**v0.80 完成**，2026-06-17）：server 端加自保护守卫 —— `delete` 拒绝删自己；`update` 拒绝改自己的 `role` / `status`（避免锁死或自我提权），但仍允许本人改自己的昵称 / 邮箱 / 密码。均抛 403 `FORBIDDEN`，文案提示「请让其它超管处理」。
 - [ ] **admin TS 类型 enum 大小写归一**（v0.32 注意事项）：当前 wire 是小写（`"super_admin"`/`"operator"`）但 admin TS 类型用大写（`"SUPER_ADMIN"`/`"OPERATOR"`），靠 `useAdminRole` + `staff.ts.normalize()` 在 API 边界翻译。可统一为小写跟其它 enum 一致。
-- [ ] **admin operator self-grant operatorRole 防护**（v0.31 §C）：`/api/admin/aep-users/{id}/operator-role` 当前 hasAnyRole（OPERATOR 也能调，能给自己/他人发 SUPER_ADMIN）。改为 `@PreAuthorize("hasRole('SUPER_ADMIN')")`。
+- [x] ~~**admin operator self-grant operatorRole 防护**~~（**已完成**，2026-06-17 审计确认）：`AdminAepUsersController.updateOperatorRole`（PATCH `/api/admin/aep-users/{id}/operator-role`）已是 `@PreAuthorize("hasRole('SUPER_ADMIN')")` + v0.37 自保护守卫（`id.equals(principal.getName())` → 403 `OPERATOR_SELF_MODIFY`）。原 TODO 描述过时。
 - [ ] **admin `window.confirm` / `alert` 历史欠债迁移**（v0.23 硬规则但仅约束 web-celebrity；admin 仍有 8 文件用）：`apps/admin/src/app/{platform/llm-keys, platform/ai-models, finance/recharge-packages, base/presets, celebrity/{star-authorizations, template-scripts, mixcut-official-clips, products}}/page.tsx` → 改用 shadcn `AlertDialog` + Promise-based `useConfirm()`。
 
 ### 安全 / Auth（2026-04-21 块剩余）
@@ -258,9 +258,9 @@
 
 ### 数据模型 / 配置
 
-- [ ] **engine-pricing 落到 `PlatformConfig`**（旧 v0.6 候选）：`CelebrityZoneService.mutablePricing` in-memory ConcurrentHashMap，admin PUT 即时生效但重启失效。`PlatformConfig` 实体已存在，接进去即可。
-- [ ] **生成任务 `JOBS` 落表**（旧 v0.6 候选）：`CelebrityZoneService.JOBS` 同样 in-memory。建 `generation_jobs(id, started_at, total_sec, engine, status, created_at)`。
-- [ ] **真实微信支付**：`POST /me/wallet/recharge` 当前 mock 直接落账；线上需 `wx.requestPayment` → `notify_url` 验签后再调 server。
+- [x] ~~**engine-pricing 落到 `PlatformConfig`**~~（**已完成** — 见上「持久化与基础设施」段，2026-06-17 审计确认实际早已落库）。
+- [x] ~~**生成任务 `JOBS` 落表**~~（**v0.80 完成** — `GenerationJob` 实体 + repo，见上段）。
+- [ ] **真实微信支付**（**非漏洞，可后置** — 见上段澄清：当前已是「PENDING 订单 + 运营手动核准」过渡方案）。
 - [ ] **国产 LLM provider 真实调用**（旧 v0.6 候选）：`AiModelInvocationService` 当前只 OpenAI 兼容；`ANTHROPIC` / `BAIDU` / `ALIYUN` / `TENCENT` 各自鉴权。
 - [ ] **`ConfigItem` 配置中心 + 17 字典上移**（旧 v0.6 候选，`docs/ADMIN_PRODUCT_SPEC.md` §10 设计已写）：草稿/审核/发布状态机 + 灰度（白名单 / AB 桶）。
 - [ ] **`/celebrity/dictionaries`** 当前 hard-coded；接 `ConfigItem` 后改为运营可配。
