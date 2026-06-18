@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.Principal;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -83,9 +84,20 @@ public class AdminStaffController {
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<AdminUserDto> update(@PathVariable String id, @RequestBody Map<String, Object> body) {
+    public ApiResponse<AdminUserDto> update(@PathVariable String id, @RequestBody Map<String, Object> body,
+                                            Principal principal) {
         AdminUser admin = adminUserRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在"));
+
+        // self-protect: 不能改自己的角色 / 账号状态（避免锁死自己或自我提权），
+        // 但允许本人改自己的昵称 / 邮箱 / 密码。变更需由其它超管处理。
+        boolean isSelf = principal != null && id.equals(principal.getName());
+        if (isSelf && body.containsKey("role")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能修改自己的角色（请让其它超管处理）");
+        }
+        if (isSelf && body.containsKey("status")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能修改自己的账号状态（请让其它超管处理）");
+        }
 
         if (body.containsKey("displayName")) admin.setDisplayName(getString(body, "displayName"));
         if (body.containsKey("email")) admin.setEmail(getString(body, "email"));
@@ -109,7 +121,10 @@ public class AdminStaffController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String id) {
+    public void delete(@PathVariable String id, Principal principal) {
+        if (principal != null && id.equals(principal.getName())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能删除自己的账号（请让其它超管处理）");
+        }
         if (!adminUserRepo.existsById(id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");
         }

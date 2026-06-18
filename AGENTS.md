@@ -575,12 +575,26 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | 加新文档 | 同时在 `docs/INDEX.md` 添加一行（含 last-reviewed 日期） |
 | 删旧文档 | 先 `git grep -n '<filename>' -- '*.md'` 改指真源；再 `git rm`，依赖 git history 留底 |
 | 改环境变量 / 部署需求 | [`infra/README.md`](infra/README.md)；[`.claude/skills/aliyun-deploy/SKILL.md`](.claude/skills/aliyun-deploy/SKILL.md)；必要时同步 `infra/env/*.env.example` |
+| **完成 / 搁置 / 新发现任一待办，或审计发现 TODO 与代码 drift** | **`TODO.md`（与产品说明、版本历史同等纪律，同 commit 改）** —— 详见下「TODO.md 维护纪律」 |
+
+#### TODO.md 维护纪律（**Strict**）
+
+`TODO.md` 是「已定位但未修的问题 + 候选排期」的真源，和 `product_spec*.md` / `apps/*/README.md` 版本日志一样，**必须随代码同 commit 维护**，不允许「修完代码 TODO 不勾」。规则：
+
+- **完成一个待办** → 把对应条目改成 `- [x] ~~标题~~`（删除线），后接「**vX.YY 完成 / 已澄清**，YYYY-MM-DD」+ 一句落地说明（关键实体 / 端点 / 测试）。**不要删除条目**（保留可追溯）。
+- **审计发现 TODO 与代码不符**（描述过时 / 其实早已做） → 同样标 `[x]` 并注「**审计确认**，YYYY-MM-DD：原描述过时，实际……」。本轮 v0.80 就发现 engine-pricing / operator 自授权 / recharge 三条已过时——**先核对真源再动手，避免照过时清单白做**。
+- **新发现一个待办**（顺手定位但本轮不修） → 按主题段追加 `- [ ]`，带精确定位（`file:符号` / 错误码 / 触发条件），不要只写一句模糊描述。
+- **降优先级 / 改判**（如「非漏洞，可后置」） → 保留 `[ ]` 但在标题后加判定 + 日期 + 理由，别让后人重复评估。
+- 条目按现有主题段归并（持久化 / 安全 / sau-service / 通知 …），不要散落到版本日志里被忘掉。
 
 ### 验收
 
 每次 v 升级 commit 之前：
 
 ```bash
+# 0) TODO.md 已随本次改动维护？（完成项已勾 [x] + 注 vX.YY/日期；过时项已改正；新待办已追加）
+git diff --name-only | grep -q '^TODO.md$' || echo '⚠️ 本次若动了待办相关代码，确认 TODO.md 是否需要同 commit 更新'
+
 # 1) 文档与代码一致性
 git grep -nE 'PLATFORM_OPERATOR|FINANCE_ADMIN' -- '*.md'   # 0 命中（除非 v0.6+ 真做了拆分）
 git grep -nE 'port 300[01]' -- '*.md'                       # 0 命中
