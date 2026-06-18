@@ -6052,8 +6052,8 @@ paths:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-template-scripts], operationId: adminUploadTemplateScriptClip, responses: { '200': { description: ok } } }
 
-  # ── AI 模型接入端点 + 外部 API Token + AI 应用绑定 ──
-  # 端点 = 固定 {上游密钥 + 单模型 + 地址}，自带外部 API Token（sk-aep-*）；server 内嵌 OpenAI-compatible API。
+  # ── AI 模型接入端点 + AI 应用绑定 ──
+  # 端点 = 固定 {上游密钥 + 单模型 + 地址}，仅供平台内部 AI 应用绑定（ai_app_binding）调用。
   /admin/ai-models:
     get:  { tags: [admin-ai-models], operationId: adminListAiModelEndpoints,  responses: { '200': { description: ok } } }
     post: { tags: [admin-ai-models], operationId: adminCreateAiModelEndpoint, responses: { '201': { description: created } } }
@@ -6119,12 +6119,6 @@ paths:
       operationId: adminAiModelUsageForProvider
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
       responses: { '200': { description: 单端点大模型用量报表（同样返回用户 / 租户 / 来源应用维度） } }
-  /admin/ai-models/{id}/mint-key:
-    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-    post: { tags: [admin-ai-models], operationId: adminMintEndpointKey, responses: { '200': { description: '给端点铸造/重铸外部 API Token sk-aep-*，明文仅返回一次（DB 存 bcrypt）' } } }
-  /admin/ai-models/{id}/revoke-key:
-    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-    post: { tags: [admin-ai-models], operationId: adminRevokeEndpointKey, responses: { '200': { description: '撤销端点的外部 API Token（不删端点）' } } }
 
   # ── AI 应用绑定（v0.41 新增；用途 → 端点，一用途一端点，无兜底） ──────────
   /admin/ai-app-bindings:
@@ -6168,13 +6162,6 @@ paths:
       - { name: version, in: path, required: true, schema: { type: integer } }
     post: { tags: [admin-prompts], operationId: adminRollbackPromptVersion, responses: { '200': { description: 回滚到历史版本，并追加一个新的当前版本快照 } } }
 
-  # ── server 内嵌 OpenAI-compatible LLM API ────────────────────────────────
-  /llm/v1/chat/completions:
-    post: { tags: [llm-api], operationId: embeddedLlmChatCompletions, responses: { '200': { description: OpenAI-compatible chat completions；Authorization Bearer sk-aep-* } } }
-  /llm/v1/models:
-    get: { tags: [llm-api], operationId: embeddedLlmModels, responses: { '200': { description: 启用端点的模型/别名列表 } } }
-  /llm/v1/healthz:
-    get: { tags: [llm-api], operationId: embeddedLlmHealthz, responses: { '200': { description: ok } } }
 
   # ── 素材运营 · 文本类 AI（v0.40 新增；接真 LLM，失败降级，见 MaterialAiService） ──────────
   /material/scripts:

@@ -2,9 +2,9 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 平台 · AI 模型与用量
-//   · 模型接入端点 = 固定 {上游密钥 + 单模型 + 地址}，自带外部 API Token（sk-aep-*）。
+//   · 模型接入端点 = 固定 {上游密钥 + 单模型 + 地址}，仅供平台内部 AI 应用绑定调用。
 //   · AI 应用绑定 = 每个用途（脚本起草 / 卖点提取 / 变量抽取…）固定指向一个端点。
-//   上游密钥由 server AES-GCM 加密落库；外部 API Token 仅铸造瞬间返回明文一次（DB 存 bcrypt）。
+//   上游密钥由 server AES-GCM 加密落库，列表仅显示脱敏值。
 //   本期仅 OpenAI / OpenAI 兼容协议 真实可用；其它类型可建档，连通性测试返回「暂不支持」。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,6 @@ import {
   Search,
   Wand2,
   Download,
-  KeyRound,
   Copy,
   AlertTriangle,
   Link2,
@@ -449,7 +448,6 @@ export default function AdminAiModelsPage() {
   const [presets, setPresets] = React.useState<AiModelProviderPreset[]>([]);
   const [fetchingModels, setFetchingModels] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [mintedPlaintext, setMintedPlaintext] = React.useState<string | null>(null);
   // 用量统计（v0.41，合并自 goods_to_video）
   const [usage, setUsage] = React.useState<AiModelUsageReport | null>(null);
   const [records, setRecords] = React.useState<AiModelUsageRecord[]>([]);
@@ -741,64 +739,6 @@ export default function AdminAiModelsPage() {
     }
   }
 
-  async function onMintKey(p: AiModelEndpoint) {
-    if (p.hasKey) {
-      const res = await confirm({
-        title: "重新生成外部 API Token",
-        tone: "danger",
-        confirmLabel: "重新生成",
-        description: "重新生成后，旧 Token 立即失效；正在使用旧 Token 的业务方需更换。明文仅显示一次。",
-        affected: <div className="font-medium">{p.name}</div>,
-      });
-      if (!res.ok) return;
-    }
-    try {
-      const r = await AiModelsApi.mintKey(p.id);
-      setMintedPlaintext(r.plaintext);
-      await refresh();
-      toast.success({ title: "外部 API Token 已生成", description: "请立即复制明文，离开本页后无法再查看。" });
-    } catch (e) {
-      toast.danger({ title: "生成失败", description: e instanceof Error ? e.message : undefined });
-    }
-  }
-
-  async function onRevokeKey(p: AiModelEndpoint) {
-    const res = await confirm({
-      title: "撤销外部 API Token",
-      tone: "danger",
-      confirmLabel: "确认撤销",
-      requireReason: true,
-      reasonPlaceholder: "例如：密钥泄漏 / 业务下线",
-      description: "撤销后立即失效。该端点仍可用于内部 AI 应用绑定，但外部 sk-aep-* 调用会 401。",
-      affected: (
-        <div className="space-y-1">
-          <div className="font-medium">{p.name}</div>
-          <div className="text-xs text-muted-foreground">
-            前缀 <span className="font-mono">{p.keyMasked ?? "未生成"}</span>
-          </div>
-        </div>
-      ),
-    });
-    if (!res.ok) return;
-    try {
-      await AiModelsApi.revokeKey(p.id);
-      await refresh();
-      toast.success({ title: "外部 API Token 已撤销" });
-    } catch (e) {
-      toast.danger({ title: "撤销失败", description: e instanceof Error ? e.message : undefined });
-    }
-  }
-
-  async function copyMinted() {
-    if (!mintedPlaintext) return;
-    try {
-      await navigator.clipboard.writeText(mintedPlaintext);
-      toast.success({ title: "已复制到剪贴板" });
-    } catch {
-      toast.warning({ title: "复制失败，请手动选中复制" });
-    }
-  }
-
   async function onBind(purpose: AiModelPurpose, value: string) {
     try {
       if (value === NONE) await AiModelsApi.unbind(purpose);
@@ -830,37 +770,12 @@ export default function AdminAiModelsPage() {
     <div className="admin-page space-y-6">
       <PageHeader
         title="AI 模型与用量"
-        description="配置模型接入端点（固定上游密钥 + 单模型 + 地址，含外部 API Token），并把每个 AI 应用绑定到一个端点。密钥由服务端加密存储，列表仅显示脱敏值。"
+        description="配置模型接入端点（固定上游密钥 + 单模型 + 地址），并把每个 AI 应用绑定到一个端点。密钥由服务端加密存储，列表仅显示脱敏值。"
       />
-
-      {mintedPlaintext && (
-        <div className="rounded-lg border border-warning/30 bg-warning/8 p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="text-sm font-semibold text-foreground">外部 API Token 明文仅此一次显示</div>
-              <p className="text-xs text-muted-foreground">
-                离开本页或刷新后将无法再查看。请立即复制并交付给业务方安全保管。
-              </p>
-              <code className="block break-all rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm">
-                {mintedPlaintext}
-              </code>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => void copyMinted()}>
-                  <Copy className="mr-1 h-3.5 w-3.5" /> 复制 Key
-                </Button>
-                <Button size="sm" onClick={() => setMintedPlaintext(null)}>
-                  我已保存
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <Tabs defaultValue="endpoints">
         <TabsList>
-          <TabsTrigger value="endpoints">模型接入端点（含 Key）</TabsTrigger>
+          <TabsTrigger value="endpoints">模型接入端点</TabsTrigger>
           <TabsTrigger value="bindings">AI 应用绑定</TabsTrigger>
           <TabsTrigger value="usage">用量统计</TabsTrigger>
           <TabsTrigger value="records">请求日志</TabsTrigger>
@@ -1220,7 +1135,7 @@ export default function AdminAiModelsPage() {
                           placeholder={placeholderFor(editing, "apiVersion", "留空")}
                         />
                       </Field>
-                      <Field label="计费归属用户" hint="外部 API Token 调用按 token 扣该用户钱包；留空 = 平台级，仅累计不扣费">
+                      <Field label="计费归属用户" hint="该端点用量按 token 扣此用户钱包；留空 = 平台级，仅累计不扣费">
                         <div className="flex gap-2">
                           <Input
                             value={editing.ownerUserId}
@@ -1282,7 +1197,7 @@ export default function AdminAiModelsPage() {
               {loading && <div className="text-sm text-muted-foreground">加载中…</div>}
               {err && <div className="text-sm text-destructive">{err}</div>}
               {!loading && !err && (
-                <Table className="min-w-[2270px] table-fixed">
+                <Table className="min-w-[1950px] table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[190px]">名称</TableHead>
@@ -1291,7 +1206,6 @@ export default function AdminAiModelsPage() {
                       <TableHead className="w-[132px]">上游密钥</TableHead>
                       <TableHead className="w-[150px]">固定模型</TableHead>
                       <TableHead className="w-[130px]">别名</TableHead>
-                      <TableHead className="w-[128px]">API Token</TableHead>
                       <TableHead className="w-[96px]">计费口径</TableHead>
                       <TableHead className="w-[112px] text-right">输入价</TableHead>
                       <TableHead className="w-[112px] text-right">输出价</TableHead>
@@ -1299,7 +1213,7 @@ export default function AdminAiModelsPage() {
                       <TableHead className="w-[148px] text-right">累计用量</TableHead>
                       <TableHead className="w-[92px] text-right">调用</TableHead>
                       <TableHead className="w-[88px]">状态</TableHead>
-                      <TableHead className="w-[388px] text-right">操作</TableHead>
+                      <TableHead className="w-[220px] text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1320,17 +1234,6 @@ export default function AdminAiModelsPage() {
                           <TableCell className="truncate py-3 font-mono text-xs" title={p.upstreamApiKeyMasked}>{p.upstreamApiKeyMasked}</TableCell>
                           <TableCell className="truncate py-3 text-xs" title={p.model ?? undefined}>{p.model ?? "未设置"}</TableCell>
                           <TableCell className="truncate py-3 text-xs font-mono" title={p.modelAlias ?? undefined}>{p.modelAlias ?? "未设置"}</TableCell>
-                          <TableCell className="truncate py-3 text-xs">
-                            {p.keyRevokedAt ? (
-                              <Badge tone="danger" className="font-normal">
-                                已撤销
-                              </Badge>
-                            ) : p.hasKey ? (
-                              <span className="font-mono" title={p.keyMasked}>{p.keyMasked}</span>
-                            ) : (
-                              <span className="text-muted-foreground">未生成</span>
-                            )}
-                          </TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-xs">{billingModeLabel(p.billingMode)}</TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{priceLabel(p.promptTokenPriceMicros)}</TableCell>
                           <TableCell className="whitespace-nowrap py-3 text-right text-xs tabular-nums">{priceLabel(p.completionTokenPriceMicros)}</TableCell>
@@ -1393,15 +1296,6 @@ export default function AdminAiModelsPage() {
                                   ? "已失败"
                                   : "测试"}
                               </Button>
-                              <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => void onMintKey(p)}>
-                                <KeyRound className="h-3.5 w-3.5" />
-                                {p.hasKey ? "重生成" : "生成 Key"}
-                              </Button>
-                              {p.hasKey && (
-                                <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => void onRevokeKey(p)}>
-                                  撤销
-                                </Button>
-                              )}
                               <Button size="sm" variant="destructive" className="h-7 px-2" onClick={() => void onDelete(p)}>
                                 删除
                               </Button>

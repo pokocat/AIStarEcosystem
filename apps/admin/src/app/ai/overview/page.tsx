@@ -82,7 +82,6 @@ function resultTone(failures: number): "default" | "warning" | "danger" | "succe
 
 function endpointStatus(endpoint: AiModelEndpoint) {
   if (!endpoint.enabled) return { tone: "neutral" as const, label: "停用" };
-  if (!endpoint.hasKey || endpoint.keyRevokedAt) return { tone: "warning" as const, label: "缺 Key" };
   return { tone: "success" as const, label: "可用" };
 }
 
@@ -142,8 +141,6 @@ export default function AiOverviewPage() {
 
   const stats = React.useMemo(() => {
     const enabledEndpoints = data.endpoints.filter((endpoint) => endpoint.enabled).length;
-    const activeKeys = data.endpoints.filter((endpoint) => endpoint.hasKey && !endpoint.keyRevokedAt).length;
-    const missingKey = data.endpoints.filter((endpoint) => endpoint.enabled && (!endpoint.hasKey || endpoint.keyRevokedAt)).length;
     const brokenBindings = data.bindings.filter((binding) => !binding.endpointId || binding.endpointEnabled === false).length;
     const totalCalls = (data.usage?.totalCalls ?? 0) + (data.usage?.failedCalls ?? 0);
     const failedCalls = data.usage?.failedCalls ?? 0;
@@ -154,8 +151,6 @@ export default function AiOverviewPage() {
 
     return {
       enabledEndpoints,
-      activeKeys,
-      missingKey,
       brokenBindings,
       totalCalls,
       failedCalls,
@@ -254,11 +249,10 @@ export default function AiOverviewPage() {
           tone={resultTone(stats.failedCalls)}
         />
         <StatCard
-          label="端点 / Key"
-          value={loading ? "…" : `${stats.enabledEndpoints} / ${stats.activeKeys}`}
+          label="启用端点"
+          value={loading ? "…" : `${stats.enabledEndpoints}`}
           icon={KeyRound}
-          hint={stats.missingKey > 0 ? `${stats.missingKey} 个启用端点缺 Key` : "启用端点均有可用 Key"}
-          tone={stats.missingKey > 0 ? "warning" : "success"}
+          hint={`共 ${data.endpoints.length} 个接入端点`}
         />
         <StatCard
           label="租户 / 用户"
@@ -328,7 +322,7 @@ export default function AiOverviewPage() {
                   href="/platform/ai-models"
                   icon={KeyRound}
                   label="LLM API 与用量"
-                  detail="端点、上游密钥、外部 API Token、用途绑定"
+                  detail="端点、上游密钥、用途绑定"
                   metric={`${data.endpoints.length} 个端点`}
                 />
                 <ManagementLinkRow
@@ -374,10 +368,10 @@ export default function AiOverviewPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <HealthLine
-                label="外部 Token"
-                value={`${stats.activeKeys} / ${data.endpoints.length}`}
-                tone={stats.missingKey > 0 ? "warning" : "success"}
-                detail={stats.missingKey > 0 ? `${stats.missingKey} 个启用端点缺 Token 或已撤销` : "启用端点均可通过内嵌 API 调用"}
+                label="启用端点"
+                value={`${stats.enabledEndpoints} / ${data.endpoints.length}`}
+                tone={stats.enabledEndpoints > 0 ? "success" : "warning"}
+                detail={stats.enabledEndpoints > 0 ? "已启用端点可供内部 AI 应用绑定调用" : "暂无启用端点"}
               />
               <HealthLine
                 label="用途绑定"
@@ -444,8 +438,8 @@ export default function AiOverviewPage() {
       <div className="mt-5 space-y-5">
         <Card>
           <CardHeader>
-            <CardTitle>API Key 与端点</CardTitle>
-            <CardDescription>沿用现有模型端点数据，突出 Key 状态、归属和最近用量。</CardDescription>
+            <CardTitle>模型端点</CardTitle>
+            <CardDescription>沿用现有模型端点数据，突出归属和最近用量。</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             {endpointRows.length === 0 ? (
@@ -457,7 +451,7 @@ export default function AiOverviewPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>端点</TableHead>
-                    <TableHead>Key</TableHead>
+                    <TableHead>归属</TableHead>
                     <TableHead>模型</TableHead>
                     <TableHead className="text-right">Token</TableHead>
                     <TableHead className="text-right">调用</TableHead>
@@ -475,15 +469,10 @@ export default function AiOverviewPage() {
                           <div className="font-mono text-[10px] text-muted-foreground">{endpoint.id}</div>
                         </TableCell>
                         <TableCell>
-                          {endpoint.keyRevokedAt ? (
-                            <Badge tone="danger">已撤销</Badge>
-                          ) : endpoint.hasKey ? (
-                            <div>
-                              <div className="font-mono text-xs">{endpoint.keyMasked}</div>
-                              <div className="text-xs text-muted-foreground">归属 {compactId(endpoint.ownerUserId)}</div>
-                            </div>
+                          {endpoint.ownerUserId ? (
+                            <div className="text-xs text-muted-foreground">{compactId(endpoint.ownerUserId)}</div>
                           ) : (
-                            <Badge tone="warning">未生成</Badge>
+                            <Badge tone="neutral">平台级</Badge>
                           )}
                         </TableCell>
                         <TableCell>

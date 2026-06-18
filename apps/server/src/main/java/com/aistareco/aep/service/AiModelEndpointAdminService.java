@@ -4,7 +4,6 @@ import com.aistareco.aep.dto.AdminAiModelEndpointUpsertDto;
 import com.aistareco.aep.dto.AiModelDiscoveryRequestDto;
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEndpointDto;
-import com.aistareco.aep.dto.AiModelEndpointKeyMintedDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
 import com.aistareco.aep.dto.AiModelProviderPresetDto;
 import com.aistareco.aep.model.AiModelBillingMode;
@@ -24,9 +23,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * AI 模型接入端点管理（v0.41，原 AiModelProviderAdminService）。
+ * AI 模型接入端点管理（v0.41，原 AiModelProviderAdminService；v0.81 移除外部 API Token）。
  * 上游 apiKey 走明文进 service，加密落库；DTO 出口剥离明文，仅返回脱敏值。
- * 外部 API Token 铸造 / 撤销委派给 {@link AiModelEndpointKeyService}。
  */
 @Service
 @Transactional
@@ -61,16 +59,13 @@ public class AiModelEndpointAdminService {
     private final AiModelEndpointRepository repo;
     private final AiAppBindingRepository bindingRepo;
     private final AiModelInvocationService invocation;
-    private final AiModelEndpointKeyService keyService;
 
     public AiModelEndpointAdminService(AiModelEndpointRepository repo,
                                        AiAppBindingRepository bindingRepo,
-                                       AiModelInvocationService invocation,
-                                       AiModelEndpointKeyService keyService) {
+                                       AiModelInvocationService invocation) {
         this.repo = repo;
         this.bindingRepo = bindingRepo;
         this.invocation = invocation;
-        this.keyService = keyService;
     }
 
     /** 内置服务商预设列表（前端「快速添加」用）。 */
@@ -188,16 +183,6 @@ public class AiModelEndpointAdminService {
 
     public Map<String, Object> testConnection(String id) {
         return invocation.testConnection(id);
-    }
-
-    /** 给端点铸造（或重铸）外部 API Token，明文一次性返回。 */
-    public AiModelEndpointKeyMintedDto mintKey(String id) {
-        return keyService.mintKey(id);
-    }
-
-    /** 撤销端点的外部 API Token。 */
-    public AiModelEndpointDto revokeKey(String id) {
-        return keyService.revokeKey(id);
     }
 
     /** 新建端点前：用表单里填的 baseUrl + apiKey 直接拉取可用模型（不落库）。 */
