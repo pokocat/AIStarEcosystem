@@ -336,3 +336,10 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 - [x] ~~**AI 端点外部 API Token / 对外网关移除**~~（**v0.81 完成**）：自用 LLM 场景去掉「生成 Key / sk-aep-* 对外网关」全链路（`EmbeddedLlmProxy*` / `AiModelEndpointKeyService` / mint-revoke 端点 / DTO·实体字段 / openapi 3 path）。保留上游密钥 + `ai_app_binding`（内部调用命脉）+ 用量计数器。详见 `apps/server/README.md` v0.81。
 - [ ] **预存在测试失败（与 v0.81 无关，clean main 同样红）**：本机带 `apps/server/.env`（gitignored，`AEP_CDN_DRIVER=oss` 但 endpoint 不可解析）时，所有 `@SpringBootTest` 全 context-load 失败 → 跑全量测试前应临时移走 `.env`（或确保 OSS endpoint 可解析）。即便移走 `.env`，仍有 **4 个预存在失败**需排查：`MaterialOpsE2ETest`（`productLibrary_includesMaterialProducts` / `getScript_returnsFullPayloadWithBlocks` / `listVideos_filterByProduct`）+ `PlatformSupportTest.toCsv_roundTrips`。已确认 stash 我的改动后于 clean main 同样失败 → 属历史欠债，非本次引入。
+
+---
+
+## 2026-06-18 · 大模型调用原始响应可观测
+
+- [x] ~~**失败时记录上游原始响应（止血，全模态）**~~（**v0.84 完成**）：文本 LLM（`AiModelInvocationService`：2xx-不可解析也 WARN raw + 落 `responseBodyJson`）、图像（`DramaRenderService` bad-output 记 raw）、视频（`MaterialVideoModelClient` poll 失败记 raw + `extractFailReason`）、数字人（`DapMultimodalClient` video poll 失败记 raw）四个模态,失败/终态均 WARN 上游原始响应体,便于排查。
+- [ ] **大模型调用层结构性统一（架构债，建议下一步专做）**：当前**仅文本走唯一入口 `AiModelInvocationService`**;图像（`DramaRenderService`）/ 视频（`MaterialVideoModelClient` submit+poll）/ 数字人（`DapMultimodalClient` chat/image/video）各有独立 HTTP 客户端,只共享 `resolveEndpoint(purpose)`,**HTTP 发送 + 原始日志 + usage 落库各写各的** → 可观测性靠每个站点「记得加」,易漏（本次就是逐个补的）。目标:抽一个共享原语（如 `UpstreamModelHttp.sendJson(req, ctx)`）统一做 send + io 记原始请求/响应 + 失败 WARN + best-effort 落 `AiModelUsageRecord.responseBodyJson`,四个客户端改走它（Coze SDK 流式单独适配）。收益:任何模态/子应用调大模型「有原始响应」成为结构保证,新模态零额外日志代码。注意:改的是最关键的 AI 链路、跨 4 个生产客户端、异常语义各异,需逐客户端加测试 + 真机验证,故单独成任务而非随手合入。

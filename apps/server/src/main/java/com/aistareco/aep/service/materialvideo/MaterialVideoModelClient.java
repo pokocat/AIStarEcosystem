@@ -223,10 +223,15 @@ public class MaterialVideoModelClient {
             String thumb = extractThumb(root);
             Integer progressPct = extractProgressPct(root);
             String failReason = "failed".equals(status) ? extractFailReason(root) : null;
-            if (!"processing".equals(status)) {
-                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} progress={} hasVideo={} failReason={} durationMs={}",
+            if ("failed".equals(status)) {
+                // 上游判失败：记原始响应体，方便排查（agnes 等可能不给结构化原因字段）。
+                log.warn("[material-video] poll FAILED endpoint={} protocol={} taskId={} rawStatus={} progress={} failReason={} durationMs={} body={}",
+                        p.getName(), submit.protocol(), idForLog, rawStatus, progressPct, failReason,
+                        elapsedMs(startNanos), snippet(resp.body()));
+            } else if (!"processing".equals(status)) {
+                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} progress={} hasVideo={} durationMs={}",
                         p.getName(), submit.protocol(), idForLog, status, rawStatus, progressPct,
-                        videoUrl != null && !videoUrl.isBlank(), failReason, elapsedMs(startNanos));
+                        videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
             }
             return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason);
         } catch (BusinessException be) {

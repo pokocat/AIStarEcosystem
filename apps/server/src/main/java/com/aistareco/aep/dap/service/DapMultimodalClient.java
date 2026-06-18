@@ -300,7 +300,13 @@ public class DapMultimodalClient {
                 lastStatus = t.status();
                 lastHeartbeat = now;
             }
-            if ("completed".equals(t.status()) || "failed".equals(t.status())) return t;
+            if ("completed".equals(t.status()) || "failed".equals(t.status())) {
+                if ("failed".equals(t.status())) {
+                    log.warn("[dap-ai] video-task FAILED taskId={} progress={} raw={}",
+                            taskId, t.progress(), truncate(t.raw(), 600));
+                }
+                return t;
+            }
             if (onPoll != null) onPoll.accept(t);
             try {
                 Thread.sleep(interval * 1000L);

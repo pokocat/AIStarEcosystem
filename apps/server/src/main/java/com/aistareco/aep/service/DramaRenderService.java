@@ -211,6 +211,8 @@ public class DramaRenderService {
             } else {
                 String b64 = data0.path("b64_json").asText(null);
                 if (b64 == null || b64.isBlank()) {
+                    log.warn("[drama-render] image BAD_OUTPUT endpoint={} status={} body={}",
+                            ep.getName(), resp.statusCode(), truncate(resp.body(), 600));
                     usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
                             AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
                             requestId, upstreamId, elapsedMs(startNanos), "IMAGE_BAD_OUTPUT",
