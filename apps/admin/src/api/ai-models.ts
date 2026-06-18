@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// api/ai-models.ts: Admin AI 模型接入端点 + 外部 API Token + AI 应用绑定。
+// api/ai-models.ts: Admin AI 模型接入端点 + AI 应用绑定。
 // 对应 AdminAiModelEndpointController + AdminAiAppBindingController。
-//   端点 = 固定 {上游密钥 + 单模型 + 地址}，自带外部 API Token（sk-aep-*）。
+//   端点 = 固定 {上游密钥 + 单模型 + 地址}，仅供平台内部 AI 应用绑定调用。
 //   AI 应用（用途）经「应用绑定」固定指向一个端点。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ export interface AiModelEntry {
   supportsVision?: boolean;
 }
 
-/** 模型接入端点读 DTO（上游 apiKey / 外部 API Token 均不返回明文）。 */
+/** 模型接入端点读 DTO（上游 apiKey 不返回明文）。 */
 export interface AiModelEndpoint {
   id: string;
   name: string;
@@ -65,10 +65,6 @@ export interface AiModelEndpoint {
   dailyCostQuotaMicros?: number;
   alertFailureRatePct?: number;
   models?: AiModelEntry[];
-  // 内嵌外部 API Token
-  keyPrefix?: string;
-  keyMasked?: string;
-  hasKey: boolean;
   ownerUserId?: string;
   /** 成本估算口径；为空表示自动：文本 token / 图片按次 / 视频按秒。 */
   billingMode?: AiModelBillingMode | null;
@@ -83,7 +79,6 @@ export interface AiModelEndpoint {
   totalBillableSeconds: number;
   totalCalls: number;
   lastUsedAt?: string;
-  keyRevokedAt?: string;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -119,12 +114,6 @@ export interface AdminAiModelEndpointUpsert {
   /** 按次/按秒单价，人民币微元 / 次 或 / 秒。 */
   unitPriceMicros?: number;
   enabled?: boolean;
-}
-
-/** 铸造外部 API Token 的响应（plaintext 仅一次）。 */
-export interface AiModelEndpointKeyMinted {
-  endpoint: AiModelEndpoint;
-  plaintext: string;
 }
 
 /** AI 应用绑定（用途 → 端点）。 */
@@ -291,16 +280,6 @@ export async function remove(id: string): Promise<void> {
 }
 export async function testConnection(id: string): Promise<{ ok: boolean; statusCode?: number; error?: string; snippet?: string }> {
   return apiFetch(`${BASE}/${encodeURIComponent(id)}/test`, { method: "POST" });
-}
-
-// ── 外部 API Token 铸造 / 撤销 ───────────────────────────────────────────────
-/** 给端点铸造（或重铸）外部 API Token，唯一返回明文一次。 */
-export async function mintKey(id: string): Promise<AiModelEndpointKeyMinted> {
-  return apiFetch<AiModelEndpointKeyMinted>(`${BASE}/${encodeURIComponent(id)}/mint-key`, { method: "POST" });
-}
-/** 撤销端点的外部 API Token（不删端点）。 */
-export async function revokeKey(id: string): Promise<AiModelEndpoint> {
-  return apiFetch<AiModelEndpoint>(`${BASE}/${encodeURIComponent(id)}/revoke-key`, { method: "POST" });
 }
 
 // ── 模型发现 ──────────────────────────────────────────────────────────────────

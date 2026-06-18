@@ -11,8 +11,5 @@ public interface AiModelEndpointRepository extends JpaRepository<AiModelEndpoint
 
     List<AiModelEndpoint> findByEnabledTrue();
 
-    /** 外部 API Token 验证：按前 12 位 prefix 索引检索候选。 */
-    List<AiModelEndpoint> findByKeyPrefix(String keyPrefix);
-
     List<AiModelEndpoint> findAllByOrderByCreatedAtDesc();
 }

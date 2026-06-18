@@ -9,10 +9,9 @@ import java.time.Instant;
 /**
  * AI 模型接入端点（v0.41 统一：原 {@code AiModelProvider} 演化而来）。
  *
- * 一行 = 一个**固定的可调用模型** = {上游密钥 + 单个模型 + 地址}，且**自带一个外部 API Token**：
+ * 一行 = 一个**固定的可调用模型** = {上游密钥 + 单个模型 + 地址}：
  *   - 上游：{@link #providerType} + {@link #baseUrl} + {@link #upstreamApiKeyEncrypted}(密文) + {@link #model}(单)
- *   - 外部 API Token：{@link #keyPrefix} + {@link #keyHash}(bcrypt)；
- *     内部 AI 应用经 {@code ai_app_binding} 路由到本端点，外部业务方持 {@code sk-aep-*} 调 server 内嵌 LLM API 并计费。
+ *   - 内部 AI 应用经 {@code ai_app_binding} 路由到本端点调用（v0.81 移除对外 API Token）。
  *
  * 表名保留 {@code ai_model_providers}（JPA ddl-auto=update 重命名表会孤立旧数据）。
  * {@code api_key_encrypted} / {@code default_model} 两个物理列复用，零数据搬迁；
@@ -92,16 +91,6 @@ public class AiModelEndpoint {
     @Column(name = "models_json", columnDefinition = "LONGTEXT")
     private String modelsJson;
 
-    // ── 内嵌外部 API Token（按需铸造，可空） ───────────────────────────────────
-
-    /** sk-aep-XXXXX 前 12 位（明文 prefix），用于列表展示 + 验证索引检索。未铸造时为 null。 */
-    @Column(name = "key_prefix", length = 16)
-    private String keyPrefix;
-
-    /** 外部 API Token 的 bcrypt 哈希。未铸造时为 null。 */
-    @Column(name = "key_hash", length = 80)
-    private String keyHash;
-
     /** 计费归属用户（钱包）。**可空 = 平台级端点，usage 仅累计不扣钱包**。 */
     @Column(name = "owner_user_id")
     private String ownerUserId;
@@ -129,7 +118,7 @@ public class AiModelEndpoint {
     @Column(name = "unit_price_micros")
     private long unitPriceMicros = 0L;
 
-    /** 外部 API Token 累计 token 消耗。 */
+    /** 累计 token 消耗（内部 AI 应用调用累计）。 */
     @ColumnDefault("0")
     @Builder.Default
     private long totalTokens = 0L;
@@ -151,10 +140,6 @@ public class AiModelEndpoint {
     private long totalCalls = 0L;
 
     private Instant lastUsedAt;
-
-    /** 撤销外部 API Token（不删端点；撤销后 validate 不再通过）。 */
-    @Column(name = "key_revoked_at")
-    private Instant keyRevokedAt;
 
     @ColumnDefault("true")
     @Builder.Default

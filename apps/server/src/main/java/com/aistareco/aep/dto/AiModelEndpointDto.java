@@ -10,8 +10,8 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * AI 模型接入端点读 DTO（v0.41）。
- * **永远不返回上游 apiKey 明文**（仅 upstreamApiKeyMasked），也**永远不返回外部 API Token 明文**（仅 keyMasked）。
+ * AI 模型接入端点读 DTO（v0.41；v0.81 移除外部 API Token）。
+ * **永远不返回上游 apiKey 明文**（仅 upstreamApiKeyMasked）。
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AiModelEndpointDto(
@@ -32,10 +32,6 @@ public record AiModelEndpointDto(
         Long dailyCostQuotaMicros,
         Integer alertFailureRatePct,
         List<AiModelEntryDto> models,
-        // 外部 API Token
-        String keyPrefix,
-        String keyMasked,
-        boolean hasKey,
         String ownerUserId,
         String billingMode,
         long promptTokenPriceMicros,
@@ -46,7 +42,6 @@ public record AiModelEndpointDto(
         long totalBillableSeconds,
         long totalCalls,
         Instant lastUsedAt,
-        Instant keyRevokedAt,
         boolean enabled,
         Instant createdAt,
         Instant updatedAt
@@ -59,7 +54,6 @@ public record AiModelEndpointDto(
         try {
             plaintext = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
         } catch (Exception ignored) {}
-        boolean hasKey = e.getKeyHash() != null && !e.getKeyHash().isBlank() && e.getKeyRevokedAt() == null;
         return new AiModelEndpointDto(
                 e.getId(),
                 e.getName(),
@@ -78,9 +72,6 @@ public record AiModelEndpointDto(
                 e.getDailyCostQuotaMicros(),
                 e.getAlertFailureRatePct(),
                 parseModels(e.getModelsJson()),
-                e.getKeyPrefix(),
-                e.getKeyPrefix() != null ? e.getKeyPrefix() + "…" : null,
-                hasKey,
                 e.getOwnerUserId(),
                 e.getBillingMode() != null ? e.getBillingMode().name() : null,
                 Math.max(0L, e.getPromptTokenPriceMicros()),
@@ -91,7 +82,6 @@ public record AiModelEndpointDto(
                 e.getTotalBillableSeconds(),
                 e.getTotalCalls(),
                 e.getLastUsedAt(),
-                e.getKeyRevokedAt(),
                 e.isEnabled(),
                 e.getCreatedAt(),
                 e.getUpdatedAt()
