@@ -43,6 +43,19 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
+    void extractFailReason_picks_common_vendor_fields() {
+        // 上游 fail 时把原因放在各种字段，统一抽出来给用户/运营看，不再只剩「status=failed」
+        assertEquals("敏感内容拦截",
+                MaterialVideoModelClient.extractFailReason(json("{\"task_status\":\"failed\",\"fail_reason\":\"敏感内容拦截\"}")));
+        assertEquals("quota exceeded",
+                MaterialVideoModelClient.extractFailReason(json("{\"status\":\"error\",\"message\":\"quota exceeded\"}")));
+        assertEquals("bad prompt",
+                MaterialVideoModelClient.extractFailReason(json("{\"data\":{\"error\":\"bad prompt\"}}")));
+        // 没有任何原因字段 → null（worker 退化为只报 status）
+        assertNull(MaterialVideoModelClient.extractFailReason(json("{\"task_status\":\"failed\"}")));
+    }
+
+    @Test
     void extractVideoUrl_cogvideox_shape() {
         // 智谱 CogVideoX：video_result[0].url
         JsonNode root = json("""

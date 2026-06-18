@@ -74,8 +74,8 @@ public class MaterialVideoModelClient {
         requireKey(requireEndpoint());
     }
 
-    /** 提交一个生成任务，返回外部 task_id + 实际用到的端点 / model。 */
-    public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId) {
+    /** 提交一个生成任务，返回外部 task_id + 实际用到的端点 / model。appCode 用于用量归属（drama / celebrity）。 */
+    public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId, String appCode) {
         AiModelEndpoint p = requireEndpoint();
         String apiKey = requireKey(p);
         String model = (p.getModel() != null && !p.getModel().isBlank())
@@ -100,7 +100,7 @@ public class MaterialVideoModelClient {
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
                 log.warn("[material-video] submit http-error endpoint={} model={} status={} durationMs={} body={}",
                         p.getName(), model, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
-                recordVideoUsage(p, model, durationSec, false, ownerUserId, requestId, null, elapsedMs(startNanos),
+                recordVideoUsage(p, model, durationSec, false, ownerUserId, appCode, requestId, null, elapsedMs(startNanos),
                         "HTTP_" + resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                         "视频生成失败，请稍后重试",
@@ -127,7 +127,7 @@ public class MaterialVideoModelClient {
             }
             log.info("[material-video] submit ok endpoint={} model={} protocol={} taskId={} videoId={} durationMs={}",
                     p.getName(), model, protocol, taskId, videoId, elapsedMs(startNanos));
-            recordVideoUsage(p, model, durationSec, true, ownerUserId, requestId,
+            recordVideoUsage(p, model, durationSec, true, ownerUserId, appCode, requestId,
                     (taskId != null && !taskId.isBlank()) ? taskId : videoId,
                     elapsedMs(startNanos), null, null);
             return new SubmitResult(taskId, videoId, p.getName(), model, protocol);
@@ -136,7 +136,7 @@ public class MaterialVideoModelClient {
         } catch (Exception e) {
             log.warn("[material-video] submit exception endpoint={} model={} durationMs={} err={}",
                     p.getName(), model, elapsedMs(startNanos), e.toString());
-            recordVideoUsage(p, model, durationSec, false, ownerUserId, requestId, null, elapsedMs(startNanos),
+            recordVideoUsage(p, model, durationSec, false, ownerUserId, appCode, requestId, null, elapsedMs(startNanos),
                     e.getClass().getSimpleName(), e.getMessage());
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                     "视频生成失败，请稍后重试",
@@ -149,6 +149,7 @@ public class MaterialVideoModelClient {
                                   int durationSec,
                                   boolean success,
                                   String ownerUserId,
+                                  String appCode,
                                   String requestId,
                                   String upstreamId,
                                   long latencyMs,
@@ -170,7 +171,7 @@ public class MaterialVideoModelClient {
                     success,
                     ownerUserId,
                     null,
-                    null,
+                    appCode,
                     requestId,
                     upstreamId,
                     latencyMs,
@@ -221,12 +222,13 @@ public class MaterialVideoModelClient {
             String videoUrl = extractVideoUrl(root);
             String thumb = extractThumb(root);
             Integer progressPct = extractProgressPct(root);
+            String failReason = "failed".equals(status) ? extractFailReason(root) : null;
             if (!"processing".equals(status)) {
-                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} progress={} hasVideo={} durationMs={}",
+                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} progress={} hasVideo={} failReason={} durationMs={}",
                         p.getName(), submit.protocol(), idForLog, status, rawStatus, progressPct,
-                        videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
+                        videoUrl != null && !videoUrl.isBlank(), failReason, elapsedMs(startNanos));
             }
-            return new PollResult(status, videoUrl, thumb, rawStatus, progressPct);
+            return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -346,6 +348,20 @@ public class MaterialVideoModelClient {
             case "fail", "failed", "error", "cancelled", "canceled" -> "failed";
             default -> "processing"; // PROCESSING / RUNNING / SUBMITTED / QUEUED / pending …
         };
+    }
+
+    /** 失败原因：上游 fail 时常见把原因放这些字段，抽出来回传给用户/运营，不再只给一句「status=failed」。 */
+    static String extractFailReason(JsonNode root) {
+        String direct = firstText(root, "fail_reason", "failReason", "error_message", "errorMessage",
+                "error", "message", "msg", "reason", "detail");
+        if (direct != null && !direct.isBlank()) return direct;
+        JsonNode data = root.get("data");
+        if (data != null) {
+            String d = firstText(data, "fail_reason", "failReason", "error_message", "errorMessage",
+                    "error", "message", "msg", "reason", "detail");
+            if (d != null && !d.isBlank()) return d;
+        }
+        return null;
     }
 
     /** 常见成片 URL 位置：video_result[0].url / data.video_url / output.video_url / videos[0].url / video_url / Agnes remixed_from_video_id。 */
@@ -539,7 +555,8 @@ public class MaterialVideoModelClient {
         }
     }
 
-    public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus, Integer progressPct) {
+    public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
+                             Integer progressPct, String failReason) {
         public boolean succeeded() { return "succeeded".equals(status); }
         public boolean failed() { return "failed".equals(status); }
     }
