@@ -7,6 +7,9 @@ import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.repository.AiAppBindingRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
+import com.aistareco.aep.service.ai.ModelCallCtx;
+import com.aistareco.aep.service.ai.UpstreamCallException;
+import com.aistareco.aep.service.ai.UpstreamModelHttp;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,7 +21,6 @@ import org.springframework.stereotype.Service;
 
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -55,6 +57,7 @@ public class AiModelInvocationService {
     private final AiAppBindingRepository bindingRepo;
     private final AiModelUsageService usage;
     private final AiModelGuardService guard;
+    private final UpstreamModelHttp upstreamHttp;
 
     @Value("${aep.llm.chat-timeout-seconds:90}")
     private long chatTimeoutSeconds = 90;
@@ -62,11 +65,13 @@ public class AiModelInvocationService {
     public AiModelInvocationService(AiModelEndpointRepository endpointRepo,
                                     AiAppBindingRepository bindingRepo,
                                     AiModelUsageService usage,
-                                    AiModelGuardService guard) {
+                                    AiModelGuardService guard,
+                                    UpstreamModelHttp upstreamHttp) {
         this.endpointRepo = endpointRepo;
         this.bindingRepo = bindingRepo;
         this.usage = usage;
         this.guard = guard;
+        this.upstreamHttp = upstreamHttp;
     }
 
     /** purpose → 绑定端点（启用）。无绑定 / 端点停用 / 端点不存在 → empty。 */
@@ -273,33 +278,31 @@ public class AiModelInvocationService {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestJson))
                 .build();
+        // v0.85：发送 + 原始日志 + 非 2xx WARN + 失败用量统一走共享原语；token 解析仍留在本方法（见下）。
+        ModelCallCtx ctx = ModelCallCtx.builder(purpose)
+                .endpoint(e.getId(), e.getName())
+                .model(model)
+                .requestId(requestId)
+                .requestBodyJson(requestJson)
+                .replayOfRecordId(replayOfRecordId)
+                .client(HTTP)
+                .build();
         HttpResponse<String> resp;
         try {
-            resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
-        } catch (Exception ex) {
-            // 网络层异常：记一条失败流水（best-effort），再转成稳定业务错误。
-            usage.recordObserved(e.getId(), e.getName(), model,
-                    purpose != null ? purpose.wire() : null, null, null, null, false,
-                    requestId, null, elapsedMs(startNanos), ex.getClass().getSimpleName(), ex.getMessage(),
-                    requestJson, null, replayOfRecordId);
-            String code = ex instanceof HttpTimeoutException ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
-            String message = ex instanceof HttpTimeoutException
+            resp = upstreamHttp.sendJson(req, ctx);
+        } catch (UpstreamCallException ex) {
+            // 网络层异常：失败流水已由原语 best-effort 落库，这里只转成稳定业务错误码。
+            String code = ex.isTimeout() ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
+            String message = ex.isTimeout()
                     ? "AI 生成超时，请稍后重试或换一个模型端点"
                     : "AI 生成失败，请稍后重试";
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, code, message,
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
-                            + " model=" + model + " err=" + ex);
+                            + " model=" + model + " err=" + ex.getCause());
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            // v0.41：失败也落一条流水（token 为空），供用量统计区分成功 / 失败调用。
-            usage.recordObserved(e.getId(), e.getName(), model,
-                    purpose != null ? purpose.wire() : null, null, null, null, false,
-                    requestId, null, elapsedMs(startNanos), "HTTP_" + resp.statusCode(), snippet(resp.body()),
-                    requestJson, resp.body(), replayOfRecordId);
-            log.warn("[ai-chat] invoke http-error requestId={} purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
-                    requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
-                    resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
-            // 不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏）；技术细节进 ErrorLog 供「追查号」排障。
+            // 失败流水 + WARN 已由原语处理；不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏），
+            // 技术细节进 ErrorLog 供「追查号」排障。
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
                     "AI 生成失败，请稍后重试",
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
@@ -310,13 +313,7 @@ public class AiModelInvocationService {
             parsed = OM.readValue(resp.body(), Map.class);
         } catch (Exception parseEx) {
             // 2xx 但响应体无法解析：记原始响应（日志 + 流水），便于排查上游协议变化 / 网关插话。
-            usage.recordObserved(e.getId(), e.getName(), model,
-                    purpose != null ? purpose.wire() : null, null, null, null, false,
-                    requestId, null, elapsedMs(startNanos), "AI_BAD_OUTPUT", snippet(resp.body()),
-                    requestJson, resp.body(), replayOfRecordId);
-            log.warn("[ai-chat] invoke bad-output requestId={} purpose={} endpointId={} endpoint={} model={} status={} durationMs={} body={}",
-                    requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
-                    resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
+            upstreamHttp.recordBadOutput(ctx, resp.body(), "AI_BAD_OUTPUT", elapsedMs(startNanos));
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
                     "AI 返回无法解析，请稍后重试",
                     "endpoint=" + e.getName() + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));

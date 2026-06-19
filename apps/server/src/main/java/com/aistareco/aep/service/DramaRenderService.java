@@ -3,6 +3,9 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.service.ai.ModelCallCtx;
+import com.aistareco.aep.service.ai.UpstreamCallException;
+import com.aistareco.aep.service.ai.UpstreamModelHttp;
 import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
@@ -55,6 +58,7 @@ public class DramaRenderService {
 
     private final AiModelInvocationService invocation;
     private final AiModelUsageService usage;
+    private final UpstreamModelHttp upstreamHttp;
     private final MaterialVideoJobService videoJobs;
     private final CreditService creditService;
     private final CdnUploader cdnUploader;
@@ -65,6 +69,7 @@ public class DramaRenderService {
 
     public DramaRenderService(AiModelInvocationService invocation,
                               AiModelUsageService usage,
+                              UpstreamModelHttp upstreamHttp,
                               MaterialVideoJobService videoJobs,
                               CreditService creditService,
                               CdnUploader cdnUploader,
@@ -74,6 +79,7 @@ public class DramaRenderService {
                               ObjectMapper om) {
         this.invocation = invocation;
         this.usage = usage;
+        this.upstreamHttp = upstreamHttp;
         this.videoJobs = videoJobs;
         this.creditService = creditService;
         this.cdnUploader = cdnUploader;
@@ -190,37 +196,56 @@ public class DramaRenderService {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(om.writeValueAsString(req)))
                     .build();
-            HttpResponse<String> resp = HTTP.send(httpReq, HttpResponse.BodyHandlers.ofString());
+            // v0.85：发送 + 原始日志 + 非 2xx WARN + 失败用量统一走共享原语。
+            ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.IMAGE_GENERATION)
+                    .endpoint(ep.getId(), ep.getName())
+                    .model(ep.getModel())
+                    .requestId(requestId)
+                    .client(HTTP)
+                    .build();
+            HttpResponse<String> resp;
+            try {
+                resp = upstreamHttp.sendJson(httpReq, ctx);
+            } catch (UpstreamCallException ex) {
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
+                        "图像生成失败，请稍后重试",
+                        "endpoint=" + ep.getName() + " err=" + ex.getCause());
+            }
             if (resp.statusCode() / 100 != 2) {
-                log.warn("[drama-render] image http {} body={}", resp.statusCode(), truncate(resp.body(), 300));
-                usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
-                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
-                        requestId, null, elapsedMs(startNanos), "HTTP_" + resp.statusCode(), truncate(resp.body(), 300));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
                         "图像生成失败，请稍后重试",
                         "endpoint=" + ep.getName() + " model=" + ep.getModel()
                                 + " status=" + resp.statusCode() + " body=" + truncate(resp.body(), 300));
             }
-            JsonNode root = om.readTree(resp.body());
-            String upstreamId = root.path("id").asText(null);
-            JsonNode data0 = root.path("data").path(0);
-            String url = data0.path("url").asText(null);
+            String upstreamId = null;
             byte[] bytes;
-            if (url != null && !url.isBlank()) {
-                bytes = download(url);
-            } else {
-                String b64 = data0.path("b64_json").asText(null);
-                if (b64 == null || b64.isBlank()) {
-                    log.warn("[drama-render] image BAD_OUTPUT endpoint={} status={} body={}",
-                            ep.getName(), resp.statusCode(), truncate(resp.body(), 600));
-                    usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
-                            AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
-                            requestId, upstreamId, elapsedMs(startNanos), "IMAGE_BAD_OUTPUT",
-                            "图像模型响应缺少 data[0].url / b64_json。");
-                    throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_BAD_OUTPUT",
-                            "图像模型响应缺少 data[0].url / b64_json。");
+            try {
+                JsonNode root = om.readTree(resp.body());
+                upstreamId = root.path("id").asText(null);
+                JsonNode data0 = root.path("data").path(0);
+                String url = data0.path("url").asText(null);
+                if (url != null && !url.isBlank()) {
+                    bytes = download(url);
+                } else {
+                    String b64 = data0.path("b64_json").asText(null);
+                    if (b64 == null || b64.isBlank()) {
+                        upstreamHttp.recordBadOutput(ctx, resp.body(), "IMAGE_BAD_OUTPUT", elapsedMs(startNanos));
+                        throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_BAD_OUTPUT",
+                                "图像模型响应缺少 data[0].url / b64_json。");
+                    }
+                    bytes = Base64.getDecoder().decode(b64);
                 }
-                bytes = Base64.getDecoder().decode(b64);
+            } catch (BusinessException e) {
+                throw e;
+            } catch (Exception e) {
+                // 2xx 之后的处理（解析 / 下载产物 / 解码）失败：记一条失败用量后转业务错误。
+                usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
+                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
+                        requestId, upstreamId, elapsedMs(startNanos), e.getClass().getSimpleName(), e.getMessage());
+                log.warn("[drama-render] image post-process failed: {}", e.toString());
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
+                        "图像生成失败，请稍后重试",
+                        "endpoint=" + ep.getName() + " err=" + e);
             }
             // 用量观测（best-effort，token 数图像接口通常不回）
             try {
@@ -233,6 +258,7 @@ public class DramaRenderService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
+            // 仅覆盖发送前的准备阶段（序列化 / URI 构造等）；发送及之后的失败已在内层处理。
             usage.recordObserved(ep.getId(), ep.getName(), ep.getModel(),
                     AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L, false,
                     requestId, null, elapsedMs(startNanos), e.getClass().getSimpleName(), e.getMessage());

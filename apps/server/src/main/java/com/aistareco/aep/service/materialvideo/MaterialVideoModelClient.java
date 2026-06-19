@@ -6,6 +6,9 @@ import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.AiModelUsageService;
+import com.aistareco.aep.service.ai.ModelCallCtx;
+import com.aistareco.aep.service.ai.UpstreamCallException;
+import com.aistareco.aep.service.ai.UpstreamModelHttp;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -52,14 +55,17 @@ public class MaterialVideoModelClient {
     private final AiModelInvocationService invocation;
     private final MaterialVideoProperties props;
     private final AiModelUsageService usage;
+    private final UpstreamModelHttp upstreamHttp;
     private final HttpClient http;
 
     public MaterialVideoModelClient(AiModelInvocationService invocation,
                                     MaterialVideoProperties props,
-                                    AiModelUsageService usage) {
+                                    AiModelUsageService usage,
+                                    UpstreamModelHttp upstreamHttp) {
         this.invocation = invocation;
         this.props = props;
         this.usage = usage;
+        this.upstreamHttp = upstreamHttp;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
     }
 
@@ -89,24 +95,45 @@ public class MaterialVideoModelClient {
         String requestId = "vid-" + UUID.randomUUID().toString().substring(0, 16);
         log.info("[material-video] submit start endpoint={} model={} protocol={} path={} durationSec={} aspectRatio={} promptLength={}",
                 p.getName(), model, protocol, uri.getPath(), durationSec, aspectRatio, prompt == null ? 0 : prompt.length());
+
+        HttpRequest req;
         try {
-            HttpRequest req = HttpRequest.newBuilder(uri)
+            req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
                     .build();
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-                log.warn("[material-video] submit http-error endpoint={} model={} status={} durationMs={} body={}",
-                        p.getName(), model, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
-                recordVideoUsage(p, model, durationSec, false, ownerUserId, appCode, requestId, null, elapsedMs(startNanos),
-                        "HTTP_" + resp.statusCode(), snippet(resp.body()));
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                        "视频生成失败，请稍后重试",
-                        "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
-                                + " body=" + snippet(resp.body()));
-            }
+        } catch (Exception e) {
+            recordVideoUsage(p, model, durationSec, false, ownerUserId, appCode, requestId, null, elapsedMs(startNanos),
+                    e.getClass().getSimpleName(), e.getMessage());
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
+                    "视频生成失败，请稍后重试", "endpoint=" + p.getName() + " err=" + e);
+        }
+        // v0.85：发送 + 原始日志 + 非 2xx WARN + 失败用量统一走共享原语（带显式归属：drama / celebrity）。
+        ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.VIDEO_GENERATION)
+                .endpoint(p.getId(), p.getName())
+                .model(model)
+                .requestId(requestId)
+                .ownerUserId(ownerUserId)
+                .appCode(appCode)
+                .client(http)
+                .build();
+        HttpResponse<String> resp;
+        try {
+            resp = upstreamHttp.sendJson(req, ctx);
+        } catch (UpstreamCallException ex) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
+                    "视频生成失败，请稍后重试",
+                    "endpoint=" + p.getName() + " err=" + ex.getCause());
+        }
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
+                    "视频生成失败，请稍后重试",
+                    "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
+                            + " body=" + snippet(resp.body()));
+        }
+        try {
             JsonNode root = OM.readTree(resp.body());
             String taskId = firstText(root, "id", "task_id", "request_id", "taskId");
             String videoId = firstText(root, "video_id", "videoId");
@@ -121,6 +148,7 @@ public class MaterialVideoModelClient {
             if ((taskId == null || taskId.isBlank()) && (videoId == null || videoId.isBlank())) {
                 log.warn("[material-video] submit missing-task-id endpoint={} model={} durationMs={} body={}",
                         p.getName(), model, elapsedMs(startNanos), snippet(resp.body()));
+                upstreamHttp.recordBadOutput(ctx, resp.body(), "VIDEO_SUBMIT_FAILED", elapsedMs(startNanos));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                         "视频生成失败，请稍后重试",
                         "missing task/video id; endpoint=" + p.getName() + " body=" + snippet(resp.body()));
@@ -134,10 +162,10 @@ public class MaterialVideoModelClient {
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
-            log.warn("[material-video] submit exception endpoint={} model={} durationMs={} err={}",
+            // 2xx 但响应体无法解析：记原始响应后转业务错误。
+            log.warn("[material-video] submit bad-output endpoint={} model={} durationMs={} err={}",
                     p.getName(), model, elapsedMs(startNanos), e.toString());
-            recordVideoUsage(p, model, durationSec, false, ownerUserId, appCode, requestId, null, elapsedMs(startNanos),
-                    e.getClass().getSimpleName(), e.getMessage());
+            upstreamHttp.recordBadOutput(ctx, resp.body(), "VIDEO_SUBMIT_FAILED", elapsedMs(startNanos));
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                     "视频生成失败，请稍后重试",
                     "endpoint=" + p.getName() + " err=" + e);
@@ -197,21 +225,34 @@ public class MaterialVideoModelClient {
         String idForLog = submit.externalId();
         URI uri = pollUri(p, submit);
         long startNanos = System.nanoTime();
+        // 轮询不落失败用量（沿用历史行为，避免每隔几秒的瞬时 poll 失败刷爆用量表）；原始日志仍统一走原语。
+        ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.VIDEO_GENERATION)
+                .endpoint(p.getId(), p.getName())
+                .model(submit.modelUsed())
+                .requestId("vid-poll-" + UUID.randomUUID().toString().substring(0, 12))
+                .client(http)
+                .recordFailureUsage(false)
+                .build();
+        HttpResponse<String> resp;
         try {
             HttpRequest req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
                     .header("Authorization", "Bearer " + apiKey)
                     .GET()
                     .build();
-            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-                log.warn("[material-video] poll http-error endpoint={} protocol={} taskId={} status={} durationMs={} body={}",
-                        p.getName(), submit.protocol(), idForLog, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
-                        "视频生成失败，请稍后重试",
-                        "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " status=" + resp.statusCode()
-                                + " body=" + snippet(resp.body()));
-            }
+            resp = upstreamHttp.sendJson(req, ctx);
+        } catch (UpstreamCallException ex) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
+                    "视频生成失败，请稍后重试",
+                    "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " err=" + ex.getCause());
+        }
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
+                    "视频生成失败，请稍后重试",
+                    "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " status=" + resp.statusCode()
+                            + " body=" + snippet(resp.body()));
+        }
+        try {
             JsonNode root = OM.readTree(resp.body());
             String rawStatus = firstText(root, "task_status", "status", "state");
             if (rawStatus == null) {

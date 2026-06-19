@@ -6,6 +6,9 @@ import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.AiModelUsageService;
+import com.aistareco.aep.service.ai.ModelCallCtx;
+import com.aistareco.aep.service.ai.UpstreamCallException;
+import com.aistareco.aep.service.ai.UpstreamModelHttp;
 import com.aistareco.common.AepCryptoUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,14 +56,17 @@ public class DapMultimodalClient {
     private final DapProperties props;
     private final AiModelInvocationService aiModels;
     private final AiModelUsageService usage;
+    private final UpstreamModelHttp upstreamHttp;
     private final HttpClient http;
 
     public DapMultimodalClient(DapProperties props,
                                AiModelInvocationService aiModels,
-                               AiModelUsageService usage) {
+                               AiModelUsageService usage,
+                               UpstreamModelHttp upstreamHttp) {
         this.props = props;
         this.aiModels = aiModels;
         this.usage = usage;
+        this.upstreamHttp = upstreamHttp;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -358,7 +364,7 @@ public class DapMultimodalClient {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
                     .build();
-            return sendForJson(req, path, t.source(), summarizeRequest(body));
+            return sendForJson(req, t, path, summarizeRequest(body));
         } catch (IOException e) {
             throw new DapModelException("DAP_MODEL_CALL_FAILED", "请求体序列化失败: " + e.getMessage());
         }
@@ -369,7 +375,7 @@ public class DapMultimodalClient {
                 .timeout(Duration.ofSeconds(props.getHttp().getTimeoutSeconds()))
                 .header("Authorization", "Bearer " + t.apiKey())
                 .GET().build();
-        return sendForJson(req, path, t.source(), null);
+        return sendForJson(req, t, path, null);
     }
 
     private void recordMetered(Target t,
@@ -405,47 +411,40 @@ public class DapMultimodalClient {
         }
     }
 
-    /** 发送 + 解析 JSON;IOException 自动重试 1 次;入参 / 返回 全量打日志(key 不打、dataURI 只打长度)。 */
-    private JsonNode sendForJson(HttpRequest req, String path, String source, String requestSummary) {
-        int maxAttempts = 2;
-        for (int attempt = 1; ; attempt++) {
-            long startNanos = System.nanoTime();
-            log.info("[dap-ai] call start method={} path={} operation={} host={} source={} attempt={}/{} request={}",
-                    req.method(), path, operationFromPath(req), req.uri().getHost(), source, attempt, maxAttempts,
-                    requestSummary == null ? "-" : requestSummary);
-            try {
-                HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() >= 400) {
-                    log.warn("[dap-ai] call http-error method={} path={} operation={} status={} durationMs={} request={} body={}",
-                            req.method(), path, operationFromPath(req), resp.statusCode(), elapsedMs(startNanos),
-                            requestSummary == null ? "-" : requestSummary, truncate(resp.body(), 600));
-                    // 不把上游响应体直出给用户；完整 body 已在上面 log.warn（含 job 上下文）落盘供排障。
-                    throw new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(),
-                            "AI 生成失败，请稍后重试");
-                }
-                log.info("[dap-ai] call ok method={} path={} operation={} status={} durationMs={} bytes={} response={}",
-                        req.method(), path, operationFromPath(req), resp.statusCode(), elapsedMs(startNanos),
-                        resp.body() == null ? 0 : resp.body().length(), truncate(resp.body(), 600));
-                return OM.readTree(resp.body());
-            } catch (IOException | InterruptedException e) {
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                    throw new DapModelException("DAP_MODEL_CALL_FAILED", "大模型调用被中断(" + path + ")");
-                }
-                boolean willRetry = attempt < maxAttempts;
-                log.warn("[dap-ai] call exception method={} path={} operation={} durationMs={} attempt={}/{} willRetry={} request={} err={}",
-                        req.method(), path, operationFromPath(req), elapsedMs(startNanos), attempt, maxAttempts,
-                        willRetry, requestSummary == null ? "-" : requestSummary, e.toString());
-                if (!willRetry) {
-                    throw new DapModelException("DAP_MODEL_CALL_FAILED", "大模型调用失败(" + path + "): " + e.getMessage());
-                }
-                try {
-                    Thread.sleep(1200L);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new DapModelException("DAP_MODEL_CALL_FAILED", "大模型调用被中断(" + path + ")");
-                }
-            }
+    /**
+     * 发送 + 解析 JSON。v0.85：HTTP 发送 / 原始日志 / 非 2xx WARN / IOException 退避重试统一走共享原语
+     * {@link UpstreamModelHttp#sendJson}（dataURI 大字段经 {@code summarizeRequest} 脱敏后作为 io 日志的请求体）。
+     *
+     * dap 的用量流水仍由各调用方（{@code generateImage} / {@code createVideoTask}）按 metered 计费记录
+     * （成功带 units/seconds、失败 units=0），故此处 {@code recordFailureUsage(false)}，不重复落库。
+     * 对外异常码保持不变：HTTP 错误 → DAP_MODEL_HTTP_{status}；网络层失败 / 中断 → DAP_MODEL_CALL_FAILED。
+     */
+    private JsonNode sendForJson(HttpRequest req, Target t, String path, String requestSummary) {
+        ModelCallCtx ctx = ModelCallCtx.builder(t.purpose())
+                .endpoint(t.endpointId(), t.endpointName())
+                .model(t.model())
+                .requestId("dap-" + UUID.randomUUID().toString().substring(0, 12))
+                .requestBodyJson(requestSummary)
+                .client(http)
+                .maxAttempts(2)
+                .retryBackoffMs(1200L)
+                .recordFailureUsage(false)
+                .build();
+        HttpResponse<String> resp;
+        try {
+            resp = upstreamHttp.sendJson(req, ctx);
+        } catch (UpstreamCallException ex) {
+            throw new DapModelException("DAP_MODEL_CALL_FAILED",
+                    "大模型调用失败(" + path + "): " + (ex.getCause() == null ? ex.getMessage() : ex.getCause().getMessage()));
+        }
+        if (resp.statusCode() >= 400) {
+            // 不把上游响应体直出给用户；完整 body 已由原语 WARN 落盘供排障。
+            throw new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(), "AI 生成失败，请稍后重试");
+        }
+        try {
+            return OM.readTree(resp.body());
+        } catch (IOException e) {
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "大模型返回不是合法 JSON(" + path + "): " + e.getMessage());
         }
     }
 
@@ -563,15 +562,6 @@ public class DapMultimodalClient {
         } catch (Exception e) {
             return "invalid-url";
         }
-    }
-
-    private static String operationFromPath(HttpRequest req) {
-        String path = req.uri().getPath();
-        if (path.endsWith("/chat/completions")) return "chat";
-        if (path.endsWith("/images/generations")) return "image";
-        if (path.endsWith("/videos")) return "video";
-        if (path.contains("/videos/")) return "video-status";
-        return "other";
     }
 
     /** dap 大模型调用异常(runner 捕获后落 job.errorMessage + 释放冻结积分)。 */

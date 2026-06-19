@@ -79,7 +79,8 @@ class AiModelLiveSmokeTest {
 
         AiModelInvocationService.AiModelResponse resp =
                 new AiModelInvocationService(endpointRepo, bindingRepo,
-                        mock(AiModelUsageService.class), mock(AiModelGuardService.class))
+                        mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                        new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)))
                         .invokeChat(AiModelPurpose.GENERAL, messages, options);
 
         assertNotNull(resp, "response 不应为 null");
@@ -118,7 +119,8 @@ class AiModelLiveSmokeTest {
                 .thenReturn(Optional.of(liveEndpoint("live-conn", baseUrl, apiKey, model, type)));
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
-                mock(AiModelUsageService.class), mock(AiModelGuardService.class))
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                        new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)))
                 .testConnection("live-conn");
         Path file = record("connection", baseUrl, model, result);
         System.out.println("[AiModelLiveSmokeTest] testConnection result=" + result

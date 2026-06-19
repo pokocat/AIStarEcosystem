@@ -100,7 +100,8 @@ class AiModelInvocationServiceTest {
         when(bindingRepo.findById(purpose)).thenReturn(Optional.of(binding));
         when(endpointRepo.findById(ep.getId())).thenReturn(Optional.of(ep));
         return new AiModelInvocationService(endpointRepo, bindingRepo,
-                mock(AiModelUsageService.class), mock(AiModelGuardService.class));
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
     }
 
     @Test
@@ -165,7 +166,8 @@ class AiModelInvocationServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 new AiModelInvocationService(endpointRepo, bindingRepo,
-                        mock(AiModelUsageService.class), mock(AiModelGuardService.class)).invokeChat(
+                        mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).invokeChat(
                         AiModelPurpose.SCRIPT_DRAFT,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
@@ -270,7 +272,8 @@ class AiModelInvocationServiceTest {
         when(endpointRepo.findById("pX")).thenReturn(Optional.of(ep));
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
-                mock(AiModelUsageService.class), mock(AiModelGuardService.class)).testConnection("pX");
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pX");
 
         assertEquals(true, result.get("ok"));
         assertEquals(200, result.get("statusCode"));
@@ -292,7 +295,8 @@ class AiModelInvocationServiceTest {
         when(endpointRepo.findById("pY")).thenReturn(Optional.of(ep));
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
-                mock(AiModelUsageService.class), mock(AiModelGuardService.class)).testConnection("pY");
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pY");
         assertEquals(false, result.get("ok"));
         assertEquals("AZURE_OPENAI", result.get("providerType"));
     }
@@ -305,7 +309,8 @@ class AiModelInvocationServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 new AiModelInvocationService(endpointRepo, bindingRepo,
-                        mock(AiModelUsageService.class), mock(AiModelGuardService.class)).testConnection("nope"));
+                        mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
         assertEquals("ENDPOINT_NOT_FOUND", ex.getCode());
     }
@@ -362,7 +367,8 @@ class AiModelInvocationServiceTest {
     private static AiModelInvocationService bareSvc() {
         return new AiModelInvocationService(
                 mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),
-                mock(AiModelUsageService.class), mock(AiModelGuardService.class));
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
     }
 
     /** JDK 内置 HTTP server：记录收到的请求，对任意路径返回预设 status + body。 */
