@@ -50,7 +50,7 @@ export function RenderTaskDock() {
 
     const scheduleNext = (hasActive: boolean) => {
       if (cancelled) return;
-      timer = setTimeout(load, hasActive ? 6000 : 30000);
+      timer = setTimeout(load, hasActive ? 6000 : 15000);
     };
 
     const load = async () => {

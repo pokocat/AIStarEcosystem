@@ -96,9 +96,17 @@ public class CelebrityAuthorizationAdminService {
         authRepo.deleteById(id);
     }
 
-    /** POST /{id}/transition：状态机校验。 */
-    public AdminCelebrityAuthorizationDto transition(String id, AdminCelebrityAuthorizationTransitionDto req,
-                                                      String operatorUserId) {
+    /**
+     * 状态机推进结果（before 在同一事务内捕获，确保审计日志与实际跳转一致）。
+     *
+     * @param before 跳转前状态 wire 值（同 transaction 内读取，无 TOCTOU 风险）
+     * @param dto    跳转后 DTO
+     */
+    public record TransitionResult(String before, AdminCelebrityAuthorizationDto dto) {}
+
+    /** POST /{id}/transition：状态机校验。before 状态在同一 @Transactional 内捕获后返回给调用方。 */
+    public TransitionResult transition(String id, AdminCelebrityAuthorizationTransitionDto req,
+                                       String operatorUserId) {
         if (req == null || req.to() == null || req.to().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "TRANSITION_TO_REQUIRED", "to 必填");
         }
@@ -127,9 +135,9 @@ public class CelebrityAuthorizationAdminService {
             entity.setPendingNote(null);
         }
         entity.setUpdatedAt(Instant.now());
-        // 审计（who / before / after / reason）在 controller 层落 AuditLog —— 与 AdminUserController
-        // 停用/恢复同款 convention（需要 HttpServletRequest 抽 IP/UA/appCode，service 不持有 request）。
-        return AdminCelebrityAuthorizationDto.from(authRepo.save(entity));
+        // 审计（who / before / after / reason）在 controller 层落 AuditLog（需 HttpServletRequest
+        // 抽 IP/UA）；before 状态在此同一事务内捕获并随结果返回，避免 controller 另起 get() 的 TOCTOU 窗口。
+        return new TransitionResult(from.wire(), AdminCelebrityAuthorizationDto.from(authRepo.save(entity)));
     }
 
     // ── 内部 ───────────────────────────────────────────────────────────────

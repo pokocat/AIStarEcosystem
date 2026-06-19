@@ -69,14 +69,15 @@ public class AdminCelebrityAuthorizationController {
             @RequestBody AdminCelebrityAuthorizationTransitionDto req,
             HttpServletRequest request) {
         String operatorUserId = principal != null ? principal.getName() : "admin";
-        String before = service.get(id).status();   // 推进前状态，仅用于审计 detail
-        AdminCelebrityAuthorizationDto dto = service.transition(id, req, operatorUserId);
+        // before 状态在 service.transition() 同一事务内捕获（TransitionResult），
+        // 消除 controller 另起 get() 与 transition() 之间的 TOCTOU 竞态。
+        CelebrityAuthorizationAdminService.TransitionResult result = service.transition(id, req, operatorUserId);
         auditService.recordAdminAction(
                 AuditService.Actions.CELEBRITY_AUTH_TRANSITION,
                 "celebrity_star_authorization", id,
-                "授权状态推进 " + before + " → " + dto.status()
+                "授权状态推进 " + result.before() + " → " + result.dto().status()
                         + (req != null && req.reason() != null ? "：" + req.reason() : ""),
                 request);
-        return ApiResponse.of(dto);
+        return ApiResponse.of(result.dto());
     }
 }
