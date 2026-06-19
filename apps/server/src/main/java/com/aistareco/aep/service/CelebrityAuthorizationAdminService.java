@@ -127,7 +127,8 @@ public class CelebrityAuthorizationAdminService {
             entity.setPendingNote(null);
         }
         entity.setUpdatedAt(Instant.now());
-        // TODO: 写 AuditLog（who=operatorUserId, before=from.wire(), after=to.wire(), reason）
+        // 审计（who / before / after / reason）在 controller 层落 AuditLog —— 与 AdminUserController
+        // 停用/恢复同款 convention（需要 HttpServletRequest 抽 IP/UA/appCode，service 不持有 request）。
         return AdminCelebrityAuthorizationDto.from(authRepo.save(entity));
     }
 
