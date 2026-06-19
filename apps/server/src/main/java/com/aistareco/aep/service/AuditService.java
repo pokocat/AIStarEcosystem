@@ -38,6 +38,9 @@ public class AuditService {
         public static final String ADMIN_USER_SUSPEND = "admin.user.suspend";
         public static final String ADMIN_USER_REACTIVATE = "admin.user.reactivate";
 
+        /** 运营推进授权关系状态机（admin /celebrity/star-authorizations/{id}/transition）。 */
+        public static final String CELEBRITY_AUTH_TRANSITION = "admin.celebrity.auth_transition";
+
         /** 所有「登录注册」类动作 —— admin /platform/auth-logs 页默认筛选项。 */
         public static final List<String> AUTH_ALL = List.of(
                 ADMIN_LOGIN, OPERATOR_LOGIN, ADMIN_CHANGE_PASSWORD,
