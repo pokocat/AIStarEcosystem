@@ -16,4 +16,6 @@ public interface AdminUserRepository extends JpaRepository<AdminUser, String> {
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);
+
+    long countByRole(AdminUser.AdminRole role);
 }

@@ -411,20 +411,21 @@ public class CelebrityZoneService {
         long etaSec = Math.max(0, total - elapsed);
         String state = progress >= 100 ? "done" : (progress > 0 ? "running" : "queued");
 
-        // v0.33+: 看到 done 状态时，commit 对应 hold（幂等：commitHold 内部检查状态，
-        // 已 COMMITTED / RELEASED / 不存在均安全 return）。v0.80 落表后 restart 仍能找到
-        // 任务并 commit，不再产生孤儿 hold；committed 标记避免重复 commit 尝试。
+        // v0.33+: 看到 done 状态时，commit 对应 hold。
+        // 原子 CAS（markCommitted WHERE committed=false）确保并发轮询只有一次真正 commit，
+        // 防止双重计费。markCommitted 返回 0 → 已被抢占，跳过 commitHold。
         if (state.equals("done") && exists && !s.isCommitted()
                 && s.getUserId() != null && !s.getUserId().isBlank() && s.getCreditCost() > 0) {
             try {
-                creditService.commitHold(
-                        "celebrity_generation",
-                        jobId,
-                        s.getCreditCost(),
-                        "AI 明星视频生成完成 · " + s.getEngine()
-                );
-                s.setCommitted(true);
-                generationJobRepo.save(s);
+                int claimed = generationJobRepo.markCommitted(jobId);
+                if (claimed == 1) {
+                    creditService.commitHold(
+                            "celebrity_generation",
+                            jobId,
+                            s.getCreditCost(),
+                            "AI 明星视频生成完成 · " + s.getEngine()
+                    );
+                }
             } catch (Exception e) {
                 log.warn("[celebrity-gen] commit hold failed jobId={} err={}", jobId, e.getMessage());
             }
