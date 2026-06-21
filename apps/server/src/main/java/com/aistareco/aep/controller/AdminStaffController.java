@@ -107,6 +107,21 @@ public class AdminStaffController {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能降级唯一的超级管理员，请先创建其它超管后再操作");
             }
         }
+        // last-SUPER_ADMIN guard: 停用唯一活跃超管同样会锁死平台（与角色降级并列保护）
+        if (body.containsKey("status") && admin.getRole() == AdminUser.AdminRole.SUPER_ADMIN) {
+            String newStatusStr = getString(body, "status");
+            if (newStatusStr != null && !newStatusStr.isBlank()) {
+                try {
+                    AdminUser.AdminStatus newStatus = AdminUser.AdminStatus.valueOf(newStatusStr.trim().toUpperCase());
+                    if (newStatus != AdminUser.AdminStatus.ACTIVE
+                            && adminUserRepo.countByRoleAndStatus(AdminUser.AdminRole.SUPER_ADMIN, AdminUser.AdminStatus.ACTIVE) <= 1) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能停用唯一的活跃超级管理员，请先创建其它超管后再操作");
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    // 非法 status 值将在下方处理并拒绝
+                }
+            }
+        }
 
         if (body.containsKey("displayName")) admin.setDisplayName(getString(body, "displayName"));
         if (body.containsKey("email")) admin.setEmail(getString(body, "email"));

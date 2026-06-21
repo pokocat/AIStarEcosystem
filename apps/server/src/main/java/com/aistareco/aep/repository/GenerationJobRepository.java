@@ -14,4 +14,10 @@ public interface GenerationJobRepository extends JpaRepository<GenerationJob, St
     @Transactional
     @Query("UPDATE GenerationJob j SET j.committed = true WHERE j.id = :id AND j.committed = false")
     int markCommitted(@Param("id") String id);
+
+    /** Compensation rollback: reset committed flag so the next poll can retry commitHold. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE GenerationJob j SET j.committed = false WHERE j.id = :id")
+    int resetCommitted(@Param("id") String id);
 }

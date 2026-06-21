@@ -416,18 +416,30 @@ public class CelebrityZoneService {
         // 防止双重计费。markCommitted 返回 0 → 已被抢占，跳过 commitHold。
         if (state.equals("done") && exists && !s.isCommitted()
                 && s.getUserId() != null && !s.getUserId().isBlank() && s.getCreditCost() > 0) {
+            int claimed = 0;
             try {
-                int claimed = generationJobRepo.markCommitted(jobId);
-                if (claimed == 1) {
+                claimed = generationJobRepo.markCommitted(jobId);
+            } catch (Exception e) {
+                log.warn("[celebrity-gen] markCommitted failed jobId={} err={}", jobId, e.getMessage());
+            }
+            if (claimed == 1) {
+                try {
                     creditService.commitHold(
                             "celebrity_generation",
                             jobId,
                             s.getCreditCost(),
                             "AI 明星视频生成完成 · " + s.getEngine()
                     );
+                } catch (Exception ce) {
+                    // commitHold failed after winning the CAS — reset committed flag so the next
+                    // progress poll can retry, preventing credits from being frozen forever.
+                    try {
+                        generationJobRepo.resetCommitted(jobId);
+                    } catch (Exception re) {
+                        log.error("[celebrity-gen] CRITICAL: resetCommitted also failed jobId={} — credits may be permanently frozen. err={}", jobId, re.getMessage());
+                    }
+                    log.error("[celebrity-gen] commitHold failed jobId={} — committed flag reset for retry. err={}", jobId, ce.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("[celebrity-gen] commit hold failed jobId={} err={}", jobId, e.getMessage());
             }
         }
 

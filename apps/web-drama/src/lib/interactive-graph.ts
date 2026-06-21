@@ -340,22 +340,25 @@ export function buildStoryConfig(dramaId: string, data: InteractiveStoryData): S
           triggerTime: it.triggerTime,
           interactionType: it.interactionType,
           ...(it.condition ? { condition: it.condition } : {}),
-          uiConfig: {
-            question: it.uiConfig.question,
-            ...(it.uiConfig.countdownSec ? { countdownSec: it.uiConfig.countdownSec } : {}),
-            ...(it.uiConfig.inputKey ? { inputKey: it.uiConfig.inputKey } : {}),
-            ...(it.uiConfig.placeholder ? { placeholder: it.uiConfig.placeholder } : {}),
-            ...(it.uiConfig.options
-              ? {
-                  options: it.uiConfig.options.map((o) => ({
-                    id: o.id,
-                    text: o.text,
-                    nextVideoId: o.nextVideoId,
-                    ...(o.setFlags && Object.keys(o.setFlags).length ? { setFlags: o.setFlags } : {}),
-                  })),
-                }
-              : {}),
-          },
+          uiConfig: (() => {
+            const ui = it.uiConfig ?? {};
+            return {
+              question: ui.question ?? '',
+              ...(ui.countdownSec ? { countdownSec: ui.countdownSec } : {}),
+              ...(ui.inputKey ? { inputKey: ui.inputKey } : {}),
+              ...(ui.placeholder ? { placeholder: ui.placeholder } : {}),
+              ...(ui.options
+                ? {
+                    options: ui.options.map((o) => ({
+                      id: o.id,
+                      text: o.text,
+                      nextVideoId: o.nextVideoId,
+                      ...(o.setFlags && Object.keys(o.setFlags).length ? { setFlags: o.setFlags } : {}),
+                    })),
+                  }
+                : {}),
+            };
+          })(),
         })),
       nextVideoId: e.nextVideoId ?? null,
       isEnding: e.isEnding,
