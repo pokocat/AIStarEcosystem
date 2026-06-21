@@ -385,6 +385,7 @@ public class DramaShortService {
             if (arr != null && arr.isArray() && !arr.isEmpty()) {
                 var resigned = om.createArrayNode();
                 for (JsonNode el : arr) {
+                    if (el.isNull()) { resigned.addNull(); continue; }
                     String u = nonBlank(el.asText(null));
                     resigned.add(u != null ? resolveAssetUrl(u) : el.asText(null));
                 }

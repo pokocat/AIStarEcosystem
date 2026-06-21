@@ -99,6 +99,15 @@ public class AdminStaffController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能修改自己的账号状态（请让其它超管处理）");
         }
 
+        // last-SUPER_ADMIN guard: 降级或停用唯一超管会锁死平台
+        if (body.containsKey("role") && admin.getRole() == AdminUser.AdminRole.SUPER_ADMIN) {
+            AdminUser.AdminRole newRole = parseRole(getString(body, "role"), admin.getRole());
+            if (newRole != AdminUser.AdminRole.SUPER_ADMIN
+                    && adminUserRepo.countByRole(AdminUser.AdminRole.SUPER_ADMIN) <= 1) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能降级唯一的超级管理员，请先创建其它超管后再操作");
+            }
+        }
+
         if (body.containsKey("displayName")) admin.setDisplayName(getString(body, "displayName"));
         if (body.containsKey("email")) admin.setEmail(getString(body, "email"));
         if (body.containsKey("role")) admin.setRole(parseRole(getString(body, "role"), admin.getRole()));
@@ -125,8 +134,12 @@ public class AdminStaffController {
         if (principal != null && id.equals(principal.getName())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能删除自己的账号（请让其它超管处理）");
         }
-        if (!adminUserRepo.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在");
+        AdminUser target = adminUserRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "管理员账号不存在"));
+        // last-SUPER_ADMIN guard: 删除唯一超管会锁死平台
+        if (target.getRole() == AdminUser.AdminRole.SUPER_ADMIN
+                && adminUserRepo.countByRole(AdminUser.AdminRole.SUPER_ADMIN) <= 1) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "不能删除唯一的超级管理员，请先创建其它超管后再操作");
         }
         adminUserRepo.deleteById(id);
     }

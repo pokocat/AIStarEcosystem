@@ -229,7 +229,9 @@ export function layoutGraph(data: InteractiveStoryData): GraphLayout {
     while (queue.length) {
       const cur = queue.shift()!;
       const d = depth.get(cur) ?? 0;
-      for (const t of outgoingTargets(byId.get(cur)!)) {
+      const node = byId.get(cur);
+      if (!node) continue;
+      for (const t of outgoingTargets(node)) {
         if (byId.has(t) && !depth.has(t)) {
           depth.set(t, d + 1);
           queue.push(t);
