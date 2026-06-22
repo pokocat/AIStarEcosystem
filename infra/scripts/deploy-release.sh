@@ -120,6 +120,16 @@ APP_USER="${REMOTE_APP_USER:-$(id -un)}"
 APP_GROUP="${REMOTE_APP_GROUP:-$(id -gn)}"
 RELEASE_STORE="$REMOTE_ROOT/releases/$RELEASE_ID"
 
+# /tmp 是 tmpfs（RAM，通常仅几 G）。上传暂存 $REMOTE_STAGE 用完必须清，否则历次部署
+# （尤其中途失败的）会持续积压，最终 "No space left on device" 撑爆 tmpfs 导致 rsync 失败。
+# trap EXIT 保证成功/失败都清；另兜底清掉 >60 分钟的历史残留（不动正在进行的并发部署）。
+cleanup_stage() {
+  ${SUDO:-} rm -rf "$REMOTE_STAGE" 2>/dev/null || true
+  ${SUDO:-} find /tmp -maxdepth 1 -name 'aistareco-release-*' -type d -mmin +60 \
+    -exec rm -rf {} + 2>/dev/null || true
+}
+trap cleanup_stage EXIT
+
 ensure_host_deps() {
   if [[ "${ENSURE_HOST_DEPS:-1}" != "1" ]]; then
     log "skip host dependency ensure (ENSURE_HOST_DEPS=$ENSURE_HOST_DEPS)"
