@@ -60,6 +60,8 @@ export function MLogin({ onLoggedIn }) {
   const [password, setPassword] = useStateLG('');
   const [licenseKey, setLicenseKey] = useStateLG('');
   const [studioName, setStudioName] = useStateLG('');
+  // 验证码登录未注册时回带的注册凭证（非空 = 手机号已验证，注册免重输验证码）。
+  const [registerTicket, setRegisterTicket] = useStateLG('');
   const [busy, setBusy] = useStateLG(false);
   const [devAccounts, setDevAccounts] = useStateLG([] as any[]);
 
@@ -82,7 +84,14 @@ export function MLogin({ onLoggedIn }) {
       finish(await AuthApi.smsLogin(phone, code.trim()));
     } catch (e: any) {
       if (e?.code === 'USER_NOT_FOUND' || e?.status === 404) {
-        toast('该手机号尚未注册，请切换到注册', { tone: 'warn' });
+        // 手机号刚验过 → 带上注册凭证切到注册，免重输验证码。
+        if (e?.details?.registerTicket) {
+          setRegisterTicket(e.details.registerTicket);
+          if (e.details.phone) setPhone(e.details.phone);
+          toast('该手机号尚未注册，已为你切到注册（无需再输验证码）', { tone: 'warn' });
+        } else {
+          toast('该手机号尚未注册，请切换到注册', { tone: 'warn' });
+        }
         setTab('register');
       } else {
         toast(e?.message || '登录失败', { tone: 'err' });
@@ -92,14 +101,24 @@ export function MLogin({ onLoggedIn }) {
 
   const doRegister = async () => {
     if (!/^1\d{10}$/.test(phone)) { toast('请输入 11 位手机号', { tone: 'warn' }); return; }
-    if (!code.trim()) { toast('请输入验证码', { tone: 'warn' }); return; }
+    if (!registerTicket && !code.trim()) { toast('请输入验证码', { tone: 'warn' }); return; }
     if (!licenseKey.trim()) { toast('请输入激活码', { tone: 'warn' }); return; }
     if (!studioName.trim()) { toast('请输入工作室名称', { tone: 'warn' }); return; }
     setBusy(true);
     try {
-      finish(await AuthApi.smsRegister({ phone, code: code.trim(), licenseKey: licenseKey.trim(), studioName: studioName.trim() }));
+      finish(await AuthApi.smsRegister({
+        phone,
+        ...(registerTicket ? { registerTicket } : { code: code.trim() }),
+        licenseKey: licenseKey.trim(),
+        studioName: studioName.trim(),
+      }));
     } catch (e: any) {
-      toast(e?.message || '注册失败', { tone: 'err' });
+      if (e?.code === 'REGISTER_TICKET_EXPIRED') {
+        setRegisterTicket(''); // 手机验证过期 → 退回手输验证码
+        toast('手机验证已过期，请重新获取验证码完成注册', { tone: 'warn' });
+      } else {
+        toast(e?.message || '注册失败', { tone: 'err' });
+      }
     } finally { setBusy(false); }
   };
 
@@ -145,7 +164,7 @@ export function MLogin({ onLoggedIn }) {
     hLG('div', { style: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 22px calc(24px + var(--home-ind))' } },
       hLG('div', { style: { display: 'flex', background: 'var(--surface-3)', padding: 3, borderRadius: 'var(--r-pill)', marginBottom: 20 } },
         hLG(Tab, { on: tab === 'login', onClick: () => setTab('login') }, '手机号登录'),
-        hLG(Tab, { on: tab === 'register', onClick: () => setTab('register') }, '注册'),
+        hLG(Tab, { on: tab === 'register', onClick: () => { setRegisterTicket(''); setTab('register'); } }, '注册'),
         ENABLE_DEV_LOGIN && devAccounts.length > 0 && hLG(Tab, { on: tab === 'dev', onClick: () => setTab('dev') }, '内部体验')),
 
       tab !== 'dev' && hLG('div', null,
@@ -160,14 +179,18 @@ export function MLogin({ onLoggedIn }) {
             background: loginMode === 'password' ? 'var(--primary-tint)' : 'var(--surface)', color: loginMode === 'password' ? 'var(--primary)' : 'var(--ink-3)',
             fontSize: 13, fontWeight: 700, transition: 'all .15s' } }, '密码登录')),
 
-        hLG(Field, { label: '手机号' }, hLG(UI.Input, { value: phone, onChange: setPhone, placeholder: '11 位手机号', inputMode: 'tel' })),
+        hLG(Field, { label: '手机号' }, hLG(UI.Input, { value: phone, onChange: setPhone, placeholder: '11 位手机号', inputMode: 'tel', disabled: tab === 'register' && !!registerTicket })),
 
         tab === 'login' && loginMode === 'password'
           ? hLG(React.Fragment, null,
               hLG(Field, { label: '密码' }, hLG(UI.Input, { value: password, onChange: setPassword, placeholder: '登录密码', type: 'password' })),
               hLG('div', { style: { textAlign: 'right', margin: '-6px 2px 6px' } },
                 hLG('button', { onClick: () => setLoginMode('code'), style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 11.5, color: 'var(--ink-3)' } }, '忘记密码？用验证码登录')))
-          : hLG(Field, { label: '验证码' }, hLG(CodeRow, { phone, value: code, onChange: setCode, purpose: tab === 'register' ? 'register' : 'login' })),
+          : (tab === 'register' && registerTicket)
+            ? hLG('div', { style: { display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 14px', padding: '10px 12px', background: 'var(--primary-tint)', border: '1px solid var(--primary)', borderRadius: 'var(--r-md)' } },
+                hLG(Icons.check, { size: 15, style: { color: 'var(--primary)', flex: '0 0 auto' } }),
+                hLG('span', { style: { fontSize: 12.5, color: 'var(--primary)', fontWeight: 600 } }, '手机号已验证，无需再次输入验证码'))
+            : hLG(Field, { label: '验证码' }, hLG(CodeRow, { phone, value: code, onChange: setCode, purpose: tab === 'register' ? 'register' : 'login' })),
 
         tab === 'register' && hLG(React.Fragment, null,
           hLG(Field, { label: '激活码' }, hLG(UI.Input, { value: licenseKey, onChange: setLicenseKey, placeholder: '购买套餐后获得的激活码' })),

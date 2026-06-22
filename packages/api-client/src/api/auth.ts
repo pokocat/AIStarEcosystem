@@ -131,7 +131,8 @@ export interface SmsLoginResult {
  * 手机号 + 验证码 登录。
  * - 200 + token：找到 user → 自动 setAuthToken
  * - 404 USER_NOT_FOUND：phone 未注册 → 引导用户去 /sms/register
- *   注意：验证码已被消费（防爆破）
+ *   注意：验证码已被消费（防爆破）；err.details 形如 SmsRegisterTicketDetails，
+ *   带上 registerTicket 即可在注册页免重输验证码
  * - 400 SMS_CODE_INVALID / 429 SMS_CODE_LOCKED 等
  */
 export async function smsLogin(phone: string, code: string): Promise<SmsLoginResult> {
@@ -160,12 +161,30 @@ export async function passwordLogin(phone: string, password: string): Promise<Pa
 
 export interface SmsRegisterPayload {
   phone: string;
-  code: string;
+  /**
+   * register 用途的短信验证码。直接打开注册页时必填；
+   * 若带了 registerTicket（验证码登录未注册时回带），可省略。
+   */
+  code?: string;
+  /**
+   * v0.84+: 验证码登录发现未注册时，/sms/verify 在 404 error.details 里回带的注册凭证。
+   * 带上它即可证明手机号已验证，免去在注册页重输验证码。
+   */
+  registerTicket?: string;
   licenseKey: string;
   studioName: string;
   displayName?: string;
   /** v0.43+: 注册来源子产品（music/drama/celebrity）。后端据此授予平台访问权（dev 全授予）。 */
   platform?: string;
+}
+
+/**
+ * v0.84+: 验证码登录发现手机号未注册时，404 USER_NOT_FOUND 的 error.details 形状。
+ * 前端据此把已验证手机号 + 注册凭证带进注册表单。
+ */
+export interface SmsRegisterTicketDetails {
+  registerTicket: string;
+  phone: string;
 }
 
 export interface SmsRegisterResult {

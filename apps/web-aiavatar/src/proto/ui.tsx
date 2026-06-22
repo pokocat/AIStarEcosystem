@@ -143,13 +143,13 @@ const inputBase = {
   border: '1px solid var(--line-2)', borderRadius: 'var(--r-md)', fontSize: 14, fontFamily: 'var(--font-ui)',
   outline: 'none', transition: 'border .15s, box-shadow .15s',
 };
-function Input({ value, onChange, placeholder, icon, type = 'text', style }) {
+function Input({ value, onChange, placeholder, icon, type = 'text', style, disabled }) {
   const [f, setF] = useStateUI(false);
   return h('div', { style: { position: 'relative', width: '100%' } },
     icon && h(icon, { size: 17, stroke: 1.8, style: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', pointerEvents: 'none' } }),
-    h('input', { type, value, placeholder, onChange: e => onChange && onChange(e.target.value),
+    h('input', { type, value, placeholder, disabled, onChange: e => onChange && onChange(e.target.value),
       onFocus: () => setF(true), onBlur: () => setF(false),
-      style: { ...inputBase, paddingLeft: icon ? 40 : 14, borderColor: f ? 'var(--primary)' : 'var(--line-2)', boxShadow: f ? 'var(--ring)' : 'none', ...style } }));
+      style: { ...inputBase, paddingLeft: icon ? 40 : 14, borderColor: f ? 'var(--primary)' : 'var(--line-2)', boxShadow: f ? 'var(--ring)' : 'none', ...(disabled ? { opacity: 0.6, cursor: 'not-allowed' } : null), ...style } }));
 }
 function Textarea({ value, onChange, placeholder, rows = 4, style }) {
   const [f, setF] = useStateUI(false);

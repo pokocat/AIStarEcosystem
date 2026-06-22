@@ -77,6 +77,8 @@ export interface AuthScreenProps {
 type Tab = "phone-login" | "phone-register" | "dev";
 type LoginMode = "code" | "password";
 type SmsCodePurpose = "login" | "register";
+/** 验证码登录未注册时，从 404 details 带过来的已验证手机号 + 注册凭证。 */
+type RegisterPrefill = { phone?: string; registerTicket?: string };
 
 function AuthScreenInner(props: AuthScreenProps) {
   const {
@@ -97,6 +99,8 @@ function AuthScreenInner(props: AuthScreenProps) {
   const { loginAs, refresh, user } = useAuth();
 
   const [tab, setTab] = React.useState<Tab>("phone-login");
+  // 验证码登录发现未注册时带过来的「已验证手机号 + 注册凭证」，让注册页免重输验证码。
+  const [registerPrefill, setRegisterPrefill] = React.useState<RegisterPrefill | null>(null);
 
   React.useEffect(() => {
     if (user) router.replace(from);
@@ -185,7 +189,13 @@ function AuthScreenInner(props: AuthScreenProps) {
             <TabBtn active={tab === "phone-login"} onClick={() => setTab("phone-login")}>
               <Phone size={12} /> 登录
             </TabBtn>
-            <TabBtn active={tab === "phone-register"} onClick={() => setTab("phone-register")}>
+            <TabBtn
+              active={tab === "phone-register"}
+              onClick={() => {
+                setRegisterPrefill(null); // 手动点注册 → 走全新流程（不带可能过期的凭证）
+                setTab("phone-register");
+              }}
+            >
               <KeyRound size={12} /> 注册
             </TabBtn>
             {enableDev && (
@@ -201,12 +211,16 @@ function AuthScreenInner(props: AuthScreenProps) {
                 await refresh();
                 router.replace(from);
               }}
-              onNeedRegister={() => setTab("phone-register")}
+              onNeedRegister={(prefill) => {
+                setRegisterPrefill(prefill ?? null);
+                setTab("phone-register");
+              }}
             />
           )}
           {tab === "phone-register" && (
             <PhoneRegisterForm
               platform={platform}
+              prefill={registerPrefill}
               onSuccess={async () => {
                 await refresh();
                 router.replace(from);
@@ -341,7 +355,7 @@ function PhoneLoginForm({
   onNeedRegister,
 }: {
   onSuccess: () => Promise<void>;
-  onNeedRegister: () => void;
+  onNeedRegister: (prefill?: RegisterPrefill) => void;
 }) {
   const [phone, setPhone] = React.useState("");
   const [code, setCode] = React.useState("");
@@ -361,10 +375,11 @@ function PhoneLoginForm({
       }
       await onSuccess();
     } catch (e) {
-      const err = e as { status?: number; error?: { code?: string; message?: string }; message?: string };
-      if (err.error?.code === "USER_NOT_FOUND" || err.status === 404) {
+      const err = e as { status?: number; code?: string; details?: RegisterPrefill; error?: { code?: string; message?: string }; message?: string };
+      if (err.code === "USER_NOT_FOUND" || err.error?.code === "USER_NOT_FOUND" || err.status === 404) {
         setError("这个手机号还没注册，已为你切到「注册」。");
-        onNeedRegister();
+        // 验证码模式下后端会回带注册凭证 → 注册页免重输验证码；密码模式无凭证，回退手输。
+        onNeedRegister({ phone: err.details?.phone ?? phone.trim(), registerTicket: err.details?.registerTicket });
       } else if (err.error?.code === "PASSWORD_NOT_SET") {
         setError("该账号还没设置密码，请先用验证码登录后设置。");
         setMode("code");
@@ -470,14 +485,18 @@ function SegmentButton({
   );
 }
 
-function PhoneRegisterForm({ platform, onSuccess }: { platform: SubProduct; onSuccess: () => Promise<void> }) {
-  const [phone, setPhone] = React.useState("");
+function PhoneRegisterForm({ platform, prefill, onSuccess }: { platform: SubProduct; prefill?: RegisterPrefill | null; onSuccess: () => Promise<void> }) {
+  const [phone, setPhone] = React.useState(prefill?.phone ?? "");
   const [code, setCode] = React.useState("");
+  // 有凭证 = 手机号已在登录处验过，注册时免输验证码；凭证过期则清空回退手输。
+  const [ticket, setTicket] = React.useState(prefill?.registerTicket ?? "");
   const [licenseKey, setLicenseKey] = React.useState("");
   const [studioName, setStudioName] = React.useState("");
   const [displayName, setDisplayName] = React.useState("");
   const [error, setError] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+
+  const phoneVerified = ticket.length > 0;
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -485,7 +504,7 @@ function PhoneRegisterForm({ platform, onSuccess }: { platform: SubProduct; onSu
     try {
       await AuthApi.smsRegister({
         phone: phone.trim(),
-        code: code.trim(),
+        ...(phoneVerified ? { registerTicket: ticket } : { code: code.trim() }),
         licenseKey: licenseKey.trim(),
         studioName: studioName.trim(),
         displayName: displayName.trim() || undefined,
@@ -493,7 +512,13 @@ function PhoneRegisterForm({ platform, onSuccess }: { platform: SubProduct; onSu
       });
       await onSuccess();
     } catch (e) {
-      setError(extractErr(e, "注册没成功，请检查信息后重试"));
+      const err = e as { code?: string; error?: { code?: string } };
+      if (err.code === "REGISTER_TICKET_EXPIRED" || err.error?.code === "REGISTER_TICKET_EXPIRED") {
+        setTicket(""); // 手机验证过期 → 退回手输验证码模式
+        setError("手机验证已过期，请重新获取验证码完成注册");
+      } else {
+        setError(extractErr(e, "注册没成功，请检查信息后重试"));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -503,14 +528,32 @@ function PhoneRegisterForm({ platform, onSuccess }: { platform: SubProduct; onSu
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {error && <ErrBox msg={error} />}
       <Field label="手机号">
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="请输入 11 位手机号" inputMode="numeric" maxLength={11} disabled={submitting} style={inputStyle} />
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="请输入 11 位手机号" inputMode="numeric" maxLength={11} disabled={submitting || phoneVerified} style={inputStyle} />
       </Field>
-      <Field label="验证码">
-        <div style={{ display: "flex", gap: 8 }}>
-          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位数字" inputMode="numeric" maxLength={6} disabled={submitting} style={{ ...inputStyle, flex: 1 }} autoComplete="one-time-code" />
-          <SendCodeButton phone={phone} purpose="register" onError={setError} />
+      {phoneVerified ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12.5,
+            color: "var(--as-accent)",
+            background: "color-mix(in srgb, var(--as-accent) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--as-accent) 25%, transparent)",
+            borderRadius: "var(--as-radius)",
+            padding: "9px 12px",
+          }}
+        >
+          <Check size={14} strokeWidth={2.5} /> 手机号已验证，无需再次输入验证码
         </div>
-      </Field>
+      ) : (
+        <Field label="验证码">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="6 位数字" inputMode="numeric" maxLength={6} disabled={submitting} style={{ ...inputStyle, flex: 1 }} autoComplete="one-time-code" />
+            <SendCodeButton phone={phone} purpose="register" onError={setError} />
+          </div>
+        </Field>
+      )}
       <Field label="激活码">
         <input value={licenseKey} onChange={(e) => setLicenseKey(e.target.value)} placeholder="LIC-XXXX-XXXX-XXXX" disabled={submitting} style={{ ...inputStyle, letterSpacing: 1 }} />
       </Field>
@@ -520,7 +563,7 @@ function PhoneRegisterForm({ platform, onSuccess }: { platform: SubProduct; onSu
       <Field label="显示名（选填）">
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="留空时用工作室名" disabled={submitting} style={inputStyle} />
       </Field>
-      <PrimaryButton onClick={handleSubmit} disabled={submitting || !phone || !code || !licenseKey || !studioName}>
+      <PrimaryButton onClick={handleSubmit} disabled={submitting || !phone || (!phoneVerified && !code) || !licenseKey || !studioName}>
         {submitting ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
         {submitting ? "正在注册" : "完成注册并登录"}
       </PrimaryButton>

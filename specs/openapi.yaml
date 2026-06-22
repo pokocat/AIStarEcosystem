@@ -4488,7 +4488,11 @@ paths:
         '200':
           description: 登录成功，返回 token + user
         '400': { description: 验证码错误 / 过期 }
-        '404': { description: USER_NOT_FOUND — 手机号未注册，需走 /auth/sms/register }
+        '404':
+          description: >-
+            USER_NOT_FOUND — 手机号未注册，需走 /auth/sms/register。
+            error.details 携带 { registerTicket, phone }：手机号已通过短信验证，
+            前端可凭 registerTicket 在注册时免重输验证码（10 分钟内有效）。
         '429': { description: 已锁定 }
 
   /auth/sms/register:
@@ -4503,21 +4507,32 @@ paths:
           application/json:
             schema:
               type: object
-              required: [phone, code, licenseKey, studioName]
+              required: [phone, licenseKey, studioName]
+              description: >-
+                手机号所有权证明二选一：带有效 registerTicket（验证码登录刚验过的凭证）
+                可省略 code；否则必须传 register 用途的短信验证码 code。
               properties:
                 phone: { type: string }
-                code: { type: string, description: 短信验证码 }
+                code:
+                  type: string
+                  description: 短信验证码（register 用途）。带 registerTicket 时可省略。
+                registerTicket:
+                  type: string
+                  description: >-
+                    /auth/sms/verify 在 404 USER_NOT_FOUND 时回带的注册凭证；
+                    带它即证明手机号已验证，免重输验证码。
                 licenseKey: { type: string, description: License 激活码 }
                 studioName: { type: string }
                 displayName: { type: string }
                 platform:
                   type: string
-                  enum: [music, drama, celebrity]
+                  enum: [music, drama, celebrity, aiavatar]
                   description: 注册来源子产品；后端据此授予平台访问权
       responses:
         '200':
           description: 注册并登录成功
         '400': { description: 参数缺失 / 验证码 / 激活码错误 }
+        '401': { description: REGISTER_TICKET_EXPIRED — 注册凭证无效或已过期，需重新获取验证码 }
         '409': { description: 该手机号已注册 / 激活码已使用 }
 
   /auth/password/login:
