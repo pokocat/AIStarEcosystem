@@ -215,7 +215,8 @@
 ### 部署 / 生产基础设施（v0.34 之后）
 
 - [x] ~~**deploy-release.sh 部署后清理 /tmp 暂存**~~（**v0.84 完成**，2026-06-22）：`/tmp` 是 tmpfs（3.7G），上传暂存 `aistareco-release-*` 历次不清（尤其中途失败的）会积压撑爆 → `No space left on device` 致 rsync 失败（本次部署实际踩到，残留 49 个共 3.6G）。修复：远程脚本加 `trap cleanup_stage EXIT`（成功/失败都清当前暂存 + 兜底清 >60min 历史残留）。仅 SSH 路径有此问题；`deploy-local.sh` 无 /tmp 暂存。
-- [ ] **GitHub Actions 生产部署需配 SSH secrets，但不放主钥**（2026-06-22 发现）：`deploy-production.yml` 缺 `PROD_SSH_HOST`/`PROD_SSH_USER`/`PROD_SSH_PRIVATE_KEY` → Configure SSH 步失败。**决策：不把 `aiartist.pem` 主钥放 GitHub Secrets**（长期生产私钥交给 GitHub 扩大爆炸半径）。要走 Actions 则**专门生成一把部署专用受限 key**（`authorized_keys` 加 `command=`/`from=` 限制，泄露可单独轮换），否则继续本机 SSH / ECS 本地 `update-and-deploy.sh`（私钥不离手）。
+- [x] ~~**GitHub Actions 生产部署因缺 SSH secrets 每次 dispatch 报错**~~（**v0.84 处理**，2026-06-22）：决策**受控发布**——把 `deploy-production.yml` 改成**只构建 + 上传产物**，移除 Configure SSH / Deploy 两个 step，不再需要 `PROD_SSH_*` secrets，dispatch 不再报错。实际发布人工受控（本机 `deploy.sh` / ECS `update-and-deploy.sh`，私钥不离手）。同步 `infra/README.md` §4.2 + `aliyun-deploy/SKILL.md`。
+- [ ] **（可选）若要恢复 Actions 自动部署：用部署专用受限 key，不放主钥**：长期生产私钥交给 GitHub 会扩大爆炸半径。需要时专门生成一把 deploy key（`authorized_keys` 加 `command=`/`from=` 限制，泄露可单独轮换），再补回两个 step + `PROD_SSH_*` secrets。
 - [ ] **Phase 3 · 全栈容器化 + CI/CD**（v0.34 显式 v0.35+）：server + sau-service + 5 个 web app 出 Dockerfile + docker-compose；GitHub Actions 跑 build / typecheck / contract / push 镜像 + 部署。
 - [ ] **Phase 4 · 用户上传素材 OSS 化**（v0.34 显式 v0.35+）：`MixcutAsset` 上传从本地 fs（`./mixcut-assets`）切换到 OSS（沿用 `AliyunOssCdnUploader`）。当前 v0.14 已做 mixcut **渲染产出** OSS 化；用户**上传**仍落本地。
 - [ ] **Phase 5 · 多实例 + Redis + ShedLock**（v0.34 显式）：

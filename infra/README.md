@@ -377,21 +377,13 @@ sudo ./infra/scripts/deploy-local.sh all \
 - **systemd 单元不存在时跳过 restart**：首次部署 ECS 没装 systemd 单元，脚本会 WARN
   「跳过 restart（首次部署？参考 infra/systemd/*.example）」并继续，便于先落位文件后人工建 systemd。
 
-### 4.2 GitHub Actions 部署
+### 4.2 GitHub Actions（仅构建产物，不自动部署）
 
-工作流：`.github/workflows/deploy-production.yml`，手动触发 `workflow_dispatch`。
+> **受控发布（2026-06-22 起）**：工作流 `.github/workflows/deploy-production.yml` 已**移除 SSH 自动部署**，
+> 只做「构建 + 上传产物」。原因：不在 GitHub 放生产 SSH 私钥（长期主钥交给 GitHub 会扩大爆炸半径）。
+> **不再需要任何 `PROD_SSH_*` Secrets**，dispatch 也不会再因缺密钥报错。
 
-GitHub 仓库需要配置这些 Secrets：
-
-| Secret | 示例 | 说明 |
-|---|---|---|
-| `PROD_SSH_HOST` | `47.98.162.120` | ECS 公网 IP 或域名 |
-| `PROD_SSH_USER` | `ecs-user` | 需要免密 `sudo` 执行 systemctl/docker |
-| `PROD_SSH_PRIVATE_KEY` | PEM 私钥内容 | 对应 ECS 登录 key |
-| `PROD_SSH_PORT` | `22` | 可选，默认 22 |
-| `PROD_REMOTE_ROOT` | `/opt/ai-star-eco` | 可选，默认 `/opt/ai-star-eco` |
-| `PROD_PUBLIC_BASE` | `http://47.98.162.120` | 可选，用于部署后公网验证 |
-
+工作流：`.github/workflows/deploy-production.yml`（name: *Build release artifacts*），手动触发 `workflow_dispatch`。
 触发时 `services` 可填：
 
 ```text
@@ -401,7 +393,13 @@ server,web-celebrity,web-aiavatar,admin
 sau-service
 ```
 
-工作流会上传 `dist/deploy/<release-id>` 为 GitHub artifact，保留 14 天，便于追溯当次部署产物。
+工作流把 `dist/deploy/<release-id>` 上传为 GitHub artifact（保留 14 天）。**实际发布由人工受控执行**：
+
+- 本机：`./infra/scripts/deploy.sh <services>`（构建+部署一步），或对已下载产物用 `deploy-release.sh <dir> <services>`
+- ECS 上：`sudo ./infra/scripts/update-and-deploy.sh <services>`（git pull → 构建 → 部署，私钥不离机）
+
+> 若将来确实要恢复 Actions 自动部署，**不要放主钥**——生成一把部署专用受限 key（`authorized_keys`
+> 加 `command=`/`from=` 限制，泄露可单独轮换），再补回 Configure SSH / Deploy 两个 step 与对应 Secrets。
 
 回滚到任意历史 tag 仍可用：
 
