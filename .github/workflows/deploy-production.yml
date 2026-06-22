@@ -1,18 +1,21 @@
-name: Deploy production
+name: Build release artifacts
+
+# 受控发布（2026-06-22 起）：本 workflow 只「构建 + 上传产物」，不再自动部署到生产。
+# 原因：不在 GitHub 放生产 SSH 私钥（长期主钥交给 GitHub 会扩大爆炸半径），改为受控人工发布。
+# 实际发布请用：
+#   - 本机：./infra/scripts/deploy.sh <services>（或对已构建产物 deploy-release.sh）
+#   - ECS 上：sudo ./infra/scripts/update-and-deploy.sh <services>
+# dispatch 本 workflow 会产出可下载的 release 产物（Actions run → Artifacts），供受控发布取用。
 
 on:
   workflow_dispatch:
     inputs:
       services:
-        description: "Services to deploy: all, or comma-separated server,web-music,web-drama,web-celebrity,web-aiavatar,admin,sau-service"
+        description: "Services to build: all, or comma-separated server,web-music,web-drama,web-celebrity,web-aiavatar,admin,sau-service"
         required: true
         default: "all"
-      public_base:
-        description: "Public base URL used by post-deploy verification. Empty uses PROD_PUBLIC_BASE or host IP."
-        required: false
-        default: ""
       skip_typecheck:
-        description: "Skip TypeScript checks during emergency deploy"
+        description: "Skip TypeScript checks"
         required: true
         type: boolean
         default: false
@@ -21,11 +24,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: production-deploy
+  group: build-release
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -72,39 +75,3 @@ jobs:
           path: dist/deploy/${{ env.RELEASE_ID }}
           if-no-files-found: error
           retention-days: 14
-
-      - name: Configure SSH
-        env:
-          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
-          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-        run: |
-          : "${PROD_SSH_HOST:?Missing GitHub secret PROD_SSH_HOST}"
-          : "${PROD_SSH_PRIVATE_KEY:?Missing GitHub secret PROD_SSH_PRIVATE_KEY}"
-          SSH_PORT="${PROD_SSH_PORT:-22}"
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > ~/.ssh/aistareco_prod
-          chmod 600 ~/.ssh/aistareco_prod
-          ssh-keyscan -p "$SSH_PORT" -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
-
-      - name: Deploy to production
-        env:
-          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
-          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
-          PROD_REMOTE_ROOT: ${{ secrets.PROD_REMOTE_ROOT }}
-          PROD_PUBLIC_BASE: ${{ secrets.PROD_PUBLIC_BASE }}
-          PUBLIC_BASE_INPUT: ${{ inputs.public_base }}
-          RELEASE_ID: ${{ env.RELEASE_ID }}
-        run: |
-          : "${PROD_SSH_HOST:?Missing GitHub secret PROD_SSH_HOST}"
-          : "${PROD_SSH_USER:?Missing GitHub secret PROD_SSH_USER}"
-
-          export DEPLOY_HOST="${PROD_SSH_USER}@${PROD_SSH_HOST}"
-          export SSH_KEY="$HOME/.ssh/aistareco_prod"
-          export SSH_PORT="${PROD_SSH_PORT:-22}"
-          export REMOTE_ROOT="${PROD_REMOTE_ROOT:-/opt/ai-star-eco}"
-          export PUBLIC_BASE="${PUBLIC_BASE_INPUT:-${PROD_PUBLIC_BASE:-}}"
-
-          ./infra/scripts/deploy-release.sh "dist/deploy/${RELEASE_ID}" "${{ inputs.services }}"

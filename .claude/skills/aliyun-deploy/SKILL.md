@@ -185,22 +185,28 @@ Runtime env validation is handled by `infra/scripts/check-runtime-env.sh` and is
 
 `verify.sh` 同期加 `LOCAL_MODE=1`，被 `deploy-local.sh` 自动调用做本机健康检查。
 
-## GitHub Actions
+## GitHub Actions (build-only, no auto-deploy)
 
-If the user asks for a GitHub workflow, CI/CD, or "流水线部署", prefer the manual GitHub Actions workflow instead of local SSH deployment:
+**Controlled release (since 2026-06-22):** the workflow `.github/workflows/deploy-production.yml`
+(name: *Build release artifacts*) **only builds + uploads artifacts** — the SSH "Configure SSH" and
+"Deploy to production" steps were removed. Rationale: do not store a long-lived production SSH private
+key in GitHub Secrets (it widens blast radius); releases are performed manually/controlled instead.
 
 - Workflow: `.github/workflows/deploy-production.yml`
 - Trigger: `workflow_dispatch`
 - `services` input accepts `all`, `server`, `server,web-celebrity,web-aiavatar,admin`, or `sau-service`.
-- Required repository secrets:
-  - `PROD_SSH_HOST`
-  - `PROD_SSH_USER`
-  - `PROD_SSH_PRIVATE_KEY`
-  - optional `PROD_SSH_PORT`
-  - optional `PROD_REMOTE_ROOT`
-  - optional `PROD_PUBLIC_BASE`
+- **No `PROD_SSH_*` secrets needed** — the job no longer SSHes anywhere, so it will not fail on missing secrets.
+- Output: `dist/deploy/<release-id>` uploaded as a downloadable artifact (14-day retention).
 
-Do not put real AK, SMS templates, OSS credentials, or PEM contents into the repo. GitHub Secrets hold SSH deployment credentials only; runtime app credentials stay on the server in `/etc/aistareco/*.env`.
+After the workflow builds, **deploy manually** with one of:
+- local: `./infra/scripts/deploy.sh <services>` (build+deploy), or `deploy-release.sh <dir> <services>` on a downloaded artifact
+- on ECS: `sudo ./infra/scripts/update-and-deploy.sh <services>` (private key never leaves the box)
+
+If the user wants to restore auto-deploy via Actions: **do not use the master PEM** — mint a dedicated,
+restricted deploy key (`authorized_keys` with `command=`/`from=` constraints, independently rotatable),
+then re-add the Configure SSH / Deploy steps and the `PROD_SSH_*` secrets. Never put real AK, SMS
+templates, OSS credentials, or PEM contents into the repo; runtime app credentials stay on the server in
+`/etc/aistareco/*.env`.
 
 ## Troubleshooting
 
