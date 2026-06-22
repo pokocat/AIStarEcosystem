@@ -47,6 +47,26 @@ class CelebrityZoneServiceTest {
         });
         when(jobRepo.findById(anyString())).thenAnswer(inv ->
                 Optional.ofNullable(db.get(inv.getArgument(0, String.class))));
+        // markCommitted: CAS — returns 1 and flips the in-memory record if not yet committed; 0 otherwise.
+        when(jobRepo.markCommitted(anyString())).thenAnswer(inv -> {
+            String id = inv.getArgument(0, String.class);
+            GenerationJob j = db.get(id);
+            if (j != null && !j.isCommitted()) {
+                j.setCommitted(true);
+                return 1;
+            }
+            return 0;
+        });
+        // resetCommitted: compensation rollback — clear the committed flag.
+        when(jobRepo.resetCommitted(anyString())).thenAnswer(inv -> {
+            String id = inv.getArgument(0, String.class);
+            GenerationJob j = db.get(id);
+            if (j != null && j.isCommitted()) {
+                j.setCommitted(false);
+                return 1;
+            }
+            return 0;
+        });
 
         creditService = mock(CreditService.class);
         configs = mock(PlatformConfigService.class);
