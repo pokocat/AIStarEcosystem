@@ -37,13 +37,16 @@ import java.util.Map;
  *
  *   POST /api/auth/sms/verify        { phone, code }
  *       校验 SMS code → 查 user by phone → 若存在签 JWT 返回；
- *       若不存在返回 404 USER_NOT_FOUND，前端引导走 /sms/register。
- *       验证码即使在 USER_NOT_FOUND 情况下也已被消费（防爆破）。
+ *       若不存在返回 404 USER_NOT_FOUND，error.details 带 { registerTicket, phone }，
+ *       前端引导走 /sms/register 并凭 registerTicket 免重输验证码。
+ *       验证码即使在 USER_NOT_FOUND 情况下也已被消费（防爆破）—— 所以用凭证而非透传旧码。
  *
- *   POST /api/auth/sms/register      { phone, code, licenseKey, studioName, displayName? }
- *       校验 SMS code + 校验 license key → 创建 AepUser(kind=STUDIO, phoneVerified=true) +
- *       Studio + Membership + Wallet → 签 JWT 返回。
- *       要求双因素：sms 验证 + license 激活码同时通过。
+ *   POST /api/auth/sms/register      { phone, licenseKey, studioName, displayName?, code? | registerTicket? }
+ *       证明手机号所有权二选一：带有效 registerTicket（验证码登录刚验过）跳过短信码，
+ *       否则校验 register 用途 SMS code → 再校验 license key → 创建
+ *       AepUser(kind=STUDIO, phoneVerified=true) + Studio + Membership + Wallet → 签 JWT 返回。
+ *       要求双因素：手机号验证（凭证或验证码）+ license 激活码同时通过。
+ *       凭证无效/过期且未退回手输验证码 → 401 REGISTER_TICKET_EXPIRED。
  */
 @RestController
 @RequestMapping("/api/auth/sms")
@@ -129,8 +132,11 @@ public class SmsAuthController {
             log.info("[auth-sms] login user-not-found phone={}", trimmedPhone);
             auditService.recordAuthFailure(AuditService.Actions.SMS_LOGIN, trimmedPhone,
                     "USER_NOT_FOUND", "短信登录：手机号未注册（引导走注册）", request);
+            // 手机号刚通过短信验证 → 签发短时效注册凭证带回前端，注册时凭它免重输验证码。
+            String registerTicket = jwtUtil.generateRegisterTicket(trimmedPhone);
             throw new BusinessException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND",
-                    "该手机号尚未注册，请先用「激活码 + 手机号」完成注册");
+                    "该手机号尚未注册，请先用「激活码 + 手机号」完成注册",
+                    Map.of("registerTicket", registerTicket, "phone", trimmedPhone));
         }
         // v0.59：与密码登录对齐 —— 停用 / 注销账号拒绝登录（此前短信登录漏了这道闸）
         if (user.getStatus() != AepUser.UserStatus.ACTIVE) {
@@ -184,6 +190,7 @@ public class SmsAuthController {
         String studioName = body.studioName();
         String displayName = body.displayName();
         String platform = body.platform(); // v0.43+: 注册来源子产品（music/drama/celebrity）
+        String registerTicket = body.registerTicket(); // v0.84+: 验证码登录未注册时签发的注册凭证
 
         String trimmedPhone = phone == null ? null : phone.trim();
         if (licenseKey == null || licenseKey.isBlank()) {
@@ -196,13 +203,33 @@ public class SmsAuthController {
                     "STUDIO_NAME_REQUIRED", "短信注册：工作室名称字段缺失 platform=" + platform, request);
             throw new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_NAME_REQUIRED", "请填写工作室名称");
         }
-        try {
-            smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.REGISTER);
-        } catch (RuntimeException ex) {
-            auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
-                    errorCodeOf(ex, "SMS_CODE_INVALID"),
-                    "短信注册：验证码校验失败 platform=" + platform + " · " + ex.getMessage(), request);
-            throw ex;
+        // 双通道证明手机号所有权：
+        //   ① 注册凭证（registerTicket）：用户刚在验证码登录处通过验证、被引导来注册 →
+        //      凭证有效且绑定的手机号一致 → 跳过短信码校验（免重输验证码，体验更顺）。
+        //   ② 否则走原「注册用途验证码」路径（直接打开注册页的用户照常发码 + 输码）。
+        boolean ticketVerified = false;
+        if (registerTicket != null && !registerTicket.isBlank()) {
+            String ticketPhone = jwtUtil.verifyRegisterTicket(registerTicket);
+            if (ticketPhone != null && ticketPhone.equals(trimmedPhone)) {
+                ticketVerified = true;
+            } else if ((code == null || code.isBlank())) {
+                // 凭证带了但无效（过期 / 手机号被改），且没退回手输验证码 → 明确告知前端重新获取。
+                log.info("[auth-sms] register ticket invalid/expired phone={} platform={}", trimmedPhone, platform);
+                auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
+                        "REGISTER_TICKET_EXPIRED", "短信注册：注册凭证无效或已过期 platform=" + platform, request);
+                throw new BusinessException(HttpStatus.UNAUTHORIZED, "REGISTER_TICKET_EXPIRED",
+                        "手机验证已过期，请重新获取验证码");
+            }
+        }
+        if (!ticketVerified) {
+            try {
+                smsCodeService.verifyCode(trimmedPhone, code, SmsCodePurpose.REGISTER);
+            } catch (RuntimeException ex) {
+                auditService.recordAuthFailure(AuditService.Actions.SMS_REGISTER, trimmedPhone,
+                        errorCodeOf(ex, "SMS_CODE_INVALID"),
+                        "短信注册：验证码校验失败 platform=" + platform + " · " + ex.getMessage(), request);
+                throw ex;
+            }
         }
 
         if (userRepo.existsByPhone(trimmedPhone)) {
@@ -289,6 +316,8 @@ public class SmsAuthController {
             String licenseKey,
             String studioName,
             String displayName,
-            String platform
+            String platform,
+            /** v0.84+: 验证码登录未注册时由 /sms/verify 签发的注册凭证；带它可免重输验证码。 */
+            String registerTicket
     ) {}
 }

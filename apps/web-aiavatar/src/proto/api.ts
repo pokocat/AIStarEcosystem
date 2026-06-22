@@ -210,8 +210,11 @@ export const AuthApi = {
   /** 手机号 + 密码登录（账号需先在「账号与安全」设置过密码；未设置 → PASSWORD_NOT_SET）。 */
   passwordLogin: (phone: string, password: string): Promise<{ token: string; user: any }> =>
     authFetch(`/password/login`, { phone, password }),
-  /** v0.53：注册透传 platform=aiavatar（dev-grant-all=false 时按来源授权本子产品）。 */
-  smsRegister: (input: { phone: string; code: string; licenseKey: string; studioName: string; displayName?: string; platform?: string }): Promise<{ token: string; user: any }> =>
+  /**
+   * v0.53：注册透传 platform=aiavatar（dev-grant-all=false 时按来源授权本子产品）。
+   * v0.84：支持 registerTicket —— 验证码登录未注册时回带的注册凭证，带它可省略 code 免重输验证码。
+   */
+  smsRegister: (input: { phone: string; code?: string; registerTicket?: string; licenseKey: string; studioName: string; displayName?: string; platform?: string }): Promise<{ token: string; user: any }> =>
     authFetch(`/sms/register`, { platform: "aiavatar", ...input }),
 
   // ── v0.53 平台门禁（秘钥按子应用拆分）────────────────────────

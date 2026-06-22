@@ -73,6 +73,41 @@ public class JwtUtil {
                 .compact();
     }
 
+    /** 注册凭证类型标记（与登录 JWT 区分，防止误用）。 */
+    private static final String REGISTER_TICKET_TYPE = "sms-register";
+    /** 注册凭证有效期：10 分钟。够用户从「验证码登录失败」切到「填激活码」完成注册。 */
+    private static final long REGISTER_TICKET_TTL_MS = 10 * 60 * 1000L;
+
+    /**
+     * 签发一个短时效的「注册凭证」，绑定刚通过短信验证的手机号。
+     * 用于：验证码登录通过但手机号未注册 → 引导走注册时，免去用户在注册页重新输验证码。
+     * 凭证经 HMAC 签名不可伪造，subject=手机号，claim typ=sms-register，10 分钟过期。
+     */
+    public String generateRegisterTicket(String phone) {
+        Date now = new Date();
+        return Jwts.builder()
+                .subject(phone)
+                .claim("typ", REGISTER_TICKET_TYPE)
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + REGISTER_TICKET_TTL_MS))
+                .signWith(key)
+                .compact();
+    }
+
+    /**
+     * 校验注册凭证。成功返回凭证绑定的手机号；签名无效 / 过期 / 类型不符 → 返回 null。
+     */
+    public String verifyRegisterTicket(String ticket) {
+        if (ticket == null || ticket.isBlank()) return null;
+        try {
+            Claims claims = parseToken(ticket.trim());
+            if (!REGISTER_TICKET_TYPE.equals(claims.get("typ", String.class))) return null;
+            return claims.getSubject();
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     public Claims parseToken(String token) {
         return Jwts.parser()
                 .verifyWith(key)

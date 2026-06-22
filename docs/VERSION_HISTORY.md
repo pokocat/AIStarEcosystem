@@ -3314,3 +3314,33 @@ URL 仍带 id、步骤 / 分镜 / 出片产物 / meta 全部恢复（含 `step=s
 web-drama `typecheck` + `vitest` 28/28 + `build`（含 TipTap SSR）全绿。
 **契约**：路径/方法不变 —— 仅 `POST /me/drama/shorts` 行为加「进工作台扣费」、`GET /me/drama/config` 响应加
 `prices.shortEntry`（openapi summary 已同步）。
+
+### v0.84（2026-06-22）— 验证码登录未注册时免重输验证码（注册凭证 register ticket）
+
+**痛点**：手机号验证码登录通过、但发现未注册 → 引导切到注册填激活码时，验证码又得重输一遍。
+根因有两层：① `SmsCodeService.verifyCode` 成功即 `store.remove` 销毁码（防重放）；② 发码绑定
+`purpose`（login/register），登录码无法用于注册校验（`SMS_CODE_NOT_REQUESTED`）。所以即便把码带过去也没用。
+
+**方案（注册凭证）**：
+- `JwtUtil.generateRegisterTicket(phone)` / `verifyRegisterTicket(ticket)→phone`：HMAC 签名、
+  `typ=sms-register`、subject=手机号、TTL 10 分钟，不可伪造、与登录 JWT 区分。
+- `POST /auth/sms/verify`：验证码通过但用户未注册 → 签发凭证，放进 404 `USER_NOT_FOUND` 的
+  `error.details = { registerTicket, phone }` 回带（验证码仍已被消费，故用凭证而非透传旧码）。
+- `POST /auth/sms/register`：新增可选 `registerTicket`。带有效凭证且手机号一致 → 跳过短信码校验；
+  否则走原「register 用途验证码」路径（直接打开注册页的用户不受影响）。凭证无效/过期且未退回手输
+  → 401 `REGISTER_TICKET_EXPIRED`，前端据此回退到验证码输入。
+- 前端三处登录页（`web-celebrity` 独立页 / 共享 `packages/landing/AuthScreen`（music+drama）/
+  `web-aiavatar` `screen-login`）：登录捕获 `USER_NOT_FOUND` 时取 `details.registerTicket+phone`，
+  切到注册页预填手机号（只读）、以「✓ 手机号已验证」替换验证码输入框，提交带 `registerTicket`；
+  凭证过期则清空回退手输。手动点「注册」tab 走全新流程（不带可能过期的凭证）。
+- api-client `SmsRegisterPayload`：`code` 改可选、加 `registerTicket?`；新增 `SmsRegisterTicketDetails` 类型。
+  `apps/web-aiavatar` 给 `UI.Input` 加 `disabled` 透传（用于锁定已验证手机号）。
+
+**门禁全绿**：server compile + `JwtUtilTest` 5/5（凭证签发/校验/防篡改/类型隔离）+
+`SmsAuthControllerTest` 10/10（**端到端 happy path**：未注册手机号→短信验证码登录拿 404 凭证→把该凭证喂回
+register→注册并登录成功，全程不重输验证码；+ 登录未注册→404 带可验证凭证 / 登录已注册→token；
+注册带有效凭证跳过验码 / 无凭证走 REGISTER 验码 / 凭证无效但带验证码回退 / 凭证手机号不符且无验证码→401 /
+缺激活码→400 / 已注册→409 / 验码失败不激活；**SMS 发码与验码全程 Mockito mock，不发真实短信**）；
+`web-{celebrity,aiavatar,music,drama}` typecheck + `check:api-contract` OK。
+**契约**：路径/方法不变 —— `sms/register` 请求体加 `registerTicket`、`code` 改可选、`platform` enum 补 `aiavatar`、
+加 401 `REGISTER_TICKET_EXPIRED`；`sms/verify` 404 details 形状已在 openapi 标注。
