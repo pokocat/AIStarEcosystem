@@ -338,7 +338,18 @@ public class CreditService {
             return existing;
         }
 
-        Wallet wallet = getOrCreateWallet(userId);
+        // SELECT … FOR UPDATE：防止并发 hold 超扣（两个请求同时读到同一余额各自通过校验）。
+        Wallet wallet = walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .totalBalance(0L)
+                .licenseBalance(0L)
+                .rechargeBalance(0L)
+                .giftBalance(0L)
+                .pendingBalance(0L)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build()));
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
                     "积分余额不足，本次操作需 " + amount + "，当前可用 " + wallet.getTotalBalance());
@@ -433,7 +444,8 @@ public class CreditService {
                     "commit 金额 " + amount + " 超过剩余 hold " + hold.getRemainingAmount());
         }
 
-        Wallet wallet = walletRepo.findById(hold.getWalletId())
+        // SELECT … FOR UPDATE：与 hold 的行锁对称，确保 pendingBalance 更新不会丢失。
+        Wallet wallet = walletRepo.findByIdForUpdate(hold.getWalletId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                         "hold 关联 wallet 不存在: " + hold.getWalletId()));
         if (wallet.getPendingBalance() < amount) {
@@ -502,7 +514,8 @@ public class CreditService {
             return null;
         }
 
-        Wallet wallet = walletRepo.findById(hold.getWalletId())
+        // SELECT … FOR UPDATE：确保释放回桶的写入不会被并发 hold/commit 覆盖。
+        Wallet wallet = walletRepo.findByIdForUpdate(hold.getWalletId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                         "hold 关联 wallet 不存在: " + hold.getWalletId()));
 
