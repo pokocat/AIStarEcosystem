@@ -151,7 +151,8 @@ public class CreditService {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "扣减积分必须为正数");
         }
-        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+        // SELECT … FOR UPDATE：防止并发 debit 超扣（同 hold 的锁策略）。
+        Wallet wallet = walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
                 .id(UUID.randomUUID().toString())
                 .userId(userId)
                 .totalBalance(0L)
@@ -208,7 +209,8 @@ public class CreditService {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "提现金额必须为正数");
         }
-        Wallet wallet = walletRepo.findByUserId(userId)
+        // SELECT … FOR UPDATE：防止并发 withdraw 超扣（同 hold 的锁策略）。
+        Wallet wallet = walletRepo.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "钱包不存在或余额不足"));
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
