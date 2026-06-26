@@ -5994,6 +5994,44 @@ paths:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-finance], operationId: adminRejectRechargeOrder, responses: { '200': { description: ok } } }
 
+  # ── v2 §9 积分面 lane：调差 / 赠送（只发 giftBalance，不碰资金面）。CreditOpsService ──
+  /admin/finance/adjustments/compensate:
+    post:
+      tags: [admin-finance]
+      operationId: adminCompensate
+      summary: 客诉补偿（v2 §9 积分面）—— 给用户补发赠送积分，挂工单号；不碰资金面
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, amount, incidentRef, reason]
+              properties:
+                userId: { type: string }
+                amount: { type: integer, format: int64 }
+                incidentRef: { type: string }
+                reason: { type: string }
+      responses: { '200': { description: "新增账本分录（GIFT）" } }
+  /admin/finance/adjustments/grant:
+    post:
+      tags: [admin-finance]
+      operationId: adminGrantGift
+      summary: 激励赠送（v2 §9 积分面）—— 给用户发赠送积分，可挂活动号；不碰资金面
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, amount, reason]
+              properties:
+                userId: { type: string }
+                amount: { type: integer, format: int64 }
+                campaignId: { type: string }
+                reason: { type: string }
+      responses: { '200': { description: "新增账本分录（GIFT）" } }
+
   # ── 结算中心只读视图（v0.58 backfill：钱包 / 流水 / 业务交易，DTO 附带账号登录名 / 昵称 + 秒级时间） ──
   /admin/wallets:
     get:

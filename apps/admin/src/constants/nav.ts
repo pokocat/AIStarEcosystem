@@ -150,6 +150,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/finance/ledger",            label: "结算中心",   icon: Wallet,        badgeKey: "txn_actionable", description: "钱包 / 流水 / 复核" },
       { href: "/finance/recharge-orders",   label: "充值订单",   icon: Coins,         description: "v0.56：用户充值下单 → 线下收款后核准入账 / 驳回" },
       { href: "/finance/recharge-packages", label: "充值套餐",   icon: Gift,          description: "v0.5：积分充值套餐 CRUD（软删）" },
+      { href: "/finance/adjustments",       label: "调差 / 赠送", icon: Gift,          description: "v2：给用户补发 / 赠送积分（积分面，不碰真实资金）" },
       { href: "/finance/risk",              label: "异常风控",   icon: AlertTriangle, description: "异常打赏与提现" },
     ],
   },
