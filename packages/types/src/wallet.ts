@@ -96,8 +96,9 @@ export interface RechargeResponse {
  * - paid：已核准并到账（积分已入账）
  * - rejected：已驳回（收款不符 / 无效）
  * - cancelled：用户取消
+ * - refunded：已退款（v2 §15.5 / D17：现金退款 + 未消费积分回收）
  */
-export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled";
+export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled" | "refunded";
 
 /** 充值订单。下单即生成 PENDING 账单，平台运营线下收款后核准方入账。 */
 export interface RechargeOrder {
@@ -125,4 +126,8 @@ export interface RechargeOrder {
   createdAt: ISODateTime;
   updatedAt?: ISODateTime;
   reviewedAt?: ISODateTime;
+  /** v2 §15.5 / D17 退款回收（仅 refunded 订单有值）：退款时间 / 实退积分 / 回收账本分录 id */
+  refundedAt?: ISODateTime;
+  refundedCredits?: number;
+  refundLedgerEntryId?: string;
 }

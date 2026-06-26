@@ -5985,7 +5985,7 @@ paths:
       tags: [admin-finance]
       operationId: adminListRechargeOrders
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [pending, paid, rejected, cancelled, all] } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, paid, rejected, cancelled, refunded, all] } }
       responses: { '200': { description: ok } }
   /admin/finance/recharge-orders/{orderId}/approve:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
@@ -5993,6 +5993,24 @@ paths:
   /admin/finance/recharge-orders/{orderId}/reject:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-finance], operationId: adminRejectRechargeOrder, responses: { '200': { description: ok } } }
+  /admin/finance/recharge-orders/{orderId}/refund:
+    parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-finance]
+      operationId: adminRefundRechargeOrder
+      summary: 现金退款 + 未消费积分回收（v2 §15.5 / D17，限 FINANCE_ADMIN / SUPER_ADMIN；仅 PAID 订单，clamp 到未消费充值额）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: "订单转 REFUNDED + 写资金面 REFUND_CASH 回收分录" }
+        '409': { description: "已消费完毕无可回收 / 订单非 PAID" }
 
   # ── v2 §9 积分面 lane：调差 / 赠送（只发 giftBalance，不碰资金面）。CreditOpsService ──
   /admin/finance/adjustments/compensate:

@@ -107,11 +107,25 @@ public class RechargeOrder {
 
     private Instant reviewedAt;
 
-    /** 订单状态机：PENDING → PAID（核准入账）/ REJECTED（驳回）/ CANCELLED（用户取消）。终态不可再变。 */
+    // ── v2 §15.5 / D17 退款回收 ──────────────────────────────────────────────
+    /** 退款时间（PAID → REFUNDED）。 */
+    private Instant refundedAt;
+
+    /** 退款回收写入的 REFUND_CASH 账本分录 id（与现金退款互链，审计可溯源）。 */
+    private String refundLedgerEntryId;
+
+    /** 本次退款实际回收 / 退现的积分额（= min(订单积分, 当时未消费充值余额)，clamp 后值）。 */
+    private long refundedCredits;
+
+    /**
+     * 订单状态机：PENDING → PAID（核准入账）/ REJECTED（驳回）/ CANCELLED（用户取消）；
+     * PAID → REFUNDED（v2 §15.5 现金退款 + 未消费积分回收）。终态不可再变。
+     */
     public enum Status {
         PENDING,
         PAID,
         REJECTED,
-        CANCELLED
+        CANCELLED,
+        REFUNDED
     }
 }

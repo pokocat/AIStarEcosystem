@@ -130,4 +130,42 @@ class RechargeServiceTest {
         verify(creditService, never())
                 .creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
     }
+
+    // ── v2 §15.5 / D17 退款回收 ──────────────────────────────────────────────
+
+    @Test
+    void refundPaidOrderReclaimsAndMarksRefunded() {
+        RechargeOrder o = pending(1000, 0);
+        o.setStatus(RechargeOrder.Status.PAID);
+        // 回收 clamp 到 700（未消费部分），返回负 REFUND_CASH 分录
+        when(creditService.refundCashReclaim(eq(USER), eq(1000L), eq(ORDER), anyString()))
+                .thenReturn(new LedgerEntryDto("le_refund", "w1", USER, null, null,
+                        "refund_cash", -700, 300, "d", "refund_cash", ORDER, Instant.now()));
+
+        RechargeOrderDto dto = svc.refundOrder(ORDER, "fin-1", "客户申请退款");
+        assertEquals("refunded", dto.status());
+
+        RechargeOrder saved = db.get(ORDER);
+        assertEquals(RechargeOrder.Status.REFUNDED, saved.getStatus());
+        assertEquals("le_refund", saved.getRefundLedgerEntryId());
+        assertEquals(700, saved.getRefundedCredits());
+        assertEquals("fin-1", saved.getReviewerId());
+        assertNotNull(saved.getRefundedAt());
+        verify(creditService).refundCashReclaim(eq(USER), eq(1000L), eq(ORDER), anyString());
+    }
+
+    @Test
+    void refundNonPaidRejectedAndDoesNotReclaim() {
+        pending(1000, 0); // PENDING
+        assertThrows(BusinessException.class, () -> svc.refundOrder(ORDER, "fin-1", "x"));
+        verify(creditService, never()).refundCashReclaim(anyString(), anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void refundBlankReasonRejected() {
+        RechargeOrder o = pending(1000, 0);
+        o.setStatus(RechargeOrder.Status.PAID);
+        assertThrows(BusinessException.class, () -> svc.refundOrder(ORDER, "fin-1", "  "));
+        verify(creditService, never()).refundCashReclaim(anyString(), anyLong(), anyString(), anyString());
+    }
 }

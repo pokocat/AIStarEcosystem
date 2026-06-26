@@ -3,13 +3,14 @@
 // 与 packages/types/src/wallet.ts RechargeOrder 同字段（admin 侧镜像）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled";
+export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled" | "refunded";
 
 export const RECHARGE_ORDER_STATUS_LABEL: Record<RechargeOrderStatus, string> = {
   pending: "待确认",
   paid: "已到账",
   rejected: "已驳回",
   cancelled: "已取消",
+  refunded: "已退款",
 };
 
 export interface RechargeOrder {
@@ -30,4 +31,8 @@ export interface RechargeOrder {
   createdAt: string;
   updatedAt?: string;
   reviewedAt?: string;
+  // v2 §15.5 / D17 退款回收（仅 refunded 订单有值）
+  refundedAt?: string;
+  refundedCredits?: number;
+  refundLedgerEntryId?: string;
 }

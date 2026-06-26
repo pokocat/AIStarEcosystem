@@ -280,6 +280,56 @@ public class CreditService {
         return LedgerEntryDto.from(ledgerRepo.save(entry));
     }
 
+    /**
+     * v2 §15.5 / D17 现金退款回收：现金退款的<b>同事务</b>积分回收。补堵审计 #9 真洞 —— 退现金却不收回
+     * 用户已持有的对应积分 = 钱与积分两头占。
+     *
+     * <p>回收额 <b>clamp 到当前未消费充值余额</b>（{@code min(requestedCredits, rechargeBalance)}）：
+     * 充值进 rechargeBalance 且消费时该桶最后扣（gift→license→recharge），故 rechargeBalance 即「未消费充值额」
+     * 的下界。花光 → 回收 0（refund 0）；部分消费 → 回收未消费部分。写一条资金面 {@code REFUND_CASH}
+     * 分录（amount 为负），cashArtifactId 链到现金凭证（订单 id）。这是 §13#2 允许扣减 rechargeBalance 的
+     * <b>唯一</b>显式通道（普通负 ADJUST 禁止碰现金桶）。
+     *
+     * @param requestedCredits 期望回收额（通常 = 订单 credits），实际按可用余额 clamp
+     * @return 写入的 REFUND_CASH 分录；clamp 后为 0 时抛 409（已消费完毕，无可退）
+     */
+    @Transactional
+    public LedgerEntryDto refundCashReclaim(String userId, long requestedCredits,
+                                            String cashArtifactId, String description) {
+        if (requestedCredits <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "退款回收额必须为正数");
+        }
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
+        long reclaimable = Math.min(requestedCredits, wallet.getRechargeBalance());
+        if (reclaimable <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "无可回收的未消费充值额度（充值积分已消费完毕），不可走现金退款回收");
+        }
+
+        wallet.setRechargeBalance(wallet.getRechargeBalance() - reclaimable);
+        long newBalance = wallet.getTotalBalance() - reclaimable;
+        wallet.setTotalBalance(newBalance);
+        wallet.setUpdatedAt(Instant.now());
+        walletRepo.save(wallet);
+
+        LedgerEntry entry = LedgerEntry.builder()
+                .id(UUID.randomUUID().toString())
+                .walletId(wallet.getId())
+                .userId(userId)
+                .entryType(LedgerEntry.LedgerEntryType.REFUND_CASH)
+                .amount(-reclaimable)
+                .balanceAfter(newBalance)
+                .description(description)
+                .referenceId(cashArtifactId)
+                .referenceType("refund_cash")
+                .createdAt(Instant.now())
+                .build();
+        // entryType=REFUND_CASH → @PrePersist 标 plane=MONEY、cashArtifactId=referenceId（链到订单）。
+        log.info("[credit] refund-cash reclaim user={} requested={} reclaimed={} cashArtifact={}",
+                userId, requestedCredits, reclaimable, cashArtifactId);
+        return LedgerEntryDto.from(ledgerRepo.save(entry));
+    }
+
     // ── v0.33+: hold / commitHold / releaseHold ─────────────────────────────────
 
     /**

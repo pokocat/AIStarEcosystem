@@ -29,7 +29,11 @@ public record RechargeOrderDto(
         String reviewNote,
         Instant createdAt,
         Instant updatedAt,
-        Instant reviewedAt
+        Instant reviewedAt,
+        /** v2 §15.5 / D17 退款回收：退款时间 + 实退积分 + 回收分录 id（未退款时三者省略）。 */
+        Instant refundedAt,
+        Long refundedCredits,
+        String refundLedgerEntryId
 ) {
     public static RechargeOrderDto from(RechargeOrder o) {
         return new RechargeOrderDto(
@@ -49,7 +53,10 @@ public record RechargeOrderDto(
                 o.getReviewNote(),
                 o.getCreatedAt(),
                 o.getUpdatedAt(),
-                o.getReviewedAt()
+                o.getReviewedAt(),
+                o.getRefundedAt(),
+                o.getStatus() == RechargeOrder.Status.REFUNDED ? o.getRefundedCredits() : null,
+                o.getRefundLedgerEntryId()
         );
     }
 }

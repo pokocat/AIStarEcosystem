@@ -4,6 +4,7 @@ import com.aistareco.aep.dto.RechargeOrderDto;
 import com.aistareco.aep.service.RechargeService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -52,6 +53,23 @@ public class AdminRechargeOrderController {
         }
         String reviewer = principal != null ? principal.getName() : "admin";
         return ApiResponse.of(rechargeService.rejectOrder(orderId, reviewer, reason));
+    }
+
+    /**
+     * 现金退款 + 未消费积分回收（v2 §15.5 / D17）。资金面动作 → 限 FINANCE_ADMIN / SUPER_ADMIN；
+     * OPERATOR 不可退款。reason 必填。仅 PAID 订单可退；clamp 到未消费充值额，已消费完毕 → 409。
+     */
+    @PostMapping("/{orderId}/refund")
+    @PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")
+    public ApiResponse<RechargeOrderDto> refund(Principal principal,
+                                                @PathVariable String orderId,
+                                                @RequestBody(required = false) ReviewRequest body) {
+        String reason = body == null ? null : body.reason();
+        if (reason == null || reason.isBlank()) {
+            throw BusinessException.badRequest("REFUND_REASON_REQUIRED", "请填写退款原因");
+        }
+        String operator = principal != null ? principal.getName() : "admin";
+        return ApiResponse.of(rechargeService.refundOrder(orderId, operator, reason));
     }
 
     public record ReviewRequest(String note, String reason) {}

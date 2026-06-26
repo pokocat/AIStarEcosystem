@@ -354,6 +354,53 @@ public class RechargeService {
         return RechargeOrderDto.from(order);
     }
 
+    /**
+     * 现金退款 + 未消费积分回收（v2 §15.5 / D17，FINANCE_ADMIN）。补堵审计 #9：退现金却不收回对应积分。
+     *
+     * 仅 PAID 订单可退。<b>同事务</b>调 {@link CreditService#refundCashReclaim}：按订单积分 clamp 到当前
+     * 未消费充值余额回收（写资金面 REFUND_CASH 分录），订单转 REFUNDED 并互链回收分录。clamp 后为 0
+     * （已消费完毕）→ 抛 409，不做现金退款（避免「服务已交付仍全额退现」的隐性损失，须财务显式善意处理）。
+     *
+     * <p>真实 RMB 退回（Jeepay 退款 API / 线下打款）由财务在渠道侧执行；本方法负责积分账本侧的回收与
+     * 订单状态机推进，并把回收分录与现金凭证互链供对账审计（R7：人工退款须可追、不默默漏）。
+     */
+    @Transactional
+    public RechargeOrderDto refundOrder(String orderId, String operatorId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw BusinessException.badRequest("REFUND_REASON_REQUIRED", "请填写退款原因");
+        }
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        if (order.getStatus() != RechargeOrder.Status.PAID) {
+            throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PAID",
+                    "该订单状态为 " + order.getStatus() + "，只有已支付订单可退款");
+        }
+
+        LedgerEntryDto reclaim = creditService.refundCashReclaim(
+                order.getUserId(),
+                order.getCredits(),
+                order.getId(),
+                "充值订单退款回收（订单 " + order.getId() + "）：" + reason);
+
+        Instant now = Instant.now();
+        long reclaimed = Math.abs(reclaim.amount());
+        order.setStatus(RechargeOrder.Status.REFUNDED);
+        order.setRefundedAt(now);
+        order.setRefundLedgerEntryId(reclaim.id());
+        order.setRefundedCredits(reclaimed);
+        order.setReviewerId(operatorId);
+        order.setReviewNote(trimToNull(reason, 512));
+        order.setUpdatedAt(now);
+        orderRepo.save(order);
+        log.info("[recharge] order refunded id={} userId={} operator={} reclaimed={}/{} ledger={}",
+                order.getId(), order.getUserId(), operatorId, reclaimed, order.getCredits(), reclaim.id());
+        notificationPublisher.notifyUser(order.getUserId(), Notification.NotificationType.REVENUE,
+                "充值订单已退款",
+                "充值订单 " + order.getId() + "（" + nz(order.getPackageTag()) + "）已退款，回收未消费积分 "
+                        + reclaimed + " 分。现金将按渠道原路退回。");
+        return RechargeOrderDto.from(order);
+    }
+
     /** 「昵称（登录名 xxx）」展示标签；admin 消息中心溯源用。 */
     private static String accountLabel(AepUser user) {
         if (user == null) return "（未知账号）";

@@ -29,6 +29,7 @@ const STATUS_TONE: Record<RechargeOrderStatus, StatusTone> = {
   paid: "success",
   rejected: "danger",
   cancelled: "neutral",
+  refunded: "neutral",
 };
 
 const FILTERS: { key: Filter; label: string }[] = [
@@ -37,6 +38,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "paid", label: "已到账" },
   { key: "rejected", label: "已驳回" },
   { key: "cancelled", label: "已取消" },
+  { key: "refunded", label: "已退款" },
 ];
 
 function fmtCny(cents: number): string {
@@ -141,6 +143,43 @@ export default function AdminRechargeOrdersPage() {
     }
   }
 
+  async function onRefund(o: RechargeOrder) {
+    const res = await confirm({
+      title: "退款 + 回收未消费积分",
+      tone: "danger",
+      confirmLabel: "确认退款",
+      requireReason: true,
+      description:
+        "资金面动作（限财务 / 超管）。将按订单积分回收用户当前未消费的充值额度（写不可变账本 REFUND_CASH），" +
+        "已消费部分不回收。真实现金请另在渠道侧原路退回。请填写退款原因，用户可见。",
+      affected: (
+        <div className="space-y-1">
+          <div className="font-medium">
+            {o.username ?? o.userId} · {o.packageTag ?? "充值套餐"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            原到账 {o.credits.toLocaleString()} 积分 · 应收 {fmtCny(o.priceCents)} · 编号{" "}
+            <span className="font-mono">{o.id}</span>
+          </div>
+        </div>
+      ),
+    });
+    if (!res.ok) return;
+    setBusyId(o.id);
+    try {
+      const updated = await RechargeOrdersApi.refund(o.id, res.reason);
+      await refresh();
+      toast.success({
+        title: "已退款",
+        description: `回收未消费积分 ${(updated.refundedCredits ?? 0).toLocaleString()} 分`,
+      });
+    } catch (e) {
+      toast.danger({ title: "退款失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const pendingCount = list.filter((o) => o.status === "pending").length;
 
   return (
@@ -222,6 +261,11 @@ export default function AdminRechargeOrdersPage() {
                     <TableCell className="max-w-[180px] text-xs text-muted-foreground">
                       {o.status === "rejected" && o.reviewNote ? (
                         <span className="text-rose-600">驳回：{o.reviewNote}</span>
+                      ) : o.status === "refunded" ? (
+                        <span className="text-amber-600">
+                          退款回收 {(o.refundedCredits ?? 0).toLocaleString()} 分
+                          {o.reviewNote ? ` · ${o.reviewNote}` : ""}
+                        </span>
                       ) : (
                         o.userNote || "—"
                       )}
@@ -245,6 +289,15 @@ export default function AdminRechargeOrdersPage() {
                             驳回
                           </Button>
                         </>
+                      ) : o.status === "paid" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void onRefund(o)}
+                          disabled={busyId === o.id}
+                        >
+                          退款
+                        </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">
                           {o.reviewedAt ? fmtTime(o.reviewedAt) : "—"}
