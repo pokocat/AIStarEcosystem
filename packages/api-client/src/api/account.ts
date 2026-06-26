@@ -93,3 +93,43 @@ export async function cancelRechargeOrder(orderId: string): Promise<RechargeOrde
     method: "POST",
   });
 }
+
+/** v2：充值在线支付下单返回体。payData 供前端拉起支付（影子链路 → 模拟收银台）。 */
+export interface CheckoutResponse {
+  orderId: string;
+  /** shadow / wxapp / payurl … */
+  payDataType: string;
+  payData: string;
+}
+
+export interface CheckoutPayload {
+  packageId: string;
+  /** WX_LITE / WX_NATIVE / ALI_QR / SHADOW；空则按后端 driver 默认。 */
+  wayCode?: string;
+  /** 微信小程序 openid（WX_LITE 必填）。 */
+  openid?: string;
+  /** 发起子应用（仅营销标签）。 */
+  sourceApp?: string;
+}
+
+/** v2：充值在线支付下单（子应用内发起，后端调支付网关开单）。 */
+export async function rechargeCheckout(payload: CheckoutPayload): Promise<CheckoutResponse> {
+  return apiFetch<CheckoutResponse>("/me/wallet/recharge/checkout", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+/**
+ * v2 dev 影子链路：模拟收银台确认（仅后端 driver=shadow 时可用，生产无此端点）。
+ * result：success（默认，→ 入账）/ fail（→ 取消）/ timeout（→ 留 PENDING）。
+ */
+export async function confirmShadowPay(
+  orderId: string,
+  result: "success" | "fail" | "timeout" = "success",
+): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>("/dev/pay/shadow/confirm", {
+    method: "POST",
+    body: { orderId, result },
+  });
+}

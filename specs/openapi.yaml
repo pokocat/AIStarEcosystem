@@ -4907,6 +4907,67 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/RechargeOrder' }
 
+  /me/wallet/recharge/checkout:
+    post:
+      tags: [finance]
+      operationId: rechargeCheckout
+      summary: 充值在线支付下单（v2：子应用内发起，后端调支付网关开单，返回 payData 拉起支付）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [packageId]
+              properties:
+                packageId: { type: string }
+                wayCode: { type: string, description: 'WX_LITE/WX_NATIVE/ALI_QR/SHADOW；空则按 driver 默认' }
+                openid: { type: string, description: '微信小程序 openid（WX_LITE 必填）' }
+                sourceApp: { type: string, description: 'music/drama/celebrity/aiavatar/miniprogram（仅营销标签，不切分余额）' }
+      responses:
+        '200':
+          description: 下单成功，返回 payData
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          orderId: { type: string }
+                          payDataType: { type: string, description: 'shadow / wxapp / payurl …' }
+                          payData: { type: string }
+
+  /dev/pay/shadow/confirm:
+    post:
+      tags: [finance]
+      operationId: shadowPayConfirm
+      summary: '【dev 影子链路·仅 driver=shadow】模拟收银台确认（v2 §6.7）：success→复用 settlePaidOrder 入账 / fail→取消 / timeout→留 PENDING。生产 driver=jeepay 时此端点不注册。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId]
+              properties:
+                orderId: { type: string }
+                result: { type: string, enum: [success, fail, timeout], default: success }
+      responses:
+        '200':
+          description: 影子确认后的订单态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
+
   /me/ledger:
     get:
       tags: [finance]
