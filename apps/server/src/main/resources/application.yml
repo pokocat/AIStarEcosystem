@@ -90,6 +90,10 @@ aep:
       # manual=前端模拟收银台手动点「支付成功」；auto=下单后延迟自动确认（CI/headless）
       confirm-mode: ${AEP_PAYMENT_SHADOW_CONFIRM_MODE:manual}
       auto-confirm-delay-ms: ${AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS:800}
+  # v2 §5：孤儿 hold 自动清扫。TTL 须 > 最长合法任务（视频生成轮询上限 ~15min），
+  # 默认 180min 防误杀在途任务；CreditHoldSweeper 默认每 30min 扫一次。
+  credit:
+    stale-hold-ttl-minutes: ${AEP_CREDIT_STALE_HOLD_TTL_MIN:180}
   # v0.43+ 子产品平台访问隔离（music / drama / celebrity）。
   #   true  → 任意注册入口授予全部子产品（一处注册，三端可用）。开发 / 联调默认。
   #   false → 注册只授予来源子产品（前端登录页透传 platform）；其余子产品需另行开通。
