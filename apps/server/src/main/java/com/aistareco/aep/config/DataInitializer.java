@@ -79,7 +79,14 @@ public class DataInitializer implements CommandLineRunner {
         // 无法验角色 → 这里增量补一次。
         ensureCelebrityOperatorSeed(Instant.now());
 
-        if (adminUserRepo.count() > 0) {
+        // v2 §9 角色拆分：财务（FINANCE_ADMIN）是后加的必备角色。已 seed 过 admin/operator
+        // 的老 H2 文件库会被下面的 count() 守卫挡掉整段 seed → finance 永不创建。用 username
+        // 幂等增量补一次（与 celebrity_operator 同思路），dev 重启即有 finance/finance123。
+        ensureFinanceAdminSeed(Instant.now());
+
+        // 幂等守卫：以规范的 admin 账号为 sentinel（不用 count()——上面 ensureFinanceAdminSeed
+        // 可能已写入 finance，会让 count()>0 误判已 seed 而跳过 admin/operator + 演示数据）。
+        if (adminUserRepo.findByUsername("admin").isPresent()) {
             return;
         }
 
@@ -109,6 +116,9 @@ public class DataInitializer implements CommandLineRunner {
                 .createdAt(now)
                 .updatedAt(now)
                 .build());
+
+        // v2 §9 角色拆分：财务（FINANCE_ADMIN）由上面的 ensureFinanceAdminSeed 幂等创建，
+        // 这里不再重复 save（否则 fresh DB 会出现两条 finance）。
 
         // ─── Issuer tenants (license-distribution attribution) ──────────────────
         String platformTenantId = UUID.randomUUID().toString();
@@ -520,6 +530,28 @@ public class DataInitializer implements CommandLineRunner {
                 .updatedAt(now)
                 .build();
         userRepo.save(u);
+    }
+
+    /**
+     * v2 §9：幂等确保财务管理员（FINANCE_ADMIN）存在。dev 便利 seed —— 老 H2 文件库已有
+     * admin/operator 会让主 seed 段被 count() 守卫跳过，这里按 username 增量补 finance/finance123。
+     * 生产环境财务账号应由 SUPER_ADMIN 经后台账号管理创建，不依赖本 seed。
+     */
+    private void ensureFinanceAdminSeed(Instant now) {
+        if (adminUserRepo.findByUsername("finance").isPresent()) {
+            return;
+        }
+        adminUserRepo.save(AdminUser.builder()
+                .id(UUID.randomUUID().toString())
+                .username("finance")
+                .passwordHash(passwordEncoder.encode("finance123"))
+                .email("finance@aistareco.com")
+                .displayName("财务管理员")
+                .role(AdminUser.AdminRole.FINANCE_ADMIN)
+                .status(AdminUser.AdminStatus.ACTIVE)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
     }
 
     private String sha256Hex(String input) {

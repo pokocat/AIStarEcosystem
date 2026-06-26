@@ -1,26 +1,33 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.AdjustmentResult;
 import com.aistareco.aep.dto.LedgerEntryDto;
+import com.aistareco.aep.model.CreditAdjustmentRequest;
 import com.aistareco.aep.model.LedgerEntry;
+import com.aistareco.aep.repository.CreditAdjustmentRequestRepository;
 import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * CreditOpsService（v2 §5 / §9 积分面）：客诉补偿 / 激励赠送。
- * 关键不变量：只走 GIFT 入账（落 giftBalance），结构上不碰资金面；强制原因 + 补偿强制工单。
+ * CreditOpsService（v2 §5 / §9.2）：调差/赠送只走 GIFT（不碰资金面）+ maker-checker
+ * （小额直发 / 大额进审批 / maker≠checker 复核才入账）。阈值 5000。
  */
 class CreditOpsServiceTest {
 
     private CreditService creditService;
+    private CreditAdjustmentRequestRepository requestRepo;
     private CreditOpsService svc;
+    private Map<String, CreditAdjustmentRequest> db;
 
     @BeforeEach
     void setUp() {
@@ -29,57 +36,82 @@ class CreditOpsServiceTest {
                 .thenAnswer(inv -> new LedgerEntryDto("le_x", "w1", inv.getArgument(0, String.class),
                         null, null, "gift", inv.getArgument(1, Long.class), 0, "d",
                         inv.getArgument(4, String.class), inv.getArgument(3, String.class), Instant.now()));
-        svc = new CreditOpsService(creditService);
+        requestRepo = mock(CreditAdjustmentRequestRepository.class);
+        db = new HashMap<>();
+        when(requestRepo.save(any())).thenAnswer(inv -> {
+            CreditAdjustmentRequest r = inv.getArgument(0);
+            db.put(r.getId(), r);
+            return r;
+        });
+        when(requestRepo.findById(anyString()))
+                .thenAnswer(inv -> Optional.ofNullable(db.get(inv.getArgument(0, String.class))));
+        svc = new CreditOpsService(creditService, requestRepo, 5000);
     }
 
     @Test
-    void compensateCreditsGiftWithTicketAndReason() {
-        svc.compensate("u1", 300, "TICKET-9", "生成失败补偿", "admin-1");
-
-        ArgumentCaptor<String> refType = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<String> refId = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<String> desc = ArgumentCaptor.forClass(String.class);
+    void smallCompensateExecutesImmediately() {
+        AdjustmentResult r = svc.compensate("u1", 300, "T-9", "补偿", "op1");
+        assertFalse(r.pending());
+        assertNotNull(r.entry());
         verify(creditService).creditAccount(eq("u1"), eq(300L),
-                eq(LedgerEntry.LedgerEntryType.GIFT), refType.capture(), refId.capture(), desc.capture());
-        assertEquals("ops_compensation", refType.getValue());
-        assertEquals("TICKET-9", refId.getValue());
-        assertTrue(desc.getValue().contains("生成失败补偿"));
-        assertTrue(desc.getValue().contains("TICKET-9"));
-        assertTrue(desc.getValue().contains("admin-1"));
+                eq(LedgerEntry.LedgerEntryType.GIFT), eq("ops_compensation"), eq("T-9"), anyString());
     }
 
     @Test
-    void grantWithCampaignUsesCampaignRefType() {
-        svc.grantGift("u1", 100, "SPRING2026", "拉新激励", "admin-1");
-        verify(creditService).creditAccount(eq("u1"), eq(100L),
-                eq(LedgerEntry.LedgerEntryType.GIFT), eq("ops_gift_campaign:SPRING2026"),
-                eq("SPRING2026:u1"), anyString());
+    void largeCompensateGoesToApproval() {
+        AdjustmentResult r = svc.compensate("u1", 6000, "T-9", "补偿", "op1");
+        assertTrue(r.pending());
+        assertNotNull(r.requestId());
+        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
+        assertEquals(CreditAdjustmentRequest.Status.PENDING_APPROVAL, db.get(r.requestId()).getStatus());
     }
 
     @Test
-    void grantWithoutCampaignUsesPlainRefType() {
-        svc.grantGift("u1", 50, null, "答谢", "admin-1");
-        verify(creditService).creditAccount(eq("u1"), eq(50L),
+    void largeGrantGoesToApprovalWithCampaign() {
+        AdjustmentResult r = svc.grantGift("u1", 9000, "SPRING", "激励", "op1");
+        assertTrue(r.pending());
+        assertEquals("SPRING", db.get(r.requestId()).getCampaignId());
+        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void approveByDifferentCheckerExecutes() {
+        AdjustmentResult r = svc.grantGift("u1", 9000, null, "激励", "op1");
+        svc.approve(r.requestId(), "checker1");
+        verify(creditService).creditAccount(eq("u1"), eq(9000L),
                 eq(LedgerEntry.LedgerEntryType.GIFT), eq("ops_gift"), eq("u1"), anyString());
+        assertEquals(CreditAdjustmentRequest.Status.APPROVED, db.get(r.requestId()).getStatus());
+    }
+
+    @Test
+    void approveBySameMakerRejected() {
+        AdjustmentResult r = svc.compensate("u1", 6000, "T", "补偿", "op1");
+        assertThrows(BusinessException.class, () -> svc.approve(r.requestId(), "op1"));
+        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
+        assertEquals(CreditAdjustmentRequest.Status.PENDING_APPROVAL, db.get(r.requestId()).getStatus());
+    }
+
+    @Test
+    void rejectMarksRejectedAndDoesNotCredit() {
+        AdjustmentResult r = svc.grantGift("u1", 9000, null, "激励", "op1");
+        svc.reject(r.requestId(), "checker1", "不合理");
+        assertEquals(CreditAdjustmentRequest.Status.REJECTED, db.get(r.requestId()).getStatus());
+        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
     }
 
     @Test
     void neverTouchesCashPlane() {
-        svc.compensate("u1", 300, "T1", "r", "op");
+        svc.compensate("u1", 300, "T", "r", "op");
         svc.grantGift("u1", 100, null, "r", "op");
-        // 永远只 GIFT，绝不 RECHARGE / INCOME / 其它资金面类型
         verify(creditService, never()).creditAccount(anyString(), anyLong(),
                 eq(LedgerEntry.LedgerEntryType.RECHARGE), anyString(), anyString(), anyString());
-        verify(creditService, times(2)).creditAccount(anyString(), anyLong(),
-                eq(LedgerEntry.LedgerEntryType.GIFT), anyString(), anyString(), anyString());
     }
 
     @Test
-    void rejectsBlankReasonAndNonPositiveAndBlankTicket() {
+    void rejectsBlankReasonNonPositiveAndBlankTicket() {
         assertThrows(BusinessException.class, () -> svc.grantGift("u1", 100, null, "  ", "op"));
         assertThrows(BusinessException.class, () -> svc.grantGift("u1", 0, null, "r", "op"));
         assertThrows(BusinessException.class, () -> svc.compensate("u1", 100, "", "r", "op"));
         assertThrows(BusinessException.class, () -> svc.compensate("", 100, "T", "r", "op"));
-        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
     }
 }

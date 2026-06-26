@@ -86,9 +86,11 @@ public class AepSecurityConfig {
                         // 同样需要排在通用 /api/admin/** 之前。
                         .requestMatchers("/api/admin/staff/**").hasRole("SUPER_ADMIN")
                         // Admin endpoints require platform admin staff roles
+                        // v2 §9：FINANCE_ADMIN（财务）纳入；细粒度（复核仅 FINANCE_ADMIN/SUPER_ADMIN）由 controller @PreAuthorize 收口
                         .requestMatchers("/api/admin/**").hasAnyRole(
                                 "SUPER_ADMIN",
-                                "OPERATOR"
+                                "OPERATOR",
+                                "FINANCE_ADMIN"
                         )
                         // v2 影子链路 dev 工具（仅 driver=shadow 时存在 bean）：会写账本，必须登录；
                         // controller 内再做订单归属校验。生产 driver=jeepay 时 bean 不注册，路径 404。

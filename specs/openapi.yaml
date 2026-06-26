@@ -6030,7 +6030,37 @@ paths:
                 amount: { type: integer, format: int64 }
                 campaignId: { type: string }
                 reason: { type: string }
-      responses: { '200': { description: "新增账本分录（GIFT）" } }
+      responses: { '200': { description: "新增账本分录（GIFT）；超阈值时进审批，pending=true" } }
+  /admin/finance/adjustments/requests:
+    get:
+      tags: [admin-finance]
+      operationId: adminListAdjustmentRequests
+      summary: 大额调差 / 赠送审批队列（v2 §9.2 maker-checker）
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending_approval, approved, rejected, all] } }
+      responses: { '200': { description: "ok（CreditAdjustmentRequest[]）" } }
+  /admin/finance/adjustments/requests/{id}/approve:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-finance]
+      operationId: adminApproveAdjustmentRequest
+      summary: 批准大额审批单（限 FINANCE_ADMIN / SUPER_ADMIN；服务端校验 maker≠checker）
+      responses: { '200': { description: "已批准并入账（GIFT）" } }
+  /admin/finance/adjustments/requests/{id}/reject:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-finance]
+      operationId: adminRejectAdjustmentRequest
+      summary: 驳回大额审批单（限 FINANCE_ADMIN / SUPER_ADMIN）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string }
+      responses: { '200': { description: "已驳回" } }
 
   # ── 结算中心只读视图（v0.58 backfill：钱包 / 流水 / 业务交易，DTO 附带账号登录名 / 昵称 + 秒级时间） ──
   /admin/wallets:
