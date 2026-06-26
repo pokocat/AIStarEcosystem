@@ -80,6 +80,16 @@ aep:
     chat-timeout-seconds: ${AEP_LLM_CHAT_TIMEOUT_SECONDS:90}
   dev-auth:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
+  # v2 在线支付（充值）。driver=shadow → 影子链路（dev/test/staging，无外部依赖，端到端可跑）；
+  # 生产必须 driver=jeepay（接真实 Jeepay 网关，P1 落地）。
+  # §8.0：driver=jeepay 未配/失败时上层抛带码错误、不入账，绝不回退到 shadow；
+  #        shadow 在 mysql/prod profile 激活会打 ERROR 横幅。
+  payment:
+    driver: ${AEP_PAYMENT_DRIVER:shadow}
+    shadow:
+      # manual=前端模拟收银台手动点「支付成功」；auto=下单后延迟自动确认（CI/headless）
+      confirm-mode: ${AEP_PAYMENT_SHADOW_CONFIRM_MODE:manual}
+      auto-confirm-delay-ms: ${AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS:800}
   # v0.43+ 子产品平台访问隔离（music / drama / celebrity）。
   #   true  → 任意注册入口授予全部子产品（一处注册，三端可用）。开发 / 联调默认。
   #   false → 注册只授予来源子产品（前端登录页透传 platform）；其余子产品需另行开通。
