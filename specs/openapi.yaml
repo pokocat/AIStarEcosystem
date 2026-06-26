@@ -6011,6 +6011,12 @@ paths:
       responses:
         '200': { description: "订单转 REFUNDED + 写资金面 REFUND_CASH 回收分录" }
         '409': { description: "已消费完毕无可回收 / 订单非 PAID" }
+  /admin/finance/reconciliation:
+    get:
+      tags: [admin-finance]
+      operationId: adminReconciliationReport
+      summary: 对账重算（v2 §11，限 FINANCE_ADMIN / SUPER_ADMIN）—— 现金勾稽（排除影子）+ 积分负债单列 + drift 告警
+      responses: { '200': { description: "ReconciliationReport（grossRecharge/netCashCredits/drift/balanced/creditLiability …）" } }
 
   # ── v2 §9 积分面 lane：调差 / 赠送（只发 giftBalance，不碰资金面）。CreditOpsService ──
   /admin/finance/adjustments/compensate:

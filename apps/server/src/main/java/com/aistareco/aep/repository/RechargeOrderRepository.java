@@ -40,4 +40,25 @@ public interface RechargeOrderRepository extends JpaRepository<RechargeOrder, St
             + "o.paidAt = :paidAt, o.updatedAt = :paidAt "
             + "WHERE o.id = :id AND o.status = com.aistareco.aep.model.RechargeOrder.Status.PENDING")
     int markPaid(@Param("id") String id, @Param("paidAt") Instant paidAt);
+
+    // ── v2 §11 对账聚合：订单侧现金事实（与账本 RECHARGE 勾稽） ─────────────────
+    // 曾入账过的订单 = PAID + REFUNDED（退款只改状态、不删 RECHARGE 账本分录），故两态都算。
+
+    /** 曾入账订单的积分合计，指定 paidVia（如 "shadow"），用于把影子单从真实现金勾稽里剔除。 */
+    @Query("SELECT COALESCE(SUM(o.credits), 0) FROM RechargeOrder o "
+            + "WHERE o.status IN :statuses AND o.paidVia = :paidVia")
+    long sumCreditsByStatusesAndPaidVia(@Param("statuses") List<RechargeOrder.Status> statuses,
+                                        @Param("paidVia") String paidVia);
+
+    /** 曾入账订单的积分合计，排除指定 paidVia（真实现金侧 = 非 shadow）。 */
+    @Query("SELECT COALESCE(SUM(o.credits), 0) FROM RechargeOrder o "
+            + "WHERE o.status IN :statuses AND (o.paidVia IS NULL OR o.paidVia <> :paidVia)")
+    long sumCreditsByStatusesExcludingPaidVia(@Param("statuses") List<RechargeOrder.Status> statuses,
+                                              @Param("paidVia") String paidVia);
+
+    /** 退款回收积分合计（REFUNDED 订单的 refundedCredits），排除 shadow（与 grossRecharge 同口径）。 */
+    @Query("SELECT COALESCE(SUM(o.refundedCredits), 0) FROM RechargeOrder o "
+            + "WHERE o.status = com.aistareco.aep.model.RechargeOrder.Status.REFUNDED "
+            + "AND (o.paidVia IS NULL OR o.paidVia <> :paidVia)")
+    long sumRefundedCreditsExcludingPaidVia(@Param("paidVia") String paidVia);
 }
