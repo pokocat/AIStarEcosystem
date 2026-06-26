@@ -30,6 +30,11 @@ aep:
   # dev profile（application.yml）默认 true 以便无端点联调。
   dap:
     allow-placeholder: ${AEP_DAP_ALLOW_PLACEHOLDER:false}
+  # v2 §6.5：生产默认走 Jeepay 真实支付。driver=jeepay 时 JeepayPaymentGateway 启动 fail-fast
+  # 校验 base-url/mch-no/app-id/api-key/notify-url（缺则拒绝启动，§8.0）；shadow 在此 profile
+  # 激活会打 ERROR 横幅、对账须排除。机密经 env 注入、禁进 git。
+  payment:
+    driver: ${AEP_PAYMENT_DRIVER:jeepay}
   # MySQL profile 用于生产 / 联调。持久化资产默认走阿里云 OSS；
   # 本地 dev fallback 继续留在 application.yml 的 local fake-CDN。
   cdn:

@@ -90,6 +90,16 @@ aep:
       # manual=前端模拟收银台手动点「支付成功」；auto=下单后延迟自动确认（CI/headless）
       confirm-mode: ${AEP_PAYMENT_SHADOW_CONFIRM_MODE:manual}
       auto-confirm-delay-ms: ${AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS:800}
+    # v2 §6.5：driver=jeepay 时必填（机密经 env 注入、禁进 git）。JeepayPaymentGateway 启动 fail-fast 校验。
+    jeepay:
+      base-url: ${AEP_PAYMENT_JEEPAY_BASE_URL:}
+      mch-no: ${AEP_PAYMENT_JEEPAY_MCH_NO:}
+      app-id: ${AEP_PAYMENT_JEEPAY_APP_ID:}
+      api-key: ${AEP_PAYMENT_JEEPAY_API_KEY:}
+      notify-url: ${AEP_PAYMENT_JEEPAY_NOTIFY_URL:}
+      sign-type: ${AEP_PAYMENT_JEEPAY_SIGN_TYPE:MD5}
+      default-way-code: ${AEP_PAYMENT_JEEPAY_DEFAULT_WAY_CODE:WX_LITE}
+      version: ${AEP_PAYMENT_JEEPAY_VERSION:1.0}
   # v2 §5：孤儿 hold 自动清扫。TTL 须 > 最长合法任务（视频生成轮询上限 ~15min），
   # 默认 180min 防误杀在途任务；CreditHoldSweeper 默认每 30min 扫一次。
   credit:

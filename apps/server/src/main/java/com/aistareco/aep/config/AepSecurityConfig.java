@@ -59,6 +59,9 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/admin/auth/operator-login").permitAll() // v0.37 平台运营登录
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
+                        // v2 §6.4 触点④：Jeepay 异步回调靠验签不靠 JWT（仅 driver=jeepay 时 controller 才注册）。
+                        // 金额/状态只信此服务端通道；建议再加限流 + 只放行 Jeepay 出口 IP（运维侧）。
+                        .requestMatchers("/api/pay/notify/**").permitAll()
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
                         .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）

@@ -4968,6 +4968,25 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/RechargeOrder' }
 
+  /pay/notify/jeepay:
+    post:
+      tags: [finance]
+      operationId: jeepayPayNotify
+      summary: '【Jeepay 异步回调·仅 driver=jeepay】permitAll + MD5 验签（v2 §6.4 触点②）：验签→金额/状态校验→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。dev driver=shadow 时此端点不注册。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Jeepay 回调参数（mchOrderNo/payOrderId/state/amount/channelOrderNo/sign …）
+      responses:
+        '200':
+          description: 纯文本 "success"（已处理 / 止重投）或 "fail"（验签或金额不符，Jeepay 重投）
+          content:
+            text/plain:
+              schema: { type: string }
+
   /me/ledger:
     get:
       tags: [finance]
