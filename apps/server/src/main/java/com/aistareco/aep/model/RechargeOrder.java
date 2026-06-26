@@ -72,6 +72,34 @@ public class RechargeOrder {
     /** 核准入账时的主分录 id（审计回溯）。 */
     private String ledgerEntryId;
 
+    // ── v2 在线支付字段（Jeepay / 影子链路）。全部 nullable，兼容老行。 ──
+
+    /** 支付网关订单号（Jeepay payOrderId / 影子 shadow_ 前缀）。幂等 + 防重，唯一。 */
+    @Column(unique = true, length = 64)
+    private String payOrderId;
+
+    /** 支付方式 wayCode（WX_LITE / WX_NATIVE / ALI_QR / SHADOW…）。 */
+    @Column(length = 32)
+    private String wayCode;
+
+    /** 支付网关订单态镜像（Jeepay payState）。 */
+    private Integer payState;
+
+    /** 到账时间（settle 时回填）。 */
+    private Instant paidAt;
+
+    /** 入账来源：jeepay / manual / shadow。 */
+    @Column(length = 16)
+    private String paidVia;
+
+    /** 渠道（微信/支付宝）订单号，对账用。 */
+    @Column(length = 64)
+    private String channelPayNo;
+
+    /** 发起充值的子应用（music/drama/celebrity/aiavatar/miniprogram）。仅营销/分析标签，绝不切分余额。 */
+    @Column(length = 16)
+    private String sourceApp;
+
     @Column(nullable = false)
     private Instant createdAt;
 
