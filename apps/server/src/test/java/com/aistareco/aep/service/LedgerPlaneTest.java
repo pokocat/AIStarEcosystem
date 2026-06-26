@@ -104,8 +104,8 @@ class LedgerPlaneTest {
 
         assertTrue(ledgerRepo.countByPlaneIsNull() >= 2);
 
-        // 跑真正的回填 runner（与生产同一段逻辑）。
-        backfill.run();
+        // 跑真正的回填逻辑（与生产同一段；run() 的 DDL ensure 由启动期 CommandLineRunner 覆盖）。
+        backfill.backfillNullPlanes();
 
         assertEquals(0, ledgerRepo.countByPlaneIsNull(), "回填后不应再有 plane 为 null 的行");
         assertEquals(Plane.MONEY, ledgerRepo.findById(moneyId).orElseThrow().getPlane());

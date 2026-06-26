@@ -369,12 +369,20 @@ public class RechargeService {
         if (reason == null || reason.isBlank()) {
             throw BusinessException.badRequest("REFUND_REASON_REQUIRED", "请填写退款原因");
         }
+        Instant now = Instant.now();
+        // 原子抢占 PAID → REFUNDED（条件 UPDATE 幂等闸，照 settlePaidOrder/markPaid）：并发双退 / 重复点击
+        // 只有一个抢到，其余拿 0 → 不二次回收，杜绝真实现金被退两次。reclaim 若抛 409 整事务回滚、订单退回 PAID。
+        int claimed = orderRepo.markRefunded(orderId, now);
+        if (claimed == 0) {
+            RechargeOrder existing = orderRepo.findById(orderId)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+            throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PAID",
+                    "该订单状态为 " + existing.getStatus() + "，只有已支付订单可退款（或已在退款中）");
+        }
+
+        // 抢到退款权：重新载入（markRefunded clearAutomatically 已清持久化上下文）
         RechargeOrder order = orderRepo.findById(orderId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
-        if (order.getStatus() != RechargeOrder.Status.PAID) {
-            throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PAID",
-                    "该订单状态为 " + order.getStatus() + "，只有已支付订单可退款");
-        }
 
         LedgerEntryDto reclaim = creditService.refundCashReclaim(
                 order.getUserId(),
@@ -382,9 +390,8 @@ public class RechargeService {
                 order.getId(),
                 "充值订单退款回收（订单 " + order.getId() + "）：" + reason);
 
-        Instant now = Instant.now();
         long reclaimed = Math.abs(reclaim.amount());
-        order.setStatus(RechargeOrder.Status.REFUNDED);
+        order.setStatus(RechargeOrder.Status.REFUNDED); // markRefunded 已置，此处随元数据一并落库（mock/可读性）
         order.setRefundedAt(now);
         order.setRefundLedgerEntryId(reclaim.id());
         order.setRefundedCredits(reclaimed);

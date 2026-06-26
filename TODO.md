@@ -230,8 +230,17 @@
 - [ ] **enum 列扩值需手写迁移（`ddl-auto=update` 不会改 enum/CHECK）**（v2 §9/§4.2 实施时发现，2026-06-26）：`MODE=MySQL` 下 `@Enumerated(STRING)` 生成原生 `enum(...)` 列；给已存在的表加枚举值时 `ddl-auto=update` **不会** widen 旧 enum/CHECK 约束 → 插入/比较新值报 `Value not permitted`。dev 端靠删 H2 文件重建 schema 兜底；**生产 MySQL 上线必须先跑** 对应 `ALTER ... MODIFY COLUMN`。本轮涉及两列：
     - `admin_users.role`：`ALTER TABLE admin_users MODIFY COLUMN role ENUM('SUPER_ADMIN','OPERATOR','FINANCE_ADMIN') NOT NULL;`（C2 FINANCE_ADMIN）
     - `aep_ledger_entries.entry_type`：`ALTER TABLE aep_ledger_entries MODIFY COLUMN entry_type ENUM('LICENSE_GRANT','RECHARGE','REFUND','REFUND_CASH','INCOME','GIFT','SPEND','WITHDRAW','FREEZE','UNFREEZE','ADJUST');`（C3 REFUND_CASH；未 widen 前 D17 现金退款写库会失败）
-    - 同时 `aep_ledger_entries` 加 `plane`(MONEY/CREDIT) + `cash_artifact_id` 两列 + CHECK `plane <> 'CREDIT' OR cash_artifact_id IS NULL`。**ddl-auto 只会加 nullable 列、不会加 CHECK 到既有表** → 生产 Flyway 脚本须显式建 CHECK；plane 历史行由 `LedgerPlaneBackfill`(@Order 2，native 按现存 entry_type 回填) 启动补齐，幂等。
+    - 同时 `aep_ledger_entries` 加 `plane`(MONEY/CREDIT) + `cash_artifact_id` 两列 + CHECK `plane <> 'CREDIT' OR cash_artifact_id IS NULL`。**ddl-auto 只会加 nullable 列、不会加 CHECK 到既有表** → **C6 已用 `LedgerPlaneBackfill.ensurePlaneCheckConstraint()`（启动期原生 `ALTER TABLE ADD CONSTRAINT ck_ledger_plane`，幂等吞已存在）在 ddl-auto 之后补齐，生产 MySQL 真实成立**（评审 H1）；plane 历史行由同 runner native 按现存 entry_type 回填。Flyway 接管后把此 DDL 收进版本化脚本、移除 runner。
     - 新增任何 enum 列扩值 / 新 CHECK 同理，勿依赖 ddl-auto，纳入 Flyway 版本化脚本（与上方 baseline 专项一并做）。
+
+### 钱包 v2 独立评审遗留（2026-06-26，C6 已修两 HIGH，其余记录）
+
+- [x] ~~**H1 DB CHECK 生产缺失**~~（**C6 完成**，2026-06-26）：`@Check`+`ddl-auto=update` 不给既有表加 CHECK → 生产「调差不碰现金」只剩 app 层。已加启动期 `ensurePlaneCheckConstraint` 原生 ALTER 补齐，真机重启日志确认「ck_ledger_plane 已补齐」。
+- [x] ~~**H2 退款并发双退**~~（**C6 完成**，2026-06-26）：`refundOrder` 原缺幂等闸，并发/重复点击可双重现金退款。已加 `markRefunded` 条件 UPDATE 抢占（PAID→REFUNDED，照 `markPaid`），真机验证第二次退款 → 409 ORDER_NOT_PAID、不二次回收。
+- [ ] **M1 per-actor 日限额是软护栏非硬不变量**（评审，2026-06-26）：仅约束「单个 maker 发起量」，复核无总量上限；且 check-then-insert 有 TOCTOU（两并发 compensate 同读 `already` 都过）。当前作软护栏可接受；若要硬上限需 per-maker 串行化（短锁 / 唯一约束计数行）。已在 commit message 注明仅「发起量」语义。
+- [ ] **M2 `INCOME`/`REFUND` 入 rechargeBalance 污染现金背书桶**（评审，2026-06-26，非本轮引入）：`creditAccount` 让积分面 `REFUND`/`INCOME` 加进 `rechargeBalance`（现金背书桶）→ 对账 `netCashCredits` 即便 drift=0 也可能与真实现金漂移。考虑 INCOME/REFUND 改入 gift 桶或对账时排除这两类。
+- [ ] **M3 对账是粗粒度聚合勾稽、非逐单 join**（评审，2026-06-26）：`drift=Σ订单 − Σ账本RECHARGE` 只能抓「整体总额不平」，抓不住「单笔金额错配但总额恰好抵消」「RECHARGE 无对应订单」「bonus GIFT 不与 order.bonusCredits 勾稽」。作快速 tripwire 够用；要真 lost-update 检测需 left join orders↔ledger by referenceId 逐单核。
+- [ ] **L1/L2 记录**：`releaseHold` 部分 commit 后按比例退桶有整数除法偏置（总额守恒、桶纯度有微偏，非泄漏）；`WITHDRAW` 账本 `referenceId`/`cashArtifactId` 为空（资金面凭证未链，审计可追性弱）。均低优先。
 
 ### admin 后台健全（v0.31 / v0.32）
 

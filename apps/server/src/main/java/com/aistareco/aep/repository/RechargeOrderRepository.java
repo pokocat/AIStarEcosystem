@@ -41,6 +41,17 @@ public interface RechargeOrderRepository extends JpaRepository<RechargeOrder, St
             + "WHERE o.id = :id AND o.status = com.aistareco.aep.model.RechargeOrder.Status.PENDING")
     int markPaid(@Param("id") String id, @Param("paidAt") Instant paidAt);
 
+    /**
+     * 退款幂等闸（v2 §15.5 / D17）：条件 UPDATE 抢占 PAID → REFUNDED。返回 1 = 本次抢到退款权；
+     * 0 = 已退/非 PAID（并发双退 / 重复点击的第二次拿到 0，不再二次回收 → 防真实现金双重退款）。
+     * clearAutomatically 清持久化上下文，调用方重新 findById 拿最新行再回填退款元数据。
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE RechargeOrder o SET o.status = com.aistareco.aep.model.RechargeOrder.Status.REFUNDED, "
+            + "o.updatedAt = :now "
+            + "WHERE o.id = :id AND o.status = com.aistareco.aep.model.RechargeOrder.Status.PAID")
+    int markRefunded(@Param("id") String id, @Param("now") Instant now);
+
     // ── v2 §11 对账聚合：订单侧现金事实（与账本 RECHARGE 勾稽） ─────────────────
     // 曾入账过的订单 = PAID + REFUNDED（退款只改状态、不删 RECHARGE 账本分录），故两态都算。
 

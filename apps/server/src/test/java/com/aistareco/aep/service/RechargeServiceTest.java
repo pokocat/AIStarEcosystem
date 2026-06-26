@@ -57,6 +57,15 @@ class RechargeServiceTest {
             db.put(o.getId(), o);
             return o;
         });
+        // 模拟 markRefunded 条件 UPDATE：PAID → REFUNDED 返 1（并原子改状态），否则 0（防双退）
+        when(orderRepo.markRefunded(anyString(), any())).thenAnswer(inv -> {
+            RechargeOrder o = db.get(inv.getArgument(0, String.class));
+            if (o != null && o.getStatus() == RechargeOrder.Status.PAID) {
+                o.setStatus(RechargeOrder.Status.REFUNDED);
+                return 1;
+            }
+            return 0;
+        });
         when(creditService.creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString()))
                 .thenAnswer(inv -> ledger());
     }
@@ -167,5 +176,20 @@ class RechargeServiceTest {
         o.setStatus(RechargeOrder.Status.PAID);
         assertThrows(BusinessException.class, () -> svc.refundOrder(ORDER, "fin-1", "  "));
         verify(creditService, never()).refundCashReclaim(anyString(), anyLong(), anyString(), anyString());
+    }
+
+    /** 评审 H2：并发 / 重复退款只有一个抢到（markRefunded 幂等闸），第二次不再二次回收。 */
+    @Test
+    void refundDoubleClaimSecondRejectedNoSecondReclaim() {
+        RechargeOrder o = pending(1000, 0);
+        o.setStatus(RechargeOrder.Status.PAID);
+        when(creditService.refundCashReclaim(eq(USER), eq(1000L), eq(ORDER), anyString()))
+                .thenReturn(new LedgerEntryDto("le_refund", "w1", USER, null, null,
+                        "refund_cash", -1000, 0, "d", "refund_cash", ORDER, Instant.now()));
+
+        svc.refundOrder(ORDER, "fin-1", "首次退款"); // 抢到 → REFUNDED
+        assertThrows(BusinessException.class, () -> svc.refundOrder(ORDER, "fin-2", "重复退款")); // 第二次抢 0
+
+        verify(creditService, times(1)).refundCashReclaim(anyString(), anyLong(), anyString(), anyString());
     }
 }
