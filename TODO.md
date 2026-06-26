@@ -227,7 +227,11 @@
 - [ ] **Phase 6 · K8s / ACK**（v0.34 显式）：从 ECS + systemd 迁到 ACK，HPA + 滚动发布。
 - [ ] **Flyway V1__baseline.sql 当前是空占位**（v0.34 §B）：切 `ddl-auto=validate` 之前需把生产 schema `mysqldump` 出来填入 V1；当前依赖 Flyway 看到现存 schema 自动 baseline 到 V1 但不执行。
 - [ ] **RDS 应用账号 Flyway 接管后降权**（v0.34 §C）：从 `CREATE/ALTER/DROP` 降到 `SELECT/INSERT/UPDATE/DELETE + EXECUTE`。
-- [ ] **enum 列扩值需手写迁移（`ddl-auto=update` 不会改 enum/CHECK）**（v2 §9 实施时发现，2026-06-26）：`MODE=MySQL` 下 `@Enumerated(STRING)` 生成原生 `enum(...)` 列；给已存在的表加枚举值（如 `admin_users.role` 加 `FINANCE_ADMIN`）时 `ddl-auto=update` **不会** widen 旧 enum/CHECK 约束 → 插入新值报 `Value not permitted`。dev 端靠删 H2 文件重建 schema 兜底；**生产 MySQL 上线 `FINANCE_ADMIN` 必须先跑** `ALTER TABLE admin_users MODIFY COLUMN role ENUM('SUPER_ADMIN','OPERATOR','FINANCE_ADMIN') NOT NULL;`（Flyway V-migration 接管后纳入版本化脚本）。新增任何 enum 列扩值同理，勿依赖 ddl-auto。
+- [ ] **enum 列扩值需手写迁移（`ddl-auto=update` 不会改 enum/CHECK）**（v2 §9/§4.2 实施时发现，2026-06-26）：`MODE=MySQL` 下 `@Enumerated(STRING)` 生成原生 `enum(...)` 列；给已存在的表加枚举值时 `ddl-auto=update` **不会** widen 旧 enum/CHECK 约束 → 插入/比较新值报 `Value not permitted`。dev 端靠删 H2 文件重建 schema 兜底；**生产 MySQL 上线必须先跑** 对应 `ALTER ... MODIFY COLUMN`。本轮涉及两列：
+    - `admin_users.role`：`ALTER TABLE admin_users MODIFY COLUMN role ENUM('SUPER_ADMIN','OPERATOR','FINANCE_ADMIN') NOT NULL;`（C2 FINANCE_ADMIN）
+    - `aep_ledger_entries.entry_type`：`ALTER TABLE aep_ledger_entries MODIFY COLUMN entry_type ENUM('LICENSE_GRANT','RECHARGE','REFUND','REFUND_CASH','INCOME','GIFT','SPEND','WITHDRAW','FREEZE','UNFREEZE','ADJUST');`（C3 REFUND_CASH；未 widen 前 D17 现金退款写库会失败）
+    - 同时 `aep_ledger_entries` 加 `plane`(MONEY/CREDIT) + `cash_artifact_id` 两列 + CHECK `plane <> 'CREDIT' OR cash_artifact_id IS NULL`。**ddl-auto 只会加 nullable 列、不会加 CHECK 到既有表** → 生产 Flyway 脚本须显式建 CHECK；plane 历史行由 `LedgerPlaneBackfill`(@Order 2，native 按现存 entry_type 回填) 启动补齐，幂等。
+    - 新增任何 enum 列扩值 / 新 CHECK 同理，勿依赖 ddl-auto，纳入 Flyway 版本化脚本（与上方 baseline 专项一并做）。
 
 ### admin 后台健全（v0.31 / v0.32）
 
