@@ -168,7 +168,7 @@ public class RechargeService {
         return rows.stream().map(RechargeOrderDto::from).toList();
     }
 
-    /** 运营核准：确认线下已收款 → 经不可变账本入账（main + bonus），订单转 PAID。 */
+    /** 运营核准：确认线下已收款 → 经共享入账核心 {@link #settlePaidOrder} 入账，订单转 PAID。 */
     @Transactional
     public RechargeOrderDto approveOrder(String orderId, String reviewerId, String reviewNote) {
         RechargeOrder order = orderRepo.findById(orderId)
@@ -177,6 +177,41 @@ public class RechargeService {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING",
                     "该订单状态为 " + order.getStatus() + "，无法核准");
         }
+        return settlePaidOrder(orderId, "manual", null, reviewerId, trimToNull(reviewNote, 512));
+    }
+
+    /**
+     * 入账核心（v2 §4.3）：手工核准 {@link #approveOrder}、在线支付回调（Jeepay notify）与影子确认
+     * 共用这一条入账逻辑。
+     *
+     * 幂等：先用条件 UPDATE 抢占 PENDING → PAID（{@link RechargeOrderRepository#markPaid}）；
+     * 抢不到（已结算 / 非 PENDING）→ 返回当前订单，绝不重复入账。抢到则在同一事务内：
+     *   主分录 RECHARGE + 可选赠送 GIFT（经 {@link CreditService}，走钱包悲观锁 + 不可变账本），
+     *   回填 ledgerEntryId / paidVia / channelPayNo / 审批信息，并通知用户。
+     * 任一步抛异常 → 整个事务回滚（含 markPaid）→ 订单退回 PENDING，可重试。
+     *
+     * @param paidVia      入账来源：manual / jeepay / shadow
+     * @param channelPayNo 渠道订单号（对账，可空）
+     * @param reviewerId   手工核准人（在线回调 / 影子为 null）
+     * @param reviewNote   核准备注（在线回调 / 影子为 null）
+     */
+    @Transactional
+    public RechargeOrderDto settlePaidOrder(String orderId, String paidVia, String channelPayNo,
+                                            String reviewerId, String reviewNote) {
+        Instant now = Instant.now();
+        int claimed = orderRepo.markPaid(orderId, now);
+        if (claimed == 0) {
+            // 已被结算（重复回调 / 并发）或订单不存在 → 幂等 no-op
+            RechargeOrder existing = orderRepo.findById(orderId)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+            log.info("[recharge] settle idempotent no-op id={} status={} paidVia={}",
+                    orderId, existing.getStatus(), paidVia);
+            return RechargeOrderDto.from(existing);
+        }
+
+        // 抢到结算权：重新载入（markPaid clearAutomatically 已清持久化上下文）
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
 
         // 1) 主分录：充值进 recharge 桶
         LedgerEntryDto mainEntry = creditService.creditAccount(
@@ -185,7 +220,7 @@ public class RechargeService {
                 LedgerEntry.LedgerEntryType.RECHARGE,
                 "recharge_order",
                 order.getId(),
-                "充值订单核准 " + nz(order.getPackageTag()) + "（" + order.getCredits() + " 积分）"
+                "充值订单入账 " + nz(order.getPackageTag()) + "（" + order.getCredits() + " 积分）"
         );
 
         // 2) 赠送（可选）：进 gift 桶
@@ -200,18 +235,21 @@ public class RechargeService {
             );
         }
 
-        order.setStatus(RechargeOrder.Status.PAID);
-        order.setReviewerId(reviewerId);
-        order.setReviewNote(trimToNull(reviewNote, 512));
         order.setLedgerEntryId(mainEntry.id());
-        order.setReviewedAt(Instant.now());
-        order.setUpdatedAt(Instant.now());
+        order.setPaidVia(paidVia);
+        order.setChannelPayNo(channelPayNo);
+        if (reviewerId != null) {
+            order.setReviewerId(reviewerId);
+            order.setReviewNote(reviewNote);
+            order.setReviewedAt(now);
+        }
+        order.setUpdatedAt(now);
         orderRepo.save(order);
-        log.info("[recharge] order approved id={} userId={} reviewer={} credits={} bonus={}",
-                order.getId(), order.getUserId(), reviewerId, order.getCredits(), order.getBonusCredits());
+        log.info("[recharge] order settled id={} userId={} paidVia={} credits={} bonus={}",
+                order.getId(), order.getUserId(), paidVia, order.getCredits(), order.getBonusCredits());
         notificationPublisher.notifyUser(order.getUserId(), Notification.NotificationType.REVENUE,
                 "充值已到账",
-                "充值订单 " + order.getId() + " 已核准：" + order.getCredits() + " 积分已入账"
+                "充值订单 " + order.getId() + " 已入账：" + order.getCredits() + " 积分"
                         + (order.getBonusCredits() > 0 ? "，另赠送 " + order.getBonusCredits() + " 积分" : "")
                         + "。");
         return RechargeOrderDto.from(order);

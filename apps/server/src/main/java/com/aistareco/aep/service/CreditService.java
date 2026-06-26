@@ -264,17 +264,8 @@ public class CreditService {
         if (entryType == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "缺少入账类型");
         }
-        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L)
-                .licenseBalance(0L)
-                .rechargeBalance(0L)
-                .giftBalance(0L)
-                .pendingBalance(0L)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build()));
+        // v2 §5: 悲观行锁取钱包，串行化并发写余额（入账 vs 消费），防 lost update。
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         switch (entryType) {
             case RECHARGE -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
@@ -560,6 +551,25 @@ public class CreditService {
     /** 实体级 wallet 取数（recharge 等流程需要返回最新 WalletDto 时复用）。 */
     public Wallet getOrCreateWallet(String userId) {
         return walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .totalBalance(0L)
+                .licenseBalance(0L)
+                .rechargeBalance(0L)
+                .giftBalance(0L)
+                .pendingBalance(0L)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build()));
+    }
+
+    /**
+     * 实体级 wallet 取数 + 悲观行锁（v2 §5）。必须在 {@code @Transactional} 内调用。
+     * 写余额路径（入账 / 扣减 / 冻结 / 解冻）用本方法串行化对同一钱包的并发写，防 lost update。
+     * 钱包不存在时新建（新行在本事务内即受保护，其它事务同 userId 插入会撞唯一约束）。
+     */
+    private Wallet getOrCreateWalletForUpdate(String userId) {
+        return walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
                 .id(UUID.randomUUID().toString())
                 .userId(userId)
                 .totalBalance(0L)
