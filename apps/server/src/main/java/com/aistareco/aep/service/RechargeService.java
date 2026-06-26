@@ -124,6 +124,82 @@ public class RechargeService {
         return RechargeOrderDto.from(order);
     }
 
+    /**
+     * 在线支付 checkout 专用：建一张 PENDING 充值订单（带 wayCode / sourceApp），
+     * 不发「待运营核准」站内信（在线支付由回调 / 影子确认自动入账，无需人工核准）。
+     * 校验同 {@link #createOrder}（套餐有效 + 待确认上限）。返回实体供 PaymentService 回填 payOrderId。
+     */
+    @Transactional
+    public RechargeOrder createPendingForCheckout(String userId, String packageId, String wayCode, String sourceApp) {
+        if (packageId == null || packageId.isBlank()) {
+            throw BusinessException.badRequest("PACKAGE_ID_REQUIRED", "请选择充值套餐");
+        }
+        RechargePackage pkg = pkgRepo.findById(packageId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOUND", "套餐不存在：" + packageId));
+        if (!pkg.isActive()) {
+            throw new BusinessException(HttpStatus.GONE, "PACKAGE_INACTIVE", "套餐已下架：" + packageId);
+        }
+        if (orderRepo.countByUserIdAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
+            throw new BusinessException(HttpStatus.CONFLICT, "TOO_MANY_PENDING_ORDERS",
+                    "你有较多待确认的充值订单，请先完成付款或取消后再下单");
+        }
+        AepUser user = userRepo.findById(userId).orElse(null);
+        Studio studio = studioRepo.findByOwnerUserId(userId).orElse(null);
+        Instant now = Instant.now();
+        RechargeOrder order = RechargeOrder.builder()
+                .id("ro-" + UUID.randomUUID().toString().substring(0, 12))
+                .userId(userId)
+                .username(user != null ? user.getUsername() : null)
+                .displayName(user != null ? user.getDisplayName() : null)
+                .studioName(studio != null ? studio.getName() : null)
+                .packageId(pkg.getId())
+                .packageTag(pkg.getTag())
+                .credits(pkg.getCredits())
+                .bonusCredits(pkg.getBonusCredits())
+                .priceCents(pkg.getPriceCents())
+                .status(RechargeOrder.Status.PENDING)
+                .wayCode(wayCode)
+                .sourceApp(sourceApp)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        orderRepo.save(order);
+        log.info("[recharge] checkout order created id={} userId={} pkg={} wayCode={} sourceApp={} priceCents={}",
+                order.getId(), userId, pkg.getId(), wayCode, sourceApp, pkg.getPriceCents());
+        return order;
+    }
+
+    /** checkout 网关下单成功后回填 payOrderId（幂等 + 对账锚点）。 */
+    @Transactional
+    public void attachPayOrder(String orderId, String payOrderId) {
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        order.setPayOrderId(payOrderId);
+        order.setUpdatedAt(Instant.now());
+        orderRepo.save(order);
+    }
+
+    /** 网关下单失败 / 影子模拟失败：把 PENDING 订单标 CANCELLED（不留悬挂单）。 */
+    @Transactional
+    public RechargeOrderDto cancelForGatewayError(String orderId, String reason) {
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        if (order.getStatus() == RechargeOrder.Status.PENDING) {
+            order.setStatus(RechargeOrder.Status.CANCELLED);
+            order.setReviewNote(trimToNull(reason, 512));
+            order.setUpdatedAt(Instant.now());
+            orderRepo.save(order);
+        }
+        return RechargeOrderDto.from(order);
+    }
+
+    /** 单个订单查询（影子 timeout 等场景返回当前态）。 */
+    public RechargeOrderDto getOrder(String orderId) {
+        return orderRepo.findById(orderId)
+                .map(RechargeOrderDto::from)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+    }
+
     public List<RechargeOrderDto> listMyOrders(String userId) {
         return orderRepo.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(RechargeOrderDto::from)
