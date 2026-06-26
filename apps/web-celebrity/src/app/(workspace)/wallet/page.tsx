@@ -66,7 +66,7 @@ function ledgerReferenceLabel(e: LedgerEntry): string {
 }
 
 export default function WalletPage() {
-  const { wallet, walletLoading } = useCelebrityShell();
+  const { wallet, walletLoading, refreshWallet } = useCelebrityShell();
   const [packages, setPackages] = React.useState<RechargePackage[]>([]);
   const [packagesLoading, setPackagesLoading] = React.useState(true);
   const [orders, setOrders] = React.useState<RechargeOrder[]>([]);
@@ -78,6 +78,9 @@ export default function WalletPage() {
   const [submitting, setSubmitting] = React.useState(false);
   const [cancelingId, setCancelingId] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{ text: string; tone: "ok" | "err" } | null>(null);
+  const [onlinePaying, setOnlinePaying] = React.useState(false);
+  const [shadowCashier, setShadowCashier] = React.useState<{ orderId: string; summary: string } | null>(null);
+  const [shadowConfirming, setShadowConfirming] = React.useState(false);
 
   const flashToast = React.useCallback((text: string, tone: "ok" | "err") => {
     setToast({ text, tone });
@@ -134,6 +137,46 @@ export default function WalletPage() {
       flashToast(e instanceof Error ? e.message : "提交失败，请稍后再试", "err");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // v2 在线支付：子应用内发起 checkout；driver=shadow 时弹「模拟收银台」由用户确认。
+  const startOnlinePay = async () => {
+    if (!selectedPkg || onlinePaying) return;
+    setOnlinePaying(true);
+    const summary = `${formatCredits(selectedPkg.credits)}${selectedPkg.bonusCredits ? ` + 赠 ${formatCredits(selectedPkg.bonusCredits)}` : ""} 积分 · ${formatCurrency(selectedPkg.priceCents)}`;
+    try {
+      const res = await AccountApi.rechargeCheckout({ packageId: selectedPkg.id, sourceApp: "celebrity" });
+      if (res.payDataType === "shadow") {
+        setShadowCashier({ orderId: res.orderId, summary });
+        setSelectedPkg(null);
+        setNote("");
+      } else {
+        flashToast(`在线支付通道接入中（${res.payDataType}）`, "err");
+      }
+      await loadOrders();
+    } catch (e: unknown) {
+      flashToast(e instanceof Error ? e.message : "下单失败，请稍后再试", "err");
+    } finally {
+      setOnlinePaying(false);
+    }
+  };
+
+  const confirmShadow = async (result: "success" | "fail" | "timeout") => {
+    if (!shadowCashier || shadowConfirming) return;
+    setShadowConfirming(true);
+    try {
+      await AccountApi.confirmShadowPay(shadowCashier.orderId, result);
+      flashToast(
+        result === "success" ? "支付成功，积分已到账" : result === "fail" ? "已取消本次支付" : "支付超时，订单待对账",
+        "ok",
+      );
+      setShadowCashier(null);
+      await Promise.all([refreshWallet(), loadOrders(), loadLedger()]);
+    } catch (e: unknown) {
+      flashToast(e instanceof Error ? e.message : "确认失败，请稍后再试", "err");
+    } finally {
+      setShadowConfirming(false);
     }
   };
 
@@ -264,12 +307,49 @@ export default function WalletPage() {
               <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.6 }}>
                 提交后请按平台提供的收款方式完成付款；平台确认到账后积分自动入账。如需付款方式，请联系平台客户经理。
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <Button variant="accent" size="sm" onClick={submitOrder} disabled={submitting}>
-                  {submitting ? "提交中…" : "提交充值申请"}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button variant="accent" size="sm" onClick={startOnlinePay} disabled={onlinePaying || submitting}>
+                  {onlinePaying ? "下单中…" : "立即支付（在线）"}
                 </Button>
-                <Button variant="secondary" size="sm" onClick={() => setSelectedPkg(null)} disabled={submitting}>
+                <Button variant="secondary" size="sm" onClick={submitOrder} disabled={submitting || onlinePaying}>
+                  {submitting ? "提交中…" : "改为线下充值申请"}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setSelectedPkg(null)} disabled={submitting || onlinePaying}>
                   取消
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 影子模拟收银台（dev · 后端 driver=shadow；生产走真实支付，无此面板） */}
+          {shadowCashier && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: "16px 18px",
+                borderRadius: 12,
+                border: "1px dashed var(--accent-strong)",
+                background: "color-mix(in srgb, var(--accent) 9%, var(--bg-1))",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "var(--accent-strong)", borderRadius: 6, padding: "2px 7px", letterSpacing: "0.04em" }}>🅂 SHADOW</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg-0)" }}>模拟收银台</span>
+                <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>影子链路 · 无真实扣款 · 订单 {shadowCashier.orderId}</span>
+              </div>
+              <div style={{ fontSize: 13, color: "var(--fg-1)", fontFamily: "var(--font-mono)" }}>应付 · {shadowCashier.summary}</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button variant="accent" size="sm" onClick={() => confirmShadow("success")} disabled={shadowConfirming}>
+                  {shadowConfirming ? "处理中…" : "✅ 模拟支付成功"}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => confirmShadow("fail")} disabled={shadowConfirming}>
+                  ❌ 模拟失败
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => confirmShadow("timeout")} disabled={shadowConfirming}>
+                  ⏳ 模拟超时
                 </Button>
               </div>
             </div>
