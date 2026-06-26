@@ -90,6 +90,9 @@ public class AepSecurityConfig {
                                 "SUPER_ADMIN",
                                 "OPERATOR"
                         )
+                        // v2 影子链路 dev 工具（仅 driver=shadow 时存在 bean）：会写账本，必须登录；
+                        // controller 内再做订单归属校验。生产 driver=jeepay 时 bean 不注册，路径 404。
+                        .requestMatchers("/api/dev/**").authenticated()
                         // Everything else is open (singer ecosystem APIs, etc.)
                         .anyRequest().permitAll()
                 )

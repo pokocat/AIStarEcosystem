@@ -81,17 +81,8 @@ public class CreditService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调整积分值不能为 0");
         }
 
-        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L)
-                .licenseBalance(0L)
-                .rechargeBalance(0L)
-                .giftBalance(0L)
-                .pendingBalance(0L)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build()));
+        // v2 §5: 悲观行锁取钱包，串行化并发写余额（调差 vs 充值/消费），防 lost update。
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         long newBalance = wallet.getTotalBalance() + amount;
         if (newBalance < 0) {
@@ -151,17 +142,8 @@ public class CreditService {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "扣减积分必须为正数");
         }
-        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L)
-                .licenseBalance(0L)
-                .rechargeBalance(0L)
-                .giftBalance(0L)
-                .pendingBalance(0L)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build()));
+        // v2 §5: 悲观行锁，串行化并发写余额，防 lost update。
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
@@ -208,7 +190,7 @@ public class CreditService {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "提现金额必须为正数");
         }
-        Wallet wallet = walletRepo.findByUserId(userId)
+        Wallet wallet = walletRepo.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "钱包不存在或余额不足"));
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
@@ -329,7 +311,7 @@ public class CreditService {
             return existing;
         }
 
-        Wallet wallet = getOrCreateWallet(userId);
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
                     "积分余额不足，本次操作需 " + amount + "，当前可用 " + wallet.getTotalBalance());
@@ -424,9 +406,9 @@ public class CreditService {
                     "commit 金额 " + amount + " 超过剩余 hold " + hold.getRemainingAmount());
         }
 
-        Wallet wallet = walletRepo.findById(hold.getWalletId())
+        Wallet wallet = walletRepo.findByUserIdForUpdate(hold.getUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "hold 关联 wallet 不存在: " + hold.getWalletId()));
+                        "hold 关联 wallet 不存在 (user " + hold.getUserId() + ")"));
         if (wallet.getPendingBalance() < amount) {
             // pending 被外力打破 — 极端情况，记录但不阻拦
             log.warn("[credit] commit pending<amount user={} pending={} commit={}",
@@ -493,9 +475,9 @@ public class CreditService {
             return null;
         }
 
-        Wallet wallet = walletRepo.findById(hold.getWalletId())
+        Wallet wallet = walletRepo.findByUserIdForUpdate(hold.getUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "hold 关联 wallet 不存在: " + hold.getWalletId()));
+                        "hold 关联 wallet 不存在 (user " + hold.getUserId() + ")"));
 
         // 按 hold 时桶分布的比例退回。已 commit 一部分时，按剩余比例算每桶退多少。
         long originalAmount = hold.getAmount();

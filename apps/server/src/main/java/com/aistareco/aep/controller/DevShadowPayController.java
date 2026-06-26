@@ -10,6 +10,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
+
 /**
  * 影子模拟收银台确认端点（v2 §6.7）。
  *
@@ -35,18 +37,27 @@ public class DevShadowPayController {
      * result: success（默认 → settlePaidOrder 入账）/ fail（→ 取消）/ timeout（留 PENDING，交对账兜底）。
      */
     @PostMapping("/confirm")
-    public ApiResponse<RechargeOrderDto> confirm(@RequestBody(required = false) ShadowConfirmRequest req) {
+    public ApiResponse<RechargeOrderDto> confirm(Principal principal,
+                                                 @RequestBody(required = false) ShadowConfirmRequest req) {
+        if (principal == null) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "请先登录");
+        }
         if (req == null || req.orderId() == null || req.orderId().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "ORDER_ID_REQUIRED", "缺少 orderId");
         }
+        // 归属校验：只允许确认自己的订单（防 orderId 枚举越权入账；shadow 也可能跑在共享 staging）。
+        RechargeOrderDto order = rechargeService.getOrder(req.orderId());
+        if (!principal.getName().equals(order.userId())) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在");
+        }
         String result = (req.result() == null || req.result().isBlank()) ? "success" : req.result().trim();
-        log.info("[pay][shadow] confirm orderId={} result={}", req.orderId(), result);
+        log.info("[pay][shadow] confirm orderId={} userId={} result={}", req.orderId(), principal.getName(), result);
         return switch (result) {
             case "success" -> ApiResponse.of(rechargeService.settlePaidOrder(
                     req.orderId(), "shadow", "SHADOW-" + req.orderId(), null, null));
             case "fail" -> ApiResponse.of(rechargeService.cancelForGatewayError(
                     req.orderId(), "影子模拟支付失败"));
-            default -> ApiResponse.of(rechargeService.getOrder(req.orderId())); // timeout → 留 PENDING
+            default -> ApiResponse.of(order); // timeout → 留 PENDING
         };
     }
 

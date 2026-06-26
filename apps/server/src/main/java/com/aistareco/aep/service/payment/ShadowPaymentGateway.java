@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  *
  * §8.0 双控门禁：
  *   - 仅当 {@code aep.payment.driver=shadow}（dev 默认）时注入；driver=jeepay 失败绝不回退到此。
- *   - 在 mysql/prod profile 激活会打 ERROR 横幅（照 LocalFakeCdnUploader / MockPaymentGateway）。
+ *   - 在 mysql/prod profile 激活会打 ERROR 横幅（照 LocalFakeCdnUploader 范式）。
  */
 @Component
 @ConditionalOnProperty(name = "aep.payment.driver", havingValue = "shadow", matchIfMissing = true)
