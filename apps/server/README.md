@@ -415,8 +415,9 @@ src/main/java/com/aistareco/aep/
 | `aep_studios` | 业务主体（1:1 AepUser，kind: personal_creator / music_studio / drama_studio / variety_studio / agency / mcn） |
 | `aep_license_batches` | 秘钥批次（含 `initial_credit_grant`） |
 | `aep_license_keys` | 秘钥单码 |
-| `aep_wallets` | 钱包（license / recharge / gift / pending 四科目，`total_balance` = 前三项之和） |
-| `aep_ledger_entries` | 不可变点数流水，Admin Finance 图表由此派生 |
+| `aep_wallets` | 钱包（license / recharge / gift / pending 四科目，`total_balance` = 前三项之和）。并发写余额走悲观行锁 `findByUserIdForUpdate`（v2 §5） |
+| `aep_ledger_entries` | 不可变点数流水，Admin Finance 图表由此派生。**v2 §1/§4.2** +`plane`(MONEY/CREDIT 两平面归类)+`cash_artifact_id`（资金面非空 / 积分面必 null）+ DB `CHECK(plane<>'CREDIT' OR cash_artifact_id IS NULL)`——把「调差/赠送不碰现金」升级为数据库不变量；entry_type 增 `REFUND_CASH`（资金面真实现金退款，与积分面 `REFUND` 严格区分）。plane 由 `@PrePersist` 派生、历史行由 `LedgerPlaneBackfill` 启动回填 |
+| `credit_adjustment_requests` | **v2 §4.5 / §9.2** 运营调差/赠送审批单（maker-checker）。`type`(COMPENSATE/GRANT)/`target_user_id`/`amount`/`reason`/`incident_ref`\|`campaign_id`/`status`(PENDING_APPROVAL/APPROVED/REJECTED)/`maker_id`/`checker_id`/`ledger_entry_id`。小额直发也落 APPROVED 审计单（全量审计 + per-actor 日限额计数）；大额需 FINANCE_ADMIN 复核（maker≠checker 服务端硬校验） |
 | `aep_audit_logs` | 审计日志 |
 
 内容/IP 域相关表（`digital_ips` / `aep_songs` / `aep_albums` / `aep_concerts` / `aep_dramas` / `aep_movies` / `aep_advertisements` / `aep_voice_works` / `copyright_items` / `distribution_*` / `nft_items` / `community_*` / …）见 product_spec.md §4–§5。
@@ -429,7 +430,7 @@ src/main/java/com/aistareco/aep/
 |---|---|
 | `celebrity_star_authorizations` | 用户 × 明星授权关系（4 态状态机；unique(user_id, star_id)） |
 | `recharge_packages` | 充值套餐（admin CRUD；软删走 `active=false`；落账走 `LedgerEntry`） |
-| `recharge_order` | v0.56：充值订单 / 账单（PENDING/PAID/REJECTED/CANCELLED）。用户下单生成 PENDING（不入账），运营 admin 线下收款后 approve → 经 `CreditService` 入账（PAID）/ reject；套餐字段下单时快照 |
+| `recharge_order` | v0.56：充值订单 / 账单（PENDING/PAID/REJECTED/CANCELLED）。用户下单生成 PENDING（不入账），运营 admin 线下收款后 approve → 经 `CreditService` 入账（PAID）/ reject；套餐字段下单时快照。**v2** +在线支付列（`pay_order_id` 唯一/`way_code`/`pay_state`/`paid_at`/`paid_via`/`channel_pay_no`/`source_app`）；幂等结算核心 `settlePaidOrder`（手工核准/在线回调/影子确认共用 + 条件 UPDATE `markPaid` 幂等闸）。**v2 §15.5/D17** +`REFUNDED` 态 + `refunded_at`/`refund_ledger_entry_id`/`refunded_credits`：现金退款回收未消费积分（clamp 到 rechargeBalance，写资金面 REFUND_CASH，FINANCE_ADMIN） |
 | `template_scripts` | 模板脚本（双模 text / video_ref；同 templateId 仅一条 PUBLISHED；JSON 列容纳 persona/scenes/variables/engineAdapters/durationVariants/postProcess/safety/referenceClip 等） |
 | `ai_model_providers` | **AI 模型接入端点**（v0.41，实体 `AiModelEndpoint`）：固定 {上游密钥 + 单模型 + 地址}，含外部 API Token（`key_*`/`owner_user_id`/usage 列）；上游 apiKey 列存 AES-GCM 密文，Token 存 bcrypt，均永不明文返回。旧 `purposes`/`priority` 列弃用 |
 | `ai_app_binding` | v0.41：AI 应用（`AiModelPurpose` 作主键）→ 端点（`endpoint_id`）绑定，一用途一端点、无兜底 |
