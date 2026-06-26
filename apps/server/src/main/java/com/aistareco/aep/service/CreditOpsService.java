@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -36,16 +37,23 @@ public class CreditOpsService {
 
     private static final Logger log = LoggerFactory.getLogger(CreditOpsService.class);
 
+    /** 计入日限额的状态：已入账 + 待批（预占，防排队绕限）。 */
+    private static final List<CreditAdjustmentRequest.Status> DAILY_COUNTED =
+            List.of(CreditAdjustmentRequest.Status.APPROVED, CreditAdjustmentRequest.Status.PENDING_APPROVAL);
+
     private final CreditService creditService;
     private final CreditAdjustmentRequestRepository requestRepo;
     private final long threshold;
+    private final long actorDailyLimit;
 
     public CreditOpsService(CreditService creditService,
                             CreditAdjustmentRequestRepository requestRepo,
-                            @Value("${aep.credit.adjust.threshold-credits:5000}") long threshold) {
+                            @Value("${aep.credit.adjust.threshold-credits:5000}") long threshold,
+                            @Value("${aep.credit.adjust.actor-daily-limit-credits:50000}") long actorDailyLimit) {
         this.creditService = creditService;
         this.requestRepo = requestRepo;
         this.threshold = threshold;
+        this.actorDailyLimit = actorDailyLimit;
     }
 
     // ── 发起（maker） ────────────────────────────────────────────────
@@ -58,12 +66,15 @@ public class CreditOpsService {
         requirePositive(amount);
         String ticket = requireText(incidentRef, "INCIDENT_REF_REQUIRED", "请填写工单号 / 事故单号");
         String why = requireText(reason, "REASON_REQUIRED", "请填写补偿原因");
+        enforceActorDailyLimit(operatorId, amount);
         if (amount > threshold) {
             CreditAdjustmentRequest req = createPending(
                     CreditAdjustmentRequest.Type.COMPENSATE, uid, amount, why, ticket, null, operatorId);
             return AdjustmentResult.pending(req.getId(), amount);
         }
-        return AdjustmentResult.executed(doCompensate(uid, amount, ticket, why, operatorId), amount);
+        LedgerEntryDto e = doCompensate(uid, amount, ticket, why, operatorId);
+        recordAutoApproved(CreditAdjustmentRequest.Type.COMPENSATE, uid, amount, why, ticket, null, operatorId, e.id());
+        return AdjustmentResult.executed(e, amount);
     }
 
     /** 激励赠送：小额直发，大额落审批单。 */
@@ -74,12 +85,15 @@ public class CreditOpsService {
         requirePositive(amount);
         String why = requireText(reason, "REASON_REQUIRED", "请填写赠送原因");
         String camp = (campaignId != null && !campaignId.isBlank()) ? campaignId.trim() : null;
+        enforceActorDailyLimit(operatorId, amount);
         if (amount > threshold) {
             CreditAdjustmentRequest req = createPending(
                     CreditAdjustmentRequest.Type.GRANT, uid, amount, why, null, camp, operatorId);
             return AdjustmentResult.pending(req.getId(), amount);
         }
-        return AdjustmentResult.executed(doGrant(uid, amount, camp, why, operatorId), amount);
+        LedgerEntryDto e = doGrant(uid, amount, camp, why, operatorId);
+        recordAutoApproved(CreditAdjustmentRequest.Type.GRANT, uid, amount, why, null, camp, operatorId, e.id());
+        return AdjustmentResult.executed(e, amount);
     }
 
     // ── 复核（checker：FINANCE_ADMIN / SUPER_ADMIN，controller @PreAuthorize 门禁） ──
@@ -135,6 +149,43 @@ public class CreditOpsService {
     }
 
     // ── 内部 ────────────────────────────────────────────────────────
+
+    /**
+     * v2 §9.2 #5：发起人单日（滚动 24h）调差/赠送积分上限。已批 + 待批都计入（待批预占额度，
+     * 防一次性排队多笔大额绕过限额）。{@code actorDailyLimit<=0} 或 operatorId 缺失 → 关闭（不限）。
+     */
+    private void enforceActorDailyLimit(String operatorId, long amount) {
+        if (actorDailyLimit <= 0 || operatorId == null || operatorId.isBlank()) {
+            return;
+        }
+        Instant since = Instant.now().minus(24, ChronoUnit.HOURS);
+        long already = requestRepo.sumAmountByMakerSince(operatorId, since, DAILY_COUNTED);
+        if (already + amount > actorDailyLimit) {
+            throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "ACTOR_DAILY_LIMIT",
+                    "超出本人单日调差/赠送上限（近 24h 已 " + already + " + 本次 " + amount
+                            + " > 上限 " + actorDailyLimit + "）。请明日再发或交他人/拆分复核。");
+        }
+    }
+
+    /**
+     * 小额直发也落一条 APPROVED 审计单（§9.2 #4 不可变审计 + 计入日限额）。maker = 操作人、无独立 checker，
+     * 已带 ledgerEntryId 可溯源；不进「待审批」队列（status=APPROVED）。
+     */
+    private void recordAutoApproved(CreditAdjustmentRequest.Type type, String uid, long amount, String reason,
+                                    String incidentRef, String campaignId, String operatorId, String ledgerEntryId) {
+        Instant now = Instant.now();
+        CreditAdjustmentRequest req = CreditAdjustmentRequest.builder()
+                .id("car-" + UUID.randomUUID().toString().substring(0, 12))
+                .type(type).targetUserId(uid).amount(amount).reason(trim(reason, 512))
+                .incidentRef(incidentRef).campaignId(campaignId)
+                .status(CreditAdjustmentRequest.Status.APPROVED)
+                .makerId(operatorId)
+                .ledgerEntryId(ledgerEntryId)
+                .decideNote("小额直发（≤阈值），单人即时")
+                .createdAt(now).decidedAt(now)
+                .build();
+        requestRepo.save(req);
+    }
 
     private CreditAdjustmentRequest createPending(CreditAdjustmentRequest.Type type, String uid, long amount,
                                                   String reason, String incidentRef, String campaignId, String operatorId) {

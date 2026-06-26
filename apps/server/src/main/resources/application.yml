@@ -97,6 +97,8 @@ aep:
     # v2 §9.2 maker-checker：调差/赠送单笔 > 此值需走审批（FINANCE_ADMIN 复核，maker≠checker）；≤ 则直发
     adjust:
       threshold-credits: ${AEP_CREDIT_ADJUST_THRESHOLD:5000}
+      # v2 §9.2 #5：发起人单日（滚动 24h）调差/赠送积分上限（已批 + 待批计入）；<=0 关闭
+      actor-daily-limit-credits: ${AEP_CREDIT_ADJUST_ACTOR_DAILY_LIMIT:50000}
   # v0.43+ 子产品平台访问隔离（music / drama / celebrity）。
   #   true  → 任意注册入口授予全部子产品（一处注册，三端可用）。开发 / 联调默认。
   #   false → 注册只授予来源子产品（前端登录页透传 platform）；其余子产品需另行开通。

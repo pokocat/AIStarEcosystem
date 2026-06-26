@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -45,7 +46,8 @@ class CreditOpsServiceTest {
         });
         when(requestRepo.findById(anyString()))
                 .thenAnswer(inv -> Optional.ofNullable(db.get(inv.getArgument(0, String.class))));
-        svc = new CreditOpsService(creditService, requestRepo, 5000);
+        // 默认日限额 50000、actor 当日累计 0（未 stub → Mockito long 默认 0）
+        svc = new CreditOpsService(creditService, requestRepo, 5000, 50000);
     }
 
     @Test
@@ -113,5 +115,50 @@ class CreditOpsServiceTest {
         assertThrows(BusinessException.class, () -> svc.grantGift("u1", 0, null, "r", "op"));
         assertThrows(BusinessException.class, () -> svc.compensate("u1", 100, "", "r", "op"));
         assertThrows(BusinessException.class, () -> svc.compensate("", 100, "T", "r", "op"));
+    }
+
+    // ── v2 §9.2 #5 per-actor 日限额 + #4 全量审计 ─────────────────────────────
+
+    @Test
+    void actorDailyLimitBlocksWhenExceeded() {
+        // 该发起人近 24h 已累计 48000，本次 3000 → 51000 > 50000 上限 → 拒，不入账
+        when(requestRepo.sumAmountByMakerSince(eq("op1"), any(), anyList())).thenReturn(48000L);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.grantGift("u1", 3000, null, "激励", "op1"));
+        assertEquals("ACTOR_DAILY_LIMIT", ex.getCode());
+        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void actorDailyLimitAllowsAtBoundary() {
+        // 已 41000 + 本次 9000 = 50000，恰好等于上限 → 放行（> 才拒）。大额 → 进审批
+        when(requestRepo.sumAmountByMakerSince(eq("op1"), any(), anyList())).thenReturn(41000L);
+        AdjustmentResult r = svc.grantGift("u1", 9000, null, "激励", "op1");
+        assertTrue(r.pending());
+    }
+
+    @Test
+    void smallAdjustmentRecordedAsApprovedAuditRow() {
+        AdjustmentResult r = svc.grantGift("u1", 100, "SPRING", "激励", "op1");
+        assertFalse(r.pending());
+        // 小额直发也落一条 APPROVED 审计单（计入日限额 + 可溯源）
+        CreditAdjustmentRequest audit = db.values().stream()
+                .filter(x -> x.getStatus() == CreditAdjustmentRequest.Status.APPROVED)
+                .findFirst().orElse(null);
+        assertNotNull(audit, "小额直发应落 APPROVED 审计单");
+        assertEquals("op1", audit.getMakerId());
+        assertNotNull(audit.getLedgerEntryId());
+        assertEquals(100, audit.getAmount());
+    }
+
+    @Test
+    void dailyLimitCountsApprovedAndPendingStatuses() {
+        svc.grantGift("u1", 100, null, "r", "op1");
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<CreditAdjustmentRequest.Status>> cap =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(requestRepo).sumAmountByMakerSince(eq("op1"), any(), cap.capture());
+        assertTrue(cap.getValue().contains(CreditAdjustmentRequest.Status.APPROVED));
+        assertTrue(cap.getValue().contains(CreditAdjustmentRequest.Status.PENDING_APPROVAL));
     }
 }
