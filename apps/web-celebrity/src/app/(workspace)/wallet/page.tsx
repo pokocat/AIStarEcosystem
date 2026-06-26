@@ -48,6 +48,7 @@ const ORDER_STATUS_META: Record<RechargeOrderStatus, { label: string; tone: Chip
   paid:      { label: "已到账",     tone: "success" },
   rejected:  { label: "已驳回",     tone: "danger" },
   cancelled: { label: "已取消",     tone: "neutral" },
+  refunded:  { label: "已退款",     tone: "neutral" },
 };
 
 const REFERENCE_LABELS: Record<string, string> = {
