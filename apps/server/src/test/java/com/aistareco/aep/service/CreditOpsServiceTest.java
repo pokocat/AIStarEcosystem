@@ -27,6 +27,7 @@ class CreditOpsServiceTest {
 
     private CreditService creditService;
     private CreditAdjustmentRequestRepository requestRepo;
+    private com.aistareco.aep.repository.LedgerEntryRepository ledgerRepo;
     private CreditOpsService svc;
     private Map<String, CreditAdjustmentRequest> db;
 
@@ -38,6 +39,8 @@ class CreditOpsServiceTest {
                         null, null, "gift", inv.getArgument(1, Long.class), 0, "d",
                         inv.getArgument(4, String.class), inv.getArgument(3, String.class), Instant.now()));
         requestRepo = mock(CreditAdjustmentRequestRepository.class);
+        ledgerRepo = mock(com.aistareco.aep.repository.LedgerEntryRepository.class);
+        // 默认非重复（existsByReferenceTypeAndReferenceId 未 stub → Mockito boolean 默认 false）
         db = new HashMap<>();
         when(requestRepo.save(any())).thenAnswer(inv -> {
             CreditAdjustmentRequest r = inv.getArgument(0);
@@ -47,7 +50,7 @@ class CreditOpsServiceTest {
         when(requestRepo.findById(anyString()))
                 .thenAnswer(inv -> Optional.ofNullable(db.get(inv.getArgument(0, String.class))));
         // 默认日限额 50000、actor 当日累计 0（未 stub → Mockito long 默认 0）
-        svc = new CreditOpsService(creditService, requestRepo, 5000, 50000);
+        svc = new CreditOpsService(creditService, requestRepo, ledgerRepo, 5000, 50000);
     }
 
     @Test
@@ -149,6 +152,34 @@ class CreditOpsServiceTest {
         assertEquals("op1", audit.getMakerId());
         assertNotNull(audit.getLedgerEntryId());
         assertEquals(100, audit.getAmount());
+    }
+
+    // ── §14 幂等：同工单不重复补偿 / 同活动同用户不重复发放 ──────────────────
+
+    @Test
+    void duplicateCompensateByIncidentRefRejected() {
+        when(ledgerRepo.existsByReferenceTypeAndReferenceId("ops_compensation", "T-9")).thenReturn(true);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.compensate("u1", 300, "T-9", "补偿", "op1"));
+        assertEquals("DUPLICATE_INCIDENT", ex.getCode());
+        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void duplicateCampaignGrantSameUserRejected() {
+        when(ledgerRepo.existsByReferenceTypeAndReferenceId("ops_gift_campaign:SPRING", "SPRING:u1")).thenReturn(true);
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.grantGift("u1", 100, "SPRING", "激励", "op1"));
+        assertEquals("DUPLICATE_CAMPAIGN_GRANT", ex.getCode());
+        verify(creditService, never()).creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void grantWithoutCampaignHasNoIdempotencyGuard() {
+        // 无活动号的临时赠送：每次都是有意为之，不查幂等
+        AdjustmentResult r = svc.grantGift("u1", 100, null, "临时奖励", "op1");
+        assertFalse(r.pending());
+        verify(ledgerRepo, never()).existsByReferenceTypeAndReferenceId(eq("ops_gift"), anyString());
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.model.CreditAdjustmentRequest;
 import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.repository.CreditAdjustmentRequestRepository;
+import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,17 +42,23 @@ public class CreditOpsService {
     private static final List<CreditAdjustmentRequest.Status> DAILY_COUNTED =
             List.of(CreditAdjustmentRequest.Status.APPROVED, CreditAdjustmentRequest.Status.PENDING_APPROVAL);
 
+    /** 补偿幂等键：referenceType（同一工单只补一次）。 */
+    private static final String REF_COMPENSATION = "ops_compensation";
+
     private final CreditService creditService;
     private final CreditAdjustmentRequestRepository requestRepo;
+    private final LedgerEntryRepository ledgerRepo;
     private final long threshold;
     private final long actorDailyLimit;
 
     public CreditOpsService(CreditService creditService,
                             CreditAdjustmentRequestRepository requestRepo,
+                            LedgerEntryRepository ledgerRepo,
                             @Value("${aep.credit.adjust.threshold-credits:5000}") long threshold,
                             @Value("${aep.credit.adjust.actor-daily-limit-credits:50000}") long actorDailyLimit) {
         this.creditService = creditService;
         this.requestRepo = requestRepo;
+        this.ledgerRepo = ledgerRepo;
         this.threshold = threshold;
         this.actorDailyLimit = actorDailyLimit;
     }
@@ -214,9 +221,15 @@ public class CreditOpsService {
     }
 
     private LedgerEntryDto doCompensate(String uid, long amount, String ticket, String why, String operatorId) {
+        // 幂等（§14）：同一工单只补一次。choke-point 校验 → 小额直发 + 大额审批通过两条路径都覆盖，
+        // 杜绝「重复提交 / 双审批通过」造成的双重补偿。
+        if (ledgerRepo.existsByReferenceTypeAndReferenceId(REF_COMPENSATION, ticket)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "DUPLICATE_INCIDENT",
+                    "该工单 " + ticket + " 已补偿过，请勿重复补偿（如需追加请用新工单号）");
+        }
         String desc = "客诉补偿 " + amount + " 积分 · 工单 " + ticket + " · 原因：" + why + " · " + nz(operatorId);
         LedgerEntryDto entry = creditService.creditAccount(
-                uid, amount, LedgerEntry.LedgerEntryType.GIFT, "ops_compensation", ticket, desc);
+                uid, amount, LedgerEntry.LedgerEntryType.GIFT, REF_COMPENSATION, ticket, desc);
         log.info("[credit-ops] compensate target={} amount={} ticket={} ledger={}", uid, amount, ticket, entry.id());
         return entry;
     }
@@ -224,6 +237,11 @@ public class CreditOpsService {
     private LedgerEntryDto doGrant(String uid, long amount, String camp, String why, String operatorId) {
         String refType = camp != null ? "ops_gift_campaign:" + camp : "ops_gift";
         String refId = camp != null ? camp + ":" + uid : uid;
+        // 幂等 fan-out（§9 批量 campaign）：同一活动同一用户只发一次。无活动号的临时赠送不设幂等（每次都是有意为之）。
+        if (camp != null && ledgerRepo.existsByReferenceTypeAndReferenceId(refType, refId)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "DUPLICATE_CAMPAIGN_GRANT",
+                    "用户在活动 " + camp + " 已发放过，幂等跳过（防重复发放）");
+        }
         String desc = "运营赠送 " + amount + " 积分" + (camp != null ? "（活动 " + camp + "）" : "")
                 + " · 原因：" + why + " · " + nz(operatorId);
         LedgerEntryDto entry = creditService.creditAccount(
