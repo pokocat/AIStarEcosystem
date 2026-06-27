@@ -5,6 +5,7 @@ import com.aistareco.aep.model.RechargeOrder;
 import com.aistareco.aep.service.payment.PayCreateCommand;
 import com.aistareco.aep.service.payment.PayCreateResult;
 import com.aistareco.aep.service.payment.PaymentGateway;
+import com.aistareco.aep.service.payment.PaymentProperties;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,10 +25,12 @@ public class PaymentService {
 
     private final RechargeService rechargeService;
     private final PaymentGateway gateway;
+    private final PaymentProperties props;
 
-    public PaymentService(RechargeService rechargeService, PaymentGateway gateway) {
+    public PaymentService(RechargeService rechargeService, PaymentGateway gateway, PaymentProperties props) {
         this.rechargeService = rechargeService;
         this.gateway = gateway;
+        this.props = props;
     }
 
     /**
@@ -61,6 +64,11 @@ public class PaymentService {
     }
 
     private String defaultWayCode() {
-        return "shadow".equals(gateway.driverName()) ? "SHADOW" : "WX_LITE";
+        return switch (gateway.driverName()) {
+            case "shadow" -> "SHADOW";
+            case "alipay" -> props.getAlipay().getDefaultWayCode();
+            case "jeepay" -> props.getJeepay().getDefaultWayCode();
+            default -> "WX_LITE";
+        };
     }
 }

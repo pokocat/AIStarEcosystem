@@ -12,11 +12,12 @@ import org.springframework.stereotype.Component;
 @Data
 public class PaymentProperties {
 
-    /** shadow（dev/test/staging）/ jeepay（生产）。 */
+    /** shadow（dev/test/staging）/ alipay（支付宝直连）/ jeepay（聚合，休眠）。 */
     private String driver = "shadow";
 
     private Shadow shadow = new Shadow();
     private Jeepay jeepay = new Jeepay();
+    private Alipay alipay = new Alipay();
 
     @Data
     public static class Shadow {
@@ -48,5 +49,34 @@ public class PaymentProperties {
         private String defaultWayCode = "WX_LITE";
         /** 接口版本。 */
         private String version = "1.0";
+    }
+
+    /**
+     * 支付宝直连配置（v2 §6 · 直连官方 SDK alipay-easysdk）。机密经 env 注入、禁进 git。
+     * driver=alipay 时这些必填（{@code AlipayPaymentGateway} 启动 fail-fast 校验，守 §8.0）。
+     * 沙箱→生产只换 appId/merchantPrivateKey/alipayPublicKey/gatewayHost 四项,业务代码零改。
+     */
+    @Data
+    public static class Alipay {
+        /** 应用 APPID（沙箱在开放平台沙箱控制台自动分配；生产为正式审核通过的应用号）。 */
+        private String appId;
+        /** 应用私钥（RSA2 PKCS8，自己生成；上传对应应用公钥换取支付宝公钥）。 */
+        private String merchantPrivateKey;
+        /** 支付宝公钥（开放平台按你的应用公钥生成）。 */
+        private String alipayPublicKey;
+        /** 网关 host：沙箱 openapi.alipaydev.com / 生产 openapi.alipay.com（接入时按控制台核对当前确切域名）。 */
+        private String gatewayHost = "openapi.alipaydev.com";
+        /** 协议，固定 https。 */
+        private String protocol = "https";
+        /** 签名类型，固定 RSA2。 */
+        private String signType = "RSA2";
+        /** 我方异步回调地址（支付宝可达，公网/隧道），如 https://xxx/api/pay/notify/alipay。 */
+        private String notifyUrl;
+        /** 同步跳回地址（ALI_PC/ALI_WAP 付款后浏览器跳回，可空；仅展示用，绝不据此入账）。 */
+        private String returnUrl;
+        /** 默认支付方式：ALI_PC（电脑网站，浏览器直接付，沙箱首选）/ ALI_WAP（手机网站）/ ALI_QR（扫码）。 */
+        private String defaultWayCode = "ALI_PC";
+        /** 沙箱标识，仅用于日志/横幅提示；真正切换靠 gatewayHost。 */
+        private boolean sandbox = true;
     }
 }

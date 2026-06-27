@@ -31,7 +31,7 @@ class PaymentServiceTest {
         rechargeService = mock(RechargeService.class);
         gateway = mock(PaymentGateway.class);
         when(gateway.driverName()).thenReturn("shadow");
-        svc = new PaymentService(rechargeService, gateway);
+        svc = new PaymentService(rechargeService, gateway, new com.aistareco.aep.service.payment.PaymentProperties());
     }
 
     private static RechargeOrder order(String id) {

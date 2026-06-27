@@ -2,6 +2,7 @@ package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.RechargeOrderDto;
 import com.aistareco.aep.service.RechargeService;
+import com.aistareco.aep.service.payment.PaymentReconcileService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 运营后台 · 充值订单核销（v0.56 新增）。
@@ -21,9 +23,12 @@ import java.util.List;
 public class AdminRechargeOrderController {
 
     private final RechargeService rechargeService;
+    private final PaymentReconcileService reconcileService;
 
-    public AdminRechargeOrderController(RechargeService rechargeService) {
+    public AdminRechargeOrderController(RechargeService rechargeService,
+                                        PaymentReconcileService reconcileService) {
         this.rechargeService = rechargeService;
+        this.reconcileService = reconcileService;
     }
 
     /** 列出充值订单。可选 {@code ?status=pending|paid|rejected|cancelled|all}（默认全部，最新在前）。 */
@@ -70,6 +75,17 @@ public class AdminRechargeOrderController {
         }
         String operator = principal != null ? principal.getName() : "admin";
         return ApiResponse.of(rechargeService.refundOrder(orderId, operator, reason));
+    }
+
+    /**
+     * 手动触发查单兜底（v2 §6.4，直连方案）：对 PENDING 在线订单逐单查网关,已支付则结算（幂等）。
+     * 用于回调丢失 / 本地无公网时的补单,也让沙箱 E2E 可确定性推进（不必等定时器）。限 FINANCE_ADMIN / SUPER_ADMIN。
+     */
+    @PostMapping("/reconcile")
+    @PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")
+    public ApiResponse<Map<String, Object>> reconcile() {
+        int settled = reconcileService.reconcilePending();
+        return ApiResponse.of(Map.of("settled", settled));
     }
 
     public record ReviewRequest(String note, String reason) {}
