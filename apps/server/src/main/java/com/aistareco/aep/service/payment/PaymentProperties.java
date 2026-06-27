@@ -64,8 +64,8 @@ public class PaymentProperties {
         private String merchantPrivateKey;
         /** 支付宝公钥（开放平台按你的应用公钥生成）。 */
         private String alipayPublicKey;
-        /** 网关 host：沙箱 openapi.alipaydev.com / 生产 openapi.alipay.com（接入时按控制台核对当前确切域名）。 */
-        private String gatewayHost = "openapi.alipaydev.com";
+        /** 网关 host：沙箱 openapi-sandbox.dl.alipaydev.com（旧 openapi.alipaydev.com 已废 502）/ 生产 openapi.alipay.com（接入时按控制台核对）。 */
+        private String gatewayHost = "openapi-sandbox.dl.alipaydev.com";
         /** 协议，固定 https。 */
         private String protocol = "https";
         /** 签名类型，固定 RSA2。 */

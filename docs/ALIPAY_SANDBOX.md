@@ -21,7 +21,7 @@
    - 拿到三样：`应用私钥(merchant-private-key)` / `支付宝公钥(alipay-public-key)` / `APPID`。
 4. **沙箱买家账号**：沙箱页有现成的买家账号（账号 + 登录/支付密码,有虚拟余额,无需充值/实名）。
 
-> 沙箱网关：`openapi.alipaydev.com`（接入时按控制台核对当前确切域名,历史上变过）。
+> 沙箱网关：`openapi-sandbox.dl.alipaydev.com`（接入时按控制台核对当前确切域名,历史上变过）。
 
 ## 2. 配置本地 server（driver 切 alipay）
 
@@ -32,7 +32,7 @@ AEP_PAYMENT_DRIVER=alipay
 AEP_PAYMENT_ALIPAY_APP_ID=<沙箱 APPID>
 AEP_PAYMENT_ALIPAY_MERCHANT_PRIVATE_KEY=<应用私钥（单行，无 BEGIN/END）>
 AEP_PAYMENT_ALIPAY_PUBLIC_KEY=<支付宝公钥（单行）>
-AEP_PAYMENT_ALIPAY_GATEWAY_HOST=openapi.alipaydev.com
+AEP_PAYMENT_ALIPAY_GATEWAY_HOST=openapi-sandbox.dl.alipaydev.com
 AEP_PAYMENT_ALIPAY_DEFAULT_WAY_CODE=ALI_PC
 AEP_PAYMENT_ALIPAY_SANDBOX=true
 # 回调地址：有公网/隧道就填可达地址；纯靠查单兜底可先填本机占位（notify 收不到,reconcile 照样入账）
