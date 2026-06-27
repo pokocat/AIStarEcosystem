@@ -141,7 +141,10 @@ export default function WalletPage() {
     }
   };
 
-  // v2 在线支付：子应用内发起 checkout；driver=shadow 时弹「模拟收银台」由用户确认。
+  // v2 在线支付：子应用内发起 checkout。payDataType 决定如何拉起支付：
+  //   shadow → 模拟收银台（dev）；page → 支付宝网站支付（ALI_PC/ALI_WAP，自动提交表单跳转）；
+  //   qr → 支付宝扫码（ALI_QR，二维码，待接 QR 组件）。
+  // 付款后由异步 notify / 查单兜底（PaymentReconcileService）入账;跳回后刷新即见到账。
   const startOnlinePay = async () => {
     if (!selectedPkg || onlinePaying) return;
     setOnlinePaying(true);
@@ -152,8 +155,20 @@ export default function WalletPage() {
         setShadowCashier({ orderId: res.orderId, summary });
         setSelectedPkg(null);
         setNote("");
+      } else if (res.payDataType === "page") {
+        // 支付宝网站支付：payData 是自动提交的 HTML 表单 → 写入当前文档跳转到支付宝收银台。
+        setSelectedPkg(null);
+        setNote("");
+        document.open();
+        document.write(res.payData);
+        document.close();
+        return; // 已离开本页，前往支付宝
+      } else if (res.payDataType === "qr") {
+        // 支付宝扫码（ALI_QR）：payData 是二维码内容串。QR 图片渲染组件待接（Phase 1 跟进）;
+        // 默认走 ALI_PC（网站支付,无需二维码）,故此分支当前不触发。
+        flashToast("扫码支付（ALI_QR）二维码渲染待接入,请用网站支付", "err");
       } else {
-        flashToast(`在线支付通道接入中（${res.payDataType}）`, "err");
+        flashToast(`暂不支持的支付通道（${res.payDataType}）`, "err");
       }
       await loadOrders();
     } catch (e: unknown) {
