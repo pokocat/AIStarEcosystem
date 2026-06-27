@@ -242,8 +242,9 @@ Dev 种子账号（[`DataInitializer.java`](apps/server/src/main/java/com/aistar
 
 - `admin / admin123` — SUPER_ADMIN
 - `operator / operator123` — OPERATOR
+- `finance / finance123` — FINANCE_ADMIN（v2 §9 资金面 + 大额复核；dev 由 `ensureFinanceAdminSeed` 幂等补）
 
-> 角色拆分计划（v0.6+）：拆分为 `PLATFORM_OPERATOR` / `FINANCE_ADMIN`。到时同步 4 个位置：`AdminUser.AdminRole` enum + `AepSecurityConfig.hasAnyRole` + `DataInitializer` seed + `apps/admin/src/types/account.ts`。
+> 角色拆分进度：`FINANCE_ADMIN` **已落地**（`AdminUser.AdminRole` enum + `AepSecurityConfig` authority + seed `finance/finance123` + `apps/admin/src/types/account.ts` + **v2 §6 资金财务控制台**：nav `roles` 门控 + `useAdminRole` 归一 + 资金面 controller `@PreAuthorize`）；`PLATFORM_OPERATOR` 仍未拆（暂用 `OPERATOR`）。
 
 ### 4.5 数值字段
 
@@ -441,7 +442,7 @@ pnpm check:api-contract
 
 ### admin sidebar 启用状态（当前）
 
-启用：Platform / Artists / **Celebrity**（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）/ Distribution / Finance（含 recharge-packages）/ Notifications / Audit / 平台 > AI 模型 / Prompt 管理 / Agent 平台 / 销售渠道 / 后台管理员 / 账号登录日志 / 充值订单。
+启用：Platform / Artists / **Celebrity**（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）/ Distribution / **资金财务**（v2 §6：FINANCE_ADMIN 专属 —— `/finance` 控制台 + 充值订单/退款/对账/结算/异常风控/充值套餐，OPERATOR 看不到且后端 403）/ **积分运营**（OPERATOR 可见：调差/赠送）/ Notifications / Audit / 平台 > AI 模型 / Prompt 管理 / Agent 平台 / 销售渠道 / 后台管理员 / 账号登录日志。
 
 隐藏（源码保留，URL 直访仍可用）：music / film / nft / forge / digital-ip / community / coach / fan / membership / store / monetization。
 
@@ -597,7 +598,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 git diff --name-only | grep -q '^TODO.md$' || echo '⚠️ 本次若动了待办相关代码，确认 TODO.md 是否需要同 commit 更新'
 
 # 1) 文档与代码一致性
-git grep -nE 'PLATFORM_OPERATOR|FINANCE_ADMIN' -- '*.md'   # 0 命中（除非 v0.6+ 真做了拆分）
+git grep -nE 'PLATFORM_OPERATOR' -- '*.md'                  # 0 命中（FINANCE_ADMIN 已拆分落地，docs 提及它不再算 drift）
 git grep -nE 'port 300[01]' -- '*.md'                       # 0 命中
 
 # 2) 接口契约

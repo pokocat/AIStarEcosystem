@@ -5,15 +5,18 @@ import com.aistareco.aep.dto.RechargePackageDto;
 import com.aistareco.aep.service.RechargePackageAdminService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 /**
  * 充值套餐 admin CRUD：/api/admin/finance/recharge-packages/*。v0.5 新增。
+ * v2 §6：套餐定价属资金财务范畴 → 限 FINANCE_ADMIN / SUPER_ADMIN。
  */
 @RestController
 @RequestMapping("/api/admin/finance/recharge-packages")
+@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")
 public class AdminFinanceRechargePackageController {
 
     private final RechargePackageAdminService service;

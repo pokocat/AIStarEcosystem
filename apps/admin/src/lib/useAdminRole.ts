@@ -18,8 +18,9 @@ import { getMe, type AdminMeUser } from "@/api/auth";
 import { USE_MOCK } from "@/api/_client";
 
 export type AccountSource = "admin" | "operator";
+export type AdminRoleValue = "SUPER_ADMIN" | "OPERATOR" | "FINANCE_ADMIN";
 export interface AdminIdentity extends Partial<Omit<AdminMeUser, "role" | "accountSource">> {
-  role: "SUPER_ADMIN" | "OPERATOR" | null;
+  role: AdminRoleValue | null;
   accountSource: AccountSource | null;
 }
 
@@ -60,8 +61,10 @@ export function useAdminIdentity(): AdminIdentity {
       cachePromise = getMe().then(
         (u) => {
           const rawRole = u.role ? u.role.toUpperCase() : null;
-          const normalizedRole =
-            rawRole === "SUPER_ADMIN" || rawRole === "OPERATOR" ? rawRole : null;
+          const normalizedRole: AdminRoleValue | null =
+            rawRole === "SUPER_ADMIN" || rawRole === "OPERATOR" || rawRole === "FINANCE_ADMIN"
+              ? rawRole
+              : null;
           const src = u.accountSource;
           cachedIdentity = {
             ...u,

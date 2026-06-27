@@ -20,6 +20,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/admin/finance/recharge-orders")
+@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')") // v2 §6：资金面（充值/退款/对账）限财务,OPERATOR 不可读写
 public class AdminRechargeOrderController {
 
     private final RechargeService rechargeService;
