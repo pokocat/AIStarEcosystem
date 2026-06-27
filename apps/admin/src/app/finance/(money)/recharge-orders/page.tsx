@@ -36,9 +36,21 @@ const STATUS_TONE: Record<RechargeOrderStatus, StatusTone> = {
 // v2 §6 支付来源 tone：jeepay 真实在线=success；shadow 影子(dev/test)=warning；manual 线下=neutral。
 const PAID_VIA_TONE: Record<string, StatusTone> = {
   jeepay: "success",
+  alipay: "success",
+  wechat: "success",
   shadow: "warning",
   manual: "neutral",
 };
+
+// v2 §6 业务来源（sourceApp）→ 可读子应用名。
+const SOURCE_APP_LABEL: Record<string, string> = {
+  celebrity: "明星带货",
+  drama: "短剧",
+  music: "音乐人",
+  aiavatar: "AiAvatar",
+  star: "明星工作台",
+};
+const sourceAppLabel = (s?: string | null): string => (s ? SOURCE_APP_LABEL[s] ?? s : "—");
 
 /** 支付方式 / 渠道列：在线（Jeepay/影子）显示渠道流水号 + 支付方式；线下核准显示来源；未支付显示 —。 */
 function PayMethodCell({ o }: { o: RechargeOrder }) {
@@ -59,10 +71,8 @@ function PayMethodCell({ o }: { o: RechargeOrder }) {
           {o.channelPayNo}
         </div>
       ) : null}
-      {o.wayCode || o.sourceApp ? (
-        <div className="text-[11px] text-muted-foreground">
-          {[o.wayCode, o.sourceApp].filter(Boolean).join(" · ")}
-        </div>
+      {o.wayCode ? (
+        <div className="text-[11px] text-muted-foreground">{o.wayCode}</div>
       ) : null}
     </div>
   );
@@ -261,6 +271,7 @@ export default function AdminRechargeOrdersPage() {
                 <TableRow>
                   <TableHead>下单时间</TableHead>
                   <TableHead>用户 / 工作室</TableHead>
+                  <TableHead>业务</TableHead>
                   <TableHead>套餐</TableHead>
                   <TableHead className="text-right">积分</TableHead>
                   <TableHead className="text-right">应收</TableHead>
@@ -281,6 +292,9 @@ export default function AdminRechargeOrdersPage() {
                       <div className="text-xs text-muted-foreground">
                         {o.studioName ?? o.username ?? o.userId}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone="info" className="font-normal">{sourceAppLabel(o.sourceApp)}</Badge>
                     </TableCell>
                     <TableCell>{o.packageTag ?? "充值套餐"}</TableCell>
                     <TableCell className="text-right tabular-nums">

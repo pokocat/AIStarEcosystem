@@ -17,6 +17,8 @@ export const RECHARGE_ORDER_STATUS_LABEL: Record<RechargeOrderStatus, string> = 
 export const RECHARGE_PAID_VIA_META: Record<string, { label: string; online: boolean }> = {
   manual: { label: "线下核准", online: false },
   jeepay: { label: "在线 · Jeepay", online: true },
+  alipay: { label: "在线 · 支付宝", online: true },
+  wechat: { label: "在线 · 微信", online: true },
   shadow: { label: "在线 · 影子", online: true },
 };
 

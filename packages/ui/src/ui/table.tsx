@@ -8,7 +8,9 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      // touch-pan-x：移动端只在表内做横向拖动，纵向拖动落到页面（否则 overflow-x:auto 会令
+      // overflow-y 计算成 auto，表格占满屏高时吞掉整页滚动）。overscroll-x-contain 防横向滚动链。
+      className="relative w-full touch-pan-x overflow-x-auto overscroll-x-contain"
     >
       <table
         data-slot="table"

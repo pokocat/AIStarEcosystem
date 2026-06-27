@@ -437,7 +437,7 @@ export default function WalletPage() {
           ) : ledger.length === 0 ? (
             <div style={{ fontSize: 13, color: "var(--fg-2)" }}>还没有积分流水。生成视频、分发任务或充值到账后会在这里出现。</div>
           ) : (
-            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <div style={{ overflowX: "auto", touchAction: "pan-x", overscrollBehaviorX: "contain", WebkitOverflowScrolling: "touch" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 0, minWidth: 560 }}>
                 <LedgerHeader />
                 {ledger.map((e) => (
