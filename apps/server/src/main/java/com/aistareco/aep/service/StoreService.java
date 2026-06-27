@@ -142,7 +142,7 @@ public class StoreService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "已拥有该商品");
         }
 
-        Wallet wallet = walletRepo.findByUserId(userId)
+        Wallet wallet = walletRepo.findByUserIdForUpdate(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "积分账户未开通"));
         if (wallet.getTotalBalance() < price) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "积分余额不足");

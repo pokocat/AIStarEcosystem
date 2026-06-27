@@ -53,7 +53,7 @@ class PlatformSupportTest {
 
     @Test
     void toCsv_roundTrips() {
-        assertEquals("music,drama,celebrity", PlatformSupport.toCsv(PlatformSupport.ALL));
+        assertEquals("music,drama,celebrity,aiavatar,star", PlatformSupport.toCsv(PlatformSupport.ALL));
         assertEquals("music", PlatformSupport.toCsv(List.of("music")));
         // 清洗未知项
         assertEquals("drama", PlatformSupport.toCsv(List.of("drama", "bogus")));
