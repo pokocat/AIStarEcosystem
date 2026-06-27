@@ -29,7 +29,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:ledger-plane;MODE=MySQL;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=update",
-        "aep.seed.dev-data.enabled=true"
+        "aep.seed.dev-data.enabled=true",
+        // 强制 local CDN：让全上下文不受本地 apps/server/.env 的 AEP_CDN_DRIVER=oss 干扰
+        // （否则激活 AliyunOssCdnUploader，其 @Value endpoint 精确查找 miss → 构造器抛错 → context load fail）。
+        "aep.cdn.driver=local"
 })
 @Transactional // @Modifying backfill 需事务；同时给每个测试方法回滚隔离
 class LedgerPlaneTest {

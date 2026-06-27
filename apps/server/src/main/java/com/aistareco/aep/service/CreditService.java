@@ -227,12 +227,17 @@ public class CreditService {
 
     /**
      * 业务侧"加积分"通用入口（v0.4 新增）：原子地把 amount 加入指定桶并写一条 LedgerEntry。
-     * 调用方负责选对桶：
-     *   - RECHARGE：充值落账
-     *   - GIFT：活动赠送 / 充值赠送
-     *   - INCOME：业务收益
-     *   - LICENSE_GRANT：license 核销
-     *   - REFUND：退款
+     * 桶分配严格对齐 v2 §1 两平面：<b>只有 RECHARGE（现金充值）进 recharge 现金背书桶</b>，
+     * 其余皆积分面（非现金负债）：
+     *   - RECHARGE：充值落账 → <b>recharge 桶（唯一现金背书入账）</b>
+     *   - GIFT：活动赠送 / 充值赠送 → gift 桶
+     *   - LICENSE_GRANT：license 核销 → license 桶
+     *   - INCOME：业务收益（积分面，非现金）→ gift 桶（v2 M2）
+     *   - REFUND：积分面退款（<b>已弃用</b>，改走 {@link #releaseHold} 退回原桶）→ gift 桶兜底（v2 M2）
+     *
+     * <p><b>v2 M2 修复：INCOME / REFUND 不再进 recharge 桶。</b>否则会污染
+     * {@link #refundCashReclaim} 依赖的「{@code rechargeBalance} = 未消费现金充值额」不变量，
+     * 让非现金积分被当作现金退掉。落 gift 桶对 {@code totalBalance} 无差别（gift 同样计入总额）。
      *
      * @param entryType   LedgerEntry 类型（同时决定加哪个桶；FREEZE/UNFREEZE/SPEND/WITHDRAW/ADJUST 不在此处理）
      */
@@ -250,11 +255,14 @@ public class CreditService {
         Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         switch (entryType) {
+            // RECHARGE 是唯一进现金背书 recharge 桶的入账类型（守 refundCashReclaim 的 clamp 不变量）。
             case RECHARGE -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
             case GIFT -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
             case LICENSE_GRANT -> wallet.setLicenseBalance(wallet.getLicenseBalance() + amount);
-            case INCOME -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount); // 业务收益默认进 recharge 桶
-            case REFUND -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
+            // v2 M2：INCOME（业务收益）是积分面（非现金）→ gift 桶，绝不污染 recharge 现金桶。
+            case INCOME -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
+            // v2 M2：REFUND（积分面退款）已弃用（改走 releaseHold 退原桶）；保留分支兜底，同样落 gift 桶，绝不进 recharge。
+            case REFUND -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "creditAccount 不支持的入账类型：" + entryType);
         }
