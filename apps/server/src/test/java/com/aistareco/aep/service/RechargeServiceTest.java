@@ -235,4 +235,47 @@ class RechargeServiceTest {
         verify(pkgRepo).findActiveForApp("drama");
         verify(pkgRepo, never()).findByActiveTrueOrderBySortOrderAscCreditsAsc();
     }
+
+    // ── v2 §6 幂等下单（防重复支付）──────────────────────────────────────────
+
+    @Test
+    void checkoutReusesRecentPendingOrderForSamePackage() {
+        when(pkgRepo.findById("pkg-x")).thenReturn(Optional.of(pkg("all")));
+        RechargeOrder existing = RechargeOrder.builder()
+                .id("ro-existing").userId(USER).packageId("pkg-x")
+                .status(RechargeOrder.Status.PENDING).createdAt(Instant.now()).build();
+        when(orderRepo.findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(USER, "pkg-x"))
+                .thenReturn(Optional.of(existing));
+
+        RechargeOrder o = svc.createOrReuseCheckoutOrder(USER, "pkg-x", "ALI_PC", "celebrity");
+
+        assertEquals("ro-existing", o.getId()); // 复用,不新建
+    }
+
+    @Test
+    void checkoutCreatesNewWhenNoReusablePending() {
+        when(pkgRepo.findById("pkg-x")).thenReturn(Optional.of(pkg("all")));
+        when(orderRepo.findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(USER, "pkg-x"))
+                .thenReturn(Optional.empty());
+
+        RechargeOrder o = svc.createOrReuseCheckoutOrder(USER, "pkg-x", "ALI_PC", "celebrity");
+
+        assertNotEquals("ro-existing", o.getId());
+        assertTrue(o.getId().startsWith("ro-"));
+        assertEquals(RechargeOrder.Status.PENDING, o.getStatus());
+    }
+
+    @Test
+    void checkoutDoesNotReusePaidOrder() {
+        when(pkgRepo.findById("pkg-x")).thenReturn(Optional.of(pkg("all")));
+        RechargeOrder paid = RechargeOrder.builder()
+                .id("ro-paid").userId(USER).packageId("pkg-x")
+                .status(RechargeOrder.Status.PAID).createdAt(Instant.now()).build();
+        when(orderRepo.findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(USER, "pkg-x"))
+                .thenReturn(Optional.of(paid));
+
+        RechargeOrder o = svc.createOrReuseCheckoutOrder(USER, "pkg-x", "ALI_PC", "celebrity");
+
+        assertNotEquals("ro-paid", o.getId()); // 已支付单不复用,建新单
+    }
 }

@@ -118,14 +118,16 @@ public class RechargeOrder {
     private long refundedCredits;
 
     /**
-     * 订单状态机：PENDING → PAID（核准入账）/ REJECTED（驳回）/ CANCELLED（用户取消）；
-     * PAID → REFUNDED（v2 §15.5 现金退款 + 未消费积分回收）。终态不可再变。
+     * 订单状态机：PENDING → PAID（核准/在线支付入账）/ REJECTED（运营驳回）/ CANCELLED（用户取消）/
+     * CLOSED（超时未支付或网关关单 → 系统关闭，不可再付，需重新下单）；
+     * PAID → REFUNDED（v2 §15.5 现金退款 + 未消费积分回收）。终态（PAID/REJECTED/CANCELLED/CLOSED/REFUNDED）不可再变。
      */
     public enum Status {
         PENDING,
         PAID,
         REJECTED,
         CANCELLED,
+        CLOSED,
         REFUNDED
     }
 }

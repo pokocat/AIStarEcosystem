@@ -1,9 +1,11 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.CheckoutResponse;
+import com.aistareco.aep.dto.RechargeOrderDto;
 import com.aistareco.aep.model.RechargeOrder;
 import com.aistareco.aep.service.payment.PayCreateCommand;
 import com.aistareco.aep.service.payment.PayCreateResult;
+import com.aistareco.aep.service.payment.PayQueryResult;
 import com.aistareco.aep.service.payment.PaymentGateway;
 import com.aistareco.aep.service.payment.PaymentProperties;
 import com.aistareco.common.BusinessException;
@@ -11,6 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.time.Instant;
 
 /**
  * 充值在线支付编排（v2 §4.1 / §6.4 / §6.7）。
@@ -43,7 +48,8 @@ public class PaymentService {
                                      String openid, String clientIp, String sourceApp) {
         String resolvedWay = (wayCode == null || wayCode.isBlank()) ? defaultWayCode() : wayCode;
 
-        RechargeOrder order = rechargeService.createPendingForCheckout(userId, packageId, resolvedWay, sourceApp);
+        // v2 §6 防重复支付：复用 TTL 内的同套餐 PENDING 单（双击/重试不生成重复单）。
+        RechargeOrder order = rechargeService.createOrReuseCheckoutOrder(userId, packageId, resolvedWay, sourceApp);
 
         PayCreateResult res;
         try {
@@ -61,6 +67,34 @@ public class PaymentService {
         log.info("[pay] checkout ok orderId={} driver={} payOrderId={} payDataType={}",
                 order.getId(), gateway.driverName(), res.payOrderId(), res.payDataType());
         return new CheckoutResponse(order.getId(), res.payDataType(), res.payData());
+    }
+
+    /**
+     * v2 §6 主动查单（收银台「我已支付 / 刷新状态」+ 订单详情同步）。
+     * 仅对 PENDING 在线订单查网关：已支付→结算（幂等闸）；超 TTL 未支付→关单（CLOSED）；
+     * 否则返回当前态。终态 / 影子链路 / 未拉起网关（无 payOrderId）直接返回当前态。
+     */
+    public RechargeOrderDto syncOrder(String userId, String orderId) {
+        RechargeOrderDto dto = rechargeService.getOrderForUser(userId, orderId); // 归属校验
+        if (!"pending".equalsIgnoreCase(dto.status())) {
+            return dto; // 终态不再查
+        }
+        boolean overTtl = dto.createdAt() != null
+                && dto.createdAt().isBefore(Instant.now().minus(Duration.ofMinutes(rechargeService.pendingTtlMinutes())));
+        if (!"shadow".equals(gateway.driverName()) && dto.payOrderId() != null) {
+            try {
+                PayQueryResult q = gateway.queryPayOrder(orderId);
+                if (q.paid()) {
+                    return rechargeService.settlePaidOrder(orderId, gateway.driverName(), q.channelPayNo(), null, null);
+                }
+            } catch (RuntimeException e) {
+                log.warn("[pay] syncOrder 查单失败 orderId={}: {}", orderId, e.toString());
+            }
+        }
+        if (overTtl) {
+            return rechargeService.closeOrder(orderId, "支付超时自动关闭");
+        }
+        return rechargeService.getOrderForUser(userId, orderId);
     }
 
     private String defaultWayCode() {

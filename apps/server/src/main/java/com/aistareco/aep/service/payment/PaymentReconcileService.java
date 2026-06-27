@@ -86,6 +86,12 @@ public class PaymentReconcileService {
         if (settled > 0) {
             log.info("[pay][reconcile] 本轮兜底结算 {} 单", settled);
         }
+        // v2 §6 超时清理：超过 MAX_AGE 仍 PENDING 的在线订单关单（CLOSED），避免悬挂单永远卡待支付。
+        try {
+            rechargeService.closeStalePendingOrders(MAX_AGE_MINUTES);
+        } catch (Exception e) {
+            log.warn("[pay][reconcile] 超时关单异常（吞,下轮重试）：{}", e.toString());
+        }
         return settled;
     }
 }

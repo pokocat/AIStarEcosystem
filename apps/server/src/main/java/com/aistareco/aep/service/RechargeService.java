@@ -20,6 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -43,6 +44,8 @@ public class RechargeService {
 
     /** 单用户待确认订单上限，防刷单。 */
     private static final long MAX_PENDING_PER_USER = 10;
+    /** v2 §6 待支付订单 TTL：超过此时长未支付 → 系统关单（CLOSED）；也是 checkout 幂等复用窗口。 */
+    private static final long PENDING_TTL_MINUTES = 30;
 
     private final RechargePackageRepository pkgRepo;
     private final RechargeOrderRepository orderRepo;
@@ -148,19 +151,7 @@ public class RechargeService {
      */
     @Transactional
     public RechargeOrder createPendingForCheckout(String userId, String packageId, String wayCode, String sourceApp) {
-        if (packageId == null || packageId.isBlank()) {
-            throw BusinessException.badRequest("PACKAGE_ID_REQUIRED", "请选择充值套餐");
-        }
-        RechargePackage pkg = pkgRepo.findById(packageId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOUND", "套餐不存在：" + packageId));
-        if (!pkg.isActive()) {
-            throw new BusinessException(HttpStatus.GONE, "PACKAGE_INACTIVE", "套餐已下架：" + packageId);
-        }
-        // v2 §6：套餐按子应用归属校验（防止 A 应用买 B 应用专属套餐）。
-        if (!packageAllowedForApp(pkg, sourceApp)) {
-            throw new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOR_APP",
-                    "该套餐不适用于当前应用");
-        }
+        RechargePackage pkg = requireCheckoutablePackage(packageId, sourceApp);
         if (orderRepo.countByUserIdAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
             throw new BusinessException(HttpStatus.CONFLICT, "TOO_MANY_PENDING_ORDERS",
                     "你有较多待确认的充值订单，请先完成付款或取消后再下单");
@@ -189,6 +180,45 @@ public class RechargeService {
         log.info("[recharge] checkout order created id={} userId={} pkg={} wayCode={} sourceApp={} priceCents={}",
                 order.getId(), userId, pkg.getId(), wayCode, sourceApp, pkg.getPriceCents());
         return order;
+    }
+
+    /** v2 §6 下单前套餐校验（存在 + 在售 + 子应用归属）—— 新建与复用路径共用，错误码一致。 */
+    private RechargePackage requireCheckoutablePackage(String packageId, String sourceApp) {
+        if (packageId == null || packageId.isBlank()) {
+            throw BusinessException.badRequest("PACKAGE_ID_REQUIRED", "请选择充值套餐");
+        }
+        RechargePackage pkg = pkgRepo.findById(packageId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOUND", "套餐不存在：" + packageId));
+        if (!pkg.isActive()) {
+            throw new BusinessException(HttpStatus.GONE, "PACKAGE_INACTIVE", "套餐已下架：" + packageId);
+        }
+        if (!packageAllowedForApp(pkg, sourceApp)) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOR_APP", "该套餐不适用于当前应用");
+        }
+        return pkg;
+    }
+
+    /**
+     * v2 §6 幂等下单（防重复支付 · 第 1 道闸）：同用户同套餐若已有「TTL 内的 PENDING 单」→ 复用
+     * （只更 wayCode/sourceApp/updatedAt），否则新建。配合网关 out_trade_no 复用（第 2 道）+
+     * settle 条件 UPDATE 幂等闸（第 3 道），三道闸共同保证不重复扣款 / 不重复入账。
+     */
+    @Transactional
+    public RechargeOrder createOrReuseCheckoutOrder(String userId, String packageId, String wayCode, String sourceApp) {
+        requireCheckoutablePackage(packageId, sourceApp);
+        RechargeOrder reusable = orderRepo.findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(userId, packageId)
+                .filter(o -> o.getStatus() == RechargeOrder.Status.PENDING)
+                .filter(o -> Duration.between(o.getCreatedAt(), Instant.now()).toMinutes() < PENDING_TTL_MINUTES)
+                .orElse(null);
+        if (reusable != null) {
+            reusable.setWayCode(wayCode);
+            reusable.setSourceApp(sourceApp);
+            reusable.setUpdatedAt(Instant.now());
+            orderRepo.save(reusable);
+            log.info("[recharge] checkout 复用 PENDING 单 id={} userId={} pkg={}", reusable.getId(), userId, packageId);
+            return reusable;
+        }
+        return createPendingForCheckout(userId, packageId, wayCode, sourceApp);
     }
 
     /** checkout 网关下单成功后回填 payOrderId（幂等 + 对账锚点）。 */
@@ -220,6 +250,47 @@ public class RechargeService {
         return orderRepo.findById(orderId)
                 .map(RechargeOrderDto::from)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+    }
+
+    /** 单个订单查询 + 归属校验（用户侧收银台轮询 / 详情用，防越权查他人单）。 */
+    public RechargeOrderDto getOrderForUser(String userId, String orderId) {
+        return orderRepo.findByIdAndUserId(orderId, userId)
+                .map(RechargeOrderDto::from)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+    }
+
+    /** 超时 / 网关关单：PENDING → CLOSED（条件 UPDATE 幂等闸，避免误关刚 PAID 的单）。 */
+    @Transactional
+    public RechargeOrderDto closeOrder(String orderId, String reason) {
+        int closed = orderRepo.markClosed(orderId, trimToNull(reason, 512), Instant.now());
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        if (closed > 0) {
+            log.info("[recharge] 关单 orderId={} reason={}", orderId, reason);
+        }
+        return RechargeOrderDto.from(order);
+    }
+
+    /** 超时清理：把超过 TTL 仍 PENDING 的在线订单关掉（reconcile 周期调用）。@return 关闭单数。 */
+    @Transactional
+    public int closeStalePendingOrders(long ttlMinutes) {
+        Instant cutoff = Instant.now().minus(Duration.ofMinutes(ttlMinutes));
+        int n = 0;
+        for (RechargeOrder o : orderRepo.findByStatusOrderByCreatedAtDesc(RechargeOrder.Status.PENDING)) {
+            if (o.getCreatedAt() != null && o.getCreatedAt().isBefore(cutoff)
+                    && orderRepo.markClosed(o.getId(), "支付超时自动关闭（超过 " + ttlMinutes + " 分钟未支付）", Instant.now()) > 0) {
+                n++;
+            }
+        }
+        if (n > 0) {
+            log.info("[recharge] 超时关单 {} 笔（TTL={}min）", n, ttlMinutes);
+        }
+        return n;
+    }
+
+    /** v2 §6 待支付订单 TTL（分钟），供 reconcile / 同步逻辑判定超时关单。 */
+    public long pendingTtlMinutes() {
+        return PENDING_TTL_MINUTES;
     }
 
     public List<RechargeOrderDto> listMyOrders(String userId) {

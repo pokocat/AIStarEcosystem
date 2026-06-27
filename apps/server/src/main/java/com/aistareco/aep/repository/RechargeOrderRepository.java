@@ -31,6 +31,22 @@ public interface RechargeOrderRepository extends JpaRepository<RechargeOrder, St
     Optional<RechargeOrder> findByPayOrderId(String payOrderId);
 
     /**
+     * v2 §6 防重复支付：同用户同套餐最近一张订单（任意状态，最新在前）。
+     * checkout 据此复用「仍可支付的 PENDING 单」而非每次新建（避免双击/重试生成悬挂重复单）。
+     */
+    Optional<RechargeOrder> findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(String userId, String packageId);
+
+    /**
+     * v2 §6 超时关单幂等闸：条件 UPDATE 抢占 PENDING → CLOSED。返回 1 = 本次关闭成功；
+     * 0 = 已被结算/取消（幂等 no-op，避免把刚 PAID 的单误关）。
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE RechargeOrder o SET o.status = com.aistareco.aep.model.RechargeOrder.Status.CLOSED, "
+            + "o.reviewNote = :reason, o.updatedAt = :now "
+            + "WHERE o.id = :id AND o.status = com.aistareco.aep.model.RechargeOrder.Status.PENDING")
+    int markClosed(@Param("id") String id, @Param("reason") String reason, @Param("now") Instant now);
+
+    /**
      * 入账幂等闸（v2 §4.3）：条件 UPDATE 抢占 PENDING → PAID。
      * 返回受影响行数：1 = 本次抢到结算权，继续入账；0 = 已被结算（幂等 no-op）。
      * clearAutomatically 清持久化上下文，调用方需重新 findById 拿到最新行再回填。
