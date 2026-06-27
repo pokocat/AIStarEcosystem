@@ -42,7 +42,9 @@ const ENTRY_META: Record<LedgerEntryType, { label: string; tone: ChipTone }> = {
   freeze:        { label: "冻结",         tone: "neutral" },
   unfreeze:      { label: "解冻",         tone: "neutral" },
   adjust:        { label: "管理员调整",   tone: "neutral" },
+  refund_cash:   { label: "现金退款",     tone: "warning" },
 };
+const ENTRY_FALLBACK = { label: "其它变动", tone: "neutral" as ChipTone };
 
 const ORDER_STATUS_META: Record<RechargeOrderStatus, { label: string; tone: ChipTone }> = {
   pending:   { label: "待支付",     tone: "warning" },
@@ -533,7 +535,7 @@ function OrderRow({
   onCancel: () => void;
   canceling: boolean;
 }) {
-  const meta = ORDER_STATUS_META[order.status];
+  const meta = ORDER_STATUS_META[order.status] ?? { label: order.status, tone: "neutral" as ChipTone };
   const dt = new Date(order.createdAt);
   const ts = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
   return (
@@ -603,7 +605,7 @@ function LedgerHeader() {
 }
 
 function LedgerRow({ entry }: { entry: LedgerEntry }) {
-  const meta = ENTRY_META[entry.type];
+  const meta = ENTRY_META[entry.type] ?? ENTRY_FALLBACK; // 防御：未知 type 不再整页崩
   const ref = ledgerReferenceLabel(entry);
   const dt = new Date(entry.createdAt);
   const ts = `${dt.getMonth() + 1}-${String(dt.getDate()).padStart(2, "0")} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;

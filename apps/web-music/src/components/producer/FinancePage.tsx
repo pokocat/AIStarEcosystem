@@ -35,6 +35,7 @@ const LEDGER_TO_TX_TYPE: Record<LedgerEntryType, TransactionType> = {
   freeze: "spend",
   unfreeze: "income",
   adjust: "income",
+  refund_cash: "withdrawal",
 };
 
 function ledgerToTransaction(entry: LedgerEntry): Transaction {

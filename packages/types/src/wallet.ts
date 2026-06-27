@@ -36,7 +36,8 @@ export type LedgerEntryType =
   | "withdraw"             // 提现扣减
   | "freeze"               // 冻结
   | "unfreeze"             // 解冻
-  | "adjust";              // 管理员手动调账
+  | "adjust"               // 管理员手动调账
+  | "refund_cash";         // v2 §4.2 资金面真实现金退款（D17 回收未消费积分）
 
 export interface LedgerEntry {
   id: ID;
