@@ -109,6 +109,12 @@ src/
 
 ## 版本日志
 
+- **2026-06-26 · 接入积分钱包在线充值（v2 §6）**：「会员与算力 → 充值算力」从静态 PACKS + 死按钮
+  （「在线支付通道接入中」）改为真在线支付。`api.ts` 加 `WalletApi`（packages / checkout / confirmShadow）
+  + `meFetch`（走 `/api` 前缀而非 `/api/v1`，带 Bearer + X-App-Code，复用主用户域 `/api/me/wallet/*`）。
+  `MMembership` 加载真套餐（`listRechargePackages(sourceApp=aiavatar)`，含 mock 样例），「立即充值」→
+  `rechargeCheckout` → `payData=page` 支付宝跳转 / `shadow` dev 收银台自动确认 → toast 到账。
+  USE_MOCK=1 走样例 + 影子全流程可通；USE_MOCK=0 打真后端（aiavatar 登录已是真 JWT）。
 - **2026-06-11 · 色彩纪律审计（redesign skill）**：V4「单青色清爽」皮肤的四处彩虹泄漏收敛 ——
   ①首页「开始创作」4 张暗卡的霓虹素材（蓝紫星云/绿金全息/紫粉声波/蓝绿芯片各一色系）
   统一品牌 duotone：底图 `grayscale` + 右上青色微光遮罩（screen 混合），四卡成为一组刻意的

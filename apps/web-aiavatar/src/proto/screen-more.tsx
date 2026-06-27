@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, LicenseApi, AccountApi, AvatarApi, VoiceApi, AuthApi, awaitJob, useApi, seed, USE_MOCK } from "./api";
+import { DATA, LicenseApi, AccountApi, WalletApi, AvatarApi, VoiceApi, AuthApi, awaitJob, useApi, seed, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
@@ -92,16 +92,37 @@ const PLANS = [
   { key: 'pro', name: 'PRO', price: '¥99', unit: '/月', credits: '1,500 点/月', feats: ['高清无水印', '全部衍生类型', '真人复刻', '优先队列'], cur: true, hot: true },
   { key: 'studio', name: '工作室版', price: '¥399', unit: '/月', credits: '8,000 点/月', feats: ['团队协作', '商用授权批量', 'API 接入', '专属客服'], cur: false },
 ];
-const PACKS = [
-  { c: '500', price: '¥39', tag: null },
-  { c: '1,200', price: '¥89', tag: '超值' },
-  { c: '3,000', price: '¥199', tag: '热门' },
-  { c: '8,000', price: '¥499', tag: null },
-];
-
 function MMembership({ ctx }) {
-  const [pack, setPack] = useStateMM(1);
+  const [pack, setPack] = useStateMM(0);
+  const [paying, setPaying] = useStateMM(false);
   const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
+  const packages: any[] = useApi(() => WalletApi.packages(), []) || [];
+  const sel: any = packages[pack] || packages[0];
+  async function payPack() {
+    if (!sel || paying) return;
+    setPaying(true);
+    try {
+      const res = await WalletApi.checkout(sel.id);
+      if (res.payDataType === 'page') {
+        // 支付宝网站支付：payData 是自动提交的 HTML 表单 → 写入文档跳转收银台。
+        document.open(); document.write(res.payData); document.close();
+        return;
+      }
+      if (res.payDataType === 'shadow') {
+        await WalletApi.confirmShadow(res.orderId, 'success');
+        toast('充值成功 · 算力已到账', { tone: 'ok' });
+        ctx.reload && ctx.reload();
+      } else if (res.payDataType === 'qr') {
+        toast('扫码支付待接入，请用网站支付', { tone: 'err' });
+      } else {
+        toast('暂不支持的支付通道', { tone: 'err' });
+      }
+    } catch (e: any) {
+      toast(e?.message || '下单失败，请稍后再试', { tone: 'err' });
+    } finally {
+      setPaying(false);
+    }
+  }
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '会员与算力' },
     hMM(WxNavMM, { title: '会员与算力', onBack: ctx.back }),
     hMM('div', { className: 'm-body', style: { padding: '4px 18px 30px' } },
@@ -120,19 +141,20 @@ function MMembership({ ctx }) {
 
       hMM(GroupTitle, null, '充值算力'),
       hMM('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11, marginBottom: 14 } },
-        PACKS.map((p, i) => {
+        packages.map((p: any, i: number) => {
           const on = pack === i;
-          return hMM('button', { key: i, onClick: () => setPack(i), className: 'm-press', style: {
+          const tag = p.recommended ? '推荐' : (p.bonusCredits ? '赠 ' + p.bonusCredits : null);
+          return hMM('button', { key: p.id, onClick: () => setPack(i), className: 'm-press', style: {
             position: 'relative', textAlign: 'left', padding: '14px 15px', cursor: 'pointer',
             background: on ? 'var(--primary-tint)' : 'var(--surface)', border: '1.5px solid ' + (on ? 'var(--primary)' : 'var(--line-2)'),
             borderRadius: 'var(--r-lg)', boxShadow: on ? 'var(--ring)' : 'var(--sh-1)' } },
-            p.tag && hMM('span', { style: { position: 'absolute', top: 10, right: 10, fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-soft)', padding: '2px 7px', borderRadius: 'var(--r-pill)' } }, p.tag),
+            tag && hMM('span', { style: { position: 'absolute', top: 10, right: 10, fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-soft)', padding: '2px 7px', borderRadius: 'var(--r-pill)' } }, tag),
             hMM('div', { style: { display: 'flex', alignItems: 'baseline', gap: 4 } },
-              hMM('span', { className: 'mono', style: { fontSize: 22, fontWeight: 800, color: 'var(--ink)' } }, p.c),
+              hMM('span', { className: 'mono', style: { fontSize: 22, fontWeight: 800, color: 'var(--ink)' } }, (p.credits || 0).toLocaleString()),
               hMM('span', { style: { fontSize: 12, color: 'var(--ink-3)' } }, '点')),
-            hMM('div', { style: { fontSize: 15, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink)', marginTop: 6 } }, p.price));
+            hMM('div', { style: { fontSize: 15, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink)', marginTop: 6 } }, '¥' + (p.priceCents / 100)));
         })),
-      hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.gem, onClick: () => toast('在线支付通道接入中 · 当前请联系平台充值', { tone: 'ok' }), style: { marginBottom: 8 } }, '立即充值 · ' + PACKS[pack].price),
+      hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.gem, disabled: paying, onClick: payPack, style: { marginBottom: 8 } }, paying ? '处理中…' : ('立即充值 · ¥' + (sel ? (sel.priceCents / 100) : '—'))),
       hMM('p', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', margin: '0 0 24px' } }, '每月 1 日自动发放 ' + ((acct.monthlyGrant || 1500).toLocaleString()) + ' 点赠送算力'),
 
       hMM(GroupTitle, null, '订阅套餐'),

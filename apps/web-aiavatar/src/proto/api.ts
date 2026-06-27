@@ -913,6 +913,48 @@ export const AccountApi = {
   },
 };
 
+// ── 钱包 / 在线充值（v2 §6 aiavatar 接入）──────────────────────────────────────
+// 复用主用户域 /api/me/wallet/*（非 /api/v1）：meFetch 走 /api 前缀 + Bearer + X-App-Code。
+// 真模式打真后端的充值套餐 / 下单 / 影子确认；mock 模式给样例 + 影子收银台,流程可走通。
+export type WalletPackage = {
+  id: string; credits: number; priceCents: number; tag: string; recommended?: boolean; bonusCredits?: number;
+};
+export type CheckoutResult = { orderId: string; payDataType: string; payData: string };
+
+const MOCK_WALLET_PACKAGES: WalletPackage[] = [
+  { id: "pkg-av-500", credits: 500, priceCents: 3_900, tag: "体验包", recommended: false, bonusCredits: 0 },
+  { id: "pkg-av-1200", credits: 1_200, priceCents: 8_900, tag: "超值包", recommended: true, bonusCredits: 100 },
+  { id: "pkg-av-3000", credits: 3_000, priceCents: 19_900, tag: "热门包", recommended: false, bonusCredits: 300 },
+  { id: "pkg-av-8000", credits: 8_000, priceCents: 49_900, tag: "企业包", recommended: false, bonusCredits: 1_000 },
+];
+
+/** 主用户域 fetch（/api 前缀，非 /api/v1；带 Bearer + X-App-Code）。用于复用 /me/wallet/*。 */
+async function meFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers || {}) },
+  });
+  return parseResponse<T>(res);
+}
+
+export const WalletApi = {
+  packages: (): Promise<WalletPackage[]> => {
+    if (USE_MOCK) return mock(MOCK_WALLET_PACKAGES.slice());
+    return meFetch(`/me/wallet/packages?sourceApp=aiavatar`);
+  },
+  checkout: (packageId: string): Promise<CheckoutResult> => {
+    if (USE_MOCK) return mock({ orderId: `ro-mock-${packageId}`, payDataType: "shadow", payData: "" });
+    return meFetch(`/me/wallet/recharge/checkout`, {
+      method: "POST",
+      body: JSON.stringify({ packageId, sourceApp: "aiavatar" }),
+    });
+  },
+  confirmShadow: (orderId: string, result: "success" | "fail" | "timeout" = "success"): Promise<any> => {
+    if (USE_MOCK) return mock({ id: orderId, status: result === "success" ? "paid" : "cancelled" });
+    return meFetch(`/dev/pay/shadow/confirm`, { method: "POST", body: JSON.stringify({ orderId, result }) });
+  },
+};
+
 export const AppApi = {
   list: (): Promise<Mock.Application[]> => {
     if (USE_MOCK) return mock(Mock.APPLICATIONS.slice());
