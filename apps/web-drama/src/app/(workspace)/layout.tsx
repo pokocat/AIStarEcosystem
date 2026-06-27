@@ -97,6 +97,7 @@ const GROUPS: NavGroup[] = [
   {
     title: "账户",
     items: [
+      { href: "/wallet", icon: Coins, label: "积分钱包" },
       { href: "/finance", icon: WalletIcon, label: "财务中心" },
       { href: "/settings", icon: Settings, label: "工作室设置" },
     ],

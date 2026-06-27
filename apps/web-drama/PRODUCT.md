@@ -110,7 +110,8 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/distribution` | 分发与洞察 | 分发总览（跨项目聚合） |
 | `/insights` | 分发与洞察 | 数据洞察（窗口选择 + 维度切换） |
 | `/trends` | 分发与洞察 | 趋势雷达（行业 / 题材热度） |
-| `/finance` | 账户 | 财务（充值 / 提现 / 流水） |
+| `/wallet` | 账户 | 积分钱包（余额桶 + 充值套餐 + 在线支付 sourceApp=drama + 充值订单，v2 §6） |
+| `/finance` | 账户 | 财务（营收 / 流水 / 提现） |
 | `/settings` | 账户 | 工作室 / 团队成员 |
 
 详见 [`src/app/(workspace)/layout.tsx`](src/app/(workspace)/layout.tsx) GROUPS 定义。
@@ -121,7 +122,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 2. **提效**（1 项）— 创意市场（父项激活时展开二级「我发布的创意」;剧本审阅已收进短剧工坊页内入口卡,带待审角标）
 3. **素材**（4 项）— 素材库 / 演员 IP 阵容 / 戏服与道具（建设中） / 脚本工坊（建设中）
 4. **分发与洞察**（3 项）— distribution（多平台分发·建设中） / insights / trends
-5. **账户**（2 项）— finance / settings
+5. **账户**（3 项）— wallet（积分钱包·在线充值） / finance（营收流水） / settings
 
 底部另有「运营身份」开关（演示;开启后创意市场出现「新建内置创意 / 从用户作品精选」与运营审核入口）。
 
