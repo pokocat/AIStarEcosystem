@@ -114,7 +114,7 @@ export default function WalletPage() {
     (async () => {
       setPackagesLoading(true);
       try {
-        setPackages(await AccountApi.listRechargePackages());
+        setPackages(await AccountApi.listRechargePackages("celebrity"));
       } catch {
         setPackages([]);
       } finally {

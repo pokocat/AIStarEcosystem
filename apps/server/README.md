@@ -429,7 +429,7 @@ src/main/java/com/aistareco/aep/
 | 表 | 用途 |
 |---|---|
 | `celebrity_star_authorizations` | 用户 × 明星授权关系（4 态状态机；unique(user_id, star_id)） |
-| `recharge_packages` | 充值套餐（admin CRUD；软删走 `active=false`；落账走 `LedgerEntry`） |
+| `recharge_packages` | 充值套餐（admin CRUD；软删走 `active=false`；落账走 `LedgerEntry`）。**v2 §6** +`app_scope`（VARCHAR，`all`=通用 / `music`\|`drama`\|`celebrity`\|`aiavatar`\|`star`）—— 按子应用配套餐；`/me/wallet/packages?sourceApp=X` 过滤「通用 + 该子应用专属」，checkout 校验套餐归属（`PACKAGE_NOT_FOR_APP`） |
 | `recharge_order` | v0.56：充值订单 / 账单（PENDING/PAID/REJECTED/CANCELLED）。用户下单生成 PENDING（不入账），运营 admin 线下收款后 approve → 经 `CreditService` 入账（PAID）/ reject；套餐字段下单时快照。**v2** +在线支付列（`pay_order_id` 唯一/`way_code`/`pay_state`/`paid_at`/`paid_via`/`channel_pay_no`/`source_app`）；幂等结算核心 `settlePaidOrder`（手工核准/在线回调/影子确认共用 + 条件 UPDATE `markPaid` 幂等闸）。**v2 §15.5/D17** +`REFUNDED` 态 + `refunded_at`/`refund_ledger_entry_id`/`refunded_credits`：现金退款回收未消费积分（clamp 到 rechargeBalance，写资金面 REFUND_CASH，FINANCE_ADMIN） |
 | `template_scripts` | 模板脚本（双模 text / video_ref；同 templateId 仅一条 PUBLISHED；JSON 列容纳 persona/scenes/variables/engineAdapters/durationVariants/postProcess/safety/referenceClip 等） |
 | `ai_model_providers` | **AI 模型接入端点**（v0.41，实体 `AiModelEndpoint`）：固定 {上游密钥 + 单模型 + 地址}，含外部 API Token（`key_*`/`owner_user_id`/usage 列）；上游 apiKey 列存 AES-GCM 密文，Token 存 bcrypt，均永不明文返回。旧 `purposes`/`priority` 列弃用 |

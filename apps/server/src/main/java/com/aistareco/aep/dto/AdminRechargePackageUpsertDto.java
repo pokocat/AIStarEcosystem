@@ -12,5 +12,7 @@ public record AdminRechargePackageUpsertDto(
         Boolean recommended,
         Long bonusCredits,
         Integer sortOrder,
-        Boolean active
+        Boolean active,
+        /** v2 §6 适用子应用：all=通用 / music|drama|celebrity|aiavatar|star。 */
+        String appScope
 ) {}

@@ -71,6 +71,8 @@ export interface RechargePackage {
   bonusCredits?: number;
   /** 排序权重，越小越靠前 */
   sortOrder?: number;
+  /** v2 §6 适用子应用：all=通用（所有子应用可见）/ music|drama|celebrity|aiavatar|star */
+  appScope?: string;
 }
 
 /** 充值下单请求体（前端 → 服务端） */

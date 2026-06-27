@@ -46,4 +46,11 @@ public class RechargePackage {
     /** 是否上架。 */
     @Builder.Default
     private boolean active = true;
+
+    /**
+     * 适用子应用（v2 §6 按子应用配套餐）：{@code all}=通用（所有子应用可见）/ 具体子应用 id
+     * （music / drama / celebrity / aiavatar / star）。null 视同 all。新列 ddl-auto 加（VARCHAR，非 enum）。
+     */
+    @Builder.Default
+    private String appScope = "all";
 }

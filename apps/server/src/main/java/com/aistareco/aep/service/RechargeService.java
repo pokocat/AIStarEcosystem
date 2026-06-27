@@ -66,10 +66,27 @@ public class RechargeService {
     }
 
     public List<RechargePackageDto> listPackages() {
-        return pkgRepo.findByActiveTrueOrderBySortOrderAscCreditsAsc()
-                .stream()
-                .map(RechargePackageDto::from)
-                .toList();
+        return listPackages(null);
+    }
+
+    /**
+     * 列上架套餐（v2 §6 按子应用配套餐）：sourceApp 非空 → 只返回「通用 + 该子应用专属」;
+     * 空 → 返回全部上架套餐（向后兼容 / admin 不传时）。
+     */
+    public List<RechargePackageDto> listPackages(String sourceApp) {
+        List<RechargePackage> pkgs = (sourceApp == null || sourceApp.isBlank())
+                ? pkgRepo.findByActiveTrueOrderBySortOrderAscCreditsAsc()
+                : pkgRepo.findActiveForApp(sourceApp);
+        return pkgs.stream().map(RechargePackageDto::from).toList();
+    }
+
+    /** 套餐是否适用于该子应用：通用（appScope null/blank/all）或精确匹配 sourceApp。 */
+    private static boolean packageAllowedForApp(RechargePackage pkg, String sourceApp) {
+        String scope = pkg.getAppScope();
+        if (scope == null || scope.isBlank() || "all".equalsIgnoreCase(scope)) {
+            return true;
+        }
+        return sourceApp != null && scope.equalsIgnoreCase(sourceApp);
     }
 
     // ── 用户侧 ───────────────────────────────────────────────────────────────
@@ -138,6 +155,11 @@ public class RechargeService {
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOUND", "套餐不存在：" + packageId));
         if (!pkg.isActive()) {
             throw new BusinessException(HttpStatus.GONE, "PACKAGE_INACTIVE", "套餐已下架：" + packageId);
+        }
+        // v2 §6：套餐按子应用归属校验（防止 A 应用买 B 应用专属套餐）。
+        if (!packageAllowedForApp(pkg, sourceApp)) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOR_APP",
+                    "该套餐不适用于当前应用");
         }
         if (orderRepo.countByUserIdAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
             throw new BusinessException(HttpStatus.CONFLICT, "TOO_MANY_PENDING_ORDERS",

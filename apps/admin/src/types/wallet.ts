@@ -73,7 +73,19 @@ export interface RechargePackage {
   bonusCredits?: number;
   /** 排序权重，越小越靠前 */
   sortOrder?: number;
+  /** v2 §6 适用子应用：all=通用（所有子应用可见）/ music|drama|celebrity|aiavatar|star */
+  appScope?: string;
 }
+
+/** v2 §6 套餐适用子应用选项（admin 选择 + 展示）。 */
+export const RECHARGE_APP_SCOPES: { value: string; label: string }[] = [
+  { value: "all", label: "通用（所有子应用）" },
+  { value: "celebrity", label: "AI 明星带货" },
+  { value: "drama", label: "AI 短剧" },
+  { value: "music", label: "AI 音乐人" },
+  { value: "aiavatar", label: "AiAvatar" },
+  { value: "star", label: "明星工作台" },
+];
 
 /** 充值请求体（前端 → 服务端） */
 export interface RechargeRequest {

@@ -1315,6 +1315,7 @@ components:
         recommended:   { type: boolean }
         bonusCredits:  { type: integer, nullable: true, description: 赠送积分（充进 giftBalance） }
         sortOrder:     { type: integer, nullable: true }
+        appScope:      { type: string, nullable: true, description: 'v2 §6 适用子应用：all=通用 / music|drama|celebrity|aiavatar|star（admin upsert 同字段）' }
 
     RechargeRequest:
       type: object
@@ -4840,7 +4841,13 @@ paths:
     get:
       tags: [finance]
       operationId: listMyWalletPackages
-      summary: 充值套餐列表（运营在 admin 后台配置 / 上下架）
+      summary: 充值套餐列表（运营在 admin 后台配置 / 上下架）。v2 §6：?sourceApp 过滤「通用 + 该子应用专属」。
+      parameters:
+        - name: sourceApp
+          in: query
+          required: false
+          schema: { type: string, enum: [music, drama, celebrity, aiavatar, star] }
+          description: 子应用 id；只返回 appScope=all 或 =sourceApp 的套餐
       responses:
         '200':
           description: ok

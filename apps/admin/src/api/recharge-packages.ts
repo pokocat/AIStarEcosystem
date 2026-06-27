@@ -15,6 +15,8 @@ export interface AdminRechargePackageUpsert {
   bonusCredits?: number;
   sortOrder?: number;
   active?: boolean;
+  /** v2 §6 适用子应用：all=通用 / music|drama|celebrity|aiavatar|star */
+  appScope?: string;
 }
 
 const BASE = "/admin/finance/recharge-packages";

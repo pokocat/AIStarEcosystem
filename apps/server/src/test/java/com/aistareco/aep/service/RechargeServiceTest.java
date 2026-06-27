@@ -6,6 +6,7 @@ import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.model.RechargeOrder;
 import com.aistareco.aep.repository.AepUserRepository;
 import com.aistareco.aep.repository.RechargeOrderRepository;
+import com.aistareco.aep.model.RechargePackage;
 import com.aistareco.aep.repository.RechargePackageRepository;
 import com.aistareco.aep.repository.StudioRepository;
 import com.aistareco.common.BusinessException;
@@ -38,13 +39,14 @@ class RechargeServiceTest {
     private CreditService creditService;
     private RechargeService svc;
     private Map<String, RechargeOrder> db;
+    private RechargePackageRepository pkgRepo;
 
     @BeforeEach
     void setUp() {
         orderRepo = mock(RechargeOrderRepository.class);
         creditService = mock(CreditService.class);
         NotificationPublisher notifications = mock(NotificationPublisher.class);
-        RechargePackageRepository pkgRepo = mock(RechargePackageRepository.class);
+        pkgRepo = mock(RechargePackageRepository.class);
         AepUserRepository userRepo = mock(AepUserRepository.class);
         StudioRepository studioRepo = mock(StudioRepository.class);
         svc = new RechargeService(pkgRepo, orderRepo, userRepo, studioRepo, creditService, notifications);
@@ -191,5 +193,46 @@ class RechargeServiceTest {
         assertThrows(BusinessException.class, () -> svc.refundOrder(ORDER, "fin-2", "重复退款")); // 第二次抢 0
 
         verify(creditService, times(1)).refundCashReclaim(anyString(), anyLong(), anyString(), anyString());
+    }
+
+    // ── v2 §6：套餐按子应用归属 ──────────────────────────────────────────────
+
+    private static RechargePackage pkg(String appScope) {
+        return RechargePackage.builder()
+                .id("pkg-x").credits(1000).priceCents(29900).tag("标准包")
+                .bonusCredits(100).active(true).appScope(appScope).build();
+    }
+
+    @Test
+    void checkoutRejectsPackageNotForApp() {
+        when(pkgRepo.findById("pkg-x")).thenReturn(Optional.of(pkg("celebrity")));
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.createPendingForCheckout(USER, "pkg-x", "ALI_PC", "drama"));
+        assertEquals("PACKAGE_NOT_FOR_APP", ex.getCode());
+    }
+
+    @Test
+    void checkoutAllowsPackageForMatchingApp() {
+        when(pkgRepo.findById("pkg-x")).thenReturn(Optional.of(pkg("celebrity")));
+        RechargeOrder o = svc.createPendingForCheckout(USER, "pkg-x", "ALI_PC", "celebrity");
+        assertNotNull(o);
+        assertEquals("pkg-x", o.getPackageId());
+    }
+
+    @Test
+    void checkoutAllowsGlobalPackageForAnyApp() {
+        when(pkgRepo.findById("pkg-x")).thenReturn(Optional.of(pkg("all")));
+        assertNotNull(svc.createPendingForCheckout(USER, "pkg-x", "ALI_PC", "drama"));
+        // null appScope 也视为通用
+        when(pkgRepo.findById("pkg-y")).thenReturn(Optional.of(pkg(null)));
+        assertNotNull(svc.createPendingForCheckout(USER, "pkg-y", "ALI_PC", "music"));
+    }
+
+    @Test
+    void listPackagesFiltersByAppWhenSourceAppGiven() {
+        when(pkgRepo.findActiveForApp("drama")).thenReturn(java.util.List.of(pkg("drama")));
+        svc.listPackages("drama");
+        verify(pkgRepo).findActiveForApp("drama");
+        verify(pkgRepo, never()).findByActiveTrueOrderBySortOrderAscCreditsAsc();
     }
 }

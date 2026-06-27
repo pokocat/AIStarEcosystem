@@ -14,7 +14,9 @@ public record RechargePackageDto(
         String tag,
         boolean recommended,
         Long bonusCredits,
-        Integer sortOrder
+        Integer sortOrder,
+        /** v2 §6 适用子应用：all=通用 / music|drama|celebrity|aiavatar|star。 */
+        String appScope
 ) {
     public static RechargePackageDto from(RechargePackage p) {
         return new RechargePackageDto(
@@ -24,7 +26,8 @@ public record RechargePackageDto(
                 p.getTag(),
                 p.isRecommended(),
                 p.getBonusCredits() > 0 ? p.getBonusCredits() : null,
-                p.getSortOrder()
+                p.getSortOrder(),
+                p.getAppScope() == null || p.getAppScope().isBlank() ? "all" : p.getAppScope()
         );
     }
 }

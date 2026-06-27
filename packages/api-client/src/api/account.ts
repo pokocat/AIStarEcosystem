@@ -66,9 +66,11 @@ export async function getMyLedger(page = 0, size = 20): Promise<LedgerEntry[]> {
   });
 }
 
-/** v0.33+: 可购买的充值套餐列表 */
-export async function listRechargePackages(): Promise<RechargePackage[]> {
-  return apiFetch<RechargePackage[]>("/me/wallet/packages");
+/** v0.33+: 可购买的充值套餐列表。v2 §6：传 sourceApp 只看「通用 + 该子应用专属」套餐。 */
+export async function listRechargePackages(sourceApp?: string): Promise<RechargePackage[]> {
+  return apiFetch<RechargePackage[]>("/me/wallet/packages", {
+    query: sourceApp ? { sourceApp } : undefined,
+  });
 }
 
 /**
