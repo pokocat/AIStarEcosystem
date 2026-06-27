@@ -44,10 +44,11 @@ const ENTRY_META: Record<LedgerEntryType, { label: string; tone: ChipTone }> = {
 };
 
 const ORDER_STATUS_META: Record<RechargeOrderStatus, { label: string; tone: ChipTone }> = {
-  pending:   { label: "待平台确认", tone: "warning" },
+  pending:   { label: "待支付",     tone: "warning" },
   paid:      { label: "已到账",     tone: "success" },
   rejected:  { label: "已驳回",     tone: "danger" },
   cancelled: { label: "已取消",     tone: "neutral" },
+  closed:    { label: "已超时关闭", tone: "neutral" },
   refunded:  { label: "已退款",     tone: "neutral" },
 };
 

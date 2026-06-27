@@ -3,13 +3,14 @@
 // 与 packages/types/src/wallet.ts RechargeOrder 同字段（admin 侧镜像）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled" | "refunded";
+export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled" | "closed" | "refunded";
 
 export const RECHARGE_ORDER_STATUS_LABEL: Record<RechargeOrderStatus, string> = {
-  pending: "待确认",
+  pending: "待支付",
   paid: "已到账",
   rejected: "已驳回",
   cancelled: "已取消",
+  closed: "已超时关闭",
   refunded: "已退款",
 };
 

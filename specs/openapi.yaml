@@ -1346,7 +1346,7 @@ components:
         credits:      { type: integer }
         bonusCredits: { type: integer }
         priceCents:   { type: integer }
-        status:       { type: string, enum: [pending, paid, rejected, cancelled, refunded] }
+        status:       { type: string, enum: [pending, paid, rejected, cancelled, closed, refunded], description: 'closed = 超时/网关关单（v2 §6）' }
         userNote:     { type: string, nullable: true }
         reviewerId:   { type: string, nullable: true }
         reviewNote:   { type: string, nullable: true, description: 审批备注 / 驳回原因 }
@@ -4908,6 +4908,50 @@ paths:
       tags: [finance]
       operationId: cancelRechargeOrder
       summary: 取消自己的待确认充值订单（v0.56）
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /me/wallet/recharge/orders/{orderId}:
+    get:
+      tags: [finance]
+      operationId: getRechargeOrder
+      summary: 收银台轮询：取充值订单当前态（v2 §6，归属校验）
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /me/wallet/recharge/orders/{orderId}/sync:
+    post:
+      tags: [finance]
+      operationId: syncRechargeOrder
+      summary: 收银台「我已支付/刷新状态」：主动查网关→已支付则结算/超时则关单（v2 §6）
       parameters:
         - in: path
           name: orderId

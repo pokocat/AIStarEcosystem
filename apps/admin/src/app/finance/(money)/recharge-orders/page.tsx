@@ -30,6 +30,7 @@ const STATUS_TONE: Record<RechargeOrderStatus, StatusTone> = {
   paid: "success",
   rejected: "danger",
   cancelled: "neutral",
+  closed: "neutral",
   refunded: "neutral",
 };
 

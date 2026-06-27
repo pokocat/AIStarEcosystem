@@ -96,6 +96,18 @@ export async function cancelRechargeOrder(orderId: string): Promise<RechargeOrde
   });
 }
 
+/** v2 §6 收银台：取单当前态（轮询）。 */
+export async function getRechargeOrder(orderId: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}`);
+}
+
+/** v2 §6 收银台「我已支付 / 刷新状态」：主动查网关 → 已支付则结算 / 超时则关单，返回最新态。 */
+export async function syncRechargeOrder(orderId: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}/sync`, {
+    method: "POST",
+  });
+}
+
 /** v2：充值在线支付下单返回体。payData 供前端拉起支付（影子链路 → 模拟收银台）。 */
 export interface CheckoutResponse {
   orderId: string;

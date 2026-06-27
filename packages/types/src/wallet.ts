@@ -100,7 +100,7 @@ export interface RechargeResponse {
  * - cancelled：用户取消
  * - refunded：已退款（v2 §15.5 / D17：现金退款 + 未消费积分回收）
  */
-export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled" | "refunded";
+export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled" | "closed" | "refunded";
 
 /** 充值订单。下单即生成 PENDING 账单，平台运营线下收款后核准方入账。 */
 export interface RechargeOrder {

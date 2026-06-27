@@ -23,6 +23,7 @@ const ORDER_TONE: Record<RechargeOrder["status"], "success" | "accent" | "info" 
   paid: "success",
   rejected: "danger",
   cancelled: "info",
+  closed: "info",
   refunded: "info",
 };
 const ORDER_LABEL: Record<RechargeOrder["status"], string> = {
@@ -30,6 +31,7 @@ const ORDER_LABEL: Record<RechargeOrder["status"], string> = {
   paid: "已到账",
   rejected: "已驳回",
   cancelled: "已取消",
+  closed: "已超时关闭",
   refunded: "已退款",
 };
 
