@@ -139,7 +139,18 @@ AEP_CDN_SIGNED_URL_TTL_SECONDS=3600
 # laptop (driver=jeepay fail-fasts at boot without creds — §8.0). Shadow lets you run the full
 # checkout → 收银台 → settle/refund flow with no external gateway.
 AEP_PAYMENT_DRIVER=shadow
-# To test real Jeepay locally, set AEP_PAYMENT_DRIVER=jeepay and fill every value below.
+# To test the real Alipay SANDBOX locally (推荐,直连方案 · 见 docs/ALIPAY_SANDBOX.md):
+# set AEP_PAYMENT_DRIVER=alipay and fill the 3 sandbox creds (private/public keys are single-line base64).
+# Local without public callback works via reconcile (scheduled query); no tunnel required.
+# AEP_PAYMENT_DRIVER=alipay
+# AEP_PAYMENT_ALIPAY_APP_ID=
+# AEP_PAYMENT_ALIPAY_MERCHANT_PRIVATE_KEY=
+# AEP_PAYMENT_ALIPAY_PUBLIC_KEY=
+# AEP_PAYMENT_ALIPAY_GATEWAY_HOST=openapi.alipaydev.com
+# AEP_PAYMENT_ALIPAY_DEFAULT_WAY_CODE=ALI_PC
+# AEP_PAYMENT_ALIPAY_NOTIFY_URL=http://localhost:8080/api/pay/notify/alipay
+#
+# To test real Jeepay (聚合,休眠中) instead, set AEP_PAYMENT_DRIVER=jeepay and fill every value below.
 # AEP_PAYMENT_JEEPAY_BASE_URL=
 # AEP_PAYMENT_JEEPAY_MCH_NO=
 # AEP_PAYMENT_JEEPAY_APP_ID=
@@ -178,6 +189,9 @@ reset_local_env_scope() {
   unset AEP_PAYMENT_DRIVER AEP_PAYMENT_SHADOW_CONFIRM_MODE AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS
   unset AEP_PAYMENT_JEEPAY_BASE_URL AEP_PAYMENT_JEEPAY_MCH_NO AEP_PAYMENT_JEEPAY_APP_ID
   unset AEP_PAYMENT_JEEPAY_API_KEY AEP_PAYMENT_JEEPAY_NOTIFY_URL AEP_PAYMENT_JEEPAY_SIGN_TYPE
+  unset AEP_PAYMENT_ALIPAY_APP_ID AEP_PAYMENT_ALIPAY_MERCHANT_PRIVATE_KEY AEP_PAYMENT_ALIPAY_PUBLIC_KEY
+  unset AEP_PAYMENT_ALIPAY_GATEWAY_HOST AEP_PAYMENT_ALIPAY_NOTIFY_URL AEP_PAYMENT_ALIPAY_RETURN_URL
+  unset AEP_PAYMENT_ALIPAY_DEFAULT_WAY_CODE AEP_PAYMENT_ALIPAY_SANDBOX
 }
 
 parse_env_file() {
@@ -355,6 +369,12 @@ validate_local_env() {
   pay_driver="$(lower "$(env_value AEP_PAYMENT_DRIVER)")"
   case "${pay_driver}" in
     shadow|"") ;;  # 影子驱动无需外部凭证（本地默认）
+    alipay)
+      require_env AEP_PAYMENT_ALIPAY_APP_ID
+      require_env AEP_PAYMENT_ALIPAY_MERCHANT_PRIVATE_KEY
+      require_env AEP_PAYMENT_ALIPAY_PUBLIC_KEY
+      require_env AEP_PAYMENT_ALIPAY_NOTIFY_URL
+      ;;
     jeepay)
       require_env AEP_PAYMENT_JEEPAY_BASE_URL
       require_env AEP_PAYMENT_JEEPAY_MCH_NO
@@ -362,7 +382,7 @@ validate_local_env() {
       require_env AEP_PAYMENT_JEEPAY_API_KEY
       ;;
     *)
-      die "本机 env AEP_PAYMENT_DRIVER 只能是 shadow 或 jeepay，当前: ${pay_driver}（文件: ${LOCAL_ENV_FILE}）"
+      die "本机 env AEP_PAYMENT_DRIVER 只能是 shadow / alipay / jeepay，当前: ${pay_driver}（文件: ${LOCAL_ENV_FILE}）"
       ;;
   esac
 

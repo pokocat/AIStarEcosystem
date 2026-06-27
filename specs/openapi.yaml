@@ -4998,6 +4998,44 @@ paths:
             text/plain:
               schema: { type: string }
 
+  /pay/notify/alipay:
+    post:
+      tags: [finance]
+      operationId: alipayPayNotify
+      summary: '【支付宝异步回调·仅 driver=alipay】permitAll + RSA2 验签（v2 §6.4 触点②）：验签→trade_status 成功 + total_amount(元→分)匹配→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。其它 driver 下此端点不注册。'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              description: 支付宝回调参数（out_trade_no/trade_no/trade_status/total_amount/app_id/sign …）
+      responses:
+        '200':
+          description: 纯文本 "success"（已处理 / 止重投）或 "fail"（验签或金额不符，支付宝重投）
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /admin/finance/recharge-orders/reconcile:
+    post:
+      tags: [finance]
+      operationId: reconcileRechargeOrders
+      summary: '【FINANCE_ADMIN/SUPER_ADMIN】手动触发查单兜底（v2 §6.4，直连方案）：对 PENDING 在线订单逐单查网关,已支付则幂等结算。回调丢失/本地无公网时补单。'
+      responses:
+        '200':
+          description: 本轮新结算的订单数
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      settled: { type: integer }
+
   /me/ledger:
     get:
       tags: [finance]
