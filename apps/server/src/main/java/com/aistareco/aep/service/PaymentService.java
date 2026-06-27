@@ -75,7 +75,15 @@ public class PaymentService {
      * 否则返回当前态。终态 / 影子链路 / 未拉起网关（无 payOrderId）直接返回当前态。
      */
     public RechargeOrderDto syncOrder(String userId, String orderId) {
-        RechargeOrderDto dto = rechargeService.getOrderForUser(userId, orderId); // 归属校验
+        return syncOrderCore(rechargeService.getOrderForUser(userId, orderId), orderId); // 用户侧:归属校验
+    }
+
+    /** v2 §6 admin 查单同步：无用户归属限制 —— 运营对在线 PENDING 订单核对网关支付结果 → 自动入账/关单。 */
+    public RechargeOrderDto syncOrderForAdmin(String orderId) {
+        return syncOrderCore(rechargeService.getOrder(orderId), orderId);
+    }
+
+    private RechargeOrderDto syncOrderCore(RechargeOrderDto dto, String orderId) {
         if (!"pending".equalsIgnoreCase(dto.status())) {
             return dto; // 终态不再查
         }
@@ -94,7 +102,7 @@ public class PaymentService {
         if (overTtl) {
             return rechargeService.closeOrder(orderId, "支付超时自动关闭");
         }
-        return rechargeService.getOrderForUser(userId, orderId);
+        return dto;
     }
 
     private String defaultWayCode() {

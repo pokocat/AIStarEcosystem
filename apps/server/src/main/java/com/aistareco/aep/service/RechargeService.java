@@ -337,7 +337,12 @@ public class RechargeService {
         return rows.stream().map(RechargeOrderDto::from).toList();
     }
 
-    /** 运营核准：确认线下已收款 → 经共享入账核心 {@link #settlePaidOrder} 入账，订单转 PAID。 */
+    /** 在线支付订单判定：有 wayCode 或 payOrderId（线下 createOrder 两者皆空）。决定能否手工核准。 */
+    private static boolean isOnlineOrder(RechargeOrder o) {
+        return o.getWayCode() != null || o.getPayOrderId() != null;
+    }
+
+    /** 运营核准：确认线下已收款 → 经共享入账核心 {@link #settlePaidOrder} 入账，订单转 PAID。仅线下订单可核准。 */
     @Transactional
     public RechargeOrderDto approveOrder(String orderId, String reviewerId, String reviewNote) {
         RechargeOrder order = orderRepo.findById(orderId)
@@ -345,6 +350,12 @@ public class RechargeService {
         if (order.getStatus() != RechargeOrder.Status.PENDING) {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING",
                     "该订单状态为 " + order.getStatus() + "，无法核准");
+        }
+        // v2 §6 资损闸：在线支付订单（有 wayCode/payOrderId）只能由支付结果自动入账（回调/查单/对账），
+        // 禁止手工核准 —— 否则会给未真实支付的用户白发积分。运营请用「查单同步」核对网关后自动入账。
+        if (isOnlineOrder(order)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "ONLINE_ORDER_NO_MANUAL_APPROVE",
+                    "在线支付订单不可手工核准，请用「查单同步」核对支付结果后自动入账");
         }
         return settlePaidOrder(orderId, "manual", null, reviewerId, trimToNull(reviewNote, 512));
     }

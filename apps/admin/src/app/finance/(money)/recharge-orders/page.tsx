@@ -159,6 +159,25 @@ export default function AdminRechargeOrdersPage() {
     }
   }
 
+  // v2 §6 在线 PENDING 订单只能「查单同步」（查支付网关 → 已支付自动入账 / 超时关单），不能手工核准（防给未付款用户白发积分）。
+  async function onSync(o: RechargeOrder) {
+    setBusyId(o.id);
+    try {
+      const u = await RechargeOrdersApi.syncOrder(o.id);
+      await refresh();
+      toast.success({
+        title:
+          u.status === "paid" ? "已查到支付，自动入账"
+            : u.status === "closed" ? "订单已超时关闭"
+              : "网关仍未查到支付，请稍后再查",
+      });
+    } catch (e) {
+      toast.danger({ title: "查单失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function onReject(o: RechargeOrder) {
     const res = await confirm({
       title: "驳回充值订单",
@@ -327,23 +346,31 @@ export default function AdminRechargeOrdersPage() {
                     </TableCell>
                     <TableCell className="space-x-1 text-right">
                       {o.status === "pending" ? (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => void onApprove(o)}
-                            disabled={busyId === o.id}
-                          >
-                            入账
+                        o.wayCode || o.payOrderId ? (
+                          // 在线支付订单：只能查单同步（查网关 → 已支付自动入账 / 超时关单），禁止手工入账
+                          <Button size="sm" onClick={() => void onSync(o)} disabled={busyId === o.id}>
+                            查单同步
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void onReject(o)}
-                            disabled={busyId === o.id}
-                          >
-                            驳回
-                          </Button>
-                        </>
+                        ) : (
+                          // 线下转账订单：运营核准入账 / 驳回
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => void onApprove(o)}
+                              disabled={busyId === o.id}
+                            >
+                              入账
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void onReject(o)}
+                              disabled={busyId === o.id}
+                            >
+                              驳回
+                            </Button>
+                          </>
+                        )
                       ) : o.status === "paid" ? (
                         <Button
                           size="sm"

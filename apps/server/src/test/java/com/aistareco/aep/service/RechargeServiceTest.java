@@ -278,4 +278,19 @@ class RechargeServiceTest {
 
         assertNotEquals("ro-paid", o.getId()); // 已支付单不复用,建新单
     }
+
+    @Test
+    void approveOnlineOrderBlockedNoFakeCredit() {
+        RechargeOrder online = RechargeOrder.builder()
+                .id("ro-online").userId(USER).packageId("pkg-1").credits(1000).priceCents(9900)
+                .status(RechargeOrder.Status.PENDING).wayCode("ALI_PC").createdAt(Instant.now()).build();
+        db.put("ro-online", online);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> svc.approveOrder("ro-online", "fin-1", null));
+
+        assertEquals("ONLINE_ORDER_NO_MANUAL_APPROVE", ex.getCode());
+        verify(creditService, never())
+                .creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
+    }
 }

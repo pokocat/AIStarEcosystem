@@ -6112,6 +6112,9 @@ paths:
   /admin/finance/recharge-orders/{orderId}/reject:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-finance], operationId: adminRejectRechargeOrder, responses: { '200': { description: ok } } }
+  /admin/finance/recharge-orders/{orderId}/sync:
+    parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-finance], operationId: adminSyncRechargeOrder, summary: '查单同步：在线 PENDING 订单查网关→已支付自动入账/超时关单（v2 §6；在线单不可手工核准）', responses: { '200': { description: ok } } }
   /admin/finance/recharge-orders/{orderId}/refund:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
     post:

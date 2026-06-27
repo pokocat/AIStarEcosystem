@@ -14,12 +14,17 @@ export async function list(status?: RechargeOrderStatus | "all"): Promise<Rechar
   return apiFetch<RechargeOrder[]>(BASE, { query: status && status !== "all" ? { status } : undefined });
 }
 
-/** 核准入账：确认线下已收款 → 经不可变账本入账，订单转 PAID。 */
+/** 核准入账（仅线下订单）：确认线下已收款 → 经不可变账本入账，订单转 PAID。在线订单后端拒绝（资损闸）。 */
 export async function approve(id: string, note?: string): Promise<RechargeOrder> {
   return apiFetch<RechargeOrder>(`${BASE}/${encodeURIComponent(id)}/approve`, {
     method: "POST",
     body: { note },
   });
+}
+
+/** v2 §6 查单同步（在线 PENDING 订单）：查支付网关 → 已支付自动入账 / 超时关单。在线单用这个，不手工核准。 */
+export async function syncOrder(id: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`${BASE}/${encodeURIComponent(id)}/sync`, { method: "POST" });
 }
 
 /** 驳回：收款不符 / 无效订单。reason 必填。 */

@@ -1,6 +1,7 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.RechargeOrderDto;
+import com.aistareco.aep.service.PaymentService;
 import com.aistareco.aep.service.RechargeService;
 import com.aistareco.aep.service.payment.PaymentReconcileService;
 import com.aistareco.common.ApiResponse;
@@ -25,11 +26,14 @@ public class AdminRechargeOrderController {
 
     private final RechargeService rechargeService;
     private final PaymentReconcileService reconcileService;
+    private final PaymentService paymentService;
 
     public AdminRechargeOrderController(RechargeService rechargeService,
-                                        PaymentReconcileService reconcileService) {
+                                        PaymentReconcileService reconcileService,
+                                        PaymentService paymentService) {
         this.rechargeService = rechargeService;
         this.reconcileService = reconcileService;
+        this.paymentService = paymentService;
     }
 
     /** 列出充值订单。可选 {@code ?status=pending|paid|rejected|cancelled|all}（默认全部，最新在前）。 */
@@ -46,6 +50,12 @@ public class AdminRechargeOrderController {
         String reviewer = principal != null ? principal.getName() : "admin";
         String note = body == null ? null : body.note();
         return ApiResponse.of(rechargeService.approveOrder(orderId, reviewer, note));
+    }
+
+    /** v2 §6 查单同步：对在线 PENDING 订单主动查网关 → 已支付自动入账 / 超时关单。在线订单不能手工核准,用这个。 */
+    @PostMapping("/{orderId}/sync")
+    public ApiResponse<RechargeOrderDto> sync(@PathVariable String orderId) {
+        return ApiResponse.of(paymentService.syncOrderForAdmin(orderId));
     }
 
     /** 驳回：收款不符 / 无效订单。reason 必填。 */
