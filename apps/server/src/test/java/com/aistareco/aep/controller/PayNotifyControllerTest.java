@@ -39,7 +39,9 @@ class PayNotifyControllerTest {
     private static RechargeOrderDto order(long priceCents) {
         return new RechargeOrderDto(ORDER, "u1", null, null, null, "pkg", "标准包",
                 1000, 0, priceCents, "pending", null, null, null,
-                null, null, null, null, null, null);
+                null, null, null,                   // createdAt / updatedAt / reviewedAt
+                null, null, null, null, null, null, // v2 §6 在线支付：paidVia/channelPayNo/wayCode/payOrderId/paidAt/sourceApp
+                null, null, null);                  // refundedAt / refundedCredits / refundLedgerEntryId
     }
 
     /** 带 sign 的成功回调 → 验签通过 + 金额匹配 → settle + 返回 success。 */
