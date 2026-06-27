@@ -44,6 +44,15 @@ AEP_PAYMENT_ALIPAY_NOTIFY_URL=http://localhost:8080/api/pay/notify/alipay
 ## 3. 两种联调姿势
 
 ### A. 纯查单兜底（最省事，无需公网/隧道）— 推荐先用这条
+
+**最快：一键验证脚本**（起好后端后直接跑，自动下单+轮询+校验）：
+```bash
+node scripts/alipay-sandbox-verify.mjs
+# → 下单 ALI_PC → 写出 alipay-pay.html（浏览器打开自动跳收银台）→ 你用沙箱买家付款
+# → 自动轮询 reconcile 直到 PAID → 校验 余额/paidVia/channelPayNo/幂等 → PASS/FAIL
+```
+
+或手动走：
 1. 起后端 `./infra/scripts/dev-server.sh`，起前端 `pnpm dev:celebrity`。
 2. web-celebrity 登录 → `/wallet` → 选套餐 → **立即支付（在线）** → 跳到支付宝沙箱收银台。
 3. 用**沙箱买家账号**付款 → 浏览器跳回。
