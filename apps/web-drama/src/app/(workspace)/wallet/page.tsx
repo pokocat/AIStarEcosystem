@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Coins, RefreshCw, Sparkles } from "lucide-react";
 import type { LedgerEntry, RechargeOrder, RechargePackage, Wallet } from "@ai-star-eco/types/wallet";
@@ -36,6 +37,7 @@ const ORDER_LABEL: Record<RechargeOrder["status"], string> = {
 };
 
 export default function WalletPage() {
+  const router = useRouter();
   const walletQ = useAsync<Wallet>("/me/wallet", () => AccountApi.getMyWallet());
   const pkgQ = useAsync<RechargePackage[]>("/me/wallet/packages?drama", () => AccountApi.listRechargePackages("drama"));
   const ordersQ = useAsync<RechargeOrder[]>("/me/wallet/recharge/orders", () => AccountApi.listMyRechargeOrders());
@@ -55,33 +57,11 @@ export default function WalletPage() {
     ordersQ.refetch();
   };
 
-  async function startOnlinePay() {
+  // v2 §6：跳转收银台中间页（选渠道 + 实时状态 + 重试都在 /wallet/checkout）。
+  function startOnlinePay() {
     if (!selected || paying) return;
     setPaying(true);
-    const summary = `${formatCredits(selected.credits)}${selected.bonusCredits ? ` + 赠 ${formatCredits(selected.bonusCredits)}` : ""} 积分 · ${formatCurrency(selected.priceCents)}`;
-    try {
-      const res = await AccountApi.rechargeCheckout({ packageId: selected.id, sourceApp: "drama" });
-      if (res.payDataType === "page") {
-        // 支付宝网站支付：payData 是自动提交的 HTML 表单 → 写入文档跳转支付宝收银台。
-        document.open();
-        document.write(res.payData);
-        document.close();
-        return;
-      }
-      if (res.payDataType === "shadow") {
-        setShadow({ orderId: res.orderId, summary });
-        setSelected(null);
-      } else if (res.payDataType === "qr") {
-        toast.error("扫码支付（ALI_QR）二维码渲染待接入，请用网站支付");
-      } else {
-        toast.error(`暂不支持的支付通道（${res.payDataType}）`);
-      }
-      ordersQ.refetch();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "下单失败，请稍后再试");
-    } finally {
-      setPaying(false);
-    }
+    router.push(`/wallet/checkout?pkg=${encodeURIComponent(selected.id)}`);
   }
 
   async function confirmShadow(result: "success" | "fail" | "timeout") {
