@@ -17,6 +17,7 @@ import { useConfirm, useToast } from "@/components/feedback";
 import { RechargeOrdersApi } from "@/api";
 import {
   RECHARGE_ORDER_STATUS_LABEL,
+  RECHARGE_PAID_VIA_META,
   type RechargeOrder,
   type RechargeOrderStatus,
 } from "@/types/recharge-order";
@@ -31,6 +32,41 @@ const STATUS_TONE: Record<RechargeOrderStatus, StatusTone> = {
   cancelled: "neutral",
   refunded: "neutral",
 };
+
+// v2 §6 支付来源 tone：jeepay 真实在线=success；shadow 影子(dev/test)=warning；manual 线下=neutral。
+const PAID_VIA_TONE: Record<string, StatusTone> = {
+  jeepay: "success",
+  shadow: "warning",
+  manual: "neutral",
+};
+
+/** 支付方式 / 渠道列：在线（Jeepay/影子）显示渠道流水号 + 支付方式；线下核准显示来源；未支付显示 —。 */
+function PayMethodCell({ o }: { o: RechargeOrder }) {
+  if (!o.paidVia) return <span className="text-xs text-muted-foreground">—</span>;
+  const meta = RECHARGE_PAID_VIA_META[o.paidVia] ?? { label: o.paidVia, online: true };
+  const traceTitle = o.payOrderId
+    ? `渠道单号 ${o.channelPayNo ?? "—"} · 网关单号 ${o.payOrderId}`
+    : o.channelPayNo
+      ? `渠道单号 ${o.channelPayNo}`
+      : undefined;
+  return (
+    <div className="space-y-0.5">
+      <Badge tone={PAID_VIA_TONE[o.paidVia] ?? "info"} className="font-normal">
+        {meta.label}
+      </Badge>
+      {o.channelPayNo ? (
+        <div className="max-w-[170px] truncate font-mono text-[11px] text-muted-foreground" title={traceTitle}>
+          {o.channelPayNo}
+        </div>
+      ) : null}
+      {o.wayCode || o.sourceApp ? (
+        <div className="text-[11px] text-muted-foreground">
+          {[o.wayCode, o.sourceApp].filter(Boolean).join(" · ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "pending", label: "待确认" },
@@ -229,6 +265,7 @@ export default function AdminRechargeOrdersPage() {
                   <TableHead className="text-right">积分</TableHead>
                   <TableHead className="text-right">应收</TableHead>
                   <TableHead>状态</TableHead>
+                  <TableHead>支付方式</TableHead>
                   <TableHead>备注</TableHead>
                   <TableHead className="w-[180px] text-right">操作</TableHead>
                 </TableRow>
@@ -257,6 +294,9 @@ export default function AdminRechargeOrdersPage() {
                       <Badge tone={STATUS_TONE[o.status]} className="font-normal">
                         {RECHARGE_ORDER_STATUS_LABEL[o.status]}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <PayMethodCell o={o} />
                     </TableCell>
                     <TableCell className="max-w-[180px] text-xs text-muted-foreground">
                       {o.status === "rejected" && o.reviewNote ? (

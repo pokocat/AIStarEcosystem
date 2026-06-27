@@ -1345,13 +1345,24 @@ components:
         credits:      { type: integer }
         bonusCredits: { type: integer }
         priceCents:   { type: integer }
-        status:       { type: string, enum: [pending, paid, rejected, cancelled] }
+        status:       { type: string, enum: [pending, paid, rejected, cancelled, refunded] }
         userNote:     { type: string, nullable: true }
         reviewerId:   { type: string, nullable: true }
         reviewNote:   { type: string, nullable: true, description: 审批备注 / 驳回原因 }
         createdAt:    { type: string, format: date-time }
         updatedAt:    { type: string, format: date-time, nullable: true }
         reviewedAt:   { type: string, format: date-time, nullable: true }
+        # v2 §6 在线支付（Jeepay/影子）可见性（线下 / 未支付订单字段省略）
+        paidVia:      { type: string, nullable: true, enum: [manual, jeepay, shadow], description: '入账来源：manual=线下核准 / jeepay=在线真实 / shadow=在线影子' }
+        channelPayNo: { type: string, nullable: true, description: 渠道流水号（对账追溯） }
+        wayCode:      { type: string, nullable: true, description: 支付方式 WX_LITE/ALI_QR… }
+        payOrderId:   { type: string, nullable: true, description: 支付网关订单号（Jeepay payOrderId / 影子 shadow_ 前缀） }
+        paidAt:       { type: string, format: date-time, nullable: true, description: 到账时间 }
+        sourceApp:    { type: string, nullable: true, description: 来源子应用 }
+        # v2 §15.5 / D17 退款回收（仅 refunded 订单有值）
+        refundedAt:          { type: string, format: date-time, nullable: true }
+        refundedCredits:     { type: integer, nullable: true, description: 实退（回收未消费）积分 }
+        refundLedgerEntryId: { type: string, nullable: true, description: REFUND_CASH 回收账本分录 id }
 
     # ── v0.4：AI Bot 同事会话（小程序 chat 页消费） ──
     BotMeta:
