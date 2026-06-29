@@ -287,6 +287,7 @@
 - [x] ~~**engine-pricing 落到 `PlatformConfig`**~~（**已完成** — 见上「持久化与基础设施」段，2026-06-17 审计确认实际早已落库）。
 - [x] ~~**生成任务 `JOBS` 落表**~~（**v0.80 完成** — `GenerationJob` 实体 + repo，见上段）。
 - [ ] **真实微信支付**（**非漏洞，可后置** — 见上段澄清：当前已是「PENDING 订单 + 运营手动核准」过渡方案）。
+  - **v0.93 进展（2026-06-29）**：支付驱动基建已就位 —— `aep.payment.driver`（shadow / alipay 直连 / jeepay 聚合）+ 网关 + 异步 notify 回调 `settlePaidOrder`（幂等）+ 对账轮询；drama 充值已走真实收银台（v0.91，非手动核准）。上线配置写进 `infra/env/server.env.example` §15（`AEP_PAYMENT_*`，机密 `<FILL_...>` 占位）。**剩余**：填真实商户凭据 + 微信走 jeepay 需部署 jeepay 网关（当前休眠）。
 - [ ] **国产 LLM provider 真实调用**（旧 v0.6 候选）：`AiModelInvocationService` 当前只 OpenAI 兼容；`ANTHROPIC` / `BAIDU` / `ALIYUN` / `TENCENT` 各自鉴权。
 - [ ] **`ConfigItem` 配置中心 + 17 字典上移**（旧 v0.6 候选，`docs/ADMIN_PRODUCT_SPEC.md` §10 设计已写）：草稿/审核/发布状态机 + 灰度（白名单 / AB 桶）。
 - [ ] **`/celebrity/dictionaries`** 当前 hard-coded；接 `ConfigItem` 后改为运营可配。

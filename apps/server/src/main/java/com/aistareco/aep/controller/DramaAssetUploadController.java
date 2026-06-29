@@ -72,6 +72,8 @@ public class DramaAssetUploadController {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "FILE_TOO_LARGE",
                     "文件超过最大限制 " + max + " 字节");
         }
+        // 存储配额前置：已知本次文件大小，超额直接拒绝（不写文件、不记账）。
+        storage.checkQuota("drama", principal.getName(), file.getSize());
 
         FileStorageService.StoredFile stored = fileStorage.store(file, "drama/asset-refs", principal.getName());
         // 记入存储用量（参考图素材，用户级；best-effort 不阻断）

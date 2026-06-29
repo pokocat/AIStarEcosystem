@@ -68,6 +68,15 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.93 · 2026-06-29 · 存储配额闭环（分镜视频计入 + 生成/上传前置校验）+ 支付上线 env 模版
+
+承接 v0.92 通用存储配额，补齐两处缺口并把支付配置写进上线模版：
+
+- **分镜/带货视频计入存储（`MaterialVideoWorker`）**：异步视频出片后镜像落 CDN 时，按 job 归属子应用记一笔 `StorageQuotaService.record`（drama→「分镜视频」/ celebrity→「素材视频」，refId=scriptId，drama 即项目 id，彻底删除时由 `releaseByRef` 释放）。此前只记账首帧/成片/参考图，异步视频漏记，至此 drama 全部产物均计入用量。§8.0：记账 best-effort 不阻断主链路；仅 CDN 镜像成功才记真实字节。
+- **配额前置校验（超额不生成/不扣费）**：`StorageQuotaService.checkQuota` 接入三处入口——参考图上传（`DramaAssetUploadController`，已知文件大小精确校验）、分镜首帧渲染（`DramaRenderService.renderFrame`，生成前）、分镜视频（`DramaRenderService.renderClip`，提交任务/hold 积分前）。超额抛 402 `STORAGE_QUOTA_EXCEEDED`，提示清理或购买存储套餐；校验先于一切扣费，绝不「扣了费又因满配额失败」。
+- **支付上线配置写进 env 模版（`infra/env/server.env.example` §15）**：`AEP_PAYMENT_DRIVER`（shadow/alipay/jeepay）+ 支付宝/jeepay 各机密（`<FILL_...>` 占位，部署时填）+ shadow 收银台 + 对账轮询间隔；并注明存储配额走 PlatformConfig DB（非 env）。§8.0 fail-fast：driver=alipay/jeepay 缺机密启动报错，不静默降级。
+- **门禁**：server compile + `StorageQuotaServiceTest` 7 / `RechargeServiceTest` 16 / `DramaProjectServiceTest` 21 全绿 + contract 全绿。
+
 ### v0.92 · 2026-06-29 · 通用存储配额（用量/余量 + 回收站计入 + 购买存储套餐扩容）
 
 通用后台能力（任意子应用 `?app=` 复用，celebrity 等可快速对接），drama 先接入：
