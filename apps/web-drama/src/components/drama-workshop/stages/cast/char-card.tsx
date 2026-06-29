@@ -3,7 +3,7 @@
 // 角色卡 — 设计真源:screens-project.jsx `CharCard`。
 // 关键角色:大数字人封面(已绑) / 待绑占位(未绑) + 三张参考图槽;龙套:文字外观。
 import * as React from "react";
-import { RefreshCw, Sparkles, User } from "lucide-react";
+import { ImagePlus, RefreshCw, Sparkles, User } from "lucide-react";
 import { Avatar, Thumb } from "@/components/drama-ui";
 import { AVATAR_THEMES, type CharacterDef } from "@/mocks/drama-workshop";
 
@@ -12,9 +12,15 @@ interface CharCardProps {
   delay?: number;
   onBind: () => void;
   onToggleRole: () => void;
+  /** 上传真人参考图（→ 素材库）。 */
+  onUploadRef?: (file: File) => void;
+  /** 点开参考图看大图。 */
+  onViewRef?: () => void;
+  /** 上传中。 */
+  uploading?: boolean;
 }
 
-export function CharCard({ c, delay = 0, onBind, onToggleRole }: CharCardProps) {
+export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onViewRef, uploading }: CharCardProps) {
   const isKey = c.role === "key";
   const theme = AVATAR_THEMES[c.avatar] ?? AVATAR_THEMES.default;
 
@@ -147,46 +153,60 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole }: CharCardProps) 
           </button>
         </div>
         <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.55 }}>{c.desc}</div>
-        {isKey && c.bound && (
-          <div className="col gap-2" style={{ marginTop: 2 }}>
-            <div
-              className="faint"
-              style={{ fontSize: 11, fontWeight: 700 }}
-            >
-              真人参考图 · 拖入真实剧照锁形象
-            </div>
-            <div className="row gap-2" style={{ alignItems: "flex-end" }}>
-              {["正面", "侧面", "情绪"].map((lbl) => (
-                <div key={lbl} className="col center" style={{ gap: 3 }}>
-                  <div
-                    style={{
-                      width: 56,
-                      height: 72,
-                      borderRadius: 10,
-                      background: "var(--surface-2)",
-                      border: "1.5px dashed var(--line)",
-                      display: "grid",
-                      placeItems: "center",
-                      color: "var(--ink-3)",
-                      fontSize: 11,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {lbl}
-                  </div>
-                </div>
-              ))}
+        {/* 真人参考图：上传真实剧照锁形象（→ 素材库）；点开看大图 */}
+        <div className="col gap-2" style={{ marginTop: 2 }}>
+          <div className="faint" style={{ fontSize: 11, fontWeight: 700 }}>真人参考图 · 上传真实剧照锁形象</div>
+          {c.refUrl ? (
+            <div className="row gap-2" style={{ alignItems: "center" }}>
               <button
                 type="button"
-                className="btn btn-line btn-sm"
-                style={{ alignSelf: "flex-end" }}
-                onClick={onBind}
+                onClick={onViewRef}
+                title="点开看大图"
+                style={{ width: 56, height: 72, borderRadius: 10, overflow: "hidden", border: "none", padding: 0, cursor: "zoom-in", flex: "none", background: "var(--surface-2)" }}
               >
-                <RefreshCw size={13} /> 换形象
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={c.refUrl} alt={c.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
               </button>
+              <label className="btn btn-line btn-sm" style={{ cursor: uploading ? "default" : "pointer" }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0];
+                    e.currentTarget.value = "";
+                    if (f) onUploadRef?.(f);
+                  }}
+                />
+                {uploading ? "上传中…" : (<><RefreshCw size={13} /> 重新上传</>)}
+              </label>
+              {isKey && c.bound && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={onBind} style={{ flex: "none" }}>
+                  换形象
+                </button>
+              )}
             </div>
-          </div>
-        )}
+          ) : (
+            <label
+              className="row center"
+              style={{ width: "100%", height: 60, borderRadius: 10, border: "1.5px dashed var(--line)", background: "var(--surface-2)", color: "var(--ink-3)", gap: 6, cursor: uploading ? "default" : "pointer", fontSize: 12, fontWeight: 600 }}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                disabled={uploading}
+                onChange={(e) => {
+                  const f = e.currentTarget.files?.[0];
+                  e.currentTarget.value = "";
+                  if (f) onUploadRef?.(f);
+                }}
+              />
+              {uploading ? "上传中…" : (<><ImagePlus size={15} /> 上传参考图</>)}
+            </label>
+          )}
+        </div>
       </div>
     </div>
   );

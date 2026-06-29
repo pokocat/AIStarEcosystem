@@ -247,7 +247,12 @@ function MaterialCard({ a, onOpen, delay }: { a: Material; onOpen: () => void; d
       }}
     >
       <div style={{ position: "relative" }}>
-        <Thumb from={a.from} to={a.to} ratio="4/3" radius={0} stripes={false} style={{ width: "100%" }} />
+        {a.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={a.url} alt={a.name} style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", display: "block" }} />
+        ) : (
+          <Thumb from={a.from} to={a.to} ratio="4/3" radius={0} stripes={false} style={{ width: "100%" }} />
+        )}
         <span
           className={"tag " + (CAT_TAG[a.cat] || "tag-gray")}
           style={{ position: "absolute", top: 7, left: 7, background: "rgba(255,255,255,.92)" }}
@@ -312,29 +317,34 @@ function MaterialDetail({
             flex: "0 0 44%",
             minWidth: 0,
             position: "relative",
-            background: `linear-gradient(150deg, ${item.from}, ${item.to})`,
+            background: item.url ? "#1c1917" : `linear-gradient(150deg, ${item.from}, ${item.to})`,
             minHeight: 400,
             display: "grid",
             placeItems: "center",
           }}
         >
-          <span
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,.85)",
-              display: "grid",
-              placeItems: "center",
-              boxShadow: "0 4px 16px rgba(0,0,0,.2)",
-            }}
-          >
-            {item.kind === "video" ? (
-              <Play size={24} style={{ color: "var(--ink)", marginLeft: 3 }} />
-            ) : (
-              <ImageIcon size={24} style={{ color: "var(--ink)" }} />
-            )}
-          </span>
+          {item.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          ) : (
+            <span
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,.85)",
+                display: "grid",
+                placeItems: "center",
+                boxShadow: "0 4px 16px rgba(0,0,0,.2)",
+              }}
+            >
+              {item.kind === "video" ? (
+                <Play size={24} style={{ color: "var(--ink)", marginLeft: 3 }} />
+              ) : (
+                <ImageIcon size={24} style={{ color: "var(--ink)" }} />
+              )}
+            </span>
+          )}
           <span className="thumb-label" style={{ position: "absolute", bottom: 12, left: 12, whiteSpace: "nowrap" }}>
             {item.kind === "video" ? "视频素材 · 预览" : "图片素材 · 预览"}
           </span>

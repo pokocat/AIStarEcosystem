@@ -17,6 +17,8 @@ export interface AdminRechargePackageUpsert {
   active?: boolean;
   /** v2 §6 适用子应用：all=通用 / music|drama|celebrity|aiavatar|star */
   appScope?: string;
+  /** v0.92 存储套餐：购买授予的存储扩容（MB），>0 即为「存储套餐」（可与积分共存或纯存储 credits=0） */
+  grantStorageMb?: number;
 }
 
 const BASE = "/admin/finance/recharge-packages";

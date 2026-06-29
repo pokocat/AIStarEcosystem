@@ -53,19 +53,22 @@ public class RechargeService {
     private final StudioRepository studioRepo;
     private final CreditService creditService;
     private final NotificationPublisher notificationPublisher;
+    private final com.aistareco.aep.service.storage.StorageQuotaService storageQuota;
 
     public RechargeService(RechargePackageRepository pkgRepo,
                            RechargeOrderRepository orderRepo,
                            AepUserRepository userRepo,
                            StudioRepository studioRepo,
                            CreditService creditService,
-                           NotificationPublisher notificationPublisher) {
+                           NotificationPublisher notificationPublisher,
+                           com.aistareco.aep.service.storage.StorageQuotaService storageQuota) {
         this.pkgRepo = pkgRepo;
         this.orderRepo = orderRepo;
         this.userRepo = userRepo;
         this.studioRepo = studioRepo;
         this.creditService = creditService;
         this.notificationPublisher = notificationPublisher;
+        this.storageQuota = storageQuota;
     }
 
     public List<RechargePackageDto> listPackages() {
@@ -125,6 +128,7 @@ public class RechargeService {
                 .credits(pkg.getCredits())
                 .bonusCredits(pkg.getBonusCredits())
                 .priceCents(pkg.getPriceCents())
+                .grantStorageMb(pkg.getGrantStorageMb())
                 .status(RechargeOrder.Status.PENDING)
                 .userNote(trimToNull(userNote, 512))
                 .createdAt(now)
@@ -170,6 +174,7 @@ public class RechargeService {
                 .credits(pkg.getCredits())
                 .bonusCredits(pkg.getBonusCredits())
                 .priceCents(pkg.getPriceCents())
+                .grantStorageMb(pkg.getGrantStorageMb())
                 .status(RechargeOrder.Status.PENDING)
                 .wayCode(wayCode)
                 .sourceApp(sourceApp)
@@ -429,6 +434,17 @@ public class RechargeService {
             );
         }
 
+        // 3) 存储扩容（购买存储套餐）：授予 StorageGrant（幂等 by 订单号；按子应用归属）
+        if (order.getGrantStorageMb() > 0 && order.getSourceApp() != null && !order.getSourceApp().isBlank()) {
+            try {
+                storageQuota.grantStorage(order.getSourceApp(), order.getUserId(),
+                        order.getGrantStorageMb(), order.getId(), null);
+            } catch (Exception e) {
+                log.warn("[recharge] storage grant failed order={} app={} mb={}: {}",
+                        order.getId(), order.getSourceApp(), order.getGrantStorageMb(), e.getMessage());
+            }
+        }
+
         order.setLedgerEntryId(mainEntry.id());
         order.setPaidVia(paidVia);
         order.setChannelPayNo(channelPayNo);
@@ -445,6 +461,7 @@ public class RechargeService {
                 "充值已到账",
                 "充值订单 " + order.getId() + " 已入账：" + order.getCredits() + " 积分"
                         + (order.getBonusCredits() > 0 ? "，另赠送 " + order.getBonusCredits() + " 积分" : "")
+                        + (order.getGrantStorageMb() > 0 ? "，存储 +" + order.getGrantStorageMb() + " MB" : "")
                         + "。");
         return RechargeOrderDto.from(order);
     }

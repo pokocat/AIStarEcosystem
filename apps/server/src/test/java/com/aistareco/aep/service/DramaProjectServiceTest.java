@@ -50,7 +50,8 @@ class DramaProjectServiceTest {
         PlatformConfigService configs = mock(PlatformConfigService.class);
         // 配置读取一律返回调用方默认值（与未配置时的线上行为一致）
         when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.<Long>getArgument(1));
-        svc = new DramaProjectService(repo, invocation, promptService, creditService, configs, OM);
+        com.aistareco.aep.service.storage.StorageQuotaService storage = mock(com.aistareco.aep.service.storage.StorageQuotaService.class);
+        svc = new DramaProjectService(repo, invocation, promptService, creditService, configs, storage, OM);
 
         when(repo.save(any())).thenAnswer(inv -> {
             DramaProject p = inv.getArgument(0);

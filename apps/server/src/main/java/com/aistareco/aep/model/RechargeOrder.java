@@ -53,6 +53,10 @@ public class RechargeOrder {
     @Builder.Default
     private long priceCents = 0L;
 
+    /** v0.92：套餐快照 —— 购买授予的存储扩容（MB），结算时授予 StorageGrant。 */
+    @Builder.Default
+    private long grantStorageMb = 0L;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     @Builder.Default

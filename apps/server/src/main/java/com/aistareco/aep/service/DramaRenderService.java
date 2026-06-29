@@ -65,6 +65,7 @@ public class DramaRenderService {
     private final CdnUrlSigner signer;
     private final PlatformConfigService configs;
     private final PromptService promptService;
+    private final com.aistareco.aep.service.storage.StorageQuotaService storage;
     private final ObjectMapper om;
 
     public DramaRenderService(AiModelInvocationService invocation,
@@ -76,6 +77,7 @@ public class DramaRenderService {
                               CdnUrlSigner signer,
                               PlatformConfigService configs,
                               PromptService promptService,
+                              com.aistareco.aep.service.storage.StorageQuotaService storage,
                               ObjectMapper om) {
         this.invocation = invocation;
         this.usage = usage;
@@ -86,6 +88,7 @@ public class DramaRenderService {
         this.signer = signer;
         this.configs = configs;
         this.promptService = promptService;
+        this.storage = storage;
         this.om = om;
     }
 
@@ -152,6 +155,7 @@ public class DramaRenderService {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED",
                         "首帧已生成但存储失败，请重试。");
             }
+            storage.record("drama", userId, "分镜首帧", null, key, bytes.length);
             ObjectNode f = om.createObjectNode();
             f.put("cdnKey", key);
             f.put("url", signer.signKey(key));

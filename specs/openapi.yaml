@@ -7424,6 +7424,18 @@ paths:
   # ── v0.66 短剧专区配置 + 成片合成 ──
   /me/drama/config:
     get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,shortEntry,clip}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价）', responses: { '200': { description: ok } } }
+  # ── v0.89 素材库上传：角色 / 场景「上传参考图」（multipart），落 OSS + 收进用户素材库 ──
+  /me/drama/assets/uploads:
+    post: { tags: [drama], operationId: uploadDramaAssetRef, summary: '上传角色 / 场景参考图（multipart：file + cat）→ { cdnKey, url, cat, name }', responses: { '200': { description: ok } } }
+  # ── v0.92 通用存储用量（任意子应用 ?app=）：占用 / 配额（基础+已购扩容）/ 余量 + 分类明细 ──
+  /me/storage:
+    get: { tags: [storage], operationId: getStorageUsage, summary: '当前用户某子应用存储用量（?app=drama）→ { app, usedMb, quotaMb, remainingMb, breakdown[] }', responses: { '200': { description: ok } } }
+  # ── v0.92 admin 存储配额配置（按子应用）+ 存储套餐（复用充值套餐 grantStorageMb） ──
+  /admin/storage/quotas:
+    get: { tags: [admin, storage], operationId: listStorageQuotas, summary: '各子应用存储配额（MB）', responses: { '200': { description: ok } } }
+  /admin/storage/quotas/{app}:
+    parameters: [ { in: path, name: app, required: true, schema: { type: string } } ]
+    put: { tags: [admin, storage], operationId: setStorageQuota, summary: '设置某子应用存储配额（MB）。body: { quotaMb }', responses: { '200': { description: ok } } }
   /me/drama/projects/{id}/assemble:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: assembleDramaEpisode, summary: '成片合成：把某集已出片分镜按序 ffmpeg 拼接为完整片（产物落 CDN）', responses: { '200': { description: ok } } }

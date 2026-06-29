@@ -54,6 +54,7 @@ public class DramaAssembleService {
     private final FfmpegRunner ffmpeg;
     private final CdnUploader cdnUploader;
     private final CdnUrlSigner signer;
+    private final com.aistareco.aep.service.storage.StorageQuotaService storage;
     private final ObjectMapper om;
     private final int serverPort;
 
@@ -61,12 +62,14 @@ public class DramaAssembleService {
                                 FfmpegRunner ffmpeg,
                                 CdnUploader cdnUploader,
                                 CdnUrlSigner signer,
+                                com.aistareco.aep.service.storage.StorageQuotaService storage,
                                 ObjectMapper om,
                                 @Value("${server.port:8080}") int serverPort) {
         this.repo = repo;
         this.ffmpeg = ffmpeg;
         this.cdnUploader = cdnUploader;
         this.signer = signer;
+        this.storage = storage;
         this.om = om;
         this.serverPort = serverPort;
     }
@@ -118,6 +121,10 @@ public class DramaAssembleService {
             String key = "drama/assemblies/" + projectId + "_ep" + ep + "_"
                     + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".mp4";
             cdnUploader.upload(out, key, "video/mp4");
+            // 记入存储用量（成片，归属项目；项目彻底删除时释放）
+            try {
+                storage.record("drama", userId, "成片", projectId, key, Files.size(out));
+            } catch (Exception ignore) { /* 记账 best-effort */ }
 
             ObjectNode result = om.createObjectNode();
             result.put("url", signer.signKey(key));
