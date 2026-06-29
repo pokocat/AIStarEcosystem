@@ -68,6 +68,14 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.90 · 2026-06-29 · 工作台左栏还原 + 角色/场景参考图上传素材库 + 场景看大图/AI 改图
+
+- **工作台左边栏还原设计稿（`workbench/stage-rail.tsx`）**：项目头卡（封面 + 标题 + 类型·集数）+ 时间线两步（短剧设定「进行中」/ 剧集工作台「第 N 集」+「进工作台 →」），「转换为互动剧」钉底；后台任务面板嵌入轨底。`WorkshopShell` 传 `meta`。
+- **角色 / 场景上传参考图 → 用户素材库**：新增后端 `DramaAssetUploadController`（`POST /me/drama/assets/uploads`，multipart → `FileStorageService` 落 OSS，返回 `cdnKey/url`）+ `api/drama-assets.ts`。角色卡（`cast/char-card.tsx`）真人参考图改为真实上传（替换原静态 正面/侧面/情绪 占位）；场景卡新增「上传参考图」。上传后落角色 `refUrl/refCdnKey`、场景 `refUrl/refCdnKey`，并 `addLibraryMaterial` 收进素材库（`Material` 加 `url/cdnKey`，素材库卡 / 详情渲染真图）。
+- **场景图看大图 + AI 改图（复用首帧逻辑）**：抽出通用 `ai-image-edit-modal.tsx`（9:16 首帧 / 16:9 场景共用：左指令对话 + 右预览 + 版本号 + ref 图迭代），`storyboard-table.tsx` 改用之；场景卡点图开 `MediaLightbox` 看大图、「AI 修图」开同款对话式改图，回填 `refUrl/refCdnKey`。
+- **浮动操作条文案对齐**：短剧设定「锁定，进剧集工作台」→「保存剧本·去分镜工作台」（去掉「加一集」，移回「分集剧情」内）；分镜「通过整集·进视频工厂」→「保存分镜·去视频工厂」。
+- **门禁**：web-drama typecheck/build + contract + server compile 全绿。
+
 ### v0.89 · 2026-06-29 · 短剧工坊设计对齐修复 + 软删回收站 + 工作台细节
 
 按截图标注修复短剧工坊列表与设定页，并补齐回收站 / 分镜整宽 / 后台任务面板：

@@ -7424,6 +7424,9 @@ paths:
   # ── v0.66 短剧专区配置 + 成片合成 ──
   /me/drama/config:
     get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,shortEntry,clip}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价）', responses: { '200': { description: ok } } }
+  # ── v0.89 素材库上传：角色 / 场景「上传参考图」（multipart），落 OSS + 收进用户素材库 ──
+  /me/drama/assets/uploads:
+    post: { tags: [drama], operationId: uploadDramaAssetRef, summary: '上传角色 / 场景参考图（multipart：file + cat）→ { cdnKey, url, cat, name }', responses: { '200': { description: ok } } }
   /me/drama/projects/{id}/assemble:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: assembleDramaEpisode, summary: '成片合成：把某集已出片分镜按序 ffmpeg 拼接为完整片（产物落 CDN）', responses: { '200': { description: ok } } }

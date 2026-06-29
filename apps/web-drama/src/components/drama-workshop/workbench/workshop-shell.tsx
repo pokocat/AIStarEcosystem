@@ -138,6 +138,7 @@ export function WorkshopShell({ meta, data, renderStage, initialStage, onConvert
         />
       ) : (
         <StageRail
+          meta={meta}
           current={state.stage}
           locked={state.lockedStages}
           ep={state.ep}

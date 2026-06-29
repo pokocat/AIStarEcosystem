@@ -684,7 +684,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               dispatch({ type: "lock", stage: "epscript", cost: 30 });
             }}
           >
-            <Check size={14} /> 通过整集 · 进视频工厂
+            <Check size={14} /> 保存分镜·去视频工厂
           </button>
         </div>
       )}

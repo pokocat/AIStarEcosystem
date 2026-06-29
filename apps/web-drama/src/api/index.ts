@@ -16,6 +16,7 @@ export {
   AuthApi,
 } from "@ai-star-eco/api-client";
 
+export * as DramaAssetsApi from "./drama-assets";
 export * as ArtistsApi from "./artists";
 export * as DapAvatarsApi from "./dap-avatars";
 export * as FilmApi from "./film";
