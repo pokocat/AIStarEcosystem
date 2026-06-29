@@ -39,6 +39,7 @@ import {
   Bot,
   FileSearch,
   Scale,
+  CreditCard,
 } from "lucide-react";
 
 export interface NavItem {
@@ -154,6 +155,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/finance/ledger",            label: "结算中心",   icon: Wallet,        roles: ["FINANCE_ADMIN"], badgeKey: "txn_actionable", description: "钱包 / 流水 / 复核" },
       { href: "/finance/risk",              label: "异常风控",   icon: AlertTriangle, roles: ["FINANCE_ADMIN"], description: "异常打赏与提现" },
       { href: "/finance/recharge-packages", label: "充值套餐",   icon: Gift,          roles: ["FINANCE_ADMIN"], description: "积分充值套餐 CRUD（含按子应用配置）" },
+      { href: "/finance/payment-config",    label: "支付配置",   icon: CreditCard,    roles: ["FINANCE_ADMIN"], description: "支付渠道（支付宝/微信）启用 + 机密配置（多渠道并存，用户收银台自选）" },
     ],
   },
   // v2 §6：积分运营（积分面，不碰真实资金；OPERATOR 提交 / FINANCE_ADMIN 复核 maker-checker）
