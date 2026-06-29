@@ -68,6 +68,13 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.91 · 2026-06-29 · 充值走真实支付链路 + 下线提现入口（防资损）
+
+- **充值统一走真实在线支付（`finance/page.tsx`）**：财务中心「充值」原来用旧的线下/即时入账弹窗（`FinanceApi.createRecharge` → `/me/wallet/recharge`，「充值后立即到账」）—— 改为跳转 `/wallet` 走真实收银台（`/wallet/checkout`：下单 → 拉起支付宝 → 异步 notify 回调 `settlePaidOrder` 入账，幂等防重复扣款）。删除即时充值弹窗 `RechargeDialog`。
+  - 注：真实 微信/支付宝 由后端支付驱动决定（`AEP_PAYMENT_DRIVER=alipay`/`jeepay` + 凭据，网关 + 回调已就位）；dev 默认 `shadow` 驱动会显示「模拟支付」按钮（仅 dev）。
+- **下线提现入口（防资损）**：现阶段不支持提现 —— 删除财务中心「提现」按钮 + `WithdrawDialog` + 流水「提现」筛选项；「待结算」KPI 文案改「结算在途」。历史流水仍保留「提现」类型标签用于显示。后端 `/me/wallet/withdraw` 端点保留（其他端可能复用），仅下线 drama 前端入口。
+- **门禁**：web-drama typecheck/build + contract 全绿。
+
 ### v0.90 · 2026-06-29 · 工作台左栏还原 + 角色/场景参考图上传素材库 + 场景看大图/AI 改图
 
 - **工作台左边栏还原设计稿（`workbench/stage-rail.tsx`）**：项目头卡（封面 + 标题 + 类型·集数）+ 时间线两步（短剧设定「进行中」/ 剧集工作台「第 N 集」+「进工作台 →」），「转换为互动剧」钉底；后台任务面板嵌入轨底。`WorkshopShell` 传 `meta`。
