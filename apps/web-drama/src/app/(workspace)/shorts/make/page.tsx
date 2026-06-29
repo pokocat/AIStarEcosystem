@@ -16,12 +16,17 @@ import {
   Edit,
   Film,
   Image as ImageIcon,
+  Maximize2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
   ScrollText,
   Sparkles,
   Trash2,
+  X,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -80,6 +85,93 @@ function OutlineLabel({ children, hint }: { children: React.ReactNode; hint?: st
       <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flex: "none" }} />
       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "var(--ink-3)" }}>{children}</span>
       {hint && <span className="faint" style={{ fontSize: 11 }}>{hint}</span>}
+    </div>
+  );
+}
+
+/**
+ * 可编辑文本字段：默认看起来就是文本，鼠标移上去（或聚焦）才显高亮底 + 文末铅笔，
+ * 明确「这里能点进去改」。input / textarea 通用。
+ */
+function EditableField({
+  value,
+  onChange,
+  placeholder,
+  multiline,
+  rows,
+  textStyle,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  rows?: number;
+  textStyle?: React.CSSProperties;
+}) {
+  const [hover, setHover] = React.useState(false);
+  const [focus, setFocus] = React.useState(false);
+  const active = hover || focus;
+  const fieldStyle: React.CSSProperties = {
+    width: "100%",
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    padding: 0,
+    margin: 0,
+    fontFamily: "inherit",
+    color: "var(--ink)",
+    ...(multiline ? { resize: "none" as const } : null),
+    ...textStyle,
+  };
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: "relative",
+        borderRadius: 8,
+        padding: "6px 8px",
+        margin: "-6px -8px",
+        transition: "background .15s, box-shadow .15s",
+        background: active ? "color-mix(in oklch, var(--ink) 5%, transparent)" : "transparent",
+        boxShadow: focus ? "inset 0 0 0 1.5px color-mix(in oklch, var(--accent) 55%, transparent)" : "none",
+        cursor: "text",
+      }}
+    >
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setFocus(false)}
+          placeholder={placeholder}
+          rows={rows ?? 2}
+          style={fieldStyle}
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setFocus(false)}
+          placeholder={placeholder}
+          style={fieldStyle}
+        />
+      )}
+      {/* hover 提示：文末铅笔（聚焦编辑时隐藏，避免遮挡） */}
+      {active && !focus && (
+        <Pencil
+          size={12}
+          style={{
+            position: "absolute",
+            top: multiline ? 9 : "50%",
+            right: 8,
+            transform: multiline ? "none" : "translateY(-50%)",
+            color: "var(--ink-3)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -278,6 +370,10 @@ function ShortMakerInner({
   const [deleting, setDeleting] = React.useState(false);
   // 后续推荐 action：AI 每生成 / 改写一版脚本就刷新（来自后端 suggestions），并随草稿持久化、重开恢复。
   const [suggestions, setSuggestions] = React.useState<string[]>(() => initial.suggestions ?? []);
+  // 左侧 AI 对话可折叠（收起成细边栏，给右侧大纲 / 分镜更多空间）。
+  const [chatCollapsed, setChatCollapsed] = React.useState(false);
+  // 分镜表放大：全屏弹层展示，方便逐镜编辑。
+  const [tableMax, setTableMax] = React.useState(false);
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
@@ -541,6 +637,22 @@ function ShortMakerInner({
     toast.success("全部镜头已出片，可合成成片");
   };
 
+  // 分镜表元素：内联与「放大」全屏弹层共用同一份（同一组 handlers）。
+  const storyboardTable = (
+    <ShortStoryboardTable
+      shots={shots}
+      beats={SHORT_BEATS}
+      speakerOptions={["口播", "旁白"]}
+      locked={draftStatus === "done"}
+      busy={busy}
+      onPatch={(id, patch) => updShot(id, patch)}
+      onDelete={(id) => setShots((arr) => arr.filter((x) => x.id !== id).map((x, j) => ({ ...x, no: j + 1 })))}
+      onRender={(id, kind) => render(id, kind === "frame" ? "frame" : "clip", kind === "frame" ? 2 : kind === "direct" ? 9 : 7)}
+      onApprove={(id) => updShot(id, { flow: "done" })}
+      onFrameEdited={(id, frameUrl) => updShot(id, { flow: "frame", frameUrl, frameUrls: [frameUrl] })}
+    />
+  );
+
   return (
     <div className="col ws-flush" style={{ minHeight: 0, background: "var(--bg)", position: "relative" }}>
       {/* 顶栏 */}
@@ -579,7 +691,27 @@ function ShortMakerInner({
       {/* 脚本步:左 AI 对话 / 右 生成脚本 · 工厂步:居中滚动 */}
       {(
         <div className="row grow" style={{ minHeight: 0, alignItems: "stretch" }}>
-          {/* 左:AI 对话 */}
+          {/* 左:AI 对话（可折叠 → 细边栏） */}
+          {chatCollapsed ? (
+            <div
+              className="col"
+              style={{ width: 46, flex: "none", borderRight: "1px solid var(--line)", background: "var(--surface)", minHeight: 0, alignItems: "center", paddingTop: 12, gap: 12 }}
+            >
+              <button
+                type="button"
+                className="btn btn-icon btn-sm"
+                title="展开 AI 助手"
+                aria-label="展开 AI 助手"
+                onClick={() => setChatCollapsed(false)}
+                style={{ flex: "none" }}
+              >
+                <PanelLeftOpen size={16} />
+              </button>
+              <div style={{ writingMode: "vertical-rl", fontSize: 12, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".12em", userSelect: "none" }}>
+                AI 脚本助手
+              </div>
+            </div>
+          ) : (
           <div className="col" style={{ width: 380, flex: "none", borderRight: "1px solid var(--line)", background: "var(--surface)", minHeight: 0 }}>
             <div className="row gap-2" style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-soft)", flex: "none" }}>
               <div
@@ -598,6 +730,17 @@ function ShortMakerInner({
               </div>
               <span style={{ fontWeight: 700, fontSize: 13.5 }}>AI 脚本助手</span>
               <span className="faint" style={{ fontSize: 11 }}>聊出你要的脚本</span>
+              <span className="grow" />
+              <button
+                type="button"
+                className="btn btn-icon btn-sm"
+                title="收起对话"
+                aria-label="收起对话"
+                onClick={() => setChatCollapsed(true)}
+                style={{ flex: "none" }}
+              >
+                <PanelLeftClose size={15} />
+              </button>
             </div>
             <div className="scroll grow col gap-3" style={{ minHeight: 0, padding: "14px 16px" }}>
               {chat.map((m, i) => (
@@ -690,6 +833,7 @@ function ShortMakerInner({
               </div>
             </div>
           </div>
+          )}
 
           {/* 右:结构化分镜脚本(表单式 · 带时间线) */}
           <div className="scroll grow" style={{ minHeight: 0, background: "var(--bg)" }}>
@@ -713,18 +857,18 @@ function ShortMakerInner({
                     {/* 故事 —— metaLine + 大标题 + 一句话故事大纲（对应短剧 logline，放标题下） */}
                     <div className="col gap-3">
                       <div className="faint" style={{ fontSize: 12 }}>{displayName} · 单片 · 竖屏 9:16 · 约 {total} 秒</div>
-                      <input
+                      <EditableField
                         value={meta.title ?? ""}
-                        onChange={(e) => setMeta({ ...meta, title: e.target.value })}
+                        onChange={(v) => setMeta({ ...meta, title: v })}
                         placeholder="给这条短视频起个标题…"
-                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.2, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
+                        textStyle={{ fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.2 }}
                       />
-                      <textarea
+                      <EditableField
+                        multiline
                         value={logline}
-                        onChange={(e) => setLogline(e.target.value)}
+                        onChange={setLogline}
                         placeholder="一句话故事大纲…"
-                        rows={2}
-                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", resize: "none", fontSize: 14.5, lineHeight: 1.8, color: "var(--ink-2)", padding: 0, fontFamily: "inherit" }}
+                        textStyle={{ fontSize: 14.5, lineHeight: 1.8, color: "var(--ink-2)" }}
                       />
                     </div>
 
@@ -771,12 +915,12 @@ function ShortMakerInner({
                     {/* 主场景 —— 同短剧「取景参考」 */}
                     <div className="col gap-3">
                       <OutlineLabel>主场景</OutlineLabel>
-                      <textarea
+                      <EditableField
+                        multiline
                         value={meta.scene ?? ""}
-                        onChange={(e) => setMeta({ ...meta, scene: e.target.value })}
+                        onChange={(v) => setMeta({ ...meta, scene: v })}
                         placeholder="主场景一句话描述"
-                        rows={2}
-                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", resize: "none", fontSize: 13.5, lineHeight: 1.9, color: "var(--ink-2)", padding: 0, fontFamily: "inherit" }}
+                        textStyle={{ fontSize: 13.5, lineHeight: 1.9, color: "var(--ink-2)" }}
                       />
                     </div>
                   </div>
@@ -796,6 +940,11 @@ function ShortMakerInner({
                     <span className="row gap-1 faint" style={{ fontSize: 11.5, flex: "none" }}>
                       <Edit size={12} /> 文字可直接改
                     </span>
+                  )}
+                  {shots.length > 0 && (
+                    <button type="button" className="chip" title="放大分镜表，方便编辑" onClick={() => setTableMax(true)}>
+                      <Maximize2 size={12} /> 放大
+                    </button>
                   )}
                   <button type="button" className="chip" disabled={phase === "gen" || shots.length === 0} onClick={regen}>
                     <RefreshCw size={12} /> 重新生成
@@ -829,20 +978,7 @@ function ShortMakerInner({
                 </div>
               ) : (
                 <div className="col gap-3">
-                  <ShortStoryboardTable
-                    shots={shots}
-                    beats={SHORT_BEATS}
-                    speakerOptions={["口播", "旁白"]}
-                    locked={draftStatus === "done"}
-                    busy={busy}
-                    onPatch={(id, patch) => updShot(id, patch)}
-                    onDelete={(id) => setShots((arr) => arr.filter((x) => x.id !== id).map((x, j) => ({ ...x, no: j + 1 })))}
-                    onRender={(id, kind) =>
-                      render(id, kind === "frame" ? "frame" : "clip", kind === "frame" ? 2 : kind === "direct" ? 9 : 7)
-                    }
-                    onApprove={(id) => updShot(id, { flow: "done" })}
-                    onFrameEdited={(id, frameUrl) => updShot(id, { flow: "frame", frameUrl, frameUrls: [frameUrl] })}
-                  />
+                  {storyboardTable}
                   <button
                     type="button"
                     className="btn btn-line btn-sm"
@@ -862,6 +998,37 @@ function ShortMakerInner({
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 分镜表放大：全屏弹层（与内联共用同一份表，编辑实时同步） */}
+      {tableMax && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="分镜表（放大）"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setTableMax(false);
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(15,10,30,.55)", backdropFilter: "blur(2px)", display: "grid", placeItems: "center", padding: "3vh 2vw" }}
+        >
+          <div className="col" style={{ width: "min(1280px, 96vw)", height: "94vh", background: "var(--bg)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
+            <div className="row gap-2" style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)", background: "var(--surface)", flex: "none", alignItems: "center" }}>
+              <Clapperboard size={16} style={{ color: "var(--accent)" }} />
+              <span style={{ fontWeight: 800, fontSize: 15 }}>分镜表</span>
+              <span className="tag tag-accent" style={{ flex: "none" }}>共 {shots.length} 镜 · 约 {total} 秒</span>
+              <span className="grow" />
+              <span className="row gap-1 faint" style={{ fontSize: 11.5 }}>
+                <Edit size={12} /> 所有字段点击即可改
+              </span>
+              <button type="button" className="btn btn-icon btn-sm" title="关闭放大" aria-label="关闭放大" onClick={() => setTableMax(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="scroll grow" style={{ minHeight: 0, padding: "18px 22px 28px" }}>
+              {storyboardTable}
             </div>
           </div>
         </div>
