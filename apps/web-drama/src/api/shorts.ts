@@ -83,6 +83,8 @@ export interface ShortDraftData {
   shots: ShortDraftShot[];
   chat: ShortDraftChatMsg[];
   refs: Material[];
+  /** AI 跟当前脚本给出的后续修改建议（快捷 chip）；随脚本刷新，重开草稿时恢复。 */
+  suggestions?: string[];
 }
 
 export interface ShortDraftDetail {

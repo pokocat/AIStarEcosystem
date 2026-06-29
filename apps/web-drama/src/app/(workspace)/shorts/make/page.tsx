@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   ChevronLeft,
   Clapperboard,
   Edit,
@@ -234,7 +235,9 @@ function ShortMakerInner({
   const styleName = initial.styleName ?? "";
   const styleRef = initial.styleRef ?? "";
   const hasStyle = !hasTemplate && !!styleRef;
-  const displayName = hasStyle ? styleName || "风格创意" : fmt.name;
+  // 显示用的「类型」标签：套了模版才用模版名；套了创意风格用风格名；都没有就中性「短视频」，
+  // 不要回落到 SHORT_FORMATS[0]（「口播带货」）—— 那只是 fmt 的兜底，拿来展示会误导。
+  const displayName = hasTemplate ? fmt.name : hasStyle ? styleName || "风格创意" : "短视频";
 
   // 套模版上下文：仅当确实选了模版，才把模版节拍作为 AI 生成参考。
   const templateRef = hasTemplate && fmt.beats?.length
@@ -258,6 +261,8 @@ function ShortMakerInner({
   const [shots, setShots] = React.useState<ShortShot[]>(() => (initial.shots as ShortShot[]) ?? []);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
   const [meta, setMeta] = React.useState<ScriptMeta | null>(initial.meta ?? null);
+  // 大纲卡「更多设定」折叠态（默认收起，贴合设计稿简洁版）。
+  const [metaOpen, setMetaOpen] = React.useState(false);
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
   const [refs, setRefs] = React.useState<Material[]>(() => initial.refs ?? []); // @数字人参考
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
@@ -273,8 +278,8 @@ function ShortMakerInner({
   const [draft, setDraft] = React.useState("");
   const [draftStatus, setDraftStatus] = React.useState<"draft" | "done">(initialStatus);
   const [deleting, setDeleting] = React.useState(false);
-  // 后续推荐 action：AI 每生成 / 改写一版脚本就刷新（来自后端 suggestions）；未产出时回落默认。
-  const [suggestions, setSuggestions] = React.useState<string[]>([]);
+  // 后续推荐 action：AI 每生成 / 改写一版脚本就刷新（来自后端 suggestions），并随草稿持久化、重开恢复。
+  const [suggestions, setSuggestions] = React.useState<string[]>(() => initial.suggestions ?? []);
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
@@ -288,8 +293,9 @@ function ShortMakerInner({
     idea: initial.idea ?? null,
     reopen: initial.reopen ?? reopen ?? null,
     fmtKey: resolvedFmtKey,
-    // 没套短视频模版时保留草稿原本的 fmtName（如创意套用来的「风格短片」），不被默认模版名覆盖。
-    fmtName: hasTemplate ? fmt.name : initial.fmtName || fmt.name,
+    // 没套短视频模版时保留草稿原本的 fmtName（如创意套用来的「风格短片」），不被默认模版名覆盖；
+    // 都没有就用中性「短视频」，不要落 SHORT_FORMATS[0]（「口播带货」）这个误导性兜底。
+    fmtName: hasTemplate ? fmt.name : initial.fmtName || (hasStyle ? styleName || "风格创意" : "短视频"),
     styleName: styleName || undefined,
     styleRef: styleRef || undefined,
     title: meta?.title || initial.title || title,
@@ -298,6 +304,7 @@ function ShortMakerInner({
     shots,
     chat,
     refs,
+    suggestions,
   };
 
   const queueSave = React.useCallback(() => {
@@ -324,7 +331,7 @@ function ShortMakerInner({
       return;
     }
     queueSave();
-  }, [step, meta, shots, chat, refs, queueSave]);
+  }, [step, meta, shots, chat, refs, suggestions, queueSave]);
   React.useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -438,9 +445,8 @@ function ShortMakerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 快捷修改 chip：优先用 AI 跟当前脚本给出的后续建议；AI 没产出时回落到通用兜底（仅占位，非伪造产物）。
-  const FALLBACK_QUICK = ["口吻再口语一点", "开头加个更狠的钩子", "缩到 20 秒内", "多一点产品特写"];
-  const quickChips = suggestions.length ? suggestions : FALLBACK_QUICK;
+  // 快捷修改 chip：只来自 AI 跟当前脚本给出的后续建议（不写死兜底）；没有建议就不显示这排。
+  const quickChips = suggestions;
   const sendChat = (text: string) => {
     const t = (text || "").trim();
     if (!t || phase === "gen") return;
@@ -451,9 +457,9 @@ function ShortMakerInner({
   const updShot = (id: string, patch: Partial<ShortShot>) =>
     setShots((arr) => arr.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   /** 单镜生成：文字同步等待；首帧 / 视频走后台任务 + 前台轮询。 */
-  const render = async (id: string, to: ShotFlow, _cost: number) => {
+  const render = async (id: string, to: ShotFlow, _cost: number): Promise<boolean> => {
     const shot = shots.find((s) => s.id === id);
-    if (!shot || busy) return;
+    if (!shot || busy) return false;
     setBusy({ id, to });
     // 把「整体短视频说明」注入每镜提示词，保证风格 / 场景 / 主角跨镜一致 —— 出片更准确。
     const metaCtx = metaPromptPrefix(meta);
@@ -494,11 +500,44 @@ function ShortMakerInner({
         updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id });
         toast.success("镜头视频已生成");
       }
+      return true;
     } catch (e) {
       toast.error(aiErrorMessage(e, "生成失败，请稍后重试"));
+      return false;
     } finally {
       setBusy(null);
     }
+  };
+
+  /**
+   * 一键连跑出片（安全版，v0.94）：一次确认总价，再依次为未完成镜头生成视频。
+   * 与 v0.66 下线的旧「连跑」不同：① 单次 dramaConfirm 展示预计总消耗；② 顺序 await，
+   * 期间镜头上显示进度；③ 任一镜失败即停，已出的保留。各镜真实计费仍在后台。
+   */
+  const runAll = async () => {
+    if (busy) return;
+    const pending = shots.filter((s) => s.flow !== "done");
+    if (!pending.length) {
+      toast("所有镜头都已出片，可直接合成成片");
+      return;
+    }
+    const cost = pending.reduce((a, s) => a + (s.flow === "frame" ? SHORT_CLIP_COST : SHORT_DIRECT_COST), 0);
+    const ok = await dramaConfirm({
+      title: "一键连跑出片",
+      body: `将为 ${pending.length} 个未完成镜头依次生成视频，预计消耗约 ${cost} 积分（按各镜实际计费）。生成期间可在镜头上看到进度，可随时离开。`,
+      confirmLabel: "开始出片",
+      cancelLabel: "取消",
+    });
+    if (!ok) return;
+    for (const s of pending) {
+      const done = await render(s.id, "clip", s.flow === "frame" ? SHORT_CLIP_COST : SHORT_DIRECT_COST);
+      if (!done) {
+        toast.error("出片中断，已完成的镜头已保留，可稍后重试");
+        return;
+      }
+      updShot(s.id, { flow: "done" });
+    }
+    toast.success("全部镜头已出片，可合成成片");
   };
 
   return (
@@ -596,15 +635,21 @@ function ShortMakerInner({
                   </div>
                 </div>
               )}
+              {/* 后续推荐 action：跟在最新 AI 回复下面，点一下即作为「继续修改」指令发送。 */}
+              {phase !== "gen" && quickChips.length > 0 && (
+                <div className="col gap-2" style={{ alignItems: "flex-start" }}>
+                  <span className="faint" style={{ fontSize: 11 }}>试试这样改：</span>
+                  <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                    {quickChips.map((q) => (
+                      <button key={q} type="button" className="chip" style={{ fontSize: 11.5 }} onClick={() => sendChat(q)}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="col gap-2" style={{ padding: "10px 14px 14px", borderTop: "1px solid var(--line-soft)", flex: "none" }}>
-              <div className="row gap-2" style={{ flexWrap: "wrap" }}>
-                {quickChips.map((q) => (
-                  <button key={q} type="button" className="chip" style={{ fontSize: 11.5 }} disabled={phase === "gen"} onClick={() => sendChat(q)}>
-                    {q}
-                  </button>
-                ))}
-              </div>
               <div className="row gap-2" style={{ alignItems: "flex-end" }}>
                 <textarea
                   value={draft}
@@ -655,8 +700,14 @@ function ShortMakerInner({
                     <Sparkles size={15} style={{ color: "var(--accent)" }} />
                     <span style={{ fontWeight: 800, fontSize: 14 }}>短视频大纲</span>
                     <span className="tag tag-gray" style={{ flex: "none" }}>口播种草 · 约 {total} 秒 · 竖屏 9:16</span>
-                    <span className="faint" style={{ fontSize: 11 }}>AI 先定调 · 分镜与出片都据此保持一致，可直接改</span>
                   </div>
+                  {/* 概述：一句话标题作为大纲描述（设计稿描述位，可直接改） */}
+                  <input
+                    value={meta.title ?? ""}
+                    onChange={(e) => setMeta({ ...meta, title: e.target.value })}
+                    placeholder="一句话概述这条短视频…"
+                    style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 15.5, fontWeight: 700, lineHeight: 1.5, color: "var(--ink)", padding: 0, fontFamily: "inherit", letterSpacing: "-.01em" }}
+                  />
                   {/* v0.88：短视频大纲 beat 流（设计稿口播种草模型）。 */}
                   <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                     {SHORT_BEATS.map((b, i) => (
@@ -666,58 +717,62 @@ function ShortMakerInner({
                       </React.Fragment>
                     ))}
                   </div>
-                  <div className="col gap-1">
-                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>标题</span>
-                    <input
-                      value={meta.title ?? ""}
-                      onChange={(e) => setMeta({ ...meta, title: e.target.value })}
-                      placeholder="一句话标题"
-                      style={META_INPUT}
-                    />
-                  </div>
-                  <div className="col gap-1">
-                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>风格</span>
-                    {/* v0.88：风格可编辑（用、或逗号分隔；落库随草稿自动保存） */}
-                    <input
-                      value={(meta.style ?? []).join("、")}
-                      onChange={(e) => setMeta({ ...meta, style: e.target.value.split(/[、,，]/).map((x) => x.trim()).filter(Boolean) })}
-                      placeholder="风格关键词，用、或逗号分隔（如 口播种草、强钩子、暖色）"
-                      style={META_INPUT}
-                    />
-                    {meta.style?.length ? (
-                      <div className="row gap-2" style={{ flexWrap: "wrap", marginTop: 4 }}>
-                        {meta.style.map((s, i) => (
-                          <span key={i} className="chip static" style={{ height: 24, fontSize: 11.5, background: "var(--accent-soft)", color: "var(--accent)" }}>{s}</span>
-                        ))}
+                  {/* 折叠：更多设定（风格 / 主场景 / 主角，喂提示词统一全片）。默认收起，贴合设计稿简洁版。 */}
+                  <button
+                    type="button"
+                    onClick={() => setMetaOpen((v) => !v)}
+                    className="row gap-1"
+                    style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 12, fontWeight: 600, padding: "2px 0" }}
+                  >
+                    <ChevronDown size={13} style={{ transform: metaOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+                    {metaOpen ? "收起设定" : "更多设定（风格 / 场景 / 主角）"}
+                  </button>
+                  {metaOpen && (
+                    <div className="col gap-3" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 12 }}>
+                      <div className="col gap-1">
+                        <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>风格</span>
+                        <input
+                          value={(meta.style ?? []).join("、")}
+                          onChange={(e) => setMeta({ ...meta, style: e.target.value.split(/[、,，]/).map((x) => x.trim()).filter(Boolean) })}
+                          placeholder="风格关键词，用、或逗号分隔（如 口播种草、强钩子、暖色）"
+                          style={META_INPUT}
+                        />
+                        {meta.style?.length ? (
+                          <div className="row gap-2" style={{ flexWrap: "wrap", marginTop: 4 }}>
+                            {meta.style.map((s, i) => (
+                              <span key={i} className="chip static" style={{ height: 24, fontSize: 11.5, background: "var(--accent-soft)", color: "var(--accent)" }}>{s}</span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
-                  <div className="col gap-1">
-                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主场景</span>
-                    <textarea
-                      value={meta.scene ?? ""}
-                      onChange={(e) => setMeta({ ...meta, scene: e.target.value })}
-                      placeholder="主场景一句话描述"
-                      rows={2}
-                      style={{ ...META_INPUT, resize: "none" }}
-                    />
-                  </div>
-                  <div className="col gap-1">
-                    <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主角</span>
-                    <input
-                      value={meta.character?.name ?? ""}
-                      onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), name: e.target.value } })}
-                      placeholder="角色名"
-                      style={META_INPUT}
-                    />
-                    <textarea
-                      value={meta.character?.description ?? ""}
-                      onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), description: e.target.value } })}
-                      placeholder="形象与性格一句话"
-                      rows={2}
-                      style={{ ...META_INPUT, resize: "none" }}
-                    />
-                  </div>
+                      <div className="col gap-1">
+                        <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主场景</span>
+                        <textarea
+                          value={meta.scene ?? ""}
+                          onChange={(e) => setMeta({ ...meta, scene: e.target.value })}
+                          placeholder="主场景一句话描述"
+                          rows={2}
+                          style={{ ...META_INPUT, resize: "none" }}
+                        />
+                      </div>
+                      <div className="col gap-1">
+                        <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主角</span>
+                        <input
+                          value={meta.character?.name ?? ""}
+                          onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), name: e.target.value } })}
+                          placeholder="角色名"
+                          style={META_INPUT}
+                        />
+                        <textarea
+                          value={meta.character?.description ?? ""}
+                          onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), description: e.target.value } })}
+                          placeholder="形象与性格一句话"
+                          rows={2}
+                          style={{ ...META_INPUT, resize: "none" }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -738,6 +793,17 @@ function ShortMakerInner({
                   <button type="button" className="chip" disabled={phase === "gen" || shots.length === 0} onClick={regen}>
                     <RefreshCw size={12} /> 重新生成
                   </button>
+                  {shots.length > 0 && draftStatus !== "done" && (
+                    <button
+                      type="button"
+                      className="btn btn-grad btn-sm"
+                      style={{ flex: "none" }}
+                      disabled={!!busy || doneCount === shots.length}
+                      onClick={() => void runAll()}
+                    >
+                      <Zap size={14} /> 一键连跑出片
+                    </button>
+                  )}
                 </div>
               )}
 
