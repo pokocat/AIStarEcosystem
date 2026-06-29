@@ -5071,7 +5071,7 @@ paths:
     post:
       tags: [finance]
       operationId: alipayPayNotify
-      summary: '【支付宝异步回调·仅 driver=alipay】permitAll + RSA2 验签（v2 §6.4 触点②）：验签→trade_status 成功 + total_amount(元→分)匹配→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。其它 driver 下此端点不注册。'
+      summary: '【支付宝异步回调】permitAll + RSA2 验签（v2 §6.4 触点②，v0.94 常驻注册）：验签→trade_status 成功 + total_amount(元→分)匹配→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。支付宝未启用/未配置时 verifyNotify 返回 false → fail。'
       requestBody:
         required: true
         content:
@@ -5085,6 +5085,36 @@ paths:
           content:
             text/plain:
               schema: { type: string }
+
+  /pay/notify/wechat:
+    post:
+      tags: [finance]
+      operationId: wechatPayNotify
+      summary: '【微信支付 V3 异步回调】permitAll + V3 验签 + AES-GCM 解密（v0.94，常驻注册）：解密 Transaction→trade_state SUCCESS + amount(分)匹配→复用 settlePaidOrder（幂等）。回 200 {"code":"SUCCESS"} / 5xx {"code":"FAIL"}（让微信重投）。'
+      parameters:
+        - { name: Wechatpay-Serial, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Signature, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Timestamp, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Nonce, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Signature-Type, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: 微信 V3 回调密文体（id/create_time/resource{ciphertext,nonce,associated_data} …）
+      responses:
+        '200':
+          description: '{"code":"SUCCESS"}（已处理 / 止重投）'
+          content:
+            application/json:
+              schema: { type: object, properties: { code: { type: string }, message: { type: string } } }
+        '500':
+          description: '{"code":"FAIL"}（验签或金额不符，微信重投）'
+          content:
+            application/json:
+              schema: { type: object, properties: { code: { type: string }, message: { type: string } } }
 
   /admin/finance/recharge-orders/reconcile:
     post:
@@ -6107,6 +6137,16 @@ paths:
     post: { tags: [admin-celebrity], operationId: adminTransitionCelebrityStarAuthorization, responses: { '200': { description: ok } } }
 
   # ── 充值套餐 CRUD（v0.5 §D4 新增） ────────────────────────────────────
+  # ── 支付配置（v0.94 多渠道：渠道启用 + 机密运行时可配，FINANCE_ADMIN/SUPER_ADMIN，机密脱敏出 wire） ──
+  /admin/payment/channels:
+    get: { tags: [admin-finance], operationId: adminListPaymentChannels, summary: '全部可配支付渠道（脱敏）', responses: { '200': { description: ok } } }
+  /admin/payment/channels/{code}:
+    parameters: [{ name: code, in: path, required: true, schema: { type: string, description: 'alipay / wechat' } }]
+    put:  { tags: [admin-finance], operationId: adminUpdatePaymentChannel, summary: '改启用/沙箱/默认支付方式/机密（空=保留，__CLEAR__=清空）', responses: { '200': { description: ok } } }
+  /admin/payment/channels/{code}/test:
+    parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-finance], operationId: adminTestPaymentChannel, summary: '轻量自检：机密是否齐全 + 网关是否就绪', responses: { '200': { description: ok } } }
+
   /admin/finance/recharge-packages:
     get:  { tags: [admin-finance], operationId: adminListRechargePackages, responses: { '200': { description: ok } } }
     post: { tags: [admin-finance], operationId: adminCreateRechargePackage, responses: { '201': { description: created } } }
