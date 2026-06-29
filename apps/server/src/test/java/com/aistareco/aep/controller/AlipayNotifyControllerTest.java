@@ -28,7 +28,7 @@ class AlipayNotifyControllerTest {
 
     /** priceCents=9900 的订单 DTO（仅 priceCents 被控制器用到）。 */
     private static RechargeOrderDto order(long priceCents) {
-        return new RechargeOrderDto(ORDER, "u1", null, null, null, "pkg", "标准包",
+        return new RechargeOrderDto(ORDER, "u1", null, null, null, null, "pkg", "标准包",
                 1000, 0, priceCents, "pending", null, null, null,
                 null, null, null,                   // createdAt / updatedAt / reviewedAt
                 null, null, null, null, null, null, // 在线支付字段

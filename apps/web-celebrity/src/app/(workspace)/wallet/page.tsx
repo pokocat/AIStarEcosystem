@@ -513,13 +513,17 @@ function PackageTile({
         {formatCredits(pkg.credits)}
         <span style={{ fontSize: 12, fontWeight: 400, color: "var(--fg-2)", marginLeft: 4 }}>积分</span>
       </div>
+      {/* 赠送行可选 —— 缺省时不渲染。下方价格 / 按钮用 marginTop:auto 钉到卡片底部，
+          配合 grid 项默认拉伸等高，使同一行里有/无赠送的卡片价格与按钮对齐。 */}
       {!!pkg.bonusCredits && pkg.bonusCredits > 0 && (
         <div style={{ fontSize: 12, color: "var(--accent-strong)" }}>赠送 {formatCredits(pkg.bonusCredits)} 积分</div>
       )}
-      <div style={{ fontSize: 13, color: "var(--fg-1)" }}>{formatCurrency(pkg.priceCents)}</div>
-      <Button variant={selected ? "accent" : pkg.recommended ? "accent" : "secondary"} size="sm" onClick={onClick}>
-        {selected ? "已选择" : "申请充值"}
-      </Button>
+      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 13, color: "var(--fg-1)" }}>{formatCurrency(pkg.priceCents)}</div>
+        <Button variant={selected ? "accent" : pkg.recommended ? "accent" : "secondary"} size="sm" onClick={onClick}>
+          {selected ? "已选择" : "申请充值"}
+        </Button>
+      </div>
     </div>
   );
 }

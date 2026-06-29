@@ -11,6 +11,8 @@ public record WalletDto(
         /** v0.58：账号登录名 / 昵称（admin 结算中心钱包快照用；用户自查接口不填，wire 上省略）。 */
         String username,
         String displayName,
+        /** v0.86：账号手机号（admin 财务工作台辨识用户身份；同上 owner 为 null 时省略）。 */
+        String phone,
         long totalBalance,
         long licenseBalance,
         long rechargeBalance,
@@ -29,6 +31,7 @@ public record WalletDto(
                 w.getId(), w.getUserId(),
                 owner != null ? owner.getUsername() : null,
                 owner != null ? owner.getDisplayName() : null,
+                owner != null ? owner.getPhone() : null,
                 w.getTotalBalance(), w.getLicenseBalance(),
                 w.getRechargeBalance(), w.getGiftBalance(),
                 w.getPendingBalance(),

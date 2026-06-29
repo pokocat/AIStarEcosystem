@@ -15,6 +15,8 @@ export interface Wallet {
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份） */
+  phone?: string;
   totalBalance: number;        // = licenseBalance + rechargeBalance + giftBalance
   licenseBalance: number;      // License 核销累计入账
   rechargeBalance: number;     // 充值累计入账
@@ -47,6 +49,8 @@ export interface LedgerEntry {
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份） */
+  phone?: string;
   type: LedgerEntryType;
   amount: number;            // 原始整数；正数=入账，负数=出账
   balanceAfter: number;      // 入账后总余额

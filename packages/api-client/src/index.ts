@@ -40,6 +40,9 @@ export {
 // 业务 mock 在各 web app 自行注册并可覆盖这些 handler。
 import "./_bootstrap-mocks";
 
+// 充值套餐的 dev/mock 真值（= admin 后端配置 / seed）。子应用 mock 兜底应复用它，避免漂移。
+export { DEFAULT_RECHARGE_PACKAGES } from "./_mocks";
+
 export * from "./format";
 
 import * as AccountApi from "./api/account";

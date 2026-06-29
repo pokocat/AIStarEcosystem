@@ -14,5 +14,7 @@ public record TransactionDto(
         String userId,
         /** v0.58：账号登录名 / 昵称（结算中心业务交易视图溯源用）。 */
         String username,
-        String displayName
+        String displayName,
+        /** v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）。 */
+        String phone
 ) {}

@@ -1,5 +1,6 @@
 package com.aistareco.aep.dto;
 
+import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.RechargeOrder;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -18,6 +19,8 @@ public record RechargeOrderDto(
         String username,
         String displayName,
         String studioName,
+        /** v0.86：账号手机号（admin 财务工作台辨识用户身份；read-time 回填 owner.phone，用户自查省略）。 */
+        String phone,
         String packageId,
         String packageTag,
         long credits,
@@ -49,12 +52,18 @@ public record RechargeOrderDto(
         String refundLedgerEntryId
 ) {
     public static RechargeOrderDto from(RechargeOrder o) {
+        return from(o, null);
+    }
+
+    /** admin 财务工作台视图：附带手机号（owner 为 null 时省略，等价旧 shape）。 */
+    public static RechargeOrderDto from(RechargeOrder o, AepUser owner) {
         return new RechargeOrderDto(
                 o.getId(),
                 o.getUserId(),
                 o.getUsername(),
                 o.getDisplayName(),
                 o.getStudioName(),
+                owner != null ? owner.getPhone() : null,
                 o.getPackageId(),
                 o.getPackageTag(),
                 o.getCredits(),

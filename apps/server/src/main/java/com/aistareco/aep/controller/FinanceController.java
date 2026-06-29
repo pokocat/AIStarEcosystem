@@ -138,7 +138,8 @@ public class FinanceController {
                 "completed",
                 txType(e.getEntryType()),
                 e.getUserId(),
-                // 用户自查自己的流水，无需回显登录名 / 昵称（wire 上省略）
+                // 用户自查自己的流水，无需回显登录名 / 昵称 / 手机号（wire 上省略）
+                null,
                 null,
                 null
         );

@@ -334,7 +334,21 @@ public class RechargeService {
         } else {
             rows = orderRepo.findAllByOrderByCreatedAtDesc();
         }
-        return rows.stream().map(RechargeOrderDto::from).toList();
+        // v0.86：财务工作台辨识用户身份 —— read-time 批量回填手机号（避免 N+1；旧订单也能显示）。
+        java.util.Map<String, AepUser> users = usersByIds(rows.stream().map(RechargeOrder::getUserId).toList());
+        return rows.stream().map(o -> RechargeOrderDto.from(o, users.get(o.getUserId()))).toList();
+    }
+
+    /** 按 id 批量取用户（去重 + 过滤 null），DTO enrich 用。 */
+    private java.util.Map<String, AepUser> usersByIds(java.util.List<String> ids) {
+        java.util.Set<String> distinct = new java.util.HashSet<>();
+        for (String id : ids) {
+            if (id != null && !id.isBlank()) distinct.add(id);
+        }
+        if (distinct.isEmpty()) return java.util.Map.of();
+        java.util.Map<String, AepUser> out = new java.util.HashMap<>();
+        for (AepUser u : userRepo.findAllById(distinct)) out.put(u.getId(), u);
+        return out;
     }
 
     /** 在线支付订单判定：有 wayCode 或 payOrderId（线下 createOrder 两者皆空）。决定能否手工核准。 */

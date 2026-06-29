@@ -29,6 +29,8 @@ export interface RechargeOrder {
   username?: string;
   displayName?: string;
   studioName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份；read-time 回填） */
+  phone?: string;
   packageId: string;
   packageTag?: string;
   credits: number;

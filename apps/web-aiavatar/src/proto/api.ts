@@ -921,11 +921,13 @@ export type WalletPackage = {
 };
 export type CheckoutResult = { orderId: string; payDataType: string; payData: string };
 
+// 仅 USE_MOCK=1（无后端 dev）兜底套餐示例。真模式（下方）打 /me/wallet/packages?sourceApp=aiavatar
+// 取 admin 后台配置 —— 充值套餐上线后纯靠后台配置，后端不播种 seed。改价 / 加套餐去 admin 财务控制台。
 const MOCK_WALLET_PACKAGES: WalletPackage[] = [
-  { id: "pkg-av-500", credits: 500, priceCents: 3_900, tag: "体验包", recommended: false, bonusCredits: 0 },
-  { id: "pkg-av-1200", credits: 1_200, priceCents: 8_900, tag: "超值包", recommended: true, bonusCredits: 100 },
-  { id: "pkg-av-3000", credits: 3_000, priceCents: 19_900, tag: "热门包", recommended: false, bonusCredits: 300 },
-  { id: "pkg-av-8000", credits: 8_000, priceCents: 49_900, tag: "企业包", recommended: false, bonusCredits: 1_000 },
+  { id: "pkg-300", credits: 300, priceCents: 9_900, tag: "体验包", recommended: false, bonusCredits: 0 },
+  { id: "pkg-1000", credits: 1_000, priceCents: 29_900, tag: "标准包", recommended: true, bonusCredits: 100 },
+  { id: "pkg-3000", credits: 3_000, priceCents: 79_900, tag: "热门包", recommended: false, bonusCredits: 500 },
+  { id: "pkg-10000", credits: 10_000, priceCents: 239_900, tag: "企业包", recommended: false, bonusCredits: 2_000 },
 ];
 
 /** 主用户域 fetch（/api 前缀，非 /api/v1；带 Bearer + X-App-Code）。用于复用 /me/wallet/*。 */

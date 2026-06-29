@@ -36,7 +36,7 @@ class CreditOpsServiceTest {
         creditService = mock(CreditService.class);
         when(creditService.creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString()))
                 .thenAnswer(inv -> new LedgerEntryDto("le_x", "w1", inv.getArgument(0, String.class),
-                        null, null, "gift", inv.getArgument(1, Long.class), 0, "d",
+                        null, null, null, "gift", inv.getArgument(1, Long.class), 0, "d",
                         inv.getArgument(4, String.class), inv.getArgument(3, String.class), Instant.now()));
         requestRepo = mock(CreditAdjustmentRequestRepository.class);
         ledgerRepo = mock(com.aistareco.aep.repository.LedgerEntryRepository.class);

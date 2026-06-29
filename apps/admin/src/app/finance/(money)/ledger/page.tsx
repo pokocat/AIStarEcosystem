@@ -27,39 +27,42 @@ const TXN_TYPE_LABEL: Record<string, string> = {
   license_grant: "秘钥入账",
 };
 
-/** 账号单元格：昵称 + 登录名 + 用户 ID，server 未回填（老数据）时退回 userId。 */
+/** 账号单元格：昵称 + 登录名 + 手机号 + 用户 ID，server 未回填（老数据）时退回 userId。 */
 function AccountCell({
   userId,
   username,
   displayName,
+  phone,
 }: {
   userId?: string;
   username?: string;
   displayName?: string;
+  phone?: string;
 }) {
-  if (!username && !displayName) {
+  if (!username && !displayName && !phone) {
     return <span className="text-sm text-muted-foreground">{userId ?? "—"}</span>;
   }
   return (
     <div className="min-w-0">
-      <div className="text-sm font-medium truncate">{displayName || username}</div>
+      <div className="text-sm font-medium truncate">{displayName || username || userId}</div>
       <div className="text-xs text-muted-foreground truncate">
         登录名 {username ?? "—"}
         {userId && <span className="opacity-70"> · {userId.slice(0, 8)}</span>}
       </div>
+      <div className="text-xs text-muted-foreground truncate">手机号 {phone ?? "—"}</div>
     </div>
   );
 }
 
 /** 导出 CSV（UTF-8 BOM，Excel 中文不乱码）。金额 / 余额导出原始整数，时间 ISO 到秒。 */
 function exportLedgerCsv(ledger: LedgerEntry[]) {
-  const header = ["单号", "账号登录名", "账号昵称", "用户ID", "类型", "说明", "金额(credits)", "余额(credits)", "时间"];
+  const header = ["单号", "账号登录名", "账号昵称", "账号手机号", "用户ID", "类型", "说明", "金额(credits)", "余额(credits)", "时间"];
   const escape = (v: unknown) => {
     const s = v == null ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const rows = ledger.map((e) =>
-    [e.id, e.username ?? "", e.displayName ?? "", e.userId, e.type, e.description, e.amount, e.balanceAfter, e.createdAt]
+    [e.id, e.username ?? "", e.displayName ?? "", e.phone ?? "", e.userId, e.type, e.description, e.amount, e.balanceAfter, e.createdAt]
       .map(escape)
       .join(",")
   );
@@ -222,7 +225,7 @@ export default function LedgerPage() {
                   {!loading && wallets.map((w) => (
                     <TableRow key={w.id}>
                       <TableCell>
-                        <AccountCell userId={w.userId} username={w.username} displayName={w.displayName} />
+                        <AccountCell userId={w.userId} username={w.username} displayName={w.displayName} phone={w.phone} />
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-medium">{formatCredits(w.totalBalance)}</TableCell>
                       <TableCell className="text-right tabular-nums text-sm">{formatCredits(w.licenseBalance)}</TableCell>
@@ -274,7 +277,7 @@ export default function LedgerPage() {
                     <TableRow key={e.id}>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">#{e.id.slice(0, 8).toUpperCase()}</TableCell>
                       <TableCell>
-                        <AccountCell userId={e.userId} username={e.username} displayName={e.displayName} />
+                        <AccountCell userId={e.userId} username={e.username} displayName={e.displayName} phone={e.phone} />
                       </TableCell>
                       <TableCell><StatusBadge meta={LEDGER_ENTRY_TYPE[e.type]} /></TableCell>
                       <TableCell className="text-sm">{e.description}</TableCell>
@@ -345,7 +348,7 @@ export default function LedgerPage() {
                             <TableCell className="font-medium">{t.source}</TableCell>
                             <TableCell className="text-sm">{TXN_TYPE_LABEL[t.type] ?? t.type}</TableCell>
                             <TableCell>
-                              <AccountCell userId={t.userId} username={t.username} displayName={t.displayName} />
+                              <AccountCell userId={t.userId} username={t.username} displayName={t.displayName} phone={t.phone} />
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                               {formatDateTimeCN(t.createdAt ?? t.date)}

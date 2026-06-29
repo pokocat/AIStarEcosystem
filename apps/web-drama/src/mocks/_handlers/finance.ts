@@ -1,8 +1,8 @@
 // mocks/_handlers/finance.ts — 财务领域 mock handlers（钱包 / 月度收入 / 流水 / 充值 / 提现）。
 
 import type { Transaction } from "@ai-star-eco/types/finance";
-import type { RechargeOrder, RechargePackage, Wallet } from "@ai-star-eco/types/wallet";
-import { ApiError, mockDelay, registerMocks } from "@ai-star-eco/api-client";
+import type { RechargeOrder, Wallet } from "@ai-star-eco/types/wallet";
+import { ApiError, DEFAULT_RECHARGE_PACKAGES, mockDelay, registerMocks } from "@ai-star-eco/api-client";
 import { REVENUE_MONTHLY, REVENUE_SOURCES, TRANSACTIONS } from "@/mocks/finance";
 import type { RechargeInput, WithdrawalInput } from "@/api/finance";
 
@@ -28,12 +28,10 @@ const invalidAmount = (msg: string) =>
 const insufficient = (msg: string) =>
   new ApiError({ code: "drama.insufficient_balance", message: msg }, 400);
 
-// v2 §6 钱包：充值套餐（drama 专属 + 通用）+ 充值订单 store（在线支付走影子收银台）。
-const DRAMA_PACKAGES: RechargePackage[] = [
-  { id: "pkg-drama-500", credits: 500, priceCents: 14_900, tag: "体验包", recommended: false, bonusCredits: 0, sortOrder: 10, appScope: "drama" },
-  { id: "pkg-drama-1000", credits: 1_000, priceCents: 29_900, tag: "标准包", recommended: true, bonusCredits: 100, sortOrder: 20, appScope: "drama" },
-  { id: "pkg-drama-5000", credits: 5_000, priceCents: 149_900, tag: "热门包", recommended: false, bonusCredits: 800, sortOrder: 30, appScope: "all" },
-];
+// v2 §6 钱包：充值套餐 + 充值订单 store（在线支付走影子收银台）。
+// 套餐复用 api-client 的 DEFAULT_RECHARGE_PACKAGES —— 与 admin 后端配置（seed）单一真值对齐，
+// 不再本地写死一套漂移的价格 / 赠送，dev 看到的与线上 admin 配置一致。
+const DRAMA_PACKAGES = DEFAULT_RECHARGE_PACKAGES;
 const ordersStore: RechargeOrder[] = [];
 const nextOrderId = () => `ro-mock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 

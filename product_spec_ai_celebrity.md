@@ -102,6 +102,11 @@ CRM销售 → 激活码兑换/注册 → 账号授权明星 → 经纪/代理团
 | pkg-3000  | 3000  | 799  | + 500 赠送 | false |
 | pkg-10000 | 10000 | 2399 | + 2000 赠送| false |
 
+> 上表为**示例配置**。充值套餐不再随 seed 内置 —— 生产由运营在 admin 财务控制台
+> （`/finance` → 充值套餐）创建 / 维护（含赠送积分 `bonusCredits`、适用子应用 `appScope`），
+> 各子应用 / 小程序一律走 `GET /me/wallet/packages` 取后台配置，上线后纯靠后台配置。
+> USE_MOCK=1 的无后端 dev 体验用前端示例兜底（`DEFAULT_RECHARGE_PACKAGES`），不入库。
+
 ---
 
 ## 三、计费规则（积分扣减）

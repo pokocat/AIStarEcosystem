@@ -135,7 +135,10 @@ export default function AdminRechargeOrdersPage() {
       affected: (
         <div className="space-y-1">
           <div className="font-medium">
-            {o.username ?? o.userId} · {o.packageTag ?? "充值套餐"}
+            {o.displayName || o.username || o.userId} · {o.packageTag ?? "充值套餐"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            登录名 {o.username ?? "—"} · 手机号 {o.phone ?? "—"}
           </div>
           <div className="text-xs text-muted-foreground">
             到账 {o.credits.toLocaleString()}
@@ -310,8 +313,10 @@ export default function AdminRechargeOrdersPage() {
                     <TableCell>
                       <div className="font-medium">{o.displayName || o.username || o.userId}</div>
                       <div className="text-xs text-muted-foreground">
-                        {o.studioName ?? o.username ?? o.userId}
+                        登录名 {o.username ?? o.userId}
+                        {o.studioName ? ` · ${o.studioName}` : ""}
                       </div>
+                      <div className="text-xs text-muted-foreground">手机号 {o.phone ?? "—"}</div>
                     </TableCell>
                     <TableCell>
                       <Badge tone="info" className="font-normal">{sourceAppLabel(o.sourceApp)}</Badge>

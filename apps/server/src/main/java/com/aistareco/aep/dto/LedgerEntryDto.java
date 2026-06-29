@@ -13,6 +13,8 @@ public record LedgerEntryDto(
         /** v0.58：账号登录名 / 昵称（admin 结算中心溯源用；用户自查等场景不填，wire 上省略）。 */
         String username,
         String displayName,
+        /** v0.86：账号手机号（admin 财务工作台辨识用户身份；同上 owner 为 null 时省略）。 */
+        String phone,
         String type,
         long amount,
         long balanceAfter,
@@ -31,6 +33,7 @@ public record LedgerEntryDto(
                 e.getId(), e.getWalletId(), e.getUserId(),
                 owner != null ? owner.getUsername() : null,
                 owner != null ? owner.getDisplayName() : null,
+                owner != null ? owner.getPhone() : null,
                 lower(e.getEntryType()), e.getAmount(), e.getBalanceAfter(),
                 e.getDescription(), e.getReferenceId(), e.getReferenceType(),
                 e.getCreatedAt()

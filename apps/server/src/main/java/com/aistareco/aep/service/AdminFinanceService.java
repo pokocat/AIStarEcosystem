@@ -140,7 +140,8 @@ public class AdminFinanceService {
                 type,
                 e.getUserId(),
                 owner != null ? owner.getUsername() : null,
-                owner != null ? owner.getDisplayName() : null
+                owner != null ? owner.getDisplayName() : null,
+                owner != null ? owner.getPhone() : null
         );
     }
 

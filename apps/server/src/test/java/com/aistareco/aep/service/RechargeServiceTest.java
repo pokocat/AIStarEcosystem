@@ -83,7 +83,7 @@ class RechargeServiceTest {
     }
 
     private static LedgerEntryDto ledger() {
-        return new LedgerEntryDto("le_main", "w1", USER, null, null,
+        return new LedgerEntryDto("le_main", "w1", USER, null, null, null,
                 "recharge", 1000, 1000, "d", "recharge_order", ORDER, Instant.now());
     }
 
@@ -150,7 +150,7 @@ class RechargeServiceTest {
         o.setStatus(RechargeOrder.Status.PAID);
         // 回收 clamp 到 700（未消费部分），返回负 REFUND_CASH 分录
         when(creditService.refundCashReclaim(eq(USER), eq(1000L), eq(ORDER), anyString()))
-                .thenReturn(new LedgerEntryDto("le_refund", "w1", USER, null, null,
+                .thenReturn(new LedgerEntryDto("le_refund", "w1", USER, null, null, null,
                         "refund_cash", -700, 300, "d", "refund_cash", ORDER, Instant.now()));
 
         RechargeOrderDto dto = svc.refundOrder(ORDER, "fin-1", "客户申请退款");
@@ -186,7 +186,7 @@ class RechargeServiceTest {
         RechargeOrder o = pending(1000, 0);
         o.setStatus(RechargeOrder.Status.PAID);
         when(creditService.refundCashReclaim(eq(USER), eq(1000L), eq(ORDER), anyString()))
-                .thenReturn(new LedgerEntryDto("le_refund", "w1", USER, null, null,
+                .thenReturn(new LedgerEntryDto("le_refund", "w1", USER, null, null, null,
                         "refund_cash", -1000, 0, "d", "refund_cash", ORDER, Instant.now()));
 
         svc.refundOrder(ORDER, "fin-1", "首次退款"); // 抢到 → REFUNDED

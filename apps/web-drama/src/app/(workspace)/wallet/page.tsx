@@ -139,6 +139,8 @@ export default function WalletPage() {
                   key={p.id}
                   onClick={() => setSelected(active ? null : p)}
                   style={{
+                    display: "flex",
+                    flexDirection: "column",
                     textAlign: "left",
                     padding: "16px 18px",
                     borderRadius: "var(--radius-md)",
@@ -157,12 +159,14 @@ export default function WalletPage() {
                   <div className="mono" style={{ fontSize: 26, fontWeight: 800, color: "var(--fg-0)", marginTop: 4 }}>
                     {formatCredits(p.credits)}
                   </div>
+                  {/* 另赠行可选；价格用 marginTop:auto 钉到卡片底部，配合 grid 项等高拉伸，
+                      使同一行有/无赠送的套餐价格对齐。 */}
                   {!!p.bonusCredits && (
                     <div style={{ fontSize: 12, color: "var(--success)", marginTop: 2 }}>
                       另赠 {formatCredits(p.bonusCredits)}
                     </div>
                   )}
-                  <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", marginTop: 8 }}>
+                  <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", marginTop: "auto", paddingTop: 8 }}>
                     {formatCurrency(p.priceCents)}
                   </div>
                 </button>
