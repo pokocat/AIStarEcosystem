@@ -78,6 +78,7 @@ export function BrainstormStudio({ id }: { id: string }) {
   const [outlineLoading, setOutlineLoading] = React.useState(false);
   const [producing, setProducing] = React.useState(false);
   const chatScrollRef = React.useRef<HTMLDivElement>(null);
+  const chatInputRef = React.useRef<HTMLInputElement>(null);
   const sending = React.useRef(false);
   const kicked = React.useRef(false);
 
@@ -127,6 +128,12 @@ export function BrainstormStudio({ id }: { id: string }) {
 
   const genOutline = React.useCallback(async () => {
     if (!data || outlineLoading) return;
+    // 还没聊过（只有 AI 开场白）就点生成 → 友好提示去聊，不打会 400 的请求。
+    if (!data.messages.some((m) => m.role === "user")) {
+      toast("先在左边跟 AI 说一句你的想法，我就把它整理成故事大纲～");
+      chatInputRef.current?.focus();
+      return;
+    }
     setOutlineLoading(true);
     try {
       const { outline } = await BrainstormApi.generateOutline(id, data.messages);
@@ -226,6 +233,7 @@ export function BrainstormStudio({ id }: { id: string }) {
           </div>
           <div className="row gap-2" style={{ padding: "12px 14px", borderTop: "1px solid var(--line-soft)", alignItems: "center", flex: "none" }}>
             <input
+              ref={chatInputRef}
               className="chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
