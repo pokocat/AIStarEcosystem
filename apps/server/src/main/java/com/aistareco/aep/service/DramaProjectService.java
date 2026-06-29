@@ -558,6 +558,10 @@ public class DramaProjectService {
         shot.put("engine", engine.equals("avatar") ? "avatar" : "seedance");
         shot.put("desc", orDefault(text(sh, "desc"), ""));
         shot.set("cast", om.createArrayNode());
+        // v0.88 设计稿分镜表三件套：音效 / BGM / 特效氛围（AI 给则用，缺省空，前端可编辑落库）。
+        shot.put("sfx", orDefault(text(sh, "sfx"), ""));
+        shot.put("bgm", orDefault(text(sh, "bgm"), ""));
+        shot.put("fx", orDefault(text(sh, "fx"), ""));
         JsonNode line = sh.get("line");
         if (line != null && line.isObject() && !line.path("text").asText("").isBlank()) {
             ObjectNode l = om.createObjectNode();
@@ -652,6 +656,12 @@ public class DramaProjectService {
         root.set("topicCards", om.createArrayNode());
         root.set("episodes", om.createArrayNode());
         root.set("characters", om.createArrayNode());
+        // v0.88：项目级场景设定（短剧设定页「角色与场景」）+ 大纲分集 AI 参数（持久化）。
+        root.set("scenes", om.createArrayNode());
+        ObjectNode outlinePrefs = om.createObjectNode();
+        outlinePrefs.put("scope", "trial");
+        outlinePrefs.put("dur", ratio.startsWith("16") ? "60 秒/集" : "75 秒/集");
+        root.set("outlinePrefs", outlinePrefs);
         ObjectNode script = om.createObjectNode();
         script.put("ep", 1);
         script.set("scenes", om.createArrayNode());

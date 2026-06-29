@@ -784,7 +784,7 @@ components:
       description: |
         legacy /finance/transactions 接口的投影。前端真值源 src/types/finance.ts:Transaction
         实际字段：id/source/amount/date/status/type/userId；v0.58 追加 createdAt（秒级时间）
-        + username/displayName（admin 结算中心回填）。新代码请使用 LedgerEntry。
+        + username/displayName/phone（admin 结算中心回填；phone v0.86）。新代码请使用 LedgerEntry。
       required: [id, userId, type, direction, amount, currency, status,
                  description, createdAt]
       properties:
@@ -1269,6 +1269,7 @@ components:
         userId:           { type: string }
         username:         { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
         displayName:      { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
+        phone:            { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）' }
         totalBalance:     { type: integer }
         licenseBalance:   { type: integer, description: license 核销累计入账 }
         rechargeBalance:  { type: integer, description: 充值累计入账 }
@@ -1295,6 +1296,7 @@ components:
         userId:        { type: string }
         username:      { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
         displayName:   { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
+        phone:         { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）' }
         type:          { $ref: '#/components/schemas/LedgerEntryType' }
         amount:        { type: integer, description: 正数=入账，负数=出账 }
         balanceAfter:  { type: integer, description: 入账后总余额（冗余便于审计） }
@@ -1341,6 +1343,7 @@ components:
         username:     { type: string, nullable: true }
         displayName:  { type: string, nullable: true }
         studioName:   { type: string, nullable: true }
+        phone:        { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；read-time 回填，用户自查省略）' }
         packageId:    { type: string }
         packageTag:   { type: string, nullable: true }
         credits:      { type: integer }
@@ -7379,6 +7382,24 @@ paths:
   /me/drama/projects/{id}/outline/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }
+  # ── v0.87 首页脑暴（跟 AI 聊出故事）：立项之前的可恢复草稿 + AI 对话/生成故事大纲/去制作 ──
+  /me/drama/brainstorms:
+    get:  { tags: [drama], operationId: listDramaBrainstorms,  summary: '我的脑暴草稿列表（继续上次脑暴）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createDramaBrainstorm, summary: '新建脑暴会话（seed 最小 BrainstormData：开场白 + 默认制作设置）', responses: { '200': { description: ok } } }
+  /me/drama/brainstorms/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getDramaBrainstorm,    summary: '脑暴草稿详情（meta + 整页 BrainstormData，恢复）', responses: { '200': { description: ok } } }
+    put:    { tags: [drama], operationId: saveDramaBrainstorm,   summary: '保存整页脑暴草稿（对话/故事大纲/制作设置，回算标题）', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaBrainstorm, summary: '删除脑暴草稿（软删）', responses: { '204': { description: ok } } }
+  /me/drama/brainstorms/{id}/chat:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: dramaBrainstormChat, summary: 'AI 脑暴回复（大模型，免费，§8.0 未配置 503；不落库，前端合并后 PUT 保存）', responses: { '200': { description: ok } } }
+  /me/drama/brainstorms/{id}/outline:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: dramaBrainstormOutline, summary: '由对话生成故事大纲 OutlineDraft（大模型，免费，§8.0；不落库）', responses: { '200': { description: ok } } }
+  /me/drama/brainstorms/{id}/promote:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: promoteDramaBrainstorm, summary: '去制作：form=series 立项 DramaProject（免费，预填角色）/ form=single 建 DramaShort（扣开拍费）', responses: { '200': { description: ok } } }
   # ── v0.76 短视频制作草稿（整页编辑态可恢复：刷新/返回/换设备接着做）──
   /me/drama/shorts:
     get:  { tags: [drama], operationId: listDramaShorts,  summary: '我的短视频草稿列表（工坊卡片）', responses: { '200': { description: ok } } }

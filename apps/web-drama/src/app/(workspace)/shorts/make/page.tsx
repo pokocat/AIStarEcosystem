@@ -837,21 +837,20 @@ function ShortMakerInner({
                   </div>
                   <div className="col gap-1">
                     <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>风格</span>
-                    <div className="row gap-2" style={{ flexWrap: "wrap" }}>
-                      {meta.style?.length ? (
-                        meta.style.map((s, i) => (
-                          <span
-                            key={i}
-                            className="chip static"
-                            style={{ height: 24, fontSize: 11.5, background: "var(--accent-soft)", color: "var(--accent)" }}
-                          >
-                            {s}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="faint" style={{ fontSize: 12 }}>—</span>
-                      )}
-                    </div>
+                    {/* v0.88：风格可编辑（用、或逗号分隔；落库随草稿自动保存） */}
+                    <input
+                      value={(meta.style ?? []).join("、")}
+                      onChange={(e) => setMeta({ ...meta, style: e.target.value.split(/[、,，]/).map((x) => x.trim()).filter(Boolean) })}
+                      placeholder="风格关键词，用、或逗号分隔（如 口播种草、强钩子、暖色）"
+                      style={META_INPUT}
+                    />
+                    {meta.style?.length ? (
+                      <div className="row gap-2" style={{ flexWrap: "wrap", marginTop: 4 }}>
+                        {meta.style.map((s, i) => (
+                          <span key={i} className="chip static" style={{ height: 24, fontSize: 11.5, background: "var(--accent-soft)", color: "var(--accent)" }}>{s}</span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="col gap-1">
                     <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主场景</span>

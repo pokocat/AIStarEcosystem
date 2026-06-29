@@ -125,6 +125,10 @@ export interface BoardShot {
   voice?: string;
   /** 氛围关键词集合（光影 / 色调 / 质感 / 情绪） */
   moods?: string[];
+  /** v0.88 设计稿分镜表三件套：音效 / 背景音乐 / 特效氛围（可编辑、落库）。 */
+  sfx?: string;
+  bgm?: string;
+  fx?: string;
   /** 已完成勾选 */
   done?: boolean;
   /** 特效镜参考素材超限 */
@@ -188,11 +192,41 @@ export interface AssembledEpisode {
   at?: string;
 }
 
+/** v0.88：按集设置（本集叙事 / 作品风格 / 出场人物），落库以便回溯（草稿态，不再内存即丢）。 */
+export interface EpisodeDocMeta {
+  /** 本集叙事（整集剧情速览，可改；改后可让 AI 重生成分场分镜） */
+  plot?: string;
+  /** 作品风格关键词 */
+  style?: string;
+  /** 出场人物（含临时演员；说话人选项来源） */
+  cast?: { id: string; name: string; theme?: string; bound?: boolean; from?: string; to?: string; removable?: boolean }[];
+}
+
 /** v0.66：按集存档（剧本 + 分镜 + 成片），切集互不覆盖。 */
 export interface EpisodeDoc {
   script: { ep: number; scenes: ScriptScene[] };
   storyboard: { ep: number; scenes: BoardScene[] };
   assembled?: AssembledEpisode;
+  /** v0.88：本集设置（叙事/风格/出场人物）落库。 */
+  meta?: EpisodeDocMeta;
+}
+
+/** v0.88：项目级「场景设定」资产（跨集共享取景地；name/mood 可编辑，可生成/上传参考图）。 */
+export interface SceneAsset {
+  id: string;
+  name: string;
+  /** 氛围基调（暖光仪式 / 冷白压迫 …） */
+  mood: string;
+  /** 参考图 URL（生成或上传，出 wire 已签名） */
+  refUrl?: string;
+  /** 参考图 OSS key（真值；出 wire 派生 refUrl） */
+  refCdnKey?: string;
+}
+
+/** v0.88：大纲分集 AI 生成参数（范围/每集时长），落库以便回溯（草稿态）。 */
+export interface OutlinePrefs {
+  scope?: "trial" | "full";
+  dur?: string;
 }
 
 export interface ProjectData {
@@ -200,6 +234,10 @@ export interface ProjectData {
   topicCards: TopicCard[];
   episodes: EpisodeOutline[];
   characters: CharacterDef[];
+  /** v0.88：项目级场景设定（短剧设定页「角色与场景」的场景卡，跨集共享）。 */
+  scenes?: SceneAsset[];
+  /** v0.88：大纲分集 AI 参数（范围/时长），持久化。 */
+  outlinePrefs?: OutlinePrefs;
   /** legacy 单集文档（episodeDocs 启用前的旧项目 / mock 演示数据回读用） */
   script: { ep: number; scenes: ScriptScene[] };
   storyboard: { ep: number; scenes: BoardScene[] };

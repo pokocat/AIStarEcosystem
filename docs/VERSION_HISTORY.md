@@ -3344,3 +3344,70 @@ register→注册并登录成功，全程不重输验证码；+ 登录未注册�
 `web-{celebrity,aiavatar,music,drama}` typecheck + `check:api-contract` OK。
 **契约**：路径/方法不变 —— `sms/register` 请求体加 `registerTicket`、`code` 改可选、`platform` enum 补 `aiavatar`、
 加 401 `REGISTER_TICKET_EXPIRED`；`sms/verify` 404 details 形状已在 openapi 标注。
+
+### v0.87（2026-06-28）— 首页「跟 AI 聊出故事」脑暴链路（设计稿 `AI短剧工作台.dc.html` 还原）
+
+**背景**：设计稿首页是**对话式脑暴**——随口说一个念头 → 左侧与 AI 脑暴 → 右侧生成可编辑的「故事大纲」（标题/剧情脉络/一句话简介/核心人物/取景参考/制作设置 形态+尺寸）→「去制作」。
+旧首页是「一句话点子 → 立即 `createProject`」，无对话、无立项前可编辑大纲。本版还原设计稿的 首页→对话→剧本/分镜生成 整链入口。
+
+**核心决策**：脑暴是**立项之前的可恢复草稿**，用户决定形态（剧集/单片）前不污染 `DramaProject`（短剧工坊）/ `DramaShort`（短视频工坊）。
+故新实体 `DramaBrainstorm` 承载，「去制作」时才按形态 promote 成项目或短视频。AI 对话/大纲**免费**（与 recipe/script-draft 一致，设计稿也无积分提示）。
+
+**后端**：
+- 新实体 `DramaBrainstorm`（`drama_brainstorms` 表，ddl-auto；列 id(`brs_`)/ownerUserId/title/status(`draft`|`promoted`)/promotedKind/promotedId/payloadJson/createdAt/updatedAt/deletedAt 软删）。
+  `payloadJson` = 前端 `api/brainstorm.ts` 的 `BrainstormData`（`{seed?,direction?,messages[{role,text,quick?}],outline:OutlineDraft|null,settings{form:'series'|'single',ratio,episodes?}}`；
+  `OutlineDraft{title,type,tone,logline,mainline,beats[],roles[{name,role}],scenes[]}`）。
+- `DramaBrainstormService` + `DramaBrainstormController`（`/api/me/drama/brainstorms/**`）：
+  `GET`(列表 继续上次脑暴) / `POST`(新建 seed 开场白 + 默认设置) / `GET {id}`(恢复) / `PUT {id}`(自动保存整页 + 回算标题) / `DELETE {id}`(软删) /
+  `POST {id}/chat`(AI 对话 `{text,messages?}`→`{message:{role,text,quick}}`) / `POST {id}/outline`(由对话生成大纲 `{messages?}`→`{outline}`) /
+  `POST {id}/promote`(去制作 `{form?,data?}`→`{kind,projectId|shortId}`)。
+- AI 走 `DRAMA_SCRIPT_DRAFT` 端点绑定 + 新 prompt key `drama.brainstorm_chat`/`drama.brainstorm_outline`（`PromptService` 加 key + `KNOWN_KEYS` + resource `prompts/material/drama.brainstorm_{chat,outline}.md`）。
+  **免费**（无 `CreditService`），`chat`/`outline` **不落库**（前端合并后 PUT，防前后端并发覆盖；与 `outlineAiDraft`/`epscriptAiDraft` 同惯例）。
+- **§8.0**：端点未绑 503 `AI_NOT_CONFIGURED` / prompt 未配 503 `PROMPT_NOT_CONFIGURED` / 调用失败 502 `AI_CALL_FAILED` / 解析失败 502 `AI_BAD_OUTPUT`，均不产假数据。
+- **promote**：`series`→`DramaProjectService.createProject`（免费立项）+ `saveProject` 把大纲 `roles` 预填为项目 `characters`（前两个 / 含「主」判 key）；`single`→`DramaShortService.createFromRecipe`（扣 `drama.credit.short-entry`）。
+  脑暴标 `promoted` 且**幂等**（已 promote 直接回原去向，不重复立项/扣费）。
+
+**前端（web-drama）**：
+- 新 `api/brainstorm.ts`（`BrainstormApi`，TS 接口即契约真源）+ 加入 `api/index.ts` barrel。USE_MOCK 进程内存表 + canned AI（仿 `_aiReplies`/`_outlineFor`），promote 复用 projects/shorts mock 建实体。
+- 重建 `/dashboard`：`<Suspense>` 包 `DashboardSwitch`，`?b=<id>` 渲染 `BrainstormStudio`（chatOn），否则 `HomeLanding`（chatOff）。
+  chatOff：一句话输入 + 近期热点 chips + 今日灵感/套爆款模板/跟 AI 聊出故事 + **开始脑暴** + 爆款配方网格（保留预览 + 用这个开拍）+ **继续脑暴**（未完成草稿）+ 继续上次。
+  chatOn：左 AI 脑暴对话（消息 + quick 追问 chips + 输入框）/ 右 故事大纲（空→生成中骨架→已生成；标题/logline/核心人物用 `drama-ui Editable` 行内编辑，制作设置 形态+尺寸 分段控件）+ 底部「去制作」。
+  `?b=` 入 URL、`useSaveStatus` 防抖自动保存、刷新/返回可恢复；带 seed 进来自动发首条点子触发首条 AI 回复。
+- `app.css` 加脑暴/改图共用动效与可编辑态（`typing-dot`+`typingBlink` / `gen-pulse`+`genPulse` / `gen-reveal` / `chat-anim` / `edit-field` / `chat-input:focus`，均 reduced-motion 友好）。
+
+**门禁**：`DramaBrainstormServiceTest` 15/15 + 全量 74 drama 单测绿（含 `PromptServiceDramaResourceTest` 4/4 校验新 resource prompt）；
+`typecheck:all` 10/10 + web-drama production build（29 路由）+ `check:api-contract` 全绿；openapi 加 6 path stub；`scripts/dev-fake-llm-server.mjs` 加脑暴 chat/outline JSON 分支（先于「分集大纲」分支，按指令标记 `请作为脑暴助手回复`/`整理成一份故事大纲` 命中）。
+**真实 server + fake-llm API 级 E2E 24 断言**全过：dev-login(`studio_starlight`) → 新建脑暴(seed) → chat(AI 回复+quick) → PUT 保存 → outline(标题/脉络/人物/取景) → 改设置 → GET 恢复(对话/大纲/设置/卡片 meta) → promote 项目(标题/集数/logline/角色预填) → 幂等(同 projectId + status=promoted) → promote 单片(真实 DramaShort)。
+
+**待续（设计稿剩余对齐项，见 `TODO.md` D-9，需浏览器可视验证）**：工作台 短剧设定 两视图合并 / 剧集脚本 平铺分镜表 / 首帧 AI 改图弹窗 / 短视频制作单页化。
+
+### v0.88（2026-06-28）— 短剧工作台对齐设计稿（全栈 · 渲染数据后端读取 · 编辑落库草稿态）
+
+承 v0.87 首页脑暴链路，继续把设计稿 `AI短剧工作台.dc.html` 的工作台与短视频还原，并满足用户两条硬要求：
+**① 所有前端渲染的数据从后端读取（不前端写死，调试 mock 允许）；② 所有编辑落库为草稿态、可回溯。**
+分镜内容（场景/对白/音效/特效）以**结构化字段**存储，后续作视频生成 LLM 提示词（设计本就如此，本版强化）。
+
+**数据模型（均在 wholesale `ProjectData.payloadJson` 文档内，无新表/新端点）**：
+- `ProjectData.scenes: SceneAsset[]`（`{id,name,mood,refUrl?,refCdnKey?}`）—— 项目级场景设定，去掉前端写死的 `SCENE_LIB`。
+- `ProjectData.outlinePrefs{scope,dur}` —— 大纲分集 AI 参数落库。
+- `EpisodeDoc.meta{plot,style,cast}` —— 本集叙事/作品风格/出场人物落库（此前仅内存即丢）。
+- `BoardShot` 加结构化 `sfx/bgm/fx`（设计稿分镜表三件套）。
+
+**后端**：`DramaProjectService.seedProjectData` seed `scenes:[]`+`outlinePrefs(trial)`；`normalizeShot` 默认 `sfx/bgm/fx`；
+`DramaBrainstormService.promote(series)` 由大纲「取景参考」预填项目 `scenes`（新 `scenesFromOutline`，与 `characters` 同惯例）。
+AI 改图复用 `POST /me/drama/render/frame`（`ref_images` 迭代），无新端点。`dev-fake-llm` 的 `/v1/images/generations` 占位图换可见暖橙 PNG。
+
+**前端（web-drama）**：
+- 短剧设定单页 `stages/setup.tsx`（`OutlineStage`/`CastStage` 加 `embedded`）+ 左轨两步 `stage-rail.tsx`；
+  场景渲染 `data.scenes`、name/mood 可编辑 + 生成参考图 + 加/删（落库）；`outlinePrefs` scope/dur 落库；加个角色落库。
+- 剧集脚本平铺分镜表 `storyboard-table.tsx`（设计稿表格，每格 `Editable` 结构化可编辑）替代 per-scene `ShotFormCard`（`shot-form.tsx` 保留供短视频用）；
+  `epscript.tsx` 的 plot/style/cast 落库 `episodeDocs[ep].meta`。
+- AI 改图弹窗（`storyboard-table.tsx` 内）：左指令对话 + 右 9:16 预览 + 版本号，`renderFrame` + ref 图迭代回填落库。
+- 短视频 `meta.style` 可编辑落库。
+
+**门禁 / 验收**：`typecheck:all` 10/10 + web-drama build（29 路由）+ `check:api-contract` + 全量 74 drama 单测 全绿；
+**真实 server + fake-llm 浏览器（CDP headless，无 Playwright，Node 内置 WebSocket 自建驱动）可视验收**——
+截图核对 首页 chatOff/chatOn+大纲、短剧设定（剧情大纲+角色+场景卡）、剧集脚本分镜表、AI 改图弹窗；
+**持久化 API E2E** 全过：场景 name/mood/refUrl、大纲 scope/dur、本集 meta（叙事/风格/出场人物）、分镜结构化 sfx/bgm/fx 均落库 + GET 恢复。
+
+**剩余（layout polish，见 `TODO.md` D-9）**：短视频 `/shorts/make` 两步→单页合并、分镜表 shortBeat 语义标签（数据与流程已就绪，仅版式）。

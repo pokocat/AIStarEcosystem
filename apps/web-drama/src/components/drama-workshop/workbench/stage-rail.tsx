@@ -4,8 +4,8 @@
 // 项目设置逐项列出;剧集制作收敛为单一「剧集工作台」入口,
 // 进入后左轨变为分集导航,步骤在顶部页签切换。
 import * as React from "react";
-import { ChevronLeft, Film, Lock, Network } from "lucide-react";
-import { STAGES, STAGE_BY_KEY, type StageDef, type StageKey, EPISODE_STAGE_KEYS } from "../stages-config";
+import { ChevronLeft, Film, Network, ScrollText } from "lucide-react";
+import { STAGE_BY_KEY, type StageKey, EPISODE_STAGE_KEYS } from "../stages-config";
 
 interface StageRailProps {
   current: StageKey;
@@ -19,8 +19,7 @@ interface StageRailProps {
   onHome?: () => void;
 }
 
-export function StageRail({ current, locked, ep, interactive, onConvert, onJump, onHome }: StageRailProps) {
-  const setup = STAGES.filter((s) => s.scope === "项目");
+export function StageRail({ current, ep, interactive, onConvert, onJump, onHome }: StageRailProps) {
   const inEp = EPISODE_STAGE_KEYS.includes(current);
   const branch = STAGE_BY_KEY.branch;
   return (
@@ -61,12 +60,46 @@ export function StageRail({ current, locked, ep, interactive, onConvert, onJump,
         <ChevronLeft size={14} /> 回短剧工坊
       </button>
 
-      <div className="faint" style={{ fontSize: 11, fontWeight: 700, padding: "10px 12px 4px", letterSpacing: ".06em" }}>
-        项目设置 · 跨集共享
-      </div>
-      {setup.map((s) => (
-        <StageItem key={s.key} s={s} current={current} locked={locked} onJump={onJump} />
-      ))}
+      {/* v0.88：两步流程 —— 短剧设定（合并选题/大纲/角色场景）/ 剧集工作台。 */}
+      <button
+        type="button"
+        onClick={() => onJump("outline")}
+        className="row gap-3"
+        style={{
+          padding: "10px 11px",
+          borderRadius: 12,
+          textAlign: "left",
+          background: !inEp && current !== "branch" ? "var(--accent-soft)" : "transparent",
+          color: !inEp && current !== "branch" ? "var(--accent)" : "var(--ink-2)",
+        }}
+        onMouseEnter={(e) => {
+          if (inEp || current === "branch") e.currentTarget.style.background = "var(--surface-2)";
+        }}
+        onMouseLeave={(e) => {
+          if (inEp || current === "branch") e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 9,
+            flex: "none",
+            display: "grid",
+            placeItems: "center",
+            background: !inEp && current !== "branch" ? "var(--accent)" : "var(--surface-2)",
+            color: !inEp && current !== "branch" ? "#fff" : "var(--ink-3)",
+          }}
+        >
+          <ScrollText size={16} />
+        </div>
+        <div className="col" style={{ minWidth: 0, gap: 1 }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>短剧设定</span>
+          <span className="faint" style={{ fontSize: 10.5, whiteSpace: "nowrap" }}>
+            剧情大纲 · 角色 · 场景
+          </span>
+        </div>
+      </button>
 
       {interactive && (
         <>
@@ -178,63 +211,5 @@ export function StageRail({ current, locked, ep, interactive, onConvert, onJump,
         </div>
       )}
     </nav>
-  );
-}
-
-function StageItem({
-  s,
-  current,
-  locked,
-  onJump,
-}: {
-  s: StageDef;
-  current: StageKey;
-  locked: Partial<Record<StageKey, boolean>>;
-  onJump: (key: StageKey) => void;
-}) {
-  const active = current === s.key;
-  const isLocked = !!locked[s.key];
-  return (
-    <button
-      type="button"
-      onClick={() => onJump(s.key)}
-      className="row gap-3"
-      style={{
-        padding: "10px 12px",
-        borderRadius: 12,
-        position: "relative",
-        textAlign: "left",
-        background: active ? "var(--accent-soft)" : "transparent",
-        color: active ? "var(--accent)" : "var(--ink-2)",
-        fontWeight: active ? 700 : 600,
-        transition: "background .15s",
-      }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = "var(--surface-2)";
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = "transparent";
-      }}
-    >
-      <span
-        className="num"
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 7,
-          flex: "none",
-          display: "grid",
-          placeItems: "center",
-          fontSize: 12,
-          fontWeight: 700,
-          background: active ? "var(--accent)" : "var(--surface-2)",
-          color: active ? "#fff" : "var(--ink-3)",
-        }}
-      >
-        {s.no}
-      </span>
-      <span className="grow" style={{ fontSize: 13.5 }}>{s.name}</span>
-      {isLocked && <Lock size={14} style={{ color: "var(--ink-3)" }} />}
-    </button>
   );
 }

@@ -195,6 +195,14 @@
 - [ ] **D-5 admin 镜像**：`apps/admin` 加 drama 管理视图。
 - [x] **D-6 单元测试**（v0.67）：真后端已落地，建立首个测试基线 —— vitest + jsdom + @testing-library/react；`format.test.ts`（15 例：货币/积分/紧凑/时长/带符号边界）+ `drama-query.test.tsx`（6 例：命中复用 / 精确失效 / 前缀失效 / 乐观写入 / refetch / clearAll）。**测试驱动修了一个真实 bug**：`drama-query` 的 `load` catch 里 re-throw 导致 `useAsync` 丢弃的 promise 变 unhandled rejection（改为错误只落 `entry.error`）。`package.json` test 脚本 placeholder → `vitest run`。状态机过渡在后端 `DramaProjectServiceTest` 11/11 已覆盖；前端无 zod 表单 schema 故略。
 - [x] **D-7 a11y dialog**（v0.67）：**不换 shadcn**（那套亮色 token 会破坏 drama 暗色 premium 玻璃视觉），改为强化共享容器 —— 抽 `lib/use-modal-a11y.ts`（ESC + 焦点陷阱 + 初始/还原焦点 + body 锁，单一来源），`common/Dialog.tsx` 接入并补 `aria-labelledby/-describedby`；新增 `common/ModalShell.tsx` 给命令式弹层（`.overlay` + role=dialog + a11y），收编 short-clip / quick-create / preview 三个此前裸 `<div className="overlay">`（全缺 ESC/focus）。
+- [x] **D-8 首页脑暴链路**（v0.87，2026-06-28）：按设计稿 `AI短剧工作台.dc.html` 还原 首页→对话→故事大纲→去制作。新实体 `DramaBrainstorm` + `/api/me/drama/brainstorms/**`（chat/outline/promote）+ 前端 `api/brainstorm.ts` + 重建 `/dashboard`（chatOff/chatOn `?b=`）。落库可回溯、§8.0 守门、promote 幂等。门禁全绿 + 真实 server+fake-llm API E2E 24 断言。详见 `AGENTS.md`/各 README v0.87。
+- [x] **D-9 设计稿剩余对齐项**（v0.88 完成主体，2026-06-28，CDP headless 浏览器可视验收）：
+  - [x] ① 短剧设定单页（合并 选题/大纲/角色场景 + 左轨两步）—— `stages/setup.tsx` + `OutlineStage`/`CastStage` `embedded` + `stage-rail.tsx`；场景升级为后端 `ProjectData.scenes`（promote 预填、可编辑落库），`outlinePrefs` 落库。
+  - [x] ② 剧集脚本平铺分镜表 —— 新 `storyboard-table.tsx`（每格结构化可编辑→喂视频生成提示词），`BoardShot` 加 `sfx/bgm/fx`；`ShotFormCard` 保留给短视频。
+  - [x] ③ 首帧 AI 改图弹窗 —— `storyboard-table.tsx` 内（左指令对话+右 9:16 预览+版本号），复用 `renderFrame` + `ref_images` 迭代回填落库（**未新增 prompt key，复用 `drama.frame_image` + 指令拼进 desc**）。
+  - [~] ④ 短视频 `/shorts/make`：`meta.style` 已改可编辑落库；**两步→单页合并 + shortBeat 语义标签 仍待做**（数据/流程已就绪，仅版式 polish，低优先）。
+  - [x] ⑤ `epscript` 的 本集叙事/作品风格/出场人物 + `outline` scope/dur 落库（`episodeDocs[ep].meta` + `outlinePrefs`，持久化 API E2E 验证）。
+- [ ] **D-10 USE_MOCK promote 导航**：mock 下 `BrainstormApi.promote`→`ProjectsApi.createProject` 返回 `dp_mock_*`，但 `getProject` mock 只认静态 `PROJECTS` → `/projects/{新id}` 落「项目不存在」（脑暴自身的 chat→大纲在 mock 下完整可用）。属既有 mock 局限（首页旧立项流程同样存在）；要么给 projects/shorts mock 加可恢复 store，要么文档标注「mock 仅演示前半程，真链路走 USE_MOCK=0 + server」。
 
 ### apps/web-celebrity 专项（C-*）
 

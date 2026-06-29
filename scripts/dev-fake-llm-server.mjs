@@ -64,6 +64,31 @@ function buildProse(text) {
 
 // ── 结构化 JSON（短剧脚本 / 变量 / 卖点等 json_object 模式） ──────────────────
 function buildJsonContent(text) {
+  // 首页脑暴 · AI 对话回复（v0.87，最先判：含「请作为脑暴助手回复」指令标记）
+  if (/请作为脑暴助手回复/.test(text)) {
+    return JSON.stringify({
+      reply:
+        "听起来有戏 👀 我顺着你这个点子捋了一版：\n· 主角：被低估的真千金，手握隐藏身份\n· 爽点：每集一次精准打脸\n· 钩子：婚礼当天身份反转\n想看完整的故事大纲，点右侧「生成故事大纲」。",
+      quick: ["换个更甜的方向", "走双重身份悬疑", "主角再惨一点"],
+    });
+  }
+  // 首页脑暴 · 由对话生成故事大纲（v0.87，先于"分集大纲"分支：含「整理成一份故事大纲」指令标记）
+  if (/整理成一份故事大纲/.test(text)) {
+    return JSON.stringify({
+      title: "替嫁千金她A爆全场",
+      type: "都市逆袭",
+      tone: "强爽 · 快节奏",
+      logline: "豪门替嫁的真千金，手握集团继承权，步步翻盘打脸所有看轻她的人。",
+      mainline: "屈辱替嫁 → 身世反转 → 商战夺权 → 真情相护 → 全面逆袭",
+      beats: ["屈辱替嫁", "身世反转", "商战夺权", "真情相护", "全面逆袭"],
+      roles: [
+        { name: "林星遥", role: "真千金 · 女主" },
+        { name: "顾沉舟", role: "清冷霸总 · 男主" },
+        { name: "苏曼", role: "假千金 · 反派" },
+      ],
+      scenes: ["教堂婚礼现场", "董事会议室", "雨夜天台", "老宅院落"],
+    });
+  }
   // 配方抽取（v0.73 抽 skill · 必须最先判：prompt 里含"分集大纲/角色阵容"会误命中下面的分支）
   if (/可复用配方|蒸馏成|reusable recipe/.test(text)) {
     return JSON.stringify({
@@ -259,10 +284,10 @@ const server = http.createServer(async (req, res) => {
 
   // 图像生成（OpenAI images 兼容；必须先于通用 /generations 视频分支）
   if (path.includes("/images/generations") && req.method === "POST") {
-    // 1x1 PNG 占位（dev 链路验证用；真实图像由 admin 绑定真模型端点产出）
-    const PNG_1PX =
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-    return send(res, 200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: PNG_1PX }] });
+    // 18x32 (9:16) 暖橙占位 PNG（dev 链路验证用，可见缩略图；真实图像由 admin 绑定真模型端点产出）
+    const PNG_PLACEHOLDER =
+      "iVBORw0KGgoAAAANSUhEUgAAABIAAAAgCAYAAAAffCjxAAAAJUlEQVR4nGP4WSz2nxqYYdSgUYNGDRo1aNSgUYNGDRo1aHgYBAAjKqKMPAJqhQAAAABJRU5ErkJggg==";
+    return send(res, 200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: PNG_PLACEHOLDER }] });
   }
 
   // 视频任务提交
