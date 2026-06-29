@@ -68,6 +68,14 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.94 · 2026-06-29 · 短视频制作右侧还原设计稿（平铺分镜表）
+
+- **分镜表平铺还原（`short-storyboard-table.tsx`）**：短视频制作页右侧从「逐镜竖卡（ShotFormCard 堆叠）」改为设计稿的**平铺分镜表** —— 列：镜·时长（beat 语义标签 + 镜号 + 时间线 + 时长）/ 首帧（4 态 + AI 改图 + 出片）/ 口播文案·画面（说话人 + 台词框 + 画面）/ 镜头（景别·运镜）/ 音效·BGM·特效，所有单元格结构化可编辑、随草稿自动保存。
+- **复用短剧分镜表单元**：导出 `StoryboardTable` 的 `ShotFrameCell`（首帧 4 态 + AI 改图）给短视频表共用，行为与短剧工作台一致（出图 2 / 直接出片 9 / 生成视频 7 积分，复用 `AiImageEditModal`）。
+- **版面顺序对齐设计稿**：短视频大纲卡在上（含 beat 流），「分镜表」段标题（共 N 镜 · 约 N 秒 + 文字可直接改 + 重新生成）+ 平铺表在下。
+- **门禁**：web-drama typecheck + build（31 路由）全绿。
+- 注：「一键连跑出片」按钮设计稿有、但 v0.66 曾因自动连续扣费安全考量下线，本版未恢复（如需可加带单次总价确认的安全版）；大纲卡仍保留可编辑表单（设定喂提示词），如需进一步贴合设计稿可改为「描述 + 折叠设定」。
+
 ### v0.93 · 2026-06-29 · 短视频回收站 + 统一回收站 + UI 打磨一批
 
 - **短视频工坊支持软删 + 统一回收站**：`DramaShort` 早有 `deletedAt`（v0.76），本版补齐回收站闭环 —— 后端 `DramaShortService.listTrash/restoreShort/purgeShort/purgeExpiredTrash` + `DramaShortController`（`GET /me/drama/shorts/trash`、`POST /{id}/restore`、`DELETE /{id}/purge`）+ `DramaShortTrashCleanupScheduler`（每日 03:45 物理清理超 30 天）。短视频工坊草稿卡新增「移到回收站」按钮（软删二次确认）。

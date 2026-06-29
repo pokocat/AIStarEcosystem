@@ -26,7 +26,6 @@ import {
   Shirt,
   Sliders,
   Sparkles,
-  Trash2,
   Users,
   Wallet as WalletIcon,
   Zap,
@@ -101,8 +100,7 @@ const GROUPS: NavGroup[] = [
       { href: "/wallet", icon: Coins, label: "积分钱包" },
       { href: "/finance", icon: WalletIcon, label: "财务中心" },
       { href: "/settings", icon: Settings, label: "工作室设置" },
-      // 统一回收站（短剧 + 短视频）：收进账户分组，不占首页一级显著位置。
-      { href: "/trash", icon: Trash2, label: "回收站" },
+      // 回收站不进侧栏：短剧工坊 / 短视频工坊页头各有「回收站」入口，避免一级菜单冗余。
     ],
   },
 ];

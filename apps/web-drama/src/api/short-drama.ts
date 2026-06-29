@@ -47,6 +47,8 @@ export interface DramaScript {
   /** 整体短视频说明（后端 ai-draft 保证返回，老脚本可能没有）。 */
   meta?: ScriptMeta;
   scenes: DramaScene[];
+  /** 后续推荐 action：AI 基于这一版脚本给的 2-4 条「继续修改」快捷指令（ai-draft 返回，可能为空）。 */
+  suggestions?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -105,6 +107,7 @@ const MOCK_SCRIPT: DramaScript = {
     { heading: "日 · 咖啡馆 · 窗边", summary: "总裁记忆闪回，握紧杯子。", shot: "面部特写 + 回忆叠化", dialogue: "总裁：（低声）我好像在哪见过你。", duration_sec: 16 },
     { heading: "日 · 咖啡馆 · 门口", summary: "两人并肩走出，留下悬念。", shot: "背影中景，逆光缓推", dialogue: "（旁白）这一次，他不想再转身。", duration_sec: 16 },
   ],
+  suggestions: ["开头钩子再狠一点", "压到 30 秒内", "台词更口语", "结尾留更强悬念"],
 };
 
 export async function listScripts(): Promise<DramaScript[]> {

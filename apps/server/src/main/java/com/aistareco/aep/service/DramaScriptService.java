@@ -153,6 +153,11 @@ public class DramaScriptService {
           .append("{\"title\":\"短视频标题\",\"style\":[\"风格标签\"],\"scene\":\"主场景一句话描述\",")
           .append("\"character\":{\"name\":\"主角名\",\"description\":\"主角形象与性格一句话\"}}。")
           .append("meta 必须与下方分镜内容保持一致，会作为生成首帧与视频的统一参考。");
+        // 后续推荐 action：让模型基于「这一版具体脚本」给出 2-4 条可一键发送的下一步修改建议
+        // （前端渲染为快捷 chip，点一下即作为新指令再改一版）。必须贴合当前脚本，而非泛泛套话。
+        uc.append("\n\n【后续建议】请在每个脚本对象中额外包含一个 suggestions 字段：")
+          .append("一个含 2-4 条字符串的数组，每条是一句简短（≤12 字）、可直接作为「继续修改」指令的具体优化方向，")
+          .append("要针对这一版脚本的实际内容（如钩子、节奏、时长、卖点、台词口吻等），例如 [\"开头钩子再狠一点\",\"压到 20 秒内\"]。");
         String userContent = uc.toString();
 
         List<Map<String, String>> messages = new ArrayList<>();

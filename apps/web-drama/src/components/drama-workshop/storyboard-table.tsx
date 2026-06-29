@@ -213,8 +213,8 @@ function ShotRow({
   );
 }
 
-/** 首帧 4 态渲染单元（紧凑版，表格用）。 */
-function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit }: {
+/** 首帧 4 态渲染单元（紧凑版，表格用）。短剧分镜表 + 短视频分镜表共用。 */
+export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit }: {
   s: FormShot; busy: ShotFlow | null;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
 }) {

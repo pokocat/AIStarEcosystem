@@ -26,7 +26,8 @@ import {
 import { toast } from "sonner";
 import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
-import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
+import { type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
+import { ShortStoryboardTable } from "@/components/drama-workshop/short-storyboard-table";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
 import { RenderApi, ShortDramaApi, ShortsApi } from "@/api";
@@ -272,6 +273,8 @@ function ShortMakerInner({
   const [draft, setDraft] = React.useState("");
   const [draftStatus, setDraftStatus] = React.useState<"draft" | "done">(initialStatus);
   const [deleting, setDeleting] = React.useState(false);
+  // 后续推荐 action：AI 每生成 / 改写一版脚本就刷新（来自后端 suggestions）；未产出时回落默认。
+  const [suggestions, setSuggestions] = React.useState<string[]>([]);
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
@@ -382,6 +385,12 @@ function ShortMakerInner({
       const script = drafts[0];
       if (!script || !script.scenes?.length) throw new Error("AI 没有产出可用脚本，请换个说法重试");
       setMeta(script.meta ?? null);
+      // 后续推荐 action 跟着这一版脚本走：取后端 suggestions（去空 + 去重 + 最多 4 条）。
+      setSuggestions(
+        Array.isArray(script.suggestions)
+          ? Array.from(new Set(script.suggestions.map((s) => (s || "").trim()).filter(Boolean))).slice(0, 4)
+          : [],
+      );
       setShots(
         script.scenes.map((sc, i) => ({
           id: "sh" + Date.now() + "_" + i,
@@ -429,7 +438,9 @@ function ShortMakerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const QUICK = ["口吻再口语一点", "开头加个更狠的钩子", "缩到 20 秒内", "多一点产品特写"];
+  // 快捷修改 chip：优先用 AI 跟当前脚本给出的后续建议；AI 没产出时回落到通用兜底（仅占位，非伪造产物）。
+  const FALLBACK_QUICK = ["口吻再口语一点", "开头加个更狠的钩子", "缩到 20 秒内", "多一点产品特写"];
+  const quickChips = suggestions.length ? suggestions : FALLBACK_QUICK;
   const sendChat = (text: string) => {
     const t = (text || "").trim();
     if (!t || phase === "gen") return;
@@ -588,7 +599,7 @@ function ShortMakerInner({
             </div>
             <div className="col gap-2" style={{ padding: "10px 14px 14px", borderTop: "1px solid var(--line-soft)", flex: "none" }}>
               <div className="row gap-2" style={{ flexWrap: "wrap" }}>
-                {QUICK.map((q) => (
+                {quickChips.map((q) => (
                   <button key={q} type="button" className="chip" style={{ fontSize: 11.5 }} disabled={phase === "gen"} onClick={() => sendChat(q)}>
                     {q}
                   </button>
@@ -637,23 +648,13 @@ function ShortMakerInner({
           {/* 右:结构化分镜脚本(表单式 · 带时间线) */}
           <div className="scroll grow" style={{ minHeight: 0, background: "var(--bg)" }}>
             <div style={{ maxWidth: 760, margin: "0 auto", padding: "22px 28px 110px" }}>
-              <div className="row gap-2" style={{ marginBottom: 14 }}>
-                <Clapperboard size={16} style={{ color: "var(--accent)" }} />
-                <span style={{ fontWeight: 800, fontSize: 16 }}>分镜脚本</span>
-                <span className="faint num" style={{ fontSize: 12 }}>{shots.length} 镜 · 约 {total}s · 时间线自动累计</span>
-                <span className="grow" />
-                <button type="button" className="chip" disabled={phase === "gen" || shots.length === 0} onClick={regen}>
-                  <RefreshCw size={12} /> 重新生成
-                </button>
-              </div>
-
               {/* 整体短视频说明：AI 先定调，统领分镜与逐镜出片，可直接改 */}
               {meta && (
                 <div className="card col gap-3" style={{ padding: 16, marginBottom: 16 }}>
                   <div className="row gap-2" style={{ alignItems: "center" }}>
                     <Sparkles size={15} style={{ color: "var(--accent)" }} />
                     <span style={{ fontWeight: 800, fontSize: 14 }}>短视频大纲</span>
-                    <span className="tag tag-gray" style={{ flex: "none" }}>口播种草 · 单片 · 竖屏 9:16</span>
+                    <span className="tag tag-gray" style={{ flex: "none" }}>口播种草 · 约 {total} 秒 · 竖屏 9:16</span>
                     <span className="faint" style={{ fontSize: 11 }}>AI 先定调 · 分镜与出片都据此保持一致，可直接改</span>
                   </div>
                   {/* v0.88：短视频大纲 beat 流（设计稿口播种草模型）。 */}
@@ -720,6 +721,26 @@ function ShortMakerInner({
                 </div>
               )}
 
+              {/* 分镜表 header（设计稿：大纲卡之后，平铺分镜表之前） */}
+              {(meta || shots.length > 0) && (
+                <div className="row gap-2" style={{ marginBottom: 14, alignItems: "center" }}>
+                  <Clapperboard size={16} style={{ color: "var(--accent)" }} />
+                  <span style={{ fontWeight: 800, fontSize: 16 }}>分镜表</span>
+                  {shots.length > 0 && (
+                    <span className="tag tag-accent" style={{ flex: "none" }}>共 {shots.length} 镜 · 约 {total} 秒</span>
+                  )}
+                  <span className="grow" />
+                  {shots.length > 0 && (
+                    <span className="row gap-1 faint" style={{ fontSize: 11.5, flex: "none" }}>
+                      <Edit size={12} /> 文字可直接改
+                    </span>
+                  )}
+                  <button type="button" className="chip" disabled={phase === "gen" || shots.length === 0} onClick={regen}>
+                    <RefreshCw size={12} /> 重新生成
+                  </button>
+                </div>
+              )}
+
               {phase === "gen" ? (
                 <div className="card" style={{ padding: 18 }}>
                   <GenSkeleton lines={4} label="正在写口播稿并拆分镜…" />
@@ -735,27 +756,20 @@ function ShortMakerInner({
                 </div>
               ) : (
                 <div className="col gap-3">
-                  {shots.map((s2, i) => (
-                    <div key={s2.id} className="col gap-1">
-                      {/* v0.88：每镜 beat 语义标签（设计稿 shortBeat） */}
-                      <span className="tag tag-accent" style={{ alignSelf: "flex-start" }}>
-                        {SHORT_BEATS[i] ?? `镜 ${i + 1}`}
-                      </span>
-                    <ShotFormCard
-                      s={s2}
-                      start={shots.slice(0, i).reduce((a, x) => a + (x.dur || 0), 0)}
-                      colors={s2.flow === "draft" ? { from: "#cbd5e1", to: "#94a3b8" } : { from: fmt.from, to: fmt.to }}
-                      speakerOptions={["口播", "旁白"]}
-                      busy={busy && busy.id === s2.id ? busy.to : null}
-                      onPatch={(patch) => updShot(s2.id, patch)}
-                      onDelete={() => setShots((arr) => arr.filter((x) => x.id !== s2.id).map((x, j) => ({ ...x, no: j + 1 })))}
-                      onRenderFrame={() => render(s2.id, "frame", 2)}
-                      onRenderDirect={() => render(s2.id, "clip", 9)}
-                      onRenderClip={() => render(s2.id, "clip", 7)}
-                      onApprove={() => updShot(s2.id, { flow: "done" })}
-                    />
-                    </div>
-                  ))}
+                  <ShortStoryboardTable
+                    shots={shots}
+                    beats={SHORT_BEATS}
+                    speakerOptions={["口播", "旁白"]}
+                    locked={draftStatus === "done"}
+                    busy={busy}
+                    onPatch={(id, patch) => updShot(id, patch)}
+                    onDelete={(id) => setShots((arr) => arr.filter((x) => x.id !== id).map((x, j) => ({ ...x, no: j + 1 })))}
+                    onRender={(id, kind) =>
+                      render(id, kind === "frame" ? "frame" : "clip", kind === "frame" ? 2 : kind === "direct" ? 9 : 7)
+                    }
+                    onApprove={(id) => updShot(id, { flow: "done" })}
+                    onFrameEdited={(id, frameUrl) => updShot(id, { flow: "frame", frameUrl, frameUrls: [frameUrl] })}
+                  />
                   <button
                     type="button"
                     className="btn btn-line btn-sm"

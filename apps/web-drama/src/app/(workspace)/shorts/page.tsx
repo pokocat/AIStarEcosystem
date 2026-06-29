@@ -6,14 +6,12 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Boxes, Clapperboard, Play, Trash2, Zap } from "lucide-react";
+import { Boxes, Clapperboard, Play, Trash2, Wand2, Zap } from "lucide-react";
 import { Thumb, dramaConfirm } from "@/components/drama-ui";
-import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
 import { PublishCreativeCenterModal } from "@/components/drama-workshop/publish-creative-center-modal";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
-import { type DramaProjectSummary } from "@/mocks/drama-workshop";
-import { ProjectsApi, RecipesApi, ShortsApi } from "@/api";
+import { RecipesApi, ShortsApi } from "@/api";
 import type { ShortDraftSummary } from "@/api/shorts";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { aiErrorMessage } from "@/lib/ai-error";
@@ -106,22 +104,45 @@ function DraftCard({
             style={{ width: "100%" }}
           />
         )}
+        {/* 完成 → 可播放（播放按钮）；制作中 → 不是成片，给「继续制作」入口而非播放键。 */}
         <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-          <span
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,.85)",
-              display: "grid",
-              placeItems: "center",
-              boxShadow: "var(--shadow-sm)",
-            }}
-          >
-            <Play size={18} style={{ color: "var(--ink)", marginLeft: 2 }} />
-          </span>
+          {done ? (
+            <span
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,.85)",
+                display: "grid",
+                placeItems: "center",
+                boxShadow: "var(--shadow-sm)",
+              }}
+            >
+              <Play size={18} style={{ color: "var(--ink)", marginLeft: 2 }} />
+            </span>
+          ) : (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 13px",
+                borderRadius: 999,
+                background: "rgba(255,255,255,.9)",
+                color: "var(--ink)",
+                fontSize: 12,
+                fontWeight: 700,
+                boxShadow: "var(--shadow-sm)",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              <Wand2 size={13} style={{ color: "var(--accent)" }} />
+              {d.shotCount === 0 ? "开始制作" : "继续制作"}
+            </span>
+          )}
         </span>
-        {d.durationSec > 0 && (
+        {/* 时长只在成片上显示——草稿不暗示「可播放长度」。 */}
+        {done && d.durationSec > 0 && (
           <span
             className="num"
             style={{
@@ -137,6 +158,23 @@ function DraftCard({
             }}
           >
             {fmtDur(d.durationSec)}
+          </span>
+        )}
+        {/* 制作中且已起草 → 封面底部出镜进度条，一眼看进度。 */}
+        {!done && d.shotCount > 0 && (
+          <span
+            aria-hidden
+            style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 4, background: "rgba(0,0,0,.18)" }}
+          >
+            <span
+              style={{
+                display: "block",
+                height: "100%",
+                width: Math.round((d.doneCount / d.shotCount) * 100) + "%",
+                background: "var(--accent)",
+                transition: "width .3s",
+              }}
+            />
           </span>
         )}
         <span
@@ -236,11 +274,10 @@ export default function ShortsStudioPage() {
   const [publishingId, setPublishingId] = React.useState<string | null>(null);
   // 已成功提交过审的草稿 ID 集合（本地标记，防止重复提交 + 给用户明确反馈）
   const [submittedShortIds, setSubmittedShortIds] = React.useState<Set<string>>(new Set());
-  // v0.76:短视频草稿真后端 —— 列表即真实草稿；单集作品另取真实项目（episodes===1）。
+  // v0.76:短视频草稿真后端 —— 列表即真实短视频草稿（DramaShort）。
+  // v0.77 起单集作品统一为 DramaShort；DramaProject（短剧）一律不在短视频工坊出现。
   const draftsQ = useAsync("/me/drama/shorts", () => ShortsApi.listDrafts());
-  const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
   const drafts = draftsQ.data ?? [];
-  const singles = (projectsQ.data ?? []).filter((p) => p.episodes === 1); // 宣传片 / 自传等单集作品
 
   const onMake = (ctx: MakeCtx) => {
     // 点子经 sessionStorage 一次性带入（不入 URL）；fmt / reopen 走 URL；进 make 页即建草稿。
@@ -268,26 +305,6 @@ export default function ShortsStudioPage() {
       await ShortsApi.deleteDraft(d.id);
       invalidate("/me/drama/shorts");
       invalidate("/me/drama/shorts/trash");
-      toast.success("已移到回收站");
-    } catch (e) {
-      toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
-    }
-  };
-  // 单集作品（episodes===1 的 DramaProject，多为早期「套用模板」产物）此前在短视频工坊
-  // 只展示不可删——补上软删，与短剧工坊一致，避免它们卡在两个列表的缝里删不掉。
-  const softDeleteSingle = async (p: DramaProjectSummary) => {
-    const ok = await dramaConfirm({
-      title: "移到回收站",
-      body: `《${p.title}》将移入回收站，30 天后彻底删除，期间可随时恢复。`,
-      tone: "danger",
-      confirmLabel: "移到回收站",
-      cancelLabel: "取消",
-    });
-    if (!ok) return;
-    try {
-      await ProjectsApi.deleteProject(p.id);
-      invalidate("/me/drama/projects");
-      invalidate("/me/drama/projects/trash");
       toast.success("已移到回收站");
     } catch (e) {
       toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
@@ -327,7 +344,6 @@ export default function ShortsStudioPage() {
     }
     editDraft(d.id);
   };
-  const openProject = (p: DramaProjectSummary) => router.push("/projects/" + p.id);
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
@@ -359,13 +375,15 @@ export default function ShortsStudioPage() {
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(158px, 1fr))", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(158px, 1fr))", gap: 16, alignItems: "stretch" }}>
         <button
           type="button"
           onClick={() => router.push("/shorts/new")}
           className="col center"
           style={{
-            aspectRatio: "3/4",
+            // 卡片等高：草稿卡是「封面 3/4 + 底部文字」，本卡随网格拉伸到同高（minHeight 兜底无草稿时的孤卡）。
+            height: "100%",
+            minHeight: 240,
             borderRadius: "var(--radius)",
             border: "2px dashed var(--line)",
             color: "var(--ink-3)",
@@ -409,9 +427,6 @@ export default function ShortsStudioPage() {
             publishing={publishingId === d.id}
             submitted={submittedShortIds.has(d.id)}
           />
-        ))}
-        {singles.map((p, i) => (
-          <ProjectCard key={p.id} p={p} stageNames={STAGE_NAMES} onOpen={openProject} onDelete={(x) => void softDeleteSingle(x)} delay={(drafts.length + i) * 35} />
         ))}
       </div>
 
