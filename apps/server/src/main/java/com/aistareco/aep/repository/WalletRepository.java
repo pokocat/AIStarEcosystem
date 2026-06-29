@@ -17,6 +17,7 @@ public interface WalletRepository extends JpaRepository<Wallet, String>,
 
     /** 用于 hold 写路径：SELECT … FOR UPDATE 防并发超扣。 */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT w FROM Wallet w WHERE w.userId = :userId")
     Optional<Wallet> findByUserIdForUpdate(String userId);
 
     /** 用于 commitHold / releaseHold 写路径：按 wallet.id 加行锁。 */
