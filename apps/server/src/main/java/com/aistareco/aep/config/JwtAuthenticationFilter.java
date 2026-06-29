@@ -44,6 +44,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = authHeader.substring(7);
             if (jwtUtil.isValid(token)) {
                 Claims claims = jwtUtil.parseToken(token);
+                // Register tickets share the same signing key but must NOT be used as auth tokens.
+                if ("sms-register".equals(claims.get("typ", String.class))) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 String userId = claims.getSubject();
                 String role = claims.get("role", String.class);
                 String username = claims.get("username", String.class);
