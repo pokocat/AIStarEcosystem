@@ -14,7 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * 支付宝直连网关（v2 §6 · 直连官方 SDK，替代聚合 Jeepay 这一跳）。
+ * 支付宝直连网关（v2 §6 · 直连官方 SDK）。
  *
  * 复杂的协议（RSA2 签名 / 验签 / 网关交互）全交给官方 {@code alipay-easysdk}；本类只做
  * 「wayCode → 对应支付产品 + payData 形态」的薄映射,以及把已验证的入账编排（settlePaidOrder）接上来。

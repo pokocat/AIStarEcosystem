@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  * {@code /api/dev/pay/shadow/confirm} 推动 → 复用同一个 {@code settlePaidOrder} 入账核心。
  *
  * §8.0 双控门禁：
- *   - 仅当 {@code aep.payment.driver=shadow}（dev 默认）时注入；driver=jeepay 失败绝不回退到此。
+ *   - 仅当 {@code aep.payment.driver=shadow}（dev 默认）时注入；真实渠道失败绝不回退到此。
  *   - 在 mysql/prod profile 激活会打 ERROR 横幅（照 LocalFakeCdnUploader 范式）。
  */
 @Component
@@ -34,7 +34,7 @@ public class ShadowPaymentGateway implements PaymentGateway {
         for (String p : env.getActiveProfiles()) {
             if ("mysql".equalsIgnoreCase(p) || "prod".equalsIgnoreCase(p)) {
                 log.error("==================== 影子支付网关在生产 profile（{}）下激活 ====================", p);
-                log.error("  aep.payment.driver=shadow 仅供 dev/test/staging 端到端联调，生产必须 jeepay。");
+                log.error("  aep.payment.driver=shadow 仅供 dev/test/staging 端到端联调，生产必须接真实渠道（alipay / wechat）。");
                 log.error("  影子链路不产生真实资金、不可对账，线上巡检应视此为部署事故（v2 §6.7 / §8.0 P1）。");
                 log.error("=======================================================================");
             }

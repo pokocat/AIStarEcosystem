@@ -1356,11 +1356,11 @@ components:
         createdAt:    { type: string, format: date-time }
         updatedAt:    { type: string, format: date-time, nullable: true }
         reviewedAt:   { type: string, format: date-time, nullable: true }
-        # v2 §6 在线支付（Jeepay/影子）可见性（线下 / 未支付订单字段省略）
-        paidVia:      { type: string, nullable: true, enum: [manual, jeepay, shadow], description: '入账来源：manual=线下核准 / jeepay=在线真实 / shadow=在线影子' }
+        # v2 §6 在线支付（渠道直连/影子）可见性（线下 / 未支付订单字段省略）
+        paidVia:      { type: string, nullable: true, enum: [manual, alipay, wechat, shadow], description: '入账来源：manual=线下核准 / alipay / wechat=在线真实 / shadow=在线影子' }
         channelPayNo: { type: string, nullable: true, description: 渠道流水号（对账追溯） }
-        wayCode:      { type: string, nullable: true, description: 支付方式 WX_LITE/ALI_QR… }
-        payOrderId:   { type: string, nullable: true, description: 支付网关订单号（Jeepay payOrderId / 影子 shadow_ 前缀） }
+        wayCode:      { type: string, nullable: true, description: 支付方式 ALI_PC/WX_NATIVE… }
+        payOrderId:   { type: string, nullable: true, description: 支付网关订单号（渠道 payOrderId / 影子 shadow_ 前缀） }
         paidAt:       { type: string, format: date-time, nullable: true, description: 到账时间 }
         sourceApp:    { type: string, nullable: true, description: 来源子应用 }
         # v2 §15.5 / D17 退款回收（仅 refunded 订单有值）
@@ -5010,7 +5010,7 @@ paths:
     post:
       tags: [finance]
       operationId: shadowPayConfirm
-      summary: '【dev 影子链路·仅 driver=shadow】模拟收银台确认（v2 §6.7）：success→复用 settlePaidOrder 入账 / fail→取消 / timeout→留 PENDING。生产 driver=jeepay 时此端点不注册。'
+      summary: '【dev 影子链路·仅 shadow 启用】模拟收银台确认（v2 §6.7）：success→复用 settlePaidOrder 入账 / fail→取消 / timeout→留 PENDING。生产真实渠道时此端点不注册。'
       requestBody:
         required: true
         content:
@@ -5032,25 +5032,6 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/RechargeOrder' }
-
-  /pay/notify/jeepay:
-    post:
-      tags: [finance]
-      operationId: jeepayPayNotify
-      summary: '【Jeepay 异步回调·仅 driver=jeepay】permitAll + MD5 验签（v2 §6.4 触点②）：验签→金额/状态校验→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。dev driver=shadow 时此端点不注册。'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              description: Jeepay 回调参数（mchOrderNo/payOrderId/state/amount/channelOrderNo/sign …）
-      responses:
-        '200':
-          description: 纯文本 "success"（已处理 / 止重投）或 "fail"（验签或金额不符，Jeepay 重投）
-          content:
-            text/plain:
-              schema: { type: string }
 
   /pay/notify/alipay:
     post:

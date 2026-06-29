@@ -21,7 +21,8 @@ import java.time.Instant;
  * 充值在线支付编排（v2 §4.1 / §6.4 / §6.7）。
  *
  * checkout：建 PENDING 订单 → 调 {@link PaymentGateway} 统一下单 → 回填 payOrderId → 返回 payData。
- * 入账不在这里：支付成功后由 PayNotify（Jeepay）/ 影子确认调 {@link RechargeService#settlePaidOrder}。
+ * 入账不在这里：支付成功后由各渠道异步回调（支付宝 / 微信 notify）/ 影子确认调
+ * {@link RechargeService#settlePaidOrder}。
  */
 @Service
 public class PaymentService {
@@ -41,8 +42,8 @@ public class PaymentService {
     /**
      * 子应用内充值下单。返回 payData 供前端拉起支付（影子链路 → 模拟收银台）。
      *
-     * @param wayCode 支付方式，空则按 driver 取默认（shadow→SHADOW，jeepay→WX_LITE）
-     * @param openid  微信小程序 openid（WX_LITE 必填）
+     * @param wayCode 支付方式，空则按 driver 取默认（shadow→SHADOW，alipay→ALI_PC）
+     * @param openid  微信小程序 openid（JSAPI 必填）
      */
     public CheckoutResponse checkout(String userId, String packageId, String wayCode,
                                      String openid, String clientIp, String sourceApp) {
@@ -109,8 +110,7 @@ public class PaymentService {
         return switch (gateway.driverName()) {
             case "shadow" -> "SHADOW";
             case "alipay" -> props.getAlipay().getDefaultWayCode();
-            case "jeepay" -> props.getJeepay().getDefaultWayCode();
-            default -> "WX_LITE";
+            default -> "SHADOW";
         };
     }
 }
