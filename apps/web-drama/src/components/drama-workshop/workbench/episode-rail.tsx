@@ -5,6 +5,7 @@
 import * as React from "react";
 import { ChevronLeft } from "lucide-react";
 import type { EpisodeOutline } from "@/mocks/drama-workshop";
+import { RenderTaskDock } from "../render-task-dock";
 
 interface EpisodeRailProps {
   ep: number;
@@ -180,6 +181,9 @@ export function EpisodeRail({ ep, total, episodes, slim, onEp, onBack }: Episode
           </div>
         )}
       </div>
+
+      {/* 后台生成任务面板 —— 钉在分集轨底部（窄轨时省略）；不再悬浮遮挡正文 */}
+      {!slim && <RenderTaskDock style={{ flex: "none", paddingTop: 8 }} />}
     </nav>
   );
 }

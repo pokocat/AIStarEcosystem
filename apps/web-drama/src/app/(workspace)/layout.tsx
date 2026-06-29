@@ -64,7 +64,7 @@ const GROUPS: NavGroup[] = [
     title: "创作",
     items: [
       { href: "/dashboard", icon: Sparkles, label: "首页", exact: true },
-      { href: "/projects", icon: Film, label: "短剧工坊" },
+      { href: "/projects", icon: Film, label: "短剧工坊", children: [{ href: "/projects/trash", label: "回收站" }] },
       { href: "/shorts", icon: Zap, label: "短视频工坊" },
     ],
   },
@@ -260,6 +260,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
       </div>
+
+      {/* 后台生成任务面板（嵌入侧栏，仅在会触发渲染的页面有任务时显示；不再悬浮遮挡内容） */}
+      <RenderTaskDock style={{ padding: "0 12px 8px", flexShrink: 0 }} />
 
       <div
         style={{
@@ -541,7 +544,6 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     return (
       <div className="ws-shell" style={{ display: "block", gridTemplateColumns: "none", overflow: "hidden" }}>
         {children}
-        <RenderTaskDock />
       </div>
     );
   }
@@ -563,7 +565,6 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
       >
         <Topbar onMenuToggle={() => setDrawerOpen(true)} />
         <div className="ws-content">{children}</div>
-        <RenderTaskDock />
       </main>
 
       {/* 移动端抽屉导航 */}

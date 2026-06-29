@@ -70,6 +70,32 @@ class DramaProjectServiceTest {
             }
             return out;
         });
+        // 回收站相关：按 id+owner 取（不限软删态）/ 软删列表 / 到期候选 / 物理删除。
+        when(repo.findByIdAndOwnerUserId(anyString(), anyString())).thenAnswer(inv -> {
+            DramaProject p = store.get(inv.<String>getArgument(0));
+            if (p == null || !Objects.equals(p.getOwnerUserId(), inv.getArgument(1))) return Optional.empty();
+            return Optional.of(p);
+        });
+        when(repo.findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(anyString())).thenAnswer(inv -> {
+            List<DramaProject> out = new ArrayList<>();
+            for (DramaProject p : store.values()) {
+                if (p.getDeletedAt() != null && Objects.equals(p.getOwnerUserId(), inv.getArgument(0))) out.add(p);
+            }
+            return out;
+        });
+        when(repo.findByDeletedAtBefore(any())).thenAnswer(inv -> {
+            java.time.OffsetDateTime cutoff = inv.getArgument(0);
+            List<DramaProject> out = new ArrayList<>();
+            for (DramaProject p : store.values()) {
+                if (p.getDeletedAt() != null && p.getDeletedAt().isBefore(cutoff)) out.add(p);
+            }
+            return out;
+        });
+        doAnswer(inv -> {
+            DramaProject p = inv.getArgument(0);
+            store.remove(p.getId());
+            return null;
+        }).when(repo).delete(any());
     }
 
     private static JsonNode node(String json) {
@@ -330,5 +356,67 @@ class DramaProjectServiceTest {
         // 结局节点
         assertTrue(ov.path("nodes").path("ep2").path("isEnding").asBoolean());
         assertEquals("结局", ov.path("nodes").path("ep3").path("endingLabel").asText());
+    }
+
+    // ── 回收站（软删 → 列表 → 恢复 / 彻底删除 / 到期清理）──────────────────────────
+
+    @Test
+    void softDeletedShowsInTrashWithDaysLeft() {
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        svc.deleteProject(id, "u1");
+        assertTrue(svc.listProjects("u1").isEmpty(), "软删后不应出现在工坊列表");
+        List<JsonNode> trash = svc.listTrash("u1");
+        assertEquals(1, trash.size());
+        JsonNode item = trash.get(0);
+        assertEquals(id, item.path("id").asText());
+        assertFalse(item.path("deletedAt").isNull());
+        assertFalse(item.path("purgeAt").isNull());
+        // 刚删除：剩余天数应接近保留期（>=29，<=30）。
+        long daysLeft = item.path("daysLeft").asLong();
+        assertTrue(daysLeft >= 29 && daysLeft <= DramaProjectService.TRASH_RETENTION_DAYS, "daysLeft=" + daysLeft);
+    }
+
+    @Test
+    void restoreBringsBackToList() {
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        svc.deleteProject(id, "u1");
+        svc.restoreProject(id, "u1");
+        assertTrue(svc.listTrash("u1").isEmpty(), "恢复后不应再在回收站");
+        assertEquals(1, svc.listProjects("u1").size(), "恢复后应回到工坊列表");
+        assertDoesNotThrow(() -> svc.getProject(id, "u1"));
+    }
+
+    @Test
+    void purgeRequiresTrashAndHardDeletes() {
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        // 未在回收站直接彻底删除 → 拒绝。
+        assertThrows(BusinessException.class, () -> svc.purgeProject(id, "u1"));
+        svc.deleteProject(id, "u1");
+        svc.purgeProject(id, "u1");
+        assertTrue(svc.listTrash("u1").isEmpty());
+        assertTrue(store.isEmpty(), "彻底删除应物理移除");
+    }
+
+    @Test
+    void trashIsolatedByOwner() {
+        String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        svc.deleteProject(id, "u1");
+        assertTrue(svc.listTrash("u2").isEmpty(), "他人不应看到 u1 的回收站");
+        assertThrows(BusinessException.class, () -> svc.restoreProject(id, "u2"));
+        assertThrows(BusinessException.class, () -> svc.purgeProject(id, "u2"));
+    }
+
+    @Test
+    void purgeExpiredRemovesOnlyAgedTrash() {
+        String fresh = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        String aged = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
+        svc.deleteProject(fresh, "u1");
+        svc.deleteProject(aged, "u1");
+        // 把 aged 的删除时间挪到保留期之外。
+        store.get(aged).setDeletedAt(java.time.OffsetDateTime.now().minusDays(DramaProjectService.TRASH_RETENTION_DAYS + 1));
+        int cleaned = svc.purgeExpiredTrash();
+        assertEquals(1, cleaned);
+        assertFalse(store.containsKey(aged), "过期项应被物理删除");
+        assertTrue(store.containsKey(fresh), "未过期项应保留");
     }
 }

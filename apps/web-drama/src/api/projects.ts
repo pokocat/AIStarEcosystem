@@ -136,9 +136,36 @@ export async function saveProject(
   });
 }
 
+/** 软删（移入回收站，保留 30 天后由后端定时物理删除，期间可恢复）。 */
 export async function deleteProject(id: string): Promise<void> {
   if (USE_MOCK) return mockDelay(undefined);
   await apiFetch<void>(`/me/drama/projects/${id}`, { method: "DELETE" });
+}
+
+/** 回收站条目：列表卡片字段 + 删除 / 到期信息。 */
+export interface DramaProjectTrashItem extends DramaProjectSummary {
+  deletedAt: string;
+  purgeAt: string;
+  /** 距彻底删除的剩余天数（向上取整）。 */
+  daysLeft: number;
+}
+
+/** 回收站列表（当前用户已软删的短剧）。 */
+export async function listTrashProjects(): Promise<DramaProjectTrashItem[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch<DramaProjectTrashItem[]>("/me/drama/projects/trash");
+}
+
+/** 从回收站恢复到工坊列表。 */
+export async function restoreProject(id: string): Promise<void> {
+  if (USE_MOCK) return mockDelay(undefined);
+  await apiFetch<ProjectDetail>(`/me/drama/projects/${id}/restore`, { method: "POST" });
+}
+
+/** 彻底删除（物理，需已在回收站）。 */
+export async function purgeProject(id: string): Promise<void> {
+  if (USE_MOCK) return mockDelay(undefined);
+  await apiFetch<void>(`/me/drama/projects/${id}/purge`, { method: "DELETE" });
 }
 
 // ── 剧集脚本 / 角色 AI ─────────────────────────────────────────────────────────

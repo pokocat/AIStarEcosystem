@@ -557,7 +557,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   return (
     <div className="col" style={{ height: "100%", minHeight: 0, position: "relative" }}>
       <div className="scroll grow" style={{ minHeight: 0 }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: "20px 28px 130px" }}>
+        {/* 整宽容器：分镜表放开到整宽，上半部信息卡保持易读窄宽（左对齐同起点）。 */}
+        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "20px 28px 130px" }}>
+          <div style={{ maxWidth: 880 }}>
           {locked && (
             <div className="row gap-3 fade-up" style={{ padding: "10px 14px", background: "var(--accent-soft)", borderRadius: 12, marginBottom: 14, color: "var(--accent)" }}>
               <Lock size={15} />
@@ -625,8 +627,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               <GenSkeleton lines={4} label={`正在重写第 ${state.ep} 集脚本…`} />
             </div>
           )}
+          </div>
 
-          {/* ===== 分镜表（设计稿平铺表格 · 结构化字段喂视频生成提示词） ===== */}
+          {/* ===== 分镜表（设计稿平铺表格 · 结构化字段喂视频生成提示词；整宽展示） ===== */}
           {phase === "done" && (
             <>
               <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px" }}>

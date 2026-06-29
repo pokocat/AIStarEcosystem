@@ -68,6 +68,17 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.89 · 2026-06-29 · 短剧工坊设计对齐修复 + 软删回收站 + 工作台细节
+
+按截图标注修复短剧工坊列表与设定页，并补齐回收站 / 分镜整宽 / 后台任务面板：
+
+- **短剧工坊列表（`projects/page.tsx` + `project-card.tsx`）**：① 删除「剧本审阅」入口卡；② 修「刚新建的短剧列表里看不到」——`useAsync` 新增 `revalidateOnMount`（stale-while-revalidate 后台静默刷新，不闪 loading）+ 网格展示全部短剧（不再 `slice(1)` 把最近一部藏进「继续上次」大卡）；③ 卡片更紧凑（竖封面 `3/4`→`1/1`、标题 21→16、列宽 168→156）、「开一部新的」与卡片 `stretch` 等高。
+- **软删 → 回收站 → 到期清理（全栈）**：卡片悬停「移到回收站」（软删，复用既有 `deletedAt`）；新页 `/projects/trash`（剩余天数 + 恢复 / 彻底删除）+ 侧栏「短剧工坊 › 回收站」。后端镜像 dap 回收站约定：`DramaProjectService` 加 `listTrash/restoreProject/purgeProject/purgeExpiredTrash`（保留 `TRASH_RETENTION_DAYS=30`）+ `DramaProjectTrashCleanupScheduler`（每日 03:40）+ controller `GET /trash`、`POST /{id}/restore`、`DELETE /{id}/purge`；`DramaProjectServiceTest` +5（共 21）。
+- **短剧设定页对齐设计稿（`stages/outline.tsx`、`stages/setup.tsx`）**：内嵌大纲拆成「剧情大纲」（主线 + 剧情脉络 `AI 分析` + 已生成/待完善状态）与「分集剧情」（待生成/已生成；生成控件 范围/时长/生成按钮 落在空态里）两块；浮动操作条补「加一集」。
+- **分镜视图整宽（`stages/epscript.tsx`）**：信息卡保持窄宽易读，分镜表容器放开到 `1280`，`StoryboardTable` 列随宽扩展。
+- **后台任务面板（`render-task-dock.tsx`）**：不再 `position:fixed` 悬浮遮挡正文 → 内嵌左侧栏（普通页全局侧栏；工作台钉在阶段轨 / 分集轨底部），面板向上展开。
+- **门禁**：web-drama typecheck/build（30 路由，含 `/projects/trash`）+ contract 全绿；server compile + `DramaProjectServiceTest` 21/21。
+
 ### v0.88 · 2026-06-28 · 短剧工作台对齐设计稿（全栈 · 渲染数据后端读取 · 编辑落库草稿态）
 
 按设计稿 `AI短剧工作台.dc.html` 还原工作台与短视频，并满足「所有渲染数据从后端读取 + 所有编辑落库草稿态」：

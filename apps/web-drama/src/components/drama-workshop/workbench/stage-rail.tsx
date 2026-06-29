@@ -6,6 +6,7 @@
 import * as React from "react";
 import { ChevronLeft, Film, Network, ScrollText } from "lucide-react";
 import { STAGE_BY_KEY, type StageKey, EPISODE_STAGE_KEYS } from "../stages-config";
+import { RenderTaskDock } from "../render-task-dock";
 
 interface StageRailProps {
   current: StageKey;
@@ -210,6 +211,9 @@ export function StageRail({ current, ep, interactive, onConvert, onJump, onHome 
           进入后左侧变为分集列表,步骤在顶部页签切换
         </div>
       )}
+
+      {/* 后台生成任务面板 —— 钉在阶段轨底部，不再悬浮遮挡正文 */}
+      <RenderTaskDock style={{ marginTop: "auto", paddingTop: 12, flex: "none" }} />
     </nav>
   );
 }

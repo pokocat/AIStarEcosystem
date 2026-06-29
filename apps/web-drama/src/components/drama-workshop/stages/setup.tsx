@@ -4,9 +4,9 @@
 // 把「大纲分集」+「角色与场景」合并成一页（剧情大纲 + 分集剧情 + 角色与场景设定），
 // 左轨为两步流程（短剧设定 / 剧集工作台）。所有内容均来自后端 ProjectData 并落库。
 import * as React from "react";
-import { Check } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import type { WorkshopAction, WorkshopState } from "../workbench";
-import type { ProjectData } from "@/mocks/drama-workshop";
+import type { EpisodeOutline, ProjectData } from "@/mocks/drama-workshop";
 import { OutlineStage } from "./outline";
 import { CastStage } from "./cast";
 import type { StageContext } from "./stage-context";
@@ -29,6 +29,15 @@ export function SetupStage({ state, dispatch, data, prefilled, ctx }: SetupStage
     dispatch({ type: "lock", stage: "outline", cost: 0 });
     dispatch({ type: "setEp", ep: 1 });
     dispatch({ type: "jump", stage: "epscript" });
+  };
+
+  // 设计稿浮动条「加一集」：手动追加一集到分集大纲并落库（OutlineStage 会随 data.episodes 同步）。
+  const addEpisode = () => {
+    const eps = data.episodes ?? [];
+    const maxNo = eps.reduce((a, e) => Math.max(a, e.no), 0);
+    const next: EpisodeOutline[] = [...eps, { no: maxNo + 1, hook: "", synopsis: "", beat: "自定义" }];
+    ctx.notifyEditing?.();
+    void ctx.saveData({ ...data, episodes: next }, { stage: 2 }).catch(() => {});
   };
 
   return (
@@ -69,6 +78,9 @@ export function SetupStage({ state, dispatch, data, prefilled, ctx }: SetupStage
           border: "1px solid var(--line-soft)",
         }}
       >
+        <button type="button" onClick={addEpisode} className="btn btn-line">
+          <Plus size={16} /> 加一集
+        </button>
         <button type="button" onClick={() => void enterEpisode()} className="btn btn-primary">
           <Check size={16} /> 锁定，进剧集工作台
         </button>
