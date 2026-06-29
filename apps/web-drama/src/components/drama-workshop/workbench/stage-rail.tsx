@@ -1,14 +1,17 @@
 "use client";
 
-// 阶段轨 v4 — 设计真源:app-v4.jsx `StageRail2`。
-// 项目设置逐项列出;剧集制作收敛为单一「剧集工作台」入口,
-// 进入后左轨变为分集导航,步骤在顶部页签切换。
+// 阶段轨 v0.89 — 设计真源 AI短剧工作台.dc.html 左边栏：
+// 项目头卡（封面 + 标题 + 类型·集数）+ 时间线两步（短剧设定 进行中 / 剧集工作台 第 N 集 · 进工作台）
+// + 底部「转换为互动剧」。互动剧项目额外插入「互动编排」步骤。
 import * as React from "react";
-import { ChevronLeft, Film, Network, ScrollText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Film, Network, ScrollText } from "lucide-react";
+import { Thumb } from "@/components/drama-ui";
 import { STAGE_BY_KEY, type StageKey, EPISODE_STAGE_KEYS } from "../stages-config";
 import { RenderTaskDock } from "../render-task-dock";
+import type { DramaProjectSummary } from "@/mocks/drama-workshop";
 
 interface StageRailProps {
+  meta: DramaProjectSummary;
   current: StageKey;
   locked: Partial<Record<StageKey, boolean>>;
   ep: number;
@@ -20,9 +23,79 @@ interface StageRailProps {
   onHome?: () => void;
 }
 
-export function StageRail({ current, ep, interactive, onConvert, onJump, onHome }: StageRailProps) {
+/** 时间线步骤：左节点（圆 + 连接线）+ 右卡片。 */
+function StepRow({
+  icon,
+  active,
+  connect,
+  onClick,
+  children,
+}: {
+  icon: React.ReactNode;
+  active?: boolean;
+  /** 在下方画一段连接线（非最后一步）。 */
+  connect?: boolean;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="row" style={{ alignItems: "stretch", gap: 11 }}>
+      <div className="col" style={{ width: 34, flex: "none", alignItems: "center" }}>
+        <span
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            flex: "none",
+            display: "grid",
+            placeItems: "center",
+            background: active ? "linear-gradient(135deg,var(--accent),var(--accent-2))" : "var(--surface)",
+            border: active ? "none" : "1.5px solid var(--line)",
+            color: active ? "#fff" : "var(--ink-3)",
+            boxShadow: active ? "var(--shadow-accent)" : "none",
+          }}
+        >
+          {icon}
+        </span>
+        {connect && (
+          <span style={{ flex: 1, width: 2, marginTop: 4, minHeight: 18, background: "var(--line)", borderRadius: 2 }} />
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onClick}
+        className="col"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          textAlign: "left",
+          padding: "11px 13px",
+          borderRadius: 14,
+          marginBottom: 8,
+          gap: 0,
+          background: active ? "var(--accent-soft)" : "transparent",
+          cursor: "pointer",
+          transition: "background .15s",
+        }}
+        onMouseEnter={(e) => {
+          if (!active) e.currentTarget.style.background = "var(--surface-2)";
+        }}
+        onMouseLeave={(e) => {
+          if (!active) e.currentTarget.style.background = "transparent";
+        }}
+      >
+        {children}
+      </button>
+    </div>
+  );
+}
+
+export function StageRail({ meta, current, ep, interactive, onConvert, onJump, onHome }: StageRailProps) {
   const inEp = EPISODE_STAGE_KEYS.includes(current);
+  const onBranch = current === "branch";
+  const onSetup = !inEp && !onBranch;
   const branch = STAGE_BY_KEY.branch;
+
   return (
     <nav
       className="col"
@@ -32,22 +105,24 @@ export function StageRail({ current, ep, interactive, onConvert, onJump, onHome 
         background: "var(--surface)",
         borderRight: "1px solid var(--line)",
         padding: "16px 14px",
-        gap: 4,
+        gap: 0,
         overflowY: "auto",
       }}
     >
+      {/* 返回 */}
       <button
         type="button"
         onClick={onHome}
         className="row gap-2"
         style={{
-          padding: "7px 10px",
-          borderRadius: 11,
-          marginBottom: 8,
+          padding: "7px 8px",
+          borderRadius: 10,
+          marginBottom: 12,
           color: "var(--ink-3)",
           fontWeight: 600,
-          fontSize: 12.5,
+          fontSize: 13,
           textAlign: "left",
+          flex: "none",
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = "var(--surface-2)";
@@ -58,162 +133,104 @@ export function StageRail({ current, ep, interactive, onConvert, onJump, onHome 
           e.currentTarget.style.color = "var(--ink-3)";
         }}
       >
-        <ChevronLeft size={14} /> 回短剧工坊
+        <ChevronLeft size={15} /> 回短剧工坊
       </button>
 
-      {/* v0.88：两步流程 —— 短剧设定（合并选题/大纲/角色场景）/ 剧集工作台。 */}
-      <button
-        type="button"
-        onClick={() => onJump("outline")}
+      {/* 项目头卡 */}
+      <div
         className="row gap-3"
-        style={{
-          padding: "10px 11px",
-          borderRadius: 12,
-          textAlign: "left",
-          background: !inEp && current !== "branch" ? "var(--accent-soft)" : "transparent",
-          color: !inEp && current !== "branch" ? "var(--accent)" : "var(--ink-2)",
-        }}
-        onMouseEnter={(e) => {
-          if (inEp || current === "branch") e.currentTarget.style.background = "var(--surface-2)";
-        }}
-        onMouseLeave={(e) => {
-          if (inEp || current === "branch") e.currentTarget.style.background = "transparent";
-        }}
+        style={{ padding: 12, borderRadius: 14, background: "var(--surface-2)", marginBottom: 16, flex: "none", alignItems: "center" }}
       >
-        <div
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 9,
-            flex: "none",
-            display: "grid",
-            placeItems: "center",
-            background: !inEp && current !== "branch" ? "var(--accent)" : "var(--surface-2)",
-            color: !inEp && current !== "branch" ? "#fff" : "var(--ink-3)",
-          }}
-        >
-          <ScrollText size={16} />
-        </div>
-        <div className="col" style={{ minWidth: 0, gap: 1 }}>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>短剧设定</span>
-          <span className="faint" style={{ fontSize: 10.5, whiteSpace: "nowrap" }}>
-            剧情大纲 · 角色 · 场景
-          </span>
-        </div>
-      </button>
-
-      {interactive && (
-        <>
-          <div className="faint" style={{ fontSize: 11, fontWeight: 700, padding: "14px 12px 4px", letterSpacing: ".06em" }}>
-            互动剧 · 分支编排
-          </div>
-          <button
-            type="button"
-            onClick={() => onJump("branch")}
-            className="row gap-3"
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              textAlign: "left",
-              background: current === "branch" ? "var(--accent-soft)" : "transparent",
-              color: current === "branch" ? "var(--accent)" : "var(--ink-2)",
-              fontWeight: current === "branch" ? 700 : 600,
-            }}
-            onMouseEnter={(e) => {
-              if (current !== "branch") e.currentTarget.style.background = "var(--surface-2)";
-            }}
-            onMouseLeave={(e) => {
-              if (current !== "branch") e.currentTarget.style.background = "transparent";
-            }}
+        <Thumb
+          from={meta.cover.from}
+          to={meta.cover.to}
+          w={54}
+          ratio={meta.ratio === "16:9" ? "16/10" : "3/4"}
+          radius={10}
+          stripes={false}
+        />
+        <div className="col" style={{ minWidth: 0, gap: 3 }}>
+          <div
+            style={{ fontWeight: 800, fontSize: 14.5, letterSpacing: "-.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            title={meta.title}
           >
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 7,
-                flex: "none",
-                display: "grid",
-                placeItems: "center",
-                background: current === "branch" ? "var(--accent)" : "var(--surface-2)",
-                color: current === "branch" ? "#fff" : "var(--ink-3)",
-              }}
-            >
-              <Network size={13} />
-            </span>
-            <span className="grow" style={{ fontSize: 13.5 }}>{branch?.name ?? "互动编排"}</span>
-          </button>
-          <div className="faint" style={{ fontSize: 10.5, padding: "2px 12px 0", lineHeight: 1.5 }}>
-            剧集分支图 / 时间轴互动点 / 全局标记 / 试玩 / 导出
+            {meta.title}
           </div>
-        </>
-      )}
+          <div className="faint num" style={{ fontSize: 11.5 }}>
+            {meta.type} · {meta.episodes} 集
+          </div>
+        </div>
+      </div>
 
+      {/* 时间线步骤 */}
+      <div className="col" style={{ flex: "none" }}>
+        {/* 短剧设定 */}
+        <StepRow icon={<ScrollText size={16} />} active={onSetup} connect onClick={() => onJump("outline")}>
+          <div className="row gap-2" style={{ alignItems: "center" }}>
+            <span style={{ fontWeight: 800, fontSize: 14, color: onSetup ? "var(--accent)" : "var(--ink)" }}>短剧设定</span>
+            <span className="grow" />
+            {onSetup && <span className="tag tag-accent" style={{ flex: "none", height: 20 }}>进行中</span>}
+          </div>
+          <div className="faint" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}>剧情大纲 · 角色 · 场景</div>
+          <div className="faint" style={{ fontSize: 11, lineHeight: 1.5 }}>整部剧的底子，跨集共享</div>
+        </StepRow>
+
+        {/* 互动编排（仅互动剧） */}
+        {interactive && (
+          <StepRow icon={<Network size={15} />} active={onBranch} connect onClick={() => onJump("branch")}>
+            <div className="row gap-2" style={{ alignItems: "center" }}>
+              <span style={{ fontWeight: 800, fontSize: 14, color: onBranch ? "var(--accent)" : "var(--ink)" }}>
+                {branch?.name ?? "互动编排"}
+              </span>
+            </div>
+            <div className="faint" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}>分支图 · 时间轴互动点</div>
+            <div className="faint" style={{ fontSize: 11, lineHeight: 1.5 }}>全局标记 · 试玩 · 导出</div>
+          </StepRow>
+        )}
+
+        {/* 剧集工作台 */}
+        <StepRow icon={<Film size={16} />} active={inEp} onClick={() => { if (!inEp) onJump("epscript"); }}>
+          <div className="row gap-2" style={{ alignItems: "center" }}>
+            <span style={{ fontWeight: 800, fontSize: 14, color: inEp ? "var(--accent)" : "var(--ink)" }}>剧集工作台</span>
+            <span className="grow" />
+            <span className="tag tag-gray num" style={{ flex: "none", height: 20 }}>第 {ep} 集</span>
+          </div>
+          <div className="faint" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}>脚本 → 视频工厂 → 成片</div>
+          <div className="faint" style={{ fontSize: 11, lineHeight: 1.5 }}>逐集拆分镜、出片</div>
+          {!inEp && (
+            <div className="row gap-1" style={{ marginTop: 6, color: "var(--accent)", fontSize: 12, fontWeight: 700, alignItems: "center" }}>
+              进工作台 <ChevronRight size={13} />
+            </div>
+          )}
+        </StepRow>
+      </div>
+
+      {/* 底部：后台任务面板 + 转换为互动剧 */}
+      <span className="grow" style={{ minHeight: 12 }} />
+      <RenderTaskDock style={{ flex: "none", paddingBottom: 4 }} />
       {!interactive && onConvert && (
         <button
           type="button"
           onClick={onConvert}
           className="row gap-2"
           title="把当前分集大纲转成可分支的互动剧（不删原集）"
-          style={{ marginTop: 8, padding: "8px 12px", borderRadius: 11, textAlign: "left", color: "var(--ink-3)", fontSize: 12, fontWeight: 600 }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--accent)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--ink-3)"; }}
+          style={{
+            flex: "none",
+            marginTop: 8,
+            padding: "13px 12px 4px",
+            borderTop: "1px solid var(--line)",
+            color: "var(--ink-2)",
+            fontSize: 13,
+            fontWeight: 600,
+            justifyContent: "center",
+            background: "transparent",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-2)"; }}
         >
-          <Network size={13} /> 转换为互动剧
+          <Network size={15} /> 转换为互动剧
         </button>
       )}
-
-      <div className="faint" style={{ fontSize: 11, fontWeight: 700, padding: "14px 12px 4px", letterSpacing: ".06em" }}>
-        剧集制作 · 逐集推进
-      </div>
-      <button
-        type="button"
-        onClick={() => {
-          if (!inEp) onJump("epscript");
-        }}
-        className="row gap-3"
-        style={{
-          padding: "10px 11px",
-          borderRadius: 12,
-          textAlign: "left",
-          background: inEp ? "var(--accent-soft)" : "transparent",
-          color: inEp ? "var(--accent)" : "var(--ink-2)",
-        }}
-        onMouseEnter={(e) => {
-          if (!inEp) e.currentTarget.style.background = "var(--surface-2)";
-        }}
-        onMouseLeave={(e) => {
-          if (!inEp) e.currentTarget.style.background = "transparent";
-        }}
-      >
-        <div
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 9,
-            flex: "none",
-            display: "grid",
-            placeItems: "center",
-            background: inEp ? "var(--accent)" : "var(--surface-2)",
-            color: inEp ? "#fff" : "var(--ink-3)",
-          }}
-        >
-          <Film size={16} />
-        </div>
-        <div className="col" style={{ minWidth: 0, gap: 1 }}>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>剧集工作台</span>
-          <span className="faint" style={{ fontSize: 10.5, whiteSpace: "nowrap" }}>
-            第 {ep} 集 · 脚本→工厂→成片
-          </span>
-        </div>
-      </button>
-      {inEp && (
-        <div className="faint" style={{ fontSize: 10.5, padding: "2px 12px 0", lineHeight: 1.5 }}>
-          进入后左侧变为分集列表,步骤在顶部页签切换
-        </div>
-      )}
-
-      {/* 后台生成任务面板 —— 钉在阶段轨底部，不再悬浮遮挡正文 */}
-      <RenderTaskDock style={{ marginTop: "auto", paddingTop: 12, flex: "none" }} />
     </nav>
   );
 }

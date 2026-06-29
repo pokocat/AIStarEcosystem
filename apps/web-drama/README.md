@@ -68,6 +68,40 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.93 · 2026-06-29 · 存储配额闭环（分镜视频计入 + 生成/上传前置校验）+ 支付上线 env 模版
+
+承接 v0.92 通用存储配额，补齐两处缺口并把支付配置写进上线模版：
+
+- **分镜/带货视频计入存储（`MaterialVideoWorker`）**：异步视频出片后镜像落 CDN 时，按 job 归属子应用记一笔 `StorageQuotaService.record`（drama→「分镜视频」/ celebrity→「素材视频」，refId=scriptId，drama 即项目 id，彻底删除时由 `releaseByRef` 释放）。此前只记账首帧/成片/参考图，异步视频漏记，至此 drama 全部产物均计入用量。§8.0：记账 best-effort 不阻断主链路；仅 CDN 镜像成功才记真实字节。
+- **配额前置校验（超额不生成/不扣费）**：`StorageQuotaService.checkQuota` 接入三处入口——参考图上传（`DramaAssetUploadController`，已知文件大小精确校验）、分镜首帧渲染（`DramaRenderService.renderFrame`，生成前）、分镜视频（`DramaRenderService.renderClip`，提交任务/hold 积分前）。超额抛 402 `STORAGE_QUOTA_EXCEEDED`，提示清理或购买存储套餐；校验先于一切扣费，绝不「扣了费又因满配额失败」。
+- **支付上线配置写进 env 模版（`infra/env/server.env.example` §15）**：`AEP_PAYMENT_DRIVER`（shadow/alipay/jeepay）+ 支付宝/jeepay 各机密（`<FILL_...>` 占位，部署时填）+ shadow 收银台 + 对账轮询间隔；并注明存储配额走 PlatformConfig DB（非 env）。§8.0 fail-fast：driver=alipay/jeepay 缺机密启动报错，不静默降级。
+- **门禁**：server compile + `StorageQuotaServiceTest` 7 / `RechargeServiceTest` 16 / `DramaProjectServiceTest` 21 全绿 + contract 全绿。
+
+### v0.92 · 2026-06-29 · 通用存储配额（用量/余量 + 回收站计入 + 购买存储套餐扩容）
+
+通用后台能力（任意子应用 `?app=` 复用，celebrity 等可快速对接），drama 先接入：
+
+- **存储台账（`StorageAsset` 表）+ `StorageQuotaService`**：每生成 / 上传一个落 CDN 的资产写一行（app/owner/category/refId/cdnKey/bytes）。用量 = 按 (app,owner) SUM(bytes)，分类明细按 category 分组。drama 已记账：参考图上传（`DramaAssetUploadController`）、分镜首帧（`DramaRenderService`）、成片（`DramaAssembleService`）。**回收站计入**：软删（`DramaProject.deletedAt`）不删台账行 → 仍占用；仅「彻底删除 / 到期清理」按 refId 释放。
+- **配额 admin 可配（`storage.quota_mb.<app>` PlatformConfig，缺省 `storage.quota_mb.default`）**：`AdminStorageController`（`GET/PUT /api/admin/storage/quotas`）。
+- **购买存储套餐扩容**：充值套餐加 `grantStorageMb`（admin 充值套餐表单可配，纯存储套餐 credits 可为 0）；下单快照到 `RechargeOrder.grantStorageMb`，`RechargeService.settlePaidOrder` 结算时授予 `StorageGrant`（幂等 by 订单号），复用现有支付收银台链路。**实际配额 = 基础配额 + Σ 有效扩容**。
+- **前端**：`api/storage.ts` + 财务中心「存储空间」卡（已用 / 配额 / 余量 + 分类明细 + 升级入口）；钱包页「升级存储 · 购买存储套餐」专区（与积分套餐同收银流程）。
+- **门禁**：typecheck:all 10/10 + web-drama build + contract + server compile；`StorageQuotaServiceTest` 7 + `DramaProjectServiceTest` 21 + `RechargeServiceTest` 16 全绿。§8.0：记账 best-effort 不阻断业务。
+
+### v0.91 · 2026-06-29 · 充值走真实支付链路 + 下线提现入口（防资损）
+
+- **充值统一走真实在线支付（`finance/page.tsx`）**：财务中心「充值」原来用旧的线下/即时入账弹窗（`FinanceApi.createRecharge` → `/me/wallet/recharge`，「充值后立即到账」）—— 改为跳转 `/wallet` 走真实收银台（`/wallet/checkout`：下单 → 拉起支付宝 → 异步 notify 回调 `settlePaidOrder` 入账，幂等防重复扣款）。删除即时充值弹窗 `RechargeDialog`。
+  - 注：真实 微信/支付宝 由后端支付驱动决定（`AEP_PAYMENT_DRIVER=alipay`/`jeepay` + 凭据，网关 + 回调已就位）；dev 默认 `shadow` 驱动会显示「模拟支付」按钮（仅 dev）。
+- **下线提现入口（防资损）**：现阶段不支持提现 —— 删除财务中心「提现」按钮 + `WithdrawDialog` + 流水「提现」筛选项；「待结算」KPI 文案改「结算在途」。历史流水仍保留「提现」类型标签用于显示。后端 `/me/wallet/withdraw` 端点保留（其他端可能复用），仅下线 drama 前端入口。
+- **门禁**：web-drama typecheck/build + contract 全绿。
+
+### v0.90 · 2026-06-29 · 工作台左栏还原 + 角色/场景参考图上传素材库 + 场景看大图/AI 改图
+
+- **工作台左边栏还原设计稿（`workbench/stage-rail.tsx`）**：项目头卡（封面 + 标题 + 类型·集数）+ 时间线两步（短剧设定「进行中」/ 剧集工作台「第 N 集」+「进工作台 →」），「转换为互动剧」钉底；后台任务面板嵌入轨底。`WorkshopShell` 传 `meta`。
+- **角色 / 场景上传参考图 → 用户素材库**：新增后端 `DramaAssetUploadController`（`POST /me/drama/assets/uploads`，multipart → `FileStorageService` 落 OSS，返回 `cdnKey/url`）+ `api/drama-assets.ts`。角色卡（`cast/char-card.tsx`）真人参考图改为真实上传（替换原静态 正面/侧面/情绪 占位）；场景卡新增「上传参考图」。上传后落角色 `refUrl/refCdnKey`、场景 `refUrl/refCdnKey`，并 `addLibraryMaterial` 收进素材库（`Material` 加 `url/cdnKey`，素材库卡 / 详情渲染真图）。
+- **场景图看大图 + AI 改图（复用首帧逻辑）**：抽出通用 `ai-image-edit-modal.tsx`（9:16 首帧 / 16:9 场景共用：左指令对话 + 右预览 + 版本号 + ref 图迭代），`storyboard-table.tsx` 改用之；场景卡点图开 `MediaLightbox` 看大图、「AI 修图」开同款对话式改图，回填 `refUrl/refCdnKey`。
+- **浮动操作条文案对齐**：短剧设定「锁定，进剧集工作台」→「保存剧本·去分镜工作台」（去掉「加一集」，移回「分集剧情」内）；分镜「通过整集·进视频工厂」→「保存分镜·去视频工厂」。
+- **门禁**：web-drama typecheck/build + contract + server compile 全绿。
+
 ### v0.89 · 2026-06-29 · 短剧工坊设计对齐修复 + 软删回收站 + 工作台细节
 
 按截图标注修复短剧工坊列表与设定页，并补齐回收站 / 分镜整宽 / 后台任务面板：

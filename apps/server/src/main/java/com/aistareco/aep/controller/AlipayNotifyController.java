@@ -6,7 +6,6 @@ import com.aistareco.aep.service.payment.AlipayPaymentGateway;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,7 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * 支付宝异步支付回调（v2 §6.4 触点②，直连方案）。仅 driver=alipay 注册（其它 driver 下路径 404）。
+ * 支付宝异步支付回调（v2 §6.4 触点②，直连方案）。v0.94 起常驻注册（多渠道运行时启停）：
+ * 支付宝未启用 / 未配置时 verifyNotify 返回 false → 回 fail，不入账。
  *
  * 安全模型（§6.4 触点④）：路径在 {@code AepSecurityConfig} permitAll —— <b>靠 RSA2 验签不靠 JWT</b>。
  * 金额 / 状态只信此服务端通道（returnUrl 浏览器同步跳回绝不用于入账）。
@@ -27,7 +27,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/pay/notify")
-@ConditionalOnProperty(name = "aep.payment.driver", havingValue = "alipay")
 public class AlipayNotifyController {
 
     private static final Logger log = LoggerFactory.getLogger(AlipayNotifyController.class);

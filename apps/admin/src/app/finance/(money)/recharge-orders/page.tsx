@@ -34,9 +34,8 @@ const STATUS_TONE: Record<RechargeOrderStatus, StatusTone> = {
   refunded: "neutral",
 };
 
-// v2 §6 支付来源 tone：jeepay 真实在线=success；shadow 影子(dev/test)=warning；manual 线下=neutral。
+// v2 §6 支付来源 tone：alipay/wechat 真实在线=success；shadow 影子(dev/test)=warning；manual 线下=neutral。
 const PAID_VIA_TONE: Record<string, StatusTone> = {
-  jeepay: "success",
   alipay: "success",
   wechat: "success",
   shadow: "warning",
@@ -53,7 +52,7 @@ const SOURCE_APP_LABEL: Record<string, string> = {
 };
 const sourceAppLabel = (s?: string | null): string => (s ? SOURCE_APP_LABEL[s] ?? s : "—");
 
-/** 支付方式 / 渠道列：在线（Jeepay/影子）显示渠道流水号 + 支付方式；线下核准显示来源；未支付显示 —。 */
+/** 支付方式 / 渠道列：在线（支付宝/微信/影子）显示渠道流水号 + 支付方式；线下核准显示来源；未支付显示 —。 */
 function PayMethodCell({ o }: { o: RechargeOrder }) {
   if (!o.paidVia) return <span className="text-xs text-muted-foreground">—</span>;
   const meta = RECHARGE_PAID_VIA_META[o.paidVia] ?? { label: o.paidVia, online: true };

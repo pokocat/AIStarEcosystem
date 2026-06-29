@@ -14,5 +14,7 @@ public record AdminRechargePackageUpsertDto(
         Integer sortOrder,
         Boolean active,
         /** v2 §6 适用子应用：all=通用 / music|drama|celebrity|aiavatar|star。 */
-        String appScope
+        String appScope,
+        /** v0.92 存储套餐：购买授予的存储扩容（MB），>0 即为「存储套餐」。 */
+        Long grantStorageMb
 ) {}

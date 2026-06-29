@@ -41,6 +41,7 @@ public class DramaProjectService {
     private final PromptService promptService;
     private final CreditService creditService;
     private final PlatformConfigService configs;
+    private final com.aistareco.aep.service.storage.StorageQuotaService storage;
     private final ObjectMapper om;
 
     public DramaProjectService(DramaProjectRepository repo,
@@ -48,12 +49,14 @@ public class DramaProjectService {
                                PromptService promptService,
                                CreditService creditService,
                                PlatformConfigService configs,
+                               com.aistareco.aep.service.storage.StorageQuotaService storage,
                                ObjectMapper om) {
         this.repo = repo;
         this.invocation = invocation;
         this.promptService = promptService;
         this.creditService = creditService;
         this.configs = configs;
+        this.storage = storage;
         this.om = om;
     }
 
@@ -206,6 +209,7 @@ public class DramaProjectService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_NOT_IN_TRASH", "请先移入回收站再彻底删除");
         }
         repo.delete(row);
+        storage.releaseByRef("drama", id); // 释放该项目占用的存储（成片等）
     }
 
     /** 定时任务：物理删除软删超过保留期的项目。返回清理条数。 */
@@ -216,6 +220,7 @@ public class DramaProjectService {
         for (DramaProject p : expired) {
             try {
                 repo.delete(p);
+                storage.releaseByRef("drama", p.getId());
                 done++;
             } catch (Exception e) {
                 log.warn("[drama-trash] purge expired failed id={}: {}", p.getId(), e.getMessage());

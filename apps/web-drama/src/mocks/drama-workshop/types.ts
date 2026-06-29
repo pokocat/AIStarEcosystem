@@ -92,6 +92,10 @@ export interface CharacterDef {
   avatar: string;
   bound: boolean;
   refCount?: number;
+  /** v0.89：真人参考图 URL（上传；稳定 / 已签名）。 */
+  refUrl?: string;
+  /** v0.89：参考图 OSS key（真值；URL 为派生展示值）。 */
+  refCdnKey?: string;
 }
 
 export interface ScriptLine {

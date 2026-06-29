@@ -14,10 +14,9 @@ export const RECHARGE_ORDER_STATUS_LABEL: Record<RechargeOrderStatus, string> = 
   refunded: "已退款",
 };
 
-/** v2 §6 支付来源（paidVia）展示元数据。manual=线下核准；jeepay/shadow=在线（影子仅 dev/test）。 */
+/** v2 §6 支付来源（paidVia）展示元数据。manual=线下核准；alipay/wechat/shadow=在线（影子仅 dev/test）。 */
 export const RECHARGE_PAID_VIA_META: Record<string, { label: string; online: boolean }> = {
   manual: { label: "线下核准", online: false },
-  jeepay: { label: "在线 · Jeepay", online: true },
   alipay: { label: "在线 · 支付宝", online: true },
   wechat: { label: "在线 · 微信", online: true },
   shadow: { label: "在线 · 影子", online: true },
@@ -43,8 +42,8 @@ export interface RechargeOrder {
   createdAt: string;
   updatedAt?: string;
   reviewedAt?: string;
-  // v2 §6 在线支付（Jeepay/影子）可见性（线下/未支付字段省略）
-  paidVia?: "manual" | "jeepay" | "shadow" | string;
+  // v2 §6 在线支付（渠道直连/影子）可见性（线下/未支付字段省略）
+  paidVia?: "manual" | "alipay" | "wechat" | "shadow" | string;
   channelPayNo?: string;
   wayCode?: string;
   payOrderId?: string;

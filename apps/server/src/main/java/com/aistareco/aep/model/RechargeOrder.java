@@ -53,6 +53,10 @@ public class RechargeOrder {
     @Builder.Default
     private long priceCents = 0L;
 
+    /** v0.92：套餐快照 —— 购买授予的存储扩容（MB），结算时授予 StorageGrant。 */
+    @Builder.Default
+    private long grantStorageMb = 0L;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     @Builder.Default
@@ -72,23 +76,24 @@ public class RechargeOrder {
     /** 核准入账时的主分录 id（审计回溯）。 */
     private String ledgerEntryId;
 
-    // ── v2 在线支付字段（Jeepay / 影子链路）。全部 nullable，兼容老行。 ──
+    // ── v2 在线支付字段（渠道直连 / 影子链路）。全部 nullable，兼容老行。 ──
 
-    /** 支付网关订单号（Jeepay payOrderId / 影子 shadow_ 前缀）。幂等 + 防重，唯一。 */
+    /** 支付网关订单号（渠道 payOrderId / 影子 shadow_ 前缀）。幂等 + 防重，唯一。 */
     @Column(unique = true, length = 64)
     private String payOrderId;
 
-    /** 支付方式 wayCode（WX_LITE / WX_NATIVE / ALI_QR / SHADOW…）。 */
+    /** 支付方式 wayCode（ALI_PC / ALI_WAP / ALI_QR / WX_NATIVE / WX_JSAPI / WX_H5 / SHADOW…）。
+     *  渠道由前缀推导：ALI_*→alipay，WX_*→wechat，SHADOW→shadow（对账 / 查单 / 回调路由用）。 */
     @Column(length = 32)
     private String wayCode;
 
-    /** 支付网关订单态镜像（Jeepay payState）。 */
+    /** 支付网关订单态镜像。 */
     private Integer payState;
 
     /** 到账时间（settle 时回填）。 */
     private Instant paidAt;
 
-    /** 入账来源：jeepay / manual / shadow。 */
+    /** 入账来源：alipay / wechat / manual / shadow。 */
     @Column(length = 16)
     private String paidVia;
 

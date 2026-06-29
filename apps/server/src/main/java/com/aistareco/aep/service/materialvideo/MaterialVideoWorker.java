@@ -5,6 +5,7 @@ import com.aistareco.aep.model.MaterialVideoJob;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.cdn.CdnUploader;
+import com.aistareco.aep.service.storage.StorageQuotaService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,17 +41,20 @@ public class MaterialVideoWorker {
     private final MaterialVideoProperties props;
     private final CreditService creditService;
     private final CdnUploader cdnUploader;
+    private final StorageQuotaService storage;
     private final HttpClient downloadHttp;
 
     public MaterialVideoWorker(MaterialVideoJobRepository jobRepo,
                                MaterialVideoModelClient modelClient,
                                MaterialVideoProperties props,
                                CreditService creditService,
+                               StorageQuotaService storage,
                                ObjectProvider<CdnUploader> cdnUploaderProvider) {
         this.jobRepo = jobRepo;
         this.modelClient = modelClient;
         this.props = props;
         this.creditService = creditService;
+        this.storage = storage;
         this.cdnUploader = cdnUploaderProvider.getIfAvailable();
         this.downloadHttp = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -120,6 +124,11 @@ public class MaterialVideoWorker {
                         CdnMirrorResult mirror = mirrorToCdn(jobId, videoUrl, thumbnailUrl);
                         videoUrl = mirror.videoUrl();
                         thumbnailUrl = mirror.thumbnailUrl();
+                        // 成片落 CDN → 记入存储用量（按 job 归属子应用记账；best-effort 不阻断）。
+                        // refId=scriptId：drama 即项目 id，项目彻底删除时由 StorageQuotaService.releaseByRef 释放。
+                        String category = "drama".equals(appCode) ? "分镜视频" : "素材视频";
+                        storage.record(appCode, job.getOwnerUserId(), category, job.getScriptId(),
+                                mirror.videoKey(), mirror.videoBytes());
                     } catch (IOException | RuntimeException e) {
                         log.warn("[material-video] job {} CDN mirror failed (keeping provider URL): {}",
                                 jobId, e.getMessage());
@@ -180,7 +189,8 @@ public class MaterialVideoWorker {
 
             log.info("[material-video] job {} mirrored to CDN driver={} key={}",
                     jobId, cdnUploader.driverName(), uploadedVideo.key());
-            return new CdnMirrorResult(uploadedVideo.cdnUrl(), finalThumbnailUrl);
+            return new CdnMirrorResult(uploadedVideo.cdnUrl(), finalThumbnailUrl,
+                    uploadedVideo.key(), uploadedVideo.uploadedBytes());
         } finally {
             deleteTemp(video);
             deleteTemp(thumbnail);
@@ -338,5 +348,5 @@ public class MaterialVideoWorker {
 
     private record DownloadedMedia(Path path, String contentType, String extension) {}
 
-    private record CdnMirrorResult(String videoUrl, String thumbnailUrl) {}
+    private record CdnMirrorResult(String videoUrl, String thumbnailUrl, String videoKey, long videoBytes) {}
 }

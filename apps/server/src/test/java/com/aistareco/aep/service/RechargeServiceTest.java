@@ -49,7 +49,9 @@ class RechargeServiceTest {
         pkgRepo = mock(RechargePackageRepository.class);
         AepUserRepository userRepo = mock(AepUserRepository.class);
         StudioRepository studioRepo = mock(StudioRepository.class);
-        svc = new RechargeService(pkgRepo, orderRepo, userRepo, studioRepo, creditService, notifications);
+        com.aistareco.aep.service.storage.StorageQuotaService storageQuota =
+                mock(com.aistareco.aep.service.storage.StorageQuotaService.class);
+        svc = new RechargeService(pkgRepo, orderRepo, userRepo, studioRepo, creditService, notifications, storageQuota);
 
         db = new HashMap<>();
         when(orderRepo.findById(anyString()))

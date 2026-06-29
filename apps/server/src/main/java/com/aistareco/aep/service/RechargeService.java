@@ -53,19 +53,22 @@ public class RechargeService {
     private final StudioRepository studioRepo;
     private final CreditService creditService;
     private final NotificationPublisher notificationPublisher;
+    private final com.aistareco.aep.service.storage.StorageQuotaService storageQuota;
 
     public RechargeService(RechargePackageRepository pkgRepo,
                            RechargeOrderRepository orderRepo,
                            AepUserRepository userRepo,
                            StudioRepository studioRepo,
                            CreditService creditService,
-                           NotificationPublisher notificationPublisher) {
+                           NotificationPublisher notificationPublisher,
+                           com.aistareco.aep.service.storage.StorageQuotaService storageQuota) {
         this.pkgRepo = pkgRepo;
         this.orderRepo = orderRepo;
         this.userRepo = userRepo;
         this.studioRepo = studioRepo;
         this.creditService = creditService;
         this.notificationPublisher = notificationPublisher;
+        this.storageQuota = storageQuota;
     }
 
     public List<RechargePackageDto> listPackages() {
@@ -125,6 +128,7 @@ public class RechargeService {
                 .credits(pkg.getCredits())
                 .bonusCredits(pkg.getBonusCredits())
                 .priceCents(pkg.getPriceCents())
+                .grantStorageMb(pkg.getGrantStorageMb())
                 .status(RechargeOrder.Status.PENDING)
                 .userNote(trimToNull(userNote, 512))
                 .createdAt(now)
@@ -170,6 +174,7 @@ public class RechargeService {
                 .credits(pkg.getCredits())
                 .bonusCredits(pkg.getBonusCredits())
                 .priceCents(pkg.getPriceCents())
+                .grantStorageMb(pkg.getGrantStorageMb())
                 .status(RechargeOrder.Status.PENDING)
                 .wayCode(wayCode)
                 .sourceApp(sourceApp)
@@ -375,7 +380,7 @@ public class RechargeService {
     }
 
     /**
-     * 入账核心（v2 §4.3）：手工核准 {@link #approveOrder}、在线支付回调（Jeepay notify）与影子确认
+     * 入账核心（v2 §4.3）：手工核准 {@link #approveOrder}、在线支付回调（支付宝 / 微信 notify）与影子确认
      * 共用这一条入账逻辑。
      *
      * 幂等：先用条件 UPDATE 抢占 PENDING → PAID（{@link RechargeOrderRepository#markPaid}）；
@@ -384,7 +389,7 @@ public class RechargeService {
      *   回填 ledgerEntryId / paidVia / channelPayNo / 审批信息，并通知用户。
      * 任一步抛异常 → 整个事务回滚（含 markPaid）→ 订单退回 PENDING，可重试。
      *
-     * @param paidVia      入账来源：manual / jeepay / shadow
+     * @param paidVia      入账来源：manual / alipay / wechat / shadow
      * @param channelPayNo 渠道订单号（对账，可空）
      * @param reviewerId   手工核准人（在线回调 / 影子为 null）
      * @param reviewNote   核准备注（在线回调 / 影子为 null）
@@ -429,6 +434,17 @@ public class RechargeService {
             );
         }
 
+        // 3) 存储扩容（购买存储套餐）：授予 StorageGrant（幂等 by 订单号；按子应用归属）
+        if (order.getGrantStorageMb() > 0 && order.getSourceApp() != null && !order.getSourceApp().isBlank()) {
+            try {
+                storageQuota.grantStorage(order.getSourceApp(), order.getUserId(),
+                        order.getGrantStorageMb(), order.getId(), null);
+            } catch (Exception e) {
+                log.warn("[recharge] storage grant failed order={} app={} mb={}: {}",
+                        order.getId(), order.getSourceApp(), order.getGrantStorageMb(), e.getMessage());
+            }
+        }
+
         order.setLedgerEntryId(mainEntry.id());
         order.setPaidVia(paidVia);
         order.setChannelPayNo(channelPayNo);
@@ -445,6 +461,7 @@ public class RechargeService {
                 "充值已到账",
                 "充值订单 " + order.getId() + " 已入账：" + order.getCredits() + " 积分"
                         + (order.getBonusCredits() > 0 ? "，另赠送 " + order.getBonusCredits() + " 积分" : "")
+                        + (order.getGrantStorageMb() > 0 ? "，存储 +" + order.getGrantStorageMb() + " MB" : "")
                         + "。");
         return RechargeOrderDto.from(order);
     }
@@ -479,7 +496,7 @@ public class RechargeService {
      * 未消费充值余额回收（写资金面 REFUND_CASH 分录），订单转 REFUNDED 并互链回收分录。clamp 后为 0
      * （已消费完毕）→ 抛 409，不做现金退款（避免「服务已交付仍全额退现」的隐性损失，须财务显式善意处理）。
      *
-     * <p>真实 RMB 退回（Jeepay 退款 API / 线下打款）由财务在渠道侧执行；本方法负责积分账本侧的回收与
+     * <p>真实 RMB 退回（渠道退款 API / 线下打款）由财务在渠道侧执行；本方法负责积分账本侧的回收与
      * 订单状态机推进，并把回收分录与现金凭证互链供对账审计（R7：人工退款须可追、不默默漏）。
      */
     @Transactional

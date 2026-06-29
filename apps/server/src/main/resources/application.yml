@@ -81,26 +81,19 @@ aep:
   dev-auth:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
   # v2 在线支付（充值）。driver=shadow → 影子链路（dev/test/staging，无外部依赖，端到端可跑）；
-  # 生产必须 driver=jeepay（接真实 Jeepay 网关，P1 落地）。
-  # §8.0：driver=jeepay 未配/失败时上层抛带码错误、不入账，绝不回退到 shadow；
+  # 生产接真实渠道（alipay / wechat）。渠道启用 + 机密以 admin 后台「支付配置」DB 为准；
+  # 这里的 env 仅作首次启动的 bootstrap 种子（DB 无配置时回落）。
+  # §8.0：真实渠道未配/失败时上层抛带码错误、不入账，绝不回退到 shadow；
   #        shadow 在 mysql/prod profile 激活会打 ERROR 横幅。
   payment:
     driver: ${AEP_PAYMENT_DRIVER:shadow}
     shadow:
+      # 影子收银台渠道开关：dev 默认 true；生产 profile（application-mysql.yml）置 false。
+      enabled: ${AEP_PAYMENT_SHADOW_ENABLED:true}
       # manual=前端模拟收银台手动点「支付成功」；auto=下单后延迟自动确认（CI/headless）
       confirm-mode: ${AEP_PAYMENT_SHADOW_CONFIRM_MODE:manual}
       auto-confirm-delay-ms: ${AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS:800}
-    # v2 §6.5：driver=jeepay 时必填（机密经 env 注入、禁进 git）。JeepayPaymentGateway 启动 fail-fast 校验。
-    jeepay:
-      base-url: ${AEP_PAYMENT_JEEPAY_BASE_URL:}
-      mch-no: ${AEP_PAYMENT_JEEPAY_MCH_NO:}
-      app-id: ${AEP_PAYMENT_JEEPAY_APP_ID:}
-      api-key: ${AEP_PAYMENT_JEEPAY_API_KEY:}
-      notify-url: ${AEP_PAYMENT_JEEPAY_NOTIFY_URL:}
-      sign-type: ${AEP_PAYMENT_JEEPAY_SIGN_TYPE:MD5}
-      default-way-code: ${AEP_PAYMENT_JEEPAY_DEFAULT_WAY_CODE:WX_LITE}
-      version: ${AEP_PAYMENT_JEEPAY_VERSION:1.0}
-    # v2 §6：支付宝直连（alipay-easysdk）。driver=alipay 时必填（机密经 env 注入、禁进 git）。
+    # v2 §6：支付宝直连（alipay-easysdk）。bootstrap 种子（机密经 env 注入、禁进 git）。
     # 沙箱→生产只换 app-id/merchant-private-key/alipay-public-key/gateway-host 四项。
     alipay:
       app-id: ${AEP_PAYMENT_ALIPAY_APP_ID:}

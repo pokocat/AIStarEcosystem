@@ -416,6 +416,7 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 - **密钥不入 git**：`infra/env/*.env`（不含 `.example`）和 `apps/miniprogram/config/env.js` 都已在 `.gitignore`
 - **`AEP_SEED_DEV_DATA_ENABLED=false`**：生产 server.env 默认值，避免新空库写入演示账号
 - **`AEP_DEV_AUTH_ENABLED=false`**：生产必须关闭免密 dev-login 入口
+- **`AEP_PAYMENT_DRIVER`**：充值收银台 bootstrap 驱动（`server.env.example` §15）。生产渠道启用 + 机密以 admin 后台「支付配置」DB 为准（多渠道并存，用户收银台自选 `alipay` / `wechat`）；此 env 仅为 DB 尚无配置时的回落。真实渠道机密缺失时 fail-fast，绝不静默回落 shadow
 - **系统 CJK 字体必须存在**：部署脚本默认确保 `google-noto-*-cjk-sc`，`verify.sh` 会检查。
   这是 picgen、ffmpeg drawtext、headless browser 中文渲染的服务器级兜底。
 - **JWT / AES 密钥**：`AEP_JWT_SECRET`（≥32 字符高熵）/ `AEP_SECRET_KEY`（32 字节）必须 env 注入；

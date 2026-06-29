@@ -3,28 +3,27 @@
 export const dynamic = "force-dynamic";
 
 // ────────────────────────────────────────────────────────────────────────────
-// 收银台中间页（v2 §6）
+// 收银台中间页（v2 §6；v0.94 多渠道）
 //
-// 钱包「立即支付」→ 跳到这里：选支付渠道（目前仅支付宝）→ 确认支付 → 拉起渠道收银台
-// （支付宝在新标签页打开，本页保持轮询）→ 实时展示支付状态（支付中 / 成功 / 失败 / 超时）
-// + 「我已支付·刷新」+ 失败/超时重试。后端幂等下单（复用 PENDING 单）保证重试不重复扣款。
-//
-// URL：?pkg=<packageId> 首次进入；checkout 后 replace 成 ?order=<orderId>（刷新可续）。
+// 钱包「立即支付」→ 跳到这里：选支付渠道（支付宝 / 微信，后台运行时启停）→ 选支付方式 →
+// 确认支付 → 拉起渠道收银台（网页表单跳转 / 扫码二维码 / H5 跳转 / 影子）→ 实时轮询订单态。
+// 渠道从 GET /me/wallet/recharge/channels 动态拉取（多渠道并存，用户自选）。
+// 微信小程序内支付（JSAPI）由小程序消费方承载，本网页端不展示。
 // ────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AccountApi } from "@ai-star-eco/api-client";
+import type { PaymentChannel } from "@ai-star-eco/api-client";
 import { formatCredits, formatCurrency } from "@ai-star-eco/api-client/format";
 import type { RechargeOrder, RechargePackage } from "@ai-star-eco/types/wallet";
 import { Card, Button, Chip } from "@/components/creator";
 import { useCelebrityShell } from "@/lib/celebrity-shell-context";
 
-const CHANNELS = [
-  { id: "alipay", wayCode: "ALI_PC", label: "支付宝", desc: "跳转支付宝收银台付款", enabled: true },
-];
-
 type Phase = "select" | "polling" | "done";
+
+/** 网页端不展示微信小程序内支付（JSAPI）—— 那是小程序消费方的场景。 */
+const WEB_HIDDEN_SCENES = new Set(["jsapi"]);
 
 export default function CashierPage() {
   return (
@@ -43,10 +42,13 @@ function CashierInner() {
 
   const [pkg, setPkg] = React.useState<RechargePackage | null>(null);
   const [order, setOrder] = React.useState<RechargeOrder | null>(null);
-  const [channel, setChannel] = React.useState("alipay");
+  const [channels, setChannels] = React.useState<PaymentChannel[]>([]);
+  const [channel, setChannel] = React.useState<string | null>(null);
+  const [wayCode, setWayCode] = React.useState<string | null>(null);
   const [orderId, setOrderId] = React.useState<string | null>(orderIdParam);
   const [phase, setPhase] = React.useState<Phase>(orderIdParam ? "polling" : "select");
   const [shadow, setShadow] = React.useState<string | null>(null); // dev 影子收银台 orderId
+  const [qr, setQr] = React.useState<string | null>(null);          // 扫码值（code_url）
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
@@ -58,10 +60,34 @@ function CashierInner() {
       .catch(() => {});
   }, [pkgId]);
 
+  // 可用支付渠道（动态）
+  React.useEffect(() => {
+    AccountApi.getRechargeChannels()
+      .then((list) => {
+        setChannels(list);
+        if (list.length > 0) {
+          setChannel((c) => c ?? list[0].code);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   React.useEffect(() => {
     if (!orderId) return;
     AccountApi.getRechargeOrder(orderId).then(setOrder).catch(() => {});
   }, [orderId]);
+
+  // 选中渠道变化 → 默认支付方式（排除小程序 JSAPI）
+  const activeChannel = channels.find((c) => c.code === channel) ?? null;
+  const webWays = React.useMemo(
+    () => (activeChannel ? activeChannel.wayCodes.filter((w) => !WEB_HIDDEN_SCENES.has(w.scene)) : []),
+    [activeChannel],
+  );
+  React.useEffect(() => {
+    if (!activeChannel) return;
+    const def = webWays.find((w) => w.code === activeChannel.defaultWayCode) ?? webWays[0];
+    setWayCode(def ? def.code : null);
+  }, [activeChannel, webWays]);
 
   // 轮询：支付中时每 3.5s 主动查单
   React.useEffect(() => {
@@ -92,33 +118,40 @@ function CashierInner() {
       : null;
 
   async function confirmPay() {
-    if (!pkg || busy) return;
+    if (!pkg || busy || !channel || !wayCode) return;
     setBusy(true);
     setErr(null);
+    setQr(null);
     try {
-      const ch = CHANNELS.find((c) => c.id === channel)!;
-      const res = await AccountApi.rechargeCheckout({ packageId: pkg.id, wayCode: ch.wayCode, sourceApp: "celebrity" });
+      const res = await AccountApi.rechargeCheckout({ packageId: pkg.id, channel, wayCode, sourceApp: "celebrity" });
       setOrderId(res.orderId);
       router.replace(`/wallet/checkout?order=${res.orderId}`);
       if (res.payDataType === "page") {
-        // 支付宝在新标签页打开（本页保持轮询）；被拦截则提示
+        // 支付宝网页：在新标签页打开自动提交表单（本页保持轮询）
         const w = window.open("", "_blank");
         if (w) {
           w.document.open();
           w.document.write(res.payData);
           w.document.close();
-          setPhase("polling");
         } else {
           setErr("浏览器拦截了支付窗口，请允许弹窗后点「重新支付」");
-          setPhase("polling");
         }
+        setPhase("polling");
+      } else if (res.payDataType === "qr") {
+        // 扫码支付（支付宝当面付 / 微信 Native）：渲染二维码
+        setQr(res.payData);
+        setPhase("polling");
+      } else if (res.payDataType === "redirect") {
+        // 微信 H5：跳到渠道收银台（新标签页，便于本页继续轮询）
+        const w = window.open(res.payData, "_blank");
+        if (!w) setErr("浏览器拦截了支付窗口，请允许弹窗后点「重新支付」");
+        setPhase("polling");
       } else if (res.payDataType === "shadow") {
         setShadow(res.orderId); // dev 影子收银台
         setPhase("polling");
-      } else if (res.payDataType === "qr") {
-        setErr("扫码支付待接入，请用网站支付");
       } else {
         setErr(`暂不支持的支付通道（${res.payDataType}）`);
+        setPhase("polling");
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "下单失败，请稍后再试");
@@ -165,6 +198,7 @@ function CashierInner() {
     setOrder(null);
     setOrderId(null);
     setShadow(null);
+    setQr(null);
     setErr(null);
     if (pkgId) router.replace(`/wallet/checkout?pkg=${pkgId}`);
   }
@@ -172,6 +206,7 @@ function CashierInner() {
   const status = order?.status;
   const paid = status === "paid";
   const failed = status === "closed" || status === "cancelled" || status === "rejected";
+  const channelLabel = (code: string) => channels.find((c) => c.code === code)?.label ?? code;
 
   return (
     <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16, padding: "8px 0 40px" }}>
@@ -204,37 +239,68 @@ function CashierInner() {
             </div>
           </Card>
 
-          {/* 选择支付渠道 + 确认（仅 select 阶段） */}
+          {/* 选择支付渠道 + 方式 + 确认（仅 select 阶段） */}
           {phase === "select" && (
             <Card>
               <div style={{ padding: "18px 20px" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg-1)", marginBottom: 12 }}>选择支付方式</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {CHANNELS.map((c) => {
-                    const on = channel === c.id;
-                    return (
-                      <button
-                        key={c.id}
-                        disabled={!c.enabled}
-                        onClick={() => setChannel(c.id)}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-                          padding: "14px 16px", borderRadius: "var(--radius-md)", cursor: c.enabled ? "pointer" : "not-allowed",
-                          border: on ? "1.5px solid var(--accent)" : "1px solid var(--line)",
-                          background: on ? "color-mix(in srgb, var(--accent) 7%, transparent)" : "var(--bg-1)", textAlign: "left",
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-0)" }}>{c.label}</div>
-                          <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2 }}>{c.desc}</div>
-                        </div>
-                        <div style={{ width: 18, height: 18, borderRadius: "50%", border: on ? "5px solid var(--accent)" : "2px solid var(--line-2)" }} />
-                      </button>
-                    );
-                  })}
-                </div>
+                {channels.length === 0 ? (
+                  <div style={{ fontSize: 13, color: "var(--fg-2)" }}>暂无可用支付渠道，请稍后再试或联系客服。</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {channels.map((c) => {
+                      const on = channel === c.code;
+                      return (
+                        <button
+                          key={c.code}
+                          onClick={() => setChannel(c.code)}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                            padding: "14px 16px", borderRadius: "var(--radius-md)", cursor: "pointer",
+                            border: on ? "1.5px solid var(--accent)" : "1px solid var(--line)",
+                            background: on ? "color-mix(in srgb, var(--accent) 7%, transparent)" : "var(--bg-1)", textAlign: "left",
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg-0)" }}>
+                              {c.label}{c.sandbox && <span style={{ marginLeft: 6, fontSize: 11, color: "var(--accent)" }}>沙箱</span>}
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 2 }}>
+                              {c.wayCodes.filter((w) => !WEB_HIDDEN_SCENES.has(w.scene)).map((w) => w.label).join(" · ") || "—"}
+                            </div>
+                          </div>
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", border: on ? "5px solid var(--accent)" : "2px solid var(--line-2)" }} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 支付方式（同渠道多场景时可选） */}
+                {webWays.length > 1 && (
+                  <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {webWays.map((w) => {
+                      const on = wayCode === w.code;
+                      return (
+                        <button
+                          key={w.code}
+                          onClick={() => setWayCode(w.code)}
+                          style={{
+                            padding: "6px 12px", borderRadius: 999, fontSize: 13, cursor: "pointer",
+                            border: on ? "1.5px solid var(--accent)" : "1px solid var(--line)",
+                            background: on ? "color-mix(in srgb, var(--accent) 9%, transparent)" : "var(--bg-1)",
+                            color: on ? "var(--accent-strong)" : "var(--fg-1)",
+                          }}
+                        >
+                          {w.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {err && <div style={{ marginTop: 12, fontSize: 13, color: "#ef4444" }}>{err}</div>}
-                <Button variant="accent" onClick={confirmPay} disabled={busy} style={{ width: "100%", marginTop: 16 }}>
+                <Button variant="accent" onClick={confirmPay} disabled={busy || channels.length === 0 || !wayCode} style={{ width: "100%", marginTop: 16 }}>
                   {busy ? "下单中…" : `确认支付 ${formatCurrency(summary.price)}`}
                 </Button>
               </div>
@@ -248,12 +314,23 @@ function CashierInner() {
                 <Chip tone={paid ? "success" : failed ? "danger" : "warning"}>
                   {paid ? "✓ 支付成功" : failed ? (status === "closed" ? "支付超时关闭" : "支付未完成") : "● 支付中"}
                 </Chip>
+
+                {/* 扫码支付：渲染二维码 */}
+                {qr && !paid && !failed && (
+                  <div style={{ marginTop: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                    <QrImage value={qr} />
+                    <div style={{ fontSize: 13, color: "var(--fg-1)" }}>请使用{channel ? channelLabel(channel) : ""}扫码完成支付</div>
+                  </div>
+                )}
+
                 <div style={{ marginTop: 12, fontSize: 14, color: "var(--fg-1)" }}>
                   {paid
                     ? `已到账 ${formatCredits((summary.credits) + (summary.bonus))} 积分`
                     : failed
                       ? "本单已结束，可重新发起支付"
-                      : "请在新打开的支付宝页面完成付款，完成后点「我已支付」"}
+                      : qr
+                        ? "扫码后将自动到账，可点「我已支付」立即刷新"
+                        : "请在新打开的支付页面完成付款，完成后点「我已支付」"}
                 </div>
                 {err && <div style={{ marginTop: 10, fontSize: 13, color: "#ef4444" }}>{err}</div>}
 
@@ -271,7 +348,7 @@ function CashierInner() {
                   {!paid && !failed && !shadow && (
                     <>
                       <Button variant="accent" onClick={manualSync} disabled={busy}>{busy ? "查询中…" : "我已支付 · 刷新状态"}</Button>
-                      <Button variant="secondary" onClick={confirmPay} disabled={busy}>重新打开支付</Button>
+                      <Button variant="secondary" onClick={retry} disabled={busy}>换一种支付方式</Button>
                     </>
                   )}
                   {!paid && <Button variant="secondary" onClick={() => router.push("/wallet")}>稍后再说</Button>}
@@ -282,5 +359,24 @@ function CashierInner() {
         </>
       )}
     </div>
+  );
+}
+
+/** 客户端二维码渲染（payment token 不外发第三方，本地生成）。 */
+function QrImage({ value }: { value: string }) {
+  const [src, setSrc] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    import("qrcode")
+      .then((QR) => QR.toDataURL(value, { width: 220, margin: 1 }))
+      .then((u) => { if (alive) setSrc(u); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [value]);
+  return src ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt="支付二维码" width={220} height={220} style={{ borderRadius: 8, border: "1px solid var(--line)" }} />
+  ) : (
+    <div style={{ width: 220, height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-3)", fontSize: 13, border: "1px solid var(--line)", borderRadius: 8 }}>生成二维码…</div>
   );
 }

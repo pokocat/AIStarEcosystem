@@ -11,10 +11,13 @@ import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
 import { StageHeader } from "../../workbench";
 import type { WorkshopAction, WorkshopState } from "../../workbench";
 import type { CharacterDef, ProjectData, SceneAsset } from "@/mocks/drama-workshop";
+import { addLibraryMaterial } from "@/mocks/drama-workshop";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import { CharCard } from "./char-card";
 import { AvatarPicker } from "./avatar-picker";
-import { ProjectsApi, RenderApi } from "@/api";
+import { MediaLightbox, type LightboxMedia } from "../../media-lightbox";
+import { AiImageEditModal } from "../../ai-image-edit-modal";
+import { ProjectsApi, RenderApi, DramaAssetsApi } from "@/api";
 import type { StageContext } from "../stage-context";
 
 interface CastStageProps {
@@ -36,6 +39,9 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
   const [binding, setBinding] = React.useState<CharacterDef | null>(null);
   const [drafting, setDrafting] = React.useState(false);
   const [sceneBusy, setSceneBusy] = React.useState<Record<string, boolean>>({});
+  const [charBusy, setCharBusy] = React.useState<Record<string, boolean>>({});
+  const [lb, setLb] = React.useState<LightboxMedia | null>(null); // 看大图
+  const [aiEditScene, setAiEditScene] = React.useState<SceneAsset | null>(null); // 场景 AI 修图
 
   const scenes = data.scenes ?? [];
   const unbound = state.chars.filter((c) => c.role === "key" && !c.bound).length;
@@ -73,6 +79,35 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     dispatch({ type: "setChars", chars: [...state.chars, { id, name: "新角色", role: "extra", cast: "", desc: "", avatar: "a1", bound: false }] });
   };
 
+  // 上传角色真人参考图 → OSS + 落角色 ref + 收进素材库（cat=人物）。
+  const uploadCharRef = async (c: CharacterDef, file: File) => {
+    if (charBusy[c.id]) return;
+    setCharBusy((m) => ({ ...m, [c.id]: true }));
+    try {
+      const r = await DramaAssetsApi.uploadAssetRef(file, "人物");
+      dispatch({
+        type: "setChars",
+        chars: state.chars.map((x) => (x.id === c.id ? { ...x, refUrl: r.url, refCdnKey: r.cdnKey } : x)),
+      });
+      addLibraryMaterial({
+        id: "asset_" + Math.random().toString(36).slice(2, 10),
+        name: `${c.name || "角色"}·参考图`,
+        cat: "人物",
+        kind: "image",
+        from: "#f472b6",
+        to: "#fb7185",
+        url: r.url,
+        cdnKey: r.cdnKey,
+        tags: ["角色参考"],
+      });
+      toast.success("参考图已上传,并收进素材库");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "上传失败,请稍后重试"));
+    } finally {
+      setCharBusy((m) => ({ ...m, [c.id]: false }));
+    }
+  };
+
   // ── 场景：全部落库到 ProjectData.scenes ─────────────────────────────────────
   const saveScenes = (next: SceneAsset[]) => {
     if (!ctx) return;
@@ -103,6 +138,32 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
       }
     } catch (e) {
       toast.error(aiErrorMessage(e, "生成参考图失败，请稍后重试"));
+    } finally {
+      setSceneBusy((m) => ({ ...m, [s.id]: false }));
+    }
+  };
+
+  // 上传场景参考图 → OSS + 落场景 ref + 收进素材库（cat=场景）。
+  const uploadSceneRef = async (s: SceneAsset, file: File) => {
+    if (sceneBusy[s.id]) return;
+    setSceneBusy((m) => ({ ...m, [s.id]: true }));
+    try {
+      const r = await DramaAssetsApi.uploadAssetRef(file, "场景");
+      editScene(s.id, { refUrl: r.url, refCdnKey: r.cdnKey });
+      addLibraryMaterial({
+        id: "asset_" + Math.random().toString(36).slice(2, 10),
+        name: `${s.name || "场景"}·参考图`,
+        cat: "场景",
+        kind: "image",
+        from: "#64748b",
+        to: "#1e293b",
+        url: r.url,
+        cdnKey: r.cdnKey,
+        tags: ["场景参考"],
+      });
+      toast.success("场景参考图已上传,并收进素材库");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "上传失败,请稍后重试"));
     } finally {
       setSceneBusy((m) => ({ ...m, [s.id]: false }));
     }
@@ -167,6 +228,9 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
               delay={i * 40}
               onBind={() => setBinding(c)}
               onToggleRole={() => dispatch({ type: "toggleRole", charId: c.id })}
+              onUploadRef={(f) => void uploadCharRef(c, f)}
+              onViewRef={() => c.refUrl && setLb({ src: c.refUrl, kind: "image" })}
+              uploading={!!charBusy[c.id]}
             />
           ))}
           <button
@@ -201,8 +265,15 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
                   <Trash2 size={12} />
                 </button>
                 {s.refUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.refUrl} alt={s.name} style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", display: "block" }} />
+                  <button
+                    type="button"
+                    onClick={() => setLb({ src: s.refUrl!, kind: "image" })}
+                    title="点开看大图"
+                    style={{ border: "none", padding: 0, cursor: "zoom-in", display: "block", width: "100%", background: "transparent" }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={s.refUrl} alt={s.name} style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", display: "block" }} />
+                  </button>
                 ) : busy ? (
                   <div className="skel" style={{ width: "100%", aspectRatio: "16/9" }} />
                 ) : (
@@ -211,15 +282,61 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
                 <div className="col gap-2" style={{ padding: 13 }}>
                   <Editable value={s.name} onCommit={(v) => editScene(s.id, { name: v })} style={{ fontWeight: 800, fontSize: 13.5 }} />
                   <Editable value={s.mood} placeholder="氛围基调…" onCommit={(v) => editScene(s.id, { mood: v })} style={{ fontSize: 12, color: "var(--ink-3)" }} />
-                  <button
-                    type="button"
-                    className="btn btn-line btn-sm"
-                    style={{ justifyContent: "center" }}
-                    disabled={busy}
-                    onClick={() => void genSceneRef(s)}
-                  >
-                    {s.refUrl ? <RefreshCw size={13} /> : <ImageIcon size={13} />} {busy ? "生成中…" : s.refUrl ? "重新生成" : "生成参考图"}
-                  </button>
+                  {s.refUrl ? (
+                    <div className="row gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-grad btn-sm grow"
+                        style={{ justifyContent: "center" }}
+                        onClick={() => setAiEditScene(s)}
+                      >
+                        <Wand2 size={13} /> AI 修图
+                      </button>
+                      <button type="button" className="btn btn-line btn-sm btn-icon" title="重新生成" disabled={busy} onClick={() => void genSceneRef(s)}>
+                        <RefreshCw size={14} />
+                      </button>
+                      <label className="btn btn-line btn-sm btn-icon" title="上传参考图" style={{ cursor: busy ? "default" : "pointer" }}>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          disabled={busy}
+                          onChange={(e) => {
+                            const f = e.currentTarget.files?.[0];
+                            e.currentTarget.value = "";
+                            if (f) void uploadSceneRef(s, f);
+                          }}
+                        />
+                        <ImagePlus size={14} />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="row gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-line btn-sm grow"
+                        style={{ justifyContent: "center" }}
+                        disabled={busy}
+                        onClick={() => void genSceneRef(s)}
+                      >
+                        {busy ? "生成中…" : (<><ImageIcon size={13} /> 生成参考图</>)}
+                      </button>
+                      <label className="btn btn-line btn-sm btn-icon" title="上传参考图" style={{ cursor: busy ? "default" : "pointer" }}>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          disabled={busy}
+                          onChange={(e) => {
+                            const f = e.currentTarget.files?.[0];
+                            e.currentTarget.value = "";
+                            if (f) void uploadSceneRef(s, f);
+                          }}
+                        />
+                        <ImagePlus size={14} />
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -251,6 +368,21 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
       {binding && (
         <AvatarPicker char={binding} onClose={() => setBinding(null)} onConfirm={confirmBind} />
       )}
+
+      {aiEditScene && (
+        <AiImageEditModal
+          tag="场景"
+          openingText={`这是「${aiEditScene.name || "场景"}」的参考图。想怎么改？比如「换成夜景」「冷色调」「加点雾气」。`}
+          baseDesc={`${aiEditScene.name}${aiEditScene.mood ? "，" + aiEditScene.mood : ""}，场景空镜参考图`}
+          sceneName={aiEditScene.name}
+          initialUrl={aiEditScene.refUrl}
+          ratio="16:9"
+          chips={["换成夜景", "冷色调", "加点雾气", "更明亮", "换个机位"]}
+          onClose={() => setAiEditScene(null)}
+          onCommit={(f) => editScene(aiEditScene.id, { refUrl: f.url, refCdnKey: f.cdnKey })}
+        />
+      )}
+      <MediaLightbox media={lb} onClose={() => setLb(null)} />
     </>
   );
 }

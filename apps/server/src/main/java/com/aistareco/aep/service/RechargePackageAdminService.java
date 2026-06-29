@@ -46,8 +46,11 @@ public class RechargePackageAdminService {
         if (req == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PKG_BODY_REQUIRED", "body 必填");
         }
-        if (req.credits() == null || req.credits() <= 0) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "PKG_CREDITS_INVALID", "credits 必须 > 0");
+        long credits = req.credits() != null ? req.credits() : 0;
+        long storageMb = req.grantStorageMb() != null ? req.grantStorageMb() : 0;
+        if (credits <= 0 && storageMb <= 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PKG_CREDITS_INVALID",
+                    "credits 或 grantStorageMb 至少一项 > 0（纯存储套餐可只填 grantStorageMb）");
         }
         if (req.priceCents() == null || req.priceCents() < 0) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PKG_PRICE_INVALID", "priceCents 不能为负");
@@ -89,6 +92,7 @@ public class RechargePackageAdminService {
         if (req.tag() != null) entity.setTag(req.tag());
         if (req.recommended() != null) entity.setRecommended(req.recommended());
         if (req.bonusCredits() != null) entity.setBonusCredits(req.bonusCredits());
+        if (req.grantStorageMb() != null) entity.setGrantStorageMb(req.grantStorageMb());
         if (req.sortOrder() != null) entity.setSortOrder(req.sortOrder());
         if (req.active() != null) entity.setActive(req.active());
         if (req.appScope() != null) entity.setAppScope(req.appScope().isBlank() ? "all" : req.appScope());

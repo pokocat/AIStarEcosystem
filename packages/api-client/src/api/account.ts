@@ -118,9 +118,11 @@ export interface CheckoutResponse {
 
 export interface CheckoutPayload {
   packageId: string;
-  /** WX_LITE / WX_NATIVE / ALI_QR / SHADOW；空则按后端 driver 默认。 */
+  /** 支付渠道 alipay / wechat / shadow；空则取首个可用渠道。 */
+  channel?: string;
+  /** ALI_PC / ALI_WAP / ALI_QR / WX_NATIVE / WX_JSAPI / WX_H5 / SHADOW；空则按渠道默认。 */
   wayCode?: string;
-  /** 微信小程序 openid（WX_LITE 必填）。 */
+  /** 微信小程序 openid（WX_JSAPI 必填）。 */
   openid?: string;
   /** 发起子应用（仅营销标签）。 */
   sourceApp?: string;
@@ -132,6 +134,19 @@ export async function rechargeCheckout(payload: CheckoutPayload): Promise<Checko
     method: "POST",
     body: payload,
   });
+}
+
+/** v0.94 多渠道：收银台可用支付渠道（已启用 + 配置齐全）。 */
+export interface PaymentChannel {
+  code: string;          // alipay / wechat / shadow
+  label: string;
+  sandbox: boolean;
+  defaultWayCode: string;
+  wayCodes: { code: string; label: string; scene: string }[]; // pc/wap/qr/jsapi/h5/shadow
+}
+
+export async function getRechargeChannels(): Promise<PaymentChannel[]> {
+  return apiFetch<PaymentChannel[]>("/me/wallet/recharge/channels");
 }
 
 /**
