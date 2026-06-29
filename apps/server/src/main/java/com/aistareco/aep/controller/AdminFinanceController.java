@@ -5,6 +5,7 @@ import com.aistareco.aep.dto.RevenueSourceDto;
 import com.aistareco.aep.dto.TransactionDto;
 import com.aistareco.aep.service.AdminFinanceService;
 import com.aistareco.common.ApiResponse;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,9 +13,11 @@ import java.util.List;
 /**
  * 平台级财务视图。基于 LedgerEntry 事实表聚合出业务交易列表、月度入账趋势、
  * 入账来源饼图三种只读视图，对齐前端 {@code apps/admin/src/api/finance.ts}。
+ * v2 §6：结算中心属资金财务范畴 → 限 FINANCE_ADMIN / SUPER_ADMIN。
  */
 @RestController
 @RequestMapping("/api/admin/finance")
+@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")
 public class AdminFinanceController {
 
     private final AdminFinanceService financeService;

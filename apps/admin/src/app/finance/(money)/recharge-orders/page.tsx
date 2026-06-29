@@ -17,6 +17,7 @@ import { useConfirm, useToast } from "@/components/feedback";
 import { RechargeOrdersApi } from "@/api";
 import {
   RECHARGE_ORDER_STATUS_LABEL,
+  RECHARGE_PAID_VIA_META,
   type RechargeOrder,
   type RechargeOrderStatus,
 } from "@/types/recharge-order";
@@ -29,7 +30,54 @@ const STATUS_TONE: Record<RechargeOrderStatus, StatusTone> = {
   paid: "success",
   rejected: "danger",
   cancelled: "neutral",
+  closed: "neutral",
+  refunded: "neutral",
 };
+
+// v2 §6 支付来源 tone：jeepay 真实在线=success；shadow 影子(dev/test)=warning；manual 线下=neutral。
+const PAID_VIA_TONE: Record<string, StatusTone> = {
+  jeepay: "success",
+  alipay: "success",
+  wechat: "success",
+  shadow: "warning",
+  manual: "neutral",
+};
+
+// v2 §6 业务来源（sourceApp）→ 可读子应用名。
+const SOURCE_APP_LABEL: Record<string, string> = {
+  celebrity: "明星带货",
+  drama: "短剧",
+  music: "音乐人",
+  aiavatar: "AiAvatar",
+  star: "明星工作台",
+};
+const sourceAppLabel = (s?: string | null): string => (s ? SOURCE_APP_LABEL[s] ?? s : "—");
+
+/** 支付方式 / 渠道列：在线（Jeepay/影子）显示渠道流水号 + 支付方式；线下核准显示来源；未支付显示 —。 */
+function PayMethodCell({ o }: { o: RechargeOrder }) {
+  if (!o.paidVia) return <span className="text-xs text-muted-foreground">—</span>;
+  const meta = RECHARGE_PAID_VIA_META[o.paidVia] ?? { label: o.paidVia, online: true };
+  const traceTitle = o.payOrderId
+    ? `渠道单号 ${o.channelPayNo ?? "—"} · 网关单号 ${o.payOrderId}`
+    : o.channelPayNo
+      ? `渠道单号 ${o.channelPayNo}`
+      : undefined;
+  return (
+    <div className="space-y-0.5">
+      <Badge tone={PAID_VIA_TONE[o.paidVia] ?? "info"} className="font-normal">
+        {meta.label}
+      </Badge>
+      {o.channelPayNo ? (
+        <div className="max-w-[170px] truncate font-mono text-[11px] text-muted-foreground" title={traceTitle}>
+          {o.channelPayNo}
+        </div>
+      ) : null}
+      {o.wayCode ? (
+        <div className="text-[11px] text-muted-foreground">{o.wayCode}</div>
+      ) : null}
+    </div>
+  );
+}
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "pending", label: "待确认" },
@@ -37,6 +85,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "paid", label: "已到账" },
   { key: "rejected", label: "已驳回" },
   { key: "cancelled", label: "已取消" },
+  { key: "refunded", label: "已退款" },
 ];
 
 function fmtCny(cents: number): string {
@@ -86,7 +135,10 @@ export default function AdminRechargeOrdersPage() {
       affected: (
         <div className="space-y-1">
           <div className="font-medium">
-            {o.username ?? o.userId} · {o.packageTag ?? "充值套餐"}
+            {o.displayName || o.username || o.userId} · {o.packageTag ?? "充值套餐"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            登录名 {o.username ?? "—"} · 手机号 {o.phone ?? "—"}
           </div>
           <div className="text-xs text-muted-foreground">
             到账 {o.credits.toLocaleString()}
@@ -105,6 +157,25 @@ export default function AdminRechargeOrdersPage() {
       toast.success({ title: "已入账", description: `${o.credits.toLocaleString()} 积分已发放给用户` });
     } catch (e) {
       toast.danger({ title: "入账失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // v2 §6 在线 PENDING 订单只能「查单同步」（查支付网关 → 已支付自动入账 / 超时关单），不能手工核准（防给未付款用户白发积分）。
+  async function onSync(o: RechargeOrder) {
+    setBusyId(o.id);
+    try {
+      const u = await RechargeOrdersApi.syncOrder(o.id);
+      await refresh();
+      toast.success({
+        title:
+          u.status === "paid" ? "已查到支付，自动入账"
+            : u.status === "closed" ? "订单已超时关闭"
+              : "网关仍未查到支付，请稍后再查",
+      });
+    } catch (e) {
+      toast.danger({ title: "查单失败", description: e instanceof Error ? e.message : undefined });
     } finally {
       setBusyId(null);
     }
@@ -136,6 +207,43 @@ export default function AdminRechargeOrdersPage() {
       toast.success({ title: "已驳回" });
     } catch (e) {
       toast.danger({ title: "驳回失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onRefund(o: RechargeOrder) {
+    const res = await confirm({
+      title: "退款 + 回收未消费积分",
+      tone: "danger",
+      confirmLabel: "确认退款",
+      requireReason: true,
+      description:
+        "资金面动作（限财务 / 超管）。将按订单积分回收用户当前未消费的充值额度（写不可变账本 REFUND_CASH），" +
+        "已消费部分不回收。真实现金请另在渠道侧原路退回。请填写退款原因，用户可见。",
+      affected: (
+        <div className="space-y-1">
+          <div className="font-medium">
+            {o.username ?? o.userId} · {o.packageTag ?? "充值套餐"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            原到账 {o.credits.toLocaleString()} 积分 · 应收 {fmtCny(o.priceCents)} · 编号{" "}
+            <span className="font-mono">{o.id}</span>
+          </div>
+        </div>
+      ),
+    });
+    if (!res.ok) return;
+    setBusyId(o.id);
+    try {
+      const updated = await RechargeOrdersApi.refund(o.id, res.reason);
+      await refresh();
+      toast.success({
+        title: "已退款",
+        description: `回收未消费积分 ${(updated.refundedCredits ?? 0).toLocaleString()} 分`,
+      });
+    } catch (e) {
+      toast.danger({ title: "退款失败", description: e instanceof Error ? e.message : undefined });
     } finally {
       setBusyId(null);
     }
@@ -186,10 +294,12 @@ export default function AdminRechargeOrdersPage() {
                 <TableRow>
                   <TableHead>下单时间</TableHead>
                   <TableHead>用户 / 工作室</TableHead>
+                  <TableHead>业务</TableHead>
                   <TableHead>套餐</TableHead>
                   <TableHead className="text-right">积分</TableHead>
                   <TableHead className="text-right">应收</TableHead>
                   <TableHead>状态</TableHead>
+                  <TableHead>支付方式</TableHead>
                   <TableHead>备注</TableHead>
                   <TableHead className="w-[180px] text-right">操作</TableHead>
                 </TableRow>
@@ -203,8 +313,13 @@ export default function AdminRechargeOrdersPage() {
                     <TableCell>
                       <div className="font-medium">{o.displayName || o.username || o.userId}</div>
                       <div className="text-xs text-muted-foreground">
-                        {o.studioName ?? o.username ?? o.userId}
+                        登录名 {o.username ?? o.userId}
+                        {o.studioName ? ` · ${o.studioName}` : ""}
                       </div>
+                      <div className="text-xs text-muted-foreground">手机号 {o.phone ?? "—"}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone="info" className="font-normal">{sourceAppLabel(o.sourceApp)}</Badge>
                     </TableCell>
                     <TableCell>{o.packageTag ?? "充值套餐"}</TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -219,32 +334,57 @@ export default function AdminRechargeOrdersPage() {
                         {RECHARGE_ORDER_STATUS_LABEL[o.status]}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <PayMethodCell o={o} />
+                    </TableCell>
                     <TableCell className="max-w-[180px] text-xs text-muted-foreground">
                       {o.status === "rejected" && o.reviewNote ? (
                         <span className="text-rose-600">驳回：{o.reviewNote}</span>
+                      ) : o.status === "refunded" ? (
+                        <span className="text-amber-600">
+                          退款回收 {(o.refundedCredits ?? 0).toLocaleString()} 分
+                          {o.reviewNote ? ` · ${o.reviewNote}` : ""}
+                        </span>
                       ) : (
                         o.userNote || "—"
                       )}
                     </TableCell>
                     <TableCell className="space-x-1 text-right">
                       {o.status === "pending" ? (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => void onApprove(o)}
-                            disabled={busyId === o.id}
-                          >
-                            入账
+                        o.wayCode || o.payOrderId ? (
+                          // 在线支付订单：只能查单同步（查网关 → 已支付自动入账 / 超时关单），禁止手工入账
+                          <Button size="sm" onClick={() => void onSync(o)} disabled={busyId === o.id}>
+                            查单同步
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void onReject(o)}
-                            disabled={busyId === o.id}
-                          >
-                            驳回
-                          </Button>
-                        </>
+                        ) : (
+                          // 线下转账订单：运营核准入账 / 驳回
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => void onApprove(o)}
+                              disabled={busyId === o.id}
+                            >
+                              入账
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void onReject(o)}
+                              disabled={busyId === o.id}
+                            >
+                              驳回
+                            </Button>
+                          </>
+                        )
+                      ) : o.status === "paid" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void onRefund(o)}
+                          disabled={busyId === o.id}
+                        >
+                          退款
+                        </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">
                           {o.reviewedAt ? fmtTime(o.reviewedAt) : "—"}

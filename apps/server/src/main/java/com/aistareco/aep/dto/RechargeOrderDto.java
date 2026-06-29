@@ -1,5 +1,6 @@
 package com.aistareco.aep.dto;
 
+import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.RechargeOrder;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -18,6 +19,8 @@ public record RechargeOrderDto(
         String username,
         String displayName,
         String studioName,
+        /** v0.86：账号手机号（admin 财务工作台辨识用户身份；read-time 回填 owner.phone，用户自查省略）。 */
+        String phone,
         String packageId,
         String packageTag,
         long credits,
@@ -29,15 +32,38 @@ public record RechargeOrderDto(
         String reviewNote,
         Instant createdAt,
         Instant updatedAt,
-        Instant reviewedAt
+        Instant reviewedAt,
+        /**
+         * v2 §6 在线支付（Jeepay / 影子）可见性：
+         * paidVia 入账来源 manual（线下核准）/ jeepay（在线真实）/ shadow（在线影子）；
+         * channelPayNo 渠道流水号（对账追溯）；wayCode 支付方式（WX_LITE/ALI_QR…）；
+         * payOrderId 支付网关订单号；paidAt 到账时间；sourceApp 来源子应用。
+         * NON_NULL：未支付 / 线下无渠道单号的字段自动省略。
+         */
+        String paidVia,
+        String channelPayNo,
+        String wayCode,
+        String payOrderId,
+        Instant paidAt,
+        String sourceApp,
+        /** v2 §15.5 / D17 退款回收：退款时间 + 实退积分 + 回收分录 id（未退款时三者省略）。 */
+        Instant refundedAt,
+        Long refundedCredits,
+        String refundLedgerEntryId
 ) {
     public static RechargeOrderDto from(RechargeOrder o) {
+        return from(o, null);
+    }
+
+    /** admin 财务工作台视图：附带手机号（owner 为 null 时省略，等价旧 shape）。 */
+    public static RechargeOrderDto from(RechargeOrder o, AepUser owner) {
         return new RechargeOrderDto(
                 o.getId(),
                 o.getUserId(),
                 o.getUsername(),
                 o.getDisplayName(),
                 o.getStudioName(),
+                owner != null ? owner.getPhone() : null,
                 o.getPackageId(),
                 o.getPackageTag(),
                 o.getCredits(),
@@ -49,7 +75,16 @@ public record RechargeOrderDto(
                 o.getReviewNote(),
                 o.getCreatedAt(),
                 o.getUpdatedAt(),
-                o.getReviewedAt()
+                o.getReviewedAt(),
+                o.getPaidVia(),
+                o.getChannelPayNo(),
+                o.getWayCode(),
+                o.getPayOrderId(),
+                o.getPaidAt(),
+                o.getSourceApp(),
+                o.getRefundedAt(),
+                o.getStatus() == RechargeOrder.Status.REFUNDED ? o.getRefundedCredits() : null,
+                o.getRefundLedgerEntryId()
         );
     }
 }

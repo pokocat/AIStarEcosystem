@@ -332,3 +332,26 @@ img, video, canvas, svg { max-width: 100%; }
   height: 0;
   float: left;
 }
+
+/* ---------- v0.87 首页脑暴 / 分镜 AI 改图 共用动效与可编辑态 ---------- */
+/* 对话「正在输入」三点 */
+@keyframes typingBlink { 0%,80%,100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); display: inline-block; }
+@media (prefers-reduced-motion: no-preference) {
+  .typing-dot { animation: typingBlink 1.1s ease-in-out infinite; }
+}
+/* 对话输入框聚焦态 */
+.chat-input:focus { border-color: var(--accent) !important; background: var(--surface) !important; }
+/* 行内可编辑格子（分镜表 / 本集叙事 / 大纲人物） */
+.edit-field { border-radius: 8px; transition: background .14s, box-shadow .14s; cursor: text; outline: none; }
+.edit-field:hover { background: var(--surface-2); }
+.edit-field:focus { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* 生成中脉冲 */
+@keyframes genPulse { 0%,100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in oklch, var(--accent) 38%, transparent); } 50% { transform: scale(1.06); box-shadow: 0 0 0 14px transparent; } }
+.gen-pulse { animation: genPulse 1.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .gen-pulse { animation: none; } }
+/* 生成结果揭示 */
+.gen-reveal { animation: drama-fade-up .5s cubic-bezier(.2,.7,.3,1) both; }
+/* 对话框渐入展开（首页 chatOff → chatOn） */
+.chat-anim { opacity: .6; transform: translateY(14px) scale(.985); transition: opacity .42s cubic-bezier(.2,.7,.3,1), transform .42s cubic-bezier(.2,.7,.3,1); }
+.chat-anim.entered { opacity: 1; transform: none; }

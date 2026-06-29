@@ -81,17 +81,8 @@ public class CreditService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调整积分值不能为 0");
         }
 
-        Wallet wallet = walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L)
-                .licenseBalance(0L)
-                .rechargeBalance(0L)
-                .giftBalance(0L)
-                .pendingBalance(0L)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build()));
+        // v2 §5: 悲观行锁取钱包，串行化并发写余额（调差 vs 充值/消费），防 lost update。
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         long newBalance = wallet.getTotalBalance() + amount;
         if (newBalance < 0) {
@@ -151,17 +142,8 @@ public class CreditService {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "扣减积分必须为正数");
         }
-        Wallet wallet = walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L)
-                .licenseBalance(0L)
-                .rechargeBalance(0L)
-                .giftBalance(0L)
-                .pendingBalance(0L)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build()));
+        // v2 §5: 悲观行锁，串行化并发写余额，防 lost update。
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
@@ -245,12 +227,17 @@ public class CreditService {
 
     /**
      * 业务侧"加积分"通用入口（v0.4 新增）：原子地把 amount 加入指定桶并写一条 LedgerEntry。
-     * 调用方负责选对桶：
-     *   - RECHARGE：充值落账
-     *   - GIFT：活动赠送 / 充值赠送
-     *   - INCOME：业务收益
-     *   - LICENSE_GRANT：license 核销
-     *   - REFUND：退款
+     * 桶分配严格对齐 v2 §1 两平面：<b>只有 RECHARGE（现金充值）进 recharge 现金背书桶</b>，
+     * 其余皆积分面（非现金负债）：
+     *   - RECHARGE：充值落账 → <b>recharge 桶（唯一现金背书入账）</b>
+     *   - GIFT：活动赠送 / 充值赠送 → gift 桶
+     *   - LICENSE_GRANT：license 核销 → license 桶
+     *   - INCOME：业务收益（积分面，非现金）→ gift 桶（v2 M2）
+     *   - REFUND：积分面退款（<b>已弃用</b>，改走 {@link #releaseHold} 退回原桶）→ gift 桶兜底（v2 M2）
+     *
+     * <p><b>v2 M2 修复：INCOME / REFUND 不再进 recharge 桶。</b>否则会污染
+     * {@link #refundCashReclaim} 依赖的「{@code rechargeBalance} = 未消费现金充值额」不变量，
+     * 让非现金积分被当作现金退掉。落 gift 桶对 {@code totalBalance} 无差别（gift 同样计入总额）。
      *
      * @param entryType   LedgerEntry 类型（同时决定加哪个桶；FREEZE/UNFREEZE/SPEND/WITHDRAW/ADJUST 不在此处理）
      */
@@ -264,24 +251,18 @@ public class CreditService {
         if (entryType == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "缺少入账类型");
         }
-        Wallet wallet = walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L)
-                .licenseBalance(0L)
-                .rechargeBalance(0L)
-                .giftBalance(0L)
-                .pendingBalance(0L)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build()));
+        // v2 §5: 悲观行锁取钱包，串行化并发写余额（入账 vs 消费），防 lost update。
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
 
         switch (entryType) {
+            // RECHARGE 是唯一进现金背书 recharge 桶的入账类型（守 refundCashReclaim 的 clamp 不变量）。
             case RECHARGE -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
             case GIFT -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
             case LICENSE_GRANT -> wallet.setLicenseBalance(wallet.getLicenseBalance() + amount);
-            case INCOME -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount); // 业务收益默认进 recharge 桶
-            case REFUND -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
+            // v2 M2：INCOME（业务收益）是积分面（非现金）→ gift 桶，绝不污染 recharge 现金桶。
+            case INCOME -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
+            // v2 M2：REFUND（积分面退款）已弃用（改走 releaseHold 退原桶）；保留分支兜底，同样落 gift 桶，绝不进 recharge。
+            case REFUND -> wallet.setGiftBalance(wallet.getGiftBalance() + amount);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "creditAccount 不支持的入账类型：" + entryType);
         }
@@ -304,6 +285,56 @@ public class CreditService {
                 .createdAt(Instant.now())
                 .build();
 
+        return LedgerEntryDto.from(ledgerRepo.save(entry));
+    }
+
+    /**
+     * v2 §15.5 / D17 现金退款回收：现金退款的<b>同事务</b>积分回收。补堵审计 #9 真洞 —— 退现金却不收回
+     * 用户已持有的对应积分 = 钱与积分两头占。
+     *
+     * <p>回收额 <b>clamp 到当前未消费充值余额</b>（{@code min(requestedCredits, rechargeBalance)}）：
+     * 充值进 rechargeBalance 且消费时该桶最后扣（gift→license→recharge），故 rechargeBalance 即「未消费充值额」
+     * 的下界。花光 → 回收 0（refund 0）；部分消费 → 回收未消费部分。写一条资金面 {@code REFUND_CASH}
+     * 分录（amount 为负），cashArtifactId 链到现金凭证（订单 id）。这是 §13#2 允许扣减 rechargeBalance 的
+     * <b>唯一</b>显式通道（普通负 ADJUST 禁止碰现金桶）。
+     *
+     * @param requestedCredits 期望回收额（通常 = 订单 credits），实际按可用余额 clamp
+     * @return 写入的 REFUND_CASH 分录；clamp 后为 0 时抛 409（已消费完毕，无可退）
+     */
+    @Transactional
+    public LedgerEntryDto refundCashReclaim(String userId, long requestedCredits,
+                                            String cashArtifactId, String description) {
+        if (requestedCredits <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "退款回收额必须为正数");
+        }
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
+        long reclaimable = Math.min(requestedCredits, wallet.getRechargeBalance());
+        if (reclaimable <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "无可回收的未消费充值额度（充值积分已消费完毕），不可走现金退款回收");
+        }
+
+        wallet.setRechargeBalance(wallet.getRechargeBalance() - reclaimable);
+        long newBalance = wallet.getTotalBalance() - reclaimable;
+        wallet.setTotalBalance(newBalance);
+        wallet.setUpdatedAt(Instant.now());
+        walletRepo.save(wallet);
+
+        LedgerEntry entry = LedgerEntry.builder()
+                .id(UUID.randomUUID().toString())
+                .walletId(wallet.getId())
+                .userId(userId)
+                .entryType(LedgerEntry.LedgerEntryType.REFUND_CASH)
+                .amount(-reclaimable)
+                .balanceAfter(newBalance)
+                .description(description)
+                .referenceId(cashArtifactId)
+                .referenceType("refund_cash")
+                .createdAt(Instant.now())
+                .build();
+        // entryType=REFUND_CASH → @PrePersist 标 plane=MONEY、cashArtifactId=referenceId（链到订单）。
+        log.info("[credit] refund-cash reclaim user={} requested={} reclaimed={} cashArtifact={}",
+                userId, requestedCredits, reclaimable, cashArtifactId);
         return LedgerEntryDto.from(ledgerRepo.save(entry));
     }
 
@@ -338,18 +369,7 @@ public class CreditService {
             return existing;
         }
 
-        // SELECT … FOR UPDATE：防止并发 hold 超扣（两个请求同时读到同一余额各自通过校验）。
-        Wallet wallet = walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L)
-                .licenseBalance(0L)
-                .rechargeBalance(0L)
-                .giftBalance(0L)
-                .pendingBalance(0L)
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .build()));
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
                     "积分余额不足，本次操作需 " + amount + "，当前可用 " + wallet.getTotalBalance());
@@ -444,10 +464,9 @@ public class CreditService {
                     "commit 金额 " + amount + " 超过剩余 hold " + hold.getRemainingAmount());
         }
 
-        // SELECT … FOR UPDATE：与 hold 的行锁对称，确保 pendingBalance 更新不会丢失。
-        Wallet wallet = walletRepo.findByIdForUpdate(hold.getWalletId())
+        Wallet wallet = walletRepo.findByUserIdForUpdate(hold.getUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "hold 关联 wallet 不存在: " + hold.getWalletId()));
+                        "hold 关联 wallet 不存在 (user " + hold.getUserId() + ")"));
         if (wallet.getPendingBalance() < amount) {
             // pending 被外力打破 — 极端情况，记录但不阻拦
             log.warn("[credit] commit pending<amount user={} pending={} commit={}",
@@ -514,10 +533,9 @@ public class CreditService {
             return null;
         }
 
-        // SELECT … FOR UPDATE：确保释放回桶的写入不会被并发 hold/commit 覆盖。
-        Wallet wallet = walletRepo.findByIdForUpdate(hold.getWalletId())
+        Wallet wallet = walletRepo.findByUserIdForUpdate(hold.getUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "hold 关联 wallet 不存在: " + hold.getWalletId()));
+                        "hold 关联 wallet 不存在 (user " + hold.getUserId() + ")"));
 
         // 按 hold 时桶分布的比例退回。已 commit 一部分时，按剩余比例算每桶退多少。
         long originalAmount = hold.getAmount();
@@ -573,6 +591,25 @@ public class CreditService {
     /** 实体级 wallet 取数（recharge 等流程需要返回最新 WalletDto 时复用）。 */
     public Wallet getOrCreateWallet(String userId) {
         return walletRepo.findByUserId(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+                .id(UUID.randomUUID().toString())
+                .userId(userId)
+                .totalBalance(0L)
+                .licenseBalance(0L)
+                .rechargeBalance(0L)
+                .giftBalance(0L)
+                .pendingBalance(0L)
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build()));
+    }
+
+    /**
+     * 实体级 wallet 取数 + 悲观行锁（v2 §5）。必须在 {@code @Transactional} 内调用。
+     * 写余额路径（入账 / 扣减 / 冻结 / 解冻）用本方法串行化对同一钱包的并发写，防 lost update。
+     * 钱包不存在时新建（新行在本事务内即受保护，其它事务同 userId 插入会撞唯一约束）。
+     */
+    private Wallet getOrCreateWalletForUpdate(String userId) {
+        return walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
                 .id(UUID.randomUUID().toString())
                 .userId(userId)
                 .totalBalance(0L)

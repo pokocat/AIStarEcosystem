@@ -116,6 +116,7 @@ public class FinanceController {
             case LICENSE_GRANT -> "激活码";
             case RECHARGE -> "充值";
             case REFUND -> "退款";
+            case REFUND_CASH -> "现金退款";
             case INCOME -> "业务收入";
             case GIFT -> "赠送";
             case SPEND -> "支出";
@@ -137,7 +138,8 @@ public class FinanceController {
                 "completed",
                 txType(e.getEntryType()),
                 e.getUserId(),
-                // 用户自查自己的流水，无需回显登录名 / 昵称（wire 上省略）
+                // 用户自查自己的流水，无需回显登录名 / 昵称 / 手机号（wire 上省略）
+                null,
                 null,
                 null
         );

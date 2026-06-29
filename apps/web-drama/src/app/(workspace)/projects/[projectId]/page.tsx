@@ -13,6 +13,7 @@ import { ProjectsApi } from "@/api";
 import { useAsync } from "@/lib/drama-query";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { defaultOverlay } from "@/lib/interactive-graph";
 import type { ProjectData } from "@/mocks/drama-workshop";
 import {
@@ -21,13 +22,11 @@ import {
   type WorkshopState,
 } from "@/components/drama-workshop/workbench";
 import {
-  CastStage,
   EpScriptStage,
   FactoryStage,
-  OutlineStage,
   AssembleStage,
   BranchStage,
-  TopicStage,
+  SetupStage,
   type StageContext,
 } from "@/components/drama-workshop/stages";
 
@@ -57,7 +56,7 @@ export default function ProjectWorkbench() {
       try {
         await track(() => ProjectsApi.saveProject(id, next, opts));
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败，请重试");
+        toast.error(aiErrorMessage(e, "保存失败，请稍后重试"));
         throw e;
       }
     },
@@ -130,12 +129,11 @@ function StageOutlet({
   }, [state.chars]);
 
   switch (state.stage) {
+    // v0.88：选题/大纲/角色场景合并为「短剧设定」单页（设计稿 wbStageView）。
     case "topic":
-      return <TopicStage state={state} dispatch={dispatch} data={data} />;
     case "outline":
-      return <OutlineStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "cast":
-      return <CastStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
+      return <SetupStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "epscript":
       return <EpScriptStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "factory":

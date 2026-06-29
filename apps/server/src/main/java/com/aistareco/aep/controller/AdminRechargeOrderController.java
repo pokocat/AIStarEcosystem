@@ -1,13 +1,17 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.RechargeOrderDto;
+import com.aistareco.aep.service.PaymentService;
 import com.aistareco.aep.service.RechargeService;
+import com.aistareco.aep.service.payment.PaymentReconcileService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 运营后台 · 充值订单核销（v0.56 新增）。
@@ -17,12 +21,19 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/admin/finance/recharge-orders")
+@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')") // v2 §6：资金面（充值/退款/对账）限财务,OPERATOR 不可读写
 public class AdminRechargeOrderController {
 
     private final RechargeService rechargeService;
+    private final PaymentReconcileService reconcileService;
+    private final PaymentService paymentService;
 
-    public AdminRechargeOrderController(RechargeService rechargeService) {
+    public AdminRechargeOrderController(RechargeService rechargeService,
+                                        PaymentReconcileService reconcileService,
+                                        PaymentService paymentService) {
         this.rechargeService = rechargeService;
+        this.reconcileService = reconcileService;
+        this.paymentService = paymentService;
     }
 
     /** 列出充值订单。可选 {@code ?status=pending|paid|rejected|cancelled|all}（默认全部，最新在前）。 */
@@ -41,6 +52,12 @@ public class AdminRechargeOrderController {
         return ApiResponse.of(rechargeService.approveOrder(orderId, reviewer, note));
     }
 
+    /** v2 §6 查单同步：对在线 PENDING 订单主动查网关 → 已支付自动入账 / 超时关单。在线订单不能手工核准,用这个。 */
+    @PostMapping("/{orderId}/sync")
+    public ApiResponse<RechargeOrderDto> sync(@PathVariable String orderId) {
+        return ApiResponse.of(paymentService.syncOrderForAdmin(orderId));
+    }
+
     /** 驳回：收款不符 / 无效订单。reason 必填。 */
     @PostMapping("/{orderId}/reject")
     public ApiResponse<RechargeOrderDto> reject(Principal principal,
@@ -52,6 +69,34 @@ public class AdminRechargeOrderController {
         }
         String reviewer = principal != null ? principal.getName() : "admin";
         return ApiResponse.of(rechargeService.rejectOrder(orderId, reviewer, reason));
+    }
+
+    /**
+     * 现金退款 + 未消费积分回收（v2 §15.5 / D17）。资金面动作 → 限 FINANCE_ADMIN / SUPER_ADMIN；
+     * OPERATOR 不可退款。reason 必填。仅 PAID 订单可退；clamp 到未消费充值额，已消费完毕 → 409。
+     */
+    @PostMapping("/{orderId}/refund")
+    @PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")
+    public ApiResponse<RechargeOrderDto> refund(Principal principal,
+                                                @PathVariable String orderId,
+                                                @RequestBody(required = false) ReviewRequest body) {
+        String reason = body == null ? null : body.reason();
+        if (reason == null || reason.isBlank()) {
+            throw BusinessException.badRequest("REFUND_REASON_REQUIRED", "请填写退款原因");
+        }
+        String operator = principal != null ? principal.getName() : "admin";
+        return ApiResponse.of(rechargeService.refundOrder(orderId, operator, reason));
+    }
+
+    /**
+     * 手动触发查单兜底（v2 §6.4，直连方案）：对 PENDING 在线订单逐单查网关,已支付则结算（幂等）。
+     * 用于回调丢失 / 本地无公网时的补单,也让沙箱 E2E 可确定性推进（不必等定时器）。限 FINANCE_ADMIN / SUPER_ADMIN。
+     */
+    @PostMapping("/reconcile")
+    @PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")
+    public ApiResponse<Map<String, Object>> reconcile() {
+        int settled = reconcileService.reconcilePending();
+        return ApiResponse.of(Map.of("settled", settled));
     }
 
     public record ReviewRequest(String note, String reason) {}

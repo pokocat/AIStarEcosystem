@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export * from "./_client";
+export * as AdjustmentsApi from "./adjustments";
 export * as AepUsersApi from "./aep-users";
 export * as AppearanceForgeApi from "./appearance-forge";
 export * as AuditApi from "./audit";
@@ -36,6 +37,7 @@ export * as CelebrityZoneApi from "./celebrity-zone";
 export * as CelebrityAuthorizationsApi from "./celebrity-authorizations";
 export * as RechargePackagesApi from "./recharge-packages";
 export * as RechargeOrdersApi from "./recharge-orders";
+export * as ReconciliationApi from "./reconciliation";
 export * as TemplateScriptsApi from "./template-scripts";
 export * as AiModelsApi from "./ai-models";
 export * as PromptsApi from "./prompts";

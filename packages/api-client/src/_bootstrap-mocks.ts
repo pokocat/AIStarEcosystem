@@ -14,7 +14,7 @@ import type { AepUser } from "@ai-star-eco/types/account";
 import type { LicenseRedeemRequest, LicenseRedeemResult } from "@ai-star-eco/types/license";
 import { mockDelay, setAuthToken } from "./_client";
 import { registerMocks } from "./_mock-registry";
-import { MOCK_TENANTS, MOCK_USER, MOCK_WALLET } from "./_mocks";
+import { DEFAULT_RECHARGE_PACKAGES, MOCK_TENANTS, MOCK_USER, MOCK_WALLET } from "./_mocks";
 import type { DevAccount, DevLoginResult, PasswordLoginResult, SmsLoginResult, SmsRegisterPayload, SmsRegisterResult, SmsRequestCodeResult } from "./api/auth";
 
 registerMocks([
@@ -38,6 +38,20 @@ registerMocks([
   { method: "GET", pattern: "/me/tenants", handler: () => mockDelay(MOCK_TENANTS) },
   { method: "GET", pattern: "/me/wallet", handler: () => mockDelay(MOCK_WALLET) },
   { method: "GET", pattern: "/me/ledger", handler: () => mockDelay([]) },
+  // 充值套餐兜底（仅 USE_MOCK=1 dev 用；真模式走后端，无 seed）。sourceApp 过滤「通用 +
+  // 该子应用专属」；DEFAULT_RECHARGE_PACKAGES 全是 appScope=all，任意 sourceApp 都返回全部 4 个。
+  // 业务 app（如 drama 的 finance.ts）可后注册同 path 覆盖，但应同样基于这份示例。
+  {
+    method: "GET",
+    pattern: "/me/wallet/packages",
+    handler: ({ query }) => {
+      const sourceApp = query?.sourceApp as string | undefined;
+      const list = DEFAULT_RECHARGE_PACKAGES.filter(
+        (p) => !sourceApp || !p.appScope || p.appScope === "all" || p.appScope === sourceApp,
+      ).map((p) => ({ ...p }));
+      return mockDelay(list);
+    },
+  },
   // v0.56：充值订单（下单 → 运营核准入账）。mock 仅返回 pending 账单，不入账。
   { method: "GET", pattern: "/me/wallet/recharge/orders", handler: () => mockDelay([]) },
   {

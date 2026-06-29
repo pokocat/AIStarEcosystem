@@ -68,6 +68,30 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.88 · 2026-06-28 · 短剧工作台对齐设计稿（全栈 · 渲染数据后端读取 · 编辑落库草稿态）
+
+按设计稿 `AI短剧工作台.dc.html` 还原工作台与短视频，并满足「所有渲染数据从后端读取 + 所有编辑落库草稿态」：
+
+- **短剧设定单页**（`stages/setup.tsx`）：合并 选题/大纲/角色场景为一页（`OutlineStage`/`CastStage` 加 `embedded` 模式内嵌），左轨改两步流程（短剧设定 / 剧集工作台，`stage-rail.tsx`）。
+  - **场景**升级为后端持久化 `ProjectData.scenes`（去掉前端写死的 `SCENE_LIB`）：promote 时由大纲「取景参考」预填；name/mood 行内可编辑、`生成参考图`（`render/frame`）、加/删 —— 全部落库。
+  - 大纲 AI 参数 `outlinePrefs{scope,dur}` 落库（此前仅内存）。`加个角色` 落库。
+- **剧集脚本 平铺分镜表**（新 `storyboard-table.tsx`）：设计稿表格 镜号/时长/首帧/画面内容/镜头/台词·音频[台词+音效+BGM]/特效氛围，**每格结构化可编辑**（即喂视频生成 LLM 提示词的结构化文本）；`BoardShot` 加 `sfx/bgm/fx`。本集叙事/作品风格/出场人物落库 `episodeDocs[ep].meta`（`epscript.tsx`，此前仅内存即丢）。
+- **首帧 AI 改图弹窗**（`storyboard-table.tsx` 内）：左指令对话（换成夜景/让她回头…）+ 右 9:16 预览 + 版本号；复用 `RenderApi.renderFrame` + ref 图迭代，新版回填该镜首帧落库。
+- **短视频** `/shorts/make` **单页化**：去掉 脚本/工厂 步骤切换 → 设计稿单页（左 AI 口播对话 / 右 短视频大纲[口播种草 + beat 流 痛点开场→卖点演示→强CTA] + 分镜脚本，逐镜内联出片）；`meta.style` 可编辑（、/逗号分隔）落库；每镜 beat 语义标签；删退役工厂网格 `ShortShotCard`。
+- `app.css` 复用 v0.87 脑暴动效（typing-dot/gen-pulse/edit-field/chat-input）。
+- **门禁**：web-drama typecheck/build（29 路由）+ typecheck:all 10/10 + contract 全绿；后端 74 drama 单测；**真实 server+fake-llm 浏览器（CDP headless）可视验收**（首页脑暴/短剧设定/分镜表/AI 改图/短视频单页 截图）+ **持久化 API E2E**（场景/参数/本集 meta/结构化 sfx-bgm-fx 落库恢复）。
+
+### v0.87 · 2026-06-28 · 首页「跟 AI 聊出故事」脑暴链路（设计稿 `AI短剧工作台.dc.html` 还原）
+
+首页从「一句话点子 → 立即立项」改为设计稿的**对话式脑暴**：随口说一个念头 → 左侧与 AI 脑暴 → 右侧生成**可编辑的故事大纲**（标题 / 剧情脉络 / 一句话简介 / 核心人物 / 取景参考 / 制作设置 形态+尺寸）→「去制作」。脑暴是**立项之前的可恢复草稿**（草稿不丢、可回溯），不污染短剧工坊 / 短视频工坊。
+
+- **路由**：`/dashboard` 不带参 = chatOff 落地（输入框 + 近期热点 chips + 今日灵感/套爆款模板/跟 AI 聊出故事 + 开始脑暴 + 爆款配方网格 + 继续脑暴/继续上次）；`/dashboard?b=<id>` = chatOn（左 AI 脑暴对话 / 右可编辑故事大纲，`BrainstormStudio`）。`?b=` 入 URL，整页 `BrainstormData` 防抖自动保存，刷新 / 返回可恢复。
+- **数据层**：新 `api/brainstorm.ts`（`BrainstormApi`，TS 接口即前后端契约真源：`BrainstormData`/`OutlineDraft`/`BrainstormSummary`）。`listBrainstorms`/`getBrainstorm`/`createBrainstorm`/`saveBrainstorm`/`deleteBrainstorm` + `chat`(AI 对话) + `generateOutline`(生成故事大纲) + `promote`(去制作)。USE_MOCK 进程内存表 + canned AI（演示）。
+- **去制作**：按形态 promote —— `series` → `DramaProject`（免费立项，角色由大纲 roles 预填）跳工作台 `/projects/{id}`；`single` → `DramaShort`（扣开拍费）跳 `/shorts/make?draft=`。
+- 新组件 `components/drama-workshop/home/brainstorm-studio.tsx`；`drama-ui Editable` 行内编辑大纲人物 / 标题 / logline。app.css 加脑暴/改图共用动效（`typing-dot`/`gen-pulse`/`gen-reveal`/`chat-anim`/`edit-field`/`chat-input`）。后端见 `apps/server` v0.87 + `AGENTS.md` v0.87。
+- **门禁**：web-drama typecheck/build（29 路由）+ typecheck:all 10/10 + contract 全绿；后端 74 drama 单测 + 真实 server+fake-llm API 级 E2E 24 断言（dev-login→脑暴→对话→大纲→落库→恢复→promote→真实实体+幂等）。
+- **待续（设计稿剩余对齐项，需浏览器可视验证）**：工作台 短剧设定 两视图合并 / 剧集脚本 平铺分镜表 / 首帧 AI 改图弹窗 / 短视频制作单页化。
+
 ### v0.79 · 2026-06-15 · 互动剧（剧情互动短剧）—— 集成进短剧工坊，不另起炉灶
 
 互动剧不是独立工具，而是**短剧工坊（`/projects` 六阶段工作台）的一种形态**（`mode=interactive`）：剧集（图节点）就是项目大纲分集，**每一集仍走完整的「剧集脚本 → 视频工厂 → 成片合成」六阶段**（单集 AI 出脚本 / 分场分镜 / 逐镜出图出片全部复用），分支编排只是叠加在项目上的一层。

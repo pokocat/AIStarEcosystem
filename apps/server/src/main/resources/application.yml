@@ -80,6 +80,51 @@ aep:
     chat-timeout-seconds: ${AEP_LLM_CHAT_TIMEOUT_SECONDS:90}
   dev-auth:
     enabled: ${AEP_DEV_AUTH_ENABLED:false}
+  # v2 在线支付（充值）。driver=shadow → 影子链路（dev/test/staging，无外部依赖，端到端可跑）；
+  # 生产必须 driver=jeepay（接真实 Jeepay 网关，P1 落地）。
+  # §8.0：driver=jeepay 未配/失败时上层抛带码错误、不入账，绝不回退到 shadow；
+  #        shadow 在 mysql/prod profile 激活会打 ERROR 横幅。
+  payment:
+    driver: ${AEP_PAYMENT_DRIVER:shadow}
+    shadow:
+      # manual=前端模拟收银台手动点「支付成功」；auto=下单后延迟自动确认（CI/headless）
+      confirm-mode: ${AEP_PAYMENT_SHADOW_CONFIRM_MODE:manual}
+      auto-confirm-delay-ms: ${AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS:800}
+    # v2 §6.5：driver=jeepay 时必填（机密经 env 注入、禁进 git）。JeepayPaymentGateway 启动 fail-fast 校验。
+    jeepay:
+      base-url: ${AEP_PAYMENT_JEEPAY_BASE_URL:}
+      mch-no: ${AEP_PAYMENT_JEEPAY_MCH_NO:}
+      app-id: ${AEP_PAYMENT_JEEPAY_APP_ID:}
+      api-key: ${AEP_PAYMENT_JEEPAY_API_KEY:}
+      notify-url: ${AEP_PAYMENT_JEEPAY_NOTIFY_URL:}
+      sign-type: ${AEP_PAYMENT_JEEPAY_SIGN_TYPE:MD5}
+      default-way-code: ${AEP_PAYMENT_JEEPAY_DEFAULT_WAY_CODE:WX_LITE}
+      version: ${AEP_PAYMENT_JEEPAY_VERSION:1.0}
+    # v2 §6：支付宝直连（alipay-easysdk）。driver=alipay 时必填（机密经 env 注入、禁进 git）。
+    # 沙箱→生产只换 app-id/merchant-private-key/alipay-public-key/gateway-host 四项。
+    alipay:
+      app-id: ${AEP_PAYMENT_ALIPAY_APP_ID:}
+      merchant-private-key: ${AEP_PAYMENT_ALIPAY_MERCHANT_PRIVATE_KEY:}
+      alipay-public-key: ${AEP_PAYMENT_ALIPAY_PUBLIC_KEY:}
+      gateway-host: ${AEP_PAYMENT_ALIPAY_GATEWAY_HOST:openapi-sandbox.dl.alipaydev.com}
+      protocol: ${AEP_PAYMENT_ALIPAY_PROTOCOL:https}
+      sign-type: ${AEP_PAYMENT_ALIPAY_SIGN_TYPE:RSA2}
+      notify-url: ${AEP_PAYMENT_ALIPAY_NOTIFY_URL:}
+      return-url: ${AEP_PAYMENT_ALIPAY_RETURN_URL:}
+      default-way-code: ${AEP_PAYMENT_ALIPAY_DEFAULT_WAY_CODE:ALI_PC}
+      sandbox: ${AEP_PAYMENT_ALIPAY_SANDBOX:true}
+    # 查单兜底轮询间隔（PaymentReconcileService）：回调丢失/无公网时主动补单。
+    reconcile:
+      interval-ms: ${AEP_PAYMENT_RECONCILE_INTERVAL_MS:20000}
+  # v2 §5：孤儿 hold 自动清扫。TTL 须 > 最长合法任务（视频生成轮询上限 ~15min），
+  # 默认 180min 防误杀在途任务；CreditHoldSweeper 默认每 30min 扫一次。
+  credit:
+    stale-hold-ttl-minutes: ${AEP_CREDIT_STALE_HOLD_TTL_MIN:180}
+    # v2 §9.2 maker-checker：调差/赠送单笔 > 此值需走审批（FINANCE_ADMIN 复核，maker≠checker）；≤ 则直发
+    adjust:
+      threshold-credits: ${AEP_CREDIT_ADJUST_THRESHOLD:5000}
+      # v2 §9.2 #5：发起人单日（滚动 24h）调差/赠送积分上限（已批 + 待批计入）；<=0 关闭
+      actor-daily-limit-credits: ${AEP_CREDIT_ADJUST_ACTOR_DAILY_LIMIT:50000}
   # v0.43+ 子产品平台访问隔离（music / drama / celebrity）。
   #   true  → 任意注册入口授予全部子产品（一处注册，三端可用）。开发 / 联调默认。
   #   false → 注册只授予来源子产品（前端登录页透传 platform）；其余子产品需另行开通。

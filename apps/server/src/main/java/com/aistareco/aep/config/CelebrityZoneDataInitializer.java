@@ -32,7 +32,6 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
     private final CelebrityShowcaseRepository showcaseRepo;
     private final ProductRepository productRepo;
     private final CelebrityStarAuthorizationRepository authRepo;
-    private final RechargePackageRepository pkgRepo;
     private final com.aistareco.aep.repository.TemplateScriptRepository scriptRepo;
     private final com.aistareco.aep.repository.NotificationRepository notificationRepo;
 
@@ -43,7 +42,6 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                                          CelebrityShowcaseRepository showcaseRepo,
                                          ProductRepository productRepo,
                                          CelebrityStarAuthorizationRepository authRepo,
-                                         RechargePackageRepository pkgRepo,
                                          com.aistareco.aep.repository.TemplateScriptRepository scriptRepo,
                                          com.aistareco.aep.repository.NotificationRepository notificationRepo) {
         this.starRepo = starRepo;
@@ -53,15 +51,12 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
         this.showcaseRepo = showcaseRepo;
         this.productRepo = productRepo;
         this.authRepo = authRepo;
-        this.pkgRepo = pkgRepo;
         this.scriptRepo = scriptRepo;
         this.notificationRepo = notificationRepo;
     }
 
     @Override
     public void run(String... args) {
-        seedRechargePackages();
-
         if (starRepo.count() > 0) return;
 
         LocalDate today = LocalDate.now();
@@ -495,24 +490,6 @@ public class CelebrityZoneDataInitializer implements CommandLineRunner {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
-    }
-
-    /** 充值套餐种子（idempotent —— 已有数据时跳过）。 */
-    private void seedRechargePackages() {
-        if (pkgRepo.count() > 0) return;
-        // 与 apps/miniprogram/utils/mocks.js WALLET_PACKAGES 完全对齐
-        pkgRepo.save(RechargePackage.builder()
-                .id("pkg-300").credits(300).priceCents(9900).tag("体验包")
-                .recommended(false).bonusCredits(0).sortOrder(10).active(true).build());
-        pkgRepo.save(RechargePackage.builder()
-                .id("pkg-1000").credits(1000).priceCents(29900).tag("标准包")
-                .recommended(true).bonusCredits(100).sortOrder(20).active(true).build());
-        pkgRepo.save(RechargePackage.builder()
-                .id("pkg-3000").credits(3000).priceCents(79900).tag("热门包")
-                .recommended(false).bonusCredits(500).sortOrder(30).active(true).build());
-        pkgRepo.save(RechargePackage.builder()
-                .id("pkg-10000").credits(10000).priceCents(239900).tag("企业包")
-                .recommended(false).bonusCredits(2000).sortOrder(40).active(true).build());
     }
 
     /**

@@ -195,6 +195,14 @@
 - [ ] **D-5 admin 镜像**：`apps/admin` 加 drama 管理视图。
 - [x] **D-6 单元测试**（v0.67）：真后端已落地，建立首个测试基线 —— vitest + jsdom + @testing-library/react；`format.test.ts`（15 例：货币/积分/紧凑/时长/带符号边界）+ `drama-query.test.tsx`（6 例：命中复用 / 精确失效 / 前缀失效 / 乐观写入 / refetch / clearAll）。**测试驱动修了一个真实 bug**：`drama-query` 的 `load` catch 里 re-throw 导致 `useAsync` 丢弃的 promise 变 unhandled rejection（改为错误只落 `entry.error`）。`package.json` test 脚本 placeholder → `vitest run`。状态机过渡在后端 `DramaProjectServiceTest` 11/11 已覆盖；前端无 zod 表单 schema 故略。
 - [x] **D-7 a11y dialog**（v0.67）：**不换 shadcn**（那套亮色 token 会破坏 drama 暗色 premium 玻璃视觉），改为强化共享容器 —— 抽 `lib/use-modal-a11y.ts`（ESC + 焦点陷阱 + 初始/还原焦点 + body 锁，单一来源），`common/Dialog.tsx` 接入并补 `aria-labelledby/-describedby`；新增 `common/ModalShell.tsx` 给命令式弹层（`.overlay` + role=dialog + a11y），收编 short-clip / quick-create / preview 三个此前裸 `<div className="overlay">`（全缺 ESC/focus）。
+- [x] **D-8 首页脑暴链路**（v0.87，2026-06-28）：按设计稿 `AI短剧工作台.dc.html` 还原 首页→对话→故事大纲→去制作。新实体 `DramaBrainstorm` + `/api/me/drama/brainstorms/**`（chat/outline/promote）+ 前端 `api/brainstorm.ts` + 重建 `/dashboard`（chatOff/chatOn `?b=`）。落库可回溯、§8.0 守门、promote 幂等。门禁全绿 + 真实 server+fake-llm API E2E 24 断言。详见 `AGENTS.md`/各 README v0.87。
+- [x] **D-9 设计稿剩余对齐项**（v0.88 完成主体，2026-06-28，CDP headless 浏览器可视验收）：
+  - [x] ① 短剧设定单页（合并 选题/大纲/角色场景 + 左轨两步）—— `stages/setup.tsx` + `OutlineStage`/`CastStage` `embedded` + `stage-rail.tsx`；场景升级为后端 `ProjectData.scenes`（promote 预填、可编辑落库），`outlinePrefs` 落库。
+  - [x] ② 剧集脚本平铺分镜表 —— 新 `storyboard-table.tsx`（每格结构化可编辑→喂视频生成提示词），`BoardShot` 加 `sfx/bgm/fx`；`ShotFormCard` 保留给短视频。
+  - [x] ③ 首帧 AI 改图弹窗 —— `storyboard-table.tsx` 内（左指令对话+右 9:16 预览+版本号），复用 `renderFrame` + `ref_images` 迭代回填落库（**未新增 prompt key，复用 `drama.frame_image` + 指令拼进 desc**）。
+  - [x] ④ 短视频 `/shorts/make` 单页化（v0.88）：去掉 脚本/工厂 步骤切换 → 单页（左 AI 口播对话 / 右 短视频大纲[口播种草 + beat 流 痛点开场→卖点演示→强CTA] + 分镜脚本，逐镜内联出片）；`meta.style` 可编辑落库；每镜 beat 语义标签。删退役 `ShortShotCard` 工厂网格 + 步骤态。
+  - [x] ⑤ `epscript` 的 本集叙事/作品风格/出场人物 + `outline` scope/dur 落库（`episodeDocs[ep].meta` + `outlinePrefs`，持久化 API E2E 验证）。
+- [ ] **D-10 USE_MOCK promote 导航**：mock 下 `BrainstormApi.promote`→`ProjectsApi.createProject` 返回 `dp_mock_*`，但 `getProject` mock 只认静态 `PROJECTS` → `/projects/{新id}` 落「项目不存在」（脑暴自身的 chat→大纲在 mock 下完整可用）。属既有 mock 局限（首页旧立项流程同样存在）；要么给 projects/shorts mock 加可恢复 store，要么文档标注「mock 仅演示前半程，真链路走 USE_MOCK=0 + server」。
 
 ### apps/web-celebrity 专项（C-*）
 
@@ -227,6 +235,21 @@
 - [ ] **Phase 6 · K8s / ACK**（v0.34 显式）：从 ECS + systemd 迁到 ACK，HPA + 滚动发布。
 - [ ] **Flyway V1__baseline.sql 当前是空占位**（v0.34 §B）：切 `ddl-auto=validate` 之前需把生产 schema `mysqldump` 出来填入 V1；当前依赖 Flyway 看到现存 schema 自动 baseline 到 V1 但不执行。
 - [ ] **RDS 应用账号 Flyway 接管后降权**（v0.34 §C）：从 `CREATE/ALTER/DROP` 降到 `SELECT/INSERT/UPDATE/DELETE + EXECUTE`。
+- [x] ~~**enum 列扩值需手写迁移（`ddl-auto=update` 不会改 enum/CHECK）**~~（**已自动化**，2026-06-26）：原需「生产 MySQL 上线前手跑 `ALTER ... MODIFY COLUMN`」的两列加宽现由启动期幂等 runner `EnumColumnWideningMigration`（`config/`，`@Order(0)`，**先于 `DataInitializer`(@Order 1) 播种 FINANCE_ADMIN**）自动完成 —— 与 C6 用 `LedgerPlaneBackfill.ensurePlaneCheckConstraint()` 自动补 CHECK 同一手法。语义：仅 MySQL/MariaDB 生效（dev H2 按实体重建 schema 天生带全枚举）、读 `information_schema.COLUMNS` 已含全部枚举值即跳过（幂等）、`MODIFY COLUMN` 保留原 nullability、任意失败仅 log 不阻断启动。目标枚举集由 `EnumColumnWideningMigrationTest`（4/4，反射对齐 `AdminUser.AdminRole` / `LedgerEntry.LedgerEntryType` + H2 优雅跳过）守门：日后给任一 enum 加值忘了同步 runner → CI 红。原背景：`MODE=MySQL` 下 Hibernate 6 把 `@Enumerated(STRING)` 生成原生 `enum(...)` 列，`ddl-auto=update` **不会** widen 既有 enum/CHECK → 插入/比较新值报 `Value not permitted`。本轮自动加宽两列：
+    - `admin_users.role` → `ENUM('SUPER_ADMIN','OPERATOR','FINANCE_ADMIN')`（C2 FINANCE_ADMIN；不加宽则 boot 播种崩）
+    - `aep_ledger_entries.entry_type` → `ENUM('LICENSE_GRANT','RECHARGE','REFUND','REFUND_CASH','INCOME','GIFT','SPEND','WITHDRAW','FREEZE','UNFREEZE','ADJUST')`（C3 REFUND_CASH；不加宽则 D17 首次现金退款写库失败）
+    - 同时 `aep_ledger_entries` 加 `plane`(MONEY/CREDIT) + `cash_artifact_id` 两列 + CHECK `plane <> 'CREDIT' OR cash_artifact_id IS NULL`。**ddl-auto 只会加 nullable 列、不会加 CHECK 到既有表** → **C6 已用 `LedgerPlaneBackfill.ensurePlaneCheckConstraint()`（启动期原生 `ALTER TABLE ADD CONSTRAINT ck_ledger_plane`，幂等吞已存在）在 ddl-auto 之后补齐，生产 MySQL 真实成立**（评审 H1）；plane 历史行由同 runner native 按现存 entry_type 回填。Flyway 接管后把此 DDL 收进版本化脚本、移除 runner。
+    - 新增任何 enum 列扩值 / 新 CHECK 同理，勿依赖 ddl-auto，纳入 Flyway 版本化脚本（与上方 baseline 专项一并做）。
+
+### 钱包 v2 独立评审遗留（2026-06-26，C6 已修两 HIGH，其余记录）
+
+- [x] ~~**H1 DB CHECK 生产缺失**~~（**C6 完成**，2026-06-26）：`@Check`+`ddl-auto=update` 不给既有表加 CHECK → 生产「调差不碰现金」只剩 app 层。已加启动期 `ensurePlaneCheckConstraint` 原生 ALTER 补齐，真机重启日志确认「ck_ledger_plane 已补齐」。
+- [x] ~~**H2 退款并发双退**~~（**C6 完成**，2026-06-26）：`refundOrder` 原缺幂等闸，并发/重复点击可双重现金退款。已加 `markRefunded` 条件 UPDATE 抢占（PAID→REFUNDED，照 `markPaid`），真机验证第二次退款 → 409 ORDER_NOT_PAID、不二次回收。
+- [ ] **M1 per-actor 日限额是软护栏非硬不变量**（评审，2026-06-26）：仅约束「单个 maker 发起量」，复核无总量上限；且 check-then-insert 有 TOCTOU（两并发 compensate 同读 `already` 都过）。当前作软护栏可接受；若要硬上限需 per-maker 串行化（短锁 / 唯一约束计数行）。已在 commit message 注明仅「发起量」语义。
+- [x] ~~**M2 `INCOME`/`REFUND` 入 rechargeBalance 污染现金背书桶**~~（**已修**，2026-06-26）：选定方案「改入 gift 桶」（write-time 修正，比「对账时排除」更根治）。`CreditService.creditAccount` 的 `INCOME`/`REFUND` 分支从 `setRechargeBalance` 改为 `setGiftBalance` —— **RECHARGE 现成为唯一进 recharge 现金背书桶的入账类型**。审计确认：原 `INCOME`/`REFUND` 两 case 是**死分支**（无任一 caller 经 `creditAccount` 传这两类型；callers 仅 RECHARGE/GIFT/LICENSE_GRANT），故本修正零现网行为影响、纯前瞻护栏。`totalBalance` 不变（gift 同样计入总额）。真正堵的洞：`refundCashReclaim` 把 `rechargeBalance` 当「未消费现金充值额」做 clamp —— 若被非现金积分污染，可能把非现金积分当现金退掉。`WalletBucketAndConcurrencyTest` 守门：INCOME/REFUND→gift+recharge 桶纯净、非现金积分 `refundCashReclaim` 409 拒退、RECHARGE 对照组可退。（M3 逐单 join 仍 open。）
+- [x] ~~**评审 #3：钱包写余额无并发集成测试（仅 Mockito + 真机 happy/幂等）**~~（**已补**，2026-06-26）：`WalletBucketAndConcurrencyTest` 真·多线程（8 线程 CountDownLatch 闸门最大化竞态）撞同一钱包：并发 `creditAccount` / `debit` 各验「无 lost update」（终值恰等于串行期望），证明悲观行锁 `findByUserIdForUpdate`(`SELECT … FOR UPDATE`) 真实串行化 read-modify-write（无锁则增量相互覆盖、终值偏小且确定性失败）。H2 `LOCK_TIMEOUT=20000` 容纳串行化等待。
+- [ ] **M3 对账是粗粒度聚合勾稽、非逐单 join**（评审，2026-06-26）：`drift=Σ订单 − Σ账本RECHARGE` 只能抓「整体总额不平」，抓不住「单笔金额错配但总额恰好抵消」「RECHARGE 无对应订单」「bonus GIFT 不与 order.bonusCredits 勾稽」。作快速 tripwire 够用；要真 lost-update 检测需 left join orders↔ledger by referenceId 逐单核。
+- [ ] **L1/L2 记录**：`releaseHold` 部分 commit 后按比例退桶有整数除法偏置（总额守恒、桶纯度有微偏，非泄漏）；`WITHDRAW` 账本 `referenceId`/`cashArtifactId` 为空（资金面凭证未链，审计可追性弱）。均低优先。
 
 ### admin 后台健全（v0.31 / v0.32）
 

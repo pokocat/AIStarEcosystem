@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Star } from "lucide-react";
 import { useConfirm, useToast } from "@/components/feedback";
 import { RechargePackagesApi } from "@/api";
-import type { RechargePackage } from "@/types/wallet";
+import { RECHARGE_APP_SCOPES, type RechargePackage } from "@/types/wallet";
 
 export default function AdminRechargePackagesPage() {
   const toast = useToast();
@@ -33,6 +33,7 @@ export default function AdminRechargePackagesPage() {
     bonusCredits: 100,
     sortOrder: 20,
     active: true,
+    appScope: "all",
   });
 
   const refresh = React.useCallback(async () => {
@@ -79,6 +80,7 @@ export default function AdminRechargePackagesPage() {
         bonusCredits: p.bonusCredits,
         sortOrder: p.sortOrder,
         active: !(p.active ?? true),
+        appScope: p.appScope,
       });
       await refresh();
       toast.success({
@@ -177,6 +179,20 @@ export default function AdminRechargePackagesPage() {
               </span>
             </div>
           </div>
+          <div>
+            <div className="mb-1 text-sm font-medium">适用子应用</div>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={draft.appScope}
+              onChange={(e) => setDraft({ ...draft, appScope: e.target.value })}
+            >
+              {RECHARGE_APP_SCOPES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="md:col-span-1 flex items-end">
             <Button className="w-full" onClick={() => void onCreate()}>
               提交
@@ -203,6 +219,7 @@ export default function AdminRechargePackagesPage() {
                   <TableHead className="text-right">赠送</TableHead>
                   <TableHead>推荐</TableHead>
                   <TableHead>状态</TableHead>
+                  <TableHead>适用</TableHead>
                   <TableHead className="text-right">排序</TableHead>
                   <TableHead className="w-[200px] text-right">操作</TableHead>
                 </TableRow>
@@ -238,6 +255,9 @@ export default function AdminRechargePackagesPage() {
                           在售
                         </Badge>
                       )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {RECHARGE_APP_SCOPES.find((s) => s.value === (p.appScope ?? "all"))?.label ?? (p.appScope ?? "all")}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{p.sortOrder ?? 0}</TableCell>
                     <TableCell className="space-x-1 text-right">

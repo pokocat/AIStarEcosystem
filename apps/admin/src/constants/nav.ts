@@ -38,6 +38,7 @@ import {
   BarChart3,
   Bot,
   FileSearch,
+  Scale,
 } from "lucide-react";
 
 export interface NavItem {
@@ -54,7 +55,7 @@ export interface NavItem {
    * 仅当 currentRole 已知且不满足时才隐藏；currentRole=null（加载中 / 未登录）
    * 也隐藏 role-gated 项以避免菜单闪烁后才消失。
    */
-  roles?: ("SUPER_ADMIN" | "OPERATOR")[];
+  roles?: ("SUPER_ADMIN" | "OPERATOR" | "FINANCE_ADMIN")[];
   /**
    * v0.37+：限定账号来源 —— "admin" 表示仅 admin_users 体系登录可见，
    * "operator" 表示仅 aep_users.operatorRole 体系（v0.37 operator-login）可见，
@@ -143,14 +144,23 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/drama/prompts", label: "提示词设置", icon: MessageSquareText, description: "短剧各 AI 动作（大纲/分场分镜/拆镜/选角）的 system+user 提示词与调参" },
     ],
   },
-  // v0.5：财务（钱包 + 套餐）保留启用
+  // v2 §6：资金财务控制台（真实资金账务，FINANCE_ADMIN 专属；与积分运营隔离，OPERATOR 看不到）
   {
-    label: "财务",
+    label: "资金财务",
     items: [
-      { href: "/finance/ledger",            label: "结算中心",   icon: Wallet,        badgeKey: "txn_actionable", description: "钱包 / 流水 / 复核" },
-      { href: "/finance/recharge-orders",   label: "充值订单",   icon: Coins,         description: "v0.56：用户充值下单 → 线下收款后核准入账 / 驳回" },
-      { href: "/finance/recharge-packages", label: "充值套餐",   icon: Gift,          description: "v0.5：积分充值套餐 CRUD（软删）" },
-      { href: "/finance/risk",              label: "异常风控",   icon: AlertTriangle, description: "异常打赏与提现" },
+      { href: "/finance",                   label: "财务总览",   icon: LayoutDashboard, roles: ["FINANCE_ADMIN"], description: "资金面控制台：充值/退款/对账/结算一览" },
+      { href: "/finance/recharge-orders",   label: "充值订单",   icon: Coins,         roles: ["FINANCE_ADMIN"], description: "在线/线下充值核销 + 现金退款（资金面）" },
+      { href: "/finance/reconciliation",    label: "对账",       icon: Scale,         roles: ["FINANCE_ADMIN"], description: "v2 §11：现金勾稽（排除影子）+ 积分负债单列 + drift 告警" },
+      { href: "/finance/ledger",            label: "结算中心",   icon: Wallet,        roles: ["FINANCE_ADMIN"], badgeKey: "txn_actionable", description: "钱包 / 流水 / 复核" },
+      { href: "/finance/risk",              label: "异常风控",   icon: AlertTriangle, roles: ["FINANCE_ADMIN"], description: "异常打赏与提现" },
+      { href: "/finance/recharge-packages", label: "充值套餐",   icon: Gift,          roles: ["FINANCE_ADMIN"], description: "积分充值套餐 CRUD（含按子应用配置）" },
+    ],
+  },
+  // v2 §6：积分运营（积分面，不碰真实资金；OPERATOR 提交 / FINANCE_ADMIN 复核 maker-checker）
+  {
+    label: "积分运营",
+    items: [
+      { href: "/finance/adjustments",       label: "调差 / 赠送", icon: Gift,          roles: ["OPERATOR", "FINANCE_ADMIN"], description: "v2：给用户补发 / 赠送积分（积分面，不碰真实资金）" },
     ],
   },
   // v0.5：本期隐藏数字人/数字IP 内容线（保留源码，sidebar 不展示）

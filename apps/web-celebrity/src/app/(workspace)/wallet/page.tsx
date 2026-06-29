@@ -13,6 +13,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { AccountApi } from "@ai-star-eco/api-client";
 import {
   formatCredits,
@@ -41,13 +42,17 @@ const ENTRY_META: Record<LedgerEntryType, { label: string; tone: ChipTone }> = {
   freeze:        { label: "冻结",         tone: "neutral" },
   unfreeze:      { label: "解冻",         tone: "neutral" },
   adjust:        { label: "管理员调整",   tone: "neutral" },
+  refund_cash:   { label: "现金退款",     tone: "warning" },
 };
+const ENTRY_FALLBACK = { label: "其它变动", tone: "neutral" as ChipTone };
 
 const ORDER_STATUS_META: Record<RechargeOrderStatus, { label: string; tone: ChipTone }> = {
-  pending:   { label: "待平台确认", tone: "warning" },
+  pending:   { label: "待支付",     tone: "warning" },
   paid:      { label: "已到账",     tone: "success" },
   rejected:  { label: "已驳回",     tone: "danger" },
   cancelled: { label: "已取消",     tone: "neutral" },
+  closed:    { label: "已超时关闭", tone: "neutral" },
+  refunded:  { label: "已退款",     tone: "neutral" },
 };
 
 const REFERENCE_LABELS: Record<string, string> = {
@@ -66,7 +71,8 @@ function ledgerReferenceLabel(e: LedgerEntry): string {
 }
 
 export default function WalletPage() {
-  const { wallet, walletLoading } = useCelebrityShell();
+  const router = useRouter();
+  const { wallet, walletLoading, refreshWallet } = useCelebrityShell();
   const [packages, setPackages] = React.useState<RechargePackage[]>([]);
   const [packagesLoading, setPackagesLoading] = React.useState(true);
   const [orders, setOrders] = React.useState<RechargeOrder[]>([]);
@@ -78,6 +84,9 @@ export default function WalletPage() {
   const [submitting, setSubmitting] = React.useState(false);
   const [cancelingId, setCancelingId] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{ text: string; tone: "ok" | "err" } | null>(null);
+  const [onlinePaying, setOnlinePaying] = React.useState(false);
+  const [shadowCashier, setShadowCashier] = React.useState<{ orderId: string; summary: string } | null>(null);
+  const [shadowConfirming, setShadowConfirming] = React.useState(false);
 
   const flashToast = React.useCallback((text: string, tone: "ok" | "err") => {
     setToast({ text, tone });
@@ -110,7 +119,7 @@ export default function WalletPage() {
     (async () => {
       setPackagesLoading(true);
       try {
-        setPackages(await AccountApi.listRechargePackages());
+        setPackages(await AccountApi.listRechargePackages("celebrity"));
       } catch {
         setPackages([]);
       } finally {
@@ -134,6 +143,32 @@ export default function WalletPage() {
       flashToast(e instanceof Error ? e.message : "提交失败，请稍后再试", "err");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // v2 §6：跳转收银台中间页 —— 选支付渠道 → 确认支付 → 拉起支付宝（新标签）+ 实时状态 + 重试。
+  // checkout/payData/查单/幂等都收敛到 /wallet/checkout，本页只负责选套餐 + 跳过去。
+  const startOnlinePay = () => {
+    if (!selectedPkg || onlinePaying) return;
+    setOnlinePaying(true);
+    router.push(`/wallet/checkout?pkg=${encodeURIComponent(selectedPkg.id)}`);
+  };
+
+  const confirmShadow = async (result: "success" | "fail" | "timeout") => {
+    if (!shadowCashier || shadowConfirming) return;
+    setShadowConfirming(true);
+    try {
+      await AccountApi.confirmShadowPay(shadowCashier.orderId, result);
+      flashToast(
+        result === "success" ? "支付成功，积分已到账" : result === "fail" ? "已取消本次支付" : "支付超时，订单待对账",
+        "ok",
+      );
+      setShadowCashier(null);
+      await Promise.all([refreshWallet(), loadOrders(), loadLedger()]);
+    } catch (e: unknown) {
+      flashToast(e instanceof Error ? e.message : "确认失败，请稍后再试", "err");
+    } finally {
+      setShadowConfirming(false);
     }
   };
 
@@ -264,12 +299,49 @@ export default function WalletPage() {
               <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.6 }}>
                 提交后请按平台提供的收款方式完成付款；平台确认到账后积分自动入账。如需付款方式，请联系平台客户经理。
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <Button variant="accent" size="sm" onClick={submitOrder} disabled={submitting}>
-                  {submitting ? "提交中…" : "提交充值申请"}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button variant="accent" size="sm" onClick={startOnlinePay} disabled={onlinePaying || submitting}>
+                  {onlinePaying ? "下单中…" : "立即支付（在线）"}
                 </Button>
-                <Button variant="secondary" size="sm" onClick={() => setSelectedPkg(null)} disabled={submitting}>
+                <Button variant="secondary" size="sm" onClick={submitOrder} disabled={submitting || onlinePaying}>
+                  {submitting ? "提交中…" : "改为线下充值申请"}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setSelectedPkg(null)} disabled={submitting || onlinePaying}>
                   取消
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 影子模拟收银台（dev · 后端 driver=shadow；生产走真实支付，无此面板） */}
+          {shadowCashier && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: "16px 18px",
+                borderRadius: 12,
+                border: "1px dashed var(--accent-strong)",
+                background: "color-mix(in srgb, var(--accent) 9%, var(--bg-1))",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: "var(--accent-strong)", borderRadius: 6, padding: "2px 7px", letterSpacing: "0.04em" }}>🅂 SHADOW</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg-0)" }}>模拟收银台</span>
+                <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>影子链路 · 无真实扣款 · 订单 {shadowCashier.orderId}</span>
+              </div>
+              <div style={{ fontSize: 13, color: "var(--fg-1)", fontFamily: "var(--font-mono)" }}>应付 · {shadowCashier.summary}</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button variant="accent" size="sm" onClick={() => confirmShadow("success")} disabled={shadowConfirming}>
+                  {shadowConfirming ? "处理中…" : "✅ 模拟支付成功"}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => confirmShadow("fail")} disabled={shadowConfirming}>
+                  ❌ 模拟失败
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => confirmShadow("timeout")} disabled={shadowConfirming}>
+                  ⏳ 模拟超时
                 </Button>
               </div>
             </div>
@@ -341,7 +413,7 @@ export default function WalletPage() {
           ) : ledger.length === 0 ? (
             <div style={{ fontSize: 13, color: "var(--fg-2)" }}>还没有积分流水。生成视频、分发任务或充值到账后会在这里出现。</div>
           ) : (
-            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <div style={{ overflowX: "auto", touchAction: "pan-x", overscrollBehaviorX: "contain", WebkitOverflowScrolling: "touch" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 0, minWidth: 560 }}>
                 <LedgerHeader />
                 {ledger.map((e) => (
@@ -441,13 +513,17 @@ function PackageTile({
         {formatCredits(pkg.credits)}
         <span style={{ fontSize: 12, fontWeight: 400, color: "var(--fg-2)", marginLeft: 4 }}>积分</span>
       </div>
+      {/* 赠送行可选 —— 缺省时不渲染。下方价格 / 按钮用 marginTop:auto 钉到卡片底部，
+          配合 grid 项默认拉伸等高，使同一行里有/无赠送的卡片价格与按钮对齐。 */}
       {!!pkg.bonusCredits && pkg.bonusCredits > 0 && (
         <div style={{ fontSize: 12, color: "var(--accent-strong)" }}>赠送 {formatCredits(pkg.bonusCredits)} 积分</div>
       )}
-      <div style={{ fontSize: 13, color: "var(--fg-1)" }}>{formatCurrency(pkg.priceCents)}</div>
-      <Button variant={selected ? "accent" : pkg.recommended ? "accent" : "secondary"} size="sm" onClick={onClick}>
-        {selected ? "已选择" : "申请充值"}
-      </Button>
+      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 13, color: "var(--fg-1)" }}>{formatCurrency(pkg.priceCents)}</div>
+        <Button variant={selected ? "accent" : pkg.recommended ? "accent" : "secondary"} size="sm" onClick={onClick}>
+          {selected ? "已选择" : "申请充值"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -463,7 +539,7 @@ function OrderRow({
   onCancel: () => void;
   canceling: boolean;
 }) {
-  const meta = ORDER_STATUS_META[order.status];
+  const meta = ORDER_STATUS_META[order.status] ?? { label: order.status, tone: "neutral" as ChipTone };
   const dt = new Date(order.createdAt);
   const ts = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
   return (
@@ -533,7 +609,7 @@ function LedgerHeader() {
 }
 
 function LedgerRow({ entry }: { entry: LedgerEntry }) {
-  const meta = ENTRY_META[entry.type];
+  const meta = ENTRY_META[entry.type] ?? ENTRY_FALLBACK; // 防御：未知 type 不再整页崩
   const ref = ledgerReferenceLabel(entry);
   const dt = new Date(entry.createdAt);
   const ts = `${dt.getMonth() + 1}-${String(dt.getDate()).padStart(2, "0")} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;

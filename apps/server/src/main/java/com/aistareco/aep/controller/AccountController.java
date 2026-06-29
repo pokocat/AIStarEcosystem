@@ -126,10 +126,10 @@ public class AccountController {
         return ApiResponse.of(accountSelfService.getWallet(principal.getName()));
     }
 
-    /** v0.4：充值套餐列表。 */
+    /** v0.4：充值套餐列表。v2 §6：可选 ?sourceApp=celebrity|drama|… 只看「通用 + 该子应用专属」套餐。 */
     @GetMapping("/wallet/packages")
-    public ApiResponse<List<RechargePackageDto>> walletPackages() {
-        return ApiResponse.of(rechargeService.listPackages());
+    public ApiResponse<List<RechargePackageDto>> walletPackages(@RequestParam(required = false) String sourceApp) {
+        return ApiResponse.of(rechargeService.listPackages(sourceApp));
     }
 
     /**
@@ -178,6 +178,7 @@ public class AccountController {
                 "processing",
                 "withdrawal",
                 principal.getName(),
+                null,
                 null,
                 null));
     }

@@ -91,8 +91,10 @@ public class RechargePackageAdminService {
         if (req.bonusCredits() != null) entity.setBonusCredits(req.bonusCredits());
         if (req.sortOrder() != null) entity.setSortOrder(req.sortOrder());
         if (req.active() != null) entity.setActive(req.active());
+        if (req.appScope() != null) entity.setAppScope(req.appScope().isBlank() ? "all" : req.appScope());
         // 必填兜底
         if (entity.getTag() == null) entity.setTag("套餐");
+        if (entity.getAppScope() == null) entity.setAppScope("all");
         return entity;
     }
 }

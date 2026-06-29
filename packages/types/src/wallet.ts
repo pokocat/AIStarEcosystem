@@ -15,6 +15,8 @@ export interface Wallet {
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略） */
+  phone?: string;
   totalBalance: number;        // = licenseBalance + rechargeBalance + giftBalance
   licenseBalance: number;      // License 核销累计入账
   rechargeBalance: number;     // 充值累计入账
@@ -36,7 +38,8 @@ export type LedgerEntryType =
   | "withdraw"             // 提现扣减
   | "freeze"               // 冻结
   | "unfreeze"             // 解冻
-  | "adjust";              // 管理员手动调账
+  | "adjust"               // 管理员手动调账
+  | "refund_cash";         // v2 §4.2 资金面真实现金退款（D17 回收未消费积分）
 
 export interface LedgerEntry {
   id: ID;
@@ -46,6 +49,8 @@ export interface LedgerEntry {
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略） */
+  phone?: string;
   type: LedgerEntryType;
   amount: number;            // 原始整数；正数=入账，负数=出账
   balanceAfter: number;      // 入账后总余额
@@ -71,6 +76,8 @@ export interface RechargePackage {
   bonusCredits?: number;
   /** 排序权重，越小越靠前 */
   sortOrder?: number;
+  /** v2 §6 适用子应用：all=通用（所有子应用可见）/ music|drama|celebrity|aiavatar|star */
+  appScope?: string;
 }
 
 /** 充值下单请求体（前端 → 服务端） */
@@ -96,8 +103,9 @@ export interface RechargeResponse {
  * - paid：已核准并到账（积分已入账）
  * - rejected：已驳回（收款不符 / 无效）
  * - cancelled：用户取消
+ * - refunded：已退款（v2 §15.5 / D17：现金退款 + 未消费积分回收）
  */
-export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled";
+export type RechargeOrderStatus = "pending" | "paid" | "rejected" | "cancelled" | "closed" | "refunded";
 
 /** 充值订单。下单即生成 PENDING 账单，平台运营线下收款后核准方入账。 */
 export interface RechargeOrder {
@@ -107,6 +115,8 @@ export interface RechargeOrder {
   username?: string;
   displayName?: string;
   studioName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份；read-time 回填，用户自查省略） */
+  phone?: string;
   packageId: ID;
   packageTag?: string;
   /** 套餐积分（快照） */
@@ -125,4 +135,20 @@ export interface RechargeOrder {
   createdAt: ISODateTime;
   updatedAt?: ISODateTime;
   reviewedAt?: ISODateTime;
+  /**
+   * v2 §6 在线支付（Jeepay / 影子）可见性（线下 / 未支付订单字段省略）：
+   * paidVia 入账来源 manual（线下核准）| jeepay（在线真实）| shadow（在线影子）；
+   * channelPayNo 渠道流水号（对账追溯）；wayCode 支付方式；payOrderId 网关订单号；
+   * paidAt 到账时间；sourceApp 来源子应用。
+   */
+  paidVia?: "manual" | "jeepay" | "shadow" | string;
+  channelPayNo?: string;
+  wayCode?: string;
+  payOrderId?: string;
+  paidAt?: ISODateTime;
+  sourceApp?: string;
+  /** v2 §15.5 / D17 退款回收（仅 refunded 订单有值）：退款时间 / 实退积分 / 回收账本分录 id */
+  refundedAt?: ISODateTime;
+  refundedCredits?: number;
+  refundLedgerEntryId?: string;
 }

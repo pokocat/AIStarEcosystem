@@ -14,7 +14,7 @@ export async function list(status?: RechargeOrderStatus | "all"): Promise<Rechar
   return apiFetch<RechargeOrder[]>(BASE, { query: status && status !== "all" ? { status } : undefined });
 }
 
-/** 核准入账：确认线下已收款 → 经不可变账本入账，订单转 PAID。 */
+/** 核准入账（仅线下订单）：确认线下已收款 → 经不可变账本入账，订单转 PAID。在线订单后端拒绝（资损闸）。 */
 export async function approve(id: string, note?: string): Promise<RechargeOrder> {
   return apiFetch<RechargeOrder>(`${BASE}/${encodeURIComponent(id)}/approve`, {
     method: "POST",
@@ -22,9 +22,25 @@ export async function approve(id: string, note?: string): Promise<RechargeOrder>
   });
 }
 
+/** v2 §6 查单同步（在线 PENDING 订单）：查支付网关 → 已支付自动入账 / 超时关单。在线单用这个，不手工核准。 */
+export async function syncOrder(id: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`${BASE}/${encodeURIComponent(id)}/sync`, { method: "POST" });
+}
+
 /** 驳回：收款不符 / 无效订单。reason 必填。 */
 export async function reject(id: string, reason: string): Promise<RechargeOrder> {
   return apiFetch<RechargeOrder>(`${BASE}/${encodeURIComponent(id)}/reject`, {
+    method: "POST",
+    body: { reason },
+  });
+}
+
+/**
+ * 现金退款 + 未消费积分回收（v2 §15.5 / D17，限 FINANCE_ADMIN / SUPER_ADMIN）。
+ * 仅 PAID 订单可退；reason 必填；回收额 clamp 到未消费充值额，已消费完毕 → 409。
+ */
+export async function refund(id: string, reason: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`${BASE}/${encodeURIComponent(id)}/refund`, {
     method: "POST",
     body: { reason },
   });

@@ -34,6 +34,8 @@ export interface Transaction {
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份） */
+  phone?: string;
 }
 
 // ── 月度收益曲线（数值原始，单位 credits） ────────────────────────────────────

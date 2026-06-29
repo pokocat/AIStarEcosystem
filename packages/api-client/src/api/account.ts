@@ -66,9 +66,11 @@ export async function getMyLedger(page = 0, size = 20): Promise<LedgerEntry[]> {
   });
 }
 
-/** v0.33+: 可购买的充值套餐列表 */
-export async function listRechargePackages(): Promise<RechargePackage[]> {
-  return apiFetch<RechargePackage[]>("/me/wallet/packages");
+/** v0.33+: 可购买的充值套餐列表。v2 §6：传 sourceApp 只看「通用 + 该子应用专属」套餐。 */
+export async function listRechargePackages(sourceApp?: string): Promise<RechargePackage[]> {
+  return apiFetch<RechargePackage[]>("/me/wallet/packages", {
+    query: sourceApp ? { sourceApp } : undefined,
+  });
 }
 
 /**
@@ -91,5 +93,57 @@ export async function listMyRechargeOrders(): Promise<RechargeOrder[]> {
 export async function cancelRechargeOrder(orderId: string): Promise<RechargeOrder> {
   return apiFetch<RechargeOrder>(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}/cancel`, {
     method: "POST",
+  });
+}
+
+/** v2 §6 收银台：取单当前态（轮询）。 */
+export async function getRechargeOrder(orderId: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}`);
+}
+
+/** v2 §6 收银台「我已支付 / 刷新状态」：主动查网关 → 已支付则结算 / 超时则关单，返回最新态。 */
+export async function syncRechargeOrder(orderId: string): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}/sync`, {
+    method: "POST",
+  });
+}
+
+/** v2：充值在线支付下单返回体。payData 供前端拉起支付（影子链路 → 模拟收银台）。 */
+export interface CheckoutResponse {
+  orderId: string;
+  /** shadow / wxapp / payurl … */
+  payDataType: string;
+  payData: string;
+}
+
+export interface CheckoutPayload {
+  packageId: string;
+  /** WX_LITE / WX_NATIVE / ALI_QR / SHADOW；空则按后端 driver 默认。 */
+  wayCode?: string;
+  /** 微信小程序 openid（WX_LITE 必填）。 */
+  openid?: string;
+  /** 发起子应用（仅营销标签）。 */
+  sourceApp?: string;
+}
+
+/** v2：充值在线支付下单（子应用内发起，后端调支付网关开单）。 */
+export async function rechargeCheckout(payload: CheckoutPayload): Promise<CheckoutResponse> {
+  return apiFetch<CheckoutResponse>("/me/wallet/recharge/checkout", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+/**
+ * v2 dev 影子链路：模拟收银台确认（仅后端 driver=shadow 时可用，生产无此端点）。
+ * result：success（默认，→ 入账）/ fail（→ 取消）/ timeout（→ 留 PENDING）。
+ */
+export async function confirmShadowPay(
+  orderId: string,
+  result: "success" | "fail" | "timeout" = "success",
+): Promise<RechargeOrder> {
+  return apiFetch<RechargeOrder>("/dev/pay/shadow/confirm", {
+    method: "POST",
+    body: { orderId, result },
   });
 }

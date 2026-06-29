@@ -21,7 +21,8 @@ import {
 import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
 import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
-import { ShotFormCard, type FormShot } from "../shot-form";
+import { type FormShot } from "../shot-form";
+import { StoryboardTable } from "../storyboard-table";
 import { getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { ProjectsApi, RenderApi } from "@/api";
@@ -86,18 +87,25 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
 }) {
   /** 本集出场人物(可在整集设置里添加:素材库人物 / 临时演员) */
   const initCast = React.useCallback(
-    (): EpCharacter[] =>
-      data.characters.map((c) => ({ id: c.id, name: c.name, theme: c.avatar, bound: c.bound, removable: false })),
-    [data],
+    (): EpCharacter[] => {
+      const m = getEpisodeDoc(data, state.ep).meta;
+      if (m?.cast && m.cast.length) return m.cast.map((c) => ({ ...c }));
+      return data.characters.map((c) => ({ id: c.id, name: c.name, theme: c.avatar, bound: c.bound, removable: false }));
+    },
+    [data, state.ep],
   );
   const [cast, setCast] = React.useState<EpCharacter[]>(initCast);
   const speakerOptions = ["旁白", ...cast.map((c) => c.name)];
 
-  /** 整集剧情(给人看的速览,不直接用于生成;改完可让 AI 按它重生成分场分镜) */
+  /** 本集叙事（整集剧情速览,不直接用于生成;改完可让 AI 按它重生成分场分镜） */
   const epOutline = data.episodes[state.ep - 1];
   const initPlot = React.useCallback(
-    () => (epOutline ? `${epOutline.hook}。${epOutline.synopsis}` : data.projectInfo.logline),
-    [epOutline, data],
+    () => {
+      const m = getEpisodeDoc(data, state.ep).meta;
+      if (m?.plot) return m.plot;
+      return epOutline ? `${epOutline.hook}。${epOutline.synopsis}` : data.projectInfo.logline;
+    },
+    [epOutline, data, state.ep],
   );
   const [plot, setPlot] = React.useState<string>(initPlot);
 
@@ -120,7 +128,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [shotsMap, setShotsMap] = React.useState<Record<string, FormShot[]>>(initShots);
   const [genScene, setGenScene] = React.useState<string | null>(null);
   const [busyMap, setBusyMap] = React.useState<Record<string, FormShot["flow"]>>({});
-  const [style, setStyle] = React.useState(() => `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`);
+  const [style, setStyle] = React.useState(
+    () => getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`,
+  );
   const [chat, setChat] = React.useState<ChatMsg[]>([
     { who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` },
   ]);
@@ -132,8 +142,18 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     setShotsMap(initShots());
     setCast(initCast());
     setPlot(initPlot());
+    setStyle(getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`);
     setChat([{ who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ep, initScenes, initShots, initCast, initPlot]);
+
+  // v0.88：本集设置（叙事/风格/出场人物）改动也落库（草稿态可回溯）。
+  const plotRef = React.useRef(plot);
+  const styleRef = React.useRef(style);
+  const castRef = React.useRef(cast);
+  plotRef.current = plot;
+  styleRef.current = style;
+  castRef.current = cast;
 
   /** 落库（v0.66）：本地 scenes/shotsMap → episodeDocs[当前集]，切集互不覆盖。 */
   const persist = React.useCallback(
@@ -153,6 +173,14 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       await ctx.saveData(
         withEpisodeDoc(data, state.ep, {
           ...curDoc,
+          // v0.88：本集叙事/风格/出场人物随脚本一起落库。
+          meta: {
+            plot: plotRef.current,
+            style: styleRef.current,
+            cast: castRef.current.map((c) => ({
+              id: c.id, name: c.name, theme: c.theme, bound: c.bound, from: c.from, to: c.to, removable: c.removable,
+            })),
+          },
           script: { ep: state.ep, scenes: scriptScenes },
           storyboard: { ep: state.ep, scenes: boardScenes },
         }),
@@ -196,6 +224,12 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（对话驱动改写用）。 */
   const runEpDraft = async (cost: number, instruction?: string, aiReply?: string) => {
     if (phase === "gen") return;
+    // v0.88：本集叙事(plot)为空就点「基于剧情重新生成分场分镜」→ 后端会 400 DRAMA_PLOT_REQUIRED。
+    // 友好提示去填，不打会失败的请求（与脑暴大纲守卫同理）。
+    if (ctx && !(plot || "").trim() && !(instruction || "").trim()) {
+      toast("先在上面「本集剧情」写一句这集大概讲什么，我就按它铺分场分镜～");
+      return;
+    }
     setPhase("gen");
     if (!ctx) {
       // 脱离工作台的演示态
@@ -422,6 +456,13 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const genShots = async (sceneId: string, sceneIdx: number) => {
     const scene = scenes[sceneIdx];
     if (!scene) return;
+    // v0.88：这场还没写「场面描述」也没台词 → AI 无从拆镜（后端会 400 DRAMA_SCENE_REQUIRED）。
+    // 平铺分镜表里没有场面描述输入位，故直接给一条可编辑空镜 + 友好提示，不打会失败的请求。
+    if (ctx && !(scene.action || "").trim() && !(scene.lines ?? []).some((l) => (l.text || "").trim())) {
+      addShot(sceneId, sceneIdx);
+      toast("这场还没内容，先加了一条空镜 —— 直接在表里填画面 / 台词即可（或用「基于剧情重新生成分场分镜」让 AI 整集铺好）。");
+      return;
+    }
     setGenScene(sceneId);
     try {
       if (!ctx) {
@@ -548,7 +589,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               )}
             </div>
             <div style={{ fontSize: 13.5, lineHeight: 1.75 }}>
-              <Editable block value={plot} placeholder="这一集大致讲什么…" onCommit={setPlot} style={{ display: "block" }} />
+              <Editable block value={plot} placeholder="这一集大致讲什么…" onCommit={(v) => { setPlot(v); queueSave(); }} style={{ display: "block" }} />
             </div>
           </div>
 
@@ -564,11 +605,11 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             <div className="col gap-2" style={{ fontSize: 13 }}>
               <div className="row gap-2" style={{ alignItems: "flex-start" }}>
                 <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>作品风格</span>
-                <span className="grow" style={{ minWidth: 0 }}><Editable block value={style} placeholder="风格关键词…" onCommit={setStyle} /></span>
+                <span className="grow" style={{ minWidth: 0 }}><Editable block value={style} placeholder="风格关键词…" onCommit={(v) => { setStyle(v); queueSave(); }} /></span>
               </div>
               <div className="row gap-2" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
                 <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 4 }}>出场人物</span>
-                <CastEditor cast={cast} onChange={setCast} disabled={locked} />
+                <CastEditor cast={cast} onChange={(next) => { setCast(next); queueSave(); }} disabled={locked} />
               </div>
               <div className="row gap-2" style={{ alignItems: "flex-start" }}>
                 <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>拍摄场景</span>
@@ -585,113 +626,40 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             </div>
           )}
 
-          {/* ===== 按场分组的分镜表单 ===== */}
+          {/* ===== 分镜表（设计稿平铺表格 · 结构化字段喂视频生成提示词） ===== */}
           {phase === "done" && (
-            <div className="col gap-4">
-              {scenes.map((s, i) => {
-                const shots = shotsMap[s.id] ?? [];
-                return (
-                  <div key={s.id} className="col gap-2">
-                    {/* 场分隔条 */}
-                    <div className="row gap-2" style={{ marginTop: i === 0 ? 0 : 6 }}>
-                      <span className="num tag tag-accent" style={{ flex: "none" }}>场 {i + 1}</span>
-                      <span style={{ fontWeight: 700, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        <Editable value={s.place} placeholder="时空标题" onCommit={(v) => updScene(i, { place: v })} />
-                      </span>
-                      <span className="tag tag-gray" style={{ flex: "none" }}>
-                        <Editable value={s.mood} placeholder="情绪" onCommit={(v) => updScene(i, { mood: v })} />
-                      </span>
-                      <span className="grow" style={{ height: 1, background: "var(--line-soft)" }} />
-                      {shots.length > 0 && <span className="faint num" style={{ fontSize: 11, flex: "none" }}>{shots.length} 镜 · {shots.reduce((a, x) => a + x.dur, 0)}s</span>}
-                      {!locked && shots.length > 0 && (
-                        <button type="button" className="chip" style={{ height: 23, fontSize: 10.5, flex: "none" }} onClick={() => addShot(s.id, i)}>
-                          <Plus size={11} /> 加一镜
-                        </button>
-                      )}
-                    </div>
-
-                    {/* 没拆镜:剧本草稿(动作 + 台词,可选说话人)+ AI 拆镜 */}
-                    {shots.length === 0 && genScene !== s.id && (
-                      <div className="card col gap-3" style={{ padding: "13px 15px", border: "1.5px dashed var(--line)" }}>
-                        <div className="row gap-2" style={{ alignItems: "flex-start" }}>
-                          <span className="faint" style={{ fontSize: 10.5, fontWeight: 700, width: 64, flex: "none", marginTop: 3 }}>场面描述</span>
-                          <span className="grow" style={{ minWidth: 0, fontSize: 13 }}>
-                            <Editable block value={s.action} placeholder="这一场发生了什么…" onCommit={(v) => updScene(i, { action: v })} />
-                          </span>
-                        </div>
-                        <div className="col gap-1">
-                          {s.lines.map((l, j) => (
-                            <div key={j} className="row gap-2" style={{ alignItems: "center" }}>
-                              <select
-                                value={speakerOptions.includes(l.who) ? l.who : l.who || "旁白"}
-                                onChange={(e) => updLine(i, j, { who: e.target.value })}
-                                style={{ height: 24, border: "1px solid var(--line)", borderRadius: 7, fontSize: 11.5, fontWeight: 700, background: "var(--surface-2)", color: "var(--ink-2)", outline: "none", flex: "none" }}
-                              >
-                                {(speakerOptions.includes(l.who) ? speakerOptions : [l.who, ...speakerOptions]).map((w) => (
-                                  <option key={w} value={w}>{w}</option>
-                                ))}
-                              </select>
-                              <span className="grow" style={{ fontSize: 13, minWidth: 0 }}>
-                                <Editable block value={l.text} placeholder="写一句台词 / 旁白…" onCommit={(v) => updLine(i, j, { text: v })} />
-                              </span>
-                              <button type="button" className="btn btn-icon btn-ghost btn-sm" style={{ width: 22, height: 22, flex: "none" }} onClick={() => delLine(i, j)}>
-                                <X size={12} />
-                              </button>
-                            </div>
-                          ))}
-                          {/* 加一句对白:直接加一行,行内再选说话人(选项来自整集出场人物) */}
-                          <button
-                            type="button"
-                            className="chip"
-                            style={{ height: 24, fontSize: 11, alignSelf: "flex-start", marginTop: 2 }}
-                            onClick={() => addLine(i)}
-                          >
-                            <Plus size={11} /> 加一句对白
-                          </button>
-                        </div>
-                        {!locked && (
-                          <CreditButton cost={cfg.prices.splitScene} onConfirm={() => genShots(s.id, i)} confirmTitle="拆分镜" confirmBody="AI 会把这一场拆成可逐镜编辑的分镜表单。" className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }}>
-                            <Wand2 size={13} /> 把这场拆成分镜表单
-                          </CreditButton>
-                        )}
-                      </div>
-                    )}
-                    {genScene === s.id && (
-                      <div className="card" style={{ padding: 14 }}>
-                        <GenSkeleton lines={2} label="正在按台词与情绪拆镜头…" />
-                      </div>
-                    )}
-
-                    {/* 已拆镜:逐镜表单卡 */}
-                    {shots.map((sh) => (
-                      <ShotFormCard
-                        key={sh.id}
-                        s={sh}
-                        start={starts.get(sh.id) ?? 0}
-                        colors={sh.flow === "draft" ? { from: "#cbd5e1", to: "#94a3b8" } : { from: "#fb923c", to: "#f472b6" }}
-                        speakerOptions={speakerOptions}
-                        busy={busyMap[sh.id] ?? null}
-                        locked={locked}
-                        onPatch={(patch) => updShot(s.id, sh.id, patch)}
-                        onDelete={() => delShot(s.id, sh.id)}
-                        onRenderFrame={() => render(s.id, sh.id, "frame", 2, "首帧已出,满意就渲成片")}
-                        onRenderDirect={() => render(s.id, sh.id, "clip", 9, "分镜视频已生成,验收看看")}
-                        onRenderClip={() => render(s.id, sh.id, "clip", 7, "成片已渲,验收看看")}
-                        onApprove={() => {
-                          const next = {
-                            ...shotsMap,
-                            [s.id]: (shotsMap[s.id] ?? []).map((x) => (x.id === sh.id ? { ...x, flow: "done" as const } : x)),
-                          };
-                          setShotsMap(next);
-                          void persist(scenes, next);
-                          toast.success("本镜已验收入片");
-                        }}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px" }}>
+                <span style={{ fontWeight: 800, fontSize: 14.5 }}>分镜表</span>
+                <span className="faint" style={{ fontSize: 11 }}>格子里的文字可直接改 · 首帧点开「AI 改图」</span>
+              </div>
+              <StoryboardTable
+                scenes={scenes}
+                shotsMap={shotsMap}
+                speakerOptions={speakerOptions}
+                locked={locked}
+                busyMap={busyMap}
+                starts={starts}
+                genScene={genScene}
+                onUpdScene={updScene}
+                onUpdShot={updShot}
+                onDelShot={delShot}
+                onAddShot={addShot}
+                onGenShots={genShots}
+                onRender={(sceneId, shotId, kind) => {
+                  if (kind === "frame") render(sceneId, shotId, "frame", 2, "首帧已出,满意就渲成片");
+                  else if (kind === "direct") render(sceneId, shotId, "clip", 9, "分镜视频已生成,验收看看");
+                  else render(sceneId, shotId, "clip", 7, "成片已渲,验收看看");
+                }}
+                onApprove={(sceneId, shotId) => {
+                  const next = { ...shotsMap, [sceneId]: (shotsMap[sceneId] ?? []).map((x) => (x.id === shotId ? { ...x, flow: "done" as const } : x)) };
+                  setShotsMap(next);
+                  void persist(scenes, next);
+                  toast.success("本镜已验收入片");
+                }}
+                onFrameEdited={(sceneId, shotId, frameUrl) => updShot(sceneId, shotId, { frameUrl, frameUrls: [frameUrl] })}
+              />
+            </>
           )}
         </div>
       </div>

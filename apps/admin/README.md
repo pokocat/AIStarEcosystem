@@ -52,7 +52,8 @@ DataInitializer 默认 seed 两个账号：
 - **平台账户**：账号 / 经纪公司、秘钥批次、**后台管理员**（v0.32 新增，仅 SUPER_ADMIN）
 - **AI 艺人**：生命周期、艺人档案
 - **明星带货** ★（重点）：明星档案、模板、**模板脚本**、**授权关系**、**引擎价格**、带货项目、商品库
-- **财务**：结算中心、**充值订单**（v0.56：核准入账 / 驳回）、**充值套餐**、异常风控
+- **资金财务**（v2 §6：FINANCE_ADMIN 专属，OPERATOR 看不到/后端 403；新增 `/finance` 控制台首页）：**充值订单**（核准入账 / 驳回 / 退款）、对账、结算中心、异常风控、**充值套餐**
+- **积分运营**（积分面，不碰真实资金；OPERATOR 提交 / FINANCE_ADMIN 复核 maker-checker）：调差 / 赠送
 - **分发**：分发渠道、发行队列
 - ~~基础数据~~（v0.59 起整组隐藏：积分包页已删 —— 与「财务 · 充值套餐」重复；其余子项本就隐藏）
 - **平台与配置**：**AI 模型与 Key**（v0.41 合并）、**Prompt 管理**（v0.40 新增）、**Agent 平台**、平台配置
@@ -85,6 +86,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.86 / 2026-06-27**：财务工作台辨识用户身份 —— `/finance/recharge-orders` 用户列 + `/finance/ledger` `AccountCell`（钱包 / 流水 / 业务交易三 Tab）+ 充值核准确认弹窗 + 对账 CSV 新增**手机号**（与登录名分列展示）。`types/{wallet,finance,recharge-order}.ts` 各加 `phone?`，mocks 补样例手机号（u-003 仍故意缺省，覆盖 server 未回填的 fallback 路径）。server 侧四个财务 DTO read-time 回填 `owner.phone`（详见 `apps/server/README.md` v0.86）。
 - **v0.59 / 2026-06-10**：①`/platform/accounts` 账号「停用 / 恢复」接真链路 —— `api/users.ts` +`suspendUser/reactivateUser`（POST `/admin/users/{id}/suspend|reactivate`，停用原因必填写入审计日志 `admin.user.suspend|reactivate`）；页面改 `useConfirm` + toast 模式，删掉无 onConfirm 的 ActionDialog 与「查看」死按钮；server 侧短信登录补停用闸（403 ACCOUNT_DISABLED，此前停用账号仍可短信登录）。注意：已签发 JWT 到期前仍有效（无状态边界）。②消息中心侧栏未读角标（`badgeKey: notif_unread`，与页面同源 `listNotifications` 数 `viewedAt == null`）。③删除 `/base/credit-packs`（与充值套餐重复 + 全死按钮），连带删除独占的 api/mocks/types settings 文件，「基础数据」组整组隐藏。详见 VERSION_HISTORY.md v0.59。
 - **v0.58 / 2026-06-10**：①消息中心真实化 —— 改为**运营收件箱**（server 只列 `__admin__` 行；充值下单/取消、新用户激活由 `NotificationPublisher` 实时写入，audience 标注关联账号）；「全部标记已读」接通 `POST /admin/notifications/read-all`；删除假的「标为未读」切换（已读不可逆，已读行显示已读时间）。②结算中心（`/finance/ledger`）流水补全 —— 账号列显示 昵称+登录名+用户ID（server DTO 直接回填 `username/displayName`，删除 500 条上限的客户端 join）；余额/统计全部精确值（不再 "433.1K" 近似）；时间全部精确到秒；「导出对账单」真实现（CSV / UTF-8 BOM / 原始整数）；删除无后端的「复核通过/驳回」假按钮（充值核准在「财务 · 充值订单」页），业务交易「处理中」= 积分 hold 冻结中（跟随 CreditHold 状态）。详见 VERSION_HISTORY.md v0.58。
 - **v0.57 / 2026-06-09**：`/platform/auth-logs`（账号登录日志）新增「来源应用」列 + 筛选下拉，区分登录来自哪个子应用（music / drama / celebrity / aiavatar / star / celebrity-mp 小程序 / admin）。数据来自各前端注入的 `X-App-Code` 请求头 → server `AuditLog.appCode` 列。`types/audit.ts` 增 `appCode` + `APP_CODE_LABEL/KEYS`；`api/audit.ts` 两入参增 `appCode`；admin 自身 `api/_client.ts` 注入 `X-App-Code=admin`。老数据无来源 → 显示 "—"。详见 AGENTS.md / VERSION_HISTORY.md v0.57。

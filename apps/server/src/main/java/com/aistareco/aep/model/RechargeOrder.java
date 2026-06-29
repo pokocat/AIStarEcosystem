@@ -72,6 +72,34 @@ public class RechargeOrder {
     /** 核准入账时的主分录 id（审计回溯）。 */
     private String ledgerEntryId;
 
+    // ── v2 在线支付字段（Jeepay / 影子链路）。全部 nullable，兼容老行。 ──
+
+    /** 支付网关订单号（Jeepay payOrderId / 影子 shadow_ 前缀）。幂等 + 防重，唯一。 */
+    @Column(unique = true, length = 64)
+    private String payOrderId;
+
+    /** 支付方式 wayCode（WX_LITE / WX_NATIVE / ALI_QR / SHADOW…）。 */
+    @Column(length = 32)
+    private String wayCode;
+
+    /** 支付网关订单态镜像（Jeepay payState）。 */
+    private Integer payState;
+
+    /** 到账时间（settle 时回填）。 */
+    private Instant paidAt;
+
+    /** 入账来源：jeepay / manual / shadow。 */
+    @Column(length = 16)
+    private String paidVia;
+
+    /** 渠道（微信/支付宝）订单号，对账用。 */
+    @Column(length = 64)
+    private String channelPayNo;
+
+    /** 发起充值的子应用（music/drama/celebrity/aiavatar/miniprogram）。仅营销/分析标签，绝不切分余额。 */
+    @Column(length = 16)
+    private String sourceApp;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -79,11 +107,27 @@ public class RechargeOrder {
 
     private Instant reviewedAt;
 
-    /** 订单状态机：PENDING → PAID（核准入账）/ REJECTED（驳回）/ CANCELLED（用户取消）。终态不可再变。 */
+    // ── v2 §15.5 / D17 退款回收 ──────────────────────────────────────────────
+    /** 退款时间（PAID → REFUNDED）。 */
+    private Instant refundedAt;
+
+    /** 退款回收写入的 REFUND_CASH 账本分录 id（与现金退款互链，审计可溯源）。 */
+    private String refundLedgerEntryId;
+
+    /** 本次退款实际回收 / 退现的积分额（= min(订单积分, 当时未消费充值余额)，clamp 后值）。 */
+    private long refundedCredits;
+
+    /**
+     * 订单状态机：PENDING → PAID（核准/在线支付入账）/ REJECTED（运营驳回）/ CANCELLED（用户取消）/
+     * CLOSED（超时未支付或网关关单 → 系统关闭，不可再付，需重新下单）；
+     * PAID → REFUNDED（v2 §15.5 现金退款 + 未消费积分回收）。终态（PAID/REJECTED/CANCELLED/CLOSED/REFUNDED）不可再变。
+     */
     public enum Status {
         PENDING,
         PAID,
         REJECTED,
-        CANCELLED
+        CANCELLED,
+        CLOSED,
+        REFUNDED
     }
 }

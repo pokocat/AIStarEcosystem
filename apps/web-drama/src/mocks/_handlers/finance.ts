@@ -1,8 +1,8 @@
 // mocks/_handlers/finance.ts — 财务领域 mock handlers（钱包 / 月度收入 / 流水 / 充值 / 提现）。
 
 import type { Transaction } from "@ai-star-eco/types/finance";
-import type { Wallet } from "@ai-star-eco/types/wallet";
-import { ApiError, mockDelay, registerMocks } from "@ai-star-eco/api-client";
+import type { RechargeOrder, Wallet } from "@ai-star-eco/types/wallet";
+import { ApiError, DEFAULT_RECHARGE_PACKAGES, mockDelay, registerMocks } from "@ai-star-eco/api-client";
 import { REVENUE_MONTHLY, REVENUE_SOURCES, TRANSACTIONS } from "@/mocks/finance";
 import type { RechargeInput, WithdrawalInput } from "@/api/finance";
 
@@ -27,6 +27,13 @@ const invalidAmount = (msg: string) =>
   new ApiError({ code: "drama.invalid_amount", message: msg }, 400);
 const insufficient = (msg: string) =>
   new ApiError({ code: "drama.insufficient_balance", message: msg }, 400);
+
+// v2 §6 钱包：充值套餐 + 充值订单 store（在线支付走影子收银台）。
+// 套餐复用 api-client 的 DEFAULT_RECHARGE_PACKAGES —— 与 admin 后端配置（seed）单一真值对齐，
+// 不再本地写死一套漂移的价格 / 赠送，dev 看到的与线上 admin 配置一致。
+const DRAMA_PACKAGES = DEFAULT_RECHARGE_PACKAGES;
+const ordersStore: RechargeOrder[] = [];
+const nextOrderId = () => `ro-mock-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
 registerMocks([
   // 注意：drama 财务的 /me/wallet handler 与 api-client 默认的 MOCK_WALLET 不同；
@@ -107,6 +114,69 @@ registerMocks([
         updatedAt: new Date().toISOString(),
       };
       return mockDelay({ ...tx });
+    },
+  },
+  // ── v2 §6 钱包：套餐 / 在线充值（影子） / 订单 ───────────────────────────────
+  { method: "GET", pattern: "/me/wallet/packages", handler: () => mockDelay(DRAMA_PACKAGES.map((p) => ({ ...p }))) },
+  {
+    method: "POST",
+    pattern: "/me/wallet/recharge/checkout",
+    handler: ({ body }) => {
+      const { packageId } = (body ?? {}) as { packageId: string };
+      const pkg = DRAMA_PACKAGES.find((p) => p.id === packageId);
+      if (!pkg) throw new ApiError({ code: "drama.package_not_found", message: "套餐不存在" }, 404);
+      const order: RechargeOrder = {
+        id: nextOrderId(),
+        userId: walletState.userId,
+        packageId: pkg.id,
+        packageTag: pkg.tag,
+        credits: pkg.credits,
+        bonusCredits: pkg.bonusCredits ?? 0,
+        priceCents: pkg.priceCents,
+        status: "pending",
+        sourceApp: "drama",
+        createdAt: new Date().toISOString(),
+      };
+      ordersStore.unshift(order);
+      // mock 在线支付：返回影子收银台，前端 shadow 分支模拟成功/失败。
+      return mockDelay({ orderId: order.id, payDataType: "shadow", payData: "" });
+    },
+  },
+  { method: "GET", pattern: "/me/wallet/recharge/orders", handler: () => mockDelay(ordersStore.map((o) => ({ ...o }))) },
+  {
+    method: "POST",
+    pattern: "/me/wallet/recharge/orders/:id/cancel",
+    handler: ({ params }) => {
+      const o = ordersStore.find((x) => x.id === params.id);
+      if (!o) throw new ApiError({ code: "drama.order_not_found", message: "订单不存在" }, 404);
+      if (o.status === "pending") o.status = "cancelled";
+      return mockDelay({ ...o });
+    },
+  },
+  {
+    method: "POST",
+    pattern: "/dev/pay/shadow/confirm",
+    handler: ({ body }) => {
+      const { orderId, result = "success" } = (body ?? {}) as { orderId: string; result?: string };
+      const o = ordersStore.find((x) => x.id === orderId);
+      if (!o) throw new ApiError({ code: "drama.order_not_found", message: "订单不存在" }, 404);
+      if (o.status === "pending") {
+        if (result === "success") {
+          o.status = "paid";
+          o.paidVia = "shadow";
+          o.paidAt = new Date().toISOString();
+          walletState = {
+            ...walletState,
+            rechargeBalance: walletState.rechargeBalance + o.credits,
+            giftBalance: walletState.giftBalance + o.bonusCredits,
+            totalBalance: walletState.totalBalance + o.credits + o.bonusCredits,
+            updatedAt: new Date().toISOString(),
+          };
+        } else {
+          o.status = "cancelled";
+        }
+      }
+      return mockDelay({ ...o });
     },
   },
 ]);

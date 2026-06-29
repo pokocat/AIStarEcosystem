@@ -91,6 +91,7 @@
 |---|---|
 | [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引 |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | Agent 部署技能入口：本地 artifact 部署、按应用部署、GitHub Actions 流水线部署、验证与排障 |
+| [`docs/ALIPAY_SANDBOX.md`](ALIPAY_SANDBOX.md) | **支付宝直连沙箱联调 Runbook**（v2 §6 driver=alipay）：拿沙箱凭证 → 本机配置 → 纯查单兜底 / 公网回调两种姿势 → 验证 → 上生产换 4 项（last-reviewed 2026-06-27） |
 | [`infra/scripts/update-and-deploy.sh`](../infra/scripts/update-and-deploy.sh) | ECS 本机一键更新部署：补依赖、`git pull --ff-only`、build release、落位、restart、verify |
 | [`infra/scripts/install-host-deps.sh`](../infra/scripts/install-host-deps.sh) | ECS 宿主机依赖补齐：按 `/etc/os-release` 自动选择 dnf / yum / apt 安装 Java、Node、pnpm、nginx、docker、ffmpeg 等 |
 | [`infra/scripts/check-runtime-env.sh`](../infra/scripts/check-runtime-env.sh) | ECS runtime env 预检：检查 `/etc/aistareco/*.env`、关键密钥、SMS/OSS/CDN/sau 配置和 release manifest，不打印密钥值 |

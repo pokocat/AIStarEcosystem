@@ -15,6 +15,8 @@ export interface Wallet {
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份） */
+  phone?: string;
   totalBalance: number;        // = licenseBalance + rechargeBalance + giftBalance
   licenseBalance: number;      // License 核销累计入账
   rechargeBalance: number;     // 充值累计入账
@@ -36,7 +38,8 @@ export type LedgerEntryType =
   | "withdraw"             // 提现扣减
   | "freeze"               // 冻结
   | "unfreeze"             // 解冻
-  | "adjust";              // 管理员手动调账
+  | "adjust"               // 管理员手动调账
+  | "refund_cash";         // v2 §4.2 资金面真实现金退款（D17 回收未消费积分）
 
 export interface LedgerEntry {
   id: ID;
@@ -46,6 +49,8 @@ export interface LedgerEntry {
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
+  /** v0.86：账号手机号（admin 财务工作台辨识用户身份） */
+  phone?: string;
   type: LedgerEntryType;
   amount: number;            // 原始整数；正数=入账，负数=出账
   balanceAfter: number;      // 入账后总余额
@@ -73,7 +78,19 @@ export interface RechargePackage {
   bonusCredits?: number;
   /** 排序权重，越小越靠前 */
   sortOrder?: number;
+  /** v2 §6 适用子应用：all=通用（所有子应用可见）/ music|drama|celebrity|aiavatar|star */
+  appScope?: string;
 }
+
+/** v2 §6 套餐适用子应用选项（admin 选择 + 展示）。 */
+export const RECHARGE_APP_SCOPES: { value: string; label: string }[] = [
+  { value: "all", label: "通用（所有子应用）" },
+  { value: "celebrity", label: "AI 明星带货" },
+  { value: "drama", label: "AI 短剧" },
+  { value: "music", label: "AI 音乐人" },
+  { value: "aiavatar", label: "AiAvatar" },
+  { value: "star", label: "明星工作台" },
+];
 
 /** 充值请求体（前端 → 服务端） */
 export interface RechargeRequest {

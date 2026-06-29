@@ -20,6 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -43,6 +44,8 @@ public class RechargeService {
 
     /** 单用户待确认订单上限，防刷单。 */
     private static final long MAX_PENDING_PER_USER = 10;
+    /** v2 §6 待支付订单 TTL：超过此时长未支付 → 系统关单（CLOSED）；也是 checkout 幂等复用窗口。 */
+    private static final long PENDING_TTL_MINUTES = 30;
 
     private final RechargePackageRepository pkgRepo;
     private final RechargeOrderRepository orderRepo;
@@ -66,10 +69,27 @@ public class RechargeService {
     }
 
     public List<RechargePackageDto> listPackages() {
-        return pkgRepo.findByActiveTrueOrderBySortOrderAscCreditsAsc()
-                .stream()
-                .map(RechargePackageDto::from)
-                .toList();
+        return listPackages(null);
+    }
+
+    /**
+     * 列上架套餐（v2 §6 按子应用配套餐）：sourceApp 非空 → 只返回「通用 + 该子应用专属」;
+     * 空 → 返回全部上架套餐（向后兼容 / admin 不传时）。
+     */
+    public List<RechargePackageDto> listPackages(String sourceApp) {
+        List<RechargePackage> pkgs = (sourceApp == null || sourceApp.isBlank())
+                ? pkgRepo.findByActiveTrueOrderBySortOrderAscCreditsAsc()
+                : pkgRepo.findActiveForApp(sourceApp);
+        return pkgs.stream().map(RechargePackageDto::from).toList();
+    }
+
+    /** 套餐是否适用于该子应用：通用（appScope null/blank/all）或精确匹配 sourceApp。 */
+    private static boolean packageAllowedForApp(RechargePackage pkg, String sourceApp) {
+        String scope = pkg.getAppScope();
+        if (scope == null || scope.isBlank() || "all".equalsIgnoreCase(scope)) {
+            return true;
+        }
+        return sourceApp != null && scope.equalsIgnoreCase(sourceApp);
     }
 
     // ── 用户侧 ───────────────────────────────────────────────────────────────
@@ -124,6 +144,155 @@ public class RechargeService {
         return RechargeOrderDto.from(order);
     }
 
+    /**
+     * 在线支付 checkout 专用：建一张 PENDING 充值订单（带 wayCode / sourceApp），
+     * 不发「待运营核准」站内信（在线支付由回调 / 影子确认自动入账，无需人工核准）。
+     * 校验同 {@link #createOrder}（套餐有效 + 待确认上限）。返回实体供 PaymentService 回填 payOrderId。
+     */
+    @Transactional
+    public RechargeOrder createPendingForCheckout(String userId, String packageId, String wayCode, String sourceApp) {
+        RechargePackage pkg = requireCheckoutablePackage(packageId, sourceApp);
+        if (orderRepo.countByUserIdAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
+            throw new BusinessException(HttpStatus.CONFLICT, "TOO_MANY_PENDING_ORDERS",
+                    "你有较多待确认的充值订单，请先完成付款或取消后再下单");
+        }
+        AepUser user = userRepo.findById(userId).orElse(null);
+        Studio studio = studioRepo.findByOwnerUserId(userId).orElse(null);
+        Instant now = Instant.now();
+        RechargeOrder order = RechargeOrder.builder()
+                .id("ro-" + UUID.randomUUID().toString().substring(0, 12))
+                .userId(userId)
+                .username(user != null ? user.getUsername() : null)
+                .displayName(user != null ? user.getDisplayName() : null)
+                .studioName(studio != null ? studio.getName() : null)
+                .packageId(pkg.getId())
+                .packageTag(pkg.getTag())
+                .credits(pkg.getCredits())
+                .bonusCredits(pkg.getBonusCredits())
+                .priceCents(pkg.getPriceCents())
+                .status(RechargeOrder.Status.PENDING)
+                .wayCode(wayCode)
+                .sourceApp(sourceApp)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        orderRepo.save(order);
+        log.info("[recharge] checkout order created id={} userId={} pkg={} wayCode={} sourceApp={} priceCents={}",
+                order.getId(), userId, pkg.getId(), wayCode, sourceApp, pkg.getPriceCents());
+        return order;
+    }
+
+    /** v2 §6 下单前套餐校验（存在 + 在售 + 子应用归属）—— 新建与复用路径共用，错误码一致。 */
+    private RechargePackage requireCheckoutablePackage(String packageId, String sourceApp) {
+        if (packageId == null || packageId.isBlank()) {
+            throw BusinessException.badRequest("PACKAGE_ID_REQUIRED", "请选择充值套餐");
+        }
+        RechargePackage pkg = pkgRepo.findById(packageId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOUND", "套餐不存在：" + packageId));
+        if (!pkg.isActive()) {
+            throw new BusinessException(HttpStatus.GONE, "PACKAGE_INACTIVE", "套餐已下架：" + packageId);
+        }
+        if (!packageAllowedForApp(pkg, sourceApp)) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "PACKAGE_NOT_FOR_APP", "该套餐不适用于当前应用");
+        }
+        return pkg;
+    }
+
+    /**
+     * v2 §6 幂等下单（防重复支付 · 第 1 道闸）：同用户同套餐若已有「TTL 内的 PENDING 单」→ 复用
+     * （只更 wayCode/sourceApp/updatedAt），否则新建。配合网关 out_trade_no 复用（第 2 道）+
+     * settle 条件 UPDATE 幂等闸（第 3 道），三道闸共同保证不重复扣款 / 不重复入账。
+     */
+    @Transactional
+    public RechargeOrder createOrReuseCheckoutOrder(String userId, String packageId, String wayCode, String sourceApp) {
+        requireCheckoutablePackage(packageId, sourceApp);
+        RechargeOrder reusable = orderRepo.findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(userId, packageId)
+                .filter(o -> o.getStatus() == RechargeOrder.Status.PENDING)
+                .filter(o -> Duration.between(o.getCreatedAt(), Instant.now()).toMinutes() < PENDING_TTL_MINUTES)
+                .orElse(null);
+        if (reusable != null) {
+            reusable.setWayCode(wayCode);
+            reusable.setSourceApp(sourceApp);
+            reusable.setUpdatedAt(Instant.now());
+            orderRepo.save(reusable);
+            log.info("[recharge] checkout 复用 PENDING 单 id={} userId={} pkg={}", reusable.getId(), userId, packageId);
+            return reusable;
+        }
+        return createPendingForCheckout(userId, packageId, wayCode, sourceApp);
+    }
+
+    /** checkout 网关下单成功后回填 payOrderId（幂等 + 对账锚点）。 */
+    @Transactional
+    public void attachPayOrder(String orderId, String payOrderId) {
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        order.setPayOrderId(payOrderId);
+        order.setUpdatedAt(Instant.now());
+        orderRepo.save(order);
+    }
+
+    /** 网关下单失败 / 影子模拟失败：把 PENDING 订单标 CANCELLED（不留悬挂单）。 */
+    @Transactional
+    public RechargeOrderDto cancelForGatewayError(String orderId, String reason) {
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        if (order.getStatus() == RechargeOrder.Status.PENDING) {
+            order.setStatus(RechargeOrder.Status.CANCELLED);
+            order.setReviewNote(trimToNull(reason, 512));
+            order.setUpdatedAt(Instant.now());
+            orderRepo.save(order);
+        }
+        return RechargeOrderDto.from(order);
+    }
+
+    /** 单个订单查询（影子 timeout 等场景返回当前态）。 */
+    public RechargeOrderDto getOrder(String orderId) {
+        return orderRepo.findById(orderId)
+                .map(RechargeOrderDto::from)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+    }
+
+    /** 单个订单查询 + 归属校验（用户侧收银台轮询 / 详情用，防越权查他人单）。 */
+    public RechargeOrderDto getOrderForUser(String userId, String orderId) {
+        return orderRepo.findByIdAndUserId(orderId, userId)
+                .map(RechargeOrderDto::from)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+    }
+
+    /** 超时 / 网关关单：PENDING → CLOSED（条件 UPDATE 幂等闸，避免误关刚 PAID 的单）。 */
+    @Transactional
+    public RechargeOrderDto closeOrder(String orderId, String reason) {
+        int closed = orderRepo.markClosed(orderId, trimToNull(reason, 512), Instant.now());
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        if (closed > 0) {
+            log.info("[recharge] 关单 orderId={} reason={}", orderId, reason);
+        }
+        return RechargeOrderDto.from(order);
+    }
+
+    /** 超时清理：把超过 TTL 仍 PENDING 的在线订单关掉（reconcile 周期调用）。@return 关闭单数。 */
+    @Transactional
+    public int closeStalePendingOrders(long ttlMinutes) {
+        Instant cutoff = Instant.now().minus(Duration.ofMinutes(ttlMinutes));
+        int n = 0;
+        for (RechargeOrder o : orderRepo.findByStatusOrderByCreatedAtDesc(RechargeOrder.Status.PENDING)) {
+            if (o.getCreatedAt() != null && o.getCreatedAt().isBefore(cutoff)
+                    && orderRepo.markClosed(o.getId(), "支付超时自动关闭（超过 " + ttlMinutes + " 分钟未支付）", Instant.now()) > 0) {
+                n++;
+            }
+        }
+        if (n > 0) {
+            log.info("[recharge] 超时关单 {} 笔（TTL={}min）", n, ttlMinutes);
+        }
+        return n;
+    }
+
+    /** v2 §6 待支付订单 TTL（分钟），供 reconcile / 同步逻辑判定超时关单。 */
+    public long pendingTtlMinutes() {
+        return PENDING_TTL_MINUTES;
+    }
+
     public List<RechargeOrderDto> listMyOrders(String userId) {
         return orderRepo.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(RechargeOrderDto::from)
@@ -165,10 +334,29 @@ public class RechargeService {
         } else {
             rows = orderRepo.findAllByOrderByCreatedAtDesc();
         }
-        return rows.stream().map(RechargeOrderDto::from).toList();
+        // v0.86：财务工作台辨识用户身份 —— read-time 批量回填手机号（避免 N+1；旧订单也能显示）。
+        java.util.Map<String, AepUser> users = usersByIds(rows.stream().map(RechargeOrder::getUserId).toList());
+        return rows.stream().map(o -> RechargeOrderDto.from(o, users.get(o.getUserId()))).toList();
     }
 
-    /** 运营核准：确认线下已收款 → 经不可变账本入账（main + bonus），订单转 PAID。 */
+    /** 按 id 批量取用户（去重 + 过滤 null），DTO enrich 用。 */
+    private java.util.Map<String, AepUser> usersByIds(java.util.List<String> ids) {
+        java.util.Set<String> distinct = new java.util.HashSet<>();
+        for (String id : ids) {
+            if (id != null && !id.isBlank()) distinct.add(id);
+        }
+        if (distinct.isEmpty()) return java.util.Map.of();
+        java.util.Map<String, AepUser> out = new java.util.HashMap<>();
+        for (AepUser u : userRepo.findAllById(distinct)) out.put(u.getId(), u);
+        return out;
+    }
+
+    /** 在线支付订单判定：有 wayCode 或 payOrderId（线下 createOrder 两者皆空）。决定能否手工核准。 */
+    private static boolean isOnlineOrder(RechargeOrder o) {
+        return o.getWayCode() != null || o.getPayOrderId() != null;
+    }
+
+    /** 运营核准：确认线下已收款 → 经共享入账核心 {@link #settlePaidOrder} 入账，订单转 PAID。仅线下订单可核准。 */
     @Transactional
     public RechargeOrderDto approveOrder(String orderId, String reviewerId, String reviewNote) {
         RechargeOrder order = orderRepo.findById(orderId)
@@ -177,6 +365,47 @@ public class RechargeService {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING",
                     "该订单状态为 " + order.getStatus() + "，无法核准");
         }
+        // v2 §6 资损闸：在线支付订单（有 wayCode/payOrderId）只能由支付结果自动入账（回调/查单/对账），
+        // 禁止手工核准 —— 否则会给未真实支付的用户白发积分。运营请用「查单同步」核对网关后自动入账。
+        if (isOnlineOrder(order)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "ONLINE_ORDER_NO_MANUAL_APPROVE",
+                    "在线支付订单不可手工核准，请用「查单同步」核对支付结果后自动入账");
+        }
+        return settlePaidOrder(orderId, "manual", null, reviewerId, trimToNull(reviewNote, 512));
+    }
+
+    /**
+     * 入账核心（v2 §4.3）：手工核准 {@link #approveOrder}、在线支付回调（Jeepay notify）与影子确认
+     * 共用这一条入账逻辑。
+     *
+     * 幂等：先用条件 UPDATE 抢占 PENDING → PAID（{@link RechargeOrderRepository#markPaid}）；
+     * 抢不到（已结算 / 非 PENDING）→ 返回当前订单，绝不重复入账。抢到则在同一事务内：
+     *   主分录 RECHARGE + 可选赠送 GIFT（经 {@link CreditService}，走钱包悲观锁 + 不可变账本），
+     *   回填 ledgerEntryId / paidVia / channelPayNo / 审批信息，并通知用户。
+     * 任一步抛异常 → 整个事务回滚（含 markPaid）→ 订单退回 PENDING，可重试。
+     *
+     * @param paidVia      入账来源：manual / jeepay / shadow
+     * @param channelPayNo 渠道订单号（对账，可空）
+     * @param reviewerId   手工核准人（在线回调 / 影子为 null）
+     * @param reviewNote   核准备注（在线回调 / 影子为 null）
+     */
+    @Transactional
+    public RechargeOrderDto settlePaidOrder(String orderId, String paidVia, String channelPayNo,
+                                            String reviewerId, String reviewNote) {
+        Instant now = Instant.now();
+        int claimed = orderRepo.markPaid(orderId, now);
+        if (claimed == 0) {
+            // 已被结算（重复回调 / 并发）或订单不存在 → 幂等 no-op
+            RechargeOrder existing = orderRepo.findById(orderId)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+            log.info("[recharge] settle idempotent no-op id={} status={} paidVia={}",
+                    orderId, existing.getStatus(), paidVia);
+            return RechargeOrderDto.from(existing);
+        }
+
+        // 抢到结算权：重新载入（markPaid clearAutomatically 已清持久化上下文）
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
 
         // 1) 主分录：充值进 recharge 桶
         LedgerEntryDto mainEntry = creditService.creditAccount(
@@ -185,7 +414,7 @@ public class RechargeService {
                 LedgerEntry.LedgerEntryType.RECHARGE,
                 "recharge_order",
                 order.getId(),
-                "充值订单核准 " + nz(order.getPackageTag()) + "（" + order.getCredits() + " 积分）"
+                "充值订单入账 " + nz(order.getPackageTag()) + "（" + order.getCredits() + " 积分）"
         );
 
         // 2) 赠送（可选）：进 gift 桶
@@ -200,18 +429,21 @@ public class RechargeService {
             );
         }
 
-        order.setStatus(RechargeOrder.Status.PAID);
-        order.setReviewerId(reviewerId);
-        order.setReviewNote(trimToNull(reviewNote, 512));
         order.setLedgerEntryId(mainEntry.id());
-        order.setReviewedAt(Instant.now());
-        order.setUpdatedAt(Instant.now());
+        order.setPaidVia(paidVia);
+        order.setChannelPayNo(channelPayNo);
+        if (reviewerId != null) {
+            order.setReviewerId(reviewerId);
+            order.setReviewNote(reviewNote);
+            order.setReviewedAt(now);
+        }
+        order.setUpdatedAt(now);
         orderRepo.save(order);
-        log.info("[recharge] order approved id={} userId={} reviewer={} credits={} bonus={}",
-                order.getId(), order.getUserId(), reviewerId, order.getCredits(), order.getBonusCredits());
+        log.info("[recharge] order settled id={} userId={} paidVia={} credits={} bonus={}",
+                order.getId(), order.getUserId(), paidVia, order.getCredits(), order.getBonusCredits());
         notificationPublisher.notifyUser(order.getUserId(), Notification.NotificationType.REVENUE,
                 "充值已到账",
-                "充值订单 " + order.getId() + " 已核准：" + order.getCredits() + " 积分已入账"
+                "充值订单 " + order.getId() + " 已入账：" + order.getCredits() + " 积分"
                         + (order.getBonusCredits() > 0 ? "，另赠送 " + order.getBonusCredits() + " 积分" : "")
                         + "。");
         return RechargeOrderDto.from(order);
@@ -237,6 +469,60 @@ public class RechargeService {
                 "充值订单被驳回",
                 "充值订单 " + order.getId() + "（" + nz(order.getPackageTag()) + " " + order.getCredits()
                         + " 积分）未通过核准。原因：" + nz(order.getReviewNote()) + "。如有疑问请联系平台运营。");
+        return RechargeOrderDto.from(order);
+    }
+
+    /**
+     * 现金退款 + 未消费积分回收（v2 §15.5 / D17，FINANCE_ADMIN）。补堵审计 #9：退现金却不收回对应积分。
+     *
+     * 仅 PAID 订单可退。<b>同事务</b>调 {@link CreditService#refundCashReclaim}：按订单积分 clamp 到当前
+     * 未消费充值余额回收（写资金面 REFUND_CASH 分录），订单转 REFUNDED 并互链回收分录。clamp 后为 0
+     * （已消费完毕）→ 抛 409，不做现金退款（避免「服务已交付仍全额退现」的隐性损失，须财务显式善意处理）。
+     *
+     * <p>真实 RMB 退回（Jeepay 退款 API / 线下打款）由财务在渠道侧执行；本方法负责积分账本侧的回收与
+     * 订单状态机推进，并把回收分录与现金凭证互链供对账审计（R7：人工退款须可追、不默默漏）。
+     */
+    @Transactional
+    public RechargeOrderDto refundOrder(String orderId, String operatorId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw BusinessException.badRequest("REFUND_REASON_REQUIRED", "请填写退款原因");
+        }
+        Instant now = Instant.now();
+        // 原子抢占 PAID → REFUNDED（条件 UPDATE 幂等闸，照 settlePaidOrder/markPaid）：并发双退 / 重复点击
+        // 只有一个抢到，其余拿 0 → 不二次回收，杜绝真实现金被退两次。reclaim 若抛 409 整事务回滚、订单退回 PAID。
+        int claimed = orderRepo.markRefunded(orderId, now);
+        if (claimed == 0) {
+            RechargeOrder existing = orderRepo.findById(orderId)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+            throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PAID",
+                    "该订单状态为 " + existing.getStatus() + "，只有已支付订单可退款（或已在退款中）");
+        }
+
+        // 抢到退款权：重新载入（markRefunded clearAutomatically 已清持久化上下文）
+        RechargeOrder order = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+
+        LedgerEntryDto reclaim = creditService.refundCashReclaim(
+                order.getUserId(),
+                order.getCredits(),
+                order.getId(),
+                "充值订单退款回收（订单 " + order.getId() + "）：" + reason);
+
+        long reclaimed = Math.abs(reclaim.amount());
+        order.setStatus(RechargeOrder.Status.REFUNDED); // markRefunded 已置，此处随元数据一并落库（mock/可读性）
+        order.setRefundedAt(now);
+        order.setRefundLedgerEntryId(reclaim.id());
+        order.setRefundedCredits(reclaimed);
+        order.setReviewerId(operatorId);
+        order.setReviewNote(trimToNull(reason, 512));
+        order.setUpdatedAt(now);
+        orderRepo.save(order);
+        log.info("[recharge] order refunded id={} userId={} operator={} reclaimed={}/{} ledger={}",
+                order.getId(), order.getUserId(), operatorId, reclaimed, order.getCredits(), reclaim.id());
+        notificationPublisher.notifyUser(order.getUserId(), Notification.NotificationType.REVENUE,
+                "充值订单已退款",
+                "充值订单 " + order.getId() + "（" + nz(order.getPackageTag()) + "）已退款，回收未消费积分 "
+                        + reclaimed + " 分。现金将按渠道原路退回。");
         return RechargeOrderDto.from(order);
     }
 

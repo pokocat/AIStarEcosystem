@@ -784,7 +784,7 @@ components:
       description: |
         legacy /finance/transactions 接口的投影。前端真值源 src/types/finance.ts:Transaction
         实际字段：id/source/amount/date/status/type/userId；v0.58 追加 createdAt（秒级时间）
-        + username/displayName（admin 结算中心回填）。新代码请使用 LedgerEntry。
+        + username/displayName/phone（admin 结算中心回填；phone v0.86）。新代码请使用 LedgerEntry。
       required: [id, userId, type, direction, amount, currency, status,
                  description, createdAt]
       properties:
@@ -1269,6 +1269,7 @@ components:
         userId:           { type: string }
         username:         { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
         displayName:      { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
+        phone:            { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）' }
         totalBalance:     { type: integer }
         licenseBalance:   { type: integer, description: license 核销累计入账 }
         rechargeBalance:  { type: integer, description: 充值累计入账 }
@@ -1295,6 +1296,7 @@ components:
         userId:        { type: string }
         username:      { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
         displayName:   { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
+        phone:         { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）' }
         type:          { $ref: '#/components/schemas/LedgerEntryType' }
         amount:        { type: integer, description: 正数=入账，负数=出账 }
         balanceAfter:  { type: integer, description: 入账后总余额（冗余便于审计） }
@@ -1315,6 +1317,7 @@ components:
         recommended:   { type: boolean }
         bonusCredits:  { type: integer, nullable: true, description: 赠送积分（充进 giftBalance） }
         sortOrder:     { type: integer, nullable: true }
+        appScope:      { type: string, nullable: true, description: 'v2 §6 适用子应用：all=通用 / music|drama|celebrity|aiavatar|star（admin upsert 同字段）' }
 
     RechargeRequest:
       type: object
@@ -1340,18 +1343,30 @@ components:
         username:     { type: string, nullable: true }
         displayName:  { type: string, nullable: true }
         studioName:   { type: string, nullable: true }
+        phone:        { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；read-time 回填，用户自查省略）' }
         packageId:    { type: string }
         packageTag:   { type: string, nullable: true }
         credits:      { type: integer }
         bonusCredits: { type: integer }
         priceCents:   { type: integer }
-        status:       { type: string, enum: [pending, paid, rejected, cancelled] }
+        status:       { type: string, enum: [pending, paid, rejected, cancelled, closed, refunded], description: 'closed = 超时/网关关单（v2 §6）' }
         userNote:     { type: string, nullable: true }
         reviewerId:   { type: string, nullable: true }
         reviewNote:   { type: string, nullable: true, description: 审批备注 / 驳回原因 }
         createdAt:    { type: string, format: date-time }
         updatedAt:    { type: string, format: date-time, nullable: true }
         reviewedAt:   { type: string, format: date-time, nullable: true }
+        # v2 §6 在线支付（Jeepay/影子）可见性（线下 / 未支付订单字段省略）
+        paidVia:      { type: string, nullable: true, enum: [manual, jeepay, shadow], description: '入账来源：manual=线下核准 / jeepay=在线真实 / shadow=在线影子' }
+        channelPayNo: { type: string, nullable: true, description: 渠道流水号（对账追溯） }
+        wayCode:      { type: string, nullable: true, description: 支付方式 WX_LITE/ALI_QR… }
+        payOrderId:   { type: string, nullable: true, description: 支付网关订单号（Jeepay payOrderId / 影子 shadow_ 前缀） }
+        paidAt:       { type: string, format: date-time, nullable: true, description: 到账时间 }
+        sourceApp:    { type: string, nullable: true, description: 来源子应用 }
+        # v2 §15.5 / D17 退款回收（仅 refunded 订单有值）
+        refundedAt:          { type: string, format: date-time, nullable: true }
+        refundedCredits:     { type: integer, nullable: true, description: 实退（回收未消费）积分 }
+        refundLedgerEntryId: { type: string, nullable: true, description: REFUND_CASH 回收账本分录 id }
 
     # ── v0.4：AI Bot 同事会话（小程序 chat 页消费） ──
     BotMeta:
@@ -4829,7 +4844,13 @@ paths:
     get:
       tags: [finance]
       operationId: listMyWalletPackages
-      summary: 充值套餐列表（运营在 admin 后台配置 / 上下架）
+      summary: 充值套餐列表（运营在 admin 后台配置 / 上下架）。v2 §6：?sourceApp 过滤「通用 + 该子应用专属」。
+      parameters:
+        - name: sourceApp
+          in: query
+          required: false
+          schema: { type: string, enum: [music, drama, celebrity, aiavatar, star] }
+          description: 子应用 id；只返回 appScope=all 或 =sourceApp 的套餐
       responses:
         '200':
           description: ok
@@ -4906,6 +4927,168 @@ paths:
                   - type: object
                     properties:
                       data: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /me/wallet/recharge/orders/{orderId}:
+    get:
+      tags: [finance]
+      operationId: getRechargeOrder
+      summary: 收银台轮询：取充值订单当前态（v2 §6，归属校验）
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /me/wallet/recharge/orders/{orderId}/sync:
+    post:
+      tags: [finance]
+      operationId: syncRechargeOrder
+      summary: 收银台「我已支付/刷新状态」：主动查网关→已支付则结算/超时则关单（v2 §6）
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /me/wallet/recharge/checkout:
+    post:
+      tags: [finance]
+      operationId: rechargeCheckout
+      summary: 充值在线支付下单（v2：子应用内发起，后端调支付网关开单，返回 payData 拉起支付）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [packageId]
+              properties:
+                packageId: { type: string }
+                wayCode: { type: string, description: 'WX_LITE/WX_NATIVE/ALI_QR/SHADOW；空则按 driver 默认' }
+                openid: { type: string, description: '微信小程序 openid（WX_LITE 必填）' }
+                sourceApp: { type: string, description: 'music/drama/celebrity/aiavatar/miniprogram（仅营销标签，不切分余额）' }
+      responses:
+        '200':
+          description: 下单成功，返回 payData
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          orderId: { type: string }
+                          payDataType: { type: string, description: 'shadow / wxapp / payurl …' }
+                          payData: { type: string }
+
+  /dev/pay/shadow/confirm:
+    post:
+      tags: [finance]
+      operationId: shadowPayConfirm
+      summary: '【dev 影子链路·仅 driver=shadow】模拟收银台确认（v2 §6.7）：success→复用 settlePaidOrder 入账 / fail→取消 / timeout→留 PENDING。生产 driver=jeepay 时此端点不注册。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId]
+              properties:
+                orderId: { type: string }
+                result: { type: string, enum: [success, fail, timeout], default: success }
+      responses:
+        '200':
+          description: 影子确认后的订单态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RechargeOrder' }
+
+  /pay/notify/jeepay:
+    post:
+      tags: [finance]
+      operationId: jeepayPayNotify
+      summary: '【Jeepay 异步回调·仅 driver=jeepay】permitAll + MD5 验签（v2 §6.4 触点②）：验签→金额/状态校验→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。dev driver=shadow 时此端点不注册。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Jeepay 回调参数（mchOrderNo/payOrderId/state/amount/channelOrderNo/sign …）
+      responses:
+        '200':
+          description: 纯文本 "success"（已处理 / 止重投）或 "fail"（验签或金额不符，Jeepay 重投）
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /pay/notify/alipay:
+    post:
+      tags: [finance]
+      operationId: alipayPayNotify
+      summary: '【支付宝异步回调·仅 driver=alipay】permitAll + RSA2 验签（v2 §6.4 触点②）：验签→trade_status 成功 + total_amount(元→分)匹配→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。其它 driver 下此端点不注册。'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              description: 支付宝回调参数（out_trade_no/trade_no/trade_status/total_amount/app_id/sign …）
+      responses:
+        '200':
+          description: 纯文本 "success"（已处理 / 止重投）或 "fail"（验签或金额不符，支付宝重投）
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /admin/finance/recharge-orders/reconcile:
+    post:
+      tags: [finance]
+      operationId: reconcileRechargeOrders
+      summary: '【FINANCE_ADMIN/SUPER_ADMIN】手动触发查单兜底（v2 §6.4，直连方案）：对 PENDING 在线订单逐单查网关,已支付则幂等结算。回调丢失/本地无公网时补单。'
+      responses:
+        '200':
+          description: 本轮新结算的订单数
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      settled: { type: integer }
 
   /me/ledger:
     get:
@@ -5924,7 +6107,7 @@ paths:
       tags: [admin-finance]
       operationId: adminListRechargeOrders
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [pending, paid, rejected, cancelled, all] } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, paid, rejected, cancelled, refunded, all] } }
       responses: { '200': { description: ok } }
   /admin/finance/recharge-orders/{orderId}/approve:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
@@ -5932,6 +6115,101 @@ paths:
   /admin/finance/recharge-orders/{orderId}/reject:
     parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-finance], operationId: adminRejectRechargeOrder, responses: { '200': { description: ok } } }
+  /admin/finance/recharge-orders/{orderId}/sync:
+    parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-finance], operationId: adminSyncRechargeOrder, summary: '查单同步：在线 PENDING 订单查网关→已支付自动入账/超时关单（v2 §6；在线单不可手工核准）', responses: { '200': { description: ok } } }
+  /admin/finance/recharge-orders/{orderId}/refund:
+    parameters: [{ name: orderId, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-finance]
+      operationId: adminRefundRechargeOrder
+      summary: 现金退款 + 未消费积分回收（v2 §15.5 / D17，限 FINANCE_ADMIN / SUPER_ADMIN；仅 PAID 订单，clamp 到未消费充值额）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: "订单转 REFUNDED + 写资金面 REFUND_CASH 回收分录" }
+        '409': { description: "已消费完毕无可回收 / 订单非 PAID" }
+  /admin/finance/reconciliation:
+    get:
+      tags: [admin-finance]
+      operationId: adminReconciliationReport
+      summary: 对账重算（v2 §11，限 FINANCE_ADMIN / SUPER_ADMIN）—— 现金勾稽（排除影子）+ 积分负债单列 + drift 告警
+      responses: { '200': { description: "ReconciliationReport（grossRecharge/netCashCredits/drift/balanced/creditLiability …）" } }
+
+  # ── v2 §9 积分面 lane：调差 / 赠送（只发 giftBalance，不碰资金面）。CreditOpsService ──
+  /admin/finance/adjustments/compensate:
+    post:
+      tags: [admin-finance]
+      operationId: adminCompensate
+      summary: 客诉补偿（v2 §9 积分面）—— 给用户补发赠送积分，挂工单号；不碰资金面
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, amount, incidentRef, reason]
+              properties:
+                userId: { type: string }
+                amount: { type: integer, format: int64 }
+                incidentRef: { type: string }
+                reason: { type: string }
+      responses: { '200': { description: "新增账本分录（GIFT）" } }
+  /admin/finance/adjustments/grant:
+    post:
+      tags: [admin-finance]
+      operationId: adminGrantGift
+      summary: 激励赠送（v2 §9 积分面）—— 给用户发赠送积分，可挂活动号；不碰资金面
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, amount, reason]
+              properties:
+                userId: { type: string }
+                amount: { type: integer, format: int64 }
+                campaignId: { type: string }
+                reason: { type: string }
+      responses: { '200': { description: "新增账本分录（GIFT）；超阈值时进审批，pending=true" } }
+  /admin/finance/adjustments/requests:
+    get:
+      tags: [admin-finance]
+      operationId: adminListAdjustmentRequests
+      summary: 大额调差 / 赠送审批队列（v2 §9.2 maker-checker）
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending_approval, approved, rejected, all] } }
+      responses: { '200': { description: "ok（CreditAdjustmentRequest[]）" } }
+  /admin/finance/adjustments/requests/{id}/approve:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-finance]
+      operationId: adminApproveAdjustmentRequest
+      summary: 批准大额审批单（限 FINANCE_ADMIN / SUPER_ADMIN；服务端校验 maker≠checker）
+      responses: { '200': { description: "已批准并入账（GIFT）" } }
+  /admin/finance/adjustments/requests/{id}/reject:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-finance]
+      operationId: adminRejectAdjustmentRequest
+      summary: 驳回大额审批单（限 FINANCE_ADMIN / SUPER_ADMIN）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string }
+      responses: { '200': { description: "已驳回" } }
 
   # ── 结算中心只读视图（v0.58 backfill：钱包 / 流水 / 业务交易，DTO 附带账号登录名 / 昵称 + 秒级时间） ──
   /admin/wallets:
@@ -7104,6 +7382,24 @@ paths:
   /me/drama/projects/{id}/outline/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }
+  # ── v0.87 首页脑暴（跟 AI 聊出故事）：立项之前的可恢复草稿 + AI 对话/生成故事大纲/去制作 ──
+  /me/drama/brainstorms:
+    get:  { tags: [drama], operationId: listDramaBrainstorms,  summary: '我的脑暴草稿列表（继续上次脑暴）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createDramaBrainstorm, summary: '新建脑暴会话（seed 最小 BrainstormData：开场白 + 默认制作设置）', responses: { '200': { description: ok } } }
+  /me/drama/brainstorms/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:    { tags: [drama], operationId: getDramaBrainstorm,    summary: '脑暴草稿详情（meta + 整页 BrainstormData，恢复）', responses: { '200': { description: ok } } }
+    put:    { tags: [drama], operationId: saveDramaBrainstorm,   summary: '保存整页脑暴草稿（对话/故事大纲/制作设置，回算标题）', responses: { '200': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaBrainstorm, summary: '删除脑暴草稿（软删）', responses: { '204': { description: ok } } }
+  /me/drama/brainstorms/{id}/chat:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: dramaBrainstormChat, summary: 'AI 脑暴回复（大模型，免费，§8.0 未配置 503；不落库，前端合并后 PUT 保存）', responses: { '200': { description: ok } } }
+  /me/drama/brainstorms/{id}/outline:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: dramaBrainstormOutline, summary: '由对话生成故事大纲 OutlineDraft（大模型，免费，§8.0；不落库）', responses: { '200': { description: ok } } }
+  /me/drama/brainstorms/{id}/promote:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: promoteDramaBrainstorm, summary: '去制作：form=series 立项 DramaProject（免费，预填角色）/ form=single 建 DramaShort（扣开拍费）', responses: { '200': { description: ok } } }
   # ── v0.76 短视频制作草稿（整页编辑态可恢复：刷新/返回/换设备接着做）──
   /me/drama/shorts:
     get:  { tags: [drama], operationId: listDramaShorts,  summary: '我的短视频草稿列表（工坊卡片）', responses: { '200': { description: ok } } }

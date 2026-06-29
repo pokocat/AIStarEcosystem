@@ -40,14 +40,24 @@ interface OutlineStageProps {
   prefilled?: boolean;
   /** v0.64+:项目 id + 保存回调（真实后端落地）。 */
   ctx?: StageContext;
+  /** v0.87：内嵌进「短剧设定」单页时去掉自己的滚动壳/标题/终态按钮（由 SetupStage 统一提供）。 */
+  embedded?: boolean;
 }
 
-export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineStageProps) {
+export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }: OutlineStageProps) {
   const total = data.projectInfo.episodes;
   // 空项目(还没大纲)→ idle 引导生成;已有大纲 → done 直接展示。
   const [phase, setPhase] = React.useState<"idle" | "gen" | "done">(data.episodes.length ? "done" : "idle");
-  const [scope, setScope] = React.useState<"trial" | "full">("trial");
-  const [dur, setDur] = React.useState(DUR_OPTS[1]);
+  const [scope, setScope] = React.useState<"trial" | "full">(data.outlinePrefs?.scope ?? "trial");
+  const [dur, setDur] = React.useState(data.outlinePrefs?.dur ?? DUR_OPTS[1]);
+  // v0.88：大纲 AI 参数（范围/时长）落库（草稿态可回溯）。
+  const savePrefs = (patch: { scope?: "trial" | "full"; dur?: string }) => {
+    if (!ctx) return;
+    ctx.notifyEditing?.();
+    void ctx.saveData({ ...data, outlinePrefs: { scope, dur, ...patch } }).catch(() => {});
+  };
+  const pickScope = (k: "trial" | "full") => { setScope(k); savePrefs({ scope: k }); };
+  const pickDur = (d: string) => { setDur(d); savePrefs({ dur: d }); };
   const [eps, setEps] = React.useState<EpisodeOutline[]>(data.episodes);
   React.useEffect(() => {
     setEps(data.episodes);
@@ -114,9 +124,9 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
   const gen = () => runOutline(scope, scopeCost(scope));
   const fillRest = () => runOutline("full", fillRestCost);
 
-  return (
-    <div className="scroll" style={{ height: "100%" }}>
-      <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 32px 64px" }}>
+  const inner = (
+    <>
+        {!embedded && (
         <StageHeader
           no={2}
           scope="项目"
@@ -130,6 +140,21 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
             )
           }
         />
+        )}
+        {embedded && (
+          <div className="row gap-2" style={{ alignItems: "center", margin: "20px 0 14px" }}>
+            <span className="icon-badge" style={{ width: 27, height: 27, borderRadius: 8 }}>
+              <List size={15} />
+            </span>
+            <span style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: "-.01em" }}>剧情大纲</span>
+            <span className="tag tag-gray" style={{ flex: "none" }}>总览 · 分集</span>
+            {prefilled && (
+              <span className="tag tag-pink" style={{ flex: "none" }}>
+                <Layers size={11} /> 模板已预填
+              </span>
+            )}
+          </div>
+        )}
 
         {/* ===== 顶部操作条:AI 参数 + 高亮生成 ===== */}
         {!locked && (
@@ -170,7 +195,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                       <button
                         key={o.key}
                         type="button"
-                        onClick={() => setScope(o.key)}
+                        onClick={() => pickScope(o.key)}
                         className="col"
                         style={{
                           padding: "8px 14px",
@@ -198,7 +223,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                 <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>每集时长</span>
                 <div className="row gap-2">
                   {DUR_OPTS.map((d) => (
-                    <button key={d} type="button" className={"chip num" + (dur === d ? " on" : "")} onClick={() => setDur(d)}>
+                    <button key={d} type="button" className={"chip num" + (dur === d ? " on" : "")} onClick={() => pickDur(d)}>
                       {d}
                     </button>
                   ))}
@@ -325,6 +350,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                 <button type="button" className="btn btn-line" onClick={addEp}>
                   <Plus size={15} /> 加一集
                 </button>
+                {!embedded && (
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -341,10 +367,18 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx }: OutlineS
                 >
                   <Check size={16} /> 锁定大纲 · 去定角色
                 </button>
+                )}
               </div>
             )}
           </div>
         )}
+    </>
+  );
+  if (embedded) return inner;
+  return (
+    <div className="scroll" style={{ height: "100%" }}>
+      <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 32px 64px" }}>
+        {inner}
       </div>
     </div>
   );

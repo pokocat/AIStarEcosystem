@@ -140,7 +140,8 @@ public class AdminFinanceService {
                 type,
                 e.getUserId(),
                 owner != null ? owner.getUsername() : null,
-                owner != null ? owner.getDisplayName() : null
+                owner != null ? owner.getDisplayName() : null,
+                owner != null ? owner.getPhone() : null
         );
     }
 
@@ -162,7 +163,7 @@ public class AdminFinanceService {
         return switch (t) {
             case LICENSE_GRANT -> "license_grant";
             case RECHARGE -> "recharge";
-            case WITHDRAW -> "withdrawal";
+            case WITHDRAW, REFUND_CASH -> "withdrawal";
             case SPEND, FREEZE -> "spend";
             case INCOME, GIFT, REFUND, UNFREEZE, ADJUST -> "income";
         };
