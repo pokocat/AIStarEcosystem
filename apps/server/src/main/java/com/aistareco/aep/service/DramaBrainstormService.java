@@ -363,28 +363,66 @@ public class DramaBrainstormService {
             }
         }
         o.set("beats", beats);
-        ArrayNode roles = om.createArrayNode();
-        if (root.path("roles").isArray()) {
-            for (JsonNode r : root.path("roles")) {
-                if (!r.isObject()) continue;
-                String name = text(r, "name");
-                if (name == null || name.isBlank()) continue;
-                ObjectNode role = om.createObjectNode();
-                role.put("name", name.trim());
-                role.put("role", orDefault(text(r, "role"), ""));
-                roles.add(role);
-            }
-        }
-        o.set("roles", roles);
+        o.set("roles", collectRoles(root));
         ArrayNode scenes = om.createArrayNode();
-        if (root.path("scenes").isArray()) {
-            for (JsonNode s : root.path("scenes")) {
-                String v = s.asText("");
-                if (!v.isBlank()) scenes.add(v.trim());
+        JsonNode scIn = firstArray(root, "scenes", "locations", "settings", "取景");
+        if (scIn != null) {
+            for (JsonNode s : scIn) {
+                String v = s.isObject() ? firstText(s, "name", "place", "location", "场景", "地点", "title") : s.asText("");
+                if (v != null && !v.isBlank()) scenes.add(v.trim());
             }
         }
         o.set("scenes", scenes);
         return o;
+    }
+
+    /**
+     * 容错解析「核心人物」。真模型输出多样：roles/characters/人物 等键，元素可能是
+     * 对象（name|角色|姓名|character + role|身份|戏份|desc）或字符串（"林浅 - 红娘"）。
+     * 全部归一为 [{name, role}]，避免模型换个格式就丢成空人物（v0.88 真链路实测命中）。
+     */
+    private ArrayNode collectRoles(JsonNode root) {
+        ArrayNode out = om.createArrayNode();
+        JsonNode arr = firstArray(root, "roles", "characters", "core_roles", "人物", "角色");
+        if (arr == null) return out;
+        for (JsonNode r : arr) {
+            String name;
+            String roleDesc;
+            if (r.isObject()) {
+                name = firstText(r, "name", "角色", "姓名", "character", "char", "title");
+                roleDesc = firstText(r, "role", "身份", "戏份", "desc", "description", "设定", "简介");
+            } else {
+                String s = r.asText("").trim();
+                if (s.isBlank()) continue;
+                String[] parts = s.split("\\s*[-—–·:：（(]\\s*", 2);
+                name = parts[0].trim();
+                roleDesc = parts.length > 1 ? parts[1].replaceAll("[)）]\\s*$", "").trim() : "";
+            }
+            if (name == null || name.isBlank()) continue;
+            ObjectNode role = om.createObjectNode();
+            role.put("name", name.trim());
+            role.put("role", roleDesc == null ? "" : roleDesc.trim());
+            out.add(role);
+        }
+        return out;
+    }
+
+    /** 取第一个非空数组字段（容错模型用了别名键）。 */
+    private static JsonNode firstArray(JsonNode n, String... keys) {
+        for (String k : keys) {
+            JsonNode v = n.path(k);
+            if (v.isArray() && !v.isEmpty()) return v;
+        }
+        return null;
+    }
+
+    /** 取第一个非空文本字段（容错模型用了别名键）。 */
+    private static String firstText(JsonNode n, String... keys) {
+        for (String k : keys) {
+            String v = text(n, k);
+            if (v != null && !v.isBlank()) return v;
+        }
+        return null;
     }
 
     private static String joinBeats(JsonNode beats) {

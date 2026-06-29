@@ -13,6 +13,7 @@ import { ProjectsApi } from "@/api";
 import { useAsync } from "@/lib/drama-query";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
+import { aiErrorMessage } from "@/lib/ai-error";
 import { defaultOverlay } from "@/lib/interactive-graph";
 import type { ProjectData } from "@/mocks/drama-workshop";
 import {
@@ -55,7 +56,7 @@ export default function ProjectWorkbench() {
       try {
         await track(() => ProjectsApi.saveProject(id, next, opts));
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败，请重试");
+        toast.error(aiErrorMessage(e, "保存失败，请稍后重试"));
         throw e;
       }
     },
