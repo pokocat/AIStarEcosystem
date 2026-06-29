@@ -3403,11 +3403,11 @@ AI 改图复用 `POST /me/drama/render/frame`（`ref_images` 迭代），无新�
 - 剧集脚本平铺分镜表 `storyboard-table.tsx`（设计稿表格，每格 `Editable` 结构化可编辑）替代 per-scene `ShotFormCard`（`shot-form.tsx` 保留供短视频用）；
   `epscript.tsx` 的 plot/style/cast 落库 `episodeDocs[ep].meta`。
 - AI 改图弹窗（`storyboard-table.tsx` 内）：左指令对话 + 右 9:16 预览 + 版本号，`renderFrame` + ref 图迭代回填落库。
-- 短视频 `meta.style` 可编辑落库。
+- 短视频 `/shorts/make` 单页化：去步骤切换 → 单页（左口播对话 / 右 短视频大纲[口播种草 + beat 流] + 分镜脚本，逐镜内联出片），`meta.style` 可编辑落库，每镜 beat 语义标签，删退役工厂网格。
 
 **门禁 / 验收**：`typecheck:all` 10/10 + web-drama build（29 路由）+ `check:api-contract` + 全量 74 drama 单测 全绿；
 **真实 server + fake-llm 浏览器（CDP headless，无 Playwright，Node 内置 WebSocket 自建驱动）可视验收**——
 截图核对 首页 chatOff/chatOn+大纲、短剧设定（剧情大纲+角色+场景卡）、剧集脚本分镜表、AI 改图弹窗；
 **持久化 API E2E** 全过：场景 name/mood/refUrl、大纲 scope/dur、本集 meta（叙事/风格/出场人物）、分镜结构化 sfx/bgm/fx 均落库 + GET 恢复。
 
-**剩余（layout polish，见 `TODO.md` D-9）**：短视频 `/shorts/make` 两步→单页合并、分镜表 shortBeat 语义标签（数据与流程已就绪，仅版式）。
+**D-9 设计稿剩余对齐项①–⑤ 全部完成**（短剧设定单页 / 平铺分镜表 / AI 改图弹窗 / 短视频单页 / 编辑落库），均经 CDP headless 浏览器截图可视验收。

@@ -200,7 +200,7 @@
   - [x] ① 短剧设定单页（合并 选题/大纲/角色场景 + 左轨两步）—— `stages/setup.tsx` + `OutlineStage`/`CastStage` `embedded` + `stage-rail.tsx`；场景升级为后端 `ProjectData.scenes`（promote 预填、可编辑落库），`outlinePrefs` 落库。
   - [x] ② 剧集脚本平铺分镜表 —— 新 `storyboard-table.tsx`（每格结构化可编辑→喂视频生成提示词），`BoardShot` 加 `sfx/bgm/fx`；`ShotFormCard` 保留给短视频。
   - [x] ③ 首帧 AI 改图弹窗 —— `storyboard-table.tsx` 内（左指令对话+右 9:16 预览+版本号），复用 `renderFrame` + `ref_images` 迭代回填落库（**未新增 prompt key，复用 `drama.frame_image` + 指令拼进 desc**）。
-  - [~] ④ 短视频 `/shorts/make`：`meta.style` 已改可编辑落库；**两步→单页合并 + shortBeat 语义标签 仍待做**（数据/流程已就绪，仅版式 polish，低优先）。
+  - [x] ④ 短视频 `/shorts/make` 单页化（v0.88）：去掉 脚本/工厂 步骤切换 → 单页（左 AI 口播对话 / 右 短视频大纲[口播种草 + beat 流 痛点开场→卖点演示→强CTA] + 分镜脚本，逐镜内联出片）；`meta.style` 可编辑落库；每镜 beat 语义标签。删退役 `ShortShotCard` 工厂网格 + 步骤态。
   - [x] ⑤ `epscript` 的 本集叙事/作品风格/出场人物 + `outline` scope/dur 落库（`episodeDocs[ep].meta` + `outlinePrefs`，持久化 API E2E 验证）。
 - [ ] **D-10 USE_MOCK promote 导航**：mock 下 `BrainstormApi.promote`→`ProjectsApi.createProject` 返回 `dp_mock_*`，但 `getProject` mock 只认静态 `PROJECTS` → `/projects/{新id}` 落「项目不存在」（脑暴自身的 chat→大纲在 mock 下完整可用）。属既有 mock 局限（首页旧立项流程同样存在）；要么给 projects/shorts mock 加可恢复 store，要么文档标注「mock 仅演示前半程，真链路走 USE_MOCK=0 + server」。
 

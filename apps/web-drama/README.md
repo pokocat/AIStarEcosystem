@@ -77,10 +77,9 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
   - 大纲 AI 参数 `outlinePrefs{scope,dur}` 落库（此前仅内存）。`加个角色` 落库。
 - **剧集脚本 平铺分镜表**（新 `storyboard-table.tsx`）：设计稿表格 镜号/时长/首帧/画面内容/镜头/台词·音频[台词+音效+BGM]/特效氛围，**每格结构化可编辑**（即喂视频生成 LLM 提示词的结构化文本）；`BoardShot` 加 `sfx/bgm/fx`。本集叙事/作品风格/出场人物落库 `episodeDocs[ep].meta`（`epscript.tsx`，此前仅内存即丢）。
 - **首帧 AI 改图弹窗**（`storyboard-table.tsx` 内）：左指令对话（换成夜景/让她回头…）+ 右 9:16 预览 + 版本号；复用 `RenderApi.renderFrame` + ref 图迭代，新版回填该镜首帧落库。
-- **短视频** `/shorts/make`：`meta.style` 改为可编辑（、/逗号分隔）落库。
+- **短视频** `/shorts/make` **单页化**：去掉 脚本/工厂 步骤切换 → 设计稿单页（左 AI 口播对话 / 右 短视频大纲[口播种草 + beat 流 痛点开场→卖点演示→强CTA] + 分镜脚本，逐镜内联出片）；`meta.style` 可编辑（、/逗号分隔）落库；每镜 beat 语义标签；删退役工厂网格 `ShortShotCard`。
 - `app.css` 复用 v0.87 脑暴动效（typing-dot/gen-pulse/edit-field/chat-input）。
-- **门禁**：web-drama typecheck/build（29 路由）+ typecheck:all 10/10 + contract 全绿；后端 74 drama 单测；**真实 server+fake-llm 浏览器（CDP headless）可视验收**（首页脑暴/短剧设定/分镜表/AI 改图 截图）+ **持久化 API E2E**（场景/参数/本集 meta/结构化 sfx-bgm-fx 落库恢复）。
-- **剩余（layout polish，见 TODO D-9）**：短视频 `/shorts/make` 两步→单页合并；分镜表 shortBeat 语义标签。
+- **门禁**：web-drama typecheck/build（29 路由）+ typecheck:all 10/10 + contract 全绿；后端 74 drama 单测；**真实 server+fake-llm 浏览器（CDP headless）可视验收**（首页脑暴/短剧设定/分镜表/AI 改图/短视频单页 截图）+ **持久化 API E2E**（场景/参数/本集 meta/结构化 sfx-bgm-fx 落库恢复）。
 
 ### v0.87 · 2026-06-28 · 首页「跟 AI 聊出故事」脑暴链路（设计稿 `AI短剧工作台.dc.html` 还原）
 

@@ -26,7 +26,6 @@ import {
 import { toast } from "sonner";
 import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
-import { GenSettingsBar } from "@/components/drama-workshop/gen-settings-bar";
 import { ShotFormCard, type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
@@ -82,153 +81,8 @@ interface ChatMsg {
 }
 
 /* 单镜出片卡(竖屏) */
-function ShortShotCard({
-  s,
-  fmt,
-  busy,
-  onFrame,
-  onDirect,
-  onClip,
-  onDone,
-}: {
-  s: ShortShot;
-  fmt: ShortFormat;
-  busy: ShotFlow | null;
-  onFrame: () => void;
-  onDirect: () => void;
-  onClip: () => void;
-  onDone: () => void;
-}) {
-  const rendered = s.flow === "frame" || s.flow === "clip" || s.flow === "done";
-  const isVideo = s.flow === "clip" || s.flow === "done";
-  return (
-    <div className="card col" style={{ padding: 0, overflow: "hidden", gap: 0 }}>
-      <div style={{ position: "relative" }}>
-        {isVideo && s.videoUrl ? (
-          <video
-            src={s.videoUrl}
-            muted
-            playsInline
-            preload="metadata"
-            style={{ width: "100%", aspectRatio: "9/16", objectFit: "cover", background: "#000", display: "block" }}
-          />
-        ) : (
-          <Thumb
-            from={rendered ? fmt.from : "#cbd5e1"}
-            to={rendered ? fmt.to : "#94a3b8"}
-            src={s.frameUrl ?? s.frameUrls?.[0]}
-            ratio="9/16"
-            radius={0}
-            stripes={!rendered}
-            style={{ width: "100%" }}
-          />
-        )}
-        <span
-          className="num"
-          style={{
-            position: "absolute",
-            top: 6,
-            left: 6,
-            background: "rgba(0,0,0,.5)",
-            color: "#fff",
-            fontSize: 10,
-            padding: "1px 6px",
-            borderRadius: 5,
-            fontWeight: 700,
-          }}
-        >
-          #{s.no} · {s.dur}s
-        </span>
-        {busy && (
-          <span style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center" }}>
-            <span
-              style={{
-                width: 24,
-                height: 24,
-                border: "3px solid rgba(255,255,255,.4)",
-                borderTopColor: "#fff",
-                borderRadius: "50%",
-                animation: "drama-spin .7s linear infinite",
-              }}
-            />
-          </span>
-        )}
-        {isVideo && !busy && (
-          <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-            <span
-              style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,.85)", display: "grid", placeItems: "center" }}
-            >
-              <Play size={15} style={{ color: "var(--ink)", marginLeft: 2 }} />
-            </span>
-          </span>
-        )}
-        {s.flow === "done" && (
-          <span className="tag tag-green" style={{ position: "absolute", bottom: 6, left: 6 }}>
-            <Check size={10} /> 验收
-          </span>
-        )}
-        {s.flow === "frame" && !busy && (
-          <span className="tag tag-accent" style={{ position: "absolute", bottom: 6, left: 6 }}>首帧</span>
-        )}
-      </div>
-      <div className="col gap-2" style={{ padding: "9px 10px 10px" }}>
-        <span style={{ fontSize: 11, lineHeight: 1.4, height: 31, overflow: "hidden", color: "var(--ink-2)" }}>{s.visual}</span>
-        {s.flow === "draft" && (
-          <div className="col gap-1">
-            <CreditButton
-              cost={SHORT_FRAME_COST}
-              onConfirm={onFrame}
-              confirmTitle="生成首帧"
-              confirmBody="先生成一张画面预览，确认后再出视频。"
-              className="btn btn-grad btn-sm"
-              style={{ height: 30, justifyContent: "center", fontSize: 11.5 }}
-              disabled={!!busy}
-              markSize={12}
-            >
-              <ImageIcon size={12} /> 首帧
-            </CreditButton>
-            <CreditButton
-              cost={SHORT_DIRECT_COST}
-              onConfirm={onDirect}
-              confirmTitle="直接生成视频"
-              confirmBody="跳过首帧,直接生成这镜分镜视频。"
-              className="btn btn-line btn-sm"
-              style={{ height: 28, justifyContent: "center", fontSize: 11 }}
-              disabled={!!busy}
-              markSize={11}
-            >
-              <Zap size={11} /> 直接出片
-            </CreditButton>
-          </div>
-        )}
-        {s.flow === "frame" && (
-          <CreditButton
-            cost={SHORT_CLIP_COST}
-            onConfirm={onClip}
-            confirmTitle="生成视频"
-            confirmBody="基于已选首帧生成动态视频。"
-            className="btn btn-primary btn-sm"
-            style={{ height: 30, justifyContent: "center", fontSize: 11.5 }}
-            disabled={!!busy}
-            markSize={12}
-          >
-            <Film size={12} /> 生成视频
-          </CreditButton>
-        )}
-        {s.flow === "clip" && (
-          <button type="button" className="btn btn-primary btn-sm" style={{ height: 30, justifyContent: "center", fontSize: 11.5 }} onClick={onDone}>
-            <Check size={12} /> 验收这镜
-          </button>
-        )}
-        {s.flow === "done" && (
-          <button type="button" className="chip" style={{ height: 28, justifyContent: "center", fontSize: 11 }}>
-            <Check size={11} /> 已验收
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
+// v0.88：短视频大纲 / 分镜 beat 语义标签（设计稿口播种草 13s 模型）。
+const SHORT_BEATS = ["痛点开场", "卖点演示", "强 CTA 收尾"];
 
 export default function ShortMakerPage() {
   return (
@@ -397,7 +251,8 @@ function ShortMakerInner({
         ? `已套用【${fmt.name}】模版 —— 我照它的爆款节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）帮你拆,说说你的主题/产品就行。`
         : "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。";
 
-  const [step, setStep] = React.useState<"script" | "factory">(initial.step ?? "script");
+  // v0.88：单页化后不再切步骤；step 仍随草稿保存（兼容旧字段）。
+  const [step] = React.useState<"script" | "factory">(initial.step ?? "script");
   const [phase, setPhase] = React.useState<"idle" | "gen" | "done">(initial.shots.length ? "done" : "idle");
   const [shots, setShots] = React.useState<ShortShot[]>(() => (initial.shots as ShortShot[]) ?? []);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
@@ -635,11 +490,6 @@ function ShortMakerInner({
     }
   };
 
-  const STEP_META: { key: "script" | "factory"; no: number; name: string; icon: React.ElementType }[] = [
-    { key: "script", no: 1, name: "分镜脚本", icon: Clapperboard },
-    { key: "factory", no: 2, name: "视频工厂", icon: ImageIcon },
-  ];
-
   return (
     <div className="col ws-flush" style={{ minHeight: 0, background: "var(--bg)", position: "relative" }}>
       {/* 顶栏 */}
@@ -659,30 +509,8 @@ function ShortMakerInner({
           </span>
           <span className="faint num" style={{ fontSize: 11 }}>{displayName} · 竖屏 9:16 · 约 {total}s</span>
         </div>
-        {/* 步骤切换 */}
+        {/* v0.88：单页化（去掉 脚本/工厂 步骤切换）—— 设计稿短视频制作为单页：左口播对话 / 右大纲+分镜表（逐镜内联出片）。 */}
         <span className="grow" />
-        <div className="row" style={{ background: "var(--surface-2)", borderRadius: 999, padding: 3, gap: 2, flex: "none" }}>
-          {STEP_META.map((s) => {
-            const on = step === s.key;
-            const SIcon = s.icon;
-            return (
-              <button
-                key={s.key}
-                type="button"
-                className="chip"
-                onClick={() => setStep(s.key)}
-                style={{
-                  height: 28,
-                  background: on ? "var(--surface)" : "transparent",
-                  color: on ? "var(--accent)" : "var(--ink-3)",
-                  boxShadow: on ? "var(--shadow-sm)" : "none",
-                }}
-              >
-                <span className="num" style={{ fontSize: 10.5, opacity: 0.7 }}>{s.no}</span> <SIcon size={12} /> {s.name}
-              </button>
-            );
-          })}
-        </div>
         <button
           type="button"
           className="btn btn-ghost btn-sm"
@@ -697,7 +525,7 @@ function ShortMakerInner({
       </header>
 
       {/* 脚本步:左 AI 对话 / 右 生成脚本 · 工厂步:居中滚动 */}
-      {step === "script" ? (
+      {(
         <div className="row grow" style={{ minHeight: 0, alignItems: "stretch" }}>
           {/* 左:AI 对话 */}
           <div className="col" style={{ width: 380, flex: "none", borderRight: "1px solid var(--line)", background: "var(--surface)", minHeight: 0 }}>
@@ -823,8 +651,18 @@ function ShortMakerInner({
                 <div className="card col gap-3" style={{ padding: 16, marginBottom: 16 }}>
                   <div className="row gap-2" style={{ alignItems: "center" }}>
                     <Sparkles size={15} style={{ color: "var(--accent)" }} />
-                    <span style={{ fontWeight: 800, fontSize: 14 }}>整体短视频说明</span>
+                    <span style={{ fontWeight: 800, fontSize: 14 }}>短视频大纲</span>
+                    <span className="tag tag-gray" style={{ flex: "none" }}>口播种草 · 单片 · 竖屏 9:16</span>
                     <span className="faint" style={{ fontSize: 11 }}>AI 先定调 · 分镜与出片都据此保持一致，可直接改</span>
+                  </div>
+                  {/* v0.88：短视频大纲 beat 流（设计稿口播种草模型）。 */}
+                  <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    {SHORT_BEATS.map((b, i) => (
+                      <React.Fragment key={b}>
+                        <span className="chip static" style={{ height: 26, background: "var(--accent-soft)", color: "var(--accent)" }}>{b}</span>
+                        {i < SHORT_BEATS.length - 1 && <ArrowRight size={13} style={{ color: "var(--ink-3)" }} />}
+                      </React.Fragment>
+                    ))}
                   </div>
                   <div className="col gap-1">
                     <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>标题</span>
@@ -897,8 +735,12 @@ function ShortMakerInner({
               ) : (
                 <div className="col gap-3">
                   {shots.map((s2, i) => (
+                    <div key={s2.id} className="col gap-1">
+                      {/* v0.88：每镜 beat 语义标签（设计稿 shortBeat） */}
+                      <span className="tag tag-accent" style={{ alignSelf: "flex-start" }}>
+                        {SHORT_BEATS[i] ?? `镜 ${i + 1}`}
+                      </span>
                     <ShotFormCard
-                      key={s2.id}
                       s={s2}
                       start={shots.slice(0, i).reduce((a, x) => a + (x.dur || 0), 0)}
                       colors={s2.flow === "draft" ? { from: "#cbd5e1", to: "#94a3b8" } : { from: fmt.from, to: fmt.to }}
@@ -911,6 +753,7 @@ function ShortMakerInner({
                       onRenderClip={() => render(s2.id, "clip", 7)}
                       onApprove={() => updShot(s2.id, { flow: "done" })}
                     />
+                    </div>
                   ))}
                   <button
                     type="button"
@@ -934,35 +777,6 @@ function ShortMakerInner({
             </div>
           </div>
         </div>
-      ) : (
-        <div className="scroll grow" style={{ minHeight: 0 }}>
-          <div style={{ maxWidth: 880, margin: "0 auto", padding: "22px 32px 110px" }}>
-            {/* —— 视频工厂 —— */}
-            <GenSettingsBar defaultRatio="9:16" refs={refs} setRefs={setRefs} />
-            <div className="card row gap-3" style={{ padding: "13px 16px", marginBottom: 16 }}>
-              <ImageIcon size={17} style={{ color: "var(--accent)" }} />
-              <div className="grow">
-                <div style={{ fontWeight: 700, fontSize: 13.5 }}>逐镜出片 · 两条路任选</div>
-                <div className="faint" style={{ fontSize: 11.5 }}>稳妥：先生成首帧，确认画面后再出视频；赶时间：直接生成镜头视频</div>
-              </div>
-              <span className="tag tag-gray num">{doneCount}/{shots.length} 已成片</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 14 }}>
-              {shots.map((s) => (
-                <ShortShotCard
-                  key={s.id}
-                  s={s}
-                  fmt={fmt}
-                  busy={busy && busy.id === s.id ? busy.to : null}
-                  onFrame={() => render(s.id, "frame", 2)}
-                  onDirect={() => render(s.id, "clip", 9)}
-                  onClip={() => render(s.id, "clip", 7)}
-                  onDone={() => updShot(s.id, { flow: "done" })}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
       )}
 
       {/* 悬浮 CTA */}
@@ -980,14 +794,7 @@ function ShortMakerInner({
           border: "1px solid var(--line-soft)",
         }}
       >
-        {step === "script" ? (
-          <>
-            <span className="faint" style={{ fontSize: 11.5, alignSelf: "center", paddingLeft: 4 }}>脚本满意?</span>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => setStep("factory")}>
-              <ImageIcon size={13} /> 去视频工厂
-            </button>
-          </>
-        ) : shots.length > 0 && doneCount === shots.length ? (
+        {shots.length > 0 && doneCount === shots.length ? (
           <button
             type="button"
             className="btn btn-grad"
