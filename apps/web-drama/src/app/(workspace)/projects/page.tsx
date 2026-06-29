@@ -7,14 +7,14 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, Clock, PenTool, Wand2, Zap } from "lucide-react";
-import { Thumb } from "@/components/drama-ui";
+import { ArrowRight, Clock, Trash2, Wand2, Zap } from "lucide-react";
+import { Thumb, dramaConfirm } from "@/components/drama-ui";
 import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
-import { REVIEW_PENDING_COUNT, type DramaProjectSummary } from "@/mocks/drama-workshop";
+import { type DramaProjectSummary } from "@/mocks/drama-workshop";
 import { ProjectsApi, RecipesApi } from "@/api";
-import { useAsync } from "@/lib/drama-query";
+import { useAsync, invalidate } from "@/lib/drama-query";
 import { aiErrorMessage } from "@/lib/ai-error";
 
 export default function ProjectsHubPage() {
@@ -31,9 +31,11 @@ function ProjectsHubInner() {
   const [preview, setPreview] = React.useState<DramaProjectSummary | null>(null);
   const [extracting, setExtracting] = React.useState(false);
 
+  // revalidateOnMount：每次回到工坊后台静默刷新，确保刚新建 / 衍生 / 套用的短剧立刻出现在列表。
   const { data: projects, isLoading: loading, error, refetch } = useAsync(
     "/me/drama/projects",
     () => ProjectsApi.listProjects(),
+    { revalidateOnMount: true },
   );
   // 只收多集连续短剧；单集作品（宣传片 / 自传 / 口播等）归「短视频工坊」，避免串档。
   const list = (projects ?? []).filter((p) => p.episodes > 1);
@@ -45,14 +47,34 @@ function ProjectsHubInner() {
     }
   }, [sp, router]);
 
-  // 最近更新的作为「继续上次」大卡，其余进网格。
+  // 最近更新的项目额外用「继续上次」大卡置顶做快捷入口；网格仍展示全部短剧
+  // （含最近的那部）——避免「刚新建的短剧只在大卡里、网格里找不到」的困惑。
   const main = list[0];
-  const rest = list.slice(1);
 
   // 已完成的短剧:先看成片预览,再决定看脚本还是衍生
   const openProject = (p: DramaProjectSummary) => {
     if (p.done) setPreview(p);
     else router.push(`/projects/${p.id}`);
+  };
+
+  // 软删（移到回收站）：二次确认 → 软删 → 刷新列表（30 天内可在回收站恢复）。
+  const softDelete = async (p: DramaProjectSummary) => {
+    const ok = await dramaConfirm({
+      title: "移到回收站",
+      body: `《${p.title}》将移入回收站，30 天后彻底删除，期间可随时恢复。`,
+      tone: "danger",
+      confirmLabel: "移到回收站",
+      cancelLabel: "再想想",
+    });
+    if (!ok) return;
+    try {
+      await ProjectsApi.deleteProject(p.id);
+      invalidate("/me/drama/projects");
+      invalidate("/me/drama/projects/trash");
+      toast.success("已移到回收站");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
+    }
   };
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
@@ -62,6 +84,15 @@ function ProjectsHubInner() {
           <div className="muted" style={{ marginTop: 4 }}>你的多集连续短剧都在这里 —— 点卡片接着做</div>
         </div>
         <div className="row gap-3">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ height: 44, padding: "0 14px" }}
+            onClick={() => router.push("/projects/trash")}
+            title="回收站"
+          >
+            <Trash2 size={16} /> 回收站
+          </button>
           <button
             type="button"
             className="btn btn-line"
@@ -141,41 +172,15 @@ function ProjectsHubInner() {
         </button>
       )}
 
-      {/* 剧本审阅入口(收进短剧工坊,不再占一级菜单) */}
-      <button
-        type="button"
-        className="card row gap-3 fade-up"
-        onClick={() => router.push("/review")}
-        style={{ width: "100%", padding: "11px 16px", marginBottom: 20, textAlign: "left", alignItems: "center" }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.boxShadow = "var(--shadow-lg)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.boxShadow = "var(--shadow-sm)";
-        }}
-      >
-        <span style={{ width: 34, height: 34, borderRadius: 11, background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)", flex: "none" }}>
-          <PenTool size={17} />
-        </span>
-        <span style={{ fontWeight: 700, fontSize: 13.5 }}>剧本审阅</span>
-        <span className="faint" style={{ fontSize: 12 }}>跨项目待审剧本集中过目,原地通读、原地通过</span>
-        <span className="grow" />
-        {REVIEW_PENDING_COUNT > 0 && (
-          <span className="num" style={{ minWidth: 18, height: 18, padding: "0 6px", borderRadius: 99, background: "var(--accent-2)", color: "#fff", fontSize: 11, fontWeight: 700, display: "grid", placeItems: "center" }}>
-            {REVIEW_PENDING_COUNT}
-          </span>
-        )}
-        <span className="btn btn-line btn-sm" style={{ flex: "none" }}>去审阅 <ArrowRight size={13} /></span>
-      </button>
-
-      {/* 紧凑竖版网格 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, alignItems: "start" }}>
+      {/* 紧凑竖版网格（stretch 让「开一部新的」与短剧卡片等高） */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "stretch" }}>
         <button
           type="button"
           onClick={() => router.push("/projects/new?focus=template")}
           className="col center"
           style={{
-            aspectRatio: "3/4",
+            height: "100%",
+            minHeight: 240,
             borderRadius: "var(--radius)",
             border: "2px dashed var(--line)",
             color: "var(--ink-3)",
@@ -212,7 +217,9 @@ function ProjectsHubInner() {
 
         {loading
           ? Array.from({ length: 5 }).map((_, i) => <ProjectCardSkeleton key={i} />)
-          : rest.map((p, i) => <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} />)}
+          : list.map((p, i) => (
+              <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} onDelete={softDelete} />
+            ))}
       </div>
 
       {preview && (
@@ -276,7 +283,7 @@ function ProjectsHubInner() {
 function ProjectCardSkeleton() {
   return (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div className="skel" style={{ aspectRatio: "3/4", borderRadius: 0 }} />
+      <div className="skel" style={{ aspectRatio: "1/1", borderRadius: 0 }} />
       <div style={{ padding: 14 }}>
         <div className="skel" style={{ height: 12, width: "60%", marginBottom: 10 }} />
         <div className="skel" style={{ height: 8, width: "100%", marginBottom: 8 }} />
@@ -291,7 +298,7 @@ function HubSkeleton() {
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
       <div className="skel" style={{ height: 32, width: 180, marginBottom: 8 }} />
       <div className="skel" style={{ height: 16, width: 320, marginBottom: 24 }} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16 }}>
         {Array.from({ length: 6 }).map((_, i) => (
           <ProjectCardSkeleton key={i} />
         ))}

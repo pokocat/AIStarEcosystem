@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import {
   ArrowRight,
   Check,
+  Clapperboard,
   GripVertical,
   Layers,
   Link as LinkIcon,
@@ -61,6 +62,8 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
   const [eps, setEps] = React.useState<EpisodeOutline[]>(data.episodes);
   React.useEffect(() => {
     setEps(data.episodes);
+    // 外部（如「短剧设定」浮动条「加一集」）写入分集后，从空态切到列表态（不打断生成中）。
+    setPhase((p) => (p === "idle" && data.episodes.length ? "done" : p));
   }, [data.episodes]);
   const locked = !!state.lockedStages.outline;
   const cfg = useDramaConfig();
@@ -123,6 +126,217 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
 
   const gen = () => runOutline(scope, scopeCost(scope));
   const fillRest = () => runOutline("full", fillRestCost);
+
+  // ── v0.89：内嵌「短剧设定」时按设计稿拆成两块：剧情大纲（主线+脉络）/ 分集剧情（生成控件落在空态里）。
+  if (embedded) {
+    const outlineGenerated = !!(data.projectInfo.logline || data.projectInfo.mainline);
+    const mainlineSteps = data.projectInfo.mainline ? data.projectInfo.mainline.split(" → ") : [];
+    const genControls = (
+      <div className="row" style={{ gap: 20, flexWrap: "wrap", justifyContent: "center", alignItems: "flex-end" }}>
+        <div className="col gap-2" style={{ alignItems: "flex-start" }}>
+          <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>范围</span>
+          <div className="row gap-2">
+            {SCOPE_OPTS.map((o) => {
+              const on = scope === o.key;
+              return (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={() => pickScope(o.key)}
+                  className="col"
+                  style={{
+                    padding: "7px 13px",
+                    borderRadius: 11,
+                    textAlign: "left",
+                    gap: 1,
+                    border: on ? "2px solid var(--accent)" : "1.5px solid var(--line)",
+                    background: on ? "var(--accent-soft)" : "var(--surface)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 12.5, color: on ? "var(--accent)" : "var(--ink)" }}>{o.name}</span>
+                  <span className="faint num" style={{ fontSize: 11 }}>
+                    {o.eps ? `前 ${o.eps} 集` : `全部 ${total} 集`} · {scopeCost(o.key)} 积分
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="col gap-2" style={{ alignItems: "flex-start" }}>
+          <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>每集时长</span>
+          <div className="row gap-2">
+            {DUR_OPTS.map((d) => (
+              <button key={d} type="button" className={"chip num" + (dur === d ? " on" : "")} onClick={() => pickDur(d)}>
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <>
+        {/* ===== 剧情大纲（总览 + 主线脉络） ===== */}
+        <div className="row gap-2" style={{ alignItems: "center", margin: "20px 0 12px" }}>
+          <span className="icon-badge" style={{ width: 27, height: 27, borderRadius: 8 }}>
+            <LinkIcon size={15} />
+          </span>
+          <span style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: "-.01em" }}>剧情大纲</span>
+          <span className="tag tag-gray" style={{ flex: "none" }}>总览 · 分集</span>
+          {prefilled && (
+            <span className="tag tag-pink" style={{ flex: "none" }}>
+              <Layers size={11} /> 模板已预填
+            </span>
+          )}
+          <span className="grow" />
+          <span className={outlineGenerated ? "tag tag-green" : "tag tag-amber"} style={{ flex: "none" }}>
+            {outlineGenerated ? (
+              <>
+                <Check size={11} /> 已生成
+              </>
+            ) : (
+              "待完善"
+            )}
+          </span>
+        </div>
+        <div className="card" style={{ padding: 18, marginBottom: 6 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.65, color: "var(--ink)" }}>
+            {data.projectInfo.logline || data.projectInfo.mainline || (
+              <span className="faint" style={{ fontWeight: 400 }}>还没有一句话剧情，先去脑暴或套个模板补上主线。</span>
+            )}
+          </div>
+          {mainlineSteps.length > 0 && (
+            <div
+              style={{
+                marginTop: 14,
+                borderLeft: "3px solid var(--accent)",
+                background: "var(--accent-soft)",
+                borderRadius: "0 12px 12px 0",
+                padding: "11px 14px",
+              }}
+            >
+              <div className="row gap-2" style={{ marginBottom: 9, alignItems: "center" }}>
+                <span style={{ fontWeight: 800, fontSize: 12.5, color: "var(--accent)" }}>剧情脉络</span>
+                <span className="tag tag-gray" style={{ height: 18, fontSize: 10, padding: "0 7px" }}>AI 分析</span>
+              </div>
+              <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                {mainlineSteps.map((s, i) => (
+                  <React.Fragment key={`${s}-${i}`}>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{s}</span>
+                    {i < mainlineSteps.length - 1 && <ArrowRight size={13} style={{ color: "var(--ink-3)" }} />}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ===== 分集剧情（生成控件落在空态里） ===== */}
+        <div className="row gap-2" style={{ alignItems: "center", margin: "22px 0 12px" }}>
+          <span className="icon-badge" style={{ width: 27, height: 27, borderRadius: 8 }}>
+            <Clapperboard size={15} />
+          </span>
+          <span style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: "-.01em" }}>分集剧情</span>
+          <span className={phase === "done" ? "tag tag-green" : "tag tag-amber"} style={{ flex: "none" }}>
+            {phase === "done" ? (
+              <>
+                <Check size={11} /> 已生成
+              </>
+            ) : (
+              "待生成"
+            )}
+          </span>
+          {locked && (
+            <span className="tag tag-gray" style={{ flex: "none" }}>
+              <Lock size={11} /> 已锁定
+            </span>
+          )}
+        </div>
+
+        {phase === "idle" && (
+          <div className="card col center" style={{ padding: "34px 24px", textAlign: "center", gap: 14 }}>
+            <div style={{ width: 52, height: 52, borderRadius: 16, background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)" }}>
+              <Clapperboard size={26} />
+            </div>
+            <div className="col gap-1" style={{ alignItems: "center" }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>还没有分集剧情</div>
+              <div className="muted" style={{ maxWidth: 430, fontSize: 13, lineHeight: 1.6 }}>
+                AI 会顺着上面的「剧情脉络」，把整部剧拆成一集一集的钩子和梗概。先选个范围和时长。
+              </div>
+            </div>
+            {genControls}
+            <button
+              type="button"
+              className="btn btn-grad"
+              style={{ height: 44, padding: "0 24px", fontSize: 14.5, marginTop: 4 }}
+              onClick={gen}
+            >
+              <Sparkles size={16} /> AI 生成分集剧情 · {scopeCost(scope)} 积分
+            </button>
+          </div>
+        )}
+
+        {phase === "gen" && (
+          <div className="card" style={{ padding: 18 }}>
+            <GenSkeleton lines={4} label={`正在按主线铺${scope === "trial" ? "前 6 集" : `全部 ${total} 集`}的钩子…`} />
+          </div>
+        )}
+
+        {phase === "done" && (
+          <div className="col gap-3">
+            {showEps.map((e, i) => (
+              <EpisodeRow
+                key={e.no}
+                e={e}
+                delay={i * 45}
+                prefilled={prefilled}
+                editable={!locked}
+                onReorder={reorderEp}
+                onEdit={editEp}
+              />
+            ))}
+            {scope === "trial" && !locked && (
+              <div className="card row gap-3" style={{ padding: 16, border: "1.5px dashed var(--line)", background: "var(--surface-2)" }}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 11,
+                    background: "var(--accent-soft)",
+                    display: "grid",
+                    placeItems: "center",
+                    color: "var(--accent)",
+                    flex: "none",
+                  }}
+                >
+                  <List size={18} />
+                </div>
+                <div className="grow">
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - 6} 集一次铺完</div>
+                  <div className="faint" style={{ fontSize: 12 }}>AI 会顺着这 6 集的节奏与人物关系往后铺,口吻不会断</div>
+                </div>
+                <button type="button" className="btn btn-primary btn-sm" style={{ flex: "none" }} onClick={fillRest}>
+                  铺完整 {total} 集 · 补 {fillRestCost} 积分
+                </button>
+              </div>
+            )}
+            {!locked && (
+              <div className="row gap-2" style={{ justifyContent: "flex-end", marginTop: 2, flexWrap: "wrap" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={gen}>
+                  <Sparkles size={14} /> 重新生成
+                </button>
+                <button type="button" className="btn btn-line btn-sm" onClick={addEp}>
+                  <Plus size={14} /> 加一集
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
 
   const inner = (
     <>
@@ -374,7 +588,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
         )}
     </>
   );
-  if (embedded) return inner;
+  // embedded 分支已在上方提前返回；此处只服务独立「大纲分集」阶段页。
   return (
     <div className="scroll" style={{ height: "100%" }}>
       <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 32px 64px" }}>

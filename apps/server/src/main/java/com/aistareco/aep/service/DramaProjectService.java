@@ -170,6 +170,63 @@ public class DramaProjectService {
         repo.save(row);
     }
 
+    // ── 回收站（软删 → 保留期 → 到期物理删除） ───────────────────────────────────
+    // 软删（移入回收站）复用上面的 deleteProject。镜像 dap 数字人回收站约定。
+
+    /** 软删项目在回收站保留的天数，到期后由定时任务物理删除。 */
+    public static final int TRASH_RETENTION_DAYS = 30;
+
+    /** 回收站列表：当前用户已软删的项目（含 deletedAt / purgeAt / daysLeft）。 */
+    public List<JsonNode> listTrash(String userId) {
+        if (userId == null || userId.isBlank()) return List.of();
+        List<JsonNode> out = new ArrayList<>();
+        for (DramaProject p : repo.findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(userId)) {
+            out.add(toTrashItem(p));
+        }
+        return out;
+    }
+
+    /** 从回收站恢复：清除 deletedAt，回到工坊列表。→ { meta, data }。 */
+    public JsonNode restoreProject(String id, String userId) {
+        DramaProject row = repo.findByIdAndOwnerUserId(id, userId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+        if (row.getDeletedAt() != null) {
+            row.setDeletedAt(null);
+            row.setUpdatedAt(OffsetDateTime.now());
+            repo.save(row);
+        }
+        return toDetail(row);
+    }
+
+    /** 彻底删除（物理）：必须已在回收站。 */
+    public void purgeProject(String id, String userId) {
+        DramaProject row = repo.findByIdAndOwnerUserId(id, userId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+        if (row.getDeletedAt() == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_NOT_IN_TRASH", "请先移入回收站再彻底删除");
+        }
+        repo.delete(row);
+    }
+
+    /** 定时任务：物理删除软删超过保留期的项目。返回清理条数。 */
+    public int purgeExpiredTrash() {
+        OffsetDateTime cutoff = OffsetDateTime.now().minusDays(TRASH_RETENTION_DAYS);
+        List<DramaProject> expired = repo.findByDeletedAtBefore(cutoff);
+        int done = 0;
+        for (DramaProject p : expired) {
+            try {
+                repo.delete(p);
+                done++;
+            } catch (Exception e) {
+                log.warn("[drama-trash] purge expired failed id={}: {}", p.getId(), e.getMessage());
+            }
+        }
+        if (!expired.isEmpty()) {
+            log.info("[drama-trash] purge expired: {}/{} cleaned (cutoff={})", done, expired.size(), cutoff);
+        }
+        return done;
+    }
+
     // ── 大纲 AI 起草 ───────────────────────────────────────────────────────────
 
     /**
@@ -740,6 +797,22 @@ public class DramaProjectService {
         s.put("updated", relativeTime(p.getUpdatedAt()));
         s.put("updatedAt", p.getUpdatedAt() != null ? p.getUpdatedAt().toString() : null);
         if (p.getProgress() >= 100) s.put("done", true);
+        return s;
+    }
+
+    /** 回收站卡片：在 summary 基础上加 deletedAt / purgeAt / daysLeft（剩余天数，向上取整）。 */
+    private ObjectNode toTrashItem(DramaProject p) {
+        ObjectNode s = toSummary(p);
+        OffsetDateTime del = p.getDeletedAt();
+        OffsetDateTime purge = del != null ? del.plusDays(TRASH_RETENTION_DAYS) : null;
+        long daysLeft = TRASH_RETENTION_DAYS;
+        if (purge != null) {
+            long ms = Duration.between(OffsetDateTime.now(), purge).toMillis();
+            daysLeft = Math.max(0, (ms + 86_399_999L) / 86_400_000L);
+        }
+        s.put("deletedAt", del != null ? del.toString() : null);
+        s.put("purgeAt", purge != null ? purge.toString() : null);
+        s.put("daysLeft", daysLeft);
         return s;
     }
 

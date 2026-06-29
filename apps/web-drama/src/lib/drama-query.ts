@@ -39,6 +39,33 @@ function notify(key: string) {
   // 通配前缀：以 / 开头时，也通知子项（暂未启用）
 }
 
+// 后台 revalidate（stale-while-revalidate）：已有缓存时静默重拉，
+// 不清旧值、不进 loading、失败保留旧值。用于「返回列表页应看到最新（含刚新建项）」。
+const revalidating = new Set<string>();
+function revalidate<T>(key: string, loader: () => Promise<T>): void {
+  const entry = cache.get(key) as CacheEntry<T> | undefined;
+  if (!entry) {
+    load(key, loader);
+    return;
+  }
+  if (revalidating.has(key)) return; // 防 StrictMode 双挂载 / 并发重复拉取
+  revalidating.add(key);
+  void loader()
+    .then((v) => {
+      const cur = cache.get(key) as CacheEntry<T> | undefined;
+      if (cur) {
+        cur.value = v;
+        cur.error = undefined;
+        cur.ts = Date.now();
+        notify(key);
+      }
+    })
+    .catch(() => {
+      /* 后台刷新失败：保留旧值，不打断用户（与 SWR 一致） */
+    })
+    .finally(() => revalidating.delete(key));
+}
+
 function load<T>(key: string, loader: () => Promise<T>): CacheEntry<T> {
   let entry = cache.get(key) as CacheEntry<T> | undefined;
   if (!entry) {
@@ -93,7 +120,11 @@ export function usePageData<T>(key: string, loader: () => Promise<T>): T {
  * 不 suspend 的版本：返回 { data, isLoading, error, refetch }。
  * 适合列表 + 详情可以共存于同一页面的场景。
  */
-export function useAsync<T>(key: string, loader: () => Promise<T>): {
+export function useAsync<T>(
+  key: string,
+  loader: () => Promise<T>,
+  opts?: { revalidateOnMount?: boolean },
+): {
   data: T | undefined;
   isLoading: boolean;
   error: unknown;
@@ -104,6 +135,9 @@ export function useAsync<T>(key: string, loader: () => Promise<T>): {
   React.useEffect(() => {
     if (!cache.has(key)) {
       load(key, loader);
+    } else if (opts?.revalidateOnMount) {
+      // 已有缓存：后台静默刷新（无 loading 闪烁），确保返回页面看到最新数据。
+      revalidate(key, loader);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

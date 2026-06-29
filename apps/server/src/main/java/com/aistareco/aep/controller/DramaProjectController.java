@@ -54,10 +54,30 @@ public class DramaProjectController {
         return ApiResponse.of(service.saveProject(id, body, principal.getName()));
     }
 
+    /** 软删（移入回收站，保留 30 天后由定时任务物理删除）。 */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(Principal principal, @PathVariable String id) {
         service.deleteProject(id, principal.getName());
+    }
+
+    /** 回收站列表 → DramaProjectSummary[] + { deletedAt, purgeAt, daysLeft }。 */
+    @GetMapping("/trash")
+    public ApiResponse<List<JsonNode>> trash(Principal principal) {
+        return ApiResponse.of(service.listTrash(principal.getName()));
+    }
+
+    /** 从回收站恢复 → { meta, data }。 */
+    @PostMapping("/{id}/restore")
+    public ApiResponse<JsonNode> restore(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(service.restoreProject(id, principal.getName()));
+    }
+
+    /** 彻底删除（物理，需已在回收站）。 */
+    @DeleteMapping("/{id}/purge")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void purge(Principal principal, @PathVariable String id) {
+        service.purgeProject(id, principal.getName());
     }
 
     /** 大纲 AI 起草。body: { count? } → { episodes: [...] }（未落库，前端合并后再 PUT 保存）。 */

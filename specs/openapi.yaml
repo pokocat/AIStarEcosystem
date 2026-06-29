@@ -7378,7 +7378,16 @@ paths:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     get:    { tags: [drama], operationId: getDramaProject,    summary: '短剧项目详情（meta + 整套 ProjectData）', responses: { '200': { description: ok } } }
     put:    { tags: [drama], operationId: saveDramaProject,   summary: '保存整套工作台文档', responses: { '200': { description: ok } } }
-    delete: { tags: [drama], operationId: deleteDramaProject, summary: '删除短剧项目（软删）', responses: { '204': { description: ok } } }
+    delete: { tags: [drama], operationId: deleteDramaProject, summary: '删除短剧项目（软删，移入回收站）', responses: { '204': { description: ok } } }
+  # ── 回收站（软删 → 30 天保留 → 到期由定时任务物理删除）──
+  /me/drama/projects/trash:
+    get: { tags: [drama], operationId: listDramaProjectsTrash, summary: '回收站列表（软删项目，附 deletedAt / purgeAt / daysLeft）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/restore:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: restoreDramaProject, summary: '从回收站恢复短剧项目', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/purge:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    delete: { tags: [drama], operationId: purgeDramaProject, summary: '彻底删除回收站项目（物理删除，不可恢复）', responses: { '204': { description: ok } } }
   /me/drama/projects/{id}/outline/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaOutline, summary: 'AI 起草分集大纲（大模型，复用 DRAMA_SCRIPT_DRAFT 端点）', responses: { '200': { description: ok } } }

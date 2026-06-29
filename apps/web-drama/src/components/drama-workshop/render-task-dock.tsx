@@ -31,15 +31,13 @@ function TaskIcon({ task }: { task: DramaRenderTask }) {
   return <Video size={14} />;
 }
 
-export function RenderTaskDock() {
+export function RenderTaskDock({ style }: { style?: React.CSSProperties } = {}) {
   const pathname = usePathname();
   // 仅在真正会触发渲染的页面出现：项目工作台 /projects/[id]、短视频制作 /shorts/make。
   const onRenderPage =
     !!pathname &&
     ((/^\/projects\/[^/]+/.test(pathname) && !pathname.startsWith("/projects/new")) ||
       pathname.startsWith("/shorts/make"));
-  const isWorkshop =
-    !!pathname && /^\/projects\/[^/]+/.test(pathname) && !pathname.startsWith("/projects/new");
   const [open, setOpen] = React.useState(false);
   const [snapshot, setSnapshot] = React.useState<RenderTaskSnapshot | null>(null);
 
@@ -93,27 +91,7 @@ export function RenderTaskDock() {
 
   return (
     <>
-      <div className={`render-task-dock${isWorkshop ? " is-workshop" : ""}`} aria-live="polite">
-        <button
-          type="button"
-          className="render-task-head"
-          onClick={() => setOpen((v) => !v)}
-          title="后台生成"
-        >
-          <span className="render-task-icon">
-            {activeCount > 0 ? <Loader2 size={15} className="render-task-spin" /> : <Activity size={15} />}
-          </span>
-          <span className="render-task-title">
-            后台生成
-            <span>{activeCount > 0 ? `${activeCount} 个进行中` : "空闲"}</span>
-          </span>
-          <span className="render-task-load">
-            <Cpu size={13} />
-            {running}/{limit}
-          </span>
-          {open ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-        </button>
-
+      <div className="render-task-dock" style={style} aria-live="polite">
         {open && (
           <div className="render-task-panel">
             <div className="render-task-meter">
@@ -156,19 +134,32 @@ export function RenderTaskDock() {
             </div>
           </div>
         )}
+
+        <button
+          type="button"
+          className="render-task-head"
+          onClick={() => setOpen((v) => !v)}
+          title="后台生成"
+        >
+          <span className="render-task-icon">
+            {activeCount > 0 ? <Loader2 size={15} className="render-task-spin" /> : <Activity size={15} />}
+          </span>
+          <span className="render-task-title">
+            后台生成
+            <span>{activeCount > 0 ? `${activeCount} 个进行中` : "空闲"}</span>
+          </span>
+          <span className="render-task-load">
+            <Cpu size={13} />
+            {running}/{limit}
+          </span>
+          {open ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+        </button>
       </div>
 
       <style jsx>{`
         .render-task-dock {
-          position: fixed;
-          left: 252px;
-          bottom: 18px;
-          z-index: 90;
-          width: min(340px, calc(100vw - 28px));
+          width: 100%;
           color: var(--ink);
-        }
-        .render-task-dock.is-workshop {
-          left: 342px;
         }
         .render-task-head,
         .render-task-panel {
@@ -225,7 +216,7 @@ export function RenderTaskDock() {
           flex: none;
         }
         .render-task-panel {
-          margin-top: 8px;
+          margin-bottom: 8px;
           border-radius: 14px;
           overflow: hidden;
         }
@@ -337,12 +328,6 @@ export function RenderTaskDock() {
         }
         .render-task-spin {
           animation: drama-spin 0.8s linear infinite;
-        }
-        @media (max-width: 900px) {
-          .render-task-dock {
-            left: 14px;
-            bottom: 14px;
-          }
         }
       `}</style>
     </>
