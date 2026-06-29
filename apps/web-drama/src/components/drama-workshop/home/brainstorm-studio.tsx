@@ -22,6 +22,7 @@ import { useAsync } from "@/lib/drama-query";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { Editable } from "@/components/drama-ui";
+import { MarkdownLite } from "@/lib/markdown-lite";
 import { aiErrorMessage } from "@/lib/ai-error";
 
 const RATIOS: { k: string; label: string }[] = [
@@ -444,10 +445,10 @@ function ChatBubble({ m, onQuick }: { m: BrainstormMessage; onQuick: (q: string)
             color: mine ? "#fff" : "var(--ink)",
             fontSize: 13.5,
             lineHeight: 1.65,
-            whiteSpace: "pre-line",
+            ...(mine ? { whiteSpace: "pre-line" as const } : null),
           }}
         >
-          {m.text}
+          {mine ? m.text : <MarkdownLite text={m.text} />}
         </div>
         {!mine && m.quick && m.quick.length > 0 && (
           <div className="row gap-2" style={{ flexWrap: "wrap" }}>

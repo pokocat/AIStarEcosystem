@@ -4,6 +4,7 @@
 // 模板化提示词由调用方传入(如【衍生上一集】【给我惊喜】)。
 import * as React from "react";
 import { ArrowRight, Sparkles, X } from "lucide-react";
+import { MarkdownLite } from "@/lib/markdown-lite";
 
 export interface ChatMsg {
   who: "ai" | "me";
@@ -97,7 +98,7 @@ export function AiChatPanel({
                 borderBottomLeftRadius: m.who === "me" ? 11 : 4,
               }}
             >
-              {m.text}
+              {m.who === "me" ? m.text : <MarkdownLite text={m.text} />}
             </div>
           </div>
         ))}

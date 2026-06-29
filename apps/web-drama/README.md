@@ -68,6 +68,12 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.95 · 2026-06-29 · AI 对话气泡支持 Markdown + 快捷建议紧扣回复
+
+- **AI 气泡渲染 Markdown（`lib/markdown-lite.tsx`）**：脑暴助手回复里的 `**加粗**` / `1. 2. 3.` 有序列表 / `-`·`·` 无序列表 / 换行此前按纯文本显示（`**` 露出来）。新增轻量渲染器（不引三方库、不走 `dangerouslySetInnerHTML`，纯 React 元素天然转义）—— 接入脑暴对话、短视频制作左侧对话、剧集脚本 `ai-chat-panel` 三处 AI 气泡（用户气泡仍纯文本）。
+- **快捷建议（quick）紧扣回复**：脑暴 chat 提示词 `drama.brainstorm_chat.md` 重写要求 ③ —— quick 必须针对**本条回复**（给了几个赛道就让用户选其一 / 微调，抛了设定就延伸或反向），不再照搬通用示例；并允许 reply 用简单 Markdown。`dev-fake-llm` 脑暴回复同步改为 Markdown 分点 + 紧扣回复的 quick（dev 可直接验收渲染）。
+- **门禁**：web-drama typecheck + build（31 路由）全绿。
+
 ### v0.94 · 2026-06-29 · 短视频制作右侧还原设计稿（平铺分镜表）
 
 - **分镜表平铺还原（`short-storyboard-table.tsx`）**：短视频制作页右侧从「逐镜竖卡（ShotFormCard 堆叠）」改为设计稿的**平铺分镜表** —— 列：镜·时长（beat 语义标签 + 镜号 + 时间线 + 时长）/ 首帧（4 态 + AI 改图 + 出片）/ 口播文案·画面（说话人 + 台词框 + 画面）/ 镜头（景别·运镜）/ 音效·BGM·特效，所有单元格结构化可编辑、随草稿自动保存。

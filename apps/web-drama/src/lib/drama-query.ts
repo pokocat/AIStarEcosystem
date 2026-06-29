@@ -16,6 +16,8 @@ interface CacheEntry<T> {
   value?: T;
   error?: unknown;
   ts: number;
+  /** 最近一次使用的 loader —— invalidate 时若该 key 仍被订阅，可据此自动重拉（否则只删，下次挂载再拉）。 */
+  loader?: () => Promise<T>;
 }
 
 const cache = new Map<string, CacheEntry<unknown>>();
@@ -90,8 +92,10 @@ function load<T>(key: string, loader: () => Promise<T>): CacheEntry<T> {
         // 该 resolved 值永不被消费，仅作 Suspense 的 settle 信号。
         return undefined as T;
       });
-    entry = { promise, ts: Date.now() };
+    entry = { promise, ts: Date.now(), loader };
     cache.set(key, entry as CacheEntry<unknown>);
+  } else if (!entry.loader) {
+    entry.loader = loader;
   }
   return entry;
 }
@@ -160,16 +164,19 @@ export function useAsync<T>(
  * 参数：完整 key 或 key 前缀（以 `/` 开头视作前缀匹配）。
  */
 export function invalidate(keyOrPrefix: string): void {
-  if (keyOrPrefix.endsWith("/")) {
-    for (const k of Array.from(cache.keys())) {
-      if (k.startsWith(keyOrPrefix)) {
-        cache.delete(k);
-        notify(k);
-      }
+  const isPrefix = keyOrPrefix.endsWith("/");
+  const keys = isPrefix
+    ? Array.from(cache.keys()).filter((k) => k.startsWith(keyOrPrefix))
+    : [keyOrPrefix];
+  for (const k of keys) {
+    // 记住 loader，删缓存后立即重拉 —— 否则 useAsync 的消费者（useEffect 依赖 [key] 不变）
+    // 不会自己重新加载，会停在「无数据」空态（删一条→整列表消失的根因）。
+    const loader = (cache.get(k) as CacheEntry<unknown> | undefined)?.loader;
+    cache.delete(k);
+    if (loader && subscribers.get(k)?.size) {
+      load(k, loader); // 重新加载（load 内部会 notify）
     }
-  } else {
-    cache.delete(keyOrPrefix);
-    notify(keyOrPrefix);
+    notify(k);
   }
 }
 

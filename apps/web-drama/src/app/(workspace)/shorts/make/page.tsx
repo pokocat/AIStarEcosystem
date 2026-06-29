@@ -11,7 +11,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   Check,
-  ChevronDown,
   ChevronLeft,
   Clapperboard,
   Edit,
@@ -30,6 +29,7 @@ import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { ShortStoryboardTable } from "@/components/drama-workshop/short-storyboard-table";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
+import { MarkdownLite } from "@/lib/markdown-lite";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
 import { RenderApi, ShortDramaApi, ShortsApi } from "@/api";
 import type { ScriptMeta } from "@/api/short-drama";
@@ -85,6 +85,17 @@ interface ChatMsg {
 /* 单镜出片卡(竖屏) */
 // v0.88：短视频大纲 / 分镜 beat 语义标签（设计稿口播种草 13s 模型）。
 const SHORT_BEATS = ["痛点开场", "卖点演示", "强 CTA 收尾"];
+
+/** 大纲分区小标题：与短剧「故事大纲」同款 —— 实心圆点 + 字距标签 +（可选）次要说明。 */
+function OutlineLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <div className="row gap-2" style={{ alignItems: "center" }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flex: "none" }} />
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "var(--ink-3)" }}>{children}</span>
+      {hint && <span className="faint" style={{ fontSize: 11 }}>{hint}</span>}
+    </div>
+  );
+}
 
 export default function ShortMakerPage() {
   return (
@@ -261,8 +272,6 @@ function ShortMakerInner({
   const [shots, setShots] = React.useState<ShortShot[]>(() => (initial.shots as ShortShot[]) ?? []);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
   const [meta, setMeta] = React.useState<ScriptMeta | null>(initial.meta ?? null);
-  // 大纲卡「更多设定」折叠态（默认收起，贴合设计稿简洁版）。
-  const [metaOpen, setMetaOpen] = React.useState(false);
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
   const [refs, setRefs] = React.useState<Material[]>(() => initial.refs ?? []); // @数字人参考
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
@@ -614,7 +623,7 @@ function ShortMakerInner({
                       borderBottomLeftRadius: m.who === "me" ? 13 : 4,
                     }}
                   >
-                    {m.text}
+                    {m.who === "me" ? m.text : <MarkdownLite text={m.text} />}
                   </div>
                 </div>
               ))}
