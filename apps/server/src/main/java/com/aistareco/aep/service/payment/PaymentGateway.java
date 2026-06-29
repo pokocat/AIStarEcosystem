@@ -19,6 +19,14 @@ public interface PaymentGateway {
     /** 查单（对账 / 兜底）：按商户订单号查支付网关侧订单态。 */
     PayQueryResult queryPayOrder(String mchOrderNo);
 
-    /** 当前 driver 名（shadow / alipay / wechat）。 */
+    /** 当前 driver 名（shadow / alipay / wechat）= 渠道代码。 */
     String driverName();
+
+    /**
+     * 该渠道当前是否「可下单」（必填机密齐全 / 开关打开）。多渠道运行时配置下，
+     * {@code PaymentService} 据此在 checkout 前校验，未就绪 → 503，不静默回退（§8.0）。
+     */
+    default boolean isConfigured() {
+        return true;
+    }
 }

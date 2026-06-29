@@ -31,10 +31,12 @@ aep:
   dap:
     allow-placeholder: ${AEP_DAP_ALLOW_PLACEHOLDER:false}
   # v2 §6：生产渠道启用 + 机密以 admin 后台「支付配置」DB 为准（多渠道并存，用户收银台自选）。
-  # 此 driver 仅为 DB 尚无配置时的 bootstrap 回落；shadow 在此 profile 激活会打 ERROR 横幅、
-  # 对账须排除（§8.0）。
+  # 此 driver 仅为 DB 尚无配置时的 bootstrap 回落；生产默认关闭影子渠道（启用会打 ERROR 横幅、
+  # 对账须排除，§8.0）。
   payment:
     driver: ${AEP_PAYMENT_DRIVER:alipay}
+    shadow:
+      enabled: ${AEP_PAYMENT_SHADOW_ENABLED:false}
   # MySQL profile 用于生产 / 联调。持久化资产默认走阿里云 OSS；
   # 本地 dev fallback 继续留在 application.yml 的 local fake-CDN。
   cdn:

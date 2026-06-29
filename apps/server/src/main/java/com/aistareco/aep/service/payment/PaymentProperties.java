@@ -20,6 +20,8 @@ public class PaymentProperties {
 
     @Data
     public static class Shadow {
+        /** 是否启用影子收银台渠道（dev 默认 true；生产 profile 应置 false，§8.0）。 */
+        private boolean enabled = true;
         /** manual=前端模拟收银台手动确认；auto=下单后延迟自动确认（CI/headless）。 */
         private String confirmMode = "manual";
         /** auto 模式下单后多少毫秒自动判成功。 */

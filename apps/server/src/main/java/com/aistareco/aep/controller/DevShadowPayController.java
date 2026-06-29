@@ -15,14 +15,14 @@ import java.security.Principal;
 /**
  * 影子模拟收银台确认端点（v2 §6.7）。
  *
- * §8.0 门禁：**仅当 {@code aep.payment.driver=shadow} 时注册为 bean**（生产真实渠道 → 此 bean 不存在）。
+ * §8.0 门禁：**仅当 {@code aep.payment.shadow.enabled=true}（dev 默认）时注册为 bean**（生产置 false → 此 bean 不存在）。
  * 路径 /api/dev/pay/shadow/** 未被安全规则匹配 → 落 permitAll（dev 工具，无需鉴权）。
  *
  * 合成「支付成功」回调 → 复用与渠道 notify / 手工核准同一条入账核心 {@link RechargeService#settlePaidOrder}。
  */
 @RestController
 @RequestMapping("/api/dev/pay/shadow")
-@ConditionalOnProperty(name = "aep.payment.driver", havingValue = "shadow", matchIfMissing = true)
+@ConditionalOnProperty(name = "aep.payment.shadow.enabled", havingValue = "true", matchIfMissing = true)
 public class DevShadowPayController {
 
     private static final Logger log = LoggerFactory.getLogger(DevShadowPayController.class);

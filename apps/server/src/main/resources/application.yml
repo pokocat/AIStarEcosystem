@@ -88,6 +88,8 @@ aep:
   payment:
     driver: ${AEP_PAYMENT_DRIVER:shadow}
     shadow:
+      # 影子收银台渠道开关：dev 默认 true；生产 profile（application-mysql.yml）置 false。
+      enabled: ${AEP_PAYMENT_SHADOW_ENABLED:true}
       # manual=前端模拟收银台手动点「支付成功」；auto=下单后延迟自动确认（CI/headless）
       confirm-mode: ${AEP_PAYMENT_SHADOW_CONFIRM_MODE:manual}
       auto-confirm-delay-ms: ${AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS:800}

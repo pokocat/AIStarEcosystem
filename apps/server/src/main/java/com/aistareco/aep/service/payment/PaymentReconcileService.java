@@ -20,7 +20,7 @@ import java.util.List;
  * {@link RechargeService#settlePaidOrder}（条件 UPDATE 幂等,与 notify 共用入账核心,重复无害）。
  *
  * <p>与 notify <b>双保险</b>:任一先到都正确入账且只入账一次。<b>本地无公网联调时,纯靠它也能跑通沙箱全流程</b>。
- * shadow driver 无外部支付态（结算由 confirm 推动）→ 直接跳过。
+ * v0.94 多渠道：按订单 wayCode 推导渠道路由到对应网关；shadow 单无外部支付态（结算由 confirm 推动）→ 跳过。
  */
 @Service
 public class PaymentReconcileService {
@@ -33,13 +33,13 @@ public class PaymentReconcileService {
     private static final long MAX_AGE_MINUTES = 30;
 
     private final RechargeOrderRepository orderRepo;
-    private final PaymentGateway gateway;
+    private final PaymentGatewayRegistry registry;
     private final RechargeService rechargeService;
 
-    public PaymentReconcileService(RechargeOrderRepository orderRepo, PaymentGateway gateway,
+    public PaymentReconcileService(RechargeOrderRepository orderRepo, PaymentGatewayRegistry registry,
                                    RechargeService rechargeService) {
         this.orderRepo = orderRepo;
-        this.gateway = gateway;
+        this.registry = registry;
         this.rechargeService = rechargeService;
     }
 
@@ -58,15 +58,20 @@ public class PaymentReconcileService {
      * @return 本轮新结算的订单数
      */
     public int reconcilePending() {
-        if ("shadow".equals(gateway.driverName())) {
-            return 0; // 影子无外部支付态,结算由 confirm 推动,无需查单
-        }
         List<RechargeOrder> pending = orderRepo.findByStatusOrderByCreatedAtDesc(RechargeOrder.Status.PENDING);
         Instant now = Instant.now();
         int settled = 0;
         for (RechargeOrder o : pending) {
             if (o.getPayOrderId() == null) {
                 continue; // 未走网关下单（如纯线下订单）
+            }
+            String channel = PaymentChannelCatalog.channelFromWayCode(o.getWayCode());
+            if (channel == null || "shadow".equals(channel)) {
+                continue; // 影子无外部支付态（confirm 推动）/ 无法识别渠道 → 跳过
+            }
+            PaymentGateway gateway = registry.get(channel);
+            if (gateway == null) {
+                continue; // 该渠道网关未注册（如已下线）→ 跳过
             }
             Duration age = Duration.between(o.getCreatedAt(), now);
             if (age.getSeconds() < MIN_AGE_SECONDS || age.toMinutes() > MAX_AGE_MINUTES) {
@@ -75,9 +80,9 @@ public class PaymentReconcileService {
             try {
                 PayQueryResult q = gateway.queryPayOrder(o.getId());
                 if (q.paid()) {
-                    rechargeService.settlePaidOrder(o.getId(), gateway.driverName(), q.channelPayNo(), null, null);
+                    rechargeService.settlePaidOrder(o.getId(), channel, q.channelPayNo(), null, null);
                     settled++;
-                    log.info("[pay][reconcile] 查单兜底结算 orderId={} channelPayNo={}", o.getId(), q.channelPayNo());
+                    log.info("[pay][reconcile] 查单兜底结算 orderId={} channel={} channelPayNo={}", o.getId(), channel, q.channelPayNo());
                 }
             } catch (Exception e) {
                 log.debug("[pay][reconcile] 查单失败 orderId={}（跳过,下轮重试）：{}", o.getId(), e.toString());
