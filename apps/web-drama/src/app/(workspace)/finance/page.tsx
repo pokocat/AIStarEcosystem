@@ -92,7 +92,7 @@ export default function FinancePage() {
             label="总余额"
             value={wallet.totalBalance.toLocaleString("zh-CN")}
             tone="accent"
-            delta="可用 · 不含 pending"
+            delta="可用 · 不含待结算"
           />
           <KpiCard label="授权额度" value={wallet.licenseBalance.toLocaleString("zh-CN")} tone="success" />
           <KpiCard label="充值额度" value={wallet.rechargeBalance.toLocaleString("zh-CN")} tone="info" />

@@ -76,7 +76,7 @@ export function BranchCanvas({
             color: "var(--accent)",
           }}
         >
-          <GitBranch size={14} /> 接线中：点一个目标集接上分支
+          <GitBranch size={14} /> 连线中：点击目标剧集建立分支
           <button type="button" className="chip" style={{ height: 24 }} onClick={onCancelConnect}>
             取消 (Esc)
           </button>

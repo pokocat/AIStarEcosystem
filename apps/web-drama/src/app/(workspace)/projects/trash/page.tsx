@@ -65,9 +65,23 @@ export default function TrashPage() {
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>回收站</h1>
         <div className="muted" style={{ marginTop: 4 }}>
-          删除的短剧在这里保留 30 天 —— 期间可恢复，到期自动彻底删除。
+          删除的短剧在此保留 30 天，期间可恢复，到期后自动彻底删除。
         </div>
       </div>
+
+      {isLoading && !error && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "start" }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <div className="skel" style={{ aspectRatio: "1/1", borderRadius: 0 }} />
+              <div style={{ padding: 12 }}>
+                <div className="skel" style={{ height: 12, width: "60%", marginBottom: 10 }} />
+                <div className="skel" style={{ height: 8, width: "40%" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!!error && !isLoading && (
         <div className="card col center" style={{ padding: 28, gap: 12, textAlign: "center", marginBottom: 20 }}>

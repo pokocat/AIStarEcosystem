@@ -342,7 +342,7 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
                   <Network size={28} />
                 </div>
                 <div className="muted" style={{ maxWidth: 380, fontSize: 13.5, lineHeight: 1.6 }}>
-                  还没有剧集。点「AI 起草」一句话生成整张分支图，或「加一集」手动搭。每一集都会进六阶段工作台出片。
+                  还没有剧集。点「AI 起草」用一句话生成整张分支图，或「加一集」手动创建。每一集都会进入六阶段工作台出片。
                 </div>
                 <div className="row gap-2">
                   <button type="button" className="btn btn-grad btn-sm" onClick={aiDraft} disabled={drafting}>
@@ -439,7 +439,7 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
               ) : (
                 <div className="faint col center" style={{ padding: 40, textAlign: "center", gap: 8 }}>
                   <Network size={26} />
-                  <span style={{ fontSize: 13 }}>在左侧点一个集来编辑它的剧情、互动点与接线，或去六阶段制作它的视频。</span>
+                  <span style={{ fontSize: 13 }}>在左侧选择一集，编辑它的剧情、互动点与接线，或前往六阶段制作视频。</span>
                 </div>
               )
             ) : rightTab === "flags" ? (

@@ -97,7 +97,7 @@ export default function OperationsPage() {
         <div className="grow">
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>运营 · 内容目录</h1>
           <div className="muted" style={{ marginTop: 4 }}>
-            维护平台提供的「近期热点 / 创意推荐」—— 改完发布，全站首页即时生效
+            维护平台提供的「近期热点 / 创意推荐」，发布后全站首页即时生效
           </div>
         </div>
         <button type="button" className="btn btn-line btn-sm" disabled={loading} onClick={() => void load()}>

@@ -15,6 +15,8 @@ interface ProjectTopbarProps {
   balancePulseKey?: string | number;
   /** 窄视口隐藏集数·时长·画幅(标题优先) */
   hideMeta?: boolean;
+  /** 右侧状态槽（保存状态指示器等），渲染在余额徽标左侧。 */
+  statusSlot?: React.ReactNode;
   onHome?: () => void;
   onLogout?: () => void;
 }
@@ -25,6 +27,7 @@ export function ProjectTopbar({
   balance,
   balancePulseKey,
   hideMeta,
+  statusSlot,
   onHome,
   onLogout,
 }: ProjectTopbarProps) {
@@ -89,6 +92,7 @@ export function ProjectTopbar({
         </div>
       )}
       <div className="grow" />
+      {statusSlot}
       <div className="cost">
         <Zap size={14} /> 余额{" "}
         <b className="num balance-pulse" key={balancePulseKey ?? balance}>

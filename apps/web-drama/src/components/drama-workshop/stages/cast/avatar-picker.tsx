@@ -134,7 +134,7 @@ export function ScenePicker({ sceneName, onClose, onConfirm }: ScenePickerProps)
               为「{sceneName}」锁定参考图
             </div>
             <div className="faint" style={{ fontSize: 12 }}>
-              选定后这个场景在每一集都按同一套视觉来
+              选定后该场景在每一集都沿用同一套视觉
             </div>
           </div>
           <div className="grow" />

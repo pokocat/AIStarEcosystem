@@ -108,7 +108,7 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
               <Clapperboard size={26} />
             </div>
             <div className="muted" style={{ maxWidth: 360, fontSize: 13.5 }}>
-              第 {state.ep} 集还没有已出片的镜头。先去<b style={{ color: "var(--accent)" }}>视频工厂</b>生成分镜视频，再回来一键拼接。
+              第 {state.ep} 集还没有已出片的镜头。先去<b style={{ color: "var(--accent)" }}>视频工厂</b>生成分镜视频，再返回拼接成片。
             </div>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
               去视频工厂
@@ -144,7 +144,7 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
             <div className="card row gap-3" style={{ padding: 16, background: assembled ? "var(--surface)" : "var(--accent-soft)" }}>
               <Package size={20} style={{ color: "var(--accent)", flex: "none" }} />
               <div className="grow">
-                <div style={{ fontWeight: 700 }}>{assembled ? "镜头有更新?重新拼一版" : "一键拼成完整片"}</div>
+                <div style={{ fontWeight: 700 }}>{assembled ? "镜头有更新？重新拼接一次" : "拼接成完整片"}</div>
                 <div className="faint" style={{ fontSize: 12.5 }}>按镜头顺序拼成完整一集，完成后可下载或直接分发</div>
               </div>
               <button type="button" className="btn btn-grad" disabled={busy} onClick={run}>

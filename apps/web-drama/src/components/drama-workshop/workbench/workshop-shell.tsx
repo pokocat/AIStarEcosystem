@@ -94,9 +94,11 @@ interface WorkshopShellProps {
   initialStage?: StageKey;
   /** v0.79：把当前线性项目转换为互动剧（启用分支叠加层并落库）；非互动剧项目的左轨展示入口。 */
   onConvertInteractive?: () => Promise<void>;
+  /** v0.89：顶栏右侧状态槽（保存状态指示器），渲染在余额左侧。 */
+  headerRight?: React.ReactNode;
 }
 
-export function WorkshopShell({ meta, data, renderStage, initialStage, onConvertInteractive }: WorkshopShellProps) {
+export function WorkshopShell({ meta, data, renderStage, initialStage, onConvertInteractive, headerRight }: WorkshopShellProps) {
   const router = useRouter();
   const { logout } = useAuth();
   const [state, dispatch] = React.useReducer(reducer, undefined, () => ({
@@ -165,6 +167,7 @@ export function WorkshopShell({ meta, data, renderStage, initialStage, onConvert
           balance={state.balance}
           balancePulseKey={state.balance}
           hideMeta={narrow}
+          statusSlot={headerRight}
           onHome={handleHome}
           onLogout={handleLogout}
         />

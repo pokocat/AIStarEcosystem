@@ -185,7 +185,7 @@ export function TplPreviewBody({
   estimate,
 }: TplPreviewItem) {
   const beats = tpl ? tplBeats(tpl) : beatsProp;
-  const label = beatsLabel ?? (tpl ? "估时大纲" : "AI 会这样帮你拍");
+  const label = beatsLabel ?? (tpl ? "估时大纲" : "AI 制作思路");
   return (
     <div className="col gap-3">
       <div style={{ borderRadius: 14, overflow: "hidden", flex: "none" }}>

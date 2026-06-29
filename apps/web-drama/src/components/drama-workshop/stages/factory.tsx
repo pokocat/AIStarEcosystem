@@ -407,7 +407,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
             no={5}
             scope="剧集"
             title={`第 ${state.ep} 集 · 视频工厂`}
-            desc="每镜两条路自己选：稳妥路线先生成首帧，确认画面后再出视频；赶时间就直接生成分镜视频。"
+            desc="每个镜头可选两种方式：稳妥路线先生成首帧，确认画面后再生成视频；追求效率可直接生成分镜视频。"
           />
 
           {/* 流程说明条(窄口自动堆叠) */}
@@ -535,7 +535,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
             )}
             <div className="grow">
               <div style={{ fontWeight: 700 }}>
-                {stat.done === stat.total && stat.total > 0 ? "本集镜头全部成片 🎉" : "逐镜成片后,一键拼成完整片"}
+                {stat.done === stat.total && stat.total > 0 ? "本集镜头已全部成片" : "逐镜成片后，合成完整一集"}
               </div>
               <div className="faint" style={{ fontSize: 12.5 }}>已出片镜头会按场序与镜号拼接成完整一集，可直接分发</div>
             </div>
@@ -1053,7 +1053,7 @@ function FactoryDrawer({
             <Sparkles size={14} style={{ color: "var(--accent)", flex: "none", marginTop: 1 }} />
             <span>
               {s.flow === "draft" &&
-                "两条路自己选：【首帧预览】先出静帧，把画面和人物长相定准再出视频；【直接生成】一步到位，适合空镜等低风险镜头。"}
+                "可选两种方式：【首帧预览】先生成静帧，确认画面与人物形象后再生成视频；【直接生成】一步生成，适合空镜等低风险镜头。"}
               {s.flow === "frame" && "四版首帧任挑一版，或换一批。选定后锁定，后续视频会基于这一帧生成。"}
               {s.flow === "frameLocked" && "首帧已锁。现在生成视频，运动会基于这张固定画面生成，人物更稳定。"}
               {s.flow === "clip" && "视频已出。满意就验收入片；不满意可只重做这一镜，不影响别的镜头。"}

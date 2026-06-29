@@ -197,7 +197,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
           no={3}
           scope="项目"
           title="角色与资产"
-          desc="给关键角色绑定一个数字人分身锁住形象 —— 这是跨集一致性和真人脸的地基。"
+          desc="为关键角色绑定数字人分身以锁定形象，是跨集一致性与真人脸效果的基础。"
           right={<div className="row gap-2">{redraftBtn}</div>}
         />
         )}
@@ -209,7 +209,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
           >
             <Sparkles size={18} fill="currentColor" strokeWidth={0} />
             <span style={{ fontSize: 13.5, fontWeight: 600 }}>
-              还有 {unbound} 个关键角色没绑数字人 —— 绑定后 TA 在每一集的脸都一样,出场镜头会自动走数字人出镜。
+              还有 {unbound} 个关键角色未绑定数字人。绑定后角色在每一集的形象保持一致，出场镜头会自动使用数字人出镜。
             </span>
           </div>
         )}

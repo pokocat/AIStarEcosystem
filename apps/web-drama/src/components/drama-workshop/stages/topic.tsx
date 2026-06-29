@@ -66,7 +66,7 @@ export function TopicStage({ data, dispatch }: TopicStageProps) {
           ) : null}
           {!logline && !mainline && !top ? (
             <div className="muted" style={{ fontSize: 13.5, marginTop: 2 }}>
-              这部短剧从一句话点子立项 —— 主线与选题方向还没填,直接去铺大纲让 AI 展开整季剧情。
+              本短剧由一句话点子立项，主线与选题方向尚未填写；可直接生成大纲，让 AI 展开整季剧情。
             </div>
           ) : null}
           <div

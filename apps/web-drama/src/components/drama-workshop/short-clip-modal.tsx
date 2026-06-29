@@ -91,7 +91,7 @@ export function ShortClipModal({ onClose, onMake }: ShortClipModalProps) {
           </div>
 
           <div className="col gap-2">
-            <span className="faint" style={{ fontSize: 12, fontWeight: 700 }}>选要切的集(可多选)</span>
+            <span className="faint" style={{ fontSize: 12, fontWeight: 700 }}>选择要剪的剧集(可多选)</span>
             <div className="row gap-2" style={{ flexWrap: "wrap" }}>
               {eps.map((n) => {
                 const on = picked.includes(n);

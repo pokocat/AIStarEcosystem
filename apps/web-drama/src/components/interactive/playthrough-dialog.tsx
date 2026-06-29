@@ -69,7 +69,7 @@ export function PlaythroughDialog({ open, data, onClose }: Props) {
         <div className="row gap-2" style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
           <Play size={17} style={{ color: "var(--accent)" }} />
           <span style={{ fontWeight: 800, fontSize: 15 }}>试玩走查</span>
-          <span className="faint" style={{ fontSize: 11 }}>像观众一样走一遍，验证接线 / 条件 / 结局</span>
+          <span className="faint" style={{ fontSize: 11 }}>模拟观众视角走查，验证连线 / 条件 / 结局</span>
           <span className="grow" />
           <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>
             <RotateCcw size={13} /> 从头

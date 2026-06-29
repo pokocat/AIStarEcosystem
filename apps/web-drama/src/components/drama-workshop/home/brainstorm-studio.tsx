@@ -106,7 +106,7 @@ export function BrainstormStudio({ id }: { id: string }) {
       } catch (e) {
         setTyping(false);
         await flush(withUser);
-        toast.error(aiErrorMessage(e, "脑暴助手没接上，请重试"));
+        toast.error(aiErrorMessage(e, "脑暴助手连接失败，请重试"));
       } finally {
         sending.current = false;
       }
@@ -130,7 +130,7 @@ export function BrainstormStudio({ id }: { id: string }) {
     if (!data || outlineLoading) return;
     // 还没聊过（只有 AI 开场白）就点生成 → 友好提示去聊，不打会 400 的请求。
     if (!data.messages.some((m) => m.role === "user")) {
-      toast("先在左边跟 AI 说一句你的想法，我就把它整理成故事大纲～");
+      toast("请先在左侧描述你的想法，再生成故事大纲");
       chatInputRef.current?.focus();
       return;
     }
@@ -139,7 +139,7 @@ export function BrainstormStudio({ id }: { id: string }) {
       const { outline } = await BrainstormApi.generateOutline(id, data.messages);
       await flush({ ...data, outline });
     } catch (e) {
-      toast.error(aiErrorMessage(e, "故事大纲生成失败，请再聊两句或重试"));
+      toast.error(aiErrorMessage(e, "故事大纲生成失败，请补充对话后重试"));
     } finally {
       setOutlineLoading(false);
     }
@@ -183,7 +183,7 @@ export function BrainstormStudio({ id }: { id: string }) {
 
   return (
     <div className="ws-flush col" style={{ background: "var(--bg)" }}>
-      <div style={{ padding: "16px 24px 0", flex: "none" }}>
+      <div className="row" style={{ padding: "16px 24px 0", flex: "none", alignItems: "center" }}>
         <button
           type="button"
           onClick={() => router.push("/dashboard")}
@@ -192,6 +192,8 @@ export function BrainstormStudio({ id }: { id: string }) {
         >
           <ChevronLeft size={14} /> 回首页
         </button>
+        <span className="grow" />
+        <SaveStatus status={saveStatus} />
       </div>
       <div className="row gap-4" style={{ flex: 1, minHeight: 0, alignItems: "stretch", padding: "12px 24px 24px", maxWidth: 1180, width: "100%", margin: "0 auto" }}>
         {/* 左：AI 脑暴对话 */}
@@ -214,7 +216,7 @@ export function BrainstormStudio({ id }: { id: string }) {
             </span>
             <div className="col" style={{ lineHeight: 1.25 }}>
               <span style={{ fontWeight: 800, fontSize: 14 }}>AI 脑暴助手</span>
-              <span className="faint" style={{ fontSize: 11 }}>你随口说，我帮你理成一部剧</span>
+              <span className="faint" style={{ fontSize: 11 }}>描述你的想法，AI 梳理成一部短剧</span>
             </div>
           </div>
           <div ref={chatScrollRef} className="scroll col gap-3" style={{ padding: "18px 16px", flex: 1, minHeight: 0, background: "var(--bg)" }}>
@@ -243,7 +245,7 @@ export function BrainstormStudio({ id }: { id: string }) {
                   void send(input);
                 }
               }}
-              placeholder="把你的念头打给 AI，回车发送…"
+              placeholder="输入你的想法，回车发送…"
               style={{ flex: 1, height: 42, border: "1.5px solid var(--line)", borderRadius: 12, padding: "0 14px", fontSize: 14, background: "var(--surface-2)", outline: "none", color: "var(--ink)" }}
             />
             <button type="button" onClick={() => void send(input)} className="btn btn-grad btn-icon" style={{ width: 42, height: 42, flex: "none" }} aria-label="发送">
@@ -261,10 +263,10 @@ export function BrainstormStudio({ id }: { id: string }) {
             <ScrollText size={17} style={{ color: "var(--accent)", flex: "none" }} />
             <span style={{ fontWeight: 800, fontSize: 14, flex: "none", whiteSpace: "nowrap" }}>故事大纲</span>
             <span className="faint" style={{ fontSize: 11, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {outlineLoading ? "正在整理你聊的内容…" : outline ? "刚聊出来的故事，都收在这儿了" : "还没生成，点下方按钮生成"}
+              {outlineLoading ? "正在整理对话内容…" : outline ? "根据对话整理出的故事大纲" : "还没生成，点下方按钮生成"}
             </span>
             {outline && !outlineLoading && (
-              <span style={{ flex: "none", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", background: "var(--surface-2)", padding: "2px 9px", borderRadius: 999 }}>刚出炉</span>
+              <span style={{ flex: "none", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", background: "var(--surface-2)", padding: "2px 9px", borderRadius: 999 }}>新生成</span>
             )}
           </div>
 
@@ -276,7 +278,7 @@ export function BrainstormStudio({ id }: { id: string }) {
               <div className="col gap-1" style={{ maxWidth: 300 }}>
                 <div style={{ fontWeight: 800, fontSize: 15 }}>故事大纲会出现在这里</div>
                 <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.65 }}>
-                  左边把你的想法聊清楚，点一下「生成故事大纲」，我就把人物、脉络和设定都整理到这儿。
+                  在左侧描述清楚你的想法，点击「生成故事大纲」，AI 会把人物、脉络与设定整理到这里。
                 </div>
               </div>
               <button type="button" onClick={() => void genOutline()} className="btn btn-grad" style={{ height: 42, padding: "0 22px" }}>
@@ -317,29 +319,58 @@ export function BrainstormStudio({ id }: { id: string }) {
 
                   <div style={{ height: 1, background: "var(--line-soft)" }} />
 
-                  {/* 核心人物 */}
+                  {/* 核心人物 —— 紧凑双列卡片（原先单列整行铺开太占空间） */}
                   <div className="col gap-3">
                     <div className="row gap-2" style={{ alignItems: "center" }}>
                       <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flex: "none" }} />
                       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "var(--ink-3)" }}>核心人物</span>
-                      <span className="faint" style={{ fontSize: 11 }}>点名字可改</span>
+                      <span className="faint" style={{ fontSize: 11 }}>{outline.roles.length} 位 · 点击可改</span>
                     </div>
-                    <div className="col gap-2">
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(228px, 1fr))", gap: 8 }}>
                       {outline.roles.map((r, i) => (
-                        <div key={i} className="row gap-3" style={{ alignItems: "center", padding: "7px 9px", borderRadius: 12, background: "var(--surface-2)" }}>
-                          <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--surface)", boxShadow: "inset 0 0 0 1px var(--line)", display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, color: "var(--ink-2)", flex: "none" }}>
+                        <div
+                          key={i}
+                          className="row gap-2"
+                          style={{
+                            alignItems: "center",
+                            padding: "7px 10px 7px 7px",
+                            borderRadius: 12,
+                            background: "var(--surface-2)",
+                            boxShadow: "inset 0 0 0 1px var(--line-soft)",
+                            minWidth: 0,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: "50%",
+                              background: "linear-gradient(135deg, color-mix(in oklch, var(--accent) 18%, #fff), color-mix(in oklch, var(--accent-2) 18%, #fff))",
+                              boxShadow: "inset 0 0 0 1px var(--line)",
+                              display: "grid",
+                              placeItems: "center",
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: "var(--accent-2)",
+                              flex: "none",
+                            }}
+                          >
                             {r.name.slice(0, 1)}
                           </div>
-                          <Editable
-                            value={r.name}
-                            onCommit={(v) => patch({ ...data, outline: { ...outline, roles: outline.roles.map((x, j) => (j === i ? { ...x, name: v } : x)) } })}
-                            style={{ fontSize: 14, fontWeight: 700, flex: "none" }}
-                          />
-                          <Editable
-                            value={r.role}
-                            onCommit={(v) => patch({ ...data, outline: { ...outline, roles: outline.roles.map((x, j) => (j === i ? { ...x, role: v } : x)) } })}
-                            style={{ fontSize: 12.5, color: "var(--ink-3)", flex: 1, minWidth: 0 }}
-                          />
+                          <div className="col" style={{ minWidth: 0, gap: 1, lineHeight: 1.3 }}>
+                            <Editable
+                              value={r.name}
+                              onCommit={(v) => patch({ ...data, outline: { ...outline, roles: outline.roles.map((x, j) => (j === i ? { ...x, name: v } : x)) } })}
+                              block
+                              style={{ fontSize: 13.5, fontWeight: 700 }}
+                            />
+                            <Editable
+                              value={r.role}
+                              onCommit={(v) => patch({ ...data, outline: { ...outline, roles: outline.roles.map((x, j) => (j === i ? { ...x, role: v } : x)) } })}
+                              block
+                              style={{ fontSize: 11.5, color: "var(--ink-3)" }}
+                            />
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -372,7 +403,7 @@ export function BrainstormStudio({ id }: { id: string }) {
                         onChange={(k) => patch({ ...data, settings: { ...data.settings, form: k as BrainstormForm } })}
                       />
                     </SettingRow>
-                    <SettingRow label="屏幕尺寸">
+                    <SettingRow label="画幅比">
                       <Seg options={RATIOS} value={ratio} onChange={(k) => patch({ ...data, settings: { ...data.settings, ratio: k } })} />
                     </SettingRow>
                   </div>
@@ -383,7 +414,7 @@ export function BrainstormStudio({ id }: { id: string }) {
               <div className="row gap-3" style={{ padding: "12px 18px", borderTop: "1px solid var(--line-soft)", flex: "none", alignItems: "center" }}>
                 <Info size={13} style={{ color: "var(--ink-3)", flex: "none" }} />
                 <span className="faint" style={{ fontSize: 11.5, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  满意就进工作台逐集写剧本、拆分镜；想改就左侧接着聊
+                  满意后进入工作台逐集撰写剧本、拆分镜；需要调整可在左侧继续对话
                 </span>
                 <button type="button" onClick={() => void goProduce()} disabled={producing} className="btn btn-grad" style={{ height: 40, padding: "0 20px", flex: "none" }}>
                   {form === "single" ? <Zap size={15} /> : <Clapperboard size={15} />}
@@ -394,7 +425,6 @@ export function BrainstormStudio({ id }: { id: string }) {
           )}
         </div>
       </div>
-      <SaveStatus status={saveStatus} />
     </div>
   );
 }

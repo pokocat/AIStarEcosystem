@@ -147,7 +147,7 @@ function HomeLanding() {
             </span>
           </h1>
           <div className="muted" style={{ marginTop: 8, fontSize: 14.5 }}>
-            有个模糊的念头就够 —— 一个画面、一句台词、一个刷到的爆款，AI 陪你脑暴，聊着聊着就成了一部剧
+            有个模糊的念头就够：一个画面、一句台词，或最近刷到的灵感。和 AI 一起脑暴，逐步发展成一部短剧
           </div>
 
           {/* 对话框 · 轻盈质感 */}
@@ -173,7 +173,7 @@ function HomeLanding() {
                   submit();
                 }
               }}
-              placeholder="随便说说就行 —— 一个画面、一句台词、最近刷到的爆款…（没头绪就点下面的 ✦ 今日灵感）"
+              placeholder="说说你的想法：一个画面、一句台词，或最近刷到的灵感…（没有头绪可点下方「今日灵感」）"
               style={{ width: "100%", minHeight: 76, border: "none", outline: "none", resize: "none", padding: "14px 18px 4px", fontSize: 14.5, lineHeight: 1.6, background: "transparent", fontFamily: "inherit" }}
             />
 
@@ -237,8 +237,8 @@ function HomeLanding() {
           )}
 
           <div className="row" style={{ marginTop: 22, marginBottom: 12 }}>
-            <span style={{ fontWeight: 700, fontSize: 13.5 }}>没头绪？看看爆款配方</span>
-            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>点卡片预览效果，或填进对话框一起聊</span>
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>没有灵感？看看热门配方</span>
+            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>点击卡片预览效果，或填入对话框继续编辑</span>
             <span className="grow" />
             {recipePool.length > 6 && (
               <button type="button" className="chip" onClick={() => setPage((p) => p + 1)}>
@@ -317,7 +317,7 @@ function HomeLanding() {
                 </div>
               </div>
               <span className="btn btn-primary btn-sm" style={{ flex: "none" }}>
-                接着做 <ArrowRight size={14} />
+                继续制作 <ArrowRight size={14} />
               </span>
             </button>
           </div>
@@ -340,9 +340,9 @@ function HomeLanding() {
           }}
           onClose={() => setPreview(null)}
           actions={[
-            { label: "填进对话框改改", icon: <Edit size={15} />, variant: "line", onClick: () => fillRec(preview) },
+            { label: "填入对话框编辑", icon: <Edit size={15} />, variant: "line", onClick: () => fillRec(preview) },
             {
-              label: applyingId === preview.id ? "套用中…" : "用这个开拍",
+              label: applyingId === preview.id ? "套用中…" : "套用并开拍",
               icon: <Zap size={15} />,
               variant: "grad",
               cost: 6,

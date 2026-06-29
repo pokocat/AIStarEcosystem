@@ -45,7 +45,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
           </div>
           <div className="grow">
             <div style={{ fontWeight: 800, fontSize: 17 }}>快速开剧 · 套爆款模板</div>
-            <div className="faint" style={{ fontSize: 12 }}>左边挑模板,右边看效果和估时大纲 —— 满意就直接开拍</div>
+            <div className="faint" style={{ fontSize: 12 }}>左侧选择模板,右侧预览效果与时长大纲,确认后即可开拍</div>
           </div>
           <button type="button" className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
             <X size={18} />
@@ -81,7 +81,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
               })}
             </div>
             <div className="faint" style={{ fontSize: 12, fontWeight: 700 }}>
-              「{typeName}」下的爆款结构 · 都是跑出来过的
+              「{typeName}」的成熟剧情结构 · 均经过验证
             </div>
             <div className="col gap-2">
               {list.map((tp) => {
@@ -152,7 +152,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
           <input
             value={idea}
             onChange={(e) => setIdea(e.target.value)}
-            placeholder="你的特色,可不填 —— 比如:把女主职业换成法医、故事放在 90 年代小城…"
+            placeholder="你的特色（选填）,例如:把女主职业换成法医、故事放在 90 年代小城…"
             style={{
               height: 42,
               border: "1.5px solid var(--line)",
@@ -173,7 +173,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
                 onGuided();
               }}
             >
-              <Wand2 size={13} /> 想从零聊出故事?用 AI 引导式 <ArrowRight size={13} />
+              <Wand2 size={13} /> 想从零创作?试试 AI 引导式 <ArrowRight size={13} />
             </button>
             <span className="grow" />
             <CreditButton

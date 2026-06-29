@@ -249,9 +249,9 @@ export default function DramaLandingPage() {
               margin: "32px auto 12px",
             }}
           >
-            不用攒一个剧组，也不用熬通宵。把脑子里的那点灵感丢进来，
+            不用组建剧组，也不必通宵赶工。把一个灵感交给短剧工坊，
             <br />
-            起本子、定角色、出画面、铺渠道，我们陪你做到能发出去的那一刻。
+            从剧本、角色到画面、分发，完成一部可以发布的成片。
           </p>
 
           <div
@@ -271,7 +271,7 @@ export default function DramaLandingPage() {
             <Link href="#showreel">
               <Button variant="secondary" size="lg">
                 <PlayCircle size={16} />
-                看一眼现作
+                查看样片
               </Button>
             </Link>
           </div>
@@ -297,7 +297,7 @@ export default function DramaLandingPage() {
                 color: "var(--fg-0)",
               }}
             >
-              一键套用爆款配方，从灵感到成片
+              套用官方配方，从灵感到成片
             </h2>
           </div>
           <div

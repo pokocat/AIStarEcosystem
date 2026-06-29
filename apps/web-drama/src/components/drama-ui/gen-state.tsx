@@ -105,7 +105,7 @@ export function GenError({ reason, trace, onRetry }: GenErrorProps) {
           <div className="grow">
             <div style={{ fontWeight: 700, color: "#b91c1c" }}>这一步没能完成</div>
             <div style={{ fontSize: 13, color: "#7f1d1d", marginTop: 2, lineHeight: 1.55 }}>
-              {reason ?? "AI 服务暂时没有响应。先别急,内容没有丢——重试一下,或稍后再来。"}
+              {reason ?? "AI 服务暂时无响应，你的内容已自动保留，请重试或稍后再试。"}
             </div>
           </div>
         </div>

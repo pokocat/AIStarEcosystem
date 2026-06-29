@@ -94,7 +94,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
                             <button type="button" className="btn btn-line btn-sm" onClick={() => props.onAddShot(sc.id, i)}>
                               <Plus size={13} /> 加一镜
                             </button>
-                            <CreditButton cost={6} onConfirm={() => props.onGenShots(sc.id, i)} confirmTitle="拆分镜" confirmBody="AI 把这一场拆成可逐镜编辑的分镜（需先有场面描述或台词，否则会先给一条空镜手填）。" className="btn btn-primary btn-sm">
+                            <CreditButton cost={6} onConfirm={() => props.onGenShots(sc.id, i)} confirmTitle="拆分镜" confirmBody="AI 将本场拆解为可逐镜编辑的分镜（需先填写场面描述或台词，否则将先生成一条空镜头供手动填写）。" className="btn btn-primary btn-sm">
                               <Wand2 size={13} /> 让 AI 拆分镜
                             </CreditButton>
                           </div>
@@ -131,7 +131,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
       {edit && (
         <AiImageEditModal
           tag={`镜 ${edit.shot.no}`}
-          openingText={`这是镜 ${edit.shot.no} 的首帧。想怎么改？直接说，比如「换成夜景」「让她回头」「再高级一点的色调」。`}
+          openingText={`这是镜 ${edit.shot.no} 的首帧。描述想要的修改即可，例如「换成夜景」「让她回头」「调整为更高级的色调」。`}
           baseDesc={edit.shot.visual || "分镜画面"}
           initialUrl={edit.shot.frameUrl ?? edit.shot.frameUrls?.[0]}
           ratio="9:16"

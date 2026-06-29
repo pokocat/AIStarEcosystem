@@ -265,7 +265,7 @@ export default function ShortsStudioPage() {
       <div className="row" style={{ marginBottom: 22 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>短视频工坊</h1>
-          <div className="muted" style={{ marginTop: 4 }}>你的短视频、宣传片、个人自传等单集作品都在这里 —— 完成后点开播放，草稿接着做</div>
+          <div className="muted" style={{ marginTop: 4 }}>管理你的短视频、宣传片、个人自传等单集作品，完成后可点开播放，草稿随时继续制作。</div>
         </div>
         <div className="grow" />
         <button type="button" className="btn btn-line" style={{ height: 44, padding: "0 18px" }} onClick={() => setClipOpen(true)}>
@@ -317,8 +317,8 @@ export default function ShortsStudioPage() {
           >
             <Zap size={21} />
           </div>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>新建一条</span>
-          <span className="faint" style={{ fontSize: 11 }}>说句话·出片</span>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>新建短视频</span>
+          <span className="faint" style={{ fontSize: 11 }}>一句话生成</span>
         </button>
         {drafts.map((d, i) => (
           <DraftCard

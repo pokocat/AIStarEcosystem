@@ -68,7 +68,7 @@ export default function MyPublishedPage() {
       <div className="row" style={{ marginBottom: 18 }}>
         <div className="grow">
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" }}>我发布的创意</h1>
-          <div className="muted" style={{ marginTop: 4 }}>你发布到创意市场的作品 + 运营对你的精选邀请,都在这里</div>
+          <div className="muted" style={{ marginTop: 4 }}>你发布到创意市场的作品，以及运营向你发起的精选邀请</div>
         </div>
         <button type="button" className="btn btn-line btn-sm" disabled={loading} onClick={() => void load()}>
           <RefreshCw size={14} /> 刷新
@@ -79,7 +79,7 @@ export default function MyPublishedPage() {
         <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 20, border: "1.5px solid var(--accent)" }}>
           <div className="row gap-2" style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-soft)", background: "var(--accent-soft)" }}>
             <Boxes size={16} style={{ color: "var(--accent)" }} />
-            <span style={{ fontWeight: 800, fontSize: 14, color: "var(--accent)" }}>运营想精选你的作品 · {invites.length}</span>
+            <span style={{ fontWeight: 800, fontSize: 14, color: "var(--accent)" }}>运营的精选邀请 · {invites.length}</span>
           </div>
           <div className="col gap-2" style={{ padding: 14 }}>
             {invites.map((r) => (
@@ -118,7 +118,7 @@ export default function MyPublishedPage() {
         <div className="card col center" style={{ padding: 40, gap: 8, textAlign: "center" }}>
           <Boxes size={26} style={{ color: "var(--ink-3)" }} />
           <div style={{ fontWeight: 700 }}>你还没有发布过创意</div>
-          <div className="faint" style={{ fontSize: 12.5 }}>在「已完成短剧」或「短视频工坊」的成片预览里点「发布到创意中心」，通过审核后就会出现在创意市场。</div>
+          <div className="faint" style={{ fontSize: 12.5 }}>在「已完成短剧」或「短视频工坊」的成片预览里点「发布到创意市场」，通过审核后就会出现在创意市场。</div>
         </div>
       ) : (
         <div className="col gap-2">

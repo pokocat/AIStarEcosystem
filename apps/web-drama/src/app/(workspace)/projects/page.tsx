@@ -7,13 +7,13 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, Clock, Trash2, Wand2, Zap } from "lucide-react";
+import { ArrowRight, Clapperboard, Clock, Layers, Sparkles, Trash2 } from "lucide-react";
 import { Thumb, dramaConfirm } from "@/components/drama-ui";
 import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
 import { type DramaProjectSummary } from "@/mocks/drama-workshop";
-import { ProjectsApi, RecipesApi } from "@/api";
+import { BrainstormApi, ProjectsApi, RecipesApi } from "@/api";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { aiErrorMessage } from "@/lib/ai-error";
 
@@ -51,6 +51,21 @@ function ProjectsHubInner() {
   // （含最近的那部）——避免「刚新建的短剧只在大卡里、网格里找不到」的困惑。
   const main = list[0];
 
+  // v0.89：新建入口收敛为「一个入口 → 脑暴对话框」（不再在入口处分「从零 / 套模板」）。
+  // 与首页「跟 AI 聊出故事」同一条链路：建一条脑暴会话，进对话界面边聊边定选题 / 形态。
+  const starting = React.useRef(false);
+  const startBrainstorm = async () => {
+    if (starting.current) return;
+    starting.current = true;
+    try {
+      const detail = await BrainstormApi.createBrainstorm();
+      router.push(`/dashboard?b=${encodeURIComponent(detail.meta.id)}`);
+    } catch (e) {
+      starting.current = false;
+      toast.error(aiErrorMessage(e, "新建失败，请稍后重试"));
+    }
+  };
+
   // 已完成的短剧:先看成片预览,再决定看脚本还是衍生
   const openProject = (p: DramaProjectSummary) => {
     if (p.done) setPreview(p);
@@ -81,7 +96,7 @@ function ProjectsHubInner() {
       <div className="row" style={{ marginBottom: 22, gap: 16, flexWrap: "wrap" }}>
         <div className="grow" style={{ minWidth: 280 }}>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>短剧工坊</h1>
-          <div className="muted" style={{ marginTop: 4 }}>你的多集连续短剧都在这里 —— 点卡片接着做</div>
+          <div className="muted" style={{ marginTop: 4 }}>管理你的多集短剧，随时继续创作。</div>
         </div>
         <div className="row gap-3">
           <button
@@ -95,19 +110,11 @@ function ProjectsHubInner() {
           </button>
           <button
             type="button"
-            className="btn btn-line"
-            style={{ height: 44, padding: "0 18px" }}
-            onClick={() => router.push("/projects/new")}
-          >
-            <Wand2 size={16} /> 从零开剧
-          </button>
-          <button
-            type="button"
             className="btn btn-grad"
-            style={{ height: 44, padding: "0 18px" }}
-            onClick={() => router.push("/projects/new?focus=template")}
+            style={{ height: 44, padding: "0 20px" }}
+            onClick={() => void startBrainstorm()}
           >
-            <Zap size={16} /> 套模板开剧
+            <Sparkles size={16} /> 新建短剧
           </button>
         </div>
       </div>
@@ -167,60 +174,65 @@ function ProjectsHubInner() {
             </div>
           </div>
           <span className="btn btn-primary" style={{ flex: "none" }}>
-            接着做 <ArrowRight size={16} />
+            继续制作 <ArrowRight size={16} />
           </span>
         </button>
       )}
 
-      {/* 紧凑竖版网格（stretch 让「开一部新的」与短剧卡片等高） */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "stretch" }}>
-        <button
-          type="button"
-          onClick={() => router.push("/projects/new?focus=template")}
-          className="col center"
-          style={{
-            height: "100%",
-            minHeight: 240,
-            borderRadius: "var(--radius)",
-            border: "2px dashed var(--line)",
-            color: "var(--ink-3)",
-            gap: 9,
-            background: "var(--surface)",
-            transition: "border-color .18s, color .18s",
-            cursor: "pointer",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--accent)";
-            e.currentTarget.style.color = "var(--accent)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--line)";
-            e.currentTarget.style.color = "var(--ink-3)";
-          }}
-        >
-          <div
+      {/* 已加载且暂无短剧：显示明确的空状态（不再只剩一张虚线卡，避免看起来像一直在加载） */}
+      {!loading && !error && list.length === 0 ? (
+        <EmptyProjects onCreate={() => void startBrainstorm()} onBrowse={() => router.push("/templates")} />
+      ) : (
+        /* 紧凑竖版网格（stretch 让「新建短剧」卡与短剧卡片等高） */
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "stretch" }}>
+          <button
+            type="button"
+            onClick={() => void startBrainstorm()}
+            className="col center"
             style={{
-              width: 46,
-              height: 46,
-              borderRadius: 15,
-              background: "var(--accent-soft)",
-              display: "grid",
-              placeItems: "center",
-              color: "var(--accent)",
+              height: "100%",
+              minHeight: 240,
+              borderRadius: "var(--radius)",
+              border: "2px dashed var(--line)",
+              color: "var(--ink-3)",
+              gap: 9,
+              background: "var(--surface)",
+              transition: "border-color .18s, color .18s",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--accent)";
+              e.currentTarget.style.color = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--line)";
+              e.currentTarget.style.color = "var(--ink-3)";
             }}
           >
-            <Zap size={23} />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 13.5 }}>开一部新的</span>
-          <span className="faint" style={{ fontSize: 11 }}>套爆款模板·免大纲费</span>
-        </button>
+            <div
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 15,
+                background: "var(--accent-soft)",
+                display: "grid",
+                placeItems: "center",
+                color: "var(--accent)",
+              }}
+            >
+              <Sparkles size={23} />
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 13.5 }}>新建短剧</span>
+            <span className="faint" style={{ fontSize: 11 }}>从想法到成片</span>
+          </button>
 
-        {loading
-          ? Array.from({ length: 5 }).map((_, i) => <ProjectCardSkeleton key={i} />)
-          : list.map((p, i) => (
-              <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} onDelete={softDelete} />
-            ))}
-      </div>
+          {loading
+            ? Array.from({ length: 5 }).map((_, i) => <ProjectCardSkeleton key={i} />)
+            : list.map((p, i) => (
+                <ProjectCard key={p.id} p={p} delay={i * 40} onOpen={openProject} onDelete={softDelete} />
+              ))}
+        </div>
+      )}
 
       {preview && (
         <WorkPreviewModal
@@ -276,6 +288,52 @@ function ProjectsHubInner() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function EmptyProjects({ onCreate, onBrowse }: { onCreate: () => void; onBrowse: () => void }) {
+  return (
+    <div
+      className="col center fade-up"
+      style={{
+        padding: "60px 32px",
+        gap: 18,
+        textAlign: "center",
+        borderRadius: "var(--radius-lg)",
+        border: "1px solid var(--line-soft)",
+        background:
+          "radial-gradient(120% 90% at 50% -10%, color-mix(in oklch, var(--accent) 7%, var(--surface)), var(--surface))",
+      }}
+    >
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 20,
+          background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+          display: "grid",
+          placeItems: "center",
+          color: "#fff",
+          boxShadow: "var(--shadow-accent)",
+        }}
+      >
+        <Clapperboard size={30} />
+      </div>
+      <div className="col gap-2" style={{ maxWidth: 400 }}>
+        <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-.01em" }}>还没有短剧</div>
+        <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.7 }}>
+          从一个想法开始，和 AI 一起完成选题、剧本、分镜到成片。
+        </div>
+      </div>
+      <div className="row gap-3" style={{ flexWrap: "wrap", justifyContent: "center" }}>
+        <button type="button" className="btn btn-grad" style={{ height: 44, padding: "0 22px" }} onClick={onCreate}>
+          <Sparkles size={16} /> 新建短剧
+        </button>
+        <button type="button" className="btn btn-line" style={{ height: 44, padding: "0 18px" }} onClick={onBrowse}>
+          <Layers size={16} /> 浏览创意市场
+        </button>
+      </div>
     </div>
   );
 }

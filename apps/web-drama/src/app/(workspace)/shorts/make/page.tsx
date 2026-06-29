@@ -244,12 +244,12 @@ function ShortMakerInner({
   const styleRefLine = hasStyle ? `参考创意风格【${styleName || "风格短片"}】：${styleRef}` : "";
   const aiReference = [templateRef, styleRefLine].filter(Boolean).join(" ");
   const tplIntro = initial.reopen
-    ? "接着改这条短视频 —— 告诉我要怎么调,我重写口播和分镜。"
+    ? "继续修改这条短视频：说明要怎么调整，AI 将重写口播与分镜。"
     : hasStyle
-      ? `已套用【${styleName || "风格创意"}】创意风格 —— 说个你的主题 / 产品,我照这个风格帮你写口播和分镜。`
+      ? `已套用【${styleName || "风格创意"}】创意风格：描述你的主题或产品，AI 将按此风格撰写口播与分镜。`
       : hasTemplate && fmt.beats?.length
-        ? `已套用【${fmt.name}】模版 —— 我照它的爆款节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）帮你拆,说说你的主题/产品就行。`
-        : "说说你这条短视频想表达什么,我来帮你写口播脚本、拆好分镜。";
+        ? `已套用【${fmt.name}】模板：AI 将按其节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）拆解，描述你的主题或产品即可。`
+        : "描述这条短视频想表达什么，AI 将撰写口播脚本并拆好分镜。";
 
   // v0.88：单页化后不再切步骤；step 仍随草稿保存（兼容旧字段）。
   const [step] = React.useState<"script" | "factory">(initial.step ?? "script");
@@ -511,6 +511,7 @@ function ShortMakerInner({
         </div>
         {/* v0.88：单页化（去掉 脚本/工厂 步骤切换）—— 设计稿短视频制作为单页：左口播对话 / 右大纲+分镜表（逐镜内联出片）。 */}
         <span className="grow" />
+        <SaveStatus status={saveStatusValue} />
         <button
           type="button"
           className="btn btn-ghost btn-sm"
@@ -729,7 +730,7 @@ function ShortMakerInner({
                     <Clapperboard size={26} />
                   </div>
                   <div className="muted" style={{ maxWidth: 340, fontSize: 13.5 }}>
-                    左边跟 AI 说一句你的想法,它就帮你写口播脚本、拆好分镜 —— 改满意了再去出片。
+                    在左侧向 AI 描述你的想法，它会撰写口播脚本并拆好分镜，确认满意后再生成成片。
                   </div>
                 </div>
               ) : (
@@ -821,8 +822,6 @@ function ShortMakerInner({
           </span>
         )}
       </div>
-
-      <SaveStatus status={saveStatusValue} />
     </div>
   );
 }

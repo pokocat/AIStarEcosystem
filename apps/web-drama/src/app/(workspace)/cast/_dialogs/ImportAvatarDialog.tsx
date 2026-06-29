@@ -201,7 +201,7 @@ export function ImportAvatarDialog({
       description={
         step === "avatar"
           ? "演员形象统一在 AiAvatar 创建与渲染，这里只做引入（引用不复制，形象自动跟随更新）。"
-          : "选一张图作为该演员在本应用的首要展示；图不够用可去 AiAvatar 渲染更多场景图。"
+          : "选择一张图作为该演员在本应用的首要展示图；如需更多可去 AiAvatar 渲染场景图。"
       }
       footer={
         <>
@@ -404,7 +404,7 @@ export function ImportAvatarDialog({
                   rel="noreferrer"
                   style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--accent)", textDecoration: "none" }}
                 >
-                  <Sparkles size={13} /> 图不够用？去 AiAvatar 为「{selected.name}」渲染更多造型与场景图 <ExternalLink size={11} />
+                  <Sparkles size={13} /> 需要更多造型或场景图？去 AiAvatar 为「{selected.name}」渲染更多造型与场景图 <ExternalLink size={11} />
                 </a>
               </div>
             </div>

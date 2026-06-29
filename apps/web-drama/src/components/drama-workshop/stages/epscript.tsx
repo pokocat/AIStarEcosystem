@@ -227,7 +227,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     // v0.88：本集叙事(plot)为空就点「基于剧情重新生成分场分镜」→ 后端会 400 DRAMA_PLOT_REQUIRED。
     // 友好提示去填，不打会失败的请求（与脑暴大纲守卫同理）。
     if (ctx && !(plot || "").trim() && !(instruction || "").trim()) {
-      toast("先在上面「本集剧情」写一句这集大概讲什么，我就按它铺分场分镜～");
+      toast("请先在上方「本集剧情」中简要描述本集内容，AI 将据此生成分场分镜。");
       return;
     }
     setPhase("gen");
@@ -281,7 +281,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       text,
       text === "衍生上一集"
         ? "已按上一集的人物关系和节奏衍生出本集脚本,钩子接得上,你看看。"
-        : "改好了 —— 脚本已更新,你再看看还哪里要调?",
+        : "脚本已按你的要求更新，再看看还有哪里需要调整？",
     );
   };
 
@@ -460,7 +460,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     // 平铺分镜表里没有场面描述输入位，故直接给一条可编辑空镜 + 友好提示，不打会失败的请求。
     if (ctx && !(scene.action || "").trim() && !(scene.lines ?? []).some((l) => (l.text || "").trim())) {
       addShot(sceneId, sceneIdx);
-      toast("这场还没内容，先加了一条空镜 —— 直接在表里填画面 / 台词即可（或用「基于剧情重新生成分场分镜」让 AI 整集铺好）。");
+      toast("本场暂无内容，已添加一条空镜头，可直接在表格中填写画面与台词；也可使用「基于剧情重新生成分场分镜」由 AI 整集生成。");
       return;
     }
     setGenScene(sceneId);
@@ -563,7 +563,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           {locked && (
             <div className="row gap-3 fade-up" style={{ padding: "10px 14px", background: "var(--accent-soft)", borderRadius: 12, marginBottom: 14, color: "var(--accent)" }}>
               <Lock size={15} />
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>本集脚本已锁定,视频工厂以此为准 —— 仍可回改后重新通过。</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>本集脚本已锁定，视频工厂以此为准；如需调整可修改后重新确认。</span>
             </div>
           )}
 
@@ -573,7 +573,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               <span className="num tag tag-accent" style={{ flex: "none" }}>第 {state.ep} 集</span>
               <span style={{ fontWeight: 800, fontSize: 13.5 }}>本集剧情</span>
               {epOutline && <span className="tag tag-gray" style={{ flex: "none" }}>{epOutline.beat}</span>}
-              <span className="faint" style={{ fontSize: 11 }}>给人看的速览,不直接喂给生成</span>
+              <span className="faint" style={{ fontSize: 11 }}>仅供预览，不直接参与生成</span>
               <span className="grow" />
               {!locked && (
                 <CreditButton
@@ -584,7 +584,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                   className="btn btn-line btn-sm"
                   style={{ flex: "none" }}
                   disabled={phase === "gen"}
-                  title="对下面的分场分镜不满意?改好剧情后点这里,AI 按它整集重写"
+                  title="对当前分场分镜不满意？修改剧情后点击此处，AI 将据此重写整集"
                 >
                   <RefreshCw size={13} /> 基于剧情重新生成分场分镜
                 </CreditButton>
@@ -650,9 +650,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                 onAddShot={addShot}
                 onGenShots={genShots}
                 onRender={(sceneId, shotId, kind) => {
-                  if (kind === "frame") render(sceneId, shotId, "frame", 2, "首帧已出,满意就渲成片");
-                  else if (kind === "direct") render(sceneId, shotId, "clip", 9, "分镜视频已生成,验收看看");
-                  else render(sceneId, shotId, "clip", 7, "成片已渲,验收看看");
+                  if (kind === "frame") render(sceneId, shotId, "frame", 2, "首帧已生成，确认后可继续生成视频");
+                  else if (kind === "direct") render(sceneId, shotId, "clip", 9, "分镜视频已生成，请验收");
+                  else render(sceneId, shotId, "clip", 7, "成片已生成，请验收");
                 }}
                 onApprove={(sceneId, shotId) => {
                   const next = { ...shotsMap, [sceneId]: (shotsMap[sceneId] ?? []).map((x) => (x.id === shotId ? { ...x, flow: "done" as const } : x)) };
@@ -673,7 +673,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       {/* 悬浮 CTA(右下) */}
       {phase === "done" && !locked && (
         <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
-          <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>脚本和分镜都满意了?</span>
+          <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>脚本与分镜已确认？</span>
           <button
             type="button"
             className="btn btn-grad btn-sm"

@@ -23,17 +23,20 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <Toaster
           position="top-center"
           theme="light"
-          richColors
           closeButton
+          gap={10}
           toastOptions={{
+            className: "drama-toast",
             style: {
-              background: "var(--ink)",
-              color: "#fff",
-              border: "1px solid var(--ink)",
-              borderRadius: "999px",
+              background: "var(--surface)",
+              color: "var(--ink)",
+              border: "1px solid var(--line)",
+              borderRadius: "14px",
+              boxShadow: "var(--shadow-lg)",
               fontFamily: "var(--font)",
               fontWeight: 600,
               fontSize: 13.5,
+              padding: "13px 15px",
             },
           }}
         />

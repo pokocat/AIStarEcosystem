@@ -101,7 +101,7 @@ export function StepTabs({ stage, ep, locked, onJump }: StepTabsProps) {
           whiteSpace: "nowrap",
         }}
       >
-        脚本 → 分镜提示词 → AI 生成视频,一条线走完
+        脚本 → 分镜提示词 → AI 生成视频，全流程一站完成
       </span>
     </div>
   );

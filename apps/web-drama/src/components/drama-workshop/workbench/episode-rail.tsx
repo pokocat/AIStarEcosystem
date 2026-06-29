@@ -176,7 +176,7 @@ export function EpisodeRail({ ep, total, episodes, slim, onEp, onBack }: Episode
               第 {episodes.length + 1}-{total} 集
             </span>
             <span className="faint" style={{ fontSize: 10.5, textAlign: "center", lineHeight: 1.5 }}>
-              大纲铺到哪,这里就到哪
+              大纲新增分集后将显示在此
             </span>
           </div>
         )}

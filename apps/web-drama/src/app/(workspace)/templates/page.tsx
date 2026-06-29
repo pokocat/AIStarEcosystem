@@ -93,10 +93,10 @@ export default function TemplatesPage() {
       const res = await RecipesApi.applyRecipe(r);
       if (res.kind === "short") {
         // 单集创意 → 短视频工厂，按这个风格说个主题就开拍
-        toast.success(`已套用「${r.title}」创意 —— 去短视频工厂,说个主题就开拍`);
+        toast.success(`已套用「${r.title}」创意，进入短视频工厂描述主题即可开拍`);
         router.push(`/shorts/make?draft=${encodeURIComponent(res.shortId)}`);
       } else {
-        toast.success(`已套用「${r.title}」,大纲骨架已铺好,接着改就能开拍`);
+        toast.success(`已套用「${r.title}」，已生成大纲骨架，可继续编辑后开拍`);
         router.push(`/projects/${res.projectId}`);
       }
     } catch (e) {
@@ -118,7 +118,7 @@ export default function TemplatesPage() {
         <div style={{ minWidth: 260 }}>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>创意市场</h1>
           <div className="muted" style={{ marginTop: 4 }}>
-            验证过的爆款创意 —— 官方内置 + 创作者发布,挑一个「套用开拍」预填新剧
+            经验证的创作配方，含官方内置与创作者发布，套用后预填新剧
           </div>
         </div>
         <div className="grow" />
@@ -232,7 +232,7 @@ export default function TemplatesPage() {
             <>
               <div style={{ fontWeight: 700 }}>这里还没有创意</div>
               <div className="faint" style={{ fontSize: 12.5 }}>
-                {showOperator ? "用「新建内置创意」铺点官方种子，或从用户作品里精选。" : "创作者发布、运营精选的爆款创意会陆续出现在这里。"}
+                {showOperator ? "用「新建内置创意」铺点官方种子，或从用户作品里精选。" : "创作者发布与运营精选的创意会陆续出现在这里。"}
               </div>
             </>
           )}
@@ -453,9 +453,9 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
   const features: { label: string; sub: string }[] = isShort
     ? [
         { label: "风格创意已内置", sub: "套用后 AI 按这个风格 / 方法帮你写口播脚本和分镜" },
-        { label: "单条速成", sub: `${r.ratio} 画幅 · 进短视频工厂逐镜出片、一键合成成片` },
+        { label: "单条速成", sub: `${r.ratio} 画幅 · 进短视频工厂逐镜出片、合成成片` },
         r.previewVideo
-          ? { label: "范例成片可对照", sub: "照着上方范例视频找感觉，描述你的主题就开拍" }
+          ? { label: "范例成片可对照", sub: "参照上方范例视频，描述主题即可开拍" }
           : { label: "说个主题就开拍", sub: "不用想结构，描述你的产品 / 主题，AI 接管节奏" },
       ]
     : [
@@ -633,7 +633,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
         ) : (
           <>
             <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.65 }}>
-              一键套用,以下创作方法会自动展开到你的新项目,接着改就能开拍 ——
+              套用后，以下创作方法将自动展开到你的新项目，可继续编辑后开拍
             </p>
             <div className="col" style={{ gap: 2 }}>
               {features.map((f, i) => (
@@ -737,7 +737,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
           </div>
           <div className="grow">
             <div style={{ fontWeight: 800, fontSize: 16 }}>新建内置创意</div>
-            <div className="faint" style={{ fontSize: 12 }}>运营身份 · 直接上架,所有人都能一键套用</div>
+            <div className="faint" style={{ fontSize: 12 }}>运营身份 · 直接上架，所有人均可套用</div>
           </div>
           <span className="tag tag-accent" style={{ flex: "none" }}>官方</span>
           <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
@@ -777,7 +777,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
             )}
           </div>
-          <Field label="主线骨架（去具体化的可迁移主线，喂给套用者的大纲 AI）">
+          <Field label="主线骨架（去具体化的可迁移主线，作为套用者大纲生成的输入）">
             <textarea value={mainline} onChange={(e) => setMainline(e.target.value)} placeholder="小人物谷底翻盘：屈辱开局 → 隐藏底牌 → 步步反杀 → 高光收束" style={{ ...inp, height: 64, padding: "10px 12px", resize: "vertical" }} />
           </Field>
           <Field label={`分集节拍（可选 · ${beats.length}）`}>

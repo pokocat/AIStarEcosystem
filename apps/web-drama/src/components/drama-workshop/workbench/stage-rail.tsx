@@ -172,7 +172,7 @@ export function StageRail({ meta, current, ep, interactive, onConvert, onJump, o
             {onSetup && <span className="tag tag-accent" style={{ flex: "none", height: 20 }}>进行中</span>}
           </div>
           <div className="faint" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}>剧情大纲 · 角色 · 场景</div>
-          <div className="faint" style={{ fontSize: 11, lineHeight: 1.5 }}>整部剧的底子，跨集共享</div>
+          <div className="faint" style={{ fontSize: 11, lineHeight: 1.5 }}>全剧通用设定，跨集共享</div>
         </StepRow>
 
         {/* 互动编排（仅互动剧） */}

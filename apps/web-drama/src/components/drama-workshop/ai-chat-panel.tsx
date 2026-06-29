@@ -74,7 +74,7 @@ export function AiChatPanel({
           <Sparkles size={12} />
         </span>
         <span style={{ fontWeight: 700, fontSize: 12.5 }}>AI 脚本助手</span>
-        <span className="faint" style={{ fontSize: 10.5 }}>聊一句,改全篇</span>
+        <span className="faint" style={{ fontSize: 10.5 }}>描述改动，改写全篇</span>
         <span className="grow" />
         <button type="button" className="btn btn-icon btn-ghost btn-sm" style={{ width: 22, height: 22 }} onClick={() => setOpen(false)}>
           <X size={13} />

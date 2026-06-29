@@ -131,7 +131,7 @@ export default function WalletPage() {
         {pkgQ.isLoading && <LoadingBlock rows={2} height={96} />}
         {!!pkgQ.error && <ErrorBlock onRetry={pkgQ.refetch} />}
         {!pkgQ.isLoading && creditPkgs.length === 0 && !pkgQ.error && (
-          <EmptyState icon={<Coins size={24} />} title="暂无可购买套餐" description="运营在后台「充值套餐」配置 drama 专属或通用套餐后这里展示。" />
+          <EmptyState icon={<Coins size={24} />} title="暂无可购买套餐" description="运营在后台「充值套餐」配置短剧专属或通用套餐后，这里展示。" />
         )}
         {creditPkgs.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>

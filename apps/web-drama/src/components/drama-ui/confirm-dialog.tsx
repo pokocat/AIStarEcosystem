@@ -24,7 +24,7 @@ export function DramaConfirmDialog({
   body,
   cost,
   confirmLabel = "确认生成",
-  cancelLabel = "再想想",
+  cancelLabel = "取消",
   tone = "default",
   onConfirm,
   onCancel,

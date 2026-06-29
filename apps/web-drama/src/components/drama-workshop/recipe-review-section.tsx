@@ -110,7 +110,7 @@ export function RecipeReviewSection() {
                       style={{ fontSize: 11.5, alignSelf: "flex-start", marginTop: 2 }}
                       onClick={() => setExpanded(open ? null : r.id)}
                     >
-                      {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />} 看配方骨架（{r.data.beats.length} 段节拍）
+                      {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />} 查看创意结构（{r.data.beats.length} 段节拍）
                     </button>
                     {open && <div style={{ marginTop: 6 }}><RecipeSkeletonView data={r.data} /></div>}
                     {isRejecting && (

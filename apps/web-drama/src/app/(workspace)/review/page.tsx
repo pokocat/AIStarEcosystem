@@ -87,7 +87,7 @@ export default function ReviewPage() {
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>剧本审阅</h1>
         <div className="muted" style={{ marginTop: 4 }}>
-          所有等你过目的剧本集中在这里 —— 原地通读、原地通过,不用一个个进项目翻
+          所有待审阅的剧本集中在此，可原地通读、原地通过，无需逐个进入项目
         </div>
       </div>
 
@@ -98,7 +98,7 @@ export default function ReviewPage() {
         {pending.length === 0 && (
           <div className="card col center" style={{ padding: 32, color: "var(--ink-3)", gap: 8 }}>
             <Check size={26} />
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>暂无待审剧本 —— 项目里提交审阅的剧本会出现在这里</span>
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>暂无待审剧本，项目提交审阅后会出现在这里</span>
           </div>
         )}
         {pending.map((it, i) => (
@@ -303,7 +303,7 @@ function SceneRows({
                   <textarea
                     value={mark?.note || ""}
                     onChange={(e) => onNote(e.target.value)}
-                    placeholder="一句话留给 AI:台词太书面,改口语点…"
+                    placeholder="给 AI 的修改意见，例如：台词偏书面，建议更口语化"
                     style={{
                       width: "100%",
                       minHeight: 56,
@@ -437,7 +437,7 @@ function ReviewSheet({
                 {shown.length === 0 && (
                   <tr>
                     <td colSpan={8} style={{ padding: "26px 14px", textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
-                      没有标「改一下」的场 —— 切回「全部场次」继续通读
+                      没有标记「需修改」的场次，可切回「全部场次」继续通读
                     </td>
                   </tr>
                 )}
@@ -499,11 +499,11 @@ function ReviewSheet({
       >
         {flagged.length > 0 ? (
           <span className="row gap-2" style={{ fontSize: 12.5, fontWeight: 700, color: "#b45309" }}>
-            <AlertTriangle size={15} /> {flagged.length} 场标了「改一下」,意见会随场次发给 AI
+            <AlertTriangle size={15} /> {flagged.length} 场已标记「需修改」，修改意见将随场次发送给 AI
           </span>
         ) : (
           <span className="row gap-2" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-3)" }}>
-            <Check size={15} /> 通读没问题就一键通过,本集自动锁定
+            <Check size={15} /> 确认无误后可直接通过，本集将自动锁定
           </span>
         )}
         <span className="grow"></span>

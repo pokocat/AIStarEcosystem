@@ -355,3 +355,22 @@ img, video, canvas, svg { max-width: 100%; }
 /* 对话框渐入展开（首页 chatOff → chatOn） */
 .chat-anim { opacity: .6; transform: translateY(14px) scale(.985); transition: opacity .42s cubic-bezier(.2,.7,.3,1), transform .42s cubic-bezier(.2,.7,.3,1); }
 .chat-anim.entered { opacity: 1; transform: none; }
+
+/* ============================================================
+   Toast（sonner）—— 贴合暖白主站：白底卡片 + 柔和阴影 + 语义图标用品牌色
+   （取代旧的黑色 999px 长条胶囊，跟主站不搭）
+   ============================================================ */
+.drama-toast [data-icon] { margin-inline-end: 4px; }
+[data-sonner-toast][data-type="success"] [data-icon] { color: var(--success); }
+[data-sonner-toast][data-type="error"]   [data-icon] { color: var(--danger); }
+[data-sonner-toast][data-type="warning"] [data-icon] { color: var(--warning); }
+[data-sonner-toast][data-type="info"]    [data-icon] { color: var(--info); }
+[data-sonner-toast] [data-title] { font-weight: 600; letter-spacing: -.005em; }
+[data-sonner-toast] [data-description] { color: var(--ink-2); font-weight: 500; }
+[data-sonner-toast] [data-close-button] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  transition: color .15s, border-color .15s;
+}
+[data-sonner-toast] [data-close-button]:hover { color: var(--ink); border-color: var(--ink-3); }

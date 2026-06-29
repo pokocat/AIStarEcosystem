@@ -107,7 +107,7 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
         </button>
       </div>
       <div className="faint" style={{ fontSize: 11.5, marginBottom: 12 }}>
-        剧本 / 分镜里 @角色 都从这里来
+        剧本、分镜中的 @角色 均来自此处
       </div>
 
       <div

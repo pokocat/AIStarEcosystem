@@ -161,7 +161,7 @@ export default function ArtistGeneratePage({ params }: PageProps) {
               ))}
             </Select>
           </Field>
-          <Field label="场景提示词" hint="加细节更稳：天气、光源、镜头、情绪。" required>
+          <Field label="场景提示词" hint="补充细节可让出图更稳定：天气、光源、镜头、情绪。" required>
             <TextArea
               rows={5}
               value={prompt}
@@ -226,7 +226,7 @@ export default function ArtistGeneratePage({ params }: PageProps) {
             <EmptyState
               icon={<Sparkles size={28} />}
               title="还没有候选"
-              description="填好参数，点击「开始生成」即可一次性出 4 张候选。"
+              description="填写参数后点击「开始生成」，一次生成 4 张候选。"
             />
           )}
           {running && (

@@ -50,7 +50,7 @@ export function PublishCreativeCenterModal({
           <div className="grow" style={{ minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 800 }}>发布到创意中心</div>
             <div className="faint" style={{ marginTop: 2, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              让《{title}》的好点子出去露个脸
+              让《{title}》的创意被更多创作者看见并套用
             </div>
           </div>
           <button
@@ -68,7 +68,7 @@ export function PublishCreativeCenterModal({
 
       <div className="col gap-3" style={{ padding: "16px 20px 18px" }}>
         <p className="muted" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.7 }}>
-          我们会把这条成片整理成一条「可套用创意」,先提交运营审核。审核通过后,其他创作者就能在创意中心试试同款。
+          系统会把这条成片提炼成一条「可套用创意」,先提交运营审核;通过后,其他创作者即可在创意中心套用同款。
         </p>
         <div className="col gap-2" style={{ padding: "12px 13px", borderRadius: 12, background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
           {BENEFITS.map(({ icon: Icon, text }) => (

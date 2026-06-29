@@ -74,31 +74,29 @@ export default function ProjectWorkbench() {
   const isInteractive = detail.meta.mode === "interactive" || !!detail.data.interactive?.enabled;
 
   return (
-    <>
-      <WorkshopShell
-        meta={detail.meta}
-        data={data}
-        initialStage={isInteractive ? "branch" : fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
-        onConvertInteractive={
-          isInteractive
-            ? undefined
-            : async () => {
-                await saveData({ ...data, interactive: defaultOverlay(data) });
-                toast.success("已转换为互动剧 —— 现在可以接分支、加时间轴互动点了");
-              }
-        }
-        renderStage={({ state, dispatch }) => (
-          <StageOutlet
-            state={state}
-            dispatch={dispatch}
-            data={data}
-            prefilled={fromTemplate || detail.meta.mode === "template"}
-            ctx={{ projectId: id, saveData, notifyEditing }}
-          />
-        )}
-      />
-      <SaveStatus status={saveStatusValue} />
-    </>
+    <WorkshopShell
+      meta={detail.meta}
+      data={data}
+      headerRight={<SaveStatus status={saveStatusValue} />}
+      initialStage={isInteractive ? "branch" : fromTemplate ? "outline" : detail.meta.stage <= 3 ? "outline" : "epscript"}
+      onConvertInteractive={
+        isInteractive
+          ? undefined
+          : async () => {
+              await saveData({ ...data, interactive: defaultOverlay(data) });
+              toast.success("已转换为互动剧，现在可添加分支与时间轴互动点");
+            }
+      }
+      renderStage={({ state, dispatch }) => (
+        <StageOutlet
+          state={state}
+          dispatch={dispatch}
+          data={data}
+          prefilled={fromTemplate || detail.meta.mode === "template"}
+          ctx={{ projectId: id, saveData, notifyEditing }}
+        />
+      )}
+    />
   );
 }
 

@@ -41,7 +41,7 @@ export function SetupStage({ state, dispatch, data, prefilled, ctx }: SetupStage
           </div>
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" }}>短剧设定</h1>
           <div className="muted" style={{ fontSize: 13.5 }}>
-            一页把这部剧定下来：讲什么故事、每集怎么勾人、主角长什么样 —— 改好了再一集集拍。
+            在一页内完成全剧设定：故事主线、每集钩子、主角形象，确认后逐集制作。
           </div>
         </div>
 

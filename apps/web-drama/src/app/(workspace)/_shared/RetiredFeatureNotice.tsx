@@ -15,7 +15,7 @@ export function RetiredFeatureNotice({ feature }: { feature: string }) {
       <EmptyState
         icon={<Sparkles size={28} />}
         title={`${feature}已统一至 AiAvatar`}
-        description="数字人（演员形象）的创建与渲染现统一在 AiAvatar 完成：真人复刻或 AI 生成、渲染造型与场景图。完成后回到「演员 IP 阵容」一键引入即可，形象会自动跟随更新。"
+        description="数字人（演员形象）的创建与渲染现统一在 AiAvatar 完成：真人复刻或 AI 生成、渲染造型与场景图。完成后回到「演员 IP 阵容」引入即可，形象会自动跟随更新。"
         action={
           <>
             <a href={AIAVATAR_URL} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>

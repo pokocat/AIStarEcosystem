@@ -508,7 +508,10 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   // 短剧工作台沉浸态:进入某部短剧后(`/projects/<id>`)自带 6 阶段轨 + 顶部
   // 项目条 + 角色面板,不挂通用 workspace sidebar/topbar。
-  const isWorkshop = !!pathname?.match(/^\/projects\/[^/]+(\/.*)?$/) && !pathname.startsWith("/projects/new");
+  // 注意:仅对「具体某部短剧」生效;保留字路由(new / trash)是常规列表页,必须走通用 shell
+  // (否则回收站会脱离主站框架,既无侧栏也无顶栏)。
+  const projectMatch = pathname?.match(/^\/projects\/([^/]+)(\/.*)?$/);
+  const isWorkshop = !!projectMatch && !["new", "trash"].includes(projectMatch[1]);
 
   // 抽屉打开时锁定背景滚动（移动端体验）。
   React.useEffect(() => {

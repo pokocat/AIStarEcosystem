@@ -73,9 +73,9 @@ export function AiImageEditModal({
         setUrl(f.url);
         setVer((v) => v + 1);
         onCommit({ url: f.url, cdnKey: f.cdnKey });
-        setMsgs((m) => [...m, { role: "ai", text: `按「${t}」重画好了，右侧是第 ${ver + 1} 版。还想再调就接着说，满意就关掉。` }]);
+        setMsgs((m) => [...m, { role: "ai", text: `按「${t}」重新生成，右侧为第 ${ver + 1} 版。可继续输入指令调整，满意后关闭即可。` }]);
       } else {
-        setMsgs((m) => [...m, { role: "ai", text: "这次没拿到新图，换个说法再试试。" }]);
+        setMsgs((m) => [...m, { role: "ai", text: "本次未生成新图，请调整描述后重试。" }]);
       }
     } catch (e) {
       setMsgs((m) => [...m, { role: "ai", text: aiErrorMessage(e, "改图失败，请稍后重试") }]);

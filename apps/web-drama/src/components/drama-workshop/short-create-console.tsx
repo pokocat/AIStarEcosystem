@@ -82,7 +82,7 @@ export function ShortCreateConsole({
     setPicked(r);
     setPreview(null);
     window.setTimeout(() => composerRef.current?.focus(), 0);
-    toast.success(`已带入「${r.title}」创意 —— 可再补一句你的主题，或直接开始制作`);
+    toast.success(`已带入「${r.title}」创意，可补充你的主题，或直接开始制作`);
   };
 
   const start = async () => {
@@ -153,13 +153,13 @@ export function ShortCreateConsole({
             <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 28px 0", textAlign: "center", position: "relative" }}>
               <div className="faint" style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>新建一条短视频</div>
               <h1 style={{ margin: 0, fontSize: 30, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.25 }}>
-                说句话，AI 出口播脚本和
+                一句话，AI 生成口播脚本和
                 <span style={{ background: "linear-gradient(120deg,var(--accent),var(--accent-2))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
                   分镜
                 </span>
               </h1>
               <div className="muted" style={{ marginTop: 8, fontSize: 14.5 }}>
-                单条速成 · 竖屏 9:16。从下方<strong style={{ color: "var(--ink-2)" }}>创意推荐</strong>挑个同款定调，再说想法更准。
+                单条速成 · 竖屏 9:16。从下方<strong style={{ color: "var(--ink-2)" }}>创意推荐</strong>中选一个定调，补充想法会更精准。
               </div>
             </div>
           </>
@@ -180,7 +180,7 @@ export function ShortCreateConsole({
             <DramaComposer
               ref={composerRef}
               defaultText={initialIdea}
-              placeholder="说说你这条短视频想表达什么…例如:一支熬夜也能撑住的精华,油皮姐妹真的别错过（挑个创意「试试同款」可定调风格）"
+              placeholder="描述这条短视频想表达什么…例如:一支熬夜也能撑住的精华,油皮姐妹别错过（选一个创意「试试同款」可定调风格）"
               refs={refs}
               onRemoveRef={() => setPicked(null)}
               onChange={setIdea}
@@ -221,7 +221,7 @@ export function ShortCreateConsole({
           {/* 创意推荐(创意市场单集创意) */}
           <div className="row" style={{ marginTop: 22, marginBottom: 12 }}>
             <span style={{ fontWeight: 700, fontSize: 13.5 }}>创意推荐</span>
-            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>点卡片看成片预览,「试试同款」带进对话框就做</span>
+            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>点击卡片预览成片,「试试同款」即可带入对话框制作</span>
             <span className="grow" />
             {shortRecipes.length > 6 && (
               <button type="button" className="chip" onClick={() => setPage((p) => p + 1)}>

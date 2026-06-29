@@ -176,7 +176,7 @@ function WardrobeInner() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="按名称或 tag 搜索素材…"
+              placeholder="按名称或标签搜索素材…"
               style={{
                 flex: 1,
                 background: "transparent",
@@ -381,7 +381,7 @@ function UploadDialog({
         onOpenChange(o);
       }}
       title="上传新素材"
-      description="选一张参考图、起个名、打 tag。"
+      description="上传参考图，填写名称与标签。"
       width={560}
       footer={
         <>

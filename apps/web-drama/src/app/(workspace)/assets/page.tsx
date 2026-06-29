@@ -139,7 +139,7 @@ export default function AssetsPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>素材库</h1>
           <div className="muted" style={{ marginTop: 4 }}>
-            自由上传图片 / 视频,用标签区分人物、场景、道具 —— 生成时 @ 进来作参考
+            自由上传图片、视频，用标签区分人物、场景、道具，生成时 @ 引用为参考
           </div>
         </div>
         <div className="grow"></div>
@@ -199,9 +199,9 @@ export default function AssetsPage() {
           <div style={{ width: 50, height: 50, borderRadius: 15, background: "var(--surface-2)", display: "grid", placeItems: "center" }}>
             <ImageIcon size={24} />
           </div>
-          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{q || cat !== "all" || media !== "all" ? "没有匹配的素材" : "素材库还是空的 —— 上传图片 / 视频建素材"}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{q || cat !== "all" || media !== "all" ? "没有匹配的素材" : "素材库为空，上传图片或视频以创建素材"}</span>
           <button className="btn btn-line btn-sm" onClick={() => setAdding(true)}>
-            <Plus size={14} /> 上传一个
+            <Plus size={14} /> 上传素材
           </button>
         </div>
       )}
@@ -419,7 +419,7 @@ function MaterialDetail({
           )}
 
           <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.65 }}>
-            生成时 @ 进来作参考:
+            生成时 @ 引用为参考：
             {catv === "人物"
               ? "替换镜头里的出镜人物,长相气质集集一致。"
               : catv === "场景"
@@ -433,7 +433,7 @@ function MaterialDetail({
             <span className="faint" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".05em" }}>关联使用</span>
             {usage.length === 0 && (
               <span className="faint" style={{ fontSize: 12.5 }}>
-                还没在项目中使用过 —— 在视频工厂用 @ 把它加进参考试试
+                尚未在项目中使用，可在视频工厂通过 @ 加入参考
               </span>
             )}
             {usage.map((u) => (
@@ -535,7 +535,7 @@ function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: 
           </div>
           <div className="grow">
             <div style={{ fontWeight: 800, fontSize: 16 }}>上传素材</div>
-            <div className="faint" style={{ fontSize: 12 }}>图片或视频都行 · 传完让 AI 自动打标签</div>
+            <div className="faint" style={{ fontSize: 12 }}>支持图片或视频，上传后由 AI 自动打标签</div>
           </div>
           <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
             <X size={18} />

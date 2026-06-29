@@ -28,7 +28,7 @@ import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
 
 const SCOPE_OPTS = [
-  { key: "trial", name: "先开个头试试", eps: 6 as number | null, cost: 6 },
+  { key: "trial", name: "试做开头", eps: 6 as number | null, cost: 6 },
   { key: "full", name: "完整设计", eps: null as number | null, cost: 18 },
 ] as const;
 const DUR_OPTS = ["60 秒/集", "75 秒/集", "90 秒/集"];
@@ -204,7 +204,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
         <div className="card" style={{ padding: 18, marginBottom: 6 }}>
           <div style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.65, color: "var(--ink)" }}>
             {data.projectInfo.logline || data.projectInfo.mainline || (
-              <span className="faint" style={{ fontWeight: 400 }}>还没有一句话剧情，先去脑暴或套个模板补上主线。</span>
+              <span className="faint" style={{ fontWeight: 400 }}>还没有一句话剧情，可先通过脑暴或套用模板补全主线。</span>
             )}
           </div>
           {mainlineSteps.length > 0 && (
@@ -263,7 +263,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
             <div className="col gap-1" style={{ alignItems: "center" }}>
               <div style={{ fontWeight: 800, fontSize: 15 }}>还没有分集剧情</div>
               <div className="muted" style={{ maxWidth: 430, fontSize: 13, lineHeight: 1.6 }}>
-                AI 会顺着上面的「剧情脉络」，把整部剧拆成一集一集的钩子和梗概。先选个范围和时长。
+                AI 将沿用上方「剧情脉络」，把整部剧拆解为各集的钩子与梗概。请先选择范围与每集时长。
               </div>
             </div>
             {genControls}
@@ -345,7 +345,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
           no={2}
           scope="项目"
           title="大纲分集"
-          desc="先定参数,让 AI 一次铺好每集的钩子与梗概 —— 改满意了再锁。"
+          desc="先设置参数，让 AI 一次生成每集的钩子与梗概，确认后再锁定。"
           right={
             prefilled && (
               <span className="tag tag-pink">
@@ -389,7 +389,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
               <div className="grow">
                 <span style={{ fontWeight: 800, fontSize: 14.5 }}>AI 生成大纲</span>
                 <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>
-                  设好参数点右边,一口气铺出每集钩子
+                  设置参数后点击右侧，一次生成每集钩子
                 </span>
               </div>
               {phase === "done" && (
@@ -468,7 +468,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
           >
             <Lock size={17} />
             <span style={{ fontSize: 13.5, fontWeight: 600 }}>
-              大纲已锁定 —— 左侧分集导航和剧集脚本都以此为准。
+              大纲已锁定，左侧分集导航与剧集脚本均以此为准。
             </span>
           </div>
         )}
@@ -512,7 +512,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
             </div>
             <div className="muted" style={{ maxWidth: 340, fontSize: 13.5 }}>
               还没有大纲。在上方设好「范围 + 每集时长」,点{" "}
-              <b style={{ color: "var(--accent)" }}>AI 生成大纲</b>,先开个头只要 6 积分。
+              <b style={{ color: "var(--accent)" }}>AI 生成大纲</b>,试做开头仅需 6 积分。
             </div>
           </div>
         )}
