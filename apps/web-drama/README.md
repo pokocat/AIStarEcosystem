@@ -68,14 +68,14 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
-### v0.95 · 2026-06-29 · AI 对话气泡支持 Markdown + 快捷建议紧扣回复
+### v0.96 · 2026-06-29 · AI 对话气泡支持 Markdown + 快捷建议紧扣回复
 
 - **AI 气泡渲染 Markdown（`lib/markdown-lite.tsx`）**：脑暴助手回复里的 `**加粗**` / `1. 2. 3.` 有序列表 / `-`·`·` 无序列表 / 换行此前按纯文本显示（`**` 露出来）。新增轻量渲染器（不引三方库、不走 `dangerouslySetInnerHTML`，纯 React 元素天然转义）—— 接入脑暴对话、短视频制作左侧对话、剧集脚本 `ai-chat-panel` 三处 AI 气泡（用户气泡仍纯文本）。
 - **快捷建议（quick）紧扣回复**：脑暴 chat 提示词 `drama.brainstorm_chat.md` 重写要求 ③ —— quick 必须针对**本条回复**（给了几个赛道就让用户选其一 / 微调，抛了设定就延伸或反向），不再照搬通用示例；并允许 reply 用简单 Markdown。`dev-fake-llm` 脑暴回复同步改为 Markdown 分点 + 紧扣回复的 quick（dev 可直接验收渲染）。
 - **作为上线初始化内容入库**：`PromptTemplateSeeder.SEED_VERSION` 升 `v8→v9-2026-06-29-brainstorm-quick-md`，让该 prompt 成为 seed 基线 —— 全新部署经 `seedIfAbsent` 入库；已 seed 过 v0.87 的 dev / prod DB 在**重启**时由 `reseedBaselineIfUntouched` 刷新（仅 `version==1` 未被运营改过的行，运营改过的 `version>1` 不动）。dev 运行中的服务可经 admin `PUT /api/admin/prompts/drama.brainstorm_chat` 热更（无需重启、不丢数据）。
 - **门禁**：web-drama typecheck + build（31 路由）+ server compile 全绿。
 
-### v0.94 · 2026-06-29 · 短视频制作右侧还原设计稿（平铺分镜表）
+### v0.95 · 2026-06-29 · 短视频制作右侧还原设计稿（平铺分镜表）
 
 - **分镜表平铺还原（`short-storyboard-table.tsx`）**：短视频制作页右侧从「逐镜竖卡（ShotFormCard 堆叠）」改为设计稿的**平铺分镜表** —— 列：镜·时长（beat 语义标签 + 镜号 + 时间线 + 时长）/ 首帧（4 态 + AI 改图 + 出片）/ 口播文案·画面（说话人 + 台词框 + 画面）/ 镜头（景别·运镜）/ 音效·BGM·特效，所有单元格结构化可编辑、随草稿自动保存。
 - **复用短剧分镜表单元**：导出 `StoryboardTable` 的 `ShotFrameCell`（首帧 4 态 + AI 改图）给短视频表共用，行为与短剧工作台一致（出图 2 / 直接出片 9 / 生成视频 7 积分，复用 `AiImageEditModal`）。
@@ -84,7 +84,7 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 - **一键连跑出片（安全版，恢复）**：设计稿有此按钮，v0.66 曾因「自动连续扣费」下线；本版以安全版恢复 —— **单次 `dramaConfirm` 展示预计总消耗** → 顺序 `await` 逐镜出片（镜头上显示进度）→ 任一镜失败即停、已出的保留。各镜真实计费仍在后台。
 - **门禁**：web-drama typecheck + build（31 路由）全绿。
 
-### v0.93 · 2026-06-29 · 短视频回收站 + 统一回收站 + UI 打磨一批
+### v0.94 · 2026-06-29 · 短视频回收站 + 统一回收站 + UI 打磨一批
 
 - **短视频工坊支持软删 + 统一回收站**：`DramaShort` 早有 `deletedAt`（v0.76），本版补齐回收站闭环 —— 后端 `DramaShortService.listTrash/restoreShort/purgeShort/purgeExpiredTrash` + `DramaShortController`（`GET /me/drama/shorts/trash`、`POST /{id}/restore`、`DELETE /{id}/purge`）+ `DramaShortTrashCleanupScheduler`（每日 03:45 物理清理超 30 天）。短视频工坊草稿卡新增「移到回收站」按钮（软删二次确认）。
 - **回收站升为顶层入口（不再只挂短剧工坊下）**：新建统一页 `/trash`（短剧 / 短视频两 Tab，各自恢复 / 彻底删除），侧栏「回收站」从「短剧工坊」子项移到「创作」组顶层；旧 `/projects/trash` 改 308 重定向到 `/trash?tab=drama`；短剧 / 短视频工坊各自顶栏「回收站」按钮深链到对应 Tab。
@@ -92,6 +92,15 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 - **toast 重做 + 空态 + 入口收敛**：toast 黑色胶囊 → 白底卡片 + 柔和阴影 + 品牌色语义图标；短剧工坊空列表加品牌化空状态（区分首屏骨架与真·空态）；新建入口「从零开剧 / 套模板开剧」两按钮 → 单个「新建短剧」→ 脑暴对话框；「核心人物」单列 → 双列卡片。
 - **全站文案专业化**：审校全站后应用约 135 条改写，去掉「爆款 / 免大纲费 / 说句话·出片 / 🎉」等营销味与助手腔、规范标点。
 - **门禁**：web-drama typecheck + build（31 路由）+ contract 全绿；server `DramaShortServiceTest` 12/12（+ 回收站生命周期 / 到期清理 2 例）；openapi 加 shorts 回收站 3 path。
+
+### v0.93 · 2026-06-29 · 存储配额闭环（分镜视频计入 + 生成/上传前置校验）+ 支付上线 env 模版
+
+承接 v0.92 通用存储配额，补齐两处缺口并把支付配置写进上线模版：
+
+- **分镜/带货视频计入存储（`MaterialVideoWorker`）**：异步视频出片后镜像落 CDN 时，按 job 归属子应用记一笔 `StorageQuotaService.record`（drama→「分镜视频」/ celebrity→「素材视频」，refId=scriptId，drama 即项目 id，彻底删除时由 `releaseByRef` 释放）。此前只记账首帧/成片/参考图，异步视频漏记，至此 drama 全部产物均计入用量。§8.0：记账 best-effort 不阻断主链路；仅 CDN 镜像成功才记真实字节。
+- **配额前置校验（超额不生成/不扣费）**：`StorageQuotaService.checkQuota` 接入三处入口——参考图上传（`DramaAssetUploadController`，已知文件大小精确校验）、分镜首帧渲染（`DramaRenderService.renderFrame`，生成前）、分镜视频（`DramaRenderService.renderClip`，提交任务/hold 积分前）。超额抛 402 `STORAGE_QUOTA_EXCEEDED`，提示清理或购买存储套餐；校验先于一切扣费，绝不「扣了费又因满配额失败」。
+- **支付上线配置写进 env 模版（`infra/env/server.env.example` §15）**：`AEP_PAYMENT_DRIVER`（shadow/alipay/jeepay）+ 支付宝/jeepay 各机密（`<FILL_...>` 占位，部署时填）+ shadow 收银台 + 对账轮询间隔；并注明存储配额走 PlatformConfig DB（非 env）。§8.0 fail-fast：driver=alipay/jeepay 缺机密启动报错，不静默降级。
+- **门禁**：server compile + `StorageQuotaServiceTest` 7 / `RechargeServiceTest` 16 / `DramaProjectServiceTest` 21 全绿 + contract 全绿。
 
 ### v0.92 · 2026-06-29 · 通用存储配额（用量/余量 + 回收站计入 + 购买存储套餐扩容）
 

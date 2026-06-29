@@ -14,7 +14,7 @@ import java.util.List;
  * 对账与不变量（v2 §11）。从不可变账本 + 充值订单重算资金/积分两平面，断言现金勾稽，
  * 把积分负债单列。<b>只读、只算、只报</b> —— drift 仅告警不自动消解（守 §8.0）。
  *
- * 影子单（paidVia=shadow，非真实现金）从现金勾稽剔除（§6.7）；生产 driver=jeepay 时无影子单。
+ * 影子单（paidVia=shadow，非真实现金）从现金勾稽剔除（§6.7）；生产真实渠道时无影子单。
  */
 @Service
 public class ReconciliationService {

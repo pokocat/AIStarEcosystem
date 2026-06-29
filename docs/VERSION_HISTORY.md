@@ -3411,3 +3411,17 @@ AI 改图复用 `POST /me/drama/render/frame`（`ref_images` 迭代），无新�
 **持久化 API E2E** 全过：场景 name/mood/refUrl、大纲 scope/dur、本集 meta（叙事/风格/出场人物）、分镜结构化 sfx/bgm/fx 均落库 + GET 恢复。
 
 **D-9 设计稿剩余对齐项①–⑤ 全部完成**（短剧设定单页 / 平铺分镜表 / AI 改图弹窗 / 短视频单页 / 编辑落库），均经 CDP headless 浏览器截图可视验收。
+
+### v0.94（2026-06-29）— 支付多渠道直连（删 jeepay + 微信支付 V3 + 运行时 admin 可配）
+
+充值支付从「env 固定单一 driver（jeepay 聚合，休眠）」重构为「多渠道直连 + 运行时 admin 配置 + 用户收银台自选」。分 5 阶段落地（同分支连续提交）：
+
+1. **删 jeepay 聚合网关**：JeepayPaymentGateway / JeepaySignUtil / PayNotifyController + 3 测试整除；清理 PaymentProperties / PaymentService / yml / env / openapi / 前端类型 / 文档全部引用（从未对接真实实例，§8.0 风险面）。
+2. **运行时多渠道配置**：新实体 `PaymentChannelConfig`（`aep_payment_channels`：code/enabled/sandbox/label/sortOrder/defaultWayCode/`credsEncrypted`/version）+ `PaymentChannelConfigService`（机密整块 AES-GCM 加解密复用 `AepCryptoUtil`、脱敏出 wire、upsert 合并[空=保留/`__CLEAR__`=清空/启用前校验齐全]、`seedFromEnvIfAbsent` 把旧 env 平滑迁库）+ `PaymentChannelCatalog`（渠道元数据单一事实源 + `channelFromWayCode`）+ `PaymentGatewayRegistry`（注入全部网关按 driverName 索引）。网关去 `@ConditionalOnProperty`：Alipay 改惰性 `ensureConfigured()`（按 version 缓存重配全局 Factory）；Shadow 常驻、`aep.payment.shadow.enabled` 门控。`PaymentService` 用 registry+config（checkout(channel) + enabledChannels() + syncOrder 按 wayCode 路由）；`PaymentReconcileService` 按订单渠道路由查单。
+3. **微信支付直连 V3**：`WechatPaymentGateway`（官方 `wechatpay-java` 0.2.15）—— Native 扫码（code_url→qr）/ JSAPI 小程序（prepay+商户私钥 RSA 签 wx.requestPayment 参数，需 openid）/ H5（h5_url→redirect）+ 查单；`WechatNotifyController`（`/api/pay/notify/wechat`，V3 验签 + AES-GCM 解密收口在 gateway.parseNotify → 校验 + 幂等 settle）。
+4. **admin「支付配置」后台**：`AdminPaymentConfigController`（`/api/admin/payment/channels`，FINANCE_ADMIN）GET 脱敏 / PUT 改启用·沙箱·机密 / POST test；admin 前端页（每渠道卡片：启用·沙箱开关 + 默认支付方式 + 机密表单[留空=保留，脱敏占位] + 保存/自检）+ nav 入口。
+5. **收银台多渠道前端**：web-celebrity / web-drama 收银台从写死「仅支付宝」改为 `GET /me/wallet/recharge/channels` 动态列渠道供用户自选；按 payDataType 渲染（page 表单 / qr 本地 `qrcode` 渲二维码[token 不外发] / redirect 跳转 / shadow），网页端隐藏微信 JSAPI（小程序消费方承载）。
+
+**入账幂等不变**：所有渠道回调 / 查单兜底共用 `settlePaidOrder`（条件 UPDATE 抢占），重复无害。机密永不明文出 wire；渠道启用但机密缺失 → 下单/回调期 503 `PAYMENT_CHANNEL_NOT_CONFIGURED`，绝不静默回退 shadow（§8.0）。
+
+**门禁**：server compile + 支付单测全绿（PaymentService 6 / PaymentReconcile 5 / Alipay 6 / AlipayNotify 5 / Wechat 5 / WechatNotify 5 / PaymentChannelConfig 6 / Recharge 16）+ `typecheck:all` 10/10 + web-celebrity build + web-drama build（+vitest 35）+ `check:api-contract` 全绿。openapi 加 `/me/wallet/recharge/channels`、`/pay/notify/wechat`、`/admin/payment/channels*`；删 `/pay/notify/jeepay`。env 模版 §15 改为「机密首选后台 DB 配，env 仅 bootstrap」。

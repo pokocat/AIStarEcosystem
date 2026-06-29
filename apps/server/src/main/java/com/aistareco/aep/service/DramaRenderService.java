@@ -139,6 +139,9 @@ public class DramaRenderService {
         int count = clamp(body.path("count").asInt(1), 1, 4);
         String size = ratioToSize(orDefault(text(body, "ratio"), "9:16"));
 
+        // 存储配额前置：已满则不生成、不扣费，提示清理或购买存储套餐（产物字节未知，按已用是否超额校验）。
+        storage.checkQuota("drama", userId, 0);
+
         ArrayNode frames = om.createArrayNode();
         for (int i = 0; i < count; i++) {
             byte[] bytes = callImageModel(ep, prompt, size, body.get("ref_images"));
@@ -296,6 +299,8 @@ public class DramaRenderService {
         if (prompt.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再生成视频");
         }
+        // 存储配额前置：已满则不提交任务、不 hold 积分（成片字节出片后由 worker 记账）。
+        storage.checkQuota("drama", userId, 0);
         int durationSec = clamp(body.path("duration_sec").asInt(5), 2, 60);
         String ratio = orDefault(text(body, "ratio"), "9:16");
         String name = orDefault(text(body, "name"), "短剧分镜");

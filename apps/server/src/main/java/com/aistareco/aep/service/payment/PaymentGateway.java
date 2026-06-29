@@ -3,12 +3,13 @@ package com.aistareco.aep.service.payment;
 /**
  * 支付网关抽象（v2 §6.3，照 CdnUploader 范式）。
  *
- * 实现按 {@code aep.payment.driver} 注入：
- *   - jeepay  → JeepayPaymentGateway（生产真实，P1 落地）
+ * 实现按渠道注入：
+ *   - alipay  → {@link AlipayPaymentGateway}（支付宝直连，alipay-easysdk）
+ *   - wechat  → WechatPaymentGateway（微信支付直连 V3，Native/JSAPI/H5）
  *   - shadow  → {@link ShadowPaymentGateway}（dev/test/staging 影子链路，无外部依赖）
  *
- * §8.0：driver=jeepay 未配 / 调用失败时由上层抛带码错误（不入账、不建假单），
- * 绝不静默回退到 shadow —— shadow 只能由显式 driver=shadow 选中。
+ * §8.0：真实渠道未配 / 调用失败时由上层抛带码错误（不入账、不建假单），
+ * 绝不静默回退到 shadow —— shadow 只能由显式选中。
  */
 public interface PaymentGateway {
 
@@ -18,6 +19,14 @@ public interface PaymentGateway {
     /** 查单（对账 / 兜底）：按商户订单号查支付网关侧订单态。 */
     PayQueryResult queryPayOrder(String mchOrderNo);
 
-    /** 当前 driver 名（shadow / jeepay）。 */
+    /** 当前 driver 名（shadow / alipay / wechat）= 渠道代码。 */
     String driverName();
+
+    /**
+     * 该渠道当前是否「可下单」（必填机密齐全 / 开关打开）。多渠道运行时配置下，
+     * {@code PaymentService} 据此在 checkout 前校验，未就绪 → 503，不静默回退（§8.0）。
+     */
+    default boolean isConfigured() {
+        return true;
+    }
 }

@@ -135,9 +135,8 @@ AEP_CDN_PUBLIC_BASE_URL=http://localhost:8080/cdn
 AEP_CDN_SIGNED_URL_STRATEGY=none
 AEP_CDN_SIGNED_URL_TTL_SECONDS=3600
 
-# Local shadow payment gateway. This prevents mysql profile from defaulting to real Jeepay on a
-# laptop (driver=jeepay fail-fasts at boot without creds — §8.0). Shadow lets you run the full
-# checkout → 收银台 → settle/refund flow with no external gateway.
+# Local shadow payment gateway. Real channels (alipay/wechat) fail-fast at boot without creds (§8.0);
+# shadow lets you run the full checkout → 收银台 → settle/refund flow with no external gateway.
 AEP_PAYMENT_DRIVER=shadow
 # To test the real Alipay SANDBOX locally (推荐,直连方案 · 见 docs/ALIPAY_SANDBOX.md):
 # set AEP_PAYMENT_DRIVER=alipay and fill the 3 sandbox creds (private/public keys are single-line base64).
@@ -149,13 +148,6 @@ AEP_PAYMENT_DRIVER=shadow
 # AEP_PAYMENT_ALIPAY_GATEWAY_HOST=openapi-sandbox.dl.alipaydev.com
 # AEP_PAYMENT_ALIPAY_DEFAULT_WAY_CODE=ALI_PC
 # AEP_PAYMENT_ALIPAY_NOTIFY_URL=http://localhost:8080/api/pay/notify/alipay
-#
-# To test real Jeepay (聚合,休眠中) instead, set AEP_PAYMENT_DRIVER=jeepay and fill every value below.
-# AEP_PAYMENT_JEEPAY_BASE_URL=
-# AEP_PAYMENT_JEEPAY_MCH_NO=
-# AEP_PAYMENT_JEEPAY_APP_ID=
-# AEP_PAYMENT_JEEPAY_API_KEY=
-# AEP_PAYMENT_JEEPAY_NOTIFY_URL=http://localhost:8080/api/pay/notify/jeepay
 
 # To test real OSS locally, change AEP_CDN_DRIVER=oss and fill every value below.
 # Prefer the public endpoint on a laptop; oss-cn-*-internal.aliyuncs.com is ECS/VPC-only.
@@ -187,8 +179,6 @@ reset_local_env_scope() {
   unset AEP_CDN_OSS_REGION AEP_CDN_SIGNED_URL_STRATEGY
   unset AEP_CDN_SIGNED_URL_TTL_SECONDS AEP_CDN_SIGNED_URL_CDN_AUTH_KEY
   unset AEP_PAYMENT_DRIVER AEP_PAYMENT_SHADOW_CONFIRM_MODE AEP_PAYMENT_SHADOW_AUTO_CONFIRM_DELAY_MS
-  unset AEP_PAYMENT_JEEPAY_BASE_URL AEP_PAYMENT_JEEPAY_MCH_NO AEP_PAYMENT_JEEPAY_APP_ID
-  unset AEP_PAYMENT_JEEPAY_API_KEY AEP_PAYMENT_JEEPAY_NOTIFY_URL AEP_PAYMENT_JEEPAY_SIGN_TYPE
   unset AEP_PAYMENT_ALIPAY_APP_ID AEP_PAYMENT_ALIPAY_MERCHANT_PRIVATE_KEY AEP_PAYMENT_ALIPAY_PUBLIC_KEY
   unset AEP_PAYMENT_ALIPAY_GATEWAY_HOST AEP_PAYMENT_ALIPAY_NOTIFY_URL AEP_PAYMENT_ALIPAY_RETURN_URL
   unset AEP_PAYMENT_ALIPAY_DEFAULT_WAY_CODE AEP_PAYMENT_ALIPAY_SANDBOX
@@ -243,14 +233,14 @@ load_local_env_file() {
 }
 
 normalize_payment_env_after_overlay() {
-  # 本地 dev 默认影子支付：mysql profile 默认 AEP_PAYMENT_DRIVER=jeepay，但本机一般无 Jeepay 凭证，
-  # JeepayPaymentGateway 的 @PostConstruct 会 fail-fast 拒绝启动（§8.0：生产驱动未配置就拒启，不偷偷退回 shadow）。
-  # 未显式指定时回落 shadow，可端到端联调「下单 → 收银台 → 入账 / 退款」而无需真实网关。
-  # 想本地联调真 Jeepay：在 server.local.env 或 apps/server/.env 里显式设 AEP_PAYMENT_DRIVER=jeepay
-  # + 填 AEP_PAYMENT_JEEPAY_{BASE_URL,MCH_NO,APP_ID,API_KEY}。
+  # 本地 dev 默认影子支付：真实渠道（alipay/wechat）的 @PostConstruct 会 fail-fast 拒绝启动
+  # （§8.0：生产渠道未配置就拒启，不偷偷退回 shadow）。未显式指定时回落 shadow，可端到端联调
+  # 「下单 → 收银台 → 入账 / 退款」而无需真实网关。
+  # 想本地联调真支付宝沙箱：在 server.local.env 或 apps/server/.env 里显式设 AEP_PAYMENT_DRIVER=alipay
+  # + 填 AEP_PAYMENT_ALIPAY_{APP_ID,MERCHANT_PRIVATE_KEY,PUBLIC_KEY}（见 docs/ALIPAY_SANDBOX.md）。
   [[ -n "$(env_value AEP_PAYMENT_DRIVER)" ]] && return 0
   export AEP_PAYMENT_DRIVER=shadow
-  warn "AEP_PAYMENT_DRIVER 未设置 → 本地默认 shadow（mysql profile 默认 jeepay，无凭证会 fail-fast）"
+  warn "AEP_PAYMENT_DRIVER 未设置 → 本地默认 shadow（真实渠道无凭证会 fail-fast）"
 }
 
 normalize_cdn_env_after_overlay() {
@@ -364,7 +354,7 @@ validate_local_env() {
       ;;
   esac
 
-  # 支付驱动：jeepay 必须配齐凭证，否则后端启动期 fail-fast（§8.0），stacktrace 难读 —— 这里提前给清晰错误。
+  # 支付驱动：真实渠道必须配齐凭证，否则后端启动期 fail-fast（§8.0），stacktrace 难读 —— 这里提前给清晰错误。
   local pay_driver
   pay_driver="$(lower "$(env_value AEP_PAYMENT_DRIVER)")"
   case "${pay_driver}" in
@@ -375,14 +365,9 @@ validate_local_env() {
       require_env AEP_PAYMENT_ALIPAY_PUBLIC_KEY
       require_env AEP_PAYMENT_ALIPAY_NOTIFY_URL
       ;;
-    jeepay)
-      require_env AEP_PAYMENT_JEEPAY_BASE_URL
-      require_env AEP_PAYMENT_JEEPAY_MCH_NO
-      require_env AEP_PAYMENT_JEEPAY_APP_ID
-      require_env AEP_PAYMENT_JEEPAY_API_KEY
-      ;;
+    wechat) ;;  # 微信渠道凭证以 admin 后台「支付配置」DB 为准（bootstrap env 可选）
     *)
-      die "本机 env AEP_PAYMENT_DRIVER 只能是 shadow / alipay / jeepay，当前: ${pay_driver}（文件: ${LOCAL_ENV_FILE}）"
+      die "本机 env AEP_PAYMENT_DRIVER 只能是 shadow / alipay / wechat，当前: ${pay_driver}（文件: ${LOCAL_ENV_FILE}）"
       ;;
   esac
 

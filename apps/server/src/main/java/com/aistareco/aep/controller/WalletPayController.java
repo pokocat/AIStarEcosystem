@@ -1,6 +1,7 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.CheckoutResponse;
+import com.aistareco.aep.dto.PaymentChannelDto;
 import com.aistareco.aep.dto.RechargeOrderDto;
 import com.aistareco.aep.service.PaymentService;
 import com.aistareco.aep.service.RechargeService;
@@ -10,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
+import java.util.List;
 
 /**
  * 充值在线支付下单 + 收银台（v2 §6/§7）。子应用内发起，后端经 {@link PaymentService} 调支付网关开单；
@@ -27,7 +29,13 @@ public class WalletPayController {
         this.rechargeService = rechargeService;
     }
 
-    /** 收银台「确认支付」：建/复用 PENDING 单 → 网关下单 → 返回 payData（页面跳转 / 二维码 / 影子）。 */
+    /** 收银台可用支付渠道（已启用 + 配置齐全）。前端「选支付方式」据此渲染。 */
+    @GetMapping("/recharge/channels")
+    public ApiResponse<List<PaymentChannelDto>> channels() {
+        return ApiResponse.of(paymentService.enabledChannels());
+    }
+
+    /** 收银台「确认支付」：建/复用 PENDING 单 → 网关下单 → 返回 payData（页面跳转 / 二维码 / JSAPI / 影子）。 */
     @PostMapping("/recharge/checkout")
     public ApiResponse<CheckoutResponse> checkout(Principal principal,
                                                   @RequestBody(required = false) CheckoutRequest req) {
@@ -35,7 +43,7 @@ public class WalletPayController {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "PACKAGE_ID_REQUIRED", "请选择充值套餐");
         }
         return ApiResponse.of(paymentService.checkout(
-                principal.getName(), req.packageId(), req.wayCode(), req.openid(), null, req.sourceApp()));
+                principal.getName(), req.packageId(), req.channel(), req.wayCode(), req.openid(), null, req.sourceApp()));
     }
 
     /** 收银台轮询：取单当前态（归属校验）。 */
@@ -50,5 +58,5 @@ public class WalletPayController {
         return ApiResponse.of(paymentService.syncOrder(principal.getName(), orderId));
     }
 
-    public record CheckoutRequest(String packageId, String wayCode, String openid, String sourceApp) {}
+    public record CheckoutRequest(String packageId, String channel, String wayCode, String openid, String sourceApp) {}
 }

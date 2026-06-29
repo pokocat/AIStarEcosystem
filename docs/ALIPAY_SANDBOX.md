@@ -79,4 +79,5 @@ node scripts/alipay-sandbox-verify.mjs
   （生产 APPID 需支付宝正式审核通过）。
 - **回调**：`AEP_PAYMENT_ALIPAY_NOTIFY_URL` 换正式公网域名。
 
-> 多渠道：将来接微信时加 `wechat` driver（wechatpay-java），与 `alipay`/`shadow`/`jeepay` 并列,抽象层零破坏。
+> 多渠道：微信支付走 `wechat` driver（wechatpay-java），与 `alipay`/`shadow` 并列，抽象层零破坏；
+> 渠道启用 + 机密以 admin 后台「支付配置」DB 为准（多渠道并存，用户收银台自选）。

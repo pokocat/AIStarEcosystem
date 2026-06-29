@@ -3,7 +3,6 @@ package com.aistareco.aep.service.payment;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -13,28 +12,36 @@ import org.springframework.stereotype.Component;
  * 只伪造「真钱渠道」这一跳：createPayOrder 返回 {@code payDataType=shadow}，结算由
  * {@code /api/dev/pay/shadow/confirm} 推动 → 复用同一个 {@code settlePaidOrder} 入账核心。
  *
- * §8.0 双控门禁：
- *   - 仅当 {@code aep.payment.driver=shadow}（dev 默认）时注入；driver=jeepay 失败绝不回退到此。
- *   - 在 mysql/prod profile 激活会打 ERROR 横幅（照 LocalFakeCdnUploader 范式）。
+ * §8.0 双控门禁（v0.94 多渠道）：
+ *   - 始终注册为 bean，但仅当 {@code aep.payment.shadow.enabled=true}（dev 默认）时 {@link #isConfigured()}
+ *     为真、收银台才列出该渠道；真实渠道失败绝不回退到此。
+ *   - shadow 启用且在 mysql/prod profile 下会打 ERROR 横幅（照 LocalFakeCdnUploader 范式）。
  */
 @Component
-@ConditionalOnProperty(name = "aep.payment.driver", havingValue = "shadow", matchIfMissing = true)
 public class ShadowPaymentGateway implements PaymentGateway {
 
     private static final Logger log = LoggerFactory.getLogger(ShadowPaymentGateway.class);
 
     private final Environment env;
+    private final PaymentProperties props;
 
-    public ShadowPaymentGateway(Environment env) {
+    public ShadowPaymentGateway(Environment env, PaymentProperties props) {
         this.env = env;
+        this.props = props;
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return props.getShadow().isEnabled();
     }
 
     @PostConstruct
     void warnIfProdProfile() {
+        if (!props.getShadow().isEnabled()) return;
         for (String p : env.getActiveProfiles()) {
             if ("mysql".equalsIgnoreCase(p) || "prod".equalsIgnoreCase(p)) {
-                log.error("==================== 影子支付网关在生产 profile（{}）下激活 ====================", p);
-                log.error("  aep.payment.driver=shadow 仅供 dev/test/staging 端到端联调，生产必须 jeepay。");
+                log.error("==================== 影子支付网关在生产 profile（{}）下启用 ====================", p);
+                log.error("  aep.payment.shadow.enabled=true 仅供 dev/test/staging 端到端联调，生产必须接真实渠道（alipay / wechat）。");
                 log.error("  影子链路不产生真实资金、不可对账，线上巡检应视此为部署事故（v2 §6.7 / §8.0 P1）。");
                 log.error("=======================================================================");
             }

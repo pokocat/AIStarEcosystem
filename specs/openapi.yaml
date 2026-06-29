@@ -1356,11 +1356,11 @@ components:
         createdAt:    { type: string, format: date-time }
         updatedAt:    { type: string, format: date-time, nullable: true }
         reviewedAt:   { type: string, format: date-time, nullable: true }
-        # v2 §6 在线支付（Jeepay/影子）可见性（线下 / 未支付订单字段省略）
-        paidVia:      { type: string, nullable: true, enum: [manual, jeepay, shadow], description: '入账来源：manual=线下核准 / jeepay=在线真实 / shadow=在线影子' }
+        # v2 §6 在线支付（渠道直连/影子）可见性（线下 / 未支付订单字段省略）
+        paidVia:      { type: string, nullable: true, enum: [manual, alipay, wechat, shadow], description: '入账来源：manual=线下核准 / alipay / wechat=在线真实 / shadow=在线影子' }
         channelPayNo: { type: string, nullable: true, description: 渠道流水号（对账追溯） }
-        wayCode:      { type: string, nullable: true, description: 支付方式 WX_LITE/ALI_QR… }
-        payOrderId:   { type: string, nullable: true, description: 支付网关订单号（Jeepay payOrderId / 影子 shadow_ 前缀） }
+        wayCode:      { type: string, nullable: true, description: 支付方式 ALI_PC/WX_NATIVE… }
+        payOrderId:   { type: string, nullable: true, description: 支付网关订单号（渠道 payOrderId / 影子 shadow_ 前缀） }
         paidAt:       { type: string, format: date-time, nullable: true, description: 到账时间 }
         sourceApp:    { type: string, nullable: true, description: 来源子应用 }
         # v2 §15.5 / D17 退款回收（仅 refunded 订单有值）
@@ -4972,6 +4972,39 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/RechargeOrder' }
 
+  /me/wallet/recharge/channels:
+    get:
+      tags: [finance]
+      operationId: getRechargeChannels
+      summary: 收银台可用支付渠道（v0.94 多渠道：已启用 + 机密齐全；用户自选支付宝/微信）
+      responses:
+        '200':
+          description: 可用渠道列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code: { type: string, description: 'alipay / wechat / shadow' }
+                            label: { type: string }
+                            sandbox: { type: boolean }
+                            defaultWayCode: { type: string }
+                            wayCodes:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  code: { type: string }
+                                  label: { type: string }
+                                  scene: { type: string, description: 'pc/wap/qr/jsapi/h5/shadow' }
+
   /me/wallet/recharge/checkout:
     post:
       tags: [finance]
@@ -4986,8 +5019,9 @@ paths:
               required: [packageId]
               properties:
                 packageId: { type: string }
-                wayCode: { type: string, description: 'WX_LITE/WX_NATIVE/ALI_QR/SHADOW；空则按 driver 默认' }
-                openid: { type: string, description: '微信小程序 openid（WX_LITE 必填）' }
+                channel: { type: string, description: 'alipay/wechat/shadow；空则取首个可用渠道（v0.94）' }
+                wayCode: { type: string, description: 'ALI_PC/ALI_WAP/ALI_QR/WX_NATIVE/WX_JSAPI/WX_H5/SHADOW；空则按渠道默认' }
+                openid: { type: string, description: '微信小程序 openid（WX_JSAPI 必填）' }
                 sourceApp: { type: string, description: 'music/drama/celebrity/aiavatar/miniprogram（仅营销标签，不切分余额）' }
       responses:
         '200':
@@ -5003,14 +5037,14 @@ paths:
                         type: object
                         properties:
                           orderId: { type: string }
-                          payDataType: { type: string, description: 'shadow / wxapp / payurl …' }
+                          payDataType: { type: string, description: 'page / qr / redirect / jsapi / shadow' }
                           payData: { type: string }
 
   /dev/pay/shadow/confirm:
     post:
       tags: [finance]
       operationId: shadowPayConfirm
-      summary: '【dev 影子链路·仅 driver=shadow】模拟收银台确认（v2 §6.7）：success→复用 settlePaidOrder 入账 / fail→取消 / timeout→留 PENDING。生产 driver=jeepay 时此端点不注册。'
+      summary: '【dev 影子链路·仅 shadow 启用】模拟收银台确认（v2 §6.7）：success→复用 settlePaidOrder 入账 / fail→取消 / timeout→留 PENDING。生产真实渠道时此端点不注册。'
       requestBody:
         required: true
         content:
@@ -5033,30 +5067,11 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/RechargeOrder' }
 
-  /pay/notify/jeepay:
-    post:
-      tags: [finance]
-      operationId: jeepayPayNotify
-      summary: '【Jeepay 异步回调·仅 driver=jeepay】permitAll + MD5 验签（v2 §6.4 触点②）：验签→金额/状态校验→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。dev driver=shadow 时此端点不注册。'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              description: Jeepay 回调参数（mchOrderNo/payOrderId/state/amount/channelOrderNo/sign …）
-      responses:
-        '200':
-          description: 纯文本 "success"（已处理 / 止重投）或 "fail"（验签或金额不符，Jeepay 重投）
-          content:
-            text/plain:
-              schema: { type: string }
-
   /pay/notify/alipay:
     post:
       tags: [finance]
       operationId: alipayPayNotify
-      summary: '【支付宝异步回调·仅 driver=alipay】permitAll + RSA2 验签（v2 §6.4 触点②）：验签→trade_status 成功 + total_amount(元→分)匹配→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。其它 driver 下此端点不注册。'
+      summary: '【支付宝异步回调】permitAll + RSA2 验签（v2 §6.4 触点②，v0.94 常驻注册）：验签→trade_status 成功 + total_amount(元→分)匹配→复用 settlePaidOrder（幂等）。返回纯文本 success/fail。支付宝未启用/未配置时 verifyNotify 返回 false → fail。'
       requestBody:
         required: true
         content:
@@ -5070,6 +5085,36 @@ paths:
           content:
             text/plain:
               schema: { type: string }
+
+  /pay/notify/wechat:
+    post:
+      tags: [finance]
+      operationId: wechatPayNotify
+      summary: '【微信支付 V3 异步回调】permitAll + V3 验签 + AES-GCM 解密（v0.94，常驻注册）：解密 Transaction→trade_state SUCCESS + amount(分)匹配→复用 settlePaidOrder（幂等）。回 200 {"code":"SUCCESS"} / 5xx {"code":"FAIL"}（让微信重投）。'
+      parameters:
+        - { name: Wechatpay-Serial, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Signature, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Timestamp, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Nonce, in: header, required: false, schema: { type: string } }
+        - { name: Wechatpay-Signature-Type, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: 微信 V3 回调密文体（id/create_time/resource{ciphertext,nonce,associated_data} …）
+      responses:
+        '200':
+          description: '{"code":"SUCCESS"}（已处理 / 止重投）'
+          content:
+            application/json:
+              schema: { type: object, properties: { code: { type: string }, message: { type: string } } }
+        '500':
+          description: '{"code":"FAIL"}（验签或金额不符，微信重投）'
+          content:
+            application/json:
+              schema: { type: object, properties: { code: { type: string }, message: { type: string } } }
 
   /admin/finance/recharge-orders/reconcile:
     post:
@@ -6092,6 +6137,16 @@ paths:
     post: { tags: [admin-celebrity], operationId: adminTransitionCelebrityStarAuthorization, responses: { '200': { description: ok } } }
 
   # ── 充值套餐 CRUD（v0.5 §D4 新增） ────────────────────────────────────
+  # ── 支付配置（v0.94 多渠道：渠道启用 + 机密运行时可配，FINANCE_ADMIN/SUPER_ADMIN，机密脱敏出 wire） ──
+  /admin/payment/channels:
+    get: { tags: [admin-finance], operationId: adminListPaymentChannels, summary: '全部可配支付渠道（脱敏）', responses: { '200': { description: ok } } }
+  /admin/payment/channels/{code}:
+    parameters: [{ name: code, in: path, required: true, schema: { type: string, description: 'alipay / wechat' } }]
+    put:  { tags: [admin-finance], operationId: adminUpdatePaymentChannel, summary: '改启用/沙箱/默认支付方式/机密（空=保留，__CLEAR__=清空）', responses: { '200': { description: ok } } }
+  /admin/payment/channels/{code}/test:
+    parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+    post: { tags: [admin-finance], operationId: adminTestPaymentChannel, summary: '轻量自检：机密是否齐全 + 网关是否就绪', responses: { '200': { description: ok } } }
+
   /admin/finance/recharge-packages:
     get:  { tags: [admin-finance], operationId: adminListRechargePackages, responses: { '200': { description: ok } } }
     post: { tags: [admin-finance], operationId: adminCreateRechargePackage, responses: { '201': { description: created } } }

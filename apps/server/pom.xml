@@ -144,11 +144,19 @@
       <version>4.0.10</version>
     </dependency>
 
-    <!-- 支付宝官方 easy SDK（v2 §6 直连支付）。仅 driver=alipay 时 AlipayPaymentGateway 注入；缺凭证 fail-fast。 -->
+    <!-- 支付宝官方 easy SDK（v2 §6 直连支付）。渠道配置由 admin 后台 DB 运行时可配；缺机密下单期报错。 -->
     <dependency>
       <groupId>com.alipay.sdk</groupId>
       <artifactId>alipay-easysdk</artifactId>
       <version>2.2.3</version>
+    </dependency>
+
+    <!-- 微信支付官方 V3 SDK（v0.94 直连支付）。Native / JSAPI / H5 + 回调 AES-GCM 解密。
+         渠道配置由 admin 后台 DB 运行时可配；缺机密下单期报错（§8.0）。 -->
+    <dependency>
+      <groupId>com.github.wechatpay-apiv3</groupId>
+      <artifactId>wechatpay-java</artifactId>
+      <version>0.2.15</version>
     </dependency>
   </dependencies>
 

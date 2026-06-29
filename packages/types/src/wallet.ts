@@ -138,12 +138,12 @@ export interface RechargeOrder {
   updatedAt?: ISODateTime;
   reviewedAt?: ISODateTime;
   /**
-   * v2 §6 在线支付（Jeepay / 影子）可见性（线下 / 未支付订单字段省略）：
-   * paidVia 入账来源 manual（线下核准）| jeepay（在线真实）| shadow（在线影子）；
+   * v2 §6 在线支付（渠道直连 / 影子）可见性（线下 / 未支付订单字段省略）：
+   * paidVia 入账来源 manual（线下核准）| alipay | wechat（在线真实）| shadow（在线影子）；
    * channelPayNo 渠道流水号（对账追溯）；wayCode 支付方式；payOrderId 网关订单号；
    * paidAt 到账时间；sourceApp 来源子应用。
    */
-  paidVia?: "manual" | "jeepay" | "shadow" | string;
+  paidVia?: "manual" | "alipay" | "wechat" | "shadow" | string;
   channelPayNo?: string;
   wayCode?: string;
   payOrderId?: string;
