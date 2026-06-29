@@ -92,9 +92,14 @@ export function StoryboardTable(props: StoryboardTableProps) {
                     <tr>
                       <td colSpan={7} style={{ padding: "14px 12px", borderBottom: "1px solid var(--line-soft)", textAlign: "center" }}>
                         {!locked ? (
-                          <CreditButton cost={6} onConfirm={() => props.onGenShots(sc.id, i)} confirmTitle="拆分镜" confirmBody="AI 会把这一场拆成可逐镜编辑的分镜。" className="btn btn-primary btn-sm">
-                            <Wand2 size={13} /> 把这场拆成分镜
-                          </CreditButton>
+                          <div className="row gap-2" style={{ justifyContent: "center", alignItems: "center" }}>
+                            <button type="button" className="btn btn-line btn-sm" onClick={() => props.onAddShot(sc.id, i)}>
+                              <Plus size={13} /> 加一镜
+                            </button>
+                            <CreditButton cost={6} onConfirm={() => props.onGenShots(sc.id, i)} confirmTitle="拆分镜" confirmBody="AI 把这一场拆成可逐镜编辑的分镜（需先有场面描述或台词，否则会先给一条空镜手填）。" className="btn btn-primary btn-sm">
+                              <Wand2 size={13} /> 让 AI 拆分镜
+                            </CreditButton>
+                          </div>
                         ) : <span className="faint" style={{ fontSize: 12 }}>本场暂无分镜</span>}
                       </td>
                     </tr>

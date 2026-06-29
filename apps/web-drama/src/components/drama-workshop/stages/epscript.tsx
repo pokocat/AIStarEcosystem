@@ -224,6 +224,12 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（对话驱动改写用）。 */
   const runEpDraft = async (cost: number, instruction?: string, aiReply?: string) => {
     if (phase === "gen") return;
+    // v0.88：本集叙事(plot)为空就点「基于剧情重新生成分场分镜」→ 后端会 400 DRAMA_PLOT_REQUIRED。
+    // 友好提示去填，不打会失败的请求（与脑暴大纲守卫同理）。
+    if (ctx && !(plot || "").trim() && !(instruction || "").trim()) {
+      toast("先在上面「本集剧情」写一句这集大概讲什么，我就按它铺分场分镜～");
+      return;
+    }
     setPhase("gen");
     if (!ctx) {
       // 脱离工作台的演示态
@@ -450,6 +456,13 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const genShots = async (sceneId: string, sceneIdx: number) => {
     const scene = scenes[sceneIdx];
     if (!scene) return;
+    // v0.88：这场还没写「场面描述」也没台词 → AI 无从拆镜（后端会 400 DRAMA_SCENE_REQUIRED）。
+    // 平铺分镜表里没有场面描述输入位，故直接给一条可编辑空镜 + 友好提示，不打会失败的请求。
+    if (ctx && !(scene.action || "").trim() && !(scene.lines ?? []).some((l) => (l.text || "").trim())) {
+      addShot(sceneId, sceneIdx);
+      toast("这场还没内容，先加了一条空镜 —— 直接在表里填画面 / 台词即可（或用「基于剧情重新生成分场分镜」让 AI 整集铺好）。");
+      return;
+    }
     setGenScene(sceneId);
     try {
       if (!ctx) {
