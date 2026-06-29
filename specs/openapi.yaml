@@ -4972,6 +4972,39 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/RechargeOrder' }
 
+  /me/wallet/recharge/channels:
+    get:
+      tags: [finance]
+      operationId: getRechargeChannels
+      summary: 收银台可用支付渠道（v0.94 多渠道：已启用 + 机密齐全；用户自选支付宝/微信）
+      responses:
+        '200':
+          description: 可用渠道列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code: { type: string, description: 'alipay / wechat / shadow' }
+                            label: { type: string }
+                            sandbox: { type: boolean }
+                            defaultWayCode: { type: string }
+                            wayCodes:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  code: { type: string }
+                                  label: { type: string }
+                                  scene: { type: string, description: 'pc/wap/qr/jsapi/h5/shadow' }
+
   /me/wallet/recharge/checkout:
     post:
       tags: [finance]
@@ -4986,8 +5019,9 @@ paths:
               required: [packageId]
               properties:
                 packageId: { type: string }
-                wayCode: { type: string, description: 'WX_LITE/WX_NATIVE/ALI_QR/SHADOW；空则按 driver 默认' }
-                openid: { type: string, description: '微信小程序 openid（WX_LITE 必填）' }
+                channel: { type: string, description: 'alipay/wechat/shadow；空则取首个可用渠道（v0.94）' }
+                wayCode: { type: string, description: 'ALI_PC/ALI_WAP/ALI_QR/WX_NATIVE/WX_JSAPI/WX_H5/SHADOW；空则按渠道默认' }
+                openid: { type: string, description: '微信小程序 openid（WX_JSAPI 必填）' }
                 sourceApp: { type: string, description: 'music/drama/celebrity/aiavatar/miniprogram（仅营销标签，不切分余额）' }
       responses:
         '200':
@@ -5003,7 +5037,7 @@ paths:
                         type: object
                         properties:
                           orderId: { type: string }
-                          payDataType: { type: string, description: 'shadow / wxapp / payurl …' }
+                          payDataType: { type: string, description: 'page / qr / redirect / jsapi / shadow' }
                           payData: { type: string }
 
   /dev/pay/shadow/confirm:
