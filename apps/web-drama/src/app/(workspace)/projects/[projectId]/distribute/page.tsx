@@ -230,7 +230,7 @@ export default function DistributePage({ params }: PageProps) {
           <div style={{ marginTop: 18 }}>
             <Field
               label="排期（可选）"
-              hint="留空则立即下发；填写 ISO 时间将进入排队（mock 仍立即触发）。"
+              hint="留空则立即发布；填写时间后将按计划排期发布。"
             >
               <TextInput
                 type="datetime-local"

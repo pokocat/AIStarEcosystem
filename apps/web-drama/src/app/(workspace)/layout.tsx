@@ -67,8 +67,6 @@ const GROUPS: NavGroup[] = [
       { href: "/dashboard", icon: Sparkles, label: "首页", exact: true },
       { href: "/projects", icon: Film, label: "短剧工坊" },
       { href: "/shorts", icon: Zap, label: "短视频工坊" },
-      // 统一回收站：短剧 + 短视频都在这里（不再只挂短剧工坊下）。
-      { href: "/trash", icon: Trash2, label: "回收站" },
     ],
   },
   {
@@ -103,6 +101,8 @@ const GROUPS: NavGroup[] = [
       { href: "/wallet", icon: Coins, label: "积分钱包" },
       { href: "/finance", icon: WalletIcon, label: "财务中心" },
       { href: "/settings", icon: Settings, label: "工作室设置" },
+      // 统一回收站（短剧 + 短视频）：收进账户分组，不占首页一级显著位置。
+      { href: "/trash", icon: Trash2, label: "回收站" },
     ],
   },
 ];

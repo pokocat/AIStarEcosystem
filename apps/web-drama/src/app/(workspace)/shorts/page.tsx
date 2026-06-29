@@ -273,6 +273,26 @@ export default function ShortsStudioPage() {
       toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
     }
   };
+  // 单集作品（episodes===1 的 DramaProject，多为早期「套用模板」产物）此前在短视频工坊
+  // 只展示不可删——补上软删，与短剧工坊一致，避免它们卡在两个列表的缝里删不掉。
+  const softDeleteSingle = async (p: DramaProjectSummary) => {
+    const ok = await dramaConfirm({
+      title: "移到回收站",
+      body: `《${p.title}》将移入回收站，30 天后彻底删除，期间可随时恢复。`,
+      tone: "danger",
+      confirmLabel: "移到回收站",
+      cancelLabel: "取消",
+    });
+    if (!ok) return;
+    try {
+      await ProjectsApi.deleteProject(p.id);
+      invalidate("/me/drama/projects");
+      invalidate("/me/drama/projects/trash");
+      toast.success("已移到回收站");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
+    }
+  };
   const requestPublish = (d: ShortDraftSummary) => {
     if (publishingId) return;
     if (submittedShortIds.has(d.id)) return;
@@ -391,7 +411,7 @@ export default function ShortsStudioPage() {
           />
         ))}
         {singles.map((p, i) => (
-          <ProjectCard key={p.id} p={p} stageNames={STAGE_NAMES} onOpen={openProject} delay={(drafts.length + i) * 35} />
+          <ProjectCard key={p.id} p={p} stageNames={STAGE_NAMES} onOpen={openProject} onDelete={(x) => void softDeleteSingle(x)} delay={(drafts.length + i) * 35} />
         ))}
       </div>
 
