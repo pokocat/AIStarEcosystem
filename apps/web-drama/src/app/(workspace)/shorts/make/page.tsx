@@ -19,6 +19,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  ScrollText,
   Sparkles,
   Trash2,
   Zap,
@@ -37,20 +38,6 @@ import type { ShortDraftData } from "@/api/shorts";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { invalidate } from "@/lib/drama-query";
-
-// 整体短视频说明（meta）卡片里输入框/文本域的统一样式。
-const META_INPUT: React.CSSProperties = {
-  width: "100%",
-  border: "1px solid var(--line)",
-  borderRadius: 9,
-  padding: "8px 10px",
-  fontSize: 13,
-  lineHeight: 1.5,
-  background: "var(--surface-2)",
-  color: "var(--ink)",
-  outline: "none",
-  fontFamily: "inherit",
-};
 
 /** 把「整体短视频说明」拼成注入每镜提示词的前缀，统一全片风格 / 场景 / 主角。 */
 function metaPromptPrefix(meta: ScriptMeta | null): string {
@@ -272,6 +259,8 @@ function ShortMakerInner({
   const [shots, setShots] = React.useState<ShortShot[]>(() => (initial.shots as ShortShot[]) ?? []);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
   const [meta, setMeta] = React.useState<ScriptMeta | null>(initial.meta ?? null);
+  // 一句话故事大纲（AI logline）—— 展示在标题下，可直接改。
+  const [logline, setLogline] = React.useState<string>(() => initial.logline ?? "");
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
   const [refs, setRefs] = React.useState<Material[]>(() => initial.refs ?? []); // @数字人参考
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
@@ -310,6 +299,7 @@ function ShortMakerInner({
     title: meta?.title || initial.title || title,
     step,
     meta,
+    logline,
     shots,
     chat,
     refs,
@@ -340,7 +330,7 @@ function ShortMakerInner({
       return;
     }
     queueSave();
-  }, [step, meta, shots, chat, refs, suggestions, queueSave]);
+  }, [step, meta, logline, shots, chat, refs, suggestions, queueSave]);
   React.useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -401,6 +391,8 @@ function ShortMakerInner({
       const script = drafts[0];
       if (!script || !script.scenes?.length) throw new Error("AI 没有产出可用脚本，请换个说法重试");
       setMeta(script.meta ?? null);
+      // 故事大纲（logline）：AI 给了就用新的，没给则保留用户已编辑的（与 meta 同惯例不强制覆盖）。
+      setLogline((prev) => (script.logline?.trim() ? script.logline : prev));
       // 后续推荐 action 跟着这一版脚本走：取后端 suggestions（去空 + 去重 + 最多 4 条）。
       setSuggestions(
         Array.isArray(script.suggestions)
@@ -702,86 +694,92 @@ function ShortMakerInner({
           {/* 右:结构化分镜脚本(表单式 · 带时间线) */}
           <div className="scroll grow" style={{ minHeight: 0, background: "var(--bg)" }}>
             <div style={{ maxWidth: 760, margin: "0 auto", padding: "22px 28px 110px" }}>
-              {/* 整体短视频说明：AI 先定调，统领分镜与逐镜出片，可直接改 */}
+              {/* 短视频大纲：与短剧「故事大纲」面板 1:1 同款设计（header + 新生成 pill /
+                  metaLine + 大标题 + 剧情脉络强调块 / • 圆点分区 + 核心人物双列卡），
+                  仅把内容换成短视频形态 —— 跨产品零学习成本。 */}
               {meta && (
-                <div className="card col gap-3" style={{ padding: 16, marginBottom: 16 }}>
-                  <div className="row gap-2" style={{ alignItems: "center" }}>
-                    <Sparkles size={15} style={{ color: "var(--accent)" }} />
-                    <span style={{ fontWeight: 800, fontSize: 14 }}>短视频大纲</span>
-                    <span className="tag tag-gray" style={{ flex: "none" }}>口播种草 · 约 {total} 秒 · 竖屏 9:16</span>
+                <div className="card col" style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
+                  {/* header —— 同短剧故事大纲 */}
+                  <div className="row gap-3" style={{ padding: "13px 18px", borderBottom: "1px solid var(--line-soft)", flex: "none" }}>
+                    <ScrollText size={17} style={{ color: "var(--accent)", flex: "none" }} />
+                    <span style={{ fontWeight: 800, fontSize: 14, flex: "none", whiteSpace: "nowrap" }}>短视频大纲</span>
+                    <span className="faint" style={{ fontSize: 11, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      根据对话整理出的短视频大纲
+                    </span>
+                    <span style={{ flex: "none", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", background: "var(--surface-2)", padding: "2px 9px", borderRadius: 999 }}>新生成</span>
                   </div>
-                  {/* 概述：一句话标题作为大纲描述（设计稿描述位，可直接改） */}
-                  <input
-                    value={meta.title ?? ""}
-                    onChange={(e) => setMeta({ ...meta, title: e.target.value })}
-                    placeholder="一句话概述这条短视频…"
-                    style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 15.5, fontWeight: 700, lineHeight: 1.5, color: "var(--ink)", padding: 0, fontFamily: "inherit", letterSpacing: "-.01em" }}
-                  />
-                  {/* v0.88：短视频大纲 beat 流（设计稿口播种草模型）。 */}
-                  <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                    {SHORT_BEATS.map((b, i) => (
-                      <React.Fragment key={b}>
-                        <span className="chip static" style={{ height: 26, background: "var(--accent-soft)", color: "var(--accent)" }}>{b}</span>
-                        {i < SHORT_BEATS.length - 1 && <ArrowRight size={13} style={{ color: "var(--ink-3)" }} />}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                  {/* 折叠：更多设定（风格 / 主场景 / 主角，喂提示词统一全片）。默认收起，贴合设计稿简洁版。 */}
-                  <button
-                    type="button"
-                    onClick={() => setMetaOpen((v) => !v)}
-                    className="row gap-1"
-                    style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 12, fontWeight: 600, padding: "2px 0" }}
-                  >
-                    <ChevronDown size={13} style={{ transform: metaOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
-                    {metaOpen ? "收起设定" : "更多设定（风格 / 场景 / 主角）"}
-                  </button>
-                  {metaOpen && (
-                    <div className="col gap-3" style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 12 }}>
-                      <div className="col gap-1">
-                        <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>风格</span>
-                        <input
-                          value={(meta.style ?? []).join("、")}
-                          onChange={(e) => setMeta({ ...meta, style: e.target.value.split(/[、,，]/).map((x) => x.trim()).filter(Boolean) })}
-                          placeholder="风格关键词，用、或逗号分隔（如 口播种草、强钩子、暖色）"
-                          style={META_INPUT}
-                        />
-                        {meta.style?.length ? (
-                          <div className="row gap-2" style={{ flexWrap: "wrap", marginTop: 4 }}>
-                            {meta.style.map((s, i) => (
-                              <span key={i} className="chip static" style={{ height: 24, fontSize: 11.5, background: "var(--accent-soft)", color: "var(--accent)" }}>{s}</span>
-                            ))}
+
+                  <div className="col" style={{ padding: 22, gap: 20 }}>
+                    {/* 故事 —— metaLine + 大标题 + 一句话故事大纲（对应短剧 logline，放标题下） */}
+                    <div className="col gap-3">
+                      <div className="faint" style={{ fontSize: 12 }}>{displayName} · 单片 · 竖屏 9:16 · 约 {total} 秒</div>
+                      <input
+                        value={meta.title ?? ""}
+                        onChange={(e) => setMeta({ ...meta, title: e.target.value })}
+                        placeholder="给这条短视频起个标题…"
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.2, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
+                      />
+                      <textarea
+                        value={logline}
+                        onChange={(e) => setLogline(e.target.value)}
+                        placeholder="一句话故事大纲…"
+                        rows={2}
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", resize: "none", fontSize: 14.5, lineHeight: 1.8, color: "var(--ink-2)", padding: 0, fontFamily: "inherit" }}
+                      />
+                    </div>
+
+                    <div style={{ height: 1, background: "var(--line-soft)" }} />
+
+                    {/* 主角 —— 同短剧「核心人物」双列卡网格 */}
+                    <div className="col gap-3">
+                      <OutlineLabel hint="1 位 · 点击可改">主角</OutlineLabel>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(228px, 1fr))", gap: 8 }}>
+                        <div
+                          className="row gap-2"
+                          style={{ alignItems: "center", padding: "7px 10px 7px 7px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)", minWidth: 0 }}
+                        >
+                          <div
+                            style={{
+                              width: 30, height: 30, borderRadius: "50%",
+                              background: "linear-gradient(135deg, color-mix(in oklch, var(--accent) 18%, #fff), color-mix(in oklch, var(--accent-2) 18%, #fff))",
+                              boxShadow: "inset 0 0 0 1px var(--line)", display: "grid", placeItems: "center",
+                              fontSize: 13, fontWeight: 800, color: "var(--accent-2)", flex: "none",
+                            }}
+                          >
+                            {(meta.character?.name || "主").slice(0, 1)}
                           </div>
-                        ) : null}
-                      </div>
-                      <div className="col gap-1">
-                        <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主场景</span>
-                        <textarea
-                          value={meta.scene ?? ""}
-                          onChange={(e) => setMeta({ ...meta, scene: e.target.value })}
-                          placeholder="主场景一句话描述"
-                          rows={2}
-                          style={{ ...META_INPUT, resize: "none" }}
-                        />
-                      </div>
-                      <div className="col gap-1">
-                        <span className="faint" style={{ fontSize: 11, fontWeight: 600 }}>主角</span>
-                        <input
-                          value={meta.character?.name ?? ""}
-                          onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), name: e.target.value } })}
-                          placeholder="角色名"
-                          style={META_INPUT}
-                        />
-                        <textarea
-                          value={meta.character?.description ?? ""}
-                          onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), description: e.target.value } })}
-                          placeholder="形象与性格一句话"
-                          rows={2}
-                          style={{ ...META_INPUT, resize: "none" }}
-                        />
+                          <div className="col" style={{ minWidth: 0, gap: 1, lineHeight: 1.3, flex: 1 }}>
+                            <input
+                              value={meta.character?.name ?? ""}
+                              onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), name: e.target.value } })}
+                              placeholder="角色名"
+                              style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
+                            />
+                            <input
+                              value={meta.character?.description ?? ""}
+                              onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), description: e.target.value } })}
+                              placeholder="形象与性格一句话"
+                              style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 11.5, color: "var(--ink-3)", padding: 0, fontFamily: "inherit" }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  )}
+
+                    <div style={{ height: 1, background: "var(--line-soft)" }} />
+
+                    {/* 主场景 —— 同短剧「取景参考」 */}
+                    <div className="col gap-3">
+                      <OutlineLabel>主场景</OutlineLabel>
+                      <textarea
+                        value={meta.scene ?? ""}
+                        onChange={(e) => setMeta({ ...meta, scene: e.target.value })}
+                        placeholder="主场景一句话描述"
+                        rows={2}
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", resize: "none", fontSize: 13.5, lineHeight: 1.9, color: "var(--ink-2)", padding: 0, fontFamily: "inherit" }}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 

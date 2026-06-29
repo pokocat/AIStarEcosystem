@@ -80,6 +80,8 @@ export interface ShortDraftData {
   styleRef?: string;
   step: "script" | "factory";
   meta: ScriptMeta | null;
+  /** 一句话故事大纲（AI 起草的 logline）；展示在标题下，可直接改。 */
+  logline?: string;
   shots: ShortDraftShot[];
   chat: ShortDraftChatMsg[];
   refs: Material[];

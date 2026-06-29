@@ -72,7 +72,8 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 - **AI 气泡渲染 Markdown（`lib/markdown-lite.tsx`）**：脑暴助手回复里的 `**加粗**` / `1. 2. 3.` 有序列表 / `-`·`·` 无序列表 / 换行此前按纯文本显示（`**` 露出来）。新增轻量渲染器（不引三方库、不走 `dangerouslySetInnerHTML`，纯 React 元素天然转义）—— 接入脑暴对话、短视频制作左侧对话、剧集脚本 `ai-chat-panel` 三处 AI 气泡（用户气泡仍纯文本）。
 - **快捷建议（quick）紧扣回复**：脑暴 chat 提示词 `drama.brainstorm_chat.md` 重写要求 ③ —— quick 必须针对**本条回复**（给了几个赛道就让用户选其一 / 微调，抛了设定就延伸或反向），不再照搬通用示例；并允许 reply 用简单 Markdown。`dev-fake-llm` 脑暴回复同步改为 Markdown 分点 + 紧扣回复的 quick（dev 可直接验收渲染）。
-- **门禁**：web-drama typecheck + build（31 路由）全绿。
+- **作为上线初始化内容入库**：`PromptTemplateSeeder.SEED_VERSION` 升 `v8→v9-2026-06-29-brainstorm-quick-md`，让该 prompt 成为 seed 基线 —— 全新部署经 `seedIfAbsent` 入库；已 seed 过 v0.87 的 dev / prod DB 在**重启**时由 `reseedBaselineIfUntouched` 刷新（仅 `version==1` 未被运营改过的行，运营改过的 `version>1` 不动）。dev 运行中的服务可经 admin `PUT /api/admin/prompts/drama.brainstorm_chat` 热更（无需重启、不丢数据）。
+- **门禁**：web-drama typecheck + build（31 路由）+ server compile 全绿。
 
 ### v0.94 · 2026-06-29 · 短视频制作右侧还原设计稿（平铺分镜表）
 

@@ -29,8 +29,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(PromptTemplateSeeder.class);
 
     /** 推新默认 prompt 基线时改这个值；下次启动会刷新 version==1 的行。 */
-    // v8：按实际业务调用点重写 seed prompt 基线。bump 只刷新 version==1 的行，运营改过的不覆盖。
-    private static final String SEED_VERSION = "v8-2026-06-17-prompt-governance";
+    // v9：脑暴 chat 提示词改版（quick 紧扣回复 + 允许 reply 用 Markdown）—— bump 让已 seed 过 v0.87
+    //     brainstorm 行的 dev / prod DB 在重启时刷新到新基线（仅 version==1 未被运营改过的行）。
+    private static final String SEED_VERSION = "v9-2026-06-29-brainstorm-quick-md";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;
