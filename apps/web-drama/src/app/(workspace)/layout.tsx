@@ -26,6 +26,7 @@ import {
   Shirt,
   Sliders,
   Sparkles,
+  Trash2,
   Users,
   Wallet as WalletIcon,
   Zap,
@@ -64,8 +65,10 @@ const GROUPS: NavGroup[] = [
     title: "创作",
     items: [
       { href: "/dashboard", icon: Sparkles, label: "首页", exact: true },
-      { href: "/projects", icon: Film, label: "短剧工坊", children: [{ href: "/projects/trash", label: "回收站" }] },
+      { href: "/projects", icon: Film, label: "短剧工坊" },
       { href: "/shorts", icon: Zap, label: "短视频工坊" },
+      // 统一回收站：短剧 + 短视频都在这里（不再只挂短剧工坊下）。
+      { href: "/trash", icon: Trash2, label: "回收站" },
     ],
   },
   {

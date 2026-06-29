@@ -68,6 +68,15 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.93 · 2026-06-29 · 短视频回收站 + 统一回收站 + UI 打磨一批
+
+- **短视频工坊支持软删 + 统一回收站**：`DramaShort` 早有 `deletedAt`（v0.76），本版补齐回收站闭环 —— 后端 `DramaShortService.listTrash/restoreShort/purgeShort/purgeExpiredTrash` + `DramaShortController`（`GET /me/drama/shorts/trash`、`POST /{id}/restore`、`DELETE /{id}/purge`）+ `DramaShortTrashCleanupScheduler`（每日 03:45 物理清理超 30 天）。短视频工坊草稿卡新增「移到回收站」按钮（软删二次确认）。
+- **回收站升为顶层入口（不再只挂短剧工坊下）**：新建统一页 `/trash`（短剧 / 短视频两 Tab，各自恢复 / 彻底删除），侧栏「回收站」从「短剧工坊」子项移到「创作」组顶层；旧 `/projects/trash` 改 308 重定向到 `/trash?tab=drama`；短剧 / 短视频工坊各自顶栏「回收站」按钮深链到对应 Tab。
+- **自动保存提示内联化**：底部悬浮药丸 → 各页头右上角内联实时状态条（自动保存 / 保存中 / 已保存 / 未保存），接入脑暴对话框、短视频制作页、短剧工作台顶栏。
+- **toast 重做 + 空态 + 入口收敛**：toast 黑色胶囊 → 白底卡片 + 柔和阴影 + 品牌色语义图标；短剧工坊空列表加品牌化空状态（区分首屏骨架与真·空态）；新建入口「从零开剧 / 套模板开剧」两按钮 → 单个「新建短剧」→ 脑暴对话框；「核心人物」单列 → 双列卡片。
+- **全站文案专业化**：审校全站后应用约 135 条改写，去掉「爆款 / 免大纲费 / 说句话·出片 / 🎉」等营销味与助手腔、规范标点。
+- **门禁**：web-drama typecheck + build（31 路由）+ contract 全绿；server `DramaShortServiceTest` 12/12（+ 回收站生命周期 / 到期清理 2 例）；openapi 加 shorts 回收站 3 path。
+
 ### v0.92 · 2026-06-29 · 通用存储配额（用量/余量 + 回收站计入 + 购买存储套餐扩容）
 
 通用后台能力（任意子应用 `?app=` 复用，celebrity 等可快速对接），drama 先接入：

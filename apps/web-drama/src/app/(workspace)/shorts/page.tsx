@@ -6,8 +6,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Boxes, Clapperboard, Play, Zap } from "lucide-react";
-import { Thumb } from "@/components/drama-ui";
+import { Boxes, Clapperboard, Play, Trash2, Zap } from "lucide-react";
+import { Thumb, dramaConfirm } from "@/components/drama-ui";
 import { ProjectCard, STAGE_NAMES } from "@/components/drama-workshop";
 import { PublishCreativeCenterModal } from "@/components/drama-workshop/publish-creative-center-modal";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
@@ -36,6 +36,7 @@ function DraftCard({
   d,
   onOpen,
   onPublish,
+  onDelete,
   publishing,
   submitted,
   delay,
@@ -43,6 +44,7 @@ function DraftCard({
   d: ShortDraftSummary;
   onOpen: () => void;
   onPublish: () => void;
+  onDelete?: () => void;
   publishing?: boolean;
   /** 已成功提交过审——隐藏发布按钮，显示「已提交」标记 */
   submitted?: boolean;
@@ -152,6 +154,34 @@ function DraftCard({
         >
           {st.t}
         </span>
+        {onDelete && (
+          <button
+            type="button"
+            aria-label="移到回收站"
+            title="移到回收站"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            style={{
+              position: "absolute",
+              top: 7,
+              right: 7,
+              width: 26,
+              height: 26,
+              borderRadius: 8,
+              border: "none",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              background: "rgba(0,0,0,.45)",
+              color: "#fff",
+              backdropFilter: "blur(2px)",
+            }}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
       <div className="col gap-1" style={{ padding: "9px 10px 10px" }}>
         <span style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.title}</span>
@@ -224,6 +254,25 @@ export default function ShortsStudioPage() {
     router.push(`/shorts/make${qs ? "?" + qs : ""}`);
   };
   const editDraft = (id: string) => router.push(`/shorts/make?draft=${encodeURIComponent(id)}`);
+  // 软删（移到回收站）：二次确认 → 软删 → 刷新列表（30 天内可在回收站恢复）。
+  const softDeleteDraft = async (d: ShortDraftSummary) => {
+    const ok = await dramaConfirm({
+      title: "移到回收站",
+      body: `《${d.title}》将移入回收站，30 天后彻底删除，期间可随时恢复。`,
+      tone: "danger",
+      confirmLabel: "移到回收站",
+      cancelLabel: "取消",
+    });
+    if (!ok) return;
+    try {
+      await ShortsApi.deleteDraft(d.id);
+      invalidate("/me/drama/shorts");
+      invalidate("/me/drama/shorts/trash");
+      toast.success("已移到回收站");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
+    }
+  };
   const requestPublish = (d: ShortDraftSummary) => {
     if (publishingId) return;
     if (submittedShortIds.has(d.id)) return;
@@ -268,6 +317,15 @@ export default function ShortsStudioPage() {
           <div className="muted" style={{ marginTop: 4 }}>管理你的短视频、宣传片、个人自传等单集作品，完成后可点开播放，草稿随时继续制作。</div>
         </div>
         <div className="grow" />
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ height: 44, padding: "0 14px" }}
+          onClick={() => router.push("/trash?tab=shorts")}
+          title="回收站"
+        >
+          <Trash2 size={16} /> 回收站
+        </button>
         <button type="button" className="btn btn-line" style={{ height: 44, padding: "0 18px" }} onClick={() => setClipOpen(true)}>
           <Clapperboard size={16} /> 从短剧切片
         </button>
@@ -327,6 +385,7 @@ export default function ShortsStudioPage() {
             delay={i * 35}
             onOpen={() => openDraft(d)}
             onPublish={() => requestPublish(d)}
+            onDelete={() => void softDeleteDraft(d)}
             publishing={publishingId === d.id}
             submitted={submittedShortIds.has(d.id)}
           />

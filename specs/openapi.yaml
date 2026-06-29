@@ -7421,6 +7421,14 @@ paths:
   /me/drama/shorts/{id}/extract-recipe:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: extractDramaShortRecipe, summary: '完成短视频发布到创意中心：反向蒸馏成单集可复用创意（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
+  /me/drama/shorts/trash:
+    get: { tags: [drama], operationId: listDramaShortsTrash, summary: '短视频回收站列表（软删草稿，附 deletedAt / purgeAt / daysLeft）', responses: { '200': { description: ok } } }
+  /me/drama/shorts/{id}/restore:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: restoreDramaShort, summary: '从回收站恢复短视频草稿', responses: { '200': { description: ok } } }
+  /me/drama/shorts/{id}/purge:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    delete: { tags: [drama], operationId: purgeDramaShort, summary: '彻底删除回收站短视频草稿（物理删除，不可恢复）', responses: { '204': { description: ok } } }
   # ── v0.66 短剧专区配置 + 成片合成 ──
   /me/drama/config:
     get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,shortEntry,clip}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价）', responses: { '200': { description: ok } } }

@@ -103,7 +103,7 @@ function ProjectsHubInner() {
             type="button"
             className="btn btn-ghost"
             style={{ height: 44, padding: "0 14px" }}
-            onClick={() => router.push("/projects/trash")}
+            onClick={() => router.push("/trash?tab=drama")}
             title="回收站"
           >
             <Trash2 size={16} /> 回收站

@@ -56,6 +56,17 @@ class DramaShortServiceTest {
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null)
                         .toList());
+        when(repo.findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(anyString())).thenAnswer(inv ->
+                db.values().stream()
+                        .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() != null)
+                        .toList());
+        when(repo.findByIdAndOwnerUserId(anyString(), anyString())).thenAnswer(inv -> {
+            DramaShort s = db.get(inv.getArgument(0, String.class));
+            boolean ok = s != null && inv.getArgument(1, String.class).equals(s.getOwnerUserId());
+            return Optional.ofNullable(ok ? s : null);
+        });
+        doAnswer(inv -> { db.remove(inv.getArgument(0, DramaShort.class).getId()); return null; })
+                .when(repo).delete(any());
         creditService = mock(CreditService.class);
         configs = mock(PlatformConfigService.class);
         // 默认回落传入的默认值（短视频开拍默认 10）；具体扣费用例再按 key 覆盖。
@@ -160,6 +171,58 @@ class DramaShortServiceTest {
         svc.deleteShort(id, USER);
         assertTrue(svc.listShorts(USER).isEmpty());
         assertThrows(BusinessException.class, () -> svc.getShort(id, USER));
+    }
+
+    @Test
+    void trashLifecycle_listRestorePurge() {
+        String id = svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("idea", "出差高铁邻座"), USER)
+                .get("meta").get("id").asText();
+
+        // 软删 → 进回收站（带 deletedAt / purgeAt / daysLeft），工坊列表里消失
+        svc.deleteShort(id, USER);
+        List<JsonNode> trash = svc.listTrash(USER);
+        assertEquals(1, trash.size());
+        JsonNode t = trash.get(0);
+        assertEquals(id, t.get("id").asText());
+        assertFalse(t.get("deletedAt").isNull());
+        assertFalse(t.get("purgeAt").isNull());
+        assertTrue(t.get("daysLeft").asLong() >= 29 && t.get("daysLeft").asLong() <= 30);
+        assertTrue(svc.listShorts(USER).isEmpty());
+        // 他人看不到我的回收站
+        assertTrue(svc.listTrash("u_other").isEmpty());
+
+        // 恢复 → 回到工坊列表，回收站清空
+        svc.restoreShort(id, USER);
+        assertEquals(1, svc.listShorts(USER).size());
+        assertTrue(svc.listTrash(USER).isEmpty());
+
+        // 未在回收站直接彻底删除 → 报错（必须先软删）
+        assertThrows(BusinessException.class, () -> svc.purgeShort(id, USER));
+
+        // 软删后彻底删除 → 物理消失，回收站与工坊都没有
+        svc.deleteShort(id, USER);
+        svc.purgeShort(id, USER);
+        assertTrue(svc.listTrash(USER).isEmpty());
+        assertThrows(BusinessException.class, () -> svc.getShort(id, USER));
+    }
+
+    @Test
+    void purgeExpiredTrash_removesOnlyOlderThanRetention() {
+        // 一条刚软删（保留期内）、一条软删 31 天前（已过期）
+        db.put("dvs_fresh", DramaShort.builder().id("dvs_fresh").ownerUserId(USER)
+                .deletedAt(java.time.OffsetDateTime.now().minusDays(1)).build());
+        db.put("dvs_old", DramaShort.builder().id("dvs_old").ownerUserId(USER)
+                .deletedAt(java.time.OffsetDateTime.now().minusDays(31)).build());
+        when(repo.findByDeletedAtBefore(any())).thenAnswer(inv -> {
+            java.time.OffsetDateTime cutoff = inv.getArgument(0);
+            return db.values().stream()
+                    .filter(s -> s.getDeletedAt() != null && s.getDeletedAt().isBefore(cutoff))
+                    .toList();
+        });
+        int cleaned = svc.purgeExpiredTrash();
+        assertEquals(1, cleaned);
+        assertFalse(db.containsKey("dvs_old"));
+        assertTrue(db.containsKey("dvs_fresh"));
     }
 
     @Test

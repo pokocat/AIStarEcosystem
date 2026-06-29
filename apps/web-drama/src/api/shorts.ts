@@ -31,6 +31,13 @@ export interface ShortDraftSummary {
   updatedAt: string | null;
 }
 
+/** 回收站卡片：在草稿卡片字段上加软删元数据（与后端 DramaShortService.toTrashItem 对齐）。 */
+export interface ShortDraftTrashItem extends ShortDraftSummary {
+  deletedAt: string;
+  purgeAt: string;
+  daysLeft: number;
+}
+
 /** 持久化的分镜（与 make 页 ShortShot 对齐，含出片产物，刷新后可继续）。 */
 export interface ShortDraftShot {
   id: string;
@@ -104,6 +111,7 @@ export interface SaveShortOptions {
 // ── mock：进程内存表（USE_MOCK=1 时本地回放）。同会话内 create→get→save 可恢复
 //    （满足新建流程在 mock 下可用 + 前进/后退导航不丢）；整页刷新会清空（mock 本无后端）。
 const mockStore = new Map<string, ShortDraftDetail>();
+const mockTrash = new Map<string, ShortDraftTrashItem>();
 let mockSeq = 0;
 
 function mockSummary(id: string, input: CreateShortInput): ShortDraftSummary {
@@ -217,8 +225,63 @@ export async function saveDraft(
 
 export async function deleteDraft(id: string): Promise<void> {
   if (USE_MOCK) {
-    mockStore.delete(id);
+    const d = mockStore.get(id);
+    if (d) {
+      const now = new Date();
+      mockTrash.set(id, {
+        ...d.meta,
+        deletedAt: now.toISOString(),
+        purgeAt: new Date(now.getTime() + 30 * 86_400_000).toISOString(),
+        daysLeft: 30,
+      });
+      mockStore.delete(id);
+    }
     return mockDelay(undefined);
   }
   await apiFetch<void>(`/me/drama/shorts/${id}`, { method: "DELETE" });
+}
+
+/** 回收站列表（软删的短视频草稿）。 */
+export async function listTrashDrafts(): Promise<ShortDraftTrashItem[]> {
+  if (USE_MOCK) {
+    return mockDelay(
+      Array.from(mockTrash.values()).sort((a, b) => (b.deletedAt ?? "").localeCompare(a.deletedAt ?? "")),
+    );
+  }
+  return apiFetch<ShortDraftTrashItem[]>("/me/drama/shorts/trash");
+}
+
+/** 从回收站恢复一条短视频草稿。 */
+export async function restoreDraft(id: string): Promise<void> {
+  if (USE_MOCK) {
+    const t = mockTrash.get(id);
+    if (t) {
+      const prev = mockStore.get(id);
+      mockStore.set(id, {
+        meta: { ...t, updated: "刚刚", updatedAt: new Date().toISOString() },
+        data: prev?.data ?? {
+          fmtKey: t.fmtKey,
+          fmtName: t.fmtName,
+          title: t.title,
+          step: "script",
+          meta: null,
+          shots: [],
+          chat: [],
+          refs: [],
+        },
+      });
+      mockTrash.delete(id);
+    }
+    return mockDelay(undefined);
+  }
+  await apiFetch<ShortDraftDetail>(`/me/drama/shorts/${id}/restore`, { method: "POST" });
+}
+
+/** 彻底删除一条回收站短视频草稿（物理，不可恢复）。 */
+export async function purgeDraft(id: string): Promise<void> {
+  if (USE_MOCK) {
+    mockTrash.delete(id);
+    return mockDelay(undefined);
+  }
+  await apiFetch<void>(`/me/drama/shorts/${id}/purge`, { method: "DELETE" });
 }

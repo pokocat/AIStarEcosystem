@@ -61,4 +61,23 @@ public class DramaShortController {
     public void delete(Principal principal, @PathVariable String id) {
         service.deleteShort(id, principal.getName());
     }
+
+    /** 回收站列表 → ShortDraftSummary[] + { deletedAt, purgeAt, daysLeft }。 */
+    @GetMapping("/trash")
+    public ApiResponse<List<JsonNode>> trash(Principal principal) {
+        return ApiResponse.of(service.listTrash(principal.getName()));
+    }
+
+    /** 从回收站恢复 → { meta, data }。 */
+    @PostMapping("/{id}/restore")
+    public ApiResponse<JsonNode> restore(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(service.restoreShort(id, principal.getName()));
+    }
+
+    /** 彻底删除（物理，需已在回收站）。 */
+    @DeleteMapping("/{id}/purge")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void purge(Principal principal, @PathVariable String id) {
+        service.purgeShort(id, principal.getName());
+    }
 }
