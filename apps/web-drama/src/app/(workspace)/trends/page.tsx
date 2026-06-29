@@ -146,7 +146,7 @@ export default function TrendsPage() {
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader eyebrow="热门话题" title={`热门话题（${filtered.length}）`} />
         {filtered.length === 0 ? (
-          <EmptyState icon={<Compass size={28} />} title="没有匹配的话题" description="清除筛选条件试试。" />
+          <EmptyState icon={<Compass size={28} />} title="没有匹配的话题" description="请调整或清除筛选条件。" />
         ) : (
           <div>
             {filtered.map((t, i) => (

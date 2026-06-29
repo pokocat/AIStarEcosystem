@@ -232,7 +232,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
             <Button
               variant="ghost"
               size="md"
-              onClick={() => toast.info("演员档期排期 v0.7")}
+              onClick={() => toast.info("演员档期功能开发中")}
             >
               <Calendar size={14} />
               查看档期

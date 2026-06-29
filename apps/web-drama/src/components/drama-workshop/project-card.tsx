@@ -115,7 +115,7 @@ export function ProjectCard({ p, delay = 0, onOpen, onDelete, stageNames = STAGE
         </div>
         <div className="col gap-2">
           <div className="row" style={{ justifyContent: "space-between", fontSize: 11.5 }}>
-            <span className="faint">进度 · 走到「{stageLabel}」</span>
+            <span className="faint">进度 · 当前「{stageLabel}」</span>
             <span
               className="num"
               style={{

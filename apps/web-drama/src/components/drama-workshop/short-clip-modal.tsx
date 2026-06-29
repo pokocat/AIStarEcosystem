@@ -119,12 +119,12 @@ export function ShortClipModal({ onClose, onMake }: ShortClipModalProps) {
           )}
           {scanning && (
             <div className="card" style={{ padding: 16 }}>
-              <GenSkeleton lines={2} label="正在分析剧情节奏与情绪曲线,挑高光…" />
+              <GenSkeleton lines={2} label="正在分析剧情节奏与情绪曲线,提取高光片段…" />
             </div>
           )}
           {clips && (
             <div className="col gap-2">
-              <span className="faint" style={{ fontSize: 12, fontWeight: 700 }}>AI 挑出 {clips.length} 个高光 · 按热度排序</span>
+              <span className="faint" style={{ fontSize: 12, fontWeight: 700 }}>AI 提取 {clips.length} 个高光 · 按热度排序</span>
               {clips.map((c) => (
                 <div key={c.id} className="card row gap-3" style={{ padding: "11px 13px" }}>
                   <div

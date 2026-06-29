@@ -90,7 +90,7 @@ export function SceneBlock({
             <Editable
               block
               value={s.action}
-              placeholder="补一句动作 / 场面描述…"
+              placeholder="动作 / 场面描述…"
               onCommit={(v) => onEdit({ action: v })}
               style={{ display: "block", color: "var(--ink-2)", fontStyle: "italic" }}
             />
@@ -147,7 +147,7 @@ export function SceneBlock({
                   <Editable
                     block
                     value={l.text}
-                    placeholder="写一句台词 / 旁白…"
+                    placeholder="台词 / 旁白…"
                     onCommit={(v) => onEditLine(j, { text: v })}
                   />
                 </div>

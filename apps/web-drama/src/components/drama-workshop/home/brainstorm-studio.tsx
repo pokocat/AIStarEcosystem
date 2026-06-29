@@ -190,7 +190,7 @@ export function BrainstormStudio({ id }: { id: string }) {
           className="row gap-2"
           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 12.5, fontWeight: 600, padding: 4 }}
         >
-          <ChevronLeft size={14} /> 回首页
+          <ChevronLeft size={14} /> 返回首页
         </button>
         <span className="grow" />
         <SaveStatus status={saveStatus} />
@@ -394,7 +394,7 @@ export function BrainstormStudio({ id }: { id: string }) {
                     <div className="row gap-2" style={{ alignItems: "center" }}>
                       <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flex: "none" }} />
                       <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "var(--ink-3)" }}>制作设置</span>
-                      <span className="faint" style={{ fontSize: 11 }}>形态决定去做短剧还是短视频</span>
+                      <span className="faint" style={{ fontSize: 11 }}>形态决定生成短剧或短视频</span>
                     </div>
                     <SettingRow label="形态">
                       <Seg
@@ -418,7 +418,7 @@ export function BrainstormStudio({ id }: { id: string }) {
                 </span>
                 <button type="button" onClick={() => void goProduce()} disabled={producing} className="btn btn-grad" style={{ height: 40, padding: "0 20px", flex: "none" }}>
                   {form === "single" ? <Zap size={15} /> : <Clapperboard size={15} />}
-                  {producing ? "处理中…" : form === "single" ? "去做短视频" : "去制作"}
+                  {producing ? "处理中…" : form === "single" ? "制作短视频" : "去制作"}
                 </button>
               </div>
             </>
@@ -530,7 +530,7 @@ function StudioLoading() {
   return (
     <div className="ws-flush col center" style={{ gap: 14, background: "var(--bg)" }}>
       <span aria-hidden style={{ width: 34, height: 34, border: "3px solid var(--line)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "drama-spin .8s linear infinite" }} />
-      <div className="muted" style={{ fontSize: 13 }}>正在打开脑暴…</div>
+      <div className="muted" style={{ fontSize: 13 }}>正在加载…</div>
     </div>
   );
 }
@@ -538,10 +538,10 @@ function StudioLoading() {
 function StudioNotFound({ onBack }: { onBack: () => void }) {
   return (
     <div className="ws-flush col center" style={{ gap: 14, textAlign: "center", background: "var(--bg)" }}>
-      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>没找到这次脑暴</h1>
-      <div className="muted">可能是链接过期或已删除。回首页重新开始。</div>
+      <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>未找到该脑暴记录</h1>
+      <div className="muted">可能是链接过期或已删除。返回首页重新开始。</div>
       <button type="button" className="btn btn-line" onClick={onBack}>
-        <ChevronLeft size={16} /> 回首页
+        <ChevronLeft size={16} /> 返回首页
       </button>
     </div>
   );

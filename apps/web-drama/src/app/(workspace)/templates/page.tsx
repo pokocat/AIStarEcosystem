@@ -92,7 +92,7 @@ export default function TemplatesPage() {
     try {
       const res = await RecipesApi.applyRecipe(r);
       if (res.kind === "short") {
-        // 单集创意 → 短视频工厂，按这个风格说个主题就开拍
+        // 单集创意 → 短视频工厂，按这个风格描述主题即可开拍
         toast.success(`已套用「${r.title}」创意，进入短视频工厂描述主题即可开拍`);
         router.push(`/shorts/make?draft=${encodeURIComponent(res.shortId)}`);
       } else {
@@ -232,7 +232,7 @@ export default function TemplatesPage() {
             <>
               <div style={{ fontWeight: 700 }}>这里还没有创意</div>
               <div className="faint" style={{ fontSize: 12.5 }}>
-                {showOperator ? "用「新建内置创意」铺点官方种子，或从用户作品里精选。" : "创作者发布与运营精选的创意会陆续出现在这里。"}
+                {showOperator ? "用「新建内置创意」添加官方内容，或从用户作品中精选。" : "创作者发布与运营精选的创意会陆续出现在这里。"}
               </div>
             </>
           )}
@@ -452,11 +452,11 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
   const hasMethod = !!r.data?.mainline || beatN > 0;
   const features: { label: string; sub: string }[] = isShort
     ? [
-        { label: "风格创意已内置", sub: "套用后 AI 按这个风格 / 方法帮你写口播脚本和分镜" },
+        { label: "风格创意已内置", sub: "套用后 AI 按此风格与方法生成口播脚本和分镜" },
         { label: "单条速成", sub: `${r.ratio} 画幅 · 进短视频工厂逐镜出片、合成成片` },
         r.previewVideo
           ? { label: "范例成片可对照", sub: "参照上方范例视频，描述主题即可开拍" }
-          : { label: "说个主题就开拍", sub: "不用想结构，描述你的产品 / 主题，AI 接管节奏" },
+          : { label: "描述主题即可开拍", sub: "无需搭建结构，描述产品或主题，由 AI 把控节奏" },
       ]
     : [
         { label: "主线骨架", sub: hasMethod ? "可迁移的故事主线，套用后自动展开到你的项目" : "完整创作方法已内置，套用后自动铺好大纲" },
@@ -566,7 +566,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
 
       {/* ── tab 栏（下划线选中指示） ── */}
       <div className="row" style={{ flex: "none", padding: "0 20px", borderBottom: "1px solid var(--line-soft)", gap: 22 }}>
-        {([["intro", "简介"], ["content", "套用你会得到什么"]] as const).map(([k, label]) => {
+        {([["intro", "简介"], ["content", "套用后获得"]] as const).map(([k, label]) => {
           const on = tab === k;
           return (
             <button

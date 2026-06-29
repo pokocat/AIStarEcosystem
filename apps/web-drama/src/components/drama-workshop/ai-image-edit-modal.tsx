@@ -128,7 +128,7 @@ export function AiImageEditModal({
               </div>
               <div className="row gap-2" style={{ alignItems: "center" }}>
                 <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void send(input); } }}
-                  placeholder="告诉 AI 怎么改这张图…" className="chat-input" style={{ flex: 1, height: 40, border: "1.5px solid var(--line)", borderRadius: 11, padding: "0 13px", fontSize: 13, background: "var(--surface-2)", outline: "none", color: "var(--ink)" }} />
+                  placeholder="描述你想如何修改这张图…" className="chat-input" style={{ flex: 1, height: 40, border: "1.5px solid var(--line)", borderRadius: 11, padding: "0 13px", fontSize: 13, background: "var(--surface-2)", outline: "none", color: "var(--ink)" }} />
                 <button type="button" onClick={() => void send(input)} className="btn btn-grad btn-icon" style={{ width: 40, height: 40, flex: "none" }}><ArrowUp size={16} /></button>
               </div>
             </div>
@@ -140,7 +140,7 @@ export function AiImageEditModal({
               {busy && (
                 <div className="col center gap-2" style={{ position: "absolute", inset: 0, background: "rgba(28,25,23,.42)", backdropFilter: "blur(2px)", color: "#fff" }}>
                   <span className="gen-pulse" style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.22)", display: "grid", placeItems: "center" }}><Sparkles size={20} /></span>
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>正在重画…</span>
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>正在重新生成…</span>
                 </div>
               )}
             </div>

@@ -16,7 +16,7 @@ export interface AICollabProps {
   error?: boolean;
   errorReason?: string;
   locked?: boolean;
-  /** 锁定按钮文案；默认"锁定本阶段,进入下一步" */
+  /** 锁定按钮文案；默认"锁定本阶段，进入下一步" */
   lockLabel?: string;
   /** "AI 起草"按钮文案；默认"AI 起草" */
   generateLabel?: string;
@@ -35,7 +35,7 @@ export function AICollab({
   error,
   errorReason,
   locked,
-  lockLabel = "锁定本阶段,进入下一步",
+  lockLabel = "锁定本阶段，进入下一步",
   generateLabel = "AI 起草",
   onGenerate,
   onRetry,
@@ -129,7 +129,7 @@ export function AICollab({
             fontSize: 13,
           }}
         >
-          <Lock size={15} /> 本阶段已锁定 · 可随时回改
+          <Lock size={15} /> 本阶段已锁定 · 可随时返回修改
         </div>
       )}
     </div>

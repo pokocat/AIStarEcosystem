@@ -130,7 +130,7 @@ export function AiChatPanel({
                 }
               }
             }}
-            placeholder="告诉 AI 怎么改…"
+            placeholder="描述你想怎么改…"
             rows={1}
             style={{ flex: 1, minWidth: 0, minHeight: 32, maxHeight: 88, border: "1.5px solid var(--line)", borderRadius: 10, padding: "7px 10px", fontSize: 12, outline: "none", resize: "none", background: "var(--surface-2)", fontFamily: "inherit" }}
           />

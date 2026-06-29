@@ -169,7 +169,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             短剧工坊
           </div>
           <div className="faint" style={{ fontSize: 11, fontWeight: 500, marginTop: 2 }}>
-            从灵感到成片配方
+            从灵感到成片
           </div>
         </div>
       </Link>

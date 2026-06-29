@@ -235,7 +235,7 @@ export function ImportAvatarDialog({
         <>
           {avatarsLoading && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "48px 0", color: "var(--fg-2)", fontSize: 13 }}>
-              <Loader2 size={15} className="animate-spin" /> 正在加载我的数字人...
+              <Loader2 size={15} className="animate-spin" /> 正在加载我的数字人…
             </div>
           )}
           {!avatarsLoading && usable.length === 0 && !error && (
@@ -299,7 +299,7 @@ export function ImportAvatarDialog({
         <>
           {optionsLoading && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "48px 0", color: "var(--fg-2)", fontSize: 13 }}>
-              <Loader2 size={15} className="animate-spin" /> 正在加载形象资产...
+              <Loader2 size={15} className="animate-spin" /> 正在加载形象资产…
             </div>
           )}
           {!optionsLoading && (

@@ -88,7 +88,7 @@ export function TopicStage({ data, dispatch }: TopicStageProps) {
               className="btn btn-primary"
               onClick={() => dispatch({ type: "jump", stage: "outline" })}
             >
-              去铺大纲 <ArrowRight size={16} />
+              生成大纲 <ArrowRight size={16} />
             </button>
           </div>
         </div>

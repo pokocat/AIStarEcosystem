@@ -72,7 +72,7 @@ export function PlaythroughDialog({ open, data, onClose }: Props) {
           <span className="faint" style={{ fontSize: 11 }}>模拟观众视角走查，验证连线 / 条件 / 结局</span>
           <span className="grow" />
           <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>
-            <RotateCcw size={13} /> 从头
+            <RotateCcw size={13} /> 重新开始
           </button>
           <button type="button" className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
             <X size={15} />
@@ -110,7 +110,7 @@ export function PlaythroughDialog({ open, data, onClose }: Props) {
                 {cur.videoUrl ? (
                   <video src={cur.videoUrl} controls muted playsInline style={{ width: "100%", maxHeight: 220, borderRadius: 10, background: "#000" }} />
                 ) : (
-                  <div className="faint" style={{ fontSize: 11.5 }}>（本集尚未出片，试玩仅走逻辑）</div>
+                  <div className="faint" style={{ fontSize: 11.5 }}>（本集尚未生成成片，试玩仅模拟逻辑）</div>
                 )}
               </div>
 
@@ -163,7 +163,7 @@ export function PlaythroughDialog({ open, data, onClose }: Props) {
                 </button>
               ) : (
                 <div className="row gap-2" style={{ color: "var(--danger)", fontSize: 13 }}>
-                  <CircleAlert size={16} /> 断点：这集既不是结局，也没有可走的后续。
+                  <CircleAlert size={16} /> 断点：本集既非结局，也无后续剧情。
                 </div>
               )}
 

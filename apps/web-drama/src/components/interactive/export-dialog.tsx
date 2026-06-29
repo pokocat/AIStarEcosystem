@@ -75,7 +75,7 @@ export function ExportDialog({ open, dramaId, title, data, onClose }: Props) {
           ) : (
             <>
               <div className="row gap-2" style={{ color: "var(--success)", fontWeight: 700, fontSize: 13.5 }}>
-                <Check size={16} /> 校验通过，可下发给抖音 / TikTok 小程序播放器消费。
+                <Check size={16} /> 校验通过，可下发至抖音 / TikTok 小程序播放器使用。
               </div>
               {warnings.length > 0 && (
                 <div className="col gap-1" style={{ background: "#fffbeb", borderRadius: 10, padding: "10px 12px" }}>

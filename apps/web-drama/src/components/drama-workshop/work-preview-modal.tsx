@@ -188,7 +188,7 @@ export function WorkPreviewModal({
                   style={{ justifyContent: "center", marginTop: 2 }}
                   disabled={extracting}
                   onClick={onExtract}
-                  title="把这部成片的结构 / 套路做成可复用创意，提交平台运营审核后进创意市场公开可套用"
+                  title="把这部成片的结构与叙事模板做成可复用创意，提交平台运营审核后进入创意市场，公开可套用"
                 >
                   <Boxes size={15} /> {extracting ? "发布中…" : extractLabel}
                 </button>

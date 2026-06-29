@@ -130,7 +130,7 @@ export function ShortCreateConsole({
       const ok = await dramaConfirm({
         cost,
         title: "开始制作短视频",
-        body: "进工作台后 AI 先出口播脚本和分镜，本次消耗如下。",
+        body: "进入工作台后，AI 将先生成口播脚本与分镜，本次消耗如下。",
         confirmLabel: "确认生成",
       });
       if (!ok) return;
@@ -277,7 +277,7 @@ export function ShortCreateConsole({
             previewVideo: preview.previewVideo,
             title: preview.title,
             cat: preview.type,
-            desc: preview.summary || preview.data?.mainline || "试试同款后会按这个创意的风格帮你拆主题。",
+            desc: preview.summary || preview.data?.mainline || "试试同款后将按该创意的风格拆解你的主题。",
             tags: recipeTags(preview),
             beats: recipeBeats(preview),
             estimate: recipeEstimate(preview),

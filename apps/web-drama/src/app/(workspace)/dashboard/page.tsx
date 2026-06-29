@@ -119,7 +119,7 @@ function HomeLanding() {
       setPreview(null);
       if (out.kind === "short") {
         router.push(`/shorts/make?draft=${encodeURIComponent(out.shortId)}`);
-        toast.success(`已套用「${r.title}」创意，去短视频工厂继续`);
+        toast.success(`已套用「${r.title}」创意，前往短视频工坊继续`);
       } else {
         router.push(`/projects/${out.projectId}`);
         toast.success(`已套用「${r.title}」创意，已生成项目骨架`);

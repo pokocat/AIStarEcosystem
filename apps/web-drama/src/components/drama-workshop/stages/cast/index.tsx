@@ -100,7 +100,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
         cdnKey: r.cdnKey,
         tags: ["角色参考"],
       });
-      toast.success("参考图已上传,并收进素材库");
+      toast.success("参考图已上传,并加入素材库");
     } catch (e) {
       toast.error(aiErrorMessage(e, "上传失败,请稍后重试"));
     } finally {
@@ -161,7 +161,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
         cdnKey: r.cdnKey,
         tags: ["场景参考"],
       });
-      toast.success("场景参考图已上传,并收进素材库");
+      toast.success("场景参考图已上传,并加入素材库");
     } catch (e) {
       toast.error(aiErrorMessage(e, "上传失败,请稍后重试"));
     } finally {
@@ -178,7 +178,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
       className="btn btn-primary btn-sm"
       disabled={drafting}
     >
-      <Wand2 size={15} /> {drafting ? "正在重抽…" : "从大纲重抽角色"}
+      <Wand2 size={15} /> {drafting ? "正在重新抽取…" : "按大纲重新抽取"}
     </CreditButton>
   );
 
@@ -240,7 +240,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
             style={{ minHeight: 160, borderRadius: "var(--radius-sm)", border: "1.5px dashed var(--line)", background: "var(--surface-2)", cursor: "pointer", color: "var(--ink-3)", gap: 6 }}
           >
             <Plus size={20} />
-            <span style={{ fontSize: 12, fontWeight: 600 }}>加个角色</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>添加角色</span>
           </button>
         </div>
 
@@ -248,7 +248,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
         <div className="row gap-2" style={{ alignItems: "center", margin: "22px 0 10px" }}>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flex: "none" }} />
           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "var(--ink-3)" }}>场景</span>
-          <span className="faint" style={{ fontSize: 11 }}>主要取景地 · 生成时统一风格（点文字可改）</span>
+          <span className="faint" style={{ fontSize: 11 }}>主要取景地 · 生成时统一风格（点击文字可编辑）</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 14 }}>
           {scenes.map((s, i) => {

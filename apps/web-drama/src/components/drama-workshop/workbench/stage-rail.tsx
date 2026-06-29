@@ -213,7 +213,7 @@ export function StageRail({ meta, current, ep, interactive, onConvert, onJump, o
           type="button"
           onClick={onConvert}
           className="row gap-2"
-          title="把当前分集大纲转成可分支的互动剧（不删原集）"
+          title="将当前分集大纲转换为可分支的互动剧（保留原有分集）"
           style={{
             flex: "none",
             marginTop: 8,

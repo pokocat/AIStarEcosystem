@@ -255,7 +255,7 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
       title: "用 AI 起草整张分支图?",
       body: `将以「${theme || "本项目主题"}」为主题生成一张可玩、可达、含结局的剧集分支图，覆盖当前所有集与接线（各集仍需在六阶段里出片）。`,
       confirmLabel: "AI 起草",
-      cancelLabel: "再想想",
+      cancelLabel: "暂不",
     });
     if (!ok) return;
     setDrafting(true);

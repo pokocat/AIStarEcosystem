@@ -88,7 +88,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
       await ctx.saveData({ ...data, episodes }, { stage: 2 });
       dispatch({ type: "spend", n: cost });
       setPhase("done");
-      toast.success("大纲已生成 · 可改可重来");
+      toast.success("大纲已生成 · 可编辑、可重新生成");
     } catch (e) {
       setPhase(data.episodes.length ? "done" : "idle");
       toast.error(aiErrorMessage(e, "大纲生成失败，请稍后重试"));
@@ -280,7 +280,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
 
         {phase === "gen" && (
           <div className="card" style={{ padding: 18 }}>
-            <GenSkeleton lines={4} label={`正在按主线铺${scope === "trial" ? "前 6 集" : `全部 ${total} 集`}的钩子…`} />
+            <GenSkeleton lines={4} label={`正在按主线生成${scope === "trial" ? "前 6 集" : `全部 ${total} 集`}的钩子…`} />
           </div>
         )}
 
@@ -314,8 +314,8 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
                   <List size={18} />
                 </div>
                 <div className="grow">
-                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - 6} 集一次铺完</div>
-                  <div className="faint" style={{ fontSize: 12 }}>AI 会顺着这 6 集的节奏与人物关系往后铺,口吻不会断</div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - 6} 集一并补齐</div>
+                  <div className="faint" style={{ fontSize: 12 }}>AI 将延续这 6 集的节奏与人物关系续写，风格保持连贯</div>
                 </div>
                 <button type="button" className="btn btn-primary btn-sm" style={{ flex: "none" }} onClick={fillRest}>
                   铺完整 {total} 集 · 补 {fillRestCost} 积分
@@ -349,7 +349,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
           right={
             prefilled && (
               <span className="tag tag-pink">
-                <Layers size={12} /> 模板已预填,改而非建
+                <Layers size={12} /> 模板已预填，可直接修改
               </span>
             )
           }
@@ -394,7 +394,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
               </div>
               {phase === "done" && (
                 <span className="tag tag-green">
-                  <Check size={11} /> 已生成 · 可改可重来
+                  <Check size={11} /> 已生成 · 可编辑、可重新生成
                 </span>
               )}
             </div>
@@ -518,7 +518,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
         )}
         {phase === "gen" && (
           <div className="card" style={{ padding: 18 }}>
-            <GenSkeleton lines={4} label={`正在按主线铺${scope === "trial" ? "前 6 集" : `全部 ${total} 集`}的钩子…`} />
+            <GenSkeleton lines={4} label={`正在按主线生成${scope === "trial" ? "前 6 集" : `全部 ${total} 集`}的钩子…`} />
           </div>
         )}
         {phase === "done" && (
@@ -551,8 +551,8 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
                   <List size={18} />
                 </div>
                 <div className="grow">
-                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - 6} 集一次铺完</div>
-                  <div className="faint" style={{ fontSize: 12 }}>AI 会顺着这 6 集的节奏与人物关系往后铺,口吻不会断</div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - 6} 集一并补齐</div>
+                  <div className="faint" style={{ fontSize: 12 }}>AI 将延续这 6 集的节奏与人物关系续写，风格保持连贯</div>
                 </div>
                 <button type="button" className="btn btn-primary btn-sm" style={{ flex: "none" }} onClick={fillRest}>
                   铺完整 {total} 集 · 补 {fillRestCost} 积分
@@ -579,7 +579,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
                     dispatch({ type: "lock", stage: "outline", cost: 0 });
                   }}
                 >
-                  <Check size={16} /> 锁定大纲 · 去定角色
+                  <Check size={16} /> 锁定大纲 · 设定角色
                 </button>
                 )}
               </div>

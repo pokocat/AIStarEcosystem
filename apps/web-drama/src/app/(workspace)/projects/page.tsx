@@ -123,7 +123,7 @@ function ProjectsHubInner() {
       {!!error && !loading && (
         <div className="card col center" style={{ padding: 28, gap: 12, textAlign: "center", marginBottom: 20 }}>
           <div className="muted" style={{ fontSize: 13.5 }}>
-            短剧列表加载失败 —— {error instanceof Error ? error.message : "请稍后重试"}
+            短剧列表加载失败：{error instanceof Error ? error.message : "请稍后重试"}
           </div>
           <button type="button" className="btn btn-line btn-sm" onClick={refetch}>重新加载</button>
         </div>

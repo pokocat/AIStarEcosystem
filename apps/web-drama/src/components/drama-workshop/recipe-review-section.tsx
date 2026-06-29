@@ -25,7 +25,7 @@ export function RecipeReviewSection() {
       setPending(p);
       setPublished(pub);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "配方列表加载失败");
+      toast.error(e instanceof Error ? e.message : "创意列表加载失败");
     } finally {
       setLoading(false);
     }
@@ -76,7 +76,7 @@ export function RecipeReviewSection() {
       </div>
       <div className="col gap-2" style={{ padding: 16 }}>
         {loading ? (
-          <span className="muted" style={{ fontSize: 13 }}>正在加载配方…</span>
+          <span className="muted" style={{ fontSize: 13 }}>正在加载创意…</span>
         ) : pending.length === 0 ? (
           <span className="faint" style={{ fontSize: 13 }}>暂无待审创意。用户在「已完成短剧」或「短视频工坊」点「发布到创意中心」后会出现在这里。</span>
         ) : (
@@ -118,7 +118,7 @@ export function RecipeReviewSection() {
                         <input
                           autoFocus
                           value={note}
-                          placeholder="驳回理由（可空，会给到提交人）"
+                          placeholder="驳回理由（选填,将通知提交人）"
                           onChange={(e) => setNote(e.target.value)}
                           style={{ flex: 1, height: 32, border: "1.5px solid var(--line)", borderRadius: 8, padding: "0 10px", fontSize: 12.5, outline: "none", background: "var(--surface)", color: "var(--ink)" }}
                         />

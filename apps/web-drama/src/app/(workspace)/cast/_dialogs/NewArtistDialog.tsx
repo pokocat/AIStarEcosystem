@@ -71,7 +71,7 @@ export function NewArtistDialog({ open, onOpenChange, onCreated }: Props) {
       open={open}
       onOpenChange={onOpenChange}
       title="新增演员 IP"
-      description="先填基础档案，进入孵化流程后可继续完善形象与声线。"
+      description="填写基础档案，进入孵化流程后可继续完善形象与声线。"
       submitLabel="创建"
       width={520}
       onSubmit={submit}

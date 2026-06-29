@@ -123,7 +123,7 @@ export default function OperationsPage() {
             <div className="row gap-2" style={{ padding: "14px 18px", borderBottom: "1px solid var(--line-soft)" }}>
               <Sparkles size={16} style={{ color: "var(--accent)" }} />
               <span style={{ fontWeight: 800, fontSize: 15 }}>近期热点</span>
-              <span className="faint" style={{ fontSize: 12 }}>首页对话框上方的热点 chips · {hotTopics.length} 条</span>
+              <span className="faint" style={{ fontSize: 12 }}>首页对话框上方的热点标签 · {hotTopics.length} 条</span>
               <span className="grow" />
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => void revert("hotTopics", "近期热点")}>恢复默认</button>
               <button type="button" className="btn btn-grad btn-sm" disabled={saving === "hotTopics"} onClick={() => void saveHot()}>
@@ -213,7 +213,7 @@ export default function OperationsPage() {
           <RecipeReviewSection />
 
           <div className="muted" style={{ fontSize: 12.5, padding: "0 2px" }}>
-            注:运营「新建内置创意 / 从用户作品精选」入口在「创意市场」页;此处为用户自助发布的审核队列。
+            注：运营「新建内置创意 / 从用户作品精选」入口在「创意市场」页；此处为用户自助发布的审核队列。
           </div>
         </div>
       )}

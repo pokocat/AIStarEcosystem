@@ -35,7 +35,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
   return (
     <ModalShell
       onClose={onClose}
-      label="快速开剧 · 套爆款模板"
+      label="快速开剧 · 套用精选模板"
       className="card pop-in col"
       style={{ width: 940, maxWidth: "96vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
     >
@@ -44,7 +44,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
             <Zap size={20} fill="currentColor" strokeWidth={0} />
           </div>
           <div className="grow">
-            <div style={{ fontWeight: 800, fontSize: 17 }}>快速开剧 · 套爆款模板</div>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>快速开剧 · 套用精选模板</div>
             <div className="faint" style={{ fontSize: 12 }}>左侧选择模板,右侧预览效果与时长大纲,确认后即可开拍</div>
           </div>
           <button type="button" className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
@@ -75,7 +75,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
                     }}
                   >
                     {t.name}
-                    {!has && " ·待上新"}
+                    {!has && " ·即将上线"}
                   </button>
                 );
               })}
@@ -180,7 +180,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
               cost={18}
               onConfirm={() => onCreate({ type, template: tpl, idea })}
               confirmTitle="套模板开剧"
-              confirmBody="按所选爆款模板预填并立项新剧。"
+              confirmBody="按所选模板预填并立项新剧。"
               className="btn btn-grad"
               markSize={15}
             >

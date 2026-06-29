@@ -33,7 +33,7 @@ interface GenSkeletonProps {
   label?: string;
 }
 
-export function GenSkeleton({ lines = 3, label = "AI 正在为你起草…" }: GenSkeletonProps) {
+export function GenSkeleton({ lines = 3, label = "AI 正在起草…" }: GenSkeletonProps) {
   return (
     <div className="col gap-3 fade-up">
       <div className="row gap-3" style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13 }}>
@@ -103,7 +103,7 @@ export function GenError({ reason, trace, onRetry }: GenErrorProps) {
             <TriangleAlert size={18} color="#dc2626" />
           </div>
           <div className="grow">
-            <div style={{ fontWeight: 700, color: "#b91c1c" }}>这一步没能完成</div>
+            <div style={{ fontWeight: 700, color: "#b91c1c" }}>生成失败</div>
             <div style={{ fontSize: 13, color: "#7f1d1d", marginTop: 2, lineHeight: 1.55 }}>
               {reason ?? "AI 服务暂时无响应，你的内容已自动保留，请重试或稍后再试。"}
             </div>

@@ -12,7 +12,7 @@ interface PublishCreativeCenterModalProps {
 }
 
 const BENEFITS = [
-  { icon: Sparkles, text: "把风格、节奏和分镜套路整理成一条可套用创意" },
+  { icon: Sparkles, text: "把风格、节奏与分镜结构整理成一条可套用创意" },
   { icon: TrendingUp, text: "通过审核后进入创意中心,多一个展示和被精选的机会" },
   { icon: CheckCircle2, text: "原视频不会被改动,状态和使用次数可在「我发布的创意」查看" },
 ];
@@ -94,7 +94,7 @@ export function PublishCreativeCenterModal({
         </div>
         <div className="row gap-2" style={{ justifyContent: "flex-end", paddingTop: 2 }}>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={publishing}>
-            先不发
+            暂不发布
           </button>
           <button type="button" className="btn btn-grad" onClick={onConfirm} disabled={publishing} aria-busy={publishing}>
             <Boxes size={15} /> {publishing ? "发布中..." : "确认发布"}

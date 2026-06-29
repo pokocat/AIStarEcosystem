@@ -60,7 +60,7 @@ export function FlagsPanel({ flags, onChange }: Props) {
       </div>
 
       {entries.length === 0 ? (
-        <div className="faint" style={{ fontSize: 12.5 }}>还没有声明标记。如有「钥匙 / 好感度」之类影响分支的状态，在此声明。</div>
+        <div className="faint" style={{ fontSize: 12.5 }}>尚未声明标记。若有「钥匙 / 好感度」等影响分支走向的状态，请在此声明。</div>
       ) : (
         <div className="col gap-2">
           {entries.map(([key, value]) => {

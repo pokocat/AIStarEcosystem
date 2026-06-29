@@ -184,7 +184,7 @@ export function BranchCanvas({
                 </span>
               </div>
               <div className="faint" style={{ fontSize: 10.5, fontFamily: "var(--font-num)" }}>
-                {ep.episodeId} · {ep.durationSec > 0 ? `${ep.durationSec}s` : "未出片"}
+                {ep.episodeId} · {ep.durationSec > 0 ? `${ep.durationSec}s` : "未制作"}
               </div>
               <div className="row gap-2" style={{ marginTop: "auto", justifyContent: "space-between" }}>
                 <span className="row gap-1" style={{ fontSize: 10 }}>
@@ -204,7 +204,7 @@ export function BranchCanvas({
                 {!ep.isEnding && !connectFrom && (
                   <button
                     type="button"
-                    title="拉线接分支"
+                    title="新建分支连线"
                     onClick={(e) => {
                       e.stopPropagation();
                       onConnectStart(ep.episodeId);

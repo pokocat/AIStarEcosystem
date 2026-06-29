@@ -155,7 +155,7 @@ export function EpisodeEditor({
           </div>
         )}
         <button type="button" className="btn btn-grad btn-sm" style={{ alignSelf: "flex-start" }} onClick={onProduce}>
-          <ArrowRight size={13} /> {ep.videoUrl ? "重做这一集" : "制作本集"}
+          <ArrowRight size={13} /> {ep.videoUrl ? "重新制作" : "制作本集"}
         </button>
       </div>
 
@@ -192,10 +192,10 @@ export function EpisodeEditor({
         <div className="row gap-2">
           <Clock size={14} style={{ color: "var(--accent)" }} />
           <span style={{ fontWeight: 800, fontSize: 13.5 }}>时间轴互动点</span>
-          <span className="faint" style={{ fontSize: 11 }}>视频播到 triggerTime 秒弹出</span>
+          <span className="faint" style={{ fontSize: 11 }}>视频播放至触发秒数时弹出</span>
           <span className="grow" />
           <button type="button" className="btn btn-line btn-sm" onClick={addInteraction} disabled={ep.isEnding}>
-            <Plus size={13} /> 加互动点
+            <Plus size={13} /> 添加互动点
           </button>
         </div>
         {ep.isEnding ? (
@@ -225,9 +225,9 @@ export function EpisodeEditor({
                   <Trash2 size={13} />
                 </button>
               </div>
-              <input value={it.uiConfig.question} onChange={(e) => setUi(idx, { question: e.target.value })} placeholder="弹给观众的问题" style={INPUT} />
+              <input value={it.uiConfig.question} onChange={(e) => setUi(idx, { question: e.target.value })} placeholder="向观众展示的问题" style={INPUT} />
               <div className="col gap-1">
-                <span style={LABEL}>条件触发（可选，命中时间点后先判此条件才弹）</span>
+                <span style={LABEL}>条件触发（可选，到达时间点后需满足该条件才弹出）</span>
                 <input
                   value={it.condition ?? ""}
                   onChange={(e) => setInteraction(idx, { condition: e.target.value || undefined })}
@@ -267,7 +267,7 @@ export function EpisodeEditor({
                         <div className="row gap-1">
                           <GitBranch size={12} style={{ color: "var(--accent)" }} />
                           <select value={o.nextVideoId ?? ""} onChange={(e) => setOption(idx, oIdx, { nextVideoId: e.target.value || null })} style={{ ...INPUT, width: 200 }}>
-                            <option value="">（未接线 → 选个目标集）</option>
+                            <option value="">（未连线 → 选择目标剧集）</option>
                             {targets.map((t) => (<option key={t.episodeId} value={t.episodeId}>{t.title}（{t.episodeId}）</option>))}
                           </select>
                         </div>
@@ -307,7 +307,7 @@ export function EpisodeEditor({
                     </div>
                   ))}
                   <button type="button" className="chip" style={{ alignSelf: "flex-start" }} onClick={() => addOption(idx)}>
-                    <Plus size={12} /> 加选项
+                    <Plus size={12} /> 添加选项
                   </button>
                 </div>
               )}

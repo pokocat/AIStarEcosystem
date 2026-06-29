@@ -66,7 +66,7 @@ export default function ReviewPage() {
   };
   const sendFix = (item: ReviewItem, n: number) => {
     setReviewItem(null);
-    toast.success(`已把 ${n} 条意见发给 AI 重写,改完会回到待审`);
+    toast.success(`已把 ${n} 条意见已发送给 AI 重写，完成后将重新进入待审`);
   };
 
   if (reviewItem) {
@@ -292,7 +292,7 @@ function SceneRows({
                       color: st === "fix" ? "#b45309" : "var(--ink-2)",
                     }}
                   >
-                    <AlertTriangle size={11} /> 改一下
+                    <AlertTriangle size={11} /> 需修改
                   </button>
                 </div>
               </td>
@@ -488,7 +488,7 @@ function ReviewSheet({
           </div>
         </div>
         <div className="faint" style={{ fontSize: 11.5, marginTop: 10 }}>
-          没标记的场默认视为通过 · 其余分集在下方平铺,生成剧本后会自动展开成同样的表格
+          未标记的场次默认视为通过；其余分集在下方平铺，生成剧本后会自动展开为同样的表格
         </div>
       </div>
 

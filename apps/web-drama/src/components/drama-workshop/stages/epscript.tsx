@@ -634,7 +634,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             <>
               <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px" }}>
                 <span style={{ fontWeight: 800, fontSize: 14.5 }}>分镜表</span>
-                <span className="faint" style={{ fontSize: 11 }}>格子里的文字可直接改 · 首帧点开「AI 改图」</span>
+                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」</span>
               </div>
               <StoryboardTable
                 scenes={scenes}
@@ -797,7 +797,7 @@ function CastEditor({ cast, onChange, disabled }: { cast: EpCharacter[]; onChang
               </button>
             ))}
           </div>
-          <span className="faint" style={{ fontSize: 10 }}>加进来的人物会出现在下面每场对白和分镜人声的说话人选项里</span>
+          <span className="faint" style={{ fontSize: 10 }}>新增人物将出现在下方各场对白与分镜配音的说话人选项中</span>
         </div>
       )}
     </div>

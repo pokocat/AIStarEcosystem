@@ -155,7 +155,7 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onVi
         <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.55 }}>{c.desc}</div>
         {/* 真人参考图：上传真实剧照锁形象（→ 素材库）；点开看大图 */}
         <div className="col gap-2" style={{ marginTop: 2 }}>
-          <div className="faint" style={{ fontSize: 11, fontWeight: 700 }}>真人参考图 · 上传真实剧照锁形象</div>
+          <div className="faint" style={{ fontSize: 11, fontWeight: 700 }}>真人参考图 · 上传真实剧照锁定形象</div>
           {c.refUrl ? (
             <div className="row gap-2" style={{ alignItems: "center" }}>
               <button

@@ -202,7 +202,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       clearBusy(id);
       if (spend) {
         dispatch({ type: "spend", n: cfg.prices.frame });
-        toast.success(`首帧已出 ${frames.length} 版,挑一版锁定`);
+        toast.success(`首帧已出 ${frames.length} 版,选定一版锁定`);
       }
     },
     [applyShotPatch, cfg.prices.frame, clearBusy, dispatch],
@@ -502,7 +502,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
           <div className="row gap-2" style={{ marginBottom: 12 }}>
             <Film size={15} style={{ color: "var(--accent)" }} />
             <span style={{ fontWeight: 700, fontSize: 14 }}>本集镜头 · {shots.length}</span>
-            <span className="faint" style={{ fontSize: 12 }}>点任意镜头进入逐步出片</span>
+            <span className="faint" style={{ fontSize: 12 }}>点击镜头进入逐步出片</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(186px,1fr))", gap: 14 }}>
             {shots.map((s, i) => (
@@ -1054,7 +1054,7 @@ function FactoryDrawer({
             <span>
               {s.flow === "draft" &&
                 "可选两种方式：【首帧预览】先生成静帧，确认画面与人物形象后再生成视频；【直接生成】一步生成，适合空镜等低风险镜头。"}
-              {s.flow === "frame" && "四版首帧任挑一版，或换一批。选定后锁定，后续视频会基于这一帧生成。"}
+              {s.flow === "frame" && "四版首帧任选其一，或重新生成一批；选定并锁定后，后续视频将基于该帧生成。"}
               {s.flow === "frameLocked" && "首帧已锁。现在生成视频，运动会基于这张固定画面生成，人物更稳定。"}
               {s.flow === "clip" && "视频已出。满意就验收入片；不满意可只重做这一镜，不影响别的镜头。"}
               {s.flow === "done" && "本镜已成片入库，可在成片合成里导出，或重新生成。"}

@@ -39,7 +39,7 @@ const FEATURES = [
   },
 ] as const;
 
-// 官方短剧模版案例 —— 真实封面取自 web-drama/public/recipes/home/*（与创意市场内置配方同源）。
+// 官方短剧模板案例 —— 真实封面取自 web-drama/public/recipes/home/*（与创意市场内置配方同源）。
 const SHOWREEL = [
   {
     title: "婚礼上掏出的不是戒指",
@@ -287,7 +287,7 @@ export default function DramaLandingPage() {
           }}
         >
           <div style={{ marginBottom: 24 }}>
-            <div className="eyebrow">官方短剧模版 · 开箱即用</div>
+            <div className="eyebrow">官方短剧模板 · 开箱即用</div>
             <h2
               style={{
                 fontFamily: "var(--font-serif)",
@@ -354,7 +354,7 @@ export default function DramaLandingPage() {
                   </div>
                   <div style={{ textShadow: "0 1px 8px rgba(0,0,0,0.85)" }}>
                     <div className="eyebrow" style={{ color: "#fff", opacity: 0.82 }}>
-                      短剧模版
+                      短剧模板
                     </div>
                     <div
                       style={{
@@ -454,7 +454,7 @@ export default function DramaLandingPage() {
                 background: "var(--gradient-gold)",
               }}
             />
-            <span className="mono" style={{ letterSpacing: 0.6 }}>AI STAR ECO · 短剧工业流</span>
+            <span className="mono" style={{ letterSpacing: 0.6 }}>AI STAR ECO · 短剧创作流水线</span>
           </div>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             <Link href="/" style={{ color: "var(--fg-2)" }}>产品矩阵</Link>

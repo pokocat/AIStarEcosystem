@@ -149,11 +149,11 @@ function CastListInner() {
       >
         <UsersIcon size={16} style={{ color: "var(--accent)", flex: "none" }} />
         <div className="grow" style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
-          这里是<b style={{ color: "var(--ink)" }}>跨项目的演员 IP 库</b>:可以反复在不同短剧里出演。
+          这里是<b style={{ color: "var(--ink)" }}>跨项目的演员 IP 库</b>：可以反复在不同短剧里出演。
           要给某部短剧的<b style={{ color: "var(--ink)" }}>角色绑数字人</b>，请到「短剧工坊 → 进入项目 → 角色与资产」阶段。
         </div>
         <Link href="/projects" style={{ textDecoration: "none" }}>
-          <button type="button" className="btn btn-line btn-sm">去做短剧 →</button>
+          <button type="button" className="btn btn-line btn-sm">去短剧工坊 →</button>
         </Link>
       </div>
 

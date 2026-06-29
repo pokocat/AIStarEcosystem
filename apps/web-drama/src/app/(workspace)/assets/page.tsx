@@ -563,7 +563,7 @@ function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: 
             拖入图片 / 视频,或点击上传
           </span>
           <span className="thumb-label" style={{ position: "absolute", bottom: 8, right: 8 }}>
-            演示:点一下换占位图
+            演示：点击切换占位图
           </span>
         </button>
 
