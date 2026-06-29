@@ -16,7 +16,8 @@ import {
   StatusBadge,
   ViewHeader,
 } from "@/components/common";
-import { FinanceApi } from "@/api";
+import { FinanceApi, StorageApi } from "@/api";
+import type { StorageUsage } from "@/api/storage";
 import { useAsync } from "@/lib/drama-query";
 
 type TxFilter = "all" | Transaction["type"];
@@ -46,6 +47,9 @@ export default function FinancePage() {
   const [txFilter, setTxFilter] = React.useState<TxFilter>("all");
 
   const walletQ = useAsync<Wallet>("/me/wallet", () => FinanceApi.getMyWallet());
+  const storageQ = useAsync<StorageUsage>("/me/storage?app=drama", () => StorageApi.getStorageUsage("drama"), {
+    revalidateOnMount: true,
+  });
   const txQ = useAsync<Transaction[]>(
     `/finance/transactions?type=${txFilter}`,
     () => FinanceApi.listTransactions({ limit: 50, type: txFilter === "all" ? undefined : txFilter }),
@@ -100,6 +104,8 @@ export default function FinancePage() {
           />
         </div>
       )}
+
+      {storageQ.data && <StorageCard usage={storageQ.data} onUpgrade={() => router.push("/wallet?tab=storage")} />}
 
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader
@@ -203,5 +209,63 @@ export default function FinancePage() {
         )}
       </Card>
     </div>
+  );
+}
+
+const STORAGE_COLORS = ["var(--accent)", "#1AA06E", "#D9920E", "#8A6BFF", "#64748b"];
+
+function fmtMb(mb: number): string {
+  if (mb >= 1024) return (mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1) + " GB";
+  return mb + " MB";
+}
+
+/** 存储空间用量卡：生成 / 上传资产（含回收站）占用 + 余量 + 升级入口。 */
+function StorageCard({ usage, onUpgrade }: { usage: StorageUsage; onUpgrade: () => void }) {
+  const pct = usage.quotaMb > 0 ? Math.min(100, Math.round((usage.usedMb / usage.quotaMb) * 100)) : 0;
+  const near = pct >= 85;
+  return (
+    <Card style={{ padding: "20px 24px" }}>
+      <SectionHeader
+        eyebrow="资源"
+        title="存储空间"
+        right={
+          <Button variant="secondary" size="sm" onClick={onUpgrade}>
+            升级存储
+          </Button>
+        }
+      />
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 8 }}>
+        <span style={{ color: "var(--fg-1)" }}>
+          已用 <b className="mono">{fmtMb(usage.usedMb)}</b> / {fmtMb(usage.quotaMb)}
+        </span>
+        <span style={{ color: near ? "var(--danger)" : "var(--fg-2)" }}>剩余 {fmtMb(usage.remainingMb)}（{pct}%）</span>
+      </div>
+      <div style={{ height: 10, borderRadius: 99, background: "var(--surface-2)", overflow: "hidden", display: "flex" }}>
+        {usage.breakdown.length > 0 ? (
+          usage.breakdown.map((s, i) => (
+            <div
+              key={s.category}
+              title={`${s.category} ${fmtMb(s.mb)}`}
+              style={{ width: (usage.quotaMb > 0 ? (s.mb / usage.quotaMb) * 100 : 0) + "%", background: STORAGE_COLORS[i % STORAGE_COLORS.length] }}
+            />
+          ))
+        ) : (
+          <div style={{ width: pct + "%", background: "var(--accent)" }} />
+        )}
+      </div>
+      {usage.breakdown.length > 0 && (
+        <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+          {usage.breakdown.map((s, i) => (
+            <span key={s.category} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-2)" }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: STORAGE_COLORS[i % STORAGE_COLORS.length] }} />
+              {s.category} · {fmtMb(s.mb)}
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 12, lineHeight: 1.6 }}>
+        生成 / 上传的资产（含回收站）都计入占用。空间不足可「升级存储」购买存储套餐扩容。
+      </div>
+    </Card>
   );
 }

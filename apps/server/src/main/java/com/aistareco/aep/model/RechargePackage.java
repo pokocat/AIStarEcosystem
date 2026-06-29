@@ -39,6 +39,10 @@ public class RechargePackage {
     @Builder.Default
     private long bonusCredits = 0L;
 
+    /** v0.92：购买该套餐额外增配的存储容量（MB）。>0 即为「存储套餐」，结算时授予 StorageGrant。 */
+    @Builder.Default
+    private long grantStorageMb = 0L;
+
     /** 排序权重，越小越靠前。 */
     @Builder.Default
     private Integer sortOrder = 0;

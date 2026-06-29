@@ -68,6 +68,16 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.92 · 2026-06-29 · 通用存储配额（用量/余量 + 回收站计入 + 购买存储套餐扩容）
+
+通用后台能力（任意子应用 `?app=` 复用，celebrity 等可快速对接），drama 先接入：
+
+- **存储台账（`StorageAsset` 表）+ `StorageQuotaService`**：每生成 / 上传一个落 CDN 的资产写一行（app/owner/category/refId/cdnKey/bytes）。用量 = 按 (app,owner) SUM(bytes)，分类明细按 category 分组。drama 已记账：参考图上传（`DramaAssetUploadController`）、分镜首帧（`DramaRenderService`）、成片（`DramaAssembleService`）。**回收站计入**：软删（`DramaProject.deletedAt`）不删台账行 → 仍占用；仅「彻底删除 / 到期清理」按 refId 释放。
+- **配额 admin 可配（`storage.quota_mb.<app>` PlatformConfig，缺省 `storage.quota_mb.default`）**：`AdminStorageController`（`GET/PUT /api/admin/storage/quotas`）。
+- **购买存储套餐扩容**：充值套餐加 `grantStorageMb`（admin 充值套餐表单可配，纯存储套餐 credits 可为 0）；下单快照到 `RechargeOrder.grantStorageMb`，`RechargeService.settlePaidOrder` 结算时授予 `StorageGrant`（幂等 by 订单号），复用现有支付收银台链路。**实际配额 = 基础配额 + Σ 有效扩容**。
+- **前端**：`api/storage.ts` + 财务中心「存储空间」卡（已用 / 配额 / 余量 + 分类明细 + 升级入口）；钱包页「升级存储 · 购买存储套餐」专区（与积分套餐同收银流程）。
+- **门禁**：typecheck:all 10/10 + web-drama build + contract + server compile；`StorageQuotaServiceTest` 7 + `DramaProjectServiceTest` 21 + `RechargeServiceTest` 16 全绿。§8.0：记账 best-effort 不阻断业务。
+
 ### v0.91 · 2026-06-29 · 充值走真实支付链路 + 下线提现入口（防资损）
 
 - **充值统一走真实在线支付（`finance/page.tsx`）**：财务中心「充值」原来用旧的线下/即时入账弹窗（`FinanceApi.createRecharge` → `/me/wallet/recharge`，「充值后立即到账」）—— 改为跳转 `/wallet` 走真实收银台（`/wallet/checkout`：下单 → 拉起支付宝 → 异步 notify 回调 `settlePaidOrder` 入账，幂等防重复扣款）。删除即时充值弹窗 `RechargeDialog`。

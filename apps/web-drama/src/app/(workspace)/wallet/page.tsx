@@ -48,6 +48,9 @@ export default function WalletPage() {
 
   const wallet = walletQ.data;
   const packages = pkgQ.data ?? [];
+  // 积分套餐 vs 存储套餐（grantStorageMb>0）分区展示，复用同一收银流程。
+  const creditPkgs = packages.filter((p) => !p.grantStorageMb);
+  const storagePkgs = packages.filter((p) => !!p.grantStorageMb);
   const orders = ordersQ.data ?? [];
 
   const refreshAll = () => {
@@ -127,81 +130,61 @@ export default function WalletPage() {
         <SectionHeader eyebrow="充值" title="选择套餐充值" />
         {pkgQ.isLoading && <LoadingBlock rows={2} height={96} />}
         {!!pkgQ.error && <ErrorBlock onRetry={pkgQ.refetch} />}
-        {!pkgQ.isLoading && packages.length === 0 && !pkgQ.error && (
+        {!pkgQ.isLoading && creditPkgs.length === 0 && !pkgQ.error && (
           <EmptyState icon={<Coins size={24} />} title="暂无可购买套餐" description="运营在后台「充值套餐」配置 drama 专属或通用套餐后这里展示。" />
         )}
-        {packages.length > 0 && (
+        {creditPkgs.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
-            {packages.map((p) => {
-              const active = selected?.id === p.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setSelected(active ? null : p)}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    textAlign: "left",
-                    padding: "16px 18px",
-                    borderRadius: "var(--radius-md)",
-                    cursor: "pointer",
-                    border: active ? "1.5px solid var(--accent)" : "1px solid var(--line-2)",
-                    background: active ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--surface)",
-                    position: "relative",
-                  }}
-                >
-                  {p.recommended && (
-                    <span style={{ position: "absolute", top: 10, right: 10, fontSize: 10, color: "var(--accent)" }}>
-                      <Sparkles size={12} style={{ verticalAlign: "-2px" }} /> 推荐
-                    </span>
-                  )}
-                  <div style={{ fontSize: 13, color: "var(--fg-2)" }}>{p.tag}</div>
-                  <div className="mono" style={{ fontSize: 26, fontWeight: 800, color: "var(--fg-0)", marginTop: 4 }}>
-                    {formatCredits(p.credits)}
-                  </div>
-                  {/* 另赠行可选；价格用 marginTop:auto 钉到卡片底部，配合 grid 项等高拉伸，
-                      使同一行有/无赠送的套餐价格对齐。 */}
-                  {!!p.bonusCredits && (
-                    <div style={{ fontSize: 12, color: "var(--success)", marginTop: 2 }}>
-                      另赠 {formatCredits(p.bonusCredits)}
-                    </div>
-                  )}
-                  <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", marginTop: "auto", paddingTop: 8 }}>
-                    {formatCurrency(p.priceCents)}
-                  </div>
-                </button>
-              );
-            })}
+            {creditPkgs.map((p) => (
+              <PkgCard key={p.id} p={p} active={selected?.id === p.id} onClick={() => setSelected(selected?.id === p.id ? null : p)} />
+            ))}
           </div>
         )}
+      </Card>
 
-        {selected && !shadow && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
+      {storagePkgs.length > 0 && (
+        <Card style={{ padding: "22px 24px" }}>
+          <SectionHeader eyebrow="存储" title="升级存储 · 购买存储套餐" />
+          <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginBottom: 14 }}>
+            一次性扩容你的存储空间（生成 / 上传资产及回收站都占用此空间）。购买后立即生效。
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+            {storagePkgs.map((p) => (
+              <PkgCard key={p.id} p={p} active={selected?.id === p.id} onClick={() => setSelected(selected?.id === p.id ? null : p)} />
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {selected && !shadow && (
+        <Card style={{ padding: "16px 22px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13, color: "var(--fg-1)" }}>
               已选 <strong style={{ color: "var(--fg-0)" }}>{selected.tag}</strong> ·{" "}
-              {formatCredits(selected.credits)}
-              {selected.bonusCredits ? ` + 赠 ${formatCredits(selected.bonusCredits)}` : ""} 积分 ·{" "}
-              <span className="mono" style={{ color: "var(--accent)" }}>{formatCurrency(selected.priceCents)}</span>
+              {selected.grantStorageMb
+                ? `存储 +${fmtStorageMb(selected.grantStorageMb)}`
+                : `${formatCredits(selected.credits)}${selected.bonusCredits ? ` + 赠 ${formatCredits(selected.bonusCredits)}` : ""} 积分`}{" "}
+              · <span className="mono" style={{ color: "var(--accent)" }}>{formatCurrency(selected.priceCents)}</span>
             </div>
             <Button variant="primary" size="md" loading={paying} onClick={startOnlinePay}>
               立即支付（在线）
             </Button>
           </div>
-        )}
+        </Card>
+      )}
 
-        {shadow && (
-          <div style={{ marginTop: 16, padding: "16px 18px", borderRadius: "var(--radius-md)", border: "1px dashed var(--accent)", background: "color-mix(in srgb, var(--accent) 5%, transparent)" }}>
-            <div style={{ fontSize: 13, color: "var(--fg-1)", marginBottom: 10 }}>
-              影子收银台（dev）· {shadow.summary} · 订单 <span className="mono">{shadow.orderId}</span>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button variant="primary" size="sm" onClick={() => confirmShadow("success")}>✅ 模拟支付成功</Button>
-              <Button variant="secondary" size="sm" onClick={() => confirmShadow("fail")}>❌ 模拟失败</Button>
-              <Button variant="ghost" size="sm" onClick={() => confirmShadow("timeout")}>⏳ 模拟超时</Button>
-            </div>
+      {shadow && (
+        <Card style={{ padding: "16px 22px", border: "1px dashed var(--accent)", background: "color-mix(in srgb, var(--accent) 5%, transparent)" }}>
+          <div style={{ fontSize: 13, color: "var(--fg-1)", marginBottom: 10 }}>
+            影子收银台（dev）· {shadow.summary} · 订单 <span className="mono">{shadow.orderId}</span>
           </div>
-        )}
-      </Card>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button variant="primary" size="sm" onClick={() => confirmShadow("success")}>✅ 模拟支付成功</Button>
+            <Button variant="secondary" size="sm" onClick={() => confirmShadow("fail")}>❌ 模拟失败</Button>
+            <Button variant="ghost" size="sm" onClick={() => confirmShadow("timeout")}>⏳ 模拟超时</Button>
+          </div>
+        </Card>
+      )}
 
       <Card style={{ padding: "22px 24px" }}>
         <SectionHeader
@@ -248,5 +231,55 @@ export default function WalletPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+function fmtStorageMb(mb: number): string {
+  if (mb >= 1024) return (mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1) + " GB";
+  return mb + " MB";
+}
+
+/** 套餐卡（积分套餐 / 存储套餐通用）。 */
+function PkgCard({ p, active, onClick }: { p: RechargePackage; active: boolean; onClick: () => void }) {
+  const isStorage = !!p.grantStorageMb;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        textAlign: "left",
+        padding: "16px 18px",
+        borderRadius: "var(--radius-md)",
+        cursor: "pointer",
+        border: active ? "1.5px solid var(--accent)" : "1px solid var(--line-2)",
+        background: active ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--surface)",
+        position: "relative",
+      }}
+    >
+      {p.recommended && (
+        <span style={{ position: "absolute", top: 10, right: 10, fontSize: 10, color: "var(--accent)" }}>
+          <Sparkles size={12} style={{ verticalAlign: "-2px" }} /> 推荐
+        </span>
+      )}
+      <div style={{ fontSize: 13, color: "var(--fg-2)" }}>{p.tag}</div>
+      {isStorage ? (
+        <div className="mono" style={{ fontSize: 24, fontWeight: 800, color: "var(--fg-0)", marginTop: 4 }}>
+          +{fmtStorageMb(p.grantStorageMb!)}
+        </div>
+      ) : (
+        <>
+          <div className="mono" style={{ fontSize: 26, fontWeight: 800, color: "var(--fg-0)", marginTop: 4 }}>
+            {formatCredits(p.credits)}
+          </div>
+          {!!p.bonusCredits && (
+            <div style={{ fontSize: 12, color: "var(--success)", marginTop: 2 }}>另赠 {formatCredits(p.bonusCredits)}</div>
+          )}
+        </>
+      )}
+      <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--accent)", marginTop: "auto", paddingTop: 8 }}>
+        {formatCurrency(p.priceCents)}
+      </div>
+    </button>
   );
 }

@@ -31,6 +31,7 @@ export default function AdminRechargePackagesPage() {
     tag: "标准包",
     recommended: false,
     bonusCredits: 100,
+    grantStorageMb: 0,
     sortOrder: 20,
     active: true,
     appScope: "all",
@@ -53,8 +54,8 @@ export default function AdminRechargePackagesPage() {
   }, [refresh]);
 
   async function onCreate() {
-    if (draft.credits <= 0 || draft.priceCents <= 0) {
-      toast.warning({ title: "积分数与售价必须为正" });
+    if ((draft.credits <= 0 && draft.grantStorageMb <= 0) || draft.priceCents <= 0) {
+      toast.warning({ title: "售价必须为正；积分数与存储扩容至少填一项" });
       return;
     }
     try {
@@ -78,6 +79,7 @@ export default function AdminRechargePackagesPage() {
         tag: p.tag,
         recommended: p.recommended,
         bonusCredits: p.bonusCredits,
+        grantStorageMb: p.grantStorageMb,
         sortOrder: p.sortOrder,
         active: !(p.active ?? true),
         appScope: p.appScope,
@@ -159,6 +161,13 @@ export default function AdminRechargePackagesPage() {
             type="number"
             value={String(draft.bonusCredits)}
             onChange={(v) => setDraft({ ...draft, bonusCredits: Number(v) || 0 })}
+          />
+          <FieldInput
+            label="存储扩容（MB）"
+            hint=">0 即为存储套餐；纯存储套餐积分可填 0"
+            type="number"
+            value={String(draft.grantStorageMb)}
+            onChange={(v) => setDraft({ ...draft, grantStorageMb: Number(v) || 0 })}
           />
           <FieldInput
             label="排序权重"

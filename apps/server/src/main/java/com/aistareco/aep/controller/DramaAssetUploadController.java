@@ -2,6 +2,7 @@ package com.aistareco.aep.controller;
 
 import com.aistareco.aep.config.MixcutProperties;
 import com.aistareco.aep.service.storage.FileStorageService;
+import com.aistareco.aep.service.storage.StorageQuotaService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
@@ -38,10 +39,12 @@ public class DramaAssetUploadController {
 
     private final MixcutProperties props;
     private final FileStorageService fileStorage;
+    private final StorageQuotaService storage;
 
-    public DramaAssetUploadController(MixcutProperties props, FileStorageService fileStorage) {
+    public DramaAssetUploadController(MixcutProperties props, FileStorageService fileStorage, StorageQuotaService storage) {
         this.props = props;
         this.fileStorage = fileStorage;
+        this.storage = storage;
     }
 
     @PostMapping(consumes = {"multipart/form-data"})
@@ -71,6 +74,8 @@ public class DramaAssetUploadController {
         }
 
         FileStorageService.StoredFile stored = fileStorage.store(file, "drama/asset-refs", principal.getName());
+        // 记入存储用量（参考图素材，用户级；best-effort 不阻断）
+        storage.record("drama", principal.getName(), "参考图素材", null, stored.key(), stored.bytes());
         String name = file.getOriginalFilename();
         log.info("[drama-asset-upload] user={} cat={} → {} ({} bytes)",
                 principal.getName(), safeCat, stored.key(), file.getSize());
