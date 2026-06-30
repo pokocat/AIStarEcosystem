@@ -40,8 +40,7 @@ public class DramaBrainstormService {
     private static final Logger log = LoggerFactory.getLogger(DramaBrainstormService.class);
 
     private static final String GREETING =
-            "来，把你脑子里的画面或者一句话丢给我 —— 哪怕只是一个模糊的念头。\n"
-                    + "比如「替嫁千金」「重生考研」「熬夜也能救的精华」… 我陪你聊成一部能拍的剧。";
+            "来，把你脑子里的画面或者一句话丢给我 —— 哪怕只是一个模糊的念头。";
 
     private final DramaBrainstormRepository repo;
     private final ObjectMapper om;

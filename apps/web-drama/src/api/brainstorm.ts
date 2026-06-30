@@ -93,8 +93,7 @@ export type PromoteResult =
 const mockStore = new Map<string, BrainstormDetail>();
 let mockSeq = 0;
 
-const GREETING =
-  "来，把你脑子里的画面或者一句话丢给我 —— 哪怕只是一个模糊的念头。\n比如「替嫁千金」「重生考研」「熬夜也能救的精华」… 我陪你聊成一部能拍的剧。";
+const GREETING = "来，把你脑子里的画面或者一句话丢给我 —— 哪怕只是一个模糊的念头。";
 
 function mockSummary(detail: BrainstormDetail["data"], id: string, status: BrainstormStatus): BrainstormSummary {
   const title = detail.outline?.title || detail.messages.find((m) => m.role === "user")?.text || "新的脑暴";
