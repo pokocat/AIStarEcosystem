@@ -183,6 +183,17 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     };
   };
 
+  /** 镜头出场角色绑定的数字人形象（或上传的参考图）→ 出首帧时作参考图，锁定角色真人脸。 */
+  const shotRefImages = (s: FactoryShot): string[] => {
+    const imgs = (s.cast ?? [])
+      .map((cid) => {
+        const c = state.chars.find((x) => x.id === cid);
+        return c?.avatarImage || c?.refUrl || "";
+      })
+      .filter(Boolean);
+    return Array.from(new Set(imgs));
+  };
+
   const applyFrameResult = React.useCallback(
     (id: string, job: RenderApi.DramaFrameJob | RenderApi.DramaRenderTask, spend: boolean) => {
       const frames = job.frames ?? job.result?.frames ?? [];
@@ -301,6 +312,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
       const job = await RenderApi.submitFrameJob({
         kind: "shot",
         vars: shotVars(s),
+        refImages: shotRefImages(s),
         ratio: data.projectInfo.ratio,
         count: 4,
         projectId: ctx?.projectId,
@@ -377,6 +389,7 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         const job = await RenderApi.submitFrameJob({
           kind: "shot",
           vars: shotVars(d),
+          refImages: shotRefImages(d),
           ratio: data.projectInfo.ratio,
           count: 4,
           projectId: ctx?.projectId,

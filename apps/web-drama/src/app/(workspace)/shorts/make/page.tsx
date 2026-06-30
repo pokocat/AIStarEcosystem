@@ -715,11 +715,14 @@ function ShortMakerInner({
     setBusy({ id, to });
     // 把「整体短视频说明」注入每镜提示词，保证风格 / 场景 / 主角跨镜一致 —— 出片更准确。
     const metaCtx = metaPromptPrefix(meta);
+    // 主角绑定的数字人 / 参考图 / 场景参考图 → 出首帧时作参考图，锁定形象。
+    const shortRefImages = [charAvatar?.image, charRef?.url, sceneRef?.url].filter((u): u is string => !!u);
     try {
       if (to === "frame") {
         const job = await RenderApi.submitFrameJob({
           kind: "short",
           vars: { metaPrefix: metaCtx, visual: shot.visual, styleSuffix: `竖屏短视频画面，${fmt.name}风格。` },
+          refImages: shortRefImages,
           ratio: "9:16",
           count: 1,
           projectId: draftId,
