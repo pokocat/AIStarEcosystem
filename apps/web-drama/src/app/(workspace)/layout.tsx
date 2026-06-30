@@ -91,7 +91,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/distribution", icon: Share2, label: "多平台分发", badge: "建设中" },
       { href: "/insights", icon: BarChart3, label: "数据洞察" },
-      { href: "/trends", icon: Compass, label: "趋势雷达" },
+      { href: "/trends", icon: Compass, label: "趋势雷达", badge: "建设中" },
     ],
   },
   {

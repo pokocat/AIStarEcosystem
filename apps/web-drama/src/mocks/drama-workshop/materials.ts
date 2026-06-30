@@ -1,7 +1,5 @@
 // 素材库 — 设计真源 v4:统一素材源(人物/场景/道具,图片+视频),
 // 素材库页与视频工厂 @ 参考、脚本 [参考N] 引用共用。
-import { AVATAR_LIBRARY, SCENE_LIB } from "./meta";
-
 export interface Material {
   id: string;
   name: string;
@@ -24,17 +22,13 @@ export const MAT_CATS: { key: string }[] = [
   { key: "其他" },
 ];
 
-export const MATERIALS_SEED: Material[] = [
-  ...AVATAR_LIBRARY.map((a) => ({ ...a, cat: "人物", kind: "image" as const })),
-  ...SCENE_LIB.map((a) => ({ ...a, cat: "场景", kind: "image" as const, tags: ["场景参考"] })),
-  { id: "mv1", name: "雨夜街道空镜", cat: "场景", kind: "video", from: "#475569", to: "#0f172a", tags: ["空镜", "夜"] },
-  { id: "mp1", name: "复古座钟",     cat: "道具", kind: "image", from: "#b45309", to: "#78350f", tags: ["复古", "室内"] },
-  { id: "mp2", name: "血色匕首",     cat: "道具", kind: "image", from: "#b91c1c", to: "#450a0a", tags: ["悬疑", "特写"] },
-  { id: "mv2", name: "人物转身参考", cat: "人物", kind: "video", from: "#f97316", to: "#fb923c", tags: ["运镜", "参考"] },
-];
+// 素材库不再 seed 占位素材：早期这里塞了一批 from/to 渐变色块（AVATAR_LIBRARY / SCENE_LIB /
+// 道具样例），全无真实图片，却对所有用户可见（打包在前端，本地无缓存即显示）—— 误导且无用。
+// 现默认空库：只展示用户真实上传（有 url / cdnKey，经 DramaAssetsApi 落 OSS）的素材。
+export const MATERIALS_SEED: Material[] = [];
 
-/** 运行时可变素材池(素材库增删改会同步到 @ 参考面板;演示态内存即真源) */
-export let MATERIALS: Material[] = MATERIALS_SEED.map((m) => ({ ...m }));
+/** 运行时可变素材池(素材库增删改会同步到 @ 参考面板;默认空，仅用户上传后填充) */
+export let MATERIALS: Material[] = [];
 
 export function setMaterials(next: Material[]) {
   MATERIALS = next;

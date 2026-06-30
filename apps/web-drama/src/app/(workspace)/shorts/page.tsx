@@ -362,8 +362,16 @@ export default function ShortsStudioPage() {
         >
           <Trash2 size={16} /> 回收站
         </button>
-        <button type="button" className="btn btn-line" style={{ height: 44, padding: "0 18px" }} onClick={() => setClipOpen(true)}>
+        {/* 从短剧切片：扫描/切片暂无后端（旧实现是假列表 + setTimeout 假扫描），上线前禁用为「建设中」，不展示假数据 */}
+        <button
+          type="button"
+          className="btn btn-line"
+          style={{ height: 44, padding: "0 18px", opacity: 0.6, cursor: "not-allowed" }}
+          disabled
+          title="从短剧切片功能建设中"
+        >
           <Clapperboard size={16} /> 从短剧切片
+          <span className="tag tag-gray" style={{ marginLeft: 6 }}>建设中</span>
         </button>
         <button
           type="button"

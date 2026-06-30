@@ -261,14 +261,16 @@ function WardrobeInner() {
                     分配给 {assignedIds.length} 位演员
                   </div>
                   <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    {/* 演员分配暂无后端（旧实现只存浏览器 localStorage 假保存）→ 建设中禁用，不假装已保存 */}
                     <Button
                       variant="secondary"
                       size="sm"
-                      style={{ flex: 1 }}
-                      onClick={() => setAssignTarget(it)}
+                      style={{ flex: 1, opacity: 0.55, cursor: "not-allowed" }}
+                      disabled
+                      title="演员分配功能建设中"
                     >
                       <Users size={11} />
-                      分配
+                      分配（建设中）
                     </Button>
                     {isUploaded && (
                       <Button variant="ghost" size="sm" onClick={() => setDelTarget(it)}>

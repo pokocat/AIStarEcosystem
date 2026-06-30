@@ -24,7 +24,6 @@ import { Thumb } from "@/components/drama-ui";
 import {
   ASSET_USAGE,
   MAT_CATS,
-  MATERIALS,
   setMaterials,
   type Material,
 } from "@/mocks/drama-workshop";
@@ -60,17 +59,29 @@ function cloneMaterials(list: Material[]): Material[] {
 }
 
 function loadInitialMaterials(): Material[] {
-  if (typeof window === "undefined") return cloneMaterials(MATERIALS);
+  if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Material[];
-      if (Array.isArray(parsed)) return cloneMaterials(parsed);
+      if (Array.isArray(parsed)) {
+        // 迁移：剔除无真实图片(url)的占位素材 —— 早期内置 seed 与页面 mock 上传都只有
+        // from/to 渐变、没有真图，对用户无意义。只保留真实上传（有 url / cdnKey）的素材。
+        const cleaned = cloneMaterials(parsed).filter((m) => !!m.url);
+        if (cleaned.length !== parsed.length) {
+          try {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+          } catch {
+            /* 写回失败不阻塞 */
+          }
+        }
+        return cleaned;
+      }
     }
   } catch {
-    // 本地缓存损坏时回退到内置素材池。
+    // 本地缓存损坏时回退到空库（不再回退占位素材池）。
   }
-  return cloneMaterials(MATERIALS);
+  return [];
 }
 
 function persistMaterials(next: Material[]) {
