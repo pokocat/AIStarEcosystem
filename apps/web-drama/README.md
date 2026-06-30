@@ -68,6 +68,16 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.97 · 2026-06-30 · 分镜一致性 P0：视频工厂「镜间一致性承接」
+
+- **痛点**：一集多个分镜视频之间，人物形象 / 场景环境 / 光线构图 不稳定（同角色在不同镜脸不一样、同场景换陈设）。借鉴 [HKUDS/ViMax](https://github.com/HKUDS/ViMax) 的一致性思路——**主要靠视觉生成层的「参考图复用 + 镜间链式参考」，不是靠 storyboard 文本**。
+- **镜间承接（`stages/factory.tsx`，纯前端）**：出首帧时把 `ref_images` 从「仅角色参考图」扩展为「角色参考图 + 该场景参考图 + 同场上一镜已出首帧」，去重后限 6 张（角色 identity 优先在前）。`ref_images` 管道此前已端到端打通（前端 → `/render/frame-jobs` → `DramaRenderService.callImageModel` → `extra_body.image`），故**零后端 / 零契约 / 零迁移**。
+  - `prevSceneFrame()`：向前找**同场**（`sceneId` 相同）最近一个已出首帧的镜头（锁定优先），跨场不承接（场切应换环境）。
+  - 场景参考图：按名称把本场 `place` 关联到项目级 `ProjectData.scenes[]`（`place.includes(name)` 且 `name.length≥2`），命中且有 `refUrl` → 并入参考图。
+  - 新增「镜间一致性承接」开关（生成设置栏下方，默认开）；关闭即退回原行为（仅角色参考图），供需要更强镜头差异时使用。
+- **设计真源**：完整 P0/P1/P2 分期方案见 [`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)（P1 storyboard prompt 增强 + 机位字段；P2 seedance 首+尾帧双关键帧 i2v + `return_last_frame` 链式承接闭环，待排期）。
+- **门禁**：web-drama typecheck + build（31 路由）全绿。
+
 ### v0.96 · 2026-06-29 · AI 对话气泡支持 Markdown + 快捷建议紧扣回复
 
 - **AI 气泡渲染 Markdown（`lib/markdown-lite.tsx`）**：脑暴助手回复里的 `**加粗**` / `1. 2. 3.` 有序列表 / `-`·`·` 无序列表 / 换行此前按纯文本显示（`**` 露出来）。新增轻量渲染器（不引三方库、不走 `dangerouslySetInnerHTML`，纯 React 元素天然转义）—— 接入脑暴对话、短视频制作左侧对话、剧集脚本 `ai-chat-panel` 三处 AI 气泡（用户气泡仍纯文本）。

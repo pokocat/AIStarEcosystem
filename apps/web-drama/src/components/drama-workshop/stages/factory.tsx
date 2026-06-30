@@ -47,6 +47,8 @@ interface FactoryShot extends BoardShot {
   sceneNo: number;
   flow: FlowKey;
   frameIdx: number;
+  /** 该场绑定的场景参考图 URL（按名称匹配 ProjectData.scenes，镜间一致性用）。 */
+  sceneRefUrl?: string;
 }
 
 function shotColors(engine: BoardShot["engine"], dim?: boolean) {
@@ -70,12 +72,17 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     const doc = getEpisodeDoc(data, state.ep);
     doc.storyboard.scenes.forEach((sc, si) => {
       const place = doc.script.scenes.find((x) => x.id === sc.id)?.place ?? `场景 ${si + 1}`;
+      // 场景参考图：按名称把本场 place 关联到项目级 SceneAsset（best-effort，仅"多一张参考图"）。
+      const sceneRefUrl = (data.scenes ?? []).find(
+        (a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name),
+      )?.refUrl;
       sc.shots.forEach((sh) =>
         list.push({
           ...sh,
           sceneId: sc.id,
           place,
           sceneNo: si + 1,
+          sceneRefUrl,
           // 持久化的 flow 优先；老数据回退 done→clip / 其余 draft
           flow: (sh.flow as FlowKey) ?? (sh.done ? "clip" : "draft"),
           frameIdx: 0,
@@ -128,6 +135,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     const a1 = matById("a1");
     return bound && a1 ? [a1] : [];
   });
+  // 镜间一致性承接：出首帧时额外参考「同场上一镜画面 + 场景参考图」，保持人物/环境/光线连贯。
+  const [chainConsistency, setChainConsistency] = React.useState(true);
   const shotsRef = React.useRef(shots);
   React.useEffect(() => {
     shotsRef.current = shots;
@@ -183,15 +192,38 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     };
   };
 
-  /** 镜头出场角色绑定的数字人形象（或上传的参考图）→ 出首帧时作参考图，锁定角色真人脸。 */
+  /** 同场上一镜已出首帧（锁定优先）—— 镜间承接：构图 / 光线 / 人物位置连贯。 */
+  const prevSceneFrame = (s: FactoryShot): string | undefined => {
+    const list = shotsRef.current.length ? shotsRef.current : shots;
+    const idx = list.findIndex((x) => x.id === s.id);
+    for (let i = idx - 1; i >= 0; i--) {
+      const p = list[i];
+      if (p.sceneId !== s.sceneId) break; // 跨场不承接（场切应换环境）
+      const f = p.frameUrl ?? p.frameUrls?.[p.frameIdx ?? 0] ?? p.frameUrls?.[0];
+      if (f) return f;
+    }
+    return undefined;
+  };
+
+  /**
+   * 镜头出场角色绑定的数字人形象（或上传参考图）→ 出首帧时作参考图，锁定角色真人脸。
+   * 开启「镜间一致性承接」时，额外并入该场景参考图 + 同场上一镜画面，保持环境/光线/构图连贯。
+   * 去重后限 6 张，防超出图像模型入参上限（角色 identity 优先在前）。
+   */
   const shotRefImages = (s: FactoryShot): string[] => {
-    const imgs = (s.cast ?? [])
+    const charImgs = (s.cast ?? [])
       .map((cid) => {
         const c = state.chars.find((x) => x.id === cid);
         return c?.avatarImage || c?.refUrl || "";
       })
       .filter(Boolean);
-    return Array.from(new Set(imgs));
+    const all = [...charImgs];
+    if (chainConsistency) {
+      if (s.sceneRefUrl) all.push(s.sceneRefUrl);
+      const prev = prevSceneFrame(s);
+      if (prev) all.push(prev);
+    }
+    return Array.from(new Set(all)).slice(0, 6);
   };
 
   const applyFrameResult = React.useCallback(
@@ -510,6 +542,37 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
 
           {/* 生成设置:模型 / 画幅比 / 分辨率 + @素材参考 */}
           <GenSettingsBar defaultRatio="9:16" refs={refs} setRefs={setRefs} />
+
+          {/* 镜间一致性承接开关：出首帧时额外参考「同场上一镜画面 + 场景参考图」 */}
+          <label
+            className="card row gap-3"
+            style={{ padding: "10px 14px", marginBottom: 16, cursor: "pointer", alignItems: "center" }}
+          >
+            <input
+              type="checkbox"
+              checked={chainConsistency}
+              onChange={(e) => setChainConsistency(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: "var(--accent)", flex: "none" }}
+            />
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>镜间一致性承接</div>
+              <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.45 }}>
+                出首帧时额外参考「同场上一镜画面 + 该场景参考图」，让人物 / 环境 / 光线在同一场内连贯；需要更强镜头差异时可关闭。
+              </div>
+            </div>
+            <span
+              className="tag"
+              style={{
+                flex: "none",
+                background: chainConsistency ? "var(--accent-soft)" : "var(--surface-2)",
+                color: chainConsistency ? "var(--accent)" : "var(--ink-3)",
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              {chainConsistency ? "已开启" : "已关闭"}
+            </span>
+          </label>
 
           {/* 镜头网格 */}
           <div className="row gap-2" style={{ marginBottom: 12 }}>
