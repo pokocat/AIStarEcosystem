@@ -63,6 +63,12 @@ function HomeLanding() {
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const starting = React.useRef(false); // 防连点重复建脑暴
   const cat = useDramaCatalog(); // 运营可维护的「近期热点 / 创意推荐」
+  // 热点可能配置很多条，首页只随机展示 3 条（每次进页随机一批，不随渲染抖动）。
+  const hotPicks = React.useMemo(() => {
+    const all = cat.hotTopics ?? [];
+    if (all.length <= 3) return all;
+    return [...all].sort(() => Math.random() - 0.5).slice(0, 3);
+  }, [cat.hotTopics]);
   const recipesQ = useAsync("/me/drama/recipes/published", () => RecipesApi.listPublished());
   const publishedRecipes = recipesQ.data ?? [];
   // 首页爆款配方：优先官方首页位（rcp-official-home-*），取 6 条。
@@ -182,7 +188,7 @@ function HomeLanding() {
               <span className="row gap-1" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-2)", flex: "none" }}>
                 <Zap size={12} /> 近期热点
               </span>
-              {cat.hotTopics.map((h) => (
+              {hotPicks.map((h) => (
                 <button
                   key={h.label}
                   type="button"
