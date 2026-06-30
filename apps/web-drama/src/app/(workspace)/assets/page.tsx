@@ -20,8 +20,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Thumb } from "@/components/drama-ui";
-import { DramaAssetsApi } from "@/api";
+import { AssetLibraryApi, DramaAssetsApi } from "@/api";
 import { aiErrorMessage } from "@/lib/ai-error";
+import { useAsync, invalidate } from "@/lib/drama-query";
 import {
   ASSET_USAGE,
   MAT_CATS,
@@ -45,82 +46,46 @@ const CAT_ICONS: Record<string, React.ElementType> = {
 
 
 type MediaFilter = "all" | "image" | "video";
-const STORAGE_KEY = "aistareco.web-drama.assets.v1";
-
-function cloneMaterials(list: Material[]): Material[] {
-  return list.map((m) => ({ ...m, tags: [...(m.tags ?? [])] }));
-}
-
-function loadInitialMaterials(): Material[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Material[];
-      if (Array.isArray(parsed)) {
-        // 迁移：剔除无真实图片(url)的占位素材 —— 早期内置 seed 与页面 mock 上传都只有
-        // from/to 渐变、没有真图，对用户无意义。只保留真实上传（有 url / cdnKey）的素材。
-        const cleaned = cloneMaterials(parsed).filter((m) => !!m.url);
-        if (cleaned.length !== parsed.length) {
-          try {
-            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
-          } catch {
-            /* 写回失败不阻塞 */
-          }
-        }
-        return cleaned;
-      }
-    }
-  } catch {
-    // 本地缓存损坏时回退到空库（不再回退占位素材池）。
-  }
-  return [];
-}
-
-function persistMaterials(next: Material[]) {
-  const snapshot = cloneMaterials(next);
-  setMaterials(snapshot);
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // 存储失败不阻塞当前会话的素材操作。
-  }
-}
 
 export default function AssetsPage() {
-  // 暂无后端资产表：浏览器本地持久化 + 内置素材池兜底，避免刷新 / 重启后空库。
-  const [items, setItems] = React.useState<Material[]>(loadInitialMaterials);
+  // 真实后端素材库（/me/drama/assets，按用户隔离、跨设备持久）。
+  const assetsQ = useAsync<Material[]>("/me/drama/assets", () => AssetLibraryApi.listAssets());
+  const items = React.useMemo(() => assetsQ.data ?? [], [assetsQ.data]);
   const [q, setQ] = React.useState("");
   const [cat, setCat] = React.useState("all"); // all / 人物 / 场景 / 道具 / 其他
   const [media, setMedia] = React.useState<MediaFilter>("all"); // all / image / video
   const [sel, setSel] = React.useState<Material | null>(null);
   const [adding, setAdding] = React.useState(false);
 
+  // 同步运行时素材池：视频工厂 / 脚本 @ 引用读 MATERIALS，进过素材库后本会话即可 @ 到这些素材。
   React.useEffect(() => {
     setMaterials(items);
   }, [items]);
 
-  const sync = (next: Material[]) => {
-    const snapshot = cloneMaterials(next);
-    persistMaterials(snapshot);
-    setItems(snapshot);
-  };
-  const create = (m: Material) => {
-    sync([m, ...items]);
+  const onCreated = () => {
+    invalidate("/me/drama/assets");
     setAdding(false);
-    toast.success(`已上传素材「${m.name}」`);
+    toast.success("已上传素材");
   };
-  const save = (id: string, patch: Partial<Material>) => {
-    const next = items.map((a) => (a.id === id ? { ...a, ...patch } : a));
-    sync(next);
-    setSel((s2) => (s2 ? { ...s2, ...patch } : s2));
-    toast.success("修改已保存");
+  const save = async (id: string, patch: { name?: string; cat?: string; tags?: string[] }) => {
+    try {
+      await AssetLibraryApi.updateAsset(id, patch);
+      invalidate("/me/drama/assets");
+      setSel((s2) => (s2 ? { ...s2, ...patch } : s2));
+      toast.success("修改已保存");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "保存失败，请重试"));
+    }
   };
-  const remove = (id: string) => {
-    sync(items.filter((a) => a.id !== id));
-    setSel(null);
-    toast.success("已删除,关联项目不受影响");
+  const remove = async (id: string) => {
+    try {
+      await AssetLibraryApi.deleteAsset(id);
+      invalidate("/me/drama/assets");
+      setSel(null);
+      toast.success("已删除，关联项目不受影响");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "删除失败，请重试"));
+    }
   };
 
   const list = items.filter(
@@ -223,7 +188,7 @@ export default function AssetsPage() {
           onDelete={() => remove(sel.id)}
         />
       )}
-      {adding && <MaterialUpload onClose={() => setAdding(false)} onCreate={create} />}
+      {adding && <MaterialUpload onClose={() => setAdding(false)} onCreated={onCreated} />}
     </div>
   );
 }
@@ -489,7 +454,7 @@ function MaterialDetail({
 }
 
 /* 增:上传素材(真实上传图片到 OSS + 类型标签) */
-function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: (m: Material) => void }) {
+function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = React.useState("");
   const [catv, setCatv] = React.useState<string | null>(null);
   const [tags, setTags] = React.useState("");
@@ -516,18 +481,16 @@ function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: 
     if (!file || !catv || !name.trim() || uploading) return;
     setUploading(true);
     try {
+      // ① 文件落 OSS（返回 cdnKey）② 建库记录（按用户隔离、跨设备持久）
       const r = await DramaAssetsApi.uploadAssetRef(file, catv);
-      onCreate({
-        id: "u_" + (r.cdnKey || Date.now()),
+      await AssetLibraryApi.createAsset({
         name: name.trim(),
         cat: catv,
         kind: "image",
-        tags: tags.split(/[、,，\s]+/).filter(Boolean),
-        from: "#f97316",
-        to: "#e11d48",
-        url: r.url,
         cdnKey: r.cdnKey,
+        tags: tags.split(/[、,，\s]+/).filter(Boolean),
       });
+      onCreated();
     } catch (e) {
       toast.error(aiErrorMessage(e, "素材上传失败，请重试"));
     } finally {

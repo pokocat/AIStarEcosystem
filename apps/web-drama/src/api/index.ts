@@ -38,3 +38,4 @@ export * as ProjectsApi from "./projects";
 export * as BrainstormApi from "./brainstorm";
 export * as RenderApi from "./render";
 export * as RecipesApi from "./recipes";
+export * as AssetLibraryApi from "./asset-library";
