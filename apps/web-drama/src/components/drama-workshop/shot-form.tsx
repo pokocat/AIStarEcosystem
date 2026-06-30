@@ -44,11 +44,21 @@ export interface FormShot {
   refs: Material[];
   sub: boolean;
   flow: ShotFlow;
+  /** v0.97：机位标识（同机位复用同值，跨镜保持取景一致）。 */
+  camId?: string;
   /** v0.65 真实渲染产物 */
   frameUrls?: string[];
   frameUrl?: string;
   videoUrl?: string;
   jobId?: string;
+  /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考，链式承接。 */
+  lastFrameUrl?: string;
+  /** v0.97 P2 镜头分解（借鉴 ViMax）：首/末帧静态快照 + 运动 + 变化等级 + 末帧关键帧图。 */
+  ffDesc?: string;
+  lfDesc?: string;
+  motionDesc?: string;
+  variationType?: "small" | "medium" | "large" | string;
+  endFrameUrl?: string;
 }
 
 function fmtT(sec: number) {
