@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   Clapperboard,
   Info,
+  RefreshCw,
   ScrollText,
   Sparkles,
   Zap,
@@ -267,7 +268,15 @@ export function BrainstormStudio({ id }: { id: string }) {
               {outlineLoading ? "正在整理对话内容…" : outline ? "根据对话整理出的故事大纲" : "还没生成，点下方按钮生成"}
             </span>
             {outline && !outlineLoading && (
-              <span style={{ flex: "none", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", background: "var(--surface-2)", padding: "2px 9px", borderRadius: 999 }}>新生成</span>
+              <button
+                type="button"
+                className="chip"
+                style={{ flex: "none", fontSize: 11 }}
+                onClick={() => void genOutline()}
+                title="根据当前对话重新生成故事大纲"
+              >
+                <RefreshCw size={12} /> 重新生成
+              </button>
             )}
           </div>
 
