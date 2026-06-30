@@ -11,11 +11,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   ChevronLeft,
   Clapperboard,
   Edit,
   Film,
   Image as ImageIcon,
+  Loader2,
   Maximize2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -26,6 +28,8 @@ import {
   ScrollText,
   Sparkles,
   Trash2,
+  Upload,
+  UserPlus,
   X,
   Zap,
 } from "lucide-react";
@@ -35,9 +39,11 @@ import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { ShortStoryboardTable } from "@/components/drama-workshop/short-storyboard-table";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
+import { MediaLightbox, type LightboxMedia } from "@/components/drama-workshop/media-lightbox";
 import { MarkdownLite } from "@/lib/markdown-lite";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
-import { RenderApi, ShortDramaApi, ShortsApi } from "@/api";
+import { DapAvatarsApi, DramaAssetsApi, RenderApi, ShortDramaApi, ShortsApi } from "@/api";
+import type { DapAvatarLite } from "@/api/dap-avatars";
 import type { ScriptMeta } from "@/api/short-drama";
 import type { ShortDraftData } from "@/api/shorts";
 import { aiErrorMessage } from "@/lib/ai-error";
@@ -77,17 +83,6 @@ interface ChatMsg {
 /* 单镜出片卡(竖屏) */
 // v0.88：短视频大纲 / 分镜 beat 语义标签（设计稿口播种草 13s 模型）。
 const SHORT_BEATS = ["痛点开场", "卖点演示", "强 CTA 收尾"];
-
-/** 大纲分区小标题：与短剧「故事大纲」同款 —— 实心圆点 + 字距标签 +（可选）次要说明。 */
-function OutlineLabel({ children, hint }: { children: React.ReactNode; hint?: string }) {
-  return (
-    <div className="row gap-2" style={{ alignItems: "center" }}>
-      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flex: "none" }} />
-      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "var(--ink-3)" }}>{children}</span>
-      {hint && <span className="faint" style={{ fontSize: 11 }}>{hint}</span>}
-    </div>
-  );
-}
 
 /**
  * 可编辑文本字段：默认看起来就是文本，鼠标移上去（或聚焦）才显高亮底 + 文末铅笔，
@@ -172,6 +167,154 @@ function EditableField({
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** 折叠分区：标题行（• 圆点标签 + chevron + 折叠态摘要）可点开合，展开后渲染 children。 */
+function CollapsibleOutlineSection({
+  label,
+  hint,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  summary?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="col gap-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="row gap-2"
+        style={{ alignItems: "center", background: "none", border: "none", padding: 0, cursor: "pointer", width: "100%", textAlign: "left" }}
+        aria-expanded={open}
+      >
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flex: "none" }} />
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "var(--ink-3)" }}>{label}</span>
+        {hint && <span className="faint" style={{ fontSize: 11 }}>{hint}</span>}
+        <span className="grow" />
+        {!open && summary && (
+          <span className="faint" style={{ fontSize: 12, maxWidth: "55%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary}</span>
+        )}
+        <ChevronDown size={15} style={{ color: "var(--ink-3)", flex: "none", transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+/** 参考图 / 素材缩略图：点看大图、右上角移除。 */
+function RefThumb({ url, from, to, onView, onRemove }: { url: string; from?: string; to?: string; onView: () => void; onRemove: () => void }) {
+  return (
+    <span
+      onClick={onView}
+      style={{
+        position: "relative", width: 42, height: 56, borderRadius: 8, overflow: "hidden", flex: "none",
+        boxShadow: "inset 0 0 0 1px var(--line)", cursor: url ? "zoom-in" : "default",
+        background: url ? `center/cover no-repeat url(${url})` : `linear-gradient(135deg, ${from ?? "#f97316"}, ${to ?? "#e11d48"})`,
+      }}
+    >
+      <button
+        type="button"
+        aria-label="移除"
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        style={{ position: "absolute", top: 2, right: 2, width: 16, height: 16, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.55)", color: "#fff", display: "grid", placeItems: "center", cursor: "pointer", padding: 0 }}
+      >
+        <X size={10} />
+      </button>
+    </span>
+  );
+}
+
+/** 上传按钮：label 包裹隐藏 file input，busy 时转圈。 */
+function UploadButton({ label, busy, disabled, onFile }: { label: string; busy?: boolean; disabled?: boolean; onFile: (f: File) => void }) {
+  return (
+    <label className="btn btn-line btn-sm" style={{ cursor: disabled ? "default" : "pointer", opacity: disabled && !busy ? 0.6 : 1 }}>
+      {busy ? <Loader2 size={13} style={{ animation: "drama-spin .7s linear infinite" }} /> : <Upload size={13} />} {label}
+      <input
+        type="file"
+        accept="image/*"
+        hidden
+        disabled={disabled}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onFile(f);
+          e.currentTarget.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
+/** 绑定数字人弹窗：从「我的数字人」（AiAvatar）网格选一个作为主角形象。 */
+function AvatarPickerModal({
+  onPick,
+  onClose,
+}: {
+  onPick: (a: { id: string; name: string; image: string }) => void;
+  onClose: () => void;
+}) {
+  const [list, setList] = React.useState<DapAvatarLite[] | null>(null);
+  const [err, setErr] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    DapAvatarsApi.listMyDapAvatars()
+      .then((r) => alive && setList(r))
+      .catch((e) => alive && setErr(aiErrorMessage(e, "数字人列表加载失败，请稍后重试")));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return (
+    <div className="overlay" onClick={onClose} style={{ zIndex: 95 }}>
+      <div className="col" onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 94vw)", maxHeight: "80vh", background: "var(--surface)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+        <div className="row gap-2" style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)", flex: "none", alignItems: "center" }}>
+          <span style={{ fontWeight: 800, fontSize: 15 }}>绑定数字人</span>
+          <span className="faint" style={{ fontSize: 11.5 }}>选一个「我的数字人」作为主角形象</span>
+          <span className="grow" />
+          <button type="button" className="btn btn-icon btn-sm" onClick={onClose} aria-label="关闭">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="scroll" style={{ padding: 18, minHeight: 0 }}>
+          {err ? (
+            <div className="muted" style={{ fontSize: 13 }}>{err}</div>
+          ) : !list ? (
+            <div className="row gap-2 faint" style={{ fontSize: 13 }}>
+              <Loader2 size={14} className="spin" /> 加载中…
+            </div>
+          ) : list.length === 0 ? (
+            <div className="col center" style={{ padding: "30px 10px", gap: 8, textAlign: "center" }}>
+              <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>你还没有数字人。去 AiAvatar 创建数字人后，即可在这里绑定为主角形象。</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 12 }}>
+              {list.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => {
+                    onPick({ id: a.id, name: a.name, image: a.imageUrl ?? "" });
+                    onClose();
+                  }}
+                  className="col"
+                  style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: "var(--surface-2)", cursor: "pointer", padding: 0, textAlign: "left", gap: 0 }}
+                >
+                  <div style={{ width: "100%", aspectRatio: "3/4", background: a.imageUrl ? `center/cover no-repeat url(${a.imageUrl})` : "linear-gradient(135deg,var(--surface-3),var(--surface-2))" }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, padding: "5px 8px 8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -374,6 +517,15 @@ function ShortMakerInner({
   const [chatCollapsed, setChatCollapsed] = React.useState(false);
   // 分镜表放大：全屏弹层展示，方便逐镜编辑。
   const [tableMax, setTableMax] = React.useState(false);
+  // 主角 / 主场景 折叠（默认收起，展开后可上传参考图 / 绑定数字人 / 上传素材）。
+  const [charOpen, setCharOpen] = React.useState(false);
+  const [sceneOpen, setSceneOpen] = React.useState(false);
+  const [charRef, setCharRef] = React.useState(() => initial.characterRef ?? null);
+  const [charAvatar, setCharAvatar] = React.useState(() => initial.characterAvatar ?? null);
+  const [sceneRef, setSceneRef] = React.useState(() => initial.sceneRef ?? null);
+  const [uploading, setUploading] = React.useState<"char" | "scene" | "mat" | null>(null);
+  const [avatarPickerOpen, setAvatarPickerOpen] = React.useState(false);
+  const [lightbox, setLightbox] = React.useState<LightboxMedia | null>(null);
 
   const total = shots.reduce((a, s) => a + s.dur, 0);
   const doneCount = shots.filter((s) => s.flow === "done").length;
@@ -396,6 +548,9 @@ function ShortMakerInner({
     step,
     meta,
     logline,
+    characterRef: charRef,
+    characterAvatar: charAvatar,
+    sceneRef,
     shots,
     chat,
     refs,
@@ -426,7 +581,7 @@ function ShortMakerInner({
       return;
     }
     queueSave();
-  }, [step, meta, logline, shots, chat, refs, suggestions, queueSave]);
+  }, [step, meta, logline, charRef, charAvatar, sceneRef, shots, chat, refs, suggestions, queueSave]);
   React.useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -635,6 +790,47 @@ function ShortMakerInner({
       updShot(s.id, { flow: "done" });
     }
     toast.success("全部镜头已出片，可合成成片");
+  };
+
+  // 主角 / 主场景 参考图上传（→ OSS，存 url+cdnKey），与短剧工坊同一上传端点。
+  const uploadRefImage = async (file: File, kind: "char" | "scene") => {
+    if (uploading) return;
+    setUploading(kind);
+    try {
+      const r = await DramaAssetsApi.uploadAssetRef(file, kind === "char" ? "人物" : "场景");
+      const ref = { url: r.url, cdnKey: r.cdnKey };
+      if (kind === "char") setCharRef(ref);
+      else setSceneRef(ref);
+      toast.success("参考图已上传");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "参考图上传失败，请重试"));
+    } finally {
+      setUploading(null);
+    }
+  };
+  // 上传素材 → 追加到 refs（数字人参考图、道具图等，供逐镜 @ 引用）。
+  const uploadMaterial = async (file: File) => {
+    if (uploading) return;
+    setUploading("mat");
+    try {
+      const r = await DramaAssetsApi.uploadAssetRef(file, "其他");
+      const mat: Material = {
+        id: "mat_" + r.cdnKey,
+        name: r.name || file.name,
+        cat: "其他",
+        kind: "image",
+        from: "#f97316",
+        to: "#e11d48",
+        url: r.url,
+        cdnKey: r.cdnKey,
+      };
+      setRefs((arr) => (arr.some((x) => x.cdnKey === mat.cdnKey) ? arr : [...arr, mat]));
+      toast.success("素材已上传");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "素材上传失败，请重试"));
+    } finally {
+      setUploading(null);
+    }
   };
 
   // 分镜表元素：内联与「放大」全屏弹层共用同一份（同一组 handlers）。
@@ -874,25 +1070,25 @@ function ShortMakerInner({
 
                     <div style={{ height: 1, background: "var(--line-soft)" }} />
 
-                    {/* 主角 —— 同短剧「核心人物」双列卡网格 */}
-                    <div className="col gap-3">
-                      <OutlineLabel hint="1 位 · 点击可改">主角</OutlineLabel>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(228px, 1fr))", gap: 8 }}>
-                        <div
-                          className="row gap-2"
-                          style={{ alignItems: "center", padding: "7px 10px 7px 7px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)", minWidth: 0 }}
-                        >
-                          <div
-                            style={{
-                              width: 30, height: 30, borderRadius: "50%",
-                              background: "linear-gradient(135deg, color-mix(in oklch, var(--accent) 18%, #fff), color-mix(in oklch, var(--accent-2) 18%, #fff))",
-                              boxShadow: "inset 0 0 0 1px var(--line)", display: "grid", placeItems: "center",
-                              fontSize: 13, fontWeight: 800, color: "var(--accent-2)", flex: "none",
-                            }}
-                          >
-                            {(meta.character?.name || "主").slice(0, 1)}
-                          </div>
-                          <div className="col" style={{ minWidth: 0, gap: 1, lineHeight: 1.3, flex: 1 }}>
+                    {/* 主角 —— 折叠；展开后：角色卡 + 参考图 / 数字人 / 素材设置 */}
+                    <CollapsibleOutlineSection
+                      label="主角"
+                      hint="点击展开设置"
+                      summary={meta.character?.name || (charAvatar?.name ?? "未设定")}
+                      open={charOpen}
+                      onToggle={() => setCharOpen((v) => !v)}
+                    >
+                      <div className="col gap-3" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)" }}>
+                        {/* 角色卡 */}
+                        <div className="row gap-2" style={{ alignItems: "center" }}>
+                          {charAvatar?.image ? (
+                            <div style={{ width: 34, height: 34, borderRadius: "50%", background: `center/cover no-repeat url(${charAvatar.image})`, boxShadow: "inset 0 0 0 1px var(--line)", flex: "none" }} />
+                          ) : (
+                            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg, color-mix(in oklch, var(--accent) 18%, #fff), color-mix(in oklch, var(--accent-2) 18%, #fff))", boxShadow: "inset 0 0 0 1px var(--line)", display: "grid", placeItems: "center", fontSize: 14, fontWeight: 800, color: "var(--accent-2)", flex: "none" }}>
+                              {(meta.character?.name || "主").slice(0, 1)}
+                            </div>
+                          )}
+                          <div className="col" style={{ minWidth: 0, gap: 1, flex: 1 }}>
                             <input
                               value={meta.character?.name ?? ""}
                               onChange={(e) => setMeta({ ...meta, character: { ...(meta.character ?? { name: "", description: "" }), name: e.target.value } })}
@@ -907,14 +1103,62 @@ function ShortMakerInner({
                             />
                           </div>
                         </div>
+
+                        {/* 参考图 */}
+                        <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                          <span className="faint" style={{ fontSize: 11.5, width: 48, flex: "none" }}>参考图</span>
+                          {charRef && (
+                            <RefThumb url={charRef.url} onView={() => setLightbox({ src: charRef.url, kind: "image" })} onRemove={() => setCharRef(null)} />
+                          )}
+                          <UploadButton label="上传参考图" busy={uploading === "char"} disabled={!!uploading} onFile={(f) => void uploadRefImage(f, "char")} />
+                        </div>
+
+                        {/* 数字人 */}
+                        <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                          <span className="faint" style={{ fontSize: 11.5, width: 48, flex: "none" }}>数字人</span>
+                          {charAvatar ? (
+                            <span className="row gap-2" style={{ alignItems: "center", padding: "3px 8px 3px 4px", borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12, fontWeight: 700 }}>
+                              {charAvatar.image && <span style={{ width: 20, height: 20, borderRadius: "50%", background: `center/cover no-repeat url(${charAvatar.image})`, flex: "none" }} />}
+                              {charAvatar.name}
+                              <button type="button" aria-label="解绑数字人" onClick={() => setCharAvatar(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--accent)", display: "grid", placeItems: "center", padding: 0 }}>
+                                <X size={13} />
+                              </button>
+                            </span>
+                          ) : (
+                            <button type="button" className="btn btn-line btn-sm" onClick={() => setAvatarPickerOpen(true)}>
+                              <UserPlus size={13} /> 绑定数字人
+                            </button>
+                          )}
+                        </div>
+
+                        {/* 素材 */}
+                        <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                          <span className="faint" style={{ fontSize: 11.5, width: 48, flex: "none" }}>素材</span>
+                          {refs.map((m) => (
+                            <RefThumb
+                              key={m.id}
+                              url={m.url ?? ""}
+                              from={m.from}
+                              to={m.to}
+                              onView={() => m.url && setLightbox({ src: m.url, kind: "image" })}
+                              onRemove={() => setRefs((arr) => arr.filter((x) => x.id !== m.id))}
+                            />
+                          ))}
+                          <UploadButton label="上传素材" busy={uploading === "mat"} disabled={!!uploading} onFile={(f) => void uploadMaterial(f)} />
+                        </div>
                       </div>
-                    </div>
+                    </CollapsibleOutlineSection>
 
                     <div style={{ height: 1, background: "var(--line-soft)" }} />
 
-                    {/* 主场景 —— 同短剧「取景参考」 */}
-                    <div className="col gap-3">
-                      <OutlineLabel>主场景</OutlineLabel>
+                    {/* 主场景 —— 折叠；展开后：场景描述 + 参考图 */}
+                    <CollapsibleOutlineSection
+                      label="主场景"
+                      hint="点击展开设置"
+                      summary={meta.scene || "未设定"}
+                      open={sceneOpen}
+                      onToggle={() => setSceneOpen((v) => !v)}
+                    >
                       <EditableField
                         multiline
                         value={meta.scene ?? ""}
@@ -922,7 +1166,14 @@ function ShortMakerInner({
                         placeholder="主场景一句话描述"
                         textStyle={{ fontSize: 13.5, lineHeight: 1.9, color: "var(--ink-2)" }}
                       />
-                    </div>
+                      <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                        <span className="faint" style={{ fontSize: 11.5, width: 48, flex: "none" }}>参考图</span>
+                        {sceneRef && (
+                          <RefThumb url={sceneRef.url} onView={() => setLightbox({ src: sceneRef.url, kind: "image" })} onRemove={() => setSceneRef(null)} />
+                        )}
+                        <UploadButton label="上传参考图" busy={uploading === "scene"} disabled={!!uploading} onFile={(f) => void uploadRefImage(f, "scene")} />
+                      </div>
+                    </CollapsibleOutlineSection>
                   </div>
                 </div>
               )}
@@ -1002,6 +1253,10 @@ function ShortMakerInner({
           </div>
         </div>
       )}
+
+      {/* 绑定数字人 / 参考图看大图 */}
+      {avatarPickerOpen && <AvatarPickerModal onPick={(a) => setCharAvatar(a)} onClose={() => setAvatarPickerOpen(false)} />}
+      <MediaLightbox media={lightbox} onClose={() => setLightbox(null)} />
 
       {/* 分镜表放大：全屏弹层（与内联共用同一份表，编辑实时同步） */}
       {tableMax && (

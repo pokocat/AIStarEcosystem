@@ -82,8 +82,15 @@ export interface ShortDraftData {
   meta: ScriptMeta | null;
   /** 一句话故事大纲（AI 起草的 logline）；展示在标题下，可直接改。 */
   logline?: string;
+  /** 主角参考图（上传到 OSS）：url 展示值 / cdnKey 真值。 */
+  characterRef?: { url: string; cdnKey: string } | null;
+  /** 主角绑定的数字人（来自 AiAvatar「我的数字人」）：id + 名称 + 展示图。 */
+  characterAvatar?: { id: string; name: string; image: string } | null;
+  /** 主场景参考图（上传到 OSS）。 */
+  sceneRef?: { url: string; cdnKey: string } | null;
   shots: ShortDraftShot[];
   chat: ShortDraftChatMsg[];
+  /** @素材 / 上传素材引用（数字人参考图、道具图等）。 */
   refs: Material[];
   /** AI 跟当前脚本给出的后续修改建议（快捷 chip）；随脚本刷新，重开草稿时恢复。 */
   suggestions?: string[];
