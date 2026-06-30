@@ -24,6 +24,7 @@
 #   ./infra/scripts/dev-server.sh --log                # 日志同步写 logs/server-<timestamp>.log
 #   ./infra/scripts/dev-server.sh --log FILE           # 指定日志文件路径
 #   ./infra/scripts/dev-server.sh --env-file FILE      # 默认 infra/env/server.local.env
+#   ./infra/scripts/dev-server.sh --mvn-settings FILE  # 指定 Maven settings；默认自动避开坏掉的全局 aliyun mirror
 #   ./infra/scripts/dev-server.sh --mvn-args "-DskipTests"
 #
 # 若 apps/server/.env 存在，会在 infra/env/server.local.env 之后叠加加载，便于本地用真 OSS 联调。
@@ -40,12 +41,13 @@ PROFILE="mysql"
 MODE="native"            # native | docker | skip
 RESET_DB=0
 REPAIR_FLYWAY=0
-MYSQL_HOST="localhost"
+MYSQL_HOST="127.0.0.1"
 MYSQL_PORT=3306
 MYSQL_USER="root"
 MYSQL_PASS=""
 MYSQL_DB="aistareco"
 MVN_ARGS=""
+MVN_SETTINGS_FILE="${AISTARECO_DEV_MAVEN_SETTINGS:-}"
 LOG_FILE=""
 LOCAL_ENV_FILE="${AISTARECO_DEV_SERVER_ENV_FILE:-infra/env/server.local.env}"
 SERVER_DOTENV_FILE="${AISTARECO_SERVER_DOTENV_FILE:-apps/server/.env}"
@@ -65,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     --mysql-user) MYSQL_USER="$2"; shift 2;;
     --mysql-pass) MYSQL_PASS="$2"; shift 2;;
     --env-file)   LOCAL_ENV_FILE="$2"; shift 2;;
+    --mvn-settings) MVN_SETTINGS_FILE="$2"; shift 2;;
     --mvn-args)   MVN_ARGS="$2"; shift 2;;
     --log)
       # --log 后面跟值或单独：./dev-server.sh --log              → 自动时间戳
@@ -99,6 +102,67 @@ lower() {
 
 random_hex() {
   openssl rand -hex "$1"
+}
+
+MAVEN_SETTINGS_ARGS=()
+TEMP_MAVEN_SETTINGS=""
+
+cleanup() {
+  [[ -z "${TEMP_MAVEN_SETTINGS}" ]] || rm -f "${TEMP_MAVEN_SETTINGS}"
+}
+trap cleanup EXIT
+
+write_central_maven_settings() {
+  local file="$1"
+  cat > "${file}" <<'EOF'
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <mirrors />
+  <profiles>
+    <profile>
+      <id>central-only</id>
+      <repositories>
+        <repository>
+          <id>central</id>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>central</id>
+          <url>https://repo.maven.apache.org/maven2</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>central-only</activeProfile>
+  </activeProfiles>
+</settings>
+EOF
+}
+
+prepare_maven_settings() {
+  if [[ -n "${MVN_SETTINGS_FILE}" ]]; then
+    [[ -r "${MVN_SETTINGS_FILE}" ]] || die "Maven settings 不可读: ${MVN_SETTINGS_FILE}"
+    MAVEN_SETTINGS_ARGS=(-s "${MVN_SETTINGS_FILE}")
+    return 0
+  fi
+
+  local user_settings="${HOME}/.m2/settings.xml"
+  if [[ -r "${user_settings}" ]] &&
+     grep -q "maven.aliyun.com/repository/public" "${user_settings}" &&
+     grep -q "<mirrorOf>\\*</mirrorOf>" "${user_settings}"; then
+    TEMP_MAVEN_SETTINGS="$(mktemp "${TMPDIR:-/tmp}/aistareco-maven-settings.XXXXXX.xml")"
+    write_central_maven_settings "${TEMP_MAVEN_SETTINGS}"
+    MAVEN_SETTINGS_ARGS=(-s "${TEMP_MAVEN_SETTINGS}")
+    warn "检测到全局 Maven aliyun mirrorOf=*；本次 dev-server 改用 Maven Central 临时 settings"
+  fi
 }
 
 generate_local_env_file() {
@@ -391,6 +455,7 @@ command -v java >/dev/null || die "缺 java（推荐 java 17）"
 
 load_local_env_file
 validate_local_env
+prepare_maven_settings
 
 # ── MySQL 处理：三种模式 ─────────────────────────────────────────────────
 case "$MODE" in
@@ -576,21 +641,22 @@ if [[ -n "${LOG_FILE}" ]]; then
   {
     echo "# dev-server.sh launched at $(date '+%Y-%m-%d %H:%M:%S')"
     echo "# profile=${PROFILE} mode=${MODE} mysql=${MYSQL_USER}@${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_DB}"
+    echo "# mvn settings args: ${MAVEN_SETTINGS_ARGS[*]:-<default>}"
     echo "# mvn args: ${MVN_ARGS}"
     echo "# ── server output ──────────────────────────────────────────────────"
   } >> "${LOG_FILE}"
   # 用 stdbuf 让 mvn 不缓冲，日志实时刷盘（Linux）；macOS 自带 stdbuf 在 coreutils
   if command -v stdbuf >/dev/null 2>&1; then
-    stdbuf -oL -eL mvn -f apps/server/pom.xml spring-boot:run \
+    stdbuf -oL -eL mvn "${MAVEN_SETTINGS_ARGS[@]}" -f apps/server/pom.xml spring-boot:run \
       -Dspring-boot.run.profiles="${PROFILE}" \
       ${MVN_ARGS} 2>&1 | tee -a "${LOG_FILE}"
   else
-    mvn -f apps/server/pom.xml spring-boot:run \
+    mvn "${MAVEN_SETTINGS_ARGS[@]}" -f apps/server/pom.xml spring-boot:run \
       -Dspring-boot.run.profiles="${PROFILE}" \
       ${MVN_ARGS} 2>&1 | tee -a "${LOG_FILE}"
   fi
 else
-  exec mvn -f apps/server/pom.xml spring-boot:run \
+  exec mvn "${MAVEN_SETTINGS_ARGS[@]}" -f apps/server/pom.xml spring-boot:run \
     -Dspring-boot.run.profiles="${PROFILE}" \
     ${MVN_ARGS}
 fi
