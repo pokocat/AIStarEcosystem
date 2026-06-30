@@ -1,208 +1,106 @@
 "use client";
 
-// 数字人分身选择器(沉浸大图变体) — 设计真源:screens-project.jsx `AvatarPicker`(immersive)。
+// 数字人选择器 —— 从「我的数字人」(AiAvatar / DapAvatars) 真实列表里为角色绑定形象。
 import * as React from "react";
-import { Check, Sparkles, X } from "lucide-react";
-import { Thumb } from "@/components/drama-ui";
-import { AVATAR_LIBRARY, type AvatarLibItem, type CharacterDef } from "@/mocks/drama-workshop";
+import { Loader2, Sparkles, X } from "lucide-react";
+import { DapAvatarsApi } from "@/api";
+import type { DapAvatarLite } from "@/api/dap-avatars";
+import { aiErrorMessage } from "@/lib/ai-error";
+import type { CharacterDef } from "@/mocks/drama-workshop";
+
+export interface BoundAvatar {
+  id: string;
+  name: string;
+  image: string;
+}
 
 interface AvatarPickerProps {
   char: CharacterDef;
   onClose: () => void;
-  onConfirm: (charId: string, avatarKey: string) => void;
+  onConfirm: (charId: string, picked: BoundAvatar) => void;
 }
 
 export function AvatarPicker({ char, onClose, onConfirm }: AvatarPickerProps) {
+  const [list, setList] = React.useState<DapAvatarLite[] | null>(null);
+  const [err, setErr] = React.useState<string | null>(null);
   const [sel, setSel] = React.useState<string | null>(null);
-  const lib = AVATAR_LIBRARY;
-  const cur: AvatarLibItem = sel ? lib.find((a) => a.id === sel) ?? lib[0] : lib[0];
+
+  React.useEffect(() => {
+    let alive = true;
+    DapAvatarsApi.listMyDapAvatars()
+      .then((r) => alive && setList(r))
+      .catch((e) => alive && setErr(aiErrorMessage(e, "数字人列表加载失败，请稍后重试")));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const cur = list?.find((a) => a.id === sel) ?? null;
+  const confirm = () => {
+    if (!cur) return;
+    onConfirm(char.id, { id: cur.id, name: cur.name, image: cur.imageUrl ?? "" });
+  };
 
   return (
     <div className="overlay" onClick={onClose}>
       <div
-        className="card pop-in"
-        style={{ width: 760, maxWidth: "94vw", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
+        className="card pop-in col"
+        style={{ width: 620, maxWidth: "94vw", maxHeight: "82vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="row" style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-soft)" }}>
+        <div className="row gap-2" style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-soft)", flex: "none", alignItems: "center" }}>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>
-              为「{char.name}」选数字人分身
-            </div>
-            <div className="faint" style={{ fontSize: 12 }}>
-              真人脸由数字人引擎承接,选定后跨集形象一致
-            </div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>为「{char.name}」绑定数字人</div>
+            <div className="faint" style={{ fontSize: 12 }}>从「我的数字人」中选一个，跨集形象一致</div>
           </div>
           <div className="grow" />
           <button type="button" className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
-        <div className="row" style={{ alignItems: "stretch" }}>
-          <Thumb from={cur.from} to={cur.to} w={300} ratio="3/4" radius={0} style={{ flex: "none" }}>
-            <div style={{ position: "absolute", bottom: 16, left: 16, color: "#fff", zIndex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 20, textShadow: "0 1px 6px rgba(0,0,0,.3)" }}>
-                {cur.name}
-              </div>
-              <div className="row gap-2" style={{ marginTop: 6 }}>
-                {cur.tags.map((tg) => (
-                  <span key={tg} className="thumb-label">{tg}</span>
-                ))}
-              </div>
+
+        <div className="scroll" style={{ padding: 20, minHeight: 0 }}>
+          {err ? (
+            <div className="muted" style={{ fontSize: 13 }}>{err}</div>
+          ) : !list ? (
+            <div className="row gap-2 faint" style={{ fontSize: 13 }}>
+              <Loader2 size={14} style={{ animation: "drama-spin .7s linear infinite" }} /> 加载中…
             </div>
-          </Thumb>
-          <div className="col" style={{ flex: 1, padding: 20 }}>
-            <div className="faint" style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
-              分身资产库 · {lib.length} 个
+          ) : list.length === 0 ? (
+            <div className="col center" style={{ padding: "30px 10px", gap: 8, textAlign: "center" }}>
+              <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>你还没有数字人。去 AiAvatar 创建数字人后，即可在这里绑定为角色形象。</div>
             </div>
-            <div
-              className="scroll"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4,1fr)",
-                gap: 10,
-                maxHeight: 280,
-                alignContent: "start",
-              }}
-            >
-              {lib.map((a) => (
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 12 }}>
+              {list.map((a) => (
                 <button
                   key={a.id}
                   type="button"
                   onClick={() => setSel(a.id)}
+                  className="col"
                   style={{
+                    border: sel === a.id ? "2px solid var(--accent)" : "2px solid transparent",
                     borderRadius: 12,
-                    padding: 3,
-                    border:
-                      cur.id === a.id
-                        ? "2px solid var(--accent)"
-                        : "2px solid transparent",
-                    background: "transparent",
+                    overflow: "hidden",
+                    background: "var(--surface-2)",
                     cursor: "pointer",
+                    padding: 0,
+                    textAlign: "left",
+                    gap: 0,
                   }}
                 >
-                  <Thumb from={a.from} to={a.to} ratio="3/4" radius={9} stripes={false} />
+                  <div style={{ width: "100%", aspectRatio: "3/4", background: a.imageUrl ? `center/cover no-repeat url(${a.imageUrl})` : "linear-gradient(135deg,var(--surface-3),var(--surface-2))" }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, padding: "5px 8px 8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
                 </button>
               ))}
             </div>
-            <div className="row gap-3" style={{ marginTop: "auto", paddingTop: 16, justifyContent: "flex-end" }}>
-              <button type="button" className="btn btn-ghost" onClick={onClose}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn btn-grad"
-                onClick={() => onConfirm(char.id, char.avatar)}
-              >
-                <Sparkles size={15} fill="currentColor" strokeWidth={0} /> 锁定 {cur.name}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      </div>
-    </div>
-  );
-}
 
-interface ScenePickerProps {
-  sceneName: string;
-  onClose: () => void;
-  onConfirm: (assetId: string) => void;
-}
-
-export function ScenePicker({ sceneName, onClose, onConfirm }: ScenePickerProps) {
-  const [sel, setSel] = React.useState<string | null>(null);
-  // 复用 6 个场景资产
-  const LIB = [
-    { id: "r1", name: "冷调公寓夜", from: "#64748b", to: "#1e293b" },
-    { id: "r2", name: "霓虹雨夜",   from: "#7c3aed", to: "#2563eb" },
-    { id: "r3", name: "暖黄室内",   from: "#f59e0b", to: "#b45309" },
-    { id: "r4", name: "金属电梯",   from: "#94a3b8", to: "#475569" },
-    { id: "r5", name: "落地窗景",   from: "#22d3ee", to: "#0e7490" },
-    { id: "r6", name: "空镜街道",   from: "#a78bfa", to: "#6366f1" },
-  ];
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div
-        className="card pop-in"
-        style={{ width: 600, maxWidth: "94vw", padding: 22, boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="row" style={{ marginBottom: 14 }}>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>
-              为「{sceneName}」锁定参考图
-            </div>
-            <div className="faint" style={{ fontSize: 12 }}>
-              选定后该场景在每一集都沿用同一套视觉
-            </div>
-          </div>
-          <div className="grow" />
-          <button type="button" className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
-        <div
-          className="scroll"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3,1fr)",
-            gap: 12,
-            maxHeight: 360,
-            padding: 2,
-          }}
-        >
-          {LIB.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => setSel(a.id)}
-              className="col"
-              style={{
-                gap: 6,
-                borderRadius: 14,
-                padding: 4,
-                border: sel === a.id ? "2px solid var(--accent)" : "2px solid transparent",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ position: "relative", width: "100%" }}>
-                <Thumb from={a.from} to={a.to} ratio="16/9" radius={10} style={{ width: "100%" }} />
-                {sel === a.id && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: 6,
-                      right: 6,
-                      width: 22,
-                      height: 22,
-                      borderRadius: "50%",
-                      background: "var(--accent)",
-                      display: "grid",
-                      placeItems: "center",
-                      color: "#fff",
-                    }}
-                  >
-                    <Check size={13} />
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 700, textAlign: "center" }}>
-                {a.name}
-              </div>
-            </button>
-          ))}
-        </div>
-        <div className="row gap-3" style={{ marginTop: 18, justifyContent: "flex-end" }}>
+        <div className="row gap-3" style={{ padding: "14px 20px", borderTop: "1px solid var(--line-soft)", flex: "none", justifyContent: "flex-end" }}>
           <button type="button" className="btn btn-ghost" onClick={onClose}>取消</button>
-          <button
-            type="button"
-            className="btn btn-grad"
-            disabled={!sel}
-            onClick={() => sel && onConfirm(sel)}
-          >
-            锁定参考
+          <button type="button" className="btn btn-grad" disabled={!cur} style={{ opacity: cur ? 1 : 0.5 }} onClick={confirm}>
+            <Sparkles size={15} fill="currentColor" strokeWidth={0} /> 锁定{cur ? ` ${cur.name}` : ""}
           </button>
         </div>
       </div>

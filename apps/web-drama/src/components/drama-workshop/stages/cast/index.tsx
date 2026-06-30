@@ -14,6 +14,7 @@ import type { CharacterDef, ProjectData, SceneAsset } from "@/mocks/drama-worksh
 import { addLibraryMaterial } from "@/mocks/drama-workshop";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import { CharCard } from "./char-card";
+import { AvatarPicker } from "./avatar-picker";
 import { MediaLightbox, type LightboxMedia } from "../../media-lightbox";
 import { AiImageEditModal } from "../../ai-image-edit-modal";
 import { ProjectsApi, RenderApi, DramaAssetsApi } from "@/api";
@@ -40,6 +41,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
   const [charBusy, setCharBusy] = React.useState<Record<string, boolean>>({});
   const [lb, setLb] = React.useState<LightboxMedia | null>(null); // 看大图
   const [aiEditScene, setAiEditScene] = React.useState<SceneAsset | null>(null); // 场景 AI 修图
+  const [binding, setBinding] = React.useState<CharacterDef | null>(null); // 正在绑定数字人的角色
 
   const scenes = data.scenes ?? [];
   const unbound = state.chars.filter((c) => c.role === "key" && !c.bound).length;
@@ -65,9 +67,20 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     }
   };
 
-  // 数字人绑定（项目选角）暂为建设中：旧实现是从写死的 AVATAR_LIBRARY 选个颜色主题假装「数字人分身」，
-  // 并非真实数字人形象。上线前不展示假分身库；真实数字人绑定（同短视频侧 DapAvatars）作为后续。
-  const bindComingSoon = () => toast("数字人绑定功能建设中，敬请期待");
+  // 绑定真实数字人（AiAvatar「我的数字人」）：存 avatarId + 展示图到角色，跨集复用形象。
+  // 与 uploadCharRef 同惯例（dispatch setChars 落工作台态 + 自动保存）。
+  const confirmBind = (charId: string, picked: { id: string; name: string; image: string }) => {
+    dispatch({
+      type: "setChars",
+      chars: state.chars.map((x) =>
+        x.id === charId
+          ? { ...x, bound: true, avatarId: picked.id, avatarImage: picked.image, refCount: x.refCount ?? 3 }
+          : x,
+      ),
+    });
+    setBinding(null);
+    toast.success("已绑定数字人，跨集复用形象");
+  };
 
   // ── 角色：加一个（落库经 reducer 的 setChars effect） ──────────────────────────
   const addChar = () => {
@@ -222,7 +235,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
               key={c.id}
               c={c}
               delay={i * 40}
-              onBind={bindComingSoon}
+              onBind={() => setBinding(c)}
               onToggleRole={() => dispatch({ type: "toggleRole", charId: c.id })}
               onUploadRef={(f) => void uploadCharRef(c, f)}
               onViewRef={() => c.refUrl && setLb({ src: c.refUrl, kind: "image" })}
@@ -359,6 +372,10 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
             {inner}
           </div>
         </div>
+      )}
+
+      {binding && (
+        <AvatarPicker char={binding} onClose={() => setBinding(null)} onConfirm={confirmBind} />
       )}
 
       {aiEditScene && (

@@ -40,10 +40,15 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onVi
             <Thumb
               from={theme.from}
               to={theme.to}
+              src={c.avatarImage || undefined}
               ratio="16/9"
               radius={0}
               style={{ width: "100%" }}
             >
+              {/* 真图上压一层暗渐变，保证白字可读 */}
+              {c.avatarImage && (
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.15))" }} />
+              )}
               <div
                 style={{
                   position: "absolute",
@@ -54,7 +59,20 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onVi
                   padding: 16,
                 }}
               >
-                <Avatar theme={c.avatar} size={64} ring />
+                {c.avatarImage ? (
+                  <div
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: "50%",
+                      flex: "none",
+                      background: `center/cover no-repeat url(${c.avatarImage})`,
+                      boxShadow: "0 0 0 3px var(--surface), 0 0 0 5px var(--accent)",
+                    }}
+                  />
+                ) : (
+                  <Avatar theme={c.avatar} size={64} ring />
+                )}
                 <div style={{ color: "#fff" }}>
                   <div
                     style={{

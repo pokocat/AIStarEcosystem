@@ -88,10 +88,14 @@ export interface CharacterDef {
   role: "key" | "extra";
   cast: string;
   desc: string;
-  /** 数字人 theme key（AVATAR_THEMES 索引） */
+  /** 数字人 theme key（AVATAR_THEMES 索引）—— 未绑真数字人时的渐变占位色。 */
   avatar: string;
   bound: boolean;
   refCount?: number;
+  /** 绑定的真实数字人（AiAvatar「我的数字人」）id —— bound 后非空。 */
+  avatarId?: string;
+  /** 绑定数字人的展示图 URL（卡片/选角处显示真形象）。 */
+  avatarImage?: string;
   /** v0.89：真人参考图 URL（上传；稳定 / 已签名）。 */
   refUrl?: string;
   /** v0.89：参考图 OSS key（真值；URL 为派生展示值）。 */
