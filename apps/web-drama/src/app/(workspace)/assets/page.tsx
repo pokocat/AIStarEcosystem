@@ -14,13 +14,14 @@ import {
   Play,
   Plus,
   Search,
-  Sparkles,
   User,
   Users,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Thumb } from "@/components/drama-ui";
+import { DramaAssetsApi } from "@/api";
+import { aiErrorMessage } from "@/lib/ai-error";
 import {
   ASSET_USAGE,
   MAT_CATS,
@@ -42,14 +43,6 @@ const CAT_ICONS: Record<string, React.ElementType> = {
   其他: Layers,
 };
 
-const ASSET_PALETTES: [string, string][] = [
-  ["#a78bfa", "#f0abfc"],
-  ["#60a5fa", "#22d3ee"],
-  ["#f472b6", "#fda4af"],
-  ["#f59e0b", "#fb7185"],
-  ["#10b981", "#22d3ee"],
-  ["#64748b", "#1e293b"],
-];
 
 type MediaFilter = "all" | "image" | "video";
 const STORAGE_KEY = "aistareco.web-drama.assets.v1";
@@ -495,33 +488,52 @@ function MaterialDetail({
   );
 }
 
-/* 增:上传素材(图片/视频 + 类型标签) */
+/* 增:上传素材(真实上传图片到 OSS + 类型标签) */
 function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: (m: Material) => void }) {
   const [name, setName] = React.useState("");
   const [catv, setCatv] = React.useState<string | null>(null);
   const [tags, setTags] = React.useState("");
-  const [pal, setPal] = React.useState(0);
-  const [analyzing, setAnalyzing] = React.useState(false);
-  const [analyzed, setAnalyzed] = React.useState(false);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [preview, setPreview] = React.useState<string | null>(null);
+  const [uploading, setUploading] = React.useState(false);
 
-  const GUESS: { cat: string; name: string; tags: string[] }[] = [
-    { cat: "人物", name: "都市职场女", tags: ["知性", "冷感", "正脸"] },
-    { cat: "场景", name: "夜景街道", tags: ["夜景", "冷调", "都市"] },
-    { cat: "道具", name: "复古怀表", tags: ["复古", "特写", "金属"] },
-  ];
+  // 选中预览图用完即释放 objectURL，避免泄漏。
+  React.useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
 
-  const analyze = () => {
-    setAnalyzing(true);
-    setTimeout(() => {
-      const g = GUESS[pal % GUESS.length];
-      setCatv(g.cat);
-      setTags(g.tags.join("、"));
-      setName((n) => (n.trim() ? n : g.name));
-      setAnalyzed(true);
-      setAnalyzing(false);
-    }, 1100);
+  const pickFile = (f: File | null | undefined) => {
+    if (!f) return;
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+    setName((n) => (n.trim() ? n : f.name.replace(/\.[^.]+$/, "")));
   };
-  const ok = Boolean(name.trim() && catv);
+
+  const ok = Boolean(file && name.trim() && catv) && !uploading;
+
+  const submit = async () => {
+    if (!file || !catv || !name.trim() || uploading) return;
+    setUploading(true);
+    try {
+      const r = await DramaAssetsApi.uploadAssetRef(file, catv);
+      onCreate({
+        id: "u_" + (r.cdnKey || Date.now()),
+        name: name.trim(),
+        cat: catv,
+        kind: "image",
+        tags: tags.split(/[、,，\s]+/).filter(Boolean),
+        from: "#f97316",
+        to: "#e11d48",
+        url: r.url,
+        cdnKey: r.cdnKey,
+      });
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "素材上传失败，请重试"));
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -546,60 +558,49 @@ function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: 
           </div>
           <div className="grow">
             <div style={{ fontWeight: 800, fontSize: 16 }}>上传素材</div>
-            <div className="faint" style={{ fontSize: 12 }}>支持图片或视频，上传后由 AI 自动打标签</div>
+            <div className="faint" style={{ fontSize: 12 }}>上传图片到素材库，可在视频工厂 @ 引用</div>
           </div>
           <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
 
-        {/* 拖放区(图片/视频都收) */}
-        <button
-          onClick={() => setPal((pal + 1) % ASSET_PALETTES.length)}
+        {/* 真实文件选择 + 预览 */}
+        <label
           className="col center"
           style={{
             width: "100%",
             aspectRatio: "16/9",
             borderRadius: 14,
-            background: `linear-gradient(150deg, ${ASSET_PALETTES[pal][0]}, ${ASSET_PALETTES[pal][1]})`,
-            border: "1.5px dashed rgba(255,255,255,.6)",
+            overflow: "hidden",
+            background: preview ? `center/cover no-repeat url(${preview})` : "var(--surface-2)",
+            border: "1.5px dashed var(--line)",
             gap: 8,
+            cursor: "pointer",
             position: "relative",
           }}
         >
-          <span style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,.85)", display: "grid", placeItems: "center" }}>
-            <Plus size={19} style={{ color: "var(--ink)" }} />
-          </span>
-          <span style={{ color: "#fff", fontSize: 12.5, fontWeight: 700, textShadow: "0 1px 4px rgba(0,0,0,.25)" }}>
-            拖入图片 / 视频,或点击上传
-          </span>
-          <span className="thumb-label" style={{ position: "absolute", bottom: 8, right: 8 }}>
-            演示：点击切换占位图
-          </span>
-        </button>
-
-        {/* AI 自动分析标签 */}
-        <button className="btn btn-line" style={{ justifyContent: "center" }} disabled={analyzing} onClick={analyze}>
-          {analyzing ? (
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              pickFile(e.target.files?.[0]);
+              e.currentTarget.value = "";
+            }}
+          />
+          {!preview && (
             <>
-              <span
-                style={{
-                  width: 14,
-                  height: 14,
-                  border: "2px solid var(--line)",
-                  borderTopColor: "var(--accent)",
-                  borderRadius: "50%",
-                  animation: "drama-spin .7s linear infinite",
-                }}
-              ></span>{" "}
-              正在识别…
-            </>
-          ) : (
-            <>
-              <Sparkles size={15} /> {analyzed ? "重新分析标签" : "AI 自动分析标签"}
+              <span style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)" }}>
+                <Plus size={19} />
+              </span>
+              <span style={{ color: "var(--ink-3)", fontSize: 12.5, fontWeight: 700 }}>点击选择图片上传</span>
             </>
           )}
-        </button>
+          {preview && (
+            <span className="thumb-label" style={{ position: "absolute", bottom: 8, right: 8 }}>点击更换</span>
+          )}
+        </label>
 
         {/* 名称 */}
         <input
@@ -609,11 +610,9 @@ function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: 
           style={{ height: 40, border: "1.5px solid var(--line)", borderRadius: 11, padding: "0 12px", fontSize: 13.5, outline: "none", background: "var(--surface-2)" }}
         />
 
-        {/* 类型标签(可手动改) */}
+        {/* 类型标签 */}
         <div className="col gap-2">
-          <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>
-            类型 {analyzed && catv && <span style={{ color: "var(--accent)" }}>· AI 识别为「{catv}」,可改</span>}
-          </span>
+          <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>类型</span>
           <div className="row gap-2" style={{ flexWrap: "wrap" }}>
             {MAT_CATS.map((c) => {
               const Icon = CAT_ICONS[c.key] ?? Layers;
@@ -638,26 +637,14 @@ function MaterialUpload({ onClose, onCreate }: { onClose: () => void; onCreate: 
         </div>
 
         <div className="row gap-3" style={{ justifyContent: "flex-end" }}>
-          <button className="btn btn-ghost" onClick={onClose}>取消</button>
+          <button className="btn btn-ghost" onClick={onClose} disabled={uploading}>取消</button>
           <button
             className="btn btn-grad"
             disabled={!ok}
             style={{ opacity: ok ? 1 : 0.5 }}
-            onClick={() =>
-              ok &&
-              catv &&
-              onCreate({
-                id: "u" + Date.now(),
-                name: name.trim(),
-                cat: catv,
-                kind: "image",
-                tags: tags.split(/[、,，\s]+/).filter(Boolean),
-                from: ASSET_PALETTES[pal][0],
-                to: ASSET_PALETTES[pal][1],
-              })
-            }
+            onClick={() => void submit()}
           >
-            <Check size={15} /> 上传素材
+            <Check size={15} /> {uploading ? "上传中…" : "上传素材"}
           </button>
         </div>
       </div>
