@@ -214,6 +214,7 @@ public class MaterialVideoJobService {
         card.put("stage", stageLabel(job.getStatus()));
         if (job.getVideoUrl() != null) card.put("video_url", job.getVideoUrl());
         if (job.getThumbnailUrl() != null) card.put("thumbnail_url", job.getThumbnailUrl());
+        if (job.getLastFrameUrl() != null) card.put("last_frame_url", job.getLastFrameUrl());
         if (job.getErrorMessage() != null) card.put("error_message", job.getErrorMessage());
         if (job.getExternalTaskId() != null) card.put("external_task_id", job.getExternalTaskId());
         return card;

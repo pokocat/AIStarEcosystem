@@ -309,10 +309,17 @@ public class DramaRenderService {
         String shotId = text(body, "shot_id");
         String target = text(body, "target");
         String frameUrl = text(body, "frame_url");
+        String lastFrameUrl = text(body, "last_frame_url");
 
         StringBuilder full = new StringBuilder(prompt);
         if (frameUrl != null && !frameUrl.isBlank()) {
             full.append("\n（严格基于该首帧画面延展动态：").append(frameUrl).append("）");
+        }
+        // v0.97 P2：尾帧（来自下一镜首帧 / decompose 末帧）→ seedance 双关键帧插值；
+        // 视频客户端按协议抽出（seedance content[role=last_frame] / generic end_image），
+        // 下游不支持则忽略不报错（§8.0：传入不生效 ≠ 静默伪造）。
+        if (lastFrameUrl != null && !lastFrameUrl.isBlank()) {
+            full.append("\n（并以该画面作为结尾帧：").append(lastFrameUrl).append("）");
         }
 
         ObjectNode item = om.createObjectNode();

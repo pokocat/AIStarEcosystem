@@ -62,6 +62,8 @@ export interface DramaEpisodeJob {
   status: string; // ready | rendering | failed
   video_url?: string | null;
   thumbnail_url?: string | null;
+  /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考。 */
+  last_frame_url?: string | null;
   progress_pct?: number;
   stage?: string;
   error_message?: string | null;

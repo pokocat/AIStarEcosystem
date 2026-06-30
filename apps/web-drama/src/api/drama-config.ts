@@ -14,6 +14,8 @@ export interface DramaCreditPrices {
   cast: number;
   frame: number;
   clip: number;
+  /** v0.97 P2：镜头分解（首/末帧 + 运动 + 变化等级）单次积分。 */
+  decompose: number;
   /** v0.78：进短视频工作台开拍（新建草稿 = AI 出口播脚本与分镜）单次积分。 */
   shortEntry: number;
 }
@@ -34,6 +36,7 @@ export const DRAMA_CONFIG_DEFAULTS: DramaCreditConfig = {
     cast: 5,
     frame: 2,
     clip: 30,
+    decompose: 3,
     shortEntry: 10,
   },
 };

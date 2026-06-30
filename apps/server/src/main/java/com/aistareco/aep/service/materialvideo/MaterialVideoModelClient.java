@@ -50,6 +50,7 @@ public class MaterialVideoModelClient {
     private static final ObjectMapper OM = new ObjectMapper();
     private static final String PROTOCOL_GENERIC = "generic";
     private static final String PROTOCOL_AGNES = "agnes";
+    private static final String PROTOCOL_SEEDANCE = "seedance";
     private static final int AGNES_FRAME_RATE = 24;
 
     private final AiModelInvocationService invocation;
@@ -262,6 +263,7 @@ public class MaterialVideoModelClient {
             String status = normalizeStatus(rawStatus);
             String videoUrl = extractVideoUrl(root);
             String thumb = extractThumb(root);
+            String lastFrameUrl = extractLastFrameUrl(root);
             Integer progressPct = extractProgressPct(root);
             String failReason = "failed".equals(status) ? extractFailReason(root) : null;
             if ("failed".equals(status)) {
@@ -274,7 +276,7 @@ public class MaterialVideoModelClient {
                         p.getName(), submit.protocol(), idForLog, status, rawStatus, progressPct,
                         videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
             }
-            return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason);
+            return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason, lastFrameUrl);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -328,8 +330,30 @@ public class MaterialVideoModelClient {
                                                 int durationSec, String aspectRatio) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
-        String requestPrompt = PROTOCOL_AGNES.equals(protocol) ? stripFrameUrlHint(prompt) : prompt;
-        body.put("prompt", requestPrompt == null ? "" : requestPrompt);
+
+        // v0.97 P2：seedance（火山方舟）首+尾帧关键帧 i2v —— content 数组承载文本 + 首/尾帧
+        // （role=first_frame/last_frame）+ return_last_frame（取回真实末帧供下一镜链式承接）。
+        if (PROTOCOL_SEEDANCE.equals(protocol)) {
+            com.fasterxml.jackson.databind.node.ArrayNode content = OM.createArrayNode();
+            com.fasterxml.jackson.databind.node.ObjectNode t = OM.createObjectNode();
+            t.put("type", "text");
+            String text = stripFrameUrlHint(prompt);
+            t.put("text", text == null ? "" : text);
+            content.add(t);
+            String first = extractFrameUrlHint(prompt);
+            if (first != null && !first.isBlank()) content.add(seedanceImage(first, "first_frame"));
+            String last = extractLastFrameUrlHint(prompt);
+            if (last != null && !last.isBlank()) content.add(seedanceImage(last, "last_frame"));
+            body.put("content", content);
+            if (aspectRatio != null && !aspectRatio.isBlank()) body.put("ratio", aspectRatio);
+            if (durationSec > 0) body.put("duration", durationSec);
+            body.put("return_last_frame", true);
+            return body;
+        }
+
+        // 首/尾帧 marker 由 vars 拼进 prompt（DramaRenderService），这里抽出来作结构化入参，
+        // 并把 marker 文本从 prompt 里剥掉，避免把 URL 原样喂给模型当文字。
+        body.put("prompt", nz(stripFrameUrlHint(prompt)));
 
         if (PROTOCOL_AGNES.equals(protocol)) {
             Dimensions size = dimensionsForAspect(aspectRatio);
@@ -342,18 +366,40 @@ public class MaterialVideoModelClient {
             return body;
         }
 
-        // 多数厂商忽略不认识的字段；带上以便支持的厂商生效。
+        // GENERIC：多数厂商忽略不认识的字段；带上时长/比例，并 best-effort 带首/尾帧（i2v）。
+        // 下游不支持首尾帧时字段被忽略、不报错（§8.0：传入不生效 ≠ 静默伪造产物）。
         if (durationSec > 0) body.put("duration", durationSec);
         if (aspectRatio != null && !aspectRatio.isBlank()) {
             body.put("aspect_ratio", aspectRatio);
             body.put("size", aspectRatio);
         }
+        String firstFrame = extractFrameUrlHint(prompt);
+        if (firstFrame != null && !firstFrame.isBlank()) body.put("image", firstFrame);
+        String lastFrame = extractLastFrameUrlHint(prompt);
+        if (lastFrame != null && !lastFrame.isBlank()) body.put("end_image", lastFrame);
         return body;
+    }
+
+    private static com.fasterxml.jackson.databind.node.ObjectNode seedanceImage(String url, String role) {
+        com.fasterxml.jackson.databind.node.ObjectNode item = OM.createObjectNode();
+        item.put("type", "image_url");
+        com.fasterxml.jackson.databind.node.ObjectNode iu = OM.createObjectNode();
+        iu.put("url", url);
+        item.set("image_url", iu);
+        item.put("role", role);
+        return item;
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     private String submitPathFor(String protocol) {
         if (PROTOCOL_AGNES.equals(protocol) && isDefaultSubmitPath(props.getSubmitPath())) {
             return "/videos";
+        }
+        if (PROTOCOL_SEEDANCE.equals(protocol) && isDefaultSubmitPath(props.getSubmitPath())) {
+            return "/contents/generations/tasks";
         }
         return props.getSubmitPath();
     }
@@ -373,6 +419,9 @@ public class MaterialVideoModelClient {
             }
             return URI.create(joinUrl(p.getBaseUrl(), "/videos/" + submit.externalId()));
         }
+        if (submit.isSeedance() && isDefaultPollPath(props.getPollPathTemplate())) {
+            return URI.create(joinUrl(p.getBaseUrl(), "/contents/generations/tasks/" + submit.externalId()));
+        }
         String path = props.getPollPathTemplate().replace("{id}", submit.externalId());
         return URI.create(joinUrl(p.getBaseUrl(), path));
     }
@@ -381,6 +430,7 @@ public class MaterialVideoModelClient {
         String blob = ((p.getName() == null ? "" : p.getName()) + " "
                 + (p.getBaseUrl() == null ? "" : p.getBaseUrl()) + " "
                 + (model == null ? "" : model)).toLowerCase();
+        if (blob.contains("seedance") || blob.contains("doubao-seedance")) return PROTOCOL_SEEDANCE;
         return blob.contains("agnes") ? PROTOCOL_AGNES : PROTOCOL_GENERIC;
     }
 
@@ -423,6 +473,12 @@ public class MaterialVideoModelClient {
         }
         String direct = firstText(root, "video_url", "videoUrl", "url", "download_url", "remixed_from_video_id");
         if (direct != null) return direct;
+        // seedance（火山方舟）成片 URL 在 content.video_url。
+        JsonNode content = root.get("content");
+        if (content != null) {
+            String c = firstText(content, "video_url", "videoUrl", "url", "download_url");
+            if (c != null) return c;
+        }
         JsonNode data = root.get("data");
         if (data != null) {
             String d = firstText(data, "video_url", "videoUrl", "url", "download_url", "remixed_from_video_id");
@@ -522,8 +578,16 @@ public class MaterialVideoModelClient {
     }
 
     private static String extractFrameUrlHint(String prompt) {
+        return extractUrlAfterMarker(prompt, "严格基于该首帧画面延展动态：");
+    }
+
+    /** v0.97 P2：尾帧 URL（DramaRenderService 以「并以该画面作为结尾帧：URL」marker 拼进 prompt）。 */
+    private static String extractLastFrameUrlHint(String prompt) {
+        return extractUrlAfterMarker(prompt, "并以该画面作为结尾帧：");
+    }
+
+    private static String extractUrlAfterMarker(String prompt, String marker) {
         if (prompt == null || prompt.isBlank()) return null;
-        String marker = "严格基于该首帧画面延展动态：";
         int idx = prompt.indexOf(marker);
         if (idx < 0) return null;
         int start = idx + marker.length();
@@ -534,12 +598,30 @@ public class MaterialVideoModelClient {
         return url.startsWith("http://") || url.startsWith("https://") ? url : null;
     }
 
+    /** 剥掉首/尾帧 marker（两者都在 prompt 末尾追加，从最早的 marker 处截断即覆盖两者）。 */
     private static String stripFrameUrlHint(String prompt) {
         if (prompt == null) return null;
-        String marker = "（严格基于该首帧画面延展动态：";
-        int idx = prompt.indexOf(marker);
-        if (idx < 0) return prompt;
-        return prompt.substring(0, idx).trim();
+        int cut = -1;
+        for (String marker : new String[] {"（严格基于该首帧画面延展动态：", "（并以该画面作为结尾帧："}) {
+            int idx = prompt.indexOf(marker);
+            if (idx >= 0 && (cut < 0 || idx < cut)) cut = idx;
+        }
+        return cut < 0 ? prompt : prompt.substring(0, cut).trim();
+    }
+
+    /** seedance 末帧 URL（content.last_frame_url）；其余形态在 data/output/result 下兜底。 */
+    static String extractLastFrameUrl(JsonNode root) {
+        if (root == null) return null;
+        String direct = firstText(root, "last_frame_url", "lastFrameUrl", "tail_image_url");
+        if (direct != null) return direct;
+        for (String container : new String[] {"content", "data", "output", "result"}) {
+            JsonNode c = root.get(container);
+            if (c != null) {
+                String u = firstText(c, "last_frame_url", "lastFrameUrl", "tail_image_url");
+                if (u != null) return u;
+            }
+        }
+        return null;
     }
 
     private static boolean isDefaultSubmitPath(String path) {
@@ -599,10 +681,14 @@ public class MaterialVideoModelClient {
         boolean isAgnes() {
             return PROTOCOL_AGNES.equals(protocol);
         }
+
+        boolean isSeedance() {
+            return PROTOCOL_SEEDANCE.equals(protocol);
+        }
     }
 
     public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
-                             Integer progressPct, String failReason) {
+                             Integer progressPct, String failReason, String lastFrameUrl) {
         public boolean succeeded() { return "succeeded".equals(status); }
         public boolean failed() { return "failed".equals(status); }
     }

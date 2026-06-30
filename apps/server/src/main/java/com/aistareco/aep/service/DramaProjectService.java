@@ -406,6 +406,78 @@ public class DramaProjectService {
         });
     }
 
+    /**
+     * 镜头分解（v0.97 P2，借鉴 ViMax storyboard_artist）：单镜画面 → 首/末帧静态快照 + 运动描述 + 变化等级，
+     * 供首+尾帧双关键帧 i2v（seedance），多镜一致性更稳。
+     * body: { desc, cast?:[名] } → { ffDesc, ffChars[], lfDesc, lfChars[], motionDesc, variationType, variationReason }（未落库）。
+     */
+    public JsonNode decomposeShot(String id, JsonNode body, String userId) {
+        DramaProject row = requireOwned(id, userId);
+        requireLlm();
+        String visual = orDefault(text(body, "desc"), "");
+        if (visual.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHOT_REQUIRED", "请先填写镜头画面再做镜头分解");
+        }
+        // 已知人物名集合：项目角色 ∪ 本镜传入 cast —— 用于校验 ff/lf_chars 不编造（不存在的名字过滤掉）。
+        java.util.LinkedHashSet<String> known = new java.util.LinkedHashSet<>();
+        for (JsonNode c : readPayload(row).path("characters")) {
+            String n = c.path("name").asText("");
+            if (!n.isBlank()) known.add(n);
+        }
+        StringBuilder castSb = new StringBuilder();
+        if (body != null && body.get("cast") != null && body.get("cast").isArray()) {
+            for (JsonNode c : body.get("cast")) {
+                String n = c.isObject() ? c.path("name").asText("") : c.asText("");
+                if (!n.isBlank()) {
+                    known.add(n);
+                    if (castSb.length() > 0) castSb.append("、");
+                    castSb.append(n);
+                }
+            }
+        }
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("visual", visual);
+        vars.put("charactersClause", castSb.length() > 0
+                ? "出场人物：" + castSb + "。"
+                : (known.isEmpty() ? "" : "出场人物：" + String.join("、", known) + "。"));
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_DECOMPOSE, vars, 0.7);
+
+        return withCharge(userId,
+                configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_DECOMPOSE, 3),
+                "镜头分解（首/末帧 + 运动）", () -> {
+            JsonNode root = callJson(pc);
+            String ffDesc = text(root, "ff_desc");
+            String motionDesc = text(root, "motion_desc");
+            if ((ffDesc == null || ffDesc.isBlank()) && (motionDesc == null || motionDesc.isBlank())) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "镜头分解返回的内容无法解析，请重试。");
+            }
+            String vt = orDefault(text(root, "variation_type"), "small");
+            ObjectNode out = om.createObjectNode();
+            out.put("ffDesc", orDefault(ffDesc, ""));
+            out.put("lfDesc", orDefault(text(root, "lf_desc"), ""));
+            out.put("motionDesc", orDefault(motionDesc, ""));
+            out.put("variationType", (vt.equals("large") || vt.equals("medium")) ? vt : "small");
+            out.put("variationReason", orDefault(text(root, "variation_reason"), ""));
+            out.set("ffChars", filterKnownNames(root.path("ff_chars"), known));
+            out.set("lfChars", filterKnownNames(root.path("lf_chars"), known));
+            log.info("[drama-project] decompose ok user={} id={} variation={}", userId, id, vt);
+            return out;
+        });
+    }
+
+    /** ff/lf_chars 校验：只保留「已知人物名」，去重，过滤模型编造的名字（不抛错，避免硬失败）。 */
+    private ArrayNode filterKnownNames(JsonNode names, java.util.Set<String> known) {
+        ArrayNode arr = om.createArrayNode();
+        if (names != null && names.isArray()) {
+            java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+            for (JsonNode n : names) {
+                String s = n.asText("");
+                if (!s.isBlank() && known.contains(s) && seen.add(s)) arr.add(s);
+            }
+        }
+        return arr;
+    }
+
     /** 从大纲重抽角色阵容。→ { characters: CharacterDef[] }（未落库）。 */
     public JsonNode castAiDraft(String id, String userId) {
         DramaProject row = requireOwned(id, userId);
@@ -614,6 +686,8 @@ public class DramaProjectService {
         shot.put("no", no);
         shot.put("size", orDefault(text(sh, "size"), "中景"));
         shot.put("move", orDefault(text(sh, "move"), "固定"));
+        // v0.97 P1：机位标识（同机位复用同值，跨镜保持取景一致；AI 给则用，缺省空，前端可编辑落库）。
+        shot.put("camId", orDefault(text(sh, "camId"), ""));
         int dur = sh.path("dur").asInt(sh.path("duration_sec").asInt(4));
         shot.put("dur", Math.max(1, Math.min(30, dur)));
         String engine = orDefault(text(sh, "engine"), "seedance");

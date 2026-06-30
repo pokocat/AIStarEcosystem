@@ -134,7 +134,7 @@ public class MaterialVideoWorker {
                                 jobId, e.getMessage());
                     }
                 }
-                markSucceeded(jobId, videoUrl, thumbnailUrl);
+                markSucceeded(jobId, videoUrl, thumbnailUrl, poll.lastFrameUrl());
                 commitCredits(job);
                 log.info("[material-video] job {} succeeded · url={}", jobId, videoUrl);
                 return;
@@ -261,12 +261,14 @@ public class MaterialVideoWorker {
         });
     }
 
-    private void markSucceeded(String jobId, String videoUrl, String thumb) {
+    private void markSucceeded(String jobId, String videoUrl, String thumb, String lastFrameUrl) {
         jobRepo.findById(jobId).ifPresent(j -> {
             j.setStatus("succeeded");
             j.setProgress(100);
             j.setVideoUrl(videoUrl);
             if (thumb != null) j.setThumbnailUrl(thumb);
+            // v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考，链式承接。
+            if (lastFrameUrl != null && !lastFrameUrl.isBlank()) j.setLastFrameUrl(lastFrameUrl);
             j.setErrorMessage(null);
             j.setCompletedAt(OffsetDateTime.now());
             j.setUpdatedAt(OffsetDateTime.now());

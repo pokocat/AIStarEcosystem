@@ -68,15 +68,19 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
-### v0.97 · 2026-06-30 · 分镜一致性 P0：视频工厂「镜间一致性承接」
+### v0.97 · 2026-06-30 · 分镜一致性优化（借鉴 ViMax · P0/P1/P2 全量落地）
 
-- **痛点**：一集多个分镜视频之间，人物形象 / 场景环境 / 光线构图 不稳定（同角色在不同镜脸不一样、同场景换陈设）。借鉴 [HKUDS/ViMax](https://github.com/HKUDS/ViMax) 的一致性思路——**主要靠视觉生成层的「参考图复用 + 镜间链式参考」，不是靠 storyboard 文本**。
-- **镜间承接（`stages/factory.tsx`，纯前端）**：出首帧时把 `ref_images` 从「仅角色参考图」扩展为「角色参考图 + 该场景参考图 + 同场上一镜已出首帧」，去重后限 6 张（角色 identity 优先在前）。`ref_images` 管道此前已端到端打通（前端 → `/render/frame-jobs` → `DramaRenderService.callImageModel` → `extra_body.image`），故**零后端 / 零契约 / 零迁移**。
-  - `prevSceneFrame()`：向前找**同场**（`sceneId` 相同）最近一个已出首帧的镜头（锁定优先），跨场不承接（场切应换环境）。
-  - 场景参考图：按名称把本场 `place` 关联到项目级 `ProjectData.scenes[]`（`place.includes(name)` 且 `name.length≥2`），命中且有 `refUrl` → 并入参考图。
-  - 新增「镜间一致性承接」开关（生成设置栏下方，默认开）；关闭即退回原行为（仅角色参考图），供需要更强镜头差异时使用。
-- **设计真源**：完整 P0/P1/P2 分期方案见 [`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)（P1 storyboard prompt 增强 + 机位字段；P2 seedance 首+尾帧双关键帧 i2v + `return_last_frame` 链式承接闭环，待排期）。
-- **门禁**：web-drama typecheck + build（31 路由）全绿。
+> 痛点：一集多个分镜视频之间，人物形象 / 场景环境 / 光线构图 不稳定。借鉴 [HKUDS/ViMax](https://github.com/HKUDS/ViMax)——一致性**主要靠视觉生成层（参考图复用 + 关键帧锚定 + 镜间链式参考），不是靠 storyboard 文本**。完整方案真源：[`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)。
+
+- **P0 镜间一致性承接（`stages/factory.tsx`，纯前端、零契约）**：出首帧时 `ref_images` 从「仅角色参考图」扩展为「角色参考图 + 该场景参考图 + 同场上一镜画面」，去重限 6 张（角色 identity 优先）。`ref_images` 管道此前已端到端打通（前端 → `/render/frame-jobs` → `DramaRenderService.callImageModel` → `extra_body.image`）。
+  - `prevSceneFrame()`：同场向前取最近已出画面（**成片真实末帧优先**，否则首帧锁定版），跨场不承接。
+  - **场景参考绑定（P0-b）**：`BoardScene.sceneRefId` 显式绑定项目级 `ProjectData.scenes[]`（缺省按场景名自动匹配）；生成设置栏下新增「场景参考绑定」面板 + 「镜间一致性承接」开关（默认开）。
+- **P1 storyboard prompt 增强 + 机位**：`drama.epscript.md` / `drama.split_scene.md` 补 ViMax 电影语言规则（每镜叙事目的 / 机位复用 / 画面位置 / 摄像机 vs 画面内运动 / 单镜一句台词）；`BoardShot.camId`（机位载体）+ 后端 `normalizeShot` 透传 + JSON 模板加字段。
+- **P2 视频层关键帧 i2v（seedance 首+尾帧 + 链式承接闭环）**：
+  - `MaterialVideoModelClient` 新增 `PROTOCOL_SEEDANCE`（火山方舟 `content` 数组 `role=first_frame/last_frame` + `return_last_frame:true` + `/contents/generations/tasks` 提交/轮询路径）。**修复**：seedance 此前落 GENERIC 分支连首帧都没传；GENERIC 也补 `image`/`end_image`（下游不支持则忽略，§8.0：传入不生效 ≠ 静默伪造）。
+  - `return_last_frame` 回传真实末帧 → `MaterialVideoJob.lastFrameUrl` → 任务卡 `last_frame_url` → 前端回写 `BoardShot.lastFrameUrl` → 下一镜首帧参考（**链式承接闭环**）。`/render/clip` body 加 `last_frame_url`。
+  - **镜头分解节点 `drama.decompose`**（借鉴 ViMax 节点 2）：单镜 → 首/末帧静态快照 + 运动描述（区分摄像机/画面内运动、用外貌指代角色）+ 变化等级；端点 `POST /me/drama/projects/{id}/shot/decompose`，计费 `drama.credit.decompose`（默认 3），`ff/lf_chars` 做角色名存在性校验（过滤编造），§8.0 未配置 prompt → 503 不扣费。前端「AI 拆镜」：拆镜后出首帧用 `ffDesc`、出片用 `motionDesc`、由 `lfDesc` 生成末帧关键帧图作 seedance 尾帧。
+- **门禁**：server compile + 单测 35/35（MaterialVideoModelClient 10 / DramaProjectService 21 / PromptServiceDramaResource 4）+ `typecheck:all` 10/10 + web-drama build（31 路由）+ `check:api-contract` 全绿。
 
 ### v0.96 · 2026-06-29 · AI 对话气泡支持 Markdown + 快捷建议紧扣回复
 

@@ -1,6 +1,6 @@
 # 短剧分镜一致性优化方案（借鉴 ViMax）
 
-> last-reviewed：2026-06-30 / 初版（P0 镜间承接已落地，P1/P2 待排期）
+> last-reviewed：2026-06-30 / v0.97 P0/P1/P2 全量落地（镜间承接 + 场景绑定 + 机位/电影语言 prompt + seedance 首尾帧双关键帧 + return_last_frame 链式承接闭环 + decompose 节点）
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、
@@ -171,7 +171,9 @@
 
 每期升级前跑：`pnpm typecheck:all` + `pnpm --filter @ai-star-eco/web-drama build` + `(cd apps/server && ./mvnw compile -q -o)` + `pnpm check:api-contract`。
 
-## 8. 排期建议
-- **P0**：已落地（镜间承接 + 场景参考自动并入）。
-- **P1**：低风险，prompt + 一字段；可随时排。
-- **P2**：最大收益但最重；需 seedance 端点接入 + 视频客户端协议适配 + decompose 节点。建议 P0 真机验证有效后再投 P2。
+## 8. 落地状态（v0.97 全量完成）
+- **P0** ✅：镜间承接（同场上一镜画面 / 成片真实末帧优先）+ 场景参考（P0-b 显式 `BoardScene.sceneRefId` 绑定 + 名称自动匹配兜底）+「镜间一致性承接」开关。
+- **P1** ✅：`drama.epscript.md` / `drama.split_scene.md` 补电影语言规则；`BoardShot.camId` + `normalizeShot` 透传 + JSON 模板加字段。
+- **P2** ✅：`MaterialVideoModelClient` `PROTOCOL_SEEDANCE`（content 数组首/尾帧 + `return_last_frame`）+ GENERIC 补首/尾帧；`MaterialVideoJob.lastFrameUrl` → 任务卡 → 前端 `BoardShot.lastFrameUrl` 链式承接闭环；`drama.decompose` 节点（端点 `/shot/decompose` + 计费 `drama.credit.decompose` + 角色名校验）。
+- **运维前置**：要用 seedance 首尾帧，需在 admin「AI 模型与 Key」把「视频生成」绑到一个名称/baseUrl/model 含 `seedance` 的端点（自动走 SEEDANCE 协议）；否则按原 AGNES/GENERIC 协议工作（首帧仍生效）。
+- **后续可选**：VLM best-of-N 一致性自检（生成多版首帧自动选最一致）；末帧 CDN 镜像（当前 `lastFrameUrl` 存上游 URL，best-effort，可能有时效）。

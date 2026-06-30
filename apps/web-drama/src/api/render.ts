@@ -47,6 +47,8 @@ export interface RenderClipInput {
   target?: string;
   /** 已锁首帧 URL — 动态渲染会严格基于它 */
   frameUrl?: string;
+  /** v0.97 P2：尾帧 URL（上一镜真实末帧 / decompose 末帧）→ seedance 首+尾帧双关键帧插值。 */
+  lastFrameUrl?: string;
 }
 
 export type RenderTaskStatus = "queued" | "running" | "rendering" | "ready" | "failed" | string;
@@ -89,6 +91,8 @@ export interface DramaRenderTask {
   result?: { frames?: RenderedFrame[]; cost?: number };
   video_url?: string | null;
   thumbnail_url?: string | null;
+  /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考。 */
+  last_frame_url?: string | null;
   duration_sec?: number;
   error_message?: string | null;
   created_at?: string;
@@ -276,6 +280,7 @@ export async function renderClip(input: RenderClipInput): Promise<DramaEpisodeJo
       episode_no: input.episodeNo,
       target: input.target,
       frame_url: input.frameUrl,
+      last_frame_url: input.lastFrameUrl,
     },
   });
 }

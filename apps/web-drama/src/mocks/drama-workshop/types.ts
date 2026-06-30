@@ -123,6 +123,8 @@ export interface BoardShot {
   size: string;
   /** 运镜 */
   move: string;
+  /** v0.97 P1：机位标识（同机位复用同值，跨镜保持取景一致；AI 起草填、可编辑落库）。 */
+  camId?: string;
   /** 时长(秒) */
   dur: number;
   engine: EngineKey;
@@ -137,6 +139,13 @@ export interface BoardShot {
   sfx?: string;
   bgm?: string;
   fx?: string;
+  /** v0.97 P2 镜头分解（借鉴 ViMax）：首/末帧静态快照 + 运动描述 + 变化等级（AI 拆镜产出，落库）。 */
+  ffDesc?: string;
+  lfDesc?: string;
+  motionDesc?: string;
+  variationType?: "small" | "medium" | "large" | string;
+  /** 由 lfDesc 生成的末帧关键帧图（出片时作 seedance 尾帧，双关键帧插值）。 */
+  endFrameUrl?: string;
   /** 已完成勾选 */
   done?: boolean;
   /** 特效镜参考素材超限 */
@@ -150,6 +159,8 @@ export interface BoardShot {
   frameUrl?: string;
   /** 成片视频 URL */
   videoUrl?: string;
+  /** v0.97 P2：成片真实末帧 URL（seedance return_last_frame 回传）→ 下一镜首帧参考，链式承接闭环。 */
+  lastFrameUrl?: string;
   /** 进行中的视频任务 id（轮询 /me/drama/episodes/jobs/{id}） */
   jobId?: string;
   /** 渲染流水状态（draft/frame/frameLocked/clip/done），缺省 draft */
@@ -160,6 +171,9 @@ export interface BoardScene {
   id: string;
   shots: BoardShot[];
   duration?: number;
+  /** v0.97 P0-b：显式绑定的项目级场景资产 id（ProjectData.scenes[].id）；其参考图用于本场出图一致性。
+   *  缺省时按场景名称自动匹配 ProjectData.scenes。 */
+  sceneRefId?: string;
 }
 
 export interface PromptTimelineSegment {

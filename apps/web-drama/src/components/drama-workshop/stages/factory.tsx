@@ -25,12 +25,15 @@ import { GenSettingsBar } from "../gen-settings-bar";
 import { MediaLightbox, type LightboxMedia } from "../media-lightbox";
 import { getEpisodeDoc, matById, withEpisodeDoc, type BoardShot, type Material, type ProjectData } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
-import { RenderApi } from "@/api";
+import { RenderApi, ProjectsApi } from "@/api";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
 
 const FRAME_COST = 2;
 const CLIP_COST = 9;
+
+// v0.97 P2 拆镜变化等级中文标签。
+const VARIATION_LABEL: Record<string, string> = { small: "小", medium: "中", large: "大" };
 
 type FlowKey = "draft" | "frame" | "frameLocked" | "clip" | "done";
 const FLOW_ORDER: FlowKey[] = ["draft", "frame", "frameLocked", "clip", "done"];
@@ -72,10 +75,13 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     const doc = getEpisodeDoc(data, state.ep);
     doc.storyboard.scenes.forEach((sc, si) => {
       const place = doc.script.scenes.find((x) => x.id === sc.id)?.place ?? `场景 ${si + 1}`;
-      // 场景参考图：按名称把本场 place 关联到项目级 SceneAsset（best-effort，仅"多一张参考图"）。
-      const sceneRefUrl = (data.scenes ?? []).find(
-        (a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name),
-      )?.refUrl;
+      // 场景参考图：优先显式绑定（sceneRefId，P0-b），否则按名称把 place 关联到项目级 SceneAsset
+      //（best-effort，仅"多一张参考图"，不命中也不影响）。
+      const explicit = sc.sceneRefId ? (data.scenes ?? []).find((a) => a.id === sc.sceneRefId) : undefined;
+      const sceneRefUrl =
+        (explicit ??
+          (data.scenes ?? []).find((a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name)))
+          ?.refUrl;
       sc.shots.forEach((sh) =>
         list.push({
           ...sh,
@@ -117,13 +123,44 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
             frameUrls: f.frameUrls,
             frameUrl: f.frameUrl,
             videoUrl: f.videoUrl,
+            lastFrameUrl: f.lastFrameUrl,
             jobId: f.jobId,
+            // v0.97 P2 拆镜产出落库
+            ffDesc: f.ffDesc,
+            lfDesc: f.lfDesc,
+            motionDesc: f.motionDesc,
+            variationType: f.variationType,
+            endFrameUrl: f.endFrameUrl,
           };
         }),
       }));
       await ctx.saveData(
         withEpisodeDoc(data, state.ep, { ...doc, storyboard: { ...doc.storyboard, scenes } }),
       );
+    },
+    [ctx, data, state.ep],
+  );
+
+  /** P0-b：本集分场列表（用于场景参考绑定 UI）。 */
+  const sceneList = React.useMemo(() => {
+    const doc = getEpisodeDoc(data, state.ep);
+    return doc.storyboard.scenes.map((sc, i) => ({
+      id: sc.id,
+      place: doc.script.scenes.find((x) => x.id === sc.id)?.place ?? `场景 ${i + 1}`,
+      sceneNo: i + 1,
+      sceneRefId: sc.sceneRefId ?? "",
+    }));
+  }, [data, state.ep]);
+
+  /** P0-b：把某分场显式绑定到项目级场景资产（落库；该场出图并入其参考图，环境更一致）。 */
+  const bindSceneRef = React.useCallback(
+    async (sceneId: string, refId: string) => {
+      if (!ctx) return;
+      const doc = getEpisodeDoc(data, state.ep);
+      const scenes = doc.storyboard.scenes.map((sc) =>
+        sc.id === sceneId ? { ...sc, sceneRefId: refId || undefined } : sc,
+      );
+      await ctx.saveData(withEpisodeDoc(data, state.ep, { ...doc, storyboard: { ...doc.storyboard, scenes } }));
     },
     [ctx, data, state.ep],
   );
@@ -177,13 +214,15 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
   // v0.72：出图/出片提示词模板在 server 端（drama.frame_image / drama.clip_video，admin 可改）。
   // 这里只产出填充用的结构化 vars；可选片段（台词/出场人物）仍在前端按是否存在拼成整句，
   // 与 v0.71 文本 prompt 的 {{xxxClause}} 同规则。
-  const shotVars = (s: FactoryShot): Record<string, string> => {
+  const shotVars = (s: FactoryShot, mode: "frame" | "clip" = "frame"): Record<string, string> => {
     const castNames = (s.cast ?? [])
       .map((cid) => state.chars.find((c) => c.id === cid)?.name)
       .filter(Boolean)
       .join("、");
+    // v0.97 P2 拆镜后：首帧用 ffDesc（静态快照），出片用 motionDesc（运动描述）；未拆镜回退 desc。
+    const visual = (mode === "clip" ? s.motionDesc : s.ffDesc)?.trim() || s.desc || s.place || "";
     return {
-      visual: s.desc || s.place || "",
+      visual,
       size: s.size || "",
       move: s.move || "",
       lineClause: s.line?.text ? `台词：${s.line.text}。` : "",
@@ -192,14 +231,30 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     };
   };
 
-  /** 同场上一镜已出首帧（锁定优先）—— 镜间承接：构图 / 光线 / 人物位置连贯。 */
+  /**
+   * 同场上一镜的画面承接锚点 —— 优先用成片真实末帧（v0.97 P2 seedance return_last_frame），
+   * 否则退回其首帧（锁定优先）。镜间承接：构图 / 光线 / 人物位置连贯。
+   */
   const prevSceneFrame = (s: FactoryShot): string | undefined => {
     const list = shotsRef.current.length ? shotsRef.current : shots;
     const idx = list.findIndex((x) => x.id === s.id);
     for (let i = idx - 1; i >= 0; i--) {
       const p = list[i];
       if (p.sceneId !== s.sceneId) break; // 跨场不承接（场切应换环境）
-      const f = p.frameUrl ?? p.frameUrls?.[p.frameIdx ?? 0] ?? p.frameUrls?.[0];
+      const f = p.lastFrameUrl ?? p.frameUrl ?? p.frameUrls?.[p.frameIdx ?? 0] ?? p.frameUrls?.[0];
+      if (f) return f;
+    }
+    return undefined;
+  };
+
+  /** 同场下一镜的开场首帧（锁定优先）—— 作本镜视频的尾帧，使切镜更平滑（best-effort）。 */
+  const nextSceneFrame = (s: FactoryShot): string | undefined => {
+    const list = shotsRef.current.length ? shotsRef.current : shots;
+    const idx = list.findIndex((x) => x.id === s.id);
+    for (let i = idx + 1; i < list.length; i++) {
+      const n = list[i];
+      if (n.sceneId !== s.sceneId) break;
+      const f = n.frameUrl ?? n.frameUrls?.[n.frameIdx ?? 0] ?? n.frameUrls?.[0];
       if (f) return f;
     }
     return undefined;
@@ -259,7 +314,13 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         return;
       }
       if (job.status !== "ready" || !job.video_url) return;
-      applyShotPatch(id, { flow: "clip" as FlowKey, videoUrl: job.video_url ?? undefined, jobId: job.id });
+      applyShotPatch(id, {
+        flow: "clip" as FlowKey,
+        videoUrl: job.video_url ?? undefined,
+        // v0.97 P2：成片真实末帧 → 下一镜首帧参考（链式承接闭环）。
+        lastFrameUrl: job.last_frame_url ?? undefined,
+        jobId: job.id,
+      });
       clearBusy(id);
       if (spend) {
         dispatch({ type: "spend", n: cfg.prices.clip });
@@ -367,9 +428,15 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     if (!s || isBusy(id)) return;
     markBusy(id, "clip");
     try {
+      // 首帧：基于已锁首帧出片用本镜首帧；直出时（无本镜首帧）镜间承接用上一镜真实末帧作开场。
+      const ownFrame = s.frameUrl ?? s.frameUrls?.[s.frameIdx];
+      const firstFrame = useFrame ? ownFrame : (chainConsistency ? prevSceneFrame(s) : undefined);
+      // 尾帧（v0.97 P2 双关键帧）：优先用拆镜生成的末帧关键帧，否则同场下一镜开场首帧，使切镜更平滑
+      //（seedance 支持，下游不支持则忽略）。
+      const endFrame = s.endFrameUrl ?? (chainConsistency ? nextSceneFrame(s) : undefined);
       const job = await RenderApi.renderClip({
         kind: "shot",
-        vars: shotVars(s),
+        vars: shotVars(s, "clip"),
         name: `第${state.ep}集 镜${s.no}`,
         durationSec: s.dur,
         ratio: data.projectInfo.ratio,
@@ -378,7 +445,8 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
         shotId: id,
         episodeNo: state.ep,
         target: useFrame ? "frame-clip" : "direct",
-        frameUrl: useFrame ? s.frameUrl ?? s.frameUrls?.[s.frameIdx] : undefined,
+        frameUrl: firstFrame,
+        lastFrameUrl: endFrame,
       });
       applyShotPatch(id, { jobId: job.id });
       toast.success("视频已加入后台生成");
@@ -406,6 +474,56 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
     toast.success("本镜验收通过,已入片");
   };
   const reframe = (id: string) => void renderFrame(id);
+
+  /**
+   * v0.97 P2 镜头分解（借鉴 ViMax）：单镜画面 → 首/末帧静态快照 + 运动描述 + 变化等级；
+   * 并由末帧描述生成一张末帧关键帧图（出片时作 seedance 尾帧，首+尾帧双关键帧更稳）。
+   * 拆镜后：出首帧用 ffDesc、出片用 motionDesc（区分摄像机/画面内运动、用外貌指代角色）。
+   */
+  const decompose = async (id: string) => {
+    const s = shots.find((x) => x.id === id);
+    if (!s || isBusy(id)) return;
+    if (!ctx?.projectId) {
+      toast.error("请先保存项目再拆镜");
+      return;
+    }
+    markBusy(id, "frame");
+    try {
+      const cast = (s.cast ?? [])
+        .map((cid) => state.chars.find((c) => c.id === cid)?.name)
+        .filter((n): n is string => !!n);
+      const d = await ProjectsApi.decomposeShot(ctx.projectId, { desc: s.desc || s.place || "", cast });
+      // 末帧关键帧图（1 版，best-effort）：失败不阻断，仍保留拆镜文本，尾帧回退下一镜开场。
+      let endFrameUrl: string | undefined;
+      if (d.lfDesc?.trim()) {
+        try {
+          const frames = await RenderApi.renderFrame({
+            kind: "shot",
+            vars: { ...shotVars(s, "frame"), visual: d.lfDesc },
+            refImages: shotRefImages(s),
+            ratio: data.projectInfo.ratio,
+            count: 1,
+          });
+          endFrameUrl = frames[0]?.url;
+        } catch {
+          /* 末帧出图失败：保留文本，尾帧走 nextSceneFrame 兜底 */
+        }
+      }
+      applyShotPatch(id, {
+        ffDesc: d.ffDesc,
+        lfDesc: d.lfDesc,
+        motionDesc: d.motionDesc,
+        variationType: d.variationType,
+        endFrameUrl,
+      });
+      dispatch({ type: "spend", n: cfg.prices.decompose + (endFrameUrl ? cfg.prices.frame : 0) });
+      toast.success("已拆出首 / 末帧与运动描述");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "镜头分解失败，请稍后重试"));
+    } finally {
+      clearBusy(id);
+    }
+  };
 
   /** 批量首帧：批量入队，真实并发由后端任务池控制。 */
   const batchFrame = async () => {
@@ -574,6 +692,61 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
             </span>
           </label>
 
+          {/* 场景参考绑定（P0-b）：给每场指定取景地参考图，本场所有镜头出图都会参考它 */}
+          {chainConsistency && (data.scenes?.length ?? 0) > 0 && sceneList.length > 0 && (
+            <div className="card col gap-2" style={{ padding: "12px 14px", marginBottom: 16 }}>
+              <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                <ImageIcon size={14} style={{ color: "var(--accent)" }} />
+                <span style={{ fontWeight: 700, fontSize: 13 }}>场景参考绑定</span>
+                <span className="faint" style={{ fontSize: 11.5 }}>
+                  给每场指定取景地参考图，本场所有镜头出图都会参考它（缺省按场景名自动匹配）
+                </span>
+              </div>
+              <div className="col gap-2">
+                {sceneList.map((sc) => (
+                  <div key={sc.id} className="row gap-2" style={{ alignItems: "center" }}>
+                    <span className="tag tag-gray" style={{ flex: "none", fontSize: 11 }}>场{sc.sceneNo}</span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "var(--ink-2)",
+                        minWidth: 0,
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {sc.place}
+                    </span>
+                    <select
+                      value={sc.sceneRefId}
+                      onChange={(e) => void bindSceneRef(sc.id, e.target.value)}
+                      style={{
+                        flex: "none",
+                        maxWidth: 180,
+                        fontSize: 12,
+                        padding: "5px 8px",
+                        borderRadius: 8,
+                        border: "1px solid var(--line)",
+                        background: "var(--surface)",
+                        color: "var(--ink-1)",
+                      }}
+                    >
+                      <option value="">自动匹配</option>
+                      {(data.scenes ?? []).map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                          {a.refUrl ? "" : "（无参考图）"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 镜头网格 */}
           <div className="row gap-2" style={{ marginBottom: 12 }}>
             <Film size={15} style={{ color: "var(--accent)" }} />
@@ -633,10 +806,12 @@ export function FactoryStage({ state, dispatch, data, ctx }: FactoryStageProps) 
           chars={state.chars}
           frameCost={cfg.prices.frame}
           clipCost={cfg.prices.clip}
+          decomposeCost={cfg.prices.decompose + cfg.prices.frame}
           busy={busyMap[open.id] ?? null}
           onClose={() => setOpenId(null)}
           onRenderFrame={() => renderFrame(open.id)}
           onRenderDirect={() => renderDirect(open.id)}
+          onDecompose={() => decompose(open.id)}
           onLockFrame={() => lockFrame(open.id)}
           onReframe={() => reframe(open.id)}
           onPickFrame={(idx) => upd(open.id, { frameIdx: idx })}
@@ -885,10 +1060,12 @@ function FactoryDrawer({
   chars,
   frameCost,
   clipCost,
+  decomposeCost,
   busy,
   onClose,
   onRenderFrame,
   onRenderDirect,
+  onDecompose,
   onLockFrame,
   onReframe,
   onPickFrame,
@@ -899,10 +1076,12 @@ function FactoryDrawer({
   chars: WorkshopState["chars"];
   frameCost: number;
   clipCost: number;
+  decomposeCost: number;
   busy: FlowKey | null;
   onClose: () => void;
   onRenderFrame: () => void;
   onRenderDirect: () => void;
+  onDecompose: () => void;
   onLockFrame: () => void;
   onReframe: () => void;
   onPickFrame: (idx: number) => void;
@@ -1122,6 +1301,23 @@ function FactoryDrawer({
                 ))}
               </div>
             )}
+            {(s.motionDesc || s.ffDesc) && (
+              <div className="col gap-1" style={{ marginTop: 2, paddingTop: 8, borderTop: "1px dashed var(--line)" }}>
+                <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                  <Sparkles size={12} style={{ color: "var(--accent)" }} />
+                  <span style={{ fontSize: 11.5, fontWeight: 700 }}>已拆镜（首尾帧）</span>
+                  {s.variationType && (
+                    <span className="tag tag-accent" style={{ fontSize: 10 }}>
+                      变化 {VARIATION_LABEL[s.variationType] ?? s.variationType}
+                    </span>
+                  )}
+                  {s.endFrameUrl && <span className="tag tag-gray" style={{ fontSize: 10 }}>含末帧</span>}
+                </div>
+                {s.motionDesc && (
+                  <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.45 }}>运动：{s.motionDesc}</div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 当前步骤提示 */}
@@ -1147,6 +1343,17 @@ function FactoryDrawer({
               </CreditButton>
               <CreditButton cost={clipCost} onConfirm={onRenderDirect} confirmTitle="直接生成视频" confirmBody="不先预览画面，直接生成这镜视频。" className="btn btn-line" disabled={!!busy} style={{ justifyContent: "center" }} markSize={15}>
                 <Zap size={15} /> 直接生成分镜视频 · 快
+              </CreditButton>
+              <CreditButton
+                cost={decomposeCost}
+                onConfirm={onDecompose}
+                confirmTitle="AI 拆镜（首尾帧 + 运动）"
+                confirmBody="把这镜画面拆成首帧 / 末帧静态快照 + 运动描述，并生成末帧关键帧图。之后出片用首+尾帧双关键帧，多镜一致性更稳。"
+                className="btn btn-ghost btn-sm"
+                disabled={!!busy}
+                style={{ justifyContent: "center" }}
+              >
+                <Sparkles size={14} /> AI 拆镜 · 首尾帧更稳
               </CreditButton>
             </div>
           )}

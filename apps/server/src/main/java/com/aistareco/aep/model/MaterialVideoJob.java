@@ -96,6 +96,10 @@ public class MaterialVideoJob {
     @Column(name = "thumbnail_url", length = 1024)
     private String thumbnailUrl;
 
+    /** v0.97 P2：成片真实末帧 URL（seedance return_last_frame 回传）→ 下一镜首帧参考，链式承接。 */
+    @Column(name = "last_frame_url", length = 1024)
+    private String lastFrameUrl;
+
     @Column(name = "error_message", length = 1024)
     private String errorMessage;
 
