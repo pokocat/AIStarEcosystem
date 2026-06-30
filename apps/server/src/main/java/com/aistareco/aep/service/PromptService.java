@@ -80,6 +80,8 @@ public class PromptService {
     /** v0.87+: 首页「跟 AI 聊出故事」脑暴 —— 对话回复 + 由对话生成「故事大纲」。立项之前的可恢复草稿。 */
     public static final String KEY_DRAMA_BRAINSTORM_CHAT = "drama.brainstorm_chat";
     public static final String KEY_DRAMA_BRAINSTORM_OUTLINE = "drama.brainstorm_outline";
+    /** 近期热点蒸馏：抓来的抖音热搜热词 → 过滤新闻/敏感、改写成短剧选题钩子（运营手动触发）。 */
+    public static final String KEY_DRAMA_HOTSPOT_DISTILL = "drama.hotspot_distill";
     /** v0.51+: 数字人资产平台（dap）各大模型调用点位（DapMultimodalClient / DapJobRunner）。 */
     public static final String KEY_DAP_PERSONA = "dap.persona";
     public static final String KEY_DAP_TRANSLATE_EDIT = "dap.translate_edit";
@@ -101,7 +103,7 @@ public class PromptService {
                     KEY_DRAMA_SHORT_FRAME_IMAGE, KEY_DRAMA_SHORT_CLIP_VIDEO,
                     KEY_DRAMA_RECIPE_EXTRACT,
                     KEY_DRAMA_INTERACTIVE_DRAFT,
-                    KEY_DRAMA_BRAINSTORM_CHAT, KEY_DRAMA_BRAINSTORM_OUTLINE,
+                    KEY_DRAMA_BRAINSTORM_CHAT, KEY_DRAMA_BRAINSTORM_OUTLINE, KEY_DRAMA_HOTSPOT_DISTILL,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT);

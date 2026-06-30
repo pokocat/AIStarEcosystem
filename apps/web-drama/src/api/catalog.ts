@@ -87,6 +87,24 @@ export async function saveCatalog<K extends CatalogField>(
   invalidateCatalog();
 }
 
+/**
+ * 运营手动触发：后端抓抖音热搜 → LLM 蒸馏成短剧选题钩子，返回候选（不落库）。
+ * 运营审核后再经 saveCatalog("hotTopics", ...) 采用。USE_MOCK 下返回少量示例。
+ */
+export async function generateHotspots(max = 12): Promise<string[]> {
+  if (USE_MOCK) {
+    return mockDelay(
+      ["闪婚老公竟是隐藏首富", "重生后我把渣男一家送进局子", "实习生身份曝光：我是集团董事长"],
+      600,
+    );
+  }
+  const res = await apiFetch<{ candidates: string[] }>("/me/drama/catalog/generate-hotspots", {
+    method: "POST",
+    body: { max },
+  });
+  return Array.isArray(res?.candidates) ? res.candidates : [];
+}
+
 /** 运营恢复某目录为内置默认（删除后端 override）。 */
 export async function resetCatalog(field: CatalogField): Promise<void> {
   if (USE_MOCK) {

@@ -8,7 +8,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Lightbulb, Plus, RefreshCw, Save, Sparkles, Trash2, X } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
-import { getCatalog, resetCatalog, saveCatalog, type CatalogField, type HotTopic } from "@/api/catalog";
+import { generateHotspots, getCatalog, resetCatalog, saveCatalog, type CatalogField, type HotTopic } from "@/api/catalog";
 import type { IdeaRec } from "@/mocks/drama-workshop";
 import { RecipeReviewSection } from "@/components/drama-workshop/recipe-review-section";
 
@@ -21,6 +21,30 @@ export default function OperationsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState<"hotTopics" | "ideas" | null>(null);
+  const [genningHot, setGenningHot] = React.useState(false);
+
+  // AI 生成一批热点：抓抖音热搜 → LLM 蒸馏成短剧选题钩子 → 追加为可编辑行（审核后再「发布」）。
+  const genHot = async () => {
+    if (genningHot) return;
+    setGenningHot(true);
+    try {
+      const cands = await generateHotspots(12);
+      if (!cands.length) {
+        toast("这次没生成出可用的短剧选题，换个时间再试");
+        return;
+      }
+      setHotTopics((arr) => {
+        const seen = new Set(arr.map((h) => h.idea.trim()).filter(Boolean));
+        const add = cands.filter((c) => !seen.has(c.trim())).map((c) => ({ label: c, idea: c }));
+        return [...arr, ...add];
+      });
+      toast.success(`AI 生成 ${cands.length} 条候选，已加入下方，审核 / 微调后点「发布」生效`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "热点生成失败，请稍后重试");
+    } finally {
+      setGenningHot(false);
+    }
+  };
 
   const revert = async (field: CatalogField, label: string) => {
     try {
@@ -125,6 +149,9 @@ export default function OperationsPage() {
               <span style={{ fontWeight: 800, fontSize: 15 }}>近期热点</span>
               <span className="faint" style={{ fontSize: 12 }}>首页对话框上方的热点标签 · {hotTopics.length} 条</span>
               <span className="grow" />
+              <button type="button" className="btn btn-line btn-sm" disabled={genningHot} onClick={() => void genHot()} title="抓抖音热搜，AI 蒸馏成短剧选题（待你审核后发布）">
+                <Sparkles size={14} /> {genningHot ? "生成中…" : "AI 生成一批"}
+              </button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => void revert("hotTopics", "近期热点")}>恢复默认</button>
               <button type="button" className="btn btn-grad btn-sm" disabled={saving === "hotTopics"} onClick={() => void saveHot()}>
                 <Save size={14} /> {saving === "hotTopics" ? "发布中…" : "发布"}

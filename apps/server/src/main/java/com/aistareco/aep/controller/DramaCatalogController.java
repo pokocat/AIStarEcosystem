@@ -1,10 +1,12 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.service.DramaHotspotService;
 import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -36,10 +38,12 @@ public class DramaCatalogController {
 
     private final PlatformConfigService configs;
     private final ObjectMapper om;
+    private final DramaHotspotService hotspots;
 
-    public DramaCatalogController(PlatformConfigService configs, ObjectMapper om) {
+    public DramaCatalogController(PlatformConfigService configs, ObjectMapper om, DramaHotspotService hotspots) {
         this.configs = configs;
         this.om = om;
+        this.hotspots = hotspots;
     }
 
     /** 全量目录：每项为运营已配的值，未配则 null（前端回退默认）。 */
@@ -68,6 +72,21 @@ public class DramaCatalogController {
         out.put("field", field);
         out.put("version", saved.version());
         out.set("value", value);
+        return ApiResponse.of(out);
+    }
+
+    /**
+     * 运营手动触发：抓抖音热搜 → LLM 蒸馏成短剧选题钩子，返回候选批次（不落库）。
+     * 运营在前端审核后再经 PUT /{field}=hotTopics 采用。body 可选 { max }。
+     */
+    @PostMapping("/generate-hotspots")
+    public ApiResponse<JsonNode> generateHotspots(Authentication auth, @RequestBody(required = false) JsonNode body) {
+        requireOperator(auth);
+        int max = body != null ? body.path("max").asInt(12) : 12;
+        List<String> candidates = hotspots.generate(max);
+        ObjectNode out = om.createObjectNode();
+        ArrayNode arr = out.putArray("candidates");
+        candidates.forEach(arr::add);
         return ApiResponse.of(out);
     }
 
