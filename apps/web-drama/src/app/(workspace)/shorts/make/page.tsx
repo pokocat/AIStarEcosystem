@@ -73,6 +73,8 @@ const SHORT_CLIP_COST = 7;
 interface ShortShot extends FormShot {
   engine: string;
   frameIdx: number;
+  /** v0.97：本镜节拍语义标签（痛点开场 / 反转 / 强 CTA 收尾…），来自 AI 逐镜生成，缺省回落「镜 N」。 */
+  beat?: string;
 }
 
 interface ChatMsg {
@@ -81,8 +83,6 @@ interface ChatMsg {
 }
 
 /* 单镜出片卡(竖屏) */
-// v0.88：短视频大纲 / 分镜 beat 语义标签（设计稿口播种草 13s 模型）。
-const SHORT_BEATS = ["痛点开场", "卖点演示", "强 CTA 收尾"];
 
 /**
  * 可编辑文本字段：默认看起来就是文本，鼠标移上去（或聚焦）才显高亮底 + 文末铅笔，
@@ -663,6 +663,7 @@ function ShortMakerInner({
           sfx: sc.sfx ?? "",
           bgm: sc.bgm ?? "",
           fx: sc.fx ?? "",
+          beat: sc.beat ?? "",
           refs: [],
           sub: true,
           flow: "draft" as ShotFlow,
@@ -840,7 +841,7 @@ function ShortMakerInner({
   const storyboardTable = (
     <ShortStoryboardTable
       shots={shots}
-      beats={SHORT_BEATS}
+      beats={shots.map((s) => s.beat ?? "")}
       speakerOptions={["口播", "旁白"]}
       locked={draftStatus === "done"}
       busy={busy}

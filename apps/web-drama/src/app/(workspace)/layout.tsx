@@ -414,9 +414,28 @@ function GlobalSearch() {
   );
 }
 
+/** 顶栏当前分区标题：按 pathname 匹配侧栏导航（最长前缀），用于面包屑——
+ *  修复短视频工坊等页面恒显「短剧工坊」的硬编码（/shorts → 短视频工坊 等）。 */
+function sectionTitle(pathname: string | null): string {
+  if (!pathname) return "工作台";
+  const flat: { href: string; label: string; exact?: boolean }[] = GROUPS.flatMap((g) =>
+    g.items.flatMap((it) => [
+      { href: it.href, label: it.label, exact: it.exact },
+      ...((it.children ?? []).map((c) => ({ href: c.href, label: c.label }))),
+    ]),
+  );
+  let best: { href: string; label: string } | null = null;
+  for (const it of flat) {
+    const hit = it.exact ? pathname === it.href : pathname === it.href || pathname.startsWith(it.href + "/");
+    if (hit && (!best || it.href.length > best.href.length)) best = it;
+  }
+  return best?.label ?? "工作台";
+}
+
 function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
   const { logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [wallet, setWallet] = React.useState<Wallet | null>(null);
 
   React.useEffect(() => {
@@ -461,7 +480,7 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         <Menu size={16} />
       </button>
       <div className="row gap-2" style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
-        <span>短剧工坊</span>
+        <span>{sectionTitle(pathname)}</span>
         <span className="ws-topbar-sub faint" style={{ fontWeight: 500 }}>
           / 工作台
         </span>
