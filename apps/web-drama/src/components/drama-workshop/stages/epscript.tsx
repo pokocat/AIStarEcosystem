@@ -783,6 +783,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       shotsMap={shotsMap}
       speakerOptions={speakerOptions}
       locked={locked}
+      frameCost={cfg.prices.frame}
+      clipCost={cfg.prices.clip}
       busyMap={decomposingId ? { ...busyMap, [decomposingId]: "frame" } : busyMap}
       starts={starts}
       genScene={genScene}
@@ -792,9 +794,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       onAddShot={addShot}
       onGenShots={genShots}
       onRender={(sceneId, shotId, kind) => {
-        if (kind === "frame") render(sceneId, shotId, "frame", 2, "首帧已生成，确认后可继续生成视频");
-        else if (kind === "direct") render(sceneId, shotId, "clip", 9, "分镜视频已生成，请验收");
-        else render(sceneId, shotId, "clip", 7, "成片已生成，请验收");
+        if (kind === "frame") render(sceneId, shotId, "frame", cfg.prices.frame, "首帧已生成，确认后可继续生成视频");
+        else if (kind === "direct") render(sceneId, shotId, "clip", cfg.prices.clip, "分镜视频已生成，请验收");
+        else render(sceneId, shotId, "clip", cfg.prices.clip, "成片已生成，请验收");
       }}
       onApprove={(sceneId, shotId) => {
         const next = { ...shotsMap, [sceneId]: (shotsMap[sceneId] ?? []).map((x) => (x.id === shotId ? { ...x, flow: "done" as const } : x)) };
