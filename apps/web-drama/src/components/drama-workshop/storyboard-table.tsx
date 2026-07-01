@@ -408,7 +408,17 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
           <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧参考图" confirmBody={onPick ? "出 2 版首帧参考图，挑一版继续。" : "生成一版首帧参考图。"} className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
             首帧参考图
           </CreditButton>
-          <button type="button" onClick={() => onRender("direct")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 10, fontWeight: 600 }}>直接出片</button>
+          <CreditButton
+            cost={DIRECT_COST}
+            onConfirm={() => onRender("direct")}
+            confirmTitle="跳过首帧，直接出片？"
+            confirmBody="不先出首帧参考图就直接生成视频，画面 / 人物 / 场景的一致性通常更差、也更难控。建议先「生成首帧参考图」挑一版满意的再出片。确定跳过首帧？"
+            className="btn btn-ghost btn-sm"
+            style={{ height: 22, fontSize: 10, color: "var(--ink-3)", padding: "0 6px" }}
+            markSize={10}
+          >
+            直接出片
+          </CreditButton>
         </>
       )}
       {!busy && s.flow === "frame" && (
