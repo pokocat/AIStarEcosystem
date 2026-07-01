@@ -256,3 +256,13 @@
 - 前端分镜表价格全部走 `/me/drama/config`（`frameCost/clipCost/splitCost`=drama.credit.frame/clip/split-scene），
   删写死的 7/9 与拆镜 6；admin「短剧专区·配置」新增 分镜视频出片/AI 拆镜/行级改写 三项可配（此前缺）。
 门禁：server compile + test-compile + MaterialVideo/DramaConfig 测试 + web-drama/admin typecheck + build 全绿。
+
+## v0.98 补丁 · P0 出片前一致性体检 + 串行出片引导（2026-07-01）
+
+对照 ViMax 复盘发现：主干接线通（角色/场景参考图 → 首帧 → seedance 首尾帧 i2v + return_last_frame
+→ 真实末帧回填 → 承接），但**系统交互不保证流程**：用户可跳过定妆图/场景绑定、或批量出首帧后再出片
+（导致承接不到上一镜真实末帧、降级为首帧承接）。P0 补交互闸：
+- `shotConsistencyIssues`：出片(clip)前体检——出场角色缺定妆图 / 本场未绑场景参考 / 直出且同场上一镜
+  未出片（承接不到真实末帧）→ `dramaConfirm` 列问题，可"仍要继续"或"去补齐"。首帧不拦（便宜可迭代）。
+- 分镜表头加"建议逐镜按顺序出片"引导。
+未做（P1/P2 待办，记入 TODO）：camId 机位复用、全局风格锚图、承接帧优先级/直出补锚、best-of-N+VLM 自检、串行自动流水线。

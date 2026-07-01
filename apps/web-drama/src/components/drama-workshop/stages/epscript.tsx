@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
-import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
+import { Avatar, CreditButton, dramaConfirm, Editable, GenSkeleton } from "@/components/drama-ui";
 import { ConfirmDialog } from "@/components/common";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
@@ -666,9 +666,51 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   };
 
   /** 单镜生成：frame=首帧参考图（后台图片任务，出 2 版），clip=直接出片/成片（后台视频任务 + 轮询，带首尾帧）。 */
+  /** 出图/出片前一致性体检（P0 系统交互）：出场角色缺定妆图 / 本场未绑场景 / 同场上一镜未出片（无法承接真实末帧）。 */
+  const shotConsistencyIssues = (sceneId: string, shot: FormShot, to: FormShot["flow"]): string[] => {
+    const issues: string[] = [];
+    for (const cid of shot.cast ?? []) {
+      const c = data.characters.find((x) => x.id === cid);
+      if (c && !c.avatarImage && !c.refUrl) issues.push(`出场角色「${c.name}」还没定妆图/参考图（没脸可锁，跨镜会不一样）`);
+    }
+    if (chainConsistency && !sceneRefUrlFor(sceneId)) {
+      issues.push("本场还没绑定场景参考图（环境无锚，跨镜场景易漂）");
+    }
+    // 串行提示仅在出片时给（首帧批量生成不打扰）：直出无首帧时最需要承接上一镜真实末帧。
+    if (to === "clip" && chainConsistency && !(shot.frameUrl ?? shot.frameUrls?.[0])) {
+      const rows = shotsRef.current[sceneId] ?? [];
+      const idx = rows.findIndex((x) => x.id === shot.id);
+      if (idx > 0 && !rows[idx - 1].videoUrl) {
+        issues.push("同场上一镜还没出片，本镜承接不到它的真实末帧（建议先把上一镜出片，再逐镜按顺序出）");
+      }
+    }
+    return issues;
+  };
+
   const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
     if (!shot || isBusy(id) || decomposingId === id) return;
+    // 出片前一致性体检（P0）：仅在出片时拦（首帧便宜、可迭代，不打扰）；有问题先提示可仍继续，
+    // 让系统交互贴合"先备锚点（角色定妆图/场景）再逐镜顺序出片"的一致性流程。
+    const issues = to === "clip" ? shotConsistencyIssues(sceneId, shot, to) : [];
+    if (issues.length) {
+      const ok = await dramaConfirm({
+        title: "一致性未就绪，仍要继续？",
+        body: (
+          <div className="col gap-1" style={{ fontSize: 13, lineHeight: 1.6 }}>
+            <span>检测到以下会影响人物 / 场景一致性的问题：</span>
+            <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
+              {issues.map((x, i) => <li key={i}>{x}</li>)}
+            </ul>
+            <span className="faint" style={{ fontSize: 12 }}>建议先在「角色与场景」补齐定妆图 / 绑定场景，或先出上一镜再逐镜顺序出片；否则本镜可能与其他镜对不上。</span>
+          </div>
+        ),
+        confirmLabel: "仍要继续",
+        cancelLabel: "取消，去补齐",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
     markBusy(id, to);
     try {
       if (to === "frame") {
@@ -885,7 +927,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             <>
               <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px" }}>
                 <span style={{ fontWeight: 800, fontSize: 14.5 }}>分镜表</span>
-                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳</span>
+                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳 · <b style={{ color: "var(--accent)", fontWeight: 700 }}>建议逐镜按顺序出片</b>（先出上一镜、再出下一镜首帧），承接上一镜真实末帧更连贯</span>
                 <span className="grow" />
                 {allShots.length > 0 && (
                   <button type="button" className="chip" style={{ height: 24, fontSize: 11 }} title="全屏放大分镜表，方便逐镜编辑" onClick={() => setTableMax(true)}>
