@@ -37,8 +37,8 @@ export function AvatarPicker({ char, onClose, onConfirm }: AvatarPickerProps) {
 
   const cur = list?.find((a) => a.id === sel) ?? null;
   const confirm = () => {
-    if (!cur) return;
-    onConfirm(char.id, { id: cur.id, name: cur.name, image: cur.imageUrl ?? "" });
+    if (!cur || !cur.imageUrl) return;
+    onConfirm(char.id, { id: cur.id, name: cur.name, image: cur.imageUrl });
   };
 
   return (
@@ -99,7 +99,7 @@ export function AvatarPicker({ char, onClose, onConfirm }: AvatarPickerProps) {
 
         <div className="row gap-3" style={{ padding: "14px 20px", borderTop: "1px solid var(--line-soft)", flex: "none", justifyContent: "flex-end" }}>
           <button type="button" className="btn btn-ghost" onClick={onClose}>取消</button>
-          <button type="button" className="btn btn-grad" disabled={!cur} style={{ opacity: cur ? 1 : 0.5 }} onClick={confirm}>
+          <button type="button" className="btn btn-grad" disabled={!cur || !cur.imageUrl} style={{ opacity: (cur && cur.imageUrl) ? 1 : 0.5 }} onClick={confirm}>
             <Sparkles size={15} fill="currentColor" strokeWidth={0} /> 锁定{cur ? ` ${cur.name}` : ""}
           </button>
         </div>
