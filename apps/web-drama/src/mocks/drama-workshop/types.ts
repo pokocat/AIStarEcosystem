@@ -86,9 +86,16 @@ export interface EpisodeOutline {
   locked?: boolean;
 }
 
-/** 集标题（新 title 优先；老数据回退「第N集」）。 */
-export function episodeTitle(ep: { no: number; title?: string }): string {
-  return (ep.title || "").trim() || `第 ${ep.no} 集`;
+/** 集标题（新 title 优先；老数据无 title → 从剧情首句派生一个短标题，兜底「第N集」）。 */
+export function episodeTitle(ep: { no: number; title?: string; hook?: string; content?: string; synopsis?: string; beat?: string }): string {
+  const t = (ep.title || "").trim();
+  if (t) return t.length > 16 ? t.slice(0, 16) + "…" : t; // 防旧数据/异常长标题溢出
+  const src = (ep.hook || ep.beat || ep.content || ep.synopsis || "").trim();
+  if (src) {
+    const clause = (src.split(/[，。！？、\n·]/)[0] || src).trim();
+    return clause.length > 12 ? clause.slice(0, 12) + "…" : clause;
+  }
+  return `第 ${ep.no} 集`;
 }
 
 /** 本集剧情（新 content 优先；老数据回退旧三段拼接）。 */

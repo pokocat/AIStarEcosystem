@@ -39,9 +39,9 @@ export function SetupStage({ state, dispatch, data, prefilled, ctx }: SetupStage
             <span className="tag tag-gray">项目设置</span>
             <span className="tag tag-accent">跨集共享</span>
           </div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" }}>短剧设定</h1>
-          <div className="muted" style={{ fontSize: 13.5 }}>
-            在一页内完成全剧设定：故事主线、每集钩子、主角形象，确认后逐集制作。
+          <div className="row gap-2" style={{ alignItems: "baseline", flexWrap: "wrap" }}>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" }}>短剧设定</h1>
+            <span className="muted" style={{ fontSize: 12.5 }}>故事、分集、人物都在这儿定好，再一集一集往下拍。</span>
           </div>
         </div>
 

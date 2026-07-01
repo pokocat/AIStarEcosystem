@@ -786,7 +786,6 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                   <Editable value={epOutline?.title ?? ""} placeholder="集标题…" onCommit={saveEpTitle} />
                 )}
               </span>
-              <span className="faint" style={{ fontSize: 11, flex: "none", whiteSpace: "nowrap" }}>剧情改完点右侧按 AI 重排分场分镜</span>
               <span className="grow" style={{ minWidth: 12 }} />
               {!locked && (
                 <CreditButton

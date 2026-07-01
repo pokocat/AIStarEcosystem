@@ -406,7 +406,7 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
       {!busy && s.flow === "draft" && (
         <>
           <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧参考图" confirmBody={onPick ? "出 2 版首帧参考图，挑一版继续。" : "生成一版首帧参考图。"} className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
-            <ImageIcon size={12} /> 首帧参考图
+            首帧参考图
           </CreditButton>
           <button type="button" onClick={() => onRender("direct")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 10, fontWeight: 600 }}>直接出片</button>
         </>
