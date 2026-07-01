@@ -410,6 +410,7 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
           </CreditButton>
           <CreditButton
             cost={DIRECT_COST}
+            alwaysConfirm
             onConfirm={() => onRender("direct")}
             confirmTitle="跳过首帧，直接出片？"
             confirmBody="不先出首帧参考图就直接生成视频，画面 / 人物 / 场景的一致性通常更差、也更难控。建议先「生成首帧参考图」挑一版满意的再出片。确定跳过首帧？"
