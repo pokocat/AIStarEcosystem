@@ -805,10 +805,10 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       {/* 悬浮 AI 对话(左下):模板化提示词 衍生上一集 / 给我惊喜 */}
       <AiChatPanel msgs={chat} quick={["衍生上一集", "给我惊喜"]} busy={phase === "gen"} onSend={sendChat} />
 
-      {/* 悬浮 CTA(右下) */}
-      {phase === "done" && !locked && (
+      {/* 悬浮 CTA(右下)：逐镜出片在本页分镜表完成后，去成片合成拼接。脚本始终可回改，不再锁定。 */}
+      {phase === "done" && (
         <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
-          <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>脚本与分镜已确认？</span>
+          <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>镜头都出片了？</span>
           <button
             type="button"
             className="btn btn-grad btn-sm"
@@ -816,17 +816,10 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               try {
                 await persist(scenes, shotsMap);
               } catch { /* persist 内部已提示 */ }
-              dispatch({ type: "lock", stage: "epscript", cost: 30 });
+              dispatch({ type: "jump", stage: "prompt" });
             }}
           >
-            <Check size={14} /> 保存分镜·去视频工厂
-          </button>
-        </div>
-      )}
-      {locked && (
-        <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
-          <button type="button" className="btn btn-grad btn-sm" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
-            <ImageIcon size={13} /> 去视频工厂出片 <ArrowRight size={12} />
+            <Check size={14} /> 保存·去成片合成 <ArrowRight size={12} />
           </button>
         </div>
       )}

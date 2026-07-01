@@ -23,7 +23,6 @@ import {
 } from "@/components/drama-workshop/workbench";
 import {
   EpScriptStage,
-  FactoryStage,
   AssembleStage,
   BranchStage,
   SetupStage,
@@ -134,8 +133,6 @@ function StageOutlet({
       return <SetupStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "epscript":
       return <EpScriptStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
-    case "factory":
-      return <FactoryStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "prompt":
       return <AssembleStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "branch":
