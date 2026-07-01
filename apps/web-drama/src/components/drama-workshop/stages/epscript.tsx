@@ -586,10 +586,16 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       styleSuffix: `${data.projectInfo.type}风格。`,
     };
   };
-  /** 本场景绑定的参考图：按场名匹配项目级 SceneAsset（best-effort，环境一致）。 */
+  /** 本场景绑定的参考图：优先用显式绑定的场景资产（sceneRefId），否则回退按场名匹配（best-effort），保障场景一致性。 */
   const sceneRefUrlFor = (sceneId: string): string | undefined => {
-    const place = scenesRef.current.find((s) => s.id === sceneId)?.place ?? "";
-    return (data.scenes ?? []).find((a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name))?.refUrl;
+    const sc = scenesRef.current.find((s) => s.id === sceneId);
+    const assets = data.scenes ?? [];
+    if (sc?.sceneRefId) {
+      const bound = assets.find((a) => a.id === sc.sceneRefId);
+      if (bound?.refUrl) return bound.refUrl;
+    }
+    const place = sc?.place ?? "";
+    return assets.find((a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name))?.refUrl;
   };
   /** 同场上一镜的承接锚点：优先成片真实末帧，否则首帧。 */
   const prevFrameInScene = (sceneId: string, shotId: string): string | undefined => {
@@ -824,6 +830,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               </div>
               <StoryboardTable
                 scenes={scenes}
+                sceneAssets={data.scenes ?? []}
                 shotsMap={shotsMap}
                 speakerOptions={speakerOptions}
                 locked={locked}

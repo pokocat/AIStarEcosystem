@@ -9,6 +9,7 @@ import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
 import { MediaLightbox, type LightboxMedia } from "./media-lightbox";
 import { AiImageEditModal } from "./ai-image-edit-modal";
 import type { FormShot, ShotFlow } from "./shot-form";
+import type { SceneAsset } from "@/mocks/drama-workshop";
 
 const FRAME_COST = 2, DIRECT_COST = 9, CLIP_COST = 7;
 // 运动幅度（拆镜 variation_type）用户友好文案，仅用于 hover 提示，不直接暴露 small/medium/large 黑话。
@@ -21,10 +22,12 @@ function fmtT(sec: number) {
   return m + ":" + String(s).padStart(2, "0");
 }
 
-export interface SbScene { id: string; place: string; mood: string }
+export interface SbScene { id: string; place: string; mood: string; sceneRefId?: string }
 
 export interface StoryboardTableProps {
   scenes: SbScene[];
+  /** 项目级场景资产（可上传/AI 生成）——供每场绑定场景参考图，保障场景一致性。 */
+  sceneAssets?: SceneAsset[];
   shotsMap: Record<string, FormShot[]>;
   speakerOptions: string[];
   locked?: boolean;
@@ -84,6 +87,25 @@ export function StoryboardTable(props: StoryboardTableProps) {
                           <Editable value={sc.mood} placeholder="情绪" onCommit={(v) => props.onUpdScene(i, { mood: v })} />
                         </span>
                         <span className="grow" />
+                        {(props.sceneAssets?.length ?? 0) > 0 && (() => {
+                          const bound = props.sceneAssets!.find((a) => a.id === sc.sceneRefId);
+                          return (
+                            <span className="row" style={{ gap: 4, alignItems: "center", flex: "none" }} title="本场各镜首帧套用的场景参考图，保障同一场景画面一致">
+                              {bound?.refUrl && <img src={bound.refUrl} alt="场景参考" style={{ width: 22, height: 14, objectFit: "cover", borderRadius: 3, border: "1px solid var(--line)" }} />}
+                              <span className="faint" style={{ fontSize: 10.5 }}>场景参考</span>
+                              <select
+                                value={sc.sceneRefId ?? ""}
+                                onChange={(e) => props.onUpdScene(i, { sceneRefId: e.target.value || undefined })}
+                                style={{ fontSize: 10.5, height: 23, borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-1)", maxWidth: 140, padding: "0 4px" }}
+                              >
+                                <option value="">不绑定</option>
+                                {props.sceneAssets!.map((a) => (
+                                  <option key={a.id} value={a.id}>{a.name}{a.refUrl ? "" : "（未出图）"}</option>
+                                ))}
+                              </select>
+                            </span>
+                          );
+                        })()}
                         {shots.length > 0 && <span className="faint num" style={{ fontSize: 11 }}>{shots.length} 镜 · {shots.reduce((a, x) => a + x.dur, 0)}s</span>}
                         {!locked && shots.length > 0 && (
                           <button type="button" className="chip" style={{ height: 23, fontSize: 10.5 }} onClick={() => props.onAddShot(sc.id, i)}>

@@ -23,6 +23,17 @@
 修：新增 `drama.scene_frame_image`（干净空景 establishing plate，无人物，匹配 place+mood+作品风格）；
 `renderFrame` 加 `kind:"scene"`（`buildMediaPrompt` 第 4 参 sceneKey）；前端 `genSceneRef` 传
 `kind:"scene"` + 作品风格 + 项目画幅（`data.projectInfo.ratio`）。
+
+## v0.98 补丁 · 场景设定持久化 + 分镜表显式绑定场景参考（2026-07-01）
+
+生产实测两处硬伤：
+1. **场景 AI 出图/上传后刷新丢失**：根因是场景回写走陈旧闭包 `ctx.saveData({...data, scenes})`，
+   被并发/后续保存覆盖。修：`StageContext` 加 `patchData(prev => next)`（page 用 `dataRef` 取最新
+   data 做函数式合并）；cast 场景增删改/出图/上传全改走 `patchData`，异步结果并入最新 data 不丢。
+2. **场景参考进不了分镜首帧**：删视频工厂后仅剩「按场名匹配」这一条隐式链，用户上传/AI 生成的场景
+   图在分镜表里无处可选 → 一致性断链。修：`ScriptScene.sceneRefId` 显式绑定；分镜表场景头加
+   「场景参考」下拉（复用 `onUpdScene` 写 `sceneRefId` + 缩略图 + 「未出图」提示），随脚本落库；
+   `sceneRefUrlFor` 改「显式 sceneRefId 优先 → 场名匹配兜底」，喂进该场各镜首帧 `ref_images`。
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、

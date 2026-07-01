@@ -118,16 +118,17 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
   };
 
   // ── 场景：全部落库到 ProjectData.scenes ─────────────────────────────────────
-  const saveScenes = (next: SceneAsset[]) => {
+  // 函数式合并保存：按最新 scenes 更新，异步出图/上传回写不会被并发保存或陈旧闭包覆盖（修「刷新就没了」）。
+  const saveScenes = (updater: (prev: SceneAsset[]) => SceneAsset[]) => {
     if (!ctx) return;
     ctx.notifyEditing?.();
-    void ctx.saveData({ ...data, scenes: next }).catch(() => {});
+    void ctx.patchData((prev) => ({ ...prev, scenes: updater(prev.scenes ?? []) })).catch(() => {});
   };
   const editScene = (id: string, patch: Partial<SceneAsset>) =>
-    saveScenes(scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    saveScenes((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   const addScene = () =>
-    saveScenes([...scenes, { id: "scn_" + Math.random().toString(36).slice(2, 8), name: "新场景", mood: "" }]);
-  const delScene = (id: string) => saveScenes(scenes.filter((s) => s.id !== id));
+    saveScenes((list) => [...list, { id: "scn_" + Math.random().toString(36).slice(2, 8), name: "新场景", mood: "" }]);
+  const delScene = (id: string) => saveScenes((list) => list.filter((s) => s.id !== id));
   const genSceneRef = async (s: SceneAsset) => {
     if (!ctx || sceneBusy[s.id]) return;
     setSceneBusy((m) => ({ ...m, [s.id]: true }));
