@@ -68,6 +68,33 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.98 · 2026-06-30 · 短剧工作台收敛为「脚本表=唯一逐镜工作面」（删视频工厂阶段）
+
+> 目标：一集的出片全在剧集脚本的分镜表内完成，更直观；不再跳独立「视频工厂」。项目从 6 阶段收敛为 **5 阶段**（选题 / 大纲 / 角色 / 剧集脚本 / 成片合成）。真源 [`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)。
+
+- **抽 `use-shot-render` 共享渲染引擎**（Epic-1）：把逐镜渲染强逻辑（出图 4 版 / 锁 / 角色+场景+镜间承接参考图 / 首尾帧 / 拆镜 / 轮询 / 批量 / 统一单价）从视频工厂抽出。
+- **剧集脚本分镜表升级为强渲染面**（Epic-2）：`FormShot` 补 `cast`/`camId`/首尾帧/拆镜字段并完整 round-trip（修 sfx/bgm/fx 回读丢字段旧 bug）；epscript render 引擎升级为强版；首帧格加 **4 版挑选 + AI 拆镜 + 首帧▷末帧双联可视化 + hover 预演**（P3 aha）+「镜间一致性承接」开关。
+- **删「视频工厂」阶段 + 抽屉 + `use-shot-render`/factory 源码**（Epic-3）：`stages-config` 去 factory、成片合成前移为剧集第 2 步；`assemble` 空态引导回剧集脚本出片。
+- **P1 解决**：epscript 不再 lock，脚本始终可编辑、随时回改；CTA 改「保存·去成片合成」。
+- **P5**：删左下角「AI 脚本助手」浮窗（`ai-chat-panel` 删除），改分镜表**行级 Wand2 就地改写本镜**（指令 + 快捷 chip，只改这一镜；新后端 `POST /shot/rewrite` + `drama.shot_rewrite` + `drama.credit.shot-rewrite`）；整篇重写仍由顶部按钮承接。
+- **P6**：短视频工坊面包屑按 pathname 派生（不再恒显「短剧工坊」）；beat 标签改 AI 逐镜生成（去写死三词）。
+- **P4**：视频工厂的假模型下拉（`GenSettingsBar` 的 `GEN_MODELS`）随工厂删除已消失（不再有假选项，§8.0）。**真·多模型选择**（一个用途绑多个候选端点 + 按模型计费）涉及共享 `AiAppBinding`（主键即 purpose，music/celebrity/drama 共用），拆为独立后续 PR，见 `TODO.md` D-11。
+- **门禁**：server compile + web-drama typecheck/build（30 路由）+ check:api-contract 全绿。
+
+### v0.97 · 2026-06-30 · 分镜一致性优化（借鉴 ViMax · P0/P1/P2 全量落地）
+
+> 痛点：一集多个分镜视频之间，人物形象 / 场景环境 / 光线构图 不稳定。借鉴 [HKUDS/ViMax](https://github.com/HKUDS/ViMax)——一致性**主要靠视觉生成层（参考图复用 + 关键帧锚定 + 镜间链式参考），不是靠 storyboard 文本**。完整方案真源：[`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)。
+
+- **P0 镜间一致性承接（`stages/factory.tsx`，纯前端、零契约）**：出首帧时 `ref_images` 从「仅角色参考图」扩展为「角色参考图 + 该场景参考图 + 同场上一镜画面」，去重限 6 张（角色 identity 优先）。`ref_images` 管道此前已端到端打通（前端 → `/render/frame-jobs` → `DramaRenderService.callImageModel` → `extra_body.image`）。
+  - `prevSceneFrame()`：同场向前取最近已出画面（**成片真实末帧优先**，否则首帧锁定版），跨场不承接。
+  - **场景参考绑定（P0-b）**：`BoardScene.sceneRefId` 显式绑定项目级 `ProjectData.scenes[]`（缺省按场景名自动匹配）；生成设置栏下新增「场景参考绑定」面板 + 「镜间一致性承接」开关（默认开）。
+- **P1 storyboard prompt 增强 + 机位**：`drama.epscript.md` / `drama.split_scene.md` 补 ViMax 电影语言规则（每镜叙事目的 / 机位复用 / 画面位置 / 摄像机 vs 画面内运动 / 单镜一句台词）；`BoardShot.camId`（机位载体）+ 后端 `normalizeShot` 透传 + JSON 模板加字段。
+- **P2 视频层关键帧 i2v（seedance 首+尾帧 + 链式承接闭环）**：
+  - `MaterialVideoModelClient` 新增 `PROTOCOL_SEEDANCE`（火山方舟 `content` 数组 `role=first_frame/last_frame` + `return_last_frame:true` + `/contents/generations/tasks` 提交/轮询路径）。**修复**：seedance 此前落 GENERIC 分支连首帧都没传；GENERIC 也补 `image`/`end_image`（下游不支持则忽略，§8.0：传入不生效 ≠ 静默伪造）。
+  - `return_last_frame` 回传真实末帧 → `MaterialVideoJob.lastFrameUrl` → 任务卡 `last_frame_url` → 前端回写 `BoardShot.lastFrameUrl` → 下一镜首帧参考（**链式承接闭环**）。`/render/clip` body 加 `last_frame_url`。
+  - **镜头分解节点 `drama.decompose`**（借鉴 ViMax 节点 2）：单镜 → 首/末帧静态快照 + 运动描述（区分摄像机/画面内运动、用外貌指代角色）+ 变化等级；端点 `POST /me/drama/projects/{id}/shot/decompose`，计费 `drama.credit.decompose`（默认 3），`ff/lf_chars` 做角色名存在性校验（过滤编造），§8.0 未配置 prompt → 503 不扣费。前端「AI 拆镜」：拆镜后出首帧用 `ffDesc`、出片用 `motionDesc`、由 `lfDesc` 生成末帧关键帧图作 seedance 尾帧。
+- **门禁**：server compile + 单测 35/35（MaterialVideoModelClient 10 / DramaProjectService 21 / PromptServiceDramaResource 4）+ `typecheck:all` 10/10 + web-drama build（31 路由）+ `check:api-contract` 全绿。
+
 ### v0.96 · 2026-06-29 · AI 对话气泡支持 Markdown + 快捷建议紧扣回复
 
 - **AI 气泡渲染 Markdown（`lib/markdown-lite.tsx`）**：脑暴助手回复里的 `**加粗**` / `1. 2. 3.` 有序列表 / `-`·`·` 无序列表 / 换行此前按纯文本显示（`**` 露出来）。新增轻量渲染器（不引三方库、不走 `dangerouslySetInnerHTML`，纯 React 元素天然转义）—— 接入脑暴对话、短视频制作左侧对话、剧集脚本 `ai-chat-panel` 三处 AI 气泡（用户气泡仍纯文本）。

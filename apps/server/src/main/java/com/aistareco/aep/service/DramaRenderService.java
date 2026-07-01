@@ -191,9 +191,26 @@ public class DramaRenderService {
             if (size != null) req.put("size", size);
             ObjectNode extra = req.putObject("extra_body");
             extra.put("response_format", "url");
+            // 参考图只传外部模型能抓取的绝对 http(s) URL。本地 fake-CDN 的相对路径 /cdn/… 或
+            // localhost 地址外部云端模型抓不到，会回 400 invalid input image —— 过滤掉、只 WARN，
+            // 不阻断出图（本地开发退化为无参考图，生产 OSS https 参考图照常生效）。
             if (refImages != null && refImages.isArray() && refImages.size() > 0) {
-                ArrayNode arr = extra.putArray("image");
-                refImages.forEach(n -> arr.add(n.asText()));
+                java.util.List<String> valid = new java.util.ArrayList<>();
+                java.util.List<String> dropped = new java.util.ArrayList<>();
+                for (JsonNode n : refImages) {
+                    String u = n == null ? "" : n.asText("").trim();
+                    if (u.isEmpty()) continue;
+                    if (isFetchableImageRef(u)) valid.add(u);
+                    else dropped.add(u);
+                }
+                if (!valid.isEmpty()) {
+                    ArrayNode arr = extra.putArray("image");
+                    valid.forEach(arr::add);
+                }
+                if (!dropped.isEmpty()) {
+                    log.warn("[drama-render] 跳过 {} 张外部模型无法抓取的参考图（本地/相对 URL，如 fake-CDN /cdn/…；"
+                            + "本地开发出图将不带参考图，生产 OSS https 不受影响）: {}", dropped.size(), dropped);
+                }
             }
             String apiKey = AepCryptoUtil.decrypt(ep.getUpstreamApiKeyEncrypted());
             URI uri = URI.create(rstrip(ep.getBaseUrl()) + "/images/generations");
@@ -309,10 +326,17 @@ public class DramaRenderService {
         String shotId = text(body, "shot_id");
         String target = text(body, "target");
         String frameUrl = text(body, "frame_url");
+        String lastFrameUrl = text(body, "last_frame_url");
 
         StringBuilder full = new StringBuilder(prompt);
         if (frameUrl != null && !frameUrl.isBlank()) {
             full.append("\n（严格基于该首帧画面延展动态：").append(frameUrl).append("）");
+        }
+        // v0.97 P2：尾帧（来自下一镜首帧 / decompose 末帧）→ seedance 双关键帧插值；
+        // 视频客户端按协议抽出（seedance content[role=last_frame] / generic end_image），
+        // 下游不支持则忽略不报错（§8.0：传入不生效 ≠ 静默伪造）。
+        if (lastFrameUrl != null && !lastFrameUrl.isBlank()) {
+            full.append("\n（并以该画面作为结尾帧：").append(lastFrameUrl).append("）");
         }
 
         ObjectNode item = om.createObjectNode();
@@ -374,5 +398,13 @@ public class DramaRenderService {
 
     private static String orDefault(String v, String d) {
         return v == null || v.isBlank() ? d : v;
+    }
+
+    /** 参考图 URL 是否外部图像模型可抓取：绝对 http(s) 且非本机地址。 */
+    private static boolean isFetchableImageRef(String u) {
+        String s = u == null ? "" : u.trim().toLowerCase();
+        if (!(s.startsWith("http://") || s.startsWith("https://"))) return false;
+        return !(s.contains("://localhost") || s.contains("://127.0.0.1") || s.contains("://0.0.0.0")
+                || s.startsWith("http://192.168.") || s.startsWith("http://10.") || s.startsWith("http://172."));
     }
 }

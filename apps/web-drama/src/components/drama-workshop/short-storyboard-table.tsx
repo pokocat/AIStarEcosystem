@@ -74,7 +74,7 @@ export function ShortStoryboardTable(props: ShortStoryboardTableProps) {
               <ShortShotRow
                 key={s.id}
                 s={s}
-                beat={beats[i] ?? `镜 ${i + 1}`}
+                beat={beats[i] || `镜 ${i + 1}`}
                 start={starts.get(s.id) ?? 0}
                 busy={busy && busy.id === s.id ? busy.to : null}
                 locked={locked}

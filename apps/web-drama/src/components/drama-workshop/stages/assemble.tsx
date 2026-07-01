@@ -58,10 +58,10 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
     <div className="scroll" style={{ height: "100%" }}>
       <div style={{ maxWidth: 920, margin: "0 auto", padding: "28px 32px 64px" }}>
         <StageHeader
-          no={6}
+          no={5}
           scope="剧集"
           title={`第 ${state.ep} 集 · 成片合成`}
-          desc="把视频工厂已出片的镜头按顺序拼成完整一集，不重新生成画面。"
+          desc="把剧集脚本分镜表里已出片的镜头按顺序拼成完整一集，不重新生成画面。"
         />
 
         {/* 成片预览（已合成时置顶） */}
@@ -108,10 +108,10 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
               <Clapperboard size={26} />
             </div>
             <div className="muted" style={{ maxWidth: 360, fontSize: 13.5 }}>
-              第 {state.ep} 集还没有已出片的镜头。先去<b style={{ color: "var(--accent)" }}>视频工厂</b>生成分镜视频，再返回拼接成片。
+              第 {state.ep} 集还没有已出片的镜头。先回<b style={{ color: "var(--accent)" }}>剧集脚本</b>的分镜表逐镜出片，再返回拼接成片。
             </div>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
-              去视频工厂
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => dispatch({ type: "jump", stage: "epscript" })}>
+              去剧集脚本出片
             </button>
           </div>
         ) : (

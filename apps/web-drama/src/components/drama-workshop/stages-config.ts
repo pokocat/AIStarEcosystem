@@ -2,10 +2,11 @@
 // 项目设置(跨集共享)1-3 + 剧集制作(逐集推进)4-6。
 // v4 变化:单集剧本 + 分镜工作台合并为「剧集脚本」;新增「视频工厂」(渲染出片)。
 import type { LucideIcon } from "lucide-react";
-import { Clapperboard, Film, Image as ImageIcon, List, Network, Package, Sparkles, Users } from "lucide-react";
+import { Clapperboard, Film, List, Network, Package, Sparkles, Users } from "lucide-react";
 
 // v0.79：branch = 互动剧专属「互动编排」阶段（scope="互动"，仅互动剧项目显示，不进 1-6 线性流）。
-export type StageKey = "topic" | "outline" | "cast" | "epscript" | "factory" | "prompt" | "branch";
+// v0.97：删「视频工厂」独立阶段 —— 逐镜出片收敛进「剧集脚本」分镜表（脚本表=唯一逐镜工作面）。
+export type StageKey = "topic" | "outline" | "cast" | "epscript" | "prompt" | "branch";
 
 export interface StageDef {
   key: StageKey;
@@ -24,10 +25,10 @@ export const STAGES: readonly StageDef[] = [
   { key: "topic",    no: 1, name: "选题立项", scope: "项目", scopeHint: "跨集共享",   icon: Sparkles,  cost: 6 },
   { key: "outline",  no: 2, name: "大纲分集", scope: "项目", scopeHint: "跨集共享",   icon: List,      cost: 18 },
   { key: "cast",     no: 3, name: "角色与资产", scope: "项目", scopeHint: "跨集共享", icon: Users,     cost: 5 },
-  { key: "epscript", no: 4, name: "剧集脚本", scope: "剧集", scopeHint: "针对当前集", sub: "剧本 + 分镜", icon: Film,    cost: 30 },
-  { key: "factory",  no: 5, name: "视频工厂", scope: "剧集", scopeHint: "针对当前集", sub: "逐镜出片",   icon: ImageIcon, cost: 0 },
+  { key: "epscript", no: 4, name: "剧集脚本", scope: "剧集", scopeHint: "针对当前集", sub: "剧本 · 分镜 · 出片", icon: Film,    cost: 30 },
   // v0.66：原「成片配方」退役 —— 分镜已真实出片，最后一步只需拼接交付（key 保留避免大改）
-  { key: "prompt",   no: 6, name: "成片合成", scope: "剧集", scopeHint: "针对当前集", sub: "拼接完整片", icon: Package,  cost: 0 },
+  // v0.97：原「视频工厂」阶段删除，逐镜出片并入「剧集脚本」分镜表；本阶段前移为剧集第 2 步。
+  { key: "prompt",   no: 5, name: "成片合成", scope: "剧集", scopeHint: "针对当前集", sub: "拼接完整片", icon: Package,  cost: 0 },
   // v0.79：互动剧分支编排（剧集图 + 时间轴互动点 + 全局标记 + 试玩 + 导出）。no=0 表示不在 1-6 线性进度里；
   // stageNameByNo(1..6) 仍按数组前 6 项映射，本项 append 在末位不影响。
   { key: "branch",   no: 0, name: "互动编排", scope: "互动", scopeHint: "剧集分支图", sub: "分支 / 互动 / 结局", icon: Network, cost: 18 },
@@ -49,9 +50,17 @@ export const STAGE_BY_KEY: Record<StageKey, StageDef> = STAGES.reduce(
   {} as Record<StageKey, StageDef>,
 );
 
-/** 让 ProjectCard 等组件以序号取得阶段名 */
+/** 线性阶段（no>0，排除 no:0 的互动编排）。 */
+const LINEAR_STAGES = STAGES.filter((s) => s.no > 0);
+
+/** 以序号取阶段名（ProjectCard/首页等用）。按 no 精确匹配线性阶段；
+ *  v0.98 删「视频工厂」后 no 从 6 收为 5，老数据 stage=5(原视频工厂)/6(原成片合成)
+ *  统一归一到「成片合成」，避免落到 no:0 的「互动编排」而误标。 */
 export function stageNameByNo(no: number): string {
-  return STAGES[no - 1]?.name ?? "选题立项";
+  const hit = LINEAR_STAGES.find((s) => s.no === no);
+  if (hit) return hit.name;
+  if (no >= LINEAR_STAGES.length) return STAGE_BY_KEY.prompt.name; // 老数据 ≥5 → 成片合成
+  return LINEAR_STAGES[0]?.name ?? "选题立项";
 }
 
 /** 留给 Clapperboard 入口(workspace logo) */

@@ -110,6 +110,19 @@ public class DramaProjectController {
         return ApiResponse.of(service.castAiDraft(id, principal.getName()));
     }
 
+    /** 镜头分解（v0.97 P2，借鉴 ViMax）：单镜画面 → 首/末帧静态快照 + 运动描述 + 变化等级（未落库，前端合并）。
+     *  body: { desc, cast?:[名] } → { ffDesc, ffChars[], lfDesc, lfChars[], motionDesc, variationType, variationReason }。 */
+    @PostMapping("/{id}/shot/decompose")
+    public ApiResponse<JsonNode> decomposeShot(Principal principal, @PathVariable String id, @RequestBody JsonNode body) {
+        return ApiResponse.of(service.decomposeShot(id, body, principal.getName()));
+    }
+
+    /** 行级就地改写本镜（v0.97 P5）。body: { desc, size?, move?, line?, instruction, cast?:[名] } → { desc, size, move, line }。 */
+    @PostMapping("/{id}/shot/rewrite")
+    public ApiResponse<JsonNode> rewriteShot(Principal principal, @PathVariable String id, @RequestBody JsonNode body) {
+        return ApiResponse.of(service.rewriteShot(id, body, principal.getName()));
+    }
+
     /** 成片合成：把某集已出片分镜按序拼成完整片。body: { ep } → { url, cdnKey, durationSec, shotCount, at }。 */
     @PostMapping("/{id}/assemble")
     public ApiResponse<JsonNode> assemble(Principal principal, @PathVariable String id,

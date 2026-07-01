@@ -229,6 +229,72 @@ export async function splitSceneShots(
   return res.shots ?? [];
 }
 
+/** v0.97 P2：镜头分解结果（借鉴 ViMax）—— 首/末帧静态快照 + 运动描述 + 变化等级。 */
+export interface ShotDecomposeResult {
+  ffDesc: string;
+  ffChars: string[];
+  lfDesc: string;
+  lfChars: string[];
+  motionDesc: string;
+  variationType: "small" | "medium" | "large" | string;
+  variationReason: string;
+}
+
+/** 镜头分解：单镜画面 → 首/末帧 + 运动 + 变化等级（未落库，前端合并到 BoardShot）。 */
+export async function decomposeShot(
+  id: string,
+  input: { desc: string; cast?: string[] },
+): Promise<ShotDecomposeResult> {
+  if (USE_MOCK) {
+    return mockDelay(
+      {
+        ffDesc: (input.desc || "主体入画").slice(0, 40) + "（定格·开场）",
+        ffChars: [],
+        lfDesc: (input.desc || "主体").slice(0, 40) + "（定格·收尾）",
+        lfChars: [],
+        motionDesc: "摄像机缓慢推近；画面内主体轻微转身。",
+        variationType: "small",
+        variationReason: "仅细微动作与轻微运镜。",
+      },
+      900,
+    );
+  }
+  return apiFetch<ShotDecomposeResult>(`/me/drama/projects/${id}/shot/decompose`, {
+    method: "POST",
+    body: input,
+  });
+}
+
+/** v0.97 P5：行级就地改写本镜结果。 */
+export interface ShotRewriteResult {
+  desc: string;
+  size: string;
+  move: string;
+  line: ScriptLine | null;
+}
+
+/** 行级就地改写本镜：按指令只改这一个镜头（未落库，前端合并到该镜）。 */
+export async function rewriteShot(
+  id: string,
+  input: { desc: string; size?: string; move?: string; line?: ScriptLine | null; instruction: string; cast?: string[] },
+): Promise<ShotRewriteResult> {
+  if (USE_MOCK) {
+    return mockDelay(
+      {
+        desc: `${input.desc}（已按「${input.instruction}」调整）`.slice(0, 80),
+        size: input.size || "中景",
+        move: input.move || "固定",
+        line: input.line ?? null,
+      },
+      800,
+    );
+  }
+  return apiFetch<ShotRewriteResult>(`/me/drama/projects/${id}/shot/rewrite`, {
+    method: "POST",
+    body: input,
+  });
+}
+
 /** 从大纲重抽角色阵容（未落库）。 */
 export async function castAiDraft(id: string): Promise<CharacterDef[]> {
   if (USE_MOCK) {

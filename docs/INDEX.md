@@ -34,6 +34,7 @@
 | [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |
 | [`docs/FACE_BEAUTY_RESEARCH.md`](FACE_BEAUTY_RESEARCH.md) | AiAvatar 平台 | 形象「精调 / 美颜」技术方案调研：浏览器端确定性美颜（推荐）vs 云 API vs Agnes i2i（last-reviewed 2026-06-07） |
 | [`docs/ADMIN_ALIGNMENT_AUDIT.md`](ADMIN_ALIGNMENT_AUDIT.md) | admin / server / 子应用 | 三端配置对齐审计（v0.53 同期）：10 项发现、3 项已随 v0.53 修复、7 项待办含优先级（last-reviewed 2026-06-07） |
+| [`docs/drama-storyboard-consistency.md`](drama-storyboard-consistency.md) | AI 短剧（视频工厂） | 一集多分镜视频一致性优化方案（借鉴 ViMax）：P0 镜间承接（已落地 v0.97）/ P1 storyboard prompt 增强 + 机位 / P2 seedance 首尾帧双关键帧 i2v + 链式承接（last-reviewed 2026-06-30） |
 
 不动产品规格的方向时不必读 §3 ~ §7。
 

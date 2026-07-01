@@ -11,6 +11,8 @@ export interface DramaScene {
   summary: string;
   shot: string;
   dialogue: string;
+  /** v0.97：本镜节拍语义标签（如 痛点开场 / 反转 / 强 CTA 收尾），由 AI 按本镜实际作用生成。 */
+  beat?: string;
   /** 音效 / 环境音（AI 可选生成，留空 = 无）。 */
   sfx?: string;
   /** 背景音乐建议（AI 可选生成，留空 = 无）。 */
@@ -62,6 +64,8 @@ export interface DramaEpisodeJob {
   status: string; // ready | rendering | failed
   video_url?: string | null;
   thumbnail_url?: string | null;
+  /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考。 */
+  last_frame_url?: string | null;
   progress_pct?: number;
   stage?: string;
   error_message?: string | null;

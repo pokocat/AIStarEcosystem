@@ -72,6 +72,11 @@ public class PromptService {
     public static final String KEY_DRAMA_CLIP_VIDEO = "drama.clip_video";
     public static final String KEY_DRAMA_SHORT_FRAME_IMAGE = "drama.short_frame_image";
     public static final String KEY_DRAMA_SHORT_CLIP_VIDEO = "drama.short_clip_video";
+    /** v0.97+: 镜头分解（借鉴 ViMax）—— 单镜画面 → 首帧/末帧静态快照 + 运动描述 + 变化等级，
+     *  供首+尾帧双关键帧 i2v（seedance），多镜一致性更稳。 */
+    public static final String KEY_DRAMA_DECOMPOSE = "drama.decompose";
+    /** v0.97+: 行级「就地改写本镜」（对齐 ViMax design_storyboard 的逐镜可控），替代整篇推倒重写的浮窗。 */
+    public static final String KEY_DRAMA_SHOT_REWRITE = "drama.shot_rewrite";
     /** v0.73+: 把一部爆款短剧反向蒸馏成「可复用配方 Recipe」（抽 skill 飞轮）。 */
     public static final String KEY_DRAMA_RECIPE_EXTRACT = "drama.recipe_extract";
     /** v0.79+: 互动剧（剧情互动短剧，DramaProject 的形态）—— 一句话主题起草整张剧集分支图。
@@ -101,6 +106,7 @@ public class PromptService {
                     KEY_DRAMA_OUTLINE, KEY_DRAMA_EPSCRIPT, KEY_DRAMA_SPLIT_SCENE, KEY_DRAMA_CAST,
                     KEY_DRAMA_FRAME_IMAGE, KEY_DRAMA_CLIP_VIDEO,
                     KEY_DRAMA_SHORT_FRAME_IMAGE, KEY_DRAMA_SHORT_CLIP_VIDEO,
+                    KEY_DRAMA_DECOMPOSE, KEY_DRAMA_SHOT_REWRITE,
                     KEY_DRAMA_RECIPE_EXTRACT,
                     KEY_DRAMA_INTERACTIVE_DRAFT,
                     KEY_DRAMA_BRAINSTORM_CHAT, KEY_DRAMA_BRAINSTORM_OUTLINE, KEY_DRAMA_HOTSPOT_DISTILL,

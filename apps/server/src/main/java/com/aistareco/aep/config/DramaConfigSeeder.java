@@ -28,6 +28,10 @@ public class DramaConfigSeeder implements CommandLineRunner {
     public static final String KEY_SHORT_ENTRY = "drama.credit.short-entry";
     /** 互动剧 · AI 起草整张分支图单次积分（v0.79）。 */
     public static final String KEY_INTERACTIVE_DRAFT = "drama.credit.interactive-draft";
+    /** 镜头分解（首/末帧 + 运动 + 变化等级）单次积分（v0.97 P2）。 */
+    public static final String KEY_DECOMPOSE = "drama.credit.decompose";
+    /** 行级「就地改写本镜」单次积分（v0.97 P5）。 */
+    public static final String KEY_SHOT_REWRITE = "drama.credit.shot-rewrite";
 
     private final PlatformConfigService configs;
 
@@ -49,5 +53,9 @@ public class DramaConfigSeeder implements CommandLineRunner {
                 "短视频 · 进工作台开拍单次积分（新建一条短视频草稿 = AI 出口播脚本与分镜；从创意市场套用单集创意同样计费）");
         configs.seedIfAbsent(KEY_INTERACTIVE_DRAFT, IntNode.valueOf(18),
                 "互动剧 · AI 起草整张剧集分支图单次积分（一句话主题 → 可玩可达含结局的有向图）");
+        configs.seedIfAbsent(KEY_DECOMPOSE, IntNode.valueOf(3),
+                "短剧 · 镜头分解单次积分（单镜 → 首/末帧静态快照 + 运动描述 + 变化等级，供首尾帧双关键帧 i2v）");
+        configs.seedIfAbsent(KEY_SHOT_REWRITE, IntNode.valueOf(2),
+                "短剧 · 行级就地改写本镜单次积分（按指令只改这一个镜头，不推倒整集）");
     }
 }

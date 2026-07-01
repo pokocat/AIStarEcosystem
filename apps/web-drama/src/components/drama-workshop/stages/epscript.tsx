@@ -10,8 +10,6 @@ import {
   ArrowRight,
   Check,
   Clapperboard,
-  Image as ImageIcon,
-  Lock,
   Plus,
   RefreshCw,
   UserRound,
@@ -20,7 +18,6 @@ import {
 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
-import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
 import { getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
@@ -42,18 +39,27 @@ function toFormShot(sh: BoardShot, refs: Material[]): FormShot {
     visual: sh.desc,
     size: sh.size,
     move: sh.move,
+    camId: sh.camId,
+    cast: sh.cast ?? [],
     voWho: sh.line?.who ?? "旁白",
     voText: sh.line?.text ?? "",
-    sfx: sh.voice ?? "",
-    bgm: "",
-    fx: "",
+    sfx: sh.sfx ?? sh.voice ?? "",
+    bgm: sh.bgm ?? "",
+    fx: sh.fx ?? "",
     refs: [...refs],
     sub: true,
-    flow: (sh.flow as FormShot["flow"]) ?? (sh.done ? "clip" : "draft"),
+    // 归一化历史 flow：旧版「已锁首帧 frameLocked」映射为 frame，避免旧数据落入无按钮死状态。
+    flow: sh.flow === "frameLocked" ? "frame" : ((sh.flow as FormShot["flow"]) ?? (sh.done ? "clip" : "draft")),
     frameUrls: sh.frameUrls,
     frameUrl: sh.frameUrl,
     videoUrl: sh.videoUrl,
     jobId: sh.jobId,
+    lastFrameUrl: sh.lastFrameUrl,
+    ffDesc: sh.ffDesc,
+    lfDesc: sh.lfDesc,
+    motionDesc: sh.motionDesc,
+    variationType: sh.variationType,
+    endFrameUrl: sh.endFrameUrl,
   };
 }
 
@@ -64,18 +70,28 @@ function toBoardShot(sh: FormShot, prevEngine?: BoardShot["engine"]): BoardShot 
     no: sh.no,
     size: sh.size,
     move: sh.move,
+    camId: sh.camId,
     dur: sh.dur,
     engine: prevEngine ?? "seedance",
     desc: sh.visual,
-    cast: [],
+    cast: sh.cast ?? [],
     line: sh.voText ? { who: sh.voWho || "旁白", text: sh.voText } : null,
     voice: sh.sfx || undefined,
+    sfx: sh.sfx || undefined,
+    bgm: sh.bgm || undefined,
+    fx: sh.fx || undefined,
     done: sh.flow === "done",
     flow: sh.flow,
     frameUrls: sh.frameUrls,
     frameUrl: sh.frameUrl,
     videoUrl: sh.videoUrl,
     jobId: sh.jobId,
+    lastFrameUrl: sh.lastFrameUrl,
+    ffDesc: sh.ffDesc,
+    lfDesc: sh.lfDesc,
+    motionDesc: sh.motionDesc,
+    variationType: sh.variationType,
+    endFrameUrl: sh.endFrameUrl,
   };
 }
 
@@ -128,12 +144,11 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [shotsMap, setShotsMap] = React.useState<Record<string, FormShot[]>>(initShots);
   const [genScene, setGenScene] = React.useState<string | null>(null);
   const [busyMap, setBusyMap] = React.useState<Record<string, FormShot["flow"]>>({});
+  // 镜间一致性承接：出首帧/出片时额外参考「角色图 + 场景参考图 + 同场上一镜画面」，保持人物/环境/光线连贯。
+  const [chainConsistency, setChainConsistency] = React.useState(true);
   const [style, setStyle] = React.useState(
     () => getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`,
   );
-  const [chat, setChat] = React.useState<ChatMsg[]>([
-    { who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` },
-  ]);
   const locked = !!state.lockedStages.epscript;
   const cfg = useDramaConfig();
 
@@ -143,7 +158,6 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     setCast(initCast());
     setPlot(initPlot());
     setStyle(getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`);
-    setChat([{ who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ep, initScenes, initShots, initCast, initPlot]);
 
@@ -196,6 +210,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const shotsRef = React.useRef(shotsMap);
   scenesRef.current = scenes;
   shotsRef.current = shotsMap;
+  // 持有最新 persist（绑定当前集）供卸载时 flush，避免用陈旧闭包写错集。
+  const persistRef = React.useRef(persist);
+  persistRef.current = persist;
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueSave = React.useCallback(() => {
     if (!ctx || locked) return;
@@ -205,8 +222,15 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       void persist(scenesRef.current, shotsRef.current).catch(() => {});
     }, 1500);
   }, [ctx, locked, persist]);
+  // 卸载（含按集 key 重挂载 = 切集）时：先 flush 待落库编辑，再清定时器。
+  // EpScriptStage 在 page.tsx 以 key={state.ep} 挂载，切集即卸载本集实例 →
+  // 用本集的 persistRef + 本集的 refs flush，绝不会把本集编辑写进别集（修跨集覆盖/丢失）。
   React.useEffect(() => () => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      void persistRef.current(scenesRef.current, shotsRef.current).catch(() => {});
+    }
   }, []);
 
   const markBusy = React.useCallback((id: string, to: FormShot["flow"]) => {
@@ -221,8 +245,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   }, []);
   const isBusy = React.useCallback((id: string) => !!busyMap[id], [busyMap]);
 
-  /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（对话驱动改写用）。 */
-  const runEpDraft = async (cost: number, instruction?: string, aiReply?: string) => {
+  /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（可选）。 */
+  const runEpDraft = async (cost: number, instruction?: string) => {
     if (phase === "gen") return;
     // v0.88：本集叙事(plot)为空就点「基于剧情重新生成分场分镜」→ 后端会 400 DRAMA_PLOT_REQUIRED。
     // 友好提示去填，不打会失败的请求（与脑暴大纲守卫同理）。
@@ -259,30 +283,50 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       await persist(scenesNext, shotsNext);
       dispatch({ type: "spend", n: cost });
       setPhase("done");
-      if (aiReply) setChat((c) => [...c, { who: "ai", text: aiReply }]);
       toast.success("已按最新整集剧情重写分场分镜");
     } catch (e) {
       setPhase("done");
-      const msg = aiErrorMessage(e, "分场分镜生成失败，请稍后重试");
-      setChat((c) => [...c, { who: "ai", text: `生成失败：${msg}` }]);
-      toast.error(msg);
+      toast.error(aiErrorMessage(e, "分场分镜生成失败，请稍后重试"));
     }
   };
 
   /** 基于整集剧情重新生成分场分镜 */
   const regenFromPlot = () => void runEpDraft(cfg.prices.epscript);
 
-  /* —— AI 对话驱动整体重写 —— */
-  const sendChat = (text: string) => {
-    if (phase === "gen") return;
-    setChat((c) => [...c, { who: "me", text }]);
-    void runEpDraft(
-      cfg.prices.epscript,
-      text,
-      text === "衍生上一集"
-        ? "已按上一集的人物关系和节奏衍生出本集脚本,钩子接得上,你看看。"
-        : "脚本已按你的要求更新，再看看还有哪里需要调整？",
-    );
+  /** v0.97 P5：行级就地改写本镜（对齐 ViMax design_storyboard 逐镜可控，替代整篇推倒重写浮窗）。 */
+  const [rewritingId, setRewritingId] = React.useState<string | null>(null);
+  const rewriteShot = async (sceneId: string, shotId: string, instruction: string) => {
+    const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === shotId);
+    if (!shot || !instruction.trim() || rewritingId) return;
+    if (!ctx?.projectId) {
+      toast.error("请先保存项目再改写");
+      return;
+    }
+    setRewritingId(shotId);
+    try {
+      const castNames = (shot.cast ?? []).map((cid) => data.characters.find((c) => c.id === cid)?.name).filter((n): n is string => !!n);
+      const r = await ProjectsApi.rewriteShot(ctx.projectId, {
+        desc: shot.visual,
+        size: shot.size,
+        move: shot.move,
+        line: shot.voText ? { who: shot.voWho || "旁白", text: shot.voText } : null,
+        instruction,
+        cast: castNames,
+      });
+      applyRenderPatch(sceneId, shotId, {
+        visual: r.desc,
+        size: r.size || shot.size,
+        move: r.move || shot.move,
+        voWho: r.line?.who || shot.voWho,
+        voText: r.line?.text ?? shot.voText,
+      });
+      dispatch({ type: "spend", n: cfg.prices.shotRewrite });
+      toast.success("本镜已按指令改写");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "改写失败，请稍后重试"));
+    } finally {
+      setRewritingId(null);
+    }
   };
 
   /* —— 场景 / 台词草稿（手改 → debounce 落库） —— */
@@ -327,7 +371,12 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         return;
       }
       if (job.status !== "ready" || frames.length === 0) return;
-      applyRenderPatch(sceneId, id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url });
+      // 重新出首帧 → 清掉基于旧首帧的末帧/拆镜/成片产物，避免新首帧配旧末帧（首尾不同源）。
+      applyRenderPatch(sceneId, id, {
+        flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url,
+        endFrameUrl: undefined, ffDesc: undefined, lfDesc: undefined, motionDesc: undefined, variationType: undefined,
+        videoUrl: undefined, lastFrameUrl: undefined,
+      });
       clearBusy(id);
       if (spend) {
         dispatch({ type: "spend", n: cost });
@@ -344,7 +393,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         return;
       }
       if (job.status !== "ready" || !job.video_url) return;
-      applyRenderPatch(sceneId, id, { flow: "clip", videoUrl: job.video_url ?? undefined, jobId: job.id });
+      applyRenderPatch(sceneId, id, { flow: "clip", videoUrl: job.video_url ?? undefined, lastFrameUrl: job.last_frame_url ?? undefined, jobId: job.id });
       clearBusy(id);
       if (spend) {
         dispatch({ type: "spend", n: cost });
@@ -495,18 +544,78 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     }
   };
 
-  /** 单镜生成：frame=首帧（后台图片任务），clip=直接出片/成片（后台视频任务 + 轮询）。 */
+  /* —— 逐镜渲染引擎（强版，v0.97 收敛：与原视频工厂同能力）—— */
+  /** 镜头 → 出图/出片提示词填充 vars（拆镜后首帧用 ffDesc、出片用 motionDesc；否则回退画面）。 */
+  const shotVars = (shot: FormShot, mode: "frame" | "clip"): Record<string, string> => {
+    const castNames = (shot.cast ?? []).map((cid) => data.characters.find((c) => c.id === cid)?.name).filter(Boolean).join("、");
+    const visual = (mode === "clip" ? shot.motionDesc : shot.ffDesc)?.trim() || shot.visual || "";
+    return {
+      visual,
+      size: shot.size || "",
+      move: shot.move || "",
+      lineClause: shot.voText ? `台词：${shot.voText}。` : "",
+      castClause: castNames ? `出场人物：${castNames}。` : "",
+      styleSuffix: `${data.projectInfo.type}风格。`,
+    };
+  };
+  /** 本场景绑定的参考图：按场名匹配项目级 SceneAsset（best-effort，环境一致）。 */
+  const sceneRefUrlFor = (sceneId: string): string | undefined => {
+    const place = scenesRef.current.find((s) => s.id === sceneId)?.place ?? "";
+    return (data.scenes ?? []).find((a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name))?.refUrl;
+  };
+  /** 同场上一镜的承接锚点：优先成片真实末帧，否则首帧。 */
+  const prevFrameInScene = (sceneId: string, shotId: string): string | undefined => {
+    const rows = shotsRef.current[sceneId] ?? [];
+    const idx = rows.findIndex((x) => x.id === shotId);
+    for (let i = idx - 1; i >= 0; i--) {
+      const f = rows[i].lastFrameUrl ?? rows[i].frameUrl ?? rows[i].frameUrls?.[0];
+      if (f) return f;
+    }
+    return undefined;
+  };
+  /** 同场下一镜的开场首帧：作本镜视频尾帧，切镜更平滑。 */
+  const nextFrameInScene = (sceneId: string, shotId: string): string | undefined => {
+    const rows = shotsRef.current[sceneId] ?? [];
+    const idx = rows.findIndex((x) => x.id === shotId);
+    for (let i = idx + 1; i < rows.length; i++) {
+      const f = rows[i].frameUrl ?? rows[i].frameUrls?.[0];
+      if (f) return f;
+    }
+    return undefined;
+  };
+  /** 出首帧参考图：出场角色图（缺省用本集所有已绑定角色）+ 场景参考图 + 同场上一镜画面。 */
+  const shotRefImages = (sceneId: string, shot: FormShot, extraLeading?: (string | undefined)[]): string[] => {
+    let charImgs = (shot.cast ?? [])
+      .map((cid) => data.characters.find((c) => c.id === cid))
+      .map((c) => c?.avatarImage || c?.refUrl || "")
+      .filter(Boolean);
+    if (charImgs.length === 0) {
+      // 该镜未标出场角色 → 退回本集所有有形象的角色，尽量锁脸。
+      charImgs = data.characters.map((c) => c.avatarImage || c.refUrl || "").filter(Boolean);
+    }
+    const all = [...(extraLeading ?? []).filter((x): x is string => !!x), ...charImgs];
+    if (chainConsistency) {
+      const sref = sceneRefUrlFor(sceneId);
+      if (sref) all.push(sref);
+      const prev = prevFrameInScene(sceneId, shot.id);
+      if (prev) all.push(prev);
+    }
+    return Array.from(new Set(all)).slice(0, 6);
+  };
+
+  /** 单镜生成：frame=首帧参考图（后台图片任务，出 2 版），clip=直接出片/成片（后台视频任务 + 轮询，带首尾帧）。 */
   const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
-    if (!shot || isBusy(id)) return;
+    if (!shot || isBusy(id) || decomposingId === id) return;
     markBusy(id, to);
     try {
       if (to === "frame") {
         const job = await RenderApi.submitFrameJob({
           kind: "shot",
-          vars: { visual: shot.visual, size: shot.size, move: shot.move, lineClause: "", castClause: "", styleSuffix: "" },
+          vars: shotVars(shot, "frame"),
+          refImages: shotRefImages(sceneId, shot),
           ratio: data.projectInfo.ratio,
-          count: 1,
+          count: 2,
           projectId: ctx?.projectId,
           sceneId,
           shotId: id,
@@ -516,12 +625,14 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         toast.success("首帧已加入后台生成");
         void watchFrameJob(job.id, sceneId, id, cost, msg, true);
       } else {
+        const ownFrame = shot.frameUrl ?? shot.frameUrls?.[0];
+        // 基于已选首帧出片用本镜首帧；直出（无首帧）镜间承接用上一镜真实末帧作开场。
+        const firstFrame = ownFrame ?? (chainConsistency ? prevFrameInScene(sceneId, id) : undefined);
+        // 尾帧（双关键帧）：优先拆镜末帧，否则同场下一镜开场首帧（seedance 支持，下游不支持忽略）。
+        const endFrame = shot.endFrameUrl ?? (chainConsistency ? nextFrameInScene(sceneId, id) : undefined);
         const job = await RenderApi.renderClip({
           kind: "shot",
-          vars: {
-            visual: shot.visual, size: shot.size, move: shot.move,
-            lineClause: shot.voText ? `台词：${shot.voText}` : "", castClause: "", styleSuffix: "",
-          },
+          vars: shotVars(shot, "clip"),
           name: `第${state.ep}集 镜${shot.no}`,
           durationSec: shot.dur,
           ratio: data.projectInfo.ratio,
@@ -529,8 +640,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           sceneId,
           shotId: id,
           episodeNo: state.ep,
-          target: shot.frameUrl ? "frame-clip" : "direct",
-          frameUrl: shot.frameUrl,
+          target: ownFrame ? "frame-clip" : "direct",
+          frameUrl: firstFrame,
+          lastFrameUrl: endFrame,
         });
         applyRenderPatch(sceneId, id, { jobId: job.id });
         toast.success("视频已加入后台生成");
@@ -539,6 +651,52 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     } catch (e) {
       clearBusy(id);
       toast.error(aiErrorMessage(e, "生成失败，请稍后重试"));
+    }
+  };
+
+  /** AI 拆镜（借鉴 ViMax）：单镜 → 首/末帧静态快照 + 运动 + 变化等级；末帧以本镜首帧为锚出图（首尾同源）。 */
+  // 拆镜走同步接口、不产生带 shot_id 的后台任务，故用独立 busy 态（不能用 busyMap——会被 5s 任务轮询清掉）。
+  const [decomposingId, setDecomposingId] = React.useState<string | null>(null);
+  const decompose = async (sceneId: string, id: string) => {
+    const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
+    if (!shot || isBusy(id) || decomposingId) return;
+    if (!ctx?.projectId) {
+      toast.error("请先保存项目再拆镜");
+      return;
+    }
+    setDecomposingId(id);
+    try {
+      const castNames = (shot.cast ?? []).map((cid) => data.characters.find((c) => c.id === cid)?.name).filter((n): n is string => !!n);
+      const d = await ProjectsApi.decomposeShot(ctx.projectId, { desc: shot.visual || "", cast: castNames });
+      let endFrameUrl: string | undefined;
+      if (d.lfDesc?.trim()) {
+        try {
+          const ownFrame = shot.frameUrl ?? shot.frameUrls?.[0];
+          const frames = await RenderApi.renderFrame({
+            kind: "shot",
+            vars: { ...shotVars(shot, "frame"), visual: d.lfDesc },
+            refImages: shotRefImages(sceneId, shot, [ownFrame]),
+            ratio: data.projectInfo.ratio,
+            count: 1,
+          });
+          endFrameUrl = frames[0]?.url;
+        } catch {
+          /* 末帧出图失败：保留文本，尾帧走 nextFrameInScene 兜底 */
+        }
+      }
+      applyRenderPatch(sceneId, id, {
+        ffDesc: d.ffDesc,
+        lfDesc: d.lfDesc,
+        motionDesc: d.motionDesc,
+        variationType: d.variationType,
+        endFrameUrl,
+      });
+      dispatch({ type: "spend", n: cfg.prices.decompose + (endFrameUrl ? cfg.prices.frame : 0) });
+      toast.success("已拆出首 / 末帧与运动描述");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "镜头分解失败，请稍后重试"));
+    } finally {
+      setDecomposingId(null);
     }
   };
 
@@ -560,13 +718,6 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         {/* 整宽容器：分镜表放开到整宽，上半部信息卡保持易读窄宽（左对齐同起点）。 */}
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "20px 28px 130px" }}>
           <div style={{ maxWidth: 880 }}>
-          {locked && (
-            <div className="row gap-3 fade-up" style={{ padding: "10px 14px", background: "var(--accent-soft)", borderRadius: 12, marginBottom: 14, color: "var(--accent)" }}>
-              <Lock size={15} />
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>本集脚本已锁定，视频工厂以此为准；如需调整可修改后重新确认。</span>
-            </div>
-          )}
-
           {/* ===== 本集剧情(先改剧情,再让 AI 按它重生成分场分镜) ===== */}
           <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
             <div className="row gap-2" style={{ marginBottom: 8 }}>
@@ -634,14 +785,21 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             <>
               <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px" }}>
                 <span style={{ fontWeight: 800, fontSize: 14.5 }}>分镜表</span>
-                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」</span>
+                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳</span>
+                <span className="grow" />
+                {!locked && (
+                  <label className="row gap-2" style={{ alignItems: "center", cursor: "pointer", fontSize: 11.5, color: "var(--ink-2)" }} title="出首帧/出片时额外参考同场上一镜画面 + 场景参考图，保持人物/环境/光线连贯">
+                    <input type="checkbox" checked={chainConsistency} onChange={(e) => setChainConsistency(e.target.checked)} style={{ width: 14, height: 14, accentColor: "var(--accent)" }} />
+                    镜间一致性承接
+                  </label>
+                )}
               </div>
               <StoryboardTable
                 scenes={scenes}
                 shotsMap={shotsMap}
                 speakerOptions={speakerOptions}
                 locked={locked}
-                busyMap={busyMap}
+                busyMap={decomposingId ? { ...busyMap, [decomposingId]: "frame" } : busyMap}
                 starts={starts}
                 genScene={genScene}
                 onUpdScene={updScene}
@@ -661,19 +819,19 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                   toast.success("本镜已验收入片");
                 }}
                 onFrameEdited={(sceneId, shotId, frameUrl) => updShot(sceneId, shotId, { frameUrl, frameUrls: [frameUrl] })}
+                onDecompose={(sceneId, shotId) => void decompose(sceneId, shotId)}
+                rewritingId={rewritingId}
+                onRewriteShot={(sceneId, shotId, instruction) => void rewriteShot(sceneId, shotId, instruction)}
               />
             </>
           )}
         </div>
       </div>
 
-      {/* 悬浮 AI 对话(左下):模板化提示词 衍生上一集 / 给我惊喜 */}
-      <AiChatPanel msgs={chat} quick={["衍生上一集", "给我惊喜"]} busy={phase === "gen"} onSend={sendChat} />
-
-      {/* 悬浮 CTA(右下) */}
-      {phase === "done" && !locked && (
+      {/* 悬浮 CTA(右下)：逐镜出片在本页分镜表完成后，去成片合成拼接。脚本始终可回改，不再锁定。 */}
+      {phase === "done" && (
         <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
-          <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>脚本与分镜已确认？</span>
+          <span className="faint" style={{ fontSize: 11, alignSelf: "center", paddingLeft: 4 }}>镜头都出片了？</span>
           <button
             type="button"
             className="btn btn-grad btn-sm"
@@ -681,17 +839,10 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               try {
                 await persist(scenes, shotsMap);
               } catch { /* persist 内部已提示 */ }
-              dispatch({ type: "lock", stage: "epscript", cost: 30 });
+              dispatch({ type: "jump", stage: "prompt" });
             }}
           >
-            <Check size={14} /> 保存分镜·去视频工厂
-          </button>
-        </div>
-      )}
-      {locked && (
-        <div className="row gap-2 pop-in" style={{ position: "absolute", right: 24, bottom: 22, zIndex: 20, background: "var(--surface)", padding: 9, borderRadius: 15, boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
-          <button type="button" className="btn btn-grad btn-sm" onClick={() => dispatch({ type: "jump", stage: "factory" })}>
-            <ImageIcon size={13} /> 去视频工厂出片 <ArrowRight size={12} />
+            <Check size={14} /> 保存·去成片合成 <ArrowRight size={12} />
           </button>
         </div>
       )}
