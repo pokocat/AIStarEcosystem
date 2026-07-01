@@ -11,7 +11,8 @@ import { AiImageEditModal } from "./ai-image-edit-modal";
 import type { FormShot, ShotFlow } from "./shot-form";
 
 const FRAME_COST = 2, DIRECT_COST = 9, CLIP_COST = 7;
-const VARI: Record<string, string> = { small: "小", medium: "中", large: "大" };
+// 运动幅度（拆镜 variation_type）用户友好文案，仅用于 hover 提示，不直接暴露 small/medium/large 黑话。
+const VARI: Record<string, string> = { small: "小幅", medium: "中幅", large: "大幅" };
 const TH: React.CSSProperties = { padding: "11px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".04em", borderBottom: "2px solid var(--line)", whiteSpace: "nowrap" };
 const TD: React.CSSProperties = { padding: "12px 12px", verticalAlign: "top", borderBottom: "1px solid var(--line-soft)" };
 
@@ -358,11 +359,15 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         </div>
       )}
 
-      {/* 末帧 / 运动信息（拆镜后：变化等级 + 运动，hover 看全文） */}
+      {/* 拆镜后状态：首尾帧就绪（可视文案用户友好、定宽不溢出；运动幅度 + 运动描述放 hover 提示）。 */}
       {!busy && s.motionDesc && (
-        <div className="row" style={{ gap: 3, alignItems: "center", fontSize: 9, color: "var(--ink-3)", maxWidth: 108 }} title={`运动：${s.motionDesc}`}>
+        <div
+          className="row"
+          style={{ gap: 3, alignItems: "center", fontSize: 9, color: "var(--ink-3)", maxWidth: 118, minWidth: 0 }}
+          title={`首帧→末帧运动幅度：${VARI[s.variationType ?? ""] ?? "适中"}。${s.motionDesc}`}
+        >
           <Sparkles size={9} style={{ color: "var(--accent)", flex: "none" }} />
-          <span style={{ whiteSpace: "nowrap" }}>已出末帧{s.variationType ? ` · 变化${VARI[s.variationType] ?? s.variationType}` : ""}</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>首尾帧就绪</span>
         </div>
       )}
 
