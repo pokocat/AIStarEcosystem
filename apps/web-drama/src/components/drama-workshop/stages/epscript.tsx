@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
+import { ConfirmDialog } from "@/components/common";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
 import { getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
@@ -426,6 +427,13 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     },
     [applyClipResult, clearBusy],
   );
+  // 有进行中任务时才轮询 render/tasks：busyMap 非空（出图/出片中）或某镜出片未出成片（jobId 未成）。
+  // 空闲时不轮询，避免后台一直刷；提交新任务使 pendingCount 变化 → effect 重启轮询。
+  const pendingCount = React.useMemo(() => {
+    let n = Object.keys(busyMap).length;
+    for (const rows of Object.values(shotsMap)) for (const s of rows) if (s.jobId && !s.videoUrl) n++;
+    return n;
+  }, [busyMap, shotsMap]);
   React.useEffect(() => {
     if (!ctx?.projectId) return;
     let cancelled = false;
@@ -463,13 +471,24 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         // 辅助恢复失败不影响脚本编辑。
       }
     };
-    void syncTasks();
-    const timer = window.setInterval(syncTasks, 5000);
+    const run = () => { if (!cancelled && !document.hidden) void syncTasks(); };
+    run(); // 进页 / 切集 / 任务起止时对齐一次
+    if (pendingCount === 0) return () => { cancelled = true; }; // 无进行中任务 → 不再轮询
+    const timer = window.setInterval(run, 5000);
+    const onVis = () => { if (!document.hidden) run(); }; // 切回前台立即补一次
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
-  }, [applyClipResult, applyFrameResult, cfg.prices.clip, cfg.prices.frame, ctx?.projectId, state.ep]);
+  }, [applyClipResult, applyFrameResult, cfg.prices.clip, cfg.prices.frame, ctx?.projectId, state.ep, pendingCount]);
+  // 删除本镜：先二次确认（§8 禁裸删），确认后再删。
+  const [delTarget, setDelTarget] = React.useState<{ sceneId: string; id: string; no: number } | null>(null);
+  const askDelShot = (sceneId: string, id: string) => {
+    const sh = (shotsRef.current[sceneId] ?? []).find((s) => s.id === id);
+    setDelTarget({ sceneId, id, no: sh?.no ?? 0 });
+  };
   const delShot = (sceneId: string, id: string) => {
     setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).filter((s) => s.id !== id).map((s, i) => ({ ...s, no: i + 1 })) }));
     queueSave();
@@ -813,7 +832,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                 genScene={genScene}
                 onUpdScene={updScene}
                 onUpdShot={updShot}
-                onDelShot={delShot}
+                onDelShot={askDelShot}
                 onAddShot={addShot}
                 onGenShots={genShots}
                 onRender={(sceneId, shotId, kind) => {
@@ -855,6 +874,17 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           </button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!delTarget}
+        onOpenChange={(next) => { if (!next) setDelTarget(null); }}
+        title={`删除第 ${delTarget?.no ?? ""} 镜？`}
+        description="删除后该镜的画面、台词、已生成的首帧/末帧/成片都会一并移除，且不可恢复。"
+        confirmLabel="删除本镜"
+        cancelLabel="取消"
+        destructive
+        onConfirm={() => { if (delTarget) delShot(delTarget.sceneId, delTarget.id); setDelTarget(null); }}
+      />
     </div>
   );
 }
