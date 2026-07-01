@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light anim">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AiAvatar · 数字人库</title>
+    <style id="theme-vars">
+/* ============================================================
+   AiAvatar 数字人资产平台 · 设计稿品牌样式
+   从源项目 DESIGN.md + globals.css 提取的完整设计令牌
+   ============================================================ */
+
+:root {
+  /* ——— 纸面 / 表面 ——— */
+  --canvas:     #F7F9FB;
+  --canvas-2:   #EEF2F6;
+  --surface:    #FFFFFF;
+  --surface-2:  #F6F8FB;
+  --surface-3:  #EDF1F5;
+
+  /* ——— 文字（深蓝灰墨） ——— */
+  --ink:    #14202B;
+  --ink-2:  #5A6873;
+  --ink-3:  #8A96A1;
+  --ink-4:  #BAC4CD;
+
+  /* ——— 线（冷灰） ——— */
+  --line:   #EBEFF3;
+  --line-2: #E0E6EC;
+  --line-3: #CFD7DF;
+
+  /* ——— 主色：Studio Cyan ——— */
+  --primary:      #12B3DE;
+  --primary-700:  #0C97BE;
+  --primary-600:  #10A6CF;
+  --primary-500:  #4CCBEC;
+  --primary-soft: #E6F5FA;
+  --primary-tint: #F3FAFD;
+  --on-primary:   #FFFFFF;
+  --grad:         linear-gradient(150deg, #2BC2E8, #12B3DE 60%, #0E9CC4);
+
+  /* ——— 语义（柔和） ——— */
+  --ok:      #1AA06E;  --ok-s:   #E2F4EC;
+  --warn:    #D9920E;  --warn-s: #FBF0DA;
+  --err:     #E0455C;  --err-s:  #FBE6EA;
+  --info:    #2BA6E8;  --info-s: #E6F2FB;
+
+  /* ——— 次要调色板（身份 / 导航） ——— */
+  --app-music:     #7C5CE6;
+  --app-commerce:  #E8884A;
+  --app-drama:     #3E63C8;
+  --path-ai:       #8F6BFF;
+  --store-video:   #1AA06E;
+  --store-3d:      #D9920E;
+  --store-voice:   #8A6BFF;
+
+  /* ——— 阴影（冷蓝调柔和扩散） ——— */
+  --sh-1:  0 1px 2px rgba(20,36,55,.035), 0 1px 3px rgba(20,36,55,.04);
+  --sh-2:  0 2px 6px rgba(20,36,55,.04),  0 8px 20px rgba(20,36,55,.055);
+  --sh-3:  0 8px 24px rgba(20,36,55,.07),  0 24px 50px rgba(20,36,55,.09);
+  --ring:  0 0 0 3px rgba(18,179,222,.16);
+
+  /* ——— 圆角 ——— */
+  --r-xs: 7px; --r-sm: 9px; --r-md: 12px; --r-lg: 15px;
+  --r-xl: 19px; --r-2xl: 24px; --r-pill: 999px;
+
+  /* ——— 字体 ——— */
+  --font-disp:  'Manrope', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --font-ui:    'Manrope', 'Noto Sans SC', system-ui, sans-serif;
+  --font-serif: 'Newsreader', 'Songti SC', 'Noto Serif SC', Georgia, serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--font-ui);
+  background: var(--canvas);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: rgba(18,179,222,.16); }
+
+h1, h2, h3, h4 { font-family: var(--font-disp); font-weight: 700; letter-spacing: -.02em; margin: 0; }
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* ============================================================
+   动画
+   ============================================================ */
+@keyframes fadeUp  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+html.anim .fade-up  { animation: fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+html.anim .fade-in  { animation: fadeIn .4s ease both; }
+html.anim .stagger > * { animation: fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+html.anim .stagger > *:nth-child(1) { animation-delay: .02s }
+html.anim .stagger > *:nth-child(2) { animation-delay: .06s }
+html.anim .stagger > *:nth-child(3) { animation-delay: .10s }
+html.anim .stagger > *:nth-child(4) { animation-delay: .14s }
+html.anim .stagger > *:nth-child(5) { animation-delay: .18s }
+html.anim .stagger > *:nth-child(6) { animation-delay: .22s }
+
+.mono { font-family: var(--font-mono); }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+
+/* ============================================================
+   Registry Dossier 原语
+   ============================================================ */
+.asset-name { font-family: var(--font-serif); font-weight: 500; letter-spacing: -.005em; }
+.asset-name-lg { font-family: var(--font-serif); font-weight: 500; letter-spacing: -.01em; line-height: 1.04; }
+.reg-no {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .04em;
+  color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px;
+}
+.reg-no::before {
+  content: 'REG'; font-size: 8.5px; font-weight: 600; letter-spacing: .12em;
+  color: var(--primary); background: var(--primary-soft); padding: 2px 5px; border-radius: 4px;
+}
+.field-label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-4);
+}
+.seal {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ok); border: 1.5px solid var(--ok); border-radius: var(--r-pill); padding: 5px 13px;
+  opacity: .9; transform: rotate(-4deg);
+}
+.corner-tick { width: 9px; height: 9px; border-top: 1.5px solid var(--line-3); border-left: 1.5px solid var(--line-3); }
+
+@keyframes sealIn { from { opacity: 0; transform: rotate(-4deg) scale(1.3); } to { opacity: .9; transform: rotate(-4deg) scale(1); } }
+html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
+
+/* ============================================================
+   移动端应用壳（设计稿展示用 · 固定宽度 375px 居中）
+   ============================================================ */
+.app-root {
+  position: relative; width: 375px; min-height: 812px; margin: 0 auto;
+  display: flex; flex-direction: column; background: var(--canvas);
+  overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20,36,55,.12);
+  border-radius: 32px;
+}
+.m-content { flex: 1; position: relative; min-height: 0; }
+
+/* 顶部导航 */
+.wx-nav {
+  position: relative; z-index: 30; flex: 0 0 48px; height: 48px;
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+}
+.wx-nav .nav-title {
+  flex: 1; text-align: center; font-family: var(--font-disp); font-weight: 700;
+  font-size: 16.5px; letter-spacing: -.01em; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wx-nav .nav-back {
+  width: 34px; height: 34px; flex: 0 0 34px; border: none; background: none; cursor: pointer;
+  display: grid; place-items: center; color: var(--ink); margin-left: -4px;
+}
+.wx-nav .nav-spacer { width: 34px; flex: 0 0 34px; }
+
+/* 内容区 */
+.m-body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+.m-body.has-tabbar { padding-bottom: 66px; }
+.m-body::-webkit-scrollbar { width: 0; height: 0; }
+
+/* 底部 Tab 栏 */
+.wx-tabbar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 45; height: 58px;
+  background: rgba(255,255,255,.86); backdrop-filter: blur(18px) saturate(160%);
+  border-top: 1px solid var(--line); display: flex; align-items: flex-start;
+  border-radius: 0 0 32px 32px;
+}
+.wx-tab {
+  flex: 1; height: 58px; border: none; background: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--ink-3); transition: color .15s;
+}
+.wx-tab .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .01em; }
+.wx-tab.on { color: var(--primary); }
+.wx-tab.on .lbl { font-weight: 700; }
+
+/* 中间凸起创建键 */
+.wx-fab-slot { flex: 1; position: relative; display: flex; justify-content: center; }
+.wx-fab {
+  position: absolute; top: -20px; width: 56px; height: 56px; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.78); cursor: pointer;
+  background: transparent; color: #fff; display: grid; place-items: center; isolation: isolate;
+  box-shadow: 0 12px 26px rgba(18,179,222,.24), 0 5px 12px rgba(76,92,125,.10);
+  transition: transform .18s cubic-bezier(.34,1.56,.64,1);
+}
+.wx-fab .fab-visual {
+  position: absolute; inset: 0; border-radius: inherit; overflow: hidden; z-index: 0;
+  background: var(--grad);
+}
+.wx-fab .fab-veil {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 34% 26%, rgba(255,255,255,.34), transparent 46%),
+    linear-gradient(145deg, rgba(255,255,255,.18), transparent 44%, rgba(10,60,84,.30) 100%);
+  box-shadow: 0 1px 0 rgba(255,255,255,.5) inset;
+}
+.wx-fab svg { position: relative; z-index: 1; filter: drop-shadow(0 2px 5px rgba(16,45,70,.30)); }
+.wx-fab .fab-lbl {
+  position: absolute; bottom: -19px; z-index: 2; font-size: 10.5px; font-weight: 700;
+  color: var(--primary); white-space: nowrap; text-shadow: 0 1px 0 rgba(255,255,255,.88);
+}
+
+/* 卡片 */
+.m-card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--sh-1);
+}
+.m-press:active { transform: scale(.985); }
+.m-tap { transition: transform .12s, background .15s; }
+.m-tap:active { transform: scale(.97); }
+.m-clip1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-clip2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.m-hscroll {
+  display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.m-hscroll::-webkit-scrollbar { height: 0; }
+.m-hscroll > * { scroll-snap-align: start; }
+
+/* 骨架屏 */
+.m-skel {
+  position: relative; overflow: hidden; background: var(--surface-3);
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.72) 50%, transparent 80%);
+  background-size: 200% 100%; animation: shimmer 1.3s ease-in-out infinite;
+}
+
+/* 遮罩层 */
+.m-overlay {
+  position: absolute; inset: 0; z-index: 80; background: var(--canvas);
+  display: flex; flex-direction: column;
+}
+.m-sheet-backdrop {
+  position: absolute; inset: 0; z-index: 85;
+  background: rgba(20,40,60,.4); backdrop-filter: blur(2px);
+  animation: mSheetFade .2s ease both;
+}
+@keyframes mSheetFade { from { opacity: .2; } to { opacity: 1; } }
+.m-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 86;
+  background: var(--surface); border-radius: 24px 24px 0 0;
+  box-shadow: var(--sh-3); padding-bottom: 20px;
+}
+.m-sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: var(--line-3); margin: 9px auto 4px; }
+
+/* 段落排版 */
+.m-body p { text-wrap: pretty; }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-primary: var(--on-primary);
+  }
+  @layer base {
+    body { background: var(--on-background); color: var(--on-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body>
+
+<div class="app-root">
+
+  <!-- ====== Top Nav ====== -->
+  <div class="wx-nav">
+    <button class="nav-back" aria-label="返回">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+    <div class="nav-title">数字人库</div>
+    <button class="nav-action" aria-label="搜索">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/>
+        <line x1="16.5" y1="16.5" x2="21" y2="21"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ====== Content ====== -->
+  <div class="m-content">
+    <div class="m-body has-tabbar">
+
+      <!-- Filter Pills -->
+      <div class="filter-row fade-up">
+        <button class="filter-pill active">全部</button>
+        <button class="filter-pill inactive">已就绪</button>
+        <button class="filter-pill inactive">生成中</button>
+        <button class="filter-pill inactive">草稿</button>
+      </div>
+
+      <!-- Asset Cards Grid -->
+      <div class="asset-grid stagger">
+
+        <!-- Card 1: 林晓曼 -->
+        <div class="asset-card">
+          <div class="card-portrait">
+            <svg class="portrait-bg" viewBox="0 0 200 250" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="pg1" x1="0" y1="0" x2="0.3" y2="1">
+                  <stop offset="0%" stop-color="#E6F5FA"/>
+                  <stop offset="100%" stop-color="#D2EDF6"/>
+                </linearGradient>
+              </defs>
+              <rect width="200" height="250" fill="url(#pg1)"/>
+            </svg>
+            <div class="avatar-silhouette">
+              <svg viewBox="0 0 80 120" fill="var(--ink)" opacity=".12">
+                <ellipse cx="40" cy="32" rx="22" ry="26"/>
+                <path d="M8 120 C8 82 22 65 40 62 C58 65 72 82 72 120Z"/>
+              </svg>
+            </div>
+            <div class="corner-tl"></div>
+            <div class="corner-tr"></div>
+            <div class="corner-bl"></div>
+            <div class="corner-br"></div>
+          </div>
+          <div class="card-body">
+            <div class="card-reg-row">
+              <span class="reg-chip"><span class="reg-label">REG</span> DH-1001</span>
+              <span class="path-badge ai">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M9.83 1.17a2.5 2.5 0 0 1 3.54 3.54L6 12.08l-3.66.61.61-3.66L9.83 1.17ZM9 2.41l-5.6 5.6-.37 2.2 2.2-.37L11 4.17 9.83 3 9 2.41Z"/></svg>
+                AI 原创
+              </span>
+            </div>
+            <div class="card-name">林晓曼</div>
+            <div class="card-archetype">时尚博主</div>
+            <div class="derivative-row">
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a1 1 0 0 1 .7.3l5.5 5.5a1 1 0 0 1-1.4 1.4L9 5.41V13.5a1 1 0 1 1-2 0V5.41L3.2 8.7a1 1 0 0 1-1.4-1.4l5.5-5.5A1 1 0 0 1 8 1.5Z"/></svg>
+                表情 2
+              </span>
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm1 2v6h10V5H3Z"/></svg>
+                场景 1
+              </span>
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 12.5 2h-9ZM4 4h8v5H4V4Zm2 7.5a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Zm3 0a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Z"/></svg>
+                视频 3
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: 陈一然 -->
+        <div class="asset-card">
+          <div class="card-portrait">
+            <svg class="portrait-bg" viewBox="0 0 200 250" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="pg2" x1="0" y1="0" x2="0.4" y2="1">
+                  <stop offset="0%" stop-color="#F3ECFF"/>
+                  <stop offset="100%" stop-color="#E4D9F7"/>
+                </linearGradient>
+              </defs>
+              <rect width="200" height="250" fill="url(#pg2)"/>
+            </svg>
+            <div class="avatar-silhouette">
+              <svg viewBox="0 0 80 120" fill="var(--ink)" opacity=".12">
+                <ellipse cx="40" cy="32" rx="22" ry="26"/>
+                <path d="M8 120 C8 82 22 65 40 62 C58 65 72 82 72 120Z"/>
+              </svg>
+            </div>
+            <div class="corner-tl"></div>
+            <div class="corner-tr"></div>
+            <div class="corner-bl"></div>
+            <div class="corner-br"></div>
+            <div class="card-status-overlay">
+              <span class="status-badge warn">
+                <svg class="gen-dot" width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3.5" fill="currentColor"/></svg>
+                生成中
+              </span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-reg-row">
+              <span class="reg-chip"><span class="reg-label">REG</span> DH-1002</span>
+              <span class="path-badge clone">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1A3.5 3.5 0 0 0 3 4.5V7H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H9V4.5a3.5 3.5 0 0 0-2.5-1ZM5 7V4.5a1.5 1.5 0 1 1 3 0V7H5Z"/></svg>
+                真人复刻
+              </span>
+            </div>
+            <div class="card-name">陈一然</div>
+            <div class="card-archetype">美食达人</div>
+            <div class="derivative-row">
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a1 1 0 0 1 .7.3l5.5 5.5a1 1 0 0 1-1.4 1.4L9 5.41V13.5a1 1 0 1 1-2 0V5.41L3.2 8.7a1 1 0 0 1-1.4-1.4l5.5-5.5A1 1 0 0 1 8 1.5Z"/></svg>
+                表情 1
+              </span>
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 12.5 2h-9ZM4 4h8v5H4V4Zm2 7.5a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Zm3 0a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Z"/></svg>
+                视频 2
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: 周辰 -->
+        <div class="asset-card">
+          <div class="card-portrait">
+            <svg class="portrait-bg" viewBox="0 0 200 250" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="pg3" x1="0" y1="0" x2="0.5" y2="1">
+                  <stop offset="0%" stop-color="#E2F4EC"/>
+                  <stop offset="100%" stop-color="#C8E8DA"/>
+                </linearGradient>
+              </defs>
+              <rect width="200" height="250" fill="url(#pg3)"/>
+            </svg>
+            <div class="avatar-silhouette">
+              <svg viewBox="0 0 80 120" fill="var(--ink)" opacity=".12">
+                <ellipse cx="40" cy="32" rx="22" ry="26"/>
+                <path d="M8 120 C8 82 22 65 40 62 C58 65 72 82 72 120Z"/>
+              </svg>
+            </div>
+            <div class="corner-tl"></div>
+            <div class="corner-tr"></div>
+            <div class="corner-bl"></div>
+            <div class="corner-br"></div>
+            <div class="card-status-overlay">
+              <span class="status-badge ok">
+                <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                已就绪
+              </span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-reg-row">
+              <span class="reg-chip"><span class="reg-label">REG</span> DH-1003</span>
+              <span class="path-badge ai">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M9.83 1.17a2.5 2.5 0 0 1 3.54 3.54L6 12.08l-3.66.61.61-3.66L9.83 1.17ZM9 2.41l-5.6 5.6-.37 2.2 2.2-.37L11 4.17 9.83 3 9 2.41Z"/></svg>
+                AI 原创
+              </span>
+            </div>
+            <div class="card-name">周辰</div>
+            <div class="card-archetype">科技讲师</div>
+            <div class="derivative-row">
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a1 1 0 0 1 .7.3l5.5 5.5a1 1 0 0 1-1.4 1.4L9 5.41V13.5a1 1 0 1 1-2 0V5.41L3.2 8.7a1 1 0 0 1-1.4-1.4l5.5-5.5A1 1 0 0 1 8 1.5Z"/></svg>
+                表情 4
+              </span>
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm1 2v6h10V5H3Z"/></svg>
+                场景 2
+              </span>
+              <span class="derivative-chip">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 12.5 2h-9ZM4 4h8v5H4V4Zm2 7.5a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Zm3 0a.5.5 0 1 1 1 0 .5.5 0 0 1-1 0Z"/></svg>
+                视频 5
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: 许婉清 -->
+        <div class="asset-card">
+          <div class="card-portrait">
+            <svg class="portrait-bg" viewBox="0 0 200 250" preserveAspectRatio="xMidYMid slice">
+              <defs>
+                <linearGradient id="pg4" x1="0" y1="0" x2="0.6" y2="1">
+                  <stop offset="0%" stop-color="#EDF1F5"/>
+                  <stop offset="100%" stop-color="#DDE4EB"/>
+                </linearGradient>
+              </defs>
+              <rect width="200" height="250" fill="url(#pg4)"/>
+            </svg>
+            <div class="avatar-silhouette">
+              <svg viewBox="0 0 80 120" fill="var(--ink)" opacity=".10">
+                <ellipse cx="40" cy="32" rx="22" ry="26"/>
+                <path d="M8 120 C8 82 22 65 40 62 C58 65 72 82 72 120Z"/>
+              </svg>
+            </div>
+            <div class="corner-tl"></div>
+            <div class="corner-tr"></div>
+            <div class="corner-bl"></div>
+            <div class="corner-br"></div>
+            <div class="card-status-overlay">
+              <span class="status-badge mute">
+                <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="3"/></svg>
+                草稿
+              </span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-reg-row">
+              <span class="reg-chip"><span class="reg-label">REG</span> DH-1004</span>
+              <span class="path-badge clone">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1A3.5 3.5 0 0 0 3 4.5V7H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H9V4.5a3.5 3.5 0 0 0-2.5-1ZM5 7V4.5a1.5 1.5 0 1 1 3 0V7H5Z"/></svg>
+                真人复刻
+              </span>
+            </div>
+            <div class="card-name">许婉清</div>
+            <div class="card-archetype">生活分享</div>
+            <div class="derivative-row">
+              <span class="derivative-chip" style="opacity:.45">
+                <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a1 1 0 0 1 .7.3l5.5 5.5a1 1 0 0 1-1.4 1.4L9 5.41V13.5a1 1 0 1 1-2 0V5.41L3.2 8.7a1 1 0 0 1-1.4-1.4l5.5-5.5A1 1 0 0 1 8 1.5Z"/></svg>
+                表情 0
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /asset-grid -->
+    </div><!-- /m-body -->
+
+    <!-- ====== Bottom Tab Bar ====== -->
+    <div class="wx-tabbar">
+      <!-- Tab 1: 首页 -->
+      <button class="wx-tab">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5Z"/>
+          <polyline points="9 21 9 14 15 14 15 21"/>
+        </svg>
+        <span class="lbl">首页</span>
+      </button>
+
+      <!-- Tab 2: 数字人 (active) -->
+      <button class="wx-tab on">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span class="lbl">数字人</span>
+      </button>
+
+      <!-- FAB Create -->
+      <div class="wx-fab-slot">
+        <button class="wx-fab">
+          <div class="fab-visual">
+            <div class="fab-veil"></div>
+          </div>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span class="fab-lbl">创建</span>
+        </button>
+      </div>
+
+      <!-- Tab 4: 应用 -->
+      <button class="wx-tab">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        </svg>
+        <span class="lbl">应用</span>
+      </button>
+
+      <!-- Tab 5: 我的 -->
+      <button class="wx-tab">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span class="lbl">我的</span>
+      </button>
+    </div>
+
+  </div><!-- /m-content -->
+</div><!-- /app-root -->
+
+
+    <style>
+    /* ——— Page wrapper ——— */
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 40px 20px 80px;
+      min-height: 100vh;
+      background: #E8ECF1;
+    }
+
+    /* ——— Filter pills ——— */
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      padding: 8px 18px 14px;
+      overflow-x: auto;
+    }
+    .filter-pill {
+      flex-shrink: 0;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 16px;
+      border-radius: var(--r-pill);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .01em;
+      border: none;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .filter-pill.active {
+      background: var(--ink);
+      color: #fff;
+    }
+    .filter-pill.inactive {
+      background: var(--surface-3);
+      color: var(--ink-2);
+    }
+    .filter-pill.inactive:hover {
+      background: var(--line-2);
+    }
+
+    /* ——— Asset grid ——— */
+    .asset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 0 18px 24px;
+    }
+
+    /* ——— Asset card ——— */
+    .asset-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      box-shadow: var(--sh-1);
+      overflow: hidden;
+      transition: transform .12s, box-shadow .15s;
+      cursor: pointer;
+    }
+    .asset-card:active {
+      transform: scale(.97);
+    }
+
+    /* Portrait area */
+    .card-portrait {
+      position: relative;
+      aspect-ratio: 4 / 5;
+      overflow: hidden;
+    }
+    .card-portrait .portrait-bg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Corner ticks */
+    .corner-tl,
+    .corner-tr,
+    .corner-bl,
+    .corner-br {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+    }
+    .corner-tl { top: 8px; left: 8px; border-top: 1.5px solid var(--line-3); border-left: 1.5px solid var(--line-3); }
+    .corner-tr { top: 8px; right: 8px; border-top: 1.5px solid var(--line-3); border-right: 1.5px solid var(--line-3); }
+    .corner-bl { bottom: 8px; left: 8px; border-bottom: 1.5px solid var(--line-3); border-left: 1.5px solid var(--line-3); }
+    .corner-br { bottom: 8px; right: 8px; border-bottom: 1.5px solid var(--line-3); border-right: 1.5px solid var(--line-3); }
+
+    /* Status overlay badge */
+    .card-status-overlay {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      z-index: 4;
+    }
+    .card-status-overlay .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 9px;
+      border-radius: var(--r-pill);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      backdrop-filter: blur(8px);
+    }
+    .status-badge.warn {
+      background: rgba(251, 240, 218, .92);
+      color: var(--warn);
+    }
+    .status-badge.ok {
+      background: rgba(226, 244, 236, .92);
+      color: var(--ok);
+    }
+    .status-badge.mute {
+      background: rgba(237, 241, 245, .92);
+      color: var(--ink-3);
+    }
+
+    /* Card body */
+    .card-body {
+      padding: 10px 11px 12px;
+    }
+
+    /* REG row */
+    .card-reg-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+    .card-reg-row .reg-chip {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: .04em;
+      color: var(--ink-3);
+    }
+    .card-reg-row .reg-chip .reg-label {
+      font-size: 8.5px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      color: var(--primary);
+      background: var(--primary-soft);
+      padding: 2px 5px;
+      border-radius: 4px;
+      margin-right: 2px;
+    }
+
+    /* Path badge */
+    .path-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 8px;
+      border-radius: var(--r-pill);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    .path-badge.ai {
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+    .path-badge.clone {
+      background: #F3ECFF;
+      color: #8F6BFF;
+    }
+
+    /* Asset name */
+    .card-name {
+      font-family: var(--font-serif);
+      font-weight: 500;
+      font-size: 16px;
+      letter-spacing: -.005em;
+      color: var(--ink);
+      line-height: 1.2;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Archetype */
+    .card-archetype {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--ink-3);
+      margin-bottom: 8px;
+    }
+
+    /* Derivative chips */
+    .derivative-row {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .derivative-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2.5px 7px;
+      border-radius: var(--r-pill);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--ink-2);
+    }
+    .derivative-chip svg {
+      width: 11px;
+      height: 11px;
+      opacity: .55;
+    }
+
+    /* ——— Search icon button ——— */
+    .nav-action {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      color: var(--ink);
+      margin-right: -4px;
+    }
+
+    /* ——— Avatar silhouette ——— */
+    .avatar-silhouette {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .avatar-silhouette svg {
+      width: 55%;
+      height: 55%;
+      opacity: .18;
+    }
+
+    /* ——— Generating animation ——— */
+    @keyframes genPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .45; }
+    }
+    .gen-dot {
+      animation: genPulse 1.2s ease-in-out infinite;
+    }
+  </style>
+</body>
+</html>

@@ -760,20 +760,22 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           <div style={{ maxWidth: 880 }}>
           {/* ===== 本集剧情(先改剧情,再让 AI 按它重生成分场分镜) ===== */}
           <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
-            <div className="row gap-2" style={{ marginBottom: 8 }}>
+            <div className="row gap-2" style={{ marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="num tag tag-accent" style={{ flex: "none" }}>第 {state.ep} 集</span>
-              <span style={{ fontWeight: 800, fontSize: 13.5 }}>本集剧情</span>
-              {epOutline && <span className="tag tag-gray" style={{ flex: "none" }}>{epOutline.beat}</span>}
-              <span className="faint" style={{ fontSize: 11 }}>仅供预览，不直接参与生成</span>
-              <span className="grow" />
+              <span style={{ fontWeight: 800, fontSize: 13.5, flex: "none", whiteSpace: "nowrap" }}>本集剧情</span>
+              {epOutline?.beat && (
+                <span className="tag tag-gray" style={{ flex: "none", maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={epOutline.beat}>{epOutline.beat}</span>
+              )}
+              <span className="faint" style={{ fontSize: 11, flex: "none", whiteSpace: "nowrap" }}>仅供预览，不直接参与生成</span>
+              <span className="grow" style={{ minWidth: 12 }} />
               {!locked && (
                 <CreditButton
                   cost={cfg.prices.epscript}
                   onConfirm={regenFromPlot}
                   confirmTitle="重新生成分场分镜"
                   confirmBody="AI 会按当前剧情把整集重写为新的分场分镜。"
-                  className="btn btn-line btn-sm"
-                  style={{ flex: "none" }}
+                  className="btn btn-grad btn-sm"
+                  style={{ flex: "none", whiteSpace: "nowrap" }}
                   disabled={phase === "gen"}
                   title="对当前分场分镜不满意？修改剧情后点击此处，AI 将据此重写整集"
                 >
