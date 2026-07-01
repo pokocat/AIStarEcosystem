@@ -31,9 +31,10 @@ export interface StoryboardTableProps {
   sceneAssets?: SceneAsset[];
   /** 本集角色——画面内容 @提及菜单来源；内联提及即本镜出场人物（写入 shot.cast）。 */
   characters?: MentionChar[];
-  /** 首帧/视频真实单价（视频=带货线 material.video-generate，admin 可配）；驱动按钮展示与确认阈值。 */
+  /** 首帧/视频/拆镜真实单价（均短剧 app 维度 drama.credit.*，admin 可配）；驱动按钮展示与确认阈值。 */
   frameCost?: number;
   clipCost?: number;
+  splitCost?: number;
   shotsMap: Record<string, FormShot[]>;
   speakerOptions: string[];
   locked?: boolean;
@@ -130,7 +131,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
                             <button type="button" className="btn btn-line btn-sm" onClick={() => props.onAddShot(sc.id, i)}>
                               <Plus size={13} /> 加一镜
                             </button>
-                            <CreditButton cost={6} onConfirm={() => props.onGenShots(sc.id, i)} confirmTitle="拆分镜" confirmBody="AI 将本场拆解为可逐镜编辑的分镜（需先填写场面描述或台词，否则将先生成一条空镜头供手动填写）。" className="btn btn-primary btn-sm">
+                            <CreditButton cost={props.splitCost ?? 6} onConfirm={() => props.onGenShots(sc.id, i)} confirmTitle="拆分镜" confirmBody="AI 将本场拆解为可逐镜编辑的分镜（需先填写场面描述或台词，否则将先生成一条空镜头供手动填写）。" className="btn btn-primary btn-sm">
                               <Wand2 size={13} /> 让 AI 拆分镜
                             </CreditButton>
                           </div>

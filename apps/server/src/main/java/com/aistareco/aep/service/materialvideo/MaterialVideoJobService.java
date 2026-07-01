@@ -79,16 +79,19 @@ public class MaterialVideoJobService {
         // 失败快：未配 token 直接抛明确错误（不静默兜底，对齐 MaterialAiService）。
         modelClient.ensureConfigured();
 
-        long unit = videoUnitCost();
-        boolean charge = billable(userId) && unit > 0;
+        boolean billable = billable(userId);
 
         List<MaterialVideoJob> created = new ArrayList<>();
         for (JsonNode item : items) {
+            // 单价按 item 决定：调用方可传 credit_cost 覆盖（如短剧按 app 维度独立定价，解耦带货线），
+            // 否则回落带货线 material.video-generate。本服务不感知具体业务线。
+            long unit = itemUnitCost(item);
             MaterialVideoJob job = buildJob(item, userId);
-            if (charge) {
+            if (billable && unit > 0) {
                 // 余额不足 → CreditService 抛 402（PAYMENT_REQUIRED），整批回滚（同事务）。
+                String label = orDefault(text(item, "credit_label"), "带货视频生成");
                 creditService.hold(userId, unit, CREDIT_REF_TYPE, job.getId(),
-                        "带货视频生成 · " + safe(job.getName(), "视频"));
+                        label + " · " + safe(job.getName(), "视频"));
                 job.setCreditsHeld(unit);
             }
             jobRepo.save(job);
@@ -108,7 +111,7 @@ public class MaterialVideoJobService {
             ids.forEach(worker::generateAsync);
         }
 
-        log.info("[material-video] submitted {} job(s) user={} charge={} unit={}", created.size(), userId, charge, unit);
+        log.info("[material-video] submitted {} job(s) user={} billable={}", created.size(), userId, billable);
         return created.stream().map(this::toCard).toList();
     }
 
@@ -239,6 +242,13 @@ public class MaterialVideoJobService {
             case "failed" -> "生成失败";
             default -> "处理中";
         };
+    }
+
+    /** 单条视频单价：调用方在 item 里显式传 credit_cost（≥0）则用它（app 维度独立定价，解耦本带货线），否则回落带货线定价。 */
+    private long itemUnitCost(JsonNode item) {
+        long override = item.path("credit_cost").asLong(-1L);
+        if (override >= 0) return override;
+        return videoUnitCost();
     }
 
     private long videoUnitCost() {

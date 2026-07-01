@@ -785,6 +785,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       locked={locked}
       frameCost={cfg.prices.frame}
       clipCost={cfg.prices.clip}
+      splitCost={cfg.prices.splitScene}
       busyMap={decomposingId ? { ...busyMap, [decomposingId]: "frame" } : busyMap}
       starts={starts}
       genScene={genScene}
