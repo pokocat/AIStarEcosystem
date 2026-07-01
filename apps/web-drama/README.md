@@ -68,6 +68,19 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.98 · 2026-06-30 · 短剧工作台收敛为「脚本表=唯一逐镜工作面」（删视频工厂阶段）
+
+> 目标：一集的出片全在剧集脚本的分镜表内完成，更直观；不再跳独立「视频工厂」。项目从 6 阶段收敛为 **5 阶段**（选题 / 大纲 / 角色 / 剧集脚本 / 成片合成）。真源 [`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)。
+
+- **抽 `use-shot-render` 共享渲染引擎**（Epic-1）：把逐镜渲染强逻辑（出图 4 版 / 锁 / 角色+场景+镜间承接参考图 / 首尾帧 / 拆镜 / 轮询 / 批量 / 统一单价）从视频工厂抽出。
+- **剧集脚本分镜表升级为强渲染面**（Epic-2）：`FormShot` 补 `cast`/`camId`/首尾帧/拆镜字段并完整 round-trip（修 sfx/bgm/fx 回读丢字段旧 bug）；epscript render 引擎升级为强版；首帧格加 **4 版挑选 + AI 拆镜 + 首帧▷末帧双联可视化 + hover 预演**（P3 aha）+「镜间一致性承接」开关。
+- **删「视频工厂」阶段 + 抽屉 + `use-shot-render`/factory 源码**（Epic-3）：`stages-config` 去 factory、成片合成前移为剧集第 2 步；`assemble` 空态引导回剧集脚本出片。
+- **P1 解决**：epscript 不再 lock，脚本始终可编辑、随时回改；CTA 改「保存·去成片合成」。
+- **P5**：删左下角「AI 脚本助手」浮窗（`ai-chat-panel` 删除），改分镜表**行级 Wand2 就地改写本镜**（指令 + 快捷 chip，只改这一镜；新后端 `POST /shot/rewrite` + `drama.shot_rewrite` + `drama.credit.shot-rewrite`）；整篇重写仍由顶部按钮承接。
+- **P6**：短视频工坊面包屑按 pathname 派生（不再恒显「短剧工坊」）；beat 标签改 AI 逐镜生成（去写死三词）。
+- **P4**：视频工厂的假模型下拉（`GenSettingsBar` 的 `GEN_MODELS`）随工厂删除已消失（不再有假选项，§8.0）。**真·多模型选择**（一个用途绑多个候选端点 + 按模型计费）涉及共享 `AiAppBinding`（主键即 purpose，music/celebrity/drama 共用），拆为独立后续 PR，见 `TODO.md` D-11。
+- **门禁**：server compile + web-drama typecheck/build（30 路由）+ check:api-contract 全绿。
+
 ### v0.97 · 2026-06-30 · 分镜一致性优化（借鉴 ViMax · P0/P1/P2 全量落地）
 
 > 痛点：一集多个分镜视频之间，人物形象 / 场景环境 / 光线构图 不稳定。借鉴 [HKUDS/ViMax](https://github.com/HKUDS/ViMax)——一致性**主要靠视觉生成层（参考图复用 + 关键帧锚定 + 镜间链式参考），不是靠 storyboard 文本**。完整方案真源：[`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)。

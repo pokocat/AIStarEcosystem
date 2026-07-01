@@ -1,6 +1,17 @@
 # 短剧分镜一致性优化方案（借鉴 ViMax）
 
-> last-reviewed：2026-06-30 / v0.97 P0/P1/P2 全量落地（镜间承接 + 场景绑定 + 机位/电影语言 prompt + seedance 首尾帧双关键帧 + return_last_frame 链式承接闭环 + decompose 节点）
+> last-reviewed：2026-06-30 / v0.98 工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（删视频工厂阶段，6→5 阶段）
+> v0.97 P0/P1/P2 全量落地（镜间承接 + 场景绑定 + 机位/电影语言 prompt + seedance 首尾帧双关键帧 + return_last_frame 链式承接闭环 + decompose 节点）
+
+## v0.98 结构收敛（方案 B）
+
+用户决策：逐镜出片全在**剧集脚本分镜表**内完成，删独立「视频工厂」阶段（项目 6→5 阶段）。
+- 强渲染逻辑抽成 `use-shot-render.ts`（供参考/复用），最终由 `epscript.tsx` 承载：出图 4 版挑选、角色+场景+镜间承接参考图、首尾帧、AI 拆镜（首帧▷末帧双联 + hover 预演）、镜间一致性开关。
+- 删 `stages/factory.tsx` + `FactoryDrawer` + `use-shot-render` 消费方（factory）；`stages-config` 去 factory，成片合成前移。
+- P1：epscript 不再 lock，脚本始终可编辑（`保存·去成片合成`）。
+- P5：删左下 `ai-chat-panel` 浮窗 → 行级 Wand2 就地改写本镜（`/shot/rewrite` + `drama.shot_rewrite`）。
+- P6：短视频面包屑按 pathname 派生 + beat 改 AI 逐镜生成。
+- P4：假模型下拉随工厂删除已消失；真·多模型选择拆独立 PR（TODO D-11，改共享 `AiAppBinding`）。
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、
