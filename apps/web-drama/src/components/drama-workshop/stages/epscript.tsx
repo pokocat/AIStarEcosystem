@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Check,
   Clapperboard,
+  Maximize2,
   Plus,
   RefreshCw,
   UserRound,
@@ -166,6 +167,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [busyMap, setBusyMap] = React.useState<Record<string, FormShot["flow"]>>({});
   // 镜间一致性承接：出首帧/出片时额外参考「角色图 + 场景参考图 + 同场上一镜画面」，保持人物/环境/光线连贯。
   const [chainConsistency, setChainConsistency] = React.useState(true);
+  // 分镜表全屏放大（与内联共用同一份表，编辑实时同步），对齐短视频「放大」体验。
+  const [tableMax, setTableMax] = React.useState(false);
   const [style, setStyle] = React.useState(
     () => getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`,
   );
@@ -771,12 +774,46 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     }
   }
 
+  // 分镜表元素：内联与「放大」全屏弹层共用同一份（同一组 state/handlers，编辑实时同步）。
+  const storyboardTable = (
+    <StoryboardTable
+      scenes={scenes}
+      sceneAssets={data.scenes ?? []}
+      characters={data.characters.map((c) => ({ id: c.id, name: c.name }))}
+      shotsMap={shotsMap}
+      speakerOptions={speakerOptions}
+      locked={locked}
+      busyMap={decomposingId ? { ...busyMap, [decomposingId]: "frame" } : busyMap}
+      starts={starts}
+      genScene={genScene}
+      onUpdScene={updScene}
+      onUpdShot={updShot}
+      onDelShot={askDelShot}
+      onAddShot={addShot}
+      onGenShots={genShots}
+      onRender={(sceneId, shotId, kind) => {
+        if (kind === "frame") render(sceneId, shotId, "frame", 2, "首帧已生成，确认后可继续生成视频");
+        else if (kind === "direct") render(sceneId, shotId, "clip", 9, "分镜视频已生成，请验收");
+        else render(sceneId, shotId, "clip", 7, "成片已生成，请验收");
+      }}
+      onApprove={(sceneId, shotId) => {
+        const next = { ...shotsMap, [sceneId]: (shotsMap[sceneId] ?? []).map((x) => (x.id === shotId ? { ...x, flow: "done" as const } : x)) };
+        setShotsMap(next);
+        void persist(scenes, next);
+        toast.success("本镜已验收入片");
+      }}
+      onFrameEdited={(sceneId, shotId, frameUrl) => updShot(sceneId, shotId, { frameUrl, frameUrls: [frameUrl] })}
+      onDecompose={(sceneId, shotId) => void decompose(sceneId, shotId)}
+      rewritingId={rewritingId}
+      onRewriteShot={(sceneId, shotId, instruction) => void rewriteShot(sceneId, shotId, instruction)}
+    />
+  );
+
   return (
     <div className="col" style={{ height: "100%", minHeight: 0, position: "relative" }}>
       <div className="scroll grow" style={{ minHeight: 0 }}>
         {/* 整宽容器：分镜表放开到整宽，上半部信息卡保持易读窄宽（左对齐同起点）。 */}
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "20px 28px 130px" }}>
-          <div style={{ maxWidth: 880 }}>
           {/* ===== 本集剧情(先改剧情,再让 AI 按它重生成分场分镜) ===== */}
           <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
             <div className="row gap-2" style={{ marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -839,7 +876,6 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               <GenSkeleton lines={4} label={`正在重写第 ${state.ep} 集脚本…`} />
             </div>
           )}
-          </div>
 
           {/* ===== 分镜表（设计稿平铺表格 · 结构化字段喂视频生成提示词；整宽展示） ===== */}
           {phase === "done" && (
@@ -848,6 +884,11 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                 <span style={{ fontWeight: 800, fontSize: 14.5 }}>分镜表</span>
                 <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳</span>
                 <span className="grow" />
+                {allShots.length > 0 && (
+                  <button type="button" className="chip" style={{ height: 24, fontSize: 11 }} title="全屏放大分镜表，方便逐镜编辑" onClick={() => setTableMax(true)}>
+                    <Maximize2 size={12} /> 放大
+                  </button>
+                )}
                 {!locked && (
                   <label className="row gap-2" style={{ alignItems: "center", cursor: "pointer", fontSize: 11.5, color: "var(--ink-2)" }} title="出首帧/出片时额外参考同场上一镜画面 + 场景参考图，保持人物/环境/光线连贯">
                     <input type="checkbox" checked={chainConsistency} onChange={(e) => setChainConsistency(e.target.checked)} style={{ width: 14, height: 14, accentColor: "var(--accent)" }} />
@@ -855,37 +896,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                   </label>
                 )}
               </div>
-              <StoryboardTable
-                scenes={scenes}
-                sceneAssets={data.scenes ?? []}
-                characters={data.characters.map((c) => ({ id: c.id, name: c.name }))}
-                shotsMap={shotsMap}
-                speakerOptions={speakerOptions}
-                locked={locked}
-                busyMap={decomposingId ? { ...busyMap, [decomposingId]: "frame" } : busyMap}
-                starts={starts}
-                genScene={genScene}
-                onUpdScene={updScene}
-                onUpdShot={updShot}
-                onDelShot={askDelShot}
-                onAddShot={addShot}
-                onGenShots={genShots}
-                onRender={(sceneId, shotId, kind) => {
-                  if (kind === "frame") render(sceneId, shotId, "frame", 2, "首帧已生成，确认后可继续生成视频");
-                  else if (kind === "direct") render(sceneId, shotId, "clip", 9, "分镜视频已生成，请验收");
-                  else render(sceneId, shotId, "clip", 7, "成片已生成，请验收");
-                }}
-                onApprove={(sceneId, shotId) => {
-                  const next = { ...shotsMap, [sceneId]: (shotsMap[sceneId] ?? []).map((x) => (x.id === shotId ? { ...x, flow: "done" as const } : x)) };
-                  setShotsMap(next);
-                  void persist(scenes, next);
-                  toast.success("本镜已验收入片");
-                }}
-                onFrameEdited={(sceneId, shotId, frameUrl) => updShot(sceneId, shotId, { frameUrl, frameUrls: [frameUrl] })}
-                onDecompose={(sceneId, shotId) => void decompose(sceneId, shotId)}
-                rewritingId={rewritingId}
-                onRewriteShot={(sceneId, shotId, instruction) => void rewriteShot(sceneId, shotId, instruction)}
-              />
+              {storyboardTable}
             </>
           )}
         </div>
@@ -907,6 +918,33 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           >
             <Check size={14} /> 保存·去成片合成 <ArrowRight size={12} />
           </button>
+        </div>
+      )}
+
+      {/* 分镜表全屏放大：与内联共用同一份表（编辑实时同步），对齐短视频「放大」体验。 */}
+      {tableMax && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="分镜表（放大）"
+          onClick={(e) => { if (e.target === e.currentTarget) setTableMax(false); }}
+          style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(15,10,30,.55)", backdropFilter: "blur(2px)", display: "grid", placeItems: "center", padding: "3vh 2vw" }}
+        >
+          <div className="col" style={{ width: "min(1400px, 97vw)", height: "94vh", background: "var(--bg)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
+            <div className="row gap-2" style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)", background: "var(--surface)", flex: "none", alignItems: "center" }}>
+              <Clapperboard size={16} style={{ color: "var(--accent)" }} />
+              <span style={{ fontWeight: 800, fontSize: 15 }}>分镜表 · 第 {state.ep} 集</span>
+              <span className="tag tag-accent num" style={{ flex: "none" }}>共 {allShots.length} 镜 · {totalDur}s</span>
+              <span className="grow" />
+              <span className="row gap-1 faint" style={{ fontSize: 11.5 }}>单元格点击即可编辑</span>
+              <button type="button" className="btn btn-icon btn-sm" title="关闭放大" aria-label="关闭放大" onClick={() => setTableMax(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="scroll grow" style={{ minHeight: 0, padding: "18px 22px 28px" }}>
+              {storyboardTable}
+            </div>
+          </div>
         </div>
       )}
 
