@@ -7559,6 +7559,9 @@ paths:
   /me/drama/projects/{id}/shot/decompose:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: decomposeDramaShot, summary: 'v0.97 P2 镜头分解（借鉴 ViMax）：单镜画面 → 首/末帧静态快照 + 运动描述 + 变化等级（drama.decompose，计费 drama.credit.decompose）。body={desc,cast?:[名]} → {ffDesc,ffChars,lfDesc,lfChars,motionDesc,variationType,variationReason}。供首+尾帧双关键帧 i2v 提升多镜一致性。', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/shot/rewrite:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: rewriteDramaShot, summary: 'v0.97 P5 行级就地改写本镜（对齐 ViMax design_storyboard 逐镜可控，替代整篇推倒重写浮窗；drama.shot_rewrite，计费 drama.credit.shot-rewrite）。body={desc,size?,move?,line?,instruction,cast?:[名]} → {desc,size,move,line}。', responses: { '200': { description: ok } } }
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/frame:
     post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }

@@ -465,6 +465,67 @@ public class DramaProjectService {
         });
     }
 
+    /**
+     * 行级「就地改写本镜」（v0.97 P5，对齐 ViMax design_storyboard 逐镜可控）：按指令只改这一个镜头。
+     * body: { desc, size?, move?, line?:{who,text}, instruction, cast?:[名] } → { desc, size, move, line }（未落库）。
+     */
+    public JsonNode rewriteShot(String id, JsonNode body, String userId) {
+        requireOwned(id, userId);
+        requireLlm();
+        String visual = orDefault(text(body, "desc"), "");
+        String instruction = orDefault(text(body, "instruction"), "");
+        if (instruction.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_INSTRUCTION_REQUIRED", "请描述想怎么改这一镜");
+        }
+        StringBuilder castSb = new StringBuilder();
+        if (body != null && body.get("cast") != null && body.get("cast").isArray()) {
+            for (JsonNode c : body.get("cast")) {
+                String n = c.isObject() ? c.path("name").asText("") : c.asText("");
+                if (!n.isBlank()) {
+                    if (castSb.length() > 0) castSb.append("、");
+                    castSb.append(n);
+                }
+            }
+        }
+        JsonNode lineIn = body == null ? null : body.get("line");
+        String lineStr = lineIn != null && lineIn.isObject() && !lineIn.path("text").asText("").isBlank()
+                ? lineIn.path("who").asText("旁白") + "：" + lineIn.path("text").asText("")
+                : "（无）";
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("visual", visual);
+        vars.put("size", orDefault(text(body, "size"), ""));
+        vars.put("move", orDefault(text(body, "move"), ""));
+        vars.put("line", lineStr);
+        vars.put("castClause", castSb.length() > 0 ? "出场人物：" + castSb + "。" : "");
+        vars.put("instruction", instruction);
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_SHOT_REWRITE, vars, 0.8);
+
+        return withCharge(userId,
+                configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SHOT_REWRITE, 2),
+                "就地改写本镜", () -> {
+            JsonNode root = callJson(pc);
+            String desc = text(root, "desc");
+            if (desc == null || desc.isBlank()) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "改写返回的内容无法解析，请重试。");
+            }
+            ObjectNode out = om.createObjectNode();
+            out.put("desc", desc);
+            out.put("size", orDefault(text(root, "size"), orDefault(text(body, "size"), "中景")));
+            out.put("move", orDefault(text(root, "move"), orDefault(text(body, "move"), "固定")));
+            JsonNode l = root.get("line");
+            if (l != null && l.isObject() && !l.path("text").asText("").isBlank()) {
+                ObjectNode ln = om.createObjectNode();
+                ln.put("who", l.path("who").asText("旁白"));
+                ln.put("text", l.path("text").asText(""));
+                out.set("line", ln);
+            } else {
+                out.putNull("line");
+            }
+            log.info("[drama-project] shot rewrite ok user={} id={}", userId, id);
+            return out;
+        });
+    }
+
     /** ff/lf_chars 校验：只保留「已知人物名」，去重，过滤模型编造的名字（不抛错，避免硬失败）。 */
     private ArrayNode filterKnownNames(JsonNode names, java.util.Set<String> known) {
         ArrayNode arr = om.createArrayNode();

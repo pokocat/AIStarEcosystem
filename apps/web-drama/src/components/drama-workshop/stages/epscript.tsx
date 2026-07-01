@@ -10,8 +10,6 @@ import {
   ArrowRight,
   Check,
   Clapperboard,
-  Image as ImageIcon,
-  Lock,
   Plus,
   RefreshCw,
   UserRound,
@@ -20,7 +18,6 @@ import {
 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
-import { AiChatPanel, type ChatMsg } from "../ai-chat-panel";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
 import { getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
@@ -151,9 +148,6 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [style, setStyle] = React.useState(
     () => getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`,
   );
-  const [chat, setChat] = React.useState<ChatMsg[]>([
-    { who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` },
-  ]);
   const locked = !!state.lockedStages.epscript;
   const cfg = useDramaConfig();
 
@@ -163,7 +157,6 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     setCast(initCast());
     setPlot(initPlot());
     setStyle(getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`);
-    setChat([{ who: "ai", text: `第 ${state.ep} 集脚本已按大纲起草好。想整体调整就跟我说,也可以点下面的快捷指令。` }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ep, initScenes, initShots, initCast, initPlot]);
 
@@ -241,8 +234,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   }, []);
   const isBusy = React.useCallback((id: string) => !!busyMap[id], [busyMap]);
 
-  /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（对话驱动改写用）。 */
-  const runEpDraft = async (cost: number, instruction?: string, aiReply?: string) => {
+  /** 真实 AI 重写整集（分场 + 分镜）。instruction 追加到剧情后（可选）。 */
+  const runEpDraft = async (cost: number, instruction?: string) => {
     if (phase === "gen") return;
     // v0.88：本集叙事(plot)为空就点「基于剧情重新生成分场分镜」→ 后端会 400 DRAMA_PLOT_REQUIRED。
     // 友好提示去填，不打会失败的请求（与脑暴大纲守卫同理）。
@@ -279,30 +272,50 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       await persist(scenesNext, shotsNext);
       dispatch({ type: "spend", n: cost });
       setPhase("done");
-      if (aiReply) setChat((c) => [...c, { who: "ai", text: aiReply }]);
       toast.success("已按最新整集剧情重写分场分镜");
     } catch (e) {
       setPhase("done");
-      const msg = aiErrorMessage(e, "分场分镜生成失败，请稍后重试");
-      setChat((c) => [...c, { who: "ai", text: `生成失败：${msg}` }]);
-      toast.error(msg);
+      toast.error(aiErrorMessage(e, "分场分镜生成失败，请稍后重试"));
     }
   };
 
   /** 基于整集剧情重新生成分场分镜 */
   const regenFromPlot = () => void runEpDraft(cfg.prices.epscript);
 
-  /* —— AI 对话驱动整体重写 —— */
-  const sendChat = (text: string) => {
-    if (phase === "gen") return;
-    setChat((c) => [...c, { who: "me", text }]);
-    void runEpDraft(
-      cfg.prices.epscript,
-      text,
-      text === "衍生上一集"
-        ? "已按上一集的人物关系和节奏衍生出本集脚本,钩子接得上,你看看。"
-        : "脚本已按你的要求更新，再看看还有哪里需要调整？",
-    );
+  /** v0.97 P5：行级就地改写本镜（对齐 ViMax design_storyboard 逐镜可控，替代整篇推倒重写浮窗）。 */
+  const [rewritingId, setRewritingId] = React.useState<string | null>(null);
+  const rewriteShot = async (sceneId: string, shotId: string, instruction: string) => {
+    const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === shotId);
+    if (!shot || !instruction.trim() || rewritingId) return;
+    if (!ctx?.projectId) {
+      toast.error("请先保存项目再改写");
+      return;
+    }
+    setRewritingId(shotId);
+    try {
+      const castNames = (shot.cast ?? []).map((cid) => data.characters.find((c) => c.id === cid)?.name).filter((n): n is string => !!n);
+      const r = await ProjectsApi.rewriteShot(ctx.projectId, {
+        desc: shot.visual,
+        size: shot.size,
+        move: shot.move,
+        line: shot.voText ? { who: shot.voWho || "旁白", text: shot.voText } : null,
+        instruction,
+        cast: castNames,
+      });
+      applyRenderPatch(sceneId, shotId, {
+        visual: r.desc,
+        size: r.size || shot.size,
+        move: r.move || shot.move,
+        voWho: r.line?.who || shot.voWho,
+        voText: r.line?.text ?? shot.voText,
+      });
+      dispatch({ type: "spend", n: cfg.prices.shotRewrite });
+      toast.success("本镜已按指令改写");
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "改写失败，请稍后重试"));
+    } finally {
+      setRewritingId(null);
+    }
   };
 
   /* —— 场景 / 台词草稿（手改 → debounce 落库） —— */
@@ -687,13 +700,6 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         {/* 整宽容器：分镜表放开到整宽，上半部信息卡保持易读窄宽（左对齐同起点）。 */}
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "20px 28px 130px" }}>
           <div style={{ maxWidth: 880 }}>
-          {locked && (
-            <div className="row gap-3 fade-up" style={{ padding: "10px 14px", background: "var(--accent-soft)", borderRadius: 12, marginBottom: 14, color: "var(--accent)" }}>
-              <Lock size={15} />
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>本集脚本已锁定，视频工厂以此为准；如需调整可修改后重新确认。</span>
-            </div>
-          )}
-
           {/* ===== 本集剧情(先改剧情,再让 AI 按它重生成分场分镜) ===== */}
           <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
             <div className="row gap-2" style={{ marginBottom: 8 }}>
@@ -796,14 +802,13 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                 }}
                 onFrameEdited={(sceneId, shotId, frameUrl) => updShot(sceneId, shotId, { frameUrl, frameUrls: [frameUrl] })}
                 onDecompose={(sceneId, shotId) => void decompose(sceneId, shotId)}
+                rewritingId={rewritingId}
+                onRewriteShot={(sceneId, shotId, instruction) => void rewriteShot(sceneId, shotId, instruction)}
               />
             </>
           )}
         </div>
       </div>
-
-      {/* 悬浮 AI 对话(左下):模板化提示词 衍生上一集 / 给我惊喜 */}
-      <AiChatPanel msgs={chat} quick={["衍生上一集", "给我惊喜"]} busy={phase === "gen"} onSend={sendChat} />
 
       {/* 悬浮 CTA(右下)：逐镜出片在本页分镜表完成后，去成片合成拼接。脚本始终可回改，不再锁定。 */}
       {phase === "done" && (

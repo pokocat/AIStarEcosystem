@@ -41,6 +41,10 @@ export interface StoryboardTableProps {
   onFrameEdited: (sceneId: string, shotId: string, frameUrl: string) => void;
   /** v0.97：AI 拆镜（首/末帧 + 运动 + 变化等级）。 */
   onDecompose: (sceneId: string, shotId: string) => void;
+  /** v0.97 P5：行级就地改写本镜（按指令只改这一镜）。 */
+  onRewriteShot?: (sceneId: string, shotId: string, instruction: string) => void;
+  /** 正在改写的镜 id（显示 busy）。 */
+  rewritingId?: string | null;
 }
 
 export function StoryboardTable(props: StoryboardTableProps) {
@@ -124,6 +128,8 @@ export function StoryboardTable(props: StoryboardTableProps) {
                       onAiEdit={() => setEdit({ sceneId: sc.id, shot: s })}
                       onDecompose={() => props.onDecompose(sc.id, s.id)}
                       onPick={(url) => props.onUpdShot(sc.id, s.id, { frameUrl: url })}
+                      rewriting={props.rewritingId === s.id}
+                      onRewrite={props.onRewriteShot ? (ins) => props.onRewriteShot!(sc.id, s.id, ins) : undefined}
                     />
                   ))}
                 </React.Fragment>
@@ -149,14 +155,26 @@ export function StoryboardTable(props: StoryboardTableProps) {
   );
 }
 
+const REWRITE_CHIPS = ["惊喜化", "更紧凑", "换个机位", "强化冲突", "补一句台词"];
+
 function ShotRow({
-  s, start, busy, locked, speakerOptions, onPatch, onDelete, onRender, onApprove, onAiEdit, onDecompose, onPick,
+  s, start, busy, locked, speakerOptions, onPatch, onDelete, onRender, onApprove, onAiEdit, onDecompose, onPick, rewriting, onRewrite,
 }: {
   s: FormShot; start: number; busy: ShotFlow | null; locked?: boolean; speakerOptions: string[];
   onPatch: (patch: Partial<FormShot>) => void; onDelete: () => void;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
   onDecompose: () => void; onPick: (url: string) => void;
+  rewriting?: boolean; onRewrite?: (instruction: string) => void;
 }) {
+  const [rwOpen, setRwOpen] = React.useState(false);
+  const [rwText, setRwText] = React.useState("");
+  const submitRw = (text: string) => {
+    const t = text.trim();
+    if (!t || !onRewrite) return;
+    onRewrite(t);
+    setRwText("");
+    setRwOpen(false);
+  };
   const whoList = speakerOptions.includes(s.voWho) || !s.voWho ? speakerOptions : [s.voWho, ...speakerOptions];
   const badge =
     s.flow === "done" ? <span className="tag tag-green" style={{ fontSize: 8.5, padding: "0 5px", height: 15 }}>成片</span>
@@ -168,8 +186,19 @@ function ShotRow({
       <td style={{ ...TD, textAlign: "center" }}>
         <div className="num" style={{ fontSize: 22, fontWeight: 800, color: "var(--accent)", lineHeight: 1.1 }}>{s.no}</div>
         <div style={{ marginTop: 6 }}>{badge}</div>
+        {!locked && onRewrite && (
+          <button
+            type="button"
+            title="AI 改写本镜（只改这一镜）"
+            onClick={() => setRwOpen((v) => !v)}
+            disabled={rewriting}
+            style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: rwOpen ? "var(--accent)" : "var(--ink-3)", display: "block", marginInline: "auto" }}
+          >
+            <Wand2 size={13} />
+          </button>
+        )}
         {!locked && (
-          <button type="button" title="删除本镜" onClick={onDelete} style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)" }}>
+          <button type="button" title="删除本镜" onClick={onDelete} style={{ marginTop: 6, background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", display: "block", marginInline: "auto" }}>
             <X size={12} />
           </button>
         )}
@@ -186,6 +215,35 @@ function ShotRow({
       <td style={TD}>
         <Editable block value={s.visual} placeholder="画面内容（纯视觉）…" onCommit={(v) => onPatch({ visual: v })}
           className="edit-field" style={{ display: "block", fontSize: 13, lineHeight: 1.65, padding: "4px 6px" }} />
+        {/* v0.97 P5：行级就地改写本镜（指令 + 快捷 chip，只改这一镜，替代整篇推倒重写的浮窗） */}
+        {rwOpen && onRewrite && (
+          <div className="col gap-2" style={{ marginTop: 8, padding: 8, borderRadius: 10, background: "var(--accent-soft)", border: "1px solid var(--line-soft)" }}>
+            <div className="row gap-1" style={{ alignItems: "center" }}>
+              <Sparkles size={11} style={{ color: "var(--accent)", flex: "none" }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>AI 改写本镜</span>
+              {rewriting && <span className="faint" style={{ fontSize: 10.5 }}>改写中…</span>}
+              <span className="grow" />
+              <button type="button" onClick={() => setRwOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)" }}><X size={12} /></button>
+            </div>
+            <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+              {REWRITE_CHIPS.map((c) => (
+                <button key={c} type="button" disabled={rewriting} onClick={() => submitRw(c)}
+                  className="chip" style={{ height: 22, fontSize: 10.5 }}>{c}</button>
+              ))}
+            </div>
+            <div className="row gap-1">
+              <input
+                value={rwText}
+                disabled={rewriting}
+                placeholder="或描述想怎么改这一镜…"
+                onChange={(e) => setRwText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) submitRw(rwText); }}
+                style={{ flex: 1, minWidth: 0, height: 26, border: "1px solid var(--line)", borderRadius: 7, fontSize: 12, padding: "0 8px", outline: "none", background: "var(--surface)" }}
+              />
+              <button type="button" disabled={rewriting || !rwText.trim()} onClick={() => submitRw(rwText)} className="btn btn-grad btn-sm" style={{ height: 26, fontSize: 11, padding: "0 10px" }}>改</button>
+            </div>
+          </div>
+        )}
       </td>
       <td style={TD}>
         <div className="col gap-2" style={{ fontSize: 12 }}>
