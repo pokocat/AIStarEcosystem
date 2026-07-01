@@ -46,6 +46,16 @@
 3. **角色定妆参考图（两种都支持）**：cast 卡新增「AI 定妆图」（新 prompt `drama.character_frame_image`
    + `renderFrame kind:"character"`，单人肖像锁脸）+ 既有「绑数字人 / 上传」。有图才谈得上锁脸。
 4. `buildMediaPrompt` 重构为 `frameKeyForKind(kind)` 统一按 kind 选提示词（shot/short/scene/character）。
+
+## v0.98 补丁 · 修「重新部署后图片全裂」（签名 URL 过期）（2026-07-01）
+
+根因：`DramaProject.payloadJson` 里存的是**当时签名的 OSS URL**（首帧/末帧/成片/场景图/角色图），
+`AEP_CDN_SIGNED_URL_STRATEGY=oss` + `TTL=3600s`，`saveProject` 原样存、`getProject` 原样返回 →
+**1h 后签名过期 → 403 图裂**（重新部署是巧合，非诱因）。违反 §4.7「key 真值 / 出 wire 派生」。
+修：`DramaProjectService` 注入 `CdnUrlSigner`，`toDetail` 出 wire 时递归 `signer.maybeSign(...)`
+重签文档内所有资产 URL（`resignAssetUrls`，从 URL 抽 key 重签，对已过期 URL 亦有效）；driver=local
+相对 `/cdn` 不匹配 OSS base 原样返回，dev 不受影响。规范已写入 AGENTS §4.7.7。
+**同类债待清**：`DramaShort.payloadJson`（短视频草稿）存签名 URL 同样会过期 —— 见 TODO D-12。
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、

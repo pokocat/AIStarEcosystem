@@ -327,6 +327,17 @@ duration: 7820         → formatDuration       → "2h 10min"
    返回的 `CdnUploadResult.key()` 落 DB 的 `cdnKey` 列；DTO 出 wire 时由 signer 派生 URL。
    旧本地路径字段保留一两版做 fallback 读，然后删。
 
+7. **wholesale JSON 文档（`payloadJson` 等）里的资产 URL 出 wire 必须重签**（v0.98 教训，**强制**）。
+   当资产 URL 不是独立 DTO 字段、而是塞在一个整存整取的 JSON 文档里（如 `DramaProject.payloadJson`
+   的 `frameUrls` / `videoUrl` / `endFrameUrl` / `lastFrameUrl` / 场景图 / 角色图；`DramaShort` 同理），
+   **签名 URL 有 TTL（`AEP_CDN_SIGNED_URL_TTL_SECONDS`，默认 3600s）；存下来原样返回 → 1h 后签名过期
+   → 403 图裂**。这类文档字段容易绕过 §4.7.4/§4.7.5（那两条针对 DTO record/列），必须额外守：
+   - 文档里存的 URL 一律视为「非真值、会过期」，**禁止**原样 `return`。
+   - service 在**出 wire 的唯一漏斗**（如 `toDetail`）里对整棵 JSON **递归 `signer.maybeSign(...)`
+     重签所有资产 URL**（`maybeSign` 从 URL 反抽 key 重签，对已过期 URL 同样有效）；driver=local 的
+     相对 `/cdn` 路径不匹配 OSS base → 原样返回，dev 不受影响。范式见 `DramaProjectService.resignAssetUrls`。
+   - 新代码首选：文档里存 **cdnKey** 而非 URL，出 wire 时 `signer.signKey(key)` 派生。
+
 6. **本地短时临时区必须 gitignored 且不进备份**。当前已 ignore：
    - `apps/server/mixcut-assets/` / `mixcut-output/` / `mixcut-work/`
    - `apps/server/dh-assets/` / `dh-work/`
@@ -345,6 +356,9 @@ duration: 7820         → formatDuration       → "2h 10min"
   URL 改为 DTO 出 wire 时派生（v0.47F+ key-only 规则，§4.7.4）。
 - 配置生产部署但 `AEP_CDN_DRIVER=local` 或缺 `AEP_CDN_SIGNED_URL_STRATEGY` →
   review reject，要求补 OSS 配置。
+- service 把 `payloadJson` / JSON 文档里存的签名 URL 原样 `return`（未在出 wire 漏斗里
+  `signer.maybeSign(...)` 递归重签、或未改存 cdnKey 派生）→ review reject（签名 TTL 过期会图裂，
+  v0.98 教训，§4.7.7）。
 
 ---
 
