@@ -48,7 +48,8 @@ function toFormShot(sh: BoardShot, refs: Material[]): FormShot {
     fx: sh.fx ?? "",
     refs: [...refs],
     sub: true,
-    flow: (sh.flow as FormShot["flow"]) ?? (sh.done ? "clip" : "draft"),
+    // 归一化历史 flow：旧版「已锁首帧 frameLocked」映射为 frame，避免旧数据落入无按钮死状态。
+    flow: sh.flow === "frameLocked" ? "frame" : ((sh.flow as FormShot["flow"]) ?? (sh.done ? "clip" : "draft")),
     frameUrls: sh.frameUrls,
     frameUrl: sh.frameUrl,
     videoUrl: sh.videoUrl,
@@ -209,6 +210,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const shotsRef = React.useRef(shotsMap);
   scenesRef.current = scenes;
   shotsRef.current = shotsMap;
+  // 持有最新 persist（绑定当前集）供卸载时 flush，避免用陈旧闭包写错集。
+  const persistRef = React.useRef(persist);
+  persistRef.current = persist;
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueSave = React.useCallback(() => {
     if (!ctx || locked) return;
@@ -218,8 +222,15 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       void persist(scenesRef.current, shotsRef.current).catch(() => {});
     }, 1500);
   }, [ctx, locked, persist]);
+  // 卸载（含按集 key 重挂载 = 切集）时：先 flush 待落库编辑，再清定时器。
+  // EpScriptStage 在 page.tsx 以 key={state.ep} 挂载，切集即卸载本集实例 →
+  // 用本集的 persistRef + 本集的 refs flush，绝不会把本集编辑写进别集（修跨集覆盖/丢失）。
   React.useEffect(() => () => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      void persistRef.current(scenesRef.current, shotsRef.current).catch(() => {});
+    }
   }, []);
 
   const markBusy = React.useCallback((id: string, to: FormShot["flow"]) => {
@@ -360,7 +371,12 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         return;
       }
       if (job.status !== "ready" || frames.length === 0) return;
-      applyRenderPatch(sceneId, id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url });
+      // 重新出首帧 → 清掉基于旧首帧的末帧/拆镜/成片产物，避免新首帧配旧末帧（首尾不同源）。
+      applyRenderPatch(sceneId, id, {
+        flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url,
+        endFrameUrl: undefined, ffDesc: undefined, lfDesc: undefined, motionDesc: undefined, variationType: undefined,
+        videoUrl: undefined, lastFrameUrl: undefined,
+      });
       clearBusy(id);
       if (spend) {
         dispatch({ type: "spend", n: cost });
@@ -590,7 +606,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   /** 单镜生成：frame=首帧参考图（后台图片任务，出 2 版），clip=直接出片/成片（后台视频任务 + 轮询，带首尾帧）。 */
   const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
-    if (!shot || isBusy(id)) return;
+    if (!shot || isBusy(id) || decomposingId === id) return;
     markBusy(id, to);
     try {
       if (to === "frame") {
@@ -639,14 +655,16 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   };
 
   /** AI 拆镜（借鉴 ViMax）：单镜 → 首/末帧静态快照 + 运动 + 变化等级；末帧以本镜首帧为锚出图（首尾同源）。 */
+  // 拆镜走同步接口、不产生带 shot_id 的后台任务，故用独立 busy 态（不能用 busyMap——会被 5s 任务轮询清掉）。
+  const [decomposingId, setDecomposingId] = React.useState<string | null>(null);
   const decompose = async (sceneId: string, id: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
-    if (!shot || isBusy(id)) return;
+    if (!shot || isBusy(id) || decomposingId) return;
     if (!ctx?.projectId) {
       toast.error("请先保存项目再拆镜");
       return;
     }
-    markBusy(id, "frame");
+    setDecomposingId(id);
     try {
       const castNames = (shot.cast ?? []).map((cid) => data.characters.find((c) => c.id === cid)?.name).filter((n): n is string => !!n);
       const d = await ProjectsApi.decomposeShot(ctx.projectId, { desc: shot.visual || "", cast: castNames });
@@ -678,7 +696,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     } catch (e) {
       toast.error(aiErrorMessage(e, "镜头分解失败，请稍后重试"));
     } finally {
-      clearBusy(id);
+      setDecomposingId(null);
     }
   };
 
@@ -781,7 +799,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                 shotsMap={shotsMap}
                 speakerOptions={speakerOptions}
                 locked={locked}
-                busyMap={busyMap}
+                busyMap={decomposingId ? { ...busyMap, [decomposingId]: "frame" } : busyMap}
                 starts={starts}
                 genScene={genScene}
                 onUpdScene={updScene}

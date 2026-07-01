@@ -58,10 +58,10 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
     <div className="scroll" style={{ height: "100%" }}>
       <div style={{ maxWidth: 920, margin: "0 auto", padding: "28px 32px 64px" }}>
         <StageHeader
-          no={6}
+          no={5}
           scope="剧集"
           title={`第 ${state.ep} 集 · 成片合成`}
-          desc="把视频工厂已出片的镜头按顺序拼成完整一集，不重新生成画面。"
+          desc="把剧集脚本分镜表里已出片的镜头按顺序拼成完整一集，不重新生成画面。"
         />
 
         {/* 成片预览（已合成时置顶） */}

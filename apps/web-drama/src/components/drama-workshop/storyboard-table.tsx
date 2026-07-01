@@ -336,8 +336,8 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         </button>
       )}
 
-      {/* 首帧参考图挑选（出 2 版，点选即锁；仅项目表传 onPick） */}
-      {!busy && s.flow === "frame" && onPick && (s.frameUrls?.length ?? 0) > 1 && (
+      {/* 首帧参考图挑选（出 2 版，点选即锁；仅项目表传 onPick）。补末帧后锁定不再可改选（避免首末帧不同源）。 */}
+      {!busy && s.flow === "frame" && onPick && !s.endFrameUrl && (s.frameUrls?.length ?? 0) > 1 && (
         <div className="row" style={{ gap: 4, justifyContent: "center" }}>
           {s.frameUrls!.slice(0, 2).map((u, i) => (
             <button
@@ -364,7 +364,7 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
       {/* 动作按钮（按状态） */}
       {!busy && s.flow === "draft" && (
         <>
-          <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧参考图" confirmBody="出 2 版首帧参考图，挑一版继续。" className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
+          <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧参考图" confirmBody={onPick ? "出 2 版首帧参考图，挑一版继续。" : "生成一版首帧参考图。"} className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
             <ImageIcon size={12} /> 首帧参考图
           </CreditButton>
           <button type="button" onClick={() => onRender("direct")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 10, fontWeight: 600 }}>直接出片</button>

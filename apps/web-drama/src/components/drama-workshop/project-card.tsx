@@ -5,7 +5,7 @@
 import * as React from "react";
 import { Clock, Trash2 } from "lucide-react";
 import { Thumb } from "@/components/drama-ui";
-import { STAGE_NAMES } from "./stages-config";
+import { stageNameByNo } from "./stages-config";
 import type { DramaProjectSummary } from "@/mocks/drama-workshop";
 
 interface ProjectCardProps {
@@ -14,13 +14,12 @@ interface ProjectCardProps {
   onOpen?: (p: DramaProjectSummary) => void;
   /** 提供时显示悬停「移到回收站」按钮（软删）。 */
   onDelete?: (p: DramaProjectSummary) => void;
-  /** 阶段名,用来显示"走到「剧集脚本」";默认取 v4 六阶段 */
-  stageNames?: readonly string[];
 }
 
-export function ProjectCard({ p, delay = 0, onOpen, onDelete, stageNames = STAGE_NAMES }: ProjectCardProps) {
+export function ProjectCard({ p, delay = 0, onOpen, onDelete }: ProjectCardProps) {
   const [hover, setHover] = React.useState(false);
-  const stageLabel = stageNames[p.stage - 1] ?? "选题立项";
+  // v0.98：统一走 stageNameByNo（线性阶段 + 老 stage 5/6 归一到成片合成），不再用数组下标（会把 stage=6 错标成互动编排）。
+  const stageLabel = stageNameByNo(p.stage);
   return (
     <div
       style={{ position: "relative", height: "100%" }}

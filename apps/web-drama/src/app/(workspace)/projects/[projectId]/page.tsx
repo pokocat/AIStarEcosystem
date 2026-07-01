@@ -132,7 +132,8 @@ function StageOutlet({
     case "cast":
       return <SetupStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "epscript":
-      return <EpScriptStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
+      // key=集号：切集时卸载/重挂载本集实例，触发本集 flush + 干净重建（修跨集防抖覆盖）。
+      return <EpScriptStage key={state.ep} state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "prompt":
       return <AssembleStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "branch":

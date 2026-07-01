@@ -50,9 +50,17 @@ export const STAGE_BY_KEY: Record<StageKey, StageDef> = STAGES.reduce(
   {} as Record<StageKey, StageDef>,
 );
 
-/** 让 ProjectCard 等组件以序号取得阶段名 */
+/** 线性阶段（no>0，排除 no:0 的互动编排）。 */
+const LINEAR_STAGES = STAGES.filter((s) => s.no > 0);
+
+/** 以序号取阶段名（ProjectCard/首页等用）。按 no 精确匹配线性阶段；
+ *  v0.98 删「视频工厂」后 no 从 6 收为 5，老数据 stage=5(原视频工厂)/6(原成片合成)
+ *  统一归一到「成片合成」，避免落到 no:0 的「互动编排」而误标。 */
 export function stageNameByNo(no: number): string {
-  return STAGES[no - 1]?.name ?? "选题立项";
+  const hit = LINEAR_STAGES.find((s) => s.no === no);
+  if (hit) return hit.name;
+  if (no >= LINEAR_STAGES.length) return STAGE_BY_KEY.prompt.name; // 老数据 ≥5 → 成片合成
+  return LINEAR_STAGES[0]?.name ?? "选题立项";
 }
 
 /** 留给 Clapperboard 入口(workspace logo) */
