@@ -5,7 +5,7 @@
 // 首帧 4 态（待生成→生成中→首帧→成片）+ 点首帧开「AI 改图」对话式迭代（复用 render/frame + ref 图）。
 import * as React from "react";
 import { ArrowRight, Check, Clapperboard, Image as ImageIcon, Play, Plus, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
-import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
+import { CreditButton, Editable, GenFramePlaceholder, Thumb } from "@/components/drama-ui";
 import { MediaLightbox, type LightboxMedia } from "./media-lightbox";
 import { AiImageEditModal } from "./ai-image-edit-modal";
 import type { FormShot, ShotFlow } from "./shot-form";
@@ -324,7 +324,7 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
   return (
     <div className="col" style={{ alignItems: "center", gap: 6 }}>
       {busy ? (
-        <div className="skel" style={{ width: 62, height: 96, borderRadius: 9 }} />
+        <GenFramePlaceholder width={62} height={96} radius={9} />
       ) : s.flow === "draft" ? (
         <div className="col center" style={{ width: 62, height: 96, borderRadius: 9, border: "1.5px dashed var(--line)", background: "var(--surface-2)", color: "var(--ink-3)", gap: 4 }}>
           <ImageIcon size={17} /><span style={{ fontSize: 9, fontWeight: 600 }}>无首帧</span>
