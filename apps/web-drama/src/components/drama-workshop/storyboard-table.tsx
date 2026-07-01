@@ -4,13 +4,14 @@
 // 列：镜号 / 时长 / 首帧 / 画面内容 / 镜头 / 台词·音频 / 特效氛围。所有单元格结构化可编辑、落库；
 // 首帧 4 态（待生成→生成中→首帧→成片）+ 点首帧开「AI 改图」对话式迭代（复用 render/frame + ref 图）。
 import * as React from "react";
-import { Check, Clapperboard, Image as ImageIcon, Play, Plus, RefreshCw, Wand2, X } from "lucide-react";
+import { ArrowRight, Check, Clapperboard, Image as ImageIcon, Play, Plus, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
 import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
 import { MediaLightbox, type LightboxMedia } from "./media-lightbox";
 import { AiImageEditModal } from "./ai-image-edit-modal";
 import type { FormShot, ShotFlow } from "./shot-form";
 
 const FRAME_COST = 2, DIRECT_COST = 9, CLIP_COST = 7;
+const VARI: Record<string, string> = { small: "小", medium: "中", large: "大" };
 const TH: React.CSSProperties = { padding: "11px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".04em", borderBottom: "2px solid var(--line)", whiteSpace: "nowrap" };
 const TD: React.CSSProperties = { padding: "12px 12px", verticalAlign: "top", borderBottom: "1px solid var(--line-soft)" };
 
@@ -38,6 +39,8 @@ export interface StoryboardTableProps {
   onApprove: (sceneId: string, shotId: string) => void;
   /** AI 改图回填：把新版首帧落到该镜。 */
   onFrameEdited: (sceneId: string, shotId: string, frameUrl: string) => void;
+  /** v0.97：AI 拆镜（首/末帧 + 运动 + 变化等级）。 */
+  onDecompose: (sceneId: string, shotId: string) => void;
 }
 
 export function StoryboardTable(props: StoryboardTableProps) {
@@ -119,6 +122,8 @@ export function StoryboardTable(props: StoryboardTableProps) {
                       onRender={(kind) => props.onRender(sc.id, s.id, kind)}
                       onApprove={() => props.onApprove(sc.id, s.id)}
                       onAiEdit={() => setEdit({ sceneId: sc.id, shot: s })}
+                      onDecompose={() => props.onDecompose(sc.id, s.id)}
+                      onPick={(url) => props.onUpdShot(sc.id, s.id, { frameUrl: url })}
                     />
                   ))}
                 </React.Fragment>
@@ -145,11 +150,12 @@ export function StoryboardTable(props: StoryboardTableProps) {
 }
 
 function ShotRow({
-  s, start, busy, locked, speakerOptions, onPatch, onDelete, onRender, onApprove, onAiEdit,
+  s, start, busy, locked, speakerOptions, onPatch, onDelete, onRender, onApprove, onAiEdit, onDecompose, onPick,
 }: {
   s: FormShot; start: number; busy: ShotFlow | null; locked?: boolean; speakerOptions: string[];
   onPatch: (patch: Partial<FormShot>) => void; onDelete: () => void;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
+  onDecompose: () => void; onPick: (url: string) => void;
 }) {
   const whoList = speakerOptions.includes(s.voWho) || !s.voWho ? speakerOptions : [s.voWho, ...speakerOptions];
   const badge =
@@ -175,7 +181,7 @@ function ShotRow({
           style={{ width: 40, height: 20, marginTop: 4, border: "1px solid var(--line)", borderRadius: 6, fontSize: 11, textAlign: "center", outline: "none", background: "var(--surface)" }} />
       </td>
       <td style={{ ...TD, textAlign: "center" }}>
-        <ShotFrameCell s={s} busy={busy} onRender={onRender} onApprove={onApprove} onAiEdit={onAiEdit} />
+        <ShotFrameCell s={s} busy={busy} onRender={onRender} onApprove={onApprove} onAiEdit={onAiEdit} onDecompose={onDecompose} onPick={onPick} />
       </td>
       <td style={TD}>
         <Editable block value={s.visual} placeholder="画面内容（纯视觉）…" onCommit={(v) => onPatch({ visual: v })}
@@ -213,14 +219,18 @@ function ShotRow({
   );
 }
 
-/** 首帧 4 态渲染单元（紧凑版，表格用）。短剧分镜表 + 短视频分镜表共用。 */
-export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit }: {
+/** 首帧渲染单元（紧凑版，表格用）。短剧分镜表 + 短视频分镜表共用。
+ *  v0.97：项目表额外传 onPick（4 版挑选）+ onDecompose（AI 拆镜 → 首/末帧双联），短视频表可不传。 */
+export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecompose, onPick }: {
   s: FormShot; busy: ShotFlow | null;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
+  onDecompose?: () => void; onPick?: (url: string) => void;
 }) {
   const isVideo = s.flow === "clip" || s.flow === "done";
   const frameSrc = s.frameUrl ?? s.frameUrls?.[0];
   const [lb, setLb] = React.useState<LightboxMedia | null>(null);
+  const [scrub, setScrub] = React.useState(false); // 首帧→末帧 hover 预演
+  const hasDual = s.flow === "frame" && !!frameSrc && !!s.endFrameUrl;
   return (
     <div className="col" style={{ alignItems: "center", gap: 6 }}>
       {busy ? (
@@ -236,6 +246,26 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit }: {
             <span style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(255,255,255,.9)", display: "grid", placeItems: "center" }}><Play size={11} style={{ color: "var(--ink)", marginLeft: 1 }} /></span>
           </span>
         </button>
+      ) : hasDual ? (
+        // 拆镜后：首帧 ▷ 末帧 双联 + hover 预演（鼠标移上去看运动起止）
+        <button
+          type="button"
+          onClick={onAiEdit}
+          onMouseEnter={() => setScrub(true)}
+          onMouseLeave={() => setScrub(false)}
+          title="首帧 → 末帧（悬停预演运动）· 点开 AI 改图"
+          style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, border: "none", background: "none", cursor: "pointer", padding: 0 }}
+        >
+          <span style={{ position: "relative", width: 44, height: 70, borderRadius: 7, overflow: "hidden", boxShadow: scrub ? "0 0 0 2px var(--accent)" : "none" }}>
+            <img src={frameSrc} alt="首帧" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: scrub ? 0 : 1, transition: "opacity .5s" }} />
+            <img src={s.endFrameUrl} alt="末帧" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: scrub ? 1 : 0, transition: "opacity .5s" }} />
+            <span style={{ position: "absolute", left: 2, top: 2, background: "rgba(0,0,0,.5)", color: "#fff", fontSize: 7.5, fontWeight: 700, padding: "0 3px", borderRadius: 3 }}>{scrub ? "末" : "首"}</span>
+          </span>
+          <ArrowRight size={11} style={{ color: "var(--accent)", flex: "none" }} />
+          <span style={{ width: 30, height: 48, borderRadius: 6, overflow: "hidden", opacity: 0.85 }}>
+            <img src={s.endFrameUrl} alt="末帧" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </span>
+        </button>
       ) : (
         // 首帧已出：点开 AI 改图
         <button type="button" onClick={onAiEdit} title="点开 AI 改图" style={{ position: "relative", width: 62, height: 96, borderRadius: 9, overflow: "hidden", border: "none", cursor: "pointer", padding: 0 }}>
@@ -248,27 +278,66 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit }: {
         </button>
       )}
 
+      {/* 4 版挑选（出图出 4 版，点选即锁；仅项目表传 onPick） */}
+      {!busy && s.flow === "frame" && onPick && (s.frameUrls?.length ?? 0) > 1 && (
+        <div className="row" style={{ gap: 3, justifyContent: "center", flexWrap: "wrap", maxWidth: 96 }}>
+          {s.frameUrls!.slice(0, 4).map((u, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onPick(u)}
+              title={`选第 ${i + 1} 版`}
+              style={{ width: 20, height: 32, borderRadius: 5, overflow: "hidden", padding: 0, cursor: "pointer", border: (s.frameUrl ?? s.frameUrls![0]) === u ? "2px solid var(--accent)" : "1px solid var(--line)" }}
+            >
+              <img src={u} alt={`版${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 拆镜信息（变化等级 + 运动，hover 看全文） */}
+      {!busy && s.motionDesc && (
+        <div className="row" style={{ gap: 3, alignItems: "center", fontSize: 8.5, color: "var(--ink-3)", maxWidth: 96 }} title={s.motionDesc}>
+          <Sparkles size={8} style={{ color: "var(--accent)", flex: "none" }} />
+          <span style={{ whiteSpace: "nowrap" }}>拆镜{s.variationType ? ` · 变化${VARI[s.variationType] ?? s.variationType}` : ""}</span>
+        </div>
+      )}
+
       {/* 动作按钮（按状态） */}
       {!busy && s.flow === "draft" && (
         <>
-          <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧" confirmBody="先生成画面预览。" className="btn btn-grad btn-sm" style={{ height: 25, width: 80, justifyContent: "center", fontSize: 10.5, padding: 0 }} markSize={11}>
-            <ImageIcon size={11} /> 出图
+          <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧" confirmBody="出 4 版画面预览，挑一版继续。" className="btn btn-grad btn-sm" style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }} markSize={11}>
+            <ImageIcon size={11} /> 出图 4 版
           </CreditButton>
-          <button type="button" onClick={() => onRender("direct")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 9.5, fontWeight: 600 }}>跳过·直接出视频</button>
+          <div className="row" style={{ gap: 6, justifyContent: "center" }}>
+            <button type="button" onClick={() => onRender("direct")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 9.5, fontWeight: 600 }}>直接出片</button>
+            {onDecompose && (
+              <button type="button" onClick={onDecompose} title="AI 拆出首/末帧+运动，出片首尾帧更稳" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 9.5, fontWeight: 700 }}>
+                AI 拆镜
+              </button>
+            )}
+          </div>
         </>
       )}
       {!busy && s.flow === "frame" && (
-        <CreditButton cost={CLIP_COST} onConfirm={() => onRender("clip")} confirmTitle="生成视频" confirmBody="基于已选首帧生成这镜视频。" className="btn btn-grad btn-sm" style={{ height: 25, width: 80, justifyContent: "center", fontSize: 10.5, padding: 0 }} markSize={11}>
-          <Clapperboard size={11} /> 生成视频
-        </CreditButton>
+        <>
+          <CreditButton cost={CLIP_COST} onConfirm={() => onRender("clip")} confirmTitle="生成视频" confirmBody="基于已选首帧（有末帧则首尾帧双关键帧）生成这镜视频。" className="btn btn-grad btn-sm" style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }} markSize={11}>
+            <Clapperboard size={11} /> 生成视频
+          </CreditButton>
+          {onDecompose && !s.motionDesc && (
+            <button type="button" onClick={onDecompose} title="AI 拆出首/末帧+运动，出片首尾帧更稳" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 9.5, fontWeight: 700 }}>
+              <Sparkles size={9} /> AI 拆镜
+            </button>
+          )}
+        </>
       )}
       {!busy && s.flow === "clip" && (
-        <button type="button" onClick={onApprove} className="btn btn-primary btn-sm" style={{ height: 25, width: 80, justifyContent: "center", fontSize: 10.5, padding: 0 }}>
+        <button type="button" onClick={onApprove} className="btn btn-primary btn-sm" style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }}>
           <Check size={11} /> 验收
         </button>
       )}
       {!busy && s.flow === "done" && (
-        <button type="button" onClick={() => onRender("frame")} className="btn btn-line btn-sm" style={{ height: 25, width: 80, justifyContent: "center", fontSize: 10.5, padding: 0 }}>
+        <button type="button" onClick={() => onRender("frame")} className="btn btn-line btn-sm" style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }}>
           <RefreshCw size={10} /> 重出
         </button>
       )}

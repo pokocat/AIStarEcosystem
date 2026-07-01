@@ -44,6 +44,8 @@ export interface FormShot {
   refs: Material[];
   sub: boolean;
   flow: ShotFlow;
+  /** v0.97：出场角色 id（用于按镜挑角色参考图，锁人物一致性）。 */
+  cast?: string[];
   /** v0.97：机位标识（同机位复用同值，跨镜保持取景一致）。 */
   camId?: string;
   /** v0.65 真实渲染产物 */
