@@ -21,7 +21,7 @@ import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-
 import { ConfirmDialog } from "@/components/common";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
-import { getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
+import { episodeContent, episodeTitle, getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { ProjectsApi, RenderApi } from "@/api";
 import { useDramaConfig } from "@/lib/use-drama-config";
@@ -114,17 +114,36 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [cast, setCast] = React.useState<EpCharacter[]>(initCast);
   const speakerOptions = ["旁白", ...cast.map((c) => c.name)];
 
-  /** 本集叙事（整集剧情速览,不直接用于生成;改完可让 AI 按它重生成分场分镜） */
+  /** 本集剧情（单一真源 = data.episodes[].content；老数据回退旧三段 / meta.plot / logline）。改完可让 AI 按它重生成分场分镜。 */
   const epOutline = data.episodes[state.ep - 1];
   const initPlot = React.useCallback(
     () => {
+      if (epOutline) {
+        const c = episodeContent(epOutline);
+        if (c) return c;
+      }
       const m = getEpisodeDoc(data, state.ep).meta;
-      if (m?.plot) return m.plot;
-      return epOutline ? `${epOutline.hook}。${epOutline.synopsis}` : data.projectInfo.logline;
+      return m?.plot || data.projectInfo.logline;
     },
     [epOutline, data, state.ep],
   );
   const [plot, setPlot] = React.useState<string>(initPlot);
+  // 本集剧情/标题写回 data.episodes[]（单一真源，outline 阶段与项目卡同步）；用 patchData 合并防覆盖。
+  const saveEpContent = (v: string) => {
+    setPlot(v);
+    ctx?.notifyEditing?.();
+    void ctx?.patchData?.((prev) => ({
+      ...prev,
+      episodes: (prev.episodes ?? []).map((e, i) => (i === state.ep - 1 ? { ...e, content: v } : e)),
+    })).catch(() => {});
+  };
+  const saveEpTitle = (v: string) => {
+    ctx?.notifyEditing?.();
+    void ctx?.patchData?.((prev) => ({
+      ...prev,
+      episodes: (prev.episodes ?? []).map((e, i) => (i === state.ep - 1 ? { ...e, title: v } : e)),
+    })).catch(() => {});
+  };
 
   // v0.66：按集取文档 —— 切集互不覆盖（episodeDocs 优先，老项目回读 legacy 字段）
   const initScenes = React.useCallback((): EpScene[] => {
@@ -762,11 +781,12 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
             <div className="row gap-2" style={{ marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="num tag tag-accent" style={{ flex: "none" }}>第 {state.ep} 集</span>
-              <span style={{ fontWeight: 800, fontSize: 13.5, flex: "none", whiteSpace: "nowrap" }}>本集剧情</span>
-              {epOutline?.beat && (
-                <span className="tag tag-gray" style={{ flex: "none", maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={epOutline.beat}>{epOutline.beat}</span>
-              )}
-              <span className="faint" style={{ fontSize: 11, flex: "none", whiteSpace: "nowrap" }}>仅供预览，不直接参与生成</span>
+              <span style={{ fontWeight: 800, fontSize: 14, flex: "none", maxWidth: 320, overflow: "hidden" }}>
+                {locked ? (epOutline ? episodeTitle(epOutline) : "本集剧情") : (
+                  <Editable value={epOutline?.title ?? ""} placeholder="集标题…" onCommit={saveEpTitle} />
+                )}
+              </span>
+              <span className="faint" style={{ fontSize: 11, flex: "none", whiteSpace: "nowrap" }}>剧情改完点右侧按 AI 重排分场分镜</span>
               <span className="grow" style={{ minWidth: 12 }} />
               {!locked && (
                 <CreditButton
@@ -784,7 +804,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               )}
             </div>
             <div style={{ fontSize: 13.5, lineHeight: 1.75 }}>
-              <Editable block value={plot} placeholder="这一集大致讲什么…" onCommit={(v) => { setPlot(v); queueSave(); }} style={{ display: "block" }} />
+              <Editable block value={plot} placeholder="本集剧情：开场钩子→主体→结尾悬念，一段连贯…" onCommit={saveEpContent} style={{ display: "block" }} />
             </div>
           </div>
 

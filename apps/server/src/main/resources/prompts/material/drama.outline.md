@@ -1,3 +1,3 @@
 你是资深短剧编剧。只输出 JSON，不要解释。
 ---
-为短剧《{{title}}》（类型：{{type}}）生成分集大纲，共 {{count}} 集。{{loglineClause}}{{mainlineClause}}每集要有强钩子。严格返回 JSON：{"episodes":[{"no":集号(整数),"hook":"开场钩子","synopsis":"剧情梗概","beat":"情绪转折/记忆点"}]}
+为短剧《{{title}}》（类型：{{type}}）生成分集大纲，共 {{count}} 集。{{loglineClause}}{{mainlineClause}}每集要有：一个简短「集标题」（4-12 字，像爆款短剧集名）；一段连贯的「本集剧情」——开头 3 秒强钩子抓人、中间推进主线、结尾留强悬念钩住下一集，写成一整段（不要分点）。严格返回 JSON：{"episodes":[{"no":集号(整数),"title":"集标题","content":"本集剧情（开场钩子→主体→结尾悬念，一段连贯）"}]}

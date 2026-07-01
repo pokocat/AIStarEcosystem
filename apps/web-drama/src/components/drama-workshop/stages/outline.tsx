@@ -22,7 +22,7 @@ import { aiErrorMessage } from "@/lib/ai-error";
 import { Editable, Field, GenSkeleton } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import type { WorkshopAction, WorkshopState } from "../workbench";
-import type { EpisodeOutline, ProjectData } from "@/mocks/drama-workshop";
+import { episodeContent, episodeTitle, type EpisodeOutline, type ProjectData } from "@/mocks/drama-workshop";
 import { ProjectsApi } from "@/api";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
@@ -656,34 +656,31 @@ function EpisodeRow({
         </div>
         <div style={{ width: 1, alignSelf: "stretch", background: "var(--line)" }} />
         <div className="grow">
-          <div className="row gap-2" style={{ marginBottom: 5, flexWrap: "wrap" }}>
-            <span className="tag tag-accent">
-              <Zap size={11} /> {e.beat}
-            </span>
-            {prefilled && (
+          {prefilled && (
+            <div className="row gap-2" style={{ marginBottom: 5, flexWrap: "wrap" }}>
               <span className="tag tag-pink">
                 <Layers size={11} /> 模板已填
               </span>
-            )}
-          </div>
+            </div>
+          )}
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
             {editable ? (
-              <Editable value={e.hook} placeholder="本集钩子…" onCommit={(v) => onEdit?.(e.no, { hook: v })} />
+              <Editable value={e.title ?? ""} placeholder="集标题…" onCommit={(v) => onEdit?.(e.no, { title: v })} />
             ) : (
-              e.hook
+              episodeTitle(e)
             )}
           </div>
           <div className="muted" style={{ fontSize: 12.5 }}>
             {editable ? (
               <Editable
                 block
-                value={e.synopsis}
-                placeholder="本集梗概…"
-                onCommit={(v) => onEdit?.(e.no, { synopsis: v })}
+                value={episodeContent(e)}
+                placeholder="本集剧情（开场钩子→主体→结尾悬念，一段连贯）…"
+                onCommit={(v) => onEdit?.(e.no, { content: v })}
                 style={{ display: "block" }}
               />
             ) : (
-              e.synopsis
+              episodeContent(e)
             )}
           </div>
         </div>
