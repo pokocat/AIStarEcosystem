@@ -587,7 +587,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     return Array.from(new Set(all)).slice(0, 6);
   };
 
-  /** 单镜生成：frame=首帧（后台图片任务，出 4 版），clip=直接出片/成片（后台视频任务 + 轮询，带首尾帧）。 */
+  /** 单镜生成：frame=首帧参考图（后台图片任务，出 2 版），clip=直接出片/成片（后台视频任务 + 轮询，带首尾帧）。 */
   const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
     if (!shot || isBusy(id)) return;
@@ -599,7 +599,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           vars: shotVars(shot, "frame"),
           refImages: shotRefImages(sceneId, shot),
           ratio: data.projectInfo.ratio,
-          count: 4,
+          count: 2,
           projectId: ctx?.projectId,
           sceneId,
           shotId: id,
@@ -767,7 +767,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             <>
               <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px" }}>
                 <span style={{ fontWeight: 800, fontSize: 14.5 }}>分镜表</span>
-                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出图出 4 版可挑 · AI 拆镜出首尾帧</span>
+                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳</span>
                 <span className="grow" />
                 {!locked && (
                   <label className="row gap-2" style={{ alignItems: "center", cursor: "pointer", fontSize: 11.5, color: "var(--ink-2)" }} title="出首帧/出片时额外参考同场上一镜画面 + 场景参考图，保持人物/环境/光线连贯">

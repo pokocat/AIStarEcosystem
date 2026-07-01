@@ -59,7 +59,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
             <tr style={{ background: "var(--surface)" }}>
               <th style={{ ...TH, width: 52, textAlign: "center" }}>镜号</th>
               <th style={{ ...TH, width: 64, textAlign: "center" }}>时长</th>
-              <th style={{ ...TH, width: 104, textAlign: "center" }}>首帧</th>
+              <th style={{ ...TH, width: 132, textAlign: "center" }}>首帧</th>
               <th style={{ ...TH, width: 250 }}>画面内容</th>
               <th style={{ ...TH, width: 92 }}>镜头</th>
               <th style={{ ...TH, width: 240 }}>台词 · 音频</th>
@@ -278,7 +278,7 @@ function ShotRow({
 }
 
 /** 首帧渲染单元（紧凑版，表格用）。短剧分镜表 + 短视频分镜表共用。
- *  v0.97：项目表额外传 onPick（4 版挑选）+ onDecompose（AI 拆镜 → 首/末帧双联），短视频表可不传。 */
+ *  v0.97：项目表额外传 onPick（2 版首帧参考图挑选）+ onDecompose（补末帧 → 首/末帧双联），短视频表可不传。 */
 export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecompose, onPick }: {
   s: FormShot; busy: ShotFlow | null;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
@@ -336,16 +336,16 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         </button>
       )}
 
-      {/* 4 版挑选（出图出 4 版，点选即锁；仅项目表传 onPick） */}
+      {/* 首帧参考图挑选（出 2 版，点选即锁；仅项目表传 onPick） */}
       {!busy && s.flow === "frame" && onPick && (s.frameUrls?.length ?? 0) > 1 && (
-        <div className="row" style={{ gap: 3, justifyContent: "center", flexWrap: "wrap", maxWidth: 96 }}>
-          {s.frameUrls!.slice(0, 4).map((u, i) => (
+        <div className="row" style={{ gap: 4, justifyContent: "center" }}>
+          {s.frameUrls!.slice(0, 2).map((u, i) => (
             <button
               key={i}
               type="button"
               onClick={() => onPick(u)}
               title={`选第 ${i + 1} 版`}
-              style={{ width: 20, height: 32, borderRadius: 5, overflow: "hidden", padding: 0, cursor: "pointer", border: (s.frameUrl ?? s.frameUrls![0]) === u ? "2px solid var(--accent)" : "1px solid var(--line)" }}
+              style={{ width: 26, height: 42, borderRadius: 6, overflow: "hidden", padding: 0, cursor: "pointer", border: (s.frameUrl ?? s.frameUrls![0]) === u ? "2px solid var(--accent)" : "1px solid var(--line)" }}
             >
               <img src={u} alt={`版${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </button>
@@ -353,40 +353,34 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         </div>
       )}
 
-      {/* 拆镜信息（变化等级 + 运动，hover 看全文） */}
+      {/* 末帧 / 运动信息（拆镜后：变化等级 + 运动，hover 看全文） */}
       {!busy && s.motionDesc && (
-        <div className="row" style={{ gap: 3, alignItems: "center", fontSize: 8.5, color: "var(--ink-3)", maxWidth: 96 }} title={s.motionDesc}>
-          <Sparkles size={8} style={{ color: "var(--accent)", flex: "none" }} />
-          <span style={{ whiteSpace: "nowrap" }}>拆镜{s.variationType ? ` · 变化${VARI[s.variationType] ?? s.variationType}` : ""}</span>
+        <div className="row" style={{ gap: 3, alignItems: "center", fontSize: 9, color: "var(--ink-3)", maxWidth: 108 }} title={`运动：${s.motionDesc}`}>
+          <Sparkles size={9} style={{ color: "var(--accent)", flex: "none" }} />
+          <span style={{ whiteSpace: "nowrap" }}>已出末帧{s.variationType ? ` · 变化${VARI[s.variationType] ?? s.variationType}` : ""}</span>
         </div>
       )}
 
       {/* 动作按钮（按状态） */}
       {!busy && s.flow === "draft" && (
         <>
-          <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧" confirmBody="出 4 版画面预览，挑一版继续。" className="btn btn-grad btn-sm" style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }} markSize={11}>
-            <ImageIcon size={11} /> 出图 4 版
+          <CreditButton cost={FRAME_COST} onConfirm={() => onRender("frame")} confirmTitle="生成首帧参考图" confirmBody="出 2 版首帧参考图，挑一版继续。" className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
+            <ImageIcon size={12} /> 首帧参考图
           </CreditButton>
-          <div className="row" style={{ gap: 6, justifyContent: "center" }}>
-            <button type="button" onClick={() => onRender("direct")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 9.5, fontWeight: 600 }}>直接出片</button>
-            {onDecompose && (
-              <button type="button" onClick={onDecompose} title="AI 拆出首/末帧+运动，出片首尾帧更稳" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 9.5, fontWeight: 700 }}>
-                AI 拆镜
-              </button>
-            )}
-          </div>
+          <button type="button" onClick={() => onRender("direct")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 10, fontWeight: 600 }}>直接出片</button>
         </>
       )}
       {!busy && s.flow === "frame" && (
         <>
-          <CreditButton cost={CLIP_COST} onConfirm={() => onRender("clip")} confirmTitle="生成视频" confirmBody="基于已选首帧（有末帧则首尾帧双关键帧）生成这镜视频。" className="btn btn-grad btn-sm" style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }} markSize={11}>
-            <Clapperboard size={11} /> 生成视频
-          </CreditButton>
+          {/* 选好首帧后：可选「补末帧」——由 AI 拆出末帧画面（首尾帧双关键帧，出片运动更稳）→ 上方显示首帧▷末帧双联 + 悬停预演 */}
           {onDecompose && !s.motionDesc && (
-            <button type="button" onClick={onDecompose} title="AI 拆出首/末帧+运动，出片首尾帧更稳" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 9.5, fontWeight: 700 }}>
-              <Sparkles size={9} /> AI 拆镜
+            <button type="button" onClick={onDecompose} title="AI 生成本镜末帧画面（首帧→末帧双关键帧，出片起止更可控、更稳）" style={{ background: "none", border: "1px solid var(--line)", borderRadius: 7, cursor: "pointer", color: "var(--accent)", fontSize: 10, fontWeight: 700, height: 24, padding: "0 8px" }}>
+              <Sparkles size={10} /> 补末帧 · 首尾更稳
             </button>
           )}
+          <CreditButton cost={CLIP_COST} onConfirm={() => onRender("clip")} confirmTitle="生成视频" confirmBody="基于已选首帧（有末帧则首尾帧双关键帧插值）生成这镜视频。" className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
+            <Clapperboard size={12} /> 生成视频
+          </CreditButton>
         </>
       )}
       {!busy && s.flow === "clip" && (
