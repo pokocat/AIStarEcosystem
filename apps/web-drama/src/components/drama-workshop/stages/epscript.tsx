@@ -546,13 +546,22 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
 
   /* —— 逐镜渲染引擎（强版，v0.97 收敛：与原视频工厂同能力）—— */
   /** 镜头 → 出图/出片提示词填充 vars（拆镜后首帧用 ffDesc、出片用 motionDesc；否则回退画面）。 */
-  const shotVars = (shot: FormShot, mode: "frame" | "clip"): Record<string, string> => {
+  /** 场景地点 + 氛围（喂进出图/出片提示词的 sceneClause，让模型还原正确取景地，不乱编）。 */
+  const sceneClauseFor = (sceneId: string): string => {
+    const sc = scenesRef.current.find((s) => s.id === sceneId);
+    const p = (sc?.place || "").trim();
+    const m = (sc?.mood || "").trim();
+    if (!p && !m) return "";
+    return `场景：${p}${m ? "，" + m : ""}。`;
+  };
+  const shotVars = (shot: FormShot, mode: "frame" | "clip", sceneId?: string): Record<string, string> => {
     const castNames = (shot.cast ?? []).map((cid) => data.characters.find((c) => c.id === cid)?.name).filter(Boolean).join("、");
     const visual = (mode === "clip" ? shot.motionDesc : shot.ffDesc)?.trim() || shot.visual || "";
     return {
       visual,
       size: shot.size || "",
       move: shot.move || "",
+      sceneClause: sceneId ? sceneClauseFor(sceneId) : "",
       lineClause: shot.voText ? `台词：${shot.voText}。` : "",
       castClause: castNames ? `出场人物：${castNames}。` : "",
       styleSuffix: `${data.projectInfo.type}风格。`,
@@ -612,7 +621,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       if (to === "frame") {
         const job = await RenderApi.submitFrameJob({
           kind: "shot",
-          vars: shotVars(shot, "frame"),
+          vars: shotVars(shot, "frame", sceneId),
           refImages: shotRefImages(sceneId, shot),
           ratio: data.projectInfo.ratio,
           count: 2,
@@ -632,7 +641,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         const endFrame = shot.endFrameUrl ?? (chainConsistency ? nextFrameInScene(sceneId, id) : undefined);
         const job = await RenderApi.renderClip({
           kind: "shot",
-          vars: shotVars(shot, "clip"),
+          vars: shotVars(shot, "clip", sceneId),
           name: `第${state.ep}集 镜${shot.no}`,
           durationSec: shot.dur,
           ratio: data.projectInfo.ratio,
@@ -674,7 +683,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           const ownFrame = shot.frameUrl ?? shot.frameUrls?.[0];
           const frames = await RenderApi.renderFrame({
             kind: "shot",
-            vars: { ...shotVars(shot, "frame"), visual: d.lfDesc },
+            vars: { ...shotVars(shot, "frame", sceneId), visual: d.lfDesc },
             refImages: shotRefImages(sceneId, shot, [ownFrame]),
             ratio: data.projectInfo.ratio,
             count: 1,

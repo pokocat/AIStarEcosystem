@@ -305,25 +305,30 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
           </span>
         </button>
       ) : hasDual ? (
-        // 拆镜后：首帧 ▷ 末帧 双联 + hover 预演（鼠标移上去看运动起止）
-        <button
-          type="button"
-          onClick={onAiEdit}
-          onMouseEnter={() => setScrub(true)}
-          onMouseLeave={() => setScrub(false)}
-          title="首帧 → 末帧（悬停预演运动）· 点开 AI 改图"
-          style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, border: "none", background: "none", cursor: "pointer", padding: 0 }}
-        >
-          <span style={{ position: "relative", width: 44, height: 70, borderRadius: 7, overflow: "hidden", boxShadow: scrub ? "0 0 0 2px var(--accent)" : "none" }}>
+        // 拆镜后：首帧 ▷ 末帧 双联。首帧格 hover 预演运动 + 点开 AI 改图；末帧格点开看大图。
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <button
+            type="button"
+            onClick={onAiEdit}
+            onMouseEnter={() => setScrub(true)}
+            onMouseLeave={() => setScrub(false)}
+            title="首帧 → 末帧（悬停预演运动）· 点开 AI 改图"
+            style={{ position: "relative", width: 44, height: 70, borderRadius: 7, overflow: "hidden", border: "none", padding: 0, cursor: "pointer", boxShadow: scrub ? "0 0 0 2px var(--accent)" : "none" }}
+          >
             <img src={frameSrc} alt="首帧" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: scrub ? 0 : 1, transition: "opacity .5s" }} />
             <img src={s.endFrameUrl} alt="末帧" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: scrub ? 1 : 0, transition: "opacity .5s" }} />
             <span style={{ position: "absolute", left: 2, top: 2, background: "rgba(0,0,0,.5)", color: "#fff", fontSize: 7.5, fontWeight: 700, padding: "0 3px", borderRadius: 3 }}>{scrub ? "末" : "首"}</span>
-          </span>
+          </button>
           <ArrowRight size={11} style={{ color: "var(--accent)", flex: "none" }} />
-          <span style={{ width: 30, height: 48, borderRadius: 6, overflow: "hidden", opacity: 0.85 }}>
+          <button
+            type="button"
+            onClick={() => s.endFrameUrl && setLb({ src: s.endFrameUrl, kind: "image" })}
+            title="末帧 · 点开看大图"
+            style={{ width: 30, height: 48, borderRadius: 6, overflow: "hidden", border: "none", padding: 0, cursor: "zoom-in", opacity: 0.9 }}
+          >
             <img src={s.endFrameUrl} alt="末帧" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          </span>
-        </button>
+          </button>
+        </div>
       ) : (
         // 首帧已出：点开 AI 改图
         <button type="button" onClick={onAiEdit} title="点开 AI 改图" style={{ position: "relative", width: 62, height: 96, borderRadius: 9, overflow: "hidden", border: "none", cursor: "pointer", padding: 0 }}>

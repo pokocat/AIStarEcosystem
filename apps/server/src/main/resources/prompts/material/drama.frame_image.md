@@ -1,1 +1,1 @@
-Cinematic vertical drama still frame. {{visual}}. 景别：{{size}}. 运镜：{{move}}. {{lineClause}}{{castClause}}{{styleSuffix}} Keep faces consistent, clear composition, realistic lighting, production still quality, no text, no subtitles, no watermark, no split screen.
+Cinematic vertical drama still frame. {{sceneClause}}画面：{{visual}}. 景别：{{size}}. 运镜：{{move}}. {{lineClause}}{{castClause}}{{styleSuffix}} 严格按上述场景/地点还原环境（不要凭空换成别的地点）。Keep faces consistent, clear composition, realistic lighting, production still quality, no text, no subtitles, no watermark, no split screen.
