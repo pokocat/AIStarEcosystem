@@ -7,7 +7,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Image as ImageIcon, ImagePlus, Plus, RefreshCw, Sparkles, Trash2, Users, Wand2 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
-import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
+import { CreditButton, Editable, GenFramePlaceholder } from "@/components/drama-ui";
 import { StageHeader } from "../../workbench";
 import type { WorkshopAction, WorkshopState } from "../../workbench";
 import type { CharacterDef, ProjectData, SceneAsset } from "@/mocks/drama-workshop";
@@ -29,10 +29,19 @@ interface CastStageProps {
   embedded?: boolean;
 }
 
-const SCENE_GRAD: [string, string][] = [
-  ["#f59e0b", "#ea580c"], ["#64748b", "#1e293b"], ["#7c3aed", "#2563eb"],
-  ["#22d3ee", "#0e7490"], ["#a78bfa", "#6366f1"], ["#fb7185", "#e11d48"],
-];
+// 场景名常写成「地点：环境 + 人物动作」（如「深夜办公室：凌乱的桌面…只有林萧一人对着电脑发呆」）。
+// 场景参考图要「空镜无人」，故出图前只取地点 + 环境从句，剔除含角色名或「人/独自」的从句，避免出人。
+function scenePlaceForGen(name: string, charNames: string[]): string {
+  const [locPart, ...restParts] = (name || "").split(/[：:]/);
+  const location = (locPart || name || "").trim();
+  const envClauses = restParts
+    .join("：")
+    .split(/[，,。;；、]/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .filter((c) => !charNames.some((n) => c.includes(n)) && !/[人独]/.test(c));
+  return [location, ...envClauses].filter(Boolean).join("，");
+}
 
 export function CastStage({ state, dispatch, data, ctx, embedded }: CastStageProps) {
   const cfg = useDramaConfig();
@@ -170,7 +179,8 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
         // 传作品风格 + 项目画幅，匹配剧集脚本取景（原来误用 shot 首帧提示词 → 塞人脸/比例不符）。
         kind: "scene",
         vars: {
-          place: s.name,
+          // 只取地点+环境、剔除人物动作从句 → 空镜无人（详见 scenePlaceForGen）。
+          place: scenePlaceForGen(s.name, data.characters.map((c) => c.name).filter((n) => n && n.length >= 2)),
           moodClause: s.mood ? `氛围：${s.mood}。` : "",
           styleSuffix: `${data.projectInfo.type}风格。`,
         },
@@ -300,8 +310,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
           <span className="faint" style={{ fontSize: 11 }}>主要取景地 · 生成时统一风格（点击文字可编辑）</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 14 }}>
-          {scenes.map((s, i) => {
-            const [from, to] = SCENE_GRAD[i % SCENE_GRAD.length];
+          {scenes.map((s) => {
             const busy = !!sceneBusy[s.id];
             return (
               <div key={s.id} className="card col" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
@@ -324,9 +333,15 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
                     <img src={s.refUrl} alt={s.name} style={{ width: "100%", aspectRatio: "16/9", objectFit: "cover", display: "block" }} />
                   </button>
                 ) : busy ? (
-                  <div className="skel" style={{ width: "100%", aspectRatio: "16/9" }} />
+                  <div style={{ width: "100%", aspectRatio: "16/9" }}>
+                    <GenFramePlaceholder width="100%" height="100%" radius={0} />
+                  </div>
                 ) : (
-                  <Thumb from={from} to={to} ratio="16/9" radius={0} stripes style={{ width: "100%" }} />
+                  <div className="col center" style={{ width: "100%", aspectRatio: "16/9", background: "var(--surface-2)", border: "1.5px dashed var(--line)", color: "var(--ink-3)", gap: 7 }}>
+                    <ImageIcon size={22} />
+                    <span style={{ fontSize: 11.5, fontWeight: 600 }}>未生成参考图</span>
+                    <span className="faint" style={{ fontSize: 10 }}>点下方「生成参考图」或上传</span>
+                  </div>
                 )}
                 <div className="col gap-2" style={{ padding: 13 }}>
                   <Editable value={s.name} onCommit={(v) => editScene(s.id, { name: v })} style={{ fontWeight: 800, fontSize: 13.5 }} />
