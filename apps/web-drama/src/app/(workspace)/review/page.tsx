@@ -19,6 +19,8 @@ import {
 import { toast } from "sonner";
 import { Avatar, Thumb } from "@/components/drama-ui";
 import {
+  episodeContent,
+  episodeTitle,
   getProjectData,
   type CharacterDef,
   type ReviewItem,
@@ -416,8 +418,8 @@ function ReviewSheet({
                   <td colSpan={8} style={{ padding: "9px 14px", background: "var(--accent-soft)", borderBottom: "1px solid var(--line)" }}>
                     <span className="row gap-2" style={{ flexWrap: "wrap" }}>
                       <span className="num" style={{ fontWeight: 800, color: "var(--accent)" }}>第 {item.ep} 集</span>
-                      <span style={{ fontWeight: 700, fontSize: 12.5 }}>{eps[item.ep - 1] ? eps[item.ep - 1].beat : ""}</span>
-                      <span className="faint" style={{ fontSize: 12 }}>{eps[item.ep - 1] ? eps[item.ep - 1].hook : ""}</span>
+                      <span style={{ fontWeight: 700, fontSize: 12.5 }}>{eps[item.ep - 1] ? episodeTitle(eps[item.ep - 1]) : ""}</span>
+                      <span className="faint" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 480 }}>{eps[item.ep - 1] ? episodeContent(eps[item.ep - 1]) : ""}</span>
                       <span className="grow"></span>
                       <span className="tag tag-accent">本次待审 · {scenes.length} 场</span>
                     </span>
@@ -451,12 +453,12 @@ function ReviewSheet({
                         <td colSpan={8} style={{ padding: "9px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--line-soft)" }}>
                           <span className="row gap-2" style={{ flexWrap: "wrap" }}>
                             <span className="num faint" style={{ fontWeight: 800 }}>第 {e.no} 集</span>
-                            <span style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink-2)" }}>{e.beat}</span>
+                            <span style={{ fontWeight: 700, fontSize: 12.5, color: "var(--ink-2)" }}>{episodeTitle(e)}</span>
                             <span
                               className="faint"
                               style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 420 }}
                             >
-                              {e.hook}
+                              {episodeContent(e)}
                             </span>
                             <span className="grow"></span>
                             {e.locked ? (

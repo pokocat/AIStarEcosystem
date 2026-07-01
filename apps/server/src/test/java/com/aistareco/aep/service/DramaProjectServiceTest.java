@@ -174,7 +174,7 @@ class DramaProjectServiceTest {
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\",\"episodes\":3}", "u1");
         JsonNode out = svc.outlineAiDraft(id, null, "u1");
         assertEquals(1, out.path("episodes").size());
-        assertEquals("开场钩子", out.path("episodes").get(0).path("hook").asText());
+        assertEquals("开场钩子", out.path("episodes").get(0).path("title").asText()); // 旧 hook 无 title → title 回退 hook
         assertEquals(1, out.path("episodes").get(0).path("no").asInt());
     }
 
@@ -339,7 +339,7 @@ class DramaProjectServiceTest {
         // 大纲分集（图节点）
         assertEquals(3, out.path("episodes").size());
         assertEquals(1, out.path("episodes").get(0).path("no").asInt());
-        assertEquals("上车", out.path("episodes").get(0).path("hook").asText());
+        assertEquals("上车", out.path("episodes").get(0).path("title").asText()); // 旧 hook 无 title → title 回退 hook
         // overlay
         JsonNode ov = out.path("interactive");
         assertTrue(ov.path("enabled").asBoolean());

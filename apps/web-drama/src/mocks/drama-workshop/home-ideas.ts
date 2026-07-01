@@ -49,8 +49,8 @@ export interface PreviewBeat {
 export function ideaBeats(cat: string): PreviewBeat[] {
   return [
     { range: "开场 3 秒", beat: "黄金钩子 · " + cat + "感拉满", est: "抓住划走的手" },
-    { range: "第 1-3 集", beat: "立人设 · 抛出核心悬念", est: "约 75 秒/集" },
-    { range: "中段", beat: "矛盾升级 · 每集一个反转钩子", est: "约 75 秒/集" },
-    { range: "收束", beat: "高潮反杀 · 情绪兑现", est: "约 80 秒/集" },
+    { range: "第 1-3 集", beat: "立人设 · 抛出核心悬念", est: "约 60 秒/集" },
+    { range: "中段", beat: "矛盾升级 · 每集一个反转钩子", est: "约 60 秒/集" },
+    { range: "收束", beat: "高潮反杀 · 情绪兑现", est: "约 60 秒/集" },
   ];
 }

@@ -53,6 +53,8 @@ export interface CreditButtonProps
   mark?: boolean;
   /** 钻石标记尺寸，默认 13 */
   markSize?: number;
+  /** 强制弹确认——绕过「小额免打扰」阈值（用于金额小但需警示的操作，如跳过首帧直接出片）。 */
+  alwaysConfirm?: boolean;
 }
 
 /**
@@ -67,6 +69,7 @@ export function CreditButton({
   confirmLabel = "确认生成",
   mark = true,
   markSize = 13,
+  alwaysConfirm = false,
   children,
   disabled,
   ...rest
@@ -74,16 +77,19 @@ export function CreditButton({
   const handleClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (disabled) return;
-    // 小额免打扰（v0.66）：消耗低于阈值（admin「短剧专区」可配，默认 10）直接执行
-    let threshold = 10;
-    try {
-      threshold = (await getDramaConfig()).confirmThreshold;
-    } catch {
-      /* 配置拉取失败用默认阈值 */
-    }
-    if (cost < threshold) {
-      onConfirm();
-      return;
+    // 小额免打扰（v0.66）：消耗低于阈值（admin「短剧专区」可配，默认 10）直接执行。
+    // alwaysConfirm 的操作（金额小但需警示，如跳过首帧直接出片）不吃免打扰，始终弹确认。
+    if (!alwaysConfirm) {
+      let threshold = 10;
+      try {
+        threshold = (await getDramaConfig()).confirmThreshold;
+      } catch {
+        /* 配置拉取失败用默认阈值 */
+      }
+      if (cost < threshold) {
+        onConfirm();
+        return;
+      }
     }
     const ok = await dramaConfirm({ cost, title: confirmTitle, body: confirmBody, confirmLabel });
     if (ok) onConfirm();

@@ -35,6 +35,9 @@ const FIELDS: FieldDef[] = [
   { key: "drama.credit.split-scene", label: "单场拆镜", hint: "「把这场拆成分镜表单」单次积分", group: "price" },
   { key: "drama.credit.cast", label: "重抽角色阵容", hint: "「从大纲重抽角色」单次积分", group: "price" },
   { key: "drama.credit.frame", label: "分镜首帧渲染", hint: "首帧图像渲染单次积分（一次出多版仍按单次计）", group: "price" },
+  { key: "drama.credit.clip", label: "分镜视频出片", hint: "分镜「生成视频 / 直接出片」（直出、动态渲染）单次积分。短剧 app 维度独立定价，不耦合带货线 material.video-generate", group: "price" },
+  { key: "drama.credit.decompose", label: "AI 拆镜（补末帧）", hint: "单镜拆出首/末帧快照 + 运动 + 变化等级 单次积分（供首尾帧双关键帧 i2v）", group: "price" },
+  { key: "drama.credit.shot-rewrite", label: "行级改写本镜", hint: "按指令只改这一个镜头（不推倒整集）单次积分", group: "price" },
   { key: "drama.credit.short-entry", label: "短视频 · 进工作台开拍", hint: "新建一条短视频草稿 = AI 出口播脚本与分镜单次积分；从创意市场套用单集创意同样计费（重开已有草稿不计费）", group: "price" },
 ];
 
@@ -46,6 +49,9 @@ const DEFAULTS: Record<string, number> = {
   "drama.credit.split-scene": 6,
   "drama.credit.cast": 5,
   "drama.credit.frame": 2,
+  "drama.credit.clip": 30,
+  "drama.credit.decompose": 3,
+  "drama.credit.shot-rewrite": 2,
   "drama.credit.short-entry": 10,
 };
 

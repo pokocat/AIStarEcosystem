@@ -38,9 +38,9 @@ export function tplBeats(tp: Template): PreviewBeat[] {
   }
   const cut = (a: number, b: number) => `第 ${a}-${b} 集`;
   return [
-    { range: cut(1, 3), beat: "钩子期 · " + tp.hooks[0], est: "约 75 秒/集" },
-    { range: cut(4, Math.round(e * 0.35)), beat: "推进期 · 矛盾升级", est: "约 75 秒/集" },
-    { range: cut(Math.round(e * 0.35) + 1, Math.round(e * 0.8)), beat: "高潮期 · " + tp.hooks[1], est: "约 75 秒/集" },
-    { range: cut(Math.round(e * 0.8) + 1, e), beat: "收束期 · " + tp.hooks[2], est: "约 80 秒/集" },
+    { range: cut(1, 3), beat: "钩子期 · " + tp.hooks[0], est: "约 60 秒/集" },
+    { range: cut(4, Math.round(e * 0.35)), beat: "推进期 · 矛盾升级", est: "约 60 秒/集" },
+    { range: cut(Math.round(e * 0.35) + 1, Math.round(e * 0.8)), beat: "高潮期 · " + tp.hooks[1], est: "约 60 秒/集" },
+    { range: cut(Math.round(e * 0.8) + 1, e), beat: "收束期 · " + tp.hooks[2], est: "约 60 秒/集" },
   ];
 }

@@ -19,3 +19,4 @@ export {
   DramaConfirmHost,
   dramaConfirm,
 } from "./confirm-dialog";
+export { GenFramePlaceholder } from "./gen-frame-placeholder";

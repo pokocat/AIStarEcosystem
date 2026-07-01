@@ -76,10 +76,33 @@ export interface TopicCard {
 
 export interface EpisodeOutline {
   no: number;
-  hook: string;
-  synopsis: string;
-  beat: string;
+  /** v0.98 新模型：集标题 + 本集剧情（一段连贯，AI 按「开场钩子→主体→结尾悬念」写，直接驱动分场分镜）。 */
+  title?: string;
+  content?: string;
+  /** @deprecated 旧三段模型（开场钩子/梗概/结尾悬念）；仅老数据回读兜底，新代码用 title/content。 */
+  hook?: string;
+  synopsis?: string;
+  beat?: string;
   locked?: boolean;
+}
+
+/** 集标题（新 title 优先；老数据无 title → 从剧情首句派生一个短标题，兜底「第N集」）。 */
+export function episodeTitle(ep: { no: number; title?: string; hook?: string; content?: string; synopsis?: string; beat?: string }): string {
+  const t = (ep.title || "").trim();
+  if (t) return t.length > 16 ? t.slice(0, 16) + "…" : t; // 防旧数据/异常长标题溢出
+  const src = (ep.hook || ep.beat || ep.content || ep.synopsis || "").trim();
+  if (src) {
+    const clause = (src.split(/[，。！？、\n·]/)[0] || src).trim();
+    return clause.length > 12 ? clause.slice(0, 12) + "…" : clause;
+  }
+  return `第 ${ep.no} 集`;
+}
+
+/** 本集剧情（新 content 优先；老数据回退旧三段拼接）。 */
+export function episodeContent(ep: { content?: string; hook?: string; synopsis?: string; beat?: string }): string {
+  const c = (ep.content || "").trim();
+  if (c) return c;
+  return [ep.hook, ep.synopsis, ep.beat].map((s) => (s || "").trim()).filter(Boolean).join("。");
 }
 
 export interface CharacterDef {

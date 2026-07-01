@@ -351,6 +351,9 @@ public class DramaRenderService {
 
         ObjectNode item = om.createObjectNode();
         item.put("kind", "drama-shot");
+        // 短剧按 app 维度独立定价（drama.credit.clip），不耦合带货线 material.video-generate。
+        item.put("credit_cost", configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CLIP, 30));
+        item.put("credit_label", "短剧分镜视频");
         item.put("name", name);
         item.put("prompt", full.toString());
         item.put("duration_sec", durationSec);

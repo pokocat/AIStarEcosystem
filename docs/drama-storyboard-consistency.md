@@ -232,3 +232,27 @@
 - **P2** ✅：`MaterialVideoModelClient` `PROTOCOL_SEEDANCE`（content 数组首/尾帧 + `return_last_frame`）+ GENERIC 补首/尾帧；`MaterialVideoJob.lastFrameUrl` → 任务卡 → 前端 `BoardShot.lastFrameUrl` 链式承接闭环；`drama.decompose` 节点（端点 `/shot/decompose` + 计费 `drama.credit.decompose` + 角色名校验）。
 - **运维前置**：要用 seedance 首尾帧，需在 admin「AI 模型与 Key」把「视频生成」绑到一个名称/baseUrl/model 含 `seedance` 的端点（自动走 SEEDANCE 协议）；否则按原 AGNES/GENERIC 协议工作（首帧仍生效）。
 - **后续可选**：VLM best-of-N 一致性自检（生成多版首帧自动选最一致）；末帧 CDN 镜像（当前 `lastFrameUrl` 存上游 URL，best-effort，可能有时效）。
+
+## v0.98 补丁 · 分集剧情模型简化为「标题 + 内容」（2026-07-01）
+
+问题：每集原为 `hook/synopsis/beat` 三段并排、无标签、读着不相干；生成只喂了 hook+synopsis（beat 丢失），
+且与 epscript 的 `plot` 双源打架。非 ViMax 实践（ViMax 是「连贯叙事 → 逐层分解」）。
+改：`EpisodeOutline` 新模型 `{no, title, content}`——`title` 集标题（可视化：集导航/大纲/审阅），
+`content` 一段连贯本集剧情（AI 按「开场钩子→主体→结尾悬念」写，钩子结构做进 `drama.outline` prompt，
+不再拆独立字段）。`hook/synopsis/beat` 降级为可选、仅老数据回读兜底（helper `episodeTitle`/`episodeContent`）。
+生成/展示单一真源 = `episodes[].content`（epscript 去 `meta.plot` 双源）。后端 `drama.outline` 出 title/content、
+`aiDraftOutline`/seed/epscript-plot 读 content 优先。门禁：server 36 drama 单测 + web-drama typecheck/build(31) + contract 全绿。
+
+## v0.98 补丁 · 分镜视频计费解耦为短剧 app 维度（2026-07-01）
+
+问题：短剧分镜视频出片（直出/动态）此前**耦合带货线** action `material.video-generate`（前端还写死 7/9，
+既显示错、乐观扣费错、又因 9<10 命中小额免打扰不弹确认）。用户要求按 app 应用维度独立配置、不耦合。
+改：
+- 新增短剧独立单价 `drama.credit.clip`（DramaConfigSeeder，默认 30）；`DramaConfigController` 的 `clip`
+  改读它（去掉对 `CelebrityActionPricingService` 的依赖）。
+- `MaterialVideoJobService` 改为**领域无关**：单价按 item 的可选 `credit_cost` 覆盖（+`credit_label`
+  账本文案），无覆盖才回落带货线 `material.video-generate`；`DramaRenderService` 出片时传
+  `credit_cost=drama.credit.clip` + `credit_label=短剧分镜视频`。带货线本身不变。
+- 前端分镜表价格全部走 `/me/drama/config`（`frameCost/clipCost/splitCost`=drama.credit.frame/clip/split-scene），
+  删写死的 7/9 与拆镜 6；admin「短剧专区·配置」新增 分镜视频出片/AI 拆镜/行级改写 三项可配（此前缺）。
+门禁：server compile + test-compile + MaterialVideo/DramaConfig 测试 + web-drama/admin typecheck + build 全绿。

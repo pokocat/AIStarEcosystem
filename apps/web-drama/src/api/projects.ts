@@ -86,7 +86,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectD
         title: meta.title,
         type: input.type,
         episodes: meta.episodes,
-        duration: "每集 ~75 秒",
+        duration: "每集 ~60 秒",
         ratio: meta.ratio,
         logline: input.logline || "",
         mainline: input.mainline || "",

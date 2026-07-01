@@ -296,7 +296,7 @@ public class DramaProjectService {
         if (plot.isBlank()) {
             JsonNode outline = readPayload(row).path("episodes");
             for (JsonNode e : outline) {
-                if (e.path("no").asInt() == ep) plot = e.path("synopsis").asText("");
+                if (e.path("no").asInt() == ep) plot = orDefault(text(e, "content"), e.path("synopsis").asText(""));
             }
         }
         if (plot.isBlank()) {
@@ -552,7 +552,7 @@ public class DramaProjectService {
         int n = 0;
         for (JsonNode e : data.path("episodes")) {
             if (n++ >= 6) break;
-            eps.append("第").append(e.path("no").asInt()).append("集：").append(e.path("synopsis").asText("")).append("\n");
+            eps.append("第").append(e.path("no").asInt()).append("集：").append(orDefault(text(e, "content"), e.path("synopsis").asText(""))).append("\n");
         }
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("title", orDefault(row.getTitle(), "未命名"));
@@ -650,9 +650,8 @@ public class DramaProjectService {
             String eid = "ep" + no;
             ObjectNode outline = om.createObjectNode();
             outline.put("no", no);
-            outline.put("hook", orDefault(text(e, "hook"), orDefault(text(e, "title"), "第 " + no + " 集")));
-            outline.put("synopsis", orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), "")));
-            outline.put("beat", orDefault(text(e, "beat"), ""));
+            outline.put("title", orDefault(text(e, "title"), orDefault(text(e, "hook"), "第 " + no + " 集")));
+            outline.put("content", orDefault(text(e, "content"), orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), ""))));
             episodes.add(outline);
 
             ObjectNode node = om.createObjectNode();
@@ -905,9 +904,8 @@ public class DramaProjectService {
             ObjectNode ep = om.createObjectNode();
             int no = e.path("no").asInt(i);
             ep.put("no", no);
-            ep.put("hook", orDefault(text(e, "hook"), ""));
-            ep.put("synopsis", orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), "")));
-            ep.put("beat", orDefault(text(e, "beat"), ""));
+            ep.put("title", orDefault(text(e, "title"), orDefault(text(e, "hook"), "第 " + no + " 集")));
+            ep.put("content", orDefault(text(e, "content"), orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), ""))));
             out.add(ep);
             i++;
         }

@@ -22,7 +22,7 @@ import { aiErrorMessage } from "@/lib/ai-error";
 import { Editable, Field, GenSkeleton } from "@/components/drama-ui";
 import { StageHeader } from "../workbench";
 import type { WorkshopAction, WorkshopState } from "../workbench";
-import type { EpisodeOutline, ProjectData } from "@/mocks/drama-workshop";
+import { episodeContent, episodeTitle, type EpisodeOutline, type ProjectData } from "@/mocks/drama-workshop";
 import { ProjectsApi } from "@/api";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
@@ -31,7 +31,14 @@ const SCOPE_OPTS = [
   { key: "trial", name: "试做开头", eps: 6 as number | null, cost: 6 },
   { key: "full", name: "完整设计", eps: null as number | null, cost: 18 },
 ] as const;
+const TRIAL_EPS = SCOPE_OPTS.find((s) => s.key === "trial")!.eps!;
 const DUR_OPTS = ["60 秒/集", "75 秒/集", "90 秒/集"];
+const STEP_BTN: React.CSSProperties = {
+  width: 20, height: 20, borderRadius: 6, padding: 0,
+  border: "1px solid var(--line)", background: "var(--surface)",
+  display: "grid", placeItems: "center", cursor: "pointer",
+  fontSize: 13, fontWeight: 800, color: "var(--ink)", lineHeight: 1,
+};
 
 interface OutlineStageProps {
   state: WorkshopState;
@@ -50,7 +57,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
   // 空项目(还没大纲)→ idle 引导生成;已有大纲 → done 直接展示。
   const [phase, setPhase] = React.useState<"idle" | "gen" | "done">(data.episodes.length ? "done" : "idle");
   const [scope, setScope] = React.useState<"trial" | "full">(data.outlinePrefs?.scope ?? "trial");
-  const [dur, setDur] = React.useState(data.outlinePrefs?.dur ?? DUR_OPTS[1]);
+  const [dur, setDur] = React.useState(data.outlinePrefs?.dur ?? DUR_OPTS[0]);
   // v0.88：大纲 AI 参数（范围/时长）落库（草稿态可回溯）。
   const savePrefs = (patch: { scope?: "trial" | "full"; dur?: string }) => {
     if (!ctx) return;
@@ -59,6 +66,13 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
   };
   const pickScope = (k: "trial" | "full") => { setScope(k); savePrefs({ scope: k }); };
   const pickDur = (d: string) => { setDur(d); savePrefs({ dur: d }); };
+  // v0.97：总集数可调（选「完整设计」时露出步进器），落库到 projectInfo.episodes。
+  const pickTotal = (n: number) => {
+    const next = Math.max(1, Math.min(99, n));
+    if (!ctx || next === total) return;
+    ctx.notifyEditing?.();
+    void ctx.saveData({ ...data, projectInfo: { ...data.projectInfo, episodes: next, duration: data.projectInfo.duration } }).catch(() => {});
+  };
   const [eps, setEps] = React.useState<EpisodeOutline[]>(data.episodes);
   React.useEffect(() => {
     setEps(data.episodes);
@@ -67,10 +81,12 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
   }, [data.episodes]);
   const locked = !!state.lockedStages.outline;
   const cfg = useDramaConfig();
-  const scopeCost = (k: "trial" | "full") => (k === "trial" ? cfg.prices.outlineTrial : cfg.prices.outlineFull);
-  const fillRestCost = Math.max(0, cfg.prices.outlineFull - cfg.prices.outlineTrial);
+  // 计价：统一每集单价 × 集数。trial 固定 TRIAL_EPS 集；full 按当前总集数 total。
+  const unitPrice = cfg.prices.outlineTrial;
+  const scopeCost = (k: "trial" | "full") => unitPrice * (k === "trial" ? TRIAL_EPS : total);
+  const fillRestCost = Math.max(0, scopeCost("full") - scopeCost("trial"));
   const scopeOpt = SCOPE_OPTS.find((s) => s.key === scope)!;
-  const showEps = scope === "trial" && !locked ? eps.slice(0, 6) : eps;
+  const showEps = scope === "trial" && !locked ? eps.slice(0, TRIAL_EPS) : eps;
 
   // 真实大纲生成：调后端大模型 → 合并进整套文档 → 落库。无 ctx(脱离工作台)时退化为本地演示。
   const runOutline = async (nextScope: "trial" | "full", cost: number) => {
@@ -138,27 +154,39 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
           <div className="row gap-2">
             {SCOPE_OPTS.map((o) => {
               const on = scope === o.key;
-              return (
-                <button
-                  key={o.key}
-                  type="button"
-                  onClick={() => pickScope(o.key)}
-                  className="col"
-                  style={{
-                    padding: "7px 13px",
-                    borderRadius: 11,
-                    textAlign: "left",
-                    gap: 1,
-                    border: on ? "2px solid var(--accent)" : "1.5px solid var(--line)",
-                    background: on ? "var(--accent-soft)" : "var(--surface)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
+              const showStepper = on && !o.eps; // 选「完整设计」时露出总集数步进器
+              const cardStyle: React.CSSProperties = {
+                padding: "7px 13px",
+                borderRadius: 11,
+                textAlign: "left",
+                gap: 2,
+                border: on ? "2px solid var(--accent)" : "1.5px solid var(--line)",
+                background: on ? "var(--accent-soft)" : "var(--surface)",
+                whiteSpace: "nowrap",
+                cursor: showStepper ? "default" : "pointer",
+              };
+              const inner = (
+                <>
                   <span style={{ fontWeight: 700, fontSize: 12.5, color: on ? "var(--accent)" : "var(--ink)" }}>{o.name}</span>
-                  <span className="faint num" style={{ fontSize: 11 }}>
-                    {o.eps ? `前 ${o.eps} 集` : `全部 ${total} 集`} · {scopeCost(o.key)} 积分
-                  </span>
-                </button>
+                  {showStepper ? (
+                    <div className="row" style={{ alignItems: "center", gap: 4 }}>
+                      <span className="faint" style={{ fontSize: 11 }}>全部</span>
+                      <button type="button" aria-label="减少集数" onClick={() => pickTotal(total - 1)} style={STEP_BTN}>−</button>
+                      <span className="num" style={{ fontSize: 12.5, fontWeight: 800, minWidth: 20, textAlign: "center", color: "var(--accent)" }}>{total}</span>
+                      <button type="button" aria-label="增加集数" onClick={() => pickTotal(total + 1)} style={STEP_BTN}>+</button>
+                      <span className="faint" style={{ fontSize: 11 }}>集 · {scopeCost(o.key)} 积分</span>
+                    </div>
+                  ) : (
+                    <span className="faint num" style={{ fontSize: 11 }}>
+                      {o.eps ? `前 ${o.eps} 集` : `全部 ${total} 集`} · {scopeCost(o.key)} 积分
+                    </span>
+                  )}
+                </>
+              );
+              return showStepper ? (
+                <div key={o.key} className="col" style={cardStyle}>{inner}</div>
+              ) : (
+                <button key={o.key} type="button" onClick={() => pickScope(o.key)} className="col" style={cardStyle}>{inner}</button>
               );
             })}
           </div>
@@ -184,7 +212,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
             <LinkIcon size={15} />
           </span>
           <span style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: "-.01em" }}>剧情大纲</span>
-          <span className="tag tag-gray" style={{ flex: "none" }}>总览 · 分集</span>
+          <span className="tag tag-gray" style={{ flex: "none" }}>总览</span>
           {prefilled && (
             <span className="tag tag-pink" style={{ flex: "none" }}>
               <Layers size={11} /> 模板已预填
@@ -248,6 +276,9 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
               "待生成"
             )}
           </span>
+          {phase === "done" && eps.length > 0 && (
+            <EpisodeProgress done={Math.min(eps.length, total || eps.length)} total={total || eps.length} trial={scope === "trial" && !locked} />
+          )}
           {locked && (
             <span className="tag tag-gray" style={{ flex: "none" }}>
               <Lock size={11} /> 已锁定
@@ -280,7 +311,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
 
         {phase === "gen" && (
           <div className="card" style={{ padding: 18 }}>
-            <GenSkeleton lines={4} label={`正在按主线生成${scope === "trial" ? "前 6 集" : `全部 ${total} 集`}的钩子…`} />
+            <GenSkeleton lines={4} label={`正在按故事大纲生成${scope === "trial" ? `前 ${TRIAL_EPS} 集` : `全部 ${total} 集`}的剧情…`} />
           </div>
         )}
 
@@ -314,8 +345,8 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
                   <List size={18} />
                 </div>
                 <div className="grow">
-                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - 6} 集一并补齐</div>
-                  <div className="faint" style={{ fontSize: 12 }}>AI 将延续这 6 集的节奏与人物关系续写，风格保持连贯</div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - TRIAL_EPS} 集一并补齐</div>
+                  <div className="faint" style={{ fontSize: 12 }}>AI 将延续这 {TRIAL_EPS} 集的节奏与人物关系续写，风格保持连贯</div>
                 </div>
                 <button type="button" className="btn btn-primary btn-sm" style={{ flex: "none" }} onClick={fillRest}>
                   铺完整 {total} 集 · 补 {fillRestCost} 积分
@@ -361,7 +392,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
               <List size={15} />
             </span>
             <span style={{ fontWeight: 800, fontSize: 15.5, letterSpacing: "-.01em" }}>剧情大纲</span>
-            <span className="tag tag-gray" style={{ flex: "none" }}>总览 · 分集</span>
+            <span className="tag tag-gray" style={{ flex: "none" }}>总览</span>
             {prefilled && (
               <span className="tag tag-pink" style={{ flex: "none" }}>
                 <Layers size={11} /> 模板已预填
@@ -405,29 +436,39 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
                 <div className="row gap-2">
                   {SCOPE_OPTS.map((o) => {
                     const on = scope === o.key;
-                    return (
-                      <button
-                        key={o.key}
-                        type="button"
-                        onClick={() => pickScope(o.key)}
-                        className="col"
-                        style={{
-                          padding: "8px 14px",
-                          borderRadius: 12,
-                          textAlign: "left",
-                          gap: 1,
-                          border: on ? "2px solid var(--accent)" : "1.5px solid var(--line)",
-                          background: on ? "var(--accent-soft)" : "var(--surface)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        <span style={{ fontWeight: 700, fontSize: 12.5, color: on ? "var(--accent)" : "var(--ink)" }}>
-                          {o.name}
-                        </span>
-                        <span className="faint num" style={{ fontSize: 11 }}>
-                          {o.eps ? `前 ${o.eps} 集` : `全部 ${total} 集`} · {scopeCost(o.key)} 积分
-                        </span>
-                      </button>
+                    const showStepper = on && !o.eps;
+                    const cardStyle: React.CSSProperties = {
+                      padding: "8px 14px",
+                      borderRadius: 12,
+                      textAlign: "left",
+                      gap: 2,
+                      border: on ? "2px solid var(--accent)" : "1.5px solid var(--line)",
+                      background: on ? "var(--accent-soft)" : "var(--surface)",
+                      whiteSpace: "nowrap",
+                      cursor: showStepper ? "default" : "pointer",
+                    };
+                    const inner = (
+                      <>
+                        <span style={{ fontWeight: 700, fontSize: 12.5, color: on ? "var(--accent)" : "var(--ink)" }}>{o.name}</span>
+                        {showStepper ? (
+                          <div className="row" style={{ alignItems: "center", gap: 4 }}>
+                            <span className="faint" style={{ fontSize: 11 }}>全部</span>
+                            <button type="button" aria-label="减少集数" onClick={() => pickTotal(total - 1)} style={STEP_BTN}>−</button>
+                            <span className="num" style={{ fontSize: 12.5, fontWeight: 800, minWidth: 20, textAlign: "center", color: "var(--accent)" }}>{total}</span>
+                            <button type="button" aria-label="增加集数" onClick={() => pickTotal(total + 1)} style={STEP_BTN}>+</button>
+                            <span className="faint" style={{ fontSize: 11 }}>集 · {scopeCost(o.key)} 积分</span>
+                          </div>
+                        ) : (
+                          <span className="faint num" style={{ fontSize: 11 }}>
+                            {o.eps ? `前 ${o.eps} 集` : `全部 ${total} 集`} · {scopeCost(o.key)} 积分
+                          </span>
+                        )}
+                      </>
+                    );
+                    return showStepper ? (
+                      <div key={o.key} className="col" style={cardStyle}>{inner}</div>
+                    ) : (
+                      <button key={o.key} type="button" onClick={() => pickScope(o.key)} className="col" style={cardStyle}>{inner}</button>
                     );
                   })}
                 </div>
@@ -518,7 +559,7 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
         )}
         {phase === "gen" && (
           <div className="card" style={{ padding: 18 }}>
-            <GenSkeleton lines={4} label={`正在按主线生成${scope === "trial" ? "前 6 集" : `全部 ${total} 集`}的钩子…`} />
+            <GenSkeleton lines={4} label={`正在按故事大纲生成${scope === "trial" ? `前 ${TRIAL_EPS} 集` : `全部 ${total} 集`}的剧情…`} />
           </div>
         )}
         {phase === "done" && (
@@ -551,8 +592,8 @@ export function OutlineStage({ state, dispatch, data, prefilled, ctx, embedded }
                   <List size={18} />
                 </div>
                 <div className="grow">
-                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - 6} 集一并补齐</div>
-                  <div className="faint" style={{ fontSize: 12 }}>AI 将延续这 6 集的节奏与人物关系续写，风格保持连贯</div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>开头满意?把剩下 {total - TRIAL_EPS} 集一并补齐</div>
+                  <div className="faint" style={{ fontSize: 12 }}>AI 将延续这 {TRIAL_EPS} 集的节奏与人物关系续写，风格保持连贯</div>
                 </div>
                 <button type="button" className="btn btn-primary btn-sm" style={{ flex: "none" }} onClick={fillRest}>
                   铺完整 {total} 集 · 补 {fillRestCost} 积分
@@ -656,37 +697,95 @@ function EpisodeRow({
         </div>
         <div style={{ width: 1, alignSelf: "stretch", background: "var(--line)" }} />
         <div className="grow">
-          <div className="row gap-2" style={{ marginBottom: 5, flexWrap: "wrap" }}>
-            <span className="tag tag-accent">
-              <Zap size={11} /> {e.beat}
-            </span>
-            {prefilled && (
+          {prefilled && (
+            <div className="row gap-2" style={{ marginBottom: 5, flexWrap: "wrap" }}>
               <span className="tag tag-pink">
                 <Layers size={11} /> 模板已填
               </span>
-            )}
-          </div>
+            </div>
+          )}
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>
             {editable ? (
-              <Editable value={e.hook} placeholder="本集钩子…" onCommit={(v) => onEdit?.(e.no, { hook: v })} />
+              <Editable value={e.title ?? ""} placeholder="集标题…" onCommit={(v) => onEdit?.(e.no, { title: v })} />
             ) : (
-              e.hook
+              episodeTitle(e)
             )}
           </div>
           <div className="muted" style={{ fontSize: 12.5 }}>
             {editable ? (
               <Editable
                 block
-                value={e.synopsis}
-                placeholder="本集梗概…"
-                onCommit={(v) => onEdit?.(e.no, { synopsis: v })}
+                value={episodeContent(e)}
+                placeholder="本集剧情（开场钩子→主体→结尾悬念，一段连贯）…"
+                onCommit={(v) => onEdit?.(e.no, { content: v })}
                 style={{ display: "block" }}
               />
             ) : (
-              e.synopsis
+              episodeContent(e)
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** 分集进度胶囊：X/Y 集 + 渐变进度条；试做态显示「试做」标，补齐后变满。 */
+function EpisodeProgress({ done, total, trial }: { done: number; total: number; trial: boolean }) {
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  const remaining = Math.max(0, total - done);
+  return (
+    <div
+      className="row"
+      style={{
+        alignItems: "center",
+        gap: 8,
+        flex: "none",
+        padding: "3px 10px 3px 8px",
+        borderRadius: 999,
+        background: "var(--surface-2)",
+        border: "1px solid var(--line)",
+      }}
+      title={trial && remaining > 0 ? `试做 ${done} 集，补齐还差 ${remaining} 集` : `已生成 ${done} / ${total} 集`}
+    >
+      <div style={{ position: "relative", width: 34, height: 34, flex: "none" }}>
+        <svg width="34" height="34" viewBox="0 0 34 34" style={{ transform: "rotate(-90deg)" }}>
+          <circle cx="17" cy="17" r="13" fill="none" stroke="var(--line)" strokeWidth="3" />
+          <circle
+            cx="17"
+            cy="17"
+            r="13"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={`${(pct / 100) * 2 * Math.PI * 13} ${2 * Math.PI * 13}`}
+            style={{ transition: "stroke-dasharray .6s cubic-bezier(.22,1,.36,1)" }}
+          />
+        </svg>
+        <span
+          className="num"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 10,
+            fontWeight: 800,
+            color: "var(--accent)",
+            letterSpacing: "-.02em",
+          }}
+        >
+          {pct}
+        </span>
+      </div>
+      <div className="col" style={{ gap: 1, lineHeight: 1.1 }}>
+        <span className="num" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink)" }}>
+          {done}<span className="faint" style={{ fontWeight: 500 }}> / {total} 集</span>
+        </span>
+        <span className="faint" style={{ fontSize: 10 }}>
+          {trial && remaining > 0 ? `试做中 · 差 ${remaining} 集` : "已铺满"}
+        </span>
       </div>
     </div>
   );
