@@ -20,8 +20,9 @@ export interface RenderedFrame {
 // 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
   /** shot=工作台分镜（drama.frame_image）/ short=短视频分镜（drama.short_frame_image）/
-   *  scene=场景参考图（drama.scene_frame_image，干净空景 establishing plate，无人物）。默认 shot。 */
-  kind?: "shot" | "short" | "scene";
+   *  scene=场景参考图（drama.scene_frame_image，干净空景，无人物）/
+   *  character=角色定妆参考图（drama.character_frame_image，单人肖像，锁脸）。默认 shot。 */
+  kind?: "shot" | "short" | "scene" | "character";
   /** 填充 server 端 prompt 模板的占位符：visual/size/move/lineClause/castClause/styleSuffix/metaPrefix… */
   vars: Record<string, string>;
   ratio?: string;

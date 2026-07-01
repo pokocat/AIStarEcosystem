@@ -617,14 +617,20 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     }
     return undefined;
   };
-  /** 出首帧参考图：出场角色图（缺省用本集所有已绑定角色）+ 场景参考图 + 同场上一镜画面。 */
+  /** 出首帧参考图：出场角色图（@提及优先→画面文本名匹配兜底→本集全体）+ 场景参考图 + 同场上一镜画面。 */
   const shotRefImages = (sceneId: string, shot: FormShot, extraLeading?: (string | undefined)[]): string[] => {
-    let charImgs = (shot.cast ?? [])
+    // 出场角色：优先本镜 @提及的 cast；老镜/未 @ → 从画面文本按角色名兜底匹配（避免塞错人）。
+    let cast = shot.cast ?? [];
+    if (cast.length === 0) {
+      const v = shot.visual || "";
+      cast = data.characters.filter((c) => c.name && c.name.length >= 2 && v.includes(c.name)).map((c) => c.id);
+    }
+    let charImgs = cast
       .map((cid) => data.characters.find((c) => c.id === cid))
       .map((c) => c?.avatarImage || c?.refUrl || "")
       .filter(Boolean);
     if (charImgs.length === 0) {
-      // 该镜未标出场角色 → 退回本集所有有形象的角色，尽量锁脸。
+      // 仍无（都没标、也没配参考图）→ 退回本集所有有形象的角色，尽量锁脸。
       charImgs = data.characters.map((c) => c.avatarImage || c.refUrl || "").filter(Boolean);
     }
     const all = [...(extraLeading ?? []).filter((x): x is string => !!x), ...charImgs];
@@ -831,6 +837,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               <StoryboardTable
                 scenes={scenes}
                 sceneAssets={data.scenes ?? []}
+                characters={data.characters.map((c) => ({ id: c.id, name: c.name }))}
                 shotsMap={shotsMap}
                 speakerOptions={speakerOptions}
                 locked={locked}

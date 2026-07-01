@@ -34,6 +34,18 @@
    图在分镜表里无处可选 → 一致性断链。修：`ScriptScene.sceneRefId` 显式绑定；分镜表场景头加
    「场景参考」下拉（复用 `onUpdScene` 写 `sceneRefId` + 缩略图 + 「未出图」提示），随脚本落库；
    `sceneRefUrlFor` 改「显式 sceneRefId 优先 → 场名匹配兜底」，喂进该场各镜首帧 `ref_images`。
+
+## v0.98 补丁 · 画面内容 @提及人物 chip + 人物一致性（2026-07-01）
+
+借鉴 ViMax「角色参考复用」把人物一致性打通成一条显式链：
+1. **画面内容 = @提及富文本**（新 `character-mention-input.tsx`，基于 `@tiptap/extension-mention`）：
+   输入 `@` 弹本集角色 → 选中成内联 chip（如 `@苏娜`）。内联 chip 即本镜出场人物 → 写入
+   `shot.cast`。存储：`shot.visual` 存渲染文本（chip 序列化「@名字」可回读重建）、`shot.cast` 存 id。
+2. **首帧喂角色参考图锁脸**：`shotRefImages` 改「`@提及 cast` 优先 → 画面文本按角色名兜底匹配
+   → 本集全体」；取 `character.avatarImage`(数字人) / `refUrl`(定妆图) 并入 `ref_images`。
+3. **角色定妆参考图（两种都支持）**：cast 卡新增「AI 定妆图」（新 prompt `drama.character_frame_image`
+   + `renderFrame kind:"character"`，单人肖像锁脸）+ 既有「绑数字人 / 上传」。有图才谈得上锁脸。
+4. `buildMediaPrompt` 重构为 `frameKeyForKind(kind)` 统一按 kind 选提示词（shot/short/scene/character）。
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、

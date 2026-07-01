@@ -117,6 +117,38 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     }
   };
 
+  // AI 生成角色定妆参考图（锁脸用）：专用 character 提示词（单人肖像）+ 项目画幅/风格，落角色 refUrl。
+  const genCharRef = async (c: CharacterDef) => {
+    if (charBusy[c.id]) return;
+    setCharBusy((m) => ({ ...m, [c.id]: true }));
+    try {
+      const frames = await RenderApi.renderFrame({
+        kind: "character",
+        vars: {
+          name: c.name,
+          descClause: c.desc ? `外貌/设定：${c.desc}。` : "",
+          styleSuffix: `${data.projectInfo.type}风格。`,
+        },
+        ratio: data.projectInfo.ratio,
+        count: 1,
+      });
+      const f = frames[0];
+      if (f?.url) {
+        dispatch({
+          type: "setChars",
+          chars: state.chars.map((x) => (x.id === c.id ? { ...x, refUrl: f.url, refCdnKey: f.cdnKey } : x)),
+        });
+        toast.success("角色定妆图已生成");
+      } else {
+        toast.error("没拿到定妆图，请重试");
+      }
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "生成定妆图失败，请稍后重试"));
+    } finally {
+      setCharBusy((m) => ({ ...m, [c.id]: false }));
+    }
+  };
+
   // ── 场景：全部落库到 ProjectData.scenes ─────────────────────────────────────
   // 函数式合并保存：按最新 scenes 更新，异步出图/上传回写不会被并发保存或陈旧闭包覆盖（修「刷新就没了」）。
   const saveScenes = (updater: (prev: SceneAsset[]) => SceneAsset[]) => {
@@ -245,6 +277,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
               onBind={() => setBinding(c)}
               onToggleRole={() => dispatch({ type: "toggleRole", charId: c.id })}
               onUploadRef={(f) => void uploadCharRef(c, f)}
+              onGenRef={() => void genCharRef(c)}
               onViewRef={() => c.refUrl && setLb({ src: c.refUrl, kind: "image" })}
               uploading={!!charBusy[c.id]}
             />

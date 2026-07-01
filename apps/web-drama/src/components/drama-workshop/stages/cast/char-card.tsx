@@ -14,13 +14,15 @@ interface CharCardProps {
   onToggleRole: () => void;
   /** 上传真人参考图（→ 素材库）。 */
   onUploadRef?: (file: File) => void;
+  /** AI 生成角色定妆参考图（锁脸用）。 */
+  onGenRef?: () => void;
   /** 点开参考图看大图。 */
   onViewRef?: () => void;
-  /** 上传中。 */
+  /** 上传中 / 生成中。 */
   uploading?: boolean;
 }
 
-export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onViewRef, uploading }: CharCardProps) {
+export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGenRef, onViewRef, uploading }: CharCardProps) {
   const isKey = c.role === "key";
   const theme = AVATAR_THEMES[c.avatar] ?? AVATAR_THEMES.default;
 
@@ -199,6 +201,11 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onVi
                 />
                 {uploading ? "上传中…" : (<><RefreshCw size={13} /> 重新上传</>)}
               </label>
+              {onGenRef && (
+                <button type="button" className="btn btn-line btn-sm btn-icon" title="AI 重新生成定妆图" disabled={uploading} onClick={onGenRef} style={{ flex: "none" }}>
+                  <Sparkles size={13} />
+                </button>
+              )}
               {isKey && c.bound && (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={onBind} style={{ flex: "none" }}>
                   换形象
@@ -206,23 +213,36 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onVi
               )}
             </div>
           ) : (
-            <label
-              className="row center"
-              style={{ width: "100%", height: 60, borderRadius: 10, border: "1.5px dashed var(--line)", background: "var(--surface-2)", color: "var(--ink-3)", gap: 6, cursor: uploading ? "default" : "pointer", fontSize: 12, fontWeight: 600 }}
-            >
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                disabled={uploading}
-                onChange={(e) => {
-                  const f = e.currentTarget.files?.[0];
-                  e.currentTarget.value = "";
-                  if (f) onUploadRef?.(f);
-                }}
-              />
-              {uploading ? "上传中…" : (<><ImagePlus size={15} /> 上传参考图</>)}
-            </label>
+            <div className="row gap-2">
+              {onGenRef && (
+                <button
+                  type="button"
+                  className="btn btn-line btn-sm grow"
+                  style={{ justifyContent: "center" }}
+                  disabled={uploading}
+                  onClick={onGenRef}
+                >
+                  {uploading ? "生成中…" : (<><Sparkles size={14} /> AI 定妆图</>)}
+                </button>
+              )}
+              <label
+                className="row center grow"
+                style={{ height: 34, borderRadius: 10, border: "1.5px dashed var(--line)", background: "var(--surface-2)", color: "var(--ink-3)", gap: 6, cursor: uploading ? "default" : "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0];
+                    e.currentTarget.value = "";
+                    if (f) onUploadRef?.(f);
+                  }}
+                />
+                {uploading ? "上传中…" : (<><ImagePlus size={15} /> 上传</>)}
+              </label>
+            </div>
           )}
         </div>
       </div>
