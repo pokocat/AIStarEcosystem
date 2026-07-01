@@ -7564,7 +7564,7 @@ paths:
     post: { tags: [drama], operationId: rewriteDramaShot, summary: 'v0.97 P5 行级就地改写本镜（对齐 ViMax design_storyboard 逐镜可控，替代整篇推倒重写浮窗；drama.shot_rewrite，计费 drama.credit.shot-rewrite）。body={desc,size?,move?,line?,instruction,cast?:[名]} → {desc,size,move,line}。', responses: { '200': { description: ok } } }
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/frame:
-    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（drama.frame_image/drama.short_frame_image），前端传 vars 填充', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short|scene),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（shot→drama.frame_image / short→drama.short_frame_image / v0.98 scene→drama.scene_frame_image 干净空景场景参考图），前端传 vars 填充', responses: { '200': { description: ok } } }
   /me/drama/render/frame-jobs:
     get:  { tags: [drama], operationId: listDramaFrameJobs, parameters: [{ name: project_id, in: query, required: false, schema: { type: string } }], summary: '列出当前用户首帧后台任务（可按项目/短视频草稿过滤）。', responses: { '200': { description: ok } } }
     post: { tags: [drama], operationId: submitDramaFrameJob, summary: '提交首帧后台任务。body 同 /render/frame，额外支持 project_id/scene_id/shot_id/episode_no/name，返回可轮询任务卡。', responses: { '200': { description: ok } } }

@@ -98,10 +98,15 @@ public class DramaRenderService {
      * §8.0：模板未配置（origin=code）即报错，不静默兜底。过渡期仍兼容旧客户端直接传 prompt。
      */
     private String buildMediaPrompt(JsonNode body, String workbenchKey, String shortKey) {
+        return buildMediaPrompt(body, workbenchKey, shortKey, null);
+    }
+
+    private String buildMediaPrompt(JsonNode body, String workbenchKey, String shortKey, String sceneKey) {
         String legacy = text(body, "prompt");
         if (legacy != null && !legacy.isBlank()) return legacy; // 过渡兼容；新前端走 vars
         String kind = orDefault(text(body, "kind"), "shot");
-        String key = "short".equals(kind) ? shortKey : workbenchKey;
+        String key = "short".equals(kind) ? shortKey
+                : ("scene".equals(kind) && sceneKey != null ? sceneKey : workbenchKey);
         PromptService.ResolvedPrompt p = promptService.resolve(key);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
@@ -129,7 +134,8 @@ public class DramaRenderService {
      */
     public JsonNode renderFrame(JsonNode body, String userId) {
         String prompt = buildMediaPrompt(body,
-                PromptService.KEY_DRAMA_FRAME_IMAGE, PromptService.KEY_DRAMA_SHORT_FRAME_IMAGE);
+                PromptService.KEY_DRAMA_FRAME_IMAGE, PromptService.KEY_DRAMA_SHORT_FRAME_IMAGE,
+                PromptService.KEY_DRAMA_SCENE_FRAME_IMAGE);
         if (prompt.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再渲染首帧");
         }

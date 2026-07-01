@@ -133,9 +133,15 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     setSceneBusy((m) => ({ ...m, [s.id]: true }));
     try {
       const frames = await RenderApi.renderFrame({
-        kind: "shot",
-        vars: { desc: `${s.name}${s.mood ? "，" + s.mood : ""}，场景空镜参考图`, scene: s.name },
-        ratio: "16:9",
+        // v0.98：场景参考图用专用 scene 提示词（干净空景 establishing plate，无人物），
+        // 传作品风格 + 项目画幅，匹配剧集脚本取景（原来误用 shot 首帧提示词 → 塞人脸/比例不符）。
+        kind: "scene",
+        vars: {
+          place: s.name,
+          moodClause: s.mood ? `氛围：${s.mood}。` : "",
+          styleSuffix: `${data.projectInfo.type}风格。`,
+        },
+        ratio: data.projectInfo.ratio,
         count: 1,
       });
       const f = frames[0];

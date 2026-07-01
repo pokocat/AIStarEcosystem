@@ -12,6 +12,17 @@
 - P5：删左下 `ai-chat-panel` 浮窗 → 行级 Wand2 就地改写本镜（`/shot/rewrite` + `drama.shot_rewrite`）。
 - P6：短视频面包屑按 pathname 派生 + beat 改 AI 逐镜生成。
 - P4：假模型下拉随工厂删除已消失；真·多模型选择拆独立 PR（TODO D-11，改共享 `AiAppBinding`）。
+
+## v0.98 补丁 · 场景参考图专用提示词（2026-07-01）
+
+问题：「角色与场景」里生成场景参考图效果很怪、不符剧集脚本取景。根因——`genSceneRef` 误用
+`kind:"shot"` → 命中人物分镜首帧提示词 `drama.frame_image`（含景别/运镜/Keep faces consistent），
+出「空场景底图」时塞人脸/按分镜构图，且 `{{scene}}` 无占位符被忽略、无作品风格、ratio 用了 16:9。
+调研确认 ViMax 亦无「专用场景底图」范式（其环境一致性是被动复用上一时间线帧）。
+
+修：新增 `drama.scene_frame_image`（干净空景 establishing plate，无人物，匹配 place+mood+作品风格）；
+`renderFrame` 加 `kind:"scene"`（`buildMediaPrompt` 第 4 参 sceneKey）；前端 `genSceneRef` 传
+`kind:"scene"` + 作品风格 + 项目画幅（`data.projectInfo.ratio`）。
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、
