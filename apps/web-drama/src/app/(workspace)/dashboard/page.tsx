@@ -26,6 +26,7 @@ import { recipeBeats, recipeEstimate, recipePromptSeed, recipeTags } from "@/com
 import { BrainstormApi, ProjectsApi, RecipesApi } from "@/api";
 import type { DramaRecipe } from "@/api/recipes";
 import { useAsync } from "@/lib/drama-query";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
 import { aiErrorMessage } from "@/lib/ai-error";
 
@@ -59,6 +60,7 @@ function HomeLanding() {
   const [page, setPage] = React.useState(0);
   const [sparkN, setSparkN] = React.useState(0);
   const [preview, setPreview] = React.useState<DramaRecipe | null>(null);
+  const cfg = useDramaConfig();
   const [applyingId, setApplyingId] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const starting = React.useRef(false); // 防连点重复建脑暴
@@ -351,7 +353,8 @@ function HomeLanding() {
               label: applyingId === preview.id ? "套用中…" : "套用并开拍",
               icon: <Zap size={15} />,
               variant: "grad",
-              cost: 6,
+              // 系列（多集）套用 = 免费立项；单集创意套用 = 进短视频草稿，扣 short-entry。
+              cost: (preview.episodes ?? 0) > 1 ? 0 : cfg.prices.shortEntry,
               onClick: () => void applyRecipe(preview),
             },
           ]}

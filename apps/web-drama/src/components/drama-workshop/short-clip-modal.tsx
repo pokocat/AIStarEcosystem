@@ -4,7 +4,7 @@
 // 选剧 + 选集 → AI 扫描高光片段 → 剪成竖屏推广片。
 import * as React from "react";
 import { Clapperboard, Search, X, Zap } from "lucide-react";
-import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
+import { GenSkeleton, Thumb } from "@/components/drama-ui";
 import { ModalShell } from "@/components/common/ModalShell";
 import { PROJECTS } from "@/mocks/drama-workshop";
 
@@ -113,9 +113,9 @@ export function ShortClipModal({ onClose, onMake }: ShortClipModalProps) {
           </div>
 
           {!clips && !scanning && (
-            <CreditButton cost={8} onConfirm={scan} confirmTitle="扫描高光片段" confirmBody="AI 会分析剧情节奏与情绪曲线,挑出高光片段。" className="btn btn-line" style={{ alignSelf: "flex-start" }}>
+            <button type="button" onClick={scan} className="btn btn-line" style={{ alignSelf: "flex-start" }}>
               <Search size={15} /> 扫描高光片段
-            </CreditButton>
+            </button>
           )}
           {scanning && (
             <div className="card" style={{ padding: 16 }}>
@@ -155,21 +155,18 @@ export function ShortClipModal({ onClose, onMake }: ShortClipModalProps) {
             {picked.length} 集 · {clips ? clips.length + " 个高光" : "待扫描"}
           </span>
           <span className="grow" />
-          <CreditButton
-            cost={14}
-            onConfirm={() => {
+          <button
+            type="button"
+            onClick={() => {
               onClose();
               onMake({ format: "hook", idea: drama.title + " · 高光推广片", fromClip: true });
             }}
-            confirmTitle="剪成竖屏推广片"
-            confirmBody="把选中高光剪成一条竖屏推广片。"
             className="btn btn-grad"
             disabled={!clips}
             style={{ opacity: clips ? 1 : 0.5 }}
-            markSize={15}
           >
             <Zap size={16} /> 剪成竖屏推广片
-          </CreditButton>
+          </button>
         </div>
     </ModalShell>
   );
