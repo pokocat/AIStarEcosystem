@@ -23,6 +23,39 @@
 修：新增 `drama.scene_frame_image`（干净空景 establishing plate，无人物，匹配 place+mood+作品风格）；
 `renderFrame` 加 `kind:"scene"`（`buildMediaPrompt` 第 4 参 sceneKey）；前端 `genSceneRef` 传
 `kind:"scene"` + 作品风格 + 项目画幅（`data.projectInfo.ratio`）。
+
+## v0.98 补丁 · 场景设定持久化 + 分镜表显式绑定场景参考（2026-07-01）
+
+生产实测两处硬伤：
+1. **场景 AI 出图/上传后刷新丢失**：根因是场景回写走陈旧闭包 `ctx.saveData({...data, scenes})`，
+   被并发/后续保存覆盖。修：`StageContext` 加 `patchData(prev => next)`（page 用 `dataRef` 取最新
+   data 做函数式合并）；cast 场景增删改/出图/上传全改走 `patchData`，异步结果并入最新 data 不丢。
+2. **场景参考进不了分镜首帧**：删视频工厂后仅剩「按场名匹配」这一条隐式链，用户上传/AI 生成的场景
+   图在分镜表里无处可选 → 一致性断链。修：`ScriptScene.sceneRefId` 显式绑定；分镜表场景头加
+   「场景参考」下拉（复用 `onUpdScene` 写 `sceneRefId` + 缩略图 + 「未出图」提示），随脚本落库；
+   `sceneRefUrlFor` 改「显式 sceneRefId 优先 → 场名匹配兜底」，喂进该场各镜首帧 `ref_images`。
+
+## v0.98 补丁 · 画面内容 @提及人物 chip + 人物一致性（2026-07-01）
+
+借鉴 ViMax「角色参考复用」把人物一致性打通成一条显式链：
+1. **画面内容 = @提及富文本**（新 `character-mention-input.tsx`，基于 `@tiptap/extension-mention`）：
+   输入 `@` 弹本集角色 → 选中成内联 chip（如 `@苏娜`）。内联 chip 即本镜出场人物 → 写入
+   `shot.cast`。存储：`shot.visual` 存渲染文本（chip 序列化「@名字」可回读重建）、`shot.cast` 存 id。
+2. **首帧喂角色参考图锁脸**：`shotRefImages` 改「`@提及 cast` 优先 → 画面文本按角色名兜底匹配
+   → 本集全体」；取 `character.avatarImage`(数字人) / `refUrl`(定妆图) 并入 `ref_images`。
+3. **角色定妆参考图（两种都支持）**：cast 卡新增「AI 定妆图」（新 prompt `drama.character_frame_image`
+   + `renderFrame kind:"character"`，单人肖像锁脸）+ 既有「绑数字人 / 上传」。有图才谈得上锁脸。
+4. `buildMediaPrompt` 重构为 `frameKeyForKind(kind)` 统一按 kind 选提示词（shot/short/scene/character）。
+
+## v0.98 补丁 · 修「重新部署后图片全裂」（签名 URL 过期）（2026-07-01）
+
+根因：`DramaProject.payloadJson` 里存的是**当时签名的 OSS URL**（首帧/末帧/成片/场景图/角色图），
+`AEP_CDN_SIGNED_URL_STRATEGY=oss` + `TTL=3600s`，`saveProject` 原样存、`getProject` 原样返回 →
+**1h 后签名过期 → 403 图裂**（重新部署是巧合，非诱因）。违反 §4.7「key 真值 / 出 wire 派生」。
+修：`DramaProjectService` 注入 `CdnUrlSigner`，`toDetail` 出 wire 时递归 `signer.maybeSign(...)`
+重签文档内所有资产 URL（`resignAssetUrls`，从 URL 抽 key 重签，对已过期 URL 亦有效）；driver=local
+相对 `/cdn` 不匹配 OSS base 原样返回，dev 不受影响。规范已写入 AGENTS §4.7.7。
+**同类债待清**：`DramaShort.payloadJson`（短视频草稿）存签名 URL 同样会过期 —— 见 TODO D-12。
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、

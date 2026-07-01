@@ -42,6 +42,7 @@ public class DramaProjectService {
     private final CreditService creditService;
     private final PlatformConfigService configs;
     private final com.aistareco.aep.service.storage.StorageQuotaService storage;
+    private final com.aistareco.aep.service.cdn.CdnUrlSigner signer;
     private final ObjectMapper om;
 
     public DramaProjectService(DramaProjectRepository repo,
@@ -50,6 +51,7 @@ public class DramaProjectService {
                                CreditService creditService,
                                PlatformConfigService configs,
                                com.aistareco.aep.service.storage.StorageQuotaService storage,
+                               com.aistareco.aep.service.cdn.CdnUrlSigner signer,
                                ObjectMapper om) {
         this.repo = repo;
         this.invocation = invocation;
@@ -57,6 +59,7 @@ public class DramaProjectService {
         this.creditService = creditService;
         this.configs = configs;
         this.storage = storage;
+        this.signer = signer;
         this.om = om;
     }
 
@@ -959,8 +962,43 @@ public class DramaProjectService {
     private ObjectNode toDetail(DramaProject p) {
         ObjectNode out = om.createObjectNode();
         out.set("meta", toSummary(p));
-        out.set("data", readPayload(p));
+        JsonNode data = readPayload(p);
+        // §4.7：payloadJson 里存的是「当时签名的 OSS URL」，签名有 TTL 会过期 → 图裂。
+        // 出 wire 时对文档内所有资产 URL 重签（maybeSign 从 URL 抽 key 重签，对已过期 URL 同样有效）。
+        // driver=local 的相对 /cdn 路径不匹配 OSS base → 原样返回，dev 不受影响。
+        resignAssetUrls(data);
+        out.set("data", data);
         return out;
+    }
+
+    /** 递归重签文档内所有 OSS 资产 URL（首帧/末帧/成片/场景图/角色图…），避免存下的签名 URL 过期后 403 图裂。 */
+    private void resignAssetUrls(JsonNode node) {
+        if (node == null) return;
+        if (node.isObject()) {
+            ObjectNode o = (ObjectNode) node;
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            o.fieldNames().forEachRemaining(keys::add);
+            for (String k : keys) {
+                JsonNode v = o.get(k);
+                if (v != null && v.isTextual()) {
+                    String signed = signer.maybeSign(v.asText());
+                    if (signed != null && !signed.equals(v.asText())) o.put(k, signed);
+                } else {
+                    resignAssetUrls(v);
+                }
+            }
+        } else if (node.isArray()) {
+            ArrayNode a = (ArrayNode) node;
+            for (int i = 0; i < a.size(); i++) {
+                JsonNode v = a.get(i);
+                if (v != null && v.isTextual()) {
+                    String signed = signer.maybeSign(v.asText());
+                    if (signed != null && !signed.equals(v.asText())) a.set(i, com.fasterxml.jackson.databind.node.TextNode.valueOf(signed));
+                } else {
+                    resignAssetUrls(v);
+                }
+            }
+        }
     }
 
     /** 简易相对时间（今天 / 昨天 / N 天前 / N 周前），匹配前端 updated 文案。 */

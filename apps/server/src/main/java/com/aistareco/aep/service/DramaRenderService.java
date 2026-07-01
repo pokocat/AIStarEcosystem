@@ -97,16 +97,20 @@ public class DramaRenderService {
      * 前端只传结构化字段（vars）+ kind（shot=工作台分镜 / short=短视频分镜）选模板。
      * §8.0：模板未配置（origin=code）即报错，不静默兜底。过渡期仍兼容旧客户端直接传 prompt。
      */
-    private String buildMediaPrompt(JsonNode body, String workbenchKey, String shortKey) {
-        return buildMediaPrompt(body, workbenchKey, shortKey, null);
+    /** 首帧出图按 kind 选提示词：shot 人物分镜首帧 / short 短视频 / scene 空景场景参考 / character 角色定妆参考。 */
+    private static String frameKeyForKind(String kind) {
+        return switch (kind == null ? "shot" : kind) {
+            case "short" -> PromptService.KEY_DRAMA_SHORT_FRAME_IMAGE;
+            case "scene" -> PromptService.KEY_DRAMA_SCENE_FRAME_IMAGE;
+            case "character" -> PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE;
+            default -> PromptService.KEY_DRAMA_FRAME_IMAGE;
+        };
     }
 
-    private String buildMediaPrompt(JsonNode body, String workbenchKey, String shortKey, String sceneKey) {
+    private String buildMediaPrompt(JsonNode body, String key) {
         String legacy = text(body, "prompt");
         if (legacy != null && !legacy.isBlank()) return legacy; // 过渡兼容；新前端走 vars
         String kind = orDefault(text(body, "kind"), "shot");
-        String key = "short".equals(kind) ? shortKey
-                : ("scene".equals(kind) && sceneKey != null ? sceneKey : workbenchKey);
         PromptService.ResolvedPrompt p = promptService.resolve(key);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
@@ -133,9 +137,7 @@ public class DramaRenderService {
      * → { frames: [ { url, cdnKey } ... ], cost }
      */
     public JsonNode renderFrame(JsonNode body, String userId) {
-        String prompt = buildMediaPrompt(body,
-                PromptService.KEY_DRAMA_FRAME_IMAGE, PromptService.KEY_DRAMA_SHORT_FRAME_IMAGE,
-                PromptService.KEY_DRAMA_SCENE_FRAME_IMAGE);
+        String prompt = buildMediaPrompt(body, frameKeyForKind(orDefault(text(body, "kind"), "shot")));
         if (prompt.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再渲染首帧");
         }
@@ -318,7 +320,9 @@ public class DramaRenderService {
      */
     public JsonNode renderClip(JsonNode body, String userId) {
         String prompt = buildMediaPrompt(body,
-                PromptService.KEY_DRAMA_CLIP_VIDEO, PromptService.KEY_DRAMA_SHORT_CLIP_VIDEO);
+                "short".equals(orDefault(text(body, "kind"), "shot"))
+                        ? PromptService.KEY_DRAMA_SHORT_CLIP_VIDEO
+                        : PromptService.KEY_DRAMA_CLIP_VIDEO);
         if (prompt.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再生成视频");
         }

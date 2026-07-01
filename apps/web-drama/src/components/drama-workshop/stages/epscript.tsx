@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
+import { ConfirmDialog } from "@/components/common";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
 import { getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
@@ -426,6 +427,13 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     },
     [applyClipResult, clearBusy],
   );
+  // 有进行中任务时才轮询 render/tasks：busyMap 非空（出图/出片中）或某镜出片未出成片（jobId 未成）。
+  // 空闲时不轮询，避免后台一直刷；提交新任务使 pendingCount 变化 → effect 重启轮询。
+  const pendingCount = React.useMemo(() => {
+    let n = Object.keys(busyMap).length;
+    for (const rows of Object.values(shotsMap)) for (const s of rows) if (s.jobId && !s.videoUrl) n++;
+    return n;
+  }, [busyMap, shotsMap]);
   React.useEffect(() => {
     if (!ctx?.projectId) return;
     let cancelled = false;
@@ -463,13 +471,24 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         // 辅助恢复失败不影响脚本编辑。
       }
     };
-    void syncTasks();
-    const timer = window.setInterval(syncTasks, 5000);
+    const run = () => { if (!cancelled && !document.hidden) void syncTasks(); };
+    run(); // 进页 / 切集 / 任务起止时对齐一次
+    if (pendingCount === 0) return () => { cancelled = true; }; // 无进行中任务 → 不再轮询
+    const timer = window.setInterval(run, 5000);
+    const onVis = () => { if (!document.hidden) run(); }; // 切回前台立即补一次
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
-  }, [applyClipResult, applyFrameResult, cfg.prices.clip, cfg.prices.frame, ctx?.projectId, state.ep]);
+  }, [applyClipResult, applyFrameResult, cfg.prices.clip, cfg.prices.frame, ctx?.projectId, state.ep, pendingCount]);
+  // 删除本镜：先二次确认（§8 禁裸删），确认后再删。
+  const [delTarget, setDelTarget] = React.useState<{ sceneId: string; id: string; no: number } | null>(null);
+  const askDelShot = (sceneId: string, id: string) => {
+    const sh = (shotsRef.current[sceneId] ?? []).find((s) => s.id === id);
+    setDelTarget({ sceneId, id, no: sh?.no ?? 0 });
+  };
   const delShot = (sceneId: string, id: string) => {
     setShotsMap((m) => ({ ...m, [sceneId]: (m[sceneId] ?? []).filter((s) => s.id !== id).map((s, i) => ({ ...s, no: i + 1 })) }));
     queueSave();
@@ -567,10 +586,16 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       styleSuffix: `${data.projectInfo.type}风格。`,
     };
   };
-  /** 本场景绑定的参考图：按场名匹配项目级 SceneAsset（best-effort，环境一致）。 */
+  /** 本场景绑定的参考图：优先用显式绑定的场景资产（sceneRefId），否则回退按场名匹配（best-effort），保障场景一致性。 */
   const sceneRefUrlFor = (sceneId: string): string | undefined => {
-    const place = scenesRef.current.find((s) => s.id === sceneId)?.place ?? "";
-    return (data.scenes ?? []).find((a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name))?.refUrl;
+    const sc = scenesRef.current.find((s) => s.id === sceneId);
+    const assets = data.scenes ?? [];
+    if (sc?.sceneRefId) {
+      const bound = assets.find((a) => a.id === sc.sceneRefId);
+      if (bound?.refUrl) return bound.refUrl;
+    }
+    const place = sc?.place ?? "";
+    return assets.find((a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name))?.refUrl;
   };
   /** 同场上一镜的承接锚点：优先成片真实末帧，否则首帧。 */
   const prevFrameInScene = (sceneId: string, shotId: string): string | undefined => {
@@ -592,14 +617,20 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     }
     return undefined;
   };
-  /** 出首帧参考图：出场角色图（缺省用本集所有已绑定角色）+ 场景参考图 + 同场上一镜画面。 */
+  /** 出首帧参考图：出场角色图（@提及优先→画面文本名匹配兜底→本集全体）+ 场景参考图 + 同场上一镜画面。 */
   const shotRefImages = (sceneId: string, shot: FormShot, extraLeading?: (string | undefined)[]): string[] => {
-    let charImgs = (shot.cast ?? [])
+    // 出场角色：优先本镜 @提及的 cast；老镜/未 @ → 从画面文本按角色名兜底匹配（避免塞错人）。
+    let cast = shot.cast ?? [];
+    if (cast.length === 0) {
+      const v = shot.visual || "";
+      cast = data.characters.filter((c) => c.name && c.name.length >= 2 && v.includes(c.name)).map((c) => c.id);
+    }
+    let charImgs = cast
       .map((cid) => data.characters.find((c) => c.id === cid))
       .map((c) => c?.avatarImage || c?.refUrl || "")
       .filter(Boolean);
     if (charImgs.length === 0) {
-      // 该镜未标出场角色 → 退回本集所有有形象的角色，尽量锁脸。
+      // 仍无（都没标、也没配参考图）→ 退回本集所有有形象的角色，尽量锁脸。
       charImgs = data.characters.map((c) => c.avatarImage || c.refUrl || "").filter(Boolean);
     }
     const all = [...(extraLeading ?? []).filter((x): x is string => !!x), ...charImgs];
@@ -805,6 +836,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
               </div>
               <StoryboardTable
                 scenes={scenes}
+                sceneAssets={data.scenes ?? []}
+                characters={data.characters.map((c) => ({ id: c.id, name: c.name }))}
                 shotsMap={shotsMap}
                 speakerOptions={speakerOptions}
                 locked={locked}
@@ -813,7 +846,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                 genScene={genScene}
                 onUpdScene={updScene}
                 onUpdShot={updShot}
-                onDelShot={delShot}
+                onDelShot={askDelShot}
                 onAddShot={addShot}
                 onGenShots={genShots}
                 onRender={(sceneId, shotId, kind) => {
@@ -855,6 +888,17 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           </button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!delTarget}
+        onOpenChange={(next) => { if (!next) setDelTarget(null); }}
+        title={`删除第 ${delTarget?.no ?? ""} 镜？`}
+        description="删除后该镜的画面、台词、已生成的首帧/末帧/成片都会一并移除，且不可恢复。"
+        confirmLabel="删除本镜"
+        cancelLabel="取消"
+        destructive
+        onConfirm={() => { if (delTarget) delShot(delTarget.sceneId, delTarget.id); setDelTarget(null); }}
+      />
     </div>
   );
 }

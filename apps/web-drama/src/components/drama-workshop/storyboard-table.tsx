@@ -9,9 +9,12 @@ import { CreditButton, Editable, Thumb } from "@/components/drama-ui";
 import { MediaLightbox, type LightboxMedia } from "./media-lightbox";
 import { AiImageEditModal } from "./ai-image-edit-modal";
 import type { FormShot, ShotFlow } from "./shot-form";
+import type { SceneAsset } from "@/mocks/drama-workshop";
+import { CharacterMentionInput, type MentionChar } from "./character-mention-input";
 
 const FRAME_COST = 2, DIRECT_COST = 9, CLIP_COST = 7;
-const VARI: Record<string, string> = { small: "小", medium: "中", large: "大" };
+// 运动幅度（拆镜 variation_type）用户友好文案，仅用于 hover 提示，不直接暴露 small/medium/large 黑话。
+const VARI: Record<string, string> = { small: "小幅", medium: "中幅", large: "大幅" };
 const TH: React.CSSProperties = { padding: "11px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".04em", borderBottom: "2px solid var(--line)", whiteSpace: "nowrap" };
 const TD: React.CSSProperties = { padding: "12px 12px", verticalAlign: "top", borderBottom: "1px solid var(--line-soft)" };
 
@@ -20,10 +23,14 @@ function fmtT(sec: number) {
   return m + ":" + String(s).padStart(2, "0");
 }
 
-export interface SbScene { id: string; place: string; mood: string }
+export interface SbScene { id: string; place: string; mood: string; sceneRefId?: string }
 
 export interface StoryboardTableProps {
   scenes: SbScene[];
+  /** 项目级场景资产（可上传/AI 生成）——供每场绑定场景参考图，保障场景一致性。 */
+  sceneAssets?: SceneAsset[];
+  /** 本集角色——画面内容 @提及菜单来源；内联提及即本镜出场人物（写入 shot.cast）。 */
+  characters?: MentionChar[];
   shotsMap: Record<string, FormShot[]>;
   speakerOptions: string[];
   locked?: boolean;
@@ -83,6 +90,25 @@ export function StoryboardTable(props: StoryboardTableProps) {
                           <Editable value={sc.mood} placeholder="情绪" onCommit={(v) => props.onUpdScene(i, { mood: v })} />
                         </span>
                         <span className="grow" />
+                        {(props.sceneAssets?.length ?? 0) > 0 && (() => {
+                          const bound = props.sceneAssets!.find((a) => a.id === sc.sceneRefId);
+                          return (
+                            <span className="row" style={{ gap: 4, alignItems: "center", flex: "none" }} title="本场各镜首帧套用的场景参考图，保障同一场景画面一致">
+                              {bound?.refUrl && <img src={bound.refUrl} alt="场景参考" style={{ width: 22, height: 14, objectFit: "cover", borderRadius: 3, border: "1px solid var(--line)" }} />}
+                              <span className="faint" style={{ fontSize: 10.5 }}>场景参考</span>
+                              <select
+                                value={sc.sceneRefId ?? ""}
+                                onChange={(e) => props.onUpdScene(i, { sceneRefId: e.target.value || undefined })}
+                                style={{ fontSize: 10.5, height: 23, borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-1)", maxWidth: 140, padding: "0 4px" }}
+                              >
+                                <option value="">不绑定</option>
+                                {props.sceneAssets!.map((a) => (
+                                  <option key={a.id} value={a.id}>{a.name}{a.refUrl ? "" : "（未出图）"}</option>
+                                ))}
+                              </select>
+                            </span>
+                          );
+                        })()}
                         {shots.length > 0 && <span className="faint num" style={{ fontSize: 11 }}>{shots.length} 镜 · {shots.reduce((a, x) => a + x.dur, 0)}s</span>}
                         {!locked && shots.length > 0 && (
                           <button type="button" className="chip" style={{ height: 23, fontSize: 10.5 }} onClick={() => props.onAddShot(sc.id, i)}>
@@ -121,6 +147,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
                       busy={busyMap[s.id] ?? null}
                       locked={locked}
                       speakerOptions={speakerOptions}
+                      characters={props.characters ?? []}
                       onPatch={(patch) => props.onUpdShot(sc.id, s.id, patch)}
                       onDelete={() => props.onDelShot(sc.id, s.id)}
                       onRender={(kind) => props.onRender(sc.id, s.id, kind)}
@@ -158,9 +185,9 @@ export function StoryboardTable(props: StoryboardTableProps) {
 const REWRITE_CHIPS = ["惊喜化", "更紧凑", "换个机位", "强化冲突", "补一句台词"];
 
 function ShotRow({
-  s, start, busy, locked, speakerOptions, onPatch, onDelete, onRender, onApprove, onAiEdit, onDecompose, onPick, rewriting, onRewrite,
+  s, start, busy, locked, speakerOptions, characters, onPatch, onDelete, onRender, onApprove, onAiEdit, onDecompose, onPick, rewriting, onRewrite,
 }: {
-  s: FormShot; start: number; busy: ShotFlow | null; locked?: boolean; speakerOptions: string[];
+  s: FormShot; start: number; busy: ShotFlow | null; locked?: boolean; speakerOptions: string[]; characters: MentionChar[];
   onPatch: (patch: Partial<FormShot>) => void; onDelete: () => void;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
   onDecompose: () => void; onPick: (url: string) => void;
@@ -213,8 +240,13 @@ function ShotRow({
         <ShotFrameCell s={s} busy={busy} onRender={onRender} onApprove={onApprove} onAiEdit={onAiEdit} onDecompose={onDecompose} onPick={onPick} />
       </td>
       <td style={TD}>
-        <Editable block value={s.visual} placeholder="画面内容（纯视觉）…" onCommit={(v) => onPatch({ visual: v })}
-          className="edit-field" style={{ display: "block", fontSize: 13, lineHeight: 1.65, padding: "4px 6px" }} />
+        {/* v0.98：@提及富文本——输入 @ 选角色成内联 chip，chip 即本镜出场人物（→ shot.cast → 首帧喂角色参考图锁脸）。 */}
+        <CharacterMentionInput
+          value={s.visual}
+          characters={characters}
+          disabled={locked}
+          onChange={(visual, cast) => onPatch({ visual, cast })}
+        />
         {/* v0.97 P5：行级就地改写本镜（指令 + 快捷 chip，只改这一镜，替代整篇推倒重写的浮窗） */}
         {rwOpen && onRewrite && (
           <div className="col gap-2" style={{ marginTop: 8, padding: 8, borderRadius: 10, background: "var(--accent-soft)", border: "1px solid var(--line-soft)" }}>
@@ -358,11 +390,15 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         </div>
       )}
 
-      {/* 末帧 / 运动信息（拆镜后：变化等级 + 运动，hover 看全文） */}
+      {/* 拆镜后状态：首尾帧就绪（可视文案用户友好、定宽不溢出；运动幅度 + 运动描述放 hover 提示）。 */}
       {!busy && s.motionDesc && (
-        <div className="row" style={{ gap: 3, alignItems: "center", fontSize: 9, color: "var(--ink-3)", maxWidth: 108 }} title={`运动：${s.motionDesc}`}>
+        <div
+          className="row"
+          style={{ gap: 3, alignItems: "center", fontSize: 9, color: "var(--ink-3)", maxWidth: 118, minWidth: 0 }}
+          title={`首帧→末帧运动幅度：${VARI[s.variationType ?? ""] ?? "适中"}。${s.motionDesc}`}
+        >
           <Sparkles size={9} style={{ color: "var(--accent)", flex: "none" }} />
-          <span style={{ whiteSpace: "nowrap" }}>已出末帧{s.variationType ? ` · 变化${VARI[s.variationType] ?? s.variationType}` : ""}</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>首尾帧就绪</span>
         </div>
       )}
 

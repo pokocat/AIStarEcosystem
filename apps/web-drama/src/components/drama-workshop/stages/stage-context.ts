@@ -6,6 +6,8 @@ export interface StageContext {
   projectId: string;
   /** 保存整套工作台文档（可选携带 stage / progress）。 */
   saveData: (next: ProjectData, opts?: { stage?: number; progress?: number }) => Promise<void>;
+  /** 按最新 data 做函数式合并保存——异步操作（如场景出图/上传后回写）用它，避免陈旧闭包/并发保存把结果覆盖丢失。 */
+  patchData: (patch: (prev: ProjectData) => ProjectData, opts?: { stage?: number; progress?: number }) => Promise<void>;
   /** v0.76：用户产生编辑、防抖落库前先标脏（驱动「保存中」指示器 + 离开提醒兜底）。 */
   notifyEditing?: () => void;
 }

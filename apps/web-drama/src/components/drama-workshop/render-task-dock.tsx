@@ -53,6 +53,7 @@ export function RenderTaskDock({ style }: { style?: React.CSSProperties } = {}) 
 
     const load = async () => {
       if (cancelled) return;
+      if (document.hidden) { scheduleNext(false); return; } // 后台标签不刷，切回前台再补
       try {
         const next = await RenderApi.listRenderTasks();
         if (!cancelled) {
@@ -68,9 +69,14 @@ export function RenderTaskDock({ style }: { style?: React.CSSProperties } = {}) 
     };
 
     void load();
+    const onVis = () => {
+      if (!document.hidden && !cancelled) { if (timer !== null) clearTimeout(timer); void load(); }
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
       if (timer !== null) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [onRenderPage]);
 

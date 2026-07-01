@@ -114,6 +114,8 @@ export interface ScriptScene {
   mood: string;
   action: string;
   lines: ScriptLine[];
+  /** v0.98：本场绑定的项目级场景资产 id（SceneAsset.id）；决定本场各镜首帧的场景参考图，保障场景一致性。 */
+  sceneRefId?: string;
 }
 
 export interface BoardShot {
