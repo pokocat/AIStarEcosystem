@@ -19,8 +19,9 @@ export interface RenderedFrame {
 // v0.72：出图/出片提示词模板在 server 端（admin「短剧专区·提示词设置」可改）。
 // 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
-  /** shot=工作台分镜（drama.frame_image）/ short=短视频分镜（drama.short_frame_image）。默认 shot。 */
-  kind?: "shot" | "short";
+  /** shot=工作台分镜（drama.frame_image）/ short=短视频分镜（drama.short_frame_image）/
+   *  scene=场景参考图（drama.scene_frame_image，干净空景 establishing plate，无人物）。默认 shot。 */
+  kind?: "shot" | "short" | "scene";
   /** 填充 server 端 prompt 模板的占位符：visual/size/move/lineClause/castClause/styleSuffix/metaPrefix… */
   vars: Record<string, string>;
   ratio?: string;

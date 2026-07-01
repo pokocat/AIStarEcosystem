@@ -1,1 +1,1 @@
-Cinematic short drama video shot. {{visual}}. 景别：{{size}}. 运镜：{{move}}. {{lineClause}}{{castClause}}{{styleSuffix}} Natural human motion, coherent action, stable identity, realistic lighting, no text, no subtitles, no watermark, no split screen.
+Cinematic short drama video shot. {{sceneClause}}画面：{{visual}}. 景别：{{size}}. 运镜：{{move}}. {{lineClause}}{{castClause}}{{styleSuffix}} 严格按上述场景/地点还原环境（不要凭空换成别的地点）。Natural human motion, coherent action, stable identity, realistic lighting, no text, no subtitles, no watermark, no split screen.
