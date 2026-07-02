@@ -52,6 +52,7 @@ public class LicenseActivationService {
     private final JwtUtil jwtUtil;
     private final PlatformAccessService platformAccessService;
     private final NotificationPublisher notificationPublisher;
+    private final CreditService creditService;
 
     public LicenseActivationService(LicenseKeyRepository keyRepo,
                                      LicenseBatchRepository batchRepo,
@@ -63,7 +64,8 @@ public class LicenseActivationService {
                                      StudioRepository studioRepo,
                                      JwtUtil jwtUtil,
                                      PlatformAccessService platformAccessService,
-                                     NotificationPublisher notificationPublisher) {
+                                     NotificationPublisher notificationPublisher,
+                                     CreditService creditService) {
         this.keyRepo = keyRepo;
         this.batchRepo = batchRepo;
         this.userRepo = userRepo;
@@ -75,6 +77,7 @@ public class LicenseActivationService {
         this.jwtUtil = jwtUtil;
         this.platformAccessService = platformAccessService;
         this.notificationPublisher = notificationPublisher;
+        this.creditService = creditService;
     }
 
     /** 已通过全部可激活性校验的 key + batch 对。 */
@@ -322,33 +325,12 @@ public class LicenseActivationService {
         userRepo.save(user);
 
         // ── 积分追加发放（钱包缺失则补建，防御老种子数据） ───────────────────────
+        // 已登录用户的钱包可能被并发请求同时读写（如重复点击 / 重试提交），
+        // 必须走 CreditService.creditAccount 的悲观行锁，防 lost update（v2 §5，§4.2）。
         long grant = batch.getInitialCreditGrant();
-        Wallet wallet = walletRepo.findByUserId(userId).orElseGet(() -> Wallet.builder()
-                .id(UUID.randomUUID().toString())
-                .userId(userId)
-                .totalBalance(0L).licenseBalance(0L)
-                .rechargeBalance(0L).giftBalance(0L).pendingBalance(0L)
-                .createdAt(now).updatedAt(now)
-                .build());
         if (grant > 0) {
-            wallet.setLicenseBalance(wallet.getLicenseBalance() + grant);
-            wallet.setTotalBalance(wallet.getTotalBalance() + grant);
-            wallet.setUpdatedAt(now);
-        }
-        walletRepo.save(wallet);
-        if (grant > 0) {
-            ledgerRepo.save(LedgerEntry.builder()
-                    .id(UUID.randomUUID().toString())
-                    .walletId(wallet.getId())
-                    .userId(userId)
-                    .entryType(LedgerEntry.LedgerEntryType.LICENSE_GRANT)
-                    .amount(grant)
-                    .balanceAfter(wallet.getTotalBalance())
-                    .description("追加激活秘钥发放积分")
-                    .referenceId(key.getId())
-                    .referenceType("license_key")
-                    .createdAt(now)
-                    .build());
+            creditService.creditAccount(userId, grant, LedgerEntry.LedgerEntryType.LICENSE_GRANT,
+                    "license_key", key.getId(), "追加激活秘钥发放积分");
         }
 
         // ── 老批次补建 Membership（幂等） ────────────────────────────────────────
