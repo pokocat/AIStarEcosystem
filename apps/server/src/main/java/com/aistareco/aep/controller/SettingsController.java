@@ -6,12 +6,10 @@ import com.aistareco.aep.dto.RechargeRecordDto;
 import com.aistareco.aep.model.CreditPack;
 import com.aistareco.aep.model.CreditPurchase;
 import com.aistareco.aep.model.LedgerEntry;
-import com.aistareco.aep.model.Wallet;
 import com.aistareco.aep.repository.CreditPackRepository;
 import com.aistareco.aep.repository.CreditPurchaseRepository;
-import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.aep.repository.RechargeRecordRepository;
-import com.aistareco.aep.repository.WalletRepository;
+import com.aistareco.aep.service.CreditService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -36,19 +34,16 @@ public class SettingsController {
     private final CreditPackRepository creditPackRepo;
     private final RechargeRecordRepository rechargeRecordRepo;
     private final CreditPurchaseRepository creditPurchaseRepo;
-    private final WalletRepository walletRepo;
-    private final LedgerEntryRepository ledgerRepo;
+    private final CreditService creditService;
 
     public SettingsController(CreditPackRepository creditPackRepo,
                               RechargeRecordRepository rechargeRecordRepo,
                               CreditPurchaseRepository creditPurchaseRepo,
-                              WalletRepository walletRepo,
-                              LedgerEntryRepository ledgerRepo) {
+                              CreditService creditService) {
         this.creditPackRepo = creditPackRepo;
         this.rechargeRecordRepo = rechargeRecordRepo;
         this.creditPurchaseRepo = creditPurchaseRepo;
-        this.walletRepo = walletRepo;
-        this.ledgerRepo = ledgerRepo;
+        this.creditService = creditService;
     }
 
     @GetMapping("/credit-packs")
@@ -82,36 +77,11 @@ public class SettingsController {
         }
 
         String userId = principal.getName();
-        Wallet wallet = walletRepo.findByUserId(userId)
-                .orElseGet(() -> {
-                    Wallet w = Wallet.builder()
-                            .id(UUID.randomUUID().toString())
-                            .userId(userId)
-                            .createdAt(Instant.now())
-                            .build();
-                    return walletRepo.save(w);
-                });
-
         Instant now = Instant.now();
-        long newBalance = wallet.getTotalBalance() + pack.getCredits();
-        wallet.setTotalBalance(newBalance);
-        wallet.setRechargeBalance(wallet.getRechargeBalance() + pack.getCredits());
-        wallet.setUpdatedAt(now);
-        walletRepo.save(wallet);
-
-        LedgerEntry ledger = LedgerEntry.builder()
-                .id(UUID.randomUUID().toString())
-                .walletId(wallet.getId())
-                .userId(userId)
-                .entryType(LedgerEntry.LedgerEntryType.RECHARGE)
-                .amount(pack.getCredits())
-                .balanceAfter(newBalance)
-                .description("购买积分包：" + pack.getName())
-                .referenceId(packId)
-                .referenceType("credit_pack")
-                .createdAt(now)
-                .build();
-        ledgerRepo.save(ledger);
+        // v2 §5：走 CreditService.creditAccount，悲观行锁串行化并发写余额，防 lost update；
+        // 并统一走不可变账本（LedgerEntry），不再在 controller 里手写 Wallet.save。
+        creditService.creditAccount(userId, pack.getCredits(), LedgerEntry.LedgerEntryType.RECHARGE,
+                "credit_pack", packId, "购买积分包：" + pack.getName());
 
         CreditPurchase purchase = CreditPurchase.builder()
                 .id(UUID.randomUUID().toString())
