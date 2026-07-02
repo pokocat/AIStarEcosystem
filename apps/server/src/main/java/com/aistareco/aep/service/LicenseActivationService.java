@@ -328,9 +328,12 @@ public class LicenseActivationService {
         // 已登录用户的钱包可能被并发请求同时读写（如重复点击 / 重试提交），
         // 必须走 CreditService.creditAccount 的悲观行锁，防 lost update（v2 §5，§4.2）。
         long grant = batch.getInitialCreditGrant();
+        long newTotalBalance;
         if (grant > 0) {
-            creditService.creditAccount(userId, grant, LedgerEntry.LedgerEntryType.LICENSE_GRANT,
-                    "license_key", key.getId(), "追加激活秘钥发放积分");
+            newTotalBalance = creditService.creditAccount(userId, grant, LedgerEntry.LedgerEntryType.LICENSE_GRANT,
+                    "license_key", key.getId(), "追加激活秘钥发放积分").balanceAfter();
+        } else {
+            newTotalBalance = walletRepo.findByUserId(userId).map(Wallet::getTotalBalance).orElse(0L);
         }
 
         // ── 老批次补建 Membership（幂等） ────────────────────────────────────────
@@ -364,7 +367,7 @@ public class LicenseActivationService {
         java.util.HashMap<String, Object> resp = new java.util.HashMap<>();
         resp.put("user", AepUserDto.from(user));
         resp.put("creditsGranted", grant);
-        resp.put("newTotalBalance", wallet.getTotalBalance());
+        resp.put("newTotalBalance", newTotalBalance);
         resp.put("platformsGranted", batchPlatforms.isEmpty() ? PlatformSupport.ALL : batchPlatforms);
         log.info("[license] append-activation success userId={} keyId={} batchId={} grant={} platforms: '{}' → '{}'",
                 userId, key.getId(), batch.getId(), grant, beforeCsv, user.getPlatforms());
