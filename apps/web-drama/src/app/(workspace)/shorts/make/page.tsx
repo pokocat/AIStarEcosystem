@@ -300,12 +300,14 @@ function AvatarPickerModal({
                 <button
                   key={a.id}
                   type="button"
+                  disabled={!a.imageUrl}
                   onClick={() => {
-                    onPick({ id: a.id, name: a.name, image: a.imageUrl ?? "" });
+                    if (!a.imageUrl) return;
+                    onPick({ id: a.id, name: a.name, image: a.imageUrl });
                     onClose();
                   }}
                   className="col"
-                  style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: "var(--surface-2)", cursor: "pointer", padding: 0, textAlign: "left", gap: 0 }}
+                  style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: "var(--surface-2)", cursor: a.imageUrl ? "pointer" : "not-allowed", opacity: a.imageUrl ? 1 : 0.5, padding: 0, textAlign: "left", gap: 0 }}
                 >
                   <div style={{ width: "100%", aspectRatio: "3/4", background: a.imageUrl ? `center/cover no-repeat url(${a.imageUrl})` : "linear-gradient(135deg,var(--surface-3),var(--surface-2))" }} />
                   <span style={{ fontSize: 12.5, fontWeight: 700, padding: "5px 8px 8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
