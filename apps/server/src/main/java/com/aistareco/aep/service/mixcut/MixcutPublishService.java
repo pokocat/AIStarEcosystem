@@ -124,7 +124,7 @@ public class MixcutPublishService {
                         output.outputId(), i, slotAt, created.size());
                 // v0.19: 落 publish_count / last_published_at；视频库 UI 用此显示「已发 ×N」。
                 // tracker 失败不应影响业务结果 —— 派单本身已成功。
-                bumpPublishTracker(output.outputId(), created.size());
+                bumpPublishTracker(output.outputId(), userId, created.size());
             } catch (BusinessException be) {
                 failed.add(new MixcutPublishBatchResultDto.FailedItem(
                         output.outputId(),
@@ -157,13 +157,26 @@ public class MixcutPublishService {
         return "mixcut-batch-" + source + "-" + PROJECT_ID_SUFFIX_FORMAT.format(Instant.now());
     }
 
-    /** 累加 output 的 publish_count，并把 last_published_at 推到 now。outputId 不存在或无效时静默跳过。 */
-    private void bumpPublishTracker(String outputId, int delta) {
+    /**
+     * 累加 output 的 publish_count，并把 last_published_at 推到 now。outputId 不存在 / 无效 /
+     * 不属于当前用户时静默跳过。
+     *
+     * 例行 QA 巡检发现（2026-07-03）：此前仅 {@code outputRepository.findById(outputId)}，
+     * 未校验 {@code o.getJob().getUserId() == userId}——outputId 由客户端在批量发布请求体里
+     * 直接传入（{@link MixcutPublishBatchRequest.OutputItem#outputId()}），恶意认证用户可
+     * 传入猜到/已知的他人 outputId，污染其 publishCount / lastPublishedAt 计数（视频库 UI
+     * 「已发 ×N」徽标显示错乱）。不读取/暴露他人内容，无数据泄露，但补齐与
+     * {@link MixcutJobService#softDeleteOutput} / {@code getOutputDownloadUrl} 同款的
+     * {@code o.getJob().getUserId()} 归属校验，堵住这个计数污染口子。
+     */
+    private void bumpPublishTracker(String outputId, String userId, int delta) {
         if (outputId == null || outputId.isBlank() || delta <= 0) return;
         try {
-            MixcutRenderOutput o = outputRepository.findById(outputId).orElse(null);
+            MixcutRenderOutput o = outputRepository.findById(outputId)
+                    .filter(x -> x.getJob() != null && userId.equals(x.getJob().getUserId()))
+                    .orElse(null);
             if (o == null) {
-                log.warn("[mixcut-publish] tracker skip: output {} not found", outputId);
+                log.warn("[mixcut-publish] tracker skip: output {} not found or not owned by user {}", outputId, userId);
                 return;
             }
             o.setPublishCount(o.getPublishCount() + delta);
