@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light anim">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AiAvatar - 首页</title>
+    <style id="theme-vars">
+/* ============================================================
+   AiAvatar 数字人资产平台 · 设计稿品牌样式
+   从源项目 DESIGN.md + globals.css 提取的完整设计令牌
+   ============================================================ */
+
+:root {
+  /* ——— 纸面 / 表面 ——— */
+  --canvas:     #F7F9FB;
+  --canvas-2:   #EEF2F6;
+  --surface:    #FFFFFF;
+  --surface-2:  #F6F8FB;
+  --surface-3:  #EDF1F5;
+
+  /* ——— 文字（深蓝灰墨） ——— */
+  --ink:    #14202B;
+  --ink-2:  #5A6873;
+  --ink-3:  #8A96A1;
+  --ink-4:  #BAC4CD;
+
+  /* ——— 线（冷灰） ——— */
+  --line:   #EBEFF3;
+  --line-2: #E0E6EC;
+  --line-3: #CFD7DF;
+
+  /* ——— 主色：Studio Cyan ——— */
+  --primary:      #12B3DE;
+  --primary-700:  #0C97BE;
+  --primary-600:  #10A6CF;
+  --primary-500:  #4CCBEC;
+  --primary-soft: #E6F5FA;
+  --primary-tint: #F3FAFD;
+  --on-primary:   #FFFFFF;
+  --grad:         linear-gradient(150deg, #2BC2E8, #12B3DE 60%, #0E9CC4);
+
+  /* ——— 语义（柔和） ——— */
+  --ok:      #1AA06E;  --ok-s:   #E2F4EC;
+  --warn:    #D9920E;  --warn-s: #FBF0DA;
+  --err:     #E0455C;  --err-s:  #FBE6EA;
+  --info:    #2BA6E8;  --info-s: #E6F2FB;
+
+  /* ——— 次要调色板（身份 / 导航） ——— */
+  --app-music:     #7C5CE6;
+  --app-commerce:  #E8884A;
+  --app-drama:     #3E63C8;
+  --path-ai:       #8F6BFF;
+  --store-video:   #1AA06E;
+  --store-3d:      #D9920E;
+  --store-voice:   #8A6BFF;
+
+  /* ——— 阴影（冷蓝调柔和扩散） ——— */
+  --sh-1:  0 1px 2px rgba(20,36,55,.035), 0 1px 3px rgba(20,36,55,.04);
+  --sh-2:  0 2px 6px rgba(20,36,55,.04),  0 8px 20px rgba(20,36,55,.055);
+  --sh-3:  0 8px 24px rgba(20,36,55,.07),  0 24px 50px rgba(20,36,55,.09);
+  --ring:  0 0 0 3px rgba(18,179,222,.16);
+
+  /* ——— 圆角 ——— */
+  --r-xs: 7px; --r-sm: 9px; --r-md: 12px; --r-lg: 15px;
+  --r-xl: 19px; --r-2xl: 24px; --r-pill: 999px;
+
+  /* ——— 字体 ——— */
+  --font-disp:  'Manrope', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --font-ui:    'Manrope', 'Noto Sans SC', system-ui, sans-serif;
+  --font-serif: 'Newsreader', 'Songti SC', 'Noto Serif SC', Georgia, serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--font-ui);
+  background: var(--canvas);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: rgba(18,179,222,.16); }
+
+h1, h2, h3, h4 { font-family: var(--font-disp); font-weight: 700; letter-spacing: -.02em; margin: 0; }
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* ============================================================
+   动画
+   ============================================================ */
+@keyframes fadeUp  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+html.anim .fade-up  { animation: fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+html.anim .fade-in  { animation: fadeIn .4s ease both; }
+html.anim .stagger > * { animation: fadeUp .5s cubic-bezier(.22,1,.36,1) both; }
+html.anim .stagger > *:nth-child(1) { animation-delay: .02s }
+html.anim .stagger > *:nth-child(2) { animation-delay: .06s }
+html.anim .stagger > *:nth-child(3) { animation-delay: .10s }
+html.anim .stagger > *:nth-child(4) { animation-delay: .14s }
+html.anim .stagger > *:nth-child(5) { animation-delay: .18s }
+html.anim .stagger > *:nth-child(6) { animation-delay: .22s }
+
+.mono { font-family: var(--font-mono); }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+
+/* ============================================================
+   Registry Dossier 原语
+   ============================================================ */
+.asset-name { font-family: var(--font-serif); font-weight: 500; letter-spacing: -.005em; }
+.asset-name-lg { font-family: var(--font-serif); font-weight: 500; letter-spacing: -.01em; line-height: 1.04; }
+.reg-no {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .04em;
+  color: var(--ink-3); display: inline-flex; align-items: center; gap: 6px;
+}
+.reg-no::before {
+  content: 'REG'; font-size: 8.5px; font-weight: 600; letter-spacing: .12em;
+  color: var(--primary); background: var(--primary-soft); padding: 2px 5px; border-radius: 4px;
+}
+.field-label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-4);
+}
+.seal {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ok); border: 1.5px solid var(--ok); border-radius: var(--r-pill); padding: 5px 13px;
+  opacity: .9; transform: rotate(-4deg);
+}
+.corner-tick { width: 9px; height: 9px; border-top: 1.5px solid var(--line-3); border-left: 1.5px solid var(--line-3); }
+
+@keyframes sealIn { from { opacity: 0; transform: rotate(-4deg) scale(1.3); } to { opacity: .9; transform: rotate(-4deg) scale(1); } }
+html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
+
+/* ============================================================
+   移动端应用壳（设计稿展示用 · 固定宽度 375px 居中）
+   ============================================================ */
+.app-root {
+  position: relative; width: 375px; min-height: 812px; margin: 0 auto;
+  display: flex; flex-direction: column; background: var(--canvas);
+  overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20,36,55,.12);
+  border-radius: 32px;
+}
+.m-content { flex: 1; position: relative; min-height: 0; }
+
+/* 顶部导航 */
+.wx-nav {
+  position: relative; z-index: 30; flex: 0 0 48px; height: 48px;
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+}
+.wx-nav .nav-title {
+  flex: 1; text-align: center; font-family: var(--font-disp); font-weight: 700;
+  font-size: 16.5px; letter-spacing: -.01em; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wx-nav .nav-back {
+  width: 34px; height: 34px; flex: 0 0 34px; border: none; background: none; cursor: pointer;
+  display: grid; place-items: center; color: var(--ink); margin-left: -4px;
+}
+.wx-nav .nav-spacer { width: 34px; flex: 0 0 34px; }
+
+/* 内容区 */
+.m-body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+.m-body.has-tabbar { padding-bottom: 66px; }
+.m-body::-webkit-scrollbar { width: 0; height: 0; }
+
+/* 底部 Tab 栏 */
+.wx-tabbar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 45; height: 58px;
+  background: rgba(255,255,255,.86); backdrop-filter: blur(18px) saturate(160%);
+  border-top: 1px solid var(--line); display: flex; align-items: flex-start;
+  border-radius: 0 0 32px 32px;
+}
+.wx-tab {
+  flex: 1; height: 58px; border: none; background: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--ink-3); transition: color .15s;
+}
+.wx-tab .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .01em; }
+.wx-tab.on { color: var(--primary); }
+.wx-tab.on .lbl { font-weight: 700; }
+
+/* 中间凸起创建键 */
+.wx-fab-slot { flex: 1; position: relative; display: flex; justify-content: center; }
+.wx-fab {
+  position: absolute; top: -20px; width: 56px; height: 56px; border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.78); cursor: pointer;
+  background: transparent; color: #fff; display: grid; place-items: center; isolation: isolate;
+  box-shadow: 0 12px 26px rgba(18,179,222,.24), 0 5px 12px rgba(76,92,125,.10);
+  transition: transform .18s cubic-bezier(.34,1.56,.64,1);
+}
+.wx-fab .fab-visual {
+  position: absolute; inset: 0; border-radius: inherit; overflow: hidden; z-index: 0;
+  background: var(--grad);
+}
+.wx-fab .fab-veil {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 34% 26%, rgba(255,255,255,.34), transparent 46%),
+    linear-gradient(145deg, rgba(255,255,255,.18), transparent 44%, rgba(10,60,84,.30) 100%);
+  box-shadow: 0 1px 0 rgba(255,255,255,.5) inset;
+}
+.wx-fab svg { position: relative; z-index: 1; filter: drop-shadow(0 2px 5px rgba(16,45,70,.30)); }
+.wx-fab .fab-lbl {
+  position: absolute; bottom: -19px; z-index: 2; font-size: 10.5px; font-weight: 700;
+  color: var(--primary); white-space: nowrap; text-shadow: 0 1px 0 rgba(255,255,255,.88);
+}
+
+/* 卡片 */
+.m-card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--sh-1);
+}
+.m-press:active { transform: scale(.985); }
+.m-tap { transition: transform .12s, background .15s; }
+.m-tap:active { transform: scale(.97); }
+.m-clip1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-clip2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.m-hscroll {
+  display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.m-hscroll::-webkit-scrollbar { height: 0; }
+.m-hscroll > * { scroll-snap-align: start; }
+
+/* 骨架屏 */
+.m-skel {
+  position: relative; overflow: hidden; background: var(--surface-3);
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.72) 50%, transparent 80%);
+  background-size: 200% 100%; animation: shimmer 1.3s ease-in-out infinite;
+}
+
+/* 遮罩层 */
+.m-overlay {
+  position: absolute; inset: 0; z-index: 80; background: var(--canvas);
+  display: flex; flex-direction: column;
+}
+.m-sheet-backdrop {
+  position: absolute; inset: 0; z-index: 85;
+  background: rgba(20,40,60,.4); backdrop-filter: blur(2px);
+  animation: mSheetFade .2s ease both;
+}
+@keyframes mSheetFade { from { opacity: .2; } to { opacity: 1; } }
+.m-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 86;
+  background: var(--surface); border-radius: 24px 24px 0 0;
+  box-shadow: var(--sh-3); padding-bottom: 20px;
+}
+.m-sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: var(--line-3); margin: 9px auto 4px; }
+
+/* 段落排版 */
+.m-body p { text-wrap: pretty; }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-primary: var(--on-primary);
+  }
+  @layer base {
+    body { background: var(--on-background); color: var(--on-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="anim">
+<div class="app-root">
+
+  <!-- ═══ Top Nav ═══ -->
+  <div class="home-nav">
+    <div class="nav-left">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span class="nav-badge">2</span>
+    </div>
+    <div class="nav-title">数字人资产</div>
+    <div class="nav-spacer"></div>
+  </div>
+
+  <!-- ═══ Content ═══ -->
+  <div class="m-content">
+    <div class="m-body has-tabbar">
+
+      <!-- ── Banner Carousel ── -->
+      <div class="banner-wrap fade-up">
+        <div class="banner-track">
+          <!-- Slide 1 -->
+          <div class="banner-slide banner-slide-1">
+            <div class="banner-headline">一句话生成专属 AI 数字人，马上开工</div>
+            <div class="banner-cta">
+              立即生成 <span class="hot-tag">HOT</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+          </div>
+          <!-- Slide 2 -->
+          <div class="banner-slide banner-slide-2">
+            <div class="banner-headline">真人授权复刻，拍一段就有数字分身</div>
+            <div class="banner-cta">
+              马上录制
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+          </div>
+          <!-- Slide 3 -->
+          <div class="banner-slide banner-slide-3">
+            <div class="banner-headline">精修形象加图集视频，内容资产整套出炉</div>
+            <div class="banner-cta">
+              生成整套
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+        <div class="banner-dots">
+          <span class="dot active"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+      </div>
+
+      <!-- ── My Digital Assets ── -->
+      <div class="sec-header fade-up" style="animation-delay:.06s">
+        <span class="sec-title">我的数字人资产</span>
+        <a class="sec-link" href="#">
+          全部
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+      </div>
+
+      <div class="asset-scroll fade-up" style="animation-delay:.10s">
+        <div class="asset-row">
+
+          <!-- Card 1: 林晓曼 -->
+          <div class="asset-card">
+            <div class="asset-portrait">
+              <div class="portrait-placeholder ph-1">
+                <svg class="portrait-silhouette" viewBox="0 0 60 72">
+                  <circle class="head" cx="30" cy="18" r="14" fill="#10A6CF"/>
+                  <ellipse class="body" cx="30" cy="58" rx="20" ry="16" fill="#10A6CF"/>
+                </svg>
+              </div>
+            </div>
+            <div class="asset-meta">
+              <div class="asset-reg">
+                <span class="reg-no">DH-1001</span>
+              </div>
+              <span class="asset-path path-ai">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="3.5"/></svg>
+                AI 原创
+              </span>
+              <div class="asset-name-row">
+                <span class="asset-name">林晓曼</span>
+                <div class="asset-heart">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+              </div>
+              <div class="asset-archetype">时尚博主</div>
+              <div class="asset-status">
+                <span class="status-badge ready">
+                  <span class="status-dot"></span>
+                  已就绪
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2: 陈一然 -->
+          <div class="asset-card">
+            <div class="asset-portrait">
+              <div class="portrait-placeholder ph-2">
+                <svg class="portrait-silhouette" viewBox="0 0 60 72">
+                  <circle class="head" cx="30" cy="18" r="14" fill="#8F6BFF"/>
+                  <ellipse class="body" cx="30" cy="58" rx="20" ry="16" fill="#8F6BFF"/>
+                </svg>
+              </div>
+            </div>
+            <div class="asset-meta">
+              <div class="asset-reg">
+                <span class="reg-no">DH-1002</span>
+              </div>
+              <span class="asset-path path-clone">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="3.5"/></svg>
+                真人复刻
+              </span>
+              <div class="asset-name-row">
+                <span class="asset-name">陈一然</span>
+              </div>
+              <div class="asset-archetype">美食达人</div>
+              <div class="asset-status">
+                <span class="status-badge generating">
+                  <span class="status-dot"></span>
+                  生成中
+                </span>
+                <div class="progress-bar-wrap">
+                  <div class="progress-bar-fill"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: Add New -->
+          <div class="add-card">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>新建</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Quick Actions ── -->
+      <div class="sec-header fade-up" style="animation-delay:.14s">
+        <span class="sec-title">开始创作</span>
+      </div>
+
+      <div class="actions-section fade-up" style="animation-delay:.18s">
+        <div class="actions-grid">
+
+          <!-- Create Digital Human -->
+          <div class="action-card">
+            <div class="action-card-top">
+              <div class="action-icon">
+                <!-- sparkle -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/>
+                </svg>
+              </div>
+              <div class="action-title">创建数字人</div>
+              <div class="action-desc">一句描述，原创虚构形象</div>
+            </div>
+            <div class="action-btn">
+              开始创建
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+          </div>
+
+          <!-- Clone Real Person -->
+          <div class="action-card">
+            <div class="action-card-top">
+              <div class="action-icon">
+                <!-- person -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+              <div class="action-title">真人授权复刻</div>
+              <div class="action-desc">录一段动作，合规复刻</div>
+            </div>
+            <div class="action-btn">
+              开始录制
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+          </div>
+
+          <!-- Clone Voice -->
+          <div class="action-card">
+            <div class="action-card-top">
+              <div class="action-icon">
+                <!-- mic -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="22"/>
+                </svg>
+              </div>
+              <div class="action-title">克隆声音</div>
+              <div class="action-desc">录一段即生成</div>
+            </div>
+            <div class="action-btn">
+              声音工作室
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+          </div>
+
+          <!-- Connect Apps -->
+          <div class="action-card">
+            <div class="action-card-top">
+              <div class="action-icon">
+                <!-- clapper -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/>
+                  <path d="m6.2 5.3 3.1 3.9"/>
+                  <path d="m12.4 3.4 3.1 3.9"/>
+                  <path d="M21 16v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5"/>
+                  <path d="m22 16-2 0-16 0-2 0"/>
+                  <path d="M4 11v5"/>
+                  <path d="M20 11v5"/>
+                </svg>
+              </div>
+              <div class="action-title">接入应用</div>
+              <div class="action-desc">短剧 · 带货 · 音乐</div>
+            </div>
+            <div class="action-btn">
+              应用中心
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ Bottom Tab Bar ═══ -->
+  <div class="wx-tabbar">
+    <!-- Tab: Home -->
+    <button class="wx-tab on">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10.5Z"/>
+      </svg>
+      <span class="lbl">首页</span>
+    </button>
+    <!-- Tab: Library -->
+    <button class="wx-tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+      </svg>
+      <span class="lbl">资产库</span>
+    </button>
+    <!-- FAB -->
+    <div class="wx-fab-slot">
+      <button class="wx-fab">
+        <div class="fab-visual"></div>
+        <div class="fab-veil"></div>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        <span class="fab-lbl">创建</span>
+      </button>
+    </div>
+    <!-- Tab: Apps -->
+    <button class="wx-tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+      </svg>
+      <span class="lbl">应用</span>
+    </button>
+    <!-- Tab: Me -->
+    <button class="wx-tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      </svg>
+      <span class="lbl">我的</span>
+    </button>
+  </div>
+
+</div>
+
+    <style>
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 16px 64px;
+    background: #1A2332;
+  }
+
+  /* ── Top Nav ── */
+  .home-nav {
+    position: relative;
+    z-index: 30;
+    flex: 0 0 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+  }
+  .nav-left {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  .nav-left svg {
+    width: 22px;
+    height: 22px;
+    color: var(--ink);
+  }
+  .nav-badge {
+    position: absolute;
+    top: 1px;
+    right: 0px;
+    min-width: 16px;
+    height: 16px;
+    background: var(--err);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: var(--r-pill);
+    display: grid;
+    place-items: center;
+    padding: 0 4px;
+    line-height: 1;
+    border: 2px solid var(--canvas);
+  }
+  .home-nav .nav-title {
+    flex: 1;
+    text-align: center;
+    font-family: var(--font-disp);
+    font-weight: 700;
+    font-size: 16.5px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .nav-spacer {
+    width: 36px;
+    flex: 0 0 36px;
+  }
+
+  /* ── Banner Carousel ── */
+  .banner-wrap {
+    padding: 0 16px;
+    margin-bottom: 24px;
+  }
+  .banner-track {
+    display: flex;
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    position: relative;
+    height: 148px;
+  }
+  .banner-slide {
+    min-width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 24px 22px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .banner-slide-1 {
+    background: linear-gradient(135deg, #E0F7FA 0%, #B2EBF2 30%, #E0F7FA 60%, #B2E8F0 100%);
+  }
+  .banner-slide-2 {
+    background: linear-gradient(135deg, #E8DEF8 0%, #D1C4E9 40%, #E8E0F0 70%, #D5CAEB 100%);
+  }
+  .banner-slide-3 {
+    background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 40%, #FFF8E1 70%, #FFECB3 100%);
+  }
+  .banner-slide::before {
+    content: '';
+    position: absolute;
+    top: -30px;
+    right: -20px;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    opacity: 0.18;
+    background: var(--primary);
+  }
+  .banner-slide::after {
+    content: '';
+    position: absolute;
+    bottom: -20px;
+    right: 40px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    opacity: 0.12;
+    background: var(--primary-700);
+  }
+  .banner-headline {
+    font-family: var(--font-disp);
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.35;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    max-width: 230px;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 14px;
+  }
+  .banner-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 32px;
+    padding: 0 16px;
+    border-radius: var(--r-pill);
+    background: var(--grad);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+    width: fit-content;
+    box-shadow: 0 4px 14px rgba(18,179,222,.22);
+  }
+  .banner-cta .hot-tag {
+    background: #FF5C72;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 5px;
+    border-radius: 4px;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+  }
+  .banner-cta svg {
+    width: 13px;
+    height: 13px;
+  }
+  .banner-dots {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 10px;
+    padding: 0 16px;
+  }
+  .banner-dots .dot {
+    border-radius: var(--r-pill);
+    background: var(--line-3);
+    transition: all .25s ease;
+  }
+  .banner-dots .dot.active {
+    width: 20px;
+    height: 6px;
+    background: var(--primary);
+  }
+  .banner-dots .dot:not(.active) {
+    width: 6px;
+    height: 6px;
+  }
+
+  /* ── Section Title ── */
+  .sec-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    margin-bottom: 14px;
+  }
+  .sec-title {
+    font-family: var(--font-disp);
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .sec-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-3);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+  }
+  .sec-link svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* ── Asset Cards ── */
+  .asset-scroll {
+    padding: 0 16px;
+    margin-bottom: 28px;
+  }
+  .asset-row {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  .asset-row::-webkit-scrollbar { height: 0; }
+  .asset-row > * { scroll-snap-align: start; }
+
+  .asset-card {
+    flex: 0 0 165px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+    overflow: hidden;
+    transition: transform .15s;
+    cursor: pointer;
+  }
+  .asset-card:active { transform: scale(.985); }
+  .asset-portrait {
+    height: 130px;
+    position: relative;
+    overflow: hidden;
+  }
+  .portrait-placeholder {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+  }
+  .portrait-placeholder.ph-1 {
+    background: linear-gradient(160deg, #E6F5FA, #D0EEF8, #B8E4F4);
+  }
+  .portrait-placeholder.ph-2 {
+    background: linear-gradient(160deg, #F0E8FF, #E4D8F8, #D8CCF2);
+  }
+  .portrait-silhouette {
+    width: 60px;
+    height: 72px;
+    opacity: 0.35;
+  }
+  .portrait-silhouette circle.head {
+    cx: 30; cy: 18; r: 14;
+    fill: var(--primary-600);
+  }
+  .portrait-silhouette ellipse.body {
+    cx: 30; cy: 58; rx: 20; ry: 16;
+    fill: var(--primary-600);
+  }
+  .asset-meta {
+    padding: 10px 12px 12px;
+  }
+  .asset-reg {
+    margin-bottom: 5px;
+  }
+  .asset-path {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .asset-path.path-ai {
+    background: rgba(143,107,255,.1);
+    color: var(--path-ai);
+  }
+  .asset-path.path-clone {
+    background: rgba(18,179,222,.1);
+    color: var(--primary-700);
+  }
+  .asset-name-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-top: 7px;
+  }
+  .asset-name {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.005em;
+    line-height: 1.2;
+  }
+  .asset-heart {
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    color: var(--ink-4);
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-bottom: 1px;
+  }
+  .asset-heart svg {
+    width: 16px;
+    height: 16px;
+  }
+  .asset-archetype {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--ink-3);
+    margin-top: 2px;
+  }
+  .asset-status {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: var(--r-pill);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .status-badge.ready {
+    background: var(--ok-s);
+    color: var(--ok);
+  }
+  .status-badge.generating {
+    background: var(--warn-s);
+    color: var(--warn);
+  }
+  .status-badge .status-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-badge.generating .status-dot {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .progress-bar-wrap {
+    flex: 1;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: var(--r-pill);
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    width: 62%;
+    background: var(--grad);
+    border-radius: var(--r-pill);
+  }
+
+  /* ── Add New Card ── */
+  .add-card {
+    flex: 0 0 165px;
+    height: 222px;
+    border: 2px dashed var(--line-3);
+    border-radius: var(--r-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    background: transparent;
+  }
+  .add-card:hover {
+    border-color: var(--primary-500);
+    background: var(--primary-tint);
+  }
+  .add-card svg {
+    width: 28px;
+    height: 28px;
+    color: var(--ink-4);
+  }
+  .add-card span {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-3);
+  }
+
+  /* ── Quick Actions Grid ── */
+  .actions-section {
+    padding: 0 16px;
+    margin-bottom: 24px;
+  }
+  .actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .action-card {
+    background: #0E1822;
+    border-radius: var(--r-lg);
+    height: 142px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform .15s;
+  }
+  .action-card:active { transform: scale(.975); }
+  .action-card::before {
+    content: '';
+    position: absolute;
+    top: -16px;
+    right: -16px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    opacity: 0.06;
+    background: var(--primary);
+  }
+  .action-card-top {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .action-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.08);
+    backdrop-filter: blur(8px);
+    display: grid;
+    place-items: center;
+  }
+  .action-icon svg {
+    width: 18px;
+    height: 18px;
+    color: #fff;
+  }
+  .action-title {
+    font-family: var(--font-disp);
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.01em;
+  }
+  .action-desc {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: rgba(255,255,255,.5);
+    line-height: 1.3;
+  }
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--primary-500);
+    cursor: pointer;
+  }
+  .action-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* ── Bottom spacing for tabbar ── */
+  .m-body.has-tabbar {
+    padding-bottom: 66px;
+  }
+</style>
+</body>
+</html>

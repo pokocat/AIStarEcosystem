@@ -44,7 +44,7 @@ function reducer(state: WorkshopState, a: WorkshopAction): WorkshopState {
     case "lock": {
       const already = !!state.lockedStages[a.stage];
       const ls = { ...state.lockedStages, [a.stage]: true };
-      const order: StageKey[] = ["topic", "outline", "cast", "epscript", "factory", "prompt"];
+      const order: StageKey[] = ["topic", "outline", "cast", "epscript", "prompt"];
       const next = order[order.indexOf(a.stage) + 1];
       return {
         ...state,

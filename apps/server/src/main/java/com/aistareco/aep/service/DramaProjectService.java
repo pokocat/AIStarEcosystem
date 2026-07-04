@@ -42,6 +42,7 @@ public class DramaProjectService {
     private final CreditService creditService;
     private final PlatformConfigService configs;
     private final com.aistareco.aep.service.storage.StorageQuotaService storage;
+    private final com.aistareco.aep.service.cdn.CdnUrlSigner signer;
     private final ObjectMapper om;
 
     public DramaProjectService(DramaProjectRepository repo,
@@ -50,6 +51,7 @@ public class DramaProjectService {
                                CreditService creditService,
                                PlatformConfigService configs,
                                com.aistareco.aep.service.storage.StorageQuotaService storage,
+                               com.aistareco.aep.service.cdn.CdnUrlSigner signer,
                                ObjectMapper om) {
         this.repo = repo;
         this.invocation = invocation;
@@ -57,6 +59,7 @@ public class DramaProjectService {
         this.creditService = creditService;
         this.configs = configs;
         this.storage = storage;
+        this.signer = signer;
         this.om = om;
     }
 
@@ -293,7 +296,7 @@ public class DramaProjectService {
         if (plot.isBlank()) {
             JsonNode outline = readPayload(row).path("episodes");
             for (JsonNode e : outline) {
-                if (e.path("no").asInt() == ep) plot = e.path("synopsis").asText("");
+                if (e.path("no").asInt() == ep) plot = orDefault(text(e, "content"), e.path("synopsis").asText(""));
             }
         }
         if (plot.isBlank()) {
@@ -465,6 +468,67 @@ public class DramaProjectService {
         });
     }
 
+    /**
+     * 行级「就地改写本镜」（v0.97 P5，对齐 ViMax design_storyboard 逐镜可控）：按指令只改这一个镜头。
+     * body: { desc, size?, move?, line?:{who,text}, instruction, cast?:[名] } → { desc, size, move, line }（未落库）。
+     */
+    public JsonNode rewriteShot(String id, JsonNode body, String userId) {
+        requireOwned(id, userId);
+        requireLlm();
+        String visual = orDefault(text(body, "desc"), "");
+        String instruction = orDefault(text(body, "instruction"), "");
+        if (instruction.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_INSTRUCTION_REQUIRED", "请描述想怎么改这一镜");
+        }
+        StringBuilder castSb = new StringBuilder();
+        if (body != null && body.get("cast") != null && body.get("cast").isArray()) {
+            for (JsonNode c : body.get("cast")) {
+                String n = c.isObject() ? c.path("name").asText("") : c.asText("");
+                if (!n.isBlank()) {
+                    if (castSb.length() > 0) castSb.append("、");
+                    castSb.append(n);
+                }
+            }
+        }
+        JsonNode lineIn = body == null ? null : body.get("line");
+        String lineStr = lineIn != null && lineIn.isObject() && !lineIn.path("text").asText("").isBlank()
+                ? lineIn.path("who").asText("旁白") + "：" + lineIn.path("text").asText("")
+                : "（无）";
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("visual", visual);
+        vars.put("size", orDefault(text(body, "size"), ""));
+        vars.put("move", orDefault(text(body, "move"), ""));
+        vars.put("line", lineStr);
+        vars.put("castClause", castSb.length() > 0 ? "出场人物：" + castSb + "。" : "");
+        vars.put("instruction", instruction);
+        PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_SHOT_REWRITE, vars, 0.8);
+
+        return withCharge(userId,
+                configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SHOT_REWRITE, 2),
+                "就地改写本镜", () -> {
+            JsonNode root = callJson(pc);
+            String desc = text(root, "desc");
+            if (desc == null || desc.isBlank()) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "改写返回的内容无法解析，请重试。");
+            }
+            ObjectNode out = om.createObjectNode();
+            out.put("desc", desc);
+            out.put("size", orDefault(text(root, "size"), orDefault(text(body, "size"), "中景")));
+            out.put("move", orDefault(text(root, "move"), orDefault(text(body, "move"), "固定")));
+            JsonNode l = root.get("line");
+            if (l != null && l.isObject() && !l.path("text").asText("").isBlank()) {
+                ObjectNode ln = om.createObjectNode();
+                ln.put("who", l.path("who").asText("旁白"));
+                ln.put("text", l.path("text").asText(""));
+                out.set("line", ln);
+            } else {
+                out.putNull("line");
+            }
+            log.info("[drama-project] shot rewrite ok user={} id={}", userId, id);
+            return out;
+        });
+    }
+
     /** ff/lf_chars 校验：只保留「已知人物名」，去重，过滤模型编造的名字（不抛错，避免硬失败）。 */
     private ArrayNode filterKnownNames(JsonNode names, java.util.Set<String> known) {
         ArrayNode arr = om.createArrayNode();
@@ -488,7 +552,7 @@ public class DramaProjectService {
         int n = 0;
         for (JsonNode e : data.path("episodes")) {
             if (n++ >= 6) break;
-            eps.append("第").append(e.path("no").asInt()).append("集：").append(e.path("synopsis").asText("")).append("\n");
+            eps.append("第").append(e.path("no").asInt()).append("集：").append(orDefault(text(e, "content"), e.path("synopsis").asText(""))).append("\n");
         }
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("title", orDefault(row.getTitle(), "未命名"));
@@ -586,9 +650,8 @@ public class DramaProjectService {
             String eid = "ep" + no;
             ObjectNode outline = om.createObjectNode();
             outline.put("no", no);
-            outline.put("hook", orDefault(text(e, "hook"), orDefault(text(e, "title"), "第 " + no + " 集")));
-            outline.put("synopsis", orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), "")));
-            outline.put("beat", orDefault(text(e, "beat"), ""));
+            outline.put("title", orDefault(text(e, "title"), orDefault(text(e, "hook"), "第 " + no + " 集")));
+            outline.put("content", orDefault(text(e, "content"), orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), ""))));
             episodes.add(outline);
 
             ObjectNode node = om.createObjectNode();
@@ -841,9 +904,8 @@ public class DramaProjectService {
             ObjectNode ep = om.createObjectNode();
             int no = e.path("no").asInt(i);
             ep.put("no", no);
-            ep.put("hook", orDefault(text(e, "hook"), ""));
-            ep.put("synopsis", orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), "")));
-            ep.put("beat", orDefault(text(e, "beat"), ""));
+            ep.put("title", orDefault(text(e, "title"), orDefault(text(e, "hook"), "第 " + no + " 集")));
+            ep.put("content", orDefault(text(e, "content"), orDefault(text(e, "synopsis"), orDefault(text(e, "summary"), ""))));
             out.add(ep);
             i++;
         }
@@ -898,8 +960,43 @@ public class DramaProjectService {
     private ObjectNode toDetail(DramaProject p) {
         ObjectNode out = om.createObjectNode();
         out.set("meta", toSummary(p));
-        out.set("data", readPayload(p));
+        JsonNode data = readPayload(p);
+        // §4.7：payloadJson 里存的是「当时签名的 OSS URL」，签名有 TTL 会过期 → 图裂。
+        // 出 wire 时对文档内所有资产 URL 重签（maybeSign 从 URL 抽 key 重签，对已过期 URL 同样有效）。
+        // driver=local 的相对 /cdn 路径不匹配 OSS base → 原样返回，dev 不受影响。
+        resignAssetUrls(data);
+        out.set("data", data);
         return out;
+    }
+
+    /** 递归重签文档内所有 OSS 资产 URL（首帧/末帧/成片/场景图/角色图…），避免存下的签名 URL 过期后 403 图裂。 */
+    private void resignAssetUrls(JsonNode node) {
+        if (node == null) return;
+        if (node.isObject()) {
+            ObjectNode o = (ObjectNode) node;
+            java.util.List<String> keys = new java.util.ArrayList<>();
+            o.fieldNames().forEachRemaining(keys::add);
+            for (String k : keys) {
+                JsonNode v = o.get(k);
+                if (v != null && v.isTextual()) {
+                    String signed = signer.maybeSign(v.asText());
+                    if (signed != null && !signed.equals(v.asText())) o.put(k, signed);
+                } else {
+                    resignAssetUrls(v);
+                }
+            }
+        } else if (node.isArray()) {
+            ArrayNode a = (ArrayNode) node;
+            for (int i = 0; i < a.size(); i++) {
+                JsonNode v = a.get(i);
+                if (v != null && v.isTextual()) {
+                    String signed = signer.maybeSign(v.asText());
+                    if (signed != null && !signed.equals(v.asText())) a.set(i, com.fasterxml.jackson.databind.node.TextNode.valueOf(signed));
+                } else {
+                    resignAssetUrls(v);
+                }
+            }
+        }
     }
 
     /** 简易相对时间（今天 / 昨天 / N 天前 / N 周前），匹配前端 updated 文案。 */

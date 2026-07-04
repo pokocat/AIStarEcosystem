@@ -15,7 +15,7 @@ import type {
   InteractiveStoryData,
 } from "@/lib/interactive-types";
 import type { EpisodeOutline, ProjectData } from "@/mocks/drama-workshop";
-import { getEpisodeDoc } from "@/mocks/drama-workshop";
+import { episodeContent, episodeTitle, getEpisodeDoc } from "@/mocks/drama-workshop";
 
 export interface Issue {
   level: "error" | "warning";
@@ -441,8 +441,8 @@ export function projectToStory(data: ProjectData): InteractiveStoryData {
     return {
       episodeId,
       no: o.no,
-      title: o.hook?.trim() || `第 ${o.no} 集`,
-      synopsis: o.synopsis ?? "",
+      title: episodeTitle(o),
+      synopsis: episodeContent(o),
       videoUrl: assembled?.url ?? null,
       durationSec: assembled?.durationSec ?? 0,
       videoStatus: assembled?.url ? "ready" : "idle",
@@ -475,9 +475,8 @@ export function writeStoryToProject(data: ProjectData, story: InteractiveStoryDa
     const prev = prevByNo.get(no);
     return {
       no,
-      hook: e.title,
-      synopsis: e.synopsis ?? prev?.synopsis ?? "",
-      beat: prev?.beat ?? "",
+      title: e.title,
+      content: e.synopsis ?? episodeContent(prev ?? { no }),
       ...(prev?.locked ? { locked: prev.locked } : {}),
     };
   });

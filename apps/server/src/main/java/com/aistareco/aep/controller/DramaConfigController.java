@@ -1,7 +1,6 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.config.DramaConfigSeeder;
-import com.aistareco.aep.service.CelebrityActionPricingService;
 import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,22 +12,19 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 短剧个性化配置（用户侧只读，v0.66）：扣费确认阈值 + 各 AI 动作单价。
- * 真值在 PlatformConfig（admin「短剧专区」可改）；clip 单价沿用 celebrity
- * 既有 action 定价 material.video-generate（admin「引擎价格」可改）。
+ * 真值在 PlatformConfig（admin「短剧专区」可改）；各价含分镜视频 clip 均为短剧 app 维度独立配置
+ * （drama.credit.*），不再耦合带货线 material.video-generate。
  */
 @RestController
 @RequestMapping("/api/me/drama")
 public class DramaConfigController {
 
     private final PlatformConfigService configs;
-    private final CelebrityActionPricingService actionPricing;
     private final ObjectMapper om;
 
     public DramaConfigController(PlatformConfigService configs,
-                                 CelebrityActionPricingService actionPricing,
                                  ObjectMapper om) {
         this.configs = configs;
-        this.actionPricing = actionPricing;
         this.om = om;
     }
 
@@ -44,9 +40,9 @@ public class DramaConfigController {
         prices.put("cast", configs.getLong(DramaConfigSeeder.KEY_CAST, 5));
         prices.put("frame", configs.getLong(DramaConfigSeeder.KEY_FRAME, 2));
         prices.put("decompose", configs.getLong(DramaConfigSeeder.KEY_DECOMPOSE, 3));
+        prices.put("shotRewrite", configs.getLong(DramaConfigSeeder.KEY_SHOT_REWRITE, 2));
         prices.put("shortEntry", configs.getLong(DramaConfigSeeder.KEY_SHORT_ENTRY, 10));
-        Long clip = actionPricing.creditPriceOf(CelebrityActionPricingService.ACTION_VIDEO_GENERATE);
-        prices.put("clip", clip != null ? clip : 30L);
+        prices.put("clip", configs.getLong(DramaConfigSeeder.KEY_CLIP, 30));
         return ApiResponse.of(out);
     }
 }

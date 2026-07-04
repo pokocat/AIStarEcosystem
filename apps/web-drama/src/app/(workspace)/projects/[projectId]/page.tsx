@@ -23,7 +23,6 @@ import {
 } from "@/components/drama-workshop/workbench";
 import {
   EpScriptStage,
-  FactoryStage,
   AssembleStage,
   BranchStage,
   SetupStage,
@@ -47,6 +46,9 @@ export default function ProjectWorkbench() {
   React.useEffect(() => {
     if (detail?.data) setData(detail.data);
   }, [detail]);
+  // 始终指向最新 data：patchData 用它做函数式合并，异步回写不吃陈旧闭包。
+  const dataRef = React.useRef(data);
+  dataRef.current = data;
 
   // v0.76：统一保存状态机（指示器 + 离开提醒兜底）。所有阶段落库都经 saveData 漏斗。
   const { status: saveStatusValue, notifyEditing, track } = useSaveStatus();
@@ -61,6 +63,15 @@ export default function ProjectWorkbench() {
       }
     },
     [id, track],
+  );
+  // 按最新 data 合并后保存：异步操作（场景出图/上传回写等）用它，避免并发保存/陈旧闭包覆盖结果。
+  const patchData = React.useCallback<StageContext["patchData"]>(
+    async (patch, opts) => {
+      const cur = dataRef.current;
+      if (!cur) return;
+      await saveData(patch(cur), opts);
+    },
+    [saveData],
   );
 
   if (isLoading || (!data && !error)) {
@@ -93,7 +104,7 @@ export default function ProjectWorkbench() {
           dispatch={dispatch}
           data={data}
           prefilled={fromTemplate || detail.meta.mode === "template"}
-          ctx={{ projectId: id, saveData, notifyEditing }}
+          ctx={{ projectId: id, saveData, patchData, notifyEditing }}
         />
       )}
     />
@@ -133,9 +144,8 @@ function StageOutlet({
     case "cast":
       return <SetupStage state={state} dispatch={dispatch} data={data} prefilled={prefilled} ctx={ctx} />;
     case "epscript":
-      return <EpScriptStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
-    case "factory":
-      return <FactoryStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
+      // key=集号：切集时卸载/重挂载本集实例，触发本集 flush + 干净重建（修跨集防抖覆盖）。
+      return <EpScriptStage key={state.ep} state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "prompt":
       return <AssembleStage state={state} dispatch={dispatch} data={data} ctx={ctx} />;
     case "branch":

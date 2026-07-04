@@ -86,7 +86,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectD
         title: meta.title,
         type: input.type,
         episodes: meta.episodes,
-        duration: "每集 ~75 秒",
+        duration: "每集 ~60 秒",
         ratio: meta.ratio,
         logline: input.logline || "",
         mainline: input.mainline || "",
@@ -260,6 +260,36 @@ export async function decomposeShot(
     );
   }
   return apiFetch<ShotDecomposeResult>(`/me/drama/projects/${id}/shot/decompose`, {
+    method: "POST",
+    body: input,
+  });
+}
+
+/** v0.97 P5：行级就地改写本镜结果。 */
+export interface ShotRewriteResult {
+  desc: string;
+  size: string;
+  move: string;
+  line: ScriptLine | null;
+}
+
+/** 行级就地改写本镜：按指令只改这一个镜头（未落库，前端合并到该镜）。 */
+export async function rewriteShot(
+  id: string,
+  input: { desc: string; size?: string; move?: string; line?: ScriptLine | null; instruction: string; cast?: string[] },
+): Promise<ShotRewriteResult> {
+  if (USE_MOCK) {
+    return mockDelay(
+      {
+        desc: `${input.desc}（已按「${input.instruction}」调整）`.slice(0, 80),
+        size: input.size || "中景",
+        move: input.move || "固定",
+        line: input.line ?? null,
+      },
+      800,
+    );
+  }
+  return apiFetch<ShotRewriteResult>(`/me/drama/projects/${id}/shot/rewrite`, {
     method: "POST",
     body: input,
   });

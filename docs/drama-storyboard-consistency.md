@@ -1,6 +1,61 @@
 # 短剧分镜一致性优化方案（借鉴 ViMax）
 
-> last-reviewed：2026-06-30 / v0.97 P0/P1/P2 全量落地（镜间承接 + 场景绑定 + 机位/电影语言 prompt + seedance 首尾帧双关键帧 + return_last_frame 链式承接闭环 + decompose 节点）
+> last-reviewed：2026-06-30 / v0.98 工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（删视频工厂阶段，6→5 阶段）
+> v0.97 P0/P1/P2 全量落地（镜间承接 + 场景绑定 + 机位/电影语言 prompt + seedance 首尾帧双关键帧 + return_last_frame 链式承接闭环 + decompose 节点）
+
+## v0.98 结构收敛（方案 B）
+
+用户决策：逐镜出片全在**剧集脚本分镜表**内完成，删独立「视频工厂」阶段（项目 6→5 阶段）。
+- 强渲染逻辑抽成 `use-shot-render.ts`（供参考/复用），最终由 `epscript.tsx` 承载：出图 4 版挑选、角色+场景+镜间承接参考图、首尾帧、AI 拆镜（首帧▷末帧双联 + hover 预演）、镜间一致性开关。
+- 删 `stages/factory.tsx` + `FactoryDrawer` + `use-shot-render` 消费方（factory）；`stages-config` 去 factory，成片合成前移。
+- P1：epscript 不再 lock，脚本始终可编辑（`保存·去成片合成`）。
+- P5：删左下 `ai-chat-panel` 浮窗 → 行级 Wand2 就地改写本镜（`/shot/rewrite` + `drama.shot_rewrite`）。
+- P6：短视频面包屑按 pathname 派生 + beat 改 AI 逐镜生成。
+- P4：假模型下拉随工厂删除已消失；真·多模型选择拆独立 PR（TODO D-11，改共享 `AiAppBinding`）。
+
+## v0.98 补丁 · 场景参考图专用提示词（2026-07-01）
+
+问题：「角色与场景」里生成场景参考图效果很怪、不符剧集脚本取景。根因——`genSceneRef` 误用
+`kind:"shot"` → 命中人物分镜首帧提示词 `drama.frame_image`（含景别/运镜/Keep faces consistent），
+出「空场景底图」时塞人脸/按分镜构图，且 `{{scene}}` 无占位符被忽略、无作品风格、ratio 用了 16:9。
+调研确认 ViMax 亦无「专用场景底图」范式（其环境一致性是被动复用上一时间线帧）。
+
+修：新增 `drama.scene_frame_image`（干净空景 establishing plate，无人物，匹配 place+mood+作品风格）；
+`renderFrame` 加 `kind:"scene"`（`buildMediaPrompt` 第 4 参 sceneKey）；前端 `genSceneRef` 传
+`kind:"scene"` + 作品风格 + 项目画幅（`data.projectInfo.ratio`）。
+
+## v0.98 补丁 · 场景设定持久化 + 分镜表显式绑定场景参考（2026-07-01）
+
+生产实测两处硬伤：
+1. **场景 AI 出图/上传后刷新丢失**：根因是场景回写走陈旧闭包 `ctx.saveData({...data, scenes})`，
+   被并发/后续保存覆盖。修：`StageContext` 加 `patchData(prev => next)`（page 用 `dataRef` 取最新
+   data 做函数式合并）；cast 场景增删改/出图/上传全改走 `patchData`，异步结果并入最新 data 不丢。
+2. **场景参考进不了分镜首帧**：删视频工厂后仅剩「按场名匹配」这一条隐式链，用户上传/AI 生成的场景
+   图在分镜表里无处可选 → 一致性断链。修：`ScriptScene.sceneRefId` 显式绑定；分镜表场景头加
+   「场景参考」下拉（复用 `onUpdScene` 写 `sceneRefId` + 缩略图 + 「未出图」提示），随脚本落库；
+   `sceneRefUrlFor` 改「显式 sceneRefId 优先 → 场名匹配兜底」，喂进该场各镜首帧 `ref_images`。
+
+## v0.98 补丁 · 画面内容 @提及人物 chip + 人物一致性（2026-07-01）
+
+借鉴 ViMax「角色参考复用」把人物一致性打通成一条显式链：
+1. **画面内容 = @提及富文本**（新 `character-mention-input.tsx`，基于 `@tiptap/extension-mention`）：
+   输入 `@` 弹本集角色 → 选中成内联 chip（如 `@苏娜`）。内联 chip 即本镜出场人物 → 写入
+   `shot.cast`。存储：`shot.visual` 存渲染文本（chip 序列化「@名字」可回读重建）、`shot.cast` 存 id。
+2. **首帧喂角色参考图锁脸**：`shotRefImages` 改「`@提及 cast` 优先 → 画面文本按角色名兜底匹配
+   → 本集全体」；取 `character.avatarImage`(数字人) / `refUrl`(定妆图) 并入 `ref_images`。
+3. **角色定妆参考图（两种都支持）**：cast 卡新增「AI 定妆图」（新 prompt `drama.character_frame_image`
+   + `renderFrame kind:"character"`，单人肖像锁脸）+ 既有「绑数字人 / 上传」。有图才谈得上锁脸。
+4. `buildMediaPrompt` 重构为 `frameKeyForKind(kind)` 统一按 kind 选提示词（shot/short/scene/character）。
+
+## v0.98 补丁 · 修「重新部署后图片全裂」（签名 URL 过期）（2026-07-01）
+
+根因：`DramaProject.payloadJson` 里存的是**当时签名的 OSS URL**（首帧/末帧/成片/场景图/角色图），
+`AEP_CDN_SIGNED_URL_STRATEGY=oss` + `TTL=3600s`，`saveProject` 原样存、`getProject` 原样返回 →
+**1h 后签名过期 → 403 图裂**（重新部署是巧合，非诱因）。违反 §4.7「key 真值 / 出 wire 派生」。
+修：`DramaProjectService` 注入 `CdnUrlSigner`，`toDetail` 出 wire 时递归 `signer.maybeSign(...)`
+重签文档内所有资产 URL（`resignAssetUrls`，从 URL 抽 key 重签，对已过期 URL 亦有效）；driver=local
+相对 `/cdn` 不匹配 OSS base 原样返回，dev 不受影响。规范已写入 AGENTS §4.7.7。
+**同类债待清**：`DramaShort.payloadJson`（短视频草稿）存签名 URL 同样会过期 —— 见 TODO D-12。
 > 真源：本文件是「一集多分镜视频一致性」专题的工程设计真源。
 > 关联代码：`apps/web-drama/src/components/drama-workshop/stages/factory.tsx`、
 > `apps/server/.../service/DramaRenderService.java`、
@@ -177,3 +232,37 @@
 - **P2** ✅：`MaterialVideoModelClient` `PROTOCOL_SEEDANCE`（content 数组首/尾帧 + `return_last_frame`）+ GENERIC 补首/尾帧；`MaterialVideoJob.lastFrameUrl` → 任务卡 → 前端 `BoardShot.lastFrameUrl` 链式承接闭环；`drama.decompose` 节点（端点 `/shot/decompose` + 计费 `drama.credit.decompose` + 角色名校验）。
 - **运维前置**：要用 seedance 首尾帧，需在 admin「AI 模型与 Key」把「视频生成」绑到一个名称/baseUrl/model 含 `seedance` 的端点（自动走 SEEDANCE 协议）；否则按原 AGNES/GENERIC 协议工作（首帧仍生效）。
 - **后续可选**：VLM best-of-N 一致性自检（生成多版首帧自动选最一致）；末帧 CDN 镜像（当前 `lastFrameUrl` 存上游 URL，best-effort，可能有时效）。
+
+## v0.98 补丁 · 分集剧情模型简化为「标题 + 内容」（2026-07-01）
+
+问题：每集原为 `hook/synopsis/beat` 三段并排、无标签、读着不相干；生成只喂了 hook+synopsis（beat 丢失），
+且与 epscript 的 `plot` 双源打架。非 ViMax 实践（ViMax 是「连贯叙事 → 逐层分解」）。
+改：`EpisodeOutline` 新模型 `{no, title, content}`——`title` 集标题（可视化：集导航/大纲/审阅），
+`content` 一段连贯本集剧情（AI 按「开场钩子→主体→结尾悬念」写，钩子结构做进 `drama.outline` prompt，
+不再拆独立字段）。`hook/synopsis/beat` 降级为可选、仅老数据回读兜底（helper `episodeTitle`/`episodeContent`）。
+生成/展示单一真源 = `episodes[].content`（epscript 去 `meta.plot` 双源）。后端 `drama.outline` 出 title/content、
+`aiDraftOutline`/seed/epscript-plot 读 content 优先。门禁：server 36 drama 单测 + web-drama typecheck/build(31) + contract 全绿。
+
+## v0.98 补丁 · 分镜视频计费解耦为短剧 app 维度（2026-07-01）
+
+问题：短剧分镜视频出片（直出/动态）此前**耦合带货线** action `material.video-generate`（前端还写死 7/9，
+既显示错、乐观扣费错、又因 9<10 命中小额免打扰不弹确认）。用户要求按 app 应用维度独立配置、不耦合。
+改：
+- 新增短剧独立单价 `drama.credit.clip`（DramaConfigSeeder，默认 30）；`DramaConfigController` 的 `clip`
+  改读它（去掉对 `CelebrityActionPricingService` 的依赖）。
+- `MaterialVideoJobService` 改为**领域无关**：单价按 item 的可选 `credit_cost` 覆盖（+`credit_label`
+  账本文案），无覆盖才回落带货线 `material.video-generate`；`DramaRenderService` 出片时传
+  `credit_cost=drama.credit.clip` + `credit_label=短剧分镜视频`。带货线本身不变。
+- 前端分镜表价格全部走 `/me/drama/config`（`frameCost/clipCost/splitCost`=drama.credit.frame/clip/split-scene），
+  删写死的 7/9 与拆镜 6；admin「短剧专区·配置」新增 分镜视频出片/AI 拆镜/行级改写 三项可配（此前缺）。
+门禁：server compile + test-compile + MaterialVideo/DramaConfig 测试 + web-drama/admin typecheck + build 全绿。
+
+## v0.98 补丁 · P0 出片前一致性体检 + 串行出片引导（2026-07-01）
+
+对照 ViMax 复盘发现：主干接线通（角色/场景参考图 → 首帧 → seedance 首尾帧 i2v + return_last_frame
+→ 真实末帧回填 → 承接），但**系统交互不保证流程**：用户可跳过定妆图/场景绑定、或批量出首帧后再出片
+（导致承接不到上一镜真实末帧、降级为首帧承接）。P0 补交互闸：
+- `shotConsistencyIssues`：出片(clip)前体检——出场角色缺定妆图 / 本场未绑场景参考 / 直出且同场上一镜
+  未出片（承接不到真实末帧）→ `dramaConfirm` 列问题，可"仍要继续"或"去补齐"。首帧不拦（便宜可迭代）。
+- 分镜表头加"建议逐镜按顺序出片"引导。
+未做（P1/P2 待办，记入 TODO）：camId 机位复用、全局风格锚图、承接帧优先级/直出补锚、best-of-N+VLM 自检、串行自动流水线。

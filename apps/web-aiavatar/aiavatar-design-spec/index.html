@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AiAvatar 设计稿索引</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Manrope', sans-serif; background: #0E1822; color: #E6F2FB; min-height: 100vh; padding: 48px 24px; }
+    h1 { font-size: 28px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6px; }
+    .sub { color: #8A96A1; font-size: 14px; margin-bottom: 36px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
+    .card { background: #1A2A38; border: 1px solid #2A3A4A; border-radius: 16px; overflow: hidden; transition: transform .2s, box-shadow .2s; cursor: pointer; text-decoration: none; color: inherit; display: block; }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(18,179,222,.15); }
+    .card-preview { height: 180px; background: linear-gradient(135deg, #12B3DE22, #8F6BFF11); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .card-preview::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 60%, #1A2A38); }
+    .card-preview span { font-size: 56px; z-index: 1; }
+    .card-body { padding: 16px 18px; }
+    .card-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+    .card-desc { font-size: 12.5px; color: #8A96A1; line-height: 1.5; }
+    .badge { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin-top: 8px; }
+    .badge-primary { background: #12B3DE22; color: #4CCBEC; }
+    .badge-ok { background: #1AA06E22; color: #1AA06E; }
+  </style>
+</head>
+<body>
+  <div style="max-width:1200px;margin:0 auto;">
+    <h1>AiAvatar 数字人资产平台</h1>
+    <p class="sub">前端设计稿 · 6 个核心页面 · 点击预览</p>
+  </div>
+  <div class="grid">
+    <a class="card" href="pages/home.html" target="_blank">
+      <div class="card-preview"><span>🏠</span></div>
+      <div class="card-body">
+        <div class="card-title">首页</div>
+        <div class="card-desc">Banner 轮播 · 我的数字人资产 · 开始创作宫格</div>
+        <span class="badge badge-primary">核心页面</span>
+      </div>
+    </a>
+    <a class="card" href="pages/library.html" target="_blank">
+      <div class="card-preview"><span>👤</span></div>
+      <div class="card-body">
+        <div class="card-title">数字人库</div>
+        <div class="card-desc">状态筛选 · 资产卡片网格 · REG 编号 · 衍生资产计数</div>
+        <span class="badge badge-primary">核心页面</span>
+      </div>
+    </a>
+    <a class="card" href="pages/apps.html" target="_blank">
+      <div class="card-preview"><span>📱</span></div>
+      <div class="card-body">
+        <div class="card-title">应用中心</div>
+        <div class="card-desc">AI 歌手 / 短视频带货 / 短剧 · 品牌色卡片</div>
+        <span class="badge badge-primary">核心页面</span>
+      </div>
+    </a>
+    <a class="card" href="pages/me.html" target="_blank">
+      <div class="card-preview"><span>⚙️</span></div>
+      <div class="card-body">
+        <div class="card-title">我的</div>
+        <div class="card-desc">用户资料 · 统计数据 · 分组菜单</div>
+        <span class="badge badge-primary">核心页面</span>
+      </div>
+    </a>
+    <a class="card" href="pages/login.html" target="_blank">
+      <div class="card-preview"><span>🔐</span></div>
+      <div class="card-body">
+        <div class="card-title">登录</div>
+        <div class="card-desc">手机验证码登录 · 登录/注册切换</div>
+        <span class="badge badge-ok">入口页面</span>
+      </div>
+    </a>
+    <a class="card" href="pages/create.html" target="_blank">
+      <div class="card-preview"><span>✨</span></div>
+      <div class="card-body">
+        <div class="card-title">创建数字人</div>
+        <div class="card-desc">底部弹出面板 · AI 原创 / 真人复刻路径</div>
+        <span class="badge badge-ok">交互组件</span>
+      </div>
+    </a>
+  </div>
+</body>
+</html>

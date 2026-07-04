@@ -4,7 +4,7 @@
 // 进入剧集制作后替代阶段轨;窄视口自动收窄为图标轨。
 import * as React from "react";
 import { ChevronLeft } from "lucide-react";
-import type { EpisodeOutline } from "@/mocks/drama-workshop";
+import { episodeTitle, type EpisodeOutline } from "@/mocks/drama-workshop";
 import { RenderTaskDock } from "../render-task-dock";
 
 interface EpisodeRailProps {
@@ -86,7 +86,7 @@ export function EpisodeRail({ ep, total, episodes, slim, onEp, onBack }: Episode
               key={e.no}
               type="button"
               onClick={() => onEp(e.no)}
-              title={`第 ${e.no} 集 · ${e.beat}${hasScript ? " · 脚本已锁" : ""}`}
+              title={`第 ${e.no} 集 · ${episodeTitle(e)}${hasScript ? " · 脚本已锁" : ""}`}
               className="row gap-2"
               style={{
                 padding: slim ? "6px 0" : "8px 9px",
@@ -150,7 +150,7 @@ export function EpisodeRail({ ep, total, episodes, slim, onEp, onBack }: Episode
                       maxWidth: 118,
                     }}
                   >
-                    {e.beat}
+                    {episodeTitle(e)}
                   </span>
                   <span className="row gap-1" style={{ fontSize: 10 }}>
                     {hasScript ? (

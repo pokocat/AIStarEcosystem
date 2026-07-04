@@ -1,0 +1,119 @@
+{
+  "data": [
+    {
+      "id": "page-home",
+      "title": "首页",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1782910903000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/home.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-library",
+      "title": "数字人库",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1782910904000,
+      "canvasData": {
+        "x": 420,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/library.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-apps",
+      "title": "应用中心",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1782910905000,
+      "canvasData": {
+        "x": 840,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/apps.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-me",
+      "title": "我的",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1782910906000,
+      "canvasData": {
+        "x": 1260,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/me.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-login",
+      "title": "登录",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1782910907000,
+      "canvasData": {
+        "x": 1680,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/login.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "page-create",
+      "title": "创建数字人",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1782910908000,
+      "canvasData": {
+        "x": 2100,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/create.html",
+        "interactions": []
+      }
+    },
+    {
+      "id": "image-001",
+      "title": "品牌 Logo",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1782910909000,
+      "canvasData": {
+        "x": 0,
+        "y": 769
+      },
+      "devMetadata": {
+        "imageSrc": "assets/logo.jpg"
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "mobile",
+    "projectName": "AiAvatar 数字人资产平台 · 设计稿"
+  }
+}

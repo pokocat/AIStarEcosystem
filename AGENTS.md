@@ -327,6 +327,17 @@ duration: 7820         → formatDuration       → "2h 10min"
    返回的 `CdnUploadResult.key()` 落 DB 的 `cdnKey` 列；DTO 出 wire 时由 signer 派生 URL。
    旧本地路径字段保留一两版做 fallback 读，然后删。
 
+7. **wholesale JSON 文档（`payloadJson` 等）里的资产 URL 出 wire 必须重签**（v0.98 教训，**强制**）。
+   当资产 URL 不是独立 DTO 字段、而是塞在一个整存整取的 JSON 文档里（如 `DramaProject.payloadJson`
+   的 `frameUrls` / `videoUrl` / `endFrameUrl` / `lastFrameUrl` / 场景图 / 角色图；`DramaShort` 同理），
+   **签名 URL 有 TTL（`AEP_CDN_SIGNED_URL_TTL_SECONDS`，默认 3600s）；存下来原样返回 → 1h 后签名过期
+   → 403 图裂**。这类文档字段容易绕过 §4.7.4/§4.7.5（那两条针对 DTO record/列），必须额外守：
+   - 文档里存的 URL 一律视为「非真值、会过期」，**禁止**原样 `return`。
+   - service 在**出 wire 的唯一漏斗**（如 `toDetail`）里对整棵 JSON **递归 `signer.maybeSign(...)`
+     重签所有资产 URL**（`maybeSign` 从 URL 反抽 key 重签，对已过期 URL 同样有效）；driver=local 的
+     相对 `/cdn` 路径不匹配 OSS base → 原样返回，dev 不受影响。范式见 `DramaProjectService.resignAssetUrls`。
+   - 新代码首选：文档里存 **cdnKey** 而非 URL，出 wire 时 `signer.signKey(key)` 派生。
+
 6. **本地短时临时区必须 gitignored 且不进备份**。当前已 ignore：
    - `apps/server/mixcut-assets/` / `mixcut-output/` / `mixcut-work/`
    - `apps/server/dh-assets/` / `dh-work/`
@@ -345,6 +356,9 @@ duration: 7820         → formatDuration       → "2h 10min"
   URL 改为 DTO 出 wire 时派生（v0.47F+ key-only 规则，§4.7.4）。
 - 配置生产部署但 `AEP_CDN_DRIVER=local` 或缺 `AEP_CDN_SIGNED_URL_STRATEGY` →
   review reject，要求补 OSS 配置。
+- service 把 `payloadJson` / JSON 文档里存的签名 URL 原样 `return`（未在出 wire 漏斗里
+  `signer.maybeSign(...)` 递归重签、或未改存 cdnKey 派生）→ review reject（签名 TTL 过期会图裂，
+  v0.98 教训，§4.7.7）。
 
 ---
 
@@ -454,6 +468,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.98** | 2026-06-30 | 短剧工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（真源 [`docs/drama-storyboard-consistency.md`](docs/drama-storyboard-consistency.md)）：项目 6 阶段 → **5 阶段**（删独立「视频工厂」，逐镜出片全在剧集脚本分镜表内）。**Epic-1** 抽 `use-shot-render` 共享渲染引擎。**Epic-2** 脚本分镜表升级为强渲染面：`FormShot` 补 cast/camId/首尾帧/拆镜字段并 round-trip（修 sfx/bgm/fx 回读丢字段）；首帧格加 4 版挑选 + AI 拆镜 + 首帧▷末帧双联 + hover 预演（P3 aha）+ 镜间一致性承接开关。**Epic-3** 删 factory 阶段/抽屉/源码（`stages-config` 去 factory，成片合成前移为剧集第 2 步）。**P1** epscript 不再 lock、脚本始终可编辑（CTA 改「保存·去成片合成」）。**P5** 删左下 AI 浮窗（`ai-chat-panel`），改分镜表行级 Wand2 就地改写本镜（新端点 `POST /me/drama/projects/{id}/shot/rewrite` + `drama.shot_rewrite` + `drama.credit.shot-rewrite`；整篇重写仍在顶部）。**P6** 短视频面包屑按 pathname 派生 + beat 改 AI 逐镜生成（去写死）。**P4** 假模型下拉随工厂删除已消失（§8.0 不再有假选项）；真·多模型（一用途多候选端点 + 按模型计费，改共享 `AiAppBinding`）拆独立 PR（TODO D-11）。门禁：server compile（Central 镜像）+ web-drama typecheck/build（30 路由）+ contract 全绿；openapi 加 `/shot/decompose`、`/shot/rewrite`、clip 加 `last_frame_url`。 |
 | **v0.97** | 2026-06-30 | 短剧分镜一致性优化（借鉴 [ViMax](https://github.com/HKUDS/ViMax)，真源 [`docs/drama-storyboard-consistency.md`](docs/drama-storyboard-consistency.md)）：一致性靠视觉生成层（参考图复用 + 关键帧锚定 + 镜间链式参考），非 storyboard 文本。**P0** 镜间承接：`factory.tsx` 出首帧 `ref_images`=角色参考图+场景参考图+同场上一镜画面（成片真实末帧优先），「镜间一致性承接」开关 + 「场景参考绑定」面板（`BoardScene.sceneRefId` 显式 + 名称兜底）；纯前端零契约（`ref_images` 管道早已通到 `extra_body.image`）。**P1** `drama.epscript`/`drama.split_scene` 补电影语言规则（叙事目的/机位复用/画面位置/摄像机vs画面内运动）+ `BoardShot.camId` + `normalizeShot` 透传。**P2** `MaterialVideoModelClient.PROTOCOL_SEEDANCE`（火山方舟 content 数组 first/last_frame + `return_last_frame` + `/contents/generations/tasks`）+ GENERIC 补 image/end_image（修复 seedance 落 GENERIC 连首帧都没传）；`MaterialVideoJob.lastFrameUrl`→任务卡→前端 `BoardShot.lastFrameUrl` 链式承接闭环；新节点 `drama.decompose`（`POST /me/drama/projects/{id}/shot/decompose` + `drama.credit.decompose`=3，单镜→ff/lf/motion/variation + 角色名校验，§8.0 未配 503 不扣费）。下游不支持首尾帧→字段忽略不报错（§8.0 传入不生效≠静默伪造）。门禁：server 35/35 + `typecheck:all` 10/10 + web-drama build(31 路由) + contract 全绿；openapi 加 `/shot/decompose`、clip 加 `last_frame_url`。 |
 | **v0.94** | 2026-06-29 | 支付多渠道直连（删 jeepay 聚合 + 微信支付 V3 直连 + 运行时 admin 可配 + 用户收银台自选）：① 删休眠的 jeepay 网关/验签/回调+测试，清理全仓引用。② 新 `PaymentChannelConfig`（`aep_payment_channels`，机密 AES-GCM 加密）+ `PaymentChannelConfigService`/`PaymentChannelCatalog`/`PaymentGatewayRegistry`；网关去 `@ConditionalOnProperty` 改运行时按渠道选（Alipay 惰性重配全局 Factory；Shadow 由 `aep.payment.shadow.enabled` 门控）；`PaymentService`/`PaymentReconcileService` 按渠道路由；env 仅 bootstrap 种子。③ `WechatPaymentGateway`（`wechatpay-java` 0.2.15：Native/JSAPI/H5 + 查单）+ `WechatNotifyController`（V3 验签+AES-GCM 解密+幂等 settle）。④ admin「资金财务 · 支付配置」页（渠道启用/沙箱/机密运行时配，机密脱敏，自检）。⑤ 收银台前端动态拉渠道、用户自选，按 payDataType 渲染（表单/本地二维码/跳转/影子）。入账幂等不变（`settlePaidOrder` 条件 UPDATE）；机密缺失 → 503 不回退（§8.0）。门禁：支付单测 8 类全绿 + `typecheck:all` 10/10 + celebrity/drama build(+vitest 35) + contract；openapi 加 channels/wechat-notify/admin-payment、删 jeepay-notify。 |
 | **v0.88** | 2026-06-28 | 短剧工作台对齐设计稿（全栈 · 所有渲染数据后端读取 · 所有编辑落库草稿态）：① **短剧设定单页**（合并 选题/大纲/角色场景，左轨两步 短剧设定/剧集工作台）—— 场景升级为后端持久化 `ProjectData.scenes`（promote 时由大纲「取景参考」预填；name/mood 可编辑、生成参考图、加/删，落库），大纲 AI 参数 `outlinePrefs{scope,dur}` 落库。② **剧集脚本 平铺分镜表**（新 `StoryboardTable`：镜号/时长/首帧/画面内容/镜头/台词·音频[台词+音效+BGM]/特效氛围，**每格结构化可编辑→喂视频生成提示词**；`BoardShot` 加结构化 `sfx/bgm/fx`），本集叙事/作品风格/出场人物落库 `episodeDocs[ep].meta`（此前仅内存即丢）。③ **首帧 AI 改图弹窗**（左指令对话+右 9:16 预览+版本号，复用 `/me/drama/render/frame` + ref 图迭代回填落库）。④ **短视频 `/shorts/make` 单页化**（去 脚本/工厂 步骤切换 → 单页：左口播对话 / 右 短视频大纲[口播种草+beat 流] + 分镜脚本逐镜内联出片；`meta.style` 可编辑落库；每镜 beat 标签）。后端：`seedProjectData` 加 `scenes`/`outlinePrefs`、`normalizeShot` 加 `sfx/bgm/fx`、`DramaBrainstormService.promote` 预填 scenes —— 均在 wholesale `payloadJson` 文档内，无新端点。`dev-fake-llm` 图像端点出可见占位图（出图/参考图/改图链路通）。门禁：`typecheck:all` 10/10 + web-drama build（29 路由）+ contract + **74 drama 单测**全绿；**真实 server+fake-llm CDP 浏览器可视验收**（首页脑暴 / 短剧设定 / 分镜表 / AI 改图 截图）+ **持久化 API E2E**（场景/参数/本集 meta/结构化 sfx-bgm-fx 落库恢复全过）。 |
@@ -537,6 +552,11 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 
 ### 跨 app 约定
 
+- **UI 文案：用户友好 + 不溢出** ⚠️（v0.98 起强制，全前端适用；所有将来变更都要遵守）。
+  - **用户友好**：界面可见文字必须是终端用户看得懂的话，**禁止暴露内部黑话 / 字段名 / 枚举原值**（如 `variation_type`=small/medium/large、`ff/lf`/首末帧内部叫法、`frameLocked`、`flow`、技术 id、后端错误码原文等）。用业务语言表达；技术细节放 hover `title` / 说明里，不要塞进主可视文案。
+  - **不溢出**：任何可能变长或宽度受限的可视文字（表格单元格、卡片、标签、chip、按钮、徽标），必须约束宽度并防溢出——`maxWidth` +（父级）`minWidth:0` + `overflow:hidden` + `textOverflow:"ellipsis"`（单行）或允许换行；超出部分进 `title`/tooltip。不要假设文字一定短。
+  - **反例**：`已出末帧 · 变化小`（暴露「变化」黑话 + `whiteSpace:nowrap` 无溢出兜底）。**正例**：可视 `首尾帧就绪`（定宽 + ellipsis），「运动幅度：小幅/中幅/大幅 + 运动描述」放 hover `title`。
+  - Review reject：新增/改动 UI 出现内部黑话可视文案，或宽度受限处的可变长文字没做溢出约束 → reject。
 - **shadcn 原语**：放在 `components/ui/`（apps/web）/ `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
 - **`"use client"`**：apps/web 所有 `components/*` 都有（历史 Figma-port 修复）；新 client 组件保留
 - **新代码 API 形态**：`async function xxx(): Promise<T>`，聚合为 namespace 导出（`MusicApi`, `CelebrityZoneApi`, `MixcutApi`, …）
