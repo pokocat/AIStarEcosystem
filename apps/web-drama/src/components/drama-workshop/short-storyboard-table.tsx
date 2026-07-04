@@ -35,6 +35,9 @@ export interface ShortStoryboardTableProps {
   beats: string[];
   speakerOptions: string[];
   locked?: boolean;
+  /** 首帧/视频真实单价（drama.credit.{frame,clip}，admin 可配）；驱动确认弹窗展示金额。 */
+  frameCost?: number;
+  clipCost?: number;
   /** 正在生成的镜：{id,to}；其余镜 busy=null。 */
   busy: { id: string; to: ShotFlow } | null;
   onPatch: (id: string, patch: Partial<FormShot>) => void;
@@ -45,7 +48,7 @@ export interface ShortStoryboardTableProps {
 }
 
 export function ShortStoryboardTable(props: ShortStoryboardTableProps) {
-  const { shots, beats, speakerOptions, locked, busy } = props;
+  const { shots, beats, speakerOptions, locked, busy, frameCost, clipCost } = props;
   const [edit, setEdit] = React.useState<FormShot | null>(null);
 
   // 时间线累计起点。
@@ -79,6 +82,8 @@ export function ShortStoryboardTable(props: ShortStoryboardTableProps) {
                 busy={busy && busy.id === s.id ? busy.to : null}
                 locked={locked}
                 speakerOptions={speakerOptions}
+                frameCost={frameCost}
+                clipCost={clipCost}
                 onPatch={(patch) => props.onPatch(s.id, patch)}
                 onDelete={() => props.onDelete(s.id)}
                 onRender={(kind) => props.onRender(s.id, kind)}
@@ -113,6 +118,8 @@ function ShortShotRow({
   busy,
   locked,
   speakerOptions,
+  frameCost,
+  clipCost,
   onPatch,
   onDelete,
   onRender,
@@ -125,6 +132,8 @@ function ShortShotRow({
   busy: ShotFlow | null;
   locked?: boolean;
   speakerOptions: string[];
+  frameCost?: number;
+  clipCost?: number;
   onPatch: (patch: Partial<FormShot>) => void;
   onDelete: () => void;
   onRender: (kind: "frame" | "direct" | "clip") => void;
@@ -161,7 +170,7 @@ function ShortShotRow({
 
       {/* 首帧（4 态 + AI 改图 + 出片，复用短剧分镜表的单元） */}
       <td style={{ ...TD, textAlign: "center" }}>
-        <ShotFrameCell s={s} busy={busy} onRender={onRender} onApprove={onApprove} onAiEdit={onAiEdit} />
+        <ShotFrameCell s={s} busy={busy} onRender={onRender} onApprove={onApprove} onAiEdit={onAiEdit} frameCost={frameCost} clipCost={clipCost} />
       </td>
 
       {/* 口播文案 · 画面 */}
