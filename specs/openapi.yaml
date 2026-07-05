@@ -7673,10 +7673,10 @@ paths:
   /settings/recharge-history:  { get: { tags: [settings], operationId: listRechargeHistory,  responses: { '200': { description: ok } } } }
   /settings/purchases:         { get: { tags: [settings], operationId: listPurchases,        responses: { '200': { description: ok } } } }
 
-  /settings/credit-packs/{packId}/purchase:
-    parameters:
-      - { in: path, name: packId, required: true, schema: { type: string } }
-    post: { tags: [settings], operationId: purchaseCreditPack, responses: { '200': { description: ok } } }
+  # 注：/settings/credit-packs/{packId}/purchase 已删除（例行 QA 2026-07-05 审计 F-01：
+  # 该端点绕过 CreditService 直接写 Wallet + Ledger，且落入 /api/settings/** 的
+  # anyRequest().permitAll() 兜底，等价任意登录用户零支付无限刷积分。充值统一走
+  # v0.56 起的 RechargeService 订单 + 支付网关回调入账）。
 
   # ── store（商店） ─────────────────────────────────
 

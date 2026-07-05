@@ -4,6 +4,7 @@ import com.aistareco.aep.service.MaterialOpsService;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -101,7 +102,28 @@ public class MaterialOpsController {
      */
     @PostMapping("/videos/generate")
     public ApiResponse<List<JsonNode>> generateVideos(@RequestBody JsonNode body, Principal principal) {
-        return ApiResponse.of(videoJobs.submit(body, uid(principal)));
+        return ApiResponse.of(videoJobs.submit(stripClientPricingOverrides(body), uid(principal)));
+    }
+
+    /**
+     * {@code item.credit_cost}/{@code credit_label} 是 {@link MaterialVideoJobService#submit}
+     * 提供给「按 app 维度独立定价」的内部 Java 调用方（如 DramaRenderService 直接注入
+     * drama.credit.clip 单价）用的覆盖通道，不应对本 HTTP 端点的外部请求体开放——否则任意
+     * 登录用户可传 {@code credit_cost:0} 跳过 hold、零扣费拿视频生成（例行 QA 2026-07-05
+     * 审计 F-02）。这里剥离掉这两个字段，未剥离时会让 itemUnitCost 采信外部传入值。
+     */
+    static JsonNode stripClientPricingOverrides(JsonNode body) {
+        if (body == null) return null;
+        JsonNode items = body.get("items");
+        if (items != null && items.isArray()) {
+            for (JsonNode item : items) {
+                if (item instanceof ObjectNode on) {
+                    on.remove("credit_cost");
+                    on.remove("credit_label");
+                }
+            }
+        }
+        return body;
     }
 
     /** 列出当前用户的生成任务（可按 script_id / product_id 过滤）。前端进入页面时拉取回显。 */
