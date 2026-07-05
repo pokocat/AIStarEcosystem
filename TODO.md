@@ -264,7 +264,7 @@
 - [x] ~~**`AdminStaffController` self-protect 校验**~~（**v0.80 完成**，2026-06-17）：server 端加自保护守卫 —— `delete` 拒绝删自己；`update` 拒绝改自己的 `role` / `status`（避免锁死或自我提权），但仍允许本人改自己的昵称 / 邮箱 / 密码。均抛 403 `FORBIDDEN`，文案提示「请让其它超管处理」。
 - [ ] **admin TS 类型 enum 大小写归一**（v0.32 注意事项）：当前 wire 是小写（`"super_admin"`/`"operator"`）但 admin TS 类型用大写（`"SUPER_ADMIN"`/`"OPERATOR"`），靠 `useAdminRole` + `staff.ts.normalize()` 在 API 边界翻译。可统一为小写跟其它 enum 一致。
 - [x] ~~**admin operator self-grant operatorRole 防护**~~（**已完成**，2026-06-17 审计确认）：`AdminAepUsersController.updateOperatorRole`（PATCH `/api/admin/aep-users/{id}/operator-role`）已是 `@PreAuthorize("hasRole('SUPER_ADMIN')")` + v0.37 自保护守卫（`id.equals(principal.getName())` → 403 `OPERATOR_SELF_MODIFY`）。原 TODO 描述过时。
-- [ ] **admin `window.confirm` / `alert` 历史欠债迁移**（v0.23 硬规则但仅约束 web-celebrity；admin 仍有 8 文件用）：`apps/admin/src/app/{platform/llm-keys, platform/ai-models, finance/recharge-packages, base/presets, celebrity/{star-authorizations, template-scripts, mixcut-official-clips, products}}/page.tsx` → 改用 shadcn `AlertDialog` + Promise-based `useConfirm()`。
+- [x] ~~**admin `window.confirm` / `alert` 历史欠债迁移**~~（**审计确认已完成**，例行 QA 2026-07-05）：原描述过时——本轮全仓 `grep -rnE "window\.(confirm|alert|prompt)\(|[^.\w](confirm|alert|prompt)\("` 复核 `apps/admin/src`，零命中裸原生调用。原清单 8 个文件现状：`platform/llm-keys` 已并入 `platform/ai-models`（用 `useConfirm()`）；`finance/recharge-packages` 已挪到 `finance/(money)/recharge-packages/`（同用 `useConfirm()`）；其余 6 个（`base/presets`、`celebrity/{star-authorizations,template-scripts,mixcut-official-clips,products}`）均已是 `await confirm({...})` Promise-based 调用，非原生 `window.confirm`。具体哪轮例行 QA 补齐已不可考（未见对应 PR 描述），但当前 main 上无需再迁移。
 
 ### 安全 / Auth（2026-04-21 块剩余）
 
