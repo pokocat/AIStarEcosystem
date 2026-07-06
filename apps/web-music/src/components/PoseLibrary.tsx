@@ -16,6 +16,7 @@ import { POSE_DATABASE, EXPRESSION_DATABASE, GESTURE_DATABASE } from "@/mocks/po
 import { PoseApi, StoreApi } from "@/api";
 import type { StoreItemType } from "@/api/store";
 import { POSE_DIFFICULTY_COLORS, POSE_CATEGORY_OPTIONS } from "@/constants/pose-ui";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 interface PoseLibraryProps {
   artist: Artist;
@@ -32,6 +33,7 @@ export function PoseLibrary(_: PoseLibraryProps) {
   const [gestureDatabase, setGestureDatabase] = useState<Gesture[]>(GESTURE_DATABASE);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const { confirm, ConfirmHost } = useConfirm();
 
   type OwnedLike = { id: string; saleStatus?: string; priceCredits?: number; owned?: boolean; name: string };
   const requiresPurchase = (item: OwnedLike): boolean =>
@@ -43,9 +45,11 @@ export function PoseLibrary(_: PoseLibraryProps) {
     setList: React.Dispatch<React.SetStateAction<T[]>>,
   ): Promise<boolean> {
     if (!requiresPurchase(item)) return true;
-    const confirmed = typeof window !== "undefined"
-      ? window.confirm(`购买「${item.name}」需消耗 ${item.priceCredits} 积分，确定？`)
-      : true;
+    const confirmed = await confirm({
+      title: "购买确认",
+      description: `购买「${item.name}」需消耗 ${item.priceCredits} 积分，确定？`,
+      confirmText: "购买",
+    });
     if (!confirmed) return false;
     setPurchasing(item.id);
     try {
@@ -84,6 +88,7 @@ export function PoseLibrary(_: PoseLibraryProps) {
 
   return (
     <div className="h-[calc(100vh-180px)] flex flex-col">
+      <ConfirmHost />
       {toast && (
         <div className={`mb-3 px-4 py-2 rounded-lg text-sm font-bold border ${
           toast.type === "ok"

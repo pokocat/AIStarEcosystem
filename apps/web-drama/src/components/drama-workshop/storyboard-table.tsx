@@ -449,9 +449,18 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         </button>
       )}
       {!busy && s.flow === "done" && (
-        <button type="button" onClick={() => onRender("frame")} className="btn btn-line btn-sm" style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }}>
+        <CreditButton
+          cost={frameCost}
+          alwaysConfirm
+          onConfirm={() => onRender("frame")}
+          confirmTitle="重新生成首帧？"
+          confirmBody="将重新生成首帧参考图，这镜会回到「挑首帧」步骤——已生成的视频和拆镜数据都会被清空，需要重新出片。"
+          className="btn btn-line btn-sm"
+          style={{ height: 25, width: 82, justifyContent: "center", fontSize: 10.5, padding: 0 }}
+          markSize={10}
+        >
           <RefreshCw size={10} /> 重出
-        </button>
+        </CreditButton>
       )}
       <MediaLightbox media={lb} onClose={() => setLb(null)} />
     </div>

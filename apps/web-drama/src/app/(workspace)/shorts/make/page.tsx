@@ -48,6 +48,7 @@ import type { ScriptMeta } from "@/api/short-drama";
 import type { ShortDraftData } from "@/api/shorts";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { useSaveStatus } from "@/lib/use-save-status";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import { invalidate } from "@/lib/drama-query";
 
 /** 把「整体短视频说明」拼成注入每镜提示词的前缀，统一全片风格 / 场景 / 主角。 */
@@ -63,11 +64,6 @@ function metaPromptPrefix(meta: ScriptMeta | null): string {
   ].filter(Boolean);
   return parts.length ? `【整体设定】${parts.join("｜")}。` : "";
 }
-
-// 单镜各路径积分消耗(仅用于确认弹窗展示,真实计费在后台)
-const SHORT_FRAME_COST = 2;
-const SHORT_DIRECT_COST = 9;
-const SHORT_CLIP_COST = 7;
 
 /** 短视频分镜 = 结构化表单分镜 + 出镜引擎 */
 interface ShortShot extends FormShot {
@@ -300,12 +296,14 @@ function AvatarPickerModal({
                 <button
                   key={a.id}
                   type="button"
+                  disabled={!a.imageUrl}
                   onClick={() => {
-                    onPick({ id: a.id, name: a.name, image: a.imageUrl ?? "" });
+                    if (!a.imageUrl) return;
+                    onPick({ id: a.id, name: a.name, image: a.imageUrl });
                     onClose();
                   }}
                   className="col"
-                  style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: "var(--surface-2)", cursor: "pointer", padding: 0, textAlign: "left", gap: 0 }}
+                  style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: "var(--surface-2)", cursor: a.imageUrl ? "pointer" : "not-allowed", opacity: a.imageUrl ? 1 : 0.5, padding: 0, textAlign: "left", gap: 0 }}
                 >
                   <div style={{ width: "100%", aspectRatio: "3/4", background: a.imageUrl ? `center/cover no-repeat url(${a.imageUrl})` : "linear-gradient(135deg,var(--surface-3),var(--surface-2))" }} />
                   <span style={{ fontSize: 12.5, fontWeight: 700, padding: "5px 8px 8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</span>
@@ -496,6 +494,7 @@ function ShortMakerInner({
   const [meta, setMeta] = React.useState<ScriptMeta | null>(initial.meta ?? null);
   // 一句话故事大纲（AI logline）—— 展示在标题下，可直接改。
   const [logline, setLogline] = React.useState<string>(() => initial.logline ?? "");
+  const cfg = useDramaConfig();
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
   const [refs, setRefs] = React.useState<Material[]>(() => initial.refs ?? []); // @数字人参考
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
@@ -777,7 +776,7 @@ function ShortMakerInner({
       toast("所有镜头都已出片，可直接合成成片");
       return;
     }
-    const cost = pending.reduce((a, s) => a + (s.flow === "frame" ? SHORT_CLIP_COST : SHORT_DIRECT_COST), 0);
+    const cost = pending.length * cfg.prices.clip;
     const ok = await dramaConfirm({
       title: "一键连跑出片",
       body: `将为 ${pending.length} 个未完成镜头依次生成视频，预计消耗约 ${cost} 积分（按各镜实际计费）。生成期间可在镜头上看到进度，可随时离开。`,
@@ -786,7 +785,7 @@ function ShortMakerInner({
     });
     if (!ok) return;
     for (const s of pending) {
-      const done = await render(s.id, "clip", s.flow === "frame" ? SHORT_CLIP_COST : SHORT_DIRECT_COST);
+      const done = await render(s.id, "clip", cfg.prices.clip);
       if (!done) {
         toast.error("出片中断，已完成的镜头已保留，可稍后重试");
         return;
@@ -845,9 +844,11 @@ function ShortMakerInner({
       speakerOptions={["口播", "旁白"]}
       locked={draftStatus === "done"}
       busy={busy}
+      frameCost={cfg.prices.frame}
+      clipCost={cfg.prices.clip}
       onPatch={(id, patch) => updShot(id, patch)}
       onDelete={(id) => setShots((arr) => arr.filter((x) => x.id !== id).map((x, j) => ({ ...x, no: j + 1 })))}
-      onRender={(id, kind) => render(id, kind === "frame" ? "frame" : "clip", kind === "frame" ? 2 : kind === "direct" ? 9 : 7)}
+      onRender={(id, kind) => render(id, kind === "frame" ? "frame" : "clip", kind === "frame" ? cfg.prices.frame : cfg.prices.clip)}
       onApprove={(id) => updShot(id, { flow: "done" })}
       onFrameEdited={(id, frameUrl) => updShot(id, { flow: "frame", frameUrl, frameUrls: [frameUrl] })}
     />

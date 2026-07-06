@@ -67,6 +67,10 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
+                        // 充值/积分包只读展示 + 购买记录回显（写入动作已下线，购买统一走
+                        // RechargeService 订单流）。此前无显式规则时落 anyRequest().permitAll()
+                        // 兜底（例行 QA 2026-07-05 审计 F-01），显式收紧为 authenticated 防御纵深。
+                        .requestMatchers("/api/settings/**").authenticated()
                         // v0.60: 明星商务工作台（web-star）—— 登录后由 controller 解析明星档案绑定
                         .requestMatchers("/api/star/**").authenticated()
                         // 数字人广场 · 运营内嵌后台（web-aiavatar）：/api/v1/admin/** 需运营 / 超管。
