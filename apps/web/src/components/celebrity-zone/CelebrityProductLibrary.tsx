@@ -10,6 +10,7 @@ import {
 } from "@/types/product";
 import { ProductFormDialog } from "./ProductFormDialog";
 import { cn } from "@/components/ui/utils";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 const inputCls =
   "w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none focus:border-cyan-400/60 focus:bg-white/[0.05]";
@@ -22,6 +23,7 @@ export function CelebrityProductLibrary() {
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<Product | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const { confirm, ConfirmHost } = useConfirm();
 
   const reload = React.useCallback(() => {
     setLoading(true);
@@ -45,13 +47,20 @@ export function CelebrityProductLibrary() {
   };
 
   const handleDelete = async (p: Product) => {
-    if (!window.confirm(`确认删除「${p.name}」？该操作不可撤销。`)) return;
+    const confirmed = await confirm({
+      title: "删除商品",
+      description: `确认删除「${p.name}」？该操作不可撤销。`,
+      confirmText: "删除",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     await ProductsApi.deleteProduct(p.id);
     reload();
   };
 
   return (
     <div className="flex flex-col gap-5">
+      <ConfirmHost />
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.025] px-4 py-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-400/30 bg-cyan-500/10">
