@@ -19,6 +19,7 @@ import {
   RARITY_COLORS, RARITY_STAR_COUNT,
   WARDROBE_CATEGORY_OPTIONS, EQUIP_SLOT_LABELS,
 } from "@/constants/wardrobe-ui";
+import { useConfirm } from "@/components/common/confirm-dialog";
 
 interface WardrobeSystemProps {
   lang: 'zh' | 'en';
@@ -38,6 +39,7 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
   const [clothingDatabase, setClothingDatabase] = useState<ClothingItem[]>(CLOTHING_DATABASE);
   const [pendingPurchase, setPendingPurchase] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const { confirm, ConfirmHost } = useConfirm();
 
   useEffect(() => {
     let cancelled = false;
@@ -98,9 +100,11 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
     if (isBlocked(item)) return;
     if (item.category === 'outfit') return;
     if (requiresPurchase(item)) {
-      const confirmed = typeof window !== "undefined"
-        ? window.confirm(`购买「${item.name}」需消耗 ${item.priceCredits} 积分，确定？`)
-        : true;
+      const confirmed = await confirm({
+        title: "购买确认",
+        description: `购买「${item.name}」需消耗 ${item.priceCredits} 积分，确定？`,
+        confirmText: "购买",
+      });
       if (!confirmed) return;
       await doPurchase(item);
       return;
@@ -154,6 +158,7 @@ export function WardrobeSystem({ lang, onBack, activeSinger }: WardrobeSystemPro
 
   return (
     <div className="h-[calc(100vh-180px)] flex flex-col">
+      <ConfirmHost />
       {toast && (
         <div className={`mb-3 px-4 py-2 rounded-lg text-sm font-bold border ${
           toast.type === "ok"
