@@ -1,13 +1,11 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.StoreItemDto;
 import com.aistareco.aep.dto.UserInventoryDto;
 import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.model.UserInventory;
-import com.aistareco.aep.model.Wallet;
-import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.aep.repository.UserInventoryRepository;
-import com.aistareco.aep.repository.WalletRepository;
 import com.aistareco.model.Expression;
 import com.aistareco.model.Gesture;
 import com.aistareco.model.Pose;
@@ -33,7 +31,8 @@ import java.util.UUID;
 /**
  * 商店与库存服务。
  * - catalog：按 itemType 返回商品清单，并基于 userInventory 标注 {@code owned}
- * - redeem：@Transactional 扣 Wallet.rechargeBalance → 写 LedgerEntry(SPEND) → INSERT UserInventory
+ * - redeem：@Transactional 经 {@link CreditService#debit} 按 gift→license→recharge 扣桶顺序扣费
+ *   （悲观行锁 + 不可变账本，entryType=SPEND）→ INSERT UserInventory
  */
 @Service
 public class StoreService {
@@ -44,23 +43,20 @@ public class StoreService {
     private final GestureRepository gestureRepo;
 
     private final UserInventoryRepository inventoryRepo;
-    private final WalletRepository walletRepo;
-    private final LedgerEntryRepository ledgerRepo;
+    private final CreditService creditService;
 
     public StoreService(WardrobeItemRepository wardrobeRepo,
                         PoseRepository poseRepo,
                         ExpressionRepository expressionRepo,
                         GestureRepository gestureRepo,
                         UserInventoryRepository inventoryRepo,
-                        WalletRepository walletRepo,
-                        LedgerEntryRepository ledgerRepo) {
+                        CreditService creditService) {
         this.wardrobeRepo = wardrobeRepo;
         this.poseRepo = poseRepo;
         this.expressionRepo = expressionRepo;
         this.gestureRepo = gestureRepo;
         this.inventoryRepo = inventoryRepo;
-        this.walletRepo = walletRepo;
-        this.ledgerRepo = ledgerRepo;
+        this.creditService = creditService;
     }
 
     // ── Catalog ─────────────────────────────────────────────────────────────
@@ -125,11 +121,16 @@ public class StoreService {
      * <ol>
      *   <li>读取商品，校验 saleStatus = PAID 且 priceCredits > 0</li>
      *   <li>查重：已拥有 → 409</li>
-     *   <li>读 Wallet，余额不足 → 402</li>
-     *   <li>按 gift → license → recharge 优先级扣 + 更新 totalBalance</li>
-     *   <li>写 LedgerEntry(SPEND, 负值)</li>
-     *   <li>INSERT UserInventory（唯一约束兜底并发重复）</li>
+     *   <li>经 {@link CreditService#debit} 扣费（悲观行锁 + gift→license→recharge 优先级 +
+     *       不可变账本 SPEND 分录）</li>
+     *   <li>INSERT UserInventory（唯一约束兜底并发重复；与扣费共享同一事务，冲突则整体回滚）</li>
      * </ol>
+     *
+     * <p>v0.99 例行 QA：此前本方法手写 {@code walletRepo.findByUserIdForUpdate → setXxxBalance →
+     * save}（虽已用悲观锁 + 服务端权威价，未被并发/定价漏洞利用），但直接绕开 CreditService，
+     * 违反 AGENTS.md §4.2「所有钱包余额变动必须经 LedgerEntry / CreditService」硬规则，且复制了
+     * 扣桶优先级逻辑，与唯一真源 CreditService 产生维护漂移风险。改为经 {@link CreditService#debit}
+     * 的 SPEND 重载，行为等价（同一物理事务，唯一约束冲突仍整体回滚扣费）。
      */
     @Transactional
     public UserInventoryDto redeem(String userId, UserInventory.ItemType type, String itemId) {
@@ -142,43 +143,8 @@ public class StoreService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "已拥有该商品");
         }
 
-        Wallet wallet = walletRepo.findByUserIdForUpdate(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "积分账户未开通"));
-        if (wallet.getTotalBalance() < price) {
-            throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "积分余额不足");
-        }
-
-        long remaining = price;
-        long fromGift = Math.min(wallet.getGiftBalance(), remaining);
-        wallet.setGiftBalance(wallet.getGiftBalance() - fromGift);
-        remaining -= fromGift;
-        long fromLicense = Math.min(wallet.getLicenseBalance(), remaining);
-        wallet.setLicenseBalance(wallet.getLicenseBalance() - fromLicense);
-        remaining -= fromLicense;
-        long fromRecharge = Math.min(wallet.getRechargeBalance(), remaining);
-        wallet.setRechargeBalance(wallet.getRechargeBalance() - fromRecharge);
-        remaining -= fromRecharge;
-        if (remaining > 0) {
-            // 理论不会发生（totalBalance 已校验），但防御性兜底
-            throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "积分明细不足，无法扣费");
-        }
-        long newTotal = wallet.getTotalBalance() - price;
-        wallet.setTotalBalance(newTotal);
-        wallet.setUpdatedAt(Instant.now());
-        walletRepo.save(wallet);
-
-        LedgerEntry entry = ledgerRepo.save(LedgerEntry.builder()
-                .id(UUID.randomUUID().toString())
-                .walletId(wallet.getId())
-                .userId(userId)
-                .entryType(LedgerEntry.LedgerEntryType.SPEND)
-                .amount(-price)
-                .balanceAfter(newTotal)
-                .description("购买 " + type.name() + " · " + itemId)
-                .referenceId(itemId)
-                .referenceType("store_" + type.name().toLowerCase())
-                .createdAt(Instant.now())
-                .build());
+        LedgerEntryDto entry = creditService.debit(userId, price, LedgerEntry.LedgerEntryType.SPEND,
+                "store_" + type.name().toLowerCase(), itemId, "购买 " + type.name() + " · " + itemId);
 
         UserInventory inv = UserInventory.builder()
                 .id(UUID.randomUUID().toString())
@@ -187,13 +153,13 @@ public class StoreService {
                 .itemId(itemId)
                 .source(UserInventory.AcquireSource.PURCHASE)
                 .creditsSpent(price)
-                .ledgerEntryId(entry.getId())
+                .ledgerEntryId(entry.id())
                 .acquiredAt(Instant.now())
                 .build();
         try {
             inventoryRepo.save(inv);
         } catch (DataIntegrityViolationException ex) {
-            // 并发双击：唯一约束兜底回滚整个事务
+            // 并发双击：唯一约束兜底回滚整个事务（含上面 debit() 的扣费，因是同一物理事务）
             throw new ResponseStatusException(HttpStatus.CONFLICT, "已拥有该商品");
         }
         return UserInventoryDto.from(inv);
