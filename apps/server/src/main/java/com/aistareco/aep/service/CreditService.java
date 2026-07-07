@@ -139,6 +139,20 @@ public class CreditService {
     @Transactional
     public LedgerEntryDto debit(String userId, long amount, String referenceType,
                                  String referenceId, String description) {
+        return debit(userId, amount, LedgerEntry.LedgerEntryType.ADJUST, referenceType, referenceId, description);
+    }
+
+    /**
+     * 同 {@link #debit(String, long, String, String, String)}，但允许调用方指定 ledger entryType
+     * （例如商店买断式购买用 SPEND，而非默认的 ADJUST）。
+     *
+     * <p>v0.99 例行 QA 新增：抽出此重载让 {@code StoreService.redeem} 等「立即扣费」场景也能走
+     * CreditService 的悲观行锁 + gift→license→recharge 扣桶顺序，不必各自手写
+     * {@code walletRepo.findByUserIdForUpdate → setXxxBalance → save}（AGENTS.md §4.2 硬规则）。
+     */
+    @Transactional
+    public LedgerEntryDto debit(String userId, long amount, LedgerEntry.LedgerEntryType entryType,
+                                 String referenceType, String referenceId, String description) {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "扣减积分必须为正数");
         }
@@ -169,7 +183,7 @@ public class CreditService {
                 .id(UUID.randomUUID().toString())
                 .walletId(wallet.getId())
                 .userId(userId)
-                .entryType(LedgerEntry.LedgerEntryType.ADJUST)
+                .entryType(entryType)
                 .amount(-amount)
                 .balanceAfter(newBalance)
                 .description(description)
