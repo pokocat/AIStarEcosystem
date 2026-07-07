@@ -5,6 +5,7 @@ import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.CelebrityActionPricingService;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.ProductService;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -44,6 +45,7 @@ public class MaterialVideoJobService {
     private final CelebrityActionPricingService actionPricing;
     private final ProductService productService;
     private final ObjectMapper om;
+    private final CdnUrlSigner cdnUrlSigner;
 
     public MaterialVideoJobService(MaterialVideoJobRepository jobRepo,
                                    MaterialVideoModelClient modelClient,
@@ -51,7 +53,8 @@ public class MaterialVideoJobService {
                                    CreditService creditService,
                                    CelebrityActionPricingService actionPricing,
                                    ProductService productService,
-                                   ObjectMapper om) {
+                                   ObjectMapper om,
+                                   CdnUrlSigner cdnUrlSigner) {
         this.jobRepo = jobRepo;
         this.modelClient = modelClient;
         this.worker = worker;
@@ -59,6 +62,7 @@ public class MaterialVideoJobService {
         this.actionPricing = actionPricing;
         this.productService = productService;
         this.om = om;
+        this.cdnUrlSigner = cdnUrlSigner;
     }
 
     // ── 提交 ─────────────────────────────────────────────────────────────────
@@ -215,9 +219,15 @@ public class MaterialVideoJobService {
         card.put("model", orDefault(job.getModelUsed(), "ai-video"));
         card.put("progress_pct", job.getProgress());
         card.put("stage", stageLabel(job.getStatus()));
-        if (job.getVideoUrl() != null) card.put("video_url", job.getVideoUrl());
-        if (job.getThumbnailUrl() != null) card.put("thumbnail_url", job.getThumbnailUrl());
-        if (job.getLastFrameUrl() != null) card.put("last_frame_url", job.getLastFrameUrl());
+        // v0.99 例行 QA（AGENTS.md §4.7.7 教训同类新发现）：videoUrl/thumbnailUrl/lastFrameUrl
+        // 落库时是 AliyunOssCdnUploader.upload() 返回的未签名 publicUrlFor(key)，此前 toCard 原样
+        // 透传出 wire —— driver=oss 且开启防盗刷签名（AEP_CDN_SIGNED_URL_STRATEGY=cdn）时这三个
+        // URL 会直接 403（不是 1h 后过期，是从落库那一刻就没签），带货视频生成功能整条链路图裂/黑屏。
+        // 该实体没有 cdnKey 列，走 maybeSign 的「从 URL 反抽 key 重签」兜底路径（同 DramaProject/
+        // DramaShort 已有先例），无需新增列 / 数据迁移。
+        if (job.getVideoUrl() != null) card.put("video_url", cdnUrlSigner.maybeSign(job.getVideoUrl()));
+        if (job.getThumbnailUrl() != null) card.put("thumbnail_url", cdnUrlSigner.maybeSign(job.getThumbnailUrl()));
+        if (job.getLastFrameUrl() != null) card.put("last_frame_url", cdnUrlSigner.maybeSign(job.getLastFrameUrl()));
         if (job.getErrorMessage() != null) card.put("error_message", job.getErrorMessage());
         if (job.getExternalTaskId() != null) card.put("external_task_id", job.getExternalTaskId());
         return card;
