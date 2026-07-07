@@ -71,6 +71,14 @@ public class AepSecurityConfig {
                         // RechargeService 订单流）。此前无显式规则时落 anyRequest().permitAll()
                         // 兜底（例行 QA 2026-07-05 审计 F-01），显式收紧为 authenticated 防御纵深。
                         .requestMatchers("/api/settings/**").authenticated()
+                        // 商店购买（POST /api/store/items/{type}/{id}/redeem 真实扣积分）。
+                        // 同 F-01 一样此前无显式规则、落 anyRequest().permitAll() 兜底 ——
+                        // StoreController#redeem 直接 principal.getName()，未登录访问会 NPE 500
+                        // 而非干净的 401。显式收紧防御纵深（只收窄 items/** 写路径；/api/store/catalog
+                        // 保持 permitAll，因 StoreController#catalog 显式支持匿名浏览
+                        // `principal != null ? principal.getName() : null` —— 收紧它会破坏这个
+                        // 既有设计）。（例行 QA 2026-07-07 审计新发现）
+                        .requestMatchers("/api/store/items/**").authenticated()
                         // v0.60: 明星商务工作台（web-star）—— 登录后由 controller 解析明星档案绑定
                         .requestMatchers("/api/star/**").authenticated()
                         // 数字人广场 · 运营内嵌后台（web-aiavatar）：/api/v1/admin/** 需运营 / 超管。
