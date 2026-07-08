@@ -79,7 +79,7 @@ export default function ProductOnboardPage() {
       </div>
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={ShoppingBag} title="入库申请加载失败" sub={error} /> : <LoadingList />
       ) : filtered.length === 0 ? (
         <EmptyState icon={ShoppingBag} title="暂无入库申请" sub="创作者在 AI 明星带货端报备商品、或平台 / 品牌发起入库后将出现在这里。" />
       ) : (

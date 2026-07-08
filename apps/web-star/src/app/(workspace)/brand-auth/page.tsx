@@ -80,7 +80,7 @@ export default function BrandAuthPage() {
       </div>
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={Building2} title="品牌授权加载失败" sub={error} /> : <LoadingList />
       ) : items.length === 0 ? (
         <EmptyState icon={Building2} title="暂无品牌授权申请" sub="品牌方提交合作申请并通过平台预审后将出现在这里。" />
       ) : (

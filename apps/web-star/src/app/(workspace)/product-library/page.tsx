@@ -35,7 +35,7 @@ export default function ProductLibraryPage() {
       <InlineError message={error} onDismiss={() => setError(null)} />
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={Database} title="商品库加载失败" sub={error} /> : <LoadingList />
       ) : items.length === 0 ? (
         <EmptyState icon={Database} title="商品库为空" sub="商品入库流程双路样品验收通过后，商品会自动进入商品库。" />
       ) : (

@@ -153,7 +153,7 @@ export default function WhitelistPage() {
       </div>
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={BadgeCheck} title="报白申请加载失败" sub={error} /> : <LoadingList />
       ) : filtered.length === 0 ? (
         <EmptyState icon={BadgeCheck} title="没有符合筛选的报白申请" sub="调整上方平台 / 状态筛选，或等待 MCN 提交新的账号报白。" />
       ) : (
