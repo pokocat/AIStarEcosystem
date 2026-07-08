@@ -90,7 +90,7 @@ export default function ContentReviewPage() {
       </div>
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={Film} title="待审内容加载失败" sub={error} /> : <LoadingList />
       ) : filtered.length === 0 ? (
         <EmptyState icon={Film} title="暂无待审内容" sub="MCN 产出的切片 / 数字人 / AI 形象内容提交后将进入审核池。" />
       ) : (

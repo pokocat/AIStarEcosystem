@@ -44,7 +44,7 @@ export default function RulesPage() {
       </NoteBox>
 
       {!rules ? (
-        <LoadingList />
+        error ? <EmptyState icon={Shield} title="规则加载失败" sub={error} /> : <LoadingList />
       ) : rules.length === 0 ? (
         <EmptyState icon={Shield} title="暂无规则" />
       ) : (

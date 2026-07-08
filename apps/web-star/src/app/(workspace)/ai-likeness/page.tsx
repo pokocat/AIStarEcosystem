@@ -52,7 +52,7 @@ export default function AiLikenessPage() {
       </NoteBox>
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={Sparkles} title="AI 形象授权加载失败" sub={error} /> : <LoadingList />
       ) : items.length === 0 ? (
         <EmptyState icon={Sparkles} title="暂无 AI 形象授权申请" sub="MCN 提交 AI 声音 / 人脸 / 全身形象使用申请后将出现在这里。" />
       ) : (

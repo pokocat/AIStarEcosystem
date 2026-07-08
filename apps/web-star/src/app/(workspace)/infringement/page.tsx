@@ -86,7 +86,7 @@ export default function InfringementPage() {
       </div>
 
       {!cases ? (
-        <LoadingList />
+        error ? <EmptyState icon={Shield} title="侵权案例加载失败" sub={error} /> : <LoadingList />
       ) : filtered.length === 0 ? (
         <EmptyState icon={Shield} title="没有符合筛选的案例" sub="自动监测与举报渠道发现的疑似侵权将进入巡查列表。" />
       ) : (
