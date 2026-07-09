@@ -37,6 +37,7 @@
 | [`docs/drama-storyboard-consistency.md`](drama-storyboard-consistency.md) | AI 短剧（视频工厂） | 一集多分镜视频一致性优化方案（借鉴 ViMax）：P0 镜间承接（已落地 v0.97）/ P1 storyboard prompt 增强 + 机位 / P2 seedance 首尾帧双关键帧 i2v + 链式承接（last-reviewed 2026-06-30） |
 | [`docs/drama-audit-2026-07.md`](drama-audit-2026-07.md) | AI 短剧（全局审计） | 产品逻辑 × 技术架构审计（只列问题+改进方案）：一致性引擎五层架构（L0 实体化→L3 VLM 质检）+ C-序列路线图 + P0-P3 排期总表；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
 | [`docs/payment-billing-audit-2026-07.md`](payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本（全栈审计） | 充值·支付网关·账本·业务扣费·对账·退款·风控 全面审计报告 + 落地方案台账：33 项 Findings（2 P0 / 8 P1）+ 决策台账 D1-D8 + T1-T17 分波次 Task 卡（带 file:line + 验收断言）；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
+| [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md) | AiAvatar 平台（产品定位规划） | [fable5] 从「数字人生产工具」到「AI 数字资产平台」的定位跃迁方案：五方向（资产宇宙 / 权利层确权授权分成 / 市场流通 / Asset-as-a-Service 调用层 / 组合打包）+ P0-P3 路线图 + 现状事实速查；仅方案未改造，供后续执行 agent 作工作输入（last-reviewed 2026-07-09） |
 
 不动产品规格的方向时不必读 §3 ~ §7。
 
