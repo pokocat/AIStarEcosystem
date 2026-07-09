@@ -7,10 +7,12 @@ import com.aistareco.aep.service.CreditService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin")
+@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')") // v2 §6：钱包/流水属资金面，OPERATOR 不可读
 public class AdminCreditController {
 
     private final CreditService creditService;

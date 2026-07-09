@@ -88,6 +88,12 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
+    <!-- @WithMockUser 等安全测试支持 -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- JJWT -->
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
