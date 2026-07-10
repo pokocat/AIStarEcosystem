@@ -43,6 +43,7 @@ public class DramaProjectService {
     private final PlatformConfigService configs;
     private final com.aistareco.aep.service.storage.StorageQuotaService storage;
     private final com.aistareco.aep.service.cdn.CdnUrlSigner signer;
+    private final DramaReferenceAssetService assets;
     private final ObjectMapper om;
 
     public DramaProjectService(DramaProjectRepository repo,
@@ -52,6 +53,7 @@ public class DramaProjectService {
                                PlatformConfigService configs,
                                com.aistareco.aep.service.storage.StorageQuotaService storage,
                                com.aistareco.aep.service.cdn.CdnUrlSigner signer,
+                               DramaReferenceAssetService assets,
                                ObjectMapper om) {
         this.repo = repo;
         this.invocation = invocation;
@@ -60,6 +62,7 @@ public class DramaProjectService {
         this.configs = configs;
         this.storage = storage;
         this.signer = signer;
+        this.assets = assets;
         this.om = om;
     }
 
@@ -95,7 +98,17 @@ public class DramaProjectService {
     /** 详情：{ meta: DramaProjectSummary, data: ProjectData }。 */
     public JsonNode getProject(String id, String userId) {
         DramaProject row = requireOwned(id, userId);
+        // C-2：懒回填角色/场景实体（老项目文档非空但无实体行时建；幂等）。
+        assets.ensureBackfilled(row.getId(), userId, readPayload(row));
         return toDetail(row);
+    }
+
+    /**
+     * C-2 三视图端点：角色一键生成 正/侧/全身 参考图集。
+     * body:{ angles?, ratio?, appearanceHint? } → { characterId, refImages, cost }。
+     */
+    public JsonNode generateCharacterReferenceSheet(String projectId, String charId, JsonNode body, String userId) {
+        return assets.generateReferenceSheet(projectId, charId, body, userId);
     }
 
     /**
@@ -166,6 +179,8 @@ public class DramaProjectService {
         row.setPayloadJson(write(data));
         row.setUpdatedAt(OffsetDateTime.now());
         repo.save(row);
+        // C-2 双写（§6.1）：只 upsert 角色/场景实体表，不重写 payloadJson——渲染真值走实体表，绕开文档级并发。
+        assets.syncFromDoc(row.getId(), userId, data);
         return toDetail(row);
     }
 
@@ -213,6 +228,7 @@ public class DramaProjectService {
         }
         repo.delete(row);
         storage.releaseByRef("drama", id); // 释放该项目占用的存储（成片等）
+        assets.purgeByProject(id);         // C-2：清角色/场景实体行
     }
 
     /** 定时任务：物理删除软删超过保留期的项目。返回清理条数。 */
@@ -224,6 +240,7 @@ public class DramaProjectService {
             try {
                 repo.delete(p);
                 storage.releaseByRef("drama", p.getId());
+                assets.purgeByProject(p.getId());
                 done++;
             } catch (Exception e) {
                 log.warn("[drama-trash] purge expired failed id={}: {}", p.getId(), e.getMessage());
@@ -965,6 +982,8 @@ public class DramaProjectService {
         // 出 wire 时对文档内所有资产 URL 重签（maybeSign 从 URL 抽 key 重签，对已过期 URL 同样有效）。
         // driver=local 的相对 /cdn 路径不匹配 OSS base → 原样返回，dev 不受影响。
         resignAssetUrls(data);
+        // C-2：把角色/场景实体表的多角度参考图集（cdnKey → 派生 url）叠加进文档，让前端看到三视图产物。
+        assets.overlayEntityRefs(p.getId(), data);
         out.set("data", data);
         return out;
     }

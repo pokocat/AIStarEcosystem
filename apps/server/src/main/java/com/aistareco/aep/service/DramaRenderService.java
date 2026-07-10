@@ -419,6 +419,75 @@ public class DramaRenderService {
         return card;
     }
 
+    // ── C-2：角色多角度参考图集出图（供 DramaAssetService 的三视图端点编排） ──────────
+
+    /**
+     * C-2 三视图 hold 前的 §8.0 前置校验：图像端点未配 503 IMAGE_NOT_CONFIGURED / 提示词未配
+     * 503 PROMPT_NOT_CONFIGURED（均在 hold 之前抛，故不冻结、不扣费）；存储配额前置。
+     * 调用方（DramaAssetService）在 creditService.hold 之前调用。
+     */
+    public void preflightCharacterReferenceSheet(String userId) {
+        invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
+                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
+                        "角色参考图渲染还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+        PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
+        if ("code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "角色定妆参考图的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE
+                            + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
+        }
+        storage.checkQuota("drama", userId, 0);
+    }
+
+    /**
+     * C-2：单张角色参考图出图（复用 IMAGE_GENERATION 默认端点 + character 定妆提示词），返回 CDN
+     * object key（§4.7.4 真值）。<b>不计费</b>——批量计费由调用方 hold→commit 编排（部分成功部分退）。
+     * vars 由调用方拼好（含 name/descClause/styleSuffix/angleClause，angleClause 注入拍摄角度）；
+     * lockRefImages 用角色已有定妆图锁脸（本地/相对 URL 会被过滤，仅生产 OSS https 生效）。
+     * §8.0 与 preflight 同口径：端点/提示词未配 503（应在 hold 前由 preflight 拦下，这里兜底）。
+     */
+    public String renderCharacterReferenceFrame(String userId, Map<String, String> vars,
+                                                String ratio, List<String> lockRefImages) {
+        AiModelEndpoint ep = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
+                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
+                        "角色参考图渲染还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+        PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
+        if ("code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "角色定妆参考图的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE + "）。");
+        }
+        String prompt = PromptService.fill(p.userTemplate(), vars == null ? Map.of() : vars)
+                .replaceAll("\\{\\{[^}]*}}", "").trim();
+        if (prompt.isBlank()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "角色参考图缺少画面描述");
+        }
+        storage.checkQuota("drama", userId, 0);
+        ArrayNode refArr = om.createArrayNode();
+        if (lockRefImages != null) {
+            for (String u : lockRefImages) if (u != null && !u.isBlank()) refArr.add(u);
+        }
+        List<String> validRefs = computeFrameAppliedRefs(refArr).validUrls();
+        byte[] bytes = callImageModel(ep, prompt, ratioToSize(orDefault(ratio, "9:16")), validRefs);
+        String key = "drama/char-refs/" + UUID.randomUUID().toString().replace("-", "") + ".png";
+        try {
+            Path tmp = Files.createTempFile("drama-charref-", ".png");
+            try {
+                Files.write(tmp, bytes);
+                cdnUploader.upload(tmp, key, "image/png");
+            } finally {
+                Files.deleteIfExists(tmp);
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED",
+                    "参考图已生成但存储失败，请重试。");
+        }
+        storage.record("drama", userId, "角色参考图", null, key, bytes.length);
+        log.info("[drama-render] char-ref ok user={} endpoint={} key={}", userId, ep.getName(), key);
+        return key;
+    }
+
     // ── D-11：出片模型下拉（一用途多候选端点 + capability） ────────────────────────
 
     /**

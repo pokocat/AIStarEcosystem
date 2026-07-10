@@ -3426,6 +3426,18 @@ AI 改图复用 `POST /me/drama/render/frame`（`ref_images` 迭代），无新�
 
 **门禁**：server compile + 支付单测全绿（PaymentService 6 / PaymentReconcile 5 / Alipay 6 / AlipayNotify 5 / Wechat 5 / WechatNotify 5 / PaymentChannelConfig 6 / Recharge 16）+ `typecheck:all` 10/10 + web-celebrity build + web-drama build（+vitest 35）+ `check:api-contract` 全绿。openapi 加 `/me/wallet/recharge/channels`、`/pay/notify/wechat`、`/admin/payment/channels*`；删 `/pay/notify/jeepay`。env 模版 §15 改为「机密首选后台 DB 配，env 仅 bootstrap」。
 
+### v0.101（2026-07-10）— 短剧一致性引擎 C-2（角色/场景实体化 + 多角度参考图集）
+
+一致性引擎 C 序列 L0 地基（真源 `docs/[Fabel5]drama-consistency-engine-design.md` §4）。把散落 `DramaProject.payloadJson` 的角色/场景升级为独立表 + 结构化多角度参考图集（cdnKey 真值），渲染真值改读实体（过渡期双写 + 懒回填）；新增「角色一键三视图」端点。**类型真源沿用 drama 本地约定**（`apps/web-drama/src/mocks/drama-workshop/types.ts` + `api/*`，不进 packages/types）。
+
+1. **两新实体 `DramaCharacter`（`drama_character`）/ `DramaScene`（`drama_scene`）**（ddl-auto 自动建，索引 `idx_dc_project`/`idx_ds_project`）：字段名对齐前端 `CharacterDef`/`SceneAsset`；`ref_images_json` = 多角度参考图集 `[{cdnKey,angle,label}]`（真值 cdnKey，§4.7.4，出 wire 由 `signer.signKey` 派生 url，不加 cdnUrl 列）；软删 `deleted_at` 随项目对齐。
+2. **懒回填（read 时）**：`DramaReferenceAssetService.ensureBackfilled` 在 `getProject` 前跑——老项目文档 `characters/scenes` 非空但无实体行 → 从文档建实体（单图 `refCdnKey`→`refImages[0]{angle:front}` 迁移）；幂等闸=「项目实体行是否已存在」（含软删），跑两次不重复建。
+3. **双写（write 时，§6.1 关键纪律）**：`saveProject` 落文档后 `syncFromDoc` **只 upsert 实体表、不重写 payloadJson**（实体是独立行，天然避开文档级 LWW，收敛并发面——渲染真值走实体表正是为绕开文档并发）；增/改名/软删对齐；文档缺 `refImages` 时保留实体已有（防旧前端 PUT 抹掉三视图产物）。
+4. **出 wire overlay（read 时）**：`toDetail` 在 `resignAssetUrls` 后 `overlayEntityRefs`——把实体 `refImages`（cdnKey→派生 url）叠加进返回文档的 characters/scenes，让前端看到三视图产物；三视图端点只写实体表、不改文档，前端拿到 refImages 回 PUT 时 round-trip 带回实体。
+5. **三视图端点** `POST /me/drama/projects/{id}/characters/{charId}/reference-sheet`（body `{angles?:[front|side|full],ratio?,appearanceHint?}` → `{characterId,refImages:[{cdnKey,url,angle,label}],cost}`）：复用 `IMAGE_GENERATION` + `drama.character_frame_image`（模板加 `{{angleClause}}` 注入拍摄角度，锁脸用角色已有定妆图作 ref），每角度一次出图，产物只写角色实体表。**计费 hold→逐角度 commit**（hold 总额=`drama.credit.frame`×角度数，逐张成功 `commitHold`，某张失败已成功保留、剩余 `releaseHold`，全失败 release 全额 + 抛错）——与 `renderFrame` 的一次性 `debit` 是**有意的分裂**（批产物需部分成功部分退，记 TODO「渲染扣费形态统一」）。§8.0：`preflightCharacterReferenceSheet` 在 hold 之前校验图像端点/提示词未配 → 503 `IMAGE_NOT_CONFIGURED`/`PROMPT_NOT_CONFIGURED`（不冻结、不扣费），`storage.checkQuota` 前置。
+6. **前端（web-drama）**：`CharacterDef`/`SceneAsset` 加 `refImages?: DramaRefImage[]`；`api/projects.ts` 加 `generateReferenceSheet`。短剧设定页「角色与场景」角色卡加「一键三视图」按钮 + 正/侧/全身缩略图墙（生成中骨架、失败 toast 不用原生 alert、文案用户友好+宽度约束防溢出，`CreditButton` 走小额免打扰惯例）。
+7. **测试**：`DramaReferenceAssetServiceTest`（回填幂等 / 双写 增·改名·软删 / doc 缺 refImages 保留实体 / 单图迁移 / 三视图 hold 总额·逐角度 commit·部分失败 release·全失败 502·未配端点 503 且 0 hold，8 例）；`DramaProjectServiceTest` 构造随新增 assets 依赖更新。**门禁**：server test-compile + 上述 + `DramaProjectServiceTest`/`MaterialAiE2ETest`（37 例全绿）+ web-drama typecheck/build(31 路由) + `typecheck:all`(8/8) + `check:api-contract` 全绿。openapi 加 `/me/drama/projects/{id}/characters/{charId}/reference-sheet`。
+
 ### v0.100（2026-07-10）— 短剧一致性引擎 D-11（一用途多候选端点 + capability + 出片模型下拉）
 
 一致性引擎 D 序列（真源 `docs/[Fabel5]drama-consistency-engine-design.md` §3）。把「用途→单端点」升级为「用途→N 候选端点（带 capability 元数据）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。**核心裁决**：新表 `ai_app_endpoint_candidate`，`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化 → 所有现有调用者与 admin 默认绑定不受影响、零迁移。

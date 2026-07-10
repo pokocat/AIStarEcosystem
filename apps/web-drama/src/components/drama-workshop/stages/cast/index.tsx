@@ -48,6 +48,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
   const [drafting, setDrafting] = React.useState(false);
   const [sceneBusy, setSceneBusy] = React.useState<Record<string, boolean>>({});
   const [charBusy, setCharBusy] = React.useState<Record<string, boolean>>({});
+  const [sheetBusy, setSheetBusy] = React.useState<Record<string, boolean>>({}); // C-2 三视图生成中
   const [lb, setLb] = React.useState<LightboxMedia | null>(null); // 看大图
   const [aiEditScene, setAiEditScene] = React.useState<SceneAsset | null>(null); // 场景 AI 修图
   const [binding, setBinding] = React.useState<CharacterDef | null>(null); // 正在绑定数字人的角色
@@ -155,6 +156,28 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
       toast.error(aiErrorMessage(e, "生成定妆图失败，请稍后重试"));
     } finally {
       setCharBusy((m) => ({ ...m, [c.id]: false }));
+    }
+  };
+
+  // C-2：一键生成 正/侧/全身 三视图参考图集（后端 hold→逐角度 commit，产物落实体表）。
+  // 与 genCharRef 同惯例：dispatch setChars 落工作台态 + saveData 落库（refImages round-trip）。
+  const genSheet = async (c: CharacterDef) => {
+    if (!ctx || sheetBusy[c.id]) return;
+    setSheetBusy((m) => ({ ...m, [c.id]: true }));
+    try {
+      const res = await ProjectsApi.generateReferenceSheet(ctx.projectId, c.id, {
+        ratio: data.projectInfo.ratio,
+        appearanceHint: c.desc || undefined,
+      });
+      const nextChars = state.chars.map((x) => (x.id === c.id ? { ...x, refImages: res.refImages } : x));
+      dispatch({ type: "setChars", chars: nextChars });
+      await ctx.saveData({ ...data, characters: nextChars });
+      dispatch({ type: "spend", n: res.cost });
+      toast.success(`已生成 ${res.refImages.length} 张多角度参考图`);
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "生成多角度参考图失败，请稍后重试"));
+    } finally {
+      setSheetBusy((m) => ({ ...m, [c.id]: false }));
     }
   };
 
@@ -290,6 +313,10 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
               onGenRef={() => void genCharRef(c)}
               onViewRef={() => c.refUrl && setLb({ src: c.refUrl, kind: "image" })}
               uploading={!!charBusy[c.id]}
+              onGenSheet={ctx ? () => void genSheet(c) : undefined}
+              sheetCost={cfg.prices.frame * 3}
+              sheetBusy={!!sheetBusy[c.id]}
+              onViewImage={(url) => setLb({ src: url, kind: "image" })}
             />
           ))}
           <button

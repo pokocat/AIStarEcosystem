@@ -110,6 +110,15 @@ public class DramaProjectController {
         return ApiResponse.of(service.castAiDraft(id, principal.getName()));
     }
 
+    /** C-2 三视图：角色一键生成 正/侧/全身 参考图集（IMAGE_GENERATION，hold→逐角度 commit）。
+     *  body:{ angles?:[front|side|full], ratio?, appearanceHint? } → { characterId, refImages:[{cdnKey,url,angle,label}], cost }。 */
+    @PostMapping("/{id}/characters/{charId}/reference-sheet")
+    public ApiResponse<JsonNode> characterReferenceSheet(Principal principal, @PathVariable String id,
+                                                         @PathVariable String charId,
+                                                         @RequestBody(required = false) JsonNode body) {
+        return ApiResponse.of(service.generateCharacterReferenceSheet(id, charId, body, principal.getName()));
+    }
+
     /** 镜头分解（v0.97 P2，借鉴 ViMax）：单镜画面 → 首/末帧静态快照 + 运动描述 + 变化等级（未落库，前端合并）。
      *  body: { desc, cast?:[名] } → { ffDesc, ffChars[], lfDesc, lfChars[], motionDesc, variationType, variationReason }。 */
     @PostMapping("/{id}/shot/decompose")

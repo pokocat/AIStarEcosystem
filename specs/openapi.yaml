@@ -7567,6 +7567,9 @@ paths:
   /me/drama/projects/{id}/cast/ai-draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: aiDraftDramaCast, summary: 'AI 从大纲重抽角色阵容（大模型）', responses: { '200': { description: ok } } }
+  /me/drama/projects/{id}/characters/{charId}/reference-sheet:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } }, { in: path, name: charId, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: generateDramaCharacterReferenceSheet, summary: 'C-2 一致性引擎：角色一键生成 正/侧/全身 多角度参考图集（复用 IMAGE_GENERATION + drama.character_frame_image，锁脸用角色已有定妆图）。body={angles?:[front|side|full],ratio?,appearanceHint?} → {characterId,refImages:[{cdnKey,url,angle,label}],cost}。计费 hold→逐角度 commit：hold 总额=drama.credit.frame×角度数，逐张成功 commit，某张失败剩余 release，全失败 release 全额+抛错。§8.0：图像端点/提示词未配 → 503 IMAGE_NOT_CONFIGURED/PROMPT_NOT_CONFIGURED（preflight 在 hold 前，不冻结不扣费）。产物只写角色实体表（drama_character.ref_images_json，真值 cdnKey），出 wire 由 signer 派生 url + getProject overlay 叠加进文档。', responses: { '200': { description: ok } } }
   /me/drama/projects/{id}/shot/decompose:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: decomposeDramaShot, summary: 'v0.97 P2 镜头分解（借鉴 ViMax）：单镜画面 → 首/末帧静态快照 + 运动描述 + 变化等级（drama.decompose，计费 drama.credit.decompose）。body={desc,cast?:[名]} → {ffDesc,ffChars,lfDesc,lfChars,motionDesc,variationType,variationReason}。供首+尾帧双关键帧 i2v 提升多镜一致性。', responses: { '200': { description: ok } } }
