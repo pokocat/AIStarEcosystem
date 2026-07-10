@@ -466,7 +466,7 @@ public class CreditService {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "commit 金额必须为正数");
         }
-        CreditHold hold = holdRepo.findByReferenceTypeAndReferenceId(referenceType, referenceId)
+        CreditHold hold = holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType, referenceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "未找到对应的 hold: " + referenceType + ":" + referenceId));
         if (hold.getStatus() != CreditHold.Status.ACTIVE) {
@@ -528,7 +528,7 @@ public class CreditService {
      */
     @Transactional
     public LedgerEntryDto releaseHold(String referenceType, String referenceId, String description) {
-        CreditHold hold = holdRepo.findByReferenceTypeAndReferenceId(referenceType, referenceId).orElse(null);
+        CreditHold hold = holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType, referenceId).orElse(null);
         if (hold == null) {
             log.info("[credit] release no-op ref={}:{} (hold not found)", referenceType, referenceId);
             return null;

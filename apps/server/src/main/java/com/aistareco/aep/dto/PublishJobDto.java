@@ -1,6 +1,7 @@
 package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.PublishJob;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,7 +51,13 @@ public record PublishJobDto(
 ) {
     private static final ObjectMapper OM = new ObjectMapper();
 
-    public static PublishJobDto from(PublishJob j) {
+    /**
+     * signer 必传：videoUrl/coverUrl 落库即是 TTL 签名 URL（AEP_CDN_SIGNED_URL_TTL_SECONDS，
+     * 默认 3600s），读路径不重签会在签名过期后直接 403（AGENTS.md §4.7.7 教训，v0.83 dispatch
+     * 路径已修，本次补齐读路径）。signer.maybeSign 对已过期签名同样有效，driver=local 的相对
+     * 路径原样返回。
+     */
+    public static PublishJobDto from(PublishJob j, CdnUrlSigner signer) {
         return new PublishJobDto(
                 j.getId(),
                 j.getUserId(),
@@ -60,11 +67,11 @@ public record PublishJobDto(
                 j.getPlatformName(),
                 j.getStatus() != null ? j.getStatus().wire() : null,
                 j.getProgress(),
-                j.getVideoUrl(),
+                signer.maybeSign(j.getVideoUrl()),
                 j.getTitle(),
                 j.getDescription(),
                 j.getTags() != null ? j.getTags() : List.of(),
-                j.getCoverUrl(),
+                signer.maybeSign(j.getCoverUrl()),
                 j.getProductLink(),
                 j.getProductTitle(),
                 j.getExternalTaskId(),

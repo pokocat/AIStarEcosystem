@@ -6,8 +6,8 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plug, RefreshCw, Share2, X as XIcon } from "lucide-react";
-import type { Platform } from "@ai-star-eco/types/distribution";
-import type { PublishJob } from "@ai-star-eco/types/publish-job";
+import type { Platform, PlatformStatus } from "@ai-star-eco/types/distribution";
+import type { PublishJob, PublishJobStatus } from "@ai-star-eco/types/publish-job";
 import { Button, Card, Chip, KpiCard } from "@/components/premium";
 import {
   EmptyState,
@@ -20,6 +20,25 @@ import {
 import { DistributionApi } from "@/api";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { ApiError } from "@ai-star-eco/api-client";
+
+// 状态 badge 只能展示用户友好的中文标签，禁止把 wire 层原始枚举值（如 "awaiting_user"）
+// 直接渲染给终端用户（AGENTS.md §8「UI 文案：用户友好」）。
+const PLATFORM_STATUS_LABEL: Record<PlatformStatus, string> = {
+  connected: "已连接",
+  pending: "待确认",
+  disconnected: "已断开",
+};
+
+const JOB_STATUS_LABEL: Record<PublishJobStatus, string> = {
+  queued: "等待中",
+  uploading: "上传中",
+  transcoding: "处理中",
+  publishing: "发布中",
+  awaiting_user: "需要验证",
+  live: "已发布",
+  failed: "未成功",
+  cancelled: "已取消",
+};
 
 export default function DistributionOverviewPage() {
   const router = useRouter();
@@ -143,7 +162,7 @@ export default function DistributionOverviewPage() {
                       {p.followers} · 同步 {p.lastSync}
                     </div>
                   </div>
-                  <StatusBadge tone={tone}>{p.status}</StatusBadge>
+                  <StatusBadge tone={tone}>{PLATFORM_STATUS_LABEL[p.status]}</StatusBadge>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -218,7 +237,7 @@ export default function DistributionOverviewPage() {
                       }}
                     />
                   </div>
-                  <StatusBadge tone={tone}>{j.status}</StatusBadge>
+                  <StatusBadge tone={tone}>{JOB_STATUS_LABEL[j.status]}</StatusBadge>
                   <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
                     {j.status !== "live" && j.status !== "failed" && (
                       <Button variant="ghost" size="sm" onClick={() => cancel(j.id)}>

@@ -123,8 +123,11 @@ class PublishJobServiceCdnSignTest {
         assertEquals(freshCoverUrl, body.get("coverUrl"));
         assertNotEquals(job.getVideoUrl(), body.get("videoUrl"));
 
-        verify(cdnUrlSigner).maybeSign("https://oss.example.com/publish/job1/video.mp4?x-oss-expires=1&x-oss-signature=stale");
-        verify(cdnUrlSigner).maybeSign("https://oss.example.com/publish/job1/cover.jpg?x-oss-expires=1&x-oss-signature=stale");
+        // 2 次：一次是 startJob 派单前重签（塞进 sau.upload body），一次是方法末尾
+        // PublishJobDto.from(job, cdnUrlSigner) 出 wire 时重签（例行 QA 补的读路径修复，
+        // job 实体上的 videoUrl/coverUrl 字段本身不会被回写成 fresh 值，仍是落库的旧值）。
+        verify(cdnUrlSigner, times(2)).maybeSign("https://oss.example.com/publish/job1/video.mp4?x-oss-expires=1&x-oss-signature=stale");
+        verify(cdnUrlSigner, times(2)).maybeSign("https://oss.example.com/publish/job1/cover.jpg?x-oss-expires=1&x-oss-signature=stale");
     }
 
     @Test

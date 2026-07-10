@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -55,6 +56,7 @@ public class AdminUserController {
     }
 
     @GetMapping("/{id}/wallet")
+    @PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')") // 钱包属资金面，OPERATOR 不可读（同 AdminCreditController 口径）
     public ApiResponse<WalletDto> getWallet(@PathVariable String id) {
         return ApiResponse.of(creditService.findWalletByUserId(id));
     }
