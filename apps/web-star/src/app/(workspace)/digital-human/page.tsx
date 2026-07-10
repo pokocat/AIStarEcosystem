@@ -48,7 +48,7 @@ export default function DigitalHumanPage() {
       <InlineError message={error} onDismiss={() => setError(null)} />
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={Bot} title="数字人授权加载失败" sub={error} /> : <LoadingList />
       ) : items.length === 0 ? (
         <EmptyState icon={Bot} title="暂无数字人授权申请" sub="MCN 提交数字人使用申请后将出现在这里。" />
       ) : (

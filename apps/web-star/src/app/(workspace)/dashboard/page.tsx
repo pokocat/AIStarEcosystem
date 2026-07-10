@@ -13,7 +13,7 @@ import { StarWorkbenchApi } from "@/api";
 import { useStarShell } from "@/lib/star-shell-context";
 import { IP_AUTH_META, IP_STATUS_CFG, IP_ASSET_TYPES } from "@/constants/star-ui";
 import { formatWanYuan } from "@/lib/format";
-import { PageHeader, LoadingList } from "@/components/star/page-kit";
+import { PageHeader, LoadingList, EmptyState } from "@/components/star/page-kit";
 
 const PENDING_ITEMS: { module: StarOverview["pendingByModule"][number]["module"]; href: string; color: string; icon: typeof Key; text: string }[] = [
   { module: "ipAuth", href: "/ip-auth", color: "#6366f1", icon: Key, text: "项IP授权待推进" },
@@ -27,7 +27,7 @@ const PENDING_ITEMS: { module: StarOverview["pendingByModule"][number]["module"]
 ];
 
 export default function DashboardPage() {
-  const { overview, refreshOverview } = useStarShell();
+  const { overview, overviewError, refreshOverview } = useStarShell();
   const [ipAssets, setIpAssets] = React.useState<StarIpAsset[] | null>(null);
 
   React.useEffect(() => {
@@ -39,7 +39,11 @@ export default function DashboardPage() {
     return (
       <div className="p-4 sm:p-6 space-y-5 max-w-5xl">
         <PageHeader title="工作台总览" sub="明星 IP 授权与商业运营全景" />
-        <LoadingList rows={3} />
+        {overviewError ? (
+          <EmptyState icon={AlertCircle} title="工作台总览加载失败" sub={overviewError} />
+        ) : (
+          <LoadingList rows={3} />
+        )}
       </div>
     );
   }

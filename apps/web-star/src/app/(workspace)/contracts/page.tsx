@@ -100,7 +100,7 @@ export default function ContractsPage() {
       </div>
 
       {!contracts ? (
-        <LoadingList />
+        error ? <EmptyState icon={FileText} title="合同加载失败" sub={error} /> : <LoadingList />
       ) : filtered.length === 0 ? (
         <EmptyState icon={FileText} title="暂无符合条件的合同" sub="调整筛选条件或清空搜索关键词。" />
       ) : (

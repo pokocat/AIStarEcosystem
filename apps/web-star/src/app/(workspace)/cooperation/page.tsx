@@ -113,7 +113,7 @@ export default function CooperationPage() {
       </div>
 
       {!items ? (
-        <LoadingList />
+        error ? <EmptyState icon={Handshake} title="带货授权加载失败" sub={error} /> : <LoadingList />
       ) : filtered.length === 0 ? (
         <EmptyState icon={Handshake} title="暂无授权申请" sub="创作者在 AI 明星带货端的明星市场对你发起授权申请后，将实时出现在这里。" />
       ) : (

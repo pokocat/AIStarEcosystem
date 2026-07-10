@@ -13,6 +13,7 @@ import com.aistareco.aep.model.SocialPlatform;
 import com.aistareco.aep.repository.PublishJobEventRepository;
 import com.aistareco.aep.repository.PublishJobRepository;
 import com.aistareco.aep.repository.SocialAccountRepository;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -64,6 +65,7 @@ public class PublishJobService {
     private final SauServiceClient sau;
     private final CreditService creditService;
     private final CelebrityActionPricingService actionPricing;
+    private final CdnUrlSigner cdnUrlSigner;
     private final String internalSecret;
     private final String selfBaseUrl;
     private final long defaultUploadCost;
@@ -75,6 +77,7 @@ public class PublishJobService {
                               SauServiceClient sau,
                               CreditService creditService,
                               CelebrityActionPricingService actionPricing,
+                              CdnUrlSigner cdnUrlSigner,
                               @Value("${aep.internal.secret:aep-dev-internal-secret-change-in-prod}") String internalSecret,
                               @Value("${sau.callback-base-url:http://localhost:8080/api/internal/sau}") String selfBaseUrl,
                               @Value("${sau.default-upload-cost:20}") long defaultUploadCost) {
@@ -85,6 +88,7 @@ public class PublishJobService {
         this.sau = sau;
         this.creditService = creditService;
         this.actionPricing = actionPricing;
+        this.cdnUrlSigner = cdnUrlSigner;
         this.internalSecret = internalSecret;
         this.selfBaseUrl = selfBaseUrl;
         this.defaultUploadCost = defaultUploadCost;
@@ -283,10 +287,19 @@ public class PublishJobService {
         jobRepo.save(job);
         writeEvent(job.getId(), "transition", from, PublishJobStatus.UPLOADING, 0, "credit:-" + cost);
 
+        // v0.99 例行 QA：videoUrl/coverUrl 落库时是 MixcutPublishService 传入的、创建批次那一刻
+        // 就已签过名的 CDN URL（MixcutRenderOutputDto.cdnUrl() 出 wire 时签的）。「按天错峰」调度
+        // （daily_recurring 策略，见 ScheduleExpander）会把同一批 output 铺到未来好几天的固定时段，
+        // 而签名 TTL（AEP_CDN_SIGNED_URL_TTL_SECONDS 默认 3600s=1h）远短于跨天调度窗口——不重签的话
+        // 派单当天以后的任务一律拿着过期签名去调 sau-service，直接 403 失败（AGENTS.md §4.7.7 同类
+        // 教训）。maybeSign 会从 URL 反抽 key 重签，对已过期的签名 URL 同样有效，无需新增列。
+        String freshVideoUrl = cdnUrlSigner.maybeSign(job.getVideoUrl());
+        String freshCoverUrl = cdnUrlSigner.maybeSign(job.getCoverUrl());
+
         // 把 videoUrl 标准化为绝对 URL —— sau-service 是独立进程，httpx 拒绝相对路径。
         // 历史脏数据（v0.15-v0.17 间用 publicBase=/cdn 落的 publish_job.video_url）也能跑通。
         // 优先级：已是绝对（http/https）→ 直接用；以 / 开头 → 拼当前 server origin。
-        String absoluteVideoUrl = toAbsoluteUrl(job.getVideoUrl());
+        String absoluteVideoUrl = toAbsoluteUrl(freshVideoUrl);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("platform", account.getPlatform().wire());
@@ -295,7 +308,7 @@ public class PublishJobService {
         body.put("title", job.getTitle());
         body.put("description", job.getDescription());
         body.put("tags", job.getTags() != null ? job.getTags() : List.of());
-        if (job.getCoverUrl() != null) body.put("coverUrl", job.getCoverUrl());
+        if (freshCoverUrl != null) body.put("coverUrl", freshCoverUrl);
         // 抖音商品挂载 — 仅 douyin 平台消费这俩字段；其它平台 sau-service 忽略。
         if (job.getProductLink() != null) body.put("productLink", job.getProductLink());
         if (job.getProductTitle() != null) body.put("productTitle", job.getProductTitle());

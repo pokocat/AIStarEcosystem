@@ -13,7 +13,7 @@ import { useStarShell } from "@/lib/star-shell-context";
 import {
   IP_ASSET_TYPES, IP_AUTH_META, IP_NEXT_ACTION, IP_STATUS_CFG, IP_STATUS_ORDER, IP_STEP_COLORS,
 } from "@/constants/star-ui";
-import { PageHeader, LoadingList, InlineError } from "@/components/star/page-kit";
+import { PageHeader, LoadingList, InlineError, EmptyState } from "@/components/star/page-kit";
 
 const RELAY_STEPS = [
   { icon: Star, label: "明星录入", color: "#f59e0b", desc: "上传授权文件/素材" },
@@ -90,7 +90,7 @@ export default function IpAuthPage() {
       </div>
 
       {!assets ? (
-        <LoadingList rows={2} />
+        error ? <EmptyState icon={Globe} title="IP 授权资产加载失败" sub={error} /> : <LoadingList rows={2} />
       ) : (
         <>
           {/* 4 资产卡 */}

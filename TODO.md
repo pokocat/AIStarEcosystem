@@ -380,3 +380,41 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 - [x] ~~**失败时记录上游原始响应（止血，全模态）**~~（**v0.84 完成**）：文本 LLM（`AiModelInvocationService`：2xx-不可解析也 WARN raw + 落 `responseBodyJson`）、图像（`DramaRenderService` bad-output 记 raw）、视频（`MaterialVideoModelClient` poll 失败记 raw + `extractFailReason`）、数字人（`DapMultimodalClient` video poll 失败记 raw）四个模态,失败/终态均 WARN 上游原始响应体,便于排查。
 - [x] ~~**大模型调用层结构性统一（架构债，建议下一步专做）**~~（**v0.85 完成**，2026-06-19）：抽共享原语 `service/ai/UpstreamModelHttp.sendJson(req, ctx)` + `ModelCallCtx` + `UpstreamCallException`,统一 send + io 记原始请求/响应（独立 logger `aep.ai.upstream.io`）+ 非 2xx WARN raw body + best-effort 落失败 `AiModelUsageRecord.responseBodyJson`/latency/errorCode + IOException 退避重试;非 2xx 不抛、返回 resp 由调用方按自身错误码处理（行为/错误码不变）。四个同步 JSON 客户端全部改走它:文本 `AiModelInvocationService.doChat`、图像 `DramaRenderService.callImageModel`、视频 `MaterialVideoModelClient.submit/poll`、数字人 `DapMultimodalClient.postJson/getJson`（保留 IOException 重试 1 次）。成功路径的 token/计费单位仍由各调用方落库（只有它们能解析）；video poll 与 dap 沿用「失败不在此处落用量」（`recordFailureUsage=false`，仅统一原始日志）。新测试 `UpstreamModelHttpTest` 7/7;`AiModelInvocationServiceTest`/`MaterialVideoModelClientTest`/`AiModelUsageServiceTest` 全绿;全量除 4 个预存在失败外无新增。**遗留**:`ForgeCozeService` 走 Coze Java SDK（流式、HTTP 对我们不透明）暂未纳入,见下条。
 - [ ] **Coze 流式调用纳入统一观测**：`ForgeCozeService` 走 Coze Java SDK（流式 chat，HTTP 细节不透明），未走 `UpstreamModelHttp`。待评估:或为流式补一条「调用元信息 + 最终聚合响应」的 best-effort 用量/日志旁路（不强求原始分片），或在 SDK 层加拦截器。优先级低（形象锻造入口 music 线 v0.60 已下线，仅 drama 顾问在用）。
+
+---
+
+## 2026-07-07 · 例行 QA 新发现（均已同轮修复，非遗留待办，留痕备查）
+
+> 本轮复核了 PR #81（遗留 `apps/web` 三处 `window.confirm()`，已携带进本轮）+ 四个专项 agent 交叉审计
+> （credit-ledger bypass / hold-commit-release、`/api/me/**`+`/api/star/**` 归属校验、CDN URL 签名、
+> `?? ""` 掩盖 + 原生 confirm/alert/prompt）。归属校验与 `?? ""`/原生弹窗两类**审计后确认无新增问题**
+> （见 PR 描述）。以下三条是本轮新发现且已在同一 PR 内修复：
+
+- [x] ~~**`MaterialVideoJob.videoUrl`/`thumbnailUrl`/`lastFrameUrl` 从落库那刻就未签名**~~（**已修复**，2026-07-07）：`AliyunOssCdnUploader.upload()` 返回的是未签名 `publicUrlFor(key)`，`MaterialVideoJobService.toCard` 此前原样透传出 wire，从未经过 `CdnUrlSigner`——生产 driver=oss 且开启防盗刷签名时不是 1h TTL 过期才裂，而是从生成那一刻起就 403（AGENTS.md §4.7.7 同类教训，本条之前没堵上）。改为 `toCard` 对三个字段调 `CdnUrlSigner.maybeSign`（URL 反抽 key 重签，同 DramaProject/DramaShort 已有兜底路径），未新增列。回归测试 `MaterialVideoJobServiceCdnSignTest`。注：本条之前在 §4.7.6「local-only 字段迁移」列表里被记成「待迁移到 OSS」，实际当时已经在传 OSS（`mirrorToCdn` 真调用了 `cdnUploader.upload`），真正的洞是「传了但没签」，描述口径已更新。
+- [x] ~~**`StoreService.redeem` 绕开 `CreditService` 手写钱包扣款**~~（**已修复**，2026-07-07）：手写 `walletRepo.findByUserIdForUpdate → setXxxBalance → save`，虽用了悲观锁 + 服务端权威价（未被并发/定价漏洞利用），但违反 AGENTS.md §4.2 硬规则且复制了扣桶优先级逻辑，与 `CreditService` 产生维护漂移风险。改为 `CreditService.debit` 新增的 entryType 可选重载（默认 ADJUST，原 3 个调用方行为不变），`redeem` 传 SPEND，语义等价。回归测试 `StoreServiceRedeemTest`。
+- [x] ~~**`/api/store/items/**`（商店购买）缺显式 `authenticated()`**~~（**已修复**，2026-07-07）：同 F-01（2026-07-05 修的 `/api/settings/**`）一样落 `anyRequest().permitAll()` 兜底，`StoreController#redeem` 未登录会 NPE 500 而非干净 401。只收紧 `items/**`（写路径）；`/api/store/catalog` 保持 permitAll（`StoreController#catalog` 显式支持匿名浏览，收紧会破坏既有设计）。
+
+---
+
+## 2026-07-08 · 例行 QA 新发现（均已同轮修复）
+
+> 本轮承接并复核了历史例行 QA PR #82（本仓）—— 5 个提交（遗留 `apps/web` confirm 迁移 +
+> `MaterialVideoJob` CDN 签名 + `StoreService` 改经 `CreditService` + `/api/store/items/**`
+> 补认证 + TODO.md 记录）经复核仍然有效、未合并，已 cherry-pick 携带进本轮分支，无冲突、
+> 测试复跑仍绿。以下两条是本轮独立审计新发现，已在同一 PR 内修复：
+
+- [x] ~~**`PublishJob.videoUrl`/`coverUrl` 落库即签名，「按天错峰」跨天调度时签名早已过期才派单**~~（**已修复**，2026-07-08）：`MixcutPublishService` 创建发布批次时把 `MixcutRenderOutputDto.cdnUrl()`（已签名的 CDN URL）整段传给 `CreatePublishJobInputDto`，`PublishJobService` 原样落库；`daily_recurring`「按天错峰铺量」调度策略会把同一批 output 铺到未来好几天的固定时段，而签名 TTL（`AEP_CDN_SIGNED_URL_TTL_SECONDS` 默认 3600s）远小于跨天调度窗口——`startJob` 此前未重签就直接把落库 URL 塞进派单请求体，创建当天以后启动的任务一律带过期签名调 sau-service，直接 403 失败，整个多日错峰发布功能在生产 driver=oss + 签名策略下功能性失效（credits 会因失败正常退款，非资损，但功能不可用）。修复：给 `PublishJobService` 注入 `CdnUrlSigner`，`startJob` 派单前对 `videoUrl`/`coverUrl` 各调一次 `maybeSign`（从 URL 反抽 key 重签，对已过期签名同样有效），无需新增列。回归测试 `PublishJobServiceCdnSignTest`（2 例：重签值确实写进 sau.upload 请求体 / coverUrl 为空时不写入该字段）。
+- [x] ~~**`web-star` 13 个页面数据加载失败时卡在永久加载骨架，无错误/重试提示**~~（**已修复**，2026-07-08）：`revenue/page.tsx` 是仓库内唯一正确实现——渲染门控为 `error ? <EmptyState/> : <LoadingList/>`；其余 `cooperation`/`whitelist`/`ai-likeness`/`digital-human`/`product-library`/`brand-auth`/`infringement`/`rules`/`product-onboard`/`ip-auth`/`content-review`/`contracts`/`dashboard` 13 个页面的门控都写成了 `!data ? <LoadingList/> : ...`，遗漏了 `error` 分支——`/api/star/*` 请求失败时（JWT 过期、profile 未绑定、500、网络抖动）内容区永久停在加载骨架，只有 `InlineError` 顶部横幅（若有）能看出出错，用户无法判断"还在加载"还是"已经失败"，也没有重试入口。`dashboard/page.tsx` 更严重——它复用 `useStarShell()` 共享的 `overview`，而该 context 的 `refreshOverview` 对失败是**完全静默吞掉**（"总览失败不阻塞工作台，badge 缺省为空"，这对侧栏角标是对的设计），导致仪表盘主内容失败时连错误横幅都没有。修复：12 个有本地 `error` state 的页面比照 `revenue/page.tsx` 补 `error ? <EmptyState icon={...} title="...加载失败" sub={error} /> : <LoadingList/>`；`star-shell-context.tsx` 新增 `overviewError` 字段（`refreshOverview` 失败时记录，不改变"侧栏 badge 静默降级"的既有语义，仅额外暴露错误供页面自行决定展示），`dashboard/page.tsx` 用它补上同款错误态。无新增依赖/契约变更，纯前端渲染分支补全。
+
+---
+
+## 2026-07-09 · 例行 QA 新发现（1 处已修复 + 2 处记录待排期）
+
+> 本轮承接并复核了历史例行 QA PR #83（本仓）—— 8 个提交（承接 #82 的 5 个 + #83 自己新发现
+> 的 2 个 CDN 签名修复 + TODO.md 记录）经复核仍然有效、未合并（main 在此期间只新增一个纯 docs
+> commit），已 cherry-pick 携带进本轮分支，无冲突、`./mvnw compile`/8 个回归测试/`pnpm typecheck:all`
+> 10/10/`pnpm check:api-contract` 复跑仍绿。以下是本轮独立审计的结果：
+
+- [x] ~~**`AdminCreditController`（钱包/流水查询）缺失 `@PreAuthorize`，任意 admin（含 OPERATOR）可读取全量钱包余额与流水**~~（**已修复**，2026-07-09）：`GET /api/admin/wallets`、`GET /api/admin/wallets/{userId}`、`GET /api/admin/ledger-entries` 三个端点此前只受 `/api/admin/**` 的 `hasAnyRole("SUPER_ADMIN","OPERATOR")` 兜底保护，未像同目录下的 `AdminReconciliationController`/`AdminRechargeOrderController`/`AdminCreditOpsController` 那样收紧到 `@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")`——而 admin nav（`apps/admin/src/constants/nav.ts`）和 AGENTS.md §7 都明确「结算中心：钱包/流水/复核」是 FINANCE_ADMIN 专属、OPERATOR 应该 403。任意 OPERATOR 角色的 admin 账号可以直接 curl 这三个端点，读到全平台用户钱包余额 + 完整流水（含 v0.86 起补的手机号）。修复：类级 `@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")`。已确认前端 `apps/admin/src/app/finance/(money)/ledger/page.tsx`（FINANCE_ADMIN-only 导航）是这三个端点唯一调用方，OPERATOR 可见的「调差/赠送」页面走的是 `AdminCreditOpsController` 独立端点，不受影响。回归测试 `AdminCreditControllerSecurityTest`（4 例：OPERATOR 两端点均 403 / FINANCE_ADMIN、SUPER_ADMIN 均 200），新增 `spring-security-test` 测试期依赖以支持 `@WithMockUser`。
+- [ ] **web-aiavatar 共享 `useApi` hook 对拉取失败静默保留 initial 值，无法与"真实空态"区分**（本轮发现，暂不修，理由见下）：`apps/web-aiavatar/src/proto/api.ts` 的 `useApi()` 明确注释"静默：保留 initial...其余错误由动作型调用处理"，`seed.*()` 在 live 模式下均返回 `[]`/`null`，约 20 处只读调用（`screen-home`/`screen-library`/`screen-more`/`screen-voiceapps`/`screen-avatar` 等）一旦拉取失败（JWT 过期/500/网络抖动）就会把"没有数据"误渲染成"真实空态"（如已有数字人的用户看到"你还没有数字人，去创建"引导），且无错误提示/重试。**与已修复的 13 个 web-star 页面那类 bug 不同**：这里没有"其他页面证明是疏漏"的反例——`useApi` 的静默行为在全 app 是统一、故意为之的设计决策（代码注释明确写了理由），且要正确暴露 error 需要改共享 hook 签名 + 逐一梳理 ~20 个调用点决定各自的 UI 呈现，改动面偏大、屬于产品/体验优化范畴而非局部回归修复，故本轮只记录不动手，留给产品/前端排期评估（可参考 web-star 的 `error ? <EmptyState/> : ...` 模式落地）。
+- [ ] **celebrity 明星头像/封面上传绕开 `CdnUrlSigner`，落库裸 `cdnUrl` 而非 `cdnKey`**（本轮发现，暂不修，理由见下）：`StarProfileUploadController`/`AdminCelebrityUploadController` 都直接返回 `FileStorageService` 的未签名公开 URL，写入 `CelebrityStar.avatar`/`CelebrityStar.cover`（纯 `String` 列，无 `cdnKey`）。代码里已有注释解释这是刻意权衡（"非高带宽盗刷目标，公开 URL 可接受"），且当前 `infra/env/server.env.example` 配置的是 `AEP_CDN_SIGNED_URL_STRATEGY=oss`（非 `cdn`），今天不会触发线上裂图。但该注释的技术理由站不住脚——一旦运维按 AGENTS.md §4.7.3 的建议把策略切到 `cdn`（Aliyun CDN URL 鉴权 Type A 是按域名/路径生效，不区分内容敏感度），这两个字段会立刻裂图（不是 TTL 过期，是从上传那刻起就没签过）。且新增 `cdnUrl` 不带 `cdnKey` 违反 AGENTS.md §4.7.4 的强制规则。修复需要给 `CelebrityStar` 加 `avatarCdnKey`/`coverCdnKey` 列 + 双写迁移 + DTO 出 wire 改走 signer，屬于结构性 schema 变更，非本轮"高度局部化"修复范畴，记录留给下一轮排期。
