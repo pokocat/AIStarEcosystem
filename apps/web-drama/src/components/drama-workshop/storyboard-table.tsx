@@ -15,6 +15,36 @@ import { CharacterMentionInput, type MentionChar } from "./character-mention-inp
 const FRAME_COST = 2; // 首帧默认价（drama.credit.frame）；视频价走 material.video-generate 由 props 传入
 // 运动幅度（拆镜 variation_type）用户友好文案，仅用于 hover 提示，不直接暴露 small/medium/large 黑话。
 const VARI: Record<string, string> = { small: "小幅", medium: "中幅", large: "大幅" };
+
+// C-1 参考生效回报的用户友好文案（不暴露 role/reason 内部枚举原值，§跨 app 约定）。
+const REF_ROLE_LABEL: Record<string, string> = {
+  ref: "参考图", character: "角色参考", scene: "场景参考",
+  prev_last_frame: "上一镜末帧", first_frame: "首帧", last_frame: "尾帧",
+};
+const REF_REASON_LABEL: Record<string, string> = {
+  local_unfetchable: "本地开发环境的参考图外部模型抓取不到（生产环境正常生效）",
+  model_no_flf: "当前视频模型不支持尾帧，未生效",
+  over_max_refs: "超出模型参考图数量上限，未送达",
+  empty: "参考图为空",
+};
+
+/** 「参考 N/M 生效」chip：仅在有参考被过滤时显示（全部生效则不打扰）；被过滤项与原因放 hover 提示。 */
+function AppliedRefsChip({ refs }: { refs?: import("@/api/render").AppliedRefs }) {
+  if (!refs || refs.requested === 0 || refs.applied >= refs.requested) return null;
+  const droppedLines = refs.items
+    .filter((it) => !it.applied)
+    .map((it) => `· ${REF_ROLE_LABEL[it.role] ?? "参考图"}：${REF_REASON_LABEL[it.reason ?? ""] ?? "未生效"}`);
+  return (
+    <div
+      className="row"
+      style={{ gap: 3, alignItems: "center", fontSize: 9, color: "var(--warn, #d97706)", maxWidth: 118, minWidth: 0 }}
+      title={`上次生成实际生效 ${refs.applied}/${refs.requested} 张参考：\n${droppedLines.join("\n")}`}
+    >
+      <ImageIcon size={9} style={{ flex: "none" }} />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>参考 {refs.applied}/{refs.requested} 生效</span>
+    </div>
+  );
+}
 const TH: React.CSSProperties = { padding: "11px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".04em", borderBottom: "2px solid var(--line)", whiteSpace: "nowrap" };
 const TD: React.CSSProperties = { padding: "12px 12px", verticalAlign: "top", borderBottom: "1px solid var(--line-soft)" };
 
@@ -409,6 +439,9 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>首尾帧就绪</span>
         </div>
       )}
+
+      {/* C-1：参考生效回报——有参考被过滤（本地不可达/模型不支持尾帧…）时如实提示，全部生效不显示。 */}
+      {!busy && <AppliedRefsChip refs={s.appliedRefs} />}
 
       {/* 动作按钮（按状态） */}
       {!busy && s.flow === "draft" && (

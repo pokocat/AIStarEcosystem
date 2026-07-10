@@ -190,6 +190,8 @@ export interface BoardShot {
   jobId?: string;
   /** 渲染流水状态（draft/frame/frameLocked/clip/done），缺省 draft */
   flow?: string;
+  /** C-1（一致性引擎）：上次首帧/出片的参考生效回报（参考 N/M 生效），render 回填。 */
+  appliedRefs?: import("@/api/render").AppliedRefs;
 }
 
 export interface BoardScene {

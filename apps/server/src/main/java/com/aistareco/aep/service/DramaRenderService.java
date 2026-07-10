@@ -150,9 +150,19 @@ public class DramaRenderService {
         // 存储配额前置：已满则不生成、不扣费，提示清理或购买存储套餐（产物字节未知，按已用是否超额校验）。
         storage.checkQuota("drama", userId, 0);
 
+        // C-1（一致性引擎）：把参考图归类为「实际送达 / 被过滤」，供前端「参考 N/M 生效」回报，
+        // 消除「看似开了一致性、实际一张没送」的暗坑。valid 才喂给图像模型。
+        AppliedRefs applied = computeFrameAppliedRefs(body.get("ref_images"));
+        java.util.List<String> validRefs = applied.validUrls();
+        long droppedCount = applied.items().stream().filter(r -> !r.applied()).count();
+        if (droppedCount > 0) {
+            log.warn("[drama-render] 跳过 {} 张外部模型无法抓取的参考图（本地/相对 URL，如 fake-CDN /cdn/…；"
+                    + "本地开发出图将不带参考图，生产 OSS https 不受影响）", droppedCount);
+        }
+
         ArrayNode frames = om.createArrayNode();
         for (int i = 0; i < count; i++) {
-            byte[] bytes = callImageModel(ep, prompt, size, body.get("ref_images"));
+            byte[] bytes = callImageModel(ep, prompt, size, validRefs);
             String key = "drama/frames/" + UUID.randomUUID().toString().replace("-", "") + ".png";
             try {
                 Path tmp = Files.createTempFile("drama-frame-", ".png");
@@ -185,11 +195,13 @@ public class DramaRenderService {
         ObjectNode out = om.createObjectNode();
         out.set("frames", frames);
         out.put("cost", cost);
+        out.set("applied_refs", appliedRefsJson(applied));
         return out;
     }
 
-    /** OpenAI images 兼容调用：data[0].url（下载）或 b64_json（解码）→ 图像字节。 */
-    private byte[] callImageModel(AiModelEndpoint ep, String prompt, String size, JsonNode refImages) {
+    /** OpenAI images 兼容调用：data[0].url（下载）或 b64_json（解码）→ 图像字节。
+     *  validRefs 已由 {@link #computeFrameAppliedRefs} 过滤为外部模型可抓取的绝对 http(s) URL。 */
+    private byte[] callImageModel(AiModelEndpoint ep, String prompt, String size, java.util.List<String> validRefs) {
         String requestId = "img-" + UUID.randomUUID().toString().substring(0, 16);
         long startNanos = System.nanoTime();
         try {
@@ -199,26 +211,11 @@ public class DramaRenderService {
             if (size != null) req.put("size", size);
             ObjectNode extra = req.putObject("extra_body");
             extra.put("response_format", "url");
-            // 参考图只传外部模型能抓取的绝对 http(s) URL。本地 fake-CDN 的相对路径 /cdn/… 或
-            // localhost 地址外部云端模型抓不到，会回 400 invalid input image —— 过滤掉、只 WARN，
-            // 不阻断出图（本地开发退化为无参考图，生产 OSS https 参考图照常生效）。
-            if (refImages != null && refImages.isArray() && refImages.size() > 0) {
-                java.util.List<String> valid = new java.util.ArrayList<>();
-                java.util.List<String> dropped = new java.util.ArrayList<>();
-                for (JsonNode n : refImages) {
-                    String u = n == null ? "" : n.asText("").trim();
-                    if (u.isEmpty()) continue;
-                    if (isFetchableImageRef(u)) valid.add(u);
-                    else dropped.add(u);
-                }
-                if (!valid.isEmpty()) {
-                    ArrayNode arr = extra.putArray("image");
-                    valid.forEach(arr::add);
-                }
-                if (!dropped.isEmpty()) {
-                    log.warn("[drama-render] 跳过 {} 张外部模型无法抓取的参考图（本地/相对 URL，如 fake-CDN /cdn/…；"
-                            + "本地开发出图将不带参考图，生产 OSS https 不受影响）: {}", dropped.size(), dropped);
-                }
+            // 参考图已在上游 computeFrameAppliedRefs 过滤为外部模型可抓取的绝对 http(s) URL
+            // （本地 fake-CDN 的 /cdn/… 相对路径 / localhost 已被剔除并计入 applied_refs 回报）。
+            if (validRefs != null && !validRefs.isEmpty()) {
+                ArrayNode arr = extra.putArray("image");
+                validRefs.forEach(arr::add);
             }
             String apiKey = AepCryptoUtil.decrypt(ep.getUpstreamApiKeyEncrypted());
             URI uri = URI.create(rstrip(ep.getBaseUrl()) + "/images/generations");
@@ -370,7 +367,89 @@ public class DramaRenderService {
 
         List<JsonNode> jobs = videoJobs.submit(submit, userId);
         log.info("[drama-render] clip queued user={} project={} dur={}s", userId, projectId, durationSec);
-        return jobs.isEmpty() ? om.createObjectNode() : jobs.get(0);
+
+        // C-1：首/末帧生效情况回报（applied_refs）——末帧是否送达取决于视频端点是否支持首尾帧关键帧
+        // （seedance / generic best-effort 支持；agnes 仅首帧）。判定不改变实际提交，纯做如实回报。
+        JsonNode card = jobs.isEmpty() ? om.createObjectNode() : jobs.get(0);
+        if (card instanceof ObjectNode on) {
+            AiModelEndpoint videoEp = invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION).orElse(null);
+            AppliedRefs applied = computeClipAppliedRefs(frameUrl, lastFrameUrl, supportsFirstLastFrame(videoEp));
+            on.set("applied_refs", appliedRefsJson(applied));
+        }
+        return card;
+    }
+
+    // ── C-1：参考生效回报（applied_refs） ─────────────────────────────────────────
+
+    /** 一条参考项的归类：role（ref/first_frame/last_frame…）+ 是否送达模型 + 未送达原因（wire 全小写枚举）。 */
+    record AppliedRef(String role, String url, boolean applied, String reason) {}
+
+    /** 一次渲染的参考生效汇总：requested=携带总数、applied=送达数、items=逐项归类。 */
+    record AppliedRefs(java.util.List<AppliedRef> items) {
+        int requested() { return items.size(); }
+        int appliedCount() { return (int) items.stream().filter(AppliedRef::applied).count(); }
+        java.util.List<String> validUrls() {
+            return items.stream().filter(AppliedRef::applied).map(AppliedRef::url).toList();
+        }
+    }
+
+    /** 首帧出图的参考图集：C-1 前端仍传无槽位数组，统一标 role="ref"；本地/相对 URL 标 local_unfetchable。 */
+    static AppliedRefs computeFrameAppliedRefs(JsonNode refImages) {
+        java.util.List<AppliedRef> items = new java.util.ArrayList<>();
+        if (refImages != null && refImages.isArray()) {
+            for (JsonNode n : refImages) {
+                String u = n == null ? "" : n.asText("").trim();
+                if (u.isEmpty()) continue;
+                boolean ok = isFetchableImageRef(u);
+                items.add(new AppliedRef("ref", u, ok, ok ? null : "local_unfetchable"));
+            }
+        }
+        return new AppliedRefs(items);
+    }
+
+    /** 视频出片的首/末帧归类：末帧仅在端点支持首尾帧时送达（否则 model_no_flf）；本地/相对 URL 标 local_unfetchable。 */
+    static AppliedRefs computeClipAppliedRefs(String firstFrameUrl, String lastFrameUrl, boolean supportsFirstLastFrame) {
+        java.util.List<AppliedRef> items = new java.util.ArrayList<>();
+        if (firstFrameUrl != null && !firstFrameUrl.isBlank()) {
+            boolean ok = isFetchableImageRef(firstFrameUrl);
+            items.add(new AppliedRef("first_frame", firstFrameUrl, ok, ok ? null : "local_unfetchable"));
+        }
+        if (lastFrameUrl != null && !lastFrameUrl.isBlank()) {
+            if (!supportsFirstLastFrame) {
+                items.add(new AppliedRef("last_frame", lastFrameUrl, false, "model_no_flf"));
+            } else {
+                boolean ok = isFetchableImageRef(lastFrameUrl);
+                items.add(new AppliedRef("last_frame", lastFrameUrl, ok, ok ? null : "local_unfetchable"));
+            }
+        }
+        return new AppliedRefs(items);
+    }
+
+    /**
+     * 端点是否支持首+尾帧关键帧（静态关键字判定，复用 MaterialVideoModelClient 的协议识别口径）：
+     * agnes 仅首帧（无尾帧）；seedance / generic（best-effort 带 end_image，下游不支持则忽略）视为支持。
+     */
+    static boolean supportsFirstLastFrame(AiModelEndpoint ep) {
+        if (ep == null) return false;
+        String blob = ((ep.getName() == null ? "" : ep.getName()) + " "
+                + (ep.getBaseUrl() == null ? "" : ep.getBaseUrl()) + " "
+                + (ep.getModel() == null ? "" : ep.getModel())).toLowerCase();
+        return !blob.contains("agnes");
+    }
+
+    private ObjectNode appliedRefsJson(AppliedRefs a) {
+        ObjectNode node = om.createObjectNode();
+        node.put("requested", a.requested());
+        node.put("applied", a.appliedCount());
+        ArrayNode items = node.putArray("items");
+        for (AppliedRef r : a.items()) {
+            ObjectNode it = items.addObject();
+            it.put("role", r.role());
+            it.put("url", r.url());
+            it.put("applied", r.applied());
+            if (r.reason() != null) it.put("reason", r.reason());
+        }
+        return node;
     }
 
     // ── 工具 ────────────────────────────────────────────────────────────────────

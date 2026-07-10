@@ -61,6 +61,8 @@ export interface FormShot {
   motionDesc?: string;
   variationType?: "small" | "medium" | "large" | string;
   endFrameUrl?: string;
+  /** C-1（一致性引擎）：上次首帧/出片的参考生效回报（参考 N/M 生效），render 回填。 */
+  appliedRefs?: import("@/api/render").AppliedRefs;
 }
 
 function fmtT(sec: number) {

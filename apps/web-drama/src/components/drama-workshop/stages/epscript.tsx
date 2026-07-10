@@ -62,6 +62,7 @@ function toFormShot(sh: BoardShot, refs: Material[]): FormShot {
     motionDesc: sh.motionDesc,
     variationType: sh.variationType,
     endFrameUrl: sh.endFrameUrl,
+    appliedRefs: sh.appliedRefs,
   };
 }
 
@@ -94,6 +95,7 @@ function toBoardShot(sh: FormShot, prevEngine?: BoardShot["engine"]): BoardShot 
     motionDesc: sh.motionDesc,
     variationType: sh.variationType,
     endFrameUrl: sh.endFrameUrl,
+    appliedRefs: sh.appliedRefs,
   };
 }
 
@@ -399,6 +401,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url,
         endFrameUrl: undefined, ffDesc: undefined, lfDesc: undefined, motionDesc: undefined, variationType: undefined,
         videoUrl: undefined, lastFrameUrl: undefined,
+        appliedRefs: job.applied_refs ?? job.result?.applied_refs,
       });
       clearBusy(id);
       if (spend) {
@@ -416,6 +419,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         return;
       }
       if (job.status !== "ready" || !job.video_url) return;
+      // applied_refs 只在 renderClip 提交响应上（轮询卡不带）——这里不覆盖，沿用提交时落的值。
       applyRenderPatch(sceneId, id, { flow: "clip", videoUrl: job.video_url ?? undefined, lastFrameUrl: job.last_frame_url ?? undefined, jobId: job.id });
       clearBusy(id);
       if (spend) {
@@ -748,7 +752,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           frameUrl: firstFrame,
           lastFrameUrl: endFrame,
         });
-        applyRenderPatch(sceneId, id, { jobId: job.id });
+        applyRenderPatch(sceneId, id, { jobId: job.id, appliedRefs: job.applied_refs });
         toast.success("视频已加入后台生成");
         void watchClipJob(job.id, sceneId, id, cost, msg, true);
       }
@@ -776,7 +780,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       if (d.lfDesc?.trim()) {
         try {
           const ownFrame = shot.frameUrl ?? shot.frameUrls?.[0];
-          const frames = await RenderApi.renderFrame({
+          const { frames } = await RenderApi.renderFrame({
             kind: "shot",
             vars: { ...shotVars(shot, "frame", sceneId), visual: d.lfDesc },
             refImages: shotRefImages(sceneId, shot, [ownFrame]),

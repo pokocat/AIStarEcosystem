@@ -5,6 +5,7 @@ import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.CelebrityActionPricingService;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.ProductService;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -43,6 +44,7 @@ public class MaterialVideoJobService {
     private final CreditService creditService;
     private final CelebrityActionPricingService actionPricing;
     private final ProductService productService;
+    private final CdnUrlSigner signer;
     private final ObjectMapper om;
 
     public MaterialVideoJobService(MaterialVideoJobRepository jobRepo,
@@ -51,6 +53,7 @@ public class MaterialVideoJobService {
                                    CreditService creditService,
                                    CelebrityActionPricingService actionPricing,
                                    ProductService productService,
+                                   CdnUrlSigner signer,
                                    ObjectMapper om) {
         this.jobRepo = jobRepo;
         this.modelClient = modelClient;
@@ -58,6 +61,7 @@ public class MaterialVideoJobService {
         this.creditService = creditService;
         this.actionPricing = actionPricing;
         this.productService = productService;
+        this.signer = signer;
         this.om = om;
     }
 
@@ -215,9 +219,15 @@ public class MaterialVideoJobService {
         card.put("model", orDefault(job.getModelUsed(), "ai-video"));
         card.put("progress_pct", job.getProgress());
         card.put("stage", stageLabel(job.getStatus()));
-        if (job.getVideoUrl() != null) card.put("video_url", job.getVideoUrl());
-        if (job.getThumbnailUrl() != null) card.put("thumbnail_url", job.getThumbnailUrl());
-        if (job.getLastFrameUrl() != null) card.put("last_frame_url", job.getLastFrameUrl());
+        // 资产 URL 出 wire 经 signer（OSS 域才签，local /cdn 相对路径不匹配 base → 原样返回，dev 零影响）。
+        // C-1 范围选择：last_frame 走 cdnKey 真值派生（§4.7.4，不过期）+ fallback 旧 lastFrameUrl；
+        // video/thumbnail 只做 maybeSign 兜底（顺手偿还 §4.7.6 URL 时效欠债，不做完整 URL→key 迁移）。
+        if (job.getVideoUrl() != null) card.put("video_url", signer.maybeSign(job.getVideoUrl()));
+        if (job.getThumbnailUrl() != null) card.put("thumbnail_url", signer.maybeSign(job.getThumbnailUrl()));
+        String lastFrame = job.getLastFrameCdnKey() != null && !job.getLastFrameCdnKey().isBlank()
+                ? signer.signKey(job.getLastFrameCdnKey()) : null;
+        if (lastFrame == null) lastFrame = signer.maybeSign(job.getLastFrameUrl());
+        if (lastFrame != null) card.put("last_frame_url", lastFrame);
         if (job.getErrorMessage() != null) card.put("error_message", job.getErrorMessage());
         if (job.getExternalTaskId() != null) card.put("external_task_id", job.getExternalTaskId());
         return card;

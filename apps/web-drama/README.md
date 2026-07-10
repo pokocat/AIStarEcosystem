@@ -68,6 +68,17 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.99 · 2026-07-10 · 一致性引擎 C-1（末帧 CDN 镜像 + 参考生效回报）
+
+> 一致性引擎 C 序列首阶段，修 G-6（真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §2）。范围选择：仅 `last_frame` 做 cdnKey 真值化；`video_url`/`thumbnail_url` 只加 `maybeSign` 兜底，完整 URL→key 迁移留独立 PR。
+
+- **末帧 CDN 镜像**：`MaterialVideoJob` 新列 `lastFrameCdnKey`（§4.7.4 真值）；worker 成功分支把上游临时末帧 URL（seedance `return_last_frame`）下载镜像到 CDN（`material-videos/<jobId>/last-frame.*`），链式承接不再因上游 URL 过期断链。镜像失败 = best-effort（§8.0 观测类旁路例外）：仅 WARN、保留上游 URL、**绝不 markFailed / 退积分**。
+- **出 wire 签名**：`MaterialVideoJobService.toCard` 注入 `CdnUrlSigner`——`last_frame_url` 走 `signKey(lastFrameCdnKey)` 派生（fallback 旧 `lastFrameUrl` 经 `maybeSign`）；`video_url`/`thumbnail_url` 加 `maybeSign` 兜底（local `/cdn` 原样返回，dev 零影响）。
+- **参考生效回报 `applied_refs`**：`/render/frame` 与 `/render/clip` 返回体加 `{requested, applied, items[{role,url,applied,reason}]}`——frame 的 `ref_images` 统一 role=`ref`（无槽位，精确 role 待 C-3）、本地/相对 URL 标 `local_unfetchable`；clip 的 `first_frame`/`last_frame` 标准确 role，端点不支持首尾帧（agnes）时末帧标 `model_no_flf`（静态协议关键字判定）。frame-jobs 任务卡透传。
+- **前端**：`api/render.ts` 加 `AppliedRefs` 类型，`renderFrame` 返回体改 `{frames, cost, appliedRefs}`（4 处调用点同步）；`FormShot`/`BoardShot` 加 `appliedRefs`（随 render 回填、payloadJson round-trip）；分镜表首帧格加「参考 N/M 生效」chip（仅部分生效时显示，定宽 + ellipsis，被过滤项与用户友好原因放 hover，不暴露内部枚举）；shorts/make 同步消费。
+- **测试**：`DramaRenderServiceTest`（computeAppliedRefs 纯函数矩阵 9 例）+ `MaterialVideoWorkerTest`（末帧镜像成功落 key / 失败仍 succeeded 且不退积分，内嵌 HttpServer 供真实下载）。
+- **门禁**：server test-compile + 21+29 单测（含 MaterialVideoModelClientTest / DramaProjectServiceTest / MaterialAiE2ETest 回归）+ web-drama typecheck/build + check:api-contract 全绿。
+
 ### v0.98 · 2026-06-30 · 短剧工作台收敛为「脚本表=唯一逐镜工作面」（删视频工厂阶段）
 
 > 目标：一集的出片全在剧集脚本的分镜表内完成，更直观；不再跳独立「视频工厂」。项目从 6 阶段收敛为 **5 阶段**（选题 / 大纲 / 角色 / 剧集脚本 / 成片合成）。真源 [`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)。

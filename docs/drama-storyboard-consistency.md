@@ -231,7 +231,8 @@
 - **P1** ✅：`drama.epscript.md` / `drama.split_scene.md` 补电影语言规则；`BoardShot.camId` + `normalizeShot` 透传 + JSON 模板加字段。
 - **P2** ✅：`MaterialVideoModelClient` `PROTOCOL_SEEDANCE`（content 数组首/尾帧 + `return_last_frame`）+ GENERIC 补首/尾帧；`MaterialVideoJob.lastFrameUrl` → 任务卡 → 前端 `BoardShot.lastFrameUrl` 链式承接闭环；`drama.decompose` 节点（端点 `/shot/decompose` + 计费 `drama.credit.decompose` + 角色名校验）。
 - **运维前置**：要用 seedance 首尾帧，需在 admin「AI 模型与 Key」把「视频生成」绑到一个名称/baseUrl/model 含 `seedance` 的端点（自动走 SEEDANCE 协议）；否则按原 AGNES/GENERIC 协议工作（首帧仍生效）。
-- **后续可选**：VLM best-of-N 一致性自检（生成多版首帧自动选最一致）；末帧 CDN 镜像（当前 `lastFrameUrl` 存上游 URL，best-effort，可能有时效）。
+- **后续可选**：VLM best-of-N 一致性自检（生成多版首帧自动选最一致）。
+- **末帧 CDN 镜像** ✅ **已落地（一致性引擎 C-1，2026-07-10）**：`MaterialVideoJob.lastFrameCdnKey`（§4.7.4 真值列）+ worker 成功分支下载镜像上游末帧到 CDN（失败 = best-effort，仅 WARN、保留上游 URL、不 markFailed）+ `toCard` 出 wire `signKey` 派生（fallback 旧 `lastFrameUrl`）；同批 `/render/{frame,clip}` 返回体加 `applied_refs` 参考生效回报（前端「参考 N/M 生效」chip）。实现级设计见 [`[Fabel5]drama-consistency-engine-design.md`](./%5BFabel5%5Ddrama-consistency-engine-design.md) §2。
 
 ## v0.98 补丁 · 分集剧情模型简化为「标题 + 内容」（2026-07-01）
 

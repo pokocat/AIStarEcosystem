@@ -16,6 +16,23 @@ export interface RenderedFrame {
   cdnKey: string;
 }
 
+// C-1（一致性引擎）：一次渲染实际生效 / 被过滤的参考清单，供「参考 N/M 生效」回报。
+export type AppliedRefReason = "local_unfetchable" | "model_no_flf" | "over_max_refs" | "empty";
+export interface AppliedRefItem {
+  /** ref（首帧参考图，C-1 无槽位）/ first_frame / last_frame / character / scene / prev_last_frame… */
+  role: string;
+  url: string;
+  applied: boolean;
+  reason?: AppliedRefReason;
+}
+export interface AppliedRefs {
+  /** 携带的参考总数（含首/尾帧） */
+  requested: number;
+  /** 实际送达模型的数量 */
+  applied: number;
+  items: AppliedRefItem[];
+}
+
 // v0.72：出图/出片提示词模板在 server 端（admin「短剧专区·提示词设置」可改）。
 // 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
@@ -69,8 +86,10 @@ export interface DramaFrameJob {
   shot_id?: string;
   episode_no?: number;
   frames?: RenderedFrame[];
-  result?: { frames?: RenderedFrame[]; cost?: number };
+  result?: { frames?: RenderedFrame[]; cost?: number; applied_refs?: AppliedRefs };
   cost?: number;
+  /** C-1：本次首帧渲染的参考生效回报（参考 N/M 生效）。 */
+  applied_refs?: AppliedRefs;
   error_message?: string | null;
   created_at?: string;
   started_at?: string;
@@ -90,7 +109,9 @@ export interface DramaRenderTask {
   shot_id?: string;
   episode_no?: number;
   frames?: RenderedFrame[];
-  result?: { frames?: RenderedFrame[]; cost?: number };
+  result?: { frames?: RenderedFrame[]; cost?: number; applied_refs?: AppliedRefs };
+  /** C-1：参考生效回报。 */
+  applied_refs?: AppliedRefs;
   video_url?: string | null;
   thumbnail_url?: string | null;
   /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考。 */
@@ -128,28 +149,41 @@ function mockFrameDataUri(seed: number): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-export async function renderFrame(input: RenderFrameInput): Promise<RenderedFrame[]> {
+export interface RenderFrameResult {
+  frames: RenderedFrame[];
+  cost: number;
+  /** C-1：参考生效回报（参考 N/M 生效）。 */
+  appliedRefs?: AppliedRefs;
+}
+
+export async function renderFrame(input: RenderFrameInput): Promise<RenderFrameResult> {
   if (USE_MOCK) {
     const n = input.count ?? 1;
     return mockDelay(
-      Array.from({ length: n }, (_, i) => ({
-        url: mockFrameDataUri(Date.now() + i),
-        cdnKey: `mock/frames/${Date.now()}_${i}.svg`,
-      })),
+      {
+        frames: Array.from({ length: n }, (_, i) => ({
+          url: mockFrameDataUri(Date.now() + i),
+          cdnKey: `mock/frames/${Date.now()}_${i}.svg`,
+        })),
+        cost: 0,
+      },
       1200,
     );
   }
-  const res = await apiFetch<{ frames: RenderedFrame[]; cost: number }>("/me/drama/render/frame", {
-    method: "POST",
-    body: {
-      kind: input.kind ?? "shot",
-      vars: input.vars,
-      ratio: input.ratio,
-      count: input.count,
-      ref_images: input.refImages,
+  const res = await apiFetch<{ frames: RenderedFrame[]; cost: number; applied_refs?: AppliedRefs }>(
+    "/me/drama/render/frame",
+    {
+      method: "POST",
+      body: {
+        kind: input.kind ?? "shot",
+        vars: input.vars,
+        ratio: input.ratio,
+        count: input.count,
+        ref_images: input.refImages,
+      },
     },
-  });
-  return res.frames ?? [];
+  );
+  return { frames: res.frames ?? [], cost: res.cost ?? 0, appliedRefs: res.applied_refs };
 }
 
 const mockFrameJobs = new Map<string, DramaFrameJob & { readyAt?: number }>();

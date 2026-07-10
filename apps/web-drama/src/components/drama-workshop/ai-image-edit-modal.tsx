@@ -61,7 +61,7 @@ export function AiImageEditModal({
     setMsgs((m) => [...m, { role: "user", text: t }]);
     setBusy(true);
     try {
-      const frames = await RenderApi.renderFrame({
+      const { frames } = await RenderApi.renderFrame({
         kind: "shot",
         vars: { desc: `${baseDesc}。改图要求：${t}`, ...(sceneName ? { scene: sceneName } : {}) },
         ratio,

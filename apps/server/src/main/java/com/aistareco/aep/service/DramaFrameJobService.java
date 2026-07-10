@@ -180,6 +180,8 @@ public class DramaFrameJobService {
             n.set("result", result);
             if (result.has("frames")) n.set("frames", result.get("frames"));
             if (result.has("cost")) n.set("cost", result.get("cost"));
+            // C-1：把 renderFrame 产出的参考生效回报透传到任务卡，供前端「参考 N/M 生效」chip。
+            if (result.has("applied_refs")) n.set("applied_refs", result.get("applied_refs"));
         }
         return n;
     }

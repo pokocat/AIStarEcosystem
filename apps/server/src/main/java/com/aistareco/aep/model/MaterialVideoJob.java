@@ -96,9 +96,15 @@ public class MaterialVideoJob {
     @Column(name = "thumbnail_url", length = 1024)
     private String thumbnailUrl;
 
-    /** v0.97 P2：成片真实末帧 URL（seedance return_last_frame 回传）→ 下一镜首帧参考，链式承接。 */
+    /** v0.97 P2：成片真实末帧 URL（seedance return_last_frame 回传）→ 下一镜首帧参考，链式承接。
+     *  上游临时 URL，会过期；C-1 起以 lastFrameCdnKey 的 CDN 镜像为准，本列降级为 fallback。 */
     @Column(name = "last_frame_url", length = 1024)
     private String lastFrameUrl;
+
+    /** C-1（一致性引擎）：成片真实末帧的 CDN 镜像 object key（§4.7.4 真值），出 wire 由 signer 派生 URL、不过期。
+     *  镜像失败（best-effort，观测类旁路）时为 null，出 wire 回退读 lastFrameUrl（上游临时 URL）。 */
+    @Column(name = "last_frame_cdn_key", length = 512)
+    private String lastFrameCdnKey;
 
     @Column(name = "error_message", length = 1024)
     private String errorMessage;

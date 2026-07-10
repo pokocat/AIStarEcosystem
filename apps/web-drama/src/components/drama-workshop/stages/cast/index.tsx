@@ -131,7 +131,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     if (charBusy[c.id]) return;
     setCharBusy((m) => ({ ...m, [c.id]: true }));
     try {
-      const frames = await RenderApi.renderFrame({
+      const { frames } = await RenderApi.renderFrame({
         kind: "character",
         vars: {
           name: c.name,
@@ -174,7 +174,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     if (!ctx || sceneBusy[s.id]) return;
     setSceneBusy((m) => ({ ...m, [s.id]: true }));
     try {
-      const frames = await RenderApi.renderFrame({
+      const { frames } = await RenderApi.renderFrame({
         // v0.98：场景参考图用专用 scene 提示词（干净空景 establishing plate，无人物），
         // 传作品风格 + 项目画幅，匹配剧集脚本取景（原来误用 shot 首帧提示词 → 塞人脸/比例不符）。
         kind: "scene",

@@ -735,7 +735,7 @@ function ShortMakerInner({
         if (done.status === "failed") throw new Error(done.error_message || "首帧生成失败，请重试");
         const frames = done.frames ?? done.result?.frames ?? [];
         if (!frames.length) throw new Error("首帧生成完成但没有返回图片，请重试");
-        updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url });
+        updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url, appliedRefs: done.applied_refs ?? done.result?.applied_refs });
         toast.success("首帧已生成，确认后再生成视频");
       } else {
         const job = await RenderApi.renderClip({
@@ -753,7 +753,7 @@ function ShortMakerInner({
         });
         const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
         if (done.status === "failed") throw new Error(done.error_message || "视频生成失败，请重试");
-        updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id });
+        updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id, appliedRefs: job.applied_refs });
         toast.success("镜头视频已生成");
       }
       return true;
