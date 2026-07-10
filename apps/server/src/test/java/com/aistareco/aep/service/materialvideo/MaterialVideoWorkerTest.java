@@ -82,8 +82,9 @@ class MaterialVideoWorkerTest {
         when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         modelClient = mock(MaterialVideoModelClient.class);
-        var submit = new MaterialVideoModelClient.SubmitResult("task_1", null, "vendor", "model-x", "generic");
-        when(modelClient.submit(any(), anyInt(), any(), any(), any())).thenReturn(submit);
+        // 默认路径回归（D-11）：job.variantConfigJson 无 endpoint_id → worker 传 null → 默认端点，行为不变。
+        var submit = new MaterialVideoModelClient.SubmitResult("task_1", null, "vendor", "model-x", "generic", null);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(new MaterialVideoModelClient.PollResult(
                 "succeeded", base + "/video.mp4", base + "/thumb.png", "SUCCESS", 100, null, base + "/last.png"));
 

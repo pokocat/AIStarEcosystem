@@ -1,5 +1,6 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.dto.RenderModelsDto;
 import com.aistareco.aep.service.DramaRenderService;
 import com.aistareco.aep.service.DramaFrameJobService;
 import com.aistareco.common.ApiResponse;
@@ -26,8 +27,15 @@ public class DramaRenderController {
         this.frameJobs = frameJobs;
     }
 
-    /** 首帧渲染。body: { kind?("shot"|"short"), vars{}, ratio?, count?, ref_images? } → { frames:[{url,cdnKey}], cost }
-     *  v0.72：prompt 模板服务端化（drama.frame_image / drama.short_frame_image），前端传 vars 填充。 */
+    /** D-11：出片模型下拉（一用途多候选端点 + capability）。{ image:[...], video:[...] }，isDefault 项前端默认选中。 */
+    @GetMapping("/models")
+    public ApiResponse<RenderModelsDto> models(Principal principal) {
+        return ApiResponse.of(service.listRenderModels());
+    }
+
+    /** 首帧渲染。body: { kind?("shot"|"short"), vars{}, ratio?, count?, ref_images?, endpoint_id? } → { frames:[{url,cdnKey}], cost }
+     *  v0.72：prompt 模板服务端化（drama.frame_image / drama.short_frame_image），前端传 vars 填充。
+     *  D-11：可选 endpoint_id（候选端点白名单，未命中 503 ENDPOINT_NOT_ALLOWED，不扣费）。 */
     @PostMapping("/frame")
     public ApiResponse<JsonNode> frame(Principal principal, @RequestBody JsonNode body) {
         return ApiResponse.of(service.renderFrame(body, principal.getName()));

@@ -6,6 +6,8 @@ import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.storage.StorageQuotaService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +37,7 @@ import java.util.Locale;
 public class MaterialVideoWorker {
 
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoWorker.class);
+    private static final ObjectMapper OM = new ObjectMapper();
 
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
@@ -97,9 +100,11 @@ public class MaterialVideoWorker {
 
         // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余素材运营记到 celebrity。
         String appCode = job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
+        // D-11：短剧线可在 variant_config 指定候选出片端点；带货素材线不写此键 → null → 默认端点（默认路径不变）。
+        String endpointId = extractEndpointId(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
                 modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
-                        job.getOwnerUserId(), appCode);
+                        job.getOwnerUserId(), appCode, endpointId);
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
         long start = System.currentTimeMillis();
@@ -333,6 +338,18 @@ public class MaterialVideoWorker {
 
     private static boolean isTerminal(String status) {
         return "succeeded".equals(status) || "failed".equals(status);
+    }
+
+    /** D-11：从 variant_config JSON 抽 endpoint_id（短剧线指定出片端点）；缺省/解析失败 → null（默认端点）。 */
+    private static String extractEndpointId(String variantConfigJson) {
+        if (variantConfigJson == null || variantConfigJson.isBlank()) return null;
+        try {
+            JsonNode vc = OM.readTree(variantConfigJson);
+            JsonNode ep = vc.get("endpoint_id");
+            return ep == null || ep.isNull() || ep.asText().isBlank() ? null : ep.asText();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String truncate(String s, int max) {

@@ -5,6 +5,7 @@ import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.repository.AiAppBindingRepository;
+import com.aistareco.aep.repository.AiAppEndpointCandidateRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -78,7 +79,7 @@ class AiModelLiveSmokeTest {
         options.put("max_tokens", 256);
 
         AiModelInvocationService.AiModelResponse resp =
-                new AiModelInvocationService(endpointRepo, bindingRepo,
+                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                         new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)))
                         .invokeChat(AiModelPurpose.GENERAL, messages, options);
@@ -118,7 +119,7 @@ class AiModelLiveSmokeTest {
         when(endpointRepo.findById("live-conn"))
                 .thenReturn(Optional.of(liveEndpoint("live-conn", baseUrl, apiKey, model, type)));
 
-        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                         new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)))
                 .testConnection("live-conn");

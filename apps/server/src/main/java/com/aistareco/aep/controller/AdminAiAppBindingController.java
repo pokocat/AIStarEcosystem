@@ -1,6 +1,8 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.dto.AiAppBindingDto;
+import com.aistareco.aep.dto.AiAppEndpointCandidateDto;
+import com.aistareco.aep.dto.AiAppEndpointCandidateUpsert;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiAppBindingService;
 import com.aistareco.common.ApiResponse;
@@ -43,6 +45,36 @@ public class AdminAiAppBindingController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unbind(@PathVariable String purpose) {
         service.unbind(parsePurpose(purpose));
+    }
+
+    // ── D-11 候选端点（一用途多候选 + capability） ────────────────────────────
+
+    /** 列出某用途的全部候选端点（含 capability + 默认标记）。 */
+    @GetMapping("/{purpose}/candidates")
+    public ApiResponse<List<AiAppEndpointCandidateDto>> listCandidates(@PathVariable String purpose) {
+        return ApiResponse.of(service.listCandidates(parsePurpose(purpose)));
+    }
+
+    /** 新增一个候选端点（body.endpointId 必填，可带 capability）。 */
+    @PostMapping("/{purpose}/candidates")
+    public ApiResponse<AiAppEndpointCandidateDto> addCandidate(@PathVariable String purpose,
+                                                               @RequestBody AiAppEndpointCandidateUpsert body) {
+        return ApiResponse.of(service.addCandidate(parsePurpose(purpose), body));
+    }
+
+    /** 更新候选端点的 capability / 单价 override / 启用 / 排序。 */
+    @PutMapping("/{purpose}/candidates/{endpointId}")
+    public ApiResponse<AiAppEndpointCandidateDto> updateCandidate(@PathVariable String purpose,
+                                                                  @PathVariable String endpointId,
+                                                                  @RequestBody AiAppEndpointCandidateUpsert body) {
+        return ApiResponse.of(service.updateCandidate(parsePurpose(purpose), endpointId, body));
+    }
+
+    /** 删除一个候选端点（默认端点不允许删）。 */
+    @DeleteMapping("/{purpose}/candidates/{endpointId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeCandidate(@PathVariable String purpose, @PathVariable String endpointId) {
+        service.removeCandidate(parsePurpose(purpose), endpointId);
     }
 
     private static AiModelPurpose parsePurpose(String wire) {

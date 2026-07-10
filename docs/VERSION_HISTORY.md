@@ -3426,6 +3426,20 @@ AI 改图复用 `POST /me/drama/render/frame`（`ref_images` 迭代），无新�
 
 **门禁**：server compile + 支付单测全绿（PaymentService 6 / PaymentReconcile 5 / Alipay 6 / AlipayNotify 5 / Wechat 5 / WechatNotify 5 / PaymentChannelConfig 6 / Recharge 16）+ `typecheck:all` 10/10 + web-celebrity build + web-drama build（+vitest 35）+ `check:api-contract` 全绿。openapi 加 `/me/wallet/recharge/channels`、`/pay/notify/wechat`、`/admin/payment/channels*`；删 `/pay/notify/jeepay`。env 模版 §15 改为「机密首选后台 DB 配，env 仅 bootstrap」。
 
+### v0.100（2026-07-10）— 短剧一致性引擎 D-11（一用途多候选端点 + capability + 出片模型下拉）
+
+一致性引擎 D 序列（真源 `docs/[Fabel5]drama-consistency-engine-design.md` §3）。把「用途→单端点」升级为「用途→N 候选端点（带 capability 元数据）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。**核心裁决**：新表 `ai_app_endpoint_candidate`，`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化 → 所有现有调用者与 admin 默认绑定不受影响、零迁移。
+
+1. **新表 + 兼容迁移**：`AiAppEndpointCandidate`（`ai_app_endpoint_candidate`，唯一 `purpose+endpoint_id` + 索引 `idx_aaec_purpose`）承载 capability（`maxRefImages`/`supportsFirstLastFrame`/`supportsSubjectReference`/`maxDurationSec`，null=未知按保守默认）+ 可选单价 `creditCostOverride` + `enabled`/`sortOrder`。`AiAppCandidateSeeder`（@Order 60，跑在绑定 seeder 之后）幂等把每条现有 `AiAppBinding` 回填为置顶候选（sortOrder=0，capability 全 null）→ 老数据自动进候选池、UI 即可见、白名单可命中，无需人工。
+2. **`resolveEndpoint` 重载**：`AiModelInvocationService` 加 `resolveEndpoint(purpose, endpointId)`（返回 `ResolvedEndpoint{endpoint,candidate,isDefault}`；endpointId 为空委派默认，指定则查启用 candidate + 启用端点，未命中 empty → 调用方 503 `ENDPOINT_NOT_ALLOWED`，§8.0 不回退默认、不扣费）+ `listCandidates(purpose)`（含默认标记，供 /render/models 与 admin）。`AiAppBindingService` 加候选 CRUD（bind 时幂等纳入候选池）。
+3. **出片模型端点**：`GET /me/drama/render/models` → `{image:[...],video:[...]}`，每项 `{endpointId,name,isDefault,capability,creditCost}`（creditCost = override ?? 用途默认单价，仅启用候选+启用端点）。`DramaRenderService.renderFrame/renderClip` body 加可选 `endpoint_id`：命中的 candidate 单价 override 覆盖用途默认（frame 走 `debit`、clip 走 item `credit_cost`）；未命中 503 不扣费/不提交。
+4. **视频线 endpoint_id 透传（§6.4 最深改动，四层串联）**：`renderClip` 把 endpoint_id 存进 `variant_config` → `MaterialVideoWorker.extractEndpointId` 抽出 → `MaterialVideoModelClient.submit/poll(..., endpointId)`（`pickEndpoint(endpointId)` 白名单，`SubmitResult` 带 endpointId 使 poll 落同一端点/baseUrl/apiKey）。**带货素材线不写 endpoint_id → null → 默认端点，celebrity 默认路径完全不变**（`MaterialVideoWorkerTest` 显式回归）。
+5. **前端（web-drama）**：`api/render.ts` 加 `EndpointCapability`/`RenderModelOption`/`RenderModelsResponse` + `listRenderModels()`；`RenderFrameInput`/`RenderClipInput` 加 `endpointId`（body `endpoint_id`）。共享 `render-model-select`（`useRenderModels` hook + `RenderModelSelect`）：分镜表 / 短视频出片工具栏各挂「出图模型 / 出片模型」下拉，默认选 isDefault；候选 ≤1 时不渲染（走默认端点）；能力细节进 hover title、宽度约束防溢出（AGENTS §不溢出，不暴露内部字段名）。
+6. **admin**：「AI 应用绑定」drama 组每用途加折叠「候选端点与能力」块——列候选、加/删、编辑 capability 4 字段 + 单价 override、启用开关、设默认（= 改 AiAppBinding）；禁用浏览器原生 confirm（走 `useConfirm`）。`api/ai-models.ts` 加候选 CRUD + 类型。
+7. **测试**：`AiModelInvocationServiceTest`（resolveEndpoint 命中/未命中/candidate 停用/端点停用/null 回默认 + listCandidates 默认标记，+6）、`AiAppCandidateSeederTest`（首启回填 + 重启幂等，2）、`DramaRenderServiceTest`（renderFrame/renderClip 非法 endpoint_id → 503 `ENDPOINT_NOT_ALLOWED` 且 0 次 debit / 0 次 submit，+2）、`MaterialVideoWorkerTest`（默认 null endpoint 回归）。
+
+**门禁**：server `test-compile`（离线）+ 单测全绿（`AiModelInvocationServiceTest` 20 / `DramaRenderServiceTest` 11 / `AiAppCandidateSeederTest` 2 / `MaterialVideoWorkerTest` 2 + 回归 `MaterialAiE2ETest` 8 / `MaterialVideoModelClientTest` 10）+ web-drama typecheck/build + `typecheck:all` 10/10 + `typecheck:admin` + `check:api-contract` 全绿。openapi：加 `/me/drama/render/models`、`/admin/ai-app-bindings/{purpose}/candidates[/{endpointId}]`，frame/clip summary 补 `endpoint_id`。
+
 ### v0.99（2026-07-10）— 短剧一致性引擎 C-1（末帧 CDN 镜像 + 参考生效回报）
 
 一致性引擎 C 序列（C-1 → D-11 → C-2 → C-3，真源 `docs/[Fabel5]drama-consistency-engine-design.md`）首阶段，修审计 G-6「末帧存上游临时 URL 会过期 + 参考图静默被过滤」。**范围选择**：仅 `last_frame` 做 cdnKey 真值化（§4.7.4）；`video_url`/`thumbnail_url` 只在 `toCard` 加 `signer.maybeSign` 兜底（local `/cdn` 原样返回零影响），完整 URL→key 迁移留独立 PR。

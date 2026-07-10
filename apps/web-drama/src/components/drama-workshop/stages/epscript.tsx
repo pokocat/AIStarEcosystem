@@ -22,6 +22,7 @@ import { Avatar, CreditButton, dramaConfirm, Editable, GenSkeleton } from "@/com
 import { ConfirmDialog } from "@/components/common";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
+import { RenderModelSelect, useRenderModels } from "../render-model-select";
 import { episodeContent, episodeTitle, getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { ProjectsApi, RenderApi } from "@/api";
@@ -169,6 +170,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [busyMap, setBusyMap] = React.useState<Record<string, FormShot["flow"]>>({});
   // 镜间一致性承接：出首帧/出片时额外参考「角色图 + 场景参考图 + 同场上一镜画面」，保持人物/环境/光线连贯。
   const [chainConsistency, setChainConsistency] = React.useState(true);
+  // D-11：出片模型（候选端点）。缺省 / 单候选 → 下拉隐藏，走后端默认端点。
+  const renderModels = useRenderModels();
   // 分镜表全屏放大（与内联共用同一份表，编辑实时同步），对齐短视频「放大」体验。
   const [tableMax, setTableMax] = React.useState(false);
   const [style, setStyle] = React.useState(
@@ -729,6 +732,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           shotId: id,
           episodeNo: state.ep,
           name: `第${state.ep}集 镜${shot.no} 首帧`,
+          endpointId: renderModels.imageEndpointId,
         });
         toast.success("首帧已加入后台生成");
         void watchFrameJob(job.id, sceneId, id, cost, msg, true);
@@ -751,6 +755,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           target: ownFrame ? "frame-clip" : "direct",
           frameUrl: firstFrame,
           lastFrameUrl: endFrame,
+          endpointId: renderModels.videoEndpointId,
         });
         applyRenderPatch(sceneId, id, { jobId: job.id, appliedRefs: job.applied_refs });
         toast.success("视频已加入后台生成");
@@ -786,6 +791,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             refImages: shotRefImages(sceneId, shot, [ownFrame]),
             ratio: data.projectInfo.ratio,
             count: 1,
+            endpointId: renderModels.imageEndpointId,
           });
           endFrameUrl = frames[0]?.url;
         } catch {
@@ -937,6 +943,14 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                   <button type="button" className="chip" style={{ height: 24, fontSize: 11 }} title="全屏放大分镜表，方便逐镜编辑" onClick={() => setTableMax(true)}>
                     <Maximize2 size={12} /> 放大
                   </button>
+                )}
+                {!locked && (
+                  <RenderModelSelect lane="image" models={renderModels.models}
+                    value={renderModels.imageEndpointId} onChange={renderModels.setImageEndpointId} />
+                )}
+                {!locked && (
+                  <RenderModelSelect lane="video" models={renderModels.models}
+                    value={renderModels.videoEndpointId} onChange={renderModels.setVideoEndpointId} />
                 )}
                 {!locked && (
                   <label className="row gap-2" style={{ alignItems: "center", cursor: "pointer", fontSize: 11.5, color: "var(--ink-2)" }} title="出首帧/出片时额外参考同场上一镜画面 + 场景参考图，保持人物/环境/光线连贯">

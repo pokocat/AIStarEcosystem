@@ -38,6 +38,7 @@ import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { ShortStoryboardTable } from "@/components/drama-workshop/short-storyboard-table";
+import { RenderModelSelect, useRenderModels } from "@/components/drama-workshop/render-model-select";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { MediaLightbox, type LightboxMedia } from "@/components/drama-workshop/media-lightbox";
 import { MarkdownLite } from "@/lib/markdown-lite";
@@ -517,6 +518,8 @@ function ShortMakerInner({
   const [chatCollapsed, setChatCollapsed] = React.useState(false);
   // 分镜表放大：全屏弹层展示，方便逐镜编辑。
   const [tableMax, setTableMax] = React.useState(false);
+  // D-11：出片模型（候选端点）。缺省 / 单候选 → 下拉隐藏，走后端默认端点。
+  const renderModels = useRenderModels();
   // 主角 / 主场景 折叠（默认收起，展开后可上传参考图 / 绑定数字人 / 上传素材）。
   const [charOpen, setCharOpen] = React.useState(false);
   const [sceneOpen, setSceneOpen] = React.useState(false);
@@ -729,6 +732,7 @@ function ShortMakerInner({
           projectId: draftId,
           shotId: id,
           name: `${displayName} 镜${shot.no} 首帧`,
+          endpointId: renderModels.imageEndpointId,
         });
         toast.success("首帧已加入后台生成");
         const done = await RenderApi.pollFrameJob(job.id, { timeoutMs: 240_000 });
@@ -750,6 +754,7 @@ function ShortMakerInner({
           projectId: draftId,
           shotId: id,
           frameUrl: shot.frameUrl,
+          endpointId: renderModels.videoEndpointId,
         });
         const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
         if (done.status === "failed") throw new Error(done.error_message || "视频生成失败，请重试");
@@ -1195,6 +1200,14 @@ function ShortMakerInner({
                     <span className="row gap-1 faint" style={{ fontSize: 11.5, flex: "none" }}>
                       <Edit size={12} /> 文字可直接改
                     </span>
+                  )}
+                  {shots.length > 0 && (
+                    <RenderModelSelect lane="image" models={renderModels.models}
+                      value={renderModels.imageEndpointId} onChange={renderModels.setImageEndpointId} />
+                  )}
+                  {shots.length > 0 && (
+                    <RenderModelSelect lane="video" models={renderModels.models}
+                      value={renderModels.videoEndpointId} onChange={renderModels.setVideoEndpointId} />
                   )}
                   {shots.length > 0 && (
                     <button type="button" className="chip" title="放大分镜表，方便编辑" onClick={() => setTableMax(true)}>

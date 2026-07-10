@@ -1,14 +1,32 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.model.AiModelEndpoint;
+import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.service.cdn.CdnUploader;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
+import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
+import com.aistareco.aep.service.storage.StorageQuotaService;
+import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * C-1 参考生效回报（applied_refs）纯函数矩阵：
@@ -120,5 +138,59 @@ class DramaRenderServiceTest {
         var a = DramaRenderService.computeClipAppliedRefs("https://cdn.example.com/f.png", null, true);
         assertEquals(1, a.requested());
         assertNull(a.items().get(0).reason());
+    }
+
+    // ── D-11：非法 endpoint_id → 503 ENDPOINT_NOT_ALLOWED，且 0 扣费 / 0 提交 ──────────
+
+    private final AiModelInvocationService invocation = mock(AiModelInvocationService.class);
+    private final CreditService creditService = mock(CreditService.class);
+    private final MaterialVideoJobService videoJobs = mock(MaterialVideoJobService.class);
+
+    private DramaRenderService renderSvc() {
+        return new DramaRenderService(
+                invocation,
+                mock(AiModelUsageService.class),
+                mock(com.aistareco.aep.service.ai.UpstreamModelHttp.class),
+                videoJobs,
+                creditService,
+                mock(CdnUploader.class),
+                mock(CdnUrlSigner.class),
+                mock(PlatformConfigService.class),
+                mock(PromptService.class),
+                mock(StorageQuotaService.class),
+                om);
+    }
+
+    @Test
+    void renderFrame_illegal_endpoint_id_503_and_no_charge() {
+        // 传旧式 prompt 绕过 promptService；endpoint_id 不在候选池 → resolveEndpoint 返回 empty。
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.IMAGE_GENERATION), eq("ep-ghost")))
+                .thenReturn(Optional.empty());
+        ObjectNode body = om.createObjectNode();
+        body.put("prompt", "一间昏暗的房间");
+        body.put("kind", "shot");
+        body.put("endpoint_id", "ep-ghost");
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> renderSvc().renderFrame(body, "u1"));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
+        assertEquals("ENDPOINT_NOT_ALLOWED", ex.getCode());
+        // §8.0：不扣费。
+        verify(creditService, never()).debit(any(), anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void renderClip_illegal_endpoint_id_503_and_no_submit() {
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("ep-ghost")))
+                .thenReturn(Optional.empty());
+        ObjectNode body = om.createObjectNode();
+        body.put("prompt", "镜头缓缓推进");
+        body.put("kind", "shot");
+        body.put("endpoint_id", "ep-ghost");
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> renderSvc().renderClip(body, "u1"));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
+        assertEquals("ENDPOINT_NOT_ALLOWED", ex.getCode());
+        // §8.0：不提交任务（videoJobs.submit 内部才 hold 积分）→ 不 hold。
+        verify(videoJobs, never()).submit(any(), any());
     }
 }

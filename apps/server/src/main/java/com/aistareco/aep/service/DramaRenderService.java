@@ -141,9 +141,25 @@ public class DramaRenderService {
         if (prompt.isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再渲染首帧");
         }
-        AiModelEndpoint ep = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
-                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
-                        "首帧渲染还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+        // D-11：可选 endpoint_id（候选端点白名单）。传了 → 校验命中（未命中 503 ENDPOINT_NOT_ALLOWED，
+        // 不扣费、不生成）；没传 → 默认端点（旧路径）。单价 override 随命中的 candidate。
+        String endpointId = text(body, "endpoint_id");
+        long cost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);
+        AiModelEndpoint ep;
+        if (endpointId != null && !endpointId.isBlank()) {
+            AiModelInvocationService.ResolvedEndpoint resolved =
+                    invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, endpointId)
+                            .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
+                                    "所选出片模型不可用或未在该用途候选池内，请刷新后重选。"));
+            ep = resolved.endpoint();
+            if (resolved.candidate() != null && resolved.candidate().getCreditCostOverride() != null) {
+                cost = resolved.candidate().getCreditCostOverride();
+            }
+        } else {
+            ep = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
+                            "首帧渲染还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+        }
         int count = clamp(body.path("count").asInt(1), 1, 4);
         String size = ratioToSize(orDefault(text(body, "ratio"), "9:16"));
 
@@ -183,8 +199,7 @@ public class DramaRenderService {
             frames.add(f);
         }
 
-        // 一次「首帧渲染」动作 = 固定单价（admin 短剧专区可配），与版数解耦
-        long cost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);
+        // 一次「首帧渲染」动作 = 固定单价（admin 短剧专区可配 / D-11 候选端点可 override），与版数解耦
         if (cost > 0) {
             creditService.debit(userId, cost, "DRAMA_FRAME",
                     "frame_" + UUID.randomUUID().toString().substring(0, 8),
@@ -335,6 +350,25 @@ public class DramaRenderService {
         String frameUrl = text(body, "frame_url");
         String lastFrameUrl = text(body, "last_frame_url");
 
+        // D-11：可选 endpoint_id（视频候选端点白名单）。传了 → 校验命中（未命中 503 ENDPOINT_NOT_ALLOWED，
+        // 不提交任务、不 hold 积分）；命中的 candidate 单价 override 覆盖 drama.credit.clip，并把 endpoint_id
+        // 随 item 存 variant_config 透传到 worker（§6.4 四层串联）；没传 → 默认端点（旧路径完全不变）。
+        String endpointId = text(body, "endpoint_id");
+        long clipCost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CLIP, 30);
+        AiModelEndpoint chosenVideoEp = null;
+        Boolean capFirstLastFrame = null;
+        if (endpointId != null && !endpointId.isBlank()) {
+            AiModelInvocationService.ResolvedEndpoint resolved =
+                    invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
+                            .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
+                                    "所选出片模型不可用或未在该用途候选池内，请刷新后重选。"));
+            chosenVideoEp = resolved.endpoint();
+            if (resolved.candidate() != null) {
+                if (resolved.candidate().getCreditCostOverride() != null) clipCost = resolved.candidate().getCreditCostOverride();
+                capFirstLastFrame = resolved.candidate().getSupportsFirstLastFrame();
+            }
+        }
+
         StringBuilder full = new StringBuilder(prompt);
         if (frameUrl != null && !frameUrl.isBlank()) {
             full.append("\n（严格基于该首帧画面延展动态：").append(frameUrl).append("）");
@@ -348,8 +382,8 @@ public class DramaRenderService {
 
         ObjectNode item = om.createObjectNode();
         item.put("kind", "drama-shot");
-        // 短剧按 app 维度独立定价（drama.credit.clip），不耦合带货线 material.video-generate。
-        item.put("credit_cost", configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CLIP, 30));
+        // 短剧按 app 维度独立定价（drama.credit.clip，D-11 候选端点可 override），不耦合带货线 material.video-generate。
+        item.put("credit_cost", clipCost);
         item.put("credit_label", "短剧分镜视频");
         item.put("name", name);
         item.put("prompt", full.toString());
@@ -361,6 +395,9 @@ public class DramaRenderService {
         if (sceneId != null && !sceneId.isBlank()) vc.put("scene_id", sceneId);
         if (shotId != null && !shotId.isBlank()) vc.put("shot_id", shotId);
         if (body != null && body.hasNonNull("episode_no")) vc.put("episode_no", body.path("episode_no").asInt());
+        // D-11：指定的候选端点随 item 透传到 worker（MaterialVideoWorker → MaterialVideoModelClient.pickEndpoint）；
+        // 缺省时不写此键 → worker 回落默认端点（celebrity 素材线默认路径完全不变）。
+        if (endpointId != null && !endpointId.isBlank()) vc.put("endpoint_id", endpointId);
         ObjectNode submit = om.createObjectNode();
         ArrayNode items = submit.putArray("items");
         items.add(item);
@@ -372,11 +409,45 @@ public class DramaRenderService {
         // （seedance / generic best-effort 支持；agnes 仅首帧）。判定不改变实际提交，纯做如实回报。
         JsonNode card = jobs.isEmpty() ? om.createObjectNode() : jobs.get(0);
         if (card instanceof ObjectNode on) {
-            AiModelEndpoint videoEp = invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION).orElse(null);
-            AppliedRefs applied = computeClipAppliedRefs(frameUrl, lastFrameUrl, supportsFirstLastFrame(videoEp));
+            // 用实际选中的端点判定首尾帧能力：D-11 候选端点显式 supportsFirstLastFrame 优先，否则关键字启发式。
+            AiModelEndpoint videoEp = chosenVideoEp != null ? chosenVideoEp
+                    : invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION).orElse(null);
+            boolean flf = capFirstLastFrame != null ? capFirstLastFrame : supportsFirstLastFrame(videoEp);
+            AppliedRefs applied = computeClipAppliedRefs(frameUrl, lastFrameUrl, flf);
             on.set("applied_refs", appliedRefsJson(applied));
         }
         return card;
+    }
+
+    // ── D-11：出片模型下拉（一用途多候选端点 + capability） ────────────────────────
+
+    /**
+     * 组装「出片模型」下拉数据：image = IMAGE_GENERATION 候选 / video = VIDEO_GENERATION 候选。
+     * 仅含启用的候选 + 启用的端点；creditCost = candidate.override ?? 用途默认单价（frame / clip）。
+     * capability 全 null 时前端按保守默认少送参考（非降级；applied_refs 会如实回报）。
+     */
+    public com.aistareco.aep.dto.RenderModelsDto listRenderModels() {
+        long frameCost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);
+        long clipCost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CLIP, 30);
+        return new com.aistareco.aep.dto.RenderModelsDto(
+                renderModelOptions(AiModelPurpose.IMAGE_GENERATION, frameCost),
+                renderModelOptions(AiModelPurpose.VIDEO_GENERATION, clipCost));
+    }
+
+    private List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> renderModelOptions(
+            AiModelPurpose purpose, long defaultCost) {
+        List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> out = new java.util.ArrayList<>();
+        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(purpose)) {
+            if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
+            long cost = r.candidate().getCreditCostOverride() != null ? r.candidate().getCreditCostOverride() : defaultCost;
+            out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
+                    r.endpoint().getId(),
+                    r.endpoint().getName(),
+                    r.isDefault(),
+                    com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate()),
+                    cost));
+        }
+        return out;
     }
 
     // ── C-1：参考生效回报（applied_refs） ─────────────────────────────────────────

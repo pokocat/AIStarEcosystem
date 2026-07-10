@@ -33,6 +33,42 @@ export interface AppliedRefs {
   items: AppliedRefItem[];
 }
 
+// D-11：一用途多候选端点 + 能力元数据。出片模型下拉消费 GET /me/drama/render/models。
+export interface EndpointCapability {
+  /** 最多可送参考图张数；null=未知（前端按保守默认 1 少送）。 */
+  maxRefImages?: number | null;
+  /** 是否支持首+尾帧关键帧插值；null=未知（按 false）。 */
+  supportsFirstLastFrame?: boolean | null;
+  /** 是否支持主体（subject）参考；null=未知（按 false）。 */
+  supportsSubjectReference?: boolean | null;
+  /** 单条视频最大时长（秒）；null=未知。 */
+  maxDurationSec?: number | null;
+}
+
+export interface RenderModelOption {
+  endpointId: string;
+  /** 端点展示名（用户友好；技术细节进 hover title）。 */
+  name: string;
+  /** 是否为该用途默认端点（前端下拉默认选中）。 */
+  isDefault: boolean;
+  capability: EndpointCapability;
+  /** 该端点在此用途下的积分单价（override ?? 用途默认单价）。 */
+  creditCost: number;
+}
+
+export interface RenderModelsResponse {
+  /** 首帧图像候选（用途 IMAGE_GENERATION）。 */
+  image: RenderModelOption[];
+  /** 视频候选（用途 VIDEO_GENERATION）。 */
+  video: RenderModelOption[];
+}
+
+/** 拉取「出片模型」下拉数据（image + video 两组）。USE_MOCK 下返回空组（前端隐藏下拉，走默认端点）。 */
+export async function listRenderModels(): Promise<RenderModelsResponse> {
+  if (USE_MOCK) return mockDelay({ image: [], video: [] }, 200);
+  return apiFetch<RenderModelsResponse>("/me/drama/render/models");
+}
+
 // v0.72：出图/出片提示词模板在 server 端（admin「短剧专区·提示词设置」可改）。
 // 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
@@ -51,6 +87,8 @@ export interface RenderFrameInput {
   shotId?: string;
   episodeNo?: number;
   name?: string;
+  /** D-11：指定出片模型（候选端点白名单）。缺省 → 默认端点；非法 → 503 ENDPOINT_NOT_ALLOWED（不扣费）。 */
+  endpointId?: string;
 }
 
 export interface RenderClipInput {
@@ -68,6 +106,8 @@ export interface RenderClipInput {
   frameUrl?: string;
   /** v0.97 P2：尾帧 URL（上一镜真实末帧 / decompose 末帧）→ seedance 首+尾帧双关键帧插值。 */
   lastFrameUrl?: string;
+  /** D-11：指定出片模型（候选端点白名单）。缺省 → 默认端点；非法 → 503 ENDPOINT_NOT_ALLOWED（不扣费）。 */
+  endpointId?: string;
 }
 
 export type RenderTaskStatus = "queued" | "running" | "rendering" | "ready" | "failed" | string;
@@ -180,6 +220,7 @@ export async function renderFrame(input: RenderFrameInput): Promise<RenderFrameR
         ratio: input.ratio,
         count: input.count,
         ref_images: input.refImages,
+        endpoint_id: input.endpointId,
       },
     },
   );
@@ -246,6 +287,7 @@ export async function submitFrameJob(input: RenderFrameInput): Promise<DramaFram
       shot_id: input.shotId,
       episode_no: input.episodeNo,
       name: input.name,
+      endpoint_id: input.endpointId,
     },
   });
 }
@@ -317,6 +359,7 @@ export async function renderClip(input: RenderClipInput): Promise<DramaEpisodeJo
       target: input.target,
       frame_url: input.frameUrl,
       last_frame_url: input.lastFrameUrl,
+      endpoint_id: input.endpointId,
     },
   });
 }

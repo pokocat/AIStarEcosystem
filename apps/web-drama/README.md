@@ -68,6 +68,19 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.100 · 2026-07-10 · 一致性引擎 D-11（一用途多候选端点 + capability + 出片模型下拉）
+
+> 把「用途→单端点」升级为「用途→N 候选端点（带 capability）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §3。`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化。
+
+- **新表 `ai_app_endpoint_candidate`**（purpose × endpoint 交点）：capability（maxRefImages / supportsFirstLastFrame / supportsSubjectReference / maxDurationSec，null=未知按保守默认）+ 可选单价 `creditCostOverride` + enabled/sortOrder。幂等 seeder（`AiAppCandidateSeeder` @Order 60）启动把每条现有绑定回填为置顶候选。
+- **`resolveEndpoint(purpose, endpointId)` 重载**：白名单命中返回 `ResolvedEndpoint`，未命中 empty → 调用方抛 503 `ENDPOINT_NOT_ALLOWED`（§8.0：不回退默认、不扣费）；传 null 委派默认端点。`listCandidates(purpose)` 供 /render/models 与 admin。
+- **出片模型下拉**：新端点 `GET /me/drama/render/models`（image + video 两组，isDefault 前端默认选中）；`RenderFrameInput`/`RenderClipInput` 加 `endpointId`（body `endpoint_id`）。前端共享 `render-model-select`（`useRenderModels` + `RenderModelSelect`），分镜表 / 短视频出片工具栏各挂「出图模型 / 出片模型」下拉——候选 ≤1 时不渲染（走默认端点）；能力细节进 hover title，宽度约束防溢出（AGENTS §不溢出）。
+- **单价 override**：命中 candidate 的 `creditCostOverride` 覆盖用途默认单价——frame 走 `debit`、clip 走 item `credit_cost`。
+- **视频线 endpoint_id 透传（最深改动，§6.4 四层串联）**：`renderClip` 把 endpoint_id 存进 `variant_config` → `MaterialVideoWorker` 抽出 → `MaterialVideoModelClient.submit/poll` 用指定候选端点（`SubmitResult` 带 endpointId，poll 落同一端点）。**带货素材线不写 endpoint_id → null → 默认端点，celebrity 默认路径完全不变**（回归测试覆盖）。
+- **admin**：「AI 应用绑定」drama 组每个用途加折叠「候选端点与能力」块——列候选、加/删、编辑 capability 4 字段 + 单价 override、设默认（改 AiAppBinding）；禁用浏览器原生 confirm（走 `useConfirm`）。
+- **测试**：`AiModelInvocationServiceTest`（resolveEndpoint 命中/未命中/停用/端点停用/null 回默认 + listCandidates 默认标记 6 例）、`AiAppCandidateSeederTest`（幂等 2 例）、`DramaRenderServiceTest`（非法 endpoint_id → 503 且 0 扣费/0 提交 2 例）、`MaterialVideoWorkerTest`（celebrity 默认路径 null endpoint 回归）。
+- **门禁**：server test-compile + 相关单测全绿（含 MaterialAiE2ETest / MaterialVideoModelClientTest 回归）+ web-drama typecheck/build + typecheck:all(10/10) + typecheck:admin + check:api-contract 全绿。
+
 ### v0.99 · 2026-07-10 · 一致性引擎 C-1（末帧 CDN 镜像 + 参考生效回报）
 
 > 一致性引擎 C 序列首阶段，修 G-6（真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §2）。范围选择：仅 `last_frame` 做 cdnKey 真值化；`video_url`/`thumbnail_url` 只加 `maybeSign` 兜底，完整 URL→key 迁移留独立 PR。
