@@ -38,12 +38,13 @@ import { CreditButton, GenSkeleton, Thumb } from "@/components/drama-ui";
 import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-form";
 import { ShortStoryboardTable } from "@/components/drama-workshop/short-storyboard-table";
-import { RenderModelSelect, useRenderModels } from "@/components/drama-workshop/render-model-select";
+import { RenderModelSelect } from "@/components/drama-workshop/render-model-select";
+import { useShotRender } from "@/lib/use-shot-render";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { MediaLightbox, type LightboxMedia } from "@/components/drama-workshop/media-lightbox";
 import { MarkdownLite } from "@/lib/markdown-lite";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
-import { DapAvatarsApi, DramaAssetsApi, RenderApi, ShortDramaApi, ShortsApi } from "@/api";
+import { DapAvatarsApi, DramaAssetsApi, ShortDramaApi, ShortsApi } from "@/api";
 import type { DapAvatarLite } from "@/api/dap-avatars";
 import type { ScriptMeta } from "@/api/short-drama";
 import type { ShortDraftData } from "@/api/shorts";
@@ -518,8 +519,10 @@ function ShortMakerInner({
   const [chatCollapsed, setChatCollapsed] = React.useState(false);
   // 分镜表放大：全屏弹层展示，方便逐镜编辑。
   const [tableMax, setTableMax] = React.useState(false);
-  // D-11：出片模型（候选端点）。缺省 / 单候选 → 下拉隐藏，走后端默认端点。
-  const renderModels = useRenderModels();
+  // C-3 逐镜渲染共享引擎（短视频线走 ref_slots 显式槽位：主角 + 场景参考，服务端按 capability 裁剪 + 回报）。
+  // D-11：出片模型（候选端点）缺省 / 单候选 → 下拉隐藏，走后端默认端点。
+  const shotRender = useShotRender({ projectId: draftId, kind: "short", ratio: "9:16" });
+  const renderModels = shotRender.models;
   // 主角 / 主场景 折叠（默认收起，展开后可上传参考图 / 绑定数字人 / 上传素材）。
   const [charOpen, setCharOpen] = React.useState(false);
   const [sceneOpen, setSceneOpen] = React.useState(false);
@@ -719,44 +722,39 @@ function ShortMakerInner({
     setBusy({ id, to });
     // 把「整体短视频说明」注入每镜提示词，保证风格 / 场景 / 主角跨镜一致 —— 出片更准确。
     const metaCtx = metaPromptPrefix(meta);
-    // 主角绑定的数字人 / 参考图 / 场景参考图 → 出首帧时作参考图，锁定形象。
-    const shortRefImages = [charAvatar?.image, charRef?.url, sceneRef?.url].filter((u): u is string => !!u);
+    // C-3：主角（数字人 / 参考图）+ 场景参考 → 结构化 ref_slots，服务端按端点 capability 裁剪 + 回报 applied_refs。
+    const refSlots = {
+      characterRefs: [charAvatar?.image, charRef?.url].filter((u): u is string => !!u).map((url) => ({ url })),
+      sceneRef: sceneRef?.url ? { url: sceneRef.url } : undefined,
+    };
     try {
       if (to === "frame") {
-        const job = await RenderApi.submitFrameJob({
-          kind: "short",
+        const job = await shotRender.submitFrameJob({
           vars: { metaPrefix: metaCtx, visual: shot.visual, styleSuffix: `竖屏短视频画面，${fmt.name}风格。` },
-          refImages: shortRefImages,
-          ratio: "9:16",
           count: 1,
-          projectId: draftId,
           shotId: id,
+          refSlots,
           name: `${displayName} 镜${shot.no} 首帧`,
-          endpointId: renderModels.imageEndpointId,
         });
         toast.success("首帧已加入后台生成");
-        const done = await RenderApi.pollFrameJob(job.id, { timeoutMs: 240_000 });
+        const done = await shotRender.pollFrame(job.id);
         if (done.status === "failed") throw new Error(done.error_message || "首帧生成失败，请重试");
         const frames = done.frames ?? done.result?.frames ?? [];
         if (!frames.length) throw new Error("首帧生成完成但没有返回图片，请重试");
         updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url, appliedRefs: done.applied_refs ?? done.result?.applied_refs });
         toast.success("首帧已生成，确认后再生成视频");
       } else {
-        const job = await RenderApi.renderClip({
-          kind: "short",
+        const job = await shotRender.renderClip({
           vars: {
             metaPrefix: metaCtx, visual: shot.visual,
             lineClause: shot.voText ? `口播：${shot.voText}` : "", styleSuffix: `竖屏短视频，${fmt.name}风格。`,
           },
           name: `${fmt.name} 镜${shot.no}`,
           durationSec: shot.dur,
-          ratio: "9:16",
-          projectId: draftId,
           shotId: id,
           frameUrl: shot.frameUrl,
-          endpointId: renderModels.videoEndpointId,
         });
-        const done = await RenderApi.pollClipJob(job.id, { timeoutMs: 240_000 });
+        const done = await shotRender.pollClip(job.id);
         if (done.status === "failed") throw new Error(done.error_message || "视频生成失败，请重试");
         updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id, appliedRefs: job.applied_refs });
         toast.success("镜头视频已生成");

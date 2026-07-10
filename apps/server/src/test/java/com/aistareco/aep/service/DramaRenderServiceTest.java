@@ -17,7 +17,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -29,10 +28,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * C-1 参考生效回报（applied_refs）纯函数矩阵：
- * computeFrameAppliedRefs（fetchable 过滤 + role=ref）/ computeClipAppliedRefs（首尾帧 vs 端点能力）/
- * supportsFirstLastFrame（协议关键字静态判定，与 MaterialVideoModelClient.protocolFor 同口径）。
- * 无 Spring / 无网络。
+ * C-1/C-3 参考生效回报（applied_refs）纯函数矩阵（DramaRenderService 侧）：
+ * computeFrameAppliedRefs（角色定妆锁脸参考的 fetchable 过滤，role=ref）/ supportsFirstLastFrame（协议关键字
+ * 静态判定，与 MaterialVideoModelClient.protocolFor 同口径）+ D-11 非法 endpoint_id → 503 不扣费。
+ * 首/末帧槽位归类（classifyClipFrames）已下沉 DramaReferenceAssembler（见 DramaReferenceAssemblerTest）。无 Spring / 无网络。
  */
 class DramaRenderServiceTest {
 
@@ -78,46 +77,6 @@ class DramaRenderServiceTest {
         assertEquals(0, b.requested());
     }
 
-    // ── computeClipAppliedRefs ──────────────────────────────────────────────
-
-    @Test
-    void clip_first_and_last_frame_applied_when_model_supports_flf() {
-        var a = DramaRenderService.computeClipAppliedRefs(
-                "https://cdn.example.com/first.png", "https://cdn.example.com/last.png", true);
-        assertEquals(2, a.requested());
-        assertEquals(2, a.appliedCount());
-        assertEquals("first_frame", a.items().get(0).role());
-        assertEquals("last_frame", a.items().get(1).role());
-    }
-
-    @Test
-    void clip_last_frame_dropped_when_model_has_no_flf() {
-        var a = DramaRenderService.computeClipAppliedRefs(
-                "https://cdn.example.com/first.png", "https://cdn.example.com/last.png", false);
-        assertEquals(2, a.requested());
-        assertEquals(1, a.appliedCount());
-        var last = a.items().get(1);
-        assertEquals("last_frame", last.role());
-        assertFalse(last.applied());
-        assertEquals("model_no_flf", last.reason());
-        // 首帧不受能力开关影响
-        assertTrue(a.items().get(0).applied());
-    }
-
-    @Test
-    void clip_local_frames_dropped_as_unfetchable() {
-        var a = DramaRenderService.computeClipAppliedRefs("/cdn/first.png", "/cdn/last.png", true);
-        assertEquals(2, a.requested());
-        assertEquals(0, a.appliedCount());
-        a.items().forEach(r -> assertEquals("local_unfetchable", r.reason()));
-    }
-
-    @Test
-    void clip_without_frames_yields_empty_report() {
-        var a = DramaRenderService.computeClipAppliedRefs(null, "", true);
-        assertEquals(0, a.requested());
-    }
-
     // ── supportsFirstLastFrame ─────────────────────────────────────────────
 
     @Test
@@ -131,13 +90,6 @@ class DramaRenderServiceTest {
         assertFalse(DramaRenderService.supportsFirstLastFrame(
                 AiModelEndpoint.builder().name("Agnes Video").baseUrl("https://agnes.example.com").build()));
         assertFalse(DramaRenderService.supportsFirstLastFrame(null));
-    }
-
-    @Test
-    void applied_refs_reason_is_null_for_applied_items() {
-        var a = DramaRenderService.computeClipAppliedRefs("https://cdn.example.com/f.png", null, true);
-        assertEquals(1, a.requested());
-        assertNull(a.items().get(0).reason());
     }
 
     // ── D-11：非法 endpoint_id → 503 ENDPOINT_NOT_ALLOWED，且 0 扣费 / 0 提交 ──────────
@@ -157,6 +109,7 @@ class DramaRenderServiceTest {
                 mock(CdnUrlSigner.class),
                 mock(PlatformConfigService.class),
                 mock(PromptService.class),
+                mock(DramaReferenceAssembler.class),
                 mock(StorageQuotaService.class),
                 om);
     }

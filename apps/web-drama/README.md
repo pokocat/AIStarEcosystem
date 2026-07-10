@@ -68,6 +68,17 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.102 · 2026-07-10 · 一致性引擎 C-3（服务端参考装配 Reference Assembler + 双线共享 useShotRender）
+
+> L1 收官：把此前散落在 `epscript.tsx` 的参考图优先级链（`shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`）**整体下沉服务端**——render 只传镜头坐标 `shot_ref`，服务端按 `payloadJson` + `drama_character`/`drama_scene` 实体自装配（角色/场景/上一镜真实末帧），按端点 capability（D-11）裁剪并回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §5。
+
+- **新服务 `DramaReferenceAssembler`**（`@Service`，纯装配、只读文档/实体，**绝不回写 payloadJson**，§6.1）：三级入参优先级 `shot_ref` > `ref_slots` > `ref_images`（老前端数组直通兼容）；`ref_leading`（拆镜末帧出图的本镜首帧锚）永远置顶。角色参考图 `drama_character.refImages`（angle=front 优先）→ 实体缺失兜底文档 `avatarImage`；场景参考 `drama_scene`（显式 `sceneRefId` 优先）→ 名称兜底；同场上一镜真实末帧**文档优先 + `MaterialVideoJob` 权威回退**（读 C-1 的 `lastFrameCdnKey`→signKey，不用会过期的 lastFrameUrl；`variant_config` 内存扫描）。
+- **capability 裁剪**（D-11 candidate，全 null → 保守默认 `maxRefImages=1`）：优先级保 identity `character_refs > scene_ref > prev_last_frame`（末位先砍），超出标 `over_max_refs`，本地 `/cdn` 标 `local_unfetchable`（如实回报不静默，§8.0/§6.2）。`applied_refs.items[].role` 升级为精确槽位（character/scene/prev_last_frame/first_frame/last_frame）。
+- **`DramaRenderService` 接入**：`renderFrame`/`renderClip` 收 `shot_ref`/`ref_slots`/`ref_leading` → Assembler；frame 用 candidate 的 `maxRefImages`，clip 用 `supportsFirstLastFrame`（候选显式优先，否则关键字启发式）派生首/末帧并归类。删旧 `computeClipAppliedRefs`/`appliedRefsJson`（并入 Assembler），保 `computeFrameAppliedRefs`（角色三视图锁脸参考仍用）。
+- **前端共享 `lib/use-shot-render.ts`**（放 lib，不随 stage 陪葬）：封装「shot_ref/ref_slots 打包 + 提交 + 轮询 + 出片模型选择」。`epscript` 删 `shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`（体检保留一个 UI 级 `sceneHasRef` 预判），render/decompose 改传 `shot_ref`（+ endpointId/chainConsistency 从 hook 透传）；`shorts/make` 删 `shortRefImages`，改走 `ref_slots`（显式主角/场景槽位）。两线净删约 60 行重复参考装配逻辑。
+- **测试**：`DramaReferenceAssemblerTest`（16 例）——裁剪 priority/dedup/capability(1/4/6)、classifyClipFrames(supportsFlf)、shot_ref 定位 episodeDocs 嵌套 shot + @cast 命中/文本兜底/全员、scene 显式/名称兜底、prev_last_frame 文档 vs job 权威回退、三级入参优先级；`DramaRenderServiceTest` 相应精简（clip 归类下沉）。
+- **门禁**：server test-compile + `DramaReferenceAssemblerTest`/`DramaRenderServiceTest`/`DramaReferenceAssetServiceTest`/`DramaProjectServiceTest`/`MaterialAiE2ETest`/`MaterialVideoWorkerTest`（61 例全绿）+ web-drama typecheck/build + typecheck:all(10/10) + check:api-contract 全绿。无新 path（复用 `/render/frame,clip`，summary 更新）。
+
 ### v0.101 · 2026-07-10 · 一致性引擎 C-2（角色/场景实体化 + 多角度参考图集）
 
 > L0 地基：把散落 `payloadJson` 的角色/场景升级为独立表（`drama_character` / `drama_scene`）+ 结构化多角度参考图集（cdnKey 真值）；渲染真值改读实体（过渡期双写 + 懒回填）；新增「角色一键三视图」端点。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §4。类型沿用 drama 本地约定（`mocks/drama-workshop/types.ts` + `api/*`，不进 packages/types）。

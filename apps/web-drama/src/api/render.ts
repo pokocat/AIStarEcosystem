@@ -69,6 +69,32 @@ export async function listRenderModels(): Promise<RenderModelsResponse> {
   return apiFetch<RenderModelsResponse>("/me/drama/render/models");
 }
 
+// C-3（一致性引擎 L1）：服务端参考装配入参。三级优先级 shot_ref > ref_slots > ref_images。
+//  - shot_ref：仅传镜头坐标，服务端按 payloadJson + drama_character/scene 实体自装配（角色/场景/上一镜末帧）。
+//  - ref_slots：前端已算好的结构化槽位（短视频线：主角/场景显式参考）。服务端只裁剪 + 回报。
+//  - ref_images：C-1 无差别数组（过渡兼容）。
+export interface ShotRefInput {
+  /** 项目 / 草稿 ID（缺省用 RenderFrameInput.projectId）。 */
+  projectId?: string;
+  episodeNo?: number;
+  sceneId?: string;
+  shotId?: string;
+  /** 镜间一致性承接开关（开 → 装配场景参考 + 同场上一镜真实末帧）。 */
+  chainConsistency?: boolean;
+}
+
+/** 结构化参考槽位（ref_slots 路径）。每项 cdnKey 优先（服务端 signKey 派生），否则 url。 */
+export interface RefSlotItem {
+  cdnKey?: string;
+  url?: string;
+  angle?: string;
+}
+export interface RefSlotsInput {
+  characterRefs?: RefSlotItem[];
+  sceneRef?: RefSlotItem;
+  prevLastFrame?: RefSlotItem;
+}
+
 // v0.72：出图/出片提示词模板在 server 端（admin「短剧专区·提示词设置」可改）。
 // 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
@@ -87,6 +113,12 @@ export interface RenderFrameInput {
   shotId?: string;
   episodeNo?: number;
   name?: string;
+  /** C-3：镜头坐标 → 服务端自装配参考（角色/场景/上一镜末帧）。传了则忽略 refImages。 */
+  shotRef?: ShotRefInput;
+  /** C-3：结构化参考槽位（短视频线显式主角/场景）。shotRef 缺省时生效。 */
+  refSlots?: RefSlotsInput;
+  /** C-3：置顶锚点（如拆镜末帧出图用本镜首帧作一致性锚），最高优先级 role=first_frame。 */
+  refLeading?: string[];
   /** D-11：指定出片模型（候选端点白名单）。缺省 → 默认端点；非法 → 503 ENDPOINT_NOT_ALLOWED（不扣费）。 */
   endpointId?: string;
 }
@@ -106,8 +138,31 @@ export interface RenderClipInput {
   frameUrl?: string;
   /** v0.97 P2：尾帧 URL（上一镜真实末帧 / decompose 末帧）→ seedance 首+尾帧双关键帧插值。 */
   lastFrameUrl?: string;
+  /** C-3：镜头坐标 → 服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；本镜末帧 → 同场下一镜开场首帧）。 */
+  shotRef?: ShotRefInput;
   /** D-11：指定出片模型（候选端点白名单）。缺省 → 默认端点；非法 → 503 ENDPOINT_NOT_ALLOWED（不扣费）。 */
   endpointId?: string;
+}
+
+/** shot_ref/ref_slots 出 wire（snake_case）。project_id 缺省回落 input.projectId。 */
+function shotRefBody(ref: ShotRefInput | undefined, fallbackProjectId?: string): Record<string, unknown> | undefined {
+  if (!ref) return undefined;
+  const projectId = ref.projectId ?? fallbackProjectId;
+  return {
+    project_id: projectId,
+    episode_no: ref.episodeNo,
+    scene_id: ref.sceneId,
+    shot_id: ref.shotId,
+    chain_consistency: ref.chainConsistency ?? false,
+  };
+}
+function refSlotsBody(slots: RefSlotsInput | undefined): Record<string, unknown> | undefined {
+  if (!slots) return undefined;
+  return {
+    character_refs: slots.characterRefs,
+    scene_ref: slots.sceneRef,
+    prev_last_frame: slots.prevLastFrame,
+  };
 }
 
 export type RenderTaskStatus = "queued" | "running" | "rendering" | "ready" | "failed" | string;
@@ -220,6 +275,10 @@ export async function renderFrame(input: RenderFrameInput): Promise<RenderFrameR
         ratio: input.ratio,
         count: input.count,
         ref_images: input.refImages,
+        shot_ref: shotRefBody(input.shotRef, input.projectId),
+        ref_slots: refSlotsBody(input.refSlots),
+        ref_leading: input.refLeading,
+        project_id: input.projectId,
         endpoint_id: input.endpointId,
       },
     },
@@ -282,6 +341,9 @@ export async function submitFrameJob(input: RenderFrameInput): Promise<DramaFram
       ratio: input.ratio,
       count: input.count,
       ref_images: input.refImages,
+      shot_ref: shotRefBody(input.shotRef, input.projectId),
+      ref_slots: refSlotsBody(input.refSlots),
+      ref_leading: input.refLeading,
       project_id: input.projectId,
       scene_id: input.sceneId,
       shot_id: input.shotId,
@@ -359,6 +421,7 @@ export async function renderClip(input: RenderClipInput): Promise<DramaEpisodeJo
       target: input.target,
       frame_url: input.frameUrl,
       last_frame_url: input.lastFrameUrl,
+      shot_ref: shotRefBody(input.shotRef, input.projectId),
       endpoint_id: input.endpointId,
     },
   });

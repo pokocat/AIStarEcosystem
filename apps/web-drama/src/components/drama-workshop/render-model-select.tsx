@@ -13,7 +13,7 @@ import type { RenderModelOption, RenderModelsResponse } from "@/api/render";
 
 export type RenderLane = "image" | "video";
 
-interface RenderModelsState {
+export interface RenderModelsState {
   models: RenderModelsResponse;
   imageEndpointId?: string;
   videoEndpointId?: string;

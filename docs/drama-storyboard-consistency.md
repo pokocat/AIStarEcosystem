@@ -1,7 +1,17 @@
 # 短剧分镜一致性优化方案（借鉴 ViMax）
 
-> last-reviewed：2026-06-30 / v0.98 工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（删视频工厂阶段，6→5 阶段）
+> last-reviewed：2026-07-10 / v0.102 一致性引擎 C-3：参考图装配从前端下沉服务端（见下「C-3 更新」）
+> 2026-06-30 / v0.98 工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（删视频工厂阶段，6→5 阶段）
 > v0.97 P0/P1/P2 全量落地（镜间承接 + 场景绑定 + 机位/电影语言 prompt + seedance 首尾帧双关键帧 + return_last_frame 链式承接闭环 + decompose 节点）
+
+## C-3 更新（2026-07-10，v0.102）：参考图装配下沉服务端
+
+> 一致性引擎 L1（真源 [`[Fabel5]drama-consistency-engine-design.md`](./%5BFabel5%5Ddrama-consistency-engine-design.md) §5）。**本文下方 v0.97/v0.98 关于前端 `shotRefImages` / `sceneRefUrlFor` / `prevFrameInScene` / `nextFrameInScene` 在 `epscript.tsx` 里拼 `ref_images` 的描述已过时**——那套参考图优先级链已整体移到服务端。
+
+- **前端不再拼 `ref_images`**：render 只传镜头坐标 `shot_ref{project_id,episode_no,scene_id,shot_id,chain_consistency}`；新服务 `DramaReferenceAssembler` 按 `payloadJson` + `drama_character`/`drama_scene` 实体（C-2）自装配角色参考（@cast→文本名→全员，front 优先）+ 场景参考（显式 sceneRefId→名称兜底）+ 同场上一镜真实末帧（文档优先 + `MaterialVideoJob.lastFrameCdnKey` 权威回退）+ 同场下一镜首帧（clip 尾帧）。
+- **按端点 capability 裁剪 + 回报**：D-11 candidate 的 `maxRefImages`（全 null→保守默认 1）裁剪，优先级保 identity（character>scene>prev，末位先砍），`applied_refs.items[].role` 为精确槽位；本地 `/cdn` 标 `local_unfetchable`（如实回报，§8.0）。
+- **过渡兼容**：`ref_slots`（短视频线显式主角/场景槽位，因 `DramaShort` 草稿无项目实体）> `ref_images`（老前端数组直通）仍受支持，优先级 `shot_ref > ref_slots > ref_images`。
+- **前端共享 hook**：真实的 `apps/web-drama/src/lib/use-shot-render.ts`（工作台分镜表 + 短视频工坊两线共用），封装 shot_ref/ref_slots 打包 + 提交 + 轮询 + 出片模型选择。`epscript` 一致性体检（`sceneHasRef` 场景绑定预判、上一镜是否出片）仍在前端（纯 UI 提示，不下沉）。
 
 ## v0.98 结构收敛（方案 B）
 
