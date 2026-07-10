@@ -126,7 +126,7 @@ export interface AiAppBinding {
   updatedAt?: string;
 }
 
-/** D-11：端点能力画像（null=未知，消费方按保守默认）。 */
+/** D-11：端点能力画像（null=未知，消费方按 legacy 兼容默认：参考图上限 6 / 首尾帧协议静态判定）。 */
 export interface EndpointCapability {
   maxRefImages?: number | null;
   supportsFirstLastFrame?: boolean | null;

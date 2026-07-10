@@ -35,7 +35,7 @@ export interface AppliedRefs {
 
 // D-11：一用途多候选端点 + 能力元数据。出片模型下拉消费 GET /me/drama/render/models。
 export interface EndpointCapability {
-  /** 最多可送参考图张数；null=未知（前端按保守默认 1 少送）。 */
+  /** 最多可送参考图张数；null=未知（服务端按 legacy 兼容默认 6 装配，= v0.97 前端既有上限）。 */
   maxRefImages?: number | null;
   /** 是否支持首+尾帧关键帧插值；null=未知（按 false）。 */
   supportsFirstLastFrame?: boolean | null;

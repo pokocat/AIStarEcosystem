@@ -81,6 +81,24 @@ class DramaReferenceAssemblerTest {
     }
 
     @Test
+    void legacy_default_maxRefImages_is_6_matching_v097_frontend_cap() {
+        // 回归守护：capability 未配置（D-11 seeder 回填的存量候选全 null）→ legacy 兼容默认 6
+        // （= v0.97 前端 shotRefImages slice(0,6) 既有上限），不是保守 1——否则升级当天
+        // 多参考一致性（角色+场景+镜间承接）被整体削到 1 张。
+        assertEquals(6, DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES);
+        List<Candidate> six = List.of(
+                c("character", "https://oss.test/c1.png"),
+                c("character", "https://oss.test/c2.png"),
+                c("character", "https://oss.test/c3.png"),
+                c("character", "https://oss.test/c4.png"),
+                c("scene", "https://oss.test/s.png"),
+                c("prev_last_frame", "https://oss.test/p.png"));
+        List<AppliedRef> m = DramaReferenceAssembler.classifyImageRefs(six, DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES);
+        assertEquals(6, m.stream().filter(AppliedRef::applied).count());
+        assertTrue(m.stream().noneMatch(r -> "over_max_refs".equals(r.reason())));
+    }
+
+    @Test
     void classify_dedup_keeps_first_occurrence() {
         List<Candidate> ordered = List.of(
                 c("character", "https://oss.test/same.png"),

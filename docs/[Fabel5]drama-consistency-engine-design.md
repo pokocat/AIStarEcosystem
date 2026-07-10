@@ -243,7 +243,7 @@ public class AiAppEndpointCandidate {
     private boolean enabled;
 
     // ── capability 元数据（C-3 参考装配 / C-5 路由读取）──
-    @Column(name = "max_ref_images")            private Integer maxRefImages;        // null=未知，按保守默认
+    @Column(name = "max_ref_images")            private Integer maxRefImages;        // null=未知，按 legacy 兼容默认（图像 6）
     @Column(name = "supports_first_last_frame") private Boolean supportsFirstLastFrame;
     @Column(name = "supports_subject_reference")private Boolean supportsSubjectReference;
     @Column(name = "max_duration_sec")          private Integer maxDurationSec;
@@ -262,7 +262,7 @@ public class AiAppEndpointCandidate {
 
 - **不迁移、不双写破坏**。`AiAppBinding` 继续是默认端点单一真源。
 - 新增幂等 seeder（`@Order` 在 AiAppBinding 相关 seeder 之后）：启动时对每条 `AiAppBinding` **确保存在一条对应 candidate**（`purpose+endpointId`，`sortOrder=0` 置顶，capability 全 null），`seedIfAbsent` 语义。这样老数据自动进候选池，UI 立即可见，无需人工。
-- capability 全 null 时 C-3 用**保守默认 profile**（见 §3.5），不阻断。
+- capability 全 null 时 C-3 用 **legacy 兼容默认**（见 §3.5，图像 maxRefImages→6、视频首尾帧→协议关键字静态判定），不阻断、不削弱既有多参考行为。
 
 ### 3.3 `resolveEndpoint` 重载签名
 
@@ -311,7 +311,7 @@ public record ResolvedEndpoint(AiModelEndpoint endpoint, AiAppEndpointCandidate 
 }
 ```
 
-capability 全 null → 前端/装配用**保守默认**：`maxRefImages=1, supportsFirstLastFrame=false, supportsSubjectReference=false`（宁少送不报错）。`creditCost` = override ?? 用途默认单价。
+capability 全 null → 装配用 **legacy 兼容默认**（显式配置仍最高优先）：`maxRefImages=6`（= v0.97 前端 `slice(0,6)` 既有上限，agnes-image 等已验证；seeder 回填的存量候选 capability 全 null，若按 1 会让升级当天多参考一致性整体削弱——C-3 review 回归修正）、`supportsFirstLastFrame` → C-1 协议关键字静态判定（seedance/generic 支持、agnes 仅首帧）、`supportsSubjectReference=false`（无静态判定依据）。`creditCost` = override ?? 用途默认单价。
 
 TS（`render.ts`）：`EndpointCapability` / `RenderModelOption` / `RenderModelsResponse` + `listRenderModels(purpose?)`。前端分镜行/短视频加“出片模型”下拉（消费此端点，替代 v0.98 删掉的假下拉）。
 
@@ -320,14 +320,14 @@ TS（`render.ts`）：`EndpointCapability` / `RenderModelOption` / `RenderModels
 `apps/admin/src/app/platform/ai-models/page.tsx`：drama 绑定组（`:214`）在“默认端点绑定”下加一块“**候选端点 + 能力**”：列 candidate、加/删、编辑 capability（4 个能力字段 + 单价 override）、设默认（= 改 AiAppBinding.endpointId）。
 - 新 admin API：`GET/POST/DELETE/PUT /api/admin/ai-app-bindings/{purpose}/candidates[/{endpointId}]`（新 controller 方法或新 `AdminAiAppCandidateController`）。
 - `apps/admin/src/api/ai-models.ts` 加对应方法 + 类型。
-- §8 UI：能力字段用 checkbox/number，空=未知（提示“留空按保守默认”）。
+- §8 UI：能力字段用 checkbox/number，空=未知（提示“留空按兼容默认”）。
 
 ### 3.7 §8.0 合规点
 
 - `resolveEndpoint(purpose,endpointId)` 未命中 → 503 `ENDPOINT_NOT_ALLOWED`，**不回退默认**、不扣费。
 - 候选池为空但传了 endpointId → 同上。
 - 没传 endpointId → 默认端点；默认端点也没绑 → 沿用现有 `IMAGE_NOT_CONFIGURED`/`VIDEO_NOT_CONFIGURED`（503）。
-- capability 缺失 → **不是降级**，是“按保守默认少送参考”，属 §8.0 允许的“传入不生效 ≠ 伪造产物”，且 C-1 的 `applied_refs` 已如实回报。
+- capability 缺失 → **不是降级**，按 legacy 兼容默认装配（与配置前行为一致，不少送）；显式配置后按配置裁剪，超出部分属 §8.0 允许的“传入不生效 ≠ 伪造产物”，且 C-1 的 `applied_refs` 已如实回报。
 
 ### 3.8 openapi diff
 

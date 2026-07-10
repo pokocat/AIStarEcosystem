@@ -169,10 +169,12 @@ public class DramaRenderService {
         storage.checkQuota("drama", userId, 0);
 
         // C-3（一致性引擎 L1）：服务端参考装配。按 shot_ref（服务端自装配角色/场景/上一镜末帧）/ ref_slots /
-        // ref_images（C-1 过渡兼容）三级入参装配真实资产，按端点 capability(maxRefImages，全 null→保守默认 1)
-        // 裁剪，回报 applied_refs（role 升级为精确槽位）。valid 才喂给图像模型；本地 /cdn 标 local_unfetchable。
+        // ref_images（C-1 过渡兼容）三级入参装配真实资产，按端点 capability(maxRefImages) 裁剪，回报
+        // applied_refs（role 升级为精确槽位）。valid 才喂给图像模型；本地 /cdn 标 local_unfetchable。
+        // maxRefImages 未显式配置（null，含 D-11 seeder 回填的全部存量候选）→ legacy 兼容默认 6
+        // （= v0.97 前端 slice(0,6) 既有上限）；按 1 会让升级当天多参考一致性整体削弱（回归修正）。
         int maxRefImages = resolved.candidate() != null && resolved.candidate().getMaxRefImages() != null
-                ? resolved.candidate().getMaxRefImages() : 1;
+                ? resolved.candidate().getMaxRefImages() : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES;
         DramaReferenceAssembler.FrameAssembly assembled = assembler.assembleFrame(body, userId,
                 new DramaReferenceAssembler.Capability(maxRefImages, false, false));
         java.util.List<String> validRefs = assembled.imageRefs();
@@ -385,13 +387,15 @@ public class DramaRenderService {
                 }
             }
         }
-        // 首尾帧能力：候选显式 supportsFirstLastFrame 优先，否则关键字启发式（agnes 仅首帧）。
+        // 首尾帧能力：候选显式 supportsFirstLastFrame 最高优先；未配置（null，含 seeder 回填存量候选）
+        // → C-1 协议关键字静态判定兜底（seedance/generic 支持、agnes 仅首帧），不一律 false（回归修正口径）。
         boolean flf = capFirstLastFrame != null ? capFirstLastFrame : supportsFirstLastFrame(chosenVideoEp);
 
         // C-3：服务端参考装配（视频线）。shot_ref 时服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；
         // 本镜末帧 → 同场下一镜开场首帧），无 shot_ref 时退回显式 frame_url/last_frame_url。
+        // clip 线只用首/末帧两槽，不走 maxRefImages 裁剪 → 传 legacy 默认占位。
         DramaReferenceAssembler.ClipAssembly assembled = assembler.assembleClip(body, userId,
-                new DramaReferenceAssembler.Capability(1, flf,
+                new DramaReferenceAssembler.Capability(DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES, flf,
                         capSubjectReference != null ? capSubjectReference : false));
         String frameUrl = assembled.firstFrameUrl();
         String lastFrameUrl = assembled.lastFrameUrl();
@@ -515,7 +519,8 @@ public class DramaRenderService {
     /**
      * 组装「出片模型」下拉数据：image = IMAGE_GENERATION 候选 / video = VIDEO_GENERATION 候选。
      * 仅含启用的候选 + 启用的端点；creditCost = candidate.override ?? 用途默认单价（frame / clip）。
-     * capability 全 null 时前端按保守默认少送参考（非降级；applied_refs 会如实回报）。
+     * capability 未配置（null）时按 legacy 兼容默认装配：maxRefImages→6（v0.97 前端既有上限）、
+     * 首尾帧→协议关键字静态判定（非降级；applied_refs 会如实回报）。
      */
     public com.aistareco.aep.dto.RenderModelsDto listRenderModels() {
         long frameCost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);

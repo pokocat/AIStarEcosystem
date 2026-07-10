@@ -1763,7 +1763,7 @@ function CandidatePanel({
                     <TableRow>
                       <TableHead className="w-[190px]">端点</TableHead>
                       <TableHead className="w-[70px]">启用</TableHead>
-                      <TableHead className="w-[92px]" title="最多可送参考图张数，留空按保守默认 1">参考图上限</TableHead>
+                      <TableHead className="w-[92px]" title="最多可送参考图张数，留空按兼容默认 6（与旧版行为一致）">参考图上限</TableHead>
                       <TableHead className="w-[80px]" title="是否支持首+尾帧关键帧衔接">首尾帧</TableHead>
                       <TableHead className="w-[80px]" title="是否支持主体（人物）参考">主体参考</TableHead>
                       <TableHead className="w-[92px]" title="单条视频最长秒数，留空为未知">最长秒数</TableHead>
@@ -1918,7 +1918,7 @@ function CandidatePanel({
                 <Button size="sm" variant="outline" className="h-8" disabled={!addId || addId === "__none__"} onClick={() => void add()}>
                   加入候选
                 </Button>
-                <span className="text-[10px] text-muted-foreground">能力字段留空 = 未知，装配时按保守默认少送参考（不会误报）。</span>
+                <span className="text-[10px] text-muted-foreground">能力字段留空 = 未知，装配按兼容默认（参考图上限 6、首尾帧按模型协议自动判定），与配置前行为一致。</span>
               </div>
             </>
           )}

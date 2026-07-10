@@ -72,12 +72,18 @@ public class DramaReferenceAssembler {
 
     // ── 对外契约 ─────────────────────────────────────────────────────────────────
 
-    /** 消费方（端点 capability）画像；全 null → {@link #conservativeDefault()}（宁少送不报错，§3.5）。 */
-    public record Capability(int maxRefImages, boolean supportsFirstLastFrame, boolean supportsSubjectReference) {
-        public static Capability conservativeDefault() {
-            return new Capability(1, false, false);
-        }
-    }
+    /**
+     * capability 未显式配置（D-11 candidate 字段为 null）时的 legacy 兼容默认参考图上限 = 6，
+     * 等于 v0.97 前端 `shotRefImages` 的 `slice(0,6)` 既有上限（agnes-image 等已验证的行为）。
+     * 不用「保守默认 1」——D-11 seeder 回填的存量候选 capability 全 null，按 1 会让升级当天
+     * 所有默认端点的多参考一致性（角色+场景+镜间承接）被整体削弱，与一致性引擎目标相悖。
+     */
+    public static final int LEGACY_MAX_REF_IMAGES = 6;
+
+    /** 消费方（端点 capability）画像。字段由调用方按「显式配置最高优先」解析：maxRefImages null →
+     *  {@link #LEGACY_MAX_REF_IMAGES}（legacy 兼容默认）；supportsFirstLastFrame null → C-1 协议关键字
+     *  静态判定（{@code DramaRenderService.supportsFirstLastFrame}：seedance/generic 支持、agnes 仅首帧）。 */
+    public record Capability(int maxRefImages, boolean supportsFirstLastFrame, boolean supportsSubjectReference) {}
 
     /** 首帧装配结果：imageRefs 送 {@code extra_body.image[]}；appliedRefs 回报「参考 N/M 生效」。 */
     public record FrameAssembly(List<String> imageRefs, ObjectNode appliedRefs) {}

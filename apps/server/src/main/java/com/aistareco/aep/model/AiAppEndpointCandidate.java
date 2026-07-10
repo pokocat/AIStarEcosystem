@@ -49,16 +49,16 @@ public class AiAppEndpointCandidate {
     @Column(nullable = false)
     private boolean enabled = true;
 
-    // ── capability 元数据（C-3 参考装配 / C-5 路由读取；null=未知 → 消费方按保守默认）──
-    /** 最多可送参考图张数；null=未知，装配按 1 保守默认。 */
+    // ── capability 元数据（C-3 参考装配 / C-5 路由读取；null=未知 → 消费方按 legacy 兼容默认）──
+    /** 最多可送参考图张数；null=未知，装配按 legacy 兼容默认 6（v0.97 前端既有上限）。 */
     @Column(name = "max_ref_images")
     private Integer maxRefImages;
 
-    /** 是否支持首+尾帧关键帧插值；null=未知，按 false 保守默认。 */
+    /** 是否支持首+尾帧关键帧插值；null=未知，按 C-1 协议关键字静态判定兜底（agnes 仅首帧，其余支持）。 */
     @Column(name = "supports_first_last_frame")
     private Boolean supportsFirstLastFrame;
 
-    /** 是否支持主体（subject）参考；null=未知，按 false 保守默认。 */
+    /** 是否支持主体（subject）参考；null=未知，按 false（无静态判定依据）。 */
     @Column(name = "supports_subject_reference")
     private Boolean supportsSubjectReference;
 
