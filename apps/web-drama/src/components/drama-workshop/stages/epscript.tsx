@@ -22,6 +22,8 @@ import { Avatar, CreditButton, dramaConfirm, Editable, GenSkeleton } from "@/com
 import { ConfirmDialog } from "@/components/common";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
+import { RenderModelSelect } from "../render-model-select";
+import { useShotRender } from "@/lib/use-shot-render";
 import { episodeContent, episodeTitle, getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { ProjectsApi, RenderApi } from "@/api";
@@ -62,6 +64,7 @@ function toFormShot(sh: BoardShot, refs: Material[]): FormShot {
     motionDesc: sh.motionDesc,
     variationType: sh.variationType,
     endFrameUrl: sh.endFrameUrl,
+    appliedRefs: sh.appliedRefs,
   };
 }
 
@@ -94,6 +97,7 @@ function toBoardShot(sh: FormShot, prevEngine?: BoardShot["engine"]): BoardShot 
     motionDesc: sh.motionDesc,
     variationType: sh.variationType,
     endFrameUrl: sh.endFrameUrl,
+    appliedRefs: sh.appliedRefs,
   };
 }
 
@@ -166,7 +170,11 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const [genScene, setGenScene] = React.useState<string | null>(null);
   const [busyMap, setBusyMap] = React.useState<Record<string, FormShot["flow"]>>({});
   // 镜间一致性承接：出首帧/出片时额外参考「角色图 + 场景参考图 + 同场上一镜画面」，保持人物/环境/光线连贯。
+  // C-3：参考装配已下沉服务端（render 传 shot_ref，服务端按项目文档 + 角色/场景实体自装配）。
   const [chainConsistency, setChainConsistency] = React.useState(true);
+  // C-3 逐镜渲染共享引擎（提交 + 轮询 + 出片模型选择；D-11 候选端点缺省 → 走后端默认）。
+  const shotRender = useShotRender({ projectId: ctx?.projectId, ratio: data.projectInfo.ratio, kind: "shot" });
+  const renderModels = shotRender.models;
   // 分镜表全屏放大（与内联共用同一份表，编辑实时同步），对齐短视频「放大」体验。
   const [tableMax, setTableMax] = React.useState(false);
   const [style, setStyle] = React.useState(
@@ -399,6 +407,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url,
         endFrameUrl: undefined, ffDesc: undefined, lfDesc: undefined, motionDesc: undefined, variationType: undefined,
         videoUrl: undefined, lastFrameUrl: undefined,
+        appliedRefs: job.applied_refs ?? job.result?.applied_refs,
       });
       clearBusy(id);
       if (spend) {
@@ -416,6 +425,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
         return;
       }
       if (job.status !== "ready" || !job.video_url) return;
+      // applied_refs 只在 renderClip 提交响应上（轮询卡不带）——这里不覆盖，沿用提交时落的值。
       applyRenderPatch(sceneId, id, { flow: "clip", videoUrl: job.video_url ?? undefined, lastFrameUrl: job.last_frame_url ?? undefined, jobId: job.id });
       clearBusy(id);
       if (spend) {
@@ -608,61 +618,23 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       styleSuffix: `${data.projectInfo.type}风格。`,
     };
   };
-  /** 本场景绑定的参考图：优先用显式绑定的场景资产（sceneRefId），否则回退按场名匹配（best-effort），保障场景一致性。 */
-  const sceneRefUrlFor = (sceneId: string): string | undefined => {
+  // C-3：参考图装配（出场角色 @cast→文本名→全员、场景参考、同场上一镜真实末帧、同场下一镜尾帧）已整体
+  // 下沉服务端 —— render 只传 shot_ref（镜头坐标 + chainConsistency），服务端按 payloadJson + 角色/场景实体
+  // 自装配并按端点 capability 裁剪、回报 applied_refs。前端不再拼 refImages（删 shotRefImages / sceneRefUrlFor /
+  // prevFrameInScene / nextFrameInScene）。本镜坐标 → shot_ref 的构造器：
+  const shotRefFor = React.useCallback(
+    (sceneId: string, shotId: string) => ({
+      episodeNo: state.ep, sceneId, shotId, chainConsistency,
+    }),
+    [state.ep, chainConsistency],
+  );
+  /** 出片前一致性体检用：本场是否已备场景参考图（显式绑定 sceneRefId 或按场名匹配到场景资产）。纯 UI 提示。 */
+  const sceneHasRef = (sceneId: string): boolean => {
     const sc = scenesRef.current.find((s) => s.id === sceneId);
     const assets = data.scenes ?? [];
-    if (sc?.sceneRefId) {
-      const bound = assets.find((a) => a.id === sc.sceneRefId);
-      if (bound?.refUrl) return bound.refUrl;
-    }
+    if (sc?.sceneRefId && assets.some((a) => a.id === sc.sceneRefId && (a.refUrl || a.refImages?.length))) return true;
     const place = sc?.place ?? "";
-    return assets.find((a) => a.refUrl && a.name && a.name.length >= 2 && place.includes(a.name))?.refUrl;
-  };
-  /** 同场上一镜的承接锚点：优先成片真实末帧，否则首帧。 */
-  const prevFrameInScene = (sceneId: string, shotId: string): string | undefined => {
-    const rows = shotsRef.current[sceneId] ?? [];
-    const idx = rows.findIndex((x) => x.id === shotId);
-    for (let i = idx - 1; i >= 0; i--) {
-      const f = rows[i].lastFrameUrl ?? rows[i].frameUrl ?? rows[i].frameUrls?.[0];
-      if (f) return f;
-    }
-    return undefined;
-  };
-  /** 同场下一镜的开场首帧：作本镜视频尾帧，切镜更平滑。 */
-  const nextFrameInScene = (sceneId: string, shotId: string): string | undefined => {
-    const rows = shotsRef.current[sceneId] ?? [];
-    const idx = rows.findIndex((x) => x.id === shotId);
-    for (let i = idx + 1; i < rows.length; i++) {
-      const f = rows[i].frameUrl ?? rows[i].frameUrls?.[0];
-      if (f) return f;
-    }
-    return undefined;
-  };
-  /** 出首帧参考图：出场角色图（@提及优先→画面文本名匹配兜底→本集全体）+ 场景参考图 + 同场上一镜画面。 */
-  const shotRefImages = (sceneId: string, shot: FormShot, extraLeading?: (string | undefined)[]): string[] => {
-    // 出场角色：优先本镜 @提及的 cast；老镜/未 @ → 从画面文本按角色名兜底匹配（避免塞错人）。
-    let cast = shot.cast ?? [];
-    if (cast.length === 0) {
-      const v = shot.visual || "";
-      cast = data.characters.filter((c) => c.name && c.name.length >= 2 && v.includes(c.name)).map((c) => c.id);
-    }
-    let charImgs = cast
-      .map((cid) => data.characters.find((c) => c.id === cid))
-      .map((c) => c?.avatarImage || c?.refUrl || "")
-      .filter(Boolean);
-    if (charImgs.length === 0) {
-      // 仍无（都没标、也没配参考图）→ 退回本集所有有形象的角色，尽量锁脸。
-      charImgs = data.characters.map((c) => c.avatarImage || c.refUrl || "").filter(Boolean);
-    }
-    const all = [...(extraLeading ?? []).filter((x): x is string => !!x), ...charImgs];
-    if (chainConsistency) {
-      const sref = sceneRefUrlFor(sceneId);
-      if (sref) all.push(sref);
-      const prev = prevFrameInScene(sceneId, shot.id);
-      if (prev) all.push(prev);
-    }
-    return Array.from(new Set(all)).slice(0, 6);
+    return assets.some((a) => (a.refUrl || a.refImages?.length) && a.name && a.name.length >= 2 && place.includes(a.name));
   };
 
   /** 单镜生成：frame=首帧参考图（后台图片任务，出 2 版），clip=直接出片/成片（后台视频任务 + 轮询，带首尾帧）。 */
@@ -673,7 +645,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       const c = data.characters.find((x) => x.id === cid);
       if (c && !c.avatarImage && !c.refUrl) issues.push(`出场角色「${c.name}」还没定妆图/参考图（没脸可锁，跨镜会不一样）`);
     }
-    if (chainConsistency && !sceneRefUrlFor(sceneId)) {
+    if (chainConsistency && !sceneHasRef(sceneId)) {
       issues.push("本场还没绑定场景参考图（环境无锚，跨镜场景易漂）");
     }
     // 串行提示仅在出片时给（首帧批量生成不打扰）：直出无首帧时最需要承接上一镜真实末帧。
@@ -714,41 +686,32 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     markBusy(id, to);
     try {
       if (to === "frame") {
-        const job = await RenderApi.submitFrameJob({
-          kind: "shot",
+        // C-3：只传 shot_ref，服务端自装配参考（角色/场景/上一镜末帧）+ 按 capability 裁剪。
+        const job = await shotRender.submitFrameJob({
           vars: shotVars(shot, "frame", sceneId),
-          refImages: shotRefImages(sceneId, shot),
-          ratio: data.projectInfo.ratio,
           count: 2,
-          projectId: ctx?.projectId,
-          sceneId,
-          shotId: id,
-          episodeNo: state.ep,
+          shotRef: shotRefFor(sceneId, id),
           name: `第${state.ep}集 镜${shot.no} 首帧`,
         });
         toast.success("首帧已加入后台生成");
         void watchFrameJob(job.id, sceneId, id, cost, msg, true);
       } else {
         const ownFrame = shot.frameUrl ?? shot.frameUrls?.[0];
-        // 基于已选首帧出片用本镜首帧；直出（无首帧）镜间承接用上一镜真实末帧作开场。
-        const firstFrame = ownFrame ?? (chainConsistency ? prevFrameInScene(sceneId, id) : undefined);
-        // 尾帧（双关键帧）：优先拆镜末帧，否则同场下一镜开场首帧（seedance 支持，下游不支持忽略）。
-        const endFrame = shot.endFrameUrl ?? (chainConsistency ? nextFrameInScene(sceneId, id) : undefined);
-        const job = await RenderApi.renderClip({
-          kind: "shot",
+        // C-3：本镜已锁首帧 / 拆镜末帧显式传入（in-memory 优先）；直出无首帧 + 尾帧的镜间承接
+        // （上一镜真实末帧 / 下一镜开场首帧）由服务端按 shot_ref 派生。
+        const job = await shotRender.renderClip({
           vars: shotVars(shot, "clip", sceneId),
           name: `第${state.ep}集 镜${shot.no}`,
           durationSec: shot.dur,
-          ratio: data.projectInfo.ratio,
-          projectId: ctx?.projectId,
           sceneId,
           shotId: id,
           episodeNo: state.ep,
           target: ownFrame ? "frame-clip" : "direct",
-          frameUrl: firstFrame,
-          lastFrameUrl: endFrame,
+          frameUrl: ownFrame,
+          lastFrameUrl: shot.endFrameUrl,
+          shotRef: shotRefFor(sceneId, id),
         });
-        applyRenderPatch(sceneId, id, { jobId: job.id });
+        applyRenderPatch(sceneId, id, { jobId: job.id, appliedRefs: job.applied_refs });
         toast.success("视频已加入后台生成");
         void watchClipJob(job.id, sceneId, id, cost, msg, true);
       }
@@ -776,11 +739,11 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       if (d.lfDesc?.trim()) {
         try {
           const ownFrame = shot.frameUrl ?? shot.frameUrls?.[0];
-          const frames = await RenderApi.renderFrame({
-            kind: "shot",
+          // C-3：末帧以本镜首帧为锚（refLeading 置顶）+ shot_ref 自装配角色/场景，保首尾同源。
+          const { frames } = await shotRender.renderFrame({
             vars: { ...shotVars(shot, "frame", sceneId), visual: d.lfDesc },
-            refImages: shotRefImages(sceneId, shot, [ownFrame]),
-            ratio: data.projectInfo.ratio,
+            shotRef: shotRefFor(sceneId, id),
+            refLeading: ownFrame ? [ownFrame] : undefined,
             count: 1,
           });
           endFrameUrl = frames[0]?.url;
@@ -933,6 +896,14 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
                   <button type="button" className="chip" style={{ height: 24, fontSize: 11 }} title="全屏放大分镜表，方便逐镜编辑" onClick={() => setTableMax(true)}>
                     <Maximize2 size={12} /> 放大
                   </button>
+                )}
+                {!locked && (
+                  <RenderModelSelect lane="image" models={renderModels.models}
+                    value={renderModels.imageEndpointId} onChange={renderModels.setImageEndpointId} />
+                )}
+                {!locked && (
+                  <RenderModelSelect lane="video" models={renderModels.models}
+                    value={renderModels.videoEndpointId} onChange={renderModels.setVideoEndpointId} />
                 )}
                 {!locked && (
                   <label className="row gap-2" style={{ alignItems: "center", cursor: "pointer", fontSize: 11.5, color: "var(--ink-2)" }} title="出首帧/出片时额外参考同场上一镜画面 + 场景参考图，保持人物/环境/光线连贯">

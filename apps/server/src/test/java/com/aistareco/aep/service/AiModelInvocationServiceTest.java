@@ -3,10 +3,12 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
 import com.aistareco.aep.model.AiAppBinding;
+import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.repository.AiAppBindingRepository;
+import com.aistareco.aep.repository.AiAppEndpointCandidateRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
@@ -99,7 +101,7 @@ class AiModelInvocationServiceTest {
         binding.setEndpointId(ep.getId());
         when(bindingRepo.findById(purpose)).thenReturn(Optional.of(binding));
         when(endpointRepo.findById(ep.getId())).thenReturn(Optional.of(ep));
-        return new AiModelInvocationService(endpointRepo, bindingRepo,
+        return new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                 new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
     }
@@ -165,7 +167,7 @@ class AiModelInvocationServiceTest {
         when(bindingRepo.findById(AiModelPurpose.SCRIPT_DRAFT)).thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(endpointRepo, bindingRepo,
+                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                 new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).invokeChat(
                         AiModelPurpose.SCRIPT_DRAFT,
@@ -271,7 +273,7 @@ class AiModelInvocationServiceTest {
         AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
         when(endpointRepo.findById("pX")).thenReturn(Optional.of(ep));
 
-        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                 new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pX");
 
@@ -294,7 +296,7 @@ class AiModelInvocationServiceTest {
         AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
         when(endpointRepo.findById("pY")).thenReturn(Optional.of(ep));
 
-        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo,
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                 new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pY");
         assertEquals(false, result.get("ok"));
@@ -308,7 +310,7 @@ class AiModelInvocationServiceTest {
         when(endpointRepo.findById("nope")).thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class, () ->
-                new AiModelInvocationService(endpointRepo, bindingRepo,
+                new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                 new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
@@ -367,8 +369,127 @@ class AiModelInvocationServiceTest {
     private static AiModelInvocationService bareSvc() {
         return new AiModelInvocationService(
                 mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),
+                mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
                 new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+    }
+
+    // ── D-11：resolveEndpoint(purpose, endpointId) 白名单 + listCandidates ──────────
+
+    /** 装配一个带候选池的 service：默认端点 defaultEp + 若干候选（endpointId → (candidate, endpoint)）。 */
+    private static AiModelInvocationService candidateSvc(AiModelPurpose purpose, AiModelEndpoint defaultEp,
+                                                        List<AiAppEndpointCandidate> candidates,
+                                                        List<AiModelEndpoint> endpoints) {
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        AiAppEndpointCandidateRepository candidateRepo = mock(AiAppEndpointCandidateRepository.class);
+        if (defaultEp != null) {
+            AiAppBinding binding = new AiAppBinding();
+            binding.setPurpose(purpose);
+            binding.setEndpointId(defaultEp.getId());
+            when(bindingRepo.findById(purpose)).thenReturn(Optional.of(binding));
+        } else {
+            when(bindingRepo.findById(purpose)).thenReturn(Optional.empty());
+        }
+        for (AiModelEndpoint e : endpoints) {
+            when(endpointRepo.findById(e.getId())).thenReturn(Optional.of(e));
+        }
+        for (AiAppEndpointCandidate c : candidates) {
+            when(candidateRepo.findByPurposeAndEndpointId(purpose, c.getEndpointId()))
+                    .thenReturn(Optional.of(c));
+        }
+        when(candidateRepo.findByPurposeOrderBySortOrderAscCreatedAtAsc(purpose)).thenReturn(candidates);
+        return new AiModelInvocationService(endpointRepo, bindingRepo, candidateRepo,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+    }
+
+    private static AiAppEndpointCandidate candidate(AiModelPurpose purpose, String endpointId,
+                                                    boolean enabled, int sortOrder) {
+        return AiAppEndpointCandidate.builder()
+                .id("cand-" + endpointId).purpose(purpose).endpointId(endpointId)
+                .enabled(enabled).sortOrder(sortOrder).build();
+    }
+
+    @Test
+    void resolveEndpointWithNullIdDelegatesToDefault() {
+        AiModelEndpoint def = endpoint("ep-def", "http://127.0.0.1:1/v1",
+                AiModelProviderType.OPENAI, "m", "sk", true);
+        AiModelInvocationService svc = candidateSvc(AiModelPurpose.VIDEO_GENERATION, def,
+                List.of(candidate(AiModelPurpose.VIDEO_GENERATION, "ep-def", true, 0)), List.of(def));
+
+        Optional<AiModelInvocationService.ResolvedEndpoint> r =
+                svc.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null);
+        assertTrue(r.isPresent());
+        assertEquals("ep-def", r.get().endpoint().getId());
+        assertTrue(r.get().isDefault());
+    }
+
+    @Test
+    void resolveEndpointWithAllowedIdHits() {
+        AiModelEndpoint def = endpoint("ep-def", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m", "sk", true);
+        AiModelEndpoint alt = endpoint("ep-alt", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m2", "sk2", true);
+        AiModelInvocationService svc = candidateSvc(AiModelPurpose.VIDEO_GENERATION, def,
+                List.of(candidate(AiModelPurpose.VIDEO_GENERATION, "ep-def", true, 0),
+                        candidate(AiModelPurpose.VIDEO_GENERATION, "ep-alt", true, 10)),
+                List.of(def, alt));
+
+        Optional<AiModelInvocationService.ResolvedEndpoint> r =
+                svc.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, "ep-alt");
+        assertTrue(r.isPresent());
+        assertEquals("ep-alt", r.get().endpoint().getId());
+        assertFalse(r.get().isDefault(), "非默认端点 isDefault=false");
+    }
+
+    @Test
+    void resolveEndpointWithUnknownIdIsEmpty() {
+        AiModelEndpoint def = endpoint("ep-def", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m", "sk", true);
+        AiModelInvocationService svc = candidateSvc(AiModelPurpose.VIDEO_GENERATION, def,
+                List.of(candidate(AiModelPurpose.VIDEO_GENERATION, "ep-def", true, 0)), List.of(def));
+
+        // 不在候选池的 endpointId → empty（调用方抛 503 ENDPOINT_NOT_ALLOWED，不回退默认）。
+        assertTrue(svc.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, "ep-ghost").isEmpty());
+    }
+
+    @Test
+    void resolveEndpointWithDisabledCandidateIsEmpty() {
+        AiModelEndpoint def = endpoint("ep-def", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m", "sk", true);
+        AiModelEndpoint alt = endpoint("ep-alt", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m2", "sk2", true);
+        AiModelInvocationService svc = candidateSvc(AiModelPurpose.VIDEO_GENERATION, def,
+                List.of(candidate(AiModelPurpose.VIDEO_GENERATION, "ep-def", true, 0),
+                        candidate(AiModelPurpose.VIDEO_GENERATION, "ep-alt", false, 10)),
+                List.of(def, alt));
+
+        assertTrue(svc.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, "ep-alt").isEmpty(),
+                "候选停用 → empty");
+    }
+
+    @Test
+    void resolveEndpointWithDisabledEndpointIsEmpty() {
+        AiModelEndpoint def = endpoint("ep-def", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m", "sk", true);
+        AiModelEndpoint alt = endpoint("ep-alt", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m2", "sk2", false);
+        AiModelInvocationService svc = candidateSvc(AiModelPurpose.VIDEO_GENERATION, def,
+                List.of(candidate(AiModelPurpose.VIDEO_GENERATION, "ep-alt", true, 10)),
+                List.of(def, alt));
+
+        assertTrue(svc.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, "ep-alt").isEmpty(),
+                "候选启用但端点停用 → empty");
+    }
+
+    @Test
+    void listCandidatesMarksDefault() {
+        AiModelEndpoint def = endpoint("ep-def", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m", "sk", true);
+        AiModelEndpoint alt = endpoint("ep-alt", "http://127.0.0.1:1/v1", AiModelProviderType.OPENAI, "m2", "sk2", true);
+        AiModelInvocationService svc = candidateSvc(AiModelPurpose.VIDEO_GENERATION, def,
+                List.of(candidate(AiModelPurpose.VIDEO_GENERATION, "ep-def", true, 0),
+                        candidate(AiModelPurpose.VIDEO_GENERATION, "ep-alt", true, 10)),
+                List.of(def, alt));
+
+        List<AiModelInvocationService.ResolvedEndpoint> list = svc.listCandidates(AiModelPurpose.VIDEO_GENERATION);
+        assertEquals(2, list.size());
+        assertTrue(list.get(0).isDefault(), "默认端点 isDefault=true");
+        assertEquals("ep-def", list.get(0).endpoint().getId());
+        assertFalse(list.get(1).isDefault());
     }
 
     /** JDK 内置 HTTP server：记录收到的请求，对任意路径返回预设 status + body。 */

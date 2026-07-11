@@ -105,6 +105,17 @@ export function episodeContent(ep: { content?: string; hook?: string; synopsis?:
   return [ep.hook, ep.synopsis, ep.beat].map((s) => (s || "").trim()).filter(Boolean).join("。");
 }
 
+/**
+ * C-2 一致性引擎：结构化多角度参考图集元素。真值是 cdnKey，url 为出 wire 派生（signer.signKey）。
+ * angle：front 正面 / side 侧面 / full 全身 / expression 表情 / env 空景（场景）。
+ */
+export interface DramaRefImage {
+  cdnKey: string;
+  url?: string;
+  angle?: "front" | "side" | "full" | "expression" | "env" | string;
+  label?: string;
+}
+
 export interface CharacterDef {
   id: string;
   name: string;
@@ -123,6 +134,8 @@ export interface CharacterDef {
   refUrl?: string;
   /** v0.89：参考图 OSS key（真值；URL 为派生展示值）。 */
   refCdnKey?: string;
+  /** C-2：多角度参考图集（正/侧/全身…）。渲染真值走后端实体表，读时 overlay 进来；round-trip 保存回带。 */
+  refImages?: DramaRefImage[];
 }
 
 export interface ScriptLine {
@@ -190,6 +203,8 @@ export interface BoardShot {
   jobId?: string;
   /** 渲染流水状态（draft/frame/frameLocked/clip/done），缺省 draft */
   flow?: string;
+  /** C-1（一致性引擎）：上次首帧/出片的参考生效回报（参考 N/M 生效），render 回填。 */
+  appliedRefs?: import("@/api/render").AppliedRefs;
 }
 
 export interface BoardScene {
@@ -268,6 +283,8 @@ export interface SceneAsset {
   refUrl?: string;
   /** 参考图 OSS key（真值；出 wire 派生 refUrl） */
   refCdnKey?: string;
+  /** C-2：多角度参考图集（跨集共享取景地）。渲染真值走后端实体表，读时 overlay 进来。 */
+  refImages?: DramaRefImage[];
 }
 
 /** v0.88：大纲分集 AI 生成参数（范围/每集时长），落库以便回溯（草稿态）。 */

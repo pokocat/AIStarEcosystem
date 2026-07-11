@@ -72,18 +72,23 @@ public class MaterialVideoModelClient {
 
     /** 是否已配置可用的视频生成端点（用途 VIDEO_GENERATION 已绑定 + 有 apiKey）。 */
     public boolean isConfigured() {
-        AiModelEndpoint p = pickEndpoint();
+        AiModelEndpoint p = pickEndpoint(null);
         return p != null && decryptKey(p) != null;
     }
 
     /** 失败快：未绑定端点 / 无 apiKey 时抛 VIDEO_NOT_CONFIGURED（带明确提示）。 */
     public void ensureConfigured() {
-        requireKey(requireEndpoint());
+        requireKey(requireEndpoint(null));
     }
 
-    /** 提交一个生成任务，返回外部 task_id + 实际用到的端点 / model。appCode 用于用量归属（drama / celebrity）。 */
-    public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId, String appCode) {
-        AiModelEndpoint p = requireEndpoint();
+    /**
+     * 提交一个生成任务，返回外部 task_id + 实际用到的端点 / model。appCode 用于用量归属（drama / celebrity）。
+     * D-11：endpointId 非空 → 用指定候选端点（白名单，未命中抛 ENDPOINT_NOT_ALLOWED）；为空 → 默认端点（旧路径不变）。
+     * 返回的 {@link SubmitResult} 带上 endpointId，使后续 poll 落到同一端点（同 baseUrl/apiKey）。
+     */
+    public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId,
+                               String appCode, String endpointId) {
+        AiModelEndpoint p = requireEndpoint(endpointId);
         String apiKey = requireKey(p);
         String model = (p.getModel() != null && !p.getModel().isBlank())
                 ? p.getModel() : props.getDefaultModel();
@@ -159,7 +164,7 @@ public class MaterialVideoModelClient {
             recordVideoUsage(p, model, durationSec, true, ownerUserId, appCode, requestId,
                     (taskId != null && !taskId.isBlank()) ? taskId : videoId,
                     elapsedMs(startNanos), null, null);
-            return new SubmitResult(taskId, videoId, p.getName(), model, protocol);
+            return new SubmitResult(taskId, videoId, p.getName(), model, protocol, endpointId);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -216,12 +221,13 @@ public class MaterialVideoModelClient {
 
     /** 轮询一个任务的状态。失败抛 BusinessException（含 HTTP 详情）。 */
     public PollResult poll(String taskId) {
-        return poll(new SubmitResult(taskId, null, null, null, PROTOCOL_GENERIC));
+        return poll(new SubmitResult(taskId, null, null, null, PROTOCOL_GENERIC, null));
     }
 
-    /** 轮询一个任务的状态。失败抛 BusinessException（含 HTTP 详情）。 */
+    /** 轮询一个任务的状态。失败抛 BusinessException（含 HTTP 详情）。
+     *  D-11：用 submit 时选定的同一端点轮询（submit.endpointId()），确保 baseUrl/apiKey 一致。 */
     public PollResult poll(SubmitResult submit) {
-        AiModelEndpoint p = requireEndpoint();
+        AiModelEndpoint p = requireEndpoint(submit.endpointId());
         String apiKey = requireKey(p);
         String idForLog = submit.externalId();
         URI uri = pollUri(p, submit);
@@ -290,14 +296,22 @@ public class MaterialVideoModelClient {
 
     // ── 端点选取（v0.41：用途 VIDEO_GENERATION → ai_app_binding → 端点） ─────────────
 
-    private AiModelEndpoint pickEndpoint() {
+    /** D-11：endpointId 为空 → 默认端点（旧行为不变）；指定 → 候选端点白名单，未命中抛 ENDPOINT_NOT_ALLOWED。 */
+    private AiModelEndpoint pickEndpoint(String endpointId) {
+        if (endpointId != null && !endpointId.isBlank()) {
+            return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
+                    .map(AiModelInvocationService.ResolvedEndpoint::endpoint)
+                    .filter(p -> p.getBaseUrl() != null && !p.getBaseUrl().isBlank())
+                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
+                            "所选出片模型不可用或未在「视频生成」候选池内，请刷新后重选。"));
+        }
         return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)
                 .filter(p -> p.getBaseUrl() != null && !p.getBaseUrl().isBlank())
                 .orElse(null);
     }
 
-    private AiModelEndpoint requireEndpoint() {
-        AiModelEndpoint p = pickEndpoint();
+    private AiModelEndpoint requireEndpoint(String endpointId) {
+        AiModelEndpoint p = pickEndpoint(endpointId);
         if (p == null) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_NOT_CONFIGURED",
                     "未为「视频生成」绑定 AI 模型端点。请到 管理后台 → 平台与配置 → AI 模型与 Key →"
@@ -673,7 +687,8 @@ public class MaterialVideoModelClient {
 
     // ── 结果记录 ────────────────────────────────────────────────────────────────
 
-    public record SubmitResult(String taskId, String videoId, String providerUsed, String modelUsed, String protocol) {
+    public record SubmitResult(String taskId, String videoId, String providerUsed, String modelUsed, String protocol,
+                               String endpointId) {
         String externalId() {
             return (taskId != null && !taskId.isBlank()) ? taskId : videoId;
         }

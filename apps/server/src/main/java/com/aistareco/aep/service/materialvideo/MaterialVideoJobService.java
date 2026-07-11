@@ -44,8 +44,8 @@ public class MaterialVideoJobService {
     private final CreditService creditService;
     private final CelebrityActionPricingService actionPricing;
     private final ProductService productService;
+    private final CdnUrlSigner signer;
     private final ObjectMapper om;
-    private final CdnUrlSigner cdnUrlSigner;
 
     public MaterialVideoJobService(MaterialVideoJobRepository jobRepo,
                                    MaterialVideoModelClient modelClient,
@@ -54,15 +54,15 @@ public class MaterialVideoJobService {
                                    CelebrityActionPricingService actionPricing,
                                    ProductService productService,
                                    ObjectMapper om,
-                                   CdnUrlSigner cdnUrlSigner) {
+                                   CdnUrlSigner signer) {
         this.jobRepo = jobRepo;
         this.modelClient = modelClient;
         this.worker = worker;
         this.creditService = creditService;
         this.actionPricing = actionPricing;
         this.productService = productService;
+        this.signer = signer;
         this.om = om;
-        this.cdnUrlSigner = cdnUrlSigner;
     }
 
     // ── 提交 ─────────────────────────────────────────────────────────────────
@@ -219,15 +219,17 @@ public class MaterialVideoJobService {
         card.put("model", orDefault(job.getModelUsed(), "ai-video"));
         card.put("progress_pct", job.getProgress());
         card.put("stage", stageLabel(job.getStatus()));
-        // v0.99 例行 QA（AGENTS.md §4.7.7 教训同类新发现）：videoUrl/thumbnailUrl/lastFrameUrl
-        // 落库时是 AliyunOssCdnUploader.upload() 返回的未签名 publicUrlFor(key)，此前 toCard 原样
-        // 透传出 wire —— driver=oss 且开启防盗刷签名（AEP_CDN_SIGNED_URL_STRATEGY=cdn）时这三个
-        // URL 会直接 403（不是 1h 后过期，是从落库那一刻就没签），带货视频生成功能整条链路图裂/黑屏。
-        // 该实体没有 cdnKey 列，走 maybeSign 的「从 URL 反抽 key 重签」兜底路径（同 DramaProject/
-        // DramaShort 已有先例），无需新增列 / 数据迁移。
-        if (job.getVideoUrl() != null) card.put("video_url", cdnUrlSigner.maybeSign(job.getVideoUrl()));
-        if (job.getThumbnailUrl() != null) card.put("thumbnail_url", cdnUrlSigner.maybeSign(job.getThumbnailUrl()));
-        if (job.getLastFrameUrl() != null) card.put("last_frame_url", cdnUrlSigner.maybeSign(job.getLastFrameUrl()));
+        // 资产 URL 出 wire 经 signer（OSS 域才签，local /cdn 相对路径不匹配 base → 原样返回，dev 零影响）。
+        // C-1 范围选择：last_frame 走 cdnKey 真值派生（§4.7.4，不过期）+ fallback 旧 lastFrameUrl；
+        // video/thumbnail 只做 maybeSign 兜底（顺手偿还 §4.7.6 URL 时效欠债，不做完整 URL→key 迁移）。
+        if (job.getVideoUrl() != null) card.put("video_url", signer.maybeSign(job.getVideoUrl()));
+        if (job.getThumbnailUrl() != null) card.put("thumbnail_url", signer.maybeSign(job.getThumbnailUrl()));
+        String lastFrame = job.getLastFrameCdnKey() != null && !job.getLastFrameCdnKey().isBlank()
+                ? signer.signKey(job.getLastFrameCdnKey()) : null;
+        if (lastFrame == null && job.getLastFrameUrl() != null) {
+            lastFrame = signer.maybeSign(job.getLastFrameUrl());
+        }
+        if (lastFrame != null) card.put("last_frame_url", lastFrame);
         if (job.getErrorMessage() != null) card.put("error_message", job.getErrorMessage());
         if (job.getExternalTaskId() != null) card.put("external_task_id", job.getExternalTaskId());
         return card;

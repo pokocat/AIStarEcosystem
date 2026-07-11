@@ -48,6 +48,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
   const [drafting, setDrafting] = React.useState(false);
   const [sceneBusy, setSceneBusy] = React.useState<Record<string, boolean>>({});
   const [charBusy, setCharBusy] = React.useState<Record<string, boolean>>({});
+  const [sheetBusy, setSheetBusy] = React.useState<Record<string, boolean>>({}); // C-2 三视图生成中
   const [lb, setLb] = React.useState<LightboxMedia | null>(null); // 看大图
   const [aiEditScene, setAiEditScene] = React.useState<SceneAsset | null>(null); // 场景 AI 修图
   const [binding, setBinding] = React.useState<CharacterDef | null>(null); // 正在绑定数字人的角色
@@ -131,7 +132,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     if (charBusy[c.id]) return;
     setCharBusy((m) => ({ ...m, [c.id]: true }));
     try {
-      const frames = await RenderApi.renderFrame({
+      const { frames } = await RenderApi.renderFrame({
         kind: "character",
         vars: {
           name: c.name,
@@ -158,6 +159,28 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     }
   };
 
+  // C-2：一键生成 正/侧/全身 三视图参考图集（后端 hold→逐角度 commit，产物落实体表）。
+  // 与 genCharRef 同惯例：dispatch setChars 落工作台态 + saveData 落库（refImages round-trip）。
+  const genSheet = async (c: CharacterDef) => {
+    if (!ctx || sheetBusy[c.id]) return;
+    setSheetBusy((m) => ({ ...m, [c.id]: true }));
+    try {
+      const res = await ProjectsApi.generateReferenceSheet(ctx.projectId, c.id, {
+        ratio: data.projectInfo.ratio,
+        appearanceHint: c.desc || undefined,
+      });
+      const nextChars = state.chars.map((x) => (x.id === c.id ? { ...x, refImages: res.refImages } : x));
+      dispatch({ type: "setChars", chars: nextChars });
+      await ctx.saveData({ ...data, characters: nextChars });
+      dispatch({ type: "spend", n: res.cost });
+      toast.success(`已生成 ${res.refImages.length} 张多角度参考图`);
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "生成多角度参考图失败，请稍后重试"));
+    } finally {
+      setSheetBusy((m) => ({ ...m, [c.id]: false }));
+    }
+  };
+
   // ── 场景：全部落库到 ProjectData.scenes ─────────────────────────────────────
   // 函数式合并保存：按最新 scenes 更新，异步出图/上传回写不会被并发保存或陈旧闭包覆盖（修「刷新就没了」）。
   const saveScenes = (updater: (prev: SceneAsset[]) => SceneAsset[]) => {
@@ -174,7 +197,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
     if (!ctx || sceneBusy[s.id]) return;
     setSceneBusy((m) => ({ ...m, [s.id]: true }));
     try {
-      const frames = await RenderApi.renderFrame({
+      const { frames } = await RenderApi.renderFrame({
         // v0.98：场景参考图用专用 scene 提示词（干净空景 establishing plate，无人物），
         // 传作品风格 + 项目画幅，匹配剧集脚本取景（原来误用 shot 首帧提示词 → 塞人脸/比例不符）。
         kind: "scene",
@@ -290,6 +313,10 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
               onGenRef={() => void genCharRef(c)}
               onViewRef={() => c.refUrl && setLb({ src: c.refUrl, kind: "image" })}
               uploading={!!charBusy[c.id]}
+              onGenSheet={ctx ? () => void genSheet(c) : undefined}
+              sheetCost={cfg.prices.frame * 3}
+              sheetBusy={!!sheetBusy[c.id]}
+              onViewImage={(url) => setLb({ src: url, kind: "image" })}
             />
           ))}
           <button

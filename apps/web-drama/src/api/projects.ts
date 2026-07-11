@@ -12,6 +12,7 @@ import {
   type BoardScene,
   type BoardShot,
   type CharacterDef,
+  type DramaRefImage,
   type DramaProjectSummary,
   type EpisodeOutline,
   type ProjectData,
@@ -311,6 +312,50 @@ export async function castAiDraft(id: string): Promise<CharacterDef[]> {
     method: "POST",
   });
   return res.characters ?? [];
+}
+
+/** C-2 三视图：角色一键生成 正/侧/全身 参考图集（后端 hold→逐角度 commit，产物落实体表）。 */
+export interface ReferenceSheetInput {
+  /** 要出的角度；缺省 [front, side, full]。 */
+  angles?: Array<"front" | "side" | "full">;
+  ratio?: string;
+  /** 补充外观描述（如「短发、风衣」），拼进出图提示词。 */
+  appearanceHint?: string;
+}
+export interface ReferenceSheetResult {
+  characterId: string;
+  refImages: DramaRefImage[];
+  cost: number;
+}
+
+export async function generateReferenceSheet(
+  projectId: string,
+  charId: string,
+  input?: ReferenceSheetInput,
+): Promise<ReferenceSheetResult> {
+  if (USE_MOCK) {
+    const angles = input?.angles ?? ["front", "side", "full"];
+    const label: Record<string, string> = { front: "正面", side: "侧面", full: "全身" };
+    return mockDelay(
+      {
+        characterId: charId,
+        refImages: angles.map((a) => ({
+          cdnKey: `mock/char-refs/${charId}_${a}.svg`,
+          url: `data:image/svg+xml,${encodeURIComponent(
+            `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='160'><rect width='120' height='160' fill='hsl(${(a.length * 60) % 360},60%,60%)'/></svg>`,
+          )}`,
+          angle: a,
+          label: label[a] ?? a,
+        })),
+        cost: angles.length * 2,
+      },
+      1400,
+    );
+  }
+  return apiFetch<ReferenceSheetResult>(
+    `/me/drama/projects/${projectId}/characters/${encodeURIComponent(charId)}/reference-sheet`,
+    { method: "POST", body: { angles: input?.angles, ratio: input?.ratio, appearanceHint: input?.appearanceHint } },
+  );
 }
 
 /** 成片合成（v0.66）：把某集已出片分镜按序拼成完整片（未落库，前端合并后 saveProject）。 */

@@ -68,6 +68,54 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.102 · 2026-07-10 · 一致性引擎 C-3（服务端参考装配 Reference Assembler + 双线共享 useShotRender）
+
+> L1 收官：把此前散落在 `epscript.tsx` 的参考图优先级链（`shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`）**整体下沉服务端**——render 只传镜头坐标 `shot_ref`，服务端按 `payloadJson` + `drama_character`/`drama_scene` 实体自装配（角色/场景/上一镜真实末帧），按端点 capability（D-11）裁剪并回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §5。
+
+- **新服务 `DramaReferenceAssembler`**（`@Service`，纯装配、只读文档/实体，**绝不回写 payloadJson**，§6.1）：三级入参优先级 `shot_ref` > `ref_slots` > `ref_images`（老前端数组直通兼容）；`ref_leading`（拆镜末帧出图的本镜首帧锚）永远置顶。角色参考图 `drama_character.refImages`（angle=front 优先）→ 实体缺失兜底文档 `avatarImage`；场景参考 `drama_scene`（显式 `sceneRefId` 优先）→ 名称兜底；同场上一镜真实末帧**文档优先 + `MaterialVideoJob` 权威回退**（读 C-1 的 `lastFrameCdnKey`→signKey，不用会过期的 lastFrameUrl；`variant_config` 内存扫描）。
+- **capability 裁剪**（D-11 candidate，未配置 null → legacy 兼容默认：`maxRefImages`→6（= v0.97 前端 `slice(0,6)` 既有上限）、视频首尾帧→C-1 协议关键字静态判定；显式配置最高优先。**回归修正**：初版误按保守默认 1——seeder 回填的存量候选 capability 全 null，会让升级当天多参考一致性整体削弱）：优先级保 identity `character_refs > scene_ref > prev_last_frame`（末位先砍），超出标 `over_max_refs`，本地 `/cdn` 标 `local_unfetchable`（如实回报不静默，§8.0/§6.2）。`applied_refs.items[].role` 升级为精确槽位（character/scene/prev_last_frame/first_frame/last_frame）。
+- **`DramaRenderService` 接入**：`renderFrame`/`renderClip` 收 `shot_ref`/`ref_slots`/`ref_leading` → Assembler；frame 用 candidate 的 `maxRefImages`，clip 用 `supportsFirstLastFrame`（候选显式优先，否则关键字启发式）派生首/末帧并归类。删旧 `computeClipAppliedRefs`/`appliedRefsJson`（并入 Assembler），保 `computeFrameAppliedRefs`（角色三视图锁脸参考仍用）。
+- **前端共享 `lib/use-shot-render.ts`**（放 lib，不随 stage 陪葬）：封装「shot_ref/ref_slots 打包 + 提交 + 轮询 + 出片模型选择」。`epscript` 删 `shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`（体检保留一个 UI 级 `sceneHasRef` 预判），render/decompose 改传 `shot_ref`（+ endpointId/chainConsistency 从 hook 透传）；`shorts/make` 删 `shortRefImages`，改走 `ref_slots`（显式主角/场景槽位）。两线净删约 60 行重复参考装配逻辑。
+- **测试**：`DramaReferenceAssemblerTest`（16 例）——裁剪 priority/dedup/capability(1/4/6)、classifyClipFrames(supportsFlf)、shot_ref 定位 episodeDocs 嵌套 shot + @cast 命中/文本兜底/全员、scene 显式/名称兜底、prev_last_frame 文档 vs job 权威回退、三级入参优先级；`DramaRenderServiceTest` 相应精简（clip 归类下沉）。
+- **门禁**：server test-compile + `DramaReferenceAssemblerTest`/`DramaRenderServiceTest`/`DramaReferenceAssetServiceTest`/`DramaProjectServiceTest`/`MaterialAiE2ETest`/`MaterialVideoWorkerTest`（61 例全绿）+ web-drama typecheck/build + typecheck:all(10/10) + check:api-contract 全绿。无新 path（复用 `/render/frame,clip`，summary 更新）。
+
+### v0.101 · 2026-07-10 · 一致性引擎 C-2（角色/场景实体化 + 多角度参考图集）
+
+> L0 地基：把散落 `payloadJson` 的角色/场景升级为独立表（`drama_character` / `drama_scene`）+ 结构化多角度参考图集（cdnKey 真值）；渲染真值改读实体（过渡期双写 + 懒回填）；新增「角色一键三视图」端点。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §4。类型沿用 drama 本地约定（`mocks/drama-workshop/types.ts` + `api/*`，不进 packages/types）。
+
+- **两新表 `drama_character` / `drama_scene`**（ddl-auto 自动建）：字段名对齐前端 `CharacterDef`/`SceneAsset`；`ref_images_json` = 多角度参考图集 `[{cdnKey,angle,label}]`（真值 cdnKey，§4.7.4；出 wire 由 `signer.signKey` 派生 url）。软删随项目对齐。
+- **懒回填（read 时）**：`getProject` 前 `ensureBackfilled`——老项目文档 `characters/scenes` 非空但无实体行 → 从文档建实体（单图 `refCdnKey`→`refImages[0]{angle:front}` 迁移）；幂等闸=「项目实体行是否已存在」（含软删），跑两次不重复建。
+- **双写（write 时，§6.1 纪律）**：`saveProject` 落文档后 `syncFromDoc` 只 **upsert 实体表、不重写 payloadJson**（实体是独立行，绕开文档级 LWW，收敛并发面）；增/改名/软删对齐；文档缺 `refImages` 时保留实体已有（防旧前端 PUT 抹掉三视图产物）。
+- **出 wire overlay（read 时）**：`toDetail` 把实体 `refImages`（cdnKey→派生 url）叠加进返回文档的 characters/scenes，让前端看到三视图产物——三视图端点只写实体表、不改文档。
+- **三视图端点** `POST /me/drama/projects/{id}/characters/{charId}/reference-sheet`（body `{angles?,ratio?,appearanceHint?}` → `{characterId,refImages,cost}`）：复用 `IMAGE_GENERATION` + `drama.character_frame_image`（模板加 `{{angleClause}}` 注入拍摄角度，锁脸用角色已有定妆图），每角度一次出图。**计费 hold→逐角度 commit**（hold 总额=`drama.credit.frame`×角度数，逐张成功 commit，某张失败剩余 release，全失败 release 全额+抛错）——与 `renderFrame` 的一次性 `debit` 是有意的分裂（见 TODO「渲染扣费形态统一」）。§8.0：图像端点/提示词未配 → 503（preflight 在 hold 前，不冻结不扣费）；`storage.checkQuota` 前置。
+- **前端**：短剧设定页「角色与场景」角色卡加「一键三视图」按钮 + 正/侧/全身缩略图墙（生成中骨架、失败 toast、文案用户友好+宽度约束防溢出，`CreditButton` 走小额免打扰惯例）。`CharacterDef`/`SceneAsset` 加 `refImages?`。
+- **测试**：`DramaReferenceAssetServiceTest`（回填幂等 / 双写 增·改名·软删 / 单图迁移 / 三视图 hold 总额·逐角度 commit·部分失败 release·全失败 502·未配端点 503 且 0 hold，8 例）。
+- **门禁**：server test-compile + `DramaReferenceAssetServiceTest`/`DramaProjectServiceTest`/`MaterialAiE2ETest`（37 例全绿）+ web-drama typecheck/build(31 路由) + typecheck:all(8/8) + check:api-contract 全绿。
+
+### v0.100 · 2026-07-10 · 一致性引擎 D-11（一用途多候选端点 + capability + 出片模型下拉）
+
+> 把「用途→单端点」升级为「用途→N 候选端点（带 capability）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §3。`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化。
+
+- **新表 `ai_app_endpoint_candidate`**（purpose × endpoint 交点）：capability（maxRefImages / supportsFirstLastFrame / supportsSubjectReference / maxDurationSec，null=未知按 legacy 兼容默认——图像 6 / 首尾帧协议静态判定）+ 可选单价 `creditCostOverride` + enabled/sortOrder。幂等 seeder（`AiAppCandidateSeeder` @Order 60）启动把每条现有绑定回填为置顶候选。
+- **`resolveEndpoint(purpose, endpointId)` 重载**：白名单命中返回 `ResolvedEndpoint`，未命中 empty → 调用方抛 503 `ENDPOINT_NOT_ALLOWED`（§8.0：不回退默认、不扣费）；传 null 委派默认端点。`listCandidates(purpose)` 供 /render/models 与 admin。
+- **出片模型下拉**：新端点 `GET /me/drama/render/models`（image + video 两组，isDefault 前端默认选中）；`RenderFrameInput`/`RenderClipInput` 加 `endpointId`（body `endpoint_id`）。前端共享 `render-model-select`（`useRenderModels` + `RenderModelSelect`），分镜表 / 短视频出片工具栏各挂「出图模型 / 出片模型」下拉——候选 ≤1 时不渲染（走默认端点）；能力细节进 hover title，宽度约束防溢出（AGENTS §不溢出）。
+- **单价 override**：命中 candidate 的 `creditCostOverride` 覆盖用途默认单价——frame 走 `debit`、clip 走 item `credit_cost`。
+- **视频线 endpoint_id 透传（最深改动，§6.4 四层串联）**：`renderClip` 把 endpoint_id 存进 `variant_config` → `MaterialVideoWorker` 抽出 → `MaterialVideoModelClient.submit/poll` 用指定候选端点（`SubmitResult` 带 endpointId，poll 落同一端点）。**带货素材线不写 endpoint_id → null → 默认端点，celebrity 默认路径完全不变**（回归测试覆盖）。
+- **admin**：「AI 应用绑定」drama 组每个用途加折叠「候选端点与能力」块——列候选、加/删、编辑 capability 4 字段 + 单价 override、设默认（改 AiAppBinding）；禁用浏览器原生 confirm（走 `useConfirm`）。
+- **测试**：`AiModelInvocationServiceTest`（resolveEndpoint 命中/未命中/停用/端点停用/null 回默认 + listCandidates 默认标记 6 例）、`AiAppCandidateSeederTest`（幂等 2 例）、`DramaRenderServiceTest`（非法 endpoint_id → 503 且 0 扣费/0 提交 2 例）、`MaterialVideoWorkerTest`（celebrity 默认路径 null endpoint 回归）。
+- **门禁**：server test-compile + 相关单测全绿（含 MaterialAiE2ETest / MaterialVideoModelClientTest 回归）+ web-drama typecheck/build + typecheck:all(10/10) + typecheck:admin + check:api-contract 全绿。
+
+### v0.99 · 2026-07-10 · 一致性引擎 C-1（末帧 CDN 镜像 + 参考生效回报）
+
+> 一致性引擎 C 序列首阶段，修 G-6（真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §2）。范围选择：仅 `last_frame` 做 cdnKey 真值化；`video_url`/`thumbnail_url` 只加 `maybeSign` 兜底，完整 URL→key 迁移留独立 PR。
+
+- **末帧 CDN 镜像**：`MaterialVideoJob` 新列 `lastFrameCdnKey`（§4.7.4 真值）；worker 成功分支把上游临时末帧 URL（seedance `return_last_frame`）下载镜像到 CDN（`material-videos/<jobId>/last-frame.*`），链式承接不再因上游 URL 过期断链。镜像失败 = best-effort（§8.0 观测类旁路例外）：仅 WARN、保留上游 URL、**绝不 markFailed / 退积分**。
+- **出 wire 签名**：`MaterialVideoJobService.toCard` 注入 `CdnUrlSigner`——`last_frame_url` 走 `signKey(lastFrameCdnKey)` 派生（fallback 旧 `lastFrameUrl` 经 `maybeSign`）；`video_url`/`thumbnail_url` 加 `maybeSign` 兜底（local `/cdn` 原样返回，dev 零影响）。
+- **参考生效回报 `applied_refs`**：`/render/frame` 与 `/render/clip` 返回体加 `{requested, applied, items[{role,url,applied,reason}]}`——frame 的 `ref_images` 统一 role=`ref`（无槽位，精确 role 待 C-3）、本地/相对 URL 标 `local_unfetchable`；clip 的 `first_frame`/`last_frame` 标准确 role，端点不支持首尾帧（agnes）时末帧标 `model_no_flf`（静态协议关键字判定）。frame-jobs 任务卡透传。
+- **前端**：`api/render.ts` 加 `AppliedRefs` 类型，`renderFrame` 返回体改 `{frames, cost, appliedRefs}`（4 处调用点同步）；`FormShot`/`BoardShot` 加 `appliedRefs`（随 render 回填、payloadJson round-trip）；分镜表首帧格加「参考 N/M 生效」chip（仅部分生效时显示，定宽 + ellipsis，被过滤项与用户友好原因放 hover，不暴露内部枚举）；shorts/make 同步消费。
+- **测试**：`DramaRenderServiceTest`（computeAppliedRefs 纯函数矩阵 9 例）+ `MaterialVideoWorkerTest`（末帧镜像成功落 key / 失败仍 succeeded 且不退积分，内嵌 HttpServer 供真实下载）。
+- **门禁**：server test-compile + 21+29 单测（含 MaterialVideoModelClientTest / DramaProjectServiceTest / MaterialAiE2ETest 回归）+ web-drama typecheck/build + check:api-contract 全绿。
+
 ### v0.98 · 2026-06-30 · 短剧工作台收敛为「脚本表=唯一逐镜工作面」（删视频工厂阶段）
 
 > 目标：一集的出片全在剧集脚本的分镜表内完成，更直观；不再跳独立「视频工厂」。项目从 6 阶段收敛为 **5 阶段**（选题 / 大纲 / 角色 / 剧集脚本 / 成片合成）。真源 [`docs/drama-storyboard-consistency.md`](../../docs/drama-storyboard-consistency.md)。

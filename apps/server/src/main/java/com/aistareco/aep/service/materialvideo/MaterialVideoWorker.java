@@ -6,6 +6,8 @@ import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.storage.StorageQuotaService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +37,7 @@ import java.util.Locale;
 public class MaterialVideoWorker {
 
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoWorker.class);
+    private static final ObjectMapper OM = new ObjectMapper();
 
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
@@ -97,9 +100,11 @@ public class MaterialVideoWorker {
 
         // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余素材运营记到 celebrity。
         String appCode = job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
+        // D-11：短剧线可在 variant_config 指定候选出片端点；带货素材线不写此键 → null → 默认端点（默认路径不变）。
+        String endpointId = extractEndpointId(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
                 modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
-                        job.getOwnerUserId(), appCode);
+                        job.getOwnerUserId(), appCode, endpointId);
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
         long start = System.currentTimeMillis();
@@ -119,11 +124,14 @@ public class MaterialVideoWorker {
                 }
                 String videoUrl = poll.videoUrl();
                 String thumbnailUrl = poll.thumbnailUrl();
+                String lastFrameUrl = poll.lastFrameUrl();
+                String lastFrameCdnKey = null;
                 if (props.isUploadToCdn() && cdnUploader != null) {
                     try {
-                        CdnMirrorResult mirror = mirrorToCdn(jobId, videoUrl, thumbnailUrl);
+                        CdnMirrorResult mirror = mirrorToCdn(jobId, videoUrl, thumbnailUrl, lastFrameUrl);
                         videoUrl = mirror.videoUrl();
                         thumbnailUrl = mirror.thumbnailUrl();
+                        lastFrameCdnKey = mirror.lastFrameKey();
                         // 成片落 CDN → 记入存储用量（按 job 归属子应用记账；best-effort 不阻断）。
                         // refId=scriptId：drama 即项目 id，项目彻底删除时由 StorageQuotaService.releaseByRef 释放。
                         String category = "drama".equals(appCode) ? "分镜视频" : "素材视频";
@@ -134,7 +142,7 @@ public class MaterialVideoWorker {
                                 jobId, e.getMessage());
                     }
                 }
-                markSucceeded(jobId, videoUrl, thumbnailUrl, poll.lastFrameUrl());
+                markSucceeded(jobId, videoUrl, thumbnailUrl, lastFrameUrl, lastFrameCdnKey);
                 commitCredits(job);
                 log.info("[material-video] job {} succeeded · url={}", jobId, videoUrl);
                 return;
@@ -165,10 +173,11 @@ public class MaterialVideoWorker {
 
     // ── 成片持久化 ──────────────────────────────────────────────────────────
 
-    private CdnMirrorResult mirrorToCdn(String jobId, String videoUrl, String thumbnailUrl)
+    private CdnMirrorResult mirrorToCdn(String jobId, String videoUrl, String thumbnailUrl, String lastFrameUrl)
             throws IOException, InterruptedException {
         DownloadedMedia video = null;
         DownloadedMedia thumbnail = null;
+        DownloadedMedia lastFrame = null;
         try {
             video = downloadMedia(videoUrl, "material-video-" + jobId, ".mp4", "video/mp4");
             String videoKey = "material-videos/" + jobId + "/video" + video.extension();
@@ -187,13 +196,30 @@ public class MaterialVideoWorker {
                 }
             }
 
+            // C-1（一致性引擎）：把成片真实末帧镜像到 CDN（不过期），落 lastFrameCdnKey 作真值供跨镜链式承接。
+            // best-effort（观测/承接类旁路，§8.0 例外）：镜像失败仅 WARN、返回 null key，绝不 markFailed —— 视频已成功出片，
+            // 缺末帧只是退化为「无末帧承接」，下游读上游临时 lastFrameUrl 兜底。
+            String lastFrameKey = null;
+            if (lastFrameUrl != null && !lastFrameUrl.isBlank()) {
+                try {
+                    lastFrame = downloadMedia(lastFrameUrl, "material-video-lastframe-" + jobId, ".png", "image/png");
+                    String lastFrameKeyPath = "material-videos/" + jobId + "/last-frame" + lastFrame.extension();
+                    var uploadedLastFrame = cdnUploader.upload(lastFrame.path(), lastFrameKeyPath, lastFrame.contentType());
+                    lastFrameKey = uploadedLastFrame.key();
+                } catch (IOException | RuntimeException e) {
+                    log.warn("[material-video] job {} last-frame CDN mirror failed (keeping provider URL): {}",
+                            jobId, e.getMessage());
+                }
+            }
+
             log.info("[material-video] job {} mirrored to CDN driver={} key={}",
                     jobId, cdnUploader.driverName(), uploadedVideo.key());
             return new CdnMirrorResult(uploadedVideo.cdnUrl(), finalThumbnailUrl,
-                    uploadedVideo.key(), uploadedVideo.uploadedBytes());
+                    uploadedVideo.key(), uploadedVideo.uploadedBytes(), lastFrameKey);
         } finally {
             deleteTemp(video);
             deleteTemp(thumbnail);
+            deleteTemp(lastFrame);
         }
     }
 
@@ -261,7 +287,7 @@ public class MaterialVideoWorker {
         });
     }
 
-    private void markSucceeded(String jobId, String videoUrl, String thumb, String lastFrameUrl) {
+    private void markSucceeded(String jobId, String videoUrl, String thumb, String lastFrameUrl, String lastFrameCdnKey) {
         jobRepo.findById(jobId).ifPresent(j -> {
             j.setStatus("succeeded");
             j.setProgress(100);
@@ -269,6 +295,8 @@ public class MaterialVideoWorker {
             if (thumb != null) j.setThumbnailUrl(thumb);
             // v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考，链式承接。
             if (lastFrameUrl != null && !lastFrameUrl.isBlank()) j.setLastFrameUrl(lastFrameUrl);
+            // C-1：末帧 CDN 镜像真值（key，不过期）；镜像失败为 null → 出 wire fallback lastFrameUrl。
+            if (lastFrameCdnKey != null && !lastFrameCdnKey.isBlank()) j.setLastFrameCdnKey(lastFrameCdnKey);
             j.setErrorMessage(null);
             j.setCompletedAt(OffsetDateTime.now());
             j.setUpdatedAt(OffsetDateTime.now());
@@ -312,6 +340,18 @@ public class MaterialVideoWorker {
         return "succeeded".equals(status) || "failed".equals(status);
     }
 
+    /** D-11：从 variant_config JSON 抽 endpoint_id（短剧线指定出片端点）；缺省/解析失败 → null（默认端点）。 */
+    private static String extractEndpointId(String variantConfigJson) {
+        if (variantConfigJson == null || variantConfigJson.isBlank()) return null;
+        try {
+            JsonNode vc = OM.readTree(variantConfigJson);
+            JsonNode ep = vc.get("endpoint_id");
+            return ep == null || ep.isNull() || ep.asText().isBlank() ? null : ep.asText();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static String truncate(String s, int max) {
         if (s == null) return null;
         return s.length() > max ? s.substring(0, max) : s;
@@ -350,5 +390,6 @@ public class MaterialVideoWorker {
 
     private record DownloadedMedia(Path path, String contentType, String extension) {}
 
-    private record CdnMirrorResult(String videoUrl, String thumbnailUrl, String videoKey, long videoBytes) {}
+    private record CdnMirrorResult(String videoUrl, String thumbnailUrl, String videoKey, long videoBytes,
+                                   String lastFrameKey) {}
 }

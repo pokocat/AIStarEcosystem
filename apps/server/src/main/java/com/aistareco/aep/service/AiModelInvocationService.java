@@ -2,10 +2,12 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
+import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.repository.AiAppBindingRepository;
+import com.aistareco.aep.repository.AiAppEndpointCandidateRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.aep.service.ai.ModelCallCtx;
 import com.aistareco.aep.service.ai.UpstreamCallException;
@@ -55,6 +57,7 @@ public class AiModelInvocationService {
 
     private final AiModelEndpointRepository endpointRepo;
     private final AiAppBindingRepository bindingRepo;
+    private final AiAppEndpointCandidateRepository candidateRepo;
     private final AiModelUsageService usage;
     private final AiModelGuardService guard;
     private final UpstreamModelHttp upstreamHttp;
@@ -64,22 +67,60 @@ public class AiModelInvocationService {
 
     public AiModelInvocationService(AiModelEndpointRepository endpointRepo,
                                     AiAppBindingRepository bindingRepo,
+                                    AiAppEndpointCandidateRepository candidateRepo,
                                     AiModelUsageService usage,
                                     AiModelGuardService guard,
                                     UpstreamModelHttp upstreamHttp) {
         this.endpointRepo = endpointRepo;
         this.bindingRepo = bindingRepo;
+        this.candidateRepo = candidateRepo;
         this.usage = usage;
         this.guard = guard;
         this.upstreamHttp = upstreamHttp;
     }
 
-    /** purpose → 绑定端点（启用）。无绑定 / 端点停用 / 端点不存在 → empty。 */
+    /** purpose → 绑定端点（启用）。无绑定 / 端点停用 / 端点不存在 → empty。行为零变化（D-11 仍读 AiAppBinding）。 */
     public Optional<AiModelEndpoint> resolveEndpoint(AiModelPurpose purpose) {
         return bindingRepo.findById(purpose)
                 .flatMap(b -> endpointRepo.findById(b.getEndpointId()))
                 .filter(AiModelEndpoint::isEnabled);
     }
+
+    /**
+     * D-11：purpose × endpointId → 解析候选端点（白名单）。endpointId 为空 → 委派默认端点（等价旧行为）。
+     * 指定 endpointId 时必须是该用途的<b>启用 candidate</b>且端点启用，否则 empty（调用方抛 503
+     * {@code ENDPOINT_NOT_ALLOWED}，§8.0：不静默回退默认、不扣费）。
+     */
+    public Optional<ResolvedEndpoint> resolveEndpoint(AiModelPurpose purpose, String endpointId) {
+        if (endpointId == null || endpointId.isBlank()) {
+            return resolveEndpoint(purpose).map(ep -> new ResolvedEndpoint(ep,
+                    candidateRepo.findByPurposeAndEndpointId(purpose, ep.getId()).orElse(null), true));
+        }
+        return candidateRepo.findByPurposeAndEndpointId(purpose, endpointId)
+                .filter(AiAppEndpointCandidate::isEnabled)
+                .flatMap(c -> endpointRepo.findById(c.getEndpointId())
+                        .filter(AiModelEndpoint::isEnabled)
+                        .map(ep -> new ResolvedEndpoint(ep, c, isDefaultEndpoint(purpose, ep.getId()))));
+    }
+
+    /** D-11：列出某用途全部候选（含 capability + 默认标记），给 /render/models 与 admin。端点已删的孤儿候选跳过。 */
+    public List<ResolvedEndpoint> listCandidates(AiModelPurpose purpose) {
+        String defaultEndpointId = bindingRepo.findById(purpose).map(b -> b.getEndpointId()).orElse(null);
+        List<ResolvedEndpoint> out = new ArrayList<>();
+        for (AiAppEndpointCandidate c : candidateRepo.findByPurposeOrderBySortOrderAscCreatedAtAsc(purpose)) {
+            AiModelEndpoint ep = endpointRepo.findById(c.getEndpointId()).orElse(null);
+            if (ep == null) continue; // 孤儿候选（端点已删）→ 不展示
+            out.add(new ResolvedEndpoint(ep, c, c.getEndpointId().equals(defaultEndpointId)));
+        }
+        return out;
+    }
+
+    private boolean isDefaultEndpoint(AiModelPurpose purpose, String endpointId) {
+        return bindingRepo.findById(purpose).map(b -> endpointId.equals(b.getEndpointId())).orElse(false);
+    }
+
+    /** 解析到的候选端点：端点实体 + 承载能力/单价的 candidate（默认路径可能为 null）+ 是否默认。 */
+    public record ResolvedEndpoint(AiModelEndpoint endpoint, AiAppEndpointCandidate candidate, boolean isDefault) {}
 
     /** 是否已为该用途绑定可用端点（上层在调用前判断「未配置」并给明确提示）。 */
     public boolean hasEndpointFor(AiModelPurpose purpose) {

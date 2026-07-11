@@ -3,8 +3,9 @@
 // 角色卡 — 设计真源:screens-project.jsx `CharCard`。
 // 关键角色:大数字人封面(已绑) / 待绑占位(未绑) + 三张参考图槽;龙套:文字外观。
 import * as React from "react";
-import { ImagePlus, RefreshCw, Sparkles, User } from "lucide-react";
-import { Avatar, Thumb } from "@/components/drama-ui";
+import { ImagePlus, Layers, RefreshCw, Sparkles, User } from "lucide-react";
+import { Avatar, GenFramePlaceholder, Thumb } from "@/components/drama-ui";
+import { CreditButton } from "@/components/drama-ui";
 import { AVATAR_THEMES, type CharacterDef } from "@/mocks/drama-workshop";
 
 interface CharCardProps {
@@ -20,11 +21,22 @@ interface CharCardProps {
   onViewRef?: () => void;
   /** 上传中 / 生成中。 */
   uploading?: boolean;
+  /** C-2：一键生成 正/侧/全身 三视图参考图集。 */
+  onGenSheet?: () => void;
+  /** 三视图单次消耗（用于确认弹窗展示；真实计费后台）。 */
+  sheetCost?: number;
+  /** 三视图生成中。 */
+  sheetBusy?: boolean;
+  /** 点开某张多角度参考图看大图。 */
+  onViewImage?: (url: string) => void;
 }
 
-export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGenRef, onViewRef, uploading }: CharCardProps) {
+const ANGLE_LABEL: Record<string, string> = { front: "正面", side: "侧面", full: "全身", expression: "表情", env: "空景" };
+
+export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGenRef, onViewRef, uploading, onGenSheet, sheetCost = 6, sheetBusy, onViewImage }: CharCardProps) {
   const isKey = c.role === "key";
   const theme = AVATAR_THEMES[c.avatar] ?? AVATAR_THEMES.default;
+  const refImages = c.refImages ?? [];
 
   return (
     <div
@@ -245,6 +257,59 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
             </div>
           )}
         </div>
+
+        {/* C-2 多角度参考图集（正/侧/全身）：跨镜锁形象的一致性地基 */}
+        {onGenSheet && (
+          <div className="col gap-2" style={{ marginTop: 2 }}>
+            <div className="row gap-2" style={{ alignItems: "center" }}>
+              <span className="faint" style={{ fontSize: 11, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                多角度参考图 · 正侧全身锁形象
+              </span>
+              <span className="grow" />
+              <CreditButton
+                cost={sheetCost}
+                onConfirm={onGenSheet}
+                confirmTitle="生成多角度参考图"
+                confirmBody="AI 会为该角色生成 正面 / 侧面 / 全身 三张参考图，用于跨镜锁定形象。"
+                className="btn btn-line btn-sm"
+                disabled={sheetBusy}
+                title="生成 正/侧/全身 三视图"
+              >
+                <Layers size={13} /> {sheetBusy ? "生成中…" : refImages.length > 0 ? "重新生成" : "一键三视图"}
+              </CreditButton>
+            </div>
+            {sheetBusy ? (
+              <div className="row gap-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} style={{ width: 56, height: 74, flex: "none" }}>
+                    <GenFramePlaceholder width="100%" height="100%" radius={9} />
+                  </div>
+                ))}
+              </div>
+            ) : refImages.length > 0 ? (
+              <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                {refImages.map((r, i) => (
+                  <div key={r.cdnKey || i} className="col" style={{ gap: 3, alignItems: "center", width: 56 }}>
+                    <button
+                      type="button"
+                      onClick={() => r.url && onViewImage?.(r.url)}
+                      title={`${(r.angle && ANGLE_LABEL[r.angle]) || r.label || "参考图"} · 点开看大图`}
+                      style={{ width: 56, height: 74, borderRadius: 9, overflow: "hidden", border: "1px solid var(--line)", padding: 0, cursor: r.url ? "zoom-in" : "default", background: "var(--surface-2)", flex: "none" }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      {r.url && <img src={r.url} alt={r.label || r.angle || "参考图"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
+                    </button>
+                    <span className="faint" style={{ fontSize: 10, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.label || (r.angle && ANGLE_LABEL[r.angle]) || r.angle}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="faint" style={{ fontSize: 11 }}>还没有多角度参考图，点「一键三视图」生成正/侧/全身。</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

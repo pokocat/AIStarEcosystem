@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import type { AppliedRefs } from "./render";
 
 /** 一个场景（分镜）。shot=画面/分镜（怎么拍），dialogue=台词/旁白（念什么）。 */
 export interface DramaScene {
@@ -66,6 +67,8 @@ export interface DramaEpisodeJob {
   thumbnail_url?: string | null;
   /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考。 */
   last_frame_url?: string | null;
+  /** C-1（一致性引擎）：首/末帧生效回报（参考 N/M 生效）。 */
+  applied_refs?: AppliedRefs;
   progress_pct?: number;
   stage?: string;
   error_message?: string | null;

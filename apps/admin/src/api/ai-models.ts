@@ -126,6 +126,42 @@ export interface AiAppBinding {
   updatedAt?: string;
 }
 
+/** D-11：端点能力画像（null=未知，消费方按 legacy 兼容默认：参考图上限 6 / 首尾帧协议静态判定）。 */
+export interface EndpointCapability {
+  maxRefImages?: number | null;
+  supportsFirstLastFrame?: boolean | null;
+  supportsSubjectReference?: boolean | null;
+  maxDurationSec?: number | null;
+}
+
+/** D-11：某用途的候选端点（含 capability + 默认标记 + 单价 override）。 */
+export interface AiAppEndpointCandidate {
+  purpose: AiModelPurpose;
+  purposeLabel: string;
+  endpointId: string;
+  endpointName?: string;
+  endpointEnabled?: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+  enabled: boolean;
+  capability: EndpointCapability;
+  /** 本端点在该用途下的积分单价 override（null=用用途默认单价）。 */
+  creditCostOverride?: number | null;
+  updatedAt?: string;
+}
+
+/** 候选端点写请求（POST endpointId 必填；PUT 走 path endpointId，body 只带 capability/override/enabled/sortOrder）。 */
+export interface AiAppEndpointCandidateUpsert {
+  endpointId?: string;
+  sortOrder?: number | null;
+  enabled?: boolean | null;
+  maxRefImages?: number | null;
+  supportsFirstLastFrame?: boolean | null;
+  supportsSubjectReference?: boolean | null;
+  maxDurationSec?: number | null;
+  creditCostOverride?: number | null;
+}
+
 /** 内置服务商预设（仅模板，不落库）。 */
 export interface AiModelProviderPreset {
   code: string;
@@ -350,4 +386,38 @@ export async function bind(purpose: AiModelPurpose, endpointId: string): Promise
 /** 解绑某用途。 */
 export async function unbind(purpose: AiModelPurpose): Promise<void> {
   await apiFetch<void>(`${BINDINGS}/${encodeURIComponent(purpose)}`, { method: "DELETE" });
+}
+
+// ── D-11 候选端点（一用途多候选 + capability） ─────────────────────────────────
+/** 列出某用途的全部候选端点（含 capability + 默认标记）。 */
+export async function listCandidates(purpose: AiModelPurpose): Promise<AiAppEndpointCandidate[]> {
+  return apiFetch<AiAppEndpointCandidate[]>(`${BINDINGS}/${encodeURIComponent(purpose)}/candidates`);
+}
+/** 新增一个候选端点（endpointId 必填，可带 capability）。 */
+export async function addCandidate(
+  purpose: AiModelPurpose,
+  body: AiAppEndpointCandidateUpsert,
+): Promise<AiAppEndpointCandidate> {
+  return apiFetch<AiAppEndpointCandidate>(`${BINDINGS}/${encodeURIComponent(purpose)}/candidates`, {
+    method: "POST",
+    body,
+  });
+}
+/** 更新候选端点的 capability / 单价 override / 启用 / 排序。 */
+export async function updateCandidate(
+  purpose: AiModelPurpose,
+  endpointId: string,
+  body: AiAppEndpointCandidateUpsert,
+): Promise<AiAppEndpointCandidate> {
+  return apiFetch<AiAppEndpointCandidate>(
+    `${BINDINGS}/${encodeURIComponent(purpose)}/candidates/${encodeURIComponent(endpointId)}`,
+    { method: "PUT", body },
+  );
+}
+/** 删除一个候选端点（默认端点不允许删）。 */
+export async function removeCandidate(purpose: AiModelPurpose, endpointId: string): Promise<void> {
+  await apiFetch<void>(
+    `${BINDINGS}/${encodeURIComponent(purpose)}/candidates/${encodeURIComponent(endpointId)}`,
+    { method: "DELETE" },
+  );
 }

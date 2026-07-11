@@ -16,6 +16,85 @@ export interface RenderedFrame {
   cdnKey: string;
 }
 
+// C-1（一致性引擎）：一次渲染实际生效 / 被过滤的参考清单，供「参考 N/M 生效」回报。
+export type AppliedRefReason = "local_unfetchable" | "model_no_flf" | "over_max_refs" | "empty";
+export interface AppliedRefItem {
+  /** ref（首帧参考图，C-1 无槽位）/ first_frame / last_frame / character / scene / prev_last_frame… */
+  role: string;
+  url: string;
+  applied: boolean;
+  reason?: AppliedRefReason;
+}
+export interface AppliedRefs {
+  /** 携带的参考总数（含首/尾帧） */
+  requested: number;
+  /** 实际送达模型的数量 */
+  applied: number;
+  items: AppliedRefItem[];
+}
+
+// D-11：一用途多候选端点 + 能力元数据。出片模型下拉消费 GET /me/drama/render/models。
+export interface EndpointCapability {
+  /** 最多可送参考图张数；null=未知（服务端按 legacy 兼容默认 6 装配，= v0.97 前端既有上限）。 */
+  maxRefImages?: number | null;
+  /** 是否支持首+尾帧关键帧插值；null=未知（按 false）。 */
+  supportsFirstLastFrame?: boolean | null;
+  /** 是否支持主体（subject）参考；null=未知（按 false）。 */
+  supportsSubjectReference?: boolean | null;
+  /** 单条视频最大时长（秒）；null=未知。 */
+  maxDurationSec?: number | null;
+}
+
+export interface RenderModelOption {
+  endpointId: string;
+  /** 端点展示名（用户友好；技术细节进 hover title）。 */
+  name: string;
+  /** 是否为该用途默认端点（前端下拉默认选中）。 */
+  isDefault: boolean;
+  capability: EndpointCapability;
+  /** 该端点在此用途下的积分单价（override ?? 用途默认单价）。 */
+  creditCost: number;
+}
+
+export interface RenderModelsResponse {
+  /** 首帧图像候选（用途 IMAGE_GENERATION）。 */
+  image: RenderModelOption[];
+  /** 视频候选（用途 VIDEO_GENERATION）。 */
+  video: RenderModelOption[];
+}
+
+/** 拉取「出片模型」下拉数据（image + video 两组）。USE_MOCK 下返回空组（前端隐藏下拉，走默认端点）。 */
+export async function listRenderModels(): Promise<RenderModelsResponse> {
+  if (USE_MOCK) return mockDelay({ image: [], video: [] }, 200);
+  return apiFetch<RenderModelsResponse>("/me/drama/render/models");
+}
+
+// C-3（一致性引擎 L1）：服务端参考装配入参。三级优先级 shot_ref > ref_slots > ref_images。
+//  - shot_ref：仅传镜头坐标，服务端按 payloadJson + drama_character/scene 实体自装配（角色/场景/上一镜末帧）。
+//  - ref_slots：前端已算好的结构化槽位（短视频线：主角/场景显式参考）。服务端只裁剪 + 回报。
+//  - ref_images：C-1 无差别数组（过渡兼容）。
+export interface ShotRefInput {
+  /** 项目 / 草稿 ID（缺省用 RenderFrameInput.projectId）。 */
+  projectId?: string;
+  episodeNo?: number;
+  sceneId?: string;
+  shotId?: string;
+  /** 镜间一致性承接开关（开 → 装配场景参考 + 同场上一镜真实末帧）。 */
+  chainConsistency?: boolean;
+}
+
+/** 结构化参考槽位（ref_slots 路径）。每项 cdnKey 优先（服务端 signKey 派生），否则 url。 */
+export interface RefSlotItem {
+  cdnKey?: string;
+  url?: string;
+  angle?: string;
+}
+export interface RefSlotsInput {
+  characterRefs?: RefSlotItem[];
+  sceneRef?: RefSlotItem;
+  prevLastFrame?: RefSlotItem;
+}
+
 // v0.72：出图/出片提示词模板在 server 端（admin「短剧专区·提示词设置」可改）。
 // 前端不再拼 prompt 字符串，只传 kind（选模板）+ vars（填充占位符）。
 export interface RenderFrameInput {
@@ -34,6 +113,14 @@ export interface RenderFrameInput {
   shotId?: string;
   episodeNo?: number;
   name?: string;
+  /** C-3：镜头坐标 → 服务端自装配参考（角色/场景/上一镜末帧）。传了则忽略 refImages。 */
+  shotRef?: ShotRefInput;
+  /** C-3：结构化参考槽位（短视频线显式主角/场景）。shotRef 缺省时生效。 */
+  refSlots?: RefSlotsInput;
+  /** C-3：置顶锚点（如拆镜末帧出图用本镜首帧作一致性锚），最高优先级 role=first_frame。 */
+  refLeading?: string[];
+  /** D-11：指定出片模型（候选端点白名单）。缺省 → 默认端点；非法 → 503 ENDPOINT_NOT_ALLOWED（不扣费）。 */
+  endpointId?: string;
 }
 
 export interface RenderClipInput {
@@ -51,6 +138,31 @@ export interface RenderClipInput {
   frameUrl?: string;
   /** v0.97 P2：尾帧 URL（上一镜真实末帧 / decompose 末帧）→ seedance 首+尾帧双关键帧插值。 */
   lastFrameUrl?: string;
+  /** C-3：镜头坐标 → 服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；本镜末帧 → 同场下一镜开场首帧）。 */
+  shotRef?: ShotRefInput;
+  /** D-11：指定出片模型（候选端点白名单）。缺省 → 默认端点；非法 → 503 ENDPOINT_NOT_ALLOWED（不扣费）。 */
+  endpointId?: string;
+}
+
+/** shot_ref/ref_slots 出 wire（snake_case）。project_id 缺省回落 input.projectId。 */
+function shotRefBody(ref: ShotRefInput | undefined, fallbackProjectId?: string): Record<string, unknown> | undefined {
+  if (!ref) return undefined;
+  const projectId = ref.projectId ?? fallbackProjectId;
+  return {
+    project_id: projectId,
+    episode_no: ref.episodeNo,
+    scene_id: ref.sceneId,
+    shot_id: ref.shotId,
+    chain_consistency: ref.chainConsistency ?? false,
+  };
+}
+function refSlotsBody(slots: RefSlotsInput | undefined): Record<string, unknown> | undefined {
+  if (!slots) return undefined;
+  return {
+    character_refs: slots.characterRefs,
+    scene_ref: slots.sceneRef,
+    prev_last_frame: slots.prevLastFrame,
+  };
 }
 
 export type RenderTaskStatus = "queued" | "running" | "rendering" | "ready" | "failed" | string;
@@ -69,8 +181,10 @@ export interface DramaFrameJob {
   shot_id?: string;
   episode_no?: number;
   frames?: RenderedFrame[];
-  result?: { frames?: RenderedFrame[]; cost?: number };
+  result?: { frames?: RenderedFrame[]; cost?: number; applied_refs?: AppliedRefs };
   cost?: number;
+  /** C-1：本次首帧渲染的参考生效回报（参考 N/M 生效）。 */
+  applied_refs?: AppliedRefs;
   error_message?: string | null;
   created_at?: string;
   started_at?: string;
@@ -90,7 +204,9 @@ export interface DramaRenderTask {
   shot_id?: string;
   episode_no?: number;
   frames?: RenderedFrame[];
-  result?: { frames?: RenderedFrame[]; cost?: number };
+  result?: { frames?: RenderedFrame[]; cost?: number; applied_refs?: AppliedRefs };
+  /** C-1：参考生效回报。 */
+  applied_refs?: AppliedRefs;
   video_url?: string | null;
   thumbnail_url?: string | null;
   /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考。 */
@@ -128,28 +244,46 @@ function mockFrameDataUri(seed: number): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-export async function renderFrame(input: RenderFrameInput): Promise<RenderedFrame[]> {
+export interface RenderFrameResult {
+  frames: RenderedFrame[];
+  cost: number;
+  /** C-1：参考生效回报（参考 N/M 生效）。 */
+  appliedRefs?: AppliedRefs;
+}
+
+export async function renderFrame(input: RenderFrameInput): Promise<RenderFrameResult> {
   if (USE_MOCK) {
     const n = input.count ?? 1;
     return mockDelay(
-      Array.from({ length: n }, (_, i) => ({
-        url: mockFrameDataUri(Date.now() + i),
-        cdnKey: `mock/frames/${Date.now()}_${i}.svg`,
-      })),
+      {
+        frames: Array.from({ length: n }, (_, i) => ({
+          url: mockFrameDataUri(Date.now() + i),
+          cdnKey: `mock/frames/${Date.now()}_${i}.svg`,
+        })),
+        cost: 0,
+      },
       1200,
     );
   }
-  const res = await apiFetch<{ frames: RenderedFrame[]; cost: number }>("/me/drama/render/frame", {
-    method: "POST",
-    body: {
-      kind: input.kind ?? "shot",
-      vars: input.vars,
-      ratio: input.ratio,
-      count: input.count,
-      ref_images: input.refImages,
+  const res = await apiFetch<{ frames: RenderedFrame[]; cost: number; applied_refs?: AppliedRefs }>(
+    "/me/drama/render/frame",
+    {
+      method: "POST",
+      body: {
+        kind: input.kind ?? "shot",
+        vars: input.vars,
+        ratio: input.ratio,
+        count: input.count,
+        ref_images: input.refImages,
+        shot_ref: shotRefBody(input.shotRef, input.projectId),
+        ref_slots: refSlotsBody(input.refSlots),
+        ref_leading: input.refLeading,
+        project_id: input.projectId,
+        endpoint_id: input.endpointId,
+      },
     },
-  });
-  return res.frames ?? [];
+  );
+  return { frames: res.frames ?? [], cost: res.cost ?? 0, appliedRefs: res.applied_refs };
 }
 
 const mockFrameJobs = new Map<string, DramaFrameJob & { readyAt?: number }>();
@@ -207,11 +341,15 @@ export async function submitFrameJob(input: RenderFrameInput): Promise<DramaFram
       ratio: input.ratio,
       count: input.count,
       ref_images: input.refImages,
+      shot_ref: shotRefBody(input.shotRef, input.projectId),
+      ref_slots: refSlotsBody(input.refSlots),
+      ref_leading: input.refLeading,
       project_id: input.projectId,
       scene_id: input.sceneId,
       shot_id: input.shotId,
       episode_no: input.episodeNo,
       name: input.name,
+      endpoint_id: input.endpointId,
     },
   });
 }
@@ -283,6 +421,8 @@ export async function renderClip(input: RenderClipInput): Promise<DramaEpisodeJo
       target: input.target,
       frame_url: input.frameUrl,
       last_frame_url: input.lastFrameUrl,
+      shot_ref: shotRefBody(input.shotRef, input.projectId),
+      endpoint_id: input.endpointId,
     },
   });
 }

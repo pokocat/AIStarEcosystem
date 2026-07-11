@@ -51,6 +51,7 @@ import type {
   AiModelAlert,
   AiModelFailureStat,
   AdminAiModelEndpointUpsert,
+  AiAppEndpointCandidate,
 } from "@/api/ai-models";
 
 const PROVIDER_TYPES: AiModelProviderType[] = [
@@ -1348,6 +1349,17 @@ export default function AdminAiModelsPage() {
                         {group.description}
                       </div>
                       <BindingTable bindings={bindingsByGroup[group.key]} endpoints={endpoints} onBind={onBind} />
+                      {/* D-11：短剧渲染用途支持一用途多候选端点 + 能力（供「出片模型」下拉）。 */}
+                      {group.key === "drama" &&
+                        bindingsByGroup[group.key].map((b) => (
+                          <CandidatePanel
+                            key={b.purpose}
+                            purpose={b.purpose}
+                            purposeLabel={b.purposeLabel}
+                            endpoints={endpoints}
+                            onSetDefault={(endpointId) => onBind(b.purpose, endpointId)}
+                          />
+                        ))}
                     </TabsContent>
                   ))}
                 </Tabs>
@@ -1630,6 +1642,289 @@ function BindingStatusBadge({ binding }: { binding: AiAppBinding }) {
     <Badge tone="success" className="font-normal">
       已绑定
     </Badge>
+  );
+}
+
+// ── D-11：一用途多候选端点 + 能力（供短剧「出片模型」下拉） ─────────────────────
+function CandidatePanel({
+  purpose,
+  purposeLabel,
+  endpoints,
+  onSetDefault,
+}: {
+  purpose: AiModelPurpose;
+  purposeLabel: string;
+  endpoints: AiModelEndpoint[];
+  onSetDefault: (endpointId: string) => void | Promise<void>;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [open, setOpen] = React.useState(false);
+  const [rows, setRows] = React.useState<AiAppEndpointCandidate[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [addId, setAddId] = React.useState<string>("");
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      setRows(await AiModelsApi.listCandidates(purpose));
+    } catch (e) {
+      toast.danger({ title: "候选端点加载失败", description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setLoading(false);
+    }
+  }, [purpose, toast]);
+
+  React.useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
+
+  const candidateIds = new Set(rows.map((r) => r.endpointId));
+  const addable = endpoints.filter((e) => !candidateIds.has(e.id));
+
+  function patchLocal(endpointId: string, f: (r: AiAppEndpointCandidate) => AiAppEndpointCandidate) {
+    setRows((prev) => prev.map((r) => (r.endpointId === endpointId ? f(r) : r)));
+  }
+
+  async function persist(row: AiAppEndpointCandidate) {
+    try {
+      const updated = await AiModelsApi.updateCandidate(purpose, row.endpointId, {
+        sortOrder: row.sortOrder,
+        enabled: row.enabled,
+        maxRefImages: row.capability.maxRefImages ?? null,
+        supportsFirstLastFrame: row.capability.supportsFirstLastFrame ?? null,
+        supportsSubjectReference: row.capability.supportsSubjectReference ?? null,
+        maxDurationSec: row.capability.maxDurationSec ?? null,
+        creditCostOverride: row.creditCostOverride ?? null,
+      });
+      patchLocal(updated.endpointId, () => updated);
+      toast.success({ title: "已保存" });
+    } catch (e) {
+      toast.danger({ title: "保存失败", description: e instanceof Error ? e.message : undefined });
+      void load();
+    }
+  }
+
+  async function add() {
+    if (!addId) return;
+    try {
+      await AiModelsApi.addCandidate(purpose, { endpointId: addId });
+      setAddId("");
+      await load();
+      toast.success({ title: "已加入候选" });
+    } catch (e) {
+      toast.danger({ title: "添加失败", description: e instanceof Error ? e.message : undefined });
+    }
+  }
+
+  async function remove(row: AiAppEndpointCandidate) {
+    const res = await confirm({
+      title: "移除候选端点",
+      description: `确定把「${row.endpointName ?? row.endpointId}」从「${purposeLabel}」的候选池移除？出片时将不再可选此模型。`,
+      tone: "danger",
+      confirmLabel: "移除",
+    });
+    if (!res.ok) return;
+    try {
+      await AiModelsApi.removeCandidate(purpose, row.endpointId);
+      await load();
+      toast.success({ title: "已移除候选" });
+    } catch (e) {
+      toast.danger({ title: "移除失败", description: e instanceof Error ? e.message : undefined });
+    }
+  }
+
+  const num = (v: string): number | null => (v.trim() === "" ? null : Number(v));
+
+  return (
+    <div className="rounded-md border border-border/70 bg-surface-muted/30">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-3.5 py-2 text-left text-xs"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
+          <span className="font-medium">{purposeLabel} · 候选端点与能力</span>
+          <span className="text-muted-foreground">（供出片模型下拉；默认端点始终在列）</span>
+        </span>
+        {open && rows.length > 0 && (
+          <span className="text-[10px] text-muted-foreground">{rows.length} 个候选</span>
+        )}
+      </button>
+      {open && (
+        <div className="space-y-3 px-3.5 pb-3.5">
+          {loading && <div className="text-xs text-muted-foreground">加载中…</div>}
+          {!loading && (
+            <>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[860px] text-xs">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[190px]">端点</TableHead>
+                      <TableHead className="w-[70px]">启用</TableHead>
+                      <TableHead className="w-[92px]" title="最多可送参考图张数，留空按兼容默认 6（与旧版行为一致）">参考图上限</TableHead>
+                      <TableHead className="w-[80px]" title="是否支持首+尾帧关键帧衔接">首尾帧</TableHead>
+                      <TableHead className="w-[80px]" title="是否支持主体（人物）参考">主体参考</TableHead>
+                      <TableHead className="w-[92px]" title="单条视频最长秒数，留空为未知">最长秒数</TableHead>
+                      <TableHead className="w-[100px]" title="该端点单价（积分），留空用用途默认单价">单价覆盖</TableHead>
+                      <TableHead className="w-[190px] text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="py-4 text-center text-muted-foreground">
+                          暂无候选端点。默认端点会自动进入候选池；也可在下方添加。
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {rows.map((row) => (
+                      <TableRow key={row.endpointId}>
+                        <TableCell className="py-2">
+                          <div className="max-w-[180px] truncate font-medium" title={row.endpointName ?? row.endpointId}>
+                            {row.endpointName ?? row.endpointId}
+                          </div>
+                          {row.isDefault && (
+                            <Badge tone="success" className="mt-0.5 h-4 px-1.5 text-[9px] font-normal">
+                              默认
+                            </Badge>
+                          )}
+                          {row.endpointEnabled === false && (
+                            <Badge tone="danger" className="mt-0.5 h-4 px-1.5 text-[9px] font-normal">
+                              端点停用
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Switch
+                            checked={row.enabled}
+                            onCheckedChange={(v) => {
+                              patchLocal(row.endpointId, (r) => ({ ...r, enabled: v }));
+                              void persist({ ...row, enabled: v });
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Input
+                            type="number"
+                            className="h-7 w-[76px]"
+                            value={row.capability.maxRefImages ?? ""}
+                            placeholder="1"
+                            onChange={(e) =>
+                              patchLocal(row.endpointId, (r) => ({
+                                ...r,
+                                capability: { ...r.capability, maxRefImages: num(e.target.value) },
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Switch
+                            checked={row.capability.supportsFirstLastFrame === true}
+                            onCheckedChange={(v) =>
+                              patchLocal(row.endpointId, (r) => ({
+                                ...r,
+                                capability: { ...r.capability, supportsFirstLastFrame: v },
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Switch
+                            checked={row.capability.supportsSubjectReference === true}
+                            onCheckedChange={(v) =>
+                              patchLocal(row.endpointId, (r) => ({
+                                ...r,
+                                capability: { ...r.capability, supportsSubjectReference: v },
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Input
+                            type="number"
+                            className="h-7 w-[76px]"
+                            value={row.capability.maxDurationSec ?? ""}
+                            placeholder="—"
+                            onChange={(e) =>
+                              patchLocal(row.endpointId, (r) => ({
+                                ...r,
+                                capability: { ...r.capability, maxDurationSec: num(e.target.value) },
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Input
+                            type="number"
+                            className="h-7 w-[84px]"
+                            value={row.creditCostOverride ?? ""}
+                            placeholder="默认"
+                            onChange={(e) =>
+                              patchLocal(row.endpointId, (r) => ({ ...r, creditCostOverride: num(e.target.value) }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="py-2 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <Button size="sm" variant="outline" className="h-7" onClick={() => void persist(row)}>
+                              保存
+                            </Button>
+                            {!row.isDefault && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7"
+                                disabled={row.endpointEnabled === false}
+                                onClick={() => void onSetDefault(row.endpointId)}
+                                title="设为该用途默认端点（不指定模型时用它）"
+                              >
+                                设默认
+                              </Button>
+                            )}
+                            {!row.isDefault && (
+                              <Button size="sm" variant="ghost" className="h-7 text-destructive" onClick={() => void remove(row)}>
+                                移除
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={addId} onValueChange={setAddId}>
+                  <SelectTrigger className="h-8 max-w-xs">
+                    <SelectValue placeholder="选择要加入候选的端点…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {addable.length === 0 && (
+                      <SelectItem value="__none__" disabled>
+                        没有可添加的端点
+                      </SelectItem>
+                    )}
+                    {addable.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name}
+                        {e.model ? ` · ${e.model}` : ""}
+                        {!e.enabled ? "（已停用）" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" className="h-8" disabled={!addId || addId === "__none__"} onClick={() => void add()}>
+                  加入候选
+                </Button>
+                <span className="text-[10px] text-muted-foreground">能力字段留空 = 未知，装配按兼容默认（参考图上限 6、首尾帧按模型协议自动判定），与配置前行为一致。</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
