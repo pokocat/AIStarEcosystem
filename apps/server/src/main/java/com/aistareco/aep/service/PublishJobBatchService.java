@@ -194,7 +194,7 @@ public class PublishJobBatchService {
             PublishJob j = queued.get(i);
             j.setScheduledAt(perJobAt[i]);
             jobRepo.save(j);
-            affected.add(PublishJobDto.from(j));
+            affected.add(publishJobService.toDto(j));
         }
         log.info("batch reschedule: user={} project={} updated {} queued job(s)",
                 userId, projectId, affected.size());

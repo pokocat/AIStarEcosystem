@@ -108,6 +108,11 @@ public class PublishJobService {
 
     // ── list / get ──────────────────────────────────────────────────────
 
+    /** 供其他 service（如 PublishJobBatchService）复用同一 signer 出 wire，不必各自持有 CdnUrlSigner。 */
+    public PublishJobDto toDto(PublishJob job) {
+        return PublishJobDto.from(job, cdnUrlSigner);
+    }
+
     public List<PublishJobDto> listForUser(String userId, String projectId, String statusWire) {
         List<PublishJob> rows;
         if (projectId != null && !projectId.isBlank()) {
@@ -119,12 +124,12 @@ public class PublishJobService {
         } else {
             rows = jobRepo.findByUserIdOrderByCreatedAtDesc(userId);
         }
-        return rows.stream().map(PublishJobDto::from).toList();
+        return rows.stream().map(j -> PublishJobDto.from(j, cdnUrlSigner)).toList();
     }
 
     public PublishJobDto get(String userId, String jobId) {
         return PublishJobDto.from(jobRepo.findByIdAndUserId(jobId, userId)
-                .orElseThrow(() -> BusinessException.notFound("PUBLISH_JOB_NOT_FOUND", "发布任务不存在")));
+                .orElseThrow(() -> BusinessException.notFound("PUBLISH_JOB_NOT_FOUND", "发布任务不存在")), cdnUrlSigner);
     }
 
     /** Admin 视图：跨用户列出发布任务，可选 status 过滤。 */
@@ -145,7 +150,7 @@ public class PublishJobService {
                     if (cb == null) return -1;
                     return cb.compareTo(ca);
                 })
-                .map(PublishJobDto::from)
+                .map(j -> PublishJobDto.from(j, cdnUrlSigner))
                 .toList();
     }
 
@@ -231,7 +236,7 @@ public class PublishJobService {
                 userId, projectId, created.size(), input.targets().size(),
                 input.title() == null ? 0 : input.title().length(),
                 input.productLink() != null && !input.productLink().isBlank());
-        return created.stream().map(PublishJobDto::from).toList();
+        return created.stream().map(j -> PublishJobDto.from(j, cdnUrlSigner)).toList();
     }
 
     // ── start (charge + dispatch) ───────────────────────────────────────
@@ -249,13 +254,13 @@ public class PublishJobService {
         SocialAccount account = accountRepo.findByIdAndUserId(job.getSocialAccountId(), userId).orElse(null);
         if (account == null) {
             failBeforeDispatch(job, null, "SOCIAL_ACCOUNT_NOT_FOUND", "社交账号不存在 (可能已解绑)");
-            return PublishJobDto.from(job);
+            return PublishJobDto.from(job, cdnUrlSigner);
         }
         if (account.getStatus() != SocialAccountStatus.ACTIVE
                 || account.getStorageStateEncrypted() == null) {
             failBeforeDispatch(job, account, "ACCOUNT_NOT_ACTIVE",
                     "社交账号不可用 (status=" + account.getStatus().wire() + ")");
-            return PublishJobDto.from(job);
+            return PublishJobDto.from(job, cdnUrlSigner);
         }
 
         Map<String, Object> storageState;
@@ -265,11 +270,11 @@ public class PublishJobService {
         } catch (Exception e) {
             failBeforeDispatch(job, account, "ACCOUNT_STATE_DECRYPT_FAILED",
                     "账号凭据解密失败，请重新绑定账号");
-            return PublishJobDto.from(job);
+            return PublishJobDto.from(job, cdnUrlSigner);
         }
 
         if (!verifyAccountBeforeCharge(job, account, storageState)) {
-            return PublishJobDto.from(job);
+            return PublishJobDto.from(job, cdnUrlSigner);
         }
 
         long cost = currentUploadCost();
@@ -341,7 +346,7 @@ public class PublishJobService {
             releaseHoldOnFailure(job, "派单失败 · " + safeShort(e.getMessage()));
             // 不重抛 — 让调用方拿到 PublishJobDto 看到 FAILED 状态
         }
-        return PublishJobDto.from(job);
+        return PublishJobDto.from(job, cdnUrlSigner);
     }
 
     private boolean verifyAccountBeforeCharge(PublishJob job,
@@ -648,7 +653,7 @@ public class PublishJobService {
                 userId, jobId, job.getExternalTaskId());
         // sau-service 接受后会异步：fill page → callback 回 PUBLISHING/UPLOADING
         // 这里返回当前 DTO（仍是 AWAITING_USER），前端会轮询拿到更新。
-        return PublishJobDto.from(job);
+        return PublishJobDto.from(job, cdnUrlSigner);
     }
 
     // ── cancel / retry ──────────────────────────────────────────────────
@@ -678,7 +683,7 @@ public class PublishJobService {
                 log.warn("sau cancelTask failed externalTaskId={} err={}", job.getExternalTaskId(), e.getMessage());
             }
         }
-        return PublishJobDto.from(job);
+        return PublishJobDto.from(job, cdnUrlSigner);
     }
 
     /** 重试：复用同一行，重置 progress / errorMessage，重新走 startJob (扣费一次)。 */

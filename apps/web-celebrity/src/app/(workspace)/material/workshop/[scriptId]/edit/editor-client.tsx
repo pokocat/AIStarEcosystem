@@ -12,24 +12,47 @@ export function EditorClient({ scriptId }: { scriptId: string }) {
   const [draft, setDraft] = React.useState<ScriptAsset | null>(null);
   const [product, setProduct] = React.useState<MaterialProduct | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const { confirm, ConfirmHost } = useConfirm();
+  const [reloadKey, setReloadKey] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
-    MaterialOpsApi.getScript(scriptId).then(async (s) => {
-      if (cancelled) return;
-      setDraft(s);
-      // 按 product_id 解析真实关联商品（全量商品库），不再回退到错误的 MATERIAL_PRODUCTS[0]。
-      if (s) setProduct(await MaterialOpsApi.resolveProductForScript(s));
-      if (!cancelled) setLoading(false);
-    });
+    setLoading(true);
+    setError(null);
+    MaterialOpsApi.getScript(scriptId)
+      .then(async (s) => {
+        if (cancelled) return;
+        setDraft(s);
+        // 按 product_id 解析真实关联商品（全量商品库），不再回退到错误的 MATERIAL_PRODUCTS[0]。
+        if (s) setProduct(await MaterialOpsApi.resolveProductForScript(s));
+        if (!cancelled) setLoading(false);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "加载脚本失败");
+        setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [scriptId]);
+  }, [scriptId, reloadKey]);
 
   if (loading) return <div style={{ padding: 40, color: "var(--fg-2)", fontFamily: "var(--font-mono)", fontSize: 13 }}>加载脚本…</div>;
+  if (error) {
+    return (
+      <div style={{ padding: 40, color: "var(--fg-2)" }}>
+        脚本加载失败：{error}
+        <button
+          onClick={() => setReloadKey((k) => k + 1)}
+          style={{ marginLeft: 12, color: "var(--accent)", textDecoration: "underline", cursor: "pointer" }}
+        >
+          重试
+        </button>
+      </div>
+    );
+  }
   if (!draft || !product) return <div style={{ padding: 40, color: "var(--fg-2)" }}>未找到脚本 {scriptId}</div>;
 
   const onSaveAndPreview = () => {
