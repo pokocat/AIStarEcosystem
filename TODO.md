@@ -448,3 +448,12 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 **本轮复核历史 open routine PR**：无——`[Routine QA]`/`qa/routine/` 搜索均为空。
 **验证**：`./mvnw compile -o` 全绿；`./mvnw -Dtest=PublishJobServiceTest,PublishJobServiceCdnSignTest test -o` 全绿（7 例）；`./mvnw -Dtest="Mixcut*Test,Publish*Test" test -o` 全绿（广谱回归）；`./mvnw -Dtest=AdminUserControllerWalletSecurityTest test -o` 全绿（真实 Spring 容器验证 `@Lazy` 自注入不破坏启动）。
+
+## 2026-07-12 · 例行 QA 新发现（1 处已修复）
+
+> 本轮承接了 2026-07-11 的 open routine QA PR #87（`qa/routine/2026-07-11-publish-job-ssrf-and-tx`，SSRF 白名单 + `resumeInflight` 自调用致 `@Transactional` 失效两处修复），cherry-pick 干净无冲突（main 在此期间只多了一次支付宝配置误提交 + 撤销，未触碰 `PublishJobService.java`/`TODO.md`），`PublishJobServiceTest`/`PublishJobServiceCdnSignTest` 复跑 7/7 全绿。独立审计聚焦近期上线、尚未经历过例行 QA 审查的「短剧一致性引擎」（C-1~C-3 / D-11，v0.99-v0.102）与支付回调链路，发现并修复以下 1 处：
+
+- [x] ~~**`AiAppBindingService.updateCandidate` 允许禁用「默认候选」，但对默认路径调用完全无效——静默无效的管理操作**~~（**已修复**，2026-07-12）：D-11 把「用途→单端点」升级为「用途→N 候选端点」，`AiModelInvocationService.resolveEndpoint(purpose, endpointId)`（显式指定候选）正确校验候选 `enabled`；但**默认路径** `resolveEndpoint(purpose)`（无 `endpointId` 时的兜底，覆盖 `invokeChat`、`renderFrame`/`renderClip` 的默认分支、`MaterialVideoModelClient.pickEndpoint(null)` 等绝大多数未显式选模型的调用）只读 `AiAppBinding` + 端点自身 `isEnabled`，**从未检查候选行的 `enabled` 字段**（`AiAppEndpointCandidate` 类注释里其实写明了这是有意的「resolveEndpoint(purpose) 行为零变化」设计）。问题在于 admin「候选端点与能力」表格对默认行和其余行渲染同一个「启用」开关且无任何拦截——运营在默认行关闭「启用」，直觉认为该端点已下线，实际上对占绝大多数流量的默认调用路径完全无效，是一次外观上生效、实际上静默 no-op 的管理操作（同类先例：`removeCandidate` 已有「默认候选不许删」的守卫，但 `updateCandidate` 遗漏了对应的「不许禁用」守卫）。修复：`AiAppBindingService.updateCandidate` 新增守卫——当 `body.enabled()==false` 且该候选是当前用途默认端点时，抛 400 `CANDIDATE_IS_DEFAULT`（与 `removeCandidate` 同错误码/同文案风格），提示先切换默认端点或直接停用该 AI 模型端点；未涉及 `enabled` 字段的更新（如只改 `sortOrder`/capability）不受影响。前端 `apps/admin/src/app/platform/ai-models/page.tsx` 同步给默认行的「启用」`Switch` 加 `disabled` + 说明 `title`，避免运营先点了才被拒。新增回归测试 `AiAppBindingServiceTest`（3 例：禁用默认候选 400 拒绝且不落库 / 禁用非默认候选正常生效 / 只改默认候选的其他字段不受禁用守卫影响）。（此 bug 由 general-purpose 子 agent 定向审计 C-1~C-3/D-11 代码独立发现，经本轮人工复核确认根因与影响面后修复。）
+
+**本轮复核历史 open routine PR**：承接 #87（见上），无需 supersede/close。
+**验证**：`./mvnw compile -o` 全绿；`./mvnw -Dtest=AiAppBindingServiceTest,AiModelInvocationServiceTest,AiAppCandidateSeederTest test -o` 全绿（25 例）；`./mvnw -Dtest="AiApp*Test,AiModel*Test,Drama*Test" test -o` 广谱回归全绿（146 例，2 跳过为需真实凭据的 live smoke test）；`./mvnw -Dtest=PublishJobServiceTest,PublishJobServiceCdnSignTest test -o` 全绿（7 例，验证 #87 承接无 regress）。admin 端 `tsc --noEmit` 在本沙箱环境因未跑 `pnpm install`（无 `node_modules`）无法完整执行，已逐行核对新增的 `disabled`/`title` props 未引入超出既有模块缺失噪音之外的新增类型错误。

@@ -138,13 +138,30 @@ public class AiAppBindingService {
         return toDto(purpose, new ResolvedEndpoint(e, c, isDefault(purpose, endpointId)));
     }
 
-    /** 更新候选的 capability / 单价 override / 启用 / 排序（body 中 null 字段表示不修改）。 */
+    /**
+     * 更新候选的 capability / 单价 override / 启用 / 排序（body 中 null 字段表示不修改）。
+     *
+     * <p>例行 QA 修复（2026-07-12）：默认候选（{@code isDefault=true}）不允许被禁用。根因——
+     * {@link AiModelInvocationService#resolveEndpoint(AiModelPurpose)}（无 endpointId 的默认路径，
+     * 覆盖 endpoint_id 未显式指定的绝大多数调用：invokeChat / renderFrame·renderClip 默认分支 /
+     * MaterialVideoModelClient.pickEndpoint(null)）只读 {@link AiAppBinding} + 端点自身
+     * {@code isEnabled}，从不检查候选行的 {@code enabled} 字段——只有显式传 endpointId 的
+     * {@code resolveEndpoint(purpose, endpointId)} 才会校验候选 {@code enabled}。admin「候选端点与
+     * 能力」表格此前对默认行和其余行渲染同一个「启用」开关且无任何拦截，运营据此关闭默认行的
+     * 「启用」会误以为该端点已停止服务，实际上对占绝大多数流量的默认路径调用完全无效——是一次
+     * 静默无效的管理操作。与 {@link #removeCandidate} 已有的「默认候选不许删」同款守卫，这里补齐
+     * 「默认候选不许禁用」；需要下线该端点时应先切换默认，或直接停用该 AI 模型端点本身。
+     */
     public AiAppEndpointCandidateDto updateCandidate(AiModelPurpose purpose, String endpointId,
                                                      AiAppEndpointCandidateUpsert body) {
         AiAppEndpointCandidate c = candidateRepo.findByPurposeAndEndpointId(purpose, endpointId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "CANDIDATE_NOT_FOUND",
                         "候选端点不存在"));
         if (body != null) {
+            if (Boolean.FALSE.equals(body.enabled()) && isDefault(purpose, endpointId)) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "CANDIDATE_IS_DEFAULT",
+                        "该端点是当前默认端点，禁用候选对默认路径的调用不会生效；请先切换默认端点，或直接停用该 AI 模型端点。");
+            }
             if (body.sortOrder() != null) c.setSortOrder(body.sortOrder());
             if (body.enabled() != null) c.setEnabled(body.enabled());
             // capability / override：显式传（含 null 语义「清空为未知」）由 admin 控制；这里整段覆盖。
