@@ -6,11 +6,12 @@ export const dynamic = "force-dynamic";
 // 仅平台运营（真实 operatorRole）可见可改；后端 /api/me/drama/catalog（写：OPERATOR/SUPER_ADMIN）。
 import * as React from "react";
 import { toast } from "sonner";
-import { Lightbulb, Plus, RefreshCw, Save, Sparkles, Trash2, X } from "lucide-react";
+import { AlertTriangle, Lightbulb, Plus, RefreshCw, Save, Sparkles, Trash2, X } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
 import { generateHotspots, getCatalog, resetCatalog, saveCatalog, type CatalogField, type HotTopic } from "@/api/catalog";
 import type { IdeaRec } from "@/mocks/drama-workshop";
 import { RecipeReviewSection } from "@/components/drama-workshop/recipe-review-section";
+import { ViewHeader } from "@/components/common";
 
 export default function OperationsPage() {
   const { user } = useAuth();
@@ -22,6 +23,27 @@ export default function OperationsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState<"hotTopics" | "ideas" | null>(null);
   const [genningHot, setGenningHot] = React.useState(false);
+  // 未发布修改跟踪：热点/创意都是纯本地态，各自独立「发布」才落库。两区各存一份「已发布快照」，
+  // 分别比对判定脏 —— 发布 A 区只重置 A 区基线，不会把 B 区未发布改动误标为已保存。
+  const [savedHotSnapshot, setSavedHotSnapshot] = React.useState<string | null>(null);
+  const [savedIdeasSnapshot, setSavedIdeasSnapshot] = React.useState<string | null>(null);
+  const hotSnapshot = (h: HotTopic[]) => JSON.stringify(h);
+  const ideasSnapshot = (i: IdeaRec[]) => JSON.stringify(i);
+  const dirtyHot = savedHotSnapshot !== null && hotSnapshot(hotTopics) !== savedHotSnapshot;
+  const dirtyIdeas = savedIdeasSnapshot !== null && ideasSnapshot(ideas) !== savedIdeasSnapshot;
+  const dirty = dirtyHot || dirtyIdeas;
+
+  // beforeunload 兜底：有未发布修改时，刷新/关页/离开给浏览器原生二次确认（做不到路由级拦截，
+  // 但配合页面内黄条提示已能防误丢）。
+  React.useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
 
   // AI 生成一批热点：抓抖音热搜 → LLM 蒸馏成短剧选题钩子 → 追加为可编辑行（审核后再「发布」）。
   const genHot = async () => {
@@ -61,8 +83,12 @@ export default function OperationsPage() {
     setError(null);
     try {
       const c = await getCatalog();
-      setHotTopics(c.hotTopics.map((h) => ({ ...h })));
-      setIdeas(c.ideas.map((i) => ({ ...i })));
+      const h = c.hotTopics.map((x) => ({ ...x }));
+      const i = c.ideas.map((x) => ({ ...x }));
+      setHotTopics(h);
+      setIdeas(i);
+      setSavedHotSnapshot(hotSnapshot(h));
+      setSavedIdeasSnapshot(ideasSnapshot(i));
     } catch (e) {
       setError(e instanceof Error ? e.message : "目录加载失败");
     } finally {
@@ -79,7 +105,9 @@ export default function OperationsPage() {
     setSaving("hotTopics");
     try {
       await saveCatalog("hotTopics", clean);
-      setHotTopics(clean.map((h) => ({ ...h })));
+      const cleaned = clean.map((h) => ({ ...h }));
+      setHotTopics(cleaned);
+      setSavedHotSnapshot(hotSnapshot(cleaned));
       toast.success(`已发布「近期热点」（${clean.length} 条），全站首页即时生效`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败，请重试");
@@ -92,7 +120,9 @@ export default function OperationsPage() {
     setSaving("ideas");
     try {
       await saveCatalog("ideas", clean);
-      setIdeas(clean.map((i) => ({ ...i })));
+      const cleaned = clean.map((i) => ({ ...i }));
+      setIdeas(cleaned);
+      setSavedIdeasSnapshot(ideasSnapshot(cleaned));
       toast.success(`已发布「创意推荐」（${clean.length} 条），全站首页即时生效`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败，请重试");
@@ -117,17 +147,45 @@ export default function OperationsPage() {
 
   return (
     <div style={{ maxWidth: 920, margin: "0 auto" }}>
-      <div className="row" style={{ marginBottom: 22, gap: 12 }}>
-        <div className="grow">
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>运营 · 内容目录</h1>
-          <div className="muted" style={{ marginTop: 4 }}>
-            维护平台提供的「近期热点 / 创意推荐」，发布后全站首页即时生效
-          </div>
-        </div>
-        <button type="button" className="btn btn-line btn-sm" disabled={loading} onClick={() => void load()}>
-          <RefreshCw size={14} /> 重新加载
-        </button>
+      <div style={{ marginBottom: 18 }}>
+        <ViewHeader
+          eyebrow="运营 · 内容目录"
+          title={
+            <>
+              内容{" "}
+              <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
+                目录
+              </span>
+            </>
+          }
+          meta="维护平台提供的「近期热点 / 创意推荐」，发布后全站首页即时生效"
+          action={
+            <button type="button" className="btn btn-line btn-sm" disabled={loading} onClick={() => void load()}>
+              <RefreshCw size={14} /> 重新加载
+            </button>
+          }
+        />
       </div>
+
+      {dirty && (
+        <div
+          className="row gap-2"
+          style={{
+            marginBottom: 16,
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "rgba(245,158,11,.14)",
+            border: "1px solid rgba(245,158,11,.35)",
+            color: "#b45309",
+            fontSize: 13,
+            fontWeight: 600,
+            alignItems: "center",
+          }}
+        >
+          <AlertTriangle size={15} style={{ flex: "none" }} />
+          <span style={{ minWidth: 0 }}>有未发布的修改，离开或刷新前请点各区块的「发布」保存。</span>
+        </div>
+      )}
 
       {error && (
         <div className="card row" style={{ padding: 16, marginBottom: 18, gap: 12, justifyContent: "space-between" }}>

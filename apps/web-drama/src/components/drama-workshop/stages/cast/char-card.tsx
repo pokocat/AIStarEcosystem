@@ -300,7 +300,7 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
                       {r.url && <img src={r.url} alt={r.label || r.angle || "参考图"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
                     </button>
                     <span className="faint" style={{ fontSize: 10, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {r.label || (r.angle && ANGLE_LABEL[r.angle]) || r.angle}
+                      {r.label || (r.angle && ANGLE_LABEL[r.angle]) || "参考图"}
                     </span>
                   </div>
                 ))}

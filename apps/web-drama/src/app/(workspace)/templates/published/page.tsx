@@ -26,14 +26,17 @@ export default function MyPublishedPage() {
   const router = useRouter();
   const [list, setList] = React.useState<DramaRecipe[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       setList(await RecipesApi.listMine());
     } catch (e) {
-      toast.error(aiErrorMessage(e, "加载失败"));
+      // 网络 / 服务错误单独呈现「加载失败 + 重试」，不与「还没有发布过创意」空态混淆。
+      setError(aiErrorMessage(e, "加载失败，请稍后重试"));
       setList([]);
     } finally {
       setLoading(false);
@@ -105,7 +108,12 @@ export default function MyPublishedPage() {
         </div>
       )}
 
-      {loading ? (
+      {error && !loading ? (
+        <div className="card col center" style={{ padding: 40, gap: 12, textAlign: "center" }}>
+          <div className="muted" style={{ fontSize: 13.5 }}>{error}</div>
+          <button type="button" className="btn btn-line btn-sm" onClick={() => void load()}>重试</button>
+        </div>
+      ) : loading ? (
         <div className="col gap-2">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="card" style={{ padding: 14 }}>

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Coins, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle2, Clock, Coins, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import type { LedgerEntry, RechargeOrder, RechargePackage, Wallet } from "@ai-star-eco/types/wallet";
 import { AccountApi } from "@ai-star-eco/api-client";
 import { formatCredits, formatCurrency } from "@ai-star-eco/api-client/format";
@@ -118,7 +118,7 @@ export default function WalletPage() {
       {walletQ.isLoading && <LoadingBlock rows={1} height={140} />}
       {!!walletQ.error && <ErrorBlock onRetry={walletQ.refetch} />}
       {wallet && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
           <KpiCard label="总余额" value={formatCredits(wallet.totalBalance)} tone="accent" delta="可用 · 不含冻结" />
           <KpiCard label="充值积分" value={formatCredits(wallet.rechargeBalance)} tone="info" />
           <KpiCard label="赠送积分" value={formatCredits(wallet.giftBalance)} tone="success" />
@@ -179,9 +179,9 @@ export default function WalletPage() {
             影子收银台（dev）· {shadow.summary} · 订单 <span className="mono">{shadow.orderId}</span>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Button variant="primary" size="sm" onClick={() => confirmShadow("success")}>✅ 模拟支付成功</Button>
-            <Button variant="secondary" size="sm" onClick={() => confirmShadow("fail")}>❌ 模拟失败</Button>
-            <Button variant="ghost" size="sm" onClick={() => confirmShadow("timeout")}>⏳ 模拟超时</Button>
+            <Button variant="primary" size="sm" onClick={() => confirmShadow("success")}><CheckCircle2 size={13} /> 模拟支付成功</Button>
+            <Button variant="secondary" size="sm" onClick={() => confirmShadow("fail")}><XCircle size={13} /> 模拟失败</Button>
+            <Button variant="ghost" size="sm" onClick={() => confirmShadow("timeout")}><Clock size={13} /> 模拟超时</Button>
           </div>
         </Card>
       )}

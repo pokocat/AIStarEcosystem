@@ -55,6 +55,12 @@ export interface CreditButtonProps
   markSize?: number;
   /** 强制弹确认——绕过「小额免打扰」阈值（用于金额小但需警示的操作，如跳过首帧直接出片）。 */
   alwaysConfirm?: boolean;
+  /**
+   * 点击时即时求值的「阻断性警告」（如出片前的一致性问题）。返回非空数组时，无论金额大小都弹
+   * 一个 danger 确认弹窗（警告列表 + confirmBody + 本次费用合并为同一个弹窗），确认「仍要继续」才执行；
+   * 返回空数组时维持原有行为（小额免打扰 / alwaysConfirm）。不传时零影响（向后兼容）。
+   */
+  getWarnings?: () => string[];
 }
 
 /**
@@ -70,6 +76,7 @@ export function CreditButton({
   mark = true,
   markSize = 13,
   alwaysConfirm = false,
+  getWarnings,
   children,
   disabled,
   ...rest
@@ -77,6 +84,34 @@ export function CreditButton({
   const handleClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (disabled) return;
+    // 阻断性警告（如出片前一致性未就绪）：合并「警告 + 原确认说明 + 本次费用」为单个 danger 弹窗，
+    // 避免「费用确认 + 一致性警告」两个叠加弹窗（v0.103）。
+    const warnings = getWarnings?.() ?? [];
+    if (warnings.length) {
+      const ok = await dramaConfirm({
+        cost,
+        tone: "danger",
+        title: "一致性未就绪，仍要继续？",
+        body: (
+          <div className="col gap-2" style={{ fontSize: 13, lineHeight: 1.6 }}>
+            {confirmBody && <div>{confirmBody}</div>}
+            <div>检测到以下会影响人物 / 场景一致性的问题：</div>
+            <ul style={{ margin: "2px 0", paddingLeft: 18 }}>
+              {warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+            <span className="faint" style={{ fontSize: 12 }}>
+              建议先在「角色与场景」补齐定妆图 / 绑定场景，或先出上一镜再逐镜顺序出片；否则本镜可能与其他镜对不上。
+            </span>
+          </div>
+        ),
+        confirmLabel: "仍要继续",
+        cancelLabel: "先去补齐",
+      });
+      if (ok) onConfirm();
+      return;
+    }
     // 小额免打扰（v0.66）：消耗低于阈值（admin「短剧专区」可配，默认 10）直接执行。
     // alwaysConfirm 的操作（金额小但需警示，如跳过首帧直接出片）不吃免打扰，始终弹确认。
     if (!alwaysConfirm) {

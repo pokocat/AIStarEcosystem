@@ -3426,6 +3426,16 @@ AI 改图复用 `POST /me/drama/render/frame`（`ref_images` 迭代），无新�
 
 **门禁**：server compile + 支付单测全绿（PaymentService 6 / PaymentReconcile 5 / Alipay 6 / AlipayNotify 5 / Wechat 5 / WechatNotify 5 / PaymentChannelConfig 6 / Recharge 16）+ `typecheck:all` 10/10 + web-celebrity build + web-drama build（+vitest 35）+ `check:api-contract` 全绿。openapi 加 `/me/wallet/recharge/channels`、`/pay/notify/wechat`、`/admin/payment/channels*`；删 `/pay/notify/jeepay`。env 模版 §15 改为「机密首选后台 DB 配，env 仅 bootstrap」。
 
+### v0.103（2026-07-12）— 短剧前端 UX 精细化打磨（纯前端，无新端点 / 无实体变更）
+
+web-drama 四批体验打磨 + 审查修复，后端零改动、无契约变更。
+
+1. **可达性**：`DramaConfirmDialog` / AI 改图弹窗 / `AvatarPicker` / 两处全屏分镜表弹窗补 `role`/`aria-modal`/Esc/focus trap（复用 `useModalA11y`）；`useModalA11y` 升级为**弹窗栈**——多层叠加时 Esc 与焦点陷阱只作用于栈顶。分镜表时长/说话人/场景参考控件补 `aria-label`；distribution 图标按钮补 aria。
+2. **扣费体验**：出片「积分确认 + 一致性警告」双弹窗合并为单弹窗（`CreditButton` 新增 `getWarnings`，弹窗合并展示问题清单 + 费用，按钮「仍要继续 / 先去补齐」）；AI 改图弹窗费用前置（「每次生成消耗 N 积分」+ 首次发送确认）；脑暴「制作短视频」补 `CreditMark` + 阈值确认；互动剧 AI 起草确认注明将消耗积分。
+3. **异步韧性**：`shorts/make` 渲染任务恢复（`ShortDraftShot` 加可选 `pendingJob` 字段随 `payloadJson` 持久化，进页 `listRenderTasks` 对账回填 / 恢复轮询；轮询超时不再当失败，提示后台继续，`POLL_TIMEOUT_MESSAGE` 常量全等判定）；一键连跑显示进度 X/N + 可停止；`useSaveStatus` 新增 dirty 态（「编辑中」），不再在防抖期谎报「保存中」。
+4. **状态与视觉**：shorts 列表补 skeleton / error 态；templates/published 区分错误与空态；operations 双区独立未发布守卫（黄条 + beforeunload）；distribution 浅色主题隐形填充改语义 token、任务行项目 ID 改标题显示、平台空态、去「建设中」徽标；面包屑兜底映射（`/trash` 等）；全局搜索占位纠偏；wallet / distribution KPI 网格 `auto-fit` 响应式；影子支付按钮去 emoji；页头统一 `ViewHeader`（projects / shorts / templates / trash / operations）；多处溢出保护与 @提及浮层滚动关闭；删死代码 `projects/_dialogs/NewProjectDialog.tsx`。
+5. **门禁**：`typecheck:all` 10/10 + web-drama build + `check:api-contract` 全绿；4 个既有 vitest 失败为 main 基线旧账（stash 对比确认）。真机浏览器走查通过（弹窗栈 / 合并确认 / 费用前置 / 面包屑 / 响应式）。**发现待办**（记 TODO.md 2026-07-12 段）：`drama.credit.interactive-draft` 单价未进 `GET /me/drama/config`、`shorts/make` 本地 `EditableField` 与 drama-ui `Editable` 未合并、distribution 平台卡名称列过窄换行、operations 未发布守卫缺 App Router 路由级拦截。
+
 ### v0.102（2026-07-10）— 短剧一致性引擎 C-3（服务端参考装配 + 双线共享 useShotRender）
 
 一致性引擎 C 序列 L1 收官（真源 `docs/[Fabel5]drama-consistency-engine-design.md` §5）。把此前散落前端 `epscript.tsx:shotRefImages` 的参考图优先级链下沉服务端，render 接口收镜头坐标 `shot_ref`（保留 `ref_slots`/`ref_images` 过渡兼容），服务端按项目文档 + 角色/场景实体自装配并按端点 capability（D-11）裁剪、回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用（收敛 P-6 重复）。

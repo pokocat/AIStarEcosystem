@@ -86,6 +86,11 @@ export interface StoryboardTableProps {
   onRewriteShot?: (sceneId: string, shotId: string, instruction: string) => void;
   /** 正在改写的镜 id（显示 busy）。 */
   rewritingId?: string | null;
+  /**
+   * 出片（生成视频 / 直接出片）前的一致性问题即时求值。返回非空 → CreditButton 弹单个 danger 确认
+   * （费用 + 警告合并），替代此前「费用弹窗 + 一致性弹窗」两个叠加弹窗。不传（如短视频线）则无警告。
+   */
+  getClipWarnings?: (sceneId: string, shot: FormShot) => string[];
 }
 
 export function StoryboardTable(props: StoryboardTableProps) {
@@ -132,6 +137,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
                               <span className="faint" style={{ fontSize: 10.5 }}>场景参考</span>
                               <select
                                 value={sc.sceneRefId ?? ""}
+                                aria-label="场景参考图"
                                 onChange={(e) => props.onUpdScene(i, { sceneRefId: e.target.value || undefined })}
                                 style={{ fontSize: 10.5, height: 23, borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-1)", maxWidth: 140, padding: "0 4px" }}
                               >
@@ -193,6 +199,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
                       onPick={(url) => props.onUpdShot(sc.id, s.id, { frameUrl: url })}
                       rewriting={props.rewritingId === s.id}
                       onRewrite={props.onRewriteShot ? (ins) => props.onRewriteShot!(sc.id, s.id, ins) : undefined}
+                      getClipWarnings={props.getClipWarnings ? () => props.getClipWarnings!(sc.id, s) : undefined}
                     />
                   ))}
                 </React.Fragment>
@@ -209,6 +216,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
           baseDesc={edit.shot.visual || "分镜画面"}
           initialUrl={edit.shot.frameUrl ?? edit.shot.frameUrls?.[0]}
           ratio="9:16"
+          cost={props.frameCost}
           chips={["换成夜景", "让她回头", "换暖色调", "背景虚化", "再高级一点"]}
           onClose={() => setEdit(null)}
           onCommit={(f) => { props.onFrameEdited(edit.sceneId, edit.shot.id, f.url); }}
@@ -221,13 +229,14 @@ export function StoryboardTable(props: StoryboardTableProps) {
 const REWRITE_CHIPS = ["惊喜化", "更紧凑", "换个机位", "强化冲突", "补一句台词"];
 
 function ShotRow({
-  s, start, busy, locked, speakerOptions, characters, frameCost, clipCost, onPatch, onDelete, onRender, onApprove, onAiEdit, onDecompose, onPick, rewriting, onRewrite,
+  s, start, busy, locked, speakerOptions, characters, frameCost, clipCost, onPatch, onDelete, onRender, onApprove, onAiEdit, onDecompose, onPick, rewriting, onRewrite, getClipWarnings,
 }: {
   s: FormShot; start: number; busy: ShotFlow | null; locked?: boolean; speakerOptions: string[]; characters: MentionChar[]; frameCost?: number; clipCost?: number;
   onPatch: (patch: Partial<FormShot>) => void; onDelete: () => void;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
   onDecompose: () => void; onPick: (url: string) => void;
   rewriting?: boolean; onRewrite?: (instruction: string) => void;
+  getClipWarnings?: () => string[];
 }) {
   const [rwOpen, setRwOpen] = React.useState(false);
   const [rwText, setRwText] = React.useState("");
@@ -268,12 +277,12 @@ function ShotRow({
       </td>
       <td style={{ ...TD, textAlign: "center" }}>
         <div className="num" style={{ fontSize: 12.5, fontWeight: 800, lineHeight: 1.4 }}>{fmtT(start)}<br />{fmtT(start + (s.dur || 0))}</div>
-        <input type="number" min={1} max={60} value={s.dur} disabled={locked}
+        <input type="number" min={1} max={60} value={s.dur} disabled={locked} aria-label="时长（秒）"
           onChange={(e) => onPatch({ dur: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })}
           style={{ width: 40, height: 20, marginTop: 4, border: "1px solid var(--line)", borderRadius: 6, fontSize: 11, textAlign: "center", outline: "none", background: "var(--surface)" }} />
       </td>
       <td style={{ ...TD, textAlign: "center" }}>
-        <ShotFrameCell s={s} busy={busy} onRender={onRender} onApprove={onApprove} onAiEdit={onAiEdit} onDecompose={onDecompose} onPick={onPick} frameCost={frameCost} clipCost={clipCost} />
+        <ShotFrameCell s={s} busy={busy} onRender={onRender} onApprove={onApprove} onAiEdit={onAiEdit} onDecompose={onDecompose} onPick={onPick} frameCost={frameCost} clipCost={clipCost} getClipWarnings={getClipWarnings} />
       </td>
       <td style={TD}>
         {/* v0.98：@提及富文本——输入 @ 选角色成内联 chip，chip 即本镜出场人物（→ shot.cast → 首帧喂角色参考图锁脸）。 */}
@@ -323,7 +332,7 @@ function ShotRow({
       </td>
       <td style={TD}>
         <div className="row gap-1" style={{ alignItems: "center", marginBottom: 3 }}>
-          <select value={s.voWho || speakerOptions[0]} disabled={locked} onChange={(e) => onPatch({ voWho: e.target.value })}
+          <select value={s.voWho || speakerOptions[0]} disabled={locked} aria-label="台词说话人" onChange={(e) => onPatch({ voWho: e.target.value })}
             style={{ height: 22, border: "1px solid var(--line)", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "var(--surface-2)", color: "var(--accent)", outline: "none", maxWidth: 110 }}>
             {whoList.map((w) => <option key={w} value={w}>{w}</option>)}
           </select>
@@ -347,12 +356,14 @@ function ShotRow({
 
 /** 首帧渲染单元（紧凑版，表格用）。短剧分镜表 + 短视频分镜表共用。
  *  v0.97：项目表额外传 onPick（2 版首帧参考图挑选）+ onDecompose（补末帧 → 首/末帧双联），短视频表可不传。 */
-export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecompose, onPick, frameCost = FRAME_COST, clipCost = 30 }: {
+export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecompose, onPick, frameCost = FRAME_COST, clipCost = 30, getClipWarnings }: {
   s: FormShot; busy: ShotFlow | null;
   onRender: (kind: "frame" | "direct" | "clip") => void; onApprove: () => void; onAiEdit: () => void;
   onDecompose?: () => void; onPick?: (url: string) => void;
   /** 首帧/视频真实单价（首帧 drama.credit.frame；视频沿用带货线 material.video-generate，默认 30）。 */
   frameCost?: number; clipCost?: number;
+  /** 出片（生成视频 / 直接出片）前的一致性问题即时求值；非空 → CreditButton 弹单个 danger 确认。短视频线不传。 */
+  getClipWarnings?: () => string[];
 }) {
   const isVideo = s.flow === "clip" || s.flow === "done";
   const frameSrc = s.frameUrl ?? s.frameUrls?.[0];
@@ -379,10 +390,13 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           <button
             type="button"
+            tabIndex={0}
             onClick={onAiEdit}
             onMouseEnter={() => setScrub(true)}
             onMouseLeave={() => setScrub(false)}
-            title="首帧 → 末帧（悬停预演运动）· 点开 AI 改图"
+            onFocus={() => setScrub(true)}
+            onBlur={() => setScrub(false)}
+            title="首帧 → 末帧（悬停或聚焦预演运动）· 点开 AI 改图"
             style={{ position: "relative", width: 44, height: 70, borderRadius: 7, overflow: "hidden", border: "none", padding: 0, cursor: "pointer", boxShadow: scrub ? "0 0 0 2px var(--accent)" : "none" }}
           >
             <img src={frameSrc} alt="首帧" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: scrub ? 0 : 1, transition: "opacity .5s" }} />
@@ -452,6 +466,7 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
           <CreditButton
             cost={clipCost}
             alwaysConfirm
+            getWarnings={getClipWarnings}
             onConfirm={() => onRender("direct")}
             confirmTitle="跳过首帧，直接出片？"
             confirmBody="不先出首帧参考图就直接生成视频，画面 / 人物 / 场景的一致性通常更差、也更难控。建议先「生成首帧参考图」挑一版满意的再出片。确定跳过首帧？"
@@ -471,7 +486,7 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
               <Sparkles size={10} /> 补末帧 · 首尾更稳
             </button>
           )}
-          <CreditButton cost={clipCost} onConfirm={() => onRender("clip")} confirmTitle="生成视频" confirmBody="基于已选首帧（有末帧则首尾帧双关键帧插值）生成这镜视频。" className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
+          <CreditButton cost={clipCost} getWarnings={getClipWarnings} onConfirm={() => onRender("clip")} confirmTitle="生成视频" confirmBody="基于已选首帧（有末帧则首尾帧双关键帧插值）生成这镜视频。" className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
             <Clapperboard size={12} /> 生成视频
           </CreditButton>
         </>

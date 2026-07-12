@@ -110,23 +110,41 @@ export function CharacterMentionInput({ value, characters, onChange, placeholder
                 el!.appendChild(b);
               });
             };
-            const destroy = () => { if (el) { el.remove(); el = null; } };
+            let onScroll: ((e: Event) => void) | null = null;
+            const destroy = () => {
+              if (onScroll) { window.removeEventListener("scroll", onScroll, true); onScroll = null; }
+              if (el) { el.remove(); el = null; }
+            };
+            // 创建（或复用）浮层并定位。菜单 append 到 body、只在 start/update 定位，
+            // 滚动分镜表时会原地悬浮脱离 @ 锚点 —— 故打开期间监听滚动（capture 捕获内层滚动容器），
+            // 一滚动就关闭菜单；用户继续输入时 onUpdate 会在新位置重建，光标不在视口内也不会留下悬浮框。
+            const ensure = (rect: DOMRect | null) => {
+              if (!el) {
+                el = document.createElement("div");
+                el.style.cssText = "position:absolute;z-index:9999;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-lg);padding:4px;min-width:150px;max-height:220px;overflow:auto";
+                document.body.appendChild(el);
+                onScroll = (e: Event) => {
+                  // 在菜单自身内滚动（列表溢出）不关闭；仅外部容器 / 页面滚动才关闭。
+                  if (el && e.target instanceof Node && el.contains(e.target)) return;
+                  destroy();
+                };
+                window.addEventListener("scroll", onScroll, true);
+              }
+              position(rect);
+            };
             return {
               onStart: (props: { command: (attrs: { id: string; label: string }) => void; items: MentionChar[]; clientRect?: (() => DOMRect | null) | null }) => {
                 command = props.command;
                 items = props.items;
                 selected = 0;
-                el = document.createElement("div");
-                el.style.cssText = "position:absolute;z-index:9999;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-lg);padding:4px;min-width:150px;max-height:220px;overflow:auto";
-                document.body.appendChild(el);
-                position(props.clientRect?.() ?? null);
+                ensure(props.clientRect?.() ?? null);
                 paint();
               },
               onUpdate: (props: { command: (attrs: { id: string; label: string }) => void; items: MentionChar[]; clientRect?: (() => DOMRect | null) | null }) => {
                 command = props.command;
                 items = props.items;
                 selected = 0;
-                position(props.clientRect?.() ?? null);
+                ensure(props.clientRect?.() ?? null);
                 paint();
               },
               onKeyDown: (props: { event: KeyboardEvent }) => {

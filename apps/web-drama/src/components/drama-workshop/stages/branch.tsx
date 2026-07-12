@@ -39,6 +39,7 @@ import { FlagsPanel } from "@/components/interactive/flags-panel";
 import { PlaythroughDialog } from "@/components/interactive/playthrough-dialog";
 import { ExportDialog } from "@/components/interactive/export-dialog";
 import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
+import { CreditMark } from "@/components/drama-ui";
 import { ProjectsApi } from "@/api";
 import { aiErrorMessage } from "@/lib/ai-error";
 
@@ -253,7 +254,7 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
     const theme = (story.title || data.projectInfo?.title || "").trim();
     const ok = await dramaConfirm({
       title: "用 AI 起草整张分支图?",
-      body: `将以「${theme || "本项目主题"}」为主题生成一张可玩、可达、含结局的剧集分支图，覆盖当前所有集与接线（各集仍需在六阶段里出片）。`,
+      body: `将以「${theme || "本项目主题"}」为主题生成一张可玩、可达、含结局的剧集分支图，覆盖当前所有集与接线（各集仍需在六阶段里出片）。本次将消耗积分。`,
       confirmLabel: "AI 起草",
       cancelLabel: "暂不",
     });
@@ -301,8 +302,8 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
             </button>
           ))}
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={aiDraft} disabled={drafting} style={{ flex: "none" }}>
-          {drafting ? <Loader2 size={13} style={{ animation: "drama-spin .8s linear infinite" }} /> : <Sparkles size={13} />} AI 起草
+        <button type="button" className="btn btn-ghost btn-sm" onClick={aiDraft} disabled={drafting} style={{ flex: "none" }} title="用 AI 生成整张分支图，会消耗积分">
+          {drafting ? <Loader2 size={13} style={{ animation: "drama-spin .8s linear infinite" }} /> : <Sparkles size={13} />} AI 起草 <CreditMark size={13} />
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPlay(true)} style={{ flex: "none" }}>
           <Play size={13} /> 试玩
@@ -345,8 +346,8 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
                   还没有剧集。点「AI 起草」用一句话生成整张分支图，或「加一集」手动创建。每一集都会进入六阶段工作台出片。
                 </div>
                 <div className="row gap-2">
-                  <button type="button" className="btn btn-grad btn-sm" onClick={aiDraft} disabled={drafting}>
-                    {drafting ? <Loader2 size={13} style={{ animation: "drama-spin .8s linear infinite" }} /> : <Sparkles size={13} />} AI 起草分支图
+                  <button type="button" className="btn btn-grad btn-sm" onClick={aiDraft} disabled={drafting} title="用 AI 生成整张分支图，会消耗积分">
+                    {drafting ? <Loader2 size={13} style={{ animation: "drama-spin .8s linear infinite" }} /> : <Sparkles size={13} />} AI 起草分支图 <CreditMark tone="inherit" size={13} />
                   </button>
                   <button type="button" className="btn btn-line btn-sm" onClick={addEpisode}>
                     <Plus size={13} /> 加一集

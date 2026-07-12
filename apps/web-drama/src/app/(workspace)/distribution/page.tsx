@@ -17,7 +17,7 @@ import {
   StatusBadge,
   ViewHeader,
 } from "@/components/common";
-import { DistributionApi } from "@/api";
+import { DistributionApi, ProjectsApi } from "@/api";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { ApiError } from "@ai-star-eco/api-client";
 
@@ -48,6 +48,13 @@ export default function DistributionOverviewPage() {
   const jobsQ = useAsync<PublishJob[]>("/distribution/jobs", () =>
     DistributionApi.listPublishJobs(undefined),
   );
+  // 项目 id → 标题映射：任务行展示项目标题而非内部 id（原始 id 放 hover）。
+  const projectsQ = useAsync("/me/drama/projects", () => ProjectsApi.listProjects());
+  const projectTitleById = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of projectsQ.data ?? []) m.set(p.id, p.title);
+    return m;
+  }, [projectsQ.data]);
 
   React.useEffect(() => {
     const t = setInterval(() => {
@@ -111,7 +118,7 @@ export default function DistributionOverviewPage() {
         meta={`${connectedCount}/${platforms.length} 平台在线 · ${live} 已上线`}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
         <KpiCard label="任务 · 在跑" value={String(inflight)} tone="info" />
         <KpiCard label="任务 · 已上线" value={String(live)} tone="success" />
         <KpiCard label="任务 · 失败" value={String(failed)} tone="danger" />
@@ -131,8 +138,15 @@ export default function DistributionOverviewPage() {
         />
         {platformsQ.isLoading && <LoadingBlock rows={3} height={56} />}
         {!!platformsQ.error && <ErrorBlock onRetry={platformsQ.refetch} />}
-        {!platformsQ.isLoading && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+        {!platformsQ.isLoading && !platformsQ.error && platforms.length === 0 && (
+          <EmptyState
+            icon={<Plug size={24} />}
+            title="还没有接入任何平台"
+            description="接入抖音、快手等平台后，成片就能一键分发到这里。"
+          />
+        )}
+        {!platformsQ.isLoading && platforms.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
             {platforms.map((p) => {
               const tone =
                 p.status === "connected"
@@ -150,7 +164,7 @@ export default function DistributionOverviewPage() {
                     alignItems: "center",
                     gap: 10,
                     padding: "12px 14px",
-                    background: "rgba(255,255,255,0.02)",
+                    background: "var(--surface-2)",
                     border: "1px solid var(--line)",
                     borderRadius: "var(--radius-md)",
                   }}
@@ -167,6 +181,8 @@ export default function DistributionOverviewPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => toggleConnection(p)}
+                    aria-label={p.status === "connected" ? `断开 ${p.name}` : `连接 ${p.name}`}
+                    title={p.status === "connected" ? `断开 ${p.name}` : `连接 ${p.name}`}
                   >
                     <Plug size={11} />
                   </Button>
@@ -217,17 +233,20 @@ export default function DistributionOverviewPage() {
                     gap: 12,
                     alignItems: "center",
                     padding: "12px 14px",
-                    background: "rgba(255,255,255,0.02)",
+                    background: "var(--surface-2)",
                     border: "1px solid var(--line)",
                     borderRadius: "var(--radius-md)",
                     cursor: "pointer",
                   }}
                 >
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{j.platformName}</div>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--fg-2)" }}>
-                    项目 {j.projectId}
+                  <div
+                    style={{ fontSize: 12, color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={projectTitleById.get(j.projectId) ?? j.projectId}
+                  >
+                    {projectTitleById.get(j.projectId) ?? "短剧项目"}
                   </div>
-                  <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}>
+                  <div style={{ height: 4, background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: "var(--radius-pill)", overflow: "hidden" }}>
                     <div
                       style={{
                         width: `${j.progress}%`,
@@ -240,7 +259,7 @@ export default function DistributionOverviewPage() {
                   <StatusBadge tone={tone}>{JOB_STATUS_LABEL[j.status]}</StatusBadge>
                   <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
                     {j.status !== "live" && j.status !== "failed" && (
-                      <Button variant="ghost" size="sm" onClick={() => cancel(j.id)}>
+                      <Button variant="ghost" size="sm" onClick={() => cancel(j.id)} aria-label="取消任务" title="取消任务">
                         <XIcon size={11} />
                       </Button>
                     )}

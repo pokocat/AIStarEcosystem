@@ -4,6 +4,7 @@
 // 强制：禁止用浏览器原生 confirm/alert/prompt（AGENTS.md §8）。
 import * as React from "react";
 import { Gem, Zap } from "lucide-react";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 
 interface DramaConfirmDialogProps {
   open: boolean;
@@ -29,12 +30,21 @@ export function DramaConfirmDialog({
   onConfirm,
   onCancel,
 }: DramaConfirmDialogProps) {
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const titleId = React.useId();
+  // ESC=取消 / Tab 焦点圈定 / 打开时聚焦（首个可聚焦=取消按钮）/ 关闭还原焦点，统一走共享 hook。
+  useModalA11y(panelRef, onCancel, open);
   if (!open) return null;
   return (
     <div className="overlay" onClick={onCancel}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className="card pop-in"
-        style={{ width: 420, maxWidth: "94vw", padding: 24, boxShadow: "var(--shadow-lg)" }}
+        style={{ width: 420, maxWidth: "94vw", padding: 24, boxShadow: "var(--shadow-lg)", outline: "none" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row gap-3" style={{ marginBottom: 12 }}>
@@ -52,7 +62,7 @@ export function DramaConfirmDialog({
           >
             {tone === "danger" ? <Zap size={19} /> : <Gem size={19} />}
           </div>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
+          <div id={titleId} style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
         </div>
         {body && (
           <div

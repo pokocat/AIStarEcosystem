@@ -21,8 +21,9 @@ import { BrainstormApi } from "@/api";
 import type { BrainstormData, BrainstormForm, BrainstormMessage } from "@/api/brainstorm";
 import { useAsync } from "@/lib/drama-query";
 import { useSaveStatus } from "@/lib/use-save-status";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
-import { Editable } from "@/components/drama-ui";
+import { CreditMark, Editable, dramaConfirm } from "@/components/drama-ui";
 import { MarkdownLite } from "@/lib/markdown-lite";
 import { aiErrorMessage } from "@/lib/ai-error";
 
@@ -46,6 +47,7 @@ export function BrainstormStudio({ id }: { id: string }) {
   }, [detail]);
 
   const { status: saveStatus, notifyEditing, track } = useSaveStatus();
+  const cfg = useDramaConfig();
   const saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 防抖落库（编辑大纲 / 设置）。
@@ -166,6 +168,25 @@ export function BrainstormStudio({ id }: { id: string }) {
       toast.error(aiErrorMessage(e, "去制作失败，请重试"));
     }
   }, [data, id, producing, router]);
+
+  // 底部 CTA 的扣费前置：单片(single) 进短视频工作台会扣 shortEntry 积分（后端 createShort），
+  // 故点击先弹确认（与 CreditButton 同款「小额免打扰」阈值语义）；剧集(series) 免费立项，直接进。
+  const confirmAndProduce = React.useCallback(async () => {
+    if (!data?.outline || producing) return;
+    if (data.settings.form === "single") {
+      const cost = cfg.prices.shortEntry;
+      if (cost >= cfg.confirmThreshold) {
+        const ok = await dramaConfirm({
+          cost,
+          title: "制作短视频",
+          body: "进入工作台后，AI 将先生成口播脚本与分镜，本次消耗如下。",
+          confirmLabel: "确认制作",
+        });
+        if (!ok) return;
+      }
+    }
+    await goProduce();
+  }, [data, producing, cfg, goProduce]);
 
   if (isLoading || (!data && !error)) {
     return <StudioLoading />;
@@ -426,9 +447,17 @@ export function BrainstormStudio({ id }: { id: string }) {
                 <span className="faint" style={{ fontSize: 11.5, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   满意后进入工作台逐集撰写剧本、拆分镜；需要调整可在左侧继续对话
                 </span>
-                <button type="button" onClick={() => void goProduce()} disabled={producing} className="btn btn-grad" style={{ height: 40, padding: "0 20px", flex: "none" }}>
+                <button
+                  type="button"
+                  onClick={() => void confirmAndProduce()}
+                  disabled={producing}
+                  className="btn btn-grad"
+                  style={{ height: 40, padding: "0 20px", flex: "none" }}
+                  title={form === "single" ? "进入短视频工作台会消耗积分生成口播脚本与分镜" : "免费立项，进入工作台逐集创作"}
+                >
                   {form === "single" ? <Zap size={15} /> : <Clapperboard size={15} />}
                   {producing ? "处理中…" : form === "single" ? "制作短视频" : "去制作"}
+                  {form === "single" && <CreditMark tone="inherit" size={15} />}
                 </button>
               </div>
             </>

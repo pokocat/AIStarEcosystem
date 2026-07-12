@@ -89,7 +89,7 @@ const GROUPS: NavGroup[] = [
   {
     title: "分发与洞察",
     items: [
-      { href: "/distribution", icon: Share2, label: "多平台分发", badge: "建设中" },
+      { href: "/distribution", icon: Share2, label: "多平台分发" },
       { href: "/insights", icon: BarChart3, label: "数据洞察" },
       { href: "/trends", icon: Compass, label: "趋势雷达", badge: "建设中" },
     ],
@@ -365,7 +365,7 @@ function GlobalSearch() {
         }}
       >
         <Search size={14} />
-        <span>搜索剧集、演员、脚本…</span>
+        <span>搜索演员…</span>
       </button>
       {open && (
         <div className="overlay" onClick={() => setOpen(false)}>
@@ -384,7 +384,7 @@ function GlobalSearch() {
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="按演员 / 剧名 / 脚本搜索…"
+              placeholder="输入演员名搜索…"
               style={{
                 flex: 1,
                 padding: "12px 4px",
@@ -414,22 +414,38 @@ function GlobalSearch() {
   );
 }
 
-/** 顶栏当前分区标题：按 pathname 匹配侧栏导航（最长前缀），用于面包屑——
- *  修复短视频工坊等页面恒显「短剧工坊」的硬编码（/shorts → 短视频工坊 等）。 */
-function sectionTitle(pathname: string | null): string {
-  if (!pathname) return "工作台";
-  const flat: { href: string; label: string; exact?: boolean }[] = GROUPS.flatMap((g) =>
-    g.items.flatMap((it) => [
-      { href: it.href, label: it.label, exact: it.exact },
-      ...((it.children ?? []).map((c) => ({ href: c.href, label: c.label }))),
-    ]),
-  );
+// 不在侧栏的路由（回收站 / 收银台 / 运营页 / 隐藏保留页）→ 标题兜底映射，
+// 避免面包屑落空显示「工作台 / 工作台」。运营组 /operations 也在此补齐（sectionTitle 只扫 GROUPS）。
+const FALLBACK_TITLES: { href: string; label: string }[] = [
+  { href: "/operations", label: "内容目录" },
+  { href: "/trash", label: "回收站" },
+  { href: "/wallet/checkout", label: "收银台" },
+  { href: "/review", label: "剧本审阅" },
+  { href: "/forge", label: "形象锻造" },
+  { href: "/incubator", label: "数字人孵化" },
+  { href: "/short-drama", label: "短剧" },
+];
+
+/** 顶栏当前分区标题：按 pathname 匹配侧栏导航 + 非导航路由兜底（最长前缀），用于面包屑——
+ *  修复短视频工坊等页面恒显「短剧工坊」的硬编码（/shorts → 短视频工坊 等），
+ *  以及 /trash 等不在侧栏的路由落空显示「工作台」。返回 null 表示无匹配（面包屑只显示单级）。 */
+function sectionTitle(pathname: string | null): string | null {
+  if (!pathname) return null;
+  const flat: { href: string; label: string; exact?: boolean }[] = [
+    ...GROUPS.flatMap((g) =>
+      g.items.flatMap((it) => [
+        { href: it.href, label: it.label, exact: it.exact },
+        ...((it.children ?? []).map((c) => ({ href: c.href, label: c.label }))),
+      ]),
+    ),
+    ...FALLBACK_TITLES,
+  ];
   let best: { href: string; label: string } | null = null;
   for (const it of flat) {
     const hit = it.exact ? pathname === it.href : pathname === it.href || pathname.startsWith(it.href + "/");
     if (hit && (!best || it.href.length > best.href.length)) best = it;
   }
-  return best?.label ?? "工作台";
+  return best?.label ?? null;
 }
 
 function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
@@ -480,10 +496,19 @@ function Topbar({ onMenuToggle }: { onMenuToggle?: () => void }) {
         <Menu size={16} />
       </button>
       <div className="row gap-2" style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" }}>
-        <span>{sectionTitle(pathname)}</span>
-        <span className="ws-topbar-sub faint" style={{ fontWeight: 500 }}>
-          / 工作台
-        </span>
+        {(() => {
+          const title = sectionTitle(pathname);
+          // 命中分区 → 「分区 / 工作台」；未命中 → 仅显示单级「工作台」，不重复两个「工作台」。
+          if (!title) return <span>工作台</span>;
+          return (
+            <>
+              <span>{title}</span>
+              <span className="ws-topbar-sub faint" style={{ fontWeight: 500 }}>
+                / 工作台
+              </span>
+            </>
+          );
+        })()}
       </div>
       <div className="grow" />
       <div className="ws-topbar-search">

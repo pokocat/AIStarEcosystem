@@ -33,6 +33,7 @@ import type { BuiltinRecipeInput, DramaRecipe, RecipeBeat, RecipeCandidate } fro
 import { CONTENT_TYPES } from "@/mocks/drama-workshop";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { ModalShell } from "@/components/common/ModalShell";
+import { ViewHeader } from "@/components/common";
 
 type Scope = "all" | "official" | "user";
 
@@ -114,32 +115,41 @@ export default function TemplatesPage() {
 
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto" }}>
-      <div className="row" style={{ marginBottom: 18, gap: 14, flexWrap: "wrap" }}>
-        <div style={{ minWidth: 260 }}>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>创意市场</h1>
-          <div className="muted" style={{ marginTop: 4 }}>
-            经验证的创作配方，含官方内置与创作者发布，套用后预填新剧
-          </div>
-        </div>
-        <div className="grow" />
-        <button
-          type="button"
-          className="btn btn-line"
-          style={{ height: 40, flex: "none" }}
-          onClick={() => router.push("/templates/published")}
-        >
-          <Boxes size={15} /> 我发布的创意 <ArrowRight size={14} />
-        </button>
-        {showOperator && (
-          <>
-            <button type="button" className="btn btn-line" style={{ height: 40, flex: "none" }} onClick={() => setShowCandidates(true)}>
-              <UserPlus size={15} /> 从用户作品精选
-            </button>
-            <button type="button" className="btn btn-grad" style={{ height: 40, flex: "none" }} onClick={() => setShowBuiltin(true)}>
-              <Plus size={15} /> 新建内置创意
-            </button>
-          </>
-        )}
+      <div style={{ marginBottom: 14 }}>
+        <ViewHeader
+          eyebrow="创意市场"
+          title={
+            <>
+              创意{" "}
+              <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
+                市场
+              </span>
+            </>
+          }
+          meta="经验证的创作配方，含官方内置与创作者发布，套用后预填新剧"
+          action={
+            <>
+              <button
+                type="button"
+                className="btn btn-line"
+                style={{ height: 40, flex: "none" }}
+                onClick={() => router.push("/templates/published")}
+              >
+                <Boxes size={15} /> 我发布的创意 <ArrowRight size={14} />
+              </button>
+              {showOperator && (
+                <>
+                  <button type="button" className="btn btn-line" style={{ height: 40, flex: "none" }} onClick={() => setShowCandidates(true)}>
+                    <UserPlus size={15} /> 从用户作品精选
+                  </button>
+                  <button type="button" className="btn btn-grad" style={{ height: 40, flex: "none" }} onClick={() => setShowBuiltin(true)}>
+                    <Plus size={15} /> 新建内置创意
+                  </button>
+                </>
+              )}
+            </>
+          }
+        />
       </div>
 
       <div className="row" style={{ marginBottom: 14, gap: 10, flexWrap: "wrap" }}>

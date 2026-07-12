@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Clock, Film, RotateCcw, Trash2, Zap } from "lucide-react";
 import { Thumb, dramaConfirm } from "@/components/drama-ui";
+import { ViewHeader } from "@/components/common";
 import { ProjectsApi, ShortsApi } from "@/api";
 import type { DramaProjectTrashItem } from "@/api/projects";
 import type { ShortDraftTrashItem } from "@/api/shorts";
@@ -107,10 +108,18 @@ function TrashInner() {
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
       <div style={{ marginBottom: 18 }}>
-        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>回收站</h1>
-        <div className="muted" style={{ marginTop: 4 }}>
-          删除的短剧与短视频在此保留 30 天，期间可恢复，到期后自动彻底删除。
-        </div>
+        <ViewHeader
+          eyebrow="回收站"
+          title={
+            <>
+              回收{" "}
+              <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
+                站
+              </span>
+            </>
+          }
+          meta="删除的短剧与短视频在此保留 30 天，期间可恢复，到期后自动彻底删除。"
+        />
       </div>
 
       {/* Tab 切换：短剧 / 短视频 */}

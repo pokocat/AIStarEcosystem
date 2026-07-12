@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { CheckCircle2, XCircle } from "lucide-react";
 import { AccountApi } from "@ai-star-eco/api-client";
 import type { PaymentChannel } from "@ai-star-eco/api-client";
 import { formatCredits, formatCurrency } from "@ai-star-eco/api-client/format";
@@ -232,8 +233,8 @@ function CashierInner() {
               {err && <div style={{ marginTop: 10, fontSize: 13, color: "var(--danger)" }}>{err}</div>}
               {shadow && !paid && !failed && (
                 <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                  <Button variant="primary" onClick={() => confirmShadow("success")} disabled={busy}>✅ 模拟支付成功</Button>
-                  <Button variant="secondary" onClick={() => confirmShadow("fail")} disabled={busy}>❌ 模拟失败</Button>
+                  <Button variant="primary" onClick={() => confirmShadow("success")} disabled={busy}><CheckCircle2 size={14} /> 模拟支付成功</Button>
+                  <Button variant="secondary" onClick={() => confirmShadow("fail")} disabled={busy}><XCircle size={14} /> 模拟失败</Button>
                 </div>
               )}
               <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>

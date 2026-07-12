@@ -11,6 +11,7 @@ import { Thumb, dramaConfirm } from "@/components/drama-ui";
 import { PublishCreativeCenterModal } from "@/components/drama-workshop/publish-creative-center-modal";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
+import { ViewHeader } from "@/components/common";
 import { RecipesApi, ShortsApi } from "@/api";
 import type { ShortDraftSummary } from "@/api/shorts";
 import { useAsync, invalidate } from "@/lib/drama-query";
@@ -266,6 +267,19 @@ function DraftCard({
   );
 }
 
+/** 草稿卡骨架屏（加载态占位，与 DraftCard 同版式：3/4 封面 + 底部两行文字）。 */
+function DraftCardSkeleton() {
+  return (
+    <div className="card col" style={{ padding: 0, overflow: "hidden", gap: 0 }}>
+      <div className="skel" style={{ width: "100%", aspectRatio: "3/4", borderRadius: 0 }} />
+      <div className="col gap-1" style={{ padding: "9px 10px 10px" }}>
+        <div className="skel" style={{ height: 12, width: "70%" }} />
+        <div className="skel" style={{ height: 9, width: "45%" }} />
+      </div>
+    </div>
+  );
+}
+
 export default function ShortsStudioPage() {
   const router = useRouter();
   const [clipOpen, setClipOpen] = React.useState(false);
@@ -278,6 +292,7 @@ export default function ShortsStudioPage() {
   // v0.77 起单集作品统一为 DramaShort；DramaProject（短剧）一律不在短视频工坊出现。
   const draftsQ = useAsync("/me/drama/shorts", () => ShortsApi.listDrafts());
   const drafts = draftsQ.data ?? [];
+  const { isLoading: draftsLoading, error: draftsError, refetch: refetchDrafts } = draftsQ;
 
   const onMake = (ctx: MakeCtx) => {
     // 点子经 sessionStorage 一次性带入（不入 URL）；fmt / reopen 走 URL；进 make 页即建草稿。
@@ -347,41 +362,62 @@ export default function ShortsStudioPage() {
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-      <div className="row" style={{ marginBottom: 22 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>短视频工坊</h1>
-          <div className="muted" style={{ marginTop: 4 }}>管理你的短视频、宣传片、个人自传等单集作品，完成后可点开播放，草稿随时继续制作。</div>
-        </div>
-        <div className="grow" />
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ height: 44, padding: "0 14px" }}
-          onClick={() => router.push("/trash?tab=shorts")}
-          title="回收站"
-        >
-          <Trash2 size={16} /> 回收站
-        </button>
-        {/* 从短剧切片：扫描/切片暂无后端（旧实现是假列表 + setTimeout 假扫描），上线前禁用为「建设中」，不展示假数据 */}
-        <button
-          type="button"
-          className="btn btn-line"
-          style={{ height: 44, padding: "0 18px", opacity: 0.6, cursor: "not-allowed" }}
-          disabled
-          title="从短剧切片功能建设中"
-        >
-          <Clapperboard size={16} /> 从短剧切片
-          <span className="tag tag-gray" style={{ marginLeft: 6 }}>建设中</span>
-        </button>
-        <button
-          type="button"
-          className="btn btn-grad"
-          style={{ height: 44, padding: "0 18px" }}
-          onClick={() => router.push("/shorts/new")}
-        >
-          <Zap size={16} /> 新建短视频
-        </button>
+      <div style={{ marginBottom: 18 }}>
+        <ViewHeader
+          eyebrow="短视频工坊"
+          title={
+            <>
+              短视频{" "}
+              <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
+                工坊
+              </span>
+            </>
+          }
+          meta="管理你的短视频、宣传片、个人自传等单集作品，完成后可点开播放，草稿随时继续制作。"
+          action={
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ height: 44, padding: "0 14px" }}
+                onClick={() => router.push("/trash?tab=shorts")}
+                title="回收站"
+              >
+                <Trash2 size={16} /> 回收站
+              </button>
+              {/* 从短剧切片：扫描/切片暂无后端（旧实现是假列表 + setTimeout 假扫描），上线前禁用为「建设中」，不展示假数据 */}
+              <button
+                type="button"
+                className="btn btn-line"
+                style={{ height: 44, padding: "0 18px", opacity: 0.6, cursor: "not-allowed" }}
+                disabled
+                title="从短剧切片功能建设中"
+              >
+                <Clapperboard size={16} /> 从短剧切片
+                <span className="tag tag-gray" style={{ marginLeft: 6 }}>建设中</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-grad"
+                style={{ height: 44, padding: "0 18px" }}
+                onClick={() => router.push("/shorts/new")}
+              >
+                <Zap size={16} /> 新建短视频
+              </button>
+            </>
+          }
+        />
       </div>
+
+      {/* 加载失败：错误块 + 重试 */}
+      {!!draftsError && !draftsLoading && (
+        <div className="card col center" style={{ padding: 28, gap: 12, textAlign: "center", marginBottom: 20 }}>
+          <div className="muted" style={{ fontSize: 13.5 }}>
+            短视频列表加载失败：{draftsError instanceof Error ? draftsError.message : "请稍后重试"}
+          </div>
+          <button type="button" className="btn btn-line btn-sm" onClick={refetchDrafts}>重新加载</button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(158px, 1fr))", gap: 16, alignItems: "stretch" }}>
         <button
@@ -424,18 +460,20 @@ export default function ShortsStudioPage() {
           <span style={{ fontWeight: 700, fontSize: 13 }}>新建短视频</span>
           <span className="faint" style={{ fontSize: 11 }}>一句话生成</span>
         </button>
-        {drafts.map((d, i) => (
-          <DraftCard
-            key={d.id}
-            d={d}
-            delay={i * 35}
-            onOpen={() => openDraft(d)}
-            onPublish={() => requestPublish(d)}
-            onDelete={() => void softDeleteDraft(d)}
-            publishing={publishingId === d.id}
-            submitted={submittedShortIds.has(d.id)}
-          />
-        ))}
+        {draftsLoading && drafts.length === 0
+          ? Array.from({ length: 4 }).map((_, i) => <DraftCardSkeleton key={i} />)
+          : drafts.map((d, i) => (
+              <DraftCard
+                key={d.id}
+                d={d}
+                delay={i * 35}
+                onOpen={() => openDraft(d)}
+                onPublish={() => requestPublish(d)}
+                onDelete={() => void softDeleteDraft(d)}
+                publishing={publishingId === d.id}
+                submitted={submittedShortIds.has(d.id)}
+              />
+            ))}
       </div>
 
       {clipOpen && <ShortClipModal onClose={() => setClipOpen(false)} onMake={onMake} />}

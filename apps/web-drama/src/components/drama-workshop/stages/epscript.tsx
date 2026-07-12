@@ -18,12 +18,13 @@ import {
   X,
 } from "lucide-react";
 import { aiErrorMessage } from "@/lib/ai-error";
-import { Avatar, CreditButton, dramaConfirm, Editable, GenSkeleton } from "@/components/drama-ui";
+import { Avatar, CreditButton, Editable, GenSkeleton } from "@/components/drama-ui";
 import { ConfirmDialog } from "@/components/common";
 import { type FormShot } from "../shot-form";
 import { StoryboardTable } from "../storyboard-table";
 import { RenderModelSelect } from "../render-model-select";
 import { useShotRender } from "@/lib/use-shot-render";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 import { episodeContent, episodeTitle, getEpisodeDoc, matById, MATERIALS, withEpisodeDoc, type BoardScene, type BoardShot, type Material, type ProjectData, type ScriptLine, type ScriptScene } from "@/mocks/drama-workshop";
 import type { WorkshopAction, WorkshopState } from "../workbench";
 import { ProjectsApi, RenderApi } from "@/api";
@@ -177,6 +178,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const renderModels = shotRender.models;
   // 分镜表全屏放大（与内联共用同一份表，编辑实时同步），对齐短视频「放大」体验。
   const [tableMax, setTableMax] = React.useState(false);
+  // 放大弹层：ESC 关闭 + Tab 焦点圈定（打开时才启用）。
+  const tableMaxRef = React.useRef<HTMLDivElement>(null);
+  useModalA11y(tableMaxRef, () => setTableMax(false), tableMax);
   const [style, setStyle] = React.useState(
     () => getEpisodeDoc(data, state.ep).meta?.style ?? `${data.projectInfo.type} · 强钩子快节奏 · 竖屏短平快`,
   );
@@ -662,27 +666,8 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
   const render = async (sceneId: string, id: string, to: FormShot["flow"], cost: number, msg: string) => {
     const shot = (shotsMap[sceneId] ?? []).find((s) => s.id === id);
     if (!shot || isBusy(id) || decomposingId === id) return;
-    // 出片前一致性体检（P0）：仅在出片时拦（首帧便宜、可迭代，不打扰）；有问题先提示可仍继续，
-    // 让系统交互贴合"先备锚点（角色定妆图/场景）再逐镜顺序出片"的一致性流程。
-    const issues = to === "clip" ? shotConsistencyIssues(sceneId, shot, to) : [];
-    if (issues.length) {
-      const ok = await dramaConfirm({
-        title: "一致性未就绪，仍要继续？",
-        body: (
-          <div className="col gap-1" style={{ fontSize: 13, lineHeight: 1.6 }}>
-            <span>检测到以下会影响人物 / 场景一致性的问题：</span>
-            <ul style={{ margin: "4px 0", paddingLeft: 18 }}>
-              {issues.map((x, i) => <li key={i}>{x}</li>)}
-            </ul>
-            <span className="faint" style={{ fontSize: 12 }}>建议先在「角色与场景」补齐定妆图 / 绑定场景，或先出上一镜再逐镜顺序出片；否则本镜可能与其他镜对不上。</span>
-          </div>
-        ),
-        confirmLabel: "仍要继续",
-        cancelLabel: "取消，去补齐",
-        tone: "danger",
-      });
-      if (!ok) return;
-    }
+    // 出片前一致性体检（P0）已前置到出片按钮（CreditButton getWarnings）——费用确认与一致性警告合并为
+    // 单个 danger 弹窗（见 storyboardTable getClipWarnings）；此处不再二次弹窗，确保任何路径只弹一次（v0.103）。
     markBusy(id, to);
     try {
       if (to === "frame") {
@@ -814,6 +799,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
       onDecompose={(sceneId, shotId) => void decompose(sceneId, shotId)}
       rewritingId={rewritingId}
       onRewriteShot={(sceneId, shotId, instruction) => void rewriteShot(sceneId, shotId, instruction)}
+      getClipWarnings={(sceneId, shot) => shotConsistencyIssues(sceneId, shot, "clip")}
     />
   );
 
@@ -888,9 +874,9 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           {/* ===== 分镜表（设计稿平铺表格 · 结构化字段喂视频生成提示词；整宽展示） ===== */}
           {phase === "done" && (
             <>
-              <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px" }}>
-                <span style={{ fontWeight: 800, fontSize: 14.5 }}>分镜表</span>
-                <span className="faint" style={{ fontSize: 11 }}>单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳 · <b style={{ color: "var(--accent)", fontWeight: 700 }}>建议逐镜按顺序出片</b>（先出上一镜、再出下一镜首帧），承接上一镜真实末帧更连贯</span>
+              <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px", flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 800, fontSize: 14.5, flex: "none" }}>分镜表</span>
+                <span className="faint" style={{ fontSize: 11, flex: "1 1 240px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳 · 建议逐镜按顺序出片（先出上一镜、再出下一镜首帧），承接上一镜真实末帧更连贯">单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳 · <b style={{ color: "var(--accent)", fontWeight: 700 }}>建议逐镜按顺序出片</b>（先出上一镜、再出下一镜首帧），承接上一镜真实末帧更连贯</span>
                 <span className="grow" />
                 {allShots.length > 0 && (
                   <button type="button" className="chip" style={{ height: 24, fontSize: 11 }} title="全屏放大分镜表，方便逐镜编辑" onClick={() => setTableMax(true)}>
@@ -946,7 +932,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
           onClick={(e) => { if (e.target === e.currentTarget) setTableMax(false); }}
           style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(15,10,30,.55)", backdropFilter: "blur(2px)", display: "grid", placeItems: "center", padding: "3vh 2vw" }}
         >
-          <div className="col" style={{ width: "min(1400px, 97vw)", height: "94vh", background: "var(--bg)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
+          <div ref={tableMaxRef} tabIndex={-1} className="col" style={{ width: "min(1400px, 97vw)", height: "94vh", background: "var(--bg)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)", outline: "none" }}>
             <div className="row gap-2" style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)", background: "var(--surface)", flex: "none", alignItems: "center" }}>
               <Clapperboard size={16} style={{ color: "var(--accent)" }} />
               <span style={{ fontWeight: 800, fontSize: 15 }}>分镜表 · 第 {state.ep} 集</span>
@@ -1023,7 +1009,7 @@ function CastEditor({ cast, onChange, disabled }: { cast: EpCharacter[]; onChang
                 <UserRound size={11} />
               </span>
             )}
-            <span style={{ fontSize: 11.5, fontWeight: 700, color: c.theme ? "var(--accent)" : "var(--ink-2)" }}>{c.name}</span>
+            <span title={c.name} style={{ fontSize: 11.5, fontWeight: 700, color: c.theme ? "var(--accent)" : "var(--ink-2)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block", verticalAlign: "middle" }}>{c.name}</span>
             {c.removable && !disabled && (
               <button type="button" title="移除" onClick={() => onChange(cast.filter((x) => x.id !== c.id))} style={{ color: "var(--ink-3)", display: "grid", placeItems: "center" }}>
                 <X size={11} />

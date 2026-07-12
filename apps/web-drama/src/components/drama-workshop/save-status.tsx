@@ -4,7 +4,7 @@
 // 设计：不再是底部悬浮药丸（浮框），而是随各页 header 排版的一行轻量状态文字，
 //       常驻显示「自动保存」，随编辑实时切到 保存中 / 已保存 / 未保存，颜色与图标平滑过渡。
 import * as React from "react";
-import { Check, Cloud, CloudOff } from "lucide-react";
+import { Check, Cloud, CloudOff, Pencil } from "lucide-react";
 import type { SaveStatus as Status } from "@/lib/use-save-status";
 
 export function SaveStatus({ status }: { status: Status }) {
@@ -12,7 +12,11 @@ export function SaveStatus({ status }: { status: Status }) {
   let text: string;
   let color = "var(--ink-3)";
 
-  if (status === "saving") {
+  if (status === "dirty") {
+    // 有改动、尚未发起保存请求（防抖窗口内）：中性小字，不显示旋转的「保存中」。
+    icon = <Pencil size={12} />;
+    text = "编辑中";
+  } else if (status === "saving") {
     icon = (
       <span
         aria-hidden

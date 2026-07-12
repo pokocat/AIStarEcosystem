@@ -13,6 +13,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  CircleStop,
   Clapperboard,
   Edit,
   Film,
@@ -40,6 +41,8 @@ import { type FormShot, type ShotFlow } from "@/components/drama-workshop/shot-f
 import { ShortStoryboardTable } from "@/components/drama-workshop/short-storyboard-table";
 import { RenderModelSelect } from "@/components/drama-workshop/render-model-select";
 import { useShotRender } from "@/lib/use-shot-render";
+import { listRenderTasks, POLL_TIMEOUT_MESSAGE, type DramaRenderTask } from "@/api/render";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 import { SaveStatus } from "@/components/drama-workshop/save-status";
 import { MediaLightbox, type LightboxMedia } from "@/components/drama-workshop/media-lightbox";
 import { MarkdownLite } from "@/lib/markdown-lite";
@@ -73,6 +76,20 @@ interface ShortShot extends FormShot {
   frameIdx: number;
   /** v0.97：本镜节拍语义标签（痛点开场 / 反转 / 强 CTA 收尾…），来自 AI 逐镜生成，缺省回落「镜 N」。 */
   beat?: string;
+  /**
+   * 进行中的后台渲染任务（首帧 / 视频）：提交后即写入本字段并随 autosave 落库，
+   * 用户离开页面后回来可对账恢复（查任务状态 → 回填结果 / 续轮询 / 标可重试）。
+   * 出片产物落地或任务终结即清空。此字段随整页草稿 payloadJson 整存整取（后端不解析，原样保留）。
+   */
+  pendingJob?: { jobId: string; kind: "frame" | "clip" };
+}
+
+/**
+ * 轮询是否因超时返回（任务其实仍在后台跑，不能当失败丢弃）。
+ * 与 POLL_TIMEOUT_MESSAGE 做**全等**比较 —— 上游真实失败文案里恰好含「超时」时不会被误判为超时。
+ */
+function isPollTimeout(job: { status?: string; error_message?: string | null }): boolean {
+  return job.status === "failed" && job.error_message === POLL_TIMEOUT_MESSAGE;
 }
 
 interface ChatMsg {
@@ -261,6 +278,8 @@ function AvatarPickerModal({
 }) {
   const [list, setList] = React.useState<DapAvatarLite[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  useModalA11y(panelRef, onClose);
   React.useEffect(() => {
     let alive = true;
     DapAvatarsApi.listMyDapAvatars()
@@ -272,9 +291,18 @@ function AvatarPickerModal({
   }, []);
   return (
     <div className="overlay" onClick={onClose} style={{ zIndex: 95 }}>
-      <div className="col" onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 94vw)", maxHeight: "80vh", background: "var(--surface)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="avatar-picker-title"
+        tabIndex={-1}
+        className="col"
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: "min(560px, 94vw)", maxHeight: "80vh", background: "var(--surface)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", outline: "none" }}
+      >
         <div className="row gap-2" style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)", flex: "none", alignItems: "center" }}>
-          <span style={{ fontWeight: 800, fontSize: 15 }}>绑定数字人</span>
+          <span id="avatar-picker-title" style={{ fontWeight: 800, fontSize: 15 }}>绑定数字人</span>
           <span className="faint" style={{ fontSize: 11.5 }}>选一个「我的数字人」作为主角形象</span>
           <span className="grow" />
           <button type="button" className="btn btn-icon btn-sm" onClick={onClose} aria-label="关闭">
@@ -491,13 +519,19 @@ function ShortMakerInner({
   // v0.88：单页化后不再切步骤；step 仍随草稿保存（兼容旧字段）。
   const [step] = React.useState<"script" | "factory">(initial.step ?? "script");
   const [phase, setPhase] = React.useState<"idle" | "gen" | "done">(initial.shots.length ? "done" : "idle");
-  const [shots, setShots] = React.useState<ShortShot[]>(() => (initial.shots as ShortShot[]) ?? []);
+  const [shots, setShots] = React.useState<ShortShot[]>(() => initial.shots ?? []);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
   const [meta, setMeta] = React.useState<ScriptMeta | null>(initial.meta ?? null);
   // 一句话故事大纲（AI logline）—— 展示在标题下，可直接改。
   const [logline, setLogline] = React.useState<string>(() => initial.logline ?? "");
   const cfg = useDramaConfig();
   const [busy, setBusy] = React.useState<{ id: string; to: ShotFlow } | null>(null);
+  // 一键连跑态：进度（已完成/总数）+ 停止标志位（镜间检查，停止=当前镜头完成后不再继续）。
+  const [runProgress, setRunProgress] = React.useState<{ done: number; total: number } | null>(null);
+  // stopRunRef 供连跑循环内即时读取（不触发重渲染）；stopping state 与之同步置位，
+  // 仅用于按钮的禁用态 + 文案（点一下即禁用，避免重复点「停止」）。runAll 结束时双双复位。
+  const stopRunRef = React.useRef(false);
+  const [stopping, setStopping] = React.useState(false);
   const [refs, setRefs] = React.useState<Material[]>(() => initial.refs ?? []); // @数字人参考
   const [chat, setChat] = React.useState<ChatMsg[]>(() =>
     initial.chat?.length
@@ -518,6 +552,8 @@ function ShortMakerInner({
   const [chatCollapsed, setChatCollapsed] = React.useState(false);
   // 分镜表放大：全屏弹层展示，方便逐镜编辑。
   const [tableMax, setTableMax] = React.useState(false);
+  const tableMaxRef = React.useRef<HTMLDivElement>(null);
+  useModalA11y(tableMaxRef, () => setTableMax(false), tableMax);
   // C-3 逐镜渲染共享引擎（短视频线走 ref_slots 显式槽位：主角 + 场景参考，服务端按 capability 裁剪 + 回报）。
   // D-11：出片模型（候选端点）缺省 / 单候选 → 下拉隐藏，走后端默认端点。
   const shotRender = useShotRender({ projectId: draftId, kind: "short", ratio: "9:16" });
@@ -735,12 +771,25 @@ function ShortMakerInner({
           refSlots,
           name: `${displayName} 镜${shot.no} 首帧`,
         });
+        // 任务已提交 → 记进草稿（随 autosave 落库），离开页面后回来可对账恢复。
+        updShot(id, { pendingJob: { jobId: job.id, kind: "frame" } });
         toast.success("首帧已加入后台生成");
         const done = await shotRender.pollFrame(job.id);
-        if (done.status === "failed") throw new Error(done.error_message || "首帧生成失败，请重试");
+        if (isPollTimeout(done)) {
+          // 超时 ≠ 失败：任务仍在后台跑，保留 pendingJob，稍后回来对账恢复。
+          toast("首帧仍在后台生成，稍后回到本页即可查看");
+          return false;
+        }
+        if (done.status === "failed") {
+          updShot(id, { pendingJob: undefined });
+          throw new Error(done.error_message || "首帧生成失败，请重试");
+        }
         const frames = done.frames ?? done.result?.frames ?? [];
-        if (!frames.length) throw new Error("首帧生成完成但没有返回图片，请重试");
-        updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url, appliedRefs: done.applied_refs ?? done.result?.applied_refs });
+        if (!frames.length) {
+          updShot(id, { pendingJob: undefined });
+          throw new Error("首帧生成完成但没有返回图片，请重试");
+        }
+        updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url, appliedRefs: done.applied_refs ?? done.result?.applied_refs, pendingJob: undefined });
         toast.success("首帧已生成，确认后再生成视频");
       } else {
         const job = await shotRender.renderClip({
@@ -753,9 +802,17 @@ function ShortMakerInner({
           shotId: id,
           frameUrl: shot.frameUrl,
         });
+        updShot(id, { pendingJob: { jobId: job.id, kind: "clip" }, jobId: job.id });
         const done = await shotRender.pollClip(job.id);
-        if (done.status === "failed") throw new Error(done.error_message || "视频生成失败，请重试");
-        updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id, appliedRefs: job.applied_refs });
+        if (isPollTimeout(done)) {
+          toast("镜头视频仍在后台生成，稍后回到本页即可查看");
+          return false;
+        }
+        if (done.status === "failed") {
+          updShot(id, { pendingJob: undefined });
+          throw new Error(done.error_message || "视频生成失败，请重试");
+        }
+        updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: job.id, appliedRefs: job.applied_refs, pendingJob: undefined });
         toast.success("镜头视频已生成");
       }
       return true;
@@ -768,12 +825,116 @@ function ShortMakerInner({
   };
 
   /**
+   * 恢复一条进行中的后台任务（对账用）：续轮询到终态。
+   * 出结果 → 回填 + 清 pendingJob；确认失败 → 清 pendingJob（用户可重新生成）；
+   * 超时 → 保留 pendingJob（任务仍在后台，下次回来再对账）。
+   */
+  const resumePendingJob = async (id: string, pj: { jobId: string; kind: "frame" | "clip" }): Promise<void> => {
+    setBusy({ id, to: pj.kind });
+    try {
+      if (pj.kind === "frame") {
+        const done = await shotRender.pollFrame(pj.jobId);
+        if (isPollTimeout(done)) return;
+        if (done.status === "failed") {
+          updShot(id, { pendingJob: undefined });
+          toast.error(aiErrorMessage(done.error_message, "上次首帧未生成成功，可重新生成"));
+          return;
+        }
+        const frames = done.frames ?? done.result?.frames ?? [];
+        if (!frames.length) {
+          updShot(id, { pendingJob: undefined });
+          return;
+        }
+        updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url, appliedRefs: done.applied_refs ?? done.result?.applied_refs, pendingJob: undefined });
+        toast.success("首帧已生成");
+      } else {
+        const done = await shotRender.pollClip(pj.jobId);
+        if (isPollTimeout(done)) return;
+        if (done.status === "failed") {
+          updShot(id, { pendingJob: undefined });
+          toast.error(aiErrorMessage(done.error_message, "上次视频未生成成功，可重新生成"));
+          return;
+        }
+        updShot(id, { flow: "clip", videoUrl: done.video_url ?? undefined, jobId: pj.jobId, appliedRefs: done.applied_refs, pendingJob: undefined });
+        toast.success("镜头视频已生成");
+      }
+    } catch (e) {
+      toast.error(aiErrorMessage(e, "恢复上次任务失败，可重新生成"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** 应用一条已完成任务的产物（对账命中 ready 时用，无需再轮询）。 */
+  const applyReconciledTask = (id: string, kind: "frame" | "clip", task: DramaRenderTask): void => {
+    if (kind === "frame") {
+      const frames = task.frames ?? task.result?.frames ?? [];
+      if (!frames.length) {
+        updShot(id, { pendingJob: undefined });
+        return;
+      }
+      updShot(id, { flow: "frame", frameUrls: frames.map((f) => f.url), frameUrl: frames[0]?.url, appliedRefs: task.applied_refs ?? task.result?.applied_refs, pendingJob: undefined });
+    } else {
+      if (!task.video_url) {
+        updShot(id, { pendingJob: undefined });
+        return;
+      }
+      updShot(id, { flow: "clip", videoUrl: task.video_url ?? undefined, jobId: task.id, appliedRefs: task.applied_refs, pendingJob: undefined });
+    }
+  };
+
+  /**
+   * 进页对账：对带 pendingJob 的镜头查一次任务状态 —— 已完成回填、进行中续轮询、
+   * 确认失效/失败清 pending 并可重试。只用既有 API（listRenderTasks + poll{Frame,Clip}），不新增端点。
+   * StrictMode 双挂载守卫：reconcileRef 一次性放行（与 autoGenRef 同惯例）。
+   */
+  const reconcileRef = React.useRef(false);
+  React.useEffect(() => {
+    if (reconcileRef.current) return;
+    reconcileRef.current = true;
+    const pendings = shots.filter((s) => s.pendingJob);
+    if (!pendings.length) return;
+    void (async () => {
+      let tasks: DramaRenderTask[];
+      try {
+        const snap = await listRenderTasks(draftId);
+        tasks = snap.tasks;
+      } catch {
+        // 对账拉取失败：保留所有 pendingJob，不误清、不误恢复，下次进页再对账。
+        return;
+      }
+      const byId = new Map(tasks.map((t) => [t.id, t]));
+      for (const shot of pendings) {
+        const pj = shot.pendingJob;
+        if (!pj) continue;
+        const task = byId.get(pj.jobId);
+        if (!task) {
+          // 快照里已无此任务（已过期 / 已清理）→ 清 pending，让用户可重新生成。
+          updShot(shot.id, { pendingJob: undefined });
+          toast(`「镜${shot.no}」上次的出片任务已结束，如需可重新生成`);
+          continue;
+        }
+        if (task.status === "ready") {
+          applyReconciledTask(shot.id, pj.kind, task);
+        } else if (task.status === "failed") {
+          updShot(shot.id, { pendingJob: undefined });
+          toast.error(`「镜${shot.no}」上次出片未成功，可重新生成`);
+        } else {
+          // 仍在排队 / 生成中 → 续轮询（镜头格显示 busy 出片中态）。逐个 await，避免 busy 单槽争用。
+          await resumePendingJob(shot.id, pj);
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
    * 一键连跑出片（安全版，v0.94）：一次确认总价，再依次为未完成镜头生成视频。
    * 与 v0.66 下线的旧「连跑」不同：① 单次 dramaConfirm 展示预计总消耗；② 顺序 await，
    * 期间镜头上显示进度；③ 任一镜失败即停，已出的保留。各镜真实计费仍在后台。
    */
   const runAll = async () => {
-    if (busy) return;
+    if (busy || runProgress) return;
     const pending = shots.filter((s) => s.flow !== "done");
     if (!pending.length) {
       toast("所有镜头都已出片，可直接合成成片");
@@ -782,20 +943,43 @@ function ShortMakerInner({
     const cost = pending.length * cfg.prices.clip;
     const ok = await dramaConfirm({
       title: "一键连跑出片",
-      body: `将为 ${pending.length} 个未完成镜头依次生成视频，预计消耗约 ${cost} 积分（按各镜实际计费）。生成期间可在镜头上看到进度，可随时离开。`,
+      body: `将为 ${pending.length} 个未完成镜头依次生成视频，预计消耗约 ${cost} 积分（按各镜实际计费）。生成期间可看到进度，也可随时停止或离开。`,
       confirmLabel: "开始出片",
       cancelLabel: "取消",
     });
     if (!ok) return;
-    for (const s of pending) {
-      const done = await render(s.id, "clip", cfg.prices.clip);
-      if (!done) {
-        toast.error("出片中断，已完成的镜头已保留，可稍后重试");
-        return;
+    stopRunRef.current = false;
+    setStopping(false);
+    setRunProgress({ done: 0, total: pending.length });
+    let done = 0;
+    try {
+      for (const s of pending) {
+        // 镜间检查停止标志：停止 = 当前镜头完成后不再继续（不中断已提交任务）。
+        if (stopRunRef.current) {
+          toast(`已停止连跑，已完成 ${done}/${pending.length} 个镜头，其余可随时继续`);
+          return;
+        }
+        const ok2 = await render(s.id, "clip", cfg.prices.clip);
+        if (!ok2) {
+          toast.error(`连跑已暂停在第 ${done + 1} 个镜头，已完成的镜头已保留，可稍后继续`);
+          return;
+        }
+        updShot(s.id, { flow: "done" });
+        done += 1;
+        setRunProgress({ done, total: pending.length });
       }
-      updShot(s.id, { flow: "done" });
+      toast.success("全部镜头已出片，可合成成片");
+    } finally {
+      setRunProgress(null);
+      stopRunRef.current = false;
+      setStopping(false);
     }
-    toast.success("全部镜头已出片，可合成成片");
+  };
+  const stopRunAll = () => {
+    if (!runProgress || stopRunRef.current) return;
+    stopRunRef.current = true;
+    setStopping(true);
+    toast("将在当前镜头完成后停止");
   };
 
   // 主角 / 主场景 参考图上传（→ OSS，存 url+cdnKey），与短剧工坊同一上传端点。
@@ -886,7 +1070,7 @@ function ShortMakerInner({
           disabled={deleting}
           aria-busy={deleting}
           title="删除草稿"
-          style={{ flex: "none", color: "#dc2626", border: "1px solid #fecaca", background: "#fff7f7" }}
+          style={{ flex: "none", color: "var(--danger)", border: "1px solid color-mix(in oklch, var(--danger) 28%, transparent)", background: "color-mix(in oklch, var(--danger) 6%, var(--surface))" }}
         >
           <Trash2 size={14} /> {deleting ? "删除中" : "删除草稿"}
         </button>
@@ -1217,15 +1401,34 @@ function ShortMakerInner({
                     <RefreshCw size={12} /> 重新生成
                   </button>
                   {shots.length > 0 && draftStatus !== "done" && (
-                    <button
-                      type="button"
-                      className="btn btn-grad btn-sm"
-                      style={{ flex: "none" }}
-                      disabled={!!busy || doneCount === shots.length}
-                      onClick={() => void runAll()}
-                    >
-                      <Zap size={14} /> 一键连跑出片
-                    </button>
+                    runProgress ? (
+                      <span className="row gap-2" style={{ flex: "none", alignItems: "center" }}>
+                        <span className="row gap-1 faint" style={{ fontSize: 11.5, alignItems: "center", whiteSpace: "nowrap" }}>
+                          <Loader2 size={12} style={{ animation: "drama-spin .7s linear infinite" }} />
+                          出片中 {runProgress.done}/{runProgress.total}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-line btn-sm"
+                          style={{ flex: "none" }}
+                          onClick={stopRunAll}
+                          disabled={stopping}
+                          title="完成当前镜头后停止，不会中断已提交的任务"
+                        >
+                          <CircleStop size={14} /> {stopping ? "将在本镜完成后停止" : "停止连跑"}
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-grad btn-sm"
+                        style={{ flex: "none" }}
+                        disabled={!!busy || doneCount === shots.length}
+                        onClick={() => void runAll()}
+                      >
+                        <Zap size={14} /> 一键连跑出片
+                      </button>
+                    )
                   )}
                 </div>
               )}
@@ -1285,7 +1488,7 @@ function ShortMakerInner({
           }}
           style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(15,10,30,.55)", backdropFilter: "blur(2px)", display: "grid", placeItems: "center", padding: "3vh 2vw" }}
         >
-          <div className="col" style={{ width: "min(1280px, 96vw)", height: "94vh", background: "var(--bg)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)" }}>
+          <div ref={tableMaxRef} tabIndex={-1} className="col" style={{ width: "min(1280px, 96vw)", height: "94vh", background: "var(--bg)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)", outline: "none" }}>
             <div className="row gap-2" style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)", background: "var(--surface)", flex: "none", alignItems: "center" }}>
               <Clapperboard size={16} style={{ color: "var(--accent)" }} />
               <span style={{ fontWeight: 800, fontSize: 15 }}>分镜表</span>

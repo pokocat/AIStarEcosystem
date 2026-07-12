@@ -16,6 +16,13 @@ export interface RenderedFrame {
   cdnKey: string;
 }
 
+/**
+ * 轮询超时时合成到 job.error_message 的兜底文案 —— 此时任务可能仍在后台跑，不是真实失败。
+ * 消费方（如 shorts/make 的 isPollTimeout）用它做**全等**比较区分「超时」与「真实失败」，
+ * 避免上游真实失败文案里恰好含「超时」被子串匹配误判。frame / clip 两条轮询超时路径共用此常量。
+ */
+export const POLL_TIMEOUT_MESSAGE = "生成仍在后台进行，请稍后回到本页或任务列表查看";
+
 // C-1（一致性引擎）：一次渲染实际生效 / 被过滤的参考清单，供「参考 N/M 生效」回报。
 export type AppliedRefReason = "local_unfetchable" | "model_no_flf" | "over_max_refs" | "empty";
 export interface AppliedRefItem {
@@ -383,7 +390,7 @@ export async function pollFrameJob(
     const job = await getFrameJob(jobId);
     opts?.onTick?.(job);
     if (job.status === "ready" || job.status === "failed") return job;
-    if (Date.now() > deadline) return { ...job, status: "failed", error_message: "轮询超时，请稍后在后台任务查看" };
+    if (Date.now() > deadline) return { ...job, status: "failed", error_message: POLL_TIMEOUT_MESSAGE };
     await new Promise((r) => setTimeout(r, interval));
   }
 }
@@ -461,7 +468,7 @@ export async function pollClipJob(
     const job = await apiFetch<DramaEpisodeJob>(`/me/drama/episodes/jobs/${encodeURIComponent(jobId)}`);
     opts?.onTick?.(job);
     if (job.status === "ready" || job.status === "failed") return job;
-    if (Date.now() > deadline) return { ...job, status: "failed", error_message: "轮询超时，请稍后在任务列表查看" };
+    if (Date.now() > deadline) return { ...job, status: "failed", error_message: POLL_TIMEOUT_MESSAGE };
     await new Promise((r) => setTimeout(r, interval));
   }
 }

@@ -12,6 +12,12 @@
 
 import * as React from "react";
 
+// 弹窗栈（模块级）：多个弹层叠加时（如全屏分镜表内又弹全局二次确认），Esc / Tab 焦点陷阱
+// 只允许「栈顶」实例响应 —— 否则每个启用实例都在 document 挂 keydown，一次 Esc 会关掉所有叠层，
+// 焦点陷阱也互相抢焦点。启用时 push 本次 effect 的唯一标识，清理时移除；非栈顶实例的处理直接 return。
+// 单弹窗场景栈内仅一个元素，isTop 恒真，行为与改造前完全一致。
+const modalStack: symbol[] = [];
+
 /** 取容器内当前可聚焦元素（焦点陷阱 + 初始聚焦用）。 */
 export function focusableWithin(root: HTMLElement): HTMLElement[] {
   return Array.from(
@@ -31,11 +37,18 @@ export function useModalA11y(
 
   React.useEffect(() => {
     if (!enabled) return;
+    // 本次启用在弹窗栈中的唯一标识 —— 用于「仅栈顶实例响应键盘」的圈定。
+    const token = Symbol("modal-a11y");
+    modalStack.push(token);
+    const isTop = () => modalStack[modalStack.length - 1] === token;
+
     const panel = panelRef.current;
     // 打开前记住触发元素，关闭后还原焦点（避免焦点丢回 <body>）
     const previouslyFocused = document.activeElement as HTMLElement | null;
 
     const onKey = (e: KeyboardEvent) => {
+      // 非栈顶弹层不响应 Esc / Tab（只作用于最上层叠加弹窗）。
+      if (!isTop()) return;
       if (e.key === "Escape") {
         onCloseRef.current();
         return;
@@ -72,6 +85,8 @@ export function useModalA11y(
 
     return () => {
       document.removeEventListener("keydown", onKey);
+      const idx = modalStack.lastIndexOf(token);
+      if (idx !== -1) modalStack.splice(idx, 1);
       document.body.style.overflow = prevOverflow;
       if (previouslyFocused && document.contains(previouslyFocused)) {
         previouslyFocused.focus();

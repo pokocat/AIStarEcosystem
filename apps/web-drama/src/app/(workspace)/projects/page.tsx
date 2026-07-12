@@ -12,6 +12,7 @@ import { Thumb, dramaConfirm } from "@/components/drama-ui";
 import { ProjectCard } from "@/components/drama-workshop/project-card";
 import { stageNameByNo } from "@/components/drama-workshop/stages-config";
 import { WorkPreviewModal } from "@/components/drama-workshop/work-preview-modal";
+import { ViewHeader } from "@/components/common";
 import { type DramaProjectSummary } from "@/mocks/drama-workshop";
 import { BrainstormApi, ProjectsApi, RecipesApi } from "@/api";
 import { useAsync, invalidate } from "@/lib/drama-query";
@@ -93,30 +94,40 @@ function ProjectsHubInner() {
   };
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-      <div className="row" style={{ marginBottom: 22, gap: 16, flexWrap: "wrap" }}>
-        <div className="grow" style={{ minWidth: 280 }}>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>短剧工坊</h1>
-          <div className="muted" style={{ marginTop: 4 }}>管理你的多集短剧，随时继续创作。</div>
-        </div>
-        <div className="row gap-3">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ height: 44, padding: "0 14px" }}
-            onClick={() => router.push("/trash?tab=drama")}
-            title="回收站"
-          >
-            <Trash2 size={16} /> 回收站
-          </button>
-          <button
-            type="button"
-            className="btn btn-grad"
-            style={{ height: 44, padding: "0 20px" }}
-            onClick={() => void startBrainstorm()}
-          >
-            <Sparkles size={16} /> 新建短剧
-          </button>
-        </div>
+      <div style={{ marginBottom: 18 }}>
+        <ViewHeader
+          eyebrow="短剧工坊"
+          title={
+            <>
+              短剧{" "}
+              <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
+                工坊
+              </span>
+            </>
+          }
+          meta="管理你的多集短剧，随时继续创作。"
+          action={
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ height: 44, padding: "0 14px" }}
+                onClick={() => router.push("/trash?tab=drama")}
+                title="回收站"
+              >
+                <Trash2 size={16} /> 回收站
+              </button>
+              <button
+                type="button"
+                className="btn btn-grad"
+                style={{ height: 44, padding: "0 20px" }}
+                onClick={() => void startBrainstorm()}
+              >
+                <Sparkles size={16} /> 新建短剧
+              </button>
+            </>
+          }
+        />
       </div>
 
       {/* 加载失败 */}

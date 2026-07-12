@@ -7,6 +7,9 @@ import { ArrowUp, Sparkles, Wand2, X, Zap } from "lucide-react";
 import { RenderApi } from "@/api";
 import type { RenderedFrame } from "@/api/render";
 import { aiErrorMessage } from "@/lib/ai-error";
+import { CreditMark, dramaConfirm } from "@/components/drama-ui";
+import { getDramaConfig } from "@/api/drama-config";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 
 const DEFAULT_CHIPS = ["换成夜景", "换暖色调", "背景虚化", "再高级一点", "加点氛围感"];
 
@@ -25,6 +28,8 @@ export interface AiImageEditModalProps {
   ratio: "9:16" | "16:9";
   /** 快捷指令 chips（默认通用一组）。 */
   chips?: string[];
+  /** 每次生成的积分消耗（用于费用提示 + 本会话首次发送的确认；真实计费在后台）。不传则不显示费用提示、不预确认。 */
+  cost?: number;
   onClose: () => void;
   /** 改图成功回填：新图的 url + cdnKey（cdnKey 为真值，调用方按需落库）。 */
   onCommit: (frame: { url: string; cdnKey?: string }) => void;
@@ -38,6 +43,7 @@ export function AiImageEditModal({
   initialUrl,
   ratio,
   chips = DEFAULT_CHIPS,
+  cost,
   onClose,
   onCommit,
 }: AiImageEditModalProps) {
@@ -49,6 +55,12 @@ export function AiImageEditModal({
   const [ver, setVer] = React.useState(1);
   const [busy, setBusy] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  // ESC 关闭 / Tab 焦点圈定 / 打开时聚焦 / 关闭还原焦点（同全站弹层，见 lib/use-modal-a11y）。
+  useModalA11y(panelRef, onClose, true);
+  // 本会话首次发送前的费用确认只弹一次（之后连续改图不再打扰）。
+  const confirmedRef = React.useRef(false);
   React.useEffect(() => {
     const e = scrollRef.current;
     if (e) e.scrollTop = e.scrollHeight;
@@ -57,6 +69,25 @@ export function AiImageEditModal({
   const send = async (text: string) => {
     const t = text.trim();
     if (!t || busy) return;
+    // 首次发送：cost 达到「小额免打扰」阈值时确认一次；确认取消则不发送、不扣费。
+    if (!confirmedRef.current && cost != null) {
+      let threshold = 10;
+      try {
+        threshold = (await getDramaConfig()).confirmThreshold;
+      } catch {
+        /* 配置拉取失败用默认阈值 */
+      }
+      if (cost >= threshold) {
+        const ok = await dramaConfirm({
+          cost,
+          title: "AI 改图",
+          body: "每次生成一版新图会消耗积分，本次弹窗内后续继续改图不再重复确认。",
+          confirmLabel: "开始改图",
+        });
+        if (!ok) return;
+      }
+    }
+    confirmedRef.current = true;
     setInput("");
     setMsgs((m) => [...m, { role: "user", text: t }]);
     setBusy(true);
@@ -92,13 +123,18 @@ export function AiImageEditModal({
   return (
     <div className="overlay" onClick={onClose}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className="pop-in col"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "min(900px,94vw)", height: "min(580px,90vh)", background: "var(--surface)", borderRadius: 20, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
+        style={{ width: "min(900px,94vw)", height: "min(580px,90vh)", background: "var(--surface)", borderRadius: 20, overflow: "hidden", boxShadow: "var(--shadow-lg)", outline: "none" }}
       >
         <div className="row gap-2" style={{ padding: "14px 18px", borderBottom: "1px solid var(--line-soft)", alignItems: "center" }}>
           <span className="icon-badge" style={{ width: 28, height: 28, borderRadius: 8 }}><Wand2 size={14} /></span>
-          <span style={{ fontWeight: 800, fontSize: 15 }}>AI 改图</span>
+          <span id={titleId} style={{ fontWeight: 800, fontSize: 15 }}>AI 改图</span>
           {tag && <span className="tag tag-accent" style={{ flex: "none" }}>{tag}</span>}
           <span className="grow" />
           <button type="button" onClick={onClose} className="btn btn-icon btn-ghost btn-sm"><X size={15} /></button>
@@ -131,6 +167,11 @@ export function AiImageEditModal({
                   placeholder="描述你想如何修改这张图…" className="chat-input" style={{ flex: 1, height: 40, border: "1.5px solid var(--line)", borderRadius: 11, padding: "0 13px", fontSize: 13, background: "var(--surface-2)", outline: "none", color: "var(--ink)" }} />
                 <button type="button" onClick={() => void send(input)} className="btn btn-grad btn-icon" style={{ width: 40, height: 40, flex: "none" }}><ArrowUp size={16} /></button>
               </div>
+              {cost != null && (
+                <div className="faint row gap-1" style={{ fontSize: 10.5, alignItems: "center", justifyContent: "center" }}>
+                  <CreditMark size={11} /> 每次生成消耗 <span className="num" style={{ fontWeight: 700 }}>{cost}</span> 积分
+                </div>
+              )}
             </div>
           </div>
           {/* 右：预览 */}

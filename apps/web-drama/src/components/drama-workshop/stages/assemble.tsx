@@ -134,7 +134,19 @@ export function AssembleStage({ state, dispatch, data, ctx }: AssembleStageProps
                       {s.dur}s
                     </span>
                   </div>
-                  <span className="faint" style={{ fontSize: 10.5, padding: "6px 8px", height: 30, overflow: "hidden" }}>
+                  <span
+                    className="faint"
+                    title={s.desc || undefined}
+                    style={{
+                      fontSize: 10.5,
+                      padding: "6px 8px",
+                      display: "-webkit-box",
+                      WebkitBoxOrient: "vertical",
+                      WebkitLineClamp: 2,
+                      overflow: "hidden",
+                      lineHeight: 1.4,
+                    }}
+                  >
                     场{s.sceneNo} · {s.desc || "（无描述）"}
                   </span>
                 </div>

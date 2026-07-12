@@ -68,6 +68,16 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.103 · 2026-07-12 · 短剧前端 UX 精细化打磨（纯前端，无新端点 / 无实体变更）
+
+> 四批体验打磨 + 审查修复：可达性、扣费体验、异步韧性、状态与视觉。全部落在 web-drama 前端，后端零改动。
+
+- **可达性**：`DramaConfirmDialog` / AI 改图弹窗 / `AvatarPicker` / 两处全屏分镜表弹窗补 `role`/`aria-modal`/Esc/focus trap（复用 `useModalA11y`）；`useModalA11y` 升级为**弹窗栈**——多层叠加时 Esc 与焦点陷阱只作用于栈顶。分镜表时长/说话人/场景参考控件补 `aria-label`；distribution 图标按钮补 aria。
+- **扣费体验**：出片的「积分确认 + 一致性警告」双弹窗合并为单弹窗（`CreditButton` 新增 `getWarnings`，弹窗合并展示问题清单 + 费用，按钮「仍要继续 / 先去补齐」）；AI 改图弹窗费用前置（「每次生成消耗 N 积分」+ 首次发送确认）；脑暴「制作短视频」补 `CreditMark` + 阈值确认；互动剧 AI 起草确认注明将消耗积分。
+- **异步韧性**：`shorts/make` 渲染任务恢复（`ShortDraftShot` 加可选 `pendingJob` 字段随 `payloadJson` 持久化，进页 `listRenderTasks` 对账回填 / 恢复轮询；轮询超时不再当失败，提示后台继续，`POLL_TIMEOUT_MESSAGE` 常量全等判定）；一键连跑显示进度 X/N + 可停止；`useSaveStatus` 新增 dirty 态（「编辑中」），不再在防抖期谎报「保存中」。
+- **状态与视觉**：shorts 列表补 skeleton / error 态；templates/published 区分错误与空态；operations 双区独立未发布守卫（黄条 + beforeunload）；distribution 浅色主题隐形填充改语义 token、任务行项目 ID 改标题显示、平台空态、去「建设中」徽标；面包屑兜底映射（`/trash` 等）；全局搜索占位纠偏；wallet / distribution KPI 网格 `auto-fit` 响应式；影子支付按钮去 emoji；页头统一 `ViewHeader`（projects / shorts / templates / trash / operations）；多处溢出保护与 @提及浮层滚动关闭；删死代码 `projects/_dialogs/NewProjectDialog.tsx`。
+- **门禁**：`typecheck:all` 10/10 + web-drama build + `check:api-contract` 全绿。真机浏览器走查通过（弹窗栈 / 合并确认 / 费用前置 / 面包屑 / 响应式）。
+
 ### v0.102 · 2026-07-10 · 一致性引擎 C-3（服务端参考装配 Reference Assembler + 双线共享 useShotRender）
 
 > L1 收官：把此前散落在 `epscript.tsx` 的参考图优先级链（`shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`）**整体下沉服务端**——render 只传镜头坐标 `shot_ref`，服务端按 `payloadJson` + `drama_character`/`drama_scene` 实体自装配（角色/场景/上一镜真实末帧），按端点 capability（D-11）裁剪并回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §5。

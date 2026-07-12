@@ -60,6 +60,11 @@ export interface ShortDraftShot {
   frameUrl?: string;
   videoUrl?: string;
   jobId?: string;
+  /**
+   * 进行中的后台渲染任务（首帧 / 视频）。运行期已在 payloadJson 里 round-trip
+   * （提交后写入、随 autosave 落库，进页对账恢复），此处补齐类型契约声明。
+   */
+  pendingJob?: { jobId: string; kind: "frame" | "clip" };
 }
 
 export interface ShortDraftChatMsg {
