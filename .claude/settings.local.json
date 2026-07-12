@@ -19,7 +19,10 @@
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/repository/*.java)",
       "Bash(ls /Users/donis/dev/Aisingerecosystemcopy/apps/server/src/main/java/com/aistareco/aep/controller/*.java)",
       "Bash(ls *)",
-      "Bash(./mvnw -q -o compile)"
+      "Bash(./mvnw -q -o compile)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git rm *)"
     ],
     "defaultMode": "bypassPermissions",
     "bypassPermissions": true
