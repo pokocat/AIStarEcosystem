@@ -19,6 +19,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +70,15 @@ public class PublishJobService {
     private final String internalSecret;
     private final String selfBaseUrl;
     private final long defaultUploadCost;
+    /** 例行 QA 安全修复：派单前允许 dispatch 的绝对 URL 域白名单（自身 origin + 已配置的 CDN/OSS origin）。 */
+    private final List<String> trustedDispatchOrigins;
+    /**
+     * 例行 QA 修复：Spring AOP 是代理拦截 —— resumeInflight() 内直接调 this.applyCallback()/
+     * this.resumeFail()（同类自调用）会绕过代理，导致这两个方法上的 @Transactional 完全失效
+     * （启动后 in-progress 任务的状态翻转 + 事件写入不再是同一事务，中途失败会留下状态与事件
+     * 日志不一致的脏数据）。用 @Lazy 自注入代理转发调用，强制经过代理触发 @Transactional。
+     */
+    private final PublishJobService self;
 
     public PublishJobService(PublishJobRepository jobRepo,
                               PublishJobEventRepository eventRepo,
@@ -80,7 +90,10 @@ public class PublishJobService {
                               CdnUrlSigner cdnUrlSigner,
                               @Value("${aep.internal.secret:aep-dev-internal-secret-change-in-prod}") String internalSecret,
                               @Value("${sau.callback-base-url:http://localhost:8080/api/internal/sau}") String selfBaseUrl,
-                              @Value("${sau.default-upload-cost:20}") long defaultUploadCost) {
+                              @Value("${sau.default-upload-cost:20}") long defaultUploadCost,
+                              @Value("${aep.cdn.public-base-url:/cdn}") String cdnPublicBaseUrl,
+                              @Value("${aep.cdn.oss.base-url:}") String cdnOssBaseUrl,
+                              @Lazy PublishJobService self) {
         this.jobRepo = jobRepo;
         this.eventRepo = eventRepo;
         this.accountRepo = accountRepo;
@@ -92,6 +105,28 @@ public class PublishJobService {
         this.internalSecret = internalSecret;
         this.selfBaseUrl = selfBaseUrl;
         this.defaultUploadCost = defaultUploadCost;
+        this.self = self;
+        List<String> origins = new ArrayList<>();
+        String selfOrigin = originOf(selfBaseUrl);
+        if (selfOrigin != null) origins.add(selfOrigin);
+        String publicOrigin = originOf(cdnPublicBaseUrl); // 相对路径（如 "/cdn"）解析为 null，天然同源，无需加入
+        if (publicOrigin != null) origins.add(publicOrigin);
+        String ossOrigin = originOf(cdnOssBaseUrl);
+        if (ossOrigin != null) origins.add(ossOrigin);
+        this.trustedDispatchOrigins = List.copyOf(origins);
+        log.info("[publish] trustedDispatchOrigins={}", trustedDispatchOrigins);
+    }
+
+    /** 解析 URL 的 scheme://authority；相对路径 / 不可解析时返回 null。 */
+    private static String originOf(String url) {
+        if (url == null || url.isBlank()) return null;
+        try {
+            java.net.URI u = java.net.URI.create(url.trim());
+            if (u.getScheme() == null || u.getAuthority() == null) return null;
+            return u.getScheme() + "://" + u.getAuthority();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -277,6 +312,26 @@ public class PublishJobService {
             return PublishJobDto.from(job, cdnUrlSigner);
         }
 
+        // v0.99 例行 QA：videoUrl/coverUrl 落库时是 MixcutPublishService 传入的、创建批次那一刻
+        // 就已签过名的 CDN URL（MixcutRenderOutputDto.cdnUrl() 出 wire 时签的）。「按天错峰」调度
+        // （daily_recurring 策略，见 ScheduleExpander）会把同一批 output 铺到未来好几天的固定时段，
+        // 而签名 TTL（AEP_CDN_SIGNED_URL_TTL_SECONDS 默认 3600s=1h）远短于跨天调度窗口——不重签的话
+        // 派单当天以后的任务一律拿着过期签名去调 sau-service，直接 403 失败（AGENTS.md §4.7.7 同类
+        // 教训）。maybeSign 会从 URL 反抽 key 重签，对已过期的签名 URL 同样有效，无需新增列。
+        String freshVideoUrl = cdnUrlSigner.maybeSign(job.getVideoUrl());
+        String freshCoverUrl = cdnUrlSigner.maybeSign(job.getCoverUrl());
+
+        // 把 videoUrl 标准化为绝对 URL —— sau-service 是独立进程，httpx 拒绝相对路径。
+        // 历史脏数据（v0.15-v0.17 间用 publicBase=/cdn 落的 publish_job.video_url）也能跑通。
+        // 优先级：已是绝对（http/https）→ 直接用；以 / 开头 → 拼当前 server origin。
+        // 例行 QA 安全修复：videoUrl 最终来自用户可控输入（CreatePublishJobInputDto.videoUrl /
+        // MixcutPublishBatchRequest.OutputItem.cdnUrl 直通 createBatch），sau-service 会对它发起
+        // 服务端 GET 抓取（uploader.py _fetch_video_tmpfs，httpx 无内网/云 metadata 端点限制）。
+        // 未校验时攻击者可把 videoUrl 指向内网服务或云 metadata 接口（如阿里云 100.100.100.200）
+        // 发起 SSRF。这里在派单前把绝对 URL 校验在本仓已知的 CDN/自身域内，非法值直接 400 拒绝，
+        // 早于 hold 扣费与状态翻转，失败时零副作用。
+        String absoluteVideoUrl = toAbsoluteUrl(freshVideoUrl);
+
         long cost = currentUploadCost();
         // v0.33+: hold 替代 debit。任务终态 LIVE → commit；FAILED / CANCELLED → release。
         // v0.35+: cost 来源走 CelebrityActionPricingService（action="publish.upload"），fallback 旧 default。
@@ -291,20 +346,6 @@ public class PublishJobService {
         job.setProgress(0);
         jobRepo.save(job);
         writeEvent(job.getId(), "transition", from, PublishJobStatus.UPLOADING, 0, "credit:-" + cost);
-
-        // v0.99 例行 QA：videoUrl/coverUrl 落库时是 MixcutPublishService 传入的、创建批次那一刻
-        // 就已签过名的 CDN URL（MixcutRenderOutputDto.cdnUrl() 出 wire 时签的）。「按天错峰」调度
-        // （daily_recurring 策略，见 ScheduleExpander）会把同一批 output 铺到未来好几天的固定时段，
-        // 而签名 TTL（AEP_CDN_SIGNED_URL_TTL_SECONDS 默认 3600s=1h）远短于跨天调度窗口——不重签的话
-        // 派单当天以后的任务一律拿着过期签名去调 sau-service，直接 403 失败（AGENTS.md §4.7.7 同类
-        // 教训）。maybeSign 会从 URL 反抽 key 重签，对已过期的签名 URL 同样有效，无需新增列。
-        String freshVideoUrl = cdnUrlSigner.maybeSign(job.getVideoUrl());
-        String freshCoverUrl = cdnUrlSigner.maybeSign(job.getCoverUrl());
-
-        // 把 videoUrl 标准化为绝对 URL —— sau-service 是独立进程，httpx 拒绝相对路径。
-        // 历史脏数据（v0.15-v0.17 间用 publicBase=/cdn 落的 publish_job.video_url）也能跑通。
-        // 优先级：已是绝对（http/https）→ 直接用；以 / 开头 → 拼当前 server origin。
-        String absoluteVideoUrl = toAbsoluteUrl(freshVideoUrl);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("platform", account.getPlatform().wire());
@@ -726,7 +767,7 @@ public class PublishJobService {
         for (PublishJob job : rows) {
             if (job.getExternalTaskId() == null) {
                 // 调用 sau /upload 之前进程崩了；标 FAILED
-                resumeFail(job, "RESUME_NO_EXTERNAL_TASK", "重启时任务尚未获得 sau taskId");
+                self.resumeFail(job, "RESUME_NO_EXTERNAL_TASK", "重启时任务尚未获得 sau taskId");
                 continue;
             }
             try {
@@ -734,7 +775,7 @@ public class PublishJobService {
                 String status = stringOrNull(resp.get("status"));
                 PublishJobStatus to = PublishJobStatus.fromWire(status);
                 if (to == null) {
-                    resumeFail(job, "RESUME_UNKNOWN_STATUS", "sau 返回未知 status=" + status);
+                    self.resumeFail(job, "RESUME_UNKNOWN_STATUS", "sau 返回未知 status=" + status);
                     continue;
                 }
                 Object interactionRaw = resp.get("interactionRequired");
@@ -750,9 +791,9 @@ public class PublishJobService {
                         stringOrNull(resp.get("errorMessage")),
                         interaction
                 );
-                applyCallback(cb);
+                self.applyCallback(cb);
             } catch (Exception e) {
-                resumeFail(job, "RESUME_SAU_UNREACHABLE", "查询 sau 失败: " + e.getMessage());
+                self.resumeFail(job, "RESUME_SAU_UNREACHABLE", "查询 sau 失败: " + e.getMessage());
             }
         }
     }
@@ -801,15 +842,25 @@ public class PublishJobService {
      * 这里在派单给 sau 前实时补全成 `<selfHost>/cdn/...`，避免历史脏数据走不通。
      *
      * 推导规则：
-     *   "http://..." / "https://..."  → 原样返回
-     *   "/<anything>"                  → selfHost (从 selfBaseUrl 取 origin) + url
+     *   "http://..." / "https://..."  → 校验 origin 在白名单内（见类字段 trustedDispatchOrigins）后原样返回，
+     *                                    否则 400 拒绝（例行 QA 安全修复：videoUrl 来自用户输入，未经校验会被
+     *                                    sau-service 服务端直接 GET 抓取，构成 SSRF —— 详见 startJob 内注释）
+     *   "/<anything>"                  → selfHost (从 selfBaseUrl 取 origin) + url（同源，天然可信，不需再校验）
      *   其它                            → 抛 IllegalArgumentException（不可恢复）
      */
     private String toAbsoluteUrl(String url) {
         if (url == null || url.isBlank()) {
             throw new IllegalArgumentException("videoUrl is null/blank");
         }
-        if (url.startsWith("http://") || url.startsWith("https://")) return url;
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            String origin = originOf(url);
+            boolean trusted = origin != null && trustedDispatchOrigins.stream().anyMatch(origin::equals);
+            if (!trusted) {
+                throw BusinessException.badRequest("VIDEO_URL_NOT_ALLOWED",
+                        "videoUrl 必须来自平台自身的 CDN 域，不支持外部/内网地址");
+            }
+            return url;
+        }
         if (!url.startsWith("/")) {
             throw new IllegalArgumentException("videoUrl is neither absolute nor leading-slash: " + url);
         }

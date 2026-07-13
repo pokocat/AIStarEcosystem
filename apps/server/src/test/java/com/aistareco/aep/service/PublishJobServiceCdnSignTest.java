@@ -60,7 +60,8 @@ class PublishJobServiceCdnSignTest {
         cdnUrlSigner = mock(CdnUrlSigner.class);
 
         svc = new PublishJobService(jobRepo, eventRepo, accountRepo, secret, sau, creditService,
-                actionPricing, cdnUrlSigner, "internal-secret", "http://localhost:8080/api/internal/sau", 20L);
+                actionPricing, cdnUrlSigner, "internal-secret", "http://localhost:8080/api/internal/sau", 20L,
+                "/cdn", "https://oss.example.com", null);
 
         when(jobRepo.save(any(PublishJob.class))).thenAnswer(inv -> inv.getArgument(0));
     }

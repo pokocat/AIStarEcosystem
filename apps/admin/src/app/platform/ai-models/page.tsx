@@ -1799,6 +1799,12 @@ function CandidatePanel({
                         <TableCell className="py-2">
                           <Switch
                             checked={row.enabled}
+                            disabled={row.isDefault}
+                            title={
+                              row.isDefault
+                                ? "默认端点的候选禁用对默认调用不会生效（后端已拒绝此操作）；请先「设默认」到其他端点，或直接停用该 AI 模型端点。"
+                                : undefined
+                            }
                             onCheckedChange={(v) => {
                               patchLocal(row.endpointId, (r) => ({ ...r, enabled: v }));
                               void persist({ ...row, enabled: v });
