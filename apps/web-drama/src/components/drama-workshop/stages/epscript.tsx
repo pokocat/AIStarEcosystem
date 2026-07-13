@@ -32,6 +32,14 @@ import { useDramaConfig } from "@/lib/use-drama-config";
 import type { StageContext } from "./stage-context";
 
 
+/**
+ * 轮询是否因超时返回（任务其实仍在后台跑，不能当失败丢弃，否则用户会重新提交造成双重扣费）。
+ * 与 shorts/make/page.tsx 的 isPollTimeout 同一模式，与 RenderApi.POLL_TIMEOUT_MESSAGE 做**全等**比较。
+ */
+function isPollTimeout(job: { status?: string; error_message?: string | null }): boolean {
+  return job.status === "failed" && job.error_message === RenderApi.POLL_TIMEOUT_MESSAGE;
+}
+
 interface EpScene extends ScriptScene {
   refs: Material[];
 }
@@ -443,6 +451,11 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     async (jobId: string, sceneId: string, id: string, cost: number, msg: string, spend: boolean) => {
       try {
         const done = await RenderApi.pollFrameJob(jobId, { timeoutMs: 240_000 });
+        if (isPollTimeout(done)) {
+          // 超时 ≠ 失败：任务仍在后台跑，保留 busy 态（按钮不可再点），交给后台任务轮询对账，不清空、不重扣。
+          if (spend) toast("首帧仍在后台生成，请稍后回到本页查看");
+          return;
+        }
         applyFrameResult(sceneId, id, done, cost, msg, spend);
       } catch (e) {
         clearBusy(id);
@@ -455,6 +468,10 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
     async (jobId: string, sceneId: string, id: string, cost: number, msg: string, spend: boolean) => {
       try {
         const done = await RenderApi.pollClipJob(jobId, { timeoutMs: 240_000 });
+        if (isPollTimeout(done)) {
+          if (spend) toast("视频仍在后台生成，请稍后回到本页查看");
+          return;
+        }
         applyClipResult(sceneId, id, done, cost, msg, spend);
       } catch (e) {
         clearBusy(id);

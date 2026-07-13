@@ -188,9 +188,21 @@ public class AiAppBindingService {
 
     // ── 内部 ───────────────────────────────────────────────────────────────
 
-    /** 幂等确保 purpose×endpointId 有一条候选（用于 bind 时把默认端点纳入候选池）。 */
+    /**
+     * 幂等确保 purpose×endpointId 有一条候选（用于 bind 时把默认端点纳入候选池）。
+     * 若候选早已存在但当前是 disabled（如运营先把它从候选池禁用，之后又把它设为默认端点），
+     * 这里必须顺带重新启用——否则会出现「默认候选=disabled」的自相矛盾状态：admin 候选表 isDefault
+     * 徽章亮着而「启用」开关是灭的，且开关因 updateCandidate 的默认候选守卫被锁死无法再手动打开。
+     */
     private void ensureCandidate(AiModelPurpose purpose, String endpointId, int sortOrder) {
-        if (candidateRepo.existsByPurposeAndEndpointId(purpose, endpointId)) return;
+        AiAppEndpointCandidate existing = candidateRepo.findByPurposeAndEndpointId(purpose, endpointId).orElse(null);
+        if (existing != null) {
+            if (!existing.isEnabled()) {
+                existing.setEnabled(true);
+                candidateRepo.save(existing);
+            }
+            return;
+        }
         AiAppEndpointCandidate c = AiAppEndpointCandidate.builder()
                 .id(UUID.randomUUID().toString().replace("-", ""))
                 .purpose(purpose)
