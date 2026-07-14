@@ -482,8 +482,8 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
         <>
           {/* 选好首帧后：可选「补末帧」——由 AI 拆出末帧画面（首尾帧双关键帧，出片运动更稳）→ 上方显示首帧▷末帧双联 + 悬停预演 */}
           {onDecompose && !s.motionDesc && (
-            <button type="button" onClick={onDecompose} title="AI 生成本镜末帧画面（首帧→末帧双关键帧，出片起止更可控、更稳）" style={{ background: "none", border: "1px solid var(--line)", borderRadius: 7, cursor: "pointer", color: "var(--accent)", fontSize: 10, fontWeight: 700, height: 24, padding: "0 8px" }}>
-              <Sparkles size={10} /> 补末帧 · 首尾更稳
+            <button type="button" onClick={onDecompose} title="补末帧 · 首尾更稳——AI 生成本镜末帧画面（首帧→末帧双关键帧，出片起止更可控、更稳）" style={{ background: "none", border: "1px solid var(--line)", borderRadius: 7, cursor: "pointer", color: "var(--accent)", fontSize: 10, fontWeight: 700, height: 24, padding: "0 8px", whiteSpace: "nowrap" }}>
+              <Sparkles size={10} /> 补末帧
             </button>
           )}
           <CreditButton cost={clipCost} getWarnings={getClipWarnings} onConfirm={() => onRender("clip")} confirmTitle="生成视频" confirmBody="基于已选首帧（有末帧则首尾帧双关键帧插值）生成这镜视频。" className="btn btn-grad btn-sm" style={{ height: 26, width: 92, justifyContent: "center", fontSize: 11, padding: 0 }} markSize={11}>
