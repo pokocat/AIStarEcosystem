@@ -375,6 +375,12 @@ public class CreditService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "hold 缺少 userId / referenceType / referenceId");
         }
 
+        // 幂等检查必须在拿到钱包行锁之后做（而不是之前）：并发重复请求（同 userId，同 referenceId，
+        // 例如双击/客户端重试）如果先查后锁，两次调用都可能读到"未存在"，各自往下走到钱包扣款，
+        // 第二次落 CreditHold 时撞 (referenceType, referenceId) 唯一约束报 500，而不是幂等返回。
+        // 钱包行锁把同一 userId 的并发 hold 调用串行化——后到者拿到锁时，先到者已提交，此时再查一定能读到。
+        Wallet wallet = getOrCreateWalletForUpdate(userId);
+
         // 幂等：已存在 ACTIVE / 终态 hold → 直接返回，不再扣
         CreditHold existing = holdRepo.findByReferenceTypeAndReferenceId(referenceType, referenceId).orElse(null);
         if (existing != null) {
@@ -383,7 +389,6 @@ public class CreditService {
             return existing;
         }
 
-        Wallet wallet = getOrCreateWalletForUpdate(userId);
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
                     "积分余额不足，本次操作需 " + amount + "，当前可用 " + wallet.getTotalBalance());

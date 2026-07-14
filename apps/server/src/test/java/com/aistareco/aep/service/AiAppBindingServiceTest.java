@@ -151,4 +151,33 @@ class AiAppBindingServiceTest {
         assertTrue(dto.isDefault());
         assertEquals(5, dto.sortOrder());
     }
+
+    /**
+     * 例行 QA 回归（2026-07-13）：{@link AiAppBindingService#bind} 把一个此前被禁用的候选重新设为默认时，
+     * 必须顺带重新启用它，否则会出现「默认候选=disabled」的自相矛盾状态——admin 表格 isDefault 徽章亮着，
+     * 「启用」开关却是灭的，且因 updateCandidate 的默认候选守卫（不许禁用默认候选）被锁死，运营无法再
+     * 手动打开，只能观测到一个永久卡住的坏状态。
+     */
+    @Test
+    void bindReEnablesPreviouslyDisabledCandidate() {
+        AiModelPurpose purpose = AiModelPurpose.VIDEO_GENERATION;
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        AiAppBindingRepository bindingRepo = mock(AiAppBindingRepository.class);
+        AiAppEndpointCandidateRepository candidateRepo = mock(AiAppEndpointCandidateRepository.class);
+        AiModelInvocationService invocation = mock(AiModelInvocationService.class);
+
+        AiModelEndpoint ep = endpoint("ep-x", true);
+        when(endpointRepo.findById("ep-x")).thenReturn(Optional.of(ep));
+        when(bindingRepo.findById(purpose)).thenReturn(Optional.empty());
+        when(bindingRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        AiAppEndpointCandidate disabled = candidate(purpose, "ep-x", false);
+        when(candidateRepo.findByPurposeAndEndpointId(purpose, "ep-x")).thenReturn(Optional.of(disabled));
+
+        AiAppBindingService svc = new AiAppBindingService(bindingRepo, endpointRepo, candidateRepo, invocation);
+
+        svc.bind(purpose, "ep-x");
+
+        assertTrue(disabled.isEnabled(), "被设为默认端点的候选必须重新启用");
+        verify(candidateRepo).save(disabled);
+    }
 }

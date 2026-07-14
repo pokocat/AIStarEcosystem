@@ -8,6 +8,7 @@ import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.aep.repository.WalletRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -99,5 +100,27 @@ class CreditServiceHoldLockTest {
         org.junit.jupiter.api.Assertions.assertNull(result, "已 COMMITTED 的 hold 不应再被 release 覆盖终态");
         verify(walletRepo, never()).findByUserIdForUpdate(anyString());
         verify(ledgerRepo, never()).save(any());
+    }
+
+    /**
+     * 回归测试：hold() 的幂等检查必须在拿到钱包行锁之后做。否则并发重复请求（同 userId、同
+     * referenceId，如双击/客户端重试）会各自在未加锁状态下判定"不存在"，都往下走到扣款，
+     * 第二次落 CreditHold 撞唯一约束报 500，而非幂等返回已有 hold。
+     * 钱包行锁把同一 userId 的并发 hold 调用串行化——后到者拿到锁时前一次已提交，此时再查一定能读到。
+     */
+    @Test
+    void holdChecksIdempotencyAfterAcquiringWalletLock() {
+        wallet(0, 500);
+        when(holdRepo.findByReferenceTypeAndReferenceId(REF_TYPE, REF_ID))
+                .thenReturn(Optional.of(activeHold(100)));
+
+        CreditHold result = svc.hold(USER, 100, REF_TYPE, REF_ID, "hold");
+
+        org.junit.jupiter.api.Assertions.assertEquals("h1", result.getId(), "应直接返回已存在的 hold，不重复创建");
+        InOrder order = inOrder(walletRepo, holdRepo);
+        order.verify(walletRepo).findByUserIdForUpdate(USER);
+        order.verify(holdRepo).findByReferenceTypeAndReferenceId(REF_TYPE, REF_ID);
+        // 幂等命中后不应再对钱包做任何扣减性写入。
+        verify(walletRepo, never()).save(any());
     }
 }
