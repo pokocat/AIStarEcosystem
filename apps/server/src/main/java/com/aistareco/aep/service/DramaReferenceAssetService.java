@@ -273,7 +273,7 @@ public class DramaReferenceAssetService {
 
         ArrayNode refImages = readRefImages(ch.getRefImagesJson());
         int committed = 0;
-        BusinessException lastErr = null;
+        RuntimeException lastErr = null;
         for (String angle : angles) {
             try {
                 String cdnKey = renderService.renderCharacterReferenceFrame(
@@ -284,7 +284,10 @@ public class DramaReferenceAssetService {
                 r.put("label", angleLabel(angle));
                 creditService.commitHold(REF_TYPE_CHAR_SHEET, ref, frameCost, "角色三视图 · " + angleLabel(angle));
                 committed++;
-            } catch (BusinessException e) {
+            } catch (RuntimeException e) {
+                // commitHold 抛的是 ResponseStatusException（非 BusinessException 子类），
+                // 之前只捕 BusinessException 会让 commitHold 失败直接跳过下面的 release，
+                // 冻结的 pendingBalance 只能等 CreditHoldSweeper 兜底（默认 180 分钟才释放）。
                 lastErr = e;
                 break; // 停在首个失败角度；剩余在下方 release
             }

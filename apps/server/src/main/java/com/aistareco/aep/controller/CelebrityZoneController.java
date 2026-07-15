@@ -94,6 +94,11 @@ public class CelebrityZoneController {
         return ApiResponse.of(service.batchDistribute(projectId, videoIds, channels));
     }
 
+    @GetMapping("/videos/{id}")
+    public ApiResponse<CelebrityProjectVideoDto> getVideo(@PathVariable String id) {
+        return ApiResponse.of(service.getVideo(id));
+    }
+
     @GetMapping("/videos")
     public ApiResponse<List<CelebrityProjectVideoDto>> listAllVideos(
             @RequestParam(required = false) String status,
