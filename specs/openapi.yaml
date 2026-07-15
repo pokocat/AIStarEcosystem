@@ -7619,6 +7619,7 @@ paths:
     post: { tags: [wallet], operationId: withdrawWallet, summary: '提现（账本侧扣减，status=processing）', responses: { '200': { description: ok } } }
   /celebrity/videos/{videoId}:
     parameters: [ { in: path, name: videoId, required: true, schema: { type: string } } ]
+    get: { tags: [celebrity], operationId: getCelebrityVideo, summary: '按 id 取单条视频（小程序 video-detail 页用）', responses: { '200': { description: ok } } }
     delete: { tags: [celebrity], operationId: deleteCelebrityVideo, summary: '删除项目视频', responses: { '204': { description: ok } } }
   /material/videos:
     get: { tags: [celebrity], operationId: listMaterialVideos, summary: '素材视频列表', responses: { '200': { description: ok } } }

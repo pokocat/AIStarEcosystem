@@ -280,6 +280,11 @@ public class CelebrityZoneService {
     }
 
     // ── Videos (cross-project library) ──────────────────────────────────────
+    public CelebrityProjectVideoDto getVideo(String id) {
+        CelebrityProjectVideo v = videoRepo.findById(id).orElse(null);
+        return v == null ? null : CelebrityProjectVideoDto.from(v);
+    }
+
     public List<CelebrityProjectVideoDto> listAllVideos(String status, String starId, String projectId, String sort) {
         List<CelebrityProjectVideo> rows = videoRepo.findAllByOrderByCreatedAtDesc();
         if (status != null && !status.isBlank() && !"全部".equals(status)) {
