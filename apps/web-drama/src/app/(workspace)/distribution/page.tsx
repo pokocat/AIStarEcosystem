@@ -171,7 +171,18 @@ export default function DistributionOverviewPage() {
                 >
                   <span style={{ fontSize: 20 }}>{p.icon}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</div>
+                    <div
+                      title={p.name}
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {p.name}
+                    </div>
                     <div className="mono" style={{ fontSize: 10, color: "var(--fg-3)" }}>
                       {p.followers} · 同步 {p.lastSync}
                     </div>

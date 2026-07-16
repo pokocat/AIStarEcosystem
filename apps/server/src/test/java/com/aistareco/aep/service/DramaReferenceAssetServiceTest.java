@@ -245,6 +245,33 @@ class DramaReferenceAssetServiceTest {
     }
 
     @Test
+    void referenceSheet_commitHoldThrowsResponseStatusException_stillReleasesFull() {
+        // 回归测试（追踪 7eb7e53 的修复）：CreditService.commitHold 实际抛的是
+        // ResponseStatusException（非 BusinessException 子类）。此前 catch 块只捕 BusinessException，
+        // 会让 commitHold 失败跳过下面的 releaseHold，冻结的 pendingBalance 只能等
+        // CreditHoldSweeper 兜底（默认 180 分钟才释放）。这里直接 mock commitHold（而非
+        // renderCharacterReferenceFrame）抛 ResponseStatusException，验证 catch(RuntimeException)
+        // 能捕住它、releaseHold 仍被调用、且异常原样向上抛出（不被吞掉/掩盖成别的错误码）。
+        seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
+        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+                .thenReturn("drama/char-refs/a.png", "drama/char-refs/b.png", "drama/char-refs/c.png");
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "wallet commit failed"))
+                .when(credit).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString());
+
+        org.springframework.web.server.ResponseStatusException ex = assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> svc.generateReferenceSheet(PID, "ch_1", null, USER));
+        assertEquals(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, ex.getStatusCode());
+
+        verify(credit).hold(eq(USER), eq(6L), eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
+        // 首个角度 commit 即抛错，停在第一次尝试（不会继续后续角度）
+        verify(credit, times(1)).commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString());
+        // 关键断言：catch(RuntimeException) 生效，全额冻结被立刻 release，不必等 sweeper 兜底
+        verify(credit, times(1)).releaseHold(eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
+    }
+
+    @Test
     void referenceSheet_endpointNotConfigured_no_hold() {
         seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
         doThrow(new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
