@@ -466,7 +466,7 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 - [ ] **`drama.credit.interactive-draft` 单价未暴露进 `GET /me/drama/config`**：互动剧 AI 起草的单价（PlatformConfig `drama.credit.interactive-draft`，v0.79 引入）后端已配、扣费真实，但 `DramaConfigController` 返回的配置 DTO + 前端 `api/drama-config.ts` 未把这个字段带出来，导致 `apps/web-drama/src/app/(workspace)/projects/[id]/(stages)/branch.tsx` 的 AI 起草确认弹窗只能显示「将消耗积分」兜底文案，拿不到具体数字（其余动作如 frame/shot-rewrite 都有真数字）。修复：`DramaConfigController` 的配置聚合补 `interactive-draft` 单价 → `api/drama-config.ts` 加字段 → branch.tsx 起草确认改显示 `CreditMark` 具体值。
 - [ ] **`shorts/make` 本地 `EditableField` 与 drama-ui 共享 `Editable` 是两套行内编辑交互**：`apps/web-drama/src/app/(workspace)/shorts/make/page.tsx:89` 附近自定义了一个 `EditableField`（点击进入编辑、失焦保存），与 `@/components/drama-ui` 导出的共享 `Editable` 功能重叠但交互细节（键盘行为、占位、样式）不一致，属重复实现。待合并到共享 `Editable`（或让 `EditableField` 成为其薄封装），消除交互漂移。
-- [ ] **distribution 平台卡名称列过窄导致两字换行**（观感，非功能）：`apps/web-drama/src/app/(workspace)/distribution/page.tsx` 平台卡的名称列宽度不足，较长平台名（如「爱奇艺」）会折成「爱奇/艺」，观感待打磨。修复：给名称列加 `min-width` 或 `white-space:nowrap` + ellipsis（配合 hover `title`），避免中文两字断行。
+- [x] ~~**distribution 平台卡名称列过窄导致两字换行**（观感，非功能）~~（**例行 QA 完成**，2026-07-16）：`apps/web-drama/src/app/(workspace)/distribution/page.tsx` 平台卡名称列加 `whiteSpace:"nowrap"` + `overflow:"hidden"` + `textOverflow:"ellipsis"` + hover `title={p.name}`，符合 AGENTS.md §8 跨 app「不溢出」硬规则（此前无溢出约束，较长平台名会断行）。`pnpm --filter @ai-star-eco/web-drama typecheck` 绿。
 - [ ] **operations 未发布守卫仅 beforeunload + 页内黄条，缺 App Router 路由级导航拦截**：`apps/web-drama/src/app/(workspace)/operations/page.tsx` 有未发布改动时，浏览器级关闭/刷新有 `beforeunload` 提示、页内有黄条提醒，但**应用内**通过 Next `<Link>` / `router.push` 切走时不会拦截（App Router 目前无官方 `useBlocker`），可能丢草稿。待 Next 提供路由拦截能力或自实现导航守卫后补上。
 
 ---
