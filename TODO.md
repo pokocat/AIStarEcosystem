@@ -498,3 +498,27 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 **本轮复核历史 open routine PR**：无——`[Routine QA]`/`qa/routine/` 搜索均为空（#88/#89 均已合并）。
 **验证**：`./mvnw compile` 全绿；`./mvnw -Dtest=DramaReferenceAssetServiceTest,CelebrityZoneServiceTest test` 全绿（13 例）；`pnpm check:api-contract` 全绿（430 个 apiFetch 调用点，0 缺失）。
+
+---
+
+## 2026-07-18 · 例行 QA（承接 #91，未发现新缺陷）
+
+> 开工前 `search_pull_requests`（`repo:pokocat/AIStarEcosystem is:pr is:open [Routine QA] in:title`）命中 1 条：#91（`qa/routine/2026-07-16-bugfix-sweep`）。人工核对其 diff（3 files, +40/-2）与 GitHub PR body 一致、base SHA 与当前 `origin/main` 一致、`mergeable_state=clean`，判定仍完全有效 → cherry-pick（`git cherry-pick origin/qa/routine/2026-07-16-bugfix-sweep`，无冲突）承接进本分支，其内容（`DramaReferenceAssetServiceTest` 新增 `commitHold` 抛 `ResponseStatusException` 回归测试 + `distribution/page.tsx` 平台名称防溢出）已在本轮体现，详情见 2026-07-15 段落。承接时顺手发现 #91 虽然新增了回归测试代码但漏了把上面"本条待新增回归测试"待办标 `[x]`——本轮已同 commit 补正（AGENTS.md §9 TODO.md 维护纪律：代码落地必须同步文档状态）。
+>
+> 独立审计（人工 + general-purpose 子 agent 双线，聚焦近 15 个 commit：短剧一致性引擎 C-1~C-3/D-11、`CreditService.hold()` 幂等竞态修复、`AiAppBindingService` 候选端点治理、v0.103 UX 打磨）：**未发现新的高置信度缺陷**。逐条复核以下模式，均确认已按既定惯例修复/未复现：
+> - hold/commitHold/releaseHold 调用点 catch 类型窄化（此前已修 3 次的 bug 类）：`DramaProjectService.withCharge`、`DramaShortService.withEntryCharge`、`DramaReferenceAssetService.generateReferenceSheet`、`MaterialVideoWorker` 均为 `catch (RuntimeException e)` / `catch (Throwable t)`，无遗漏。
+> - CDN 资产签名（§4.7）：`DramaReferenceAssembler`/`DramaReferenceAssetService`（C-1~C-3 新增代码）全部 cdnKey 真值 + `signer.signKey`/`maybeSign` 派生 URL，`DramaProjectService.toDetail()` 出 wire 前 `resignAssetUrls()` 递归重签，无裸 URL 落库/回传。
+> - §8.0 静默降级：D-11 候选端点 `resolveEndpoint(purpose, endpointId)` 白名单未命中 → 503 `ENDPOINT_NOT_ALLOWED`，`DramaReferenceAssembler` 对不可用参考图如实标 `local_unfetchable`/`over_max_refs`/`model_no_flf`，未见静默丢弃或伪造产物。
+> - 并发/幂等：`CreditService.hold()`、`AiAppBindingService.bind()`/`updateCandidate()` 的既有修复仍然生效，未发现同类新增的"读检查先于加锁"模式。
+> - UI 溢出：`render-model-select.tsx`、`char-card.tsx` 等 D-11/C-2 新增组件均已做宽度约束；`storyboard-table.tsx`「补末帧」按钮文案改动（`4b9ccf7`）是定长字符串，无溢出风险。
+> - `pnpm check:api-contract` 全绿（430 个 apiFetch 调用点，0 缺失）。
+>
+> 复核 2026-07-15 段落记录的 3 处"已定位、本轮不修"缺口（`/celebrity/videos/{videoId}` DELETE 缺失、小程序 `/celebrity/overview` 契约不匹配、`drama.credit.interactive-draft` 未暴露进 `/me/drama/config`）：对照当前代码逐条重新核实，**结论均未变**，代码现状与描述完全一致，非过时记录，继续保留待产品侧排期。
+>
+> 一处**仅记录、非缺陷**的设计观察（Low confidence，需要产品侧确认而非代码修复）：`DramaReferenceAssembler.characterRefUrls()`（`apps/server/src/main/java/com/aistareco/aep/service/DramaReferenceAssembler.java:250-267`）在 `@cast`/文本名解析出角色 ID 但该角色尚无参考图时，会回退到"项目内全部角色"而非仅命中的角色——注释写的是"尽量锁脸"的有意设计，但也可能导致镜头只点名了角色 A、结果参考图混入了不相关角色 B 的脸。未确认是否符合产品预期，暂不当缺陷处理，留待产品侧判断后再排期。
+
+- [ ] **`apps/web-drama` vitest 2 个测试文件 4 例失败，与本轮改动无关（既有缺陷）**（**留痕待排期**，2026-07-18）：`pnpm --filter @ai-star-eco/web-drama test` 跑出 `src/lib/drama-query.test.tsx`「精确 key：失效后 refetch 重新取数」1 例 + `src/components/drama-workshop/publish-creative-center-modal.test.tsx` 3 例（`getByRole` 找不到「先不发」/「关闭」按钮，疑似弹窗态渲染或 testing-library 查询时机问题）失败。本轮唯一改动的 `apps/web-drama/src/app/(workspace)/distribution/page.tsx`（cherry-pick 自 #91）与这两个测试文件及其组件无引用关系，且这两个文件近期（`git log`）均未被本轮或近 15 个 commit 触碰，故判定为与本轮无关的既有缺陷（此前历轮 QA 未见把 `pnpm --filter web-drama test` 纳入验证门禁，可能一直未被常规流程捕捉）。定位：`apps/web-drama/src/lib/drama-query.test.tsx`、`apps/web-drama/src/components/drama-workshop/publish-creative-center-modal.test.tsx`。需要下一轮排期定位根因（testing-library 异步查询 / 组件渲染态变化）。
+- [ ] **`DramaReferenceAssembler.characterRefUrls()` 角色参考图回退到全部角色，可能与镜头 `@cast` 指名不符**（**记录，本轮未修，Low confidence，需产品侧判断**，2026-07-18）：见上方设计观察，定位 `apps/server/src/main/java/com/aistareco/aep/service/DramaReferenceAssembler.java:250-267`。
+
+**本轮复核历史 open routine PR**：承接 #91（见上），cherry-pick 干净无冲突，已 close #91。
+**验证**：`./mvnw compile` 全绿；`./mvnw test` 全量 402 个测试，3 个既有 `MaterialOpsE2ETest` 已知失败（同 2026-07-13 记录，与本轮无关）、0 新增失败；`pnpm typecheck:all`（10/10）全绿；`cd apps/web && npx tsc --noEmit` 通过；`pnpm check:api-contract` 全绿（430 个调用点）；`pnpm --filter @ai-star-eco/web-drama test` 跑出 2 个测试文件 4 个既有失败（`drama-query.test.tsx`、`publish-creative-center-modal.test.tsx`），经核对这两个文件均不在本轮/近期任何改动的依赖图内（本轮唯一改动的 `distribution/page.tsx` 与它们无引用关系），判定为与本轮无关的既有缺陷，记录在案、未修（见下条）。
