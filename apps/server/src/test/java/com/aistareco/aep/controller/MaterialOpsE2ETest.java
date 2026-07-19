@@ -92,7 +92,7 @@ class MaterialOpsE2ETest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value("asset-2604"))
-                .andExpect(jsonPath("$.data.product_id").value("p4"))
+                .andExpect(jsonPath("$.data.product_id").value("3485332505048038713"))
                 .andExpect(jsonPath("$.data.tier").value("S"))
                 .andExpect(jsonPath("$.data.blocks.length()").value(5))
                 .andExpect(jsonPath("$.data.blocks[0].kind").value("hook"))
@@ -130,10 +130,10 @@ class MaterialOpsE2ETest {
 
     @Test
     void listVideos_filterByProduct() throws Exception {
-        // p4 关联 4 条视频；断言返回的每条 product_id 都是 p4
-        mvc.perform(get("/api/material/videos").param("product_id", "p4"))
+        // 商品 3485332505048038713（一次性水槽过滤网）关联 4 条视频；断言返回的每条 product_id 都是该商品
+        mvc.perform(get("/api/material/videos").param("product_id", "3485332505048038713"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[?(@.product_id!='p4')]").isEmpty())
+                .andExpect(jsonPath("$.data[?(@.product_id!='3485332505048038713')]").isEmpty())
                 .andExpect(jsonPath("$.data[?(@.id=='video-2604-001')]").exists());
     }
 
@@ -172,15 +172,16 @@ class MaterialOpsE2ETest {
     // ── 商品库集成 ─────────────────────────────────────────────────────────────
     @Test
     void productLibrary_includesMaterialProducts() throws Exception {
-        // 6 个带货商品并入共享 /api/products；脚本关联商品超链可直达
+        // 历史 p1-p6 演示商品已由 MaterialOpsSeeder 清理（真实选品改由 CelebrityProductSeeder 维护）；
+        // 脚本关联商品超链直达的是真实选品 id（雪花风格数字 id），非本轮引入，见 MaterialOpsSeeder 类注释。
         mvc.perform(get("/api/products"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[?(@.id=='p4')]").exists())
-                .andExpect(jsonPath("$.data[?(@.id=='p1')]").exists());
+                .andExpect(jsonPath("$.data[?(@.id=='3485332505048038713')]").exists())
+                .andExpect(jsonPath("$.data[?(@.id=='3706263707349811466')]").exists());
 
-        mvc.perform(get("/api/products/p4"))
+        mvc.perform(get("/api/products/3485332505048038713"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.name").value("颈椎按摩仪 Pro"))
-                .andExpect(jsonPath("$.data.priceCents").value(22900));
+                .andExpect(jsonPath("$.data.name").value("一次性水槽过滤网干湿分离水池漏网洗碗池碗槽防堵"))
+                .andExpect(jsonPath("$.data.priceCents").value(990));
     }
 }
