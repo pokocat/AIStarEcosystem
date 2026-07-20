@@ -213,6 +213,32 @@ class DramaReferenceAssetServiceTest {
     }
 
     @Test
+    void referenceSheet_regenerate_replacesStaleAngleEntry_notAppend() {
+        // 回归测试：「重新生成」某一角度此前会无条件 addObject() 追加到数组末尾，旧图仍留在数组前部。
+        // frontRefUrl/firstRefUrl（DramaReferenceAssembler）按插入顺序取首个匹配角度，永远命中旧图——
+        // 用户重新生成 front 角度、被扣费，但参考装配实际仍用旧图，新图完全没有生效。
+        String payload = "{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}";
+        seedProject(payload);
+        svc.ensureBackfilled(PID, USER, json(payload));
+        DramaCharacter ch = charStore.get("ch_1");
+        assertNotNull(ch, "ensureBackfilled 应已建好角色实体");
+        ch.setRefImagesJson("[{\"cdnKey\":\"drama/char-refs/old-front.png\",\"angle\":\"front\",\"label\":\"正面\"}]");
+        charStore.put("ch_1", ch);
+
+        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+                .thenReturn("drama/char-refs/new-front.png");
+
+        JsonNode out = svc.generateReferenceSheet(PID, "ch_1",
+                json("{\"angles\":[\"front\"]}"), USER);
+
+        assertEquals(1, out.path("refImages").size(), "重新生成同一角度应替换旧图，而非追加成 2 条");
+        assertEquals("drama/char-refs/new-front.png", out.path("refImages").get(0).path("cdnKey").asText());
+        JsonNode stored = json(charStore.get("ch_1").getRefImagesJson());
+        assertEquals(1, stored.size());
+        assertEquals("drama/char-refs/new-front.png", stored.get(0).path("cdnKey").asText());
+    }
+
+    @Test
     void referenceSheet_partialFailure_releasesRemaining() {
         seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
         when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))

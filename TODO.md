@@ -545,3 +545,14 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 **本轮复核历史 open routine PR**：承接 #92（见上），cherry-pick 干净无冲突，已 close #92。
 **验证**：`./mvnw compile` 全绿；`./mvnw -Dtest=MaterialOpsE2ETest test` 9/9 全绿（此前 3 败）；`./mvnw test` 全量 402/402 全绿、0 失败、3 跳过（真凭据 live smoke，与本轮无关）——较此前几轮记录的"3 个既有失败"这次在无 `.env` 干扰的沙箱环境下已全部消项；`pnpm install` + `pnpm typecheck:all`（10/10）全绿；`cd apps/web && npx tsc --noEmit` 通过（无输出）；`pnpm check:api-contract` 全绿（430 个调用点）；`pnpm --filter @ai-star-eco/web-drama test` 7/7 测试文件、37/37 全绿（此前 2 文件 4 败）。
+
+## 2026-07-20 · 例行 QA（承接 #93，1 处高置信度新缺陷已修复 + 1 处边界情况记录待排期）
+
+> 开工前 `search_pull_requests` 命中 1 条 open routine PR：#93（`qa/routine/2026-07-19-bugfix-sweep`）。核对其 base SHA 与当前 `origin/main`（`279a729`）完全一致（main 在 #93 开出后无新提交），diff 与 PR body 描述一致 → 判定完全有效，`git cherry-pick`（6 个 commit，无冲突）原样承接。
+>
+> 独立审计（general-purpose 子 agent，聚焦 hold/commit/release、CDN key-only discipline、原生 confirm/alert/prompt、UI 文案溢出，均未再复用前几轮已核实"无新缺陷"的结论）：
+>
+> - [x] ~~**角色三视图「重新生成」实际不生效但照常扣费**~~（**已修复，2026-07-20**）：`DramaReferenceAssetService.generateReferenceSheet()` 重新生成某一角度时，此前对 `refImagesJson` 数组只 `addObject()` 追加、从不移除旧条目；而 `DramaReferenceAssembler.frontRefUrl()`/`firstRefUrl()` 按数组插入顺序取**首个**匹配角度（`front`/`env`）用于参考装配。结果是：用户点「重新生成 · 正面」被扣费、服务端也真的调了渲染并把新图追加进数组，但因为旧的 `front` 条目排在数组更前面，后续所有引用该角色做一致性参考的渲染（分镜出图/出片）实际上永远还在用最早那张旧图，新图从未被使用；角色卡缩略图墙也会无限累积（重新生成 N 次 → N+原始张 缩略图）。修复：新增 `removeExistingAngle()`，仅在某一角度**渲染成功**后才移除该角度的旧条目再追加新条目（渲染失败仍保留旧图兜底，不影响既有的部分失败 release 逻辑）。新增回归测试 `referenceSheet_regenerate_replacesStaleAngleEntry_notAppend`（`DramaReferenceAssetServiceTest`，10/10 全绿）。
+> - [ ] **`DramaReferenceAssembler.indexOfShot()` 找不到 shotId 时退化为"数组末尾"，导致 `prevLastFrameInScene`/`nextFirstFrameInScene` 兜底行为不对称**（记录待排期，非本轮修复）：`indexOfShot` 找不到时返回 `shots.size()`；`prevLastFrameInScene`（`for i=idx-1; i>=0; i--`）会因此从数组最后一个镜头开始整段倒序扫描，可能把无关镜头的末帧当成"上一镜末帧"塞进一致性参考；`nextFirstFrameInScene`（`for i=idx+1; i<size; i++`）在同样情况下正确地扫不到任何东西。仅在传入的 `shot_ref.shot_id` 与所在场景查到的镜头数组完全对不上时触发（数据一致性边界情况，非常规路径），本轮未验证是否有实际触发场景，先记录待下一轮或有余力时复核是否需要让 `indexOfShot` 找不到时直接返回哨兵值（如 `-1`）由两个函数自行判空退出，而非隐式退化成"末尾"。
+
+**验证**：`./mvnw compile` 全绿；`./mvnw -Dtest=DramaReferenceAssetServiceTest test` 10/10 全绿（含新增回归测试）；`pnpm install` + `pnpm typecheck:all`（10/10）全绿；`cd apps/web && npx tsc --noEmit` 通过（0 错，此前一次误报的 `TS5101 baseUrl deprecated` 系沙箱未 `npm install` 导致 npx 回退到不匹配的全局 TypeScript 版本，`npm install` 后确认与本轮改动无关）；`pnpm --filter @ai-star-eco/web-drama test` 7/7 测试文件、37/37 全绿；`pnpm check:api-contract` 全绿（430 个调用点，0 缺失）。

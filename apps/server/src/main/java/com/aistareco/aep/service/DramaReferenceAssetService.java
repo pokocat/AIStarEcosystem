@@ -278,6 +278,10 @@ public class DramaReferenceAssetService {
             try {
                 String cdnKey = renderService.renderCharacterReferenceFrame(
                         ownerUserId, charVars(ch, angle, appearanceHint), ratio, lockRefs);
+                // 「重新生成」同一角度时替换旧图而非无限追加：frontRefUrl/firstRefUrl 按插入顺序取首个
+                // 匹配角度，追加不替换会导致新图永远排在旧图之后、被扣费却从未被参考装配实际使用，
+                // 图库缩略图也会无限膨胀。仅在渲染成功后才移除旧图，失败时保留旧图作为兜底。
+                removeExistingAngle(refImages, angle);
                 ObjectNode r = refImages.addObject();
                 r.put("cdnKey", cdnKey);
                 r.put("angle", angle);
@@ -470,6 +474,16 @@ public class DramaReferenceAssetService {
             if (c.isObject() && charId.equals(c.path("id").asText(null))) return c;
         }
         return null;
+    }
+
+    /** 移除数组中已有的同角度条目（倒序遍历避免 remove 后索引错位）。 */
+    private void removeExistingAngle(ArrayNode arr, String angle) {
+        for (int i = arr.size() - 1; i >= 0; i--) {
+            JsonNode r = arr.get(i);
+            if (r.isObject() && angle.equals(text(r, "angle"))) {
+                arr.remove(i);
+            }
+        }
     }
 
     private ArrayNode readRefImages(String json) {
