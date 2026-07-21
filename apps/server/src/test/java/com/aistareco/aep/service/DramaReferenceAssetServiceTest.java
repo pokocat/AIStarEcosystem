@@ -298,6 +298,38 @@ class DramaReferenceAssetServiceTest {
     }
 
     @Test
+    void referenceSheet_commitHoldFailsOnLaterAngle_doesNotPersistUnpaidImage() {
+        // 回归测试：此前 refImages.addObject() 发生在 commitHold 之前——若某个非首个角度的
+        // render 成功但 commitHold 随后失败（比如钱包并发/瞬时错误），失败角度对应的「未付费」
+        // 图仍会残留在数组里被落库（连同其 removeExistingAngle 顶替掉的旧图一起），而 release
+        // 又把这笔钱退了回去：用户白得一张图、账本上却没有对应的真实扣费。
+        // 场景：front 角度 render+commit 都成功；side 角度 render 成功但 commitHold 抛错——
+        // 断言最终持久化 / 返回的 refImages 只含 front 这一张已付费的图，不含 side。
+        seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
+        when(render.renderCharacterReferenceFrame(anyString(), anyMap(), anyString(), anyList()))
+                .thenReturn("drama/char-refs/front.png", "drama/char-refs/side.png", "drama/char-refs/full.png");
+        com.aistareco.aep.dto.LedgerEntryDto dummyCommit = new com.aistareco.aep.dto.LedgerEntryDto(
+                "le_1", "w_1", USER, null, null, null, "spend", -2L, 0L, "front", "cs_x", "DRAMA_CHAR_SHEET",
+                java.time.Instant.now());
+        when(credit.commitHold(eq("DRAMA_CHAR_SHEET"), anyString(), eq(2L), anyString()))
+                .thenReturn(dummyCommit)
+                .thenThrow(new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "wallet commit failed"));
+
+        JsonNode out = svc.generateReferenceSheet(PID, "ch_1", null, USER);
+
+        // 只有 front 真正 commit 成功；side 失败即 break，full 从未尝试。
+        assertEquals(2L, out.path("cost").asLong());
+        assertEquals(1, out.path("refImages").size(), "commitHold 失败的角度不应出现在返回的 refImages 里");
+        assertEquals("front", out.path("refImages").get(0).path("angle").asText());
+        verify(credit, times(1)).releaseHold(eq("DRAMA_CHAR_SHEET"), anyString(), anyString());
+        // 落实体表也只应有已付费的这一张，不能把失败角度的图一起持久化下来。
+        JsonNode stored = json(charStore.get("ch_1").getRefImagesJson());
+        assertEquals(1, stored.size(), "落库的 refImages 不应包含未提交扣费的角度");
+        assertEquals("front", stored.get(0).path("angle").asText());
+    }
+
+    @Test
     void referenceSheet_endpointNotConfigured_no_hold() {
         seedProject("{\"characters\":[{\"id\":\"ch_1\",\"name\":\"林萧\",\"role\":\"key\"}]}");
         doThrow(new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
