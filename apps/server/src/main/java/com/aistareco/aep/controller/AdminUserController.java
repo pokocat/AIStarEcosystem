@@ -119,10 +119,17 @@ public class AdminUserController {
     /**
      * Manually adjust credit balance for a platform user (运营调差).
      * Body: { "amount": 100, "description": "补偿调整" }
-     * Positive amount = credit; negative = debit.
+     * Positive amount = credit (记 gift); negative = debit（gift→license→recharge，可触达资金面）。
+     *
+     * 钱包属资金面，口径同上方 getWallet：限 FINANCE_ADMIN / SUPER_ADMIN，OPERATOR 不可访问
+     * （此前遗漏 @PreAuthorize，落到 /api/admin/** 的 SUPER_ADMIN|OPERATOR 兜底——任意 OPERATOR
+     * admin 可无审批地任意加/扣任意用户余额，包括扣穿到 rechargeBalance 这个资金面桶，与
+     * `AdminCreditOpsController`（运营调差/赠送，只碰 giftBalance + maker-checker 大额审批）
+     * 刻意设计的治理口径矛盾）。
      */
     @PostMapping("/{id}/credits/adjust")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")
     public ApiResponse<LedgerEntryDto> adjustCredits(@PathVariable String id,
                                                       @RequestBody Map<String, Object> body) {
         return ApiResponse.of(creditService.adjustUserCredits(id, body));

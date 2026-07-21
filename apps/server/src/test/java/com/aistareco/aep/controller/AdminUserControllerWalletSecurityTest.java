@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -14,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -21,6 +23,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * /api/admin/** 的 SUPER_ADMIN|OPERATOR 兜底保护 —— 任意 OPERATOR admin 可读取
  * 任意用户的钱包余额，与同目录 AdminCreditController（钱包/流水属资金面，
  * FINANCE_ADMIN 专属）的既有口径矛盾。见例行 QA 记录。
+ *
+ * 同一轮例行 QA（2026-07-21）另发现 POST /api/admin/users/{id}/credits/adjust
+ * 有一模一样的缺口，且更严重——它不是只读泄露，而是可无审批地任意加/扣任意用户
+ * 余额（含扣穿到 rechargeBalance 资金面桶），与专门为「运营调差/赠送」设计的
+ * maker-checker 治理路径（`AdminCreditOpsController`，只碰 giftBalance）矛盾。
+ * 一并在本文件补齐同款鉴权回归测试。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -61,5 +69,32 @@ class AdminUserControllerWalletSecurityTest {
     @WithMockUser(roles = "SUPER_ADMIN")
     void superAdmin_canReadUserWallet() throws Exception {
         mvc.perform(get("/api/admin/users/" + seededUserId() + "/wallet")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "OPERATOR")
+    void operator_cannotAdjustUserCredits() throws Exception {
+        mvc.perform(post("/api/admin/users/" + seededUserId() + "/credits/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 10, \"description\": \"qa-security-test\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "FINANCE_ADMIN")
+    void financeAdmin_canAdjustUserCredits() throws Exception {
+        mvc.perform(post("/api/admin/users/" + seededUserId() + "/credits/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 10, \"description\": \"qa-security-test\"}"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "SUPER_ADMIN")
+    void superAdmin_canAdjustUserCredits() throws Exception {
+        mvc.perform(post("/api/admin/users/" + seededUserId() + "/credits/adjust")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 10, \"description\": \"qa-security-test\"}"))
+                .andExpect(status().isCreated());
     }
 }
