@@ -40,6 +40,13 @@ import java.util.UUID;
  * 与其余阶段「生成→前端合并→PUT」一致）。
  *
  * 复用 mixcut 的 {@link FfmpegRunner}（自带二进制探测 + 超时 + 非零退出抛错）。
+ *
+ * 例行 QA 安全修复（2026-07-22）：download() 之前对用户可控的绝对 URL 零校验 —— videoUrl
+ * 来自 DramaProject.payloadJson，用户可经 PUT /me/drama/projects/{id} 直接写入任意字符串
+ * （saveProject 不做嵌套字段校验），会把服务端变成任意内网/云 metadata 端点的请求发起器
+ * （SSRF）。改为与 PublishJobService.toAbsoluteUrl()（同类修复，2026-07-11）同一套 origin
+ * 白名单口径：自身 origin + 已配置的 CDN 公网/OSS origin；相对路径天然同源，直接拼自身
+ * origin，无需再校验。
  */
 @Service
 public class DramaAssembleService {
@@ -57,6 +64,7 @@ public class DramaAssembleService {
     private final com.aistareco.aep.service.storage.StorageQuotaService storage;
     private final ObjectMapper om;
     private final int serverPort;
+    private final List<String> trustedDownloadOrigins;
 
     public DramaAssembleService(DramaProjectRepository repo,
                                 FfmpegRunner ffmpeg,
@@ -64,7 +72,9 @@ public class DramaAssembleService {
                                 CdnUrlSigner signer,
                                 com.aistareco.aep.service.storage.StorageQuotaService storage,
                                 ObjectMapper om,
-                                @Value("${server.port:8080}") int serverPort) {
+                                @Value("${server.port:8080}") int serverPort,
+                                @Value("${aep.cdn.public-base-url:/cdn}") String cdnPublicBaseUrl,
+                                @Value("${aep.cdn.oss.base-url:}") String cdnOssBaseUrl) {
         this.repo = repo;
         this.ffmpeg = ffmpeg;
         this.cdnUploader = cdnUploader;
@@ -72,6 +82,26 @@ public class DramaAssembleService {
         this.storage = storage;
         this.om = om;
         this.serverPort = serverPort;
+        List<String> origins = new ArrayList<>();
+        origins.add("http://localhost:" + serverPort);
+        String publicOrigin = originOf(cdnPublicBaseUrl); // 相对路径（如 "/cdn"）解析为 null，天然同源
+        if (publicOrigin != null) origins.add(publicOrigin);
+        String ossOrigin = originOf(cdnOssBaseUrl);
+        if (ossOrigin != null) origins.add(ossOrigin);
+        this.trustedDownloadOrigins = List.copyOf(origins);
+        log.info("[drama-assemble] trustedDownloadOrigins={}", trustedDownloadOrigins);
+    }
+
+    /** 解析 URL 的 scheme://authority；相对路径 / 不可解析时返回 null。与 PublishJobService 同口径。 */
+    private static String originOf(String url) {
+        if (url == null || url.isBlank()) return null;
+        try {
+            URI u = URI.create(url.trim());
+            if (u.getScheme() == null || u.getAuthority() == null) return null;
+            return u.getScheme() + "://" + u.getAuthority();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** body: { ep } → { url, cdnKey, durationSec, shotCount, at }。 */
@@ -177,6 +207,14 @@ public class DramaAssembleService {
     private Path download(String url, Path target) throws Exception {
         String abs = url.startsWith("http") ? url
                 : "http://localhost:" + serverPort + (url.startsWith("/") ? url : "/" + url);
+        if (url.startsWith("http")) {
+            String origin = originOf(abs);
+            boolean trusted = origin != null && trustedDownloadOrigins.stream().anyMatch(origin::equals);
+            if (!trusted) {
+                throw BusinessException.badRequest("VIDEO_URL_NOT_ALLOWED",
+                        "分镜视频地址必须来自平台自身的 CDN 域，不支持外部/内网地址");
+            }
+        }
         HttpRequest req = HttpRequest.newBuilder(URI.create(abs))
                 .timeout(Duration.ofSeconds(120)).GET().build();
         HttpResponse<InputStream> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofInputStream());

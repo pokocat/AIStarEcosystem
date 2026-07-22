@@ -578,3 +578,15 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 > - 除 `AdminUserController.adjustCredits` 外，全仓扫描 `/api/admin/**` 下涉及资金/积分的写端点（`AdminFinanceController`/`AdminFinanceRechargePackageController`/`AdminPaymentConfigController`/`AdminRechargeOrderController`/`AdminReconciliationController`/`AdminCreditOpsController`）均已有类级或方法级 `@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")`，未发现同类遗漏。
 
 **验证**：`./mvnw compile` 全绿；`./mvnw test` 全量 **407/407 全绿、0 失败、3 跳过**（真凭据 live smoke，与本轮无关；较 2026-07-20 的 403 净增 4 个回归测试）；`pnpm install` + `pnpm typecheck:all`（10/10）全绿；`cd apps/web && npx tsc --noEmit` 通过（0 错，需先 `npm install` 补 `apps/web/node_modules`，沙箱首次运行缺失导致 `npx` 回退到不匹配的全局 TypeScript 版本，与本轮改动无关）；`pnpm --filter @ai-star-eco/web-drama test` 7/7 测试文件、37/37 全绿；`pnpm test:all`（10 个 workspace 项目，除 web-drama 外均为"暂无单测"既定决策）全绿；`pnpm check:api-contract` 全绿（430 个调用点，0 缺失）。
+
+---
+
+## 2026-07-22 · 例行 QA（承接 #95，1 处 Critical SSRF 高置信度新缺陷已修复）
+
+> 开工前核对：#95（`qa/routine/2026-07-21-bugfix-sweep`）base SHA 与当前 `origin/main` 完全一致（main 在 #95 开出后无新提交），直接从该分支 fast-forward 切出本轮分支，10 个既有提交无需 chery-pick / 无冲突。
+>
+> 独立审计（general-purpose 子 agent，要求不复用前几轮"已核实无新缺陷"的结论，聚焦近期未被专门审计过的代码路径），发现并修复以下 1 处：
+
+- [x] ~~**`DramaAssembleService.download()`（成片合成 `POST /me/drama/projects/{id}/assemble`）对用户可控的 shot `videoUrl` 零 origin 校验，构成 SSRF**~~（**已修复**，2026-07-22）：`videoUrl` 来自 `DramaProject.payloadJson`（`episodeDocs[ep].storyboard.scenes[].shots[].videoUrl`），而 `PUT /me/drama/projects/{id}`（`DramaProjectService.saveProject`）把整个 `data` JSON 原样落库、不做任何嵌套字段校验——任何登录用户可经该接口把自己项目的 `shot.videoUrl` 改成任意字符串（如阿里云 metadata 接口 `http://100.100.100.200/latest/meta-data/ram/security-credentials/<role>` 或任意内网服务地址）。`assemble()` 随后对每个 `videoUrl` 调 `download()`：此前该方法只判断 `url.startsWith("http")` 决定是否需要拼自身 origin，对已是绝对 URL 的输入**没有任何 origin 白名单校验**就直接发起服务端 `HttpClient.send(GET)`，把响应体写入本地临时文件喂给 ffmpeg——这与 `PublishJobService.toAbsoluteUrl()` 已经修过的同一类 SSRF（2026-07-11，见上文）是同一漏洞模式的第三个独立代码路径，此前两轮 SSRF 专项审计（2026-07-11 聚焦 `PublishJobService`；`MaterialOpsService.resolveSubmittedVideoUrl` 早已有 `isAllowedViralHost` 校验）均未覆盖到 `DramaAssembleService`，属于遗漏而非新引入。修复：仿照 `PublishJobService` 同一套 `trustedDispatchOrigins` 口径，新增 `trustedDownloadOrigins`（自身 `http://localhost:<server.port>` + `aep.cdn.public-base-url`/`aep.cdn.oss.base-url` 已配置的 origin），`download()` 对已是绝对 URL 的输入强制校验 origin 命中白名单，未命中前**在发起任何网络请求之前**抛 400 `VIDEO_URL_NOT_ALLOWED` 拒绝（`assemble()` 的 `catch (BusinessException e) { throw e; }` 会原样上抛，不会被吞成 502）；相对路径（同源）不受影响。回归测试：新增 `DramaAssembleServiceTest`（2 例：云 metadata 地址 / 任意内网服务地址均 400 拒绝且 `ffmpeg`/`cdnUploader` 零交互）；已验证回退生产代码改动会导致测试类编译失败（构造器签名依赖新增的白名单参数，无法在无该改动的情况下通过 Mockito 组装出旧行为），证明测试确实锁定了这处修复。定位：`apps/server/src/main/java/com/aistareco/aep/service/DramaAssembleService.java`（原 `download()` 方法，约第 177-191 行）。
+
+**验证**：`./mvnw compile` 全绿；`./mvnw test` 全量 **409/409 全绿、0 失败**（较 2026-07-21 基线净增 2 个回归测试）；`DramaAssembleServiceTest` 单独跑 2/2 全绿。本轮未改动前端/契约，未跑 `pnpm typecheck:all`/`check:api-contract`（无相关文件变更）。
