@@ -81,6 +81,11 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/store/items/**").authenticated()
                         // v0.60: 明星商务工作台（web-star）—— 登录后由 controller 解析明星档案绑定
                         .requestMatchers("/api/star/**").authenticated()
+                        // FinanceController 全部按 principal.getName() 查询本人流水/收入，此前无显式
+                        // 规则会落 anyRequest().permitAll() 兜底——今天只是匿名请求命中 anonymousUser
+                        // 查到空结果而非跨户泄露，但与仓库里其它所有 principal-scoped 端点的收紧惯例
+                        // 不一致，属于防御纵深缺口（例行 QA 2026-07-23 审计新发现）。
+                        .requestMatchers("/api/finance/**").authenticated()
                         // 数字人广场 · 运营内嵌后台（web-aiavatar）：/api/v1/admin/** 需运营 / 超管。
                         // 顺序敏感：必须排在通用 /api/v1/** 之前，否则被宽松规则吃掉。
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("SUPER_ADMIN", "OPERATOR")
