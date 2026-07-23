@@ -7,8 +7,8 @@ describe("PublishCreativeCenterModal", () => {
     render(<PublishCreativeCenterModal title="世界杯趣玩" onClose={() => {}} onConfirm={() => {}} />);
 
     expect(screen.getByText("发布到创意中心")).toBeTruthy();
-    expect(screen.getByText("让《世界杯趣玩》的好点子出去露个脸")).toBeTruthy();
-    expect(screen.getByText(/整理成一条「可套用创意」/)).toBeTruthy();
+    expect(screen.getByText("让《世界杯趣玩》的创意被更多创作者看见并套用")).toBeTruthy();
+    expect(screen.getByText(/整理成一条可套用创意/)).toBeTruthy();
     expect(screen.getByText(/进入创意中心,多一个展示和被精选的机会/)).toBeTruthy();
     expect(screen.getByText(/原视频不会被改动/)).toBeTruthy();
   });
@@ -21,7 +21,7 @@ describe("PublishCreativeCenterModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认发布" }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "先不发" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂不发布" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -31,7 +31,7 @@ describe("PublishCreativeCenterModal", () => {
     render(<PublishCreativeCenterModal title="世界杯趣玩" publishing onClose={onClose} onConfirm={onConfirm} />);
 
     expect((screen.getByRole("button", { name: "发布中..." }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "先不发" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "暂不发布" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "关闭" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

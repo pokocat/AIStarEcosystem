@@ -152,6 +152,15 @@ export function useAsync<T>(
     isLoading: !entry || (entry.value === undefined && !entry.error),
     error: entry?.error,
     refetch: () => {
+      const existing = cache.get(key) as CacheEntry<T> | undefined;
+      // 已有同 key 的请求在途且尚未落定（典型触发源：invalidate() 对仍被订阅的 key 会
+      // 自动重拉一次，调用方紧接着手动 refetch()，如 wallet/page.tsx 的 refreshAll()）——
+      // 此时不再另起一次 loader() 调用，避免两个并发请求同 key 竞态写 value（后落定的覆盖
+      // 先落定的，可能让「点了刷新」反而定格在更早的一次响应上），也省一次重复网络请求。
+      // 若已有值/错误（真正的手动重试场景），按原语义强制重新拉取。
+      if (existing && existing.value === undefined && existing.error === undefined) {
+        return;
+      }
       cache.delete(key);
       load(key, loader);
       notify(key);

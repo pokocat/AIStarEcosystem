@@ -56,6 +56,37 @@ describe("invalidate 失效语义", () => {
     expect(loader).toHaveBeenCalledTimes(2);
   });
 
+  it("invalidate 紧接着手动 refetch（如 wallet 页 refreshAll）不应并发触发两次 loader", async () => {
+    // 回归：refetch() 曾经无条件 delete+reload，与 invalidate() 对仍被订阅 key 的自动
+    // 重拉叠加，产生同 key 两个并发请求的竞态（后落定的覆盖先落定的）。
+    let n = 0;
+    const loader = vi.fn(() => Promise.resolve(`v${++n}`));
+    const { result } = renderHook(() => useAsync("/t/wallet-like", loader));
+    await waitFor(() => expect(result.current.data).toBe("v1"));
+
+    act(() => {
+      invalidate("/t/wallet-like");
+      result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.data).toBe("v2"));
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it("已有落定数据时手动 refetch 仍会强制重新取数（正常点『刷新』场景不受影响）", async () => {
+    let n = 0;
+    const loader = vi.fn(() => Promise.resolve(`v${++n}`));
+    const { result } = renderHook(() => useAsync("/t/manual-refresh", loader));
+    await waitFor(() => expect(result.current.data).toBe("v1"));
+
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.data).toBe("v2"));
+    expect(loader).toHaveBeenCalledTimes(2);
+
+    act(() => result.current.refetch());
+    await waitFor(() => expect(result.current.data).toBe("v3"));
+    expect(loader).toHaveBeenCalledTimes(3);
+  });
+
   it("前缀 key（以 / 结尾）：清掉所有子项，精确 key 不误伤", async () => {
     mutate("/cast/list", "list");
     mutate("/cast/detail/1", "d1");

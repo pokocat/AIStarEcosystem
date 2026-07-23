@@ -314,6 +314,7 @@ public class DramaReferenceAssembler {
         JsonNode shots = sceneShots(data, episodeNo, sceneId);
         if (shots == null) return null;
         int idx = indexOfShot(shots, shotId);
+        if (idx < 0) return null;
         for (int i = idx - 1; i >= 0; i--) {
             JsonNode prev = shots.get(i);
             String prevId = asText(prev.get("id"));
@@ -331,6 +332,7 @@ public class DramaReferenceAssembler {
         JsonNode shots = sceneShots(data, episodeNo, sceneId);
         if (shots == null) return null;
         int idx = indexOfShot(shots, shotId);
+        if (idx < 0) return null;
         for (int i = idx + 1; i < shots.size(); i++) {
             JsonNode next = shots.get(i);
             String f = firstNonBlank(asText(next.get("frameUrl")), firstArrayEl(next.get("frameUrls")));
@@ -393,7 +395,7 @@ public class DramaReferenceAssembler {
         for (int i = 0; i < shots.size(); i++) {
             if (shotId != null && shotId.equals(text(shots.get(i), "id"))) return i;
         }
-        return shots.size(); // 未找到 → 视作末位（prev 扫全部、next 扫无）
+        return -1; // 未找到（如并发编辑期间 shotId 已失效）→ 调用方一律不装配参考图，不当作末位静默兜底
     }
 
     /** 本场绑定的 SceneAsset id：storyboard BoardScene.sceneRefId 优先，否则 script ScriptScene.sceneRefId。 */

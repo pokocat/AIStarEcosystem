@@ -278,11 +278,19 @@ public class DramaReferenceAssetService {
             try {
                 String cdnKey = renderService.renderCharacterReferenceFrame(
                         ownerUserId, charVars(ch, angle, appearanceHint), ratio, lockRefs);
+                creditService.commitHold(REF_TYPE_CHAR_SHEET, ref, frameCost, "角色三视图 · " + angleLabel(angle));
+                // 只在 commitHold 真成功之后才落 refImages：commitHold 也在 try 块内、也会抛异常
+                // （见下方 catch 注释），先前的实现在 render 成功后就无条件 addObject，一旦随后
+                // commitHold 失败（未提交扣费、已 release），这条「未付费」的图仍会残留在数组里，
+                // 连同旧图一起被 removeExistingAngle 顶替——用户白得一张图、账本上却退了款。
+                // 「重新生成」同一角度时替换旧图而非无限追加：frontRefUrl/firstRefUrl 按插入顺序取首个
+                // 匹配角度，追加不替换会导致新图永远排在旧图之后、被扣费却从未被参考装配实际使用，
+                // 图库缩略图也会无限膨胀。仅在本角度真正完成扣费后才移除旧图，失败时保留旧图作为兜底。
+                removeExistingAngle(refImages, angle);
                 ObjectNode r = refImages.addObject();
                 r.put("cdnKey", cdnKey);
                 r.put("angle", angle);
                 r.put("label", angleLabel(angle));
-                creditService.commitHold(REF_TYPE_CHAR_SHEET, ref, frameCost, "角色三视图 · " + angleLabel(angle));
                 committed++;
             } catch (RuntimeException e) {
                 // commitHold 抛的是 ResponseStatusException（非 BusinessException 子类），
@@ -470,6 +478,16 @@ public class DramaReferenceAssetService {
             if (c.isObject() && charId.equals(c.path("id").asText(null))) return c;
         }
         return null;
+    }
+
+    /** 移除数组中已有的同角度条目（倒序遍历避免 remove 后索引错位）。 */
+    private void removeExistingAngle(ArrayNode arr, String angle) {
+        for (int i = arr.size() - 1; i >= 0; i--) {
+            JsonNode r = arr.get(i);
+            if (r.isObject() && angle.equals(text(r, "angle"))) {
+                arr.remove(i);
+            }
+        }
     }
 
     private ArrayNode readRefImages(String json) {
