@@ -102,6 +102,12 @@ public class PromptService {
     public static final String KEY_DAP_IMAGE_ATLAS = "dap.image_atlas";
     public static final String KEY_DAP_IMAGE_DERIV = "dap.image_deriv";
     public static final String KEY_DAP_VIDEO_ORBIT = "dap.video_orbit";
+    /** 数字资产平台（六类资产 + 跨资产合成）出图点位。 */
+    public static final String KEY_DAP_SCENE_IMAGE = "dap.scene_image";
+    public static final String KEY_DAP_SCENE_VARIANT = "dap.scene_variant";
+    public static final String KEY_DAP_PRODUCT_IMAGE = "dap.product_image";
+    public static final String KEY_DAP_PRODUCT_ANGLE = "dap.product_angle";
+    public static final String KEY_DAP_COMPOSE = "dap.compose";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
     public static final List<String> KNOWN_KEYS =
@@ -117,7 +123,9 @@ public class PromptService {
                     KEY_DRAMA_BRAINSTORM_CHAT, KEY_DRAMA_BRAINSTORM_OUTLINE, KEY_DRAMA_HOTSPOT_DISTILL,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
-                    KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT);
+                    KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT,
+                    KEY_DAP_SCENE_IMAGE, KEY_DAP_SCENE_VARIANT, KEY_DAP_PRODUCT_IMAGE,
+                    KEY_DAP_PRODUCT_ANGLE, KEY_DAP_COMPOSE);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =

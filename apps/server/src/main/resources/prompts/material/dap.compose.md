@@ -1,0 +1,2 @@
+---
+Composite marketing photograph. Keep the person's identity, face, hairstyle and outfit exactly as in the reference. Place this same person inside the reference environment: {{scene}}. {{product}}{{style}}Natural integration: matching perspective, matching light direction and color temperature, believable contact shadows and scale. Exactly one person, coherent anatomy, no duplicate people, no multi-view grid, no text, no watermark. {{ratio}} framing, high quality.

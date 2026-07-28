@@ -159,8 +159,13 @@ function MAssetCard({ char, onOpen }) {
     hML(Icons.chevR, { size: 18, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } }));
 }
 
-function MLibrary({ ctx }) {
-  const [top, setTop] = useStateML('mine'); // mine | public
+/**
+ * 数字人库 / 数字人广场。
+ * `plazaOnly`：作为「资产库 → 资产广场」的内嵌面板使用 —— 隐藏自己的顶部 tab
+ * （由外层资产库统一渲染），只保留广场内容与运营内嵌后台。
+ */
+function MLibrary({ ctx, plazaOnly = false }: any) {
+  const [top, setTop] = useStateML(plazaOnly ? 'public' : 'mine'); // mine | public
   const [cat, setCat] = useStateML('all');
   const [q, setQ] = useStateML('');
   const [view, setView] = useStateML('grid');
@@ -192,8 +197,8 @@ function MLibrary({ ctx }) {
     { key: 'ugc', label: 'UGC' }, { key: 'community', label: '社区' }, { key: 'fav', label: '收藏' },
   ];
 
-  return hML('div', { className: 'm-body has-tabbar', 'data-screen-label': '数字人库' },
-    hML('div', { className: 'wx-nav', style: { paddingLeft: 18 } },
+  return hML('div', { className: 'm-body has-tabbar', 'data-screen-label': plazaOnly ? '资产广场' : '数字人库' },
+    !plazaOnly && hML('div', { className: 'wx-nav', style: { paddingLeft: 18 } },
       hML('div', { style: { flex: 1, minWidth: 0, display: 'flex', gap: 22 } },
         [['mine', '我的数字人'], ['public', '数字人广场']].map(([k, l]) => {
           const on = top === k;

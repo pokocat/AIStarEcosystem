@@ -7951,6 +7951,67 @@ paths:
   /v1/templates:
     get: { tags: [dap], operationId: dapTemplates, responses: { '200': { description: ok } } }
 
+  # ────────────────────────────────────────────────────────────
+  # 数字资产平台 · 六类资产（v0.104；com.aistareco.aep.dap.*，表 dap_asset_ip / dap_scene /
+  # dap_product / dap_style / dap_composition[_output] / dap_asset_usage）
+  #
+  # 「数字人」不再是唯一的资产种类，而是六类之一，共用一套登记语言：
+  #   DH- 人物 / IP- 品牌 / SC- 场景 / PD- 产品 / VO- 声音 / ST- 风格。
+  # 授权只发给「真人肖像人物」与「IP」；场景 / 产品 / 风格是轻资产，只记来源。
+  # IP 是容器：下挂人物 / 场景 / 产品 / 声音；合成产物回流为它的衍生物并双向记引用。
+  # 全部 authenticated（Bearer JWT），service 层带 ownerUserId 归属校验。
+  /v1/assets/summary:
+    get: { tags: [dap], operationId: dapAssetSummary, summary: '六类资产总览（数量瓦片 + 总容量 + 跨类型最近更新）', responses: { '200': { description: ok } } }
+  /v1/assets/ips:
+    get:  { tags: [dap], operationId: dapListIps, summary: 'IP 容器列表（含成员数 / 授权状态）', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateIp, summary: '新建 IP 容器（纯登记，免费）', responses: { '200': { description: ok } } }
+  /v1/assets/ips/{id}:
+    get:    { tags: [dap], operationId: dapIpDetail, summary: 'IP 详情 · 容器视图（下挂人物/场景/产品/声音 + 作品 + 授权）', responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchIp, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteIp, description: 软删 IP；成员只解绑不删除, responses: { '200': { description: ok } } }
+  /v1/assets/ips/{id}/members:
+    post: { tags: [dap], operationId: dapIpMember, summary: '关联 / 取消关联成员资产（assetType=character|scene|product，attach=false 解绑）', responses: { '200': { description: ok } } }
+  /v1/assets/ips/{id}/license:
+    post: { tags: [dap], operationId: dapIpLicense, summary: '登记 / 续签 IP 授权 → LIC 凭证（已存在则续签一年）', responses: { '200': { description: ok } } }
+  /v1/assets/scenes:
+    get:  { tags: [dap], operationId: dapListScenes, description: 'source=shot|ai / space / ipId / q 过滤', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateScene, summary: 'AI 生成场景（异步任务 + 扣费）→ { scene, job }', responses: { '200': { description: ok } } }
+  /v1/assets/scenes/upload:
+    post: { tags: [dap], operationId: dapUploadScene, summary: '实拍场景入库（multipart；轻资产不扣费）', responses: { '200': { description: ok } } }
+  /v1/assets/scenes/{id}:
+    get:    { tags: [dap], operationId: dapScene, responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchScene, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteScene, responses: { '200': { description: ok } } }
+  /v1/assets/scenes/{id}/variants:
+    post: { tags: [dap], operationId: dapSceneVariants, summary: '生成光线变体（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+  /v1/assets/products:
+    get:  { tags: [dap], operationId: dapListProducts, description: 'category / ipId / q 过滤', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateProduct, summary: 'AI 生成产品主图（异步任务 + 扣费）→ { product, job }', responses: { '200': { description: ok } } }
+  /v1/assets/products/upload:
+    post: { tags: [dap], operationId: dapUploadProduct, summary: '实拍产品入库（multipart；自动记为正面角度，不扣费）', responses: { '200': { description: ok } } }
+  /v1/assets/products/{id}:
+    get:    { tags: [dap], operationId: dapProduct, responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchProduct, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteProduct, responses: { '200': { description: ok } } }
+  /v1/assets/products/{id}/angles:
+    post: { tags: [dap], operationId: dapProductAngles, summary: '补充角度（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+  /v1/assets/styles:
+    get:  { tags: [dap], operationId: dapListStyles, description: 按被引用次数倒序, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateStyle, summary: '新建风格模板（纯登记，免费）', responses: { '200': { description: ok } } }
+  /v1/assets/styles/{id}:
+    get:    { tags: [dap], operationId: dapStyle, responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchStyle, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteStyle, responses: { '200': { description: ok } } }
+  /v1/assets/usages:
+    get: { tags: [dap], operationId: dapAssetUsages, summary: 'APPLIED TO · 已用于（assetType + assetId 查该资产被哪些合成引用）', responses: { '200': { description: ok } } }
+  /v1/compositions:
+    get:  { tags: [dap], operationId: dapListCompositions, description: 'ipId 可选（查某 IP 名下的作品）', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateComposition, summary: '人物 × 场景 × 产品 → 成片（授权核对 → 建单 → 异步出片）→ { composition, job }；真人复刻缺生效 LIC 时 403 DAP_LICENSE_REQUIRED，不建单不扣费', responses: { '200': { description: ok } } }
+  /v1/compositions/options:
+    get: { tags: [dap], operationId: dapComposeOptions, summary: '出片设置选项与单价（画幅 / 出图数量区间 / 每张单价 / 可用风格模板）', responses: { '200': { description: ok } } }
+  /v1/compositions/{id}:
+    get: { tags: [dap], operationId: dapComposition, responses: { '200': { description: ok } } }
+
   # ── 明星商务工作台（web-star，v0.60；/api/star/** authenticated） ──────────
 
   /star/profile:

@@ -104,6 +104,17 @@ public class DapProperties {
         private long deriveD3 = 10;
         private long deriveVideo = 30;
         private long voiceClone = 10;
+        // ── 数字资产平台（六类资产 + 跨资产合成）────────────────
+        /** AI 生成一张场景图（SC-）。实拍上传免费。 */
+        private long sceneGenerate = 6;
+        /** 场景光线变体，按张计（提交时 × 变体数）。 */
+        private long sceneVariant = 4;
+        /** AI 生成一张产品主图（PD-）。实拍上传免费。 */
+        private long productGenerate = 6;
+        /** 产品补充角度，按张计（提交时 × 角度数）。 */
+        private long productAngle = 4;
+        /** 跨资产合成，按出图张数计（提交时 × count）。 */
+        private long compose = 3;
 
         public long getGenerate() { return generate; }
         public void setGenerate(long v) { this.generate = v; }
@@ -129,5 +140,15 @@ public class DapProperties {
         public void setDeriveVideo(long v) { this.deriveVideo = v; }
         public long getVoiceClone() { return voiceClone; }
         public void setVoiceClone(long v) { this.voiceClone = v; }
+        public long getSceneGenerate() { return sceneGenerate; }
+        public void setSceneGenerate(long v) { this.sceneGenerate = v; }
+        public long getSceneVariant() { return sceneVariant; }
+        public void setSceneVariant(long v) { this.sceneVariant = v; }
+        public long getProductGenerate() { return productGenerate; }
+        public void setProductGenerate(long v) { this.productGenerate = v; }
+        public long getProductAngle() { return productAngle; }
+        public void setProductAngle(long v) { this.productAngle = v; }
+        public long getCompose() { return compose; }
+        public void setCompose(long v) { this.compose = v; }
     }
 }

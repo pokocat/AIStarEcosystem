@@ -5,10 +5,13 @@ import com.aistareco.aep.dap.dto.DapDtos.AccountDto;
 import com.aistareco.aep.dap.dto.DapDtos.StorageSliceDto;
 import com.aistareco.aep.dap.repository.DapAvatarRepository;
 import com.aistareco.aep.dap.repository.DapCaptureRepository;
+import com.aistareco.aep.dap.repository.DapCompositionOutputRepository;
 import com.aistareco.aep.dap.repository.DapDerivativeRepository;
 import com.aistareco.aep.dap.repository.DapJobRepository;
 import com.aistareco.aep.dap.repository.DapLookRepository;
 import com.aistareco.aep.dap.repository.DapPhotoRepository;
+import com.aistareco.aep.dap.repository.DapProductRepository;
+import com.aistareco.aep.dap.repository.DapSceneRepository;
 import com.aistareco.aep.dap.repository.DapVoiceRepository;
 import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.model.Wallet;
@@ -41,6 +44,9 @@ public class DapAccountService {
     private final DapVoiceRepository voiceRepo;
     private final DapCaptureRepository captureRepo;
     private final DapPhotoRepository photoRepo;
+    private final DapSceneRepository sceneRepo;
+    private final DapProductRepository productRepo;
+    private final DapCompositionOutputRepository compositionOutputRepo;
     private final DapProperties props;
     private final DapPricingService pricing;
 
@@ -53,6 +59,9 @@ public class DapAccountService {
                              DapVoiceRepository voiceRepo,
                              DapCaptureRepository captureRepo,
                              DapPhotoRepository photoRepo,
+                             DapSceneRepository sceneRepo,
+                             DapProductRepository productRepo,
+                             DapCompositionOutputRepository compositionOutputRepo,
                              DapProperties props,
                              DapPricingService pricing) {
         this.creditService = creditService;
@@ -64,6 +73,9 @@ public class DapAccountService {
         this.voiceRepo = voiceRepo;
         this.captureRepo = captureRepo;
         this.photoRepo = photoRepo;
+        this.sceneRepo = sceneRepo;
+        this.productRepo = productRepo;
+        this.compositionOutputRepo = compositionOutputRepo;
         this.props = props;
         this.pricing = pricing;
     }
@@ -99,20 +111,27 @@ public class DapAccountService {
         String refreshDate = DateTimeFormatter.ofPattern("M 月 d 日").format(monthEnd);
 
         // 分类占用（MB，四舍五入；非空分类不足 1MB 记 1MB）。used = 各分类之和，与下方分类条对齐。
-        long atlasMb = mb(sumAvatarImageBytes(userId) + lookRepo.sumBytesByOwner(userId)
-                + derivRepo.sumBytesByOwnerAndKind(userId, "image"));
-        long videoMb = mb(derivRepo.sumBytesByOwnerAndKind(userId, "video"));
-        long d3Mb = mb(derivRepo.sumBytesByOwnerAndKind(userId, "model3d"));
+        // v0.104：口径改为「六类资产 + 合成产物 + 授权素材」，与资产库的分类语言一致 ——
+        // 人物（DH-）把定妆图 / 造型 / 图集衍生 / 视频 / 3D 合并成一项，另五类各自独立成项。
+        long characterMb = mb(sumAvatarImageBytes(userId) + lookRepo.sumBytesByOwner(userId)
+                + derivRepo.sumBytesByOwnerAndKind(userId, "image")
+                + derivRepo.sumBytesByOwnerAndKind(userId, "video")
+                + derivRepo.sumBytesByOwnerAndKind(userId, "model3d"));
+        long sceneMb = mb(sceneRepo.sumBytesByOwner(userId));
+        long productMb = mb(productRepo.sumBytesByOwner(userId));
         long voiceMb = mb(voiceRepo.sumBytesByOwner(userId));
+        long composeMb = mb(compositionOutputRepo.sumBytesByOwner(userId));
         long licMb = mb(captureRepo.sumBytesByOwner(userId) + photoRepo.sumBytesByOwner(userId));
-        long usedMb = atlasMb + videoMb + d3Mb + voiceMb + licMb;
+        long usedMb = characterMb + sceneMb + productMb + voiceMb + composeMb + licMb;
         int quotaMb = props.getStorageQuotaMb();
 
+        // 风格模板（ST-）与 IP 容器（IP-）只是登记，没有独立文件体积，因此不单列分类条。
         List<StorageSliceDto> breakdown = List.of(
-                new StorageSliceDto("形象图集", atlasMb, "var(--primary)", "image"),
-                new StorageSliceDto("衍生视频", videoMb, "#1AA06E", "film"),
-                new StorageSliceDto("3D 资产", d3Mb, "#D9920E", "cube"),
-                new StorageSliceDto("声音文件", voiceMb, "#8A6BFF", "mic"),
+                new StorageSliceDto("人物 · DH-", characterMb, "var(--primary)", "user"),
+                new StorageSliceDto("场景 · SC-", sceneMb, "#1AA06E", "image"),
+                new StorageSliceDto("产品 · PD-", productMb, "#D9920E", "cube"),
+                new StorageSliceDto("声音 · VO-", voiceMb, "#8A6BFF", "mic"),
+                new StorageSliceDto("合成产物", composeMb, "#2BA6E8", "layers"),
                 new StorageSliceDto("授权素材", licMb, "var(--ink-3)", "shield"));
 
         return new AccountDto("PRO", "PRO", credits, monthlyGrant, creditsUsed,

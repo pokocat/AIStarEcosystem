@@ -2,10 +2,11 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, JobApi, useApi, seed, USE_MOCK } from "./api";
+import { DATA, AvatarApi, AssetApi, JobApi, useApi, seed, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
+import { RegNo, AssetImage, kindIcon } from "./asset-kit";
 
 // ============================================================
 // 移动端 V4 · 首页 Home — 悬浮轮播宣传 + 「我的数字人资产」优先 + 空态引导
@@ -56,7 +57,7 @@ function MCarousel({ slides }) {
           background: s.bg, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 10, overflow: 'hidden' } },
           s.image && hMH('img', { src: s.image, alt: '', draggable: false, loading: k === 0 ? 'eager' : 'lazy', decoding: 'async', fetchPriority: k === 0 ? 'high' : 'low', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' } }),
           hMH('span', { style: { position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(8,16,24,.72), rgba(8,16,24,.32) 54%, rgba(8,16,24,.06))' } }),
-          hMH('div', { style: { position: 'relative', fontFamily: 'var(--font-disp)', fontSize: 21, fontWeight: 800, letterSpacing: 0, color: '#fff', textAlign: 'left', lineHeight: 1.14, padding: '0 18px', textShadow: '0 2px 10px rgba(0,0,0,.22)' } }, s.title),
+          hMH('div', { style: { position: 'relative', fontFamily: 'var(--font-disp)', fontSize: 21, fontWeight: 800, letterSpacing: 0, color: '#fff', textAlign: 'left', lineHeight: 1.14, padding: '0 18px', whiteSpace: 'pre-line', textShadow: '0 2px 10px rgba(0,0,0,.22)' } }, s.title),
           hMH('span', { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, margin: '0 0 16px 18px', padding: '0 8px 0 8px', background: 'rgba(255,255,255,.92)', color: 'var(--ink)', borderRadius: 'var(--r-pill)', boxShadow: '0 6px 16px rgba(20,36,55,.22)' } },
             s.badge && hMH('span', { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', background: 'rgba(255,255,255,.16)', padding: '3px 8px', borderRadius: 'var(--r-pill)' } }, s.badge),
             hMH('span', { style: { fontSize: 13.5, fontWeight: 700, paddingLeft: s.badge ? 0 : 8 } }, s.cta),
@@ -165,6 +166,37 @@ function MFeatureCard({ title, sub, cta, image, icon, onClick }) {
 }
 
 // ——————————————————————————————————————————
+// 六类资产瓦片（登记前缀 + 数量）—— 分类靠前缀与图标区分，不靠颜色
+// ——————————————————————————————————————————
+function MTypeTile({ tile, onClick }) {
+  return hMH('button', { onClick, className: 'm-tap', style: {
+    display: 'flex', flexDirection: 'column', gap: 8, padding: '11px 11px 12px', textAlign: 'left',
+    background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12,
+    boxShadow: 'var(--sh-1)', cursor: 'pointer' } },
+    hMH('span', { style: { color: 'var(--ink-2)', display: 'grid', placeItems: 'start' } },
+      hMH(kindIcon(tile.key), { size: 18, stroke: 1.85 })),
+    hMH('div', { style: { display: 'flex', alignItems: 'baseline', gap: 5 } },
+      hMH('span', { className: 'mono', style: { fontSize: 17, fontWeight: 700, letterSpacing: '-.02em', color: 'var(--ink)' } }, tile.count),
+      hMH('span', { style: { fontSize: 11.5, fontWeight: 700, color: 'var(--ink-2)' } }, tile.label)),
+    hMH('span', { className: 'mono', style: { fontSize: 9, letterSpacing: '.08em', color: 'var(--ink-4)' } }, tile.prefix));
+}
+
+// 最近更新（跨类型，按时间排序）
+function MRecentCard({ item, onOpen }) {
+  return hMH('button', { onClick: () => onOpen(item), className: 'm-press', style: {
+    flex: '0 0 148px', padding: 0, textAlign: 'left', cursor: 'pointer', overflow: 'hidden',
+    background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 15, boxShadow: 'var(--sh-1)' } },
+    hMH(AssetImage, { url: item.imageUrl, label: item.name, ratio: '', radius: 0,
+      style: { height: 104, borderRadius: 0, border: 'none' },
+      badge: hMH('span', { className: 'mono', style: { fontSize: 9, letterSpacing: '.06em', color: 'var(--ink)',
+        background: 'rgba(255,255,255,.9)', padding: '3px 6px', borderRadius: 5 } }, item.kindLabel) }),
+    hMH('div', { style: { padding: '9px 11px 12px' } },
+      hMH('div', { className: 'asset-name m-clip1', style: { fontSize: 15 } }, item.name),
+      hMH('div', { className: 'mono m-clip1', style: { fontSize: 9.5, color: 'var(--ink-4)', marginTop: 3 } },
+        `${item.id} · ${item.when}`)));
+}
+
+// ——————————————————————————————————————————
 function MHome({ ctx }) {
   // 显式 loading：live 模式拉取资产时先显示骨架，避免误闪「还没有数字人资产」空态
   const [avatars, setAvatars] = useStateH(seed.avatars());
@@ -177,19 +209,30 @@ function MHome({ ctx }) {
     return () => { live = false; };
   }, []);
   const tasks = useApi(() => JobApi.list(), seed.jobs());
+  // 首页整屏在下拉刷新时会重挂（key=tab:refreshSeq），故这里空依赖即可
+  const summary = useApi(() => AssetApi.summary(), seed.assetSummary(), []);
   const myAssets = avatars;
-  const wip = avatars.filter(c => ['proofing','iterating','refining','pending','deriving'].includes(c.status));
   const running = tasks.filter(t => t.status === 'running').length;
   const hasAssets = myAssets.length > 0;
+  const tiles = summary?.types || [];
+  const recent = summary?.recent || [];
+  const totalCount = summary?.totalCount ?? 0;
+
+  const openRecent = (item) => {
+    if (item.kind === 'character') { AvatarApi.get(item.id).then(ctx.openChar).catch(() => ctx.tab('library')); return; }
+    if (item.kind === 'scene') { AssetApi.scene(item.id).then(ctx.openScene).catch(() => ctx.tab('library')); return; }
+    if (item.kind === 'product') { AssetApi.product(item.id).then(ctx.openProduct).catch(() => ctx.tab('library')); return; }
+    ctx.tab('library');
+  };
 
   const SLIDES = [
     // bg/glow 统一青蓝族 pastel（V4 清爽皮肤纪律：去紫/粉）—— glow 在轮播两侧 blur 可见
+    { title: '人物 × 场景 × 产品\n一次合成整套内容', cta: '打开合成工作台', badge: 'NEW', image: '/generated/home-banners/refine-assets.jpg',
+      bg: 'linear-gradient(120deg,#DEF5EA,#DCEFFB)', glow: 'linear-gradient(120deg,#C5EEDA,#C9E6F8)', onClick: () => ctx.openCompose({}) },
     { title: '一句话生成专属 AI 数字人，马上开工', cta: '立即生成', badge: 'HOT', image: '/generated/home-banners/create-avatar.jpg',
       bg: 'linear-gradient(120deg,#D8F1FB,#E0EDFB 52%,#E8F6F4)', glow: 'linear-gradient(120deg,#BEE7F7,#CDE1F5,#CFEFE9)', onClick: () => ctx.startCreate('ai') },
     { title: '真人授权复刻，拍一段就有数字分身', cta: '马上录制', image: '/generated/home-banners/real-clone.jpg',
       bg: 'linear-gradient(120deg,#D8F1FB,#E3ECFB)', glow: 'linear-gradient(120deg,#BEE7F7,#CFE0F5)', onClick: () => ctx.startRealClone() },
-    { title: '精修形象加图集视频，内容资产整套出炉', cta: '生成整套', image: '/generated/home-banners/refine-assets.jpg',
-      bg: 'linear-gradient(120deg,#DEF5EA,#DCEFFB)', glow: 'linear-gradient(120deg,#C5EEDA,#C9E6F8)', onClick: () => ctx.startCreate('ai') },
   ];
 
   return hMH('div', { className: 'm-body has-tabbar', 'data-screen-label': '首页' },
@@ -199,17 +242,35 @@ function MHome({ ctx }) {
         running > 0 && hMH('span', { style: { position: 'absolute', top: 1, right: 1, minWidth: 15, height: 15, padding: '0 3px', background: 'var(--err)', color: '#fff',
           borderRadius: 99, fontSize: 9.5, fontWeight: 700, display: 'grid', placeItems: 'center', border: '1.5px solid var(--surface)' } }, running)) }),
 
-    // 悬浮轮播宣传
+    // 悬浮轮播宣传（首条 = 跨资产合成）
     hMH(MCarousel, { slides: SLIDES }),
 
-    // 我的数字人资产（首屏主角）
-    hMH('div', { className: 'm-defer-section', style: { padding: '24px 0 0' } },
+    // 我的资产 · 六类总览
+    hMH('div', { className: 'm-defer-section', style: { padding: '22px 0 0' } },
+      hMH('div', { style: { padding: '0 18px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, marginBottom: 13 } },
+        hMH('div', { style: { minWidth: 0 } },
+          hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' } }, '我的资产'),
+          hMH('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 } },
+            totalCount > 0 ? `共 ${totalCount} 项 · ${summary?.totalSizeLabel || '—'}` : '人物 · IP · 场景 · 产品 · 声音 · 风格')),
+        hMH('button', { onClick: () => ctx.tab('library'), style: { display: 'inline-flex', alignItems: 'center', gap: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 13, fontWeight: 700, padding: 0, flex: '0 0 auto' } },
+          '资产库', hMH(Icons.chevR, { size: 15, stroke: 2.2 }))),
+      hMH('div', { style: { padding: '0 18px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 9 } },
+        (tiles.length ? tiles : [{ key: 'character', label: '人物', prefix: 'DH-', count: myAssets.length }])
+          .map(t => hMH(MTypeTile, { key: t.key, tile: t, onClick: () => ctx.tab('library') })))),
+
+    // 最近更新（跨类型，按时间排序）
+    recent.length > 0 && hMH('div', { className: 'm-defer-section', style: { padding: '22px 0 0' } },
+      hMH('div', { style: { padding: '0 18px' } },
+        hMH(MSectionH, { title: '最近更新', sub: '跨类型 · 按时间排序' })),
+      hMH('div', { className: 'm-hscroll', style: { padding: '0 18px 4px' } },
+        recent.map(r => hMH(MRecentCard, { key: r.kind + r.id, item: r, onOpen: openRecent })))),
+
+    // 我的数字人（人物资产 rail —— 六类里最常用的一类，保留快捷入口）
+    hMH('div', { className: 'm-defer-section', style: { padding: '22px 0 0' } },
       hMH('div', { style: { padding: '0 18px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, marginBottom: 14 } },
         hMH('div', { style: { minWidth: 0 } },
-          hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' } }, '我的数字人资产'),
-          hMH('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 } }, loadingAvatars && !hasAssets ? '正在加载…' : hasAssets ? (myAssets.length + ' 个形象 · 可随时调用') : '从这里开始你的第一个数字人')),
-        hasAssets && hMH('button', { onClick: () => ctx.tab('library'), style: { display: 'inline-flex', alignItems: 'center', gap: 2, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 13, fontWeight: 700, padding: 0, flex: '0 0 auto' } },
-          '全部', hMH(Icons.chevR, { size: 15, stroke: 2.2 }))),
+          hMH('div', { style: { fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' } }, '我的数字人'),
+          hMH('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginTop: 3 } }, loadingAvatars && !hasAssets ? '正在加载…' : hasAssets ? (myAssets.length + ' 个形象 · 可随时调用') : '从这里开始你的第一个数字人'))),
       loadingAvatars && !hasAssets
         ? hMH('div', { className: 'm-hscroll', style: { padding: '0 18px 4px' } },
             Array.from({ length: 3 }).map((_, i) => hMH('div', { key: i, style: { flex: '0 0 165px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: 'var(--sh-1)' } },
@@ -228,10 +289,10 @@ function MHome({ ctx }) {
       hMH('div', { style: { padding: '0 18px' } },
         hMH(MSectionH, { title: '开始创作' })),
       hMH('div', { style: { padding: '0 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 } },
-        hMH(MFeatureCard, { title: '创建数字人', sub: '一句描述，原创虚构形象', cta: '开始创建',
-          image: '/generated/feature-cards/create-avatar.jpg', icon: Icons.sparkle, onClick: () => ctx.startCreate('ai') }),
-        hMH(MFeatureCard, { title: '真人授权复刻', sub: '录一段动作，合规复刻', cta: '开始录制',
-          image: '/generated/feature-cards/real-clone.jpg', icon: Icons.person, onClick: () => ctx.startRealClone() }),
+        hMH(MFeatureCard, { title: '新建人物', sub: '真人复刻 / AI 原创', cta: '开始创建',
+          image: '/generated/feature-cards/create-avatar.jpg', icon: Icons.person, onClick: ctx.openCreateSheet }),
+        hMH(MFeatureCard, { title: '上传产品 / 场景', sub: '实拍入库，登记即可用', cta: '去上传',
+          image: '/generated/avatar-previews/example-street-fashion.jpg', icon: Icons.upload, onClick: ctx.openCreateSheet }),
         hMH(MFeatureCard, { title: '克隆声音', sub: '录一段即生成', cta: '声音工作室',
           image: '/generated/feature-cards/voice-clone.jpg', icon: Icons.mic, onClick: () => ctx.go('voice') }),
         hMH(MFeatureCard, { title: '接入应用', sub: '短剧 · 带货 · 音乐', cta: '应用中心',

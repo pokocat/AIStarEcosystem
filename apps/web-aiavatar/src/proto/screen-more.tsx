@@ -197,7 +197,7 @@ function MStorage({ ctx }) {
           STORAGE.map(s => hMM('div', { key: s.name, style: { width: Math.max(0.5, (s.size / Math.max(1, total)) * 100) + '%', background: s.color } }))),
         hMM(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.gem, onClick: () => ctx.go('membership') }, '扩容空间')),
 
-      hMM(GroupTitle, null, '分类占用'),
+      hMM(GroupTitle, null, '按资产类型占用'),
       hMM('div', { className: 'm-card' },
         STORAGE.map((s, i) => hMM('div', { key: s.name, style: { display: 'flex', alignItems: 'center', gap: 13, padding: '13px 15px', borderBottom: i < STORAGE.length - 1 ? '1px solid var(--line)' : 'none' } },
           hMM('div', { style: { width: 34, height: 34, flex: '0 0 34px', borderRadius: 9, display: 'grid', placeItems: 'center', background: 'color-mix(in oklab,' + s.color + ' 13%, transparent)', color: s.color } }, hMM(Icons[s.icon] || Icons.folder, { size: 18, stroke: 1.9 })),

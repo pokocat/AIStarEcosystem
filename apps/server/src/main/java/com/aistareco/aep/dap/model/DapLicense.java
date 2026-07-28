@@ -44,6 +44,13 @@ public class DapLicense {
     @Column(length = 32)
     private String avatarId;
 
+    /**
+     * 关联 IP 容器 id（可空）。设计 §02：六类资产里只有「真人肖像人物」与「IP」需要授权登记，
+     * 场景 / 产品 / 风格是轻资产只记来源 —— 所以授权表只会出现 avatarId 或 ipId 之一。
+     */
+    @Column(length = 32)
+    private String ipId;
+
     @Column(length = 256)
     private String scope;
 

@@ -129,6 +129,8 @@ export interface Avatar {
   shotImages?: Record<string, string>;
   /** 用户原始人设描述。 */
   descPrompt?: string | null;
+  /** 归属 IP 容器 id（IP-xxxx；null = 未收拢进任何 IP）。 */
+  ipId?: string | null;
   /** 创建向导用的临时草稿标记。 */
   _fresh?: boolean;
 }
@@ -354,7 +356,7 @@ export const VIDEO_MOTIONS = [
 
 export const CHARS: Avatar[] = [
   {
-    id: "DH-2041", name: "林深 Lìn", codename: "lin-anchor", path: "real",
+    id: "DH-2041", name: "林深 Lìn", codename: "lin-anchor", path: "real", ipId: "IP-0007",
     archetype: "品牌虚拟主播", tagline: "科技品牌发布会数字主持人",
     status: "archived", updated: "2 小时前", fav: true, hue: 246, hairStyle: "short",
     license: "LIC-0098", mock: false, engine: "InstantID",
@@ -365,7 +367,7 @@ export const CHARS: Avatar[] = [
     versions: 12,
   },
   {
-    id: "DH-2038", name: "星岚 Sēlan", codename: "selan-stellar", path: "ai",
+    id: "DH-2038", name: "星岚 Sēlan", codename: "selan-stellar", path: "ai", ipId: "IP-0007",
     archetype: "二次元 · 星界少女", tagline: "银河旅人，命运观测者",
     status: "deriving", updated: "昨天", fav: true, hue: 268, hairStyle: "long",
     license: null, mock: false, engine: "SDXL",
@@ -387,7 +389,7 @@ export const CHARS: Avatar[] = [
     versions: 7,
   },
   {
-    id: "DH-2030", name: "Vex-09", codename: "vex-mecha", path: "ai",
+    id: "DH-2030", name: "Vex-09", codename: "vex-mecha", path: "ai", ipId: "IP-0018",
     archetype: "剧情角色 · 赛博机甲", tagline: "废土赏金猎人，义体改造者",
     status: "refining", updated: "5 天前", fav: true, hue: 18, hairStyle: "short",
     license: null, mock: true, engine: "SDXL",
@@ -398,7 +400,7 @@ export const CHARS: Avatar[] = [
     versions: 4,
   },
   {
-    id: "DH-2026", name: "阿茶 Āchá", codename: "acha-mascot", path: "ai",
+    id: "DH-2026", name: "阿茶 Āchá", codename: "acha-mascot", path: "ai", ipId: "IP-0012",
     archetype: "品牌虚拟人 · 萌系吉祥物", tagline: "新茶饮品牌 IP 吉祥物",
     status: "pending", updated: "上周", fav: false, hue: 42, hairStyle: "short",
     license: null, mock: false, engine: "FLUX",
@@ -716,6 +718,395 @@ export interface Account {
   storageBreakdown: StorageSlice[];
 }
 
+// ════════════════════════════════════════════════════════════
+// 数字资产平台 —— 六类资产（v0.104）
+//
+// 「数字人」不再是唯一的资产种类，而是六类之一。所有资产共用一套登记语言：
+// 衬线资产名 + REG 编号 + 版本 + 更新时间；分类靠**前缀与图标**区分，不靠颜色
+// （沿用单青色皮肤纪律）。授权只发给「真人肖像人物」与「IP」——场景 / 产品 /
+// 风格是轻资产，只记来源（实拍上传 or AI 生成），不进授权登记。
+// IP 是容器：一个 IP 下挂人物 / 场景 / 产品 / 声音；合成工作台取三类槽位出片，
+// 产物回流为该 IP 的衍生物，并双向记录引用。
+// ════════════════════════════════════════════════════════════
+
+/** 六类资产 key。 */
+export type AssetKind = "character" | "ip" | "scene" | "product" | "voice" | "style";
+
+/** 资产来源（轻资产不进授权登记，只记这一项）。 */
+export type AssetSource = "shot" | "ai";
+
+/** 资产生成态（场景 / 产品）。 */
+export type AssetStatus = "ready" | "running" | "failed";
+
+export interface AssetTypeMeta {
+  key: AssetKind;
+  label: string;
+  prefix: string;
+  icon: string;
+  /** 新建时的两条来源路径（设计 §S-06：实拍上传与 AI 生成两条路径并重）。 */
+  paths: [string, string];
+  desc: string;
+}
+
+/** 六类资产字典（登记前缀 / 图标 / 新建路径），server DapAssetService.TYPE_DEFS 同形。 */
+export const ASSET_TYPES: AssetTypeMeta[] = [
+  { key: "character", label: "人物", prefix: "DH-", icon: "person", paths: ["录制", "AI 生成"], desc: "真人授权复刻 / AI 原创虚构形象" },
+  { key: "ip", label: "IP", prefix: "IP-", icon: "gem", paths: ["新建", "导入"], desc: "建一个容器，把资产收拢成可授权整体" },
+  { key: "scene", label: "场景", prefix: "SC-", icon: "image", paths: ["上传", "AI 生成"], desc: "实拍空间入库，或用描述生成背景" },
+  { key: "product", label: "产品", prefix: "PD-", icon: "cube", paths: ["上传", "AI 生成"], desc: "商品多角度图，自动抠底与补充角度" },
+  { key: "voice", label: "声音", prefix: "VO-", icon: "mic", paths: ["录制", "挑选"], desc: "克隆自己的声音，或挑选内置音色" },
+  { key: "style", label: "风格", prefix: "ST-", icon: "palette", paths: ["从作品", "新建"], desc: "把一组出片基调存成可复用模板" },
+];
+
+export const assetTypeOf = (key: string): AssetTypeMeta | undefined =>
+  ASSET_TYPES.find((t) => t.key === key);
+
+/** 场景空间归类（wire 小写 → 中文标签）。 */
+export const SPACE_LABELS: Record<string, string> = { indoor: "室内", outdoor: "户外", studio: "影棚" };
+/** 资产来源标签。 */
+export const SOURCE_LABELS: Record<string, string> = { shot: "实拍上传", ai: "AI 生成" };
+
+// ── 资产总览 ────────────────────────────────────────────────
+
+export interface AssetTypeTile {
+  key: AssetKind;
+  label: string;
+  prefix: string;
+  count: number;
+}
+export interface RecentAsset {
+  kind: AssetKind;
+  kindLabel: string;
+  id: string;
+  name: string;
+  when: string;
+  imageUrl?: string | null;
+}
+export interface AssetSummary {
+  totalCount: number;
+  totalBytes: number;
+  totalSizeLabel: string;
+  types: AssetTypeTile[];
+  recent: RecentAsset[];
+}
+
+// ── IP 容器 ─────────────────────────────────────────────────
+
+export interface IpMembers {
+  characters: number;
+  scenes: number;
+  products: number;
+  voices: number;
+}
+export interface AssetIp {
+  id: string;
+  name: string;
+  tagline?: string | null;
+  summary?: string | null;
+  status: string;
+  licenseId?: string | null;
+  /** active | pending | expired | null（未登记授权）。 */
+  licenseStatus?: string | null;
+  coverUrl?: string | null;
+  hue: number;
+  versions: number;
+  updated: string;
+  members: IpMembers;
+  /** 该 IP 名下的合成作品数。 */
+  works: number;
+}
+export interface IpDetail {
+  ip: AssetIp;
+  characters: any[];
+  scenes: SceneAsset[];
+  products: ProductAsset[];
+  voices: any[];
+  compositions: Composition[];
+  license?: License | null;
+}
+
+// ── 场景 / 产品共用的图条目 ──────────────────────────────────
+
+export interface AssetShot {
+  label: string;
+  url: string;
+  spec?: string | null;
+}
+
+// ── 场景 ────────────────────────────────────────────────────
+
+export interface SceneAsset {
+  id: string;
+  name: string;
+  description?: string | null;
+  source: AssetSource;
+  space: string;
+  light?: string | null;
+  width: number;
+  height: number;
+  spec: string;
+  imageUrl?: string | null;
+  ipId?: string | null;
+  status: AssetStatus;
+  jobId?: string | null;
+  hue: number;
+  updated: string;
+  /** 光线变体。 */
+  variants: AssetShot[];
+  usageCount: number;
+}
+
+// ── 产品 ────────────────────────────────────────────────────
+
+export interface ProductAsset {
+  id: string;
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  source: AssetSource;
+  ipId?: string | null;
+  brandAuthorized: boolean;
+  brandLicenseUntil?: string | null;
+  imageUrl?: string | null;
+  /** 多角度图（含正面主图）。 */
+  angles: AssetShot[];
+  status: AssetStatus;
+  jobId?: string | null;
+  hue: number;
+  updated: string;
+  usageCount: number;
+}
+
+// ── 风格模板 ─────────────────────────────────────────────────
+
+export interface StyleAsset {
+  id: string;
+  name: string;
+  summary?: string | null;
+  promptEn?: string | null;
+  tags: string[];
+  source: string;
+  coverUrl?: string | null;
+  hue: number;
+  useCount: number;
+  updated: string;
+}
+
+// ── 引用台账（APPLIED TO · 已用于）────────────────────────────
+
+export interface AssetUsage {
+  usedByType: string;
+  usedById: string;
+  title: string;
+  meta: string;
+  thumbUrl?: string | null;
+  times: number;
+}
+
+// ── 跨资产合成 ───────────────────────────────────────────────
+
+export interface CompositionSource {
+  kind: string;
+  id: string;
+  name: string;
+  thumbUrl?: string | null;
+}
+export interface CompositionOutput {
+  id: string;
+  idx: number;
+  no: string;
+  url?: string | null;
+  spec?: string | null;
+}
+export interface Composition {
+  id: string;
+  avatarId: string;
+  sceneId: string;
+  productId?: string | null;
+  styleId?: string | null;
+  ipId?: string | null;
+  ratio: string;
+  count: number;
+  status: "running" | "done" | "failed";
+  jobId?: string | null;
+  /** 出片前的授权核对结论快照。 */
+  licenseNote?: string | null;
+  cost: number;
+  created: string;
+  outputs: CompositionOutput[];
+  sources: CompositionSource[];
+}
+export interface ComposeOptions {
+  costPerImage: number;
+  minCount: number;
+  maxCount: number;
+  defaultCount: number;
+  ratios: string[];
+  styles: StyleAsset[];
+}
+
+// ── Mock 样例（USE_MOCK=1 时的私有「数据库」）──────────────────
+//
+// 场景图沿用 avatar-previews 里已有的同名实拍图（与设计稿 assets/scenes/* 是同一批
+// 素材，字节完全一致），不再重复入库一份，避免同样的图在仓库里存两遍。
+
+const sceneImg = (n: string) => `/generated/avatar-previews/example-${n}.jpg`;
+
+export const ASSET_IPS: AssetIp[] = [
+  {
+    id: "IP-0007", name: "星岚 Sēlan", tagline: "银河旅人 · 品牌虚拟代言 IP",
+    summary: "以星轨观测为世界观的品牌虚拟代言 IP，覆盖立绘、周边与短视频种草。",
+    status: "ready", licenseId: "LIC-0114", licenseStatus: "active",
+    coverUrl: "/plaza/PA-07-1.jpg", hue: 258, versions: 9, updated: "2 小时前",
+    members: { characters: 3, scenes: 8, products: 12, voices: 2 }, works: 6,
+  },
+  {
+    id: "IP-0012", name: "茶小呆 Cha", tagline: "萌系奶茶吉祥物 IP",
+    summary: "新茶饮品牌的吉祥物 IP，主打表情包与包装联名。",
+    status: "ready", licenseId: "LIC-0121", licenseStatus: "active",
+    coverUrl: "/plaza/PA-09-1.jpg", hue: 32, versions: 4, updated: "昨天",
+    members: { characters: 1, scenes: 5, products: 6, voices: 1 }, works: 2,
+  },
+  {
+    id: "IP-0018", name: "慕白 Mubai", tagline: "新中式国风雅士 IP",
+    summary: "面向文旅与时尚大片的国风人物 IP，授权草案审核中。",
+    status: "ready", licenseId: null, licenseStatus: null,
+    coverUrl: "/plaza/PA-10-1.jpg", hue: 158, versions: 2, updated: "3 天前",
+    members: { characters: 1, scenes: 3, products: 0, voices: 1 }, works: 0,
+  },
+];
+
+export const SCENE_ASSETS: SceneAsset[] = [
+  {
+    id: "SC-0312", name: "暖光烘焙厨房",
+    description: "早晨侧逆光的家庭厨房，木质台面与浅陶器，适合生活方式与食品类内容。",
+    source: "shot", space: "indoor", light: "晨间侧逆光", width: 3840, height: 2160,
+    spec: "3840 × 2160", imageUrl: sceneImg("baking-kitchen"), ipId: "IP-0012",
+    status: "ready", jobId: null, hue: 32, updated: "10 分钟前",
+    variants: [
+      { label: "午后", url: sceneImg("baking-kitchen"), spec: "1024 × 640" },
+      { label: "夜晚", url: sceneImg("baking-kitchen"), spec: "1024 × 640" },
+    ],
+    usageCount: 2,
+  },
+  {
+    id: "SC-0287", name: "晨光起居室",
+    description: "南向落地窗的起居室，浅木与米色布艺，光线柔和，适合居家生活方式内容。",
+    source: "shot", space: "indoor", light: "晨间柔光", width: 3840, height: 2160,
+    spec: "3840 × 2160", imageUrl: sceneImg("home-lifestyle"), ipId: "IP-0007",
+    status: "ready", jobId: null, hue: 200, updated: "昨天", variants: [], usageCount: 3,
+  },
+  {
+    id: "SC-0309", name: "街头夜色",
+    description: "夜间城市街道，霓虹与湿地面反光，适合潮流与时尚内容。",
+    source: "shot", space: "outdoor", light: "霓虹夜景", width: 3840, height: 2160,
+    spec: "3840 × 2160", imageUrl: sceneImg("street-fashion"), ipId: null,
+    status: "ready", jobId: null, hue: 320, updated: "昨天", variants: [], usageCount: 1,
+  },
+  {
+    id: "SC-0301", name: "播客录音棚",
+    description: "专业录音棚，吸音墙与桌面麦克风，冷调布光，适合访谈与口播。",
+    source: "shot", space: "studio", light: "冷调影棚光", width: 3840, height: 2160,
+    spec: "3840 × 2160", imageUrl: sceneImg("podcast-host"), ipId: "IP-0007",
+    status: "ready", jobId: null, hue: 214, updated: "3 天前", variants: [], usageCount: 0,
+  },
+  {
+    id: "SC-0318", name: "极简白棚",
+    description: "纯白无缝背景棚，均匀布光，适合产品与人物合成。",
+    source: "ai", space: "studio", light: "均匀顶光", width: 2048, height: 1280,
+    spec: "2048 × 1280", imageUrl: null, ipId: null,
+    status: "running", jobId: null, hue: 205, updated: "刚刚", variants: [], usageCount: 0,
+  },
+];
+
+export const PRODUCT_ASSETS: ProductAsset[] = [
+  {
+    id: "PD-0088", name: "初见气垫粉底", category: "美妆 · 底妆",
+    description: "轻薄服帖的气垫粉底，磨砂外壳与镜面盖，适合手持展示与场景摆拍。",
+    source: "shot", ipId: "IP-0007", brandAuthorized: true, brandLicenseUntil: "2027-03",
+    imageUrl: null,
+    angles: [
+      { label: "正面", url: "", spec: "2048 × 2048 · 透明底 PNG" },
+      { label: "45°", url: "", spec: "2048 × 2048 · PNG" },
+      { label: "背面", url: "", spec: "2048 × 2048 · PNG" },
+      { label: "细节", url: "", spec: "2048 × 2048 · PNG" },
+    ],
+    status: "ready", jobId: null, hue: 26, updated: "2026-07-18", usageCount: 4,
+  },
+  {
+    id: "PD-0091", name: "云绒羊绒围巾", category: "服饰 · 配件",
+    description: "米白色羊绒围巾，柔软纹理，适合秋冬生活方式内容。",
+    source: "shot", ipId: "IP-0007", brandAuthorized: true, brandLicenseUntil: "2026-12",
+    imageUrl: null,
+    angles: [{ label: "正面", url: "", spec: "2048 × 2048 · PNG" }],
+    status: "ready", jobId: null, hue: 38, updated: "上周", usageCount: 1,
+  },
+  {
+    id: "PD-0094", name: "小圆罐手冲咖啡", category: "食品 · 饮品",
+    description: "复古小圆罐包装的手冲咖啡粉，适合厨房与居家场景摆拍。",
+    source: "ai", ipId: "IP-0012", brandAuthorized: false, brandLicenseUntil: null,
+    imageUrl: null,
+    angles: [{ label: "正面", url: "", spec: "1024 × 1024 · PNG" }],
+    status: "ready", jobId: null, hue: 18, updated: "3 天前", usageCount: 0,
+  },
+];
+
+export const STYLE_ASSETS: StyleAsset[] = [
+  {
+    id: "ST-0004", name: "品牌基调", summary: "暖调 · 柔光 · 干净留白",
+    promptEn: "warm brand tone, soft diffused light, clean negative space, premium lifestyle look",
+    tags: ["暖调", "柔光", "留白"], source: "manual", coverUrl: null, hue: 32, useCount: 12, updated: "昨天",
+  },
+  {
+    id: "ST-0007", name: "夜色潮流", summary: "冷调 · 高对比 · 霓虹反光",
+    promptEn: "cool night tone, high contrast, neon reflections, editorial street fashion look",
+    tags: ["冷调", "高对比", "潮流"], source: "work", coverUrl: null, hue: 220, useCount: 5, updated: "3 天前",
+  },
+  {
+    id: "ST-0011", name: "日系清透", summary: "低饱和 · 通透 · 自然肤色",
+    promptEn: "japanese airy tone, low saturation, luminous skin, natural daylight",
+    tags: ["低饱和", "通透", "日系"], source: "manual", coverUrl: null, hue: 190, useCount: 3, updated: "上周",
+  },
+];
+
+/** 引用台账 mock：{`${assetType}:${assetId}` → 已用于}。 */
+export const ASSET_USAGES: Record<string, AssetUsage[]> = {
+  "scene:SC-0312": [
+    { usedByType: "composition", usedById: "CP-4821", title: "阿茶 × 暖光烘焙厨房 × 小圆罐手冲咖啡", meta: "合成工作台 · 2026-07-25 出片", thumbUrl: sceneImg("baking-kitchen"), times: 6 },
+    { usedByType: "composition", usedById: "CP-4780", title: "早餐系列带货图", meta: "合成工作台 · 2026-07-20 出片", thumbUrl: sceneImg("baking-kitchen"), times: 12 },
+  ],
+  "scene:SC-0287": [
+    { usedByType: "composition", usedById: "CP-4903", title: "星岚 × 晨光起居室 × 初见气垫粉底", meta: "合成工作台 · 2026-07-26 出片", thumbUrl: sceneImg("home-lifestyle"), times: 4 },
+  ],
+  "product:PD-0088": [
+    { usedByType: "composition", usedById: "CP-4903", title: "星岚 × 晨光起居室 × 初见气垫粉底", meta: "合成工作台 · 2026-07-26 出片", thumbUrl: "/plaza/PA-07-1.jpg", times: 4 },
+  ],
+  "ip:IP-0007": [
+    { usedByType: "composition", usedById: "CP-4903", title: "星岚 × 晨光起居室 × 初见气垫粉底", meta: "合成工作台 · 2026-07-26 出片", thumbUrl: "/plaza/PA-07-1.jpg", times: 4 },
+  ],
+};
+
+export const COMPOSITIONS: Composition[] = [
+  {
+    id: "CP-4903", avatarId: "DH-2038", sceneId: "SC-0287", productId: "PD-0088", styleId: "ST-0004",
+    ipId: "IP-0007", ratio: "9:16", count: 4, status: "done", jobId: null,
+    licenseNote: "已核对授权：人物为 AI 原创，无需肖像授权，场景为自有实拍，产品已获品牌方授权（至 2027-03），可商用。",
+    cost: 12, created: "2 小时前",
+    outputs: [
+      { id: "CO-1", idx: 0, no: "01", url: sceneImg("home-lifestyle"), spec: "768 × 1365 · PNG" },
+      { id: "CO-2", idx: 1, no: "02", url: "/plaza/PA-07-1.jpg", spec: "768 × 1365 · PNG" },
+      { id: "CO-3", idx: 2, no: "03", url: sceneImg("street-fashion"), spec: "768 × 1365 · PNG" },
+      { id: "CO-4", idx: 3, no: "04", url: "/plaza/PA-07-2.jpg", spec: "768 × 1365 · PNG" },
+    ],
+    sources: [
+      { kind: "character", id: "DH-2038 · v9", name: "星岚 Sēlan", thumbUrl: "/plaza/PA-07-1.jpg" },
+      { kind: "scene", id: "SC-0287", name: "晨光起居室", thumbUrl: sceneImg("home-lifestyle") },
+      { kind: "product", id: "PD-0088", name: "初见气垫粉底", thumbUrl: null },
+      { kind: "style", id: "ST-0004", name: "品牌基调", thumbUrl: null },
+    ],
+  },
+];
+
 /** 账户 / 算力 / 存储（规格 §2.9）。 */
 export const ACCOUNT: Account = {
   plan: "PRO",
@@ -725,13 +1116,15 @@ export const ACCOUNT: Account = {
   creditsUsed: 860,
   refreshDate: "6 月 30 日",
   generatableEstimate: 28,
-  storageUsedMb: 67,
+  storageUsedMb: 67,   // = 各分类之和
   storageQuotaMb: 5000,
+  // v0.104：按六类资产口径拆分（与资产库的分类语言一致；风格 / IP 只是登记，无独立体积）
   storageBreakdown: [
-    { name: "形象图集", size: 28, color: "var(--primary)", icon: "image" },
-    { name: "衍生视频", size: 19, color: "#1AA06E", icon: "film" },
-    { name: "3D 资产", size: 12, color: "#D9920E", icon: "cube" },
-    { name: "声音文件", size: 5, color: "#8A6BFF", icon: "mic" },
+    { name: "人物 · DH-", size: 34, color: "var(--primary)", icon: "user" },
+    { name: "场景 · SC-", size: 12, color: "#1AA06E", icon: "image" },
+    { name: "产品 · PD-", size: 6, color: "#D9920E", icon: "cube" },
+    { name: "声音 · VO-", size: 5, color: "#8A6BFF", icon: "mic" },
+    { name: "合成产物", size: 7, color: "#2BA6E8", icon: "layers" },
     { name: "授权素材", size: 3, color: "var(--ink-3)", icon: "shield" },
   ],
 };

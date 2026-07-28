@@ -269,6 +269,11 @@ export const {
   TEMPLATES,
   catColor,
   catSoft,
+  // 数字资产平台 · 六类资产字典
+  ASSET_TYPES,
+  SPACE_LABELS,
+  SOURCE_LABELS,
+  assetTypeOf,
 } = Mock;
 
 /** 屏幕层沿用的字典聚合（仅 UI 配置，不含实体数据 —— 实体走下面的 *Api）。 */
@@ -288,6 +293,10 @@ export const DATA = {
   TEMPLATES,
   catColor,
   catSoft,
+  ASSET_TYPES,
+  SPACE_LABELS,
+  SOURCE_LABELS,
+  assetTypeOf,
 };
 
 // 类型再导出，screens / 调用方可从 api 取类型
@@ -305,6 +314,26 @@ export type {
   Account,
   DerivKey,
   DerivStatus,
+  // 数字资产平台 · 六类资产
+  AssetKind,
+  AssetSource,
+  AssetStatus,
+  AssetTypeMeta,
+  AssetSummary,
+  AssetTypeTile,
+  RecentAsset,
+  AssetIp,
+  IpDetail,
+  IpMembers,
+  AssetShot,
+  SceneAsset,
+  ProductAsset,
+  StyleAsset,
+  AssetUsage,
+  Composition,
+  CompositionOutput,
+  CompositionSource,
+  ComposeOptions,
 } from "./data";
 
 // ── Mock 任务模拟器（USE_MOCK=1 时让创建/衍生流程可观察推进）────
@@ -317,6 +346,63 @@ const mockChars: any[] = Mock.CHARS.map((c) => ({ ...c }));
 const mockPublicExtra: any[] = [];
 /** mock 回收站（软删数字人；live 模式由 server 持久化）。 */
 const mockTrash: any[] = [];
+
+// ── 数字资产平台 · 六类资产的 mock 「数据库」──────────────────
+const mockIps: Mock.AssetIp[] = Mock.ASSET_IPS.map((x) => ({ ...x, members: { ...x.members } }));
+const mockScenes: Mock.SceneAsset[] = Mock.SCENE_ASSETS.map((x) => ({ ...x, variants: x.variants.slice() }));
+const mockProducts: Mock.ProductAsset[] = Mock.PRODUCT_ASSETS.map((x) => ({ ...x, angles: x.angles.slice() }));
+const mockStyles: Mock.StyleAsset[] = Mock.STYLE_ASSETS.map((x) => ({ ...x, tags: x.tags.slice() }));
+const mockCompositions: Mock.Composition[] = Mock.COMPOSITIONS.map((x) => ({ ...x }));
+const mockUsages: Record<string, Mock.AssetUsage[]> = JSON.parse(JSON.stringify(Mock.ASSET_USAGES));
+
+const MOCK_COST_PER_IMAGE = 3;
+
+/** 描述 → 资产名（与 server DapAssetService.truncate 同规则：截断并去掉截口标点）。 */
+function nameFromPrompt(prompt: string, n = 12): string {
+  const s = String(prompt || "").trim();
+  if (s.length <= n) return s;
+  const head = s.slice(0, n).replace(/[\s，。、；：,.;:!?！？]+$/, "");
+  return (head || s.slice(0, n)) + "…";
+}
+
+/** mock：六类资产总览（数量随 mock 库实时变化，与资产库分类计数一致）。 */
+function buildMockSummary(): Mock.AssetSummary {
+  const counts: Record<string, number> = {
+    character: mockChars.length,
+    ip: mockIps.length,
+    scene: mockScenes.length,
+    product: mockProducts.length,
+    voice: Mock.VOICES.length,
+    style: mockStyles.length,
+  };
+  const types = Mock.ASSET_TYPES.map((t) => ({
+    key: t.key, label: t.label, prefix: t.prefix, count: counts[t.key] || 0,
+  }));
+  const recent: Mock.RecentAsset[] = [
+    ...mockScenes.slice(0, 2).map((s) => ({
+      kind: "scene" as const, kindLabel: "场景", id: s.id, name: s.name, when: s.updated, imageUrl: s.imageUrl,
+    })),
+    ...mockChars.slice(0, 2).map((c: any) => ({
+      kind: "character" as const, kindLabel: "人物", id: c.id, name: c.name, when: c.updated, imageUrl: c.imageUrl || null,
+    })),
+    ...mockProducts.slice(0, 1).map((p) => ({
+      kind: "product" as const, kindLabel: "产品", id: p.id, name: p.name, when: p.updated, imageUrl: p.imageUrl,
+    })),
+  ];
+  const total = types.reduce((a, t) => a + t.count, 0);
+  const bytes = 4.2 * 1024 * 1024 * 1024;
+  return { totalCount: total, totalBytes: bytes, totalSizeLabel: "4.2 GB", types, recent };
+}
+
+/** mock：把一次合成的引用写进台账（与 server recordUsages 同语义）。 */
+function mockRecordUsage(assetType: string, assetId: string | null | undefined, u: Mock.AssetUsage) {
+  if (!assetId) return;
+  const key = `${assetType}:${assetId}`;
+  const list = mockUsages[key] || (mockUsages[key] = []);
+  const hit = list.find((x) => x.usedById === u.usedById);
+  if (hit) hit.times += 1;
+  else list.unshift({ ...u });
+}
 
 function newMockJob(partial: Partial<Mock.Job> & { kind: string } & Record<string, unknown>): Mock.Job {
   const id = `JOB-${mockSeq++}`;
@@ -350,6 +436,13 @@ function tickMockJob(id: string) {
     job.status = "done";
     // 确定性回填衍生计数（与任务完成同一时刻发生，awaitJob 解析后即可读到最新计数）
     if (job.derivApply) applyMockDerivDone(job.derivApply);
+    // 六类资产 / 合成的产物回填：同样在翻 done 的那一刻同步执行，
+    // 否则 awaitJob 解析后立刻取详情会读到还没产出的旧状态。
+    if (job.assetApply) {
+      const apply = job.assetApply;
+      job.assetApply = null;
+      try { apply(); } catch { /* noop */ }
+    }
   }
   return job;
 }
@@ -385,6 +478,16 @@ export async function awaitJob(jobId: string, onTick?: (job: Mock.Job) => void,
 export const seed = {
   avatars: (scope: "mine" | "public" = "mine"): any[] =>
     USE_MOCK ? (scope === "public" ? Mock.PUBLIC_AVATARS.slice() : mockChars.slice()) : [],
+  assetSummary: (): Mock.AssetSummary | null => (USE_MOCK ? buildMockSummary() : null),
+  ips: (): Mock.AssetIp[] => (USE_MOCK ? mockIps.slice() : []),
+  scenes2: (): Mock.SceneAsset[] => (USE_MOCK ? mockScenes.slice() : []),
+  products: (): Mock.ProductAsset[] => (USE_MOCK ? mockProducts.slice() : []),
+  styles: (): Mock.StyleAsset[] => (USE_MOCK ? mockStyles.slice() : []),
+  compositions: (): Mock.Composition[] => (USE_MOCK ? mockCompositions.slice() : []),
+  composeOptions: (): Mock.ComposeOptions | null =>
+    USE_MOCK
+      ? { costPerImage: 3, minCount: 1, maxCount: 8, defaultCount: 4, ratios: ["9:16", "1:1", "16:9"], styles: mockStyles.slice() }
+      : null,
   builtinVoices: (): Mock.BuiltinVoice[] => (USE_MOCK ? Mock.BUILTIN_VOICES.slice() : []),
   myVoices: (): Mock.VoiceAsset[] => (USE_MOCK ? Mock.VOICES.slice() : []),
   jobs: (): Mock.Job[] => (USE_MOCK ? Mock.TASKS.map((t) => ({ ...t })) : []),
@@ -975,5 +1078,458 @@ export const TemplateApi = {
   list: (): Promise<Mock.TemplateMeta[]> => {
     if (USE_MOCK) return mock(Mock.TEMPLATES.slice());
     return apiFetch(`/templates`);
+  },
+};
+
+// ════════════════════════════════════════════════════════════
+// 数字资产平台 · 六类资产（/api/v1/assets/**）
+//
+// 「数字人」是六类资产之一：DH- 人物 / IP- 品牌 / SC- 场景 / PD- 产品 /
+// VO- 声音 / ST- 风格。人物与声音沿用上面既有的 AvatarApi / VoiceApi，
+// 这里只补另外四类 + 总览 + 引用台账。
+// ════════════════════════════════════════════════════════════
+
+/**
+ * mock：给场景 / 产品 / 合成的异步生成起一个会推进到 done 的任务。
+ * `apply` 由 tickMockJob 在任务翻 done 的同一刻同步调用 —— 与 awaitJob 的解析时机对齐，
+ * 保证「等任务结束 → 立刻取详情」读到的是已产出的状态。
+ */
+function mockAssetJob(kind: string, assetId: string, assetName: string, apply: () => void) {
+  return newMockJob({ kind, char: assetId, charName: assetName, assetId, assetApply: apply } as any);
+}
+
+export const AssetApi = {
+  /** 六类资产总览（首页 · 资产总览 + 资产库分类计数）。 */
+  summary: (): Promise<Mock.AssetSummary> => {
+    if (USE_MOCK) return mock(buildMockSummary());
+    return apiFetch(`/assets/summary`);
+  },
+
+  // ── IP 容器 ──────────────────────────────────────────────
+  ips: (): Promise<Mock.AssetIp[]> => {
+    // 成员数按真实归属实时算，保证列表与详情页统计一致
+    if (USE_MOCK) return mock(mockIps.map((ip) => ({ ...ip, members: mockIpMembers(ip.id) })));
+    return apiFetch(`/assets/ips`);
+  },
+  createIp: (body: { name: string; tagline?: string; summary?: string }): Promise<Mock.AssetIp> => {
+    if (USE_MOCK) {
+      const ip: Mock.AssetIp = {
+        id: `IP-${mockSeq++}`, name: body.name, tagline: body.tagline || null, summary: body.summary || null,
+        status: "ready", licenseId: null, licenseStatus: null, coverUrl: null,
+        hue: 210, versions: 1, updated: "刚刚",
+        members: { characters: 0, scenes: 0, products: 0, voices: 0 }, works: 0,
+      };
+      mockIps.unshift(ip);
+      return mock(ip);
+    }
+    return apiFetch(`/assets/ips`, { method: "POST", body: JSON.stringify(body) });
+  },
+  ip: (id: string): Promise<Mock.IpDetail> => {
+    if (USE_MOCK) return mock(buildMockIpDetail(id));
+    return apiFetch(`/assets/ips/${id}`);
+  },
+  patchIp: (id: string, body: Record<string, unknown>): Promise<Mock.AssetIp> => {
+    if (USE_MOCK) {
+      const ip = mockIps.find((x) => x.id === id);
+      if (ip) Object.assign(ip, body, { updated: "刚刚" });
+      return mock(ip || ({ id } as any));
+    }
+    return apiFetch(`/assets/ips/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+  },
+  removeIp: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockIps.findIndex((x) => x.id === id);
+      if (i >= 0) mockIps.splice(i, 1);
+      mockScenes.forEach((s) => { if (s.ipId === id) s.ipId = null; });
+      mockProducts.forEach((p) => { if (p.ipId === id) p.ipId = null; });
+      mockChars.forEach((c: any) => { if (c.ipId === id) c.ipId = null; });
+      return mock({ deleted: true });
+    }
+    return apiFetch(`/assets/ips/${id}`, { method: "DELETE" });
+  },
+  /** 关联 / 取消关联成员资产（assetType: character | scene | product）。 */
+  ipMember: (id: string, body: { assetType: string; assetId: string; attach?: boolean }): Promise<Mock.IpDetail> => {
+    if (USE_MOCK) {
+      const target = body.attach === false ? null : id;
+      if (body.assetType === "scene") {
+        const s = mockScenes.find((x) => x.id === body.assetId);
+        if (s) s.ipId = target;
+      } else if (body.assetType === "product") {
+        const p = mockProducts.find((x) => x.id === body.assetId);
+        if (p) p.ipId = target;
+      } else {
+        const c: any = mockChars.find((x: any) => x.id === body.assetId);
+        if (c) c.ipId = target;
+      }
+      return mock(buildMockIpDetail(id));
+    }
+    return apiFetch(`/assets/ips/${id}/members`, { method: "POST", body: JSON.stringify(body) });
+  },
+  /** 登记 / 续签 IP 授权（设计 §02：只有真人肖像与 IP 需要授权）。 */
+  ipLicense: (id: string, body?: { subject?: string; scope?: string; years?: number; platforms?: string[] }): Promise<any> => {
+    if (USE_MOCK) {
+      const ip = mockIps.find((x) => x.id === id);
+      const licId = ip?.licenseId || `LIC-${mockSeq++}`;
+      if (ip) { ip.licenseId = licId; ip.licenseStatus = "active"; ip.updated = "刚刚"; }
+      const year = new Date().getFullYear();
+      return mock({
+        id: licId, subject: body?.subject || ip?.name || "IP 品牌授权", char: null, ipId: id,
+        scope: body?.scope || "品牌商用 / 全平台", period: `${year}-01 ~ ${year + (body?.years || 2)}-01`,
+        platforms: body?.platforms || ["全平台"], status: "active",
+        signed: new Date().toISOString().slice(0, 10), photos: 0, expiresOn: `${year + (body?.years || 2)}-01`,
+      });
+    }
+    return apiFetch(`/assets/ips/${id}/license`, { method: "POST", body: JSON.stringify(body || {}) });
+  },
+
+  // ── 场景 ─────────────────────────────────────────────────
+  scenes: (params?: { source?: string; space?: string; ipId?: string; q?: string }): Promise<Mock.SceneAsset[]> => {
+    if (USE_MOCK) {
+      let list = mockScenes.slice();
+      if (params?.source) list = list.filter((s) => s.source === params.source);
+      if (params?.space) list = list.filter((s) => s.space === params.space);
+      if (params?.ipId) list = list.filter((s) => s.ipId === params.ipId);
+      if (params?.q) {
+        const q = params.q.toLowerCase();
+        list = list.filter((s) => (s.name + s.id + (s.description || "")).toLowerCase().includes(q));
+      }
+      return mock(list);
+    }
+    const qs = params ? `?${new URLSearchParams(cleanParams(params)).toString()}` : "";
+    return apiFetch(`/assets/scenes${qs}`);
+  },
+  scene: (id: string): Promise<Mock.SceneAsset> => {
+    if (USE_MOCK) return mock(mockScenes.find((s) => s.id === id) || mockScenes[0]);
+    return apiFetch(`/assets/scenes/${id}`);
+  },
+  /** AI 生成场景（异步任务 + 扣费）→ { scene, job }。 */
+  createScene: (body: { name?: string; description?: string; prompt: string; space?: string; light?: string; ipId?: string; ratio?: string }): Promise<any> => {
+    if (USE_MOCK) {
+      const s: Mock.SceneAsset = {
+        id: `SC-${mockSeq++}`, name: body.name || nameFromPrompt(body.prompt), description: body.description || null,
+        source: "ai", space: body.space || "indoor", light: body.light || null,
+        width: 1024, height: 640, spec: "1024 × 640", imageUrl: null, ipId: body.ipId || null,
+        status: "running", jobId: null, hue: 205, updated: "刚刚", variants: [], usageCount: 0,
+      };
+      mockScenes.unshift(s);
+      const job = mockAssetJob("场景生成", s.id, s.name, () => {
+        s.status = "ready";
+        s.imageUrl = "/generated/avatar-previews/example-home-lifestyle.jpg";
+        s.updated = "刚刚";
+      });
+      s.jobId = job.id;
+      return mock({ scene: s, job: { ...job } });
+    }
+    return apiFetch(`/assets/scenes`, { method: "POST", body: JSON.stringify(body) });
+  },
+  /** 实拍上传入库（multipart；轻资产不扣费）。 */
+  uploadScene: (file: File, meta: { name?: string; description?: string; space?: string; light?: string; ipId?: string } = {}): Promise<Mock.SceneAsset> => {
+    if (USE_MOCK) {
+      const s: Mock.SceneAsset = {
+        id: `SC-${mockSeq++}`, name: meta.name || file.name.replace(/\.[^.]+$/, ""),
+        description: meta.description || null, source: "shot", space: meta.space || "indoor",
+        light: meta.light || null, width: 0, height: 0, spec: "—",
+        imageUrl: URL.createObjectURL(file), ipId: meta.ipId || null,
+        status: "ready", jobId: null, hue: 200, updated: "刚刚", variants: [], usageCount: 0,
+      };
+      mockScenes.unshift(s);
+      return mock(s);
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    Object.entries(meta).forEach(([k, v]) => { if (v) fd.append(k, String(v)); });
+    return apiUpload(`/assets/scenes/upload`, fd);
+  },
+  patchScene: (id: string, body: Record<string, unknown>): Promise<Mock.SceneAsset> => {
+    if (USE_MOCK) {
+      const s = mockScenes.find((x) => x.id === id);
+      if (s) Object.assign(s, body, { updated: "刚刚" });
+      return mock(s || ({ id } as any));
+    }
+    return apiFetch(`/assets/scenes/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+  },
+  removeScene: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockScenes.findIndex((x) => x.id === id);
+      if (i >= 0) mockScenes.splice(i, 1);
+      return mock({ deleted: true });
+    }
+    return apiFetch(`/assets/scenes/${id}`, { method: "DELETE" });
+  },
+  /** 生成光线变体（按张扣费）→ { job }。 */
+  sceneVariants: (id: string, labels?: string[]): Promise<any> => {
+    if (USE_MOCK) {
+      const s = mockScenes.find((x) => x.id === id);
+      const picks = labels && labels.length ? labels : ["午后", "夜晚"];
+      const job = mockAssetJob("场景光线变体", id, s?.name || id, () => {
+        if (!s) return;
+        picks.forEach((label) => {
+          const at = s.variants.findIndex((v) => v.label === label);
+          const item = { label, url: s.imageUrl || "", spec: "1024 × 640" };
+          if (at >= 0) s.variants[at] = item; else s.variants.push(item);
+        });
+        s.updated = "刚刚";
+      });
+      return mock({ job: { ...job } });
+    }
+    return apiFetch(`/assets/scenes/${id}/variants`, { method: "POST", body: JSON.stringify({ labels: labels || [] }) });
+  },
+
+  // ── 产品 ─────────────────────────────────────────────────
+  products: (params?: { category?: string; ipId?: string; q?: string }): Promise<Mock.ProductAsset[]> => {
+    if (USE_MOCK) {
+      let list = mockProducts.slice();
+      if (params?.category) list = list.filter((p) => p.category === params.category);
+      if (params?.ipId) list = list.filter((p) => p.ipId === params.ipId);
+      if (params?.q) {
+        const q = params.q.toLowerCase();
+        list = list.filter((p) => (p.name + p.id + (p.category || "")).toLowerCase().includes(q));
+      }
+      return mock(list);
+    }
+    const qs = params ? `?${new URLSearchParams(cleanParams(params)).toString()}` : "";
+    return apiFetch(`/assets/products${qs}`);
+  },
+  product: (id: string): Promise<Mock.ProductAsset> => {
+    if (USE_MOCK) return mock(mockProducts.find((p) => p.id === id) || mockProducts[0]);
+    return apiFetch(`/assets/products/${id}`);
+  },
+  createProduct: (body: { name?: string; category?: string; description?: string; prompt: string; ipId?: string; brandAuthorized?: boolean; brandLicenseUntil?: string }): Promise<any> => {
+    if (USE_MOCK) {
+      const p: Mock.ProductAsset = {
+        id: `PD-${mockSeq++}`, name: body.name || nameFromPrompt(body.prompt), category: body.category || null,
+        description: body.description || null, source: "ai", ipId: body.ipId || null,
+        brandAuthorized: !!body.brandAuthorized, brandLicenseUntil: body.brandLicenseUntil || null,
+        imageUrl: null, angles: [], status: "running", jobId: null, hue: 26, updated: "刚刚", usageCount: 0,
+      };
+      mockProducts.unshift(p);
+      const job = mockAssetJob("产品图生成", p.id, p.name, () => {
+        p.status = "ready";
+        p.angles = [{ label: "正面", url: "", spec: "1024 × 1024 · PNG" }];
+        p.updated = "刚刚";
+      });
+      p.jobId = job.id;
+      return mock({ product: p, job: { ...job } });
+    }
+    return apiFetch(`/assets/products`, { method: "POST", body: JSON.stringify(body) });
+  },
+  uploadProduct: (file: File, meta: { name?: string; category?: string; description?: string; ipId?: string; brandAuthorized?: boolean; brandLicenseUntil?: string } = {}): Promise<Mock.ProductAsset> => {
+    if (USE_MOCK) {
+      const url = URL.createObjectURL(file);
+      const p: Mock.ProductAsset = {
+        id: `PD-${mockSeq++}`, name: meta.name || file.name.replace(/\.[^.]+$/, ""),
+        category: meta.category || null, description: meta.description || null, source: "shot",
+        ipId: meta.ipId || null, brandAuthorized: !!meta.brandAuthorized,
+        brandLicenseUntil: meta.brandLicenseUntil || null, imageUrl: url,
+        angles: [{ label: "正面", url, spec: "原图" }],
+        status: "ready", jobId: null, hue: 26, updated: "刚刚", usageCount: 0,
+      };
+      mockProducts.unshift(p);
+      return mock(p);
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    Object.entries(meta).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") fd.append(k, String(v)); });
+    return apiUpload(`/assets/products/upload`, fd);
+  },
+  patchProduct: (id: string, body: Record<string, unknown>): Promise<Mock.ProductAsset> => {
+    if (USE_MOCK) {
+      const p = mockProducts.find((x) => x.id === id);
+      if (p) Object.assign(p, body, { updated: "刚刚" });
+      return mock(p || ({ id } as any));
+    }
+    return apiFetch(`/assets/products/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+  },
+  removeProduct: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockProducts.findIndex((x) => x.id === id);
+      if (i >= 0) mockProducts.splice(i, 1);
+      return mock({ deleted: true });
+    }
+    return apiFetch(`/assets/products/${id}`, { method: "DELETE" });
+  },
+  /** 补充角度（按张扣费）→ { job }。 */
+  productAngles: (id: string, labels?: string[]): Promise<any> => {
+    if (USE_MOCK) {
+      const p = mockProducts.find((x) => x.id === id);
+      const picks = labels && labels.length ? labels : ["45°", "背面", "细节"];
+      const job = mockAssetJob("产品补充角度", id, p?.name || id, () => {
+        if (!p) return;
+        picks.forEach((label) => {
+          const at = p.angles.findIndex((a) => a.label === label);
+          const item = { label, url: p.imageUrl || "", spec: "1024 × 1024 · PNG" };
+          if (at >= 0) p.angles[at] = item; else p.angles.push(item);
+        });
+        p.updated = "刚刚";
+      });
+      return mock({ job: { ...job } });
+    }
+    return apiFetch(`/assets/products/${id}/angles`, { method: "POST", body: JSON.stringify({ labels: labels || [] }) });
+  },
+
+  // ── 风格模板 ──────────────────────────────────────────────
+  styles: (): Promise<Mock.StyleAsset[]> => {
+    if (USE_MOCK) return mock(mockStyles.slice());
+    return apiFetch(`/assets/styles`);
+  },
+  style: (id: string): Promise<Mock.StyleAsset> => {
+    if (USE_MOCK) return mock(mockStyles.find((s) => s.id === id) || mockStyles[0]);
+    return apiFetch(`/assets/styles/${id}`);
+  },
+  createStyle: (body: { name: string; summary?: string; promptEn?: string; tags?: string[]; source?: string }): Promise<Mock.StyleAsset> => {
+    if (USE_MOCK) {
+      const s: Mock.StyleAsset = {
+        id: `ST-${mockSeq++}`, name: body.name, summary: body.summary || null,
+        promptEn: body.promptEn || null, tags: body.tags || [], source: body.source || "manual",
+        coverUrl: null, hue: 210, useCount: 0, updated: "刚刚",
+      };
+      mockStyles.unshift(s);
+      return mock(s);
+    }
+    return apiFetch(`/assets/styles`, { method: "POST", body: JSON.stringify(body) });
+  },
+  patchStyle: (id: string, body: Record<string, unknown>): Promise<Mock.StyleAsset> => {
+    if (USE_MOCK) {
+      const s = mockStyles.find((x) => x.id === id);
+      if (s) Object.assign(s, body, { updated: "刚刚" });
+      return mock(s || ({ id } as any));
+    }
+    return apiFetch(`/assets/styles/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+  },
+  removeStyle: (id: string): Promise<any> => {
+    if (USE_MOCK) {
+      const i = mockStyles.findIndex((x) => x.id === id);
+      if (i >= 0) mockStyles.splice(i, 1);
+      return mock({ deleted: true });
+    }
+    return apiFetch(`/assets/styles/${id}`, { method: "DELETE" });
+  },
+
+  // ── 引用台账（APPLIED TO · 已用于）─────────────────────────
+  usages: (assetType: string, assetId: string): Promise<Mock.AssetUsage[]> => {
+    if (USE_MOCK) return mock((mockUsages[`${assetType}:${assetId}`] || []).slice());
+    return apiFetch(`/assets/usages?assetType=${encodeURIComponent(assetType)}&assetId=${encodeURIComponent(assetId)}`);
+  },
+};
+
+/** mock：按 ipId 归属实时统计 IP 成员数（列表与详情共用同一口径）。 */
+function mockIpMembers(ipId: string): Mock.IpMembers {
+  const characters = mockChars.filter((c: any) => c.ipId === ipId);
+  return {
+    characters: characters.length,
+    scenes: mockScenes.filter((s) => s.ipId === ipId).length,
+    products: mockProducts.filter((p) => p.ipId === ipId).length,
+    voices: Mock.VOICES.filter((v) => characters.some((c: any) => c.id === v.char)).length,
+  };
+}
+
+/** mock：拼一个 IP 详情（容器视图），成员来自各 mock 库的 ipId 归属。 */
+function buildMockIpDetail(id: string): Mock.IpDetail {
+  const ip = mockIps.find((x) => x.id === id) || mockIps[0];
+  const characters = mockChars.filter((c: any) => c.ipId === ip.id);
+  const scenes = mockScenes.filter((s) => s.ipId === ip.id);
+  const products = mockProducts.filter((p) => p.ipId === ip.id);
+  const compositions = mockCompositions.filter((c) => c.ipId === ip.id);
+  const voices = Mock.VOICES.filter((v) => characters.some((c: any) => c.id === v.char));
+  // 计数严格等于真实成员数 —— 统计条与下面的成员网格必须一致，不能出现「说 3 个却只列出 0 个」
+  const members = mockIpMembers(ip.id);
+  const license = ip.licenseId
+    ? {
+        id: ip.licenseId, subject: ip.name, char: null, ipId: ip.id, scope: "品牌商用 / 全平台",
+        period: "2026-01 ~ 2028-01", platforms: ["全平台"], status: ip.licenseStatus || "active",
+        signed: "2026-01-08", photos: 0, expiresOn: "2028-01",
+      }
+    : null;
+  return { ip: { ...ip, members }, characters, scenes, products, voices, compositions, license } as any;
+}
+
+/** URLSearchParams 前剔除空值，避免 `?q=undefined` 这类脏查询串。 */
+function cleanParams(p: Record<string, any>): Record<string, string> {
+  const out: Record<string, string> = {};
+  Object.entries(p).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") out[k] = String(v);
+  });
+  return out;
+}
+
+// ── 跨资产合成（/api/v1/compositions/**）──────────────────────
+
+export const ComposeApi = {
+  /** 出片设置选项与单价（画幅 / 出图数量区间 / 单价 / 可用风格模板）。 */
+  options: (): Promise<Mock.ComposeOptions> => {
+    if (USE_MOCK) {
+      return mock({
+        costPerImage: MOCK_COST_PER_IMAGE, minCount: 1, maxCount: 8, defaultCount: 4,
+        ratios: ["9:16", "1:1", "16:9"], styles: mockStyles.slice(),
+      });
+    }
+    return apiFetch(`/compositions/options`);
+  },
+  list: (ipId?: string): Promise<Mock.Composition[]> => {
+    if (USE_MOCK) return mock(ipId ? mockCompositions.filter((c) => c.ipId === ipId) : mockCompositions.slice());
+    return apiFetch(`/compositions${ipId ? `?ipId=${encodeURIComponent(ipId)}` : ""}`);
+  },
+  get: (id: string): Promise<Mock.Composition> => {
+    if (USE_MOCK) return mock(mockCompositions.find((c) => c.id === id) || mockCompositions[0]);
+    return apiFetch(`/compositions/${id}`);
+  },
+  /** 提交合成（授权核对 → 建单 → 异步出片）→ { composition, job }。 */
+  create: (body: { avatarId: string; sceneId: string; productId?: string | null; styleId?: string | null; ratio?: string; count?: number; extraPrompt?: string }): Promise<any> => {
+    if (USE_MOCK) {
+      const avatar: any = mockChars.find((c: any) => c.id === body.avatarId) || mockChars[0];
+      const scene = mockScenes.find((s) => s.id === body.sceneId) || mockScenes[0];
+      const product = body.productId ? mockProducts.find((p) => p.id === body.productId) : null;
+      const style = body.styleId ? mockStyles.find((s) => s.id === body.styleId) : null;
+      const count = body.count || 4;
+      const ratio = body.ratio || "9:16";
+      const parts: string[] = [];
+      parts.push(avatar.path === "real"
+        ? `人物 ${avatar.license || "LIC-未登记"} 有效`
+        : "人物为 AI 原创，无需肖像授权");
+      parts.push(scene.source === "shot" ? "场景为自有实拍" : "场景为 AI 生成");
+      if (product) {
+        parts.push(product.brandAuthorized
+          ? `产品已获品牌方授权${product.brandLicenseUntil ? `（至 ${product.brandLicenseUntil}）` : ""}`
+          : "产品未登记品牌方授权，请确认商用范围");
+      }
+      const comp: Mock.Composition = {
+        id: `CP-${mockSeq++}`, avatarId: avatar.id, sceneId: scene.id,
+        productId: product?.id || null, styleId: style?.id || null,
+        ipId: avatar.ipId || product?.ipId || scene.ipId || null,
+        ratio, count, status: "running", jobId: null,
+        licenseNote: `已核对授权：${parts.join("，")}，可商用。`,
+        cost: MOCK_COST_PER_IMAGE * count, created: "刚刚", outputs: [], sources: [],
+      };
+      mockCompositions.unshift(comp);
+      const pool = [avatar.imageUrl || "/plaza/PA-07-1.jpg", scene.imageUrl || "", "/plaza/PA-07-2.jpg", "/plaza/PA-06-1.jpg"];
+      const job = mockAssetJob("跨资产合成", comp.id, `${avatar.name} × ${scene.name}`, () => {
+        comp.status = "done";
+        comp.outputs = Array.from({ length: count }).map((_, i) => ({
+          id: `CO-${mockSeq++}`, idx: i, no: String(i + 1).padStart(2, "0"),
+          url: pool[i % pool.length], spec: "768 × 1365 · PNG",
+        }));
+        comp.sources = [
+          { kind: "character", id: `${avatar.id} · v${avatar.versions || 1}`, name: avatar.name, thumbUrl: avatar.imageUrl || "/plaza/PA-07-1.jpg" },
+          { kind: "scene", id: scene.id, name: scene.name, thumbUrl: scene.imageUrl || null },
+          ...(product ? [{ kind: "product", id: product.id, name: product.name, thumbUrl: product.imageUrl || null }] : []),
+          ...(style ? [{ kind: "style", id: style.id, name: style.name, thumbUrl: style.coverUrl || null }] : []),
+        ];
+        const usage: Mock.AssetUsage = {
+          usedByType: "composition", usedById: comp.id,
+          title: `${avatar.name} × ${scene.name}${product ? ` × ${product.name}` : ""}`,
+          meta: `合成工作台 · ${new Date().toISOString().slice(0, 10)} 出片`,
+          thumbUrl: comp.outputs[0]?.url || null, times: 1,
+        };
+        mockRecordUsage("character", avatar.id, usage);
+        mockRecordUsage("scene", scene.id, usage);
+        if (product) { mockRecordUsage("product", product.id, usage); product.usageCount += 1; }
+        if (style) { mockRecordUsage("style", style.id, usage); style.useCount += 1; }
+        if (comp.ipId) mockRecordUsage("ip", comp.ipId, usage);
+        scene.usageCount += 1;
+      });
+      comp.jobId = job.id;
+      return mock({ composition: comp, job: { ...job } });
+    }
+    return apiFetch(`/compositions`, { method: "POST", body: JSON.stringify(body) });
   },
 };

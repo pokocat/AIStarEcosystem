@@ -34,6 +34,12 @@ public class DapPricingService {
     public static final String ACTION_DERIVE_D3 = "dap.derive-d3";
     public static final String ACTION_DERIVE_VIDEO = "dap.derive-video";
     public static final String ACTION_VOICE_CLONE = "dap.voice-clone";
+    // 数字资产平台（六类资产 + 跨资产合成）
+    public static final String ACTION_SCENE_GENERATE = "dap.scene-generate";
+    public static final String ACTION_SCENE_VARIANT = "dap.scene-variant";
+    public static final String ACTION_PRODUCT_GENERATE = "dap.product-generate";
+    public static final String ACTION_PRODUCT_ANGLE = "dap.product-angle";
+    public static final String ACTION_COMPOSE = "dap.compose";
 
     private final DapProperties props;
     private final CelebrityActionPricingService actionPricing;
@@ -61,6 +67,12 @@ public class DapPricingService {
     public long warp()           { return of(ACTION_WARP, props.getPricing().getWarp()); }
     public long look()           { return of(ACTION_LOOK, props.getPricing().getLook()); }
     public long voiceClone()     { return of(ACTION_VOICE_CLONE, props.getPricing().getVoiceClone()); }
+    public long sceneGenerate()  { return of(ACTION_SCENE_GENERATE, props.getPricing().getSceneGenerate()); }
+    public long sceneVariant()   { return of(ACTION_SCENE_VARIANT, props.getPricing().getSceneVariant()); }
+    public long productGenerate(){ return of(ACTION_PRODUCT_GENERATE, props.getPricing().getProductGenerate()); }
+    public long productAngle()   { return of(ACTION_PRODUCT_ANGLE, props.getPricing().getProductAngle()); }
+    /** 合成单价（按出图张数计，提交时 × count）。 */
+    public long compose()        { return of(ACTION_COMPOSE, props.getPricing().getCompose()); }
 
     public long derive(String derivKey) {
         DapProperties.Pricing p = props.getPricing();

@@ -39,7 +39,7 @@ public final class DapDtos {
             Map<String, Object> deriv, Map<String, Object> counts,
             int versions, String voiceName,
             String imageUrl, List<String> variantImages, Map<String, String> shotImages,
-            String descPrompt, Map<String, Object> form) {
+            String descPrompt, Map<String, Object> form, String ipId) {
 
         public static AvatarDto from(DapAvatar a, String updatedZh, Function<String, String> keyToUrl) {
             List<String> variants = a.getVariantKeys() == null ? List.of()
@@ -57,7 +57,7 @@ public final class DapDtos {
                     a.getPalette(), a.defOrEmpty(), a.derivOrEmpty(), a.countsOrEmpty(),
                     a.getVersions(), a.getVoiceName(),
                     a.getImageKey() != null ? keyToUrl.apply(a.getImageKey()) : null,
-                    variants, shots, a.getDescPrompt(), a.getForm());
+                    variants, shots, a.getDescPrompt(), a.getForm(), a.getIpId());
         }
     }
 
@@ -117,7 +117,8 @@ public final class DapDtos {
     // ── 授权 ──────────────────────────────────────────────────
 
     public record LicenseDto(String id, String subject, String avatarId, String scope, String period,
-                             List<String> platforms, String status, String signed, int photos) {
+                             List<String> platforms, String status, String signed, int photos,
+                             String ipId, String expiresOn) {
 
         /** wire 字段名 char 是 TS 侧命名；Java 关键字冲突 → 用 avatarId 承载 + 控制器序列化别名。 */
         public static LicenseDto from(DapLicense l) {
@@ -127,7 +128,8 @@ public final class DapDtos {
             return new LicenseDto(l.getId(), l.getSubject(), l.getAvatarId(), l.getScope(), period,
                     l.getPlatforms(), l.getStatus(),
                     l.getSignedAt() != null ? DATE.format(l.getSignedAt()) : "—",
-                    l.getPhotoCount());
+                    l.getPhotoCount(), l.getIpId(),
+                    l.getPeriodEnd() != null ? YM.format(l.getPeriodEnd()) : null);
         }
 
         /** 输出为前端契约形状（含 char 字段）。 */
@@ -142,6 +144,8 @@ public final class DapDtos {
             m.put("status", status);
             m.put("signed", signed);
             m.put("photos", photos);
+            if (ipId != null) m.put("ipId", ipId);
+            if (expiresOn != null) m.put("expiresOn", expiresOn);
             return m;
         }
     }
@@ -151,7 +155,7 @@ public final class DapDtos {
     public record JobDto(String id, String avatarId, String charName, String kind, String engine,
                          String mode, String status, int pct, String eta, String started,
                          String type, String stage, String stageUpdatedAt,
-                         String error, Map<String, Object> result) {
+                         String error, Map<String, Object> result, String assetId) {
 
         public static JobDto from(DapJob j, Function<Instant, String> hm) {
             return new JobDto(j.getId(), j.getAvatarId(), j.getCharName(), j.getKind(), j.getEngine(),
@@ -159,7 +163,7 @@ public final class DapDtos {
                     hm.apply(j.getStartedAt() != null ? j.getStartedAt() : j.getCreatedAt()),
                     j.getType(), j.getStage(),
                     j.getStageUpdatedAt() != null ? j.getStageUpdatedAt().toString() : null,
-                    j.getErrorMessage(), j.getResult());
+                    j.getErrorMessage(), j.getResult(), j.getAssetId());
         }
 
         /** 输出为前端契约形状（含 char 字段 = avatarId）。 */
@@ -176,6 +180,7 @@ public final class DapDtos {
             m.put("eta", eta);
             m.put("started", started);
             m.put("type", type);
+            if (assetId != null) m.put("assetId", assetId);
             if (stage != null) m.put("stage", stage);
             if (stageUpdatedAt != null) m.put("stageUpdatedAt", stageUpdatedAt);
             if (error != null) m.put("error", error);

@@ -43,6 +43,12 @@ public class DapJob {
     public static final String T_DERIVE = "derive";               // 衍生（payload.derivKey 细分）
     public static final String T_VOICE_CLONE = "voice_clone";     // 声音克隆登记
     public static final String T_REFINE_LOCAL = "refine_local";   // 端上精调（浏览器实时美颜，成品回传落库）
+    // ── 数字资产平台（六类资产 + 跨资产合成）────────────────────
+    public static final String T_SCENE_GEN = "scene_gen";         // AI 生成场景（SC-）
+    public static final String T_SCENE_VARIANT = "scene_variant"; // 场景光线变体
+    public static final String T_PRODUCT_GEN = "product_gen";     // AI 生成产品主图（PD-）
+    public static final String T_PRODUCT_ANGLE = "product_angle"; // 产品补充角度
+    public static final String T_COMPOSE = "compose";             // 人物 × 场景 × 产品 → 成片（CP-）
 
     @Id
     @Column(length = 32)
@@ -53,6 +59,13 @@ public class DapJob {
 
     @Column(length = 32)
     private String avatarId;
+
+    /**
+     * 关联的非人物资产 id（SC- / PD- / CP-）。人物类作业留空，仍用 {@link #avatarId}。
+     * 任务中心「查看」按它回跳对应资产详情。
+     */
+    @Column(length = 32)
+    private String assetId;
 
     /** 冗余：资产名（任务列表直接显示，避免 N+1）。 */
     @Column(length = 128)

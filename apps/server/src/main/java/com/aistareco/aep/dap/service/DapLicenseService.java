@@ -102,6 +102,41 @@ public class DapLicenseService {
         return l;
     }
 
+    /**
+     * IP 容器授权登记（设计 §02：六类资产里只有真人肖像人物与 IP 需要 LIC；
+     * 场景 / 产品 / 风格是轻资产只记来源）。
+     */
+    @Transactional
+    public Map<String, Object> createForIp(String userId, String ipId, String subject, String scope,
+                                           Integer years, List<String> platforms) {
+        int y = years == null || years <= 0 ? 2 : Math.min(50, years);
+        DapLicense l = DapLicense.builder()
+                .id(uniqueId())
+                .ownerUserId(userId)
+                .subject(subject == null || subject.isBlank() ? "IP 品牌授权" : subject.trim())
+                .ipId(ipId)
+                .scope(scope == null || scope.isBlank() ? "品牌商用 / 全平台" : scope.trim())
+                .periodStart(Instant.now())
+                .periodEnd(Instant.now().plus(365L * y, ChronoUnit.DAYS))
+                .platforms(platforms == null || platforms.isEmpty() ? List.of("全平台") : platforms)
+                .status("active")
+                .signedAt(Instant.now())
+                .photoCount(0)
+                .createdAt(Instant.now())
+                .build();
+        licenseRepo.save(l);
+        return LicenseDto.from(l).toWire();
+    }
+
+    /** 授权状态（active | pending | expired）；不存在返回 null。到期即时判定，不依赖懒刷新。 */
+    public String statusOf(String userId, String licenseId) {
+        if (licenseId == null || licenseId.isBlank()) return null;
+        return licenseRepo.findByIdAndOwnerUserId(licenseId, userId)
+                .map(l -> ("active".equals(l.getStatus()) && l.getPeriodEnd() != null
+                        && l.getPeriodEnd().isBefore(Instant.now())) ? "expired" : l.getStatus())
+                .orElse(null);
+    }
+
     @Transactional
     public Map<String, Object> renew(String userId, String id) {
         DapLicense l = required(userId, id);
@@ -174,7 +209,7 @@ public class DapLicenseService {
                 """.formatted(
                 l.getId(), l.getId(), l.getId(),
                 esc(l.getSubject()),
-                l.getAvatarId() == null ? "—" : l.getAvatarId(),
+                l.getAvatarId() != null ? l.getAvatarId() : (l.getIpId() != null ? l.getIpId() : "—"),
                 esc(l.getScope()),
                 period,
                 l.getPlatforms() == null || l.getPlatforms().isEmpty() ? "全平台" : String.join(" · ", l.getPlatforms()),

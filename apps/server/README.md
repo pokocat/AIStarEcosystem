@@ -394,21 +394,30 @@ src/main/java/com/aistareco/aep/
 种子（dev）：`star_shenteng / star123` 绑 `star-shen-teng`，全模块演示数据
 （`StarWorkbenchDataInitializer` @Order(3)）。
 
-### 数字人资产平台域（dap_*，v0.51）
+### 数字资产平台域（dap_*，v0.51 起；v0.104 扩为六类资产）
 
 > 服务 apps/web-aiavatar（/api/v1/**）。账户复用 aep_users + 钱包；多模态大模型（文本/图片/视频）经 `DapMultimodalClient` 统一从后台「AI 应用绑定」端点解析（purpose=DAP_PERSONA/DAP_IMAGE/DAP_VIDEO，无 env 兜底）。
+>
+> **v0.104**：数字人不再是唯一的资产种类，而是六类之一 —— `DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 / `VO-` 声音 / `ST-` 风格。授权登记只发给真人肖像人物与 IP；场景 / 产品 / 风格是轻资产只记来源。IP 是容器（成员靠各实体的 `ipId` 指向），合成产物回流为它的衍生物并双向记引用。
 
 | 表 | 说明 |
 |------|------|
-| `dap_avatar` | 数字人本体（8 态状态机 draft→…→archived；def/deriv/counts JSON；imageKey/variantKeys/shotKeys 存 storage key） |
+| `dap_avatar` | 数字人本体（8 态状态机 draft→…→archived；def/deriv/counts JSON；imageKey/variantKeys/shotKeys 存 storage key；v0.104 加 `ipId` 归属列） |
 | `dap_avatar_version` | 版本时间线（init/iterate/refine/template/finalize/archive 事件 + 当时主图） |
 | `dap_look` | 造型（design 描述 / scene 场景替换，异步生成） |
 | `dap_derivative` | 衍生产物（atlas/expr/scene/ward/d3/video 单条文件 + bytes 存储统计） |
-| `dap_license` | 真人肖像电子授权（捕获核验自动登记；HTML 凭证 certKey） |
-| `dap_job` | 异步作业（wire 三态 running/done/failed；cost + hold referenceId=jobId:rN） |
+| `dap_license` | 电子授权（真人肖像捕获核验自动登记 / IP 容器手动登记；HTML 凭证 certKey；v0.104 加 `ipId`，与 `avatarId` 二选一） |
+| `dap_job` | 异步作业（wire 三态 running/done/failed；cost + hold referenceId=jobId:rN；v0.104 加 `assetId` 承载 SC-/PD-/CP- 类作业） |
 | `dap_voice` | 我的声线（克隆采样加密存档，试听=采样回放） |
 | `dap_capture` | 真人捕获会话（footage + ffmpeg 抽帧 frameKey） |
 | `dap_photo` | 形象照片素材（上传照片复刻输入） |
+| `dap_asset_ip` | **v0.104** IP 容器（IP-xxxx；六类里唯一的容器，下挂人物/场景/产品/声音；`licenseId` 指向 LIC 凭证） |
+| `dap_scene` | **v0.104** 场景资产（SC-xxxx；`source=shot\|ai` 只记来源不进授权；`variantsJson` 光线变体**只存 cdnKey**，§4.7.7） |
+| `dap_product` | **v0.104** 产品资产（PD-xxxx；`anglesJson` 多角度**只存 cdnKey**；`brandAuthorized`/`brandLicenseUntil` 是备注不是凭证） |
+| `dap_style` | **v0.104** 风格模板（ST-xxxx；`promptEn` 叠加进出图 prompt；`useCount` 被合成引用次数） |
+| `dap_composition` | **v0.104** 跨资产合成单（CP-xxxx；人物 × 场景 × 产品 → 成片；`licenseNote` 出片前授权核对结论快照） |
+| `dap_composition_output` | **v0.104** 合成产物单张（入库即该 IP 的衍生物） |
+| `dap_asset_usage` | **v0.104** 引用台账（驱动详情页「APPLIED TO · 已用于」；同一对 资产→用处 重复引用累加 `times` 不新增行） |
 
 ### 核心表（账户与计费域）
 

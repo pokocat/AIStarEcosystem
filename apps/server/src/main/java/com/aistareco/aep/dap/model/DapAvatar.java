@@ -83,6 +83,10 @@ public class DapAvatar {
     @Column(length = 32)
     private String licenseId;
 
+    /** 归属 IP 容器 id（IP-xxxx；null = 未收拢进任何 IP）。 */
+    @Column(length = 32)
+    private String ipId;
+
     /** true = 占位产物（未配置生成引擎时降级），前端显示 MOCK 角标。 */
     @Builder.Default
     private boolean mock = false;

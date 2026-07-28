@@ -1,7 +1,9 @@
-# AiAvatar · 数字人资产平台（web-aiavatar）
+# AiAvatar · 数字资产平台（web-aiavatar）
 
-> 移动端 H5 / 微信小程序形态的「数字人资产平台」。真人授权复刻 / 纯 AI 原创两条创建路径，
-> 形象 · 声音 · 衍生物（图集 / 表情 / 场景 / 换装 / 3D / 运镜视频）一站式沉淀为可复用资产，
+> 移动端 H5 / 微信小程序形态的「数字资产平台」。**六类资产**共用一套登记语言 ——
+> `DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 / `VO-` 声音 / `ST-` 风格；
+> IP 是容器，合成工作台把 人物 × 场景 × 产品 变成成片；
+> 形象 · 声音 · 衍生物（图集 / 表情 / 场景 / 换装 / 3D / 运镜视频）与跨资产成片一站式沉淀为可复用资产，
 > 并一键接入下游子应用（音乐 / 短剧 / 带货）。
 >
 > 本 app 是上传的《数字人资产平台 — 数据模型与系统逻辑规格》+ Figma Make 移动端原型
@@ -40,14 +42,30 @@ pnpm build:turbo                   # Turbopack 构建（可选）
 
 ---
 
-## 屏幕地图（18 屏）
+## 屏幕地图（27 屏）
 
-底部 5 Tab：`首页 · 数字人 · ＋创建 · 应用 · 我的`（＋为中间凸起，弹路径选择 sheet）。
+底部 5 Tab：`首页 · 资产库 · ＋创建 · 应用 · 我的`（＋为中间凸起，弹「先选类型再选来源」sheet）。
+
+### 数字资产平台（v0.104 新增 9 屏 / 改造 4 屏）
 
 | 屏 | 入口 | 说明 |
 |---|---|---|
-| 首页 | Tab | 悬浮轮播 + 「我的数字人资产」横滑 + 空态引导 + 开始创作大卡 |
-| 数字人库 | Tab | mine / public · 搜索 / 分类筛选 / 网格切换 |
+| 首页 · 资产总览 | Tab（改造） | 合成 banner + 六类资产瓦片（数量 + 登记前缀）+ 跨类型最近更新 + 人物 rail |
+| 资产库 | Tab（改造） | 我的资产 / 资产广场 · 六类分类 pill（全部时分区总览）· 搜索 |
+| 场景库 / 产品库 / 风格模板库 | 资产库分类 | 来源（实拍 / AI）+ 空间筛选；上传 / 生成入口同格 |
+| IP 详情 · 资产容器 | IP 卡 | 下挂 人物 / 场景 / 产品 / 声音 + 作品 + 授权三 tab；「用这个 IP 合成」 |
+| IP 授权 | IP 详情 | LIC 凭证 · 有效期 · 续签 |
+| 场景详情 | 场景卡 | 规格档案 · 光线变体 · APPLIED TO 已用于 |
+| 产品详情 | 产品卡 | 多角度 + 品牌授权备注 · READY FOR 可直接产出 |
+| 合成工作台 | banner / IP / 场景 / 产品 | 人物 × 场景 × 产品 选料 + 出片设置 + 授权核对 + COST |
+| 合成结果 | 合成完成 | ARCHIVED 钢印 · 成片网格 · SOURCE 用到的资产 · 回流入库 |
+| 新建资产 sheet | ＋ 创建（改造） | 先选类型（六类）再选来源（上传 / AI 生成两路并重） |
+| 存储用量 | 我的（改造） | 按六类资产 + 合成产物 + 授权素材拆分 |
+
+### 数字人主线（沿用）
+
+| 屏 | 入口 | 说明 |
+|---|---|---|
 | 资产详情 | 卡片 | 形象设定 def / 标准图集 / 衍生物 / 版本 / 授权 + 音色 pill |
 | 造型档案 / 设计造型 | 详情 | final 造型列表 + AI 设计造型（描述 / 场景库替换） |
 | 衍生查看 | 详情 | 某类衍生物多张产出（图集 / 场景 / 3D 可旋转 / 视频可播放） |
@@ -108,6 +126,50 @@ src/
 ---
 
 ## 版本日志
+
+### v0.104（2026-07-27）— 从「数字人平台」扩展为「数字资产平台」（六类资产 + IP 容器 + 跨资产合成）
+
+设计真源：claude.ai/design 项目「数字资产平台」`数字资产平台.dc.html`（18 屏 → 27 屏：新增 9 / 改造 4）。
+
+**产品骨架不变**（每个资产仍是被登记、编号、版本化的档案），**唯一根本变化**：
+数字人不再是唯一的资产种类，而是六类之一。
+
+1. **六类资产 + 统一登记语言**：`DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 /
+   `VO-` 声音 / `ST-` 风格。衬线资产名 + REG 编号 + 版本 + 更新时间；分类靠**前缀与图标**
+   区分不靠颜色（沿用 Collapsed-Rainbow 纪律）。
+2. **授权模型收窄**：只有「真人肖像人物」与「IP」进授权登记（LIC 凭证 / 有效期 / 续签）；
+   场景 / 产品 / 风格是轻资产，只记来源（实拍上传 or AI 生成）。授权徽标因此仍然稀有。
+3. **IP 成为容器**：`DapAssetIp` 下挂人物 / 场景 / 产品 / 声音（成员靠各实体的 `ipId` 指向，
+   删 IP 只解绑不删成员）；详情页三 tab = 资产 / 作品 / 授权。
+4. **跨资产合成**：`POST /v1/compositions`（人物 × 场景 × 产品 → 成片）。出片前做**授权核对** ——
+   真人复刻缺生效 LIC 直接 403 `DAP_LICENSE_REQUIRED`，不建单不扣费；产物入库登记为该 IP 的
+   衍生物，并给每个用到的资产写一条 `DapAssetUsage` 双向引用（驱动详情页「APPLIED TO · 已用于」）。
+5. **底部第二个 Tab**「数字人」→「**资产库**」；首页 rail 升级为六类资产总览 + 跨类型最近更新；
+   创建 sheet 改为「先选类型，再选来源」；存储用量按六类资产口径拆分。
+
+**server**（`com.aistareco.aep.dap.*`）：新增 7 张表
+（`dap_asset_ip` / `dap_scene` / `dap_product` / `dap_style` / `dap_composition` /
+`dap_composition_output` / `dap_asset_usage`）+ `DapAvatar.ipId` / `DapLicense.ipId` 两列；
+新服务 `DapAssetService`（登记 / 检索 / 容器关系 / 引用台账）、`DapCompositionService`（授权核对 +
+建单）、`DapAssetJobs`（场景生成 / 光线变体 / 产品图 / 补角度 / 合成五类执行体，进度与取消仍由
+`DapJobRunner` 收口）；`DapImageInput` 抽出人物线与资产线共用的 i2i 参考图解析；
+新 prompt key `dap.{scene_image,scene_variant,product_image,product_angle,compose}`（admin 可改）；
+新单价 `dap.{scene-generate,scene-variant,product-generate,product-angle,compose}`（admin 动作单价表可配，
+按张计费）。**§4.7 纪律**：新表文件字段一律存 storage key，JSON 文档（变体 / 多角度）里也只存
+`cdnKey`，URL 出 wire 时由 `FileStorageService::signedUrl` 逐条派生。
+
+**前端**：`data.ts` 补六类资产类型 + mock；`api.ts` 新增 `AssetApi` / `ComposeApi`（含 mock 任务
+模拟器，产物在任务翻 done 的同一刻同步回填，与 `awaitJob` 解析时机对齐）；新增
+`asset-kit.tsx`（登记语言原语）/ `asset-create.tsx`（六类新建流程）/ `screen-assets.tsx` /
+`screen-ip.tsx` / `screen-scene.tsx` / `screen-product.tsx` / `screen-compose.tsx`；
+六类资产深链 `#/ip|scene|product|style|compose/<id>` 支持冷启动还原。
+
+门禁：server `compile` + `mvnw test` **409/409 全绿、0 失败**（本机需 `AEP_CDN_DRIVER=local`
+覆盖 `apps/server/.env` 里的 `oss`，否则 30 个 `@SpringBootTest` 上下文加载失败 —— 已核实为
+**与本轮无关的既有本地环境问题**，干净树同样复现，记入 `TODO.md` 2026-07-27 段）/
+`pnpm typecheck:all`（10/10）/ web-aiavatar `build` / `pnpm check:api-contract` 全绿；mock 模式浏览器实测走通「首页总览 → 资产库 → IP 详情 →
+合成工作台 → 合成结果 → 场景详情看到新增的『已用于』→ 场景光线变体 → 新建资产 sheet →
+AI 生成场景 → 存储用量」整条链路。
 
 - **2026-06-26 · 接入积分钱包在线充值（v2 §6）**：「会员与算力 → 充值算力」从静态 PACKS + 死按钮
   （「在线支付通道接入中」）改为真在线支付。`api.ts` 加 `WalletApi`（packages / checkout / confirmShadow）
