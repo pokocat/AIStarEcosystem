@@ -18,6 +18,13 @@ public interface DapMaterialGroupRepository extends JpaRepository<DapMaterialGro
 
     Optional<DapMaterialGroup> findFirstByCaptureIdAndOwnerUserIdOrderByCreatedAtDesc(String captureId, String ownerUserId);
 
+    /**
+     * 同一真人资产复用已经 active 的 liveness 分组。avatarId 在当前产品中就是真人主体边界；
+     * 新素材只需挂到同一个 qgroupid 逐条审核，不应每次录制都重新刷脸、重新占用上游分组配额。
+     */
+    Optional<DapMaterialGroup> findFirstByAvatarIdAndOwnerUserIdAndKindAndModelAndStatusAndRecycledAtIsNullOrderByCreatedAtDesc(
+            String avatarId, String ownerUserId, String kind, String model, String status);
+
     /** 轮询器收敛用（preparing / validating 等非终态）。 */
     List<DapMaterialGroup> findByStatusIn(Collection<String> statuses);
 

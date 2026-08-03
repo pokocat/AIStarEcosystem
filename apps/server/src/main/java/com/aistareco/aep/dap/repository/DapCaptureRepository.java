@@ -13,6 +13,7 @@ import java.util.Optional;
 public interface DapCaptureRepository extends JpaRepository<DapCapture, String> {
     Optional<DapCapture> findByIdAndOwnerUserId(String id, String ownerUserId);
     Optional<DapCapture> findFirstByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc(String avatarId, String ownerUserId);
+    List<DapCapture> findByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc(String avatarId, String ownerUserId);
     @Query("SELECT COALESCE(SUM(c.bytes),0) FROM DapCapture c WHERE c.ownerUserId = :uid")
     long sumBytesByOwner(@Param("uid") String uid);
     List<DapCapture> findByAvatarId(String avatarId);

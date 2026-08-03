@@ -142,7 +142,38 @@ class DapMaterialServiceTest {
         verify(modelink).createAsset(eq("image"), contains("frame"), eq("m1"),
                 eq("https://cdn.example/dap/capture/u/a.png"), eq("qg-1"));
         assertTrue(out.get(0).qassetUri().startsWith("qasset://"));
+        assertTrue(out.get(0).sourceUrl().startsWith("https://cdn.example/"));
         assertEquals("pending", out.get(0).status());
+    }
+
+    @Test
+    void videoGenerationUsesOnlyApprovedQassetFromSameAvatar() {
+        DapCapture capture = capture();
+        when(captureRepo.findByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc("DH-1", USER))
+                .thenReturn(List.of(capture));
+        List<MaterialDto> submitted = svc.submitForCapture(USER, capture, group());
+        db.get(submitted.get(0).id()).setStatus("approved");
+
+        assertEquals(submitted.get(0).qassetUri(), svc.requireApprovedGenerationAsset(USER, "DH-1"));
+        assertEquals(submitted.get(0).qassetUri(),
+                svc.requireApprovedGenerationAsset(USER, "DH-1", submitted.get(0).id()));
+    }
+
+    @Test
+    void videoGenerationRejectsPendingOrForeignMaterial() {
+        DapCapture capture = capture();
+        when(captureRepo.findByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc("DH-1", USER))
+                .thenReturn(List.of(capture));
+        List<MaterialDto> submitted = svc.submitForCapture(USER, capture, group());
+
+        BusinessException noneApproved = assertThrows(BusinessException.class,
+                () -> svc.requireApprovedGenerationAsset(USER, "DH-1"));
+        assertEquals("DAP_MATERIAL_APPROVAL_REQUIRED", noneApproved.getCode());
+
+        db.get(submitted.get(0).id()).setStatus("approved");
+        BusinessException foreign = assertThrows(BusinessException.class,
+                () -> svc.requireApprovedGenerationAsset(USER, "DH-1", "MAT-FOREIGN"));
+        assertEquals("DAP_MATERIAL_NOT_USABLE", foreign.getCode());
     }
 
     @Test

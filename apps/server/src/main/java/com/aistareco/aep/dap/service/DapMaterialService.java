@@ -82,7 +82,61 @@ public class DapMaterialService {
             throw BusinessException.badRequest("DAP_MATERIAL_REF_REQUIRED", "缺少查询条件（refType + refId）");
         }
         return materialRepo.findByRefTypeAndRefIdAndOwnerUserIdOrderByCreatedAtDesc(refType, refId, userId)
-                .stream().map(MaterialDto::from).toList();
+                .stream().map(m -> MaterialDto.from(m, storage::signedUrl)).toList();
+    }
+
+    /** 授权登记按真人资产查看：汇总人物主图和该人物历次捕获素材的逐条审核状态。 */
+    public List<MaterialDto> listByAvatarSubject(String userId, String avatarId) {
+        avatarRepo.findByIdAndOwnerUserId(avatarId, userId)
+                .filter(x -> x.getDeletedAt() == null)
+                .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "数字人不存在或无权访问"));
+        List<DapMaterial> rows = new ArrayList<>(materialRepo
+                .findByRefTypeAndRefIdAndOwnerUserIdOrderByCreatedAtDesc("avatar", avatarId, userId));
+        for (DapCapture capture : captureRepo.findByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc(avatarId, userId)) {
+            rows.addAll(materialRepo.findByRefTypeAndRefIdAndOwnerUserIdOrderByCreatedAtDesc(
+                    "capture", capture.getId(), userId));
+        }
+        return rows.stream()
+                .sorted(java.util.Comparator.comparing(DapMaterial::getCreatedAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .map(m -> MaterialDto.from(m, storage::signedUrl)).toList();
+    }
+
+    /**
+     * 真人视频生成只允许引用已通过七牛审核的素材 qassetid。
+     * 优先视频，其次关键帧图片；返回 qasset:// 引用供生成引擎消费。
+     */
+    public String requireApprovedGenerationAsset(String userId, String avatarId) {
+        return requireApprovedGenerationAsset(userId, avatarId, null);
+    }
+
+    public String requireApprovedGenerationAsset(String userId, String avatarId, String materialId) {
+        List<DapMaterial> approved = new ArrayList<>();
+        for (DapCapture capture : captureRepo.findByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc(avatarId, userId)) {
+            materialRepo.findByRefTypeAndRefIdAndOwnerUserIdOrderByCreatedAtDesc("capture", capture.getId(), userId)
+                    .stream()
+                    .filter(m -> "approved".equals(m.getStatus()) && m.getQassetid() != null && !m.getQassetid().isBlank())
+                    .forEach(approved::add);
+        }
+        if (materialId != null && !materialId.isBlank()) {
+            DapMaterial selected = approved.stream().filter(m -> materialId.equals(m.getId())).findFirst().orElse(null);
+            if (selected == null) {
+                throw BusinessException.badRequest("DAP_MATERIAL_NOT_USABLE", "所选真人素材未通过审核或不属于该人物");
+            }
+            return "qasset://" + selected.getQassetid();
+        }
+        DapMaterial selected = approved.stream()
+                .sorted(java.util.Comparator
+                        .comparing((DapMaterial m) -> "video".equals(m.getType()) ? 0 : 1)
+                        .thenComparing(DapMaterial::getCreatedAt,
+                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .findFirst().orElse(null);
+        if (selected == null) {
+            throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,
+                    "DAP_MATERIAL_APPROVAL_REQUIRED",
+                    "该真人形象还没有审核通过的素材，请等待素材审核通过后再生成视频");
+        }
+        return "qasset://" + selected.getQassetid();
     }
 
     /** 该数字人定妆图最新一条送审记录（详情页 moderation 用；无则 null）。 */
@@ -115,13 +169,13 @@ public class DapMaterialService {
             String type = isFootage ? typeOfContentType(capture.getFootageContentType(), key) : "image";
             DapMaterial existing = findReusable(userId, "capture", capture.getId(), key);
             if (existing != null) {
-                out.add(MaterialDto.from(existing));
+                out.add(MaterialDto.from(existing, storage::signedUrl));
                 continue;
             }
             out.add(MaterialDto.from(submit(userId, "capture", capture.getId(), type,
                     "capture-" + capture.getId() + "-" + e.getValue(), key,
                     group == null ? null : group.getId(),
-                    group == null ? null : group.getQgroupid())));
+                    group == null ? null : group.getQgroupid()), storage::signedUrl));
         }
         return out;
     }
@@ -148,14 +202,14 @@ public class DapMaterialService {
             throw BusinessException.badRequest("DAP_NO_IMAGE", "该数字人还没有定妆形象，先完成创建再送审");
         }
         DapMaterial existing = findReusable(userId, "avatar", avatarId, a.getImageKey());
-        if (existing != null) return MaterialDto.from(existing);
+        if (existing != null) return MaterialDto.from(existing, storage::signedUrl);
         // 数字人专属 aigc 分组；尚未 active（首次使用的异步 pending 窗口）→ 本次不传 group_id，
         // 由平台按 (uid, aigc, model) 落默认组，best-effort 不阻断送审
         DapMaterialGroup g = aigcGroups.resolveActiveGroup(modelink.boundModel());
         return MaterialDto.from(submit(userId, "avatar", avatarId, "image",
                 "avatar-" + avatarId, a.getImageKey(),
                 g == null ? null : g.getId(),
-                g == null ? null : g.getQgroupid()));
+                g == null ? null : g.getQgroupid()), storage::signedUrl);
     }
 
     private DapMaterial submit(String userId, String refType, String refId, String type,

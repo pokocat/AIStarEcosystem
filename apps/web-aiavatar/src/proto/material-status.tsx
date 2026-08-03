@@ -57,23 +57,25 @@ export function MaterialRow({ item, last }: any) {
     },
   },
     hM("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
-      hM("span", {
+      item.sourceUrl ? hM(item.type === "video" ? "video" : "img", {
+        src: item.sourceUrl, muted: true, playsInline: true, preload: "metadata", alt: item.name,
+        style: { width: 42, height: 42, flex: "0 0 42px", borderRadius: 9, objectFit: "cover", background: "var(--surface-3)" },
+      }) : hM("span", {
         style: {
-          display: "grid", placeItems: "center", width: 28, height: 28, flex: "0 0 28px",
+          display: "grid", placeItems: "center", width: 42, height: 42, flex: "0 0 42px",
           borderRadius: 8, background: "var(--surface-3)", color: "var(--ink-2)",
         },
       }, hM(Ico, { size: 14, stroke: 2 })),
-      hM("span", {
-        title: item.name,
-        style: {
-          flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: "var(--ink)",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        },
-      }, item.name),
+      hM("span", { style: { flex: 1, minWidth: 0 } },
+        hM("span", {
+          title: item.name,
+          style: { display: "block", fontSize: 13, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+        }, item.name),
+        item.status === "approved" && item.qassetUri && hM("span", { className: "mono", style: { display: "block", marginTop: 3, fontSize: 9.5, color: "var(--ink-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, item.qassetUri)),
       hM(MaterialBadge, { status: item.status })),
     item.status === "failed" && item.failReason && hM("div", {
       style: {
-        marginTop: 5, marginLeft: 38, fontSize: 11.5, color: "var(--err)",
+        marginTop: 5, marginLeft: 52, fontSize: 11.5, color: "var(--err)",
         lineHeight: 1.45, wordBreak: "break-word",
       },
     }, item.failReason));

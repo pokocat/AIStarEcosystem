@@ -67,7 +67,11 @@ public class DapRealAuthService {
 
     // ── 会话 ───────────────────────────────────────────────────
 
-    /** 开启（或幂等复用）某次真人捕获的刷脸认证会话。 */
+    /**
+     * 开启某次真人捕获的认证会话。
+     * 同一 avatarId 代表同一真人主体：已有 active 的七牛真人组时复用其 qgroupid，
+     * 只为本次捕获建立一条本地证据行；新素材仍会逐条送审并获得各自 qassetid。
+     */
     @Transactional
     public RealAuthSessionDto start(String userId, String captureId, String agreementVersion,
                                     Boolean agreementAccepted, String clientIp, String userAgent) {
@@ -92,7 +96,17 @@ public class DapRealAuthService {
             if (existing != null) recycleGroup(existing);
         }
 
-        return createSession(c, consent);
+        String model = modelink.boundModel();
+        if (c.getAvatarId() != null && !c.getAvatarId().isBlank()) {
+            DapMaterialGroup activeSubjectGroup = groupRepo
+                    .findFirstByAvatarIdAndOwnerUserIdAndKindAndModelAndStatusAndRecycledAtIsNullOrderByCreatedAtDesc(
+                            c.getAvatarId(), userId, "liveness_face", model, "active")
+                    .orElse(null);
+            if (activeSubjectGroup != null) {
+                return reuseActiveSubjectGroup(c, consent, activeSubjectGroup);
+            }
+        }
+        return createSession(c, consent, model);
     }
 
     /** 七牛 h5_link 过期后必须重建真人组，不能把再次 GET 伪装成换新链接。 */
@@ -107,13 +121,12 @@ public class DapRealAuthService {
         old.setUpdatedAt(Instant.now());
         groupRepo.save(old);
         recycleGroup(old);
-        return createSession(c, consent);
+        return createSession(c, consent, modelink.boundModel());
     }
 
-    private RealAuthSessionDto createSession(DapCapture c, DapConsent consent) {
+    private RealAuthSessionDto createSession(DapCapture c, DapConsent consent, String model) {
         String id = uniqueId();
         String token = UUID.randomUUID().toString().replace("-", "");
-        String model = modelink.boundModel();
         String callbackUrl = callbackUrl(token);
         boolean mock = modelink.isMockMode();
 
@@ -145,6 +158,36 @@ public class DapRealAuthService {
         log.info("[dap-realauth] session started id={} capture={} qgroupid={} mock={}",
                 g.getId(), c.getId(), g.getQgroupid(), mock);
         return RealAuthSessionDto.from(g, st.h5Link()).withAgreementVersion(consent.getAgreementVersion());
+    }
+
+    /**
+     * 复用同一真人已经生效的上游分组，但保留本次捕获独立的协议确认和审计会话。
+     * qgroupid 复用；本地 MG 行不复用，避免 session 的 captureId 指向历史素材。
+     */
+    private RealAuthSessionDto reuseActiveSubjectGroup(DapCapture c, DapConsent consent,
+                                                        DapMaterialGroup source) {
+        Instant now = Instant.now();
+        DapMaterialGroup g = DapMaterialGroup.builder()
+                .id(uniqueId())
+                .ownerUserId(c.getOwnerUserId())
+                .kind("liveness_face")
+                .model(source.getModel())
+                .qgroupid(source.getQgroupid())
+                .status("active")
+                .avatarId(c.getAvatarId())
+                .captureId(c.getId())
+                .consentId(consent.getId())
+                .callbackToken(UUID.randomUUID().toString().replace("-", ""))
+                .mock(source.isMock())
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        groupRepo.save(g);
+        c.setAuthGroupId(g.getId());
+        captureRepo.save(c);
+        log.info("[dap-realauth] reused active subject group session={} capture={} avatar={} qgroupid={}",
+                g.getId(), c.getId(), c.getAvatarId(), g.getQgroupid());
+        return RealAuthSessionDto.from(g, null).withAgreementVersion(consent.getAgreementVersion());
     }
 
     /** 查询会话（非终态时向上游刷新一次；awaiting_auth 时带出 h5Url）。 */

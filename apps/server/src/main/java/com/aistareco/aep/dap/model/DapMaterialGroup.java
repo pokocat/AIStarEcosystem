@@ -18,17 +18,19 @@ import java.time.Instant;
  *
  * <p>两种分组：
  * <ul>
- *   <li>{@code liveness_face}：真人授权（刷脸认证）分组。一次真人捕获对应一个分组，
+ *   <li>{@code liveness_face}：真人授权（刷脸认证）分组。首次真人捕获创建上游分组，
  *       用户在分组的 h5_link 上完成刷脸后浏览器回跳我们的 callback，我们再把 resultCode +
- *       byted_token 回传给 modelink，平台异步判定 → active/failed。分组 active 只代表技术核验通过；
+ *       byted_token 回传给 modelink，平台异步判定 → active/failed；同一真人资产后续捕获复用该
+ *       active qgroupid，并把每条素材独立送审。分组 active 只代表技术核验通过；
  *       还必须绑定 {@link DapConsent} 才能形成业务授权。</li>
  *   <li>{@code aigc}：AI 生成素材分组（v0.105-补丁起启用）。数字人 AI 原创素材送审到一个
  *       **账号级共享的专属分组**（owner = {@code __platform__}，见 {@code DapAigcGroupResolver}），
  *       不再混进平台默认组。</li>
  * </ul>
  *
- * <p>配额治理（v0.105-补丁）：modelink 账号级上限只有 **3 个分组 / 30 个素材**，而 liveness 是
- * 「每次真人捕获建一个分组」，任何失败重试都会占掉一个槽位。因此终态（failed）分组会被
+ * <p>配额治理（v0.105-补丁）：modelink 账号级上限只有 **3 个分组 / 30 个素材**。liveness 按
+ * 「真人主体」建组并在后续补充素材时复用，但首次失败及重新刷脸仍会产生新组并占掉槽位。因此
+ * 终态（failed）分组会被
  * {@code DapModelinkPoller} 的回收器 / 重试路径调 {@code deleteGroup} 删回上游，本地行保留并打
  * {@link #recycledAt}（可追溯，不删行）。**active 分组绝不删** —— 那是生效授权的取证凭据。
  *

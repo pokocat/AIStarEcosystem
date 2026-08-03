@@ -304,3 +304,20 @@ hash 路由只依赖 sessionId，刷新、重新登录和微信 WebView 回来�
 
 七牛 `h5_link` 约 120 秒有效且不可通过 GET 原组刷新。界面的“换新链接”因此删除，改为显式 restart：
 将旧会话置 failed、best-effort 回收上游组、沿用原 consent 快照创建新组，并更新 capture 指向。
+
+---
+
+## v0.107 追加（2026-08-03）— 真人授权素材库与生成引用边界
+
+### O. 授权按真人主体，审核与生成引用按素材
+
+真人授权从“创建数字人后顺便留一份凭证”拆为独立素材库：上传 / 录制、协议确认、本人核验、逐条审核，
+完成后停在素材入库，不自动调用生成引擎，也不扣生成算力。
+
+- `liveness_face` 的 `qgroupid` 按真人主体复用：当前产品以同一个 `avatarId` 作为真人主体边界；同一主体
+  后续 capture 建新的本地审计 MG 行，但复用 active 上游 `qgroupid`，避免重复刷脸与浪费 3 组配额。
+- 素材不继承“账户已授权”：每条图片 / 视频单独创建 Modelink asset，只有 `approved + qassetid` 才能用于生成。
+- 真人生成任务在建单 / 扣费前解析 approved 素材，把 `qasset://{qassetid}` 写入 payload；没有可用素材返回
+  `DAP_MATERIAL_APPROVAL_REQUIRED`，指定了无效素材返回 `DAP_MATERIAL_NOT_USABLE`。
+- 历史 LIC 的“待补确认”走 `POST /v1/licenses/{id}/supplement` 就地补当前协议；已有 active 七牛证据时
+  不重复刷脸，证据缺失才返回 `DAP_LIVENESS_REAUTH_REQUIRED`。

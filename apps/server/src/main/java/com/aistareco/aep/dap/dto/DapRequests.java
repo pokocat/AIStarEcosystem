@@ -20,7 +20,7 @@ public final class DapRequests {
                                   String ethnic, String orient, String pose) {}
 
     /** POST /api/v1/avatars/{id}/generate */
-    public record GenerateRequest(String mode, DescribeRequest form, String captureId) {}
+    public record GenerateRequest(String mode, DescribeRequest form, String captureId, String materialId) {}
 
     /** POST /api/v1/avatars/{id}/pick */
     public record PickRequest(Integer variantIndex) {}
@@ -53,6 +53,9 @@ public final class DapRequests {
     /** POST /api/v1/licenses */
     public record CreateLicenseRequest(String subject, String avatarId, String scope,
                                        Integer years, List<String> platforms) {}
+
+    /** POST /api/v1/licenses/{id}/supplement —— 历史真人授权补确认当前平台协议。 */
+    public record SupplementLicenseRequest(Boolean agreementAccepted, String agreementVersion) {}
 
     /** POST /api/v1/voices/preview */
     public record VoicePreviewRequest(String voiceId, String text) {}

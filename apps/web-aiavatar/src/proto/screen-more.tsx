@@ -62,7 +62,7 @@ function MSettings({ ctx }) {
 
       hMM(GroupTitle, null, '隐私与合规'),
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
-        hMM(Row, { icon: Icons.shield, label: '肖像授权管理', sub: '已签署 ' + licenses.filter(l => l.status === 'active').length + ' 份', onClick: () => ctx.go('licenses') }),
+        hMM(Row, { icon: Icons.shield, label: '真人授权素材库', sub: '已生效 ' + licenses.filter(l => l.status === 'active').length + ' 份授权', onClick: () => ctx.go('realmaterials') }),
         hMM(Row, { icon: Icons.lock, label: '隐私与数据', sub: '素材加密存档 · 删除请联系平台', onClick: () => toast('如需删除账户数据，请联系平台客服处理', { tone: 'ok' }), last: true })),
 
       hMM(GroupTitle, null, '账户'),

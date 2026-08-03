@@ -110,6 +110,9 @@ public class DapRealAuthController {
     public ApiResponse<List<MaterialDto>> listMaterials(Principal principal,
                                                         @RequestParam String refType,
                                                         @RequestParam String refId) {
+        if ("subject".equals(refType)) {
+            return ApiResponse.of(materials.listByAvatarSubject(uid(principal), refId));
+        }
         return ApiResponse.of(materials.listByRef(uid(principal), refType, refId));
     }
 

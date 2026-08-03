@@ -2359,6 +2359,7 @@ components:
       type: object
       description: >-
         真人授权（刷脸认证）会话 = 七牛 modelink 的 liveness_face 资产分组在本地的镜像（表 dap_material_group）。
+        同一真人资产后续补素材会建立新的本地证据会话，但复用已经 active 的上游 qgroupid，不重复刷脸。
         状态：preparing（建组中）→ awaiting_auth（可去刷脸）→ validating（已回传结果、等平台判定）
         → active（授权成立）| failed。captures/{id}/verify 只在 active 时放行。
       properties:
@@ -2387,6 +2388,7 @@ components:
         status:     { type: string, enum: [pending, reviewing, approved, failed] }
         failReason: { type: string, nullable: true }
         qassetUri:  { type: string, nullable: true, description: '生成引用格式 qasset://{qassetid}；未拿到上游 id 时为 null' }
+        sourceUrl:  { type: string, nullable: true, description: '真人素材库预览用短时签名 URL；DB 真值仍为 sourceKey' }
         mock:       { type: boolean }
         createdAt:  { type: string, format: date-time, nullable: true }
         updatedAt:  { type: string, format: date-time, nullable: true }
@@ -7948,7 +7950,7 @@ paths:
   /v1/avatars/{id}/photos:
     post: { tags: [dap], operationId: dapUploadPhotos, description: multipart files[] 照片素材, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/generate:
-    post: { tags: [dap], operationId: dapGenerateAvatar, description: mode=describe(4 变体)|upload(高保真复刻) → 异步任务, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapGenerateAvatar, description: 'mode=describe(4 变体)|upload(高保真复刻) → 异步任务；真人路径必须选择或自动解析一条 approved 素材，任务 payload 使用 qasset:// 引用', responses: { '200': { description: ok }, '403': { description: DAP_MATERIAL_APPROVAL_REQUIRED } } }
   /v1/avatars/{id}/pick:
     post: { tags: [dap], operationId: dapPickVariant, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/iterate:
@@ -8002,7 +8004,7 @@ paths:
     post:
       tags: [dap]
       operationId: dapStartRealAuthSession
-      summary: '确认当前协议并开启本人刷脸会话；同一次捕获幂等复用'
+      summary: '确认当前协议并开启本人刷脸会话；同一次捕获幂等，同一真人的后续素材复用 active qgroupid'
       requestBody:
         content:
           application/json:
@@ -8080,9 +8082,9 @@ paths:
     get:
       tags: [dap]
       operationId: dapListMaterials
-      summary: '按引用查送审素材（refType=avatar|capture + refId）'
+      summary: '按引用查送审素材；refType=subject 时汇总某真人资产的全部素材'
       parameters:
-        - { in: query, name: refType, required: true, schema: { type: string, enum: [avatar, capture] } }
+        - { in: query, name: refType, required: true, schema: { type: string, enum: [avatar, capture, subject] } }
         - { in: query, name: refId, required: true, schema: { type: string } }
       responses:
         '200':
@@ -8132,6 +8134,25 @@ paths:
     get: { tags: [dap], operationId: dapLicenseCertificate, description: '生成/获取移动端 HTML 授权确认凭证；v2 同时展示平台协议快照与七牛 qgroupid 核验引用', responses: { '200': { description: ok } } }
   /v1/licenses/{id}/renew:
     post: { tags: [dap], operationId: dapRenewLicense, responses: { '200': { description: ok } } }
+  /v1/licenses/{id}/supplement:
+    post:
+      tags: [dap]
+      operationId: dapSupplementLicense
+      description: '历史 liveness 授权缺当前平台协议快照时补确认；复用已有 active 七牛技术证据，不重复刷脸。技术证据不可用则 409 要求重新本人确认。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agreementAccepted, agreementVersion]
+              properties:
+                agreementAccepted: { type: boolean, enum: [true] }
+                agreementVersion: { type: string }
+      responses:
+        '200': { description: ok }
+        '400': { description: 'DAP_CONSENT_REQUIRED / DAP_CONSENT_VERSION_CHANGED / DAP_SUPPLEMENT_NOT_APPLICABLE' }
+        '409': { description: DAP_LIVENESS_REAUTH_REQUIRED }
   /v1/voices/builtin:
     get: { tags: [dap], operationId: dapBuiltinVoices, description: 内置 AI 合成音色 7 款, responses: { '200': { description: ok } } }
   /v1/voices/mine:

@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, LicenseApi, JobApi, VoiceApi, AccountApi, useApi, seed, USE_MOCK, auth } from "./api";
+import { DATA, AvatarApi, LicenseApi, RealAuthApi, JobApi, VoiceApi, AccountApi, useApi, seed, USE_MOCK, auth } from "./api";
 import { MShell, MKit } from "./shell";
 import { Portrait } from "./portrait";
 import { LivenessBadge, MaterialSection } from "./material-status";
@@ -22,7 +22,7 @@ function RegTagM({ prefix, id }) {
 
 // —— 待授权提示卡：真人复刻资产还没有生效肖像授权时，给一个显式的「去认证」入口 ——
 //   （列表为空则整块不渲染 —— 授权徽标稀有是设计语义，不做常驻空状态）
-function PendingAuthBlock({ items, ctx }) {
+function PendingAuthBlock({ items, ctx, pendingByAvatar, onSupplement }) {
   if (!items.length) return null;
   return hMS('div', { className: 'm-card', style: {
     marginBottom: 16, padding: '13px 14px 6px',
@@ -32,7 +32,7 @@ function PendingAuthBlock({ items, ctx }) {
       hMS('span', { style: { fontSize: 13.5, fontWeight: 700, flex: 1, minWidth: 0 } }, '待授权'),
       hMS('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-3)', flex: '0 0 auto' } }, items.length)),
     hMS('p', { style: { fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 4px' } },
-      '以下真人形象还没有完整授权证据，确认当前协议并完成本人刷脸后即可正常使用。'),
+      '以下真人素材还没有完整授权证据。历史记录可直接补协议；缺少有效本人核验时才需要重新刷脸。'),
     hMS('div', { style: { display: 'flex', flexDirection: 'column' } },
       items.map((a) => hMS('div', { key: a.id, style: {
         display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
@@ -42,17 +42,24 @@ function PendingAuthBlock({ items, ctx }) {
         hMS('div', { style: { flex: 1, minWidth: 0 } },
           hMS('div', { className: 'm-clip1', style: { fontSize: 13.5, fontWeight: 700 } }, a.name),
           hMS('div', { className: 'mono m-clip1', style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, a.id)),
-        hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.scan,
-          onClick: () => ctx.startRealAuth(a) }, '去确认')))));
+        pendingByAvatar[a.id]
+          ? hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.pen,
+              onClick: () => onSupplement(pendingByAvatar[a.id]) }, '补充协议')
+          : hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.scan,
+              onClick: () => (ctx.startRealMaterial || ctx.startRealAuth)(a) }, '去确认')))));
 }
 
 // ============ 授权 ============
-function MLicenses({ ctx }) {
+function MLicenses({ ctx, realOnly = false }) {
   const [f, setF] = useStateMS('all');
   const [licenses, setLicenses] = useStateMS(seed.licenses());
   const [avatars, setAvatars] = useStateMS(seed.avatars());
   const [busyId, setBusyId] = useStateMS('');
   const [openMat, setOpenMat] = useStateMS('');   // 展开「授权素材」的授权 id（按需加载，避免整页 N 次请求）
+  const [supplementId, setSupplementId] = useStateMS('');
+  const [agreement, setAgreement] = useStateMS(null as any);
+  const [accepted, setAccepted] = useStateMS(false);
+  const [agreementBusy, setAgreementBusy] = useStateMS(false);
   const load = () => LicenseApi.list().then(setLicenses).catch(() => {});
   useEffectMS(() => { load(); }, []);
   useEffectMS(() => { AvatarApi.list('mine').then(setAvatars).catch(() => {}); }, []);
@@ -60,10 +67,16 @@ function MLicenses({ ctx }) {
   // 真人复刻但没有生效授权的资产 —— 顶部「待授权」入口的数据源
   const activeLicIds = new Set(licenses.filter((l: any) => l.status === 'active').map((l: any) => l.id));
   const needAuth = (avatars || []).filter((a: any) => a.path === 'real' && !(a.license && activeLicIds.has(a.license)));
+  const pendingByAvatar = Object.fromEntries(licenses
+    .filter((l: any) => l.char && l.status === 'pending' && l.evidenceStatus === 'legacy_unconfirmed')
+    .map((l: any) => [l.char, l]));
   const tone = { active: 'ok', expired: 'err', pending: 'warn' };
   const label = { active: '生效中', expired: '已过期', pending: '待补确认' };
   const filters = [{ key: 'all', label: '全部' }, { key: 'active', label: '生效中' }, { key: 'pending', label: '待补确认' }, { key: 'expired', label: '已过期' }];
-  const list = licenses.filter(l => f === 'all' || l.status === f);
+  const scopedLicenses = realOnly
+    ? licenses.filter((l: any) => l.char && l.verifyMethod === 'liveness')
+    : licenses;
+  const list = scopedLicenses.filter(l => f === 'all' || l.status === f);
 
   const download = async (l) => {
     setBusyId(l.id);
@@ -81,11 +94,42 @@ function MLicenses({ ctx }) {
     finally { setBusyId(''); }
   };
 
-  return hMS('div', { className: 'm-overlay', 'data-screen-label': '授权登记' },
-    hMS(WxNavS, { title: '授权登记', onBack: ctx.back }),
+  const openSupplement = async (l) => {
+    if (supplementId === l.id) { setSupplementId(''); setAccepted(false); return; }
+    setSupplementId(l.id); setAccepted(false);
+    if (agreement) return;
+    setAgreementBusy(true);
+    try { setAgreement(await RealAuthApi.agreement()); }
+    catch (e: any) { toast(e?.message || '授权说明加载失败', { tone: 'err' }); }
+    finally { setAgreementBusy(false); }
+  };
+  const supplement = async (l) => {
+    if (!agreement || !accepted) return;
+    setBusyId(l.id);
+    try {
+      await LicenseApi.supplement(l.id, agreement.version);
+      toast('协议确认已补充，授权证据已生效', { tone: 'ok' });
+      setSupplementId(''); setAccepted(false); await load();
+    } catch (e: any) {
+      if (e?.code === 'DAP_LIVENESS_REAUTH_REQUIRED') {
+        toast('历史本人核验不可复用，需要重新确认', { tone: 'warn' });
+        const a = avatars.find((x: any) => x.id === l.char);
+        if (a) (ctx.startRealMaterial || ctx.startRealAuth)(a);
+      } else toast(e?.message || '补充确认失败', { tone: 'err' });
+    } finally { setBusyId(''); }
+  };
+
+  return hMS('div', { className: 'm-overlay', 'data-screen-label': realOnly ? '真人授权素材库' : '授权登记' },
+    hMS(WxNavS, { title: realOnly ? '真人授权素材库' : '授权登记', onBack: ctx.back }),
     hMS('div', { className: 'm-body', style: { padding: '4px 18px 28px' } },
-      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '真人数字形象授权确认档案：同时记录平台协议确认与七牛云本人刷脸核验，证据完整后生成凭证。'),
-      hMS(PendingAuthBlock, { items: needAuth, ctx }),
+      realOnly
+        ? hMS(React.Fragment, null,
+            hMS('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 } },
+              hMS('p', { style: { flex: 1, fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: 0 } }, '每条素材独立审核，通过后获得可用于视频生成的素材引用；同一真人可继续补充素材，无需重复刷脸。'),
+              hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.plus,
+                onClick: () => (ctx.startRealMaterial || ctx.startRealClone)() }, '添加真人')),
+            hMS(PendingAuthBlock, { items: needAuth, ctx, pendingByAvatar, onSupplement: openSupplement }))
+        : hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '平台授权确认档案：真人素材记录协议与本人核验证据，IP 授权记录品牌使用范围。'),
       hMS('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' }, className: 'no-bar' },
         filters.map(k => {
           const on = f === k.key;
@@ -95,9 +139,9 @@ function MLicenses({ ctx }) {
         })),
       list.length === 0 && hMS('div', { style: { textAlign: 'center', padding: '46px 18px', border: '1.5px dashed var(--line-3)', borderRadius: 'var(--r-xl)', background: 'var(--surface)' } },
         hMS('div', { style: { width: 50, height: 50, borderRadius: 15, margin: '0 auto 13px', display: 'grid', placeItems: 'center', background: 'var(--primary-soft)', color: 'var(--primary)' } }, hMS(Icons.shield, { size: 23 })),
-        hMS('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 5 } }, '还没有授权登记'),
-        hMS('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, '通过「真人授权复刻」创建数字人时会自动登记授权'),
-        hMS(UI.Button, { variant: 'primary', icon: Icons.person, onClick: () => { ctx.back(); ctx.startRealClone(); } }, '去真人复刻')),
+        hMS('div', { style: { fontSize: 14.5, fontWeight: 700, marginBottom: 5 } }, realOnly ? '还没有真人素材' : '还没有授权登记'),
+        hMS('p', { style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 16px', lineHeight: 1.5 } }, realOnly ? '上传图片或视频，完成人脸确认与逐条审核后即可在视频生成时选择' : '真人素材或 IP 完成授权后会在这里生成凭证'),
+        realOnly && hMS(UI.Button, { variant: 'primary', icon: Icons.person, onClick: () => (ctx.startRealMaterial || ctx.startRealClone)() }, '添加第一个真人')),
       hMS('div', { className: 'm-stagger', style: { display: 'flex', flexDirection: 'column', gap: 13 } },
         list.map(l => hMS('div', { key: l.id, className: 'm-card', style: { overflow: 'hidden' } },
           hMS('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 13px', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' } },
@@ -117,10 +161,32 @@ function MLicenses({ ctx }) {
                 hMS('div', { key: k, style: { display: 'grid', gridTemplateColumns: '60px 1fr', gap: 10, alignItems: 'baseline' } },
                   hMS('span', { style: { fontSize: 11.5, color: 'var(--ink-3)' } }, k),
                   hMS('span', { style: { fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.45 } }, v)))),
-            hMS('div', { style: { display: 'flex', gap: 8, marginTop: 13, paddingTop: 13, borderTop: '1px solid var(--line)' } },
-              hMS(UI.Button, { variant: 'line', size: 'sm', icon: Icons.download, disabled: busyId === l.id, onClick: () => download(l) }, busyId === l.id ? '处理中…' : '下载凭证'),
+            hMS('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 13, paddingTop: 13, borderTop: '1px solid var(--line)' } },
+              l.status === 'active' && hMS(UI.Button, { variant: 'line', size: 'sm', icon: Icons.download, disabled: busyId === l.id, onClick: () => download(l) }, busyId === l.id ? '处理中…' : '下载凭证'),
+              realOnly && l.status === 'active' && l.char && hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.plus,
+                onClick: () => {
+                  const a = avatars.find((x: any) => x.id === l.char);
+                  if (a) (ctx.startRealMaterial || ctx.startRealAuth)(a);
+                  else toast('关联真人不存在或已删除', { tone: 'warn' });
+                } }, '补充素材'),
               l.status === 'expired' && hMS(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.refresh, disabled: busyId === l.id, onClick: () => renew(l) }, '续签'),
-              l.status === 'pending' && hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.pen, onClick: () => toast('待对方确认签署后自动生效', { tone: 'ok' }) }, '催签')),
+              l.status === 'pending' && l.verifyMethod === 'liveness' && hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.pen, disabled: busyId === l.id, onClick: () => openSupplement(l) }, supplementId === l.id ? '收起' : '补充协议'),
+              l.status === 'pending' && l.verifyMethod !== 'liveness' && hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.pen,
+                onClick: () => toast('待授权方确认后自动生效', { tone: 'ok' }) }, '催签')),
+
+            supplementId === l.id && hMS('div', { style: { marginTop: 12, padding: 13, borderRadius: 'var(--r-md)', border: '1px solid var(--line-2)', background: 'var(--surface-2)' } },
+              agreementBusy && hMS('div', { style: { fontSize: 12.5, color: 'var(--ink-3)' } }, '正在读取当前授权说明…'),
+              agreement && hMS(React.Fragment, null,
+                hMS('div', { style: { fontSize: 14, fontWeight: 750, marginBottom: 5 } }, agreement.title),
+                hMS('p', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 0 10px' } }, agreement.summary),
+                hMS('div', { style: { display: 'grid', gridTemplateColumns: '64px 1fr', gap: '6px 9px', fontSize: 11.5, lineHeight: 1.45, marginBottom: 10 } },
+                  hMS('span', { style: { color: 'var(--ink-3)' } }, '授权范围'), hMS('strong', null, agreement.scope),
+                  hMS('span', { style: { color: 'var(--ink-3)' } }, '有效期限'), hMS('strong', null, agreement.periodMonths + ' 个月'),
+                  hMS('span', { style: { color: 'var(--ink-3)' } }, '处理方'), hMS('strong', null, agreement.processors.join(' · '))),
+                hMS('label', { className: 'm-tap', style: { display: 'flex', alignItems: 'flex-start', gap: 9, padding: '10px 11px', borderRadius: 'var(--r-sm)', border: '1px solid ' + (accepted ? 'var(--primary)' : 'var(--line)'), background: accepted ? 'var(--primary-tint)' : 'var(--surface)', cursor: 'pointer' } },
+                  hMS('input', { type: 'checkbox', checked: accepted, onChange: (e) => setAccepted(e.target.checked), style: { width: 17, height: 17, margin: 0, accentColor: 'var(--primary)', flex: '0 0 auto' } }),
+                  hMS('span', { style: { fontSize: 12, lineHeight: 1.5 } }, '我已阅读并确认当前说明，同意按以上范围处理和使用本人的真人素材。')),
+                hMS(UI.Button, { variant: 'dark', size: 'sm', full: true, style: { marginTop: 10 }, disabled: !accepted || busyId === l.id, onClick: () => supplement(l) }, busyId === l.id ? '确认中…' : '确认并补充协议'))),
 
             // 授权素材：绑定资产的平台审核记录（点开再拉，避免列表一次发 N 个请求）
             l.char && hMS('div', { style: { marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' } },
@@ -130,7 +196,7 @@ function MLicenses({ ctx }) {
                 hMS('span', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)', flex: 1, minWidth: 0 } }, '授权素材'),
                 hMS(Icons[openMat === l.id ? 'chevU' : 'chevD'], { size: 16, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } })),
               openMat === l.id && hMS('div', { style: { marginTop: 10 } },
-                hMS(MaterialSection, { refType: 'avatar', refId: l.char, mode: 'readonly', title: '素材审核状态',
+                hMS(MaterialSection, { refType: 'subject', refId: l.char, mode: 'readonly', title: '真人素材审核状态',
                   style: { boxShadow: 'none', background: 'var(--surface-2)' } }),
                 hMS('div', { style: { fontSize: 11, color: 'var(--ink-4)', marginTop: 8, lineHeight: 1.45 } },
                   '素材需通过内容安全审核后才能用于视频生成。')))))))));
@@ -314,7 +380,7 @@ function MMe({ ctx }) {
       hMS('div', { style: { fontSize: 12, fontWeight: 700, color: 'var(--ink-3)', letterSpacing: '.06em', margin: '0 2px 9px' } }, '工作台'),
       hMS('div', { className: 'm-card', style: { padding: 0 } },
         hMS(MeRow, { icon: Icons.mic, label: '声音工作室', sub: myVoices.length + ' 个声线资产', color: 'var(--ink-2)', onClick: () => ctx.go('voice') }),
-        hMS(MeRow, { icon: Icons.shield, label: '授权登记', sub: '真人肖像电子授权', color: 'var(--ink-2)', onClick: () => ctx.go('licenses') }),
+        hMS(MeRow, { icon: Icons.shield, label: '真人授权素材库', sub: '授权素材与审核状态', color: 'var(--ink-2)', onClick: () => ctx.go('realmaterials') }),
         hMS(MeRow, { icon: Icons.bolt, label: '任务中心', sub: '生成 / 衍生进度', color: 'var(--primary)', badge: jobs.filter(t => t.status === 'running').length, onClick: () => ctx.go('tasks') }),
         hMS(MeRow, { icon: Icons.heart, label: '我的收藏', sub: favCount + ' 个数字人', color: 'var(--ink-2)', onClick: () => ctx.tab('library'), last: true }))),
 
@@ -399,6 +465,7 @@ function MTrash({ ctx }) {
 }
 
 export { MLicenses };
+export function MRealMaterials(props) { return hMS(MLicenses, { ...props, realOnly: true }); }
 export { MTasks };
 export { MMe };
 export { MTrash };

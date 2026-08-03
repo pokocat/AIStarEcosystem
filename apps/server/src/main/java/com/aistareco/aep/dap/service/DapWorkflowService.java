@@ -35,6 +35,7 @@ public class DapWorkflowService {
     private final DapAvatarService avatarService;
     private final DapJobService jobService;
     private final DapLicenseService licenseService;
+    private final DapMaterialService materialService;
     private final DapLookRepository lookRepo;
     private final DapDerivativeRepository derivRepo;
     private final DapCatalogService catalog;
@@ -45,6 +46,7 @@ public class DapWorkflowService {
     public DapWorkflowService(DapAvatarService avatarService,
                               DapJobService jobService,
                               DapLicenseService licenseService,
+                              DapMaterialService materialService,
                               DapLookRepository lookRepo,
                               DapDerivativeRepository derivRepo,
                               DapCatalogService catalog,
@@ -54,6 +56,7 @@ public class DapWorkflowService {
         this.avatarService = avatarService;
         this.jobService = jobService;
         this.licenseService = licenseService;
+        this.materialService = materialService;
         this.lookRepo = lookRepo;
         this.derivRepo = derivRepo;
         this.catalog = catalog;
@@ -82,6 +85,10 @@ public class DapWorkflowService {
             if (req.form().name() != null && !req.form().name().isBlank()) a.setName(req.form().name().trim());
         }
         if (req.captureId() != null) payload.put("captureId", req.captureId());
+        if ("real".equals(a.getPath())) {
+            payload.put("qassetUri", materialService.requireApprovedGenerationAsset(userId, a.getId(), req.materialId()));
+            if (req.materialId() != null && !req.materialId().isBlank()) payload.put("materialId", req.materialId());
+        }
 
         if (upload) {
             boolean hasPhotos = !avatarService.photosOf(a.getId()).isEmpty();
@@ -293,6 +300,10 @@ public class DapWorkflowService {
         if ("running".equals(st)) {
             throw BusinessException.badRequest("DAP_DERIV_RUNNING", DERIV_KIND_ZH.get(key) + "正在生成中，请稍候");
         }
+        Object materialIdValue = options == null ? null : options.get("materialId");
+        String materialId = materialIdValue == null ? null : String.valueOf(materialIdValue);
+        String qassetUri = "video".equals(key) && "real".equals(a.getPath())
+                ? materialService.requireApprovedGenerationAsset(userId, a.getId(), materialId) : null;
 
         String prevStatus = a.getStatus();
         Map<String, Object> deriv = a.derivOrEmpty();
@@ -306,6 +317,7 @@ public class DapWorkflowService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("derivKey", key);
         payload.put("prevStatus", prevStatus);
+        if (qassetUri != null) payload.put("qassetUri", qassetUri);
         if (templateId != null) payload.put("templateId", templateId);
         if (options != null && !options.isEmpty()) payload.put("options", options); // 自定义配方（items/extraPrompt/motion）
 

@@ -241,7 +241,7 @@ export interface Capture {
 
 /** 素材平台审核状态：pending=待审核 / reviewing=审核中 / approved=已通过 / failed=未通过 */
 export type MaterialStatus = "pending" | "reviewing" | "approved" | "failed";
-export type MaterialRefType = "avatar" | "capture";
+export type MaterialRefType = "avatar" | "capture" | "subject";
 
 /** 提交到内容安全平台审核的一份素材记录。 */
 export interface DapMaterialInfo {
@@ -255,6 +255,8 @@ export interface DapMaterialInfo {
   failReason?: string | null;
   /** 平台侧资源标识（内部技术字段，界面不直接展示）。 */
   qassetUri?: string | null;
+  /** 素材库预览用短时签名地址。 */
+  sourceUrl?: string | null;
   mock: boolean;
   createdAt: string;
   updatedAt: string;

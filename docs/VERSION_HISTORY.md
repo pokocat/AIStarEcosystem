@@ -1,8 +1,15 @@
-# 版本增量历史（v0.5 → v0.106）
+# 版本增量历史（v0.5 → v0.107）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.107（2026-08-03）— AiAvatar 真人授权素材库
+
+真人授权从数字人生成向导中解耦：授权流程只负责上传 / 录制、平台协议确认、七牛本人核验和素材逐条审核，
+完成后入“真人素材库”，不自动生成、不扣生成算力。同一真人（当前以 `avatarId` 为主体边界）复用 active
+`qgroupid`，每条素材仍独立取得 `qassetid`；真人生成任务只接受 `approved` 素材并使用 `qasset://` 引用。
+历史 liveness LIC 新增 `/v1/licenses/{id}/supplement` 就地补协议；已有 active 技术证据无需重复刷脸。
 
 ### v0.5（2026-05-08 ~ 05-09）— AI 明星带货线落地
 

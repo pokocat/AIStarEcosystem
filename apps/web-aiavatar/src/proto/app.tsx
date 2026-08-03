@@ -14,7 +14,7 @@ import { MDetail } from "./screen-library";
 import { MAssetLibrary } from "./screen-assets";
 import { AssetCreateSheet, useAssetCreate } from "./asset-create";
 import { MVoice, MApps } from "./screen-voiceapps";
-import { MLicenses, MTasks, MMe, MTrash } from "./screen-lictaskme";
+import { MLicenses, MRealMaterials, MTasks, MMe, MTrash } from "./screen-lictaskme";
 import { MLogin } from "./screen-login";
 
 const hA : any = React.createElement;
@@ -111,9 +111,9 @@ function MPlatformGate({ onActivated, onLogout }) {
 // 并通过 pushState/popstate 让浏览器与系统返回 / 前进键自然驱动导航。
 const TAB_KEYS = ["home", "library", "apps", "me"];
 const TAB_LABEL: any = { home: "首页", library: "资产库", apps: "应用中心", me: "我的" };
-const OVERLAY_LABEL: any = { voice: "声音工作室", licenses: "授权登记", tasks: "任务中心", settings: "设置", security: "账号与安全", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站", detail: "资产详情", derivview: "衍生查看", looks: "造型档案", designlooks: "设计造型", choosevoice: "选择音色", create: "创建链路", aicreate: "AI 创建", realcapture: "真人捕获", realauthresume: "本人确认结果", ipdetail: "IP 详情", iplicense: "IP 授权", scenedetail: "场景详情", productdetail: "产品详情", styledetail: "风格模板", compose: "合成工作台", composeresult: "合成结果" };
+const OVERLAY_LABEL: any = { voice: "声音工作室", licenses: "授权登记", realmaterials: "真人授权素材库", tasks: "任务中心", settings: "设置", security: "账号与安全", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站", detail: "资产详情", derivview: "衍生查看", looks: "造型档案", designlooks: "设计造型", choosevoice: "选择音色", create: "创建链路", aicreate: "AI 创建", realcapture: "真人素材授权", realauthresume: "本人确认结果", ipdetail: "IP 详情", iplicense: "IP 授权", scenedetail: "场景详情", productdetail: "产品详情", styledetail: "风格模板", compose: "合成工作台", composeresult: "合成结果" };
 // 无需实体参数、可从 URL 直接还原的简单覆盖页
-const SIMPLE_OVERLAYS = ["tasks", "licenses", "voice", "settings", "security", "membership", "storage", "trash", "voiceclone"];
+const SIMPLE_OVERLAYS = ["tasks", "licenses", "realmaterials", "voice", "settings", "security", "membership", "storage", "trash", "voiceclone"];
 // 临时流程（创建向导等）：URL 会更新，但冷启动不强行还原（缺上下文 / 会污染状态）
 const FLOW_SCREENS = ["create", "aicreate", "realcapture", "choosevoice", "designlooks", "voiceclone", "compose"];
 
@@ -362,12 +362,13 @@ export function App() {
     logout: () => { auth.clear(); setStack([]); setSheet(false); setTab("home"); if (!USE_MOCK) setAuthed(false); toast("已退出登录", { tone: "ok" }); },
     back: () => setStack((s) => s.slice(0, -1)),
     startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
-    startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("真人捕获"); },
+    startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars), materialOnly: true } }]); setLabel("新增真人素材"); },
+    startRealMaterial: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars), materialOnly: true } }]); setLabel("新增真人素材"); },
     /**
      * 「去确认」入口：带既有真人资产进入平台协议确认与七牛本人刷脸流程。
      * 认证需要本人素材，因此仍从录制引导起步；真人流程内部会复用传入的资产不再新建。
      */
-    startRealAuth: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("真人授权确认"); },
+    startRealAuth: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars), materialOnly: true } }]); setLabel("真人授权确认"); },
     realToWizard: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "create", props: { char } }); return ns; }); setLabel("创建链路"); },
     continueAdjust: (char) => {
       setStack((s) => {
@@ -417,6 +418,7 @@ export function App() {
     detail: MDetail,
     voice: MVoice,
     licenses: MLicenses,
+    realmaterials: MRealMaterials,
     tasks: MTasks,
     trash: MTrash,
     ...LAZY_OVERLAYS,

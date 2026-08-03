@@ -66,6 +66,15 @@ class DapRealAuthServiceTest {
         });
         when(groupRepo.findByCallbackToken(anyString())).thenAnswer(inv -> groups.values().stream()
                 .filter(g -> inv.getArgument(0, String.class).equals(g.getCallbackToken())).findFirst());
+        when(groupRepo.findFirstByAvatarIdAndOwnerUserIdAndKindAndModelAndStatusAndRecycledAtIsNullOrderByCreatedAtDesc(
+                anyString(), anyString(), anyString(), anyString(), anyString())).thenAnswer(inv -> groups.values().stream()
+                .filter(g -> inv.getArgument(0, String.class).equals(g.getAvatarId()))
+                .filter(g -> inv.getArgument(1, String.class).equals(g.getOwnerUserId()))
+                .filter(g -> inv.getArgument(2, String.class).equals(g.getKind()))
+                .filter(g -> inv.getArgument(3, String.class).equals(g.getModel()))
+                .filter(g -> inv.getArgument(4, String.class).equals(g.getStatus()))
+                .filter(g -> g.getRecycledAt() == null)
+                .max(java.util.Comparator.comparing(DapMaterialGroup::getCreatedAt)));
 
         captureRepo = mock(DapCaptureRepository.class);
         when(captureRepo.save(any())).thenAnswer(inv -> {
@@ -145,6 +154,34 @@ class DapRealAuthServiceTest {
 
         assertEquals(first.id(), again.id());
         assertEquals(1, groups.size());
+        verify(modelink, times(1)).createGroup(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void newMaterialForSamePersonReusesActiveQgroupWithoutNewFaceFlow() {
+        stubCreate("qg-person-1");
+        RealAuthSessionDto first = start(svc, "CAP-1");
+        DapMaterialGroup original = groups.get(first.id());
+        original.setStatus("active");
+
+        DapCapture nextCapture = DapCapture.builder().id("CAP-2").ownerUserId(USER).avatarId("DH-1")
+                .status("footage_uploaded").footageKey("dap/capture/u/b.webm")
+                .footageContentType("video/webm").createdAt(Instant.now()).build();
+        captures.put(nextCapture.getId(), nextCapture);
+        DapConsent nextConsent = DapConsent.builder().id("CONS-2").ownerUserId(USER).captureId("CAP-2")
+                .avatarId("DH-1").agreementVersion(DapConsentService.VERSION)
+                .agreementHash("hash").scope(DapConsentService.SCOPE).periodMonths(24)
+                .platforms(DapConsentService.PLATFORMS).acceptedAt(Instant.now()).createdAt(Instant.now()).build();
+        when(consents.accept(eq(USER), eq(nextCapture), anyString(), eq(true), any(), any())).thenReturn(nextConsent);
+
+        RealAuthSessionDto reused = start(svc, "CAP-2");
+
+        assertEquals("active", reused.status());
+        assertEquals("CAP-2", reused.captureId(), "本地证据会话必须绑定本次新素材");
+        assertNotEquals(first.id(), reused.id(), "每次素材保留独立本地审计记录");
+        assertEquals("qg-person-1", groups.get(reused.id()).getQgroupid(), "上游真人分组按主体复用");
+        assertEquals("CONS-2", groups.get(reused.id()).getConsentId());
+        assertEquals(reused.id(), nextCapture.getAuthGroupId());
         verify(modelink, times(1)).createGroup(anyString(), anyString(), anyString(), anyString());
     }
 

@@ -194,6 +194,9 @@ public class DapLicenseService {
     @Transactional
     public Map<String, Object> certificate(String userId, String id) {
         DapLicense l = required(userId, id);
+        if ("liveness".equals(l.getVerifyMethod()) && !hasCompleteLivenessEvidence(l)) {
+            throw BusinessException.badRequest("DAP_CONSENT_REQUIRED", "请先补充确认当前真人数字形象授权说明");
+        }
         if (l.getCertKey() == null || l.getCertificateVersion() < CERTIFICATE_VERSION) {
             byte[] html = renderCertificate(l).getBytes(StandardCharsets.UTF_8);
             FileStorageService.StoredFile stored = storage.store(html, "dap/cert", userId, "html", "text/html; charset=utf-8");

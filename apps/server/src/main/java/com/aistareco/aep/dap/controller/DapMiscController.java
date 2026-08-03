@@ -5,12 +5,14 @@ import com.aistareco.aep.dap.dto.DapDtos.CaptureDto;
 import com.aistareco.aep.dap.dto.DapDtos.JobDto;
 import com.aistareco.aep.dap.dto.DapRequests.CreateCaptureRequest;
 import com.aistareco.aep.dap.dto.DapRequests.CreateLicenseRequest;
+import com.aistareco.aep.dap.dto.DapRequests.SupplementLicenseRequest;
 import com.aistareco.aep.dap.dto.DapRequests.VoicePreviewRequest;
 import com.aistareco.aep.dap.service.DapAccountService;
 import com.aistareco.aep.dap.service.DapCaptureService;
 import com.aistareco.aep.dap.service.DapCatalogService;
 import com.aistareco.aep.dap.service.DapJobService;
 import com.aistareco.aep.dap.service.DapLicenseService;
+import com.aistareco.aep.dap.service.DapLicenseSupplementService;
 import com.aistareco.aep.dap.service.DapVoiceService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
@@ -23,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.security.Principal;
 import java.util.List;
@@ -37,6 +41,7 @@ public class DapMiscController {
 
     private final DapCaptureService captureService;
     private final DapLicenseService licenseService;
+    private final DapLicenseSupplementService licenseSupplements;
     private final DapVoiceService voiceService;
     private final DapJobService jobService;
     private final DapAccountService accountService;
@@ -44,12 +49,14 @@ public class DapMiscController {
 
     public DapMiscController(DapCaptureService captureService,
                              DapLicenseService licenseService,
+                             DapLicenseSupplementService licenseSupplements,
                              DapVoiceService voiceService,
                              DapJobService jobService,
                              DapAccountService accountService,
                              DapCatalogService catalog) {
         this.captureService = captureService;
         this.licenseService = licenseService;
+        this.licenseSupplements = licenseSupplements;
         this.voiceService = voiceService;
         this.jobService = jobService;
         this.accountService = accountService;
@@ -106,6 +113,23 @@ public class DapMiscController {
     @PostMapping("/licenses/{id}/renew")
     public ApiResponse<Map<String, Object>> renew(Principal principal, @PathVariable String id) {
         return ApiResponse.of(licenseService.renew(uid(principal), id));
+    }
+
+    @PostMapping("/licenses/{id}/supplement")
+    public ApiResponse<Map<String, Object>> supplementLicense(Principal principal, @PathVariable String id,
+                                                               @RequestBody SupplementLicenseRequest req,
+                                                               HttpServletRequest httpRequest) {
+        return ApiResponse.of(licenseSupplements.supplement(uid(principal), id, req,
+                clientIp(httpRequest), httpRequest.getHeader("User-Agent")));
+    }
+
+    private static String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return (comma < 0 ? forwarded : forwarded.substring(0, comma)).trim();
+        }
+        return request.getRemoteAddr();
     }
 
     // ── 音色 ──────────────────────────────────────────────────

@@ -1140,7 +1140,16 @@ export const MaterialApi = {
     return apiFetch(`/materials`, { method: "POST", body: JSON.stringify({ refType, refId }) });
   },
   listByRef: (refType: Mock.MaterialRefType, refId: string): Promise<Mock.DapMaterialInfo[]> => {
-    if (USE_MOCK) return mock((mockMaterials[`${refType}:${refId}`] || []).map(mockMaterialSnapshot));
+    if (USE_MOCK) {
+      if (refType === "subject") {
+        const keys = [`avatar:${refId}`];
+        for (const [captureId, capture] of mockCaptures.entries()) {
+          if (capture.avatarId === refId) keys.push(`capture:${captureId}`);
+        }
+        return mock(keys.flatMap((key) => (mockMaterials[key] || []).map(mockMaterialSnapshot)));
+      }
+      return mock((mockMaterials[`${refType}:${refId}`] || []).map(mockMaterialSnapshot));
+    }
     return apiFetch(`/materials?refType=${encodeURIComponent(refType)}&refId=${encodeURIComponent(refId)}`);
   },
 };
@@ -1165,6 +1174,21 @@ export const LicenseApi = {
       return mock(l || { id, status: "active" });
     }
     return apiFetch(`/licenses/${id}/renew`, { method: "POST" });
+  },
+  supplement: (id: string, agreementVersion: string): Promise<any> => {
+    if (USE_MOCK) {
+      const l = mockLicenses.find((x) => x.id === id);
+      if (l) {
+        l.status = "active";
+        l.evidenceStatus = "verified";
+        l.agreementVersion = agreementVersion;
+        l.consentedAt = new Date().toISOString();
+      }
+      return mock(l || { id, status: "active", evidenceStatus: "verified", agreementVersion });
+    }
+    return apiFetch(`/licenses/${id}/supplement`, { method: "POST", body: JSON.stringify({
+      agreementAccepted: true, agreementVersion,
+    }) });
   },
   create: (body: Record<string, unknown>): Promise<any> => {
     if (USE_MOCK) return mock({ id: `LIC-${mockSeq++}`, ...body, status: "active" });

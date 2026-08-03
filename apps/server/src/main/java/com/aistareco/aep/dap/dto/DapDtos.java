@@ -320,14 +320,15 @@ public final class DapDtos {
 
     // ── 送审素材 · v0.105 ───────────────────────────────────────
 
-    /** qassetUri = 生成引用格式 qasset://{qassetid}（本版只存储、不接生成）。 */
+    /** qassetUri = 生成引擎引用；sourceUrl = 当前用户查看素材库时的短时签名预览地址。 */
     public record MaterialDto(String id, String refType, String refId, String type, String name,
-                              String status, String failReason, String qassetUri, boolean mock,
+                              String status, String failReason, String qassetUri, String sourceUrl, boolean mock,
                               String createdAt, String updatedAt) {
-        public static MaterialDto from(DapMaterial m) {
+        public static MaterialDto from(DapMaterial m, Function<String, String> keyToUrl) {
             return new MaterialDto(m.getId(), m.getRefType(), m.getRefId(), m.getType(), m.getName(),
                     m.getStatus(), m.getFailReason(),
                     m.getQassetid() == null ? null : "qasset://" + m.getQassetid(),
+                    m.getSourceKey() == null ? null : keyToUrl.apply(m.getSourceKey()),
                     m.isMock(),
                     m.getCreatedAt() != null ? m.getCreatedAt().toString() : null,
                     m.getUpdatedAt() != null ? m.getUpdatedAt().toString() : null);

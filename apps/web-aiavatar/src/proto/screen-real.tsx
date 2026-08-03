@@ -10,7 +10,7 @@ import { toast } from "./toast";
 // ============================================================
 // 移动端 · 真人复刻 全流程（全屏切屏）
 //   录制引导 → 倒计时+三角度转头录制（真实摄像头，纯视频无声） → 最后一步(回放+命名)
-//   → 上传素材 → 协议确认 + 本人刷脸 → 核验登记授权 → 复刻生成 → 就绪
+//   → 上传素材 → 协议确认 + 本人刷脸 → 核验登记授权 → 素材逐条审核 → 入库
 //   live：create avatar → capture → footage → real-auth session（轮询到通过）
 //        → verify(登记授权) → generate(upload)
 //   美颜仅作用于预览/回放（CSS 滤镜降低心理负担），上传素材始终为原始录像
@@ -116,9 +116,9 @@ function RealIntro({ onReady, onUpload, onClose, subjectName }) {
         hMR('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-pill)', fontSize: 11.5, fontWeight: 700, color: 'var(--primary)', marginBottom: 12 } },
           hMR(Icons.bolt, { size: 13, stroke: 2 }), '约 ' + REC_SECONDS + ' 秒 · 无需说话'),
         subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, fontWeight: 600, color: 'var(--primary)', marginBottom: 6 } }, '正在为「' + subjectName + '」补充真人授权证据'),
-        hMR('h1', { style: { fontSize: 25, lineHeight: 1.16, letterSpacing: '-.02em', fontWeight: 800, margin: '0 0 8px' } }, '录几秒转头视频，', hMR('br', null), '生成你的数字分身'),
+        hMR('h1', { style: { fontSize: 25, lineHeight: 1.16, letterSpacing: '-.02em', fontWeight: 800, margin: '0 0 8px' } }, '录几秒转头视频，', hMR('br', null), '建立真人授权素材'),
         hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: 0 } },
-          '正对镜头，跟随箭头缓慢左右转头即可。素颜出镜也没关系——最终形象将由 AI 自动美化。也可 ',
+          '正对镜头，跟随箭头缓慢左右转头即可。素材只用于本人核验、平台审核及后续由你主动发起的视频生成。也可 ',
           hMR('button', { onClick: () => fileRef.current && fileRef.current.click(), style: { background: 'none', border: 'none', padding: 0, color: 'var(--primary)', fontWeight: 700, fontSize: 13.5, textDecoration: 'underline', textUnderlineOffset: 3, cursor: 'pointer' } }, '上传已有素材'),
           ' 。')),
       hMR('div', { style: { margin: '16px 0 0' } }, hMR(CameraStage, { label: '将面部置于取景框中央' })),
@@ -129,7 +129,7 @@ function RealIntro({ onReady, onUpload, onClose, subjectName }) {
           hMR('div', { style: { fontSize: 10, color: 'var(--ink-3)', lineHeight: 1.35 } }, t.desc)))),
       hMR('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, margin: '12px 0 0', padding: '11px 13px', background: 'var(--ok-s)', border: '1px solid color-mix(in oklab, var(--ok) 24%, transparent)', borderRadius: 'var(--r-md)' } },
         hMR(Icons.shield, { size: 15, style: { color: 'var(--ok)', flex: '0 0 auto', marginTop: 1 } }),
-        hMR('span', { style: { fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '录制即代表本人知情同意，素材将加密存档并用于生成肖像授权凭证。'))),
+        hMR('span', { style: { fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.45 } }, '正式授权会在下一步单独确认；录制本身不代表已经同意协议。'))),
     hMR('div', { style: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20, padding: '12px 20px calc(12px + var(--home-ind))', background: 'rgba(255,255,255,.94)', backdropFilter: 'blur(10px)', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 12 } },
       hMR(UI.Button, { variant: 'line', onClick: () => fileRef.current && fileRef.current.click(), icon: Icons.upload, style: { flex: '0 0 88px', padding: '0 12px' } }, '上传'),
       hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.film, onClick: onReady, style: { flex: '1 1 0', width: 'auto', padding: '0 14px' } }, '准备好了')),
@@ -316,13 +316,13 @@ function RealLastStep({ defaultName, blobUrl, isImage, beauty, onToggleBeauty, o
     hMR('div', { className: 'm-body', style: { padding: '2px 22px 28px', textAlign: 'center' } },
       hMR('div', { className: 'm-fade' },
         hMR('h1', { style: { fontSize: 27, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, '最后一步！'),
-        hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 22px', maxWidth: 280 } }, '检查素材，确认无误后即可生成你的数字人。回放仅作参考，最终形象将由 AI 精修美化。'),
+        hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 22px', maxWidth: 280 } }, '检查素材并标记所属真人。完成本人确认与平台审核后，这条素材才能用于视频生成。'),
         hMR(VideoReview, { badge: '肖像已保护', blobUrl, isImage, beauty, onToggleBeauty, onDelete: onRetry }),
         hMR('div', { style: { textAlign: 'left', marginTop: 22 } },
-          hMR('label', { style: { fontSize: 13, fontWeight: 600, color: 'var(--ink-2)', display: 'block', marginBottom: 8 } }, '为你的数字人命名'),
-          hMR(UI.Input, { value: name, onChange: setName, placeholder: '输入名称' })))),
+          hMR('label', { style: { fontSize: 13, fontWeight: 600, color: 'var(--ink-2)', display: 'block', marginBottom: 8 } }, '这是谁的真人素材'),
+          hMR(UI.Input, { value: name, onChange: setName, placeholder: '输入本人姓名或素材名称' })))),
     hMR('div', { style: { flex: '0 0 auto', padding: '12px 22px calc(14px + var(--home-ind))', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 } },
-      hMR(UI.Button, { variant: 'dark', size: 'lg', disabled: busy || !name.trim(), onClick: () => onCreate(name.trim()), style: { minWidth: 200 } }, busy ? '处理中…' : '生成数字人'),
+      hMR(UI.Button, { variant: 'dark', size: 'lg', disabled: busy || !name.trim(), onClick: () => onCreate(name.trim()), style: { minWidth: 200 } }, busy ? '处理中…' : '继续授权'),
       hMR('button', { onClick: onRetry, disabled: busy, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: 'var(--ink-2)' } }, '重新录制')));
 }
 
@@ -529,7 +529,7 @@ function RealVerify({ blobUrl, isImage, beauty, stageText, pct, error, onRetry, 
 }
 
 // —— 就绪 + 选择声音 ——
-function RealReady({ avatar, onContinue, onClose, authOnly }) {
+function RealReady({ avatar, onContinue, onClose, authOnly, materialOnly }) {
   return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
     hMR(CenterNav, { onClose }),
     hMR('div', { className: 'm-body', style: { padding: '2px 22px 28px', textAlign: 'center' } },
@@ -537,12 +537,12 @@ function RealReady({ avatar, onContinue, onClose, authOnly }) {
         hMR('div', { style: { width: 64, height: 64, margin: '4px auto 18px', position: 'relative', display: 'grid', placeItems: 'center' } },
           hMR('div', { style: { position: 'absolute', inset: 8, borderRadius: 99, background: 'var(--primary-soft)' } }),
           hMR('div', { style: { position: 'relative', width: 44, height: 44, borderRadius: 14, background: 'var(--primary)', display: 'grid', placeItems: 'center', color: '#fff' } }, hMR(Icons.check, { size: 24, stroke: 2.6 }))),
-        hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, authOnly ? '真人授权已完成！' : '你的数字人已就绪！'),
+        hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, materialOnly ? '真人素材已入库' : authOnly ? '真人授权已完成！' : '你的数字人已就绪！'),
         hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 20px', maxWidth: 260 } },
-          authOnly ? '肖像授权已登记，这个形象现在可以正常用于合成出片。' : '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
+          materialOnly ? '授权证据已经登记，七牛云正在逐条审核素材；审核通过后才能在视频生成时选择使用。' : authOnly ? '肖像授权已登记，这个形象现在可以正常用于合成出片。' : '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
         avatar && avatar.imageUrl && hMR('div', { style: { width: 170, margin: '0 auto 20px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
           hMR(Portrait, { char: avatar, variant: 'key', ratio: '4 / 5', expr: 'calm' })),
-        authOnly
+        (authOnly || materialOnly)
           ? hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.check, onClick: onClose }, '完成')
           : hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.sliders, onClick: onContinue }, '继续精调'))),
     hMR('div', { style: { flex: '0 0 auto', padding: '8px 22px calc(14px + var(--home-ind))', textAlign: 'center' } },
@@ -577,19 +577,9 @@ function MRealAuthResume({ sessionId, ctx }) {
           setPhase('sealing'); setMessage('核验通过，正在绑定授权证据…');
           try {
             await CaptureApi.verify(s.captureId);
-            let a = s.avatarId ? await AvatarApi.get(s.avatarId) : null;
-            if (a && !a.imageUrl) {
-              setMessage('授权已登记，正在复刻数字形象…');
-              const running = a.status === 'proofing'
-                ? (await JobApi.list({ avatarId: a.id }).catch(() => []))
-                    .find((j: any) => j.status === 'running' && j.type === 'generate_upload')
-                : null;
-              const job = running || await AvatarApi.generate(a.id, { mode: 'upload', captureId: s.captureId });
-              await awaitJob(job.id, (j) => live && setMessage(j.eta || '正在复刻数字形象…'));
-              a = await AvatarApi.get(a.id);
-            }
+            const a = s.avatarId ? await AvatarApi.get(s.avatarId) : null;
             if (!live) return;
-            setAvatar(a); setPhase('ready'); setMessage('授权证据已完整登记。');
+            setAvatar(a); setPhase('ready'); setMessage('授权证据已登记，素材正在逐条审核。');
             ctx.reload && ctx.reload();
           } catch (e: any) {
             if (!live) return;
@@ -637,11 +627,9 @@ function MRealAuthResume({ sessionId, ctx }) {
             : hMR(success ? Icons.check : Icons.warn, { size: 28, stroke: 2.2 })),
         hMR('div', { className: 'mono', style: { fontSize: 10.5, letterSpacing: '.12em', color: 'var(--ink-3)', marginBottom: 7 } }, sessionId),
         hMR('h1', { style: { fontFamily: 'var(--font-disp)', fontSize: 24, margin: '0 0 9px' } },
-          success ? '真人授权已登记' : failed ? '本人确认未完成' : '正在确认最终结果'),
+          success ? '真人素材已入库' : failed ? '本人确认未完成' : '正在确认最终结果'),
         hMR('p', { style: { fontSize: 13.5, color: failed ? 'var(--err)' : 'var(--ink-2)', lineHeight: 1.6, margin: '0 auto 22px', maxWidth: 300 } }, message),
-        success && avatar && avatar.imageUrl && hMR('div', { style: { width: 164, margin: '0 auto 20px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
-          hMR(Portrait, { char: avatar, variant: 'key', ratio: '4 / 5', expr: 'calm' })),
-        success && hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', onClick: () => avatar ? ctx.finishCreate(avatar) : ctx.tab('library') }, avatar ? '查看数字形象' : '返回资产库'),
+        success && hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', onClick: () => ctx.go('realmaterials') }, '查看真人素材库'),
         phase === 'waiting' && session?.h5Url && hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.scan, onClick: reopen }, '继续本人刷脸确认'),
         failed && session && hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.retry, disabled: busy, onClick: restart }, busy ? '重新建立中…' : '重新发起本人确认'),
         hMR('div', { style: { marginTop: 18, padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface-2)', textAlign: 'left', fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.55 } },
@@ -650,7 +638,7 @@ function MRealAuthResume({ sessionId, ctx }) {
 
 // —— 外壳：编排 capture → footage → 刷脸认证 → verify → generate ——
 //   char 传入既有资产时（授权页 / 资产详情的「去认证」入口）复用该资产，不再新建。
-function MRealCapture({ char, ctx }) {
+function MRealCapture({ char, ctx, materialOnly = true }) {
   // 入口带进来的既有资产（不是创建向导的空白草稿）
   const existing = char && char.id && char.id !== 'DH-NEW' && !char._fresh ? char : null;
   const [stage, setStage] = useStateMR('intro'); // intro | rec | last | verify | auth | ready
@@ -667,7 +655,7 @@ function MRealCapture({ char, ctx }) {
   const [beauty, setBeauty] = useStateMR(true);    // 美颜预览（仅展示层），默认开
   const nameRef = useRefMR((existing && existing.name) || '');
   // 已经出过形象的资产走「补认证」：认证通过即完成，不重复复刻生成
-  const authOnly = !!(existing && existing.imageUrl);
+  const authOnly = materialOnly || !!(existing && existing.imageUrl);
   useEffectMR(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl); }, [blobUrl]);
 
   const acceptBlob = (b: Blob | File, image: boolean) => {
@@ -732,6 +720,14 @@ function MRealCapture({ char, ctx }) {
       toast('本人确认通过 · 授权证据已登记', { tone: 'ok' });
       return;
     }
+    if (materialOnly) {
+      const fresh = avatar ? await AvatarApi.get(avatar.id).catch(() => avatar) : avatar;
+      setAvatar(fresh);
+      setStage('ready');
+      ctx.reload && ctx.reload();
+      toast('真人素材已提交审核', { tone: 'ok' });
+      return;
+    }
     toast('本人确认通过 · 授权证据已登记', { tone: 'ok' });
     runGenerate(captureId);
   };
@@ -761,7 +757,7 @@ function MRealCapture({ char, ctx }) {
     stage === 'auth' && hMR(RealAuth, { captureId, subjectName: avatar && avatar.name, blobUrl, isImage, beauty,
       onPassed: onAuthPassed,
       onClose: ctx.back }),
-    stage === 'ready' && hMR(RealReady, { avatar, authOnly, onClose: ctx.back, onContinue: continueAdjust }));
+    stage === 'ready' && hMR(RealReady, { avatar, authOnly, materialOnly, onClose: ctx.back, onContinue: continueAdjust }));
 }
 
 export { MRealCapture, MRealAuthResume };
