@@ -107,6 +107,17 @@ public class DapProperties {
         /** 非终态分组 / 素材的收敛轮询间隔（秒）。 */
         private int pollIntervalSeconds = 10;
         private int httpTimeoutSeconds = 30;
+        /** 数字人 AI 原创素材送审用的专属 aigc 分组名（账号级共享，只建一个）。 */
+        private String aigcGroupName = "AiAvatar 数字人";
+        /**
+         * 已在七牛控制台/API 建好的专属 aigc 分组 id。配了就**认领**它（不再建组），
+         * 避免在只有 3 个分组配额的账号上重复建一个同名组。留空 = 首次送审时自动建。
+         */
+        private String aigcQgroupid;
+        /** 终态（failed）liveness 分组的保留时长（小时），超期由回收器删上游分组还配额。 */
+        private int groupRetentionHours = 24;
+        /** 终态分组回收器的执行间隔（秒）。 */
+        private int groupReclaimIntervalSeconds = 3600;
 
         public String getCallbackBaseUrl() { return callbackBaseUrl; }
         public void setCallbackBaseUrl(String v) { this.callbackBaseUrl = v; }
@@ -116,6 +127,14 @@ public class DapProperties {
         public void setPollIntervalSeconds(int v) { this.pollIntervalSeconds = v; }
         public int getHttpTimeoutSeconds() { return httpTimeoutSeconds; }
         public void setHttpTimeoutSeconds(int v) { this.httpTimeoutSeconds = v; }
+        public String getAigcGroupName() { return aigcGroupName; }
+        public void setAigcGroupName(String v) { this.aigcGroupName = v; }
+        public String getAigcQgroupid() { return aigcQgroupid; }
+        public void setAigcQgroupid(String v) { this.aigcQgroupid = v; }
+        public int getGroupRetentionHours() { return groupRetentionHours; }
+        public void setGroupRetentionHours(int v) { this.groupRetentionHours = v; }
+        public int getGroupReclaimIntervalSeconds() { return groupReclaimIntervalSeconds; }
+        public void setGroupReclaimIntervalSeconds(int v) { this.groupReclaimIntervalSeconds = v; }
     }
 
     /** 各动作扣费（点）。0 = 免费。 */

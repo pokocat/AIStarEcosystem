@@ -21,7 +21,14 @@ public interface DapMaterialGroupRepository extends JpaRepository<DapMaterialGro
     /** 轮询器收敛用（preparing / validating 等非终态）。 */
     List<DapMaterialGroup> findByStatusIn(Collection<String> statuses);
 
-    /** 复用本用户既有的 aigc 分组（当前实现不建本地 aigc 组，保留给后续按组隔离时使用）。 */
+    /** 复用本用户既有的 aigc 分组（按 owner 维度；账号级共享组走 findByCallbackToken 的去重键）。 */
     Optional<DapMaterialGroup> findFirstByOwnerUserIdAndKindAndModelAndStatusOrderByCreatedAtDesc(
             String ownerUserId, String kind, String model, String status);
+
+    /**
+     * 终态分组回收器：某类分组里状态为 status、创建早于 before、尚未回收的行。
+     * （active 分组不在回收范围 —— 那是生效授权的取证凭据。）
+     */
+    List<DapMaterialGroup> findByKindAndStatusAndRecycledAtIsNullAndCreatedAtBefore(
+            String kind, String status, java.time.Instant before);
 }

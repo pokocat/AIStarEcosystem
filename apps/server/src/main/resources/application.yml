@@ -244,6 +244,15 @@ aep:
       allow-mock: ${AEP_DAP_MODELINK_ALLOW_MOCK:true}
       poll-interval-seconds: ${AEP_DAP_MODELINK_POLL_INTERVAL_SECONDS:10}
       http-timeout-seconds: ${AEP_DAP_MODELINK_HTTP_TIMEOUT_SECONDS:30}
+      # ── 分组配额治理（账号级上限只有 3 个分组 / 30 个素材）────────────────
+      # aigc-qgroupid：数字人 AI 原创素材送审的专属分组。已在七牛侧建好就配上 → 直接认领，
+      #                留空则首次送审时自动建（会吃掉一个配额槽位）。
+      # group-retention-hours：failed 的 liveness 分组保留多久后由回收器删回上游（留排障窗口）。
+      #                        active 分组永不回收（生效授权的取证凭据）。
+      aigc-qgroupid: ${AEP_DAP_MODELINK_AIGC_QGROUPID:}
+      aigc-group-name: ${AEP_DAP_MODELINK_AIGC_GROUP_NAME:AiAvatar 数字人}
+      group-retention-hours: ${AEP_DAP_MODELINK_GROUP_RETENTION_HOURS:24}
+      group-reclaim-interval-seconds: ${AEP_DAP_MODELINK_GROUP_RECLAIM_INTERVAL_SECONDS:3600}
     # 异步生成任务并发上限（dapJobExecutor 线程池大小）
     max-concurrent: ${AEP_DAP_MAX_CONCURRENT:3}
     # 月度赠送算力（点）；首次访问账户 / 提交任务时按月幂等发放。0 = 不发放。

@@ -76,6 +76,9 @@ public class DapRealAuthService {
             if (existing != null && !"failed".equals(existing.getStatus())) {
                 return refreshAndBuild(existing);
             }
+            // 上次认证失败 → 下面会另建一个上游分组。modelink 账号级只有 3 个分组，
+            // 不先把旧的删掉，两次失败重试就能把整个平台的分组配额漏光（v0.105-补丁修复）。
+            if (existing != null) recycleGroup(existing);
         }
 
         String id = uniqueId();
@@ -173,6 +176,47 @@ public class DapRealAuthService {
                     g.getId(), g.getCaptureId(), g.getFailReason());
         }
         return st;
+    }
+
+    // ── 分组回收（配额治理，v0.105-补丁）─────────────────────────
+
+    /**
+     * best-effort 回收上游分组，把 modelink 的分组配额（账号级仅 3 个）还回去。
+     *
+     * <p>安全边界：
+     * <ul>
+     *   <li>只回收 <b>failed</b> 分组。<b>active 绝不删</b> —— 那是生效授权的取证凭据，
+     *       删了授权链就断了；非终态上游也会以 409 拒绝。</li>
+     *   <li>删成功才打 {@code recycledAt}；删失败（409 非空 / 上游抖动）只 WARN 并保留，
+     *       由回收器下轮重试 —— 绝不阻断调用方（新建会话 / 整轮清理）。</li>
+     * </ul>
+     *
+     * @return 上游分组是否已确认不存在（删成功或本就没有 qgroupid）
+     */
+    @Transactional
+    public boolean recycleGroup(DapMaterialGroup g) {
+        if (g == null || g.getRecycledAt() != null) return false;
+        if (!"failed".equals(g.getStatus())) return false;
+        if (g.getQgroupid() == null || g.getQgroupid().isBlank()) {
+            markRecycled(g);
+            return true;
+        }
+        try {
+            modelink.deleteGroup(g.getQgroupid());
+        } catch (RuntimeException e) {
+            log.warn("[dap-realauth] 回收上游分组失败（保留，下轮再试）id={} qgroupid={} err={}",
+                    g.getId(), g.getQgroupid(), e.getMessage());
+            return false;
+        }
+        markRecycled(g);
+        log.info("[dap-realauth] 已回收上游分组 id={} qgroupid={}", g.getId(), g.getQgroupid());
+        return true;
+    }
+
+    private void markRecycled(DapMaterialGroup g) {
+        g.setRecycledAt(Instant.now());
+        g.setUpdatedAt(Instant.now());
+        groupRepo.save(g);
     }
 
     private RealAuthSessionDto refreshAndBuild(DapMaterialGroup g) {

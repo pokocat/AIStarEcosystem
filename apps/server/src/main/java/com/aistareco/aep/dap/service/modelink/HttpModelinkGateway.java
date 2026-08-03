@@ -31,7 +31,9 @@ import java.time.Duration;
  * <p>错误映射（§8.0：绝不静默降级）：
  * <ul>
  *   <li>未配置端点 → {@link #isConfigured()} = false，由 {@link ModelinkService} 抛 503；</li>
- *   <li>429 → 429 {@code DAP_MODELINK_QUOTA}（配额/限流）；</li>
+ *   <li>429 或响应 message 命中配额关键词 → 503 {@code DAP_MODELINK_QUOTA_EXCEEDED}
+ *       （账号级上限：3 分组 / 30 素材；文案给运维「清理或提额」的指引，不产假数据、不降级）；</li>
+ *   <li>删分组 409（非终态或组内非空） → 409 {@code DAP_MODELINK_GROUP_NOT_DELETABLE}（可识别，调用方 best-effort 吞）；</li>
  *   <li>其它非 2xx / 网络失败 / 响应不是 JSON → 502 {@code DAP_MODELINK_CALL_FAILED}。</li>
  * </ul>
  */
@@ -118,6 +120,12 @@ public class HttpModelinkGateway implements ModelinkGateway {
     }
 
     @Override
+    public void deleteGroup(String qgroupid) {
+        Target t = require();
+        send("DELETE", "/v1/asset-groups/" + enc(qgroupid), null, t);
+    }
+
+    @Override
     public void visualValidate(String qgroupid, String resultCode, String bytedToken) {
         Target t = require();
         ObjectNode body = OM.createObjectNode();
@@ -157,19 +165,30 @@ public class HttpModelinkGateway implements ModelinkGateway {
                 .header("Authorization", "Bearer " + t.apiKey())
                 .header("Accept", "application/json");
         try {
-            if ("GET".equals(method)) {
-                b.GET();
-            } else {
-                b.header("Content-Type", "application/json")
+            switch (method) {
+                case "GET" -> b.GET();
+                case "DELETE" -> b.DELETE();
+                default -> b.header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(
                                 body == null ? "{}" : OM.writeValueAsString(body)));
             }
             HttpResponse<String> resp = http.send(b.build(), HttpResponse.BodyHandlers.ofString());
             int sc = resp.statusCode();
-            if (sc == 429) {
-                log.warn("[dap-modelink] quota/limit {} {} → 429 body={}", method, path, clamp(resp.body(), 400));
-                throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "DAP_MODELINK_QUOTA",
-                        "素材合规服务已达配额上限，请稍后重试或在七牛控制台提升配额");
+            if (sc == 429 || (sc >= 400 && isQuotaError(resp.body()))) {
+                // 账号级上限（3 分组 / 30 素材）打满时上游未必回 429，会用普通错误体带 quota/limit 文案，
+                // 之前一律被包成 502「调用失败」→ 运维看不出真因。这里识别出来给明确的处置指引。
+                log.warn("[dap-modelink] quota exhausted {} {} status={} body={}",
+                        method, path, sc, clamp(resp.body(), 400));
+                throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "DAP_MODELINK_QUOTA_EXCEEDED",
+                        "素材合规服务的素材分组配额已用尽：请先清理不再需要的分组，或联系七牛为该账号提额",
+                        "modelink " + method + " " + path + " status=" + sc + " body=" + clamp(resp.body(), 600));
+            }
+            if (sc == 409 && "DELETE".equals(method)) {
+                // 分组非终态或组内非空 → 现在删不掉（下轮回收器再试）。给可识别的错误码而不是笼统 502。
+                log.warn("[dap-modelink] group not deletable {} body={}", path, clamp(resp.body(), 300));
+                throw BusinessException.wrapped(HttpStatus.CONFLICT, "DAP_MODELINK_GROUP_NOT_DELETABLE",
+                        "该素材分组当前不可删除（未到终态或组内仍有素材）",
+                        "modelink DELETE " + path + " status=409 body=" + clamp(resp.body(), 600));
             }
             if (sc >= 400) {
                 String msg = upstreamMessage(resp.body());
@@ -232,11 +251,19 @@ public class HttpModelinkGateway implements ModelinkGateway {
         if (body == null || body.isBlank()) return null;
         try {
             JsonNode n = OM.readTree(body);
-            String m = text(n.path("error"), "message");
+            String m = firstNonBlank(text(n.path("error"), "message"), text(n, "message"), text(n, "error"));
             return m != null ? clamp(m, 200) : null;
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 配额类错误关键词（上游打满账号级 3 分组 / 30 素材上限时未必回 429）。 */
+    static boolean isQuotaError(String body) {
+        String m = upstreamMessage(body);
+        String s = (m != null ? m : body == null ? "" : body).toLowerCase(java.util.Locale.ROOT);
+        return s.contains("quota") || s.contains("配额") || s.contains("limit")
+                || s.contains("exceed") || s.contains("上限");
     }
 
     private static String text(JsonNode n, String field) {

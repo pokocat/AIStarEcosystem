@@ -18,4 +18,7 @@ public interface DapMaterialRepository extends JpaRepository<DapMaterial, String
 
     /** 轮询器收敛用（pending / reviewing 等非终态）。 */
     List<DapMaterial> findByStatusIn(Collection<String> statuses);
+
+    /** 分组回收前的保守闸：组里还有非 failed 素材就不删（上游也会以 409 拒绝非空分组）。 */
+    long countByGroupIdAndStatusNot(String groupId, String status);
 }

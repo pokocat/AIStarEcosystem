@@ -3629,7 +3629,58 @@ server `compile` + dap modelink 4 个新测试类（`DapRealAuthServiceTest` / `
 #### 10. 已识别债务（详见 `TODO.md` 2026-08-02 段）
 
 - `DapModelinkPoller` 多实例需 ShedLock（与 `DapTrashCleanupScheduler` 同一债务，归 Phase 5）。
-- modelink 账号默认限 **3 组 / 30 素材**，而 liveness 每次捕获建一组 → 需要终态分组清理策略
-  （上游 `DELETE /v1/asset-groups` 要求组内为空且非 pending）。
+- ~~modelink 账号默认限 **3 组 / 30 素材**，而 liveness 每次捕获建一组 → 需要终态分组清理策略~~
+  → **已在下面第 11 节（同版补丁）落地**。
 - `LicenseDto` / `AvatarDto` 未出 `captureId`，前端「授权素材」只能按 avatar 维度拉，拿不到 capture 维度。
 - web-aiavatar 覆盖页栈只渲染栈顶：从合成工作台跳认证再返回会重挂工作台、已选槽位丢失（既有限制）。
+
+#### 11. 分组治理补丁（2026-08-02，同版收尾）
+
+用真实 key 探测线上 modelink API 后确认：**字段与 v0.105 网关解析完全一致**（无需改解析），
+但暴露出两个必须修的问题 —— 一个生产阻断、一个产品要求。
+
+**A. 分组配额泄漏（生产阻断）**。上限 **3 个分组 / 30 个素材**是**整个平台账号级**的，不是每用户。
+而 `DapRealAuthService.start()` 遇到 `failed` 会话会新建一个上游分组，网关又**没有 delete 能力** ——
+任何失败重试都永久漏掉一个槽位，两次重试或两个并发用户做实名认证就把认证通道堵死
+（上游返回的是非 429 错误体，此前被包成笼统的 502 `DAP_MODELINK_CALL_FAILED`，运维看不出真因）。三处修：
+
+1. **网关加删除动作**：`ModelinkGateway.deleteGroup(qgroupid)` +
+   `HttpModelinkGateway` 的 `DELETE /v1/asset-groups/{qgroupid}`（实测 200 `{"message":"deleted"}`）+
+   `MockModelinkGateway` 内存删除 + `ModelinkService` 委派。上游 409（**非终态或组内非空**才允许删的约束）
+   如实回报为 409 `DAP_MODELINK_GROUP_NOT_DELETABLE`（**可识别**，不吞在网关里）——
+   两个调用方各自 best-effort catch，删不掉只 WARN。
+2. **失败重试即回收**：`start()` 复用分支里，failed 会话在建新分组**之前**先 `recycleGroup(existing)`
+   把旧上游分组删掉还配额；删失败只 WARN，绝不阻断新会话创建。
+3. **终态分组回收器**：`DapModelinkPoller.reclaimTerminalGroups()`（默认每小时一轮，
+   `aep.dap.modelink.group-reclaim-interval-seconds`）。判定刻意保守，三条同时满足才删：
+   kind=liveness_face 且状态 **failed**、创建超过 `group-retention-hours`（默认 24h，留排障窗口）、
+   本地无挂在该组下的非 failed 素材。**`active` 分组绝不删** —— 那是生效授权的取证凭据。
+   删除失败保留 `recycledAt=null`，下轮再试。无待回收行时零上游请求。
+4. **配额错误可辨识**：`HttpModelinkGateway` 识别配额类错误（HTTP 429 或响应 message 含
+   `quota`/`配额`/`limit`/`exceed`/`上限`）→ 503 **`DAP_MODELINK_QUOTA_EXCEEDED`**，
+   文案给运维处置指引（「先清理不再需要的分组，或联系七牛提额」）。§8.0：不产假数据、不降级。
+
+**B. 数字人专属 aigc 分组（产品要求，推翻 §M）**。AI 原创人物定妆图不再送进平台默认组，
+改挂一个**数字人业务专属的 aigc 分组**。新增 `DapAigcGroupResolver`：
+
+- 分组是**账号级共享**（所有用户的 AI 人物送审共用一个），本地行 owner 用约定的系统 owner
+  `__platform__`（对齐既有 `__official__` / `__admin__`），查询**不按 owner 过滤**。
+- **幂等**：去重键 `aigc:<model>` 落在 `DapMaterialGroup.callbackToken`（该列本就 unique，
+  aigc 分组没有回调正好空着 —— 不新增列/索引就拿到 DB 级唯一约束）。「查 → 建 → 提交」整段在
+  JVM 锁内 + 独立事务（`REQUIRES_NEW`，TransactionTemplate），同实例并发只建一个上游分组；
+  独立事务同时保证送审失败回滚不会把已建好的分组行丢掉（否则下次又建一个＝再漏一个配额）。
+- **异步 pending 不阻断**：aigc 组是 pending → active 异步生效。本次拿不到 active 就
+  退回平台默认组（不传 `group_id`）并打 info，首次使用绝不失败。
+- **认领已有分组**：`aep.dap.modelink.aigc-qgroupid` 配了就只 GET 确认、不建组
+  （线上分组已手工建好时，自动建组会白吃掉仅剩的配额槽位）。
+  本轮已用真实 API 建好该分组：`qgroup-1383618387-1785727504389729758`（`AiAvatar 数字人`，
+  type=aigc，active），已写进 `infra/env/server.env.example`。当前账号占用 **2/3**。
+
+**新增列 / 配置**：`dap_material_group.recycled_at`（上游分组已删、配额已还的时间；**保留本地行**
+作审计追溯，不物理删 —— `capture.authGroupId` / `license.livenessGroupId` 仍指得到它）；
+`aep.dap.modelink.{aigc-qgroupid, aigc-group-name, group-retention-hours, group-reclaim-interval-seconds}`。
+
+**门禁**：`compile` + `AEP_CDN_DRIVER=local ./mvnw -Dtest='Dap*Test' test` **47/47 全绿**
+（新增 `DapModelinkGatewayTest` 6 例，用本机 HttpServer 打桩上游、不打真实 API；
+`DapRealAuthServiceTest` 14 / `DapMaterialServiceTest` 11 / `DapModelinkPollerTest` 10 / `DapCaptureServiceTest` 6）
++ `pnpm check:api-contract` 全绿。**无新端点**，openapi 无变更。

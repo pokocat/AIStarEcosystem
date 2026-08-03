@@ -175,8 +175,16 @@ src/
 「AI 应用绑定」新用途 `DAP_REAL_AVATAR`（无 env 兜底），未配置且不允许 mock → 503
 `DAP_MODELINK_NOT_CONFIGURED`（§8.0，不产假数据）；真人复刻缺生效授权的硬闸从合成路径**前移到生成入口**。
 
+**分组治理补丁（同版收尾，纯 server，无前端改动）**：真实 API 探测确认上限
+**3 个分组 / 30 个素材是整个平台账号级的**（非每用户）。补上 `deleteGroup` 能力 + 失败会话重试即回收
++ 超期 failed 分组的低频回收器（**active 分组绝不删** —— 生效授权的取证凭据）；配额打满从笼统 502
+升级为 503 `DAP_MODELINK_QUOTA_EXCEEDED`。AI 原创人物送审从「平台默认组」改为**数字人专属 aigc 分组**
+（账号级共享单例，配 `AEP_DAP_MODELINK_AIGC_QGROUPID` 即认领线上已建好的分组）。
+新列 `dap_material_group.recycled_at`。推翻理由与取舍见 [`DECISIONS.md`](./DECISIONS.md) §M。
+
 门禁：server compile + dap modelink 4 个新测试类 + `mvnw test` 全量回归全绿 / `pnpm typecheck:all` /
-web-aiavatar `build` / `pnpm check:api-contract` 全绿。
+web-aiavatar `build` / `pnpm check:api-contract` 全绿；补丁轮 `Dap*Test` 47/47（新增
+`DapModelinkGatewayTest`，本机 HttpServer 打桩上游、不打真实 API）+ contract 全绿。
 
 ### v0.104（2026-07-27）— 从「数字人平台」扩展为「数字资产平台」（六类资产 + IP 容器 + 跨资产合成）
 

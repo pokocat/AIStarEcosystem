@@ -72,6 +72,19 @@ public class MockModelinkGateway implements ModelinkGateway {
         return snapshot(qgroupid, g);
     }
 
+    /** 与上游同构：只允许删终态分组（组内素材 mock 不跟踪，视为空）。 */
+    @Override
+    public void deleteGroup(String qgroupid) {
+        MockGroup g = groups.get(qgroupid);
+        if (g == null) return; // 已经不存在 → 视作删除成功（幂等）
+        String status = snapshot(qgroupid, g).status();
+        if (!"active".equals(status) && !"failed".equals(status)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "DAP_MODELINK_GROUP_NOT_DELETABLE",
+                    "该素材分组当前不可删除（未到终态，mock）");
+        }
+        groups.remove(qgroupid);
+    }
+
     @Override
     public void visualValidate(String qgroupid, String resultCode, String bytedToken) {
         MockGroup g = groups.get(qgroupid);
