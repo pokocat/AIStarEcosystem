@@ -103,7 +103,7 @@
 ### 配置中心 / 字典上移（spec §10）
 
 - [ ] **`ConfigItem` 配置中心**：`docs/ADMIN_PRODUCT_SPEC.md` §10 设计已写。需要落实体 + 草稿 / 审核 / 发布状态机 + 灰度（白名单 / AB 桶）。
-- [ ] **`apps/web/src/constants/*` 17 个字典上移**：详 `docs/ADMIN_PRODUCT_SPEC.md` §7.5。
+- [ ] **各子应用 `constants/*` 字典上移**（**描述过时**，2026-08-03 随 apps/web 删除审计更新：原描述的 `apps/web/src/constants/*` 17 个文件已随 apps/web 一并删除，但同类硬编码字典已分散到各新 app 自己的 `constants/*-ui.ts`，未消失——`web-music` 18 个 / `web-drama` 13 个 / `web-celebrity` 3 个 / `web-star` 1 个 / `web-aiavatar` 0 个，需求本身仍未解决）：详 `docs/ADMIN_PRODUCT_SPEC.md` §7.5。
 - [ ] **`/celebrity/dictionaries`** 当前 hard-coded 默认值；接 ConfigItem 后改为运营可配。
 
 ### 通知 / 实时

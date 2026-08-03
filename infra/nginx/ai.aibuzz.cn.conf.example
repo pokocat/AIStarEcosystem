@@ -3,7 +3,7 @@
 # 落位：/etc/nginx/conf.d/ai.aibuzz.cn.conf
 #
 # 域名规划：
-#   aibuzz.cn / www.aibuzz.cn   → web (basePath=/web)，根路径 302 /web
+#   aibuzz.cn / www.aibuzz.cn   → web-celebrity（根域名代理到明星带货子应用，v0.109 起 apps/web 已删除）
 #   admin.aibuzz.cn              → admin
 #   celebrity.aibuzz.cn          → web-celebrity
 #   music.aibuzz.cn              → web-music
@@ -37,16 +37,14 @@ server {
 #   ssl_prefer_server_ciphers on;
 #   add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-# ── aibuzz.cn / www → apps/web ─────────────────────────────────────
+# ── aibuzz.cn / www → apps/web-celebrity（根域名，v0.109 起 apps/web 已删除） ──
 server {
     listen 443 ssl http2;
     server_name aibuzz.cn www.aibuzz.cn;
     include /etc/nginx/conf.d/snippets/ssl-aibuzz.conf;
     client_max_body_size 200m;
 
-    location = / { return 302 /web; }
-    location = /web { proxy_pass http://127.0.0.1:3002; }
-    location /web/ { proxy_pass http://127.0.0.1:3002; }
+    location / { proxy_pass http://127.0.0.1:3012; }
 }
 
 # ── admin.aibuzz.cn → apps/admin ───────────────────────────────────

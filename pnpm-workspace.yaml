@@ -1,6 +1,6 @@
 packages:
   - "packages/*"
-  # apps/web 仍是 legacy npm；admin 已升级为 pnpm workspace。
+  # 遗留 apps/web（legacy npm）已于 v0.109/2026-08-03 删除；admin 已升级为 pnpm workspace。
   - "apps/web-music"
   - "apps/web-drama"
   - "apps/web-celebrity"

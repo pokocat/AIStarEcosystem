@@ -34,8 +34,8 @@ apps/miniprogram/
 ├─ agent.md                # ⚠️ 任何 agent 在本目录工作前必读
 ├─ utils/
 │  ├─ api.js               # 后端调用封装（mock 开关）
-│  ├─ mocks.js             # 字段对齐 apps/web/src/types/* 的演示数据
-│  └─ format.js            # 与 apps/web/src/lib/format.ts 同形
+│  ├─ mocks.js             # 字段对齐 packages/types/src/* 的演示数据
+│  └─ format.js            # 与 packages/api-client/src/format.ts 同形
 ├─ custom-tab-bar/         # 5 项 + 中央凸起（工作台）
 └─ pages/
    ├─ login/               # 01 激活码登录
@@ -80,7 +80,7 @@ apps/miniprogram/
 | 08b | 单视频详情 | `GET /celebrity/videos/{id}` 或 `/celebrity/projects/{projectId}/videos` |
 | 08b | 多平台分发 | `POST /celebrity/projects/{projectId}/distribute` |
 
-> **数据形状真源**：`apps/web/src/types/celebrity-zone.ts`。
+> **数据形状真源**：`packages/types/src/celebrity-zone.ts`。
 > 小程序的 `mocks.js` 字段名按此对齐；后端 `*Dto` 同名。
 
 ## 五、与 apps/admin 的边界

@@ -107,7 +107,7 @@
 
 - **后端**：复用 `apps/server`（Spring Boot, 8080），仅消费已存在的 `/celebrity/*` 等接口，**不**新建后端模块。
 - **运营**：复用 `apps/admin`（Next.js, 3003），所有"审核/价格/分账/上下架"在 admin 完成，**小程序不出现 admin UI**。
-- **数据形状**：以 `apps/web/src/types/celebrity-zone.ts` 为单一真源；小程序侧 `utils/api.js` 字段名与之逐字段对齐。
+- **数据形状**：以 `packages/types/src/celebrity-zone.ts` 为单一真源；小程序侧 `utils/api.js` 字段名与之逐字段对齐。
 - 不引入 Taro/Uni/npm 构建。原生 WXML/WXSS/JS。
 
 ---
@@ -121,7 +121,7 @@
 1. **`apps/miniprogram/README.md` 版本日志** —— 加一行新版条目（如 v0.5.4 / 2026-05-09 ...）
 2. **`product_spec_ai_celebrity.md` 顶部版本节** —— 在「六、版本日志」追加新版本，写清楚做了什么、消费的接口、已知限制
 3. **如踩到新平台坑**（iOS/Android 差异、新 API 行为不一致、setData 大对象问题等）—— 在本文（agent.md）对应小节加一段，并在代码里加 `// 平台坑：... 详见 agent.md「分类」` 注释
-4. **如新增 / 改了 API 调用** —— 字段名严格对齐 `apps/web/src/types/celebrity-zone.ts`（真源）；server 缺接口时在 `specs/openapi.yaml` 同步加 path
+4. **如新增 / 改了 API 调用** —— 字段名严格对齐 `packages/types/src/celebrity-zone.ts`（真源）；server 缺接口时在 `specs/openapi.yaml` 同步加 path
 
 **总文档地图**：[`docs/INDEX.md`](../../docs/INDEX.md) | **三端总协议**：[`AGENTS.md`](../../AGENTS.md) 「文档同步纪律」段。
 

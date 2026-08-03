@@ -5,9 +5,9 @@ description: 将 figma/ 目录（Figma Make 导出原型）里新增或变更的
 
 # Figma → apps/web 迁移手册
 
-本技能指导将 `figma/src/**`（Figma Make 导出的一次性 React 产物）里新增或变更的页面 / 组件同步进 `apps/web`（长期维护的 Next.js 14 工程）。
+> ⚠️ **待更新（2026-08-03）**：本文档全篇以已删除的遗留 `apps/web`（Next 14）为迁移目标，`apps/web/FIGMA_MIGRATION_GUIDE.md` 前置文档也已随 apps/web 一并删除。Phase 5 完成后新 Figma 原型应落到具体子应用（`apps/web-{music,drama,celebrity,aiavatar,star}`），但本 skill 尚未 retarget —— 使用前需先确认迁移目标子应用，下述所有 `apps/web/...` 路径仅供理解迁移套路参考，不可直接照搬执行。
 
-> **前置文档**：`apps/web/FIGMA_MIGRATION_GUIDE.md` 是全量首迁手册；本 Skill 聚焦"增量迭代"场景（Figma 做了改动，仅需把新增/变更部分落到 web）。首迁时仍以 `FIGMA_MIGRATION_GUIDE.md` 为准。
+本技能指导将 `figma/src/**`（Figma Make 导出的一次性 React 产物）里新增或变更的页面 / 组件同步进目标子应用。
 
 ---
 

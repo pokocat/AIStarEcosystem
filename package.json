@@ -2,7 +2,7 @@
   "name": "ai-star-eco-monorepo",
   "private": true,
   "version": "0.0.0",
-  "description": "AI Star Eco monorepo — 三个子产品（音乐人/短剧/明星带货）共享后端与 packages/*。新代码 Next 16 + React 19；apps/admin 已升级为 pnpm workspace，apps/web 仍为 legacy Next 14。",
+  "description": "AI Star Eco monorepo — 五个子产品（音乐人/短剧/明星带货/AiAvatar数字资产/明星商务）共享后端与 packages/*。全部 Next 16 + React 19 + pnpm workspace；遗留 apps/web（legacy Next 14）已于 Phase 5（2026-08-03）删除。",
   "packageManager": "pnpm@10.33.2",
   "engines": {
     "node": ">=20.9",

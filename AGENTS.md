@@ -19,8 +19,9 @@
 
 - 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (prod)
 - 五个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013，数字资产平台 · 六类资产）/ **web-star**（3014，明星商务工作台）
-- 遗留 web app: **apps/web**（3002，即将删除）/ 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
+- 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
+- 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
 
 ---
 
@@ -32,7 +33,6 @@
 Aisingerecosystem/
 ├── apps/
 │   ├── server/             # 后端：Spring Boot 3.3.5 (Java 17) — port 8080
-│   ├── web/                # 遗留用户前端：Next.js 14 — port 3002（Phase 5 将删）
 │   ├── admin/              # 管理后台：Next.js 16 / React 19 — port 3003（pnpm workspace）
 │   ├── miniprogram/        # AI 明星带货 · 微信小程序
 │   ├── web-music/          # AI 音乐人（Next 16 / React 19 / Tailwind v4）— port 3010
@@ -53,7 +53,7 @@ Aisingerecosystem/
 
 ### Monorepo 拆分进度（Phase 0a → 6）
 
-仓库从「单 apps/web + 单 apps/admin + 单 apps/server」拆为「三个独立 web app + packages/* 共享层 + 共享 server（按子产品分租户）」。
+仓库从「单 apps/web + 单 apps/admin + 单 apps/server」拆为「三个独立 web app + packages/* 共享层 + 共享 server（按子产品分租户）」；apps/web 已于 Phase 5 删除。
 
 | Phase | 状态 | 描述 |
 |---|---|---|
@@ -67,7 +67,7 @@ Aisingerecosystem/
 | **v0.14** | ✅ | CdnUploader 抽象 + LocalFakeCdnUploader（./cdn-mock → /cdn）+ MixcutRenderOutput.cdnUrl 列 + 渲染后串行上传 |
 | **v0.15** | ✅ | 混剪 → 发布桥接（/api/me/mixcut/publish-batch）+ @Scheduled 定时发布 + 三入口（jobs 详情按钮 / distribution 跳转 / /mixcut/publish 工作台） |
 | **v0.17** | ✅ | 社交账号绑定 profile 落库（昵称 / 平台账号号 / 头像），sau-service 各平台 driver 独立提取 |
-| **5** | ⏳ | 删除 `apps/web`（待三新 app 验证完整） |
+| **5** | ✅ | 删除 `apps/web`（2026-08-03；三新 app 已验证完整，无残留代码依赖） |
 | **6** | ⏳ | server 按子产品分租户（DB migration 级别） |
 | **Cookie SSO** | ⏳ | 当前 token 仍 localStorage，不跨子域；改造点见 [`packages/api-client/src/_client.ts`](packages/api-client/src/_client.ts) TODO |
 | **apps/admin 升级** | ✅ | Next 16.2.6 + React 19，纳入 pnpm workspace |
@@ -76,10 +76,11 @@ Aisingerecosystem/
 
 | 代次 | 仓 | 栈 |
 |---|---|---|
-| 新代码 | `packages/*` + `apps/web-{music,drama,celebrity,star}` + `apps/admin` | Next **16.2.6** + React **19** + Tailwind **v4** + **pnpm** |
-| 遗留 | `apps/web` | Next 14.2 + React 18 + npm（不动） |
+| 新代码 | `packages/*` + `apps/web-{music,drama,celebrity,aiavatar,star}` + `apps/admin` | Next **16.2.6** + React **19** + Tailwind **v4** + **pnpm** |
 | 后端 | `apps/server` | Spring Boot 3.3.5 + Java 17 |
 | 小程序 | `apps/miniprogram` | 微信小程序原生 |
+
+> `apps/web`（Next 14.2 + React 18 + npm）已于 Phase 5（2026-08-03）删除，不再是代次之一。
 
 ### Next 16 必知陷阱（新 app 写代码前必读）
 
@@ -131,28 +132,14 @@ pnpm --filter @ai-star-eco/web-aiavatar build         # AiAvatar app 生产构�
 pnpm --filter @ai-star-eco/admin-new build            # admin 生产构建
 ```
 
-### 遗留 apps/web（独立 npm）
+### 编译门（提交前必须全绿）
 
 ```bash
-cd apps/web                # port 3002
-npm install
-npm run dev
-npx tsc --noEmit
-npm run build
-npm test                   # vitest
-npx vitest run path/to/file.test.ts
-```
-
-### 三端编译门（提交前必须全绿）
-
-```bash
-(cd apps/web   && npx tsc --noEmit) && \
+pnpm typecheck:all && \
 pnpm typecheck:admin && \
 (cd apps/server && ./mvnw compile -q -o) && \
-pnpm check:api-contract                          # 扫四个活跃子应用 + api-client（不再扫 apps/web）
+pnpm check:api-contract                          # 扫四个活跃子应用 + api-client
 ```
-
-workspace 额外门：`pnpm typecheck:all`。
 
 ---
 
@@ -162,13 +149,13 @@ workspace 额外门：`pnpm typecheck:all`。
 
 ```
 ┌─────────────┐    rewrite /api/*    ┌──────────────────────────────┐
-│  web (3002) │ ──────────────────→ │                              │
-│  web-music  │                      │  Spring Boot server :8080   │
-│  web-drama  │                      │                              │
-│  web-       │                      │  /api/auth/*    permitAll    │
-│  celebrity  │                      │  /api/me/*      authenticated │
-│  web-       │                      │  /api/aiavatar/health/** permitAll │
-│  aiavatar   │                      │  /api/aiavatar/** authenticated │
+│  web-music  │ ──────────────────→ │                              │
+│  web-drama  │                      │  Spring Boot server :8080   │
+│  web-       │                      │                              │
+│  celebrity  │                      │  /api/auth/*    permitAll    │
+│  web-       │                      │  /api/me/*      authenticated │
+│  aiavatar   │                      │  /api/aiavatar/health/** permitAll │
+│  web-star   │                      │  /api/aiavatar/** authenticated │
 └─────────────┘                      │  /api/celebrity/*            │
                                      │  /api/mixcut/*  (v0.8 新增)  │
 ┌─────────────┐    rewrite /api/*    │  /api/admin/*   SUPER_ADMIN  │
@@ -203,7 +190,7 @@ workspace 额外门：`pnpm typecheck:all`。
 
 ### 4.1 类型真值源
 
-- **前端 TS 是契约真源**：`apps/web/src/types/*`（遗留）/ `packages/types/src/*`（新代码）
+- **前端 TS 是契约真源**：`packages/types/src/*`
 - Spring `*Dto.java` record 字段名**必须与 TS interface 完全一致**
 - JPA entity 字段名可以不同，由 DTO `from()` 方法做映射
 - enum 出 wire 时**全小写**：Java `ACTIVE` → JSON `"active"`；含连字符用 `wire` 字段
@@ -248,7 +235,7 @@ Dev 种子账号（[`DataInitializer.java`](apps/server/src/main/java/com/aistar
 
 ### 4.5 数值字段
 
-存原始整数，格式化在展示层（`apps/web/src/lib/format.ts` / `packages/api-client/src/format.ts`）：
+存原始整数，格式化在展示层（`packages/api-client/src/format.ts`）：
 
 ```
 fans: 128_000          → formatCompactNumber → "128K"
@@ -369,20 +356,18 @@ duration: 7820         → formatDuration       → "2h 10min"
 ### Step 1 — 前端真源
 
 ```
-[新代码]
-packages/types/src/<domain>.ts        ← 类型定义（唯一事实源）
+packages/types/src/<domain>.ts                        ← 类型定义（唯一事实源）
 
-[遗留 apps/web]
-apps/web/src/types/<domain>.ts
-apps/web/src/mocks/<domain>.ts        ← USE_MOCK=1 时的样本
-apps/web/src/constants/<domain>-ui.ts ← UI 配置（图标 / 颜色 / 文案）
+[归属子应用 apps/web-<music|drama|celebrity|aiavatar|star>]
+src/mocks/<domain>.ts                                 ← USE_MOCK=1 时的样本
+src/constants/<domain>-ui.ts                          ← UI 配置（图标 / 颜色 / 文案）
 ```
 
 ### Step 2 — 前端调用层
 
 ```
-apps/web/src/api/<domain>.ts          ← apiFetch + USE_MOCK 开关
-apps/web/src/api/index.ts             ← 追加 `export * as XxxApi`
+apps/web-<sub-app>/src/api/<domain>.ts                ← apiFetch + USE_MOCK 开关
+apps/web-<sub-app>/src/api/index.ts                   ← 追加 `export * as XxxApi`
 ```
 
 ### Step 3 — 后端 mirror（字段名必须 1:1 匹配 TS）
@@ -397,7 +382,7 @@ apps/server/.../aep/controller/<Domain>Controller.java
 ### Step 4 — admin 镜像（URL 前缀 `/admin/`）
 
 ```
-apps/admin/src/types/<domain>.ts      ← 与 web 同名同字段（直接复制）
+apps/admin/src/types/<domain>.ts      ← 与归属子应用同名同字段（直接复制）
 apps/admin/src/mocks/<domain>.ts
 apps/admin/src/api/<domain>.ts        ← URL: /admin/...
 apps/admin/src/api/index.ts
@@ -410,12 +395,12 @@ specs/openapi.yaml                    ← components.schemas 加 schema；paths 
 specs/BUSINESS_RULES.md               ← 可选：openapi 表达不了的约束（扣费、状态机、跨字段）
 ```
 
-> v2.7 起取消"契约 diff 文档"。drift 由 [`scripts/check-api-contract.mjs`](scripts/check-api-contract.mjs) 守门（**v0.57 起**改扫四个活跃子应用 `web-{music,drama,celebrity,aiavatar}` + `packages/api-client`，方法级匹配；aiavatar 的 `/api/v1` 前缀已处理；不再扫即将废弃的 `apps/web`）—— 任一 `apiFetch(...)` 的 URL/method 在 openapi.yaml 找不到对应 path → gate fail。根目录跑 `pnpm check:api-contract`。
+> v2.7 起取消"契约 diff 文档"。drift 由 [`scripts/check-api-contract.mjs`](scripts/check-api-contract.mjs) 守门（**v0.57 起**改扫四个活跃子应用 `web-{music,drama,celebrity,aiavatar}` + `packages/api-client`，方法级匹配；aiavatar 的 `/api/v1` 前缀已处理；Phase 5 起 `apps/web` 已删除，不再需要排除）—— 任一 `apiFetch(...)` 的 URL/method 在 openapi.yaml 找不到对应 path → gate fail。根目录跑 `pnpm check:api-contract`。
 
 ### Step 6 — 四门验证
 
 ```bash
-(cd apps/web   && npx tsc --noEmit)
+pnpm typecheck:all
 (cd apps/admin && npx tsc --noEmit)
 (cd apps/server && ./mvnw compile -q -o)
 pnpm check:api-contract
@@ -468,6 +453,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.109** | 2026-08-03 | **Phase 5 完成：删除遗留 `apps/web`**（Next 14 + React 18 + npm，port 3002）。前置核查确认无任何存活代码依赖——`pnpm-workspace.yaml`/根 `package.json` scripts/`.claude/launch.json`/`scripts/check-api-contract.mjs`/`infra/scripts/build-release.sh` 均已只覆盖四个活跃子应用 + admin，未引用 apps/web；仓内其余命中全部是注释 / 历史版本日志 / 类型对齐说明，非 import 依赖。同 commit 更新：`AGENTS.md`（结构树 / Phase 表 / 技术栈分代 / 数据流图 / §4.1 类型真源 / §5 新增领域 SOP / 编译门脚本，全部摘除 apps/web）；`docs/INDEX.md`；`product_spec_ai_celebrity.md`（§八真源规则改指 `packages/types/src/celebrity-zone.ts`）；`apps/miniprogram/{README,agent}.md`（数据形状真源同步改指 `packages/types`）；根 `package.json` description；`TODO.md`（`apps/web/src/constants/*` 字典上移项标记随删除关闭）；`infra/README.md` + 删除 `infra/env/web.env.example` / `infra/systemd/aistareco-web.service.example`；`infra/nginx/{ai.aibuzz.cn,ai}.conf.example` 根域名 `aibuzz.cn` 改 302/代理到 `web-celebrity`（3012），不再指向已删除的 `/web`。**无 server / openapi 变更**。 |
 | **v0.108** | 2026-08-03 | 修复**跨子产品视频资产串号**：明星带货素材库里出现 AI 短剧的分镜视频（反向短剧任务中心出现带货视频）。根因 —— `material_video_job` 表被两条业务线共用（带货 `baseline`/`variant`、短剧 `drama-shot`/`drama-episode`），但 `MaterialVideoJobService.listJobs` 只按 `ownerUserId` 过滤，不带 `script_id`/`product_id` 的列表（`/api/me/material/videos/jobs` 无参、`/api/me/drama/render/tasks` 无 project_id）会把用户在另一个子产品生成的视频原样返回。修法：`MaterialVideoJob` 加 `app` 列（celebrity\|drama，索引 `idx_mvj_user_app`）；`submit`/`listJobs`/`getJob` 强制显式带 app（`APP_CELEBRITY`/`APP_DRAMA` 常量，跨 app 单查一律当不存在）；查询用 `APP_EXPR`（app 为 null 的老数据按 `kind like 'drama-%'` 推断）故**不依赖回填**，`MaterialVideoJobAppBackfill`(@Order 70，幂等)只为让查询走索引。**无端点 / 请求体 / 响应体变更**（openapi 不变）。门禁：新增 `MaterialVideoJobAppScopeTest`（真 H2 跑 JPQL）3/3 + `mvnw test` 471 全量（唯一失败为既有 flaky `JwtUtilTest.registerTicket_tamperedTokenRejected`，与本次无关，已记 TODO.md）。 |
 | **v0.107** | 2026-08-03 | AiAvatar 新增**真人授权素材库**：授权流程只入库不自动生成；同一真人复用 active 七牛 `qgroupid`，图片 / 视频逐条审核取得 `qassetid`；真人生成任务只引用 approved `qasset://` 素材；历史“待补确认”可就地补当前协议，技术证据有效时不重复刷脸。 |
 | **v0.106** | 2026-08-03 | AiAvatar 真人授权补齐**平台协议确认 + 七牛技术核验**双证据链：新增 `dap_consent` 快照与 LIC 证据字段，老 liveness 缺确认自动降为待补；手机端当前页进入七牛、callback 自动回到可恢复 `#/real-auth/{sessionId}`；短链过期真实重建分组；凭证升级 v2，停止使用“实名认证 / 全平台授权”误导表述。 |
@@ -567,8 +553,8 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   - **不溢出**：任何可能变长或宽度受限的可视文字（表格单元格、卡片、标签、chip、按钮、徽标），必须约束宽度并防溢出——`maxWidth` +（父级）`minWidth:0` + `overflow:hidden` + `textOverflow:"ellipsis"`（单行）或允许换行；超出部分进 `title`/tooltip。不要假设文字一定短。
   - **反例**：`已出末帧 · 变化小`（暴露「变化」黑话 + `whiteSpace:nowrap` 无溢出兜底）。**正例**：可视 `首尾帧就绪`（定宽 + ellipsis），「运动幅度：小幅/中幅/大幅 + 运动描述」放 hover `title`。
   - Review reject：新增/改动 UI 出现内部黑话可视文案，或宽度受限处的可变长文字没做溢出约束 → reject。
-- **shadcn 原语**：放在 `components/ui/`（apps/web）/ `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
-- **`"use client"`**：apps/web 所有 `components/*` 都有（历史 Figma-port 修复）；新 client 组件保留
+- **shadcn 原语**：放在 `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
+- **`"use client"`**：新 client 组件保留
 - **新代码 API 形态**：`async function xxx(): Promise<T>`，聚合为 namespace 导出（`MusicApi`, `CelebrityZoneApi`, `MixcutApi`, …）
 - **mock 与 api 分工**：组件默认渲染 import mocks，用户动作走 api
 - **OffsetDateTime / ISO 8601**：所有时间字段在 wire 上是 ISO 字符串，DB 是 OffsetDateTime（H2 / MySQL 都支持）
@@ -581,13 +567,13 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   - PR review reject 规则：任意 `apps/**/*` 文件出现 `window.confirm` / 裸 `confirm(` / `window.alert` / 裸 `alert(` / `window.prompt` / 裸 `prompt(` 必须改成上述对应组件后才能 merge。
   - 历史欠债：`apps/admin/**` 还有数处 `confirm()` / `alert()` 调用未迁移（v0.23 单独成 backlog item），新代码不能再增加。
 
-### 新代码（packages + web-{music,drama,celebrity}）特有
+### 新代码（packages + web-{music,drama,celebrity,aiavatar,star}）特有
 
 - **`proxy.ts` 替代 `middleware.ts`**（Next 16）
 - **`params` / `searchParams` / `cookies()` / `headers()` 必须 await**
 - **route group `(workspace)`** — URL 不出现，仅做布局复用
 - **CSS 变量优先**：Creator 主题用 `var(--accent)` / `var(--bg-0)` 等；Tailwind v4 `@theme` 块映射 Tailwind palette
-- **不混 npm/pnpm**：workspace app（web-music / web-drama / web-celebrity / web-aiavatar / admin）都用 pnpm；遗留 apps/web 沿用 npm
+- **不混 npm/pnpm**：workspace app（web-music / web-drama / web-celebrity / web-aiavatar / web-star / admin）都用 pnpm
 
 ---
 
@@ -640,8 +626,8 @@ git grep -nE 'port 300[01]' -- '*.md'                       # 0 命中
 # 2) 接口契约
 pnpm check:api-contract
 
-# 3) 三端编译
-(cd apps/web && npx tsc --noEmit) && (cd apps/admin && npx tsc --noEmit) && (cd apps/server && ./mvnw compile -q -o)
+# 3) 编译门
+(cd apps/admin && npx tsc --noEmit) && (cd apps/server && ./mvnw compile -q -o)
 
 # 4) pnpm workspace
 pnpm typecheck:all

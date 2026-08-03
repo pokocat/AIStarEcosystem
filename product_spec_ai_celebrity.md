@@ -2,7 +2,7 @@
 
 > 本文档**仅描述 AI 明星带货线**（带货方视角），与 `product_spec.md` 中的"AI 数字人/数字 IP"线**解耦**。
 > 三端覆盖：`apps/miniprogram`（带货方）+ `apps/server`（共用后端）+ `apps/admin`（运营/审核）。
-> 单一真源：字段形状对齐 `apps/web/src/types/celebrity-zone.ts`。
+> 单一真源：字段形状对齐 `packages/types/src/celebrity-zone.ts`（`apps/web-celebrity/src/api/celebrity-zone.ts` 为消费端；遗留 `apps/web/src/types/celebrity-zone.ts` 已于 v0.109/2026-08-03 随 apps/web 删除）。
 > 维护规则：每次变更**追加**新版本节，不删除历史；"现状"小节始终反映最新一版的实际行为。
 >
 > 完整文档地图见 [`docs/INDEX.md`](docs/INDEX.md)。
@@ -255,7 +255,7 @@ celebrity 子产品的登录注册、运营授权、SMS 集成完整说明。**�
 | 维度 | admin 后台 | celebrity / 用户子产品 |
 |---|---|---|
 | 用户表 | `admin_users` | `aep_users` |
-| 接入前端 | apps/admin | apps/web-celebrity（及历史 apps/web） |
+| 接入前端 | apps/admin | apps/web-celebrity |
 | 登录端点 | `POST /api/admin/auth/login`（用户名 + 密码） | SMS（手机号 + 验证码）/ License 激活 / dev-login |
 | 角色字段 | `AdminUser.role` enum | `AepUser.kind` + `AepUser.operatorRole` |
 | JWT.role claim | `admin.role.name()` | `operatorRole.name()` 非空时优先，否则 `STUDIO`/`USER` |
@@ -891,7 +891,7 @@ GET /template-scripts/{id}（仅 published）
 ## 八、未来变更追加规则（给后续 agent）
 
 1. 任何新需求都**追加版本节**到「版本日志」最上方，不要修改既有节。
-2. 如果改动了字段形状：**先改 `apps/web/src/types/celebrity-zone.ts`（真源），再同步 server `*Dto`，再同步小程序 `mocks.js`**。
+2. 如果改动了字段形状：**先改 `packages/types/src/celebrity-zone.ts`（真源），再同步 server `*Dto`，再同步小程序 `mocks.js`**。
 3. 如果新增/修改接口：同步更新 `specs/openapi.yaml`（与 web 同流程），并在本文「数据模型」与对应模块的"接口"小节标注。
 4. 三端同步：web / admin / miniprogram 三端是否需要同步落地，必须在版本节明确说明。
 5. 不在小程序实现的能力（运营/审核/财务/BI）必须在「五、运营后台必须支撑的能力」表中声明，避免后续混淆。

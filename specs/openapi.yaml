@@ -1125,7 +1125,7 @@ components:
         reviewedAt:     { type: string, format: date-time, nullable: true }
 
     # ── Appearance Forge (AI 形象锻造炉) ────
-    # 前端真值源：apps/web/src/types/appearance-forge.ts。
+    # 前端真值源：packages/types/src/appearance-forge.ts（v0.60 起该功能入口已下线，遗留数据只读）。
     # 服务端契约：ForgeResult / ForgeResultDto / ForgeController。
 
     ForgeMode:
@@ -1252,8 +1252,8 @@ components:
         createdAt: { type: string, format: date-time }
 
     # ═══════════════════════════════════════════════════════════════════════
-    # ▼ v2.x 扩展（2026-04 ~ 2026-05）—— 与 apps/web/src/types/* 对齐
-    # 真值源：apps/web/src/types/<domain>.ts
+    # ▼ v2.x 扩展（2026-04 ~ 2026-05）—— 与 packages/types/src/* 对齐
+    # 真值源：packages/types/src/<domain>.ts
     # 业务规则与公式：specs/BUSINESS_RULES.md
     # ═══════════════════════════════════════════════════════════════════════
 
@@ -4423,7 +4423,7 @@ paths:
                       data: { $ref: '#/components/schemas/ForgeBlueprint' }
 
   # ═══════════════════════════════════════════════════════════════════════
-  # ▼ v2.x 扩展路径（与 apps/web/src/api/* 真值源对齐）
+  # ▼ v2.x 扩展路径（与 apps/web-*/src/api/* 真值源对齐）
   # ═══════════════════════════════════════════════════════════════════════
 
   # ── 3.x.1 Auth 增量（License 激活与 dev 调试） ─────

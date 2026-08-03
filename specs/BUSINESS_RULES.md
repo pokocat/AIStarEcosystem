@@ -3,7 +3,7 @@
 > **本文件的角色**：openapi.yaml 描述「数据形状 + 接口形态」，本文件描述「openapi 表达不了的业务约束」——
 > 字段校验规则、跨字段计算公式、用户操作时序、错误码规范、状态机映射。
 >
-> **不再重复定义实体或枚举**：所有数据模型以 `apps/web/src/types/*.ts` 为前端真值源、`specs/openapi.yaml` 为
+> **不再重复定义实体或枚举**：所有数据模型以 `packages/types/src/*.ts` 为前端真值源（遗留 `apps/web` 已于 v0.109/2026-08-03 删除）、`specs/openapi.yaml` 为
 > 接口契约。本文件只补充 schema 表达不了的约束与业务语义。
 >
 > **历史**：本文件由 v1.1.0 的 `BACKEND_API_SPEC.md`（1970 行）瘦身而来；原文档中的枚举总表（§1）、
@@ -214,7 +214,7 @@ enterprise → 全部无限制
 }
 ```
 
-对应前端类型：`apps/web/src/types/_shared.ts:ApiResponse<T>`。
+对应前端类型：`packages/types/src/_shared.ts:ApiResponse<T>`。
 
 ### 3.2 列表响应（分页）
 
@@ -400,7 +400,7 @@ GET /celebrity/jobs/:jobId → status = succeeded
 
 ## 6. 新领域的业务约束（v2.x）
 
-### 6.1 AI 明星专区（v2.7 / `apps/web/src/types/celebrity-zone.ts`）
+### 6.1 AI 明星专区（v2.7 / `packages/types/src/celebrity-zone.ts`）
 
 **4 态授权流转**：
 
@@ -430,7 +430,7 @@ unauthorized → pending（用户提交申请）→ authorized（商务审核通
 - 一个 CelebrityProject 内的视频可批量分发到多个渠道（POST `/celebrity/projects/{id}/distribute`）。
 - 分发前置条件：项目至少有 1 条 `status='已发布'` 视频；目标渠道 `connected=true`。
 
-### 6.2 商品库（v2.7 / `apps/web/src/types/product.ts`）
+### 6.2 商品库（v2.7 / `packages/types/src/product.ts`）
 
 **自动落库去重规则**：
 
@@ -503,8 +503,8 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
 ```
 
 ```
-apps/web/src/types/*.ts              ← 唯一前端真值源（23 个域文件）
-apps/web/src/api/*.ts                ← 调用契约（USE_MOCK 切换 mocks/ vs apiFetch）
+packages/types/src/*.ts              ← 唯一前端真值源
+apps/web-*/src/api/*.ts              ← 调用契约（USE_MOCK 切换 mocks/ vs apiFetch）
 specs/openapi.yaml                   ← 后端接口契约（99 个 path、200+ schema）
 specs/BUSINESS_RULES.md              ← 本文件：openapi 表达不了的业务约束
 apps/server/.../*Dto.java            ← Java 镜像，字段名必须与 TS interface 完全相同

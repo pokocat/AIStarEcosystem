@@ -3,8 +3,7 @@
 # 落位：/etc/nginx/conf.d/ai.conf
 #
 # 路由：
-#   GET  /             → 302 /web
-#   /web/*             → systemd:3002 (apps/web, basePath=/web)
+#   GET  /             → systemd:3012 (apps/web-celebrity，根域名代理；v0.109 起 apps/web 已删除)
 #   /admin/*           → systemd:3003 (apps/admin, basePath=/admin)
 #   /api/*             → systemd:8080 (Spring Boot, 长超时支持 QR 扫码)
 #   /static/videos/*   → ECS 本地盘（迁到 OSS 后此 location 可删）
@@ -22,18 +21,9 @@ server {
     # 上传体积上限（mixcut 素材最大 200MB）
     client_max_body_size 200m;
 
-    # ── 根路径：默认进 /web ─────────────────────────────────
-    location = / {
-        return 302 /web;
-    }
-
-    # ── apps/web (basePath=/web) ────────────────────────────
-    # 必须不带尾 /，否则 /web/_next/* 会被剥成 /_next/* → chunk 404
-    location = /web {
-        proxy_pass http://127.0.0.1:3002;
-    }
-    location /web/ {
-        proxy_pass http://127.0.0.1:3002;
+    # ── 根路径：代理到 apps/web-celebrity（v0.109 起 apps/web 已删除）──
+    location / {
+        proxy_pass http://127.0.0.1:3012;
     }
 
     # ── apps/admin (basePath=/admin) ────────────────────────

@@ -6,7 +6,7 @@
 > last-reviewed：2026-05-23 / v0.5.4
 > last-reviewed：2026-05-21 / v0.21 混剪 / 分发用户视角文案 + 视频库（软删 30 天）+ 官方明星片段
 
-> ⚠️ **正在进行：monorepo 拆为三个独立 web app**。新代码（`apps/web-music` / `apps/web-drama` / `apps/web-celebrity` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web`、`apps/admin`、`apps/server` 不动。详见 [`AGENTS.md`](../AGENTS.md) §1 顶部进度表。
+> monorepo 拆分已完成 Phase 5：五个新 web app（`apps/web-{music,drama,celebrity,aiavatar,star}` + `packages/*`）走 Next 16 + React 19 + pnpm；遗留 `apps/web` 已于 2026-08-03 删除。`apps/admin`、`apps/server` 不动。详见 [`AGENTS.md`](../AGENTS.md) §1 顶部进度表。
 
 ---
 
@@ -75,14 +75,15 @@
 | 文档 | 一句话 | 当前版本 |
 |---|---|---|
 | [`apps/server/README.md`](../apps/server/README.md) | Spring Boot 8080 / Profile / 角色体系 / **v0.5 新增表** / **AEP_SECRET_KEY 环境变量** / 社交账号 profile 字段 / **dap 数据模型（含 v0.105 `dap_material_group` + `dap_material`）** | v0.105 同步（真人刷脸认证 + 素材送审 + 授权硬闸前移） |
-| [`apps/web/README.md`](../apps/web/README.md) | Next.js 用户端 3002 / 完整版本日志（v1.x ~ v2.7） | v2.7（v0.5.x 不影响 web）；**Phase 5 删除** |
 | [`apps/admin/README.md`](../apps/admin/README.md) | Next.js 运营后台 3003 / 当前 sidebar / v0.5.x 滚动更新 | v0.58 同步（消息中心真实化 + 结算中心流水补全） |
 | [`apps/miniprogram/README.md`](../apps/miniprogram/README.md) | 微信小程序（带货方）/ 11 屏 / 启动方式 / 版本日志 | v0.5.4 |
 | [`apps/web-music/README.md`](../apps/web-music/README.md) | **AI 音乐人**（Next 16，dev 3010）启动 / 技术栈 / 版本日志 | Phase 4b（v0.6 · 2026-05-15）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-music/PRODUCT.md) |
 | [`apps/web-drama/README.md`](../apps/web-drama/README.md) | **AI 短剧**（Next 16，dev 3011）启动 / 技术栈 / 版本日志 | Phase 4b（v0.6 · 2026-05-14）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-drama/PRODUCT.md) |
 | [`apps/web-celebrity/README.md`](../apps/web-celebrity/README.md) | **AI 明星带货**（Next 16，dev 3012）启动 / 技术栈 / 版本日志（含 mixcut 与分发中心） | v0.17（2026-05-20）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) |
 
-**packages/**（pnpm workspace 共享层；三个新 web app 消费，apps/web 与 apps/admin 不消费）：
+> `apps/web`（Next.js 用户端 3002）已于 **v0.109 / Phase 5（2026-08-03）删除**，历史版本日志见 [`docs/VERSION_HISTORY.md`](VERSION_HISTORY.md) `### v0.109`。
+
+**packages/**（pnpm workspace 共享层；五个新 web app 消费，apps/admin 不消费）：
 - `packages/types/` — TS 类型契约
 - `packages/ui/` — shadcn + ThemeProvider + globals.css
 - `packages/api-client/` — apiFetch + AuthProvider + format
@@ -123,9 +124,7 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 | 文档 | 用途 |
 |---|---|
-| [`apps/web/FIGMA_MIGRATION_GUIDE.md`](../apps/web/FIGMA_MIGRATION_GUIDE.md) | figma → web 的迁移手册 |
-| [`apps/web/specs/DESIGN_CONSTRAINTS.md`](../apps/web/specs/DESIGN_CONSTRAINTS.md) | 设计约束（视觉/交互） |
-| [`.claude/skills/figma-migrate/SKILL.md`](../.claude/skills/figma-migrate/SKILL.md) | skill 入口：自动按"五件套 + 三端同步"模式落 |
+| [`.claude/skills/figma-migrate/SKILL.md`](../.claude/skills/figma-migrate/SKILL.md) | skill 入口：自动按"五件套 + 三端同步"模式落。**⚠️ 待更新**：原迁移目标 `apps/web`（含 `FIGMA_MIGRATION_GUIDE.md` / `specs/DESIGN_CONSTRAINTS.md`）已随 v0.109 删除，skill 内部路径仍指向 apps/web，重新启用前需先 retarget 到具体新 app |
 | [`docs/design/celebrity/DESIGN.md`](../docs/design/celebrity/DESIGN.md) | **`apps/web-celebrity/` 子应用全域视觉系统真源** —— Creator-Friendly codify（tokens + 6 节 spec + 签名组件），对 apps/web-celebrity 整个子应用生效 |
 | [`.impeccable/celebrity/design.json`](../.impeccable/celebrity/design.json) | 上文的机器可读 sidecar（tonal ramps / shadows / motion / 完整组件 HTML+CSS 片段） |
 

@@ -17,7 +17,6 @@ infra/
 ├── env/                            ← 各服务环境变量模板（**不含真实密钥**）
 │   ├── server.env.example          ← Spring Boot 完整变量清单
 │   ├── sau-service.env.example     ← Python sau-service Docker 容器
-│   ├── web.env.example             ← apps/web（Next 14, basePath=/web）
 │   ├── admin.env.example           ← apps/admin（Next 16, basePath=/admin）
 │   ├── web-celebrity.env.example   ← apps/web-celebrity（Next 16, 根路径）
 │   ├── web-music.env.example       ← apps/web-music
@@ -34,7 +33,6 @@ infra/
 │
 ├── systemd/                        ← systemd 单元模板（落 /etc/systemd/system/）
 │   ├── aistareco-server.service.example
-│   ├── aistareco-web.service.example
 │   ├── aistareco-admin.service.example
 │   ├── aistareco-web-celebrity.service.example
 │   ├── aistareco-web-music.service.example
@@ -72,7 +70,7 @@ infra/
 
 ```
                           ┌─ SLB / Nginx (公网入口, HTTPS 域名)
-                          │   ├─ aibuzz.cn / www → web (3002, basePath=/web)
+                          │   ├─ aibuzz.cn / www → web-celebrity (3012)
                           │   ├─ admin.aibuzz.cn → admin (3003)
                           │   ├─ celebrity.aibuzz.cn → web-celebrity (3012)
                           │   ├─ music.aibuzz.cn → web-music (3010)
@@ -83,7 +81,6 @@ infra/
 ECS 集群 (1~N 台, VPC 内网)│
   ├─ systemd                                                                  
   │   • aistareco-server         :8080  (Spring Boot)
-  │   • aistareco-web            :3002  (Next 14 standalone)
   │   • aistareco-admin          :3003  (Next 14 standalone)
   │   • aistareco-web-music      :3010  (Next 16 standalone)
   │   • aistareco-web-drama      :3011  (Next 16 standalone)
@@ -197,7 +194,6 @@ nginx -t && systemctl reload nginx
 
 # systemd 单元
 cp infra/systemd/aistareco-server.service.example         /etc/systemd/system/aistareco-server.service
-cp infra/systemd/aistareco-web.service.example            /etc/systemd/system/aistareco-web.service
 cp infra/systemd/aistareco-admin.service.example          /etc/systemd/system/aistareco-admin.service
 cp infra/systemd/aistareco-web-celebrity.service.example  /etc/systemd/system/aistareco-web-celebrity.service
 cp infra/systemd/aistareco-web-music.service.example      /etc/systemd/system/aistareco-web-music.service
