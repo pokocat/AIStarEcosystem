@@ -113,9 +113,11 @@ public class DramaFrameJobService {
 
         List<JsonNode> all = new ArrayList<>();
         all.addAll(listFrameJobs(userId, projectId));
+        // 只看短剧线任务（app=drama）：material_video_job 与带货线共用，不分区会把
+        // 带货视频混进短剧任务中心。
         List<JsonNode> videos = projectId != null && !projectId.isBlank()
-                ? videoJobs.listJobs(userId, projectId, null)
-                : videoJobs.listJobs(userId, null, null);
+                ? videoJobs.listJobs(userId, projectId, null, MaterialVideoJobService.APP_DRAMA)
+                : videoJobs.listJobs(userId, null, null, MaterialVideoJobService.APP_DRAMA);
         videos.stream().map(this::toVideoTask).forEach(all::add);
         all.sort(Comparator.comparing((JsonNode n) -> n.path("created_at").asText("")).reversed());
 

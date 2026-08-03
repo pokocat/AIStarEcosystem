@@ -26,7 +26,8 @@ import java.time.OffsetDateTime;
 @Table(name = "material_video_job", indexes = {
         @Index(name = "idx_mvj_user", columnList = "owner_user_id"),
         @Index(name = "idx_mvj_status", columnList = "status"),
-        @Index(name = "idx_mvj_script", columnList = "script_id")
+        @Index(name = "idx_mvj_script", columnList = "script_id"),
+        @Index(name = "idx_mvj_user_app", columnList = "owner_user_id,app")
 })
 public class MaterialVideoJob {
 
@@ -37,6 +38,15 @@ public class MaterialVideoJob {
     /** 归属人（AepUser.id）；仅本人可见 / 可查。 */
     @Column(name = "owner_user_id", length = 64)
     private String ownerUserId;
+
+    /**
+     * 所属子产品（celebrity | drama）—— 本表被带货线与短剧线共用，必须按子产品分区，
+     * 否则同一用户在 A 应用会看到 B 应用的视频资产（明星带货素材库里冒出短剧分镜视频）。
+     * 写入见 {@link com.aistareco.aep.service.materialvideo.MaterialVideoJobService#APP_CELEBRITY}；
+     * 老数据（本列为 null）由 MaterialVideoJobAppBackfill 按 kind 前缀一次性回填。
+     */
+    @Column(name = "app", length = 16)
+    private String app;
 
     @Column(name = "script_id", length = 64)
     private String scriptId;

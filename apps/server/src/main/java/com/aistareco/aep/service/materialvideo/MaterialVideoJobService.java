@@ -38,6 +38,14 @@ public class MaterialVideoJobService {
     static final long VIDEO_UNIT_COST_DEFAULT = 30L;
     static final String CREDIT_REF_TYPE = "material_video_job";
 
+    /**
+     * 子产品分区（{@link MaterialVideoJob#getApp()}）——本表被带货线（明星带货 · 素材运营）与
+     * 短剧线（AI 短剧 · 分镜出片 / 整集出片）共用，提交与查询必须显式带 app，否则同一用户在
+     * 带货素材库里会看到短剧分镜视频（反之亦然）。
+     */
+    public static final String APP_CELEBRITY = "celebrity";
+    public static final String APP_DRAMA = "drama";
+
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
     private final MaterialVideoWorker worker;
@@ -72,9 +80,12 @@ public class MaterialVideoJobService {
      *
      * 失败快：未配置视频大模型 → 抛 VIDEO_NOT_CONFIGURED（不创建任务 / 不扣费）。
      * 返回创建出的任务卡（MaterialVideo 形状，status=rendering）。
+     *
+     * @param app 子产品分区（{@link #APP_CELEBRITY} / {@link #APP_DRAMA}）；决定这批任务归哪个
+     *            应用的资产列表，调用方必须显式传（跨应用可见性靠它隔离）。
      */
     @Transactional
-    public List<JsonNode> submit(JsonNode body, String userId) {
+    public List<JsonNode> submit(JsonNode body, String userId, String app) {
         List<JsonNode> items = new ArrayList<>();
         JsonNode arr = body != null ? body.get("items") : null;
         if (arr != null && arr.isArray()) arr.forEach(items::add);
@@ -90,7 +101,7 @@ public class MaterialVideoJobService {
             // 单价按 item 决定：调用方可传 credit_cost 覆盖（如短剧按 app 维度独立定价，解耦带货线），
             // 否则回落带货线 material.video-generate。本服务不感知具体业务线。
             long unit = itemUnitCost(item);
-            MaterialVideoJob job = buildJob(item, userId);
+            MaterialVideoJob job = buildJob(item, userId, app);
             if (billable && unit > 0) {
                 // 余额不足 → CreditService 抛 402（PAYMENT_REQUIRED），整批回滚（同事务）。
                 String label = orDefault(text(item, "credit_label"), "带货视频生成");
@@ -115,38 +126,55 @@ public class MaterialVideoJobService {
             ids.forEach(worker::generateAsync);
         }
 
-        log.info("[material-video] submitted {} job(s) user={} billable={}", created.size(), userId, billable);
+        log.info("[material-video] submitted {} job(s) user={} app={} billable={}",
+                created.size(), userId, normalizeApp(app), billable);
         return created.stream().map(this::toCard).toList();
     }
 
     // ── 查询 ─────────────────────────────────────────────────────────────────
+    /** 单个任务的进度 / 结果；归属人 + 子产品分区双重校验（别的应用的任务一律当不存在）。 */
     @Transactional(readOnly = true)
-    public JsonNode getJob(String id, String userId) {
+    public JsonNode getJob(String id, String userId, String app) {
         if (id == null || userId == null) return null;
+        String scope = normalizeApp(app);
         return jobRepo.findById(id)
                 .filter(j -> userId.equals(j.getOwnerUserId()))
+                .filter(j -> scope.equals(appOf(j)))
                 .map(this::toCard)
                 .orElse(null);
     }
 
-    /** 列出当前用户的生成任务（可按 scriptId / productId 过滤），新→旧。 */
+    /** 列出当前用户在指定子产品下的生成任务（可按 scriptId / productId 过滤），新→旧。 */
     @Transactional(readOnly = true)
-    public List<JsonNode> listJobs(String userId, String scriptId, String productId) {
+    public List<JsonNode> listJobs(String userId, String scriptId, String productId, String app) {
         if (userId == null || userId.isBlank()) return List.of();
+        String scope = normalizeApp(app);
         List<MaterialVideoJob> rows;
         if (scriptId != null && !scriptId.isBlank()) {
-            rows = jobRepo.findByOwnerUserIdAndScriptIdOrderByCreatedAtDesc(userId, scriptId);
+            rows = jobRepo.findScopedByScript(userId, scope, scriptId);
         } else if (productId != null && !productId.isBlank()) {
-            rows = jobRepo.findByOwnerUserIdAndProductIdOrderByCreatedAtDesc(userId, productId);
+            rows = jobRepo.findScopedByProduct(userId, scope, productId);
         } else {
-            rows = jobRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId);
+            rows = jobRepo.findScoped(userId, scope);
         }
         return rows.stream().map(this::toCard).toList();
     }
 
     // ── 内部 ─────────────────────────────────────────────────────────────────
 
-    private MaterialVideoJob buildJob(JsonNode item, String userId) {
+    /** 未显式传 app 时按带货线处理（本表的原始归属），杜绝 null 分区行。 */
+    static String normalizeApp(String app) {
+        return app != null && !app.isBlank() ? app : APP_CELEBRITY;
+    }
+
+    /** 行的实际分区：老数据 app 为 null（回填前）时按 kind 前缀推断，读路径不漏也不串。 */
+    static String appOf(MaterialVideoJob job) {
+        if (job.getApp() != null && !job.getApp().isBlank()) return job.getApp();
+        String kind = job.getKind();
+        return kind != null && kind.startsWith("drama-") ? APP_DRAMA : APP_CELEBRITY;
+    }
+
+    private MaterialVideoJob buildJob(JsonNode item, String userId, String app) {
         String id = "mvj_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         String kind = orDefault(text(item, "kind"), "baseline");
         int durationSec = item.path("duration_sec").asInt(0);
@@ -171,6 +199,7 @@ public class MaterialVideoJobService {
         return MaterialVideoJob.builder()
                 .id(id)
                 .ownerUserId(userId)
+                .app(normalizeApp(app))
                 .scriptId(text(item, "script_id"))
                 .productId(text(item, "product_id"))
                 .name(orDefault(text(item, "name"), kind.equals("variant") ? "派生视频" : "基线视频"))

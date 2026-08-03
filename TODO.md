@@ -712,3 +712,29 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   回来还得从头选一遍。同样的问题存在于任何「从工作台跳出去补前置条件」的路径。
   修法候选：覆盖页栈保留非栈顶屏的实例（或把工作台选料状态提到 `ctx` / sessionStorage）。
   定位：`apps/web-aiavatar/src/proto/app.tsx`（栈渲染）+ `screen-compose.tsx`（`MCompose` 本地 state）。
+
+---
+
+## 2026-08-03 · 跨子产品视频资产串号修复（v0.108）新发现待办
+
+- [x] ~~**明星带货素材库出现 AI 短剧的视频资产**（跨子产品串号）~~
+  **v0.108 完成，2026-08-03**：根因是 `material_video_job` 被带货线与短剧线共用，而
+  `MaterialVideoJobService.listJobs` 只按 `ownerUserId` 过滤 —— 无参列表
+  （`GET /api/me/material/videos/jobs`、`GET /api/me/drama/render/tasks`）互相看到对方的任务。
+  修法：新列 `MaterialVideoJob.app`（celebrity|drama）+ `submit`/`listJobs`/`getJob` 强制带 app
+  + `MaterialVideoJobRepository.APP_EXPR` 对老数据（app=null）按 `kind like 'drama-%'` 兜底
+  + `MaterialVideoJobAppBackfill`(@Order 70) 幂等回填。测试 `MaterialVideoJobAppScopeTest` 3/3。
+
+- [ ] **`JwtUtilTest.registerTicket_tamperedTokenRejected` 是既有 flaky（约 1/5 概率失败）**
+  （2026-08-03 发现，与 v0.108 无关）：用例把 JWT 末位字符 `a↔b` 改一位当作「篡改签名」，
+  但 HS256 签名 32 字节 → base64url 43 字符，**末位字符只有高 4 位有效、低 2 位是填充位**，
+  改动落在填充位时解码出的签名字节完全不变 → 校验仍通过 → `assertNull` 失败。
+  修法：改动**签名段中间**的字符（或整段替换成另一条合法 ticket 的签名），不要动末位。
+  定位：`apps/server/src/test/java/com/aistareco/aep/config/JwtUtilTest.java:33-36`。
+
+- [ ] **成片表 `material_video` 没有子产品分区列**（2026-08-03 顺手记录，当前不构成缺陷）：
+  `MaterialVideo`（`/material/videos`）目前只有带货线在写（`MaterialOpsService.addVideos`），
+  短剧线成片走 `DramaProject.payloadJson` / `assemble`，故暂无串号。若将来短剧或其它子产品
+  也往这张表落成片，必须同步补 `app` 分区（与 v0.108 的 `material_video_job` 同处理）。
+  定位：`apps/server/src/main/java/com/aistareco/aep/model/MaterialVideo.java` +
+  `MaterialOpsService.listVideos`。

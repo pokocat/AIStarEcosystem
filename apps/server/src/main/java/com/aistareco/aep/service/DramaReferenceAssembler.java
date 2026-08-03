@@ -9,6 +9,7 @@ import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaSceneRepository;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
+import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -345,7 +346,7 @@ public class DramaReferenceAssembler {
     private String jobLastFrame(String ownerUserId, String projectId, String sceneId, String prevShotId) {
         if (prevShotId == null || prevShotId.isBlank()) return null;
         List<MaterialVideoJob> jobs = videoJobRepo
-                .findByOwnerUserIdAndScriptIdOrderByCreatedAtDesc(ownerUserId, projectId);
+                .findScopedByScript(ownerUserId, MaterialVideoJobService.APP_DRAMA, projectId);
         for (MaterialVideoJob j : jobs) {
             if (!"succeeded".equals(j.getStatus())) continue;
             JsonNode vc = parse(j.getVariantConfigJson());

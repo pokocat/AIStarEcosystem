@@ -102,7 +102,8 @@ public class MaterialOpsController {
      */
     @PostMapping("/videos/generate")
     public ApiResponse<List<JsonNode>> generateVideos(@RequestBody JsonNode body, Principal principal) {
-        return ApiResponse.of(videoJobs.submit(stripClientPricingOverrides(body), uid(principal)));
+        return ApiResponse.of(videoJobs.submit(stripClientPricingOverrides(body), uid(principal),
+                MaterialVideoJobService.APP_CELEBRITY));
     }
 
     /**
@@ -126,19 +127,24 @@ public class MaterialOpsController {
         return body;
     }
 
-    /** 列出当前用户的生成任务（可按 script_id / product_id 过滤）。前端进入页面时拉取回显。 */
+    /**
+     * 列出当前用户的生成任务（可按 script_id / product_id 过滤）。前端进入页面时拉取回显。
+     * 只返回带货线（app=celebrity）的任务 —— material_video_job 与短剧线共用，
+     * 不分区会把短剧分镜视频混进带货素材库。
+     */
     @GetMapping("/videos/jobs")
     public ApiResponse<List<JsonNode>> listVideoJobs(
             @RequestParam(value = "script_id", required = false) String scriptId,
             @RequestParam(value = "product_id", required = false) String productId,
             Principal principal) {
-        return ApiResponse.of(videoJobs.listJobs(uid(principal), scriptId, productId));
+        return ApiResponse.of(videoJobs.listJobs(uid(principal), scriptId, productId,
+                MaterialVideoJobService.APP_CELEBRITY));
     }
 
     /** 单个生成任务的进度 / 结果（前端独立轮询）。 */
     @GetMapping("/videos/jobs/{id}")
     public ApiResponse<JsonNode> getVideoJob(@PathVariable String id, Principal principal) {
-        return ApiResponse.of(videoJobs.getJob(id, uid(principal)));
+        return ApiResponse.of(videoJobs.getJob(id, uid(principal), MaterialVideoJobService.APP_CELEBRITY));
     }
 
     // ── 爆款雷达（共享，无需归属过滤） ──────────────────────────────────────────

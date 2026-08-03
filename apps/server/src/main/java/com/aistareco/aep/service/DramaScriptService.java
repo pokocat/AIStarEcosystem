@@ -224,18 +224,18 @@ public class DramaScriptService {
         }
         ObjectNode submitBody = om.createObjectNode();
         submitBody.set("items", items);
-        List<JsonNode> jobs = videoJobService.submit(submitBody, userId);
+        List<JsonNode> jobs = videoJobService.submit(submitBody, userId, MaterialVideoJobService.APP_DRAMA);
         log.info("[drama-script] generate-episodes queued user={} scriptId={} jobs={}",
                 userId, scriptId, jobs.size());
         return jobs;
     }
 
     public List<JsonNode> listEpisodeJobs(String userId, String scriptId) {
-        return videoJobService.listJobs(userId, scriptId, null);
+        return videoJobService.listJobs(userId, scriptId, null, MaterialVideoJobService.APP_DRAMA);
     }
 
     public JsonNode getEpisodeJob(String id, String userId) {
-        return videoJobService.getJob(id, userId);
+        return videoJobService.getJob(id, userId, MaterialVideoJobService.APP_DRAMA);
     }
 
     /** 把一段短剧脚本拼成视频大模型提示词。 */

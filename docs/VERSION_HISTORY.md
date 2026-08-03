@@ -1,8 +1,35 @@
-# 版本增量历史（v0.5 → v0.107）
+# 版本增量历史（v0.5 → v0.108）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.108（2026-08-03）— 修复：明星带货素材库混入 AI 短剧视频资产（跨子产品串号）
+
+**现象**：AI 明星带货应用（web-celebrity）的素材库 / 脚本视频里出现 AI 短剧的分镜视频；
+反向短剧任务中心里也会出现带货视频。
+
+**根因**：`material_video_job` 表被两条业务线共用（带货 `kind=baseline|variant`，短剧
+`kind=drama-shot|drama-episode`，v0.43 / v0.65 起短剧复用带货的异步视频管线），但
+`MaterialVideoJobService.listJobs` 只按 `ownerUserId` 过滤 —— 不带 `script_id` / `product_id`
+的列表（`GET /api/me/material/videos/jobs` 无参、`GET /api/me/drama/render/tasks` 无 project_id）
+把该用户在**另一个子产品**里生成的视频原样返回。同一账号两个子产品都用过，就必然串号。
+
+**修法（子产品分区，server 侧收口，前端无改动）**：
+
+- `MaterialVideoJob` 新列 `app`（`celebrity` | `drama`，索引 `idx_mvj_user_app`，ddl-auto 补）。
+- `MaterialVideoJobService.submit / listJobs / getJob` 全部**必须显式带 app 参数**（新增
+  `APP_CELEBRITY` / `APP_DRAMA` 常量）；`buildJob` 落库写 app；`getJob` 跨 app 查一律当不存在。
+- 查询表达式对**老数据兜底**：`MaterialVideoJobRepository.APP_EXPR` 用 `case when app is not null
+  then app when kind like 'drama-%' then 'drama' else 'celebrity' end`，故正确性**不依赖回填是否已跑**；
+  `MaterialVideoJobAppBackfill`（@Order 70，幂等，只改 `app is null`）把历史行补上，仅为走索引。
+- 调用方：`MaterialOpsController` → celebrity；`DramaRenderService` / `DramaScriptService` /
+  `DramaFrameJobService.listTasks` / `DramaReferenceAssembler.jobLastFrame` → drama。
+
+**无 API 路径 / 请求体 / 响应体变更**（openapi 不变），只是各端点不再返回别的子产品的行。
+门禁：新增 `MaterialVideoJobAppScopeTest`（真实 H2 跑 JPQL：分区 / 老数据 null-app 兜底 /
+跨 app getJob 拒绝 / 回填）3/3 + `mvnw test` 471 全量（1 处失败为既有 flaky `JwtUtilTest`，
+与本次无关，已记 TODO.md）。
 
 ### v0.107（2026-08-03）— AiAvatar 真人授权素材库
 

@@ -9,6 +9,7 @@ import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaSceneRepository;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.DramaReferenceAssembler.AppliedRef;
+import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.service.DramaReferenceAssembler.Candidate;
 import com.aistareco.aep.service.DramaReferenceAssembler.Capability;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
@@ -308,7 +309,7 @@ class DramaReferenceAssemblerTest {
                 .lastFrameCdnKey("material-videos/mvj_1/last-frame.png")
                 .lastFrameUrl("https://upstream.temp/expired.png")
                 .build();
-        when(videoJobRepo.findByOwnerUserIdAndScriptIdOrderByCreatedAtDesc("u1", "dp_1"))
+        when(videoJobRepo.findScopedByScript("u1", MaterialVideoJobService.APP_DRAMA, "dp_1"))
                 .thenReturn(List.of(job));
 
         var asm = assembler().assembleFrame(shotRefBodyS2(true), "u1", new Capability(6, false, false));

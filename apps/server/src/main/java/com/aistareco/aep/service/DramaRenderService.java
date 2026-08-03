@@ -433,7 +433,7 @@ public class DramaRenderService {
         ArrayNode items = submit.putArray("items");
         items.add(item);
 
-        List<JsonNode> jobs = videoJobs.submit(submit, userId);
+        List<JsonNode> jobs = videoJobs.submit(submit, userId, MaterialVideoJobService.APP_DRAMA);
         log.info("[drama-render] clip queued user={} project={} dur={}s", userId, projectId, durationSec);
 
         // C-1/C-3：首/末帧生效情况回报（applied_refs，role=first_frame/last_frame）——末帧是否送达取决于

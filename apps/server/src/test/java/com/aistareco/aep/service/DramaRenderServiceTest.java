@@ -144,6 +144,6 @@ class DramaRenderServiceTest {
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
         assertEquals("ENDPOINT_NOT_ALLOWED", ex.getCode());
         // §8.0：不提交任务（videoJobs.submit 内部才 hold 积分）→ 不 hold。
-        verify(videoJobs, never()).submit(any(), any());
+        verify(videoJobs, never()).submit(any(), any(), any());
     }
 }
