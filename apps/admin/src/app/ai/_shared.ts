@@ -32,6 +32,7 @@ export const PURPOSE_LABEL: Record<AiModelPurpose, string> = {
   DAP_PERSONA: "数字人人设解析",
   DAP_IMAGE: "数字人图片生成",
   DAP_VIDEO: "数字人视频生成",
+  DAP_REAL_AVATAR: "真人素材与授权",
   GENERAL: "通用兜底",
 };
 
@@ -49,6 +50,7 @@ export const PURPOSE_PRODUCT_LABEL: Record<AiModelPurpose, string> = {
   DAP_PERSONA: "AiAvatar",
   DAP_IMAGE: "AiAvatar",
   DAP_VIDEO: "AiAvatar",
+  DAP_REAL_AVATAR: "AiAvatar",
   GENERAL: "平台通用",
 };
 

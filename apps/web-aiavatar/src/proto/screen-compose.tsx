@@ -123,6 +123,7 @@ function MCompose({ preset, ctx }) {
   const [busy, setBusy] = useStateC(false);
   const [pct, setPct] = useStateC(0);
   const [stage, setStage] = useStateC("");
+  const [authBlocked, setAuthBlocked] = useStateC("");   // 服务端因缺肖像授权拒绝出片时的提示文案
 
   const options = useApi(() => ComposeApi.options(), seed.composeOptions(), []);
   const perImage = options?.costPerImage ?? 3;
@@ -171,6 +172,7 @@ function MCompose({ preset, ctx }) {
     setBusy(true);
     setPct(0);
     setStage("提交中…");
+    setAuthBlocked("");
     try {
       const r: any = await ComposeApi.create({
         avatarId: avatar.id, sceneId: scene.id,
@@ -186,7 +188,12 @@ function MCompose({ preset, ctx }) {
       ctx.openComposeResult(fresh, { replace: true });
       ctx.reload?.();
     } catch (e: any) {
-      (window as any).toast?.(e?.message || "合成失败，请稍后重试", { tone: "err" });
+      // 缺生效肖像授权被拒（未建单未扣费）→ 给「去完成授权认证」引导，而不是一句干巴巴的报错
+      if (e?.code === "DAP_LICENSE_REQUIRED") {
+        setAuthBlocked(e?.message || "该真人形象还没有完成肖像授权，无法出片");
+      } else {
+        (window as any).toast?.(e?.message || "合成失败，请稍后重试", { tone: "err" });
+      }
     } finally { setBusy(false); }
   };
 
@@ -268,8 +275,24 @@ function MCompose({ preset, ctx }) {
         border: "1px solid " + (licenseNote.blocked ? "var(--err-s)" : "var(--primary-soft)") } },
         hC(licenseNote.blocked ? Icons.warn : Icons.shield, { size: 15, stroke: 2, style: {
           flex: "0 0 auto", marginTop: 1, color: licenseNote.blocked ? "var(--err)" : "var(--primary)" } }),
-        hC("span", { style: { fontSize: 12, color: licenseNote.blocked ? "var(--err)" : "var(--ink-2)", lineHeight: 1.5 } },
-          licenseNote.text)),
+        hC("div", { style: { flex: 1, minWidth: 0 } },
+          hC("div", { style: { fontSize: 12, color: licenseNote.blocked ? "var(--err)" : "var(--ink-2)", lineHeight: 1.5, wordBreak: "break-word" } },
+            licenseNote.text),
+          licenseNote.blocked && avatar && hC("div", { style: { marginTop: 10 } },
+            hC(UI.Button, { variant: "primary", size: "sm", icon: Icons.scan,
+              onClick: () => ctx.startRealAuth(avatar) }, "去完成授权认证")))),
+
+      // 服务端授权核对未通过（403）—— 同样给认证引导入口
+      authBlocked && hC("div", { style: {
+        marginTop: 14, display: "flex", alignItems: "flex-start", gap: 9, padding: "12px 14px", borderRadius: 12,
+        background: "var(--err-s)", border: "1px solid var(--err-s)" } },
+        hC(Icons.warn, { size: 15, stroke: 2, style: { flex: "0 0 auto", marginTop: 1, color: "var(--err)" } }),
+        hC("div", { style: { flex: 1, minWidth: 0 } },
+          hC("div", { style: { fontSize: 12, color: "var(--err)", lineHeight: 1.5, wordBreak: "break-word" } }, authBlocked),
+          hC("div", { style: { fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.45, marginTop: 4 } }, "本次没有建单，也没有扣算力。"),
+          avatar && hC("div", { style: { marginTop: 10 } },
+            hC(UI.Button, { variant: "primary", size: "sm", icon: Icons.scan,
+              onClick: () => ctx.startRealAuth(avatar) }, "去完成授权认证")))),
 
       busy && hC("div", { className: "m-card", style: { marginTop: 14, padding: "14px 15px" } },
         hC("div", { style: { display: "flex", alignItems: "center", gap: 9, marginBottom: 9 } },

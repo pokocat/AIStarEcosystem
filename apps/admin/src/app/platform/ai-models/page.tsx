@@ -217,8 +217,8 @@ const BINDING_GROUPS: Array<{
   {
     key: "aiavatar",
     label: "AiAvatar",
-    description: "数字人人设解析、图片生成与视频生成的多模态调用。",
-    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO"],
+    description: "数字人人设解析、图片生成与视频生成的多模态调用；「真人素材与授权」为七牛 modelink 素材合规接入（刷脸认证 + 素材送审）。",
+    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO", "DAP_REAL_AVATAR"],
   },
   {
     key: "creator",

@@ -76,5 +76,16 @@ public class DapLicense {
     @Column(length = 512)
     private String certKey;
 
+    /**
+     * 授权取得方式（v0.105）：liveness = 通过真人刷脸认证取得；declared = 仅声明式登记。
+     * 老数据为 null，一律视作 declared。
+     */
+    @Column(length = 16)
+    private String verifyMethod;
+
+    /** 取得该授权的刷脸认证分组 id（DapMaterialGroup.id；verifyMethod=liveness 时非空）。 */
+    @Column(length = 32)
+    private String livenessGroupId;
+
     private Instant createdAt;
 }

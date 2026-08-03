@@ -398,6 +398,8 @@ src/main/java/com/aistareco/aep/
 
 > 服务 apps/web-aiavatar（/api/v1/**）。账户复用 aep_users + 钱包；多模态大模型（文本/图片/视频）经 `DapMultimodalClient` 统一从后台「AI 应用绑定」端点解析（purpose=DAP_PERSONA/DAP_IMAGE/DAP_VIDEO，无 env 兜底）。
 >
+> **v0.105**：真人授权链路接七牛云 modelink —— `captures/{id}/verify` 不再「有素材即通过」，必须先有 **active 的刷脸认证会话**（`POST /v1/real-auth/sessions` → 上游 h5 刷脸 → 浏览器回跳 `GET /v1/real-auth/callback`（permitAll，靠不可枚举 state 防伪）→ 服务端回传 result_code + byted_token → 轮询上游确认 active），否则 409 `DAP_AUTH_NOT_COMPLETED`。核验通过登记的 LIC 标 `verifyMethod=liveness` + `livenessGroupId`。素材送审（`/v1/materials`）把捕获素材与定妆图推给 modelink 审核，结论由 `DapModelinkPoller` 收敛。接入点走后台「AI 应用绑定」的新用途 `DAP_REAL_AVATAR`；未配置且 `aep.dap.modelink.allow-mock=false`（生产默认）→ 503 `DAP_MODELINK_NOT_CONFIGURED`，不建会话不产假授权（§8.0）。同版把合成路径的授权硬闸前移到**生成入口**：真人复刻缺生效 LIC → 403 `DAP_LICENSE_REQUIRED`，不建任务不冻结积分。
+>
 > **v0.104**：数字人不再是唯一的资产种类，而是六类之一 —— `DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 / `VO-` 声音 / `ST-` 风格。授权登记只发给真人肖像人物与 IP；场景 / 产品 / 风格是轻资产只记来源。IP 是容器（成员靠各实体的 `ipId` 指向），合成产物回流为它的衍生物并双向记引用。
 
 | 表 | 说明 |
@@ -418,6 +420,8 @@ src/main/java/com/aistareco/aep/
 | `dap_composition` | **v0.104** 跨资产合成单（CP-xxxx；人物 × 场景 × 产品 → 成片；`licenseNote` 出片前授权核对结论快照） |
 | `dap_composition_output` | **v0.104** 合成产物单张（入库即该 IP 的衍生物） |
 | `dap_asset_usage` | **v0.104** 引用台账（驱动详情页「APPLIED TO · 已用于」；同一对 资产→用处 重复引用累加 `times` 不新增行） |
+| `dap_material_group` | **v0.105** 素材分组（MG-xxxx；七牛 modelink asset-group 本地镜像。`kind=liveness_face` 即真人授权刷脸会话，状态 preparing→awaiting_auth→validating→active/failed；`callbackToken` 唯一，是无 JWT 回跳端点的防伪 state；`validateCalledAt` 是一次性凭证 byted_token 的幂等闸） |
+| `dap_material` | **v0.105** 送审素材（MAT-xxxx；modelink asset 本地镜像。`sourceKey` 是 §4.7.4 真值，送审时才派生签名 URL；状态 pending→reviewing→approved/failed；`refType=capture` 挂 liveness 分组、`refType=avatar` 走平台 aigc 默认组） |
 
 ### 核心表（账户与计费域）
 

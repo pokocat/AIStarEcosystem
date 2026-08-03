@@ -34,6 +34,7 @@ public class DapWorkflowService {
 
     private final DapAvatarService avatarService;
     private final DapJobService jobService;
+    private final DapLicenseService licenseService;
     private final DapLookRepository lookRepo;
     private final DapDerivativeRepository derivRepo;
     private final DapCatalogService catalog;
@@ -43,6 +44,7 @@ public class DapWorkflowService {
 
     public DapWorkflowService(DapAvatarService avatarService,
                               DapJobService jobService,
+                              DapLicenseService licenseService,
                               DapLookRepository lookRepo,
                               DapDerivativeRepository derivRepo,
                               DapCatalogService catalog,
@@ -51,6 +53,7 @@ public class DapWorkflowService {
                               DapMultimodalClient multimodal) {
         this.avatarService = avatarService;
         this.jobService = jobService;
+        this.licenseService = licenseService;
         this.lookRepo = lookRepo;
         this.derivRepo = derivRepo;
         this.catalog = catalog;
@@ -68,6 +71,7 @@ public class DapWorkflowService {
     public JobDto generate(String userId, String avatarId, GenerateRequest req) {
         DapAvatar a = avatarService.required(userId, avatarId);
         boolean upload = "upload".equals(req.mode());
+        requireLicenseForRealPath(userId, a);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         if (req.form() != null) {
@@ -94,6 +98,35 @@ public class DapWorkflowService {
         DapJob job = jobService.submit(userId, a, type, kind, engineName(),
                 jobService.priceOf(type, null), upload ? "约 30 秒" : "约 60 秒", payload);
         return JobDto.from(job, support::hm);
+    }
+
+    /**
+     * 真人复刻路径的授权硬闸（v0.105）。
+     *
+     * <p>此前授权只在合成路径（{@code DapCompositionService.checkLicense}）拦，生成路径无闸；
+     * 而真人形象的既定流程是 <b>capture → footage → verify（登记 LIC）→ generate</b>
+     * （见 {@code apps/web-aiavatar/src/proto/screen-real.tsx} 的 runPipeline），
+     * 授权必然先于首次生成存在，因此这里可以安全地把同款闸前移到生成入口：
+     * 缺生效 LIC → 403 {@code DAP_LICENSE_REQUIRED}，<b>不建任务、不冻结积分</b>。
+     * AI 原创人物（path=ai）不受影响。
+     */
+    private void requireLicenseForRealPath(String userId, DapAvatar a) {
+        if (!"real".equals(a.getPath())) return;
+        String status = licenseService.statusOf(userId, a.getLicenseId());
+        if ("active".equals(status)) return;
+        throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,
+                "DAP_LICENSE_REQUIRED",
+                "「" + a.getName() + "」是真人复刻形象，需要先完成刷脸认证并取得生效中的肖像授权才能生成。"
+                        + (status == null ? "该形象尚未登记授权。" : "当前授权状态：" + zhStatus(status) + "。"));
+    }
+
+    private static String zhStatus(String s) {
+        return switch (s == null ? "" : s) {
+            case "active" -> "生效中";
+            case "pending" -> "待签署";
+            case "expired" -> "已过期";
+            default -> s;
+        };
     }
 
     /** 人设解析（同步小步；完整生成请走 generate）。 */

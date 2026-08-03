@@ -334,6 +334,13 @@ export type {
   CompositionOutput,
   CompositionSource,
   ComposeOptions,
+  // v0.105 真人授权刷脸认证 + 素材平台审核
+  Capture,
+  RealAuthSession,
+  RealAuthStatus,
+  DapMaterialInfo,
+  MaterialStatus,
+  MaterialRefType,
 } from "./data";
 
 // ── Mock 任务模拟器（USE_MOCK=1 时让创建/衍生流程可观察推进）────
@@ -346,6 +353,8 @@ const mockChars: any[] = Mock.CHARS.map((c) => ({ ...c }));
 const mockPublicExtra: any[] = [];
 /** mock 回收站（软删数字人；live 模式由 server 持久化）。 */
 const mockTrash: any[] = [];
+/** mock 授权登记簿（刷脸认证通过后会往里追加新登记；live 由 server 持久化）。 */
+const mockLicenses: Mock.License[] = Mock.LICENSES.map((l) => ({ ...l }));
 
 // ── 数字资产平台 · 六类资产的 mock 「数据库」──────────────────
 const mockIps: Mock.AssetIp[] = Mock.ASSET_IPS.map((x) => ({ ...x, members: { ...x.members } }));
@@ -491,7 +500,7 @@ export const seed = {
   builtinVoices: (): Mock.BuiltinVoice[] => (USE_MOCK ? Mock.BUILTIN_VOICES.slice() : []),
   myVoices: (): Mock.VoiceAsset[] => (USE_MOCK ? Mock.VOICES.slice() : []),
   jobs: (): Mock.Job[] => (USE_MOCK ? Mock.TASKS.map((t) => ({ ...t })) : []),
-  licenses: (): Mock.License[] => (USE_MOCK ? Mock.LICENSES.slice() : []),
+  licenses: (): Mock.License[] => (USE_MOCK ? mockLicenses.slice() : []),
   applications: (): Mock.Application[] => (USE_MOCK ? Mock.APPLICATIONS.slice() : []),
   scenes: (): Mock.Scene[] => (USE_MOCK ? Mock.SCENES.slice() : []),
   templates: (): Mock.TemplateMeta[] => (USE_MOCK ? Mock.TEMPLATES.slice() : []),
@@ -897,30 +906,193 @@ export const PlazaAdminApi = {
   },
 };
 
-// ── 真人捕获 / 授权 ───────────────────────────────────────────
+// ── 真人捕获 / 刷脸认证 / 授权 ─────────────────────────────────
+
+/** mock 捕获会话：{captureId → avatarId}，供认证会话与核验回填授权时定位人物。 */
+const mockCaptures = new Map<string, { id: string; avatarId: string }>();
+
+/**
+ * mock 刷脸认证会话。状态按「创建至今经过的时间」惰性推进，
+ * 与 mockJobStore 同思路：不开定时器，每次 get 现算，保证读到什么就是什么。
+ *   0 ~ 1.5s  准备中     1.5 ~ 7.5s 待认证（可去刷脸）
+ *   7.5 ~ 9.5s 核验中     ≥ 9.5s     已通过
+ */
+const mockAuthSessions = new Map<string, any>();
+/** {captureId → 最近一次认证会话 id}，让 verify 能找到该捕获的认证结果。 */
+const mockAuthByCapture = new Map<string, string>();
+
+const MOCK_AUTH_PREPARING_MS = 1_500;
+const MOCK_AUTH_AWAITING_MS = 7_500;
+const MOCK_AUTH_VALIDATING_MS = 9_500;
+
+function mockAuthStatusOf(s: any): Mock.RealAuthStatus {
+  if (s.forcedStatus) return s.forcedStatus;
+  const t = Date.now() - s.startedAt;
+  if (t < MOCK_AUTH_PREPARING_MS) return "preparing";
+  if (t < MOCK_AUTH_AWAITING_MS) return "awaiting_auth";
+  if (t < MOCK_AUTH_VALIDATING_MS) return "validating";
+  return "active";
+}
+
+function mockAuthSnapshot(s: any): Mock.RealAuthSession {
+  const status = mockAuthStatusOf(s);
+  return {
+    id: s.id,
+    captureId: s.captureId,
+    avatarId: s.avatarId || null,
+    status,
+    // 链接短时有效：每次拉取都带上本次拉取时间戳，模拟「过期后重新获取会换新链接」
+    h5Url: status === "awaiting_auth" ? `about:blank#mock-face-auth-${s.id}-${Date.now()}` : null,
+    failReason: status === "failed" ? s.failReason || "认证未通过，请重新认证" : null,
+    mock: true,
+    createdAt: new Date(s.startedAt).toISOString(),
+  };
+}
+
+/** mock：核验通过后登记一条「已刷脸核验」的肖像授权，并绑定到人物资产上。 */
+function mockRegisterLicense(avatarId: string | null | undefined): string | undefined {
+  if (!avatarId) return undefined;
+  const c: any = mockChars.find((x: any) => x.id === avatarId);
+  const existing = c?.license && mockLicenses.find((l) => l.id === c.license);
+  if (existing) {
+    existing.status = "active";
+    existing.verifyMethod = "liveness";
+    return existing.id;
+  }
+  const id = `LIC-${9000 + mockSeq++}`;
+  const today = new Date();
+  const year = today.getFullYear();
+  mockLicenses.unshift({
+    id,
+    subject: `${c?.name || "本人"}（本人授权）`,
+    char: avatarId,
+    scope: "品牌商用 / 全平台",
+    period: `${year}-${String(today.getMonth() + 1).padStart(2, "0")} ~ ${year + 2}-${String(today.getMonth() + 1).padStart(2, "0")}`,
+    platforms: ["全平台"],
+    status: "active",
+    signed: today.toISOString().slice(0, 10),
+    photos: 5,
+    verifyMethod: "liveness",
+  });
+  if (c) { c.license = id; c.updated = "刚刚"; }
+  return id;
+}
 
 export const CaptureApi = {
   create: (avatarId: string): Promise<any> => {
-    if (USE_MOCK) return mock({ id: `CAP-${mockSeq++}`, avatarId, status: "created" });
+    if (USE_MOCK) {
+      const id = `CAP-${mockSeq++}`;
+      mockCaptures.set(id, { id, avatarId });
+      return mock({ id, avatarId, status: "created" });
+    }
     return apiFetch(`/captures`, { method: "POST", body: JSON.stringify({ avatarId }) });
   },
   footage: (id: string, files: FormData): Promise<any> => {
     if (USE_MOCK) return mock({ id, status: "footage_uploaded" });
     return apiUpload(`/captures/${id}/footage`, files);
   },
-  verify: (id: string): Promise<{ passed: boolean }> => {
-    if (USE_MOCK) return mock({ passed: true });
+  /**
+   * 核验并登记授权。刷脸认证尚未完成时 server 返回 409 DAP_AUTH_NOT_COMPLETED，
+   * 调用方应回到等待轮询而不是当作失败。
+   */
+  verify: (id: string): Promise<{ passed: boolean; captureId: string; licenseId?: string }> => {
+    if (USE_MOCK) {
+      const sid = mockAuthByCapture.get(id);
+      const s = sid ? mockAuthSessions.get(sid) : null;
+      const status = s ? mockAuthStatusOf(s) : null;
+      if (status !== "active") {
+        return Promise.reject(new ApiError("刷脸认证尚未完成", "DAP_AUTH_NOT_COMPLETED", 409));
+      }
+      const licenseId = mockRegisterLicense(s.avatarId || mockCaptures.get(id)?.avatarId);
+      return mock({ passed: true, captureId: id, licenseId });
+    }
     return apiFetch(`/captures/${id}/verify`, { method: "POST" });
+  },
+};
+
+/**
+ * 真人授权刷脸认证会话（v0.105）。
+ * 流程：start(captureId) 建会话 → 轮询 get(id) → awaiting_auth 时打开 h5Url 刷脸
+ *      → active 后调 CaptureApi.verify(captureId) 落授权登记。
+ */
+export const RealAuthApi = {
+  start: (captureId: string): Promise<Mock.RealAuthSession> => {
+    if (USE_MOCK) {
+      const id = `RAS-${mockSeq++}`;
+      const s = {
+        id, captureId, avatarId: mockCaptures.get(captureId)?.avatarId || null,
+        startedAt: Date.now(), forcedStatus: null as Mock.RealAuthStatus | null, failReason: null as string | null,
+      };
+      mockAuthSessions.set(id, s);
+      mockAuthByCapture.set(captureId, id);
+      return mock(mockAuthSnapshot(s));
+    }
+    return apiFetch(`/real-auth/sessions`, { method: "POST", body: JSON.stringify({ captureId }) });
+  },
+  get: (id: string): Promise<Mock.RealAuthSession> => {
+    if (USE_MOCK) {
+      const s = mockAuthSessions.get(id);
+      if (!s) return Promise.reject(new ApiError("认证会话不存在或已失效", "DAP_AUTH_SESSION_NOT_FOUND", 404));
+      return mock(mockAuthSnapshot(s));
+    }
+    return apiFetch(`/real-auth/sessions/${id}`);
+  },
+};
+
+/**
+ * 素材平台审核（v0.105）。人物形象主图等素材提交内容安全审核，
+ * 通过后才可用于视频生成。
+ */
+const mockMaterials: Record<string, any[]> = Object.fromEntries(
+  Object.entries(Mock.MATERIALS).map(([k, v]) => [k, v.map((m) => ({ ...m, frozen: true }))]),
+);
+
+const MOCK_MAT_REVIEWING_MS = 2_000;
+const MOCK_MAT_APPROVED_MS = 5_000;
+
+/** mock：按提交至今的时间惰性推进审核状态（种子样本 frozen，保持定案态）。 */
+function mockMaterialSnapshot(m: any): Mock.DapMaterialInfo {
+  if (m.frozen) { const { frozen, startedAt, ...rest } = m; return rest as Mock.DapMaterialInfo; }
+  const t = Date.now() - m.startedAt;
+  const status: Mock.MaterialStatus = t < MOCK_MAT_REVIEWING_MS ? "pending" : t < MOCK_MAT_APPROVED_MS ? "reviewing" : "approved";
+  const { frozen, startedAt, ...rest } = m;
+  return { ...rest, status, updatedAt: new Date().toISOString() } as Mock.DapMaterialInfo;
+}
+
+export const MaterialApi = {
+  /** 提交平台审核。同一资产已有「未被驳回」的记录时幂等返回既有记录。 */
+  submit: (refType: Mock.MaterialRefType, refId: string, name?: string): Promise<Mock.DapMaterialInfo> => {
+    if (USE_MOCK) {
+      const key = `${refType}:${refId}`;
+      const list = mockMaterials[key] || (mockMaterials[key] = []);
+      const alive = list.map(mockMaterialSnapshot).find((m) => m.status !== "failed");
+      if (alive) return mock(alive);
+      const now = new Date().toISOString();
+      const c: any = mockChars.find((x: any) => x.id === refId);
+      const fresh = {
+        id: `MAT-${mockSeq++}`, refType, refId, type: "image" as const,
+        name: name || `${c?.name || refId} · 形象主图`,
+        status: "pending" as Mock.MaterialStatus, failReason: null, qassetUri: null, mock: true,
+        createdAt: now, updatedAt: now, frozen: false, startedAt: Date.now(),
+      };
+      list.unshift(fresh);
+      return mock(mockMaterialSnapshot(fresh));
+    }
+    return apiFetch(`/materials`, { method: "POST", body: JSON.stringify({ refType, refId }) });
+  },
+  listByRef: (refType: Mock.MaterialRefType, refId: string): Promise<Mock.DapMaterialInfo[]> => {
+    if (USE_MOCK) return mock((mockMaterials[`${refType}:${refId}`] || []).map(mockMaterialSnapshot));
+    return apiFetch(`/materials?refType=${encodeURIComponent(refType)}&refId=${encodeURIComponent(refId)}`);
   },
 };
 
 export const LicenseApi = {
   list: (status?: string): Promise<any[]> => {
-    if (USE_MOCK) return mock(Mock.LICENSES.slice());
+    if (USE_MOCK) return mock(status ? mockLicenses.filter((l) => l.status === status) : mockLicenses.slice());
     return apiFetch(`/licenses${status ? `?status=${status}` : ""}`);
   },
   get: (id: string): Promise<any> => {
-    if (USE_MOCK) return mock(Mock.LICENSES.find((l) => l.id === id) || Mock.LICENSES[0]);
+    if (USE_MOCK) return mock(mockLicenses.find((l) => l.id === id) || mockLicenses[0]);
     return apiFetch(`/licenses/${id}`);
   },
   certificate: (id: string): Promise<{ certificateUrl: string }> => {
@@ -928,7 +1100,11 @@ export const LicenseApi = {
     return apiFetch(`/licenses/${id}/certificate`);
   },
   renew: (id: string): Promise<any> => {
-    if (USE_MOCK) return mock({ id, status: "active" });
+    if (USE_MOCK) {
+      const l = mockLicenses.find((x) => x.id === id);
+      if (l) l.status = "active";
+      return mock(l || { id, status: "active" });
+    }
     return apiFetch(`/licenses/${id}/renew`, { method: "POST" });
   },
   create: (body: Record<string, unknown>): Promise<any> => {
@@ -1477,6 +1653,12 @@ export const ComposeApi = {
   create: (body: { avatarId: string; sceneId: string; productId?: string | null; styleId?: string | null; ratio?: string; count?: number; extraPrompt?: string }): Promise<any> => {
     if (USE_MOCK) {
       const avatar: any = mockChars.find((c: any) => c.id === body.avatarId) || mockChars[0];
+      // 与 server 一致：真人复刻缺生效肖像授权 → 直接拒绝，不建单不扣费
+      if (avatar.path === "real" && !avatar.license) {
+        return Promise.reject(new ApiError(
+          "该真人形象还没有完成肖像授权，无法出片", "DAP_LICENSE_REQUIRED", 403, { avatarId: avatar.id },
+        ));
+      }
       const scene = mockScenes.find((s) => s.id === body.sceneId) || mockScenes[0];
       const product = body.productId ? mockProducts.find((p) => p.id === body.productId) : null;
       const style = body.styleId ? mockStyles.find((s) => s.id === body.styleId) : null;

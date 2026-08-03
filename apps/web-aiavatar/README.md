@@ -70,7 +70,7 @@ pnpm build:turbo                   # Turbopack 构建（可选）
 | 造型档案 / 设计造型 | 详情 | final 造型列表 + AI 设计造型（描述 / 场景库替换） |
 | 衍生查看 | 详情 | 某类衍生物多张产出（图集 / 场景 / 3D 可旋转 / 视频可播放） |
 | AI 创建 | 创建 sheet | 上传照片 / 文字描述 → 四宫格挑选 → 推荐音色 → 保存 |
-| 真人捕获 | 创建 sheet | 录制引导 → 倒计时录制 → 身份核验 → 选音色 → 保存 + 授权 |
+| 真人捕获 | 创建 sheet ／ 各处「去认证」入口 | 录制引导 → 倒计时录制 → 上传素材 → **实名认证（本人刷脸，v0.105：准备中 → 去刷脸认证〔可换新链接〕→ 核验中 → 通过 / 重试）** → 核验并登记肖像授权 → 复刻生成 → 选音色 → 保存。已出形象的资产走「补认证」，认证完即结束不重复复刻 |
 | 创建链路（5 步） | 真人 / 继续 | 素材&授权 → 形象生成 → 调整（自然语言 / 几何精调）→ 出图定稿 → 衍生 |
 | 选择音色 | 详情音色 pill | 内置 7 款 AI 合成音色（女 4 / 男 3）· 试听 · 设为默认 |
 | 声音工作室 / 声音克隆 | 我的 | 内置音色 + 我的声音 + 克隆录制 |
@@ -109,7 +109,8 @@ src/
 **所有数据都经 `src/proto/api.ts` 这一个出入口**（屏幕层不直接 import `./data`）：
 
 - `api.ts` 是前端契约层，已按规格 §4 补齐全部 REST 端点（`AvatarApi` / `VoiceApi` /
-  `JobApi` / `LicenseApi` / `CaptureApi` / `AccountApi` / `AppApi` / `SceneApi` / `TemplateApi`），
+  `JobApi` / `LicenseApi` / `CaptureApi` / `AccountApi` / `AppApi` / `SceneApi` / `TemplateApi`
+  + v0.104 的 `AssetApi` / `ComposeApi` + v0.105 的 `RealAuthApi` / `MaterialApi`），
   每个函数都带 `USE_MOCK` 分支：
   - `NEXT_PUBLIC_USE_MOCK=1`（默认）→ 返回 `src/proto/data.ts` 的样例（私有 mock「数据库」）。
   - `NEXT_PUBLIC_USE_MOCK=0` → `apiFetch` 打 `/api/v1/*`（经 `next.config.mjs` rewrite 到 :8080），
@@ -126,6 +127,56 @@ src/
 ---
 
 ## 版本日志
+
+### v0.105（2026-08-02）— 真人授权刷脸实名认证 + 素材平台审核（接七牛云 modelink）
+
+真人线此前的「身份核验」是假的（后端只要素材存在就判通过并自动发授权）。本版接入七牛云 modelink，
+把它换成**本人刷脸实名认证 + 服务端判定**，并补上「素材送内容安全审核」。**授权与审核全程免费**。
+
+**新屏 / 改造**：
+
+- **RealAuth（实名认证）** —— `screen-real.tsx` 里原来的假「身份核验」步骤真实化为独立一屏：
+  准备中 → **去刷脸认证**（打开上游认证页；链接短时有效，可就地「换新链接」）→ 核验中 →
+  通过后自动核验并登记肖像授权 → 未通过可「重新认证」。真人流水线因此变成
+  `建资产 + 捕获 + 上传素材 → 实名认证 → 核验登记授权 → 复刻生成 → 就绪`。
+- **补认证（authOnly）** —— 带既有资产进流程且它已经有定妆图时，认证通过即完成
+  （文案「实名认证已完成」），不重复跑复刻生成。
+- **授权登记页**（`screen-lictaskme.tsx`）：顶部新增「**待授权**」块（真人资产 × 无生效授权，
+  每行一个「去认证」；**列表为空则整块不渲染** —— 授权徽标稀有是设计语义，不做常驻空状态）；
+  授权卡加「**已刷脸核验**」徽标（只在 `verifyMethod=liveness` 时出现，未核验不显示负面文案）+
+  可折叠「授权素材」（点开再拉，避免列表一次发 N 个请求）。
+- **资产详情**（`screen-library.tsx`）：真人形象缺生效授权 → 顶部提示条 +「去认证」；
+  新增「平台审核」区块 —— AI 原创人物可主动「提交平台审核」，真人形象只读展示审核结果（无记录不渲染）。
+- **合成工作台**（`screen-compose.tsx`）：服务端 403 `DAP_LICENSE_REQUIRED` 从一句 toast 升级为拦截块，
+  明说「本次没有建单，也没有扣算力」并给「去完成授权认证」。
+- **新共用组件 `material-status.tsx`**：`MaterialBadge`（待审核 / 审核中 / 已通过 / 未通过）、
+  `MaterialRow` / `MaterialSection`（`submit` / `readonly` 两模式）、`LivenessBadge`。
+- 三个「去认证」入口统一走 `app.tsx` 新增的 `ctx.startRealAuth(char)`；带既有资产时深链写成
+  `#/create/real/<id>`。
+
+**契约（`data.ts` / `api.ts`）**：`License` 加 `verifyMethod`（`liveness` / `declared`，老数据视作
+`declared`）；新增 `RealAuthSession` / `RealAuthStatus` / `Capture`（`authSessionId` / `authStatus`）/
+`DapMaterialInfo` / `MaterialStatus` / `MaterialRefType`；新增 `RealAuthApi`（`POST /v1/real-auth/sessions`、
+`GET /v1/real-auth/sessions/{id}`）与 `MaterialApi`（`POST` / `GET /v1/materials`）；
+`CaptureApi.verify` 返回 `{passed, captureId, licenseId?}`，**认证未完成时会 409 `DAP_AUTH_NOT_COMPLETED`
+—— 调用方应回到等待轮询，而不是当作失败**。
+
+**mock 仍是一等公民**（`USE_MOCK=1` 整链离线可演示，已浏览器实测）：认证会话与素材审核都用
+「创建时刻 + 时间差」惰性推进（与既有 mock 任务模拟器同思路，不开定时器）；刷脸通过后会往 mock
+授权登记簿真的追加一条「已刷脸核验」的授权；`ComposeApi.create` 的 mock 分支补 403 与 server 对齐。
+新增样本 **DH-2044「顾岩 Gù」**（真人复刻、已出图、**未授权**），驱动「待授权」块 / 详情提示条 /
+合成 403 三处演示。mock 演示路径：
+`授权登记 → 待授权「去认证」→ 录制/上传 → 实名认证（约 10 秒自动推进到通过）→ 授权登记出现新 LIC + 已刷脸核验徽标`；
+以及 `资产库 → DH-2044 → 合成工作台 → 出片 → 403 拦截块 → 去完成授权认证`。
+
+**server 侧要点**（详见 [`docs/VERSION_HISTORY.md`](../../docs/VERSION_HISTORY.md) `### v0.105` 与
+[`apps/server/README.md`](../server/README.md)）：新增 `dap_material_group`（MG-）/ `dap_material`（MAT-）
+两表 + `DapLicense.verifyMethod`/`livenessGroupId`、`DapCapture.authGroupId` 三列；接入点走后台
+「AI 应用绑定」新用途 `DAP_REAL_AVATAR`（无 env 兜底），未配置且不允许 mock → 503
+`DAP_MODELINK_NOT_CONFIGURED`（§8.0，不产假数据）；真人复刻缺生效授权的硬闸从合成路径**前移到生成入口**。
+
+门禁：server compile + dap modelink 4 个新测试类 + `mvnw test` 全量回归全绿 / `pnpm typecheck:all` /
+web-aiavatar `build` / `pnpm check:api-contract` 全绿。
 
 ### v0.104（2026-07-27）— 从「数字人平台」扩展为「数字资产平台」（六类资产 + IP 容器 + 跨资产合成）
 

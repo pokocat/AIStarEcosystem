@@ -7,6 +7,8 @@ import com.aistareco.aep.dap.model.DapDerivative;
 import com.aistareco.aep.dap.model.DapJob;
 import com.aistareco.aep.dap.model.DapLicense;
 import com.aistareco.aep.dap.model.DapLook;
+import com.aistareco.aep.dap.model.DapMaterial;
+import com.aistareco.aep.dap.model.DapMaterialGroup;
 import com.aistareco.aep.dap.model.DapVoice;
 
 import java.time.Instant;
@@ -31,6 +33,13 @@ public final class DapDtos {
 
     // ── Avatar ────────────────────────────────────────────────
 
+    /** 定妆图送审结论（v0.105）。列表接口不带（避免 N+1），仅详情接口注入。 */
+    public record ModerationDto(String status, String failReason) {
+        public static ModerationDto from(DapMaterial m) {
+            return m == null ? null : new ModerationDto(m.getStatus(), m.getFailReason());
+        }
+    }
+
     public record AvatarDto(
             String id, String name, String codename, String path, String archetype, String tagline,
             String status, String updated, boolean fav, int hue, String hairStyle,
@@ -39,9 +48,19 @@ public final class DapDtos {
             Map<String, Object> deriv, Map<String, Object> counts,
             int versions, String voiceName,
             String imageUrl, List<String> variantImages, Map<String, String> shotImages,
-            String descPrompt, Map<String, Object> form, String ipId) {
+            String descPrompt, Map<String, Object> form, String ipId,
+            ModerationDto moderation) {
 
         public static AvatarDto from(DapAvatar a, String updatedZh, Function<String, String> keyToUrl) {
+            return from(a, updatedZh, keyToUrl, null);
+        }
+
+        /**
+         * @param moderation 定妆图送审结论（该 avatar 最新一条 refType=avatar 的 DapMaterial）；
+         *                   列表场景传 null（不逐行查库）。
+         */
+        public static AvatarDto from(DapAvatar a, String updatedZh, Function<String, String> keyToUrl,
+                                     ModerationDto moderation) {
             List<String> variants = a.getVariantKeys() == null ? List.of()
                     : a.getVariantKeys().stream().map(keyToUrl).toList();
             Map<String, String> shots = new LinkedHashMap<>();
@@ -57,7 +76,7 @@ public final class DapDtos {
                     a.getPalette(), a.defOrEmpty(), a.derivOrEmpty(), a.countsOrEmpty(),
                     a.getVersions(), a.getVoiceName(),
                     a.getImageKey() != null ? keyToUrl.apply(a.getImageKey()) : null,
-                    variants, shots, a.getDescPrompt(), a.getForm(), a.getIpId());
+                    variants, shots, a.getDescPrompt(), a.getForm(), a.getIpId(), moderation);
         }
     }
 
@@ -118,7 +137,7 @@ public final class DapDtos {
 
     public record LicenseDto(String id, String subject, String avatarId, String scope, String period,
                              List<String> platforms, String status, String signed, int photos,
-                             String ipId, String expiresOn) {
+                             String ipId, String expiresOn, String verifyMethod) {
 
         /** wire 字段名 char 是 TS 侧命名；Java 关键字冲突 → 用 avatarId 承载 + 控制器序列化别名。 */
         public static LicenseDto from(DapLicense l) {
@@ -129,7 +148,9 @@ public final class DapDtos {
                     l.getPlatforms(), l.getStatus(),
                     l.getSignedAt() != null ? DATE.format(l.getSignedAt()) : "—",
                     l.getPhotoCount(), l.getIpId(),
-                    l.getPeriodEnd() != null ? YM.format(l.getPeriodEnd()) : null);
+                    l.getPeriodEnd() != null ? YM.format(l.getPeriodEnd()) : null,
+                    // 老数据（v0.105 之前登记）无取得方式 → 一律视作声明式登记
+                    l.getVerifyMethod() == null || l.getVerifyMethod().isBlank() ? "declared" : l.getVerifyMethod());
         }
 
         /** 输出为前端契约形状（含 char 字段）。 */
@@ -144,6 +165,7 @@ public final class DapDtos {
             m.put("status", status);
             m.put("signed", signed);
             m.put("photos", photos);
+            m.put("verifyMethod", verifyMethod);
             if (ipId != null) m.put("ipId", ipId);
             if (expiresOn != null) m.put("expiresOn", expiresOn);
             return m;
@@ -224,11 +246,54 @@ public final class DapDtos {
     // ── 捕获 ──────────────────────────────────────────────────
 
     public record CaptureDto(String id, String avatarId, String status, double durationSec,
-                             String footageUrl, String frameUrl) {
+                             String footageUrl, String frameUrl,
+                             String authSessionId, String authStatus) {
+
         public static CaptureDto from(DapCapture c, Function<String, String> keyToUrl) {
+            return from(c, keyToUrl, null);
+        }
+
+        /**
+         * @param authStatus 真人授权（刷脸认证）会话状态；无会话传 null → 出 wire 为 "none"。
+         */
+        public static CaptureDto from(DapCapture c, Function<String, String> keyToUrl, String authStatus) {
             return new CaptureDto(c.getId(), c.getAvatarId(), c.getStatus(), c.getDurationSec(),
                     c.getFootageKey() != null ? keyToUrl.apply(c.getFootageKey()) : null,
-                    c.getFrameKey() != null ? keyToUrl.apply(c.getFrameKey()) : null);
+                    c.getFrameKey() != null ? keyToUrl.apply(c.getFrameKey()) : null,
+                    c.getAuthGroupId(),
+                    c.getAuthGroupId() == null || authStatus == null || authStatus.isBlank() ? "none" : authStatus);
+        }
+    }
+
+    // ── 真人授权（刷脸认证）会话 · v0.105 ────────────────────────
+
+    /**
+     * 刷脸认证会话（= DapMaterialGroup 的 liveness_face 分组）。
+     * h5Url 只在 awaiting_auth 时非空（上游签发、约 120s 有效，不落库）。
+     */
+    public record RealAuthSessionDto(String id, String captureId, String avatarId, String status,
+                                     String h5Url, String failReason, boolean mock, String createdAt) {
+        public static RealAuthSessionDto from(DapMaterialGroup g, String h5Url) {
+            return new RealAuthSessionDto(g.getId(), g.getCaptureId(), g.getAvatarId(), g.getStatus(),
+                    "awaiting_auth".equals(g.getStatus()) ? h5Url : null,
+                    g.getFailReason(), g.isMock(),
+                    g.getCreatedAt() != null ? g.getCreatedAt().toString() : null);
+        }
+    }
+
+    // ── 送审素材 · v0.105 ───────────────────────────────────────
+
+    /** qassetUri = 生成引用格式 qasset://{qassetid}（本版只存储、不接生成）。 */
+    public record MaterialDto(String id, String refType, String refId, String type, String name,
+                              String status, String failReason, String qassetUri, boolean mock,
+                              String createdAt, String updatedAt) {
+        public static MaterialDto from(DapMaterial m) {
+            return new MaterialDto(m.getId(), m.getRefType(), m.getRefId(), m.getType(), m.getName(),
+                    m.getStatus(), m.getFailReason(),
+                    m.getQassetid() == null ? null : "qasset://" + m.getQassetid(),
+                    m.isMock(),
+                    m.getCreatedAt() != null ? m.getCreatedAt().toString() : null,
+                    m.getUpdatedAt() != null ? m.getUpdatedAt().toString() : null);
         }
     }
 

@@ -241,6 +241,10 @@
 - [ ] **Phase 4 · 用户上传素材 OSS 化**（v0.34 显式 v0.35+）：`MixcutAsset` 上传从本地 fs（`./mixcut-assets`）切换到 OSS（沿用 `AliyunOssCdnUploader`）。当前 v0.14 已做 mixcut **渲染产出** OSS 化；用户**上传**仍落本地。
 - [ ] **Phase 5 · 多实例 + Redis + ShedLock**（v0.34 显式）：
   - `PublishJobScheduler` / `MixcutOutputCleanupScheduler` 两个 `@Scheduled` 加 ShedLock（源码注释已挂 TODO）
+  - **dap 域两个 `@Scheduled` 同一债务**（2026-08-02 补记）：`DapTrashCleanupScheduler`（回收站到期清理）与
+    v0.105 新增的 `DapModelinkPoller`（modelink 非终态分组 / 素材收敛轮询，`fixedDelay` 默认 10s）。
+    后者多实例下会对同一批非终态行重复打上游 —— 语义上幂等（都是 GET 后落库），但会**成倍消耗
+    modelink 配额**并放大限流风险，所以和上面两个一起纳入 ShedLock（源码注释已挂 TODO）。
   - `SmsCodeService` in-memory `ConcurrentHashMap`（验证码 + 失败次数 + 锁定态）→ Redis
   - JWT 黑名单（v0.31 提到的 operatorRole 变更后旧 token 不失效问题）→ Redis 黑名单
   - Cookie SSO 跨子域（`packages/api-client/src/_client.ts` 现有 TODO）
@@ -655,3 +659,40 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   建议排期：要么在 `src/test/resources/application.properties` 里统一把测试上下文钉成
   `aep.cdn.driver=local`（测试本来也不该打真 OSS），要么让 `AliyunOssCdnUploader` 在 test profile 下
   降级而不是 fail-fast —— 前者更符合 §8.0（生产 fail-fast 的行为不该为测试放宽）。
+
+
+## 2026-08-02 · AiAvatar 真人授权刷脸认证（v0.105）新发现待办
+
+> 本轮把 aiavatar 真人线的假核验换成七牛云 modelink 的**本人刷脸实名认证**，并补上素材送审。
+> 以下是实现过程中顺手定位、但**本轮刻意不做**的项，按主题归并。
+> （`DapModelinkPoller` 的多实例 ShedLock 归到上面「Phase 5 · 多实例 + Redis + ShedLock」条目，不在此重复。）
+
+### 外部依赖 / 配额
+
+- [ ] **modelink 账号默认限 3 个分组 / 30 个素材，而 liveness 是「每次捕获建一个分组」→ 需要终态分组清理策略**：
+  `DapRealAuthService.start` 对同一次捕获会幂等复用未 failed 的会话，但**每次新的真人捕获都会新建一个
+  `liveness_face` 分组**（`dap_material_group`），高频认证很快撞上游配额（撞上时 `HttpModelinkGateway`
+  按 429 → `DAP_MODELINK_QUOTA`，用户侧表现为「认证通道建立失败」）。上游 `DELETE /v1/asset-groups`
+  要求**组内为空且状态非 pending**，所以清理不是「删了就行」——要先决定终态（active / failed）分组下
+  已送审素材的处置：保留作取证 vs 随组一起清。定位：`DapRealAuthService.start`（建组）+
+  `DapMaterialService.submitForCapture`（往组里塞素材）+ `ModelinkGateway`（缺 deleteGroup 动作）。
+  取舍记录见 `apps/web-aiavatar/DECISIONS.md` §M。
+
+### 契约 / 出 wire
+
+- [ ] **`LicenseDto` / `AvatarDto` 不出 `captureId`，前端「授权素材」只能按 avatar 维度拉**：
+  `dap_material` 的真人素材是 `refType=capture` + `refId=captureId`，但授权卡上拿得到的只有
+  `license.char`（= avatarId），所以 `screen-lictaskme.tsx` 的可折叠「授权素材」实际拉的是
+  `refType=avatar` 的记录，看不到那次刷脸真正送审的动作视频 / 关键帧。
+  修法：`DapLicense` 出 wire 带上取得该授权的 `captureId`（`livenessGroupId` 已能反查到
+  `DapMaterialGroup.captureId`，不必加列），前端按 capture 维度再拉一次。
+  定位：`DapDtos.LicenseDto` + `apps/web-aiavatar/src/proto/material-status.tsx` / `screen-lictaskme.tsx`。
+
+### 前端
+
+- [ ] **web-aiavatar 覆盖页栈只渲染栈顶，从合成工作台跳去认证再返回会丢失已选槽位**（既有限制，v0.105 发现）：
+  `app.tsx` 的 `ctx.startRealAuth(char)` 把「真人捕获（认证）」压栈，返回时合成工作台**重新挂载**，
+  人物 / 场景 / 产品的选料与出片设置全部回到初始值 —— 用户刚被 403 拦下、按引导去认证、
+  回来还得从头选一遍。同样的问题存在于任何「从工作台跳出去补前置条件」的路径。
+  修法候选：覆盖页栈保留非栈顶屏的实例（或把工作台选料状态提到 `ctx` / sessionStorage）。
+  定位：`apps/web-aiavatar/src/proto/app.tsx`（栈渲染）+ `screen-compose.tsx`（`MCompose` 本地 state）。

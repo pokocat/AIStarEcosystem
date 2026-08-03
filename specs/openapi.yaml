@@ -2339,6 +2339,41 @@ components:
         bio:         { type: string, nullable: true }
         location:    { type: string, nullable: true }
 
+    # ── 数字资产平台 · 真人授权与素材送审（v0.105，dap 域）────────────────────
+    DapRealAuthSession:
+      type: object
+      description: >-
+        真人授权（刷脸认证）会话 = 七牛 modelink 的 liveness_face 资产分组在本地的镜像（表 dap_material_group）。
+        状态：preparing（建组中）→ awaiting_auth（可去刷脸）→ validating（已回传结果、等平台判定）
+        → active（授权成立）| failed。captures/{id}/verify 只在 active 时放行。
+      properties:
+        id:         { type: string, description: 'MG-xxxx' }
+        captureId:  { type: string, nullable: true }
+        avatarId:   { type: string, nullable: true }
+        status:     { type: string, enum: [preparing, awaiting_auth, validating, active, failed] }
+        h5Url:      { type: string, nullable: true, description: '刷脸页地址；仅 awaiting_auth 时非空，约 120s 有效，不落库' }
+        failReason: { type: string, nullable: true }
+        mock:       { type: boolean, description: 'true = 走内存 mock 网关（dev 联调），结论不可用于真实取证' }
+        createdAt:  { type: string, format: date-time, nullable: true }
+
+    DapMaterial:
+      type: object
+      description: >-
+        送审素材 = 七牛 modelink 的 asset 在本地的镜像（表 dap_material）。
+        refType=capture 的素材挂在 active 的 liveness 分组下；refType=avatar 走平台 aigc 默认组。
+      properties:
+        id:         { type: string, description: 'MAT-xxxx' }
+        refType:    { type: string, enum: [avatar, capture] }
+        refId:      { type: string }
+        type:       { type: string, enum: [image, video, audio] }
+        name:       { type: string }
+        status:     { type: string, enum: [pending, reviewing, approved, failed] }
+        failReason: { type: string, nullable: true }
+        qassetUri:  { type: string, nullable: true, description: '生成引用格式 qasset://{qassetid}；未拿到上游 id 时为 null' }
+        mock:       { type: boolean }
+        createdAt:  { type: string, format: date-time, nullable: true }
+        updatedAt:  { type: string, format: date-time, nullable: true }
+
     StarProfileUpdateInput:
       type: object
       description: 档案编辑（v0.62 从 admin 移入 star 端）；avatar / cover 留空 = 不变更
@@ -7916,7 +7951,127 @@ paths:
   /v1/captures/{id}/footage:
     post: { tags: [dap], operationId: dapUploadFootage, description: multipart file 动作素材（视频/图片，抽关键帧）, responses: { '200': { description: ok } } }
   /v1/captures/{id}/verify:
-    post: { tags: [dap], operationId: dapVerifyCapture, description: 身份核验 + 自动登记电子授权, responses: { '200': { description: ok } } }
+    post:
+      tags: [dap]
+      operationId: dapVerifyCapture
+      description: >-
+        身份核验 + 自动登记电子授权（v0.105 起接真实刷脸认证）。前置条件：该次捕获必须已有 active 的真人授权会话
+        （POST /v1/real-auth/sessions → 刷脸 → 平台判定 active）。通过后标 verified、登记/回填 LIC
+        （verifyMethod=liveness）、并 best-effort 把捕获素材送审（送审失败只告警，不回滚核验与授权）。
+      responses:
+        '200': { description: 'ok（passed / captureId / authSessionId / licenseId）' }
+        '400': { description: 'DAP_NO_FOOTAGE 未上传素材' }
+        '409': { description: 'DAP_AUTH_NOT_COMPLETED 尚未完成刷脸认证' }
+        '503': { description: 'DAP_MODELINK_NOT_CONFIGURED 未配置素材合规服务（会话阶段即报错）' }
+
+  # ── 真人授权（刷脸认证）+ 素材送审（v0.105；七牛 modelink，表 dap_material_group / dap_material）──
+  # 接入点由 admin「AI 应用绑定」的用途 DAP_REAL_AVATAR 提供；未配置且不允许 mock → 503（§8.0，不产假授权）。
+  /v1/real-auth/sessions:
+    post:
+      tags: [dap]
+      operationId: dapStartRealAuthSession
+      summary: '开启真人授权（刷脸认证）会话；同一次捕获幂等复用'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [captureId]
+              properties:
+                captureId: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/DapRealAuthSession' }
+        '400': { description: 'DAP_NO_FOOTAGE 未上传素材 / DAP_CAPTURE_REQUIRED 缺少捕获会话 id' }
+        '503': { description: 'DAP_MODELINK_NOT_CONFIGURED 未绑定 modelink 端点且不允许 mock（不落会话行）' }
+  /v1/real-auth/sessions/{id}:
+    get:
+      tags: [dap]
+      operationId: dapGetRealAuthSession
+      summary: '查询认证会话（非终态时向上游刷新；awaiting_auth 带出 h5Url，约 120s 有效）'
+      parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/DapRealAuthSession' }
+        '404': { description: 'DAP_AUTH_SESSION_NOT_FOUND' }
+  /v1/real-auth/callback:
+    get:
+      tags: [dap]
+      operationId: dapRealAuthCallback
+      summary: '刷脸完成后的浏览器回跳落地页（公开端点，无 JWT）'
+      description: >-
+        上游刷脸完成后浏览器直接跳转到此地址，故无法带 JWT —— 防伪靠 query 里不可枚举的 state
+        （= 会话 callbackToken）+ 服务端 validateCalledAt 幂等闸（byted_token 一次性）。
+        本端点只把结果回传上游（202 受理），**不判定授权生效**；生效与否一律以服务端轮询 GET 分组为准。
+        返回 text/html 落地页。
+      security: []
+      parameters:
+        - { in: query, name: state, required: true, schema: { type: string }, description: '会话 callbackToken' }
+        - { in: query, name: resultCode, required: false, schema: { type: string }, description: '"10000" = 刷脸成功' }
+        - { in: query, name: bytedToken, required: false, schema: { type: string } }
+      responses:
+        '200': { description: 'HTML 落地页', content: { text/html: { schema: { type: string } } } }
+  /v1/materials:
+    get:
+      tags: [dap]
+      operationId: dapListMaterials
+      summary: '按引用查送审素材（refType=avatar|capture + refId）'
+      parameters:
+        - { in: query, name: refType, required: true, schema: { type: string, enum: [avatar, capture] } }
+        - { in: query, name: refId, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/DapMaterial' } }
+    post:
+      tags: [dap]
+      operationId: dapSubmitMaterial
+      summary: '送审：refType=avatar 定妆图（走平台 aigc 默认组）/ refType=capture 重交该次捕获素材'
+      description: >-
+        幂等：同 ref + 同源文件已有非 failed 记录 → 原样返回；failed 后可重交。
+        refType=capture 仍要求该次捕获有 active 的刷脸认证会话（正常路径由 verify 自动送审）。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refType, refId]
+              properties:
+                refType: { type: string, enum: [avatar, capture] }
+                refId: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/DapMaterial' } }
+        '400': { description: 'DAP_NO_IMAGE / DAP_MATERIAL_BAD_REF / DAP_MATERIAL_REF_REQUIRED' }
+        '409': { description: 'DAP_AUTH_NOT_COMPLETED（capture 重交时认证未完成）' }
+        '503': { description: 'DAP_MODELINK_NOT_CONFIGURED' }
   /v1/licenses:
     get:  { tags: [dap], operationId: dapListLicenses, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateLicense, responses: { '200': { description: ok } } }

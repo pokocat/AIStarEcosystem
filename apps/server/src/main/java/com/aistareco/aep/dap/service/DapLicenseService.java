@@ -74,13 +74,33 @@ public class DapLicenseService {
         return LicenseDto.from(l).toWire();
     }
 
-    /** 真人捕获核验通过后自动登记授权。 */
+    /** 真人捕获核验通过后自动登记授权（未标注取得方式 → declared）。 */
     @Transactional
     public DapLicense autoCreateForCapture(String userId, String avatarId, String subjectName, int photoCount) {
+        return autoCreateForCapture(userId, avatarId, subjectName, photoCount, null, null);
+    }
+
+    /**
+     * 真人捕获核验通过后自动登记授权（v0.105 起带取得方式）。
+     *
+     * @param verifyMethod    liveness（通过刷脸认证取得）| declared（声明式登记）；null = declared
+     * @param livenessGroupId 取得该授权的刷脸认证分组 id（verifyMethod=liveness 时）
+     */
+    @Transactional
+    public DapLicense autoCreateForCapture(String userId, String avatarId, String subjectName, int photoCount,
+                                           String verifyMethod, String livenessGroupId) {
+        String method = verifyMethod == null || verifyMethod.isBlank() ? "declared" : verifyMethod;
         DapLicense existing = licenseRepo.findFirstByAvatarIdAndOwnerUserId(avatarId, userId).orElse(null);
         if (existing != null) {
             existing.setPhotoCount(Math.max(existing.getPhotoCount(), photoCount));
             existing.setStatus("active");
+            // 已存在的授权也回填取得方式：一旦通过刷脸认证，凭证从声明式升级为可取证
+            if ("liveness".equals(method)) {
+                existing.setVerifyMethod("liveness");
+                if (livenessGroupId != null) existing.setLivenessGroupId(livenessGroupId);
+            } else if (existing.getVerifyMethod() == null) {
+                existing.setVerifyMethod("declared");
+            }
             licenseRepo.save(existing);
             return existing;
         }
@@ -96,6 +116,8 @@ public class DapLicenseService {
                 .status("active")
                 .signedAt(Instant.now())
                 .photoCount(photoCount)
+                .verifyMethod(method)
+                .livenessGroupId(livenessGroupId)
                 .createdAt(Instant.now())
                 .build();
         licenseRepo.save(l);

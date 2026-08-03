@@ -58,6 +58,10 @@ public class DapCapture {
     @Builder.Default
     private long bytes = 0;
 
+    /** 真人授权（刷脸认证）会话 id = DapMaterialGroup.id（v0.105；核验必须先有 active 会话）。 */
+    @Column(length = 32)
+    private String authGroupId;
+
     private Instant verifiedAt;
     private Instant createdAt;
 }

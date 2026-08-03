@@ -191,3 +191,64 @@ Atelier Ledger（工坊台账）骨架完全保留 —— 每个资产仍是被�
 改为在 `tickMockJob` 把任务翻 `done` 的**同一次调用里**同步执行回填（与既有
 `derivApply` 同机制）。规则：**mock 里任何「任务完成后才有的数据」都必须在翻 done 的那一刻
 写好**，不能靠另一个定时器追。
+
+---
+
+## v0.105 追加（2026-08-02）— 真人授权刷脸认证接入七牛 modelink 的边界决策
+
+### K. 假核验退役：verify 是「授权成立」的唯一完成漏斗，回调不判定生效
+
+原实现里 `POST /v1/captures/{id}/verify` 是「素材存在 + 抽帧成功即视为通过」，
+无条件把捕获标 `verified` 并自动登记肖像授权（源码注释写着「活体/比对引擎接入预留」）。
+这与 §8.0「生产禁止静默降级、不得伪造业务产物」正面冲突 —— 它产出的是一张**假的取证凭证**，
+比一张假图片严重得多。本版接七牛 modelink 后，做了三个刻意的收窄：
+
+1. **verify 不再是「盖章动作」，而是「结果确认」**。它先要求该次捕获有一个 **active 的刷脸认证会话**，
+   否则 409 `DAP_AUTH_NOT_COMPLETED`（文案区分「认证进行中」与「上次未通过」）。
+   为什么用 409 而不是 403：这不是「你没有权限」，而是「前置步骤还没完成，稍后再来」——
+   前端据此**回到轮询等待**，而不是把它当成失败弹错。
+2. **浏览器回跳绝不判定生效**（官方红线）。刷脸完成后浏览器带 `result_code` 回跳我们的 callback，
+   但那串参数是客户端可伪造的。callback 只做两件事：把 `result_code + byted_token` 回传上游、
+   把本地置 `validating`；**`active` 只能由服务端 GET 上游分组收敛而来**。
+   相应地，`refresh()` 里保留了 `holdValidating`：`validating` 期间远端仍报 `awaiting_auth` 时不回退状态。
+3. **`byted_token` 是一次性凭证**（官方红线），所以 `handleCallback` **先占幂等闸
+   （`validateCalledAt` + `saveAndFlush`）再调上游** —— 重复 / 并发回跳只回传一次。
+   **回传抛错时当场把会话判 `failed`**：凭证已经作废、远端会永远停在 `awaiting_auth`、
+   `holdValidating` 会把本地永久 hold 在 `validating`，用户卡在「核验中」而轮询器每 10s 空转。
+   判 failed 后轮询器不再碰（终态）、前端可「重新认证」、`start()` 会另建新分组拿新凭证，链路自洽。
+
+callback 端点是整个 dap 域**唯一** permitAll 的 `/api/v1/*` 路径（浏览器直跳没有 JWT）。
+防伪不靠 JWT 而靠**不可枚举的 `state`**（= `DapMaterialGroup.callbackToken`，随机 UUID hex，一会话一枚）；
+未知 state 只返回「链接已失效」页面 + WARN，不回显任何存在性信息。
+
+代价：认证通过与 verify 之间存在一个「用户已经刷完脸、但服务端还没确认」的窗口，
+前端必须容忍 409 并继续轮询（`RealAuth` 屏的 `verifySeq` 重试就是为此）。
+这个窗口是官方红线换来的，不接受用「回调直接判过」来消除。
+
+### L. 授权硬闸从合成路径前移到生成入口
+
+v0.104 只在合成路径（`DapCompositionService.checkLicense`）校验肖像授权，生成路径（`generate`）没有闸。
+本版把同款闸前移到 `DapWorkflowService.generate`：`path=real` 且无生效 LIC → 403 `DAP_LICENSE_REQUIRED`，
+**不建任务、不冻结积分**。
+
+**依据**（不是拍脑袋前移）：真人形象的既定流程是 `capture → footage → verify（登记 LIC）→ generate`，
+授权必然先于首次生成存在，所以前移不会挡住任何正常的首次创建。
+**收益**：堵住「向导重跑 / 直接打 API」这条路 —— 此前创建向导里的「授权勾选框」纯粹是客户端 UI，
+服务端不校验，绕过它就能对真人形象出图。
+**影响面**：AI 原创人物（`path=ai`）完全不受影响；受影响的只有「有真人资产但授权失效 / 从未登记」的情况，
+而那正是我们想拦的。合成工作台与资产详情因此都加了「去完成授权认证」入口，403 不是死路。
+
+### M. aigc 送审不建本地分组，走平台默认组
+
+modelink 的素材要挂在某个 asset-group 下。真人素材**必须**挂在那次刷脸取得的 `liveness_face` 分组
+（这是授权与素材的绑定关系，不能省）。但 AI 原创人物的定妆图送审没有这种绑定需求，
+所以 `submitAvatarModeration` 直接**不传 `group_id`**，由平台落到默认组，本地也不建 `dap_material_group` 行。
+
+理由：建一个 aigc 分组意味着本地多一行会异步 pending 的空壳，要轮询、要处理失败、要清理，
+换来的只是「素材归到我们自己建的组里」——没有业务价值。`DapMaterialGroup.kind` 保留 `aigc` 取值只是语义占位。
+
+**已知配额债务**：modelink 账号默认限 **3 个分组 / 30 个素材**，而 liveness 是**每次捕获建一个分组**。
+高频真人认证会撞配额。上游 `DELETE /v1/asset-groups` 要求组内为空且状态非 pending，
+所以清理策略不是「删了就行」，要先决定终态分组下的素材怎么处置（保留取证 vs 随组清理）——
+本版刻意不做，记在 `TODO.md` 2026-08-02 段。同理，`DapModelinkPoller` 目前没有 ShedLock，
+多实例部署会重复拉上游（与 `DapTrashCleanupScheduler` 同一债务，归 Phase 5）。

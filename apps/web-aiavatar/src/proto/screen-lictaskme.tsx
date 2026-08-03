@@ -5,6 +5,7 @@ import * as UI from "./ui";
 import { DATA, AvatarApi, LicenseApi, JobApi, VoiceApi, AccountApi, useApi, seed, USE_MOCK, auth } from "./api";
 import { MShell, MKit } from "./shell";
 import { Portrait } from "./portrait";
+import { LivenessBadge, MaterialSection } from "./material-status";
 import { toast } from "./toast";
 
 // ============================================================
@@ -19,13 +20,46 @@ function RegTagM({ prefix, id }) {
     hMS('span', { style: { fontSize: 8, fontWeight: 700, letterSpacing: '.12em', color: 'var(--primary)', background: 'var(--primary-soft)', padding: '2px 5px', borderRadius: 4 } }, prefix), id);
 }
 
+// —— 待授权提示卡：真人复刻资产还没有生效肖像授权时，给一个显式的「去认证」入口 ——
+//   （列表为空则整块不渲染 —— 授权徽标稀有是设计语义，不做常驻空状态）
+function PendingAuthBlock({ items, ctx }) {
+  if (!items.length) return null;
+  return hMS('div', { className: 'm-card', style: {
+    marginBottom: 16, padding: '13px 14px 6px',
+    background: 'var(--warn-s)', border: '1px solid color-mix(in oklab, var(--warn) 30%, transparent)' } },
+    hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 } },
+      hMS(Icons.warn, { size: 15, stroke: 2, style: { color: 'var(--warn)', flex: '0 0 auto' } }),
+      hMS('span', { style: { fontSize: 13.5, fontWeight: 700, flex: 1, minWidth: 0 } }, '待授权'),
+      hMS('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-3)', flex: '0 0 auto' } }, items.length)),
+    hMS('p', { style: { fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 4px' } },
+      '以下真人形象还没有生效的肖像授权，完成本人实名认证后即可正常使用。'),
+    hMS('div', { style: { display: 'flex', flexDirection: 'column' } },
+      items.map((a) => hMS('div', { key: a.id, style: {
+        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
+        borderTop: '1px solid color-mix(in oklab, var(--warn) 22%, transparent)' } },
+        hMS('div', { style: { width: 34, flex: '0 0 34px', borderRadius: 9, overflow: 'hidden' } },
+          hMS(Portrait, { char: a, variant: 'key', ratio: '1 / 1', expr: 'calm' })),
+        hMS('div', { style: { flex: 1, minWidth: 0 } },
+          hMS('div', { className: 'm-clip1', style: { fontSize: 13.5, fontWeight: 700 } }, a.name),
+          hMS('div', { className: 'mono m-clip1', style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, a.id)),
+        hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.scan,
+          onClick: () => ctx.startRealAuth(a) }, '去认证')))));
+}
+
 // ============ 授权 ============
 function MLicenses({ ctx }) {
   const [f, setF] = useStateMS('all');
   const [licenses, setLicenses] = useStateMS(seed.licenses());
+  const [avatars, setAvatars] = useStateMS(seed.avatars());
   const [busyId, setBusyId] = useStateMS('');
+  const [openMat, setOpenMat] = useStateMS('');   // 展开「授权素材」的授权 id（按需加载，避免整页 N 次请求）
   const load = () => LicenseApi.list().then(setLicenses).catch(() => {});
   useEffectMS(() => { load(); }, []);
+  useEffectMS(() => { AvatarApi.list('mine').then(setAvatars).catch(() => {}); }, []);
+
+  // 真人复刻但没有生效授权的资产 —— 顶部「待授权」入口的数据源
+  const activeLicIds = new Set(licenses.filter((l: any) => l.status === 'active').map((l: any) => l.id));
+  const needAuth = (avatars || []).filter((a: any) => a.path === 'real' && !(a.license && activeLicIds.has(a.license)));
   const tone = { active: 'ok', expired: 'err', pending: 'warn' };
   const label = { active: '生效中', expired: '已过期', pending: '待签署' };
   const filters = [{ key: 'all', label: '全部' }, { key: 'active', label: '生效中' }, { key: 'pending', label: '待签署' }, { key: 'expired', label: '已过期' }];
@@ -50,7 +84,8 @@ function MLicenses({ ctx }) {
   return hMS('div', { className: 'm-overlay', 'data-screen-label': '授权登记' },
     hMS(WxNavS, { title: '授权登记', onBack: ctx.back }),
     hMS('div', { className: 'm-body', style: { padding: '4px 18px 28px' } },
-      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '真人肖像电子授权凭证档案：完成真人捕获核验后自动登记，原始素材加密存档、与数字人资产绑定。'),
+      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '真人肖像电子授权凭证档案：完成本人实名认证后自动登记，原始素材加密存档、与数字人资产绑定。'),
+      hMS(PendingAuthBlock, { items: needAuth, ctx }),
       hMS('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' }, className: 'no-bar' },
         filters.map(k => {
           const on = f === k.key;
@@ -67,7 +102,9 @@ function MLicenses({ ctx }) {
         list.map(l => hMS('div', { key: l.id, className: 'm-card', style: { overflow: 'hidden' } },
           hMS('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 13px', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' } },
             hMS(RegTagM, { prefix: 'LIC', id: l.id }),
-            hMS(UI.Badge, { tone: tone[l.status], dot: true }, label[l.status])),
+            hMS('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, flex: '0 0 auto' } },
+              hMS(LivenessBadge, { verifyMethod: l.verifyMethod }),
+              hMS(UI.Badge, { tone: tone[l.status], dot: true }, label[l.status]))),
           hMS('div', { style: { position: 'relative', padding: '14px 15px 15px' } },
             l.status === 'active' && hMS('span', { className: 'seal', style: { position: 'absolute', top: 12, right: 13, fontSize: 9 } }, '已签署'),
             hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 } },
@@ -81,7 +118,20 @@ function MLicenses({ ctx }) {
             hMS('div', { style: { display: 'flex', gap: 8, marginTop: 13, paddingTop: 13, borderTop: '1px solid var(--line)' } },
               hMS(UI.Button, { variant: 'line', size: 'sm', icon: Icons.download, disabled: busyId === l.id, onClick: () => download(l) }, busyId === l.id ? '处理中…' : '下载凭证'),
               l.status === 'expired' && hMS(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.refresh, disabled: busyId === l.id, onClick: () => renew(l) }, '续签'),
-              l.status === 'pending' && hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.pen, onClick: () => toast('待对方确认签署后自动生效', { tone: 'ok' }) }, '催签'))))))));
+              l.status === 'pending' && hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.pen, onClick: () => toast('待对方确认签署后自动生效', { tone: 'ok' }) }, '催签')),
+
+            // 授权素材：绑定资产的平台审核记录（点开再拉，避免列表一次发 N 个请求）
+            l.char && hMS('div', { style: { marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' } },
+              hMS('button', { onClick: () => setOpenMat(openMat === l.id ? '' : l.id), className: 'm-tap', style: {
+                display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' } },
+                hMS(Icons.images, { size: 15, stroke: 2, style: { color: 'var(--ink-3)', flex: '0 0 auto' } }),
+                hMS('span', { style: { fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)', flex: 1, minWidth: 0 } }, '授权素材'),
+                hMS(Icons[openMat === l.id ? 'chevU' : 'chevD'], { size: 16, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } })),
+              openMat === l.id && hMS('div', { style: { marginTop: 10 } },
+                hMS(MaterialSection, { refType: 'avatar', refId: l.char, mode: 'readonly', title: '素材审核状态',
+                  style: { boxShadow: 'none', background: 'var(--surface-2)' } }),
+                hMS('div', { style: { fontSize: 11, color: 'var(--ink-4)', marginTop: 8, lineHeight: 1.45 } },
+                  '素材需通过内容安全审核后才能用于视频生成。')))))))));
 }
 
 // ============ 任务 ============

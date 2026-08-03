@@ -1,14 +1,17 @@
 package com.aistareco.aep.dap.service;
 
 import com.aistareco.aep.dap.dto.DapDtos.AvatarDto;
+import com.aistareco.aep.dap.dto.DapDtos.ModerationDto;
 import com.aistareco.aep.dap.dto.DapDtos.VersionDto;
 import com.aistareco.aep.dap.dto.DapRequests.CreateAvatarRequest;
 import com.aistareco.aep.dap.dto.DapRequests.PatchAvatarRequest;
 import com.aistareco.aep.dap.model.DapAvatar;
 import com.aistareco.aep.dap.model.DapAvatarVersion;
+import com.aistareco.aep.dap.model.DapMaterial;
 import com.aistareco.aep.dap.model.DapPhoto;
 import com.aistareco.aep.dap.repository.DapAvatarRepository;
 import com.aistareco.aep.dap.repository.DapAvatarVersionRepository;
+import com.aistareco.aep.dap.repository.DapMaterialRepository;
 import com.aistareco.aep.dap.repository.DapPhotoRepository;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -36,6 +39,7 @@ public class DapAvatarService {
     private final DapAvatarRepository avatarRepo;
     private final DapAvatarVersionRepository versionRepo;
     private final DapPhotoRepository photoRepo;
+    private final DapMaterialRepository materialRepo;
     private final FileStorageService storage;
     private final DapSupport support;
     private final DapCatalogService catalog;
@@ -44,6 +48,7 @@ public class DapAvatarService {
     public DapAvatarService(DapAvatarRepository avatarRepo,
                             DapAvatarVersionRepository versionRepo,
                             DapPhotoRepository photoRepo,
+                            DapMaterialRepository materialRepo,
                             FileStorageService storage,
                             DapSupport support,
                             DapCatalogService catalog,
@@ -51,6 +56,7 @@ public class DapAvatarService {
         this.avatarRepo = avatarRepo;
         this.versionRepo = versionRepo;
         this.photoRepo = photoRepo;
+        this.materialRepo = materialRepo;
         this.storage = storage;
         this.support = support;
         this.catalog = catalog;
@@ -71,8 +77,23 @@ public class DapAvatarService {
                 .toList();
     }
 
+    /**
+     * 详情（带 moderation：定妆图送审结论）。
+     *
+     * <p>列表接口 {@link #list} 刻意<b>不带</b> moderation —— 那会对每行多打一次
+     * DapMaterial 查询（N+1）；送审结论只在详情页展示。
+     */
     public AvatarDto get(String userId, String id) {
-        return toDto(required(userId, id));
+        DapAvatar a = required(userId, id);
+        return AvatarDto.from(a, support.relativeZh(a.getUpdatedAt()), storage::signedUrl,
+                ModerationDto.from(latestModeration(userId, id)));
+    }
+
+    /** 该数字人定妆图最新一条送审记录（无则 null）。 */
+    private DapMaterial latestModeration(String userId, String avatarId) {
+        List<DapMaterial> rows = materialRepo
+                .findByRefTypeAndRefIdAndOwnerUserIdOrderByCreatedAtDesc("avatar", avatarId, userId);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     public DapAvatar required(String userId, String id) {

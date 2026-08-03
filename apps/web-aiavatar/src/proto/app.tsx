@@ -143,7 +143,8 @@ function hashForView(tab: string, stack: any[]): string {
     case "designlooks": return id ? "#/avatar/" + id + "/design" : "#/library";
     case "choosevoice": return id ? "#/avatar/" + id + "/voice" : "#/library";
     case "aicreate":    return "#/create/ai";
-    case "realcapture": return "#/create/real";
+    // 带既有资产进来的认证流程把 id 写进 URL（便于分享定位）；临时流程冷启动仍回基座
+    case "realcapture": return id && id !== "DH-NEW" ? "#/create/real/" + id : "#/create/real";
     case "create":      return "#/create";
     case "compose":     return "#/compose";
     default:            return "#/" + top.screen;
@@ -352,6 +353,11 @@ export function App() {
     back: () => setStack((s) => s.slice(0, -1)),
     startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
     startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("真人捕获"); },
+    /**
+     * 「去认证」入口（授权登记 / 资产详情 / 合成工作台）：带既有真人资产进真人流程完成刷脸认证。
+     * 认证需要本人素材，因此仍从录制引导起步；真人流程内部会复用传入的资产不再新建。
+     */
+    startRealAuth: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("实名认证"); },
     realToWizard: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "create", props: { char } }); return ns; }); setLabel("创建链路"); },
     continueAdjust: (char) => {
       setStack((s) => {

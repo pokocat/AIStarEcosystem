@@ -7,6 +7,7 @@ import { DATA, AvatarApi, LicenseApi, PlazaAdminApi, awaitJob, useApi, seed, USE
 import { Portrait } from "./portrait";
 import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
+import { MaterialSection } from "./material-status";
 import { toast } from "./toast";
 
 // ============================================================
@@ -456,6 +457,19 @@ function MAppliedTo({ refs }) {
       })));
 }
 
+/** 真人形象缺生效肖像授权时的顶部提示条 —— 一步跳到实名认证。 */
+function MNeedAuthBar({ char, ctx }) {
+  return hML('div', { style: {
+    margin: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px',
+    background: 'var(--warn-s)', border: '1px solid color-mix(in oklab, var(--warn) 32%, transparent)',
+    borderRadius: 'var(--r-md)' } },
+    hML(Icons.warn, { size: 17, stroke: 2, style: { color: 'var(--warn)', flex: '0 0 auto' } }),
+    hML('span', { style: { flex: 1, minWidth: 0, fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.45 } },
+      '该真人形象尚未完成肖像授权，部分功能不可用'),
+    hML(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.scan,
+      onClick: () => ctx.startRealAuth(char) }, '去认证'));
+}
+
 function MDetail({ char: initialChar, ctx }) {
   const [char, setChar] = useStateML(initialChar);
   const [tab, setTab] = useStateML('assets');
@@ -647,6 +661,9 @@ function MDetail({ char: initialChar, ctx }) {
       isPublic
         ? hML(MPublicShowcase, { char })
         : hML(React.Fragment, null,
+          // 真人形象缺生效肖像授权 → 顶部提示 +「去认证」
+          char.path === 'real' && !char.license && hML(MNeedAuthBar, { char, ctx }),
+
           // 概览统计
           hML('div', { className: 'm-card', style: { margin: '12px 18px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between' } },
             [['版本', char.versions], ['作品', totalAssets], ['视频', counts.video || 0], ['更新', char.updated]].map(([k, v], i) =>
@@ -659,6 +676,14 @@ function MDetail({ char: initialChar, ctx }) {
 
           // v0.61 反向「应用于」：被 music/drama 艺人壳引用时展示（空列表不渲染）
           refs.length > 0 && hML(MAppliedTo, { refs }),
+
+          // v0.105 平台审核：AI 原创形象可主动提交；真人形象只读展示审核结果（无记录不渲染）
+          hML(MaterialSection, {
+            refType: 'avatar', refId: char.id,
+            mode: char.path === 'ai' ? 'submit' : 'readonly',
+            hint: char.path === 'ai' ? '提交形象至内容安全审核，通过后可用于视频生成。' : undefined,
+            style: { margin: '12px 18px 0' },
+          }),
 
           // tabs
           hML('div', { style: { position: 'sticky', top: 0, zIndex: 5, background: 'var(--canvas)', padding: '16px 18px 0', marginTop: 6 } },

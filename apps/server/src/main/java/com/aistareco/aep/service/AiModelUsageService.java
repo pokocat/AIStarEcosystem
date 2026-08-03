@@ -842,7 +842,7 @@ public class AiModelUsageService {
                     VIDEO_REF_ANALYSIS, TEMPLATE_REWRITE -> "celebrity";
             case DRAMA_SCRIPT_DRAFT, IMAGE_GENERATION -> "drama";
             case APPEARANCE_FORGE -> "music";
-            case DAP_PERSONA, DAP_IMAGE, DAP_VIDEO -> "aiavatar";
+            case DAP_PERSONA, DAP_IMAGE, DAP_VIDEO, DAP_REAL_AVATAR -> "aiavatar";
             case SAFETY_REVIEW, GENERAL -> null;
         };
     }

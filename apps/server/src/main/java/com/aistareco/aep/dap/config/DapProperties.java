@@ -19,6 +19,7 @@ public class DapProperties {
     private final Video video = new Video();
     private final DevSeed devSeed = new DevSeed();
     private final Pricing pricing = new Pricing();
+    private final Modelink modelink = new Modelink();
     private int maxConcurrent = 3;
     private long monthlyGrant = 1500;
     /** 回收站保留天数（软删超期后由 DapTrashCleanupScheduler 物理清理）。 */
@@ -32,6 +33,7 @@ public class DapProperties {
     public Video getVideo() { return video; }
     public DevSeed getDevSeed() { return devSeed; }
     public Pricing getPricing() { return pricing; }
+    public Modelink getModelink() { return modelink; }
     public int getMaxConcurrent() { return maxConcurrent; }
     public void setMaxConcurrent(int maxConcurrent) { this.maxConcurrent = maxConcurrent; }
     public long getMonthlyGrant() { return monthlyGrant; }
@@ -88,6 +90,32 @@ public class DapProperties {
         public void setImageModel(String imageModel) { this.imageModel = imageModel; }
         public String getVideoModel() { return videoModel; }
         public void setVideoModel(String videoModel) { this.videoModel = videoModel; }
+    }
+
+    /**
+     * 七牛云 modelink 素材合规接入（v0.105 真人授权刷脸 + 素材送审）。
+     *
+     * <p>接入点（baseUrl / apiKey / model）不在这里配 —— 与其它大模型能力一致，
+     * 由后台「AI 应用绑定」把用途 {@code DAP_REAL_AVATAR} 绑定到七牛端点。
+     * 这里只放回调地址、降级开关与 HTTP / 轮询参数。
+     */
+    public static class Modelink {
+        /** 刷脸完成后浏览器回跳的站点根（生产须 https，且与 server 对外域名一致）。 */
+        private String callbackBaseUrl = "http://localhost:8080";
+        /** 未配置端点时是否允许走内存 mock（dev 联调用；生产必须 false，§8.0）。 */
+        private boolean allowMock = false;
+        /** 非终态分组 / 素材的收敛轮询间隔（秒）。 */
+        private int pollIntervalSeconds = 10;
+        private int httpTimeoutSeconds = 30;
+
+        public String getCallbackBaseUrl() { return callbackBaseUrl; }
+        public void setCallbackBaseUrl(String v) { this.callbackBaseUrl = v; }
+        public boolean isAllowMock() { return allowMock; }
+        public void setAllowMock(boolean v) { this.allowMock = v; }
+        public int getPollIntervalSeconds() { return pollIntervalSeconds; }
+        public void setPollIntervalSeconds(int v) { this.pollIntervalSeconds = v; }
+        public int getHttpTimeoutSeconds() { return httpTimeoutSeconds; }
+        public void setHttpTimeoutSeconds(int v) { this.httpTimeoutSeconds = v; }
     }
 
     /** 各动作扣费（点）。0 = 免费。 */

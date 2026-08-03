@@ -176,6 +176,65 @@ export interface License {
   status: LicenseStatus;
   signed: string;
   photos: number;
+  /**
+   * 授权核验方式（v0.105）：
+   * liveness = 本人刷脸实名核验通过后登记；declared = 仅书面声明登记（不展示负面文案）。
+   */
+  verifyMethod?: "liveness" | "declared" | null;
+}
+
+// ── 真人授权刷脸认证链路（v0.105）─────────────────────────────
+
+/**
+ * 认证会话状态（wire 全小写）：
+ * preparing=认证通道准备中 / awaiting_auth=待认证（可去刷脸）/
+ * validating=认证结果核验中 / active=已通过 / failed=未通过
+ */
+export type RealAuthStatus = "preparing" | "awaiting_auth" | "validating" | "active" | "failed";
+
+export interface RealAuthSession {
+  id: string;
+  captureId: string;
+  avatarId?: string | null;
+  status: RealAuthStatus;
+  /** 刷脸认证页地址（仅 awaiting_auth 有值；短时有效，过期后重新拉取会换新链接）。 */
+  h5Url?: string | null;
+  /** 未通过原因（面向用户的中文说明）。 */
+  failReason?: string | null;
+  mock: boolean;
+  createdAt: string;
+}
+
+/** 真人捕获会话（录制素材 → 刷脸认证 → 核验登记授权 的载体）。 */
+export interface Capture {
+  id: string;
+  avatarId: string;
+  status: string;
+  /** 关联的认证会话 id（尚未发起时为空）。 */
+  authSessionId?: string | null;
+  /** 认证会话当前状态快照。 */
+  authStatus?: RealAuthStatus | null;
+}
+
+/** 素材平台审核状态：pending=待审核 / reviewing=审核中 / approved=已通过 / failed=未通过 */
+export type MaterialStatus = "pending" | "reviewing" | "approved" | "failed";
+export type MaterialRefType = "avatar" | "capture";
+
+/** 提交到内容安全平台审核的一份素材记录。 */
+export interface DapMaterialInfo {
+  id: string;
+  refType: MaterialRefType;
+  refId: string;
+  type: "image" | "video" | "audio";
+  name: string;
+  status: MaterialStatus;
+  /** 未通过原因（面向用户的中文说明）。 */
+  failReason?: string | null;
+  /** 平台侧资源标识（内部技术字段，界面不直接展示）。 */
+  qassetUri?: string | null;
+  mock: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Job {
@@ -411,6 +470,21 @@ export const CHARS: Avatar[] = [
     versions: 6,
   },
   {
+    // v0.105 样本：真人复刻形象已出图，但肖像授权尚未完成 →
+    // 授权登记「待授权」/ 资产详情提示条 / 合成工作台授权核对 三处入口都靠它演示。
+    id: "DH-2044", name: "顾岩 Gù", codename: "guyan-host", path: "real",
+    archetype: "活动主持数字人", tagline: "线下活动 / 直播开场主持形象",
+    status: "finalized", updated: "刚刚", fav: false, hue: 288, hairStyle: "short",
+    license: null, mock: false, engine: "InstantID",
+    palette: { bg1: "#A57BFF", bg2: "#2B1A52", skin: "#F1D5BD", hair: "#251E2C", cloth: "#EFE7FF", accent: "#FFC46B" },
+    def: { 年龄: "约 32 岁", 气质: "热络 · 明快 · 有掌控感", 用途: "活动主持 / 直播开场", 性格: ["外向", "机敏", "稳场"], 服饰: "藏青礼服 · 正式", 形象来源: "真人主持授权", 设定语: "把每一场开场都讲得像老朋友见面。" },
+    deriv: { atlas: "done", expr: "empty", scene: "empty", ward: "empty", d3: "empty", video: "empty" },
+    counts: { atlas: 3, expr: 0, scene: 0, ward: 0, d3: 0, video: 0 },
+    versions: 2,
+    imageUrl: "/plaza/PA-05-1.jpg",
+    shotImages: { "front-half": "/plaza/PA-05-1.jpg", right: "/plaza/PA-05-2.jpg", left: "/plaza/PA-05-3.jpg" },
+  },
+  {
     id: "DH-2019", name: "周野 Zhōu", codename: "zhou-presenter", path: "real",
     archetype: "企业数字员工", tagline: "财报 / 内部公告播报形象",
     status: "proofing", updated: "刚刚", fav: false, hue: 210, hairStyle: "short",
@@ -444,12 +518,40 @@ export const TEMPLATES: TemplateMeta[] = [
 ];
 
 export const LICENSES: License[] = [
-  { id: "LIC-0102", subject: "周野（高管）", char: "DH-2019", scope: "对内播报 / 官方对外", period: "2026-01 ~ 2028-01", platforms: ["官网", "视频号", "培训"], status: "active", signed: "2026-05-20", photos: 8 },
-  { id: "LIC-0098", subject: "林深（签约模特）", char: "DH-2041", scope: "品牌商用 / 全平台", period: "2025-09 ~ 2027-09", platforms: ["全平台"], status: "active", signed: "2025-09-02", photos: 12 },
-  { id: "LIC-0091", subject: "苏婉（合作讲师）", char: "DH-2035", scope: "教育内容 / 课程平台", period: "2026-03 ~ 2027-03", platforms: ["课程App", "官网"], status: "active", signed: "2026-03-11", photos: 10 },
-  { id: "LIC-0087", subject: "陈曦（前代言人）", char: null, scope: "品牌商用", period: "2024-06 ~ 2025-06", platforms: ["全平台"], status: "expired", signed: "2024-06-01", photos: 9 },
-  { id: "LIC-0110", subject: "待签 · 新模特 K", char: null, scope: "草案审核中", period: "—", platforms: ["—"], status: "pending", signed: "—", photos: 6 },
+  { id: "LIC-0102", subject: "周野（高管）", char: "DH-2019", scope: "对内播报 / 官方对外", period: "2026-01 ~ 2028-01", platforms: ["官网", "视频号", "培训"], status: "active", signed: "2026-05-20", photos: 8, verifyMethod: "liveness" },
+  { id: "LIC-0098", subject: "林深（签约模特）", char: "DH-2041", scope: "品牌商用 / 全平台", period: "2025-09 ~ 2027-09", platforms: ["全平台"], status: "active", signed: "2025-09-02", photos: 12, verifyMethod: "liveness" },
+  { id: "LIC-0091", subject: "苏婉（合作讲师）", char: "DH-2035", scope: "教育内容 / 课程平台", period: "2026-03 ~ 2027-03", platforms: ["课程App", "官网"], status: "active", signed: "2026-03-11", photos: 10, verifyMethod: "declared" },
+  { id: "LIC-0087", subject: "陈曦（前代言人）", char: null, scope: "品牌商用", period: "2024-06 ~ 2025-06", platforms: ["全平台"], status: "expired", signed: "2024-06-01", photos: 9, verifyMethod: "declared" },
+  { id: "LIC-0110", subject: "待签 · 新模特 K", char: null, scope: "草案审核中", period: "—", platforms: ["—"], status: "pending", signed: "—", photos: 6, verifyMethod: null },
 ];
+
+/**
+ * 素材平台审核 mock 库：{ `${refType}:${refId}` → 记录 }。
+ * 仅 USE_MOCK=1 时由 MaterialApi 读取；这里的样本是「已定案」的记录（不再随时间推进）。
+ */
+export const MATERIALS: Record<string, DapMaterialInfo[]> = {
+  "avatar:DH-2041": [
+    {
+      id: "MAT-3301", refType: "avatar", refId: "DH-2041", type: "image", name: "林深 Lìn · 形象主图",
+      status: "approved", failReason: null, qassetUri: null, mock: true,
+      createdAt: "2026-07-20T09:12:00Z", updatedAt: "2026-07-20T09:18:00Z",
+    },
+  ],
+  "avatar:DH-2035": [
+    {
+      id: "MAT-3288", refType: "avatar", refId: "DH-2035", type: "image", name: "苏婉 Sūwǎn · 形象主图",
+      status: "failed", failReason: "画面包含多张人脸，请重新拍摄", qassetUri: null, mock: true,
+      createdAt: "2026-07-18T02:40:00Z", updatedAt: "2026-07-18T02:52:00Z",
+    },
+  ],
+  "avatar:DH-2019": [
+    {
+      id: "MAT-3260", refType: "avatar", refId: "DH-2019", type: "image", name: "周野 Zhōu · 形象主图",
+      status: "approved", failReason: null, qassetUri: null, mock: true,
+      createdAt: "2026-07-11T06:05:00Z", updatedAt: "2026-07-11T06:11:00Z",
+    },
+  ],
+};
 
 export const TASKS: Job[] = [
   { id: "JOB-7741", char: "DH-2038", charName: "星岚 Sēlan", kind: "3D 模型重建", engine: "TripoSR", mode: "selfhost", status: "running", pct: 62, eta: "约 2 分钟", started: "14:22" },
