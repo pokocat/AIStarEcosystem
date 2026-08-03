@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>让明星的每一次授权，都变成一笔可结算的商单 · 未来产品蓝图</title>
+
+<!-- ===========================================================
+     字体：中文衬线做标题（Noto Serif SC）、中文无衬线做正文
+     （Noto Sans SC）、拉丁衬线做编号与斜体点睛（Instrument
+     Serif）、几何无衬线做页眉页脚等 chrome（Jost）。
+     =========================================================== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Jost:wght@300;400;500;600&family=Noto+Serif+SC:wght@500;700;900&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ===========================================================
+   1. FIXED 16:9 STAGE —— 必需基座（viewport-base.css 全文）
+   幻灯片一律在 1920×1080 上排版，整块舞台等比缩放到窗口，
+   永远不按设备重排内容。
+   =========================================================== */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+@media print {
+    html,
+    body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+    .deck-viewport { position: static; overflow: visible; background: #fff; }
+    .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+    .slide {
+        position: relative; display: block !important; visibility: visible !important;
+        opacity: 1 !important; pointer-events: auto !important;
+        width: 1920px; height: 1080px; break-after: page; page-break-after: always;
+    }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    .deck-controls { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+/* ===========================================================
+   2. 设计令牌 —— 「夜场绸缎」
+   暖近黑底 · 香槟金细线 · 胭脂红压底 · 中文大衬线
+   改这一段就能整体换肤。
+   =========================================================== */
+:root {
+    /* 表面 */
+    --ink-0:     #0B0807;   /* 幻灯片底色 */
+    --ink-1:     #15100E;   /* 次级面 */
+    --ink-2:     #1F1815;   /* 卡片面 */
+
+    /* 强调 */
+    --gold:      #D8B65C;   /* 香槟金 —— 唯一主强调 */
+    --gold-deep: #A8842C;   /* 深金 —— 编号 / 次级 */
+    --gold-soft: rgba(216, 182, 92, .22);
+    --gold-line: rgba(216, 182, 92, .16);
+    --rouge:     #8E2436;   /* 胭脂红 —— 压底 / 规划中标记 */
+
+    /* 文字 */
+    --cream:     #EFE8DB;
+    --cream-2:   #C9BFAF;
+    --muted:     #8A7F72;
+
+    /* 舞台外底色（信箱边） */
+    --stage-bg:  #060404;
+    --slide-bg:  var(--ink-0);
+
+    /* 字族 */
+    --cjk:       'Noto Serif SC', 'Songti SC', serif;
+    --cjk-sans:  'Noto Sans SC', 'PingFang SC', 'HarmonyOS Sans SC', sans-serif;
+    --latin:     'Instrument Serif', Georgia, serif;
+    --chrome:    'Jost', 'PingFang SC', sans-serif;
+
+    /* 动效 */
+    --ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+.slide {
+    color: var(--cream);
+    font-family: var(--cjk-sans);
+    font-weight: 300;
+}
+
+/* ===========================================================
+   3. 氛围层 —— 每张幻灯片共用
+   金色/胭脂的极淡光晕 + 绸缎竖向微光 + 胶片颗粒。
+   =========================================================== */
+.atmo {
+    position: absolute; inset: 0;
+    background:
+        radial-gradient(1200px 760px at 12% -16%, rgba(216, 182, 92, .13), transparent 68%),
+        radial-gradient(1000px 700px at 98% 108%, rgba(142, 36, 54, .24), transparent 66%);
+}
+/* 封面用更浓的一版 */
+.atmo.strong {
+    background:
+        radial-gradient(1200px 760px at 14% -14%, rgba(216, 182, 92, .17), transparent 68%),
+        radial-gradient(1000px 700px at 96% 104%, rgba(142, 36, 54, .30), transparent 66%),
+        radial-gradient(760px 560px at 78% 18%, rgba(216, 182, 92, .06), transparent 70%);
+}
+
+.silk {
+    position: absolute; inset: 0; opacity: .45;
+    background: repeating-linear-gradient(94deg,
+        rgba(255, 255, 255, .018) 0px, rgba(255, 255, 255, .018) 2px,
+        transparent 2px, transparent 9px);
+    -webkit-mask-image: linear-gradient(105deg, transparent 0%, #000 34%, #000 70%, transparent 100%);
+            mask-image: linear-gradient(105deg, transparent 0%, #000 34%, #000 70%, transparent 100%);
+}
+
+.grain {
+    position: absolute; inset: -40%; opacity: .26; pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='.5'/></svg>");
+    animation: grainshift 7s steps(6) infinite;
+}
+@keyframes grainshift {
+    0%   { transform: translate(0, 0); }
+    17%  { transform: translate(-3%, 2%); }
+    33%  { transform: translate(2%, -3%); }
+    50%  { transform: translate(-2%, -2%); }
+    67%  { transform: translate(3%, 1%); }
+    83%  { transform: translate(-1%, 3%); }
+    100% { transform: translate(0, 0); }
+}
+
+/* 背景巨型汉字（幽灵层，仅封面与章节页使用） */
+.ghost {
+    position: absolute; right: -70px; top: 34px;
+    font-family: var(--cjk); font-weight: 900; font-size: 620px; line-height: .8;
+    color: transparent; -webkit-text-stroke: 1.5px rgba(216, 182, 92, .12);
+    letter-spacing: -.04em; user-select: none;
+}
+
+/* ===========================================================
+   4. 版式骨架 —— 所有内容页共用的页眉 / 页脚 / 栅格
+   左右留白 104px；正文区 y 322 → 952。
+   =========================================================== */
+.pad { position: absolute; left: 104px; right: 104px; }
+
+.hair {
+    position: absolute; left: 104px; right: 104px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold-soft) 8%, var(--gold-soft) 92%, transparent);
+}
+.hair.top { top: 100px; }
+.hair.bot { bottom: 96px; }
+
+.hdr {
+    top: 52px; display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--chrome); font-weight: 500; font-size: 16px;
+    letter-spacing: .34em; text-transform: uppercase; color: var(--gold);
+}
+.hdr .r { color: var(--muted); letter-spacing: .26em; }
+
+.foot {
+    bottom: 42px; display: flex; justify-content: space-between; align-items: flex-end;
+    font-family: var(--chrome); font-weight: 400; font-size: 15px;
+    letter-spacing: .24em; text-transform: uppercase; color: var(--muted);
+}
+.foot .pg { font-family: var(--latin); font-size: 38px; line-height: 1; color: var(--gold); letter-spacing: 0; }
+
+/* 标题块 */
+.sec { top: 146px; }
+.sec h2 {
+    font-family: var(--cjk); font-weight: 700; font-size: 58px; line-height: 1.28;
+    color: var(--cream); letter-spacing: .005em;
+}
+.sec h2 em {
+    font-style: normal; color: var(--gold);
+    background: linear-gradient(transparent 70%, rgba(142, 36, 54, .70) 70%, rgba(142, 36, 54, .70) 88%, transparent 88%);
+}
+.sec .sub {
+    margin-top: 18px; font-size: 23px; line-height: 1.6; color: var(--cream-2); font-weight: 300;
+    max-width: 1400px;
+}
+
+/* 正文区。tall 变体给密度更高的页面多 42px 纵向空间。 */
+.body { top: 322px; bottom: 128px; }
+.body.tall { top: 296px; bottom: 112px; }
+
+/* ===========================================================
+   5. 组件 —— 卡片 / 标签 / 表格 / 流程 / 数据条
+   全部直角，靠 1px 金线分隔，不用圆角与投影。
+   =========================================================== */
+.card {
+    background: rgba(239, 232, 219, .035);
+    border: 1px solid var(--gold-line);
+    padding: 28px 30px 26px;
+}
+.card .n {
+    font-family: var(--latin); font-size: 34px; line-height: 1; color: var(--gold-deep);
+}
+.card h3 {
+    font-family: var(--cjk); font-weight: 700; font-size: 30px; line-height: 1.35; color: var(--cream);
+}
+.card p {
+    margin-top: 12px; font-size: 19px; line-height: 1.78; color: var(--cream-2); font-weight: 300;
+}
+.card p b { font-weight: 500; color: var(--cream); }
+
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+
+/* 状态标签：区分「底座已跑通」与「规划中」 */
+.tag {
+    display: inline-block; font-family: var(--chrome); font-weight: 500; font-size: 14px;
+    letter-spacing: .18em; padding: 5px 12px 4px; white-space: nowrap;
+}
+.tag.now  { color: var(--gold);   border: 1px solid rgba(216, 182, 92, .45); background: rgba(216, 182, 92, .07); }
+.tag.next { color: #D98B99;       border: 1px dashed rgba(217, 139, 153, .48); background: rgba(142, 36, 54, .16); }
+
+/* 表格（用 grid 画，靠 1px 线分隔） */
+.tbl { border-top: 1px solid var(--gold-soft); }
+.tbl .row { display: grid; align-items: center; border-bottom: 1px solid rgba(216, 182, 92, .11); }
+.tbl .row.head {
+    border-bottom: 1px solid var(--gold-soft);
+    font-family: var(--chrome); font-weight: 500; font-size: 15px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--gold-deep);
+}
+.tbl .row.head > div { padding: 14px 22px 13px; }
+.tbl .row > div { padding: var(--rowpad, 16px) 22px; font-size: 19px; line-height: 1.6; color: var(--cream-2); font-weight: 300; }
+.tbl .row > div:first-child { padding-left: 0; }
+.tbl .row .k { font-family: var(--cjk); font-weight: 700; font-size: 22px; color: var(--cream); }
+.tbl .row .dim { color: var(--muted); }
+
+/* 横向流程 */
+.flow { display: grid; gap: 16px; }
+.step { border: 1px solid var(--gold-line); background: rgba(239, 232, 219, .03); padding: 22px 20px 20px; position: relative; }
+.step .n { font-family: var(--latin); font-size: 26px; color: var(--gold); line-height: 1; }
+.step .t { margin-top: 10px; font-family: var(--cjk); font-weight: 700; font-size: 25px; color: var(--cream); line-height: 1.3; }
+.step .d { margin-top: 9px; font-size: 17px; line-height: 1.68; color: var(--muted); font-weight: 300; }
+/* 步骤之间的金色连接箭头 */
+.step::after {
+    content: ""; position: absolute; right: -12px; top: 50%; width: 8px; height: 8px;
+    border-top: 1px solid var(--gold-deep); border-right: 1px solid var(--gold-deep);
+    transform: translateY(-50%) rotate(45deg);
+}
+.step:last-child::after { display: none; }
+
+/* 底部注脚带 */
+.note {
+    border-top: 1px solid var(--gold-soft); padding-top: 18px;
+    font-size: 19px; line-height: 1.75; color: var(--muted); font-weight: 300;
+}
+.note b { color: var(--cream-2); font-weight: 500; }
+
+/* 成片墙（第 12 页）—— 6 列 × 2 行定高竖片，示意矩阵产出规模 */
+.filmwall { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.filmwall > div {
+    height: 170px;
+    border: 1px solid rgba(216, 182, 92, var(--o, .26));
+    background: rgba(216, 182, 92, var(--f, .05));
+}
+
+/* 数据条 */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--gold-soft); }
+.stats .cell { padding: 22px 28px 0; border-right: 1px solid rgba(216, 182, 92, .11); }
+.stats .cell:first-child { padding-left: 0; }
+.stats .cell:last-child { border-right: 0; }
+.stats .v { font-family: var(--latin); font-size: 52px; line-height: 1; color: var(--gold); }
+.stats .v small { font-family: var(--cjk); font-weight: 700; font-size: .38em; color: var(--cream-2); margin-left: 8px; }
+.stats .k { margin-top: 12px; font-size: 18px; line-height: 1.55; color: var(--muted); font-weight: 300; }
+
+/* 带右侧标签的要点行（用于「钱清楚 / 脸干净」这类清单） */
+.bullet {
+    display: flex; gap: 18px; justify-content: space-between; align-items: flex-start;
+    padding: 14px 0 13px; border-bottom: 1px solid rgba(216, 182, 92, .10);
+}
+.bullet:last-child { border-bottom: 0; }
+.bullet .x { font-size: 18px; line-height: 1.7; color: var(--cream-2); font-weight: 300; }
+.bullet .x b { color: var(--cream); font-weight: 500; }
+
+/* 三栏紧凑说明条（无卡片边框，只靠一条金线起头） */
+.strip3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px;
+    border-top: 1px solid var(--gold-soft); padding-top: 18px; }
+.strip3 .t { font-family: var(--cjk); font-weight: 700; font-size: 23px; color: var(--cream); }
+.strip3 .d { margin-top: 8px; font-size: 17px; line-height: 1.7; color: var(--muted); font-weight: 300; }
+
+/* 列表行（用于「底座清单」这类） */
+.rows { border-top: 1px solid var(--gold-soft); }
+.lrow {
+    display: grid; grid-template-columns: 400px 1fr 150px; align-items: center; gap: 24px;
+    padding: 16px 0 15px; border-bottom: 1px solid rgba(216, 182, 92, .11);
+}
+.lrow .name { font-family: var(--cjk); font-weight: 700; font-size: 27px; color: var(--cream); }
+.lrow .name span { display: block; margin-top: 5px; font-family: var(--chrome); font-weight: 400;
+    font-size: 14px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold-deep); }
+.lrow .desc { font-size: 19px; line-height: 1.66; color: var(--cream-2); font-weight: 300; }
+.lrow .st { text-align: right; }
+
+/* ===========================================================
+   6. 章节分隔页
+   =========================================================== */
+.divider .big {
+    position: absolute; left: 104px; top: 210px;
+    font-family: var(--latin); font-size: 300px; line-height: .78; color: var(--gold);
+    opacity: .95;
+}
+.divider .dtitle {
+    position: absolute; left: 104px; top: 520px; width: 1120px;
+    font-family: var(--cjk); font-weight: 700; font-size: 76px; line-height: 1.28; color: var(--cream);
+}
+.divider .dtitle em {
+    font-style: normal; color: var(--gold);
+    background: linear-gradient(transparent 70%, rgba(142, 36, 54, .70) 70%, rgba(142, 36, 54, .70) 88%, transparent 88%);
+}
+.divider .dsub {
+    position: absolute; left: 104px; top: 790px; width: 1080px;
+    font-size: 25px; line-height: 1.75; color: var(--cream-2); font-weight: 300;
+}
+.divider .drail { position: absolute; right: 104px; top: 300px; width: 430px; }
+.divider .drail .h {
+    font-family: var(--chrome); font-weight: 500; font-size: 15px; letter-spacing: .34em;
+    text-transform: uppercase; color: var(--muted); padding-bottom: 16px; border-bottom: 1px solid var(--gold-soft);
+}
+.divider .drail .it {
+    display: flex; gap: 18px; align-items: baseline;
+    padding: 22px 0 21px; border-bottom: 1px solid rgba(216, 182, 92, .12);
+}
+.divider .drail .it .i { font-family: var(--latin); font-size: 26px; color: var(--gold-deep); min-width: 40px; }
+.divider .drail .it .x { font-family: var(--cjk); font-weight: 700; font-size: 27px; color: var(--cream); }
+
+/* ===========================================================
+   7. 封面 & 结尾页专用
+   =========================================================== */
+.cover .kicker {
+    position: absolute; top: 70px; left: 104px; right: 104px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--chrome); font-weight: 500; font-size: 17px;
+    letter-spacing: .4em; text-transform: uppercase; color: var(--gold);
+}
+.cover .kicker .r { color: var(--muted); letter-spacing: .3em; }
+.cover .spine {
+    position: absolute; left: 46px; top: 220px; writing-mode: vertical-rl;
+    font-family: var(--cjk); font-weight: 500; font-size: 19px; letter-spacing: .55em;
+    color: rgba(216, 182, 92, .55);
+}
+.cover .hero { position: absolute; left: 104px; top: 236px; width: 1160px; }
+.cover .eyebrow {
+    display: inline-flex; align-items: center; gap: 14px;
+    font-family: var(--chrome); font-weight: 400; font-size: 19px;
+    letter-spacing: .34em; text-transform: uppercase; color: var(--cream-2);
+}
+.cover .eyebrow::before { content: ""; width: 56px; height: 1px; background: var(--gold); }
+.cover h1 {
+    margin-top: 26px; font-family: var(--cjk); font-weight: 700; font-size: 118px;
+    line-height: 1.22; letter-spacing: .005em; color: var(--cream);
+}
+.cover h1 em {
+    font-style: normal; color: var(--gold);
+    background: linear-gradient(transparent 72%, rgba(142, 36, 54, .72) 72%, rgba(142, 36, 54, .72) 88%, transparent 88%);
+}
+.cover .latin { margin-top: 30px; font-family: var(--latin); font-style: italic; font-size: 42px; color: var(--gold); opacity: .9; }
+.cover .lede { margin-top: 26px; max-width: 920px; font-size: 25px; line-height: 1.85; color: var(--cream-2); font-weight: 300; }
+.cover .lede b { font-weight: 500; color: var(--cream); }
+.cover .rail { position: absolute; right: 104px; top: 268px; width: 396px; }
+.cover .rail .h {
+    font-family: var(--chrome); font-weight: 500; font-size: 15px; letter-spacing: .38em;
+    text-transform: uppercase; color: var(--muted); padding-bottom: 16px; border-bottom: 1px solid var(--gold-soft);
+}
+.cover .rail .it { padding: 26px 0 24px; border-bottom: 1px solid rgba(216, 182, 92, .14); display: flex; gap: 20px; align-items: flex-start; }
+.cover .rail .it .i { font-family: var(--latin); font-size: 40px; line-height: .9; color: var(--gold-deep); min-width: 52px; }
+.cover .rail .it .t { font-family: var(--cjk); font-weight: 700; font-size: 29px; color: var(--cream); line-height: 1.35; }
+.cover .rail .it .d { margin-top: 9px; font-size: 18px; line-height: 1.6; color: var(--muted); }
+
+.closing h1 {
+    position: absolute; left: 104px; top: 250px; width: 1500px;
+    font-family: var(--cjk); font-weight: 700; font-size: 104px; line-height: 1.26; color: var(--cream);
+}
+.closing h1 em {
+    font-style: normal; color: var(--gold);
+    background: linear-gradient(transparent 72%, rgba(142, 36, 54, .72) 72%, rgba(142, 36, 54, .72) 88%, transparent 88%);
+}
+.closing .three {
+    position: absolute; left: 104px; right: 104px; top: 600px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
+    border-top: 1px solid var(--gold-soft); padding-top: 26px;
+}
+.closing .three .c .i { font-family: var(--latin); font-size: 34px; color: var(--gold-deep); }
+.closing .three .c .t { margin-top: 8px; font-family: var(--cjk); font-weight: 700; font-size: 30px; color: var(--cream); }
+.closing .contact {
+    position: absolute; left: 104px; right: 104px; bottom: 150px;
+    border-top: 1px solid var(--gold-soft); padding-top: 26px;
+    display: flex; align-items: baseline; gap: 56px;
+}
+.closing .contact .lb {
+    font-family: var(--chrome); font-weight: 500; font-size: 16px; letter-spacing: .34em;
+    text-transform: uppercase; color: var(--gold);
+}
+.closing .contact .fill { font-size: 22px; color: var(--muted); font-weight: 300; }
+.closing .contact .fill u { text-decoration: none; border-bottom: 1px dashed rgba(216, 182, 92, .4); padding: 0 42px 3px; }
+
+/* ===========================================================
+   8. 飞轮图（第 15 页）—— SVG 环 + 绝对定位节点
+   =========================================================== */
+.wheel { position: relative; width: 980px; height: 580px; }
+.wheel svg { position: absolute; inset: 0; }
+.wheel .node {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 214px; padding: 14px 16px; text-align: center;
+    background: var(--ink-1); border: 1px solid var(--gold-line);
+}
+.wheel .node .i { font-family: var(--latin); font-size: 20px; color: var(--gold-deep); line-height: 1; }
+.wheel .node .t { margin-top: 6px; font-family: var(--cjk); font-weight: 700; font-size: 23px; color: var(--cream); line-height: 1.3; }
+.wheel .hub {
+    position: absolute; left: 490px; top: 290px; transform: translate(-50%, -50%);
+    width: 250px; height: 250px; border: 1px solid var(--gold-soft); border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(circle, rgba(216, 182, 92, .10), transparent 70%);
+}
+.wheel .hub .a { font-family: var(--cjk); font-weight: 700; font-size: 38px; color: var(--gold); }
+.wheel .hub .b { margin-top: 10px; font-size: 17px; color: var(--muted); letter-spacing: .1em; }
+
+/* ===========================================================
+   9. 进场动效 —— 只在当前页触发，错峰揭示
+   =========================================================== */
+.reveal {
+    opacity: 0; transform: translateY(26px);
+    transition: opacity .85s var(--ease), transform .85s var(--ease);
+}
+.slide.visible .reveal { opacity: 1; transform: none; }
+.reveal.fade { transform: none; }
+
+.r1 { transition-delay: .05s; } .r2 { transition-delay: .14s; }
+.r3 { transition-delay: .23s; } .r4 { transition-delay: .32s; }
+.r5 { transition-delay: .41s; } .r6 { transition-delay: .50s; }
+.r7 { transition-delay: .59s; } .r8 { transition-delay: .68s; }
+.r9 { transition-delay: .77s; }
+
+/* ===========================================================
+   10. 演示 chrome —— 进度条 / 页码 / 编辑开关（舞台之外）
+   =========================================================== */
+.progress {
+    position: fixed; left: 0; bottom: 0; height: 2px; width: 0;
+    background: var(--gold); z-index: 1000; transition: width .4s var(--ease);
+}
+.counter {
+    position: fixed; right: 20px; bottom: 16px; z-index: 1000;
+    font-family: var(--chrome); font-weight: 500; font-size: 13px;
+    letter-spacing: .2em; color: rgba(216, 182, 92, .5);
+}
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle {
+    position: fixed; top: 16px; left: 16px; z-index: 10001;
+    background: var(--ink-2); color: var(--gold); border: 1px solid var(--gold-soft);
+    font-size: 18px; padding: 8px 12px; cursor: pointer;
+    opacity: 0; pointer-events: none; transition: opacity .3s ease;
+}
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { background: var(--gold); color: var(--ink-0); }
+body.editing [contenteditable="true"] { outline: 1px dashed rgba(216, 182, 92, .55); outline-offset: 3px; }
+.edit-hint {
+    position: fixed; top: 16px; left: 68px; z-index: 10001;
+    font-family: var(--chrome); font-size: 13px; letter-spacing: .16em; color: var(--gold);
+    background: var(--ink-2); border: 1px solid var(--gold-soft); padding: 9px 14px; display: none;
+}
+body.editing .edit-hint { display: block; }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- =========================================================
+     01 · 封面
+     ========================================================= -->
+<section class="slide cover active">
+    <div class="atmo strong"></div><div class="silk"></div>
+    <div class="ghost">授</div><div class="grain"></div>
+
+    <div class="kicker reveal r1">
+        <span>AI Star Ecosystem</span>
+        <span class="r">未来产品蓝图 · 2026</span>
+    </div>
+    <div class="hair top reveal fade r2" style="top:118px;"></div>
+    <div class="spine reveal fade r9">明星带货 · 明星商务 · AI 短剧</div>
+
+    <div class="hero">
+        <div class="eyebrow reveal r2">合作路演</div>
+        <h1 class="reveal r3">让明星的每一次<em>授权</em><br>都变成一笔可结算的商单</h1>
+        <div class="latin reveal r4">From a signature to a settled order.</div>
+        <p class="lede reveal r5">授权不该停在一纸合同。我们把它做成<b>可上架、可审批、可追溯、可分账</b>的一条链路 ——
+            艺人看到的是商单，经纪握住的是控制权。</p>
+    </div>
+
+    <div class="rail">
+        <div class="h reveal r4">三条主线</div>
+        <div class="it reveal r5"><div class="i">01</div><div>
+            <div class="t">卖授权的小程序</div>
+            <div class="d">艺人侧的商单入口，不是又一个后台</div></div></div>
+        <div class="it reveal r6"><div class="i">02</div><div>
+            <div class="t">明星端授权链路</div>
+            <div class="d">便捷、安全、受控的平台化审批阀门</div></div></div>
+        <div class="it reveal r7"><div class="i">03</div><div>
+            <div class="t">AI 虚拟人短视频</div>
+            <div class="d">一次授权，长出成百上千条可分发成片</div></div></div>
+    </div>
+
+    <div class="hair reveal fade r8" style="bottom:132px;"></div>
+    <div class="pad foot reveal r9">
+        <span>合作与路演材料</span>
+        <span class="pg">01</span>
+    </div>
+</section>
+
+<!-- =========================================================
+     02 · 现状：三重摩擦
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>现状</span><span class="r">明星 IP 的三重摩擦</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">明星的名字很值钱，<em>「授权」</em>这件事本身却还停在纸上</h2>
+        <div class="sub reveal r3">三重摩擦叠在一起，把明星 IP 的价值挡在了交易之外</div>
+    </div>
+
+    <div class="pad body">
+        <div class="grid3">
+            <div class="card reveal r4">
+                <div class="n">01</div>
+                <h3 style="margin-top:14px;">商单靠人脉</h3>
+                <p>需求方找不到对的人，艺人不知道有单在找自己。一次合作从接触到签约动辄数周，小额订单在流程成本面前<b>直接不成立</b> —— 于是中腰部艺人几乎没有可持续的商单来源。</p>
+            </div>
+            <div class="card reveal r5">
+                <div class="n">02</div>
+                <h3 style="margin-top:14px;">授权靠信任</h3>
+                <p>合同是一份 PDF，用途边界写在条款里、记在人脑里。用到了哪些平台、剪成了多少条、有没有踩到品类红线 —— <b>只能事后发现、事后追责</b>。</p>
+            </div>
+            <div class="card reveal r6">
+                <div class="n">03</div>
+                <h3 style="margin-top:14px;">内容靠档期</h3>
+                <p>一条明星口播要占用真人档期，成本以万元计、周期以天计。想做 100 条素材去投放赛马？在传统链路里这<b>不是预算问题，是物理问题</b>。</p>
+            </div>
+        </div>
+
+        <div class="note reveal r7" style="margin-top:44px;">
+            三件事叠在一起的结果：明星 IP 的价值被交易摩擦吃掉一大半。
+            <b>真正稀缺的从来不是明星的脸，而是把这张脸安全地、批量地、可结算地用出去的能力。</b>
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>现状</span><span class="pg">02</span></div>
+</section>
+
+<!-- =========================================================
+     03 · 已建成的底座
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>底座</span><span class="r">已经在跑的五端一栈</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">后面要讲的东西，长在一套<em>已经在跑</em>的系统上</h2>
+        <div class="sub reveal r3">五个端、一套后端、一本不可变账本 —— 三条主线是延伸，不是重做</div>
+    </div>
+
+    <div class="pad body tall">
+        <div class="rows">
+            <div class="lrow reveal r4">
+                <div class="name">明星商务工作台<span>web-star</span></div>
+                <div class="desc">明星与经纪团队的审核中枢：IP 授权、带货授权、内容审核、商品入库、分成结算 —— 14 个模块，全部是只前进不回退的状态机</div>
+                <div class="st"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="lrow reveal r5">
+                <div class="name">AI 明星带货<span>web-celebrity</span></div>
+                <div class="desc">明星市场 → 申请授权 → AI 生成带货视频 → 混剪量产 → 多平台分发 → 数据中心，创作侧完整闭环</div>
+                <div class="st"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="lrow reveal r6">
+                <div class="name">AI 短剧工坊<span>web-drama</span></div>
+                <div class="desc">五阶段项目制作 + 逐镜分镜表 + 一致性引擎 + 创意配方市场 + 互动剧编排，剧情内容的量产线</div>
+                <div class="st"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="lrow reveal r7">
+                <div class="name">数字资产平台<span>AiAvatar</span></div>
+                <div class="desc">六类资产（人物 / IP / 场景 / 产品 / 声音 / 风格）+ IP 容器 + 跨资产合成，出片前强制授权核对</div>
+                <div class="st"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="lrow reveal r8">
+                <div class="name">带货方小程序<span>WeChat Mini Program</span></div>
+                <div class="desc">11 屏消费端：激活登录、明星市场、AI 生成、视频资产中心、数据复盘，微信侧的现成触点</div>
+                <div class="st"><span class="tag now">已跑通</span></div>
+            </div>
+        </div>
+
+        <div class="note reveal r9" style="margin-top:34px;">
+            五个端共享同一套后端与账本：<b>统一鉴权、不可变积分账本（余额变动必须走账本，禁止直接改）、资产签名与溯源</b> —— 三条主线复用的是同一块地基，不是三个彼此独立的新项目。
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>底座</span><span class="pg">03</span></div>
+</section>
+
+<!-- =========================================================
+     04 · 章节 01
+     ========================================================= -->
+<section class="slide divider">
+    <div class="atmo"></div><div class="silk"></div>
+    <div class="ghost" style="top:60px;">单</div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线一</span><span class="r">艺人端 · 小程序</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="big reveal r2">01</div>
+    <div class="dtitle reveal r3">把授权做成<em>货架</em>，<br>把商单送到艺人手里</div>
+    <div class="dsub reveal r4">艺人的核心诉求从来只有一个 —— 有单。<br>所以这个小程序的第一屏不是数据看板，是今天有几个人想找你合作。</div>
+
+    <div class="drail">
+        <div class="h reveal r4">本章内容</div>
+        <div class="it reveal r5"><span class="i">i</span><span class="x">授权货架</span></div>
+        <div class="it reveal r6"><span class="i">ii</span><span class="x">商单雷达</span></div>
+        <div class="it reveal r7"><span class="i">iii</span><span class="x">一键签约与托管</span></div>
+        <div class="it reveal r8"><span class="i">iv</span><span class="x">收益日历</span></div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线一 · 艺人端小程序</span><span class="pg">04</span></div>
+</section>
+
+<!-- =========================================================
+     05 · 授权货架
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线一 · 艺人端小程序</span><span class="r"><span class="tag next">规划中</span></span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">把「授权」拆成<em>可标价、可上下架</em>的 SKU</h2>
+        <div class="sub reveal r3">艺人第一次能像上架商品一样，决定自己的哪一面、以什么价格、卖给谁</div>
+    </div>
+
+    <div class="pad body tall">
+        <div class="tbl reveal r4" style="--rowpad:10px;">
+            <div class="row head" style="grid-template-columns:360px 230px 280px 1fr;">
+                <div>授权品类</div><div>计价单位</div><div>交付物</div><div>艺人参与度</div>
+            </div>
+            <div class="row" style="grid-template-columns:360px 230px 280px 1fr;">
+                <div class="k">数字人口播短视频</div><div>按条 / 按周期</div><div>竖屏成片</div><div>零档期 —— 一次形象授权后全自动</div>
+            </div>
+            <div class="row" style="grid-template-columns:360px 230px 280px 1fr;">
+                <div class="k">数字人直播切片</div><div>按场 / 按时长</div><div>直播回放切片</div><div>零档期</div>
+            </div>
+            <div class="row" style="grid-template-columns:360px 230px 280px 1fr;">
+                <div class="k">肖像图文</div><div>按张 / 按投放位</div><div>商详图 · 海报</div><div>零档期</div>
+            </div>
+            <div class="row" style="grid-template-columns:360px 230px 280px 1fr;">
+                <div class="k">声音 · 配音口播</div><div>按条 / 按字数</div><div>音频轨</div><div>一次声音采集</div>
+            </div>
+            <div class="row" style="grid-template-columns:360px 230px 280px 1fr;">
+                <div class="k">剧情出演 · 短剧</div><div>按集 / 按剧</div><div>剧集成片</div><div>零档期 —— 虚拟出演</div>
+            </div>
+            <div class="row" style="grid-template-columns:360px 230px 280px 1fr;">
+                <div class="k dim">真人 TVC / 线下</div><div class="dim">按项目</div><div class="dim">传统交付</div><div class="dim">占用真人档期（作为对照保留）</div>
+            </div>
+        </div>
+
+        <div class="strip3 reveal r6" style="margin-top:22px;">
+            <div>
+                <div class="t">按品类设红线</div>
+                <div class="d">不接的品类根本不会出现在货架上，沿用明星端现有的内容规则四区。</div>
+            </div>
+            <div>
+                <div class="t">独家与非独家</div>
+                <div class="d">同一档位可设独家溢价与冷却期，避免同品类撞车稀释艺人价值。</div>
+            </div>
+            <div>
+                <div class="t">随时一键下架</div>
+                <div class="d">任何一档随时停售，且不影响已成交订单的履约边界。</div>
+            </div>
+        </div>
+
+        <div class="note reveal r8" style="margin-top:20px;">
+            <b>底座：</b>明星档位与按次计价在带货线已跑通（引擎单价 × 时长系数，生成前预冻结积分、失败自动退回原桶）。货架化要做的，是把这套定价与计费能力<b>前置到艺人侧</b>，让定价权回到艺人和经纪手上。
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线一 · 授权货架</span><span class="pg">05</span></div>
+</section>
+
+<!-- =========================================================
+     06 · 商单雷达
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线一 · 艺人端小程序</span><span class="r"><span class="tag next">规划中</span></span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">商单不该靠人脉找上门，应该<em>被推到艺人手机上</em></h2>
+        <div class="sub reveal r3">从「需求方发单」到「钱到账」，六步全部在小程序里完成，不需要艺人登录任何后台</div>
+    </div>
+
+    <div class="pad body">
+        <div class="flow reveal r4" style="grid-template-columns:repeat(6,1fr);">
+            <div class="step"><div class="n">01</div><div class="t">需求方发单</div>
+                <div class="d">品牌或 MCN 提交预算、品类、投放平台与周期</div></div>
+            <div class="step"><div class="n">02</div><div class="t">平台匹配</div>
+                <div class="d">按品类、粉丝画像、历史转化与档位可用性排序</div></div>
+            <div class="step"><div class="n">03</div><div class="t">推送到艺人</div>
+                <div class="d">微信订阅消息直达，不必打开后台就能看到</div></div>
+            <div class="step"><div class="n">04</div><div class="t">接单 · 议价</div>
+                <div class="d">超过阈值的单自动转入经纪审批队列</div></div>
+            <div class="step"><div class="n">05</div><div class="t">电子签 · 托管</div>
+                <div class="d">授权书自动带上用途边界，款项先入托管</div></div>
+            <div class="step"><div class="n">06</div><div class="t">交付与结算</div>
+                <div class="d">内容通过审核后释放款项，进入收益日历</div></div>
+        </div>
+
+        <div class="grid3 reveal r6" style="margin-top:44px;">
+            <div class="card">
+                <h3 style="font-size:27px;">阈值路由，不打扰</h3>
+                <p>低于设定金额、且落在白名单品类的单，艺人可以自决；其余自动交给经纪 —— 直接复用明星商务工作台已有的<b>审批阀门</b>，不新造一套权限体系。</p>
+            </div>
+            <div class="card">
+                <h3 style="font-size:27px;">拒单不浪费</h3>
+                <p>拒绝原因结构化回流到匹配模型：不接这个品类、价格不到位、周期冲突 —— 越用越准，<b>同类单不会反复来敲门</b>。</p>
+            </div>
+            <div class="card">
+                <h3 style="font-size:27px;">走微信原生触达</h3>
+                <p>订阅消息与服务通知是艺人真正会看的通道。小程序侧目前已把主动触达列为待建能力，这条链路正好落在上面。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线一 · 商单雷达</span><span class="pg">06</span></div>
+</section>
+
+<!-- =========================================================
+     07 · 章节 02
+     ========================================================= -->
+<section class="slide divider">
+    <div class="atmo"></div><div class="silk"></div>
+    <div class="ghost" style="top:60px;">控</div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线二</span><span class="r">明星端 · 授权链路</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="big reveal r2">02</div>
+    <div class="dtitle reveal r3">让授权变成机器<em>能执行的规则</em>，<br>而不是一份 PDF</div>
+    <div class="dsub reveal r4">便捷、安全、受控 —— 这三件事必须同时成立。<br>只便捷不受控，经纪不敢签；只受控不便捷，没人愿意用。</div>
+
+    <div class="drail">
+        <div class="h reveal r4">本章内容</div>
+        <div class="it reveal r5"><span class="i">i</span><span class="x">六维授权矩阵</span></div>
+        <div class="it reveal r6"><span class="i">ii</span><span class="x">出片前的授权闸</span></div>
+        <div class="it reveal r7"><span class="i">iii</span><span class="x">全链路溯源</span></div>
+        <div class="it reveal r8"><span class="i">iv</span><span class="x">结算与合规背书</span></div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线二 · 明星端授权链路</span><span class="pg">07</span></div>
+</section>
+
+<!-- =========================================================
+     08 · 授权矩阵
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线二 · 明星端授权链路</span><span class="r">一次登记 · 处处生效</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">六个维度，<em>一次登记，处处生效</em></h2>
+        <div class="sub reveal r3">授权不再是一段条款文本，而是一条在每次出片时都会被强制读取的策略</div>
+    </div>
+
+    <div class="pad body">
+        <div class="tbl reveal r4">
+            <div class="row head" style="grid-template-columns:210px 1fr 440px 400px;">
+                <div>维度</div><div>取值</div><div>现在（底座已有）</div><div>规划增量</div>
+            </div>
+            <div class="row" style="grid-template-columns:210px 1fr 440px 400px;">
+                <div class="k">用途</div><div>直播 / 短视频 / 广告投放</div>
+                <div>数字人授权已支持用途三选</div><div class="dim">用途组合与互斥规则</div>
+            </div>
+            <div class="row" style="grid-template-columns:210px 1fr 440px 400px;">
+                <div class="k">模型</div><div>声音 / 面部 / 全身</div>
+                <div>AI 形象授权三选 + 低中高三级风控</div><div class="dim">高风险自动触发人工复核</div>
+            </div>
+            <div class="row" style="grid-template-columns:210px 1fr 440px 400px;">
+                <div class="k">平台</div><div>抖音 / 快手 / 小红书 / 视频号</div>
+                <div>平台白名单已落地</div><div class="dim">未授权平台自动屏蔽分发</div>
+            </div>
+            <div class="row" style="grid-template-columns:210px 1fr 440px 400px;">
+                <div class="k">期限</div><div>起止日期 + 到期提醒</div>
+                <div>合同中心 30 天到期提醒</div><div class="dim">到期自动停发 + 续签工作流</div>
+            </div>
+            <div class="row" style="grid-template-columns:210px 1fr 440px 400px;">
+                <div class="k">品类</div><div>绿 / 黄 / 橙 / 红 四区</div>
+                <div>四区启停，改动立即生效（已审项不回溯）</div><div class="dim">竞品互斥与独家冷却期</div>
+            </div>
+            <div class="row" style="grid-template-columns:210px 1fr 440px 400px;">
+                <div class="k">地域 · 独家</div><div>区域范围 + 独家档位</div>
+                <div class="dim">—</div><div class="dim">区域授权与独家溢价</div>
+            </div>
+        </div>
+
+        <div class="note reveal r7" style="margin-top:34px;">
+            <b>「只前进不回退」是这条链路的底层原则：</b>凡流程单据（IP 授权 / 报白 / 商品入库 / 品牌授权 / 寄样）都是有向状态机，
+            驳回与回改都是终态分支、必须重新发起单据，绝不在原单回滚 —— 代价是多一次操作，换来的是<b>审计链永远完整</b>。
+            对经纪团队来说，这条原则比任何功能都重要。
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线二 · 授权矩阵</span><span class="pg">08</span></div>
+</section>
+
+<!-- =========================================================
+     09 · 授权闸 + 溯源
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线二 · 明星端授权链路</span><span class="r">事前拦截，不是事后审核</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">出片之前先问授权：<em>缺一张，就一步都不往下走</em></h2>
+        <div class="sub reveal r3">不建单、不扣费、不产出半成品 —— 拦截发生在花钱之前，而不是发现之后</div>
+    </div>
+
+    <div class="pad body">
+        <div style="display:grid;grid-template-columns:1fr 560px;gap:52px;">
+
+            <!-- 左：判定链路 -->
+            <div>
+                <div class="flow reveal r4" style="grid-template-columns:repeat(3,1fr);">
+                    <div class="step"><div class="n">01</div><div class="t">创作者发起合成</div>
+                        <div class="d">选定明星数字人 × 场景 × 商品，提交出片</div></div>
+                    <div class="step"><div class="n">02</div><div class="t">读取授权策略</div>
+                        <div class="d">按用途 / 模型 / 平台 / 期限 / 品类逐项核对</div></div>
+                    <div class="step"><div class="n">03</div><div class="t">是否命中生效授权</div>
+                        <div class="d">真人复刻类资产强制校验，无例外通道</div></div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:34px;">
+                    <div class="card reveal r5" style="border-color:rgba(216,182,92,.4);">
+                        <div class="n" style="font-size:26px;">命中</div>
+                        <h3 style="margin-top:10px;font-size:27px;">建单 · 出片 · 登记</h3>
+                        <p>正常扣费出片，产物自动<b>登记为该 IP 的衍生物</b>，并为每一个用到的资产写入一条使用记录 —— 之后就能反查「这张脸被用在哪」。</p>
+                    </div>
+                    <div class="card reveal r6" style="border-color:rgba(217,139,153,.35);background:rgba(142,36,54,.10);">
+                        <div class="n" style="font-size:26px;color:#D98B99;">未命中</div>
+                        <h3 style="margin-top:10px;font-size:27px;">直接拦截并说清缺什么</h3>
+                        <p>返回明确的「缺少生效授权」，告知缺哪一张、去哪里申请。<b>不建单、不扣费、不产出</b>，不会留下半张脸的中间产物。</p>
+                    </div>
+                </div>
+
+                <div class="note reveal r8" style="margin-top:34px;">
+                    这套拦截语义在数字资产平台的跨资产合成里<b>已经跑通</b> —— 真人复刻类资产缺生效授权时直接返回错误、不建单不扣费。
+                    本条主线要做的，是把它从一个功能推广成<b>全平台每一次出片的默认前置</b>。
+                </div>
+            </div>
+
+            <!-- 右：三条配套能力 -->
+            <div>
+                <div class="card reveal r5" style="padding:20px 24px 18px;">
+                    <h3 style="font-size:24px;">不可见指纹水印</h3>
+                    <p style="font-size:17px;line-height:1.72;margin-top:10px;">每条成片带可追溯标记 —— 混剪线的水印追溯已跑通，扩展到全线即可回答「谁、用哪张授权、何时生产」。</p>
+                    <div style="margin-top:12px;"><span class="tag now">底座已跑通</span></div>
+                </div>
+                <div class="card reveal r6" style="padding:20px 24px 18px;margin-top:20px;">
+                    <h3 style="font-size:24px;">「已用于」双向引用</h3>
+                    <p style="font-size:17px;line-height:1.72;margin-top:10px;">资产能反查被哪些成片用过，成片也能反查用了哪些资产。双向可查，是争议处理的证据底座。</p>
+                    <div style="margin-top:12px;"><span class="tag now">底座已跑通</span></div>
+                </div>
+                <div class="card reveal r7" style="padding:20px 24px 18px;margin-top:20px;">
+                    <h3 style="font-size:24px;">一键撤回</h3>
+                    <p style="font-size:17px;line-height:1.72;margin-top:10px;">撤销授权后自动生成跨平台下架任务，并同步冻结在途的生成任务。</p>
+                    <div style="margin-top:12px;"><span class="tag next">规划中</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线二 · 授权闸与溯源</span><span class="pg">09</span></div>
+</section>
+
+<!-- =========================================================
+     10 · 结算与合规背书
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线二 · 明星端授权链路</span><span class="r">钱清楚 · 脸干净</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">明星真正在意的两件事：<em>钱清楚，脸干净</em></h2>
+        <div class="sub reveal r3">功能可以慢慢加，这两件事一开始就得是对的</div>
+    </div>
+
+    <div class="pad body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;">
+
+            <div class="card reveal r4" style="padding:26px 32px 22px;">
+                <div class="n">i</div>
+                <h3 style="margin-top:12px;">钱清楚</h3>
+                <div style="margin-top:16px;">
+                    <div class="bullet"><span class="x">GMV → 分成 → 结算单，月度趋势与逐笔明细可查</span><span class="tag now">已跑通</span></div>
+                    <div class="bullet"><span class="x">所有余额变动必须经<b>不可变账本</b>，禁止直接改余额 —— 每一笔都能对账、都能回溯</span><span class="tag now">已跑通</span></div>
+                    <div class="bullet"><span class="x">T+1 月 15 日打款周期，提现走独立流水</span><span class="tag now">已跑通</span></div>
+                    <div class="bullet"><span class="x">应收日历 + 订单级分账明细直达艺人小程序</span><span class="tag next">规划中</span></div>
+                </div>
+            </div>
+
+            <div class="card reveal r5" style="padding:26px 32px 22px;">
+                <div class="n">ii</div>
+                <h3 style="margin-top:12px;">脸干净</h3>
+                <div style="margin-top:16px;">
+                    <div class="bullet"><span class="x">内容审核四态：待审 / 通过 / 要求修改 / 驳回，回改意见直接回流制作方返工</span><span class="tag now">已跑通</span></div>
+                    <div class="bullet"><span class="x">侵权巡查：全网监测 → 调查 → 确认 → 处置，误报可标记不留污点</span><span class="tag now">已跑通</span></div>
+                    <div class="bullet"><span class="x"><b>授权护照</b> —— 一页对外可出示的合规说明：开放什么、禁止什么、谁审批、争议怎么走，品牌方尽调时直接看这一页</span><span class="tag next">规划中</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats reveal r7" style="margin-top:44px;">
+            <div class="cell"><div class="v">14<small>模块</small></div><div class="k">明星商务工作台<br>覆盖授权到结算全流程</div></div>
+            <div class="cell"><div class="v">4<small>类资产</small></div><div class="k">人像 / 切片 / 数字人 / 法务<br>各自六态状态机</div></div>
+            <div class="cell"><div class="v">4<small>态审核</small></div><div class="k">内容审核与侵权巡查<br>各自闭环留痕</div></div>
+            <div class="cell"><div class="v">0<small>次回滚</small></div><div class="k">只前进不回退<br>审计链永远完整</div></div>
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线二 · 结算与背书</span><span class="pg">10</span></div>
+</section>
+
+<!-- =========================================================
+     11 · 章节 03
+     ========================================================= -->
+<section class="slide divider">
+    <div class="atmo"></div><div class="silk"></div>
+    <div class="ghost" style="top:60px;">量</div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线三</span><span class="r">AI 短视频创作</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="big reveal r2">03</div>
+    <div class="dtitle reveal r3">一次授权，长出<em>成百上千条</em><br>能跑的成片</div>
+    <div class="dsub reveal r4">虚拟人的效果，加上传播的速度。<br>这一段是整个生态的产能引擎 —— 也是把授权价值真正兑现的地方。</div>
+
+    <div class="drail">
+        <div class="h reveal r4">本章内容</div>
+        <div class="it reveal r5"><span class="i">i</span><span class="x">矩阵量产</span></div>
+        <div class="it reveal r6"><span class="i">ii</span><span class="x">一致性引擎</span></div>
+        <div class="it reveal r7"><span class="i">iii</span><span class="x">差异化投放</span></div>
+        <div class="it reveal r8"><span class="i">iv</span><span class="x">数据回流</span></div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线三 · AI 短视频创作</span><span class="pg">11</span></div>
+</section>
+
+<!-- =========================================================
+     12 · 矩阵量产
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线三 · AI 短视频创作</span><span class="r">一次配置 · 跑满一个投放周期</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">把「做一条视频」换成<em>「跑一个矩阵」</em></h2>
+        <div class="sub reveal r3">人物 × 场景 × 商品 × 风格 × 时长 —— 一次提交，按维度组合批量出片</div>
+    </div>
+
+    <div class="pad body">
+        <div style="display:grid;grid-template-columns:1fr 300px 1fr;gap:34px;align-items:stretch;">
+
+            <!-- 输入 -->
+            <div>
+                <div style="font-family:var(--chrome);font-weight:500;font-size:15px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold-deep);padding-bottom:14px;border-bottom:1px solid var(--gold-soft);" class="reveal r4">输入 · 资产维度</div>
+                <div class="card reveal r4" style="margin-top:20px;padding:22px 24px 20px;">
+                    <h3 style="font-size:25px;">人物资产</h3>
+                    <p style="font-size:18px;margin-top:8px;">明星数字人形象 · 声音 · 风格，均已在数字资产平台登记并带授权凭证</p>
+                </div>
+                <div class="card reveal r5" style="margin-top:18px;padding:22px 24px 20px;">
+                    <h3 style="font-size:25px;">场景与商品</h3>
+                    <p style="font-size:18px;margin-top:8px;">实拍上传或 AI 生成的场景、产品图，属轻资产，只记来源不需授权</p>
+                </div>
+                <div class="card reveal r6" style="margin-top:18px;padding:22px 24px 20px;">
+                    <h3 style="font-size:25px;">投放参数</h3>
+                    <p style="font-size:18px;margin-top:8px;">目标平台、时长档、变体数量、排期节奏</p>
+                </div>
+            </div>
+
+            <!-- 引擎 -->
+            <div class="reveal r6" style="display:flex;flex-direction:column;justify-content:center;">
+                <div style="border:1px solid var(--gold-soft);background:rgba(216,182,92,.06);padding:30px 22px;text-align:center;">
+                    <div style="font-family:var(--latin);font-size:44px;color:var(--gold);line-height:1;">×</div>
+                    <div style="margin-top:14px;font-family:var(--cjk);font-weight:700;font-size:30px;color:var(--cream);">合成引擎</div>
+                    <div style="margin-top:16px;font-size:17px;line-height:1.9;color:var(--muted);">
+                        授权核对<br>→ 批量出片<br>→ 入库登记<br>→ 双向引用回写
+                    </div>
+                </div>
+            </div>
+
+            <!-- 输出 -->
+            <div>
+                <div style="font-family:var(--chrome);font-weight:500;font-size:15px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold-deep);padding-bottom:14px;border-bottom:1px solid var(--gold-soft);" class="reveal r5">输出 · 可直接排期的成片</div>
+                <div class="reveal r7 filmwall" style="margin-top:20px;">
+                    <!-- 成片墙：示意一次矩阵任务的产出规模（竖屏成片） -->
+                    <div style="--o:.34;--f:.08;"></div><div style="--o:.24;--f:.05;"></div>
+                    <div style="--o:.34;--f:.08;"></div><div style="--o:.18;--f:.04;"></div>
+                    <div style="--o:.30;--f:.06;"></div><div style="--o:.22;--f:.05;"></div>
+                    <div style="--o:.20;--f:.04;"></div><div style="--o:.34;--f:.08;"></div>
+                    <div style="--o:.26;--f:.06;"></div><div style="--o:.18;--f:.04;"></div>
+                    <div style="--o:.30;--f:.07;"></div><div style="--o:.22;--f:.05;"></div>
+                </div>
+                <div class="reveal r8" style="margin-top:18px;font-size:18px;line-height:1.7;color:var(--muted);">
+                    按平台分组、带溯源水印、可直接进入定时发布队列 —— 不需要再回到剪辑台。
+                </div>
+            </div>
+        </div>
+
+        <div class="note reveal r9" style="margin-top:34px;">
+            <b>已跑通：</b>跨资产合成（人物 × 场景 × 产品 → 成片），出片前做授权核对，产物自动登记为该 IP 的衍生物，并给每个用到的资产写一条使用记录。
+            <b>规划增量：</b>把「单次合成」升级为「批量矩阵任务」—— 一次提交按维度组合批量出片、失败自动重试、进度可中断可续跑。
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线三 · 矩阵量产</span><span class="pg">12</span></div>
+</section>
+
+<!-- =========================================================
+     13 · 一致性引擎
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线三 · AI 短视频创作</span><span class="r">虚拟人能否商用的分水岭</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">同一张脸，<em>跨镜、跨集、跨平台都不能漂</em></h2>
+        <div class="sub reveal r3">这套引擎已经在短剧线跑通，四层能力叠起来才换到「看不出是 AI 拼的」</div>
+    </div>
+
+    <div class="pad body">
+        <div class="grid4">
+            <div class="card reveal r4">
+                <div class="n">01</div>
+                <h3 style="margin-top:12px;font-size:27px;">多角度参考图集</h3>
+                <p style="font-size:18px;">每个角色一键生成正面 / 侧面 / 全身三视图，作为锁脸锚点；定妆图优先，逐角度计费、部分失败只退剩余。</p>
+                <div style="margin-top:14px;"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="card reveal r5">
+                <div class="n">02</div>
+                <h3 style="margin-top:12px;font-size:27px;">服务端参考装配</h3>
+                <p style="font-size:18px;">角色参考 &gt; 场景参考 &gt; 上一镜末帧，优先级链在服务端统一收口，前端不再各写一套 —— 换模型不用改前端。</p>
+                <div style="margin-top:14px;"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="card reveal r6">
+                <div class="n">03</div>
+                <h3 style="margin-top:12px;font-size:27px;">末帧承接</h3>
+                <p style="font-size:18px;">用上一镜的真实末帧作为下一镜首帧，动作与光线自然连贯；末帧同步镜像到 CDN，链式承接不会因为链接过期而断。</p>
+                <div style="margin-top:14px;"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="card reveal r7">
+                <div class="n">04</div>
+                <h3 style="margin-top:12px;font-size:27px;">如实回报，不假装</h3>
+                <p style="font-size:18px;">不同模型能吃的参考图数量不同，超出部分按优先级自动裁剪，并回报「参考 N / M 生效」—— 宁可告诉你没生效，也不悄悄降级。</p>
+                <div style="margin-top:14px;"><span class="tag now">已跑通</span></div>
+            </div>
+        </div>
+
+        <div class="note reveal r9" style="margin-top:40px;">
+            <b>规划增量：</b>把这套引擎整体移植到带货线 —— 让同一个明星数字人在 100 条带货视频里保持同一张脸、同一套光线、同一种气质。
+            对品牌方来说，一致性不是画质问题，是<b>能不能签合规的问题</b>。
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线三 · 一致性引擎</span><span class="pg">13</span></div>
+</section>
+
+<!-- =========================================================
+     14 · 差异化投放与数据回流
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>主线三 · AI 短视频创作</span><span class="r">量产之后的真问题</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">量产之后的真问题：<em>怎么发出去，还能跑得动</em></h2>
+        <div class="sub reveal r3">同质化会被平台限流 —— 所以「产 N 条」和「产 N 条不一样的」是两回事</div>
+    </div>
+
+    <div class="pad body">
+        <div class="grid3">
+            <div class="card reveal r4">
+                <div class="n">01</div>
+                <h3 style="margin-top:12px;">差异化变体</h3>
+                <p>同一条创意经过扰动池产出 N 个变体：贴图、剪切、节奏、时长各不相同。既规避平台的重复内容识别，也天然形成一组 <b>A/B 赛马素材</b>。</p>
+                <div style="margin-top:16px;"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="card reveal r5">
+                <div class="n">02</div>
+                <h3 style="margin-top:12px;">全网定时分发</h3>
+                <p>多平台账号连接 + 发布任务状态机 + 定时发布，一次排期铺满抖音 / 快手 / 小红书 / 视频号，发布结果与失败原因统一回收。</p>
+                <div style="margin-top:16px;"><span class="tag now">已跑通</span></div>
+            </div>
+            <div class="card reveal r6">
+                <div class="n">03</div>
+                <h3 style="margin-top:12px;">效果回流</h3>
+                <p>跑赢的变体自动加投同类；数据同时反哺两处 —— 给创作侧的<b>配方库</b>，给授权侧的<b>定价档位</b>。艺人的价格第一次有了数据依据。</p>
+                <div style="margin-top:16px;"><span class="tag next">规划中</span></div>
+            </div>
+        </div>
+
+        <div class="reveal r7" style="margin-top:44px;">
+            <div class="flow" style="grid-template-columns:repeat(5,1fr);">
+                <div class="step" style="padding:18px 18px 16px;"><div class="t" style="margin-top:0;font-size:23px;">一条创意</div>
+                    <div class="d">脚本 + 分镜 + 数字人绑定</div></div>
+                <div class="step" style="padding:18px 18px 16px;"><div class="t" style="margin-top:0;font-size:23px;">N 个差异化变体</div>
+                    <div class="d">扰动池自动生成，互不雷同</div></div>
+                <div class="step" style="padding:18px 18px 16px;"><div class="t" style="margin-top:0;font-size:23px;">分平台定时投放</div>
+                    <div class="d">按平台调性错峰排期</div></div>
+                <div class="step" style="padding:18px 18px 16px;"><div class="t" style="margin-top:0;font-size:23px;">数据回流</div>
+                    <div class="d">播放 / 转化 / 留存逐条归因</div></div>
+                <div class="step" style="padding:18px 18px 16px;"><div class="t" style="margin-top:0;font-size:23px;">复制赢家</div>
+                    <div class="d">蒸馏成配方，进入下一轮</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>主线三 · 差异化投放</span><span class="pg">14</span></div>
+</section>
+
+<!-- =========================================================
+     15 · 生态飞轮
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>三线合一</span><span class="r">生态飞轮</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">三条主线不是三个产品，是<em>一个飞轮的三段</em></h2>
+        <div class="sub reveal r3">授权越顺 → 商单越多 → 内容越多 → 数据越准 → 定价越准 → 授权更顺</div>
+    </div>
+
+    <div class="pad body">
+        <div style="display:grid;grid-template-columns:980px 1fr;gap:60px;">
+
+            <!-- 飞轮图 -->
+            <div class="wheel reveal r4">
+                <svg viewBox="0 0 980 580" aria-hidden="true">
+                    <defs>
+                        <marker id="arw" markerWidth="10" markerHeight="10" refX="6" refY="3"
+                                orient="auto" markerUnits="strokeWidth">
+                            <path d="M0,0 L6,3 L0,6 z" fill="#A8842C"></path>
+                        </marker>
+                    </defs>
+                    <!-- 环 -->
+                    <ellipse cx="490" cy="290" rx="330" ry="220"
+                             fill="none" stroke="rgba(216,182,92,.28)" stroke-width="1" stroke-dasharray="6 8"></ellipse>
+                    <!-- 六段方向箭头（沿环放置，示意顺时针旋转） -->
+                    <path d="M 640 92 L 700 122" stroke="#A8842C" stroke-width="1.4" marker-end="url(#arw)" fill="none"></path>
+                    <path d="M 820 300 L 818 360" stroke="#A8842C" stroke-width="1.4" marker-end="url(#arw)" fill="none"></path>
+                    <path d="M 700 458 L 640 488" stroke="#A8842C" stroke-width="1.4" marker-end="url(#arw)" fill="none"></path>
+                    <path d="M 340 488 L 280 458" stroke="#A8842C" stroke-width="1.4" marker-end="url(#arw)" fill="none"></path>
+                    <path d="M 162 360 L 160 300" stroke="#A8842C" stroke-width="1.4" marker-end="url(#arw)" fill="none"></path>
+                    <path d="M 280 122 L 340 92" stroke="#A8842C" stroke-width="1.4" marker-end="url(#arw)" fill="none"></path>
+                </svg>
+
+                <div class="hub">
+                    <div class="a">生态飞轮</div>
+                    <div class="b">越转越快</div>
+                </div>
+
+                <div class="node" style="left:490px;top:70px;"><div class="i">01</div><div class="t">艺人上架授权</div></div>
+                <div class="node" style="left:776px;top:180px;"><div class="i">02</div><div class="t">商单匹配成交</div></div>
+                <div class="node" style="left:776px;top:400px;"><div class="i">03</div><div class="t">授权闸放行</div></div>
+                <div class="node" style="left:490px;top:510px;"><div class="i">04</div><div class="t">AI 矩阵量产</div></div>
+                <div class="node" style="left:204px;top:400px;"><div class="i">05</div><div class="t">全网差异化分发</div></div>
+                <div class="node" style="left:204px;top:180px;"><div class="i">06</div><div class="t">数据回流定价</div></div>
+            </div>
+
+            <!-- 右侧注释 -->
+            <div>
+                <div class="card reveal r5" style="padding:20px 24px 18px;">
+                    <h3 style="font-size:25px;">配方飞轮，套在大飞轮里</h3>
+                    <p style="font-size:17px;line-height:1.72;margin-top:10px;">跑赢的成片被蒸馏成去具体化的「创意配方」，进入创意市场供全网复用。官方内置与用户发布双通道已跑通，含作者授权与运营精选流程。</p>
+                    <div style="margin-top:12px;"><span class="tag now">底座已跑通</span></div>
+                </div>
+                <div class="card reveal r6" style="padding:20px 24px 18px;margin-top:20px;">
+                    <h3 style="font-size:25px;">每一次操作都是燃料</h3>
+                    <p style="font-size:17px;line-height:1.72;margin-top:10px;">接单、拒单、审核意见、下架、爆量 —— 这些在传统链路里会被丢掉的信号，在这里全部结构化沉淀，直接喂回匹配与定价。</p>
+                </div>
+                <div class="card reveal r7" style="padding:20px 24px 18px;margin-top:20px;">
+                    <h3 style="font-size:25px;">网络效应从哪来</h3>
+                    <p style="font-size:17px;line-height:1.72;margin-top:10px;">明星越多 → 品类越全 → 需求方越愿意来发单 → 单越多 → 明星越愿意上架。飞轮的启动难点在前两环，这也正是我们要找合作伙伴的地方。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>三线合一 · 生态飞轮</span><span class="pg">15</span></div>
+</section>
+
+<!-- =========================================================
+     16 · 路线图
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>落地路径</span><span class="r">四个阶段 · 每一步都能单独兑现</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">分四步走，<em>每一步都能单独产生价值</em></h2>
+        <div class="sub reveal r3">不需要等到全部建成才有用 —— 每个阶段对明星和对合作方都有各自的兑现物</div>
+    </div>
+
+    <div class="pad body">
+        <!-- 时间轴 -->
+        <div class="reveal r3" style="height:1px;background:linear-gradient(90deg,var(--gold) 0%,var(--gold-deep) 55%,rgba(216,182,92,.2) 100%);margin-bottom:0;"></div>
+
+        <div class="grid4" style="margin-top:0;">
+            <div class="reveal r4" style="border-right:1px solid rgba(216,182,92,.12);padding:26px 26px 0 0;">
+                <div style="font-family:var(--latin);font-size:34px;color:var(--gold);line-height:1;">阶段一</div>
+                <div style="margin-top:10px;font-family:var(--cjk);font-weight:700;font-size:28px;color:var(--cream);">底座</div>
+                <div style="margin-top:6px;"><span class="tag now">现在</span></div>
+                <p style="margin-top:18px;font-size:18px;line-height:1.75;color:var(--cream-2);">五端一栈已上线；授权审批、混剪量产、一致性引擎、多平台分发均已跑通。</p>
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(216,182,92,.12);font-size:17px;line-height:1.7;color:var(--muted);">
+                    <b style="color:var(--gold-deep);font-weight:500;">给明星</b><br>授权与内容有了统一审批入口<br><br>
+                    <b style="color:var(--gold-deep);font-weight:500;">给合作方</b><br>可以立刻用现有能力做带货内容
+                </div>
+            </div>
+
+            <div class="reveal r5" style="border-right:1px solid rgba(216,182,92,.12);padding:26px 26px 0;">
+                <div style="font-family:var(--latin);font-size:34px;color:var(--gold);line-height:1;">阶段二</div>
+                <div style="margin-top:10px;font-family:var(--cjk);font-weight:700;font-size:28px;color:var(--cream);">艺人商单闭环</div>
+                <div style="margin-top:6px;"><span class="tag next">下一步</span></div>
+                <p style="margin-top:18px;font-size:18px;line-height:1.75;color:var(--cream-2);">艺人小程序 MVP：授权货架 + 商单推送 + 电子签 + 资金托管；六维授权矩阵引擎上线。</p>
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(216,182,92,.12);font-size:17px;line-height:1.7;color:var(--muted);">
+                    <b style="color:var(--gold-deep);font-weight:500;">给明星</b><br>第一次在手机上直接接到单<br><br>
+                    <b style="color:var(--gold-deep);font-weight:500;">给合作方</b><br>找人到签约从周级压到天级
+                </div>
+            </div>
+
+            <div class="reveal r6" style="border-right:1px solid rgba(216,182,92,.12);padding:26px 26px 0;">
+                <div style="font-family:var(--latin);font-size:34px;color:var(--gold);line-height:1;">阶段三</div>
+                <div style="margin-top:10px;font-family:var(--cjk);font-weight:700;font-size:28px;color:var(--cream);">规模化量产</div>
+                <div style="margin-top:6px;"><span class="tag next">规划中</span></div>
+                <p style="margin-top:18px;font-size:18px;line-height:1.75;color:var(--cream-2);">矩阵批量任务；一致性引擎移植带货线；投放效果数据回流到配方与定价。</p>
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(216,182,92,.12);font-size:17px;line-height:1.7;color:var(--muted);">
+                    <b style="color:var(--gold-deep);font-weight:500;">给明星</b><br>一次授权持续产出，不占档期<br><br>
+                    <b style="color:var(--gold-deep);font-weight:500;">给合作方</b><br>素材从几条变成几百条可赛马
+                </div>
+            </div>
+
+            <div class="reveal r7" style="padding:26px 0 0 26px;">
+                <div style="font-family:var(--latin);font-size:34px;color:var(--gold);line-height:1;">阶段四</div>
+                <div style="margin-top:10px;font-family:var(--cjk);font-weight:700;font-size:28px;color:var(--cream);">生态开放</div>
+                <div style="margin-top:6px;"><span class="tag next">规划中</span></div>
+                <p style="margin-top:18px;font-size:18px;line-height:1.75;color:var(--cream-2);">授权护照；一键撤回与跨平台下架；创意配方市场向外部 MCN 与品牌开放。</p>
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(216,182,92,.12);font-size:17px;line-height:1.7;color:var(--muted);">
+                    <b style="color:var(--gold-deep);font-weight:500;">给明星</b><br>对外可出示的合规背书<br><br>
+                    <b style="color:var(--gold-deep);font-weight:500;">给合作方</b><br>接入即获得授权与量产全套能力
+                </div>
+            </div>
+        </div>
+
+        <div class="note reveal r9" style="margin-top:52px;">
+            四个阶段可以<b>分别签约、分别验收</b>，不必打包：阶段一现在就能接入并产出内容；
+            阶段二我们在找愿意首批上架授权档位的明星与经纪团队；阶段三需要有稳定投放量的 MCN 一起校准效果口径；
+            生态开放放在最后，是因为它必须建立在前三步跑出来的真实数据与合规记录之上。
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>落地路径</span><span class="pg">16</span></div>
+</section>
+
+<!-- =========================================================
+     17 · 合作方式
+     ========================================================= -->
+<section class="slide">
+    <div class="atmo"></div><div class="silk"></div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>合作</span><span class="r">三类同行的人</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <div class="pad sec">
+        <h2 class="reveal r2">我们在找<em>三类同行的人</em></h2>
+        <div class="sub reveal r3">三类角色接的是同一套授权真值 —— 这也是这个生态最难被复制的地方</div>
+    </div>
+
+    <div class="pad body">
+        <div class="grid3">
+            <div class="card reveal r4" style="padding:30px 32px 28px;">
+                <div class="n">i</div>
+                <h3 style="margin-top:12px;">明星与经纪团队</h3>
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(216,182,92,.14);">
+                    <p style="margin-top:0;"><b>你带来</b><br>可授权的形象、声音与 IP，以及对品类红线的判断</p>
+                    <p style="margin-top:16px;"><b>你得到</b><br>一个能持续送单、且每一次使用都可控可查的通道</p>
+                    <p style="margin-top:16px;"><b>怎么起步</b><br>入驻 → 上架 1-2 个授权档位 → 跑通首批订单与结算</p>
+                </div>
+            </div>
+
+            <div class="card reveal r5" style="padding:30px 32px 28px;">
+                <div class="n">ii</div>
+                <h3 style="margin-top:12px;">MCN 与代运营</h3>
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(216,182,92,.14);">
+                    <p style="margin-top:0;"><b>你带来</b><br>投放能力、账号矩阵与商品供给</p>
+                    <p style="margin-top:16px;"><b>你得到</b><br>合规拿到明星授权，同时把素材成本与产能瓶颈一起打掉</p>
+                    <p style="margin-top:16px;"><b>怎么起步</b><br>接入带货工作台 → 申请授权 → 用矩阵量产跑一轮投放</p>
+                </div>
+            </div>
+
+            <div class="card reveal r6" style="padding:30px 32px 28px;">
+                <div class="n">iii</div>
+                <h3 style="margin-top:12px;">品牌与渠道</h3>
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(216,182,92,.14);">
+                    <p style="margin-top:0;"><b>你带来</b><br>预算、商品与投放场景</p>
+                    <p style="margin-top:16px;"><b>你得到</b><br>可追溯到每一张授权的明星内容，尽调时拿得出证据链</p>
+                    <p style="margin-top:16px;"><b>怎么起步</b><br>发一个需求单 → 平台匹配艺人 → 按档位成交</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="note reveal r8" style="margin-top:40px;">
+            我们不追求一次谈成全部。<b>最短的验证路径是：一位明星、一个品类、一轮投放</b> ——
+            跑完一圈，授权链路、量产能力与结算清晰度会同时被验证，再决定要不要放大。
+        </div>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>合作方式</span><span class="pg">17</span></div>
+</section>
+
+<!-- =========================================================
+     18 · 结尾
+     ========================================================= -->
+<section class="slide closing">
+    <div class="atmo strong"></div><div class="silk"></div>
+    <div class="ghost" style="top:100px;">单</div><div class="grain"></div>
+
+    <div class="pad hdr reveal r1"><span>AI Star Ecosystem</span><span class="r">未来产品蓝图 · 2026</span></div>
+    <div class="hair top reveal fade r1"></div>
+
+    <h1 class="reveal r2">让明星的每一次<em>授权</em>，<br>都变成一笔可结算的商单</h1>
+
+    <div class="three">
+        <div class="c reveal r4"><div class="i">01</div><div class="t">帮艺人卖授权的小程序</div></div>
+        <div class="c reveal r5"><div class="i">02</div><div class="t">明星端授权链路</div></div>
+        <div class="c reveal r6"><div class="i">03</div><div class="t">AI 虚拟人短视频创作</div></div>
+    </div>
+
+    <div class="contact reveal r7">
+        <span class="lb">合作洽谈</span>
+        <span class="fill">联系人 <u></u></span>
+        <span class="fill">邮箱 <u></u></span>
+        <span class="fill">微信 <u></u></span>
+    </div>
+
+    <div class="hair bot"></div>
+    <div class="pad foot"><span>谢谢</span><span class="pg">18</span></div>
+</section>
+
+</main>
+</div>
+
+<!-- 演示 chrome：进度条 / 页码 / 编辑开关（都在舞台之外） -->
+<div class="progress" id="progress"></div>
+<div class="counter" id="counter">01 / 18</div>
+<div class="edit-hotzone" aria-hidden="true"></div>
+<button class="edit-toggle" id="editToggle" title="编辑模式（E）" aria-label="切换编辑模式">✎</button>
+<div class="edit-hint">编辑模式 · 点任意文字修改 · Ctrl/⌘+S 保存 · 再按 E 退出</div>
+
+<script>
+/* ===========================================================
+   幻灯片控制器
+   —— 舞台等比缩放 / 键盘 / 触摸 / 滚轮 / 进度条
+   =========================================================== */
+class SlidePresentation {
+    constructor() {
+        this.slides   = Array.from(document.querySelectorAll('.slide'));
+        this.stage    = document.getElementById('deckStage');
+        this.progress = document.getElementById('progress');
+        this.counter  = document.getElementById('counter');
+        this.current  = 0;
+        this.wheelLock = false;
+
+        this.setupStageScale();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheelNav();
+        this.show(0);
+    }
+
+    /* 整块 1920×1080 舞台等比缩放并居中，永不重排内容 */
+    setupStageScale() {
+        const scale = () => {
+            const f = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            const x = (window.innerWidth  - 1920 * f) / 2;
+            const y = (window.innerHeight - 1080 * f) / 2;
+            this.stage.style.transform = `translate(${x}px, ${y}px) scale(${f})`;
+        };
+        scale();
+        window.addEventListener('resize', scale);
+    }
+
+    setupKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            // 编辑文字时不劫持按键
+            if (e.target.getAttribute && e.target.getAttribute('contenteditable') === 'true') return;
+            switch (e.key) {
+                case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
+                    e.preventDefault(); this.next(); break;
+                case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+                    e.preventDefault(); this.prev(); break;
+                case 'Home': e.preventDefault(); this.show(0); break;
+                case 'End':  e.preventDefault(); this.show(this.slides.length - 1); break;
+            }
+        });
+    }
+
+    setupTouchNav() {
+        let x0 = null, y0 = null;
+        document.addEventListener('touchstart', (e) => {
+            x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+        }, { passive: true });
+        document.addEventListener('touchend', (e) => {
+            if (x0 === null) return;
+            const dx = e.changedTouches[0].clientX - x0;
+            const dy = e.changedTouches[0].clientY - y0;
+            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
+                dx < 0 ? this.next() : this.prev();
+            }
+            x0 = y0 = null;
+        }, { passive: true });
+    }
+
+    setupWheelNav() {
+        window.addEventListener('wheel', (e) => {
+            if (this.wheelLock) return;
+            if (Math.abs(e.deltaY) < 24) return;
+            this.wheelLock = true;
+            e.deltaY > 0 ? this.next() : this.prev();
+            setTimeout(() => { this.wheelLock = false; }, 700);
+        }, { passive: true });
+    }
+
+    next() { this.show(this.current + 1); }
+    prev() { this.show(this.current - 1); }
+
+    show(i) {
+        this.current = Math.max(0, Math.min(i, this.slides.length - 1));
+        this.slides.forEach((s, n) => {
+            s.classList.toggle('active',  n === this.current);
+            s.classList.toggle('visible', n === this.current);
+        });
+        const pct = ((this.current + 1) / this.slides.length) * 100;
+        this.progress.style.width = pct + '%';
+        const pad = (n) => String(n).padStart(2, '0');
+        this.counter.textContent = pad(this.current + 1) + ' / ' + pad(this.slides.length);
+    }
+}
+
+/* ===========================================================
+   就地编辑
+   —— 悬停左上角热区或按 E 进入；改动存 localStorage；
+      Ctrl/⌘+S 导出改好的 HTML 文件。
+   =========================================================== */
+class InlineEditor {
+    constructor(deck) {
+        this.deck = deck;
+        this.isActive = false;
+        this.key = InlineEditor.KEY;
+        this.selector = 'h1, h2, h3, p, .t, .d, .k, .x, .desc, .name, .sub, .dsub, .dtitle, .note, .lb, .fill, .v, .a, .b, .i, .n, .tag, .hdr span, .foot span, .cell .k, .row > div, .eyebrow, .latin, .lede, .h';
+        this.bind();
+    }
+
+    /* 恢复必须在 SlidePresentation 抓取 .slide 节点之前执行，
+       否则替换 innerHTML 会让控制器持有一批已被丢弃的节点。 */
+    static KEY = 'aistar-pitch-blueprint-v1';
+    static restoreSaved() {
+        try {
+            const saved = localStorage.getItem(InlineEditor.KEY);
+            if (saved) document.getElementById('deckStage').innerHTML = saved;
+        } catch (err) { /* 隐私模式下 localStorage 可能不可读，忽略 */ }
+    }
+
+    bind() {
+        const toggle  = document.getElementById('editToggle');
+        const hotzone = document.querySelector('.edit-hotzone');
+        let hideTimer = null;
+
+        // 悬停显示（必须用 JS + 宽限期，CSS 兄弟选择器会因 pointer-events 断链）
+        const showBtn = () => { clearTimeout(hideTimer); toggle.classList.add('show'); };
+        const hideBtn = () => {
+            hideTimer = setTimeout(() => { if (!this.isActive) toggle.classList.remove('show'); }, 400);
+        };
+        hotzone.addEventListener('mouseenter', showBtn);
+        hotzone.addEventListener('mouseleave', hideBtn);
+        toggle.addEventListener('mouseenter', showBtn);
+        toggle.addEventListener('mouseleave', hideBtn);
+
+        hotzone.addEventListener('click', () => this.toggle());
+        toggle.addEventListener('click',  () => this.toggle());
+
+        document.addEventListener('keydown', (e) => {
+            const editingText = e.target.getAttribute && e.target.getAttribute('contenteditable') === 'true';
+            if ((e.key === 'e' || e.key === 'E') && !editingText) this.toggle();
+            if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                this.isActive ? this.exportFile() : null;
+            }
+        });
+    }
+
+    toggle() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        const toggle = document.getElementById('editToggle');
+        toggle.classList.toggle('active', this.isActive);
+        toggle.classList.add('show');
+
+        document.querySelectorAll(this.selector).forEach((el) => {
+            if (this.isActive) {
+                el.setAttribute('contenteditable', 'true');
+                el.addEventListener('blur', this.save, true);
+            } else {
+                el.removeAttribute('contenteditable');
+            }
+        });
+        if (!this.isActive) { toggle.classList.remove('show'); this.persist(); }
+    }
+
+    save = () => this.persist();
+
+    persist() {
+        try {
+            const html = document.getElementById('deckStage').innerHTML;
+            localStorage.setItem(this.key, html);
+        } catch (err) { /* 隐私模式下 localStorage 可能不可写，忽略 */ }
+    }
+
+    /* 把当前（含改动的）整页导出成一个新的 HTML 文件 */
+    exportFile() {
+        const clone = document.documentElement.cloneNode(true);
+        clone.querySelectorAll('[contenteditable]').forEach((el) => el.removeAttribute('contenteditable'));
+        const blob = new Blob(['<!DOCTYPE html>\n' + clone.outerHTML], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = '未来产品蓝图.html';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+}
+
+InlineEditor.restoreSaved();          // 先恢复本地改动
+const deck = new SlidePresentation(); // 再构建控制器（此时节点已是最终节点）
+const editor = new InlineEditor(deck);
+</script>
+</body>
+</html>

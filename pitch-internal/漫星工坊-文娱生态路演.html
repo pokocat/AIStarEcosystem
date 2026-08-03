@@ -1,0 +1,1315 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>漫星工坊 · 文娱生态路演</title>
+
+<!-- ============================================================
+     模板：Editorial Forest
+     拉丁 Source Serif 4（opsz 轴，weight 500）+ JetBrains Mono（全部 chrome）
+     中文 CJK 策略 C：显示级与正文/数字统一用思源宋体 Noto Serif SC（见 --f-disp 处注释）
+     chrome 的中文用 Noto Sans SC 500 + 宽字距，保住「打字机说明行」的质感
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,500;8..60,600&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+SC:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+/* ============================================================
+   1. 令牌 —— Editorial Forest 封闭三色板（绿 / 粉 / 燕麦纸）
+      禁止引入第四个色系；层级靠「填充 vs 描边」和 2px 细线表达
+   ============================================================ */
+:root {
+    --green:      #2e4a2a;
+    --green-deep: #243a21;
+    --green-lite: #3a5a36;
+    --pink:       #e89cb1;
+    --pink-deep:  #d27e96;
+    --cream:      #efe7d4;
+    --cream-2:    #e6dcc4;
+    --ink:        #1a1a17;
+
+    /* 显示级：拉丁 Source Serif 4 → 中文思源宋体
+       注：模板首选霞鹜文楷，但 Google CDN 只有 TC 版，会把「没」渲成「沒」、
+       「益」用繁体字形 —— 简体正式文件里读作错字，故按 design.md 的备选方案
+       全线改用 Noto Serif SC，牺牲一点笔触暖意换字形正确 */
+    --f-disp: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+    /* 正文 / 数字：拉丁 Source Serif 4 → 中文思源宋体 */
+    --f-body: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+    /* chrome：拉丁 JetBrains Mono → 中文思源黑体（保住打字机质感） */
+    --f-mono: 'JetBrains Mono', 'Noto Sans SC', ui-monospace, Menlo, monospace;
+
+    --stage-bg: #1c1a15;
+    --slide-bg: var(--cream);
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ============================================================
+   2. FIXED 16:9 STAGE（viewport-base.css 全量，必需）
+      1920×1080 上排版，整台等比缩放；手机上留黑边而不重排
+   ============================================================ */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--stage-bg); }
+.deck-viewport { position: fixed; inset: 0; overflow: hidden; background: var(--stage-bg); }
+.deck-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 0 0; background: var(--slide-bg); }
+.slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; display: block; visibility: hidden; opacity: 0; pointer-events: none; background: var(--slide-bg); }
+.slide.active, .slide.visible { visibility: visible; opacity: 1; pointer-events: auto; z-index: 1; }
+img, video, canvas, svg { max-width: 100%; max-height: 100%; }
+.deck-controls { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1000; }
+@media print {
+    html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+    .deck-viewport { position: static; overflow: visible; background: #fff; }
+    .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+    .slide { position: relative; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; width: 1920px; height: 1080px; break-after: page; page-break-after: always; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    .deck-controls { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .2s !important; } }
+
+/* ============================================================
+   3. 表面（每页只用一种主表面，最多两种）
+   ============================================================ */
+.slide           { background: var(--cream); color: var(--ink); }
+.slide.on-green  { background: var(--green); color: var(--cream); }
+.slide.on-pink   { background: var(--pink);  color: var(--green-deep); }
+
+/* ============================================================
+   4. 入场动效（克制：只动 transform / opacity，纸感体系不做花活）
+   ============================================================ */
+.rv { opacity: 0; transform: translateY(22px); transition: opacity .7s var(--ease), transform .7s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .rv { opacity: 1; transform: translateY(0); }
+.rl { transform: scaleX(0); transform-origin: 0 50%; transition: transform .9s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .rl { transform: scaleX(1); }
+
+/* ============================================================
+   5. 版心与 chrome —— topbar 是这套系统的脊椎，每页必带
+   ============================================================ */
+.pad { position: absolute; inset: 96px 120px; display: flex; flex-direction: column; }
+.pad.wide { inset: 100px 140px; }
+.pad.statement { inset: 130px 160px; }
+
+.topbar { display: flex; justify-content: space-between; align-items: flex-start; flex: none; }
+.main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 44px 0 36px; min-height: 0; }
+.main.top { justify-content: flex-start; }
+.footline { flex: none; display: flex; justify-content: space-between; align-items: baseline; }
+
+.label { font-family: var(--f-mono); font-weight: 500; font-size: 26px; letter-spacing: .18em; text-transform: uppercase; color: var(--green); }
+.label.cn { letter-spacing: .14em; text-transform: none; font-size: 24px; }
+.on-green .label { color: var(--pink); }
+.on-pink  .label { color: var(--green-deep); }
+
+.cap { font-family: var(--f-mono); font-weight: 500; font-size: 24px; letter-spacing: .14em; text-transform: uppercase; color: var(--green); }
+.cap.cn { letter-spacing: .12em; text-transform: none; }
+.on-green .cap { color: var(--pink); }
+.on-pink  .cap { color: var(--green-deep); }
+
+.monogram { width: 130px; height: 130px; border-radius: 50%; border: 2px solid var(--pink);
+    display: grid; place-items: center; font-family: var(--f-mono); font-weight: 500; font-size: 28px; letter-spacing: .1em; color: var(--pink); flex: none; }
+.slide:not(.on-green) .monogram { border-color: var(--green); color: var(--green); }
+
+/* ============================================================
+   6. 排版阶梯（尺寸只能从这把梯子上取，不新造）
+      中文：字距归零、行高放宽、标题不带句号
+   ============================================================ */
+.hero    { font-family: var(--f-disp); font-weight: 500; font-size: 220px; line-height: 1.02; letter-spacing: 0; }
+.display { font-family: var(--f-disp); font-weight: 500; font-size: 140px; line-height: 1.08; letter-spacing: 0; }
+h2       { font-family: var(--f-disp); font-weight: 500; font-size: 96px;  line-height: 1.10; letter-spacing: 0; color: var(--green); }
+.on-green h2 { color: var(--cream); }
+.on-pink  h2 { color: var(--green-deep); }
+h2.sm    { font-size: 84px; }
+h3       { font-family: var(--f-body); font-weight: 500; font-size: 56px; line-height: 1.14; letter-spacing: 0; }
+h4       { font-family: var(--f-body); font-weight: 500; font-size: 40px; line-height: 1.2; letter-spacing: 0; }
+p        { font-family: var(--f-body); font-weight: 400; font-size: 30px; line-height: 1.60; }
+p.lg     { font-size: 32px; line-height: 1.56; }
+p.card   { font-size: 26px; line-height: 1.62; }
+.name    { font-family: var(--f-body); font-weight: 600; font-size: 44px; line-height: 1.1; }
+.figure      { font-family: var(--f-body); font-weight: 700; font-size: 200px; line-height: .96; letter-spacing: -.02em; }
+.figure .unit { font-size: 88px; font-weight: 500; }
+.figure.sm   { font-size: 136px; }
+
+.rule { height: 2px; background: var(--green); border: 0; }
+.on-green .rule { background: var(--pink); }
+.on-pink  .rule { background: var(--green-deep); }
+
+/* ============================================================
+   7. 组件 —— 全部扁平：无阴影、无渐变、无透明叠色
+   ============================================================ */
+/* 7.1 主题块（目录 / 要点网格） */
+.tile { border-radius: 6px; padding: 40px 40px 36px; display: flex; flex-direction: column; min-width: 0; }
+.tile.g  { background: var(--green);      color: var(--cream); }
+.tile.gl { background: var(--green-lite); color: var(--cream); }
+.tile.p  { background: var(--pink);       color: var(--green-deep); }
+.tile.c  { background: var(--cream-2);    color: var(--green); border: 2px solid var(--green); }
+.tile .ord  { font-family: var(--f-mono); font-weight: 500; font-size: 24px; letter-spacing: .14em; text-transform: uppercase; }
+.tile .foot { font-family: var(--f-mono); font-weight: 500; font-size: 24px; letter-spacing: .12em; margin-top: auto; padding-top: 24px; }
+.tile.g h3, .tile.g h4  { color: var(--cream); }
+.tile.gl h3, .tile.gl h4 { color: var(--pink); }
+.tile.p h3, .tile.p h4  { color: var(--green-deep); }
+.tile.c h3, .tile.c h4  { color: var(--green); }
+
+/* 7.2 步骤块（流程 / 框架） */
+.step { border-radius: 8px; padding: 40px 32px 32px; display: flex; flex-direction: column; border: 2.5px solid var(--green); min-width: 0; }
+.step.c { background: var(--cream-2); color: var(--green); }
+.step.g { background: var(--green); border-color: var(--green); color: var(--cream); }
+.step.p { background: var(--pink);  border-color: var(--pink-deep); color: var(--green-deep); }
+.step .ord { font-family: var(--f-mono); font-weight: 500; font-size: 24px; letter-spacing: .14em; text-transform: uppercase; }
+.step h3 { font-size: 52px; margin-top: 22px; }
+.step.c h3 { color: var(--green); } .step.g h3 { color: var(--cream); } .step.p h3 { color: var(--green-deep); }
+.step .mark { font-family: var(--f-mono); font-weight: 500; font-size: 22px; letter-spacing: .12em;
+    margin-top: auto; padding-top: 22px; border-top: 2px solid currentColor; }
+
+/* 7.3 三列元信息表 */
+.metadl { display: grid; gap: 36px; border-top: 2px solid var(--green); padding-top: 28px; }
+.on-green .metadl { border-top-color: var(--pink); }
+.metadl dt { font-family: var(--f-mono); font-weight: 500; font-size: 24px; letter-spacing: .12em; opacity: .78; }
+.metadl dd { font-family: var(--f-body); font-weight: 500; font-size: 32px; line-height: 1.4; margin-top: 12px; }
+
+/* 7.4 图例 */
+.legend { display: flex; gap: 40px; align-items: center; font-family: var(--f-mono); font-weight: 500; font-size: 22px; letter-spacing: .12em; }
+.legend i { display: inline-block; width: 26px; height: 26px; border-radius: 2px; margin-right: 12px; vertical-align: -4px; }
+
+/* 7.5 生态分层带 */
+.layer { display: grid; grid-template-columns: 268px 1fr; align-items: center; border-radius: 6px; padding: 18px 30px; gap: 30px; }
+.layer .lname { font-family: var(--f-body); font-weight: 500; font-size: 36px; line-height: 1.16; }
+.layer.gl .lname { color: var(--pink); }
+.layer .lsub  { font-family: var(--f-mono); font-weight: 500; font-size: 21px; letter-spacing: .12em; margin-top: 8px; opacity: .8; }
+.layer .lbody { font-family: var(--f-body); font-weight: 400; font-size: 25px; line-height: 1.52; }
+.layer.g  { background: var(--green); color: var(--cream); }
+.layer.gl { background: var(--green-lite); color: var(--cream); }
+.layer.p  { background: var(--pink); color: var(--green-deep); }
+.layer.c  { background: var(--cream-2); color: var(--green); border: 2px solid var(--green); }
+
+/* 7.6 架构图方框（组织结构页） */
+.orgbox { border-radius: 6px; padding: 22px 26px; text-align: center; }
+.orgbox .on { font-family: var(--f-body); font-weight: 500; font-size: 38px; line-height: 1.16; }
+.orgbox .os { font-family: var(--f-mono); font-weight: 500; font-size: 20px; letter-spacing: .1em; margin-top: 10px; opacity: .82; }
+.orgbox.g { background: var(--green); color: var(--cream); }
+.orgbox.p { background: var(--pink); color: var(--green-deep); }
+.orgbox.c { background: var(--cream-2); color: var(--green); border: 2px solid var(--green); }
+.conn { background: var(--green); position: absolute; }
+
+/* 7.7 虚构标记（诚实标注：故事页与推演数字都必须挂这个牌子） */
+.fict { display: inline-flex; align-items: center; align-self: flex-start; border: 2px solid currentColor; border-radius: 4px;
+    padding: 7px 16px; font-family: var(--f-mono); font-weight: 500; font-size: 21px; letter-spacing: .12em; }
+
+/* ============================================================
+   8. 演示 chrome（舞台之外，不属幻灯设计系统）
+   ============================================================ */
+.deck-controls { display: flex; align-items: center; gap: 14px; background: var(--green); border-radius: 999px;
+    padding: 10px 18px; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 14px; letter-spacing: .14em;
+    color: var(--cream); opacity: .28; transition: opacity .3s ease; }
+.deck-controls:hover { opacity: 1; }
+.deck-controls .bar { width: 190px; height: 3px; background: rgba(239,231,212,.3); overflow: hidden; border-radius: 2px; }
+.deck-controls .bar i { display: block; height: 100%; background: var(--pink); transition: width .4s var(--ease); }
+.deck-controls button { background: none; border: none; color: var(--pink); cursor: pointer; font-family: inherit; font-size: 16px; padding: 2px 6px; }
+
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle { position: fixed; top: 18px; left: 18px; z-index: 10001; width: 42px; height: 42px; border-radius: 50%;
+    border: 2px solid var(--green); background: var(--cream); color: var(--green); font-size: 17px; cursor: pointer;
+    opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { background: var(--pink); }
+body.editing [contenteditable="true"] { outline: 2px dashed var(--pink); outline-offset: 4px; }
+body.editing [contenteditable="true"]:focus { outline: 2px solid var(--green); }
+.edit-hint { position: fixed; top: 20px; left: 74px; z-index: 10001; font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    letter-spacing: .1em; text-transform: uppercase; background: var(--pink); color: var(--green-deep); padding: 9px 14px; border-radius: 999px; display: none; }
+body.editing .edit-hint { display: block; }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- ══════════════════════════════════════════════════════════
+     01 · 封面
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green active visible">
+    <div class="pad wide">
+        <div class="topbar">
+            <span class="label">Manxing Atelier · 2026</span>
+            <span class="monogram">MXG</span>
+        </div>
+        <div class="main">
+            <div class="label cn rv" style="--d:.1s; margin-bottom: 40px;">文娱生态 · 合作路演</div>
+            <div class="hero rv" style="--d:.2s; color: var(--pink);">漫星工坊</div>
+            <div class="rule rl" style="--d:.42s; margin: 44px 0 40px; max-width: 900px;"></div>
+            <p class="lg rv" style="--d:.5s; max-width: 1180px; color: var(--cream);">
+                把明星最值钱的那部分 —— 脸、声音、表演、信任 —— 做成可登记、可授权、可结算的资产，
+                再用一套可复制的公司结构，把它铺成一张艺人矩阵。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">张漫 × AI Star Ecosystem</span>
+            <span class="cap">01 / 25</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     02 · 全篇路线（目录）
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Contents</span>
+            <span class="cap">02 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="rv" style="--d:.06s; margin-bottom: 32px;">这一场讲七件事</h2>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:24px; height:340px;">
+                <div class="tile g rv"  style="--d:.14s"><span class="ord">I</span><h3 style="margin-top:20px;">一个<br>行业困局</h3><span class="foot">03 — 06</span></div>
+                <div class="tile c rv"  style="--d:.20s"><span class="ord">II</span><h3 style="margin-top:20px;">一个<br>新变量</h3><span class="foot">07 — 08</span></div>
+                <div class="tile p rv"  style="--d:.26s"><span class="ord">III</span><h3 style="margin-top:20px;">我们<br>是谁</h3><span class="foot">09 — 13</span></div>
+                <div class="tile gl rv" style="--d:.32s"><span class="ord">IV</span><h3 style="margin-top:20px;">两股力量<br>会合</h3><span class="foot">14 — 17</span></div>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:24px; height:220px; margin-top:24px;">
+                <div class="tile c rv" style="--d:.38s"><span class="ord">V</span><h4 style="margin-top:16px;">生态怎么长</h4><span class="foot">18 — 20</span></div>
+                <div class="tile g rv" style="--d:.44s"><span class="ord">VI</span><h4 style="margin-top:16px;">组织怎么复制</h4><span class="foot">21 — 23</span></div>
+                <div class="tile p rv" style="--d:.50s"><span class="ord">VII</span><h4 style="margin-top:16px;">路线与底线</h4><span class="foot">24 — 25</span></div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">内部讨论稿 · 供双方内部使用</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     03 · 章扉 I · 会客厅
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad statement">
+        <div class="topbar">
+            <span class="label">Chapter I</span>
+            <span class="cap">03 / 25</span>
+        </div>
+        <div class="main">
+            <div class="label cn rv" style="--d:.1s; margin-bottom: 28px;">一个行业困局</div>
+            <div class="display rv" style="--d:.2s; color: var(--pink); max-width: 1500px;">
+                二十年来，<br>最值钱的资产<br>一直放在会客厅里
+            </div>
+            <div class="rule rl" style="--d:.5s; margin: 38px 0 28px; max-width: 700px;"></div>
+            <p class="lg rv" style="--d:.56s; max-width: 1100px; color: var(--cream);">
+                漫姐的会客厅里坐过无数明星与经纪人。她手上真正稀缺的东西，不是合约，是信任 ——
+                而信任这件事，一直没办法规模化。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第一章 · 行业困局</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     04 · 虚构案例 · 林澜（上）
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Case · Before</span>
+            <span class="cap">04 / 25</span>
+        </div>
+        <div class="main">
+            <span class="fict rv" style="--d:.05s; color: var(--green); margin-bottom: 30px;">虚构示例 · 用于说明机制</span>
+            <h2 class="sm rv" style="--d:.12s; max-width: 1400px;">林澜，出道十四年<br>档期空着，没人来找</h2>
+            <div class="rule rl" style="--d:.3s; margin: 42px 0 38px;"></div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:60px;">
+                <div class="rv" style="--d:.36s">
+                    <div class="cap" style="margin-bottom:14px;">年度商单</div>
+                    <div class="figure sm" style="color:var(--green);">9<span class="unit"> 条</span></div>
+                    <p class="card" style="margin-top:16px;">大部分来自旧关系，靠人情推进，小额单在流程成本面前直接不成立。</p>
+                </div>
+                <div class="rv" style="--d:.44s">
+                    <div class="cap" style="margin-bottom:14px;">真人档期空置</div>
+                    <div class="figure sm" style="color:var(--green);">60<span class="unit"> %</span></div>
+                    <p class="card" style="margin-top:16px;">时间闲着，却没有一种产品形态能把这段时间卖出去。</p>
+                </div>
+                <div class="rv" style="--d:.52s">
+                    <div class="cap" style="margin-bottom:14px;">可复用的资产</div>
+                    <div class="figure sm" style="color:var(--pink-deep);">0</div>
+                    <p class="card" style="margin-top:16px;">十四年的内容散在各平台，没有一份是登记过、能被再次授权的。</p>
+                </div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">人物与数字均为虚构，仅用于说明业务机制</span>
+            <span class="cap">Chapter I</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     05 · 三重摩擦
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">The Friction</span>
+            <span class="cap">05 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="rv" style="--d:.06s; margin-bottom: 44px;">卡住林澜的，是三件结构性的事</h2>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:28px; height:520px;">
+                <div class="step c rv" style="--d:.14s">
+                    <span class="ord">01</span>
+                    <h3>档期是物理的</h3>
+                    <p class="card" style="margin-top:22px;">一条口播要占真人一天。想做一百条素材去投放赛马，在传统链路里不是预算问题，是物理问题。</p>
+                    <span class="mark">时间不可复制</span>
+                </div>
+                <div class="step g rv" style="--d:.22s">
+                    <span class="ord">02</span>
+                    <h3>授权是纸面的</h3>
+                    <p class="card" style="margin-top:22px;">合同是一份 PDF，用途边界写在条款里、记在人脑里。用到哪些平台、剪成多少条，只能事后追责。</p>
+                    <span class="mark">边界不可执行</span>
+                </div>
+                <div class="step p rv" style="--d:.30s">
+                    <span class="ord">03</span>
+                    <h3>商单靠人脉</h3>
+                    <p class="card" style="margin-top:22px;">需求方找不到对的人，艺人不知道有单在找自己。一次合作从接触到签约动辄数周。</p>
+                    <span class="mark">匹配不可扩张</span>
+                </div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">三件事叠在一起，明星 IP 的价值被交易摩擦吃掉一大半</span>
+            <span class="cap">Chapter I</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     06 · 陈述句
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-pink">
+    <div class="pad statement">
+        <div class="topbar">
+            <span class="label">Statement</span>
+            <span class="cap">06 / 25</span>
+        </div>
+        <div class="main">
+            <div class="display rv" style="--d:.15s; max-width: 1560px;">
+                稀缺的从来不是<br>明星的脸，<br>是把这张脸安全地、<br>批量地用出去的能力
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第一章 · 行业困局</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     07 · 章扉 II · 新变量
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad statement">
+        <div class="topbar">
+            <span class="label">Chapter II</span>
+            <span class="cap">07 / 25</span>
+        </div>
+        <div class="main">
+            <div class="label cn rv" style="--d:.1s; margin-bottom: 28px;">一个新变量</div>
+            <div class="display rv" style="--d:.2s; color: var(--pink); max-width: 1520px;">
+                明星的时间，<br>第一次可以脱离<br>他本人存在
+            </div>
+            <div class="rule rl" style="--d:.5s; margin: 38px 0 28px; max-width: 700px;"></div>
+            <p class="lg rv" style="--d:.56s; max-width: 1120px; color: var(--cream);">
+                数字分身与授权切片，把「明星出场」从一次性的档期消耗，变成一份可以反复调用的资产。
+                档期这堵物理的墙，第一次有了绕过去的办法。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第二章 · 新变量</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     08 · 两边各缺一半
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">The Gap</span>
+            <span class="cap">08 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="rv" style="--d:.06s; margin-bottom: 44px;">但这件事，谁都做不成一半</h2>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; height:400px;">
+                <div class="tile c rv" style="--d:.14s">
+                    <span class="ord">Side A</span>
+                    <h3 style="margin-top:20px;">技术公司做不进明星圈</h3>
+                    <p class="card" style="margin-top:20px;">系统再好，签不到人就没有资产。明星与经纪团队的信任是十几年攒出来的，不是 BD 能补的。</p>
+                    <span class="foot">缺资源入口</span>
+                </div>
+                <div class="tile p rv" style="--d:.22s">
+                    <span class="ord">Side B</span>
+                    <h3 style="margin-top:20px;">明星圈做不出技术底座</h3>
+                    <p class="card" style="margin-top:20px;">资源再深，没有登记、授权、溯源与结算的系统，每一单都要重新谈、重新做、重新对账。</p>
+                    <span class="foot">缺产能与治理</span>
+                </div>
+            </div>
+            <div class="rule rl" style="--d:.34s; margin: 40px 0 30px;"></div>
+            <p class="lg rv" style="--d:.4s; max-width: 1420px;">
+                所以这门生意的答案不是「谁投谁」，而是<span style="color:var(--green); font-weight:500;">两种稀缺资源合资成立一家公司</span> ——
+                各出各的不可替代项，绑在同一张资产负债表上。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第二章 · 新变量</span>
+            <span class="cap">Chapter II</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     09 · 章扉 III · 我们是谁
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad statement">
+        <div class="topbar">
+            <span class="label">Chapter III</span>
+            <span class="cap">09 / 25</span>
+        </div>
+        <div class="main">
+            <div class="label cn rv" style="--d:.1s; margin-bottom: 28px;">我们是谁</div>
+            <div class="display rv" style="--d:.2s; color: var(--pink); max-width: 1520px;">
+                AI Star<br>Ecosystem
+            </div>
+            <div class="rule rl" style="--d:.5s; margin: 38px 0 28px; max-width: 700px;"></div>
+            <p class="lg rv" style="--d:.56s; max-width: 1160px; color: var(--cream);">
+                一家已经把系统跑起来的 AI 文娱生产公司。不是概念，不是 demo ——
+                五个前端、一套后端、一本不可变账本，五条业务线已经在真实业务上跑通。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第三章 · 我们是谁</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     10 · 五端一栈
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">The Stack</span>
+            <span class="cap">10 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="rv" style="--d:.06s; margin-bottom: 40px;">五个端，一套后端，一本账</h2>
+            <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:22px; height:392px;">
+                <div class="tile c rv" style="--d:.12s; padding:32px 26px 28px;">
+                    <span class="ord">01</span>
+                    <h4 style="margin-top:18px; font-size:36px;">数字资产平台</h4>
+                    <p class="card" style="margin-top:16px; font-size:24px;">六类资产一次登记，IP 容器与跨资产合成</p>
+                    <span class="foot" style="font-size:21px;">已跑通</span>
+                </div>
+                <div class="tile g rv" style="--d:.18s; padding:32px 26px 28px;">
+                    <span class="ord">02</span>
+                    <h4 style="margin-top:18px; font-size:36px;">AI 短剧工坊</h4>
+                    <p class="card" style="margin-top:16px; font-size:24px;">五阶段项目制 · 逐镜分镜表 · 一致性引擎</p>
+                    <span class="foot" style="font-size:21px;">已跑通</span>
+                </div>
+                <div class="tile p rv" style="--d:.24s; padding:32px 26px 28px;">
+                    <span class="ord">03</span>
+                    <h4 style="margin-top:18px; font-size:36px;">AI 明星带货</h4>
+                    <p class="card" style="margin-top:16px; font-size:24px;">一次授权批量出片，混剪量产与多平台分发</p>
+                    <span class="foot" style="font-size:21px;">已跑通</span>
+                </div>
+                <div class="tile gl rv" style="--d:.30s; padding:32px 26px 28px;">
+                    <span class="ord">04</span>
+                    <h4 style="margin-top:18px; font-size:36px;">明星商务工作台</h4>
+                    <p class="card" style="margin-top:16px; font-size:24px;">授权、内容、商品三条闸门由明星侧自己批</p>
+                    <span class="foot" style="font-size:21px;">已跑通</span>
+                </div>
+                <div class="tile c rv" style="--d:.36s; padding:32px 26px 28px;">
+                    <span class="ord">05</span>
+                    <h4 style="margin-top:18px; font-size:36px;">AI 歌手</h4>
+                    <p class="card" style="margin-top:16px; font-size:24px;">形象引入、批量出内容、六渠道上架与结算</p>
+                    <span class="foot" style="font-size:21px;">已跑通</span>
+                </div>
+            </div>
+            <div class="rule rl" style="--d:.44s; margin: 34px 0 26px;"></div>
+            <p class="rv" style="--d:.5s; max-width: 1500px;">
+                五个端共享同一套服务端与同一本账本 —— <span style="color:var(--green); font-weight:500;">一份资产、一套账、一次授权，四条线一起赚</span>。
+                这不是四个彼此独立的项目，是一块地基上的四栋楼。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第三章 · 我们是谁</span>
+            <span class="cap">AI Star Ecosystem</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     11 · 中枢：六类资产
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">The Core</span>
+            <span class="cap">11 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="sm rv" style="--d:.06s; margin-bottom: 40px;">中枢是一句话：一次登记，处处复用</h2>
+            <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:20px; height:240px;">
+                <div class="tile p rv"  style="--d:.12s; padding:28px 22px 24px;"><span class="ord">DH</span><h4 style="margin-top:14px; font-size:34px;">人物</h4><span class="foot" style="font-size:20px;">真人复刻</span></div>
+                <div class="tile c rv"  style="--d:.17s; padding:28px 22px 24px; background:var(--cream); border-color:var(--cream);"><span class="ord">IP</span><h4 style="margin-top:14px; font-size:34px;">品牌 IP</h4><span class="foot" style="font-size:20px;">资产容器</span></div>
+                <div class="tile gl rv" style="--d:.22s; padding:28px 22px 24px;"><span class="ord">SC</span><h4 style="margin-top:14px; font-size:34px;">场景</h4><span class="foot" style="font-size:20px;">实拍或生成</span></div>
+                <div class="tile p rv"  style="--d:.27s; padding:28px 22px 24px;"><span class="ord">PD</span><h4 style="margin-top:14px; font-size:34px;">产品</h4><span class="foot" style="font-size:20px;">带货主体</span></div>
+                <div class="tile gl rv" style="--d:.32s; padding:28px 22px 24px;"><span class="ord">VO</span><h4 style="margin-top:14px; font-size:34px;">声音</h4><span class="foot" style="font-size:20px;">音色授权</span></div>
+                <div class="tile c rv"  style="--d:.37s; padding:28px 22px 24px; background:var(--cream); border-color:var(--cream);"><span class="ord">ST</span><h4 style="margin-top:14px; font-size:34px;">风格</h4><span class="foot" style="font-size:20px;">视觉一致</span></div>
+            </div>
+            <div class="rule rl" style="--d:.44s; margin: 40px 0 32px;"></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:80px;">
+                <div class="rv" style="--d:.5s">
+                    <div class="cap" style="margin-bottom:16px;">授权是硬闸，不是提示</div>
+                    <p style="color:var(--cream);">出片之前系统强制核对授权：真人复刻缺一份生效授权，直接拒绝出片 ——
+                        <span style="color:var(--pink); font-weight:500;">不建单、不扣费、不产出</span>。</p>
+                </div>
+                <div class="rv" style="--d:.58s">
+                    <div class="cap" style="margin-bottom:16px;">每一次使用都留双向引用</div>
+                    <p style="color:var(--cream);">成片会登记为该 IP 的衍生物，同时给用到的每一个资产写一条使用记录 ——
+                        <span style="color:var(--pink); font-weight:500;">谁用了我、我用了谁，两头都查得到</span>。</p>
+                </div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第三章 · 我们是谁</span>
+            <span class="cap">Digital Asset Platform</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     12 · 我们是怎样的团队
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">The Team</span>
+            <span class="cap">12 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="sm rv" style="--d:.06s; margin-bottom: 24px;">我们做出来的东西，在生意上解决了什么</h2>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+                <div class="tile g rv" style="--d:.14s; padding:26px 30px 22px;">
+                    <span class="ord">01 · 内容成本</span>
+                    <h4 style="margin-top:16px;">一条明星口播，不再占一天档期</h4>
+                    <p class="card" style="margin-top:16px;">填一次模板批量渲出变体，每条参数不同、各带指纹与水印。内容成本从按天算变成按条算。</p>
+                    <span class="foot" style="padding-top:16px;">投放赛马第一次做得起</span>
+                </div>
+                <div class="tile c rv" style="--d:.20s; padding:26px 30px 22px;">
+                    <span class="ord">02 · 资产复用</span>
+                    <h4 style="margin-top:16px;">一份资产，四条业务线一起用</h4>
+                    <p class="card" style="margin-top:16px;">六类资产一次登记，短剧、带货、发歌、品牌合作调用同一份 —— 不重做、不走样、不重复付费。</p>
+                    <span class="foot" style="padding-top:16px;">用的次数越多越划算</span>
+                </div>
+                <div class="tile p rv" style="--d:.26s; padding:26px 30px 22px;">
+                    <span class="ord">03 · 签约转化</span>
+                    <h4 style="margin-top:16px;">没有生效授权，系统根本出不了片</h4>
+                    <p class="card" style="margin-top:16px;">授权不是合同里的一句话，是出片前会挡住流程的一道闸：用途有边界、越界直接拒绝。</p>
+                    <span class="foot" style="padding-top:16px;">明星敢不敢签，看这一条</span>
+                </div>
+                <div class="tile g rv" style="--d:.32s; padding:26px 30px 22px;">
+                    <span class="ord">04 · 规模化分账</span>
+                    <h4 style="margin-top:16px;">跟明星、经纪人、二级公司分账不扯皮</h4>
+                    <p class="card" style="margin-top:16px;">生成前预冻结、失败自动退回，所有收支只能记账不能改账，每一笔都倒查得到来源。</p>
+                    <span class="foot" style="padding-top:16px;">二级公司能复制的前提</span>
+                </div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">这四件都不是规划 —— 五条业务线已上线，合资后签下明星就能开跑，不必等产品</span>
+            <span class="cap">Chapter III</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     13 · 团队构成（待补充占位）
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Company Facts</span>
+            <span class="cap">13 / 25</span>
+        </div>
+        <div class="main">
+            <span class="fict rv" style="--d:.05s; color: var(--pink-deep); margin-bottom: 30px;">待补充 · 请填入真实信息</span>
+            <h2 class="sm rv" style="--d:.1s; margin-bottom: 44px;">团队与交付节奏</h2>
+            <dl class="metadl rv" style="--d:.2s; grid-template-columns:repeat(4,1fr);">
+                <div><dt>成立时间</dt><dd>＿＿＿＿年</dd></div>
+                <div><dt>团队规模</dt><dd>＿＿ 人</dd></div>
+                <div><dt>工程与算法占比</dt><dd>＿＿ %</dd></div>
+                <div><dt>核心成员背景</dt><dd>＿＿＿＿＿＿</dd></div>
+            </dl>
+            <dl class="metadl rv" style="--d:.3s; grid-template-columns:repeat(4,1fr); margin-top:44px;">
+                <div><dt>已上线子产品</dt><dd>5 条业务线</dd></div>
+                <div><dt>当前版本</dt><dd>v0.104</dd></div>
+                <div><dt>客户价值推介材料</dt><dd>五册已成型</dd></div>
+                <div><dt>目标客户类型</dt><dd>企业 B 端 · 政府 G 端</dd></div>
+            </dl>
+            <div class="rule rl" style="--d:.4s; margin: 48px 0 32px;"></div>
+            <p class="rv" style="--d:.46s; max-width: 1480px;">
+                下半区四项来自已上线系统的真实状态；上半区四项需要在对外版本中补上准确数字 ——
+                这一页在正式路演前必须由我方填实。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第三章 · 我们是谁</span>
+            <span class="cap">AI Star Ecosystem</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     14 · 章扉 IV · 会合
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad statement">
+        <div class="topbar">
+            <span class="label">Chapter IV</span>
+            <span class="cap">14 / 25</span>
+        </div>
+        <div class="main">
+            <div class="label cn rv" style="--d:.1s; margin-bottom: 28px;">两股力量会合</div>
+            <div class="display rv" style="--d:.2s; color: var(--pink); max-width: 1520px;">
+                一边有人，<br>一边有系统，<br>合起来才有生意
+            </div>
+            <div class="rule rl" style="--d:.5s; margin: 38px 0 28px; max-width: 700px;"></div>
+            <p class="lg rv" style="--d:.56s; max-width: 1120px; color: var(--cream);">
+                双方合资成立平台公司「漫星工坊」，作为整个文娱生态的运营主体与唯一枢纽。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第四章 · 会合</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     15 · 各出什么
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Contributions</span>
+            <span class="cap">15 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="rv" style="--d:.06s; margin-bottom: 44px;">各出各的不可替代项</h2>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; height:470px;">
+                <div class="tile p rv" style="--d:.14s">
+                    <span class="ord">甲方 · 张漫</span>
+                    <h3 style="margin-top:20px;">明星签约资源</h3>
+                    <p class="card" style="margin-top:22px;">
+                        北京广播学院播音专业出身，长期从事电视节目策划、主持、制作与演艺经纪，曾任《音乐现场》主编。
+                        以制作人身份操盘《最美和声》《女神的新衣》《前往世界的尽头》《星球者联盟》《超强音浪》《一起乐队吧》，
+                        并与方文山合作推出元宇宙艺术展节目《漫漫文山流》。
+                    </p>
+                    <span class="foot">明星侧资源的核心入口</span>
+                </div>
+                <div class="tile g rv" style="--d:.22s">
+                    <span class="ord">乙方 · 我方</span>
+                    <h3 style="margin-top:20px;">技术平台与客户渠道</h3>
+                    <p class="card" style="margin-top:22px;">
+                        一个完整的技术平台：数字人生成、数字资产管理、切片分发与授权管理、AI 视频制作能力，
+                        已在五条业务线上跑通。加上已有的企业用户与政府用户等 B 端与 G 端客户渠道 ——
+                        资产做出来就有地方卖。
+                    </p>
+                    <span class="foot">产能、治理与需求侧</span>
+                </div>
+            </div>
+            <div class="rule rl" style="--d:.32s; margin: 38px 0 28px;"></div>
+            <p class="rv" style="--d:.38s; max-width: 1500px;">
+                出资方式（现金、技术作价、资源折价）与具体比例，以双方最终谈判并签署的协议为准。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第四章 · 会合</span>
+            <span class="cap">Chapter IV</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     16 · 虚构案例 · 林澜（下）
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Case · After</span>
+            <span class="cap">16 / 25</span>
+        </div>
+        <div class="main">
+            <span class="fict rv" style="--d:.05s; color: var(--pink); margin-bottom: 26px;">虚构示例 · 用于说明机制</span>
+            <h2 class="sm rv" style="--d:.1s; max-width:1500px;">四小时采集之后的半年，林澜一天没进过直播间</h2>
+            <div class="rule rl" style="--d:.28s; margin: 40px 0 36px;"></div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:56px;">
+                <div class="rv" style="--d:.34s">
+                    <div class="cap" style="margin-bottom:14px;">数字分身出镜</div>
+                    <div class="figure sm" style="color:var(--pink);">47<span class="unit"> 场</span></div>
+                    <p class="card" style="margin-top:14px; color:var(--cream);">直播带货，全部由二级公司运营</p>
+                </div>
+                <div class="rv" style="--d:.42s">
+                    <div class="cap" style="margin-bottom:14px;">切片授权企业</div>
+                    <div class="figure sm" style="color:var(--pink);">12<span class="unit"> 家</span></div>
+                    <p class="card" style="margin-top:14px; color:var(--cream);">按范围与期限计费，可续可停</p>
+                </div>
+                <div class="rv" style="--d:.50s">
+                    <div class="cap" style="margin-bottom:14px;">累计成片</div>
+                    <div class="figure sm" style="color:var(--pink);">203<span class="unit"> 条</span></div>
+                    <p class="card" style="margin-top:14px; color:var(--cream);">每条都带指纹、水印与溯源记录</p>
+                </div>
+                <div class="rv" style="--d:.58s">
+                    <div class="cap" style="margin-bottom:14px;">本人投入档期</div>
+                    <div class="figure sm" style="color:var(--pink);">0<span class="unit"> 天</span></div>
+                    <p class="card" style="margin-top:14px; color:var(--cream);">除最初一次四小时形象采集</p>
+                </div>
+            </div>
+            <div class="rule rl" style="--d:.66s; margin: 40px 0 28px;"></div>
+            <p class="lg rv" style="--d:.72s; max-width: 1520px; color:var(--cream);">
+                她的收入结构从「按档期收费」变成
+                <span style="color:var(--pink); font-weight:500;">资产授权费 ＋ 内容分成</span> ——
+                这就是整个生态要为每一位签约明星做的事。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">人物与数字均为虚构，仅用于说明业务机制</span>
+            <span class="cap">Chapter IV</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     17 · 章扉 V · 生态怎么长
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-pink">
+    <div class="pad statement">
+        <div class="topbar">
+            <span class="label">Chapter V</span>
+            <span class="cap">17 / 25</span>
+        </div>
+        <div class="main">
+            <div class="label cn rv" style="--d:.1s; margin-bottom: 28px;">生态怎么长</div>
+            <div class="display rv" style="--d:.2s; max-width: 1520px;">
+                一个中台，<br>N 个前台公司
+            </div>
+            <div class="rule rl" style="--d:.5s; margin: 38px 0 28px; max-width: 700px;"></div>
+            <p class="lg rv" style="--d:.56s; max-width: 1180px;">
+                漫星工坊自己不去追每一位明星。它做的是把标准、系统与授权模板做厚，
+                让每一个愿意带明星进来的经纪人，都能在两周内开出一家能赚钱的公司。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第五章 · 生态怎么长</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     18 · 生态五层
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Ecosystem Stack</span>
+            <span class="cap">18 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="sm rv" style="--d:.06s; margin-bottom: 24px;">文娱生态的五层结构</h2>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <div class="layer p rv" style="--d:.14s">
+                    <div><div class="lname">资源层</div><div class="lsub">Talent Access</div></div>
+                    <div class="lbody">明星与经纪人网络。张漫是这一层的唯一入口 —— 决定生态能签到谁、铺多快。</div>
+                </div>
+                <div class="layer g rv" style="--d:.20s">
+                    <div><div class="lname">资产层</div><div class="lsub">Digital Assets</div></div>
+                    <div class="lbody">六类资产一次登记：人物、IP、场景、产品、声音、风格。带编号、带版本、带授权，是整个生态的真值来源。</div>
+                </div>
+                <div class="layer c rv" style="--d:.26s">
+                    <div><div class="lname">产能层</div><div class="lsub">Content Engines</div></div>
+                    <div class="lbody">四条内容线复用同一份资产：AI 短剧、AI 明星带货、AI 歌手、明星宣推。资产做一次，四条线一起用。</div>
+                </div>
+                <div class="layer gl rv" style="--d:.32s">
+                    <div><div class="lname">交易层</div><div class="lsub">Settlement</div></div>
+                    <div class="lbody">授权闸、内容审核、全链路溯源、不可变账本与分成结算。让每一次使用都是一笔可对账的交易。</div>
+                </div>
+                <div class="layer p rv" style="--d:.38s">
+                    <div><div class="lname">组织层</div><div class="lsub">Company Matrix</div></div>
+                    <div class="lbody">二级公司与合作公司矩阵。每家公司负责一位明星或一个艺人矩阵，平台能力由漫星工坊统一输出。</div>
+                </div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">下面三层是我方带来的，最上面一层是漫姐带来的</span>
+            <span class="cap">Chapter V</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     19 · 平台演进三步
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Platform Play</span>
+            <span class="cap">19 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="rv" style="--d:.06s; margin-bottom: 42px;">旗下平台怎么一步步长起来</h2>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:28px; height:500px;">
+                <div class="step c rv" style="--d:.14s">
+                    <span class="ord">Step 01 · 自营</span>
+                    <h3>先自己跑通</h3>
+                    <p class="card" style="margin-top:20px;">漫星工坊亲自签下首批 3—5 位标杆明星，自己做资产、自己接单、自己交付，把单位经济算清楚 —— 一位明星一年能产出多少，成本多少。</p>
+                    <span class="mark">产出可复制的 SOP</span>
+                </div>
+                <div class="step g rv" style="--d:.22s">
+                    <span class="ord">Step 02 · 加盟</span>
+                    <h3>把能力打包输出</h3>
+                    <p class="card" style="margin-top:20px;">把跑通的东西封装成三件套：一套 SOP、一套系统账号、一套授权模板。经纪人带明星进来，两周开出一家二级公司。</p>
+                    <span class="mark">平台费 ＋ 分成</span>
+                </div>
+                <div class="step p rv" style="--d:.30s">
+                    <span class="ord">Step 03 · 开放</span>
+                    <h3>做成行业基础设施</h3>
+                    <p class="card" style="margin-top:20px;">向 MCN、品牌方、地方文旅与政务宣传开放接入，探索数字资产的确权与交易机制。别人在上面做生意，我们收基础设施的钱。</p>
+                    <span class="mark">生态位而非项目位</span>
+                </div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">每一步都以上一步跑通为前提，不跳步</span>
+            <span class="cap">Chapter V</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     20 · 收入结构
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Revenue</span>
+            <span class="cap">20 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="sm rv" style="--d:.06s; margin-bottom: 22px;">钱从四个地方来</h2>
+            <p class="rv" style="--d:.12s; max-width:1400px; color:var(--cream); margin-bottom:38px;">
+                同一份资产被复用的次数越多，边际成本越低 —— 这是这门生意的核心杠杆。
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:24px; height:376px;">
+                <div class="tile p rv" style="--d:.2s; padding:34px 28px 30px;">
+                    <span class="ord">01</span>
+                    <h4 style="margin-top:18px;">资产登记与生成</h4>
+                    <p class="card" style="margin-top:16px;">数字分身建模、资产登记与版本维护，一次性费用加年度托管</p>
+                    <span class="foot" style="font-size:21px;">按次 ＋ 订阅</span>
+                </div>
+                <div class="tile c rv" style="--d:.27s; padding:34px 28px 30px; background:var(--cream); border-color:var(--cream);">
+                    <span class="ord">02</span>
+                    <h4 style="margin-top:18px;">内容产能</h4>
+                    <p class="card" style="margin-top:16px;">短剧按集、带货短视频按条、歌曲按首，用多少算多少</p>
+                    <span class="foot" style="font-size:21px;">按量计费</span>
+                </div>
+                <div class="tile gl rv" style="--d:.34s; padding:34px 28px 30px;">
+                    <span class="ord">03</span>
+                    <h4 style="margin-top:18px;">切片授权分发</h4>
+                    <p class="card" style="margin-top:16px;">面向企业与政府客户的形象推广授权，按范围、期限与投放位计价</p>
+                    <span class="foot" style="font-size:21px;">授权费</span>
+                </div>
+                <div class="tile p rv" style="--d:.41s; padding:34px 28px 30px;">
+                    <span class="ord">04</span>
+                    <h4 style="margin-top:18px;">交易分成</h4>
+                    <p class="card" style="margin-top:16px;">带货 GMV 分成，以及二级公司的平台费与收益分成</p>
+                    <span class="foot" style="font-size:21px;">GMV ＋ 平台费</span>
+                </div>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第五章 · 生态怎么长</span>
+            <span class="cap">Revenue Structure</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     21 · 三层公司架构
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Chapter VI · Structure</span>
+            <span class="cap">21 / 25</span>
+        </div>
+        <div class="main top">
+            <h2 class="sm rv" style="--d:.06s; margin-bottom: 30px;">组织怎么复制：三层公司结构</h2>
+
+            <div style="position:relative; height:512px;">
+                <!-- 第一层 -->
+                <div class="orgbox c rv" style="--d:.14s; position:absolute; left:250px; top:0; width:420px; height:112px;">
+                    <div class="on">乙方 · 我方</div>
+                    <div class="os">技术平台 · B 端与 G 端渠道</div>
+                </div>
+                <div class="orgbox p rv" style="--d:.18s; position:absolute; left:1010px; top:0; width:420px; height:112px;">
+                    <div class="on">甲方 · 张漫</div>
+                    <div class="os">明星资源 · 经纪人网络</div>
+                </div>
+                <!-- 连线 -->
+                <div class="conn rv" style="--d:.26s; left:460px;  top:112px; width:2px;   height:48px;"></div>
+                <div class="conn rv" style="--d:.26s; left:1220px; top:112px; width:2px;   height:48px;"></div>
+                <div class="conn rv" style="--d:.28s; left:460px;  top:158px; width:762px; height:2px;"></div>
+                <div class="conn rv" style="--d:.30s; left:840px;  top:158px; width:2px;   height:44px;"></div>
+                <!-- 第二层 -->
+                <div class="orgbox g rv" style="--d:.34s; position:absolute; left:560px; top:202px; width:560px; height:118px;">
+                    <div class="on" style="font-size:46px;">漫星工坊</div>
+                    <div class="os">合资平台公司 · 生态唯一枢纽</div>
+                </div>
+                <!-- 下沉连线 -->
+                <div class="conn rv" style="--d:.42s; left:840px; top:320px; width:2px;    height:44px;"></div>
+                <div class="conn rv" style="--d:.44s; left:230px; top:364px; width:1220px; height:2px;"></div>
+                <div class="conn rv" style="--d:.46s; left:230px; top:364px; width:2px;    height:44px;"></div>
+                <div class="conn rv" style="--d:.46s; left:640px; top:364px; width:2px;    height:44px;"></div>
+                <div class="conn rv" style="--d:.46s; left:1050px; top:364px; width:2px;   height:44px;"></div>
+                <div class="conn rv" style="--d:.46s; left:1448px; top:364px; width:2px;   height:44px;"></div>
+                <!-- 第三层 -->
+                <div class="orgbox g rv" style="--d:.52s; position:absolute; left:60px;   top:408px; width:340px; height:100px;">
+                    <div class="on" style="font-size:32px;">二级公司</div>
+                    <div class="os">模式 A · 51 / 49 合资</div>
+                </div>
+                <div class="orgbox g rv" style="--d:.56s; position:absolute; left:470px;  top:408px; width:340px; height:100px;">
+                    <div class="on" style="font-size:32px;">二级公司</div>
+                    <div class="os">模式 A · × N</div>
+                </div>
+                <div class="orgbox p rv" style="--d:.60s; position:absolute; left:880px;  top:408px; width:340px; height:100px;">
+                    <div class="on" style="font-size:32px;">合作公司</div>
+                    <div class="os">模式 B · 协议接入</div>
+                </div>
+                <div class="orgbox p rv" style="--d:.64s; position:absolute; left:1290px; top:408px; width:340px; height:100px;">
+                    <div class="on" style="font-size:32px;">合作公司</div>
+                    <div class="os">模式 B · × N</div>
+                </div>
+            </div>
+
+            <div class="rule rl" style="--d:.72s; margin: 26px 0 22px;"></div>
+            <div class="legend rv" style="--d:.78s; color:var(--green);">
+                <span><i style="background:var(--green);"></i>股权关系（合资）</span>
+                <span><i style="background:var(--pink);"></i>协议关系（业务合作 / 平台授权）</span>
+                <span><i style="background:var(--cream-2); border:2px solid var(--green);"></i>股东</span>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第六章 · 组织怎么复制</span>
+            <span class="cap">Manxing Atelier</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     22 · 模式 A / B
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Two Paths Down</span>
+            <span class="cap">22 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="rv" style="--d:.06s; margin-bottom: 42px;">同一套能力，两种接入方式</h2>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; height:470px;">
+                <div class="tile g rv" style="--d:.14s">
+                    <span class="ord">模式 A · 直接合资</span>
+                    <h3 style="margin-top:20px;">二级公司</h3>
+                    <p class="card" style="margin-top:22px;">
+                        漫星工坊与有能力的经纪人或操盘人直接合资设立。经纪人牵头调动明星资源，
+                        负责单一明星或艺人矩阵的数字分身签约与日常运营，平台能力由漫星工坊统一输出。
+                    </p>
+                    <p class="card" style="margin-top:18px;">
+                        建议漫星工坊持股 51%、经纪人方 49%；也可按经纪人所掌握明星资源的分量，个案调整为参股模式。
+                    </p>
+                    <span class="foot">换的是控制力</span>
+                </div>
+                <div class="tile p rv" style="--d:.22s">
+                    <span class="ord">模式 B · 信任前置</span>
+                    <h3 style="margin-top:20px;">合作公司</h3>
+                    <p class="card" style="margin-top:22px;">
+                        部分经纪人基于对张漫的信任关系，先与张漫合资设立公司，
+                        再由该公司与漫星工坊签订业务合作或平台授权协议接入体系。
+                    </p>
+                    <p class="card" style="margin-top:18px;">
+                        此模式下漫星工坊与合作公司之间是协议关系而非股权关系；股权由张漫与经纪人另行商定，
+                        平台仅以协议约定确权、使用范围与收益分成。
+                    </p>
+                    <span class="foot">换的是落地速度</span>
+                </div>
+            </div>
+            <div class="rule rl" style="--d:.32s; margin: 38px 0 28px;"></div>
+            <p class="rv" style="--d:.38s; max-width: 1520px;">
+                两种模式并行推进。无论走哪条，<span style="color:var(--green); font-weight:500;">数字资产的标准、授权规则与分成体系都由漫星工坊统一定义</span>。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第六章 · 组织怎么复制</span>
+            <span class="cap">Chapter VI</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     23 · 股权建议
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Equity · Proposed</span>
+            <span class="cap">23 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="sm rv" style="--d:.06s; margin-bottom: 22px;">股权关系（建议方案）</h2>
+            <p class="rv" style="--d:.12s; max-width:1400px; color:var(--cream); margin-bottom:40px;">
+                控股权的意义不在分红，在于让平台的技术路线、资产标准与授权规则有一个能拍板的人。
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:28px; height:388px;">
+                <div class="tile p rv" style="--d:.2s; padding:34px 30px 30px;">
+                    <span class="ord">层级 01 · 漫星工坊</span>
+                    <div class="figure sm" style="margin-top:16px; font-size:104px;">51 / 49</div>
+                    <p class="card" style="margin-top:16px;">乙方以技术平台与市场渠道作价出资并保持控股；张漫方以明星资源深度绑定，享有重大事项参与权与分红权。</p>
+                    <span class="foot" style="font-size:21px;">乙方 51 · 张漫方 49</span>
+                </div>
+                <div class="tile c rv" style="--d:.28s; padding:34px 30px 30px; background:var(--cream); border-color:var(--cream);">
+                    <span class="ord">层级 02 · 二级公司</span>
+                    <div class="figure sm" style="margin-top:16px; font-size:104px;">51 / 49</div>
+                    <p class="card" style="margin-top:16px;">保证平台对数字资产标准、授权规则与分成体系的统一控制；可按资源分量个案调整为漫星工坊参股。</p>
+                    <span class="foot" style="font-size:21px;">漫星工坊 51 · 经纪人 49</span>
+                </div>
+                <div class="tile gl rv" style="--d:.36s; padding:34px 30px 30px;">
+                    <span class="ord">层级 03 · 合作公司</span>
+                    <div class="figure sm" style="margin-top:16px; font-size:104px;">另议</div>
+                    <p class="card" style="margin-top:16px;">张漫与经纪人基于信任关系另行商定，漫星工坊不介入其股权安排，仅以平台授权协议约定确权与分成。</p>
+                    <span class="foot" style="font-size:21px;">平台不持股</span>
+                </div>
+            </div>
+            <p class="rv" style="--d:.46s; margin-top:34px; color:var(--cream);">
+                以上均为建议方案。具体比例、出资方式与董事会席位安排，以双方最终谈判为准。
+            </p>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第六章 · 组织怎么复制</span>
+            <span class="cap">Subject To Final Agreement</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     24 · 三阶段路线 + 合规基石
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide">
+    <div class="pad">
+        <div class="topbar">
+            <span class="label">Chapter VII · Roadmap</span>
+            <span class="cap">24 / 25</span>
+        </div>
+        <div class="main">
+            <h2 class="sm rv" style="--d:.06s; margin-bottom: 36px;">三阶段，以及一条不能踩的线</h2>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:26px; height:352px;">
+                <div class="step c rv" style="--d:.14s; padding:32px 28px 26px;">
+                    <span class="ord">1 — 2 个月</span>
+                    <h3 style="font-size:44px; margin-top:18px;">平台搭建期</h3>
+                    <p class="card" style="margin-top:16px;">完成漫星工坊设立与股权交割；分身生成、资产管理与切片授权完成产品化；签约 3—5 位标杆明星，跑通两个最小闭环。</p>
+                    <span class="mark" style="padding-top:18px;">证明单位经济</span>
+                </div>
+                <div class="step g rv" style="--d:.22s; padding:32px 28px 26px;">
+                    <span class="ord">3 — 6 个月</span>
+                    <h3 style="font-size:44px; margin-top:18px;">矩阵扩张期</h3>
+                    <p class="card" style="margin-top:16px;">模式 A 与 B 并行，与 3—10 个经纪人团队设立公司形成艺人矩阵；建立面向企业与政府的标准化报价与交付体系。</p>
+                    <span class="mark" style="padding-top:18px;">形成规模化分发收入</span>
+                </div>
+                <div class="step p rv" style="--d:.30s; padding:32px 28px 26px;">
+                    <span class="ord">6 个月以后</span>
+                    <h3 style="font-size:44px; margin-top:18px;">平台生态期</h3>
+                    <p class="card" style="margin-top:16px;">开放为行业级基础设施，向 MCN、品牌方、文旅与政务输出能力；探索确权与交易机制；视体量启动融资。</p>
+                    <span class="mark" style="padding-top:18px;">全国化扩张</span>
+                </div>
+            </div>
+            <div class="rule rl" style="--d:.4s; margin: 34px 0 26px;"></div>
+            <div class="rv" style="--d:.46s; display:grid; grid-template-columns:280px 1fr; gap:44px; align-items:start;">
+                <div class="cap" style="line-height:1.5;">合规基石<br>Non-Negotiable</div>
+                <p style="max-width:1300px;">
+                    与明星签署数字分身及切片授权时，必须取得
+                    <span style="color:var(--green); font-weight:500;">肖像权、声音权及表演者权的明确书面授权</span>，
+                    并约定 AI 生成内容的使用边界。对外称张漫为投资人的口径，应与工商登记的实际股权结构保持可解释的一致性；
+                    涉及代持的须签书面协议。这一条不成立，上面三个阶段都不成立。
+                </p>
+            </div>
+        </div>
+        <div class="footline">
+            <span class="cap cn">第七章 · 路线与底线</span>
+            <span class="cap">Chapter VII</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     25 · 结语 · 待决事项
+     ══════════════════════════════════════════════════════════ -->
+<section class="slide on-green">
+    <div class="pad wide">
+        <div class="topbar">
+            <span class="label">Next</span>
+            <span class="monogram">MXG</span>
+        </div>
+        <div class="main">
+            <div class="hero rv" style="--d:.15s; color: var(--pink); font-size:180px;">下一步</div>
+            <div class="rule rl" style="--d:.4s; margin: 40px 0 38px;"></div>
+            <dl class="metadl rv" style="--d:.48s; grid-template-columns:repeat(3,1fr);">
+                <div><dt>待定 01</dt><dd style="color:var(--cream);">漫星工坊股比与出资作价</dd></div>
+                <div><dt>待定 02</dt><dd style="color:var(--cream);">董事会席位与重大事项范围</dd></div>
+                <div><dt>待定 03</dt><dd style="color:var(--cream);">首批 3—5 位标杆明星名单</dd></div>
+            </dl>
+            <dl class="metadl rv" style="--d:.56s; grid-template-columns:repeat(3,1fr); margin-top:36px;">
+                <div><dt>待定 04</dt><dd style="color:var(--cream);">明星授权模板与使用边界</dd></div>
+                <div><dt>待定 05</dt><dd style="color:var(--cream);">代持安排与书面代持协议</dd></div>
+                <div><dt>待定 06</dt><dd style="color:var(--cream);">我方团队信息与对外口径定稿</dd></div>
+            </dl>
+        </div>
+        <div class="footline">
+            <span class="cap cn">本文件为框架性描述，供双方内部讨论使用，一切以最终协议为准</span>
+            <span class="cap">25 / 25</span>
+        </div>
+    </div>
+</section>
+
+</main>
+</div>
+
+<!-- 演示 chrome（舞台之外） -->
+<div class="deck-controls">
+    <button id="btnPrev" aria-label="上一页">‹</button>
+    <span class="bar"><i id="progress"></i></span>
+    <span id="counter">01 / 25</span>
+    <button id="btnNext" aria-label="下一页">›</button>
+</div>
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="编辑模式（E）">✏️</button>
+<div class="edit-hint">编辑模式 · 点击文字修改 · Ctrl+S 保存</div>
+
+<script>
+/* ============================================================
+   放映控制器：整台等比缩放 + 键盘 / 滚轮 / 触摸导航
+   ============================================================ */
+class SlidePresentation {
+    constructor() {
+        this.stage = document.getElementById('deckStage');
+        this.slides = Array.from(document.querySelectorAll('.slide'));
+        this.current = 0;
+        this.counter = document.getElementById('counter');
+        this.progress = document.getElementById('progress');
+        this.fit(); addEventListener('resize', () => this.fit());
+        this.bindKeys(); this.bindWheel(); this.bindTouch();
+        document.getElementById('btnPrev').addEventListener('click', () => this.prev());
+        document.getElementById('btnNext').addEventListener('click', () => this.next());
+        this.show(0);
+    }
+    /* 1920×1080 舞台整体缩放居中；不足则留黑边，绝不重排幻灯内容 */
+    fit() {
+        const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+        this.stage.style.transform =
+            `translate(${(innerWidth - 1920 * s) / 2}px, ${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+    }
+    bindKeys() {
+        addEventListener('keydown', (e) => {
+            if (e.target.getAttribute && e.target.getAttribute('contenteditable')) return;
+            if (['ArrowRight', 'ArrowDown', ' ', 'PageDown'].includes(e.key)) { e.preventDefault(); this.next(); }
+            if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); this.prev(); }
+            if (e.key === 'Home') this.show(0);
+            if (e.key === 'End') this.show(this.slides.length - 1);
+        });
+    }
+    bindWheel() {
+        let lock = false;
+        addEventListener('wheel', (e) => {
+            if (lock || Math.abs(e.deltaY) < 24) return;
+            lock = true; setTimeout(() => lock = false, 620);
+            e.deltaY > 0 ? this.next() : this.prev();
+        }, { passive: true });
+    }
+    bindTouch() {
+        let x0 = null, y0 = null;
+        addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+        addEventListener('touchend', (e) => {
+            if (x0 === null) return;
+            const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+            if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy)) dx < 0 ? this.next() : this.prev();
+            x0 = y0 = null;
+        }, { passive: true });
+    }
+    next() { this.show(this.current + 1); }
+    prev() { this.show(this.current - 1); }
+    show(i) {
+        this.current = Math.max(0, Math.min(i, this.slides.length - 1));
+        this.slides.forEach((s, idx) => {
+            const on = idx === this.current;
+            s.classList.toggle('active', on);
+            s.classList.toggle('visible', on);
+        });
+        const pad = (n) => String(n).padStart(2, '0');
+        this.counter.textContent = `${pad(this.current + 1)} / ${pad(this.slides.length)}`;
+        this.progress.style.width = ((this.current + 1) / this.slides.length * 100) + '%';
+    }
+}
+const deck = new SlidePresentation();
+
+/* ============================================================
+   就地编辑：hover 左上热区或按 E 唤出，改动存 localStorage
+   （不用 CSS ~ 兄弟选择器：pointer-events:none 会断 hover 链）
+   ============================================================ */
+class InlineEditor {
+    constructor(key) {
+        this.key = key; this.isActive = false;
+        this.targets = 'h2,h3,h4,p,dt,dd,.hero,.display,.label,.cap,.ord,.foot,.mark,.name,.figure,.fict,.lname,.lsub,.lbody,.on,.os,.legend span,.monogram';
+        this.restore();
+    }
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        document.getElementById('editToggle').classList.toggle('active', this.isActive);
+        document.querySelectorAll(this.targets).forEach(el => {
+            if (this.isActive) el.setAttribute('contenteditable', 'true'); else el.removeAttribute('contenteditable');
+        });
+        if (!this.isActive) this.save();
+    }
+    save() { try { localStorage.setItem(this.key, document.getElementById('deckStage').innerHTML); } catch (e) {} }
+    restore() { try { const h = localStorage.getItem(this.key); if (h) document.getElementById('deckStage').innerHTML = h; } catch (e) {} }
+}
+const editor = new InlineEditor('deck-manxing-ecosystem');
+
+const hotzone = document.querySelector('.edit-hotzone');
+const editToggle = document.getElementById('editToggle');
+let hideTimeout = null;
+hotzone.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); editToggle.classList.add('show'); });
+hotzone.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+editToggle.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('click', () => editor.toggleEditMode());
+hotzone.addEventListener('click', () => editor.toggleEditMode());
+document.addEventListener('keydown', (e) => {
+    if ((e.key === 'e' || e.key === 'E') && !e.target.getAttribute('contenteditable')) editor.toggleEditMode();
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); editor.save(); }
+});
+</script>
+</body>
+</html>

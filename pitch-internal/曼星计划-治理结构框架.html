@@ -1,0 +1,1199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>「曼星」计划 · 漫星工坊治理结构框架</title>
+
+<!-- 字体：中文 Noto Serif SC（标题 900）/ Noto Sans SC（正文 300–500）
+     拉丁 Bodoni Moda（斜体章号与数字，鎏金）/ JetBrains Mono（全部 chrome 与刻度） -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,600;1,6..96,400;1,6..96,500&family=JetBrains+Mono:wght@300;400;500&family=Noto+Serif+SC:wght@300;400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ============================================================
+   1. 设计令牌 —— 星图印契
+      墨底 / 鎏金（唯一亮 accent）/ 朱印（仅用于「内部」「基石」两处印章）
+      分类不靠颜色，靠线型：金实线=股权 · 金虚线=协议 · 朱线=张漫侧合资
+   ============================================================ */
+:root {
+    --ink-0: #080A11;                       /* 幻灯底 */
+    --ink-1: #0E1220;
+    --panel:  rgba(236,239,244,.030);       /* 面板底（几乎无） */
+    --panel-2: rgba(236,239,244,.055);
+    --line:   rgba(236,239,244,.145);       /* 发丝边 */
+    --gold:   #C9A227;
+    --gold-soft: rgba(201,162,39,.42);
+    --gold-wash: rgba(201,162,39,.070);
+    --vermilion: #B23A2E;
+    --chalk:  #ECEFF4;
+    --chalk-2: rgba(236,239,244,.80);
+    --chalk-3: rgba(236,239,244,.60);
+    --chalk-4: rgba(236,239,244,.40);
+
+    --f-disp: "Noto Serif SC", serif;           /* 中文标题 */
+    --f-body: "Noto Sans SC", sans-serif;       /* 中文正文 */
+    --f-lat:  "Bodoni Moda", serif;             /* 拉丁 / 章号 / 大数字 */
+    --f-mono: "JetBrains Mono", monospace;      /* chrome / 刻度 / 页码 */
+
+    --stage-bg: #04050A;
+    --slide-bg: var(--ink-0);
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ============================================================
+   2. FIXED 16:9 STAGE（viewport-base.css 全量，必需）
+      幻灯一律在 1920×1080 上排版，整台等比缩放，手机上留黑边而不重排
+   ============================================================ */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--stage-bg); }
+.deck-viewport { position: fixed; inset: 0; overflow: hidden; background: var(--stage-bg); }
+.deck-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 0 0; background: var(--slide-bg); }
+.slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; display: block; visibility: hidden; opacity: 0; pointer-events: none; background: var(--slide-bg); }
+.slide.active, .slide.visible { visibility: visible; opacity: 1; pointer-events: auto; z-index: 1; }
+img, video, canvas, svg { max-width: 100%; max-height: 100%; }
+.deck-controls { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1000; }
+@media print {
+    html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+    .deck-viewport { position: static; overflow: visible; background: #fff; }
+    .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+    .slide { position: relative; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; width: 1920px; height: 1080px; break-after: page; page-break-after: always; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    .deck-controls { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .2s !important; } }
+
+/* ============================================================
+   3. 幻灯底：星尘 + （仅封面/章页）金朱双光晕
+   ============================================================ */
+.slide { color: var(--chalk); }
+.stars { position: absolute; inset: 0; pointer-events: none; opacity: .55;
+    background-image:
+      radial-gradient(1.6px 1.6px at 12% 22%, rgba(236,239,244,.55), transparent),
+      radial-gradient(1.2px 1.2px at 27% 68%, rgba(236,239,244,.35), transparent),
+      radial-gradient(1.8px 1.8px at 46% 14%, rgba(201,162,39,.55), transparent),
+      radial-gradient(1.2px 1.2px at 62% 82%, rgba(236,239,244,.30), transparent),
+      radial-gradient(1.5px 1.5px at 78% 34%, rgba(236,239,244,.45), transparent),
+      radial-gradient(1.2px 1.2px at 89% 72%, rgba(201,162,39,.40), transparent),
+      radial-gradient(1.1px 1.1px at 34% 44%, rgba(236,239,244,.22), transparent),
+      radial-gradient(1.1px 1.1px at 70% 56%, rgba(236,239,244,.22), transparent);
+}
+.slide.hero { background:
+      radial-gradient(1100px 720px at 78% 26%, rgba(201,162,39,.13), transparent 62%),
+      radial-gradient(900px 640px at 12% 84%, rgba(178,58,46,.10), transparent 66%),
+      var(--ink-0); }
+
+/* ============================================================
+   4. 入场动效（克制：只动 transform / opacity；星图线走 dash 描画）
+      用 --d 控制每个元素的延迟，形成一次编排好的载入
+   ============================================================ */
+.rv  { opacity: 0; transform: translateY(20px); transition: opacity .72s var(--ease), transform .72s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .rv { opacity: 1; transform: translateY(0); }
+.rl  { transform: scaleX(0); transform-origin: 0 50%; transition: transform .95s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .rl { transform: scaleX(1); }
+.rw  { opacity: 0; transform: scale(.96); transition: opacity .7s ease, transform .8s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .rw { opacity: 1; transform: scale(1); }
+
+/* ============================================================
+   5. Chrome（位置固定：top 54 / 页脚 bottom 52，左右 104）
+   ============================================================ */
+.top { position: absolute; top: 54px; left: 104px; right: 104px; display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--f-mono); font-weight: 400; font-size: 17px; letter-spacing: .24em; text-transform: uppercase; color: var(--chalk-4); }
+.top .cn { font-family: var(--f-body); font-weight: 400; font-size: 19px; letter-spacing: .06em; text-transform: none; color: var(--chalk-3); }
+.foot { position: absolute; left: 104px; right: 104px; bottom: 52px; display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--f-mono); font-size: 16px; letter-spacing: .2em; color: rgba(236,239,244,.28); text-transform: uppercase; }
+.foot .cn { font-family: var(--f-body); letter-spacing: .1em; text-transform: none; font-size: 17px; }
+
+/* 左侧竖排刻度（仅封面与结语） */
+.edge-l { position: absolute; left: 46px; top: 300px; font-family: var(--f-mono); font-size: 15px; letter-spacing: .3em;
+    color: rgba(236,239,244,.24); writing-mode: vertical-rl; text-orientation: mixed; }
+.edge-r { position: absolute; right: 52px; top: 250px; font-family: var(--f-body); font-weight: 300; font-size: 21px;
+    letter-spacing: .34em; color: rgba(236,239,244,.42); writing-mode: vertical-rl; text-orientation: upright; line-height: 2.4; }
+
+/* ============================================================
+   6. 排版阶梯（全部在 1920×1080 尺度上写死，不用 clamp）
+   ============================================================ */
+h1 { font-family: var(--f-disp); font-weight: 900; font-size: 138px; line-height: 1.1; letter-spacing: 0; }
+h1 .gold { color: var(--gold); }
+h2 { font-family: var(--f-disp); font-weight: 900; font-size: 70px; line-height: 1.2; letter-spacing: 0; }
+h2 .gold { color: var(--gold); }
+h3 { font-family: var(--f-disp); font-weight: 700; font-size: 32px; line-height: 1.34; letter-spacing: 0; }
+h4 { font-family: var(--f-body); font-weight: 500; font-size: 23px; line-height: 1.4; letter-spacing: .02em; color: var(--gold); }
+p  { font-family: var(--f-body); font-weight: 300; font-size: 22px; line-height: 1.86; color: var(--chalk-2); }
+p.sm { font-size: 20px; line-height: 1.82; color: var(--chalk-3); }
+p b, .em { font-weight: 500; color: var(--gold); }
+.kick { font-family: var(--f-lat); font-weight: 400; font-size: 25px; letter-spacing: .3em; text-transform: uppercase; color: var(--gold); }
+.eyebrow { font-family: var(--f-mono); font-weight: 400; font-size: 18px; letter-spacing: .26em; text-transform: uppercase; color: var(--gold); }
+.ord { font-family: var(--f-lat); font-style: italic; font-weight: 500; color: var(--gold); line-height: .9; }
+.rule-g { height: 1px; background: linear-gradient(90deg, var(--gold), rgba(201,162,39,0)); }
+.hair { height: 1px; background: var(--line); }
+
+/* ============================================================
+   7. 组件 —— 全部发丝边扁平面板，无圆角、无阴影、无渐变填充
+   ============================================================ */
+.body-in { position: absolute; left: 104px; right: 104px; top: 150px; height: 850px; }
+.head { }
+.head h2 { margin-top: 16px; }
+.head .rule-g { margin-top: 24px; width: 340px; }
+.zone { margin-top: 38px; height: 642px; }
+
+.panel { border: 1px solid var(--line); background: var(--panel); padding: 30px 30px 28px; position: relative; }
+.panel.gold { border-color: var(--gold-soft); background: var(--gold-wash); }
+.panel.flag::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px; background: var(--gold); }
+.panel .pn { position: absolute; right: 26px; top: 20px; font-family: var(--f-lat); font-style: italic; font-size: 44px; color: rgba(201,162,39,.34); line-height: 1; }
+
+/* align-self 必须写死：chip 落在 flex-column 面板里会被拉成整行宽 */
+.chip { display: inline-flex; align-items: center; align-self: flex-start; border: 1px solid var(--line); padding: 8px 15px;
+    font-family: var(--f-body); font-weight: 400; font-size: 19px; color: var(--chalk-2); }
+.chip.gold { border-color: var(--gold-soft); color: var(--gold); }
+.chip.mono { font-family: var(--f-mono); font-size: 16px; letter-spacing: .16em; text-transform: uppercase; }
+
+.stat { font-family: var(--f-lat); font-weight: 600; font-size: 78px; line-height: 1; color: var(--gold); }
+.stat-lab { font-family: var(--f-body); font-weight: 300; font-size: 19px; color: var(--chalk-4); margin-top: 12px; }
+
+/* 股权条：51 / 49 的可视化 */
+.eqbar { display: flex; height: 24px; border: 1px solid var(--gold-soft); }
+.eqbar i { display: block; height: 100%; }
+.eqbar i.a { background: var(--gold); }
+.eqbar i.b { background: rgba(236,239,244,.20); }
+.eqbar.open { border-style: dashed; border-color: rgba(178,58,46,.66); background: rgba(178,58,46,.08); }
+
+/* 对比矩阵 */
+.mx { width: 100%; border-collapse: collapse; }
+.mx thead th { text-align: left; padding: 20px 24px; font-family: var(--f-disp); font-weight: 700; font-size: 26px;
+    color: var(--gold); border-bottom: 1px solid var(--gold-soft); }
+.mx thead th:first-child { color: var(--chalk-4); font-family: var(--f-mono); font-size: 16px; letter-spacing: .2em; text-transform: uppercase; font-weight: 400; }
+.mx td { padding: 17px 24px; border-bottom: 1px solid var(--line); font-family: var(--f-body); font-weight: 300;
+    font-size: 20px; line-height: 1.66; color: var(--chalk-2); vertical-align: top; }
+.mx td.rowlab { width: 268px; font-weight: 500; color: var(--chalk); font-size: 20px; }
+.mx tbody tr:last-child td { border-bottom: none; }
+
+/* 流程步骤（最小闭环） */
+.flow { display: flex; align-items: stretch; gap: 0; }
+.step { flex: 1; border: 1px solid var(--line); padding: 20px 20px 18px; min-width: 0; }
+.step .n { font-family: var(--f-mono); font-size: 15px; letter-spacing: .2em; color: var(--gold); }
+.step .t { font-family: var(--f-body); font-weight: 500; font-size: 21px; line-height: 1.44; margin-top: 10px; color: var(--chalk); }
+.arrow { flex: none; width: 46px; display: grid; place-items: center; font-family: var(--f-mono); font-size: 22px; color: rgba(201,162,39,.7); }
+
+/* 时间轴 */
+.rail { position: relative; height: 54px; }
+.rail .ln { position: absolute; left: 0; right: 0; top: 26px; height: 1px; background: linear-gradient(90deg, var(--gold), rgba(201,162,39,.22)); }
+.rail .nd { position: absolute; top: 19px; width: 15px; height: 15px; border-radius: 999px; background: var(--ink-0); border: 2px solid var(--gold); }
+
+/* 朱印 */
+.seal { position: absolute; border: 3px solid var(--vermilion); display: grid; place-items: center; transform: rotate(-6deg);
+    opacity: 0; transition: opacity .9s ease; transition-delay: var(--d, 0s); }
+.slide.visible .seal { opacity: .92; }
+.seal span { font-family: var(--f-disp); font-weight: 700; line-height: 1.16; letter-spacing: .06em; color: var(--vermilion); text-align: center; }
+
+/* 架构图（连线走 SVG，方框走 HTML，坐标一一对应） */
+.arch { position: relative; width: 1712px; height: 642px; }
+.arch .wires { position: absolute; inset: 0; }
+.arch .wires path { fill: none; }
+.w-eq  { stroke: var(--gold); stroke-width: 1.5; }                                   /* 股权关系 */
+.w-ag  { stroke: var(--gold); stroke-width: 1.5; stroke-dasharray: 9 8; }            /* 协议关系 */
+.w-zm  { stroke: var(--vermilion); stroke-width: 1.5; }                              /* 张漫侧另行合资 */
+.arch .draw { stroke-dasharray: 1400; stroke-dashoffset: 1400; transition: stroke-dashoffset 1.7s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .arch .draw { stroke-dashoffset: 0; }
+.arch .w-ag.draw { stroke-dasharray: 9 8; stroke-dashoffset: 0; opacity: 0; transition: opacity .9s ease; transition-delay: var(--d, 0s); }
+.slide.visible .arch .w-ag.draw { opacity: 1; }
+.box { position: absolute; border: 1px solid var(--line); background: var(--ink-1); padding: 18px 22px; }
+.box.lead { border-color: var(--gold); background: rgba(201,162,39,.10); }
+.box.zm { border-color: rgba(178,58,46,.55); }
+.box .bt { font-family: var(--f-disp); font-weight: 700; font-size: 27px; line-height: 1.3; color: var(--chalk); }
+.box.lead .bt { font-size: 34px; color: var(--gold); }
+.box .bs { font-family: var(--f-body); font-weight: 300; font-size: 18px; line-height: 1.6; color: var(--chalk-3); margin-top: 7px; }
+.box .tag { position: absolute; right: 14px; top: -12px; background: var(--ink-0); padding: 0 8px;
+    font-family: var(--f-mono); font-size: 14px; letter-spacing: .18em; color: var(--gold); }
+.wlab { position: absolute; font-family: var(--f-mono); font-size: 17px; letter-spacing: .12em; color: var(--gold); background: var(--ink-0); padding: 0 7px; }
+.legend { position: absolute; left: 0; bottom: 0; display: flex; gap: 40px; align-items: center;
+    font-family: var(--f-body); font-weight: 300; font-size: 18px; color: var(--chalk-4); }
+.legend i { display: inline-block; width: 34px; height: 0; border-top: 1.5px solid var(--gold); margin-right: 10px; vertical-align: middle; }
+.legend i.d { border-top-style: dashed; }
+.legend i.v { border-top-color: var(--vermilion); }
+
+/* ============================================================
+   8. 演示 chrome（舞台之外，不属幻灯设计系统）
+   ============================================================ */
+.deck-controls { display: flex; align-items: center; gap: 14px; background: rgba(8,10,17,.9); border: 1px solid rgba(201,162,39,.3);
+    padding: 9px 16px; font-family: var(--f-mono); font-weight: 400; font-size: 14px; letter-spacing: .16em;
+    color: var(--chalk-3); opacity: .3; transition: opacity .3s ease; }
+.deck-controls:hover { opacity: 1; }
+.deck-controls .bar { width: 190px; height: 3px; background: rgba(236,239,244,.16); overflow: hidden; }
+.deck-controls .bar i { display: block; height: 100%; background: var(--gold); transition: width .4s var(--ease); }
+.deck-controls button { background: none; border: none; color: var(--gold); cursor: pointer; font-family: inherit; font-size: 16px; padding: 2px 6px; }
+
+/* 就地编辑 */
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle { position: fixed; top: 18px; left: 18px; z-index: 10001; width: 42px; height: 42px; border: 1px solid var(--gold);
+    background: var(--ink-0); color: var(--gold); font-size: 17px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { background: var(--gold); color: var(--ink-0); }
+body.editing [contenteditable="true"] { outline: 1px dashed rgba(201,162,39,.6); outline-offset: 4px; }
+body.editing [contenteditable="true"]:focus { outline: 1px solid var(--gold); }
+.edit-hint { position: fixed; top: 20px; left: 74px; z-index: 10001; font-family: var(--f-mono); font-size: 13px;
+    letter-spacing: .1em; text-transform: uppercase; background: var(--gold); color: var(--ink-0); padding: 9px 14px; display: none; }
+body.editing .edit-hint { display: block; }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- ============================================================
+     01 · 封面
+     ============================================================ -->
+<section class="slide hero active visible">
+    <div class="stars"></div>
+
+    <!-- 星图：三层治理结构的抽象化 —— 两股东汇入平台，平台向下裂变为矩阵 -->
+    <svg class="chart" viewBox="0 0 1920 1080" fill="none" style="position:absolute;inset:0;pointer-events:none;">
+        <g stroke="rgba(236,239,244,.18)" stroke-width="1">
+            <path d="M104 148 H1816" opacity=".22"/>
+            <path d="M104 930 H1816" opacity=".14"/>
+        </g>
+        <g stroke="#C9A227" stroke-width="1" opacity=".5">
+            <path d="M1290 268 L1490 430"/><path d="M1700 250 L1490 430"/>
+            <path d="M1490 430 L1272 646"/><path d="M1490 430 L1516 690"/><path d="M1490 430 L1760 622"/>
+            <path d="M1272 646 L1156 800" opacity=".55"/><path d="M1760 622 L1836 786" opacity=".55"/><path d="M1516 690 L1420 842" opacity=".55"/>
+        </g>
+        <g>
+            <circle cx="1290" cy="268" r="7" fill="#C9A227"/><circle cx="1290" cy="268" r="19" stroke="#C9A227" stroke-opacity=".38"/>
+            <circle cx="1700" cy="250" r="7" fill="#C9A227"/><circle cx="1700" cy="250" r="19" stroke="#C9A227" stroke-opacity=".38"/>
+            <circle cx="1490" cy="430" r="13" fill="#C9A227"/><circle cx="1490" cy="430" r="34" stroke="#C9A227" stroke-opacity=".5"/><circle cx="1490" cy="430" r="56" stroke="#C9A227" stroke-opacity=".18"/>
+            <circle cx="1272" cy="646" r="6" fill="#ECEFF4" fill-opacity=".8"/><circle cx="1516" cy="690" r="6" fill="#ECEFF4" fill-opacity=".8"/><circle cx="1760" cy="622" r="6" fill="#ECEFF4" fill-opacity=".8"/>
+            <circle cx="1156" cy="800" r="4" fill="#ECEFF4" fill-opacity=".45"/><circle cx="1836" cy="786" r="4" fill="#ECEFF4" fill-opacity=".45"/><circle cx="1420" cy="842" r="4" fill="#ECEFF4" fill-opacity=".45"/>
+        </g>
+    </svg>
+
+    <div class="top">
+        <span>Manxing Initiative</span>
+        <span>Governance Framework · 2026.07.31</span>
+    </div>
+    <div class="edge-l">DRAFT FOR DISCUSSION</div>
+    <div class="edge-r">乙方 × 张漫</div>
+
+    <div style="position:absolute; left:104px; top:268px; width:1010px;">
+        <div class="kick rv" style="--d:.15s">Manxing Atelier</div>
+        <div class="rule-g rl" style="--d:.3s; margin-top:26px; width:420px;"></div>
+        <h1 class="rv" style="--d:.4s; margin-top:40px;">「曼星」计划<br><span class="gold">治理结构</span>框架</h1>
+        <p class="rv" style="--d:.62s; margin-top:44px; font-size:24px; line-height:1.94;">
+            合资设立平台公司「漫星工坊」，共建并运营明星数字分身与授权切片的商业化平台；
+            再以漫星工坊为枢纽，向下设立二级公司与合作公司 —— <b>三层结构，一套标准，可复制扩张</b>。
+        </p>
+    </div>
+
+    <div style="position:absolute; left:104px; bottom:84px; display:flex; align-items:end; gap:64px;">
+        <span class="rv" style="--d:.8s; font-family:var(--f-body); font-weight:400; font-size:21px; line-height:1.78; color:var(--chalk-3);">
+            乙方 · <span class="em">技术平台</span>与企业、政府客户渠道<br>
+            张漫 · <span class="em">明星签约资源</span>与经纪人网络
+        </span>
+        <span class="rv" style="--d:.88s; font-family:var(--f-lat); font-size:34px; letter-spacing:.08em; color:var(--chalk-3);">01 / 14</span>
+    </div>
+
+    <div class="seal" style="--d:1.2s; right:128px; bottom:96px; width:156px; height:156px;"><span style="font-size:40px;">内部<br>讨论</span></div>
+</section>
+
+<!-- ============================================================
+     02 · 目录（六章）
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>Contents</span><span class="cn">本文件的六个部分</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Framework Document</div>
+            <h2 class="rv" style="--d:.12s">一份<span class="gold">框架性</span>文件</h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+        <div class="zone" style="display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:28px;">
+
+            <div class="panel rv" style="--d:.30s"><div class="pn">I</div>
+                <h3>项目概述</h3>
+                <p class="sm" style="margin-top:14px;">做什么、为什么要合资，以及「平台＋艺人矩阵」的扩张逻辑。</p>
+            </div>
+            <div class="panel rv" style="--d:.36s"><div class="pn">II</div>
+                <h3>合作双方与出资</h3>
+                <p class="sm" style="margin-top:14px;">乙方出技术与用户端市场，张漫出明星签约资源。</p>
+            </div>
+            <div class="panel rv" style="--d:.42s"><div class="pn">III</div>
+                <h3>公司架构</h3>
+                <p class="sm" style="margin-top:14px;">三层结构，以及向下扩张的两种模式：直接合资与协议接入。</p>
+            </div>
+            <div class="panel rv" style="--d:.48s"><div class="pn">IV</div>
+                <h3>股权关系</h3>
+                <p class="sm" style="margin-top:14px;">51 / 49 的控制权设计，以及三个层面的股权建议。</p>
+            </div>
+            <div class="panel rv" style="--d:.54s"><div class="pn">V</div>
+                <h3>对外口径与合规</h3>
+                <p class="sm" style="margin-top:14px;">对外怎么说，以及必须守住的四条合规边界。</p>
+            </div>
+            <div class="panel rv" style="--d:.60s"><div class="pn">VI</div>
+                <h3>未来规划</h3>
+                <p class="sm" style="margin-top:14px;">平台搭建期、矩阵扩张期、平台生态期三阶段路线。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot">
+        <span class="cn">内部讨论稿 · 所有股权比例均为建议方案，以最终协议为准</span>
+        <span>02 / 14</span>
+    </div>
+</section>
+
+<!-- ============================================================
+     03 · I 项目概述
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>I · Overview</span><span class="cn">项目概述</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">What We Are Building</div>
+            <h2 class="rv" style="--d:.12s">面向明星圈的<span class="gold">数字资产</span>合作项目</h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <!-- 上排：核心两件事 -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; height:236px;">
+                <div class="panel gold flag rv" style="--d:.30s">
+                    <h4>核心 · 帮明星建立数字分身</h4>
+                    <p style="margin-top:14px;">由明星授权，在平台上生成属于该明星的数字分身，作为可反复调用的资产落在体系内，而不是一次性的内容外包。</p>
+                </div>
+                <div class="panel gold flag rv" style="--d:.36s">
+                    <h4>核心 · 获得明星授权的内容切片</h4>
+                    <p style="margin-top:14px;">取得明星授权的内容切片，进入平台的切片分发与授权管理，按范围与期限对外提供使用。</p>
+                </div>
+            </div>
+
+            <!-- 中排：三个商业化场景 -->
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:28px; height:196px; margin-top:28px;">
+                <div class="panel rv" style="--d:.44s">
+                    <div class="chip mono gold">场景 01</div>
+                    <h3 style="margin-top:16px;">直播带货</h3>
+                    <p class="sm" style="margin-top:10px;">数字分身直接进入带货场景。</p>
+                </div>
+                <div class="panel rv" style="--d:.50s">
+                    <div class="chip mono gold">场景 02</div>
+                    <h3 style="margin-top:16px;">企业形象推广</h3>
+                    <p class="sm" style="margin-top:10px;">面向已有 B 端客户的授权投放。</p>
+                </div>
+                <div class="panel rv" style="--d:.56s">
+                    <div class="chip mono gold">场景 03</div>
+                    <h3 style="margin-top:16px;">政府形象推广</h3>
+                    <p class="sm" style="margin-top:10px;">面向 G 端客户的宣推需求。</p>
+                </div>
+            </div>
+
+            <!-- 下排：扩张结构一句话 -->
+            <div class="panel flag rv" style="--d:.64s; height:126px; margin-top:28px; display:flex; align-items:center;">
+                <p style="font-size:24px; line-height:1.7;">
+                    双方合资成立平台公司「漫星工坊」并以其为运营主体；再以漫星工坊为枢纽，向下与经纪人或操盘人合作设立二级公司 ——
+                    <b>形成「平台＋艺人矩阵」的可复制扩张结构</b>。
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>03 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     04 · II 合作双方与出资内容
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>II · Contributions</span><span class="cn">合作双方与出资内容</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Who Brings What</div>
+            <h2 class="rv" style="--d:.12s">一方出<span class="gold">能力与渠道</span>，一方出<span class="gold">资源</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; height:452px;">
+
+                <!-- 乙方 -->
+                <div class="panel flag rv" style="--d:.30s; display:flex; flex-direction:column;">
+                    <div class="chip mono gold">乙方 · 我方</div>
+                    <h3 style="margin-top:18px; font-size:38px;">出技术与用户端市场</h3>
+                    <div class="hair" style="margin:22px 0 20px;"></div>
+                    <h4>技术 · 一个完整的技术平台</h4>
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:14px;">
+                        <span class="chip">数字人生成</span>
+                        <span class="chip">数字资产管理</span>
+                        <span class="chip">切片分发与授权管理</span>
+                        <span class="chip">AI 视频制作</span>
+                    </div>
+                    <div class="hair" style="margin:22px 0 20px;"></div>
+                    <h4>用户端市场 · 已有客户渠道</h4>
+                    <p class="sm" style="margin-top:12px;">我方已有的企业用户、政府用户等 <span class="em">B 端与 G 端</span>客户渠道，是数字分身与授权切片的直接需求侧。</p>
+                </div>
+
+                <!-- 甲方 -->
+                <div class="panel flag rv" style="--d:.38s; display:flex; flex-direction:column;">
+                    <div class="chip mono gold">甲方 · 张漫</div>
+                    <h3 style="margin-top:18px; font-size:38px;">出明星签约资源</h3>
+                    <div class="hair" style="margin:22px 0 20px;"></div>
+                    <h4>资源 · 演艺圈明星与经纪人网络</h4>
+                    <p style="margin-top:14px;">长期从事电视节目策划、主持、制作与演艺经纪，在演艺圈拥有深厚的明星资源与经纪人网络，
+                        是<span class="em">项目明星侧资源的核心入口</span>。</p>
+                    <div class="hair" style="margin:22px 0 20px;"></div>
+                    <h4>作用 · 决定矩阵能铺多快</h4>
+                    <p class="sm" style="margin-top:12px;">明星签约与经纪人牵头能力，直接决定二级公司与合作公司的落地节奏。履历详见下页。</p>
+                </div>
+            </div>
+
+            <div class="panel rv" style="--d:.48s; height:134px; margin-top:28px; display:flex; align-items:center; gap:40px;">
+                <span class="chip mono">待谈判</span>
+                <p style="flex:1;">出资方式（<span class="em">现金 / 技术作价 / 资源折价</span>）、具体股比与董事会席位安排，均以双方最终谈判并签署的协议为准。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>04 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     05 · II 甲方资源侧 · 张漫
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>II · Resource Side</span><span class="cn">甲方资源侧 · 张漫</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Track Record</div>
+            <h2 class="rv" style="--d:.12s">明星侧资源的<span class="gold">核心入口</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; height:186px;">
+                <div class="panel rv" style="--d:.30s">
+                    <h4>教育背景</h4>
+                    <p style="margin-top:14px;">北京广播学院（现中国传媒大学）<span class="em">播音专业</span>。</p>
+                </div>
+                <div class="panel rv" style="--d:.36s">
+                    <h4>从业领域</h4>
+                    <p style="margin-top:14px;">电视节目策划、主持、制作与演艺经纪；曾担任《音乐现场》<span class="em">主编</span>。</p>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1.62fr 1fr; gap:28px; height:264px; margin-top:28px;">
+                <div class="panel flag rv" style="--d:.44s">
+                    <h4>以制作人身份操盘的综艺节目</h4>
+                    <div style="display:flex; flex-wrap:wrap; gap:11px; margin-top:20px;">
+                        <span class="chip gold">《最美和声》</span>
+                        <span class="chip gold">《女神的新衣》</span>
+                        <span class="chip gold">《前往世界的尽头》</span>
+                        <span class="chip gold">《星球者联盟》</span>
+                        <span class="chip gold">《超强音浪》</span>
+                        <span class="chip gold">《一起乐队吧》</span>
+                    </div>
+                    <p class="sm" style="margin-top:20px;">多档头部综艺的制作人经历，意味着长期、反复地与明星本人及其经纪团队直接谈判。</p>
+                </div>
+                <div class="panel rv" style="--d:.52s">
+                    <h4>跨界 · 元宇宙艺术展节目</h4>
+                    <p style="margin-top:14px;">与<span class="em">方文山</span>合作推出《漫漫文山流》，把演艺资源接到数字与虚拟内容场景上。</p>
+                </div>
+            </div>
+
+            <div class="panel gold rv" style="--d:.60s; height:110px; margin-top:28px; display:flex; align-items:center;">
+                <p style="font-size:24px;">这套资源与网络，是「曼星」计划明星侧的<b>唯一入口</b>，也是甲方在合资结构中的出资内容。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>05 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     06 · III 公司架构（核心图）
+     连线走 SVG，方框走 HTML，两者坐标一一对应；线型即分类
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>III · Structure</span><span class="cn">公司架构</span></div>
+
+    <div class="body-in" style="top:126px;">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Three Tiers</div>
+            <h2 class="rv" style="--d:.12s">股东层 · <span class="gold">平台层</span> · 艺人矩阵层</h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone" style="margin-top:30px;">
+        <div class="arch">
+            <svg class="wires" viewBox="0 0 1712 642">
+                <!-- 股东 → 漫星工坊（股权） -->
+                <path class="w-eq draw" style="--d:.55s" d="M490 134 V192 H760 V250"/>
+                <path class="w-eq draw" style="--d:.62s" d="M1222 134 V192 H952 V250"/>
+                <!-- 漫星工坊 → 二级公司（股权，实线） -->
+                <path class="w-eq draw" style="--d:.86s" d="M700 386 V428 H240 V476"/>
+                <path class="w-eq draw" style="--d:.92s" d="M700 428 H632 V476"/>
+                <!-- 漫星工坊 → 合作公司（协议，虚线） -->
+                <path class="w-ag draw" style="--d:1.02s" d="M1012 386 V422 H960 V476"/>
+                <path class="w-ag draw" style="--d:1.08s" d="M1012 422 H1352 V476"/>
+                <!-- 张漫 → 合作公司（另行合资，朱线） -->
+                <path class="w-zm draw" style="--d:1.18s" d="M1412 82 H1700 V448 H1200 V476"/>
+                <path class="w-zm draw" style="--d:1.24s" d="M1700 448 H1592 V476"/>
+            </svg>
+
+            <!-- 第一层：股东 -->
+            <div class="box rv" style="--d:.30s; left:300px; top:30px; width:380px; height:104px;">
+                <span class="tag">第一层 · 股东</span>
+                <div class="bt">乙方（我方）</div>
+                <div class="bs">技术平台 · 企业与政府客户渠道</div>
+            </div>
+            <div class="box zm rv" style="--d:.36s; left:1032px; top:30px; width:380px; height:104px;">
+                <span class="tag" style="color:var(--vermilion);">第一层 · 股东</span>
+                <div class="bt">张漫（甲方）</div>
+                <div class="bs">明星签约资源 · 经纪人网络</div>
+            </div>
+            <div class="wlab" style="left:596px; top:166px;">51%</div>
+            <div class="wlab" style="left:1064px; top:166px;">49%</div>
+
+            <!-- 第二层：漫星工坊 -->
+            <div class="box lead rw" style="--d:.70s; left:596px; top:250px; width:520px; height:136px;">
+                <span class="tag">第二层 · 合资平台公司</span>
+                <div class="bt">漫星工坊</div>
+                <div class="bs">平台运营主体 · 数字资产统一管理与商业化分发<br>对外承接企业与政府客户的需求</div>
+            </div>
+
+            <!-- 第三层：二级公司（模式A）/ 合作公司（模式B） -->
+            <div class="box rv" style="--d:1.00s; left:60px; top:476px; width:360px; height:120px;">
+                <span class="tag">模式 A · 直接合资</span>
+                <div class="bt" style="font-size:25px;">二级公司</div>
+                <div class="bs">漫星工坊 51% × 经纪人方 49%<br>单一明星或艺人矩阵的签约与运营</div>
+            </div>
+            <div class="box rv" style="--d:1.06s; left:452px; top:476px; width:360px; height:120px;">
+                <span class="tag">模式 A · × N</span>
+                <div class="bt" style="font-size:25px;">二级公司</div>
+                <div class="bs">按经纪人资源分量可个案调整为<br>漫星工坊参股模式</div>
+            </div>
+            <div class="box zm rv" style="--d:1.14s; left:900px; top:476px; width:360px; height:120px;">
+                <span class="tag" style="color:var(--vermilion);">模式 B · 信任前置</span>
+                <div class="bt" style="font-size:25px;">合作公司</div>
+                <div class="bs">张漫 × 经纪人合资（比例另议）<br>与漫星工坊为协议关系</div>
+            </div>
+            <div class="box zm rv" style="--d:1.20s; left:1292px; top:476px; width:360px; height:120px;">
+                <span class="tag" style="color:var(--vermilion);">模式 B · × N</span>
+                <div class="bt" style="font-size:25px;">合作公司</div>
+                <div class="bs">经业务合作或平台授权协议<br>接入平台体系</div>
+            </div>
+
+            <div class="legend rv" style="--d:1.32s">
+                <span><i></i>股权关系（合资）</span>
+                <span><i class="d"></i>协议关系（业务合作 / 平台授权）</span>
+                <span><i class="v"></i>张漫与经纪人另行合资（模式 B 前置）</span>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>06 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     07 · III 三类主体各管什么
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>III · Roles</span><span class="cn">三类主体的职责</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Division Of Labour</div>
+            <h2 class="rv" style="--d:.12s">平台<span class="gold">管标准</span>，下层<span class="gold">管艺人</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone" style="display:grid; grid-template-columns:1.12fr 1fr 1fr; gap:28px;">
+
+            <div class="panel gold rv" style="--d:.30s; display:flex; flex-direction:column;">
+                <div class="ord" style="font-size:58px;">01</div>
+                <h3 style="margin-top:18px; font-size:38px;">漫星工坊</h3>
+                <p class="sm" style="margin-top:6px; color:var(--gold);">合资公司 · 平台运营主体</p>
+                <div class="hair" style="margin:20px 0 18px;"></div>
+                <p class="sm">· 由乙方与张漫共同设立</p>
+                <p class="sm">· 负责平台共建</p>
+                <p class="sm">· 明星数字资产的统一管理与商业化分发</p>
+                <p class="sm">· 对外承接企业与政府客户的需求</p>
+                <div style="margin-top:auto;"><span class="chip mono gold">标准与授权规则的出口</span></div>
+            </div>
+
+            <div class="panel rv" style="--d:.38s; display:flex; flex-direction:column;">
+                <div class="ord" style="font-size:58px;">02</div>
+                <h3 style="margin-top:18px; font-size:34px;">二级公司</h3>
+                <p class="sm" style="margin-top:6px; color:var(--gold);">模式 A · 直接合资</p>
+                <div class="hair" style="margin:20px 0 18px;"></div>
+                <p class="sm">· 由漫星工坊与有能力的经纪人或操盘人合资设立</p>
+                <p class="sm">· 经纪人牵头调动明星资源</p>
+                <p class="sm">· 负责单一明星或艺人矩阵的数字分身签约与日常运营</p>
+                <p class="sm">· 平台能力由漫星工坊统一输出</p>
+                <div style="margin-top:auto;"><span class="chip mono">股权关系</span></div>
+            </div>
+
+            <div class="panel rv" style="--d:.46s; display:flex; flex-direction:column;">
+                <div class="ord" style="font-size:58px; color:var(--vermilion);">03</div>
+                <h3 style="margin-top:18px; font-size:34px;">合作公司</h3>
+                <p class="sm" style="margin-top:6px; color:var(--vermilion);">模式 B · 信任前置</p>
+                <div class="hair" style="margin:20px 0 18px;"></div>
+                <p class="sm">· 部分经纪人或操盘人基于对张漫的信任关系，先与张漫合资设立公司</p>
+                <p class="sm">· 再由该公司与漫星工坊签订业务合作或平台授权协议接入体系</p>
+                <p class="sm">· 漫星工坊与合作公司之间为协议关系，<span class="em">而非股权关系</span></p>
+                <div style="margin-top:auto;"><span class="chip mono" style="border-color:rgba(178,58,46,.55); color:#D9705F;">协议关系</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>07 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     08 · III 模式 A / 模式 B 对比
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>III · A vs B</span><span class="cn">两种下沉模式对比</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Two Paths Down</div>
+            <h2 class="rv" style="--d:.12s">同一套平台能力，<span class="gold">两种接入方式</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <table class="mx rv" style="--d:.30s">
+                <thead>
+                    <tr>
+                        <th>对比维度</th>
+                        <th>模式 A · 二级公司（直接合资）</th>
+                        <th>模式 B · 合作公司（信任前置）</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="rowlab">设立路径</td>
+                        <td>漫星工坊与经纪人 / 操盘人直接合资设立</td>
+                        <td>经纪人先与张漫合资设立公司，再与漫星工坊签约接入</td>
+                    </tr>
+                    <tr>
+                        <td class="rowlab">与漫星工坊的关系</td>
+                        <td><span class="em">股权关系</span></td>
+                        <td><span class="em">协议关系</span>（业务合作或平台授权协议）</td>
+                    </tr>
+                    <tr>
+                        <td class="rowlab">建议股权</td>
+                        <td>漫星工坊 51% / 经纪人方 49%；可按资源分量个案调整为参股</td>
+                        <td>张漫与经纪人基于信任关系另行商定，漫星工坊不介入其股权安排</td>
+                    </tr>
+                    <tr>
+                        <td class="rowlab">平台的控制手段</td>
+                        <td>股权 + 统一输出平台能力</td>
+                        <td>平台授权协议约定数字资产的确权、使用范围与收益分成</td>
+                    </tr>
+                    <tr>
+                        <td class="rowlab">适用对象</td>
+                        <td>有能力牵头调动明星资源的经纪人、操盘人</td>
+                        <td>基于对张漫的信任关系先行合作的经纪人、操盘人</td>
+                    </tr>
+                    <tr>
+                        <td class="rowlab">明星侧签约与运营</td>
+                        <td>由二级公司负责单一明星或艺人矩阵的签约与日常运营</td>
+                        <td>由合作公司自行运营，按协议接入平台能力</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="panel rv" style="--d:.44s; margin-top:26px; height:96px; display:flex; align-items:center;">
+                <p class="sm">两种模式并行推进 —— 模式 A 换控制力，模式 B 换落地速度；无论走哪条，<span class="em">数字资产的标准与授权规则都由漫星工坊统一定义</span>。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>08 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     09 · IV 股权关系（建议方案）
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>IV · Equity</span><span class="cn">股权关系（建议方案）</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Proposed · Subject To Final Agreement</div>
+            <h2 class="rv" style="--d:.12s">三个层面的<span class="gold">股权建议</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <!-- 层 1：漫星工坊 -->
+            <div class="panel gold flag rv" style="--d:.30s; height:168px; display:grid; grid-template-columns:340px 400px 1fr; align-items:center; gap:36px;">
+                <div>
+                    <span class="chip mono gold">层级 01</span>
+                    <h3 style="margin-top:12px;">漫星工坊</h3>
+                    <p class="sm" style="margin-top:2px;">合资平台公司</p>
+                </div>
+                <div>
+                    <div class="eqbar"><i class="a" style="width:51%;"></i><i class="b" style="width:49%;"></i></div>
+                    <div style="display:flex; justify-content:space-between; margin-top:12px; font-family:var(--f-lat); font-size:26px;">
+                        <span style="color:var(--gold);">乙方 51%</span><span style="color:var(--chalk-3);">张漫方 49%</span>
+                    </div>
+                </div>
+                <p class="sm">乙方以技术平台与市场渠道作价出资并<span class="em">保持控股</span>，保障技术路线与商业化节奏的决策效率；张漫方以明星资源与行业运作能力深度绑定，享有重大事项的<span class="em">参与权与分红权</span>。</p>
+            </div>
+
+            <!-- 层 2：二级公司 -->
+            <div class="panel flag rv" style="--d:.40s; height:168px; margin-top:24px; display:grid; grid-template-columns:340px 400px 1fr; align-items:center; gap:36px;">
+                <div>
+                    <span class="chip mono">层级 02</span>
+                    <h3 style="margin-top:12px;">二级公司</h3>
+                    <p class="sm" style="margin-top:2px;">模式 A · 直接合资</p>
+                </div>
+                <div>
+                    <div class="eqbar"><i class="a" style="width:51%;"></i><i class="b" style="width:49%;"></i></div>
+                    <div style="display:flex; justify-content:space-between; margin-top:12px; font-family:var(--f-lat); font-size:26px;">
+                        <span style="color:var(--gold);">漫星工坊 51%</span><span style="color:var(--chalk-3);">经纪人方 49%</span>
+                    </div>
+                </div>
+                <p class="sm">保证平台对<span class="em">数字资产标准、授权规则与分成体系</span>的统一控制；也可根据经纪人所掌握明星资源的分量，个案调整为漫星工坊参股模式。</p>
+            </div>
+
+            <!-- 层 3：合作公司 -->
+            <div class="panel rv" style="--d:.50s; height:168px; margin-top:24px; display:grid; grid-template-columns:340px 400px 1fr; align-items:center; gap:36px; border-color:rgba(178,58,46,.4);">
+                <div>
+                    <span class="chip mono" style="border-color:rgba(178,58,46,.55); color:#D9705F;">层级 03</span>
+                    <h3 style="margin-top:12px;">合作公司</h3>
+                    <p class="sm" style="margin-top:2px;">模式 B · 信任前置</p>
+                </div>
+                <div>
+                    <div class="eqbar open" style="align-items:center; justify-content:center;">
+                        <span style="font-family:var(--f-mono); font-size:14px; letter-spacing:.14em; color:#D9705F;">另 行 商 定</span>
+                    </div>
+                    <div style="margin-top:12px; font-family:var(--f-body); font-size:20px; color:var(--chalk-3);">张漫 × 经纪人</div>
+                </div>
+                <p class="sm">股权比例由双方基于信任关系另行商定，漫星工坊<span class="em">不介入其股权安排</span>；仅通过平台授权协议约定数字资产的确权、使用范围与收益分成。</p>
+            </div>
+
+            <p class="sm rv" style="--d:.60s; margin-top:24px; color:var(--chalk-4);">
+                以上均为建议方案。具体比例、出资方式（现金、技术作价、资源折价）及董事会席位安排，以双方最终谈判为准。
+            </p>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿 · 建议方案</span><span>09 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     10 · V 对外口径
+     ============================================================ -->
+<section class="slide hero">
+    <div class="stars"></div>
+    <div class="top"><span>V · Positioning</span><span class="cn">对外口径</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">One Sentence Outward</div>
+            <h2 class="rv" style="--d:.12s">对外<span class="gold">统一口径</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <div class="panel gold rv" style="--d:.30s; height:290px; display:grid; place-items:center; text-align:center;">
+                <div>
+                    <div class="kick" style="font-size:22px;">Outward Statement</div>
+                    <div style="font-family:var(--f-disp); font-weight:900; font-size:96px; line-height:1.2; color:var(--gold); margin-top:26px;">
+                        张漫是我们的投资人
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px; height:296px; margin-top:28px;">
+                <div class="panel flag rv" style="--d:.42s">
+                    <h4>这个口径解决什么</h4>
+                    <p style="margin-top:16px;">便于张漫以<span class="em">投资人身份</span>在明星圈内运作项目，对接经纪人与操盘人资源 ——
+                        谈的是投资与合作，而不是替某一家公司做业务拓展。</p>
+                    <div class="hair" style="margin:22px 0 18px;"></div>
+                    <p class="sm">对上游明星与经纪团队而言，投资人身份也更容易解释「为什么由她牵头设立公司」。</p>
+                </div>
+                <div class="panel rv" style="--d:.50s; border-color:rgba(178,58,46,.45);">
+                    <h4 style="color:#D9705F;">口径必须站得住</h4>
+                    <p style="margin-top:16px;">对外口径与工商登记的实际股权结构，应保持<span class="em">可解释的一致性</span>。
+                        建议让张漫（或其持股主体）在漫星工坊<span class="em">实际持有股权</span>，使「投资人」身份有真实的法律基础。</p>
+                    <div class="hair" style="margin:22px 0 18px;"></div>
+                    <p class="sm">避免形成纯粹的名义性陈述 —— 具体边界见下页。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>10 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     11 · V 合规边界（核心风险页）
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>V · Compliance</span><span class="cn">合规边界</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Four Boundaries</div>
+            <h2 class="rv" style="--d:.12s">需要留意的<span class="gold">合规边界</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone" style="display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:28px;">
+
+            <div class="panel rv" style="--d:.30s"><div class="pn">01</div>
+                <h3>口径与登记的一致性</h3>
+                <p style="margin-top:16px;">对外口径与工商登记的实际股权结构，应保持<span class="em">可解释的一致性</span>；不要让对外表述与登记事实之间出现无法说明的落差。</p>
+            </div>
+
+            <div class="panel rv" style="--d:.36s"><div class="pn">02</div>
+                <h3>让身份有法律基础</h3>
+                <p style="margin-top:16px;">建议通过让张漫（或其持股主体）在漫星工坊<span class="em">实际持有股权</span>的方式，使「投资人」身份有真实的法律基础，
+                    避免形成纯粹的<span class="em">名义性陈述</span>。</p>
+            </div>
+
+            <div class="panel rv" style="--d:.42s"><div class="pn">03</div>
+                <h3>代持须落到纸面</h3>
+                <p style="margin-top:16px;">涉及代持安排的，应签署<span class="em">书面代持协议</span>，明确双方权利义务；不要以口头约定或默认理解处理代持关系。</p>
+            </div>
+
+            <div class="panel gold flag rv" style="--d:.48s"><div class="pn" style="color:rgba(201,162,39,.5);">04</div>
+                <h3 style="color:var(--gold);">明星授权是全部业务的基石</h3>
+                <p style="margin-top:16px;">与明星签署数字分身及切片授权时，须取得<span class="em">肖像权、声音权及表演者权</span>的明确书面授权，
+                    并约定 <span class="em">AI 生成内容的使用边界</span>。</p>
+                <div class="hair" style="margin:18px 0 14px;"></div>
+                <p class="sm">这一条不成立，上面三条都无意义 —— 它是全部业务的合规基石。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="seal" style="--d:.9s; right:132px; bottom:132px; width:150px; height:150px; border-color:var(--vermilion);">
+        <span style="font-size:36px;">合规<br>基石</span>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>11 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     12 · VI 两个最小闭环（第一阶段要跑通的）
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>VI · First Loops</span><span class="cn">两个最小闭环</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Phase One Target</div>
+            <h2 class="rv" style="--d:.12s">第一阶段要跑通的<span class="gold">两个闭环</span></h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <!-- 闭环一 -->
+            <div class="panel flag rv" style="--d:.30s; height:236px;">
+                <div style="display:flex; align-items:baseline; gap:20px;">
+                    <span class="ord" style="font-size:44px;">01</span>
+                    <h3 style="font-size:34px;">数字分身 ＋ 直播带货</h3>
+                    <span class="chip mono gold" style="margin-left:auto;">面向消费端</span>
+                </div>
+                <div class="flow" style="margin-top:24px;">
+                    <div class="step"><div class="n">STEP 01</div><div class="t">明星签约<br>与授权取得</div></div>
+                    <div class="arrow">→</div>
+                    <div class="step"><div class="n">STEP 02</div><div class="t">数字分身生成</div></div>
+                    <div class="arrow">→</div>
+                    <div class="step"><div class="n">STEP 03</div><div class="t">数字资产登记<br>与授权管理</div></div>
+                    <div class="arrow">→</div>
+                    <div class="step"><div class="n">STEP 04</div><div class="t">直播带货变现<br>与分成结算</div></div>
+                </div>
+            </div>
+
+            <!-- 闭环二 -->
+            <div class="panel flag rv" style="--d:.42s; height:236px; margin-top:26px;">
+                <div style="display:flex; align-items:baseline; gap:20px;">
+                    <span class="ord" style="font-size:44px;">02</span>
+                    <h3 style="font-size:34px;">切片授权 ＋ 企业推广</h3>
+                    <span class="chip mono gold" style="margin-left:auto;">面向 B 端与 G 端</span>
+                </div>
+                <div class="flow" style="margin-top:24px;">
+                    <div class="step"><div class="n">STEP 01</div><div class="t">取得明星<br>内容切片授权</div></div>
+                    <div class="arrow">→</div>
+                    <div class="step"><div class="n">STEP 02</div><div class="t">切片分发<br>与授权管理</div></div>
+                    <div class="arrow">→</div>
+                    <div class="step"><div class="n">STEP 03</div><div class="t">企业与政府<br>形象推广交付</div></div>
+                    <div class="arrow">→</div>
+                    <div class="step"><div class="n">STEP 04</div><div class="t">授权费<br>与分成结算</div></div>
+                </div>
+            </div>
+
+            <div class="panel gold rv" style="--d:.54s; height:100px; margin-top:26px; display:flex; align-items:center; gap:36px;">
+                <span class="chip mono gold">阶段目标</span>
+                <p style="flex:1;">第一阶段签约首批 <b>3—5 位标杆明星</b>，把这两条闭环各跑通一次，再谈矩阵扩张。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>12 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     13 · VI 三阶段路线图
+     ============================================================ -->
+<section class="slide">
+    <div class="stars"></div>
+    <div class="top"><span>VI · Roadmap</span><span class="cn">未来规划</span></div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Three Phases</div>
+            <h2 class="rv" style="--d:.12s">搭平台 · <span class="gold">铺矩阵</span> · 做基础设施</h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <div class="rail rv" style="--d:.28s">
+                <div class="ln"></div>
+                <div class="nd" style="left:0;"></div>
+                <div class="nd" style="left:calc(50% - 7px);"></div>
+                <div class="nd" style="right:0;"></div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:28px; height:552px; margin-top:20px;">
+
+                <div class="panel gold flag rv" style="--d:.34s; display:flex; flex-direction:column;">
+                    <div class="ord" style="font-size:58px;">I</div>
+                    <h3 style="margin-top:16px; font-size:36px;">平台搭建期</h3>
+                    <div style="margin-top:14px;"><span class="chip mono gold">约 1—2 个月</span></div>
+                    <div class="hair" style="margin:22px 0 18px;"></div>
+                    <p class="sm">· 完成漫星工坊设立与<span class="em">股权交割</span></p>
+                    <p class="sm">· 技术平台完成明星数字分身生成、数字资产管理与切片授权管理的<span class="em">产品化</span></p>
+                    <p class="sm">· 签约首批 <span class="em">3—5 位标杆明星</span></p>
+                    <p class="sm">· 跑通「数字分身＋带货」与「切片授权＋企业推广」两个最小闭环</p>
+                </div>
+
+                <div class="panel rv" style="--d:.42s; display:flex; flex-direction:column;">
+                    <div class="ord" style="font-size:58px;">II</div>
+                    <h3 style="margin-top:16px; font-size:36px;">矩阵扩张期</h3>
+                    <div style="margin-top:14px;"><span class="chip mono">约 3—6 个月</span></div>
+                    <div class="hair" style="margin:22px 0 18px;"></div>
+                    <p class="sm">· 模式 A 与模式 B <span class="em">并行</span>推进</p>
+                    <p class="sm">· 与 <span class="em">3—10 个</span>经纪人或操盘人团队设立二级公司或合作公司，形成艺人矩阵</p>
+                    <p class="sm">· 面向企业与政府客户建立<span class="em">标准化的报价与交付体系</span></p>
+                    <p class="sm">· 沉淀数字资产库，形成切片授权的规模化分发收入</p>
+                </div>
+
+                <div class="panel rv" style="--d:.50s; display:flex; flex-direction:column;">
+                    <div class="ord" style="font-size:58px;">III</div>
+                    <h3 style="margin-top:16px; font-size:36px;">平台生态期</h3>
+                    <div style="margin-top:14px;"><span class="chip mono">6 个月以后</span></div>
+                    <div class="hair" style="margin:22px 0 18px;"></div>
+                    <p class="sm">· 平台开放为明星数字资产的<span class="em">行业级基础设施</span></p>
+                    <p class="sm">· 向 MCN、品牌方、地方文旅与政务宣传等场景输出能力</p>
+                    <p class="sm">· 探索数字资产的<span class="em">确权与交易机制</span></p>
+                    <p class="sm">· 视业务体量启动融资或与产业资本合作，支撑全国化扩张</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot"><span class="cn">内部讨论稿</span><span>13 / 14</span></div>
+</section>
+
+<!-- ============================================================
+     14 · 待决事项与结语
+     ============================================================ -->
+<section class="slide hero">
+    <div class="stars"></div>
+    <div class="top"><span>Next</span><span class="cn">需双方拍板的事项</span></div>
+    <div class="edge-l">DRAFT FOR DISCUSSION</div>
+
+    <div class="body-in">
+        <div class="head">
+            <div class="eyebrow rv" style="--d:.05s">Open Items</div>
+            <h2 class="rv" style="--d:.12s">这份框架里<span class="gold">尚未确定</span>的部分</h2>
+            <div class="rule-g rl" style="--d:.24s"></div>
+        </div>
+
+        <div class="zone">
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:1fr 1fr; gap:24px; height:392px;">
+                <div class="panel rv" style="--d:.30s"><div class="pn">01</div>
+                    <h3 style="font-size:29px;">漫星工坊股比</h3>
+                    <p class="sm" style="margin-top:12px;">建议乙方 51% / 张漫方 49%，待确认。</p>
+                </div>
+                <div class="panel rv" style="--d:.35s"><div class="pn">02</div>
+                    <h3 style="font-size:29px;">出资方式与作价</h3>
+                    <p class="sm" style="margin-top:12px;">现金、技术作价、资源折价的组合与估值口径。</p>
+                </div>
+                <div class="panel rv" style="--d:.40s"><div class="pn">03</div>
+                    <h3 style="font-size:29px;">董事会与重大事项</h3>
+                    <p class="sm" style="margin-top:12px;">席位安排，以及张漫方参与权覆盖哪些事项。</p>
+                </div>
+                <div class="panel rv" style="--d:.45s"><div class="pn">04</div>
+                    <h3 style="font-size:29px;">首批标杆明星</h3>
+                    <p class="sm" style="margin-top:12px;">3—5 位的具体名单与签约节奏。</p>
+                </div>
+                <div class="panel gold flag rv" style="--d:.50s"><div class="pn" style="color:rgba(201,162,39,.5);">05</div>
+                    <h3 style="font-size:29px; color:var(--gold);">明星授权模板</h3>
+                    <p class="sm" style="margin-top:12px;">肖像权 / 声音权 / 表演者权 + AI 生成内容使用边界。</p>
+                </div>
+                <div class="panel rv" style="--d:.55s; border-color:rgba(178,58,46,.42);"><div class="pn" style="color:rgba(178,58,46,.5);">06</div>
+                    <h3 style="font-size:29px;">代持安排（如涉及）</h3>
+                    <p class="sm" style="margin-top:12px;">是否需要代持，以及书面代持协议的权利义务。</p>
+                </div>
+            </div>
+
+            <div class="panel rv" style="--d:.64s; height:200px; margin-top:26px; display:flex; align-items:center; padding-right:300px;">
+                <div>
+                    <div class="kick" style="font-size:20px;">Closing Note</div>
+                    <p style="margin-top:18px; font-size:25px; line-height:1.8;">
+                        本文件为项目治理结构的<b>框架性描述</b>，供双方内部讨论使用。
+                        所有股权比例、出资方式与治理安排均为建议方案，<b>以最终协议为准</b>。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="seal" style="--d:1.0s; right:150px; bottom:120px; width:158px; height:158px;">
+        <span style="font-size:38px;">内部<br>讨论</span>
+    </div>
+
+    <div class="foot"><span class="cn">「曼星」计划 · 漫星工坊治理结构框架 · 2026.07.31</span><span>14 / 14</span></div>
+</section>
+
+</main>
+</div>
+
+<!-- 演示 chrome（舞台之外） -->
+<div class="deck-controls">
+    <button id="btnPrev" aria-label="上一页">‹</button>
+    <span class="bar"><i id="progress"></i></span>
+    <span id="counter">01 / 14</span>
+    <button id="btnNext" aria-label="下一页">›</button>
+</div>
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="编辑模式（E）">✏️</button>
+<div class="edit-hint">编辑模式 · 点击文字修改 · Ctrl+S 保存</div>
+
+<script>
+/* ============================================================
+   放映控制器：整台等比缩放 + 键盘 / 滚轮 / 触摸导航
+   ============================================================ */
+class SlidePresentation {
+    constructor() {
+        this.stage = document.getElementById('deckStage');
+        this.slides = Array.from(document.querySelectorAll('.slide'));
+        this.current = 0;
+        this.counter = document.getElementById('counter');
+        this.progress = document.getElementById('progress');
+        this.fit(); addEventListener('resize', () => this.fit());
+        this.bindKeys(); this.bindWheel(); this.bindTouch();
+        document.getElementById('btnPrev').addEventListener('click', () => this.prev());
+        document.getElementById('btnNext').addEventListener('click', () => this.next());
+        this.show(0);
+    }
+    /* 1920×1080 舞台整体缩放居中；不足则留黑边，绝不重排幻灯内容 */
+    fit() {
+        const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+        this.stage.style.transform =
+            `translate(${(innerWidth - 1920 * s) / 2}px, ${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+    }
+    bindKeys() {
+        addEventListener('keydown', (e) => {
+            if (e.target.getAttribute && e.target.getAttribute('contenteditable')) return;
+            if (['ArrowRight', 'ArrowDown', ' ', 'PageDown'].includes(e.key)) { e.preventDefault(); this.next(); }
+            if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); this.prev(); }
+            if (e.key === 'Home') this.show(0);
+            if (e.key === 'End') this.show(this.slides.length - 1);
+        });
+    }
+    bindWheel() {
+        let lock = false;
+        addEventListener('wheel', (e) => {
+            if (lock || Math.abs(e.deltaY) < 24) return;
+            lock = true; setTimeout(() => lock = false, 620);
+            e.deltaY > 0 ? this.next() : this.prev();
+        }, { passive: true });
+    }
+    bindTouch() {
+        let x0 = null, y0 = null;
+        addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+        addEventListener('touchend', (e) => {
+            if (x0 === null) return;
+            const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+            if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy)) dx < 0 ? this.next() : this.prev();
+            x0 = y0 = null;
+        }, { passive: true });
+    }
+    next() { this.show(this.current + 1); }
+    prev() { this.show(this.current - 1); }
+    show(i) {
+        this.current = Math.max(0, Math.min(i, this.slides.length - 1));
+        this.slides.forEach((s, idx) => {
+            const on = idx === this.current;
+            s.classList.toggle('active', on);
+            s.classList.toggle('visible', on);
+        });
+        const pad = (n) => String(n).padStart(2, '0');
+        this.counter.textContent = `${pad(this.current + 1)} / ${pad(this.slides.length)}`;
+        this.progress.style.width = ((this.current + 1) / this.slides.length * 100) + '%';
+    }
+}
+const deck = new SlidePresentation();
+
+/* ============================================================
+   就地编辑：hover 左上热区或按 E 唤出，改动存 localStorage
+   （不用 CSS ~ 兄弟选择器：pointer-events:none 会断 hover 链）
+   ============================================================ */
+class InlineEditor {
+    constructor(key) {
+        this.key = key; this.isActive = false;
+        this.targets = 'h1,h2,h3,h4,p,td,th,.kick,.eyebrow,.chip,.bt,.bs,.tag,.ord,.pn,.stat,.stat-lab,.t,.n,.wlab,.seal span,.legend span,.foot .cn,.top .cn';
+        this.restore();
+    }
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        document.getElementById('editToggle').classList.toggle('active', this.isActive);
+        document.querySelectorAll(this.targets).forEach(el => {
+            if (this.isActive) el.setAttribute('contenteditable', 'true'); else el.removeAttribute('contenteditable');
+        });
+        if (!this.isActive) this.save();
+    }
+    save() { try { localStorage.setItem(this.key, document.getElementById('deckStage').innerHTML); } catch (e) {} }
+    restore() { try { const h = localStorage.getItem(this.key); if (h) document.getElementById('deckStage').innerHTML = h; } catch (e) {} }
+}
+const editor = new InlineEditor('deck-manxing-governance');
+
+const hotzone = document.querySelector('.edit-hotzone');
+const editToggle = document.getElementById('editToggle');
+let hideTimeout = null;
+hotzone.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); editToggle.classList.add('show'); });
+hotzone.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+editToggle.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('click', () => editor.toggleEditMode());
+hotzone.addEventListener('click', () => editor.toggleEditMode());
+document.addEventListener('keydown', (e) => {
+    if ((e.key === 'e' || e.key === 'E') && !e.target.getAttribute('contenteditable')) editor.toggleEditMode();
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); editor.save(); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI 短剧 · 客户价值推介</title>
+
+<!-- 模板：Stencil & Tablet（stencil-tablet）
+     CJK 策略 A —— 中文标题整体换用 Noto Serif SC 900；拉丁词与数字保留 Stardos Stencil 的镂空断墨
+     本册 lead accent = orange -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@400;700&family=Barlow+Condensed:wght@600;700;800;900&family=Noto+Serif+SC:wght@400;500;700;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+
+<style>
+/* ============================================================
+   1. 模板令牌 —— Stencil & Tablet 封闭七色板 + bone / black / paper
+   本册主色（lead accent）= orange，对应 AI 短剧应用
+   ============================================================ */
+:root {
+    --bone:    #E2DCC9;
+    --black:   #000000;
+    --ink:     #0A0A0A;
+    --paper:   #F4EFE0;
+    --sienna:  #A06A3C;
+    --magenta: #C73B7A;
+    --orange:  #EE7A2E;
+    --teal:    #2D7E73;
+    --blue:    #3F73B7;
+    --mustard: #D8A93B;
+    --olive:   #6F7A2E;
+
+    --lead: var(--orange);
+
+    /* 字体：拉丁 / 中文双轨（Strategy A） */
+    --f-stencil: "Stardos Stencil", serif;                      /* 拉丁标题与全部数字 */
+    --f-disp-cn: "Noto Serif SC", "Stardos Stencil", serif;     /* 中文标题（900） */
+    --f-cond:    "Barlow Condensed", "Noto Sans SC", sans-serif;/* 拉丁 chrome */
+    --f-cond-cn: "Noto Sans SC", "Barlow Condensed", sans-serif;/* 中文 chrome（700–900） */
+    --f-body:    "Noto Serif SC", "Inter", serif;               /* 正文 */
+
+    --stage-bg: #1A1A1A;
+    --slide-bg: var(--bone);
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ============================================================
+   2. FIXED 16:9 STAGE（viewport-base.css 全量，必需）
+   ============================================================ */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--stage-bg, #000); }
+.deck-viewport { position: fixed; inset: 0; overflow: hidden; background: var(--stage-bg, #000); }
+.deck-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 0 0; background: var(--slide-bg, #fff); }
+.slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; display: block; visibility: hidden; opacity: 0; pointer-events: none; background: var(--slide-bg, #fff); }
+.slide.active, .slide.visible { visibility: visible; opacity: 1; pointer-events: auto; z-index: 1; }
+img, video, canvas, svg { max-width: 100%; max-height: 100%; }
+.deck-controls { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1000; }
+@media print {
+    html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+    .deck-viewport { position: static; overflow: visible; background: #fff; }
+    .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+    .slide { position: relative; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; width: 1920px; height: 1080px; break-after: page; page-break-after: always; }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    .deck-controls { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .2s !important; } }
+
+/* ============================================================
+   3. 入场动效（克制：只动 transform / opacity，海报体系不做花活）
+   ============================================================ */
+.rv { opacity: 0; transform: translateY(24px); transition: opacity .62s var(--ease), transform .62s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .rv { opacity: 1; transform: translateY(0); }
+.rvs { opacity: 0; transform: scale(.96); transition: opacity .6s var(--ease), transform .68s var(--ease); transition-delay: var(--d, 0s); }
+.slide.visible .rvs { opacity: 1; transform: scale(1); }
+
+/* ============================================================
+   4. 幻灯底与 chrome（位置不可协商：top 48/64，bottom 36/64）
+   ============================================================ */
+.slide { background: var(--bone); color: var(--ink); }
+.slide.dark { background: var(--black); color: var(--bone); }
+
+.top {
+    position: absolute; top: 48px; left: 64px; right: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: var(--f-cond-cn); font-weight: 900; font-size: 27px;
+    letter-spacing: 0; line-height: 1;
+}
+.top .lat { font-family: var(--f-cond); font-weight: 800; font-size: 30px; letter-spacing: .08em; text-transform: uppercase; }
+.top .meta { display: flex; gap: 56px; font-size: 21px; font-weight: 700; opacity: .8; }
+.top .meta .lat { font-size: 22px; font-weight: 700; letter-spacing: .1em; }
+.slide.dark .top { color: var(--bone); }
+
+.footer {
+    position: absolute; left: 64px; right: 64px; bottom: 36px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--f-cond-cn); font-weight: 700; font-size: 20px;
+    letter-spacing: 0; opacity: .75;
+}
+.footer .lat { font-family: var(--f-cond); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; font-size: 21px; }
+.slide.dark .footer { color: var(--bone); }
+
+/* 正文区：chrome 之间的可用带（1080 − 48 − 36 ≈ 996，留呼吸后取 852） */
+.stage-in { position: absolute; left: 64px; right: 64px; top: 128px; height: 852px; }
+
+/* ============================================================
+   5. 排版
+   ============================================================ */
+h1 {
+    font-family: var(--f-disp-cn); font-weight: 900; font-size: 168px;
+    line-height: 1.06; letter-spacing: 0; color: var(--ink);
+}
+h1 .lat { font-family: var(--f-stencil); font-weight: 700; text-transform: uppercase; letter-spacing: -.015em; }
+h1 em { font-style: normal; color: var(--lead); }
+h2 {
+    font-family: var(--f-disp-cn); font-weight: 900; font-size: 82px;
+    line-height: 1.16; letter-spacing: 0; color: var(--ink);
+}
+h2 em { font-style: normal; color: var(--lead); }
+h2 .lat { font-family: var(--f-stencil); font-weight: 700; text-transform: uppercase; }
+h3 { font-family: var(--f-disp-cn); font-weight: 900; font-size: 34px; line-height: 1.25; }
+h4 { font-family: var(--f-cond-cn); font-weight: 900; font-size: 24px; line-height: 1.3; }
+p  { font-family: var(--f-body); font-weight: 400; font-size: 22px; line-height: 1.8; }
+.lede { font-size: 27px; line-height: 1.72; }
+.body-lg { font-size: 24px; line-height: 1.78; }
+/* 正文不加粗（模板规则）：强调靠切换到 condensed 体，不靠 bold */
+strong { font-weight: 400; font-family: var(--f-cond-cn); font-size: 1.04em; }
+
+.eyebrow {
+    font-family: var(--f-cond-cn); font-weight: 900; font-size: 24px; letter-spacing: 0;
+}
+.eyebrow .lat { font-family: var(--f-cond); letter-spacing: .14em; text-transform: uppercase; }
+
+/* ============================================================
+   6. 组件 —— 全部扁平：无阴影、无渐变，圆角 22–26px
+   ============================================================ */
+/* 6.1 Tablet 卡（必带数字，数字用 Stardos 保留镂空） */
+.tablet {
+    border-radius: 26px; padding: 34px 30px 30px;
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.tablet .num {
+    font-family: var(--f-stencil); font-weight: 700; font-size: 220px;
+    line-height: .9; letter-spacing: -.02em; color: var(--ink);
+}
+.tablet h3 { margin-top: auto; margin-bottom: 14px; }
+.tablet p { font-size: 21px; }
+.tablet.on-cool, .tablet.on-cool h3, .tablet.on-cool .num { color: var(--bone); }
+.tablet.on-cool p { color: var(--bone); opacity: .92; }
+
+/* 6.2 通用色卡 */
+.card { border-radius: 22px; padding: 30px 30px 28px; overflow: hidden; }
+.card.paper { background: var(--paper); }
+.card.bone-out { background: transparent; border: 2px solid var(--ink); }
+.card.on-cool, .card.on-cool h3, .card.on-cool h4 { color: var(--bone); }
+.card.on-cool p { color: var(--bone); opacity: .92; }
+
+/* 6.3 状态药丸（矩阵约定：teal=是 / mustard=部分 / magenta=否 / paper+边框=注） */
+.pill {
+    display: inline-flex; align-items: center; border-radius: 999px;
+    font-family: var(--f-cond-cn); font-weight: 900; font-size: 19px;
+    letter-spacing: 0; padding: 7px 17px;
+}
+.pill .lat { font-family: var(--f-cond); letter-spacing: .08em; text-transform: uppercase; }
+.pill.yes  { background: var(--teal);    color: var(--bone); }
+.pill.part { background: var(--mustard); color: var(--ink); }
+.pill.no   { background: var(--magenta); color: var(--bone); }
+.pill.note { background: var(--paper);   color: var(--ink); border: 1.5px solid var(--ink); }
+.pill.ink  { background: var(--ink);     color: var(--bone); }
+
+/* 6.4 矩阵表（paper 底 + 黑头 + 1.5px 墨色格线） */
+.matrix { background: var(--paper); border-radius: 22px; overflow: hidden; width: 100%; border-collapse: collapse; }
+.matrix thead th {
+    background: var(--black); color: var(--bone);
+    font-family: var(--f-disp-cn); font-weight: 900; font-size: 26px;
+    text-align: left; padding: 24px 26px; line-height: 1.2;
+}
+.matrix thead th .lat { font-family: var(--f-stencil); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.matrix td {
+    border: 1.5px solid rgba(10,10,10,.35);
+    padding: 20px 26px; font-family: var(--f-body); font-size: 21px; line-height: 1.6;
+    vertical-align: middle;
+}
+.matrix td.rowlab { font-family: var(--f-disp-cn); font-weight: 900; font-size: 25px; line-height: 1.3; width: 300px; }
+/* 行数多的表用紧排，保证连同行动条一起仍落在 1080 之内 */
+.matrix.tight thead th { padding: 19px 26px; }
+.matrix.tight td { padding: 14px 26px; }
+.matrix tr td:first-child { border-left: none; }
+.matrix tr td:last-child { border-right: none; }
+.matrix tr:last-child td { border-bottom: none; }
+
+/* 6.5 流程节点 + 时间条 */
+.pflow { display: flex; align-items: stretch; gap: 18px; }
+.pnode { flex: 1; border-radius: 22px; padding: 26px 24px 24px; display: flex; flex-direction: column; }
+.pnode .ord { font-family: var(--f-stencil); font-weight: 700; font-size: 64px; line-height: .9; letter-spacing: -.02em; }
+.pnode h3 { font-size: 30px; margin: 14px 0 10px; }
+.pnode p { font-size: 19px; line-height: 1.7; }
+.pnode.on-cool, .pnode.on-cool h3, .pnode.on-cool .ord { color: var(--bone); }
+.pnode.on-cool p { color: var(--bone); opacity: .92; }
+.parrow { align-self: center; font-family: var(--f-stencil); font-size: 40px; color: var(--ink); opacity: .5; flex: none; }
+.tbar {
+    background: var(--paper); border-radius: 14px; height: 50px;
+    display: flex; align-items: center; justify-content: space-around;
+    font-family: var(--f-cond-cn); font-weight: 900; font-size: 19px; letter-spacing: 0;
+}
+
+/* 6.6 统计数字（Stardos 数字 + Barlow 上标后缀） */
+.stat .n { font-family: var(--f-stencil); font-weight: 700; font-size: 160px; line-height: .88; letter-spacing: -.02em; }
+.stat .n sup {
+    font-family: var(--f-cond); font-weight: 800; font-size: 40px;
+    letter-spacing: .04em; vertical-align: top; margin-left: 6px;
+}
+.stat .lab { font-family: var(--f-cond-cn); font-weight: 900; font-size: 21px; margin-top: 8px; }
+
+/* 6.7 行动条（mustard） */
+.actionbar {
+    background: var(--mustard); border-radius: 22px; padding: 24px 32px;
+    display: flex; align-items: center; gap: 26px;
+}
+.actionbar .tag { font-family: var(--f-cond-cn); font-weight: 900; font-size: 22px; flex: none; }
+.actionbar .rule { width: 2px; align-self: stretch; background: var(--ink); flex: none; }
+.actionbar .hl { font-family: var(--f-disp-cn); font-weight: 900; font-size: 34px; line-height: 1.3; }
+
+/* 6.8 分节页（540px 数字 + 黑底） */
+.divnum {
+    position: absolute; left: 40px; top: 40px;
+    font-family: var(--f-stencil); font-weight: 700; font-size: 540px;
+    line-height: .78; letter-spacing: -.03em; color: var(--lead);
+}
+.divhead { position: absolute; right: 0; bottom: 40px; text-align: right; }
+.divhead h2 { font-size: 104px; color: var(--bone); }
+.divhead h2 em { color: var(--lead); }
+
+/* 6.9 引言面板（magenta + 中文全角引号，替代 Bowlby 引号字形） */
+.quote {
+    background: var(--magenta); border-radius: 26px; padding: 46px 54px;
+    display: flex; align-items: center; gap: 40px; height: 100%;
+}
+.quote .mk { font-family: var(--f-disp-cn); font-weight: 900; font-size: 300px; line-height: .6; color: var(--ink); opacity: .22; flex: none; }
+.quote .tx { font-family: var(--f-disp-cn); font-weight: 900; font-size: 58px; line-height: 1.32; color: var(--ink); }
+
+/* 6.10 封面 lockup + 抽象几何形 */
+.lockup { display: flex; align-items: center; gap: 20px; }
+.lockup .mark { width: 56px; height: 56px; border-radius: 14px; background: var(--lead); flex: none; }
+.lockup .who { font-family: var(--f-cond-cn); font-weight: 900; font-size: 27px; line-height: 1.2; }
+.lockup .sub { font-family: var(--f-cond-cn); font-weight: 700; font-size: 19px; opacity: .7; margin-top: 3px; }
+.datemark { font-family: var(--f-stencil); font-weight: 700; font-size: 36px; letter-spacing: .04em; }
+
+.shape { position: absolute; pointer-events: none; }
+.shape.a { width: 190px; height: 240px; background: var(--lead); border-radius: 0 999px 999px 0; }
+.shape.b { width: 330px; height: 230px; background: var(--lead); border-radius: 999px 0 999px 999px; }
+
+/* 6.11 登记记录行（archival register：paper 行 + 墨色格线 + Stardos 编号） */
+.rec { display: flex; align-items: center; gap: 22px; background: var(--paper); border-radius: 22px; padding: 20px 26px; }
+.rec .reg { font-family: var(--f-stencil); font-weight: 700; font-size: 30px; letter-spacing: .02em; flex: none; }
+.rec .nm { font-family: var(--f-disp-cn); font-weight: 900; font-size: 30px; flex: 1; }
+.rec .st { font-family: var(--f-cond-cn); font-weight: 900; font-size: 21px; flex: none; }
+.rec.ok { background: var(--teal); color: var(--bone); }
+.rec.bad { background: var(--magenta); color: var(--bone); }
+
+/* 6.12 引用清单（已用于） */
+.uses { display: flex; flex-direction: column; gap: 12px; }
+.uses .u { display: flex; align-items: center; gap: 18px; background: var(--paper); border-radius: 22px; padding: 16px 24px; }
+.uses .u .tg { font-family: var(--f-cond-cn); font-weight: 900; font-size: 19px; background: var(--ink); color: var(--bone); border-radius: 999px; padding: 5px 14px; flex: none; }
+.uses .u .tx { font-family: var(--f-body); font-size: 21px; flex: 1; }
+.uses .u .ct { font-family: var(--f-stencil); font-weight: 700; font-size: 26px; letter-spacing: -.02em; }
+
+/* 6.13 网格 */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 26px; }
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 24px; }
+.g6 { display: grid; grid-template-columns: repeat(3,1fr); gap: 22px; }
+.split { display: grid; grid-template-columns: 1.02fr .98fr; gap: 48px; align-items: center; }
+.rows { display: flex; flex-direction: column; gap: 14px; }
+
+/* 6.14 项目列表（无圆点，用墨色短横） */
+.bul { list-style: none; }
+.bul li { font-family: var(--f-body); font-size: 22px; line-height: 1.75; padding-left: 38px; position: relative; margin-bottom: 16px; }
+.bul li::before { content: ""; position: absolute; left: 0; top: 18px; width: 22px; height: 3px; background: var(--lead); }
+.bul li b { font-weight: 400; font-family: var(--f-cond-cn); font-size: 1.04em; }
+
+/* ============================================================
+   7. 演示 chrome（舞台之外，不属于幻灯设计系统）
+   ============================================================ */
+.deck-controls {
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(10,10,10,.86); padding: 9px 16px; border-radius: 999px;
+    font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 15px;
+    letter-spacing: .12em; color: var(--bone); opacity: .28; transition: opacity .3s ease;
+}
+.deck-controls:hover { opacity: 1; }
+.deck-controls .bar { width: 190px; height: 4px; background: rgba(226,220,201,.25); overflow: hidden; }
+.deck-controls .bar i { display: block; height: 100%; background: var(--lead); transition: width .4s var(--ease); }
+.deck-controls button { background: none; border: none; color: var(--bone); cursor: pointer; font-family: inherit; font-size: 17px; padding: 2px 6px; }
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle { position: fixed; top: 18px; left: 18px; z-index: 10001; width: 42px; height: 42px; border-radius: 999px; border: 2px solid var(--ink); background: var(--bone); color: var(--ink); font-size: 17px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { background: var(--mustard); }
+body.editing [contenteditable="true"] { outline: 2px dashed rgba(10,10,10,.5); outline-offset: 4px; }
+body.editing [contenteditable="true"]:focus { outline: 2px solid var(--ink); }
+.edit-hint { position: fixed; top: 20px; left: 74px; z-index: 10001; font-family: "Barlow Condensed", sans-serif; font-weight: 800; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; background: var(--mustard); color: var(--ink); padding: 9px 14px; border-radius: 999px; display: none; }
+body.editing .edit-hint { display: block; }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- ============ 01 · 封面 ============ -->
+<section class="slide active">
+    <div class="shape a rvs" style="--d:.5s; right: 64px; top: 96px; border-radius: 999px 0 0 999px;"></div>
+    <div class="shape b rvs" style="--d:.58s; right: 254px; top: 246px; border-radius: 0 999px 999px 999px;"></div>
+    <div class="top"><span class="lat">AI STAR ECOSYSTEM × 短剧</span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: 1fr auto;">
+        <div style="align-self: end;">
+            <div class="eyebrow rv" style="--d:.05s; margin-bottom: 30px;">
+                <span class="lat">FIVE-STAGE PIPELINE ·</span> 一条可控流水线，不是一个单镜生成器
+            </div>
+            <h1 class="rv" style="--d:.12s">一句话开拍<br>一张表<em>拍完整集</em></h1>
+            <p class="lede rv" style="--d:.26s; margin-top: 34px; max-width: 1080px;">
+                从跟 AI 聊出故事，到分集大纲、逐镜出片、成片合成、全网分发，全在一条线上走完。
+                角色长相、场景、镜间承接由系统接管 —— <strong>不靠人记，也不靠运气</strong>。
+            </p>
+        </div>
+        <div class="rv" style="--d:.4s; display: flex; align-items: end; justify-content: space-between; margin-top: 30px;">
+            <div class="lockup">
+                <span class="mark"></span>
+                <span><span class="who">AI 短剧 · 客户价值推介</span>
+                <span class="sub" style="display:block;">AI DRAMA STUDIO · 五阶段流水线</span></span>
+            </div>
+            <span class="datemark">01 / 12</span>
+        </div>
+    </div>
+</section>
+
+<!-- ============ 02 · 痛点 ============ -->
+<section class="slide">
+    <div class="top"><span>短剧工业化真正卡在哪</span>
+        <span class="meta"><span class="lat">THE PROBLEM</span><span class="lat">01 / 04</span></span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: auto 1fr; gap: 30px;">
+        <h2 class="rv" style="--d:.05s">出图不难 —— 难的是第 47 镜的她<br>还是<em>第 1 镜那个人</em></h2>
+        <div class="g3">
+            <div class="tablet rv" style="--d:.16s; background: var(--magenta);">
+                <div class="num">1</div>
+                <h3>角色会漂</h3>
+                <p>同一个角色，不同镜次里脸变了、发型变了、衣服换了。观众三秒出戏，一整集白做。</p>
+            </div>
+            <div class="tablet rv" style="--d:.24s; background: var(--mustard);">
+                <div class="num">2</div>
+                <h3>镜间会断</h3>
+                <p>上一镜的末帧接不到下一镜的首帧，动作、光线、机位全断，剪起来像 PPT 翻页。</p>
+            </div>
+            <div class="tablet on-cool rv" style="--d:.32s; background: var(--teal);">
+                <div class="num">3</div>
+                <h3>进度会丢</h3>
+                <p>脚本一个页面、出图另一个、出片第三个。做到一半刷新或换设备，前面全没了。</p>
+            </div>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">02 / 12</span></div>
+</section>
+
+<!-- ============ 03 · 五阶段矩阵 ============ -->
+<section class="slide">
+    <div class="top"><span>一条流水线，五个阶段</span>
+        <span class="meta"><span class="lat">THE SYSTEM</span><span class="lat">02 / 04</span></span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: auto auto; gap: 26px; align-content: start;">
+        <h2 class="rv" style="--d:.05s">每一步<em>你做什么</em>，系统替你做什么</h2>
+        <div class="rv" style="--d:.18s;">
+            <table class="matrix tight">
+                <thead><tr>
+                    <th style="width: 300px;">阶段</th><th style="width: 400px;">你做的事</th>
+                    <th>系统替你做的事</th><th style="width: 240px;">产出</th>
+                </tr></thead>
+                <tbody>
+                    <tr><td class="rowlab">脑暴立项</td><td>跟 AI 聊出一个故事</td>
+                        <td>自动存草稿，随时接着聊；一键生成故事大纲</td><td><span class="pill note">故事大纲</span></td></tr>
+                    <tr><td class="rowlab">短剧设定</td><td>定选题、分集、角色与场景</td>
+                        <td>从大纲预填场景与角色卡，参考图一键三视图</td><td><span class="pill note">项目设定</span></td></tr>
+                    <tr><td class="rowlab">剧集脚本分镜表</td><td>逐镜写画面、台词、镜头</td>
+                        <td>装参考图 · 出图四版 · AI 拆镜 · 出片 · 验收</td><td><span class="pill yes">逐镜成片</span></td></tr>
+                    <tr><td class="rowlab">成片合成</td><td>点一下</td>
+                        <td>按镜号顺序拼接已出片分镜，输出整集</td><td><span class="pill note">整集成片</span></td></tr>
+                    <tr><td class="rowlab">多平台分发</td><td>选平台与发布时间</td>
+                        <td>建发布任务并自动推进状态，失败可重试</td><td><span class="pill note">已发布</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="actionbar rv" style="--d:.32s;">
+            <span class="tag">关键差别</span><span class="rule"></span>
+            <span class="hl">五个阶段每一步都能回改 —— 改一句台词，不必回退整个项目</span>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">03 / 12</span></div>
+</section>
+
+<!-- ============ 04 · 分节页 ============ -->
+<section class="slide dark">
+    <div class="divnum rv" style="--d:.06s;">02</div>
+    <div class="divhead rv" style="--d:.2s; right: 64px;">
+        <div class="eyebrow" style="color: var(--bone); opacity: .8; margin-bottom: 22px;"><span class="lat">ONE TABLE, ONE EPISODE</span></div>
+        <h2>一张分镜表<br><em>拍完一整集</em></h2>
+        <p class="body-lg" style="color: var(--bone); opacity: .85; margin-top: 24px; max-width: 720px; margin-left: auto;">
+            出图四版挑选、AI 拆镜首尾帧、出视频、验收 —— 全在同一张表里完成，不用在三个页面之间来回跳。
+        </p>
+    </div>
+    <div class="footer"><span style="color: var(--bone);">AI 短剧</span><span class="lat">04 / 12</span></div>
+</section>
+
+<!-- ============ 05 · 流程 ============ -->
+<section class="slide">
+    <div class="top"><span>一集怎么跑完</span>
+        <span class="meta"><span class="lat">THE FLOW</span><span class="lat">03 / 04</span></span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: auto 1fr auto; gap: 28px;">
+        <h2 class="rv" style="--d:.05s">从一句话<br>到<em>一集上线</em></h2>
+        <div class="pflow rv" style="--d:.18s;">
+            <div class="pnode" style="background: var(--paper);">
+                <div class="ord">01</div><h3>聊出故事</h3>
+                <p>输入一句话，AI 陪你把故事聊清楚，草稿自动保存。</p>
+                <div style="margin-top:auto; padding-top:18px;"><span class="pill note">免费不扣费</span></div>
+            </div>
+            <span class="parrow">→</span>
+            <div class="pnode" style="background: var(--olive);">
+                <div class="ord">02</div><h3>定角色场景</h3>
+                <p>角色一键出正 / 侧 / 全身参考，场景卡从大纲预填。</p>
+                <div style="margin-top:auto; padding-top:18px;"><span class="pill ink">参考图集</span></div>
+            </div>
+            <span class="parrow">→</span>
+            <div class="pnode" style="background: var(--orange);">
+                <div class="ord">03</div><h3>逐镜出片</h3>
+                <p>分镜表里出图、拆镜、出视频、验收，一格一格推。</p>
+                <div style="margin-top:auto; padding-top:18px;"><span class="pill ink">核心工作面</span></div>
+            </div>
+            <span class="parrow">→</span>
+            <div class="pnode" style="background: var(--mustard);">
+                <div class="ord">04</div><h3>合成整集</h3>
+                <p>已出片的分镜按序拼接，一键成片。</p>
+                <div style="margin-top:auto; padding-top:18px;"><span class="pill ink">整集输出</span></div>
+            </div>
+            <span class="parrow">→</span>
+            <div class="pnode on-cool" style="background: var(--teal);">
+                <div class="ord">05</div><h3>全网分发</h3>
+                <p>选平台与时间，发布任务自动推进。</p>
+                <div style="margin-top:auto; padding-top:18px;"><span class="pill note">定时发布</span></div>
+            </div>
+        </div>
+        <div class="tbar rv" style="--d:.34s;">
+            <span>第 1 天 · 聊出故事</span><span>第 2 天 · 定角色与场景</span>
+            <span>第 3—5 天 · 逐镜出片</span><span>第 1 周 · 首集上线</span>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">05 / 12</span></div>
+</section>
+
+<!-- ============ 06 · 亮点一 · 分镜表 ============ -->
+<section class="slide">
+    <div class="top"><span>亮点一 · 一张表就是唯一工作面</span>
+        <span class="meta"><span class="lat">VALUE 01</span><span class="lat">06 / 12</span></span></div>
+    <div class="stage-in split">
+        <div>
+            <div class="eyebrow rv" style="--d:.03s; margin-bottom: 20px;"><span class="lat">ONE WORKING SURFACE</span></div>
+            <h2 class="rv" style="--d:.1s;">一格一格填<br>填完<em>直接出片</em></h2>
+            <ul class="bul rv" style="--d:.22s; margin-top: 30px;">
+                <li><b>每格都是结构化的</b>：镜号、时长、画面、镜头、台词·音效·BGM、特效氛围 —— 填完直接喂进出片，不用再翻译一遍给模型。</li>
+                <li><b>行级改写只动这一镜</b>：不必整篇重写，费用出手前就看到。</li>
+                <li><b>先出图再出片</b>：首帧确认了再动视频，省掉整段废片的钱。</li>
+            </ul>
+        </div>
+        <div class="rv" style="--d:.3s;">
+            <div class="card paper" style="padding: 34px;">
+                <h4 style="margin-bottom: 22px;">第 3 集 · 分镜表（12 镜 / 8 已出片）</h4>
+                <table class="matrix tight" style="border-radius: 18px;">
+                    <thead><tr><th style="width:110px;"><span class="lat">镜号</span></th><th style="width:130px;">时长</th><th>画面内容</th><th style="width:200px;">状态</th></tr></thead>
+                    <tbody>
+                        <tr><td class="rowlab" style="width:110px; font-family: var(--f-stencil); font-size:30px;">07</td>
+                            <td style="width:130px;">4 秒</td><td>雨夜天台，她回身</td><td><span class="pill yes">已出片</span></td></tr>
+                        <tr><td class="rowlab" style="font-family: var(--f-stencil); font-size:30px;">08</td>
+                            <td>6 秒</td><td>过肩对峙，推近</td><td><span class="pill part">首尾帧就绪</span></td></tr>
+                        <tr><td class="rowlab" style="font-family: var(--f-stencil); font-size:30px;">09</td>
+                            <td>3 秒</td><td>特写，台词收尾</td><td><span class="pill note">待出图</span></td></tr>
+                    </tbody>
+                </table>
+                <div style="display:flex; gap: 12px; margin-top: 24px; flex-wrap: wrap;">
+                    <span class="pill note">出图 2 分</span><span class="pill note">拆镜 3 分</span>
+                    <span class="pill note">出片 9 分</span><span class="pill ink">费用出手前可见</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">06 / 12</span></div>
+</section>
+
+<!-- ============ 07 · 亮点二 · 一致性 ============ -->
+<section class="slide">
+    <div class="top"><span>亮点二 · 整集看下来是同一个人</span>
+        <span class="meta"><span class="lat">VALUE 02</span><span class="lat">07 / 12</span></span></div>
+    <div class="stage-in split">
+        <div>
+            <div class="eyebrow rv" style="--d:.03s; margin-bottom: 20px;"><span class="lat">CONSISTENCY ENGINE</span></div>
+            <h2 class="rv" style="--d:.1s;">角色不漂<br>镜与镜<em>接得上</em></h2>
+            <p class="lede rv" style="--d:.2s; margin-top: 26px;">
+                一致性不是提示词技巧，是系统在每次出片前替你把参考图配齐 —— <strong>你只管写这一镜要什么</strong>。
+            </p>
+            <ul class="bul rv" style="--d:.3s; margin-top: 26px;">
+                <li><b>角色带多角度参考</b>：正面、侧面、全身一键生成，锁住长相。</li>
+                <li><b>上一镜末帧自动承接</b>：同场景的动作、光线、机位接得住。</li>
+                <li><b>如实回报用了几张</b>：显示「参考 4/5 生效」，不假装全用上了。</li>
+            </ul>
+        </div>
+        <div class="rv" style="--d:.3s;">
+            <div class="card paper" style="padding: 34px;">
+                <h4 style="margin-bottom: 22px;">出片前的参考装配 · 自动执行</h4>
+                <div class="rows">
+                    <div class="rec ok"><span class="reg">CHAR</span><span class="nm">女主 · 正 / 侧 / 全身</span><span class="st">3 张已用</span></div>
+                    <div class="rec ok"><span class="reg">SCENE</span><span class="nm">雨夜天台</span><span class="st">1 张已用</span></div>
+                    <div class="rec ok"><span class="reg">PREV</span><span class="nm">同场上一镜末帧</span><span class="st">已承接</span></div>
+                    <div class="rec"><span class="reg">PROP</span><span class="nm">道具参考</span><span class="st" style="opacity:.7;">超出模型上限，未用</span></div>
+                </div>
+                <div style="margin-top: 26px; background: var(--black); border-radius: 22px; padding: 26px 30px;">
+                    <h3 style="color: var(--bone); font-size: 32px;">参考 4 / 5 生效</h3>
+                    <p style="color: var(--bone); opacity: .85; margin-top: 10px; font-size: 21px;">缺的那一张会告诉你原因，而不是悄悄丢掉再让你猜为什么不像。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">07 / 12</span></div>
+</section>
+
+<!-- ============ 08 · 亮点三 · 模型与费用 ============ -->
+<section class="slide">
+    <div class="top"><span>亮点三 · 贵的模型你自己挑</span>
+        <span class="meta"><span class="lat">VALUE 03</span><span class="lat">08 / 12</span></span></div>
+    <div class="stage-in split">
+        <div>
+            <div class="eyebrow rv" style="--d:.03s; margin-bottom: 20px;"><span class="lat">PICK YOUR MODEL</span></div>
+            <h2 class="rv" style="--d:.1s;">不押注<br>任何<em>单一模型</em></h2>
+            <ul class="bul rv" style="--d:.22s; margin-top: 30px;">
+                <li><b>一个用途多个候选</b>：能力（能吃几张参考图、支不支持首尾帧）和单价都摊开给你看。</li>
+                <li><b>选谁按谁的价扣</b>：想省钱用经济档，想要大动作用高动态档，账目一致。</li>
+                <li><b>失败不扣费</b>：批量出片按份冻结、逐份提交，失败的那份钱退回去。</li>
+                <li><b>模型换代不用换工具</b>：底层模型三个月一变，你的工作流不变。</li>
+            </ul>
+        </div>
+        <div class="rv" style="--d:.3s;">
+            <div class="card paper" style="padding: 34px;">
+                <h4 style="margin-bottom: 22px;">出片模型 · 候选与单价</h4>
+                <table class="matrix tight" style="border-radius: 18px;">
+                    <thead><tr><th style="width:190px;">档位</th><th style="width:150px;">参考图</th><th>首尾帧</th><th style="width:160px;">单价</th></tr></thead>
+                    <tbody>
+                        <tr><td class="rowlab" style="width:190px;">默认 · 稳</td><td style="width:150px;">6 张</td><td>支持</td><td><span class="pill note">9 分</span></td></tr>
+                        <tr><td class="rowlab">高动态</td><td>4 张</td><td>不支持</td><td><span class="pill part">14 分</span></td></tr>
+                        <tr><td class="rowlab">经济档</td><td>2 张</td><td>支持</td><td><span class="pill yes">5 分</span></td></tr>
+                    </tbody>
+                </table>
+                <p style="margin-top: 22px;">候选只有一个时不显示下拉 —— <strong>不给假选项</strong>。</p>
+            </div>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">08 / 12</span></div>
+</section>
+
+<!-- ============ 09 · 前后对比 ============ -->
+<section class="slide">
+    <div class="top"><span>用之前 vs 用之后</span>
+        <span class="meta"><span class="lat">THE DIFFERENCE</span><span class="lat">04 / 04</span></span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: auto auto; gap: 26px; align-content: start;">
+        <h2 class="rv" style="--d:.05s">同一件事，<em>做法完全不一样</em></h2>
+        <div class="rv" style="--d:.18s;">
+            <table class="matrix tight">
+                <thead><tr><th style="width: 300px;">同一件事</th><th>现在的做法</th><th>用 AI 短剧</th><th style="width: 200px;">差别</th></tr></thead>
+                <tbody>
+                    <tr><td class="rowlab">改一句台词</td><td style="opacity:.72;">整段重出，或者干脆将就</td>
+                        <td>只改这一镜，其他镜一格不动</td><td><span class="pill yes">省一整段</span></td></tr>
+                    <tr><td class="rowlab">换一个演员</td><td style="opacity:.72;">全集重拍，参考图重配</td>
+                        <td>换角色资产，参考图自动跟上</td><td><span class="pill yes">不重拍</span></td></tr>
+                    <tr><td class="rowlab">出一集</td><td style="opacity:.72;">排期数周，人手全占住</td>
+                        <td>逐镜推进，3—5 天出一集</td><td><span class="pill yes">周更可行</span></td></tr>
+                    <tr><td class="rowlab">做到一半<br>被打断</td><td style="opacity:.72;">刷新或换设备，进度全丢</td>
+                        <td>草稿自动保存，接着做</td><td><span class="pill yes">不返工</span></td></tr>
+                    <tr><td class="rowlab">团队协作</td><td style="opacity:.72;">各自一个版本，对不上</td>
+                        <td>一张分镜表就是唯一真相</td><td><span class="pill yes">少扯皮</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">09 / 12</span></div>
+</section>
+
+<!-- ============ 10 · 四类客户 ============ -->
+<section class="slide">
+    <div class="top"><span>你在哪个位置，就拿走哪一份好处</span>
+        <span class="meta"><span class="lat">WHO GAINS</span><span class="lat">10 / 12</span></span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: auto 1fr; gap: 30px;">
+        <h2 class="rv" style="--d:.05s">四类客户，<em>四种拿法</em></h2>
+        <div class="g4">
+            <div class="card rv" style="--d:.14s; background: var(--sienna); display:flex; flex-direction:column;">
+                <h3 style="font-size: 32px;">短剧<br>制作团队</h3>
+                <ul class="bul" style="margin-top: 20px;">
+                    <li style="font-size:20px; padding-left:30px;">产能可预测，能接周更的活</li>
+                    <li style="font-size:20px; padding-left:30px;">编导不用再当提示词工程师</li>
+                    <li style="font-size:20px; padding-left:30px; margin-bottom:0;">失败不扣费，成本算得清</li>
+                </ul>
+            </div>
+            <div class="card rv" style="--d:.22s; background: var(--mustard); display:flex; flex-direction:column;">
+                <h3 style="font-size: 32px;">编导<br>个人创作者</h3>
+                <ul class="bul" style="margin-top: 20px;">
+                    <li style="font-size:20px; padding-left:30px;">一个人也能拍完一整集</li>
+                    <li style="font-size:20px; padding-left:30px;">套现成创意开拍，不面对空白页</li>
+                    <li style="font-size:20px; padding-left:30px; margin-bottom:0;">爆款可发布到创意市场分成</li>
+                </ul>
+            </div>
+            <div class="card on-cool rv" style="--d:.3s; background: var(--teal); display:flex; flex-direction:column;">
+                <h3 style="font-size: 32px;">内容<br>平台方</h3>
+                <ul class="bul" style="margin-top: 20px;">
+                    <li style="font-size:20px; padding-left:30px; color: var(--bone);">稳定的短剧供给，不看天吃饭</li>
+                    <li style="font-size:20px; padding-left:30px; color: var(--bone);">互动剧可导出到自家播放器</li>
+                    <li style="font-size:20px; padding-left:30px; margin-bottom:0; color: var(--bone);">素材来源与授权可查</li>
+                </ul>
+            </div>
+            <div class="card rv" style="--d:.38s; background: var(--orange); display:flex; flex-direction:column;">
+                <h3 style="font-size: 32px;">品牌<br>定制短剧</h3>
+                <ul class="bul" style="margin-top: 20px;">
+                    <li style="font-size:20px; padding-left:30px;">品牌形象与产品可入库复用</li>
+                    <li style="font-size:20px; padding-left:30px;">同一批资产拍多条剧情广告</li>
+                    <li style="font-size:20px; padding-left:30px; margin-bottom:0;">改一版不用整条重做</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">10 / 12</span></div>
+</section>
+
+<!-- ============ 11 · 收费逻辑 ============ -->
+<section class="slide">
+    <div class="top"><span>你付什么，你得到什么</span>
+        <span class="meta"><span class="lat">PRICING LOGIC</span><span class="lat">11 / 12</span></span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: auto auto; gap: 26px; align-content: start;">
+        <h2 class="rv" style="--d:.05s">按镜付费<br>只为<em>真正出片的那几镜</em>付钱</h2>
+        <div class="g3 rv" style="--d:.18s;">
+            <div class="card paper">
+                <span class="pill note">你付</span>
+                <h3 style="margin: 18px 0 12px;">逐镜生成费</h3>
+                <p>出图、拆镜、出片、行级改写各自计价，单价与档位在动手前就摊开给你。</p>
+                <p style="margin-top:16px; padding-top:14px; border-top:1.5px solid rgba(10,10,10,.35);"><strong>你得到</strong>　一镜可用的成片，不满意可只重做这一镜</p>
+            </div>
+            <div class="card paper">
+                <span class="pill note">你付</span>
+                <h3 style="margin: 18px 0 12px;">进场与档位</h3>
+                <p>新建一个草稿进工作台收一次固定费用；想要更强的模型自选更高档位。</p>
+                <p style="margin-top:16px; padding-top:14px; border-top:1.5px solid rgba(10,10,10,.35);"><strong>你得到</strong>　可恢复的草稿 + 自己决定的画面上限</p>
+            </div>
+            <div class="card" style="background: var(--orange);">
+                <span class="pill note">你不用付</span>
+                <h3 style="margin: 18px 0 12px;">失败的那一份</h3>
+                <p>批量出片按份冻结、逐份提交；失败的部分释放退回，全失败全额退。</p>
+                <p style="margin-top:16px; padding-top:14px; border-top:1.5px solid rgba(10,10,10,.35);"><strong>你得到</strong>　不为废片付钱</p>
+            </div>
+        </div>
+        <div class="rv" style="--d:.32s; height: 210px;">
+            <div class="quote">
+                <span class="mk">「</span>
+                <span class="tx">能力没接通就明确报错、不扣费 ——<br>宁可让你等，也不端一段假成片给你充数</span>
+            </div>
+        </div>
+    </div>
+    <div class="footer"><span>AI 短剧</span><span class="lat">11 / 12</span></div>
+</section>
+
+<!-- ============ 12 · CTA ============ -->
+<section class="slide dark">
+    <div class="shape a rvs" style="--d:.5s; right: 64px; top: 76px; background: var(--magenta); border-radius: 999px 0 0 999px;"></div>
+    <div class="shape b rvs" style="--d:.58s; right: 254px; top: 226px; background: var(--magenta); border-radius: 0 999px 999px 999px;"></div>
+    <div class="top"><span class="lat" style="color: var(--bone);">NEXT STEP</span></div>
+    <div class="stage-in" style="display: grid; grid-template-rows: 1fr auto;">
+        <div style="align-self: center;">
+            <h1 class="rv" style="--d:.08s; color: var(--bone); font-size: 132px; max-width: 1200px;">先拍<em style="color: var(--orange);">一集</em><br>再决定要不要周更</h1>
+            <div class="g3 rv" style="--d:.26s; margin-top: 48px; max-width: 1500px;">
+                <div class="card bone-out" style="border-color: rgba(226,220,201,.45);">
+                    <h4 style="color: var(--bone);">短剧团队</h4>
+                    <p style="color: var(--bone); opacity:.85; margin-top:12px; font-size:21px;">带一个现成剧本来，我们现场从分镜表跑到成片，你看产能对不对得上。</p>
+                </div>
+                <div class="card bone-out" style="border-color: rgba(226,220,201,.45);">
+                    <h4 style="color: var(--bone);">内容平台</h4>
+                    <p style="color: var(--bone); opacity:.85; margin-top:12px; font-size:21px;">按集结算的供给合作，互动剧配置可下发到你自己的播放器。</p>
+                </div>
+                <div class="card bone-out" style="border-color: rgba(226,220,201,.45);">
+                    <h4 style="color: var(--bone);">品牌方</h4>
+                    <p style="color: var(--bone); opacity:.85; margin-top:12px; font-size:21px;">把品牌形象与产品入库，一批资产拍多条剧情广告，改版不重做。</p>
+                </div>
+            </div>
+        </div>
+        <div class="rv" style="--d:.4s; display:flex; align-items:end; justify-content:space-between;">
+            <div class="lockup">
+                <span class="mark" style="background: var(--magenta);"></span>
+                <span><span class="who" style="color: var(--bone);">30 分钟实机演示</span>
+                <span class="sub" style="display:block; color: var(--bone);">从一句话脑暴 · 到分镜表出片 · 到成片合成</span></span>
+            </div>
+            <span class="datemark" style="color: var(--bone);">12 / 12</span>
+        </div>
+    </div>
+</section>
+
+</main>
+</div>
+
+<nav class="deck-controls" aria-label="幻灯片导航">
+    <button id="prevBtn" aria-label="上一页">←</button>
+    <span id="counter">01 / 12</span>
+    <span class="bar"><i id="progress"></i></span>
+    <button id="nextBtn" aria-label="下一页">→</button>
+</nav>
+
+<div class="edit-hotzone" aria-hidden="true"></div>
+<button class="edit-toggle" id="editToggle" title="编辑模式（E）">✎</button>
+<div class="edit-hint">EDIT MODE · CLICK TEXT · ⌘S SAVE · E EXIT</div>
+
+<script>
+/* ============================================================
+   幻灯控制器：固定 1920×1080 舞台整体缩放 + 键盘 / 滚轮 / 触摸
+   ============================================================ */
+class SlidePresentation {
+    constructor() {
+        this.slides = Array.from(document.querySelectorAll('.slide'));
+        this.stage = document.getElementById('deckStage');
+        this.counter = document.getElementById('counter');
+        this.progress = document.getElementById('progress');
+        this.current = 0; this.locked = false;
+        this.setupStageScale(); this.setupKeyboardNav(); this.setupPointerNav(); this.setupTouchNav();
+        this.showSlide(0);
+    }
+    setupStageScale() {
+        const scale = () => {
+            const f = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            const x = (window.innerWidth - 1920 * f) / 2, y = (window.innerHeight - 1080 * f) / 2;
+            this.stage.style.transform = `translate(${x}px, ${y}px) scale(${f})`;
+        };
+        scale(); window.addEventListener('resize', scale);
+    }
+    setupKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            if (e.target.getAttribute('contenteditable')) return;
+            switch (e.key) {
+                case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown': e.preventDefault(); this.next(); break;
+                case 'ArrowLeft': case 'ArrowUp': case 'PageUp': e.preventDefault(); this.prev(); break;
+                case 'Home': e.preventDefault(); this.showSlide(0); break;
+                case 'End': e.preventDefault(); this.showSlide(this.slides.length - 1); break;
+            }
+        });
+    }
+    setupPointerNav() {
+        document.getElementById('nextBtn').addEventListener('click', () => this.next());
+        document.getElementById('prevBtn').addEventListener('click', () => this.prev());
+        window.addEventListener('wheel', (e) => {
+            if (document.body.classList.contains('editing')) return;
+            if (this.locked || Math.abs(e.deltaY) < 24) return;
+            this.locked = true; setTimeout(() => this.locked = false, 620);
+            e.deltaY > 0 ? this.next() : this.prev();
+        }, { passive: true });
+    }
+    setupTouchNav() {
+        let x0 = null, y0 = null;
+        window.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+        window.addEventListener('touchend', (e) => {
+            if (x0 === null) return;
+            const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+            if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy)) dx < 0 ? this.next() : this.prev();
+            x0 = y0 = null;
+        }, { passive: true });
+    }
+    next() { this.showSlide(this.current + 1); }
+    prev() { this.showSlide(this.current - 1); }
+    showSlide(i) {
+        this.current = Math.max(0, Math.min(i, this.slides.length - 1));
+        this.slides.forEach((s, idx) => {
+            const on = idx === this.current;
+            s.classList.toggle('active', on); s.classList.toggle('visible', on);
+        });
+        this.counter.textContent = `${String(this.current + 1).padStart(2,'0')} / ${String(this.slides.length).padStart(2,'0')}`;
+        this.progress.style.width = ((this.current + 1) / this.slides.length * 100) + '%';
+    }
+}
+const deck = new SlidePresentation();
+
+/* ============================================================
+   就地编辑（hover 左上热区 / 按 E 唤出，改动存 localStorage）
+   ============================================================ */
+class InlineEditor {
+    constructor(key) {
+        this.key = key; this.isActive = false;
+        this.targets = 'h1,h2,h3,h4,p,li,td,th,.eyebrow,.pill,.num,.ord,.n,.lab,.tag,.hl,.who,.sub,.datemark,.reg,.nm,.st,.tx,.ct,.tg';
+        this.restore();
+    }
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        document.getElementById('editToggle').classList.toggle('active', this.isActive);
+        document.querySelectorAll(this.targets).forEach(el => {
+            if (this.isActive) el.setAttribute('contenteditable', 'true'); else el.removeAttribute('contenteditable');
+        });
+        if (!this.isActive) this.save();
+    }
+    save() { try { localStorage.setItem(this.key, document.getElementById('deckStage').innerHTML); } catch (e) {} }
+    restore() { try { const h = localStorage.getItem(this.key); if (h) document.getElementById('deckStage').innerHTML = h; } catch (e) {} }
+}
+const editor = new InlineEditor('deck-drama-stencil');
+
+const hotzone = document.querySelector('.edit-hotzone');
+const editToggle = document.getElementById('editToggle');
+let hideTimeout = null;
+/* 不用 CSS ~ 兄弟选择器：pointer-events:none 会断掉 hover 链，必须 JS + 延时 */
+hotzone.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); editToggle.classList.add('show'); });
+hotzone.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+editToggle.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('click', () => editor.toggleEditMode());
+hotzone.addEventListener('click', () => editor.toggleEditMode());
+document.addEventListener('keydown', (e) => {
+    if ((e.key === 'e' || e.key === 'E') && !e.target.getAttribute('contenteditable')) editor.toggleEditMode();
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); editor.save(); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Star Ecosystem · 客户价值推介资料</title>
+
+<!-- 与五册推介同一套模板：Stencil & Tablet
+     这一页不是幻灯，是普通响应式索引页，但沿用同样的 bone / black / 七色板与字体阶梯 -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@400;700&family=Barlow+Condensed:wght@600;700;800;900&family=Noto+Serif+SC:wght@400;500;700;900&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+
+<style>
+/* ============================================================
+   模板令牌（与五册一致）
+   ============================================================ */
+:root {
+    --bone:    #E2DCC9;
+    --black:   #000000;
+    --ink:     #0A0A0A;
+    --paper:   #F4EFE0;
+    --sienna:  #A06A3C;
+    --magenta: #C73B7A;
+    --orange:  #EE7A2E;
+    --teal:    #2D7E73;
+    --blue:    #3F73B7;
+    --mustard: #D8A93B;
+    --olive:   #6F7A2E;
+
+    --f-stencil: "Stardos Stencil", serif;
+    --f-disp-cn: "Noto Serif SC", "Stardos Stencil", serif;
+    --f-cond:    "Barlow Condensed", "Noto Sans SC", sans-serif;
+    --f-cond-cn: "Noto Sans SC", "Barlow Condensed", sans-serif;
+    --f-body:    "Noto Serif SC", "Inter", serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--bone); color: var(--ink); font-family: var(--f-body); }
+
+.wrap { max-width: 1480px; margin: 0 auto; padding: clamp(32px, 4vw, 56px) clamp(20px, 4vw, 64px) clamp(48px, 6vw, 90px); }
+
+/* 顶部 chrome —— 与幻灯同样的条 */
+.top {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;
+    font-family: var(--f-cond); font-weight: 800; font-size: clamp(18px, 1.7vw, 30px);
+    letter-spacing: .08em; text-transform: uppercase; line-height: 1;
+}
+.top .meta { font-family: var(--f-cond); font-weight: 700; font-size: clamp(14px, 1.2vw, 22px); letter-spacing: .1em; opacity: .8; }
+
+/* 标题 */
+h1 {
+    font-family: var(--f-disp-cn); font-weight: 900;
+    font-size: clamp(48px, 8.4vw, 148px); line-height: 1.06;
+    margin: clamp(40px, 6vw, 84px) 0 0;
+}
+h1 em { font-style: normal; color: var(--teal); }
+.lede {
+    font-size: clamp(17px, 1.7vw, 27px); line-height: 1.72;
+    max-width: 1020px; margin-top: clamp(20px, 2.4vw, 34px);
+}
+strong { font-weight: 400; font-family: var(--f-cond-cn); font-size: 1.04em; }
+
+/* 分节标签 */
+.seclab {
+    font-family: var(--f-cond); font-weight: 900; font-size: clamp(15px, 1.3vw, 24px);
+    letter-spacing: .14em; text-transform: uppercase;
+    margin: clamp(44px, 6vw, 78px) 0 clamp(18px, 2vw, 26px);
+    display: flex; align-items: center; gap: 20px;
+}
+.seclab::after { content: ""; flex: 1; height: 2px; background: var(--ink); opacity: .28; }
+
+/* Tablet 卡（链接） —— 必带 Stardos 数字，扁平、22–26px 圆角 */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: clamp(18px, 2vw, 26px); }
+.deck {
+    display: flex; flex-direction: column; text-decoration: none; color: var(--ink);
+    border-radius: 26px; padding: clamp(24px, 2.2vw, 34px) clamp(22px, 2vw, 30px) clamp(22px, 2vw, 30px);
+    min-height: clamp(300px, 30vw, 400px);
+    transition: transform .35s cubic-bezier(0.16,1,0.3,1);
+}
+.deck:hover { transform: translateY(-6px); }
+.deck:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+.deck .num {
+    font-family: var(--f-stencil); font-weight: 700; font-size: clamp(96px, 11vw, 180px);
+    line-height: .86; letter-spacing: -.02em;
+}
+.deck .role {
+    font-family: var(--f-cond-cn); font-weight: 900; font-size: clamp(15px, 1.2vw, 20px);
+    margin-top: auto; opacity: .78;
+}
+.deck h2 { font-family: var(--f-disp-cn); font-weight: 900; font-size: clamp(28px, 2.6vw, 40px); line-height: 1.2; margin: 8px 0 6px; }
+.deck .en { font-family: var(--f-cond); font-weight: 700; font-size: clamp(12px, 1vw, 16px); letter-spacing: .12em; text-transform: uppercase; opacity: .7; }
+.deck p { font-size: clamp(15px, 1.15vw, 20px); line-height: 1.7; margin-top: 14px; }
+.deck .go {
+    font-family: var(--f-cond); font-weight: 900; font-size: clamp(13px, 1.05vw, 18px);
+    letter-spacing: .12em; text-transform: uppercase;
+    margin-top: 18px; padding-top: 16px; border-top: 2px solid currentColor;
+    display: flex; justify-content: space-between; align-items: center; opacity: .85;
+}
+/* 冷色填充翻 bone 字，暖色留 ink（模板规则） */
+.deck.cool, .deck.cool h2, .deck.cool .num { color: var(--bone); }
+.deck.cool p, .deck.cool .role, .deck.cool .en { color: var(--bone); }
+
+/* 使用说明矩阵 */
+.matrix { background: var(--paper); border-radius: 22px; overflow: hidden; width: 100%; border-collapse: collapse; }
+.matrix thead th {
+    background: var(--black); color: var(--bone);
+    font-family: var(--f-disp-cn); font-weight: 900; font-size: clamp(17px, 1.4vw, 26px);
+    text-align: left; padding: clamp(14px, 1.4vw, 24px) clamp(16px, 1.5vw, 26px);
+}
+.matrix td {
+    border: 1.5px solid rgba(10,10,10,.35); padding: clamp(12px, 1.2vw, 20px) clamp(16px, 1.5vw, 26px);
+    font-size: clamp(15px, 1.15vw, 21px); line-height: 1.6;
+}
+.matrix td.k { font-family: var(--f-disp-cn); font-weight: 900; font-size: clamp(16px, 1.3vw, 25px); width: 30%; }
+.matrix tr td:first-child { border-left: none; }
+.matrix tr td:last-child { border-right: none; }
+.matrix tr:last-child td { border-bottom: none; }
+kbd {
+    font-family: var(--f-cond); font-weight: 800; font-size: .92em; letter-spacing: .06em;
+    background: var(--bone); border: 1.5px solid var(--ink); border-radius: 999px; padding: 2px 10px;
+}
+
+/* 行动条 */
+.actionbar {
+    background: var(--mustard); border-radius: 22px;
+    padding: clamp(18px, 1.8vw, 28px) clamp(22px, 2vw, 34px);
+    display: flex; align-items: center; gap: clamp(16px, 1.8vw, 28px); flex-wrap: wrap;
+    margin-top: clamp(26px, 3vw, 40px);
+}
+.actionbar .tag { font-family: var(--f-cond-cn); font-weight: 900; font-size: clamp(15px, 1.2vw, 22px); }
+.actionbar .rule { width: 2px; align-self: stretch; background: var(--ink); min-height: 34px; }
+.actionbar .hl { font-family: var(--f-disp-cn); font-weight: 900; font-size: clamp(18px, 1.7vw, 32px); line-height: 1.35; }
+
+/* 页脚 */
+.footer {
+    margin-top: clamp(40px, 5vw, 70px); padding-top: clamp(18px, 2vw, 26px);
+    border-top: 2px solid rgba(10,10,10,.28);
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+    font-family: var(--f-cond); font-weight: 700; font-size: clamp(13px, 1vw, 21px);
+    letter-spacing: .1em; text-transform: uppercase; opacity: .75;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .7s cubic-bezier(0.16,1,0.3,1) both; }
+@media (prefers-reduced-motion: reduce) { .rise { animation: none; } .deck:hover { transform: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+    <header class="top rise">
+        <span>AI STAR ECOSYSTEM × 客户价值推介</span>
+        <span class="meta">五册 · 2026 · 机密</span>
+    </header>
+
+    <h1 class="rise" style="animation-delay:.06s">五条业务线<br>一套<em>共享底座</em></h1>
+
+    <p class="lede rise" style="animation-delay:.14s">
+        数字资产负责登记与复用，短剧与带货负责产出内容，歌手负责养 IP，明星商务负责把关。
+        五个前端共用同一套服务端 —— <strong>一份资产、一套账、一次授权，四条线一起赚</strong>。
+        下面五册按客户视角讲：痛在哪、我们给什么、你因此能做什么、前后差别、你付什么。
+    </p>
+
+    <div class="seclab rise" style="animation-delay:.2s">五册推介 · 点击进入</div>
+
+    <div class="grid">
+
+        <a class="deck cool rise" style="animation-delay:.24s; background: var(--teal);" href="01-数字资产平台.html">
+            <span class="num">01</span>
+            <span class="role">中枢 · 一次登记，四条线复用</span>
+            <h2>AI 数字资产</h2>
+            <span class="en">Digital Asset Platform</span>
+            <p>人物、IP、场景、产品、声音、风格六类一次做成带编号与授权的资产，之后不重做、不走样、不重复付费。</p>
+            <span class="go"><span>12 页</span><span>打开 →</span></span>
+        </a>
+
+        <a class="deck rise" style="animation-delay:.3s; background: var(--orange);" href="02-AI短剧.html">
+            <span class="num">02</span>
+            <span class="role">内容产能 · 一张表拍完整集</span>
+            <h2>AI 短剧</h2>
+            <span class="en">AI Drama Studio</span>
+            <p>一句话开拍，分镜表里逐镜出片。角色不漂、镜间接得上、失败不扣费，3—5 天出一集。</p>
+            <span class="go"><span>12 页</span><span>打开 →</span></span>
+        </a>
+
+        <a class="deck rise" style="animation-delay:.36s; background: var(--magenta);" href="03-AI明星带货短视频.html">
+            <span class="num">03</span>
+            <span class="role">变现 · 一次授权，二十条成片</span>
+            <h2>AI 明星带货</h2>
+            <span class="en">AI Celebrity Studio</span>
+            <p>填一次模板渲一批变体，每条参数都不同、各带指纹与水印。换 SKU 只换一格绑定。</p>
+            <span class="go"><span>12 页</span><span>打开 →</span></span>
+        </a>
+
+        <a class="deck rise" style="animation-delay:.42s; background: var(--sienna);" href="04-AI明星商务.html">
+            <span class="num">04</span>
+            <span class="role">治理 · 把控制权拿回来</span>
+            <h2>AI 明星商务</h2>
+            <span class="en">Star Business Workbench</span>
+            <p>授权、内容、商品三条闸门由明星侧自己批。用途有边界、链路有单据、收益有账。</p>
+            <span class="go"><span>12 页</span><span>打开 →</span></span>
+        </a>
+
+        <a class="deck cool rise" style="animation-delay:.48s; background: var(--blue);" href="05-AI歌手.html">
+            <span class="num">05</span>
+            <span class="role">IP 养成 · 管产能不管档期</span>
+            <h2>AI 歌手</h2>
+            <span class="en">AI Music Studio</span>
+            <p>引入形象、批量出内容、一次上六个渠道、版权登记与结算 —— 一个工作台跑完商业周期。</p>
+            <span class="go"><span>12 页</span><span>打开 →</span></span>
+        </a>
+
+    </div>
+
+    <div class="seclab rise" style="animation-delay:.54s">怎么放</div>
+
+    <table class="matrix rise" style="animation-delay:.58s">
+        <thead><tr><th style="width:30%;">操作</th><th>怎么做</th></tr></thead>
+        <tbody>
+            <tr><td class="k">翻页</td>
+                <td><kbd>←</kbd> <kbd>→</kbd> 或 <kbd>空格</kbd> 翻页，<kbd>Home</kbd> / <kbd>End</kbd> 跳首尾；也支持鼠标滚轮与手机滑动。全屏建议 <kbd>F11</kbd>（macOS <kbd>⌃⌘F</kbd>）。</td></tr>
+            <tr><td class="k">就地改字</td>
+                <td>鼠标移到左上角或按 <kbd>E</kbd> 唤出编辑按钮，点任意文字直接改，<kbd>⌘S</kbd> 存进浏览器本地。改坏了清一下站点数据即可复原。</td></tr>
+            <tr><td class="k">换配色</td>
+                <td>每册开头 <kbd>:root</kbd> 里只有一行 <kbd>--lead</kbd> 决定主色，取值来自模板封闭的七色板（sienna / magenta / orange / teal / blue / mustard / olive）。</td></tr>
+            <tr><td class="k">导出 PDF</td>
+                <td>浏览器直接打印 —— 已内置打印样式，每页输出一张 1920×1080 幻灯片，动效落在最终状态。</td></tr>
+        </tbody>
+    </table>
+
+    <div class="actionbar rise" style="animation-delay:.62s">
+        <span class="tag">模板出处</span>
+        <span class="rule"></span>
+        <span class="hl">Stencil &amp; Tablet —— bone 纸底、镂空数字、七色扁平色块；中文标题走思源宋体 900，拉丁与数字保留 Stardos 断墨</span>
+    </div>
+
+    <footer class="footer">
+        <span>AI Star Ecosystem</span>
+        <span>机密 · 仅供接洽方查阅</span>
+    </footer>
+
+</div>
+</body>
+</html>
