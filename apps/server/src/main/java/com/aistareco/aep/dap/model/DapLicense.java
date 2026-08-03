@@ -87,5 +87,31 @@ public class DapLicense {
     @Column(length = 32)
     private String livenessGroupId;
 
+    /** 与本授权绑定的业务授权确认快照。liveness 新授权必须非空；老数据为空时降为待补确认。 */
+    @Column(length = 32)
+    private String consentId;
+
+    @Column(length = 64)
+    private String agreementVersion;
+
+    @Column(length = 64)
+    private String agreementHash;
+
+    private Instant consentedAt;
+
+    /** qiniu_modelink；声明式老授权为空。 */
+    @Column(length = 32)
+    private String verificationProvider;
+
+    /** 七牛 qgroupid，作为外部技术核验引用。 */
+    @Column(length = 96)
+    private String verificationReference;
+
+    private Instant verifiedAt;
+
+    /** 凭证模板版本；证据或模板升级时递增并重新生成。 */
+    @Builder.Default
+    private int certificateVersion = 0;
+
     private Instant createdAt;
 }

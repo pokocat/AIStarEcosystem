@@ -137,20 +137,36 @@ public final class DapDtos {
 
     public record LicenseDto(String id, String subject, String avatarId, String scope, String period,
                              List<String> platforms, String status, String signed, int photos,
-                             String ipId, String expiresOn, String verifyMethod) {
+                             String ipId, String expiresOn, String verifyMethod,
+                             String evidenceStatus, String agreementVersion, String agreementHash,
+                             String consentedAt, String verificationProvider,
+                             String verificationReference, String verifiedAt, int certificateVersion) {
 
         /** wire 字段名 char 是 TS 侧命名；Java 关键字冲突 → 用 avatarId 承载 + 控制器序列化别名。 */
         public static LicenseDto from(DapLicense l) {
             String period = (l.getPeriodStart() != null && l.getPeriodEnd() != null)
                     ? YM.format(l.getPeriodStart()) + " ~ " + YM.format(l.getPeriodEnd())
                     : "—";
+            String verifyMethod = l.getVerifyMethod() == null || l.getVerifyMethod().isBlank()
+                    ? "declared" : l.getVerifyMethod();
+            boolean completeEvidence = l.getConsentId() != null && l.getAgreementVersion() != null
+                    && l.getAgreementHash() != null && l.getVerificationReference() != null
+                    && l.getVerifiedAt() != null;
+            String evidenceStatus = "liveness".equals(verifyMethod)
+                    ? (completeEvidence ? "verified" : "legacy_unconfirmed")
+                    : "declared";
+            String effectiveStatus = "legacy_unconfirmed".equals(evidenceStatus) && "active".equals(l.getStatus())
+                    ? "pending" : l.getStatus();
             return new LicenseDto(l.getId(), l.getSubject(), l.getAvatarId(), l.getScope(), period,
-                    l.getPlatforms(), l.getStatus(),
+                    l.getPlatforms(), effectiveStatus,
                     l.getSignedAt() != null ? DATE.format(l.getSignedAt()) : "—",
                     l.getPhotoCount(), l.getIpId(),
                     l.getPeriodEnd() != null ? YM.format(l.getPeriodEnd()) : null,
-                    // 老数据（v0.105 之前登记）无取得方式 → 一律视作声明式登记
-                    l.getVerifyMethod() == null || l.getVerifyMethod().isBlank() ? "declared" : l.getVerifyMethod());
+                    verifyMethod, evidenceStatus, l.getAgreementVersion(), l.getAgreementHash(),
+                    l.getConsentedAt() != null ? l.getConsentedAt().toString() : null,
+                    l.getVerificationProvider(), l.getVerificationReference(),
+                    l.getVerifiedAt() != null ? l.getVerifiedAt().toString() : null,
+                    l.getCertificateVersion());
         }
 
         /** 输出为前端契约形状（含 char 字段）。 */
@@ -166,6 +182,14 @@ public final class DapDtos {
             m.put("signed", signed);
             m.put("photos", photos);
             m.put("verifyMethod", verifyMethod);
+            m.put("evidenceStatus", evidenceStatus);
+            m.put("certificateVersion", certificateVersion);
+            if (agreementVersion != null) m.put("agreementVersion", agreementVersion);
+            if (agreementHash != null) m.put("agreementHash", agreementHash);
+            if (consentedAt != null) m.put("consentedAt", consentedAt);
+            if (verificationProvider != null) m.put("verificationProvider", verificationProvider);
+            if (verificationReference != null) m.put("verificationReference", verificationReference);
+            if (verifiedAt != null) m.put("verifiedAt", verifiedAt);
             if (ipId != null) m.put("ipId", ipId);
             if (expiresOn != null) m.put("expiresOn", expiresOn);
             return m;
@@ -272,14 +296,27 @@ public final class DapDtos {
      * h5Url 只在 awaiting_auth 时非空（上游签发、约 120s 有效，不落库）。
      */
     public record RealAuthSessionDto(String id, String captureId, String avatarId, String status,
-                                     String h5Url, String failReason, boolean mock, String createdAt) {
+                                     String h5Url, String failReason, boolean mock, String createdAt,
+                                     String agreementVersion, boolean consentRecorded) {
         public static RealAuthSessionDto from(DapMaterialGroup g, String h5Url) {
             return new RealAuthSessionDto(g.getId(), g.getCaptureId(), g.getAvatarId(), g.getStatus(),
                     "awaiting_auth".equals(g.getStatus()) ? h5Url : null,
                     g.getFailReason(), g.isMock(),
-                    g.getCreatedAt() != null ? g.getCreatedAt().toString() : null);
+                    g.getCreatedAt() != null ? g.getCreatedAt().toString() : null,
+                    null, g.getConsentId() != null);
+        }
+
+        public RealAuthSessionDto withAgreementVersion(String version) {
+            return new RealAuthSessionDto(id, captureId, avatarId, status, h5Url, failReason, mock,
+                    createdAt, version, consentRecorded);
         }
     }
+
+    /** 服务端当前生效的真人数字形象授权协议，前端必须展示并回传 version。 */
+    public record RealAuthAgreementDto(String version, String title, String summary,
+                                       List<String> sections, String scope, int periodMonths,
+                                       List<String> platforms, List<String> processors,
+                                       String hash) {}
 
     // ── 送审素材 · v0.105 ───────────────────────────────────────
 

@@ -34,17 +34,17 @@ export function MaterialBadge({ status }: any) {
 }
 
 /** 「已刷脸核验」徽标 —— 只在核验方式为本人刷脸时出现，未核验不显示任何负面文案。 */
-export function LivenessBadge({ verifyMethod, style }: any) {
-  if (verifyMethod !== "liveness") return null;
+export function LivenessBadge({ verifyMethod, evidenceStatus, style }: any) {
+  if (verifyMethod !== "liveness" || evidenceStatus === "legacy_unconfirmed") return null;
   return hM("span", {
-    title: "该授权由本人刷脸实名核验后登记",
+    title: "该授权已记录平台授权确认与本人刷脸核验证据",
     style: {
       display: "inline-flex", alignItems: "center", gap: 4, flex: "0 0 auto",
       maxWidth: 108, height: 20, padding: "0 8px", borderRadius: 999,
       background: "var(--ok-s)", color: "var(--ok)", fontSize: 10.5, fontWeight: 700,
       overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", ...(style || {}),
     },
-  }, hM(Icons.shield, { size: 11, stroke: 2.2, style: { flex: "0 0 auto" } }), "已刷脸核验");
+  }, hM(Icons.shield, { size: 11, stroke: 2.2, style: { flex: "0 0 auto" } }), "证据已核验");
 }
 
 /** 单条素材行：类型图标 + 名称（省略号）+ 状态徽章；未通过原因次行可换行。 */

@@ -457,7 +457,7 @@ function MAppliedTo({ refs }) {
       })));
 }
 
-/** 真人形象缺生效肖像授权时的顶部提示条 —— 一步跳到实名认证。 */
+/** 真人形象缺生效授权证据时的顶部提示条。 */
 function MNeedAuthBar({ char, ctx }) {
   return hML('div', { style: {
     margin: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px',
@@ -467,7 +467,7 @@ function MNeedAuthBar({ char, ctx }) {
     hML('span', { style: { flex: 1, minWidth: 0, fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.45 } },
       '该真人形象尚未完成肖像授权，部分功能不可用'),
     hML(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.scan,
-      onClick: () => ctx.startRealAuth(char) }, '去认证'));
+      onClick: () => ctx.startRealAuth(char) }, '去确认'));
 }
 
 function MDetail({ char: initialChar, ctx }) {
@@ -1028,7 +1028,7 @@ function MLicense({ char, ctx }) {
         hML('div', null,
           hML('div', { style: { fontSize: 14, fontWeight: 700 } }, '电子肖像授权'),
           hML('div', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-3)' } }, lic.id))),
-      hML(UI.Badge, { tone: lic.status === 'active' ? 'ok' : lic.status === 'pending' ? 'warn' : 'err', icon: Icons.checkc }, lic.status === 'active' ? '生效中' : lic.status === 'pending' ? '待签署' : '已过期')),
+      hML(UI.Badge, { tone: lic.status === 'active' ? 'ok' : lic.status === 'pending' ? 'warn' : 'err', icon: Icons.checkc }, lic.status === 'active' ? '生效中' : lic.status === 'pending' ? '待补确认' : '已过期')),
     [['肖像权人', lic.subject], ['授权范围', lic.scope], ['授权期限', lic.period], ['使用平台', (lic.platforms || []).join(' · ')], ['绑定素材', lic.photos + ' 份（加密存档）']].map(([k, v]) =>
       hML('div', { key: k, style: { padding: '10px 0', borderBottom: '1px solid var(--line)' } },
         hML('div', { style: { fontSize: 11.5, color: 'var(--ink-3)', marginBottom: 3 } }, k),

@@ -336,6 +336,7 @@ export type {
   ComposeOptions,
   // v0.105 真人授权刷脸认证 + 素材平台审核
   Capture,
+  RealAuthAgreement,
   RealAuthSession,
   RealAuthStatus,
   DapMaterialInfo,
@@ -941,11 +942,12 @@ function mockAuthSnapshot(s: any): Mock.RealAuthSession {
     captureId: s.captureId,
     avatarId: s.avatarId || null,
     status,
-    // 链接短时有效：每次拉取都带上本次拉取时间戳，模拟「过期后重新获取会换新链接」
-    h5Url: status === "awaiting_auth" ? `about:blank#mock-face-auth-${s.id}-${Date.now()}` : null,
+    h5Url: status === "awaiting_auth" ? `about:blank#mock-face-auth-${s.id}` : null,
     failReason: status === "failed" ? s.failReason || "认证未通过，请重新认证" : null,
     mock: true,
     createdAt: new Date(s.startedAt).toISOString(),
+    agreementVersion: s.agreementVersion,
+    consentRecorded: true,
   };
 }
 
@@ -955,8 +957,19 @@ function mockRegisterLicense(avatarId: string | null | undefined): string | unde
   const c: any = mockChars.find((x: any) => x.id === avatarId);
   const existing = c?.license && mockLicenses.find((l) => l.id === c.license);
   if (existing) {
+    const now = new Date().toISOString();
     existing.status = "active";
     existing.verifyMethod = "liveness";
+    existing.evidenceStatus = "verified";
+    existing.scope = "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成";
+    existing.platforms = ["数字资产平台", "经本人主动授权接入的应用"];
+    existing.agreementVersion = "real-avatar-v1.0-2026-08-03";
+    existing.agreementHash = "mock-agreement-hash";
+    existing.consentedAt = now;
+    existing.verificationProvider = "qiniu_modelink";
+    existing.verificationReference = `mock-qgroup-${avatarId}`;
+    existing.verifiedAt = now;
+    existing.certificateVersion = 2;
     return existing.id;
   }
   const id = `LIC-${9000 + mockSeq++}`;
@@ -966,13 +979,21 @@ function mockRegisterLicense(avatarId: string | null | undefined): string | unde
     id,
     subject: `${c?.name || "本人"}（本人授权）`,
     char: avatarId,
-    scope: "品牌商用 / 全平台",
+    scope: "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成",
     period: `${year}-${String(today.getMonth() + 1).padStart(2, "0")} ~ ${year + 2}-${String(today.getMonth() + 1).padStart(2, "0")}`,
-    platforms: ["全平台"],
+    platforms: ["数字资产平台", "经本人主动授权接入的应用"],
     status: "active",
     signed: today.toISOString().slice(0, 10),
     photos: 5,
     verifyMethod: "liveness",
+    evidenceStatus: "verified",
+    agreementVersion: "real-avatar-v1.0-2026-08-03",
+    agreementHash: "mock-agreement-hash",
+    consentedAt: today.toISOString(),
+    verificationProvider: "qiniu_modelink",
+    verificationReference: `mock-qgroup-${avatarId}`,
+    verifiedAt: today.toISOString(),
+    certificateVersion: 2,
   });
   if (c) { c.license = id; c.updated = "刚刚"; }
   return id;
@@ -1016,18 +1037,42 @@ export const CaptureApi = {
  *      → active 后调 CaptureApi.verify(captureId) 落授权登记。
  */
 export const RealAuthApi = {
-  start: (captureId: string): Promise<Mock.RealAuthSession> => {
+  agreement: (): Promise<Mock.RealAuthAgreement> => {
+    if (USE_MOCK) return mock({
+      version: "real-avatar-v1.0-2026-08-03",
+      title: "真人数字形象授权及个人信息处理告知",
+      summary: "确认本人刷脸核验、真人素材处理与数字分身使用范围；刷脸核验不等同于证件实名或公证。",
+      sections: [
+        "使用目的：创建并管理本人的真人数字形象，仅用于本人主动发起的创作与接入。",
+        "处理信息：录制视频、关键帧与刷脸结果将用于活体核验、同人一致性比对和素材审核。",
+        "第三方处理：核验素材会提交至七牛云 Modelink 及其认证供应商，平台仅以七牛真人组 active 状态作为技术核验证据。",
+        "授权范围：不自动授权任意第三方或任意用途；接入其他应用须由本人再次主动操作。",
+        "授权期限：自确认之日起 24 个月；到期、撤回或删除后停止新增使用，已依法完成的处理另按协议约定执行。",
+        "撤回方式：可在授权登记中查看凭证；如需撤回授权或删除素材，请联系平台客服处理。",
+      ],
+      scope: "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成",
+      periodMonths: 24,
+      platforms: ["数字资产平台", "经本人主动授权接入的应用"],
+      processors: ["七牛云 Modelink", "七牛云认证供应商"],
+      hash: "mock-agreement-hash",
+    });
+    return apiFetch(`/real-auth/agreement`);
+  },
+  start: (captureId: string, agreementVersion: string): Promise<Mock.RealAuthSession> => {
     if (USE_MOCK) {
       const id = `RAS-${mockSeq++}`;
       const s = {
         id, captureId, avatarId: mockCaptures.get(captureId)?.avatarId || null,
+        agreementVersion,
         startedAt: Date.now(), forcedStatus: null as Mock.RealAuthStatus | null, failReason: null as string | null,
       };
       mockAuthSessions.set(id, s);
       mockAuthByCapture.set(captureId, id);
       return mock(mockAuthSnapshot(s));
     }
-    return apiFetch(`/real-auth/sessions`, { method: "POST", body: JSON.stringify({ captureId }) });
+    return apiFetch(`/real-auth/sessions`, { method: "POST", body: JSON.stringify({
+      captureId, agreementAccepted: true, agreementVersion,
+    }) });
   },
   get: (id: string): Promise<Mock.RealAuthSession> => {
     if (USE_MOCK) {
@@ -1036,6 +1081,20 @@ export const RealAuthApi = {
       return mock(mockAuthSnapshot(s));
     }
     return apiFetch(`/real-auth/sessions/${id}`);
+  },
+  restart: (id: string): Promise<Mock.RealAuthSession> => {
+    if (USE_MOCK) {
+      const old = mockAuthSessions.get(id);
+      if (!old) return Promise.reject(new ApiError("认证会话不存在或已失效", "DAP_AUTH_SESSION_NOT_FOUND", 404));
+      const next = {
+        ...old, id: `RAS-${mockSeq++}`, startedAt: Date.now(),
+        forcedStatus: null as Mock.RealAuthStatus | null, failReason: null as string | null,
+      };
+      mockAuthSessions.set(next.id, next);
+      mockAuthByCapture.set(next.captureId, next.id);
+      return mock(mockAuthSnapshot(next));
+    }
+    return apiFetch(`/real-auth/sessions/${id}/restart`, { method: "POST" });
   },
 };
 

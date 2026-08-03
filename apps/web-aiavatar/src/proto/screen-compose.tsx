@@ -280,7 +280,7 @@ function MCompose({ preset, ctx }) {
             licenseNote.text),
           licenseNote.blocked && avatar && hC("div", { style: { marginTop: 10 } },
             hC(UI.Button, { variant: "primary", size: "sm", icon: Icons.scan,
-              onClick: () => ctx.startRealAuth(avatar) }, "去完成授权认证")))),
+              onClick: () => ctx.startRealAuth(avatar) }, "去补充授权证据")))),
 
       // 服务端授权核对未通过（403）—— 同样给认证引导入口
       authBlocked && hC("div", { style: {
@@ -292,7 +292,7 @@ function MCompose({ preset, ctx }) {
           hC("div", { style: { fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.45, marginTop: 4 } }, "本次没有建单，也没有扣算力。"),
           avatar && hC("div", { style: { marginTop: 10 } },
             hC(UI.Button, { variant: "primary", size: "sm", icon: Icons.scan,
-              onClick: () => ctx.startRealAuth(avatar) }, "去完成授权认证")))),
+              onClick: () => ctx.startRealAuth(avatar) }, "去补充授权证据")))),
 
       busy && hC("div", { className: "m-card", style: { marginTop: 14, padding: "14px 15px" } },
         hC("div", { style: { display: "flex", alignItems: "center", gap: 9, marginBottom: 9 } },

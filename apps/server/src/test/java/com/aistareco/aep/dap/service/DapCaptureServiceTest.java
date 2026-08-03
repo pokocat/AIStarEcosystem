@@ -2,6 +2,7 @@ package com.aistareco.aep.dap.service;
 
 import com.aistareco.aep.dap.model.DapAvatar;
 import com.aistareco.aep.dap.model.DapCapture;
+import com.aistareco.aep.dap.model.DapConsent;
 import com.aistareco.aep.dap.model.DapLicense;
 import com.aistareco.aep.dap.model.DapMaterial;
 import com.aistareco.aep.dap.model.DapMaterialGroup;
@@ -49,6 +50,7 @@ class DapCaptureServiceTest {
     private DapLicenseService licenseService;
     private DapMaterialService materialService;
     private DapRealAuthService realAuth;
+    private DapConsentService consentService;
     private ModelinkService modelink;
     private DapAvatar avatar;
     private DapCaptureService svc;
@@ -112,10 +114,16 @@ class DapCaptureServiceTest {
 
         licenseService = new DapLicenseService(licenseRepo, storage, new DapSupport());
         realAuth = mock(DapRealAuthService.class);
+        consentService = mock(DapConsentService.class);
+        when(consentService.required(eq(USER), eq("CONS-1"))).thenReturn(DapConsent.builder()
+                .id("CONS-1").ownerUserId(USER).avatarId("DH-1").captureId("CAP-1")
+                .agreementVersion(DapConsentService.VERSION).agreementHash("agreement-hash")
+                .scope(DapConsentService.SCOPE).periodMonths(24).platforms(DapConsentService.PLATFORMS)
+                .acceptedAt(Instant.now()).createdAt(Instant.now()).build());
         materialService = new DapMaterialService(materialRepo, mock(DapAvatarRepository.class), captureRepo,
                 realAuth, mock(DapAigcGroupResolver.class), modelink, storage, new DapSupport());
         svc = new DapCaptureService(captureRepo, groupRepo, avatarService, licenseService, realAuth,
-                materialService, storage, new DapSupport());
+                consentService, materialService, storage, new DapSupport());
 
         captures.put("CAP-1", DapCapture.builder().id("CAP-1").ownerUserId(USER).avatarId("DH-1")
                 .status("footage_uploaded").footageKey("dap/capture/u/a.webm")
@@ -125,7 +133,8 @@ class DapCaptureServiceTest {
 
     private DapMaterialGroup activeGroup() {
         return DapMaterialGroup.builder().id("MG-1").ownerUserId(USER).kind("liveness_face")
-                .qgroupid("qg-1").status("active").callbackToken("tok").createdAt(Instant.now()).build();
+                .qgroupid("qg-1").status("active").consentId("CONS-1")
+                .callbackToken("tok").createdAt(Instant.now()).build();
     }
 
     @Test
@@ -164,6 +173,9 @@ class DapCaptureServiceTest {
         DapLicense lic = licenses.get(out.get("licenseId"));
         assertEquals("liveness", lic.getVerifyMethod(), "刷脸取得的授权可取证");
         assertEquals("MG-1", lic.getLivenessGroupId());
+        assertEquals("CONS-1", lic.getConsentId());
+        assertEquals("qiniu_modelink", lic.getVerificationProvider());
+        assertEquals("qg-1", lic.getVerificationReference());
         assertEquals("active", lic.getStatus());
         assertEquals(lic.getId(), avatar.getLicenseId());
 
@@ -173,6 +185,20 @@ class DapCaptureServiceTest {
             assertEquals("CAP-1", m.getRefId());
             assertEquals("MG-1", m.getGroupId());
         });
+    }
+
+    @Test
+    void repeatedResumeVerifyIsIdempotent() {
+        when(realAuth.requireActiveSession(eq(USER), any())).thenReturn(activeGroup());
+
+        Map<String, Object> first = svc.verify(USER, "CAP-1");
+        Instant firstVerifiedAt = captures.get("CAP-1").getVerifiedAt();
+        Map<String, Object> second = svc.verify(USER, "CAP-1");
+
+        assertEquals(first.get("licenseId"), second.get("licenseId"));
+        assertEquals(firstVerifiedAt, captures.get("CAP-1").getVerifiedAt());
+        assertEquals(2, materials.size(), "刷新回跳恢复页不得重复送审同一份动作素材和关键帧");
+        assertEquals(1, licenses.size());
     }
 
     @Test

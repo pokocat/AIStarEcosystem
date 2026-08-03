@@ -3,6 +3,7 @@ package com.aistareco.aep.dap.service;
 import com.aistareco.aep.dap.config.DapProperties;
 import com.aistareco.aep.dap.dto.DapDtos.RealAuthSessionDto;
 import com.aistareco.aep.dap.model.DapCapture;
+import com.aistareco.aep.dap.model.DapConsent;
 import com.aistareco.aep.dap.model.DapMaterialGroup;
 import com.aistareco.aep.dap.repository.DapCaptureRepository;
 import com.aistareco.aep.dap.repository.DapMaterialGroupRepository;
@@ -19,7 +20,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * 真人授权（刷脸认证）链路（v0.105）—— 替代此前「素材存在即视为核验通过」的假核验。
+ * 真人授权确认 + 本人刷脸核验链路（v0.106）。
  *
  * <p>流程：
  * <pre>
@@ -27,8 +28,8 @@ import java.util.UUID;
  *   2. getSession() 轮询到 awaiting_auth → 返回 h5Url（约 120s 有效），用户在该页面刷脸
  *   3. 刷脸完成 → 浏览器回跳 GET /api/v1/real-auth/callback?state=<callbackToken>&resultCode=&bytedToken=
  *      handleCallback() 把 resultCode + byted_token 回传上游（202 受理）→ 本地 status=validating
- *   4. 轮询器 / getSession() 收敛远端终态 → active（授权成立）或 failed
- *   5. captures/{id}/verify 只在分组 active 时放行（见 DapCaptureService.verify）
+ *   4. 轮询器 / getSession() 收敛远端终态 → active（技术核验通过）或 failed
+ *   5. captures/{id}/verify 只在 active + 协议快照齐全时登记授权（见 DapCaptureService.verify）
  * </pre>
  *
  * <p>§8.0：未绑定 modelink 端点且不允许 mock → start() 直接 503，**不落会话行**、不产假授权。
@@ -48,32 +49,42 @@ public class DapRealAuthService {
     private final ModelinkService modelink;
     private final DapProperties props;
     private final DapSupport support;
+    private final DapConsentService consents;
 
     public DapRealAuthService(DapMaterialGroupRepository groupRepo,
                               DapCaptureRepository captureRepo,
                               ModelinkService modelink,
                               DapProperties props,
-                              DapSupport support) {
+                              DapSupport support,
+                              DapConsentService consents) {
         this.groupRepo = groupRepo;
         this.captureRepo = captureRepo;
         this.modelink = modelink;
         this.props = props;
         this.support = support;
+        this.consents = consents;
     }
 
     // ── 会话 ───────────────────────────────────────────────────
 
     /** 开启（或幂等复用）某次真人捕获的刷脸认证会话。 */
     @Transactional
-    public RealAuthSessionDto start(String userId, String captureId) {
+    public RealAuthSessionDto start(String userId, String captureId, String agreementVersion,
+                                    Boolean agreementAccepted, String clientIp, String userAgent) {
         DapCapture c = requiredCapture(userId, captureId);
         if (c.getFootageKey() == null || c.getFootageKey().isBlank()) {
             throw BusinessException.badRequest("DAP_NO_FOOTAGE", "请先录制或上传素材");
         }
+        DapConsent consent = consents.accept(userId, c, agreementVersion, agreementAccepted, clientIp, userAgent);
         // 幂等：同一次捕获已有未失败的会话 → 刷新后原样返回，不重复建组
         if (c.getAuthGroupId() != null) {
             DapMaterialGroup existing = groupRepo.findByIdAndOwnerUserId(c.getAuthGroupId(), userId).orElse(null);
             if (existing != null && !"failed".equals(existing.getStatus())) {
+                if (!consent.getId().equals(existing.getConsentId())) {
+                    existing.setConsentId(consent.getId());
+                    existing.setUpdatedAt(Instant.now());
+                    groupRepo.save(existing);
+                }
                 return refreshAndBuild(existing);
             }
             // 上次认证失败 → 下面会另建一个上游分组。modelink 账号级只有 3 个分组，
@@ -81,6 +92,25 @@ public class DapRealAuthService {
             if (existing != null) recycleGroup(existing);
         }
 
+        return createSession(c, consent);
+    }
+
+    /** 七牛 h5_link 过期后必须重建真人组，不能把再次 GET 伪装成换新链接。 */
+    @Transactional
+    public RealAuthSessionDto restart(String userId, String sessionId) {
+        DapMaterialGroup old = required(userId, sessionId);
+        DapCapture c = requiredCapture(userId, old.getCaptureId());
+        DapConsent consent = consents.required(userId, old.getConsentId());
+        if ("active".equals(old.getStatus())) return refreshAndBuild(old);
+        old.setStatus("failed");
+        old.setFailReason("认证链接已过期，已重新发起");
+        old.setUpdatedAt(Instant.now());
+        groupRepo.save(old);
+        recycleGroup(old);
+        return createSession(c, consent);
+    }
+
+    private RealAuthSessionDto createSession(DapCapture c, DapConsent consent) {
         String id = uniqueId();
         String token = UUID.randomUUID().toString().replace("-", "");
         String model = modelink.boundModel();
@@ -88,12 +118,12 @@ public class DapRealAuthService {
         boolean mock = modelink.isMockMode();
 
         // 先调上游再落库：未配置（503）/ 上游失败时不留下悬空会话行（§8.0 不产假数据）
-        GroupState st = modelink.createGroup("liveness_face", groupName(captureId), model, callbackUrl);
+        GroupState st = modelink.createGroup("liveness_face", groupName(c.getId()), model, callbackUrl);
 
         Instant now = Instant.now();
         DapMaterialGroup g = DapMaterialGroup.builder()
                 .id(id)
-                .ownerUserId(userId)
+                .ownerUserId(c.getOwnerUserId())
                 .kind("liveness_face")
                 .model(model)
                 .qgroupid(st.qgroupid())
@@ -101,6 +131,7 @@ public class DapRealAuthService {
                 .failReason(st.failReason())
                 .avatarId(c.getAvatarId())
                 .captureId(c.getId())
+                .consentId(consent.getId())
                 .callbackToken(token)
                 .bytedToken(st.bytedToken())
                 .mock(mock)
@@ -113,7 +144,7 @@ public class DapRealAuthService {
         captureRepo.save(c);
         log.info("[dap-realauth] session started id={} capture={} qgroupid={} mock={}",
                 g.getId(), c.getId(), g.getQgroupid(), mock);
-        return RealAuthSessionDto.from(g, st.h5Link());
+        return RealAuthSessionDto.from(g, st.h5Link()).withAgreementVersion(consent.getAgreementVersion());
     }
 
     /** 查询会话（非终态时向上游刷新一次；awaiting_auth 时带出 h5Url）。 */
@@ -221,7 +252,9 @@ public class DapRealAuthService {
 
     private RealAuthSessionDto refreshAndBuild(DapMaterialGroup g) {
         GroupState st = refresh(g);
-        return RealAuthSessionDto.from(g, st == null ? null : st.h5Link());
+        RealAuthSessionDto dto = RealAuthSessionDto.from(g, st == null ? null : st.h5Link());
+        return g.getConsentId() == null ? dto
+                : dto.withAgreementVersion(consents.required(g.getOwnerUserId(), g.getConsentId()).getAgreementVersion());
     }
 
     // ── 刷脸回跳 ───────────────────────────────────────────────
@@ -234,17 +267,17 @@ public class DapRealAuthService {
      */
     @Transactional
     public String handleCallback(String state, String resultCode, String bytedToken) {
-        if (state == null || state.isBlank()) return page(false, "认证链接无效", "请返回应用重新发起认证。");
+        if (state == null || state.isBlank()) return page(false, "认证链接无效", "请重新打开数字资产平台发起本人确认。", null);
         DapMaterialGroup g = groupRepo.findByCallbackToken(state).orElse(null);
         if (g == null) {
             log.warn("[dap-realauth] callback with unknown state（可能是过期或伪造链接）");
-            return page(false, "认证链接已失效", "请返回应用重新发起认证。");
+            return page(false, "认证链接已失效", "请重新打开数字资产平台发起本人确认。", null);
         }
         boolean ok = "10000".equals(resultCode);
         if (isTerminal(g.getStatus()) || g.getValidateCalledAt() != null) {
             // 重复回调：不再消耗一次性凭证
             return page("failed".equals(g.getStatus()) ? false : ok,
-                    "认证已提交", "该认证结果已处理，请返回应用查看结果。");
+                    "结果已提交", "正在返回数字资产平台查看最终结果。", g.getId());
         }
         // 先占幂等闸再调上游：并发 / 重复回跳只会有一次回传
         g.setValidateCalledAt(Instant.now());
@@ -267,15 +300,15 @@ public class DapRealAuthService {
             g.setFailReason("认证结果回传失败：" + e.getMessage());
             g.setUpdatedAt(Instant.now());
             groupRepo.save(g);
-            return page(false, "认证提交失败", "认证结果没能提交成功，请返回应用重新发起认证。");
+            return page(false, "提交失败", "本次结果未能送达，请返回数字资产平台重新发起。", g.getId());
         }
         g.setStatus("validating");
         g.setUpdatedAt(Instant.now());
         groupRepo.save(g);
 
         return ok
-                ? page(true, "认证已提交", "请返回应用查看结果，我们正在确认你的授权。")
-                : page(false, "认证未通过", "请返回应用重试刷脸认证。");
+                ? page(true, "本人确认已提交", "正在返回数字资产平台核验最终状态。", g.getId())
+                : page(false, "本人确认未通过", "正在返回数字资产平台，你可以重新发起。", g.getId());
     }
 
     // ── helpers ───────────────────────────────────────────────
@@ -321,12 +354,24 @@ public class DapRealAuthService {
         return "MG-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
-    /** 回跳落地页：自包含内联样式，不引外链、不含任何用户数据。 */
-    private static String page(boolean ok, String title, String desc) {
+    private String returnUrl(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return null;
+        String base = props.getModelink().getCallbackBaseUrl();
+        String b = base == null || base.isBlank() ? "" : base.trim();
+        while (b.endsWith("/")) b = b.substring(0, b.length() - 1);
+        return b + "/#/real-auth/" + sessionId;
+    }
+
+    /** 回跳落地页：移动端自动回到同一 H5，并保留手动返回按钮作为兜底。 */
+    private String page(boolean ok, String title, String desc, String sessionId) {
         String accent = ok ? "#1F9D55" : "#D6453C";
+        String url = returnUrl(sessionId);
+        String redirect = url == null ? "" : "<meta http-equiv=\"refresh\" content=\"1;url=%s\">".formatted(escHtml(url));
+        String back = url == null ? "" : "<a id=\"back\" href=\"%s\">返回数字资产平台</a>".formatted(escHtml(url));
         return """
                 <!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
                 <meta name="viewport" content="width=device-width,initial-scale=1">
+                %s
                 <title>%s</title>
                 <style>
                   body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#F4F6F8;margin:0;
@@ -337,9 +382,17 @@ public class DapRealAuthService {
                        background:%s;color:#fff;font-size:26px;font-weight:700;}
                   h1{font-size:19px;margin:0 0 8px;color:#1B2330;}
                   p{font-size:13.5px;color:#7A8699;line-height:1.6;margin:0;}
+                  a{display:block;margin-top:22px;padding:13px 18px;border-radius:10px;background:#1B2330;
+                    color:#fff;text-decoration:none;font-size:14px;font-weight:600;}
                 </style></head><body><div class="card">
-                <div class="dot">%s</div><h1>%s</h1><p>%s</p>
+                <div class="dot">%s</div><h1>%s</h1><p>%s</p>%s
                 </div></body></html>
-                """.formatted(title, accent, ok ? "✓" : "!", title, desc);
+                """.formatted(redirect, escHtml(title), accent, ok ? "✓" : "!", escHtml(title), escHtml(desc), back);
+    }
+
+    private static String escHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("\"", "&quot;")
+                .replace("<", "&lt;").replace(">", "&gt;");
     }
 }

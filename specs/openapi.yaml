@@ -2340,6 +2340,21 @@ components:
         location:    { type: string, nullable: true }
 
     # ── 数字资产平台 · 真人授权与素材送审（v0.105，dap 域）────────────────────
+    DapRealAuthAgreement:
+      type: object
+      description: 服务端当前生效的真人数字形象授权说明；前端展示后须原样回传 version。
+      required: [version, title, summary, sections, scope, periodMonths, platforms, processors, hash]
+      properties:
+        version:      { type: string }
+        title:        { type: string }
+        summary:      { type: string }
+        sections:     { type: array, items: { type: string } }
+        scope:        { type: string }
+        periodMonths: { type: integer }
+        platforms:    { type: array, items: { type: string } }
+        processors:   { type: array, items: { type: string } }
+        hash:          { type: string, description: 协议正文 SHA-256 摘要 }
+
     DapRealAuthSession:
       type: object
       description: >-
@@ -2355,6 +2370,8 @@ components:
         failReason: { type: string, nullable: true }
         mock:       { type: boolean, description: 'true = 走内存 mock 网关（dev 联调），结论不可用于真实取证' }
         createdAt:  { type: string, format: date-time, nullable: true }
+        agreementVersion: { type: string, nullable: true }
+        consentRecorded:  { type: boolean, description: '是否已绑定不可变的平台授权确认快照' }
 
     DapMaterial:
       type: object
@@ -7955,30 +7972,47 @@ paths:
       tags: [dap]
       operationId: dapVerifyCapture
       description: >-
-        身份核验 + 自动登记电子授权（v0.105 起接真实刷脸认证）。前置条件：该次捕获必须已有 active 的真人授权会话
-        （POST /v1/real-auth/sessions → 刷脸 → 平台判定 active）。通过后标 verified、登记/回填 LIC
-        （verifyMethod=liveness）、并 best-effort 把捕获素材送审（送审失败只告警，不回滚核验与授权）。
+        本人刷脸核验 + 自动登记授权。前置条件：该次捕获必须同时绑定当前平台协议确认快照，且七牛真人组为 active。
+        通过后标 verified，并把 consentId / 协议版本与摘要 / 七牛 qgroupid / 核验时间写入 LIC 证据链；
+        随后 best-effort 把捕获素材送审（送审失败只告警，不回滚授权证据）。
       responses:
         '200': { description: 'ok（passed / captureId / authSessionId / licenseId）' }
         '400': { description: 'DAP_NO_FOOTAGE 未上传素材' }
         '409': { description: 'DAP_AUTH_NOT_COMPLETED 尚未完成刷脸认证' }
         '503': { description: 'DAP_MODELINK_NOT_CONFIGURED 未配置素材合规服务（会话阶段即报错）' }
 
-  # ── 真人授权（刷脸认证）+ 素材送审（v0.105；七牛 modelink，表 dap_material_group / dap_material）──
+  # ── 真人授权确认 + 本人刷脸 + 素材送审（v0.106；七牛 modelink）──
   # 接入点由 admin「AI 应用绑定」的用途 DAP_REAL_AVATAR 提供；未配置且不允许 mock → 503（§8.0，不产假授权）。
+  /v1/real-auth/agreement:
+    get:
+      tags: [dap]
+      operationId: dapGetRealAuthAgreement
+      summary: '读取当前真人数字形象授权说明（需登录）'
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/DapRealAuthAgreement' }
   /v1/real-auth/sessions:
     post:
       tags: [dap]
       operationId: dapStartRealAuthSession
-      summary: '开启真人授权（刷脸认证）会话；同一次捕获幂等复用'
+      summary: '确认当前协议并开启本人刷脸会话；同一次捕获幂等复用'
       requestBody:
         content:
           application/json:
             schema:
               type: object
-              required: [captureId]
+              required: [captureId, agreementAccepted, agreementVersion]
               properties:
                 captureId: { type: string }
+                agreementAccepted: { type: boolean, enum: [true] }
+                agreementVersion: { type: string }
       responses:
         '200':
           description: ok
@@ -7989,13 +8023,30 @@ paths:
                 properties:
                   success: { type: boolean }
                   data: { $ref: '#/components/schemas/DapRealAuthSession' }
-        '400': { description: 'DAP_NO_FOOTAGE 未上传素材 / DAP_CAPTURE_REQUIRED 缺少捕获会话 id' }
+        '400': { description: 'DAP_NO_FOOTAGE / DAP_CAPTURE_REQUIRED / DAP_CONSENT_REQUIRED / DAP_CONSENT_VERSION_CHANGED' }
         '503': { description: 'DAP_MODELINK_NOT_CONFIGURED 未绑定 modelink 端点且不允许 mock（不落会话行）' }
   /v1/real-auth/sessions/{id}:
     get:
       tags: [dap]
       operationId: dapGetRealAuthSession
       summary: '查询认证会话（非终态时向上游刷新；awaiting_auth 带出 h5Url，约 120s 有效）'
+      parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/DapRealAuthSession' }
+        '404': { description: 'DAP_AUTH_SESSION_NOT_FOUND' }
+  /v1/real-auth/sessions/{id}/restart:
+    post:
+      tags: [dap]
+      operationId: dapRestartRealAuthSession
+      summary: '短时 h5_link 过期后删除失败组并重建本人刷脸会话；沿用原协议确认快照'
       parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
       responses:
         '200':
@@ -8017,7 +8068,7 @@ paths:
         上游刷脸完成后浏览器直接跳转到此地址，故无法带 JWT —— 防伪靠 query 里不可枚举的 state
         （= 会话 callbackToken）+ 服务端 validateCalledAt 幂等闸（byted_token 一次性）。
         本端点只把结果回传上游（202 受理），**不判定授权生效**；生效与否一律以服务端轮询 GET 分组为准。
-        返回 text/html 落地页。
+        返回移动端 text/html 落地页，并自动跳回同源 #/real-auth/{sessionId} 可恢复路由；按钮作为手动兜底。
       security: []
       parameters:
         - { in: query, name: state, required: true, schema: { type: string }, description: '会话 callbackToken' }
@@ -8074,11 +8125,11 @@ paths:
         '503': { description: 'DAP_MODELINK_NOT_CONFIGURED' }
   /v1/licenses:
     get:  { tags: [dap], operationId: dapListLicenses, responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateLicense, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateLicense, description: '声明式登记仅保留给非真人对象；带 avatarId 返回 DAP_REAL_AUTH_REQUIRED，真人授权必须走协议确认 + 七牛本人刷脸链路', responses: { '200': { description: ok }, '400': { description: DAP_REAL_AUTH_REQUIRED } } }
   /v1/licenses/{id}:
     get: { tags: [dap], operationId: dapGetLicense, responses: { '200': { description: ok } } }
   /v1/licenses/{id}/certificate:
-    get: { tags: [dap], operationId: dapLicenseCertificate, description: 生成/获取 HTML 凭证 URL, responses: { '200': { description: ok } } }
+    get: { tags: [dap], operationId: dapLicenseCertificate, description: '生成/获取移动端 HTML 授权确认凭证；v2 同时展示平台协议快照与七牛 qgroupid 核验引用', responses: { '200': { description: ok } } }
   /v1/licenses/{id}/renew:
     post: { tags: [dap], operationId: dapRenewLicense, responses: { '200': { description: ok } } }
   /v1/voices/builtin:

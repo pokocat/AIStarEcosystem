@@ -20,7 +20,8 @@ import java.time.Instant;
  * <ul>
  *   <li>{@code liveness_face}：真人授权（刷脸认证）分组。一次真人捕获对应一个分组，
  *       用户在分组的 h5_link 上完成刷脸后浏览器回跳我们的 callback，我们再把 resultCode +
- *       byted_token 回传给 modelink，平台异步判定 → active/failed。分组 active 才算「授权已完成」。</li>
+ *       byted_token 回传给 modelink，平台异步判定 → active/failed。分组 active 只代表技术核验通过；
+ *       还必须绑定 {@link DapConsent} 才能形成业务授权。</li>
  *   <li>{@code aigc}：AI 生成素材分组（v0.105-补丁起启用）。数字人 AI 原创素材送审到一个
  *       **账号级共享的专属分组**（owner = {@code __platform__}，见 {@code DapAigcGroupResolver}），
  *       不再混进平台默认组。</li>
@@ -36,7 +37,7 @@ import java.time.Instant;
  *   preparing     ← modelink pending（分组创建中）
  *   awaiting_auth ← modelink awaiting_auth（可取 h5_link 去刷脸）
  *   validating    ← 本地态：已调 visual-validate-result，等平台异步判定
- *   active        ← modelink active（授权生效）
+ *   active        ← modelink active（活体 / 同人一致性技术核验通过）
  *   failed        ← modelink failed（刷脸未通过 / 校验失败）
  * </pre>
  */
@@ -84,6 +85,10 @@ public class DapMaterialGroup {
 
     @Column(length = 32)
     private String captureId;
+
+    /** 用户在创建本次真人认证会话前确认的业务授权协议快照。 */
+    @Column(length = 32)
+    private String consentId;
 
     /**
      * 回调防伪串（随机 UUID hex）。刷脸回跳地址是 {@code /api/v1/real-auth/callback?state=<token>}，

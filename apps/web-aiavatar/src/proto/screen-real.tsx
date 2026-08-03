@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, CaptureApi, RealAuthApi, awaitJob, USE_MOCK } from "./api";
+import { DATA, AvatarApi, CaptureApi, JobApi, RealAuthApi, awaitJob, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { MShell } from "./shell";
 import { toast } from "./toast";
@@ -10,7 +10,7 @@ import { toast } from "./toast";
 // ============================================================
 // 移动端 · 真人复刻 全流程（全屏切屏）
 //   录制引导 → 倒计时+三角度转头录制（真实摄像头，纯视频无声） → 最后一步(回放+命名)
-//   → 上传素材 → 实名认证（本人刷脸，v0.105）→ 核验登记授权 → 复刻生成 → 就绪
+//   → 上传素材 → 协议确认 + 本人刷脸 → 核验登记授权 → 复刻生成 → 就绪
 //   live：create avatar → capture → footage → real-auth session（轮询到通过）
 //        → verify(登记授权) → generate(upload)
 //   美颜仅作用于预览/回放（CSS 滤镜降低心理负担），上传素材始终为原始录像
@@ -115,7 +115,7 @@ function RealIntro({ onReady, onUpload, onClose, subjectName }) {
       hMR('div', { className: 'm-fade' },
         hMR('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-pill)', fontSize: 11.5, fontWeight: 700, color: 'var(--primary)', marginBottom: 12 } },
           hMR(Icons.bolt, { size: 13, stroke: 2 }), '约 ' + REC_SECONDS + ' 秒 · 无需说话'),
-        subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, fontWeight: 600, color: 'var(--primary)', marginBottom: 6 } }, '正在为「' + subjectName + '」完成实名认证'),
+        subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, fontWeight: 600, color: 'var(--primary)', marginBottom: 6 } }, '正在为「' + subjectName + '」补充真人授权证据'),
         hMR('h1', { style: { fontSize: 25, lineHeight: 1.16, letterSpacing: '-.02em', fontWeight: 800, margin: '0 0 8px' } }, '录几秒转头视频，', hMR('br', null), '生成你的数字分身'),
         hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: 0 } },
           '正对镜头，跟随箭头缓慢左右转头即可。素颜出镜也没关系——最终形象将由 AI 自动美化。也可 ',
@@ -326,29 +326,41 @@ function RealLastStep({ defaultName, blobUrl, isImage, beauty, onToggleBeauty, o
       hMR('button', { onClick: onRetry, disabled: busy, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: 'var(--ink-2)' } }, '重新录制')));
 }
 
-// —— 实名认证（本人刷脸）：建会话 → 轮询 → 通过后核验登记授权 ——
-//   状态机：准备中 → 待认证（打开刷脸页）→ 核验中 → 已通过 / 未通过
-//   认证链接短时有效，过期可就地「换个新链接」重新获取。
+// —— 真人授权确认：先确认平台协议，再进入七牛本人刷脸页 ——
+//   七牛 active 仅是活体 / 同人一致性的技术证据；业务授权以平台协议快照为准。
 function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, onClose }) {
+  const [agreement, setAgreement] = useStateMR(null as any);
+  const [agreementLoading, setAgreementLoading] = useStateMR(true);
+  const [accepted, setAccepted] = useStateMR(false);
+  const [begun, setBegun] = useStateMR(false);
   const [session, setSession] = useStateMR(null as any);
-  const [err, setErr] = useStateMR('');           // 会话级错误（建会话失败 / 核验失败）
+  const [err, setErr] = useStateMR('');
   const [registering, setRegistering] = useStateMR(false);
-  const [startSeq, setStartSeq] = useStateMR(0);  // 递增 = 重新发起一次认证
+  const [startSeq, setStartSeq] = useStateMR(0);
   const [verifySeq, setVerifySeq] = useStateMR(0);
   const [refreshing, setRefreshing] = useStateMR(false);
-  const [opened, setOpened] = useStateMR(false);  // 是否已打开过刷脸页（决定提示文案）
   const sessionRef = useRefMR(null as any);
   const passedRef = useRefMR(false);
 
-  // 建会话 + 2 秒轮询
   useEffectMR(() => {
     let live = true;
+    RealAuthApi.agreement()
+      .then((a) => { if (live) setAgreement(a); })
+      .catch((e: any) => { if (live) setErr(e?.message || '授权说明加载失败，请重试'); })
+      .finally(() => { if (live) setAgreementLoading(false); });
+    return () => { live = false; };
+  }, []);
+
+  // 用户明确确认协议后才创建会话；2 秒轮询服务端最终状态。
+  useEffectMR(() => {
+    if (!begun || !agreement) return;
+    let live = true;
     let timer: any = null;
-    setSession(null); setErr(''); setOpened(false);
+    setSession(null); setErr('');
     passedRef.current = false;
     (async () => {
       try {
-        const s = await RealAuthApi.start(captureId);
+        const s = await RealAuthApi.start(captureId, agreement.version);
         if (!live) return;
         sessionRef.current = s;
         setSession(s);
@@ -369,7 +381,17 @@ function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, 
       timer = setTimeout(poll, 2000);
     })();
     return () => { live = false; if (timer) clearTimeout(timer); };
-  }, [captureId, startSeq]);
+  }, [captureId, begun, agreement && agreement.version, startSeq]);
+
+  // 从系统浏览器 / 第三方页切回时立即刷新，不必等下一轮定时器。
+  useEffectMR(() => {
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible' || !sessionRef.current) return;
+      try { const s = await RealAuthApi.get(sessionRef.current.id); sessionRef.current = s; setSession(s); } catch {}
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   // 认证通过 → 核验并登记肖像授权；服务端说「刷脸尚未完成」时回到等待，不当作失败
   useEffectMR(() => {
@@ -388,27 +410,51 @@ function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, 
     return () => { live = false; if (retry) clearTimeout(retry); };
   }, [session && session.status, verifySeq]);
 
-  const restart = () => { setErr(''); setStartSeq((n) => n + 1); };
+  const restart = async () => {
+    setErr('');
+    if (!sessionRef.current) { setStartSeq((n) => n + 1); return; }
+    setRefreshing(true);
+    try {
+      const s = await RealAuthApi.restart(sessionRef.current.id);
+      sessionRef.current = s; setSession(s);
+      toast('已重新建立本人确认通道', { tone: 'ok' });
+    } catch (e: any) { setErr(e?.message || '重新发起失败，请稍后再试'); }
+    finally { setRefreshing(false); }
+  };
 
   const openAuthPage = () => {
     if (!session?.h5Url) return;
-    setOpened(true);
-    window.open(session.h5Url, '_blank', 'noopener');
+    // 移动端使用当前页面打开，七牛完成后会自动回跳 #/real-auth/{sessionId}。
+    if (session.mock) { toast('模拟环境：本人刷脸确认将自动完成', { tone: 'ok' }); return; }
+    history.replaceState({ realAuth: session.id }, '', '#/real-auth/' + session.id);
+    window.location.assign(session.h5Url);
   };
 
-  // 认证链接短时有效：重新拉一次会话即可拿到新链接
-  const refreshLink = async () => {
-    if (!sessionRef.current || refreshing) return;
-    setRefreshing(true);
-    try {
-      const s = await RealAuthApi.get(sessionRef.current.id);
-      sessionRef.current = s;
-      setSession(s);
-      toast('已换新的认证链接', { tone: 'ok' });
-    } catch (e: any) {
-      setErr(e?.message || '获取认证链接失败，请重新认证');
-    } finally { setRefreshing(false); }
-  };
+  if (!begun) {
+    return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
+      hMR(CenterNav, { onClose }),
+      hMR('div', { className: 'm-body', style: { padding: '2px 20px 20px' } },
+        hMR('div', { className: 'm-fade' },
+          hMR('div', { className: 'mono', style: { fontSize: 10.5, letterSpacing: '.12em', color: 'var(--primary)', marginBottom: 8 } }, 'REAL PERSON · CONSENT'),
+          hMR('h1', { style: { fontFamily: 'var(--font-disp)', fontSize: 24, lineHeight: 1.22, margin: '0 0 8px' } }, agreement?.title || '真人数字形象授权确认'),
+          hMR('p', { style: { fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, margin: '0 0 16px' } },
+            agreement?.summary || (agreementLoading ? '正在读取当前授权说明…' : err)),
+          agreement && hMR(React.Fragment, null,
+            hMR('div', { style: { padding: '13px 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', marginBottom: 12 } },
+              hMR('div', { style: { display: 'grid', gridTemplateColumns: '72px 1fr', gap: '8px 10px', fontSize: 12.5, lineHeight: 1.5 } },
+                hMR('span', { style: { color: 'var(--ink-3)' } }, '授权范围'), hMR('strong', null, agreement.scope),
+                hMR('span', { style: { color: 'var(--ink-3)' } }, '有效期限'), hMR('strong', null, agreement.periodMonths + ' 个月'),
+                hMR('span', { style: { color: 'var(--ink-3)' } }, '处理方'), hMR('strong', null, agreement.processors.join(' · ')))),
+            hMR('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 } },
+              agreement.sections.map((item, i) => hMR('div', { key: i, style: { display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.55 } },
+                hMR('span', { className: 'mono', style: { flex: '0 0 auto', color: 'var(--primary)', fontSize: 10.5, paddingTop: 2 } }, String(i + 1).padStart(2, '0')),
+                hMR('span', null, item)))),
+            hMR('label', { className: 'm-tap', style: { display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 13px', border: '1px solid ' + (accepted ? 'var(--primary)' : 'var(--line)'), borderRadius: 'var(--r-md)', background: accepted ? 'var(--primary-tint)' : 'var(--surface-2)', cursor: 'pointer' } },
+              hMR('input', { type: 'checkbox', checked: accepted, onChange: (e) => setAccepted(e.target.checked), style: { width: 18, height: 18, margin: 0, accentColor: 'var(--primary)', flex: '0 0 auto' } }),
+              hMR('span', { style: { fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)' } }, '我已阅读并同意以上说明，确认素材中的人物是本人，并同意进入七牛云页面完成本人刷脸核验。'))))),
+      hMR('div', { style: { flex: '0 0 auto', padding: '10px 20px calc(14px + var(--home-ind))' } },
+        hMR(UI.Button, { variant: 'dark', size: 'lg', full: true, disabled: agreementLoading || !agreement || !accepted, onClick: () => { setErr(''); setBegun(true); } }, agreementLoading ? '读取授权说明…' : '同意并继续本人确认')));
+  }
 
   const status = err ? 'error' : (session?.status || 'preparing');
   const TONE: any = {
@@ -422,10 +468,10 @@ function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, 
   const HEAD: any = {
     error:         { title: '认证没有完成', desc: err },
     failed:        { title: '认证未通过', desc: session?.failReason || '本次刷脸没有通过，请在光线充足的环境下重新认证。' },
-    active:        { title: '认证通过', desc: registering ? '正在登记肖像授权…' : '实名信息核验一致，正在继续。' },
-    awaiting_auth: { title: '去完成刷脸认证', desc: '点击下方按钮打开认证页面，按提示完成本人刷脸；完成后回到这里等待结果即可。' },
-    validating:    { title: '认证结果核验中', desc: '正在比对本人实名信息，请稍候，不要离开本页。' },
-    preparing:     { title: '正在准备实名认证', desc: '正在为你建立本次认证通道…' },
+    active:        { title: '本人确认通过', desc: registering ? '正在绑定授权证据并生成登记…' : '活体与同人一致性核验通过，正在继续。' },
+    awaiting_auth: { title: '前往本人刷脸确认', desc: '将在当前页面进入七牛云确认页；完成后会自动返回并继续处理。' },
+    validating:    { title: '正在核验结果', desc: '七牛云正在确认活体与同人一致性，请稍候。' },
+    preparing:     { title: '正在准备确认通道', desc: '正在为本次授权建立短时安全链接…' },
   };
   const tone = TONE[status] || TONE.preparing;
   const head = HEAD[status] || HEAD.preparing;
@@ -441,24 +487,24 @@ function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, 
             ? hMR(UI.Spinner, { size: 22, c: tone.c })
             : hMR(status === 'active' ? Icons.check : status === 'awaiting_auth' ? Icons.scan : Icons.warn, { size: 26, stroke: 2.2 })),
         hMR('h1', { style: { fontSize: 22, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, head.title),
-        subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 auto 8px', maxWidth: 280 } }, '正在为「' + subjectName + '」完成实名认证'),
+        subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 auto 8px', maxWidth: 280 } }, '正在为「' + subjectName + '」完成真人授权确认'),
         hMR('p', { style: { fontSize: 13, color: status === 'error' || status === 'failed' ? 'var(--err)' : 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 18px', maxWidth: 290, wordBreak: 'break-word' } }, head.desc),
 
         // 操作区
         status === 'awaiting_auth' && hMR('div', { style: { margin: '0 auto 16px', maxWidth: 300 } },
-          hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.scan, onClick: openAuthPage }, '去刷脸认证'),
+          hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.scan, onClick: openAuthPage }, '进入七牛云本人确认'),
           hMR('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10 } },
             hMR('span', { style: { fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.45, textAlign: 'left', flex: 1, minWidth: 0 } },
-              opened ? '完成后回到本页，结果会自动更新。' : '认证链接短时有效，打不开就换一个新的。'),
-            hMR('button', { onClick: refreshLink, disabled: refreshing, className: 'm-tap', style: { flex: '0 0 auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--primary)' } }, refreshing ? '获取中…' : '换新链接'))),
+              '链接约 2 分钟有效；如已过期，需要重新建立通道。'),
+            hMR('button', { onClick: restart, disabled: refreshing, className: 'm-tap', style: { flex: '0 0 auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--primary)' } }, refreshing ? '建立中…' : '重新建立'))),
 
         (status === 'failed' || status === 'error') && hMR('div', { style: { marginBottom: 16 } },
-          hMR(UI.Button, { variant: 'primary', icon: Icons.retry, onClick: restart }, '重新认证')),
+          hMR(UI.Button, { variant: 'primary', icon: Icons.retry, disabled: refreshing, onClick: restart }, refreshing ? '重新建立中…' : '重新发起本人确认')),
 
         hMR(VideoReview, { badge: '肖像已保护', blobUrl, isImage, beauty }),
         hMR('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 18, padding: '12px 14px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', textAlign: 'left' } },
           hMR(Icons.shield, { size: 16, style: { color: 'var(--ok)', flex: '0 0 auto', marginTop: 1 } }),
-          hMR('span', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5 } }, '刷脸认证用于确认本人同意；认证通过后系统会自动登记电子肖像授权，原始素材加密存档。')))));
+          hMR('span', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5 } }, '平台保存你的授权确认快照；七牛云仅提供活体与同人一致性核验。两项证据齐全后才会登记授权凭证。')))));
 }
 
 // —— 身份核验 + 生成（真实管线进度）——
@@ -491,7 +537,7 @@ function RealReady({ avatar, onContinue, onClose, authOnly }) {
         hMR('div', { style: { width: 64, height: 64, margin: '4px auto 18px', position: 'relative', display: 'grid', placeItems: 'center' } },
           hMR('div', { style: { position: 'absolute', inset: 8, borderRadius: 99, background: 'var(--primary-soft)' } }),
           hMR('div', { style: { position: 'relative', width: 44, height: 44, borderRadius: 14, background: 'var(--primary)', display: 'grid', placeItems: 'center', color: '#fff' } }, hMR(Icons.check, { size: 24, stroke: 2.6 }))),
-        hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, authOnly ? '实名认证已完成！' : '你的数字人已就绪！'),
+        hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, authOnly ? '真人授权已完成！' : '你的数字人已就绪！'),
         hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 20px', maxWidth: 260 } },
           authOnly ? '肖像授权已登记，这个形象现在可以正常用于合成出片。' : '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
         avatar && avatar.imageUrl && hMR('div', { style: { width: 170, margin: '0 auto 20px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
@@ -501,6 +547,105 @@ function RealReady({ avatar, onContinue, onClose, authOnly }) {
           : hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.sliders, onClick: onContinue }, '继续精调'))),
     hMR('div', { style: { flex: '0 0 auto', padding: '8px 22px calc(14px + var(--home-ind))', textAlign: 'center' } },
       hMR('button', { onClick: onClose, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--ink-3)' } }, '稍后再说')));
+}
+
+/**
+ * 七牛回跳后的可恢复页面。它只依赖 sessionId，可在刷新、微信 WebView 回流或重新登录后继续。
+ */
+function MRealAuthResume({ sessionId, ctx }) {
+  const [session, setSession] = useStateMR(null as any);
+  const [phase, setPhase] = useStateMR('loading'); // loading | waiting | sealing | ready | failed
+  const [message, setMessage] = useStateMR('正在读取本人确认结果…');
+  const [avatar, setAvatar] = useStateMR(null as any);
+  const [busy, setBusy] = useStateMR(false);
+  const processedRef = useRefMR(false);
+
+  useEffectMR(() => {
+    let live = true;
+    let timer: any;
+    const poll = async () => {
+      try {
+        const s = await RealAuthApi.get(sessionId);
+        if (!live) return;
+        setSession(s);
+        if (s.status === 'failed') {
+          setPhase('failed'); setMessage(s.failReason || '本次本人确认没有通过。'); return;
+        }
+        if (s.status === 'active') {
+          if (processedRef.current) return;
+          processedRef.current = true;
+          setPhase('sealing'); setMessage('核验通过，正在绑定授权证据…');
+          try {
+            await CaptureApi.verify(s.captureId);
+            let a = s.avatarId ? await AvatarApi.get(s.avatarId) : null;
+            if (a && !a.imageUrl) {
+              setMessage('授权已登记，正在复刻数字形象…');
+              const running = a.status === 'proofing'
+                ? (await JobApi.list({ avatarId: a.id }).catch(() => []))
+                    .find((j: any) => j.status === 'running' && j.type === 'generate_upload')
+                : null;
+              const job = running || await AvatarApi.generate(a.id, { mode: 'upload', captureId: s.captureId });
+              await awaitJob(job.id, (j) => live && setMessage(j.eta || '正在复刻数字形象…'));
+              a = await AvatarApi.get(a.id);
+            }
+            if (!live) return;
+            setAvatar(a); setPhase('ready'); setMessage('授权证据已完整登记。');
+            ctx.reload && ctx.reload();
+          } catch (e: any) {
+            if (!live) return;
+            processedRef.current = false;
+            setPhase('failed'); setMessage(e?.message || '授权登记没有完成，请重试。');
+          }
+          return;
+        }
+        setPhase('waiting');
+        setMessage(s.status === 'validating' ? '七牛云正在确认活体与同人一致性…' : '本人确认尚未完成。');
+        timer = setTimeout(poll, 1800);
+      } catch (e: any) {
+        if (!live) return;
+        setPhase('failed'); setMessage(e?.message || '确认会话不存在或已经失效。');
+      }
+    };
+    poll();
+    return () => { live = false; if (timer) clearTimeout(timer); };
+  }, [sessionId]);
+
+  const reopen = () => {
+    if (!session?.h5Url) return;
+    if (session.mock) { toast('模拟环境会自动完成本人确认', { tone: 'ok' }); return; }
+    window.location.assign(session.h5Url);
+  };
+  const restart = async () => {
+    if (!session || busy) return;
+    setBusy(true);
+    try {
+      const s = await RealAuthApi.restart(session.id);
+      setSession(s); setPhase('waiting'); setMessage('新通道已建立，请继续本人确认。');
+      if (!s.mock) { window.location.replace('#/real-auth/' + s.id); window.location.reload(); }
+    } catch (e: any) { setMessage(e?.message || '重新发起失败，请稍后再试。'); }
+    finally { setBusy(false); }
+  };
+  const success = phase === 'ready';
+  const failed = phase === 'failed';
+  return hMR('div', { className: 'm-overlay', 'data-screen-label': '本人确认结果', style: { display: 'flex', flexDirection: 'column' } },
+    hMR(CenterNav, { onClose: () => ctx.tab('library') }),
+    hMR('div', { className: 'm-body', style: { padding: '10px 22px 28px', textAlign: 'center' } },
+      hMR('div', { className: 'm-fade' },
+        hMR('div', { style: { width: 62, height: 62, borderRadius: 20, margin: '8px auto 17px', display: 'grid', placeItems: 'center', background: success ? 'var(--ok-s)' : failed ? 'var(--err-s)' : 'var(--primary-soft)', color: success ? 'var(--ok)' : failed ? 'var(--err)' : 'var(--primary)' } },
+          phase === 'loading' || phase === 'waiting' || phase === 'sealing'
+            ? hMR(UI.Spinner, { size: 23 })
+            : hMR(success ? Icons.check : Icons.warn, { size: 28, stroke: 2.2 })),
+        hMR('div', { className: 'mono', style: { fontSize: 10.5, letterSpacing: '.12em', color: 'var(--ink-3)', marginBottom: 7 } }, sessionId),
+        hMR('h1', { style: { fontFamily: 'var(--font-disp)', fontSize: 24, margin: '0 0 9px' } },
+          success ? '真人授权已登记' : failed ? '本人确认未完成' : '正在确认最终结果'),
+        hMR('p', { style: { fontSize: 13.5, color: failed ? 'var(--err)' : 'var(--ink-2)', lineHeight: 1.6, margin: '0 auto 22px', maxWidth: 300 } }, message),
+        success && avatar && avatar.imageUrl && hMR('div', { style: { width: 164, margin: '0 auto 20px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
+          hMR(Portrait, { char: avatar, variant: 'key', ratio: '4 / 5', expr: 'calm' })),
+        success && hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', onClick: () => avatar ? ctx.finishCreate(avatar) : ctx.tab('library') }, avatar ? '查看数字形象' : '返回资产库'),
+        phase === 'waiting' && session?.h5Url && hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.scan, onClick: reopen }, '继续本人刷脸确认'),
+        failed && session && hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.retry, disabled: busy, onClick: restart }, busy ? '重新建立中…' : '重新发起本人确认'),
+        hMR('div', { style: { marginTop: 18, padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface-2)', textAlign: 'left', fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.55 } },
+          '最终状态由服务端向七牛云查询确认，浏览器回跳本身不会直接让授权生效。'))));
 }
 
 // —— 外壳：编排 capture → footage → 刷脸认证 → verify → generate ——
@@ -533,7 +678,7 @@ function MRealCapture({ char, ctx }) {
     setStage('last');
   };
 
-  // 1~2 步：建资产 + 捕获会话 + 上传素材 → 进入实名认证
+  // 1~2 步：建资产 + 捕获会话 + 上传素材 → 进入授权确认与本人刷脸
   const runUpload = async (name: string) => {
     nameRef.current = name;
     setBusy(true); setError(''); setPhase('upload'); setStage('verify'); setPct(5); setStageText('创建资产档案…');
@@ -584,10 +729,10 @@ function MRealCapture({ char, ctx }) {
       setAvatar(fresh);
       setStage('ready');
       ctx.reload && ctx.reload();
-      toast('实名认证通过 · 肖像授权已登记', { tone: 'ok' });
+      toast('本人确认通过 · 授权证据已登记', { tone: 'ok' });
       return;
     }
-    toast('实名认证通过 · 肖像授权已登记', { tone: 'ok' });
+    toast('本人确认通过 · 授权证据已登记', { tone: 'ok' });
     runGenerate(captureId);
   };
 
@@ -619,4 +764,4 @@ function MRealCapture({ char, ctx }) {
     stage === 'ready' && hMR(RealReady, { avatar, authOnly, onClose: ctx.back, onContinue: continueAdjust }));
 }
 
-export { MRealCapture };
+export { MRealCapture, MRealAuthResume };

@@ -38,6 +38,7 @@ public class DapCaptureService {
     private final DapAvatarService avatarService;
     private final DapLicenseService licenseService;
     private final DapRealAuthService realAuthService;
+    private final DapConsentService consentService;
     private final DapMaterialService materialService;
     private final FileStorageService storage;
     private final DapSupport support;
@@ -47,6 +48,7 @@ public class DapCaptureService {
                              DapAvatarService avatarService,
                              DapLicenseService licenseService,
                              DapRealAuthService realAuthService,
+                             DapConsentService consentService,
                              DapMaterialService materialService,
                              FileStorageService storage,
                              DapSupport support) {
@@ -55,6 +57,7 @@ public class DapCaptureService {
         this.avatarService = avatarService;
         this.licenseService = licenseService;
         this.realAuthService = realAuthService;
+        this.consentService = consentService;
         this.materialService = materialService;
         this.storage = storage;
         this.support = support;
@@ -124,9 +127,12 @@ public class DapCaptureService {
         }
         // 未配置 modelink 且不允许降级的场景，在 real-auth/sessions 阶段就已 503；此处只判会话结果
         DapMaterialGroup group = realAuthService.requireActiveSession(userId, c);
+        var consent = consentService.required(userId, group.getConsentId());
+        boolean firstVerification = !"verified".equals(c.getStatus());
 
+        Instant verifiedAt = firstVerification || c.getVerifiedAt() == null ? Instant.now() : c.getVerifiedAt();
         c.setStatus("verified");
-        c.setVerifiedAt(Instant.now());
+        c.setVerifiedAt(verifiedAt);
         captureRepo.save(c);
 
         // 自动登记授权（绑定资产时）
@@ -134,17 +140,19 @@ public class DapCaptureService {
         if (c.getAvatarId() != null) {
             DapAvatar a = avatarService.required(userId, c.getAvatarId());
             var lic = licenseService.autoCreateForCapture(userId, a.getId(), a.getName(), 1,
-                    "liveness", group.getId());
+                    consent, group, verifiedAt);
             a.setLicenseId(lic.getId());
             avatarService.save(a);
             licenseId = lic.getId();
         }
 
         // 素材送审：合规旁路，失败不回滚核验 / 授权（可在「素材送审」里手动重交）
-        try {
-            materialService.submitForCapture(userId, c, group);
-        } catch (RuntimeException e) {
-            log.warn("[dap] 捕获素材送审失败 capture={}: {}", c.getId(), e.getMessage());
+        if (firstVerification) {
+            try {
+                materialService.submitForCapture(userId, c, group);
+            } catch (RuntimeException e) {
+                log.warn("[dap] 捕获素材送审失败 capture={}: {}", c.getId(), e.getMessage());
+            }
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

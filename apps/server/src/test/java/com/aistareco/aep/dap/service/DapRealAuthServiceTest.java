@@ -3,6 +3,7 @@ package com.aistareco.aep.dap.service;
 import com.aistareco.aep.dap.config.DapProperties;
 import com.aistareco.aep.dap.dto.DapDtos.RealAuthSessionDto;
 import com.aistareco.aep.dap.model.DapCapture;
+import com.aistareco.aep.dap.model.DapConsent;
 import com.aistareco.aep.dap.model.DapMaterialGroup;
 import com.aistareco.aep.dap.repository.DapCaptureRepository;
 import com.aistareco.aep.dap.repository.DapMaterialGroupRepository;
@@ -38,6 +39,8 @@ class DapRealAuthServiceTest {
     private DapCaptureRepository captureRepo;
     private ModelinkService modelink;
     private DapProperties props;
+    private DapConsentService consents;
+    private DapConsent consent;
     private DapRealAuthService svc;
 
     @BeforeEach
@@ -81,7 +84,15 @@ class DapRealAuthServiceTest {
 
         props = new DapProperties();
         props.getModelink().setCallbackBaseUrl("https://aiavatar.example.cn");
-        svc = new DapRealAuthService(groupRepo, captureRepo, modelink, props, new DapSupport());
+        consents = mock(DapConsentService.class);
+        consent = DapConsent.builder().id("CONS-1").ownerUserId(USER).captureId("CAP-1")
+                .avatarId("DH-1").agreementVersion(DapConsentService.VERSION)
+                .agreementHash("hash").scope(DapConsentService.SCOPE)
+                .periodMonths(24).platforms(DapConsentService.PLATFORMS)
+                .acceptedAt(Instant.now()).createdAt(Instant.now()).build();
+        when(consents.accept(anyString(), any(), anyString(), eq(true), any(), any())).thenReturn(consent);
+        when(consents.required(eq(USER), eq("CONS-1"))).thenReturn(consent);
+        svc = new DapRealAuthService(groupRepo, captureRepo, modelink, props, new DapSupport(), consents);
 
         captures.put("CAP-1", DapCapture.builder().id("CAP-1").ownerUserId(USER).avatarId("DH-1")
                 .status("footage_uploaded").footageKey("dap/capture/u/a.webm")
@@ -94,21 +105,28 @@ class DapRealAuthServiceTest {
                 .thenReturn(new GroupState(qgroupid, "pending", null, null, null));
     }
 
+    private RealAuthSessionDto start(DapRealAuthService target, String captureId) {
+        return target.start(USER, captureId, DapConsentService.VERSION, true, "127.0.0.1", "JUnit");
+    }
+
     @Test
     void startCreatesGroupAndBindsCapture() {
         stubCreate("qg-1");
-        RealAuthSessionDto dto = svc.start(USER, "CAP-1");
+        RealAuthSessionDto dto = start(svc, "CAP-1");
 
         assertEquals("preparing", dto.status());
         assertEquals("CAP-1", dto.captureId());
         assertEquals("DH-1", dto.avatarId());
         assertNull(dto.h5Url(), "preparing 阶段还没有刷脸页");
         assertFalse(dto.mock());
+        assertTrue(dto.consentRecorded());
+        assertEquals(DapConsentService.VERSION, dto.agreementVersion());
 
         DapMaterialGroup g = groups.get(dto.id());
         assertNotNull(g);
         assertEquals("qg-1", g.getQgroupid());
         assertEquals("liveness_face", g.getKind());
+        assertEquals("CONS-1", g.getConsentId());
         assertNotNull(g.getCallbackToken());
         assertEquals(g.getId(), captures.get("CAP-1").getAuthGroupId());
 
@@ -120,10 +138,10 @@ class DapRealAuthServiceTest {
     @Test
     void startIsIdempotentForSameCapture() {
         stubCreate("qg-1");
-        RealAuthSessionDto first = svc.start(USER, "CAP-1");
+        RealAuthSessionDto first = start(svc, "CAP-1");
         when(modelink.getGroup("qg-1")).thenReturn(new GroupState("qg-1", "awaiting_auth", "https://face/h5", "bt-1", null));
 
-        RealAuthSessionDto again = svc.start(USER, "CAP-1");
+        RealAuthSessionDto again = start(svc, "CAP-1");
 
         assertEquals(first.id(), again.id());
         assertEquals(1, groups.size());
@@ -131,9 +149,27 @@ class DapRealAuthServiceTest {
     }
 
     @Test
+    void restartRebuildsExpiredShortLinkInsteadOfRefreshingSameGroup() {
+        stubCreate("qg-1");
+        RealAuthSessionDto first = start(svc, "CAP-1");
+        DapMaterialGroup old = groups.get(first.id());
+        old.setStatus("awaiting_auth");
+        when(modelink.createGroup(eq("liveness_face"), anyString(), anyString(), anyString()))
+                .thenReturn(new GroupState("qg-2", "pending", null, null, null));
+
+        RealAuthSessionDto next = svc.restart(USER, first.id());
+
+        assertNotEquals(first.id(), next.id());
+        assertEquals("qg-2", groups.get(next.id()).getQgroupid());
+        assertEquals("CONS-1", groups.get(next.id()).getConsentId());
+        verify(modelink).deleteGroup("qg-1");
+        assertEquals(next.id(), captures.get("CAP-1").getAuthGroupId());
+    }
+
+    @Test
     void getSessionExposesH5LinkWhenAwaitingAuth() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         when(modelink.getGroup("qg-1")).thenReturn(new GroupState("qg-1", "awaiting_auth", "https://face/h5", "bt-1", null));
 
         RealAuthSessionDto dto = svc.getSession(USER, created.id());
@@ -146,11 +182,12 @@ class DapRealAuthServiceTest {
     @Test
     void callbackForwardsOnceThenIsIdempotent() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         String token = groups.get(created.id()).getCallbackToken();
 
         String html = svc.handleCallback(token, "10000", "bt-cb");
-        assertTrue(html.contains("认证已提交"));
+        assertTrue(html.contains("本人确认已提交"));
+        assertTrue(html.contains("#/real-auth/" + created.id()), "回跳页必须自动回到可恢复会话路由");
         assertEquals("validating", groups.get(created.id()).getStatus());
         assertNotNull(groups.get(created.id()).getValidateCalledAt());
 
@@ -163,11 +200,11 @@ class DapRealAuthServiceTest {
     @Test
     void callbackWithNonSuccessCodeConvergesToFailed() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         String token = groups.get(created.id()).getCallbackToken();
 
         String html = svc.handleCallback(token, "10001", null);
-        assertTrue(html.contains("认证未通过"));
+        assertTrue(html.contains("本人确认未通过"));
         // 非 10000 也照实透传（平台据此判 failed，不消耗有效凭证）
         verify(modelink).visualValidate(eq("qg-1"), eq("10001"), any());
         assertEquals("validating", groups.get(created.id()).getStatus());
@@ -182,7 +219,7 @@ class DapRealAuthServiceTest {
     @Test
     void callbackForwardFailureKillsSessionInsteadOfHangingInValidating() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         String token = groups.get(created.id()).getCallbackToken();
         doThrow(new RuntimeException("上游 502")).when(modelink).visualValidate(anyString(), anyString(), any());
 
@@ -193,8 +230,8 @@ class DapRealAuthServiceTest {
         DapMaterialGroup g = groups.get(created.id());
         assertEquals("failed", g.getStatus());
         assertTrue(g.getFailReason().contains("回传失败"), "保留可排障的失败原因：" + g.getFailReason());
-        assertTrue(html.contains("认证提交失败"), "落地页必须是失败语义：" + html);
-        assertFalse(html.contains("正在确认你的授权"), "不得被成功路径文案覆盖");
+        assertTrue(html.contains("提交失败"), "落地页必须是失败语义：" + html);
+        assertFalse(html.contains("核验最终状态"), "不得被成功路径文案覆盖");
 
         // 终态 → 轮询器 / getSession 不再打上游
         svc.getSession(USER, created.id());
@@ -205,7 +242,7 @@ class DapRealAuthServiceTest {
         when(modelink.boundModel()).thenReturn("m1");
         when(modelink.createGroup(eq("liveness_face"), anyString(), anyString(), anyString()))
                 .thenReturn(new GroupState("qg-2", "pending", null, null, null));
-        RealAuthSessionDto retry = svc.start(USER, "CAP-1");
+        RealAuthSessionDto retry = start(svc, "CAP-1");
         assertNotEquals(created.id(), retry.id());
         assertEquals("preparing", retry.status());
         assertNotEquals(token, groups.get(retry.id()).getCallbackToken());
@@ -217,12 +254,12 @@ class DapRealAuthServiceTest {
     void retryAfterFailureRecyclesTheOldUpstreamGroup() {
         // modelink 账号级只有 3 个分组：失败重试若不删旧组，两次重试就把配额漏光
         stubCreate("qg-1");
-        RealAuthSessionDto first = svc.start(USER, "CAP-1");
+        RealAuthSessionDto first = start(svc, "CAP-1");
         groups.get(first.id()).setStatus("failed");
 
         when(modelink.createGroup(eq("liveness_face"), anyString(), anyString(), anyString()))
                 .thenReturn(new GroupState("qg-2", "pending", null, null, null));
-        RealAuthSessionDto retry = svc.start(USER, "CAP-1");
+        RealAuthSessionDto retry = start(svc, "CAP-1");
 
         verify(modelink).deleteGroup("qg-1");
         assertNotNull(groups.get(first.id()).getRecycledAt(), "删成功才打回收标记");
@@ -232,14 +269,14 @@ class DapRealAuthServiceTest {
     @Test
     void recycleFailureDoesNotBlockTheNewSession() {
         stubCreate("qg-1");
-        RealAuthSessionDto first = svc.start(USER, "CAP-1");
+        RealAuthSessionDto first = start(svc, "CAP-1");
         groups.get(first.id()).setStatus("failed");
         doThrow(new BusinessException(HttpStatus.CONFLICT, "DAP_MODELINK_GROUP_NOT_DELETABLE", "组内非空"))
                 .when(modelink).deleteGroup("qg-1");
         when(modelink.createGroup(eq("liveness_face"), anyString(), anyString(), anyString()))
                 .thenReturn(new GroupState("qg-2", "pending", null, null, null));
 
-        RealAuthSessionDto retry = svc.start(USER, "CAP-1");
+        RealAuthSessionDto retry = start(svc, "CAP-1");
 
         assertNotEquals(first.id(), retry.id(), "回收失败只 WARN，新会话照建");
         assertEquals("preparing", retry.status());
@@ -249,7 +286,7 @@ class DapRealAuthServiceTest {
     @Test
     void activeGroupIsNeverRecycled() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         DapMaterialGroup g = groups.get(created.id());
         g.setStatus("active");
 
@@ -261,7 +298,7 @@ class DapRealAuthServiceTest {
     @Test
     void recycleIsIdempotent() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         DapMaterialGroup g = groups.get(created.id());
         g.setStatus("failed");
 
@@ -273,7 +310,7 @@ class DapRealAuthServiceTest {
     @Test
     void validatingHoldsUntilRemoteDecides() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         svc.handleCallback(groups.get(created.id()).getCallbackToken(), "10000", "bt");
 
         // 平台判定期间远端仍是 awaiting_auth —— 不能倒退回「等用户刷脸」
@@ -293,9 +330,9 @@ class DapRealAuthServiceTest {
         DapProperties p = new DapProperties();
         p.getModelink().setAllowMock(false);
         ModelinkService real = new ModelinkService(http, new MockModelinkGateway(), p, null);
-        DapRealAuthService s = new DapRealAuthService(groupRepo, captureRepo, real, p, new DapSupport());
+        DapRealAuthService s = new DapRealAuthService(groupRepo, captureRepo, real, p, new DapSupport(), consents);
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> s.start(USER, "CAP-1"));
+        BusinessException ex = assertThrows(BusinessException.class, () -> start(s, "CAP-1"));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
         assertEquals("DAP_MODELINK_NOT_CONFIGURED", ex.getCode());
         assertTrue(groups.isEmpty(), "未配置时不得留下悬空会话行");
@@ -306,14 +343,14 @@ class DapRealAuthServiceTest {
     void startRequiresFootage() {
         captures.put("CAP-2", DapCapture.builder().id("CAP-2").ownerUserId(USER).status("created")
                 .createdAt(Instant.now()).build());
-        BusinessException ex = assertThrows(BusinessException.class, () -> svc.start(USER, "CAP-2"));
+        BusinessException ex = assertThrows(BusinessException.class, () -> start(svc, "CAP-2"));
         assertEquals("DAP_NO_FOOTAGE", ex.getCode());
     }
 
     @Test
     void sessionIsOwnerScoped() {
         stubCreate("qg-1");
-        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        RealAuthSessionDto created = start(svc, "CAP-1");
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.getSession("someone_else", created.id()));
         assertEquals("DAP_AUTH_SESSION_NOT_FOUND", ex.getCode());
     }

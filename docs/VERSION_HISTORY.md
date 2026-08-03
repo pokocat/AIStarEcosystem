@@ -1,4 +1,4 @@
-# 版本增量历史（v0.5 → v0.105）
+# 版本增量历史（v0.5 → v0.106）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
@@ -3487,6 +3487,23 @@ web-drama 四批体验打磨 + 审查修复，后端零改动、无契约变更�
 5. **测试**：新增 `DramaRenderServiceTest`（computeAppliedRefs 纯函数矩阵 9 例：全 fetchable / 本地相对 URL / 首尾帧 × 端点能力 / 空入参 / 协议关键字判定）+ `MaterialVideoWorkerTest`（纯 Mockito + 内嵌 HttpServer：成功分支三件镜像 + lastFrameCdnKey 落 key；末帧上传抛 IOException → 任务仍 succeeded、key=null、上游 URL 保留、0 次 releaseHold）。
 
 **门禁**：server `test-compile`（离线）+ 单测 21（DramaRenderServiceTest 9 / MaterialVideoWorkerTest 2 / MaterialVideoModelClientTest 10）+ 回归 29（DramaProjectServiceTest 21 / MaterialAiE2ETest 8）+ web-drama typecheck/build + `check:api-contract` 全绿。openapi：`/render/frame`、`/render/clip` summary 更新（字段级变更无新 path）。
+
+### v0.106（2026-08-03）— AiAvatar 真人授权证据链 + 移动端自动回流
+
+修正 v0.105 把七牛 `liveness_face active` 直接等同于业务授权、把第三方 H5 当新窗口打开、以及把短时
+`h5_link` 重复 GET 误称为“换新链接”的问题。
+
+1. 新增 `dap_consent` 不可变协议确认快照；`POST /v1/real-auth/sessions` 必须携带当前
+   `agreementVersion + agreementAccepted=true`，并记录协议 SHA-256、范围、期限、平台、确认时间、IP 与 UA。
+2. LIC 同时保存平台确认与七牛技术证据（`consentId / agreementVersion / agreementHash / qgroupid /
+   verifiedAt`）；老 liveness LIC 缺 consent 时对外降为 `pending / legacy_unconfirmed`，生成硬闸不再放行。
+   声明式 `/v1/licenses` 禁止带 `avatarId` 直接给真人形象发授权。
+3. 前端先展示服务端当前协议，再在**当前页面**进入七牛云；callback 落地页自动跳回
+   `#/real-auth/{sessionId}`，该路由能在刷新、WebView 回流和重新登录后继续轮询、登记授权并恢复生成。
+4. `h5_link` 过期改走 `POST /v1/real-auth/sessions/{id}/restart`，真实删除 failed 旧组并重建，沿用原协议
+   快照；不再重复 GET 伪装换链。回调仍不判生效，只以服务端 GET 七牛分组的最终状态为准。
+5. 授权凭证升级 v2，移动端排版并分开展示“平台授权确认”和“七牛本人刷脸核验”两类证据；文案明确
+   刷脸不等同于证件实名、公证或全平台概括授权。生产 callback 默认域同步为 `aistar.aibuzz.cn`。
 
 ### v0.105（2026-08-02）— AiAvatar 真人授权刷脸实名认证 + 素材送审（接入七牛云 modelink）
 

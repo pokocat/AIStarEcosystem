@@ -34,7 +34,7 @@ aep:
       # 真人刷脸认证 / 素材送审不允许假数据（§8.0）：未绑定 DAP_REAL_AVATAR 端点 →
       # 开启认证会话直接 503 DAP_MODELINK_NOT_CONFIGURED。开启 mock 会打 ERROR 横幅。
       allow-mock: ${AEP_DAP_MODELINK_ALLOW_MOCK:false}
-      callback-base-url: ${AEP_DAP_MODELINK_CALLBACK_BASE:https://aiavatar.aibuzz.cn}
+      callback-base-url: ${AEP_DAP_MODELINK_CALLBACK_BASE:https://aistar.aibuzz.cn}
   # v2 §6：生产渠道启用 + 机密以 admin 后台「支付配置」DB 为准（多渠道并存，用户收银台自选）。
   # 此 driver 仅为 DB 尚无配置时的 bootstrap 回落；生产默认关闭影子渠道（启用会打 ERROR 横幅、
   # 对账须排除，§8.0）。

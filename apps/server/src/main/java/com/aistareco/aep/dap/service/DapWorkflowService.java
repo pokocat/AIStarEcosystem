@@ -116,14 +116,14 @@ public class DapWorkflowService {
         if ("active".equals(status)) return;
         throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,
                 "DAP_LICENSE_REQUIRED",
-                "「" + a.getName() + "」是真人复刻形象，需要先完成刷脸认证并取得生效中的肖像授权才能生成。"
+                "「" + a.getName() + "」是真人复刻形象，需要先确认当前授权说明并完成本人刷脸核验才能生成。"
                         + (status == null ? "该形象尚未登记授权。" : "当前授权状态：" + zhStatus(status) + "。"));
     }
 
     private static String zhStatus(String s) {
         return switch (s == null ? "" : s) {
             case "active" -> "生效中";
-            case "pending" -> "待签署";
+            case "pending" -> "待补确认";
             case "expired" -> "已过期";
             default -> s;
         };

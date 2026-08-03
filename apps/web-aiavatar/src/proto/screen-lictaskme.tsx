@@ -32,7 +32,7 @@ function PendingAuthBlock({ items, ctx }) {
       hMS('span', { style: { fontSize: 13.5, fontWeight: 700, flex: 1, minWidth: 0 } }, '待授权'),
       hMS('span', { className: 'mono', style: { fontSize: 11, color: 'var(--ink-3)', flex: '0 0 auto' } }, items.length)),
     hMS('p', { style: { fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.5, margin: '0 0 4px' } },
-      '以下真人形象还没有生效的肖像授权，完成本人实名认证后即可正常使用。'),
+      '以下真人形象还没有完整授权证据，确认当前协议并完成本人刷脸后即可正常使用。'),
     hMS('div', { style: { display: 'flex', flexDirection: 'column' } },
       items.map((a) => hMS('div', { key: a.id, style: {
         display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
@@ -43,7 +43,7 @@ function PendingAuthBlock({ items, ctx }) {
           hMS('div', { className: 'm-clip1', style: { fontSize: 13.5, fontWeight: 700 } }, a.name),
           hMS('div', { className: 'mono m-clip1', style: { fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 } }, a.id)),
         hMS(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.scan,
-          onClick: () => ctx.startRealAuth(a) }, '去认证')))));
+          onClick: () => ctx.startRealAuth(a) }, '去确认')))));
 }
 
 // ============ 授权 ============
@@ -61,8 +61,8 @@ function MLicenses({ ctx }) {
   const activeLicIds = new Set(licenses.filter((l: any) => l.status === 'active').map((l: any) => l.id));
   const needAuth = (avatars || []).filter((a: any) => a.path === 'real' && !(a.license && activeLicIds.has(a.license)));
   const tone = { active: 'ok', expired: 'err', pending: 'warn' };
-  const label = { active: '生效中', expired: '已过期', pending: '待签署' };
-  const filters = [{ key: 'all', label: '全部' }, { key: 'active', label: '生效中' }, { key: 'pending', label: '待签署' }, { key: 'expired', label: '已过期' }];
+  const label = { active: '生效中', expired: '已过期', pending: '待补确认' };
+  const filters = [{ key: 'all', label: '全部' }, { key: 'active', label: '生效中' }, { key: 'pending', label: '待补确认' }, { key: 'expired', label: '已过期' }];
   const list = licenses.filter(l => f === 'all' || l.status === f);
 
   const download = async (l) => {
@@ -84,7 +84,7 @@ function MLicenses({ ctx }) {
   return hMS('div', { className: 'm-overlay', 'data-screen-label': '授权登记' },
     hMS(WxNavS, { title: '授权登记', onBack: ctx.back }),
     hMS('div', { className: 'm-body', style: { padding: '4px 18px 28px' } },
-      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '真人肖像电子授权凭证档案：完成本人实名认证后自动登记，原始素材加密存档、与数字人资产绑定。'),
+      hMS('p', { style: { fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 14px' } }, '真人数字形象授权确认档案：同时记录平台协议确认与七牛云本人刷脸核验，证据完整后生成凭证。'),
       hMS(PendingAuthBlock, { items: needAuth, ctx }),
       hMS('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' }, className: 'no-bar' },
         filters.map(k => {
@@ -103,15 +103,17 @@ function MLicenses({ ctx }) {
           hMS('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 13px', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' } },
             hMS(RegTagM, { prefix: 'LIC', id: l.id }),
             hMS('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, flex: '0 0 auto' } },
-              hMS(LivenessBadge, { verifyMethod: l.verifyMethod }),
+              hMS(LivenessBadge, { verifyMethod: l.verifyMethod, evidenceStatus: l.evidenceStatus }),
               hMS(UI.Badge, { tone: tone[l.status], dot: true }, label[l.status]))),
           hMS('div', { style: { position: 'relative', padding: '14px 15px 15px' } },
-            l.status === 'active' && hMS('span', { className: 'seal', style: { position: 'absolute', top: 12, right: 13, fontSize: 9 } }, '已签署'),
+            l.status === 'active' && hMS('span', { className: 'seal', style: { position: 'absolute', top: 12, right: 13, fontSize: 9 } }, '证据完整'),
             hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 } },
               hMS('div', { style: { width: 36, height: 36, borderRadius: 10, flex: '0 0 36px', background: 'var(--primary-soft)', display: 'grid', placeItems: 'center', color: 'var(--primary)' } }, hMS(Icons.shield, { size: 19 })),
               hMS('div', { className: 'asset-name', style: { fontSize: 16.5 } }, l.subject)),
             hMS('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-              [['授权范围', l.scope], ['授权期限', l.period], ['使用平台', (l.platforms || []).join(' · ')], ['绑定素材', l.photos + ' 份（加密存档）']].concat(l.char ? [['关联资产', l.char]] : []).map(([k, v]) =>
+              [['授权范围', l.scope], ['授权期限', l.period], ['使用平台', (l.platforms || []).join(' · ')],
+                ['授权证据', l.evidenceStatus === 'verified' ? '平台确认 + 七牛本人刷脸' : l.evidenceStatus === 'legacy_unconfirmed' ? '待补当前协议确认' : '平台登记'],
+                ['协议版本', l.agreementVersion || '历史版本'], ['绑定素材', l.photos + ' 份（加密存档）']].concat(l.char ? [['关联资产', l.char]] : []).map(([k, v]) =>
                 hMS('div', { key: k, style: { display: 'grid', gridTemplateColumns: '60px 1fr', gap: 10, alignItems: 'baseline' } },
                   hMS('span', { style: { fontSize: 11.5, color: 'var(--ink-3)' } }, k),
                   hMS('span', { style: { fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.45 } }, v)))),

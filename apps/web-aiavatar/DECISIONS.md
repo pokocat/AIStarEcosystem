@@ -281,3 +281,26 @@ modelink 的素材要挂在某个 asset-group 下。真人素材**必须**挂在
 active 分组还长期占用），需要联系七牛提额 —— 记在 `TODO.md` 2026-08-02 段。
 `DapModelinkPoller` 也仍没有 ShedLock，多实例部署会重复拉上游（与 `DapTrashCleanupScheduler`
 同一债务，归 Phase 5）。
+
+---
+
+## v0.106 追加（2026-08-03）— 七牛核验不等于平台业务授权
+
+### N. 双证据链、同页回流与短链真实重建
+
+v0.105 的 `active → 自动发 LIC` 混淆了两件事：七牛只给出活体 / 同人一致性的技术结果，平台仍需
+证明用户看过并确认了什么范围、期限和处理方。现在 LIC 必须同时绑定：
+
+1. `DapConsent`：服务端当前协议的不可变确认快照（版本、SHA-256、范围、期限、平台、时间、IP、UA）；
+2. `DapMaterialGroup active`：七牛 `qgroupid` 技术核验引用。
+
+缺任一项都不生效。历史 liveness LIC 没有 consent 时动态降为 `pending / legacy_unconfirmed`；声明式
+`POST /licenses` 不再允许带 `avatarId` 绕过真人链路。凭证 v2 分栏展示两类证据，并明确“不等同于证件
+实名、公证或全平台概括授权”。
+
+移动端导航选择**当前页跳转**而不是 `_blank`：第三方 WebView 常忽略新窗口语义，且会让用户失去回流
+路径。callback HTML 在回传一次性 token 后自动跳到 `#/real-auth/{sessionId}`；这个
+hash 路由只依赖 sessionId，刷新、重新登录和微信 WebView 回来都能恢复。callback 仍不判 active。
+
+七牛 `h5_link` 约 120 秒有效且不可通过 GET 原组刷新。界面的“换新链接”因此删除，改为显式 restart：
+将旧会话置 failed、best-effort 回收上游组、沿用原 consent 快照创建新组，并更新 capture 指向。

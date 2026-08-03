@@ -238,7 +238,7 @@ public class DapCompositionService {
     private static String zhStatus(String s) {
         return switch (s == null ? "" : s) {
             case "active" -> "生效中";
-            case "pending" -> "待签署";
+            case "pending" -> "待补确认";
             case "expired" -> "已过期";
             default -> s;
         };

@@ -1,10 +1,12 @@
 package com.aistareco.aep.dap.controller;
 
 import com.aistareco.aep.dap.dto.DapDtos.MaterialDto;
+import com.aistareco.aep.dap.dto.DapDtos.RealAuthAgreementDto;
 import com.aistareco.aep.dap.dto.DapDtos.RealAuthSessionDto;
 import com.aistareco.aep.dap.dto.DapRequests.CreateRealAuthSessionRequest;
 import com.aistareco.aep.dap.dto.DapRequests.SubmitMaterialRequest;
 import com.aistareco.aep.dap.service.DapMaterialService;
+import com.aistareco.aep.dap.service.DapConsentService;
 import com.aistareco.aep.dap.service.DapRealAuthService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
@@ -18,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.security.Principal;
 import java.util.List;
@@ -33,10 +37,13 @@ import java.util.List;
 public class DapRealAuthController {
 
     private final DapRealAuthService realAuth;
+    private final DapConsentService consents;
     private final DapMaterialService materials;
 
-    public DapRealAuthController(DapRealAuthService realAuth, DapMaterialService materials) {
+    public DapRealAuthController(DapRealAuthService realAuth, DapConsentService consents,
+                                 DapMaterialService materials) {
         this.realAuth = realAuth;
+        this.consents = consents;
         this.materials = materials;
     }
 
@@ -47,18 +54,31 @@ public class DapRealAuthController {
 
     // ── 真人授权（刷脸认证）会话 ────────────────────────────────
 
+    @GetMapping("/real-auth/agreement")
+    public ApiResponse<RealAuthAgreementDto> agreement(Principal principal) {
+        uid(principal);
+        return ApiResponse.of(consents.agreement());
+    }
+
     @PostMapping("/real-auth/sessions")
     public ApiResponse<RealAuthSessionDto> startSession(Principal principal,
-                                                        @RequestBody CreateRealAuthSessionRequest req) {
+                                                        @RequestBody CreateRealAuthSessionRequest req,
+                                                        HttpServletRequest httpRequest) {
         if (req == null || req.captureId() == null || req.captureId().isBlank()) {
             throw BusinessException.badRequest("DAP_CAPTURE_REQUIRED", "缺少捕获会话 id");
         }
-        return ApiResponse.of(realAuth.start(uid(principal), req.captureId()));
+        return ApiResponse.of(realAuth.start(uid(principal), req.captureId(), req.agreementVersion(),
+                req.agreementAccepted(), clientIp(httpRequest), httpRequest.getHeader("User-Agent")));
     }
 
     @GetMapping("/real-auth/sessions/{id}")
     public ApiResponse<RealAuthSessionDto> session(Principal principal, @PathVariable String id) {
         return ApiResponse.of(realAuth.getSession(uid(principal), id));
+    }
+
+    @PostMapping("/real-auth/sessions/{id}/restart")
+    public ApiResponse<RealAuthSessionDto> restartSession(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(realAuth.restart(uid(principal), id));
     }
 
     /**
@@ -73,6 +93,15 @@ public class DapRealAuthController {
         return ResponseEntity.ok()
                 .contentType(MediaType.valueOf(MediaType.TEXT_HTML_VALUE + ";charset=UTF-8"))
                 .body(realAuth.handleCallback(state, resultCode, bytedToken));
+    }
+
+    private static String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return (comma < 0 ? forwarded : forwarded.substring(0, comma)).trim();
+        }
+        return request.getRemoteAddr();
     }
 
     // ── 素材送审 ───────────────────────────────────────────────

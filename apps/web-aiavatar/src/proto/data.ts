@@ -178,9 +178,17 @@ export interface License {
   photos: number;
   /**
    * 授权核验方式（v0.105）：
-   * liveness = 本人刷脸实名核验通过后登记；declared = 仅书面声明登记（不展示负面文案）。
+   * liveness = 本人刷脸确认通过后登记；declared = 仅书面声明登记（不展示负面文案）。
    */
   verifyMethod?: "liveness" | "declared" | null;
+  evidenceStatus?: "verified" | "legacy_unconfirmed" | "declared";
+  agreementVersion?: string;
+  agreementHash?: string;
+  consentedAt?: string;
+  verificationProvider?: string;
+  verificationReference?: string;
+  verifiedAt?: string;
+  certificateVersion?: number;
 }
 
 // ── 真人授权刷脸认证链路（v0.105）─────────────────────────────
@@ -197,12 +205,27 @@ export interface RealAuthSession {
   captureId: string;
   avatarId?: string | null;
   status: RealAuthStatus;
-  /** 刷脸认证页地址（仅 awaiting_auth 有值；短时有效，过期后重新拉取会换新链接）。 */
+  /** 刷脸确认页地址（仅 awaiting_auth 有值；短时有效，过期后必须重建会话）。 */
   h5Url?: string | null;
   /** 未通过原因（面向用户的中文说明）。 */
   failReason?: string | null;
   mock: boolean;
   createdAt: string;
+  agreementVersion?: string | null;
+  consentRecorded: boolean;
+}
+
+/** 服务端当前生效的真人数字形象授权说明。 */
+export interface RealAuthAgreement {
+  version: string;
+  title: string;
+  summary: string;
+  sections: string[];
+  scope: string;
+  periodMonths: number;
+  platforms: string[];
+  processors: string[];
+  hash: string;
 }
 
 /** 真人捕获会话（录制素材 → 刷脸认证 → 核验登记授权 的载体）。 */
@@ -518,11 +541,11 @@ export const TEMPLATES: TemplateMeta[] = [
 ];
 
 export const LICENSES: License[] = [
-  { id: "LIC-0102", subject: "周野（高管）", char: "DH-2019", scope: "对内播报 / 官方对外", period: "2026-01 ~ 2028-01", platforms: ["官网", "视频号", "培训"], status: "active", signed: "2026-05-20", photos: 8, verifyMethod: "liveness" },
-  { id: "LIC-0098", subject: "林深（签约模特）", char: "DH-2041", scope: "品牌商用 / 全平台", period: "2025-09 ~ 2027-09", platforms: ["全平台"], status: "active", signed: "2025-09-02", photos: 12, verifyMethod: "liveness" },
+  { id: "LIC-0102", subject: "周野（高管）", char: "DH-2019", scope: "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成", period: "2026-01 ~ 2028-01", platforms: ["数字资产平台", "经本人主动授权接入的应用"], status: "active", signed: "2026-05-20", photos: 8, verifyMethod: "liveness", evidenceStatus: "verified", agreementVersion: "real-avatar-v1.0-2026-08-03", agreementHash: "mock-agreement-hash", consentedAt: "2026-05-20T08:00:00Z", verificationProvider: "qiniu_modelink", verificationReference: "qgroup-mock-0102", verifiedAt: "2026-05-20T08:02:00Z", certificateVersion: 2 },
+  { id: "LIC-0098", subject: "林深（签约模特）", char: "DH-2041", scope: "本人真人形象素材用于数字分身创建、存储，以及本人主动发起的内容生成", period: "2025-09 ~ 2027-09", platforms: ["数字资产平台", "经本人主动授权接入的应用"], status: "active", signed: "2025-09-02", photos: 12, verifyMethod: "liveness", evidenceStatus: "verified", agreementVersion: "real-avatar-v1.0-2026-08-03", agreementHash: "mock-agreement-hash", consentedAt: "2025-09-02T08:00:00Z", verificationProvider: "qiniu_modelink", verificationReference: "qgroup-mock-0098", verifiedAt: "2025-09-02T08:02:00Z", certificateVersion: 2 },
   { id: "LIC-0091", subject: "苏婉（合作讲师）", char: "DH-2035", scope: "教育内容 / 课程平台", period: "2026-03 ~ 2027-03", platforms: ["课程App", "官网"], status: "active", signed: "2026-03-11", photos: 10, verifyMethod: "declared" },
   { id: "LIC-0087", subject: "陈曦（前代言人）", char: null, scope: "品牌商用", period: "2024-06 ~ 2025-06", platforms: ["全平台"], status: "expired", signed: "2024-06-01", photos: 9, verifyMethod: "declared" },
-  { id: "LIC-0110", subject: "待签 · 新模特 K", char: null, scope: "草案审核中", period: "—", platforms: ["—"], status: "pending", signed: "—", photos: 6, verifyMethod: null },
+  { id: "LIC-0110", subject: "待补确认 · 新模特 K", char: null, scope: "协议确认中", period: "—", platforms: ["—"], status: "pending", signed: "—", photos: 6, verifyMethod: null },
 ];
 
 /**

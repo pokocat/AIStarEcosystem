@@ -45,7 +45,7 @@ class DapModelinkPollerTest {
 
         props = new DapProperties();
         DapRealAuthService realAuth = new DapRealAuthService(groupRepo, mock(DapCaptureRepository.class),
-                modelink, props, new DapSupport());
+                modelink, props, new DapSupport(), mock(DapConsentService.class));
         DapAigcGroupResolver aigc = new DapAigcGroupResolver(groupRepo, modelink, props, new DapSupport(),
                 mock(PlatformTransactionManager.class));
         DapMaterialService materials = new DapMaterialService(materialRepo, mock(DapAvatarRepository.class),
@@ -149,7 +149,7 @@ class DapModelinkPollerTest {
         // 即便有人直接拿 active 行调回收，也必须被挡下
         DapMaterialGroup active = group("active");
         assertFalse(new DapRealAuthService(groupRepo, mock(DapCaptureRepository.class), modelink,
-                props, new DapSupport()).recycleGroup(active));
+                props, new DapSupport(), mock(DapConsentService.class)).recycleGroup(active));
         verify(modelink, never()).deleteGroup(anyString());
     }
 
