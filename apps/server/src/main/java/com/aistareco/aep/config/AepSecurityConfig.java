@@ -89,6 +89,13 @@ public class AepSecurityConfig {
                         // 数字人广场 · 运营内嵌后台（web-aiavatar）：/api/v1/admin/** 需运营 / 超管。
                         // 顺序敏感：必须排在通用 /api/v1/** 之前，否则被宽松规则吃掉。
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("SUPER_ADMIN", "OPERATOR")
+                        // v0.105 真人授权刷脸回跳：七牛 modelink 刷脸完成后由**浏览器直接跳转**回来，
+                        // 不携带我们的 JWT，故只能 permitAll —— 防伪靠 query 里不可枚举的 state
+                        // （= DapMaterialGroup.callbackToken，随机 UUID hex，一次会话一枚）+ 服务端
+                        // validateCalledAt 幂等闸；且回调**不直接判定授权生效**，生效与否一律以
+                        // 服务端轮询上游 GET 分组的状态为准（官方要求）。顺序敏感：必须在
+                        // 通用 /api/v1/** authenticated 之前。
+                        .requestMatchers("/api/v1/real-auth/callback").permitAll()
                         // 数字人资产平台（web-aiavatar，v0.51 dap 领域）：/api/v1/** 全部需登录。
                         .requestMatchers("/api/v1/**").authenticated()
                         // 素材运营（脚本 / 视频 / 爆款雷达）—— 任意登录用户可读写共享库

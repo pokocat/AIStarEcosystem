@@ -28,12 +28,14 @@ function WxNav({ title, onBack, left, right }) {
 }
 
 // —— 底部 Tab 栏（首页 · 数字人 · ＋创建 · 应用 · 我的）——
+// v0.104：第二个 Tab 从「数字人」升级为「资产库」—— 数字人不再是唯一的资产种类，
+// 而是 人物 / IP / 场景 / 产品 / 声音 / 风格 六类之一。
 const TABS = [
-  { key: 'home',    icon: Icons.home, label: '首页' },
-  { key: 'library', icon: Icons.user, label: '数字人' },
-  { key: 'create',  fab: true,        label: '创建' },
-  { key: 'apps',    icon: Icons.grid, label: '应用' },
-  { key: 'me',      icon: Icons.user, label: '我的' },
+  { key: 'home',    icon: Icons.home,   label: '首页' },
+  { key: 'library', icon: Icons.layers, label: '资产库' },
+  { key: 'create',  fab: true,          label: '创建' },
+  { key: 'apps',    icon: Icons.grid,   label: '应用' },
+  { key: 'me',      icon: Icons.user,   label: '我的' },
 ];
 // meInitial：当前登录用户名首字（live 模式有真实账号时显示，否则回退为通用头像图标，
 // 不再硬编一个与用户无关的「柯」字）。

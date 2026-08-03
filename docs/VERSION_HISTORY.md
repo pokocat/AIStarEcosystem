@@ -1,4 +1,4 @@
-# 版本增量历史（v0.5 → v0.75）
+# 版本增量历史（v0.5 → v0.105）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
@@ -3487,3 +3487,149 @@ web-drama 四批体验打磨 + 审查修复，后端零改动、无契约变更�
 5. **测试**：新增 `DramaRenderServiceTest`（computeAppliedRefs 纯函数矩阵 9 例：全 fetchable / 本地相对 URL / 首尾帧 × 端点能力 / 空入参 / 协议关键字判定）+ `MaterialVideoWorkerTest`（纯 Mockito + 内嵌 HttpServer：成功分支三件镜像 + lastFrameCdnKey 落 key；末帧上传抛 IOException → 任务仍 succeeded、key=null、上游 URL 保留、0 次 releaseHold）。
 
 **门禁**：server `test-compile`（离线）+ 单测 21（DramaRenderServiceTest 9 / MaterialVideoWorkerTest 2 / MaterialVideoModelClientTest 10）+ 回归 29（DramaProjectServiceTest 21 / MaterialAiE2ETest 8）+ web-drama typecheck/build + `check:api-contract` 全绿。openapi：`/render/frame`、`/render/clip` summary 更新（字段级变更无新 path）。
+
+### v0.105（2026-08-02）— AiAvatar 真人授权刷脸实名认证 + 素材送审（接入七牛云 modelink）
+
+数字资产平台的真人线此前有一处**假能力**：`POST /v1/captures/{id}/verify` 是「素材存在 + 抽帧成功即视为通过」，
+无条件把捕获标 `verified` 并自动登记肖像授权（源码注释写着「活体/比对引擎接入预留」）。
+本版接入**七牛云 modelink 资产合规 API**，把它换成真实的本人刷脸实名认证，并顺带把「素材送内容安全审核」补齐。
+**授权与审核全程免费**（整条链路不接 `CreditService`，没有扣费面）。
+
+#### 1. 两张新表（modelink 资源的本地镜像）
+
+| 表 | 说明 |
+|---|---|
+| `dap_material_group` | 素材分组（`MG-xxxx`）。`kind=liveness_face` 即一次真人授权刷脸会话（`kind=aigc` 仅保留字段语义，本域不建本地 aigc 行）。状态 `preparing → awaiting_auth → validating → active / failed`；`qgroupid` 是上游分组 id；`callbackToken` 唯一、是无 JWT 回跳端点的防伪 `state`；`bytedToken` 是刷脸一次性凭证；`validateCalledAt` 是「已回传过结果」的幂等闸；`mock=true` 标记走了 mock 网关 |
+| `dap_material` | 送审素材（`MAT-xxxx`）。`sourceKey` 是 §4.7.4 真值（storage key），**送审时才由 `FileStorageService.signedUrl` 派生一次可公网拉取的 URL，不落库 URL**；状态 `pending → reviewing → approved / failed`；`refType=capture`（真人捕获素材，挂 liveness 分组）/ `avatar`（人物定妆图，走平台 aigc 默认组）；`qassetUri` 出 wire 为 `qasset://{qassetid}`（生成引用格式，本版只存储不接生成） |
+
+**三个新列**：`DapLicense.verifyMethod`（`liveness` = 刷脸取得 / `declared` = 声明式登记；**老数据 null 一律视作 declared**）、
+`DapLicense.livenessGroupId`、`DapCapture.authGroupId`。均由 ddl-auto 自动加列。
+
+#### 2. 网关三件套 + §8.0 路由
+
+- `ModelinkGateway`（接口，只覆盖本域用到的 5 个动作：建分组 / 查分组 / 回传刷脸结果 / 建素材 / 查素材）
+- `HttpModelinkGateway`（真实 HTTP，Bearer 鉴权，base 例 `https://api.qnaigc.com`）——
+  **接入点不走 env**，与 dap 其余大模型能力一致，由后台「AI 模型与 Key + AI 应用绑定」把**新用途
+  `DAP_REAL_AVATAR`**（中文名「数字资产 · 真人素材与授权」）绑定到七牛端点，运行时每次调用解析
+  baseUrl / apiKey / model（解密与判空照抄 `DapMultimodalClient.resolveTarget`）。错误映射：
+  429 → `DAP_MODELINK_QUOTA`；其它非 2xx / 网络失败 / 非 JSON → 502 `DAP_MODELINK_CALL_FAILED`。
+- `MockModelinkGateway`（内存惰性状态机，**不开线程**，按「创建时刻 + 时间差」现算推进；测试可注入时钟）
+- `ModelinkService`（业务侧唯一依赖的 facade）路由：
+  1. 已绑定可用端点 → HTTP 真实调用；
+  2. 未配置且 `aep.dap.modelink.allow-mock=true`（dev 默认） → mock，且落库行打 `mock=true`；
+  3. 未配置且不允许 mock（mysql / 生产默认） → 503 `DAP_MODELINK_NOT_CONFIGURED`，**不建会话、不落假数据**。
+  `@PostConstruct` 在生产 profile 检测到 `allow-mock=true` 打 ERROR 横幅（§8.0 四条件齐备）。
+
+新配置 `aep.dap.modelink.{callback-base-url, allow-mock, poll-interval-seconds, http-timeout-seconds}`；
+env `AEP_DAP_MODELINK_CALLBACK_BASE`（生产须 https 且能路由到 server 的 `/api/v1/real-auth/callback`）/
+`AEP_DAP_MODELINK_ALLOW_MOCK`（mysql 默认 false）。`infra/env/server.env.example` 已补。
+
+#### 3. 刷脸认证链路（`DapRealAuthService`）与两条官方红线
+
+```
+1. POST /v1/real-auth/sessions {captureId}
+     → 建 liveness_face 分组（先调上游成功才落库：未配置 / 上游失败时不留悬空会话行）
+     → 同一次捕获已有未 failed 会话则幂等复用，不重复建组
+2. GET  /v1/real-auth/sessions/{id}（前端 2s 轮询）
+     → 非终态时向上游刷新一次；awaiting_auth 时带出 h5Url（上游签发、约 120s 有效、不落库，
+       过期就再 GET 一次换新链接）
+3. 用户在 h5 页刷脸 → 浏览器回跳 GET /v1/real-auth/callback?state=&resultCode=&bytedToken=
+     → permitAll（浏览器直跳没有我们的 JWT），返回一张自包含极简 HTML 落地页
+4. 服务端把 result_code + byted_token 回传上游（202 受理）→ 本地 status=validating
+5. 轮询 / getSession 收敛远端终态 → active（授权成立）或 failed
+```
+
+**红线 A — 回调绝不判定生效**：官方明确「不应仅凭浏览器回调参数认定分组已激活」。因此 callback 只负责
+回传凭证并置 `validating`，`active` 只能由服务端 GET 分组的远端状态收敛而来。`refresh()` 里有一条
+`holdValidating`：`validating` 期间远端仍报 `awaiting_auth` 时保持本地 `validating` 不回退，只有远端给出
+`active` / `failed` 才落终态。
+
+**红线 B — `byted_token` 一次性**：`handleCallback` **先占幂等闸（`validateCalledAt` + `saveAndFlush`）再调上游**，
+并发 / 重复回跳只会回传一次。**回传抛错时当场判 `failed`** —— 凭证已作废、远端会永远停在 `awaiting_auth`、
+`holdValidating` 会把本地永久 hold 在 `validating`（用户卡在「核验中」、轮询器每 10s 空转）；置 failed 后
+轮询器不再碰（终态）、前端可「重新认证」、`start()` 会为 failed 会话另建新分组拿新凭证，链路自洽。
+
+**安全**：`AepSecurityConfig` 只对 `/api/v1/real-auth/callback` 开 permitAll（顺序敏感，排在通用
+`/api/v1/**` authenticated 之前），防伪靠不可枚举的 `state`（随机 UUID hex，一会话一枚）；未知 state 只
+返回「链接已失效」页面并 WARN，不泄露任何存在性信息。
+
+#### 4. verify = 唯一完成漏斗（409 语义）
+
+`DapCaptureService.verify` 改为：
+`requireActiveSession`（无会话 / 非 active → **409 `DAP_AUTH_NOT_COMPLETED`**，文案区分「认证进行中」与「上次未通过」）
+→ 标 `verified` → 登记 / 回填 LIC（`autoCreateForCapture(..., "liveness", groupId)`；已存在的声明式授权
+**升级**为 liveness，即「一旦通过刷脸认证，凭证从声明式升级为可取证」）→ best-effort 送审捕获素材
+（footage + 关键帧；抛错只 WARN，不回滚核验与授权）。返回体加 `authSessionId` / `licenseId`。
+`CaptureDto` 加 `authSessionId` / `authStatus`（无会话出 wire 为 `"none"`）。
+
+#### 5. 素材送审（`DapMaterialService`）与轮询收敛
+
+- `submitForCapture`：真人捕获素材挂**已 active 的 liveness 分组**送审（由 verify 调用）；
+  `resubmitForCapture` 供失败重交。
+- `submitAvatarModeration`：人物定妆图送审，`createAsset` **不传 group_id**、由平台落到默认组 ——
+  本地因此不建 aigc 分组行（避免维护一份会异步 pending 的空壳）。
+- 幂等：同一 `ref` + 同一 `sourceKey` 已有非 `failed` 行 → 跳过；`failed` 后允许重交（建新行）。
+- `DapModelinkPoller`（`@Scheduled(fixedDelay = aep.dap.modelink.poll-interval-seconds)`）收敛非终态：
+  分组 `preparing` / `validating`（**`awaiting_auth` 不主动拉** —— 那是「等用户去刷脸」，由前端查会话 /
+  回调驱动）、素材 `pending` / `reviewing`。**无非终态行时直接 return（常态零上游请求）**；单行失败只 WARN。
+- `AvatarDto` 加 `moderation{status,failReason}`：**只在详情接口注入**，列表刻意不带（避免每行一次
+  `DapMaterial` 查询的 N+1）。
+
+#### 6. 授权硬闸前移到生成入口
+
+v0.104 只在合成路径（`DapCompositionService.checkLicense`）拦授权，生成路径无闸。本版
+`DapWorkflowService.generate` 对 `path=real` 且无生效 LIC → **403 `DAP_LICENSE_REQUIRED`，不建任务、不冻结积分**。
+依据：真人形象的既定流程是 `capture → footage → verify（登记 LIC）→ generate`，授权必然先于首次生成存在，
+因此前移不会挡住正常首建；同时堵住「向导重跑 / 直接打 API」时授权勾选框只是客户端 UI 的漏洞面。
+AI 原创人物（`path=ai`）不受影响。错误文案带资产名与当前授权状态的中文说明。
+
+#### 7. 新端点
+
+```
+POST /api/v1/real-auth/sessions          # 开启（或幂等复用）刷脸认证会话
+GET  /api/v1/real-auth/sessions/{id}     # 查询会话（非终态时刷新一次；awaiting_auth 带 h5Url）
+GET  /api/v1/real-auth/callback          # 刷脸回跳落地页（permitAll，text/html）
+POST /api/v1/materials                   # 送审（refType=avatar 定妆图 / capture 重交）
+GET  /api/v1/materials?refType=&refId=   # 按引用对象查送审记录
+```
+`POST /v1/captures/{id}/verify` 返回体加 `licenseId` / `authSessionId`，并新增 409 / 503 语义。
+`openapi.yaml` 已同步（含 `RealAuthSession` / `Material` 两个 schema）。
+admin 侧「平台 · AI 模型」的 AiAvatar 绑定组加入 `DAP_REAL_AVATAR`（无新页面）。
+
+#### 8. 前端（web-aiavatar，`src/proto/*`）
+
+- `screen-real.tsx`：原 `RealVerify` 的假「身份核验」步骤真实化为 **`RealAuth` 屏** ——
+  准备中 → 待认证（`window.open(h5Url)` + 「换新链接」）→ 核验中 → 通过后自动调 `verify` 登记授权 →
+  未通过可「重新认证」。`verify` 撞 409 `DAP_AUTH_NOT_COMPLETED` 时**回到等待重试**而不是当作失败。
+  流水线拆成 `runUpload`（建资产 + 捕获 + 上传素材）→ auth → `runGenerate`（复刻生成）；
+  带既有资产进来且已有定妆图时走 **`authOnly`**（补认证即完成，不重复复刻生成）。
+- 授权链路三个显式入口：`screen-lictaskme.tsx` 授权登记页顶部「**待授权**」块（真人资产 × 无生效授权，
+  列表为空则整块不渲染 —— 授权徽标稀有是设计语义，不做常驻空状态）+ 每张授权卡可折叠「授权素材」
+  （点开再拉，避免列表一次发 N 个请求）；`screen-library.tsx` 资产详情未授权提示条；
+  `screen-compose.tsx` 合成工作台把 403 `DAP_LICENSE_REQUIRED` 从 toast 升级为拦截块
+  （「本次没有建单，也没有扣算力」+「去完成授权认证」）。三处统一走新的 `ctx.startRealAuth(char)`。
+- 新共用组件 `material-status.tsx`：`MaterialBadge`（待审核 / 审核中 / 已通过 / 未通过）、
+  `MaterialRow` / `MaterialSection`（`submit` / `readonly` 两模式）、`LivenessBadge`（「已刷脸核验」，
+  **只在 `verifyMethod=liveness` 时出现，未核验不显示任何负面文案**）。
+- 契约（`data.ts`）：`License` 加 `verifyMethod`；新增 `RealAuthSession` / `RealAuthStatus` /
+  `Capture`（含 `authSessionId` / `authStatus`）/ `DapMaterialInfo` / `MaterialStatus` / `MaterialRefType`。
+  `api.ts` 新增 `RealAuthApi` / `MaterialApi`，`CaptureApi.verify` 返回体扩展。
+- **mock 一等公民**：认证会话与素材审核都用「创建时刻 + 时间差」惰性推进（与 `mockJobStore` 同思路），
+  mock 授权登记簿可被刷脸通过后追加；`ComposeApi.create` 的 mock 分支补 403 与 server 对齐；
+  新样本 **DH-2044**（真人复刻、已出图、未授权）驱动三个入口的演示。`USE_MOCK=1` 整链浏览器实测走通。
+
+#### 9. 门禁
+
+server `compile` + dap modelink 4 个新测试类（`DapRealAuthServiceTest` / `DapCaptureServiceTest` /
+`DapMaterialServiceTest` / `DapModelinkPollerTest`）+ `mvnw test` 全量回归全绿
+（v0.104 基线 409 例 + 本轮新增；本机仍需 `AEP_CDN_DRIVER=local` 覆盖 `apps/server/.env`，
+见 `TODO.md` 2026-07-27 段，与本轮无关）+ `pnpm typecheck:all` + web-aiavatar `build` +
+`pnpm check:api-contract` 全绿。
+
+#### 10. 已识别债务（详见 `TODO.md` 2026-08-02 段）
+
+- `DapModelinkPoller` 多实例需 ShedLock（与 `DapTrashCleanupScheduler` 同一债务，归 Phase 5）。
+- modelink 账号默认限 **3 组 / 30 素材**，而 liveness 每次捕获建一组 → 需要终态分组清理策略
+  （上游 `DELETE /v1/asset-groups` 要求组内为空且非 pending）。
+- `LicenseDto` / `AvatarDto` 未出 `captureId`，前端「授权素材」只能按 avatar 维度拉，拿不到 capture 维度。
+- web-aiavatar 覆盖页栈只渲染栈顶：从合成工作台跳认证再返回会重挂工作台、已选槽位丢失（既有限制）。

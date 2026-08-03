@@ -2339,6 +2339,41 @@ components:
         bio:         { type: string, nullable: true }
         location:    { type: string, nullable: true }
 
+    # ── 数字资产平台 · 真人授权与素材送审（v0.105，dap 域）────────────────────
+    DapRealAuthSession:
+      type: object
+      description: >-
+        真人授权（刷脸认证）会话 = 七牛 modelink 的 liveness_face 资产分组在本地的镜像（表 dap_material_group）。
+        状态：preparing（建组中）→ awaiting_auth（可去刷脸）→ validating（已回传结果、等平台判定）
+        → active（授权成立）| failed。captures/{id}/verify 只在 active 时放行。
+      properties:
+        id:         { type: string, description: 'MG-xxxx' }
+        captureId:  { type: string, nullable: true }
+        avatarId:   { type: string, nullable: true }
+        status:     { type: string, enum: [preparing, awaiting_auth, validating, active, failed] }
+        h5Url:      { type: string, nullable: true, description: '刷脸页地址；仅 awaiting_auth 时非空，约 120s 有效，不落库' }
+        failReason: { type: string, nullable: true }
+        mock:       { type: boolean, description: 'true = 走内存 mock 网关（dev 联调），结论不可用于真实取证' }
+        createdAt:  { type: string, format: date-time, nullable: true }
+
+    DapMaterial:
+      type: object
+      description: >-
+        送审素材 = 七牛 modelink 的 asset 在本地的镜像（表 dap_material）。
+        refType=capture 的素材挂在 active 的 liveness 分组下；refType=avatar 走平台 aigc 默认组。
+      properties:
+        id:         { type: string, description: 'MAT-xxxx' }
+        refType:    { type: string, enum: [avatar, capture] }
+        refId:      { type: string }
+        type:       { type: string, enum: [image, video, audio] }
+        name:       { type: string }
+        status:     { type: string, enum: [pending, reviewing, approved, failed] }
+        failReason: { type: string, nullable: true }
+        qassetUri:  { type: string, nullable: true, description: '生成引用格式 qasset://{qassetid}；未拿到上游 id 时为 null' }
+        mock:       { type: boolean }
+        createdAt:  { type: string, format: date-time, nullable: true }
+        updatedAt:  { type: string, format: date-time, nullable: true }
+
     StarProfileUpdateInput:
       type: object
       description: 档案编辑（v0.62 从 admin 移入 star 端）；avatar / cover 留空 = 不变更
@@ -7916,7 +7951,127 @@ paths:
   /v1/captures/{id}/footage:
     post: { tags: [dap], operationId: dapUploadFootage, description: multipart file 动作素材（视频/图片，抽关键帧）, responses: { '200': { description: ok } } }
   /v1/captures/{id}/verify:
-    post: { tags: [dap], operationId: dapVerifyCapture, description: 身份核验 + 自动登记电子授权, responses: { '200': { description: ok } } }
+    post:
+      tags: [dap]
+      operationId: dapVerifyCapture
+      description: >-
+        身份核验 + 自动登记电子授权（v0.105 起接真实刷脸认证）。前置条件：该次捕获必须已有 active 的真人授权会话
+        （POST /v1/real-auth/sessions → 刷脸 → 平台判定 active）。通过后标 verified、登记/回填 LIC
+        （verifyMethod=liveness）、并 best-effort 把捕获素材送审（送审失败只告警，不回滚核验与授权）。
+      responses:
+        '200': { description: 'ok（passed / captureId / authSessionId / licenseId）' }
+        '400': { description: 'DAP_NO_FOOTAGE 未上传素材' }
+        '409': { description: 'DAP_AUTH_NOT_COMPLETED 尚未完成刷脸认证' }
+        '503': { description: 'DAP_MODELINK_NOT_CONFIGURED 未配置素材合规服务（会话阶段即报错）' }
+
+  # ── 真人授权（刷脸认证）+ 素材送审（v0.105；七牛 modelink，表 dap_material_group / dap_material）──
+  # 接入点由 admin「AI 应用绑定」的用途 DAP_REAL_AVATAR 提供；未配置且不允许 mock → 503（§8.0，不产假授权）。
+  /v1/real-auth/sessions:
+    post:
+      tags: [dap]
+      operationId: dapStartRealAuthSession
+      summary: '开启真人授权（刷脸认证）会话；同一次捕获幂等复用'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [captureId]
+              properties:
+                captureId: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/DapRealAuthSession' }
+        '400': { description: 'DAP_NO_FOOTAGE 未上传素材 / DAP_CAPTURE_REQUIRED 缺少捕获会话 id' }
+        '503': { description: 'DAP_MODELINK_NOT_CONFIGURED 未绑定 modelink 端点且不允许 mock（不落会话行）' }
+  /v1/real-auth/sessions/{id}:
+    get:
+      tags: [dap]
+      operationId: dapGetRealAuthSession
+      summary: '查询认证会话（非终态时向上游刷新；awaiting_auth 带出 h5Url，约 120s 有效）'
+      parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/DapRealAuthSession' }
+        '404': { description: 'DAP_AUTH_SESSION_NOT_FOUND' }
+  /v1/real-auth/callback:
+    get:
+      tags: [dap]
+      operationId: dapRealAuthCallback
+      summary: '刷脸完成后的浏览器回跳落地页（公开端点，无 JWT）'
+      description: >-
+        上游刷脸完成后浏览器直接跳转到此地址，故无法带 JWT —— 防伪靠 query 里不可枚举的 state
+        （= 会话 callbackToken）+ 服务端 validateCalledAt 幂等闸（byted_token 一次性）。
+        本端点只把结果回传上游（202 受理），**不判定授权生效**；生效与否一律以服务端轮询 GET 分组为准。
+        返回 text/html 落地页。
+      security: []
+      parameters:
+        - { in: query, name: state, required: true, schema: { type: string }, description: '会话 callbackToken' }
+        - { in: query, name: resultCode, required: false, schema: { type: string }, description: '"10000" = 刷脸成功' }
+        - { in: query, name: bytedToken, required: false, schema: { type: string } }
+      responses:
+        '200': { description: 'HTML 落地页', content: { text/html: { schema: { type: string } } } }
+  /v1/materials:
+    get:
+      tags: [dap]
+      operationId: dapListMaterials
+      summary: '按引用查送审素材（refType=avatar|capture + refId）'
+      parameters:
+        - { in: query, name: refType, required: true, schema: { type: string, enum: [avatar, capture] } }
+        - { in: query, name: refId, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/DapMaterial' } }
+    post:
+      tags: [dap]
+      operationId: dapSubmitMaterial
+      summary: '送审：refType=avatar 定妆图（走平台 aigc 默认组）/ refType=capture 重交该次捕获素材'
+      description: >-
+        幂等：同 ref + 同源文件已有非 failed 记录 → 原样返回；failed 后可重交。
+        refType=capture 仍要求该次捕获有 active 的刷脸认证会话（正常路径由 verify 自动送审）。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refType, refId]
+              properties:
+                refType: { type: string, enum: [avatar, capture] }
+                refId: { type: string }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/DapMaterial' } }
+        '400': { description: 'DAP_NO_IMAGE / DAP_MATERIAL_BAD_REF / DAP_MATERIAL_REF_REQUIRED' }
+        '409': { description: 'DAP_AUTH_NOT_COMPLETED（capture 重交时认证未完成）' }
+        '503': { description: 'DAP_MODELINK_NOT_CONFIGURED' }
   /v1/licenses:
     get:  { tags: [dap], operationId: dapListLicenses, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateLicense, responses: { '200': { description: ok } } }
@@ -7950,6 +8105,67 @@ paths:
     get: { tags: [dap], operationId: dapScenes, responses: { '200': { description: ok } } }
   /v1/templates:
     get: { tags: [dap], operationId: dapTemplates, responses: { '200': { description: ok } } }
+
+  # ────────────────────────────────────────────────────────────
+  # 数字资产平台 · 六类资产（v0.104；com.aistareco.aep.dap.*，表 dap_asset_ip / dap_scene /
+  # dap_product / dap_style / dap_composition[_output] / dap_asset_usage）
+  #
+  # 「数字人」不再是唯一的资产种类，而是六类之一，共用一套登记语言：
+  #   DH- 人物 / IP- 品牌 / SC- 场景 / PD- 产品 / VO- 声音 / ST- 风格。
+  # 授权只发给「真人肖像人物」与「IP」；场景 / 产品 / 风格是轻资产，只记来源。
+  # IP 是容器：下挂人物 / 场景 / 产品 / 声音；合成产物回流为它的衍生物并双向记引用。
+  # 全部 authenticated（Bearer JWT），service 层带 ownerUserId 归属校验。
+  /v1/assets/summary:
+    get: { tags: [dap], operationId: dapAssetSummary, summary: '六类资产总览（数量瓦片 + 总容量 + 跨类型最近更新）', responses: { '200': { description: ok } } }
+  /v1/assets/ips:
+    get:  { tags: [dap], operationId: dapListIps, summary: 'IP 容器列表（含成员数 / 授权状态）', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateIp, summary: '新建 IP 容器（纯登记，免费）', responses: { '200': { description: ok } } }
+  /v1/assets/ips/{id}:
+    get:    { tags: [dap], operationId: dapIpDetail, summary: 'IP 详情 · 容器视图（下挂人物/场景/产品/声音 + 作品 + 授权）', responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchIp, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteIp, description: 软删 IP；成员只解绑不删除, responses: { '200': { description: ok } } }
+  /v1/assets/ips/{id}/members:
+    post: { tags: [dap], operationId: dapIpMember, summary: '关联 / 取消关联成员资产（assetType=character|scene|product，attach=false 解绑）', responses: { '200': { description: ok } } }
+  /v1/assets/ips/{id}/license:
+    post: { tags: [dap], operationId: dapIpLicense, summary: '登记 / 续签 IP 授权 → LIC 凭证（已存在则续签一年）', responses: { '200': { description: ok } } }
+  /v1/assets/scenes:
+    get:  { tags: [dap], operationId: dapListScenes, description: 'source=shot|ai / space / ipId / q 过滤', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateScene, summary: 'AI 生成场景（异步任务 + 扣费）→ { scene, job }', responses: { '200': { description: ok } } }
+  /v1/assets/scenes/upload:
+    post: { tags: [dap], operationId: dapUploadScene, summary: '实拍场景入库（multipart；轻资产不扣费）', responses: { '200': { description: ok } } }
+  /v1/assets/scenes/{id}:
+    get:    { tags: [dap], operationId: dapScene, responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchScene, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteScene, responses: { '200': { description: ok } } }
+  /v1/assets/scenes/{id}/variants:
+    post: { tags: [dap], operationId: dapSceneVariants, summary: '生成光线变体（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+  /v1/assets/products:
+    get:  { tags: [dap], operationId: dapListProducts, description: 'category / ipId / q 过滤', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateProduct, summary: 'AI 生成产品主图（异步任务 + 扣费）→ { product, job }', responses: { '200': { description: ok } } }
+  /v1/assets/products/upload:
+    post: { tags: [dap], operationId: dapUploadProduct, summary: '实拍产品入库（multipart；自动记为正面角度，不扣费）', responses: { '200': { description: ok } } }
+  /v1/assets/products/{id}:
+    get:    { tags: [dap], operationId: dapProduct, responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchProduct, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteProduct, responses: { '200': { description: ok } } }
+  /v1/assets/products/{id}/angles:
+    post: { tags: [dap], operationId: dapProductAngles, summary: '补充角度（labels[]，按张扣费）→ { job }', responses: { '200': { description: ok } } }
+  /v1/assets/styles:
+    get:  { tags: [dap], operationId: dapListStyles, description: 按被引用次数倒序, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateStyle, summary: '新建风格模板（纯登记，免费）', responses: { '200': { description: ok } } }
+  /v1/assets/styles/{id}:
+    get:    { tags: [dap], operationId: dapStyle, responses: { '200': { description: ok } } }
+    patch:  { tags: [dap], operationId: dapPatchStyle, responses: { '200': { description: ok } } }
+    delete: { tags: [dap], operationId: dapDeleteStyle, responses: { '200': { description: ok } } }
+  /v1/assets/usages:
+    get: { tags: [dap], operationId: dapAssetUsages, summary: 'APPLIED TO · 已用于（assetType + assetId 查该资产被哪些合成引用）', responses: { '200': { description: ok } } }
+  /v1/compositions:
+    get:  { tags: [dap], operationId: dapListCompositions, description: 'ipId 可选（查某 IP 名下的作品）', responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateComposition, summary: '人物 × 场景 × 产品 → 成片（授权核对 → 建单 → 异步出片）→ { composition, job }；真人复刻缺生效 LIC 时 403 DAP_LICENSE_REQUIRED，不建单不扣费', responses: { '200': { description: ok } } }
+  /v1/compositions/options:
+    get: { tags: [dap], operationId: dapComposeOptions, summary: '出片设置选项与单价（画幅 / 出图数量区间 / 每张单价 / 可用风格模板）', responses: { '200': { description: ok } } }
+  /v1/compositions/{id}:
+    get: { tags: [dap], operationId: dapComposition, responses: { '200': { description: ok } } }
 
   # ── 明星商务工作台（web-star，v0.60；/api/star/** authenticated） ──────────
 

@@ -1,7 +1,9 @@
-# AiAvatar · 数字人资产平台（web-aiavatar）
+# AiAvatar · 数字资产平台（web-aiavatar）
 
-> 移动端 H5 / 微信小程序形态的「数字人资产平台」。真人授权复刻 / 纯 AI 原创两条创建路径，
-> 形象 · 声音 · 衍生物（图集 / 表情 / 场景 / 换装 / 3D / 运镜视频）一站式沉淀为可复用资产，
+> 移动端 H5 / 微信小程序形态的「数字资产平台」。**六类资产**共用一套登记语言 ——
+> `DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 / `VO-` 声音 / `ST-` 风格；
+> IP 是容器，合成工作台把 人物 × 场景 × 产品 变成成片；
+> 形象 · 声音 · 衍生物（图集 / 表情 / 场景 / 换装 / 3D / 运镜视频）与跨资产成片一站式沉淀为可复用资产，
 > 并一键接入下游子应用（音乐 / 短剧 / 带货）。
 >
 > 本 app 是上传的《数字人资产平台 — 数据模型与系统逻辑规格》+ Figma Make 移动端原型
@@ -40,19 +42,35 @@ pnpm build:turbo                   # Turbopack 构建（可选）
 
 ---
 
-## 屏幕地图（18 屏）
+## 屏幕地图（27 屏）
 
-底部 5 Tab：`首页 · 数字人 · ＋创建 · 应用 · 我的`（＋为中间凸起，弹路径选择 sheet）。
+底部 5 Tab：`首页 · 资产库 · ＋创建 · 应用 · 我的`（＋为中间凸起，弹「先选类型再选来源」sheet）。
+
+### 数字资产平台（v0.104 新增 9 屏 / 改造 4 屏）
 
 | 屏 | 入口 | 说明 |
 |---|---|---|
-| 首页 | Tab | 悬浮轮播 + 「我的数字人资产」横滑 + 空态引导 + 开始创作大卡 |
-| 数字人库 | Tab | mine / public · 搜索 / 分类筛选 / 网格切换 |
+| 首页 · 资产总览 | Tab（改造） | 合成 banner + 六类资产瓦片（数量 + 登记前缀）+ 跨类型最近更新 + 人物 rail |
+| 资产库 | Tab（改造） | 我的资产 / 资产广场 · 六类分类 pill（全部时分区总览）· 搜索 |
+| 场景库 / 产品库 / 风格模板库 | 资产库分类 | 来源（实拍 / AI）+ 空间筛选；上传 / 生成入口同格 |
+| IP 详情 · 资产容器 | IP 卡 | 下挂 人物 / 场景 / 产品 / 声音 + 作品 + 授权三 tab；「用这个 IP 合成」 |
+| IP 授权 | IP 详情 | LIC 凭证 · 有效期 · 续签 |
+| 场景详情 | 场景卡 | 规格档案 · 光线变体 · APPLIED TO 已用于 |
+| 产品详情 | 产品卡 | 多角度 + 品牌授权备注 · READY FOR 可直接产出 |
+| 合成工作台 | banner / IP / 场景 / 产品 | 人物 × 场景 × 产品 选料 + 出片设置 + 授权核对 + COST |
+| 合成结果 | 合成完成 | ARCHIVED 钢印 · 成片网格 · SOURCE 用到的资产 · 回流入库 |
+| 新建资产 sheet | ＋ 创建（改造） | 先选类型（六类）再选来源（上传 / AI 生成两路并重） |
+| 存储用量 | 我的（改造） | 按六类资产 + 合成产物 + 授权素材拆分 |
+
+### 数字人主线（沿用）
+
+| 屏 | 入口 | 说明 |
+|---|---|---|
 | 资产详情 | 卡片 | 形象设定 def / 标准图集 / 衍生物 / 版本 / 授权 + 音色 pill |
 | 造型档案 / 设计造型 | 详情 | final 造型列表 + AI 设计造型（描述 / 场景库替换） |
 | 衍生查看 | 详情 | 某类衍生物多张产出（图集 / 场景 / 3D 可旋转 / 视频可播放） |
 | AI 创建 | 创建 sheet | 上传照片 / 文字描述 → 四宫格挑选 → 推荐音色 → 保存 |
-| 真人捕获 | 创建 sheet | 录制引导 → 倒计时录制 → 身份核验 → 选音色 → 保存 + 授权 |
+| 真人捕获 | 创建 sheet ／ 各处「去认证」入口 | 录制引导 → 倒计时录制 → 上传素材 → **实名认证（本人刷脸，v0.105：准备中 → 去刷脸认证〔可换新链接〕→ 核验中 → 通过 / 重试）** → 核验并登记肖像授权 → 复刻生成 → 选音色 → 保存。已出形象的资产走「补认证」，认证完即结束不重复复刻 |
 | 创建链路（5 步） | 真人 / 继续 | 素材&授权 → 形象生成 → 调整（自然语言 / 几何精调）→ 出图定稿 → 衍生 |
 | 选择音色 | 详情音色 pill | 内置 7 款 AI 合成音色（女 4 / 男 3）· 试听 · 设为默认 |
 | 声音工作室 / 声音克隆 | 我的 | 内置音色 + 我的声音 + 克隆录制 |
@@ -91,7 +109,8 @@ src/
 **所有数据都经 `src/proto/api.ts` 这一个出入口**（屏幕层不直接 import `./data`）：
 
 - `api.ts` 是前端契约层，已按规格 §4 补齐全部 REST 端点（`AvatarApi` / `VoiceApi` /
-  `JobApi` / `LicenseApi` / `CaptureApi` / `AccountApi` / `AppApi` / `SceneApi` / `TemplateApi`），
+  `JobApi` / `LicenseApi` / `CaptureApi` / `AccountApi` / `AppApi` / `SceneApi` / `TemplateApi`
+  + v0.104 的 `AssetApi` / `ComposeApi` + v0.105 的 `RealAuthApi` / `MaterialApi`），
   每个函数都带 `USE_MOCK` 分支：
   - `NEXT_PUBLIC_USE_MOCK=1`（默认）→ 返回 `src/proto/data.ts` 的样例（私有 mock「数据库」）。
   - `NEXT_PUBLIC_USE_MOCK=0` → `apiFetch` 打 `/api/v1/*`（经 `next.config.mjs` rewrite 到 :8080），
@@ -108,6 +127,100 @@ src/
 ---
 
 ## 版本日志
+
+### v0.105（2026-08-02）— 真人授权刷脸实名认证 + 素材平台审核（接七牛云 modelink）
+
+真人线此前的「身份核验」是假的（后端只要素材存在就判通过并自动发授权）。本版接入七牛云 modelink，
+把它换成**本人刷脸实名认证 + 服务端判定**，并补上「素材送内容安全审核」。**授权与审核全程免费**。
+
+**新屏 / 改造**：
+
+- **RealAuth（实名认证）** —— `screen-real.tsx` 里原来的假「身份核验」步骤真实化为独立一屏：
+  准备中 → **去刷脸认证**（打开上游认证页；链接短时有效，可就地「换新链接」）→ 核验中 →
+  通过后自动核验并登记肖像授权 → 未通过可「重新认证」。真人流水线因此变成
+  `建资产 + 捕获 + 上传素材 → 实名认证 → 核验登记授权 → 复刻生成 → 就绪`。
+- **补认证（authOnly）** —— 带既有资产进流程且它已经有定妆图时，认证通过即完成
+  （文案「实名认证已完成」），不重复跑复刻生成。
+- **授权登记页**（`screen-lictaskme.tsx`）：顶部新增「**待授权**」块（真人资产 × 无生效授权，
+  每行一个「去认证」；**列表为空则整块不渲染** —— 授权徽标稀有是设计语义，不做常驻空状态）；
+  授权卡加「**已刷脸核验**」徽标（只在 `verifyMethod=liveness` 时出现，未核验不显示负面文案）+
+  可折叠「授权素材」（点开再拉，避免列表一次发 N 个请求）。
+- **资产详情**（`screen-library.tsx`）：真人形象缺生效授权 → 顶部提示条 +「去认证」；
+  新增「平台审核」区块 —— AI 原创人物可主动「提交平台审核」，真人形象只读展示审核结果（无记录不渲染）。
+- **合成工作台**（`screen-compose.tsx`）：服务端 403 `DAP_LICENSE_REQUIRED` 从一句 toast 升级为拦截块，
+  明说「本次没有建单，也没有扣算力」并给「去完成授权认证」。
+- **新共用组件 `material-status.tsx`**：`MaterialBadge`（待审核 / 审核中 / 已通过 / 未通过）、
+  `MaterialRow` / `MaterialSection`（`submit` / `readonly` 两模式）、`LivenessBadge`。
+- 三个「去认证」入口统一走 `app.tsx` 新增的 `ctx.startRealAuth(char)`；带既有资产时深链写成
+  `#/create/real/<id>`。
+
+**契约（`data.ts` / `api.ts`）**：`License` 加 `verifyMethod`（`liveness` / `declared`，老数据视作
+`declared`）；新增 `RealAuthSession` / `RealAuthStatus` / `Capture`（`authSessionId` / `authStatus`）/
+`DapMaterialInfo` / `MaterialStatus` / `MaterialRefType`；新增 `RealAuthApi`（`POST /v1/real-auth/sessions`、
+`GET /v1/real-auth/sessions/{id}`）与 `MaterialApi`（`POST` / `GET /v1/materials`）；
+`CaptureApi.verify` 返回 `{passed, captureId, licenseId?}`，**认证未完成时会 409 `DAP_AUTH_NOT_COMPLETED`
+—— 调用方应回到等待轮询，而不是当作失败**。
+
+**mock 仍是一等公民**（`USE_MOCK=1` 整链离线可演示，已浏览器实测）：认证会话与素材审核都用
+「创建时刻 + 时间差」惰性推进（与既有 mock 任务模拟器同思路，不开定时器）；刷脸通过后会往 mock
+授权登记簿真的追加一条「已刷脸核验」的授权；`ComposeApi.create` 的 mock 分支补 403 与 server 对齐。
+新增样本 **DH-2044「顾岩 Gù」**（真人复刻、已出图、**未授权**），驱动「待授权」块 / 详情提示条 /
+合成 403 三处演示。mock 演示路径：
+`授权登记 → 待授权「去认证」→ 录制/上传 → 实名认证（约 10 秒自动推进到通过）→ 授权登记出现新 LIC + 已刷脸核验徽标`；
+以及 `资产库 → DH-2044 → 合成工作台 → 出片 → 403 拦截块 → 去完成授权认证`。
+
+**server 侧要点**（详见 [`docs/VERSION_HISTORY.md`](../../docs/VERSION_HISTORY.md) `### v0.105` 与
+[`apps/server/README.md`](../server/README.md)）：新增 `dap_material_group`（MG-）/ `dap_material`（MAT-）
+两表 + `DapLicense.verifyMethod`/`livenessGroupId`、`DapCapture.authGroupId` 三列；接入点走后台
+「AI 应用绑定」新用途 `DAP_REAL_AVATAR`（无 env 兜底），未配置且不允许 mock → 503
+`DAP_MODELINK_NOT_CONFIGURED`（§8.0，不产假数据）；真人复刻缺生效授权的硬闸从合成路径**前移到生成入口**。
+
+门禁：server compile + dap modelink 4 个新测试类 + `mvnw test` 全量回归全绿 / `pnpm typecheck:all` /
+web-aiavatar `build` / `pnpm check:api-contract` 全绿。
+
+### v0.104（2026-07-27）— 从「数字人平台」扩展为「数字资产平台」（六类资产 + IP 容器 + 跨资产合成）
+
+设计真源：claude.ai/design 项目「数字资产平台」`数字资产平台.dc.html`（18 屏 → 27 屏：新增 9 / 改造 4）。
+
+**产品骨架不变**（每个资产仍是被登记、编号、版本化的档案），**唯一根本变化**：
+数字人不再是唯一的资产种类，而是六类之一。
+
+1. **六类资产 + 统一登记语言**：`DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 /
+   `VO-` 声音 / `ST-` 风格。衬线资产名 + REG 编号 + 版本 + 更新时间；分类靠**前缀与图标**
+   区分不靠颜色（沿用 Collapsed-Rainbow 纪律）。
+2. **授权模型收窄**：只有「真人肖像人物」与「IP」进授权登记（LIC 凭证 / 有效期 / 续签）；
+   场景 / 产品 / 风格是轻资产，只记来源（实拍上传 or AI 生成）。授权徽标因此仍然稀有。
+3. **IP 成为容器**：`DapAssetIp` 下挂人物 / 场景 / 产品 / 声音（成员靠各实体的 `ipId` 指向，
+   删 IP 只解绑不删成员）；详情页三 tab = 资产 / 作品 / 授权。
+4. **跨资产合成**：`POST /v1/compositions`（人物 × 场景 × 产品 → 成片）。出片前做**授权核对** ——
+   真人复刻缺生效 LIC 直接 403 `DAP_LICENSE_REQUIRED`，不建单不扣费；产物入库登记为该 IP 的
+   衍生物，并给每个用到的资产写一条 `DapAssetUsage` 双向引用（驱动详情页「APPLIED TO · 已用于」）。
+5. **底部第二个 Tab**「数字人」→「**资产库**」；首页 rail 升级为六类资产总览 + 跨类型最近更新；
+   创建 sheet 改为「先选类型，再选来源」；存储用量按六类资产口径拆分。
+
+**server**（`com.aistareco.aep.dap.*`）：新增 7 张表
+（`dap_asset_ip` / `dap_scene` / `dap_product` / `dap_style` / `dap_composition` /
+`dap_composition_output` / `dap_asset_usage`）+ `DapAvatar.ipId` / `DapLicense.ipId` 两列；
+新服务 `DapAssetService`（登记 / 检索 / 容器关系 / 引用台账）、`DapCompositionService`（授权核对 +
+建单）、`DapAssetJobs`（场景生成 / 光线变体 / 产品图 / 补角度 / 合成五类执行体，进度与取消仍由
+`DapJobRunner` 收口）；`DapImageInput` 抽出人物线与资产线共用的 i2i 参考图解析；
+新 prompt key `dap.{scene_image,scene_variant,product_image,product_angle,compose}`（admin 可改）；
+新单价 `dap.{scene-generate,scene-variant,product-generate,product-angle,compose}`（admin 动作单价表可配，
+按张计费）。**§4.7 纪律**：新表文件字段一律存 storage key，JSON 文档（变体 / 多角度）里也只存
+`cdnKey`，URL 出 wire 时由 `FileStorageService::signedUrl` 逐条派生。
+
+**前端**：`data.ts` 补六类资产类型 + mock；`api.ts` 新增 `AssetApi` / `ComposeApi`（含 mock 任务
+模拟器，产物在任务翻 done 的同一刻同步回填，与 `awaitJob` 解析时机对齐）；新增
+`asset-kit.tsx`（登记语言原语）/ `asset-create.tsx`（六类新建流程）/ `screen-assets.tsx` /
+`screen-ip.tsx` / `screen-scene.tsx` / `screen-product.tsx` / `screen-compose.tsx`；
+六类资产深链 `#/ip|scene|product|style|compose/<id>` 支持冷启动还原。
+
+门禁：server `compile` + `mvnw test` **409/409 全绿、0 失败**（本机需 `AEP_CDN_DRIVER=local`
+覆盖 `apps/server/.env` 里的 `oss`，否则 30 个 `@SpringBootTest` 上下文加载失败 —— 已核实为
+**与本轮无关的既有本地环境问题**，干净树同样复现，记入 `TODO.md` 2026-07-27 段）/
+`pnpm typecheck:all`（10/10）/ web-aiavatar `build` / `pnpm check:api-contract` 全绿；mock 模式浏览器实测走通「首页总览 → 资产库 → IP 详情 →
+合成工作台 → 合成结果 → 场景详情看到新增的『已用于』→ 场景光线变体 → 新建资产 sheet →
+AI 生成场景 → 存储用量」整条链路。
 
 - **2026-06-26 · 接入积分钱包在线充值（v2 §6）**：「会员与算力 → 充值算力」从静态 PACKS + 死按钮
   （「在线支付通道接入中」）改为真在线支付。`api.ts` 加 `WalletApi`（packages / checkout / confirmShadow）

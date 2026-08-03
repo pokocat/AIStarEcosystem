@@ -6,11 +6,13 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { AvatarApi, VoiceApi, AuthApi, useApi, seed, auth, onAuthExpired, USE_MOCK } from "./api";
+import { AvatarApi, VoiceApi, AuthApi, AssetApi, ComposeApi, useApi, seed, auth, onAuthExpired, USE_MOCK } from "./api";
 import { MShell } from "./shell";
 import { toast } from "./toast";
 import { MHome } from "./screen-home";
-import { MLibrary, MDetail } from "./screen-library";
+import { MDetail } from "./screen-library";
+import { MAssetLibrary } from "./screen-assets";
+import { AssetCreateSheet, useAssetCreate } from "./asset-create";
 import { MVoice, MApps } from "./screen-voiceapps";
 import { MLicenses, MTasks, MMe, MTrash } from "./screen-lictaskme";
 import { MLogin } from "./screen-login";
@@ -35,6 +37,14 @@ const LAZY_OVERLAYS: any = {
   create: lazyScreen(() => import("./screen-chain"), "MCreate"),
   aicreate: lazyScreen(() => import("./screen-aicreate"), "MAICreate"),
   choosevoice: lazyScreen(() => import("./screen-voicepick"), "MChooseVoice"),
+  // 数字资产平台：IP 容器 / 场景 / 产品 / 风格 / 跨资产合成
+  ipdetail: lazyScreen(() => import("./screen-ip"), "MIpDetail"),
+  iplicense: lazyScreen(() => import("./screen-ip"), "MIpLicense"),
+  scenedetail: lazyScreen(() => import("./screen-scene"), "MSceneDetail"),
+  productdetail: lazyScreen(() => import("./screen-product"), "MProductDetail"),
+  styledetail: lazyScreen(() => import("./screen-assets"), "MStyleDetail"),
+  compose: lazyScreen(() => import("./screen-compose"), "MCompose"),
+  composeresult: lazyScreen(() => import("./screen-compose"), "MComposeResult"),
 };
 
 // 合成一个新建草稿数字人（驱动创建向导首屏；live 模式在流程内落 server）
@@ -51,41 +61,6 @@ function freshChar(path, avatars: any[] = []) {
   };
 }
 
-const CREATE_ENTRY_IMAGES = {
-  ai: "/generated/create-entry/ai-design.jpg",
-  real: "/generated/create-entry/real-clone.jpg",
-};
-
-// 创建路径选择 sheet
-function CreateSheet({ onPick, onClose }) {
-  const opt = (path, icon, name, desc, grad, image) => hA("button", { onClick: () => onPick(path), className: "m-tap", style: {
-    position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: 13, width: "100%", minHeight: 106,
-    padding: "15px 14px", textAlign: "left", cursor: "pointer", background: "#F8FCFD",
-    border: "1px solid rgba(255,255,255,.78)", borderRadius: "var(--r-xl)",
-    boxShadow: "0 14px 30px rgba(76,92,125,.10), 0 1px 0 rgba(255,255,255,.9) inset" } },
-    hA("img", { src: image, alt: "", draggable: false, loading: "lazy", decoding: "async", fetchPriority: "low", style: {
-      position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .95, pointerEvents: "none" } }),
-    hA("span", { style: { position: "absolute", inset: 0, background:
-      "linear-gradient(102deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.92) 46%, rgba(255,255,255,.48) 76%, rgba(255,255,255,.18) 100%)" } }),
-    hA("span", { style: { position: "absolute", inset: "1px 1px auto", height: "52%", borderRadius: "calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0",
-      background: "linear-gradient(180deg, rgba(255,255,255,.88), transparent)", pointerEvents: "none" } }),
-    hA("div", { style: { position: "relative", width: 48, height: 48, flex: "0 0 48px", borderRadius: 15, background: grad, display: "grid", placeItems: "center",
-      color: "#fff", boxShadow: "0 10px 24px rgba(18,179,222,.24), 0 1px 0 rgba(255,255,255,.34) inset" } }, hA(icon, { size: 24, stroke: 1.9 })),
-    hA("div", { style: { position: "relative", flex: 1, minWidth: 0, paddingRight: 16 } },
-      hA("div", { style: { fontSize: 16, fontWeight: 800, color: "var(--ink)" } }, name),
-      hA("div", { style: { fontSize: 12, color: "rgba(37,47,62,.68)", marginTop: 4, lineHeight: 1.45, fontWeight: 600 } }, desc)),
-    hA(Icons.chevR, { size: 18, stroke: 2.2, style: { position: "relative", color: "rgba(34,43,58,.42)", flex: "0 0 auto" } }));
-  return hA(React.Fragment, null,
-    hA("div", { className: "m-sheet-backdrop", onClick: onClose }),
-    hA("div", { className: "m-sheet", style: { padding: "0 18px calc(18px + var(--home-ind))" } },
-      hA("div", { className: "m-sheet-grip" }),
-      hA("div", { style: { textAlign: "center", padding: "6px 0 16px" } },
-        hA("div", { style: { fontFamily: "var(--font-disp)", fontWeight: 700, fontSize: 18 } }, "创建数字人"),
-        hA("div", { style: { fontSize: 12.5, color: "var(--ink-3)", marginTop: 4 } }, "选择创建路径")),
-      hA("div", { style: { display: "flex", flexDirection: "column", gap: 11 } },
-        opt("ai", Icons.sparkle, "AI 原创", "一句文字描述，从零原创一个虚构形象，版权自有", "linear-gradient(155deg,#2C67F2,#8F6BFF)", CREATE_ENTRY_IMAGES.ai),
-        opt("real", Icons.person, "真人授权复刻", "录一段动作 / 上传素材，签署授权合规复刻", "var(--grad)", CREATE_ENTRY_IMAGES.real))));
-}
 
 function OverlayLoading({ label }) {
   return hA("div", { style: {
@@ -134,18 +109,33 @@ function MPlatformGate({ onActivated, onLogout }) {
 // 把当前视图（tab + 覆盖页栈顶）映射成可分享 / 可刷新的 URL（永久链接），
 // 并通过 pushState/popstate 让浏览器与系统返回 / 前进键自然驱动导航。
 const TAB_KEYS = ["home", "library", "apps", "me"];
-const TAB_LABEL: any = { home: "首页", library: "数字人库", apps: "应用中心", me: "我的" };
-const OVERLAY_LABEL: any = { voice: "声音工作室", licenses: "授权登记", tasks: "任务中心", settings: "设置", security: "账号与安全", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站", detail: "资产详情", derivview: "衍生查看", looks: "造型档案", designlooks: "设计造型", choosevoice: "选择音色", create: "创建链路", aicreate: "AI 创建", realcapture: "真人捕获" };
+const TAB_LABEL: any = { home: "首页", library: "资产库", apps: "应用中心", me: "我的" };
+const OVERLAY_LABEL: any = { voice: "声音工作室", licenses: "授权登记", tasks: "任务中心", settings: "设置", security: "账号与安全", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站", detail: "资产详情", derivview: "衍生查看", looks: "造型档案", designlooks: "设计造型", choosevoice: "选择音色", create: "创建链路", aicreate: "AI 创建", realcapture: "真人捕获", ipdetail: "IP 详情", iplicense: "IP 授权", scenedetail: "场景详情", productdetail: "产品详情", styledetail: "风格模板", compose: "合成工作台", composeresult: "合成结果" };
 // 无需实体参数、可从 URL 直接还原的简单覆盖页
 const SIMPLE_OVERLAYS = ["tasks", "licenses", "voice", "settings", "security", "membership", "storage", "trash", "voiceclone"];
 // 临时流程（创建向导等）：URL 会更新，但冷启动不强行还原（缺上下文 / 会污染状态）
-const FLOW_SCREENS = ["create", "aicreate", "realcapture", "choosevoice", "designlooks", "voiceclone"];
+const FLOW_SCREENS = ["create", "aicreate", "realcapture", "choosevoice", "designlooks", "voiceclone", "compose"];
+
+/** 资产覆盖页 → URL 段 / props 键（六类资产共用一套深链规则）。 */
+const ASSET_ROUTES: any = {
+  ipdetail:       { seg: "ip",      prop: "ip" },
+  iplicense:      { seg: "ip",      prop: "ip", sub: "license" },
+  scenedetail:    { seg: "scene",   prop: "scene" },
+  productdetail:  { seg: "product", prop: "product" },
+  styledetail:    { seg: "style",   prop: "style" },
+  composeresult:  { seg: "compose", prop: "composition" },
+};
 
 function hashForView(tab: string, stack: any[]): string {
   const top = stack[stack.length - 1];
   if (!top) return "#/" + tab;
   const p = top.props || {};
   const id = p.char && p.char.id;
+  const asset = ASSET_ROUTES[top.screen];
+  if (asset) {
+    const aid = p[asset.prop] && p[asset.prop].id;
+    return aid ? "#/" + asset.seg + "/" + aid + (asset.sub ? "/" + asset.sub : "") : "#/library";
+  }
   switch (top.screen) {
     case "detail":      return id ? "#/avatar/" + id : "#/library";
     case "derivview":   return id ? "#/avatar/" + id + "/" + (p.deriv || "atlas") : "#/library";
@@ -153,13 +143,24 @@ function hashForView(tab: string, stack: any[]): string {
     case "designlooks": return id ? "#/avatar/" + id + "/design" : "#/library";
     case "choosevoice": return id ? "#/avatar/" + id + "/voice" : "#/library";
     case "aicreate":    return "#/create/ai";
-    case "realcapture": return "#/create/real";
+    // 带既有资产进来的认证流程把 id 写进 URL（便于分享定位）；临时流程冷启动仍回基座
+    case "realcapture": return id && id !== "DH-NEW" ? "#/create/real/" + id : "#/create/real";
     case "create":      return "#/create";
+    case "compose":     return "#/compose";
     default:            return "#/" + top.screen;
   }
 }
 
-function parseHash(): { tab: string; screen?: string; id?: string; deriv?: string } {
+/** URL 段 → { screen, 取实体的 fetch }。冷启动 / 粘贴链接时按它把资产页还原出来。 */
+const ASSET_SEGMENTS: any = {
+  ip:      { screen: "ipdetail", subScreen: { license: "iplicense" }, prop: "ip",         fetch: (id: string) => AssetApi.ip(id).then((d: any) => d?.ip || d) },
+  scene:   { screen: "scenedetail",                                  prop: "scene",      fetch: (id: string) => AssetApi.scene(id) },
+  product: { screen: "productdetail",                                prop: "product",    fetch: (id: string) => AssetApi.product(id) },
+  style:   { screen: "styledetail",                                  prop: "style",      fetch: (id: string) => AssetApi.style(id) },
+  compose: { screen: "composeresult",                                prop: "composition", fetch: (id: string) => ComposeApi.get(id) },
+};
+
+function parseHash(): { tab: string; screen?: string; id?: string; deriv?: string; assetSeg?: string } {
   const raw = (typeof location !== "undefined" ? location.hash : "") || "";
   const seg = raw.replace(/^#\/?/, "").split("/").filter(Boolean);
   if (!seg.length) return { tab: "home" };
@@ -172,6 +173,12 @@ function parseHash(): { tab: string; screen?: string; id?: string; deriv?: strin
     if (sub === "voice") return { tab: "library", screen: "choosevoice", id };
     return { tab: "library", screen: "derivview", id, deriv: sub };
   }
+  if (ASSET_SEGMENTS[seg[0]] && seg[1]) {
+    const def = ASSET_SEGMENTS[seg[0]];
+    const screen = (seg[2] && def.subScreen && def.subScreen[seg[2]]) || def.screen;
+    return { tab: "library", screen, id: seg[1], assetSeg: seg[0] };
+  }
+  if (seg[0] === "compose") return { tab: "library", screen: "compose" };
   if (seg[0] === "create") return { tab: "home", screen: seg[1] === "ai" ? "aicreate" : seg[1] === "real" ? "realcapture" : "create" };
   if (SIMPLE_OVERLAYS.indexOf(seg[0]) >= 0) return { tab: "home", screen: seg[0] };
   return { tab: "home" };
@@ -229,6 +236,21 @@ export function App() {
   const restoreFromHash = useCallbackA(() => {
     const r = parseHash();
     restoringRef.current = true;                 // 抑制本轮 URL 回写（避免还原过程把 URL 改坏）
+    // 六类资产覆盖页（IP / 场景 / 产品 / 风格 / 合成结果）：与数字人同样先取实体再一次性落栈
+    if (r.assetSeg && r.id) {
+      const def = ASSET_SEGMENTS[r.assetSeg];
+      def.fetch(r.id).then((entity: any) => {
+        restoringRef.current = true;
+        setSheet(false); setTab(r.tab);
+        if (!entity || !entity.id) { setStack([]); setLabel(TAB_LABEL[r.tab]); depthRef.current = 0; return; }
+        setStack([{ screen: r.screen, props: { [def.prop]: entity } }]);
+        setLabel(OVERLAY_LABEL[r.screen!] || r.screen);
+        depthRef.current = 1;
+      }).catch(() => {
+        restoringRef.current = true; setSheet(false); setTab(r.tab); setStack([]); depthRef.current = 0;
+      });
+      return;
+    }
     // 需实体参数的覆盖页：先取数据，拿到后「一次性」落 tab+stack（不提前改 tab，否则会先把 URL 覆写成 #/library）
     if (r.id) {
       AvatarApi.get(r.id).then((c: any) => {
@@ -296,9 +318,25 @@ export function App() {
     firstAvatar: avatars[0],
     avatars,
     reload,
-    tab: (k) => { setStack([]); setTab(k); setSheet(false); setLabel({ home: "首页", library: "数字人库", apps: "应用中心", me: "我的" }[k]); },
+    tab: (k) => { setStack([]); setTab(k); setSheet(false); setLabel(TAB_LABEL[k]); },
     go: (screen, props) => { setStack((s) => [...s, { screen, props: props || {} }]); setLabel(OVERLAY_LABEL[screen] || screen); },
     openChar: (char) => { setStack((s) => [...s, { screen: "detail", props: { char } }]); setLabel("资产详情"); },
+
+    // ── 数字资产平台：六类资产的覆盖页入口 ──
+    // opts.replace=true → 替换栈顶（合成工作台 → 结果页，返回时不再回到已提交的工作台）
+    openIp: (ip) => { setStack((s) => [...s, { screen: "ipdetail", props: { ip } }]); setLabel("IP 详情"); },
+    openIpLicense: (ip) => { setStack((s) => [...s, { screen: "iplicense", props: { ip } }]); setLabel("IP 授权"); },
+    openScene: (scene) => { setStack((s) => [...s, { screen: "scenedetail", props: { scene } }]); setLabel("场景详情"); },
+    openProduct: (product) => { setStack((s) => [...s, { screen: "productdetail", props: { product } }]); setLabel("产品详情"); },
+    openStyle: (style) => { setStack((s) => [...s, { screen: "styledetail", props: { style } }]); setLabel("风格模板"); },
+    openCompose: (preset, opts) => {
+      setStack((s) => [...(opts?.replace ? s.slice(0, -1) : s), { screen: "compose", props: { preset: preset || {} } }]);
+      setLabel("合成工作台");
+    },
+    openComposeResult: (composition, opts) => {
+      setStack((s) => [...(opts?.replace ? s.slice(0, -1) : s), { screen: "composeresult", props: { composition } }]);
+      setLabel("合成结果");
+    },
     openDeriv: (char, deriv) => { setStack((s) => [...s, { screen: "derivview", props: { char, deriv } }]); setLabel("衍生查看"); },
     openLooks: (char) => { setStack((s) => [...s, { screen: "looks", props: { char } }]); setLabel("造型档案"); },
     designLooks: (char) => { setStack((s) => [...s, { screen: "designlooks", props: { char } }]); setLabel("设计造型"); },
@@ -315,6 +353,11 @@ export function App() {
     back: () => setStack((s) => s.slice(0, -1)),
     startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
     startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("真人捕获"); },
+    /**
+     * 「去认证」入口（授权登记 / 资产详情 / 合成工作台）：带既有真人资产进真人流程完成刷脸认证。
+     * 认证需要本人素材，因此仍从录制引导起步；真人流程内部会复用传入的资产不再新建。
+     */
+    startRealAuth: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars) } }]); setLabel("实名认证"); },
     realToWizard: (char) => { setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "create", props: { char } }); return ns; }); setLabel("创建链路"); },
     continueAdjust: (char) => {
       setStack((s) => {
@@ -325,10 +368,20 @@ export function App() {
       setLabel("创建链路");
     },
     finishCreate: (char) => { reload(); setStack((s) => { const ns = s.slice(0, -1); ns.push({ screen: "detail", props: { char } }); return ns; }); setLabel("资产详情"); },
-    /** 提交生成后回数字人库（生成中的资产在卡片上显示实时进度）。 */
-    submitToLibrary: () => { reload(); setSheet(false); setStack([]); setTab("library"); setLabel("数字人库"); },
+    /** 提交生成后回资产库（生成中的资产在卡片上显示实时进度）。 */
+    submitToLibrary: () => { reload(); setSheet(false); setStack([]); setTab("library"); setLabel("资产库"); },
     openCreateSheet: () => setSheet(true),
   };
+
+  // 六类资产的新建流程（IP / 场景 / 产品 / 风格 就地完成；人物 / 声音转既有创建链路）。
+  // 挂在根上，让底部 ＋ 创建键在任何 tab 都能拉起同一套流程。
+  const assetCreate = useAssetCreate(ctx, (kind, asset) => {
+    reload();
+    if (kind === "ip" && asset) ctx.openIp(asset);
+    else if (kind === "scene" && asset) ctx.openScene(asset);
+    else if (kind === "product" && asset) ctx.openProduct(asset);
+    else if (kind === "style" && asset) ctx.openStyle(asset);
+  });
 
   // 登录门（live 模式）：authed=null 渲染空白避免闪屏；false 渲染登录
   if (!USE_MOCK && authed !== true) {
@@ -349,7 +402,7 @@ export function App() {
       hA(UI.ToastHost, null));
   }
 
-  const tabScreen = { home: MHome, library: MLibrary, apps: MApps, me: MMe }[tab];
+  const tabScreen = { home: MHome, library: MAssetLibrary, apps: MApps, me: MMe }[tab];
   const overlayScreen = top && ({
     detail: MDetail,
     voice: MVoice,
@@ -377,7 +430,11 @@ export function App() {
 
       !hideTabBar && hA(WxTabBar, { active: tab, onTab: ctx.tab, onCreate: ctx.openCreateSheet, meInitial }),
 
-      sheet && hA(CreateSheet, { onPick: (p) => (p === "real" ? ctx.startRealClone() : ctx.startCreate(p)), onClose: () => setSheet(false) })),
+      sheet && hA(AssetCreateSheet, {
+        onClose: () => setSheet(false),
+        onPick: (pick) => { setSheet(false); assetCreate.start(pick); },
+      }),
+      assetCreate.node),
 
     hA(UI.ToastHost, null));
 }

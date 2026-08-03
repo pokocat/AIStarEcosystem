@@ -241,6 +241,10 @@
 - [ ] **Phase 4 · 用户上传素材 OSS 化**（v0.34 显式 v0.35+）：`MixcutAsset` 上传从本地 fs（`./mixcut-assets`）切换到 OSS（沿用 `AliyunOssCdnUploader`）。当前 v0.14 已做 mixcut **渲染产出** OSS 化；用户**上传**仍落本地。
 - [ ] **Phase 5 · 多实例 + Redis + ShedLock**（v0.34 显式）：
   - `PublishJobScheduler` / `MixcutOutputCleanupScheduler` 两个 `@Scheduled` 加 ShedLock（源码注释已挂 TODO）
+  - **dap 域两个 `@Scheduled` 同一债务**（2026-08-02 补记）：`DapTrashCleanupScheduler`（回收站到期清理）与
+    v0.105 新增的 `DapModelinkPoller`（modelink 非终态分组 / 素材收敛轮询，`fixedDelay` 默认 10s）。
+    后者多实例下会对同一批非终态行重复打上游 —— 语义上幂等（都是 GET 后落库），但会**成倍消耗
+    modelink 配额**并放大限流风险，所以和上面两个一起纳入 ShedLock（源码注释已挂 TODO）。
   - `SmsCodeService` in-memory `ConcurrentHashMap`（验证码 + 失败次数 + 锁定态）→ Redis
   - JWT 黑名单（v0.31 提到的 operatorRole 变更后旧 token 不失效问题）→ Redis 黑名单
   - Cookie SSO 跨子域（`packages/api-client/src/_client.ts` 现有 TODO）
@@ -602,3 +606,93 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 - [ ] **`CelebrityStar.avatar`/`cover` 直接存 `FileStorageService` 返回的未签名公开 URL，未经 `CdnUrlSigner`，违反 §4.7.4 "DB 真值必须是 cdnKey" 硬规则**（记录待排期，2026-07-23 发现，暂不修）：`apps/server/src/main/java/com/aistareco/aep/model/CelebrityStar.java`（`avatar`/`cover` 字段，纯 `String` 无对应 `cdnKey` 列）；写入路径 `AdminCelebrityUploadController.java:75-77` 与 `StarProfileUploadController.java:80-83` 均直接把 `fileStorage.store(...)` 返回的稳定公开 URL 落库。当前代码注释里的技术理由（"非高带宽盗刷目标，公开 URL 可接受"）与 §4.7.4 的强制规定冲突——一旦运维按 §4.7.3 建议把 `AEP_CDN_SIGNED_URL_STRATEGY` 从 `oss` 切到 `cdn`，这两个字段会立即 403（不是 TTL 到期后才裂图，而是从来没签过名）。不在本轮修：需要新增 `avatarCdnKey`/`coverCdnKey` 列 + 改两个 upload controller 返回 key 而非 url + DTO 改经 `signer.signKey(...)` 派生，属于 §4.7.6 描述的多步迁移，风险与改动面超出例行 QA 单次 sweep 的范围，留给专门的迁移 PR。
 
 **验证**：`./mvnw compile` 全绿；`./mvnw test` 全量 **409/409 全绿、0 失败**（与 2026-07-22 基线持平，本轮两处修复均为行为收紧/纠正，未新增测试文件——`AepSecurityConfig` 的路由收紧、`DramaReferenceAssembler` 的 sentinel 修正均由既有测试覆盖路径验证未回归）。本轮未改动前端/契约，未跑 `pnpm typecheck:all`/`check:api-contract`（无相关文件变更）。
+
+
+## 2026-07-27 · AiAvatar 数字资产平台扩展（v0.104）新发现待办
+
+> 本轮把 aiavatar 从「数字人平台」扩展为「数字资产平台」（六类资产 + IP 容器 + 跨资产合成）。
+> 以下是实现过程中顺手定位、但**本轮刻意不做**的项，按主题归并。
+
+### 持久化 / 数据模型
+
+- [ ] **`dap_asset_usage` 只在合成成功时写入，资产被删除后引用行不清理**（`DapAssetService.recordUsage`）：
+  删场景 / 产品是软删（`deletedAt`），引用台账里的历史条目仍会显示在**其它**资产的「已用于」里
+  （因为标题是冗余快照）。当前是有意的 —— 历史出片记录不该因为素材被删就消失。但缺一个
+  「资产已删除」的视觉标记；点进去会 404。定位：`asset-kit.tsx` 的 `AppliedTo` + `DapAssetUsageRepository`。
+- [ ] **`DapComposition` 没有回收站语义**（有 `deletedAt` 列但没有软删入口 / 清理调度）：
+  合成产物目前只能靠删 IP 间接失联，不能单独删。`DapTrashCleanupScheduler` 也只扫 `dap_avatar`。
+  排期时一并把六类新资产纳入回收站与到期清理。
+- [ ] **产品「品牌方授权」只是 `DapProduct` 上的两个字段（`brandAuthorized` / `brandLicenseUntil`），
+  不是 `DapLicense` 行**（设计 §02 的刻意取舍，见 `apps/web-aiavatar/DECISIONS.md` §H）：
+  因此没有凭证文件、没有到期自动失效检查，合成时只作提示不作硬闸。若业务上需要品牌授权可追溯，
+  应升级为真正的 LIC 行而不是继续加字段。
+
+### 合成 / 生成链路
+
+- [ ] **合成是逐张串行调用图像模型**（`DapAssetJobs.runCompose` 的 for 循环）：
+  出 8 张时最坏要等 8 次模型往返。`DapMultimodalClient.generateImage` 目前是单张接口，
+  批量出图 / 并发出图需要先扩客户端。排期时评估「一次请求出 N 张」的端点能力（对齐 drama 的 D-11 candidate 思路）。
+- [ ] **合成失败时已产出的部分成片不保留**：`runCompose` 出错直接把整单标 `failed`，
+  前面几张已经 `storage.store` 落盘的 `DapCompositionOutput` 行还在但用户看不到（结果页只在 done 时展示网格）。
+  要么失败时也展示已出的张数，要么失败时清理这些孤儿文件 —— 当前两者都没做。
+- [ ] **场景 / 产品的「生成中」状态没有超时兜底**：`status=running` 只由 runner 的成功 / 失败分支翻转，
+  runner 进程被 kill 时行会永久卡在 running（与 `dap_job` 的 `heartbeatAt` 一样缺少扫尾调度）。
+
+### 前端
+
+- [ ] **`AssetApi.summary()` 在首页与资产库各拉一次**：两处都需要六类计数，但没有共享缓存，
+  切 tab 会重复请求。等有真实性能数据再决定要不要提到 `ctx` 层缓存。
+- [ ] **资产库分类视图没有分页**：`listScenes` / `listProducts` 一次返回全部，
+  单用户资产量上到几百条时列表会变慢。server 侧已按 owner 过滤但没有 limit/offset。
+- [ ] **风格模板「从作品提炼」路径只是新建表单**（`asset-create.tsx` 的 `style/path=0`）：
+  设计稿写的是「从作品提炼出基调」，当前点它和「新建」走同一个手填表单，没有真的从某张成片反推 promptEn。
+  真做需要一个「选一张作品 → 视觉分析出基调」的 AI 步骤。
+
+### 本地开发环境（不是代码缺陷，但会让新同事误判）
+
+- [ ] **本机 `apps/server/.env` 里的 `AEP_CDN_DRIVER=oss` 会让 30 个 `@SpringBootTest` 上下文加载失败**
+  （`java.lang.IllegalStateException: aep.cdn.driver=oss 但未配置 aep.cdn.oss.endpoint`）。
+  2026-07-27 核实：**与 v0.104 改动无关** —— `git stash` 到干净树跑同一个
+  `AdminUserControllerWalletSecurityTest` 复现完全相同的 6/6 错误。绕过办法是跑测试时显式覆盖：
+  `AEP_CDN_DRIVER=local ./mvnw test`（这样 409/409 全绿）。
+  `LedgerPlaneTest:33` 已经为这件事单独加过注释和 workaround，说明是长期存在的踩坑点。
+  建议排期：要么在 `src/test/resources/application.properties` 里统一把测试上下文钉成
+  `aep.cdn.driver=local`（测试本来也不该打真 OSS），要么让 `AliyunOssCdnUploader` 在 test profile 下
+  降级而不是 fail-fast —— 前者更符合 §8.0（生产 fail-fast 的行为不该为测试放宽）。
+
+
+## 2026-08-02 · AiAvatar 真人授权刷脸认证（v0.105）新发现待办
+
+> 本轮把 aiavatar 真人线的假核验换成七牛云 modelink 的**本人刷脸实名认证**，并补上素材送审。
+> 以下是实现过程中顺手定位、但**本轮刻意不做**的项，按主题归并。
+> （`DapModelinkPoller` 的多实例 ShedLock 归到上面「Phase 5 · 多实例 + Redis + ShedLock」条目，不在此重复。）
+
+### 外部依赖 / 配额
+
+- [ ] **modelink 账号默认限 3 个分组 / 30 个素材，而 liveness 是「每次捕获建一个分组」→ 需要终态分组清理策略**：
+  `DapRealAuthService.start` 对同一次捕获会幂等复用未 failed 的会话，但**每次新的真人捕获都会新建一个
+  `liveness_face` 分组**（`dap_material_group`），高频认证很快撞上游配额（撞上时 `HttpModelinkGateway`
+  按 429 → `DAP_MODELINK_QUOTA`，用户侧表现为「认证通道建立失败」）。上游 `DELETE /v1/asset-groups`
+  要求**组内为空且状态非 pending**，所以清理不是「删了就行」——要先决定终态（active / failed）分组下
+  已送审素材的处置：保留作取证 vs 随组一起清。定位：`DapRealAuthService.start`（建组）+
+  `DapMaterialService.submitForCapture`（往组里塞素材）+ `ModelinkGateway`（缺 deleteGroup 动作）。
+  取舍记录见 `apps/web-aiavatar/DECISIONS.md` §M。
+
+### 契约 / 出 wire
+
+- [ ] **`LicenseDto` / `AvatarDto` 不出 `captureId`，前端「授权素材」只能按 avatar 维度拉**：
+  `dap_material` 的真人素材是 `refType=capture` + `refId=captureId`，但授权卡上拿得到的只有
+  `license.char`（= avatarId），所以 `screen-lictaskme.tsx` 的可折叠「授权素材」实际拉的是
+  `refType=avatar` 的记录，看不到那次刷脸真正送审的动作视频 / 关键帧。
+  修法：`DapLicense` 出 wire 带上取得该授权的 `captureId`（`livenessGroupId` 已能反查到
+  `DapMaterialGroup.captureId`，不必加列），前端按 capture 维度再拉一次。
+  定位：`DapDtos.LicenseDto` + `apps/web-aiavatar/src/proto/material-status.tsx` / `screen-lictaskme.tsx`。
+
+### 前端
+
+- [ ] **web-aiavatar 覆盖页栈只渲染栈顶，从合成工作台跳去认证再返回会丢失已选槽位**（既有限制，v0.105 发现）：
+  `app.tsx` 的 `ctx.startRealAuth(char)` 把「真人捕获（认证）」压栈，返回时合成工作台**重新挂载**，
+  人物 / 场景 / 产品的选料与出片设置全部回到初始值 —— 用户刚被 403 拦下、按引导去认证、
+  回来还得从头选一遍。同样的问题存在于任何「从工作台跳出去补前置条件」的路径。
+  修法候选：覆盖页栈保留非栈顶屏的实例（或把工作台选料状态提到 `ctx` / sessionStorage）。
+  定位：`apps/web-aiavatar/src/proto/app.tsx`（栈渲染）+ `screen-compose.tsx`（`MCompose` 本地 state）。

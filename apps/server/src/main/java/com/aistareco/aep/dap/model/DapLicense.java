@@ -44,6 +44,13 @@ public class DapLicense {
     @Column(length = 32)
     private String avatarId;
 
+    /**
+     * 关联 IP 容器 id（可空）。设计 §02：六类资产里只有「真人肖像人物」与「IP」需要授权登记，
+     * 场景 / 产品 / 风格是轻资产只记来源 —— 所以授权表只会出现 avatarId 或 ipId 之一。
+     */
+    @Column(length = 32)
+    private String ipId;
+
     @Column(length = 256)
     private String scope;
 
@@ -68,6 +75,17 @@ public class DapLicense {
     /** 授权凭证文件 storage key（首次下载时生成）。 */
     @Column(length = 512)
     private String certKey;
+
+    /**
+     * 授权取得方式（v0.105）：liveness = 通过真人刷脸认证取得；declared = 仅声明式登记。
+     * 老数据为 null，一律视作 declared。
+     */
+    @Column(length = 16)
+    private String verifyMethod;
+
+    /** 取得该授权的刷脸认证分组 id（DapMaterialGroup.id；verifyMethod=liveness 时非空）。 */
+    @Column(length = 32)
+    private String livenessGroupId;
 
     private Instant createdAt;
 }

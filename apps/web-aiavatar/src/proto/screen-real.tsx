@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, CaptureApi, awaitJob, USE_MOCK } from "./api";
+import { DATA, AvatarApi, CaptureApi, RealAuthApi, awaitJob, USE_MOCK } from "./api";
 import { Portrait } from "./portrait";
 import { MShell } from "./shell";
 import { toast } from "./toast";
@@ -10,8 +10,9 @@ import { toast } from "./toast";
 // ============================================================
 // 移动端 · 真人复刻 全流程（全屏切屏）
 //   录制引导 → 倒计时+三角度转头录制（真实摄像头，纯视频无声） → 最后一步(回放+命名)
-//   → 身份核验（上传素材+verify+生成） → 就绪
-//   live：create avatar → capture → footage → verify(自动登记授权) → generate(upload)
+//   → 上传素材 → 实名认证（本人刷脸，v0.105）→ 核验登记授权 → 复刻生成 → 就绪
+//   live：create avatar → capture → footage → real-auth session（轮询到通过）
+//        → verify(登记授权) → generate(upload)
 //   美颜仅作用于预览/回放（CSS 滤镜降低心理负担），上传素材始终为原始录像
 // ============================================================
 const hMR : any = React.createElement;
@@ -103,7 +104,7 @@ function VideoReview({ badge, onDelete, blobUrl, isImage, beauty, onToggleBeauty
 }
 
 // —— intro：录制引导 ——
-function RealIntro({ onReady, onUpload, onClose }) {
+function RealIntro({ onReady, onUpload, onClose, subjectName }) {
   const [coach, setCoach] = useStateMR(true);
   const fileRef = useRefMR(null as any);
   return hMR('div', { style: { position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
@@ -114,6 +115,7 @@ function RealIntro({ onReady, onUpload, onClose }) {
       hMR('div', { className: 'm-fade' },
         hMR('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 11px', background: 'var(--primary-tint)', border: '1px solid var(--primary-soft)', borderRadius: 'var(--r-pill)', fontSize: 11.5, fontWeight: 700, color: 'var(--primary)', marginBottom: 12 } },
           hMR(Icons.bolt, { size: 13, stroke: 2 }), '约 ' + REC_SECONDS + ' 秒 · 无需说话'),
+        subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, fontWeight: 600, color: 'var(--primary)', marginBottom: 6 } }, '正在为「' + subjectName + '」完成实名认证'),
         hMR('h1', { style: { fontSize: 25, lineHeight: 1.16, letterSpacing: '-.02em', fontWeight: 800, margin: '0 0 8px' } }, '录几秒转头视频，', hMR('br', null), '生成你的数字分身'),
         hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: 0 } },
           '正对镜头，跟随箭头缓慢左右转头即可。素颜出镜也没关系——最终形象将由 AI 自动美化。也可 ',
@@ -324,6 +326,141 @@ function RealLastStep({ defaultName, blobUrl, isImage, beauty, onToggleBeauty, o
       hMR('button', { onClick: onRetry, disabled: busy, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: 'var(--ink-2)' } }, '重新录制')));
 }
 
+// —— 实名认证（本人刷脸）：建会话 → 轮询 → 通过后核验登记授权 ——
+//   状态机：准备中 → 待认证（打开刷脸页）→ 核验中 → 已通过 / 未通过
+//   认证链接短时有效，过期可就地「换个新链接」重新获取。
+function RealAuth({ captureId, subjectName, blobUrl, isImage, beauty, onPassed, onClose }) {
+  const [session, setSession] = useStateMR(null as any);
+  const [err, setErr] = useStateMR('');           // 会话级错误（建会话失败 / 核验失败）
+  const [registering, setRegistering] = useStateMR(false);
+  const [startSeq, setStartSeq] = useStateMR(0);  // 递增 = 重新发起一次认证
+  const [verifySeq, setVerifySeq] = useStateMR(0);
+  const [refreshing, setRefreshing] = useStateMR(false);
+  const [opened, setOpened] = useStateMR(false);  // 是否已打开过刷脸页（决定提示文案）
+  const sessionRef = useRefMR(null as any);
+  const passedRef = useRefMR(false);
+
+  // 建会话 + 2 秒轮询
+  useEffectMR(() => {
+    let live = true;
+    let timer: any = null;
+    setSession(null); setErr(''); setOpened(false);
+    passedRef.current = false;
+    (async () => {
+      try {
+        const s = await RealAuthApi.start(captureId);
+        if (!live) return;
+        sessionRef.current = s;
+        setSession(s);
+      } catch (e: any) {
+        if (live) setErr(e?.message || '认证通道建立失败，请重试');
+        return;
+      }
+      const poll = async () => {
+        if (!live || !sessionRef.current) return;
+        try {
+          const s = await RealAuthApi.get(sessionRef.current.id);
+          if (!live) return;
+          sessionRef.current = s;
+          setSession(s);
+        } catch { /* 单次轮询失败不打断，下一轮继续 */ }
+        if (live) timer = setTimeout(poll, 2000);
+      };
+      timer = setTimeout(poll, 2000);
+    })();
+    return () => { live = false; if (timer) clearTimeout(timer); };
+  }, [captureId, startSeq]);
+
+  // 认证通过 → 核验并登记肖像授权；服务端说「刷脸尚未完成」时回到等待，不当作失败
+  useEffectMR(() => {
+    if (!session || session.status !== 'active' || passedRef.current) return;
+    let live = true;
+    let retry: any = null;
+    setRegistering(true);
+    CaptureApi.verify(captureId)
+      .then((r: any) => { if (!live) return; passedRef.current = true; onPassed(r); })
+      .catch((e: any) => {
+        if (!live) return;
+        if (e?.code === 'DAP_AUTH_NOT_COMPLETED') retry = setTimeout(() => setVerifySeq((n) => n + 1), 2000);
+        else setErr(e?.message || '核验没有通过，请重新认证');
+      })
+      .finally(() => { if (live) setRegistering(false); });
+    return () => { live = false; if (retry) clearTimeout(retry); };
+  }, [session && session.status, verifySeq]);
+
+  const restart = () => { setErr(''); setStartSeq((n) => n + 1); };
+
+  const openAuthPage = () => {
+    if (!session?.h5Url) return;
+    setOpened(true);
+    window.open(session.h5Url, '_blank', 'noopener');
+  };
+
+  // 认证链接短时有效：重新拉一次会话即可拿到新链接
+  const refreshLink = async () => {
+    if (!sessionRef.current || refreshing) return;
+    setRefreshing(true);
+    try {
+      const s = await RealAuthApi.get(sessionRef.current.id);
+      sessionRef.current = s;
+      setSession(s);
+      toast('已换新的认证链接', { tone: 'ok' });
+    } catch (e: any) {
+      setErr(e?.message || '获取认证链接失败，请重新认证');
+    } finally { setRefreshing(false); }
+  };
+
+  const status = err ? 'error' : (session?.status || 'preparing');
+  const TONE: any = {
+    error:         { c: 'var(--err)', s: 'var(--err-s)' },
+    failed:        { c: 'var(--err)', s: 'var(--err-s)' },
+    active:        { c: 'var(--ok)', s: 'var(--ok-s)' },
+    awaiting_auth: { c: 'var(--primary)', s: 'var(--primary-soft)' },
+    validating:    { c: 'var(--primary)', s: 'var(--primary-soft)' },
+    preparing:     { c: 'var(--ink-2)', s: 'var(--surface-3)' },
+  };
+  const HEAD: any = {
+    error:         { title: '认证没有完成', desc: err },
+    failed:        { title: '认证未通过', desc: session?.failReason || '本次刷脸没有通过，请在光线充足的环境下重新认证。' },
+    active:        { title: '认证通过', desc: registering ? '正在登记肖像授权…' : '实名信息核验一致，正在继续。' },
+    awaiting_auth: { title: '去完成刷脸认证', desc: '点击下方按钮打开认证页面，按提示完成本人刷脸；完成后回到这里等待结果即可。' },
+    validating:    { title: '认证结果核验中', desc: '正在比对本人实名信息，请稍候，不要离开本页。' },
+    preparing:     { title: '正在准备实名认证', desc: '正在为你建立本次认证通道…' },
+  };
+  const tone = TONE[status] || TONE.preparing;
+  const head = HEAD[status] || HEAD.preparing;
+  const spinning = status === 'preparing' || status === 'validating' || (status === 'active' && registering);
+
+  return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
+    hMR(CenterNav, { onClose }),
+    hMR('div', { className: 'm-body', style: { padding: '2px 22px 0', textAlign: 'center' } },
+      hMR('div', { className: 'm-fade' },
+        // 状态图标
+        hMR('div', { style: { width: 56, height: 56, borderRadius: 18, margin: '2px auto 14px', display: 'grid', placeItems: 'center', background: tone.s, color: tone.c } },
+          spinning
+            ? hMR(UI.Spinner, { size: 22, c: tone.c })
+            : hMR(status === 'active' ? Icons.check : status === 'awaiting_auth' ? Icons.scan : Icons.warn, { size: 26, stroke: 2.2 })),
+        hMR('h1', { style: { fontSize: 22, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, head.title),
+        subjectName && hMR('div', { className: 'm-clip1', style: { fontSize: 12.5, color: 'var(--ink-3)', margin: '0 auto 8px', maxWidth: 280 } }, '正在为「' + subjectName + '」完成实名认证'),
+        hMR('p', { style: { fontSize: 13, color: status === 'error' || status === 'failed' ? 'var(--err)' : 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 18px', maxWidth: 290, wordBreak: 'break-word' } }, head.desc),
+
+        // 操作区
+        status === 'awaiting_auth' && hMR('div', { style: { margin: '0 auto 16px', maxWidth: 300 } },
+          hMR(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.scan, onClick: openAuthPage }, '去刷脸认证'),
+          hMR('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10 } },
+            hMR('span', { style: { fontSize: 11.5, color: 'var(--ink-3)', lineHeight: 1.45, textAlign: 'left', flex: 1, minWidth: 0 } },
+              opened ? '完成后回到本页，结果会自动更新。' : '认证链接短时有效，打不开就换一个新的。'),
+            hMR('button', { onClick: refreshLink, disabled: refreshing, className: 'm-tap', style: { flex: '0 0 auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 700, color: 'var(--primary)' } }, refreshing ? '获取中…' : '换新链接'))),
+
+        (status === 'failed' || status === 'error') && hMR('div', { style: { marginBottom: 16 } },
+          hMR(UI.Button, { variant: 'primary', icon: Icons.retry, onClick: restart }, '重新认证')),
+
+        hMR(VideoReview, { badge: '肖像已保护', blobUrl, isImage, beauty }),
+        hMR('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 18, padding: '12px 14px', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', textAlign: 'left' } },
+          hMR(Icons.shield, { size: 16, style: { color: 'var(--ok)', flex: '0 0 auto', marginTop: 1 } }),
+          hMR('span', { style: { fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.5 } }, '刷脸认证用于确认本人同意；认证通过后系统会自动登记电子肖像授权，原始素材加密存档。')))));
+}
+
 // —— 身份核验 + 生成（真实管线进度）——
 function RealVerify({ blobUrl, isImage, beauty, stageText, pct, error, onRetry, onClose }) {
   return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
@@ -346,7 +483,7 @@ function RealVerify({ blobUrl, isImage, beauty, stageText, pct, error, onRetry, 
 }
 
 // —— 就绪 + 选择声音 ——
-function RealReady({ avatar, onContinue, onClose }) {
+function RealReady({ avatar, onContinue, onClose, authOnly }) {
   return hMR('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } },
     hMR(CenterNav, { onClose }),
     hMR('div', { className: 'm-body', style: { padding: '2px 22px 28px', textAlign: 'center' } },
@@ -354,28 +491,38 @@ function RealReady({ avatar, onContinue, onClose }) {
         hMR('div', { style: { width: 64, height: 64, margin: '4px auto 18px', position: 'relative', display: 'grid', placeItems: 'center' } },
           hMR('div', { style: { position: 'absolute', inset: 8, borderRadius: 99, background: 'var(--primary-soft)' } }),
           hMR('div', { style: { position: 'relative', width: 44, height: 44, borderRadius: 14, background: 'var(--primary)', display: 'grid', placeItems: 'center', color: '#fff' } }, hMR(Icons.check, { size: 24, stroke: 2.6 }))),
-        hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, '你的数字人已就绪！'),
-        hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 20px', maxWidth: 260 } }, '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
+        hMR('h1', { style: { fontSize: 25, fontWeight: 800, letterSpacing: '-.02em', margin: '0 0 8px' } }, authOnly ? '实名认证已完成！' : '你的数字人已就绪！'),
+        hMR('p', { style: { fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55, margin: '0 auto 20px', maxWidth: 260 } },
+          authOnly ? '肖像授权已登记，这个形象现在可以正常用于合成出片。' : '下一步可精调脸型、肤质与滤镜，满意后再保存到名录。'),
         avatar && avatar.imageUrl && hMR('div', { style: { width: 170, margin: '0 auto 20px', borderRadius: 'var(--r-xl)', overflow: 'hidden', boxShadow: 'var(--sh-2)' } },
           hMR(Portrait, { char: avatar, variant: 'key', ratio: '4 / 5', expr: 'calm' })),
-        hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.sliders, onClick: onContinue }, '继续精调'))),
+        authOnly
+          ? hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.check, onClick: onClose }, '完成')
+          : hMR(UI.Button, { variant: 'dark', full: true, size: 'lg', icon: Icons.sliders, onClick: onContinue }, '继续精调'))),
     hMR('div', { style: { flex: '0 0 auto', padding: '8px 22px calc(14px + var(--home-ind))', textAlign: 'center' } },
       hMR('button', { onClick: onClose, style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700, color: 'var(--ink-3)' } }, '稍后再说')));
 }
 
-// —— 外壳：编排 capture → footage → verify → generate ——
+// —— 外壳：编排 capture → footage → 刷脸认证 → verify → generate ——
+//   char 传入既有资产时（授权页 / 资产详情的「去认证」入口）复用该资产，不再新建。
 function MRealCapture({ char, ctx }) {
-  const [stage, setStage] = useStateMR('intro'); // intro | rec | last | verify | ready
+  // 入口带进来的既有资产（不是创建向导的空白草稿）
+  const existing = char && char.id && char.id !== 'DH-NEW' && !char._fresh ? char : null;
+  const [stage, setStage] = useStateMR('intro'); // intro | rec | last | verify | auth | ready
   const [blob, setBlob] = useStateMR(null as any);
   const [blobUrl, setBlobUrl] = useStateMR('');
   const [isImage, setIsImage] = useStateMR(false);
-  const [avatar, setAvatar] = useStateMR(null as any);
+  const [avatar, setAvatar] = useStateMR(existing);
+  const [captureId, setCaptureId] = useStateMR('');
   const [stageText, setStageText] = useStateMR('');
   const [pct, setPct] = useStateMR(null as any);
   const [error, setError] = useStateMR('');
   const [busy, setBusy] = useStateMR(false);
-  const [beauty, setBeauty] = useStateMR(true); // 美颜预览（仅展示层），默认开
-  const nameRef = useRefMR('');
+  const [phase, setPhase] = useStateMR('upload');  // 进度屏当前所处阶段（决定重试走哪一步）
+  const [beauty, setBeauty] = useStateMR(true);    // 美颜预览（仅展示层），默认开
+  const nameRef = useRefMR((existing && existing.name) || '');
+  // 已经出过形象的资产走「补认证」：认证通过即完成，不重复复刻生成
+  const authOnly = !!(existing && existing.imageUrl);
   useEffectMR(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl); }, [blobUrl]);
 
   const acceptBlob = (b: Blob | File, image: boolean) => {
@@ -386,38 +533,62 @@ function MRealCapture({ char, ctx }) {
     setStage('last');
   };
 
-  const runPipeline = async (name: string) => {
+  // 1~2 步：建资产 + 捕获会话 + 上传素材 → 进入实名认证
+  const runUpload = async (name: string) => {
     nameRef.current = name;
-    setBusy(true); setError(''); setStage('verify'); setPct(5); setStageText('创建资产档案…');
+    setBusy(true); setError(''); setPhase('upload'); setStage('verify'); setPct(5); setStageText('创建资产档案…');
     try {
-      // 1. 资产 + 捕获会话
       const a = avatar || await AvatarApi.create({ path: 'real', name });
       setAvatar(a);
       if (a.name !== name) await AvatarApi.patch(a.id, { name });
       const cap = await CaptureApi.create(a.id);
-      // 2. 上传素材
-      setPct(18); setStageText('加密上传素材…');
+      setCaptureId(cap.id);
+      setPct(22); setStageText('加密上传素材…');
       const fd = new FormData();
       const fname = isImage ? 'capture.png' : 'capture.webm';
       fd.append('file', blob, (blob as any).name || fname);
       await CaptureApi.footage(cap.id, fd);
-      // 3. 身份核验（自动登记授权）
-      setPct(34); setStageText('身份核验 · 登记电子授权…');
-      await CaptureApi.verify(cap.id);
-      // 4. 复刻生成
-      setPct(42); setStageText('复刻数字形象…');
-      const job = await AvatarApi.generate(a.id, { mode: 'upload', captureId: cap.id });
+      setStage('auth');
+    } catch (e: any) {
+      setError(e?.message || '素材上传失败，请重试');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 4 步：复刻生成（认证通过、授权登记后）
+  const runGenerate = async (capId: string) => {
+    const a = avatar;
+    if (!a) { setError('资产信息丢失，请重新开始'); setStage('verify'); return; }
+    setBusy(true); setError(''); setPhase('generate'); setStage('verify'); setPct(42); setStageText('复刻数字形象…');
+    try {
+      const job = await AvatarApi.generate(a.id, { mode: 'upload', captureId: capId });
       await awaitJob(job.id, (j) => { setPct(42 + (j.pct || 0) * 0.55); setStageText(j.eta || '复刻数字形象…'); });
       const fresh = await AvatarApi.get(a.id);
       setAvatar(fresh);
       setPct(100);
       setStage('ready');
-      toast('数字人已生成 · 肖像授权已保存', { tone: 'ok' });
+      ctx.reload && ctx.reload();
+      toast('数字人已生成 · 肖像授权已登记', { tone: 'ok' });
     } catch (e: any) {
       setError(e?.message || '生成失败，请重试');
     } finally {
       setBusy(false);
     }
+  };
+
+  // 认证通过 + 授权登记完成
+  const onAuthPassed = async () => {
+    if (authOnly) {
+      const fresh = avatar ? await AvatarApi.get(avatar.id).catch(() => avatar) : avatar;
+      setAvatar(fresh);
+      setStage('ready');
+      ctx.reload && ctx.reload();
+      toast('实名认证通过 · 肖像授权已登记', { tone: 'ok' });
+      return;
+    }
+    toast('实名认证通过 · 肖像授权已登记', { tone: 'ok' });
+    runGenerate(captureId);
   };
 
   const continueAdjust = async () => {
@@ -428,7 +599,7 @@ function MRealCapture({ char, ctx }) {
   };
 
   return hMR('div', { className: 'm-overlay', 'data-screen-label': '真人捕获' },
-    stage === 'intro' && hMR(RealIntro, { onClose: ctx.back,
+    stage === 'intro' && hMR(RealIntro, { onClose: ctx.back, subjectName: existing && existing.name,
       onUpload: (f: File) => acceptBlob(f, (f.type || '').startsWith('image/')),
       onReady: () => setStage('rec') }),
     stage === 'rec' && hMR(RealRecording, {
@@ -438,11 +609,14 @@ function MRealCapture({ char, ctx }) {
     stage === 'last' && hMR(RealLastStep, { defaultName: nameRef.current, blobUrl, isImage, busy, onClose: ctx.back,
       beauty, onToggleBeauty: () => setBeauty(b => !b),
       onRetry: () => setStage('rec'),
-      onCreate: (n) => runPipeline(n) }),
+      onCreate: (n) => runUpload(n) }),
     stage === 'verify' && hMR(RealVerify, { blobUrl, isImage, beauty, stageText, pct, error,
-      onRetry: () => runPipeline(nameRef.current || '我的数字人'),
+      onRetry: () => (phase === 'generate' ? runGenerate(captureId) : runUpload(nameRef.current || '我的数字人')),
       onClose: () => { if (!busy) ctx.back(); } }),
-    stage === 'ready' && hMR(RealReady, { avatar, onClose: ctx.back, onContinue: continueAdjust }));
+    stage === 'auth' && hMR(RealAuth, { captureId, subjectName: avatar && avatar.name, blobUrl, isImage, beauty,
+      onPassed: onAuthPassed,
+      onClose: ctx.back }),
+    stage === 'ready' && hMR(RealReady, { avatar, authOnly, onClose: ctx.back, onContinue: continueAdjust }));
 }
 
 export { MRealCapture };

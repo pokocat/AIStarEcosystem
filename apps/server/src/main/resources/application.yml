@@ -234,6 +234,16 @@ aep:
       chat-model: ${AEP_DAP_DEV_SEED_CHAT_MODEL:fake-chat}
       image-model: ${AEP_DAP_DEV_SEED_IMAGE_MODEL:fake-image}
       video-model: ${AEP_DAP_DEV_SEED_VIDEO_MODEL:fake-video}
+    # 七牛云 modelink 素材合规（v0.105：真人授权刷脸认证 + 素材送审）。
+    # 接入点（baseUrl / apiKey / model）走 admin「AI 应用绑定」的用途 DAP_REAL_AVATAR，此处不配。
+    # callback-base-url：刷脸完成后浏览器回跳我们 /api/v1/real-auth/callback 的站点根（生产须 https）。
+    # allow-mock：未绑定端点时是否走内存 mock —— dev 默认 true（无端点也能联调全链路，行打 mock=true）；
+    #             mysql/生产 profile 默认 false → 开启会话直接 503 DAP_MODELINK_NOT_CONFIGURED（§8.0）。
+    modelink:
+      callback-base-url: ${AEP_DAP_MODELINK_CALLBACK_BASE:http://localhost:8080}
+      allow-mock: ${AEP_DAP_MODELINK_ALLOW_MOCK:true}
+      poll-interval-seconds: ${AEP_DAP_MODELINK_POLL_INTERVAL_SECONDS:10}
+      http-timeout-seconds: ${AEP_DAP_MODELINK_HTTP_TIMEOUT_SECONDS:30}
     # 异步生成任务并发上限（dapJobExecutor 线程池大小）
     max-concurrent: ${AEP_DAP_MAX_CONCURRENT:3}
     # 月度赠送算力（点）；首次访问账户 / 提交任务时按月幂等发放。0 = 不发放。

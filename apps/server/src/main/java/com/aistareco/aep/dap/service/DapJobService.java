@@ -59,19 +59,36 @@ public class DapJobService {
 
     public DapJob submit(String userId, DapAvatar avatar, String type, String kind, String engine,
                          long cost, String eta, Map<String, Object> payload) {
+        return submit(userId, avatar, null, null, type, kind, engine, cost, eta, payload);
+    }
+
+    /**
+     * 非人物资产作业（场景 / 产品 / 合成）—— 没有 DapAvatar 实体，用 assetId + 展示名建单。
+     * 扣费 / 派发 / 重试语义与人物作业完全一致。
+     */
+    public DapJob submitAsset(String userId, String assetId, String assetName, String type, String kind,
+                              String engine, long cost, String eta, Map<String, Object> payload) {
+        return submit(userId, null, assetId, assetName, type, kind, engine, cost, eta, payload);
+    }
+
+    private DapJob submit(String userId, DapAvatar avatar, String assetId, String assetName,
+                          String type, String kind, String engine,
+                          long cost, String eta, Map<String, Object> payload) {
         requireEngineOrPlaceholderAllowed();
         accountService.ensureMonthlyGrant(userId);
 
+        String subject = avatar != null ? avatar.getId() : (assetId != null ? assetId : "-");
         String id = uniqueId();
         if (cost > 0) {
             // 余额不足在此抛 402，作业不落库
-            creditService.hold(userId, cost, REF_TYPE, id + ":r0", kind + "（" + (avatar != null ? avatar.getId() : "-") + "）");
+            creditService.hold(userId, cost, REF_TYPE, id + ":r0", kind + "（" + subject + "）");
         }
         DapJob job = DapJob.builder()
                 .id(id)
                 .ownerUserId(userId)
                 .avatarId(avatar != null ? avatar.getId() : null)
-                .charName(avatar != null ? avatar.getName() : null)
+                .assetId(assetId)
+                .charName(avatar != null ? avatar.getName() : assetName)
                 .kind(kind)
                 .type(type)
                 .engine(engine)
@@ -88,8 +105,8 @@ public class DapJobService {
                 .build();
         jobRepo.save(job);
         runner.run(id);
-        log.info("[dap-job] submitted id={} type={} avatar={} mode={} engine={} cost={} stage=queued",
-                id, type, job.getAvatarId(), job.getMode(), job.getEngine(), cost);
+        log.info("[dap-job] submitted id={} type={} subject={} mode={} engine={} cost={} stage=queued",
+                id, type, subject, job.getMode(), job.getEngine(), cost);
         return job;
     }
 
@@ -137,8 +154,10 @@ public class DapJobService {
         }
         int r = job.getRetryCount() + 1;
         if (job.getCost() > 0) {
+            String subject = job.getAvatarId() != null ? job.getAvatarId()
+                    : (job.getAssetId() != null ? job.getAssetId() : "-");
             creditService.hold(userId, job.getCost(), REF_TYPE, job.getId() + ":r" + r,
-                    job.getKind() + " 重试（" + job.getAvatarId() + "）");
+                    job.getKind() + " 重试（" + subject + "）");
         }
         job.setRetryCount(r);
         job.setStatus("running");

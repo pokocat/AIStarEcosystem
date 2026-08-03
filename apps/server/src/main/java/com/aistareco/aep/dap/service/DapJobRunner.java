@@ -55,6 +55,8 @@ public class DapJobRunner {
     private final CreditService creditService;
     private final DapSupport support;
     private final PromptService prompts;
+    private final DapImageInput imageInput;
+    private final DapAssetJobs assetJobs;
 
     public DapJobRunner(DapJobRepository jobRepo,
                         DapAvatarRepository avatarRepo,
@@ -67,7 +69,9 @@ public class DapJobRunner {
                         FileStorageService storage,
                         CreditService creditService,
                         DapSupport support,
-                        PromptService prompts) {
+                        PromptService prompts,
+                        DapImageInput imageInput,
+                        DapAssetJobs assetJobs) {
         this.jobRepo = jobRepo;
         this.avatarRepo = avatarRepo;
         this.derivRepo = derivRepo;
@@ -80,6 +84,8 @@ public class DapJobRunner {
         this.creditService = creditService;
         this.support = support;
         this.prompts = prompts;
+        this.imageInput = imageInput;
+        this.assetJobs = assetJobs;
     }
 
     // ── prompt 解析（admin「Prompt 管理」可改；resource .md 兜底）───────────────
@@ -115,6 +121,12 @@ public class DapJobRunner {
                 case DapJob.T_WARP -> runWarp(job);
                 case DapJob.T_LOOK -> runLook(job);
                 case DapJob.T_DERIVE -> runDerive(job);
+                // 数字资产平台（场景 / 产品 / 跨资产合成）—— 进度与取消仍由本 runner 掌管
+                case DapJob.T_SCENE_GEN -> job.setResult(assetJobs.runSceneGen(job, sink(job)));
+                case DapJob.T_SCENE_VARIANT -> job.setResult(assetJobs.runSceneVariant(job, sink(job)));
+                case DapJob.T_PRODUCT_GEN -> job.setResult(assetJobs.runProductGen(job, sink(job)));
+                case DapJob.T_PRODUCT_ANGLE -> job.setResult(assetJobs.runProductAngle(job, sink(job)));
+                case DapJob.T_COMPOSE -> job.setResult(assetJobs.runCompose(job, sink(job)));
                 default -> throw new IllegalStateException("未知任务类型 " + job.getType());
             }
             commitCredits(job);
@@ -138,6 +150,17 @@ public class DapJobRunner {
             releaseCredits(job, "生成失败");
             fail(job, "生成失败", e.getMessage());
         }
+    }
+
+    /**
+     * 资产 / 合成执行器的进度钩子：进度回写与取消判定仍归本 runner，
+     * {@link DapAssetJobs} 只管产物本身（终态 / 计费 / 心跳统一在这里收口）。
+     */
+    private DapAssetJobs.Progress sink(DapJob job) {
+        return new DapAssetJobs.Progress() {
+            @Override public void step(int pct, String stage, String eta) { progress(job, pct, stage, eta); }
+            @Override public void checkCancel() { DapJobRunner.this.checkCancel(job); }
+        };
     }
 
     // ── 各类型执行 ────────────────────────────────────────────
@@ -662,71 +685,9 @@ public class DapJobRunner {
         return inputs;
     }
 
-    /** dataURI 输入超过该字节数时先压缩（缓解大请求体导致的 EOF/超时）。 */
-    private static final int DATAURI_COMPRESS_THRESHOLD_BYTES = 300 * 1024;
-    private static final int DATAURI_MAX_WIDTH = 768;
-
     /** storage key → Agnes 可消费的图片输入（公网 URL 或 dataURI；大图自动压缩）。 */
     private String toAgnesImageInput(String key) {
-        String url = storage.signedUrl(key);
-        boolean publicUrl = url != null && (url.startsWith("http://") || url.startsWith("https://"))
-                && !url.contains("//localhost") && !url.contains("//127.0.0.1") && !url.contains("//0.0.0.0");
-        if (publicUrl) {
-            return url; // OSS / CDN 公网可达；localhost（本地 fake-CDN）对 Agnes 云端不可达 → 走下方 dataURI
-        }
-        try {
-            Path p = storage.openForRead(key);
-            byte[] bytes = Files.readAllBytes(p);
-            String mime = key.endsWith(".jpg") || key.endsWith(".jpeg") ? "image/jpeg"
-                    : key.endsWith(".webp") ? "image/webp" : "image/png";
-            if (bytes.length > DATAURI_COMPRESS_THRESHOLD_BYTES) {
-                byte[] compressed = compressToJpeg(bytes, DATAURI_MAX_WIDTH);
-                if (compressed != null && compressed.length < bytes.length) {
-                    log.info("[dap] 身份图压缩 key={} {}B → {}B（dataURI 上行）", key, bytes.length, compressed.length);
-                    bytes = compressed;
-                    mime = "image/jpeg";
-                }
-            }
-            return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
-        } catch (IOException e) {
-            log.warn("[dap] 读取身份图失败 key={}: {}", key, e.getMessage());
-            return null;
-        }
-    }
-
-    /** 等比缩到 maxWidth 宽 + JPEG q0.82（PNG alpha 铺白底）。失败返回 null（调用方用原图）。 */
-    private static byte[] compressToJpeg(byte[] raw, int maxWidth) {
-        try {
-            java.awt.image.BufferedImage src = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(raw));
-            if (src == null) return null;
-            int w = src.getWidth(), h = src.getHeight();
-            int outW = Math.min(w, maxWidth);
-            int outH = (int) Math.round(h * (outW / (double) w));
-            java.awt.image.BufferedImage out =
-                    new java.awt.image.BufferedImage(outW, outH, java.awt.image.BufferedImage.TYPE_INT_RGB);
-            java.awt.Graphics2D g = out.createGraphics();
-            g.setColor(java.awt.Color.WHITE);
-            g.fillRect(0, 0, outW, outH);
-            g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
-                    java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.drawImage(src, 0, 0, outW, outH, null);
-            g.dispose();
-
-            var writer = javax.imageio.ImageIO.getImageWritersByFormatName("jpeg").next();
-            var param = writer.getDefaultWriteParam();
-            param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
-            param.setCompressionQuality(0.82f);
-            var bos = new java.io.ByteArrayOutputStream();
-            try (var ios = javax.imageio.ImageIO.createImageOutputStream(bos)) {
-                writer.setOutput(ios);
-                writer.write(null, new javax.imageio.IIOImage(out, null, null), param);
-            } finally {
-                writer.dispose();
-            }
-            return bos.toByteArray();
-        } catch (Exception e) {
-            return null;
-        }
+        return imageInput.of(key);
     }
 
     // ── 占位视频（ffmpeg lavfi）────────────────────────────────

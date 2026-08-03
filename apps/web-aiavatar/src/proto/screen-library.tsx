@@ -7,6 +7,7 @@ import { DATA, AvatarApi, LicenseApi, PlazaAdminApi, awaitJob, useApi, seed, USE
 import { Portrait } from "./portrait";
 import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
+import { MaterialSection } from "./material-status";
 import { toast } from "./toast";
 
 // ============================================================
@@ -159,8 +160,13 @@ function MAssetCard({ char, onOpen }) {
     hML(Icons.chevR, { size: 18, stroke: 2, style: { color: 'var(--ink-4)', flex: '0 0 auto' } }));
 }
 
-function MLibrary({ ctx }) {
-  const [top, setTop] = useStateML('mine'); // mine | public
+/**
+ * 数字人库 / 数字人广场。
+ * `plazaOnly`：作为「资产库 → 资产广场」的内嵌面板使用 —— 隐藏自己的顶部 tab
+ * （由外层资产库统一渲染），只保留广场内容与运营内嵌后台。
+ */
+function MLibrary({ ctx, plazaOnly = false }: any) {
+  const [top, setTop] = useStateML(plazaOnly ? 'public' : 'mine'); // mine | public
   const [cat, setCat] = useStateML('all');
   const [q, setQ] = useStateML('');
   const [view, setView] = useStateML('grid');
@@ -192,8 +198,8 @@ function MLibrary({ ctx }) {
     { key: 'ugc', label: 'UGC' }, { key: 'community', label: '社区' }, { key: 'fav', label: '收藏' },
   ];
 
-  return hML('div', { className: 'm-body has-tabbar', 'data-screen-label': '数字人库' },
-    hML('div', { className: 'wx-nav', style: { paddingLeft: 18 } },
+  return hML('div', { className: 'm-body has-tabbar', 'data-screen-label': plazaOnly ? '资产广场' : '数字人库' },
+    !plazaOnly && hML('div', { className: 'wx-nav', style: { paddingLeft: 18 } },
       hML('div', { style: { flex: 1, minWidth: 0, display: 'flex', gap: 22 } },
         [['mine', '我的数字人'], ['public', '数字人广场']].map(([k, l]) => {
           const on = top === k;
@@ -451,6 +457,19 @@ function MAppliedTo({ refs }) {
       })));
 }
 
+/** 真人形象缺生效肖像授权时的顶部提示条 —— 一步跳到实名认证。 */
+function MNeedAuthBar({ char, ctx }) {
+  return hML('div', { style: {
+    margin: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px',
+    background: 'var(--warn-s)', border: '1px solid color-mix(in oklab, var(--warn) 32%, transparent)',
+    borderRadius: 'var(--r-md)' } },
+    hML(Icons.warn, { size: 17, stroke: 2, style: { color: 'var(--warn)', flex: '0 0 auto' } }),
+    hML('span', { style: { flex: 1, minWidth: 0, fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.45 } },
+      '该真人形象尚未完成肖像授权，部分功能不可用'),
+    hML(UI.Button, { variant: 'primary', size: 'sm', icon: Icons.scan,
+      onClick: () => ctx.startRealAuth(char) }, '去认证'));
+}
+
 function MDetail({ char: initialChar, ctx }) {
   const [char, setChar] = useStateML(initialChar);
   const [tab, setTab] = useStateML('assets');
@@ -642,6 +661,9 @@ function MDetail({ char: initialChar, ctx }) {
       isPublic
         ? hML(MPublicShowcase, { char })
         : hML(React.Fragment, null,
+          // 真人形象缺生效肖像授权 → 顶部提示 +「去认证」
+          char.path === 'real' && !char.license && hML(MNeedAuthBar, { char, ctx }),
+
           // 概览统计
           hML('div', { className: 'm-card', style: { margin: '12px 18px 0', padding: '14px 16px', display: 'flex', justifyContent: 'space-between' } },
             [['版本', char.versions], ['作品', totalAssets], ['视频', counts.video || 0], ['更新', char.updated]].map(([k, v], i) =>
@@ -654,6 +676,14 @@ function MDetail({ char: initialChar, ctx }) {
 
           // v0.61 反向「应用于」：被 music/drama 艺人壳引用时展示（空列表不渲染）
           refs.length > 0 && hML(MAppliedTo, { refs }),
+
+          // v0.105 平台审核：AI 原创形象可主动提交；真人形象只读展示审核结果（无记录不渲染）
+          hML(MaterialSection, {
+            refType: 'avatar', refId: char.id,
+            mode: char.path === 'ai' ? 'submit' : 'readonly',
+            hint: char.path === 'ai' ? '提交形象至内容安全审核，通过后可用于视频生成。' : undefined,
+            style: { margin: '12px 18px 0' },
+          }),
 
           // tabs
           hML('div', { style: { position: 'sticky', top: 0, zIndex: 5, background: 'var(--canvas)', padding: '16px 18px 0', marginTop: 6 } },

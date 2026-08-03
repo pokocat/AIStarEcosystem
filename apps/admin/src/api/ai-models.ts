@@ -34,6 +34,7 @@ export type AiModelPurpose =
   | "DAP_PERSONA"
   | "DAP_IMAGE"
   | "DAP_VIDEO"
+  | "DAP_REAL_AVATAR"
   | "GENERAL";
 
 export type AiModelBillingMode = "TOKENS" | "PER_CALL" | "PER_SECOND";

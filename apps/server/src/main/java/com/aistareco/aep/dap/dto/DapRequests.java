@@ -56,4 +56,10 @@ public final class DapRequests {
 
     /** POST /api/v1/voices/preview */
     public record VoicePreviewRequest(String voiceId, String text) {}
+
+    /** POST /api/v1/real-auth/sessions —— 开启真人授权（刷脸认证）会话。 */
+    public record CreateRealAuthSessionRequest(String captureId) {}
+
+    /** POST /api/v1/materials —— 送审素材。refType = avatar（定妆图）| capture（重交失败的捕获素材）。 */
+    public record SubmitMaterialRequest(String refType, String refId) {}
 }
