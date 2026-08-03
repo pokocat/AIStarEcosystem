@@ -113,7 +113,7 @@ class DapCaptureServiceTest {
         licenseService = new DapLicenseService(licenseRepo, storage, new DapSupport());
         realAuth = mock(DapRealAuthService.class);
         materialService = new DapMaterialService(materialRepo, mock(DapAvatarRepository.class), captureRepo,
-                realAuth, modelink, storage, new DapSupport());
+                realAuth, mock(DapAigcGroupResolver.class), modelink, storage, new DapSupport());
         svc = new DapCaptureService(captureRepo, groupRepo, avatarService, licenseService, realAuth,
                 materialService, storage, new DapSupport());
 

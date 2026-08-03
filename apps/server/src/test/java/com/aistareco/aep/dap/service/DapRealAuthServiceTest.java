@@ -211,6 +211,65 @@ class DapRealAuthServiceTest {
         assertNotEquals(token, groups.get(retry.id()).getCallbackToken());
     }
 
+    // ── 配额治理（v0.105-补丁）─────────────────────────────────
+
+    @Test
+    void retryAfterFailureRecyclesTheOldUpstreamGroup() {
+        // modelink 账号级只有 3 个分组：失败重试若不删旧组，两次重试就把配额漏光
+        stubCreate("qg-1");
+        RealAuthSessionDto first = svc.start(USER, "CAP-1");
+        groups.get(first.id()).setStatus("failed");
+
+        when(modelink.createGroup(eq("liveness_face"), anyString(), anyString(), anyString()))
+                .thenReturn(new GroupState("qg-2", "pending", null, null, null));
+        RealAuthSessionDto retry = svc.start(USER, "CAP-1");
+
+        verify(modelink).deleteGroup("qg-1");
+        assertNotNull(groups.get(first.id()).getRecycledAt(), "删成功才打回收标记");
+        assertEquals("qg-2", groups.get(retry.id()).getQgroupid());
+    }
+
+    @Test
+    void recycleFailureDoesNotBlockTheNewSession() {
+        stubCreate("qg-1");
+        RealAuthSessionDto first = svc.start(USER, "CAP-1");
+        groups.get(first.id()).setStatus("failed");
+        doThrow(new BusinessException(HttpStatus.CONFLICT, "DAP_MODELINK_GROUP_NOT_DELETABLE", "组内非空"))
+                .when(modelink).deleteGroup("qg-1");
+        when(modelink.createGroup(eq("liveness_face"), anyString(), anyString(), anyString()))
+                .thenReturn(new GroupState("qg-2", "pending", null, null, null));
+
+        RealAuthSessionDto retry = svc.start(USER, "CAP-1");
+
+        assertNotEquals(first.id(), retry.id(), "回收失败只 WARN，新会话照建");
+        assertEquals("preparing", retry.status());
+        assertNull(groups.get(first.id()).getRecycledAt(), "没删掉就不打标记，留给回收器下轮再试");
+    }
+
+    @Test
+    void activeGroupIsNeverRecycled() {
+        stubCreate("qg-1");
+        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        DapMaterialGroup g = groups.get(created.id());
+        g.setStatus("active");
+
+        assertFalse(svc.recycleGroup(g), "active = 生效授权的取证凭据，绝不删");
+        verify(modelink, never()).deleteGroup(anyString());
+        assertNull(g.getRecycledAt());
+    }
+
+    @Test
+    void recycleIsIdempotent() {
+        stubCreate("qg-1");
+        RealAuthSessionDto created = svc.start(USER, "CAP-1");
+        DapMaterialGroup g = groups.get(created.id());
+        g.setStatus("failed");
+
+        assertTrue(svc.recycleGroup(g));
+        assertFalse(svc.recycleGroup(g), "已回收的行不再打上游");
+        verify(modelink, times(1)).deleteGroup("qg-1");
+    }
+
     @Test
     void validatingHoldsUntilRemoteDecides() {
         stubCreate("qg-1");

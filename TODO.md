@@ -669,14 +669,30 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 ### 外部依赖 / 配额
 
-- [ ] **modelink 账号默认限 3 个分组 / 30 个素材，而 liveness 是「每次捕获建一个分组」→ 需要终态分组清理策略**：
-  `DapRealAuthService.start` 对同一次捕获会幂等复用未 failed 的会话，但**每次新的真人捕获都会新建一个
-  `liveness_face` 分组**（`dap_material_group`），高频认证很快撞上游配额（撞上时 `HttpModelinkGateway`
-  按 429 → `DAP_MODELINK_QUOTA`，用户侧表现为「认证通道建立失败」）。上游 `DELETE /v1/asset-groups`
-  要求**组内为空且状态非 pending**，所以清理不是「删了就行」——要先决定终态（active / failed）分组下
-  已送审素材的处置：保留作取证 vs 随组一起清。定位：`DapRealAuthService.start`（建组）+
-  `DapMaterialService.submitForCapture`（往组里塞素材）+ `ModelinkGateway`（缺 deleteGroup 动作）。
-  取舍记录见 `apps/web-aiavatar/DECISIONS.md` §M。
+- [x] ~~**modelink 账号默认限 3 个分组 / 30 个素材，而 liveness 是「每次捕获建一个分组」→ 需要终态分组清理策略**~~
+  **v0.105 收尾补丁完成，2026-08-02**：`ModelinkGateway.deleteGroup` 补齐（`DELETE /v1/asset-groups/{id}`，
+  409 → 可识别的 `DAP_MODELINK_GROUP_NOT_DELETABLE`，调用方 best-effort 吞）；`DapRealAuthService.start`
+  在为 failed 会话另建分组**之前**先 `recycleGroup(existing)` 删旧组还配额（删失败只 WARN 不阻断）；
+  `DapModelinkPoller.reclaimTerminalGroups()` 低频回收超期 failed 分组（`group-retention-hours` 默认 24h
+  且本地无非 failed 素材）。**终态素材处置的取舍已定：按状态分流** —— `active` 组连同素材永久保留
+  （生效授权的取证凭据，绝不删），`failed` 组必然无素材（素材只在 verify 通过后才送审）故可安全删；
+  本地行保留并打 `recycledAt`，不物理删。配额打满从笼统 502 升级为 503 `DAP_MODELINK_QUOTA_EXCEEDED`
+  （带运维处置指引）。测试见 `DapModelinkPollerTest` / `DapRealAuthServiceTest` / `DapModelinkGatewayTest`。
+
+- [x] ~~**AI 原创人物送审走平台默认组**（原 `DECISIONS.md` §M 决策）~~
+  **v0.105 收尾补丁推翻并改造，2026-08-02**：改为送进**数字人专属 aigc 分组**（`DapAigcGroupResolver`，
+  账号级共享单例、owner=`__platform__`、去重键 `aigc:<model>` 复用 `callbackToken` 的 unique 列、
+  JVM 锁 + `REQUIRES_NEW` 独立事务保幂等；组未 active 时本次退回默认组，不阻断送审）。
+  线上专属分组已用真实 API 建好：`qgroup-1383618387-1785727504389729758`（配 `AEP_DAP_MODELINK_AIGC_QGROUPID`
+  即认领，不自动建组）。推翻理由见 `apps/web-aiavatar/DECISIONS.md` §M 顶部的推翻记录。
+
+- [ ] **账号级 3 个分组上限对「多用户并发真人认证」仍是硬约束 → 需要联系七牛提额**（2026-08-02 新增）：
+  回收器已能还配额，但仍解不开上限本身 —— ① `active` 分组是生效授权的取证凭据，**长期占用**且绝不回收；
+  ② `failed` 分组要等 `group-retention-hours`（默认 24h）才回收；③ 专属 aigc 分组 + 账号默认分组
+  已固定占 2 个槽位（当前占用 2/3）。**当前实际上只剩 1 个槽位可供 liveness 刷脸周转**，
+  意味着同一时间基本只能支撑 1 路真人实名认证，第 2 路会撞 503 `DAP_MODELINK_QUOTA_EXCEEDED`。
+  行动：找七牛把 asset-group / asset 上限提到与预期并发匹配的量级（并确认是否按子账号隔离）；
+  提额前**不要**上真人认证的量。定位：`DapProperties.Modelink` + `DapModelinkPoller.reclaimTerminalGroups`。
 
 ### 契约 / 出 wire
 

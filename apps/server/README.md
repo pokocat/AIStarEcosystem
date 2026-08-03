@@ -420,7 +420,7 @@ src/main/java/com/aistareco/aep/
 | `dap_composition` | **v0.104** 跨资产合成单（CP-xxxx；人物 × 场景 × 产品 → 成片；`licenseNote` 出片前授权核对结论快照） |
 | `dap_composition_output` | **v0.104** 合成产物单张（入库即该 IP 的衍生物） |
 | `dap_asset_usage` | **v0.104** 引用台账（驱动详情页「APPLIED TO · 已用于」；同一对 资产→用处 重复引用累加 `times` 不新增行） |
-| `dap_material_group` | **v0.105** 素材分组（MG-xxxx；七牛 modelink asset-group 本地镜像。`kind=liveness_face` 即真人授权刷脸会话，状态 preparing→awaiting_auth→validating→active/failed；`callbackToken` 唯一，是无 JWT 回跳端点的防伪 state；`validateCalledAt` 是一次性凭证 byted_token 的幂等闸） |
+| `dap_material_group` | **v0.105** 素材分组（MG-xxxx；七牛 modelink asset-group 本地镜像。`kind=liveness_face` 即真人授权刷脸会话，状态 preparing→awaiting_auth→validating→active/failed；`callbackToken` 唯一，是无 JWT 回跳端点的防伪 state；`validateCalledAt` 是一次性凭证 byted_token 的幂等闸；**v0.105-补丁** `kind=aigc` 启用为「数字人专属 aigc 分组」的账号级共享单例行（owner=`__platform__`，`callbackToken` 改承载去重键 `aigc:<model>`）；`recycledAt` = 上游分组已删、配额已还的时间〔本地行保留作审计；账号级只有 3 分组配额，failed 组超期回收、active 组永不删〕） |
 | `dap_material` | **v0.105** 送审素材（MAT-xxxx；modelink asset 本地镜像。`sourceKey` 是 §4.7.4 真值，送审时才派生签名 URL；状态 pending→reviewing→approved/failed；`refType=capture` 挂 liveness 分组、`refType=avatar` 走平台 aigc 默认组） |
 
 ### 核心表（账户与计费域）

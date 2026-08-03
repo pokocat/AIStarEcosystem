@@ -13,7 +13,9 @@ import com.aistareco.aep.dap.service.modelink.ModelinkService;
 import com.aistareco.aep.service.storage.FileStorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -30,6 +32,7 @@ class DapModelinkPollerTest {
     private DapMaterialGroupRepository groupRepo;
     private DapMaterialRepository materialRepo;
     private ModelinkService modelink;
+    private DapProperties props;
     private DapModelinkPoller poller;
 
     @BeforeEach
@@ -40,12 +43,15 @@ class DapModelinkPollerTest {
         when(groupRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(materialRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
+        props = new DapProperties();
         DapRealAuthService realAuth = new DapRealAuthService(groupRepo, mock(DapCaptureRepository.class),
-                modelink, new DapProperties(), new DapSupport());
+                modelink, props, new DapSupport());
+        DapAigcGroupResolver aigc = new DapAigcGroupResolver(groupRepo, modelink, props, new DapSupport(),
+                mock(PlatformTransactionManager.class));
         DapMaterialService materials = new DapMaterialService(materialRepo, mock(DapAvatarRepository.class),
-                mock(DapCaptureRepository.class), realAuth, modelink,
+                mock(DapCaptureRepository.class), realAuth, aigc, modelink,
                 mock(FileStorageService.class), new DapSupport());
-        poller = new DapModelinkPoller(groupRepo, materialRepo, realAuth, materials);
+        poller = new DapModelinkPoller(groupRepo, materialRepo, realAuth, materials, props);
     }
 
     private DapMaterialGroup group(String status) {
@@ -106,6 +112,87 @@ class DapModelinkPollerTest {
         poller.poll();
 
         verifyNoInteractions(modelink);
+    }
+
+    // ── 终态分组回收（配额治理，v0.105-补丁）────────────────────
+
+    private DapMaterialGroup aged(String status, long hoursAgo) {
+        DapMaterialGroup g = group(status);
+        g.setCreatedAt(Instant.now().minus(Duration.ofHours(hoursAgo)));
+        return g;
+    }
+
+    @Test
+    void reclaimsStaleFailedGroupToFreeUpstreamQuota() {
+        DapMaterialGroup g = aged("failed", 48);
+        when(groupRepo.findByKindAndStatusAndRecycledAtIsNullAndCreatedAtBefore(eq("liveness_face"), eq("failed"), any()))
+                .thenReturn(List.of(g));
+        when(materialRepo.countByGroupIdAndStatusNot(eq("MG-1"), eq("failed"))).thenReturn(0L);
+
+        poller.reclaimTerminalGroups();
+
+        verify(modelink).deleteGroup("qg-1");
+        assertNotNull(g.getRecycledAt());
+    }
+
+    @Test
+    void reclaimNeverTouchesActiveGroups() {
+        // 查询本身就只捞 failed —— active 是生效授权的取证凭据，绝不进回收范围
+        when(groupRepo.findByKindAndStatusAndRecycledAtIsNullAndCreatedAtBefore(anyString(), anyString(), any()))
+                .thenReturn(List.of());
+
+        poller.reclaimTerminalGroups();
+
+        verify(groupRepo).findByKindAndStatusAndRecycledAtIsNullAndCreatedAtBefore(eq("liveness_face"), eq("failed"), any());
+        verifyNoInteractions(modelink);
+
+        // 即便有人直接拿 active 行调回收，也必须被挡下
+        DapMaterialGroup active = group("active");
+        assertFalse(new DapRealAuthService(groupRepo, mock(DapCaptureRepository.class), modelink,
+                props, new DapSupport()).recycleGroup(active));
+        verify(modelink, never()).deleteGroup(anyString());
+    }
+
+    @Test
+    void reclaimRespectsRetentionWindow() {
+        // 未超期的行根本不在查询结果里（cutoff = now - retention）
+        props.getModelink().setGroupRetentionHours(24);
+        when(groupRepo.findByKindAndStatusAndRecycledAtIsNullAndCreatedAtBefore(anyString(), anyString(), any()))
+                .thenAnswer(inv -> {
+                    Instant cutoff = inv.getArgument(2, Instant.class);
+                    DapMaterialGroup fresh = aged("failed", 2);
+                    return fresh.getCreatedAt().isBefore(cutoff) ? List.of(fresh) : List.<DapMaterialGroup>of();
+                });
+
+        poller.reclaimTerminalGroups();
+
+        verify(modelink, never()).deleteGroup(anyString());
+    }
+
+    @Test
+    void reclaimSkipsGroupsThatStillHoldMaterials() {
+        DapMaterialGroup g = aged("failed", 48);
+        when(groupRepo.findByKindAndStatusAndRecycledAtIsNullAndCreatedAtBefore(anyString(), anyString(), any()))
+                .thenReturn(List.of(g));
+        when(materialRepo.countByGroupIdAndStatusNot(eq("MG-1"), eq("failed"))).thenReturn(2L);
+
+        poller.reclaimTerminalGroups();
+
+        verify(modelink, never()).deleteGroup(anyString());
+        assertNull(g.getRecycledAt());
+    }
+
+    @Test
+    void reclaimKeepsRowForRetryWhenUpstreamRefusesDelete() {
+        DapMaterialGroup g = aged("failed", 48);
+        when(groupRepo.findByKindAndStatusAndRecycledAtIsNullAndCreatedAtBefore(anyString(), anyString(), any()))
+                .thenReturn(List.of(g));
+        when(materialRepo.countByGroupIdAndStatusNot(anyString(), anyString())).thenReturn(0L);
+        doThrow(new RuntimeException("409 非空")).when(modelink).deleteGroup("qg-1");
+
+        poller.reclaimTerminalGroups();
+
+        assertNull(g.getRecycledAt(), "删失败保留，下轮再试");
     }
 
     @Test

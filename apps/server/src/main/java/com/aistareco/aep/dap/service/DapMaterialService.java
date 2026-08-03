@@ -32,8 +32,9 @@ import java.util.UUID;
  * <ul>
  *   <li><b>真人捕获素材</b>（refType=capture）：{@code captures/{id}/verify} 通过后由
  *       {@link DapCaptureService} best-effort 调用 —— 必须挂在**已 active 的 liveness 分组**下；</li>
- *   <li><b>数字人定妆图</b>（refType=avatar）：用户主动送审，走平台 aigc 默认组
- *       （createAsset 不传 group_id）—— 本地不建 aigc 分组行，避免维护一份会异步 pending 的空壳。</li>
+ *   <li><b>数字人定妆图</b>（refType=avatar）：用户主动送审，挂在**数字人专属 aigc 分组**下
+ *       （账号级共享，见 {@link DapAigcGroupResolver}）；分组尚未 active 时本次退回平台默认组
+ *       （不传 group_id），不阻断送审。</li>
  * </ul>
  *
  * <p>幂等：同一 ref + 同一 sourceKey 已有非 failed 行 → 跳过；failed 后允许重交（建新行）。
@@ -51,6 +52,7 @@ public class DapMaterialService {
     private final DapAvatarRepository avatarRepo;
     private final DapCaptureRepository captureRepo;
     private final DapRealAuthService realAuth;
+    private final DapAigcGroupResolver aigcGroups;
     private final ModelinkService modelink;
     private final FileStorageService storage;
     private final DapSupport support;
@@ -59,6 +61,7 @@ public class DapMaterialService {
                               DapAvatarRepository avatarRepo,
                               DapCaptureRepository captureRepo,
                               DapRealAuthService realAuth,
+                              DapAigcGroupResolver aigcGroups,
                               ModelinkService modelink,
                               FileStorageService storage,
                               DapSupport support) {
@@ -66,6 +69,7 @@ public class DapMaterialService {
         this.avatarRepo = avatarRepo;
         this.captureRepo = captureRepo;
         this.realAuth = realAuth;
+        this.aigcGroups = aigcGroups;
         this.modelink = modelink;
         this.storage = storage;
         this.support = support;
@@ -134,7 +138,7 @@ public class DapMaterialService {
         return submitForCapture(userId, c, g);
     }
 
-    /** 数字人定妆图送审（走平台 aigc 默认组）。已有非 failed 记录 → 幂等返回。 */
+    /** 数字人定妆图送审（挂数字人专属 aigc 分组）。已有非 failed 记录 → 幂等返回。 */
     @Transactional
     public MaterialDto submitAvatarModeration(String userId, String avatarId) {
         DapAvatar a = avatarRepo.findByIdAndOwnerUserId(avatarId, userId)
@@ -145,9 +149,13 @@ public class DapMaterialService {
         }
         DapMaterial existing = findReusable(userId, "avatar", avatarId, a.getImageKey());
         if (existing != null) return MaterialDto.from(existing);
-        // aigc 素材不传 group_id → 平台按 (uid, aigc, model) 落默认组
+        // 数字人专属 aigc 分组；尚未 active（首次使用的异步 pending 窗口）→ 本次不传 group_id，
+        // 由平台按 (uid, aigc, model) 落默认组，best-effort 不阻断送审
+        DapMaterialGroup g = aigcGroups.resolveActiveGroup(modelink.boundModel());
         return MaterialDto.from(submit(userId, "avatar", avatarId, "image",
-                "avatar-" + avatarId, a.getImageKey(), null, null));
+                "avatar-" + avatarId, a.getImageKey(),
+                g == null ? null : g.getId(),
+                g == null ? null : g.getQgroupid()));
     }
 
     private DapMaterial submit(String userId, String refType, String refId, String type,

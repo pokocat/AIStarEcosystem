@@ -93,6 +93,11 @@ public class ModelinkService implements ModelinkGateway {
     }
 
     @Override
+    public void deleteGroup(String qgroupid) {
+        gateway().deleteGroup(qgroupid);
+    }
+
+    @Override
     public void visualValidate(String qgroupid, String resultCode, String bytedToken) {
         gateway().visualValidate(qgroupid, resultCode, bytedToken);
     }
