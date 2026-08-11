@@ -454,7 +454,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **v0.119** | 2026-08-11 | `clip` 数字人改为单视频直创：`speakerId/authId` 都是 Avatar 训练选填项；无音色时 best-effort 提取视频原声创建基础声音，失败不阻断形象，专属录音下沉为可选增强。 |
+| **v0.119** | 2026-08-11 | `clip` 数字人改为单视频直创：`speakerId/authId` 都是 Avatar 训练选填项；无音色时 best-effort 提取视频原声创建基础声音，失败不阻断形象，专属录音下沉为可选增强。预发 FFmpeg 滤镜预检改用 here-string，避免 `pipefail + grep -q` 将成功命中误判为 SIGPIPE 失败。 |
 | **v0.118** | 2026-08-11 | `clip` 数字人创建对齐石榴可选 `authId`：移除 `CLIP_CONSENT_REQUIRED`，普通创建不再要求另录授权视频；历史 authId 兼容携带，requirements 显式返回 `authorizationVideoRequired=false`。 |
 | **v0.117** | 2026-08-11 | `clip` 采集时长硬门纠偏：声音只硬验官方 `>2s`（端上显示 3s）、授权/形象视频只硬验 `>=5s`；更长时长仅为软建议。 |
 | **v0.116** | 2026-08-11 | `clip` 对齐石榴官方采集与任务契约：服务端 ffprobe 采集闸、客户端 requirements、V2 统一音频驱动数字人、真实训练进度/错误映射；自动化不调用真实供应商。 |

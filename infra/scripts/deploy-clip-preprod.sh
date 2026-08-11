@@ -47,7 +47,9 @@ command -v "$ffmpeg_bin" >/dev/null
 command -v "$ffprobe_bin" >/dev/null
 filters="$("$ffmpeg_bin" -hide_banner -filters 2>/dev/null)"
 for required_filter in signalstats metadata loudnorm; do
-  printf '%s\n' "$filters" | grep -Eq "[[:space:]]${required_filter}[[:space:]]"
+  # grep -q 命中后会提前关闭管道；在 pipefail 下 printf 因 SIGPIPE 返回 141，
+  # 反而把“滤镜存在”误判成预检失败。here-string 没有上游进程，不会触发该假阴性。
+  grep -Eq "[[:space:]]${required_filter}[[:space:]]" <<<"$filters"
 done
 REMOTE_PREFLIGHT
 

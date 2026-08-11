@@ -12,6 +12,8 @@
 
 新增服务级与 HTTP 桩测试覆盖“无 speaker/auth 仍创建 Avatar”和可选字段省略。自动化没有上传真实素材，也没有提交 speaker/avatar/video 计费任务。
 
+同时修复 `deploy-clip-preprod.sh` 的 FFmpeg 滤镜预检假阴性：旧写法在 `pipefail` 下用 `printf | grep -q`，grep 命中提前退出会让 printf 收到 SIGPIPE 141，导致三项滤镜明明齐全仍拒绝发布；改用 here-string 后继续保持同一质量门，不绕过检查。
+
 ### v0.118（2026-08-11）— 视频数字人直传训练对齐石榴可选 `authId`
 
 纠正 v0.111–v0.117 将石榴授权视频做成必经硬闸的错误实现。官方 Train Avatar Model 契约明确：仅在需要授权视频校验时填写 `authId`，不填写默认不校验。因此 `ClipAvatarService` 不再以 `CLIP_CONSENT_REQUIRED` 阻断声音或形象采集；历史账号若已经存在可用 `DapConsent.captureId`，训练请求仍会兼容携带，普通创建则省略该字段。`GET /me/clip/avatar/requirements` 新增 `authorizationVideoRequired=false`，产品可以显式区分“素材使用声明”与“额外授权视频校验”。
