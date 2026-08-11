@@ -54,23 +54,42 @@ class HttpShiliuGatewayTest {
     }
 
     @Test
-    void videoCreateAndStatusUseDocumentedIdsAndNormalizeReady() throws Exception {
+    void audioDrivenVideoV2AndStatusUseDocumentedIdsAndNormalizeReady() throws Exception {
         when(response.body()).thenReturn("{\"code\":0,\"data\":{\"videoId\":1901234567890123,\"length\":0},\"msg\":\"\"}");
-        ShiliuGateway.Task created = gateway.createVideoByText("owner-1", "1801234567890123", "1809876543210321", "一段口播文案");
+        ShiliuGateway.Task created = gateway.createVideoByAudioFile("owner-1", "1801234567890123", "https://cdn.example/voice.mp3");
         assertEquals("video:1901234567890123", created.id());
         assertEquals("processing", created.status());
 
-        when(response.body()).thenReturn("{\"code\":0,\"data\":{\"progress\":100,\"status\":\"ready\",\"videoUrl\":\"https://cos.example/result.mp4\"},\"msg\":\"\"}");
+        ArgumentCaptor<HttpRequest> createRequest = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(createRequest.capture(), any(HttpResponse.BodyHandler.class));
+        assertEquals("https://api.16ai.chat/api/v1/video/createByVoiceV2", createRequest.getValue().uri().toString());
+
+        when(response.body()).thenReturn("{\"code\":0,\"data\":{\"progress\":100,\"status\":\"ready\",\"duration\":\"4321\",\"videoUrl\":\"https://cos.example/result.mp4\"},\"msg\":\"\"}");
         ShiliuGateway.Task ready = gateway.query(created.id());
         assertEquals("succeeded", ready.status());
+        assertEquals(100, ready.progress());
+        assertEquals(5, ready.durationSec());
         assertEquals("https://cos.example/result.mp4", ready.outputRef());
     }
 
     @Test
+    void speakerStatusAcceptsOfficialArrayShapeAndVideoFailIsTerminal() {
+        when(response.body()).thenReturn("{\"code\":0,\"data\":[{\"progress\":68,\"status\":\"pending\"}],\"msg\":\"\"}");
+        ShiliuGateway.Task speaker = gateway.query("speaker:1809876543210321");
+        assertEquals("processing", speaker.status());
+        assertEquals(68, speaker.progress());
+
+        when(response.body()).thenReturn("{\"code\":0,\"data\":{\"progress\":22,\"status\":\"fail\",\"failReason\":\"bad audio\"},\"msg\":\"\"}");
+        ShiliuGateway.Task video = gateway.query("video:1901234567890123");
+        assertEquals("failed", video.status());
+        assertEquals("bad audio", video.error());
+    }
+
+    @Test
     void nonZeroEnvelopeFailsClosedWithStableCode() {
-        when(response.body()).thenReturn("{\"code\":4003,\"data\":null,\"msg\":\"余额不足\"}");
+        when(response.body()).thenReturn("{\"code\":2002,\"data\":null,\"msg\":\"余额不足\"}");
         BusinessException error = assertThrows(BusinessException.class,
                 () -> gateway.createVideoByText("owner-1", "1801234567890123", "1809876543210321", "一段口播文案"));
-        assertEquals("CLIP_ENGINE_CALL_FAILED", error.getCode());
+        assertEquals("CLIP_ENGINE_BALANCE_INSUFFICIENT", error.getCode());
     }
 }

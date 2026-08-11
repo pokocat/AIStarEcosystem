@@ -22,7 +22,7 @@
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 - 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
-- `clip` 口播视频线（v0.115）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。项目把可编辑文案 `segments` 与视觉 `shots[{startNo,endNo,role,assetId}]` 分层；`ClipShotPlan` 是报价、preflight、worker 与总装的唯一投影层，显式 shot 必须完整、连续、无重叠覆盖全部句子，老草稿缺失时相邻无素材 b-roll 每 3 句防御性成镜。已按石榴官方 API v1 接入授权视频、声音/形象训练、TTS、逐段文案视频、状态轮询、删除与时效结果转存，内置 3 套正式模板；worker 以 `segmentJobsJson` 按投影后的镜头段恢复，b-roll 配音与 avatar 视频先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、裁切/循环 b-roll、烧录字幕与常驻「AI 生成」标识、可选混 BGM 并拼成作品。无运营尾片素材时由 `ClipOverlayRenderer` 生成三套模板各自的固定品牌尾卡；最终音轨先归一到 -16 LUFS / -1.5 dBTP，再由 `ClipMediaQualityGate` 对平均亮度、综合响度和真峰值失败关闭，随后抽帧写 `thumbnailCdnKey`。预发使用 `clip-preprod` 独立 profile、H2/文件存储和本机 8081，不接触 AIStar 生产；`AEP_CLIP_FORCE_MOCK=true` 只用于测试期确定性生成真实可播放 MP4，仍走逐段 ffmpeg、字幕/AI 标识、封面、质检、存储全链，并永久烧录「测试演示」。已配置石榴时正常优先真实 HTTP，只有显式 force-mock 才切测试媒体；production/mysql 启动硬拒绝 force-mock。媒体机器审核与四平台真实代发仍是生产门槛。当前事实与外部门槛见 `docs/clip-avatar-video-plan.md`。
+- `clip` 口播视频线（v0.116）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。项目把可编辑文案 `segments` 与视觉 `shots[{startNo,endNo,role,assetId}]` 分层；`ClipShotPlan` 是报价、preflight、worker 与总装的唯一投影层。石榴链路统一采用 **V2 音色 TTS → avatar 段 `createByVoiceV2` 音频驱动**，b-roll 与数字人段共享同一音频生成策略，不再混用内嵌 TTS；worker 以 `segmentJobsJson` 可恢复轮询并回传官方训练/生成进度与失败原因。`ClipCapturePolicy` 用 ffprobe 在供应商调用前硬验授权/形象/声音素材的 MIME、大小、时长、H.264、分辨率、采样率与声道，新端点 `/me/clip/avatar/requirements` 将官方硬限制、产品质量门、建议区间及固定授权口播下发给客户端。授权接口的 `authId` 只表示上游受理授权声明，不冒充独立实名认证。所有石榴时效结果均先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、烧录字幕/常驻「AI 生成」、混 BGM、固定品牌尾卡并做亮度/响度/真峰值质量门。预发使用隔离 `clip-preprod`；`AEP_CLIP_FORCE_MOCK=true` 只供不耗点数的确定性测试媒体，production/mysql 硬拒绝。媒体机器审核、本人素材的供应商质量实测与四平台真实代发仍是生产门槛。当前事实与外部门槛见 `docs/clip-avatar-video-plan.md`。
 
 ---
 
@@ -454,6 +454,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.116** | 2026-08-11 | `clip` 对齐石榴官方采集与任务契约：服务端 ffprobe 采集闸、客户端 requirements、V2 统一音频驱动数字人、真实训练进度/错误映射；自动化不调用真实供应商。 |
 | **v0.115** | 2026-08-11 | `clip` 文案句与视觉镜头分层：连续多句可共用一段素材，报价/预检/worker/总装统一消费 `ClipShotPlan` 聚合结果；项目同时持久化军师侧 AI 文案对话记录。 |
 | **v0.114** | 2026-08-11 | `clip` 预发测试媒体闭环：显式 force-mock 生成真实可播放 MP4，仍走逐段总装、字幕/AI/测试标识、质量门与缩略图；production/mysql 硬拒绝该模式。 |
 | **v0.113** | 2026-08-11 | `clip` 成片质量收口：三套模板各自的固定品牌尾卡、最终音轨 -16 LUFS / -1.5 dBTP 归一、平均亮度/综合响度/真峰值入库前门禁；授权群像尾片与真实长片压测继续待外部素材。 |

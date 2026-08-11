@@ -9,9 +9,10 @@
 
 ---
 
-## 2026-08-11 · `clip` 快出片生产门槛（v0.111 石榴真实链路后续）
+## 2026-08-11 · `clip` 快出片生产门槛（v0.116 石榴官方契约对齐后续）
 
-- [x] ~~取得石榴测试 key、核对官方字段并替换固定失败网关~~（v0.111）：已接 `/authVideo/create`、`/speaker/{create,tts,status,delete}`、`/avatar/{create,status,delete}`、`/video/{createByText,createByVoice,status}`；真实 key 只落预发 0600 env，官方 BaseURL 为 `https://api.16ai.chat/api/v1/`。只读探针确认账号有效、12,000 点且当前无 speaker/avatar。
+- [x] ~~取得石榴测试 key、核对官方字段并替换固定失败网关~~（v0.111，v0.116 补齐契约）：已接 `/authVideo/create`、`/speaker/{create,tts,status,delete}`、`/avatar/{create,status,delete}`、`/video/{createByText,createByVoiceV2,status}`；v0.116 增加官方素材限制/错误码、speaker 状态数组兼容、真实进度以及统一 V2 音频驱动。真实 key 只落预发 0600 env，官方 BaseURL 为 `https://api.16ai.chat/api/v1/`。只读探针确认账号有效、12,000 点且当前无 speaker/avatar。
+- [x] ~~采集页按供应商硬限制与产品质量门给出可执行指导~~（v0.116 完成，2026-08-11）：`ClipCapturePolicy` 以 ffprobe 验证授权视频、形象视频、声音样本；`GET /me/clip/avatar/requirements` 下发官方/产品限制、建议区间和固定授权口播，服务端不信任客户端元数据。
 - [x] ~~无本人素材时仍能验收产品工程闭环~~（v0.114）：隔离预发可显式 force-mock，实际产出带「测试演示」的可播放 MP4，并完整经过逐段总装、字幕/AI 标识、封面、质量门和存储；不再用状态假成功或空作品冒充出片。该项只关闭测试体验缺口，不替代下一条真实石榴素材验收。
 - [ ] 用本人合规采集素材完成 `docs/clip-avatar-video-plan.md` §3.2 质量/时延/一致性/输出规格/成本实测及 §12 商务与算法备案决策；没有真实授权素材时不得用假素材冒充全链路验收。
 - [ ] 接入真实图片/视频/音频机器审核，并把结果与资产/任务审计关联；当前由军师 BFF 在未配置时 fail-closed，AIStar 也不得绕过接受直传媒体。

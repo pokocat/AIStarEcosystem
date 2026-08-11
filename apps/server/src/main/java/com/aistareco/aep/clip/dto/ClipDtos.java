@@ -66,8 +66,16 @@ public final class ClipDtos {
                           int avatarSec, int credits, String videoUrl, String thumbnailUrl,
                           List<Map<String, String>> publishStats) {}
     public record AvatarDto(String imageStatus, String voiceStatus, String imageTrainedText,
-                            String voiceTrainedText, String engine, boolean presetAvailable) {}
-    public record ConsentDto(String id, String status, boolean verified, String verificationUrl) {}
+                            String voiceTrainedText, int imageProgress, int voiceProgress,
+                            String imageMessage, String voiceMessage, String engine, boolean presetAvailable) {}
+    public record CaptureRuleDto(String kind, int vendorMinDurationSec, int vendorMaxDurationSec, int minDurationSec, int recommendedMinDurationSec,
+                                 int recommendedMaxDurationSec, int maxDurationSec, long vendorMaxBytes, long maxBytes,
+                                 List<String> vendorFormats, List<String> formats, String codec, Integer minShortSidePx, Integer maxLongSidePx,
+                                 Integer sampleRateHz, Integer channels, List<String> guidance) {}
+    public record CaptureRequirementsDto(String consentText, String agreementTitle, String officialDocsLastReviewed,
+                                         List<String> officialDocs, CaptureRuleDto consent, CaptureRuleDto avatar,
+                                         CaptureRuleDto voice, int pollIntervalMs) {}
+    public record ConsentDto(String id, String status, boolean accepted, boolean verified, String verificationUrl) {}
     public record AuditDto(String id, String createdAt, String createdText, String scope, String action, String status) {}
 
     @SuppressWarnings("unchecked") public static Map<String, Object> safeMap(Map<String, Object> value) { return value == null ? new LinkedHashMap<>() : value; }

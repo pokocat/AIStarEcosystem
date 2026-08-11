@@ -91,9 +91,9 @@ public class HttpShiliuGateway implements ShiliuGateway {
         body.put("audioUrl", publicMediaUrl(audioRef));
         body.put("title", title("军师口播"));
         body.put("addWatermark", true);
-        JsonNode data = post("/video/createByVoice", body);
+        JsonNode data = post("/video/createByVoiceV2", body);
         String id = id(data, "videoId");
-        return new Task("video:" + id, "processing", durationSecondsNullable(data.path("length").asLong(0)), null, null);
+        return new Task("video:" + id, "processing", durationFrom(data), null, null, 0);
     }
 
     @Override
@@ -113,6 +113,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
         ObjectNode body = OM.createObjectNode();
         body.put("audioUrl", publicMediaUrl(mediaRef));
         body.put("title", title("军师本人音色"));
+        body.put("model", "V2.0");
         JsonNode data = post("/speaker/create", body);
         String id = id(data, "speakerId");
         return new Task("speaker:" + id, "processing", null, id, null);
@@ -141,11 +142,11 @@ public class HttpShiliuGateway implements ShiliuGateway {
             case "video" -> body.put("videoId", numericRef(id, "videoId"));
             default -> throw new BusinessException(HttpStatus.BAD_REQUEST, "CLIP_ENGINE_TASK_INVALID", "数字人任务标识无效");
         }
-        JsonNode data = post("/" + kind + "/status", body);
+        JsonNode data = firstObject(post("/" + kind + "/status", body));
         String status = normalizedStatus(text(data, "status"));
         String output = "video".equals(kind) && "succeeded".equals(status) ? text(data, "videoUrl") : id;
         String error = "failed".equals(status) ? firstNonBlank(text(data, "failReason"), text(data, "error"), "上游任务失败") : null;
-        return new Task(kind + ":" + id, status, null, output, error);
+        return new Task(kind + ":" + id, status, durationFrom(data), output, error, progress(data, status));
     }
 
     @Override public void deleteAvatar(String engineRef) { delete("/avatar/delete", "avatarId", engineRef); }
@@ -179,7 +180,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
             if (code != 0) {
                 String message = clamp(text(envelope, "msg"), 180);
                 log.warn("[clip-shiliu] upstream rejected path={} code={} msg={}", path, code, message);
-                throw upstreamFailure("石榴 AI 未受理任务" + (message == null ? "" : "：" + message), "code=" + code);
+                throw mappedUpstreamFailure(code, message);
             }
             JsonNode data = envelope.get("data");
             if (data == null || data.isNull()) throw invalidResponse(path + " data is null");
@@ -242,8 +243,37 @@ public class HttpShiliuGateway implements ShiliuGateway {
     private static String normalizedStatus(String raw) {
         String value = raw == null ? "" : raw.toLowerCase(Locale.ROOT);
         if (value.matches("ready|success|succeeded|completed|done")) return "succeeded";
-        if (value.matches("failed|failure|error|rejected")) return "failed";
+        if (value.matches("fail|failed|failure|error|rejected")) return "failed";
         return "processing";
+    }
+
+    private static JsonNode firstObject(JsonNode data) {
+        if (data != null && data.isArray()) {
+            if (data.isEmpty()) throw invalidResponse("status data is empty");
+            return data.get(0);
+        }
+        return data;
+    }
+
+    private static Integer progress(JsonNode data, String status) {
+        if ("succeeded".equals(status)) return 100;
+        JsonNode value = data == null ? null : data.get("progress");
+        if (value == null || value.isNull()) return 0;
+        try { return Math.max(0, Math.min(100, Integer.parseInt(value.asText().replace("%", "").trim()))); }
+        catch (NumberFormatException e) { return 0; }
+    }
+
+    private static Integer durationFrom(JsonNode data) {
+        if (data == null) return null;
+        for (String field : new String[]{"duration", "length"}) {
+            JsonNode value = data.get(field);
+            if (value == null || value.isNull()) continue;
+            try {
+                double millis = Double.parseDouble(value.asText().trim());
+                if (millis > 0) return (int) Math.max(1, Math.ceil(millis / 1000d));
+            } catch (NumberFormatException ignore) { }
+        }
+        return null;
     }
 
     private static int durationSeconds(long upstreamLength, int textLength) {
@@ -286,5 +316,22 @@ public class HttpShiliuGateway implements ShiliuGateway {
     }
     private static BusinessException upstreamFailure(String message, String detail) {
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_CALL_FAILED", message, detail);
+    }
+
+    private static BusinessException mappedUpstreamFailure(int code, String message) {
+        String suffix = message == null || message.isBlank() ? "" : "：" + message;
+        return switch (code) {
+            case 1002 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_INPUT_INVALID", "采集内容不符合数字人引擎要求" + suffix, "code=" + code);
+            case 2001 -> BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CREDENTIAL_INVALID", "数字人服务鉴权失效，请联系运营处理", "code=" + code);
+            case 2002 -> BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_BALANCE_INSUFFICIENT", "数字人服务额度不足，请联系运营处理", "code=" + code);
+            case 3001 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_VIDEO_UNREADABLE", "视频无法读取，请重新录制后再试", "code=" + code);
+            case 3002 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_AUDIO_UNREADABLE", "声音文件无法读取，请重新录制后再试", "code=" + code);
+            case 3003 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_VOICE_REJECTED", "这段声音未通过声纹安全检查，请确认由本人录制", "code=" + code);
+            case 3004 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_AUDIO_TOO_SHORT", "录音太短，请完整朗读采集文案后再试", "code=" + code);
+            case 3005 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_SPEECH_UNCLEAR", "没有识别到清晰人声，请在安静环境重新录制", "code=" + code);
+            case 3006 -> BusinessException.wrapped(HttpStatus.CONFLICT, "CLIP_ENGINE_SPEAKER_NOT_FOUND", "声音模型不存在，请重新采集声音", "code=" + code);
+            case 3007 -> BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_MEDIA_URL_INVALID", "数字人服务暂时无法读取采集文件，请稍后重试", "code=" + code);
+            default -> upstreamFailure("石榴 AI 未受理任务" + suffix, "code=" + code);
+        };
     }
 }

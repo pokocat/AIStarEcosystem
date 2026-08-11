@@ -114,7 +114,7 @@ class ClipRenderWorkerStateTest {
     }
 
     @Test
-    void ttsStageMirrorsOneBrollAudioPerAdvanceAndPersistsProgress() {
+    void ttsStageMirrorsOneSharedVoiceAudioPerShotAndPersistsProgress() {
         ClipRenderJob job = job("queued", "tts", false);
         job.setLeaseOwner("worker-a");
         ClipProject project = project(List.of(
@@ -127,32 +127,39 @@ class ClipRenderWorkerStateTest {
         when(projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull("cp_1", "owner-1")).thenReturn(Optional.of(project));
         when(shiliu.required()).thenReturn(gateway);
         when(avatars.requiredVoiceEngineRef("owner-1")).thenReturn("speaker-1");
-        when(gateway.previewVoice("owner-1", "speaker-1", "这里配店铺画面"))
+        when(gateway.previewVoice("owner-1", "speaker-1", "我来开场"))
                 .thenReturn(new ShiliuGateway.Task("tts-1", "succeeded", 4, "https://example.com/audio.mp3", null));
-        when(outputStorage.persistAudio("owner-1", "https://example.com/audio.mp3")).thenReturn("clip/audio/2.mp3");
+        when(outputStorage.persistAudio("owner-1", "https://example.com/audio.mp3")).thenReturn("clip/audio/1.mp3");
 
         state.advance(job.getId(), "worker-a");
 
         assertEquals("tts", job.getStage());
         List<Map<String,Object>> rows = com.aistareco.aep.clip.dto.ClipDtos.mapListValue(job.getSegmentJobsJson().get("segments"));
-        assertEquals("clip/audio/2.mp3", rows.get(1).get("audioCdnKey"));
-        assertEquals(4, rows.get(1).get("actualDurationSec"));
+        assertEquals("clip/audio/1.mp3", rows.get(0).get("audioCdnKey"));
+        assertEquals(4, rows.get(0).get("actualDurationSec"));
+        assertNull(rows.get(1).get("audioCdnKey"));
         assertNull(rows.get(2).get("audioCdnKey"));
         verify(gateway, times(1)).previewVoice(anyString(), anyString(), anyString());
     }
 
     @Test
-    void ttsStageWithoutBrollDoesNotCallVoiceGatewayEarly() {
+    void ttsStageAlsoCreatesAudioForAvatarOnlyVideo() {
         ClipRenderJob job = job("queued", "tts", false);
         job.setLeaseOwner("worker-a");
         ClipProject project = project(List.of(Map.of("no", 1, "role", "avatar", "text", "我来开场")));
+        ShiliuGateway gateway = mock(ShiliuGateway.class);
         when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
         when(projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull("cp_1", "owner-1")).thenReturn(Optional.of(project));
+        when(shiliu.required()).thenReturn(gateway);
+        when(avatars.requiredVoiceEngineRef("owner-1")).thenReturn("speaker-1");
+        when(gateway.previewVoice("owner-1", "speaker-1", "我来开场"))
+                .thenReturn(new ShiliuGateway.Task("tts-1", "succeeded", 3, "https://example.com/audio.mp3", null));
+        when(outputStorage.persistAudio("owner-1", "https://example.com/audio.mp3")).thenReturn("clip/audio/1.mp3");
 
         state.advance(job.getId(), "worker-a");
 
         assertEquals("avatar", job.getStage());
-        verifyNoInteractions(shiliu, avatars);
+        verify(gateway).previewVoice("owner-1", "speaker-1", "我来开场");
     }
 
     @Test
@@ -186,23 +193,26 @@ class ClipRenderWorkerStateTest {
         when(projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull("cp_1", "owner-1")).thenReturn(Optional.of(project));
         when(shiliu.required()).thenReturn(gateway);
         when(avatars.requiredAvatarEngineRef("owner-1")).thenReturn("avatar-1");
-        when(avatars.requiredVoiceEngineRef("owner-1")).thenReturn("speaker-1");
-        when(gateway.createVideoByText(eq("owner-1"), eq("avatar-1"), eq("speaker-1"), anyString()))
-                .thenAnswer(inv -> new ShiliuGateway.Task("video:" + inv.getArgument(3), "processing", null, null, null));
+        job.setSegmentJobsJson(Map.of("segments", List.of(
+                Map.of("no", 1, "role", "avatar", "audioCdnKey", "clip/audio/1.mp3"),
+                Map.of("no", 2, "role", "avatar", "audioCdnKey", "clip/audio/2.mp3")
+        )));
+        when(gateway.createVideoByAudioFile(eq("owner-1"), eq("avatar-1"), anyString()))
+                .thenAnswer(inv -> new ShiliuGateway.Task("video:" + inv.getArgument(2), "processing", null, null, null));
 
         state.advance(job.getId(), "worker-a");
 
         assertEquals("avatar", job.getStage());
-        verify(gateway, times(1)).createVideoByText(eq("owner-1"), eq("avatar-1"), eq("speaker-1"), anyString());
+        verify(gateway, times(1)).createVideoByAudioFile("owner-1", "avatar-1", "clip/audio/1.mp3");
         List<Map<String,Object>> rows = com.aistareco.aep.clip.dto.ClipDtos.mapListValue(job.getSegmentJobsJson().get("segments"));
-        assertEquals("video:第一句", rows.get(0).get("taskId"));
+        assertEquals("video:clip/audio/1.mp3", rows.get(0).get("taskId"));
         assertNull(rows.get(1).get("taskId"));
 
         job.setLeaseOwner("worker-a");
         state.advance(job.getId(), "worker-a");
-        verify(gateway, times(2)).createVideoByText(eq("owner-1"), eq("avatar-1"), eq("speaker-1"), anyString());
+        verify(gateway, times(2)).createVideoByAudioFile(eq("owner-1"), eq("avatar-1"), anyString());
         rows = com.aistareco.aep.clip.dto.ClipDtos.mapListValue(job.getSegmentJobsJson().get("segments"));
-        assertEquals(List.of("video:第一句", "video:第二句"), rows.stream().map(row -> row.get("taskId")).toList());
+        assertEquals(List.of("video:clip/audio/1.mp3", "video:clip/audio/2.mp3"), rows.stream().map(row -> row.get("taskId")).toList());
     }
 
     private static ClipRenderJob job(String status, String stage, boolean mock) {

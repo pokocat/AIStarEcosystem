@@ -1,7 +1,7 @@
 # 「快出片」数字分身口播视频线 · 方案与 Handoff
 
 > **业务线代号**：`clip`（口播视频线）　**产品工作名**：快出片（待定）
-> **文档状态**：**M1 服务端、石榴真实原子链路与多段 ffmpeg 总装已落地；文案句与视觉镜头已分层并支持连续多句共用素材，固定品牌尾卡、字幕/AI 标识与音画质量门已启用，媒体审核与真实代发未上线**。
+> **文档状态**：**M1 服务端、石榴官方采集/训练/生成契约与多段 ffmpeg 总装已落地；文案句与视觉镜头分层，V2 克隆音色统一驱动数字人与 b-roll，固定品牌尾卡、字幕/AI 标识与音画质量门已启用；本人素材质量实测、媒体审核与真实代发未上线**。
 > **创建**：2026-08-10　**last-reviewed**：2026-08-11
 > **上游背景**：基于已有 AI 短剧（`apps/web-drama` + `apps/server` drama 域）基座能力，做一个手机端/小程序的轻量素材视频产品；数字人口播能力拟接入外部供应商**石榴AI**。
 
@@ -10,9 +10,10 @@
 - 新增 `packages/types/src/clip.ts`、Java `clip` 独立领域与 `V14__add_clip_domain.sql`，包含模板、项目、任务、素材四张表；所有用户态查询按军师 `externalOwnerId` 隔离，service token 只代表调用系统，不冒充最终用户。
 - 已实现模板/admin preset 上传、项目草稿/重置/30 天回收、素材 100MB + MIME + ffprobe、授权快照、分身/声音克隆抽象、报价/预检、幂等建单、数据库租约 worker、stale reaper、作品查询和四平台发布契约；OpenAPI 已同步。
 - 跨系统采用 Scheme A：用户积分只由军师 BFF hold/settle/refund；AIStar 不调用本仓 `CreditService`，仅保存 `creditsHeld` 作为外部报价审计事实。`clientRequestId` 在外部属主内唯一，重复载荷冲突返回 409。
-- `HttpShiliuGateway` 已按官方 API v1 接入授权视频、声音/形象训练、TTS、文案/音频出片、状态轮询与删除；上游时效成片立即转存我方持久存储。真实 key 仅在预发 0600 env，探针确认 12,000 点、当前没有已训练 speaker/avatar。
+- `HttpShiliuGateway` 已按官方 API v1 接入授权视频、声音/形象训练、V2 TTS、V2 音频驱动出片、状态轮询与删除；上游时效成片立即转存我方持久存储。`ClipCapturePolicy` 在调用前以 ffprobe 校验素材，训练/生成页展示官方真实进度和失败原因。真实 key 仅在预发 0600 env，探针确认 12,000 点、当前没有已训练 speaker/avatar。
 - `ClipOfficialTemplateSeeder` 内置「为实体发声 / 今天开门了 / 这门手艺」三套模板，仅补缺失 ID、不覆盖运营编辑。`clip-preprod` 独立 profile 仅监听 127.0.0.1:8081，军师 BFF 以独立 service token 回源，未接触 AIStar 生产。
 - v0.115 把 `segments`（逐段改稿）与 `shots`（连续句范围的视觉编排）分层；`ClipShotPlan` 为报价、preflight、worker 和总装的唯一投影层。老草稿无 shot 时相邻且未绑定不同素材的 b-roll 最多 3 句成镜，显式计划必须完整无重叠覆盖全部句子；军师 BFF 的 AI 文案对话记录可随项目 `scriptChat` 一并保存。
+- v0.116 将渲染策略收口为「所有非尾段先由同一 V2 speaker 生成音频，avatar 再以 `/video/createByVoiceV2` 驱动」，不再混用 `createByText` 内嵌 TTS。新增 `/me/clip/avatar/requirements` 下发供应商硬限制、产品质量门、建议区间和固定授权口播；授权 `authId` 只表达上游受理声明，不冒充实名认证。
 - v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕与全片「AI 生成」标识经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。v0.114 增加隔离预发专用 `AEP_CLIP_FORCE_MOCK=true`：确定性测试媒体也必须真实生成可播放 MP4 并走同一总装/质检/存储链，永久烧录「测试演示」；production/mysql 启动硬拒绝。公网 BFF 已验收到 44.05 秒、720×1280、H.264/AAC 成片与缩略图，force-mock 全程未请求石榴。
 - 非 mysql/production 环境允许显式 mock，mock 产物带 `mock=true`。媒体机器审核未配置时军师 BFF 继续 fail-closed；真实代发仍固定失败。
 - 仍需使用本人合规素材完成 §3.2 质量/时延/一致性/规格/成本实测，完成 §12 商务/备案决策，并接媒体审核、授权群像尾片、四平台发布和生产压测/真机验收。
@@ -75,7 +76,7 @@
 
 ### 2.2 为什么这个粒度对
 
-石榴的原子能力是 `(文本 + avatarID + speakerID) → 一段自带音频的口播视频`。**接口粒度就是"一段文本"**，所以产品的决策单元也应该是"一段文本"，而不是时间轴上的任意区间。这让 UI 与引擎天然对齐，且规避了"把音频精确掐到第 10 秒"这类对齐难题——**时长由文本自然涌现**。
+石榴支持文本直接生成，也支持音频 URL 驱动数字人。产品的决策单元保持为一个连续的**画面段**：用户可将相邻多句组合成一段，再决定用分身或 b-roll；后端为这个画面段生成一份 V2 克隆音频，数字人和 b-roll 都消费同一份音频。这样既保留移动端容易理解的段落编排，也避免逐句切片和两套 TTS 在音色、停连、响度上的漂移。
 
 ---
 
@@ -94,8 +95,8 @@
 | **Avatar**（形象克隆） | Train Avatar Model | 视频素材 → `avatarID` |
 | | Train Avatar Model By Image | **单张照片** → `avatarID` |
 | | Query Training Status / List Avatars | 状态 / 列表 |
-| **Video**（口播合成） | Create Video By Text | 文本 + avatarID + speakerID → 视频（**内含 TTS**） |
-| | Create Video By Voice | 音频 **URL** 驱动 |
+| **Video**（口播合成） | Create Video By Text | 文本 + avatarID + speakerID → 视频（保留兼容，主链不用） |
+| | Create Video By Voice V2 | 音频 **URL** + avatarID 驱动（**当前主链**） |
 | | Create Video By AudioFile | 音频**文件**驱动 |
 | | Query Video Status | 生成进度 |
 | **Asset** | Get Asset / Get Records | 账户剩余权益 / 算力变更记录 |
@@ -104,6 +105,18 @@
 
 **任务模型**：全异步 + **仅轮询，文档未见回调机制**。
 
+### 3.1.1 采集输入：官方硬限制与产品质量门
+
+| 素材 | 石榴官方硬限制 | 军师产品门 | 给用户的建议 |
+|---|---|---|---|
+| 本人授权视频 | MP4/MOV、H.264、5 秒–5 分钟、360p–4K、≤200MB | 5–30 秒、≤100MB、前置摄像头；口播必须与固定授权文案逐字一致 | 8–20 秒，正脸、无遮挡、光线均匀、背景安静 |
+| 数字人形象视频 | MP4/MOV、H.264、5 秒–5 分钟、360p–4K、≤200MB | 15–300 秒、≤100MB | 20–60 秒，竖屏 720p 以上、固定机位、胸部以上、自然眨眼，避免剪辑/滤镜/多人入镜 |
+| 声音样本 | WAV/MP3/OGG/M4A/AAC/PCM，>2 秒、≤20MB；PCM 仅 24kHz 单声道 | 20–120 秒、≤20MB；常见采样率/声道可验 | 30–60 秒，距麦克风约 20cm，安静房间、正常语速、不要配乐/降噪特效 |
+
+军师 BFF 当前 multipart 总上限为 100MB，因此产品上传上限严于石榴 200MB；requirements 同时返回 `vendorMaxBytes` 和 `productMaxBytes`，不把两者混成一个数字。所有 URL 必须公网可下载且扩展名与实际媒体一致；我方上传后由 AIStar 生成受控 URL，不接受客户端自填第三方地址。
+
+固定授权口播为：**“我是本次出镜者本人，特此声明，我授权军师参谋部使用我提交的视频和声音资料，为我的账号创建数字分身，并仅在我的账号中使用它。”** 端上展示、上传参数和服务端比对共用同一文本。石榴 `/authVideo/create` 返回的 `authId` 是后续 avatar 训练的授权证据引用；它不是独立实名/活体服务，产品文案统一使用“授权声明已提交并受理”。
+
 ### 3.2 未确认 —— M0 必须拿测试 key 实测 / 商务确认
 
 公开文档**没有**给出以下规格，全部列为尽调项：
@@ -111,7 +124,7 @@
 1. **视频输出规格**：分辨率（是否支持 720×1280 竖屏）、帧率、码率、是否带水印、编码格式
 2. **单次生成时长上限**（决定一个出镜段最多能标多少句）与**实际耗时**
 3. **计费口径与单价**：按秒/按次/按字符？阶梯价？并发配额？
-4. **音色一致性**（最关键，见 §4.2）：`Create Video By Text` 内嵌 TTS 与独立 `Text To Speech` 接口，**同一 speakerID 出来的音色与响度是否完全一致**
+4. **音色与口型质量**（仍需本人实测）：主链已统一为 V2 TTS + `Create Video By Voice V2`，代码层不再混用内嵌 TTS；仍需验证真实音色自然度、长句停连、各段接缝和口型同步
 5. **数字人段背景可控性**：绿幕/纯色/固定场景？**若支持抠像**，可解锁"数字人画中画叠在店铺画面上"的高级形态
 6. **同一 avatarID 多段生成的形象一致性**：服装、景别、机位是否可指定/可复现
 7. **照片训练 vs 视频训练的质量差**（决定克隆向导的采集要求）
@@ -129,16 +142,15 @@
 
 ## 4. 渲染管线设计
 
-### 4.1 主方案（Strategy A）：分段生成，音频天然连续
+### 4.1 当前主方案：V2 分段 TTS + 音频驱动数字人
 
 ```
 ① LLM 定稿文案（prompt key clip.voiceover_copy / clip.voiceover_rewrite）
         ↓ 按段切分
-② 并发生成所有段（各段互相独立）：
-   ├─ role=avatar : 石榴 Create Video By Text(段文本, avatarID, speakerID)
-   │                 → 视频（自带音频，音画已同步）
-   └─ role=broll  : 石榴 Text To Speech(段文本, speakerID) → 音频
-                    + 用户 b-roll 视频（静音 -an，按音频时长裁剪/循环）
+② 为所有非尾段调用石榴 V2 Text To Speech(段文本, speakerID) → 音频
+   ├─ role=avatar : 石榴 Create Video By Voice V2(该段音频 URL, avatarID)
+   │                 → 音画同步数字人视频
+   └─ role=broll  : 用户 b-roll 视频静音 -an，按同一段音频时长裁剪/循环
         ↓ 每段时长确定 → 句级字幕时间轴直接推出（不依赖上游时间戳）
 ③ ffmpeg 总装（复用 mixcut 范式）：
    视频轨: 段1 + 段2 + ... + 固定尾段
@@ -150,22 +162,9 @@
 
 **音频连续性的实现**：不需要"一条长音频铺全片"——每段音频紧跟其视频段，concat 后听觉上就是连续的。这是最简实现。
 
-### 4.2 备选方案（Strategy B）：全文 TTS 先行 + AudioFile 驱动
+### 4.2 已裁决的接口策略
 
-**触发条件**：§3.2 第 4 项实测发现**接缝处音色/响度不一致**（内嵌 TTS ≠ 独立 TTS）。
-
-```
-① 定稿文案 → 按段 TTS（同一 speakerID）→ 拿到所有段音频
-② role=avatar 段：石榴 Create Video By AudioFile(该段音频)
-   ← 用同一条音频驱动，音色必然一致
-③ role=broll 段：直接用该段音频 + b-roll
-④ 总装同上
-```
-
-优点：音色绝对统一（**这正是石榴提供 By Voice / By AudioFile 接口的用途**）。
-缺点：多一次上传/调用，链路更长、更慢。
-
-> **决策点**：M0 实测后二选一，写入本文档。默认按 A 实现，Gateway 接口需**同时暴露 By Text 与 By AudioFile**，以便切换成本为零。
+v0.116 已选择音频驱动作为唯一生产主链。`createByText` 只留 Gateway 兼容能力，不被 clip worker 调用；这样同一项目的 avatar 和 b-roll 都来自同一个 V2 speaker/TTS 路径，真实耗时和供应商成本会增加一次 TTS，但换来可预测的音色、停连、字幕时长和最终响度。若未来供应商证明文本直出与 V2 TTS 完全等价，也必须通过配置化实验和真人验收后才能切回，禁止在 worker 里按段混用。
 
 ### 4.3 b-roll 时长对齐
 

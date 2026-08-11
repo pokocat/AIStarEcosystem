@@ -56,9 +56,9 @@ public class ClipRenderWorkerState {
         List<Map<String,Object>> segments=ClipShotPlan.materialize(p.getPayloadJson());
         List<Map<String,Object>> rows=stateRows(state,segments);
         if("tts".equals(j.getStage())){
-            int total=(int)rows.stream().filter(row->"broll".equals(String.valueOf(row.get("role")))).count();
+            int total=(int)rows.stream().filter(row->!"tail".equals(String.valueOf(row.get("role")))).count();
             Optional<Map<String,Object>> pending=rows.stream()
-                    .filter(row->"broll".equals(String.valueOf(row.get("role"))))
+                    .filter(row->!"tail".equals(String.valueOf(row.get("role"))))
                     .filter(row->text(row.get("audioCdnKey")).isBlank()).findFirst();
             if(pending.isPresent()){
                 ShiliuGateway gateway=shiliu.required();
@@ -71,9 +71,9 @@ public class ClipRenderWorkerState {
                 row.put("actualDurationSec",task.durationSec()==null?ClipProjectService.seconds(source):task.durationSec());
                 row.put("status","succeeded");
             }
-            int done=(int)rows.stream().filter(row->"broll".equals(String.valueOf(row.get("role"))))
+            int done=(int)rows.stream().filter(row->!"tail".equals(String.valueOf(row.get("role"))))
                     .filter(row->!text(row.get("audioCdnKey")).isBlank()).count();
-            state.put("strategy","segment-text");state.put("segments",rows);j.setSegmentJobsJson(state);
+            state.put("strategy","segment-audio-v2");state.put("segments",rows);j.setSegmentJobsJson(state);
             j.setStatus("generating");j.setStage(done==total?"avatar":"tts");
             j.setProgress(total==0?20:Math.min(20,5+(15*done/total)));
         } else if("avatar".equals(j.getStage())) {
@@ -87,12 +87,13 @@ public class ClipRenderWorkerState {
             if(pending.isPresent()){
                 ShiliuGateway gateway=shiliu.required();
                 String avatarRef=avatars.requiredAvatarEngineRef(j.getExternalOwnerId());
-                String voiceRef=avatars.requiredVoiceEngineRef(j.getExternalOwnerId());
                 Map<String,Object> row=pending.get();
                 int no=number(row.get("no"));Map<String,Object> source=segmentByNo(segments,no);
+                String audioCdnKey=text(row.get("audioCdnKey"));
+                if(audioCdnKey.isBlank())throw new IllegalStateException("分身出镜段的配音尚未完成");
                 String taskId=text(row.get("taskId"));
                 ShiliuGateway.Task task=taskId.isBlank()
-                        ?gateway.createVideoByText(j.getExternalOwnerId(),avatarRef,voiceRef,text(source.get("text")))
+                        ?gateway.createVideoByAudioFile(j.getExternalOwnerId(),avatarRef,audioCdnKey)
                         :gateway.query(taskId);
                 if("failed".equals(task.status()))throw new IllegalStateException(task.error()==null?"分身出镜段生成失败":task.error());
                 row.put("taskId",task.id());row.put("status",task.status());

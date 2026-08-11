@@ -1,6 +1,8 @@
 package com.aistareco.aep.service.mixcut;
 
 import com.aistareco.aep.config.MixcutProperties;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +31,7 @@ import java.util.regex.Pattern;
 public class FfmpegRunner {
 
     private static final Logger log = LoggerFactory.getLogger(FfmpegRunner.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final Pattern FILTER_LINE = Pattern.compile("^\\s*[.A-Z|]{3,}\\s+([A-Za-z0-9_]+)\\s+.*$");
     /**
      * 宽松回退正则 —— 当严格 FILTER_LINE 漏掉关键 filter 时尝试。
@@ -370,6 +373,49 @@ public class FfmpegRunner {
         } catch (Exception e) {
             return 0.0;
         }
+    }
+
+    /** 采集上传的权威媒体元数据；无法解析时返回 {@code readable=false}，由业务层失败关闭。 */
+    public MediaProbe probeMedia(File file) {
+        try {
+            String out = runFfprobe(List.of(
+                    "-v", "error",
+                    "-show_entries", "format=duration,format_name:stream=codec_type,codec_name,width,height,sample_rate,channels",
+                    "-of", "json",
+                    file.getAbsolutePath()
+            ));
+            JsonNode root = JSON.readTree(out);
+            double duration = root.path("format").path("duration").asDouble(0);
+            String format = root.path("format").path("format_name").asText("");
+            String videoCodec = null;
+            String audioCodec = null;
+            int width = 0;
+            int height = 0;
+            int sampleRate = 0;
+            int channels = 0;
+            for (JsonNode stream : root.path("streams")) {
+                String type = stream.path("codec_type").asText("");
+                if ("video".equals(type) && videoCodec == null) {
+                    videoCodec = stream.path("codec_name").asText("");
+                    width = stream.path("width").asInt(0);
+                    height = stream.path("height").asInt(0);
+                } else if ("audio".equals(type) && audioCodec == null) {
+                    audioCodec = stream.path("codec_name").asText("");
+                    sampleRate = stream.path("sample_rate").asInt(0);
+                    channels = stream.path("channels").asInt(0);
+                }
+            }
+            return new MediaProbe(duration, format, videoCodec, audioCodec, width, height, sampleRate, channels, true);
+        } catch (Exception e) {
+            log.warn("[mixcut] ffprobe media metadata failed file={} error={}", file.getName(), e.getMessage());
+            return new MediaProbe(0, "", null, null, 0, 0, 0, 0, false);
+        }
+    }
+
+    public record MediaProbe(double durationSec, String format, String videoCodec, String audioCodec,
+                             int width, int height, int sampleRate, int channels, boolean readable) {
+        public boolean hasVideo() { return videoCodec != null && !videoCodec.isBlank(); }
+        public boolean hasAudio() { return audioCodec != null && !audioCodec.isBlank(); }
     }
 
     /** 文件是否至少有一路音轨。失败/无音 → false。 */

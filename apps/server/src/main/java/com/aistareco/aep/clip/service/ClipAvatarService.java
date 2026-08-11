@@ -19,15 +19,18 @@ import java.util.*;
 @Service
 public class ClipAvatarService {
     private static final String ENGINE = "shiliu";
-    private static final String AGREEMENT_VERSION = "clip-avatar-v1";
+    private static final String AGREEMENT_VERSION = "clip-avatar-v2";
     private static final String AGREEMENT_TITLE = "数字分身本人授权书";
-    private static final String AGREEMENT_TEXT = "本人授权平台仅为本人创建、训练和使用数字分身，并可随时撤回授权及删除分身。";
+    private static final String AGREEMENT_TEXT = "本人授权军师参谋部使用本人主动提交的视频与声音资料，仅为本人的账号创建、训练和使用数字分身。本人可随时撤回授权并删除分身，删除后停止新的生成。";
     private final DapAvatarRepository avatars; private final DapVoiceRepository voices; private final DapConsentRepository consents;
-    private final ClipRenderJobRepository jobs; private final FileStorageService storage; private final ShiliuService shiliu;
+    private final ClipRenderJobRepository jobs; private final FileStorageService storage; private final ShiliuService shiliu; private final ClipCapturePolicy capturePolicy;
     public ClipAvatarService(DapAvatarRepository avatars, DapVoiceRepository voices, DapConsentRepository consents,
-                             ClipRenderJobRepository jobs, FileStorageService storage, ShiliuService shiliu) {
-        this.avatars = avatars; this.voices = voices; this.consents = consents; this.jobs = jobs; this.storage = storage; this.shiliu = shiliu;
+                             ClipRenderJobRepository jobs, FileStorageService storage, ShiliuService shiliu,
+                             ClipCapturePolicy capturePolicy) {
+        this.avatars = avatars; this.voices = voices; this.consents = consents; this.jobs = jobs; this.storage = storage; this.shiliu = shiliu; this.capturePolicy = capturePolicy;
     }
+
+    public CaptureRequirementsDto requirements() { return capturePolicy.requirements(); }
 
     @Transactional
     public AvatarDto view(String owner) {
@@ -35,44 +38,64 @@ public class ClipAvatarService {
         DapVoice v = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
         if (a == null && v == null) return null;
         ShiliuGateway gateway = shiliu.required();
+        int voiceProgress = progress(v == null ? null : v.getEngineStatus());
+        int imageProgress = progress(a == null ? null : a.getEngineStatus());
+        String voiceMessage = null;
+        String imageMessage = null;
         if (v != null && "training".equals(v.getEngineStatus()) && v.getEngineRef() != null) {
             ShiliuGateway.Task task = gateway.query("speaker:" + v.getEngineRef());
+            voiceProgress = task.progress() == null ? voiceProgress : task.progress();
             if ("succeeded".equals(task.status())) { v.setEngineStatus("ready"); v.setEngineTrainedAt(Instant.now()); voices.save(v); }
-            else if ("failed".equals(task.status())) { v.setEngineStatus("failed"); voices.save(v); }
+            else if ("failed".equals(task.status())) { v.setEngineStatus("failed"); voiceMessage = friendlyFailure(task.error(), "声音训练失败，请重新录制"); voices.save(v); }
         }
         if (a != null && "waiting_voice".equals(a.getEngineStatus()) && v != null && "ready".equals(v.getEngineStatus())) {
             startAvatarTraining(owner, a, v, gateway);
         } else if (a != null && "training".equals(a.getEngineStatus()) && a.getEngineRef() != null) {
             ShiliuGateway.Task task = gateway.query("avatar:" + a.getEngineRef());
+            imageProgress = task.progress() == null ? imageProgress : task.progress();
             if ("succeeded".equals(task.status())) { a.setEngineStatus("ready"); a.setEngineTrainedAt(Instant.now()); avatars.save(a); }
-            else if ("failed".equals(task.status())) { a.setEngineStatus("failed"); avatars.save(a); }
+            else if ("failed".equals(task.status())) { a.setEngineStatus("failed"); imageMessage = friendlyFailure(task.error(), "形象训练失败，请重新录制"); avatars.save(a); }
         }
-        return new AvatarDto(status(a == null ? null : a.getEngineStatus()), status(v == null ? null : v.getEngineStatus()),
+        if (a != null && "waiting_voice".equals(a.getEngineStatus())) {
+            imageProgress = 0;
+            imageMessage = v != null && "failed".equals(v.getEngineStatus()) ? "请先重新录制声音" : "等待声音训练完成后自动开始";
+        }
+        // 声音失败不代表已经采集的形象素材失败；保持等待态，让客户端只要求重录声音。
+        String imageStatus = status(a == null ? null : a.getEngineStatus());
+        String voiceStatus = status(v == null ? null : v.getEngineStatus());
+        if ("ready".equals(imageStatus)) imageProgress = 100;
+        if ("ready".equals(voiceStatus)) voiceProgress = 100;
+        if ("failed".equals(imageStatus) && imageMessage == null) imageMessage = "形象训练失败，请重新采集";
+        if ("failed".equals(voiceStatus) && voiceMessage == null) voiceMessage = "声音训练失败，请重新录制";
+        return new AvatarDto(imageStatus, voiceStatus,
                 a == null || a.getEngineTrainedAt() == null ? null : a.getEngineTrainedAt().toString(),
-                v == null || v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(), ENGINE, false);
+                v == null || v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(),
+                imageProgress, voiceProgress, imageMessage, voiceMessage, ENGINE, false);
     }
 
     @Transactional
     public ConsentDto startConsent(String owner, MultipartFile file, String spokenText) {
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_CONSENT_VIDEO_REQUIRED", "请录制本人授权视频");
         if (spokenText == null || spokenText.isBlank()) throw BusinessException.badRequest("CLIP_CONSENT_TEXT_REQUIRED", "缺少授权口令");
+        if (!ClipCapturePolicy.CONSENT_TEXT.equals(spokenText.trim())) throw BusinessException.badRequest("CLIP_CONSENT_TEXT_MISMATCH", "授权文字已更新，请按页面显示的完整内容重新录制");
         FileStorageService.StoredFile stored = storage.store(file, "clip/consent", owner);
         ShiliuGateway.Task task;
         try {
+            capturePolicy.validate("consent", file, stored);
             task = shiliu.required().createAuthorizationVideo(owner, stored.key(), spokenText);
         } finally {
             // 上游提交完成即删除我方原始核验视频；只保留授权文本哈希和 authId。
             storage.delete(stored.key());
         }
         boolean verified = "succeeded".equals(task.status());
-        if (!verified) return new ConsentDto(task.id(), "failed".equals(task.status()) ? "rejected" : "pending", false, task.outputRef());
+        if (!verified) return new ConsentDto(task.id(), "rejected", false, false, task.outputRef());
         Instant now = Instant.now();
         DapConsent consent = DapConsent.builder().id("CS-" + uuid(12)).ownerUserId(owner)
                 .captureId(task.outputRef()).agreementVersion(AGREEMENT_VERSION).agreementTitle(AGREEMENT_TITLE)
-                .agreementHash(sha256(AGREEMENT_TEXT + "\n" + spokenText.trim())).agreementText(AGREEMENT_TEXT).scope("本人数字分身口播视频生成与四平台发布")
+                .agreementHash(sha256(AGREEMENT_TEXT + "\n" + spokenText.trim())).agreementText(AGREEMENT_TEXT).scope("本人数字分身口播视频生成")
                 .periodMonths(24).platforms(List.of("douyin", "kuaishou", "xiaohongshu", "shipinhao"))
                 .processors(List.of("AIStarEcosystem", "shiliu")).acceptedAt(now).createdAt(now).build();
-        consents.save(consent); return new ConsentDto(consent.getId(), "verified", true, null);
+        consents.save(consent); return new ConsentDto(consent.getId(), "submitted", true, false, null);
     }
 
     @Transactional
@@ -81,6 +104,8 @@ public class ClipAvatarService {
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_CLONE_FILE_REQUIRED", "未收到采集文件");
         consents.findFirstByOwnerUserIdOrderByAcceptedAtDesc(owner).orElseThrow(() -> new BusinessException(HttpStatus.FORBIDDEN, "CLIP_CONSENT_REQUIRED", "请先完成本人授权核验"));
         FileStorageService.StoredFile stored = storage.store(file, "clip/clone/" + kind, owner);
+        try { capturePolicy.validate(kind, file, stored); }
+        catch (RuntimeException e) { storage.delete(stored.key()); throw e; }
         ShiliuGateway gateway = shiliu.required();
         Instant now = Instant.now();
         if ("avatar".equals(kind)) {
@@ -103,7 +128,7 @@ public class ClipAvatarService {
     }
 
     public List<AuditDto> consentLogs(String owner) {
-        return consents.findByOwnerUserIdOrderByAcceptedAtDesc(owner).stream().map(c -> new AuditDto(c.getId(), c.getAcceptedAt().toString(), null, c.getScope(), null, "verified")).toList();
+        return consents.findByOwnerUserIdOrderByAcceptedAtDesc(owner).stream().map(c -> new AuditDto(c.getId(), c.getAcceptedAt().toString(), null, c.getScope(), null, "submitted")).toList();
     }
     public List<AuditDto> usageLogs(String owner) {
         return jobs.findTop50ByExternalOwnerIdAndStatusInOrderByCreatedAtDesc(owner, List.of("succeeded", "failed", "cancelled")).stream()
@@ -140,6 +165,8 @@ public class ClipAvatarService {
         avatars.save(avatar);
     }
     private static String status(String value) { return value == null ? "none" : "waiting_voice".equals(value) ? "training" : Set.of("training", "ready", "failed").contains(value) ? value : "none"; }
+    private static int progress(String value) { return "ready".equals(value) ? 100 : "training".equals(value) ? 5 : 0; }
+    private static String friendlyFailure(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
     private static String uuid(int n) { return UUID.randomUUID().toString().replace("-", "").substring(0, n); }
     private static String sha256(String value) { try { return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); } catch (Exception e) { throw new IllegalStateException(e); } }
 }

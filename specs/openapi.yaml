@@ -8586,16 +8586,23 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [platform], properties: { platform: { type: string, enum: [douyin, kuaishou, xiaohongshu, shipinhao] } } } } } }
       responses: { '200': { description: submitted } }
   /me/clip/avatar:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: aggregate image and voice engine state } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: aggregate image and voice engine state with upstream progress and failure messages } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatar, responses: { '200': { description: upstream deletion requested and local assets soft deleted } } }
+  /me/clip/avatar/requirements:
+    get:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipAvatarCaptureRequirements
+      description: 返回石榴官方硬限制与本产品采集建议；客户端必须展示并按 productMaxBytes/productMinDurationSec 做前置校验，服务端仍以 ffprobe 结果为准。
+      responses: { '200': { description: consent/avatar/voice capture rules and the exact consent script } }
   /me/clip/avatar/consent:
     post:
       tags: [clip]
       security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
       operationId: clipStartConsent
-      description: 上传本人正脸授权视频；原始核验视频在石榴受理后由我方删除，只保留授权文本哈希与 authId。
+      description: 上传本人正脸授权声明视频；口播必须与服务端固定授权文案逐字一致。石榴受理后原始文件由我方删除，只保留授权文本哈希与 authId。authId 表示供应商已受理授权证据，不等同于独立实名认证。
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, text], properties: { file: { type: string, format: binary }, text: { type: string, maxLength: 300 } } } } } }
-      responses: { '200': { description: authorization video result; only verified permits clone }, '503': { description: media moderation or engine not configured } }
+      responses: { '200': { description: authorization video submitted and accepted by the upstream endpoint; accepted permits clone }, '503': { description: media moderation or engine not configured } }
   /me/clip/avatar/clone:
     post:
       tags: [clip]
