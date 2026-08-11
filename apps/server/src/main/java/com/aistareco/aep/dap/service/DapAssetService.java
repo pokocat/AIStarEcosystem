@@ -137,7 +137,7 @@ public class DapAssetService {
         List<DapAssetIp> ips = ipRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId);
         List<DapScene> scenes = sceneRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId);
         List<DapProduct> products = productRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId);
-        List<DapVoice> voices = voiceRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId);
+        List<DapVoice> voices = voiceRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId);
         List<DapStyle> styles = styleRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByUseCountDescUpdatedAtDesc(userId);
 
         List<AssetTypeTileDto> tiles = List.of(
@@ -234,7 +234,7 @@ public class DapAssetService {
         DapAssetIp ip = requiredIp(userId, id);
         List<DapAvatar> chars = charactersOf(userId, id);
         List<Map<String, Object>> voices = new ArrayList<>();
-        for (DapVoice v : voiceRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId)) {
+        for (DapVoice v : voiceRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId)) {
             if (v.getAvatarId() != null && chars.stream().anyMatch(c -> c.getId().equals(v.getAvatarId()))) {
                 voices.add(com.aistareco.aep.dap.dto.DapDtos.VoiceDto.from(v, storage::signedUrl).toWire());
             }

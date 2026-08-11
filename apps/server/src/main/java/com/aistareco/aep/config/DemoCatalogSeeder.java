@@ -8,6 +8,7 @@ import com.aistareco.repository.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -33,6 +34,7 @@ import java.util.UUID;
  */
 @Component
 @Profile({"dev", "test"})
+@ConditionalOnProperty(name = "aep.seed.dev-data.enabled", havingValue = "true", matchIfMissing = true)
 @Order(100)
 public class DemoCatalogSeeder implements CommandLineRunner {
 

@@ -65,6 +65,9 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
                         .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
+                        // 军师 BFF 使用独立 service token + externalOwnerId；由 ClipServiceIdentity 做常量时间校验。
+                        // 顺序必须早于通用 /api/me/** JWT 规则，且只放行 clip 子树。
+                        .requestMatchers("/api/me/clip/**").permitAll()
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
                         // 充值/积分包只读展示 + 购买记录回显（写入动作已下线，购买统一走

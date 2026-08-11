@@ -1,8 +1,22 @@
-# 版本增量历史（v0.5 → v0.108）
+# 版本增量历史（v0.5 → v0.111）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.111（2026-08-11）— 石榴 AI 真实网关、正式模板与隔离预发
+
+`HttpShiliuGateway` 按石榴官方 API v1 落地 Bearer 调用：授权视频、音色/形象训练、TTS、文案/音频驱动视频、状态轮询与删除；上游错误和异常响应统一 fail-closed，密钥不入库、不入日志。石榴返回的时效视频 URL 由 `ClipOutputStorage` 校验公网 HTTPS、限 512MB 并立即转存到我方存储。分身训练按「本人授权 → 声音 ready → 形象训练」串联，客户端授权入口改为上传真实前置摄像头视频。
+
+内置 `ct_shiti`、`ct_kaimen`、`ct_shouyi` 三套正式模板，seeder 只补缺失 ID、不覆盖运营编辑。新增 `clip-preprod` profile、独立 env/systemd/nginx/deploy 模板：实例仅监听 `127.0.0.1:8081`，军师 BFF 用高熵 service token 回源，公网只暴露 `/clip_preprod/cdn|files/`。预发真实 key 只保存于 0600 env；只读探针确认账号有 12,000 点、当前没有已训练 speaker/avatar。媒体机器审核、真人素材质量实测、完整多段 ffmpeg 总装与四平台真实发布仍按 TODO 失败关闭。
+
+### v0.110（2026-08-10）— 军师「快出片」clip 域工程骨架
+
+新增独立 `packages/types/src/clip.ts` 与 Java `clip` 域，`V14__add_clip_domain.sql` 建立模板、项目、异步任务、素材四表。军师通过固定 service token 调 `/api/me/clip/**`，每条数据同时保存并强制过滤 `externalOwnerId`；服务账号不能替代最终用户隔离。管理员可维护模板并上传 preset，用户侧覆盖项目草稿/重置/回收、素材、授权/克隆、权威报价、preflight、幂等建单、作品与发布契约。
+
+任务采用数据库 `leaseOwner / leaseUntil` 抢占，阶段推进放在独立事务 bean，另有 stale reaper 处理进程退出；取消同步清租约。Scheme A 下本仓不调用 `CreditService`，只保存军师已冻结的外部报价，军师 BFF 负责 hold/settle/refund。OpenAPI 为 service token 与 external owner 定义 AND 鉴权语义。
+
+真实能力按失败关闭交付：production/mysql 禁止 mock；缺官方石榴字段契约时 `HttpShiliuGateway` 返回 `CLIP_ENGINE_CONTRACT_UNVERIFIED`，非 mock 总装返回 `CLIP_ASSEMBLY_NOT_CONFIGURED`，非 mock 发布返回 `CLIP_PUBLISH_NOT_CONFIGURED`。外部 M0、媒体审核、ffmpeg/CDN、四平台发布及生产验收列入 `TODO.md`，不得把 mock 产物当作上线结果。
 
 ### v0.108（2026-08-03）— 修复：明星带货素材库混入 AI 短剧视频资产（跨子产品串号）
 

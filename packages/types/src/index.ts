@@ -7,6 +7,7 @@ export * from "./asset";
 export * from "./batch-mix";
 export * from "./celebrity-zone";
 export * from "./clip-studio";
+export * from "./clip";
 export * from "./coach";
 export * from "./community";
 export * from "./copy";

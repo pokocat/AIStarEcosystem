@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Star Eco — Clip Preprod Backend
+After=network.target
+
+[Service]
+Type=simple
+User=junshi
+WorkingDirectory=/opt/aistareco-clip-preprod/server
+EnvironmentFile=/etc/aistareco/clip-preprod.env
+ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai -jar /opt/aistareco-clip-preprod/server/app.jar
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10s
+LimitNOFILE=32768
+
+[Install]
+WantedBy=multi-user.target

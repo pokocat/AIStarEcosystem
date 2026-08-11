@@ -11,6 +11,8 @@ This skill is the repo-local deployment entrypoint. Before any deployment action
 2. Run `git status --short` and identify unrelated dirty changes.
 3. Do not edit `/etc/aistareco/*.env` secrets or credentials as part of a deploy. If env values are missing or wrong, tell the user exactly what to configure.
 
+`clip` preprod is an explicit exception to the production topology, not a production service alias. Only when the user asks for 军师快出片预发, use `infra/scripts/deploy-clip-preprod.sh`, `/etc/aistareco/clip-preprod.env`, `/opt/aistareco-clip-preprod`, and systemd `aistareco-clip-preprod` on the user-authorized preprod host. It must stay on `127.0.0.1:8081`; expose only `/clip_preprod/cdn|files/` through nginx; never restart or modify `aistareco-server` production. Real Shiliu tokens must be entered interactively or installed by a secret manager and never appear in command arguments/output.
+
 ## Services
 
 Current production services are:

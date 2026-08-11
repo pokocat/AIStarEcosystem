@@ -22,6 +22,7 @@
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 - 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
+- `clip` 口播视频线（v0.111）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。已按石榴官方 API v1 接入授权视频、声音/形象训练、TTS、文案/音频驱动视频、状态轮询、删除与时效成片转存，内置 3 套正式模板；预发使用 `clip-preprod` 独立 profile、H2/文件存储和本机 8081，不接触 AIStar 生产。媒体机器审核与四平台代发未完成时仍必须失败关闭，mock 只允许非 mysql/production 环境。当前事实与外部门槛见 `docs/clip-avatar-video-plan.md`。
 
 ---
 

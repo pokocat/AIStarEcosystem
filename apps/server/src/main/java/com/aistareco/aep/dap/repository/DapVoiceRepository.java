@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface DapVoiceRepository extends JpaRepository<DapVoice, String> {
     List<DapVoice> findByOwnerUserIdOrderByCreatedAtDesc(String ownerUserId);
     Optional<DapVoice> findByIdAndOwnerUserId(String id, String ownerUserId);
-    @Query("SELECT COALESCE(SUM(v.bytes),0) FROM DapVoice v WHERE v.ownerUserId = :uid")
+    List<DapVoice> findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(String ownerUserId);
+    Optional<DapVoice> findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(String ownerUserId, String engine);
+    @Query("SELECT COALESCE(SUM(v.bytes),0) FROM DapVoice v WHERE v.ownerUserId = :uid AND v.deletedAt IS NULL")
     long sumBytesByOwner(@Param("uid") String uid);
 }

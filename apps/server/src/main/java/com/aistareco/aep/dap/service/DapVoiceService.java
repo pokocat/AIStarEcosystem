@@ -51,7 +51,7 @@ public class DapVoiceService {
     }
 
     public List<Map<String, Object>> mine(String userId) {
-        return voiceRepo.findByOwnerUserIdOrderByCreatedAtDesc(userId).stream()
+        return voiceRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(userId).stream()
                 .map(v -> VoiceDto.from(v, storage::signedUrl).toWire())
                 .toList();
     }

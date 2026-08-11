@@ -13,4 +13,5 @@ public interface DapAvatarRepository extends JpaRepository<DapAvatar, String> {
     Optional<DapAvatar> findByIdAndOwnerUserId(String id, String ownerUserId);
     List<DapAvatar> findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String ownerUserId);
     List<DapAvatar> findByDeletedAtBefore(java.time.Instant cutoff);
+    Optional<DapAvatar> findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId, String engine);
 }

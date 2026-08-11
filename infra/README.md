@@ -6,6 +6,12 @@
 
 本文件是 AI Star Eco 在阿里云上部署的**单一真值源**。
 
+## `clip` 军师预发隔离实例（2026-08-11）
+
+军师「快出片」预发不复用 AIStar 生产实例：`aistareco-clip-preprod` 仅监听 `127.0.0.1:8081`，工作目录 `/opt/aistareco-clip-preprod/server`，运行时机密在 `/etc/aistareco/clip-preprod.env`（0600）。军师预发 BFF 从同机 `http://127.0.0.1:8081` 回源；公网只通过 `wxapi.aibuzz.cn/clip_preprod/cdn/` 与 `/files/` 读取作品，不公开 AIStar API。
+
+初始化顺序：安装 Java 17 → 安装 `infra/systemd/aistareco-clip-preprod.service.example` → 按 `infra/env/clip-preprod.env.example` 安全落真实 env → 将 `infra/nginx/clip-preprod.wxapi.snippet.example` 合入 wxapi HTTPS server 并 `nginx -t` → 运行 `infra/scripts/deploy-clip-preprod.sh`。脚本只构建/替换该实例 JAR、重启该 systemd unit，并用 service token 验证至少 3 个模板；不访问 AIStar 生产。石榴 token 和 BFF service token 禁止进入命令历史、日志、git 或部署版本文件。
+
 ---
 
 ## 1. 目录速览

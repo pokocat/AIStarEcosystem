@@ -11,4 +11,6 @@ public interface DapConsentRepository extends JpaRepository<DapConsent, String> 
     Optional<DapConsent> findByIdAndOwnerUserId(String id, String ownerUserId);
     Optional<DapConsent> findFirstByCaptureIdAndOwnerUserIdAndAgreementVersionOrderByAcceptedAtDesc(
             String captureId, String ownerUserId, String agreementVersion);
+    Optional<DapConsent> findFirstByOwnerUserIdOrderByAcceptedAtDesc(String ownerUserId);
+    java.util.List<DapConsent> findByOwnerUserIdOrderByAcceptedAtDesc(String ownerUserId);
 }

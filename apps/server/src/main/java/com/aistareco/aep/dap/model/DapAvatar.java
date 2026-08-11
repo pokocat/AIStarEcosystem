@@ -95,6 +95,19 @@ public class DapAvatar {
     @Builder.Default
     private String engine = "Agnes Image 2.1";
 
+    /** 外部克隆引擎中的资产 id（石榴 avatarID 等）。 */
+    @Column(length = 160)
+    private String engineRef;
+
+    /** 外部克隆训练的原始采集文件 storage key；删除分身时同步物理删除。 */
+    @Column(length = 512)
+    private String engineSourceKey;
+
+    @Column(length = 24)
+    private String engineStatus;
+
+    private Instant engineTrainedAt;
+
     /** 占位画像调色板 {bg1,bg2,skin,hair,cloth,accent}。 */
     @Convert(converter = JsonMapConverter.class)
     @Column(columnDefinition = "TEXT")

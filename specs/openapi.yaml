@@ -24,6 +24,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    clipServiceAuth:
+      type: http
+      scheme: bearer
+      description: 军师 BFF 专用 service token，不接受普通用户 JWT。
+    clipExternalOwner:
+      type: apiKey
+      in: header
+      name: X-External-Owner-Id
+      description: 军师 userId；所有 clip 资源的强属主隔离真源。
 
   # ── Reusable response wrappers ──────────
   schemas:
@@ -2670,6 +2679,63 @@ components:
 # ─────────────────────────────────────────
 # PATHS
 # ─────────────────────────────────────────
+    ClipSegment:
+      type: object
+      required: [no, text, role]
+      properties:
+        no: { type: integer }
+        text: { type: string }
+        role: { type: string, enum: [avatar, broll, tail] }
+        hint: { type: string, nullable: true }
+        durationSec: { type: number, nullable: true }
+        actualDurationSec: { type: number, nullable: true }
+        assetId: { type: string, nullable: true }
+        assetLabel: { type: string, nullable: true }
+        brollSource: { type: string, enum: [user, preset], nullable: true }
+        replaceable: { type: boolean, nullable: true }
+
+    ClipProject:
+      type: object
+      required: [id, templateId, templateName, title, status, variables, segments, durationSec, avatarSeconds, segmentCount, progress, step, updatedAt]
+      properties:
+        id: { type: string }
+        templateId: { type: string }
+        templateName: { type: string }
+        title: { type: string }
+        status: { type: string, enum: [draft, generating, done, failed] }
+        variables: { type: object, additionalProperties: { type: string } }
+        segments: { type: array, items: { $ref: '#/components/schemas/ClipSegment' } }
+        avatarId: { type: string, nullable: true }
+        voiceId: { type: string, nullable: true }
+        durationSec: { type: integer }
+        avatarSeconds: { type: integer }
+        segmentCount: { type: integer }
+        progress: { type: integer }
+        step: { type: integer }
+        updatedAt: { type: string, format: date-time }
+
+    ClipEstimate:
+      type: object
+      required: [items, total, summary]
+      properties:
+        items: { type: array, items: { type: object } }
+        total: { type: integer }
+        summary: { type: object }
+
+    ClipJob:
+      type: object
+      required: [id, projectId, status, stage, progress, mock, updatedAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        status: { type: string, enum: [queued, generating, assembling, succeeded, failed, cancelled] }
+        stage: { type: string, enum: [tts, avatar, broll, assemble] }
+        progress: { type: integer }
+        workId: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true }
+        mock: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+
 paths:
 
   # ── 3.1 Auth ────────────────────────────
@@ -4798,7 +4864,7 @@ paths:
         - { in: query, name: count, schema: { type: integer, default: 1, minimum: 1, maximum: 100 } }
       responses:
         '200':
-          description: ok（{ batchId, count, rawCodes[] }）
+          description: 'ok（{ batchId, count, rawCodes[] }）'
         '409': { description: 批次状态非 ACTIVE }
 
   /admin/license-keys:
@@ -6578,17 +6644,17 @@ paths:
 
   # ── 素材运营 · 文本类 AI（v0.40 新增；接真 LLM，失败降级，见 MaterialAiService） ──────────
   /material/scripts:
-    get: { tags: [material], operationId: materialListScripts, responses: { '200': { description: 当前用户可见 ScriptAsset[]（过滤 deleted_at） } } }
+    get: { tags: [material], operationId: materialListScripts, responses: { '200': { description: '当前用户可见 ScriptAsset[]（过滤 deleted_at）' } } }
     post: { tags: [material], operationId: materialSaveScript, responses: { '200': { description: 保存脚本 ScriptAsset } } }
   /material/scripts/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get: { tags: [material], operationId: materialGetScript, responses: { '200': { description: 单个脚本 ScriptAsset；已软删/无权访问返回 null } } }
     delete: { tags: [material], operationId: materialDeleteScript, responses: { '204': { description: 软删除脚本（写 deleted_at，不物理删除） } } }
   /material/scripts/ai-draft:
-    post: { tags: [material], operationId: materialAiDraftScripts, responses: { '200': { description: AI 起稿候选 ScriptAsset[]（不落库；LLM 失败回退内置占位池） } } }
+    post: { tags: [material], operationId: materialAiDraftScripts, responses: { '200': { description: 'AI 起稿候选 ScriptAsset[]（不落库；LLM 失败回退内置占位池）' } } }
   /material/scripts/{id}/variables:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-    post: { tags: [material], operationId: materialExtractVariables, responses: { '200': { description: 脚本可替换变量 ScriptVariable[]（已过滤幻觉；失败/无权访问返回空，前端用正则兜底） } } }
+    post: { tags: [material], operationId: materialExtractVariables, responses: { '200': { description: '脚本可替换变量 ScriptVariable[]（已过滤幻觉；失败/无权访问返回空，前端用正则兜底）' } } }
 
   # ── 素材运营 · 带货视频生成（v0.41 新增；真实视频大模型 · 异步 submit + 轮询，见 MaterialVideoJobService） ──
   /material/videos/generate:
@@ -6600,12 +6666,12 @@ paths:
       parameters:
         - { in: query, name: script_id, schema: { type: string } }
         - { in: query, name: product_id, schema: { type: string } }
-      responses: { '200': { description: 当前用户的视频生成任务 MaterialVideo[]（含 rendering/ready/failed） } }
+      responses: { '200': { description: '当前用户的视频生成任务 MaterialVideo[]（含 rendering/ready/failed）' } }
   /material/videos/jobs/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get: { tags: [material], operationId: materialGetVideoJob, responses: { '200': { description: 单个生成任务的最新状态 / 结果 MaterialVideo（前端独立轮询；非本人返回 null） } } }
   /material/viral-hits:
-    get: { tags: [material], operationId: materialListViralHits, responses: { '200': { description: 用户主动提交链接后的历史爆款分析结果 ViralHit[]（不自动抓取平台列表） } } }
+    get: { tags: [material], operationId: materialListViralHits, responses: { '200': { description: '用户主动提交链接后的历史爆款分析结果 ViralHit[]（不自动抓取平台列表）' } } }
   /material/viral-hits/analyze-url:
     post: { tags: [material], operationId: materialAnalyzeViralUrl, responses: { '200': { description: '提交单条视频链接 → 解析可用 video_url → AI 拆解 ViralHit；body={url, platform?}' } } }
 
@@ -7944,11 +8010,11 @@ paths:
     post: { tags: [dap], operationId: dapCreateLook, description: 描述造型或 sceneId 场景替换 → 异步任务, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/derivatives:
     get:  { tags: [dap], operationId: dapAvatarDerivatives, responses: { '200': { description: ok } } }
-    post: { tags: [dap], operationId: dapCreateDerivative, description: type=atlas|expr|scene|ward|d3|video → 异步任务；options{items[{label,prompt}]≤6 / extraPrompt / motion} + templateId(atlas) 自定义配方（v0.52）, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapCreateDerivative, description: 'type=atlas|expr|scene|ward|d3|video → 异步任务；options{items[{label,prompt}]≤6 / extraPrompt / motion} + templateId(atlas) 自定义配方（v0.52）', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/describe:
     post: { tags: [dap], operationId: dapDescribeAvatar, description: 落人设描述与表单（同步）, responses: { '200': { description: ok } } }
   /v1/avatars/{id}/photos:
-    post: { tags: [dap], operationId: dapUploadPhotos, description: multipart files[] 照片素材, responses: { '200': { description: ok } } }
+    post: { tags: [dap], operationId: dapUploadPhotos, description: 'multipart files[] 照片素材', responses: { '200': { description: ok } } }
   /v1/avatars/{id}/generate:
     post: { tags: [dap], operationId: dapGenerateAvatar, description: 'mode=describe(4 变体)|upload(高保真复刻) → 异步任务；真人路径必须选择或自动解析一条 approved 素材，任务 payload 使用 qasset:// 引用', responses: { '200': { description: ok }, '403': { description: DAP_MATERIAL_APPROVAL_REQUIRED } } }
   /v1/avatars/{id}/pick:
@@ -8443,3 +8509,114 @@ paths:
         - { in: query, name: productId, schema: { type: string } }
         - { in: query, name: starId, schema: { type: string } }
       responses: { '200': { description: ok } }
+
+  # ── 数字分身口播成片（军师 BFF service token + externalOwnerId）────────────
+  # 这些端点不接受普通用户 JWT。Controller 对 Authorization service token 做常量时间比较，
+  # 并用 X-External-Owner-Id 作为 clip 表的强属主过滤条件。
+  /me/clip/templates:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListTemplates, responses: { '200': { description: published templates } } }
+  /me/clip/templates/{id}:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetTemplate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: template } } }
+  /me/clip/projects:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListProjects, responses: { '200': { description: owned projects } } }
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipCreateProject
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [templateId], properties: { templateId: { type: string } } } } } }
+      responses: { '200': { description: created project } }
+  /me/clip/projects/ongoing:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipOngoingProject, responses: { '200': { description: latest draft or null } } }
+  /me/clip/projects/{id}:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetProject, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: project } } }
+    put: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipSaveProject, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: saved project } } }
+    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteProject, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: moved to trash } } }
+  /me/clip/projects/{id}/restore:
+    post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipRestoreProject, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: restored } } }
+  /me/clip/projects/{id}/purge:
+    post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipPurgeProject, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: permanently deleted } } }
+  /me/clip/projects/{id}/script/reset:
+    post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipResetScript, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: template script restored } } }
+  /me/clip/projects/{id}/script/ai-rewrite:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipRewriteScript
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [scope], properties: { scope: { type: string, enum: [all, segment] }, no: { type: integer, nullable: true }, text: { type: string, nullable: true } } } } } }
+      responses: { '200': { description: rewrite result }, '503': { description: production engine or prompt route not configured } }
+  /me/clip/projects/{id}/preview-voice:
+    post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipPreviewVoice, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: TTS preview and actual duration } } }
+  /me/clip/projects/{id}/estimate:
+    post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipEstimate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: authoritative quote }, '503': { description: pricing not configured } } }
+  /me/clip/projects/{id}/render:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipRender
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [clientRequestId, externalCreditsHeld], properties: { clientRequestId: { type: string }, externalCreditsHeld: { type: integer } } } } } }
+      responses: { '200': { description: queued idempotent job }, '409': { description: avatar voice or quote changed }, '503': { description: engine not configured } }
+  /me/clip/jobs/{id}:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetJob, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: job progress } } }
+  /me/clip/jobs/{id}/cancel:
+    post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipCancelJob, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: cooperatively cancelled } } }
+  /me/clip/assets:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAssets, responses: { '200': { description: owned and preset assets } } }
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipUploadAsset
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [video, image, bgm] }, label: { type: string } } } } } }
+      responses: { '200': { description: uploaded }, '400': { description: CLIP_ASSET_NOT_ALLOWED } }
+  /me/clip/assets/{id}:
+    patch: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipUpdateAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated label } } }
+    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: owned object and row deleted } } }
+  /me/clip/works:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works } } }
+  /me/clip/works/{id}:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: work } } }
+  /me/clip/works/{id}/publish:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipPublishWork
+      description: 只支持抖音、快手、小红书、视频号；不承诺其它平台。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [platform], properties: { platform: { type: string, enum: [douyin, kuaishou, xiaohongshu, shipinhao] } } } } } }
+      responses: { '200': { description: submitted } }
+  /me/clip/avatar:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: aggregate image and voice engine state } } }
+    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatar, responses: { '200': { description: upstream deletion requested and local assets soft deleted } } }
+  /me/clip/avatar/consent:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipStartConsent
+      description: 上传本人正脸授权视频；原始核验视频在石榴受理后由我方删除，只保留授权文本哈希与 authId。
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, text], properties: { file: { type: string, format: binary }, text: { type: string, maxLength: 300 } } } } } }
+      responses: { '200': { description: authorization video result; only verified permits clone }, '503': { description: media moderation or engine not configured } }
+  /me/clip/avatar/clone:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipCloneAvatarOrVoice
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [avatar, voice] } } } } } }
+      responses: { '200': { description: training started }, '403': { description: CLIP_CONSENT_REQUIRED } }
+  /me/clip/avatar/consents:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipConsentLogs, responses: { '200': { description: consent snapshots } } }
+  /me/clip/avatar/usages:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipUsageLogs, responses: { '200': { description: generation usage logs } } }
+  /admin/clip/templates:
+    get: { tags: [admin, clip], operationId: adminClipTemplates, responses: { '200': { description: all templates } } }
+    post: { tags: [admin, clip], operationId: adminCreateClipTemplate, responses: { '200': { description: created } } }
+  /admin/clip/templates/{id}:
+    put: { tags: [admin, clip], operationId: adminUpdateClipTemplate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated } } }
+    delete: { tags: [admin, clip], operationId: adminDeleteClipTemplate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: soft deleted } } }
+  /admin/clip/preset-assets:
+    post:
+      tags: [admin, clip]
+      operationId: adminUploadClipPresetAsset
+      description: 预置素材必须经本运营上传路由进入存储，不允许 seed 本机路径。
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [video, image, bgm] }, label: { type: string }, group: { type: string } } } } } }
+      responses: { '200': { description: preset asset uploaded } }

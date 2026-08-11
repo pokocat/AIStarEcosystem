@@ -77,5 +77,19 @@ public class DapVoice {
     @Builder.Default
     private long bytes = 0;
 
+    @Column(length = 64)
+    private String engine;
+
+    @Column(length = 160)
+    private String engineRef;
+
+    @Column(length = 24)
+    private String engineStatus;
+
+    private Instant engineTrainedAt;
+
     private Instant createdAt;
+
+    /** 与其它五类 DAP 资产一致的软删除语义。 */
+    private Instant deletedAt;
 }

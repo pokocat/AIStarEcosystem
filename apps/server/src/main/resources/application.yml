@@ -56,6 +56,20 @@ logging:
     file:    "%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } --- [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"
 
 aep:
+  # 军师「快出片」服务间接口。默认全部 fail-closed；本地 mock 也必须显式开启。
+  clip:
+    service-token: ${AEP_CLIP_SERVICE_TOKEN:}
+    allow-mock: ${AEP_CLIP_ALLOW_MOCK:false}
+    shiliu-base-url: ${AEP_CLIP_SHILIU_BASE_URL:}
+    shiliu-token: ${AEP_CLIP_SHILIU_TOKEN:}
+    seed-official-templates: ${AEP_CLIP_SEED_OFFICIAL_TEMPLATES:true}
+    pricing-avatar-second: ${AEP_CLIP_PRICE_AVATAR_SECOND:}
+    pricing-tts-per-kchar: ${AEP_CLIP_PRICE_TTS_PER_KCHAR:}
+    pricing-assemble: ${AEP_CLIP_PRICE_ASSEMBLE:}
+    stale-ms: ${AEP_CLIP_STALE_MS:600000}
+    max-asset-bytes: ${AEP_CLIP_MAX_ASSET_BYTES:104857600}
+    max-avatar-segment-sec: ${AEP_CLIP_MAX_AVATAR_SEGMENT_SEC:30}
+    trash-retention-days: ${AEP_CLIP_TRASH_RETENTION_DAYS:30}
   # v0.34+ 演示数据 seeder 全局开关。
   # true  → DataInitializer / CelebrityZoneDataInitializer / CelebrityProductSeeder /
   #         DemoCatalogSeeder / DataSeeder / AiModelProviderDataInitializer /

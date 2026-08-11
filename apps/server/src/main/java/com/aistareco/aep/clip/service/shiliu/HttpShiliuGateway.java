@@ -1,0 +1,290 @@
+package com.aistareco.aep.clip.service.shiliu;
+
+import com.aistareco.aep.clip.config.ClipProperties;
+import com.aistareco.aep.service.storage.FileStorageService;
+import com.aistareco.common.BusinessException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.Locale;
+import java.util.UUID;
+
+/** 石榴 AI API v1 真实适配器。密钥仅从运行时配置读取，不落库、不打印。 */
+@Component
+public class HttpShiliuGateway implements ShiliuGateway {
+    private static final Logger log = LoggerFactory.getLogger(HttpShiliuGateway.class);
+    private static final ObjectMapper OM = new ObjectMapper();
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(45);
+
+    private final ClipProperties props;
+    private final FileStorageService storage;
+    private final HttpClient http;
+
+    @Autowired
+    public HttpShiliuGateway(ClipProperties props, FileStorageService storage) {
+        this(props, storage, HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build());
+    }
+
+    HttpShiliuGateway(ClipProperties props, FileStorageService storage, HttpClient http) {
+        this.props = props;
+        this.storage = storage;
+        this.http = http;
+    }
+
+    @Override
+    public Task previewVoice(String ownerId, String speakerRef, String text) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        body.put("text", requiredText(text, 10_000, "试听文案"));
+        JsonNode data = post("/speaker/tts", body);
+        String audio = text(data, "audio");
+        if (audio == null || audio.isBlank()) throw invalidResponse("speaker/tts missing audio");
+        byte[] bytes;
+        try {
+            String raw = audio.startsWith("data:") ? audio.substring(audio.indexOf(',') + 1) : audio;
+            bytes = Base64.getMimeDecoder().decode(raw);
+        } catch (IllegalArgumentException e) {
+            throw invalidResponse("speaker/tts audio is not base64");
+        }
+        if (bytes.length == 0 || bytes.length > 20 * 1024 * 1024) throw invalidResponse("speaker/tts audio size invalid");
+        FileStorageService.StoredFile stored = storage.store(bytes, "clip/preview-voice", ownerId, "mp3", "audio/mpeg");
+        int durationSec = durationSeconds(data.path("length").asLong(0), text.length());
+        return new Task("tts:" + UUID.randomUUID().toString().substring(0, 12), "succeeded", durationSec,
+                stored.signedUrl(), null);
+    }
+
+    @Override
+    public Task createVideoByText(String ownerId, String avatarRef, String speakerRef, String text) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("avatarId", numericRef(avatarRef, "avatarId"));
+        body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        body.put("text", requiredText(text, 10_000, "口播文案"));
+        body.put("title", title("军师口播"));
+        body.put("speedRatio", 1);
+        body.put("addWatermark", true);
+        body.put("addSubtitle", true);
+        JsonNode data = post("/video/createByText", body);
+        String id = id(data, "videoId");
+        return new Task("video:" + id, "processing", durationSecondsNullable(data.path("length").asLong(0)), null, null);
+    }
+
+    @Override
+    public Task createVideoByAudioFile(String ownerId, String avatarRef, String audioRef) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("avatarId", numericRef(avatarRef, "avatarId"));
+        body.put("audioUrl", publicMediaUrl(audioRef));
+        body.put("title", title("军师口播"));
+        body.put("addWatermark", true);
+        JsonNode data = post("/video/createByVoice", body);
+        String id = id(data, "videoId");
+        return new Task("video:" + id, "processing", durationSecondsNullable(data.path("length").asLong(0)), null, null);
+    }
+
+    @Override
+    public Task cloneAvatar(String ownerId, String mediaRef, String speakerRef, String authorizationRef) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("videoUrl", publicMediaUrl(mediaRef));
+        body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        body.put("title", title("军师数字分身"));
+        body.put("authId", numericRef(authorizationRef, "authId"));
+        JsonNode data = post("/avatar/create", body);
+        String id = id(data, "avatarId");
+        return new Task("avatar:" + id, "processing", null, id, null);
+    }
+
+    @Override
+    public Task cloneVoice(String ownerId, String mediaRef) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("audioUrl", publicMediaUrl(mediaRef));
+        body.put("title", title("军师本人音色"));
+        JsonNode data = post("/speaker/create", body);
+        String id = id(data, "speakerId");
+        return new Task("speaker:" + id, "processing", null, id, null);
+    }
+
+    @Override
+    public Task createAuthorizationVideo(String ownerId, String mediaRef, String spokenText) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("videoUrl", publicMediaUrl(mediaRef));
+        body.put("text", requiredText(spokenText, 300, "授权口令"));
+        JsonNode data = post("/authVideo/create", body);
+        String id = data.isValueNode() ? data.asText() : id(data, "authId");
+        if (id == null || id.isBlank() || !id.matches("\\d+")) throw invalidResponse("authVideo/create missing authId");
+        return new Task("authorization:" + id, "succeeded", null, id, null);
+    }
+
+    @Override
+    public Task query(String taskId) {
+        String[] parts = splitTaskId(taskId);
+        String kind = parts[0];
+        String id = parts[1];
+        ObjectNode body = OM.createObjectNode();
+        switch (kind) {
+            case "speaker" -> body.put("speakerId", numericRef(id, "speakerId"));
+            case "avatar" -> body.put("avatarId", numericRef(id, "avatarId"));
+            case "video" -> body.put("videoId", numericRef(id, "videoId"));
+            default -> throw new BusinessException(HttpStatus.BAD_REQUEST, "CLIP_ENGINE_TASK_INVALID", "数字人任务标识无效");
+        }
+        JsonNode data = post("/" + kind + "/status", body);
+        String status = normalizedStatus(text(data, "status"));
+        String output = "video".equals(kind) && "succeeded".equals(status) ? text(data, "videoUrl") : id;
+        String error = "failed".equals(status) ? firstNonBlank(text(data, "failReason"), text(data, "error"), "上游任务失败") : null;
+        return new Task(kind + ":" + id, status, null, output, error);
+    }
+
+    @Override public void deleteAvatar(String engineRef) { delete("/avatar/delete", "avatarId", engineRef); }
+    @Override public void deleteVoice(String engineRef) { delete("/speaker/delete", "speakerId", engineRef); }
+    @Override public boolean mock() { return false; }
+
+    private void delete(String path, String field, String ref) {
+        ObjectNode body = OM.createObjectNode();
+        body.put(field, numericRef(ref, field));
+        post(path, body);
+    }
+
+    private JsonNode post(String path, JsonNode body) {
+        URI base = configuredBase();
+        URI uri = base.resolve(stripLeadingSlash(path));
+        try {
+            HttpRequest request = HttpRequest.newBuilder(uri)
+                    .timeout(REQUEST_TIMEOUT)
+                    .header("Authorization", "Bearer " + props.getShiliuToken())
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
+                    .build();
+            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warn("[clip-shiliu] http failure path={} status={}", path, response.statusCode());
+                throw upstreamFailure("石榴 AI 请求失败（HTTP " + response.statusCode() + "）", "status=" + response.statusCode());
+            }
+            JsonNode envelope = OM.readTree(response.body());
+            int code = envelope.path("code").asInt(Integer.MIN_VALUE);
+            if (code != 0) {
+                String message = clamp(text(envelope, "msg"), 180);
+                log.warn("[clip-shiliu] upstream rejected path={} code={} msg={}", path, code, message);
+                throw upstreamFailure("石榴 AI 未受理任务" + (message == null ? "" : "：" + message), "code=" + code);
+            }
+            JsonNode data = envelope.get("data");
+            if (data == null || data.isNull()) throw invalidResponse(path + " data is null");
+            return data;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw upstreamFailure("石榴 AI 请求被中断，请稍后重试", e.toString());
+        } catch (IOException | IllegalArgumentException e) {
+            log.warn("[clip-shiliu] call failed path={} error={}", path, e.toString());
+            throw upstreamFailure("石榴 AI 暂时不可用，请稍后重试", e.toString());
+        }
+    }
+
+    private URI configuredBase() {
+        String raw = props.getShiliuBaseUrl();
+        if (raw == null || raw.isBlank()) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+                "CLIP_ENGINE_NOT_CONFIGURED", "数字人视频引擎尚未配置");
+        String normalized = raw.endsWith("/") ? raw : raw + "/";
+        URI uri = URI.create(normalized);
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CONFIG_INVALID", "数字人视频引擎地址配置无效");
+        }
+        return uri;
+    }
+
+    private String publicMediaUrl(String ref) {
+        if (ref == null || ref.isBlank()) throw new BusinessException(HttpStatus.BAD_REQUEST, "CLIP_MEDIA_REQUIRED", "缺少媒体文件");
+        if (ref.startsWith("https://")) return ref;
+        if (ref.startsWith("http://")) throw new BusinessException(HttpStatus.BAD_REQUEST, "CLIP_MEDIA_URL_INSECURE", "媒体地址必须使用 HTTPS");
+        String url = storage.signedUrl(ref);
+        if (url == null || !url.startsWith("https://")) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_MEDIA_PUBLIC_URL_NOT_CONFIGURED", "媒体公网地址尚未配置");
+        }
+        return url;
+    }
+
+    private static long numericRef(String ref, String field) {
+        if (ref == null || !ref.matches("\\d{1,20}")) throw new BusinessException(HttpStatus.BAD_REQUEST,
+                "CLIP_ENGINE_REF_INVALID", field + " 无效");
+        try { return Long.parseLong(ref); }
+        catch (NumberFormatException e) { throw new BusinessException(HttpStatus.BAD_REQUEST, "CLIP_ENGINE_REF_INVALID", field + " 无效"); }
+    }
+
+    private static String requiredText(String value, int max, String label) {
+        String text = value == null ? "" : value.trim();
+        if (text.isBlank() || text.length() > max) throw new BusinessException(HttpStatus.BAD_REQUEST,
+                "CLIP_ENGINE_TEXT_INVALID", label + "不能为空且不能超过 " + max + " 字");
+        return text;
+    }
+
+    private static String[] splitTaskId(String taskId) {
+        if (taskId == null) return new String[]{"", ""};
+        int colon = taskId.indexOf(':');
+        if (colon < 1 || colon == taskId.length() - 1) return new String[]{"video", taskId};
+        return new String[]{taskId.substring(0, colon), taskId.substring(colon + 1)};
+    }
+
+    private static String normalizedStatus(String raw) {
+        String value = raw == null ? "" : raw.toLowerCase(Locale.ROOT);
+        if (value.matches("ready|success|succeeded|completed|done")) return "succeeded";
+        if (value.matches("failed|failure|error|rejected")) return "failed";
+        return "processing";
+    }
+
+    private static int durationSeconds(long upstreamLength, int textLength) {
+        Integer parsed = durationSecondsNullable(upstreamLength);
+        return parsed == null ? Math.max(1, Math.round(textLength / 4f)) : parsed;
+    }
+
+    private static Integer durationSecondsNullable(long upstreamLength) {
+        if (upstreamLength <= 0) return null;
+        return (int) Math.max(1, Math.ceil(upstreamLength / 1000d));
+    }
+
+    private static String id(JsonNode data, String field) {
+        JsonNode value = data.get(field);
+        String result = value == null || value.isNull() ? null : value.asText();
+        if (result == null || !result.matches("\\d+")) throw invalidResponse(field + " missing");
+        return result;
+    }
+
+    private static String title(String prefix) {
+        return prefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+    }
+
+    private static String text(JsonNode node, String field) {
+        if (node == null) return null;
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : value.asText();
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) if (value != null && !value.isBlank()) return value;
+        return null;
+    }
+
+    private static String stripLeadingSlash(String value) { return value.startsWith("/") ? value.substring(1) : value; }
+    private static String clamp(String value, int max) { return value == null ? null : value.substring(0, Math.min(max, value.length())); }
+    private static BusinessException invalidResponse(String detail) {
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_RESPONSE_INVALID",
+                "石榴 AI 返回了无法识别的数据，请稍后重试", detail);
+    }
+    private static BusinessException upstreamFailure(String message, String detail) {
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_CALL_FAILED", message, detail);
+    }
+}
