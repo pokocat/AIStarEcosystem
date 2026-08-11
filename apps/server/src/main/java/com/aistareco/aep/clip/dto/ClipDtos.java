@@ -56,10 +56,10 @@ public final class ClipDtos {
         }
     }
     public record AssetDto(String id, String label, String tag, String kind, double durationSec,
-                           int usedCount, boolean preset, String previewUrl, String createdAt) {
-        public static AssetDto from(ClipAsset a, String previewUrl, String displayLabel) {
+                           int usedCount, boolean preset, String previewUrl, String contentUrl, String createdAt) {
+        public static AssetDto from(ClipAsset a, String previewUrl, String contentUrl, String displayLabel) {
             return new AssetDto(a.getId(), displayLabel, a.getTag(), a.getKind(), a.getDurationSec(),
-                    a.getUsedCount(), a.isPreset(), previewUrl, iso(a.getCreatedAt()));
+                    a.getUsedCount(), a.isPreset(), previewUrl, contentUrl, iso(a.getCreatedAt()));
         }
     }
     public record WorkDto(String id, String projectId, String title, String status, int durationSec,

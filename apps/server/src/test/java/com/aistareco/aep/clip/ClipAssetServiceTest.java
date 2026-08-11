@@ -35,6 +35,7 @@ class ClipAssetServiceTest {
         when(thumbnails.extract("owner-1", source.key())).thenReturn(thumbnail);
         when(repo.save(any(ClipAsset.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(storage.signedUrl(thumbnail.key())).thenReturn("https://cdn.example/thumb.jpg");
+        when(storage.signedUrl(source.key())).thenReturn("https://cdn.example/source.mp4");
         var file = new MockMultipartFile("file", "tmp_fc984c89bb3436e0ed4f696c98b19a63963.mp4", "video/mp4", new byte[] {1, 2, 3});
         ClipAssetService service = new ClipAssetService(repo, storage, props, ffmpeg, thumbnails);
 
@@ -42,6 +43,7 @@ class ClipAssetServiceTest {
 
         assertEquals("我的视频素材", result.label());
         assertEquals("https://cdn.example/thumb.jpg", result.previewUrl());
+        assertEquals("https://cdn.example/source.mp4", result.contentUrl());
         verify(repo).save(argThat(asset -> thumbnail.key().equals(asset.getThumbnailCdnKey())));
         Files.deleteIfExists(input);
     }

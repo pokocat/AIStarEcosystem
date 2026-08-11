@@ -8562,7 +8562,7 @@ paths:
   /me/clip/jobs/{id}/cancel:
     post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipCancelJob, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: cooperatively cancelled } } }
   /me/clip/assets:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAssets, responses: { '200': { description: owned and preset assets; previewUrl is an image URL (original image or extracted JPEG video thumbnail), never a raw video URL } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAssets, responses: { '200': { description: owned and preset assets; previewUrl is a list image while contentUrl is the signed original media URL opened only on explicit preview } } }
     post:
       tags: [clip]
       security: [{ clipServiceAuth: [], clipExternalOwner: [] }]

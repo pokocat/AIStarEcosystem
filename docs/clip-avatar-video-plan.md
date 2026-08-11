@@ -19,6 +19,7 @@
 - v0.122 为普通配画面素材补齐真实缩略图和可读名称：视频上传时抽取约 0.5 秒 JPEG 到 `ClipAsset.thumbnailCdnKey`，历史视频在读取素材清单时 best-effort 补抽，图片仍直接使用原图；`AssetDto.previewUrl` 因此始终是小程序 `image` 可消费的图片地址。微信 `tmp_*`、`wxfile://` 与长哈希文件名统一显示为“我的视频素材 / 我的图片素材”，删除素材同步清理源文件与缩略图。
 - v0.123 将声音训练的真实来源和结果透给产品：`AvatarDto.voiceSource=video|dedicated` 分别表示形象视频自动提取的基础声线和用户主动补录的专属声线；军师端据此展示“视频原声 / 训练中百分比 / 已增强完成时间 / 失败重录”，驻留轮询只查询已有任务，不重复提交训练。
 - v0.124 修复缩略图字段发布迁移：V14 恢复为已执行过的原始内容，`clip_asset.thumbnail_cdn_key` 由独立 V15 添加；禁止通过改旧迁移或 Flyway repair 掩盖校验和漂移。
+- v0.125 补齐素材打开能力：`AssetDto.previewUrl` 继续承担列表图片封面，新增 `contentUrl` 返回原始图片/视频的短期签名地址，只在用户主动点开时加载；素材库、配画面卡和出片预览可以查看同一份真实素材。
 - v0.119 隔离预发版本 `e9e8e43c-20260811T153721Z` 已关闭 force-mock：服务 active、`NRestarts=0`，3 模板通过；军师 BFF 在线 requirements 返回 `authorizationVideoRequired=false`、形象硬门 5 秒、声音端上硬门 3 秒。自动化没有创建任何计费任务，下一步由用户本人从军师预发真机包提交素材。
 - v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕与全片「AI 生成」标识经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。v0.114 增加隔离预发专用 `AEP_CLIP_FORCE_MOCK=true`：确定性测试媒体也必须真实生成可播放 MP4 并走同一总装/质检/存储链，永久烧录「测试演示」；production/mysql 启动硬拒绝。公网 BFF 已验收到 44.05 秒、720×1280、H.264/AAC 成片与缩略图，force-mock 全程未请求石榴。
 - 非 mysql/production 环境允许显式 mock，mock 产物带 `mock=true`。媒体机器审核未配置时军师 BFF 继续 fail-closed；真实代发仍固定失败。

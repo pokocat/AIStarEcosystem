@@ -94,7 +94,8 @@ export interface ClipJob {
 
 export interface ClipAsset {
   id: string; label: string; tag?: string | null; kind: "video" | "image" | "bgm";
-  durationSec: number; usedCount: number; preset: boolean; previewUrl?: string | null; createdAt: string;
+  durationSec: number; usedCount: number; preset: boolean;
+  previewUrl?: string | null; contentUrl?: string | null; createdAt: string;
 }
 
 export interface ClipWork {

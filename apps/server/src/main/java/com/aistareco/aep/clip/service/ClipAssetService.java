@@ -75,7 +75,9 @@ public class ClipAssetService {
             }
         }
         String previewKey = "image".equals(a.getKind()) ? a.getCdnKey() : a.getThumbnailCdnKey();
-        return AssetDto.from(a, previewKey == null ? null : storage.signedUrl(previewKey), displayLabel(a.getKind(), a.getLabel()));
+        String previewUrl = previewKey == null ? null : storage.signedUrl(previewKey);
+        String contentUrl = a.getCdnKey() == null ? null : storage.signedUrl(a.getCdnKey());
+        return AssetDto.from(a, previewUrl, contentUrl, displayLabel(a.getKind(), a.getLabel()));
     }
     private static boolean mimeAllowed(String kind, String mime) { return "video".equals(kind) ? VIDEO.contains(mime) : "image".equals(kind) ? IMAGE.contains(mime) : AUDIO.contains(mime); }
     private static String cleanLabel(String value, String fallback) { String s = value == null || value.isBlank() ? fallback : value.trim(); if (s == null || s.isBlank()) s = "未命名素材"; return s.substring(0, Math.min(128, s.length())); }
