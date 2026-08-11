@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** 石榴官方硬限制 + 军师采集质量门。官方硬限制与产品建议在 DTO 中分开表达。 */
+/** 石榴官方硬限制 + 军师采集建议。较长的建议时长只用于提示，不得变成提交硬门槛。 */
 @Service
 public class ClipCapturePolicy {
     public static final String CONSENT_TEXT = "我是本次出镜者本人，特此声明，我授权军师参谋部使用我提交的视频和声音资料，为我的账号创建数字分身，并仅在我的账号中使用它。";
@@ -36,12 +36,13 @@ public class ClipCapturePolicy {
         CaptureRuleDto consent = new CaptureRuleDto("consent", 5, 300, 5, 8, 20, 30, VENDOR_VIDEO_MAX_BYTES, VIDEO_MAX_BYTES,
                 List.of("mp4", "mov"), List.of("mp4", "mov"), "H.264", 360, 4096, null, null,
                 List.of("本人正脸看镜头并完整念出授权文字", "画面和声音必须连续、清楚，不能剪辑拼接"));
-        CaptureRuleDto avatar = new CaptureRuleDto("avatar", 5, 300, 15, 20, 60, 300, VENDOR_VIDEO_MAX_BYTES, VIDEO_MAX_BYTES,
+        CaptureRuleDto avatar = new CaptureRuleDto("avatar", 5, 300, 5, 10, 20, 300, VENDOR_VIDEO_MAX_BYTES, VIDEO_MAX_BYTES,
                 List.of("mp4", "mov"), List.of("mp4", "mov"), "H.264", 360, 4096, null, null,
-                List.of("推荐竖屏 720p，上半身完整入镜", "手机固定、光线均匀，正脸自然说话", "不要戴口罩、墨镜或遮挡面部"));
-        CaptureRuleDto voice = new CaptureRuleDto("voice", 2, 0, 20, 30, 60, 120, AUDIO_MAX_BYTES, AUDIO_MAX_BYTES,
+                List.of("5 秒即可提交，建议竖屏连续录 10 至 20 秒", "推荐 720p，上半身完整入镜", "手机固定、光线均匀，正脸自然说话", "不要戴口罩、墨镜或遮挡面部"));
+        // 石榴要求声音样本 > 2 秒；端上按整秒展示为至少 3 秒，避免卡在边界值。
+        CaptureRuleDto voice = new CaptureRuleDto("voice", 2, 0, 3, 8, 15, 120, AUDIO_MAX_BYTES, AUDIO_MAX_BYTES,
                 List.of("wav", "mp3", "ogg", "m4a", "aac", "pcm"), List.of("wav", "mp3", "ogg", "m4a", "aac"), null, null, null, 44100, 1,
-                List.of("只保留一位说话人，关闭音乐和环境声", "离手机约 20 厘米，用平时语速完整朗读", "建议连续录 30 至 60 秒，避免长时间停顿"));
+                List.of("超过 2 秒即可提交，建议连续录 8 至 15 秒", "只保留一位说话人，关闭音乐和环境声", "离手机约 20 厘米，用平时语速自然朗读", "避免长时间停顿"));
         return new CaptureRequirementsDto(CONSENT_TEXT, "数字分身本人授权书", "2026-08-11",
                 List.of("https://api.16ai.vip/doc-4892856", "https://api.16ai.vip/api-295432904", "https://api.16ai.vip/api-198837531", "https://api.16ai.vip/api-198853492"),
                 consent, avatar, voice, 5_000);
@@ -81,7 +82,7 @@ public class ClipCapturePolicy {
     private static void validateVoice(FfmpegRunner.MediaProbe probe, String extension) {
         if (!probe.hasAudio()) throw BusinessException.badRequest("CLIP_VOICE_TRACK_REQUIRED", "录音里没有识别到声音");
         if (!containerMatches(extension, probe.format())) throw BusinessException.badRequest("CLIP_CAPTURE_CONTAINER_MISMATCH", "声音扩展名与实际格式不一致，请重新录制");
-        if (probe.durationSec() < 20) throw BusinessException.badRequest("CLIP_VOICE_TOO_SHORT", "为保证声音还原效果，请至少连续录制 20 秒，建议完整朗读 30 至 60 秒");
+        if (probe.durationSec() <= 2) throw BusinessException.badRequest("CLIP_VOICE_TOO_SHORT", "声音需要超过 2 秒，建议连续录制 8 至 15 秒");
         if (probe.durationSec() > 120) throw BusinessException.badRequest("CLIP_VOICE_TOO_LONG", "单次声音采集不能超过 2 分钟");
     }
 
@@ -90,8 +91,8 @@ public class ClipCapturePolicy {
         if (!containerMatches(extension, probe.format())) throw BusinessException.badRequest("CLIP_CAPTURE_CONTAINER_MISMATCH", "视频扩展名与实际格式不一致，请用小程序相机重新录制");
         if (!"h264".equalsIgnoreCase(probe.videoCodec())) throw BusinessException.badRequest("CLIP_VIDEO_CODEC_INVALID", "视频需要使用 H.264 编码，请用小程序相机重新录制");
         double max = "consent".equals(kind) ? 30 : 300;
-        double min = "avatar".equals(kind) ? 15 : 5;
-        if (probe.durationSec() < min) throw BusinessException.badRequest("CLIP_VIDEO_TOO_SHORT", "avatar".equals(kind) ? "为保证分身稳定，请至少连续录制 15 秒" : "视频至少要连续录制 5 秒");
+        double min = 5;
+        if (probe.durationSec() < min) throw BusinessException.badRequest("CLIP_VIDEO_TOO_SHORT", "视频至少要连续录制 5 秒");
         if (probe.durationSec() > max) throw BusinessException.badRequest("CLIP_VIDEO_TOO_LONG", "consent".equals(kind) ? "授权视频不能超过 30 秒" : "形象视频不能超过 5 分钟");
         int shortSide = Math.min(probe.width(), probe.height());
         int longSide = Math.max(probe.width(), probe.height());

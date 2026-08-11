@@ -31,11 +31,11 @@ class ClipCapturePolicyTest {
         var requirements = policy.requirements();
         assertEquals(5, requirements.avatar().vendorMinDurationSec());
         assertEquals(300, requirements.avatar().vendorMaxDurationSec());
-        assertEquals(15, requirements.avatar().minDurationSec());
-        assertEquals(20, requirements.avatar().recommendedMinDurationSec());
+        assertEquals(5, requirements.avatar().minDurationSec());
+        assertEquals(10, requirements.avatar().recommendedMinDurationSec());
         assertEquals(2, requirements.voice().vendorMinDurationSec());
-        assertEquals(20, requirements.voice().minDurationSec());
-        assertEquals(30, requirements.voice().recommendedMinDurationSec());
+        assertEquals(3, requirements.voice().minDurationSec());
+        assertEquals(8, requirements.voice().recommendedMinDurationSec());
         assertTrue(requirements.voice().vendorFormats().contains("pcm"));
         assertFalse(requirements.voice().formats().contains("pcm"));
         assertTrue(requirements.consentText().contains("授权军师参谋部"));
@@ -60,13 +60,13 @@ class ClipCapturePolicyTest {
     void acceptsOfficialVideoAndAudioShapes() {
         MockMultipartFile video = new MockMultipartFile("file", "me.mov", "video/quicktime", new byte[]{1});
         var storedVideo = new FileStorageService.StoredFile("capture-key", null, null, null, 1, "video/quicktime");
-        when(ffmpeg.probeMedia(any())).thenReturn(new FfmpegRunner.MediaProbe(45, "mov,mp4", "h264", "aac", 1080, 1920, 48000, 1, true));
-        assertEquals(45, policy.validate("avatar", video, storedVideo).durationSec());
+        when(ffmpeg.probeMedia(any())).thenReturn(new FfmpegRunner.MediaProbe(5, "mov,mp4", "h264", "aac", 1080, 1920, 48000, 1, true));
+        assertEquals(5, policy.validate("avatar", video, storedVideo).durationSec());
 
         MockMultipartFile audio = new MockMultipartFile("file", "me.m4a", "audio/mp4", new byte[]{1});
         var storedAudio = new FileStorageService.StoredFile("capture-key", null, null, null, 1, "audio/mp4");
-        when(ffmpeg.probeMedia(any())).thenReturn(new FfmpegRunner.MediaProbe(42, "mov,mp4", null, "aac", 0, 0, 44100, 1, true));
-        assertEquals(42, policy.validate("voice", audio, storedAudio).durationSec());
+        when(ffmpeg.probeMedia(any())).thenReturn(new FfmpegRunner.MediaProbe(2.1, "mov,mp4", null, "aac", 0, 0, 44100, 1, true));
+        assertEquals(2.1, policy.validate("voice", audio, storedAudio).durationSec());
     }
 
     @Test
