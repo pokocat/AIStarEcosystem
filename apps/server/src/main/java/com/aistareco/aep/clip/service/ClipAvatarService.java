@@ -139,8 +139,18 @@ public class ClipAvatarService {
     @Transactional
     public void delete(String owner) {
         ShiliuGateway gateway = shiliu.required(); Instant now = Instant.now();
-        avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE).ifPresent(a -> { if (a.getEngineRef() != null) gateway.deleteAvatar(a.getEngineRef()); storage.delete(a.getEngineSourceKey()); a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a); });
-        voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).ifPresent(v -> { if (v.getEngineRef() != null) gateway.deleteVoice(v.getEngineRef()); storage.delete(v.getAudioKey()); v.setDeletedAt(now); v.setEngineStatus("deleted"); voices.save(v); });
+        // 用户可能多次“更换形象/提升声音”，同一 owner 下会保留多个历史有效版本。
+        // 只删最新一条会让上一条立刻重新成为 view() 的当前记录，看起来像删除后又复活。
+        for (DapAvatar a : avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE)) {
+            if (a.getEngineRef() != null) gateway.deleteAvatar(a.getEngineRef());
+            storage.delete(a.getEngineSourceKey());
+            a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
+        }
+        for (DapVoice v : voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)) {
+            if (v.getEngineRef() != null) gateway.deleteVoice(v.getEngineRef());
+            storage.delete(v.getAudioKey());
+            v.setDeletedAt(now); v.setEngineStatus("deleted"); voices.save(v);
+        }
     }
     public boolean ready(String owner) { AvatarDto v = view(owner); return v != null && "ready".equals(v.imageStatus()); }
     public boolean voiceReady(String owner) { AvatarDto v = view(owner); return v != null && "ready".equals(v.voiceStatus()); }

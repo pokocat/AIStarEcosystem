@@ -10,6 +10,7 @@ import java.util.Optional;
 @Repository
 public interface DapAvatarRepository extends JpaRepository<DapAvatar, String> {
     List<DapAvatar> findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId);
+    List<DapAvatar> findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId, String engine);
     Optional<DapAvatar> findByIdAndOwnerUserId(String id, String ownerUserId);
     List<DapAvatar> findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String ownerUserId);
     List<DapAvatar> findByDeletedAtBefore(java.time.Instant cutoff);

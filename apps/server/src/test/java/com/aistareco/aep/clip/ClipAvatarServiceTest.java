@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -85,5 +86,29 @@ class ClipAvatarServiceTest {
         verify(gateway).cloneVoice("owner-1", "clip/video-seed.m4a");
         verify(avatars, atLeastOnce()).save(any(DapAvatar.class));
         verify(voices).save(argThat(v -> "seed".equals(v.getKind()) && "视频原声".equals(v.getName())));
+    }
+
+    @Test
+    void deleteRemovesEveryActiveAvatarAndVoiceVersion() {
+        DapAvatar newest = DapAvatar.builder().id("DH-new").ownerUserId("owner-1").engine("shiliu")
+                .engineRef("avatar-new").engineSourceKey("clip/avatar-new.mp4").engineStatus("training").build();
+        DapAvatar older = DapAvatar.builder().id("DH-old").ownerUserId("owner-1").engine("shiliu")
+                .engineRef("avatar-old").engineSourceKey("clip/avatar-old.mp4").engineStatus("ready").build();
+        DapVoice voice = DapVoice.builder().id("VC-old").ownerUserId("owner-1").name("视频原声").kind("seed")
+                .engine("shiliu").engineRef("speaker-old").audioKey("clip/voice-old.m4a").engineStatus("ready").build();
+        when(avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(java.util.List.of(newest, older));
+        when(voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(java.util.List.of(voice));
+
+        service.delete("owner-1");
+
+        verify(gateway).deleteAvatar("avatar-new");
+        verify(gateway).deleteAvatar("avatar-old");
+        verify(gateway).deleteVoice("speaker-old");
+        verify(avatars, times(2)).save(argThat(a -> "deleted".equals(a.getEngineStatus()) && a.getDeletedAt() != null));
+        verify(voices).save(argThat(v -> "deleted".equals(v.getEngineStatus()) && v.getDeletedAt() != null));
+        assertNotNull(newest.getDeletedAt());
+        assertNotNull(older.getDeletedAt());
     }
 }

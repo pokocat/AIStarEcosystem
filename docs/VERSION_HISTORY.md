@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.119）
+# 版本增量历史（v0.5 → v0.120）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.120（2026-08-11）— 数字分身删除覆盖全部有效版本
+
+修复 `ClipAvatarService.delete` 只读取并删除最新一条 Avatar/Voice 的问题。用户多次更换形象或补录声音后可能存在多个未删除版本；旧实现删除最新记录后，较早记录会被 `view()` 的“最新未删除”查询重新选中，端上表现为删除成功后再次进入仍有训练卡。
+
+删除现在分别遍历 owner + `engine=shiliu` 下全部未删除 Avatar 与 Voice：逐个请求石榴删除 engineRef、清理本地原始素材，并统一写入 `deletedAt/engineStatus=deleted`。服务级回归测试覆盖两条形象版本和一条声音版本，确保不会残留可复活记录。
 
 ### v0.119（2026-08-11）— 单视频创建数字人，声音改为可选增强
 

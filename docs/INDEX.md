@@ -39,7 +39,7 @@
 | [`docs/[Fabel5]drama-consistency-engine-design.md`](%5BFabel5%5Ddrama-consistency-engine-design.md) | AI 短剧（一致性引擎） | 一致性引擎实现级设计（C-1 / D-11 / C-2 / C-3）：末帧 CDN 镜像 + applied_refs 回报 / 一用途多候选端点 + capability / 角色场景实体化 + 三视图 / 服务端参考装配；含 file:line 锚点、失败语义、门禁与冲突点裁决输入（last-reviewed 2026-07-10，C-1 已落地） |
 | [`docs/payment-billing-audit-2026-07.md`](payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本（全栈审计） | 充值·支付网关·账本·业务扣费·对账·退款·风控 全面审计报告 + 落地方案台账：33 项 Findings（2 P0 / 8 P1）+ 决策台账 D1-D8 + T1-T17 分波次 Task 卡（带 file:line + 验收断言）；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
 | [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md) | AiAvatar 平台（产品定位规划） | [fable5] 从「数字人生产工具」到「AI 数字资产平台」的定位跃迁方案：五方向（资产宇宙 / 权利层确权授权分成 / 市场流通 / Asset-as-a-Service 调用层 / 组合打包）+ P0-P3 路线图 + 现状事实速查；仅方案未改造，供后续执行 agent 作工作输入（last-reviewed 2026-07-09） |
-| [`docs/clip-avatar-video-plan.md`](clip-avatar-video-plan.md) | **`clip` 口播视频线**（军师小程序分包） | v0.119 对齐石榴单视频直创：`speakerId/authId` 均为 Avatar 训练选填项，形象视频可直接启动训练；无音色时 best-effort 提取视频原声创建基础声音，失败不阻断形象，专属录音是可选增强。声音 `>2s`、形象视频 `>=5s`，声音/数字人统一走 V2 段音频驱动，多段总装、固定尾卡与音画质量门已落地（last-reviewed 2026-08-11）。 |
+| [`docs/clip-avatar-video-plan.md`](clip-avatar-video-plan.md) | **`clip` 口播视频线**（军师小程序分包） | v0.120：单视频直创与可选声音增强保持不变；删除数字分身会清理该 owner 全部有效 Avatar/Voice 版本及供应商引用，不再因只删最新记录而让旧训练状态复活。声音 `>2s`、形象视频 `>=5s`，声音/数字人统一走 V2 段音频驱动，多段总装、固定尾卡与音画质量门已落地（last-reviewed 2026-08-11）。 |
 
 不动产品规格的方向时不必读 §3 ~ §7。
 
@@ -49,7 +49,7 @@
 |---|---|---|
 | [`AGENTS.md`](../AGENTS.md) | **统一 agent 入口**（Claude Code / Cursor / Aider / Continue / 自建 SDK） | 项目概览 + 三端架构 + 硬规则 + 新增领域 SOP + 文档同步纪律（精简到 ~34k chars，version log 已外移） |
 | [`CLAUDE.md`](../CLAUDE.md) | Claude Code（自动注入） | **symlink → AGENTS.md**（单点维护，内容等同 AGENTS.md） |
-| [`docs/VERSION_HISTORY.md`](VERSION_HISTORY.md) | 完整连续版本增量（v0.5 → v0.119） | 新实体 / 路由 / 决策 / 注意事项的全量历史；从 AGENTS.md 拆分以保持主文件轻量 |
+| [`docs/VERSION_HISTORY.md`](VERSION_HISTORY.md) | 完整连续版本增量（v0.5 → v0.120） | 新实体 / 路由 / 决策 / 注意事项的全量历史；从 AGENTS.md 拆分以保持主文件轻量 |
 | [`apps/miniprogram/agent.md`](../apps/miniprogram/agent.md) | 任何在小程序目录工作的 agent | 微信平台坑（iOS/Android 差异、custom-tab-bar、CSS、setData、轮询清理） |
 | [`.claude/skills/figma-migrate/SKILL.md`](../.claude/skills/figma-migrate/SKILL.md) | 触发 figma-migrate skill 时 | 五件套 + 三端同步 SOP |
 | [`apps/design.md`](../apps/design.md) + [`apps/design/`](../apps/design/) | 前端设计 token 契约 + 设计稿 reference app（"AI IP Design Directions"，三套主题：tech/creator/premium） | 视觉规范真源；新增 UI 时必读 |
