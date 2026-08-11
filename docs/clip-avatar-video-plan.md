@@ -21,6 +21,7 @@
 - v0.124 修复缩略图字段发布迁移：V14 恢复为已执行过的原始内容，`clip_asset.thumbnail_cdn_key` 由独立 V15 添加；禁止通过改旧迁移或 Flyway repair 掩盖校验和漂移。
 - v0.125 补齐素材打开能力：`AssetDto.previewUrl` 继续承担列表图片封面，新增 `contentUrl` 返回原始图片/视频的短期签名地址，只在用户主动点开时加载；素材库、配画面卡和出片预览可以查看同一份真实素材。
 - v0.126 修复合并画面段字幕：视觉 shot 仍可让多句共用同一素材和一次生成，但 `materialize()` 会保留逐句 caption cue；总装按真实段音频总时长比例换算各句时间窗并逐张叠加，字幕随口播切换且单句不再强制两行省略。
+- v0.126 隔离预发版本 `3560b942-20260811T170602Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`、3 套模板通过；本轮没有上传素材或创建任何石榴任务。
 - v0.125 隔离预发版本 `15523450-20260811T165046Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`、3 套模板通过；本轮仅增加原媒体签名读取，没有创建石榴任务。
 - v0.119 隔离预发版本 `e9e8e43c-20260811T153721Z` 已关闭 force-mock：服务 active、`NRestarts=0`，3 模板通过；军师 BFF 在线 requirements 返回 `authorizationVideoRequired=false`、形象硬门 5 秒、声音端上硬门 3 秒。自动化没有创建任何计费任务，下一步由用户本人从军师预发真机包提交素材。
 - v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕与全片「AI 生成」标识经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。v0.114 增加隔离预发专用 `AEP_CLIP_FORCE_MOCK=true`：确定性测试媒体也必须真实生成可播放 MP4 并走同一总装/质检/存储链，永久烧录「测试演示」；production/mysql 启动硬拒绝。公网 BFF 已验收到 44.05 秒、720×1280、H.264/AAC 成片与缩略图，force-mock 全程未请求石榴。
