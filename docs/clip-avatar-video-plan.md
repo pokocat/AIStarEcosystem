@@ -15,6 +15,7 @@
 - v0.115 把 `segments`（逐段改稿）与 `shots`（连续句范围的视觉编排）分层；`ClipShotPlan` 为报价、preflight、worker 和总装的唯一投影层。老草稿无 shot 时相邻且未绑定不同素材的 b-roll 最多 3 句成镜，显式计划必须完整无重叠覆盖全部句子；军师 BFF 的 AI 文案对话记录可随项目 `scriptChat` 一并保存。
 - v0.119 进一步对齐石榴 Train Avatar Model：`speakerId` 标注为“选填，用于制作 demo”，与可选 `authId` 一样不能成为创建前置。普通用户上传一段形象视频后立即启动 Avatar 训练；若没有现成音色，服务 best-effort 从视频提取原声创建基础 V2 speaker，失败不阻断形象，专门录音/上传音频是可选增强。v0.117 的时长硬门保持为声音真实 `>2s`、形象视频 `>=5s`，较长时长仅为质量建议。
 - v0.120 修复删除只处理最新记录的问题：删除数字分身会遍历 owner 下全部未删除石榴 Avatar/Voice，逐一删除供应商引用、本地素材并软删记录；多次更换形象或声音后，历史版本不会再重新成为当前分身。
+- v0.121 为形象补齐真实预览：上传视频在调用石榴前由 ffmpeg 抽取约 0.5 秒 JPEG，保存到 `DapAvatar.imageKey` 并由 `AvatarDto.imagePreviewUrl` 返回签名地址；老记录缺图时读取分身会 best-effort 从源视频回填，删除时源视频与预览帧一并清理。抽帧失败发生在供应商建任务前，避免耗点后端上仍无预览。
 - v0.119 隔离预发版本 `e9e8e43c-20260811T153721Z` 已关闭 force-mock：服务 active、`NRestarts=0`，3 模板通过；军师 BFF 在线 requirements 返回 `authorizationVideoRequired=false`、形象硬门 5 秒、声音端上硬门 3 秒。自动化没有创建任何计费任务，下一步由用户本人从军师预发真机包提交素材。
 - v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕与全片「AI 生成」标识经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。v0.114 增加隔离预发专用 `AEP_CLIP_FORCE_MOCK=true`：确定性测试媒体也必须真实生成可播放 MP4 并走同一总装/质检/存储链，永久烧录「测试演示」；production/mysql 启动硬拒绝。公网 BFF 已验收到 44.05 秒、720×1280、H.264/AAC 成片与缩略图，force-mock 全程未请求石榴。
 - 非 mysql/production 环境允许显式 mock，mock 产物带 `mock=true`。媒体机器审核未配置时军师 BFF 继续 fail-closed；真实代发仍固定失败。

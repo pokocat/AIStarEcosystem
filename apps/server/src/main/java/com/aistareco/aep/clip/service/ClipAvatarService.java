@@ -27,12 +27,13 @@ public class ClipAvatarService {
     private static final String AGREEMENT_TEXT = "本人授权军师参谋部使用本人主动提交的视频与声音资料，仅为本人的账号创建、训练和使用数字分身。本人可随时撤回授权并删除分身，删除后停止新的生成。";
     private final DapAvatarRepository avatars; private final DapVoiceRepository voices; private final DapConsentRepository consents;
     private final ClipRenderJobRepository jobs; private final FileStorageService storage; private final ShiliuService shiliu; private final ClipCapturePolicy capturePolicy;
-    private final ClipVoiceSeedExtractor voiceSeedExtractor;
+    private final ClipVoiceSeedExtractor voiceSeedExtractor; private final ClipAvatarPreviewExtractor previewExtractor;
     public ClipAvatarService(DapAvatarRepository avatars, DapVoiceRepository voices, DapConsentRepository consents,
                              ClipRenderJobRepository jobs, FileStorageService storage, ShiliuService shiliu,
-                             ClipCapturePolicy capturePolicy, ClipVoiceSeedExtractor voiceSeedExtractor) {
+                             ClipCapturePolicy capturePolicy, ClipVoiceSeedExtractor voiceSeedExtractor,
+                             ClipAvatarPreviewExtractor previewExtractor) {
         this.avatars = avatars; this.voices = voices; this.consents = consents; this.jobs = jobs; this.storage = storage; this.shiliu = shiliu; this.capturePolicy = capturePolicy;
-        this.voiceSeedExtractor = voiceSeedExtractor;
+        this.voiceSeedExtractor = voiceSeedExtractor; this.previewExtractor = previewExtractor;
     }
 
     public CaptureRequirementsDto requirements() { return capturePolicy.requirements(); }
@@ -61,11 +62,22 @@ public class ClipAvatarService {
         }
         String imageStatus = status(a == null ? null : a.getEngineStatus());
         String voiceStatus = status(v == null ? null : v.getEngineStatus());
+        // v0.121 前创建的数字人没有 imageKey；首次查看时从仍保留的训练视频补抽一帧，
+        // 让存量用户无需重新上传也能看到自己的形象。补帧失败不影响既有训练状态。
+        if (a != null && a.getImageKey() == null && a.getEngineSourceKey() != null) {
+            try {
+                FileStorageService.StoredFile preview = previewExtractor.extract(owner, a.getEngineSourceKey());
+                a.setImageKey(preview.key()); a.setImageBytes(preview.bytes()); avatars.save(a);
+            } catch (RuntimeException error) {
+                log.warn("[clip-avatar] preview backfill skipped owner={}: {}", owner, error.getMessage());
+            }
+        }
         if ("ready".equals(imageStatus)) imageProgress = 100;
         if ("ready".equals(voiceStatus)) voiceProgress = 100;
         if ("failed".equals(imageStatus) && imageMessage == null) imageMessage = "形象训练失败，请重新采集";
         if ("failed".equals(voiceStatus) && voiceMessage == null) voiceMessage = "声音训练失败，请重新录制";
-        return new AvatarDto(imageStatus, voiceStatus,
+        String imagePreviewUrl = a == null || a.getImageKey() == null ? null : storage.signedUrl(a.getImageKey());
+        return new AvatarDto(imageStatus, voiceStatus, imagePreviewUrl,
                 a == null || a.getEngineTrainedAt() == null ? null : a.getEngineTrainedAt().toString(),
                 v == null || v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(),
                 imageProgress, voiceProgress, imageMessage, voiceMessage, ENGINE, false);
@@ -106,10 +118,15 @@ public class ClipAvatarService {
         ShiliuGateway gateway = shiliu.required();
         Instant now = Instant.now();
         if ("avatar".equals(kind)) {
+            FileStorageService.StoredFile preview;
+            try { preview = previewExtractor.extract(owner, stored.key()); }
+            catch (RuntimeException error) { storage.delete(stored.key()); throw error; }
             DapAvatar a = avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE).orElseGet(() ->
                     DapAvatar.builder().id("DH-" + uuid(8)).ownerUserId(owner).name("我的数字分身").path("real").status("pending").engine(ENGINE).createdAt(now).build());
+            String previousPreviewKey = a.getImageKey();
             a.setEngine(ENGINE); a.setEngineRef(null); a.setEngineSourceKey(stored.key()); a.setEngineStatus("training");
-            a.setEngineTrainedAt(null); a.setMock(gateway.mock()); a.setUpdatedAt(now); avatars.save(a);
+            a.setEngineTrainedAt(null); a.setMock(gateway.mock()); a.setImageKey(preview.key()); a.setImageBytes(preview.bytes()); a.setUpdatedAt(now); avatars.save(a);
+            if (previousPreviewKey != null && !previousPreviewKey.equals(preview.key())) storage.delete(previousPreviewKey);
             DapVoice readyVoice = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)
                     .filter(v -> "ready".equals(v.getEngineStatus())).orElse(null);
             // 官方 speakerId 是 Avatar 训练的选填 demo 参数：有就带，没有也立即开始形象训练。
@@ -143,7 +160,7 @@ public class ClipAvatarService {
         // 只删最新一条会让上一条立刻重新成为 view() 的当前记录，看起来像删除后又复活。
         for (DapAvatar a : avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE)) {
             if (a.getEngineRef() != null) gateway.deleteAvatar(a.getEngineRef());
-            storage.delete(a.getEngineSourceKey());
+            storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
             a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
         }
         for (DapVoice v : voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)) {

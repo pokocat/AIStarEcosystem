@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.120）
+# 版本增量历史（v0.5 → v0.121）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.121（2026-08-11）— 数字分身展示用户形象预览帧
+
+新增 `ClipAvatarPreviewExtractor`：形象视频通过媒体校验后、调用石榴创建 Avatar 前，使用 ffmpeg 从约 0.5 秒位置抽取并缩放 JPEG，写入持久存储及 `DapAvatar.imageKey`。`AvatarDto.imagePreviewUrl` 返回当前签名地址，军师首页和分身管理页可以直接展示用户上传/拍摄视频中的真实形象，不再使用通用人形占位。
+
+已存在但缺少 `imageKey` 的记录在读取分身时会 best-effort 从保留的 `engineSourceKey` 补抽并回写；回填失败只记录告警，不影响训练状态查询。新上传抽帧失败则在石榴任务创建前返回 `CLIP_AVATAR_PREVIEW_FAILED`，避免供应商已扣点但产品仍无法预览。更换形象会清理被替换的旧预览，删除分身同时清理所有源视频与预览帧。服务测试覆盖新建、签名 URL、历史回填和删除清理，抽帧器测试锁定 ffmpeg 参数与存储结果；均不调用真实供应商。
 
 ### v0.120（2026-08-11）— 数字分身删除覆盖全部有效版本
 
