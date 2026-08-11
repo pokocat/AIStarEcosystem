@@ -54,12 +54,12 @@ public class ClipAssemblyService {
                 Path output = work.resolve(String.format(Locale.ROOT, "segment-%03d.mp4", no));
                 Map<String, Object> state = states.getOrDefault(no, Map.of());
                 boolean generatedTail = "tail".equals(role) && text(segment.get("assetId")).isBlank();
-                Path overlay = generatedTail
-                        ? overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName())
-                        : overlays.render(work, no, "tail".equals(role) ? "" : text(segment.get("text")));
-                if ("avatar".equals(role)) normalizeAvatar(state, overlay, output);
-                else if ("broll".equals(role)) normalizeBroll(owner, segment, state, overlay, output);
-                else if ("tail".equals(role)) normalizeTail(owner, segment, overlay, output);
+                List<Path> overlayLayers = generatedTail
+                        ? List.of(overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName()))
+                        : captionOverlays(work, no, segment, false);
+                if ("avatar".equals(role)) normalizeAvatar(segment, state, overlayLayers, output);
+                else if ("broll".equals(role)) normalizeBroll(owner, segment, state, overlayLayers, output);
+                else if ("tail".equals(role)) normalizeTail(owner, segment, overlayLayers.get(0), output);
                 else throw failure("出片分段角色无效");
                 requireOutput(output);
                 normalized.add(output);
@@ -126,12 +126,12 @@ public class ClipAssemblyService {
                 int no = number(segment.get("no"), -1);
                 String role = String.valueOf(segment.get("role"));
                 if (!Set.of("avatar", "broll", "tail").contains(role)) throw failure("出片分段角色无效");
-                Path overlay = "tail".equals(role)
-                        ? overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName())
-                        : overlays.render(work, no, text(segment.get("text")));
-                overlays.markAsTest(overlay);
+                List<Path> overlayLayers = "tail".equals(role)
+                        ? List.of(overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName()))
+                        : captionOverlays(work, no, segment, true);
+                if ("tail".equals(role)) overlays.markAsTest(overlayLayers.get(0));
                 Path output = work.resolve(String.format(Locale.ROOT, "segment-%03d.mp4", no));
-                renderMockSegment(segment, role, no, overlay, output);
+                renderMockSegment(segment, role, no, overlayLayers, output);
                 requireOutput(output);
                 normalized.add(output);
             }
@@ -181,12 +181,27 @@ public class ClipAssemblyService {
         }
     }
 
-    private void normalizeAvatar(Map<String, Object> state, Path overlay, Path output) throws IOException {
+    private List<Path> captionOverlays(Path work, int segmentNo, Map<String, Object> segment, boolean testMedia) {
+        List<Map<String, Object>> cues = ClipDtos.mapListValue(segment.get("captions"));
+        if (cues.isEmpty()) cues = List.of(Map.of("text", text(segment.get("text"))));
+        List<Path> result = new ArrayList<>();
+        for (int index = 0; index < cues.size(); index++) {
+            Path layer = overlays.renderCaption(work, segmentNo, index, text(cues.get(index).get("text")));
+            if (testMedia) overlays.markAsTest(layer);
+            result.add(layer);
+        }
+        return result;
+    }
+
+    private void normalizeAvatar(Map<String, Object> segment, Map<String, Object> state, List<Path> overlayLayers, Path output) throws IOException {
         String key = text(state.get("videoCdnKey"));
         if (key.isBlank()) throw failure("分身出镜段尚未生成完成");
         Path input = storage.openForRead(key);
-        List<String> args = new ArrayList<>(List.of("-y", "-i", input.toString(), "-stream_loop", "-1", "-i", overlay.toString(),
-                "-filter_complex", decoratedFilter(0, 1), "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        double duration = ffmpeg.probeDurationSec(input.toFile());
+        if (duration <= 0) duration = Math.max(1, ClipProjectService.seconds(segment));
+        List<String> args = new ArrayList<>(List.of("-y", "-i", input.toString()));
+        addOverlayInputs(args, overlayLayers);
+        args.addAll(List.of("-filter_complex", decoratedCaptionFilter(0, 1, captionDurations(segment, duration)), "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                 "-pix_fmt", "yuv420p"));
         if (ffmpeg.hasAudioStream(input.toFile())) {
             args.addAll(List.of("-map", "0:a:0", "-c:a", "aac", "-ar", "48000", "-ac", "2"));
@@ -198,7 +213,7 @@ public class ClipAssemblyService {
     }
 
     private void normalizeBroll(String owner, Map<String, Object> segment, Map<String, Object> state,
-                                Path overlay, Path output) throws IOException {
+                                List<Path> overlayLayers, Path output) throws IOException {
         String assetId = text(segment.get("assetId"));
         String audioKey = text(state.get("audioCdnKey"));
         if (assetId.isBlank() || audioKey.isBlank()) throw failure("配画面段的素材或配音尚未准备好");
@@ -209,8 +224,10 @@ public class ClipAssemblyService {
         double duration = ffmpeg.probeDurationSec(audio.toFile());
         if (duration <= 0) duration = Math.max(1, ClipProjectService.seconds(segment));
         List<String> args = new ArrayList<>(List.of("-y", "-stream_loop", "-1", "-i", visual.toString(),
-                "-i", audio.toString(), "-stream_loop", "-1", "-i", overlay.toString(), "-t", seconds(duration),
-                "-filter_complex", decoratedFilter(0, 2), "-map", "[v]", "-map", "1:a:0",
+                "-i", audio.toString()));
+        addOverlayInputs(args, overlayLayers);
+        args.addAll(List.of("-t", seconds(duration),
+                "-filter_complex", decoratedCaptionFilter(0, 2, captionDurations(segment, duration)), "-map", "[v]", "-map", "1:a:0",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart",
                 output.toString()));
@@ -247,7 +264,7 @@ public class ClipAssemblyService {
         ffmpeg.runFfmpeg(args);
     }
 
-    private void renderMockSegment(Map<String, Object> segment, String role, int no, Path overlay, Path output) {
+    private void renderMockSegment(Map<String, Object> segment, String role, int no, List<Path> overlayLayers, Path output) {
         int duration = Math.max(1, ClipProjectService.seconds(segment));
         String color = switch (role) {
             case "avatar" -> "#24463c";
@@ -255,14 +272,17 @@ public class ClipAssemblyService {
             default -> "#17362f";
         };
         int frequency = 360 + Math.floorMod(no, 8) * 35;
-        ffmpeg.runFfmpeg(List.of("-y", "-f", "lavfi", "-i",
+        List<String> args = new ArrayList<>(List.of("-y", "-f", "lavfi", "-i",
                 "color=c=" + color + ":s=720x1280:r=30:d=" + duration,
-                "-f", "lavfi", "-i", "sine=frequency=" + frequency + ":sample_rate=48000:duration=" + duration,
-                "-stream_loop", "-1", "-i", overlay.toString(), "-t", String.valueOf(duration),
-                "-filter_complex", decoratedFilter(0, 2), "-map", "[v]", "-map", "1:a:0",
+                "-f", "lavfi", "-i", "sine=frequency=" + frequency + ":sample_rate=48000:duration=" + duration));
+        addOverlayInputs(args, overlayLayers);
+        args.addAll(List.of("-t", String.valueOf(duration),
+                "-filter_complex", "tail".equals(role) ? decoratedFilter(0, 2)
+                        : decoratedCaptionFilter(0, 2, captionDurations(segment, duration)), "-map", "[v]", "-map", "1:a:0",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart",
                 output.toString()));
+        ffmpeg.runFfmpeg(args);
     }
 
     private void concat(List<Path> segments, Path list, Path output) {
@@ -298,6 +318,50 @@ public class ClipAssemblyService {
     private static String decoratedFilter(int videoIndex, int overlayIndex) {
         return "[" + videoIndex + ":v]" + VIDEO_FILTER + "[base];[base][" + overlayIndex
                 + ":v]overlay=0:0:format=auto:shortest=1[v]";
+    }
+
+    private static void addOverlayInputs(List<String> args, List<Path> overlayLayers) {
+        for (Path overlay : overlayLayers) {
+            args.addAll(List.of("-stream_loop", "-1", "-i", overlay.toString()));
+        }
+    }
+
+    /**
+     * 同一画面段可以承载多句文案，但每句字幕必须在自己的配音时间窗内独立出现，
+     * 不能把整段文案一次性塞进两行字幕后截断。
+     */
+    private static String decoratedCaptionFilter(int videoIndex, int firstOverlayIndex, List<Double> durations) {
+        if (durations.isEmpty()) return decoratedFilter(videoIndex, firstOverlayIndex);
+        StringBuilder filter = new StringBuilder("[").append(videoIndex).append(":v]")
+                .append(VIDEO_FILTER).append("[base]");
+        String previous = "base";
+        double start = 0;
+        for (int index = 0; index < durations.size(); index++) {
+            double end = start + Math.max(0.1, durations.get(index));
+            String output = index == durations.size() - 1 ? "v" : "caption" + index;
+            filter.append(";[").append(previous).append("][")
+                    .append(firstOverlayIndex + index).append(":v]")
+                    .append("overlay=0:0:format=auto:shortest=1:enable='between(t,")
+                    .append(seconds(start)).append(',').append(seconds(end)).append(")'[")
+                    .append(output).append(']');
+            previous = output;
+            start = end;
+        }
+        return filter.toString();
+    }
+
+    private static List<Double> captionDurations(Map<String, Object> segment, double totalDuration) {
+        List<Map<String, Object>> cues = ClipDtos.mapListValue(segment.get("captions"));
+        if (cues.isEmpty()) return List.of(Math.max(0.1, totalDuration));
+        List<Double> weights = cues.stream().map(cue -> {
+            Object raw = cue.get("durationSec");
+            double duration = raw instanceof Number n ? n.doubleValue() : 0;
+            return duration > 0 ? duration : (double) Math.max(1, text(cue.get("text")).codePointCount(0, text(cue.get("text")).length()));
+        }).toList();
+        double totalWeight = weights.stream().mapToDouble(Double::doubleValue).sum();
+        double available = Math.max(0.1, totalDuration);
+        if (totalWeight <= 0) return List.of(available);
+        return weights.stream().map(weight -> available * weight / totalWeight).toList();
     }
 
     private static Map<Integer, Map<String, Object>> statesByNo(Map<String, Object> jobState) {

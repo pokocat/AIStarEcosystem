@@ -32,6 +32,10 @@ public class ClipOverlayRenderer {
     }
 
     public Path render(Path workDir, int segmentNo, String caption) {
+        return renderCaption(workDir, segmentNo, 0, caption);
+    }
+
+    public Path renderCaption(Path workDir, int segmentNo, int cueIndex, String caption) {
         try {
             BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = image.createGraphics();
@@ -43,7 +47,7 @@ public class ClipOverlayRenderer {
             } finally {
                 g.dispose();
             }
-            Path output = workDir.resolve(String.format(Locale.ROOT, "overlay-%03d.png", segmentNo));
+            Path output = workDir.resolve(String.format(Locale.ROOT, "overlay-%03d-%02d.png", segmentNo, cueIndex));
             if (!ImageIO.write(image, "png", output.toFile())) throw new IllegalStateException("PNG writer unavailable");
             return output;
         } catch (Exception e) {
@@ -173,9 +177,9 @@ public class ClipOverlayRenderer {
     }
 
     private void drawCaption(Graphics2D g, String caption) {
-        Font font = new Font(fontFamily, Font.BOLD, 38);
+        Font font = new Font(fontFamily, Font.BOLD, 36);
         FontMetrics metrics = g.getFontMetrics(font);
-        List<String> lines = wrap(caption, metrics, 592);
+        List<String> lines = wrapAll(caption, metrics, 610);
         int lineHeight = metrics.getHeight() + 8;
         int boxH = lines.size() * lineHeight + 34;
         int boxY = HEIGHT - 72 - boxH;
@@ -195,6 +199,13 @@ public class ClipOverlayRenderer {
     }
 
     private static List<String> wrap(String text, FontMetrics metrics, int maxWidth) {
+        List<String> all = wrapAll(text, metrics, maxWidth);
+        if (all.size() <= 2) return all;
+        String remainder = String.join("", all.subList(1, all.size()));
+        return List.of(all.get(0), ellipsize(remainder, metrics, maxWidth));
+    }
+
+    private static List<String> wrapAll(String text, FontMetrics metrics, int maxWidth) {
         List<String> all = new ArrayList<>();
         StringBuilder line = new StringBuilder();
         text.codePoints().forEach(cp -> {
@@ -212,9 +223,7 @@ public class ClipOverlayRenderer {
         });
         if (!line.isEmpty()) all.add(line.toString());
         if (all.isEmpty()) return List.of("");
-        if (all.size() <= 2) return all;
-        String remainder = String.join("", all.subList(1, all.size()));
-        return List.of(all.get(0), ellipsize(remainder, metrics, maxWidth));
+        return all;
     }
 
     private static String ellipsize(String value, FontMetrics metrics, int maxWidth) {

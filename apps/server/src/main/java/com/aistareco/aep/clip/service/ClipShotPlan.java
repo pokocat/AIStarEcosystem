@@ -57,6 +57,14 @@ public final class ClipShotPlan {
             row.put("no", index + 1);
             row.put("sourceNos", members.stream().map(item -> number(item.get("no"))).toList());
             row.put("text", members.stream().map(item -> text(item.get("text"))).reduce("", String::concat));
+            row.put("captions", members.stream().map(item -> {
+                Map<String, Object> cue = new LinkedHashMap<>();
+                cue.put("sourceNo", number(item.get("no")));
+                cue.put("text", text(item.get("text")));
+                double actual = decimal(item.get("actualDurationSec"));
+                cue.put("durationSec", actual > 0 ? actual : ClipProjectService.seconds(item));
+                return cue;
+            }).toList());
             row.put("durationSec", members.stream().mapToInt(ClipProjectService::seconds).sum());
             boolean allActual = !members.isEmpty() && members.stream().allMatch(item -> decimal(item.get("actualDurationSec")) > 0);
             row.put("actualDurationSec", allActual ? members.stream().mapToDouble(item -> decimal(item.get("actualDurationSec"))).sum() : 0);

@@ -122,8 +122,9 @@ class ClipAssemblyServiceTest {
         when(storage.storeExisting(any(), eq("clip/thumbnails"), eq("owner-1"), eq("jpg"), eq("image/jpeg"), eq(true)))
                 .thenReturn(new FileStorageService.StoredFile("clip/thumbnails/mock.jpg", "", "", null, 5, "image/jpeg"));
         ClipProject project = project(List.of(
-                segment(1, "avatar", "测试开场", null, 4),
-                segment(2, "tail", "结尾", null, 3)
+                segment(1, "broll", "第一句字幕", null, 2),
+                segment(2, "broll", "第二句字幕", null, 2),
+                segment(3, "tail", "结尾", null, 3)
         ));
 
         ClipAssemblyService.Result result = service.assembleMock("owner-1", project);
@@ -135,6 +136,12 @@ class ClipAssemblyServiceTest {
         verify(ffmpeg, times(5)).runFfmpeg(commands.capture());
         assertEquals(2, commands.getAllValues().stream()
                 .filter(args -> args.stream().anyMatch(value -> value.startsWith("sine=frequency="))).count());
+        String groupedCaptionFilter = commands.getAllValues().stream()
+                .flatMap(Collection::stream)
+                .filter(value -> value.contains("enable='between(t,"))
+                .findFirst().orElseThrow();
+        assertEquals(2, occurrences(groupedCaptionFilter, "enable='between(t,"),
+                "two sentences sharing one visual shot must still appear as two timed captions");
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("loudnorm=I=-16"))));
         verify(qualityGate).assertAcceptable(any());
     }
@@ -162,5 +169,11 @@ class ClipAssemblyServiceTest {
         return ClipProject.builder().id("cp_1").externalOwnerId("owner-1").templateId("ct_1")
                 .templateName("模板").title("作品").payloadJson(new LinkedHashMap<>(Map.of("segments", segments)))
                 .createdAt(Instant.now()).updatedAt(Instant.now()).build();
+    }
+
+    private static int occurrences(String value, String needle) {
+        int count = 0;
+        for (int at = 0; (at = value.indexOf(needle, at)) >= 0; at += needle.length()) count++;
+        return count;
     }
 }

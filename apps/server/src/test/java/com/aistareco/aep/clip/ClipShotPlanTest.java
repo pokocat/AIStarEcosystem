@@ -23,6 +23,9 @@ class ClipShotPlanTest {
                 shots.stream().map(row -> List.of(row.get("startNo"), row.get("endNo"))).toList());
         List<Map<String,Object>> rendered = ClipShotPlan.materialize(payload);
         assertEquals("门头。手艺。顾客。", rendered.get(1).get("text"));
+        List<Map<String,Object>> captions = castRows(rendered.get(1).get("captions"));
+        assertEquals(List.of("门头。", "手艺。", "顾客。"), captions.stream().map(row -> row.get("text")).toList());
+        assertEquals(List.of(2, 3, 4), captions.stream().map(row -> row.get("sourceNo")).toList());
         assertEquals(6, segments.size(), "文案句子不能因镜头分组被破坏");
     }
 
@@ -54,5 +57,10 @@ class ClipShotPlanTest {
 
     private static Map<String,Object> segment(int no, String role, String text) {
         return new LinkedHashMap<>(Map.of("no", no, "role", role, "text", text));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String,Object>> castRows(Object value) {
+        return (List<Map<String,Object>>) value;
     }
 }
