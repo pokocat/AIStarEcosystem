@@ -22,7 +22,7 @@
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 - 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
-- `clip` 口播视频线（v0.118）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。项目把可编辑文案 `segments` 与视觉 `shots[{startNo,endNo,role,assetId}]` 分层；`ClipShotPlan` 是报价、preflight、worker 与总装的唯一投影层。石榴链路统一采用 **V2 音色 TTS → avatar 段 `createByVoiceV2` 音频驱动**，b-roll 与数字人段共享同一音频生成策略，不再混用内嵌 TTS；worker 以 `segmentJobsJson` 可恢复轮询并回传官方训练/生成进度与失败原因。`ClipCapturePolicy` 用 ffprobe 在供应商调用前硬验形象/声音素材的 MIME、扩展名/真实容器、大小、时长、H.264、分辨率与音轨，`/me/clip/avatar/requirements` 显式返回 `authorizationVideoRequired=false`；声音真实时长必须 `>2s`（端上按整秒提示 `3s`），形象视频 `>=5s`，8–15 秒声音与 10–20 秒形象只作质量建议。石榴 Train Avatar Model 的 `authId` 是可选校验项：历史记录存在时兼容携带，不存在时必须省略，禁止恢复 `CLIP_CONSENT_REQUIRED` 硬闸。默认产品顺序为“先克隆声音 → 上传形象视频 → 云端训练”。所有石榴时效结果均先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、烧录字幕/常驻「AI 生成」、混 BGM、固定品牌尾卡并做亮度/响度/真峰值质量门。隔离预发版本 `83670b5e-20260811T144740Z` 已关闭 force-mock，服务 active、`NRestarts=0`，在线 requirements 为 `authorizationVideoRequired=false / avatarMin=5 / voiceMin=3`；本轮自动化不创建计费任务。`AEP_CLIP_FORCE_MOCK=true` 只供不耗点数的确定性测试媒体，production/mysql 硬拒绝。媒体机器审核、本人素材的供应商质量实测与四平台真实代发仍是生产门槛。当前事实见 `docs/clip-avatar-video-plan.md`。
+- `clip` 口播视频线（v0.119）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。项目把可编辑文案 `segments` 与视觉 `shots[{startNo,endNo,role,assetId}]` 分层；`ClipShotPlan` 是报价、preflight、worker 与总装的唯一投影层。石榴链路统一采用 **V2 音色 TTS → avatar 段 `createByVoiceV2` 音频驱动**，b-roll 与数字人段共享同一音频生成策略。`ClipCapturePolicy` 用 ffprobe 在供应商调用前硬验形象/声音素材；声音真实时长必须 `>2s`，形象视频 `>=5s`，较长时长只作质量建议。`/avatar/create` 的 `speakerId` 只是制作 demo 的选填参数，`authId` 也只在确需授权校验时选填：数字人主链必须允许一段视频直接启动 Avatar 训练，不得恢复 `CLIP_CONSENT_REQUIRED` 或先采声音硬闸。没有可用音色时，服务 best-effort 从形象视频提取原声创建基础 V2 speaker；提取/声音训练失败不回滚形象，专属声音是独立增强。形象 ready 即代表数字人创建完成；真正出片仍需 speaker，视频原声不可用时 preflight 引导补录。所有石榴时效结果均先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、烧录字幕/常驻「AI 生成」、混 BGM、固定品牌尾卡并做亮度/响度/真峰值质量门。`AEP_CLIP_FORCE_MOCK=true` 只供不耗点数的确定性测试媒体，production/mysql 硬拒绝。媒体机器审核、本人素材的供应商质量实测与四平台真实代发仍是生产门槛。当前事实见 `docs/clip-avatar-video-plan.md`。
 
 ---
 
@@ -454,6 +454,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.119** | 2026-08-11 | `clip` 数字人改为单视频直创：`speakerId/authId` 都是 Avatar 训练选填项；无音色时 best-effort 提取视频原声创建基础声音，失败不阻断形象，专属录音下沉为可选增强。 |
 | **v0.118** | 2026-08-11 | `clip` 数字人创建对齐石榴可选 `authId`：移除 `CLIP_CONSENT_REQUIRED`，普通创建不再要求另录授权视频；历史 authId 兼容携带，requirements 显式返回 `authorizationVideoRequired=false`。 |
 | **v0.117** | 2026-08-11 | `clip` 采集时长硬门纠偏：声音只硬验官方 `>2s`（端上显示 3s）、授权/形象视频只硬验 `>=5s`；更长时长仅为软建议。 |
 | **v0.116** | 2026-08-11 | `clip` 对齐石榴官方采集与任务契约：服务端 ffprobe 采集闸、客户端 requirements、V2 统一音频驱动数字人、真实训练进度/错误映射；自动化不调用真实供应商。 |

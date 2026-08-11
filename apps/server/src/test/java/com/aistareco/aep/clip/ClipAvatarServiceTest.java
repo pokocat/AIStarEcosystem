@@ -3,6 +3,7 @@ package com.aistareco.aep.clip;
 import com.aistareco.aep.clip.repository.ClipRenderJobRepository;
 import com.aistareco.aep.clip.service.ClipAvatarService;
 import com.aistareco.aep.clip.service.ClipCapturePolicy;
+import com.aistareco.aep.clip.service.ClipVoiceSeedExtractor;
 import com.aistareco.aep.clip.service.shiliu.ShiliuGateway;
 import com.aistareco.aep.clip.service.shiliu.ShiliuService;
 import com.aistareco.aep.dap.model.DapAvatar;
@@ -30,6 +31,7 @@ class ClipAvatarServiceTest {
     private ClipCapturePolicy policy;
     private ShiliuGateway gateway;
     private ClipAvatarService service;
+    private ClipVoiceSeedExtractor voiceSeedExtractor;
     private MultipartFile file;
 
     @BeforeEach
@@ -42,7 +44,8 @@ class ClipAvatarServiceTest {
         gateway = mock(ShiliuGateway.class);
         ShiliuService shiliu = mock(ShiliuService.class);
         when(shiliu.required()).thenReturn(gateway);
-        service = new ClipAvatarService(avatars, voices, consents, mock(ClipRenderJobRepository.class), storage, shiliu, policy);
+        voiceSeedExtractor = mock(ClipVoiceSeedExtractor.class);
+        service = new ClipAvatarService(avatars, voices, consents, mock(ClipRenderJobRepository.class), storage, shiliu, policy, voiceSeedExtractor);
         file = mock(MultipartFile.class);
         when(file.isEmpty()).thenReturn(false);
         when(storage.store(eq(file), anyString(), eq("owner-1")))
@@ -64,19 +67,23 @@ class ClipAvatarServiceTest {
     }
 
     @Test
-    void avatarTrainingOmitsAuthorizationIdWhenNoHistoricalConsentExists() {
-        DapVoice readyVoice = DapVoice.builder().id("VC-1").ownerUserId("owner-1").name("我的声音")
-                .kind("clone").engine("shiliu").engineRef("1809876543210321").engineStatus("ready").createdAt(Instant.now()).build();
+    void avatarTrainingStartsWithoutSeparateVoiceOrAuthorization() {
         when(avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc("owner-1", "shiliu"))
                 .thenReturn(Optional.empty());
         when(voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
-                .thenReturn(Optional.of(readyVoice));
-        when(gateway.cloneAvatar("owner-1", "clip/source", "1809876543210321", null))
+                .thenReturn(Optional.empty());
+        when(gateway.cloneAvatar("owner-1", "clip/source", null, null))
                 .thenReturn(new ShiliuGateway.Task("avatar:34", "processing", null, "34", null));
+        var seed = new FileStorageService.StoredFile("clip/video-seed.m4a", "u", "https://cdn.example/seed.m4a", null, 512, "audio/mp4");
+        when(voiceSeedExtractor.extract("owner-1", "clip/source")).thenReturn(Optional.of(seed));
+        when(gateway.cloneVoice("owner-1", "clip/video-seed.m4a"))
+                .thenReturn(new ShiliuGateway.Task("speaker:56", "processing", null, "56", null));
 
         service.clone("owner-1", "avatar", file);
 
-        verify(gateway).cloneAvatar("owner-1", "clip/source", "1809876543210321", null);
+        verify(gateway).cloneAvatar("owner-1", "clip/source", null, null);
+        verify(gateway).cloneVoice("owner-1", "clip/video-seed.m4a");
         verify(avatars, atLeastOnce()).save(any(DapAvatar.class));
+        verify(voices).save(argThat(v -> "seed".equals(v.getKind()) && "视频原声".equals(v.getName())));
     }
 }

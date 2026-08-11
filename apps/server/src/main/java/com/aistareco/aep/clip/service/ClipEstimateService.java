@@ -36,15 +36,18 @@ public class ClipEstimateService {
     public void preflight(String owner, ClipProject p) {
         List<Map<String,Object>> segments=ClipShotPlan.materialize(p.getPayloadJson());
         if (segments.isEmpty()) throw BusinessException.badRequest("CLIP_NO_SEGMENTS","文案还是空的");
-        boolean hasAvatar=false;
+        boolean hasAvatar=false, hasSpeech=false;
         for (Map<String,Object> row:segments) {
-            String role=String.valueOf(row.get("role")); if (!"tail".equals(role) && String.valueOf(row.getOrDefault("text", "")).isBlank()) throw BusinessException.badRequest("CLIP_EMPTY_TEXT","文案中还有空句");
+            String role=String.valueOf(row.get("role"));
+            if (!"tail".equals(role)) hasSpeech=true;
+            if (!"tail".equals(role) && String.valueOf(row.getOrDefault("text", "")).isBlank()) throw BusinessException.badRequest("CLIP_EMPTY_TEXT","文案中还有空句");
             if ("avatar".equals(role)) { hasAvatar=true; if (ClipProjectService.seconds(row)>props.getMaxAvatarSegmentSec()) throw BusinessException.badRequest("CLIP_SEGMENT_TOO_LONG","单个出镜段超过引擎时长上限"); }
             if ("broll".equals(role)) {
                 if (row.get("assetId")==null || String.valueOf(row.get("assetId")).isBlank()) throw BusinessException.badRequest("CLIP_ASSET_NOT_ALLOWED","配画面段还有未选择的素材");
                 assets.requiredVisible(owner,String.valueOf(row.get("assetId")));
             }
         }
-        if (hasAvatar && !avatars.ready(owner)) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"CLIP_AVATAR_NOT_READY","形象或声音还没有训练完成");
+        if (hasAvatar && !avatars.ready(owner)) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"CLIP_AVATAR_NOT_READY","形象还没有训练完成");
+        if (hasSpeech && !avatars.voiceReady(owner)) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"CLIP_VOICE_NOT_READY","视频原声暂不可用，请在分身管理中补录一段专属声音");
     }
 }

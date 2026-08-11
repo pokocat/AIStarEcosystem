@@ -100,7 +100,11 @@ public class HttpShiliuGateway implements ShiliuGateway {
     public Task cloneAvatar(String ownerId, String mediaRef, String speakerRef, String authorizationRef) {
         ObjectNode body = OM.createObjectNode();
         body.put("videoUrl", publicMediaUrl(mediaRef));
-        body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        // 石榴官方 OpenAPI：speakerId 是“选填，用于制作 demo”。
+        // 数字人训练的主输入是视频，不得因用户没有先单独采集音频而阻断。
+        if (speakerRef != null && !speakerRef.isBlank()) {
+            body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        }
         body.put("title", title("军师数字分身"));
         // 官方契约：仅在需要授权视频校验时填写 authId；不填写默认不校验。
         if (authorizationRef != null && !authorizationRef.isBlank()) {

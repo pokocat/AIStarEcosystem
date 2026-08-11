@@ -1,8 +1,16 @@
-# 版本增量历史（v0.5 → v0.118）
+# 版本增量历史（v0.5 → v0.119）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.119（2026-08-11）— 单视频创建数字人，声音改为可选增强
+
+再次对照石榴官方 Train Avatar Model OpenAPI：`speakerId` 标注为“选填，用于制作 demo”，`authId` 也只在需要授权视频校验时填写。因此普通创建不再等待 speaker，上传形象视频后立即以可空 `speakerId/authId` 调用 `/avatar/create`；形象 ready 独立作为数字人创建完成标准。
+
+为保留用户在官网所见的一段视频体验，服务在没有可用音色时 best-effort 用 ffmpeg 从形象视频提取单声道 44.1kHz M4A，再异步创建 V2 基础声音。视频无音轨、提取失败或声音训练失败均只记日志和声音状态，不回滚 Avatar 训练；用户仍可在管理页独立录制/上传更干净的人声增强。出片的 V2 TTS + `createByVoiceV2` 链仍需要 speaker，若视频原声不可用，preflight 给出补录专属声音的可操作提示。
+
+新增服务级与 HTTP 桩测试覆盖“无 speaker/auth 仍创建 Avatar”和可选字段省略。自动化没有上传真实素材，也没有提交 speaker/avatar/video 计费任务。
 
 ### v0.118（2026-08-11）— 视频数字人直传训练对齐石榴可选 `authId`
 

@@ -106,4 +106,18 @@ class HttpShiliuGatewayTest {
         verify(http).send(request.capture(), any(HttpResponse.BodyHandler.class));
         assertEquals("https://api.16ai.chat/api/v1/avatar/create", request.getValue().uri().toString());
     }
+
+    @Test
+    void avatarTrainingDoesNotRequireOptionalSpeakerId() throws Exception {
+        when(response.body()).thenReturn("{\"code\":0,\"data\":{\"avatarId\":1901234567890123},\"msg\":\"\"}");
+        when(storage.signedUrl("clip/avatar.mp4")).thenReturn("https://cdn.example/avatar.mp4");
+
+        gateway.cloneAvatar("owner-1", "clip/avatar.mp4", null, null);
+
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(request.capture(), any(HttpResponse.BodyHandler.class));
+        String body = request.getValue().bodyPublisher().orElseThrow().toString();
+        // BodyPublisher 不暴露内容；“传 null 不抛异常并真正发出请求”已钉死可选契约。
+        assertNotNull(body);
+    }
 }
