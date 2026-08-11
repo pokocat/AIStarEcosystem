@@ -8,7 +8,8 @@ public class MockShiliuGateway implements ShiliuGateway {
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
     private Task task(String prefix, Integer duration) {
         String id = "mock-" + prefix + "-" + UUID.randomUUID().toString().substring(0, 8);
-        Task task = new Task(id, "succeeded", duration, "mock://" + id, null);
+        // 引擎引用按正式上游的短 ID 形态返回；dap_consent.capture_id 只有 32 字符，不能塞 mock:// URI。
+        Task task = new Task(id, "succeeded", duration, id, null);
         tasks.put(id, task); return task;
     }
     public Task previewVoice(String ownerId, String speakerRef, String text) { return task("tts", Math.max(1, Math.round((text == null ? 0 : text.length()) / 4f))); }
