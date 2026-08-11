@@ -70,6 +70,11 @@ aep:
     max-asset-bytes: ${AEP_CLIP_MAX_ASSET_BYTES:104857600}
     max-avatar-segment-sec: ${AEP_CLIP_MAX_AVATAR_SEGMENT_SEC:30}
     trash-retention-days: ${AEP_CLIP_TRASH_RETENTION_DAYS:30}
+    min-average-luma: ${AEP_CLIP_MIN_AVERAGE_LUMA:18}
+    max-average-luma: ${AEP_CLIP_MAX_AVERAGE_LUMA:245}
+    min-integrated-lufs: ${AEP_CLIP_MIN_INTEGRATED_LUFS:-24}
+    max-integrated-lufs: ${AEP_CLIP_MAX_INTEGRATED_LUFS:-12}
+    max-true-peak-db: ${AEP_CLIP_MAX_TRUE_PEAK_DB:-1}
   # v0.34+ 演示数据 seeder 全局开关。
   # true  → DataInitializer / CelebrityZoneDataInitializer / CelebrityProductSeeder /
   #         DemoCatalogSeeder / DataSeeder / AiModelProviderDataInitializer /

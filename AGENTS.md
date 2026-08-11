@@ -22,7 +22,7 @@
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 - 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
-- `clip` 口播视频线（v0.112）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。已按石榴官方 API v1 接入授权视频、声音/形象训练、TTS、逐段文案视频、状态轮询、删除与时效结果转存，内置 3 套正式模板；worker 以 `segmentJobsJson` 逐段恢复，b-roll 配音与 avatar 视频先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、裁切/循环 b-roll、生成缺省尾段、逐句烧录字幕与常驻「AI 生成」标识、可选混 BGM 并拼成作品。字幕/标识由 Java2D 先生成透明 PNG 再交 ffmpeg overlay，不把用户文案拼进 filter 表达式；总装后强制校验时长/音轨并抽帧写 `thumbnailCdnKey`。预发使用 `clip-preprod` 独立 profile、H2/文件存储和本机 8081，不接触 AIStar 生产。媒体机器审核与四平台代发未完成时仍必须失败关闭，mock 只允许非 mysql/production 环境。当前事实与外部门槛见 `docs/clip-avatar-video-plan.md`。
+- `clip` 口播视频线（v0.113）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。已按石榴官方 API v1 接入授权视频、声音/形象训练、TTS、逐段文案视频、状态轮询、删除与时效结果转存，内置 3 套正式模板；worker 以 `segmentJobsJson` 逐段恢复，b-roll 配音与 avatar 视频先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、裁切/循环 b-roll、逐句烧录字幕与常驻「AI 生成」标识、可选混 BGM 并拼成作品。无运营尾片素材时不再生成空白色块，而由 `ClipOverlayRenderer` 生成三套模板各自的固定品牌尾卡；最终音轨先归一到 -16 LUFS / -1.5 dBTP，再由 `ClipMediaQualityGate` 对平均亮度、综合响度和真峰值失败关闭，随后抽帧写 `thumbnailCdnKey`。预发使用 `clip-preprod` 独立 profile、H2/文件存储和本机 8081，不接触 AIStar 生产。媒体机器审核与四平台代发未完成时仍必须失败关闭，mock 只允许非 mysql/production 环境。当前事实与外部门槛见 `docs/clip-avatar-video-plan.md`。
 
 ---
 
@@ -454,6 +454,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.113** | 2026-08-11 | `clip` 成片质量收口：三套模板各自的固定品牌尾卡、最终音轨 -16 LUFS / -1.5 dBTP 归一、平均亮度/综合响度/真峰值入库前门禁；授权群像尾片与真实长片压测继续待外部素材。 |
 | **v0.112** | 2026-08-11 | `clip` 逐段真实生成与 ffmpeg 总装：b-roll 独立 TTS、avatar 每段独立石榴任务、所有时效产物先镜像、720×1280 H.264/AAC 归一拼接、Java2D 安全字幕/常驻 AI 标识、缩略图、时长/音轨门、缺省尾段与可选 BGM；媒体审核和真实代发继续失败关闭。 |
 | **v0.111** | 2026-08-11 | 石榴 AI 官方 v1 真实网关、本人授权、声音/形象训练、TTS/视频状态轮询、3 套正式模板与隔离 `clip-preprod` 部署。 |
 | **v0.110** | 2026-08-10 | 军师「快出片」clip 独立领域骨架：service token + `externalOwnerId`、四表、项目/素材/报价/任务/作品与 OpenAPI 契约。 |

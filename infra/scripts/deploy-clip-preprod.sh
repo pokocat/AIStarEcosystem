@@ -23,9 +23,24 @@ log "构建 server artifact（RELEASE_ID=${RELEASE_ID}）"
 (cd "$ROOT/apps/server" && ./mvnw -q -DskipTests clean package)
 [ -f "$JAR" ] || die "server jar 未生成"
 
-log "预检远端 Java 与机密配置"
-ssh -i "$SSH_KEY" -o BatchMode=yes "$DEPLOY_HOST" "command -v java >/dev/null && sudo test -s '$ENV_FILE'" \
-  || die "远端缺 Java 17 或 $ENV_FILE；先按 infra/README.md 的 clip 预发步骤初始化"
+log "预检远端 Java、机密配置与 FFmpeg 质量滤镜"
+ssh -i "$SSH_KEY" -o BatchMode=yes "$DEPLOY_HOST" bash -s -- "$ENV_FILE" <<'REMOTE_PREFLIGHT' \
+  || die "远端缺 Java 17、机密配置或 FFmpeg signalstats/metadata/loudnorm；先按 infra/README.md 的 clip 预发步骤初始化"
+set -Eeuo pipefail
+env_file="$1"
+command -v java >/dev/null
+sudo test -s "$env_file"
+ffmpeg_bin="$(sudo awk -F= '$1 == "AEP_CLIP_FFMPEG_BIN" { sub(/^[^=]*=/, ""); print; exit }' "$env_file")"
+ffprobe_bin="$(sudo awk -F= '$1 == "AEP_CLIP_FFPROBE_BIN" { sub(/^[^=]*=/, ""); print; exit }' "$env_file")"
+ffmpeg_bin="${ffmpeg_bin:-ffmpeg}"
+ffprobe_bin="${ffprobe_bin:-ffprobe}"
+command -v "$ffmpeg_bin" >/dev/null
+command -v "$ffprobe_bin" >/dev/null
+filters="$("$ffmpeg_bin" -hide_banner -filters 2>/dev/null)"
+for required_filter in signalstats metadata loudnorm; do
+  printf '%s\n' "$filters" | grep -Eq "[[:space:]]${required_filter}[[:space:]]"
+done
+REMOTE_PREFLIGHT
 
 log "上传并原子落位"
 scp -q -i "$SSH_KEY" "$JAR" "$DEPLOY_HOST:$REMOTE_TMP"

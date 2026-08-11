@@ -26,13 +26,15 @@ public class ClipAssemblyService {
     private final FileStorageService storage;
     private final ClipAssetService assets;
     private final ClipOverlayRenderer overlays;
+    private final ClipMediaQualityGate qualityGate;
 
     public ClipAssemblyService(FfmpegRunner ffmpeg, FileStorageService storage, ClipAssetService assets,
-                               ClipOverlayRenderer overlays) {
+                               ClipOverlayRenderer overlays, ClipMediaQualityGate qualityGate) {
         this.ffmpeg = ffmpeg;
         this.storage = storage;
         this.assets = assets;
         this.overlays = overlays;
+        this.qualityGate = qualityGate;
     }
 
     public record Result(String outputCdnKey, String thumbnailCdnKey, int durationSec) {}
@@ -51,7 +53,10 @@ public class ClipAssemblyService {
                 String role = String.valueOf(segment.get("role"));
                 Path output = work.resolve(String.format(Locale.ROOT, "segment-%03d.mp4", no));
                 Map<String, Object> state = states.getOrDefault(no, Map.of());
-                Path overlay = overlays.render(work, no, "tail".equals(role) ? "" : text(segment.get("text")));
+                boolean generatedTail = "tail".equals(role) && text(segment.get("assetId")).isBlank();
+                Path overlay = generatedTail
+                        ? overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName())
+                        : overlays.render(work, no, "tail".equals(role) ? "" : text(segment.get("text")));
                 if ("avatar".equals(role)) normalizeAvatar(state, overlay, output);
                 else if ("broll".equals(role)) normalizeBroll(owner, segment, state, overlay, output);
                 else if ("tail".equals(role)) normalizeTail(owner, segment, overlay, output);
@@ -78,9 +83,15 @@ public class ClipAssemblyService {
                 finalFile = mixed;
             }
 
+            Path loudnessNormalized = work.resolve("loudness-normalized.mp4");
+            normalizeLoudness(finalFile, loudnessNormalized);
+            requireOutput(loudnessNormalized);
+            finalFile = loudnessNormalized;
+
             double probedDuration = ffmpeg.probeDurationSec(finalFile.toFile());
             if (probedDuration <= 0) throw failure("成片时长无效");
             if (!ffmpeg.hasAudioStream(finalFile.toFile())) throw failure("成片没有音轨");
+            qualityGate.assertAcceptable(finalFile);
             int duration = Math.max(1, (int) Math.round(probedDuration));
             Path thumbnail = work.resolve("thumbnail.jpg");
             extractThumbnail(finalFile, thumbnail);
@@ -182,6 +193,12 @@ public class ClipAssemblyService {
         ffmpeg.runFfmpeg(List.of("-y", "-i", video.toString(), "-stream_loop", "-1", "-i", bgm.toString(),
                 "-filter_complex", "[0:a]volume=1[a0];[1:a]volume=0.12[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]",
                 "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest",
+                "-movflags", "+faststart", output.toString()));
+    }
+
+    private void normalizeLoudness(Path video, Path output) {
+        ffmpeg.runFfmpeg(List.of("-y", "-i", video.toString(), "-map", "0:v:0", "-map", "0:a:0",
+                "-c:v", "copy", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "160k",
                 "-movflags", "+faststart", output.toString()));
     }
 

@@ -5,6 +5,7 @@ import com.aistareco.aep.clip.model.ClipProject;
 import com.aistareco.aep.clip.service.ClipAssemblyService;
 import com.aistareco.aep.clip.service.ClipAssetService;
 import com.aistareco.aep.clip.service.ClipOverlayRenderer;
+import com.aistareco.aep.clip.service.ClipMediaQualityGate;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -29,7 +30,8 @@ class ClipAssemblyServiceTest {
         FfmpegRunner ffmpeg = mock(FfmpegRunner.class);
         FileStorageService storage = mock(FileStorageService.class);
         ClipAssetService assets = mock(ClipAssetService.class);
-        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, storage, assets, new ClipOverlayRenderer());
+        ClipMediaQualityGate qualityGate = mock(ClipMediaQualityGate.class);
+        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, storage, assets, new ClipOverlayRenderer(), qualityGate);
         Path avatar = file("avatar.mp4");
         Path visual = file("visual.mp4");
         Path audio = file("speech.mp3");
@@ -71,22 +73,25 @@ class ClipAssemblyServiceTest {
         assertEquals("clip/thumbnails/final.jpg", result.thumbnailCdnKey());
         assertEquals(12, result.durationSec());
         ArgumentCaptor<List<String>> commands = ArgumentCaptor.forClass(List.class);
-        verify(ffmpeg, times(5)).runFfmpeg(commands.capture());
+        verify(ffmpeg, times(6)).runFfmpeg(commands.capture());
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.contains("-stream_loop") && args.contains(audio.toString())));
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("color=c=#17362f"))));
         assertEquals(3, commands.getAllValues().stream()
                 .filter(args -> args.stream().anyMatch(value -> value.contains("overlay=0:0:format=auto")))
                 .count(), "every segment must burn the permanent overlay");
         assertEquals(3, commands.getAllValues().stream().filter(args -> args.contains("yuv420p")).count());
+        assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("loudnorm=I=-16"))),
+                "final audio must be normalized before the quality gate");
         verify(storage).storeExisting(any(), eq("clip/works"), eq("owner-1"), eq("mp4"), eq("video/mp4"), eq(true));
         verify(storage).storeExisting(any(), eq("clip/thumbnails"), eq("owner-1"), eq("jpg"), eq("image/jpeg"), eq(true));
+        verify(qualityGate).assertAcceptable(any());
     }
 
     @Test
     void refusesBrollWithoutMirroredTtsAudio() {
         FfmpegRunner ffmpeg = mock(FfmpegRunner.class);
         ClipAssemblyService service = new ClipAssemblyService(ffmpeg, mock(FileStorageService.class), mock(ClipAssetService.class),
-                new ClipOverlayRenderer());
+                new ClipOverlayRenderer(), mock(ClipMediaQualityGate.class));
         ClipProject project = project(List.of(segment(1, "broll", "正文", "ca_1", null)));
 
         BusinessException error = assertThrows(BusinessException.class,

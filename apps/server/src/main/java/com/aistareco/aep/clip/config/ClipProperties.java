@@ -17,6 +17,11 @@ public class ClipProperties {
     private long maxAssetBytes = 104_857_600L;
     private int maxAvatarSegmentSec = 30;
     private int trashRetentionDays = 30;
+    private double minAverageLuma = 18.0;
+    private double maxAverageLuma = 245.0;
+    private double minIntegratedLufs = -24.0;
+    private double maxIntegratedLufs = -12.0;
+    private double maxTruePeakDb = -1.0;
 
     public String getServiceToken() { return serviceToken; }
     public void setServiceToken(String serviceToken) { this.serviceToken = serviceToken; }
@@ -40,6 +45,16 @@ public class ClipProperties {
     public void setMaxAvatarSegmentSec(int maxAvatarSegmentSec) { this.maxAvatarSegmentSec = maxAvatarSegmentSec; }
     public int getTrashRetentionDays() { return trashRetentionDays; }
     public void setTrashRetentionDays(int trashRetentionDays) { this.trashRetentionDays = trashRetentionDays; }
+    public double getMinAverageLuma() { return minAverageLuma; }
+    public void setMinAverageLuma(double minAverageLuma) { this.minAverageLuma = minAverageLuma; }
+    public double getMaxAverageLuma() { return maxAverageLuma; }
+    public void setMaxAverageLuma(double maxAverageLuma) { this.maxAverageLuma = maxAverageLuma; }
+    public double getMinIntegratedLufs() { return minIntegratedLufs; }
+    public void setMinIntegratedLufs(double minIntegratedLufs) { this.minIntegratedLufs = minIntegratedLufs; }
+    public double getMaxIntegratedLufs() { return maxIntegratedLufs; }
+    public void setMaxIntegratedLufs(double maxIntegratedLufs) { this.maxIntegratedLufs = maxIntegratedLufs; }
+    public double getMaxTruePeakDb() { return maxTruePeakDb; }
+    public void setMaxTruePeakDb(double maxTruePeakDb) { this.maxTruePeakDb = maxTruePeakDb; }
 
     public int requirePrice(String raw, String key) {
         try {

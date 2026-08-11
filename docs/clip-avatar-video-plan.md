@@ -1,7 +1,7 @@
 # 「快出片」数字分身口播视频线 · 方案与 Handoff
 
 > **业务线代号**：`clip`（口播视频线）　**产品工作名**：快出片（待定）
-> **文档状态**：**M1 服务端、石榴真实原子链路与多段 ffmpeg 总装基线已落地；逐句字幕/AI 标识已烧录，媒体审核与真实代发未上线**。
+> **文档状态**：**M1 服务端、石榴真实原子链路与多段 ffmpeg 总装已落地；固定品牌尾卡、逐句字幕/AI 标识与音画质量门已启用，媒体审核与真实代发未上线**。
 > **创建**：2026-08-10　**last-reviewed**：2026-08-11
 > **上游背景**：基于已有 AI 短剧（`apps/web-drama` + `apps/server` drama 域）基座能力，做一个手机端/小程序的轻量素材视频产品；数字人口播能力拟接入外部供应商**石榴AI**。
 
@@ -12,9 +12,9 @@
 - 跨系统采用 Scheme A：用户积分只由军师 BFF hold/settle/refund；AIStar 不调用本仓 `CreditService`，仅保存 `creditsHeld` 作为外部报价审计事实。`clientRequestId` 在外部属主内唯一，重复载荷冲突返回 409。
 - `HttpShiliuGateway` 已按官方 API v1 接入授权视频、声音/形象训练、TTS、文案/音频出片、状态轮询与删除；上游时效成片立即转存我方持久存储。真实 key 仅在预发 0600 env，探针确认 12,000 点、当前没有已训练 speaker/avatar。
 - `ClipOfficialTemplateSeeder` 内置「为实体发声 / 今天开门了 / 这门手艺」三套模板，仅补缺失 ID、不覆盖运营编辑。`clip-preprod` 独立 profile 仅监听 127.0.0.1:8081，军师 BFF 以独立 service token 回源，未接触 AIStar 生产。
-- v0.112 按 Strategy A 落地逐段可恢复 worker：b-roll 每段先 TTS，avatar 每段独立建石榴任务；上游时效音视频先转存我方，再由 `ClipAssemblyService` 做 720×1280 H.264/AAC 归一、b-roll 裁切/循环、缺省尾段、可选 BGM 与最终拼接。`ClipOverlayRenderer` 用 Java2D 生成透明安全层，逐句字幕与全片「AI 生成」标识经 ffmpeg overlay 永久烧录，用户文案不进入 filter 表达式；成片须通过有效时长/音轨门并自动抽帧落我方缩略图。真实 ffmpeg 配方已本机探针通过。
+- v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕与全片「AI 生成」标识经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。真实 ffmpeg 配方与新质量解析已本机探针通过。
 - 非 mysql/production 环境允许显式 mock，mock 产物带 `mock=true`。媒体机器审核未配置时军师 BFF 继续 fail-closed；真实代发仍固定失败。
-- 仍需使用本人合规素材完成 §3.2 质量/时延/一致性/规格/成本实测，完成 §12 商务/备案决策，并接媒体审核、模板固定尾片、四平台发布和生产压测/真机验收。
+- 仍需使用本人合规素材完成 §3.2 质量/时延/一致性/规格/成本实测，完成 §12 商务/备案决策，并接媒体审核、授权群像尾片、四平台发布和生产压测/真机验收。
 
 ---
 

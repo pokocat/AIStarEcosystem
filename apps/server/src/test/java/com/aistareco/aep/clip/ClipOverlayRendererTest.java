@@ -8,6 +8,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,6 +27,19 @@ class ClipOverlayRendererTest {
         assertEquals(1280, image.getHeight());
         assertTrue(alphaPixels(image, 0, 0, 720, 140) > 1_000, "AI badge must occupy top safe area");
         assertTrue(alphaPixels(image, 0, 950, 720, 330) > 10_000, "caption must occupy bottom safe area");
+    }
+
+    @Test
+    void rendersTemplateSpecificOpaqueFixedTailCard() throws Exception {
+        ClipOverlayRenderer renderer = new ClipOverlayRenderer();
+        Path entity = renderer.renderTail(temp, 14, "ct_shiti", "为实体发声");
+        Path craft = renderer.renderTail(temp, 15, "ct_shouyi", "这门手艺");
+
+        BufferedImage image = ImageIO.read(entity.toFile());
+        assertEquals(720, image.getWidth());
+        assertEquals(1280, image.getHeight());
+        assertEquals(720L * 1280L, alphaPixels(image, 0, 0, 720, 1280), "fixed tail must cover the whole frame");
+        assertFalse(Arrays.equals(Files.readAllBytes(entity), Files.readAllBytes(craft)), "templates need distinct closing copy");
     }
 
     private static long alphaPixels(BufferedImage image, int x, int y, int w, int h) {
