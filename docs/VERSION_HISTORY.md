@@ -10,7 +10,7 @@
 
 声音克隆固定使用 `V2.0`。所有非尾段先用同一 V2 speaker 生成段音频：b-roll 直接消费该音频，avatar 段则调用 `/video/createByVoiceV2`，从而避免过去 `createByText` 内嵌 TTS 与独立 TTS 混用造成的音色、停连和响度漂移。speaker 状态兼容官方文档的数组/对象两种响应，video `fail` 与本地 `failed` 统一；训练/生成进度、时长和官方错误码 1002/2001/2002/3001–3007 映射为可恢复、可解释的产品错误。
 
-本轮只跑 HTTP 桩、采集策略和 worker 定向测试及离线编译，没有提交真实 speaker/avatar/video 任务，不消耗石榴点数；真人音色、口型、耗时、费用与输出规格仍须由用户用本人合规素材在隔离预发验收。
+本轮只跑 HTTP 桩、采集策略和 worker 定向测试及离线编译，没有提交真实 speaker/avatar/video 任务，不消耗石榴点数。隔离预发已部署 `458246e1-20260811T124030Z` 并显式设置 `AEP_CLIP_FORCE_MOCK=false`；服务 active、`NRestarts=0`、3 模板和 requirements 探针通过。石榴 `/asset/get` 只读验真仍为 `code=0 / 12000 点 / 0 分身 / 0 音色`。真人音色、口型、耗时、费用与输出规格由用户用本人合规素材在真机验收。
 
 ### v0.115（2026-08-11）— 快出片连续多句共用一个视觉镜头
 
