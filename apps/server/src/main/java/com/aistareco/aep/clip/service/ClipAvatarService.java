@@ -41,8 +41,29 @@ public class ClipAvatarService {
     @Transactional
     public AvatarDto view(String owner) {
         DapAvatar a = avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE).orElse(null);
-        DapVoice v = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
-        if (a == null && v == null) return null;
+        if (a != null) return viewResolved(owner, a);
+        DapVoice voice = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
+        if (voice == null) return null;
+        String voiceStatus = status(voice.getEngineStatus());
+        return new AvatarDto("", "未创建形象", "none", voiceStatus, "seed".equals(voice.getKind()) ? "video" : "dedicated", null, null,
+                voice.getEngineTrainedAt() == null ? null : voice.getEngineTrainedAt().toString(), 0, "ready".equals(voiceStatus) ? 100 : progress(voice.getEngineStatus()),
+                null, null, ENGINE, false, voice.getId(), voice.getName());
+    }
+
+    @Transactional
+    public List<AvatarDto> list(String owner) {
+        return avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE).stream()
+                .map(a -> view(owner, a.getId())).filter(Objects::nonNull).toList();
+    }
+
+    @Transactional
+    public AvatarDto view(String owner, String avatarId) {
+        DapAvatar a = avatars.findByIdAndOwnerUserId(avatarId, owner).filter(row -> row.getDeletedAt() == null && ENGINE.equals(row.getEngine())).orElse(null);
+        return a == null ? null : viewResolved(owner, a);
+    }
+
+    private AvatarDto viewResolved(String owner, DapAvatar a) {
+        DapVoice v = linkedVoice(owner, a);
         ShiliuGateway gateway = shiliu.required();
         int voiceProgress = progress(v == null ? null : v.getEngineStatus());
         int imageProgress = progress(a == null ? null : a.getEngineStatus());
@@ -78,10 +99,21 @@ public class ClipAvatarService {
         if ("failed".equals(voiceStatus) && voiceMessage == null) voiceMessage = "声音训练失败，请重新录制";
         String imagePreviewUrl = a == null || a.getImageKey() == null ? null : storage.signedUrl(a.getImageKey());
         String voiceSource = v == null ? null : "seed".equals(v.getKind()) ? "video" : "dedicated";
-        return new AvatarDto(imageStatus, voiceStatus, voiceSource, imagePreviewUrl,
+        return new AvatarDto(a.getId(), a.getName(), imageStatus, voiceStatus, voiceSource, imagePreviewUrl,
                 a == null || a.getEngineTrainedAt() == null ? null : a.getEngineTrainedAt().toString(),
                 v == null || v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(),
-                imageProgress, voiceProgress, imageMessage, voiceMessage, ENGINE, false);
+                imageProgress, voiceProgress, imageMessage, voiceMessage, ENGINE, false,
+                v == null ? null : v.getId(), v == null ? null : v.getName());
+    }
+
+    @Transactional
+    public List<VoiceDto> voiceList(String owner) {
+        return voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).stream().map(v -> {
+            String current = status(v.getEngineStatus()); int p = progress(v.getEngineStatus());
+            if ("ready".equals(current)) p = 100;
+            return new VoiceDto(v.getId(), v.getName(), current, "seed".equals(v.getKind()) ? "video" : "dedicated",
+                    v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(), p);
+        }).toList();
     }
 
     @Transactional
@@ -110,7 +142,10 @@ public class ClipAvatarService {
     }
 
     @Transactional
-    public Map<String, Object> clone(String owner, String kind, MultipartFile file) {
+    public Map<String, Object> clone(String owner, String kind, MultipartFile file) { return clone(owner, kind, file, null, null, null); }
+
+    @Transactional
+    public Map<String, Object> clone(String owner, String kind, MultipartFile file, String avatarId, String voiceId, String name) {
         if (!Set.of("avatar", "voice").contains(kind)) throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_CLONE_FILE_REQUIRED", "未收到采集文件");
         FileStorageService.StoredFile stored = storage.store(file, "clip/clone/" + kind, owner);
@@ -118,32 +153,41 @@ public class ClipAvatarService {
         catch (RuntimeException e) { storage.delete(stored.key()); throw e; }
         ShiliuGateway gateway = shiliu.required();
         Instant now = Instant.now();
+        String resultAvatarId = null; String resultVoiceId = null;
         if ("avatar".equals(kind)) {
             FileStorageService.StoredFile preview;
             try { preview = previewExtractor.extract(owner, stored.key()); }
             catch (RuntimeException error) { storage.delete(stored.key()); throw error; }
-            DapAvatar a = avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE).orElseGet(() ->
-                    DapAvatar.builder().id("DH-" + uuid(8)).ownerUserId(owner).name("我的数字分身").path("real").status("pending").engine(ENGINE).createdAt(now).build());
+            DapAvatar a = avatarId == null || avatarId.isBlank()
+                    ? DapAvatar.builder().id("DH-" + uuid(8)).ownerUserId(owner).name(avatarName(owner, name)).path("real").status("pending").engine(ENGINE).createdAt(now).build()
+                    : requiredAvatar(owner, avatarId);
+            if (name != null && !name.isBlank()) a.setName(cleanName(name, a.getName()));
+            resultAvatarId = a.getId();
             String previousPreviewKey = a.getImageKey();
             a.setEngine(ENGINE); a.setEngineRef(null); a.setEngineSourceKey(stored.key()); a.setEngineStatus("training");
             a.setEngineTrainedAt(null); a.setMock(gateway.mock()); a.setImageKey(preview.key()); a.setImageBytes(preview.bytes()); a.setUpdatedAt(now); avatars.save(a);
             if (previousPreviewKey != null && !previousPreviewKey.equals(preview.key())) storage.delete(previousPreviewKey);
-            DapVoice readyVoice = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)
-                    .filter(v -> "ready".equals(v.getEngineStatus())).orElse(null);
+            DapVoice readyVoice = selectedVoice(owner, voiceId);
+            if (readyVoice == null) readyVoice = linkedVoice(owner, a);
+            if (readyVoice != null && !"ready".equals(readyVoice.getEngineStatus())) readyVoice = null;
+            if (readyVoice != null) { a.setVoiceName(readyVoice.getId()); resultVoiceId = readyVoice.getId(); }
             // 官方 speakerId 是 Avatar 训练的选填 demo 参数：有就带，没有也立即开始形象训练。
             startAvatarTraining(owner, a, readyVoice, gateway);
             // 首次只上传一个视频时，尽力从视频原声生成基础音色。
             // 这是同一份素材的后台增强，不再要求用户先多录一段音频；失败不影响 Avatar 主任务。
             if (readyVoice == null) {
                 voiceSeedExtractor.extract(owner, stored.key()).ifPresent(seed -> {
-                    try { startVoiceTraining(owner, seed, gateway, now, "seed"); }
+                    try { DapVoice created = startVoiceTraining(owner, seed, gateway, now, "seed", a.getId()); a.setVoiceName(created.getId()); avatars.save(a); }
                     catch (Exception error) { log.warn("[clip-avatar] video voice seed failed owner={}: {}", owner, error.getMessage()); }
                 });
             }
         } else {
-            startVoiceTraining(owner, stored, gateway, now, "clone");
+            DapVoice created = startVoiceTraining(owner, stored, gateway, now, "clone", avatarId);
+            resultVoiceId = created.getId(); resultAvatarId = avatarId;
+            if (avatarId != null && !avatarId.isBlank()) { DapAvatar target = requiredAvatar(owner, avatarId); target.setVoiceName(created.getId()); target.setUpdatedAt(now); avatars.save(target); }
         }
-        return Map.of("ok", true, "kind", kind, "status", "training", "mock", gateway.mock());
+        Map<String,Object> result = new LinkedHashMap<>(); result.put("ok", true); result.put("kind", kind); result.put("status", "training"); result.put("mock", gateway.mock());
+        if (resultAvatarId != null) result.put("avatarId", resultAvatarId); if (resultVoiceId != null) result.put("voiceId", resultVoiceId); return result;
     }
 
     public List<AuditDto> consentLogs(String owner) {
@@ -170,16 +214,37 @@ public class ClipAvatarService {
             v.setDeletedAt(now); v.setEngineStatus("deleted"); voices.save(v);
         }
     }
+    @Transactional
+    public void delete(String owner, String avatarId) {
+        DapAvatar a = requiredAvatar(owner, avatarId); ShiliuGateway gateway = shiliu.required(); Instant now = Instant.now();
+        if (a.getEngineRef() != null) gateway.deleteAvatar(a.getEngineRef());
+        storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
+        a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
+    }
     public boolean ready(String owner) { AvatarDto v = view(owner); return v != null && "ready".equals(v.imageStatus()); }
+    public boolean ready(String owner, String avatarId) { AvatarDto v = avatarId == null || avatarId.isBlank() ? view(owner) : view(owner, avatarId); return v != null && "ready".equals(v.imageStatus()); }
     public boolean voiceReady(String owner) { AvatarDto v = view(owner); return v != null && "ready".equals(v.voiceStatus()); }
-    public String requiredAvatarEngineRef(String owner) {
-        return avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE)
+    public boolean voiceReady(String owner, String avatarId, String voiceId) {
+        DapVoice voice = selectedVoice(owner, voiceId);
+        if (voice == null && avatarId != null && !avatarId.isBlank()) { DapAvatar a = requiredAvatar(owner, avatarId); voice = linkedVoice(owner, a); }
+        return voice != null && "ready".equals(voice.getEngineStatus());
+    }
+    public String requiredAvatarEngineRef(String owner) { return requiredAvatarEngineRef(owner, null); }
+    public String requiredAvatarEngineRef(String owner, String avatarId) {
+        DapAvatar selected = avatarId == null || avatarId.isBlank()
+                ? avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE).orElse(null)
+                : requiredAvatar(owner, avatarId);
+        return Optional.ofNullable(selected)
                 .filter(a -> "ready".equals(a.getEngineStatus()) && a.getEngineRef() != null && !a.getEngineRef().isBlank())
                 .map(DapAvatar::getEngineRef)
                 .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CLIP_AVATAR_NOT_READY", "形象还没有训练完成"));
     }
-    public String requiredVoiceEngineRef(String owner) {
-        return voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)
+    public String requiredVoiceEngineRef(String owner) { return requiredVoiceEngineRef(owner, null, null); }
+    public String requiredVoiceEngineRef(String owner, String avatarId, String voiceId) {
+        DapVoice selected = selectedVoice(owner, voiceId);
+        if (selected == null && avatarId != null && !avatarId.isBlank()) selected = linkedVoice(owner, requiredAvatar(owner, avatarId));
+        if (selected == null) selected = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
+        return Optional.ofNullable(selected)
                 .filter(v -> "ready".equals(v.getEngineStatus()) && v.getEngineRef() != null && !v.getEngineRef().isBlank())
                 .map(DapVoice::getEngineRef)
                 .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CLIP_VOICE_NOT_READY", "声音还没有训练完成"));
@@ -196,18 +261,42 @@ public class ClipAvatarService {
         avatar.setUpdatedAt(Instant.now());
         avatars.save(avatar);
     }
-    private void startVoiceTraining(String owner, FileStorageService.StoredFile stored, ShiliuGateway gateway, Instant now, String kind) {
+    private DapVoice startVoiceTraining(String owner, FileStorageService.StoredFile stored, ShiliuGateway gateway, Instant now, String kind, String avatarId) {
         ShiliuGateway.Task task = gateway.cloneVoice(owner, stored.key());
         String state = "succeeded".equals(task.status()) ? "ready" : "failed".equals(task.status()) ? "failed" : "training";
-        DapVoice latest = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
-        // 视频原声不能覆盖用户正在训练的专属录音；专属录音则可以主动替换此前的基础声音。
-        DapVoice v = latest != null && ("clone".equals(kind) || kind.equals(latest.getKind())) ? latest :
-                DapVoice.builder().id("VC-" + uuid(8)).ownerUserId(owner).name("seed".equals(kind) ? "视频原声" : "我的声音")
-                        .kind(kind).tone("本人声线").audioKey(stored.key()).bytes(stored.bytes()).createdAt(now).build();
+        DapVoice v = DapVoice.builder().id("VC-" + uuid(8)).ownerUserId(owner).name("seed".equals(kind) ? "视频原声" : "我的声音")
+                .avatarId(avatarId).kind(kind).tone("本人声线").audioKey(stored.key()).bytes(stored.bytes()).createdAt(now).build();
         v.setName("seed".equals(kind) ? "视频原声" : "我的声音"); v.setKind(kind);
         v.setEngine(ENGINE); v.setEngineRef(task.outputRef() == null ? task.id() : task.outputRef()); v.setEngineStatus(state);
-        v.setEngineTrainedAt("ready".equals(state) ? now : null); v.setAudioKey(stored.key()); v.setBytes(stored.bytes()); voices.save(v);
+        v.setEngineTrainedAt("ready".equals(state) ? now : null); v.setAudioKey(stored.key()); v.setBytes(stored.bytes()); voices.save(v); return v;
     }
+    private DapAvatar requiredAvatar(String owner, String id) {
+        return avatars.findByIdAndOwnerUserId(id, owner).filter(a -> a.getDeletedAt() == null && ENGINE.equals(a.getEngine()))
+                .orElseThrow(() -> BusinessException.notFound("CLIP_AVATAR_NOT_FOUND", "数字分身不存在或无权使用"));
+    }
+    private DapVoice selectedVoice(String owner, String id) {
+        if (id == null || id.isBlank()) return null;
+        return voices.findByIdAndOwnerUserId(id, owner).filter(v -> v.getDeletedAt() == null && ENGINE.equals(v.getEngine()))
+                .orElseThrow(() -> BusinessException.notFound("CLIP_VOICE_NOT_FOUND", "声音不存在或无权使用"));
+    }
+    private DapVoice linkedVoice(String owner, DapAvatar avatar) {
+        if (avatar == null) return null;
+        String ref = avatar.getVoiceName();
+        if (ref != null && !ref.isBlank()) {
+            DapVoice exact = voices.findByIdAndOwnerUserId(ref, owner).filter(v -> v.getDeletedAt() == null && ENGINE.equals(v.getEngine())).orElse(null);
+            if (exact != null) return exact;
+        }
+        List<DapVoice> rows = voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE);
+        if (rows == null || rows.isEmpty()) return voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
+        DapVoice attached = rows.stream().filter(v -> avatar.getId().equals(v.getAvatarId())).findFirst().orElse(null);
+        return attached != null ? attached : rows.stream().findFirst().orElse(null);
+    }
+    private String avatarName(String owner, String value) {
+        if (value != null && !value.isBlank()) return cleanName(value, "数字分身");
+        int count = avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE).size();
+        return count == 0 ? "我的数字分身" : "数字分身 " + (count + 1);
+    }
+    private static String cleanName(String value, String fallback) { String text = value == null ? fallback : value.trim(); return text.substring(0, Math.min(32, text.length())); }
     private static String status(String value) { return value == null ? "none" : Set.of("training", "ready", "failed").contains(value) ? value : "none"; }
     private static int progress(String value) { return "ready".equals(value) ? 100 : "training".equals(value) ? 5 : 0; }
     private static String friendlyFailure(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }

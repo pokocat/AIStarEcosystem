@@ -47,7 +47,9 @@ public class ClipEstimateService {
                 assets.requiredVisible(owner,String.valueOf(row.get("assetId")));
             }
         }
-        if (hasAvatar && !avatars.ready(owner)) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"CLIP_AVATAR_NOT_READY","形象还没有训练完成");
-        if (hasSpeech && !avatars.voiceReady(owner)) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"CLIP_VOICE_NOT_READY","视频原声暂不可用，请在分身管理中补录一段专属声音");
+        String avatarId = ClipDtos.string(p.getPayloadJson().get("avatarId"));
+        String voiceId = ClipDtos.string(p.getPayloadJson().get("voiceId"));
+        if (hasAvatar && !avatars.ready(owner, avatarId)) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"CLIP_AVATAR_NOT_READY","所选形象还没有训练完成");
+        if (hasSpeech && !avatars.voiceReady(owner, avatarId, voiceId)) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"CLIP_VOICE_NOT_READY","所选数字人还没有可用声音，请先关联或补录声音");
     }
 }

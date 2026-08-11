@@ -55,6 +55,20 @@ public class ClipAssetService {
                 .bytes(stored.bytes()).durationSec(duration).preset(preset).presetGroup(presetGroup).createdAt(Instant.now()).build();
         return dto(repo.save(a));
     }
+    @Transactional public AssetDto ensureBundledPreset(String id, String label, String group, byte[] video) {
+        ClipAsset existing = repo.findById(id).filter(a -> a.getDeletedAt() == null).orElse(null);
+        if (existing != null) return dto(existing);
+        FileStorageService.StoredFile stored = storage.store(video, "clip/assets", "preset", "mp4", "video/mp4");
+        double duration = 0;
+        try { duration = Math.max(0, ffmpeg.probeDurationSec(storage.openForRead(stored.key()).toFile())); } catch (Exception ignored) {}
+        FileStorageService.StoredFile thumbnail = null;
+        try { thumbnail = thumbnailExtractor.extract("preset", stored.key()); } catch (Exception error) { log.warn("[clip-asset] bundled thumbnail skipped id={}: {}", id, error.getMessage()); }
+        ClipAsset asset = ClipAsset.builder().id(id).externalOwnerId(null).kind("video").label(label).tag("固定片段")
+                .localPath(stored.localPath()).cdnKey(stored.key()).mimeType("video/mp4")
+                .thumbnailCdnKey(thumbnail == null ? null : thumbnail.key()).bytes(stored.bytes()).durationSec(duration)
+                .preset(true).presetGroup(group).createdAt(Instant.now()).build();
+        return dto(repo.save(asset));
+    }
     @Transactional public AssetDto update(String owner, String id, String label, String tag) {
         ClipAsset a = required(owner, id); if (a.isPreset()) throw BusinessException.badRequest("CLIP_ASSET_NOT_OWNED", "预置素材不能修改");
         if (label != null && !label.isBlank()) a.setLabel(cleanLabel(label, a.getLabel())); if (tag != null && !tag.isBlank()) a.setTag(cleanLabel(tag, a.getTag())); return dto(repo.save(a));
@@ -65,6 +79,7 @@ public class ClipAssetService {
         return repo.findById(id).filter(a -> a.getDeletedAt() == null && (a.isPreset() || owner.equals(a.getExternalOwnerId())))
                 .orElseThrow(() -> BusinessException.badRequest("CLIP_ASSET_NOT_ALLOWED", "配画面素材不存在或无权使用"));
     }
+    public AssetDto visible(String owner, String id) { return dto(requiredVisible(owner, id)); }
     private AssetDto dto(ClipAsset a) {
         if ("video".equals(a.getKind()) && a.getThumbnailCdnKey() == null && a.getCdnKey() != null) {
             try {

@@ -14,15 +14,30 @@ public final class ClipDtos {
             String status, String ownerScope, Map<String, Object> scriptSkeleton,
             Map<String, Object> timeline, List<Map<String, Object>> tailClips, List<String> brollPool,
             String previewCoverUrl, String previewVideoUrl, String ratio, int estDurationSec,
-            int avatarSecHint, Integer creditHint, int segmentCount
+            int avatarSecHint, Integer creditHint, int segmentCount,
+            String tailLabel, int tailDurationSec, String tailAssetId, String tailPreviewUrl, String tailVideoUrl
     ) {
-        public static TemplateDto from(ClipTemplate t, String coverUrl, String videoUrl) {
-            Map<String, Object> skeleton = safeMap(t.getScriptSkeletonJson());
+        public static TemplateDto from(ClipTemplate t, String coverUrl, String videoUrl,
+                                       List<Map<String, Object>> tailClips, int durationSec) {
+            Map<String, Object> clip = tailClips == null || tailClips.isEmpty() ? Map.of() : tailClips.get(0);
+            Map<String, Object> skeleton = new LinkedHashMap<>(safeMap(t.getScriptSkeletonJson()));
+            List<Map<String, Object>> segments = mapListValue(skeleton.get("segments"));
+            if (!clip.isEmpty()) for (Map<String, Object> row : segments) if ("tail".equals(String.valueOf(row.get("role")))) {
+                if (clip.get("durationSec") instanceof Number n && n.doubleValue() > 0) row.put("durationSec", Math.max(1, Math.round(n.doubleValue())));
+                if (clip.get("assetId") != null) row.put("assetId", clip.get("assetId"));
+                if (clip.get("label") != null) row.put("assetLabel", clip.get("label"));
+                row.put("brollSource", "preset");
+                break;
+            }
+            skeleton.put("segments", segments);
+            Map<String, Object> tail = segments.stream().filter(row -> "tail".equals(String.valueOf(row.get("role")))).findFirst().orElse(Map.of());
             return new TemplateDto(t.getId(), t.getName(), t.getIndustry(), t.getThemeKey(), t.getDescription(),
                     t.getStatus(), t.getOwnerScope(), skeleton, safeMap(t.getTimelineJson()),
-                    mapList(t.getTailClipsJson(), "items"), stringList(t.getBrollPoolJson(), "items"),
-                    coverUrl, videoUrl, t.getRatio(), t.getEstDurationSec(), t.getAvatarSecHint(),
-                    t.getCreditHint(), list(skeleton.get("segments")).size());
+                    tailClips == null ? List.of() : tailClips, stringList(t.getBrollPoolJson(), "items"),
+                    coverUrl, videoUrl, t.getRatio(), durationSec, t.getAvatarSecHint(),
+                    t.getCreditHint(), segments.size(), string(clip.getOrDefault("label", tail.get("text"))),
+                    number(clip.containsKey("durationSec") ? clip.get("durationSec") : tail.get("durationSec")), string(clip.getOrDefault("assetId", tail.get("assetId"))),
+                    string(clip.get("previewUrl")), string(clip.get("contentUrl")));
         }
     }
 
@@ -65,9 +80,11 @@ public final class ClipDtos {
     public record WorkDto(String id, String projectId, String title, String status, int durationSec,
                           int avatarSec, int credits, String videoUrl, String thumbnailUrl,
                           List<Map<String, String>> publishStats) {}
-    public record AvatarDto(String imageStatus, String voiceStatus, String voiceSource, String imagePreviewUrl, String imageTrainedText,
+    public record AvatarDto(String id, String name, String imageStatus, String voiceStatus, String voiceSource, String imagePreviewUrl, String imageTrainedText,
                             String voiceTrainedText, int imageProgress, int voiceProgress,
-                            String imageMessage, String voiceMessage, String engine, boolean presetAvailable) {}
+                            String imageMessage, String voiceMessage, String engine, boolean presetAvailable,
+                            String linkedVoiceId, String linkedVoiceName) {}
+    public record VoiceDto(String id, String name, String status, String source, String trainedText, int progress) {}
     public record CaptureRuleDto(String kind, int vendorMinDurationSec, int vendorMaxDurationSec, int minDurationSec, int recommendedMinDurationSec,
                                  int recommendedMaxDurationSec, int maxDurationSec, long vendorMaxBytes, long maxBytes,
                                  List<String> vendorFormats, List<String> formats, String codec, Integer minShortSidePx, Integer maxLongSidePx,
@@ -96,5 +113,6 @@ public final class ClipDtos {
         return result;
     }
     public static String string(Object value) { return value == null ? null : String.valueOf(value); }
+    public static int number(Object value) { return value instanceof Number n ? Math.max(0, (int)Math.round(n.doubleValue())) : 0; }
     public static String iso(Instant value) { return value == null ? null : value.toString(); }
 }

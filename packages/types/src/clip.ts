@@ -55,6 +55,11 @@ export interface ClipTemplate {
   avatarSecHint: number;
   creditHint?: number | null;
   segmentCount: number;
+  tailLabel?: string | null;
+  tailDurationSec: number;
+  tailAssetId?: string | null;
+  tailPreviewUrl?: string | null;
+  tailVideoUrl?: string | null;
 }
 
 export interface ClipProject {
@@ -105,6 +110,8 @@ export interface ClipWork {
 }
 
 export interface ClipAvatarView {
+  id: string;
+  name: string;
   imageStatus: "none" | "training" | "ready" | "failed";
   voiceStatus: "none" | "training" | "ready" | "failed";
   voiceSource?: "video" | "dedicated" | null;
@@ -113,6 +120,17 @@ export interface ClipAvatarView {
   imageProgress: number; voiceProgress: number;
   imageMessage?: string | null; voiceMessage?: string | null;
   engine?: string | null; presetAvailable: boolean;
+  linkedVoiceId?: string | null;
+  linkedVoiceName?: string | null;
+}
+
+export interface ClipVoiceView {
+  id: string;
+  name: string;
+  status: "none" | "training" | "ready" | "failed";
+  source?: "video" | "dedicated" | null;
+  trainedText?: string | null;
+  progress: number;
 }
 
 export interface ClipCaptureRule {

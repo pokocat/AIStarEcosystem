@@ -28,7 +28,7 @@ public class ClipProjectService {
         Map<String, Object> skeleton = ClipDtos.safeMap(t.getScriptSkeletonJson());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("variables", defaults(skeleton.get("variables")));
-        List<Map<String,Object>> segments = ClipDtos.mapListValue(skeleton.get("segments"));
+        List<Map<String,Object>> segments = applyConfiguredTail(ClipDtos.mapListValue(skeleton.get("segments")), t);
         payload.put("segments", segments);
         payload.put("shots", ClipShotPlan.defaultShots(segments));
         payload.put("scriptChat", new ArrayList<>());
@@ -66,7 +66,7 @@ public class ClipProjectService {
     @Transactional
     public Map<String, Object> reset(String owner, String id) {
         ClipProject p = required(owner, id); ClipTemplate t = templates.required(p.getTemplateId());
-        List<Map<String, Object>> segments = ClipDtos.mapListValue(ClipDtos.safeMap(t.getScriptSkeletonJson()).get("segments"));
+        List<Map<String, Object>> segments = applyConfiguredTail(ClipDtos.mapListValue(ClipDtos.safeMap(t.getScriptSkeletonJson()).get("segments")), t);
         List<Map<String, Object>> shots = ClipShotPlan.defaultShots(segments);
         Map<String, Object> payload = new LinkedHashMap<>(p.getPayloadJson()); payload.put("segments", segments); payload.put("shots", shots);
         p.setPayloadJson(payload); p.setUpdatedAt(Instant.now()); recompute(p); repo.save(p);
@@ -128,6 +128,21 @@ public class ClipProjectService {
             result.put(String.valueOf(m.get("key")), String.valueOf(placeholder));
         }
         return result;
+    }
+    private static List<Map<String,Object>> applyConfiguredTail(List<Map<String,Object>> source, ClipTemplate template) {
+        List<Map<String,Object>> segments = source.stream().map(row -> (Map<String,Object>) new LinkedHashMap<>(row)).toList();
+        List<Map<String,Object>> configured = ClipDtos.mapList(template.getTailClipsJson(), "items");
+        if (configured.isEmpty()) return new ArrayList<>(segments);
+        Map<String,Object> clip = configured.get(0);
+        String assetId = ClipDtos.string(clip.get("assetId"));
+        if (assetId == null || assetId.isBlank()) return new ArrayList<>(segments);
+        for (Map<String,Object> row : segments) if ("tail".equals(String.valueOf(row.get("role")))) {
+            row.put("assetId", assetId); row.put("assetLabel", clip.getOrDefault("label", row.get("text")));
+            row.put("brollSource", "preset");
+            Object duration = clip.get("durationSec"); if (duration instanceof Number n && n.doubleValue() > 0) row.put("durationSec", Math.round(n.doubleValue()));
+            break;
+        }
+        return new ArrayList<>(segments);
     }
     private static String id(String prefix) { return prefix + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16); }
 }

@@ -1,8 +1,16 @@
-# 版本增量历史（v0.5 → v0.126）
+# 版本增量历史（v0.5 → v0.127）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.127（2026-08-11）— 多数字人、固定视频模板与作品预览闭环
+
+`ClipAvatarService` 从“每个用户取最新一条”升级为多资产列表：新增 avatars/voices 清单、按 avatarId 查询和删除；创建新形象可选择已有 ready 声音，关联声音随 `AvatarDto.linkedVoiceId/linkedVoiceName` 返回。项目中的 `avatarId/voiceId` 成为渲染真源，报价、预检、脚本试听和 worker 均解析指定的石榴 avatar/speaker 引用，不再静默使用最新记录。
+
+模板的 `tailClips` 真正进入用户链路：运营通过 `/api/admin/clip/preset-assets` 上传视频，再把 assetId 绑定到模板；模板详情与项目创建共同使用配置后的固定片段名称、秒数、封面和视频地址。三套官方模板由 `ClipOfficialTailSeeder` 只在缺配置时补入 6/8/10 秒竖屏视频，运营改过后不覆盖。完成作品缺缩略图时，`ClipWorkService` 从最终 MP4 补抽并回写，存量成片也能在作品列表预览。
+
+定向测试覆盖已有声音复用、项目精确形象/声音解析、模板片尾契约、素材/渲染回归；仅使用桩和本地生成媒体，没有调用石榴训练或出片接口。
 
 ### v0.126（2026-08-11）— 合并画面段仍按原句切换字幕
 

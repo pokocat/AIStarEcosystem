@@ -62,7 +62,9 @@ public class ClipRenderWorkerState {
                     .filter(row->text(row.get("audioCdnKey")).isBlank()).findFirst();
             if(pending.isPresent()){
                 ShiliuGateway gateway=shiliu.required();
-                String voiceRef=avatars.requiredVoiceEngineRef(j.getExternalOwnerId());
+                String avatarId=text(p.getPayloadJson().get("avatarId"));
+                String voiceId=text(p.getPayloadJson().get("voiceId"));
+                String voiceRef=avatarId.isBlank()&&voiceId.isBlank()?avatars.requiredVoiceEngineRef(j.getExternalOwnerId()):avatars.requiredVoiceEngineRef(j.getExternalOwnerId(),avatarId,voiceId);
                 Map<String,Object> row=pending.get();
                 Map<String,Object> source=segmentByNo(segments,number(row.get("no")));
                 ShiliuGateway.Task task=gateway.previewVoice(j.getExternalOwnerId(),voiceRef,text(source.get("text")));
@@ -86,7 +88,8 @@ public class ClipRenderWorkerState {
                     .filter(row->text(row.get("videoCdnKey")).isBlank()).findFirst();
             if(pending.isPresent()){
                 ShiliuGateway gateway=shiliu.required();
-                String avatarRef=avatars.requiredAvatarEngineRef(j.getExternalOwnerId());
+                String selectedAvatarId=text(p.getPayloadJson().get("avatarId"));
+                String avatarRef=selectedAvatarId.isBlank()?avatars.requiredAvatarEngineRef(j.getExternalOwnerId()):avatars.requiredAvatarEngineRef(j.getExternalOwnerId(),selectedAvatarId);
                 Map<String,Object> row=pending.get();
                 int no=number(row.get("no"));Map<String,Object> source=segmentByNo(segments,no);
                 String audioCdnKey=text(row.get("audioCdnKey"));

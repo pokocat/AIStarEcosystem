@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -167,5 +168,36 @@ class ClipAvatarServiceTest {
 
         assertEquals("https://cdn.example/legacy-preview.jpg", view.imagePreviewUrl());
         verify(avatars).save(argThat(a -> "clip/legacy-preview.jpg".equals(a.getImageKey()) && a.getImageBytes() == 128));
+    }
+
+    @Test
+    void newAvatarCanReuseAnExistingReadyVoice() {
+        DapVoice voice = DapVoice.builder().id("VC-ready").ownerUserId("owner-1").name("门店主理人声线")
+                .kind("clone").engine("shiliu").engineRef("speaker-ready").engineStatus("ready").build();
+        when(voices.findByIdAndOwnerUserId("VC-ready", "owner-1")).thenReturn(Optional.of(voice));
+        when(avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(List.of());
+        when(gateway.cloneAvatar("owner-1", "clip/source", "speaker-ready", null))
+                .thenReturn(new ShiliuGateway.Task("avatar:new", "processing", null, "new", null));
+
+        var result = service.clone("owner-1", "avatar", file, null, "VC-ready", "橱窗形象");
+
+        assertEquals("VC-ready", result.get("voiceId"));
+        verify(gateway).cloneAvatar("owner-1", "clip/source", "speaker-ready", null);
+        verify(avatars, atLeastOnce()).save(argThat(a -> "橱窗形象".equals(a.getName()) && "VC-ready".equals(a.getVoiceName())));
+        verifyNoInteractions(voiceSeedExtractor);
+    }
+
+    @Test
+    void renderReferencesResolveTheAvatarAndVoiceSelectedByProject() {
+        DapAvatar avatar = DapAvatar.builder().id("DH-scene").ownerUserId("owner-1").engine("shiliu")
+                .engineRef("avatar-scene").engineStatus("ready").voiceName("VC-scene").build();
+        DapVoice voice = DapVoice.builder().id("VC-scene").ownerUserId("owner-1").engine("shiliu")
+                .engineRef("speaker-scene").engineStatus("ready").build();
+        when(avatars.findByIdAndOwnerUserId("DH-scene", "owner-1")).thenReturn(Optional.of(avatar));
+        when(voices.findByIdAndOwnerUserId("VC-scene", "owner-1")).thenReturn(Optional.of(voice));
+
+        assertEquals("avatar-scene", service.requiredAvatarEngineRef("owner-1", "DH-scene"));
+        assertEquals("speaker-scene", service.requiredVoiceEngineRef("owner-1", "DH-scene", null));
     }
 }

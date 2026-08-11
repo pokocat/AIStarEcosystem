@@ -8573,7 +8573,7 @@ paths:
     patch: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipUpdateAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated label } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: owned object and row deleted } } }
   /me/clip/works:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works; completed rows best-effort backfill thumbnailUrl from the final MP4 } } }
   /me/clip/works/{id}:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: work } } }
   /me/clip/works/{id}/publish:
@@ -8588,6 +8588,13 @@ paths:
   /me/clip/avatar:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: aggregate image and voice engine state with upstream progress, failure messages, imagePreviewUrl, and voiceSource=video|dedicated } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatar, responses: { '200': { description: upstream deletion requested and local assets soft deleted } } }
+  /me/clip/avatars:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAvatars, responses: { '200': { description: all active avatars with id name preview and linkedVoiceId/linkedVoiceName } } }
+  /me/clip/avatars/{id}:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatarById, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: exact avatar and linked voice state } } }
+    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatarById, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: exact avatar upstream deletion requested and local image assets soft deleted; reusable voice remains available } } }
+  /me/clip/voices:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListVoices, responses: { '200': { description: reusable voice profiles with training state and source } } }
   /me/clip/avatar/requirements:
     get:
       tags: [clip]
@@ -8608,14 +8615,14 @@ paths:
       tags: [clip]
       security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
       operationId: clipCloneAvatarOrVoice
-      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [avatar, voice] } } } } } }
-      responses: { '200': { description: training started; avatar upload also persists a preview frame }, '422': { description: invalid media or CLIP_AVATAR_PREVIEW_FAILED } }
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [avatar, voice] }, avatarId: { type: string, description: replace or attach voice to this avatar }, voiceId: { type: string, description: existing ready voice reused by a new avatar }, name: { type: string, maxLength: 32 } } } } } }
+      responses: { '200': { description: training started and returns avatarId/voiceId when available; avatar upload also persists a preview frame }, '422': { description: invalid media or CLIP_AVATAR_PREVIEW_FAILED } }
   /me/clip/avatar/consents:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipConsentLogs, responses: { '200': { description: consent snapshots } } }
   /me/clip/avatar/usages:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipUsageLogs, responses: { '200': { description: generation usage logs } } }
   /admin/clip/templates:
-    get: { tags: [admin, clip], operationId: adminClipTemplates, responses: { '200': { description: all templates } } }
+    get: { tags: [admin, clip], operationId: adminClipTemplates, responses: { '200': { description: all templates including tailClips asset name duration preview and content URL } } }
     post: { tags: [admin, clip], operationId: adminCreateClipTemplate, responses: { '200': { description: created } } }
   /admin/clip/templates/{id}:
     put: { tags: [admin, clip], operationId: adminUpdateClipTemplate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated } } }

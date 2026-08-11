@@ -37,9 +37,13 @@ public class ClipScriptService {
     }
 
     public Map<String, Object> preview(String owner, String id, Integer no, String text) {
-        projects.required(owner, id);
+        ClipProject project = projects.required(owner, id);
         if (no == null || text == null || text.isBlank()) throw BusinessException.badRequest("CLIP_PREVIEW_INVALID", "试听参数不完整");
-        ShiliuGateway.Task task = shiliu.required().previewVoice(owner, avatars.requiredVoiceEngineRef(owner), text);
+        String avatarId = ClipDtos.string(project.getPayloadJson().get("avatarId"));
+        String voiceId = ClipDtos.string(project.getPayloadJson().get("voiceId"));
+        String voiceRef = (avatarId == null || avatarId.isBlank()) && (voiceId == null || voiceId.isBlank())
+                ? avatars.requiredVoiceEngineRef(owner) : avatars.requiredVoiceEngineRef(owner, avatarId, voiceId);
+        ShiliuGateway.Task task = shiliu.required().previewVoice(owner, voiceRef, text);
         if (!"succeeded".equals(task.status())) throw new BusinessException(HttpStatus.BAD_GATEWAY, "CLIP_TTS_FAILED", "试听合成失败");
         return Map.of("no", no, "audioUrl", task.outputRef() == null ? "" : task.outputRef(), "actualDurationSec", task.durationSec() == null ? Math.max(1, Math.round(text.length() / 4f)) : task.durationSec(), "mock", shiliu.mockMode());
     }

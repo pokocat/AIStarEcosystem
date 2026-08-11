@@ -15,7 +15,8 @@ import java.util.*;
 public class ClipTemplateService {
     private final ClipTemplateRepository repo;
     private final FileStorageService storage;
-    public ClipTemplateService(ClipTemplateRepository repo, FileStorageService storage) { this.repo = repo; this.storage = storage; }
+    private final ClipAssetService assets;
+    public ClipTemplateService(ClipTemplateRepository repo, FileStorageService storage, ClipAssetService assets) { this.repo = repo; this.storage = storage; this.assets = assets; }
 
     public List<TemplateDto> published() { return repo.findByStatusAndDeletedAtIsNullOrderByUpdatedAtDesc("published").stream().map(this::dto).toList(); }
     public TemplateDto published(String id) {
@@ -45,13 +46,46 @@ public class ClipTemplateService {
         t.setTimelineJson(req.timeline() == null ? new LinkedHashMap<>() : req.timeline());
         t.setTailClipsJson(Map.of("items", req.tailClips() == null ? List.of() : req.tailClips()));
         t.setBrollPoolJson(Map.of("items", req.brollPool() == null ? List.of() : req.brollPool()));
-        t.setRatio("9:16"); t.setEstDurationSec(Math.max(0, req.estDurationSec() == null ? 0 : req.estDurationSec()));
+        int calculatedDuration = duration(req.scriptSkeleton());
+        t.setRatio("9:16"); t.setEstDurationSec(calculatedDuration);
         t.setAvatarSecHint(Math.max(0, req.avatarSecHint() == null ? 0 : req.avatarSecHint())); t.setCreditHint(req.creditHint());
         t.setDeletedAt(null); t.setUpdatedAt(now); return dto(repo.save(t));
     }
 
     @Transactional public void delete(String id) { ClipTemplate t = required(id); t.setDeletedAt(Instant.now()); t.setUpdatedAt(Instant.now()); repo.save(t); }
+    @Transactional public void attachTailClipIfMissing(String templateId, com.aistareco.aep.clip.dto.ClipDtos.AssetDto asset) {
+        ClipTemplate template = required(templateId);
+        if (!com.aistareco.aep.clip.dto.ClipDtos.mapList(template.getTailClipsJson(), "items").isEmpty()) return;
+        template.setTailClipsJson(Map.of("items", List.of(Map.of("assetId", asset.id(), "label", asset.label(), "durationSec", Math.max(1, Math.round(asset.durationSec()))))));
+        template.setUpdatedAt(Instant.now()); repo.save(template);
+    }
     public ClipTemplate required(String id) { return repo.findById(id).filter(t -> t.getDeletedAt() == null).orElseThrow(() -> BusinessException.notFound("CLIP_TEMPLATE_NOT_FOUND", "模板不存在")); }
-    private TemplateDto dto(ClipTemplate t) { return TemplateDto.from(t, storage.signedUrl(t.getPreviewCoverKey()), storage.signedUrl(t.getPreviewVideoKey())); }
+    private TemplateDto dto(ClipTemplate t) {
+        List<Map<String,Object>> clips = new ArrayList<>();
+        for (Map<String,Object> raw : com.aistareco.aep.clip.dto.ClipDtos.mapList(t.getTailClipsJson(), "items")) {
+            Map<String,Object> clip = new LinkedHashMap<>(raw);
+            String assetId = com.aistareco.aep.clip.dto.ClipDtos.string(clip.get("assetId"));
+            if (assetId != null && !assetId.isBlank()) {
+                try {
+                    var asset = assets.visible("admin", assetId);
+                    clip.put("label", asset.label()); clip.put("durationSec", Math.round(asset.durationSec()));
+                    clip.put("previewUrl", asset.previewUrl()); clip.put("contentUrl", asset.contentUrl());
+                } catch (RuntimeException ignored) { /* 后台会继续看到失效 assetId，便于修正。 */ }
+            }
+            clips.add(clip);
+        }
+        int duration = duration(t.getScriptSkeletonJson());
+        if (!clips.isEmpty() && clips.get(0).get("durationSec") instanceof Number n && n.doubleValue() > 0) {
+            int skeletonTail = com.aistareco.aep.clip.dto.ClipDtos.mapListValue(t.getScriptSkeletonJson().get("segments")).stream()
+                    .filter(row -> "tail".equals(String.valueOf(row.get("role")))).mapToInt(ClipProjectService::seconds).sum();
+            duration = Math.max(0, duration - skeletonTail + Math.max(1, (int)Math.round(n.doubleValue())));
+        }
+        return TemplateDto.from(t, storage.signedUrl(t.getPreviewCoverKey()), storage.signedUrl(t.getPreviewVideoKey()), clips, duration);
+    }
+    public static int duration(Map<String,Object> skeleton) {
+        int total = 0;
+        for (Map<String,Object> row : com.aistareco.aep.clip.dto.ClipDtos.mapListValue(skeleton == null ? null : skeleton.get("segments"))) total += ClipProjectService.seconds(row);
+        return total;
+    }
     private static boolean blank(String value) { return value == null || value.isBlank(); }
 }
