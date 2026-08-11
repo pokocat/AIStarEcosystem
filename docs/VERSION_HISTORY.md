@@ -1,8 +1,12 @@
-# 版本增量历史（v0.5 → v0.123）
+# 版本增量历史（v0.5 → v0.124）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.124（2026-08-11）— 缩略图字段改用增量迁移
+
+恢复已在预发执行过的 `V14__add_clip_domain.sql` 原始内容，`clip_asset.thumbnail_cdn_key` 改由新建的 `V15__add_clip_asset_thumbnail.sql` 添加。发布门实际捕获了 V14 校验和漂移并拒绝启动；未使用 Flyway repair 覆盖历史，确保历史 H2 库与后续 MySQL 库都按不可变迁移顺序升级。
 
 ### v0.123（2026-08-11）— 专属声音来源与训练结果可见
 
