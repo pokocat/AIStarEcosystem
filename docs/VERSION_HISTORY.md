@@ -12,6 +12,8 @@
 
 定向测试覆盖已有声音复用、项目精确形象/声音解析、模板片尾契约、素材/渲染回归；仅使用桩和本地生成媒体，没有调用石榴训练或出片接口。
 
+隔离预发已发布 `296756a9-20260811T180005Z`，`AEP_CLIP_FORCE_MOCK=false`；服务 active/running、`NRestarts=0`。三套模板分别返回 6/8/10 秒固定视频、封面和可播放地址，avatars/voices 清单路由以只读空账号验收通过；没有上传素材或创建石榴任务。
+
 ### v0.126（2026-08-11）— 合并画面段仍按原句切换字幕
 
 修复多句共用一个视觉 shot 后，整段文案被一次性绘制到同一张字幕图并在两行后省略的问题。`ClipShotPlan.materialize()` 现在除聚合生成文本外，还保留逐句 `captions[{sourceNo,text,durationSec}]`；`ClipAssemblyService` 按该 shot 的真实 TTS/数字人音频总时长等比换算每句时间窗，为每句生成独立透明字幕层，并通过 ffmpeg `enable=between(t,...)` 顺序叠加。画面仍只生成一次，不增加石榴视频任务，但字幕会跟随口播逐句出现。

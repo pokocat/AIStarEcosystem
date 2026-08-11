@@ -24,6 +24,7 @@
 - v0.127 支持同一用户维护多个数字人。每个 `DapAvatar` 返回独立名称、预览和关联声音；新建形象可以直接选择已有 ready 声音，项目在配画面阶段保存精确 `avatarId/voiceId`，后续报价、预检和 worker 都只消费本片选择，不再取最新分身。
 - v0.127 将固定片段纳入模板后台配置：运营先通过 `/api/admin/clip/preset-assets` 上传视频，再在模板 `tailClips` 绑定 assetId；接口和项目统一使用该视频的名称、秒数、封面与播放地址。三套官方模板内置 6/8/10 秒竖屏缺省视频，只补空配置，不覆盖运营编辑。
 - v0.127 为存量完成作品补齐列表预览：任务缺 `thumbnailCdnKey` 但已有最终 MP4 时，作品读取会 best-effort 抽帧并回写。
+- v0.127 隔离预发版本 `296756a9-20260811T180005Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`；三套模板固定视频/封面/6/8/10 秒配置与 avatars/voices 清单路由只读通过，本轮没有提交石榴任务。
 - v0.126 隔离预发版本 `3560b942-20260811T170602Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`、3 套模板通过；本轮没有上传素材或创建任何石榴任务。
 - v0.125 隔离预发版本 `15523450-20260811T165046Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`、3 套模板通过；本轮仅增加原媒体签名读取，没有创建石榴任务。
 - v0.119 隔离预发版本 `e9e8e43c-20260811T153721Z` 已关闭 force-mock：服务 active、`NRestarts=0`，3 模板通过；军师 BFF 在线 requirements 返回 `authorizationVideoRequired=false`、形象硬门 5 秒、声音端上硬门 3 秒。自动化没有创建任何计费任务，下一步由用户本人从军师预发真机包提交素材。
