@@ -18,6 +18,7 @@ public class ClipAsset {
     @Column(length = 128) private String tag;
     @Column(length = 1024) private String localPath;
     @Column(length = 512) private String cdnKey;
+    @Column(length = 512) private String thumbnailCdnKey;
     @Column(nullable = false, length = 128) private String mimeType;
     private long bytes;
     @Builder.Default private double durationSec = 0;

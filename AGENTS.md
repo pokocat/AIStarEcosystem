@@ -22,7 +22,7 @@
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 - 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
-- `clip` 口播视频线（v0.121）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。项目把可编辑文案 `segments` 与视觉 `shots[{startNo,endNo,role,assetId}]` 分层；`ClipShotPlan` 是报价、preflight、worker 与总装的唯一投影层。石榴链路统一采用 **V2 音色 TTS → avatar 段 `createByVoiceV2` 音频驱动**，b-roll 与数字人段共享同一音频生成策略。`ClipCapturePolicy` 用 ffprobe 在供应商调用前硬验形象/声音素材；声音真实时长必须 `>2s`，形象视频 `>=5s`，较长时长只作质量建议。`/avatar/create` 的 `speakerId` 只是制作 demo 的选填参数，`authId` 也只在确需授权校验时选填：数字人主链必须允许一段视频直接启动 Avatar 训练，不得恢复 `CLIP_CONSENT_REQUIRED` 或先采声音硬闸。没有可用音色时，服务 best-effort 从形象视频提取原声创建基础 V2 speaker；提取/声音训练失败不回滚形象，专属声音是独立增强。形象 ready 即代表数字人创建完成；真正出片仍需 speaker，视频原声不可用时 preflight 引导补录。上传形象视频时 `ClipAvatarPreviewExtractor` 必须先抽取约 0.5 秒 JPEG 并写入 `DapAvatar.imageKey`，`AvatarDto.imagePreviewUrl` 返回签名地址；老记录缺图时 `view()` best-effort 回填。删除数字分身必须遍历并软删该 owner 下全部未删除的石榴 Avatar/Voice 版本，同时请求供应商删除各 engineRef，并清理原始素材和预览帧；禁止只删最新版本导致历史记录重新被 `view()` 选中。所有石榴时效结果均先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、烧录字幕/常驻「AI 生成」、混 BGM、固定品牌尾卡并做亮度/响度/真峰值质量门。`AEP_CLIP_FORCE_MOCK=true` 只供不耗点数的确定性测试媒体，production/mysql 硬拒绝。媒体机器审核、本人素材的供应商质量实测与四平台真实代发仍是生产门槛。当前事实见 `docs/clip-avatar-video-plan.md`。
+- `clip` 口播视频线（v0.122）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。项目把可编辑文案 `segments` 与视觉 `shots[{startNo,endNo,role,assetId}]` 分层；`ClipShotPlan` 是报价、preflight、worker 与总装的唯一投影层。石榴链路统一采用 **V2 音色 TTS → avatar 段 `createByVoiceV2` 音频驱动**，b-roll 与数字人段共享同一音频生成策略。`ClipCapturePolicy` 用 ffprobe 在供应商调用前硬验形象/声音素材；声音真实时长必须 `>2s`，形象视频 `>=5s`，较长时长只作质量建议。`/avatar/create` 的 `speakerId` 只是制作 demo 的选填参数，`authId` 也只在确需授权校验时选填：数字人主链必须允许一段视频直接启动 Avatar 训练，不得恢复 `CLIP_CONSENT_REQUIRED` 或先采声音硬闸。没有可用音色时，服务 best-effort 从形象视频提取原声创建基础 V2 speaker；提取/声音训练失败不回滚形象，专属声音是独立增强。形象 ready 即代表数字人创建完成；真正出片仍需 speaker，视频原声不可用时 preflight 引导补录。上传形象视频时 `ClipAvatarPreviewExtractor` 必须先抽取约 0.5 秒 JPEG 并写入 `DapAvatar.imageKey`，`AvatarDto.imagePreviewUrl` 返回签名地址；老记录缺图时 `view()` best-effort 回填。普通视频素材由 `ClipAssetThumbnailExtractor` 抽取独立 JPEG 到 `ClipAsset.thumbnailCdnKey`，`AssetDto.previewUrl` 对图片指向原图、对视频只指向缩略图，禁止把视频源 URL 冒充 image 预览；旧视频素材可在读取时 best-effort 补图，删除同步清理缩略图。微信 `tmp_*`/长哈希文件名在 DTO 层归一为可读默认名。删除数字分身必须遍历并软删该 owner 下全部未删除的石榴 Avatar/Voice 版本，同时请求供应商删除各 engineRef，并清理原始素材和预览帧；禁止只删最新版本导致历史记录重新被 `view()` 选中。所有石榴时效结果均先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、烧录字幕/常驻「AI 生成」、混 BGM、固定品牌尾卡并做亮度/响度/真峰值质量门。`AEP_CLIP_FORCE_MOCK=true` 只供不耗点数的确定性测试媒体，production/mysql 硬拒绝。媒体机器审核、本人素材的供应商质量实测与四平台真实代发仍是生产门槛。当前事实见 `docs/clip-avatar-video-plan.md`。
 
 ---
 
@@ -454,6 +454,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.122** | 2026-08-11 | `clip` 素材缩略图与可读名称：视频上传/旧记录抽取 JPEG，图片沿用原图；`previewUrl` 不再返回视频源，临时文件名不进入产品 UI，删除同步清理缩略图。 |
 | **v0.121** | 2026-08-11 | `clip` 形象预览帧：上传视频在供应商调用前抽帧并持久化，分身接口返回签名预览地址；历史形象读取时补抽，删除同步清理预览素材。 |
 | **v0.120** | 2026-08-11 | `clip` 删除闭环：删除数字分身会清理用户全部有效 Avatar/Voice 版本及供应商引用，旧记录不再在最新版本删除后重新成为当前分身。 |
 | **v0.119** | 2026-08-11 | `clip` 数字人改为单视频直创：`speakerId/authId` 都是 Avatar 训练选填项；无音色时 best-effort 提取视频原声创建基础声音，失败不阻断形象，专属录音下沉为可选增强。预发 FFmpeg 滤镜预检改用 here-string，避免 `pipefail + grep -q` 将成功命中误判为 SIGPIPE 失败。 |

@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS clip_asset (
   tag VARCHAR(128) NULL,
   local_path VARCHAR(1024) NULL,
   cdn_key VARCHAR(512) NULL,
+  thumbnail_cdn_key VARCHAR(512) NULL,
   mime_type VARCHAR(128) NOT NULL,
   bytes BIGINT NOT NULL DEFAULT 0,
   duration_sec DOUBLE NOT NULL DEFAULT 0,
