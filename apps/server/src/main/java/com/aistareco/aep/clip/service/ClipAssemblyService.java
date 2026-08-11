@@ -45,7 +45,7 @@ public class ClipAssemblyService {
             work = Files.createTempDirectory("clip-assemble-");
             Map<Integer, Map<String, Object>> states = statesByNo(jobState);
             List<Path> normalized = new ArrayList<>();
-            List<Map<String, Object>> segments = ClipDtos.mapListValue(project.getPayloadJson().get("segments"));
+            List<Map<String, Object>> segments = ClipShotPlan.materialize(project.getPayloadJson());
             if (segments.isEmpty()) throw failure("出片没有可合成的分段");
 
             for (Map<String, Object> segment : segments) {
@@ -119,7 +119,7 @@ public class ClipAssemblyService {
         Path work = null;
         try {
             work = Files.createTempDirectory("clip-assemble-mock-");
-            List<Map<String, Object>> segments = ClipDtos.mapListValue(project.getPayloadJson().get("segments"));
+            List<Map<String, Object>> segments = ClipShotPlan.materialize(project.getPayloadJson());
             if (segments.isEmpty()) throw failure("出片没有可合成的分段");
             List<Path> normalized = new ArrayList<>();
             for (Map<String, Object> segment : segments) {

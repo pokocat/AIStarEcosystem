@@ -17,6 +17,25 @@ export interface ClipSegment {
   replaceable?: boolean;
 }
 
+export interface ClipShot {
+  id: string;
+  startNo: number;
+  endNo: number;
+  role: ClipSegmentRole;
+  assetId?: string | null;
+  assetLabel?: string | null;
+  brollSource?: "user" | "preset" | null;
+  hint?: string | null;
+}
+
+export interface ClipScriptMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  at?: string;
+  applied?: boolean;
+}
+
 export interface ClipTemplate {
   id: string;
   name: string;
@@ -46,6 +65,8 @@ export interface ClipProject {
   status: ClipProjectStatus;
   variables: Record<string, string>;
   segments: ClipSegment[];
+  shots: ClipShot[];
+  scriptChat: ClipScriptMessage[];
   avatarId?: string | null;
   voiceId?: string | null;
   bgmAssetId?: string | null;

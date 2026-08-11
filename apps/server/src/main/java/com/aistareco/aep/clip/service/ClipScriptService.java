@@ -31,8 +31,9 @@ public class ClipScriptService {
             row.put("text", String.valueOf(row.getOrDefault("text", "")).replaceAll("[。.]$", "") + "。这也是我一路做下来的真实体会。");
             row.put("actualDurationSec", 0);
         }
-        Map<String, Object> payload = new LinkedHashMap<>(p.getPayloadJson()); payload.put("segments", segments); p.setPayloadJson(payload); p.setUpdatedAt(Instant.now()); ClipProjectService.recompute(p); repo.save(p);
-        return Map.of("scope", scope, "segments", segments, "mock", true);
+        List<Map<String,Object>> shots = ClipShotPlan.defaultShots(segments);
+        Map<String, Object> payload = new LinkedHashMap<>(p.getPayloadJson()); payload.put("segments", segments); payload.put("shots", shots); p.setPayloadJson(payload); p.setUpdatedAt(Instant.now()); ClipProjectService.recompute(p); repo.save(p);
+        return Map.of("scope", scope, "segments", segments, "shots", shots, "mock", true);
     }
 
     public Map<String, Object> preview(String owner, String id, Integer no, String text) {

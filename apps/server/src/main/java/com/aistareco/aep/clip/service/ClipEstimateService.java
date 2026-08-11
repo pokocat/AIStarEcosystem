@@ -12,8 +12,12 @@ import java.util.*;
 public class ClipEstimateService {
     private final ClipProperties props; private final ClipProjectService projects; private final ClipAvatarService avatars; private final ClipAssetService assets;
     public ClipEstimateService(ClipProperties props, ClipProjectService projects, ClipAvatarService avatars, ClipAssetService assets) { this.props = props; this.projects = projects; this.avatars = avatars; this.assets = assets; }
-    public EstimateDto estimate(String owner, String id, List<Map<String, Object>> override) {
-        ClipProject p = projects.required(owner, id); List<Map<String, Object>> segments = override == null ? ClipDtos.mapListValue(p.getPayloadJson().get("segments")) : override;
+    public EstimateDto estimate(String owner, String id, List<Map<String, Object>> override, List<Map<String, Object>> overrideShots) {
+        ClipProject p = projects.required(owner, id);
+        Map<String,Object> payload = new LinkedHashMap<>(p.getPayloadJson());
+        if (override != null) payload.put("segments", override);
+        if (overrideShots != null) payload.put("shots", overrideShots);
+        List<Map<String, Object>> segments = ClipShotPlan.materialize(payload);
         int totalSec=0, avatarSec=0, tailSec=0, avatarCount=0, brollCount=0, tailCount=0, chars=0;
         for (Map<String,Object> row: segments) {
             String role=String.valueOf(row.get("role")); int sec=ClipProjectService.seconds(row); totalSec += sec;
@@ -30,7 +34,7 @@ public class ClipEstimateService {
         return new EstimateDto(List.of(new EstimateItem("tts","口播配音",tts,null),new EstimateItem("avatar","分身出镜 "+avatarSec+" 秒",avatar,null),new EstimateItem("tail","结尾固定段",0,"免费"),new EstimateItem("assemble","总装",assemble,null)),tts+avatar+assemble,summary);
     }
     public void preflight(String owner, ClipProject p) {
-        List<Map<String,Object>> segments=ClipDtos.mapListValue(p.getPayloadJson().get("segments"));
+        List<Map<String,Object>> segments=ClipShotPlan.materialize(p.getPayloadJson());
         if (segments.isEmpty()) throw BusinessException.badRequest("CLIP_NO_SEGMENTS","文案还是空的");
         boolean hasAvatar=false;
         for (Map<String,Object> row:segments) {

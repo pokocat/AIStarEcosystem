@@ -19,7 +19,7 @@ public class ClipRenderService {
     @Transactional
     public RenderResult render(String owner,String projectId,String clientRequestId,Integer externalCreditsHeld) {
         if(clientRequestId==null||!clientRequestId.matches("[A-Za-z0-9:_-]{8,100}")) throw BusinessException.badRequest("CLIENT_REQUEST_ID_REQUIRED","缺少合法的请求标识");
-        ClipProject p=projects.required(owner,projectId); EstimateDto quote=estimates.estimate(owner,projectId,null); estimates.preflight(owner,p); shiliu.required();
+        ClipProject p=projects.required(owner,projectId); EstimateDto quote=estimates.estimate(owner,projectId,null,null); estimates.preflight(owner,p); shiliu.required();
         if(externalCreditsHeld==null||externalCreditsHeld!=quote.total()) throw new BusinessException(HttpStatus.CONFLICT,"CLIP_QUOTE_CHANGED","出片报价已变化，请重新确认");
         ClipRenderJob existing=jobs.findByExternalOwnerIdAndClientRequestId(owner,clientRequestId).orElse(null);
         if(existing!=null){ if(!projectId.equals(existing.getProjectId())||externalCreditsHeld!=existing.getCreditsHeld()) throw new BusinessException(HttpStatus.CONFLICT,"CLIP_RENDER_REQUEST_CONFLICT","同一请求标识对应的出片内容不同"); return new RenderResult(existing.getId(),projectId,existing.getStatus(),existing.isMock()); }

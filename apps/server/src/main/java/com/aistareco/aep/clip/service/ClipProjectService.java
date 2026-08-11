@@ -28,7 +28,10 @@ public class ClipProjectService {
         Map<String, Object> skeleton = ClipDtos.safeMap(t.getScriptSkeletonJson());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("variables", defaults(skeleton.get("variables")));
-        payload.put("segments", ClipDtos.mapListValue(skeleton.get("segments")));
+        List<Map<String,Object>> segments = ClipDtos.mapListValue(skeleton.get("segments"));
+        payload.put("segments", segments);
+        payload.put("shots", ClipShotPlan.defaultShots(segments));
+        payload.put("scriptChat", new ArrayList<>());
         payload.put("avatarId", null); payload.put("voiceId", null); payload.put("bgmAssetId", null); payload.put("subtitleStyle", new LinkedHashMap<>());
         ClipProject p = ClipProject.builder().id(id("cp")).externalOwnerId(owner).templateId(t.getId()).templateName(t.getName())
                 .title(t.getName()).status("draft").payloadJson(payload).step(1).createdAt(Instant.now()).updatedAt(Instant.now()).build();
@@ -47,6 +50,9 @@ public class ClipProjectService {
         if (req != null) {
             if (req.variables() != null) payload.put("variables", new LinkedHashMap<>(req.variables()));
             if (req.segments() != null) { validateSegments(req.segments()); payload.put("segments", new ArrayList<>(req.segments())); }
+            if (req.shots() != null) { ClipShotPlan.validate(req.shots(), ClipDtos.mapListValue(payload.get("segments"))); payload.put("shots", new ArrayList<>(req.shots())); }
+            else if (req.segments() != null) payload.put("shots", ClipShotPlan.defaultShots(req.segments()));
+            if (req.scriptChat() != null) { validateScriptChat(req.scriptChat()); payload.put("scriptChat", new ArrayList<>(req.scriptChat())); }
             if (req.avatarId() != null) payload.put("avatarId", req.avatarId());
             if (req.voiceId() != null) payload.put("voiceId", req.voiceId());
             if (req.bgmAssetId() != null) payload.put("bgmAssetId", req.bgmAssetId());
@@ -58,11 +64,13 @@ public class ClipProjectService {
     }
 
     @Transactional
-    public List<Map<String, Object>> reset(String owner, String id) {
+    public Map<String, Object> reset(String owner, String id) {
         ClipProject p = required(owner, id); ClipTemplate t = templates.required(p.getTemplateId());
         List<Map<String, Object>> segments = ClipDtos.mapListValue(ClipDtos.safeMap(t.getScriptSkeletonJson()).get("segments"));
-        Map<String, Object> payload = new LinkedHashMap<>(p.getPayloadJson()); payload.put("segments", segments);
-        p.setPayloadJson(payload); p.setUpdatedAt(Instant.now()); recompute(p); repo.save(p); return segments;
+        List<Map<String, Object>> shots = ClipShotPlan.defaultShots(segments);
+        Map<String, Object> payload = new LinkedHashMap<>(p.getPayloadJson()); payload.put("segments", segments); payload.put("shots", shots);
+        p.setPayloadJson(payload); p.setUpdatedAt(Instant.now()); recompute(p); repo.save(p);
+        return Map.of("segments", segments, "shots", shots);
     }
     @Transactional public void softDelete(String owner, String id) { ClipProject p = required(owner, id); p.setDeletedAt(Instant.now()); p.setUpdatedAt(Instant.now()); repo.save(p); }
     @Transactional public ProjectDto restore(String owner, String id) {
@@ -76,12 +84,13 @@ public class ClipProjectService {
     public ClipProject required(String owner, String id) { return repo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(id, owner).orElseThrow(() -> BusinessException.notFound("CLIP_PROJECT_NOT_FOUND", "项目不存在或无权访问")); }
 
     public static void recompute(ClipProject p) {
-        List<Map<String, Object>> segments = ClipDtos.mapListValue(p.getPayloadJson().get("segments"));
+        List<Map<String, Object>> source = ClipDtos.mapListValue(p.getPayloadJson().get("segments"));
+        List<Map<String, Object>> segments = ClipShotPlan.materialize(p.getPayloadJson());
         int total = 0, avatar = 0;
         for (Map<String, Object> row : segments) {
             int sec = seconds(row); total += sec; if ("avatar".equals(String.valueOf(row.get("role")))) avatar += sec;
         }
-        p.setSegmentCount(segments.size()); p.setDurationSec(total); p.setAvatarSeconds(avatar);
+        p.setSegmentCount(source.size()); p.setDurationSec(total); p.setAvatarSeconds(avatar);
     }
     public static int seconds(Map<String, Object> row) {
         Object actual = row.get("actualDurationSec"); if (actual instanceof Number n && n.doubleValue() > 0) return Math.max(1, (int)Math.round(n.doubleValue()));
@@ -94,6 +103,16 @@ public class ClipProjectService {
         for (Map<String, Object> row : segments) {
             int no = row.get("no") instanceof Number n ? n.intValue() : -1;
             if (no < 1 || !nos.add(no) || !ROLES.contains(String.valueOf(row.get("role")))) throw BusinessException.badRequest("CLIP_PROJECT_INVALID", "文案分段结构不合法");
+        }
+    }
+    public static void validateScriptChat(List<Map<String, Object>> messages) {
+        if (messages.size() > 40) throw BusinessException.badRequest("CLIP_PROJECT_INVALID", "文案对话记录过长");
+        for (Map<String,Object> row : messages) {
+            String role = String.valueOf(row.get("role"));
+            String content = String.valueOf(row.getOrDefault("content", "")).trim();
+            if (!Set.of("user", "assistant").contains(role) || content.isEmpty() || content.length() > 4000) {
+                throw BusinessException.badRequest("CLIP_PROJECT_INVALID", "文案对话记录结构不合法");
+            }
         }
     }
     private void purgeRow(ClipProject p) {

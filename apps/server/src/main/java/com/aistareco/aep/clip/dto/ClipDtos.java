@@ -1,6 +1,7 @@
 package com.aistareco.aep.clip.dto;
 
 import com.aistareco.aep.clip.model.*;
+import com.aistareco.aep.clip.service.ClipShotPlan;
 import java.time.Instant;
 import java.util.*;
 
@@ -28,6 +29,7 @@ public final class ClipDtos {
     public record ProjectDto(
             String id, String templateId, String templateName, String title, String status,
             Map<String, String> variables, List<Map<String, Object>> segments,
+            List<Map<String, Object>> shots, List<Map<String, Object>> scriptChat,
             String avatarId, String voiceId, String bgmAssetId, Map<String, Object> subtitleStyle,
             int durationSec, int avatarSeconds, int segmentCount, int progress, int step, String updatedAt
     ) {
@@ -35,6 +37,7 @@ public final class ClipDtos {
             Map<String, Object> payload = safeMap(p.getPayloadJson());
             return new ProjectDto(p.getId(), p.getTemplateId(), p.getTemplateName(), p.getTitle(), p.getStatus(),
                     stringMap(payload.get("variables")), mapListValue(payload.get("segments")),
+                    ClipShotPlan.shots(payload), mapListValue(payload.get("scriptChat")),
                     string(payload.get("avatarId")), string(payload.get("voiceId")), string(payload.get("bgmAssetId")),
                     safeMapValue(payload.get("subtitleStyle")), p.getDurationSec(), p.getAvatarSeconds(),
                     p.getSegmentCount(), p.getProgress(), p.getStep(), iso(p.getUpdatedAt()));

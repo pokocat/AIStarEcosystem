@@ -7,11 +7,12 @@ public final class ClipRequests {
     private ClipRequests() {}
     public record CreateProject(String templateId) {}
     public record SaveProject(Map<String, String> variables, List<Map<String, Object>> segments,
+                              List<Map<String, Object>> shots, List<Map<String, Object>> scriptChat,
                               String avatarId, String voiceId, String bgmAssetId,
                               Map<String, Object> subtitleStyle, Integer step, String title) {}
     public record Rewrite(String scope, Integer no, String text) {}
     public record PreviewVoice(Integer no, String text) {}
-    public record Estimate(List<Map<String, Object>> segments) {}
+    public record Estimate(List<Map<String, Object>> segments, List<Map<String, Object>> shots) {}
     public record Render(String clientRequestId, Integer externalCreditsHeld) {}
     public record UpdateAsset(String label, String tag) {}
     public record Publish(String platform) {}

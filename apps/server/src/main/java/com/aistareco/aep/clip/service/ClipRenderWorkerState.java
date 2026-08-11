@@ -53,7 +53,7 @@ public class ClipRenderWorkerState {
         }
         ClipProject p=projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).orElseThrow();
         Map<String,Object> state=j.getSegmentJobsJson()==null?new LinkedHashMap<>():new LinkedHashMap<>(j.getSegmentJobsJson());
-        List<Map<String,Object>> segments=ClipDtos.mapListValue(p.getPayloadJson().get("segments"));
+        List<Map<String,Object>> segments=ClipShotPlan.materialize(p.getPayloadJson());
         List<Map<String,Object>> rows=stateRows(state,segments);
         if("tts".equals(j.getStage())){
             int total=(int)rows.stream().filter(row->"broll".equals(String.valueOf(row.get("role")))).count();

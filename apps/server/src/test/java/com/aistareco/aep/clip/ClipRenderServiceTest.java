@@ -40,7 +40,7 @@ class ClipRenderServiceTest {
                 .templateName("测试模板").title("测试项目").status("draft").payloadJson(Map.of("segments", List.of()))
                 .createdAt(Instant.now()).updatedAt(Instant.now()).build();
         when(projects.required("owner-1", "cp_1")).thenReturn(project);
-        when(estimates.estimate("owner-1", "cp_1", null)).thenReturn(new EstimateDto(List.of(), 9,
+        when(estimates.estimate("owner-1", "cp_1", null, null)).thenReturn(new EstimateDto(List.of(), 9,
                 new EstimateSummary(10, 6, 0, 1, 1, 0, 20)));
         when(jobs.findByExternalOwnerIdAndClientRequestId("owner-1", "request-001")).thenReturn(Optional.empty());
         when(jobs.save(any())).thenAnswer(inv -> inv.getArgument(0));

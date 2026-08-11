@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.114）
+# 版本增量历史（v0.5 → v0.115）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.115（2026-08-11）— 快出片连续多句共用一个视觉镜头
+
+`clip_project.payloadJson` 将文案句 `segments` 与视觉镜头 `shots[{id,startNo,endNo,role,assetId,...}]` 分层，并允许保存军师 BFF 产生的 `scriptChat` 对话记录。新增 `ClipShotPlan` 作为唯一投影层：新项目和老草稿缺省时把相邻、尚未绑定不同素材的 b-roll 每 3 句组成一镜；显式计划必须按顺序、无重叠、无缺口地覆盖全部文案句，否则 `CLIP_PROJECT_INVALID`，绝不静默吞稿。
+
+报价、preflight、真实 worker、测试媒体 worker 与 `ClipAssemblyService` 全部改读投影后的生成段。一个 shot 内的连续句会合成一段 TTS/数字人任务，并让同一 b-roll 连续承接完整范围；前端不再出现“看起来多选，后端仍逐句切片”的伪实现。项目 DTO、保存/重置和 estimate 契约同步返回/接收 shots；旧的逐句素材草稿只有 assetId 相同或都为空时才自动合并，避免升级后丢失已配素材。
 
 ### v0.114（2026-08-11）— 快出片预发可播放测试媒体闭环
 
