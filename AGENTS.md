@@ -22,7 +22,7 @@
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 - 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
-- `clip` 口播视频线（v0.111）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。已按石榴官方 API v1 接入授权视频、声音/形象训练、TTS、文案/音频驱动视频、状态轮询、删除与时效成片转存，内置 3 套正式模板；预发使用 `clip-preprod` 独立 profile、H2/文件存储和本机 8081，不接触 AIStar 生产。媒体机器审核与四平台代发未完成时仍必须失败关闭，mock 只允许非 mysql/production 环境。当前事实与外部门槛见 `docs/clip-avatar-video-plan.md`。
+- `clip` 口播视频线（v0.112）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。已按石榴官方 API v1 接入授权视频、声音/形象训练、TTS、逐段文案视频、状态轮询、删除与时效结果转存，内置 3 套正式模板；worker 以 `segmentJobsJson` 逐段恢复，b-roll 配音与 avatar 视频先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、裁切/循环 b-roll、生成缺省尾段、可选混 BGM 并拼成作品。预发使用 `clip-preprod` 独立 profile、H2/文件存储和本机 8081，不接触 AIStar 生产。媒体机器审核、成片字幕/AI 标识与四平台代发未完成时仍必须失败关闭，mock 只允许非 mysql/production 环境。当前事实与外部门槛见 `docs/clip-avatar-video-plan.md`。
 
 ---
 
@@ -450,10 +450,13 @@ pnpm check:api-contract
 
 **未完成事项**：小程序的 wx.subscribeMessage / WebSocket（v0.6+）、Cookie SSO 跨子域（Phase 5）、K8s ACK（Phase 6）。
 
-### 最近 5 版速览（详情见 VERSION_HISTORY.md）
+### 近期版本速览（详情见 VERSION_HISTORY.md）
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.112** | 2026-08-11 | `clip` 逐段真实生成与 ffmpeg 总装：b-roll 独立 TTS、avatar 每段独立石榴任务、所有时效产物先镜像、720×1280 H.264/AAC 归一拼接、缺省尾段与可选 BGM；字幕/成片内 AI 标识、媒体审核和真实代发继续失败关闭。 |
+| **v0.111** | 2026-08-11 | 石榴 AI 官方 v1 真实网关、本人授权、声音/形象训练、TTS/视频状态轮询、3 套正式模板与隔离 `clip-preprod` 部署。 |
+| **v0.110** | 2026-08-10 | 军师「快出片」clip 独立领域骨架：service token + `externalOwnerId`、四表、项目/素材/报价/任务/作品与 OpenAPI 契约。 |
 | **v0.109** | 2026-08-03 | **Phase 5 完成：删除遗留 `apps/web`**（Next 14 + React 18 + npm，port 3002）。前置核查确认无任何存活代码依赖——`pnpm-workspace.yaml`/根 `package.json` scripts/`.claude/launch.json`/`scripts/check-api-contract.mjs`/`infra/scripts/build-release.sh` 均已只覆盖四个活跃子应用 + admin，未引用 apps/web；仓内其余命中全部是注释 / 历史版本日志 / 类型对齐说明，非 import 依赖。同 commit 更新：`AGENTS.md`（结构树 / Phase 表 / 技术栈分代 / 数据流图 / §4.1 类型真源 / §5 新增领域 SOP / 编译门脚本，全部摘除 apps/web）；`docs/INDEX.md`；`product_spec_ai_celebrity.md`（§八真源规则改指 `packages/types/src/celebrity-zone.ts`）；`apps/miniprogram/{README,agent}.md`（数据形状真源同步改指 `packages/types`）；根 `package.json` description；`TODO.md`（`apps/web/src/constants/*` 字典上移项标记随删除关闭）；`infra/README.md` + 删除 `infra/env/web.env.example` / `infra/systemd/aistareco-web.service.example`；`infra/nginx/{ai.aibuzz.cn,ai}.conf.example` 根域名 `aibuzz.cn` 改 302/代理到 `web-celebrity`（3012），不再指向已删除的 `/web`。**无 server / openapi 变更**。 |
 | **v0.108** | 2026-08-03 | 修复**跨子产品视频资产串号**：明星带货素材库里出现 AI 短剧的分镜视频（反向短剧任务中心出现带货视频）。根因 —— `material_video_job` 表被两条业务线共用（带货 `baseline`/`variant`、短剧 `drama-shot`/`drama-episode`），但 `MaterialVideoJobService.listJobs` 只按 `ownerUserId` 过滤，不带 `script_id`/`product_id` 的列表（`/api/me/material/videos/jobs` 无参、`/api/me/drama/render/tasks` 无 project_id）会把用户在另一个子产品生成的视频原样返回。修法：`MaterialVideoJob` 加 `app` 列（celebrity\|drama，索引 `idx_mvj_user_app`）；`submit`/`listJobs`/`getJob` 强制显式带 app（`APP_CELEBRITY`/`APP_DRAMA` 常量，跨 app 单查一律当不存在）；查询用 `APP_EXPR`（app 为 null 的老数据按 `kind like 'drama-%'` 推断）故**不依赖回填**，`MaterialVideoJobAppBackfill`(@Order 70，幂等)只为让查询走索引。**无端点 / 请求体 / 响应体变更**（openapi 不变）。门禁：新增 `MaterialVideoJobAppScopeTest`（真 H2 跑 JPQL）3/3 + `mvnw test` 471 全量（唯一失败为既有 flaky `JwtUtilTest.registerTicket_tamperedTokenRejected`，与本次无关，已记 TODO.md）。 |
 | **v0.107** | 2026-08-03 | AiAvatar 新增**真人授权素材库**：授权流程只入库不自动生成；同一真人复用 active 七牛 `qgroupid`，图片 / 视频逐条审核取得 `qassetid`；真人生成任务只引用 approved `qasset://` 素材；历史“待补确认”可就地补当前协议，技术证据有效时不重复刷脸。 |

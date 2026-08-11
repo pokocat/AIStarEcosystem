@@ -14,7 +14,7 @@
 - [x] ~~取得石榴测试 key、核对官方字段并替换固定失败网关~~（v0.111）：已接 `/authVideo/create`、`/speaker/{create,tts,status,delete}`、`/avatar/{create,status,delete}`、`/video/{createByText,createByVoice,status}`；真实 key 只落预发 0600 env，官方 BaseURL 为 `https://api.16ai.chat/api/v1/`。只读探针确认账号有效、12,000 点且当前无 speaker/avatar。
 - [ ] 用本人合规采集素材完成 `docs/clip-avatar-video-plan.md` §3.2 质量/时延/一致性/输出规格/成本实测及 §12 商务与算法备案决策；没有真实授权素材时不得用假素材冒充全链路验收。
 - [ ] 接入真实图片/视频/音频机器审核，并把结果与资产/任务审计关联；当前由军师 BFF 在未配置时 fail-closed，AIStar 也不得绕过接受直传媒体。
-- [ ] 用 `FfmpegRunner` / mixcut 能力实现多段 avatar/b-roll/固定尾片的真正时间线总装、输出探测与成片内 AI 标识。v0.111 已能把石榴单一主口播视频立即转存到我方持久存储，但尚未拼接 b-roll/尾片，不能把该过渡链路描述成完整模板成片。
+- [~] `clip` 多段总装继续收尾。v0.112 已完成 Strategy A 基线：b-roll 每段独立 TTS、avatar 每段独立石榴任务、时效音视频先镜像我方存储，`ClipAssemblyService` 用 `FfmpegRunner` 做 720×1280 H.264/AAC 归一、b-roll 裁切/循环、缺省尾段、可选 BGM 与最终拼接，并用真实 ffmpeg 配方探针通过。**剩余**：模板固定尾片/preset 真素材、句级字幕、成片内「AI 生成」标识、缩略图、亮度/响度质量门与真实长片压测；这些完成前仍不能宣称完整生产模板成片。
 - [ ] 抖音、快手、小红书、视频号逐一接真实发布和状态回查；当前非 mock 固定 `CLIP_PUBLISH_NOT_CONFIGURED`。不要扩写“全平台一键发布”。
 - [ ] 为 `DapAvatar` / `DapVoice` 本次新增的引擎字段补正式 Flyway 迁移；当前 v0.110 仍依赖 `ddl-auto=update`，`V14__add_clip_domain.sql` 只建 clip 四表。等全仓 Flyway 接管策略确认后再迁，避免与既有表结构漂移冲突。
 - [ ] 生产接入前跑 MySQL 迁移演练、多实例租约/杀进程恢复、长任务 stale reaper、真实供应商限流与成本压测；mock 完成不算验收。
