@@ -13,6 +13,8 @@ This skill is the repo-local deployment entrypoint. Before any deployment action
 
 `clip` preprod is an explicit exception to the production topology, not a production service alias. Only when the user asks for 军师快出片预发, use `infra/scripts/deploy-clip-preprod.sh`, `/etc/aistareco/clip-preprod.env`, `/opt/aistareco-clip-preprod`, and systemd `aistareco-clip-preprod` on the user-authorized preprod host. It must stay on `127.0.0.1:8081`; expose only `/clip_preprod/cdn|files/` through nginx; never restart or modify `aistareco-server` production. Real Shiliu tokens must be entered interactively or installed by a secret manager and never appear in command arguments/output. For v0.113+, the deploy script itself must resolve the ffmpeg/ffprobe paths from the remote env and fail before upload unless ffmpeg exposes `signalstats`, `metadata`, and `loudnorm`; otherwise the final media quality gate intentionally fails closed. Preserve or explicitly set the `AEP_CLIP_MIN/MAX_*` thresholds documented in `infra/env/clip-preprod.env.example`.
 
+During the explicit testing stage, the script defaults `TEST_MEDIA_MODE=true`, which writes only `AEP_CLIP_FORCE_MOCK=true` to the isolated preprod env. This mode must still produce a playable stored MP4 through real ffmpeg assembly/quality gates and permanently burn `测试演示`; it may not fall back to a status-only fake work. Set `TEST_MEDIA_MODE=false` for real Shiliu media acceptance. `prod`/`mysql` profiles must reject force-mock at startup.
+
 ## Services
 
 Current production services are:

@@ -10,7 +10,7 @@
 
 军师「快出片」预发不复用 AIStar 生产实例：`aistareco-clip-preprod` 仅监听 `127.0.0.1:8081`，工作目录 `/opt/aistareco-clip-preprod/server`，运行时机密在 `/etc/aistareco/clip-preprod.env`（0600）。军师预发 BFF 从同机 `http://127.0.0.1:8081` 回源；公网只通过 `wxapi.aibuzz.cn/clip_preprod/cdn/` 与 `/files/` 读取作品，不公开 AIStar API。
 
-初始化顺序：安装 Java 17 与带 `signalstats`、`metadata`、`loudnorm` 的 ffmpeg → 安装 `infra/systemd/aistareco-clip-preprod.service.example` → 按 `infra/env/clip-preprod.env.example` 安全落真实 env → 将 `infra/nginx/clip-preprod.wxapi.snippet.example` 合入 wxapi HTTPS server 并 `nginx -t` → 运行 `infra/scripts/deploy-clip-preprod.sh`。脚本先读取远端 env 指定的 ffmpeg/ffprobe 路径并硬检三个质量滤镜，再构建/替换该实例 JAR、重启该 systemd unit，并用 service token 验证至少 3 个模板；不访问 AIStar 生产。石榴 token 和 BFF service token 禁止进入命令历史、日志、git 或部署版本文件。v0.113 起最终音轨先归一到 -16 LUFS / -1.5 dBTP，并按 `AEP_CLIP_{MIN,MAX}_*` 校验平均亮度、综合响度和真峰值；缺 filter 或结果无法解析会失败关闭。
+初始化顺序：安装 Java 17 与带 `signalstats`、`metadata`、`loudnorm` 的 ffmpeg → 安装 `infra/systemd/aistareco-clip-preprod.service.example` → 按 `infra/env/clip-preprod.env.example` 安全落真实 env → 将 `infra/nginx/clip-preprod.wxapi.snippet.example` 合入 wxapi HTTPS server 并 `nginx -t` → 运行 `infra/scripts/deploy-clip-preprod.sh`。脚本先读取远端 env 指定的 ffmpeg/ffprobe 路径并硬检三个质量滤镜，再构建/替换该实例 JAR、重启该 systemd unit，并用 service token 验证至少 3 个模板；不访问 AIStar 生产。石榴 token 和 BFF service token 禁止进入命令历史、日志、git 或部署版本文件。v0.113 起最终音轨先归一到 -16 LUFS / -1.5 dBTP，并按 `AEP_CLIP_{MIN,MAX}_*` 校验平均亮度、综合响度和真峰值；缺 filter 或结果无法解析会失败关闭。v0.114 起部署脚本默认 `TEST_MEDIA_MODE=true`，只在该隔离实例写入 `AEP_CLIP_FORCE_MOCK=true`，生成带永久「测试演示」标识的真实 MP4 以验收全产品链；需要验证真实石榴时显式运行 `TEST_MEDIA_MODE=false bash infra/scripts/deploy-clip-preprod.sh`。production/mysql 会硬拒绝 force-mock。
 
 ---
 

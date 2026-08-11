@@ -37,10 +37,17 @@ public class ClipRenderWorkerState {
         if(j==null||!workerId.equals(j.getLeaseOwner())||Set.of("succeeded","failed","cancelled").contains(j.getStatus()))return;
         Instant now=Instant.now();j.setHeartbeatAt(now);j.setUpdatedAt(now);
         if(j.isMock()) {
-            advanceMock(j, now);
-            if("succeeded".equals(j.getStatus()))projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).ifPresent(p->{
-                j.setDurationSec(p.getDurationSec());p.setStatus("done");p.setProgress(100);p.setUpdatedAt(now);projects.save(p);
-            });
+            ClipProject p=null;
+            if("assemble".equals(j.getStage())) {
+                p=projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).orElseThrow();
+                ClipAssemblyService.Result result=assembly.assembleMock(j.getExternalOwnerId(),p);
+                j.setOutputCdnKey(result.outputCdnKey());j.setThumbnailCdnKey(result.thumbnailCdnKey());j.setDurationSec(result.durationSec());
+                j.setStatus("succeeded");j.setProgress(100);j.setCompletedAt(now);
+            } else advanceMock(j, now);
+            if("succeeded".equals(j.getStatus())) {
+                if(p==null)p=projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).orElseThrow();
+                p.setDurationSec(j.getDurationSec());p.setStatus("done");p.setProgress(100);p.setUpdatedAt(now);projects.save(p);
+            }
             j.setLeaseOwner(null);j.setLeaseUntil(null);jobs.save(j);
             return;
         }

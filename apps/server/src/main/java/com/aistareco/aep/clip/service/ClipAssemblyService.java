@@ -111,6 +111,76 @@ public class ClipAssemblyService {
         }
     }
 
+    /**
+     * 非生产测试媒体总装：仍走真实分段、字幕、拼接、BGM、响度/亮度闸、缩略图与作品存储，
+     * 只把石榴返回的 avatar/TTS 时效素材替换成确定性本地色块+测试音轨，供预发完整点通。
+     */
+    public Result assembleMock(String owner, ClipProject project) {
+        Path work = null;
+        try {
+            work = Files.createTempDirectory("clip-assemble-mock-");
+            List<Map<String, Object>> segments = ClipDtos.mapListValue(project.getPayloadJson().get("segments"));
+            if (segments.isEmpty()) throw failure("出片没有可合成的分段");
+            List<Path> normalized = new ArrayList<>();
+            for (Map<String, Object> segment : segments) {
+                int no = number(segment.get("no"), -1);
+                String role = String.valueOf(segment.get("role"));
+                if (!Set.of("avatar", "broll", "tail").contains(role)) throw failure("出片分段角色无效");
+                Path overlay = "tail".equals(role)
+                        ? overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName())
+                        : overlays.render(work, no, text(segment.get("text")));
+                overlays.markAsTest(overlay);
+                Path output = work.resolve(String.format(Locale.ROOT, "segment-%03d.mp4", no));
+                renderMockSegment(segment, role, no, overlay, output);
+                requireOutput(output);
+                normalized.add(output);
+            }
+
+            Path concat = work.resolve("concat.txt");
+            Files.writeString(concat, normalized.stream()
+                    .map(path -> "file '" + escapeConcat(path.toAbsolutePath().toString()) + "'")
+                    .reduce("", (a, b) -> a + b + "\n"), StandardCharsets.UTF_8);
+            Path joined = work.resolve("joined.mp4");
+            concat(normalized, concat, joined);
+
+            Path finalFile = joined;
+            String bgmAssetId = ClipDtos.string(project.getPayloadJson().get("bgmAssetId"));
+            if (bgmAssetId != null && !bgmAssetId.isBlank()) {
+                ClipAsset bgm = assets.requiredVisible(owner, bgmAssetId);
+                if (!"bgm".equals(bgm.getKind())) throw failure("背景音乐素材类型无效");
+                Path mixed = work.resolve("final.mp4");
+                mixBgm(joined, storage.openForRead(bgm.getCdnKey()), mixed);
+                requireOutput(mixed);
+                finalFile = mixed;
+            }
+
+            Path loudnessNormalized = work.resolve("loudness-normalized.mp4");
+            normalizeLoudness(finalFile, loudnessNormalized);
+            requireOutput(loudnessNormalized);
+            finalFile = loudnessNormalized;
+            double probedDuration = ffmpeg.probeDurationSec(finalFile.toFile());
+            if (probedDuration <= 0) throw failure("成片时长无效");
+            if (!ffmpeg.hasAudioStream(finalFile.toFile())) throw failure("成片没有音轨");
+            qualityGate.assertAcceptable(finalFile);
+            int duration = Math.max(1, (int) Math.round(probedDuration));
+            Path thumbnail = work.resolve("thumbnail.jpg");
+            extractThumbnail(finalFile, thumbnail);
+            requireOutput(thumbnail);
+            FileStorageService.StoredFile stored = storage.storeExisting(finalFile, "clip/works", owner,
+                    "mp4", "video/mp4", true);
+            FileStorageService.StoredFile thumbStored = storage.storeExisting(thumbnail, "clip/thumbnails", owner,
+                    "jpg", "image/jpeg", true);
+            return new Result(stored.key(), thumbStored.key(), duration);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ASSEMBLY_FAILED",
+                    "测试视频总装失败，请稍后重试", e.toString());
+        } finally {
+            deleteTree(work);
+        }
+    }
+
     private void normalizeAvatar(Map<String, Object> state, Path overlay, Path output) throws IOException {
         String key = text(state.get("videoCdnKey"));
         if (key.isBlank()) throw failure("分身出镜段尚未生成完成");
@@ -175,6 +245,24 @@ public class ClipAssemblyService {
         }
         args.addAll(List.of("-shortest", "-movflags", "+faststart", output.toString()));
         ffmpeg.runFfmpeg(args);
+    }
+
+    private void renderMockSegment(Map<String, Object> segment, String role, int no, Path overlay, Path output) {
+        int duration = Math.max(1, ClipProjectService.seconds(segment));
+        String color = switch (role) {
+            case "avatar" -> "#24463c";
+            case "broll" -> "#70442e";
+            default -> "#17362f";
+        };
+        int frequency = 360 + Math.floorMod(no, 8) * 35;
+        ffmpeg.runFfmpeg(List.of("-y", "-f", "lavfi", "-i",
+                "color=c=" + color + ":s=720x1280:r=30:d=" + duration,
+                "-f", "lavfi", "-i", "sine=frequency=" + frequency + ":sample_rate=48000:duration=" + duration,
+                "-stream_loop", "-1", "-i", overlay.toString(), "-t", String.valueOf(duration),
+                "-filter_complex", decoratedFilter(0, 2), "-map", "[v]", "-map", "1:a:0",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart",
+                output.toString()));
     }
 
     private void concat(List<Path> segments, Path list, Path output) {

@@ -60,6 +60,7 @@ aep:
   clip:
     service-token: ${AEP_CLIP_SERVICE_TOKEN:}
     allow-mock: ${AEP_CLIP_ALLOW_MOCK:false}
+    force-mock: ${AEP_CLIP_FORCE_MOCK:false}
     shiliu-base-url: ${AEP_CLIP_SHILIU_BASE_URL:}
     shiliu-token: ${AEP_CLIP_SHILIU_TOKEN:}
     seed-official-templates: ${AEP_CLIP_SEED_OFFICIAL_TEMPLATES:true}

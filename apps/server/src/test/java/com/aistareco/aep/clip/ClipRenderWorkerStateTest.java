@@ -79,6 +79,27 @@ class ClipRenderWorkerStateTest {
     }
 
     @Test
+    void mockAssemblyAlsoStoresAPlayableWorkBeforeCompleting() {
+        ClipRenderJob job = job("assembling", "assemble", true);
+        job.setLeaseOwner("worker-a");
+        ClipProject project = project(List.of(Map.of("no", 1, "role", "tail", "text", "结尾", "durationSec", 3)));
+        when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
+        when(projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull("cp_1", "owner-1")).thenReturn(Optional.of(project));
+        when(assembly.assembleMock("owner-1", project))
+                .thenReturn(new ClipAssemblyService.Result("clip/works/mock.mp4", "clip/thumbnails/mock.jpg", 3));
+
+        state.advance(job.getId(), "worker-a");
+
+        assertEquals("succeeded", job.getStatus());
+        assertEquals("clip/works/mock.mp4", job.getOutputCdnKey());
+        assertEquals("clip/thumbnails/mock.jpg", job.getThumbnailCdnKey());
+        assertEquals(3, job.getDurationSec());
+        assertEquals("done", project.getStatus());
+        verify(assembly).assembleMock("owner-1", project);
+        verify(projects).save(project);
+    }
+
+    @Test
     void nonMockAssemblyFailureIsNotHidden() {
         ClipRenderJob job = job("assembling", "assemble", false);
         job.setLeaseOwner("worker-a");

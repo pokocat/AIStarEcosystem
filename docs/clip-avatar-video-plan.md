@@ -12,7 +12,7 @@
 - 跨系统采用 Scheme A：用户积分只由军师 BFF hold/settle/refund；AIStar 不调用本仓 `CreditService`，仅保存 `creditsHeld` 作为外部报价审计事实。`clientRequestId` 在外部属主内唯一，重复载荷冲突返回 409。
 - `HttpShiliuGateway` 已按官方 API v1 接入授权视频、声音/形象训练、TTS、文案/音频出片、状态轮询与删除；上游时效成片立即转存我方持久存储。真实 key 仅在预发 0600 env，探针确认 12,000 点、当前没有已训练 speaker/avatar。
 - `ClipOfficialTemplateSeeder` 内置「为实体发声 / 今天开门了 / 这门手艺」三套模板，仅补缺失 ID、不覆盖运营编辑。`clip-preprod` 独立 profile 仅监听 127.0.0.1:8081，军师 BFF 以独立 service token 回源，未接触 AIStar 生产。
-- v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕与全片「AI 生成」标识经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。真实 ffmpeg 配方与新质量解析已本机探针通过。
+- v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕与全片「AI 生成」标识经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。v0.114 增加隔离预发专用 `AEP_CLIP_FORCE_MOCK=true`：确定性测试媒体也必须真实生成可播放 MP4 并走同一总装/质检/存储链，永久烧录「测试演示」；production/mysql 启动硬拒绝。真实 ffmpeg 配方与新质量解析已本机探针通过。
 - 非 mysql/production 环境允许显式 mock，mock 产物带 `mock=true`。媒体机器审核未配置时军师 BFF 继续 fail-closed；真实代发仍固定失败。
 - 仍需使用本人合规素材完成 §3.2 质量/时延/一致性/规格/成本实测，完成 §12 商务/备案决策，并接媒体审核、授权群像尾片、四平台发布和生产压测/真机验收。
 
@@ -379,7 +379,7 @@ clip.credit.confirm-threshold  小额免打扰阈值
 ShiliuGateway (接口)
   ├─ HttpShiliuGateway   Bearer token；接入点经 admin「AI 应用绑定」解析，无 env 兜底
   └─ MockShiliuGateway   dev 惰性状态机；产物一律打 mock=true
-ShiliuService (facade)   已配置 → HTTP；未配置且 aep.clip.allow-mock=true（dev 默认）→ mock；
+ShiliuService (facade)   force-mock=true 且非 production/mysql → 测试媒体；否则已配置 → HTTP；未配置且 allow-mock=true（dev 默认）→ mock；
                          否则 503。生产 profile 误开 mock → 启动 ERROR 横幅
 ```
 

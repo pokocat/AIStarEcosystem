@@ -42,6 +42,20 @@ class ClipOverlayRendererTest {
         assertFalse(Arrays.equals(Files.readAllBytes(entity), Files.readAllBytes(craft)), "templates need distinct closing copy");
     }
 
+    @Test
+    void stampsTestMediaPermanentlyIntoTopLeftCorner() throws Exception {
+        ClipOverlayRenderer renderer = new ClipOverlayRenderer();
+        Path output = renderer.render(temp, 3, "测试口播");
+        BufferedImage before = ImageIO.read(output.toFile());
+        long beforePixels = alphaPixels(before, 20, 30, 180, 90);
+
+        renderer.markAsTest(output);
+
+        BufferedImage after = ImageIO.read(output.toFile());
+        assertTrue(alphaPixels(after, 20, 30, 180, 90) > beforePixels + 3_000,
+                "test media must carry a visible permanent badge");
+    }
+
     private static long alphaPixels(BufferedImage image, int x, int y, int w, int h) {
         long count = 0;
         for (int py = y; py < Math.min(image.getHeight(), y + h); py++) {

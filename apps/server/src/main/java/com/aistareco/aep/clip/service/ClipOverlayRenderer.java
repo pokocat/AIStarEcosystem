@@ -73,6 +73,34 @@ public class ClipOverlayRenderer {
         }
     }
 
+    /** 测试媒体模式的成片必须永久带「测试演示」角标，避免离开预发 UI 后被误认成真实生成。 */
+    public Path markAsTest(Path imagePath) {
+        try {
+            BufferedImage image = ImageIO.read(imagePath.toFile());
+            if (image == null) throw new IllegalStateException("overlay image unreadable");
+            Graphics2D g = image.createGraphics();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                String label = "测试演示";
+                Font font = new Font(fontFamily, Font.BOLD, 24);
+                FontMetrics metrics = g.getFontMetrics(font);
+                int x = 36, y = 44, padX = 18, boxH = 46;
+                int boxW = metrics.stringWidth(label) + padX * 2;
+                g.setColor(new Color(214, 91, 44, 225));
+                g.fillRoundRect(x, y, boxW, boxH, 20, 20);
+                g.setFont(font);g.setColor(Color.WHITE);
+                int baseline = y + (boxH - metrics.getHeight()) / 2 + metrics.getAscent();
+                g.drawString(label, x + padX, baseline);
+            } finally {
+                g.dispose();
+            }
+            if (!ImageIO.write(image, "png", imagePath.toFile())) throw new IllegalStateException("PNG writer unavailable");
+            return imagePath;
+        } catch (Exception e) {
+            throw new IllegalStateException("测试演示标识生成失败", e);
+        }
+    }
+
     private void drawTailBackground(Graphics2D g) {
         g.setPaint(new GradientPaint(0, 0, new Color(18, 54, 47), WIDTH, HEIGHT, new Color(117, 52, 31)));
         g.fillRect(0, 0, WIDTH, HEIGHT);

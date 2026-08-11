@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 public class ClipProperties {
     private String serviceToken = "";
     private boolean allowMock = false;
+    private boolean forceMock = false;
     private String shiliuBaseUrl = "";
     private String shiliuToken = "";
     private String pricingAvatarSecond = "";
@@ -27,6 +28,8 @@ public class ClipProperties {
     public void setServiceToken(String serviceToken) { this.serviceToken = serviceToken; }
     public boolean isAllowMock() { return allowMock; }
     public void setAllowMock(boolean allowMock) { this.allowMock = allowMock; }
+    public boolean isForceMock() { return forceMock; }
+    public void setForceMock(boolean forceMock) { this.forceMock = forceMock; }
     public String getShiliuBaseUrl() { return shiliuBaseUrl; }
     public void setShiliuBaseUrl(String shiliuBaseUrl) { this.shiliuBaseUrl = shiliuBaseUrl; }
     public String getShiliuToken() { return shiliuToken; }

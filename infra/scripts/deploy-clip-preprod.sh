@@ -9,6 +9,7 @@ SSH_KEY="${SSH_KEY:-/Users/donis/dev/aliyun/aiartist.pem}"
 REMOTE_ROOT="${REMOTE_ROOT:-/opt/aistareco-clip-preprod}"
 ENV_FILE="${ENV_FILE:-/etc/aistareco/clip-preprod.env}"
 SERVICE="${SERVICE:-aistareco-clip-preprod}"
+TEST_MEDIA_MODE="${TEST_MEDIA_MODE:-true}"
 SHA="$(git -C "$ROOT" rev-parse --short HEAD)"
 DIRTY="$(git -C "$ROOT" status --porcelain --untracked-files=no | head -1)"
 RELEASE_ID="${SHA}$([ -n "$DIRTY" ] && printf '%s' '-dirty')-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -18,18 +19,26 @@ REMOTE_TMP="/tmp/aistareco-clip-${RELEASE_ID}.jar"
 log(){ printf '\033[1;36m[clip-preprod]\033[0m %s\n' "$*"; }
 die(){ printf '\033[1;31m[clip-preprod] %s\033[0m\n' "$*" >&2; exit 1; }
 [ -f "$SSH_KEY" ] || die "SSH key 不存在：$SSH_KEY"
+case "$TEST_MEDIA_MODE" in true|false) ;; *) die "TEST_MEDIA_MODE 只能是 true 或 false" ;; esac
 
 log "构建 server artifact（RELEASE_ID=${RELEASE_ID}）"
 (cd "$ROOT/apps/server" && ./mvnw -q -DskipTests clean package)
 [ -f "$JAR" ] || die "server jar 未生成"
 
-log "预检远端 Java、机密配置与 FFmpeg 质量滤镜"
-ssh -i "$SSH_KEY" -o BatchMode=yes "$DEPLOY_HOST" bash -s -- "$ENV_FILE" <<'REMOTE_PREFLIGHT' \
+log "预检远端 Java、机密配置与 FFmpeg 质量滤镜（TEST_MEDIA_MODE=${TEST_MEDIA_MODE}）"
+ssh -i "$SSH_KEY" -o BatchMode=yes "$DEPLOY_HOST" bash -s -- "$ENV_FILE" "$TEST_MEDIA_MODE" <<'REMOTE_PREFLIGHT' \
   || die "远端缺 Java 17、机密配置或 FFmpeg signalstats/metadata/loudnorm；先按 infra/README.md 的 clip 预发步骤初始化"
 set -Eeuo pipefail
 env_file="$1"
+test_media_mode="$2"
 command -v java >/dev/null
 sudo test -s "$env_file"
+if sudo grep -qE '^AEP_CLIP_FORCE_MOCK=' "$env_file"; then
+  sudo sed -i -E "s#^AEP_CLIP_FORCE_MOCK=.*#AEP_CLIP_FORCE_MOCK=${test_media_mode}#" "$env_file"
+else
+  printf 'AEP_CLIP_FORCE_MOCK=%s\n' "$test_media_mode" | sudo tee -a "$env_file" >/dev/null
+fi
+sudo chmod 600 "$env_file"
 ffmpeg_bin="$(sudo awk -F= '$1 == "AEP_CLIP_FFMPEG_BIN" { sub(/^[^=]*=/, ""); print; exit }' "$env_file")"
 ffprobe_bin="$(sudo awk -F= '$1 == "AEP_CLIP_FFPROBE_BIN" { sub(/^[^=]*=/, ""); print; exit }' "$env_file")"
 ffmpeg_bin="${ffmpeg_bin:-ffmpeg}"
@@ -65,4 +74,4 @@ sudo journalctl -u "$service" -n 100 --no-pager
 exit 1
 REMOTE
 
-log "完成：${RELEASE_ID}（仅 clip 预发实例）"
+log "完成：${RELEASE_ID}（仅 clip 预发实例，TEST_MEDIA_MODE=${TEST_MEDIA_MODE}）"

@@ -101,6 +101,44 @@ class ClipAssemblyServiceTest {
         verifyNoInteractions(ffmpeg);
     }
 
+    @Test
+    void mockModeStillRunsFfmpegQualityGateAndStoresPlayableWork() throws Exception {
+        FfmpegRunner ffmpeg = mock(FfmpegRunner.class);
+        FileStorageService storage = mock(FileStorageService.class);
+        ClipMediaQualityGate qualityGate = mock(ClipMediaQualityGate.class);
+        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, storage, mock(ClipAssetService.class),
+                new ClipOverlayRenderer(), qualityGate);
+        when(ffmpeg.hasAudioStream(any())).thenReturn(true);
+        when(ffmpeg.probeDurationSec(any())).thenReturn(7d);
+        when(ffmpeg.runFfmpeg(anyList())).thenAnswer(inv -> {
+            List<String> args = inv.getArgument(0);
+            Path output = Path.of(args.get(args.size() - 1));
+            Files.createDirectories(output.getParent());
+            Files.writeString(output, "video");
+            return "ok";
+        });
+        when(storage.storeExisting(any(), eq("clip/works"), eq("owner-1"), eq("mp4"), eq("video/mp4"), eq(true)))
+                .thenReturn(new FileStorageService.StoredFile("clip/works/mock.mp4", "", "", null, 5, "video/mp4"));
+        when(storage.storeExisting(any(), eq("clip/thumbnails"), eq("owner-1"), eq("jpg"), eq("image/jpeg"), eq(true)))
+                .thenReturn(new FileStorageService.StoredFile("clip/thumbnails/mock.jpg", "", "", null, 5, "image/jpeg"));
+        ClipProject project = project(List.of(
+                segment(1, "avatar", "测试开场", null, 4),
+                segment(2, "tail", "结尾", null, 3)
+        ));
+
+        ClipAssemblyService.Result result = service.assembleMock("owner-1", project);
+
+        assertEquals("clip/works/mock.mp4", result.outputCdnKey());
+        assertEquals("clip/thumbnails/mock.jpg", result.thumbnailCdnKey());
+        assertEquals(7, result.durationSec());
+        ArgumentCaptor<List<String>> commands = ArgumentCaptor.forClass(List.class);
+        verify(ffmpeg, times(5)).runFfmpeg(commands.capture());
+        assertEquals(2, commands.getAllValues().stream()
+                .filter(args -> args.stream().anyMatch(value -> value.startsWith("sine=frequency="))).count());
+        assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("loudnorm=I=-16"))));
+        verify(qualityGate).assertAcceptable(any());
+    }
+
     private Path file(String name) throws Exception {
         Path path = temp.resolve(name);
         Files.writeString(path, "source");
