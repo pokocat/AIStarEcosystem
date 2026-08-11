@@ -72,7 +72,7 @@ public final class ClipDtos {
                                  int recommendedMaxDurationSec, int maxDurationSec, long vendorMaxBytes, long maxBytes,
                                  List<String> vendorFormats, List<String> formats, String codec, Integer minShortSidePx, Integer maxLongSidePx,
                                  Integer sampleRateHz, Integer channels, List<String> guidance) {}
-    public record CaptureRequirementsDto(String consentText, String agreementTitle, String officialDocsLastReviewed,
+    public record CaptureRequirementsDto(boolean authorizationVideoRequired, String consentText, String agreementTitle, String officialDocsLastReviewed,
                                          List<String> officialDocs, CaptureRuleDto consent, CaptureRuleDto avatar,
                                          CaptureRuleDto voice, int pollIntervalMs) {}
     public record ConsentDto(String id, String status, boolean accepted, boolean verified, String verificationUrl) {}

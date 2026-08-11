@@ -102,7 +102,10 @@ public class HttpShiliuGateway implements ShiliuGateway {
         body.put("videoUrl", publicMediaUrl(mediaRef));
         body.put("speakerId", numericRef(speakerRef, "speakerId"));
         body.put("title", title("军师数字分身"));
-        body.put("authId", numericRef(authorizationRef, "authId"));
+        // 官方契约：仅在需要授权视频校验时填写 authId；不填写默认不校验。
+        if (authorizationRef != null && !authorizationRef.isBlank()) {
+            body.put("authId", numericRef(authorizationRef, "authId"));
+        }
         JsonNode data = post("/avatar/create", body);
         String id = id(data, "avatarId");
         return new Task("avatar:" + id, "processing", null, id, null);

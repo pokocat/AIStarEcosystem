@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.117）
+# 版本增量历史（v0.5 → v0.118）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.118（2026-08-11）— 视频数字人直传训练对齐石榴可选 `authId`
+
+纠正 v0.111–v0.117 将石榴授权视频做成必经硬闸的错误实现。官方 Train Avatar Model 契约明确：仅在需要授权视频校验时填写 `authId`，不填写默认不校验。因此 `ClipAvatarService` 不再以 `CLIP_CONSENT_REQUIRED` 阻断声音或形象采集；历史账号若已经存在可用 `DapConsent.captureId`，训练请求仍会兼容携带，普通创建则省略该字段。`GET /me/clip/avatar/requirements` 新增 `authorizationVideoRequired=false`，产品可以显式区分“素材使用声明”与“额外授权视频校验”。
+
+默认创建顺序收口为“先克隆声音 → 上传形象视频 → 云端训练”。形象视频仍按官方 MP4/MOV、H.264、5 秒–5 分钟、360p–4K 校验，声音仍按 `>2s` 校验；较长时长只作质量建议。新增服务级测试证明无任何历史授权记录时声音克隆与形象训练均可进入石榴网关，HTTP 桩证明 `authorizationRef=null` 可按官方契约创建 avatar；自动化没有提交真实 speaker/avatar/video 任务。
 
 ### v0.117（2026-08-11）— 石榴采集时长硬门纠偏
 

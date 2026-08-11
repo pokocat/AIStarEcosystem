@@ -92,4 +92,18 @@ class HttpShiliuGatewayTest {
                 () -> gateway.createVideoByText("owner-1", "1801234567890123", "1809876543210321", "一段口播文案"));
         assertEquals("CLIP_ENGINE_BALANCE_INSUFFICIENT", error.getCode());
     }
+
+    @Test
+    void avatarTrainingAllowsOfficialFlowWithoutOptionalAuthorizationVideo() throws Exception {
+        when(response.body()).thenReturn("{\"code\":0,\"data\":{\"avatarId\":1901234567890123},\"msg\":\"\"}");
+        when(storage.signedUrl("clip/avatar.mp4")).thenReturn("https://cdn.example/avatar.mp4");
+
+        ShiliuGateway.Task task = gateway.cloneAvatar(
+                "owner-1", "clip/avatar.mp4", "1809876543210321", null);
+
+        assertEquals("avatar:1901234567890123", task.id());
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(request.capture(), any(HttpResponse.BodyHandler.class));
+        assertEquals("https://api.16ai.chat/api/v1/avatar/create", request.getValue().uri().toString());
+    }
 }

@@ -43,7 +43,7 @@ public class ClipCapturePolicy {
         CaptureRuleDto voice = new CaptureRuleDto("voice", 2, 0, 3, 8, 15, 120, AUDIO_MAX_BYTES, AUDIO_MAX_BYTES,
                 List.of("wav", "mp3", "ogg", "m4a", "aac", "pcm"), List.of("wav", "mp3", "ogg", "m4a", "aac"), null, null, null, 44100, 1,
                 List.of("超过 2 秒即可提交，建议连续录 8 至 15 秒", "只保留一位说话人，关闭音乐和环境声", "离手机约 20 厘米，用平时语速自然朗读", "避免长时间停顿"));
-        return new CaptureRequirementsDto(CONSENT_TEXT, "数字分身本人授权书", "2026-08-11",
+        return new CaptureRequirementsDto(false, CONSENT_TEXT, "数字分身素材使用说明", "2026-08-11",
                 List.of("https://api.16ai.vip/doc-4892856", "https://api.16ai.vip/api-295432904", "https://api.16ai.vip/api-198837531", "https://api.16ai.vip/api-198853492"),
                 consent, avatar, voice, 5_000);
     }

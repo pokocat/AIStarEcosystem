@@ -102,7 +102,6 @@ public class ClipAvatarService {
     public Map<String, Object> clone(String owner, String kind, MultipartFile file) {
         if (!Set.of("avatar", "voice").contains(kind)) throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_CLONE_FILE_REQUIRED", "未收到采集文件");
-        consents.findFirstByOwnerUserIdOrderByAcceptedAtDesc(owner).orElseThrow(() -> new BusinessException(HttpStatus.FORBIDDEN, "CLIP_CONSENT_REQUIRED", "请先完成本人授权核验"));
         FileStorageService.StoredFile stored = storage.store(file, "clip/clone/" + kind, owner);
         try { capturePolicy.validate(kind, file, stored); }
         catch (RuntimeException e) { storage.delete(stored.key()); throw e; }
@@ -155,9 +154,11 @@ public class ClipAvatarService {
                 .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CLIP_VOICE_NOT_READY", "声音还没有训练完成"));
     }
     private void startAvatarTraining(String owner, DapAvatar avatar, DapVoice voice, ShiliuGateway gateway) {
-        DapConsent consent = consents.findFirstByOwnerUserIdOrderByAcceptedAtDesc(owner)
-                .orElseThrow(() -> new BusinessException(HttpStatus.FORBIDDEN, "CLIP_CONSENT_REQUIRED", "请先完成本人授权核验"));
-        ShiliuGateway.Task task = gateway.cloneAvatar(owner, avatar.getEngineSourceKey(), voice.getEngineRef(), consent.getCaptureId());
+        // 石榴 Train Avatar Model 的 authId 是可选校验项：历史上做过授权视频的账号继续携带，
+        // 新用户不再被我方硬闸拦截，也不会为了训练被迫多录一段授权视频。
+        String optionalAuthId = consents.findFirstByOwnerUserIdOrderByAcceptedAtDesc(owner)
+                .map(DapConsent::getCaptureId).filter(id -> !id.isBlank()).orElse(null);
+        ShiliuGateway.Task task = gateway.cloneAvatar(owner, avatar.getEngineSourceKey(), voice.getEngineRef(), optionalAuthId);
         avatar.setEngineRef(task.outputRef());
         avatar.setEngineStatus("failed".equals(task.status()) ? "failed" : "succeeded".equals(task.status()) ? "ready" : "training");
         avatar.setEngineTrainedAt("ready".equals(avatar.getEngineStatus()) ? Instant.now() : null);
