@@ -35,7 +35,7 @@ public class ClipAssemblyService {
         this.overlays = overlays;
     }
 
-    public record Result(String outputCdnKey, int durationSec) {}
+    public record Result(String outputCdnKey, String thumbnailCdnKey, int durationSec) {}
 
     public Result assemble(String owner, ClipProject project, Map<String, Object> jobState) {
         Path work = null;
@@ -78,10 +78,18 @@ public class ClipAssemblyService {
                 finalFile = mixed;
             }
 
-            int duration = Math.max(1, (int) Math.round(ffmpeg.probeDurationSec(finalFile.toFile())));
+            double probedDuration = ffmpeg.probeDurationSec(finalFile.toFile());
+            if (probedDuration <= 0) throw failure("成片时长无效");
+            if (!ffmpeg.hasAudioStream(finalFile.toFile())) throw failure("成片没有音轨");
+            int duration = Math.max(1, (int) Math.round(probedDuration));
+            Path thumbnail = work.resolve("thumbnail.jpg");
+            extractThumbnail(finalFile, thumbnail);
+            requireOutput(thumbnail);
             FileStorageService.StoredFile stored = storage.storeExisting(finalFile, "clip/works", owner,
                     "mp4", "video/mp4", true);
-            return new Result(stored.key(), duration);
+            FileStorageService.StoredFile thumbStored = storage.storeExisting(thumbnail, "clip/thumbnails", owner,
+                    "jpg", "image/jpeg", true);
+            return new Result(stored.key(), thumbStored.key(), duration);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -175,6 +183,11 @@ public class ClipAssemblyService {
                 "-filter_complex", "[0:a]volume=1[a0];[1:a]volume=0.12[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]",
                 "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest",
                 "-movflags", "+faststart", output.toString()));
+    }
+
+    private void extractThumbnail(Path video, Path output) {
+        ffmpeg.runFfmpeg(List.of("-y", "-ss", "0.2", "-i", video.toString(), "-frames:v", "1",
+                "-vf", "scale=360:-2", "-q:v", "3", output.toString()));
     }
 
     private static String decoratedFilter(int videoIndex, int overlayIndex) {

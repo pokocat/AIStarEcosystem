@@ -67,12 +67,13 @@ class ClipRenderWorkerStateTest {
         when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
         when(projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull("cp_1", "owner-1")).thenReturn(Optional.of(project));
         when(assembly.assemble("owner-1", project, job.getSegmentJobsJson()))
-                .thenReturn(new ClipAssemblyService.Result("clip/works/result.mp4", 9));
+                .thenReturn(new ClipAssemblyService.Result("clip/works/result.mp4", "clip/thumbnails/result.jpg", 9));
 
         state.advance(job.getId(), "worker-a");
 
         assertEquals("succeeded", job.getStatus());
         assertEquals("clip/works/result.mp4", job.getOutputCdnKey());
+        assertEquals("clip/thumbnails/result.jpg", job.getThumbnailCdnKey());
         assertEquals(9, job.getDurationSec());
         verify(assembly).assemble("owner-1", project, job.getSegmentJobsJson());
     }

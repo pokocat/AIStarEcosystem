@@ -8,7 +8,7 @@
 
 `ClipRenderWorkerState` 从「把全部正文合成一个石榴任务」改为可恢复的逐段状态机：b-roll 段逐句调用同一 speaker TTS，avatar 段逐句创建并轮询 `createByText` 任务；每段音频/视频成功后立即转存我方 `cdnKey`，`segmentJobsJson` 只保存可恢复任务 ID 与我方资产真值，不依赖石榴时效 URL。任一段失败仍由既有 job/reaper/军师积分补偿链收口。
 
-新增 `ClipAssemblyService` 复用 `FfmpegRunner`：avatar、b-roll、tail 全部归一成 720×1280、H.264、AAC、30fps；b-roll 原声丢弃，画面按 TTS 时长循环/裁切，图片和视频均可用；尾段未配置真实素材时生成明确的缺省静态段，有 BGM 时以低音量混入，最后 concat 并将整片写回我方 `clip/works`。`ClipOverlayRenderer` 用 Java2D 生成透明 PNG，每个正文段烧录逐句字幕、每一段常驻「AI 生成」标识，再由 ffmpeg overlay 合成；用户文案不进入 filter 表达式。上游下载继续走公网 HTTPS/大小限制，配音新增 20MB 镜像上限。针对性 worker/assembly/overlay 测试和真实 ffmpeg 三段配方探针通过。模板固定尾片、缩略图、质量门、媒体审核与真实代发仍在 TODO，不能据此宣称生产全链路完成。
+新增 `ClipAssemblyService` 复用 `FfmpegRunner`：avatar、b-roll、tail 全部归一成 720×1280、H.264、AAC、30fps；b-roll 原声丢弃，画面按 TTS 时长循环/裁切，图片和视频均可用；尾段未配置真实素材时生成明确的缺省静态段，有 BGM 时以低音量混入，最后 concat 并将整片写回我方 `clip/works`。`ClipOverlayRenderer` 用 Java2D 生成透明 PNG，每个正文段烧录逐句字幕、每一段常驻「AI 生成」标识，再由 ffmpeg overlay 合成；用户文案不进入 filter 表达式。总装后强制校验有效时长和音轨，再抽取 360px 宽 JPEG 缩略图写入 `thumbnailCdnKey`。上游下载继续走公网 HTTPS/大小限制，配音新增 20MB 镜像上限。针对性 worker/assembly/overlay 测试和真实 ffmpeg 三段配方探针通过。模板固定尾片、亮度/响度门、媒体审核与真实代发仍在 TODO，不能据此宣称生产全链路完成。
 
 ### v0.111（2026-08-11）— 石榴 AI 真实网关、正式模板与隔离预发
 

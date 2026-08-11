@@ -37,7 +37,7 @@ class ClipAssemblyServiceTest {
         when(storage.openForRead("clip/assets/2.mp4")).thenReturn(visual);
         when(storage.openForRead("clip/audio/2.mp3")).thenReturn(audio);
         when(assets.requiredVisible("owner-1", "ca_2")).thenReturn(asset("ca_2", "video", "clip/assets/2.mp4"));
-        when(ffmpeg.hasAudioStream(avatar.toFile())).thenReturn(true);
+        when(ffmpeg.hasAudioStream(any())).thenReturn(true);
         when(ffmpeg.probeDurationSec(any())).thenAnswer(inv -> {
             String name = ((java.io.File) inv.getArgument(0)).getName();
             return name.equals("speech.mp3") ? 3.25d : 12d;
@@ -51,6 +51,8 @@ class ClipAssemblyServiceTest {
         });
         when(storage.storeExisting(any(), eq("clip/works"), eq("owner-1"), eq("mp4"), eq("video/mp4"), eq(true)))
                 .thenReturn(new FileStorageService.StoredFile("clip/works/final.mp4", "", "", null, 5, "video/mp4"));
+        when(storage.storeExisting(any(), eq("clip/thumbnails"), eq("owner-1"), eq("jpg"), eq("image/jpeg"), eq(true)))
+                .thenReturn(new FileStorageService.StoredFile("clip/thumbnails/final.jpg", "", "", null, 5, "image/jpeg"));
 
         ClipProject project = project(List.of(
                 segment(1, "avatar", "我来开场", null, null),
@@ -66,9 +68,10 @@ class ClipAssemblyServiceTest {
         ClipAssemblyService.Result result = service.assemble("owner-1", project, state);
 
         assertEquals("clip/works/final.mp4", result.outputCdnKey());
+        assertEquals("clip/thumbnails/final.jpg", result.thumbnailCdnKey());
         assertEquals(12, result.durationSec());
         ArgumentCaptor<List<String>> commands = ArgumentCaptor.forClass(List.class);
-        verify(ffmpeg, times(4)).runFfmpeg(commands.capture());
+        verify(ffmpeg, times(5)).runFfmpeg(commands.capture());
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.contains("-stream_loop") && args.contains(audio.toString())));
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("color=c=#17362f"))));
         assertEquals(3, commands.getAllValues().stream()
@@ -76,6 +79,7 @@ class ClipAssemblyServiceTest {
                 .count(), "every segment must burn the permanent overlay");
         assertEquals(3, commands.getAllValues().stream().filter(args -> args.contains("yuv420p")).count());
         verify(storage).storeExisting(any(), eq("clip/works"), eq("owner-1"), eq("mp4"), eq("video/mp4"), eq(true));
+        verify(storage).storeExisting(any(), eq("clip/thumbnails"), eq("owner-1"), eq("jpg"), eq("image/jpeg"), eq(true));
     }
 
     @Test

@@ -12,7 +12,7 @@
 - 跨系统采用 Scheme A：用户积分只由军师 BFF hold/settle/refund；AIStar 不调用本仓 `CreditService`，仅保存 `creditsHeld` 作为外部报价审计事实。`clientRequestId` 在外部属主内唯一，重复载荷冲突返回 409。
 - `HttpShiliuGateway` 已按官方 API v1 接入授权视频、声音/形象训练、TTS、文案/音频出片、状态轮询与删除；上游时效成片立即转存我方持久存储。真实 key 仅在预发 0600 env，探针确认 12,000 点、当前没有已训练 speaker/avatar。
 - `ClipOfficialTemplateSeeder` 内置「为实体发声 / 今天开门了 / 这门手艺」三套模板，仅补缺失 ID、不覆盖运营编辑。`clip-preprod` 独立 profile 仅监听 127.0.0.1:8081，军师 BFF 以独立 service token 回源，未接触 AIStar 生产。
-- v0.112 按 Strategy A 落地逐段可恢复 worker：b-roll 每段先 TTS，avatar 每段独立建石榴任务；上游时效音视频先转存我方，再由 `ClipAssemblyService` 做 720×1280 H.264/AAC 归一、b-roll 裁切/循环、缺省尾段、可选 BGM 与最终拼接。`ClipOverlayRenderer` 用 Java2D 生成透明安全层，逐句字幕与全片「AI 生成」标识经 ffmpeg overlay 永久烧录，用户文案不进入 filter 表达式。真实 ffmpeg 配方已本机探针通过。
+- v0.112 按 Strategy A 落地逐段可恢复 worker：b-roll 每段先 TTS，avatar 每段独立建石榴任务；上游时效音视频先转存我方，再由 `ClipAssemblyService` 做 720×1280 H.264/AAC 归一、b-roll 裁切/循环、缺省尾段、可选 BGM 与最终拼接。`ClipOverlayRenderer` 用 Java2D 生成透明安全层，逐句字幕与全片「AI 生成」标识经 ffmpeg overlay 永久烧录，用户文案不进入 filter 表达式；成片须通过有效时长/音轨门并自动抽帧落我方缩略图。真实 ffmpeg 配方已本机探针通过。
 - 非 mysql/production 环境允许显式 mock，mock 产物带 `mock=true`。媒体机器审核未配置时军师 BFF 继续 fail-closed；真实代发仍固定失败。
 - 仍需使用本人合规素材完成 §3.2 质量/时延/一致性/规格/成本实测，完成 §12 商务/备案决策，并接媒体审核、模板固定尾片、四平台发布和生产压测/真机验收。
 

@@ -106,7 +106,7 @@ public class ClipRenderWorkerState {
             j.setStage("assemble");j.setStatus("assembling");j.setProgress(75);
         } else {
             ClipAssemblyService.Result result=assembly.assemble(j.getExternalOwnerId(),p,state);
-            j.setOutputCdnKey(result.outputCdnKey());j.setDurationSec(result.durationSec());
+            j.setOutputCdnKey(result.outputCdnKey());j.setThumbnailCdnKey(result.thumbnailCdnKey());j.setDurationSec(result.durationSec());
             j.setStatus("succeeded");j.setProgress(100);j.setCompletedAt(now);
             p.setDurationSec(result.durationSec());p.setStatus("done");p.setProgress(100);p.setUpdatedAt(now);projects.save(p);
         }
