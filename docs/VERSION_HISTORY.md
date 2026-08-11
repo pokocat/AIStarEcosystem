@@ -10,6 +10,8 @@
 
 报价、preflight、真实 worker、测试媒体 worker 与 `ClipAssemblyService` 全部改读投影后的生成段。一个 shot 内的连续句会合成一段 TTS/数字人任务，并让同一 b-roll 连续承接完整范围；前端不再出现“看起来多选，后端仍逐句切片”的伪实现。项目 DTO、保存/重置和 estimate 契约同步返回/接收 shots；旧的逐句素材草稿只有 assetId 相同或都为空时才自动合并，避免升级后丢失已配素材。
 
+隔离预发已部署 `e9ff7fc5-20260811T104108Z`，服务 active、`NRestarts=0`、模板探针 3 个通过，并保持 `AEP_CLIP_FORCE_MOCK=true`。本轮只验收部署与契约，不发起生成，不请求石榴。
+
 ### v0.114（2026-08-11）— 快出片预发可播放测试媒体闭环
 
 新增显式 `AEP_CLIP_FORCE_MOCK`：仅非 production/mysql 可用，且部署脚本默认只在隔离 `clip-preprod` 开启。该模式不再伪造状态或空作品，而是逐段生成确定性 H.264/AAC 测试素材，继续经过 720×1280 总装、字幕、常驻「AI 生成」、固定尾卡、音轨归一、亮度/响度/真峰值质量门、缩略图与作品存储，最终成片永久烧录橙色「测试演示」。production/mysql 误开会启动失败。
