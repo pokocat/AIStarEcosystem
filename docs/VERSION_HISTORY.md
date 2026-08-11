@@ -8,6 +8,8 @@
 
 恢复已在预发执行过的 `V14__add_clip_domain.sql` 原始内容，`clip_asset.thumbnail_cdn_key` 改由新建的 `V15__add_clip_asset_thumbnail.sql` 添加。发布门实际捕获了 V14 校验和漂移并拒绝启动；未使用 Flyway repair 覆盖历史，确保历史 H2 库与后续 MySQL 库都按不可变迁移顺序升级。
 
+隔离预发随后成功发布 `fb94dee0-20260811T163943Z`；服务 active/running、`NRestarts=0`，模板探针 3/3 通过。既有账号只读分身探针返回形象与专属声音均 ready、`voiceSource=dedicated`、进度 100%，没有上传素材或创建新的石榴训练/生成任务。
+
 ### v0.123（2026-08-11）— 专属声音来源与训练结果可见
 
 `AvatarDto` 新增 `voiceSource=video|dedicated`：`DapVoice.kind=seed` 映射为形象视频自动提取的基础声音，用户主动补录的 `clone` 映射为专属声音。军师小程序据此将“视频原声”与“已增强”分开表达，并可在已有任务训练时展示百分比、完成时间或失败原因；页面轮询只查询既有石榴任务，不创建任务、不消耗点数。
