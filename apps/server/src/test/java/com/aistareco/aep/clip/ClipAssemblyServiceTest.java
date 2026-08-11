@@ -4,6 +4,7 @@ import com.aistareco.aep.clip.model.ClipAsset;
 import com.aistareco.aep.clip.model.ClipProject;
 import com.aistareco.aep.clip.service.ClipAssemblyService;
 import com.aistareco.aep.clip.service.ClipAssetService;
+import com.aistareco.aep.clip.service.ClipOverlayRenderer;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -28,7 +29,7 @@ class ClipAssemblyServiceTest {
         FfmpegRunner ffmpeg = mock(FfmpegRunner.class);
         FileStorageService storage = mock(FileStorageService.class);
         ClipAssetService assets = mock(ClipAssetService.class);
-        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, storage, assets);
+        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, storage, assets, new ClipOverlayRenderer());
         Path avatar = file("avatar.mp4");
         Path visual = file("visual.mp4");
         Path audio = file("speech.mp3");
@@ -70,13 +71,18 @@ class ClipAssemblyServiceTest {
         verify(ffmpeg, times(4)).runFfmpeg(commands.capture());
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.contains("-stream_loop") && args.contains(audio.toString())));
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("color=c=#17362f"))));
+        assertEquals(3, commands.getAllValues().stream()
+                .filter(args -> args.stream().anyMatch(value -> value.contains("overlay=0:0:format=auto")))
+                .count(), "every segment must burn the permanent overlay");
+        assertEquals(3, commands.getAllValues().stream().filter(args -> args.contains("yuv420p")).count());
         verify(storage).storeExisting(any(), eq("clip/works"), eq("owner-1"), eq("mp4"), eq("video/mp4"), eq(true));
     }
 
     @Test
     void refusesBrollWithoutMirroredTtsAudio() {
         FfmpegRunner ffmpeg = mock(FfmpegRunner.class);
-        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, mock(FileStorageService.class), mock(ClipAssetService.class));
+        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, mock(FileStorageService.class), mock(ClipAssetService.class),
+                new ClipOverlayRenderer());
         ClipProject project = project(List.of(segment(1, "broll", "正文", "ca_1", null)));
 
         BusinessException error = assertThrows(BusinessException.class,

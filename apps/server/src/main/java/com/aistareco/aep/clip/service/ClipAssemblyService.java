@@ -25,11 +25,14 @@ public class ClipAssemblyService {
     private final FfmpegRunner ffmpeg;
     private final FileStorageService storage;
     private final ClipAssetService assets;
+    private final ClipOverlayRenderer overlays;
 
-    public ClipAssemblyService(FfmpegRunner ffmpeg, FileStorageService storage, ClipAssetService assets) {
+    public ClipAssemblyService(FfmpegRunner ffmpeg, FileStorageService storage, ClipAssetService assets,
+                               ClipOverlayRenderer overlays) {
         this.ffmpeg = ffmpeg;
         this.storage = storage;
         this.assets = assets;
+        this.overlays = overlays;
     }
 
     public record Result(String outputCdnKey, int durationSec) {}
@@ -48,9 +51,10 @@ public class ClipAssemblyService {
                 String role = String.valueOf(segment.get("role"));
                 Path output = work.resolve(String.format(Locale.ROOT, "segment-%03d.mp4", no));
                 Map<String, Object> state = states.getOrDefault(no, Map.of());
-                if ("avatar".equals(role)) normalizeAvatar(state, output);
-                else if ("broll".equals(role)) normalizeBroll(owner, segment, state, output);
-                else if ("tail".equals(role)) normalizeTail(owner, segment, output);
+                Path overlay = overlays.render(work, no, "tail".equals(role) ? "" : text(segment.get("text")));
+                if ("avatar".equals(role)) normalizeAvatar(state, overlay, output);
+                else if ("broll".equals(role)) normalizeBroll(owner, segment, state, overlay, output);
+                else if ("tail".equals(role)) normalizeTail(owner, segment, overlay, output);
                 else throw failure("出片分段角色无效");
                 requireOutput(output);
                 normalized.add(output);
@@ -88,14 +92,15 @@ public class ClipAssemblyService {
         }
     }
 
-    private void normalizeAvatar(Map<String, Object> state, Path output) throws IOException {
+    private void normalizeAvatar(Map<String, Object> state, Path overlay, Path output) throws IOException {
         String key = text(state.get("videoCdnKey"));
         if (key.isBlank()) throw failure("分身出镜段尚未生成完成");
         Path input = storage.openForRead(key);
-        List<String> args = new ArrayList<>(List.of("-y", "-i", input.toString(), "-vf", VIDEO_FILTER,
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23"));
+        List<String> args = new ArrayList<>(List.of("-y", "-i", input.toString(), "-stream_loop", "-1", "-i", overlay.toString(),
+                "-filter_complex", decoratedFilter(0, 1), "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p"));
         if (ffmpeg.hasAudioStream(input.toFile())) {
-            args.addAll(List.of("-c:a", "aac", "-ar", "48000", "-ac", "2"));
+            args.addAll(List.of("-map", "0:a:0", "-c:a", "aac", "-ar", "48000", "-ac", "2"));
         } else {
             throw failure("分身出镜段没有音轨");
         }
@@ -103,7 +108,8 @@ public class ClipAssemblyService {
         ffmpeg.runFfmpeg(args);
     }
 
-    private void normalizeBroll(String owner, Map<String, Object> segment, Map<String, Object> state, Path output) throws IOException {
+    private void normalizeBroll(String owner, Map<String, Object> segment, Map<String, Object> state,
+                                Path overlay, Path output) throws IOException {
         String assetId = text(segment.get("assetId"));
         String audioKey = text(state.get("audioCdnKey"));
         if (assetId.isBlank() || audioKey.isBlank()) throw failure("配画面段的素材或配音尚未准备好");
@@ -114,22 +120,24 @@ public class ClipAssemblyService {
         double duration = ffmpeg.probeDurationSec(audio.toFile());
         if (duration <= 0) duration = Math.max(1, ClipProjectService.seconds(segment));
         List<String> args = new ArrayList<>(List.of("-y", "-stream_loop", "-1", "-i", visual.toString(),
-                "-i", audio.toString(), "-t", seconds(duration), "-map", "0:v:0", "-map", "1:a:0",
-                "-vf", VIDEO_FILTER, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-i", audio.toString(), "-stream_loop", "-1", "-i", overlay.toString(), "-t", seconds(duration),
+                "-filter_complex", decoratedFilter(0, 2), "-map", "[v]", "-map", "1:a:0",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest", "-movflags", "+faststart",
                 output.toString()));
         ffmpeg.runFfmpeg(args);
     }
 
-    private void normalizeTail(String owner, Map<String, Object> segment, Path output) throws IOException {
+    private void normalizeTail(String owner, Map<String, Object> segment, Path overlay, Path output) throws IOException {
         int duration = Math.max(1, ClipProjectService.seconds(segment));
         String assetId = text(segment.get("assetId"));
         if (assetId.isBlank()) {
             ffmpeg.runFfmpeg(List.of("-y", "-f", "lavfi", "-i",
                     "color=c=#17362f:s=720x1280:r=30:d=" + duration,
                     "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=" + duration,
-                    "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast",
-                    "-crf", "23", "-c:a", "aac", "-shortest", "-movflags", "+faststart", output.toString()));
+                    "-stream_loop", "-1", "-i", overlay.toString(), "-filter_complex", decoratedFilter(0, 2),
+                    "-map", "[v]", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast",
+                    "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-movflags", "+faststart", output.toString()));
             return;
         }
         ClipAsset asset = assets.requiredVisible(owner, assetId);
@@ -137,12 +145,14 @@ public class ClipAssemblyService {
         Path visual = storage.openForRead(asset.getCdnKey());
         List<String> args = new ArrayList<>(List.of("-y", "-stream_loop", "-1", "-i", visual.toString()));
         if (ffmpeg.hasAudioStream(visual.toFile())) {
-            args.addAll(List.of("-t", String.valueOf(duration), "-vf", VIDEO_FILTER, "-c:v", "libx264",
-                    "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-ar", "48000", "-ac", "2"));
+            args.addAll(List.of("-stream_loop", "-1", "-i", overlay.toString(), "-t", String.valueOf(duration),
+                    "-filter_complex", decoratedFilter(0, 1), "-map", "[v]", "-map", "0:a:0", "-c:v", "libx264",
+                    "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "48000", "-ac", "2"));
         } else {
             args.addAll(List.of("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=" + duration,
-                    "-t", String.valueOf(duration), "-map", "0:v:0", "-map", "1:a:0", "-vf", VIDEO_FILTER,
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac"));
+                    "-stream_loop", "-1", "-i", overlay.toString(), "-t", String.valueOf(duration),
+                    "-filter_complex", decoratedFilter(0, 2), "-map", "[v]", "-map", "1:a:0",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac"));
         }
         args.addAll(List.of("-shortest", "-movflags", "+faststart", output.toString()));
         ffmpeg.runFfmpeg(args);
@@ -165,6 +175,11 @@ public class ClipAssemblyService {
                 "-filter_complex", "[0:a]volume=1[a0];[1:a]volume=0.12[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[a]",
                 "-map", "0:v:0", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest",
                 "-movflags", "+faststart", output.toString()));
+    }
+
+    private static String decoratedFilter(int videoIndex, int overlayIndex) {
+        return "[" + videoIndex + ":v]" + VIDEO_FILTER + "[base];[base][" + overlayIndex
+                + ":v]overlay=0:0:format=auto:shortest=1[v]";
     }
 
     private static Map<Integer, Map<String, Object>> statesByNo(Map<String, Object> jobState) {
