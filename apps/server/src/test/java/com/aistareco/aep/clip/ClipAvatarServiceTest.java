@@ -136,6 +136,22 @@ class ClipAvatarServiceTest {
     }
 
     @Test
+    void avatarViewExposesDedicatedVoiceSource() {
+        DapVoice voice = DapVoice.builder().id("VC-dedicated").ownerUserId("owner-1").name("我的声音").kind("clone")
+                .engine("shiliu").engineRef("speaker-dedicated").engineStatus("ready").engineTrainedAt(Instant.now()).build();
+        when(avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(Optional.empty());
+        when(voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(Optional.of(voice));
+
+        var view = service.view("owner-1");
+
+        assertEquals("ready", view.voiceStatus());
+        assertEquals("dedicated", view.voiceSource());
+        assertEquals(100, view.voiceProgress());
+    }
+
+    @Test
     void legacyAvatarViewBackfillsPreviewFromTrainingVideo() {
         DapAvatar avatar = DapAvatar.builder().id("DH-legacy").ownerUserId("owner-1").engine("shiliu")
                 .engineSourceKey("clip/legacy-avatar.mp4").engineStatus("ready").engineTrainedAt(Instant.now()).build();

@@ -106,6 +106,7 @@ export interface ClipWork {
 export interface ClipAvatarView {
   imageStatus: "none" | "training" | "ready" | "failed";
   voiceStatus: "none" | "training" | "ready" | "failed";
+  voiceSource?: "video" | "dedicated" | null;
   imagePreviewUrl?: string | null;
   imageTrainedText?: string | null; voiceTrainedText?: string | null;
   imageProgress: number; voiceProgress: number;

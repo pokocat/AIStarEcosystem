@@ -77,7 +77,8 @@ public class ClipAvatarService {
         if ("failed".equals(imageStatus) && imageMessage == null) imageMessage = "形象训练失败，请重新采集";
         if ("failed".equals(voiceStatus) && voiceMessage == null) voiceMessage = "声音训练失败，请重新录制";
         String imagePreviewUrl = a == null || a.getImageKey() == null ? null : storage.signedUrl(a.getImageKey());
-        return new AvatarDto(imageStatus, voiceStatus, imagePreviewUrl,
+        String voiceSource = v == null ? null : "seed".equals(v.getKind()) ? "video" : "dedicated";
+        return new AvatarDto(imageStatus, voiceStatus, voiceSource, imagePreviewUrl,
                 a == null || a.getEngineTrainedAt() == null ? null : a.getEngineTrainedAt().toString(),
                 v == null || v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(),
                 imageProgress, voiceProgress, imageMessage, voiceMessage, ENGINE, false);

@@ -65,7 +65,7 @@ public final class ClipDtos {
     public record WorkDto(String id, String projectId, String title, String status, int durationSec,
                           int avatarSec, int credits, String videoUrl, String thumbnailUrl,
                           List<Map<String, String>> publishStats) {}
-    public record AvatarDto(String imageStatus, String voiceStatus, String imagePreviewUrl, String imageTrainedText,
+    public record AvatarDto(String imageStatus, String voiceStatus, String voiceSource, String imagePreviewUrl, String imageTrainedText,
                             String voiceTrainedText, int imageProgress, int voiceProgress,
                             String imageMessage, String voiceMessage, String engine, boolean presetAvailable) {}
     public record CaptureRuleDto(String kind, int vendorMinDurationSec, int vendorMaxDurationSec, int minDurationSec, int recommendedMinDurationSec,

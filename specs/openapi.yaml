@@ -8586,7 +8586,7 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [platform], properties: { platform: { type: string, enum: [douyin, kuaishou, xiaohongshu, shipinhao] } } } } } }
       responses: { '200': { description: submitted } }
   /me/clip/avatar:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: aggregate image and voice engine state with upstream progress, failure messages, and imagePreviewUrl extracted from the submitted video } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: aggregate image and voice engine state with upstream progress, failure messages, imagePreviewUrl, and voiceSource=video|dedicated } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatar, responses: { '200': { description: upstream deletion requested and local assets soft deleted } } }
   /me/clip/avatar/requirements:
     get:
