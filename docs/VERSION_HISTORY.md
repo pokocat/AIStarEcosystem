@@ -10,6 +10,8 @@
 
 新增 `DELETE /api/me/clip/works/{id}`。服务端在同一事务内取消该项目所有 `queued/generating/assembling` 任务、释放租约，返回本次实际取消的 jobId，再将项目软删进入既有 30 天回收；完成作品和生成中作品都会立即退出列表，军师据此只退对应预扣。Mockito 定向测试覆盖完成时间真源与删除时的活跃任务取消，不调用石榴、不消耗供应商点数。
 
+隔离预发已发布 `549d0fb0-20260812T030337Z`，`AEP_CLIP_FORCE_MOCK=false`，服务 active/running、`NRestarts=0`；发布探针只读 3 套模板，没有提交石榴训练或出片任务。
+
 ### v0.128（2026-08-11）— AI 生成水印改为用户可选且默认关闭
 
 `ClipProject.subtitleStyle.aiWatermark` 成为可见“AI 生成”水印唯一真源；新项目显式写入 `false`，老项目缺字段也按关闭，只有用户主动开启时才在字幕层与固定尾卡右上角烧录。`WorkDto.aiWatermark` 将成片实际偏好回传给军师作品页，避免客户端无条件显示角标或在发布确认里误称必带水印。
