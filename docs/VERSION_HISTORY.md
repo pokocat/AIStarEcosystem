@@ -10,6 +10,8 @@
 
 正式总装与 force-mock 测试总装消费同一偏好；测试媒体仍无条件永久烧录独立“测试演示”标识。本版自动化只渲染本地 PNG/模拟 ffmpeg，不创建石榴任务、不消耗供应商点数。
 
+隔离预发已发布 `dcf5f37d-20260812T023005Z`，`AEP_CLIP_FORCE_MOCK=false`，服务 active/running、`NRestarts=0`；发布探针只读模板，没有提交石榴训练或出片任务。
+
 ### v0.127（2026-08-11）— 多数字人、固定视频模板与作品预览闭环
 
 `ClipAvatarService` 从“每个用户取最新一条”升级为多资产列表：新增 avatars/voices 清单、按 avatarId 查询和删除；创建新形象可选择已有 ready 声音，关联声音随 `AvatarDto.linkedVoiceId/linkedVoiceName` 返回。项目中的 `avatarId/voiceId` 成为渲染真源，报价、预检、脚本试听和 worker 均解析指定的石榴 avatar/speaker 引用，不再静默使用最新记录。
