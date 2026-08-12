@@ -58,7 +58,7 @@ class ClipWorkServiceTest {
                 .externalOwnerId("owner-1").clientRequestId("request-active").status("assembling").build();
         ClipRenderJob completed = ClipRenderJob.builder().id("cj_done").projectId(project.getId())
                 .externalOwnerId("owner-1").clientRequestId("request-done").status("succeeded").build();
-        when(projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull("cp_1", "owner-1")).thenReturn(Optional.of(project));
+        when(projects.findByIdAndExternalOwnerId("cp_1", "owner-1")).thenReturn(Optional.of(project));
         when(jobs.findByProjectId("cp_1")).thenReturn(List.of(active, completed));
         when(jobs.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -66,11 +66,14 @@ class ClipWorkServiceTest {
 
         assertNotNull(project.getDeletedAt());
         assertEquals(List.of("cj_active"), cancelledJobIds);
+        assertEquals(List.of("cj_active"), service.delete("owner-1", "cp_1"),
+                "重复删除仍应返回原取消任务，供调用方补做积分结算");
         assertEquals("cancelled", active.getStatus());
         assertEquals("用户删除作品", active.getErrorMessage());
         assertNotNull(active.getCompletedAt());
         assertEquals("succeeded", completed.getStatus());
         verify(jobs).save(active);
+        verify(jobs, times(2)).findByProjectId("cp_1");
         verify(jobs, never()).save(completed);
         verify(projects).save(project);
     }

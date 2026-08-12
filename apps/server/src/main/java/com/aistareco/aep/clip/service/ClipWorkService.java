@@ -21,7 +21,10 @@ public class ClipWorkService {
     public List<WorkDto> list(String owner){return projects.findByExternalOwnerIdAndDeletedAtIsNullOrderByUpdatedAtDesc(owner).stream().filter(p->Set.of("generating","done").contains(p.getStatus())).map(this::dto).toList();}
     public WorkDto get(String owner,String id){ClipProject p=projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(id,owner).orElseThrow(()->BusinessException.notFound("CLIP_WORK_NOT_FOUND","作品不存在或无权访问"));if(!Set.of("generating","done").contains(p.getStatus()))throw BusinessException.notFound("CLIP_WORK_NOT_FOUND","作品不存在");return dto(p);}
     @Transactional public List<String> delete(String owner,String id){
-        ClipProject p=projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(id,owner).orElseThrow(()->BusinessException.notFound("CLIP_WORK_NOT_FOUND","作品不存在或无权访问"));
+        ClipProject p=projects.findByIdAndExternalOwnerId(id,owner).orElseThrow(()->BusinessException.notFound("CLIP_WORK_NOT_FOUND","作品不存在或无权访问"));
+        if(p.getDeletedAt()!=null)return jobs.findByProjectId(p.getId()).stream()
+                .filter(job->owner.equals(job.getExternalOwnerId())&&"cancelled".equals(job.getStatus())&&"用户删除作品".equals(job.getErrorMessage()))
+                .map(ClipRenderJob::getId).toList();
         if(!Set.of("generating","done").contains(p.getStatus()))throw BusinessException.notFound("CLIP_WORK_NOT_FOUND","作品不存在");
         Instant now=Instant.now();List<String> cancelledJobIds=new ArrayList<>();
         for(ClipRenderJob job:jobs.findByProjectId(p.getId()))if(owner.equals(job.getExternalOwnerId())&&ACTIVE_JOB_STATUSES.contains(job.getStatus())){

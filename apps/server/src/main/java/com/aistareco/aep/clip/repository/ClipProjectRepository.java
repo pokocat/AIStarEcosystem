@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.*;
 import java.time.Instant;
 public interface ClipProjectRepository extends JpaRepository<ClipProject, String> {
+    Optional<ClipProject> findByIdAndExternalOwnerId(String id, String owner);
     Optional<ClipProject> findByIdAndExternalOwnerIdAndDeletedAtIsNull(String id, String owner);
     List<ClipProject> findByExternalOwnerIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String owner);
     Optional<ClipProject> findFirstByExternalOwnerIdAndStatusAndDeletedAtIsNullOrderByUpdatedAtDesc(String owner, String status);
