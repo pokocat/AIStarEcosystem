@@ -26,7 +26,7 @@
 - v0.127 为存量完成作品补齐列表预览：任务缺 `thumbnailCdnKey` 但已有最终 MP4 时，作品读取会 best-effort 抽帧并回写。
 - v0.128 将可见“AI 生成”水印改为项目级可选能力：`subtitleStyle.aiWatermark` 缺省/false 均关闭，只有用户主动开启才烧录到字幕层和固定尾卡；`WorkDto.aiWatermark` 同步实际偏好给作品页。测试总装继续无条件烧录独立“测试演示”，不受该开关影响。
 - v0.129 为作品补齐时间与删除：`WorkDto.createdAt/generatedAt` 分别使用任务开始/完成时间，发布不会覆盖生成时间；删除作品会取消全部活跃任务、释放租约并把项目移入既有 30 天回收区，重复删除继续返回原取消 jobId，供军师幂等补做积分结算。
-- v0.129 隔离预发版本 `549d0fb0-20260812T030337Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`；部署探针只读 3 套模板，没有提交石榴任务。
+- v0.129 隔离预发版本 `f5e21ee5-20260812T031204Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`；删除重试继续返回原取消 jobId；部署探针只读 3 套模板，没有提交石榴任务。
 - v0.128 隔离预发版本 `dcf5f37d-20260812T023005Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`；部署探针只读模板，没有提交石榴任务。
 - v0.127 隔离预发版本 `296756a9-20260811T180005Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`；三套模板固定视频/封面/6/8/10 秒配置与 avatars/voices 清单路由只读通过，本轮没有提交石榴任务。
 - v0.126 隔离预发版本 `3560b942-20260811T170602Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`、3 套模板通过；本轮没有上传素材或创建任何石榴任务。

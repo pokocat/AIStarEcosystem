@@ -10,7 +10,7 @@
 
 新增 `DELETE /api/me/clip/works/{id}`。服务端在同一事务内取消该项目所有 `queued/generating/assembling` 任务、释放租约，返回本次实际取消的 jobId，再将项目软删进入既有 30 天回收；重复删除仍返回由本次用户删除产生的原取消 jobId，保证军师在首次响应中断或积分结算瞬时失败后可以幂等补退。完成作品和生成中作品都会立即退出列表。Mockito 定向测试覆盖完成时间真源、活跃任务取消与删除重试，不调用石榴、不消耗供应商点数。
 
-隔离预发已发布 `549d0fb0-20260812T030337Z`，`AEP_CLIP_FORCE_MOCK=false`，服务 active/running、`NRestarts=0`；发布探针只读 3 套模板，没有提交石榴训练或出片任务。
+隔离预发已发布 `f5e21ee5-20260812T031204Z`，`AEP_CLIP_FORCE_MOCK=false`，服务 active/running、`NRestarts=0`；发布探针只读 3 套模板，没有提交石榴训练或出片任务。
 
 ### v0.128（2026-08-11）— AI 生成水印改为用户可选且默认关闭
 
