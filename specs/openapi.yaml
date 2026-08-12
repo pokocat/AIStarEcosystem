@@ -8580,9 +8580,10 @@ paths:
     patch: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipUpdateAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated label } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: owned object and row deleted } } }
   /me/clip/works:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works; completed rows best-effort backfill thumbnailUrl from the final MP4 and expose aiWatermark (default false) } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works; returns createdAt and generatedAt, completed rows best-effort backfill thumbnailUrl from the final MP4, and exposes aiWatermark (default false) } } }
   /me/clip/works/{id}:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: work including aiWatermark preference } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: work including generation timestamps and aiWatermark preference } } }
+    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: active render jobs cancelled, their ids returned for caller-side billing settlement, and work moved to 30-day trash retention } } }
   /me/clip/works/{id}/publish:
     post:
       tags: [clip]

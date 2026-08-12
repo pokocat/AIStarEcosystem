@@ -112,9 +112,12 @@ export interface ClipAsset {
 export interface ClipWork {
   id: string; projectId: string; title: string; status: "generating" | "done" | "published";
   durationSec: number; avatarSec: number; credits: number; videoUrl?: string | null; thumbnailUrl?: string | null;
+  createdAt: string;
+  generatedAt?: string | null;
   publishStats: Array<{ platform: string; text: string }>;
   aiWatermark: boolean;
 }
+export interface ClipWorkDeleteResult { ok: boolean; cancelledJobIds: string[] }
 
 export interface ClipAvatarView {
   id: string;
