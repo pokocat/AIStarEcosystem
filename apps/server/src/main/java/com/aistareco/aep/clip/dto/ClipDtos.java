@@ -79,7 +79,7 @@ public final class ClipDtos {
     }
     public record WorkDto(String id, String projectId, String title, String status, int durationSec,
                           int avatarSec, int credits, String videoUrl, String thumbnailUrl,
-                          List<Map<String, String>> publishStats) {}
+                          List<Map<String, String>> publishStats, boolean aiWatermark) {}
     public record AvatarDto(String id, String name, String imageStatus, String voiceStatus, String voiceSource, String imagePreviewUrl, String imageTrainedText,
                             String voiceTrainedText, int imageProgress, int voiceProgress,
                             String imageMessage, String voiceMessage, String engine, boolean presetAvailable,

@@ -36,6 +36,12 @@ export interface ClipScriptMessage {
   applied?: boolean;
 }
 
+export interface ClipSubtitleStyle {
+  /** 成片右上角“AI 生成”可见水印；缺省与 false 均表示关闭。 */
+  aiWatermark?: boolean;
+  [key: string]: unknown;
+}
+
 export interface ClipTemplate {
   id: string;
   name: string;
@@ -75,7 +81,7 @@ export interface ClipProject {
   avatarId?: string | null;
   voiceId?: string | null;
   bgmAssetId?: string | null;
-  subtitleStyle?: Record<string, unknown> | null;
+  subtitleStyle?: ClipSubtitleStyle | null;
   durationSec: number;
   avatarSeconds: number;
   segmentCount: number;
@@ -107,6 +113,7 @@ export interface ClipWork {
   id: string; projectId: string; title: string; status: "generating" | "done" | "published";
   durationSec: number; avatarSec: number; credits: number; videoUrl?: string | null; thumbnailUrl?: string | null;
   publishStats: Array<{ platform: string; text: string }>;
+  aiWatermark: boolean;
 }
 
 export interface ClipAvatarView {

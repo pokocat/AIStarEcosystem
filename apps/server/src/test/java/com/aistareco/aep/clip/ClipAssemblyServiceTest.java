@@ -31,7 +31,8 @@ class ClipAssemblyServiceTest {
         FileStorageService storage = mock(FileStorageService.class);
         ClipAssetService assets = mock(ClipAssetService.class);
         ClipMediaQualityGate qualityGate = mock(ClipMediaQualityGate.class);
-        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, storage, assets, new ClipOverlayRenderer(), qualityGate);
+        ClipOverlayRenderer overlays = spy(new ClipOverlayRenderer());
+        ClipAssemblyService service = new ClipAssemblyService(ffmpeg, storage, assets, overlays, qualityGate);
         Path avatar = file("avatar.mp4");
         Path visual = file("visual.mp4");
         Path audio = file("speech.mp3");
@@ -61,6 +62,7 @@ class ClipAssemblyServiceTest {
                 segment(2, "broll", "这里配店铺画面", "ca_2", null),
                 segment(3, "tail", "结尾", null, 2)
         ));
+        project.getPayloadJson().put("subtitleStyle", Map.of("aiWatermark", true));
         Map<String,Object> state = Map.of("segments", List.of(
                 Map.of("no", 1, "role", "avatar", "videoCdnKey", "clip/segments/1.mp4"),
                 Map.of("no", 2, "role", "broll", "audioCdnKey", "clip/audio/2.mp3"),
@@ -78,7 +80,9 @@ class ClipAssemblyServiceTest {
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("color=c=#17362f"))));
         assertEquals(3, commands.getAllValues().stream()
                 .filter(args -> args.stream().anyMatch(value -> value.contains("overlay=0:0:format=auto")))
-                .count(), "every segment must burn the permanent overlay");
+                .count(), "every segment must burn its timed caption or fixed-tail overlay");
+        verify(overlays, times(2)).renderCaption(any(), anyInt(), anyInt(), anyString(), eq(true));
+        verify(overlays).renderTail(any(), anyInt(), anyString(), anyString(), eq(true));
         assertEquals(3, commands.getAllValues().stream().filter(args -> args.contains("yuv420p")).count());
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("loudnorm=I=-16"))),
                 "final audio must be normalized before the quality gate");

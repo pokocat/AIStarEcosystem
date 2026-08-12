@@ -47,6 +47,7 @@ public class ClipAssemblyService {
             List<Path> normalized = new ArrayList<>();
             List<Map<String, Object>> segments = ClipShotPlan.materialize(project.getPayloadJson());
             if (segments.isEmpty()) throw failure("出片没有可合成的分段");
+            boolean aiWatermark = aiWatermarkEnabled(project);
 
             for (Map<String, Object> segment : segments) {
                 int no = number(segment.get("no"), -1);
@@ -55,8 +56,8 @@ public class ClipAssemblyService {
                 Map<String, Object> state = states.getOrDefault(no, Map.of());
                 boolean generatedTail = "tail".equals(role) && text(segment.get("assetId")).isBlank();
                 List<Path> overlayLayers = generatedTail
-                        ? List.of(overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName()))
-                        : captionOverlays(work, no, segment, false);
+                        ? List.of(overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName(), aiWatermark))
+                        : captionOverlays(work, no, segment, false, aiWatermark);
                 if ("avatar".equals(role)) normalizeAvatar(segment, state, overlayLayers, output);
                 else if ("broll".equals(role)) normalizeBroll(owner, segment, state, overlayLayers, output);
                 else if ("tail".equals(role)) normalizeTail(owner, segment, overlayLayers.get(0), output);
@@ -122,13 +123,14 @@ public class ClipAssemblyService {
             List<Map<String, Object>> segments = ClipShotPlan.materialize(project.getPayloadJson());
             if (segments.isEmpty()) throw failure("出片没有可合成的分段");
             List<Path> normalized = new ArrayList<>();
+            boolean aiWatermark = aiWatermarkEnabled(project);
             for (Map<String, Object> segment : segments) {
                 int no = number(segment.get("no"), -1);
                 String role = String.valueOf(segment.get("role"));
                 if (!Set.of("avatar", "broll", "tail").contains(role)) throw failure("出片分段角色无效");
                 List<Path> overlayLayers = "tail".equals(role)
-                        ? List.of(overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName()))
-                        : captionOverlays(work, no, segment, true);
+                        ? List.of(overlays.renderTail(work, no, project.getTemplateId(), project.getTemplateName(), aiWatermark))
+                        : captionOverlays(work, no, segment, true, aiWatermark);
                 if ("tail".equals(role)) overlays.markAsTest(overlayLayers.get(0));
                 Path output = work.resolve(String.format(Locale.ROOT, "segment-%03d.mp4", no));
                 renderMockSegment(segment, role, no, overlayLayers, output);
@@ -181,16 +183,21 @@ public class ClipAssemblyService {
         }
     }
 
-    private List<Path> captionOverlays(Path work, int segmentNo, Map<String, Object> segment, boolean testMedia) {
+    private List<Path> captionOverlays(Path work, int segmentNo, Map<String, Object> segment, boolean testMedia, boolean aiWatermark) {
         List<Map<String, Object>> cues = ClipDtos.mapListValue(segment.get("captions"));
         if (cues.isEmpty()) cues = List.of(Map.of("text", text(segment.get("text"))));
         List<Path> result = new ArrayList<>();
         for (int index = 0; index < cues.size(); index++) {
-            Path layer = overlays.renderCaption(work, segmentNo, index, text(cues.get(index).get("text")));
+            Path layer = overlays.renderCaption(work, segmentNo, index, text(cues.get(index).get("text")), aiWatermark);
             if (testMedia) overlays.markAsTest(layer);
             result.add(layer);
         }
         return result;
+    }
+
+    private static boolean aiWatermarkEnabled(ClipProject project) {
+        Map<String, Object> style = ClipDtos.safeMapValue(project.getPayloadJson().get("subtitleStyle"));
+        return style != null && Boolean.TRUE.equals(style.get("aiWatermark"));
     }
 
     private void normalizeAvatar(Map<String, Object> segment, Map<String, Object> state, List<Path> overlayLayers, Path output) throws IOException {

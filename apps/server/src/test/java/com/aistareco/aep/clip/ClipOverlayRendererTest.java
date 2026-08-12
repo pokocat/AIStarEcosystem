@@ -16,7 +16,7 @@ class ClipOverlayRendererTest {
     @TempDir Path temp;
 
     @Test
-    void rendersPermanentAiBadgeAndTwoLineCaptionLayer() throws Exception {
+    void leavesAiWatermarkOffByDefaultAndStillRendersCaptionLayer() throws Exception {
         ClipOverlayRenderer renderer = new ClipOverlayRenderer();
         Path output = renderer.render(temp, 2,
                 "每天早上七点，卷闸门一拉开，这条街才算醒了。这句故意写长，用来验证两行截断。再补一点。 ");
@@ -25,15 +25,24 @@ class ClipOverlayRendererTest {
         BufferedImage image = ImageIO.read(output.toFile());
         assertEquals(720, image.getWidth());
         assertEquals(1280, image.getHeight());
-        assertTrue(alphaPixels(image, 0, 0, 720, 140) > 1_000, "AI badge must occupy top safe area");
+        assertEquals(0, alphaPixels(image, 0, 0, 720, 140), "AI watermark must be off when preference is absent");
         assertTrue(alphaPixels(image, 0, 950, 720, 330) > 10_000, "caption must occupy bottom safe area");
+    }
+
+    @Test
+    void rendersAiWatermarkOnlyWhenExplicitlyEnabled() throws Exception {
+        ClipOverlayRenderer renderer = new ClipOverlayRenderer();
+        Path output = renderer.renderCaption(temp, 4, 0, "主动开启水印", true);
+
+        BufferedImage image = ImageIO.read(output.toFile());
+        assertTrue(alphaPixels(image, 0, 0, 720, 140) > 1_000, "enabled AI watermark must occupy top safe area");
     }
 
     @Test
     void rendersTemplateSpecificOpaqueFixedTailCard() throws Exception {
         ClipOverlayRenderer renderer = new ClipOverlayRenderer();
-        Path entity = renderer.renderTail(temp, 14, "ct_shiti", "为实体发声");
-        Path craft = renderer.renderTail(temp, 15, "ct_shouyi", "这门手艺");
+        Path entity = renderer.renderTail(temp, 14, "ct_shiti", "为实体发声", false);
+        Path craft = renderer.renderTail(temp, 15, "ct_shouyi", "这门手艺", false);
 
         BufferedImage image = ImageIO.read(entity.toFile());
         assertEquals(720, image.getWidth());

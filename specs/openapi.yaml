@@ -2707,6 +2707,13 @@ components:
         segments: { type: array, items: { $ref: '#/components/schemas/ClipSegment' } }
         avatarId: { type: string, nullable: true }
         voiceId: { type: string, nullable: true }
+        subtitleStyle:
+          type: object
+          nullable: true
+          description: 成片字幕与可见标识偏好；aiWatermark 缺省为 false
+          properties:
+            aiWatermark: { type: boolean, default: false }
+          additionalProperties: true
         durationSec: { type: integer }
         avatarSeconds: { type: integer }
         segmentCount: { type: integer }
@@ -8573,9 +8580,9 @@ paths:
     patch: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipUpdateAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated label } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: owned object and row deleted } } }
   /me/clip/works:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works; completed rows best-effort backfill thumbnailUrl from the final MP4 } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works; completed rows best-effort backfill thumbnailUrl from the final MP4 and expose aiWatermark (default false) } } }
   /me/clip/works/{id}:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: work } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: work including aiWatermark preference } } }
   /me/clip/works/{id}/publish:
     post:
       tags: [clip]

@@ -32,17 +32,17 @@ public class ClipOverlayRenderer {
     }
 
     public Path render(Path workDir, int segmentNo, String caption) {
-        return renderCaption(workDir, segmentNo, 0, caption);
+        return renderCaption(workDir, segmentNo, 0, caption, false);
     }
 
-    public Path renderCaption(Path workDir, int segmentNo, int cueIndex, String caption) {
+    public Path renderCaption(Path workDir, int segmentNo, int cueIndex, String caption, boolean aiWatermark) {
         try {
             BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = image.createGraphics();
             try {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                drawAiLabel(g);
+                if (aiWatermark) drawAiLabel(g);
                 if (caption != null && !caption.isBlank()) drawCaption(g, caption.trim());
             } finally {
                 g.dispose();
@@ -51,12 +51,12 @@ public class ClipOverlayRenderer {
             if (!ImageIO.write(image, "png", output.toFile())) throw new IllegalStateException("PNG writer unavailable");
             return output;
         } catch (Exception e) {
-            throw new IllegalStateException("视频字幕与 AI 标识生成失败", e);
+            throw new IllegalStateException("视频字幕叠加层生成失败", e);
         }
     }
 
     /** 无运营尾片素材时使用的模板固定尾卡；整帧不透明，避免把空白色块当成正式尾片。 */
-    public Path renderTail(Path workDir, int segmentNo, String templateId, String templateName) {
+    public Path renderTail(Path workDir, int segmentNo, String templateId, String templateName, boolean aiWatermark) {
         try {
             BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = image.createGraphics();
@@ -65,7 +65,7 @@ public class ClipOverlayRenderer {
                 g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                 drawTailBackground(g);
                 drawTailCopy(g, tailHeadline(templateId, templateName), tailSubline(templateId));
-                drawAiLabel(g);
+                if (aiWatermark) drawAiLabel(g);
             } finally {
                 g.dispose();
             }

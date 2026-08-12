@@ -32,7 +32,8 @@ public class ClipProjectService {
         payload.put("segments", segments);
         payload.put("shots", ClipShotPlan.defaultShots(segments));
         payload.put("scriptChat", new ArrayList<>());
-        payload.put("avatarId", null); payload.put("voiceId", null); payload.put("bgmAssetId", null); payload.put("subtitleStyle", new LinkedHashMap<>());
+        payload.put("avatarId", null); payload.put("voiceId", null); payload.put("bgmAssetId", null);
+        payload.put("subtitleStyle", new LinkedHashMap<>(Map.of("aiWatermark", false)));
         ClipProject p = ClipProject.builder().id(id("cp")).externalOwnerId(owner).templateId(t.getId()).templateName(t.getName())
                 .title(t.getName()).status("draft").payloadJson(payload).step(1).createdAt(Instant.now()).updatedAt(Instant.now()).build();
         recompute(p); return ProjectDto.from(repo.save(p));
