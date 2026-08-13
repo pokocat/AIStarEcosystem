@@ -14,6 +14,7 @@ import com.aistareco.aep.dap.repository.DapConsentRepository;
 import com.aistareco.aep.dap.repository.DapVoiceRepository;
 import com.aistareco.aep.service.storage.FileStorageService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -98,13 +99,36 @@ class ClipAvatarServiceTest {
     }
 
     @Test
+    @DisplayName("mock 时代的残留记录不得卡住删除：跳过上游、照常清本地")
+    void mockLeftoversDoNotBlockDeletion() {
+        // 实测事故：库里有一条 engineRef=mock-voice-xxx 的旧记录，网关删除前按数字校验 ref，
+        // 于是批量删除撞到它就抛 CLIP_ENGINE_REF_INVALID 整个中止 —— 用户永远删不掉自己的分身。
+        // mock ref 本来就没有对应的上游对象，跳过上游、只清本地才是正确语义。
+        DapVoice mockVoice = DapVoice.builder().id("VC-mock").ownerUserId("owner-1").name("我的声音").kind("clone")
+                .engine("shiliu").engineRef("mock-voice-0b135048").audioKey("clip/mock.m4a").engineStatus("ready").build();
+        DapVoice realVoice = DapVoice.builder().id("VC-real").ownerUserId("owner-1").name("我的声音").kind("clone")
+                .engine("shiliu").engineRef("1873405707094174").audioKey("clip/real.m4a").engineStatus("ready").build();
+        when(avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(java.util.List.of());
+        when(voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(java.util.List.of(mockVoice, realVoice));
+
+        service.delete("owner-1");
+
+        verify(gateway, never()).deleteVoice("mock-voice-0b135048");
+        verify(gateway).deleteVoice("1873405707094174");
+        // 关键：两条都要落成已删除，不能因为第一条是 mock 就整批中止
+        verify(voices, times(2)).save(argThat(v -> "deleted".equals(v.getEngineStatus()) && v.getDeletedAt() != null));
+    }
+
+    @Test
     void deleteRemovesEveryActiveAvatarAndVoiceVersion() {
         DapAvatar newest = DapAvatar.builder().id("DH-new").ownerUserId("owner-1").engine("shiliu")
-                .engineRef("avatar-new").engineSourceKey("clip/avatar-new.mp4").imageKey("clip/avatar-new.jpg").engineStatus("training").build();
+                .engineRef("1873411191147139").engineSourceKey("clip/avatar-new.mp4").imageKey("clip/avatar-new.jpg").engineStatus("training").build();
         DapAvatar older = DapAvatar.builder().id("DH-old").ownerUserId("owner-1").engine("shiliu")
-                .engineRef("avatar-old").engineSourceKey("clip/avatar-old.mp4").engineStatus("ready").build();
+                .engineRef("1873243598304171").engineSourceKey("clip/avatar-old.mp4").engineStatus("ready").build();
         DapVoice voice = DapVoice.builder().id("VC-old").ownerUserId("owner-1").name("视频原声").kind("seed")
-                .engine("shiliu").engineRef("speaker-old").audioKey("clip/voice-old.m4a").engineStatus("ready").build();
+                .engine("shiliu").engineRef("1873405707094174").audioKey("clip/voice-old.m4a").engineStatus("ready").build();
         when(avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc("owner-1", "shiliu"))
                 .thenReturn(java.util.List.of(newest, older));
         when(voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
@@ -112,9 +136,9 @@ class ClipAvatarServiceTest {
 
         service.delete("owner-1");
 
-        verify(gateway).deleteAvatar("avatar-new");
-        verify(gateway).deleteAvatar("avatar-old");
-        verify(gateway).deleteVoice("speaker-old");
+        verify(gateway).deleteAvatar("1873411191147139");
+        verify(gateway).deleteAvatar("1873243598304171");
+        verify(gateway).deleteVoice("1873405707094174");
         verify(storage).delete("clip/avatar-new.jpg");
         verify(avatars, times(2)).save(argThat(a -> "deleted".equals(a.getEngineStatus()) && a.getDeletedAt() != null));
         verify(voices).save(argThat(v -> "deleted".equals(v.getEngineStatus()) && v.getDeletedAt() != null));

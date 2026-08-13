@@ -225,18 +225,30 @@ public class ClipAvatarService {
                 .map(j -> new AuditDto(j.getId(), j.getCreatedAt().toString(), null, null, "生成口播成片", j.getStatus())).toList();
     }
 
+    /**
+     * 上游 ref 是否可用于调供应商接口。
+     *
+     * mock 时代留下的记录 engineRef 形如 `mock-voice-xxx`，而网关删除前会校验 ref 必须是纯数字，
+     * 于是批量删除撞到第一条 mock 记录就抛 CLIP_ENGINE_REF_INVALID 整个中止 —— 一条都删不掉。
+     * 结果是：账户里只要有一条 mock 残留，用户就永远删不掉自己的分身（实测踩到）。
+     * mock ref 本来就没有对应的上游对象，跳过上游删除、只清本地才是正确语义。
+     */
+    private static boolean deletableUpstream(String ref) {
+        return ref != null && ref.matches("\\d{1,20}");
+    }
+
     @Transactional
     public void delete(String owner) {
         ShiliuGateway gateway = shiliu.required(); Instant now = Instant.now();
         // 用户可能多次“更换形象/提升声音”，同一 owner 下会保留多个历史有效版本。
         // 只删最新一条会让上一条立刻重新成为 view() 的当前记录，看起来像删除后又复活。
         for (DapAvatar a : avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE)) {
-            if (a.getEngineRef() != null) gateway.deleteAvatar(a.getEngineRef());
+            if (deletableUpstream(a.getEngineRef())) gateway.deleteAvatar(a.getEngineRef());
             storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
             a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
         }
         for (DapVoice v : voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)) {
-            if (v.getEngineRef() != null) gateway.deleteVoice(v.getEngineRef());
+            if (deletableUpstream(v.getEngineRef())) gateway.deleteVoice(v.getEngineRef());
             storage.delete(v.getAudioKey());
             v.setDeletedAt(now); v.setEngineStatus("deleted"); voices.save(v);
         }
@@ -244,7 +256,7 @@ public class ClipAvatarService {
     @Transactional
     public void delete(String owner, String avatarId) {
         DapAvatar a = requiredAvatar(owner, avatarId); ShiliuGateway gateway = shiliu.required(); Instant now = Instant.now();
-        if (a.getEngineRef() != null) gateway.deleteAvatar(a.getEngineRef());
+        if (deletableUpstream(a.getEngineRef())) gateway.deleteAvatar(a.getEngineRef());
         storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
         a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
     }

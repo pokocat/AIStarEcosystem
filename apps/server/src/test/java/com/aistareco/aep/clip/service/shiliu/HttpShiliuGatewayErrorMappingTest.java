@@ -18,23 +18,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HttpShiliuGatewayErrorMappingTest {
 
     @Test
-    @DisplayName("code=1 + 权益不足文案 → 判为额度不足，而不是笼统的调用失败")
-    void balanceExhaustedIsRecognisedFromMessage() {
+    @DisplayName("code=1 + 权益不足文案 → 判为「可保存数量占满」，不是笼统的调用失败")
+    void capacityFullIsRecognisedFromMessage() {
+        // 石榴这句「账户权益不足」词不达意：实测真因是持有数量占满（availableAvatar/Speaker=0
+        // 而 validPoint 还有 3418）。按字面当成余额不足会让运营去充值，钱花了问题还在。
         BusinessException e = HttpShiliuGateway.mappedUpstreamFailure(1, "账户权益不足，无法进行声音克隆");
-        assertThat(e.getCode()).isEqualTo("CLIP_ENGINE_BALANCE_INSUFFICIENT");
-        assertThat(e.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-        assertThat(e.getMessage()).contains("额度不足");
+        assertThat(e.getCode()).isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
+        assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(e.getMessage()).contains("数量已达上限");
+        assertThat(e.getMessage()).doesNotContain("充值");
         // 原始上游文案要留在内部细节里供排查，但不进用户可见的 message
         assertThat(e.getInternalDetail()).contains("账户权益不足");
     }
 
     @Test
-    @DisplayName("额度不足的多种说法都要认出来")
-    void balanceKeywordVariants() {
+    @DisplayName("容量类的多种说法都要认出来")
+    void capacityKeywordVariants() {
         for (String msg : new String[]{"账户权益不足", "余额不足，请充值", "额度不足", "已超出配额"}) {
             assertThat(HttpShiliuGateway.mappedUpstreamFailure(1, msg).getCode())
-                    .as("文案「%s」应判为额度不足", msg)
-                    .isEqualTo("CLIP_ENGINE_BALANCE_INSUFFICIENT");
+                    .as("文案「%s」应判为可保存数量占满", msg)
+                    .isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
         }
     }
 
@@ -63,6 +66,7 @@ class HttpShiliuGatewayErrorMappingTest {
     @Test
     @DisplayName("已有的数字错误码分支不受影响")
     void numericCodesStillWin() {
+        // 2002 是石榴的数字错误码，语义明确为额度不足，与上面按文案兜底的容量判定互不影响
         assertThat(HttpShiliuGateway.mappedUpstreamFailure(2002, "whatever").getCode())
                 .isEqualTo("CLIP_ENGINE_BALANCE_INSUFFICIENT");
         assertThat(HttpShiliuGateway.mappedUpstreamFailure(3004, "whatever").getCode())

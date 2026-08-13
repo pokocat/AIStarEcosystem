@@ -18,7 +18,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -158,6 +160,34 @@ public class HttpShiliuGateway implements ShiliuGateway {
 
     @Override public void deleteAvatar(String engineRef) { delete("/avatar/delete", "avatarId", engineRef); }
     @Override public void deleteVoice(String engineRef) { delete("/speaker/delete", "speakerId", engineRef); }
+
+    @Override
+    public AssetQuota asset() {
+        JsonNode data = post("/asset/get", OM.createObjectNode());
+        return new AssetQuota(intValue(data, "availableAvatar"), intValue(data, "availableSpeaker"),
+                longValue(data, "validPoint"), text(data, "validToTime"));
+    }
+
+    @Override public List<VendorObject> listAvatars() { return objects("/avatar/list", "avatarId"); }
+    @Override public List<VendorObject> listSpeakers() { return objects("/speaker/list", "speakerId"); }
+
+    /** {@code /avatar/list} 与 {@code /speaker/list} 形状一致：data 是对象数组，只有 id 字段名不同。 */
+    private List<VendorObject> objects(String path, String idField) {
+        JsonNode data = post(path, OM.createObjectNode());
+        if (!data.isArray()) throw invalidResponse(path + " data is not an array");
+        List<VendorObject> out = new ArrayList<>();
+        for (JsonNode row : data) {
+            String id = text(row, idField);
+            // 上游 id 是数值型。个别脏行无法与 engine_ref 关联，跳过好过让整张运营总览 502。
+            if (id == null || !id.matches("\\d{1,20}")) {
+                log.warn("[clip-shiliu] skipped unusable list row path={} idField={}", path, idField);
+                continue;
+            }
+            out.add(new VendorObject(id, text(row, "title")));
+        }
+        return out;
+    }
+
     @Override public boolean mock() { return false; }
 
     private void delete(String path, String field, String ref) {
@@ -304,6 +334,21 @@ public class HttpShiliuGateway implements ShiliuGateway {
         return prefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
     }
 
+    /** 数值字段容错读取：上游偶有把数字包成字符串的写法，两种都收。读不出返回 null（不是 0）。 */
+    private static Long longValue(JsonNode node, String field) {
+        JsonNode value = node == null ? null : node.get(field);
+        if (value == null || value.isNull()) return null;
+        if (value.isNumber()) return value.asLong();
+        try { return Long.parseLong(value.asText().trim()); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private static Integer intValue(JsonNode node, String field) {
+        Long value = longValue(node, field);
+        if (value == null) return null;
+        return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, value));
+    }
+
     private static String text(JsonNode node, String field) {
         if (node == null) return null;
         JsonNode value = node.get(field);
@@ -358,8 +403,13 @@ public class HttpShiliuGateway implements ShiliuGateway {
     private static BusinessException byMessage(int code, String message, String suffix) {
         String text = message == null ? "" : message;
         if (text.contains("权益不足") || text.contains("额度不足") || text.contains("余额不足") || text.contains("配额")) {
-            return BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_BALANCE_INSUFFICIENT",
-                    "数字人服务额度不足，请联系运营处理", "code=" + code + " msg=" + text);
+            // ⚠️ 石榴这句「账户权益不足」词不达意：实测真因是**可保存数量已占满**
+            // （账户里有 3 个 avatar / 2 个 speaker 时，asset/get 的 availableAvatar 与
+            // availableSpeaker 恰好都是 0，而 validPoint 还剩 3418）。照字面理解成"余额不够"
+            // 会让运营去充值 —— 2026-08-13 实际就这么发生了，钱花了问题还在。
+            // 故错误码与文案都按「槽位占满」表述，指向"删旧对象"而不是"充值"。
+            return BusinessException.wrapped(HttpStatus.CONFLICT, "CLIP_ENGINE_CAPACITY_FULL",
+                    "数字人形象/音色的可保存数量已达上限，请先删除不用的再创建", "code=" + code + " msg=" + text);
         }
         if (text.contains("鉴权") || text.contains("认证失败") || text.contains("token") || text.contains("密钥")) {
             return BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CREDENTIAL_INVALID",
