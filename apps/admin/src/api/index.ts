@@ -46,3 +46,4 @@ export * as AgentBotsApi from "./agent-bots";
 export * as MixcutOfficialClipsApi from "./mixcut-official-clips";
 export * as ErrorLogApi from "./error-log";
 export * as SellingChannelsApi from "./selling-channels";
+export * as ClipVendorApi from "./clip-vendor";

@@ -40,6 +40,7 @@ import {
   FileSearch,
   Scale,
   CreditCard,
+  Boxes,
 } from "lucide-react";
 
 export interface NavItem {
@@ -213,6 +214,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "平台与配置",
     items: [
       { href: "/platform/config",     label: "平台配置", icon: KeySquare, description: "全站开关与文案" },
+      // 额度耗尽此前只能靠翻服务器日志才知道；槽位被孤儿占满同样无声无息。
+      { href: "/platform/clip-vendor", label: "石榴AI 供应商", icon: Boxes, description: "数字人 / 声音克隆供应商额度、对象清单与我方 DB 对账（只读）" },
     ],
   },
   {

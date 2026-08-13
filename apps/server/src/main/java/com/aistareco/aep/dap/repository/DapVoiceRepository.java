@@ -16,6 +16,8 @@ public interface DapVoiceRepository extends JpaRepository<DapVoice, String> {
     List<DapVoice> findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(String ownerUserId);
     List<DapVoice> findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(String ownerUserId, String engine);
     Optional<DapVoice> findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(String ownerUserId, String engine);
+    /** 跨 owner 全量：供运营后台与供应商侧对账（ClipVendorService），业务链路不要用。 */
+    List<DapVoice> findByEngineAndDeletedAtIsNull(String engine);
     @Query("SELECT COALESCE(SUM(v.bytes),0) FROM DapVoice v WHERE v.ownerUserId = :uid AND v.deletedAt IS NULL")
     long sumBytesByOwner(@Param("uid") String uid);
 }

@@ -8635,6 +8635,20 @@ paths:
   /admin/clip/templates/{id}:
     put: { tags: [admin, clip], operationId: adminUpdateClipTemplate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated } } }
     delete: { tags: [admin, clip], operationId: adminDeleteClipTemplate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: soft deleted } } }
+  /admin/clip/vendor/overview:
+    get:
+      tags: [admin, clip]
+      operationId: adminClipVendorOverview
+      description: >-
+        石榴 AI 供应商总览（只读）。额度快照 + 石榴侧 avatar/speaker 清单 + 与 dap_avatar.engine_ref /
+        dap_voice.engine_ref 的对账（matched 正常 / orphan 孤儿：石榴有我方无，可清理 /
+        dangling 悬挂：我方有石榴无，上游已删本地未同步 / unmatchable：训练中或 mock 残留，不参与对账）。
+        quota.availableAvatar 与 availableSpeaker 是「可持有数量的剩余槽位」（实证推断，供应商文档未写明），
+        归零表示必须先删旧对象才能再建。任一分段读失败时该段 error 非 null 且 vendorCount 为 null，
+        列表一律为空 —— 表示「没读到」而非「石榴侧是空的」，前端不得渲染成空态。本视图不提供删除。
+      responses:
+        '200': { description: quota snapshot, vendor object lists and DB reconciliation }
+        '503': { description: CLIP_ENGINE_NOT_CONFIGURED — 石榴 baseUrl/token 未配置，无对账基准 }
   /admin/clip/preset-assets:
     post:
       tags: [admin, clip]

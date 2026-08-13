@@ -15,4 +15,6 @@ public interface DapAvatarRepository extends JpaRepository<DapAvatar, String> {
     List<DapAvatar> findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String ownerUserId);
     List<DapAvatar> findByDeletedAtBefore(java.time.Instant cutoff);
     Optional<DapAvatar> findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId, String engine);
+    /** 跨 owner 全量：供运营后台与供应商侧对账（ClipVendorService），业务链路不要用。 */
+    List<DapAvatar> findByEngineAndDeletedAtIsNull(String engine);
 }
