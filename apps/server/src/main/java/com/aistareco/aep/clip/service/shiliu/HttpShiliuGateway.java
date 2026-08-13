@@ -418,13 +418,15 @@ public class HttpShiliuGateway implements ShiliuGateway {
     private static BusinessException byMessage(int code, String message, String suffix) {
         String text = message == null ? "" : message;
         if (text.contains("权益不足") || text.contains("额度不足") || text.contains("余额不足") || text.contains("配额")) {
-            // ⚠️ 石榴这句「账户权益不足」词不达意：实测真因是**可保存数量已占满**
-            // （账户里有 3 个 avatar / 2 个 speaker 时，asset/get 的 availableAvatar 与
-            // availableSpeaker 恰好都是 0，而 validPoint 还剩 3418）。照字面理解成"余额不够"
-            // 会让运营去充值 —— 2026-08-13 实际就这么发生了，钱花了问题还在。
-            // 故错误码与文案都按「槽位占满」表述，指向"删旧对象"而不是"充值"。
+            // ⚠️ 这句「账户权益不足」的真实含义，2026-08-13 用两步实测厘清过，别再重新解读：
+            //   1) 账户有 3 avatar / 2 speaker 时 availableAvatar、availableSpeaker 均为 0，
+            //      而 validPoint 尚有 3418 —— 一度据此判断是"可保存数量占满"；
+            //   2) 把 avatar 与 speaker 全部删空后重查，两个字段**仍然是 0**。
+            // 结论：这两个字段是**独立购买的克隆权益数量**，既不是余额、也不是可用槽位。
+            // 所以文案既不能说"去充值"（点数充了也没用），也不能说"删掉旧的"（删空了也没用），
+            // 只能指向真正的动作：找运营开通克隆权益。
             return BusinessException.wrapped(HttpStatus.CONFLICT, "CLIP_ENGINE_CAPACITY_FULL",
-                    "数字人形象/音色的可保存数量已达上限，请先删除不用的再创建", "code=" + code + " msg=" + text);
+                    "数字人克隆权益不足，请联系运营开通后再试", "code=" + code + " msg=" + text);
         }
         if (text.contains("鉴权") || text.contains("认证失败") || text.contains("token") || text.contains("密钥")) {
             return BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CREDENTIAL_INVALID",

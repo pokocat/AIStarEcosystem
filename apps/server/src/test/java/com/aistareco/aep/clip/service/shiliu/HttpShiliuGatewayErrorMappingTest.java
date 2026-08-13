@@ -18,15 +18,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HttpShiliuGatewayErrorMappingTest {
 
     @Test
-    @DisplayName("code=1 + 权益不足文案 → 判为「可保存数量占满」，不是笼统的调用失败")
+    @DisplayName("code=1 + 权益不足文案 → 判为「克隆权益不足」，且不得引向充值或删除")
     void capacityFullIsRecognisedFromMessage() {
         // 石榴这句「账户权益不足」词不达意：实测真因是持有数量占满（availableAvatar/Speaker=0
         // 而 validPoint 还有 3418）。按字面当成余额不足会让运营去充值，钱花了问题还在。
         BusinessException e = HttpShiliuGateway.mappedUpstreamFailure(1, "账户权益不足，无法进行声音克隆");
         assertThat(e.getCode()).isEqualTo("CLIP_ENGINE_CAPACITY_FULL");
         assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(e.getMessage()).contains("数量已达上限");
+        assertThat(e.getMessage()).contains("克隆权益不足");
+        // 两个都不能提：充点数没用（validPoint 还剩 3418），删旧对象也没用（删空后仍为 0）
         assertThat(e.getMessage()).doesNotContain("充值");
+        assertThat(e.getMessage()).doesNotContain("删除");
         // 原始上游文案要留在内部细节里供排查，但不进用户可见的 message
         assertThat(e.getInternalDetail()).contains("账户权益不足");
     }
