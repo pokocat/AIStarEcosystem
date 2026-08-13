@@ -282,8 +282,13 @@ public class ClipAvatarService {
     public String requiredVoiceEngineRef(String owner, String avatarId, String voiceId) {
         DapVoice selected = selectedVoice(owner, voiceId);
         if (selected == null && avatarId != null && !avatarId.isBlank()) selected = linkedVoice(owner, requiredAvatar(owner, avatarId));
-        if (selected == null) selected = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
-        return Optional.ofNullable(selected)
+        // 原先这里还有一层「都找不到就拿该用户最新的一条声音」——出片时用谁的嗓子近乎随机。
+        // 已删除：没有明确关联的声音时必须让用户去选，不能替他决定。
+        if (selected == null) {
+            throw new BusinessException(HttpStatus.CONFLICT, "CLIP_VOICE_NOT_SELECTED",
+                    "这个数字人还没有关联声音，请先选择或采集一个再出片");
+        }
+        return Optional.of(selected)
                 .filter(v -> "ready".equals(v.getEngineStatus()) && v.getEngineRef() != null && !v.getEngineRef().isBlank())
                 .map(DapVoice::getEngineRef)
                 .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CLIP_VOICE_NOT_READY", "声音还没有训练完成"));
@@ -329,17 +334,27 @@ public class ClipAvatarService {
         return voices.findByIdAndOwnerUserId(id, owner).filter(v -> v.getDeletedAt() == null && ENGINE.equals(v.getEngine()))
                 .orElseThrow(() -> BusinessException.notFound("CLIP_VOICE_NOT_FOUND", "声音不存在或无权使用"));
     }
+    /**
+     * 取**明确属于这个形象**的声音。找不到就返回 null —— 绝不替用户挑一条。
+     *
+     * 原实现有三级回退，最后一级是 `rows.stream().findFirst()`，即「该用户最近创建的任意
+     * 一条声音」，跟当前形象毫无关系。真机事故：新建形象选「视频原声」，因为新形象还没有
+     * 自己的声音，就抓来了给另一个形象录的声音 —— 成片里男声女声完全错位，而用户毫不知情。
+     *
+     * 「没配声音」是一个需要用户决定的状态，不是可以静默补全的缺省值。宁可让调用方报错
+     * 要求用户明确选择，也不能猜。
+     */
     private DapVoice linkedVoice(String owner, DapAvatar avatar) {
         if (avatar == null) return null;
         String ref = avatar.getVoiceName();
         if (ref != null && !ref.isBlank()) {
-            DapVoice exact = voices.findByIdAndOwnerUserId(ref, owner).filter(v -> v.getDeletedAt() == null && ENGINE.equals(v.getEngine())).orElse(null);
+            DapVoice exact = voices.findByIdAndOwnerUserId(ref, owner)
+                    .filter(v -> v.getDeletedAt() == null && ENGINE.equals(v.getEngine())).orElse(null);
             if (exact != null) return exact;
         }
-        List<DapVoice> rows = voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE);
-        if (rows == null || rows.isEmpty()) return voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
-        DapVoice attached = rows.stream().filter(v -> avatar.getId().equals(v.getAvatarId())).findFirst().orElse(null);
-        return attached != null ? attached : rows.stream().findFirst().orElse(null);
+        // 次级：声音自己记录了 avatarId（采集时就绑定到该形象），这仍然是"明确属于它"
+        return voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)
+                .stream().filter(v -> avatar.getId().equals(v.getAvatarId())).findFirst().orElse(null);
     }
     private String avatarName(String owner, String value) {
         if (value != null && !value.isBlank()) return cleanName(value, "数字分身");
