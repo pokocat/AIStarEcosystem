@@ -190,10 +190,25 @@ public class HttpShiliuGateway implements ShiliuGateway {
 
     @Override public boolean mock() { return false; }
 
+    /**
+     * 删除是**幂等**的：上游回「已删除 / 不存在」时视为成功。
+     *
+     * 实测事故：批量删除时若某个对象上游已经没了（上一次删除部分成功后事务回滚，
+     * 但上游删除不在事务里、回滚不掉），这一条会抛错并中止整批 —— 用户越删越乱，
+     * 本地与上游的不一致反而扩大。「上游已经没有」本就是我们想要的终态。
+     */
     private void delete(String path, String field, String ref) {
         ObjectNode body = OM.createObjectNode();
         body.put(field, numericRef(ref, field));
-        post(path, body);
+        try { post(path, body); }
+        catch (BusinessException e) {
+            String detail = (e.getInternalDetail() == null ? "" : e.getInternalDetail()) + " " + e.getMessage();
+            if (detail.contains("已删除") || detail.contains("不存在") || detail.contains("未找到")) {
+                log.info("[clip-shiliu] {} 上游对象已不存在，按幂等成功处理 ref={}", path, ref);
+                return;
+            }
+            throw e;
+        }
     }
 
     private JsonNode post(String path, JsonNode body) {
