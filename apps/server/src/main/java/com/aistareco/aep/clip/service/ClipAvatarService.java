@@ -106,14 +106,27 @@ public class ClipAvatarService {
                 v == null ? null : v.getId(), v == null ? null : v.getName());
     }
 
+    /** 重命名声音。自动名已按来源+日期区分，这里让用户还能起自己记得住的名字。 */
+    @Transactional public VoiceDto renameVoice(String owner, String id, String name) {
+        String clean = name == null ? "" : name.trim();
+        if (clean.isEmpty() || clean.length() > 20) throw BusinessException.badRequest("CLIP_VOICE_NAME_INVALID", "名字请控制在 1~20 个字");
+        DapVoice v = voices.findByIdAndOwnerUserId(id, owner).filter(x -> x.getDeletedAt() == null && ENGINE.equals(x.getEngine()))
+                .orElseThrow(() -> BusinessException.notFound("CLIP_VOICE_NOT_FOUND", "声音不存在或无权使用"));
+        v.setName(clean); voices.save(v); return voiceDto(v);
+    }
+
     @Transactional
     public List<VoiceDto> voiceList(String owner) {
-        return voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).stream().map(v -> {
-            String current = status(v.getEngineStatus()); int p = progress(v.getEngineStatus());
-            if ("ready".equals(current)) p = 100;
-            return new VoiceDto(v.getId(), v.getName(), current, "seed".equals(v.getKind()) ? "video" : "dedicated",
-                    v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(), p);
-        }).toList();
+        return voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)
+                .stream().map(this::voiceDto).toList();
+    }
+
+    /** 列表与重命名共用同一转换口径，避免两处各写一份导致字段漂移。 */
+    private VoiceDto voiceDto(DapVoice v) {
+        String current = status(v.getEngineStatus());
+        int p = "ready".equals(current) ? 100 : progress(v.getEngineStatus());
+        return new VoiceDto(v.getId(), v.getName(), current, "seed".equals(v.getKind()) ? "video" : "dedicated",
+                v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(), p);
     }
 
     @Transactional
@@ -142,10 +155,22 @@ public class ClipAvatarService {
     }
 
     @Transactional
-    public Map<String, Object> clone(String owner, String kind, MultipartFile file) { return clone(owner, kind, file, null, null, null); }
+    public Map<String, Object> clone(String owner, String kind, MultipartFile file) { return clone(owner, kind, file, null, null, null, null); }
 
     @Transactional
     public Map<String, Object> clone(String owner, String kind, MultipartFile file, String avatarId, String voiceId, String name) {
+        return clone(owner, kind, file, avatarId, voiceId, name, null);
+    }
+
+    /**
+     * @param voiceSource 声音来源的**显式意图**。"video" = 只从本次视频提取，绝不回退到该形象
+     *   原先关联的声音；其余（含 null）保持历史行为（有 voiceId 用 voiceId，否则沿用已关联的）。
+     *
+     *   为什么要显式传：此前「用户明确选了视频原声」与「调用方没表达意见」在接口上都是空 voiceId，
+     *   服务端无从分辨，于是一律回退到 linkedVoice —— 用户选了视频原声却拿到旧声音（男女都错），
+     *   而且因为 readyVoice 已非空，下面真正的原声提取整段被跳过，等于选项完全失效。
+     */
+    public Map<String, Object> clone(String owner, String kind, MultipartFile file, String avatarId, String voiceId, String name, String voiceSource) {
         if (!Set.of("avatar", "voice").contains(kind)) throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_CLONE_FILE_REQUIRED", "未收到采集文件");
         FileStorageService.StoredFile stored = storage.store(file, "clip/clone/" + kind, owner);
@@ -167,8 +192,10 @@ public class ClipAvatarService {
             a.setEngine(ENGINE); a.setEngineRef(null); a.setEngineSourceKey(stored.key()); a.setEngineStatus("training");
             a.setEngineTrainedAt(null); a.setMock(gateway.mock()); a.setImageKey(preview.key()); a.setImageBytes(preview.bytes()); a.setUpdatedAt(now); avatars.save(a);
             if (previousPreviewKey != null && !previousPreviewKey.equals(preview.key())) storage.delete(previousPreviewKey);
-            DapVoice readyVoice = selectedVoice(owner, voiceId);
-            if (readyVoice == null) readyVoice = linkedVoice(owner, a);
+            boolean fromVideo = "video".equals(voiceSource);
+            DapVoice readyVoice = fromVideo ? null : selectedVoice(owner, voiceId);
+            // 明确选了「视频原声」时不许回退旧声音；否则用户的选择等于没生效。
+            if (readyVoice == null && !fromVideo) readyVoice = linkedVoice(owner, a);
             if (readyVoice != null && !"ready".equals(readyVoice.getEngineStatus())) readyVoice = null;
             if (readyVoice != null) { a.setVoiceName(readyVoice.getId()); resultVoiceId = readyVoice.getId(); }
             // 官方 speakerId 是 Avatar 训练的选填 demo 参数：有就带，没有也立即开始形象训练。
@@ -264,12 +291,23 @@ public class ClipAvatarService {
     private DapVoice startVoiceTraining(String owner, FileStorageService.StoredFile stored, ShiliuGateway gateway, Instant now, String kind, String avatarId) {
         ShiliuGateway.Task task = gateway.cloneVoice(owner, stored.key());
         String state = "succeeded".equals(task.status()) ? "ready" : "failed".equals(task.status()) ? "failed" : "training";
-        DapVoice v = DapVoice.builder().id("VC-" + uuid(8)).ownerUserId(owner).name("seed".equals(kind) ? "视频原声" : "我的声音")
+        String displayName = voiceDisplayName(kind, now);
+        DapVoice v = DapVoice.builder().id("VC-" + uuid(8)).ownerUserId(owner).name(displayName)
                 .avatarId(avatarId).kind(kind).tone("本人声线").audioKey(stored.key()).bytes(stored.bytes()).createdAt(now).build();
-        v.setName("seed".equals(kind) ? "视频原声" : "我的声音"); v.setKind(kind);
+        v.setName(displayName); v.setKind(kind);
         v.setEngine(ENGINE); v.setEngineRef(task.outputRef() == null ? task.id() : task.outputRef()); v.setEngineStatus(state);
         v.setEngineTrainedAt("ready".equals(state) ? now : null); v.setAudioKey(stored.key()); v.setBytes(stored.bytes()); voices.save(v); return v;
     }
+    /**
+     * 声音默认名 = 来源 + 日期。原先两种来源各自写死一个常量（「视频原声」「我的声音」），
+     * 同一来源录两次就会出现两条完全同名的记录，界面上分不出哪条是哪条。
+     */
+    private static String voiceDisplayName(String kind, Instant now) {
+        var date = now.atZone(java.time.ZoneId.of("Asia/Shanghai"));
+        String stamp = date.getMonthValue() + "月" + date.getDayOfMonth() + "日";
+        return ("seed".equals(kind) ? "视频提取 · " : "录音上传 · ") + stamp;
+    }
+
     private DapAvatar requiredAvatar(String owner, String id) {
         return avatars.findByIdAndOwnerUserId(id, owner).filter(a -> a.getDeletedAt() == null && ENGINE.equals(a.getEngine()))
                 .orElseThrow(() -> BusinessException.notFound("CLIP_AVATAR_NOT_FOUND", "数字分身不存在或无权使用"));

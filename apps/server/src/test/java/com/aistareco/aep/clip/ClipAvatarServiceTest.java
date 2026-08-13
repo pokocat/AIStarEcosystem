@@ -92,7 +92,9 @@ class ClipAvatarServiceTest {
         verify(gateway).cloneVoice("owner-1", "clip/video-seed.m4a");
         verify(avatars, atLeastOnce()).save(any(DapAvatar.class));
         verify(avatars, atLeastOnce()).save(argThat(a -> "clip/avatar-preview.jpg".equals(a.getImageKey())));
-        verify(voices).save(argThat(v -> "seed".equals(v.getKind()) && "视频原声".equals(v.getName())));
+        // 名字改为「视频提取 · M月D日」（原先两种来源各写死一个常量，同来源录两次会完全同名）。
+        // 这里仍然钉住原意图：从视频提取的种子声音确实被创建，且能一眼看出来源。
+        verify(voices).save(argThat(v -> "seed".equals(v.getKind()) && v.getName().startsWith("视频提取 · ")));
     }
 
     @Test
