@@ -70,10 +70,13 @@ public final class ClipDtos {
                     "succeeded".equals(j.getStatus()) ? j.getProjectId() : null, j.getErrorMessage(), j.isMock(), iso(j.getUpdatedAt()));
         }
     }
-    public record AssetDto(String id, String label, String tag, String kind, double durationSec,
+    /** 素材库存储占用。预置素材由平台提供，不计入用户配额。 */
+    public record AssetStorageDto(long usedBytes, long limitBytes, long count) {}
+
+    public record AssetDto(String id, String label, String tag, String kind, double durationSec, long bytes,
                            int usedCount, boolean preset, String previewUrl, String contentUrl, String createdAt) {
         public static AssetDto from(ClipAsset a, String previewUrl, String contentUrl, String displayLabel) {
-            return new AssetDto(a.getId(), displayLabel, a.getTag(), a.getKind(), a.getDurationSec(),
+            return new AssetDto(a.getId(), displayLabel, a.getTag(), a.getKind(), a.getDurationSec(), a.getBytes(),
                     a.getUsedCount(), a.isPreset(), previewUrl, contentUrl, iso(a.getCreatedAt()));
         }
     }

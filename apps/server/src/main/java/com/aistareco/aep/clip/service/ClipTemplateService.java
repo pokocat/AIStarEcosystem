@@ -53,6 +53,15 @@ public class ClipTemplateService {
     }
 
     @Transactional public void delete(String id) { ClipTemplate t = required(id); t.setDeletedAt(Instant.now()); t.setUpdatedAt(Instant.now()); repo.save(t); }
+    /** 显式替换片尾（只在 reseed 开关打开时调用）。与 attachTailClipIfMissing 分开命名，
+     *  避免"看起来只是补空缺、实际覆盖了运营配置"这种意外。 */
+    @Transactional public void replaceTailClip(String templateId, com.aistareco.aep.clip.dto.ClipDtos.AssetDto asset) {
+        ClipTemplate template = required(templateId);
+        template.setTailClipsJson(Map.of("items", List.of(Map.of("assetId", asset.id(), "label", asset.label(),
+                "durationSec", Math.max(1, Math.round(asset.durationSec()))))));
+        template.setUpdatedAt(Instant.now()); repo.save(template);
+    }
+
     @Transactional public void attachTailClipIfMissing(String templateId, com.aistareco.aep.clip.dto.ClipDtos.AssetDto asset) {
         ClipTemplate template = required(templateId);
         if (!com.aistareco.aep.clip.dto.ClipDtos.mapList(template.getTailClipsJson(), "items").isEmpty()) return;

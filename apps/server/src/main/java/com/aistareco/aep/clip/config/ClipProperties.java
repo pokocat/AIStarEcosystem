@@ -16,6 +16,8 @@ public class ClipProperties {
     private String pricingAssemble = "";
     private long staleMs = 600_000L;
     private long maxAssetBytes = 104_857_600L;
+    /** 单个用户素材库的总容量上限。默认 2 GiB —— 单文件上限 100MB，够存约 20 条素材。 */
+    private long maxOwnerAssetBytes = 2L * 1024 * 1024 * 1024;
     private int maxAvatarSegmentSec = 30;
     private int trashRetentionDays = 30;
     private double minAverageLuma = 18.0;
@@ -44,6 +46,8 @@ public class ClipProperties {
     public void setStaleMs(long staleMs) { this.staleMs = staleMs; }
     public long getMaxAssetBytes() { return maxAssetBytes; }
     public void setMaxAssetBytes(long maxAssetBytes) { this.maxAssetBytes = maxAssetBytes; }
+    public long getMaxOwnerAssetBytes() { return maxOwnerAssetBytes; }
+    public void setMaxOwnerAssetBytes(long maxOwnerAssetBytes) { this.maxOwnerAssetBytes = maxOwnerAssetBytes; }
     public int getMaxAvatarSegmentSec() { return maxAvatarSegmentSec; }
     public void setMaxAvatarSegmentSec(int maxAvatarSegmentSec) { this.maxAvatarSegmentSec = maxAvatarSegmentSec; }
     public int getTrashRetentionDays() { return trashRetentionDays; }

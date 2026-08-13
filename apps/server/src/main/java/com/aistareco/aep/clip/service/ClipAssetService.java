@@ -1,6 +1,7 @@
 package com.aistareco.aep.clip.service;
 
 import com.aistareco.aep.clip.config.ClipProperties;
+import com.aistareco.aep.clip.dto.ClipDtos;
 import com.aistareco.aep.clip.dto.ClipDtos.AssetDto;
 import com.aistareco.aep.clip.model.ClipAsset;
 import com.aistareco.aep.clip.repository.ClipAssetRepository;
@@ -28,6 +29,12 @@ public class ClipAssetService {
         this.repo = repo; this.storage = storage; this.props = props; this.ffmpeg = ffmpeg; this.thumbnailExtractor = thumbnailExtractor;
     }
 
+    /** 素材库存储占用。端上用它显示容量条并在满了之前就提示。 */
+    public ClipDtos.AssetStorageDto storage(String owner) {
+        return new ClipDtos.AssetStorageDto(repo.sumBytesByOwner(owner), props.getMaxOwnerAssetBytes(),
+                repo.countByExternalOwnerIdAndDeletedAtIsNull(owner));
+    }
+
     public List<AssetDto> list(String owner) {
         List<ClipAsset> rows = new ArrayList<>(repo.findByExternalOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner));
         rows.addAll(repo.findByPresetTrueAndDeletedAtIsNullOrderByCreatedAtDesc()); return rows.stream().map(this::dto).toList();
@@ -37,6 +44,15 @@ public class ClipAssetService {
         if (!KINDS.contains(normalized)) throw BusinessException.badRequest("CLIP_ASSET_NOT_ALLOWED", "素材类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_ASSET_REQUIRED", "未收到素材");
         if (file.getSize() > props.getMaxAssetBytes() || !mimeAllowed(normalized, file.getContentType())) throw BusinessException.badRequest("CLIP_ASSET_NOT_ALLOWED", "素材格式或大小不合规");
+        // 总容量闸：单文件合规不代表还装得下。放在落盘之前，避免先写文件再回滚。
+        // 预置素材是平台提供的，不占用户配额。
+        if (!preset) {
+            long used = repo.sumBytesByOwner(owner);
+            if (used + file.getSize() > props.getMaxOwnerAssetBytes()) {
+                throw BusinessException.badRequest("CLIP_ASSET_QUOTA_EXCEEDED",
+                        "素材库空间不够了，删掉一些不用的素材再上传");
+            }
+        }
         FileStorageService.StoredFile stored = storage.store(file, "clip/assets", preset ? "preset" : owner);
         double duration = 0;
         if ("video".equals(normalized) || "bgm".equals(normalized)) {

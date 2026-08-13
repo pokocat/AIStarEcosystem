@@ -16,13 +16,16 @@ public class ClipOfficialTailSeeder implements ApplicationRunner {
     private final ClipAssetService assets;
     private final ClipTemplateService templates;
     private final boolean enabled;
+    private final boolean reseed;
 
     public ClipOfficialTailSeeder(ClipAssetService assets, ClipTemplateService templates,
-                                  @Value("${aep.clip.seed-official-templates:true}") boolean enabled) { this.assets = assets; this.templates = templates; this.enabled = enabled; }
+                                  @Value("${aep.clip.seed-official-templates:true}") boolean enabled,
+                                  @Value("${aep.clip.reseed-official-templates:false}") boolean reseed) { this.assets = assets; this.templates = templates; this.enabled = enabled; this.reseed = reseed; }
 
     @Override public void run(ApplicationArguments args) throws Exception {
         if (!enabled) return;
-        seed("ct_shiti", "ca_tail_story", "故事收束", "clip/tails/story.mp4");
+        // 2026-08-13 片尾换新：给新 assetId，否则 ensureBundledPreset 见同 id 直接返回旧素材。
+        seed("ct_shiti", reseed ? "ca_tail_story_v2" : "ca_tail_story", "为实体发声片尾", "clip/tails/story.mp4");
         seed("ct_kaimen", "ca_tail_open", "门店信息收束", "clip/tails/open.mp4");
         seed("ct_shouyi", "ca_tail_craft", "手艺人收束", "clip/tails/craft.mp4");
     }
@@ -31,6 +34,7 @@ public class ClipOfficialTailSeeder implements ApplicationRunner {
         byte[] bytes;
         try (var input = new ClassPathResource(resource).getInputStream()) { bytes = input.readAllBytes(); }
         var asset = assets.ensureBundledPreset(assetId, label, "tail", bytes);
-        templates.attachTailClipIfMissing(templateId, asset);
+        if (reseed) templates.replaceTailClip(templateId, asset);
+        else templates.attachTailClipIfMissing(templateId, asset);
     }
 }
