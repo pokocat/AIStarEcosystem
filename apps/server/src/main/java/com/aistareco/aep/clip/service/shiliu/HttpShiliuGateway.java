@@ -325,7 +325,8 @@ public class HttpShiliuGateway implements ShiliuGateway {
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_CALL_FAILED", message, detail);
     }
 
-    private static BusinessException mappedUpstreamFailure(int code, String message) {
+    /** 包级可见：供 HttpShiliuGatewayErrorMappingTest 直接覆盖各错误码分支。 */
+    static BusinessException mappedUpstreamFailure(int code, String message) {
         String suffix = message == null || message.isBlank() ? "" : "：" + message;
         return switch (code) {
             case 1002 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_INPUT_INVALID", "采集内容不符合数字人引擎要求" + suffix, "code=" + code);
@@ -338,7 +339,32 @@ public class HttpShiliuGateway implements ShiliuGateway {
             case 3005 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_SPEECH_UNCLEAR", "没有识别到清晰人声，请在安静环境重新录制", "code=" + code);
             case 3006 -> BusinessException.wrapped(HttpStatus.CONFLICT, "CLIP_ENGINE_SPEAKER_NOT_FOUND", "声音模型不存在，请重新采集声音", "code=" + code);
             case 3007 -> BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_MEDIA_URL_INVALID", "数字人服务暂时无法读取采集文件，请稍后重试", "code=" + code);
-            default -> upstreamFailure("石榴 AI 未受理任务" + suffix, "code=" + code);
+            default -> byMessage(code, message, suffix);
         };
+    }
+
+    /**
+     * 未列入映射表的错误码，按上游文案兜底判别。
+     *
+     * 石榴把 <b>code=1 当通用兜底码</b>用，真实语义只在 msg 里（实测：
+     * {@code code=1 msg=账户权益不足，无法进行声音克隆}）。全丢给 502 的后果是
+     * 「运营该去充值」被伪装成「我们的服务故障」——端上只会显示一句通用的服务不可用，
+     * 每次都得上服务器翻日志才知道真因。
+     *
+     * 关键词匹配上游文案确实脆弱（供应商改文案就会失配），所以这里只做<b>降级增强</b>：
+     * 匹配上就给准确错误码，匹配不上仍回原来的 502，不会比现状更差。
+     * 供应商将来给出稳定的数字错误码，应当把对应分支上移到 switch 里。
+     */
+    private static BusinessException byMessage(int code, String message, String suffix) {
+        String text = message == null ? "" : message;
+        if (text.contains("权益不足") || text.contains("额度不足") || text.contains("余额不足") || text.contains("配额")) {
+            return BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_BALANCE_INSUFFICIENT",
+                    "数字人服务额度不足，请联系运营处理", "code=" + code + " msg=" + text);
+        }
+        if (text.contains("鉴权") || text.contains("认证失败") || text.contains("token") || text.contains("密钥")) {
+            return BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CREDENTIAL_INVALID",
+                    "数字人服务鉴权失效，请联系运营处理", "code=" + code + " msg=" + text);
+        }
+        return upstreamFailure("石榴 AI 未受理任务" + suffix, "code=" + code);
     }
 }
