@@ -129,6 +129,49 @@ public class HttpShiliuGateway implements ShiliuGateway {
     }
 
     @Override
+    public Task recreateVoice(String ownerId, String speakerRef, String mediaRef) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        body.put("audioUrl", publicMediaUrl(mediaRef));
+        body.put("model", "V2.0");
+        // 实测：拿已删除的 speakerId 调这里会回 code=1「该音色当前无法重新克隆」，
+        // 说明 recreate 只作用于活着的对象、且走该音色自己的 4 次额度，不吃新的克隆权益。
+        JsonNode data = post("/speaker/recreate", body);
+        String id = id(data, "speakerId");
+        return new Task("speaker:" + (id == null || id.isBlank() ? speakerRef : id), "processing", null,
+                id == null || id.isBlank() ? speakerRef : id, null);
+    }
+
+    @Override
+    public RecreateQuota recreateQuota(String speakerRef) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        try {
+            JsonNode data = firstObject(post("/speaker/getRecreatedRecord", body));
+            Integer used = data.hasNonNull("count") ? data.path("count").asInt()
+                    : data.hasNonNull("usedCount") ? data.path("usedCount").asInt() : null;
+            Integer total = data.hasNonNull("total") ? data.path("total").asInt()
+                    : data.hasNonNull("limit") ? data.path("limit").asInt() : null;
+            return new RecreateQuota(used, total, true);
+        } catch (BusinessException e) {
+            // 读不到额度不该拖垮调用方：置 null 让上层显示"未知"，而不是当成 0 次可用。
+            log.warn("[clip-shiliu] 重训额度读取失败 ref={}: {}", speakerRef, e.getMessage());
+            return new RecreateQuota(null, null, false);
+        }
+    }
+
+    @Override
+    public Task cloneAvatarByImage(String ownerId, String imageRef, String speakerRef) {
+        ObjectNode body = OM.createObjectNode();
+        body.put("imageUrl", publicMediaUrl(imageRef));
+        if (speakerRef != null && !speakerRef.isBlank()) body.put("speakerId", numericRef(speakerRef, "speakerId"));
+        body.put("title", title("军师数字分身"));
+        JsonNode data = post("/avatar/createByImage", body);
+        String id = id(data, "avatarId");
+        return new Task("avatar:" + id, "processing", null, id, null);
+    }
+
+    @Override
     public Task createAuthorizationVideo(String ownerId, String mediaRef, String spokenText) {
         ObjectNode body = OM.createObjectNode();
         body.put("videoUrl", publicMediaUrl(mediaRef));

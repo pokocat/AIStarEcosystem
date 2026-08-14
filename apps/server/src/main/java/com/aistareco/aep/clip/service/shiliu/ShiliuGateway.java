@@ -23,6 +23,12 @@ public interface ShiliuGateway {
      */
     record AssetQuota(Integer availableAvatar, Integer availableSpeaker, Long validPoint, String validToTime) {}
 
+    /**
+     * 音色重训额度。used/total 任一读不到时置 null —— 读失败不得渲染成 0，
+     * 否则界面会把"没读到"说成"已用完"。
+     */
+    record RecreateQuota(Integer used, Integer total, boolean available) {}
+
     /** 石榴侧的一个对象（avatar 或 speaker）。{@code id} 与我方 {@code engine_ref} 同源，可直接对账。 */
     record VendorObject(String id, String title) {}
 
@@ -31,6 +37,19 @@ public interface ShiliuGateway {
     Task createVideoByAudioFile(String ownerId, String avatarRef, String audioRef);
     Task cloneAvatar(String ownerId, String mediaRef, String speakerRef, String authorizationRef);
     Task cloneVoice(String ownerId, String mediaRef);
+
+    /**
+     * 重新训练已有音色。**每条 speaker 官方给 4 次**，且不消耗新的克隆权益 ——
+     * 这是"重录声音"的正确路径。此前每次重录都走 cloneVoice 新建一条，把克隆权益很快烧光
+     * （2026-08-13 实测账户 availableSpeaker 归零即由此而来）。
+     */
+    Task recreateVoice(String ownerId, String speakerRef, String mediaRef);
+
+    /** 某条音色已用/剩余的重训次数。用尽后端上应引导新建而不是继续重训。 */
+    RecreateQuota recreateQuota(String speakerRef);
+
+    /** 用单张照片训练数字人。成本远低于视频训练，作为低成本入口。 */
+    Task cloneAvatarByImage(String ownerId, String imageRef, String speakerRef);
     Task createAuthorizationVideo(String ownerId, String mediaRef, String spokenText);
     Task query(String taskId);
     void deleteAvatar(String engineRef);

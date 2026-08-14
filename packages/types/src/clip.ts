@@ -42,6 +42,30 @@ export interface ClipSubtitleStyle {
   [key: string]: unknown;
 }
 
+/**
+ * 成片封面：一张 720x1280 的图，拼在成片最前面当第一帧。
+ * 抖音等平台发布后拿第一帧做缩略图，所以它有设计感；时长仅 1~2 帧，不占播放内容。
+ * 可选步骤 —— enabled 非 true 或四个文本槽位全空，成片就不加封面。
+ */
+export interface ClipCoverConfig {
+  enabled?: boolean;
+  /** 版式模板 id；未知值回落主模板 cover_shiti。 */
+  templateId?: string;
+  /** 顶部书法大字关键词，2 字。 */
+  keyword?: string;
+  /** 白底黑字账号名标签，如 "@可乐米乐麻麻讲Ai"。 */
+  handle?: string;
+  /** 居中两行标语，白色粗体 + 黑描边。 */
+  sloganLines?: string[];
+  /** 落款金句，金色渐变粗体，比标语更大。 */
+  signature?: string;
+  /** 自传底图素材 id；留空则从成片抽一帧。 */
+  backgroundAssetId?: string | null;
+  /** 底图取自哪一句（segment.no）；0 表示交给服务端挑形象出镜段。 */
+  backgroundSourceNo?: number;
+  [key: string]: unknown;
+}
+
 export interface ClipTemplate {
   id: string;
   name: string;
@@ -82,6 +106,7 @@ export interface ClipProject {
   voiceId?: string | null;
   bgmAssetId?: string | null;
   subtitleStyle?: ClipSubtitleStyle | null;
+  cover?: ClipCoverConfig | null;
   durationSec: number;
   avatarSeconds: number;
   segmentCount: number;
@@ -103,9 +128,17 @@ export interface ClipJob {
   workId?: string | null; errorMessage?: string | null; mock: boolean; updatedAt: string;
 }
 
+/** 素材库存储占用。预置素材由平台提供，不计入用户配额。 */
+export interface ClipAssetStorage { usedBytes: number; limitBytes: number; count: number }
+
 export interface ClipAsset {
   id: string; label: string; tag?: string | null; kind: "video" | "image" | "bgm";
-  durationSec: number; usedCount: number; preset: boolean;
+  durationSec: number; bytes: number; usedCount: number; preset: boolean;
+  /**
+   * 像素宽高。**可选且可空**：历史素材与 ffprobe 读不出的素材不会下发这两个字段。
+   * 消费方必须把"缺字段"渲染成未知（整块不显示），不得回退成 0 —— 0×0 是错误信息，不是空态。
+   */
+  width?: number | null; height?: number | null;
   previewUrl?: string | null; contentUrl?: string | null; createdAt: string;
 }
 
@@ -163,6 +196,8 @@ export interface ClipCaptureRule {
   guidance: string[];
 }
 export interface ClipCaptureRequirements {
+  /** 石榴 authId 是可选校验项；当前直传创建链路不要求另录授权视频。 */
+  authorizationVideoRequired: boolean;
   consentText: string;
   agreementTitle: string;
   officialDocsLastReviewed: string;

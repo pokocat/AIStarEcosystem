@@ -40,6 +40,14 @@ public class ClipAssetService {
         rows.addAll(repo.findByPresetTrueAndDeletedAtIsNullOrderByCreatedAtDesc()); return rows.stream().map(this::dto).toList();
     }
     @Transactional public AssetDto upload(String owner, MultipartFile file, String kind, String label, boolean preset, String presetGroup) {
+        return upload(owner, file, kind, label, preset, presetGroup, null, null);
+    }
+    /**
+     * @param clientWidth  端上 {@code wx.chooseMedia} 报的像素宽，**仅作探测失败时的兜底**
+     * @param clientHeight 同上；两者必须同时为正才采信，任一缺失即整体丢弃（半个尺寸没有意义）
+     */
+    @Transactional public AssetDto upload(String owner, MultipartFile file, String kind, String label, boolean preset, String presetGroup,
+                                          Integer clientWidth, Integer clientHeight) {
         String normalized = kind == null ? "video" : kind.trim().toLowerCase(Locale.ROOT);
         if (!KINDS.contains(normalized)) throw BusinessException.badRequest("CLIP_ASSET_NOT_ALLOWED", "素材类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_ASSET_REQUIRED", "未收到素材");
@@ -54,10 +62,24 @@ public class ClipAssetService {
             }
         }
         FileStorageService.StoredFile stored = storage.store(file, "clip/assets", preset ? "preset" : owner);
+        // 时长与宽高共用一次 ffprobe：probeMedia 的 duration 与 probeDurationSec 同源（format.duration），
+        // 但它还顺带给出视频流的 width/height，所以没有理由为同一个文件起两次子进程。
+        // 图片同样能被 ffprobe 读出宽高（走 video stream），所以这里不再按 kind 跳过。
+        FfmpegRunner.MediaProbe probe = null;
+        try { probe = ffmpeg.probeMedia(storage.openForRead(stored.key()).toFile()); }
+        catch (Exception ignored) { /* 元数据是增强；格式/MIME 与真实读取已在前面完成校验。 */ }
         double duration = 0;
         if ("video".equals(normalized) || "bgm".equals(normalized)) {
-            try { duration = Math.max(0, ffmpeg.probeDurationSec(storage.openForRead(stored.key()).toFile())); }
-            catch (Exception ignored) { /* 预览时长是增强；格式/MIME 与真实读取已在前面完成校验。 */ }
+            duration = probe == null ? 0 : Math.max(0, probe.durationSec());
+        }
+        // 宽高优先信服务端探测（端上值不可信，且图片在 wx.chooseMedia 里本就不保证有 width/height）；
+        // 探测不出来才退到端上报的值。两条都拿不到就保持 null —— 不许落 0。
+        Integer width = positiveOrNull(probe == null ? 0 : probe.width());
+        Integer height = positiveOrNull(probe == null ? 0 : probe.height());
+        if (width == null || height == null) {
+            width = positiveOrNull(clientWidth == null ? 0 : clientWidth);
+            height = positiveOrNull(clientHeight == null ? 0 : clientHeight);
+            if (width == null || height == null) { width = null; height = null; }
         }
         FileStorageService.StoredFile thumbnail = null;
         if ("video".equals(normalized)) {
@@ -68,20 +90,26 @@ public class ClipAssetService {
                 .externalOwnerId(preset ? null : owner).kind(normalized).label(displayLabel(normalized, cleanLabel(label, file.getOriginalFilename())))
                 .tag(cleanLabel(label, "待整理")).localPath(stored.localPath()).cdnKey(stored.key()).mimeType(stored.contentType())
                 .thumbnailCdnKey(thumbnail == null ? null : thumbnail.key())
-                .bytes(stored.bytes()).durationSec(duration).preset(preset).presetGroup(presetGroup).createdAt(Instant.now()).build();
+                .bytes(stored.bytes()).durationSec(duration).width(width).height(height)
+                .preset(preset).presetGroup(presetGroup).createdAt(Instant.now()).build();
         return dto(repo.save(a));
     }
+    /** 只有正整数才是真尺寸；0/负数/null 一律回 null（"没测到"不得伪装成 0 像素）。 */
+    private static Integer positiveOrNull(int value) { return value > 0 ? Integer.valueOf(value) : null; }
     @Transactional public AssetDto ensureBundledPreset(String id, String label, String group, byte[] video) {
         ClipAsset existing = repo.findById(id).filter(a -> a.getDeletedAt() == null).orElse(null);
         if (existing != null) return dto(existing);
         FileStorageService.StoredFile stored = storage.store(video, "clip/assets", "preset", "mp4", "video/mp4");
-        double duration = 0;
-        try { duration = Math.max(0, ffmpeg.probeDurationSec(storage.openForRead(stored.key()).toFile())); } catch (Exception ignored) {}
+        // 同 upload()：一次 probeMedia 同时拿时长与宽高，官方尾段也要有分辨率，否则素材库里它是唯一一条"未知"。
+        FfmpegRunner.MediaProbe probe = null;
+        try { probe = ffmpeg.probeMedia(storage.openForRead(stored.key()).toFile()); } catch (Exception ignored) {}
+        double duration = probe == null ? 0 : Math.max(0, probe.durationSec());
         FileStorageService.StoredFile thumbnail = null;
         try { thumbnail = thumbnailExtractor.extract("preset", stored.key()); } catch (Exception error) { log.warn("[clip-asset] bundled thumbnail skipped id={}: {}", id, error.getMessage()); }
         ClipAsset asset = ClipAsset.builder().id(id).externalOwnerId(null).kind("video").label(label).tag("固定片段")
                 .localPath(stored.localPath()).cdnKey(stored.key()).mimeType("video/mp4")
                 .thumbnailCdnKey(thumbnail == null ? null : thumbnail.key()).bytes(stored.bytes()).durationSec(duration)
+                .width(positiveOrNull(probe == null ? 0 : probe.width())).height(positiveOrNull(probe == null ? 0 : probe.height()))
                 .preset(true).presetGroup(group).createdAt(Instant.now()).build();
         return dto(repo.save(asset));
     }

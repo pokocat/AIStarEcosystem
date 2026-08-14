@@ -46,6 +46,7 @@ public final class ClipDtos {
             Map<String, String> variables, List<Map<String, Object>> segments,
             List<Map<String, Object>> shots, List<Map<String, Object>> scriptChat,
             String avatarId, String voiceId, String bgmAssetId, Map<String, Object> subtitleStyle,
+            Map<String, Object> cover,
             int durationSec, int avatarSeconds, int segmentCount, int progress, int step, String updatedAt
     ) {
         public static ProjectDto from(ClipProject p) {
@@ -54,7 +55,8 @@ public final class ClipDtos {
                     stringMap(payload.get("variables")), mapListValue(payload.get("segments")),
                     ClipShotPlan.shots(payload), mapListValue(payload.get("scriptChat")),
                     string(payload.get("avatarId")), string(payload.get("voiceId")), string(payload.get("bgmAssetId")),
-                    safeMapValue(payload.get("subtitleStyle")), p.getDurationSec(), p.getAvatarSeconds(),
+                    safeMapValue(payload.get("subtitleStyle")), safeMapValue(payload.get("cover")),
+                    p.getDurationSec(), p.getAvatarSeconds(),
                     p.getSegmentCount(), p.getProgress(), p.getStep(), iso(p.getUpdatedAt()));
         }
     }
@@ -73,10 +75,16 @@ public final class ClipDtos {
     /** 素材库存储占用。预置素材由平台提供，不计入用户配额。 */
     public record AssetStorageDto(long usedBytes, long limitBytes, long count) {}
 
+    /**
+     * {@code width}/{@code height} 是**可空**的像素宽高：历史素材与探测失败的素材一律为 null，
+     * 经 non_null 序列化后字段直接不出现，端上据此显示"未知"而不是「0×0」。不要改成 int。
+     */
     public record AssetDto(String id, String label, String tag, String kind, double durationSec, long bytes,
+                           Integer width, Integer height,
                            int usedCount, boolean preset, String previewUrl, String contentUrl, String createdAt) {
         public static AssetDto from(ClipAsset a, String previewUrl, String contentUrl, String displayLabel) {
             return new AssetDto(a.getId(), displayLabel, a.getTag(), a.getKind(), a.getDurationSec(), a.getBytes(),
+                    a.getWidth(), a.getHeight(),
                     a.getUsedCount(), a.isPreset(), previewUrl, contentUrl, iso(a.getCreatedAt()));
         }
     }

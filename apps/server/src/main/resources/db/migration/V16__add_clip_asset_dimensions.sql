@@ -1,0 +1,2 @@
+ALTER TABLE clip_asset ADD COLUMN width INT NULL;
+ALTER TABLE clip_asset ADD COLUMN height INT NULL;

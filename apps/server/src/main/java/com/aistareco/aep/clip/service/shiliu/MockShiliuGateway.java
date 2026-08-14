@@ -34,6 +34,12 @@ public class MockShiliuGateway implements ShiliuGateway {
     public Task createVideoByAudioFile(String ownerId, String avatarRef, String audioRef) { return task("video-audio", null); }
     public Task cloneAvatar(String ownerId, String mediaRef, String speakerRef, String authorizationRef) { return task("avatar", null); }
     public Task cloneVoice(String ownerId, String mediaRef) { return task("voice", null); }
+    // 重训复用同一个 speakerId —— 这正是它区别于 cloneVoice 的地方，mock 也要体现，
+    // 否则端上"重训不新建对象"这条行为在 mock 态验不到。
+    public Task recreateVoice(String ownerId, String speakerRef, String mediaRef) { return new Task("speaker:" + speakerRef, "processing", null, speakerRef, null); }
+    // 官方每条 4 次；给「已用 1 次」这种中间态，免得端上只在 0/4 两端被验到。
+    public RecreateQuota recreateQuota(String speakerRef) { return new RecreateQuota(1, 4, true); }
+    public Task cloneAvatarByImage(String ownerId, String imageRef, String speakerRef) { return task("avatar", null); }
     public Task createAuthorizationVideo(String ownerId, String mediaRef, String spokenText) { return task("authorization", null); }
     public Task query(String taskId) { return tasks.getOrDefault(taskId, new Task(taskId, "failed", null, null, "task not found")); }
     public void deleteAvatar(String engineRef) {}

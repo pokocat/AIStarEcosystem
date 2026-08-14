@@ -115,6 +115,47 @@ public class ClipAvatarService {
         v.setName(clean); voices.save(v); return voiceDto(v);
     }
 
+    /**
+     * 这条声音还剩几次免费重训。
+     *
+     * 官方每条 speaker 给 4 次 recreate，且**不消耗新的克隆权益**。额度用尽后 retrainVoice 会静默
+     * 回落成新建（消耗一份克隆权益），用户却看不出差别 —— 所以要把余额透出去，让他在录之前就知道
+     * 这次是「免费重训」还是「已经用完了」。
+     *
+     * 只在用户真的进到重训页时调一次，不塞进 voiceList：那是列表接口，每条声音都打一次供应商
+     * 会把列表拖慢，也白白消耗对方配额。
+     *
+     * available=false 表示供应商没给出可用的额度信息（mock 记录、接口异常等）。
+     * 这时**不许瞎猜成 0 或 4** —— 交给端上说「暂时查不到」，而不是给一个假数字。
+     */
+    public Map<String, Object> retrainQuota(String owner, String id) {
+        DapVoice v = voices.findByIdAndOwnerUserId(id, owner).filter(x -> x.getDeletedAt() == null && ENGINE.equals(x.getEngine()))
+                .orElseThrow(() -> BusinessException.notFound("CLIP_VOICE_NOT_FOUND", "声音不存在或无权使用"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("voiceId", v.getId());
+        if (!deletableUpstream(v.getEngineRef())) {
+            // mock 时代的记录没有真实 speaker，重训无从谈起：这类声音只能新建。
+            out.put("available", false); out.put("retrainable", false);
+            return out;
+        }
+        ShiliuGateway.RecreateQuota quota;
+        try { quota = shiliu.required().recreateQuota(v.getEngineRef()); }
+        catch (RuntimeException e) {
+            log.warn("[clip-avatar] 查重训额度失败 ref={}: {}", v.getEngineRef(), e.getMessage());
+            out.put("available", false); out.put("retrainable", true);
+            return out;
+        }
+        boolean known = quota.available() && quota.used() != null && quota.total() != null;
+        out.put("available", known);
+        out.put("retrainable", true);
+        if (known) {
+            out.put("used", quota.used());
+            out.put("total", quota.total());
+            out.put("remaining", Math.max(0, quota.total() - quota.used()));
+        }
+        return out;
+    }
+
     @Transactional
     public List<VoiceDto> voiceList(String owner) {
         return voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)
@@ -209,7 +250,13 @@ public class ClipAvatarService {
                 });
             }
         } else {
-            DapVoice created = startVoiceTraining(owner, stored, gateway, now, "clone", avatarId);
+            // 重录优先走 recreate：每条 speaker 官方给 4 次重训，且**不消耗新的克隆权益**。
+            // 此前每次重录都 /speaker/create 新建一条，把账户的 availableSpeaker 很快烧光
+            // （2026-08-13 实测归零即由此而来）。只有没有可重训对象、或 4 次用尽时才新建。
+            DapVoice reusable = voiceId == null || voiceId.isBlank() ? null : selectedVoice(owner, voiceId);
+            DapVoice created = reusable != null && deletableUpstream(reusable.getEngineRef())
+                    ? retrainVoice(owner, reusable, stored, gateway, now)
+                    : startVoiceTraining(owner, stored, gateway, now, "clone", avatarId);
             resultVoiceId = created.getId(); resultAvatarId = avatarId;
             if (avatarId != null && !avatarId.isBlank()) { DapAvatar target = requiredAvatar(owner, avatarId); target.setVoiceName(created.getId()); target.setUpdatedAt(now); avatars.save(target); }
         }
@@ -305,6 +352,35 @@ public class ClipAvatarService {
         avatar.setUpdatedAt(Instant.now());
         avatars.save(avatar);
     }
+    /**
+     * 在已有 speaker 上重新训练。额度用尽或上游拒绝时回落到新建 —— 回落要留日志，
+     * 因为那意味着这次会真的吃掉一份克隆权益，是需要能追溯的成本事件。
+     */
+    private DapVoice retrainVoice(String owner, DapVoice target, FileStorageService.StoredFile stored,
+                                  ShiliuGateway gateway, Instant now) {
+        ShiliuGateway.RecreateQuota quota = gateway.recreateQuota(target.getEngineRef());
+        boolean exhausted = quota.available() && quota.used() != null && quota.total() != null
+                && quota.used() >= quota.total();
+        if (!exhausted) {
+            try {
+                ShiliuGateway.Task task = gateway.recreateVoice(owner, target.getEngineRef(), stored.key());
+                String state = "succeeded".equals(task.status()) ? "ready" : "failed".equals(task.status()) ? "failed" : "training";
+                target.setEngineStatus(state);
+                target.setEngineTrainedAt("ready".equals(state) ? now : null);
+                target.setAudioKey(stored.key()); target.setBytes(stored.bytes());
+                voices.save(target);
+                return target;
+            } catch (BusinessException e) {
+                log.warn("[clip-avatar] 重训失败，回落为新建（将消耗克隆权益）ref={}: {}",
+                        target.getEngineRef(), e.getMessage());
+            }
+        } else {
+            log.info("[clip-avatar] 重训额度已用尽（{}/{}），回落为新建 ref={}",
+                    quota.used(), quota.total(), target.getEngineRef());
+        }
+        return startVoiceTraining(owner, stored, gateway, now, "clone", target.getAvatarId());
+    }
+
     private DapVoice startVoiceTraining(String owner, FileStorageService.StoredFile stored, ShiliuGateway gateway, Instant now, String kind, String avatarId) {
         ShiliuGateway.Task task = gateway.cloneVoice(owner, stored.key());
         String state = "succeeded".equals(task.status()) ? "ready" : "failed".equals(task.status()) ? "failed" : "training";

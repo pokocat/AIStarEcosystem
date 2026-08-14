@@ -34,6 +34,8 @@ public class ClipProjectService {
         payload.put("scriptChat", new ArrayList<>());
         payload.put("avatarId", null); payload.put("voiceId", null); payload.put("bgmAssetId", null);
         payload.put("subtitleStyle", new LinkedHashMap<>(Map.of("aiWatermark", false)));
+        // 封面默认关闭：它是「出片确认」页的可选步骤，用户不填就不该多出一段封面
+        payload.put("cover", new LinkedHashMap<>(Map.of("enabled", false)));
         ClipProject p = ClipProject.builder().id(id("cp")).externalOwnerId(owner).templateId(t.getId()).templateName(t.getName())
                 .title(t.getName()).status("draft").payloadJson(payload).step(1).createdAt(Instant.now()).updatedAt(Instant.now()).build();
         recompute(p); return ProjectDto.from(repo.save(p));
@@ -58,6 +60,9 @@ public class ClipProjectService {
             if (req.voiceId() != null) payload.put("voiceId", req.voiceId());
             if (req.bgmAssetId() != null) payload.put("bgmAssetId", req.bgmAssetId());
             if (req.subtitleStyle() != null) payload.put("subtitleStyle", req.subtitleStyle());
+            // 存之前先过一遍 ClipCoverPlan：文案按码点截断、模板 id 归一，
+            // 免得渲染时才发现用户塞了一整段话进标语槽
+            if (req.cover() != null) payload.put("cover", ClipCoverPlan.normalize(req.cover()));
             if (req.step() != null) p.setStep(Math.max(1, Math.min(3, req.step())));
             if (req.title() != null && !req.title().isBlank()) p.setTitle(req.title().trim().substring(0, Math.min(160, req.title().trim().length())));
         }

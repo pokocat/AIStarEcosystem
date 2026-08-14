@@ -2714,6 +2714,26 @@ components:
           properties:
             aiWatermark: { type: boolean, default: false }
           additionalProperties: true
+        cover:
+          type: object
+          nullable: true
+          description: >
+            成片封面：一张 720x1280 的图，拼在成片最前面当第一帧，供抖音等平台抓取做缩略图。
+            时长仅 1~2 帧，不占播放内容。可选步骤——enabled 非 true 或四个文本槽位全空即不加封面。
+          properties:
+            enabled: { type: boolean, default: false }
+            templateId: { type: string, description: 版式模板 id；未知值回落 cover_shiti }
+            keyword: { type: string, description: 顶部书法大字关键词，2 字 }
+            handle: { type: string, description: 白底黑字账号名标签 }
+            sloganLines:
+              type: array
+              maxItems: 2
+              items: { type: string }
+              description: 居中两行标语，白色粗体 + 黑描边
+            signature: { type: string, description: 落款金句，金色渐变粗体 }
+            backgroundAssetId: { type: string, nullable: true, description: 自传底图素材 id；留空则从成片抽帧 }
+            backgroundSourceNo: { type: integer, description: 底图取自哪一句；0 表示服务端挑形象出镜段 }
+          additionalProperties: true
         durationSec: { type: integer }
         avatarSeconds: { type: integer }
         segmentCount: { type: integer }
@@ -8569,21 +8589,27 @@ paths:
   /me/clip/jobs/{id}/cancel:
     post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipCancelJob, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: cooperatively cancelled } } }
   /me/clip/assets:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAssets, responses: { '200': { description: owned and preset assets; previewUrl is a list image while contentUrl is the signed original media URL opened only on explicit preview } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAssets, responses: { '200': { description: owned and preset assets; previewUrl is a list image while contentUrl is the signed original media URL opened only on explicit preview; width/height are pixel dimensions and are OMITTED (never 0) when unknown } } }
     post:
       tags: [clip]
       security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
       operationId: clipUploadAsset
-      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [video, image, bgm] }, label: { type: string } } } } } }
+      description: >-
+        width/height are the client-reported pixel dimensions and are used ONLY as a fallback when the
+        server-side ffprobe cannot read them. Omit them rather than sending 0 — 0 would be stored as an
+        unknown-looking real value.
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [video, image, bgm] }, label: { type: string }, width: { type: integer, nullable: true }, height: { type: integer, nullable: true } } } } } }
       responses: { '200': { description: uploaded }, '400': { description: CLIP_ASSET_NOT_ALLOWED } }
+  /me/clip/assets/storage:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipAssetStorage, responses: { '200': { description: owner usedBytes and asset count against the limitBytes quota; preset assets are platform-provided and excluded } } }
   /me/clip/assets/{id}:
     patch: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipUpdateAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: updated label } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAsset, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: owned object and row deleted } } }
   /me/clip/works:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: generating done and published works; returns createdAt and generatedAt, completed rows best-effort backfill thumbnailUrl from the final MP4, and exposes aiWatermark (default false) } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListWorks, responses: { '200': { description: 'generating done and published works; returns createdAt and generatedAt, completed rows best-effort backfill thumbnailUrl from the final MP4, and exposes aiWatermark (default false)' } } }
   /me/clip/works/{id}:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: work including generation timestamps and aiWatermark preference } } }
-    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: active render jobs cancelled, their ids returned for caller-side billing settlement, and work moved to 30-day trash retention } } }
+    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteWork, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: 'active render jobs cancelled, their ids returned for caller-side billing settlement, and work moved to 30-day trash retention' } } }
   /me/clip/works/{id}/publish:
     post:
       tags: [clip]
@@ -8594,7 +8620,7 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [platform], properties: { platform: { type: string, enum: [douyin, kuaishou, xiaohongshu, shipinhao] } } } } } }
       responses: { '200': { description: submitted } }
   /me/clip/avatar:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: aggregate image and voice engine state with upstream progress, failure messages, imagePreviewUrl, and voiceSource=video|dedicated } } }
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: 'aggregate image and voice engine state with upstream progress, failure messages, imagePreviewUrl, and voiceSource=video|dedicated' } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatar, responses: { '200': { description: upstream deletion requested and local assets soft deleted } } }
   /me/clip/avatars:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAvatars, responses: { '200': { description: all active avatars with id name preview and linkedVoiceId/linkedVoiceName } } }
@@ -8603,6 +8629,8 @@ paths:
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatarById, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: exact avatar upstream deletion requested and local image assets soft deleted; reusable voice remains available } } }
   /me/clip/voices:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListVoices, responses: { '200': { description: reusable voice profiles with training state and source } } }
+  /me/clip/voices/{id}:
+    patch: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipRenameVoice, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }, responses: { '200': { description: renamed reusable voice } } }
   /me/clip/avatar/requirements:
     get:
       tags: [clip]
@@ -8647,7 +8675,7 @@ paths:
         归零表示必须先删旧对象才能再建。任一分段读失败时该段 error 非 null 且 vendorCount 为 null，
         列表一律为空 —— 表示「没读到」而非「石榴侧是空的」，前端不得渲染成空态。本视图不提供删除。
       responses:
-        '200': { description: quota snapshot, vendor object lists and DB reconciliation }
+        '200': { description: 'quota snapshot, vendor object lists and DB reconciliation' }
         '503': { description: CLIP_ENGINE_NOT_CONFIGURED — 石榴 baseUrl/token 未配置，无对账基准 }
   /admin/clip/preset-assets:
     post:

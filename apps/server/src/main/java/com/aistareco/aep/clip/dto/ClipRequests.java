@@ -9,7 +9,8 @@ public final class ClipRequests {
     public record SaveProject(Map<String, String> variables, List<Map<String, Object>> segments,
                               List<Map<String, Object>> shots, List<Map<String, Object>> scriptChat,
                               String avatarId, String voiceId, String bgmAssetId,
-                              Map<String, Object> subtitleStyle, Integer step, String title) {}
+                              Map<String, Object> subtitleStyle, Map<String, Object> cover,
+                              Integer step, String title) {}
     public record Rewrite(String scope, Integer no, String text) {}
     public record PreviewVoice(Integer no, String text) {}
     public record Estimate(List<Map<String, Object>> segments, List<Map<String, Object>> shots) {}

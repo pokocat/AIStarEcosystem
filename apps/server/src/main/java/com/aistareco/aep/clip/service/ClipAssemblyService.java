@@ -22,18 +22,37 @@ import java.util.*;
 @Service
 public class ClipAssemblyService {
     private static final String VIDEO_FILTER = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30";
+
+    /**
+     * 封面时长。封面不是播放内容，只是给抖音/视频号这类平台抓「第一帧当缩略图」用的那一帧，
+     * 所以取到肉眼几乎察觉不到的下限：成片固定 30fps，0.04s ≈ 1.2 帧，落地就是 1~2 帧，
+     * 远低于约 0.1s 的视觉停留阈值 —— 观众不会觉得片头杵了一张海报，平台却能稳稳拿到这张图。
+     *
+     * <p>为什么不干脆 1/30（0.0333）：实测过。同一条命令换成 -t 0.0333 / 0.034，
+     * 出来的分段 ffprobe 数不出帧（nb_read_frames 为空）——边界帧被时间戳取整吞掉，
+     * 得到的是一段 0 帧的空视频，concat 时反而更糟。0.04 ≈ 1.2 帧留出了余量，
+     * 实测稳定落 1 帧（720x1280 / 30fps），拼完总时长只多 0.03~0.05 秒，
+     * 四舍五入后上报给用户的成片时长不变。
+     *
+     * <p>做成常量而不是写死在参数里：万一哪个平台改成抽第 N 帧或某个固定时间点的帧，
+     * 调这一个数就能整体加长（例如 1.0），不用回头改 filter 链和分段逻辑。
+     */
+    static final double COVER_DURATION_SEC = 0.04;
+
     private final FfmpegRunner ffmpeg;
     private final FileStorageService storage;
     private final ClipAssetService assets;
     private final ClipOverlayRenderer overlays;
+    private final ClipCoverRenderer covers;
     private final ClipMediaQualityGate qualityGate;
 
     public ClipAssemblyService(FfmpegRunner ffmpeg, FileStorageService storage, ClipAssetService assets,
-                               ClipOverlayRenderer overlays, ClipMediaQualityGate qualityGate) {
+                               ClipOverlayRenderer overlays, ClipCoverRenderer covers, ClipMediaQualityGate qualityGate) {
         this.ffmpeg = ffmpeg;
         this.storage = storage;
         this.assets = assets;
         this.overlays = overlays;
+        this.covers = covers;
         this.qualityGate = qualityGate;
     }
 
@@ -66,6 +85,8 @@ public class ClipAssemblyService {
                 normalized.add(output);
             }
 
+            boolean covered = prependCover(owner, project, work, normalized, segments);
+
             Path concat = work.resolve("concat.txt");
             Files.writeString(concat, normalized.stream()
                     .map(path -> "file '" + escapeConcat(path.toAbsolutePath().toString()) + "'")
@@ -95,7 +116,7 @@ public class ClipAssemblyService {
             qualityGate.assertAcceptable(finalFile);
             int duration = Math.max(1, (int) Math.round(probedDuration));
             Path thumbnail = work.resolve("thumbnail.jpg");
-            extractThumbnail(finalFile, thumbnail);
+            extractThumbnail(finalFile, thumbnail, covered);
             requireOutput(thumbnail);
             FileStorageService.StoredFile stored = storage.storeExisting(finalFile, "clip/works", owner,
                     "mp4", "video/mp4", true);
@@ -138,6 +159,8 @@ public class ClipAssemblyService {
                 normalized.add(output);
             }
 
+            boolean covered = prependCover(owner, project, work, normalized, segments);
+
             Path concat = work.resolve("concat.txt");
             Files.writeString(concat, normalized.stream()
                     .map(path -> "file '" + escapeConcat(path.toAbsolutePath().toString()) + "'")
@@ -166,7 +189,7 @@ public class ClipAssemblyService {
             qualityGate.assertAcceptable(finalFile);
             int duration = Math.max(1, (int) Math.round(probedDuration));
             Path thumbnail = work.resolve("thumbnail.jpg");
-            extractThumbnail(finalFile, thumbnail);
+            extractThumbnail(finalFile, thumbnail, covered);
             requireOutput(thumbnail);
             FileStorageService.StoredFile stored = storage.storeExisting(finalFile, "clip/works", owner,
                     "mp4", "video/mp4", true);
@@ -292,6 +315,84 @@ public class ClipAssemblyService {
         ffmpeg.runFfmpeg(args);
     }
 
+    /**
+     * 把封面拼到成片最前面。封面是可选步骤 —— payload.cover 没开或四个槽位全空就直接跳过，
+     * 用户没填就不该凭空多出一段。
+     *
+     * @return 是否真的加了封面（决定缩略图从第 0 帧还是第 0.2 秒取）
+     */
+    private boolean prependCover(String owner, ClipProject project, Path work,
+                                 List<Path> normalized, List<Map<String, Object>> segments) throws IOException {
+        Optional<ClipCoverPlan.Spec> parsed = ClipCoverPlan.parse(project.getPayloadJson());
+        if (parsed.isEmpty()) return false;
+        ClipCoverPlan.Spec spec = parsed.get();
+        Path background = coverBackground(owner, spec, work, normalized, segments);
+        Path image = covers.render(work, spec, background);
+        Path output = work.resolve("segment-cover.mp4");
+        // 封面段的编码参数必须与正片各段完全一致（720x1280 / yuv420p / 30fps / AAC 48k stereo），
+        // 否则 concat 的 -c copy 快路径会失败退化成整片重编码。静音轨是必需的：
+        // concat 要求每个输入的流构成一致，少一条音轨会直接拼不上。
+        ffmpeg.runFfmpeg(List.of("-y", "-loop", "1", "-i", image.toString(),
+                "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+                "-t", coverSeconds(), "-r", "30",
+                "-vf", "scale=720:1280,setsar=1",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest",
+                "-movflags", "+faststart", output.toString()));
+        requireOutput(output);
+        normalized.add(0, output);
+        return true;
+    }
+
+    /**
+     * 封面底图：优先用用户自传的图片素材；否则从成片里抽一帧，默认挑形象出镜段
+     * （人在画面里，比空镜更适合当封面）。抽帧失败不阻断出片，渲染器会退回渐变底。
+     */
+    private Path coverBackground(String owner, ClipCoverPlan.Spec spec, Path work,
+                                 List<Path> normalized, List<Map<String, Object>> segments) throws IOException {
+        if (!spec.backgroundAssetId().isBlank()) {
+            ClipAsset asset = assets.requiredVisible(owner, spec.backgroundAssetId());
+            if (!Set.of("video", "image").contains(asset.getKind())) throw failure("封面底图素材类型无效");
+            Path source = storage.openForRead(asset.getCdnKey());
+            if ("image".equals(asset.getKind())) return source;
+            return grabFrame(source, work.resolve("cover-base.jpg"));
+        }
+        int index = coverSourceIndex(spec.backgroundSourceNo(), segments);
+        if (index < 0 || index >= normalized.size()) return null;
+        return grabFrame(normalized.get(index), work.resolve("cover-base.jpg"));
+    }
+
+    /** 用户指定了源句子就用它所在的镜头，否则第一个 avatar 段，再否则第一段。 */
+    public static int coverSourceIndex(int sourceNo, List<Map<String, Object>> segments) {
+        if (segments.isEmpty()) return -1;
+        if (sourceNo > 0) {
+            for (int index = 0; index < segments.size(); index++) {
+                for (Object no : ClipDtos.list(segments.get(index).get("sourceNos"))) {
+                    if (no instanceof Number n && n.intValue() == sourceNo) return index;
+                }
+            }
+        }
+        for (int index = 0; index < segments.size(); index++) {
+            if ("avatar".equals(text(segments.get(index).get("role")))) return index;
+        }
+        return 0;
+    }
+
+    private Path grabFrame(Path source, Path output) {
+        try {
+            ffmpeg.runFfmpeg(List.of("-y", "-ss", "0.5", "-i", source.toString(), "-frames:v", "1",
+                    "-q:v", "2", output.toString()));
+            return Files.exists(output) && Files.size(output) > 0 ? output : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 封面时长专用格式化：不能借用 {@link #seconds(double)}，那个会把值抬到 0.1 下限。 */
+    private static String coverSeconds() {
+        return String.format(Locale.ROOT, "%.3f", COVER_DURATION_SEC);
+    }
+
     private void concat(List<Path> segments, Path list, Path output) {
         if (segments.isEmpty()) throw failure("出片没有可拼接的分段");
         try {
@@ -317,8 +418,12 @@ public class ClipAssemblyService {
                 "-movflags", "+faststart", output.toString()));
     }
 
-    private void extractThumbnail(Path video, Path output) {
-        ffmpeg.runFfmpeg(List.of("-y", "-ss", "0.2", "-i", video.toString(), "-frames:v", "1",
+    /**
+     * 作品缩略图。有封面时必须从第 0 帧取 —— 封面本来就是给平台当缩略图用的那一帧，
+     * 站内列表要和用户发布到抖音后看到的封面一致；0.2 秒的老口径会直接跳过封面取到正片首帧。
+     */
+    private void extractThumbnail(Path video, Path output, boolean covered) {
+        ffmpeg.runFfmpeg(List.of("-y", "-ss", covered ? "0" : "0.2", "-i", video.toString(), "-frames:v", "1",
                 "-vf", "scale=360:-2", "-q:v", "3", output.toString()));
     }
 
