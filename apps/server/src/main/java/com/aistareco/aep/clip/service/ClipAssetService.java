@@ -23,10 +23,11 @@ public class ClipAssetService {
     private static final Set<String> IMAGE = Set.of("image/jpeg", "image/png", "image/heic", "image/heif");
     private static final Set<String> AUDIO = Set.of("audio/mpeg", "audio/mp4", "audio/aac", "audio/wav");
     private final ClipAssetRepository repo; private final FileStorageService storage; private final ClipProperties props; private final FfmpegRunner ffmpeg;
-    private final ClipAssetThumbnailExtractor thumbnailExtractor;
+    private final ClipAssetThumbnailExtractor thumbnailExtractor; private final ClipTemplateService templates;
     public ClipAssetService(ClipAssetRepository repo, FileStorageService storage, ClipProperties props, FfmpegRunner ffmpeg,
-                            ClipAssetThumbnailExtractor thumbnailExtractor) {
+                            ClipAssetThumbnailExtractor thumbnailExtractor, @org.springframework.context.annotation.Lazy ClipTemplateService templates) {
         this.repo = repo; this.storage = storage; this.props = props; this.ffmpeg = ffmpeg; this.thumbnailExtractor = thumbnailExtractor;
+        this.templates = templates;
     }
 
     /** 素材库存储占用。端上用它显示容量条并在满了之前就提示。 */
@@ -117,8 +118,39 @@ public class ClipAssetService {
         ClipAsset a = required(owner, id); if (a.isPreset()) throw BusinessException.badRequest("CLIP_ASSET_NOT_OWNED", "预置素材不能修改");
         if (label != null && !label.isBlank()) a.setLabel(cleanLabel(label, a.getLabel())); if (tag != null && !tag.isBlank()) a.setTag(cleanLabel(tag, a.getTag())); return dto(repo.save(a));
     }
-    @Transactional public void delete(String owner, String id) { ClipAsset a = required(owner, id); if (a.isPreset()) throw BusinessException.badRequest("CLIP_ASSET_NOT_OWNED", "预置素材不能删除"); storage.delete(a.getCdnKey()); storage.delete(a.getThumbnailCdnKey()); repo.delete(a); }
-    private ClipAsset required(String owner, String id) { return repo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(id, owner).orElseThrow(() -> BusinessException.notFound("CLIP_ASSET_NOT_FOUND", "素材不存在或无权访问")); }
+    /**
+     * 删除一条**预置**素材（运营侧动作）。
+     *
+     * 与用户删自有素材是两回事：预置素材不属于任何人，混排在每个人的素材库里，用户删不掉。
+     * 停用一个模板后它的片尾就成了谁也用不到、谁也删不掉的残留，只能由运营从这里清掉。
+     * 调用方必须先确认没有在用的模板依赖它 —— 这里会连带把引用清空，但清空不等于「不影响出片」。
+     */
+    @Transactional public void deletePreset(String id) {
+        ClipAsset a = repo.findById(id).filter(row -> row.getDeletedAt() == null)
+                .orElseThrow(() -> BusinessException.notFound("CLIP_ASSET_NOT_FOUND", "素材不存在"));
+        if (!a.isPreset()) throw BusinessException.badRequest("CLIP_ASSET_NOT_PRESET", "这不是预置素材，请让素材所有者自己删除");
+        templates.detachTailClip(id);
+        storage.delete(a.getCdnKey()); storage.delete(a.getThumbnailCdnKey()); repo.delete(a);
+    }
+
+    @Transactional public void delete(String owner, String id) { ClipAsset a = required(owner, id); storage.delete(a.getCdnKey()); storage.delete(a.getThumbnailCdnKey()); repo.delete(a); }
+
+    /**
+     * 取一条**属于本人且可改动**的素材。
+     *
+     * ★ 预置素材必须单独判。list() 会把 preset 素材和自有素材混在一起返回（端上是一个库），
+     *   但它们的 externalOwnerId 不是当前用户 —— 原实现直接按 owner 查，于是删预置素材时
+     *   抛的是「素材不存在或无权访问」。delete() 里那句「预置素材不能删除」永远走不到，
+     *   用户看到的是一句听起来像 bug 或权限故障的话，而真实原因只是「这条本来就删不得」。
+     *   （2026-08-14 真机实测复现。）
+     */
+    private ClipAsset required(String owner, String id) {
+        ClipAsset a = repo.findById(id).filter(row -> row.getDeletedAt() == null)
+                .orElseThrow(() -> BusinessException.notFound("CLIP_ASSET_NOT_FOUND", "素材不存在或无权访问"));
+        if (a.isPreset()) throw BusinessException.badRequest("CLIP_ASSET_PRESET_READONLY", "这是内置素材，不能改名也不能删除");
+        if (!owner.equals(a.getExternalOwnerId())) throw BusinessException.notFound("CLIP_ASSET_NOT_FOUND", "素材不存在或无权访问");
+        return a;
+    }
     public ClipAsset requiredVisible(String owner, String id) {
         return repo.findById(id).filter(a -> a.getDeletedAt() == null && (a.isPreset() || owner.equals(a.getExternalOwnerId())))
                 .orElseThrow(() -> BusinessException.badRequest("CLIP_ASSET_NOT_ALLOWED", "配画面素材不存在或无权使用"));

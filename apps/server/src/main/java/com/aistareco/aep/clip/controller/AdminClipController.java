@@ -20,6 +20,8 @@ public class AdminClipController {
     @DeleteMapping("/templates/{id}") public ApiResponse<Map<String,Object>> delete(@PathVariable String id){templates.delete(id);return ApiResponse.of(Map.of("ok",true));}
     /** 预置素材必须走运营上传路由；不允许靠 seed 把本机路径写进库。 */
     @PostMapping("/preset-assets") public ApiResponse<AssetDto> preset(@RequestPart("file")MultipartFile file,@RequestParam(defaultValue="video")String kind,@RequestParam(required=false)String label,@RequestParam(required=false)String group){return ApiResponse.of(assets.upload("admin",file,kind,label,true,group));}
+    /** 删除预置素材（停用模板后清残留）。会连带清空引用它的模板片尾——调用前先确认没有在用的模板依赖它。 */
+    @DeleteMapping("/preset-assets/{id}") public ApiResponse<Map<String,Object>> deletePreset(@PathVariable String id){assets.deletePreset(id);return ApiResponse.of(Map.of("ok",true,"id",id));}
     /**
      * 石榴 AI 供应商总览：额度快照 + 石榴侧对象清单 + 与我方 DB 的三类对账。
      * 实时打上游，不走缓存。<b>只读</b> —— 清理孤儿/悬挂要连本地记录与素材一起处理，不在这里做。

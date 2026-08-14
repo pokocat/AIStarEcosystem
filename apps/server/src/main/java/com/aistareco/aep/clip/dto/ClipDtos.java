@@ -103,7 +103,7 @@ public final class ClipDtos {
                                  Integer sampleRateHz, Integer channels, List<String> guidance) {}
     public record CaptureRequirementsDto(boolean authorizationVideoRequired, String consentText, String agreementTitle, String officialDocsLastReviewed,
                                          List<String> officialDocs, CaptureRuleDto consent, CaptureRuleDto avatar,
-                                         CaptureRuleDto voice, int pollIntervalMs) {}
+                                         CaptureRuleDto voice, CaptureRuleDto image, int pollIntervalMs) {}
     public record ConsentDto(String id, String status, boolean accepted, boolean verified, String verificationUrl) {}
     public record AuditDto(String id, String createdAt, String createdText, String scope, String action, String status) {}
 

@@ -3,6 +3,7 @@ package com.aistareco.aep.clip;
 import com.aistareco.aep.clip.config.ClipProperties;
 import com.aistareco.aep.clip.repository.ClipAssetRepository;
 import com.aistareco.aep.clip.service.ClipAssetService;
+import com.aistareco.aep.clip.service.ClipTemplateService;
 import com.aistareco.aep.clip.service.ClipAssetThumbnailExtractor;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
@@ -25,7 +26,8 @@ import static org.mockito.Mockito.*;
 class ClipAssetQuotaTest {
 
     private ClipAssetService serviceWith(ClipAssetRepository repo, ClipProperties props, FileStorageService storage) {
-        return new ClipAssetService(repo, storage, props, mock(FfmpegRunner.class), mock(ClipAssetThumbnailExtractor.class));
+        return new ClipAssetService(repo, storage, props, mock(FfmpegRunner.class),
+                mock(ClipAssetThumbnailExtractor.class), mock(ClipTemplateService.class));
     }
 
     @Test

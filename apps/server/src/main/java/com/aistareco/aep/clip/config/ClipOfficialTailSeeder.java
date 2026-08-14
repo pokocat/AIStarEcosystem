@@ -26,8 +26,10 @@ public class ClipOfficialTailSeeder implements ApplicationRunner {
         if (!enabled) return;
         // 2026-08-13 片尾换新：给新 assetId，否则 ensureBundledPreset 见同 id 直接返回旧素材。
         seed("ct_shiti", reseed ? "ca_tail_story_v2" : "ca_tail_story", "为实体发声片尾", "clip/tails/story.mp4");
-        seed("ct_kaimen", "ca_tail_open", "门店信息收束", "clip/tails/open.mp4");
-        seed("ct_shouyi", "ca_tail_craft", "手艺人收束", "clip/tails/craft.mp4");
+        // ct_kaimen / ct_shouyi 的片尾已停种（2026-08-14）：产品侧只保留「为实体发声」一个模板
+        // （端上 catalog.js 的 OFFERED_TEMPLATE_IDS 只有 ct_shiti），这两条片尾没有任何模板会用到，
+        // 却因为 preset 素材混排出现在每个用户的素材库里，还删不掉。种回来比留着更糟，所以直接不种。
+        // 需要恢复这两个模板时，连同下面两行一起恢复。
     }
 
     private void seed(String templateId, String assetId, String label, String resource) throws Exception {

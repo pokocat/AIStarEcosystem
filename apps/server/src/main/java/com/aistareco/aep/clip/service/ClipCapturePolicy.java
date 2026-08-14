@@ -23,6 +23,10 @@ public class ClipCapturePolicy {
     private static final long AUDIO_MAX_BYTES = 20L * 1024 * 1024;
     private static final Set<String> VIDEO_MIME = Set.of("video/mp4", "video/quicktime");
     private static final Set<String> AUDIO_MIME = Set.of("audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/ogg", "audio/mp4", "audio/aac", "audio/x-m4a");
+    private static final long IMAGE_MAX_BYTES = 10L * 1024 * 1024;
+    private static final Set<String> IMAGE_MIME = Set.of("image/jpeg", "image/png");
+    /** 图片训练数字人（石榴 /avatar/createByImage）。与视频训练同为 avatar 类，但采集口径完全不同。 */
+    public static final String IMAGE_KIND = "avatarImage";
 
     private final FileStorageService storage;
     private final FfmpegRunner ffmpeg;
@@ -43,13 +47,19 @@ public class ClipCapturePolicy {
         CaptureRuleDto voice = new CaptureRuleDto("voice", 2, 0, 3, 8, 15, 120, AUDIO_MAX_BYTES, AUDIO_MAX_BYTES,
                 List.of("wav", "mp3", "ogg", "m4a", "aac", "pcm"), List.of("wav", "mp3", "ogg", "m4a", "aac"), null, null, null, 44100, 1,
                 List.of("超过 2 秒即可提交，建议连续录 8 至 15 秒", "只保留一位说话人，关闭音乐和环境声", "离手机约 20 厘米，用平时语速自然朗读", "避免长时间停顿"));
+        // 图片训练没有时长概念：所有时长字段给 0，端上据此**不展示秒数**，而不是显示「至少 0 秒」。
+        CaptureRuleDto image = new CaptureRuleDto(IMAGE_KIND, 0, 0, 0, 0, 0, 0, IMAGE_MAX_BYTES, IMAGE_MAX_BYTES,
+                List.of("jpg", "jpeg", "png"), List.of("jpg", "jpeg", "png"), null, 360, 4096, null, null,
+                List.of("一张清晰正脸照，五官不要被遮挡", "建议竖版半身，人物在画面中央", "不要用合影、侧脸或大角度俯仰", "图片本身没有声音，需要先选一条已训好的声音"));
         return new CaptureRequirementsDto(false, CONSENT_TEXT, "数字分身素材使用说明", "2026-08-11",
                 List.of("https://api.16ai.vip/doc-4892856", "https://api.16ai.vip/api-295432904", "https://api.16ai.vip/api-198837531", "https://api.16ai.vip/api-198853492"),
-                consent, avatar, voice, 5_000);
+                consent, avatar, voice, image, 5_000);
     }
 
     public FfmpegRunner.MediaProbe validate(String kind, MultipartFile file, FileStorageService.StoredFile stored) {
         if (file == null || stored == null) throw BusinessException.badRequest("CLIP_CAPTURE_REQUIRED", "未收到采集文件");
+        // 图片单独走一条：静态图没有时长，套用下面的 durationSec > 0 校验会把每一张合法图片都判死。
+        if (IMAGE_KIND.equals(kind)) return validateImage(file, stored);
         String mime = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
         boolean voice = "voice".equals(kind);
         String extension = extension(file.getOriginalFilename());
@@ -77,6 +87,37 @@ public class ClipCapturePolicy {
         if (voice) validateVoice(probe, extension);
         else validateVideo(kind, probe, extension);
         return probe;
+    }
+
+    /**
+     * 图片采集校验。**不走 ffprobe** —— 它对静态图的时长/流信息表现不一致，容易把合法图片判成不可读。
+     * 改用 JDK 自带的 ImageIO：能解码出来才算数，比魔数判断更实在（顺带拿到真实像素尺寸）。
+     */
+    private FfmpegRunner.MediaProbe validateImage(MultipartFile file, FileStorageService.StoredFile stored) {
+        String mime = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
+        String extension = extension(file.getOriginalFilename());
+        if (!IMAGE_MIME.contains(mime)) {
+            throw BusinessException.badRequest("CLIP_CAPTURE_FORMAT_INVALID", "照片只支持 JPG 或 PNG");
+        }
+        if (!Set.of("jpg", "jpeg", "png").contains(extension)) {
+            throw BusinessException.badRequest("CLIP_CAPTURE_EXTENSION_INVALID", "照片扩展名需要是 JPG 或 PNG");
+        }
+        if (stored.bytes() <= 0 || stored.bytes() > IMAGE_MAX_BYTES) {
+            throw new BusinessException(HttpStatus.PAYLOAD_TOO_LARGE, "CLIP_CAPTURE_TOO_LARGE", "照片不能超过 10MB");
+        }
+        final java.awt.image.BufferedImage img;
+        try { img = javax.imageio.ImageIO.read(storage.openForRead(stored.key()).toFile()); }
+        catch (Exception e) {
+            throw BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_CAPTURE_UNREADABLE", "照片无法读取，请重新选择", e.toString());
+        }
+        if (img == null) throw BusinessException.badRequest("CLIP_CAPTURE_UNREADABLE", "照片无法读取，请重新选择");
+        int shortSide = Math.min(img.getWidth(), img.getHeight());
+        int longSide = Math.max(img.getWidth(), img.getHeight());
+        // 与视频同一档口径：上传分辨率决定成片分辨率，太小的图出不了能看的片。
+        if (shortSide < 360 || longSide > 4096) {
+            throw BusinessException.badRequest("CLIP_IMAGE_RESOLUTION_INVALID", "照片分辨率需在 360p 到 4K 之间");
+        }
+        return new FfmpegRunner.MediaProbe(0, extension, null, null, img.getWidth(), img.getHeight(), 0, 0, true);
     }
 
     private static void validateVoice(FfmpegRunner.MediaProbe probe, String extension) {

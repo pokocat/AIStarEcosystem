@@ -205,6 +205,8 @@ export interface ClipCaptureRequirements {
   consent: ClipCaptureRule;
   avatar: ClipCaptureRule;
   voice: ClipCaptureRule;
+  /** 图片训练数字人。时长类字段全为 0——静态图没有时长概念，端上据此不展示秒数。 */
+  image: ClipCaptureRule;
   pollIntervalMs: number;
 }
 export interface ClipConsentResult { id: string; status: "submitted" | "verified" | "rejected"; accepted: boolean; verified: boolean; verificationUrl?: string | null }

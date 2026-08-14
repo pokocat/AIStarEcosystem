@@ -68,6 +68,22 @@ public class ClipTemplateService {
         template.setTailClipsJson(Map.of("items", List.of(Map.of("assetId", asset.id(), "label", asset.label(), "durationSec", Math.max(1, Math.round(asset.durationSec()))))));
         template.setUpdatedAt(Instant.now()); repo.save(template);
     }
+    /**
+     * 把所有引用某条素材的片尾清空。删预置素材时必须先做，否则模板会留着一条指向已删素材的
+     * tailClip —— 出片时才炸，而且炸在离原因最远的地方。
+     */
+    @Transactional public int detachTailClip(String assetId) {
+        int touched = 0;
+        for (ClipTemplate t : repo.findAll()) {
+            if (t.getDeletedAt() != null) continue;
+            var items = com.aistareco.aep.clip.dto.ClipDtos.mapList(t.getTailClipsJson(), "items");
+            if (items.stream().noneMatch(row -> assetId.equals(String.valueOf(row.get("assetId"))))) continue;
+            var kept = items.stream().filter(row -> !assetId.equals(String.valueOf(row.get("assetId")))).toList();
+            t.setTailClipsJson(Map.of("items", kept)); t.setUpdatedAt(Instant.now()); repo.save(t); touched++;
+        }
+        return touched;
+    }
+
     public ClipTemplate required(String id) { return repo.findById(id).filter(t -> t.getDeletedAt() == null).orElseThrow(() -> BusinessException.notFound("CLIP_TEMPLATE_NOT_FOUND", "模板不存在")); }
     private TemplateDto dto(ClipTemplate t) {
         List<Map<String,Object>> clips = new ArrayList<>();

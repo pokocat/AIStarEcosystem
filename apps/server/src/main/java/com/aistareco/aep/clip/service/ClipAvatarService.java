@@ -212,7 +212,7 @@ public class ClipAvatarService {
      *   而且因为 readyVoice 已非空，下面真正的原声提取整段被跳过，等于选项完全失效。
      */
     public Map<String, Object> clone(String owner, String kind, MultipartFile file, String avatarId, String voiceId, String name, String voiceSource) {
-        if (!Set.of("avatar", "voice").contains(kind)) throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
+        if (!Set.of("avatar", "voice", ClipCapturePolicy.IMAGE_KIND).contains(kind)) throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_CLONE_FILE_REQUIRED", "未收到采集文件");
         FileStorageService.StoredFile stored = storage.store(file, "clip/clone/" + kind, owner);
         try { capturePolicy.validate(kind, file, stored); }
@@ -249,6 +249,33 @@ public class ClipAvatarService {
                     catch (Exception error) { log.warn("[clip-avatar] video voice seed failed owner={}: {}", owner, error.getMessage()); }
                 });
             }
+        } else if (ClipCapturePolicy.IMAGE_KIND.equals(kind)) {
+            // 图片训练与视频训练的根本差别：**一张照片里没有声音**。
+            // 视频训练可以从原声里顺带提一条基础音色，图片没有这条退路，所以必须显式指定一条
+            // 已训好的声音；否则会建出一个永远出不了片的分身（出片时才在 requiredVoiceEngineRef
+            // 撞上 CLIP_VOICE_NOT_SELECTED），而用户已经付过钱了。
+            DapVoice picked = selectedVoice(owner, voiceId);
+            if (picked == null || !"ready".equals(picked.getEngineStatus())) {
+                storage.delete(stored.key());
+                throw BusinessException.badRequest("CLIP_IMAGE_AVATAR_VOICE_REQUIRED",
+                        "用照片创建数字分身需要先选一条已训练好的声音");
+            }
+            DapAvatar a = avatarId == null || avatarId.isBlank()
+                    ? DapAvatar.builder().id("DH-" + uuid(8)).ownerUserId(owner).name(avatarName(owner, name)).path("image").status("pending").engine(ENGINE).createdAt(now).build()
+                    : requiredAvatar(owner, avatarId);
+            if (name != null && !name.isBlank()) a.setName(cleanName(name, a.getName()));
+            resultAvatarId = a.getId(); resultVoiceId = picked.getId();
+            String previousPreviewKey = a.getImageKey();
+            a.setEngine(ENGINE); a.setEngineRef(null); a.setEngineSourceKey(stored.key()); a.setEngineStatus("training");
+            a.setEngineTrainedAt(null); a.setMock(gateway.mock()); a.setVoiceName(picked.getId());
+            // 上传的这张图**本身就是预览图**，不需要像视频那样抽帧。
+            a.setImageKey(stored.key()); a.setImageBytes(stored.bytes()); a.setUpdatedAt(now); avatars.save(a);
+            if (previousPreviewKey != null && !previousPreviewKey.equals(stored.key())) storage.delete(previousPreviewKey);
+            ShiliuGateway.Task task = gateway.cloneAvatarByImage(owner, stored.key(), picked.getEngineRef());
+            a.setEngineRef(task.outputRef());
+            a.setEngineStatus("failed".equals(task.status()) ? "failed" : "succeeded".equals(task.status()) ? "ready" : "training");
+            a.setEngineTrainedAt("ready".equals(a.getEngineStatus()) ? now : null);
+            a.setUpdatedAt(now); avatars.save(a);
         } else {
             // 重录优先走 recreate：每条 speaker 官方给 4 次重训，且**不消耗新的克隆权益**。
             // 此前每次重录都 /speaker/create 新建一条，把账户的 availableSpeaker 很快烧光
