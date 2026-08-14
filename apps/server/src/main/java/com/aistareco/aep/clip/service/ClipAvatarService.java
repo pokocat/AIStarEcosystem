@@ -255,10 +255,17 @@ public class ClipAvatarService {
             // 已训好的声音；否则会建出一个永远出不了片的分身（出片时才在 requiredVoiceEngineRef
             // 撞上 CLIP_VOICE_NOT_SELECTED），而用户已经付过钱了。
             DapVoice picked = selectedVoice(owner, voiceId);
-            if (picked == null || !"ready".equals(picked.getEngineStatus())) {
+            if (picked == null) {
                 storage.delete(stored.key());
                 throw BusinessException.badRequest("CLIP_IMAGE_AVATAR_VOICE_REQUIRED",
-                        "用照片创建数字分身需要先选一条已训练好的声音");
+                        "用照片创建数字分身要先有一条声音：可以录一段或传一个音频来训练，也可以直接选一条已有的声音");
+            }
+            // 还在训练中的声音不能用来建分身：供应商侧 speakerId 尚未就绪，
+            // 而且这一刻放行等于让用户为一个可能训练失败的声音先建分身、先付钱。
+            if (!"ready".equals(picked.getEngineStatus())) {
+                storage.delete(stored.key());
+                throw BusinessException.badRequest("CLIP_IMAGE_AVATAR_VOICE_NOT_READY",
+                        "这条声音还在训练中，等它训练好再用来创建数字分身");
             }
             DapAvatar a = avatarId == null || avatarId.isBlank()
                     ? DapAvatar.builder().id("DH-" + uuid(8)).ownerUserId(owner).name(avatarName(owner, name)).path("image").status("pending").engine(ENGINE).createdAt(now).build()
