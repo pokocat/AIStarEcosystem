@@ -25,7 +25,11 @@ public class ClipOfficialTailSeeder implements ApplicationRunner {
     @Override public void run(ApplicationArguments args) throws Exception {
         if (!enabled) return;
         // 2026-08-13 片尾换新：给新 assetId，否则 ensureBundledPreset 见同 id 直接返回旧素材。
-        seed("ct_shiti", reseed ? "ca_tail_story_v2" : "ca_tail_story", "为实体发声片尾", "clip/tails/story.mp4");
+        //
+        // ⚠️ 原来写成 `reseed ? "ca_tail_story_v2" : "ca_tail_story"`，副作用是 reseed=false 的环境
+        // （预发/生产的常态）每次部署都把**已经废弃的 v1** 重新种出来 —— 素材库里于是永远躺着一条
+        // 谁也用不到、用户又删不掉的「故事收束」。v2 就是当前唯一正确的那条，直接写死。
+        seed("ct_shiti", "ca_tail_story_v2", "为实体发声片尾", "clip/tails/story.mp4");
         // ct_kaimen / ct_shouyi 的片尾已停种（2026-08-14）：产品侧只保留「为实体发声」一个模板
         // （端上 catalog.js 的 OFFERED_TEMPLATE_IDS 只有 ct_shiti），这两条片尾没有任何模板会用到，
         // 却因为 preset 素材混排出现在每个用户的素材库里，还删不掉。种回来比留着更糟，所以直接不种。
