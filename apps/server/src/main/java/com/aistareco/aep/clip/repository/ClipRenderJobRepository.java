@@ -6,6 +6,16 @@ import java.util.*;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 public interface ClipRenderJobRepository extends JpaRepository<ClipRenderJob, String> {
+
+    /**
+     * 用户成片占用的存储字节。**只算 succeeded**：失败/取消的任务没有留下可播放的产物，
+     * 把它们算进配额等于让用户为一次失败长期付出空间代价。
+     */
+    @org.springframework.data.jpa.repository.Query(
+            "select coalesce(sum(j.outputBytes), 0) from ClipRenderJob j "
+          + "where j.externalOwnerId = :owner and j.status = 'succeeded'")
+    long sumOutputBytesByOwner(@org.springframework.data.repository.query.Param("owner") String owner);
+
     Optional<ClipRenderJob> findByIdAndExternalOwnerId(String id, String owner);
     Optional<ClipRenderJob> findByExternalOwnerIdAndClientRequestId(String owner, String requestId);
     List<ClipRenderJob> findTop20ByStatusInOrderByCreatedAtAsc(Collection<String> statuses);

@@ -56,7 +56,9 @@ public class ClipAssemblyService {
         this.qualityGate = qualityGate;
     }
 
-    public record Result(String outputCdnKey, String thumbnailCdnKey, int durationSec) {}
+    /** bytes = 成片本身 + 封面缩略图。作品要计入用户容量，字节数必须在生成的那一刻就记下来，
+  * 事后去存储里 stat 一遍既慢又会因清理而失真。 */
+    public record Result(String outputCdnKey, String thumbnailCdnKey, int durationSec, long bytes) {}
 
     public Result assemble(String owner, ClipProject project, Map<String, Object> jobState) {
         Path work = null;
@@ -122,7 +124,7 @@ public class ClipAssemblyService {
                     "mp4", "video/mp4", true);
             FileStorageService.StoredFile thumbStored = storage.storeExisting(thumbnail, "clip/thumbnails", owner,
                     "jpg", "image/jpeg", true);
-            return new Result(stored.key(), thumbStored.key(), duration);
+            return new Result(stored.key(), thumbStored.key(), duration, stored.bytes() + thumbStored.bytes());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -195,7 +197,7 @@ public class ClipAssemblyService {
                     "mp4", "video/mp4", true);
             FileStorageService.StoredFile thumbStored = storage.storeExisting(thumbnail, "clip/thumbnails", owner,
                     "jpg", "image/jpeg", true);
-            return new Result(stored.key(), thumbStored.key(), duration);
+            return new Result(stored.key(), thumbStored.key(), duration, stored.bytes() + thumbStored.bytes());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

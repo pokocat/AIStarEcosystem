@@ -41,7 +41,7 @@ public class ClipRenderWorkerState {
             if("assemble".equals(j.getStage())) {
                 p=projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).orElseThrow();
                 ClipAssemblyService.Result result=assembly.assembleMock(j.getExternalOwnerId(),p);
-                j.setOutputCdnKey(result.outputCdnKey());j.setThumbnailCdnKey(result.thumbnailCdnKey());j.setDurationSec(result.durationSec());
+                j.setOutputCdnKey(result.outputCdnKey());j.setThumbnailCdnKey(result.thumbnailCdnKey());j.setDurationSec(result.durationSec());j.setOutputBytes(result.bytes());
                 j.setStatus("succeeded");j.setProgress(100);j.setCompletedAt(now);
             } else advanceMock(j, now);
             if("succeeded".equals(j.getStatus())) {

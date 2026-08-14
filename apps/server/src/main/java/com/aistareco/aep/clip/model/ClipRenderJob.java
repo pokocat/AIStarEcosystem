@@ -27,6 +27,8 @@ public class ClipRenderJob {
     @Builder.Default private int creditsHeld = 0;
     @Convert(converter = JsonMapConverter.class) @Column(columnDefinition = "TEXT") private Map<String, Object> segmentJobsJson;
     @Column(length = 512) private String outputCdnKey;
+    /** 成片 + 缩略图占用的字节。计入用户容量（作品和素材共用一份额度）。 */
+    @Builder.Default private long outputBytes = 0;
     @Column(length = 512) private String thumbnailCdnKey;
     @Builder.Default private int durationSec = 0;
     @Column(columnDefinition = "TEXT") private String errorMessage;

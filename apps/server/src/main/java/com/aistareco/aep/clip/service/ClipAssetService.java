@@ -23,17 +23,56 @@ public class ClipAssetService {
     private static final Set<String> IMAGE = Set.of("image/jpeg", "image/png", "image/heic", "image/heif");
     private static final Set<String> AUDIO = Set.of("audio/mpeg", "audio/mp4", "audio/aac", "audio/wav");
     private final ClipAssetRepository repo; private final FileStorageService storage; private final ClipProperties props; private final FfmpegRunner ffmpeg;
+    private final com.aistareco.aep.clip.repository.ClipRenderJobRepository jobs;
     private final ClipAssetThumbnailExtractor thumbnailExtractor; private final ClipTemplateService templates;
     public ClipAssetService(ClipAssetRepository repo, FileStorageService storage, ClipProperties props, FfmpegRunner ffmpeg,
-                            ClipAssetThumbnailExtractor thumbnailExtractor, @org.springframework.context.annotation.Lazy ClipTemplateService templates) {
+                            ClipAssetThumbnailExtractor thumbnailExtractor, @org.springframework.context.annotation.Lazy ClipTemplateService templates,
+                            com.aistareco.aep.clip.repository.ClipRenderJobRepository jobs) {
         this.repo = repo; this.storage = storage; this.props = props; this.ffmpeg = ffmpeg; this.thumbnailExtractor = thumbnailExtractor;
-        this.templates = templates;
+        this.templates = templates; this.jobs = jobs;
     }
 
-    /** 素材库存储占用。端上用它显示容量条并在满了之前就提示。 */
-    public ClipDtos.AssetStorageDto storage(String owner) {
-        return new ClipDtos.AssetStorageDto(repo.sumBytesByOwner(owner), props.getMaxOwnerAssetBytes(),
+    /**
+     * 存储占用。端上用它显示容量条并在满了之前就提示。
+     *
+     * ★ **素材与作品共用一份额度**（2026-08-14 产品口径）。只算素材会让用户看着「还剩很多」，
+     *   实际磁盘早被成片吃满 —— 容量条说的必须是真实占用。
+     *
+     * @param extraQuotaBytes 用户额外买到的容量（军师侧的钻石扩容包合计）。传**增量**而不是总额：
+     *                        默认额度只有本服务知道，扩容权益只有军师知道，各报各知道的那一半，
+     *                        谁也不用复制对方的常量，也不用为了拿默认值多一次往返。
+     */
+    public ClipDtos.AssetStorageDto storage(String owner, long extraQuotaBytes) {
+        return new ClipDtos.AssetStorageDto(usedBytes(owner), effectiveQuota(extraQuotaBytes),
                 repo.countByExternalOwnerIdAndDeletedAtIsNull(owner));
+    }
+
+    private static final long MB = 1024L * 1024L;
+
+    /**
+     * 已用容量，**按总量向上取整到整 MB**。
+     *
+     * ★ 两个数都来自数据库列（clip_asset.bytes、clip_render_job.output_bytes），
+     *   查询就是两条 SUM —— **不扫存储、不 stat 文件**。
+     *
+     * ★ 为什么按总量取整而不是按单文件：单文件取整会让 100 张 200KB 的照片算成 100MB
+     *   而不是 20MB，在 200MB 的额度下等于凭空吃掉一半。取整只为让用户看到的数字干净，
+     *   不该变成一种隐性涨价。
+     *
+     * ★ 素材与作品共用一份额度：只算素材会让用户看着「还剩很多」，实际磁盘早被成片吃满。
+     */
+    public long usedBytes(String owner) {
+        return ceilMb(repo.sumBytesByOwner(owner) + jobs.sumOutputBytesByOwner(owner));
+    }
+
+    /** 向上取整到整 MB。0 仍然是 0 —— 空账号不该显示「已用 1MB」。 */
+    static long ceilMb(long bytes) {
+        if (bytes <= 0) return 0;
+        return ((bytes + MB - 1) / MB) * MB;
+    }
+
+    private long effectiveQuota(long extraQuotaBytes) {
+        return props.getMaxOwnerAssetBytes() + Math.max(0, extraQuotaBytes);
     }
 
     public List<AssetDto> list(String owner) {
@@ -41,14 +80,18 @@ public class ClipAssetService {
         rows.addAll(repo.findByPresetTrueAndDeletedAtIsNullOrderByCreatedAtDesc()); return rows.stream().map(this::dto).toList();
     }
     @Transactional public AssetDto upload(String owner, MultipartFile file, String kind, String label, boolean preset, String presetGroup) {
-        return upload(owner, file, kind, label, preset, presetGroup, null, null);
+        return upload(owner, file, kind, label, preset, presetGroup, null, null, 0);
+    }
+    @Transactional public AssetDto upload(String owner, MultipartFile file, String kind, String label, boolean preset, String presetGroup,
+                                          Integer clientWidth, Integer clientHeight) {
+        return upload(owner, file, kind, label, preset, presetGroup, clientWidth, clientHeight, 0);
     }
     /**
      * @param clientWidth  端上 {@code wx.chooseMedia} 报的像素宽，**仅作探测失败时的兜底**
      * @param clientHeight 同上；两者必须同时为正才采信，任一缺失即整体丢弃（半个尺寸没有意义）
      */
     @Transactional public AssetDto upload(String owner, MultipartFile file, String kind, String label, boolean preset, String presetGroup,
-                                          Integer clientWidth, Integer clientHeight) {
+                                          Integer clientWidth, Integer clientHeight, long extraQuotaBytes) {
         String normalized = kind == null ? "video" : kind.trim().toLowerCase(Locale.ROOT);
         if (!KINDS.contains(normalized)) throw BusinessException.badRequest("CLIP_ASSET_NOT_ALLOWED", "素材类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_ASSET_REQUIRED", "未收到素材");
@@ -56,10 +99,12 @@ public class ClipAssetService {
         // 总容量闸：单文件合规不代表还装得下。放在落盘之前，避免先写文件再回滚。
         // 预置素材是平台提供的，不占用户配额。
         if (!preset) {
-            long used = repo.sumBytesByOwner(owner);
-            if (used + file.getSize() > props.getMaxOwnerAssetBytes()) {
+            // 口径必须与容量条**逐字一致**：同样是「素材 + 成片」，同样向上取整到整 MB。
+            // 差一点点就会变成「条子显示没满却传不上去」——用户无从解释的那种怪现象。
+            long used = usedBytes(owner);
+            if (used + ceilMb(file.getSize()) > effectiveQuota(extraQuotaBytes)) {
                 throw BusinessException.badRequest("CLIP_ASSET_QUOTA_EXCEEDED",
-                        "素材库空间不够了，删掉一些不用的素材再上传");
+                        "空间不够了，删掉一些不用的素材或成片，也可以去扩容");
             }
         }
         FileStorageService.StoredFile stored = storage.store(file, "clip/assets", preset ? "preset" : owner);

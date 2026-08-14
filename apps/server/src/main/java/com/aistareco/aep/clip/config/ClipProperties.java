@@ -17,7 +17,11 @@ public class ClipProperties {
     private long staleMs = 600_000L;
     private long maxAssetBytes = 104_857_600L;
     /** 单个用户素材库的总容量上限。默认 2 GiB —— 单文件上限 100MB，够存约 20 条素材。 */
-    private long maxOwnerAssetBytes = 2L * 1024 * 1024 * 1024;
+    /**
+     * 每个用户的默认存储额度，**素材与作品共用这一份**（2026-08-14 产品口径，从 2GB 调到 200MB）。
+     * 不够用时由用户拿钻石扩容 —— 扩容额度由军师侧计算后随请求传下来（见 quotaBytes）。
+     */
+    private long maxOwnerAssetBytes = 200L * 1024 * 1024;
     private int maxAvatarSegmentSec = 30;
     private int trashRetentionDays = 30;
     private double minAverageLuma = 18.0;
