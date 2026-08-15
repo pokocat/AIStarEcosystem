@@ -113,16 +113,24 @@ class ClipAssetQuotaTest {
     }
 
     @Test
-    @DisplayName("上层传下来的扩容额度优先于默认额度；不传或非正数才回落默认")
-    void quotaOverrideWins() {
+    @DisplayName("扩容额度是加在默认额度之上的增量，不是替换它的总额")
+    void purchasedQuotaAddsToDefault() {
         ClipAssetRepository repo = mock(ClipAssetRepository.class);
         ClipProperties props = new ClipProperties();
         props.setMaxOwnerAssetBytes(2048);
         var service = serviceWith(repo, props, mock(FileStorageService.class));
 
-        // 钻石扩容的权益归军师管（钻石在那边），这里只认它算好的有效额度。
-        assertThat(service.storage("owner-1", 9999).limitBytes()).isEqualTo(9999L);
+        // extraQuotaBytes 是**增量**：默认额度只有本服务知道，钻石扩容包只有军师知道，
+        // 各报各知道的那一半，谁也不用复制对方的常量（见 ClipAssetService#storage）。
+        //
+        // 这条曾经按「军师报总额、这里照单全收」写，从 7ffa80cc 落地起就没绿过。那个口径也走不通：
+        // 军师发过来的是 purchasedStorageBytes()，只累加已购扩容包 —— 没买过的用户是 0，
+        // 照总额解释他们的额度会变成 0，谁都传不了文件；军师那边还要用 limitBytes - purchased
+        // 反推基础额度，只有「基础 + 已购」才算得对。
+        assertThat(service.storage("owner-1", 9999).limitBytes()).isEqualTo(2048L + 9999L);
+        // 没买过扩容 → 只有默认额度，绝不能算成 0。
         assertThat(service.storage("owner-1", 0).limitBytes()).isEqualTo(2048L);
+        // 脏值（负数）当没买处理，不许把额度算得比默认还小。
         assertThat(service.storage("owner-1", -1).limitBytes()).isEqualTo(2048L);
     }
 
@@ -144,6 +152,32 @@ class ClipAssetQuotaTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("空间不够");
         verify(storage, never()).store(any(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("买了扩容包就得真的传得上去：闸也要认这份增量")
+    void quotaGateHonoursPurchasedQuota() {
+        ClipAssetRepository repo = mock(ClipAssetRepository.class);
+        ClipProperties props = new ClipProperties();
+        long mb = 1024L * 1024L;
+        props.setMaxOwnerAssetBytes(3 * mb);
+        // 已经顶满默认额度（素材 1MB + 成片 2MB = 3MB）。此时用户花钻石买了 100MB 扩容。
+        when(repo.sumBytesByOwner("owner-1")).thenReturn(mb);
+        when(jobs.sumOutputBytesByOwner("owner-1")).thenReturn(2 * mb);
+        var file = new MockMultipartFile("file", "a.mp4", "video/mp4", new byte[200]);
+
+        // 容量条（storage）与上传闸（upload）必须同一口径，否则会出现「条子说还剩 100MB、
+        // 传上去说空间不够」——用户已经付过钱了，这种不一致最伤。
+        assertThat(serviceWith(repo, props, mock(FileStorageService.class))
+                .storage("owner-1", 100 * mb).limitBytes()).isEqualTo(103 * mb);
+
+        FileStorageService storage = mock(FileStorageService.class);
+        when(storage.store(any(), anyString(), anyString())).thenThrow(new IllegalStateException("passed-quota-gate"));
+
+        assertThatThrownBy(() -> serviceWith(repo, props, storage)
+                .upload("owner-1", file, "video", null, false, null, null, null, 100 * mb))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("passed-quota-gate");
     }
 
     @Test
