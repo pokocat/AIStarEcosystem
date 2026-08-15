@@ -226,4 +226,90 @@ class ClipAvatarServiceTest {
         assertEquals("avatar-scene", service.requiredAvatarEngineRef("owner-1", "DH-scene"));
         assertEquals("speaker-scene", service.requiredVoiceEngineRef("owner-1", "DH-scene", null));
     }
+
+    /* ── 独立声音的状态刷新（2026-08-15 事故）────────────────────────────────────
+     *
+     * 此前刷新只长在「形象视图」这一条路径上。一条没有关联形象的声音，石榴早已 ready，
+     * 本地却永远停在 training：创建数字人时按 ready 过滤选不到它，下游那笔预扣结算不了，
+     * 最后被超时兜底当成失败退款。下面三条钉住新契约。
+     */
+
+    private DapVoice trainingVoice() {
+        return DapVoice.builder().id("VC-3d19e730").ownerUserId("owner-1").name("专属声音").kind("clone")
+                .engine("shiliu").engineRef("1873405707094174").audioKey("clip/v.m4a").engineStatus("training").build();
+    }
+
+    @Test
+    @DisplayName("没有关联形象的声音，也必须向石榴刷新真实状态并落库")
+    void standaloneVoiceStillRefreshesFromEngine() {
+        DapVoice voice = trainingVoice();
+        when(voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(List.of(voice));
+        when(gateway.query("speaker:1873405707094174"))
+                .thenReturn(new ShiliuGateway.Task("speaker:1873405707094174", "succeeded", null, "1873405707094174", null, 100));
+
+        var list = service.voiceList("owner-1");
+
+        assertEquals(1, list.size());
+        assertEquals("ready", list.get(0).status(), "石榴已经训好了，列表就必须说 ready —— 端上据此才选得到这条声音");
+        assertEquals(100, list.get(0).progress());
+        verify(voices).save(argThat(v -> "ready".equals(v.getEngineStatus()) && v.getEngineTrainedAt() != null));
+    }
+
+    @Test
+    @DisplayName("终态声音不再回查上游：白耗供应商配额")
+    void terminalVoicesAreNotQueriedAgain() {
+        DapVoice ready = DapVoice.builder().id("VC-done").ownerUserId("owner-1").name("旧声音").kind("clone")
+                .engine("shiliu").engineRef("1873405707094175").engineStatus("ready").engineTrainedAt(Instant.now()).build();
+        when(voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(List.of(ready));
+
+        assertEquals("ready", service.voiceList("owner-1").get(0).status());
+        verify(gateway, never()).query(anyString());
+    }
+
+    @Test
+    @DisplayName("上游查询失败不许把整个列表打挂：保留本地状态继续返回")
+    void listSurvivesEngineOutage() {
+        DapVoice voice = trainingVoice();
+        when(voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(List.of(voice));
+        when(gateway.query("speaker:1873405707094174")).thenThrow(new RuntimeException("石榴超时"));
+
+        var list = service.voiceList("owner-1");
+
+        assertEquals(1, list.size(), "供应商抖一下不该让用户看不到自己的声音");
+        assertEquals("training", list.get(0).status(), "问不出来就保持原状，绝不猜成 ready 或 failed");
+        verify(voices, never()).save(any(DapVoice.class));
+    }
+
+    @Test
+    @DisplayName("单条查询同样刷新：训练页按 voiceId 轮询靠的就是它")
+    void singleVoiceViewRefreshes() {
+        DapVoice voice = trainingVoice();
+        when(voices.findByIdAndOwnerUserId("VC-3d19e730", "owner-1")).thenReturn(Optional.of(voice));
+        when(gateway.query("speaker:1873405707094174"))
+                .thenReturn(new ShiliuGateway.Task("speaker:1873405707094174", "succeeded", null, "1873405707094174", null, 100));
+
+        assertEquals("ready", service.voiceView("owner-1", "VC-3d19e730").status());
+        verify(voices).save(argThat(v -> "ready".equals(v.getEngineStatus())));
+    }
+
+    @Test
+    @DisplayName("只有声音、没有形象时，view(owner) 这条兜底路径也要刷新")
+    void voiceOnlyAvatarViewRefreshes() {
+        DapVoice voice = trainingVoice();
+        when(avatars.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(Optional.empty());
+        when(voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc("owner-1", "shiliu"))
+                .thenReturn(Optional.of(voice));
+        when(gateway.query("speaker:1873405707094174"))
+                .thenReturn(new ShiliuGateway.Task("speaker:1873405707094174", "succeeded", null, "1873405707094174", null, 100));
+
+        var view = service.view("owner-1");
+
+        assertNotNull(view);
+        assertEquals("ready", view.voiceStatus());
+        assertEquals(100, view.voiceProgress());
+    }
 }

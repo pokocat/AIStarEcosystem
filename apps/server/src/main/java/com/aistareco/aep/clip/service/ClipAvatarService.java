@@ -44,10 +44,11 @@ public class ClipAvatarService {
         if (a != null) return viewResolved(owner, a);
         DapVoice voice = voices.findFirstByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE).orElse(null);
         if (voice == null) return null;
+        VoiceRefresh refreshed = refreshVoice(voice);
         String voiceStatus = status(voice.getEngineStatus());
         return new AvatarDto("", "未创建形象", "none", voiceStatus, "seed".equals(voice.getKind()) ? "video" : "dedicated", null, null,
-                voice.getEngineTrainedAt() == null ? null : voice.getEngineTrainedAt().toString(), 0, "ready".equals(voiceStatus) ? 100 : progress(voice.getEngineStatus()),
-                null, null, ENGINE, false, voice.getId(), voice.getName());
+                voice.getEngineTrainedAt() == null ? null : voice.getEngineTrainedAt().toString(), 0, "ready".equals(voiceStatus) ? 100 : refreshed.progress(),
+                null, refreshed.message(), ENGINE, false, voice.getId(), voice.getName());
     }
 
     @Transactional
@@ -65,16 +66,11 @@ public class ClipAvatarService {
     private AvatarDto viewResolved(String owner, DapAvatar a) {
         DapVoice v = linkedVoice(owner, a);
         ShiliuGateway gateway = shiliu.required();
-        int voiceProgress = progress(v == null ? null : v.getEngineStatus());
+        VoiceRefresh refreshed = refreshVoice(v);
+        int voiceProgress = refreshed.progress();
         int imageProgress = progress(a == null ? null : a.getEngineStatus());
-        String voiceMessage = null;
+        String voiceMessage = refreshed.message();
         String imageMessage = null;
-        if (v != null && "training".equals(v.getEngineStatus()) && v.getEngineRef() != null) {
-            ShiliuGateway.Task task = gateway.query("speaker:" + v.getEngineRef());
-            voiceProgress = task.progress() == null ? voiceProgress : task.progress();
-            if ("succeeded".equals(task.status())) { v.setEngineStatus("ready"); v.setEngineTrainedAt(Instant.now()); voices.save(v); }
-            else if ("failed".equals(task.status())) { v.setEngineStatus("failed"); voiceMessage = friendlyFailure(task.error(), "声音训练失败，请重新录制"); voices.save(v); }
-        }
         if (a != null && "training".equals(a.getEngineStatus()) && a.getEngineRef() != null) {
             ShiliuGateway.Task task = gateway.query("avatar:" + a.getEngineRef());
             imageProgress = task.progress() == null ? imageProgress : task.progress();
@@ -104,6 +100,42 @@ public class ClipAvatarService {
                 v == null || v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(),
                 imageProgress, voiceProgress, imageMessage, voiceMessage, ENGINE, false,
                 v == null ? null : v.getId(), v == null ? null : v.getName());
+    }
+
+    /** 一次刷新的产出：给端上看的进度，以及失败时的人话原因。状态本身已经写回 DapVoice。 */
+    private record VoiceRefresh(int progress, String message) {}
+
+    /**
+     * 把一条在训声音的真实状态从石榴刷回本地。
+     *
+     * ★ 为什么必须独立成一步：在此之前，刷新只长在「形象视图」这一条路径上（viewResolved）。一条
+     *   **没有关联形象**的独立声音永远走不到那里 —— 石榴早就 ready 了，本地却一直停在 training。
+     *   连锁后果有三个：创建数字人时按 ready 过滤，这条声音选不到；下游（军师）拿不到终态，那笔
+     *   预扣结算不了；最后被 6 小时超时兜底当成「训练失败」误退，形成「上游已出货、账却退款」。
+     *   一条声音刷不刷得到状态，不该取决于它旁边有没有形象。
+     *
+     * 只碰 training 且有 engineRef 的：终态不再回查（白耗供应商配额），mock 时代的记录没有真实
+     * speaker 也无从查起。查询失败**保留本地状态**并继续 —— 列表接口不能因为一条声音查不动就整个 500。
+     */
+    private VoiceRefresh refreshVoice(DapVoice v) {
+        int local = progress(v == null ? null : v.getEngineStatus());
+        if (v == null || !"training".equals(v.getEngineStatus()) || v.getEngineRef() == null) return new VoiceRefresh(local, null);
+        ShiliuGateway.Task task;
+        try { task = shiliu.required().query("speaker:" + v.getEngineRef()); }
+        catch (RuntimeException e) {
+            log.warn("[clip-avatar] 刷新声音状态失败 voice={} ref={}: {}", v.getId(), v.getEngineRef(), e.getMessage());
+            return new VoiceRefresh(local, null);
+        }
+        int remote = task.progress() == null ? local : task.progress();
+        if ("succeeded".equals(task.status())) {
+            v.setEngineStatus("ready"); v.setEngineTrainedAt(Instant.now()); voices.save(v);
+            return new VoiceRefresh(100, null);
+        }
+        if ("failed".equals(task.status())) {
+            v.setEngineStatus("failed"); voices.save(v);
+            return new VoiceRefresh(remote, friendlyFailure(task.error(), "声音训练失败，请重新录制"));
+        }
+        return new VoiceRefresh(remote, null);
     }
 
     /** 重命名声音。自动名已按来源+日期区分，这里让用户还能起自己记得住的名字。 */
@@ -156,16 +188,31 @@ public class ClipAvatarService {
         return out;
     }
 
+    /**
+     * 声音列表。**会顺手把在训的那几条刷成真实状态** —— 这是独立声音唯一的刷新入口，
+     * 不刷就永远停在 training（见 refreshVoice）。终态的声音一条都不回查，所以正常情况下
+     * 这里对供应商的调用次数 = 用户当前在训的声音数（通常 0~1），不会把列表拖慢。
+     */
     @Transactional
     public List<VoiceDto> voiceList(String owner) {
         return voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)
-                .stream().map(this::voiceDto).toList();
+                .stream().map(v -> voiceDto(v, refreshVoice(v))).toList();
+    }
+
+    /** 单条声音。给下游按 voiceId 轮询用：只训了声音、没建形象时，这是唯一能拿到终态的窄接口。 */
+    @Transactional
+    public VoiceDto voiceView(String owner, String id) {
+        DapVoice v = voices.findByIdAndOwnerUserId(id, owner).filter(x -> x.getDeletedAt() == null && ENGINE.equals(x.getEngine()))
+                .orElseThrow(() -> BusinessException.notFound("CLIP_VOICE_NOT_FOUND", "声音不存在或无权使用"));
+        return voiceDto(v, refreshVoice(v));
     }
 
     /** 列表与重命名共用同一转换口径，避免两处各写一份导致字段漂移。 */
-    private VoiceDto voiceDto(DapVoice v) {
+    private VoiceDto voiceDto(DapVoice v) { return voiceDto(v, new VoiceRefresh(progress(v.getEngineStatus()), null)); }
+
+    private VoiceDto voiceDto(DapVoice v, VoiceRefresh refreshed) {
         String current = status(v.getEngineStatus());
-        int p = "ready".equals(current) ? 100 : progress(v.getEngineStatus());
+        int p = "ready".equals(current) ? 100 : refreshed.progress();
         return new VoiceDto(v.getId(), v.getName(), current, "seed".equals(v.getKind()) ? "video" : "dedicated",
                 v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(), p);
     }
