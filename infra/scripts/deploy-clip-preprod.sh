@@ -33,6 +33,9 @@ env_file="$1"
 test_media_mode="$2"
 command -v java >/dev/null
 sudo test -s "$env_file"
+# /tmp 是宿主机 50% 内存大小的 tmpfs。历史版本每次上传带时间戳 JAR 后未删除，
+# 多次预发部署会把物理内存逐步吃满；当前部署先兜底清理超过 60 分钟的同类暂存。
+find /tmp -maxdepth 1 -type f -user "$(id -un)" -name 'aistareco-clip-*.jar' -mmin +60 -delete
 if sudo grep -qE '^AEP_CLIP_FORCE_MOCK=' "$env_file"; then
   sudo sed -i -E "s#^AEP_CLIP_FORCE_MOCK=.*#AEP_CLIP_FORCE_MOCK=${test_media_mode}#" "$env_file"
 else
@@ -58,6 +61,10 @@ scp -q -i "$SSH_KEY" "$JAR" "$DEPLOY_HOST:$REMOTE_TMP"
 ssh -i "$SSH_KEY" -o BatchMode=yes "$DEPLOY_HOST" bash -s -- "$REMOTE_TMP" "$REMOTE_ROOT" "$ENV_FILE" "$SERVICE" "$RELEASE_ID" <<'REMOTE'
 set -Eeuo pipefail
 tmp="$1"; root="$2"; env_file="$3"; service="$4"; release="$5"
+cleanup_stage() {
+  rm -f "$tmp"
+}
+trap cleanup_stage EXIT
 sudo install -d -o junshi -g junshi -m 0750 "$root/server" "$root/data" "$root/cdn" "$root/file-storage"
 sudo install -o junshi -g junshi -m 0640 "$tmp" "$root/server/app.jar.new"
 sudo mv "$root/server/app.jar.new" "$root/server/app.jar"
