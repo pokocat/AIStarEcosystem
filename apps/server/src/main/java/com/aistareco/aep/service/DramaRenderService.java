@@ -363,6 +363,7 @@ public class DramaRenderService {
         String endpointId = text(body, "endpoint_id");
         long clipCost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CLIP, 30);
         AiModelEndpoint chosenVideoEp = null;
+        Integer capMaxRefImages = null;
         Boolean capFirstLastFrame = null;
         Boolean capSubjectReference = null;
         if (endpointId != null && !endpointId.isBlank()) {
@@ -378,6 +379,7 @@ public class DramaRenderService {
                             "所选出片模型单条最长支持 " + resolved.candidate().getMaxDurationSec() + " 秒，请调整分镜时长。");
                 }
                 clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
+                capMaxRefImages = resolved.candidate().getMaxRefImages();
                 capFirstLastFrame = resolved.candidate().getSupportsFirstLastFrame();
                 capSubjectReference = resolved.candidate().getSupportsSubjectReference();
             }
@@ -394,6 +396,7 @@ public class DramaRenderService {
                                 "默认出片模型单条最长支持 " + resolved.candidate().getMaxDurationSec() + " 秒，请调整分镜时长。");
                     }
                     clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
+                    capMaxRefImages = resolved.candidate().getMaxRefImages();
                     capFirstLastFrame = resolved.candidate().getSupportsFirstLastFrame();
                     capSubjectReference = resolved.candidate().getSupportsSubjectReference();
                 }
@@ -407,9 +410,10 @@ public class DramaRenderService {
 
         // C-3：服务端参考装配（视频线）。shot_ref 时服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；
         // 本镜末帧 → 同场下一镜开场首帧），无 shot_ref 时退回显式 frame_url/last_frame_url。
-        // clip 线只用首/末帧两槽，不走 maxRefImages 裁剪 → 传 legacy 默认占位。
+        // clip 线只用首/末帧两槽；maxRefImages=0 明确表示当前适配仅开放 t2v，首帧也不得误报已送达。
         DramaReferenceAssembler.ClipAssembly assembled = assembler.assembleClip(body, userId,
-                new DramaReferenceAssembler.Capability(DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES, flf,
+                new DramaReferenceAssembler.Capability(capMaxRefImages != null
+                        ? capMaxRefImages : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES, flf,
                         capSubjectReference != null ? capSubjectReference : false));
         String frameUrl = assembled.firstFrameUrl();
         String lastFrameUrl = assembled.lastFrameUrl();
