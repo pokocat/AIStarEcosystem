@@ -141,6 +141,15 @@ class DramaReferenceAssemblerTest {
         assertTrue(local.stream().allMatch(r -> "local_unfetchable".equals(r.reason())));
     }
 
+    @Test
+    void clip_first_frame_reports_not_applied_for_text_only_candidate() {
+        List<AppliedRef> refs = DramaReferenceAssembler.classifyClipFrames(
+                "https://oss.test/f.png", null, false, false);
+        assertEquals(1, refs.size());
+        assertFalse(refs.get(0).applied());
+        assertEquals("model_no_image_input", refs.get(0).reason());
+    }
+
     // ── 集成：shot_ref 定位 episodeDocs 嵌套 shot + 角色装配 ─────────────────────────
 
     private void stubProject(String projectId, String ownerUserId, ObjectNode payload) {

@@ -117,18 +117,26 @@ public class MaterialVideoWorker {
 
             MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
             if (poll.succeeded()) {
-                if (poll.videoUrl() == null || poll.videoUrl().isBlank()) {
-                    markFailed(jobId, "视频大模型返回成功但未给出成片 URL（taskId=" + submit.taskId() + "）");
-                    releaseCredits(job, "视频生成无成片 URL");
+                boolean hasVideoUrl = poll.videoUrl() != null && !poll.videoUrl().isBlank();
+                boolean hasProtectedAsset = poll.outputAssetId() != null && !poll.outputAssetId().isBlank();
+                if (!hasVideoUrl && !hasProtectedAsset) {
+                    markFailed(jobId, "视频大模型返回成功但未给出成片 URL 或产物资产（taskId=" + submit.taskId() + "）");
+                    releaseCredits(job, "视频生成无成片产物");
                     return;
                 }
                 String videoUrl = poll.videoUrl();
                 String thumbnailUrl = poll.thumbnailUrl();
                 String lastFrameUrl = poll.lastFrameUrl();
                 String lastFrameCdnKey = null;
+                if (hasProtectedAsset && (!props.isUploadToCdn() || cdnUploader == null)) {
+                    markFailed(jobId, "上游返回受保护产物，但当前未配置 OSS 镜像，无法安全交付视频");
+                    releaseCredits(job, "视频产物镜像未配置");
+                    return;
+                }
                 if (props.isUploadToCdn() && cdnUploader != null) {
                     try {
-                        CdnMirrorResult mirror = mirrorToCdn(jobId, videoUrl, thumbnailUrl, lastFrameUrl);
+                        CdnMirrorResult mirror = mirrorToCdn(jobId, videoUrl, thumbnailUrl, lastFrameUrl,
+                                submit, poll.outputAssetId());
                         videoUrl = mirror.videoUrl();
                         thumbnailUrl = mirror.thumbnailUrl();
                         lastFrameCdnKey = mirror.lastFrameKey();
@@ -173,13 +181,16 @@ public class MaterialVideoWorker {
 
     // ── 成片持久化 ──────────────────────────────────────────────────────────
 
-    private CdnMirrorResult mirrorToCdn(String jobId, String videoUrl, String thumbnailUrl, String lastFrameUrl)
+    private CdnMirrorResult mirrorToCdn(String jobId, String videoUrl, String thumbnailUrl, String lastFrameUrl,
+                                        MaterialVideoModelClient.SubmitResult submit, String outputAssetId)
             throws IOException, InterruptedException {
         DownloadedMedia video = null;
         DownloadedMedia thumbnail = null;
         DownloadedMedia lastFrame = null;
         try {
-            video = downloadMedia(videoUrl, "material-video-" + jobId, ".mp4", "video/mp4");
+            video = outputAssetId != null && !outputAssetId.isBlank()
+                    ? downloadProtectedOutput(submit, outputAssetId, "material-video-" + jobId)
+                    : downloadMedia(videoUrl, "material-video-" + jobId, ".mp4", "video/mp4");
             String videoKey = "material-videos/" + jobId + "/video" + video.extension();
             var uploadedVideo = cdnUploader.upload(video.path(), videoKey, video.contentType());
 
@@ -248,6 +259,33 @@ public class MaterialVideoWorker {
                     .orElse(defaultContentType);
             String extension = extensionFor(uri, contentType, defaultExtension);
             return new DownloadedMedia(tmp, contentType, extension);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            try { Files.deleteIfExists(tmp); } catch (IOException ignore) { /* best-effort cleanup */ }
+            throw e;
+        }
+    }
+
+    private DownloadedMedia downloadProtectedOutput(MaterialVideoModelClient.SubmitResult submit, String assetId,
+                                                      String tmpPrefix)
+            throws IOException, InterruptedException {
+        Path tmp = Files.createTempFile(tmpPrefix + "-", ".mp4");
+        try {
+            HttpResponse<Path> resp = modelClient.downloadOutputAsset(submit, assetId, tmp);
+            int code = resp.statusCode();
+            if (code < 200 || code >= 300) {
+                throw new IOException("protected asset download HTTP " + code);
+            }
+            long size = Files.size(tmp);
+            long max = props.getMaxDownloadBytes();
+            if (max > 0 && size > max) {
+                throw new IOException("downloaded file too large: " + size + " bytes > " + max);
+            }
+            String contentType = resp.headers().firstValue("content-type")
+                    .map(MaterialVideoWorker::normalizeContentType)
+                    .filter(s -> !s.isBlank())
+                    .orElse("video/mp4");
+            return new DownloadedMedia(tmp, contentType, extensionFor(URI.create("https://asset.invalid/output"),
+                    contentType, ".mp4"));
         } catch (IOException | InterruptedException | RuntimeException e) {
             try { Files.deleteIfExists(tmp); } catch (IOException ignore) { /* best-effort cleanup */ }
             throw e;

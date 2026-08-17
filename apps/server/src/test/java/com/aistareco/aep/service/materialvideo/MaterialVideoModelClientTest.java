@@ -1,11 +1,15 @@
 package com.aistareco.aep.service.materialvideo;
 
+import com.aistareco.aep.config.MaterialVideoProperties;
+import com.aistareco.aep.model.AiModelEndpoint;
+import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * 视频大模型响应解析的多形态兜底（normalizeStatus / extractVideoUrl / extractProgressPct）。
@@ -30,6 +34,7 @@ class MaterialVideoModelClientTest {
         assertEquals("succeeded", MaterialVideoModelClient.normalizeStatus("succeeded"));
         assertEquals("succeeded", MaterialVideoModelClient.normalizeStatus("Completed"));
         assertEquals("succeeded", MaterialVideoModelClient.normalizeStatus("done"));
+        assertEquals("succeeded", MaterialVideoModelClient.normalizeStatus("ready"));
         // 失败类
         assertEquals("failed", MaterialVideoModelClient.normalizeStatus("FAIL"));         // 智谱
         assertEquals("failed", MaterialVideoModelClient.normalizeStatus("failed"));
@@ -122,5 +127,42 @@ class MaterialVideoModelClientTest {
         MaterialVideoModelClient.Dimensions d = MaterialVideoModelClient.dimensionsForAspect("9:16");
         assertEquals(768, d.width());
         assertEquals(1152, d.height());
+    }
+
+    @Test
+    void jusuan_protocol_builds_controlled_768p_request() {
+        MaterialVideoModelClient client = new MaterialVideoModelClient(
+                null, new MaterialVideoProperties(), null, null);
+        var body = client.buildSubmitBody("jusuan-media", "minimax-h3",
+                "雨夜街道上的电影感推镜", 5, "9:16");
+        assertEquals("minimax-h3", body.get("model"));
+        assertEquals("雨夜街道上的电影感推镜", body.get("prompt"));
+        assertEquals("768p", body.get("resolutionTier"));
+        assertEquals("portrait", body.get("orientation"));
+        assertEquals(5, body.get("seconds"));
+        assertEquals("t2v", body.get("generationMode"));
+    }
+
+    @Test
+    void jusuan_protocol_detects_endpoint_and_rejects_out_of_range_duration() {
+        AiModelEndpoint endpoint = AiModelEndpoint.builder()
+                .name("MiniMax H3")
+                .baseUrl("https://api.jusuanhub.com:10443/v1")
+                .build();
+        assertEquals("jusuan-media", MaterialVideoModelClient.protocolFor(endpoint, "minimax-h3"));
+        assertEquals("landscape", MaterialVideoModelClient.orientationForAspect("16:9"));
+        assertEquals(15, MaterialVideoModelClient.requireJusuanDuration(15));
+        assertThrows(BusinessException.class, () -> MaterialVideoModelClient.requireJusuanDuration(4));
+        assertThrows(BusinessException.class, () -> MaterialVideoModelClient.requireJusuanDuration(16));
+    }
+
+    @Test
+    void extractOutputAssetId_accepts_protected_job_shapes() {
+        assertEquals("asset_video_1", MaterialVideoModelClient.extractOutputAssetId(
+                json("{\"output_asset_id\":\"asset_video_1\"}")));
+        assertEquals("asset_video_2", MaterialVideoModelClient.extractOutputAssetId(
+                json("{\"data\":{\"output\":\"ignored\",\"asset_id\":\"asset_video_2\"}}")));
+        assertEquals("asset_video_3", MaterialVideoModelClient.extractOutputAssetId(
+                json("{\"output_assets\":[{\"id\":\"asset_video_3\"}]}")));
     }
 }

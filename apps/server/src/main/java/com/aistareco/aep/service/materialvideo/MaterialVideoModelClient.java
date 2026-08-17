@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -51,6 +52,7 @@ public class MaterialVideoModelClient {
     private static final String PROTOCOL_GENERIC = "generic";
     private static final String PROTOCOL_AGNES = "agnes";
     private static final String PROTOCOL_SEEDANCE = "seedance";
+    private static final String PROTOCOL_JUSUAN_MEDIA = "jusuan-media";
     private static final int AGNES_FRAME_RATE = 24;
 
     private final AiModelInvocationService invocation;
@@ -79,6 +81,17 @@ public class MaterialVideoModelClient {
     /** 失败快：未绑定端点 / 无 apiKey 时抛 VIDEO_NOT_CONFIGURED（带明确提示）。 */
     public void ensureConfigured() {
         requireKey(requireEndpoint(null));
+    }
+
+    /** 提交/冻结积分前的模型协议校验；目前 H3 额外约束 5..15 秒。 */
+    public void validateRequest(String endpointId, int durationSec) {
+        AiModelEndpoint endpoint = requireEndpoint(endpointId);
+        requireKey(endpoint);
+        String model = endpoint.getModel() != null && !endpoint.getModel().isBlank()
+                ? endpoint.getModel() : props.getDefaultModel();
+        if (PROTOCOL_JUSUAN_MEDIA.equals(protocolFor(endpoint, model))) {
+            requireJusuanDuration(durationSec);
+        }
     }
 
     /**
@@ -141,11 +154,11 @@ public class MaterialVideoModelClient {
         }
         try {
             JsonNode root = OM.readTree(resp.body());
-            String taskId = firstText(root, "id", "task_id", "request_id", "taskId");
+            String taskId = firstText(root, "id", "job_id", "task_id", "request_id", "jobId", "taskId");
             String videoId = firstText(root, "video_id", "videoId");
             if (taskId == null) {
                 JsonNode data = root.get("data");
-                if (data != null) taskId = firstText(data, "id", "task_id", "request_id", "taskId");
+                if (data != null) taskId = firstText(data, "id", "job_id", "task_id", "request_id", "jobId", "taskId");
             }
             if (videoId == null) {
                 JsonNode data = root.get("data");
@@ -164,7 +177,8 @@ public class MaterialVideoModelClient {
             recordVideoUsage(p, model, durationSec, true, ownerUserId, appCode, requestId,
                     (taskId != null && !taskId.isBlank()) ? taskId : videoId,
                     elapsedMs(startNanos), null, null);
-            return new SubmitResult(taskId, videoId, p.getName(), model, protocol, endpointId);
+            // 无论调用方是否显式选端点，都冻结实际 endpoint id；轮询/受保护资产读取不可随默认绑定漂移。
+            return new SubmitResult(taskId, videoId, p.getName(), model, protocol, p.getId());
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -270,6 +284,7 @@ public class MaterialVideoModelClient {
             String videoUrl = extractVideoUrl(root);
             String thumb = extractThumb(root);
             String lastFrameUrl = extractLastFrameUrl(root);
+            String outputAssetId = extractOutputAssetId(root);
             Integer progressPct = extractProgressPct(root);
             String failReason = "failed".equals(status) ? extractFailReason(root) : null;
             if ("failed".equals(status)) {
@@ -282,7 +297,8 @@ public class MaterialVideoModelClient {
                         p.getName(), submit.protocol(), idForLog, status, rawStatus, progressPct,
                         videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
             }
-            return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason, lastFrameUrl);
+            return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason, lastFrameUrl,
+                    outputAssetId);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -340,8 +356,8 @@ public class MaterialVideoModelClient {
 
     // ── 协议适配 ──────────────────────────────────────────────────────────────
 
-    private Map<String, Object> buildSubmitBody(String protocol, String model, String prompt,
-                                                int durationSec, String aspectRatio) {
+    Map<String, Object> buildSubmitBody(String protocol, String model, String prompt,
+                                        int durationSec, String aspectRatio) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
 
@@ -380,6 +396,18 @@ public class MaterialVideoModelClient {
             return body;
         }
 
+        // 聚算 JusuanHub 统一媒体协议：受控规格字段替代 width/height/fps 等原始运行时参数。
+        // 当前 MaterialVideo 管线只开放 t2v；图片模式要求先上传为平台 asset_id，不能把短期 URL
+        // 直接冒充 asset id。候选能力因此先如实标为不支持首尾帧，后续补齐 input asset 上传再开放。
+        if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
+            body.put("prompt", nz(stripFrameUrlHint(prompt)));
+            body.put("resolutionTier", "768p");
+            body.put("orientation", orientationForAspect(aspectRatio));
+            body.put("seconds", requireJusuanDuration(durationSec));
+            body.put("generationMode", "t2v");
+            return body;
+        }
+
         // GENERIC：多数厂商忽略不认识的字段；带上时长/比例，并 best-effort 带首/尾帧（i2v）。
         // 下游不支持首尾帧时字段被忽略、不报错（§8.0：传入不生效 ≠ 静默伪造产物）。
         if (durationSec > 0) body.put("duration", durationSec);
@@ -415,6 +443,9 @@ public class MaterialVideoModelClient {
         if (PROTOCOL_SEEDANCE.equals(protocol) && isDefaultSubmitPath(props.getSubmitPath())) {
             return "/contents/generations/tasks";
         }
+        if (PROTOCOL_JUSUAN_MEDIA.equals(protocol) && isDefaultSubmitPath(props.getSubmitPath())) {
+            return "/media/generations";
+        }
         return props.getSubmitPath();
     }
 
@@ -436,16 +467,34 @@ public class MaterialVideoModelClient {
         if (submit.isSeedance() && isDefaultPollPath(props.getPollPathTemplate())) {
             return URI.create(joinUrl(p.getBaseUrl(), "/contents/generations/tasks/" + submit.externalId()));
         }
+        if (submit.isJusuanMedia() && isDefaultPollPath(props.getPollPathTemplate())) {
+            return URI.create(joinUrl(p.getBaseUrl(), "/jobs/" + submit.externalId()));
+        }
         String path = props.getPollPathTemplate().replace("{id}", submit.externalId());
         return URI.create(joinUrl(p.getBaseUrl(), path));
     }
 
-    private String protocolFor(AiModelEndpoint p, String model) {
+    static String protocolFor(AiModelEndpoint p, String model) {
         String blob = ((p.getName() == null ? "" : p.getName()) + " "
                 + (p.getBaseUrl() == null ? "" : p.getBaseUrl()) + " "
                 + (model == null ? "" : model)).toLowerCase();
         if (blob.contains("seedance") || blob.contains("doubao-seedance")) return PROTOCOL_SEEDANCE;
+        if (blob.contains("jusuanhub")) return PROTOCOL_JUSUAN_MEDIA;
         return blob.contains("agnes") ? PROTOCOL_AGNES : PROTOCOL_GENERIC;
+    }
+
+    /** 聚算 H3 当前开放 5..15 秒整数档；在提交前拒绝，避免服务端偷偷改时长或错扣积分。 */
+    static int requireJusuanDuration(int durationSec) {
+        if (durationSec < 5 || durationSec > 15) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
+                    "MiniMax H3 单条视频仅支持 5 至 15 秒，请调整分镜时长后重试。");
+        }
+        return durationSec;
+    }
+
+    static String orientationForAspect(String aspectRatio) {
+        String ratio = aspectRatio == null ? "" : aspectRatio.trim();
+        return "9:16".equals(ratio) || "3:4".equals(ratio) ? "portrait" : "landscape";
     }
 
     // ── 响应解析（多形态兜底） ──────────────────────────────────────────────────
@@ -454,7 +503,7 @@ public class MaterialVideoModelClient {
         if (raw == null) return "processing";
         String s = raw.trim().toLowerCase();
         return switch (s) {
-            case "success", "succeed", "succeeded", "completed", "complete", "done", "finished" -> "succeeded";
+            case "success", "succeed", "succeeded", "completed", "complete", "done", "finished", "ready" -> "succeeded";
             case "fail", "failed", "error", "cancelled", "canceled" -> "failed";
             default -> "processing"; // PROCESSING / RUNNING / SUBMITTED / QUEUED / pending …
         };
@@ -508,6 +557,49 @@ public class MaterialVideoModelClient {
             }
         }
         return null;
+    }
+
+    /**
+     * 聚算媒体 Job 的产物是受保护资产，不允许自行拼对象存储 URL；轮询只抽 asset id，worker
+     * 随后使用同一端点密钥读取 /assets/{id}/content 并镜像到我方 OSS。
+     */
+    static String extractOutputAssetId(JsonNode root) {
+        if (root == null) return null;
+        String direct = firstText(root, "output_asset_id", "outputAssetId", "result_asset_id", "resultAssetId");
+        if (direct != null) return direct;
+        for (String container : new String[] {"data", "output", "result"}) {
+            JsonNode node = root.get(container);
+            String nested = firstText(node, "output_asset_id", "outputAssetId", "result_asset_id", "resultAssetId",
+                    "asset_id", "assetId");
+            if (nested != null) return nested;
+        }
+        for (String array : new String[] {"output_assets", "assets", "results"}) {
+            JsonNode values = root.get(array);
+            if (values == null && root.get("data") != null) values = root.get("data").get(array);
+            if (values != null && values.isArray() && !values.isEmpty()) {
+                String nested = firstText(values.get(0), "asset_id", "assetId", "id");
+                if (nested != null) return nested;
+            }
+        }
+        return null;
+    }
+
+    /** 下载受保护的上游产物；只供 worker 镜像到我方 OSS，不把需鉴权的地址出 wire。 */
+    public HttpResponse<java.nio.file.Path> downloadOutputAsset(SubmitResult submit, String assetId,
+                                                                 java.nio.file.Path target)
+            throws IOException, InterruptedException {
+        if (submit == null || !submit.isJusuanMedia() || assetId == null || assetId.isBlank()) {
+            throw new IOException("protected output asset is not available");
+        }
+        AiModelEndpoint endpoint = requireEndpoint(submit.endpointId());
+        String apiKey = requireKey(endpoint);
+        URI uri = URI.create(joinUrl(endpoint.getBaseUrl(), "/assets/" + encodeQuery(assetId) + "/content"));
+        HttpRequest request = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(Math.max(5, props.getDownloadTimeoutSeconds())))
+                .header("Authorization", "Bearer " + apiKey)
+                .GET()
+                .build();
+        return http.send(request, HttpResponse.BodyHandlers.ofFile(target));
     }
 
     private static String extractThumb(JsonNode root) {
@@ -700,10 +792,19 @@ public class MaterialVideoModelClient {
         boolean isSeedance() {
             return PROTOCOL_SEEDANCE.equals(protocol);
         }
+
+        boolean isJusuanMedia() {
+            return PROTOCOL_JUSUAN_MEDIA.equals(protocol);
+        }
     }
 
     public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
-                             Integer progressPct, String failReason, String lastFrameUrl) {
+                             Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId) {
+        /** 兼容既有测试与 mock 构造。 */
+        public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
+                          Integer progressPct, String failReason, String lastFrameUrl) {
+            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, null);
+        }
         public boolean succeeded() { return "succeeded".equals(status); }
         public boolean failed() { return "failed".equals(status); }
     }

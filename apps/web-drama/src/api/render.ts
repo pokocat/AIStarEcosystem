@@ -24,7 +24,7 @@ export interface RenderedFrame {
 export const POLL_TIMEOUT_MESSAGE = "生成仍在后台进行，请稍后回到本页或任务列表查看";
 
 // C-1（一致性引擎）：一次渲染实际生效 / 被过滤的参考清单，供「参考 N/M 生效」回报。
-export type AppliedRefReason = "local_unfetchable" | "model_no_flf" | "over_max_refs" | "empty";
+export type AppliedRefReason = "local_unfetchable" | "model_no_flf" | "model_no_image_input" | "over_max_refs" | "empty";
 export interface AppliedRefItem {
   /** ref（首帧参考图，C-1 无槽位）/ first_frame / last_frame / character / scene / prev_last_frame… */
   role: string;
@@ -61,6 +61,8 @@ export interface RenderModelOption {
   capability: EndpointCapability;
   /** 该端点在此用途下的积分单价（override ?? 用途默认单价）。 */
   creditCost: number;
+  /** per_call=按次；per_second=按视频秒数。 */
+  billingUnit: "per_call" | "per_second";
 }
 
 export interface RenderModelsResponse {

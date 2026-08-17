@@ -53,7 +53,11 @@ public class AiModelEndpointAdminService {
             new AiModelProviderPresetDto("openai", "OpenAI", "OPENAI",
                     "https://api.openai.com/v1", "gpt-4o-mini",
                     "https://platform.openai.com/docs/api-reference",
-                    "在 platform.openai.com「API keys」创建，形如 sk-xxxxxxxx。")
+                    "在 platform.openai.com「API keys」创建，形如 sk-xxxxxxxx。"),
+            new AiModelProviderPresetDto("jusuan-minimax-h3", "聚算 JusuanHub · MiniMax H3 视频",
+                    "OPENAI_COMPATIBLE", "https://api.jusuanhub.com:10443/v1", "minimax-h3",
+                    "https://api.jusuanhub.com:10443/v1/models",
+                    "使用聚算 jsk_live_… API Key；端点按媒体 Job 协议异步出片。")
     );
 
     private final AiModelEndpointRepository repo;

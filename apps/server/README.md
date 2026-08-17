@@ -7,6 +7,7 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 ## 版本日志
 
+- **v0.130（2026-08-17）**：视频生成新增聚算 JusuanHub `minimax-h3` 媒体 Job 协议（768P、横/竖屏、5–15 秒）：`/media/generations` 提交、`/jobs/{id}` 轮询，受保护产物经 `/assets/{id}/content` 鉴权下载后镜像 OSS；候选报价支持 `PER_SECOND`，H3 按 40 积分/秒计费，存量模型继续按次。当前先开放 t2v，首/尾帧资产上传未接通前能力标记为不支持，避免误报。
 - **v0.116（2026-08-11）**：`clip` 新增官方采集契约和服务端 ffprobe 质量闸，`/me/clip/avatar/requirements` 下发授权/形象/声音硬限制与固定口播；声音固定 V2.0，avatar 与 b-roll 统一复用段 TTS，数字人改走 `/video/createByVoiceV2`。训练/生成回传真实进度和失败原因，授权 `authId` 不再表述为独立实名认证。本轮测试均为桩与离线编译，不调用石榴真实生成。
 - **v0.111（2026-08-11）**：`clip` 从工程骨架升级为石榴 AI 官方真实适配：授权视频、speaker/avatar 训练、TTS、文案/音频出片、轮询/删除和时效成片持久化；内置 3 套正式模板。新增仅监听 127.0.0.1:8081 的 `clip-preprod` profile 与隔离部署资产。真实密钥只读 env、不打印；媒体审核、完整多段总装与代发继续 fail-closed。
 - **v0.110（2026-08-10）**：新增供军师「快出片」调用的独立 clip 域：四表 Flyway 迁移、`externalOwnerId` 强隔离、service-token 入口、模板与 preset 管理、项目/素材/授权/克隆、权威报价与 preflight、幂等任务、数据库租约 worker + stale reaper、作品和四平台发布契约，并同步 `packages/types/src/clip.ts` 与 OpenAPI。Scheme A 下用户积分只在军师 BFF 扣，本仓只记外部报价。真实石榴字段、ffmpeg/CDN 总装和真实发布仍未接，production/mysql 禁止 mock，所有缺口 fail-closed；详见 [`docs/clip-avatar-video-plan.md`](../../docs/clip-avatar-video-plan.md)。

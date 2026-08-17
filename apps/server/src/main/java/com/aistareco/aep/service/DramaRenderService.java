@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.model.AiModelBillingMode;
+import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.ai.ModelCallCtx;
@@ -371,7 +372,12 @@ public class DramaRenderService {
                                     "所选出片模型不可用或未在该用途候选池内，请刷新后重选。"));
             chosenVideoEp = resolved.endpoint();
             if (resolved.candidate() != null) {
-                if (resolved.candidate().getCreditCostOverride() != null) clipCost = resolved.candidate().getCreditCostOverride();
+                if (resolved.candidate().getMaxDurationSec() != null
+                        && durationSec > resolved.candidate().getMaxDurationSec()) {
+                    throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
+                            "所选出片模型单条最长支持 " + resolved.candidate().getMaxDurationSec() + " 秒，请调整分镜时长。");
+                }
+                clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
                 capFirstLastFrame = resolved.candidate().getSupportsFirstLastFrame();
                 capSubjectReference = resolved.candidate().getSupportsSubjectReference();
             }
@@ -382,11 +388,19 @@ public class DramaRenderService {
             if (resolved != null) {
                 chosenVideoEp = resolved.endpoint();
                 if (resolved.candidate() != null) {
+                    if (resolved.candidate().getMaxDurationSec() != null
+                            && durationSec > resolved.candidate().getMaxDurationSec()) {
+                        throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
+                                "默认出片模型单条最长支持 " + resolved.candidate().getMaxDurationSec() + " 秒，请调整分镜时长。");
+                    }
+                    clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
                     capFirstLastFrame = resolved.candidate().getSupportsFirstLastFrame();
                     capSubjectReference = resolved.candidate().getSupportsSubjectReference();
                 }
             }
         }
+        // 协议级失败快（H3=5..15 秒）+ API Key 有效性检查，必须发生在 hold 积分之前。
+        videoJobs.validateRequest(endpointId, durationSec);
         // 首尾帧能力：候选显式 supportsFirstLastFrame 最高优先；未配置（null，含 seeder 回填存量候选）
         // → C-1 协议关键字静态判定兜底（seedance/generic 支持、agnes 仅首帧），不一律 false（回归修正口径）。
         boolean flf = capFirstLastFrame != null ? capFirstLastFrame : supportsFirstLastFrame(chosenVideoEp);
@@ -536,14 +550,41 @@ public class DramaRenderService {
         for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(purpose)) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             long cost = r.candidate().getCreditCostOverride() != null ? r.candidate().getCreditCostOverride() : defaultCost;
+            String billingUnit = candidateBillingUnit(purpose, r.endpoint(), r.candidate());
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
                     r.endpoint().getId(),
                     r.endpoint().getName(),
                     r.isDefault(),
                     com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate()),
-                    cost));
+                    cost,
+                    billingUnit));
         }
         return out;
+    }
+
+    /** VIDEO 候选只有显式 override + 端点 PER_SECOND 时才按秒；存量默认价继续保持按次。 */
+    static long effectiveVideoCreditCost(AiModelEndpoint endpoint, AiAppEndpointCandidate candidate,
+                                         int durationSec, long defaultCost) {
+        if (candidate == null || candidate.getCreditCostOverride() == null) return defaultCost;
+        long rate = Math.max(0L, candidate.getCreditCostOverride());
+        if (endpoint != null && endpoint.getBillingMode() == AiModelBillingMode.PER_SECOND) {
+            try {
+                return Math.multiplyExact(rate, Math.max(1, durationSec));
+            } catch (ArithmeticException e) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_PRICE_OVERFLOW", "视频积分报价超出可用范围");
+            }
+        }
+        return rate;
+    }
+
+    private static String candidateBillingUnit(AiModelPurpose purpose, AiModelEndpoint endpoint,
+                                               AiAppEndpointCandidate candidate) {
+        return purpose == AiModelPurpose.VIDEO_GENERATION
+                && candidate != null
+                && candidate.getCreditCostOverride() != null
+                && endpoint != null
+                && endpoint.getBillingMode() == AiModelBillingMode.PER_SECOND
+                ? "per_second" : "per_call";
     }
 
     // ── C-1：参考生效回报（applied_refs） ─────────────────────────────────────────

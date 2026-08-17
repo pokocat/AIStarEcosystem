@@ -74,6 +74,11 @@ public class MaterialVideoJobService {
     }
 
     // ── 提交 ─────────────────────────────────────────────────────────────────
+    /** 在任务落库 / hold 积分前校验所选端点与时长。 */
+    public void validateRequest(String endpointId, int durationSec) {
+        modelClient.validateRequest(endpointId, durationSec);
+    }
+
     /**
      * 提交一批生成任务（body = { items: [ {script_id, product_id, name, kind, parent_video_id,
      * prompt, variant_config, duration_sec, aspect_ratio} ... ] }）。

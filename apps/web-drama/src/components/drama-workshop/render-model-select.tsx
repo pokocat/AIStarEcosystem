@@ -51,7 +51,8 @@ export function useRenderModels(): RenderModelsState {
 /** 端点能力 hover 文案（用户友好，把内部字段名翻成人话）。 */
 function capabilityTitle(o: RenderModelOption): string {
   const c = o.capability ?? {};
-  const parts: string[] = [`消耗 ${o.creditCost} 积分/次`];
+  const unit = o.billingUnit === "per_second" ? "秒" : "次";
+  const parts: string[] = [`消耗 ${o.creditCost} 积分/${unit}`];
   if (c.maxRefImages != null) parts.push(`最多参考 ${c.maxRefImages} 张`);
   if (c.supportsFirstLastFrame === true) parts.push("支持首尾帧衔接");
   if (c.supportsSubjectReference === true) parts.push("支持主体参考");

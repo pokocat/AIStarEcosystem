@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.model.AiAppEndpointCandidate;
+import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.cdn.CdnUploader;
@@ -90,6 +92,18 @@ class DramaRenderServiceTest {
         assertFalse(DramaRenderService.supportsFirstLastFrame(
                 AiModelEndpoint.builder().name("Agnes Video").baseUrl("https://agnes.example.com").build()));
         assertFalse(DramaRenderService.supportsFirstLastFrame(null));
+    }
+
+    @Test
+    void video_candidate_per_second_price_multiplies_duration_without_changing_legacy_per_call() {
+        AiModelEndpoint h3 = AiModelEndpoint.builder().billingMode(AiModelBillingMode.PER_SECOND).build();
+        AiAppEndpointCandidate candidate = AiAppEndpointCandidate.builder().creditCostOverride(40L).build();
+        assertEquals(200L, DramaRenderService.effectiveVideoCreditCost(h3, candidate, 5, 30));
+
+        AiModelEndpoint legacy = AiModelEndpoint.builder().billingMode(AiModelBillingMode.PER_CALL).build();
+        assertEquals(40L, DramaRenderService.effectiveVideoCreditCost(legacy, candidate, 5, 30));
+        assertEquals(30L, DramaRenderService.effectiveVideoCreditCost(h3,
+                AiAppEndpointCandidate.builder().build(), 5, 30));
     }
 
     // ── D-11：非法 endpoint_id → 503 ENDPOINT_NOT_ALLOWED，且 0 扣费 / 0 提交 ──────────

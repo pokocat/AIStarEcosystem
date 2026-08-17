@@ -209,7 +209,8 @@ public class DramaReferenceAssembler {
                 }
             }
         }
-        List<AppliedRef> classified = classifyClipFrames(firstFrame, lastFrame, cap.supportsFirstLastFrame());
+        List<AppliedRef> classified = classifyClipFrames(firstFrame, lastFrame,
+                cap.maxRefImages() != 0, cap.supportsFirstLastFrame());
         return new ClipAssembly(firstFrame, lastFrame, appliedRefsJson(classified));
     }
 
@@ -540,10 +541,20 @@ public class DramaReferenceAssembler {
 
     /** 视频首/末帧归类：末帧仅端点支持首尾帧时送达（否则 model_no_flf）；本地/相对 URL 标 local_unfetchable。 */
     static List<AppliedRef> classifyClipFrames(String firstFrameUrl, String lastFrameUrl, boolean supportsFlf) {
+        return classifyClipFrames(firstFrameUrl, lastFrameUrl, true, supportsFlf);
+    }
+
+    /** supportsFirstFrame=false 用于尚未接通上游资产上传的纯文生视频候选，避免把首帧误报为已送达。 */
+    static List<AppliedRef> classifyClipFrames(String firstFrameUrl, String lastFrameUrl,
+                                               boolean supportsFirstFrame, boolean supportsFlf) {
         List<AppliedRef> out = new ArrayList<>();
         if (firstFrameUrl != null && !firstFrameUrl.isBlank()) {
-            boolean ok = isFetchableImageRef(firstFrameUrl);
-            out.add(new AppliedRef("first_frame", firstFrameUrl, ok, ok ? null : "local_unfetchable"));
+            if (!supportsFirstFrame) {
+                out.add(new AppliedRef("first_frame", firstFrameUrl, false, "model_no_image_input"));
+            } else {
+                boolean ok = isFetchableImageRef(firstFrameUrl);
+                out.add(new AppliedRef("first_frame", firstFrameUrl, ok, ok ? null : "local_unfetchable"));
+            }
         }
         if (lastFrameUrl != null && !lastFrameUrl.isBlank()) {
             if (!supportsFlf) {

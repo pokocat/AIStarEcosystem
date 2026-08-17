@@ -24,6 +24,7 @@ const REF_ROLE_LABEL: Record<string, string> = {
 const REF_REASON_LABEL: Record<string, string> = {
   local_unfetchable: "本地开发环境的参考图外部模型抓取不到（生产环境正常生效）",
   model_no_flf: "当前视频模型不支持尾帧，未生效",
+  model_no_image_input: "当前模型仅开放文生视频，参考图未送达",
   over_max_refs: "超出模型参考图数量上限，未送达",
   empty: "参考图为空",
 };
@@ -514,4 +515,3 @@ export function ShotFrameCell({ s, busy, onRender, onApprove, onAiEdit, onDecomp
     </div>
   );
 }
-

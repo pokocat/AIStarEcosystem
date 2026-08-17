@@ -17,6 +17,7 @@ public record RenderModelsDto(
             String name,
             boolean isDefault,
             EndpointCapabilityDto capability,
-            long creditCost
+            long creditCost,
+            String billingUnit
     ) {}
 }

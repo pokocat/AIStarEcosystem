@@ -14,9 +14,14 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.http.HttpHeaders;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -27,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -165,5 +171,35 @@ class MaterialVideoWorkerTest {
         // 成片本身照常镜像
         assertTrue(uploader.uploaded.containsKey("material-videos/mvj_test/video.mp4"));
         verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void protected_output_asset_is_downloaded_with_model_client_then_mirrored() throws Exception {
+        var submit = new MaterialVideoModelClient.SubmitResult(
+                "job_h3", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult(
+                        "succeeded", null, null, "succeeded", 100, null, null, "asset_video_h3"));
+        @SuppressWarnings("unchecked")
+        HttpResponse<Path> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.headers()).thenReturn(HttpHeaders.of(
+                Map.of("content-type", List.of("video/mp4")), (a, b) -> true));
+        when(modelClient.downloadOutputAsset(eq(submit), eq("asset_video_h3"), any(Path.class)))
+                .thenAnswer(inv -> {
+                    Path target = inv.getArgument(2);
+                    Files.write(target, new byte[]{1, 2, 3, 4});
+                    when(response.body()).thenReturn(target);
+                    return response;
+                });
+
+        FakeUploader uploader = new FakeUploader(false);
+        worker(uploader).generateAsync("mvj_test");
+
+        assertEquals("succeeded", job.getStatus());
+        assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", job.getVideoUrl());
+        assertTrue(uploader.uploaded.containsKey("material-videos/mvj_test/video.mp4"));
+        verify(modelClient).downloadOutputAsset(eq(submit), eq("asset_video_h3"), any(Path.class));
     }
 }

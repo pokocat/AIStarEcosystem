@@ -1,8 +1,16 @@
-# 版本增量历史（v0.5 → v0.129）
+# 版本增量历史（v0.5 → v0.130）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.130（2026-08-17）— MiniMax H3 内置视频模型与按秒计价
+
+视频生成管线新增聚算 JusuanHub `minimax-h3` 独立协议：按媒体合同提交 `POST /v1/media/generations`（768P、横/竖屏、5–15 秒、24 FPS、原生音频），轮询 `GET /v1/jobs/{id}`；Job 若返回受保护 `output_asset_id`，服务端使用同一端点密钥读取 `/v1/assets/{id}/content`，随后镜像到我方 OSS，禁止把需鉴权的上游资产地址直接出 wire。实际 endpoint id 会随任务冻结，默认绑定变化不会把运行中的 Job 轮询到别的服务商。
+
+候选端点计价新增 `billingUnit=per_call|per_second`。只有端点 `billingMode=PER_SECOND` 且候选显式配置 `creditCostOverride` 时按“费率 × 请求秒数”冻结积分；存量 Agnes 与其他端点继续按次，不改变原语义。MiniMax H3 以 40 积分/秒接入，协议会在 hold 前拒绝 5–15 秒之外的请求。当前只开放文字生成视频：上游首/尾帧必须先上传为平台 asset id，本管线尚未接通该上传步骤，因此候选能力如实标为 `maxRefImages=0 / supportsFirstLastFrame=false`，前端回报 `model_no_image_input`，不伪称参考图已送达。
+
+admin「快速添加」新增“聚算 JusuanHub · MiniMax H3 视频”预设。定向测试覆盖受控请求体、时长边界、Job 资产字段、受保护产物镜像、按秒计价和纯文生视频参考回报；全 workspace typecheck、server 离线编译与 API 契约门通过。测试与协议探测均未提交付费生成任务。
 
 ### v0.129（2026-08-11）— 作品生成时间与删除闭环
 
