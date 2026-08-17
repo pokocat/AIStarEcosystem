@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.130）
+# 版本增量历史（v0.5 → v0.131）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.131（2026-08-17）— MiniMax H3 Job 作用域修复与成功任务对账
+
+聚算 Account API Key 的 Job 查询与受保护资产读取都要求显式携带 `?model=minimax-h3`。此前提交成功后轮询 `/v1/jobs/{id}` 漏传模型作用域，供应商返回 404，本地误判失败；资产读取同样缺参，即使修通状态也无法镜像。本版统一使用 `/v1/jobs/{id}?model=...` 与 `/v1/assets/{assetId}/content?model=...`，并以真实成功响应中的 `assets[].assetId` 镜像我方 OSS。
+
+带货素材视频入口现在也在任务落库/冻结积分前执行端点协议校验，并消费候选端点报价：H3 的 `PER_SECOND + creditCostOverride=40` 会按请求秒数冻结，15 秒为 600 积分，不再回落旧的 30 积分/条。新增管理端幂等对账接口，只接管既有 `externalTaskId`、不重新提交：确认上游成功后镜像产物，以独立恢复 hold 结算正确积分，再将误判任务恢复为 succeeded。
 
 ### v0.130（2026-08-17）— MiniMax H3 内置视频模型与按秒计价
 

@@ -6615,6 +6615,14 @@ paths:
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
       responses: { '200': { description: 单端点大模型用量报表（同样返回用户 / 租户 / 来源应用维度） } }
 
+  /admin/material-video-jobs/{id}/reconcile:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-ai-models]
+      operationId: adminReconcileMaterialVideoJob
+      summary: 对账恢复已由上游成功、但本地误判失败的视频任务
+      responses: { '200': { description: 已查询既有 Job、镜像产物并幂等结算积分；不会重新提交生成 } }
+
   # ── AI 应用绑定（v0.41 新增；用途 → 端点，一用途一端点，无兜底） ──────────
   /admin/ai-app-bindings:
     get: { tags: [admin-ai-models], operationId: adminListAiAppBindings, responses: { '200': { description: 全部用途（含未绑定）及其绑定端点 } } }

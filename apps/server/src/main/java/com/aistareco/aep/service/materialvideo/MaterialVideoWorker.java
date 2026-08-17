@@ -1,17 +1,20 @@
 package com.aistareco.aep.service.materialvideo;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
+import com.aistareco.aep.model.CreditHold;
 import com.aistareco.aep.model.MaterialVideoJob;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.storage.StorageQuotaService;
+import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -38,6 +41,7 @@ public class MaterialVideoWorker {
 
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoWorker.class);
     private static final ObjectMapper OM = new ObjectMapper();
+    static final String RECOVERY_CREDIT_REF_TYPE = "material_video_job_recovery";
 
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
@@ -91,6 +95,82 @@ public class MaterialVideoWorker {
             // 提交阶段（submit）抛错时积分已 hold 但 runGeneration 内部没机会 release；
             // 这里兜底退款。releaseHold 幂等：若内部失败路径已退过，这次是 no-op。
             releaseCredits(job, msg);
+        }
+    }
+
+    /**
+     * 对账恢复“上游已受理/成功、但本地轮询误判失败”的任务。只查询既有 externalTaskId，绝不重提。
+     * 产物先镜像 OSS，再通过独立幂等 hold 真扣，最后把本地任务改为 succeeded。
+     */
+    public MaterialVideoJob reconcileSucceeded(String jobId) {
+        MaterialVideoJob job = jobRepo.findById(jobId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+                        "VIDEO_JOB_NOT_FOUND", "视频任务不存在"));
+        if ("succeeded".equals(job.getStatus())) return job;
+        if (job.getExternalTaskId() == null || job.getExternalTaskId().isBlank()) {
+            throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUBMITTED",
+                    "该任务没有上游 Job ID，无法对账恢复");
+        }
+
+        String endpointId = extractEndpointId(job.getVariantConfigJson());
+        MaterialVideoModelClient.SubmitResult submit = modelClient.resumeExistingTask(
+                job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed());
+        MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
+        if (!poll.succeeded()) {
+            throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUCCEEDED_UPSTREAM",
+                    "上游任务当前不是成功状态（" + safe(poll.rawStatus()) + "），暂不能恢复");
+        }
+        boolean hasVideoUrl = poll.videoUrl() != null && !poll.videoUrl().isBlank();
+        boolean hasProtectedAsset = poll.outputAssetId() != null && !poll.outputAssetId().isBlank();
+        if (!hasVideoUrl && !hasProtectedAsset) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_OUTPUT_MISSING",
+                    "上游任务已成功，但没有返回可读取的产物");
+        }
+        if (hasProtectedAsset && (!props.isUploadToCdn() || cdnUploader == null)) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_CDN_NOT_CONFIGURED",
+                    "上游产物需要鉴权读取，但当前未配置 OSS 镜像");
+        }
+
+        Long override = modelClient.resolveCreditCostOverride(endpointId, job.getDurationSec());
+        long expectedCredits = override != null ? override : Math.max(0L, job.getCreditsHeld());
+        CreditHold recoveryHold = null;
+        if (billable(job.getOwnerUserId()) && expectedCredits > 0) {
+            recoveryHold = creditService.findHold(RECOVERY_CREDIT_REF_TYPE, jobId);
+            if (recoveryHold == null) {
+                recoveryHold = creditService.hold(job.getOwnerUserId(), expectedCredits,
+                        RECOVERY_CREDIT_REF_TYPE, jobId, "视频任务成功对账 · " + safe(job.getName()));
+            }
+            if (recoveryHold.getStatus() == CreditHold.Status.RELEASED) {
+                throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_RECOVERY_HOLD_RELEASED",
+                        "该任务的恢复积分已释放，请人工复核后再处理");
+            }
+        }
+
+        try {
+            CdnMirrorResult mirror = mirrorToCdn(jobId, poll.videoUrl(), poll.thumbnailUrl(), poll.lastFrameUrl(),
+                    submit, poll.outputAssetId());
+            String appCode = job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
+            String category = "drama".equals(appCode) ? "分镜视频" : "素材视频";
+            storage.record(appCode, job.getOwnerUserId(), category, job.getScriptId(),
+                    mirror.videoKey(), mirror.videoBytes());
+            if (recoveryHold != null && recoveryHold.getStatus() == CreditHold.Status.ACTIVE) {
+                creditService.commitHold(RECOVERY_CREDIT_REF_TYPE, jobId, expectedCredits,
+                        "视频生成成功对账 · " + safe(job.getName()));
+            }
+            job.setCreditsHeld(expectedCredits);
+            jobRepo.save(job);
+            markSucceeded(jobId, mirror.videoUrl(), mirror.thumbnailUrl(), poll.lastFrameUrl(), mirror.lastFrameKey());
+            log.info("[material-video] reconciled succeeded job={} upstreamTask={} credits={}",
+                    jobId, job.getExternalTaskId(), expectedCredits);
+            return jobRepo.findById(jobId).orElse(job);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (recoveryHold != null && recoveryHold.getStatus() == CreditHold.Status.ACTIVE) {
+                creditService.releaseHold(RECOVERY_CREDIT_REF_TYPE, jobId,
+                        "视频任务恢复失败 · " + truncate(e.getMessage(), 160));
+            }
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_RECOVERY_FAILED",
+                    "视频产物恢复失败，请稍后重试");
         }
     }
 
@@ -397,6 +477,10 @@ public class MaterialVideoWorker {
 
     private static String safe(String s) {
         return (s == null || s.isBlank()) ? "视频" : s;
+    }
+
+    private static boolean billable(String userId) {
+        return userId != null && !userId.isBlank() && !"anonymous".equals(userId);
     }
 
     private static String normalizeContentType(String raw) {

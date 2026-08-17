@@ -103,9 +103,14 @@ public class MaterialVideoJobService {
 
         List<MaterialVideoJob> created = new ArrayList<>();
         for (JsonNode item : items) {
+            String endpointId = endpointIdOf(item);
+            int durationSec = item.path("duration_sec").asInt(0);
+            // 协议/Key/时长失败必须发生在任务落库和 hold 之前；带货线此前只在 worker 提交阶段校验，
+            // 会先冻结再退款，还让用户看到一条本可同步拒绝的失败任务。
+            modelClient.validateRequest(endpointId, durationSec);
             // 单价按 item 决定：调用方可传 credit_cost 覆盖（如短剧按 app 维度独立定价，解耦带货线），
-            // 否则回落带货线 material.video-generate。本服务不感知具体业务线。
-            long unit = itemUnitCost(item);
+            // 否则优先采用候选模型 override（PER_SECOND 按秒展开），再回落带货线默认价。
+            long unit = itemUnitCost(item, endpointId, durationSec);
             MaterialVideoJob job = buildJob(item, userId, app);
             if (billable && unit > 0) {
                 // 余额不足 → CreditService 抛 402（PAYMENT_REQUIRED），整批回滚（同事务）。
@@ -147,6 +152,11 @@ public class MaterialVideoJobService {
                 .filter(j -> scope.equals(appOf(j)))
                 .map(this::toCard)
                 .orElse(null);
+    }
+
+    /** 管理端按 externalTaskId 对账恢复误判失败任务；不重提上游。 */
+    public JsonNode reconcileSucceeded(String id) {
+        return toCard(worker.reconcileSucceeded(id));
     }
 
     /** 列出当前用户在指定子产品下的生成任务（可按 scriptId / productId 过滤），新→旧。 */
@@ -291,10 +301,17 @@ public class MaterialVideoJobService {
     }
 
     /** 单条视频单价：调用方在 item 里显式传 credit_cost（≥0）则用它（app 维度独立定价，解耦本带货线），否则回落带货线定价。 */
-    private long itemUnitCost(JsonNode item) {
+    private long itemUnitCost(JsonNode item, String endpointId, int durationSec) {
         long override = item.path("credit_cost").asLong(-1L);
         if (override >= 0) return override;
+        Long modelOverride = modelClient.resolveCreditCostOverride(endpointId, durationSec);
+        if (modelOverride != null) return modelOverride;
         return videoUnitCost();
+    }
+
+    private static String endpointIdOf(JsonNode item) {
+        JsonNode vc = item == null ? null : item.get("variant_config");
+        return text(vc, "endpoint_id");
     }
 
     private long videoUnitCost() {

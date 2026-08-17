@@ -1,7 +1,11 @@
 package com.aistareco.aep.service.materialvideo;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
+import com.aistareco.aep.model.AiAppEndpointCandidate;
+import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
+import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +14,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.util.Optional;
 
 /**
  * 视频大模型响应解析的多形态兜底（normalizeStatus / extractVideoUrl / extractProgressPct）。
@@ -164,5 +173,30 @@ class MaterialVideoModelClientTest {
                 json("{\"data\":{\"output\":\"ignored\",\"asset_id\":\"asset_video_2\"}}")));
         assertEquals("asset_video_3", MaterialVideoModelClient.extractOutputAssetId(
                 json("{\"output_assets\":[{\"id\":\"asset_video_3\"}]}")));
+        assertEquals("asset_video_h3", MaterialVideoModelClient.extractOutputAssetId(
+                json("{\"assets\":[{\"assetId\":\"asset_video_h3\",\"assetRole\":\"output\"}]}")));
+    }
+
+    @Test
+    void resolveCreditCostOverride_expands_per_second_candidate() {
+        AiModelInvocationService invocation = mock(AiModelInvocationService.class);
+        AiModelEndpoint endpoint = AiModelEndpoint.builder().id("h3").billingMode(AiModelBillingMode.PER_SECOND).build();
+        AiAppEndpointCandidate candidate = AiAppEndpointCandidate.builder().creditCostOverride(40L).build();
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3")))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
+        MaterialVideoModelClient client = new MaterialVideoModelClient(
+                invocation, new MaterialVideoProperties(), null, null);
+
+        assertEquals(600L, client.resolveCreditCostOverride("h3", 15));
+    }
+
+    @Test
+    void jusuan_job_and_asset_routes_include_model_scope() {
+        assertEquals("https://api.jusuanhub.com:10443/v1/jobs/job_1?model=minimax-h3",
+                MaterialVideoModelClient.jusuanScopedUri(
+                        "https://api.jusuanhub.com:10443/v1", "/jobs/job_1", "minimax-h3").toString());
+        assertEquals("https://api.jusuanhub.com:10443/v1/assets/asset_1/content?model=minimax-h3",
+                MaterialVideoModelClient.jusuanScopedUri(
+                        "https://api.jusuanhub.com:10443/v1", "/assets/asset_1/content", "minimax-h3").toString());
     }
 }

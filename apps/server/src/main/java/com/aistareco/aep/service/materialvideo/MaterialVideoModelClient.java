@@ -95,6 +95,38 @@ public class MaterialVideoModelClient {
     }
 
     /**
+     * 返回候选端点显式配置的视频积分价；未配置 override 时返回 {@code null}，由业务线回落自身默认价。
+     * PER_SECOND 端点按请求秒数展开，PER_CALL/旧端点仍按次，避免把存量候选价格语义整体改写。
+     */
+    public Long resolveCreditCostOverride(String endpointId, int durationSec) {
+        AiModelInvocationService.ResolvedEndpoint resolved =
+                invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId).orElse(null);
+        if (resolved == null || resolved.candidate() == null
+                || resolved.candidate().getCreditCostOverride() == null) {
+            return null;
+        }
+        long rate = Math.max(0L, resolved.candidate().getCreditCostOverride());
+        if (resolved.endpoint().getBillingMode() != AiModelBillingMode.PER_SECOND) return rate;
+        try {
+            return Math.multiplyExact(rate, Math.max(1, durationSec));
+        } catch (ArithmeticException e) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_PRICE_OVERFLOW", "视频积分报价超出可用范围");
+        }
+    }
+
+    /** 重新接管一个已经由上游受理的异步任务；只构造轮询上下文，绝不再次提交生成。 */
+    public SubmitResult resumeExistingTask(String taskId, String endpointId, String providerUsed, String modelUsed) {
+        AiModelEndpoint endpoint = requireEndpoint(endpointId);
+        String model = modelUsed != null && !modelUsed.isBlank()
+                ? modelUsed
+                : (endpoint.getModel() != null && !endpoint.getModel().isBlank()
+                ? endpoint.getModel() : props.getDefaultModel());
+        return new SubmitResult(taskId, null,
+                providerUsed != null && !providerUsed.isBlank() ? providerUsed : endpoint.getName(),
+                model, protocolFor(endpoint, model), endpoint.getId());
+    }
+
+    /**
      * 提交一个生成任务，返回外部 task_id + 实际用到的端点 / model。appCode 用于用量归属（drama / celebrity）。
      * D-11：endpointId 非空 → 用指定候选端点（白名单，未命中抛 ENDPOINT_NOT_ALLOWED）；为空 → 默认端点（旧路径不变）。
      * 返回的 {@link SubmitResult} 带上 endpointId，使后续 poll 落到同一端点（同 baseUrl/apiKey）。
@@ -468,7 +500,8 @@ public class MaterialVideoModelClient {
             return URI.create(joinUrl(p.getBaseUrl(), "/contents/generations/tasks/" + submit.externalId()));
         }
         if (submit.isJusuanMedia() && isDefaultPollPath(props.getPollPathTemplate())) {
-            return URI.create(joinUrl(p.getBaseUrl(), "/jobs/" + submit.externalId()));
+            return jusuanScopedUri(p.getBaseUrl(), "/jobs/" + submit.externalId(),
+                    modelForScopedRequest(p, submit));
         }
         String path = props.getPollPathTemplate().replace("{id}", submit.externalId());
         return URI.create(joinUrl(p.getBaseUrl(), path));
@@ -593,13 +626,26 @@ public class MaterialVideoModelClient {
         }
         AiModelEndpoint endpoint = requireEndpoint(submit.endpointId());
         String apiKey = requireKey(endpoint);
-        URI uri = URI.create(joinUrl(endpoint.getBaseUrl(), "/assets/" + encodeQuery(assetId) + "/content"));
+        URI uri = jusuanScopedUri(endpoint.getBaseUrl(), "/assets/" + encodeQuery(assetId) + "/content",
+                modelForScopedRequest(endpoint, submit));
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(Math.max(5, props.getDownloadTimeoutSeconds())))
                 .header("Authorization", "Bearer " + apiKey)
                 .GET()
                 .build();
         return http.send(request, HttpResponse.BodyHandlers.ofFile(target));
+    }
+
+    private String modelForScopedRequest(AiModelEndpoint endpoint, SubmitResult submit) {
+        if (submit != null && submit.modelUsed() != null && !submit.modelUsed().isBlank()) {
+            return submit.modelUsed();
+        }
+        if (endpoint.getModel() != null && !endpoint.getModel().isBlank()) return endpoint.getModel();
+        return props.getDefaultModel();
+    }
+
+    static URI jusuanScopedUri(String baseUrl, String path, String model) {
+        return URI.create(joinUrl(baseUrl, path) + "?model=" + encodeQuery(model));
     }
 
     private static String extractThumb(JsonNode root) {

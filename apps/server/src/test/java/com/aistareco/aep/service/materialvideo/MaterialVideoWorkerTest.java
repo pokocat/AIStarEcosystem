@@ -1,6 +1,7 @@
 package com.aistareco.aep.service.materialvideo;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
+import com.aistareco.aep.model.CreditHold;
 import com.aistareco.aep.model.MaterialVideoJob;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.CreditService;
@@ -201,5 +202,56 @@ class MaterialVideoWorkerTest {
         assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", job.getVideoUrl());
         assertTrue(uploader.uploaded.containsKey("material-videos/mvj_test/video.mp4"));
         verify(modelClient).downloadOutputAsset(eq(submit), eq("asset_video_h3"), any(Path.class));
+    }
+
+    @Test
+    void reconcile_existing_upstream_success_mirrors_and_charges_exact_per_second_price() throws Exception {
+        job.setStatus("failed");
+        job.setExternalTaskId("job_h3_existing");
+        job.setProviderUsed("MiniMax H3");
+        job.setModelUsed("minimax-h3");
+        job.setDurationSec(15);
+        job.setCreditsHeld(30L);
+
+        var submit = new MaterialVideoModelClient.SubmitResult(
+                "job_h3_existing", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
+        when(modelClient.resumeExistingTask("job_h3_existing", null, "MiniMax H3", "minimax-h3"))
+                .thenReturn(submit);
+        when(modelClient.poll(eq(submit))).thenReturn(new MaterialVideoModelClient.PollResult(
+                "succeeded", null, null, "succeeded", 100, null, null, "asset_h3_existing"));
+        when(modelClient.resolveCreditCostOverride(null, 15)).thenReturn(600L);
+
+        CreditHold hold = CreditHold.builder()
+                .id("hold-recovery").userId("u1")
+                .referenceType(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE)
+                .referenceId("mvj_test").amount(600L).remainingAmount(600L)
+                .status(CreditHold.Status.ACTIVE).build();
+        when(creditService.findHold(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE, "mvj_test"))
+                .thenReturn(null);
+        when(creditService.hold(eq("u1"), eq(600L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
+                eq("mvj_test"), anyString())).thenReturn(hold);
+
+        @SuppressWarnings("unchecked")
+        HttpResponse<Path> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.headers()).thenReturn(HttpHeaders.of(
+                Map.of("content-type", List.of("video/mp4")), (a, b) -> true));
+        when(modelClient.downloadOutputAsset(eq(submit), eq("asset_h3_existing"), any(Path.class)))
+                .thenAnswer(inv -> {
+                    Path target = inv.getArgument(2);
+                    Files.write(target, new byte[]{1, 2, 3, 4});
+                    when(response.body()).thenReturn(target);
+                    return response;
+                });
+
+        MaterialVideoJob recovered = worker(new FakeUploader(false)).reconcileSucceeded("mvj_test");
+
+        assertEquals("succeeded", recovered.getStatus());
+        assertEquals(600L, recovered.getCreditsHeld());
+        assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", recovered.getVideoUrl());
+        verify(creditService).hold(eq("u1"), eq(600L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
+                eq("mvj_test"), anyString());
+        verify(creditService).commitHold(eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
+                eq("mvj_test"), eq(600L), anyString());
     }
 }
