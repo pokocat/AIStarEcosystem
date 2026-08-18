@@ -45,6 +45,8 @@ const MIRRORS = [
       VoiceDto: "ClipVoiceView",
       CaptureRuleDto: "ClipCaptureRule",
       CaptureRequirementsDto: "ClipCaptureRequirements",
+      CloneUploadTicketDto: "ClipCloneUploadTicket",
+      CloneUploadStatusDto: "ClipCloneUploadStatus",
       ConsentDto: "ClipConsentResult",
       AuditDto: "ClipAuditEntry",
     },

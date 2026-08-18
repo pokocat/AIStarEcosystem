@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
+import java.time.Instant;
 
 /**
  * 统一文件存储门面（v0.49+）。
@@ -122,6 +123,26 @@ public class FileStorageService {
         } catch (IOException e) {
             throw new RuntimeException("文件上传失败: " + e.getMessage(), e);
         }
+    }
+
+    /** 只分配逻辑 key，不创建空对象；给受限直传票使用。 */
+    public String allocateKey(String category, String ownerId, String filename) {
+        return buildKey(category, ownerId, extOf(filename, "bin"));
+    }
+
+    public CdnUploader.BrowserUploadTicket browserUpload(String key, String contentType, long minBytes, long maxBytes, Instant expiresAt) {
+        if (cdn == null) throw new IllegalStateException("file storage CDN is not configured");
+        return cdn.browserUpload(key, contentType, minBytes, maxBytes, expiresAt);
+    }
+
+    public CdnUploader.ObjectInfo stat(String key) throws IOException {
+        return cdn == null ? null : cdn.stat(key);
+    }
+
+    /** 已由受限直传写入 CDN 的对象句柄；调用前必须先 stat 并核对 owner/session。 */
+    public StoredFile adopt(String key, long bytes, String contentType) {
+        return new StoredFile(key, cdn == null ? props.getPublicUrlBase() + "/" + key : cdn.publicUrlFor(key),
+                signedUrl(key), null, bytes, contentType);
     }
 
     private StoredFile ingest(InputStream in, String category, String ownerId, String ext, String contentType) throws IOException {

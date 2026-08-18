@@ -15,6 +15,8 @@ public final class ClipRequests {
     public record PreviewVoice(Integer no, String text) {}
     public record Estimate(List<Map<String, Object>> segments, List<Map<String, Object>> shots) {}
     public record Render(String clientRequestId, Integer externalCreditsHeld) {}
+    public record CreateCloneUpload(String kind, String clientRequestId, String fileName, String contentType, Long sizeBytes) {}
+    public record SubmitCloneUpload(String clientRequestId, String avatarId, String voiceId, String name, String voiceSource) {}
     public record UpdateAsset(String label, String tag) {}
     public record Publish(String platform) {}
     public record UpsertTemplate(String id, String name, String industry, String themeKey, String description,

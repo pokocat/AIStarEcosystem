@@ -8654,12 +8654,44 @@ paths:
       description: 上传本人正脸授权声明视频；口播必须与服务端固定授权文案逐字一致。石榴受理后原始文件由我方删除，只保留授权文本哈希与 authId。authId 表示供应商已受理授权证据，不等同于独立实名认证。
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, text], properties: { file: { type: string, format: binary }, text: { type: string, maxLength: 300 } } } } } }
       responses: { '200': { description: authorization video submitted and accepted by the upstream endpoint; accepted permits clone }, '503': { description: media moderation or engine not configured } }
+  /me/clip/avatar/uploads:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipCreateCloneUpload
+      description: 签发 10 分钟、精确 object key/字节数/MIME 的 OSS V4 PostObject 票据；owner + clientRequestId 幂等，长期密钥不下发。
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [kind, clientRequestId, fileName, contentType, sizeBytes], properties: { kind: { type: string, enum: [avatar, voice, avatarImage] }, clientRequestId: { type: string }, fileName: { type: string }, contentType: { type: string }, sizeBytes: { type: integer, format: int64 } } } } } }
+      responses: { '200': { description: restricted direct-upload ticket or the existing idempotent session state }, '409': { description: same clientRequestId was used for a different file } }
+  /me/clip/avatar/uploads/{id}/complete:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipCompleteCloneUpload
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      description: HEAD 核对对象精确大小与 MIME；不创建供应商任务。
+      responses: { '200': { description: uploaded or terminal session status }, '422': { description: object metadata mismatch } }
+  /me/clip/avatar/uploads/{id}/submit:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipSubmitCloneUpload
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      description: 将已核验对象落 processing 后异步做真实媒体校验、H.265 转 H.264 和供应商受理；重复提交返回同一状态。
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [clientRequestId], properties: { clientRequestId: { type: string }, avatarId: { type: string }, voiceId: { type: string }, name: { type: string }, voiceSource: { type: string } } } } } }
+      responses: { '200': { description: processing accepted or failed status }, '409': { description: upload not completed or request id mismatch } }
+  /me/clip/avatar/uploads/{id}:
+    get:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipGetCloneUpload
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: issued uploaded processing accepted or failed status } }
   /me/clip/avatar/clone:
     post:
       tags: [clip]
       security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
       operationId: clipCloneAvatarOrVoice
-      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [avatar, voice] }, avatarId: { type: string, description: replace or attach voice to this avatar }, voiceId: { type: string, description: existing ready voice reused by a new avatar }, name: { type: string, maxLength: 32 } } } } } }
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [avatar, voice, avatarImage] }, avatarId: { type: string, description: replace or attach voice to this avatar }, voiceId: { type: string, description: existing ready voice reused by a new avatar }, name: { type: string, maxLength: 32 } } } } } }
       responses: { '200': { description: training started and returns avatarId/voiceId when available; avatar upload also persists a preview frame }, '422': { description: invalid media or CLIP_AVATAR_PREVIEW_FAILED } }
   /me/clip/avatar/consents:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipConsentLogs, responses: { '200': { description: consent snapshots } } }

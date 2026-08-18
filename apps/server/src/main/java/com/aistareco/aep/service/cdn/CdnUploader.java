@@ -3,6 +3,7 @@ package com.aistareco.aep.service.cdn;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * 抽象 CDN 上传器。
@@ -27,6 +28,17 @@ public interface CdnUploader {
 
     /** 删除指定 key 的对象（best-effort，不抛出 NoSuchFile）。 */
     void delete(String key) throws IOException;
+
+    /**
+     * 给受信客户端签一张短时、单对象、限大小的 multipart POST 上传票。
+     * 默认驱动不支持；生产 OSS 驱动必须把 key / 大小 / MIME 都收进 policy，绝不能下发长期 AK。
+     */
+    default BrowserUploadTicket browserUpload(String key, String contentType, long minBytes, long maxBytes, Instant expiresAt) {
+        throw new UnsupportedOperationException("browser upload is not supported by " + driverName());
+    }
+
+    /** HEAD 一个对象，供直传完成确认；不存在返回 {@code null}。 */
+    default ObjectInfo stat(String key) throws IOException { return null; }
 
     /** 仅做 URL 拼接，不传文件（用于 thumbnail 等已知 key 的二次 URL 构造）。 */
     String publicUrlFor(String key);
@@ -62,4 +74,6 @@ public interface CdnUploader {
     String driverName();
 
     record CdnUploadResult(String cdnUrl, String key, long uploadedBytes, Instant uploadedAt) {}
+    record BrowserUploadTicket(String uploadUrl, Map<String, String> formData, Instant expiresAt) {}
+    record ObjectInfo(long bytes, String contentType, String etag) {}
 }

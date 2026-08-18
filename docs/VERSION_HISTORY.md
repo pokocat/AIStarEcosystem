@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.131）
+# 版本增量历史（v0.5 → v0.132）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.132（2026-08-18）— 快出片本人素材单次直传与异步受理
+
+形象、声音与照片克隆新增持久化 `clip_upload_session`（V20）和四个 `/api/me/clip/avatar/uploads**` 端点。客户端先取得只允许一个 object key、精确字节数/MIME、最长 10 分钟的 OSS PostObject V4 policy，再从手机一次直传 OSS；服务端以 owner + clientRequestId 幂等，HEAD 核验后落 `processing` 并异步做真实媒体校验与石榴受理。网络超时或重复点击只能回到同一 uploadId，禁止二次上传、二次建供应商任务。
+
+iPhone 相册常见 HEVC/H.265 形象视频在供应商调用前统一转为 H.264/AAC MP4，再走既有 ffprobe、预览帧和克隆链；视频原编码不再让用户上传几十秒后被直接打回。旧 multipart `/avatar/clone` 保留兼容。定向测试覆盖 V4 policy 必填约束、上传会话幂等、精确 HEAD 核验、异步提交和既有克隆回归；未调用真实石榴计费接口。
 
 ### v0.131（2026-08-17）— MiniMax H3 Job 作用域修复与成功任务对账
 

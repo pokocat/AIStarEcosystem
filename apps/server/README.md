@@ -7,6 +7,7 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 ## 版本日志
 
+- **v0.132（2026-08-18）**：`clip` 本人素材改为受限 OSS V4 PostObject 单次直传 + `clip_upload_session` 持久化受理号 + 异步媒体校验/供应商提交；同一 owner + clientRequestId 只复用一个对象和任务。形象视频若为 HEVC/H.265，服务端先转 H.264/AAC 再走既有 ffprobe/预览/克隆，旧 multipart 路由保留兼容。
 - **v0.131（2026-08-17）**：修复聚算 Account API Key 的模型作用域：Job 查询和产物读取统一携带 `?model=minimax-h3`；带货素材入口在 hold 前校验 H3 时长并按 40 积分/秒报价。新增既有上游成功 Job 的幂等对账恢复，不重新提交生成。
 - **v0.130（2026-08-17）**：视频生成新增聚算 JusuanHub `minimax-h3` 媒体 Job 协议（768P、横/竖屏、5–15 秒）：`/media/generations` 提交、`/jobs/{id}` 轮询，受保护产物经 `/assets/{id}/content` 鉴权下载后镜像 OSS；候选报价支持 `PER_SECOND`，H3 按 40 积分/秒计费，存量模型继续按次。当前先开放 t2v，首/尾帧资产上传未接通前能力标记为不支持，避免误报。
 - **v0.116（2026-08-11）**：`clip` 新增官方采集契约和服务端 ffprobe 质量闸，`/me/clip/avatar/requirements` 下发授权/形象/声音硬限制与固定口播；声音固定 V2.0，avatar 与 b-roll 统一复用段 TTS，数字人改走 `/video/createByVoiceV2`。训练/生成回传真实进度和失败原因，授权 `authId` 不再表述为独立实名认证。本轮测试均为桩与离线编译，不调用石榴真实生成。

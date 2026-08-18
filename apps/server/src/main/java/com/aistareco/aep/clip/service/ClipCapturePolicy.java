@@ -58,11 +58,17 @@ public class ClipCapturePolicy {
 
     public FfmpegRunner.MediaProbe validate(String kind, MultipartFile file, FileStorageService.StoredFile stored) {
         if (file == null || stored == null) throw BusinessException.badRequest("CLIP_CAPTURE_REQUIRED", "未收到采集文件");
+        return validate(kind, file.getOriginalFilename(), file.getContentType(), stored);
+    }
+
+    /** 直传对象没有 MultipartFile；文件名/MIME 来自已签入上传会话的声明，真实媒体仍由 ffprobe/ImageIO 验。 */
+    public FfmpegRunner.MediaProbe validate(String kind, String fileName, String contentType, FileStorageService.StoredFile stored) {
+        if (stored == null) throw BusinessException.badRequest("CLIP_CAPTURE_REQUIRED", "未收到采集文件");
         // 图片单独走一条：静态图没有时长，套用下面的 durationSec > 0 校验会把每一张合法图片都判死。
-        if (IMAGE_KIND.equals(kind)) return validateImage(file, stored);
-        String mime = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
+        if (IMAGE_KIND.equals(kind)) return validateImage(fileName, contentType, stored);
+        String mime = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
         boolean voice = "voice".equals(kind);
-        String extension = extension(file.getOriginalFilename());
+        String extension = extension(fileName);
         Set<String> supportedExtensions = voice ? Set.of("wav", "mp3", "ogg", "m4a", "aac") : Set.of("mp4", "mov");
         if (voice ? !AUDIO_MIME.contains(mime) : !VIDEO_MIME.contains(mime)) {
             throw BusinessException.badRequest("CLIP_CAPTURE_FORMAT_INVALID", voice ? "声音只支持 WAV、MP3、OGG、M4A 或 AAC" : "视频只支持 MP4 或 MOV");
@@ -93,9 +99,9 @@ public class ClipCapturePolicy {
      * 图片采集校验。**不走 ffprobe** —— 它对静态图的时长/流信息表现不一致，容易把合法图片判成不可读。
      * 改用 JDK 自带的 ImageIO：能解码出来才算数，比魔数判断更实在（顺带拿到真实像素尺寸）。
      */
-    private FfmpegRunner.MediaProbe validateImage(MultipartFile file, FileStorageService.StoredFile stored) {
-        String mime = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
-        String extension = extension(file.getOriginalFilename());
+    private FfmpegRunner.MediaProbe validateImage(String fileName, String contentType, FileStorageService.StoredFile stored) {
+        String mime = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        String extension = extension(fileName);
         if (!IMAGE_MIME.contains(mime)) {
             throw BusinessException.badRequest("CLIP_CAPTURE_FORMAT_INVALID", "照片只支持 JPG 或 PNG");
         }
@@ -118,6 +124,30 @@ public class ClipCapturePolicy {
             throw BusinessException.badRequest("CLIP_IMAGE_RESOLUTION_INVALID", "照片分辨率需在 360p 到 4K 之间");
         }
         return new FfmpegRunner.MediaProbe(0, extension, null, null, img.getWidth(), img.getHeight(), 0, 0, true);
+    }
+
+    /** 发上传票前的廉价门：只验声明，避免超限/错格式文件先占满带宽；深度校验仍在上传后。 */
+    public void validateDeclaration(String kind, String fileName, String contentType, long bytes) {
+        if (!Set.of("avatar", "voice", IMAGE_KIND).contains(kind)) {
+            throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
+        }
+        String mime = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        String ext = extension(fileName);
+        if (IMAGE_KIND.equals(kind)) {
+            if (!IMAGE_MIME.contains(mime) || !Set.of("jpg", "jpeg", "png").contains(ext)) {
+                throw BusinessException.badRequest("CLIP_CAPTURE_FORMAT_INVALID", "照片只支持 JPG 或 PNG");
+            }
+            if (bytes < 1 || bytes > IMAGE_MAX_BYTES) throw new BusinessException(HttpStatus.PAYLOAD_TOO_LARGE, "CLIP_CAPTURE_TOO_LARGE", "照片不能超过 10MB");
+            return;
+        }
+        boolean voice = "voice".equals(kind);
+        Set<String> extensions = voice ? Set.of("wav", "mp3", "ogg", "m4a", "aac") : Set.of("mp4", "mov");
+        if (voice ? !AUDIO_MIME.contains(mime) : !VIDEO_MIME.contains(mime)) {
+            throw BusinessException.badRequest("CLIP_CAPTURE_FORMAT_INVALID", voice ? "声音只支持 WAV、MP3、OGG、M4A 或 AAC" : "视频只支持 MP4 或 MOV");
+        }
+        if (!extensions.contains(ext)) throw BusinessException.badRequest("CLIP_CAPTURE_EXTENSION_INVALID", voice ? "声音文件扩展名需要是 WAV、MP3、OGG、M4A 或 AAC" : "视频文件扩展名需要是 MP4 或 MOV");
+        long max = voice ? AUDIO_MAX_BYTES : VIDEO_MAX_BYTES;
+        if (bytes < 1 || bytes > max) throw new BusinessException(HttpStatus.PAYLOAD_TOO_LARGE, "CLIP_CAPTURE_TOO_LARGE", voice ? "声音文件不能超过 20MB" : "视频文件不能超过 100MB");
     }
 
     private static void validateVoice(FfmpegRunner.MediaProbe probe, String extension) {

@@ -404,6 +404,10 @@ prod 启动时 DataInitializer 不跑，真实账号通过 SMS register 流程�
 
 ## 七、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.132 · 2026-08-18 — 共享 server 增加「快出片」单次直传与异步受理（明星带货流程不变）
+
+共享后端新增 `clip_upload_session` 与 `/api/me/clip/avatar/uploads**`：军师客户端凭精确限制的 OSS V4 policy 直接上传本人形象/声音/照片，服务端 HEAD 核验后异步受理，owner + clientRequestId 保证网络重试不会重复创建供应商任务；HEVC/H.265 形象视频会先转为 H.264。该能力仍属于独立 `clip` 域，不改变明星带货授权、素材、钱包或小程序页面；完整口径见 [`docs/clip-avatar-video-plan.md`](docs/clip-avatar-video-plan.md) v0.132。
+
 ### v0.116 · 2026-08-11 — 共享 server 增加「快出片」采集要求接口（明星带货流程不变）
 
 共享后端新增 `GET /api/me/clip/avatar/requirements`，为军师「快出片」返回石榴官方素材硬限制、产品质量门、建议时长和固定授权口播；授权/形象/声音上传由服务端 ffprobe 再校验。该路径属于独立 `clip` 域，使用 service token + `externalOwnerId`，不改变本规格的明星授权、视频生成、钱包与小程序页面。详细契约与产品口径见 [`docs/clip-avatar-video-plan.md`](docs/clip-avatar-video-plan.md) v0.116。

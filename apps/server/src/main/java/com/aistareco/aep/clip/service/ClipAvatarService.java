@@ -9,6 +9,7 @@ import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,13 +28,22 @@ public class ClipAvatarService {
     private static final String AGREEMENT_TEXT = "本人授权军师参谋部使用本人主动提交的视频与声音资料，仅为本人的账号创建、训练和使用数字分身。本人可随时撤回授权并删除分身，删除后停止新的生成。";
     private final DapAvatarRepository avatars; private final DapVoiceRepository voices; private final DapConsentRepository consents;
     private final ClipRenderJobRepository jobs; private final FileStorageService storage; private final ShiliuService shiliu; private final ClipCapturePolicy capturePolicy;
-    private final ClipVoiceSeedExtractor voiceSeedExtractor; private final ClipAvatarPreviewExtractor previewExtractor;
+    private final ClipVoiceSeedExtractor voiceSeedExtractor; private final ClipAvatarPreviewExtractor previewExtractor; private final ClipCaptureNormalizer captureNormalizer;
+    @Autowired
+    public ClipAvatarService(DapAvatarRepository avatars, DapVoiceRepository voices, DapConsentRepository consents,
+                             ClipRenderJobRepository jobs, FileStorageService storage, ShiliuService shiliu,
+                             ClipCapturePolicy capturePolicy, ClipVoiceSeedExtractor voiceSeedExtractor,
+                             ClipAvatarPreviewExtractor previewExtractor, ClipCaptureNormalizer captureNormalizer) {
+        this.avatars = avatars; this.voices = voices; this.consents = consents; this.jobs = jobs; this.storage = storage; this.shiliu = shiliu; this.capturePolicy = capturePolicy;
+        this.voiceSeedExtractor = voiceSeedExtractor; this.previewExtractor = previewExtractor; this.captureNormalizer = captureNormalizer;
+    }
+
+    /** 测试/旧调用兼容构造；Spring 明确使用上面的完整构造。 */
     public ClipAvatarService(DapAvatarRepository avatars, DapVoiceRepository voices, DapConsentRepository consents,
                              ClipRenderJobRepository jobs, FileStorageService storage, ShiliuService shiliu,
                              ClipCapturePolicy capturePolicy, ClipVoiceSeedExtractor voiceSeedExtractor,
                              ClipAvatarPreviewExtractor previewExtractor) {
-        this.avatars = avatars; this.voices = voices; this.consents = consents; this.jobs = jobs; this.storage = storage; this.shiliu = shiliu; this.capturePolicy = capturePolicy;
-        this.voiceSeedExtractor = voiceSeedExtractor; this.previewExtractor = previewExtractor;
+        this(avatars, voices, consents, jobs, storage, shiliu, capturePolicy, voiceSeedExtractor, previewExtractor, null);
     }
 
     public CaptureRequirementsDto requirements() { return capturePolicy.requirements(); }
@@ -258,11 +268,27 @@ public class ClipAvatarService {
      *   服务端无从分辨，于是一律回退到 linkedVoice —— 用户选了视频原声却拿到旧声音（男女都错），
      *   而且因为 readyVoice 已非空，下面真正的原声提取整段被跳过，等于选项完全失效。
      */
+    @Transactional
     public Map<String, Object> clone(String owner, String kind, MultipartFile file, String avatarId, String voiceId, String name, String voiceSource) {
         if (!Set.of("avatar", "voice", ClipCapturePolicy.IMAGE_KIND).contains(kind)) throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
         if (file == null || file.isEmpty()) throw BusinessException.badRequest("CLIP_CLONE_FILE_REQUIRED", "未收到采集文件");
         FileStorageService.StoredFile stored = storage.store(file, "clip/clone/" + kind, owner);
-        try { capturePolicy.validate(kind, file, stored); }
+        return cloneStored(owner, kind, file.getOriginalFilename(), file.getContentType(), stored, avatarId, voiceId, name, voiceSource);
+    }
+
+    /** 受限 OSS 直传后的业务入口；对象归属与大小已由 ClipUploadService 核对。 */
+    @Transactional
+    public Map<String, Object> cloneStored(String owner, String kind, String fileName, String contentType,
+                                           FileStorageService.StoredFile uploaded, String avatarId, String voiceId,
+                                           String name, String voiceSource) {
+        if (!Set.of("avatar", "voice", ClipCapturePolicy.IMAGE_KIND).contains(kind)) throw BusinessException.badRequest("CLIP_CLONE_KIND_INVALID", "采集类型不支持");
+        ClipCaptureNormalizer.Prepared prepared;
+        try { prepared = captureNormalizer == null
+                ? new ClipCaptureNormalizer.Prepared(fileName, contentType, uploaded, false)
+                : captureNormalizer.prepare(owner, kind, fileName, contentType, uploaded); }
+        catch (RuntimeException e) { storage.delete(uploaded.key()); throw e; }
+        FileStorageService.StoredFile stored = prepared.stored();
+        try { capturePolicy.validate(kind, prepared.fileName(), prepared.contentType(), stored); }
         catch (RuntimeException e) { storage.delete(stored.key()); throw e; }
         ShiliuGateway gateway = shiliu.required();
         Instant now = Instant.now();

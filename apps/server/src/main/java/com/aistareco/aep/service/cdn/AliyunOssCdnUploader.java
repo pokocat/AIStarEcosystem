@@ -10,6 +10,7 @@ import com.aliyun.oss.common.auth.DefaultCredentialProvider;
 import com.aliyun.oss.common.comm.SignVersion;
 import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
+import com.aliyun.oss.model.PolicyConditions;
 import com.aliyun.oss.model.PutObjectRequest;
 import com.aliyun.oss.model.ResponseHeaderOverrides;
 import jakarta.annotation.PreDestroy;
@@ -31,8 +32,10 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * 阿里云 OSS 实现。
@@ -58,6 +61,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
     private final String keyPrefix;
     private final List<String> absoluteKeyPrefixes;
     private final OSS ossClient;
+    private final String accessKeyId;
 
     // v0.47+：URL 签名配置
     private final SignStrategy signStrategy;
@@ -87,6 +91,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
         this.region = resolveRegion(region, this.endpoint);
         String id = requireText(accessKeyId, "aep.cdn.oss.access-key-id");
         String secret = requireText(accessKeySecret, "aep.cdn.oss.access-key-secret");
+        this.accessKeyId = id;
 
         // v0.47+：用 V4 签名 builder 构造 OSS client（SDK 3.18.5）
         ClientBuilderConfiguration clientConfig = new ClientBuilderConfiguration();
@@ -160,6 +165,71 @@ public class AliyunOssCdnUploader implements CdnUploader {
             throw new IOException("OSS delete failed key=" + objectKey + ": " + e.getMessage(), e);
         }
         log.info("[cdn] deleted oss key={}", objectKey);
+    }
+
+    @Override
+    public BrowserUploadTicket browserUpload(String key, String contentType, long minBytes, long maxBytes, Instant expiresAt) {
+        if (key == null || key.isBlank()) throw new IllegalArgumentException("key required");
+        if (contentType == null || contentType.isBlank()) throw new IllegalArgumentException("contentType required");
+        if (minBytes < 1 || maxBytes < minBytes) throw new IllegalArgumentException("invalid content length range");
+        Instant safeExpiry = expiresAt == null ? Instant.now().plusSeconds(600) : expiresAt;
+        if (safeExpiry.isAfter(Instant.now().plusSeconds(900))) safeExpiry = Instant.now().plusSeconds(900);
+
+        String objectKey = objectKeyFor(key);
+        Date now = new Date();
+        java.text.SimpleDateFormat dateTimeFormat = new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'");
+        dateTimeFormat.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        java.text.SimpleDateFormat dateFormat = new java.text.SimpleDateFormat("yyyyMMdd");
+        dateFormat.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        String date = dateFormat.format(now);
+        String dateTime = dateTimeFormat.format(now);
+        String scope = date + "/" + region + "/oss/aliyun_v4_request";
+        String credential = accessKeyId + "/" + scope;
+
+        // V4 的四个签名字段不仅要随表单提交，也必须被同一 policy 精确约束；否则 OSS 会拒绝。
+        PolicyConditions conditions = new PolicyConditions();
+        conditions.addConditionItem(PolicyConditions.COND_KEY, objectKey);
+        conditions.addConditionItem(PolicyConditions.COND_CONTENT_LENGTH_RANGE, minBytes, maxBytes);
+        conditions.addConditionItem("x-oss-signature-version", "OSS4-HMAC-SHA256");
+        conditions.addConditionItem("x-oss-credential", credential);
+        conditions.addConditionItem("x-oss-date", dateTime);
+        conditions.addConditionItem("x-oss-content-type", contentType);
+        conditions.addConditionItem("x-oss-forbid-overwrite", "true");
+        conditions.addConditionItem("success_action_status", "200");
+        String policyJson = ossClient.generatePostPolicy(Date.from(safeExpiry), conditions);
+        String policy = java.util.Base64.getEncoder().encodeToString(policyJson.getBytes(StandardCharsets.UTF_8));
+
+        Map<String, String> form = new LinkedHashMap<>();
+        form.put("key", objectKey);
+        form.put("policy", policy);
+        form.put("x-oss-signature-version", "OSS4-HMAC-SHA256");
+        form.put("x-oss-credential", credential);
+        form.put("x-oss-date", dateTime);
+        form.put("x-oss-signature", ossClient.calculatePostSignature(policyJson, now));
+        form.put("x-oss-content-type", contentType);
+        form.put("x-oss-forbid-overwrite", "true");
+        form.put("success_action_status", "200");
+        return new BrowserUploadTicket(publicUploadEndpoint(), form, safeExpiry);
+    }
+
+    @Override
+    public ObjectInfo stat(String key) throws IOException {
+        String objectKey = objectKeyFor(key);
+        try {
+            ObjectMetadata metadata = ossClient.getObjectMetadata(bucket, objectKey);
+            return new ObjectInfo(metadata.getContentLength(), metadata.getContentType(), metadata.getETag());
+        } catch (OSSException e) {
+            if ("NoSuchKey".equals(e.getErrorCode()) || "NoSuchObject".equals(e.getErrorCode())) return null;
+            throw new IOException("OSS stat failed key=" + objectKey + ": " + e.getMessage(), e);
+        } catch (ClientException e) {
+            throw new IOException("OSS stat failed key=" + objectKey + ": " + e.getMessage(), e);
+        }
+    }
+
+    private String publicUploadEndpoint() {
+        String publicEndpoint = endpoint.replace("-internal.aliyuncs.com", ".aliyuncs.com")
+                .replaceFirst("^https?://", "");
+        return "https://" + bucket + "." + publicEndpoint;
     }
 
     @Override

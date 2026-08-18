@@ -105,6 +105,11 @@ public final class ClipDtos {
                                          List<String> officialDocs, CaptureRuleDto consent, CaptureRuleDto avatar,
                                          CaptureRuleDto voice, CaptureRuleDto image, int pollIntervalMs) {}
     public record ConsentDto(String id, String status, boolean accepted, boolean verified, String verificationUrl) {}
+    public record CloneUploadTicketDto(String uploadId, String uploadUrl, Map<String, String> formData,
+                                       String expiresAt, String status, boolean reused) {}
+    public record CloneUploadStatusDto(String uploadId, String clientRequestId, String kind, String status,
+                                       String avatarId, String voiceId, String errorCode, String errorMessage,
+                                       String reviewUrl, String expiresAt, String updatedAt) {}
     public record AuditDto(String id, String createdAt, String createdText, String scope, String action, String status) {}
 
     @SuppressWarnings("unchecked") public static Map<String, Object> safeMap(Map<String, Object> value) { return value == null ? new LinkedHashMap<>() : value; }

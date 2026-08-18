@@ -176,8 +176,32 @@ export interface ClipVoiceView {
   progress: number;
 }
 
+export type ClipCloneKind = "avatar" | "voice" | "avatarImage";
+export interface ClipCloneUploadTicket {
+  uploadId: string;
+  uploadUrl?: string | null;
+  formData: Record<string, string>;
+  expiresAt?: string | null;
+  status: "issued" | "uploaded" | "processing" | "accepted" | "failed";
+  reused?: boolean;
+}
+export interface ClipCloneUploadStatus {
+  uploadId: string;
+  clientRequestId: string;
+  kind: ClipCloneKind;
+  status: "issued" | "uploaded" | "processing" | "accepted" | "failed";
+  avatarId?: string | null;
+  voiceId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  /** 仅供可信 BFF 做上传后机审；最终用户端响应必须剥离。 */
+  reviewUrl?: string | null;
+  expiresAt?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface ClipCaptureRule {
-  kind: "consent" | "avatar" | "voice";
+  kind: "consent" | "avatar" | "voice" | "avatarImage";
   vendorMinDurationSec: number;
   vendorMaxDurationSec: number;
   minDurationSec: number;

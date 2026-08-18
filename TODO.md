@@ -9,8 +9,10 @@
 
 ---
 
-## 2026-08-11 · `clip` 快出片生产门槛（v0.116 石榴官方契约对齐后续）
+## 2026-08-18 · `clip` 快出片生产门槛（v0.132 单次直传与异步受理后续）
 
+- [x] ~~本人素材经军师与 AIStar 重复搬运、弱网超时后诱导重复上传~~（v0.132 完成，2026-08-18）：客户端凭精确 OSS V4 policy 单次直传，`clip_upload_session` 持久化受理状态并以 owner + clientRequestId 幂等；HEAD 后异步校验/提交，HEVC/H.265 形象视频自动转 H.264。
+- [ ] 给生产 OSS RAM 身份补齐并验证 `oss:DeleteObject`（至少 `media/clip/clone/*`）：2026-08-18 线上日志已确认当前删除被 OSS 拒绝。它不阻断直传、转码和训练，但会让失败/转码前的源对象无法及时清理；权限补齐前需要用生命周期规则兜底回收该前缀。
 - [x] ~~取得石榴测试 key、核对官方字段并替换固定失败网关~~（v0.111，v0.116 补齐契约）：已接 `/authVideo/create`、`/speaker/{create,tts,status,delete}`、`/avatar/{create,status,delete}`、`/video/{createByText,createByVoiceV2,status}`；v0.116 增加官方素材限制/错误码、speaker 状态数组兼容、真实进度以及统一 V2 音频驱动。真实 key 只落预发 0600 env，官方 BaseURL 为 `https://api.16ai.chat/api/v1/`。只读探针确认账号有效、12,000 点且当前无 speaker/avatar。
 - [x] ~~采集页按供应商硬限制与产品质量门给出可执行指导~~（v0.116 完成，2026-08-11）：`ClipCapturePolicy` 以 ffprobe 验证授权视频、形象视频、声音样本；`GET /me/clip/avatar/requirements` 下发官方/产品限制、建议区间和固定授权口播，服务端不信任客户端元数据。
 - [x] ~~无本人素材时仍能验收产品工程闭环~~（v0.114）：隔离预发可显式 force-mock，实际产出带「测试演示」的可播放 MP4，并完整经过逐段总装、字幕/AI 标识、封面、质量门和存储；不再用状态假成功或空作品冒充出片。该项只关闭测试体验缺口，不替代下一条真实石榴素材验收。

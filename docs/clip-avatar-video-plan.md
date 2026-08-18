@@ -2,14 +2,15 @@
 
 > **业务线代号**：`clip`（口播视频线）　**产品工作名**：快出片（待定）
 > **文档状态**：**M1 服务端、石榴官方单视频 Avatar 创建/可选声音增强/多数字人选择与多段 ffmpeg 总装已落地；文案句与视觉镜头分层，模板固定视频可后台配置，作品有真实生成时间与可取消/删除闭环，V2 克隆音色统一驱动数字人与 b-roll，逐句字幕、默认关闭的可选 AI 水印与音画质量门已启用；本人素材质量实测、媒体审核与真实代发未上线**。
-> **创建**：2026-08-10　**last-reviewed**：2026-08-11
+> **创建**：2026-08-10　**last-reviewed**：2026-08-18
 > **上游背景**：基于已有 AI 短剧（`apps/web-drama` + `apps/server` drama 域）基座能力，做一个手机端/小程序的轻量素材视频产品；数字人口播能力拟接入外部供应商**石榴AI**。
 
-## 实施状态（2026-08-11）
+## 实施状态（2026-08-18）
 
 - 新增 `packages/types/src/clip.ts`、Java `clip` 独立领域与 `V14__add_clip_domain.sql`，包含模板、项目、任务、素材四张表；所有用户态查询按军师 `externalOwnerId` 隔离，service token 只代表调用系统，不冒充最终用户。
 - 已实现模板/admin preset 上传、项目草稿/重置/30 天回收、素材 100MB + MIME + ffprobe、授权快照、分身/声音克隆抽象、报价/预检、幂等建单、数据库租约 worker、stale reaper、作品查询和四平台发布契约；OpenAPI 已同步。
 - 跨系统采用 Scheme A：用户积分只由军师 BFF hold/settle/refund；AIStar 不调用本仓 `CreditService`，仅保存 `creditsHeld` 作为外部报价审计事实。`clientRequestId` 在外部属主内唯一，重复载荷冲突返回 409。
+- v0.132 将本人素材改为“服务端签发受限票据 → 手机一次直传 OSS → HEAD 精确核验 → 持久化异步受理”。`clip_upload_session` 以 owner + clientRequestId 唯一，票据只允许一个 object key、精确字节数/MIME 且最长 10 分钟；重复请求回到同一 uploadId，不得重复上传或创建石榴任务。形象视频若为 HEVC/H.265，会在异步阶段先转 H.264/AAC MP4，再走既有 ffprobe、预览帧与克隆流程；旧 multipart 路由仅作兼容。
 - `HttpShiliuGateway` 已按官方 API v1 接入声音/形象训练、可选授权视频、V2 TTS、V2 音频驱动出片、状态轮询与删除；上游时效成片立即转存我方持久存储。`ClipCapturePolicy` 在调用前以 ffprobe 校验素材，训练/生成页展示官方真实进度和失败原因。真实 key 仅在预发 0600 env，探针确认 12,000 点、当前没有已训练 speaker/avatar。
 - `ClipOfficialTemplateSeeder` 内置「为实体发声 / 今天开门了 / 这门手艺」三套模板，仅补缺失 ID、不覆盖运营编辑。`clip-preprod` 独立 profile 仅监听 127.0.0.1:8081，军师 BFF 以独立 service token 回源，未接触 AIStar 生产。
 - v0.115 把 `segments`（逐段改稿）与 `shots`（连续句范围的视觉编排）分层；`ClipShotPlan` 为报价、preflight、worker 和总装的唯一投影层。老草稿无 shot 时相邻且未绑定不同素材的 b-roll 最多 3 句成镜，显式计划必须完整无重叠覆盖全部句子；军师 BFF 的 AI 文案对话记录可随项目 `scriptChat` 一并保存。
