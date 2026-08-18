@@ -291,7 +291,7 @@ Kling 官方 prompt 最大 2500 字符。逐镜只传当前场景、当前角色
 - 新增 `DramaShortAssembleService` 和 `/assemble` 端点，按镜号校验并拼接全部已验收视频，转码回退、OSS key 真值、签名 URL、存储计量、旧成片清理与输入指纹幂等均已接通；
 - 客户端不能再通过 PUT 伪造 `assembled` 或直接标记 `done`；镜头编辑会令旧成片失效，只有服务端合成成功才进入完成态；
 - `/shorts/make` 已补合成 loading、失败可重试、缺失媒体提示、成功反馈、窄屏安全宽度和 `aria-live/aria-busy`；
-- 自动化门禁：web-drama 40/40、server 定向 20/20、server 全量 627（skip 3）、Next 生产构建 31 路由、admin 生产构建 64 路由、全 workspace typecheck、API contract 均通过；全量 server 在本地测试驱动下显式使用 `aep.cdn.driver=local` 与 H2 `NON_KEYWORDS=CAST`。未发起任何付费模型任务。
+- 自动化门禁：web-drama 40/40、server 全量 626（skip 3）、Next 生产构建 31 路由、admin 生产构建 64 路由、全 workspace typecheck、API contract 均通过；全量 server 在本地测试驱动下显式使用 `aep.cdn.driver=local` 与 H2 `NON_KEYWORDS=CAST`。未发起任何付费模型任务。
 
 主要文件：
 
