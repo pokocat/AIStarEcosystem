@@ -39,6 +39,23 @@ public class ClipRenderService {
      * 语义拆开看：项目的 status 表达的是「还能不能编辑」，任务的成败由 ClipRenderJob 自己记，
      * 所以这里回落到 draft 不会丢失任何失败信息。
      */
-    @Transactional public void failProject(ClipRenderJob j,String status){ projectRepo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).ifPresent(p->{p.setStatus("draft");p.setProgress(0);p.setUpdatedAt(Instant.now());projectRepo.save(p);}); }
+    @Transactional public void failProject(ClipRenderJob j,String status){ releaseProject(j); }
+
+    /**
+     * 出片没成时把项目**放回可编辑**。取消与 worker 失败两条路径都收口到这里。
+     *
+     * ⚠️ 活跃 job 守卫：一个项目可能先后下过多单（失败后重出就是）。如果一个**旧** job 现在才
+     * 走到失败/取消，而项目已经被一个**新** job 重新占用（status=generating），
+     * 这时把它重置成 draft 会让用户在新任务跑着的时候继续改内容，污染那一单。
+     * 所以只有当项目当前不在生成中时才释放；正在生成说明有更新的一单在管它。
+     */
+    @Transactional public void releaseProject(ClipRenderJob j){
+        projectRepo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).ifPresent(p->{
+            if(!"generating".equals(p.getStatus())) return;
+            ClipRenderJob latest=jobs.findFirstByProjectIdAndExternalOwnerIdOrderByCreatedAtDesc(p.getId(),p.getExternalOwnerId()).orElse(null);
+            if(latest!=null&&!latest.getId().equals(j.getId())) return;
+            p.setStatus("draft");p.setProgress(0);p.setUpdatedAt(Instant.now());projectRepo.save(p);
+        });
+    }
     private static String uuid(){return UUID.randomUUID().toString().replace("-","").substring(0,16);}
 }
