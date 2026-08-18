@@ -68,7 +68,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
         FileStorageService.StoredFile stored = storage.store(bytes, "clip/preview-voice", ownerId, "mp3", "audio/mpeg");
         int durationSec = durationSeconds(data.path("length").asLong(0), text.length());
         return new Task("tts:" + UUID.randomUUID().toString().substring(0, 12), "succeeded", durationSec,
-                stored.signedUrl(), null);
+                stored.signedUrl(), null, null, stored.key());
     }
 
     @Override

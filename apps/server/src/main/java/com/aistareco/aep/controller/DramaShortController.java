@@ -1,6 +1,8 @@
 package com.aistareco.aep.controller;
 
 import com.aistareco.aep.service.DramaShortService;
+import com.aistareco.aep.service.DramaShortAssembleService;
+import com.aistareco.aep.service.DramaShortAudioService;
 import com.aistareco.aep.service.DramaRecipeService;
 import com.aistareco.common.ApiResponse;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -19,10 +21,17 @@ import java.util.List;
 public class DramaShortController {
 
     private final DramaShortService service;
+    private final DramaShortAssembleService assembleService;
+    private final DramaShortAudioService audioService;
     private final DramaRecipeService recipeService;
 
-    public DramaShortController(DramaShortService service, DramaRecipeService recipeService) {
+    public DramaShortController(DramaShortService service,
+                                DramaShortAssembleService assembleService,
+                                DramaShortAudioService audioService,
+                                DramaRecipeService recipeService) {
         this.service = service;
+        this.assembleService = assembleService;
+        this.audioService = audioService;
         this.recipeService = recipeService;
     }
 
@@ -44,10 +53,28 @@ public class DramaShortController {
         return ApiResponse.of(service.getShort(id, principal.getName()));
     }
 
+    /** 零 token 一致性 / 音频 / 总装预检，不提交任何生成任务。 */
+    @GetMapping("/{id}/preflight")
+    public ApiResponse<JsonNode> preflight(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(service.preflight(id, principal.getName()));
+    }
+
     /** 保存整页草稿。body: { data, status?, progress? } → { meta, data }。 */
     @PutMapping("/{id}")
     public ApiResponse<JsonNode> save(Principal principal, @PathVariable String id, @RequestBody JsonNode body) {
         return ApiResponse.of(service.saveShort(id, body, principal.getName()));
+    }
+
+    /** 把全部已验收镜头按镜号拼成真正的完整短片，成功后才进入 done。 */
+    @PostMapping("/{id}/assemble")
+    public ApiResponse<JsonNode> assemble(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(assembleService.assemble(id, principal.getName()));
+    }
+
+    /** 逐镜生成/复用 TTS 音频；不提交视频生成任务。 */
+    @PostMapping("/{id}/prepare-audio")
+    public ApiResponse<JsonNode> prepareAudio(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(audioService.prepare(id, principal.getName()));
     }
 
     /** 完成短视频 → 发布到创意中心（status=submitted 待运营审核）。 */

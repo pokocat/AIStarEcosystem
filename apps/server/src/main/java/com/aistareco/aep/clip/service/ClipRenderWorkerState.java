@@ -68,8 +68,9 @@ public class ClipRenderWorkerState {
                 Map<String,Object> row=pending.get();
                 Map<String,Object> source=segmentByNo(segments,number(row.get("no")));
                 ShiliuGateway.Task task=gateway.previewVoice(j.getExternalOwnerId(),voiceRef,text(source.get("text")));
-                if(!"succeeded".equals(task.status())||task.outputRef()==null)throw new IllegalStateException("配音生成失败"+(task.error()==null?"":"："+task.error()));
-                row.put("audioCdnKey",outputStorage.persistAudio(j.getExternalOwnerId(),task.outputRef()));
+                if(!"succeeded".equals(task.status())||(task.outputRef()==null&&task.outputCdnKey()==null))throw new IllegalStateException("配音生成失败"+(task.error()==null?"":"："+task.error()));
+                row.put("audioCdnKey",task.outputCdnKey()!=null&&!task.outputCdnKey().isBlank()
+                        ?task.outputCdnKey():outputStorage.persistAudio(j.getExternalOwnerId(),task.outputRef()));
                 row.put("actualDurationSec",task.durationSec()==null?ClipProjectService.seconds(source):task.durationSec());
                 row.put("status","succeeded");
             }

@@ -1,8 +1,28 @@
-# 版本增量历史（v0.5 → v0.132）
+# 版本增量历史（v0.5 → v0.134）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.134（2026-08-18）— 风格短片 ViMax-lite 非视频链路闭环
+
+按“不要做视频生成”的边界完成 P1/P2 非视频部分、P4 与 P5：脚本模型保持一次调用，服务端确定性派生 `continuity_manifest`、稳定角色/场景/镜头 ID、父镜 DAG、canonical refs 与逐镜音频时间轴；草稿保存时以当前分镜重建，不让客户端伪造依赖，也不让模型重复输出冗长 JSON 消耗 token。逐镜视觉 prompt 只取本镜 visual scope，台词/SFX/BGM 不再送入视频模型，统一要求无画面文字。
+
+新增零 Token `GET /me/drama/shorts/{id}/preflight` 和逐镜音频 `POST /me/drama/shorts/{id}/prepare-audio`。预检覆盖结构、ID、依赖、画面、时长、canonical identity、`applied_refs`、TTS 指纹和总装素材，不调用模型、不冻结积分；配音复用数字人明确关联的 ready V2 音色，成功即镜像自有存储并 checkpoint，重试只补缺失/台词变更项。
+
+总装升级为确定性音画管线：每镜按 TTS 真实时长替换源音轨、平台烧录原文字幕，无台词镜头补静音，统一 720×1280 / 30fps / H.264 / AAC / loudnorm / faststart，ffprobe 验证音轨与时长后上传最终视频和封面 key。制作页按 `product-ui-completeness` 增加 Manifest/结构/配音/素材状态、禁用原因、确认、加载、错误恢复和零 Token 预检。未新增或切换视频模型，未调用真实视频生成、未做授权样片。
+
+### v0.133（2026-08-18）— 风格短片提示词止血与真实成片总装
+
+独立复审 ViMax-lite 方案后修正了上线顺序：七牛 Kling 默认无音频，因此只先做灰度协议，必须等 TTS/字幕/混音总装完成后才能替换当前有声视频默认模型，避免一致性提升却让成片失声。多 Agent Review、逐镜 VLM 评分与 best-of-N 继续不做。
+
+P0 已落地：web-drama 新增确定性 prompt compiler，全局视觉设定排除标题、口头禅和人物描述；当前镜对白只进入当前镜视频指令，并明确不得烧入画面文字。无模板风格短片不再被默认 `SHORT_FORMATS[0]` 污染为「口播带货」。逐镜节拍、景别、运镜、特效、SFX 与 BGM 均进入对应结构化变量。
+
+同时先行完成用户明确关注的输出容量：`DramaScriptService` 仅把 `drama.script_draft` prompt 级缺省 `max_tokens` 从 4096 调到 6144，不改共享端点全局默认、也不覆盖运营显式值；`finish_reason=length` 现在返回 `AI_OUTPUT_TRUNCATED`，禁止残缺 JSON 流入后续出片。admin 两个 Prompt 编辑入口显示对应留空默认值。
+
+新增 `DramaShortAssembleService` 与 `POST /me/drama/shorts/{id}/assemble`：校验所有镜头已验收且具有视频，按镜号下载拼接，流复制失败回退 H.264/AAC，上传后仅持久化 `payloadJson.assembled.cdnKey`，出 wire 实时签名；输入指纹实现重复点击幂等，镜头编辑会使旧成片 stale。客户端 PUT 不得伪造成片或直接标记 done，只有总装成功后才完成。制作页补齐合成 loading、缺失媒体、可见错误/重试、成功反馈、响应式安全宽度和 aria 状态。
+
+门禁：web-drama 40/40 + Next build 31 路由；server 全量 626（skip 3，本地 CDN + H2 `NON_KEYWORDS=CAST`）；全 workspace typecheck；admin build 64 路由；API contract 全绿。测试未调用真实视频模型、未产生媒体费用。详细路线见 [`docs/drama-short-vimax-lite-plan.md`](drama-short-vimax-lite-plan.md)。
 
 ### v0.132（2026-08-18）— 快出片本人素材单次直传与异步受理
 

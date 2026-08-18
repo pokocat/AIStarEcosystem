@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowRight,
   Check,
   ChevronDown,
@@ -27,10 +28,12 @@ import {
   Plus,
   RefreshCw,
   ScrollText,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Upload,
   UserPlus,
+  Volume2,
   X,
   Zap,
 } from "lucide-react";
@@ -49,26 +52,13 @@ import { MarkdownLite } from "@/lib/markdown-lite";
 import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-workshop";
 import { DapAvatarsApi, DramaAssetsApi, ShortDramaApi, ShortsApi } from "@/api";
 import type { DapAvatarLite } from "@/api/dap-avatars";
-import type { ScriptMeta } from "@/api/short-drama";
-import type { ShortDraftData } from "@/api/shorts";
+import type { ScriptMeta, ShortContinuityManifest } from "@/api/short-drama";
+import type { ShortDraftData, ShortPreflight } from "@/api/shorts";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import { invalidate } from "@/lib/drama-query";
-
-/** 把「整体短视频说明」拼成注入每镜提示词的前缀，统一全片风格 / 场景 / 主角。 */
-function metaPromptPrefix(meta: ScriptMeta | null): string {
-  if (!meta) return "";
-  const parts = [
-    meta.title?.trim() || "",
-    meta.style?.length ? `风格：${meta.style.join("、")}` : "",
-    meta.scene?.trim() ? `场景：${meta.scene.trim()}` : "",
-    meta.character?.name?.trim()
-      ? `主角：${meta.character.name.trim()}${meta.character.description?.trim() ? `（${meta.character.description.trim()}）` : ""}`
-      : "",
-  ].filter(Boolean);
-  return parts.length ? `【整体设定】${parts.join("｜")}。` : "";
-}
+import { buildShortClipVars, buildShortFrameVars } from "@/lib/short-render-prompt";
 
 /** 短视频分镜 = 结构化表单分镜 + 出镜引擎 */
 interface ShortShot extends FormShot {
@@ -82,6 +72,9 @@ interface ShortShot extends FormShot {
    * 出片产物落地或任务终结即清空。此字段随整页草稿 payloadJson 整存整取（后端不解析，原样保留）。
    */
   pendingJob?: { jobId: string; kind: "frame" | "clip" };
+  sceneId?: string;
+  parentShotId?: string;
+  audio?: { cdnKey: string; url?: string; durationSec: number; textFingerprint: string; providerTaskId?: string; at?: string };
 }
 
 /**
@@ -499,6 +492,12 @@ function ShortMakerInner({
   // 显示用的「类型」标签：套了模版才用模版名；套了创意风格用风格名；都没有就中性「短视频」，
   // 不要回落到 SHORT_FORMATS[0]（「口播带货」）—— 那只是 fmt 的兜底，拿来展示会误导。
   const displayName = hasTemplate ? fmt.name : hasStyle ? styleName || "风格创意" : "短视频";
+  // 真正发给图像/视频模型的风格名：未套模板时绝不能回落到 SHORT_FORMATS[0]（口播带货）。
+  const renderStyleName = hasTemplate
+    ? fmt.name
+    : hasStyle
+      ? styleName || "风格短片"
+      : initial.fmtName || "风格短片";
 
   // 套模版上下文：仅当确实选了模版，才把模版节拍作为 AI 生成参考。
   const templateRef = hasTemplate && fmt.beats?.length
@@ -522,6 +521,7 @@ function ShortMakerInner({
   const [shots, setShots] = React.useState<ShortShot[]>(() => initial.shots ?? []);
   // 整体短视频说明（标题 / 风格 / 场景 / 主角）—— AI 先定调，统领分镜与逐镜出片。
   const [meta, setMeta] = React.useState<ScriptMeta | null>(initial.meta ?? null);
+  const [continuityManifest, setContinuityManifest] = React.useState<ShortContinuityManifest | undefined>(initial.continuityManifest);
   // 一句话故事大纲（AI logline）—— 展示在标题下，可直接改。
   const [logline, setLogline] = React.useState<string>(() => initial.logline ?? "");
   const cfg = useDramaConfig();
@@ -545,6 +545,13 @@ function ShortMakerInner({
   );
   const [draft, setDraft] = React.useState("");
   const [draftStatus, setDraftStatus] = React.useState<"draft" | "done">(initialStatus);
+  const [assembled, setAssembled] = React.useState(() => initial.assembled);
+  const [assembling, setAssembling] = React.useState(false);
+  const [assembleError, setAssembleError] = React.useState<string | null>(null);
+  const [preflight, setPreflight] = React.useState<ShortPreflight | null>(null);
+  const [preflightBusy, setPreflightBusy] = React.useState(false);
+  const [preflightError, setPreflightError] = React.useState<string | null>(null);
+  const [audioBusy, setAudioBusy] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   // 后续推荐 action：AI 每生成 / 改写一版脚本就刷新（来自后端 suggestions），并随草稿持久化、重开恢复。
   const [suggestions, setSuggestions] = React.useState<string[]>(() => initial.suggestions ?? []);
@@ -588,6 +595,7 @@ function ShortMakerInner({
     title: meta?.title || initial.title || title,
     step,
     meta,
+    continuityManifest,
     logline,
     characterRef: charRef,
     characterAvatar: charAvatar,
@@ -596,6 +604,7 @@ function ShortMakerInner({
     chat,
     refs,
     suggestions,
+    assembled,
   };
 
   const queueSave = React.useCallback(() => {
@@ -622,7 +631,7 @@ function ShortMakerInner({
       return;
     }
     queueSave();
-  }, [step, meta, logline, charRef, charAvatar, sceneRef, shots, chat, refs, suggestions, queueSave]);
+  }, [step, meta, continuityManifest, logline, charRef, charAvatar, sceneRef, shots, chat, refs, suggestions, assembled, queueSave]);
   React.useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -664,6 +673,81 @@ function ShortMakerInner({
     }
   };
 
+  const refreshPreflight = React.useCallback(async (flush = false) => {
+    if (preflightBusy) return;
+    setPreflightBusy(true);
+    setPreflightError(null);
+    try {
+      if (flush) await flushSave({ status: "draft" });
+      setPreflight(await ShortsApi.preflightDraft(draftId));
+    } catch (error) {
+      setPreflightError(aiErrorMessage(error, "预检失败，请稍后重试"));
+    } finally {
+      setPreflightBusy(false);
+    }
+  }, [draftId, flushSave, preflightBusy]);
+
+  React.useEffect(() => {
+    void refreshPreflight(false);
+    // 只在打开草稿时读一次；编辑后由界面标为待重检，避免每次输入都打 API。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
+
+  const prepareShortAudio = async () => {
+    if (audioBusy) return;
+    const ok = await dramaConfirm({
+      title: "生成逐镜配音？",
+      body: "将使用当前数字人已关联的声音逐镜合成台词。已成功且台词未变的镜头会直接复用，不会重复生成；不会提交视频任务。",
+      confirmLabel: "生成配音",
+      cancelLabel: "暂不生成",
+    });
+    if (!ok) return;
+    setAudioBusy(true);
+    setPreflightError(null);
+    try {
+      await flushSave({ status: "draft" });
+      const result = await ShortsApi.prepareAudio(draftId);
+      const latest = await ShortsApi.getDraft(draftId);
+      setShots(latest.data.shots as ShortShot[]);
+      setContinuityManifest(latest.data.continuityManifest);
+      setPreflight(await ShortsApi.preflightDraft(draftId));
+      toast.success(`配音已准备 · ${result.preparedCount} 镜${result.reusedCount ? `（复用 ${result.reusedCount} 镜）` : ""}`);
+    } catch (error) {
+      const message = aiErrorMessage(error, "配音生成失败，已成功的镜头会保留，可直接重试");
+      setPreflightError(message);
+      toast.error(message);
+    } finally {
+      setAudioBusy(false);
+    }
+  };
+
+  const missingAssemblyMedia = shots.filter((shot) => shot.flow !== "done" || !shot.videoUrl);
+  const missingAudio = shots.filter((shot) => shot.voText.trim() && !shot.audio?.cdnKey);
+  const readyToAssemble = shots.length > 0 && missingAssemblyMedia.length === 0 && missingAudio.length === 0;
+
+  /** 先落最后一次镜头编辑，再由服务端做真实 ffmpeg 总装；成功响应后才进入 done。 */
+  const assembleShort = async () => {
+    if (assembling || !readyToAssemble) return;
+    setAssembling(true);
+    setAssembleError(null);
+    try {
+      await flushSave({ status: "draft", progress: 100 });
+      const result = await ShortsApi.assembleDraft(draftId);
+      setAssembled(result);
+      setDraftStatus("done");
+      invalidate("/me/drama/shorts");
+      toast.success(`完整短片已合成 · ${result.shotCount} 镜 · 约 ${result.durationSec} 秒`);
+      router.push("/shorts");
+    } catch (e) {
+      const message = aiErrorMessage(e, "短视频合成失败，请稍后重试");
+      setDraftStatus("draft");
+      setAssembleError(message);
+      toast.error(message);
+    } finally {
+      setAssembling(false);
+    }
+  };
+
   /** 真实 AI 生成口播脚本（DRAMA_SCRIPT_DRAFT）→ 映射为结构化分镜表。 */
   const runScript = async (instruction?: string, aiReply?: string) => {
     if (phase === "gen") return;
@@ -683,6 +767,7 @@ function ShortMakerInner({
       const script = drafts[0];
       if (!script || !script.scenes?.length) throw new Error("AI 没有产出可用脚本，请换个说法重试");
       setMeta(script.meta ?? null);
+      setContinuityManifest(script.continuity_manifest);
       // 故事大纲（logline）：AI 给了就用新的，没给则保留用户已编辑的（与 meta 同惯例不强制覆盖）。
       setLogline((prev) => (script.logline?.trim() ? script.logline : prev));
       // 后续推荐 action 跟着这一版脚本走：取后端 suggestions（去空 + 去重 + 最多 4 条）。
@@ -693,7 +778,7 @@ function ShortMakerInner({
       );
       setShots(
         script.scenes.map((sc, i) => ({
-          id: "sh" + Date.now() + "_" + i,
+          id: script.continuity_manifest?.shots[i]?.id ?? "sh" + Date.now() + "_" + i,
           no: i + 1,
           dur: Math.max(2, sc.duration_sec || 4),
           visual: sc.shot || sc.summary || "",
@@ -710,8 +795,13 @@ function ShortMakerInner({
           flow: "draft" as ShotFlow,
           engine: "avatar",
           frameIdx: 0,
+          sceneId: script.continuity_manifest?.shots[i]?.sceneId,
+          parentShotId: script.continuity_manifest?.shots[i]?.parentShotId,
         })),
       );
+      setAssembled((prev) => (prev ? { ...prev, stale: true } : prev));
+      setDraftStatus("draft");
+      setAssembleError(null);
       setPhase("done");
       // 生成完成后对话框一定给一条反馈（不只在「改一版」时）。
       const audioBits = script.scenes.some((sc) => sc.sfx || sc.bgm || sc.fx) ? "（含音效 / BGM / 特效建议）" : "";
@@ -748,24 +838,33 @@ function ShortMakerInner({
     setDraft("");
     void runScript(t, "改好了——右侧脚本已更新,你再看看还哪里要调?");
   };
-  const updShot = (id: string, patch: Partial<ShortShot>) =>
-    setShots((arr) => arr.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const invalidateAssembly = () => {
+    setAssembled((prev) => (prev ? { ...prev, stale: true } : prev));
+    setDraftStatus("draft");
+    setAssembleError(null);
+    setPreflight(null);
+  };
+  const updShot = (id: string, patch: Partial<ShortShot>) => {
+    setShots((arr) => arr.map((s) => (s.id === id ? { ...s, ...patch, ...(patch.voText !== undefined ? { audio: undefined } : {}) } : s)));
+    invalidateAssembly();
+  };
   /** 单镜生成：文字同步等待；首帧 / 视频走后台任务 + 前台轮询。 */
   const render = async (id: string, to: ShotFlow, _cost: number): Promise<boolean> => {
     const shot = shots.find((s) => s.id === id);
     if (!shot || busy) return false;
     setBusy({ id, to });
-    // 把「整体短视频说明」注入每镜提示词，保证风格 / 场景 / 主角跨镜一致 —— 出片更准确。
-    const metaCtx = metaPromptPrefix(meta);
     // C-3：主角（数字人 / 参考图）+ 场景参考 → 结构化 ref_slots，服务端按端点 capability 裁剪 + 回报 applied_refs。
     const refSlots = {
-      characterRefs: [charAvatar?.image, charRef?.url].filter((u): u is string => !!u).map((url) => ({ url })),
-      sceneRef: sceneRef?.url ? { url: sceneRef.url } : undefined,
+      characterRefs: [
+        charAvatar?.image ? { url: charAvatar.image } : null,
+        charRef ? { cdnKey: charRef.cdnKey, url: charRef.url } : null,
+      ].filter((item): item is { url: string; cdnKey?: string } => item !== null),
+      sceneRef: sceneRef ? { cdnKey: sceneRef.cdnKey, url: sceneRef.url } : undefined,
     };
     try {
       if (to === "frame") {
         const job = await shotRender.submitFrameJob({
-          vars: { metaPrefix: metaCtx, visual: shot.visual, styleSuffix: `竖屏短视频画面，${fmt.name}风格。` },
+          vars: buildShortFrameVars({ meta, shot, styleName: renderStyleName, manifest: continuityManifest, shotId: shot.id }),
           count: 1,
           shotId: id,
           refSlots,
@@ -794,10 +893,9 @@ function ShortMakerInner({
       } else {
         const job = await shotRender.renderClip({
           vars: {
-            metaPrefix: metaCtx, visual: shot.visual,
-            lineClause: shot.voText ? `口播：${shot.voText}` : "", styleSuffix: `竖屏短视频，${fmt.name}风格。`,
+            ...buildShortClipVars({ meta, shot, styleName: renderStyleName, manifest: continuityManifest, shotId: shot.id }),
           },
-          name: `${fmt.name} 镜${shot.no}`,
+          name: `${displayName} 镜${shot.no}`,
           durationSec: shot.dur,
           shotId: id,
           frameUrl: shot.frameUrl,
@@ -1034,7 +1132,10 @@ function ShortMakerInner({
       frameCost={cfg.prices.frame}
       clipCost={cfg.prices.clip}
       onPatch={(id, patch) => updShot(id, patch)}
-      onDelete={(id) => setShots((arr) => arr.filter((x) => x.id !== id).map((x, j) => ({ ...x, no: j + 1 })))}
+      onDelete={(id) => {
+        setShots((arr) => arr.filter((x) => x.id !== id).map((x, j) => ({ ...x, no: j + 1 })));
+        invalidateAssembly();
+      }}
       onRender={(id, kind) => render(id, kind === "frame" ? "frame" : "clip", kind === "frame" ? cfg.prices.frame : cfg.prices.clip)}
       onApprove={(id) => updShot(id, { flow: "done" })}
       onFrameEdited={(id, frameUrl) => updShot(id, { flow: "frame", frameUrl, frameUrls: [frameUrl] })}
@@ -1433,6 +1534,46 @@ function ShortMakerInner({
                 </div>
               )}
 
+              {shots.length > 0 && (
+                <section className="card" aria-label="一致性与成片预检" style={{ padding: "12px 14px", marginBottom: 14 }}>
+                  <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+                    <ShieldCheck size={15} style={{ color: "var(--accent)" }} />
+                    <strong style={{ fontSize: 13 }}>一致性与成片预检</strong>
+                    <span className="tag" title="Manifest 由服务端确定性派生，不消耗第二次模型 token">
+                      Manifest {preflight?.manifestVersion ?? continuityManifest?.version ?? "1.0"}
+                    </span>
+                    {preflight && (
+                      <span className="faint" style={{ fontSize: 11.5 }}>
+                        结构 {preflight.structuralReady ? "通过" : "待修复"} · 配音 {preflight.audioReadyCount}/{preflight.shotCount} · 成片素材 {preflight.completedShotCount}/{preflight.shotCount}
+                      </span>
+                    )}
+                    <span className="grow" />
+                    <button type="button" className="btn btn-line btn-sm" onClick={() => void refreshPreflight(true)} disabled={preflightBusy || audioBusy} aria-busy={preflightBusy}>
+                      {preflightBusy ? <Loader2 size={13} className="spin" /> : <ShieldCheck size={13} />} {preflightBusy ? "检查中…" : "零 Token 预检"}
+                    </button>
+                    <button type="button" className="btn btn-sm" onClick={() => void prepareShortAudio()} disabled={audioBusy || preflightBusy || !charAvatar} aria-busy={audioBusy} title={!charAvatar ? "先绑定一位已关联声音的数字人" : "只生成配音，不提交视频任务"}>
+                      {audioBusy ? <Loader2 size={13} className="spin" /> : <Volume2 size={13} />} {audioBusy ? "生成配音中…" : "准备逐镜配音"}
+                    </button>
+                  </div>
+                  {(preflightError || preflight?.issues.length) ? (
+                    <div className="col gap-1" style={{ marginTop: 9 }} aria-live="polite">
+                      {preflightError && <div role="alert" style={{ color: "var(--danger)", fontSize: 12 }}>{preflightError}</div>}
+                      {preflight?.issues.slice(0, 4).map((issue) => (
+                        <div key={`${issue.code}-${issue.shotNo ?? "all"}`} className="row gap-1" style={{ color: issue.severity === "error" ? "var(--danger)" : "var(--ink-3)", fontSize: 11.5 }}>
+                          <AlertTriangle size={12} /> {issue.shotNo ? `镜 ${issue.shotNo}：` : ""}{issue.message}
+                        </div>
+                      ))}
+                    </div>
+                  ) : preflight ? (
+                    <div role="status" style={{ marginTop: 8, color: "var(--success)", fontSize: 11.5 }}>
+                      结构与依赖图已通过；{preflight.assemblyReady ? "可直接总装。" : "继续补齐配音或已验收镜头后即可总装。"}
+                    </div>
+                  ) : (
+                    <div className="faint" style={{ marginTop: 8, fontSize: 11.5 }}>分镜有改动，建议总装前运行一次预检；预检不会调用模型或扣积分。</div>
+                  )}
+                </section>
+              )}
+
               {phase === "gen" ? (
                 <div className="card" style={{ padding: 18 }}>
                   <GenSkeleton lines={4} label="正在写口播稿并拆分镜…" />
@@ -1453,12 +1594,13 @@ function ShortMakerInner({
                     type="button"
                     className="btn btn-line btn-sm"
                     style={{ alignSelf: "flex-start" }}
-                    onClick={() =>
+                    onClick={() => {
                       setShots((arr) => [
                         ...arr,
                         { id: "add" + Date.now(), no: arr.length + 1, dur: 4, visual: "", size: "中景", move: "固定", voWho: "口播", voText: "", sfx: "", bgm: "", fx: "", refs: [], sub: true, flow: "draft", engine: "fx", frameIdx: 0 },
-                      ])
-                    }
+                      ]);
+                      invalidateAssembly();
+                    }}
                   >
                     <Plus size={14} /> 加一镜
                   </button>
@@ -1511,9 +1653,10 @@ function ShortMakerInner({
       {/* 悬浮 CTA */}
       <div
         className="row gap-2 pop-in"
+        aria-live="polite"
         style={{
           position: "fixed",
-          right: 26,
+          right: "max(12px, env(safe-area-inset-right))",
           bottom: "calc(22px + env(safe-area-inset-bottom))",
           zIndex: 80,
           background: "var(--surface)",
@@ -1521,29 +1664,42 @@ function ShortMakerInner({
           borderRadius: 16,
           boxShadow: "var(--shadow-lg)",
           border: "1px solid var(--line-soft)",
+          maxWidth: "calc(100vw - 24px)",
+          flexWrap: "wrap",
         }}
       >
-        {shots.length > 0 && doneCount === shots.length ? (
+        {assembleError ? (
+          <div className="row gap-2" role="alert" style={{ maxWidth: 420, color: "var(--danger)", fontSize: 12.5, lineHeight: 1.45 }}>
+            <AlertTriangle size={15} style={{ flex: "none" }} />
+            <span style={{ overflowWrap: "anywhere" }}>{assembleError}</span>
+            <button type="button" className="btn btn-sm" onClick={() => void assembleShort()} disabled={assembling}>
+              重试合成
+            </button>
+          </div>
+        ) : missingAudio.length > 0 && missingAssemblyMedia.length === 0 ? (
+          <button type="button" className="btn btn-grad" onClick={() => void prepareShortAudio()} disabled={audioBusy || !charAvatar} aria-busy={audioBusy} title={!charAvatar ? "请先绑定数字人" : undefined}>
+            {audioBusy ? <Loader2 size={15} className="spin" /> : <Volume2 size={15} />}
+            {audioBusy ? "正在准备配音…" : `先生成 ${missingAudio.length} 镜配音`}
+          </button>
+        ) : readyToAssemble ? (
           <button
             type="button"
             className="btn btn-grad"
-            onClick={async () => {
-              try {
-                setDraftStatus("done");
-                await flushSave({ status: "done", progress: 100 });
-              } catch (e) {
-                /* flush 失败：草稿仍是 draft 态，用户可重试，不误报完成 */
-                setDraftStatus("draft");
-                toast.error(aiErrorMessage(e, "合成完成状态保存失败，请稍后重试"));
-                return;
-              }
-              invalidate("/me/drama/shorts");
-              toast.success("短视频已合成,可在「我的短视频」查看");
-              router.push("/shorts");
-            }}
+            onClick={() => void assembleShort()}
+            disabled={assembling}
+            aria-busy={assembling}
           >
-            <Check size={15} /> 合成成片 · 完成
+            {assembling ? <Loader2 size={15} className="spin" /> : <Check size={15} />}
+            {assembling ? "正在拼接并上传…" : "合成完整短片"}
           </button>
+        ) : shots.length > 0 && doneCount === shots.length ? (
+          <span className="row gap-2" role="status" style={{ fontSize: 12, fontWeight: 650, color: "var(--danger)", padding: "4px 6px" }}>
+            <AlertTriangle size={14} /> {missingAssemblyMedia.length} 镜缺少视频文件，无法合成；请重新生成或恢复任务
+          </span>
+        ) : shots.length === 0 ? (
+          <span className="row gap-2" role="status" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", padding: "4px 6px" }}>
+            <Clapperboard size={14} /> 先在左侧生成脚本和分镜
+          </span>
         ) : (
           <span className="row gap-2" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", padding: "4px 6px" }}>
             <ImageIcon size={14} /> 把 {shots.length - doneCount} 个镜头出完即可合成

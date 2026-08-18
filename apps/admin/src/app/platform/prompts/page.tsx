@@ -506,7 +506,7 @@ export default function PromptsPage() {
                     <Input
                       value={maxTokens}
                       onChange={(e) => setMaxTokens(e.target.value)}
-                      placeholder="2048"
+                      placeholder={active?.promptKey === "drama.script_draft" ? "6144" : "4096"}
                       className="w-28"
                     />
                   </div>

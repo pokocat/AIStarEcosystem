@@ -71,7 +71,8 @@ class DramaShortServiceTest {
         configs = mock(PlatformConfigService.class);
         // 默认回落传入的默认值（短视频开拍默认 10）；具体扣费用例再按 key 覆盖。
         when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.getArgument(1, Long.class));
-        svc = new DramaShortService(repo, OM, creditService, configs, CdnUrlSigner.NOOP);
+        svc = new DramaShortService(repo, OM, creditService, configs, CdnUrlSigner.NOOP,
+                new DramaShortContinuityService(OM));
     }
 
     @Test
@@ -125,14 +126,14 @@ class DramaShortServiceTest {
     }
 
     @Test
-    void markDoneSetsStatus() {
+    void clientCannotMarkDoneBeforeServerAssembly() {
         String id = svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER).get("meta").get("id").asText();
         var body = OM.createObjectNode();
-        body.set("data", readTree("{\"step\":\"factory\",\"shots\":[{\"id\":\"s1\",\"dur\":5,\"flow\":\"done\"}],\"chat\":[],\"refs\":[]}"));
+        body.set("data", readTree("{\"step\":\"factory\",\"shots\":[{\"id\":\"s1\",\"no\":1,\"dur\":5,\"flow\":\"done\",\"videoUrl\":\"/cdn/v1.mp4\"}],\"chat\":[],\"refs\":[]}"));
         body.put("status", "done");
-        JsonNode saved = svc.saveShort(id, body, USER);
-        assertEquals("done", saved.get("meta").get("status").asText());
-        assertEquals(100, saved.get("meta").get("progress").asInt());
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.saveShort(id, body, USER));
+        assertEquals("DRAMA_SHORT_ASSEMBLY_REQUIRED", ex.getCode());
+        assertEquals("draft", svc.getShort(id, USER).get("meta").get("status").asText());
     }
 
     @Test
@@ -142,7 +143,8 @@ class DramaShortServiceTest {
                 .thenReturn("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/drama/frames/old.png?x-oss-signature=fresh");
         when(signer.maybeSign("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/material-videos/old.mp4"))
                 .thenReturn("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/material-videos/old.mp4?x-oss-signature=fresh");
-        svc = new DramaShortService(repo, OM, creditService, configs, signer);
+        svc = new DramaShortService(repo, OM, creditService, configs, signer,
+                new DramaShortContinuityService(OM));
 
         String id = svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER).get("meta").get("id").asText();
         var body = OM.createObjectNode();
@@ -151,7 +153,6 @@ class DramaShortServiceTest {
                 + "\"frameUrl\":\"https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/drama/frames/old.png\","
                 + "\"videoUrl\":\"https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/material-videos/old.mp4\"}],"
                 + "\"chat\":[],\"refs\":[]}"));
-        body.put("status", "done");
         svc.saveShort(id, body, USER);
 
         JsonNode summary = svc.listShorts(USER).get(0);
@@ -269,7 +270,8 @@ class DramaShortServiceTest {
     void getShort_resignsExpiredFrameAndVideoUrls() {
         // 用带 fake uploader 的 signer：signedUrlFor(key) → "SIGNED::"+key
         CdnUrlSigner signer = signerWithFakeOss("https://oss.test");
-        DramaShortService s = new DramaShortService(repo, OM, creditService, configs, signer);
+        DramaShortService s = new DramaShortService(repo, OM, creditService, configs, signer,
+                new DramaShortContinuityService(OM));
 
         // 历史草稿：shots 存的是带过期签名参数的 OSS URL（前端只存了 url，没存 key）
         String payload = "{\"step\":\"factory\",\"meta\":null,\"chat\":[],\"refs\":[],"

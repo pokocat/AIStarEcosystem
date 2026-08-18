@@ -8,9 +8,22 @@
 
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import type { Material } from "@/mocks/drama-workshop";
-import type { ScriptMeta } from "./short-drama";
+import type { ScriptMeta, ShortContinuityManifest } from "./short-drama";
 
 export type ShortDraftStatus = "draft" | "done";
+
+export interface ShortAssembledMedia {
+  url: string;
+  cdnKey: string;
+  durationSec: number;
+  shotCount: number;
+  at: string | null;
+  coverCdnKey?: string;
+  coverUrl?: string;
+  assemblyVersion?: string;
+  /** 镜头被编辑后，服务端保留旧 key 只为下一次替换清理；列表不会继续播放旧片。 */
+  stale?: boolean;
+}
 
 /** 列表卡片字段（与后端 DramaShortService.toSummary 对齐）。 */
 export interface ShortDraftSummary {
@@ -65,6 +78,16 @@ export interface ShortDraftShot {
    * （提交后写入、随 autosave 落库，进页对账恢复），此处补齐类型契约声明。
    */
   pendingJob?: { jobId: string; kind: "frame" | "clip" };
+  sceneId?: string;
+  parentShotId?: string;
+  audio?: {
+    cdnKey: string;
+    url?: string;
+    durationSec: number;
+    textFingerprint: string;
+    providerTaskId?: string;
+    at?: string;
+  };
 }
 
 export interface ShortDraftChatMsg {
@@ -85,6 +108,7 @@ export interface ShortDraftData {
   styleRef?: string;
   step: "script" | "factory";
   meta: ScriptMeta | null;
+  continuityManifest?: ShortContinuityManifest;
   /** 一句话故事大纲（AI 起草的 logline）；展示在标题下，可直接改。 */
   logline?: string;
   /** 主角参考图（上传到 OSS）：url 展示值 / cdnKey 真值。 */
@@ -99,6 +123,37 @@ export interface ShortDraftData {
   refs: Material[];
   /** AI 跟当前脚本给出的后续修改建议（快捷 chip）；随脚本刷新，重开草稿时恢复。 */
   suggestions?: string[];
+  /** 服务端真实总装产物；只有 assemble 成功后才存在且允许 status=done。 */
+  assembled?: ShortAssembledMedia;
+}
+
+export interface ShortPreflightIssue {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  shotNo?: number;
+}
+
+export interface ShortPreflight {
+  manifestVersion: string;
+  promptVersion: string;
+  assemblyVersion: string;
+  totalDurationSec: number;
+  shotCount: number;
+  completedShotCount: number;
+  audioReadyCount: number;
+  structuralReady: boolean;
+  audioReady: boolean;
+  assemblyReady: boolean;
+  issues: ShortPreflightIssue[];
+  dependencyPlan: ShortContinuityManifest["dependencyPlan"];
+}
+
+export interface PreparedShortAudio {
+  preparedCount: number;
+  reusedCount: number;
+  provider: string;
+  shots: Array<{ shotId: string; shotNo: number; cdnKey: string; url: string; durationSec: number; textFingerprint: string }>;
 }
 
 export interface ShortDraftDetail {
@@ -155,7 +210,7 @@ function mockPreviewMedia(data: ShortDraftData): Pick<ShortDraftSummary, "coverU
   const coverShot = data.shots.find((s) => s.frameUrl || s.frameUrls?.[0]) ?? videoShot;
   return {
     coverUrl: coverShot?.frameUrl ?? coverShot?.frameUrls?.[0] ?? null,
-    videoUrl: videoShot?.videoUrl ?? null,
+    videoUrl: !data.assembled?.stale ? data.assembled?.url ?? videoShot?.videoUrl ?? null : videoShot?.videoUrl ?? null,
   };
 }
 
@@ -237,6 +292,70 @@ export async function saveDraft(
     method: "PUT",
     body: { data, status: opts?.status, progress: opts?.progress },
   });
+}
+
+/** 把全部已验收镜头按镜号拼成一条真实成片；成功后后端才把草稿置为 done。 */
+export async function assembleDraft(id: string): Promise<ShortAssembledMedia> {
+  if (USE_MOCK) {
+    const detail = mockStore.get(id);
+    if (!detail) throw new Error("短视频草稿不存在");
+    const missing = detail.data.shots.filter((shot) => shot.flow !== "done" || !shot.videoUrl);
+    if (missing.length) throw new Error(`还有 ${missing.length} 个镜头缺少已验收视频`);
+    const assembled: ShortAssembledMedia = {
+      url: detail.data.shots[0]?.videoUrl ?? "/videos/showreel-01.mp4",
+      cdnKey: `mock/drama/shorts/${id}/final.mp4`,
+      durationSec: detail.data.shots.reduce((sum, shot) => sum + (shot.dur || 0), 0),
+      shotCount: detail.data.shots.length,
+      at: new Date().toISOString(),
+    };
+    detail.data.assembled = assembled;
+    detail.meta = {
+      ...detail.meta,
+      status: "done",
+      progress: 100,
+      videoUrl: assembled.url,
+      durationSec: assembled.durationSec,
+      shotCount: assembled.shotCount,
+      doneCount: assembled.shotCount,
+      updated: "刚刚",
+      updatedAt: assembled.at,
+    };
+    mockStore.set(id, detail);
+    return mockDelay(assembled, 900);
+  }
+  return apiFetch<ShortAssembledMedia>(`/me/drama/shorts/${id}/assemble`, { method: "POST" });
+}
+
+export async function preflightDraft(id: string): Promise<ShortPreflight> {
+  if (USE_MOCK) {
+    const detail = mockStore.get(id);
+    const shots = detail?.data.shots ?? [];
+    const audioReadyCount = shots.filter((shot) => !shot.voText?.trim() || !!shot.audio?.cdnKey).length;
+    return mockDelay({
+      manifestVersion: "1.0", promptVersion: "drama-short-v2", assemblyVersion: "drama-short-av-v1",
+      totalDurationSec: shots.reduce((sum, shot) => sum + shot.dur, 0), shotCount: shots.length,
+      completedShotCount: shots.filter((shot) => shot.flow === "done" && shot.videoUrl).length,
+      audioReadyCount, structuralReady: shots.length > 0, audioReady: audioReadyCount === shots.length,
+      assemblyReady: shots.length > 0 && shots.every((shot) => shot.flow === "done" && shot.videoUrl) && audioReadyCount === shots.length,
+      issues: [], dependencyPlan: detail?.data.continuityManifest?.dependencyPlan ?? [],
+    });
+  }
+  return apiFetch<ShortPreflight>(`/me/drama/shorts/${id}/preflight`);
+}
+
+export async function prepareAudio(id: string): Promise<PreparedShortAudio> {
+  if (USE_MOCK) {
+    const detail = mockStore.get(id);
+    if (!detail) throw new Error("短视频草稿不存在");
+    const prepared = detail.data.shots.filter((shot) => shot.voText?.trim()).map((shot) => {
+      const item = { shotId: shot.id, shotNo: shot.no, cdnKey: `mock/audio/${shot.id}.mp3`, url: "/audio/mock.mp3", durationSec: Math.max(1, Math.round(shot.voText.length / 4)), textFingerprint: `mock-${shot.voText}` };
+      shot.audio = { cdnKey: item.cdnKey, url: item.url, durationSec: item.durationSec, textFingerprint: item.textFingerprint };
+      return item;
+    });
+    mockStore.set(id, detail);
+    return mockDelay({ preparedCount: prepared.length, reusedCount: 0, provider: "mock", shots: prepared }, 500);
+  }
+  return apiFetch<PreparedShortAudio>(`/me/drama/shorts/${id}/prepare-audio`, { method: "POST" });
 }
 
 export async function deleteDraft(id: string): Promise<void> {

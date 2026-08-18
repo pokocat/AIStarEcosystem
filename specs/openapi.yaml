@@ -7642,6 +7642,15 @@ paths:
   /me/drama/shorts/{id}/extract-recipe:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: extractDramaShortRecipe, summary: '完成短视频发布到创意中心：反向蒸馏成单集可复用创意（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
+  /me/drama/shorts/{id}/assemble:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: assembleDramaShort, summary: '把全部已验收镜头统一为 720x1280 H.264/AAC，替换逐镜 TTS 音轨、烧录精确字幕、响度归一、ffprobe 质检并上传最终视频+封面；成功后才进入 done', responses: { '200': { description: ok } } }
+  /me/drama/shorts/{id}/preflight:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get: { tags: [drama], operationId: preflightDramaShort, summary: '零 Token 一致性/依赖图/时长/配音/成片素材预检；不调用模型、不提交任务、不冻结积分', responses: { '200': { description: ok } } }
+  /me/drama/shorts/{id}/prepare-audio:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post: { tags: [drama], operationId: prepareDramaShortAudio, summary: '用当前数字人关联的 V2 音色逐镜生成 TTS；按台词指纹幂等复用并立即镜像我方存储，不提交视频任务', responses: { '200': { description: ok } } }
   /me/drama/shorts/trash:
     get: { tags: [drama], operationId: listDramaShortsTrash, summary: '短视频回收站列表（软删草稿，附 deletedAt / purgeAt / daysLeft）', responses: { '200': { description: ok } } }
   /me/drama/shorts/{id}/restore:

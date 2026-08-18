@@ -109,7 +109,7 @@ const DRAMA_META: Record<string, DramaPromptMeta> = {
     blurb: "短视频工坊单镜首帧出图提示词。`{{metaPrefix}}` 是全片设定（主角/场景/风格），保证跨镜一致。",
     vars: ["{{metaPrefix}} 全片设定前缀", "{{visual}} 画面内容", "{{styleSuffix}} 风格后缀"],
     defaultTemp: 0,
-    sample: { metaPrefix: "主角：阿杰，年轻上班族。场景：清晨出租屋。", visual: "闹钟狂响，阿杰一个鲤鱼打挺弹起", styleSuffix: "竖屏短视频画面，口播带货风格。" },
+    sample: { metaPrefix: "全片视觉设定：固定主角阿杰；固定场景清晨出租屋。", visual: "闹钟狂响，阿杰一个鲤鱼打挺弹起", styleSuffix: "竖屏风格短片，邵氏港片喜剧风格。" },
     kind: "media",
   },
   "drama.short_clip_video": {
@@ -117,7 +117,7 @@ const DRAMA_META: Record<string, DramaPromptMeta> = {
     blurb: "短视频工坊单镜出片视频提示词。",
     vars: ["{{metaPrefix}} 全片设定前缀", "{{visual}} 画面内容", "{{lineClause}} 口播（可空）", "{{styleSuffix}} 风格后缀"],
     defaultTemp: 0,
-    sample: { metaPrefix: "主角：阿杰，年轻上班族。", visual: "阿杰举着保温杯对镜头比心", lineClause: "口播：家人们这个真的绝了。", styleSuffix: "竖屏短视频，口播带货风格。" },
+    sample: { metaPrefix: "全片视觉设定：固定主角阿杰；固定场景清晨出租屋。", visual: "阿杰听见门外异响，迅速贴墙回头", lineClause: "本镜表演对白：阿杰说“门外有人。”；画面中不要显示对白文字或字幕。", styleSuffix: "竖屏风格短片，邵氏港片喜剧风格。" },
     kind: "media",
   },
 };
@@ -355,7 +355,7 @@ export default function DramaPromptsPage() {
                       <Input
                         value={maxTokens}
                         onChange={(e) => setMaxTokens(e.target.value)}
-                        placeholder="留空=4096"
+                        placeholder={activeKey === "drama.script_draft" ? "留空=6144" : "留空=4096"}
                         className="w-32"
                       />
                       <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
