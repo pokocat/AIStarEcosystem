@@ -88,6 +88,19 @@ public class DapVoice {
 
     private Instant engineTrainedAt;
 
+    /**
+     * 固化的样例试听音频（storage key）。声音训练完成后由 ClipDemoWorker 用固定样例文案生成一次，
+     * 之后端上「听听你的声音」直接播这一条 —— 零等待、成本固定，也不必靠限流防薅。
+     * 用户自己改了文字才走按需合成（POST /me/clip/voices/{id}/preview）。
+     */
+    @Column(length = 300)
+    private String demoAudioCdnKey;
+
+    /** 样例生成尝试次数。素材本身有问题时会一直失败，没有它 worker 会永远重试下去。 */
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer demoAttempts = 0;
+
     private Instant createdAt;
 
     /** 与其它五类 DAP 资产一致的软删除语义。 */

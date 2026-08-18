@@ -108,6 +108,31 @@ public class DapAvatar {
 
     private Instant engineTrainedAt;
 
+    /**
+     * 固化的样例短片（storage key）。形象训练完成、且有一条 ready 的关联声音时，
+     * 由 ClipDemoWorker 用固定样例文案生成一条 3–5 秒带声音的真出镜短片。
+     *
+     * 它回答的是静帧回答不了的问题：口型对不对、构图正不正、人看起来自不自然 ——
+     * 而这些正是用户在扣钻石之前最不确定的部分。每个形象只生成一次，成本固定由我们承担。
+     */
+    @Column(length = 300)
+    private String demoVideoCdnKey;
+
+    /**
+     * 在途的样例短片任务号。
+     *
+     * 石榴的 {@code /video/createByText} 是**异步**的：提交后只回 videoId，成片要另外轮询
+     * （见 HttpShiliuGateway.createVideoByText，它恒返回 status=processing、outputRef=null）。
+     * 不把任务号存下来的话，每一轮都会重新提交一次，白烧三份点数还永远拿不到成片。
+     */
+    @Column(length = 120)
+    private String demoVideoTaskRef;
+
+    /** 样例生成尝试次数，用途同 DapVoice.demoAttempts。只在**提交**时消耗，轮询不消耗。 */
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer demoAttempts = 0;
+
     /** 占位画像调色板 {bg1,bg2,skin,hair,cloth,accent}。 */
     @Convert(converter = JsonMapConverter.class)
     @Column(columnDefinition = "TEXT")

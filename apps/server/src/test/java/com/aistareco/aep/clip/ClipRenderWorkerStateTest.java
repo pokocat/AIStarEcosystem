@@ -26,6 +26,7 @@ class ClipRenderWorkerStateTest {
     private ClipAssemblyService assembly;
     private ShiliuService shiliu;
     private ClipAvatarService avatars;
+    private ClipRenderService renderService;
     private ClipRenderWorkerState state;
 
     @BeforeEach
@@ -36,7 +37,9 @@ class ClipRenderWorkerStateTest {
         assembly = mock(ClipAssemblyService.class);
         shiliu = mock(ShiliuService.class);
         avatars = mock(ClipAvatarService.class);
-        state = new ClipRenderWorkerState(jobs, projects, shiliu, avatars, outputStorage, assembly);
+        // 失败时项目要回落 draft，这条路径现在收口到 ClipRenderService.releaseProject
+        renderService = mock(ClipRenderService.class);
+        state = new ClipRenderWorkerState(jobs, projects, shiliu, avatars, outputStorage, assembly, renderService);
         when(jobs.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
