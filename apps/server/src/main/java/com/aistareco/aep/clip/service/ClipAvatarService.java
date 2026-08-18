@@ -429,6 +429,8 @@ public class ClipAvatarService {
         for (DapVoice v : voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)) {
             if (deletableUpstream(v.getEngineRef())) gateway.deleteVoice(v.getEngineRef());
             storage.delete(v.getAudioKey());
+            // 固化的试听样例是用户本人的声音，删分身就要一起清干净，不能留在 OSS 里
+            storage.delete(v.getDemoAudioCdnKey());
             v.setDeletedAt(now); v.setEngineStatus("deleted"); voices.save(v);
         }
     }
@@ -437,6 +439,8 @@ public class ClipAvatarService {
         DapAvatar a = requiredAvatar(owner, avatarId); ShiliuGateway gateway = shiliu.required(); Instant now = Instant.now();
         if (deletableUpstream(a.getEngineRef())) gateway.deleteAvatar(a.getEngineRef());
         storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
+        // 同批量删除：样例短片带着本人肖像和声音，不清就等于删了分身还留着人像视频
+        storage.delete(a.getDemoVideoCdnKey());
         a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
     }
     public boolean ready(String owner) { AvatarDto v = view(owner); return v != null && "ready".equals(v.imageStatus()); }
