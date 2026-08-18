@@ -434,6 +434,32 @@ public class ClipAvatarService {
                 .map(DapAvatar::getEngineRef)
                 .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CLIP_AVATAR_NOT_READY", "形象还没有训练完成"));
     }
+    /**
+     * 试听一条声音：给一段文字，让它念出来。
+     *
+     * 与 ClipScriptService.preview 的区别是**不需要 project** —— 那条路径的 speakerRef 是从
+     * project 的 payload 里解析的，于是用户想听刚训好的声音，得先挑模板、建项目、进文案页
+     * 才听得到，听到的还是那个项目绑定的声音。用户原话：「先听一下…以免做成片效果不好，浪费钻石」。
+     *
+     * 底下就是石榴的 POST /speaker/tts（同步返回 base64 音频），与出片 tts 阶段同一个接口。
+     * 不产生任何计费对象：钻石的账在军师那边，这里只花石榴的 validPoint。
+     */
+    public VoicePreviewDto previewVoice(String owner, String voiceId, String text) {
+        String value = text == null ? "" : text.trim();
+        if (value.isEmpty()) throw BusinessException.badRequest("CLIP_PREVIEW_TEXT_REQUIRED", "先写一句想听的话");
+        if (value.length() > 200) throw BusinessException.badRequest("CLIP_PREVIEW_TEXT_TOO_LONG", "试听最多 200 字");
+        // 只按 voiceId 解析，不回退到「该用户最新的一条声音」——用户点的是哪一条就听哪一条，
+        // 猜错会让他对着别的音色下判断。未就绪/不存在都由 requiredVoiceEngineRef 明确抛错。
+        String voiceRef = requiredVoiceEngineRef(owner, null, voiceId);
+        ShiliuGateway gateway = shiliu.required();
+        ShiliuGateway.Task task = gateway.previewVoice(owner, voiceRef, value);
+        if (!"succeeded".equals(task.status()) || task.outputRef() == null) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "CLIP_TTS_FAILED", "试听合成失败");
+        }
+        int duration = task.durationSec() == null ? Math.max(1, Math.round(value.length() / 4f)) : task.durationSec();
+        return new VoicePreviewDto(voiceId, task.outputRef(), duration, value, shiliu.mockMode());
+    }
+
     public String requiredVoiceEngineRef(String owner) { return requiredVoiceEngineRef(owner, null, null); }
     public String requiredVoiceEngineRef(String owner, String avatarId, String voiceId) {
         DapVoice selected = selectedVoice(owner, voiceId);

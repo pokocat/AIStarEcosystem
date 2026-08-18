@@ -29,6 +29,16 @@ public class ClipRenderService {
     public JobDto get(String owner,String id){ return JobDto.from(required(owner,id)); }
     @Transactional public JobDto cancel(String owner,String id){ ClipRenderJob j=required(owner,id); if(Set.of("succeeded","failed","cancelled").contains(j.getStatus()))return JobDto.from(j); j.setStatus("cancelled");j.setErrorMessage("用户已取消");j.setLeaseOwner(null);j.setLeaseUntil(null);j.setCompletedAt(Instant.now());j.setUpdatedAt(Instant.now());jobs.save(j); failProject(j,"failed");return JobDto.from(j); }
     public ClipRenderJob required(String owner,String id){return jobs.findByIdAndExternalOwnerId(id,owner).orElseThrow(()->BusinessException.notFound("CLIP_JOB_NOT_FOUND","出片任务不存在或无权访问"));}
-    @Transactional public void failProject(ClipRenderJob j,String status){ projectRepo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).ifPresent(p->{p.setStatus(status);p.setProgress(j.getProgress());p.setUpdatedAt(Instant.now());projectRepo.save(p);}); }
+    /**
+     * 出片没成时把项目**放回可编辑**。
+     *
+     * ClipProjectService.save 只放行 status=="draft"，而全仓从来没有任何一处把状态改回 draft。
+     * 于是出片一旦失败或被取消，项目就永久锁死：用户想改一句话重出都不行，只能从头新建一个。
+     * 出片失败本来就是我们这边的问题，不该由用户重做一遍全部工作来承担。
+     *
+     * 语义拆开看：项目的 status 表达的是「还能不能编辑」，任务的成败由 ClipRenderJob 自己记，
+     * 所以这里回落到 draft 不会丢失任何失败信息。
+     */
+    @Transactional public void failProject(ClipRenderJob j,String status){ projectRepo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).ifPresent(p->{p.setStatus("draft");p.setProgress(0);p.setUpdatedAt(Instant.now());projectRepo.save(p);}); }
     private static String uuid(){return UUID.randomUUID().toString().replace("-","").substring(0,16);}
 }

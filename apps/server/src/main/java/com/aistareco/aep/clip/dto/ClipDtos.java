@@ -97,6 +97,8 @@ public final class ClipDtos {
                             String imageMessage, String voiceMessage, String engine, boolean presetAvailable,
                             String linkedVoiceId, String linkedVoiceName) {}
     public record VoiceDto(String id, String name, String status, String source, String trainedText, int progress) {}
+    /** 声音试听。不依赖 project —— 训练完当场就要能听，别逼用户先建一个项目。 */
+    public record VoicePreviewDto(String voiceId, String audioUrl, int durationSec, String text, boolean mock) {}
     public record CaptureRuleDto(String kind, int vendorMinDurationSec, int vendorMaxDurationSec, int minDurationSec, int recommendedMinDurationSec,
                                  int recommendedMaxDurationSec, int maxDurationSec, long vendorMaxBytes, long maxBytes,
                                  List<String> vendorFormats, List<String> formats, String codec, Integer minShortSidePx, Integer maxLongSidePx,
