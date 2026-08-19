@@ -49,6 +49,7 @@ class ClipAssemblyServiceTest {
         });
         when(ffmpeg.runFfmpeg(anyList())).thenAnswer(inv -> {
             List<String> args = inv.getArgument(0);
+            if (args.stream().anyMatch(value -> value.contains("print_format=json"))) return loudnormAnalysis();
             Path output = Path.of(args.get(args.size() - 1));
             Files.createDirectories(output.getParent());
             Files.writeString(output, "video");
@@ -77,7 +78,7 @@ class ClipAssemblyServiceTest {
         assertEquals("clip/thumbnails/final.jpg", result.thumbnailCdnKey());
         assertEquals(12, result.durationSec());
         ArgumentCaptor<List<String>> commands = ArgumentCaptor.forClass(List.class);
-        verify(ffmpeg, times(6)).runFfmpeg(commands.capture());
+        verify(ffmpeg, times(7)).runFfmpeg(commands.capture());
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.contains("-stream_loop") && args.contains(audio.toString())));
         assertTrue(commands.getAllValues().stream().anyMatch(args -> args.stream().anyMatch(v -> v.startsWith("color=c=#17362f"))));
         assertEquals(3, commands.getAllValues().stream()
@@ -118,6 +119,7 @@ class ClipAssemblyServiceTest {
         when(ffmpeg.probeDurationSec(any())).thenReturn(7d);
         when(ffmpeg.runFfmpeg(anyList())).thenAnswer(inv -> {
             List<String> args = inv.getArgument(0);
+            if (args.stream().anyMatch(value -> value.contains("print_format=json"))) return loudnormAnalysis();
             Path output = Path.of(args.get(args.size() - 1));
             Files.createDirectories(output.getParent());
             Files.writeString(output, "video");
@@ -139,7 +141,7 @@ class ClipAssemblyServiceTest {
         assertEquals("clip/thumbnails/mock.jpg", result.thumbnailCdnKey());
         assertEquals(7, result.durationSec());
         ArgumentCaptor<List<String>> commands = ArgumentCaptor.forClass(List.class);
-        verify(ffmpeg, times(5)).runFfmpeg(commands.capture());
+        verify(ffmpeg, times(6)).runFfmpeg(commands.capture());
         assertEquals(2, commands.getAllValues().stream()
                 .filter(args -> args.stream().anyMatch(value -> value.startsWith("sine=frequency="))).count());
         String groupedCaptionFilter = commands.getAllValues().stream()
@@ -163,6 +165,7 @@ class ClipAssemblyServiceTest {
         when(ffmpeg.probeDurationSec(any())).thenReturn(7d);
         when(ffmpeg.runFfmpeg(anyList())).thenAnswer(inv -> {
             List<String> args = inv.getArgument(0);
+            if (args.stream().anyMatch(value -> value.contains("print_format=json"))) return loudnormAnalysis();
             if (args.contains("concat")) {
                 concatList.addAll(Files.readAllLines(Path.of(args.get(args.indexOf("-i") + 1))));
             }
@@ -215,6 +218,7 @@ class ClipAssemblyServiceTest {
         when(ffmpeg.probeDurationSec(any())).thenReturn(7d);
         when(ffmpeg.runFfmpeg(anyList())).thenAnswer(inv -> {
             List<String> args = inv.getArgument(0);
+            if (args.stream().anyMatch(value -> value.contains("print_format=json"))) return loudnormAnalysis();
             Path output = Path.of(args.get(args.size() - 1));
             Files.createDirectories(output.getParent());
             Files.writeString(output, "video");
@@ -288,5 +292,17 @@ class ClipAssemblyServiceTest {
         int count = 0;
         for (int at = 0; (at = value.indexOf(needle, at)) >= 0; at += needle.length()) count++;
         return count;
+    }
+
+    private static String loudnormAnalysis() {
+        return """
+                {
+                  "input_i" : "-15.39",
+                  "input_tp" : "-0.77",
+                  "input_lra" : "5.70",
+                  "input_thresh" : "-25.69",
+                  "target_offset" : "-0.44"
+                }
+                """;
     }
 }

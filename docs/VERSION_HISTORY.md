@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.134）
+# 版本增量历史（v0.5 → v0.135）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.135（2026-08-18）— 快出片 AAC 峰值回弹修复
+
+修复真实长片在总装 75% 阶段稳定失败为「成片音频存在爆音风险」的问题。旧实现只做一遍 `loudnorm=I=-16:TP=-1.5:LRA=11`，滤镜输出随后编码 AAC；AAC 有损编码会把真峰值重新抬高，线上失败项目用既有缓存音频复现为 -0.77 dBTP，高于最终质量门的 -1 dBTP，重复出片仍会确定性失败。
+
+新增 `ClipLoudnessNormalizer`：第一遍读取 integrated loudness / true peak / LRA / threshold / offset，第二遍显式携带 `measured_*` 做确定性归一；编码前 true peak 目标改为 -2.5 dBTP，给 AAC 回弹留足余量。最终 `ClipMediaQualityGate` 的 ≤ -1 dBTP 门槛不放宽，并在判定前记录亮度、响度、真峰值与阈值，失败不再只有笼统文案。使用同一失败任务缓存音频和生产 FFmpeg 离线复现，编码后为 -15.78 LUFS / -1.53 dBTP，满足既有质量门；全过程未调用石榴或创建计费任务。
 
 ### v0.134（2026-08-18）— 风格短片 ViMax-lite 非视频链路闭环
 

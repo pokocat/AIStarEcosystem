@@ -5,6 +5,8 @@ import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.common.BusinessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -16,6 +18,7 @@ import java.util.regex.Pattern;
 /** 成片入库前的确定性质量闸：黑/白片、静音、过轻与爆音均失败关闭。 */
 @Service
 public class ClipMediaQualityGate {
+    private static final Logger log = LoggerFactory.getLogger(ClipMediaQualityGate.class);
     private static final Pattern LUMA = Pattern.compile("lavfi\\.signalstats\\.YAVG=([0-9]+(?:\\.[0-9]+)?)");
     private static final Pattern INPUT_I = Pattern.compile("\\\"input_i\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
     private static final Pattern INPUT_TP = Pattern.compile("\\\"input_tp\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
@@ -49,6 +52,9 @@ public class ClipMediaQualityGate {
         } catch (Exception e) {
             throw qualityFailure("成片音画质量无法验证", e.toString());
         }
+
+        log.info("[clip-quality] file={} averageLuma={} integratedLufs={} truePeakDb={} maxTruePeakDb={}",
+                video.getFileName(), luma, loudness, peak, props.getMaxTruePeakDb());
 
         if (luma < props.getMinAverageLuma()) {
             throw qualityFailure("成片画面过暗", metric("averageLuma", luma, props.getMinAverageLuma()));

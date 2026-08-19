@@ -40,7 +40,7 @@
 | [`docs/[Fabel5]drama-consistency-engine-design.md`](%5BFabel5%5Ddrama-consistency-engine-design.md) | AI 短剧（一致性引擎） | 一致性引擎实现级设计（C-1 / D-11 / C-2 / C-3）：末帧 CDN 镜像 + applied_refs 回报 / 一用途多候选端点 + capability / 角色场景实体化 + 三视图 / 服务端参考装配；含 file:line 锚点、失败语义、门禁与冲突点裁决输入（last-reviewed 2026-07-10，C-1 已落地） |
 | [`docs/payment-billing-audit-2026-07.md`](payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本（全栈审计） | 充值·支付网关·账本·业务扣费·对账·退款·风控 全面审计报告 + 落地方案台账：33 项 Findings（2 P0 / 8 P1）+ 决策台账 D1-D8 + T1-T17 分波次 Task 卡（带 file:line + 验收断言）；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
 | [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md) | AiAvatar 平台（产品定位规划） | [fable5] 从「数字人生产工具」到「AI 数字资产平台」的定位跃迁方案：五方向（资产宇宙 / 权利层确权授权分成 / 市场流通 / Asset-as-a-Service 调用层 / 组合打包）+ P0-P3 路线图 + 现状事实速查；仅方案未改造，供后续执行 agent 作工作输入（last-reviewed 2026-07-09） |
-| [`docs/clip-avatar-video-plan.md`](clip-avatar-video-plan.md) | **`clip` 口播视频线**（军师小程序分包） | v0.132：本人素材受限 OSS 单次直传、持久化异步受理与 HEVC/H.265 自动转 H.264；既有多数字人、逐句字幕、总装与质量门保持不变（last-reviewed 2026-08-18）。 |
+| [`docs/clip-avatar-video-plan.md`](clip-avatar-video-plan.md) | **`clip` 口播视频线**（军师小程序分包） | v0.135：本人素材单次直传、多数字人、逐句字幕与总装；最终音轨两遍归一并为 AAC 峰值回弹留余量，真实文件继续过严格质量门（last-reviewed 2026-08-18）。 |
 
 不动产品规格的方向时不必读 §3 ~ §7。
 

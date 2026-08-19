@@ -33,7 +33,7 @@
 - v0.126 隔离预发版本 `3560b942-20260811T170602Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`、3 套模板通过；本轮没有上传素材或创建任何石榴任务。
 - v0.125 隔离预发版本 `15523450-20260811T165046Z` 已发布，force-mock 关闭、服务 active/running、`NRestarts=0`、3 套模板通过；本轮仅增加原媒体签名读取，没有创建石榴任务。
 - v0.119 隔离预发版本 `e9e8e43c-20260811T153721Z` 已关闭 force-mock：服务 active、`NRestarts=0`，3 模板通过；军师 BFF 在线 requirements 返回 `authorizationVideoRequired=false`、形象硬门 5 秒、声音端上硬门 3 秒。自动化没有创建任何计费任务，下一步由用户本人从军师预发真机包提交素材。
-- v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做 -16 LUFS / -1.5 dBTP 音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；v0.128 起“AI 生成”水印只在项目显式开启时一并烧录。成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。v0.114 增加隔离预发专用 `AEP_CLIP_FORCE_MOCK=true`：确定性测试媒体也必须真实生成可播放 MP4 并走同一总装/质检/存储链，永久烧录「测试演示」；production/mysql 启动硬拒绝。公网 BFF 已验收到 44.05 秒、720×1280、H.264/AAC 成片与缩略图，force-mock 全程未请求石榴。
+- v0.112 按 Strategy A 落地逐段可恢复 worker；v0.113 将无运营素材时的空白尾段升级为三套模板各自的固定品牌尾卡，拼接/BGM 后统一做音轨归一，再以 `signalstats + loudnorm` 对平均亮度、综合响度和真峰值失败关闭。v0.135 把最终音轨改为两遍测量/归一：处理目标 -16 LUFS / -2.5 dBTP 为 AAC 编码峰值回弹留余量，编码后的真实文件仍必须通过 ≤ -1 dBTP 门槛，绝不放宽质量门。`ClipOverlayRenderer` 仍用 Java2D 安全生成尾卡/透明字幕层，逐句字幕经 ffmpeg 永久烧录，用户文案不进入 filter 表达式；v0.128 起“AI 生成”水印只在项目显式开启时一并烧录。成片通过时长、音轨、亮度、响度与真峰值门后才入库并抽帧生成缩略图。v0.114 增加隔离预发专用 `AEP_CLIP_FORCE_MOCK=true`：确定性测试媒体也必须真实生成可播放 MP4 并走同一总装/质检/存储链，永久烧录「测试演示」；production/mysql 启动硬拒绝。公网 BFF 已验收到 44.05 秒、720×1280、H.264/AAC 成片与缩略图，force-mock 全程未请求石榴。
 - 非 mysql/production 环境允许显式 mock，mock 产物带 `mock=true`。媒体机器审核未配置时军师 BFF 继续 fail-closed；真实代发仍固定失败。
 - 仍需使用本人合规素材完成 §3.2 质量/时延/一致性/规格/成本实测，完成 §12 商务/备案决策，并接媒体审核、授权群像尾片、四平台发布和生产压测/真机验收。
 

@@ -45,6 +45,7 @@ public class ClipAssemblyService {
     private final ClipOverlayRenderer overlays;
     private final ClipCoverRenderer covers;
     private final ClipMediaQualityGate qualityGate;
+    private final ClipLoudnessNormalizer loudnessNormalizer;
 
     public ClipAssemblyService(FfmpegRunner ffmpeg, FileStorageService storage, ClipAssetService assets,
                                ClipOverlayRenderer overlays, ClipCoverRenderer covers, ClipMediaQualityGate qualityGate) {
@@ -54,6 +55,7 @@ public class ClipAssemblyService {
         this.overlays = overlays;
         this.covers = covers;
         this.qualityGate = qualityGate;
+        this.loudnessNormalizer = new ClipLoudnessNormalizer(ffmpeg);
     }
 
     /** bytes = 成片本身 + 封面缩略图。作品要计入用户容量，字节数必须在生成的那一刻就记下来，
@@ -415,9 +417,7 @@ public class ClipAssemblyService {
     }
 
     private void normalizeLoudness(Path video, Path output) {
-        ffmpeg.runFfmpeg(List.of("-y", "-i", video.toString(), "-map", "0:v:0", "-map", "0:a:0",
-                "-c:v", "copy", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "160k",
-                "-movflags", "+faststart", output.toString()));
+        loudnessNormalizer.normalize(video, output);
     }
 
     /**

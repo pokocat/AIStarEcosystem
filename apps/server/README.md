@@ -7,6 +7,7 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 ## 版本日志
 
+- **v0.135（2026-08-18）**：`clip` 最终音轨改为两遍响度归一，第二遍消费第一遍 `measured_*`，编码前目标 -16 LUFS / -2.5 dBTP，为 AAC 峰值回弹留余量；编码后的真实文件仍按 ≤ -1 dBTP 质量门失败关闭，并在日志记录实测亮度/响度/真峰值。
 - **v0.132（2026-08-18）**：`clip` 本人素材改为受限 OSS V4 PostObject 单次直传 + `clip_upload_session` 持久化受理号 + 异步媒体校验/供应商提交；同一 owner + clientRequestId 只复用一个对象和任务。形象视频若为 HEVC/H.265，服务端先转 H.264/AAC 再走既有 ffprobe/预览/克隆，旧 multipart 路由保留兼容。
 - **v0.131（2026-08-17）**：修复聚算 Account API Key 的模型作用域：Job 查询和产物读取统一携带 `?model=minimax-h3`；带货素材入口在 hold 前校验 H3 时长并按 40 积分/秒报价。新增既有上游成功 Job 的幂等对账恢复，不重新提交生成。
 - **v0.130（2026-08-17）**：视频生成新增聚算 JusuanHub `minimax-h3` 媒体 Job 协议（768P、横/竖屏、5–15 秒）：`/media/generations` 提交、`/jobs/{id}` 轮询，受保护产物经 `/assets/{id}/content` 鉴权下载后镜像 OSS；候选报价支持 `PER_SECOND`，H3 按 40 积分/秒计费，存量模型继续按次。当前先开放 t2v，首/尾帧资产上传未接通前能力标记为不支持，避免误报。
