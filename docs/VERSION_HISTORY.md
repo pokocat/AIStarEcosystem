@@ -1,8 +1,14 @@
-# 版本增量历史（v0.5 → v0.135）
+# 版本增量历史（v0.5 → v0.136）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.136（2026-08-23）— Celebrity 与 Admin 路由边界修复
+
+修复根域同时承载 celebrity 与 `/admin` 后台时，异常回跳参数或旧链接可把用户带进运营后台的问题。celebrity 登录页现在只接受明确的工作区路径作为 `from`，拒绝 `/admin`、`/api`、跨域 URL、协议相对 URL、反斜杠和路径穿越；`proxy.ts` 同时把 celebrity 入口收到的全部 `/admin*` 请求临时重定向回 `/dashboard`。
+
+生产 Nginx 模板同步收紧：`aibuzz.cn`、`celebrity.aibuzz.cn` 和单域/裸 IP consumer 入口不再反代 admin，后台只保留 `admin.aibuzz.cn/admin`。回归测试覆盖合法深链与 admin/API/跨域/路径穿越输入，celebrity 类型检查和 Next 生产构建通过。
 
 ### v0.135（2026-08-18）— 快出片 AAC 峰值回弹修复
 

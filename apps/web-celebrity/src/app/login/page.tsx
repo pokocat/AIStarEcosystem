@@ -9,6 +9,7 @@ import { ArrowRight, Check, KeyRound, Loader2, Lock, LogIn, Phone, Smartphone } 
 import { AuthApi, ENABLE_DEV_LOGIN, useAuth } from "@ai-star-eco/api-client";
 import { STUDIO_KIND_LABEL_ZH, type StudioKind } from "@ai-star-eco/types/account";
 import { Avatar, Button, Card, Chip } from "@/components/creator";
+import { celebrityReturnPath } from "@/lib/celebrity-return-path";
 
 type Tab = "phone-login" | "phone-register" | "dev";
 type LoginMode = "code" | "password";
@@ -19,7 +20,7 @@ type RegisterPrefill = { phone?: string; registerTicket?: string };
 function CelebrityLoginInner() {
   const router = useRouter();
   const search = useSearchParams();
-  const from = search.get("from") || "/dashboard";
+  const from = celebrityReturnPath(search.get("from"));
   const { loginAs, refresh, user } = useAuth();
   const enableDev = ENABLE_DEV_LOGIN;
 

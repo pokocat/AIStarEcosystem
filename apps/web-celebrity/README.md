@@ -46,6 +46,8 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - 详情页 `/console/star/<id>` → `/star/<id>`、`/console/projects/<id>` → `/projects/<id>`
 - 透传其它 query（如 `?tier=trial`、`?action=distribute`）
 
+`/admin`、`/admin/*` 在本应用内一律临时重定向到 `/dashboard`；登录页的 `from` 也只接受 celebrity 工作区白名单路径。生产后台仅允许从 `admin.aibuzz.cn/admin` 进入。
+
 下一版本（无残留旧书签时）删除。
 
 ## 共享组件

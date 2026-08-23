@@ -4,7 +4,7 @@
 #
 # 路由：
 #   GET  /             → systemd:3012 (apps/web-celebrity，根域名代理；v0.109 起 apps/web 已删除)
-#   /admin/*           → systemd:3003 (apps/admin, basePath=/admin)
+#   /admin/*           → /dashboard (后台仅允许 admin.aibuzz.cn 访问)
 #   /api/*             → systemd:8080 (Spring Boot, 长超时支持 QR 扫码)
 #   /static/videos/*   → ECS 本地盘（迁到 OSS 后此 location 可删）
 #
@@ -27,12 +27,8 @@ server {
     }
 
     # ── apps/admin (basePath=/admin) ────────────────────────
-    location = /admin {
-        proxy_pass http://127.0.0.1:3003;
-    }
-    location /admin/ {
-        proxy_pass http://127.0.0.1:3003;
-    }
+    location = /admin { return 302 /dashboard; }
+    location /admin/  { return 302 /dashboard; }
 
     # ── Spring Boot 后端 ─────────────────────────────────────
     # /api/me/social-accounts/bind-init 首次冷启 30~60s + sau patchright，

@@ -19,6 +19,16 @@ const TAB_MAP: Record<string, string> = {
 export function proxy(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
 
+  // Consumer hosts must never render the operations console. Production also
+  // enforces this at Nginx, while this guard covers direct :3012 access and
+  // future proxy drift.
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    url.search = "";
+    return NextResponse.redirect(url, 307);
+  }
+
   if (pathname === "/console") {
     const tab = searchParams.get("tab");
     const target = (tab && TAB_MAP[tab]) ?? "/dashboard";
@@ -49,5 +59,5 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/console", "/console/:path*", "/cast", "/cast/:path*"],
+  matcher: ["/admin", "/admin/:path*", "/console", "/console/:path*", "/cast", "/cast/:path*"],
 };
