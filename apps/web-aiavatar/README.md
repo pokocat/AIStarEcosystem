@@ -128,6 +128,16 @@ src/
 
 ## 版本日志
 
+### v0.141-hub-P2a（2026-08-29）— 明星授权进中枢：货架明星形象卡 + 授权中心双向 + 明星名片
+
+- 新契约 `AssetApi.starGrants()`（`GET /v1/assets/star-grants`，celebrity 域只读投影）+
+  `data.ts` `StarGrant` 类型与 mock。
+- 货架"人物与形象"区展示授权给我的明星形象（授权引入徽章 + 有效期）；新路由
+  `/stars/[id]` 明星形象名片（授权内容 + 去带货创作，审批中 / 已到期如实展示）；
+  授权中心拆双向 tab（授权给我的 / 我授权出去的）；工作台纳入"明星授权审批中"。
+- 申请与审批不在本 app 做（走带货线 + 明星工作台），这里只读结果；使用记录待
+  带货出片真链路上线后接入 —— 无生产者不建假账。
+
 ### v0.107-hub-P1（2026-08-29）— 资产中枢重构第一期：真路由读界面 + /studio 双轨
 
 > 设计真源：[`docs/aiavatar-asset-hub-redesign.md`](../../docs/aiavatar-asset-hub-redesign.md)。

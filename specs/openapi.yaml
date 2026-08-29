@@ -8609,6 +8609,8 @@ paths:
     delete: { tags: [dap], operationId: dapDeleteStyle, responses: { '200': { description: ok } } }
   /v1/assets/usages:
     get: { tags: [dap], operationId: dapAssetUsages, summary: 'APPLIED TO · 已用于（assetType + assetId 查该资产被哪些合成引用）', responses: { '200': { description: ok } } }
+  /v1/assets/star-grants:
+    get: { tags: [dap], operationId: dapStarGrants, summary: '资产中枢 P2 · 授权给我的明星形象（celebrity 域 CelebrityStarAuthorization 只读投影：authorized/pending/expired；申请审批仍走 /me/celebrity 与 /star/cooperations 既有链路）', responses: { '200': { description: ok } } }
   /v1/compositions:
     get:  { tags: [dap], operationId: dapListCompositions, description: 'ipId 可选（查某 IP 名下的作品）', responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateComposition, summary: '人物 × 场景 × 产品 → 成片（授权核对 → 建单 → 异步出片）→ { composition, job }；真人复刻缺生效 LIC 时 403 DAP_LICENSE_REQUIRED，不建单不扣费', responses: { '200': { description: ok } } }

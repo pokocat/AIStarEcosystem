@@ -1364,6 +1364,12 @@ export const AssetApi = {
     return apiFetch(`/assets/summary`);
   },
 
+  /** 资产中枢 P2 · 授权给我的明星形象（celebrity 域只读投影；申请审批仍走带货线）。 */
+  starGrants: (): Promise<Mock.StarGrant[]> => {
+    if (USE_MOCK) return mock(Mock.STAR_GRANTS.slice());
+    return apiFetch(`/assets/star-grants`);
+  },
+
   // ── IP 容器 ──────────────────────────────────────────────
   ips: (): Promise<Mock.AssetIp[]> => {
     // 成员数按真实归属实时算，保证列表与详情页统计一致

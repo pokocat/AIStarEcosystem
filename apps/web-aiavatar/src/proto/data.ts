@@ -1255,3 +1255,41 @@ export const ACCOUNT: Account = {
     { name: "授权素材", size: 3, color: "var(--ink-3)", icon: "shield" },
   ],
 };
+
+// ── 资产中枢 P2 · 授权给我的明星形象（celebrity 域只读投影）────────────
+
+/** 明星授权状态（wire 全小写；unauthorized 不投影）。 */
+export type StarGrantStatus = "authorized" | "pending" | "expired";
+
+/**
+ * 授权给我的明星形象（= server DapStarGrantDto）。
+ * 真值在 celebrity 域（申请 / 审批走带货线与明星工作台），中枢只展示结果。
+ */
+export interface StarGrant {
+  id: string;
+  starId: string;
+  starName: string;
+  starAvatar?: string | null;
+  category?: string | null;
+  scenes: string[];
+  status: StarGrantStatus;
+  /** 有效期至（ISO 日期；仅 authorized/expired 有值）。 */
+  expireDate?: string | null;
+  availableStyles?: number | null;
+  appliedAt?: string | null;
+  decidedAt?: string | null;
+}
+
+/** mock：一条生效授权 + 一条审批中，覆盖货架与授权中心两种展示。 */
+export const STAR_GRANTS: StarGrant[] = [
+  {
+    id: "auth-mk01", starId: "star-su-li", starName: "苏黎", starAvatar: null, category: "时尚",
+    scenes: ["带货", "种草"], status: "authorized", expireDate: "2026-12-31",
+    availableStyles: 4, appliedAt: "2026-08-01T10:00:00Z", decidedAt: "2026-08-03T09:30:00Z",
+  },
+  {
+    id: "auth-mk02", starId: "star-lu-chen", starName: "陆晨", starAvatar: null, category: "美食",
+    scenes: ["带货"], status: "pending", expireDate: null,
+    availableStyles: null, appliedAt: "2026-08-28T14:32:00Z", decidedAt: null,
+  },
+];

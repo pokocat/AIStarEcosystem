@@ -457,6 +457,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.141** | 2026-08-29 | aiavatar 资产中枢重构 P1+P2a（真源 `docs/aiavatar-asset-hub-redesign.md`）：新五真路由读界面（工作台/货架/名片+设定卡/授权中心/我的）+ 老 SPA 挂 `/studio` 双轨（根路由旧 hash 转发保七牛刷脸回调）；server 新增 `GET /v1/assets/star-grants`（celebrity 域明星授权只读投影，无新表）；授权中心双向。回流记账待带货明星出片真链路上线后接（无生产者不建假账）。 |
 | **v0.140** | 2026-08-19 | clip 增加 owner-scoped `clientRequestId` 查单与保留期到期 owner 级彻底清理，支撑军师模糊提交不退费与 30 天隔离后再删数据。 |
 | **v0.139** | 2026-08-17 | 明星带货短视频重构：生成中心提级真实链路（明星形象生成 live 拦截为建设中，不再真扣积分假出片）；带货线时长策略 hold 前收口（必填 + 协议∩capability 有效区间）；`GET /material/videos/models` 模型选择/按秒报价前置；AI 起稿时长对齐模型上限（产物校验+重试，不静默缩数字）；免商品脚本 `creative_brief`。 |
 | **v0.138** | 2026-08-29 | 音乐创作接入真实音乐大模型（此前前端假流式 + 随机抽草稿 + 后端硬编码占位音频 + 显示假积分却从不扣费）：新增 `MUSIC_GENERATION` 用途（V22 迁移扩 MySQL purpose 枚举）、火山 OpenAPI V4 AK/SK 签名器（仓库首个非 Bearer 端点）、`MusicGenJob` 异步生成（clientRequestId 幂等 + @Scheduled reaper + 产物只落 cdnKey）、**按上游回报的真实成曲时长结算并退差额**、产物强制镜像我方存储（火山要求不得直接使用其返回地址）。顺带删除 `/api/music/songs\|albums\|concerts` 三个 permitAll 却 `findAll()` 的泄漏端点。未配置模型时 503 `MUSIC_NOT_CONFIGURED`、不建单不扣费。 |

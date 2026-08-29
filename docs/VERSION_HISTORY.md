@@ -1,9 +1,18 @@
-# 版本增量历史（v0.5 → v0.140）
-# 版本增量历史（v0.5 → v0.140）
+# 版本增量历史（v0.5 → v0.141）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.141（2026-08-29）— aiavatar 资产中枢重构 P1+P2a：真路由读界面 / studio 双轨 / 明星授权投影
+
+设计真源 `docs/aiavatar-asset-hub-redesign.md`（四动词中枢模型：注册 / 引用 / 回流 / 授权 + 两条铁律：中枢不阻塞下游、联邦不集中）。
+
+- **P1 前端（web-aiavatar）**：新五真路由（`/` 工作台、`/assets` 货架、`/assets/[id]` 资产名片+设定卡、`/licenses` 授权中心、`/me`），JSX + 既有 V4 令牌，无手机壳；老 proto SPA（创建 / 刷脸授权 / 合成等全部写流程）原样挂 `/studio`，根路由旧 hash 转发器保七牛刷脸回调与历史分享链接（/studio 迁完前不得移除）。Codex review 闭环修复 11 项（回调竞态 / 授权徽章按 License 真实状态 / 加载失败不当"没有"等）。
+- **P2a server**：新端点 `GET /api/v1/assets/star-grants`（dap 域只读投影 celebrity 域 `CelebrityStarAuthorization` × `CelebrityStar`，UNAUTHORIZED 不投影，排序 生效→审批中→到期）；**无新表无迁移**，申请审批仍走 `/me/celebrity/**` + `/star/cooperations` 既有链路。新服务 `DapStarGrantService` + `DapStarGrantDto`；`DapStarGrantServiceTest` 5/5。
+- **P2a 前端**：货架"人物与形象"区展示授权给我的明星形象卡；新路由 `/stars/[id]` 明星形象名片（授权内容 / 去带货创作跳 celebrity）；授权中心拆双向（授权给我的 = star grants / 我授权出去的 = dap License）；工作台"进行中的事"纳入明星授权审批中。
+- **回流记账（usage 边跨 app）刻意未做**：带货明星形象出片链路本身仍是建设中（v0.139 拦截），无真实生产者时不建假账（§8.0）；待该链路上线时在成片落点 best-effort 写 `dap_asset_usage`。
+- 部署：verify.sh 公网路径检查接受 301/302（v0.136 消费域 /admin 收口为跳转后误报）。
 
 ### v0.140（2026-08-19）— clip 模糊提交对账与账号保留期清理
 

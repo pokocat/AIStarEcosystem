@@ -21,6 +21,8 @@ import com.aistareco.aep.dap.dto.DapAssetRequests.ProductAngleRequest;
 import com.aistareco.aep.dap.dto.DapAssetRequests.SceneVariantRequest;
 import com.aistareco.aep.dap.service.DapAssetService;
 import com.aistareco.aep.dap.service.DapCompositionService;
+import com.aistareco.aep.dap.service.DapStarGrantService;
+import com.aistareco.aep.dap.dto.DapStarGrantDto;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import org.springframework.http.HttpStatus;
@@ -50,10 +52,12 @@ public class DapAssetController {
 
     private final DapAssetService assets;
     private final DapCompositionService compositions;
+    private final DapStarGrantService starGrants;
 
-    public DapAssetController(DapAssetService assets, DapCompositionService compositions) {
+    public DapAssetController(DapAssetService assets, DapCompositionService compositions, DapStarGrantService starGrants) {
         this.assets = assets;
         this.compositions = compositions;
+        this.starGrants = starGrants;
     }
 
     private static String uid(Principal p) {
@@ -66,6 +70,13 @@ public class DapAssetController {
     @GetMapping("/summary")
     public ApiResponse<AssetSummaryDto> summary(Principal principal) {
         return ApiResponse.of(assets.summary(uid(principal)));
+    }
+
+    // ── 明星授权只读投影（资产中枢 P2：货架 / 授权中心「授权给我的」）──
+
+    @GetMapping("/star-grants")
+    public ApiResponse<List<DapStarGrantDto>> starGrants(Principal principal) {
+        return ApiResponse.of(starGrants.list(uid(principal)));
     }
 
     // ── IP 容器 ────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { AssetApi, JobApi, LicenseApi } from "@/proto/api";
-import type { AssetSummary, Job, License, RecentAsset } from "@/proto/data";
+import type { AssetSummary, Job, License, RecentAsset, StarGrant } from "@/proto/data";
 import { useRequireAuth } from "@/components/hub/auth";
 import { studioHref, useHubData } from "@/components/hub/data";
 import { Badge, Card, EmptyState, HubScreen, LinkAction, ListRow, LoadingBlock, NavBar, RegNo, SectionHeader } from "@/components/hub/ui";
@@ -48,15 +48,18 @@ export default function WorkbenchPage() {
   const summary = useHubData<AssetSummary>(() => AssetApi.summary(), EMPTY_SUMMARY, [], ready);
   const jobs = useHubData<Job[]>(() => JobApi.list(), [], [], ready);
   const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [], ready);
+  const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [], ready);
 
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   // 计数先算全量再截断展示（review #7：slice 后求和会让角标失真）
   const runningAll = jobs.data.filter((j) => j.status === "running");
   const attentionAll = licenses.data.filter((l) => l.status !== "active" || l.evidenceStatus === "legacy_unconfirmed");
+  const pendingGrantsAll = grants.data.filter((g) => g.status === "pending");
   const runningJobs = runningAll.slice(0, 3);
   const pendingLicenses = attentionAll.slice(0, 2);
-  const todoCount = runningAll.length + attentionAll.length;
+  const pendingGrants = pendingGrantsAll.slice(0, 2);
+  const todoCount = runningAll.length + attentionAll.length + pendingGrantsAll.length;
   const tile = (key: string) => summary.data.types.find((t) => t.key === key)?.count ?? 0;
   const loading = summary.loading || jobs.loading || licenses.loading;
 
@@ -116,6 +119,16 @@ export default function WorkbenchPage() {
                             : "授权还差一步"
                       }
                       sub={`${l.subject} · ${l.scope}`}
+                      leading={<Badge tone="warn" dot>授权</Badge>}
+                    />
+                  </Card>
+                ))}
+                {pendingGrants.map((g) => (
+                  <Card key={g.id} pad={0}>
+                    <ListRow
+                      href={`/stars/${g.id}`}
+                      title="明星授权审批中"
+                      sub={`「${g.starName}」· 等待明星团队审批`}
                       leading={<Badge tone="warn" dot>授权</Badge>}
                     />
                   </Card>

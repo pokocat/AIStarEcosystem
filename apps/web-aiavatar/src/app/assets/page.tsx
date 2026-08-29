@@ -6,7 +6,7 @@
 import React from "react";
 import Link from "next/link";
 import { AssetApi, AvatarApi, DATA, LicenseApi, VoiceApi } from "@/proto/api";
-import type { AssetSummary, Avatar, License, VoiceAsset } from "@/proto/data";
+import type { AssetSummary, Avatar, License, StarGrant, VoiceAsset } from "@/proto/data";
 import { useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
 import {
@@ -36,6 +36,42 @@ function licenseBadge(c: Avatar, license: License | null, known: boolean) {
   if (license?.status === "active") return <Badge tone="ok" dot>授权有效</Badge>;
   if (license?.status === "expired") return <Badge tone="err" dot>授权已到期</Badge>;
   return <Badge tone="warn" dot>待完成授权</Badge>;
+}
+
+/** 授权给我的明星形象卡（celebrity 域投影；申请审批走带货线，这里只展示与进入名片）。 */
+function StarGrantCard({ g }: { g: StarGrant }) {
+  return (
+    <Link href={`/stars/${g.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+      <Card style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <AssetPortrait name={g.starName} imageUrl={g.starAvatar} hue={35} />
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+            <span
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: 19,
+                fontWeight: 600,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {g.starName}
+            </span>
+            <RegNo>{`明星形象 · ${g.starId}`}</RegNo>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Badge tone="primary" dot>{`授权给我 · ${g.scenes.join(" / ") || "带货"}`}</Badge>
+            {g.category && <span style={{ fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{g.category}</span>}
+          </div>
+          <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {g.expireDate ? `有效期至 ${g.expireDate}` : "长期有效以授权约定为准"}
+          </span>
+        </div>
+        <Chevron />
+      </Card>
+    </Link>
+  );
 }
 
 function AvatarCard({ c, license, licenseKnown }: { c: Avatar; license: License | null; licenseKnown: boolean }) {
@@ -82,11 +118,13 @@ export default function AssetsPage() {
   const voices = useHubData<VoiceAsset[]>(() => VoiceApi.mine(), [], [], ready);
   const summary = useHubData<AssetSummary>(() => AssetApi.summary(), EMPTY_SUMMARY, [], ready);
   const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [], ready);
+  const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [], ready);
 
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   const licenseKnown = settled(licenses);
   const licenseByChar = new Map(licenses.data.filter((l) => l.char).map((l) => [l.char as string, l]));
+  const activeGrants = settled(grants) ? grants.data.filter((g) => g.status === "authorized") : [];
 
   const tile = (key: string) => summary.data.types.find((t) => t.key === key)?.count ?? 0;
   const materialTiles = [
@@ -125,7 +163,11 @@ export default function AssetsPage() {
       />
 
       <div style={{ margin: "4px 16px 0" }}>
-        <SectionHeader title="人物与形象" hint="都可以直接拿去创作视频" count={avatars.loading ? undefined : avatars.data.length} />
+        <SectionHeader
+          title="人物与形象"
+          hint="都可以直接拿去创作视频"
+          count={avatars.loading ? undefined : avatars.data.length + activeGrants.length}
+        />
         {avatars.loading ? (
           <LoadingBlock />
         ) : avatars.error ? (
@@ -140,6 +182,9 @@ export default function AssetsPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {avatars.data.map((c) => (
               <AvatarCard key={c.id} c={c} license={licenseByChar.get(c.id) || null} licenseKnown={licenseKnown} />
+            ))}
+            {activeGrants.map((g) => (
+              <StarGrantCard key={g.id} g={g} />
             ))}
           </div>
         )}
