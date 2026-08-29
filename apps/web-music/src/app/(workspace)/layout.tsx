@@ -45,6 +45,8 @@ interface SidebarItemDef {
   label: string;
   /** true 时由 activeArtist 类型动态覆盖（创作工坊随艺人类型换名） */
   dynamicLabel?: boolean;
+  /** 右侧小标签，如「建设中」。 */
+  badge?: string;
 }
 
 interface SidebarGroup {
@@ -82,7 +84,9 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
     title: "商业运营",
     items: [
       { id: "notices", icon: Megaphone, label: "商业邀约" },
-      { id: "distribution", icon: GlobeIcon, label: "全网分发" },
+      // 分发链路尚未打通：歌曲与 DistributionContent 之间没有数据通路，
+      // 发布接口仍是 stub。标「建设中」而不是让用户点进去看假数据。
+      { id: "distribution", icon: GlobeIcon, label: "全网分发", badge: "建设中" },
       { id: "community", icon: Heart, label: "粉丝社群" },
       { id: "finance", icon: Wallet, label: "商业变现" },
     ],
@@ -103,15 +107,20 @@ function pathToActiveId(pathname: string | null): string {
   return parts[0];
 }
 
-const SidebarItem = ({ icon: Icon, label, id, active, onClick, themeStyles }: any) => (
+const SidebarItem = ({ icon: Icon, label, id, active, onClick, themeStyles, badge }: any) => (
   <button
     onClick={() => onClick(id)}
     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
       active === id ? themeStyles.itemActive : themeStyles.itemBase
     }`}
   >
-    <Icon size={18} />
-    <span className="font-medium">{label}</span>
+    <Icon size={18} className="shrink-0" />
+    <span className="font-medium truncate">{label}</span>
+    {badge && label && (
+      <span className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal border border-white/10 bg-white/5 text-gray-400">
+        {badge}
+      </span>
+    )}
   </button>
 );
 
@@ -368,6 +377,7 @@ function ProducerShell({ children }: { children: React.ReactNode }) {
                   key={item.id}
                   icon={getIcon(item)}
                   label={(sidebarOpen || isMobile) ? getSidebarLabel(item) : ""}
+                  badge={item.badge}
                   id={item.id}
                   active={activeId}
                   onClick={(id: string) => {

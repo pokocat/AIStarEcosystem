@@ -56,21 +56,16 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
   const connectedCount = platforms.filter(p => p.status === 'connected').length;
   const totalFollowers = '1.36M';
 
-  const connectPlatform = (id: string) => {
-    const p = platforms.find(x => x.id === id);
-    if (!p) return;
-    if (p.status === 'connected') return;
-    setPlatforms(prev => prev.map(x => x.id === id ? { ...x, status: 'pending' } : x));
-    toast.info(zh ? `${p.name} 接入审核中` : `${p.name} pending review`, { description: zh ? '通常 1-2 个工作日完成' : 'Usually resolves in 1-2 business days' });
-  };
-
-  const quickDistribute = () => {
-    const connected = platforms.filter(p => p.status === 'connected').length;
-    if (connected === 0) {
-      toast.error(zh ? '暂无已接入平台' : 'No connected platforms', { description: zh ? '请先接入至少一个分发平台' : 'Connect at least one platform first' });
-      return;
-    }
-    toast.success(zh ? `一键分发已启动` : 'Distribution started', { description: zh ? `正在推送至 ${connected} 个已接入平台` : `Pushing to ${connected} connected platforms` });
+  /**
+   * 分发链路整体建设中，两个动作都不做任何真实的事：
+   * 「接入平台」原本只改本地 state + 弹 toast，从不调 DistributionApi.connectPlatform；
+   * 「一键分发」原本只弹一个成功 toast，零网络请求。后端 publish 也还是返回随机 id 的 stub。
+   * 与其让用户以为自己接入成功、发布成功，不如禁用并说明。
+   */
+  const notReady = () => {
+    toast.info(zh ? '全网分发建设中' : 'Distribution coming soon', {
+      description: zh ? '歌曲发布到外部平台的链路尚未打通，敬请期待' : 'Publishing pipeline is not wired up yet',
+    });
   };
 
   return (
@@ -81,9 +76,25 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
           <h1 className="text-3xl font-extrabold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{zh ? '全网矩阵分发' : 'Distribution Matrix'}</h1>
           <p className="text-gray-400 font-light mt-1">{zh ? '一键分发至全球150+平台' : 'One-click distribution to 150+ platforms'}</p>
         </div>
-        <Button onClick={quickDistribute} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2">
-          <Send className="w-4 h-4" /> {zh ? '一键分发' : 'Quick Distribute'}
+        <Button
+          onClick={notReady}
+          title={zh ? '全网分发建设中' : 'Distribution coming soon'}
+          className="bg-gradient-to-r from-cyan-500 to-purple-600 opacity-60 gap-2">
+          <Send className="w-4 h-4" /> {zh ? '一键分发（建设中）' : 'Quick Distribute (soon)'}
         </Button>
+      </div>
+
+      {/* 建设中说明：以下平台与内容均为效果预览，不是你的真实数据 */}
+      <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" />
+        <div className="text-xs text-amber-100 font-light leading-relaxed">
+          <p className="font-medium text-amber-200 mb-0.5">{zh ? '全网分发建设中' : 'Distribution is under construction'}</p>
+          <p>
+            {zh
+              ? '歌曲发布到外部平台的链路尚未打通，本页平台与内容均为效果预览，不代表你的真实数据；接入与分发操作暂不可用。'
+              : 'The publishing pipeline is not wired up yet. Platforms and items below are a preview, not your real data.'}
+          </p>
+        </div>
       </div>
 
       {/* Stats row */}
@@ -180,10 +191,10 @@ export const DistributionPage = ({ lang, activeArtist }: { lang: Lang; activeArt
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={platform.status === 'pending'}
-                  onClick={() => connectPlatform(platform.id)}
-                  className="mt-2 text-[10px] h-6 border-white/10 text-gray-400 w-full">
-                  {platform.status === 'pending' ? (zh ? '审核中' : 'Pending') : (zh ? '接入' : 'Connect')}
+                  disabled
+                  title={zh ? '平台接入建设中' : 'Platform onboarding coming soon'}
+                  className="mt-2 text-[10px] h-6 border-white/10 text-gray-500 w-full">
+                  {zh ? '建设中' : 'Soon'}
                 </Button>
               )}
             </motion.div>

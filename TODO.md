@@ -14,7 +14,8 @@
 - [ ] **运营开通与配置**（上线前置，非代码）：火山控制台 `console.volcengine.com/ai-music/product` 开通「AI 音乐生成大模型」（企业首次 0 元 200 首试用）；admin「平台 · AI 模型」建端点（baseUrl `https://open.volcengineapi.com`、model `v4.3`/`v5.0`、Key 填 `AccessKeyId:AccessKeySecret`、billingMode `PER_SECOND`）+「AI 应用绑定」绑用途「音乐生成」+ 设 `creditCostOverride`（每秒积分，参考上游 0.002 元/秒）。**未配置时功能保持 503，不产假数据**。
 - [ ] **真机付费实测未做**：本轮验收全部在「未配置」路径完成（503 / 不扣费 / UI 提示），真实出曲、真实扣费、音频镜像与播放**尚未用真实凭据跑通**。开通后需实测：出曲成功、按真实时长结算、差额退回、音频可播。
 - [ ] **歌曲封面仍是手填 URL**：`SongDetailDrawer` 的封面是文本输入框，无上传也无生成。音乐模型不产封面，需另接 `IMAGE_GENERATION`（已有用途）按曲风/情绪生成，或支持上传。
-- [ ] **分发链路与歌曲无连接**（v0.138 未处理）：`MusicBusiness` 的「分发」按钮跳 `/distribution?songId=...`，但 `DistributionPage` 从不读 `songId`；`DistributionContent` 实体没有指向 Song 的字段，`DistributionController.publish` 是返回随机 jobId 的 stub。**歌曲目前根本进不了分发**。真实发行还需要 Song 上没有的 ISRC / 版权归属 / 语言 / 发行地区字段。
+- [ ] **分发链路与歌曲无连接**（暂不做，已在 UI 标「建设中」）：`DistributionPage` 从不读 `songId`；`DistributionContent` 实体没有指向 Song 的字段，`DistributionController.publish` 是返回随机 jobId 的 stub；页面的平台与内容全是 `mocks/distribution.ts` 的编造数据。**歌曲目前根本进不了分发**。真实发行还需要 Song 上没有的 ISRC / 版权归属 / 语言 / 发行地区字段。
+  - 已做的止血（v0.138）：侧栏「全网分发」挂 `建设中` 徽标；歌曲卡「分发」按钮禁用并标注；分发页顶部加醒目横幅说明"本页为效果预览、非真实数据"，「一键分发」与「平台接入」两个只弹 toast 的假操作已禁用。**口子保留**，接后端时把标记摘掉即可。
 - [ ] **`advanceSong` 无状态机校验**：`AccountController` 直接 `valueOf(status)`，可从 recording 跳 released、也能从 released 退回。
 - [ ] **admin 歌曲审核页看不到音频和歌词**：`/content/songs` 与详情页都不展示 `audioUrl` / `lyrics`，运营无法真正审核就要点通过/驳回；approve/reject 收了 `reason` 却直接丢弃，未进审计日志。
 - [ ] **`AdminMusicController.songs` 全量 `findAll` + 内存分页**，歌曲量上来会 OOM。

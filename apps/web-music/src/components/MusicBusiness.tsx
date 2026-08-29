@@ -493,16 +493,21 @@ export function MusicBusiness({ lang: _lang, artist, onBack: _onBack }: MusicBus
                                       {isPlaying ? <Pause className="w-3 h-3 mr-1" /> : <Play className="w-3 h-3 mr-1" />}
                                       {isPlaying ? '暂停' : '播放'}
                                     </Button>
+                                    {/*
+                                      分发链路未打通：这里原本跳 /distribution?songId=...，
+                                      但目标页从不读 songId，DistributionContent 也没有指向
+                                      Song 的字段，发布接口是返回随机 id 的 stub。
+                                      与其把用户送进一个什么都不会发生的页面，不如禁用并标明。
+                                    */}
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      className="border-white/10 hover:bg-white/5"
-                                      onClick={() => {
-                                        router.push(`/distribution?songId=${encodeURIComponent(song.id)}`);
-                                      }}
+                                      disabled
+                                      title="全网分发建设中：歌曲尚不能发布到外部平台"
+                                      className="border-white/10"
                                     >
                                       <Share2 className="w-3 h-3 mr-1" />
-                                      分发
+                                      分发（建设中）
                                     </Button>
                                     <Button size="sm" variant="outline" className="border-white/10 hover:bg-white/5">
                                       <BarChart3 className="w-3 h-3 mr-1" />

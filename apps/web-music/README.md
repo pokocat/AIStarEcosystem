@@ -30,11 +30,11 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 /poses               ← 已下线（v0.60 提示页；姿态随形象渲染统一在 AiAvatar）
 /asset-center  ★v0.39 ← 素材中心（数字资产库 + 文案库 双 tab）
 /production    ★v0.39 ← 制作工坊（切片制作 + AI 数字人 + 混剪批量 三 tab）
-/studio              ← 音乐工坊（MusicLibrary + 生成 dialog）
+/studio              ← 创作工坊（真实音乐生成 AIGenerationPanel + MusicLibrary）
 /music               ← 单曲详情入口（SongDetailDrawer）
 /copyright           ← 版权 / NFT（NFTMintingDialog）
 /notices             ← 商业邀约
-/distribution        ← 多平台分发
+/distribution        ← 多平台分发（建设中：链路未打通，页面为效果预览）
 /community           ← 粉丝社区（mock-only，OpenAPI 未覆盖）
 /finance             ← 财务中心（充值 / 提现 / 流水）
 /settings            ← 工作室设置
@@ -46,7 +46,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 - `src/components/producer/` — 工作台主组件（22 个 + `dashboard/` 子目录）：`AppearanceForge.v3` / `IncubationWizardV2` / `MCNMatrix` / `MusicLibrary` / `WardrobePageV2` / `StudioPage` / `CopyrightPage` / `DistributionPage` / `CommunityPage` / `FinancePage` / `SettingsPage` / `CommandPalette` / `NotificationPanel` / `SkeletonLoader` 等。
 - `src/components/landing/` — landing page 模块（强制 `"use client"`，避免 Server→Client 传递 LucideIcon 函数）。
-- `src/components/` 根目录 — 跨页面 dialog / drawer：`MusicGenerationDialog` / `NFTMintingDialog` / `ArtistSigningDialog` / `ArtistListingDialog` / `GlobalAudioPlayer` / `OnboardingGuide` / `ThemeSwitcher` / `ToastNotification` / `PoseLibrary`。
+- `src/components/` 根目录 — 跨页面 dialog / drawer：`NFTMintingDialog` / `ArtistSigningDialog` / `ArtistListingDialog` / `OnboardingGuide` / `ThemeSwitcher` / `ToastNotification` / `PoseLibrary`。（v0.138 删除 `MusicGenerationDialog` —— 第二套假生成器；删除 `GlobalAudioPlayer` —— 无引用死代码。）
 - `@ai-star-eco/ui`（共享包）— 48 个 shadcn 原语 + `ThemeProvider` + Tailwind v4 globals.css。字体由 root layout 通过 `next/font/google` 注入（Inter + Space_Grotesk）。
 - `@ai-star-eco/api-client`（共享包）— `apiFetch` / `AuthProvider` / `USE_MOCK` / `mockDelay`，token 仍 localStorage（cookie SSO TODO 见 `packages/api-client/src/_client.ts`）。
 
@@ -69,6 +69,8 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - **真实计价**：按上游回报的实际成曲时长结算，冻结与实扣的差额自动退回；失败不扣积分。
 - **未开通时如实提示**：模型未配置则显示「尚未开通」并禁用创作按钮，不再假装能生成。
 - 删除第二套假生成器 `MusicGenerationDialog`、死代码 `GlobalAudioPlayer` / `api/generation.ts`、写死的 `suno-v3` 模型下拉；音乐列表不再用无关示例曲兜底缺失音频。
+
+**全网分发暂标「建设中」**：歌曲发布到外部平台的链路（Song → DistributionContent → 各平台）尚未打通，入口保留但已明确标注 —— 侧栏挂徽标、歌曲卡「分发」按钮禁用、分发页顶部横幅说明本页为效果预览而非真实数据，两个只弹 toast 的假操作（一键分发 / 平台接入）已禁用。
 
 上线需运营先在火山控制台开通服务，并在 admin 配置端点（Key 填 `AccessKeyId:AccessKeySecret`）+ 绑定用途「音乐生成」。详见 `docs/VERSION_HISTORY.md#v0138`。
 

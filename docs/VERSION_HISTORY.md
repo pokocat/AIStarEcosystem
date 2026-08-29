@@ -27,6 +27,8 @@
 
 **门禁**：server compile + test-compile；新增 19 个单测（`VolcOpenApiSignerTest` 5 / `MusicGenJobServiceTest` 8 / `MusicGenWorkerSettlementTest` 6）+ AiModel/Credit/DigitalIp 回归全绿；`typecheck:all` 10/10；`check:api-contract` OK。**真实运行验收**：H2 dev server + web-music 实跑，确认未配置时 `POST /me/music/generate` 返回 503 `MUSIC_NOT_CONFIGURED`、**钱包余额 500 未动且 pendingBalance=0、无任务残留**，UI 正确显示未开通提示、纯音乐模式时长自动收窄到 30–60 秒。
 
+**全网分发标「建设中」**（本版决定暂不做）：歌曲与分发之间没有数据通路——`DistributionPage` 从不读跳转带的 `songId`，`DistributionContent` 实体也没有指向 Song 的字段，`publish` 仍是返回随机 id 的 stub，页面平台/内容全部来自 `mocks/distribution.ts`。入口保留但已明确标注：侧栏「全网分发」挂徽标（web-music 侧栏本版新增 badge 机制）、歌曲卡「分发」按钮禁用、分发页顶部加横幅说明"本页为效果预览、不代表你的真实数据"，「一键分发」与「平台接入」两个只弹 toast 从不发请求的假操作一并禁用。接后端时摘掉标记即可。
+
 **上线前必须做的两件事**（未做则该功能保持 §8.0 的"未配置"状态，不会产生假数据）：
 1. 到火山控制台 `console.volcengine.com/ai-music/product` 开通「AI 音乐生成大模型」（企业首次可 0 元领 200 首试用版）；
 2. 在 admin「平台 · AI 模型」新增端点：baseUrl `https://open.volcengineapi.com`、model 填 `v4.3` 或 `v5.0`、**Key 填 `AccessKeyId:AccessKeySecret`**、billingMode 选 `PER_SECOND`，再到「AI 应用绑定」把用途「音乐生成」绑上去，并按报价设 `creditCostOverride`（每秒积分）。
