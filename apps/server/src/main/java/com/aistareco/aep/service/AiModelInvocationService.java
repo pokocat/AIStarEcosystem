@@ -283,9 +283,10 @@ public class AiModelInvocationService {
             }
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
             if (options.get("top_p") != null) body.put("top_p", options.get("top_p"));
-            // response_format 透传（如 {"type":"json_object"}）；端点不支持时会自行忽略或报错，
-            // 由调用方（MaterialAiService）catch 后走解析重试 / 兜底。
-            if (options.get("response_format") != null) body.put("response_format", options.get("response_format"));
+            // 聚算 Qwen 3.5 明确拒绝 response_format，须依靠 prompt 约束纯 JSON；其他端点照常透传。
+            if (options.get("response_format") != null && !usesPlatformControlledSampling(model)) {
+                body.put("response_format", options.get("response_format"));
+            }
         }
         if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
                 && !usesPlatformControlledSampling(model)) {
@@ -297,7 +298,6 @@ public class AiModelInvocationService {
         if (!body.containsKey("top_p") && e.getDefaultTopP() != null) {
             body.put("top_p", e.getDefaultTopP());
         }
-        clampStructuredOutputBudget(model, body);
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
@@ -431,21 +431,12 @@ public class AiModelInvocationService {
 
     /**
      * 聚算 Qwen 3.5 chat 路由由平台托管采样参数；显式传 temperature 会被上游以 400 拒绝。
-     * 这里只省略不被接受的参数，prompt、max_tokens 与结构化输出约束保持不变。
+     * 该路由同时拒绝 response_format，JSON 只能由 prompt 约束；max_tokens 仍按 prompt 配置发送。
      */
     private static boolean usesPlatformControlledSampling(String model) {
         if (model == null) return false;
         String normalized = model.toLowerCase(Locale.ROOT);
         return normalized.contains("qwen3-5") || normalized.contains("qwen3.5");
-    }
-
-    /** 聚算 Qwen 3.5 的 structured output 最大只接受 4096 个输出 token。 */
-    private static void clampStructuredOutputBudget(String model, Map<String, Object> body) {
-        if (!usesPlatformControlledSampling(model) || !body.containsKey("response_format")) return;
-        Object configured = body.get("max_tokens");
-        if (configured instanceof Number n && n.longValue() > 4096L) {
-            body.put("max_tokens", 4096);
-        }
     }
 
     private static String rstrip(String s, String suffix) {
