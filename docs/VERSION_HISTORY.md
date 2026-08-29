@@ -1,8 +1,24 @@
-# 版本增量历史（v0.5 → v0.134）
+# 版本增量历史（v0.5 → v0.136）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.136（2026-08-29）— 音乐创作去掉数字人硬依赖 + 工作室惰性补建
+
+**起因**：线上用户（追查号 7MQUAP4JYVSE）在 web-music 创作音乐被两道闸卡死：① `/studio`、`/music` 等页面硬性要求 `activeArtist`，唯一获取艺人的入口是「从 AiAvatar 引入数字人」；② `POST /me/digital-ips/import-avatar` 又因账号缺 `aep_studios` 行返回 409 `当前账号尚未创建工作室`。DB 审计发现线上 17 个用户里 **6 个 STUDIO 账号没有工作室行**（历史注册路径漏建，正常短信+激活码注册会经 `LicenseActivationService.activate` 建 Studio）。
+
+**server**：
+- `DigitalIpService` 新增 `ensureStudioFor(ownerUserId)`：`create`（孵化）与 `importFromAvatar`（引入数字人）在账号缺 Studio 行时按「一号一 Studio」约定惰性补建（名称 = displayName/username + 「的工作室」，kind=PERSONAL_CREATOR），**替代原 409**。新增 `DigitalIpServiceTest` 3 用例。
+- `Song` 实体：`artist_id` 放开 NOT NULL；新增 `owner_user_id`（创作者直接归属，老行保持 null 不回填，归属仍经 artistId → DigitalIp 推导）。**V20 Java 迁移**（MODIFY COLUMN mysql 语法 + H2 fallback + owner 索引；空库跳过交 ddl-auto）。
+- `POST /me/songs`：`artistId` 改可选（传了仍校验 ownership），一律落 `ownerUserId`；`GET /me/songs`、`/me/music/trends` 改双通道归属合并（艺人歌 + 直接归属歌，去重按创建倒序）；`PATCH /songs/{id}` 与 `/advance` 统一走 `requireSongOwnership`（owner 命中即放行，artistId 反查兜底）。
+- openapi：`Song.artistId` nullable、`CreateSongRequest.artistId` 移出 required。
+
+**web-music**：`/studio` 创作工坊不再被 `NoArtistState` 硬闸——无艺人进入「自由创作」模式（标题/文案切换、AI 面板可入库、音乐列表展示全部作品）；`AIGenerationPanel`/`MusicLibrary`/`StudioPage` 的 artist props 全部可空；`NoArtistState`（其余艺人维度页仍用）加「直接去创作音乐」主按钮。`packages/types` `Song.artistId?: ID | null`、`CreateSongRequest.artistId?`，admin types 同步。
+
+**产品语义**（product_spec.md §10.1 修订）：创作不要求艺人；**分发仍要求**——未绑定艺人的歌曲对外发行前必须先补绑定。
+
+**同期运维修复（不在本仓代码内）**：music.aibuzz.cn 线上打不开的直接原因是 nginx 443 只有 admin/drama/celebrity/aibuzz.cn 的 server 块，music/aiavatar/star 的 HTTPS 请求落到默认 admin vhost 被 302 到 /admin（且被 HSTS 钉一年）。已在 ECS 补 `music/aiavatar/star.aibuzz.cn.ssl.conf`（复用 `*.aibuzz.cn` 泛域名证书，2026-11-08 到期）。
 
 ### v0.134（2026-08-18）— 风格短片 ViMax-lite 非视频链路闭环
 

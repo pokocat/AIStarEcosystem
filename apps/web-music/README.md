@@ -60,6 +60,13 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.136 · 2026-08-29 · 创作工坊去掉艺人硬闸（自由创作） {#v0136}
+
+- `/studio` 不再要求签约艺人：无艺人进入「自由创作」模式，AI 面板可直接入库，作品归属当前账号（`POST /me/songs` 的 `artistId` 改可选，后端新增 `Song.ownerUserId`）。
+- 有艺人时行为不变（专属工坊标题 / 按艺人过滤歌曲 / 歌曲绑定艺人）。
+- `NoArtistState`（其余艺人维度页仍使用）加「直接去创作音乐」主按钮；引入数字人在账号缺工作室时由后端惰性补建，不再 409。
+- 分发仍要求艺人绑定：未绑定艺人的歌曲对外发行前必须先补绑定（见 product_spec.md §10.1 修订）。
+
 - **2026-06-11 · 中文字体回退链**：`-apple-system` → 苹方 → HarmonyOS Sans SC → MiSans → 雅黑 → Noto Sans SC，修复国产 Android ROM（鸿蒙 / 小米等）中文字体断档。
 
 ### v0.60 · 2026-06-10 · 数字人收敛：艺人形象统一引用 AiAvatar {#v060}

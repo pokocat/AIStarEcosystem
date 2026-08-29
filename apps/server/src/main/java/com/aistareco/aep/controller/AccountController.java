@@ -37,6 +37,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -272,12 +273,15 @@ public class AccountController {
                 .stream()
                 .map(DigitalIp::getId)
                 .toList();
-        if (ownedArtistIds.isEmpty()) {
-            return ApiResponse.of(List.of());
-        }
-        List<SongDto> songs = ownedArtistIds.stream()
-                .flatMap(id -> songRepo
-                        .findByArtistIdOrderByCreatedAtDesc(id).stream())
+        // 双通道归属合并：艺人名下的歌 + 创作者直接归属的歌（无艺人创作），去重后按创建倒序。
+        Map<String, Song> merged = new LinkedHashMap<>();
+        ownedArtistIds.stream()
+                .flatMap(id -> songRepo.findByArtistIdOrderByCreatedAtDesc(id).stream())
+                .forEach(s -> merged.put(s.getId(), s));
+        songRepo.findByOwnerUserIdOrderByCreatedAtDesc(principal.getName())
+                .forEach(s -> merged.put(s.getId(), s));
+        List<SongDto> songs = merged.values().stream()
+                .sorted((a, b) -> nullSafeCompareDesc(a.getCreatedAt(), b.getCreatedAt()))
                 .map(SongDto::from)
                 .toList();
         return ApiResponse.of(songs);
@@ -290,15 +294,7 @@ public class AccountController {
                                            @RequestBody Map<String, Object> body) {
         Song existing = songRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "歌曲不存在"));
-        String artistId = existing.getArtistId();
-        if (artistId == null) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "歌曲缺少艺人归属");
-        }
-        DigitalIp artist = digitalIpRepo.findById(artistId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "艺人不存在"));
-        if (!principal.getName().equals(artist.getOwnerUserId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该歌曲不属于当前用户");
-        }
+        requireSongOwnership(principal, existing);
 
         if (body.containsKey("title"))       existing.setTitle(strOr(body.get("title"), existing.getTitle()));
         if (body.containsKey("genre"))       existing.setGenre(str(body.get("genre")));
@@ -310,21 +306,24 @@ public class AccountController {
     }
 
     /**
-     * 创建 AI 歌曲。artistId 必填；按 (modelVersion, thinkDepth) 扣 credits。
-     * MVP 扣费策略为占位随机值；正式策略见 product_spec.md §10.3。
+     * 创建 AI 歌曲。artistId 可选：创作音乐不要求先引入数字人/艺人，
+     * 传了则校验归属；歌曲一律直接落 ownerUserId 归属创作者。
+     * 按 (modelVersion, thinkDepth) 扣 credits，MVP 扣费策略为占位随机值；正式策略见 product_spec.md §10.3。
      */
     @PostMapping("/songs")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SongDto> createSong(Principal principal,
                                             @RequestBody Map<String, Object> body) {
         String artistId = str(body.get("artistId"));
-        if (artistId == null || artistId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "artistId 必填");
+        if (artistId != null && artistId.isBlank()) {
+            artistId = null;
         }
-        DigitalIp artist = digitalIpRepo.findById(artistId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "艺人不存在"));
-        if (!principal.getName().equals(artist.getOwnerUserId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该艺人不属于当前用户");
+        if (artistId != null) {
+            DigitalIp artist = digitalIpRepo.findById(artistId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "艺人不存在"));
+            if (!principal.getName().equals(artist.getOwnerUserId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该艺人不属于当前用户");
+            }
         }
 
         String modelVersion = str(body.get("modelVersion"));
@@ -341,6 +340,7 @@ public class AccountController {
                 .revenue(0)
                 .rating(0)
                 .artistId(artistId)
+                .ownerUserId(principal.getName())
                 .audioUrl("https://cdn.placeholder.local/mock/audio.mp3")
                 .lyrics(str(body.get("lyrics")))
                 .modelVersion(modelVersion)
@@ -421,14 +421,15 @@ public class AccountController {
 
         long totalPlays = 0L;
         long totalRevenue = 0L;
-        if (!owned.isEmpty()) {
-            List<Song> songs = owned.stream()
-                    .flatMap(aid -> songRepo.findByArtistIdOrderByCreatedAtDesc(aid).stream())
-                    .toList();
-            for (Song s : songs) {
-                totalPlays += Math.max(0, s.getPlays());
-                totalRevenue += Math.max(0, s.getRevenue());
-            }
+        Map<String, Song> trendSongs = new LinkedHashMap<>();
+        owned.stream()
+                .flatMap(aid -> songRepo.findByArtistIdOrderByCreatedAtDesc(aid).stream())
+                .forEach(s -> trendSongs.put(s.getId(), s));
+        songRepo.findByOwnerUserIdOrderByCreatedAtDesc(principal.getName())
+                .forEach(s -> trendSongs.put(s.getId(), s));
+        for (Song s : trendSongs.values()) {
+            totalPlays += Math.max(0, s.getPlays());
+            totalRevenue += Math.max(0, s.getRevenue());
         }
 
         List<MusicTrendPointDto> series = new ArrayList<>(days);
@@ -452,9 +453,13 @@ public class AccountController {
     }
 
     private void requireSongOwnership(Principal principal, Song song) {
+        // 归属双通道：创作者直接归属（无艺人歌曲的唯一真值）或经艺人反查。
+        if (principal.getName().equals(song.getOwnerUserId())) {
+            return;
+        }
         String artistId = song.getArtistId();
         if (artistId == null) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "歌曲缺少艺人归属");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该歌曲不属于当前用户");
         }
         DigitalIp artist = digitalIpRepo.findById(artistId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "艺人不存在"));

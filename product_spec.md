@@ -789,16 +789,16 @@ P4 交付时下述页面与常量已从 admin 移除（替代路径在括号内�
 ### 10.1 核心链路（以 DigitalIp 为歌手的数字音乐发行）
 
 ```
-AI 艺人 (DigitalIp)
-   └─ AI 歌曲 (Song)       ← 必须绑定 artistId；对接外部音乐发行平台时
+AI 艺人 (DigitalIp)  ← 可选的"歌手"身份
+   └─ AI 歌曲 (Song)       ← artistId 可选（v0.136 起）；对接外部音乐发行平台时
         ├─ 歌单 (Album)     ← 歌曲的合集（非"专辑发行"）
         └─ 分发 (Distribution → 外部音乐发行开放平台)
              └─ 播放量 / 版税 (Wallet / LedgerEntry)
 ```
 
-**硬性约束**：
-- **Song 必须先有 artist**：创建歌曲前必须先在「AI 孵化」里拥有至少一位 DigitalIp。未绑定 `artistId` 的 Song 不能保存，更不能分发。
-- **Song.artistId 即外部平台上的"演唱歌手"**：未来接入 QQ 音乐 / 网易云 / YouTube Music 等发行 OpenAPI 时，元数据里的 `artist_name` / `performer` 直接取 `DigitalIp.name`；ISRC、词曲版权归属、分润账户也都挂在这条 `artistId` 下。
+**约束（v0.136 修订）**：
+- **创作不要求先有 artist**：创作音乐不需要先引入数字人/孵化艺人；无 `artistId` 的 Song 由 `ownerUserId` 直接归属创作者账号（自由创作）。
+- **分发仍要求 artist**：`Song.artistId` 即外部平台上的"演唱歌手"——接入 QQ 音乐 / 网易云 / YouTube Music 等发行 OpenAPI 时，元数据里的 `artist_name` / `performer` 直接取 `DigitalIp.name`；ISRC、词曲版权归属、分润账户也都挂在这条 `artistId` 下。**未绑定艺人的歌曲在对外发行前必须先补绑定。**
 - **数字音乐 = 纯线上发行**：没有实体专辑、没有首发日、没有"策划→录制→发布"的专辑生命周期。
 
 ### 10.2 Song（歌曲）—— 前端类型变更
@@ -807,7 +807,7 @@ AI 艺人 (DigitalIp)
 
 | 字段             | 类型                  | 说明 |
 |------------------|-----------------------|------|
-| `artistId`       | `ID` **(必填)**        | 演唱歌手 = `DigitalIp.id`；后端校验 ownership |
+| `artistId`       | `ID`（可选，v0.136 起） | 演唱歌手 = `DigitalIp.id`；传了后端校验 ownership，不传则歌曲直接归属创作者账号 |
 | `audioUrl`       | `string`（可选）       | 音频资源地址。**当前 mock 占位 URL（CDN 假地址或空）**；后续统一迁移到 OSS / 对象存储，前端不感知 |
 | `coverUrl`       | `string`（可选）       | 歌曲封面；没有时由前端生成基于 artist.avatar 的渐变占位 |
 | `lyrics`         | `string`（可选）       | 歌词正文（MVP 纯文本；LRC 时间轴版留待 P2） |

@@ -26,8 +26,9 @@ import { MODEL_VERSION_OPTIONS, THINK_DEPTH_OPTIONS } from "@/constants/music-ui
 import { MusicApi } from "@/api";
 
 interface Props {
-  artistId: string;
-  artistName: string;
+  /** 选中的签约艺人。可空：不绑定艺人也能创作与入库。 */
+  artistId?: string | null;
+  artistName?: string | null;
   /** 预填 prompt（例如由外部模板点击注入）。变更时建议通过 key 重挂载。 */
   initialPrompt?: string;
   onCreated?: (song: Song) => void;
@@ -98,7 +99,7 @@ export function AIGenerationPanel({ artistId, artistName, initialPrompt, onCreat
     setStage("analyzing");
     await sleep(PRE_ANALYZE_MS);
 
-    const ctx = { prompt: prompt.trim(), artist: artistName };
+    const ctx = { prompt: prompt.trim(), artist: artistName ?? "自由创作" };
     for (const s of STAGE_SEQUENCE) {
       await streamStage(s, ctx);
       if (abortRef.current) {
@@ -122,20 +123,10 @@ export function AIGenerationPanel({ artistId, artistName, initialPrompt, onCreat
 
   async function accept() {
     if (!draft) return;
-    if (!artistId) {
-      setMessages(prev => [...prev, {
-        id: `m-err-${Date.now()}`,
-        role: "assistant",
-        content: "❌ 当前未选中任何签约艺人，无法入库。请先在左上切换器中选择一位艺人。",
-        stage: undefined,
-        createdAt: new Date().toISOString(),
-      }]);
-      return;
-    }
     setSaving(true);
     try {
       const song = await MusicApi.createSong({
-        artistId,
+        ...(artistId ? { artistId } : {}),
         title: draft.title,
         genre: draft.genre,
         duration: draft.duration,
@@ -187,7 +178,9 @@ export function AIGenerationPanel({ artistId, artistName, initialPrompt, onCreat
               AI 创作工坊
             </h3>
             <p className="text-xs text-gray-500 font-light">
-              和大模型对话，流式生成数字音乐 · 当前歌手：<span className="text-cyan-400">{artistName}</span>
+              和大模型对话，流式生成数字音乐 · {artistName
+                ? <>当前歌手：<span className="text-cyan-400">{artistName}</span></>
+                : <span className="text-cyan-400">自由创作 · 作品归属你的账号</span>}
             </p>
           </div>
         </div>
@@ -350,8 +343,8 @@ export function AIGenerationPanel({ artistId, artistName, initialPrompt, onCreat
             <div className="flex items-center gap-2">
               <Button
                 onClick={accept}
-                disabled={saving || !!savedSongId || !artistId}
-                title={!artistId ? "请先选择一位签约艺人" : undefined}
+                disabled={saving || !!savedSongId}
+                title={!artistId ? "未选择艺人，作品将直接归属你的账号" : undefined}
                 className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90 gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />

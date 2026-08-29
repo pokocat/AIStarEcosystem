@@ -1473,11 +1473,12 @@ components:
     Song:
       type: object
       description: |
-        歌曲实体（v2.2 起替代 legacy Track）。绑定 artistId 必填。
-      required: [id, artistId, title, status, plays, revenue, createdAt]
+        歌曲实体（v2.2 起替代 legacy Track）。artistId 2026-08-29 起可空：
+        创作音乐不要求先引入数字人/艺人，无艺人歌曲由 ownerUserId（服务端内部）归属创作者。
+      required: [id, title, status, plays, revenue, createdAt]
       properties:
         id:            { type: string }
-        artistId:      { type: string, description: 关联艺人 id }
+        artistId:      { type: string, nullable: true, description: 关联艺人 id（可空 = 自由创作） }
         title:         { type: string }
         genre:         { type: string }
         status:        { $ref: '#/components/schemas/SongStatus' }
@@ -1519,9 +1520,9 @@ components:
 
     CreateSongRequest:
       type: object
-      required: [artistId, title]
+      required: [title]
       properties:
-        artistId:     { type: string }
+        artistId:     { type: string, description: 可选；不传则作品直接归属当前账号（自由创作） }
         title:        { type: string }
         genre:        { type: string }
         prompt:       { type: string, description: 用户输入的创作 prompt }

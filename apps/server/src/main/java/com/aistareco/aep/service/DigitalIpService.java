@@ -132,11 +132,8 @@ public class DigitalIpService {
 
         String studioId = getString(body, "studioId");
         if (studioId == null || studioId.isBlank()) {
-            // 一个账号对应一个 Studio — 自动从 owner 回填；找不到则 409。
-            studioId = studioRepo.findByOwnerUserId(ownerUserId)
-                    .map(com.aistareco.aep.model.Studio::getId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                            "当前账号尚未创建工作室，无法创建艺人"));
+            // 一个账号对应一个 Studio — 自动从 owner 回填；没有则惰性补建（老账号可能缺行）。
+            studioId = ensureStudioFor(ownerUserId).getId();
         } else if (!studioRepo.existsById(studioId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "studioId 对应的工作室不存在: " + studioId);
         }
@@ -204,10 +201,7 @@ public class DigitalIpService {
             dapRefResolver.requireRefOfAvatar(avatar.getId(), displayRef);
         }
 
-        String studioId = studioRepo.findByOwnerUserId(ownerUserId)
-                .map(com.aistareco.aep.model.Studio::getId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
-                        "当前账号尚未创建工作室，无法引入数字人"));
+        String studioId = ensureStudioFor(ownerUserId).getId();
 
         String name = getString(body, "name");
         if (name == null || name.isBlank()) name = avatar.getName();
@@ -233,6 +227,34 @@ public class DigitalIpService {
                 .build();
 
         return toDto(ipRepo.save(ip));
+    }
+
+    /**
+     * 一个账号对应一个 Studio。历史上部分注册路径没有落 Studio 行（2026-08 审计：
+     * 线上 17 个用户里 6 个 STUDIO 账号缺行），导致孵化/引入数字人 409 死锁。
+     * 这里按约定惰性补建：名称取 displayName/username，kind 默认 PERSONAL_CREATOR。
+     */
+    private com.aistareco.aep.model.Studio ensureStudioFor(String ownerUserId) {
+        return studioRepo.findByOwnerUserId(ownerUserId).orElseGet(() -> {
+            var user = userRepo.findById(ownerUserId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "ownerUserId 对应的用户不存在: " + ownerUserId));
+            String name = user.getDisplayName() != null && !user.getDisplayName().isBlank()
+                    ? user.getDisplayName() + "的工作室"
+                    : user.getUsername() + "的工作室";
+            Instant now = Instant.now();
+            return studioRepo.save(com.aistareco.aep.model.Studio.builder()
+                    .id(UUID.randomUUID().toString())
+                    .ownerUserId(ownerUserId)
+                    .name(name)
+                    .kind(com.aistareco.aep.model.Studio.StudioKind.PERSONAL_CREATOR)
+                    .status(com.aistareco.aep.model.Studio.StudioStatus.ACTIVE)
+                    .contactPhone(user.getPhone())
+                    .contactEmail(user.getEmail())
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build());
+        });
     }
 
     /**
