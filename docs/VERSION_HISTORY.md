@@ -10,7 +10,7 @@
 
 **server**：
 - `DigitalIpService` 新增 `ensureStudioFor(ownerUserId)`：`create`（孵化）与 `importFromAvatar`（引入数字人）在账号缺 Studio 行时按「一号一 Studio」约定惰性补建（名称 = displayName/username + 「的工作室」，kind=PERSONAL_CREATOR），**替代原 409**。新增 `DigitalIpServiceTest` 3 用例。
-- `Song` 实体：`artist_id` 放开 NOT NULL；新增 `owner_user_id`（创作者直接归属，老行保持 null 不回填，归属仍经 artistId → DigitalIp 推导）。**V20 Java 迁移**（MODIFY COLUMN mysql 语法 + H2 fallback + owner 索引；空库跳过交 ddl-auto）。
+- `Song` 实体：`artist_id` 放开 NOT NULL；新增 `owner_user_id`（创作者直接归属，老行保持 null 不回填，归属仍经 artistId → DigitalIp 推导）。**V21 Java 迁移**（MODIFY COLUMN mysql 语法 + H2 fallback + owner 索引；空库跳过交 ddl-auto）。
 - `POST /me/songs`：`artistId` 改可选（传了仍校验 ownership），一律落 `ownerUserId`；`GET /me/songs`、`/me/music/trends` 改双通道归属合并（艺人歌 + 直接归属歌，去重按创建倒序）；`PATCH /songs/{id}` 与 `/advance` 统一走 `requireSongOwnership`（owner 命中即放行，artistId 反查兜底）。
 - openapi：`Song.artistId` nullable、`CreateSongRequest.artistId` 移出 required。
 
