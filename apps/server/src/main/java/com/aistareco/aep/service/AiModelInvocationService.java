@@ -278,14 +278,17 @@ public class AiModelInvocationService {
         body.put("model", model);
         body.put("messages", messages);
         if (options != null) {
-            if (options.get("temperature") != null) body.put("temperature", options.get("temperature"));
+            if (options.get("temperature") != null && !usesPlatformControlledSampling(model)) {
+                body.put("temperature", options.get("temperature"));
+            }
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
             if (options.get("top_p") != null) body.put("top_p", options.get("top_p"));
             // response_format 透传（如 {"type":"json_object"}）；端点不支持时会自行忽略或报错，
             // 由调用方（MaterialAiService）catch 后走解析重试 / 兜底。
             if (options.get("response_format") != null) body.put("response_format", options.get("response_format"));
         }
-        if (!body.containsKey("temperature") && e.getDefaultTemperature() != null) {
+        if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
+                && !usesPlatformControlledSampling(model)) {
             body.put("temperature", e.getDefaultTemperature());
         }
         if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
@@ -423,6 +426,16 @@ public class AiModelInvocationService {
 
     private static Long asLong(Object o) {
         return o instanceof Number n ? n.longValue() : null;
+    }
+
+    /**
+     * 聚算 Qwen 3.5 chat 路由由平台托管采样参数；显式传 temperature 会被上游以 400 拒绝。
+     * 这里只省略不被接受的参数，prompt、max_tokens 与结构化输出约束保持不变。
+     */
+    private static boolean usesPlatformControlledSampling(String model) {
+        if (model == null) return false;
+        String normalized = model.toLowerCase(Locale.ROOT);
+        return normalized.contains("qwen3-5") || normalized.contains("qwen3.5");
     }
 
     private static String rstrip(String s, String suffix) {

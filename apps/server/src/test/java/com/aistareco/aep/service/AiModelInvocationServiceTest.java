@@ -160,6 +160,29 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void qwen35OmitsPlatformControlledTemperature() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("ep-qwen35", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-5-9b", "sk-x", true);
+        ep.setDefaultTemperature(0.6);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.DRAMA_SCRIPT_DRAFT, ep);
+
+        svc.invokeChat(
+                AiModelPurpose.DRAMA_SCRIPT_DRAFT,
+                List.of(Map.of("role", "user", "content", "生成短剧脚本")),
+                Map.of(
+                        "temperature", 0.9,
+                        "max_tokens", 6144,
+                        "response_format", Map.of("type", "json_object")));
+
+        assertEquals(1, server.requests.size());
+        Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
+        assertFalse(sent.containsKey("temperature"), "Qwen 3.5 采样参数由平台托管，不能显式发送 temperature");
+        assertEquals(6144, ((Number) sent.get("max_tokens")).intValue());
+        assertEquals("json_object", ((Map<?, ?>) sent.get("response_format")).get("type"));
+    }
+
+    @Test
     void unboundPurposeThrowsAiNotConfigured() {
         // 用途无绑定 → 503 AI_NOT_CONFIGURED（不发 HTTP）。
         AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
