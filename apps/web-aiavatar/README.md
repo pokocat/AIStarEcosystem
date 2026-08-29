@@ -128,6 +128,23 @@ src/
 
 ## 版本日志
 
+### v0.107-hub-P1（2026-08-29）— 资产中枢重构第一期：真路由读界面 + /studio 双轨
+
+> 设计真源：[`docs/aiavatar-asset-hub-redesign.md`](../../docs/aiavatar-asset-hub-redesign.md)。
+
+- **新五路由（App Router + JSX + 现有 V4 令牌，无手机壳/微信 chrome）**：
+  `/` 工作台（资产总览数字 + 进行中的事 + 最近动态）、`/assets` 资产货架（人物与形象大卡
+  为主角，声音次之，场景/产品/风格/IP 收进"素材库"分区）、`/assets/[id]` 资产名片 + 设定卡
+  （授权证书块 / 去创作 / 组成部分 / 被用在哪〔references + compositions〕/ 设定完整度〔前端
+  按已填槽位推导〕/ 标准图集 / 衍生货架 / 人设）、`/licenses` 授权中心、`/me` 我的。
+- **双轨迁移**：老版整站（`src/proto/App`，含创建链路 / 真人刷脸授权 / 合成工作台等全部
+  "写"流程）原样挂 `/studio`，hash 深链不变；新页面进流程一律深链 `/studio#/...`。
+- **兼容红线**：根路由挂旧 hash 转发器（`/#/avatar/...`、`/#/real-auth/...` 等 →
+  `/studio` + 原 hash），七牛刷脸回调与历史分享链接不断；/studio 迁完前不得移除。
+- 新增 `src/components/hub/`（ui.tsx JSX 原语 / auth.tsx 登录守卫 / data.ts 拉取工具）、
+  `/login`（复用 MLogin 整套逻辑 + ?next= 回跳）。数据层完全复用 `src/proto/api.ts`，
+  mock/live 双模式不变。门禁：typecheck + build（8 路由）绿；mock 模式五页 + 转发浏览器实测。
+
 ### v0.106（2026-08-03）— 七牛云真人核验移动端回流 + 平台授权证据链
 
 - **同页跳转与自动回流**：进入七牛云 H5 前先把当前会话写入 `#/real-auth/<sessionId>`，再在当前页打开；七牛云回调页自动跳回该会话，也保留手动返回按钮。刷新、重新登录和用户手动返回后均可继续轮询，不会丢失链路。

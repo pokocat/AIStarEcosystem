@@ -9,6 +9,13 @@
 
 ---
 
+## 2026-08-29 · aiavatar 资产中枢重构（P1 已落地，后续分期见 docs/aiavatar-asset-hub-redesign.md §4）
+
+- [ ] **P2 下游选择器 + 回流**：music 出 MV 选数字人、celebrity 带货选明星形象；`dap_asset_usage` 泛化为跨 app 使用边（server 契约按 AGENTS §5 SOP 走 openapi）；授权中心接 star 授权数据拆"授权给我的/我授权出去的"双向；名片页"导出设定卡"。
+- [ ] **P3 /studio 逐屏迁出**：创建向导 / 真人授权 / 合成工作台 JSX 化迁入新路由；`src/proto/api.ts`（1800 行）按域拆文件；strict 渐进开启；根路由旧 hash 转发器随 /studio 退役一并移除（在此之前**不得删**——七牛刷脸回调依赖）。
+- [ ] P1 已知小坑：新页面未做 v0.53 平台门禁（未开通 aiavatar 的账号能看到空货架，不泄数据但少引导，P2 顺手补）；`/assets/[id]` 目前只认数字人 id，六类其余资产详情仍在 /studio。
+- [ ] P1 Codex review 后置项（2026-08-29，阻塞项已同轮修复）：hub 页面少量硬编码色值（`#D6EEF7`/`#F2E2BE` 证书/警示卡边框）未进 globals.css 令牌；LoadingBlock 用 spinner 与老版 skeleton 语言不一致；既有行为——`#/voiceclone` 深链冷启动回落首页（proto 同时列在 SIMPLE_OVERLAYS 与 FLOW_SCREENS，非本次回归）。
+
 ## 2026-08-29 · v0.138 音乐真实生成后续
 
 - [ ] **运营开通与配置**（上线前置，非代码）：火山控制台 `console.volcengine.com/ai-music/product` 开通「AI 音乐生成大模型」（企业首次 0 元 200 首试用）；admin「平台 · AI 模型」建端点（baseUrl `https://open.volcengineapi.com`、model `v4.3`/`v5.0`、Key 填 `AccessKeyId:AccessKeySecret`、billingMode `PER_SECOND`）+「AI 应用绑定」绑用途「音乐生成」+ 设 `creditCostOverride`（每秒积分，参考上游 0.002 元/秒）。**未配置时功能保持 503，不产假数据**。
