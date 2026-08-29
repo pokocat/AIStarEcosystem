@@ -210,6 +210,33 @@ aep:
   # token / baseUrl / model 在后台「AI 模型」页按 provider 配（用途勾「视频生成」），不在此配 token。
   # 这里只配「怎么提交 / 怎么轮询」协议细节 + 轮询节奏，换厂商时一般只改这些子路径即可。
   # 默认对齐异步任务约定（提交返回 task_id，轮询拿状态 + 成片 URL，如 智谱 CogVideoX）。
+  # 音乐生成（web-music 创作工坊）。端点与密钥在 admin「平台 · AI 模型」配置，
+  # 用途绑定在「AI 应用绑定 → 音乐生成」；未绑定时下单直接 503 MUSIC_NOT_CONFIGURED，不扣费。
+  music:
+    gen:
+      # 火山公共资源池 QPS ≤ 2，调大只会在上游排队并放大超时
+      max-concurrent: ${AEP_MUSIC_MAX_CONCURRENT:2}
+      poll-interval-seconds: ${AEP_MUSIC_POLL_INTERVAL_SEC:5}
+      # 必须远小于 CreditHoldSweeper 的 180min 兜底 TTL
+      max-wait-seconds: ${AEP_MUSIC_MAX_WAIT_SEC:600}
+      max-download-bytes: ${AEP_MUSIC_MAX_DOWNLOAD_BYTES:67108864}
+      # 关闭则任务直接判失败：不交付会过期的上游地址（§8.0）
+      upload-to-cdn: ${AEP_MUSIC_UPLOAD_TO_CDN:true}
+      stale-heartbeat-seconds: ${AEP_MUSIC_STALE_HEARTBEAT_SEC:900}
+      min-duration-sec: ${AEP_MUSIC_MIN_DURATION_SEC:30}
+      max-duration-sec: ${AEP_MUSIC_MAX_DURATION_SEC:240}
+      max-instrumental-duration-sec: ${AEP_MUSIC_MAX_BGM_DURATION_SEC:60}
+      default-credits-per-second: ${AEP_MUSIC_CREDITS_PER_SEC:1}
+      # 火山 OpenAPI 签名参数（AK/SK 存在端点 Key 字段，形如 "AK:SK"）
+      volc-region: ${AEP_MUSIC_VOLC_REGION:cn-beijing}
+      volc-service: ${AEP_MUSIC_VOLC_SERVICE:imagination}
+      volc-version: ${AEP_MUSIC_VOLC_VERSION:2024-08-12}
+      # 后付费按实际时长计费用 GenSongForTime；预付费资源包用 GenSongV4
+      volc-song-action: ${AEP_MUSIC_VOLC_SONG_ACTION:GenSongForTime}
+      volc-query-action: ${AEP_MUSIC_VOLC_QUERY_ACTION:QuerySong}
+      volc-audio-format: ${AEP_MUSIC_VOLC_AUDIO_FORMAT:mp3}
+      volc-aigc-watermark: ${AEP_MUSIC_VOLC_AIGC_WATERMARK:true}
+
   material:
     video:
       submit-path: ${AEP_VIDEO_SUBMIT_PATH:/videos/generations}

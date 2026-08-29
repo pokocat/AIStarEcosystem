@@ -99,6 +99,82 @@ export interface CreateSongRequest {
   prompt?: string;
 }
 
+// ── 真实音乐生成（v0.138）─────────────────────────────────────────────────
+
+/** 生成任务状态。终态为 succeeded / failed。 */
+export type MusicGenStatus = "queued" | "submitting" | "generating" | "succeeded" | "failed";
+
+/**
+ * 音乐生成任务。真实调用音乐大模型，异步：下单拿到 job → 轮询 → 终态。
+ * 成功后服务端会自动建好对应的 Song（songId 回填）。
+ */
+export interface MusicGenJob {
+  id: ID;
+  status: MusicGenStatus;
+  /** 0–100 */
+  progress: number;
+  artistId?: ID | null;
+  /** 成功后落地的歌曲 id */
+  songId?: ID | null;
+
+  prompt?: string | null;
+  lyrics?: string | null;
+  genre?: string | null;
+  mood?: string | null;
+  timbre?: string | null;
+  gender?: string | null;
+  instrumental: boolean;
+  /** 请求时长（秒） */
+  durationSec: number;
+  /** 上游回报的真实成曲时长（秒）；按此结算 */
+  actualDurationSec?: number | null;
+
+  /** 成品音频（我方存储的签名地址，非上游临时地址） */
+  audioUrl?: string | null;
+  /** 模型生成 / 回填的歌词 */
+  resultLyrics?: string | null;
+
+  /** 下单时冻结的积分 */
+  creditsHeld: number;
+  /** 按真实时长结算后实际扣除的积分 */
+  creditsSettled: number;
+
+  errorMessage?: string | null;
+  modelUsed?: string | null;
+  createdAt: ISODateTime;
+  completedAt?: ISODateTime | null;
+}
+
+/** 下单生成的请求载荷。prompt 与 lyrics 至少给一个。 */
+export interface CreateMusicGenRequest {
+  /** 幂等键：同一值重复提交返回同一任务，不重复扣费 */
+  clientRequestId: string;
+  artistId?: ID;
+  /** 创作灵感（自然语言） */
+  prompt?: string;
+  /** 自备歌词，支持 [verse]/[chorus] 结构标签；优先级高于 prompt */
+  lyrics?: string;
+  genre?: string;
+  mood?: string;
+  timbre?: string;
+  gender?: string;
+  /** 纯音乐（无人声） */
+  instrumental?: boolean;
+  /** 目标时长（秒）。人声 30–240；纯音乐 ≤60 */
+  durationSec: number;
+  /** 指定模型端点；不传用默认绑定 */
+  endpointId?: string;
+}
+
+/** 可选的出曲模型（由服务端下发，前端不写死）。 */
+export interface MusicGenModelOption {
+  endpointId: string;
+  name: string;
+  model?: string | null;
+  isDefault: boolean;
+  maxDurationSec?: number | null;
+}
+
 /** 近 30 天音乐业务趋势点。用于概览折线图。 */
 export interface MusicTrendPoint {
   /** YYYY-MM-DD */

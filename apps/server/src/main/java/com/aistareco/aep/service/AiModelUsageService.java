@@ -841,7 +841,7 @@ public class AiModelUsageService {
             case SCRIPT_DRAFT, SELLING_POINTS, VARIABLE_EXTRACT, VIDEO_GENERATION,
                     VIDEO_REF_ANALYSIS, TEMPLATE_REWRITE -> "celebrity";
             case DRAMA_SCRIPT_DRAFT, IMAGE_GENERATION -> "drama";
-            case APPEARANCE_FORGE -> "music";
+            case APPEARANCE_FORGE, MUSIC_GENERATION -> "music";
             case DAP_PERSONA, DAP_IMAGE, DAP_VIDEO, DAP_REAL_AVATAR -> "aiavatar";
             case SAFETY_REVIEW, GENERAL -> null;
         };

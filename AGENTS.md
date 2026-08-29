@@ -457,6 +457,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.138** | 2026-08-29 | 音乐创作接入真实音乐大模型（此前前端假流式 + 随机抽草稿 + 后端硬编码占位音频 + 显示假积分却从不扣费）：新增 `MUSIC_GENERATION` 用途（V22 迁移扩 MySQL purpose 枚举）、火山 OpenAPI V4 AK/SK 签名器（仓库首个非 Bearer 端点）、`MusicGenJob` 异步生成（clientRequestId 幂等 + @Scheduled reaper + 产物只落 cdnKey）、**按上游回报的真实成曲时长结算并退差额**、产物强制镜像我方存储（火山要求不得直接使用其返回地址）。顺带删除 `/api/music/songs\|albums\|concerts` 三个 permitAll 却 `findAll()` 的泄漏端点。未配置模型时 503 `MUSIC_NOT_CONFIGURED`、不建单不扣费。 |
 | **v0.137** | 2026-08-29 | 音乐创作去掉数字人硬依赖：`POST /me/songs` 的 `artistId` 改可选，`Song` 新增 `ownerUserId` 直接归属创作者（V21 迁移放开 NOT NULL）；`/studio` 创作工坊无艺人可进（自由创作）；孵化/引入数字人在账号缺 Studio 行时按「一号一 Studio」惰性补建（替代 409 `当前账号尚未创建工作室`，修线上 6 个历史账号死锁，追查号 7MQUAP4JYVSE）。分发仍要求艺人绑定。 |
 | **v0.136** | 2026-08-23 | Celebrity 登录回跳与 `/admin*` 路由收口；consumer 域不再代理后台，后台仅保留 `admin.aibuzz.cn/admin`。 |
 | **v0.135** | 2026-08-18 | `clip` 成片音轨两遍响度归一，编码前 true peak 目标 -2.5 dBTP 为 AAC 回弹留余量；最终 ≤ -1 dBTP 质量门保持不变并记录实测指标。 |
@@ -568,6 +569,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | dap 真人刷脸认证 / 素材送审（七牛 modelink，v0.105） | 503 DAP_MODELINK_NOT_CONFIGURED（不建会话、不产假数据；授权与审核免费，无扣费面）；上游分组配额打满 → 503 DAP_MODELINK_QUOTA_EXCEEDED（账号级仅 3 组，不降级、不产假数据） | `aep.dap.modelink.allow-mock`（dev true / mysql false，生产误开打 ERROR 横幅；mock 产物一律落 `mock=true`） |
 | 文本三件 / 短剧脚本 / 形象锻造 | 503 AI_NOT_CONFIGURED · 502 AI_CALL_FAILED | dev-fake-llm（默认 false，显式开） |
 | 素材视频生成 | 503 VIDEO_NOT_CONFIGURED | 同上 |
+| 音乐生成（v0.138） | 503 MUSIC_NOT_CONFIGURED（端点/AK-SK 未配）· 400 MUSIC_DURATION_UNSUPPORTED（时长越界）· 502 MUSIC_CALL_FAILED —— 全部在 hold 之前判定，**不建任务、不冻结、不产假音频**；`upload-to-cdn=false` 时任务直接判失败并退款（不交付会过期的上游地址） | 无降级开关。未配置时 `GET /me/music/models` 返回空数组，前端显式提示「尚未开通」并禁用创作按钮 |
 | 卖点提取 | 同文本三件（v0.51 起删规则模板兜底） | — |
 | SMS 验证码 | driver=log 时 mysql profile ERROR 横幅（待运维改 aliyun） | log driver + dev-fixed 双门禁 |
 | 资产存储 CDN | driver=local 时 mysql profile ERROR 横幅（P1） | local fake-CDN（dev 默认） |

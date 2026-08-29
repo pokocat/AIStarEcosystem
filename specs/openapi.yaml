@@ -1518,6 +1518,68 @@ components:
         streamUrl:  { type: string, nullable: true }
         scheduledAt: { type: string, format: date-time, nullable: true }
 
+    MusicGenStatus:
+      type: string
+      enum: [queued, submitting, generating, succeeded, failed]
+
+    MusicGenJob:
+      type: object
+      description: |
+        音乐生成任务。异步：下单 → 轮询 → 终态。
+        audioUrl 是我方存储的签名地址（DB 真值是 OSS key），不是上游临时地址。
+        creditsHeld 为下单冻结额，creditsSettled 为按**真实成曲时长**结算后实扣额，差额自动退回。
+      required: [id, status, progress, instrumental, durationSec, creditsHeld, creditsSettled, createdAt]
+      properties:
+        id:                { type: string }
+        status:            { $ref: '#/components/schemas/MusicGenStatus' }
+        progress:          { type: integer, description: 0–100 }
+        artistId:          { type: string, nullable: true }
+        songId:            { type: string, nullable: true, description: 成功后落地的歌曲 id }
+        prompt:            { type: string, nullable: true }
+        lyrics:            { type: string, nullable: true }
+        genre:             { type: string, nullable: true }
+        mood:              { type: string, nullable: true }
+        timbre:            { type: string, nullable: true }
+        gender:            { type: string, nullable: true }
+        instrumental:      { type: boolean }
+        durationSec:       { type: integer, description: 请求时长（秒） }
+        actualDurationSec: { type: integer, nullable: true, description: 真实成曲时长（秒） }
+        audioUrl:          { type: string, nullable: true }
+        resultLyrics:      { type: string, nullable: true }
+        creditsHeld:       { type: integer }
+        creditsSettled:    { type: integer }
+        errorMessage:      { type: string, nullable: true }
+        modelUsed:         { type: string, nullable: true }
+        createdAt:         { type: string, format: date-time }
+        completedAt:       { type: string, format: date-time, nullable: true }
+
+    CreateMusicGenRequest:
+      type: object
+      description: prompt 与 lyrics 至少给一个；instrumental=true 时不接受 lyrics。
+      required: [clientRequestId, durationSec]
+      properties:
+        clientRequestId: { type: string, description: 幂等键，同值重复提交返回同一任务且不重复扣费 }
+        artistId:        { type: string, description: 可选；不传则作品直接归属当前账号 }
+        prompt:          { type: string }
+        lyrics:          { type: string, description: 支持 [verse]/[chorus] 结构标签；优先级高于 prompt }
+        genre:           { type: string }
+        mood:            { type: string }
+        timbre:          { type: string }
+        gender:          { type: string, enum: [Male, Female] }
+        instrumental:    { type: boolean, default: false }
+        durationSec:     { type: integer, description: 人声 30–240；纯音乐 ≤60 }
+        endpointId:      { type: string, description: 指定模型端点；不传用默认绑定 }
+
+    MusicGenModelOption:
+      type: object
+      required: [endpointId, name, isDefault]
+      properties:
+        endpointId:     { type: string }
+        name:           { type: string }
+        model:          { type: string, nullable: true }
+        isDefault:      { type: boolean }
+        maxDurationSec: { type: integer, nullable: true }
+
     CreateSongRequest:
       type: object
       required: [title]
@@ -5588,6 +5650,97 @@ paths:
       security: []
       responses:
         '200': { description: ok }
+
+  # ── 音乐真实生成（v0.138）────────────────────────
+  # 异步：下单 → 轮询 → 终态。成功后服务端自动建 Song 并回填 songId。
+  /me/music/generate:
+    post:
+      tags: [music]
+      operationId: createMusicGenJob
+      summary: 下单生成歌曲 / 纯音乐（真实调用音乐大模型）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMusicGenRequest' }
+      responses:
+        '202':
+          description: 已受理，需轮询 /me/music/jobs/{id} 直到终态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MusicGenJob' }
+        '400':
+          description: 入参不合法（缺创作输入 / 时长越界 / 纯音乐与歌词冲突）。未扣费
+        '402':
+          description: 积分不足。未建任务
+        '503':
+          description: 音乐生成未配置可用模型端点（MUSIC_NOT_CONFIGURED）。未建任务、未扣费
+
+  /me/music/jobs:
+    get:
+      tags: [music]
+      operationId: listMusicGenJobs
+      summary: 当前用户的音乐生成任务
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/MusicGenJob' }
+
+  /me/music/jobs/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [music]
+      operationId: getMusicGenJob
+      summary: 轮询单个生成任务
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MusicGenJob' }
+        '404': { description: 任务不存在或不属于当前用户 }
+
+  /me/music/models:
+    get:
+      tags: [music]
+      operationId: listMusicGenModels
+      summary: 可选的出曲模型（运营在 admin 配置的候选端点）
+      responses:
+        '200':
+          description: ok；空数组表示尚未配置，前端据此提示而不是显示假选项
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/MusicGenModelOption' }
 
   # ── 3.x.4 Finance 增量 ────────────────────────────
 

@@ -1,8 +1,35 @@
-# 版本增量历史（v0.5 → v0.137）
+# 版本增量历史（v0.5 → v0.138）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.138（2026-08-29）— 音乐创作接入真实音乐大模型（此前整条链路是假的）
+
+**背景审计**：web-music 的音乐创作是全仓唯一**从头到尾没有真实生成**的主链路，三层都是假的：
+① 前端 `AIGenerationPanel.run()` 用 `setTimeout` 逐字符播放写死的 `STAGE_SCRIPT` 文案伪装流式，再从 4 条 `MOCK_DRAFTS` 里**随机抽一条**当结果，全程零网络请求；② `api/generation.ts` 是死代码，指向的 `/me/generation/run` 后端根本不存在；③ 后端 `createSong` 只存一行记录，`audioUrl` 硬编码 `cdn.placeholder.local` 占位符，`creditsSpent` 由含 `Math.random()` 的 `mockCreditsFor` 算出**但从不调用 CreditService**——界面显示"消耗 XX 积分"而钱包纹丝不动。`AiModelPurpose` 15 个用途里也没有任何音乐项。
+
+**选型**：`doubao-music`（火山引擎 AI 音乐生成大模型）。理由：账号已有；异步 TaskID 轮询与仓库既有 Job 模式同构；后付费 0.002 元/秒正好对上已有的 `PER_SECOND` 计价；中文歌质量与生态可控。排除项——MiniMax 音乐 API 自 2026-08-20 起不对新用户开放；七牛（已有凭据）无音乐模型；自建 ACE-Step 按用户要求不做。
+
+**server**：
+- `AiModelPurpose` 新增 `MUSIC_GENERATION`（**V22 Java 迁移**同步扩 MySQL 侧 `ai_app_binding` / `ai_app_endpoint_candidate` 的 purpose ENUM —— ddl-auto 不会帮你扩枚举，不改会 Data truncated）。
+- **`VolcOpenApiSigner`**：火山 OpenAPI V4 签名（HMAC-SHA256 AK/SK）。这是仓库第一个非 Bearer 鉴权的端点——音乐 API 走 `open.volcengineapi.com`（Region=cn-beijing / Service=imagination），无法复用 `AiModelInvocationService` 的 OpenAI 兼容通道。AK/SK 以 `"AK:SK"` 存在端点既有的加密 Key 字段里，不新增表。
+- **`MusicGenModelClient`**：提交 `GenSongForTime` → 轮询 `QuerySong`（Status 0/1/2/3 归一三态）；`validateRequest` 硬校验时长（人声 30–240、纯音乐 ≤60）**在冻结积分之前**；`resolveCreditCost` 复用 PER_SECOND × 时长展开。
+- **`MusicGenJob` + `MusicGenJobService` + `MusicGenWorker` + `MusicGenJobState`**：照搬 MaterialVideoJob 的异步模式，并从 clip 域借了三样它缺的东西 —— `clientRequestId` 唯一索引（防双击重复扣费）、**@Scheduled reaper**（进程重启不留永久 generating 僵尸）、产物**只落 cdnKey 不落 URL**。
+- **按真实时长结算**：hold 按请求时长冻结，成功后按上游回报的 `SongDetail.Duration` commit，差额 release。音乐实际成曲时长常与请求值不等，不这么做必然多扣（`MusicGenWorkerSettlementTest` 6 例钉死，含"上游给多了不倒扣"和"结算失败不谎报已扣"）。
+- **`MusicOutputStorage`**：火山文档明确要求返回的 AudioUrl「仅供转存、请勿直接用在应用中」，故产物先镜像我方存储再出 wire；带 SSRF 防护（强制 https + 拒内网 A 记录）与流式大小闸。
+- `Song` 新增 `audio_cdn_key`（§4.7.4 真值），`SongDto` 出 wire 经 `CdnUrlSigner.signKey` 派生，老行回退 `maybeSign` 重签。
+- 新端点 `POST /me/music/generate`、`GET /me/music/jobs[/{id}]`、`GET /me/music/models`。
+
+**安全修复（顺带）**：删除 `/api/music/songs|albums|concerts` 三个端点。它们落在 permitAll 段却直接 `findAll()`，**任何未登录访问者都能拉到全平台所有用户的歌曲**（含未发布草稿、歌词、模型信息）；三者均未在 openapi 声明、无任何前端调用。曲风字典 `/music/genres` 保留。
+
+**web-music**：`AIGenerationPanel` 整体重写为真实创作面板——三种模式（灵感成曲 / 我有歌词 / 纯音乐）、真实曲风·情绪·声线·音色选项、时长滑杆按模式收窄区间、真实进度轮询、成品用 `<audio>` 播我方存储的音频、显示按真实时长结算的积分。**未配置模型时明确提示「尚未开通」并禁用按钮，不再假装能生成**。删除 `MusicGenerationDialog.tsx`（484 行的第二套假生成器）、`GlobalAudioPlayer.tsx`（死代码）、`api/generation.ts`（死代码）、写死的 `MODEL_VERSION_OPTIONS`/`THINK_DEPTH_OPTIONS`（`suno-v3` 与实际接的模型不符）。`MusicLibrary` 移除 `song.audioUrl || previewAudioForId(...)` 兜底——缺音频时回落到一段无关的公开示例曲，会把真实缺陷盖掉。
+
+**门禁**：server compile + test-compile；新增 19 个单测（`VolcOpenApiSignerTest` 5 / `MusicGenJobServiceTest` 8 / `MusicGenWorkerSettlementTest` 6）+ AiModel/Credit/DigitalIp 回归全绿；`typecheck:all` 10/10；`check:api-contract` OK。**真实运行验收**：H2 dev server + web-music 实跑，确认未配置时 `POST /me/music/generate` 返回 503 `MUSIC_NOT_CONFIGURED`、**钱包余额 500 未动且 pendingBalance=0、无任务残留**，UI 正确显示未开通提示、纯音乐模式时长自动收窄到 30–60 秒。
+
+**上线前必须做的两件事**（未做则该功能保持 §8.0 的"未配置"状态，不会产生假数据）：
+1. 到火山控制台 `console.volcengine.com/ai-music/product` 开通「AI 音乐生成大模型」（企业首次可 0 元领 200 首试用版）；
+2. 在 admin「平台 · AI 模型」新增端点：baseUrl `https://open.volcengineapi.com`、model 填 `v4.3` 或 `v5.0`、**Key 填 `AccessKeyId:AccessKeySecret`**、billingMode 选 `PER_SECOND`，再到「AI 应用绑定」把用途「音乐生成」绑上去，并按报价设 `creditCostOverride`（每秒积分）。
 
 ### v0.137（2026-08-29）— 音乐创作去掉数字人硬依赖 + 工作室惰性补建
 

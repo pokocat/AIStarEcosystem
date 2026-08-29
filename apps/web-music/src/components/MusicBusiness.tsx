@@ -20,7 +20,6 @@ import {
 } from '@/constants/music-ui';
 import { MusicApi, ApiError } from '@/api';
 import { formatCredits, formatCompactNumber } from '@/lib/format';
-import MusicGenerationDialog from './MusicGenerationDialog';
 import { SongDetailDrawer } from './producer/SongDetailDrawer';
 import { MusicTrendChart } from './producer/MusicTrendChart';
 
@@ -44,7 +43,6 @@ export function MusicBusiness({ lang: _lang, artist, onBack: _onBack }: MusicBus
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // 创作对话框
-  const [dialogOpen, setDialogOpen] = useState(false);
 
   // 详情抽屉
   const [editingSong, setEditingSong] = useState<Song | null>(null);
@@ -121,29 +119,6 @@ export function MusicBusiness({ lang: _lang, artist, onBack: _onBack }: MusicBus
   };
 
   const statusColors = MUSIC_STATUS_COLORS;
-
-  // ── 创作：对话框成功回调 → 调 MusicApi.createSong ───────────────────────────
-  const handleGenerationSuccess = async (generated: any) => {
-    try {
-      const req: CreateSongRequest = {
-        artistId: artist.id,
-        title: generated?.title || '未命名作品',
-        genre: generated?.style || generated?.genre || 'Pop',
-        duration: typeof generated?.duration === 'string'
-          ? parseInt(String(generated.duration).split(':')[0]) * 60 +
-            parseInt(String(generated.duration).split(':')[1] || '0')
-          : typeof generated?.duration === 'number' ? generated.duration : 180,
-        prompt: generated?.prompt,
-      };
-      const newSong = await MusicApi.createSong(req);
-      setSongs(prev => [newSong, ...prev]);
-    } catch (err) {
-      const msg = err instanceof ApiError
-        ? `${err.message}（${err.code}）`
-        : err instanceof Error ? err.message : String(err);
-      setLoadError(msg);
-    }
-  };
 
   // ── 状态流转：recording → mixing → released ──────────────────────────────────
   const advanceStatus = async (song: Song) => {
@@ -383,19 +358,19 @@ export function MusicBusiness({ lang: _lang, artist, onBack: _onBack }: MusicBus
                         为 <span className="text-pink-300">{artist.name}</span> 录制新歌曲
                       </h3>
                       <p className="text-sm text-gray-400">
-                        选择模型与深度，AI 将按本次创作消耗相应积分
+                        到创作工坊描述你想要的音乐，AI 谱曲演唱，按实际成曲时长扣积分
                       </p>
                     </div>
                     <Button
                       className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold"
-                      onClick={() => setDialogOpen(true)}
+                      onClick={() => router.push('/studio')}
                     >
                       <Sparkles className="w-4 h-4 mr-2" />
                       开始创作
                     </Button>
                   </div>
 
-                  {/* 风格提示（仅展示，真实选择在对话框内） */}
+                  {/* 风格提示（仅展示，真实选择在创作工坊内） */}
                   <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mt-6">
                     {musicGenres.map(genre => (
                       <div
@@ -646,17 +621,6 @@ export function MusicBusiness({ lang: _lang, artist, onBack: _onBack }: MusicBus
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* 创作对话框（已有组件，复用） */}
-      <MusicGenerationDialog
-        isOpen={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSuccess={(track) => {
-          setDialogOpen(false);
-          handleGenerationSuccess(track);
-        }}
-        lang={_lang}
-      />
 
       {/* 歌曲详情抽屉 */}
       <SongDetailDrawer

@@ -56,8 +56,14 @@ export function StudioPage({ lang, activeArtist }: Props) {
     return () => { cancelled = true; };
   }, [activeArtist?.id]);
 
-  function handleCreated(song: Song) {
-    setSongs(prev => [song, ...prev]);
+  /**
+   * 生成成功后重新拉列表 —— 歌曲是服务端在任务完成时建的，
+   * 前端自己拼一条塞进去会和真实数据（真实时长、结算积分、音频地址）对不上。
+   */
+  function handleSongCreated() {
+    MusicApi.listSongs()
+      .then(list => setSongs(activeArtist ? list.filter(s => s.artistId === activeArtist.id) : list))
+      .catch(() => { /* 列表刷新失败不影响已完成的作品，用户切 tab 会重拉 */ });
   }
 
   function applyTemplate(tmpl: string) {
@@ -121,7 +127,7 @@ export function StudioPage({ lang, activeArtist }: Props) {
             artistId={activeArtist?.id}
             artistName={activeArtist?.name}
             initialPrompt={initialPrompt}
-            onCreated={handleCreated}
+            onSongCreated={handleSongCreated}
           />
 
           {/* Templates */}

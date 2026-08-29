@@ -1,6 +1,7 @@
 package com.aistareco.aep.dto;
 
 import com.aistareco.aep.model.Song;
+import com.aistareco.aep.service.cdn.CdnUrlSigner;
 
 import java.time.Instant;
 import java.util.Locale;
@@ -36,10 +37,25 @@ public record SongDto(
         Instant createdAt
 ) {
     public static SongDto from(Song s) {
-        return from(s, null, null, null);
+        return from(s, null, null, null, null);
+    }
+
+    public static SongDto from(Song s, CdnUrlSigner signer) {
+        return from(s, null, null, null, signer);
     }
 
     public static SongDto from(Song s, String artistName, String studioId, String studioName) {
+        return from(s, artistName, studioId, studioName, null);
+    }
+
+    /**
+     * §4.7.5：音频地址必经 CdnUrlSigner。真值是 {@code audioCdnKey}（signKey 派生），
+     * 老数据只有 URL 时回退 {@code maybeSign} 重签 —— 后者能让过期签名重新可用。
+     * signer 为 null（seeder / 单测）时原样返回，不阻断。
+     */
+    public static SongDto from(Song s, String artistName, String studioId, String studioName,
+                               CdnUrlSigner signer) {
+        String audioUrl = resolveAudioUrl(s, signer);
         return new SongDto(
                 s.getId(),
                 s.getTitle(),
@@ -54,7 +70,7 @@ public record SongDto(
                 artistName,
                 studioId,
                 studioName,
-                s.getAudioUrl(),
+                audioUrl,
                 s.getCoverUrl(),
                 s.getLyrics(),
                 s.getModelVersion(),
@@ -62,6 +78,16 @@ public record SongDto(
                 s.getCreditsSpent(),
                 s.getCreatedAt()
         );
+    }
+
+    @SuppressWarnings("deprecation")
+    private static String resolveAudioUrl(Song s, CdnUrlSigner signer) {
+        if (signer != null && s.getAudioCdnKey() != null && !s.getAudioCdnKey().isBlank()) {
+            return signer.signKey(s.getAudioCdnKey());
+        }
+        String legacy = s.getAudioUrl();
+        if (legacy == null || legacy.isBlank()) return null;
+        return signer == null ? legacy : signer.maybeSign(legacy);
     }
 
     private static String lower(Enum<?> value) {

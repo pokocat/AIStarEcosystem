@@ -54,7 +54,19 @@ public class Song {
     @Column(name = "owner_user_id", length = 36)
     private String ownerUserId;
 
-    /** 音频资源地址（当前 mock 占位；后续迁 OSS / 对象存储）。 */
+    /**
+     * 音频 OSS object key —— §4.7.4 真值。出 wire 时由 CdnUrlSigner.signKey 派生签名 URL，
+     * 所以换 CDN 域名 / 切 driver / 调 key-prefix 都不需要迁数据。
+     * 真实生成的歌曲一律落这里；{@link #audioUrl} 只为老数据保留。
+     */
+    @Column(name = "audio_cdn_key", length = 512)
+    private String audioCdnKey;
+
+    /**
+     * @deprecated 历史字段：老数据里存的是完整 URL（含 mock 占位）。新代码写 {@link #audioCdnKey}；
+     * 读取时 DTO 会在 audioCdnKey 缺失时回退到本字段并重签。
+     */
+    @Deprecated
     @Column(name = "audio_url", length = 512)
     private String audioUrl;
 

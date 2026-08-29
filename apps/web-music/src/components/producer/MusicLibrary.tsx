@@ -94,14 +94,22 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
     a.volume = muted ? 0 : volume;
   }, [volume, muted]);
 
-  function urlFor(song: Song): string {
-    return song.audioUrl || previewAudioForId(song.id);
+  /**
+   * 只播真实音频。
+   *
+   * 这里原本是 `song.audioUrl || previewAudioForId(song.id)` —— 缺音频时回落到一段
+   * 与歌曲毫无关系的公开示例曲，导致「明明没生成成功，却能播出声音」，把真实缺陷盖掉了。
+   * 现在缺音频就返回 null，UI 显式禁用播放。
+   */
+  function urlFor(song: Song): string | null {
+    return song.audioUrl && song.audioUrl.trim() ? song.audioUrl : null;
   }
 
   function playSong(song: Song) {
     const a = audioRef.current;
     if (!a) return;
     const url = urlFor(song);
+    if (!url) return;   // 没有音频就不播，不用示例曲冒充
     if (currentId !== song.id) {
       a.src = url;
       setCurrentId(song.id);

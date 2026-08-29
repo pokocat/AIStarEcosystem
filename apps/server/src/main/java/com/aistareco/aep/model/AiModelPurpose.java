@@ -22,6 +22,7 @@ public enum AiModelPurpose {
     DAP_IMAGE,              // 数字人平台 · 图片生成（t2i / i2i，见 DapMultimodalClient）
     DAP_VIDEO,              // 数字人平台 · 视频生成（异步 submit+poll，见 DapMultimodalClient）
     DAP_REAL_AVATAR,        // 数字资产平台 · 真人素材与授权（七牛 modelink 刷脸认证 + 素材送审，见 ModelinkService）
+    MUSIC_GENERATION,       // 音乐生成（web-music 创作工坊；异步 submit+poll，见 MusicGenModelClient）
     GENERAL;                // 通用兜底
 
     @JsonValue
@@ -46,6 +47,7 @@ public enum AiModelPurpose {
             case DAP_IMAGE -> "数字人 · 图片生成";
             case DAP_VIDEO -> "数字人 · 视频生成";
             case DAP_REAL_AVATAR -> "数字资产 · 真人素材与授权";
+            case MUSIC_GENERATION -> "音乐生成";
             case GENERAL -> "通用";
         };
     }

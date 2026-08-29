@@ -52,18 +52,8 @@ export function previewAudioForId(id: string): string {
 }
 
 /** 模型版本选项（P2 由 admin 工作流计费配置下发） */
-export const MODEL_VERSION_OPTIONS = [
-  { id: "suno-v3",         label: "Suno v3（标准）" },
-  { id: "suno-v3-deep",    label: "Suno v3 · Deep" },
-  { id: "musicgen-large",  label: "MusicGen Large" },
-];
 
 /** 思考深度档位。MVP 仅占位，正式价格由 admin 配置。 */
-export const THINK_DEPTH_OPTIONS = [
-  { id: "fast",     label: "快速" },
-  { id: "standard", label: "标准" },
-  { id: "deep",     label: "深度思考" },
-] as const;
 
 /**
  * 占位扣费计算：MVP 按 (modelVersion, thinkDepth) 给个随机段落值。

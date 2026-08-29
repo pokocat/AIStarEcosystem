@@ -1,13 +1,7 @@
 package com.aistareco.aep.controller;
 
-import com.aistareco.aep.dto.AlbumDto;
-import com.aistareco.aep.dto.ConcertDto;
 import com.aistareco.aep.dto.MusicGenreDto;
-import com.aistareco.aep.dto.SongDto;
-import com.aistareco.aep.repository.AlbumRepository;
-import com.aistareco.aep.repository.ConcertRepository;
 import com.aistareco.aep.repository.MusicGenreRepository;
-import com.aistareco.aep.repository.SongRepository;
 import com.aistareco.common.ApiResponse;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,38 +18,17 @@ import java.util.List;
 @RequestMapping("/api/music")
 public class MusicController {
 
-    private final SongRepository songRepo;
-    private final AlbumRepository albumRepo;
-    private final ConcertRepository concertRepo;
     private final MusicGenreRepository genreRepo;
 
-    public MusicController(SongRepository songRepo,
-                           AlbumRepository albumRepo,
-                           ConcertRepository concertRepo,
-                           MusicGenreRepository genreRepo) {
-        this.songRepo = songRepo;
-        this.albumRepo = albumRepo;
-        this.concertRepo = concertRepo;
+    public MusicController(MusicGenreRepository genreRepo) {
         this.genreRepo = genreRepo;
     }
 
-    @GetMapping("/songs")
-    public ApiResponse<List<SongDto>> songs() {
-        return ApiResponse.of(songRepo.findAll(Sort.by("id").ascending())
-                .stream().map(SongDto::from).toList());
-    }
-
-    @GetMapping("/albums")
-    public ApiResponse<List<AlbumDto>> albums() {
-        return ApiResponse.of(albumRepo.findAll(Sort.by("id").ascending())
-                .stream().map(AlbumDto::from).toList());
-    }
-
-    @GetMapping("/concerts")
-    public ApiResponse<List<ConcertDto>> concerts() {
-        return ApiResponse.of(concertRepo.findAll(Sort.by("id").ascending())
-                .stream().map(ConcertDto::from).toList());
-    }
+    // 2026-08-29 安全修复：删除 /songs、/albums、/concerts 三个端点。
+    // 它们落在 permitAll 段却直接 findAll()，任何未登录访问者都能拉到全平台所有用户的歌曲
+    // （含未发布草稿、歌词、模型信息）。三者均未在 openapi 声明、也无任何前端调用
+    // —— 用户侧读自己的资源走 /api/me/songs|albums|concerts（带归属过滤），
+    // 运营侧走 /api/admin/music/*。曲风表是公共字典，保留。
 
     @GetMapping("/genres")
     public ApiResponse<List<MusicGenreDto>> genres() {
