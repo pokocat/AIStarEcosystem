@@ -29,6 +29,12 @@ public class ClipOutputStorage {
                 .followRedirects(HttpClient.Redirect.NEVER).build();
     }
 
+    /** 删一个我方存储对象，失败只当没删掉。用于作废旧样例：删不掉最多留个孤儿文件，不该阻断主流程。 */
+    public void deleteQuietly(String cdnKey) {
+        if (cdnKey == null || cdnKey.isBlank()) return;
+        try { storage.delete(cdnKey); } catch (RuntimeException ignored) { /* best-effort */ }
+    }
+
     public String persist(String ownerId, String remoteUrl) {
         return persist(ownerId, remoteUrl, "clip/segments", "mp4", "video/mp4", MAX_VIDEO_BYTES, "上游成片");
     }

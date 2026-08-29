@@ -95,8 +95,16 @@ public final class ClipDtos {
     public record AvatarDto(String id, String name, String imageStatus, String voiceStatus, String voiceSource, String imagePreviewUrl, String imageTrainedText,
                             String voiceTrainedText, int imageProgress, int voiceProgress,
                             String imageMessage, String voiceMessage, String engine, boolean presetAvailable,
-                            String linkedVoiceId, String linkedVoiceName) {}
-    public record VoiceDto(String id, String name, String status, String source, String trainedText, int progress) {}
+                            String linkedVoiceId, String linkedVoiceName,
+                            /** 固化的样例短片：真出镜、带声音。静帧证明不了口型和构图，这条能。null = 还没生成好。 */
+                            String demoVideoUrl,
+                            /** 该形象关联声音的固化样例音频。端上「听听你的声音」优先播它，零等待。 */
+                            String demoAudioUrl) {}
+    public record VoiceDto(String id, String name, String status, String source, String trainedText, int progress,
+                           /** 固化的样例试听音频。有它就零等待直接播；null 时端上回落到按需合成。 */
+                           String demoAudioUrl) {}
+    /** 声音试听。不依赖 project —— 训练完当场就要能听，别逼用户先建一个项目。 */
+    public record VoicePreviewDto(String voiceId, String audioUrl, int durationSec, String text, boolean mock) {}
     public record CaptureRuleDto(String kind, int vendorMinDurationSec, int vendorMaxDurationSec, int minDurationSec, int recommendedMinDurationSec,
                                  int recommendedMaxDurationSec, int maxDurationSec, long vendorMaxBytes, long maxBytes,
                                  List<String> vendorFormats, List<String> formats, String codec, Integer minShortSidePx, Integer maxLongSidePx,

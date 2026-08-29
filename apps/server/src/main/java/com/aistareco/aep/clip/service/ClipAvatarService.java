@@ -23,6 +23,8 @@ import java.util.*;
 public class ClipAvatarService {
     private static final Logger log = LoggerFactory.getLogger(ClipAvatarService.class);
     private static final String ENGINE = "shiliu";
+    /** 素材变了要作废旧样例。兼容构造里为 null（老测试不关心样例），所以每个调用点都要判空。 */
+    private final ClipDemoService demos;
     private static final String AGREEMENT_VERSION = "clip-avatar-v2";
     private static final String AGREEMENT_TITLE = "数字分身本人授权书";
     private static final String AGREEMENT_TEXT = "本人授权军师参谋部使用本人主动提交的视频与声音资料，仅为本人的账号创建、训练和使用数字分身。本人可随时撤回授权并删除分身，删除后停止新的生成。";
@@ -33,9 +35,11 @@ public class ClipAvatarService {
     public ClipAvatarService(DapAvatarRepository avatars, DapVoiceRepository voices, DapConsentRepository consents,
                              ClipRenderJobRepository jobs, FileStorageService storage, ShiliuService shiliu,
                              ClipCapturePolicy capturePolicy, ClipVoiceSeedExtractor voiceSeedExtractor,
-                             ClipAvatarPreviewExtractor previewExtractor, ClipCaptureNormalizer captureNormalizer) {
+                             ClipAvatarPreviewExtractor previewExtractor, ClipCaptureNormalizer captureNormalizer,
+                             ClipDemoService demos) {
         this.avatars = avatars; this.voices = voices; this.consents = consents; this.jobs = jobs; this.storage = storage; this.shiliu = shiliu; this.capturePolicy = capturePolicy;
         this.voiceSeedExtractor = voiceSeedExtractor; this.previewExtractor = previewExtractor; this.captureNormalizer = captureNormalizer;
+        this.demos = demos;
     }
 
     /** 测试/旧调用兼容构造；Spring 明确使用上面的完整构造。 */
@@ -43,7 +47,7 @@ public class ClipAvatarService {
                              ClipRenderJobRepository jobs, FileStorageService storage, ShiliuService shiliu,
                              ClipCapturePolicy capturePolicy, ClipVoiceSeedExtractor voiceSeedExtractor,
                              ClipAvatarPreviewExtractor previewExtractor) {
-        this(avatars, voices, consents, jobs, storage, shiliu, capturePolicy, voiceSeedExtractor, previewExtractor, null);
+        this(avatars, voices, consents, jobs, storage, shiliu, capturePolicy, voiceSeedExtractor, previewExtractor, null, null);
     }
 
     public CaptureRequirementsDto requirements() { return capturePolicy.requirements(); }
@@ -58,7 +62,8 @@ public class ClipAvatarService {
         String voiceStatus = status(voice.getEngineStatus());
         return new AvatarDto("", "未创建形象", "none", voiceStatus, "seed".equals(voice.getKind()) ? "video" : "dedicated", null, null,
                 voice.getEngineTrainedAt() == null ? null : voice.getEngineTrainedAt().toString(), 0, "ready".equals(voiceStatus) ? 100 : refreshed.progress(),
-                null, refreshed.message(), ENGINE, false, voice.getId(), voice.getName());
+                null, refreshed.message(), ENGINE, false, voice.getId(), voice.getName(),
+                null, demoUrl(voice.getDemoAudioCdnKey()));
     }
 
     @Transactional
@@ -109,7 +114,9 @@ public class ClipAvatarService {
                 a == null || a.getEngineTrainedAt() == null ? null : a.getEngineTrainedAt().toString(),
                 v == null || v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(),
                 imageProgress, voiceProgress, imageMessage, voiceMessage, ENGINE, false,
-                v == null ? null : v.getId(), v == null ? null : v.getName());
+                v == null ? null : v.getId(), v == null ? null : v.getName(),
+                a == null ? null : demoUrl(a.getDemoVideoCdnKey()),
+                v == null ? null : demoUrl(v.getDemoAudioCdnKey()));
     }
 
     /** 一次刷新的产出：给端上看的进度，以及失败时的人话原因。状态本身已经写回 DapVoice。 */
@@ -224,7 +231,13 @@ public class ClipAvatarService {
         String current = status(v.getEngineStatus());
         int p = "ready".equals(current) ? 100 : refreshed.progress();
         return new VoiceDto(v.getId(), v.getName(), current, "seed".equals(v.getKind()) ? "video" : "dedicated",
-                v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(), p);
+                v.getEngineTrainedAt() == null ? null : v.getEngineTrainedAt().toString(), p,
+                demoUrl(v.getDemoAudioCdnKey()));
+    }
+
+    /** 样例产物统一签短链。没生成好就是 null —— 端上据此回落到按需合成，不显示一个点不动的按钮。 */
+    private String demoUrl(String cdnKey) {
+        return cdnKey == null || cdnKey.isBlank() ? null : storage.signedUrl(cdnKey);
     }
 
     @Transactional
@@ -304,14 +317,22 @@ public class ClipAvatarService {
             resultAvatarId = a.getId();
             String previousPreviewKey = a.getImageKey();
             a.setEngine(ENGINE); a.setEngineRef(null); a.setEngineSourceKey(stored.key()); a.setEngineStatus("training");
-            a.setEngineTrainedAt(null); a.setMock(gateway.mock()); a.setImageKey(preview.key()); a.setImageBytes(preview.bytes()); a.setUpdatedAt(now); avatars.save(a);
+            a.setEngineTrainedAt(null); a.setMock(gateway.mock()); a.setImageKey(preview.key()); a.setImageBytes(preview.bytes()); a.setUpdatedAt(now);
+            // 换了形象，旧的出镜样例已经不是这个人了。不清的话 key 仍非空，worker 认为「已经有了」
+            // 而不再生成，用户会一直看到上一个形象 —— 比没有样例更糟，因为它看起来是对的。
+            if (demos != null) demos.invalidateAvatarDemo(a);
+            avatars.save(a);
             if (previousPreviewKey != null && !previousPreviewKey.equals(preview.key())) storage.delete(previousPreviewKey);
             boolean fromVideo = "video".equals(voiceSource);
             DapVoice readyVoice = fromVideo ? null : selectedVoice(owner, voiceId);
             // 明确选了「视频原声」时不许回退旧声音；否则用户的选择等于没生效。
             if (readyVoice == null && !fromVideo) readyVoice = linkedVoice(owner, a);
             if (readyVoice != null && !"ready".equals(readyVoice.getEngineStatus())) readyVoice = null;
-            if (readyVoice != null) { a.setVoiceName(readyVoice.getId()); resultVoiceId = readyVoice.getId(); }
+            if (readyVoice != null) {
+                // 换了关联声音 = 样例里那个人的嗓子变了，同样要重生成
+                if (demos != null && !readyVoice.getId().equals(a.getVoiceName())) demos.invalidateAvatarDemo(a);
+                a.setVoiceName(readyVoice.getId()); resultVoiceId = readyVoice.getId();
+            }
             // 官方 speakerId 是 Avatar 训练的选填 demo 参数：有就带，没有也立即开始形象训练。
             startAvatarTraining(owner, a, readyVoice, gateway);
             // 首次只上传一个视频时，尽力从视频原声生成基础音色。
@@ -401,11 +422,15 @@ public class ClipAvatarService {
         for (DapAvatar a : avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE)) {
             if (deletableUpstream(a.getEngineRef())) gateway.deleteAvatar(a.getEngineRef());
             storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
+            // 样例短片也是用户本人的肖像+声音，删分身就该一起清干净，不能留在 OSS 里
+            storage.delete(a.getDemoVideoCdnKey());
             a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
         }
         for (DapVoice v : voices.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByCreatedAtDesc(owner, ENGINE)) {
             if (deletableUpstream(v.getEngineRef())) gateway.deleteVoice(v.getEngineRef());
             storage.delete(v.getAudioKey());
+            // 固化的试听样例是用户本人的声音，删分身就要一起清干净，不能留在 OSS 里
+            storage.delete(v.getDemoAudioCdnKey());
             v.setDeletedAt(now); v.setEngineStatus("deleted"); voices.save(v);
         }
     }
@@ -414,6 +439,8 @@ public class ClipAvatarService {
         DapAvatar a = requiredAvatar(owner, avatarId); ShiliuGateway gateway = shiliu.required(); Instant now = Instant.now();
         if (deletableUpstream(a.getEngineRef())) gateway.deleteAvatar(a.getEngineRef());
         storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
+        // 同批量删除：样例短片带着本人肖像和声音，不清就等于删了分身还留着人像视频
+        storage.delete(a.getDemoVideoCdnKey());
         a.setDeletedAt(now); a.setEngineStatus("deleted"); avatars.save(a);
     }
     public boolean ready(String owner) { AvatarDto v = view(owner); return v != null && "ready".equals(v.imageStatus()); }
@@ -434,6 +461,32 @@ public class ClipAvatarService {
                 .map(DapAvatar::getEngineRef)
                 .orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT, "CLIP_AVATAR_NOT_READY", "形象还没有训练完成"));
     }
+    /**
+     * 试听一条声音：给一段文字，让它念出来。
+     *
+     * 与 ClipScriptService.preview 的区别是**不需要 project** —— 那条路径的 speakerRef 是从
+     * project 的 payload 里解析的，于是用户想听刚训好的声音，得先挑模板、建项目、进文案页
+     * 才听得到，听到的还是那个项目绑定的声音。用户原话：「先听一下…以免做成片效果不好，浪费钻石」。
+     *
+     * 底下就是石榴的 POST /speaker/tts（同步返回 base64 音频），与出片 tts 阶段同一个接口。
+     * 不产生任何计费对象：钻石的账在军师那边，这里只花石榴的 validPoint。
+     */
+    public VoicePreviewDto previewVoice(String owner, String voiceId, String text) {
+        String value = text == null ? "" : text.trim();
+        if (value.isEmpty()) throw BusinessException.badRequest("CLIP_PREVIEW_TEXT_REQUIRED", "先写一句想听的话");
+        if (value.length() > 200) throw BusinessException.badRequest("CLIP_PREVIEW_TEXT_TOO_LONG", "试听最多 200 字");
+        // 只按 voiceId 解析，不回退到「该用户最新的一条声音」——用户点的是哪一条就听哪一条，
+        // 猜错会让他对着别的音色下判断。未就绪/不存在都由 requiredVoiceEngineRef 明确抛错。
+        String voiceRef = requiredVoiceEngineRef(owner, null, voiceId);
+        ShiliuGateway gateway = shiliu.required();
+        ShiliuGateway.Task task = gateway.previewVoice(owner, voiceRef, value);
+        if (!"succeeded".equals(task.status()) || task.outputRef() == null) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "CLIP_TTS_FAILED", "试听合成失败");
+        }
+        int duration = task.durationSec() == null ? Math.max(1, Math.round(value.length() / 4f)) : task.durationSec();
+        return new VoicePreviewDto(voiceId, task.outputRef(), duration, value, shiliu.mockMode());
+    }
+
     public String requiredVoiceEngineRef(String owner) { return requiredVoiceEngineRef(owner, null, null); }
     public String requiredVoiceEngineRef(String owner, String avatarId, String voiceId) {
         DapVoice selected = selectedVoice(owner, voiceId);
@@ -491,6 +544,18 @@ public class ClipAvatarService {
         target.setEngineStatus(state);
         target.setEngineTrainedAt("ready".equals(state) ? now : null);
         target.setAudioKey(stored.key()); target.setBytes(stored.bytes());
+        // 重训 = 换了嗓子，旧样例已经不是这条声音了。不清的话用户会一直听到重训前的音色，
+        // 而且因为 key 非空，worker 不会去生成新的。
+        if (demos != null) demos.invalidateVoiceDemo(target);
+        // 用这条声音出镜的分身，样例里那个人的嗓子也变了，一并作废。
+        if (demos != null) {
+            for (DapAvatar linked : avatars.findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(owner, ENGINE)) {
+                if (target.getId().equals(linked.getVoiceName()) || linked.getId().equals(target.getAvatarId())) {
+                    demos.invalidateAvatarDemo(linked);
+                    avatars.save(linked);
+                }
+            }
+        }
         voices.save(target);
         return target;
     }

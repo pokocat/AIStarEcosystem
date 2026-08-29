@@ -19,10 +19,12 @@ public class ClipRenderWorkerState {
     private final ClipAvatarService avatars;
     private final ClipOutputStorage outputStorage;
     private final ClipAssemblyService assembly;
+    private final ClipRenderService renderService;
     public ClipRenderWorkerState(ClipRenderJobRepository jobs, ClipProjectRepository projects, ShiliuService shiliu,
-                                 ClipAvatarService avatars, ClipOutputStorage outputStorage, ClipAssemblyService assembly) {
+                                 ClipAvatarService avatars, ClipOutputStorage outputStorage, ClipAssemblyService assembly,
+                                 ClipRenderService renderService) {
         this.jobs=jobs; this.projects=projects; this.shiliu=shiliu; this.avatars=avatars;
-        this.outputStorage=outputStorage; this.assembly=assembly;
+        this.outputStorage=outputStorage; this.assembly=assembly; this.renderService=renderService;
     }
 
     @Transactional
@@ -129,7 +131,11 @@ public class ClipRenderWorkerState {
     public void fail(String id,String message) {
         ClipRenderJob j=jobs.findById(id).orElse(null);if(j==null||Set.of("succeeded","failed","cancelled").contains(j.getStatus()))return;
         Instant now=Instant.now();j.setStatus("failed");j.setErrorMessage(message);j.setCompletedAt(now);j.setUpdatedAt(now);j.setLeaseOwner(null);j.setLeaseUntil(null);jobs.save(j);
-        projects.findByIdAndExternalOwnerIdAndDeletedAtIsNull(j.getProjectId(),j.getExternalOwnerId()).ifPresent(p->{p.setStatus("failed");p.setProgress(j.getProgress());p.setUpdatedAt(now);projects.save(p);});
+        // 项目回落 draft 而不是写 "failed"：ClipProjectService.save 只放行 draft，
+        // 写成 failed 等于把项目永久锁死 —— 用户想改一句话重出都不行，只能从头新建。
+        // 失败本身由这条 job 记着，不会因为项目变 draft 而丢失。
+        // 走 renderService.releaseProject 是为了共用「活跃 job 守卫」，别让旧 job 抢掉新任务的项目。
+        renderService.releaseProject(j);
     }
 
     private static void advanceMock(ClipRenderJob j,Instant now){

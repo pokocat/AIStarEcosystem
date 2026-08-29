@@ -8649,6 +8649,8 @@ paths:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListVoices, responses: { '200': { description: reusable voice profiles with training state and source } } }
   /me/clip/voices/{id}:
     patch: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipRenameVoice, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } } }, responses: { '200': { description: renamed reusable voice } } }
+  /me/clip/voices/{id}/preview:
+    post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipPreviewVoiceById, description: "给一段文字让这条声音念出来（石榴 POST /speaker/tts）。不依赖 project —— 训练完当场就要能听，别逼用户先建项目。不产生计费对象；限流在军师 BFF 侧。", parameters: [{ in: path, name: id, required: true, schema: { type: string } }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 200 } } } } } }, responses: { '200': { description: "synthesized audition audio for this voice" } } }
   /me/clip/avatar/requirements:
     get:
       tags: [clip]
