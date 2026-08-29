@@ -76,6 +76,21 @@ class DramaScriptServiceTest {
         assertTrue(ex.getMessage().contains("长度上限"));
     }
 
+    @Test
+    void repairsMissingArrayCloserFromStoppedModelResponse() {
+        stubPrompt(new PromptParamsDto(null, null, true));
+        String missingScriptsArrayCloser = "{\"scripts\":[{\"title\":\"雨夜霓虹迷局\","
+                + "\"scenes\":[{\"duration_sec\":30,\"shot\":\"雨夜街头\",\"dialogue\":\"找到你了\"}]}}";
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+                .thenReturn(response(missingScriptsArrayCloser, "stop"));
+
+        var scripts = service.aiDraft(OM.createObjectNode().put("theme", "未来城市悬疑"), "u1");
+
+        assertEquals(1, scripts.size());
+        assertEquals("雨夜霓虹迷局", scripts.get(0).path("title").asText());
+        assertEquals(1, scripts.get(0).path("scenes").size());
+    }
+
     private void stubPrompt(PromptParamsDto params) {
         when(promptService.resolve(AiModelPurpose.DRAMA_SCRIPT_DRAFT))
                 .thenReturn(new PromptService.ResolvedPrompt("你是短片编剧", "主题：{{theme}}", params, "resource"));
