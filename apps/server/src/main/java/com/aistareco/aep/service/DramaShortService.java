@@ -43,15 +43,18 @@ public class DramaShortService {
     private final CreditService creditService;
     private final PlatformConfigService configs;
     private final CdnUrlSigner cdnUrlSigner;
+    private final DramaShortContinuityService continuity;
 
     public DramaShortService(DramaShortRepository repo, ObjectMapper om,
                              CreditService creditService, PlatformConfigService configs,
-                             CdnUrlSigner cdnUrlSigner) {
+                             CdnUrlSigner cdnUrlSigner,
+                             DramaShortContinuityService continuity) {
         this.repo = repo;
         this.om = om;
         this.creditService = creditService;
         this.configs = configs;
         this.cdnUrlSigner = cdnUrlSigner == null ? CdnUrlSigner.NOOP : cdnUrlSigner;
+        this.continuity = continuity;
     }
 
     /**
@@ -92,6 +95,13 @@ public class DramaShortService {
     /** 详情：{ meta: ShortDraftSummary, data: ShortDraftData }。 */
     public JsonNode getShort(String id, String userId) {
         return toDetail(requireOwned(id, userId));
+    }
+
+    /** 只读零 token 预检：不调用模型、不提交媒体任务、不冻结积分。 */
+    public JsonNode preflight(String id, String userId) {
+        DramaShort row = requireOwned(id, userId);
+        ObjectNode data = (ObjectNode) readPayload(row);
+        return continuity.preflight(data);
     }
 
     /**
@@ -146,6 +156,30 @@ public class DramaShortService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_DATA_REQUIRED", "缺少要保存的短视频数据");
         }
         ObjectNode data = ((ObjectNode) body.get("data")).deepCopy();
+        JsonNode existingPayload = readPayload(row);
+        preserveServerAudio(existingPayload.path("shots"), data.path("shots"));
+        continuity.ensureDraft(data);
+        // assembled 是服务端总装产物，客户端 PUT 不得伪造/覆盖。保留已有服务端值。
+        JsonNode existingAssembled = existingPayload.path("assembled");
+        data.remove("assembled");
+        boolean assemblyCurrent = false;
+        if (existingAssembled.isObject()) {
+            try {
+                var incomingPlan = DramaShortAssembleService.buildPlan(data);
+                assemblyCurrent = incomingPlan.fingerprint()
+                        .equals(existingAssembled.path("sourceFingerprint").asText(""));
+            } catch (BusinessException ignore) {
+                // 镜头未齐 / 已改为非完成态 → 旧成片过期，不再挂到新版本草稿。
+            }
+        }
+        if (assemblyCurrent) {
+            data.set("assembled", existingAssembled.deepCopy());
+        } else if (existingAssembled.isObject()) {
+            ObjectNode stale = ((ObjectNode) existingAssembled).deepCopy();
+            stale.put("stale", true);
+            data.set("assembled", stale); // 保留旧 key 供下一次总装成功后清理，但列表不再展示旧片。
+        }
+        if (!assemblyCurrent && "done".equals(row.getStatus())) row.setStatus("draft");
 
         // 标题：优先整体说明 meta.title，其次 data.title，再次原标题。
         String metaTitle = data.path("meta").path("title").asText(null);
@@ -173,6 +207,10 @@ public class DramaShortService {
 
         if (body.has("status")) {
             String st = body.path("status").asText("draft");
+            if ("done".equals(st) && !assemblyCurrent) {
+                throw new BusinessException(HttpStatus.CONFLICT, "DRAMA_SHORT_ASSEMBLY_REQUIRED",
+                        "请先合成完整短片，成功后才能标记为已完成。");
+            }
             row.setStatus("done".equals(st) ? "done" : "draft");
         }
         int progress = body.has("progress")
@@ -378,12 +416,17 @@ public class DramaShortService {
     }
 
     private PreviewMedia previewMedia(JsonNode payload) {
+        JsonNode assembled = payload == null ? null : payload.path("assembled");
+        String assembledVideo = assembled == null || assembled.path("stale").asBoolean(false) ? null
+                : nonBlank(orDefault(text(assembled, "cdnKey"), text(assembled, "url")));
+        String assembledCover = assembled == null || assembled.path("stale").asBoolean(false) ? null
+                : nonBlank(orDefault(text(assembled, "coverCdnKey"), text(assembled, "coverUrl")));
         JsonNode shots = payload == null ? null : payload.path("shots");
         if (shots == null || !shots.isArray() || shots.isEmpty()) {
-            return new PreviewMedia(null, null);
+            return new PreviewMedia(assembledCover, assembledVideo);
         }
-        String video = null;
-        String cover = null;
+        String video = assembledVideo;
+        String cover = assembledCover;
         for (JsonNode sh : shots) {
             if (video == null && "done".equals(sh.path("flow").asText(""))) {
                 video = nonBlank(text(sh, "videoUrl"));
@@ -445,6 +488,17 @@ public class DramaShortService {
      */
     private void resignPayloadAssets(JsonNode payload) {
         if (payload == null) return;
+        JsonNode assembled = payload.path("assembled");
+        if (assembled instanceof ObjectNode object) {
+            String key = nonBlank(text(object, "cdnKey"));
+            if (key != null) object.put("url", resolveAssetUrl(key));
+            else {
+                String url = nonBlank(text(object, "url"));
+                if (url != null) object.put("url", resolveAssetUrl(url));
+            }
+            String coverKey = nonBlank(text(object, "coverCdnKey"));
+            if (coverKey != null) object.put("coverUrl", resolveAssetUrl(coverKey));
+        }
         JsonNode shots = payload.path("shots");
         if (!shots.isArray()) return;
         for (JsonNode sh : shots) {
@@ -453,6 +507,11 @@ public class DramaShortService {
             if (one != null) shot.put("frameUrl", resolveAssetUrl(one));
             String video = nonBlank(text(shot, "videoUrl"));
             if (video != null) shot.put("videoUrl", resolveAssetUrl(video));
+            JsonNode audio = shot.path("audio");
+            if (audio instanceof ObjectNode audioObject) {
+                String audioKey = nonBlank(text(audioObject, "cdnKey"));
+                if (audioKey != null) audioObject.put("url", resolveAssetUrl(audioKey));
+            }
             JsonNode arr = shot.get("frameUrls");
             if (arr != null && arr.isArray() && !arr.isEmpty()) {
                 var resigned = om.createArrayNode();
@@ -462,6 +521,27 @@ public class DramaShortService {
                     resigned.add(u != null ? resolveAssetUrl(u) : el.asText(null));
                 }
                 shot.set("frameUrls", resigned);
+            }
+        }
+    }
+
+    /** TTS key / provider task id 只能由服务端写；台词没变就保留，台词一改立即失效。 */
+    private void preserveServerAudio(JsonNode existingShots, JsonNode incomingShots) {
+        if (!existingShots.isArray() || !incomingShots.isArray()) return;
+        java.util.Map<String, JsonNode> byId = new java.util.HashMap<>();
+        for (JsonNode shot : existingShots) {
+            String id = nonBlank(text(shot, "id"));
+            if (id != null && shot.path("audio").isObject()) byId.put(id, shot.path("audio"));
+        }
+        for (JsonNode raw : incomingShots) {
+            if (!(raw instanceof ObjectNode shot)) continue;
+            shot.remove("audio");
+            String id = nonBlank(text(shot, "id"));
+            JsonNode audio = id == null ? null : byId.get(id);
+            String dialogue = orDefault(text(shot, "voText"), "").trim();
+            if (audio != null && DramaShortContinuityService.fingerprint(dialogue)
+                    .equals(audio.path("textFingerprint").asText(""))) {
+                shot.set("audio", audio.deepCopy());
             }
         }
     }

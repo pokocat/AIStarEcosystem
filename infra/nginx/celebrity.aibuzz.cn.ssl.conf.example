@@ -1,0 +1,66 @@
+# AI Star Eco — celebrity.aibuzz.cn HTTPS entry for apps/web-celebrity (port 3012).
+# Install to: /etc/nginx/conf.d/celebrity-ssl.conf
+#
+# 该子域的 80 vhost 在生产上位于 aistareco.conf（不是本文件），本文件只补 443。
+# 每个子域必须同时有 80 和 443 vhost —— 缺 443 会被浏览器 HTTPS-First / HSTS
+# 打到 nginx 的「443 默认 server」（按 conf.d 字典序 = admin），302 到 /admin。
+# 详见 infra/README.md §5「nginx vhost：每子域必须同时有 80 和 443」。
+#
+# 本文件比 music / drama / aiavatar / star 四份多出的部分（线上既有，勿删）：
+#   - server_name 带 www.celebrity.aibuzz.cn（泛域名证书 SAN 含该名）
+#   - /healthz 探活；/admin 302 → /dashboard（带货端不暴露后台路径）
+#   - 用 ssl_session_cache 而非 http2 / HSTS —— 与另外四份写法不同，属历史差异
+#
+# 证书：全站共用 *.aibuzz.cn 泛域名证书（SAN 含 *.aibuzz.cn + aibuzz.cn），
+#   /etc/nginx/certs/aibuzz.cn/fullchain.pem
+#   /etc/nginx/certs/aibuzz.cn/privkey.key
+#
+# ⚠️ 与线上的唯一差异（有意为之，2026-08-29 核对）：
+#    线上 celebrity-ssl.conf 的 ssl_certificate* 指向
+#      /etc/nginx/certs/celebrity.aibuzz.cn/{fullchain.pem,privkey.key}
+#    该目录里放的是**同一张泛域名证书的副本**（md5 与 /etc/nginx/certs/aibuzz.cn/
+#    完全相同）。本 example 统一收敛到共享泛域名路径，避免续期漏副本。
+#
+# 其余部分与线上 /etc/nginx/conf.d/celebrity-ssl.conf 逐字节一致。
+
+# celebrity.aibuzz.cn TLS entrypoint.
+server {
+    listen 443 ssl;
+    server_name celebrity.aibuzz.cn www.celebrity.aibuzz.cn;
+    client_max_body_size 200m;
+
+    ssl_certificate /etc/nginx/certs/aibuzz.cn/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/aibuzz.cn/privkey.key;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:celebrity_ssl:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080/api/;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location /static/ { proxy_pass http://127.0.0.1:8080/static/; }
+    location /cdn/ { proxy_pass http://127.0.0.1:8080/cdn/; }
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    location = /admin { return 302 /dashboard; }
+    location /admin/ { return 302 /dashboard; }
+    location / { proxy_pass http://127.0.0.1:3012; }
+}

@@ -69,6 +69,14 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 
 ## 版本日志
 
+### v0.132 · 2026-08-17 · 明星带货短视频重构（入口提级 / 模型时长与报价前置 / 免商品脚本）
+
+- `/generate`「快速生成」→「生成中心」：三方式卡 + material/mixcut 真实任务合并区（`lib/use-generation-jobs.ts`）；明星形象生成 live 渲染「能力建设中」禁用态，`/star/{id}/generate` live 页面层拦截（老逻辑真扣积分 + 前端假成片，§8.0）；演示流程迁 `/generate/star`（仅 USE_MOCK）。
+- 侧栏「脚本工坊」→「脚本视频工坊」+ running 角标；移动端底部 tab「混剪」→「生成」；死链 `/producer/finance`→`/wallet` ×3。
+- VideoGenDialog 加「生成模型」行（`GET /material/videos/models`，`use-video-models.ts` 共享 hook）：有效时长区间 + 按秒/按次单价前置，实时报价与后端 hold 同源；models 失败禁用提交（不回落写死 30）；显式选非默认模型透传 `variant_config.endpoint_id`。编辑器 Σ/上限量表 + dur 步进软顶；空白脚本默认 34s→15s；AI 起稿删写死 38s。
+- 免商品脚本：ProductPicker「不关联商品，直接写脚本」（主题简介选填，留空=完全自由创作）+ `ScriptAsset.creative_brief` 字段（暂在 material-ops 本地 types，存量类型上移 packages/types 已登记 TODO；本轮进共享真源的是 `VideoModelOption`/`VideoModels`）；修「换商品不落 draft.product_id」bug。
+- 清理：live 禁用 localStorage 假任务队列；删 `VIDEO_GEN_STAGES`/`VIDEO_CONFIG_FIELDS`/`buildVideoAsset`/`buildAsyncTasks`/`PendingJobsBadge.tsx`；PromptView 展示真实提交载荷；生成工作台真实 star prop（删 mock 覆盖）+ 项目/模板下拉走 API。
+
 ### v0.62 · 2026-06-11 · 明星「编辑」入口下线（档案编辑移交 web-star）
 
 - 明星档案改为明星本人 / 经纪团队在明星商务工作台（web-star `/profile`，

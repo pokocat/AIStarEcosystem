@@ -30,8 +30,8 @@ import {
   type LucideIcon,
   Menu,
   Package,
-  Scissors,
   Send,
+  Sparkles,
   Star,
   UserCircle,
   Video,
@@ -57,7 +57,8 @@ const TABS: {
 }[] = [
   { icon: LayoutDashboard, label: "今日", href: "/dashboard", match: (p) => p === "/dashboard" },
   { icon: Star, label: "市场", href: "/market", match: (p) => p === "/market" || p.startsWith("/star") },
-  { icon: Scissors, label: "混剪", href: "/mixcut", match: (p) => p === "/mixcut" || p.startsWith("/mixcut/") },
+  // v0.132：「混剪」→「生成」——移动端此前没有任何生成入口（生成中心内含混剪，一跳可达）。
+  { icon: Sparkles, label: "生成", href: "/generate", match: (p) => p === "/generate" || p.startsWith("/generate/") || p === "/mixcut" || p.startsWith("/mixcut/") || p.startsWith("/material/") },
   { icon: Send, label: "分发", href: "/distribution", match: (p) => p === "/distribution" || p.startsWith("/distribution/") },
 ];
 

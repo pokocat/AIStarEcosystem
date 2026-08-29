@@ -17,18 +17,19 @@ export function CostLine({
   unit = "视频",
 }: {
   count: number;
-  credits: number;
+  /** null = 模型报价未加载成功（此时提交必须被禁用，绝不显示写死单价）。 */
+  credits: number | null;
   balance: number | null;
   unit?: string;
 }) {
-  const insufficient = balance != null && balance < credits;
+  const insufficient = credits != null && balance != null && balance < credits;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--fg-2)", minWidth: 0 }}>
       <Coins size={13} color={insufficient ? "var(--danger)" : "var(--accent)"} style={{ flexShrink: 0 }} />
       <span>
         共 {count} 条{unit} · 预计消耗{" "}
         <strong style={{ color: insufficient ? "var(--danger)" : "var(--fg-0)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
-          {credits} 积分
+          {credits != null ? `${credits} 积分` : "计价加载中"}
         </strong>
       </span>
       {balance != null && (

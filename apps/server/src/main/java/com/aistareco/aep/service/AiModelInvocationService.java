@@ -122,6 +122,17 @@ public class AiModelInvocationService {
     /** 解析到的候选端点：端点实体 + 承载能力/单价的 candidate（默认路径可能为 null）+ 是否默认。 */
     public record ResolvedEndpoint(AiModelEndpoint endpoint, AiAppEndpointCandidate candidate, boolean isDefault) {}
 
+    /**
+     * 视频候选的计价单位（wire 全小写）：只有「candidate 显式 override + 端点 PER_SECOND」才按秒，
+     * 其余（含存量默认价）一律按次 —— drama /render/models 与 material /videos/models 共用同一判定，
+     * 与 resolveCreditCostOverride 的展开语义保持一致。
+     */
+    public static String videoBillingUnit(AiModelEndpoint endpoint, AiAppEndpointCandidate candidate) {
+        return candidate != null && candidate.getCreditCostOverride() != null
+                && endpoint != null && endpoint.getBillingMode() == com.aistareco.aep.model.AiModelBillingMode.PER_SECOND
+                ? "per_second" : "per_call";
+    }
+
     /** 是否已为该用途绑定可用端点（上层在调用前判断「未配置」并给明确提示）。 */
     public boolean hasEndpointFor(AiModelPurpose purpose) {
         return resolveEndpoint(purpose).isPresent();

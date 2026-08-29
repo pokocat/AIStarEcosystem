@@ -18,6 +18,7 @@ import {
 import { VIRAL_HITS } from "@/mocks/material-ops";
 import type { MaterialProduct, PlatformId, ScriptAsset, ScriptBlock, ShotKind } from "./types";
 import { DraftingHub } from "./DraftingHub";
+import { useVideoModels } from "./use-video-models";
 import { Eyebrow, Tag, TierBadge, ProductThumb, hexA } from "./shared";
 import { useProductThumbUrl } from "./product-thumbnails";
 
@@ -118,6 +119,7 @@ export function WorkshopScreen({
         <DraftingHub
           openTab={hub}
           product={product}
+          creativeBrief={draft.creative_brief}
           onClose={() => setHub(null)}
           onApply={(blocks) => {
             applyAsset(blocks);
@@ -331,6 +333,11 @@ function HeroAction({ icon, label, sub, tone, primary, onClick }: { icon: React.
 function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: ScriptAsset; setDraft: (d: ScriptAsset) => void; platform: PlatformId; onBlockAction: (i: number, k: "template" | "viral" | "ai") => void }) {
   const blocks = draft.blocks;
   const totalDur = blocks.reduce((s, b) => s + b.dur, 0);
+  // 时长上限对齐默认生成模型能力：超限在编辑期就标红，而不是等提交出片才被拒。
+  const { defaultModel } = useVideoModels();
+  const durCap = defaultModel?.effectiveMaxDurationSec ?? null;
+  const overCap = durCap != null && totalDur > durCap;
+  const capReached = durCap != null && totalDur >= durCap;
 
   const update = (i: number, patch: Partial<ScriptBlock>) => setDraft({ ...draft, blocks: blocks.map((b, ii) => (ii === i ? { ...b, ...patch } : b)) });
   const remove = (i: number) => setDraft({ ...draft, blocks: blocks.filter((_, ii) => ii !== i) });
@@ -365,7 +372,11 @@ function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: Scr
           />
         </div>
         <Tag color="var(--accent)">共 {blocks.length} 镜</Tag>
-        <Tag color="var(--extra-teal)">{totalDur}s 总时长</Tag>
+        <span title={durCap != null ? `当前默认生成模型单条最长 ${durCap} 秒${overCap ? "，超出部分出片时会被拒绝，请压缩口播与分镜时长" : ""}` : undefined}>
+          <Tag color={overCap ? "var(--danger)" : "var(--extra-teal)"}>
+            {durCap != null ? `${totalDur}s / 上限 ${durCap}s` : `${totalDur}s 总时长`}
+          </Tag>
+        </span>
       </div>
 
       {/* timeline：按时长比例的可点片段，段内标「序号 · 类型 · 时长」，点击滚动到对应分镜卡 */}
@@ -430,6 +441,7 @@ function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: Scr
             block={b}
             total={blocks.length}
             cumDur={blocks.slice(0, i).reduce((s, bb) => s + bb.dur, 0)}
+            durCapReached={capReached}
             onUpdate={(patch) => update(i, patch)}
             onMove={(d) => move(i, d)}
             onRemove={() => remove(i)}
@@ -467,7 +479,7 @@ function ScriptEditor({ draft, setDraft, platform, onBlockAction }: { draft: Scr
   );
 }
 
-function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, onAction }: { index: number; block: ScriptBlock; cumDur: number; total: number; onUpdate: (p: Partial<ScriptBlock>) => void; onMove: (d: number) => void; onRemove: () => void; onAction: (k: "template" | "viral" | "ai") => void }) {
+function ShotBlock({ index, block, cumDur, total, durCapReached, onUpdate, onMove, onRemove, onAction }: { index: number; block: ScriptBlock; cumDur: number; total: number; durCapReached?: boolean; onUpdate: (p: Partial<ScriptBlock>) => void; onMove: (d: number) => void; onRemove: () => void; onAction: (k: "template" | "viral" | "ai") => void }) {
   const meta = SHOT_KIND_META[block.kind];
   const color = meta.toneVar;
   const flagged = BANNED_WORDS.filter((w) => block.text.includes(w.word)).map((w) => w.word);
@@ -499,7 +511,12 @@ function ShotBlock({ index, block, cumDur, total, onUpdate, onMove, onRemove, on
             <div style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
               <button onClick={() => onUpdate({ dur: Math.max(1, block.dur - 1) })} style={stepBtn}>−</button>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-0)", minWidth: 26, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{block.dur}s</span>
-              <button onClick={() => onUpdate({ dur: block.dur + 1 })} style={stepBtn}>+</button>
+              <button
+                onClick={() => onUpdate({ dur: block.dur + 1 })}
+                disabled={durCapReached}
+                title={durCapReached ? "总时长已达当前生成模型上限，先压缩其他镜头再增加" : undefined}
+                style={{ ...stepBtn, opacity: durCapReached ? 0.35 : 1, cursor: durCapReached ? "not-allowed" : "pointer" }}
+              >+</button>
             </div>
           </div>
 

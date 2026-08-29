@@ -190,6 +190,79 @@ class MaterialVideoModelClientTest {
         assertEquals(600L, client.resolveCreditCostOverride("h3", 15));
     }
 
+    // ── v0.132：时长策略（协议硬边界 ∩ candidate.maxDurationSec，hold 前收口） ──────
+
+    private MaterialVideoModelClient clientWith(AiModelEndpoint endpoint, AiAppEndpointCandidate candidate) {
+        AiModelInvocationService invocation = mock(AiModelInvocationService.class);
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION)))
+                .thenReturn(Optional.of(endpoint));
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
+        return new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null);
+    }
+
+    private static AiModelEndpoint genericEndpoint() {
+        return AiModelEndpoint.builder()
+                .id("ep-generic").name("通用视频").baseUrl("https://vendor.example/v1").model("some-video")
+                .upstreamApiKeyEncrypted(com.aistareco.common.AepCryptoUtil.encrypt("sk-test"))
+                .build();
+    }
+
+    @Test
+    void protocolDurationBounds_by_protocol() {
+        MaterialVideoModelClient client = new MaterialVideoModelClient(
+                null, new MaterialVideoProperties(), null, null);
+        var jusuan = client.protocolDurationBounds(AiModelEndpoint.builder()
+                .name("MiniMax H3").baseUrl("https://api.jusuanhub.com:10443/v1").model("minimax-h3").build());
+        assertEquals(5, jusuan.minSec());
+        assertEquals(15, jusuan.maxSec());
+        var agnes = client.protocolDurationBounds(AiModelEndpoint.builder()
+                .name("Agnes").baseUrl("https://agnes.example/v1").model("agnes-video").build());
+        assertNull(agnes.minSec()); // 未知下限不臆造
+        assertEquals(18, agnes.maxSec()); // 441 帧 / 24fps
+        var generic = client.protocolDurationBounds(genericEndpoint());
+        assertNull(generic.minSec());
+        assertNull(generic.maxSec());
+    }
+
+    @Test
+    void intersect_candidate_cap_tightens_protocol_bounds() {
+        var protocol = new MaterialVideoModelClient.DurationBounds(5, 15);
+        assertEquals(10, MaterialVideoModelClient.intersect(protocol,
+                AiAppEndpointCandidate.builder().maxDurationSec(10).build()).maxSec());
+        // candidate 配得比协议宽 → 协议赢（admin 把 H3 配成 60 也不放行 60）
+        assertEquals(15, MaterialVideoModelClient.intersect(protocol,
+                AiAppEndpointCandidate.builder().maxDurationSec(60).build()).maxSec());
+        // capability 未配置 → 只剩协议边界
+        assertEquals(15, MaterialVideoModelClient.intersect(protocol, null).maxSec());
+        var unbounded = MaterialVideoModelClient.intersect(
+                new MaterialVideoModelClient.DurationBounds(null, null), null);
+        assertNull(unbounded.maxSec());
+    }
+
+    @Test
+    void validateRequest_requires_positive_duration() {
+        MaterialVideoModelClient client = clientWith(genericEndpoint(), null);
+        BusinessException e = assertThrows(BusinessException.class, () -> client.validateRequest(null, 0));
+        assertEquals("VIDEO_DURATION_REQUIRED", e.getCode());
+    }
+
+    @Test
+    void validateRequest_enforces_candidate_cap_on_generic_protocol() {
+        // v0.131 前 capability.maxDurationSec 在带货线是死字段：generic/seedance 端点超限照样过闸。
+        MaterialVideoModelClient client = clientWith(genericEndpoint(),
+                AiAppEndpointCandidate.builder().maxDurationSec(10).build());
+        BusinessException e = assertThrows(BusinessException.class, () -> client.validateRequest(null, 38));
+        assertEquals("VIDEO_DURATION_UNSUPPORTED", e.getCode());
+        client.validateRequest(null, 10); // 上限内放行
+    }
+
+    @Test
+    void validateRequest_without_capability_keeps_legacy_leniency() {
+        MaterialVideoModelClient client = clientWith(genericEndpoint(), null);
+        client.validateRequest(null, 120); // 无协议边界也无 capability → 放行（legacy 宽松语义）
+    }
+
     @Test
     void jusuan_job_and_asset_routes_include_model_scope() {
         assertEquals("https://api.jusuanhub.com:10443/v1/jobs/job_1?model=minimax-h3",

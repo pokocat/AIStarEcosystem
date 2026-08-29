@@ -9,6 +9,7 @@ import java.util.Optional;
 
 @Repository
 public interface DapAvatarRepository extends JpaRepository<DapAvatar, String> {
+    List<DapAvatar> findByOwnerUserId(String ownerUserId);
     List<DapAvatar> findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId);
     List<DapAvatar> findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId, String engine);
     Optional<DapAvatar> findByIdAndOwnerUserId(String id, String ownerUserId);

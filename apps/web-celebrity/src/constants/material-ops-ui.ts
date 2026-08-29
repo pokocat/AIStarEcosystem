@@ -13,7 +13,6 @@ import type {
   Tier,
   VariantAxis,
   VariantAxisKey,
-  VideoConfigGroupDef,
 } from "@/components/material-ops/types";
 
 // creator 调色板（= tokens.css 同值 hex）。数据驱动的强调色需要做 `${color}22`
@@ -238,74 +237,6 @@ export const VARIANT_AXIS_ORDER: VariantAxisKey[] = [
   "role_relation",
   "voice",
 ];
-
-// 视频生成流水线（流式进度 7 阶段）
-export const VIDEO_GEN_STAGES = [
-  { id: "plan", label: "镜头规划", sub: "解析脚本结构 · 分配镜头", icon: "ScrollText", duration: 4 },
-  { id: "character", label: "人物调度", sub: "加载数字人 · 表情绑定", icon: "Users", duration: 6 },
-  { id: "scene", label: "场景合成", sub: "生成背景 · 物体放置", icon: "Globe", duration: 14 },
-  { id: "shot", label: "逐镜渲染", sub: "5 镜头 · 60fps · 1080p", icon: "Image", duration: 32 },
-  { id: "voice", label: "配音 + 口型", sub: "TTS · 对齐口型", icon: "Mic", duration: 10 },
-  { id: "subtitle", label: "字幕 + 转场", sub: "智能体写字幕 + 配 BGM", icon: "Music", duration: 6 },
-  { id: "compose", label: "合成出片", sub: "剪辑 · 调色 · 输出", icon: "Workflow", duration: 4 },
-] as const;
-
-// 视频结构化生成参数（5 组 18 字段）
-export const VIDEO_CONFIG_FIELDS: Record<string, VideoConfigGroupDef> = {
-  basic: {
-    label: "基础信息",
-    icon: "Settings2",
-    toneVar: NEUTRAL,
-    fields: {
-      duration: { label: "视频时长", options: ["5s", "10s", "15s", "30s", "60s"], default: "30s" },
-      ratio: { label: "视频比例", options: ["9:16", "16:9", "1:1", "4:3"], default: "9:16" },
-      style: { label: "视频风格", options: ["写实", "动漫", "电影感", "清新", "复古", "商务"], default: "写实" },
-      resolution: { label: "分辨率", options: ["720P", "1080P", "2K", "4K"], default: "1080P" },
-      fps: { label: "帧率", options: ["24fps", "30fps", "60fps"], default: "30fps" },
-    },
-  },
-  subject: {
-    label: "画面主体",
-    icon: "Users",
-    toneVar: NEUTRAL,
-    fields: {
-      subject_type: { label: "主体类型", options: ["人物", "产品", "风景", "数字人"], default: "人物" },
-      scene: { label: "场景环境", options: ["室内", "户外", "城市", "居家", "工作室"], default: "居家" },
-      background_light: { label: "背景光影", options: ["自然光", "暖光", "冷光", "虚化背景", "柔光"], default: "自然光" },
-    },
-  },
-  camera: {
-    label: "镜头语言",
-    icon: "Clapperboard",
-    toneVar: NEUTRAL,
-    fields: {
-      shot_size: { label: "景别", options: ["全景", "中景", "近景", "特写"], default: "中景" },
-      movement: { label: "运镜", options: ["固定", "推拉", "平移", "环绕", "跟随", "慢动作"], default: "固定" },
-      transition: { label: "转场效果", options: ["淡入淡出", "闪切", "滑动", "硬切", "叠化"], default: "硬切" },
-    },
-  },
-  audio: {
-    label: "音频",
-    icon: "Music",
-    toneVar: NEUTRAL,
-    fields: {
-      bgm: { label: "BGM", options: ["轻快", "动感", "舒缓", "商务", "无 BGM"], default: "动感" },
-      voice: { label: "语音类型", options: ["男声", "女声", "少女声", "情感男声", "主播女声"], default: "女声" },
-      tts_speed: { label: "语速", options: ["慢", "正常", "快"], default: "正常" },
-    },
-  },
-  advanced: {
-    label: "高级控制",
-    icon: "ShieldCheck",
-    toneVar: NEUTRAL,
-    fields: {
-      consistency: { label: "画面一致性", options: ["锁定人物", "锁定场景", "不锁定"], default: "锁定人物" },
-      color_tone: { label: "色调", options: ["明亮", "电影色", "暖色", "冷色", "自然"], default: "自然" },
-      forbidden: { label: "禁止内容", options: ["无水印", "禁模糊", "禁变形", "全部"], default: "全部" },
-      effects: { label: "特效", options: ["无", "光影", "粒子", "滤镜", "光影+粒子"], default: "无" },
-    },
-  },
-};
 
 // 镜头级片段库（套模板抽屉用）
 export const BLOCK_SNIPPETS: Record<ShotKind, { id: string; text: string; type: string; perf: number; tier: Tier }[]> = {

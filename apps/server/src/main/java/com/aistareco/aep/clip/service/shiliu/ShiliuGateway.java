@@ -3,9 +3,13 @@ package com.aistareco.aep.clip.service.shiliu;
 import java.util.List;
 
 public interface ShiliuGateway {
-    record Task(String id, String status, Integer durationSec, String outputRef, String error, Integer progress) {
+    record Task(String id, String status, Integer durationSec, String outputRef, String error,
+                Integer progress, String outputCdnKey) {
+        public Task(String id, String status, Integer durationSec, String outputRef, String error, Integer progress) {
+            this(id, status, durationSec, outputRef, error, progress, null);
+        }
         public Task(String id, String status, Integer durationSec, String outputRef, String error) {
-            this(id, status, durationSec, outputRef, error, null);
+            this(id, status, durationSec, outputRef, error, null, null);
         }
     }
 

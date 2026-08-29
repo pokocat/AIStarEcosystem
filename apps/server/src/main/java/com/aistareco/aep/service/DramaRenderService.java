@@ -584,11 +584,7 @@ public class DramaRenderService {
     private static String candidateBillingUnit(AiModelPurpose purpose, AiModelEndpoint endpoint,
                                                AiAppEndpointCandidate candidate) {
         return purpose == AiModelPurpose.VIDEO_GENERATION
-                && candidate != null
-                && candidate.getCreditCostOverride() != null
-                && endpoint != null
-                && endpoint.getBillingMode() == AiModelBillingMode.PER_SECOND
-                ? "per_second" : "per_call";
+                ? AiModelInvocationService.videoBillingUnit(endpoint, candidate) : "per_call";
     }
 
     // ── C-1：参考生效回报（applied_refs） ─────────────────────────────────────────

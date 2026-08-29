@@ -25,12 +25,14 @@ import {
   TEMPLATE_SHOWCASES,
   BLINDBOX_SHOWCASES,
 } from "@/mocks/celebrity-zone";
-import { startGeneration } from "@/api/celebrity-zone";
+import { startGeneration, listProjects, listTemplates } from "@/api/celebrity-zone";
 import { CelebrityJobs, type PendingJobRecord } from "@/lib/celebrity-jobs";
 import { ENGINE_META } from "@/constants/celebrity-zone-ui";
 import type {
   CelebrityEngine,
   CelebrityProductInput,
+  CelebrityProject,
+  CelebrityStar,
   CelebrityTemplate,
   CelebrityVideoDuration,
   GenerationMode,
@@ -54,6 +56,12 @@ const STEP_TITLE: Record<Step, string> = {
 interface Props {
   /** 关联的明星 ID。未传时回退到默认 ACTIVE_STAR（兼容旧入口）。 */
   starId?: string;
+  /**
+   * 页面已拉到的真实明星实体（v0.132）。必须优先于 STAR_DETAIL_MAP：
+   * admin 建的真实明星 id 不在 mock map 里，旧逻辑会静默显示成 mock 第一位明星
+   * 并以错误 id 提交生成。
+   */
+  star?: CelebrityStar;
   /** 深链恢复：`?jobId=` 透传，进入页面时从 localStorage 找回任务并续算进度。 */
   jobId?: string;
 }
@@ -67,7 +75,7 @@ interface PendingJobInput {
   templateId?: string;
 }
 
-export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
+export function CelebrityGenerationWorkspace({ starId, star: starProp, jobId }: Props = {}) {
   const router = useRouter();
   const [step, setStep] = React.useState<Step>("mode");
   const [selectedTemplate, setSelectedTemplate] =
@@ -77,8 +85,21 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
   const [activeJob, setActiveJob] = React.useState<PendingJobRecord | null>(null);
   /** 已完成待预览采纳的任务；与 step === "result" 配套。 */
   const [completedJob, setCompletedJob] = React.useState<PendingJobRecord | null>(null);
+  /** startGeneration 失败时的明确报错（不再静默降级为本地假任务）。 */
+  const [startError, setStartError] = React.useState<string | null>(null);
 
-  const star = (starId && STAR_DETAIL_MAP[starId]) || ACTIVE_STAR;
+  // 真实明星优先（页面已 getStar 校验授权）；mock map 只服务无 prop 的旧演示入口。
+  const star = starProp ?? ((starId && STAR_DETAIL_MAP[starId]) || ACTIVE_STAR);
+
+  // 归属项目 / 模板走真实 API（USE_MOCK 时 api 层自会返回 mock），不再直读 mock 常量。
+  const [projects, setProjects] = React.useState<CelebrityProject[]>(CELEBRITY_PROJECTS);
+  const [templates, setTemplates] = React.useState<CelebrityTemplate[]>(CELEBRITY_TEMPLATES);
+  React.useEffect(() => {
+    let cancelled = false;
+    listProjects().then((list) => { if (!cancelled && list.length) setProjects(list); }).catch(() => {});
+    listTemplates().then((list) => { if (!cancelled && list.length) setTemplates(list); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Mount: 深链恢复（?jobId / 当前明星最近一条 running） ────────────────────
   React.useEffect(() => {
@@ -148,24 +169,26 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
 
   // ── 生成生命周期 ────────────────────────────────────────────────────────
   const startJob = async (input: PendingJobInput) => {
-    // 1) 调后端拿 jobId（mock 也会返回）
-    const job = await startGeneration({
-      starId: star.id,
-      mode: input.source === "blindbox" ? "blindbox" : "template",
-      templateId: input.templateId ?? selectedTemplate?.id,
-      product: input.product,
-      engine: input.engine,
-      duration: input.duration,
-      projectId: input.projectId,
-    }).catch(() => ({
-      jobId: `local-${Date.now()}`,
-      status: "queued" as const,
-      pollUrl: "",
-      pollIntervalMs: 3000,
-      estimatedSeconds: undefined,
-    }));
+    // 调后端拿 jobId（mock 时 api 层返回演示任务）。失败不再静默降级为本地假任务
+    // （§8.0：老逻辑 catch 后造 local-jobId 继续走假进度，用户以为提交成功了）。
+    setStartError(null);
+    let job;
+    try {
+      job = await startGeneration({
+        starId: star.id,
+        mode: input.source === "blindbox" ? "blindbox" : "template",
+        templateId: input.templateId ?? selectedTemplate?.id,
+        product: input.product,
+        engine: input.engine,
+        duration: input.duration,
+        projectId: input.projectId,
+      });
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : "生成提交失败，请稍后重试");
+      return;
+    }
 
-    const project = CELEBRITY_PROJECTS.find((p) => p.id === input.projectId);
+    const project = projects.find((p) => p.id === input.projectId);
     const meta = ENGINE_META[input.engine];
 
     const record: PendingJobRecord = {
@@ -195,6 +218,8 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
 
   const handleProgressComplete = () => {
     if (!activeJob) return;
+    // 演示成片（仅 USE_MOCK 可达：live 已在 /star/[id]/generate 页面层拦截为「能力建设中」，
+    // 不会走到这里；真实引擎接入后此处改为读取任务真实产物）。
     const result = {
       videoUrl:
         "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
@@ -288,6 +313,11 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
       </div>
 
       <div className="flex-1">
+        {startError && (
+          <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+            生成提交失败：{startError}
+          </div>
+        )}
         {step === "mode" && (
           <CelebrityModeSelect star={star} onSelectMode={handleSelectMode} />
         )}
@@ -295,7 +325,7 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
         {step === "templateGallery" && (
           <CelebrityTemplateGallery
             star={star}
-            templates={CELEBRITY_TEMPLATES}
+            templates={templates}
             onPickTemplate={handlePickTemplate}
             onBack={() => setStep("mode")}
           />
@@ -305,7 +335,7 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
           <CelebrityTemplateConfig
             star={star}
             template={selectedTemplate}
-            projects={CELEBRITY_PROJECTS}
+            projects={projects}
             showcases={TEMPLATE_SHOWCASES}
             onBackToGallery={() => setStep("templateGallery")}
             onGenerate={(payload) =>
@@ -321,7 +351,7 @@ export function CelebrityGenerationWorkspace({ starId, jobId }: Props = {}) {
         {step === "blindbox" && (
           <CelebrityBlindBox
             star={star}
-            projects={CELEBRITY_PROJECTS}
+            projects={projects}
             showcases={BLINDBOX_SHOWCASES}
             onGenerate={(payload) =>
               void startJob({

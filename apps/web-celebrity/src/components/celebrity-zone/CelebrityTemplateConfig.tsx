@@ -184,12 +184,12 @@ export function CelebrityTemplateConfig({
                   ))}
                 </SelectContent>
               </Select>
-              <button
-                type="button"
+              <Link
+                href="/projects"
                 className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
               >
                 + 新建
-              </button>
+              </Link>
             </div>
           </div>
 
@@ -216,7 +216,7 @@ export function CelebrityTemplateConfig({
             </div>
             {insufficientCredits && (
               <Link
-                href="/producer/finance"
+                href="/wallet"
                 className="inline-flex items-center gap-1 self-start rounded-md border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-amber-600 transition hover:border-amber-500"
               >
                 <Wallet className="h-3 w-3" /> 积分不足（需 ✦{formatCredits(creditPrice)}）→ 立即充值

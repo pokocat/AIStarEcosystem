@@ -36,22 +36,27 @@ import java.util.UUID;
 public class DramaScriptService {
 
     private static final Logger log = LoggerFactory.getLogger(DramaScriptService.class);
+    /** 风格短片结构化脚本的 prompt 级输出上限；不修改共享端点的全局默认。 */
+    static final int SHORT_DRAFT_DEFAULT_MAX_TOKENS = 6144;
 
     private final DramaScriptRepository repo;
     private final AiModelInvocationService invocation;
     private final PromptService promptService;
     private final MaterialVideoJobService videoJobService;
+    private final DramaShortContinuityService continuity;
     private final ObjectMapper om;
 
     public DramaScriptService(DramaScriptRepository repo,
                               AiModelInvocationService invocation,
                               PromptService promptService,
                               MaterialVideoJobService videoJobService,
+                              DramaShortContinuityService continuity,
                               ObjectMapper om) {
         this.repo = repo;
         this.invocation = invocation;
         this.promptService = promptService;
         this.videoJobService = videoJobService;
+        this.continuity = continuity;
         this.om = om;
     }
 
@@ -169,7 +174,7 @@ public class DramaScriptService {
         Map<String, Object> options = new LinkedHashMap<>();
         options.put("temperature", prompt.params().temperature() != null ? prompt.params().temperature() : 0.9);
         options.put("max_tokens", prompt.params().maxTokens() != null && prompt.params().maxTokens() > 0
-                ? prompt.params().maxTokens() : 4096);
+                ? prompt.params().maxTokens() : SHORT_DRAFT_DEFAULT_MAX_TOKENS);
         options.put("response_format", Map.of("type", "json_object"));
         options.put("timeout_seconds", 90);
 
@@ -181,6 +186,11 @@ public class DramaScriptService {
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
                     "短剧脚本生成调用失败，请稍后重试。");
+        }
+
+        if ("length".equalsIgnoreCase(resp.finishReason())) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_OUTPUT_TRUNCATED",
+                    "脚本输出达到长度上限，请缩短目标时长或减少生成份数后重试；运营也可在提示词设置中调高 max_tokens。");
         }
 
         List<JsonNode> scripts = parseScripts(resp.content(), genre, durationSec);
@@ -324,7 +334,7 @@ public class DramaScriptService {
             JsonNode scenes = script.get("scenes");
             if (scenes == null || !scenes.isArray() || scenes.size() == 0) continue;
             ensureMeta(script, genre);
-            out.add(script);
+            out.add(continuity.enrichScript(script));
         }
         return out;
     }

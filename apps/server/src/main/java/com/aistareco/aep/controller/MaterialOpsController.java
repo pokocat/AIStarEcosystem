@@ -1,5 +1,6 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.dto.MaterialVideoModelsDto;
 import com.aistareco.aep.service.MaterialOpsService;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.common.ApiResponse;
@@ -94,6 +95,16 @@ public class MaterialOpsController {
     }
 
     // ── 带货视频生成任务（真实视频大模型 · 异步 submit + 轮询） ──────────────────
+    /**
+     * 「生成模型」下拉：启用候选 + capability + 单价（billingUnit=per_second 按秒）+
+     * 服务端算好的有效时长区间（协议硬边界 ∩ candidate.maxDurationSec）。
+     * 前端据此做提交前时长校验与实时报价；models 未加载成功时前端必须禁止提交（不回落写死单价）。
+     */
+    @GetMapping("/videos/models")
+    public ApiResponse<MaterialVideoModelsDto> listVideoModels() {
+        return ApiResponse.of(videoJobs.listModels());
+    }
+
     /**
      * 提交一批视频生成任务。body = { items: [ {script_id, product_id, name, kind,
      * parent_video_id, prompt, variant_config, duration_sec, aspect_ratio} ... ] }。

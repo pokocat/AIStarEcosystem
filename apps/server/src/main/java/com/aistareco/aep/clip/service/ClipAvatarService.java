@@ -383,6 +383,32 @@ public class ClipAvatarService {
             v.setDeletedAt(now); v.setEngineStatus("deleted"); voices.save(v);
         }
     }
+    /** 账号保留期结束后的物理清理；授权确认快照由合规策略继续保留。 */
+    @Transactional
+    public void purgeOwner(String owner) {
+        List<DapAvatar> ownerAvatars = avatars.findByOwnerUserId(owner);
+        List<DapVoice> ownerVoices = voices.findByOwnerUserIdOrderByCreatedAtDesc(owner);
+        ShiliuGateway gateway = null;
+        for (DapAvatar a : ownerAvatars) {
+            if (a.getDeletedAt() == null && deletableUpstream(a.getEngineRef())) {
+                if (gateway == null) gateway = shiliu.required();
+                gateway.deleteAvatar(a.getEngineRef());
+            }
+            storage.delete(a.getEngineSourceKey()); storage.delete(a.getImageKey());
+            if (a.getVariantKeys() != null) a.getVariantKeys().forEach(storage::delete);
+            if (a.getShotKeys() != null) a.getShotKeys().values().stream()
+                    .filter(String.class::isInstance).map(String.class::cast).forEach(storage::delete);
+        }
+        for (DapVoice v : ownerVoices) {
+            if (v.getDeletedAt() == null && deletableUpstream(v.getEngineRef())) {
+                if (gateway == null) gateway = shiliu.required();
+                gateway.deleteVoice(v.getEngineRef());
+            }
+            storage.delete(v.getAudioKey());
+        }
+        avatars.deleteAll(ownerAvatars);
+        voices.deleteAll(ownerVoices);
+    }
     @Transactional
     public void delete(String owner, String avatarId) {
         DapAvatar a = requiredAvatar(owner, avatarId); ShiliuGateway gateway = shiliu.required(); Instant now = Instant.now();

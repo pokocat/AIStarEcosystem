@@ -12,9 +12,10 @@ import { Button } from "@/components/creator";
 import { formatCredits } from "@ai-star-eco/api-client/format";
 import { MaterialOpsApi } from "@/api";
 import { AiErrorNotice, errorMessage } from "@/components/common/ai-error-notice";
-import type { MaterialProduct, MaterialVideo, ScriptAsset, VariantConfig, VariantSample, VideoGenJobRequest } from "./types";
+import type { MaterialProduct, MaterialVideo, ScriptAsset, VariantConfig, VariantSample, VideoGenJobRequest, VideoModelOption } from "./types";
 import { DeriveVariablesPanel } from "./DeriveVariablesPanel";
-import { buildJobRequests, estimateVideoCredits, CREDIT_PER_VIDEO } from "./lib";
+import { useVideoModels } from "./use-video-models";
+import { buildJobRequests, creditsPerVideo, durationGateMessage, scriptTotalDur, isPlaceholderProduct } from "./lib";
 import { useConfirm } from "@/components/common/confirm-dialog";
 import { useCelebrityShell } from "@/lib/celebrity-shell-context";
 import { Eyebrow, hexA, CostLine } from "./shared";
@@ -56,6 +57,24 @@ export function VideoGenDialog({
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
 
+  // 生成模型候选（含有效时长区间 + 按秒/按次单价）。加载失败 → 禁止提交并显式报错，
+  // 绝不回落写死单价（报价必须与后端 hold 金额同源）。
+  const { models, error: modelsError } = useVideoModels();
+  const [endpointId, setEndpointId] = React.useState<string | null>(null);
+  const selectedModel: VideoModelOption | null = React.useMemo(() => {
+    if (!models || models.length === 0) return null;
+    return models.find((m) => m.endpointId === endpointId) ?? models.find((m) => m.isDefault) ?? models[0];
+  }, [models, endpointId]);
+  const totalDur = scriptTotalDur(script);
+  const perVideo = creditsPerVideo(selectedModel, totalDur);
+  const gateMessage = durationGateMessage(selectedModel, totalDur);
+  // 有 candidate 行（selectableById）一律显式透传 endpoint_id——报价模型与实际提交模型
+  // 严格同一，避免「按 A 报价、默认绑定切换后按 B 生成」漂移；仅合成默认项（无 candidate 行，
+  // 显式传 id 会被白名单 503 拒）走缺省默认路径。
+  const submitEndpointId = selectedModel?.selectableById ? selectedModel.endpointId : undefined;
+  // 报价未就绪 / 时长越界 / 模型信息异常（含刷新失败）任一 → 禁提交，杜绝按旧报价下单。
+  const blocked = perVideo == null || gateMessage != null || modelsError != null;
+
   const { confirm, ConfirmHost } = useConfirm();
   const { wallet } = useCelebrityShell();
   const balance = wallet?.totalBalance ?? null;
@@ -81,11 +100,15 @@ export function VideoGenDialog({
     [onSubmitted],
   );
 
-  // 生成前积分确认（展示预计消耗 + 余额影响）。
+  // 生成前积分确认（按所选模型真实报价：per_second = 单价 × 脚本秒数）。
   const confirmAndGenerate = React.useCallback(
     async (requests: VideoGenJobRequest[]) => {
+      if (perVideo == null || !selectedModel) return; // 报价未就绪时按钮已禁用，双保险
       const count = requests.length;
-      const credits = estimateVideoCredits(count);
+      const credits = perVideo * count;
+      const perLabel = selectedModel.billingUnit === "per_second"
+        ? `${selectedModel.creditCost} 积分/秒 × ${totalDur} 秒`
+        : `${selectedModel.creditCost} 积分/条`;
       const insufficient = balance != null && balance < credits;
       const ok = await confirm({
         title: `确认生成 ${count} 条视频？`,
@@ -96,7 +119,7 @@ export function VideoGenDialog({
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div>
               预计消耗 <strong style={{ color: "var(--fg-0)" }}>{credits} 积分</strong>
-              <span style={{ color: "var(--fg-3)" }}>（{count} 条 × {CREDIT_PER_VIDEO} 积分/条）</span>
+              <span style={{ color: "var(--fg-3)" }}>（{count} 条 × {perLabel}，模型：{selectedModel.name}）</span>
             </div>
             {balance != null && (
               <div style={{ color: insufficient ? "var(--danger)" : "var(--fg-2)" }}>
@@ -110,7 +133,7 @@ export function VideoGenDialog({
       });
       if (ok && !insufficient) runGenerate(requests);
     },
-    [balance, confirm, runGenerate],
+    [balance, confirm, runGenerate, perVideo, selectedModel, totalDur],
   );
 
   // 轮询 generating 阶段未完成的任务。
@@ -132,7 +155,13 @@ export function VideoGenDialog({
   }, [stage, jobs]);
 
   const startVariant = (samples: VariantSample[], config: VariantConfig) =>
-    confirmAndGenerate(buildJobRequests({ script, product, config, samples, baseline }));
+    confirmAndGenerate(buildJobRequests({
+      script,
+      product,
+      config: { ...config, endpoint_id: submitEndpointId },
+      samples,
+      baseline,
+    }));
 
   return (
     <>
@@ -198,12 +227,26 @@ export function VideoGenDialog({
           </Button>
         </div>
 
+        {/* 生成模型（时长上限 + 单价前置；报价未就绪 / 时长越界时提交被禁用） */}
+        {stage === "config" && (
+          <ModelSelectRow
+            models={models}
+            selected={selectedModel}
+            onSelect={setEndpointId}
+            error={modelsError}
+            gateMessage={gateMessage}
+            totalDur={totalDur}
+          />
+        )}
+
         {/* body */}
         {stage === "config" && isVariant && (
           <DeriveVariablesPanel
             script={script}
             walletBalance={balance}
             submitting={submitting}
+            creditsPerVideo={perVideo}
+            blocked={blocked}
             error={submitError}
             onClose={onClose}
             onGenerate={startVariant}
@@ -215,9 +258,15 @@ export function VideoGenDialog({
             product={product}
             walletBalance={balance}
             submitting={submitting}
+            credits={perVideo}
+            blocked={blocked}
             error={submitError}
             onGenerate={(extra) => {
-              const reqs = buildJobRequests({ script, product, config: DEFAULT_CONFIG });
+              const reqs = buildJobRequests({
+                script,
+                product,
+                config: { ...DEFAULT_CONFIG, endpoint_id: submitEndpointId },
+              });
               const withExtra = extra.trim()
                 ? reqs.map((r) => ({ ...r, prompt: `${r.prompt}\n\n【补充要求】${extra.trim()}` }))
                 : reqs;
@@ -240,12 +289,96 @@ export function VideoGenDialog({
   );
 }
 
+// ── 生成模型选择行（候选 ≤1 时只显示能力说明，不渲染下拉） ─────────────────────────
+function ModelSelectRow({
+  models,
+  selected,
+  onSelect,
+  error,
+  gateMessage,
+  totalDur,
+}: {
+  models: VideoModelOption[] | null;
+  selected: VideoModelOption | null;
+  onSelect: (endpointId: string) => void;
+  error: string | null;
+  gateMessage: string | null;
+  totalDur: number;
+}) {
+  const rangeLabel = (m: VideoModelOption) => {
+    const min = m.effectiveMinDurationSec ?? null;
+    const max = m.effectiveMaxDurationSec ?? null;
+    if (min != null && max != null) return `${min}–${max} 秒`;
+    if (max != null) return `最长 ${max} 秒`;
+    if (min != null) return `至少 ${min} 秒`;
+    return "时长不限";
+  };
+  const priceLabel = (m: VideoModelOption) =>
+    m.billingUnit === "per_second" ? `${m.creditCost} 积分/秒` : `${m.creditCost} 积分/条`;
+  return (
+    <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 8, background: "var(--bg-2)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <Eyebrow style={{ flexShrink: 0 }}>生成模型</Eyebrow>
+        {models == null && !error && (
+          <span style={{ fontSize: 12, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Loader2 size={12} className="animate-spin" /> 模型信息加载中…
+          </span>
+        )}
+        {models != null && models.length > 1 && (
+          <select
+            value={selected?.endpointId ?? ""}
+            onChange={(e) => onSelect(e.target.value)}
+            aria-label="选择生成模型"
+            style={{
+              maxWidth: 220,
+              padding: "6px 10px",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--bg-1)",
+              border: "1px solid var(--line-2)",
+              color: "var(--fg-0)",
+              fontSize: 12.5,
+              outline: "none",
+            }}
+          >
+            {models.map((m) => (
+              <option key={m.endpointId} value={m.endpointId}>
+                {m.name}{m.isDefault ? "（默认）" : ""}
+              </option>
+            ))}
+          </select>
+        )}
+        {models != null && models.length === 1 && selected && (
+          <span style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected.name}</span>
+        )}
+        {selected && (
+          <span
+            title={`该模型单条视频 ${rangeLabel(selected)}；计价 ${priceLabel(selected)}`}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)", whiteSpace: "nowrap" }}
+          >
+            {rangeLabel(selected)} · {priceLabel(selected)}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: gateMessage ? "var(--danger)" : "var(--fg-3)", whiteSpace: "nowrap" }}>
+          脚本 {totalDur} 秒
+        </span>
+      </div>
+      {error && <AiErrorNotice title="生成模型不可用" message={error} />}
+      {gateMessage && (
+        <div style={{ fontSize: 12, color: "var(--danger)", lineHeight: 1.6 }}>{gateMessage}</div>
+      )}
+    </div>
+  );
+}
+
 // ── baseline 直接生成（issue 2：去掉 6 轴 + 18 项参数，只留一句补充要求） ──────────
 function DirectBaselineStage({
   script,
   product,
   walletBalance,
   submitting,
+  credits,
+  blocked,
   error,
   onGenerate,
 }: {
@@ -253,12 +386,16 @@ function DirectBaselineStage({
   product: MaterialProduct;
   walletBalance: number | null;
   submitting: boolean;
+  /** 单条真实报价；null = 模型报价未就绪（提交禁用）。 */
+  credits: number | null;
+  /** 报价未就绪或时长越界 → 禁用提交。 */
+  blocked: boolean;
   error: string | null;
   onGenerate: (extra: string) => void;
 }) {
   const [extra, setExtra] = React.useState("");
-  const credits = estimateVideoCredits(1);
   const totalDur = script.blocks.reduce((s, b) => s + b.dur, 0);
+  const noProduct = isPlaceholderProduct(product);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -272,8 +409,16 @@ function DirectBaselineStage({
             </span>
           </div>
           <div style={{ fontSize: 12, color: "var(--fg-2)", lineHeight: 1.6 }}>
-            关联商品 <strong style={{ color: "var(--fg-1)" }}>{product.name}</strong>
-            {product.priceCents ? ` · ¥${(product.priceCents / 100).toFixed(0)}` : ""}
+            {noProduct ? (
+              script.creative_brief?.trim()
+                ? <>主题简介 <strong style={{ color: "var(--fg-1)" }}>{script.creative_brief.trim().slice(0, 40)}</strong></>
+                : <>未关联商品 · 按脚本分镜直接生成</>
+            ) : (
+              <>
+                关联商品 <strong style={{ color: "var(--fg-1)" }}>{product.name}</strong>
+                {product.priceCents ? ` · ¥${(product.priceCents / 100).toFixed(0)}` : ""}
+              </>
+            )}
           </div>
           <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.6 }}>
             将按脚本分镜 + 商品卖点直接生成一条视频。需要批量换人物 / 场景 / 台词，请用「派生新视频」。
@@ -310,9 +455,9 @@ function DirectBaselineStage({
       {/* footer */}
       <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-2)" }}>
         <CostLine count={1} credits={credits} balance={walletBalance} unit="视频" />
-        <Button variant="accent" onClick={() => onGenerate(extra)} disabled={submitting}>
+        <Button variant="accent" onClick={() => onGenerate(extra)} disabled={submitting || blocked}>
           {submitting ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
-          {submitting ? "提交中…" : `生成视频 · ${credits} 积分`}
+          {submitting ? "提交中…" : credits != null ? `生成视频 · ${credits} 积分` : "生成视频"}
         </Button>
       </div>
     </div>

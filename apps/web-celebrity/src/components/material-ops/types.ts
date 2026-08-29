@@ -14,6 +14,9 @@
 
 import type { Product } from "@ai-star-eco/types/product";
 
+// v0.132 起新增 wire 契约类型进 packages/types（真源），这里 re-export 供组件消费。
+export type { VideoModelCapability, VideoModelOption, VideoModels } from "@ai-star-eco/types/material-ops";
+
 // ── 分级 / 来源 ──────────────────────────────────────────────────────────────
 export type Tier = "S" | "A" | "B" | "D"; // 爆款 / 优质 / 普通 / 草稿
 export type AssetKind = "my_script" | "template" | "viral_clone" | "ai_seed";
@@ -80,10 +83,12 @@ export interface ScriptAsset {
   source: ScriptSource;
   tags: string[];
   cover_color: string;
-  /** 关联商品 id（复用 Product.id；mock 里显式链接，避免靠 category 模糊匹配） */
+  /** 关联商品 id（复用 Product.id；mock 里显式链接，避免靠 category 模糊匹配）。免商品脚本为空。 */
   product_id?: string;
-  /** 关联商品（编辑/预览时挂上 Product 实体） */
+  /** 关联商品（编辑/预览时挂上 Product 实体）；免商品脚本为空 */
   product?: MaterialProduct;
+  /** 免商品脚本的主题/卖点简介（v0.132）：无 product_id 时作为 AI 起稿与出片 prompt 的商品段输入。 */
+  creative_brief?: string | null;
   /** 后端权威归属：material_scripts.owner_user_id。共享脚本为空。 */
   owner_user_id?: string | null;
   /** 后端按 owner_user_id 从 AepUser 解析出的展示名。 */
@@ -108,6 +113,8 @@ export interface VariantConfig {
   lighting: string;
   role_relation: string;
   voice: string;
+  /** 出片模型端点 id（v0.132 模型自选；缺省走后端默认端点，白名单校验在 server）。 */
+  endpoint_id?: string;
 }
 
 export interface VideoMetrics {
@@ -256,21 +263,6 @@ export interface VariantSample {
   _label: string;
   subs: Record<string, string>;
   blocks: (ScriptBlock & { originalText?: string })[];
-}
-
-// ── 视频结构化配置（5 组 18 字段，原型独有） ───────────────────────────────────
-export interface VideoConfigFieldDef {
-  label: string;
-  options: string[];
-  default: string;
-}
-
-export interface VideoConfigGroupDef {
-  label: string;
-  /** lucide 图标名（在 UI 常量里映射成组件） */
-  icon: string;
-  toneVar: string;
-  fields: Record<string, VideoConfigFieldDef>;
 }
 
 // ── 智能体训练 ────────────────────────────────────────────────────────────────

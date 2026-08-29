@@ -11,6 +11,7 @@ import { MaterialOpsApi } from "@/api";
 import { SCRIPT_ASSETS, VIRAL_HITS } from "@/mocks/material-ops";
 import { TIER_META, ASSET_KIND_META, PLATFORM_RULES } from "@/constants/material-ops-ui";
 import type { AssetKind, MaterialProduct, PlatformId, ScriptAsset, ScriptBlock, Tier, ViralHit } from "./types";
+import { isPlaceholderProduct } from "./lib";
 import { Eyebrow, Tag, Seg, FilterChip, TierBadge, MetricTile, ShotTimeline, SearchInput, MetricInline, hexA, fmtW } from "./shared";
 
 type HubTab = "template" | "viral" | "ai";
@@ -18,12 +19,15 @@ type HubTab = "template" | "viral" | "ai";
 export function DraftingHub({
   openTab = "template",
   product,
+  creativeBrief,
   onClose,
   onApply,
   onApplyAndPreview,
 }: {
   openTab?: HubTab;
   product: MaterialProduct;
+  /** 免商品脚本的主题简介（AI 起稿时作为商品段输入）。 */
+  creativeBrief?: string | null;
   onClose: () => void;
   onApply: (blocks: ScriptBlock[]) => void;
   onApplyAndPreview: (blocks: ScriptBlock[]) => void;
@@ -78,7 +82,7 @@ export function DraftingHub({
         <div style={{ flex: 1, overflow: "hidden", display: "flex", minHeight: 0 }}>
           {tab === "template" && <TemplatePicker product={product} onApply={onApply} onApplyAndPreview={onApplyAndPreview} />}
           {tab === "viral" && <ViralPicker product={product} onApply={onApply} onApplyAndPreview={onApplyAndPreview} />}
-          {tab === "ai" && <AIPicker product={product} onApply={onApply} onApplyAndPreview={onApplyAndPreview} onClose={onClose} />}
+          {tab === "ai" && <AIPicker product={product} creativeBrief={creativeBrief} onApply={onApply} onApplyAndPreview={onApplyAndPreview} onClose={onClose} />}
         </div>
       </div>
     </>
@@ -447,7 +451,7 @@ function viralToAsset(v: ViralHit): ScriptAsset {
 }
 
 // ── AI 生成 tab ───────────────────────────────────────────────────────────────
-function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: MaterialProduct; onApply: (b: ScriptBlock[]) => void; onApplyAndPreview: (b: ScriptBlock[]) => void; onClose: () => void }) {
+function AIPicker({ product, creativeBrief, onApply, onApplyAndPreview, onClose }: { product: MaterialProduct; creativeBrief?: string | null; onApply: (b: ScriptBlock[]) => void; onApplyAndPreview: (b: ScriptBlock[]) => void; onClose: () => void }) {
   const [stage, setStage] = React.useState<"config" | "results">("config");
   const [tone, setTone] = React.useState(product.suggestedAngles?.[0] ?? "情感故事");
   const [audience, setAudience] = React.useState(product.audience?.[0] ?? "女性 25-35");
@@ -463,14 +467,20 @@ function AIPicker({ product, onApply, onApplyAndPreview, onClose }: { product: M
     setRunning(true);
     setError(null);
     try {
+      // duration_sec 不再写死（旧值 38 必被默认模型 5–15s 硬限拒绝）：
+      // 缺省让服务端按默认视频模型的有效时长上限起稿，产物落库即可直接出片。
+      const noProduct = isPlaceholderProduct(product);
       const next = await MaterialOpsApi.aiDraftScripts({
-        product_id: product.id,
-        product_name: product.name,
-        category: product.category,
-        selling_points: product.sellingPoints ?? undefined,
+        ...(noProduct
+          ? { creative_brief: creativeBrief ?? undefined }
+          : {
+              product_id: product.id,
+              product_name: product.name,
+              category: product.category,
+              selling_points: product.sellingPoints ?? undefined,
+            }),
         tone,
         audience: [audience],
-        duration_sec: 38,
         count: 1,
       });
       const list = next.length ? next : aiCandidates(product, 1); // 空仅出现在 USE_MOCK

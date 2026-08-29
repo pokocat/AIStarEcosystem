@@ -78,10 +78,19 @@ public class MaterialAiService {
     }
 
     // ── 脚本 AI 起稿 ──────────────────────────────────────────────────────────
-    /** 返回 ScriptAsset 形状的候选；配置/调用/解析问题抛 BusinessException（不兜底）。 */
+    /** 中文口播语速上限（字/秒）：dur 秒的镜头 text 超过 dur×8 字视为不可执行（正常语速约 4 字/秒）。 */
+    static final int MAX_SPEECH_CHARS_PER_SEC = 8;
+
+    /**
+     * 返回 ScriptAsset 形状的候选；配置/调用/解析问题抛 BusinessException（不兜底）。
+     * 时长契约：产物总时长必须 ≤ targetDurationSec（且 ≥ minDurationSec，若已知）、逐镜台词
+     * 不超朗读密度上限；首轮全不合法 → 一次受控重试（追加压缩指令），仍不合法 → AI_BAD_OUTPUT。
+     * 禁止服务端只改 dur 数字不改台词（那会产出"1 秒镜头塞 20 秒台词"的不可执行脚本）。
+     */
     public List<JsonNode> draftScripts(Product product, String tone, List<String> audience,
-                                       int durationSec, int count) {
+                                       int durationSec, int count, Integer minDurationSec) {
         int n = Math.max(1, Math.min(count, 5));
+        int target = durationSec > 0 ? durationSec : 15;
         ResolvedPrompt p = promptService.resolve(AiModelPurpose.SCRIPT_DRAFT);
         ensureConfigured(AiModelPurpose.SCRIPT_DRAFT, p);
         Map<String, String> vars = new HashMap<>();
@@ -91,11 +100,29 @@ public class MaterialAiService {
         vars.put("selling_points", nz(product.getSellingPoints()));
         vars.put("audience", (audience == null || audience.isEmpty()) ? "通用人群" : String.join("、", audience));
         vars.put("tone", nz(tone));
-        vars.put("duration_sec", String.valueOf(durationSec > 0 ? durationSec : 38));
+        vars.put("duration_sec", String.valueOf(target));
         vars.put("count", String.valueOf(n));
         vars.put("banned_words", String.join("、", BANNED_WORDS));
         String user = PromptService.fill(p.userTemplate(), vars);
 
+        List<JsonNode> out = draftScriptsOnce(p, user, product, audience, target, minDurationSec, n);
+        if (out.isEmpty()) {
+            // 一次受控重试：显式要求压缩台词与时长（重试产物走同一套完整校验，不放水）。
+            String retryUser = user + "\n\n注意：上一轮产出不符合时长约束。必须把每个脚本的镜头 dur 之和压到 "
+                    + target + " 秒以内" + (minDurationSec != null ? "、不少于 " + minDurationSec + " 秒" : "")
+                    + "，且每个镜头 text 不超过 dur×" + MAX_SPEECH_CHARS_PER_SEC + " 个汉字（压台词而不是只改数字）。";
+            out = draftScriptsOnce(p, retryUser, product, audience, target, minDurationSec, n);
+        }
+        if (out.isEmpty()) {
+            throw badOutput(AiModelPurpose.SCRIPT_DRAFT,
+                    "未产出符合时长约束的脚本（目标 " + target + " 秒，重试一次后仍不合法）");
+        }
+        return out;
+    }
+
+    private List<JsonNode> draftScriptsOnce(ResolvedPrompt p, String user, Product product,
+                                            List<String> audience, int targetDurationSec,
+                                            Integer minDurationSec, int n) {
         JsonNode root = callJsonObject(AiModelPurpose.SCRIPT_DRAFT, p, user);
         List<JsonNode> out = new ArrayList<>();
         JsonNode arr = root.get("scripts");
@@ -105,7 +132,7 @@ public class MaterialAiService {
                 seen++;
                 JsonNode built;
                 try {
-                    built = buildScriptAsset(s, product, audience, out.size());
+                    built = buildScriptAsset(s, product, audience, out.size(), targetDurationSec, minDurationSec);
                 } catch (Exception e) {
                     log.warn("[material-ai] SCRIPT_DRAFT 第 {} 个候选构造失败，跳过：{}", seen, e.getMessage());
                     continue;
@@ -114,10 +141,8 @@ public class MaterialAiService {
                 if (out.size() >= n) break;
             }
         }
-        log.info("[material-ai] SCRIPT_DRAFT 产出 {} 条有效脚本（模型返回 {} 条，请求 {} 条）", out.size(), seen, n);
-        if (out.isEmpty()) {
-            throw badOutput(AiModelPurpose.SCRIPT_DRAFT, "未产出有效脚本（镜头数/字段校验后为空，模型返回 " + seen + " 条）");
-        }
+        log.info("[material-ai] SCRIPT_DRAFT 产出 {} 条有效脚本（模型返回 {} 条，请求 {} 条，目标 {} 秒）",
+                out.size(), seen, n, targetDurationSec);
         return out;
     }
 
@@ -299,21 +324,30 @@ public class MaterialAiService {
 
     // ── 后处理 / 校验 ──────────────────────────────────────────────────────────
 
-    /** 校验并补全为完整 ScriptAsset；不合法返回 null（被丢弃）。 */
-    private JsonNode buildScriptAsset(JsonNode raw, Product product, List<String> audience, int idx) {
+    /**
+     * 校验并补全为完整 ScriptAsset；不合法返回 null（被丢弃）。
+     * 时长契约（R2）：Σdur ≤ targetDurationSec、Σdur ≥ minDurationSec（若已知）、
+     * 逐镜 text ≤ dur×{@link #MAX_SPEECH_CHARS_PER_SEC} 字（朗读密度，防"1 秒镜头塞 20 秒台词"）。
+     */
+    private JsonNode buildScriptAsset(JsonNode raw, Product product, List<String> audience, int idx,
+                                      int targetDurationSec, Integer minDurationSec) {
         if (raw == null || !raw.isObject()) return null;
         JsonNode blocksIn = raw.get("blocks");
         if (blocksIn == null || !blocksIn.isArray() || blocksIn.size() < 3 || blocksIn.size() > 8) return null;
 
         ArrayNode blocks = om.createArrayNode();
-        int totalDur = 0;
+        long totalDur = 0;
         for (JsonNode b : blocksIn) {
             String kind = b.path("kind").asText("").strip().toLowerCase();
             if (!BLOCK_KINDS.contains(kind)) kind = "scene";
+            // dur 必须是正整数：缺失/0/负数不再静默改成 5 秒（那是服务端改写产物数字），
+            // 整稿作废让其进入受控重试或 AI_BAD_OUTPUT。
             int dur = b.path("dur").asInt(0);
-            if (dur <= 0) dur = 5;
+            if (dur <= 0) return null;
+            if (targetDurationSec > 0 && dur > targetDurationSec) return null; // 单镜就超目标 → 作废
             String text = b.path("text").asText("").strip();
             if (text.isBlank()) return null; // 空镜头 → 整稿作废
+            if (speechChars(text) > (long) dur * MAX_SPEECH_CHARS_PER_SEC) return null; // 台词超朗读密度 → 不可执行
             ObjectNode block = om.createObjectNode();
             block.put("kind", kind);
             block.put("label", b.path("label").asText(defaultLabel(kind)));
@@ -321,8 +355,10 @@ public class MaterialAiService {
             block.put("text", text);
             block.put("shot", b.path("shot").asText(""));
             blocks.add(block);
-            totalDur += dur;
+            totalDur += dur; // long 累加：异常大模型输出不会 int 溢出
         }
+        if (targetDurationSec > 0 && totalDur > targetDurationSec) return null; // 超模型时长上限 → 作废
+        if (minDurationSec != null && totalDur < minDurationSec) return null;   // 低于模型硬下限 → 作废
 
         ObjectNode out = om.createObjectNode();
         out.put("id", "ai-" + Long.toString(System.nanoTime(), 36) + "-" + idx);
@@ -366,6 +402,12 @@ public class MaterialAiService {
         out.put("cover_color", PALETTE[idx % PALETTE.length]);
         if (product.getId() != null) out.put("product_id", product.getId());
         return out;
+    }
+
+    /** 口播有效字数：剔除空白与常见标点后计数（标点不占朗读时间，避免误杀正常台词）。 */
+    static int speechChars(String text) {
+        if (text == null) return 0;
+        return text.replaceAll("[\\s\\p{Punct}，。！？、；：“”‘’…—·]", "").length();
     }
 
     /** 校验并补全为 ScriptVariable；原值须在脚本里出现，否则丢弃（过滤幻觉）。 */

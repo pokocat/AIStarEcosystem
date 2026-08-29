@@ -68,6 +68,24 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ## 版本日志
 
+### v0.134 · 2026-08-18 · 风格短片 ViMax-lite 非视频链路闭环
+
+- **单次脚本调用 + 确定性 Manifest**：服务端从脚本响应派生角色/场景/镜头稳定 ID、视觉/表演特征分栏、父镜依赖、参考优先级和 SFX/BGM 时间轴；不增加第二次 LLM 调用。草稿保存时以当前分镜重建，客户端不能伪造 DAG。
+- **无字视觉 prompt**：逐镜视频提示不再携带对白、SFX 或 BGM 原文，只要求无文字视觉表演；平台后期负责声音和字幕，减少 token 与画面烧字。
+- **逐镜配音与幂等恢复**：新增 `POST /me/drama/shorts/{id}/prepare-audio`，复用数字人明确关联的 V2 音色，按台词指纹只补缺失项，成功音频立即镜像平台存储。
+- **确定性音画总装**：按 TTS 真实时长重编码每镜，烧录精确字幕，补齐 AAC 音轨，统一 720×1280 / 30fps / H.264 / loudnorm / faststart；ffprobe 通过后上传最终视频和封面 OSS key。
+- **产品完整度**：制作页增加零 Token 预检、Manifest 版本、结构/配音/素材计数、可恢复错误和配音确认；遵循 `product-ui-completeness` 的空态、禁用原因、加载反馈和可访问性要求。
+- **边界**：未新增/切换视频模型，未提交真实视频生成或授权样片；Kling 协议、默认模型切换仍保持未实施。
+
+### v0.133 · 2026-08-18 · 风格短片 P0：提示词去污染 + 真实成片总装
+
+- **提示词正确性**：新增确定性短片 prompt compiler；全片共享区只保留视觉风格、固定场景和主角名，标题、人物口头禅/对白不再注入每镜。逐镜补齐节拍、景别、运镜、特效、当前镜对白、音效与 BGM；无模板时不再回落「口播带货风格」。
+- **真实总装**：新增 `POST /me/drama/shorts/{id}/assemble`。服务端校验所有镜头均已验收且有视频，按镜号 ffmpeg 拼接（流复制失败时 H.264/AAC 转码），上传 OSS 后以 `payloadJson.assembled.cdnKey` 为真值；输入指纹不变时幂等复用。
+- **完成态守卫**：客户端 PUT 不能伪造 `assembled`，也不能绕过总装直接把草稿改成 done；编辑镜头会令旧成片失效，列表/预览优先最终成片，签名 URL 每次读取重签。
+- **产品完整度**：制作页补合成进度、缺素材原因、可见失败与重试、成功反馈、窄屏安全宽度及 `aria-live/aria-busy`；这些状态按 `product-ui-completeness` 审计落地。
+- **门禁**：web-drama Vitest 40/40 + build（31 路由）；server 定向 20/20 + 全量 627（skip 3，本地 CDN + H2 `NON_KEYWORDS=CAST`）；全 workspace typecheck；admin build（64 路由）；API contract 全绿。全程未提交付费生成任务。
+- **输出容量**：`drama.script_draft` 的 prompt 级缺省 `max_tokens` 从 4096 提至 6144，运营显式配置仍优先；模型以 `finish_reason=length` 截断时返回 `AI_OUTPUT_TRUNCATED`，不再拿残缺 JSON 继续生产。admin Prompt 页同步展示留空默认值。
+
 ### v0.103 · 2026-07-12 · 短剧前端 UX 精细化打磨（纯前端，无新端点 / 无实体变更）
 
 > 四批体验打磨 + 审查修复：可达性、扣费体验、异步韧性、状态与视觉。全部落在 web-drama 前端，后端零改动。

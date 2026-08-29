@@ -40,6 +40,65 @@ export interface ScriptMeta {
   character: ScriptCharacter;
 }
 
+export interface ContinuityRef {
+  cdnKey?: string;
+  url?: string;
+}
+
+export interface ContinuityCharacter {
+  id: string;
+  name: string;
+  /** 只供视觉模型使用，不含台词、口头禅或剧情指令。 */
+  visualTraits: string;
+  /** 只供表演/配音使用，不进入逐镜视觉前缀。 */
+  performanceTraits: string;
+  avatarId?: string;
+  canonicalRef?: ContinuityRef;
+}
+
+export interface ContinuityScene {
+  id: string;
+  name: string;
+  visualTraits: string;
+  canonicalRef?: ContinuityRef;
+}
+
+export interface ContinuityShot {
+  id: string;
+  no: number;
+  sceneId: string;
+  durationSec: number;
+  continuityMode: "anchor" | "chain";
+  parentShotId?: string;
+  castIds: string[];
+  dialogue: { speaker: string; text: string };
+  audio: { startSec: number; endSec: number; sfx: string; bgm: string; subtitle?: boolean };
+}
+
+export interface ContinuityDependency {
+  shotId: string;
+  batch: number;
+  dependsOn?: string;
+  requiredRefs: Array<"character" | "scene" | "previous_last_frame">;
+}
+
+export interface ShortContinuityManifest {
+  version: string;
+  promptVersion: string;
+  renderSpec: {
+    aspectRatio: "9:16";
+    width: 720;
+    height: 1280;
+    fps: 30;
+    visualTextPolicy: "no_text";
+    subtitlePolicy: "platform_exact";
+  };
+  characters: ContinuityCharacter[];
+  scenes: ContinuityScene[];
+  shots: ContinuityShot[];
+  dependencyPlan: ContinuityDependency[];
+}
+
 export interface DramaScript {
   id: string;
   title: string;
@@ -49,6 +108,8 @@ export interface DramaScript {
   status: string; // draft | ready
   /** 整体短视频说明（后端 ai-draft 保证返回，老脚本可能没有）。 */
   meta?: ScriptMeta;
+  /** 单次脚本调用后由服务端确定性派生，不额外消耗模型 token。 */
+  continuity_manifest?: ShortContinuityManifest;
   scenes: DramaScene[];
   /** 后续推荐 action：AI 基于这一版脚本给的 2-4 条「继续修改」快捷指令（ai-draft 返回，可能为空）。 */
   suggestions?: string[];

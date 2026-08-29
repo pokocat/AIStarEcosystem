@@ -11,7 +11,7 @@
 
 **文档版本**: v2.0.0  
 **对应代码版本**: v2.7.x  
-**最后更新**: 2026-08-11
+**最后更新**: 2026-08-18
 
 ### `clip` 军师快出片补充规则（v0.111）
 
@@ -112,6 +112,34 @@ LedgerEntry 不可修改、不可删除（仅可标记 reversed_by 关联反转�
 
 积分不足时：HTTP 402 Payment Required
 返回：{ error: "INSUFFICIENT_CREDITS", current: N, required: M }
+```
+
+【v0.132 新增】带货素材视频（/material/videos/generate）时长与计价：
+
+```
+有效时长区间 = 供应商协议硬边界 ∩ candidate.maxDurationSec
+  · 协议硬边界：jusuan(minimax-h3)=5..15s；agnes 上限 18s（441 帧 ÷ 24fps）；
+    其余协议未知边界 = null（不臆造下限/上限）
+  · items[].duration_sec 必填且 > 0 → 否则 400 VIDEO_DURATION_REQUIRED
+  · 越出有效区间 → 400 VIDEO_DURATION_UNSUPPORTED
+  · 全部校验发生在任何积分 hold 之前；批内任一 item 非法 → 整批无任务、无冻结
+
+单条计价优先级（高 → 低）：
+  1. item.credit_cost —— 仅限内部 Java 调用方（drama 注入自身单价）；
+     外部 HTTP 请求体中的 credit_cost / credit_label 一律被 controller 剥离（防零价绕过）
+  2. candidate.creditCostOverride —— 端点 billingMode=PER_SECOND 时 = 费率 × duration_sec
+     （溢出 → 400 VIDEO_PRICE_OVERFLOW），否则按次
+  3. 带货线默认单价 material.video-generate（admin 可配，默认 30/条）
+
+前端报价与后端 hold 必须同源：报价取 GET /material/videos/models
+（billingUnit=per_second → creditCost × 脚本总秒数）；models 加载失败时前端必须禁用提交，
+不得回落任何写死单价。
+
+AI 起稿（/material/scripts/ai-draft）时长契约：
+  · duration_sec 缺省 → 默认视频端点有效上限（无配置回退 15s）；显式传入越界 → 400（不静默 clamp）
+  · 产物校验：Σdur ≤ 目标 且 ≥ 有效下限（若已知）；逐镜口播 ≤ dur × 8 汉字（朗读密度）
+  · 首轮全不合法 → 一次受控压缩重试（同套校验）→ 仍不合法 → 502 AI_BAD_OUTPUT 并释放冻结
+  · 禁止服务端只缩 dur 数字不改台词（会产出台词念不完的不可执行脚本）
 ```
 
 ### 2.3 市场挂牌收益分成
@@ -509,6 +537,20 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
     type / status 出 wire 全小写（enum 规则同 §全局）
   - 引用为空 → data: []（200，不是 404）；aiavatar 详情页空列表不渲染卡片
 ```
+
+### 6.5 风格短片完成态与真实总装（v0.133）
+
+- `drama.script_draft` 的 prompt 级缺省 `max_tokens=6144`；运营后台显式配置优先，且不修改 `DRAMA_SCRIPT_DRAFT` 共享端点的全局默认。上游返回 `finish_reason=length` 时必须以 `AI_OUTPUT_TRUNCATED` 失败关闭，不能解析或保存残缺 JSON。
+- `drama.script_draft` 保持一次模型调用；`continuity_manifest` 由服务端在同一响应后确定性派生，不要求模型重复生成冗长 JSON，不增加第二次文本模型调用。草稿保存时服务端以当前可编辑分镜重建 Manifest / DAG，不信任客户端伪造依赖。
+- `GET /me/drama/shorts/{id}/preflight` 是零 Token 只读质量门：检查稳定 ID、DAG、画面字段、时长、角色锚点、参考生效回报、配音指纹和总装素材；不得调用模型、提交媒体任务或冻结积分。
+- `POST /me/drama/shorts/{id}/prepare-audio` 只处理音频：用草稿绑定数字人明确关联的 ready V2 音色逐镜 TTS，成功后立即镜像平台存储并记录 `textFingerprint/providerTaskId/cdnKey`。重试只补缺失或台词已变化的镜头；客户端 PUT 不得伪造或覆盖这些服务端音频字段。
+- `DramaShort.status=done` 表示服务端已经把全部已验收镜头拼成一条完整视频并成功持久化，不等价于“每镜已出片”。
+- 客户端 `PUT /me/drama/shorts/{id}` 不得写入或覆盖 `data.assembled`；请求 `status=done` 但不存在与当前镜头输入指纹一致的服务端成片时，返回 `409 DRAMA_SHORT_ASSEMBLY_REQUIRED`。
+- `POST /me/drama/shorts/{id}/assemble` 仅接受所有镜头均为 `flow=done` 且具有 `videoUrl`，并且所有非空台词均有与当前文本指纹匹配的 TTS 音频。按 `shot.no` 排序总装，任一镜头缺失时整次拒绝，不产出部分成片。
+- 总装逐镜丢弃视频模型原音，按 TTS 真实时长统一为 720×1280、30fps、H.264/AAC；开启字幕的镜头由平台烧录精确台词，不依赖视频模型生成文字。无台词镜头补确定性静音轨；最终统一响度、faststart，并用 ffprobe 硬验音轨和时长偏差。
+- 最终视频与封面真值分别写入 `payloadJson.assembled.cdnKey/coverCdnKey`；URL 只在出 wire 时由 `CdnUrlSigner` 派生。列表和详情优先播放非 stale 的最终成片，不再把第一镜视频冒充完整短片。
+- 镜头编号、ID、视频 URL、台词、音频 key 或字幕开关任一变化都会改变 `sourceFingerprint`，旧成片标记为 stale，草稿回到 draft；输入未变化的重复合成幂等复用原成片，不重复上传。
+- 只有拼接、上传与草稿落库都成功后才置 `done/progress=100`；失败保持 draft 并允许用户重试。总装下载只允许本平台同源/CDN 地址，拒绝外部和内网 URL。
 
 ```
 packages/types/src/*.ts              ← 唯一前端真值源

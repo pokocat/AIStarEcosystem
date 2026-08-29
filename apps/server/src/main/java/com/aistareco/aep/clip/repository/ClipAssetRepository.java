@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.*;
 public interface ClipAssetRepository extends JpaRepository<ClipAsset, String> {
+    List<ClipAsset> findByExternalOwnerId(String owner);
     Optional<ClipAsset> findByIdAndExternalOwnerIdAndDeletedAtIsNull(String id, String owner);
     List<ClipAsset> findByExternalOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(String owner);
     List<ClipAsset> findByPresetTrueAndDeletedAtIsNullOrderByCreatedAtDesc();

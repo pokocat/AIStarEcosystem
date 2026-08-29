@@ -3,7 +3,6 @@
 
 import { PALETTE, VARIANT_AXES, VARIANT_AXIS_ORDER } from "@/constants/material-ops-ui";
 import type {
-  AsyncRenderTask,
   MaterialProduct,
   MaterialVideo,
   ScriptAsset,
@@ -12,16 +11,39 @@ import type {
   VariantConfig,
   VariantSample,
   VideoGenJobRequest,
+  VideoModelOption,
 } from "./types";
 
 const VAR_TONES = [PALETTE.rose, PALETTE.teal, PALETTE.amber, PALETTE.violet, PALETTE.violetDeep, PALETTE.peach];
 
-/** 单条视频生成的积分单价（与混剪 mixcut.credit-per-variant 默认值对齐）。 */
-export const CREDIT_PER_VIDEO = 30;
+/**
+ * 单条视频按所选模型的真实报价（billingUnit=per_second 按秒展开，与后端 hold 金额同源）。
+ * model 为 null（模型列表未加载成功）或 durationSec<=0（时长未就绪，后端会 400）→ 返回 null，
+ * 调用方必须禁用提交，**不回落写死单价、不虚构 1 秒报价**。
+ */
+export function creditsPerVideo(model: VideoModelOption | null, durationSec: number): number | null {
+  if (!model || durationSec <= 0) return null;
+  const rate = Math.max(0, model.creditCost);
+  return model.billingUnit === "per_second" ? rate * durationSec : rate;
+}
 
-/** 估算一批视频生成消耗的积分。 */
-export function estimateVideoCredits(count: number): number {
-  return Math.max(0, count) * CREDIT_PER_VIDEO;
+/**
+ * 脚本分镜总时长（秒）= Σblocks.dur，生成链路的**唯一**时长真值：
+ * 报价、时长闸、prompt 正文、提交载荷全部消费同一个值，禁止各处 `|| 30` 各回退各的。
+ */
+export function scriptTotalDur(script: ScriptAsset): number {
+  return (script.blocks ?? []).reduce((s, b) => s + (b.dur || 0), 0);
+}
+
+/** 时长是否落在所选模型有效区间内；不合法时返回用户可执行的提示文案，合法返回 null。 */
+export function durationGateMessage(model: VideoModelOption | null, durationSec: number): string | null {
+  if (durationSec <= 0) return "脚本总时长为 0 秒，请先在编辑器里为分镜设置时长。";
+  if (!model) return null;
+  const min = model.effectiveMinDurationSec ?? null;
+  const max = model.effectiveMaxDurationSec ?? null;
+  if (min != null && durationSec < min) return `${model.name} 单条时长至少 ${min} 秒，当前脚本共 ${durationSec} 秒，请回编辑器增加口播与分镜时长。`;
+  if (max != null && durationSec > max) return `${model.name} 单条时长最长 ${max} 秒，当前脚本共 ${durationSec} 秒，请回编辑器压缩口播与分镜时长，或换用其他模型。`;
+  return null;
 }
 
 /** AI 从脚本里抽取可替换变量（mock：正则 + 类目启发式）。 */
@@ -183,62 +205,6 @@ export function samplesToNames(samples: VariantSample[]): string[] {
   return samples.map((s) => s._label);
 }
 
-/** 生成完成时构造 MaterialVideo（弹窗内完成路径）。 */
-export function buildVideoAsset(
-  name: string,
-  variantConfig: VariantConfig,
-  idx: number,
-  script: ScriptAsset,
-  baseline: MaterialVideo | null,
-  isVariant: boolean,
-): MaterialVideo {
-  const now = new Date().toISOString();
-  const palette = [PALETTE.violet, PALETTE.rose, PALETTE.teal, PALETTE.amber, PALETTE.violetDeep, PALETTE.peach];
-  return {
-    id: `video-${script.id.replace("asset-", "")}-${String(Date.now()).slice(-4)}-${idx}`,
-    script_id: script.id,
-    product_id: script.product_id,
-    kind: isVariant ? "variant" : "baseline",
-    name: name || (isVariant ? `变体 ${idx + 1}` : "基线版"),
-    status: "ready",
-    parent_video_id: isVariant ? baseline?.id ?? null : null,
-    duration_sec: (script.blocks ?? []).reduce((s, b) => s + (b.dur || 0), 0) || 30,
-    aspect_ratio: "9:16",
-    variant_config: variantConfig,
-    metrics: null,
-    cover_color: palette[idx % palette.length],
-    created_at: now,
-    generated_at: now,
-    render_cost_sec: 90 + idx * 8,
-    model: "sora-zh-v3",
-  };
-}
-
-/** 构造后台异步渲染任务。 */
-export function buildAsyncTasks(
-  names: string[],
-  configs: VariantConfig[],
-  script: ScriptAsset,
-  baseline: MaterialVideo | null,
-  isVariant: boolean,
-): AsyncRenderTask[] {
-  const startedAt = Date.now();
-  return names.map((name, i) => ({
-    id: `task-${startedAt}-${i}`,
-    script_id: script.id,
-    product_id: script.product_id,
-    parent_video_id: isVariant ? baseline?.id ?? null : null,
-    kind: isVariant ? "variant" : "baseline",
-    name,
-    status: "pending",
-    submitted_at: new Date(startedAt + i * 100).toISOString(),
-    eta_sec: 90 + Math.floor(Math.random() * 60),
-    progress_pct: 0,
-    stage: "已入队",
-    variant_config: configs[i] ?? configs[0],
-  }));
-}
-
 export const VARIANT_AXIS_KEYS = VARIANT_AXIS_ORDER;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,22 +218,25 @@ function axisLabel(axisKey: keyof VariantConfig, optId: string): string {
   return opt ? `${opt.label}${opt.sub ? `（${opt.sub}）` : ""}` : optId;
 }
 
+/** 商品是否为「未关联/占位」商品（免商品脚本 resolveProductForScript 会给中性占位）。 */
+export function isPlaceholderProduct(product: MaterialProduct | null | undefined): boolean {
+  return !product || product.id === "unknown" || product.name === "未关联商品" || product.name === "未找到商品";
+}
+
 /**
- * 把脚本 + 商品 + 画面维度拼成发给视频大模型的中文提示词。
+ * 把脚本 + 商品（或免商品脚本的主题简介）+ 画面维度拼成发给视频大模型的中文提示词。
  * blocks 传 sample.blocks（派生已替换变量）或 script.blocks（基线）。
+ * 注意：正文时长与提交载荷的 duration_sec 必须同源（都 = Σblocks.dur），禁止两套真值。
  */
 export function buildVideoPrompt(opts: {
   script: ScriptAsset;
-  product: MaterialProduct;
+  product: MaterialProduct | null;
   blocks: ScriptBlock[];
   config: VariantConfig;
 }): string {
   const { script, product, blocks, config } = opts;
-  const totalDur = blocks.reduce((s, b) => s + (b.dur || 0), 0) || script.duration_sec || 30;
-  const price = product.priceCents ? `¥${(product.priceCents / 100).toFixed(0)}` : "未知价格";
-  const points = (product.sellingPointList?.length ? product.sellingPointList : (product.sellingPoints ?? "").split(/[/、,，]/))
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const totalDur = blocks.reduce((s, b) => s + (b.dur || 0), 0);
+  const hasProduct = !isPlaceholderProduct(product);
   const shotLines = blocks
     .map((b, i) => {
       const subtitle = b.genVoice === false ? "（本镜无口播/字幕，纯画面）" : `字幕/口播「${b.text || "—"}」`;
@@ -275,18 +244,32 @@ export function buildVideoPrompt(opts: {
     })
     .join("\n");
 
+  let subjectLines: string[];
+  if (hasProduct && product) {
+    const price = product.priceCents ? `¥${(product.priceCents / 100).toFixed(0)}` : "未知价格";
+    const points = (product.sellingPointList?.length ? product.sellingPointList : (product.sellingPoints ?? "").split(/[/、,，]/))
+      .map((s) => s.trim())
+      .filter(Boolean);
+    subjectLines = [
+      `【商品】${product.name}（${product.category} · ${price}${product.commissionRate != null ? ` · 佣金 ${product.commissionRate}%` : ""}）`,
+      points.length ? `【卖点】${points.join(" / ")}` : ``,
+    ];
+  } else {
+    // 免商品脚本：用 creative_brief 充当主题段（无 brief 时只按分镜脚本生成）。
+    subjectLines = [script.creative_brief?.trim() ? `【主题】${script.creative_brief.trim()}` : ``];
+  }
+
   return [
     `请生成一条 ${totalDur}s、比例 9:16 的带货短视频，风格真实自然、电影感、商用级，画面清晰稳定、无水印。`,
     ``,
-    `【商品】${product.name}（${product.category} · ${price}${product.commissionRate != null ? ` · 佣金 ${product.commissionRate}%` : ""}）`,
-    points.length ? `【卖点】${points.join(" / ")}` : ``,
+    ...subjectLines,
     ``,
     `【画面维度】人物：${axisLabel("character", config.character)}；场景：${axisLabel("scene", config.scene)}；天气：${axisLabel("weather", config.weather)}；光线：${axisLabel("lighting", config.lighting)}；角色关系：${config.role_relation}；配音：${axisLabel("voice", config.voice)}。`,
     ``,
     `【分镜脚本】（共 ${blocks.length} 镜 · ${totalDur}s）`,
     shotLines,
     ``,
-    `要求：钩子前置 3 秒抓人；口播自然口语化；产品出场真实可信；结尾引导评论/下单。`,
+    `要求：钩子前置 3 秒抓人；口播自然口语化；${hasProduct ? "产品出场真实可信；" : ""}结尾引导评论/下单。`,
   ]
     .filter((l) => l !== ``)
     .join("\n");
@@ -299,13 +282,15 @@ export function buildVideoPrompt(opts: {
  */
 export function buildJobRequests(opts: {
   script: ScriptAsset;
-  product: MaterialProduct;
+  product: MaterialProduct | null;
   config: VariantConfig;
   samples?: VariantSample[];
   baseline?: MaterialVideo | null;
 }): VideoGenJobRequest[] {
   const { script, product, config, samples, baseline } = opts;
-  const totalDur = (script.blocks ?? []).reduce((s, b) => s + (b.dur || 0), 0) || script.duration_sec || 30;
+  // 与报价/时长闸同源（scriptTotalDur）：不做 ||30 回退——0 秒脚本在弹窗层已被禁用提交，
+  // 后端也会 400 VIDEO_DURATION_REQUIRED（防直调）。
+  const totalDur = scriptTotalDur(script);
   const aspect = "9:16";
   const common = {
     script_id: script.id,

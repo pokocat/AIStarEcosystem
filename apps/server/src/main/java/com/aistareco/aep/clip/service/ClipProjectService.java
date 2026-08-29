@@ -86,6 +86,7 @@ public class ClipProjectService {
     @Transactional public void purge(String owner, String id) {
         ClipProject p = repo.findById(id).filter(v -> owner.equals(v.getExternalOwnerId())).orElseThrow(() -> BusinessException.notFound("CLIP_PROJECT_NOT_FOUND", "项目不存在")); purgeRow(p);
     }
+    @Transactional public void purgeOwner(String owner) { repo.findByExternalOwnerId(owner).forEach(this::purgeRow); }
     @Transactional public void purgeExpired(ClipProject p) { repo.findById(p.getId()).ifPresent(this::purgeRow); }
     public ClipProject required(String owner, String id) { return repo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(id, owner).orElseThrow(() -> BusinessException.notFound("CLIP_PROJECT_NOT_FOUND", "项目不存在或无权访问")); }
 
