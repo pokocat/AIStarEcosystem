@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-08-29 · v0.137 音乐自由创作 + 工作室惰性补建后续
+
+- [ ] **追查历史账号漏建 Studio 的注册路径**：线上 17 个用户里 6 个 STUDIO 账号无 `aep_studios` 行（含 2026-05-25 注册的 `phone_18801931018`，追查号 7MQUAP4JYVSE 409 死锁的触发者）。正常短信+激活码注册经 `LicenseActivationService.activate` 必建 Studio——这 6 个账号从哪条路径来的（早期版本？admin 手建？）未定位。v0.137 的 `DigitalIpService.ensureStudioFor` 惰性补建已止血，root cause 供审计排期。
+- [ ] **无艺人歌曲的「补绑定艺人」入口**：v0.137 起自由创作歌曲 `artistId=null`，产品语义是分发前必须补绑定（product_spec.md §10.1），但目前没有绑定 UI/端点（可做 `PATCH /me/songs/{id}` 允许补 `artistId` + 前端歌曲详情入口）；分发链路也未加「未绑定艺人 → 拦截并引导」的闸。
+- [ ] **web-music 其余艺人维度页仍走 `NoArtistState`**（/music 商业视图、/notices、/wardrobe、/community 等）：属艺人视角页面，按产品定位保留硬闸；`NoArtistState` 已加「直接去创作音乐」出口。若后续要求这些页也支持无艺人态，另行评估。
+
+---
+
 ## 2026-08-18 · `clip` 快出片生产门槛（v0.132 单次直传与异步受理后续）
 
 - [x] ~~本人素材经军师与 AIStar 重复搬运、弱网超时后诱导重复上传~~（v0.132 完成，2026-08-18）：客户端凭精确 OSS V4 policy 单次直传，`clip_upload_session` 持久化受理状态并以 owner + clientRequestId 幂等；HEAD 后异步校验/提交，HEVC/H.265 形象视频自动转 H.264。

@@ -15,7 +15,8 @@ import { MusicLibrary } from "./MusicLibrary";
 
 interface Props {
   lang: Lang;
-  activeArtist: Artist;
+  /** 选中的签约艺人。可空：没有艺人也能进创作工坊自由创作。 */
+  activeArtist: Artist | null;
   /** 兼容老接口（从 OverviewPage 跳转时传入），当前 StudioPage 内部已按真实歌曲渲染，忽略此字段。 */
   selectedTrackId?: number | null;
   onClearSelection?: () => void;
@@ -25,9 +26,13 @@ type StudioTab = "ai" | "library";
 
 export function StudioPage({ lang, activeArtist }: Props) {
   const zh = lang === "zh";
-  const typeConf = ARTIST_TYPE_CONFIG[activeArtist.type];
-  const workshopName = zh ? typeConf.workshop.zh : typeConf.workshop.en;
-  const typeLabel = zh ? ARTIST_TYPE_LABELS[activeArtist.type].zh : ARTIST_TYPE_LABELS[activeArtist.type].en;
+  const typeConf = ARTIST_TYPE_CONFIG[activeArtist?.type ?? "singer"];
+  const workshopName = activeArtist
+    ? (zh ? typeConf.workshop.zh : typeConf.workshop.en)
+    : "音乐创作工坊";
+  const typeLabel = activeArtist
+    ? (zh ? ARTIST_TYPE_LABELS[activeArtist.type].zh : ARTIST_TYPE_LABELS[activeArtist.type].en)
+    : "自由创作";
   const templates = zh ? typeConf.templates.zh : typeConf.templates.en;
 
   const [tab, setTab] = React.useState<StudioTab>("ai");
@@ -44,11 +49,12 @@ export function StudioPage({ lang, activeArtist }: Props) {
     MusicApi.listSongs()
       .then(list => {
         if (cancelled) return;
-        setSongs(list.filter(s => s.artistId === activeArtist.id));
+        // 选中艺人 → 只看该艺人的歌；自由创作 → 看当前账号全部作品。
+        setSongs(activeArtist ? list.filter(s => s.artistId === activeArtist.id) : list);
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [activeArtist.id]);
+  }, [activeArtist?.id]);
 
   function handleCreated(song: Song) {
     setSongs(prev => [song, ...prev]);
@@ -75,7 +81,9 @@ export function StudioPage({ lang, activeArtist }: Props) {
           </h1>
           <p className="text-gray-400 font-light mt-1 flex items-center gap-2">
             <span className="text-lg">{typeConf.icon}</span>
-            {zh ? `${typeLabel}专属创作工坊 · 与大模型对话生成数字内容` : `${typeLabel} Exclusive Workshop`}
+            {activeArtist
+              ? (zh ? `${typeLabel}专属创作工坊 · 与大模型对话生成数字内容` : `${typeLabel} Exclusive Workshop`)
+              : "无需签约艺人，直接与大模型对话创作音乐 · 作品归属你的账号"}
           </p>
         </div>
         <Badge className="bg-cyan-500/10 text-cyan-300 border-cyan-500/20">
@@ -110,8 +118,8 @@ export function StudioPage({ lang, activeArtist }: Props) {
         <div className="space-y-6">
           <AIGenerationPanel
             key={panelKey}
-            artistId={activeArtist.id}
-            artistName={activeArtist.name}
+            artistId={activeArtist?.id}
+            artistName={activeArtist?.name}
             initialPrompt={initialPrompt}
             onCreated={handleCreated}
           />
@@ -156,8 +164,8 @@ export function StudioPage({ lang, activeArtist }: Props) {
         <MusicLibrary
           songs={songs}
           loading={loading}
-          artistName={activeArtist.name}
-          artistAvatar={activeArtist.avatar}
+          artistName={activeArtist?.name}
+          artistAvatar={activeArtist?.avatar}
         />
       )}
 

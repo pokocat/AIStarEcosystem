@@ -7,8 +7,9 @@ import java.time.Instant;
 
 /**
  * Song — AI 歌曲。
- * product_spec.md §10.1：必须绑定 {@code artistId}（= DigitalIp.id），这是对接音乐发行
- * 开放平台时外部元数据中的"歌手"身份。
+ * product_spec.md §10.1（2026-08-29 修订）：{@code artistId}（= DigitalIp.id）改为可选 ——
+ * 创作音乐不再要求先引入数字人；对接音乐发行开放平台需要"歌手"身份时再绑定。
+ * 无艺人的歌曲归属由 {@code ownerUserId} 直接确定。
  */
 @Data
 @Builder
@@ -39,9 +40,19 @@ public class Song {
 
     // ── product_spec.md §10.2 新增字段 ────────────────────────────────────────
 
-    /** 演唱歌手 = DigitalIp.id；新建歌曲时必填，一首歌必属一个艺人（N:1）。 */
-    @Column(name = "artist_id", length = 36, nullable = false)
+    /**
+     * 演唱歌手 = DigitalIp.id。可空：创作音乐不要求先有艺人/数字人，
+     * 后续对接发行平台需要歌手身份时再绑定。
+     */
+    @Column(name = "artist_id", length = 36)
     private String artistId;
+
+    /**
+     * 创作者 = AepUser.id。artistId 为空的歌曲靠它确定归属；
+     * 老数据可为 null（归属经 artistId → DigitalIp.ownerUserId 推导）。
+     */
+    @Column(name = "owner_user_id", length = 36)
+    private String ownerUserId;
 
     /** 音频资源地址（当前 mock 占位；后续迁 OSS / 对象存储）。 */
     @Column(name = "audio_url", length = 512)

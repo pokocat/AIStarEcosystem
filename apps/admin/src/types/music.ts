@@ -29,7 +29,8 @@ export interface Song {
   releaseDate?: ISODateTime;
 
   // ── product_spec.md §10.2 新增字段 ────────────────────────────────────────
-  artistId: ID;
+  /** 2026-08-29 起可空：无艺人创作的歌曲（与 packages/types 同步） */
+  artistId?: ID | null;
   audioUrl?: string;
   coverUrl?: string;
   lyrics?: string;

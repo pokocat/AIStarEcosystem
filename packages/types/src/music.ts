@@ -25,8 +25,11 @@ export interface Song {
   releaseDate?: ISODateTime;
 
   // ── 10.2 新增字段 ─────────────────────────────────────────────────────────
-  /** 演唱歌手 = DigitalIp.id；Song 必须绑定一位 AI 艺人，对接发行平台时即为"歌手" */
-  artistId: ID;
+  /**
+   * 演唱歌手 = DigitalIp.id。2026-08-29 起可空：创作音乐不要求先引入数字人/艺人，
+   * 对接发行平台需要"歌手"身份时再绑定。
+   */
+  artistId?: ID | null;
   /** 音频资源地址；MVP 为 mock 占位 URL，后续迁 OSS */
   audioUrl?: string;
   /** 封面；没有时前端用 artist.avatar 合成占位 */
@@ -83,9 +86,9 @@ export interface MusicGenre {
 
 // ── 创作请求 / 响应 ──────────────────────────────────────────────────────────
 
-/** 创建歌曲的请求载荷。artistId 必填；扣费由后端按 modelVersion + thinkDepth 查表 */
+/** 创建歌曲的请求载荷。artistId 可选（不选艺人也能创作）；扣费由后端按 modelVersion + thinkDepth 查表 */
 export interface CreateSongRequest {
-  artistId: ID;
+  artistId?: ID;
   title: string;
   genre: string;
   duration?: number;

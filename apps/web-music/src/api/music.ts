@@ -42,7 +42,7 @@ export async function listTrends30d(): Promise<MusicTrendPoint[]> {
 }
 
 /**
- * 创建 AI 歌曲。artistId 必填（见 product_spec.md §10.1）。
+ * 创建 AI 歌曲。artistId 可选：不绑定艺人时作品直接归属当前账号（product_spec.md §10.1，2026-08-29 修订）。
  * mock 模式：合成一条 recording 状态的新歌，creditsSpent 由 mockCreditsFor 产出。
  * 后端：按 modelVersion + thinkDepth 查工作流计费表扣 credits（§10.3）。
  */

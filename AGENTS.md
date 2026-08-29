@@ -457,6 +457,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.137** | 2026-08-29 | 音乐创作去掉数字人硬依赖：`POST /me/songs` 的 `artistId` 改可选，`Song` 新增 `ownerUserId` 直接归属创作者（V21 迁移放开 NOT NULL）；`/studio` 创作工坊无艺人可进（自由创作）；孵化/引入数字人在账号缺 Studio 行时按「一号一 Studio」惰性补建（替代 409 `当前账号尚未创建工作室`，修线上 6 个历史账号死锁，追查号 7MQUAP4JYVSE）。分发仍要求艺人绑定。 |
 | **v0.136** | 2026-08-23 | Celebrity 登录回跳与 `/admin*` 路由收口；consumer 域不再代理后台，后台仅保留 `admin.aibuzz.cn/admin`。 |
 | **v0.135** | 2026-08-18 | `clip` 成片音轨两遍响度归一，编码前 true peak 目标 -2.5 dBTP 为 AAC 回弹留余量；最终 ≤ -1 dBTP 质量门保持不变并记录实测指标。 |
 | **v0.132** | 2026-08-18 | `clip` 本人素材受限 OSS 单次直传、持久化异步受理与 HEVC/H.265 自动转 H.264；弱网重试复用同一 uploadId。 |

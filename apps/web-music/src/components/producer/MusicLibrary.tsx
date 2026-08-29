@@ -15,7 +15,8 @@ import { formatCompactNumber, formatCredits } from "@/lib/format";
 interface Props {
   songs: Song[];
   loading: boolean;
-  artistName: string;
+  /** 选中艺人名。可空：自由创作时展示「我的全部作品」。 */
+  artistName?: string | null;
   artistAvatar?: string;
 }
 
@@ -150,7 +151,7 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
             音乐列表
           </h3>
           <p className="text-xs text-gray-500 font-light mt-1">
-            当前歌手：{artistName} · 共 {songs.length} 首 · 点击缩略图即可预览
+            {artistName ? `当前歌手：${artistName}` : "我的全部作品"} · 共 {songs.length} 首 · 点击缩略图即可预览
           </p>
         </div>
         <Badge className="bg-cyan-500/10 text-cyan-300 border-cyan-500/20">
@@ -261,7 +262,7 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
                   {loadingSrc && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />}
                 </div>
                 <div className="text-[11px] text-gray-500 truncate">
-                  {artistName} · {current.genre}
+                  {artistName ?? "自由创作"} · {current.genre}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-[10px] tabular-nums text-gray-500 w-9 text-right">
