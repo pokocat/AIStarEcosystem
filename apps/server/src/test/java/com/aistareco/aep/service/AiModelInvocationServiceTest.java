@@ -178,7 +178,8 @@ class AiModelInvocationServiceTest {
         assertEquals(1, server.requests.size());
         Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
         assertFalse(sent.containsKey("temperature"), "Qwen 3.5 采样参数由平台托管，不能显式发送 temperature");
-        assertEquals(6144, ((Number) sent.get("max_tokens")).intValue());
+        assertEquals(4096, ((Number) sent.get("max_tokens")).intValue(),
+                "Qwen 3.5 输出预算上限为 4096");
         assertFalse(sent.containsKey("response_format"),
                 "Qwen 3.5 不支持 response_format，应依赖 prompt 约束纯 JSON");
     }

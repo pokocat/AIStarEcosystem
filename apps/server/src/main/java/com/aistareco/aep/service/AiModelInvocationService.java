@@ -298,6 +298,7 @@ public class AiModelInvocationService {
         if (!body.containsKey("top_p") && e.getDefaultTopP() != null) {
             body.put("top_p", e.getDefaultTopP());
         }
+        clampQwen35OutputBudget(model, body);
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
@@ -437,6 +438,15 @@ public class AiModelInvocationService {
         if (model == null) return false;
         String normalized = model.toLowerCase(Locale.ROOT);
         return normalized.contains("qwen3-5") || normalized.contains("qwen3.5");
+    }
+
+    /** 聚算 Qwen 3.5 路由的输出预算上限为 4096，是否传 response_format 都执行该限制。 */
+    private static void clampQwen35OutputBudget(String model, Map<String, Object> body) {
+        if (!usesPlatformControlledSampling(model)) return;
+        Object configured = body.get("max_tokens");
+        if (configured instanceof Number n && n.longValue() > 4096L) {
+            body.put("max_tokens", 4096);
+        }
     }
 
     private static String rstrip(String s, String suffix) {
