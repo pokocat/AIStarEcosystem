@@ -43,6 +43,35 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
   const [volume, setVolume] = React.useState(0.8);
   const [muted, setMuted] = React.useState(false);
   const [loadingSrc, setLoadingSrc] = React.useState(false);
+  // 播放失败要说出来。原来只是把状态复位，用户点了没反应也不知道为什么。
+  const [playError, setPlayError] = React.useState<string | null>(null);
+  const stallTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearStall = React.useCallback(() => {
+    if (stallTimer.current) { clearTimeout(stallTimer.current); stallTimer.current = null; }
+  }, []);
+
+  const failPlayback = React.useCallback(() => {
+    setLoadingSrc(false);
+    setPlaying(false);
+    setPlayError("这首作品的音频暂时无法播放");
+    audioRef.current?.pause();
+  }, []);
+
+  /**
+   * 播放看门狗。
+   *
+   * 地址不可达时（例如老数据里残留的占位地址），浏览器只发 loadstart → stalled
+   * 就无限挂起：不发 error、play() 的 promise 也不 reject。只监听事件的话，
+   * 用户会一直看着转圈等不到任何结果。超时未就绪即当作失败。
+   */
+  const armStall = React.useCallback(() => {
+    clearStall();
+    stallTimer.current = setTimeout(() => {
+      const a = audioRef.current;
+      if (a && a.readyState < 2) failPlayback();
+    }, 8000);
+  }, [clearStall, failPlayback]);
 
   const current = React.useMemo(
     () => songs.find(s => s.id === currentId) ?? null,
@@ -65,8 +94,8 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
     const onMeta = () => setTotalSec(audio.duration || 0);
     const onEnd = () => { setPlaying(false); setProgress(0); setElapsed(0); };
     const onWait = () => setLoadingSrc(true);
-    const onReady = () => setLoadingSrc(false);
-    const onError = () => { setLoadingSrc(false); setPlaying(false); };
+    const onReady = () => { clearStall(); setLoadingSrc(false); setPlayError(null); };
+    const onError = () => { clearStall(); failPlayback(); };
 
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
@@ -83,9 +112,10 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
       audio.removeEventListener("waiting", onWait);
       audio.removeEventListener("canplay", onReady);
       audio.removeEventListener("error", onError);
+      clearStall();
       audioRef.current = null;
     };
-  }, []);
+  }, [clearStall, failPlayback]);
 
   // 音量 / 静音同步
   React.useEffect(() => {
@@ -109,7 +139,9 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
     const a = audioRef.current;
     if (!a) return;
     const url = urlFor(song);
-    if (!url) return;   // 没有音频就不播，不用示例曲冒充
+    if (!url) { clearStall(); setPlayError("这首作品还没有音频"); setCurrentId(song.id); return; }
+    setPlayError(null);
+    armStall();
     if (currentId !== song.id) {
       a.src = url;
       setCurrentId(song.id);
@@ -118,7 +150,9 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
       setTotalSec(song.duration || 0);
       setLoadingSrc(true);
     }
-    a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    a.play()
+      .then(() => setPlaying(true))
+      .catch(() => { clearStall(); failPlayback(); });
   }
 
   function pause() {
@@ -272,6 +306,11 @@ export function MusicLibrary({ songs, loading, artistName, artistAvatar }: Props
                 <div className="text-[11px] text-gray-500 truncate">
                   {artistName ?? "自由创作"} · {current.genre}
                 </div>
+                {playError && (
+                  <div className="mt-0.5 text-[11px] text-amber-300/90 truncate" title={playError}>
+                    {playError}
+                  </div>
+                )}
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-[10px] tabular-nums text-gray-500 w-9 text-right">
                     {fmtTime(elapsed)}

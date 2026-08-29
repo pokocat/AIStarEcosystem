@@ -30,15 +30,21 @@ interface Props {
   onSongCreated?: (songId: string) => void;
 }
 
-/** 生成中的阶段文案 —— 依据真实进度推导，不编造。 */
+/**
+ * 状态文案。收敛到全站主导的那一组：排队中 / 生成中 / 已完成 / 生成失败。
+ *
+ * 早先这里写的是「等待模型空闲」「正在提交创作请求」「正在转存音频」——那是在向用户
+ * 复述系统在干什么。用户要的是"还要多久"，不是内部有几个阶段；「模型」「转存」这类
+ * 实现词也不该出现在界面上。真实进度由旁边的百分比承担。
+ */
 function stageLabel(job: MusicGenJob | null): string {
   if (!job) return "";
   switch (job.status) {
-    case "queued": return "已排队，等待模型空闲";
-    case "submitting": return "正在提交创作请求";
-    case "generating": return job.progress >= 96 ? "正在转存音频" : "模型正在谱曲演唱";
-    case "succeeded": return "创作完成";
-    case "failed": return "创作失败";
+    case "queued": return "排队中";
+    case "submitting":
+    case "generating": return "生成中";
+    case "succeeded": return "已完成";
+    case "failed": return "生成失败";
     default: return "";
   }
 }
@@ -147,9 +153,14 @@ export function AIGenerationPanel({ artistId, artistName, initialPrompt, onSongC
           <div className="w-9 h-9 shrink-0 rounded-lg bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
+          {/*
+            标题写「新建作品」而不是再叫一次工坊：页面标题已经是「音乐工坊」，
+            卡片里重复一个近义名（AI 创作工坊 / 音乐创作工坊）只会让同一处功能
+            在一屏内有两三个名字。这里说明的是这张卡片做什么，不是它在哪。
+          */}
           <div className="min-w-0">
             <h3 className="text-base font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
-              AI 创作工坊
+              新建作品
             </h3>
             <p className="text-xs text-gray-500 font-light truncate">
               {artistName
@@ -168,8 +179,12 @@ export function AIGenerationPanel({ artistId, artistName, initialPrompt, onSongC
       {notConfigured && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          {/*
+            面向用户，不复述系统怎么配。运维要看的处置指引在服务端错误码
+            MUSIC_NOT_CONFIGURED 的 message 里（进错误日志），不塞进界面。
+          */}
           <p className="font-light leading-relaxed">
-            音乐生成尚未开通。请联系运营在管理后台配置音乐模型后再来创作 —— 在此之前无法生成作品。
+            音乐创作尚未开通，暂时无法生成作品。请联系管理员开通后再试。
           </p>
         </div>
       )}
@@ -254,17 +269,24 @@ export function AIGenerationPanel({ artistId, artistName, initialPrompt, onSongC
           <span className="text-gray-400">时长</span>
           <span className="text-cyan-300 tabular-nums font-medium">{formatDuration(durationSec)}</span>
         </div>
-        <input
-          type="range"
-          min={range.min}
-          max={range.max}
-          step={range.step}
-          value={durationSec}
-          disabled={running}
-          onChange={e => setDurationSec(Number(e.target.value))}
-          aria-label="生成时长（秒）"
-          className="w-full accent-cyan-400 disabled:opacity-50"
-        />
+        {/*
+          滑杆本体只有 16px 高，触屏上很难拖准。用一个 44px 的包裹层把可点区域撑到
+          触摸基线，滑杆本身仍是原来的视觉高度（h-1.5 轨道由浏览器默认样式绘制）。
+        */}
+        <div className="flex h-11 items-center">
+          <input
+            type="range"
+            min={range.min}
+            max={range.max}
+            step={range.step}
+            value={durationSec}
+            disabled={running}
+            onChange={e => setDurationSec(Number(e.target.value))}
+            aria-label="生成时长（秒）"
+            aria-valuetext={formatDuration(durationSec)}
+            className="w-full h-11 cursor-pointer accent-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed bg-transparent"
+          />
+        </div>
         <p className="text-[11px] text-gray-600">
           {instrumental ? `纯音乐支持 ${range.min}–${range.max} 秒` : `歌曲支持 ${range.min}–${range.max} 秒`}
           {" · "}按实际成曲时长结算积分

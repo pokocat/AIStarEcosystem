@@ -27,9 +27,10 @@ type StudioTab = "ai" | "library";
 export function StudioPage({ lang, activeArtist }: Props) {
   const zh = lang === "zh";
   const typeConf = ARTIST_TYPE_CONFIG[activeArtist?.type ?? "singer"];
+  // 无艺人时沿用侧栏同名的「音乐工坊」，不另造「音乐创作工坊」这个第三种叫法
   const workshopName = activeArtist
     ? (zh ? typeConf.workshop.zh : typeConf.workshop.en)
-    : "音乐创作工坊";
+    : "音乐工坊";
   const typeLabel = activeArtist
     ? (zh ? ARTIST_TYPE_LABELS[activeArtist.type].zh : ARTIST_TYPE_LABELS[activeArtist.type].en)
     : "自由创作";
@@ -73,7 +74,7 @@ export function StudioPage({ lang, activeArtist }: Props) {
   }
 
   const tabs: { key: StudioTab; label: string; icon: React.ElementType; hint: string }[] = [
-    { key: "ai", label: "AI 音乐创作", icon: Wand2, hint: "与大模型对话并生成新曲" },
+    { key: "ai", label: "AI 音乐创作", icon: Wand2, hint: "描述想要的音乐，AI 谱曲并演唱" },
     { key: "library", label: "音乐列表", icon: ListMusic, hint: `${songs.length} 首可试听` },
   ];
 
@@ -88,8 +89,8 @@ export function StudioPage({ lang, activeArtist }: Props) {
           <p className="text-gray-400 font-light mt-1 flex items-center gap-2">
             <span className="text-lg">{typeConf.icon}</span>
             {activeArtist
-              ? (zh ? `${typeLabel}专属创作工坊 · 与大模型对话生成数字内容` : `${typeLabel} Exclusive Workshop`)
-              : "无需签约艺人，直接与大模型对话创作音乐 · 作品归属你的账号"}
+              ? (zh ? `${typeLabel}专属创作工坊 · 描述想要的音乐，AI 谱曲并演唱` : `${typeLabel} Exclusive Workshop`)
+              : "无需签约艺人，直接创作音乐 · 作品归属你的账号"}
           </p>
         </div>
         <Badge className="bg-cyan-500/10 text-cyan-300 border-cyan-500/20">
@@ -137,8 +138,9 @@ export function StudioPage({ lang, activeArtist }: Props) {
                 <h3 className="text-base font-bold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
                   创作模板
                 </h3>
+                {/* 面板已从对话改成表单，这里不能再说「对话框」；「注入」也是内部说法 */}
                 <p className="text-xs text-gray-500 font-light mt-1">
-                  点击任一模板，其关键词会注入上方对话框作为新一轮生成的起点。
+                  点击任一模板，会把它的关键词填进上方的创作描述里，你可以再改。
                 </p>
               </div>
             </div>
@@ -175,9 +177,12 @@ export function StudioPage({ lang, activeArtist }: Props) {
         />
       )}
 
-      {/* Footer hint */}
+      {/*
+        原文案让用户「进入音乐工坊」——而这里就是音乐工坊；还指向了尚在建设中的全网分发。
+        改成指向本页真实可达的去处。
+      */}
       <p className="text-xs text-gray-600 font-light text-center">
-        提示：进入「音乐工坊」可查看歌曲详情、修改歌词 / 封面、推进发布状态并跳转到「全网分发」。
+        提示：切到「音乐列表」可试听已完成的作品，并修改标题、曲风与歌词。
       </p>
     </div>
   );
