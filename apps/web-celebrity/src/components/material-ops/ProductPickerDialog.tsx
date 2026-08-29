@@ -1,9 +1,10 @@
 "use client";
 
-// 新建脚本第一步 —— 强制选择关联商品（商品库由商品中心维护，预留入口）。
+// 新建脚本第一步 —— 选择关联商品；v0.132 起也支持「不关联商品，直接写脚本」
+// （免商品脚本：填一句主题/卖点简介作为 AI 起稿与出片的商品段输入）。
 
 import * as React from "react";
-import { X, Check, ArrowRight, Package, ExternalLink, Loader2 } from "lucide-react";
+import { X, Check, ArrowRight, Package, ExternalLink, Loader2, PenLine } from "lucide-react";
 import { Button } from "@/components/creator";
 import { ProductsApi } from "@/api";
 import { toMaterialProduct } from "@/mocks/material-ops";
@@ -11,9 +12,16 @@ import type { MaterialProduct } from "./types";
 import { Eyebrow, SearchInput, ProductThumb, hexA } from "./shared";
 import { loadProductThumbMap, productThumbUrl } from "./product-thumbnails";
 
-export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; onPick: (p: MaterialProduct) => void }) {
+export function ProductPickerDialog({ onClose, onPick, onPickNone }: {
+  onClose: () => void;
+  onPick: (p: MaterialProduct) => void;
+  /** 「不关联商品，直接写脚本」：brief = 主题/卖点简介（可留空）。不传则不显示该入口。 */
+  onPickNone?: (brief: string) => void;
+}) {
   const [query, setQuery] = React.useState("");
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [freeMode, setFreeMode] = React.useState(false);
+  const [brief, setBrief] = React.useState("");
   const [products, setProducts] = React.useState<MaterialProduct[]>([]);
   const [thumbByProductId, setThumbByProductId] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
@@ -77,7 +85,9 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
           <div style={{ flex: 1 }}>
             <Eyebrow>新建脚本</Eyebrow>
             <div style={{ fontSize: 15, color: "var(--fg-0)", fontWeight: 600, marginTop: 2 }}>第一步 · 选择关联商品</div>
-            <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 3, lineHeight: 1.5 }}>脚本必须关联一个商品 · 商品库由商品中心统一维护</div>
+            <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 3, lineHeight: 1.5 }}>
+              {onPickNone ? "推荐关联商品（AI 起稿更精准）；也可以不关联直接写脚本" : "脚本必须关联一个商品"} · 商品库由商品中心统一维护
+            </div>
           </div>
           <a
             href="/products"
@@ -167,8 +177,33 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
           </div>
         </div>
 
-        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-2)" }}>
-          {selected ? (
+        {/* 免商品脚本入口（可折叠的主题简介输入） */}
+        {onPickNone && freeMode && (
+          <div style={{ padding: "12px 22px", borderTop: "1px solid var(--line)", background: "var(--bg-2)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <Eyebrow>主题 / 卖点简介（选填，供 AI 起稿参考）</Eyebrow>
+            <textarea
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={2}
+              placeholder="例如：秋冬保暖穿搭思路，突出显瘦和性价比…（留空则完全自由创作）"
+              style={{ width: "100%", padding: 10, borderRadius: "var(--radius-md)", background: "var(--bg-1)", border: "1px solid var(--line-2)", color: "var(--fg-0)", fontSize: 12.5, lineHeight: 1.6, resize: "vertical", outline: "none", fontFamily: "var(--font-sans)" }}
+            />
+          </div>
+        )}
+
+        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "var(--bg-2)" }}>
+          {onPickNone ? (
+            freeMode ? (
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)", flexShrink: 0 }}>免商品脚本 · 之后可在编辑器里再关联商品</span>
+            ) : (
+              <button
+                onClick={() => setFreeMode(true)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "transparent", border: 0, color: "var(--accent)", fontSize: 12, cursor: "pointer", padding: 0, flexShrink: 0 }}
+              >
+                <PenLine size={12} /> 不关联商品，直接写脚本
+              </button>
+            )
+          ) : selected ? (
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-2)" }}>
               已选 · <span style={{ color: "var(--fg-0)" }}>{selected.name}</span>
             </span>
@@ -176,12 +211,23 @@ export function ProductPickerDialog({ onClose, onPick }: { onClose: () => void; 
             <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--fg-3)" }}>先选一个商品才能继续</span>
           )}
           <div style={{ display: "flex", gap: 8 }}>
+            {freeMode && (
+              <Button variant="ghost" onClick={() => setFreeMode(false)}>
+                返回选商品
+              </Button>
+            )}
             <Button variant="ghost" onClick={onClose}>
               取消
             </Button>
-            <Button variant="accent" disabled={!selected} onClick={() => selected && onPick(selected)}>
-              下一步 · 进入编辑 <ArrowRight size={13} />
-            </Button>
+            {freeMode && onPickNone ? (
+              <Button variant="accent" onClick={() => onPickNone(brief)}>
+                直接写脚本 <ArrowRight size={13} />
+              </Button>
+            ) : (
+              <Button variant="accent" disabled={!selected} onClick={() => selected && onPick(selected)}>
+                下一步 · 进入编辑 <ArrowRight size={13} />
+              </Button>
+            )}
           </div>
         </div>
       </div>

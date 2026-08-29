@@ -163,7 +163,7 @@ export function CelebrityBlindBox({ star, projects, showcases, onGenerate }: Pro
           </div>
           {insufficientCredits && (
             <Link
-              href="/producer/finance"
+              href="/wallet"
               className="inline-flex items-center gap-1 self-center rounded-md border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-amber-600 transition hover:border-amber-500"
             >
               <Wallet className="h-3 w-3" /> 积分不足（需 ✦{formatCredits(creditPrice)}）→ 立即充值

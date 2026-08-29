@@ -115,6 +115,34 @@ LedgerEntry 不可修改、不可删除（仅可标记 reversed_by 关联反转�
 返回：{ error: "INSUFFICIENT_CREDITS", current: N, required: M }
 ```
 
+【v0.132 新增】带货素材视频（/material/videos/generate）时长与计价：
+
+```
+有效时长区间 = 供应商协议硬边界 ∩ candidate.maxDurationSec
+  · 协议硬边界：jusuan(minimax-h3)=5..15s；agnes 上限 18s（441 帧 ÷ 24fps）；
+    其余协议未知边界 = null（不臆造下限/上限）
+  · items[].duration_sec 必填且 > 0 → 否则 400 VIDEO_DURATION_REQUIRED
+  · 越出有效区间 → 400 VIDEO_DURATION_UNSUPPORTED
+  · 全部校验发生在任何积分 hold 之前；批内任一 item 非法 → 整批无任务、无冻结
+
+单条计价优先级（高 → 低）：
+  1. item.credit_cost —— 仅限内部 Java 调用方（drama 注入自身单价）；
+     外部 HTTP 请求体中的 credit_cost / credit_label 一律被 controller 剥离（防零价绕过）
+  2. candidate.creditCostOverride —— 端点 billingMode=PER_SECOND 时 = 费率 × duration_sec
+     （溢出 → 400 VIDEO_PRICE_OVERFLOW），否则按次
+  3. 带货线默认单价 material.video-generate（admin 可配，默认 30/条）
+
+前端报价与后端 hold 必须同源：报价取 GET /material/videos/models
+（billingUnit=per_second → creditCost × 脚本总秒数）；models 加载失败时前端必须禁用提交，
+不得回落任何写死单价。
+
+AI 起稿（/material/scripts/ai-draft）时长契约：
+  · duration_sec 缺省 → 默认视频端点有效上限（无配置回退 15s）；显式传入越界 → 400（不静默 clamp）
+  · 产物校验：Σdur ≤ 目标 且 ≥ 有效下限（若已知）；逐镜口播 ≤ dur × 8 汉字（朗读密度）
+  · 首轮全不合法 → 一次受控压缩重试（同套校验）→ 仍不合法 → 502 AI_BAD_OUTPUT 并释放冻结
+  · 禁止服务端只缩 dur 数字不改台词（会产出台词念不完的不可执行脚本）
+```
+
 ### 2.3 市场挂牌收益分成
 
 ```

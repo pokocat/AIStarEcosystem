@@ -27,6 +27,11 @@ public class ClipRenderService {
         jobs.save(job); p.setStatus("generating"); p.setProgress(0); p.setCreditsHeld(externalCreditsHeld); p.setUpdatedAt(now); projectRepo.save(p); return new RenderResult(job.getId(),projectId,job.getStatus(),job.isMock());
     }
     public JobDto get(String owner,String id){ return JobDto.from(required(owner,id)); }
+    public RenderResult findByRequest(String owner,String clientRequestId){
+        ClipRenderJob job=jobs.findByExternalOwnerIdAndClientRequestId(owner,clientRequestId)
+                .orElseThrow(()->BusinessException.notFound("CLIP_JOB_NOT_FOUND","出片任务不存在或无权访问"));
+        return new RenderResult(job.getId(),job.getProjectId(),job.getStatus(),job.isMock());
+    }
     @Transactional public JobDto cancel(String owner,String id){ ClipRenderJob j=required(owner,id); if(Set.of("succeeded","failed","cancelled").contains(j.getStatus()))return JobDto.from(j); j.setStatus("cancelled");j.setErrorMessage("用户已取消");j.setLeaseOwner(null);j.setLeaseUntil(null);j.setCompletedAt(Instant.now());j.setUpdatedAt(Instant.now());jobs.save(j); failProject(j,"failed");return JobDto.from(j); }
     public ClipRenderJob required(String owner,String id){return jobs.findByIdAndExternalOwnerId(id,owner).orElseThrow(()->BusinessException.notFound("CLIP_JOB_NOT_FOUND","出片任务不存在或无权访问"));}
     /**

@@ -1,7 +1,12 @@
 package com.aistareco.aep.service.materialvideo;
 
+import com.aistareco.aep.dto.EndpointCapabilityDto;
+import com.aistareco.aep.dto.MaterialVideoModelsDto;
+import com.aistareco.aep.model.AiModelEndpoint;
+import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.MaterialVideoJob;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
+import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.CelebrityActionPricingService;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.ProductService;
@@ -52,6 +57,7 @@ public class MaterialVideoJobService {
     private final CreditService creditService;
     private final CelebrityActionPricingService actionPricing;
     private final ProductService productService;
+    private final AiModelInvocationService invocation;
     private final CdnUrlSigner signer;
     private final ObjectMapper om;
 
@@ -61,6 +67,7 @@ public class MaterialVideoJobService {
                                    CreditService creditService,
                                    CelebrityActionPricingService actionPricing,
                                    ProductService productService,
+                                   AiModelInvocationService invocation,
                                    ObjectMapper om,
                                    CdnUrlSigner signer) {
         this.jobRepo = jobRepo;
@@ -69,12 +76,64 @@ public class MaterialVideoJobService {
         this.creditService = creditService;
         this.actionPricing = actionPricing;
         this.productService = productService;
+        this.invocation = invocation;
         this.signer = signer;
         this.om = om;
     }
 
+    // ── 模型候选出 wire ───────────────────────────────────────────────────────
+    /**
+     * 带货线「生成模型」下拉：启用候选 × 启用端点 + capability + 单价 + 有效时长区间
+     * （= 协议硬边界 ∩ candidate.maxDurationSec，服务端算好，前端不猜协议）。
+     * 默认 binding 存在但无 candidate 行时合成一条默认项 —— 配置了视频能力时列表恒非空。
+     */
+    @Transactional(readOnly = true)
+    public MaterialVideoModelsDto listModels() {
+        List<MaterialVideoModelsDto.VideoModelOptionDto> out = new ArrayList<>();
+        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)) {
+            if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
+            // 缺 baseUrl / 有效 apiKey 的端点提交时必吃 VIDEO_NOT_CONFIGURED —— 不作为可用模型出 wire，
+            // 否则前端会放开报价与提交、用户走到最后一步才失败。
+            if (!modelClient.isEndpointReady(r.endpoint())) continue;
+            out.add(toModelOption(r.endpoint(), r.candidate(), r.isDefault()));
+        }
+        if (out.isEmpty()) {
+            invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)
+                    .filter(modelClient::isEndpointReady)
+                    .ifPresent(ep -> out.add(toModelOption(ep, null, true)));
+        }
+        return new MaterialVideoModelsDto(out);
+    }
+
+    private MaterialVideoModelsDto.VideoModelOptionDto toModelOption(
+            AiModelEndpoint endpoint, com.aistareco.aep.model.AiAppEndpointCandidate candidate, boolean isDefault) {
+        long cost = candidate != null && candidate.getCreditCostOverride() != null
+                ? Math.max(0L, candidate.getCreditCostOverride()) : videoUnitCost();
+        MaterialVideoModelClient.DurationBounds bounds =
+                MaterialVideoModelClient.intersect(modelClient.protocolDurationBounds(endpoint), candidate);
+        return new MaterialVideoModelsDto.VideoModelOptionDto(
+                endpoint.getId(),
+                endpoint.getName(),
+                isDefault,
+                candidate != null ? EndpointCapabilityDto.from(candidate) : null,
+                cost,
+                AiModelInvocationService.videoBillingUnit(endpoint, candidate),
+                bounds.minSec(),
+                bounds.maxSec(),
+                candidate != null);
+    }
+
+    /** 默认视频端点的有效时长区间；视频能力未配置时返回 null（起稿等旁路消费方自行回落默认值）。 */
+    @Transactional(readOnly = true)
+    public MaterialVideoModelClient.DurationBounds defaultDurationBounds() {
+        return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null)
+                .map(r -> MaterialVideoModelClient.intersect(
+                        modelClient.protocolDurationBounds(r.endpoint()), r.candidate()))
+                .orElse(null);
+    }
+
     // ── 提交 ─────────────────────────────────────────────────────────────────
-    /** 在任务落库 / hold 积分前校验所选端点与时长。 */
+    /** 在任务落库 / hold 积分前校验所选端点与时长（必填 >0 + 有效区间，见 modelClient.validateRequest）。 */
     public void validateRequest(String endpointId, int durationSec) {
         modelClient.validateRequest(endpointId, durationSec);
     }
@@ -101,23 +160,29 @@ public class MaterialVideoJobService {
 
         boolean billable = billable(userId);
 
-        List<MaterialVideoJob> created = new ArrayList<>();
+        // 第一阶段：整批解析为不可变计划（端点白名单 / Key / 时长必填与有效区间 / 单价含
+        // PER_SECOND 展开与 VIDEO_PRICE_OVERFLOW）——任何 hold 之前完成全部校验与报价，
+        // 批内任一非法 → 整批无任务、无冻结、不提前占钱包锁（@Transactional 回滚只是最后防线）。
+        // 单价优先级：内部调用方 item.credit_cost（如短剧独立定价）> 候选模型 override > 带货线默认价。
+        record PlannedItem(JsonNode item, long unit) {}
+        List<PlannedItem> planned = new ArrayList<>();
         for (JsonNode item : items) {
             String endpointId = endpointIdOf(item);
             int durationSec = item.path("duration_sec").asInt(0);
-            // 协议/Key/时长失败必须发生在任务落库和 hold 之前；带货线此前只在 worker 提交阶段校验，
-            // 会先冻结再退款，还让用户看到一条本可同步拒绝的失败任务。
             modelClient.validateRequest(endpointId, durationSec);
-            // 单价按 item 决定：调用方可传 credit_cost 覆盖（如短剧按 app 维度独立定价，解耦带货线），
-            // 否则优先采用候选模型 override（PER_SECOND 按秒展开），再回落带货线默认价。
-            long unit = itemUnitCost(item, endpointId, durationSec);
-            MaterialVideoJob job = buildJob(item, userId, app);
-            if (billable && unit > 0) {
+            planned.add(new PlannedItem(item, itemUnitCost(item, endpointId, durationSec)));
+        }
+
+        // 第二阶段：逐 item 落库 + hold（金额 = 第一阶段算好的 unit，报价与冻结同源）。
+        List<MaterialVideoJob> created = new ArrayList<>();
+        for (PlannedItem p : planned) {
+            MaterialVideoJob job = buildJob(p.item(), userId, app);
+            if (billable && p.unit() > 0) {
                 // 余额不足 → CreditService 抛 402（PAYMENT_REQUIRED），整批回滚（同事务）。
-                String label = orDefault(text(item, "credit_label"), "带货视频生成");
-                creditService.hold(userId, unit, CREDIT_REF_TYPE, job.getId(),
+                String label = orDefault(text(p.item(), "credit_label"), "带货视频生成");
+                creditService.hold(userId, p.unit(), CREDIT_REF_TYPE, job.getId(),
                         label + " · " + safe(job.getName(), "视频"));
-                job.setCreditsHeld(unit);
+                job.setCreditsHeld(p.unit());
             }
             jobRepo.save(job);
             created.add(job);

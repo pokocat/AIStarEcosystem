@@ -13,7 +13,7 @@ import { MaterialOpsApi } from "@/api";
 import { MATERIAL_PRODUCTS } from "@/mocks/material-ops";
 import { VARIANT_AXES, VARIANT_AXIS_ORDER } from "@/constants/material-ops-ui";
 import type { ScriptAsset, ScriptVariable, VariantConfig, VariantSample } from "./types";
-import { extractVariablesFromScript, sampleVariants, totalCombinations, estimateVideoCredits } from "./lib";
+import { extractVariablesFromScript, sampleVariants, totalCombinations } from "./lib";
 import { Eyebrow, Seg, hexA, CostLine } from "./shared";
 
 const LOCAL_DEFAULT_CONFIG: VariantConfig = {
@@ -29,6 +29,8 @@ export function DeriveVariablesPanel({
   script,
   walletBalance = null,
   submitting = false,
+  creditsPerVideo = null,
+  blocked = false,
   error = null,
   onClose,
   onGenerate,
@@ -36,6 +38,10 @@ export function DeriveVariablesPanel({
   script: ScriptAsset;
   walletBalance?: number | null;
   submitting?: boolean;
+  /** 单条真实报价（按所选模型/时长）；null = 报价未就绪（提交禁用）。 */
+  creditsPerVideo?: number | null;
+  /** 报价未就绪或时长越界 → 禁用提交（原因由弹窗顶部模型行展示）。 */
+  blocked?: boolean;
   error?: string | null;
   onClose: () => void;
   onGenerate: (samples: VariantSample[], config: VariantConfig) => void;
@@ -263,14 +269,14 @@ export function DeriveVariablesPanel({
 
         {/* footer */}
         <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "var(--bg-2)" }}>
-          <CostLine count={count} credits={estimateVideoCredits(count)} balance={walletBalance} unit="视频" />
+          <CostLine count={count} credits={creditsPerVideo != null ? creditsPerVideo * count : null} balance={walletBalance} unit="视频" />
           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
             <Button variant="ghost" onClick={onClose}>
               取消
             </Button>
-            <Button variant="accent" onClick={() => onGenerate(samples, config)} disabled={submitting}>
+            <Button variant="accent" onClick={() => onGenerate(samples, config)} disabled={submitting || blocked}>
               {submitting ? <Loader2 size={13} className="animate-spin" /> : <Shuffle size={13} />}
-              {submitting ? "提交中…" : `生成 ${count} 条 · ${estimateVideoCredits(count)} 积分`}
+              {submitting ? "提交中…" : creditsPerVideo != null ? `生成 ${count} 条 · ${creditsPerVideo * count} 积分` : `生成 ${count} 条`}
             </Button>
           </div>
         </div>

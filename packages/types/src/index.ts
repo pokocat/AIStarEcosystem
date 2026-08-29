@@ -18,6 +18,7 @@ export * from "./film";
 export * from "./finance";
 export * from "./generation";
 export * from "./license";
+export * from "./material-ops";
 export * from "./music";
 export * from "./navigation";
 export * from "./notice";

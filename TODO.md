@@ -43,6 +43,14 @@
 - [ ] 为 `DapAvatar` / `DapVoice` 本次新增的引擎字段补正式 Flyway 迁移；当前 v0.110 仍依赖 `ddl-auto=update`，`V14__add_clip_domain.sql` 只建 clip 四表。等全仓 Flyway 接管策略确认后再迁，避免与既有表结构漂移冲突。
 - [ ] 生产接入前跑 MySQL 迁移演练、多实例租约/杀进程恢复、长任务 stale reaper、真实供应商限流与成本压测；mock 完成不算验收。
 
+## 2026-08-29 · nginx 443 vhost 补齐（v0.136）
+
+- [x] ~~仓库 `infra/nginx/` 缺 music / drama / aiavatar / star 的 443 SSL example~~（**v0.136 完成，2026-08-29**）：新增 `{music,drama,aiavatar,star,celebrity,api}.aibuzz.cn.ssl.conf.example` 六份；前五份的 `server` 块与线上 `/etc/nginx/conf.d/` 对应文件逐字节一致（已 diff 校验），七份合起来过 `nginx -t`（docker nginx:1.27-alpine）。`infra/README.md` 新增 **§5.1「每子域必须同时有 80 和 443」**（含 443 默认站机制、线上 vhost 清单、泛域名证书副本台账、新增子域 checklist + 实测过的验证脚本），`docs/INDEX.md` last-reviewed 同步。
+- [ ] **`api.aibuzz.cn` 缺 443 vhost（线上仍存在的同类 bug）**：`aistareco.conf:151` 只有 80 block，`https://api.aibuzz.cn/` 落到 443 默认站 admin 并 302 到 `/admin`（2026-08-29 实测 `curl -sI https://api.aibuzz.cn/` → `location: https://api.aibuzz.cn/admin`；`http://` 为 404 属正常，命中 server 根路径）。修法：装 `infra/nginx/api.aibuzz.cn.ssl.conf.example` 到 `/etc/nginx/conf.d/api.aibuzz.cn.ssl.conf` 后 `nginx -t && systemctl reload nginx`。**修好前不要把 `https://api.aibuzz.cn` 用作支付/短信回调地址或小程序 request 合法域名。**
+- [ ] **泛域名证书 5 处副本目录**（2026-11-08 到期前必须处理）：`/etc/nginx/ssl/{admin,aistar,bossclub,drama}.aibuzz.cn/` 与 `/etc/nginx/certs/celebrity.aibuzz.cn/` 存的是与 `/etc/nginx/certs/aibuzz.cn/` **完全相同**的证书副本（md5 一致，非独立签发），线上 `drama.aibuzz.cn.ssl.conf` / `celebrity-ssl.conf` / `admin.aibuzz.cn.ssl.conf` 仍指向各自副本。续期若只换 canonical 目录，这几个域会继续用旧证书直到过期。修法二选一：把线上配置改指共享路径（仓库 example 已收敛），或让续期脚本覆盖全部 6 个路径。
+- [ ] 清理 `infra/nginx/{star,aistar}.aibuzz.cn.conf.example` 两份历史「80+443 单文件」example：其 443 块缺 `/api/` `/static/` `/cdn/` 三个反代（装上去前端能开但接口全 404），且引用的 `/etc/nginx/ssl/star.aibuzz.cn/` 线上并不存在。已在 README §5.1 标注「勿再安装」，待确认无人引用后删除。
+- [ ] `aibuzz.cn` 顶级域从 ECS 本机与本地 curl 均 `000`（`www.aibuzz.cn` 正常 200）。本地 DNS 被 VPN 劫持到 198.18.0.0/15，未能确诊，**与本次 443 改动无关**，需在干净网络下复验 DNS A 记录与安全组。
+
 ## 2026-04-21 · admin 调 server 全 403 + 缺排错手段
 
 ### 现象
@@ -254,6 +262,15 @@
 
 - [ ] **C-1 inline style 收敛**：约 28 文件 `style={{}}`，集中在 `creator/Button.tsx`（微调 fontSize / padding 12.5/13.5/14.5）和 `creator/GradientBlock.tsx`（多层 gradient 叠加，动态值难替）。可缓做。
 - [ ] **C-2 真后端落地**：13 个 celebrity-zone 函数 + products CRUD 等需 `apps/server` 配套 Spring 实体 + REST + DTO（field 命名严格 mirror TS interface）。
+
+**v0.132 明星带货短视频重构 · 出圈登记（2026-08-17，方案经 codex-cli 两轮评审）**：
+
+- [ ] **链路 A（明星形象生成）真实化**：v0.132 起 live 模式在 `/star/{id}/generate` 页面层拦截为「能力建设中」（老逻辑 `startGeneration` 真扣积分但无真实引擎 + 前端 BigBuckBunny 假成片，违 §8.0）；演示流程仅 USE_MOCK。真实引擎接入时移除拦截并把 `CelebrityGenerationWorkspace.handleProgressComplete` 改读任务真实产物。
+- [ ] **ENGINE_META 假价体系退役**（随链路 A）：`constants/celebrity-zone-ui.ts` 的 KeLing/HiGen/MiniMax 50/120/300 纯前端常量，不映射任何真实 endpoint；真实化时改走 `/celebrity/engine-pricing` 或统一到 candidate 报价。
+- [ ] **两套 ProductPickerDialog 合并**：`celebrity-zone/`（拷文本丢 productId）与 `material-ops/`（绑 id + v0.132 免商品路径）重复实现、行为不一致。
+- [ ] **material-ops 存量类型上移 packages/types**：v0.132 只把新 wire 契约（`VideoModelOption` 等）放进 `packages/types/src/material-ops.ts`；`ScriptAsset`/`MaterialVideo` 等仍在 `apps/web-celebrity/src/components/material-ops/types.ts`（违 §4.1 的历史欠债，随 openapi schema 化一并上移）。
+- [ ] **`ai_app_endpoint_candidate.minDurationSec` 列**：v0.132 有效下限只来自协议适配器（jusuan=5），未知协议下限=null；admin 若需对 generic 端点配置下限需加列（加列后 `MaterialVideoModelClient.intersect` 取 max(协议, candidate)）。
+- [ ] **/library 三 tab 数据融合**：明星视频/脚本视频/混剪成片仍各读各的 API（`library/page.tsx` 注释自承）。
 
 ### Cross-cutting（types / packages）
 

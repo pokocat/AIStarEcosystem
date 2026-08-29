@@ -50,7 +50,7 @@ export function CelebrityHeroCta({
           </div>
           <div className="flex flex-wrap gap-2 lg:ml-auto">
             <Link
-              href="/producer/finance"
+              href="/wallet"
               className={cn(
                 CTA_PRIMARY_LG,
                 "bg-[var(--warning)] hover:opacity-90 hover:bg-[var(--warning)]",

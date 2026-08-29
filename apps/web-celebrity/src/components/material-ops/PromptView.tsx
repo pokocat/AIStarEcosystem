@@ -7,6 +7,8 @@ import * as React from "react";
 import { Copy, Check } from "lucide-react";
 import { Card, Button } from "@/components/creator";
 import type { MaterialProduct, ScriptAsset, ScriptBlock } from "./types";
+import { buildVideoPrompt } from "./lib";
+import { DEFAULT_CONFIG } from "./VideoGenDialog";
 import { Eyebrow, Seg, hexA } from "./shared";
 
 interface Section {
@@ -22,7 +24,12 @@ export function PromptView({ script, product }: { script: ScriptAsset; product: 
   const blocks = script.blocks;
   const totalDur = blocks.reduce((s, b) => s + b.dur, 0);
   const sections = React.useMemo(() => buildSections(script, product, blocks, totalDur), [script, product, blocks, totalDur]);
-  const compiled = React.useMemo(() => sections.map((s) => s.compiled).join("\n\n"), [sections]);
+  // 「完整提示词」= 真实提交载荷（lib.buildVideoPrompt，与 VideoGenDialog 基线提交同源）。
+  // 旧版展示 buildSections 拼的另一套模板（写死 电影感写实/1080P/30fps），与实际发给模型的不一致。
+  const compiled = React.useMemo(
+    () => buildVideoPrompt({ script, product, blocks, config: DEFAULT_CONFIG }),
+    [script, product, blocks],
+  );
   const json = React.useMemo(() => buildJSON(sections, script, product), [sections, script, product]);
   // 运营只需「完整提示词」；字段对照 / 数据包（JSON）是工程排障视图，仅 dev 暴露。
   const showDevTabs = process.env.NODE_ENV !== "production";

@@ -24,6 +24,7 @@ public interface DapAvatarRepository extends JpaRepository<DapAvatar, String> {
                   @org.springframework.data.repository.query.Param("expected") Integer expected,
                   @org.springframework.data.repository.query.Param("next") Integer next);
 
+    List<DapAvatar> findByOwnerUserId(String ownerUserId);
     List<DapAvatar> findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId);
     List<DapAvatar> findByOwnerUserIdAndEngineAndDeletedAtIsNullOrderByUpdatedAtDesc(String ownerUserId, String engine);
     Optional<DapAvatar> findByIdAndOwnerUserId(String id, String ownerUserId);

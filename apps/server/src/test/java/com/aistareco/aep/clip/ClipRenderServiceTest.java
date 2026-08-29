@@ -76,4 +76,23 @@ class ClipRenderServiceTest {
         assertEquals("cj_existing", result.jobId());
         verify(jobs, never()).save(any());
     }
+
+    @Test
+    void findsAcceptedJobByOwnerAndClientRequestIdForBillingReconciliation() {
+        ClipRenderJob existing = ClipRenderJob.builder().id("cj_existing").externalOwnerId("owner-1")
+                .projectId("cp_1").clientRequestId("request-001").creditsHeld(9).status("assembling").build();
+        when(jobs.findByExternalOwnerIdAndClientRequestId("owner-1", "request-001")).thenReturn(Optional.of(existing));
+
+        RenderResult result = service.findByRequest("owner-1", "request-001");
+        assertEquals("cj_existing", result.jobId());
+        assertEquals("assembling", result.status());
+    }
+
+    @Test
+    void requestLookupDoesNotLeakAnotherOwnersJob() {
+        when(jobs.findByExternalOwnerIdAndClientRequestId("owner-2", "request-001")).thenReturn(Optional.empty());
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.findByRequest("owner-2", "request-001"));
+        assertEquals("CLIP_JOB_NOT_FOUND", error.getCode());
+    }
 }

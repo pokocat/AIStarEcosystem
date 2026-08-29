@@ -1,0 +1,50 @@
+# AI Star Eco — api.aibuzz.cn HTTPS entry for apps/server (port 8080).
+# Install to: /etc/nginx/conf.d/api.aibuzz.cn.ssl.conf
+#
+# ⚠️ 与其余 *.ssl.conf.example 不同：本文件**不是**线上现状的镜像，而是待应用的修复。
+#    2026-08-29 核对：api.aibuzz.cn 只有 80 vhost（在 aistareco.conf 内），没有 443 vhost，
+#    因此 `https://api.aibuzz.cn/` 会落到 443 默认站（admin）并 302 到 /admin：
+#
+#      $ curl -s -o /dev/null -w '%{http_code}' http://api.aibuzz.cn/    → 404（正确，server 根路径）
+#      $ curl -sI https://api.aibuzz.cn/ | grep -i location              → https://api.aibuzz.cn/admin（错误）
+#
+#    这是 infra/README.md §5.1 那类 bug 目前仅存的线上实例。安装本文件即可修复。
+#    注意：修好后该域名才真正可用于任何 HTTPS 客户端（小程序 request 合法域名、
+#    支付/短信回调等），在此之前不要把它配成回调地址。
+#
+# 上游形态对齐线上 80 block：整站直通 8080（不做 /api/ /static/ /cdn/ 拆分），
+# 所以对外路径是 https://api.aibuzz.cn/api/... 而非 /...。
+#
+# 证书：全站共用 *.aibuzz.cn 泛域名证书（SAN 含 *.aibuzz.cn + aibuzz.cn），
+#   /etc/nginx/certs/aibuzz.cn/fullchain.pem
+#   /etc/nginx/certs/aibuzz.cn/privkey.key
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name api.aibuzz.cn;
+
+    ssl_certificate /etc/nginx/certs/aibuzz.cn/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/aibuzz.cn/privkey.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    client_max_body_size 200m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+}

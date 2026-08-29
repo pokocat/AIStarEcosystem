@@ -1,8 +1,23 @@
-# 版本增量历史（v0.5 → v0.138）
+# 版本增量历史（v0.5 → v0.140）
+# 版本增量历史（v0.5 → v0.140）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.140（2026-08-19）— clip 模糊提交对账与账号保留期清理
+
+`GET /api/me/clip/jobs/by-request/{clientRequestId}` 按 external owner 查询幂等渲染单，军师 BFF 可在提交响应丢失后认领原任务，不再换号重提或立即退费。`DELETE /api/me/clip/account` 仅供军师在账号保留期到期后调用，会清理该 owner 的 clip 项目/任务/素材/分身/声音及存储对象。
+### v0.139（2026-08-17）— 明星带货短视频重构：入口提级、模型时长/报价前置、免商品脚本
+
+**背景 review**：web-celebrity 存在三条互不相通的「视频生成」链路——唯一一级「快速生成」入口通向 mock 的明星模板链路（前端伪造出片 + live 下 `startGeneration` 真扣积分但无真实引擎 = 收真钱交假货）；唯一真实出片的脚本视频线埋在「素材运营→脚本工坊」三级之下且命名不含「视频」；AI 起稿写死 38 秒、空白脚本默认 34 秒，而默认视频端点 minimax-h3 硬限 5–15 秒 → 默认路径提交出片必吃 400；`ai_app_endpoint_candidate.maxDurationSec` 只有短剧线消费（带货线是死字段）；前端报价写死 30 积分/条 vs 实际 40 积分/秒×15s=600。重构方案经本地 codex-cli 两轮评审（GO-WITH-CHANGES，11+4 条意见全部吸收）。
+
+**server**：① 时长策略在 hold 前收口——`MaterialVideoModelClient.validateRequest` 升级：`duration_sec` 必填且 >0（400 `VIDEO_DURATION_REQUIRED`，消灭校验/报价/落库/供应商请求四套真值）；有效区间 = 协议硬边界（jusuan 5–15 / agnes ≤18=441帧÷24fps / 其余未知=null 不臆造）∩ `candidate.maxDurationSec`，越界 → 400 `VIDEO_DURATION_UNSUPPORTED`（带货口径文案：当前值/允许区间/怎么改）；`submit` 改两段式先全量校验再逐 item hold（批内任一非法 → 整批无任务无冻结）。② 新端点 `GET /material/videos/models`（新 DTO `MaterialVideoModelsDto`，不复用 drama `RenderModelsDto`）：启用候选 × 启用端点 + capability + 单价 + `billingUnit` + 服务端算好的 `effectiveMin/MaxDurationSec`；默认 binding 无 candidate 行时合成默认项；`billingUnit` 判定抽成 `AiModelInvocationService.videoBillingUnit` 静态方法（drama 复用，行为不变）。③ AI 起稿时长对齐：`draftScripts` 目标时长缺省取默认视频端点有效上限（fallback 15），显式传入越界 → 400 不静默 clamp；prompt 模板注入硬上限 + 口播字数预算（≤dur×8 汉字）；产物严格校验（Σdur ≤ 目标 / ≥ 有效下限 / 逐镜朗读密度）+ 一次受控压缩重试 → 仍不合法 502 `AI_BAD_OUTPUT` 释放冻结；**禁止服务端只改 dur 数字不改台词**。免商品起稿支持 `creative_brief`。计价优先级保持 `内部 item.credit_cost > candidate override > 用途默认价`，外部请求体 credit_cost 继续被 controller 剥离。
+
+**web-celebrity**：① `/generate`「快速生成」→「生成中心」：三方式卡（脚本带货视频主推 / 模板混剪 / 明星形象生成——live 渲染「能力建设中」禁用态，演示仅 USE_MOCK 且带标）+ 真实任务合并区（新 `use-generation-jobs` hook：material+mixcut 合并、来源打标、可见性感知轮询、源失败显式提示）；`/star/{id}/generate` live 页面层拦截（§8.0：删 `.catch(()=>本地假任务)` 静默降级，失败显真实错误）；旧明星列表迁 `/generate/star`（演示）。② 侧栏「脚本工坊」→「脚本视频工坊」+ running 角标；移动端底部 tab「混剪」→「生成」；dashboard 管线第 3 步指向 /generate；死链 ×3 `/producer/finance` → `/wallet`。③ VideoGenDialog 加「生成模型」行（`useVideoModels` 共享 hook 模块级缓存）：有效时长区间 + `N 积分/秒·条` 前置展示，实时报价 = per_second ? 单价×脚本秒数 : 单价（×条数），**models 未加载成功 → 禁用提交，绝不回落写死 30**；时长越界 CTA 禁用 + 可执行提示；显式选非默认模型才透传 `variant_config.endpoint_id`（默认端点走 legacy 路径避免合成项被白名单拒）。④ 编辑器：标题栏「Σ/上限」量表（超限红），每镜 dur `+` 步进达上限禁用；空白脚本默认 5 镜 34s→15s（3×5）。⑤ 免商品脚本端到端：ProductPicker 加「不关联商品，直接写脚本」+ 主题简介；`ScriptAsset.creative_brief` 契约字段（payloadJson 整存整取自动 round-trip）；prompt 商品段 = product ?? brief；修「换商品只更新 state 不落 draft.product_id」既有 bug。⑥ 链路 A 确定性修复：workspace 用页面已拉的真实 star（删 `STAR_DETAIL_MAP[starId] || ACTIVE_STAR` mock 覆盖）；项目/模板下拉走 `listProjects()/listTemplates()`；「+新建」死按钮 → /projects。⑦ 清理：live 下整套 localStorage 假任务禁用（enqueue/advance/hasInflight 短路）；删死代码 `VIDEO_GEN_STAGES`/`VIDEO_CONFIG_FIELDS`/`buildVideoAsset`/`buildAsyncTasks`/`PendingJobsBadge.tsx`；PromptView「完整提示词」改展示真实 `buildVideoPrompt` 载荷。
+
+**契约**：`packages/types/src/material-ops.ts` 新建（`VideoModelOption`/`VideoModels` 真源）；openapi 加 `/material/videos/models` + `VideoModelOption` schema + `/videos/generate`、`/scripts/ai-draft` 完整 requestBody/错误响应；BUSINESS_RULES §2 补带货视频有效时长/计价/批内原子性。门禁：`typecheck:all` 10/10 + `typecheck:admin` + server 定向测试 44/44（`MaterialVideoModelClientTest` +5 时长策略用例）+ web-celebrity build + `pnpm check:api-contract` 全绿。出圈登记 TODO：链路 A 真实化、两套 ProductPicker 合并、material 存量类型上移 packages/types、`candidate.minDurationSec` 列、/library 三 tab 融合、ENGINE_META 假价体系退役。
+门禁：web-drama 40/40 + Next build 31 路由；server 全量 626（skip 3，本地 CDN + H2 `NON_KEYWORDS=CAST`）；全 workspace typecheck；admin build 64 路由；API contract 全绿。测试未调用真实视频模型、未产生媒体费用。详细路线见 [`docs/drama-short-vimax-lite-plan.md`](drama-short-vimax-lite-plan.md)。
 
 ### v0.138（2026-08-29）— 音乐创作接入真实音乐大模型（此前整条链路是假的）
 
@@ -79,7 +94,7 @@ P0 已落地：web-drama 新增确定性 prompt compiler，全局视觉设定排
 
 新增 `DramaShortAssembleService` 与 `POST /me/drama/shorts/{id}/assemble`：校验所有镜头已验收且具有视频，按镜号下载拼接，流复制失败回退 H.264/AAC，上传后仅持久化 `payloadJson.assembled.cdnKey`，出 wire 实时签名；输入指纹实现重复点击幂等，镜头编辑会使旧成片 stale。客户端 PUT 不得伪造成片或直接标记 done，只有总装成功后才完成。制作页补齐合成 loading、缺失媒体、可见错误/重试、成功反馈、响应式安全宽度和 aria 状态。
 
-门禁：web-drama 40/40 + Next build 31 路由；server 全量 626（skip 3，本地 CDN + H2 `NON_KEYWORDS=CAST`）；全 workspace typecheck；admin build 64 路由；API contract 全绿。测试未调用真实视频模型、未产生媒体费用。详细路线见 [`docs/drama-short-vimax-lite-plan.md`](drama-short-vimax-lite-plan.md)。
+门禁：web-drama 40/40 + Next build 31 路由；server 定向 20/20 + 全量 627（skip 3，本地 CDN + H2 `NON_KEYWORDS=CAST`）；全 workspace typecheck；admin build 64 路由；API contract 全绿。测试未调用真实视频模型、未产生媒体费用。详细路线见 [`docs/drama-short-vimax-lite-plan.md`](drama-short-vimax-lite-plan.md)。
 
 ### v0.132（2026-08-18）— 快出片本人素材单次直传与异步受理
 

@@ -9,7 +9,14 @@
       "canvasData": {
         "x": 0,
         "y": 0,
-        "group": 0
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 812,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-81e1acf4",
+          "measuredAt": 1787505682945
+        }
       },
       "devMetadata": {
         "htmlSrc": "pages/home.html",
@@ -23,9 +30,16 @@
       "version": 1,
       "createdAt": 1782910904000,
       "canvasData": {
-        "x": 420,
+        "x": 169,
         "y": 0,
-        "group": 0
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 100,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-8636dcdc",
+          "measuredAt": 1787505682945
+        }
       },
       "devMetadata": {
         "htmlSrc": "pages/library.html",
@@ -39,9 +53,16 @@
       "version": 1,
       "createdAt": 1782910905000,
       "canvasData": {
-        "x": 840,
+        "x": 338,
         "y": 0,
-        "group": 0
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 812,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-3d053999",
+          "measuredAt": 1787505682945
+        }
       },
       "devMetadata": {
         "htmlSrc": "pages/apps.html",
@@ -55,9 +76,16 @@
       "version": 1,
       "createdAt": 1782910906000,
       "canvasData": {
-        "x": 1260,
+        "x": 507,
         "y": 0,
-        "group": 0
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 812,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-9e286b7b",
+          "measuredAt": 1787505682945
+        }
       },
       "devMetadata": {
         "htmlSrc": "pages/me.html",
@@ -71,9 +99,16 @@
       "version": 1,
       "createdAt": 1782910907000,
       "canvasData": {
-        "x": 1680,
+        "x": 676,
         "y": 0,
-        "group": 0
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 812,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-3be322ae",
+          "measuredAt": 1787505682945
+        }
       },
       "devMetadata": {
         "htmlSrc": "pages/login.html",
@@ -87,9 +122,16 @@
       "version": 1,
       "createdAt": 1782910908000,
       "canvasData": {
-        "x": 2100,
+        "x": 845,
         "y": 0,
-        "group": 0
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 812,
+          "viewportWidth": 375,
+          "sourceHash": "fnv1a-afb62544",
+          "measuredAt": 1787505682945
+        }
       },
       "devMetadata": {
         "htmlSrc": "pages/create.html",
@@ -104,7 +146,11 @@
       "createdAt": 1782910909000,
       "canvasData": {
         "x": 0,
-        "y": 769
+        "y": 346,
+        "naturalSize": {
+          "width": 292,
+          "height": 290
+        }
       },
       "devMetadata": {
         "imageSrc": "assets/logo.jpg"

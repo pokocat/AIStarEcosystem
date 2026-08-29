@@ -41,12 +41,12 @@ import {
   type NavSubItem,
 } from "@/components/creator";
 import { CelebrityShellProvider, useCelebrityShell } from "@/lib/celebrity-shell-context";
-import { MixcutApi } from "@/api";
+import { MaterialOpsApi, MixcutApi } from "@/api";
 
 // 侧栏入口都是顶层路径；选中判定：仅在该 tab 的「根 list 路径」高亮。
 // 详情页（/star/<id>、/projects/<id>）不归属任何 list 父级，故均不高亮 —— 设计上
 // 明星详情可由市场/我的两个 list 进入，归到任一都不对称，独立段最干净。
-function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: number): NavGroup[] {
+function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: number, materialJobs = 0): NavGroup[] {
   const isExact = (href: string) => pathname === href;
   const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
   const isDistribution = pathname === "/distribution" || pathname.startsWith("/distribution/");
@@ -108,8 +108,8 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
         // v0.37+：合并「我的明星」/cast 入「明星市场」/market —— 同页面顶部就是「我的授权明星」section，
         // 数据源也对齐 admin DB（v0.34+ /api/celebrity/stars）。
         { icon: Star, label: "明星市场", href: "/market", selected: isExact("/market") },
-        // v0.37+：「快速生成」入口外放 —— 直接列已授权明星 → /star/{id}/generate
-        { icon: Sparkles, label: "快速生成", href: "/generate", selected: isExact("/generate") },
+        // v0.132：「快速生成」→「生成中心」—— 聚合三种生成方式（脚本视频/混剪/明星形象）+ 进行中任务。
+        { icon: Sparkles, label: "生成中心", href: "/generate", selected: pathname === "/generate" || pathname.startsWith("/generate/") },
       ],
     },
     {
@@ -140,7 +140,8 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       // 迁自「素材运营平台」原型；纯前端 + Mock。
       title: "素材运营",
       items: [
-        { icon: ScrollText, label: "脚本工坊", href: "/material/workshop", selected: isWorkshop },
+        // v0.132：改名含「视频」——这里是真实带货视频的唯一生产线，老名字让入口形同隐身。
+        { icon: ScrollText, label: "脚本视频工坊", href: "/material/workshop", selected: isWorkshop, badge: materialJobs > 0 ? materialJobs : undefined },
         { icon: Images, label: "商品素材库", href: "/material/assets", selected: isExact("/material/assets") },
         { icon: Flame, label: "爆款雷达", href: "/material/radar", selected: isExact("/material/radar") },
         { icon: FlaskConical, label: "智能体训练", href: "/material/agent", selected: isExact("/material/agent") },
@@ -368,8 +369,36 @@ function Shell({ children }: { children: React.ReactNode }) {
   const isMixcut = pathname === "/mixcut" || pathname.startsWith("/mixcut/");
   const isDistribution =
     pathname === "/distribution" || pathname.startsWith("/distribution/");
+  const isMaterial = pathname === "/material" || pathname.startsWith("/material/");
   const [activeJobs, setActiveJobs] = React.useState(0);
   const [inflightPublishJobs, setInflightPublishJobs] = React.useState(0);
+  const [materialJobs, setMaterialJobs] = React.useState(0);
+
+  // 「脚本视频工坊」进行中数 badge（v0.132：素材视频任务此前无任何全局可见性，
+  // 关掉生成弹窗后只能自己想起去素材库）。仅在 /material/* 时拉，模式对齐 mixcut badge。
+  React.useEffect(() => {
+    if (!isMaterial) {
+      setMaterialJobs(0);
+      return;
+    }
+    let cancelled = false;
+    const tick = () => {
+      MaterialOpsApi.listVideoJobs()
+        .then((jobs) => {
+          if (cancelled) return;
+          setMaterialJobs(jobs.filter((j) => j.status === "rendering" || j.status === "queued").length);
+        })
+        .catch(() => {
+          /* 网络抖动忽略，下次再试 */
+        });
+    };
+    tick();
+    const timer = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [isMaterial, pathname]);
 
   // 「生成任务」子项上的活跃数 badge。
   // 仅在用户处于 /mixcut/* 时拉,避免在其他子产品页面无谓请求。
@@ -430,7 +459,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     };
   }, [isDistribution, pathname]);
 
-  const groups = buildGroups(pathname, activeJobs, inflightPublishJobs);
+  const groups = buildGroups(pathname, activeJobs, inflightPublishJobs, materialJobs);
   const crumbs = CrumbsFromPathname(pathname);
 
   // 窄屏（<768px）走移动 shell：底部 Tab Bar + 抽屉导航，复用同一份 groups。

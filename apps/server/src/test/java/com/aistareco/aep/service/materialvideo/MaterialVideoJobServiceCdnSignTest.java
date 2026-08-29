@@ -42,7 +42,8 @@ class MaterialVideoJobServiceCdnSignTest {
         ProductService productService = mock(ProductService.class);
         cdnUrlSigner = mock(CdnUrlSigner.class);
         svc = new MaterialVideoJobService(jobRepo, modelClient, worker, creditService,
-                actionPricing, productService, new ObjectMapper(), cdnUrlSigner);
+                actionPricing, productService, mock(com.aistareco.aep.service.AiModelInvocationService.class),
+                new ObjectMapper(), cdnUrlSigner);
     }
 
     @Test

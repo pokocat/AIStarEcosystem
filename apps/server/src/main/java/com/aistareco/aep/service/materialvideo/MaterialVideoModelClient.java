@@ -83,16 +83,77 @@ public class MaterialVideoModelClient {
         requireKey(requireEndpoint(null));
     }
 
-    /** 提交/冻结积分前的模型协议校验；目前 H3 额外约束 5..15 秒。 */
+    /** 端点是否具备提交条件（有 baseUrl + 可解密的 apiKey）——models 列表据此过滤不可提交项。 */
+    public boolean isEndpointReady(AiModelEndpoint endpoint) {
+        return endpoint != null
+                && endpoint.getBaseUrl() != null && !endpoint.getBaseUrl().isBlank()
+                && decryptKey(endpoint) != null;
+    }
+
+    /**
+     * 提交/冻结积分前的时长策略收口（同一归一值供校验、报价、落库、供应商请求四处使用）：
+     *   1) duration 必填且 &gt;0（400 VIDEO_DURATION_REQUIRED）——不同协议默认时长各异，
+     *      放任 0 会让校验、PER_SECOND 报价（max(1,·)）、任务落库与实际生成用上不同真值；
+     *   2) 有效区间 = 协议硬边界 ∩ candidate.maxDurationSec，越界 → 400 VIDEO_DURATION_UNSUPPORTED
+     *      （带货口径文案：当前值 / 允许区间 / 怎么改）。未知边界 = null，绝不臆造下限。
+     * H3 的 requireJusuanDuration 仍保留在 submit 路径做最后防线。
+     */
     public void validateRequest(String endpointId, int durationSec) {
         AiModelEndpoint endpoint = requireEndpoint(endpointId);
         requireKey(endpoint);
-        String model = endpoint.getModel() != null && !endpoint.getModel().isBlank()
-                ? endpoint.getModel() : props.getDefaultModel();
-        if (PROTOCOL_JUSUAN_MEDIA.equals(protocolFor(endpoint, model))) {
-            requireJusuanDuration(durationSec);
+        if (durationSec <= 0) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_REQUIRED",
+                    "请提供视频时长（整数秒）后再提交生成。");
+        }
+        DurationBounds bounds = effectiveDurationBounds(endpointId, endpoint);
+        if ((bounds.minSec() != null && durationSec < bounds.minSec())
+                || (bounds.maxSec() != null && durationSec > bounds.maxSec())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
+                    durationRangeMessage(endpoint, bounds, durationSec));
         }
     }
+
+    /** 协议硬时长边界（秒）；未知边界 = null（不臆造）。agnes 上限 = 441 帧 / 24fps ≈ 18 秒。 */
+    public DurationBounds protocolDurationBounds(AiModelEndpoint endpoint) {
+        String model = endpoint.getModel() != null && !endpoint.getModel().isBlank()
+                ? endpoint.getModel() : props.getDefaultModel();
+        String protocol = protocolFor(endpoint, model);
+        if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) return new DurationBounds(5, 15);
+        if (PROTOCOL_AGNES.equals(protocol)) return new DurationBounds(null, 441 / AGNES_FRAME_RATE);
+        return new DurationBounds(null, null);
+    }
+
+    /** 某端点的有效时长区间 = 协议硬边界 ∩ candidate.maxDurationSec（capability 未配置 → 只剩协议边界）。 */
+    public DurationBounds effectiveDurationBounds(String endpointId, AiModelEndpoint endpoint) {
+        DurationBounds protocol = protocolDurationBounds(endpoint);
+        AiModelInvocationService.ResolvedEndpoint resolved =
+                invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId).orElse(null);
+        return intersect(protocol, resolved == null ? null : resolved.candidate());
+    }
+
+    /** 协议边界 ∩ candidate 配置：上限取两者较小值；下限当前只有协议提供（candidate 无 minDurationSec 列）。 */
+    public static DurationBounds intersect(DurationBounds protocol, com.aistareco.aep.model.AiAppEndpointCandidate candidate) {
+        Integer max = protocol.maxSec();
+        Integer configured = candidate == null ? null : candidate.getMaxDurationSec();
+        if (configured != null && configured > 0 && (max == null || configured < max)) max = configured;
+        return new DurationBounds(protocol.minSec(), max);
+    }
+
+    static String durationRangeMessage(AiModelEndpoint endpoint, DurationBounds bounds, int durationSec) {
+        String name = endpoint.getName() != null && !endpoint.getName().isBlank() ? endpoint.getName() : "当前视频模型";
+        String range;
+        if (bounds.minSec() != null && bounds.maxSec() != null) {
+            range = "单条时长需在 " + bounds.minSec() + " 至 " + bounds.maxSec() + " 秒之间";
+        } else if (bounds.maxSec() != null) {
+            range = "单条时长最长 " + bounds.maxSec() + " 秒";
+        } else {
+            range = "单条时长至少 " + bounds.minSec() + " 秒";
+        }
+        return name + " " + range + "，本次为 " + durationSec + " 秒。请在脚本工坊压缩口播与分镜时长，或换用其他生成模型。";
+    }
+
+    /** 时长边界（秒）；null = 该侧无已知硬边界。 */
+    public record DurationBounds(Integer minSec, Integer maxSec) {}
 
     /**
      * 返回候选端点显式配置的视频积分价；未配置 override 时返回 {@code null}，由业务线回落自身默认价。

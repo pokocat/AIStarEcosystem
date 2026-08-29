@@ -54,6 +54,7 @@ public class MaterialOpsService {
     private final MaterialAiService materialAi;
     private final CreditService creditService;
     private final CelebrityActionPricingService actionPricing;
+    private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
     private final ObjectMapper om;
     private final HttpClient viralHttp = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
@@ -69,6 +70,7 @@ public class MaterialOpsService {
                               MaterialAiService materialAi,
                               CreditService creditService,
                               CelebrityActionPricingService actionPricing,
+                              com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs,
                               ObjectMapper om) {
         this.scriptRepo = scriptRepo;
         this.videoRepo = videoRepo;
@@ -79,6 +81,7 @@ public class MaterialOpsService {
         this.materialAi = materialAi;
         this.creditService = creditService;
         this.actionPricing = actionPricing;
+        this.videoJobs = videoJobs;
         this.om = om;
     }
 
@@ -205,16 +208,44 @@ public class MaterialOpsService {
         String productId = text(body, "product_id");
         Product product = productId != null ? productRepo.findById(productId).orElse(null) : null;
         if (product == null) {
+            // 免商品起稿（creative_brief）：无库内商品时用主题简介充当商品上下文，
+            // 名称回落「自定义主题」而非假装是「商品」。
+            String brief = text(body, "creative_brief");
             product = new Product();
             product.setId(productId);
-            product.setName(orDefault(text(body, "product_name"), "商品"));
+            product.setName(orDefault(text(body, "product_name"),
+                    brief != null && !brief.isBlank() ? "自定义主题" : "商品"));
             product.setCategory(orDefault(text(body, "category"), "通用"));
-            product.setSellingPoints(text(body, "selling_points"));
+            product.setSellingPoints(orDefault(text(body, "selling_points"), brief));
         }
         String tone = orDefault(text(body, "tone"), "情感故事");
         List<String> audience = strList(body.get("audience"));
-        int durationSec = body.path("duration_sec").asInt(38);
         int count = Math.max(1, Math.min(body.path("count").asInt(3), 5));
+
+        // 目标时长对齐视频模型能力（R2/R3）：严格区分「字段缺失 → 默认」和「显式传入非法 → 400」，
+        // 显式 0/-1/非整数不得静默变成默认值；未知边界不虚构（文案只报已知的一侧）。
+        var bounds = videoJobs.defaultDurationBounds();
+        Integer effMin = bounds != null ? bounds.minSec() : null;
+        Integer effMax = bounds != null ? bounds.maxSec() : null;
+        JsonNode durNode = body != null ? body.get("duration_sec") : null;
+        int durationSec;
+        if (durNode == null || durNode.isNull()) {
+            // 未传 → 默认端点有效上限（视频能力未配置 / 无上限时 fallback 15，与 minimax-h3 默认档一致）。
+            durationSec = effMax != null ? effMax : 15;
+        } else {
+            if (!durNode.isIntegralNumber() || durNode.asInt() <= 0) {
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
+                        "目标时长必须是正整数秒；不传则按当前视频模型上限起稿。");
+            }
+            int requested = durNode.asInt();
+            if ((effMin != null && requested < effMin) || (effMax != null && requested > effMax)) {
+                String range = effMin != null && effMax != null ? effMin + " 至 " + effMax + " 秒"
+                        : effMax != null ? "最长 " + effMax + " 秒" : "至少 " + effMin + " 秒";
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
+                        "目标时长 " + requested + " 秒超出当前视频模型支持范围（" + range + "），请调整后重试。");
+            }
+            durationSec = requested;
+        }
 
         long unit = scriptDraftUnitCost();
         long cost = unit * count;
@@ -227,7 +258,7 @@ public class MaterialOpsService {
             creditService.hold(userId, cost, "material_script_draft", ref, desc);
         }
         try {
-            List<JsonNode> out = materialAi.draftScripts(product, tone, audience, durationSec, count);
+            List<JsonNode> out = materialAi.draftScripts(product, tone, audience, durationSec, count, effMin);
             if (charge) creditService.commitHold("material_script_draft", ref, cost, desc);
             return out;
         } catch (RuntimeException e) {

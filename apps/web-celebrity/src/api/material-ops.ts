@@ -17,6 +17,7 @@ import type {
   ScriptAsset,
   ScriptVariable,
   VideoGenJobRequest,
+  VideoModels,
   ViralHit,
 } from "@/components/material-ops/types";
 import { getProduct as fetchProductById } from "./products";
@@ -240,6 +241,43 @@ export async function listVideos(productId?: string): Promise<MaterialVideo[]> {
 // live：POST /material/videos/generate 提交 → GET /material/videos/jobs[/{id}] 轮询。
 // 未配置视频大模型时 live 会抛 ApiError（VIDEO_NOT_CONFIGURED），由调用方展示明确错误。
 
+/**
+ * 「生成模型」候选（含有效时长区间 + 按秒/按次单价）。
+ * live 失败会抛 ApiError —— 调用方必须禁用提交并展示错误，**绝不回落写死单价**
+ * （报价与真实 hold 金额必须同源，否则用户只在 402 时才发现差价）。
+ */
+export async function listVideoModels(): Promise<VideoModels> {
+  if (USE_MOCK) {
+    return mockDelay({
+      video: [
+        {
+          endpointId: "mock-minimax-h3",
+          name: "MiniMax H3",
+          isDefault: true,
+          capability: { maxDurationSec: 15, maxRefImages: 0, supportsFirstLastFrame: false, supportsSubjectReference: false },
+          creditCost: 40,
+          billingUnit: "per_second" as const,
+          effectiveMinDurationSec: 5,
+          effectiveMaxDurationSec: 15,
+          selectableById: true,
+        },
+        {
+          endpointId: "mock-generic-video",
+          name: "通用视频模型",
+          isDefault: false,
+          capability: { maxDurationSec: 30 },
+          creditCost: 30,
+          billingUnit: "per_call" as const,
+          effectiveMinDurationSec: null,
+          effectiveMaxDurationSec: 30,
+          selectableById: true,
+        },
+      ],
+    });
+  }
+  return apiFetch<VideoModels>("/material/videos/models");
+}
+
 /** 提交一批视频生成任务，返回创建出的任务卡（status=rendering）。 */
 export async function submitVideoJobs(requests: VideoGenJobRequest[]): Promise<MaterialVideo[]> {
   if (!requests.length) return [];
@@ -313,8 +351,11 @@ export async function deleteVideo(id: string): Promise<void> {
   await apiFetch<void>(`/material/videos/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-// ── 后台渲染任务队列（始终 localStorage 模拟） ───────────────────────────────
+// ── 后台渲染任务队列（仅 USE_MOCK 的 localStorage 模拟） ─────────────────────
+// live（USE_MOCK=0）下整套本地假任务禁用：真实任务由 /material/videos/jobs 轮询承载，
+// 假任务混列会把 localStorage 里的假进度当真任务展示（§8.0 禁静默降级的前端对应物）。
 export async function enqueueRenderTasks(tasks: AsyncRenderTask[]): Promise<void> {
+  if (!USE_MOCK) return;
   const cur = readJSON<AsyncRenderTask[]>(TASKS_KEY, []);
   writeJSON(TASKS_KEY, [...cur, ...tasks]);
   return mockDelay(undefined, 60);
@@ -323,9 +364,9 @@ export async function enqueueRenderTasks(tasks: AsyncRenderTask[]): Promise<void
 const STAGES = ["已入队", "镜头规划", "场景合成", "逐镜渲染", "配音口型", "合成出片"];
 const PALETTE = ["#7c5cff", "#ff5b8a", "#22b59a", "#f0a83a", "#5b3fe0", "#ff8a5b"];
 
-/** 推进任务进度（每次 +~9%）；完成的任务转成 ready 视频落库（live → 后端；mock → 本地）。 */
+/** 推进任务进度（每次 +~9%）；完成的任务转成 ready 视频落库。仅 USE_MOCK 生效。 */
 export async function advanceRenderTasks(): Promise<boolean> {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || !USE_MOCK) return false;
   const tasks = readJSON<AsyncRenderTask[]>(TASKS_KEY, []);
   if (tasks.length === 0) return false;
   const running: AsyncRenderTask[] = [];
@@ -365,6 +406,7 @@ export async function advanceRenderTasks(): Promise<boolean> {
 }
 
 export async function hasInflightTasks(): Promise<boolean> {
+  if (!USE_MOCK) return false;
   return readJSON<AsyncRenderTask[]>(TASKS_KEY, []).length > 0;
 }
 
@@ -377,9 +419,15 @@ export interface AiDraftParams {
   product_name?: string;
   category?: string;
   selling_points?: string;
+  /** 免商品起稿的主题/卖点简介（无 product_id 时作为商品段输入）。 */
+  creative_brief?: string;
   tone: string;
   audience: string[];
-  duration_sec: number;
+  /**
+   * 目标时长（秒）。缺省（0/不传）→ 服务端取默认视频模型有效上限；
+   * 显式传入越界值 → 服务端 400 VIDEO_DURATION_UNSUPPORTED（不静默 clamp）。
+   */
+  duration_sec?: number;
   count: number;
 }
 

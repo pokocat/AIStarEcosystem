@@ -37,6 +37,29 @@ components:
   # ── Reusable response wrappers ──────────
   schemas:
 
+    # 带货线「生成模型」候选（v0.132；TS 真源 packages/types/src/material-ops.ts VideoModelOption）
+    VideoModelOption:
+      type: object
+      required: [endpointId, name, isDefault, capability, creditCost, billingUnit, effectiveMinDurationSec, effectiveMaxDurationSec, selectableById]
+      properties:
+        endpointId: { type: string }
+        name: { type: string }
+        isDefault: { type: boolean }
+        capability:
+          nullable: true
+          type: object
+          description: 候选 capability（合成默认项为 null）
+          properties:
+            maxRefImages: { type: integer, nullable: true }
+            supportsFirstLastFrame: { type: boolean, nullable: true }
+            supportsSubjectReference: { type: boolean, nullable: true }
+            maxDurationSec: { type: integer, nullable: true }
+        creditCost: { type: integer, description: 积分单价（override ?? 带货线默认价） }
+        billingUnit: { type: string, enum: [per_call, per_second], description: per_second 时实付 = creditCost × duration_sec }
+        effectiveMinDurationSec: { type: integer, nullable: true, description: 有效时长下限（协议硬边界；null=无已知下限） }
+        effectiveMaxDurationSec: { type: integer, nullable: true, description: 有效时长上限（协议 ∩ capability；null=无已知上限） }
+        selectableById: { type: boolean, description: true=存在 candidate 行，可显式携带 endpoint_id 提交；false=合成默认项，必须走缺省默认路径 }
+
     SuccessResponse:
       type: object
       required: [success, data]
@@ -6840,14 +6863,105 @@ paths:
     get: { tags: [material], operationId: materialGetScript, responses: { '200': { description: 单个脚本 ScriptAsset；已软删/无权访问返回 null } } }
     delete: { tags: [material], operationId: materialDeleteScript, responses: { '204': { description: 软删除脚本（写 deleted_at，不物理删除） } } }
   /material/scripts/ai-draft:
-    post: { tags: [material], operationId: materialAiDraftScripts, responses: { '200': { description: 'AI 起稿候选 ScriptAsset[]（不落库；LLM 失败回退内置占位池）' } } }
+    post:
+      tags: [material]
+      operationId: materialAiDraftScripts
+      description: >-
+        AI 起稿候选 ScriptAsset[]（不落库）。v0.132：目标时长对齐视频模型能力——
+        duration_sec 缺省时取默认视频端点有效上限（无配置回退 15s）；显式传入且越界 →
+        400 VIDEO_DURATION_UNSUPPORTED（不静默 clamp）。无 product_id 时可传 creative_brief
+        （免商品脚本主题简介）。产物严格校验（Σdur ≤ 目标 / ≥ 有效下限 / 逐镜口播 ≤ dur×8 字），
+        首轮全不合法自动重试一次，仍不合法 → 502 AI_BAD_OUTPUT 且释放冻结（不扣费）。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id: { type: string }
+                product_name: { type: string }
+                category: { type: string }
+                selling_points: { type: string }
+                creative_brief: { type: string, description: 免商品起稿的主题/卖点简介 }
+                tone: { type: string }
+                audience: { type: array, items: { type: string } }
+                duration_sec: { type: integer, description: 目标时长（秒）；缺省取默认视频端点有效上限 }
+                count: { type: integer, minimum: 1, maximum: 5 }
+      responses:
+        '200': { description: 'AI 起稿候选 ScriptAsset[]（不落库）' }
+        '400': { description: VIDEO_DURATION_UNSUPPORTED（显式目标时长越出默认视频模型有效区间） }
+        '502': { description: AI_BAD_OUTPUT（重试一次后仍无符合时长约束的产物；不扣费） }
+        '503': { description: AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED }
   /material/scripts/{id}/variables:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [material], operationId: materialExtractVariables, responses: { '200': { description: '脚本可替换变量 ScriptVariable[]（已过滤幻觉；失败/无权访问返回空，前端用正则兜底）' } } }
 
   # ── 素材运营 · 带货视频生成（v0.41 新增；真实视频大模型 · 异步 submit + 轮询，见 MaterialVideoJobService） ──
+  /material/videos/models:
+    get:
+      tags: [material]
+      operationId: materialListVideoModels
+      description: >-
+        「生成模型」候选（v0.132）：启用候选 × 启用端点 + capability + 单价 + 服务端算好的
+        有效时长区间（= 供应商协议硬边界 ∩ candidate.maxDurationSec；null=该侧无已知硬边界）。
+        默认 binding 存在但无 candidate 行时合成一条默认项（capability=null）。前端据此做
+        提交前时长校验与实时报价；接口失败时前端必须禁用提交，不得回落写死单价。
+      responses:
+        '200':
+          description: MaterialVideoModelsDto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      video:
+                        type: array
+                        items: { $ref: '#/components/schemas/VideoModelOption' }
   /material/videos/generate:
-    post: { tags: [material], operationId: materialGenerateVideos, responses: { '200': { description: '提交一批生成任务（body={items:[...]}）→ 返回任务卡 MaterialVideo[]（status=rendering）；未配置视频大模型 → 503 VIDEO_NOT_CONFIGURED' } } }
+    post:
+      tags: [material]
+      operationId: materialGenerateVideos
+      description: >-
+        提交一批生成任务 → 返回任务卡 MaterialVideo[]（status=rendering）。
+        v0.132 时长策略：items[].duration_sec 必填且 >0（否则 400 VIDEO_DURATION_REQUIRED）；
+        必须落在所选端点有效时长区间内（协议硬边界 ∩ capability.maxDurationSec，否则
+        400 VIDEO_DURATION_UNSUPPORTED）。全部校验发生在任何积分冻结之前——批内任一非法 →
+        整批无任务、无冻结。items[].variant_config.endpoint_id 可选：显式选非默认候选模型
+        （白名单未命中 → 503 ENDPOINT_NOT_ALLOWED）；缺省走默认端点。计价优先级：
+        candidate.creditCostOverride（PER_SECOND 按秒展开）> 带货线默认单价；外部请求体的
+        credit_cost/credit_label 一律被服务端剥离（防零价绕过）。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [script_id, name, kind, prompt, duration_sec]
+                    properties:
+                      script_id: { type: string }
+                      product_id: { type: string }
+                      name: { type: string }
+                      kind: { type: string, enum: [baseline, variant] }
+                      parent_video_id: { type: string, nullable: true }
+                      prompt: { type: string }
+                      variant_config:
+                        type: object
+                        description: 6 轴画面维度 + 可选 endpoint_id（显式选模型）
+                      duration_sec: { type: integer, minimum: 1 }
+                      aspect_ratio: { type: string }
+      responses:
+        '200': { description: '任务卡 MaterialVideo[]（status=rendering）' }
+        '400': { description: VIDEO_DURATION_REQUIRED / VIDEO_DURATION_UNSUPPORTED / VIDEO_PRICE_OVERFLOW }
+        '402': { description: 积分余额不足（整批回滚，无任务无冻结） }
+        '503': { description: VIDEO_NOT_CONFIGURED / ENDPOINT_NOT_ALLOWED }
   /material/videos/jobs:
     get:
       tags: [material]
@@ -8755,6 +8869,8 @@ paths:
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [clientRequestId, externalCreditsHeld], properties: { clientRequestId: { type: string }, externalCreditsHeld: { type: integer } } } } } }
       responses: { '200': { description: queued idempotent job }, '409': { description: avatar voice or quote changed }, '503': { description: engine not configured } }
+  /me/clip/jobs/by-request/{clientRequestId}:
+    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetJobByClientRequest, parameters: [{ in: path, name: clientRequestId, required: true, schema: { type: string } }], responses: { '200': { description: owner-scoped idempotent render result }, '404': { description: no accepted job for this owner and request id } } }
   /me/clip/jobs/{id}:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetJob, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: job progress } } }
   /me/clip/jobs/{id}/cancel:
@@ -8793,6 +8909,8 @@ paths:
   /me/clip/avatar:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetAvatar, responses: { '200': { description: 'aggregate image and voice engine state with upstream progress, failure messages, imagePreviewUrl, and voiceSource=video|dedicated' } } }
     delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAvatar, responses: { '200': { description: upstream deletion requested and local assets soft deleted } } }
+  /me/clip/account:
+    delete: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipDeleteAccountData, responses: { '200': { description: retention-expiry purge of all owner clip projects, jobs, assets, avatars, voices, and stored media } } }
   /me/clip/avatars:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipListAvatars, responses: { '200': { description: all active avatars with id name preview and linkedVoiceId/linkedVoiceName } } }
   /me/clip/avatars/{id}:

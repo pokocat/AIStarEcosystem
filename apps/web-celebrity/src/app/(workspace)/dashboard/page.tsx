@@ -155,8 +155,8 @@ export default function CelebrityDashboardPage() {
           <PipelineStep
             n={3}
             title="AI 生成"
-            desc="用模板或盲盒生成视频"
-            href="/projects"
+            desc="脚本出片 / 模板混剪，一站开始"
+            href="/generate"
             tone="peach"
             count={generating.length}
             countLabel="生成中"

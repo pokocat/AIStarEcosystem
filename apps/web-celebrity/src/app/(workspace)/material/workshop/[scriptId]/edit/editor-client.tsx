@@ -86,7 +86,15 @@ export function EditorClient({ scriptId }: { scriptId: string }) {
         draft={draft}
         setDraft={setDraft}
         product={product}
-        onProductChange={(nextProduct) => setProduct(nextProduct)}
+        onProductChange={(nextProduct) => {
+          setProduct(nextProduct);
+          // 修既有 bug：换/刷新商品只更新展示 state，不落 draft.product_id → 保存后关联仍是旧商品。
+          setDraft((d) =>
+            d && nextProduct.id && nextProduct.id !== "unknown" && d.product_id !== nextProduct.id
+              ? { ...d, product_id: nextProduct.id, category: nextProduct.category }
+              : d,
+          );
+        }}
         onSaveAndPreview={onSaveAndPreview}
         onDelete={onDelete}
       />

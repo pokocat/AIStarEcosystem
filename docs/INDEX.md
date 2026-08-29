@@ -97,7 +97,7 @@
 
 | 文档 | 用途 |
 |---|---|
-| [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引 |
+| [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引；**§5.1 nginx vhost 硬规则**（每子域必须同时有 80 和 443，否则 HTTPS-First / HSTS 会落到 443 默认站 admin）+ 线上 vhost 清单 / 泛域名证书副本台账 / 新增子域 checklist（last-reviewed 2026-08-29，v0.136 nginx 443 vhost example 补齐） |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | Agent 部署技能入口：本地 artifact 部署、按应用部署、GitHub Actions 流水线部署、验证与排障 |
 | [`docs/ALIPAY_SANDBOX.md`](ALIPAY_SANDBOX.md) | **支付宝直连沙箱联调 Runbook**（v2 §6 driver=alipay）：拿沙箱凭证 → 本机配置 → 纯查单兜底 / 公网回调两种姿势 → 验证 → 上生产换 4 项（last-reviewed 2026-06-27） |
 | [`infra/scripts/update-and-deploy.sh`](../infra/scripts/update-and-deploy.sh) | ECS 本机一键更新部署：补依赖、`git pull --ff-only`、build release、落位、restart、verify |

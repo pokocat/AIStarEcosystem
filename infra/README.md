@@ -31,9 +31,20 @@ infra/
 │
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
-│   ├── ai.aibuzz.cn.conf.example   ← HTTPS 多子域生产形态
-│   ├── admin.aibuzz.cn.ssl.conf.example ← admin 单域 HTTPS 形态
-│   ├── aistar.aibuzz.cn.conf.example ← AiAvatar 单域 HTTPS 形态
+│   ├── ai.aibuzz.cn.conf.example   ← HTTPS 多子域生产形态（规划稿，非线上实际布局）
+│   │
+│   │   ── 各生产子域的 443 vhost（与线上逐字节对齐，见 §5.1）──
+│   ├── admin.aibuzz.cn.ssl.conf.example      ← admin        → 3003
+│   ├── celebrity.aibuzz.cn.ssl.conf.example  ← web-celebrity → 3012
+│   ├── music.aibuzz.cn.ssl.conf.example      ← web-music    → 3010
+│   ├── drama.aibuzz.cn.ssl.conf.example      ← web-drama    → 3011
+│   ├── aiavatar.aibuzz.cn.ssl.conf.example   ← web-aiavatar → 3013
+│   ├── star.aibuzz.cn.ssl.conf.example       ← web-star     → 3014
+│   ├── api.aibuzz.cn.ssl.conf.example        ← server       → 8080 ⚠️ 待应用，非现状镜像
+│   │
+│   │   ── 历史「80+443 单文件」形态，与线上不符，勿再安装（§5.1 漂移表）──
+│   ├── aistar.aibuzz.cn.conf.example ← 已被 aiavatar.*.ssl.conf.example 取代
+│   ├── star.aibuzz.cn.conf.example   ← 已被 star.*.ssl.conf.example 取代
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集
 │
@@ -194,8 +205,18 @@ chmod 600 /etc/aistareco/*.env
 # 选 HTTP 入口形态（推荐首次部署用）：
 cp infra/nginx/ai.conf.example /etc/nginx/conf.d/ai.conf
 cp infra/nginx/snippets/proxy-defaults.conf /etc/nginx/conf.d/snippets/
-# 或选生产 HTTPS 多子域：
-# cp infra/nginx/ai.aibuzz.cn.conf.example /etc/nginx/conf.d/ai.aibuzz.cn.conf
+
+# 生产 HTTPS：**每个子域一份 443 vhost**，与线上 conf.d 一一对应（见 §5.1）
+# ⚠️ 只配 80 的子域，HTTPS 会落到 443 默认站（admin）并 302 到 /admin，
+#    表现为「域名打不开 / 莫名跳后台」，且 HTTPS-First / HSTS 会让用户绕不过去。
+# cp infra/nginx/admin.aibuzz.cn.ssl.conf.example     /etc/nginx/conf.d/admin.aibuzz.cn.ssl.conf
+# cp infra/nginx/celebrity.aibuzz.cn.ssl.conf.example /etc/nginx/conf.d/celebrity-ssl.conf
+# cp infra/nginx/music.aibuzz.cn.ssl.conf.example     /etc/nginx/conf.d/music.aibuzz.cn.ssl.conf
+# cp infra/nginx/drama.aibuzz.cn.ssl.conf.example     /etc/nginx/conf.d/drama.aibuzz.cn.ssl.conf
+# cp infra/nginx/aiavatar.aibuzz.cn.ssl.conf.example  /etc/nginx/conf.d/aiavatar.aibuzz.cn.ssl.conf
+# cp infra/nginx/star.aibuzz.cn.ssl.conf.example      /etc/nginx/conf.d/star.aibuzz.cn.ssl.conf
+# cp infra/nginx/api.aibuzz.cn.ssl.conf.example       /etc/nginx/conf.d/api.aibuzz.cn.ssl.conf
+# 泛域名证书须先落位到 /etc/nginx/certs/aibuzz.cn/{fullchain.pem,privkey.key}
 nginx -t && systemctl reload nginx
 
 # systemd 单元
@@ -424,6 +445,96 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 - **JWT / AES 密钥**：`AEP_JWT_SECRET`（≥32 字符高熵）/ `AEP_SECRET_KEY`（32 字节）必须 env 注入；
   mysql/prod profile 启动看到 dev default 直接抛异常拒绝启动
 - **MixcutPresetSeeder 不受 dev-data gate 控制**（GIF 扰动贴图池是平台基础数据，生产也要种）
+
+### 5.1 nginx vhost：每个子域必须**同时**有 80 和 443
+
+> 2026-08-29 事故复盘。**这是硬规则，新增子域时一并建两个 vhost，不要只建 80。**
+
+**规则**：每个对外子域必须同时存在 `listen 80` 和 `listen 443 ssl` 两个 server block。
+只建 80 的子域，用 HTTPS 打开时**不会报错，而是静默走到别的站点**。
+
+**为什么**：本机 nginx 的 `conf.d` 里**没有任何 443 块标了 `default_server`**
+（只有 `aistareco.conf` 的 `listen 80 default_server`）。nginx 在这种情况下把
+**配置加载顺序里第一个 `listen 443` 的 server 当作 443 默认站**；`include conf.d/*.conf`
+按字典序展开，`admin.aibuzz.cn.ssl.conf` 恰好排第一 —— 于是**所有没有自己 443 vhost
+的子域，HTTPS 请求全部落到 admin**，再被 admin 的 `location = / { return 302 /admin; }`
+跳到后台登录页。
+
+用户侧表现是「域名打不开 / 莫名其妙跳到后台」，而不是证书错误，因为泛域名证书对
+每个子域都有效，TLS 握手成功，只是选错了 server block。触发路径不需要用户手打
+`https://`：Chrome/Edge 的 **HTTPS-First** 会自动把地址栏输入升级成 HTTPS；同源下发过的
+**HSTS**（本仓各 443 vhost 都带 `Strict-Transport-Security: max-age=31536000`）更是强制
+浏览器只走 HTTPS，即使显式输 `http://` 也会被本地改写。**所以「80 配好了就能访问」
+在装过一次 HSTS 的浏览器上是不成立的。**
+
+**线上 vhost 清单**（2026-08-29 核对 `ecs-user@47.98.162.120:/etc/nginx/conf.d/`）：
+
+| 子域 | 上游 | 80 vhost 所在文件 | 443 vhost 所在文件 | 仓库 example |
+|---|---|---|---|---|
+| `admin.aibuzz.cn` | admin 3003 | `aistareco.conf` | `admin.aibuzz.cn.ssl.conf` | `admin.aibuzz.cn.ssl.conf.example` |
+| `celebrity.aibuzz.cn` | web-celebrity 3012 | `aistareco.conf` | `celebrity-ssl.conf` | `celebrity.aibuzz.cn.ssl.conf.example` |
+| `music.aibuzz.cn` | web-music 3010 | `aistareco.conf` | `music.aibuzz.cn.ssl.conf` ← 2026-08-29 补 | `music.aibuzz.cn.ssl.conf.example` |
+| `drama.aibuzz.cn` | web-drama 3011 | `aistareco.conf` | `drama.aibuzz.cn.ssl.conf` | `drama.aibuzz.cn.ssl.conf.example` |
+| `aiavatar.aibuzz.cn` | web-aiavatar 3013 | `aistareco.conf` | `aiavatar.aibuzz.cn.ssl.conf` ← 2026-08-29 补 | `aiavatar.aibuzz.cn.ssl.conf.example` |
+| `star.aibuzz.cn` | web-star 3014 | `star.aibuzz.cn.conf` | `star.aibuzz.cn.ssl.conf` ← 2026-08-29 补 | `star.aibuzz.cn.ssl.conf.example` |
+| `aibuzz.cn` / `www` | web-celebrity 3012 | `aibuzz-ssl.conf` | `aibuzz-ssl.conf` | 无（含 H5 演示静态站，暂不进仓） |
+| `aistar.aibuzz.cn` | web-aiavatar 3013 | `aistar.aibuzz.cn.conf` | `aistar.aibuzz.cn.conf` | 无（与 aiavatar 同上游的旧域名） |
+| `api.aibuzz.cn` | server 8080 | `aistareco.conf` | **缺失** ❌ | `api.aibuzz.cn.ssl.conf.example`（待应用） |
+
+注意 80 和 443 **不在同一个文件里**：多数子域的 80 块集中在 `aistareco.conf`，443 块各占
+一个 `<domain>.ssl.conf`。改动时两边都要看，别只 grep 一个文件就下结论。
+
+**现状（2026-08-29 实测）**：6 个 app 子域 `http` / `https` 均 200，admin 按预期 302 到
+`/admin` —— 即本类 bug 在 app 子域上已修复。**唯一仍中招的是 `api.aibuzz.cn`**：
+
+```
+$ curl -s -o /dev/null -w '%{http_code}' http://api.aibuzz.cn/   → 404   # 正确，命中 server 根路径
+$ curl -sI https://api.aibuzz.cn/ | grep -i location             → https://api.aibuzz.cn/admin   # 落到 admin
+```
+
+仓库已备好 `infra/nginx/api.aibuzz.cn.ssl.conf.example`，装上并 reload 即可闭环。
+**在此之前不要把 `https://api.aibuzz.cn` 用作任何回调地址或小程序合法域名。**
+
+**证书**：全部子域共用一张 `*.aibuzz.cn` 泛域名证书（SAN = `*.aibuzz.cn` + `aibuzz.cn`
++ `www.aistar` / `www.celebrity` / `www.wxapi`），**有效期至 2026-11-08**。真值路径：
+
+```
+/etc/nginx/certs/aibuzz.cn/{fullchain.pem,privkey.key}
+```
+
+⚠️ 线上还散着 5 个**同一张证书的副本目录**（`md5` 完全相同，非独立签发）：
+`/etc/nginx/ssl/{admin,aistar,bossclub,drama}.aibuzz.cn/` 和
+`/etc/nginx/certs/celebrity.aibuzz.cn/`。`drama.aibuzz.cn.ssl.conf` 与 `celebrity-ssl.conf`
+目前仍指向各自的副本 —— 仓库 example 已统一收敛到共享泛域名路径并在文件头注明该差异。
+**续期时若只换 `certs/aibuzz.cn/`，drama 和 celebrity 会继续用旧证书直到过期**，
+所以续期脚本必须覆盖全部 6 个路径，或先把线上配置改指共享路径再续期。
+
+**新增子域 checklist**：
+
+1. 加 80 block（`aistareco.conf` 或独立文件）
+2. 加 443 block（独立 `<domain>.ssl.conf`，从 `music.aibuzz.cn.ssl.conf.example` 复制改端口）
+3. 仓库同步一份 `<domain>.ssl.conf.example`（AGENTS.md §9 文档同步纪律）
+4. `sudo nginx -t && sudo systemctl reload nginx`
+5. 验证**两个协议都通**，且落到正确上游：
+
+```bash
+for d in admin celebrity music drama aiavatar star api; do
+  printf '%-10s http=%-4s https=%-4s %s\n' "$d" \
+    "$(curl -s -o /dev/null -w '%{http_code}' -m 10 "http://$d.aibuzz.cn/")" \
+    "$(curl -s -o /dev/null -w '%{http_code}' -m 10 "https://$d.aibuzz.cn/")" \
+    "$(curl -sI -m 10 "https://$d.aibuzz.cn/" | grep -i '^location:' | tr -d '\r')"
+done
+```
+
+443 落错站的特征是 **302 到 `/admin`**：单看状态码像正常重定向，要看 `Location` 才发现
+串站。用 `curl -sI https://<domain>/ | grep -i location` 确认。
+
+**历史 example 漂移（勿再安装）**：`star.aibuzz.cn.conf.example` 与
+`aistar.aibuzz.cn.conf.example` 是早期「80 跳转 + 443」单文件形态，其 443 块**缺
+`/api/` `/static/` `/cdn/` 三个反代**，直接装上去前端能开但所有接口 404；且引用的
+`/etc/nginx/ssl/{star,aistar}.aibuzz.cn/` 里 `star` 目录在线上并不存在。以
+`*.ssl.conf.example` 为准。
+
 
 ---
 

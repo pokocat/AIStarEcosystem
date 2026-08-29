@@ -179,6 +179,11 @@ public class ClipAssetService {
     }
 
     @Transactional public void delete(String owner, String id) { ClipAsset a = required(owner, id); storage.delete(a.getCdnKey()); storage.delete(a.getThumbnailCdnKey()); repo.delete(a); }
+    @Transactional public void deleteOwner(String owner) {
+        for (ClipAsset a : repo.findByExternalOwnerId(owner)) {
+            storage.delete(a.getCdnKey()); storage.delete(a.getThumbnailCdnKey()); repo.delete(a);
+        }
+    }
 
     /**
      * 取一条**属于本人且可改动**的素材。

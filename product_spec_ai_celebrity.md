@@ -9,6 +9,10 @@
 
 ---
 
+### v0.135 · 2026-08-19 — 共享 clip 幂等查单与账号到期清理
+
+共享 server 的军师 clip facade 增加按 `externalOwnerId + clientRequestId` 查询已受理渲染任务，供军师 BFF 在超时/断网后对账，禁止不确定结果直接退费。另增 retention-expiry 专用的 owner 级 clip 数据清理端点；该端点只由军师服务鉴权在用户保留期到期后调用，不改变明星带货产品流程。
+
 ## 一、商业逻辑（不变量）
 
 ```

@@ -120,6 +120,13 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
     setPickerOpen(false);
     router.push(`/material/workshop/${draft.id}/edit`);
   };
+  // 免商品脚本：不选商品直接进编辑器（brief 作为 AI 起稿/出片的主题输入，之后可再关联商品）。
+  const onNewWithoutProduct = async (brief: string) => {
+    const draft = blankDraft(null, owner, brief);
+    await MaterialOpsApi.saveScript(draft);
+    setPickerOpen(false);
+    router.push(`/material/workshop/${draft.id}/edit`);
+  };
   const activeFilterCount =
     (cat !== "all" ? 1 : 0) + (tier !== "all" ? 1 : 0) + (query.trim() ? 1 : 0) + (sort !== "recent" ? 1 : 0);
 
@@ -418,7 +425,7 @@ export function ScriptLibrary({ composeProductId }: { composeProductId?: string 
         </div>
       </Card>
 
-      {pickerOpen && <ProductPickerDialog onClose={() => setPickerOpen(false)} onPick={onNewProductPicked} />}
+      {pickerOpen && <ProductPickerDialog onClose={() => setPickerOpen(false)} onPick={onNewProductPicked} onPickNone={onNewWithoutProduct} />}
     </div>
   );
 }
@@ -533,29 +540,36 @@ function MetricPill({ label, value, tone }: { label: string; value: React.ReactN
   );
 }
 
-function blankDraft(product: MaterialProduct, owner: { id?: string; name?: string }): ScriptAsset {
+/**
+ * 空白草稿。product 为 null = 免商品脚本（creative_brief 作为 AI 起稿/出片的主题输入）。
+ * 默认 5 镜共 15 秒（3+3+3+3+3）：对齐默认视频模型（minimax-h3）5–15 秒硬限——
+ * 旧默认 34 秒会让用户填完文案提交出片时必吃时长拒绝。
+ */
+function blankDraft(product: MaterialProduct | null, owner: { id?: string; name?: string }, brief?: string): ScriptAsset {
   const id = `asset-${Math.floor(Math.random() * 9000 + 1000)}-new`;
   const now = new Date().toISOString();
+  const baseName = product ? `${product.name} · 新脚本` : "自由脚本 · 新脚本";
   return {
     id,
     kind: "my_script",
-    name: `${product.name} · 新脚本`,
-    title: `${product.name} · 新脚本`,
+    name: baseName,
+    title: baseName,
     tier: "D",
-    category: product.category,
+    category: product?.category ?? "通用",
     hook_type: "情感",
-    audience: product.audience ?? ["女性 25-35"],
+    audience: product?.audience ?? ["女性 25-35"],
     platforms: ["douyin", "xhs"],
-    duration_sec: 0,
-    product_id: product.id,
-    cart: true,
-    cover_color: product.accentColor ?? "#7c5cff",
+    duration_sec: 15, // = 下方 blocks Σdur；关键列与 payload 同源，列表不再显示 0
+    ...(product ? { product_id: product.id } : {}),
+    ...(brief?.trim() ? { creative_brief: brief.trim() } : {}),
+    cart: !!product,
+    cover_color: product?.accentColor ?? "#7c5cff",
     blocks: [
       { kind: "hook", label: "黄金 3s 钩子", dur: 3, text: "", shot: "" },
-      { kind: "emotion", label: "情感铺垫", dur: 8, text: "", shot: "" },
-      { kind: "product", label: "产品揭示", dur: 10, text: "", shot: "" },
-      { kind: "effect", label: "效果体验", dur: 8, text: "", shot: "" },
-      { kind: "cta", label: "行动召唤", dur: 5, text: "", shot: "" },
+      { kind: "emotion", label: "情感铺垫", dur: 3, text: "", shot: "" },
+      { kind: "product", label: "产品揭示", dur: 3, text: "", shot: "" },
+      { kind: "effect", label: "效果体验", dur: 3, text: "", shot: "" },
+      { kind: "cta", label: "行动召唤", dur: 3, text: "", shot: "" },
     ],
     metrics: { uses_count: 0, ctr_pct: 0, diversity_pct: 0, completion_pct: 0, best_video: null, last_used_at: now },
     source: { type: "user", ref_id: owner.id ?? null, author: owner.name ?? "我" },
