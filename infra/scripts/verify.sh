@@ -61,12 +61,12 @@ for path in $PUBLIC_PATHS; do
   for ((attempt = 1; attempt <= READINESS_RETRIES; attempt++)); do
     code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$PUBLIC_BASE$path" || echo "000")"
     case "$code" in
-      200|307|308) break ;;                            # 成功
+      200|301|302|307|308) break ;;                    # 成功（v0.136 起消费域 /admin 为 302 → admin 子域）
       000|502|503|504) sleep "$READINESS_INTERVAL" ;;  # 还在启动，重试
       *) break ;;                                      # 真错误（404/500…），立即判失败
     esac
   done
-  if [[ "$code" == "200" || "$code" == "307" || "$code" == "308" ]]; then
+  if [[ "$code" == "200" || "$code" == "301" || "$code" == "302" || "$code" == "307" || "$code" == "308" ]]; then
     ok "$path -> $code"
   else
     fail "$path -> $code"
