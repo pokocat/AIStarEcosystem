@@ -66,43 +66,55 @@ class DapStarGrantServiceTest {
     }
 
     @Test
+    void softDeletedStarGrantsAreDropped() {
+        // findByIdInAndDeletedAtIsNull 查不到（明星已软删/不存在）→ 该授权行不投影，
+        // 不渲染成「未知明星」的可用授权。
+        when(authRepo.findByUserId(USER)).thenReturn(List.of(
+                auth("a1", "s-deleted", CelebrityAuthStatus.AUTHORIZED, Instant.parse("2026-08-10T00:00:00Z"))));
+        when(starRepo.findByIdInAndDeletedAtIsNull(any())).thenReturn(List.of());
+        assertTrue(service.list(USER).isEmpty());
+    }
+
+    @Test
     void sortsAuthorizedThenPendingThenExpired_updatedAtDescWithinGroup() {
         CelebrityStarAuthorization expired = auth("a-exp", "s1", CelebrityAuthStatus.EXPIRED, Instant.parse("2026-08-20T00:00:00Z"));
         CelebrityStarAuthorization pendingOld = auth("a-p1", "s2", CelebrityAuthStatus.PENDING, Instant.parse("2026-08-05T00:00:00Z"));
         CelebrityStarAuthorization pendingNew = auth("a-p2", "s3", CelebrityAuthStatus.PENDING, Instant.parse("2026-08-15T00:00:00Z"));
         CelebrityStarAuthorization active = auth("a-act", "s4", CelebrityAuthStatus.AUTHORIZED, Instant.parse("2026-08-01T00:00:00Z"));
         when(authRepo.findByUserId(USER)).thenReturn(List.of(expired, pendingOld, pendingNew, active));
-        when(starRepo.findAllById(any())).thenReturn(List.of(star("s1", "甲"), star("s2", "乙"), star("s3", "丙"), star("s4", "丁")));
+        when(starRepo.findByIdInAndDeletedAtIsNull(any())).thenReturn(List.of(star("s1", "甲"), star("s2", "乙"), star("s3", "丙"), star("s4", "丁")));
 
         List<String> ids = service.list(USER).stream().map(DapStarGrantDto::id).toList();
         assertEquals(List.of("a-act", "a-p2", "a-p1", "a-exp"), ids);
     }
 
     @Test
-    void missingStarFallsBackWithoutBlowingUp() {
-        when(authRepo.findByUserId(USER)).thenReturn(List.of(
-                auth("a1", "s-gone", CelebrityAuthStatus.AUTHORIZED, Instant.parse("2026-08-10T00:00:00Z"))));
-        when(starRepo.findAllById(any())).thenReturn(List.of());
-
-        DapStarGrantDto dto = service.list(USER).get(0);
-        assertEquals("未知明星", dto.starName());
-        assertNull(dto.starAvatar());
-    }
-
-    @Test
-    void mapsFields_pendingHasNoDecidedAt() {
+    void mapsFields_pendingHasNoStatusUpdatedAt() {
         CelebrityStarAuthorization a = auth("a1", "s1", CelebrityAuthStatus.PENDING, Instant.parse("2026-08-10T00:00:00Z"));
         a.setScenes(List.of("带货", "种草"));
         when(authRepo.findByUserId(USER)).thenReturn(List.of(a));
-        when(starRepo.findAllById(any())).thenReturn(List.of(star("s1", "苏黎")));
+        when(starRepo.findByIdInAndDeletedAtIsNull(any())).thenReturn(List.of(star("s1", "苏黎")));
 
         DapStarGrantDto dto = service.list(USER).get(0);
         assertEquals("pending", dto.status());
         assertEquals(List.of("带货", "种草"), dto.scenes());
-        assertNull(dto.decidedAt());
+        assertNull(dto.statusUpdatedAt());
         assertNull(dto.expireDate());
         assertEquals("苏黎", dto.starName());
         assertEquals("2026-08-01T00:00:00Z", dto.appliedAt());
+    }
+
+    @Test
+    void nullScenesBecomeEmptyList_andStylesPassThrough() {
+        CelebrityStarAuthorization a = auth("a1", "s1", CelebrityAuthStatus.AUTHORIZED, Instant.parse("2026-08-10T00:00:00Z"));
+        a.setScenes(null);
+        a.setAvailableStyles(4);
+        when(authRepo.findByUserId(USER)).thenReturn(List.of(a));
+        when(starRepo.findByIdInAndDeletedAtIsNull(any())).thenReturn(List.of(star("s1", "苏黎")));
+
+        DapStarGrantDto dto = service.list(USER).get(0);
+        assertEquals(List.of(), dto.scenes());
+        assertEquals(4, dto.availableStyles());
     }
 
     @Test
@@ -110,11 +122,11 @@ class DapStarGrantServiceTest {
         CelebrityStarAuthorization a = auth("a1", "s1", CelebrityAuthStatus.AUTHORIZED, Instant.parse("2026-08-10T00:00:00Z"));
         a.setExpireDate(LocalDate.of(2026, 12, 31));
         when(authRepo.findByUserId(USER)).thenReturn(List.of(a));
-        when(starRepo.findAllById(any())).thenReturn(List.of(star("s1", "苏黎")));
+        when(starRepo.findByIdInAndDeletedAtIsNull(any())).thenReturn(List.of(star("s1", "苏黎")));
 
         DapStarGrantDto dto = service.list(USER).get(0);
         assertEquals("authorized", dto.status());
         assertEquals("2026-12-31", dto.expireDate());
-        assertNotNull(dto.decidedAt());
+        assertNotNull(dto.statusUpdatedAt());
     }
 }

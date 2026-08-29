@@ -61,11 +61,15 @@ function StarGrantCard({ g }: { g: StarGrant }) {
             <RegNo>{`明星形象 · ${g.starId}`}</RegNo>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <Badge tone="primary" dot>{`授权给我 · ${g.scenes.join(" / ") || "带货"}`}</Badge>
+            <Badge tone="primary" dot>
+              {g.scenes.length > 0
+                ? `授权给我 · ${g.scenes.slice(0, 2).join(" / ")}${g.scenes.length > 2 ? " 等" : ""}`
+                : "授权给我"}
+            </Badge>
             {g.category && <span style={{ fontSize: 10.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{g.category}</span>}
           </div>
           <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {g.expireDate ? `有效期至 ${g.expireDate}` : "长期有效以授权约定为准"}
+            {g.expireDate ? `有效期至 ${g.expireDate}` : "有效期以授权约定为准"}
           </span>
         </div>
         <Chevron />
@@ -166,15 +170,15 @@ export default function AssetsPage() {
         <SectionHeader
           title="人物与形象"
           hint="都可以直接拿去创作视频"
-          count={avatars.loading ? undefined : avatars.data.length + activeGrants.length}
+          count={avatars.loading || grants.loading ? undefined : avatars.data.length + activeGrants.length}
         />
-        {avatars.loading ? (
+        {avatars.loading || grants.loading ? (
           <LoadingBlock />
         ) : avatars.error ? (
           <Card>
             <EmptyState text={avatars.error} />
           </Card>
-        ) : avatars.data.length === 0 ? (
+        ) : avatars.data.length + activeGrants.length === 0 ? (
           <Card>
             <EmptyState text="还没有数字人，从一段视频就能开始" actionHref="/studio" actionLabel="创建数字人" />
           </Card>
@@ -186,6 +190,11 @@ export default function AssetsPage() {
             {activeGrants.map((g) => (
               <StarGrantCard key={g.id} g={g} />
             ))}
+          </div>
+        )}
+        {grants.error && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--err)", textAlign: "center" }}>
+            明星授权加载失败：{grants.error}
           </div>
         )}
       </div>

@@ -1277,7 +1277,8 @@ export interface StarGrant {
   expireDate?: string | null;
   availableStyles?: number | null;
   appliedAt?: string | null;
-  decidedAt?: string | null;
+  /** 状态最近一次变化时间（server 只有 updatedAt，没有独立"批准时刻"，命名如实）。 */
+  statusUpdatedAt?: string | null;
 }
 
 /** mock：一条生效授权 + 一条审批中，覆盖货架与授权中心两种展示。 */
@@ -1285,11 +1286,11 @@ export const STAR_GRANTS: StarGrant[] = [
   {
     id: "auth-mk01", starId: "star-su-li", starName: "苏黎", starAvatar: null, category: "时尚",
     scenes: ["带货", "种草"], status: "authorized", expireDate: "2026-12-31",
-    availableStyles: 4, appliedAt: "2026-08-01T10:00:00Z", decidedAt: "2026-08-03T09:30:00Z",
+    availableStyles: 4, appliedAt: "2026-08-01T10:00:00Z", statusUpdatedAt: "2026-08-03T09:30:00Z",
   },
   {
     id: "auth-mk02", starId: "star-lu-chen", starName: "陆晨", starAvatar: null, category: "美食",
     scenes: ["带货"], status: "pending", expireDate: null,
-    availableStyles: null, appliedAt: "2026-08-28T14:32:00Z", decidedAt: null,
+    availableStyles: null, appliedAt: "2026-08-28T14:32:00Z", statusUpdatedAt: null,
   },
 ];

@@ -191,7 +191,17 @@ const BADGE_TONES: Record<BadgeTone, { bg: string; c: string }> = {
   mute: { bg: "var(--surface-3)", c: "var(--ink-2)" },
 };
 
-export function Badge({ tone = "mute", dot, children }: { tone?: BadgeTone; dot?: boolean; children: React.ReactNode }) {
+export function Badge({
+  tone = "mute",
+  dot,
+  children,
+  style,
+}: {
+  tone?: BadgeTone;
+  dot?: boolean;
+  children: React.ReactNode;
+  style?: CSS;
+}) {
   const m = BADGE_TONES[tone];
   return (
     <span
@@ -207,9 +217,13 @@ export function Badge({ tone = "mute", dot, children }: { tone?: BadgeTone; dot?
         fontSize: 11,
         fontWeight: 700,
         whiteSpace: "nowrap",
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        ...style,
       }}
     >
-      {dot && <span style={{ width: 5, height: 5, borderRadius: 99, background: m.c }} />}
+      {dot && <span style={{ width: 5, height: 5, borderRadius: 99, background: m.c, flexShrink: 0 }} />}
       {children}
     </span>
   );

@@ -26,7 +26,8 @@ public record DapStarGrantDto(
         String expireDate,
         Integer availableStyles,
         String appliedAt,
-        String decidedAt
+        /** 状态最近一次变化时间（实体只有 updatedAt，没有独立的"批准时刻"，命名如实）。 */
+        String statusUpdatedAt
 ) {
     public static DapStarGrantDto from(CelebrityStarAuthorization a, CelebrityStar star) {
         boolean decided = a.getStatus() != CelebrityAuthStatus.PENDING;

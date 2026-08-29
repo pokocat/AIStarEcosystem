@@ -61,7 +61,7 @@ export default function WorkbenchPage() {
   const pendingGrants = pendingGrantsAll.slice(0, 2);
   const todoCount = runningAll.length + attentionAll.length + pendingGrantsAll.length;
   const tile = (key: string) => summary.data.types.find((t) => t.key === key)?.count ?? 0;
-  const loading = summary.loading || jobs.loading || licenses.loading;
+  const loading = summary.loading || jobs.loading || licenses.loading || grants.loading;
 
   return (
     <HubScreen tabBar>
@@ -186,9 +186,9 @@ export default function WorkbenchPage() {
         </>
       )}
 
-      {(summary.error || jobs.error || licenses.error) && (
+      {(summary.error || jobs.error || licenses.error || grants.error) && (
         <div style={{ margin: "12px 16px 0", fontSize: 12, color: "var(--err)", textAlign: "center" }}>
-          {summary.error || jobs.error || licenses.error}
+          {summary.error || jobs.error || licenses.error || grants.error}
         </div>
       )}
     </HubScreen>

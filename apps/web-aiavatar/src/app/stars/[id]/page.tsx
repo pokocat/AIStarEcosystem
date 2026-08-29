@@ -89,10 +89,10 @@ export default function StarGrantPage({ params }: { params: Promise<{ id: string
                 <span className="mono" style={{ fontWeight: 600 }}>{g.availableStyles} 款</span>
               </div>
             )}
-            {g.decidedAt && (
+            {g.statusUpdatedAt && (
               <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
-                <span style={{ flexShrink: 0, width: 62, color: "var(--ink-3)" }}>批准时间</span>
-                <span className="mono" style={{ fontWeight: 600 }}>{g.decidedAt.slice(0, 10)}</span>
+                <span style={{ flexShrink: 0, width: 62, color: "var(--ink-3)" }}>状态更新于</span>
+                <span className="mono" style={{ fontWeight: 600 }}>{g.statusUpdatedAt.slice(0, 10)}</span>
               </div>
             )}
           </div>

@@ -13,5 +13,6 @@ public interface CelebrityStarRepository extends JpaRepository<CelebrityStar, St
     List<CelebrityStar> findByDeletedAtIsNull();
     List<CelebrityStar> findByCategoryAndDeletedAtIsNull(String category);
     Optional<CelebrityStar> findByIdAndDeletedAtIsNull(String id);
+    List<CelebrityStar> findByIdInAndDeletedAtIsNull(java.util.Collection<String> ids);
     long countByDeletedAtIsNull();
 }
