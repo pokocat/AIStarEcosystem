@@ -1,15 +1,17 @@
 "use client";
 // ============================================================
-// 工作台（新版首页，P1）：资产总览数字 + 进行中的事 + 最近动态。
+// 首页（双面）：访客 → 公开宣传页（Landing）；已登录 → 工作台
+// （资产总览数字 + 进行中的事 + 最近动态）。
 // 兼容层：老版整站是根路径 hash SPA（现挂 /studio），七牛刷脸回调与历史分享
 // 链接仍指向 /#/...，这里检测到旧 hash 一律原样转发到 /studio —— 在 /studio
 // 流程全部迁完之前不得移除（见 docs/aiavatar-asset-hub-redesign.md §3.1）。
+// dev 预览宣传页：任意模式加 ?landing=1。
 // ============================================================
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { AssetApi, JobApi, LicenseApi } from "@/proto/api";
+import { AssetApi, auth, JobApi, LicenseApi, onAuthExpired, USE_MOCK } from "@/proto/api";
 import type { AssetSummary, Job, License, RecentAsset, StarGrant } from "@/proto/data";
-import { useRequireAuth } from "@/components/hub/auth";
+import { Landing } from "@/components/hub/landing";
 import { studioHref, useHubData } from "@/components/hub/data";
 import { Badge, Card, EmptyState, HubScreen, LinkAction, ListRow, LoadingBlock, NavBar, RegNo, SectionHeader } from "@/components/hub/ui";
 
@@ -20,6 +22,12 @@ function isLegacyHash(hash: string): boolean {
   return /^#\/?(avatar|ip|scene|product|style|compose|create|real-auth|home|library|apps|me|tasks|licenses|realmaterials|voice|settings|security|membership|storage|trash|voiceclone)(\/|$)/.test(hash);
 }
 
+/** eta 有时只是状态回声（「生成中…」），与徽章重复就不显示。 */
+function etaOf(j: Job): string {
+  const eta = (j.eta || "").trim();
+  return !eta || /生成中|排队|处理中|进行中/.test(eta) ? "" : eta;
+}
+
 function recentHref(a: RecentAsset): string {
   if (a.kind === "character") return `/assets/${a.id}`;
   if (a.kind === "voice") return studioHref("#/voice");
@@ -27,29 +35,37 @@ function recentHref(a: RecentAsset): string {
   return studioHref("#/library");
 }
 
-export default function WorkbenchPage() {
-  // 旧 hash 检测必须先于登录守卫拿到结论（review #1）：hashState=unknown 期间守卫
-  // 完全禁用，确认不是旧链接后才允许守卫做 /login 重定向 —— 消除与 location.replace
-  // 的竞速，保证 #/real-auth/{id} 刷脸回调 hash 永不丢失。
-  const [hashState, setHashState] = useState<"unknown" | "legacy" | "none">("unknown");
+export default function HomePage() {
+  // 三态：checking（旧 hash 检测中，什么都不下结论）/ landing（访客宣传页）/ app（工作台）。
+  // 旧 hash 检测必须先拿到结论（review #1）：正在转发 /studio 时绝不做任何本页导航，
+  // 保证 #/real-auth/{id} 刷脸回调 hash 永不丢失。访客不再被弹去 /login，而是看宣传页。
+  const [mode, setMode] = useState<"checking" | "landing" | "app">("checking");
   useEffect(() => {
     const hash = window.location.hash || "";
     if (hash && isLegacyHash(hash)) {
-      setHashState("legacy");
       window.location.replace(`/studio${hash}`);
-    } else {
-      setHashState("none");
+      return; // 保持 checking（空白）直到跳转完成
     }
+    const wantLanding = new URLSearchParams(window.location.search).get("landing") === "1";
+    if (wantLanding) {
+      setMode("landing");
+      return;
+    }
+    setMode(USE_MOCK || auth.isAuthed() ? "app" : "landing");
+  }, []);
+  useEffect(() => {
+    if (USE_MOCK) return;
+    return onAuthExpired(() => setMode("landing"));
   }, []);
 
-  const authState = useRequireAuth(hashState === "none");
-  const ready = authState === "ok" && hashState === "none";
+  const ready = mode === "app";
 
   const summary = useHubData<AssetSummary>(() => AssetApi.summary(), EMPTY_SUMMARY, [], ready);
   const jobs = useHubData<Job[]>(() => JobApi.list(), [], [], ready);
   const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [], ready);
   const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [], ready);
 
+  if (mode === "landing") return <Landing />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   // 计数先算全量再截断展示（review #7：slice 后求和会让角标失真）
@@ -71,39 +87,143 @@ export default function WorkbenchPage() {
         <LoadingBlock />
       ) : (
         <>
-          <div style={{ margin: "6px 16px 0" }}>
+          <div style={{ margin: "6px 16px 0", position: "relative" }}>
             <Card
               radius={22}
-              pad={16}
-              style={{ background: "linear-gradient(150deg, var(--primary-tint), var(--primary-soft))", border: "1px solid #D6EEF7", boxShadow: "none" }}
+              pad={0}
+              style={{
+                background: "linear-gradient(155deg, #2BC2E8, #0E9CC4 62%, #0A85A9)",
+                border: "none",
+                boxShadow: "0 12px 30px rgba(18,179,222,.28)",
+                overflow: "hidden",
+              }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-2)" }}>我的资产总览</span>
-                <LinkAction href="/assets">查看资产 ›</LinkAction>
+              <div style={{ padding: "18px 18px 16px", position: "relative" }}>
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    top: -60,
+                    right: -50,
+                    width: 180,
+                    height: 180,
+                    borderRadius: 999,
+                    background: "radial-gradient(circle, rgba(255,255,255,.28), rgba(255,255,255,0) 68%)",
+                  }}
+                />
+                <div style={{ position: "relative", display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,.82)" }}>我的资产</span>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                      <span className="mono" style={{ fontSize: 38, fontWeight: 700, color: "#fff", lineHeight: 1 }}>
+                        {summary.data.totalCount}
+                      </span>
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,.8)" }}>件</span>
+                    </div>
+                  </div>
+                  <Link
+                    href="/assets"
+                    style={{
+                      height: 30,
+                      padding: "0 14px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,.2)",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textDecoration: "none",
+                      flexShrink: 0,
+                    }}
+                  >
+                    查看资产 ›
+                  </Link>
+                </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  background: "rgba(255,255,255,.16)",
+                  borderTop: "1px solid rgba(255,255,255,.2)",
+                }}
+              >
                 {[
                   { n: tile("character"), label: "数字人" },
                   { n: tile("voice"), label: "声音" },
-                  { n: tile("scene") + tile("product") + tile("style"), label: "素材" },
-                  { n: summary.data.totalCount, label: "全部资产", accent: true },
+                  { n: tile("scene") + tile("product") + tile("style") + tile("ip"), label: "素材" },
                 ].map((s) => (
-                  <div key={s.label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span className="mono" style={{ fontSize: 23, fontWeight: 700, color: s.accent ? "var(--primary-700)" : "var(--ink)" }}>
-                      {s.n}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{s.label}</span>
+                  <div key={s.label} style={{ padding: "11px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                    <span className="mono" style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>{s.n}</span>
+                    <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.82)" }}>{s.label}</span>
                   </div>
                 ))}
               </div>
             </Card>
           </div>
 
+          <div style={{ margin: "14px 16px 0", display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            {[
+              {
+                href: "/studio",
+                label: "创建资产",
+                icon: (
+                  <>
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </>
+                ),
+              },
+              {
+                href: "/assets",
+                label: "去创作",
+                icon: (
+                  <>
+                    <rect x="2" y="4" width="20" height="16" rx="3" />
+                    <polygon points="10 9 15 12 10 15 10 9" />
+                  </>
+                ),
+              },
+              {
+                href: "/licenses",
+                label: "授权中心",
+                icon: (
+                  <>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    <polyline points="9 12 11 14 15 10" />
+                  </>
+                ),
+              },
+            ].map((a) => (
+              <Link key={a.label} href={a.href} style={{ textDecoration: "none", color: "inherit" }}>
+                <Card radius={15} pad={0} style={{ padding: "13px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  <span
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 12,
+                      background: "var(--primary-soft)",
+                      display: "grid",
+                      placeItems: "center",
+                      color: "var(--primary-700)",
+                    }}
+                  >
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      {a.icon}
+                    </svg>
+                  </span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700 }}>{a.label}</span>
+                </Card>
+              </Link>
+            ))}
+          </div>
+
           <div style={{ margin: "22px 16px 0" }}>
-            <SectionHeader title="进行中的事" count={todoCount || undefined} action={<LinkAction href={studioHref("#/tasks")}>任务中心 ›</LinkAction>} />
+            <SectionHeader title="进行中" count={todoCount || undefined} action={<LinkAction href={studioHref("#/tasks")}>任务中心 ›</LinkAction>} />
             {todoCount === 0 ? (
               <Card>
-                <EmptyState text="暂时没有等你处理的事" actionHref="/studio" actionLabel="去创建资产" />
+                <EmptyState text="没有在办的事" actionHref="/studio" actionLabel="去创建资产" />
               </Card>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -137,14 +257,14 @@ export default function WorkbenchPage() {
                   <Card key={j.id} pad={0}>
                     <ListRow
                       href={studioHref("#/tasks")}
-                      title={`${j.kind}生成中`}
-                      sub={`${j.charName}${j.eta ? ` · ${j.eta}` : ""}`}
+                      title={j.kind}
+                      sub={`${j.charName}${etaOf(j) ? ` · ${etaOf(j)}` : ""}`}
                       trailing={
                         <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--primary-700)", flexShrink: 0 }}>
                           {Math.round(j.pct)}%
                         </span>
                       }
-                      leading={<Badge tone="primary" dot>生成</Badge>}
+                      leading={<Badge tone="primary" dot>生成中</Badge>}
                     />
                   </Card>
                 ))}
@@ -156,7 +276,7 @@ export default function WorkbenchPage() {
             <SectionHeader title="最近动态" action={<LinkAction href="/assets">资产 ›</LinkAction>} />
             {summary.data.recent.length === 0 ? (
               <Card>
-                <EmptyState text="还没有动态，先创建第一个资产吧" actionHref="/studio" actionLabel="去创建" />
+                <EmptyState text="还没有动态。资产用起来之后，这里会记下每一次使用" actionHref="/studio" actionLabel="去创建" />
               </Card>
             ) : (
               <Card pad={0}>
@@ -180,7 +300,7 @@ export default function WorkbenchPage() {
 
           <div style={{ margin: "20px 16px 0", textAlign: "center" }}>
             <Link href="/studio" style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-3)", textDecoration: "none" }}>
-              创建 / 制作请进工作室 ›
+              创建、出片都在工作室 ›
             </Link>
           </div>
         </>
