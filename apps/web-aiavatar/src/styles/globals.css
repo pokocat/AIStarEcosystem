@@ -1054,7 +1054,17 @@ body {
 .m-content { flex: 1; position: relative; min-height: 0; }
 
 /* 内嵌进新版外壳（/studio）：老 SPA 隐藏自带 tab 栏，底部让位给统一的 HubTabBar */
-.app-root--embedded { padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+.app-root--embedded { padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px)); }
+
+/* 新版页面里的统一 tab 栏：沿用 .wx-tabbar 全部视觉，仅把定位从 absolute 改为
+   fixed + 居中一列（新版页面走文档流，没有 .app-root 这个定位容器）。 */
+.wx-tabbar.hub-tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  max-width: 480px; margin-inline: auto;
+  z-index: 60;
+}
+.wx-tabbar.hub-tabbar .wx-tab { text-decoration: none; }
+.wx-tabbar.hub-tabbar .wx-fab { text-decoration: none; }
 
 /* 桌面端：内容列与背景的细分隔（仅描边 + 柔和投影，不做手机外框） */
 @media (min-width: 481px) {

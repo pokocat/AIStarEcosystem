@@ -24,7 +24,7 @@ export function HubScreen({ children, tabBar }: { children: React.ReactNode; tab
         background: "var(--canvas)",
         display: "flex",
         flexDirection: "column",
-        paddingBottom: tabBar ? "calc(58px + env(safe-area-inset-bottom, 0px) + 12px)" : 24,
+        paddingBottom: tabBar ? "calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 12px)" : 24,
       }}
     >
       {children}
@@ -97,53 +97,43 @@ const iconBtnStyle: CSS = {
 
 // ── 底部 Tab ─────────────────────────────────────────────────
 
-// M3 导航合并：工作台退役（内容并入资产主页），制作走 /studio（P3 迁完再换新页）
+// 复用老版 5 tab 的视觉（.wx-tabbar / .wx-tab / .wx-fab，含中间凸起创建键），
+// 但落点全部换成新版真路由；/studio 内嵌时隐藏其自带 tab 栏，改由这一套统一承载。
 const TABS = [
   { href: "/", label: "资产", icon: LayersIcon, match: (p: string) => p === "/" || p.startsWith("/assets") || p.startsWith("/market") || p.startsWith("/stars") },
-  { href: "/studio?create=1", label: "制作", icon: WandIcon, match: (p: string) => p.startsWith("/studio") },
-  { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
-] as const;
+  { href: "/licenses", label: "授权", icon: ShieldIcon, match: (p: string) => p.startsWith("/licenses") },
+  { fab: true as const, href: "/studio?create=1", label: "创建" },
+  { href: "/studio#/tasks", label: "任务", icon: ClockIcon, match: (p: string) => p.startsWith("/studio") },
+  { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") },
+];
 
 export function HubTabBar() {
   const pathname = usePathname() || "/";
   return (
-    <nav
-      style={{
-        position: "fixed",
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 60,
-        background: "var(--surface)",
-        borderTop: "1px solid var(--line)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-      }}
-    >
-      <div style={{ maxWidth: 480, margin: "0 auto", height: 58, display: "flex" }}>
-        {TABS.map((t) => {
-          const on = t.match(pathname);
-          const Icon = t.icon;
-          return (
-            <Link
-              key={t.href}
-              href={t.href}
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 3,
-                color: on ? "var(--primary)" : "var(--ink-3)",
-                textDecoration: "none",
-              }}
-            >
-              <Icon strong={on} />
-              <span style={{ fontSize: 10.5, fontWeight: on ? 800 : 600 }}>{t.label}</span>
+    <nav className="wx-tabbar hub-tabbar">
+      {TABS.map((t) =>
+        "fab" in t ? (
+          <div key="create" className="wx-fab-slot">
+            <Link className="wx-fab" href={t.href} aria-label="新建资产">
+              <span className="fab-visual" aria-hidden>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="fab-art" src="/generated/create-entry/fab-create.jpg" alt="" draggable={false} loading="lazy" decoding="async" />
+                <span className="fab-veil" />
+              </span>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="fab-lbl">{t.label}</span>
             </Link>
-          );
-        })}
-      </div>
+          </div>
+        ) : (
+          <Link key={t.href} href={t.href} className={"wx-tab" + (t.match(pathname) ? " on" : "")}>
+            {t.icon({ strong: t.match(pathname) })}
+            <span className="lbl">{t.label}</span>
+          </Link>
+        ),
+      )}
     </nav>
   );
 }
@@ -453,22 +443,31 @@ export function LoadingBlock({ label = "加载中" }: { label?: string }) {
 
 function svgProps(strong?: boolean) {
   return {
-    width: 21,
-    height: 21,
+    width: 24,
+    height: 24,
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    strokeWidth: strong ? 2 : 1.8,
+    strokeWidth: strong ? 2.1 : 1.85,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
   };
 }
 
-function WandIcon({ strong }: { strong?: boolean }) {
+function ShieldIcon({ strong }: { strong?: boolean }) {
   return (
     <svg {...svgProps(strong)}>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <polyline points="9 12 11 14 15 10" />
+    </svg>
+  );
+}
+
+function ClockIcon({ strong }: { strong?: boolean }) {
+  return (
+    <svg {...svgProps(strong)}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15.5 14" />
     </svg>
   );
 }
