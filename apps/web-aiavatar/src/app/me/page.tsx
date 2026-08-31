@@ -7,7 +7,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { AccountApi, auth, USE_MOCK } from "@/proto/api";
 import type { Account } from "@/proto/data";
-import { useRequireAuth } from "@/components/hub/auth";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref, useHubData } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
 
@@ -15,8 +15,10 @@ export default function MePage() {
   const router = useRouter();
   const authState = useRequireAuth();
   const ready = authState === "ok";
+  const noPlatform = authState === "no-platform";
   const account = useHubData<Account | null>(() => AccountApi.get().catch(() => null), null, [], ready);
 
+  if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   const sessionUser = !USE_MOCK ? auth.user() : null;

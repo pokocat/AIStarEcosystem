@@ -11,7 +11,7 @@ import React, { use as usePromise, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AvatarApi, ComposeApi, DATA, LicenseApi } from "@/proto/api";
 import type { Avatar, AvatarReference, Composition, License } from "@/proto/data";
-import { useRequireAuth } from "@/components/hub/auth";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
 import { AssetPortrait, Badge, Card, EmptyState, HubScreen, ListRow, LoadingBlock, NavBar, SectionHeader } from "@/components/hub/ui";
 
@@ -90,6 +90,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   const { id } = usePromise(params);
   const authState = useRequireAuth();
   const ready = authState === "ok";
+  const noPlatform = authState === "no-platform";
 
   const avatar = useHubData<Avatar | null>(() => AvatarApi.get(id), null, [id], ready);
   const derivs = useHubData<Deriv[]>(() => AvatarApi.derivatives(id), [], [id], ready);
@@ -161,6 +162,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
     return still ? { kind: "image", url: still, label: src?.label || "定妆图" } : { kind: "none", label: "还没有形象" };
   }, [picked, byKey, shotItems, c, brokenUrl]);
 
+  if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   if (avatar.loading && !c) {

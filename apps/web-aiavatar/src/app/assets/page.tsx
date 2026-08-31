@@ -3,11 +3,11 @@
 // 资产货架（P1）：人物与形象是主角（大卡），声音次之，
 // 场景 / 产品 / 风格收进"素材库"分区 —— 管理与新建走 /studio。
 // ============================================================
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { AssetApi, AvatarApi, DATA, LicenseApi, VoiceApi } from "@/proto/api";
 import type { AssetSummary, Avatar, License, StarGrant, VoiceAsset } from "@/proto/data";
-import { useRequireAuth } from "@/components/hub/auth";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
 import {
   AssetPortrait,
@@ -114,16 +114,79 @@ function AvatarCard({ c, license, licenseKnown }: { c: Avatar; license: License 
   );
 }
 
+/**
+ * 官方资产段：复用既有「数字人广场」（scope=public）。
+ * 角色卡走 B 版视觉（立绘铺满、名字压在图上）。授权本身尚未打通，
+ * 卡片只标「可授权」不标价 —— 价格字段还不存在，不编造（§3.3）。
+ */
+function OfficialSection({ state }: { state: { data: Avatar[]; loading: boolean; error: string | null } }) {
+  if (state.loading) return <LoadingBlock label="官方资产加载中" />;
+  if (state.error)
+    return (
+      <div style={{ margin: "14px 16px 0" }}>
+        <Card>
+          <EmptyState text={`官方资产加载失败：${state.error}`} />
+        </Card>
+      </div>
+    );
+  if (state.data.length === 0)
+    return (
+      <div style={{ margin: "14px 16px 0" }}>
+        <Card>
+          <EmptyState text="暂时还没有上架的官方资产" />
+        </Card>
+      </div>
+    );
+  return (
+    <div style={{ margin: "14px 16px 0" }}>
+      <SectionHeader title="可授权的官方角色" hint="授权后可用于出片" count={state.data.length} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+        {state.data.map((c) => (
+          <Link key={c.id} href={`/market/${c.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+            <div style={{ position: "relative", height: 190, borderRadius: 18, overflow: "hidden", background: `linear-gradient(160deg, hsl(${c.hue ?? 200} 55% 82%), hsl(${c.hue ?? 200} 48% 66%))` }}>
+              {c.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={c.imageUrl} alt={c.name} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <span style={{ position: "absolute", top: 30, left: "50%", transform: "translateX(-50%)", fontFamily: "var(--font-serif)", fontSize: 62, color: "rgba(255,255,255,.85)" }}>
+                  {(c.name || "?").trim().slice(0, 1)}
+                </span>
+              )}
+              <span style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(12,20,34,0) 48%, rgba(12,20,34,.74))" }} />
+              <span style={{ position: "absolute", top: 10, right: 10, height: 19, padding: "0 7px", display: "inline-flex", alignItems: "center", borderRadius: 999, background: "rgba(255,255,255,.9)", color: "var(--primary-700)", fontSize: 9, fontWeight: 800 }}>
+                可授权
+              </span>
+              <div style={{ position: "absolute", left: 12, right: 12, bottom: 11, display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontFamily: "var(--font-serif)", fontSize: 17, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.name}
+                </span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,.78)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.archetype}
+                </span>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AssetsPage() {
   const authState = useRequireAuth();
   const ready = authState === "ok";
+  const noPlatform = authState === "no-platform";
 
   const avatars = useHubData<Avatar[]>(() => AvatarApi.list("mine"), [], [], ready);
   const voices = useHubData<VoiceAsset[]>(() => VoiceApi.mine(), [], [], ready);
   const summary = useHubData<AssetSummary>(() => AssetApi.summary(), EMPTY_SUMMARY, [], ready);
   const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [], ready);
   const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [], ready);
+  // 官方资产复用已有的「数字人广场」（scope=public，服务端已实现），不新增后端
+  const [seg, setSeg] = useState<"mine" | "official">("mine");
+  const official = useHubData<Avatar[]>(() => AvatarApi.list("public"), [], [], ready && seg === "official");
 
+  if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   const licenseKnown = settled(licenses);
@@ -166,7 +229,31 @@ export default function AssetsPage() {
         }
       />
 
-      <div style={{ margin: "4px 16px 0" }}>
+      <div style={{ margin: "8px 16px 0", display: "flex", background: "var(--surface-3)", padding: 3, borderRadius: 999 }}>
+        {([["mine", "我的资产"], ["official", "官方资产"]] as const).map(([k, label]) => {
+          const on = seg === k;
+          return (
+            <button
+              key={k}
+              onClick={() => setSeg(k)}
+              style={{
+                flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                background: on ? "var(--surface)" : "transparent", color: on ? "var(--ink)" : "var(--ink-3)",
+                border: "none", borderRadius: 999, fontSize: 13, fontWeight: on ? 700 : 600,
+                boxShadow: on ? "var(--sh-1)" : "none", cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {seg === "official" ? (
+        <OfficialSection state={official} />
+      ) : (
+      <>
+      <div style={{ margin: "14px 16px 0" }}>
         <SectionHeader
           title="人物与形象"
           hint="都可以直接拿去创作视频"
@@ -261,6 +348,8 @@ export default function AssetsPage() {
           )}
         </Link>
       </div>
+      </>
+      )}
     </HubScreen>
   );
 }

@@ -9,9 +9,10 @@
 // ============================================================
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { AssetApi, auth, JobApi, LicenseApi, onAuthExpired, USE_MOCK } from "@/proto/api";
+import { AssetApi, auth, AuthApi, JobApi, LicenseApi, onAuthExpired, USE_MOCK } from "@/proto/api";
 import type { AssetSummary, Job, License, RecentAsset, StarGrant } from "@/proto/data";
 import { Landing } from "@/components/hub/landing";
+import { PlatformGateScreen } from "@/components/hub/auth";
 import { studioHref, useHubData } from "@/components/hub/data";
 import { Badge, Card, EmptyState, HubScreen, LinkAction, ListRow, LoadingBlock, NavBar, RegNo, SectionHeader } from "@/components/hub/ui";
 
@@ -53,6 +54,23 @@ export default function HomePage() {
     }
     setMode(USE_MOCK || auth.isAuthed() ? "app" : "landing");
   }, []);
+
+  // 平台门禁：已登录但没开通数字资产 → 引导开通，而不是空货架
+  const [noPlatform, setNoPlatform] = useState(false);
+  useEffect(() => {
+    if (USE_MOCK || mode !== "app") return;
+    let cancelled = false;
+    AuthApi.me()
+      .then((me: { platforms?: string[] } | null) => {
+        if (cancelled) return;
+        const ps = me?.platforms;
+        if (Array.isArray(ps) && ps.length > 0 && !ps.includes("aiavatar")) setNoPlatform(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
   useEffect(() => {
     if (USE_MOCK) return;
     return onAuthExpired(() => setMode("landing"));
@@ -66,6 +84,7 @@ export default function HomePage() {
   const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [], ready);
 
   if (mode === "landing") return <Landing />;
+  if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   // 计数先算全量再截断展示（review #7：slice 后求和会让角标失真）
