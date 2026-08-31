@@ -1,8 +1,18 @@
-# 版本增量历史（v0.5 → v0.144）
+# 版本增量历史（v0.5 → v0.145）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.145（2026-08-31）— 开拍费幂等做成真约束 + 迁移编号真源文档化
+
+- **`V23__drama_short_client_request_id`（Java 迁移）**：`drama_shorts` 加 `client_request_id VARCHAR(64)` + `(owner_user_id, client_request_id)` 唯一索引 `uk_drama_short_owner_client_req`。存量行该列为 NULL，MySQL / H2 唯一索引都允许多个 NULL，加索引不会因存量数据失败；刻意不回填 payloadJson 里的旧键（v0.144 的键只在 2h 窗口内有意义，窗口早过）。用 Java 迁移而非 `.sql` 的原因与 V21/V22 相同：Flyway 早于 Hibernate 跑，而 `drama_shorts` 是 ddl-auto 建的表，全新 H2 dev 库首启时表还不存在，逐条 DDL 各自 try/catch 跳过。
+- **并发同键只扣一笔**：v0.144 的键存在 payloadJson、无唯一约束，只能挡「超时后再点一次」的顺序重试；真并发时两个请求互相看不到，各建一条草稿各扣一笔。现在改为按列直查（`findFirstByOwnerUserIdAndClientRequestId`，退役 payload 扫描与时间窗），落败方由唯一索引拦下 → `withEntryCharge` 释放本次冻结 → 回查赢家草稿返回。两个请求看到同一条，账面 `hold` 2 次但只 `commit` 1 次。
+- **键被回收站里的旧草稿占着**：视为一次新的开拍（用户主动删过那条，旧键不该复活它），换一把服务端键落库并照常计费；单次查询同时给出「是否命中」与「该落哪把键」（`IdemLookup`），不额外多查一次。
+- **「套用单集创意」同路收口**：这条路径也扣同一笔开拍费。`createFromRecipe` 加 8 参重载接幂等键，`applyRecipe(recipeId, userId, clientRequestId)` 透传，`POST /me/drama/recipes/{id}/apply` 接可选 body，前端 `RecipesApi.applyRecipe(r, key)`；创建控制台两条付费分支（套创意 / 自由点子）共用同一把键，失败重试沿用。`promote` 走脑暴自身的 promoted 幂等，不重复加键。
+- **迁移编号真源文档化**（本轮误报的根因收口）：新增 `apps/server/src/main/resources/db/migration/README.md`。编号横跨 `resources/db/migration/*.sql`（V1、V14–V20）与 `src/main/java/db/migration/*.java`（V2–V13、V21–V23）两处，只 `ls` SQL 目录会得出「V1 跳到 V14、停在 V20 → 编号漂移」的错误结论（2026-08-31 踩过，一度写成 P0，已撤回）。README 写明：两处一起数、下一个编号 = 线上 `flyway_schema_history` 最大 version + 1、`script` 列如何区分两类迁移（SQL 记文件名带 checksum / Java 记 `db.migration.V23__xxx` 且 checksum NULL）、以及何时必须写 Java 迁移。
+- **门禁**：server compile + `mvnw test` **716/0 失败**（新增并发同键 / 回收站键 / 套用创意幂等 3 例；`DramaRecipeServiceTest` 桩同步到 8 参）+ `typecheck:all` + `typecheck:admin` + web-drama build + web-aiavatar build + `check:api-contract` 全绿。
+- **无端点新增**（`/apply` 由无 body 改为接可选 body，openapi summary 同步）。
 
 ### v0.144（2026-08-31）— 短视频线遗留缺陷收口：出片计费不可绕过 / 开拍费幂等 / 逐镜出场人物
 

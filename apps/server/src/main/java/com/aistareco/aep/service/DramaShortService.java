@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -38,7 +39,6 @@ public class DramaShortService {
     /** 进工作台开拍扣费默认单价（admin「短剧专区」drama.credit.short-entry 可改）。 */
     private static final long SHORT_ENTRY_COST_DEFAULT = 10;
     /** 开拍付费创建的幂等窗口：客户端超时重试都发生在几秒到几分钟内，2 小时足够覆盖。 */
-    private static final Duration IDEMPOTENCY_WINDOW = Duration.ofHours(2);
     /** 幂等键长度上限（客户端生成的随机串）。 */
     private static final int CLIENT_REQUEST_ID_MAX = 64;
 
@@ -122,15 +122,45 @@ public class DramaShortService {
         }
         // 幂等：响应在网络层丢失后客户端会原样重试，没有幂等键就会再建一条草稿、再扣一笔开拍费。
         String clientRequestId = clientRequestId(body);
-        if (clientRequestId != null) {
-            DramaShort existing = findByClientRequestId(userId, clientRequestId);
-            if (existing != null) {
-                log.info("[drama-short] create idempotent-hit user={} id={} key={}",
-                        userId, existing.getId(), clientRequestId);
-                return toDetail(existing);
-            }
+        IdemLookup idem = lookupIdempotency(userId, clientRequestId);
+        if (idem.hit() != null) return toDetail(idem.hit());
+        try {
+            return withEntryCharge(userId, () -> doCreateShort(body, userId, idem.keyToPersist()));
+        } catch (DataIntegrityViolationException e) {
+            // 并发同键：另一个请求先落库并占住了唯一索引。withEntryCharge 已释放本次冻结
+            // （本次不扣费），回查赢家的草稿返回，两个请求看到同一条、只付一笔。
+            DramaShort winner = clientRequestId == null ? null
+                    : repo.findFirstByOwnerUserIdAndClientRequestId(userId, clientRequestId).orElse(null);
+            if (winner == null) throw e; // 撞的不是幂等键 → 是真的写库问题，别掩盖
+            log.info("[drama-short] create idempotent-race user={} id={} key={}",
+                    userId, winner.getId(), clientRequestId);
+            return toDetail(winner);
         }
-        return withEntryCharge(userId, () -> doCreateShort(body, userId, clientRequestId));
+    }
+
+    /**
+     * 幂等查找结果。一次查询同时决定两件事：
+     *   hit —— 命中且未删的草稿，直接复用（不扣费）；
+     *   keyToPersist —— 新草稿该落哪把键：键没被占就用客户端的；
+     *     已被同账号回收站里的旧草稿占着，就换一把服务端键（不能复活旧草稿，也不能撞唯一索引）。
+     */
+    private record IdemLookup(DramaShort hit, String keyToPersist) {}
+
+    private IdemLookup lookupIdempotency(String userId, String clientRequestId) {
+        if (clientRequestId == null) return new IdemLookup(null, null);
+        DramaShort existing = repo.findFirstByOwnerUserIdAndClientRequestId(userId, clientRequestId).orElse(null);
+        if (existing == null) return new IdemLookup(null, clientRequestId);
+        if (existing.getDeletedAt() != null) {
+            log.info("[drama-short] idempotent-key-on-deleted user={} id={} key={} → 按新请求处理",
+                    userId, existing.getId(), clientRequestId);
+            return new IdemLookup(null, serverIdempotencyKey());
+        }
+        log.info("[drama-short] idempotent-hit user={} id={} key={}", userId, existing.getId(), clientRequestId);
+        return new IdemLookup(existing, clientRequestId);
+    }
+
+    private static String serverIdempotencyKey() {
+        return "srv_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
     /**
@@ -142,20 +172,6 @@ public class DramaShortService {
         String value = raw.trim();
         if (value.isEmpty() || value.length() > CLIENT_REQUEST_ID_MAX) return null;
         return value;
-    }
-
-    /**
-     * 按幂等键找本账号窗口内已建的草稿。键存在 payloadJson 里（无独立列 + 无唯一索引），
-     * 因此**只能挡住顺序重试**（超时后再点一次）；真正并发的同键双写仍可能各建一条。
-     * 彻底解决要给 drama_shorts 加列 + (owner, key) 唯一索引，见 TODO.md。
-     */
-    private DramaShort findByClientRequestId(String userId, String clientRequestId) {
-        OffsetDateTime since = OffsetDateTime.now().minus(IDEMPOTENCY_WINDOW);
-        for (DramaShort row : repo
-                .findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc(userId, since)) {
-            if (clientRequestId.equals(readPayload(row).path("clientRequestId").asText(null))) return row;
-        }
-        return null;
     }
 
     /** 实际建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
@@ -177,7 +193,7 @@ public class DramaShortService {
                         orDefault(idea, orDefault(reopen, fmtKey == null ? "未命名短视频" : fmtName)));
         ObjectNode payload = seeded != null ? seeded : seedData(title, fmtKey, fmtName, idea, reopen);
         if (seeded != null) continuity.ensureDraft(payload); // 依赖图按服务端规则派生，不信客户端
-        if (clientRequestId != null) payload.put("clientRequestId", clientRequestId);
+
 
         DramaShort row = DramaShort.builder()
                 .id("dvs_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
@@ -193,6 +209,7 @@ public class DramaShortService {
                 .status("draft")
                 .progress(0)
                 .payloadJson(write(payload))
+                .clientRequestId(clientRequestId)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -368,14 +385,35 @@ public class DramaShortService {
     public String createFromRecipe(String userId, String title, String type,
                                    String coverFrom, String coverTo,
                                    String styleName, String styleRef) {
-        return withEntryCharge(userId, () ->
-                doCreateFromRecipe(userId, title, type, coverFrom, coverTo, styleName, styleRef));
+        return createFromRecipe(userId, title, type, coverFrom, coverTo, styleName, styleRef, null);
+    }
+
+    /**
+     * 套用单集创意建草稿（v0.145 起可带幂等键）。套用同样扣一笔开拍费，
+     * 因此与 {@link #createShort} 共用同一把 (owner, clientRequestId) 唯一键与并发处理。
+     */
+    public String createFromRecipe(String userId, String title, String type,
+                                   String coverFrom, String coverTo,
+                                   String styleName, String styleRef, String clientRequestId) {
+        IdemLookup idem = lookupIdempotency(userId, clientRequestId);
+        if (idem.hit() != null) return idem.hit().getId();
+        try {
+            return withEntryCharge(userId, () -> doCreateFromRecipe(
+                    userId, title, type, coverFrom, coverTo, styleName, styleRef, idem.keyToPersist()));
+        } catch (DataIntegrityViolationException e) {
+            DramaShort winner = clientRequestId == null ? null
+                    : repo.findFirstByOwnerUserIdAndClientRequestId(userId, clientRequestId).orElse(null);
+            if (winner == null) throw e;
+            log.info("[drama-short] create-from-recipe idempotent-race user={} id={} key={}",
+                    userId, winner.getId(), clientRequestId);
+            return winner.getId();
+        }
     }
 
     /** 实际从单集创意建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
     private String doCreateFromRecipe(String userId, String title, String type,
                                       String coverFrom, String coverTo,
-                                      String styleName, String styleRef) {
+                                      String styleName, String styleRef, String clientRequestId) {
         OffsetDateTime now = OffsetDateTime.now();
         String safeTitle = orDefault(title, "未命名短视频");
         String fmtName = orDefault(type, "风格短片");
@@ -408,6 +446,7 @@ public class DramaShortService {
                 .status("draft")
                 .progress(0)
                 .payloadJson(write(data))
+                .clientRequestId(clientRequestId)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();

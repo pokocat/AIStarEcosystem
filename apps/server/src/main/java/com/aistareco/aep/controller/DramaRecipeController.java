@@ -69,8 +69,12 @@ public class DramaRecipeController {
      * 单集 → 新建短视频草稿 { kind:"short", shortId }。前端按 kind 跳对应工作台。
      */
     @PostMapping("/{id}/apply")
-    public ApiResponse<JsonNode> apply(Principal principal, @PathVariable String id) {
-        return ApiResponse.of(service.applyRecipe(id, principal.getName()));
+    public ApiResponse<JsonNode> apply(Principal principal, @PathVariable String id,
+                                       @RequestBody(required = false) JsonNode body) {
+        // 单集分流会扣一笔开拍费；带 clientRequestId 时重试不重复扣（v0.145）。
+        String clientRequestId = body != null && body.hasNonNull("clientRequestId")
+                ? body.get("clientRequestId").asText() : null;
+        return ApiResponse.of(service.applyRecipe(id, principal.getName(), clientRequestId));
     }
 
     // ── 运营：精选用户作品（双通道之②） + 手建内置（通道③） ──────────────────────

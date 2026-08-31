@@ -7973,7 +7973,7 @@ paths:
     post: { tags: [drama], operationId: rejectDramaRecipe, summary: '运营驳回配方（OPERATOR/SUPER_ADMIN）。body:{note?}', responses: { '200': { description: ok } } }
   /me/drama/recipes/{id}/apply:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
-    post: { tags: [drama], operationId: applyDramaRecipe, summary: '套用已发布配方 → 新建预填项目，返回 {projectId}', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: applyDramaRecipe, summary: '套用已发布配方 → 新建预填项目，返回 {projectId}。v0.145：接可选 body { clientRequestId }，单集分流扣开拍费，同键重试不重复扣（(owner,key) 唯一索引）', responses: { '200': { description: ok } } }
   # ── v0.75 创意市场双通道：运营精选用户作品（候选/邀请）+ 运营手建内置 + 用户授权 ──
   /me/drama/recipes/candidates:
     get: { tags: [drama], operationId: listDramaRecipeCandidates, summary: '运营「从用户作品精选」候选池（OPERATOR/SUPER_ADMIN）', responses: { '200': { description: ok } } }

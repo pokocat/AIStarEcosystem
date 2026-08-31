@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -44,6 +45,13 @@ class DramaShortServiceTest {
         repo = mock(DramaShortRepository.class);
         when(repo.save(any())).thenAnswer(inv -> {
             DramaShort s = inv.getArgument(0);
+            // 模拟唯一索引 uk_drama_short_owner_client_req：同 owner 同键的第二次插入直接抛。
+            if (s.getClientRequestId() != null && !db.containsKey(s.getId())) {
+                boolean taken = db.values().stream().anyMatch(o ->
+                        o.getOwnerUserId().equals(s.getOwnerUserId())
+                                && s.getClientRequestId().equals(o.getClientRequestId()));
+                if (taken) throw new DataIntegrityViolationException("uk_drama_short_owner_client_req");
+            }
             db.put(s.getId(), s);
             return s;
         });
@@ -56,13 +64,12 @@ class DramaShortServiceTest {
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null)
                         .toList());
-        when(repo.findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc(anyString(), any()))
-                .thenAnswer(inv -> db.values().stream()
+        // v0.145：幂等键按列直查（不再扫 payload）。
+        when(repo.findFirstByOwnerUserIdAndClientRequestId(anyString(), anyString())).thenAnswer(inv ->
+                db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId())
-                                && s.getDeletedAt() == null
-                                && s.getCreatedAt() != null
-                                && s.getCreatedAt().isAfter(inv.getArgument(1, java.time.OffsetDateTime.class)))
-                        .toList());
+                                && inv.getArgument(1, String.class).equals(s.getClientRequestId()))
+                        .findFirst());
         when(repo.findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(anyString())).thenAnswer(inv ->
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() != null)
@@ -317,6 +324,64 @@ class DramaShortServiceTest {
         svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "shared"), USER);
         svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "shared"), "u_other");
         assertEquals(2, db.size(), "别人的幂等键不能命中我的草稿");
+    }
+
+    @Test
+    void concurrentSameKeyChargesOnceAndBothSeeTheWinner() {
+        // 真并发：两个请求都没查到对方（各自 idempotentHit 为空），都进扣费包裹；
+        // 唯一索引让第二次插入失败 → 释放本次冻结、回查赢家，两个请求看到同一条、只付一笔。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "race-key");
+
+        // 第一个请求正常落库
+        JsonNode winner = svc.createShort(body.deepCopy(), USER);
+        // 模拟「查重时还没看到对方」：第一次查返回空（逼它走到 save 撞索引），之后能查到赢家。
+        when(repo.findFirstByOwnerUserIdAndClientRequestId(eq(USER), eq("race-key")))
+                .thenReturn(Optional.empty())
+                .thenAnswer(inv -> db.values().stream()
+                        .filter(x -> "race-key".equals(x.getClientRequestId()))
+                        .findFirst());
+
+        JsonNode loser = svc.createShort(body.deepCopy(), USER);
+
+        assertEquals(winner.path("meta").path("id").asText(), loser.path("meta").path("id").asText(),
+                "落败的请求要返回赢家的草稿");
+        assertEquals(1, db.size(), "并发同键只能有一条草稿");
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(1)).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
+    }
+
+    @Test
+    void keyOnDeletedDraftIsTreatedAsNewShoot() {
+        // 用户主动删掉草稿后，带同一把旧键再来 = 新的一次开拍：照常扣费、建新草稿，
+        // 且新草稿不能占用那把旧键（否则撞唯一索引）。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "reuse-key");
+        String firstId = svc.createShort(body.deepCopy(), USER).path("meta").path("id").asText();
+        svc.deleteShort(firstId, USER);
+
+        JsonNode again = svc.createShort(body.deepCopy(), USER);
+
+        assertNotEquals(firstId, again.path("meta").path("id").asText());
+        assertEquals(2, db.size());
+        assertNotEquals("reuse-key", db.get(again.path("meta").path("id").asText()).getClientRequestId(),
+                "新草稿必须换一把服务端键，不能占用回收站里那条的键");
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+    }
+
+    @Test
+    void createFromRecipeSharesTheSameIdempotencyKey() {
+        // 套用单集创意同样扣一笔开拍费，重试必须回到同一条草稿。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        String first = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e",
+                "韦斯·安德森风格", "对称构图 · 复古色卡", "recipe-key");
+        String retry = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e",
+                "韦斯·安德森风格", "对称构图 · 复古色卡", "recipe-key");
+
+        assertEquals(first, retry);
+        assertEquals(1, db.size());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
     }
 
     @Test

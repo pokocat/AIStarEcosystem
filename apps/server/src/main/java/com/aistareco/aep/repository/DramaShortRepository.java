@@ -23,10 +23,10 @@ public interface DramaShortRepository extends JpaRepository<DramaShort, String> 
     List<DramaShort> findByDeletedAtBefore(OffsetDateTime cutoff);
 
     /**
-     * 该账号在 since 之后新建的草稿（新 → 旧）。用于「开拍付费创建」的幂等查重：
-     * 幂等键存在 payloadJson 里（没有独立列，见 TODO.md 迁移编号漂移），
-     * 靠时间窗把要读的 payload 数量限住，不做全量扫。
+     * 开拍付费创建的幂等查重（v0.145）：按 (owner, clientRequestId) 直查，
+     * 与唯一索引 {@code uk_drama_short_owner_client_req} 同一组键。
+     * **不过滤软删**：唯一索引覆盖全部行，回收站里的行也必须能被查到，
+     * 否则会撞索引却查不到对手。
      */
-    List<DramaShort> findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc(
-            String ownerUserId, OffsetDateTime since);
+    Optional<DramaShort> findFirstByOwnerUserIdAndClientRequestId(String ownerUserId, String clientRequestId);
 }

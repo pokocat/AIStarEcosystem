@@ -97,10 +97,12 @@ export function ShortCreateConsole({
     }
     inFlight.current = true;
     setStarting(true);
+    // 两条分支都扣同一笔开拍费，都要带幂等键：失败重试沿用同一把，服务端按 (owner,key) 查重。
+    if (!requestIdRef.current) requestIdRef.current = newClientRequestId();
     try {
       if (picked) {
         // 带创意：后端按创意风格 seed 草稿（含扣费）；自由主题经 sessionStorage 带入工厂。
-        const out = await RecipesApi.applyRecipe(picked);
+        const out = await RecipesApi.applyRecipe(picked, requestIdRef.current);
         stashIdea(text);
         if (out.kind === "short") {
           router.push(`/shorts/make?draft=${encodeURIComponent(out.shortId)}`);
@@ -111,7 +113,6 @@ export function ShortCreateConsole({
         // 纯自由点子：进工厂新建草稿（扣费在后端 createShort）。
         // 草稿由 /shorts/make 的网关创建，幂等键随 sessionStorage 一并带过去。
         stashIdea(text);
-        if (!requestIdRef.current) requestIdRef.current = newClientRequestId();
         if (typeof window !== "undefined") {
           sessionStorage.setItem("drama.shorts.createKey", requestIdRef.current);
         }
