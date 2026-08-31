@@ -46,6 +46,12 @@ export interface FormShot {
   flow: ShotFlow;
   /** v0.97：出场角色 id（用于按镜挑角色参考图，锁人物一致性）。 */
   cast?: string[];
+  /**
+   * v0.143 短视频提示词直出：本镜出场人物**名字**（对应 visualBible.characters[].name）。
+   * 与上面的 `cast`（短剧线的角色实体 id）刻意分开，避免两条线语义串。
+   * 显式空数组 = 本镜没有人物；字段缺失 = 未标注，服务端按全员锚定。
+   */
+  castNames?: string[];
   /** v0.97：机位标识（同机位复用同值，跨镜保持取景一致）。 */
   camId?: string;
   /** v0.65 真实渲染产物 */

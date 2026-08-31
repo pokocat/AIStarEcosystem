@@ -1,8 +1,21 @@
-# 版本增量历史（v0.5 → v0.143）
+# 版本增量历史（v0.5 → v0.144）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.144（2026-08-31）— 短视频线遗留缺陷收口：出片计费不可绕过 / 开拍费幂等 / 逐镜出场人物
+
+v0.143 上线后按 Codex 评审清单把遗留缺陷逐条修掉。**无表变更、无新迁移**（仓库 Flyway 编号存在漂移，见文末）。
+
+- **出片产物出处核验（原 P1，v0.76/v0.133 起就存在的计费绕过）**：`DramaShortAssembleService.assemble` 新增 `requireOwnClips` —— 每镜视频必须命中**本账号**短剧渲染任务（`MaterialVideoJob`）的产物；先按本草稿 `script_id` 比对，再退到该账号全部短剧任务（老草稿可能没落 script_id，跨草稿复用自己付过费的成片不算绕过），两级都不命中 → 400 `DRAMA_SHORT_CLIP_UNVERIFIED`。核验放在存储配额与 ffmpeg/OSS **之前**，伪造请求不消耗资源；按**资产路径 + 文件名**比对而非整串 URL（签名 URL 每次读取都会重签，§4.7.7）。此前伪造 `{"flow":"done","videoUrl":"/cdn/<平台已有视频>"}` 就能跳过逐镜出片扣费直接总装成片。
+- **开拍付费创建幂等（原 P2，v0.78 起）**：`POST /me/drama/shorts` 接受 `clientRequestId`，服务端按 owner + key 在 2 小时窗口内查重（键落 `payloadJson`，用新增的时间窗查询 `findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc` 限住要读的 payload 量），命中回原草稿不再扣费。三个创建入口都带键。**限制写在代码注释与 TODO**：无唯一索引 → 只挡顺序重试，并发同键仍可能双写；`createFromRecipe` 暂未接。
+- **逐镜出场人物可见可改**：`ShortStoryboardTable` 在「口播文案 · 画面」格底部加出场人物 chip（与预览页同交互、同「未标注 = 按全员锚定」语义），不新增列避免表格溢出；`FormShot` 加 `castNames`（名字，与短剧线 `cast` 的角色实体 id 刻意分开）；「加一镜」继承上一镜的出场人物与场景。
+- **人物 / 场景可增删**：预览页与工作台「提示词设定」卡都加「加一位角色 / 加一个场景」+ 逐条删除；删角色同步清掉各镜 `castNames` 引用，删场景把引用它的镜头退回默认场景。
+- **拆解限频**：`DramaShortPromptService` 加进程内滑动窗口（单账号 5 分钟 10 次），超限 429 `DRAMA_PROMPT_RATE_LIMITED` 告知等待秒数，不排队不降级。拆解仍免费（总花费与 AI 对话线一致），但不再能靠反复点击持续消耗平台模型额度。
+- **门禁**：server compile + `mvnw test` **713/0**（+6：伪造拒绝 2 / 幂等 3 / 限频 1）+ `typecheck:all` + `typecheck:admin` + web-drama build(32 路由) + vitest 40/40 + contract 全绿；mock 浏览器复验「加/删角色 → 开始制作 → 工作台分镜表出场人物 chip → 提示词设定增删」整链。
+- **部署时新发现（已记 TODO.md P0）**：生产 `flyway_schema_history` 最高 **V22**，仓库迁移目录只有 `V1` + `V14`–`V20`。当前不阻塞启动（validate 通过、服务正常），但在 `out-of-order: false` 下**再加任何 ≤ V22 的迁移文件都可能让 server 起不来**。查清缺失 SQL 之前不要新增迁移；下一个可用编号按 V23 起。
+- **未做（是特性不是缺陷）**：超 40 镜提示词的「自动分卷成多条草稿」。
 
 ### v0.143（2026-08-31）— 短视频「提示词直出」：整段提示词 → 结构化分镜开拍
 

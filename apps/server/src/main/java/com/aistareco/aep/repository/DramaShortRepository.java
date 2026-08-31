@@ -21,4 +21,12 @@ public interface DramaShortRepository extends JpaRepository<DramaShort, String> 
 
     /** 软删早于 cutoff 的草稿（定时物理清理用）。 */
     List<DramaShort> findByDeletedAtBefore(OffsetDateTime cutoff);
+
+    /**
+     * 该账号在 since 之后新建的草稿（新 → 旧）。用于「开拍付费创建」的幂等查重：
+     * 幂等键存在 payloadJson 里（没有独立列，见 TODO.md 迁移编号漂移），
+     * 靠时间窗把要读的 payload 数量限住，不做全量扫。
+     */
+    List<DramaShort> findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc(
+            String ownerUserId, OffsetDateTime since);
 }

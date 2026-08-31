@@ -34,6 +34,8 @@ export interface ShortStoryboardTableProps {
   /** 每镜 beat 语义标签（痛点开场 / 卖点演示 / 强 CTA 收尾…），按序号取，缺省回落「镜 N」。 */
   beats: string[];
   speakerOptions: string[];
+  /** 提示词直出线的全片角色名；给了才渲染逐镜「出场人物」chip。 */
+  characters?: string[];
   locked?: boolean;
   /** 首帧/视频真实单价（drama.credit.{frame,clip}，admin 可配）；驱动确认弹窗展示金额。 */
   frameCost?: number;
@@ -48,7 +50,7 @@ export interface ShortStoryboardTableProps {
 }
 
 export function ShortStoryboardTable(props: ShortStoryboardTableProps) {
-  const { shots, beats, speakerOptions, locked, busy, frameCost, clipCost } = props;
+  const { shots, beats, speakerOptions, characters, locked, busy, frameCost, clipCost } = props;
   const [edit, setEdit] = React.useState<FormShot | null>(null);
 
   // 时间线累计起点。
@@ -82,6 +84,7 @@ export function ShortStoryboardTable(props: ShortStoryboardTableProps) {
                 busy={busy && busy.id === s.id ? busy.to : null}
                 locked={locked}
                 speakerOptions={speakerOptions}
+                characters={characters}
                 frameCost={frameCost}
                 clipCost={clipCost}
                 onPatch={(patch) => props.onPatch(s.id, patch)}
@@ -118,6 +121,7 @@ function ShortShotRow({
   busy,
   locked,
   speakerOptions,
+  characters,
   frameCost,
   clipCost,
   onPatch,
@@ -132,6 +136,7 @@ function ShortShotRow({
   busy: ShotFlow | null;
   locked?: boolean;
   speakerOptions: string[];
+  characters?: string[];
   frameCost?: number;
   clipCost?: number;
   onPatch: (patch: Partial<FormShot>) => void;
@@ -204,6 +209,42 @@ function ShortShotRow({
           className="edit-field"
           style={{ display: "block", fontSize: 12.5, lineHeight: 1.7, padding: "5px 7px", marginTop: 7, color: "var(--ink-2)" }}
         />
+        {/* 出场人物（提示词直出线）：决定这一镜出图时锚哪几个人的外貌。
+            字段缺失 = 未标注，按全员锚定，chip 也按全员亮起，跟实际行为一致。 */}
+        {!!characters?.length && (
+          <div className="row gap-1" style={{ flexWrap: "wrap", alignItems: "center", marginTop: 7 }}>
+            {!s.castNames && (
+              <span className="faint" style={{ fontSize: 10, flex: "none" }} title="没标出这一镜有谁，出图会把所有角色都带上">
+                未标注
+              </span>
+            )}
+            {characters.map((name) => {
+              const on = s.castNames ? s.castNames.includes(name) : true;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  className="chip"
+                  disabled={locked}
+                  aria-pressed={on}
+                  title={on ? `${name} 出现在这一镜（点一下移出）` : `${name} 不在这一镜（点一下加入）`}
+                  onClick={() => {
+                    const base = s.castNames ?? characters;
+                    onPatch({ castNames: on ? base.filter((n) => n !== name) : [...base, name] });
+                  }}
+                  style={{
+                    height: 20, fontSize: 10.5, padding: "0 7px", maxWidth: 92,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    background: on ? "var(--accent-soft)" : undefined,
+                    color: on ? "var(--accent)" : "var(--ink-3)", opacity: on ? 1 : 0.7,
+                  }}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </td>
 
       {/* 镜头（景别 · 运镜） */}

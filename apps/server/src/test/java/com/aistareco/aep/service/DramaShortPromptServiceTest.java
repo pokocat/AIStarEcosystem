@@ -136,6 +136,22 @@ class DramaShortPromptServiceTest {
         assertEquals("AI_BAD_OUTPUT", e.getCode());
     }
 
+    @Test
+    void perUserRateLimitBlocksRepeatedParsesWithoutDegrading() {
+        aiReturns("{\"title\":\"限频\",\"shots\":[{\"durationSec\":4,\"visual\":\"画面\"}]}");
+        for (int i = 0; i < DramaShortPromptService.RATE_LIMIT_MAX; i++) {
+            svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER);
+        }
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER));
+        assertEquals("DRAMA_PROMPT_RATE_LIMITED", e.getCode());
+        // 超限只拒绝，不产假结果；模型调用次数停在上限。
+        verify(invocation, times(DramaShortPromptService.RATE_LIMIT_MAX))
+                .invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap());
+        // 别的账号不受影响。
+        svc.parse(OM.createObjectNode().put("prompt", PROMPT), "u_other");
+    }
+
     // ── 拆解结果归一 ────────────────────────────────────────────────────────────
 
     @Test

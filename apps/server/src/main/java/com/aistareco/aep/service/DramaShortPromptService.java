@@ -11,14 +11,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 短视频「提示词直出」拆解服务（v0.143，drama 子产品）。
@@ -59,10 +63,19 @@ public class DramaShortPromptService {
     static final int MAX_SCENES = 6;
     /** 拆解输出比常规脚本长（逐镜 + 人物卡），prompt 级放宽上限，不动共享端点默认。 */
     static final int DEFAULT_MAX_TOKENS = 8192;
+    /**
+     * 单账号拆解频次上限（滑动窗口）。拆解不扣用户积分，但每次都是最多 2 万字输入、8192 输出的模型调用；
+     * 现有 AiModelGuardService 只有端点级 RPM/TPM，没有用户维度，反复点会把共享端点额度吃掉。
+     * 进程内计数（单实例部署足够）；超限显式 429，不降级成假结果。
+     */
+    static final int RATE_LIMIT_MAX = 10;
+    static final Duration RATE_LIMIT_WINDOW = Duration.ofMinutes(5);
 
     private final AiModelInvocationService invocation;
     private final PromptService promptService;
     private final ObjectMapper om;
+    /** userId → 最近若干次拆解的时间戳（毫秒），用于滑动窗口限频。 */
+    private final Map<String, Deque<Long>> recentParses = new ConcurrentHashMap<>();
 
     public DramaShortPromptService(AiModelInvocationService invocation,
                                    PromptService promptService,
@@ -95,6 +108,7 @@ public class DramaShortPromptService {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "提示词拆解还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
+        requireWithinRateLimit(userId);
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_SHORT_PROMPT_PARSE);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
@@ -154,6 +168,35 @@ public class DramaShortPromptService {
                 userId, out.path("shotCount").asInt(), out.path("totalDurationSec").asInt(),
                 out.path("characters").size(), resp.modelUsed());
         return out;
+    }
+
+    /**
+     * 滑动窗口限频：同一账号 {@link #RATE_LIMIT_WINDOW} 内最多拆解 {@link #RATE_LIMIT_MAX} 次。
+     * 超限抛 429（带还要等多久），不排队、不降级。
+     */
+    private void requireWithinRateLimit(String userId) {
+        if (userId == null || userId.isBlank()) return;
+        long now = System.currentTimeMillis();
+        long windowStart = now - RATE_LIMIT_WINDOW.toMillis();
+        Deque<Long> hits = recentParses.computeIfAbsent(userId, ignored -> new ArrayDeque<>());
+        synchronized (hits) {
+            while (!hits.isEmpty() && hits.peekFirst() < windowStart) hits.pollFirst();
+            if (hits.size() >= RATE_LIMIT_MAX) {
+                long waitSec = Math.max(1, (hits.peekFirst() + RATE_LIMIT_WINDOW.toMillis() - now) / 1000);
+                throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "DRAMA_PROMPT_RATE_LIMITED",
+                        "拆解太频繁了：" + RATE_LIMIT_WINDOW.toMinutes() + " 分钟内最多 " + RATE_LIMIT_MAX
+                                + " 次，请 " + waitSec + " 秒后再试。");
+            }
+            hits.addLast(now);
+        }
+        // 长期不活跃的账号不留条目（进程内 map，避免无界增长）。
+        if (recentParses.size() > 5000) {
+            recentParses.entrySet().removeIf(e -> {
+                synchronized (e.getValue()) {
+                    return e.getValue().isEmpty() || e.getValue().peekLast() < windowStart;
+                }
+            });
+        }
     }
 
     // ── 归一化（模型输出 → 前端契约形状；越界如实写进 notes，不静默改设定） ──────────

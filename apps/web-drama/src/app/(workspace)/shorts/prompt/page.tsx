@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { CreditMark, Editable, dramaConfirm } from "@/components/drama-ui";
 import { ShortsApi } from "@/api";
+import { newClientRequestId } from "@/api/shorts";
 import type { ParsedShortPrompt, ParsedShortShot } from "@/api/shorts";
 import { PROMPT_MAX_SHOTS, PROMPT_SHOT_MAX_SEC, PROMPT_SHOT_MIN_SEC, parsedTotalSec } from "@/lib/short-prompt-draft";
 import { aiErrorMessage } from "@/lib/ai-error";
@@ -54,6 +55,8 @@ export default function ShortPromptPage() {
   const router = useRouter();
   const cfg = useDramaConfig();
   const inFlight = React.useRef(false);
+  // 幂等键：同一份拆解结果的多次「开始制作」（含失败重试）共用一个，避免重复扣开拍费。
+  const requestIdRef = React.useRef<string | null>(null);
 
   const [prompt, setPrompt] = React.useState("");
   const [parsing, setParsing] = React.useState(false);
@@ -83,6 +86,7 @@ export default function ShortPromptPage() {
     try {
       const result = await ShortsApi.parsePrompt({ prompt: prompt.trim() });
       setParsed(result);
+      requestIdRef.current = null; // 新的一份拆解结果 = 新的创建意图
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       toast.success(`已拆成 ${result.shotCount} 镜，核对无误就可以开始制作`);
     } catch (e) {
@@ -107,8 +111,10 @@ export default function ShortPromptPage() {
     inFlight.current = true;
     setStarting(true);
     try {
+      if (!requestIdRef.current) requestIdRef.current = newClientRequestId();
       const detail = await ShortsApi.createDraft({
         seed: { ...parsed, promptSource: { raw: prompt.trim() } },
+        clientRequestId: requestIdRef.current,
       });
       invalidate("/me/drama/shorts");
       router.push(`/shorts/make?draft=${encodeURIComponent(detail.meta.id)}`);
@@ -118,6 +124,40 @@ export default function ShortPromptPage() {
       setStarting(false);
       toast.error(aiErrorMessage(e, "建草稿失败，请重试"));
     }
+  };
+
+  /** 人物 / 场景增删：删角色同时清掉各镜对他的引用，删场景把引用它的镜头退回默认场景。 */
+  const addCharacter = () => {
+    setParsed((prev) =>
+      prev ? { ...prev, characters: [...prev.characters, { name: "", visual: "", performance: "" }] } : prev,
+    );
+  };
+  const removeCharacter = (index: number) => {
+    setParsed((prev) => {
+      if (!prev) return prev;
+      const gone = prev.characters[index]?.name;
+      return {
+        ...prev,
+        characters: prev.characters.filter((_, i) => i !== index),
+        shots: gone
+          ? prev.shots.map((sh) => (sh.castNames ? { ...sh, castNames: sh.castNames.filter((n) => n !== gone) } : sh))
+          : prev.shots,
+      };
+    });
+  };
+  const addScene = () => {
+    setParsed((prev) => (prev ? { ...prev, scenes: [...prev.scenes, { name: "", visual: "" }] } : prev));
+  };
+  const removeScene = (index: number) => {
+    setParsed((prev) => {
+      if (!prev) return prev;
+      const gone = prev.scenes[index]?.name;
+      return {
+        ...prev,
+        scenes: prev.scenes.filter((_, i) => i !== index),
+        shots: gone ? prev.shots.map((sh) => (sh.sceneName === gone ? { ...sh, sceneName: "" } : sh)) : prev.shots,
+      };
+    });
   };
 
   const patchShot = (index: number, patch: Partial<ParsedShortShot>) => {
@@ -294,6 +334,16 @@ export default function ShortPromptPage() {
                           placeholder="角色名"
                           style={{ ...INPUT, border: "none", background: "transparent", fontWeight: 700, fontSize: 13.5, padding: 0 }}
                         />
+                        <button
+                          type="button"
+                          className="btn btn-icon btn-sm"
+                          title={`删除角色${c.name ? `「${c.name}」` : ""}`}
+                          aria-label={`删除角色${c.name ? `「${c.name}」` : ""}`}
+                          onClick={() => removeCharacter(i)}
+                          style={{ flex: "none", color: "var(--danger)" }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                       <LabeledText
                         label="外观（进画面）"
@@ -331,6 +381,16 @@ export default function ShortPromptPage() {
                           placeholder="场景名"
                           style={{ ...INPUT, border: "none", background: "transparent", fontWeight: 700, fontSize: 13.5, padding: 0 }}
                         />
+                        <button
+                          type="button"
+                          className="btn btn-icon btn-sm"
+                          title={`删除场景${s.name ? `「${s.name}」` : ""}`}
+                          aria-label={`删除场景${s.name ? `「${s.name}」` : ""}`}
+                          onClick={() => removeScene(i)}
+                          style={{ flex: "none", color: "var(--danger)" }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                       <LabeledText
                         label="环境与光影"
@@ -342,6 +402,18 @@ export default function ShortPromptPage() {
                       />
                     </div>
                   ))}
+                  <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                    <button type="button" className="btn btn-line btn-sm" onClick={addCharacter}>
+                      <Plus size={13} /> 加一位角色
+                    </button>
+                    <button type="button" className="btn btn-line btn-sm" onClick={addScene}>
+                      <Plus size={13} /> 加一个场景
+                    </button>
+                    <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>
+                      不填外观的角色不会参与画面锚定
+                    </span>
+                  </div>
+
                   <div className="col gap-2" style={CARD_INSET}>
                     <LabeledText
                       label="全片画面基调"

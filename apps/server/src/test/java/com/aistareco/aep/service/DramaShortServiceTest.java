@@ -56,6 +56,13 @@ class DramaShortServiceTest {
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null)
                         .toList());
+        when(repo.findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc(anyString(), any()))
+                .thenAnswer(inv -> db.values().stream()
+                        .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId())
+                                && s.getDeletedAt() == null
+                                && s.getCreatedAt() != null
+                                && s.getCreatedAt().isAfter(inv.getArgument(1, java.time.OffsetDateTime.class)))
+                        .toList());
         when(repo.findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(anyString())).thenAnswer(inv ->
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() != null)
@@ -277,6 +284,39 @@ class DramaShortServiceTest {
         verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
         verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
         verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void sameClientRequestIdReturnsTheFirstDraftAndChargesOnlyOnce() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("idea", "熬夜精华")
+                .put("clientRequestId", "req-abc-123");
+
+        JsonNode first = svc.createShort(body.deepCopy(), USER);
+        // 响应丢包后客户端原样重试：必须回到同一条草稿，且不再扣第二笔开拍费。
+        JsonNode retry = svc.createShort(body.deepCopy(), USER);
+
+        assertEquals(first.path("meta").path("id").asText(), retry.path("meta").path("id").asText());
+        assertEquals(1, db.size(), "重试不应再建一条草稿");
+        verify(creditService, times(1)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+    }
+
+    @Test
+    void differentClientRequestIdsCreateSeparateDrafts() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "req-1"), USER);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "req-2"), USER);
+        assertEquals(2, db.size());
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+    }
+
+    @Test
+    void idempotencyKeyIsScopedToOwner() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "shared"), USER);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "shared"), "u_other");
+        assertEquals(2, db.size(), "别人的幂等键不能命中我的草稿");
     }
 
     @Test

@@ -144,6 +144,8 @@ export interface ShortDraftData {
   promptSource?: ShortPromptSource;
   /** v0.143：拆解过程中的处理说明（超长截断 / 超时长拆镜 / 超镜数未拆解…），如实展示给用户。 */
   promptNotes?: string[];
+  /** v0.144：建这条草稿时用的幂等键（服务端写入，用于重试查重）。前端只读，不要改。 */
+  clientRequestId?: string;
 }
 
 /** 提示词直出的全片视觉设定（人物卡只放视觉，表演另存，避免台词污染逐镜画面）。 */
@@ -256,6 +258,20 @@ export interface CreateShortInput {
    * 扣费仍是同一笔开拍费；title / fmtName / idea 由 seed 决定，无需另传。
    */
   seed?: ParsedShortPrompt & { promptSource?: ShortPromptSource };
+  /**
+   * 幂等键：同一次「开始制作」的重试要用同一个值。
+   * 响应在网络层丢失后客户端会原样重试，没有它服务端会再建一条草稿、再扣一笔开拍费。
+   * 服务端按 owner + key 在 2 小时窗口内查重，命中就回原草稿（不重复扣费）。
+   */
+  clientRequestId?: string;
+}
+
+/** 一次创建意图的幂等键（重试复用，成功后由调用方丢弃）。 */
+export function newClientRequestId(): string {
+  const rand = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+  return `dvs-${Date.now().toString(36)}-${rand}`.slice(0, 64);
 }
 
 export interface SaveShortOptions {
@@ -461,7 +477,7 @@ export async function getDraft(id: string): Promise<ShortDraftDetail> {
 }
 
 /** mock 侧的 seed → ShortDraftData（与后端 DramaShortPromptService.seedToDraftData 同规则的精简版）。 */
-function mockSeedToData(seed: NonNullable<CreateShortInput["seed"]>): ShortDraftData {
+function mockSeedToData(seed: NonNullable<CreateShortInput["seed"]>, clientRequestId?: string): ShortDraftData {
   const title = seed.title || "未命名短视频";
   return {
     idea: null,
@@ -487,6 +503,7 @@ function mockSeedToData(seed: NonNullable<CreateShortInput["seed"]>): ShortDraft
     },
     promptSource: { raw: seed.promptSource?.raw ?? "", parsedAt: new Date().toISOString() },
     promptNotes: seed.notes ?? [],
+    clientRequestId,
     shots: (seed.shots ?? []).map((s, i) => ({
       id: `sh_p${i + 1}_mock`,
       no: i + 1,
@@ -523,10 +540,14 @@ function mockSeedToData(seed: NonNullable<CreateShortInput["seed"]>): ShortDraft
 
 export async function createDraft(input: CreateShortInput): Promise<ShortDraftDetail> {
   if (USE_MOCK) {
+    if (input.clientRequestId) {
+      const hit = Array.from(mockStore.values()).find((d) => d.data.clientRequestId === input.clientRequestId);
+      if (hit) return mockDelay(hit);
+    }
     const id = `dvs_mock_${Date.now()}_${mockSeq++}`;
     // 提示词直出：seed 即整份草稿内容（分镜一律 draft 态，与后端同规则）。
     if (input.seed) {
-      const seeded = mockSeedToData(input.seed);
+      const seeded = mockSeedToData(input.seed, input.clientRequestId);
       const detail: ShortDraftDetail = {
         meta: {
           ...mockSummary(id, { ...input, title: seeded.title, fmtName: seeded.fmtName }),

@@ -37,6 +37,10 @@ public class DramaShortService {
 
     /** 进工作台开拍扣费默认单价（admin「短剧专区」drama.credit.short-entry 可改）。 */
     private static final long SHORT_ENTRY_COST_DEFAULT = 10;
+    /** 开拍付费创建的幂等窗口：客户端超时重试都发生在几秒到几分钟内，2 小时足够覆盖。 */
+    private static final Duration IDEMPOTENCY_WINDOW = Duration.ofHours(2);
+    /** 幂等键长度上限（客户端生成的随机串）。 */
+    private static final int CLIENT_REQUEST_ID_MAX = 64;
 
     private final DramaShortRepository repo;
     private final ObjectMapper om;
@@ -116,11 +120,46 @@ public class DramaShortService {
         if (body.path("seed").isObject()) {
             DramaShortPromptService.requireUsableSeed(body.get("seed"));
         }
-        return withEntryCharge(userId, () -> doCreateShort(body, userId));
+        // 幂等：响应在网络层丢失后客户端会原样重试，没有幂等键就会再建一条草稿、再扣一笔开拍费。
+        String clientRequestId = clientRequestId(body);
+        if (clientRequestId != null) {
+            DramaShort existing = findByClientRequestId(userId, clientRequestId);
+            if (existing != null) {
+                log.info("[drama-short] create idempotent-hit user={} id={} key={}",
+                        userId, existing.getId(), clientRequestId);
+                return toDetail(existing);
+            }
+        }
+        return withEntryCharge(userId, () -> doCreateShort(body, userId, clientRequestId));
+    }
+
+    /**
+     * 客户端幂等键：只接受短的可见字符串；缺省 / 超长 / 空白一律当没传（退回原有非幂等行为）。
+     */
+    private static String clientRequestId(JsonNode body) {
+        String raw = text(body, "clientRequestId");
+        if (raw == null) return null;
+        String value = raw.trim();
+        if (value.isEmpty() || value.length() > CLIENT_REQUEST_ID_MAX) return null;
+        return value;
+    }
+
+    /**
+     * 按幂等键找本账号窗口内已建的草稿。键存在 payloadJson 里（无独立列 + 无唯一索引），
+     * 因此**只能挡住顺序重试**（超时后再点一次）；真正并发的同键双写仍可能各建一条。
+     * 彻底解决要给 drama_shorts 加列 + (owner, key) 唯一索引，见 TODO.md。
+     */
+    private DramaShort findByClientRequestId(String userId, String clientRequestId) {
+        OffsetDateTime since = OffsetDateTime.now().minus(IDEMPOTENCY_WINDOW);
+        for (DramaShort row : repo
+                .findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc(userId, since)) {
+            if (clientRequestId.equals(readPayload(row).path("clientRequestId").asText(null))) return row;
+        }
+        return null;
     }
 
     /** 实际建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
-    private JsonNode doCreateShort(JsonNode body, String userId) {
+    private JsonNode doCreateShort(JsonNode body, String userId, String clientRequestId) {
         OffsetDateTime now = OffsetDateTime.now();
         // v0.143 提示词直出：body.seed = 已拆解（可能被用户改过）的结构 → 直接 seed 成带分镜的草稿。
         // 只接创作内容，分镜一律 flow=draft（seed 不得携带首帧 / 视频 / 配音产物）。
@@ -138,6 +177,7 @@ public class DramaShortService {
                         orDefault(idea, orDefault(reopen, fmtKey == null ? "未命名短视频" : fmtName)));
         ObjectNode payload = seeded != null ? seeded : seedData(title, fmtKey, fmtName, idea, reopen);
         if (seeded != null) continuity.ensureDraft(payload); // 依赖图按服务端规则派生，不信客户端
+        if (clientRequestId != null) payload.put("clientRequestId", clientRequestId);
 
         DramaShort row = DramaShort.builder()
                 .id("dvs_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))

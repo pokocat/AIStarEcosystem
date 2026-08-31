@@ -365,6 +365,17 @@ function ShortMakerGate() {
   const fmtKey = sp.get("fmt");
   const reopenParam = sp.get("reopen");
 
+  // 幂等键：由新建控制台带入（一次创建意图一个），本页新建草稿时回传服务端查重防双扣。
+  const createKeyRef = React.useRef<string | null | undefined>(undefined);
+  if (createKeyRef.current === undefined) {
+    if (typeof window !== "undefined") {
+      const v = sessionStorage.getItem("drama.shorts.createKey");
+      if (v) sessionStorage.removeItem("drama.shorts.createKey");
+      createKeyRef.current = v ?? null;
+    } else {
+      createKeyRef.current = null;
+    }
+  }
   // 点子经 sessionStorage 一次性带入（不入 URL：文案长/含敏感内容），读完即清。
   const ideaRef = React.useRef<string | null | undefined>(undefined);
   if (ideaRef.current === undefined) {
@@ -414,6 +425,7 @@ function ShortMakerGate() {
           coverTo: fmt?.to,
           idea: ideaRef.current,
           reopen: reopenParam,
+          clientRequestId: createKeyRef.current ?? undefined,
         });
         // 新建结果即使在 StrictMode 清理后也要落地，否则会卡在加载态。
         createdIdRef.current = detail.meta.id;
@@ -945,6 +957,46 @@ function ShortMakerInner({
     );
     invalidateAssembly();
   };
+  const addBibleCharacter = () => {
+    setVisualBible((prev) => ({
+      universal: prev?.universal ?? "",
+      scenes: prev?.scenes ?? [],
+      characters: [...(prev?.characters ?? []), { name: "", visual: "", performance: "" }],
+    }));
+    invalidateAssembly();
+  };
+  /** 删角色同时清掉各镜对他的引用，否则分镜里会留一个指不到人的名字。 */
+  const removeBibleCharacter = (index: number) => {
+    const gone = visualBible?.characters?.[index]?.name;
+    setVisualBible((prev) =>
+      prev ? { ...prev, characters: prev.characters.filter((_, i) => i !== index) } : prev,
+    );
+    if (gone) {
+      setShots((arr) =>
+        arr.map((shot) =>
+          shot.castNames ? { ...shot, castNames: shot.castNames.filter((n) => n !== gone) } : shot,
+        ),
+      );
+    }
+    invalidateAssembly();
+  };
+  const addBibleScene = () => {
+    setVisualBible((prev) => ({
+      universal: prev?.universal ?? "",
+      characters: prev?.characters ?? [],
+      scenes: [...(prev?.scenes ?? []), { name: "", visual: "" }],
+    }));
+    invalidateAssembly();
+  };
+  const removeBibleScene = (index: number) => {
+    const gone = visualBible?.scenes?.[index]?.name;
+    setVisualBible((prev) => (prev ? { ...prev, scenes: prev.scenes.filter((_, i) => i !== index) } : prev));
+    if (gone) {
+      setShots((arr) => arr.map((shot) => (shot.sceneName === gone ? { ...shot, sceneName: undefined } : shot)));
+    }
+    invalidateAssembly();
+  };
+
   const patchBibleScene = (index: number, patch: Partial<{ name: string; visual: string }>) => {
     setVisualBible((prev) =>
       prev ? { ...prev, scenes: prev.scenes.map((sc, i) => (i === index ? { ...sc, ...patch } : sc)) } : prev,
@@ -1235,6 +1287,7 @@ function ShortMakerInner({
       shots={shots}
       beats={shots.map((s) => s.beat ?? "")}
       speakerOptions={["口播", "旁白"]}
+      characters={(visualBible?.characters ?? []).map((c) => c.name).filter(Boolean)}
       locked={draftStatus === "done"}
       busy={busy}
       frameCost={cfg.prices.frame}
@@ -1491,12 +1544,24 @@ function ShortMakerInner({
                     <div className="col" style={{ padding: 18, gap: 14 }}>
                       {(visualBible?.characters ?? []).map((c, i) => (
                         <div key={i} className="col gap-2" style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)" }}>
-                          <input
-                            value={c.name}
-                            onChange={(e) => patchBibleCharacter(i, { name: e.target.value })}
-                            placeholder="角色名"
-                            style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
-                          />
+                          <div className="row gap-2" style={{ alignItems: "center" }}>
+                            <input
+                              value={c.name}
+                              onChange={(e) => patchBibleCharacter(i, { name: e.target.value })}
+                              placeholder="角色名"
+                              style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-icon btn-sm"
+                              title={`删除角色${c.name ? `「${c.name}」` : ""}`}
+                              aria-label={`删除角色${c.name ? `「${c.name}」` : ""}`}
+                              onClick={() => removeBibleCharacter(i)}
+                              style={{ flex: "none", color: "var(--danger)" }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                           <div className="col gap-1">
                             <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--ink-3)" }}>外观（进画面）</span>
                             <EditableField
@@ -1529,6 +1594,16 @@ function ShortMakerInner({
                               placeholder="场景名"
                               style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
                             />
+                            <button
+                              type="button"
+                              className="btn btn-icon btn-sm"
+                              title={`删除场景${sc.name ? `「${sc.name}」` : ""}`}
+                              aria-label={`删除场景${sc.name ? `「${sc.name}」` : ""}`}
+                              onClick={() => removeBibleScene(i)}
+                              style={{ flex: "none", color: "var(--danger)" }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                           <EditableField
                             multiline
@@ -1539,6 +1614,15 @@ function ShortMakerInner({
                           />
                         </div>
                       ))}
+                      <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                        <button type="button" className="btn btn-line btn-sm" onClick={addBibleCharacter}>
+                          <Plus size={13} /> 加一位角色
+                        </button>
+                        <button type="button" className="btn btn-line btn-sm" onClick={addBibleScene}>
+                          <Plus size={13} /> 加一个场景
+                        </button>
+                        <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>不填外观的角色不会参与画面锚定</span>
+                      </div>
                       <div className="col gap-1" style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)" }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--ink-3)" }}>全片画面基调</span>
                         <EditableField
@@ -1832,7 +1916,15 @@ function ShortMakerInner({
                     onClick={() => {
                       setShots((arr) => [
                         ...arr,
-                        { id: "add" + Date.now(), no: arr.length + 1, dur: 4, visual: "", size: "中景", move: "固定", voWho: "口播", voText: "", sfx: "", bgm: "", fx: "", refs: [], sub: true, flow: "draft", engine: "fx", frameIdx: 0 },
+                        {
+                          id: "add" + Date.now(), no: arr.length + 1, dur: 4, visual: "", size: "中景", move: "固定",
+                          voWho: "口播", voText: "", sfx: "", bgm: "", fx: "", refs: [], sub: true,
+                          flow: "draft", engine: "fx", frameIdx: 0,
+                          // 提示词直出线：新镜默认沿用上一镜的出场人物与场景（可再点 chip 改），
+                          // 不留空 —— 留空会被服务端当「未标注」按全员锚定。
+                          castNames: arr[arr.length - 1]?.castNames,
+                          sceneName: arr[arr.length - 1]?.sceneName,
+                        },
                       ]);
                       invalidateAssembly();
                     }}

@@ -7901,10 +7901,10 @@ paths:
   # ── v0.76 短视频制作草稿（整页编辑态可恢复：刷新/返回/换设备接着做）──
   /me/drama/shorts:
     get:  { tags: [drama], operationId: listDramaShorts,  summary: '我的短视频草稿列表（工坊卡片）', responses: { '200': { description: ok } } }
-    post: { tags: [drama], operationId: createDramaShort, summary: '新建短视频草稿（seed 最小 ShortDraftData）—— v0.78：进工作台开拍扣一笔可配积分 drama.credit.short-entry（hold→commit，余额不足 402；重开已有草稿走 GET 不计费）。v0.143：body.seed = parse-prompt 拆解结果（可被用户改过）→ 直接建成带人物卡/场景/逐镜分镜的草稿；seed 里的分镜一律 flow=draft，不接受客户端伪造的首帧/视频/配音产物；seed 无一镜带画面或台词 → 400 DRAMA_SHORT_SEED_EMPTY（在冻结积分之前）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: createDramaShort, summary: '新建短视频草稿（seed 最小 ShortDraftData）—— v0.78：进工作台开拍扣一笔可配积分 drama.credit.short-entry（hold→commit，余额不足 402；重开已有草稿走 GET 不计费）。v0.143：body.seed = parse-prompt 拆解结果（可被用户改过）→ 直接建成带人物卡/场景/逐镜分镜的草稿；seed 里的分镜一律 flow=draft，不接受客户端伪造的首帧/视频/配音产物；seed 无一镜带画面或台词 → 400 DRAMA_SHORT_SEED_EMPTY（在冻结积分之前）。v0.144：可带 clientRequestId 幂等键，服务端按 owner+key 在 2h 窗口查重，命中回原草稿不重复扣费', responses: { '200': { description: ok } } }
   # ── v0.143 提示词直出：用户粘贴整段提示词 → 结构化拆解（不落库、不扣费）──
   /me/drama/shorts/parse-prompt:
-    post: { tags: [drama], operationId: parseDramaShortPrompt, summary: '拆解用户粘贴的整段提示词 → { title, logline, style[], universalPrompt, characters[{name,visual,performance}], scenes[{name,visual}], shots[{no,timecode,durationSec,sceneName,castNames[]?,beat,visual,size,move,voWho,voText,sfx,bgm,fx}], shotCount, totalDurationSec, notes[] }（大模型，忠实拆解不二次创作；免费不落库，§8.0 未配置 503 / 调用失败 502；提示词 20-20000 字；castNames 显式空数组=本镜无人物、字段缺失=未标注按全员；超 40 镜 / 单镜超 15s / 角色场景超 6 在 notes 如实告知）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: parseDramaShortPrompt, summary: '拆解用户粘贴的整段提示词 → { title, logline, style[], universalPrompt, characters[{name,visual,performance}], scenes[{name,visual}], shots[{no,timecode,durationSec,sceneName,castNames[]?,beat,visual,size,move,voWho,voText,sfx,bgm,fx}], shotCount, totalDurationSec, notes[] }（大模型，忠实拆解不二次创作；免费不落库，§8.0 未配置 503 / 调用失败 502；提示词 20-20000 字；castNames 显式空数组=本镜无人物、字段缺失=未标注按全员；v0.144 单账号限频 5 分钟 10 次（超限 429 DRAMA_PROMPT_RATE_LIMITED）；超 40 镜 / 单镜超 15s / 角色场景超 6 在 notes 如实告知）', responses: { '200': { description: ok } } }
   /me/drama/shorts/{id}:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     get:    { tags: [drama], operationId: getDramaShort,    summary: '短视频草稿详情（meta + 整页 ShortDraftData）', responses: { '200': { description: ok } } }
@@ -7915,7 +7915,7 @@ paths:
     post: { tags: [drama], operationId: extractDramaShortRecipe, summary: '完成短视频发布到创意中心：反向蒸馏成单集可复用创意（大模型；status=submitted 待运营审核）', responses: { '200': { description: ok } } }
   /me/drama/shorts/{id}/assemble:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
-    post: { tags: [drama], operationId: assembleDramaShort, summary: '把全部已验收镜头统一为 720x1280 H.264/AAC，替换逐镜 TTS 音轨、烧录精确字幕、响度归一、ffprobe 质检并上传最终视频+封面；成功后才进入 done', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: assembleDramaShort, summary: 'v0.144：先核验每镜视频确实来自本账号渲染任务产物（不命中 400 DRAMA_SHORT_CLIP_UNVERIFIED，在配额与 ffmpeg 之前）；再把全部已验收镜头统一为 720x1280 H.264/AAC，替换逐镜 TTS 音轨、烧录精确字幕、响度归一、ffprobe 质检并上传最终视频+封面；成功后才进入 done', responses: { '200': { description: ok } } }
   /me/drama/shorts/{id}/preflight:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     get: { tags: [drama], operationId: preflightDramaShort, summary: '零 Token 一致性/依赖图/时长/配音/成片素材预检；不调用模型、不提交任务、不冻结积分', responses: { '200': { description: ok } } }

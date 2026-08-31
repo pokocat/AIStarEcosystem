@@ -18,6 +18,7 @@ import { DramaComposer, type ComposerRef, type DramaComposerHandle } from "./com
 import { PreviewModal } from "./preview-modal";
 import { VideoCover } from "./video-cover";
 import { RecipesApi } from "@/api";
+import { newClientRequestId } from "@/api/shorts";
 import type { DramaRecipe } from "@/api/recipes";
 import { useAsync } from "@/lib/drama-query";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
@@ -41,6 +42,8 @@ export function ShortCreateConsole({
   const router = useRouter();
   const composerRef = React.useRef<DramaComposerHandle>(null);
   const inFlight = React.useRef(false); // 同步在途守门：确认弹窗 + 回车可能并发触发，防双扣费
+  // 幂等键：失败重试沿用同一个，服务端按它查重，避免重复扣开拍费（网络层丢响应时的双扣）。
+  const requestIdRef = React.useRef<string | null>(null);
   const [idea, setIdea] = React.useState(initialIdea);
   const [picked, setPicked] = React.useState<DramaRecipe | null>(null);
   const [preview, setPreview] = React.useState<DramaRecipe | null>(null);
@@ -106,7 +109,12 @@ export function ShortCreateConsole({
         }
       } else {
         // 纯自由点子：进工厂新建草稿（扣费在后端 createShort）。
+        // 草稿由 /shorts/make 的网关创建，幂等键随 sessionStorage 一并带过去。
         stashIdea(text);
+        if (!requestIdRef.current) requestIdRef.current = newClientRequestId();
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("drama.shorts.createKey", requestIdRef.current);
+        }
         router.push("/shorts/make");
       }
       // 成功即导航离开，保持 inFlight=true 不重置（避免离开过程中再触发）。
