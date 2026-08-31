@@ -14,7 +14,7 @@ v0.143 上线后按 Codex 评审清单把遗留缺陷逐条修掉。**无表变�
 - **人物 / 场景可增删**：预览页与工作台「提示词设定」卡都加「加一位角色 / 加一个场景」+ 逐条删除；删角色同步清掉各镜 `castNames` 引用，删场景把引用它的镜头退回默认场景。
 - **拆解限频**：`DramaShortPromptService` 加进程内滑动窗口（单账号 5 分钟 10 次），超限 429 `DRAMA_PROMPT_RATE_LIMITED` 告知等待秒数，不排队不降级。拆解仍免费（总花费与 AI 对话线一致），但不再能靠反复点击持续消耗平台模型额度。
 - **门禁**：server compile + `mvnw test` **713/0**（+6：伪造拒绝 2 / 幂等 3 / 限频 1）+ `typecheck:all` + `typecheck:admin` + web-drama build(32 路由) + vitest 40/40 + contract 全绿；mock 浏览器复验「加/删角色 → 开始制作 → 工作台分镜表出场人物 chip → 提示词设定增删」整链。
-- **部署时新发现（已记 TODO.md P0）**：生产 `flyway_schema_history` 最高 **V22**，仓库迁移目录只有 `V1` + `V14`–`V20`。当前不阻塞启动（validate 通过、服务正常），但在 `out-of-order: false` 下**再加任何 ≤ V22 的迁移文件都可能让 server 起不来**。查清缺失 SQL 之前不要新增迁移；下一个可用编号按 V23 起。
+- **部署时一度误判为「Flyway 编号漂移」，已查实撤回**：生产 `flyway_schema_history` 最高 V22，而 `resources/db/migration/` 只有 8 个 SQL（V1、V14–V20）—— 缺的 V2–V13/V21/V22 是 **Java 迁移**（`src/main/java/db/migration/V*.java`）。线上 history 的 `script` 列可直接区分：SQL 迁移记文件名带 checksum，Java 迁移记 `db.migration.V22__...` 且 checksum 为 NULL。8 + 14 = 22，与启动日志 `validated 22 migrations` 一致，**无缺失、无漂移**。教训：**迁移编号横跨两个目录，只看 SQL 目录会得出错误结论**；下一个可用编号是 V23。
 - **未做（是特性不是缺陷）**：超 40 镜提示词的「自动分卷成多条草稿」。
 
 ### v0.143（2026-08-31）— 短视频「提示词直出」：整段提示词 → 结构化分镜开拍
