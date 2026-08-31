@@ -269,11 +269,18 @@ public class DramaShortPromptService {
         ArrayNode shots = out.putArray("shots");
         int total = 0;
         boolean clamped = false;
-        boolean dropped = false;
+        // 「还有没拆完的内容」有两个来源，缺一不可：
+        //   ① 模型不守上限、回了第 41 个节点（下面循环里置位）；
+        //   ② 模型守了上限只回 40 镜 —— 这时只能靠它自己声明 hasMore，否则我们无从得知。
+        //      主路径其实是 ②（提示词就是这么要求的），只看 ① 会让分卷入口永远不出现。
+        boolean dropped = root.path("hasMore").asBoolean(false);
+        boolean droppedMidSegment = dropped; // 模型声明式：不知道边界在哪，按「宁重不漏」处理
+        String firstDroppedTimecode = null;
         for (JsonNode s : root.path("shots")) {
             if (!s.isObject()) continue;
             if (shots.size() >= MAX_SHOTS) {
                 dropped = true;
+                firstDroppedTimecode = cap(clean(text(s, "timecode")), 24);
                 break;
             }
             String visual = cap(clean(text(s, "visual")), SHOT_VISUAL_CHARS);
@@ -326,6 +333,18 @@ public class DramaShortPromptService {
         }
         if (dropped) {
             notes.add("提示词内容超过单条短视频上限（" + MAX_SHOTS + " 镜），后面的部分没有拆解；建议拆成多条分别制作。");
+            // 最后一镜的时间码 = 原文里「拆到哪」的锚点。前端据此把剩余原文接着拆下一条；
+            // 原文没写时间码时这里是空串，前端就不给「接着拆」入口（切不准就别猜）。
+            String lastKept = shots.get(shots.size() - 1).path("timecode").asText("");
+            out.put("truncatedAfterTimecode", lastKept);
+            // 被丢掉的第一镜与最后保留的一镜共用同一个时间码 = 上限正好切在某个长段中间
+            // （长段按提示词要求被拆成多镜、共用原时间码）。这种情况必须把那一行整行留给下一条，
+            // 否则会跳过该段剩下的动作，静默丢内容。
+            if (firstDroppedTimecode != null && !firstDroppedTimecode.isBlank()
+                    && firstDroppedTimecode.equals(lastKept)) {
+                droppedMidSegment = true;
+            }
+            out.put("truncatedMidSegment", droppedMidSegment);
         }
 
         ArrayNode notesOut = out.putArray("notes");

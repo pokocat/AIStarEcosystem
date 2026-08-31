@@ -509,8 +509,10 @@ public class DramaShortService {
         o.put("doneCount", s.getDoneCount());
         o.put("status", orDefault(s.getStatus(), "draft"));
         o.put("progress", s.getProgress());
-        String coverUrl = resolveAssetUrl(media.coverUrl());
-        String videoUrl = resolveAssetUrl(media.videoUrl());
+        // previewMedia 会退到 shots 里客户端可写的 frameUrl / videoUrl，按不可信处理：
+        // 裸字符串不签名（只有我们自己签过的 URL 才会被重签）。
+        String coverUrl = resolveAssetUrl(media.coverUrl(), false);
+        String videoUrl = resolveAssetUrl(media.videoUrl(), false);
         if (coverUrl != null) o.put("coverUrl", coverUrl); else o.putNull("coverUrl");
         if (videoUrl != null) o.put("videoUrl", videoUrl); else o.putNull("videoUrl");
         o.put("updated", relativeTime(s.getUpdatedAt()));
@@ -561,13 +563,19 @@ public class DramaShortService {
     /**
      * 草稿 payload 保存的是当时生成接口返回的资源 URL，可能是裸 OSS URL，也可能是已经过期的签名 URL。
      * 列表/详情出 wire 时必须重新签名，否则完成态卡片首帧会在签名过期或 OSS 私有桶下变成 403。
+     *
+     * @param trustedKey true = 该字段只由服务端写（assembled.cdnKey / audio.cdnKey），裸字符串可以当 OSS key 直接签；
+     *                   false = 该字段客户端可写（shots 的 frameUrl / videoUrl），**绝不能**把裸字符串当 key 签 ——
+     *                   否则用户 A 只要 PUT 一个 `media/<用户B的对象key>` 就能换回一个有效签名 URL，
+     *                   等于跨账号读别人的私有对象（2026-08-31 Codex 评审发现；此前误判为「只骗自己」）。
      */
-    private String resolveAssetUrl(String raw) {
+    private String resolveAssetUrl(String raw, boolean trustedKey) {
         if (raw == null || raw.isBlank()) return raw;
         String value = raw.trim();
         if (value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://")) {
             return cdnUrlSigner.maybeSign(value);
         }
+        if (!trustedKey) return value; // 客户端写的裸字符串原样返回，不签名
         String signed = cdnUrlSigner.signKey(value);
         return signed == null || signed.isBlank() ? value : signed;
     }
@@ -594,26 +602,26 @@ public class DramaShortService {
         JsonNode assembled = payload.path("assembled");
         if (assembled instanceof ObjectNode object) {
             String key = nonBlank(text(object, "cdnKey"));
-            if (key != null) object.put("url", resolveAssetUrl(key));
+            if (key != null) object.put("url", resolveAssetUrl(key, true));
             else {
                 String url = nonBlank(text(object, "url"));
-                if (url != null) object.put("url", resolveAssetUrl(url));
+                if (url != null) object.put("url", resolveAssetUrl(url, true));
             }
             String coverKey = nonBlank(text(object, "coverCdnKey"));
-            if (coverKey != null) object.put("coverUrl", resolveAssetUrl(coverKey));
+            if (coverKey != null) object.put("coverUrl", resolveAssetUrl(coverKey, true));
         }
         JsonNode shots = payload.path("shots");
         if (!shots.isArray()) return;
         for (JsonNode sh : shots) {
             if (!(sh instanceof ObjectNode shot)) continue;
             String one = nonBlank(text(shot, "frameUrl"));
-            if (one != null) shot.put("frameUrl", resolveAssetUrl(one));
+            if (one != null) shot.put("frameUrl", resolveAssetUrl(one, false));
             String video = nonBlank(text(shot, "videoUrl"));
-            if (video != null) shot.put("videoUrl", resolveAssetUrl(video));
+            if (video != null) shot.put("videoUrl", resolveAssetUrl(video, false));
             JsonNode audio = shot.path("audio");
             if (audio instanceof ObjectNode audioObject) {
                 String audioKey = nonBlank(text(audioObject, "cdnKey"));
-                if (audioKey != null) audioObject.put("url", resolveAssetUrl(audioKey));
+                if (audioKey != null) audioObject.put("url", resolveAssetUrl(audioKey, true));
             }
             JsonNode arr = shot.get("frameUrls");
             if (arr != null && arr.isArray() && !arr.isEmpty()) {
@@ -621,7 +629,7 @@ public class DramaShortService {
                 for (JsonNode el : arr) {
                     if (el.isNull()) { resigned.addNull(); continue; }
                     String u = nonBlank(el.asText(null));
-                    resigned.add(u != null ? resolveAssetUrl(u) : el.asText(null));
+                    resigned.add(u != null ? resolveAssetUrl(u, false) : el.asText(null));
                 }
                 shot.set("frameUrls", resigned);
             }

@@ -21,6 +21,7 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Scissors,
   ScrollText,
   Sparkles,
   Trash2,
@@ -31,7 +32,13 @@ import { CreditMark, Editable, dramaConfirm } from "@/components/drama-ui";
 import { ShortsApi } from "@/api";
 import { newClientRequestId } from "@/api/shorts";
 import type { ParsedShortPrompt, ParsedShortShot } from "@/api/shorts";
-import { PROMPT_MAX_SHOTS, PROMPT_SHOT_MAX_SEC, PROMPT_SHOT_MIN_SEC, parsedTotalSec } from "@/lib/short-prompt-draft";
+import {
+  PROMPT_MAX_SHOTS,
+  PROMPT_SHOT_MAX_SEC,
+  PROMPT_SHOT_MIN_SEC,
+  cutPromptTail,
+  parsedTotalSec,
+} from "@/lib/short-prompt-draft";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import { invalidate } from "@/lib/drama-query";
@@ -60,11 +67,22 @@ export default function ShortPromptPage() {
 
   const [prompt, setPrompt] = React.useState("");
   const [parsing, setParsing] = React.useState(false);
+  // 拆解实测 30-90 秒（长提示词更久）。只给按钮转圈用户会以为卡死，所以显式报时 + 可取消。
+  const [elapsed, setElapsed] = React.useState(0);
+  const abortRef = React.useRef<AbortController | null>(null);
   const [parsed, setParsed] = React.useState<ParsedShortPrompt | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [starting, setStarting] = React.useState(false);
   const [bibleOpen, setBibleOpen] = React.useState(true);
   const topRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!parsing) return;
+    setElapsed(0);
+    const t = window.setInterval(() => setElapsed((v) => v + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [parsing]);
+  React.useEffect(() => () => abortRef.current?.abort(), []);
 
   const chars = prompt.trim().length;
   // 可用分镜 = 至少有画面或台词的镜头。全清空的分镜表不能开始制作（否则白付一笔开拍费）。
@@ -83,17 +101,49 @@ export default function ShortPromptPage() {
     }
     setParsing(true);
     setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const result = await ShortsApi.parsePrompt({ prompt: prompt.trim() });
+      const result = await ShortsApi.parsePrompt({ prompt: prompt.trim() }, controller.signal);
+      if (controller.signal.aborted) return; // 已取消：结果不再落地（mock 分支不看 signal）
       setParsed(result);
       requestIdRef.current = null; // 新的一份拆解结果 = 新的创建意图
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       toast.success(`已拆成 ${result.shotCount} 镜，核对无误就可以开始制作`);
     } catch (e) {
+      if (controller.signal.aborted) return; // 用户主动取消不是失败，不弹错
       setError(aiErrorMessage(e, "提示词拆解失败，请稍后重试"));
     } finally {
-      setParsing(false);
+      // 只收自己那一次的尾：取消后马上重试时，被取消的旧请求仍会走到这里
+      // （mock 分支不消费 signal，900ms 后照样 resolve），不能把新请求的状态清掉。
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setParsing(false);
+      }
     }
+  };
+
+  const cancelParse = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setParsing(false);
+  };
+
+  /**
+   * 接着拆剩下的部分（分卷）：命中 40 镜上限时，按最后一镜的时间码在原文里切一刀，
+   * 把后半段放回输入框。纯字符串定位用户自己的原文，不猜内容、不改内容。
+   */
+  const continueTail = () => {
+    const tail = cutPromptTail(prompt, parsed?.truncatedAfterTimecode, parsed?.truncatedMidSegment);
+    if (!tail) {
+      toast.error("定位不到拆解停在哪，请手动把剩下的段落复制成新的一条");
+      return;
+    }
+    setPrompt(tail);
+    setParsed(null);
+    setError(null);
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    toast.success("已把剩下的段落放回输入框，点「开始拆解」继续拆下一条");
   };
 
   /** 开始制作：确认费用 → 建草稿（后端按 seed 落人物卡 / 场景 / 分镜）→ 进工作台。 */
@@ -213,6 +263,8 @@ export default function ShortPromptPage() {
           tooLong={tooLong}
           canParse={canParse}
           parsing={parsing}
+          elapsed={elapsed}
+          onCancel={cancelParse}
           error={error}
           entryCost={entryCost}
           onSample={() => {
@@ -251,6 +303,17 @@ export default function ShortPromptPage() {
               {parsed.notes.map((n, i) => (
                 <div key={i} className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>· {n}</div>
               ))}
+              {/* 命中 40 镜上限且原文有时间码 → 一键把剩下的段落放回输入框，接着拆下一条 */}
+              {!!parsed.truncatedAfterTimecode && (
+                <div className="row gap-2" style={{ marginTop: 4, alignItems: "center", flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-line btn-sm" onClick={continueTail}>
+                    <Scissors size={13} /> 接着拆剩下的部分
+                  </button>
+                  <span className="faint" style={{ fontSize: 11.5 }}>
+                    先把这 {parsed.shots.length} 镜做成一条，剩下的段落再拆一条
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -410,7 +473,7 @@ export default function ShortPromptPage() {
                       <Plus size={13} /> 加一个场景
                     </button>
                     <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>
-                      不填外观的角色不会参与画面锚定
+                      不填外观的角色，出图时不会用来锁长相
                     </span>
                   </div>
 
@@ -492,6 +555,8 @@ function PromptInputCard({
   tooLong,
   canParse,
   parsing,
+  elapsed,
+  onCancel,
   error,
   entryCost,
   onSample,
@@ -503,6 +568,9 @@ function PromptInputCard({
   tooLong: boolean;
   canParse: boolean;
   parsing: boolean;
+  /** 已等待秒数：拆解要 30-90 秒，必须让用户看到「在动」而不是以为卡死。 */
+  elapsed: number;
+  onCancel: () => void;
   error: string | null;
   entryCost: number;
   onSample: () => void;
@@ -579,10 +647,30 @@ function PromptInputCard({
             onClick={onParse}
           >
             {parsing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-            {parsing ? "正在拆解…" : "开始拆解"}
+            {parsing ? `正在拆解 ${elapsed}s` : "开始拆解"}
           </button>
         </div>
       </div>
+
+      {parsing && (
+        <div className="card col gap-2" role="status" aria-live="polite" style={{ padding: "14px 18px", marginTop: 12 }}>
+          <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
+            <Loader2 size={15} className="spin" style={{ color: "var(--accent)" }} />
+            <strong style={{ fontSize: 13 }}>正在按你的提示词拆分镜</strong>
+            <span className="faint num" style={{ fontSize: 12 }}>已等 {elapsed} 秒</span>
+            <span className="grow" />
+            <button type="button" className="chip" onClick={onCancel}>取消</button>
+          </div>
+          {/* 不做假进度条：只如实说明这一步慢在哪、要等多久，超时再给出下一步。 */}
+          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.7 }}>
+            {elapsed < 30
+              ? "整段提示词要逐镜拆出人物、场景和台词，通常 30–90 秒。页面开着等就行，关掉这次结果就拿不回来了。"
+              : elapsed < 120
+                ? "还在拆。几千字、几十镜的提示词超过 90 秒很常见，页面先别关。"
+                : "已经超过 2 分钟，这次模型可能特别慢。可以取消后把提示词拆短一点再试；取消只是不再等结果，这次拆解仍会算一次额度。"}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="card row gap-2" role="alert" style={{ padding: "12px 16px", marginTop: 12, color: "var(--danger)", fontSize: 13, lineHeight: 1.6 }}>

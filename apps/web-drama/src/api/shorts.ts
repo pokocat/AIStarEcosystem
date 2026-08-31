@@ -203,8 +203,18 @@ export interface ParsedShortPrompt {
   shots: ParsedShortShot[];
   shotCount: number;
   totalDurationSec: number;
-  /** 拆解过程中的处理说明（如「有镜头超 15s 已收口」「超 40 镜未拆解」）。 */
+  /** 拆解过程中的处理说明（如「有镜头超 15s 已压到上限」「超 40 镜未拆解」）。 */
   notes: string[];
+  /**
+   * 命中 40 镜上限时，最后一镜在原提示词里的时间码 = 「拆到哪」的锚点。
+   * 前端据此把剩余原文接着拆下一条；原文没写时间码时为空串（切不准就不给这个入口）。
+   */
+  truncatedAfterTimecode?: string;
+  /**
+   * true = 上限正好切在某个长段中间（该段被拆成多镜、共用同一时间码）。
+   * 这时分卷必须把那一行整行留给下一条，否则会跳过该段没拆完的动作。
+   */
+  truncatedMidSegment?: boolean;
 }
 
 export interface ShortPreflightIssue {
@@ -448,11 +458,26 @@ function mockParsePrompt(prompt: string): ParsedShortPrompt {
  * 拆解「我自己写好的提示词」→ 人物卡 / 场景 / 全片基调 / 逐镜分镜。
  * 免费、不落库：结果供预览与修改，确认后作为 createDraft 的 seed 提交（那一步才扣开拍费）。
  */
-export async function parsePrompt(input: ParseShortPromptInput): Promise<ParsedShortPrompt> {
-  if (USE_MOCK) return mockDelay(mockParsePrompt(input.prompt), 900);
+export async function parsePrompt(
+  input: ParseShortPromptInput,
+  signal?: AbortSignal,
+): Promise<ParsedShortPrompt> {
+  if (USE_MOCK) {
+    // mock 也尊重取消：否则 dev 下「取消→重试」的竞态与生产不一致，问题只在生产暴露。
+    return new Promise<ParsedShortPrompt>((resolve, reject) => {
+      if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
+      const timer = setTimeout(() => resolve(mockParsePrompt(input.prompt)), 900);
+      signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      });
+    });
+  }
   return apiFetch<ParsedShortPrompt>("/me/drama/shorts/parse-prompt", {
     method: "POST",
     body: { prompt: input.prompt, instruction: input.instruction },
+    // 大模型逐镜拆解实测 30-90 秒（长提示词更久），必须能取消，否则用户只能干等。
+    signal,
   });
 }
 

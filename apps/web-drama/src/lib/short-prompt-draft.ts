@@ -84,3 +84,43 @@ export function parsedToDraft(parsed: ParsedShortPrompt, idSeed = Date.now()): P
 export function parsedTotalSec(parsed: ParsedShortPrompt): number {
   return (parsed.shots ?? []).reduce((sum, s) => sum + clampSec(s.durationSec), 0);
 }
+
+/**
+ * 分卷切割：命中 40 镜上限时，按「拆到哪」的时间码在**用户原文**里切一刀，返回剩下的段落。
+ * 纯字符串定位，不猜内容、不改内容；拿不准就返回 null，由调用方提示手动复制。
+ *
+ * 定位规则（`04:19-06:08` 为例）：
+ *   1. 先找**完整时间码**在原文里的位置 —— 只用结束点找会在「多章各自从 00:00 重新计时」的
+ *      提示词里命中前面某一章，把输入框切回已经拆过的段落，甚至来回打转。
+ *   2. 完整时间码出现多次 → 无法判断是哪一次，返回 null（宁可让用户手动复制，也不切错）。
+ *   3. `midSegment=true`（上限正好切在某个长段中间，服务端会告知）→ 把该行整行留给下一条：
+ *      那一行还有没拆完的动作，跳过去就是静默丢内容。
+ *   4. 否则从该位置**往后**找下一个时间码行作为切点；找不到就退回把该行整行留下（宁重不漏）。
+ */
+export function cutPromptTail(
+  prompt: string,
+  truncatedAfterTimecode: string | undefined,
+  midSegment = false,
+): string | null {
+  const anchor = (truncatedAfterTimecode ?? "").trim();
+  if (!anchor || !prompt) return null;
+
+  const first = prompt.indexOf(anchor);
+  if (first < 0) return null;                                    // 定位不到：不猜
+  if (prompt.indexOf(anchor, first + anchor.length) >= 0) return null; // 出现多次：无法判断是哪一次
+
+  let cutAt = prompt.lastIndexOf("\n", first) + 1; // 默认：把锚点所在行整行留给下一条
+  if (!midSegment) {
+    // 从锚点之后找下一个时间码（形如 06:08-07:40 / 06:08 - 07:40），命中就切在那一行行首。
+    const after = prompt.slice(first + anchor.length);
+    const next = /\d{1,3}:\d{2}\s*[-–—~至]\s*\d{1,3}:\d{2}/.exec(after);
+    if (next) {
+      const absolute = first + anchor.length + next.index;
+      cutAt = prompt.lastIndexOf("\n", absolute) + 1;
+    }
+  }
+
+  const tail = prompt.slice(cutAt).trimStart();
+  // 切出来和原文一样长 = 等于没切（锚点就在开头），当作定位失败，别让用户点了没反应还以为切过了。
+  return tail && tail.length < prompt.trim().length ? tail : null;
+}

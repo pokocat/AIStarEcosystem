@@ -1621,7 +1621,7 @@ function ShortMakerInner({
                         <button type="button" className="btn btn-line btn-sm" onClick={addBibleScene}>
                           <Plus size={13} /> 加一个场景
                         </button>
-                        <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>不填外观的角色不会参与画面锚定</span>
+                        <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>不填外观的角色，出图时不会用来锁长相</span>
                       </div>
                       <div className="col gap-1" style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)" }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--ink-3)" }}>全片画面基调</span>

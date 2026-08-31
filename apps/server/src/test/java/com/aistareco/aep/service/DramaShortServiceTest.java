@@ -15,6 +15,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -426,6 +427,30 @@ class DramaShortServiceTest {
         verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
         verify(creditService).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
         verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void clientWrittenBareKeyIsNotSigned() {
+        // Codex 评审（2026-08-31）：shots 的 frameUrl / videoUrl 是客户端 PUT 可写的。
+        // 若把裸字符串当 OSS key 直接签名，用户 A 只要写 `media/<用户B的对象key>` 就能换回
+        // 一个有效签名 URL = 跨账号读别人的私有对象。这里锁住「客户端写的裸 key 不签名」。
+        CdnUrlSigner signer = signerWithFakeOss("https://oss.test");
+        DramaShortService svc2 = new DramaShortService(repo, OM, creditService, configs, signer,
+                new DramaShortContinuityService(OM));
+        String victimKey = "media/drama-shorts/victim-draft/frame-1.jpg";
+        String payload = "{\"step\":\"script\",\"meta\":null,\"chat\":[],\"refs\":[],"
+                + "\"shots\":[{\"id\":\"sh1\",\"no\":1,\"dur\":4,\"visual\":\"画面\",\"flow\":\"done\","
+                + "\"frameUrl\":\"" + victimKey + "\",\"videoUrl\":\"" + victimKey + "\"}]}";
+        db.put("dvs_attacker", DramaShort.builder()
+                .id("dvs_attacker").ownerUserId(USER).title("借壳").status("draft")
+                .payloadJson(payload).createdAt(OffsetDateTime.now()).updatedAt(OffsetDateTime.now())
+                .build());
+
+        JsonNode shot = svc2.getShort("dvs_attacker", USER).path("data").path("shots").get(0);
+
+        assertEquals(victimKey, shot.path("frameUrl").asText(), "客户端写的裸 key 必须原样返回，不能被签名");
+        assertEquals(victimKey, shot.path("videoUrl").asText());
+        assertFalse(shot.path("frameUrl").asText().startsWith("SIGNED::"), "不得为任意 key 签发访问地址");
     }
 
     @Test

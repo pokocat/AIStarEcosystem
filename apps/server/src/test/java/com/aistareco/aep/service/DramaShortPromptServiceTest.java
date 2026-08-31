@@ -282,6 +282,62 @@ class DramaShortPromptServiceTest {
     }
 
     @Test
+    void modelObeyingTheShotCapStillEnablesSplitting() {
+        // Codex 评审（2026-08-31）：提示词就是要求模型「超出时只回前 40 镜」，所以主路径下
+        // 永远看不到第 41 个节点。若只靠「读到第 41 镜」判定还有剩余内容，分卷入口永不出现。
+        StringBuilder sb = new StringBuilder("{\"title\":\"长片\",\"hasMore\":true,\"shots\":[");
+        for (int i = 0; i < DramaShortPromptService.MAX_SHOTS; i++) {
+            if (i > 0) sb.append(',');
+            sb.append("{\"durationSec\":3,\"timecode\":\"00:").append(String.format("%02d", i))
+              .append("-00:").append(String.format("%02d", i + 1))
+              .append("\",\"visual\":\"镜").append(i + 1).append("\"}");
+        }
+        sb.append("]}");
+        aiReturns(sb.toString());
+
+        JsonNode out = svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER);
+
+        assertEquals(DramaShortPromptService.MAX_SHOTS, out.path("shotCount").asInt());
+        assertEquals("00:39-00:40", out.path("truncatedAfterTimecode").asText(),
+                "模型守上限时也要回「拆到哪」的锚点，否则用户只能手工分卷");
+        assertTrue(out.path("truncatedMidSegment").asBoolean(),
+                "模型声明式的 hasMore 不知道边界切在哪，必须按「宁重不漏」把该行留给下一条");
+        assertTrue(out.path("notes").toString().contains("建议拆成多条"));
+    }
+
+    @Test
+    void midSegmentTruncationIsFlaggedWhenBoundarySplitsOneSegment() {
+        // 上限正好切在一个长段中间：第 40 镜与被丢掉的第 41 镜共用同一时间码。
+        StringBuilder sb = new StringBuilder("{\"title\":\"长段\",\"shots\":[");
+        for (int i = 0; i < DramaShortPromptService.MAX_SHOTS + 1; i++) {
+            if (i > 0) sb.append(',');
+            // 最后两镜（第 40、41）共用 10:00-10:30，模拟长段被拆成多镜
+            String tc = i >= DramaShortPromptService.MAX_SHOTS - 1
+                    ? "10:00-10:30"
+                    : "00:" + String.format("%02d", i) + "-00:" + String.format("%02d", i + 1);
+            sb.append("{\"durationSec\":3,\"timecode\":\"").append(tc)
+              .append("\",\"visual\":\"镜").append(i + 1).append("\"}");
+        }
+        sb.append("]}");
+        aiReturns(sb.toString());
+
+        JsonNode out = svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER);
+
+        assertEquals("10:00-10:30", out.path("truncatedAfterTimecode").asText());
+        assertTrue(out.path("truncatedMidSegment").asBoolean(),
+                "边界落在长段内部必须标出来，否则前端会切过整段、丢掉没拆完的动作");
+    }
+
+    @Test
+    void notTruncatedMeansNoSplitAnchor() {
+        aiReturns("{\"title\":\"短片\",\"hasMore\":false,"
+                + "\"shots\":[{\"durationSec\":4,\"timecode\":\"00:00-00:04\",\"visual\":\"画面\"}]}");
+        JsonNode out = svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER);
+        assertFalse(out.has("truncatedAfterTimecode"), "没截断就不该有分卷锚点");
+        assertFalse(out.has("truncatedMidSegment"));
+    }
+
+    @Test
     void extraCharactersAndScenesAreReported() {
         StringBuilder sb = new StringBuilder("{\"title\":\"群像\",\"characters\":[");
         for (int i = 0; i < DramaShortPromptService.MAX_CHARACTERS + 2; i++) {
