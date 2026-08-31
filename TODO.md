@@ -36,7 +36,8 @@
 - [ ] **P2 下游选择器 + 回流**（**P2a 已完成部分**，v0.141 / 2026-08-29：明星授权只读投影 `GET /v1/assets/star-grants` + 货架明星形象卡 + `/stars/[id]` 名片 + 授权中心双向）。剩余：music 出 MV 选数字人；`dap_asset_usage` 泛化为跨 app 使用边——**前置依赖：带货明星形象出片真链路上线**（v0.139 现拦截为建设中，无生产者不建假账），上线时在成片落点 best-effort 写 usage；名片页"导出设定卡"。
 - [ ] **P3 /studio 逐屏迁出**：创建向导 / 真人授权 / 合成工作台 JSX 化迁入新路由；`src/proto/api.ts`（1800 行）按域拆文件；strict 渐进开启；根路由旧 hash 转发器随 /studio 退役一并移除（在此之前**不得删**——七牛刷脸回调依赖）。
 - [x] ~~P1 已知小坑：新页面未做 v0.53 平台门禁~~ **M1 完成，2026-08-31**：`useRequireAuth` 增 `no-platform` 态 + `PlatformGateScreen` 引导屏，7 个新页面全接（首页走自己的三态，单独接）。`/assets/[id]` 目前仍只认数字人 id，六类其余资产详情在 /studio（P3 迁）。
-- [ ] M1 剩余：数字人创建结束自动生成 6 秒待机循环视频（设定卡首图的动态来源，设计文档 §1.5）；③ 制作流程换壳按产品意见暂缓。
+- [x] ~~M1 剩余：数字人创建结束自动生成 6 秒待机循环视频~~ **完成，2026-08-31**：`DapWorkflowService.autoIdleLoopAfterFinalize` 挂在 `/avatars/{id}/finalize` 之后，best-effort（吞异常、不回滚、不阻塞定稿），**cost=0 不向用户计费**（成本由平台承担），已有/生成中的 video 衍生不重复建单，真人线缺已审核素材时跳过。开关 `aep.dap.auto-idle-loop`（默认 true）+ `auto-idle-loop-seconds`（默认 6）。`DapAutoIdleLoopTest` 6/6。③ 制作流程换壳按产品意见暂缓。
+- [ ] 待机循环成本观察：若量起来后平台侧视频生成成本偏高，可置 `AEP_DAP_AUTO_IDLE_LOOP=false` 关闭（设定卡首图退回定妆图静态展示），或改为用户在设定卡上手动触发（届时按 30 积分正常计费）。
 - [x] ~~M3 导航合并~~ **完成，2026-08-31**：`/` 与 `/assets` 共用 `AssetsHome`（工作台退役，总览+进行中并入其顶部；最近动态并入 `/me`），底部三 Tab 资产 / 制作 / 我的，制作暂指 `/studio`。旧 hash 转发经浏览器实测仍完好。
 - [ ] M2 授权链路：目前官方资产只做到「看得见」——复用既有数字人广场（scope=public）展示，`/market/[id]` 的「立即授权」只提示建设中。待做：资产加 official/listingStatus/三档价格字段 + 管理员上架 + 授权订单与支付回调 + 授权记录。
 - [ ] P2a Codex review 后置项（2026-08-29，medium 已同轮修复）：`CelebrityStar.avatar` 出 wire 未经 CdnUrlSigner——celebrity 域自身 `CelebrityStarDto` 也如此（非本次回归）；若明星头像迁 OSS 签名 key，两处按 §4.7.5 一起改。`/stars/[id]` 的「去带货创作」目前只跳 celebrity 首页，待带货侧提供明星详情/出片深链路径后带 starId 直达。

@@ -326,6 +326,10 @@ aep:
       derive-d3: ${AEP_DAP_PRICE_DERIVE_D3:10}
       derive-video: ${AEP_DAP_PRICE_DERIVE_VIDEO:30}
       voice-clone: ${AEP_DAP_PRICE_VOICE_CLONE:10}
+    # 定稿后自动补待机循环视频（设定卡首图）。系统发起、不向用户计费，成本由平台承担；
+    # 生成压力大时可置 false，首图退回定妆图静态展示。
+    auto-idle-loop: ${AEP_DAP_AUTO_IDLE_LOOP:true}
+    auto-idle-loop-seconds: ${AEP_DAP_AUTO_IDLE_LOOP_SECONDS:6}
   # v0.31+ 手机号 + SMS 验证码登录 / 注册（三个新 web app + 小程序入口）。
   # driver=log：默认；验证码打到 server log，dev / 联调 / 阿里云模板未备案前的占位
   # driver=aliyun：调阿里云 SMS SDK，需配齐签名 / 模板；凭据可显式配 AK 或走默认凭据链

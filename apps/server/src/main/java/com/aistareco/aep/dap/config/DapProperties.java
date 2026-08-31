@@ -28,12 +28,24 @@ public class DapProperties {
     private boolean allowPlaceholder = false;
     /** 单账户存储配额（MB）。展示用，account() 出 wire 的 storageQuotaMb。 */
     private int storageQuotaMb = 5000;
+    /**
+     * 定稿后自动补一段待机循环视频，作为设定卡首图（设计文档 §1.5）。
+     * 系统发起、不向用户计费，成本由平台承担；生成压力大时运维可关闭，
+     * 关闭后设定卡首图退回定妆图静态展示，不影响任何既有链路。
+     */
+    private boolean autoIdleLoop = true;
+    /** 待机循环时长（秒）。 */
+    private int autoIdleLoopSeconds = 6;
 
     public Http getHttp() { return http; }
     public Video getVideo() { return video; }
     public DevSeed getDevSeed() { return devSeed; }
     public Pricing getPricing() { return pricing; }
     public Modelink getModelink() { return modelink; }
+    public boolean isAutoIdleLoop() { return autoIdleLoop; }
+    public void setAutoIdleLoop(boolean autoIdleLoop) { this.autoIdleLoop = autoIdleLoop; }
+    public int getAutoIdleLoopSeconds() { return autoIdleLoopSeconds; }
+    public void setAutoIdleLoopSeconds(int autoIdleLoopSeconds) { this.autoIdleLoopSeconds = autoIdleLoopSeconds; }
     public int getMaxConcurrent() { return maxConcurrent; }
     public void setMaxConcurrent(int maxConcurrent) { this.maxConcurrent = maxConcurrent; }
     public long getMonthlyGrant() { return monthlyGrant; }
