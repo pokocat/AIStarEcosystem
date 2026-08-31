@@ -46,10 +46,10 @@ function bigName(c: Avatar): string {
 
 function bigNameSize(text: string): number {
   const n = Math.max(text.length, 3);
-  if (n <= 5) return 74;
-  if (n <= 7) return 62;
-  if (n <= 9) return 50;
-  return 40;
+  if (n <= 5) return 58;
+  if (n <= 7) return 48;
+  if (n <= 9) return 40;
+  return 32;
 }
 
 /** 还差几项：标准图 / 衍生 / 声音 / 人设语，四类槽位。 */
@@ -198,7 +198,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   return (
     <HubScreen>
       {/* ── 主视觉舞台 ─────────────────────────────── */}
-      <div style={{ position: "relative", height: 524, background: "linear-gradient(178deg, #D6E3EC 0%, #DEE9F0 46%, var(--canvas) 100%)", overflow: "hidden", flexShrink: 0 }}>
+      <div style={{ position: "relative", height: 384, background: "linear-gradient(178deg, #D6E3EC 0%, #DEE9F0 46%, var(--canvas) 100%)", overflow: "hidden", flexShrink: 0 }}>
         <div style={{ position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 12px)", left: 16, right: 16, display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 4 }}>
           <Link href="/assets" aria-label="返回" style={{ width: 36, height: 36, borderRadius: 999, background: "rgba(255,255,255,.86)", display: "grid", placeItems: "center", textDecoration: "none" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
@@ -206,11 +206,11 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
           <span className="mono" style={{ fontSize: 9, letterSpacing: ".2em", color: "#5A7183" }}>设定卡</span>
         </div>
 
-        <span aria-hidden style={{ position: "absolute", top: 62, left: "50%", transform: "translateX(-50%)", fontSize: bigNameSize(big), fontWeight: 800, letterSpacing: "-.035em", color: "rgba(255,255,255,.92)", whiteSpace: "nowrap", lineHeight: 1, zIndex: 1 }}>
+        <span aria-hidden style={{ position: "absolute", top: 30, left: "50%", transform: "translateX(-50%)", fontSize: bigNameSize(big), fontWeight: 800, letterSpacing: "-.035em", color: "rgba(255,255,255,.92)", whiteSpace: "nowrap", lineHeight: 1, zIndex: 1 }}>
           {big}
         </span>
 
-        <div style={{ position: "absolute", top: 104, left: "50%", transform: "translateX(-50%)", width: 232, height: 278, borderRadius: 18, overflow: "hidden", zIndex: 2, boxShadow: "0 24px 48px rgba(24,44,62,.22)", background: "var(--surface-3)" }}>
+        <div style={{ position: "absolute", top: 88, left: "50%", transform: "translateX(-50%)", width: 168, height: 200, borderRadius: 18, overflow: "hidden", zIndex: 2, boxShadow: "0 24px 48px rgba(24,44,62,.22)", background: "var(--surface-3)" }}>
           {hero.kind === "video" ? (
             // eslint-disable-next-line jsx-a11y/media-has-caption
             <video
@@ -229,7 +229,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
             // eslint-disable-next-line @next/next/no-img-element
             <img src={hero.url || ""} alt={c.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           ) : (
-            <AssetPortrait name={c.name} hue={c.hue} width={232} height={278} radius={0} fontSize={68} />
+            <AssetPortrait name={c.name} hue={c.hue} width={168} height={200} radius={0} fontSize={52} />
           )}
           {hero.kind === "video" && playingUrl === hero.url && (
             <span style={{ position: "absolute", top: 10, left: 10, height: 22, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 999, background: "rgba(12,24,34,.55)", color: "#fff", fontSize: 9.5, fontWeight: 700 }}>
@@ -239,12 +239,9 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
           )}
         </div>
 
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 7, zIndex: 3, padding: "0 20px" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, zIndex: 3, padding: "0 20px" }}>
           <span className="mono" style={{ fontSize: 8.5, letterSpacing: ".16em", color: "#6F8496" }}>{c.id}</span>
-          <span style={{ fontFamily: "var(--font-serif)", fontSize: 30, fontWeight: 600, lineHeight: 1.15, maxWidth: 300, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-          {c.def?.设定语 && (
-            <span style={{ fontSize: 11.5, color: "#3D5768", lineHeight: 1.6, textAlign: "center", maxWidth: 280, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.def.设定语}</span>
-          )}
+          <span style={{ fontFamily: "var(--font-serif)", fontSize: 25, fontWeight: 600, lineHeight: 1.15, maxWidth: 300, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", padding: "0 20px" }}>
             {c.path === "ai" ? (
               <Badge tone="mute">AI 原创 · 无需授权</Badge>
@@ -260,22 +257,8 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
-      {/* ── 资料带（杂志式细数据行）───────────────── */}
-      <div style={{ display: "flex", gap: 16, padding: "12px 16px 0", borderBottom: "1px solid var(--line)", paddingBottom: 12, margin: "0 0 2px" }}>
-        {[
-          ["类型", c.archetype],
-          ["来源", c.path === "real" ? "真人授权复刻" : "AI 原创"],
-          ["版本", `V${c.versions || 1}`],
-        ].map(([k, v]) => (
-          <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span className="mono" style={{ fontSize: 8, letterSpacing: ".1em", color: "var(--ink-4)" }}>{k}</span>
-            <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* ── 换一个样子看看 ─────────────────────────── */}
-      <div style={{ padding: "16px 16px 0" }}>
+      {/* ── 换一个样子看看（紧跟主视觉，保证一屏内既能看预览又能点切换）── */}
+      <div style={{ padding: "12px 16px 0" }}>
         {derivs.loading ? (
           <LoadingBlock label="素材加载中" />
         ) : derivs.error && groups.length === 0 ? (
@@ -357,6 +340,27 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
           </Link>
         )}
       </div>
+
+      {/* ── 资料带 + 人设（挪到切换器下方，不占首屏）───── */}
+      <div style={{ display: "flex", gap: 16, padding: "16px 16px 0" }}>
+        {[
+          ["类型", c.archetype],
+          ["来源", c.path === "real" ? "真人授权复刻" : "AI 原创"],
+          ["版本", `V${c.versions || 1}`],
+        ].map(([k, v]) => (
+          <div key={k} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
+            <span className="mono" style={{ fontSize: 8, letterSpacing: ".1em", color: "var(--ink-4)" }}>{k}</span>
+            <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      {c.def?.设定语 && (
+        <div style={{ margin: "12px 16px 0" }}>
+          <Card>
+            <span style={{ fontFamily: "var(--font-serif)", fontSize: 13, lineHeight: 1.75 }}>{c.def.设定语}</span>
+          </Card>
+        </div>
+      )}
 
       {/* ── 授权证书 ───────────────────────────────── */}
       {c.path === "real" && !licenseKnown && (

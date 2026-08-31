@@ -100,7 +100,7 @@ const iconBtnStyle: CSS = {
 // M3 导航合并：工作台退役（内容并入资产主页），制作走 /studio（P3 迁完再换新页）
 const TABS = [
   { href: "/", label: "资产", icon: LayersIcon, match: (p: string) => p === "/" || p.startsWith("/assets") || p.startsWith("/market") || p.startsWith("/stars") },
-  { href: "/studio", label: "制作", icon: WandIcon, match: (p: string) => p.startsWith("/studio") },
+  { href: "/studio?create=1", label: "制作", icon: WandIcon, match: (p: string) => p.startsWith("/studio") },
   { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
 ] as const;
 

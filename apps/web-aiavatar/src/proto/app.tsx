@@ -187,7 +187,12 @@ function parseHash(): { tab: string; screen?: string; id?: string; deriv?: strin
   return { tab: "home" };
 }
 
-export function App() {
+/**
+ * @param embedded 内嵌进新版外壳（/studio）：隐藏老 SPA 自带的 5 tab，
+ *                 改由新版 HubTabBar 统一承载，避免一个 app 出现两套底部导航。
+ * @param autoCreate 进入即拉起「新建资产」面板（新版「制作」tab 的落点）。
+ */
+export function App({ embedded = false, autoCreate = false }: { embedded?: boolean; autoCreate?: boolean } = {}) {
   const [authed, setAuthed] = useStateA(USE_MOCK ? true : null as any); // null = 挂载前未知（避免 SSR 闪登录屏）
   // v0.53 平台门禁：null=待检 / true=已开通 / false=未开通（渲染拦截屏）
   const [platformOk, setPlatformOk] = useStateA(USE_MOCK ? true : null as any);
@@ -318,6 +323,11 @@ export function App() {
   }, [restoreFromHash]);
 
   const reload = useCallbackA(() => setReloadKey((k) => k + 1), []);
+
+  // 「制作」tab 落点：进来直接拉起新建资产面板，而不是丢到老首页
+  useEffectA(() => {
+    if (autoCreate) setSheet(true);
+  }, [autoCreate]);
   // 下拉刷新：重挂当前屏（触发其挂载期数据拉取）+ 刷新共享资产列表。
   const doRefresh = useCallbackA(() => { setRefreshSeq((s) => s + 1); setReloadKey((k) => k + 1); }, []);
 
@@ -423,7 +433,7 @@ export function App() {
     trash: MTrash,
     ...LAZY_OVERLAYS,
   } as any)[top.screen];
-  const hideTabBar = !!top;
+  const hideTabBar = !!top || embedded;
 
   // 「我的」tab 头像：用登录用户名首字（live），无则回退通用图标 —— 不再硬编与用户无关的字。
   const sessionUser = (typeof window !== "undefined" && !USE_MOCK) ? auth.user() : null;
@@ -432,7 +442,7 @@ export function App() {
   const canRefresh = !top || FLOW_SCREENS.indexOf(top.screen) < 0;
 
   return hA(React.Fragment, null,
-    hA(PhoneFrame, { onRefresh: canRefresh ? doRefresh : undefined },
+    hA(PhoneFrame, { onRefresh: canRefresh ? doRefresh : undefined, embedded },
       hA("div", { key: tab + ":" + refreshSeq, style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column" } },
         hA(tabScreen, { ctx })),
 

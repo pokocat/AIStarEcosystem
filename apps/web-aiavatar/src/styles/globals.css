@@ -1053,6 +1053,9 @@ body {
 }
 .m-content { flex: 1; position: relative; min-height: 0; }
 
+/* 内嵌进新版外壳（/studio）：老 SPA 隐藏自带 tab 栏，底部让位给统一的 HubTabBar */
+.app-root--embedded { padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+
 /* 桌面端：内容列与背景的细分隔（仅描边 + 柔和投影，不做手机外框） */
 @media (min-width: 481px) {
   .app-root { box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20, 36, 55, .12); }
