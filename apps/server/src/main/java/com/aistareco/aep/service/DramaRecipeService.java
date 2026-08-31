@@ -485,6 +485,11 @@ public class DramaRecipeService {
      * 套用任一形态都累加 useCount（热度）。
      */
     public JsonNode applyRecipe(String recipeId, String userId) {
+        return applyRecipe(recipeId, userId, null);
+    }
+
+    /** 带客户端幂等键的套用（v0.145）：单集分流会扣一笔开拍费，重试不该扣第二笔。 */
+    public JsonNode applyRecipe(String recipeId, String userId, String clientRequestId) {
         DramaRecipe r = requireRecipe(recipeId);
         if (!"published".equals(r.getStatus())) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_PUBLISHED", "该配方尚未发布，不能套用。");
@@ -500,7 +505,8 @@ public class DramaRecipeService {
                     orDefault(r.getType(), "风格短片"),
                     r.getCoverFrom(), r.getCoverTo(),
                     orDefault(r.getTitle(), "风格创意"),
-                    buildStyleRef(r));
+                    buildStyleRef(r),
+                    clientRequestId);
             out.put("kind", "short");
             out.put("shortId", shortId);
             log.info("[drama-recipe] applied(single→short) recipe={} → short={} user={}", recipeId, shortId, userId);

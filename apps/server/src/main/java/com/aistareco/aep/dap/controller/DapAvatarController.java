@@ -263,9 +263,13 @@ public class DapAvatarController {
     @PostMapping("/{id}/finalize")
     public ApiResponse<AvatarDto> finalizeAvatar(Principal principal, @PathVariable String id,
                                                  @RequestBody FinalizeRequest req) {
+        String userId = uid(principal);
         boolean archive = req.archive() != null && req.archive();
-        return ApiResponse.of(avatarService.finalizeAvatar(uid(principal), id,
-                req.templateId(), req.confirmedShots(), archive));
+        AvatarDto dto = avatarService.finalizeAvatar(userId, id, req.templateId(), req.confirmedShots(), archive);
+        // 定稿成功后自动补一段待机循环，作为设定卡首图（设计文档 §1.5）。
+        // 严格 best-effort：内部已吞掉所有异常，不会影响本次定稿的返回。
+        workflow.autoIdleLoopAfterFinalize(userId, id);
+        return ApiResponse.of(dto);
     }
 
     @PostMapping("/{id}/voice")

@@ -14,6 +14,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  ClipboardPaste,
   CircleStop,
   Clapperboard,
   Edit,
@@ -53,7 +54,8 @@ import { SHORT_FORMATS, type Material, type ShortFormat } from "@/mocks/drama-wo
 import { DapAvatarsApi, DramaAssetsApi, ShortDramaApi, ShortsApi } from "@/api";
 import type { DapAvatarLite } from "@/api/dap-avatars";
 import type { ScriptMeta, ShortContinuityManifest } from "@/api/short-drama";
-import type { ShortDraftData, ShortPreflight } from "@/api/shorts";
+import type { ShortDraftData, ShortPreflight, ShortPromptSource, ShortVisualBible } from "@/api/shorts";
+import { parsedToDraft } from "@/lib/short-prompt-draft";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { useSaveStatus } from "@/lib/use-save-status";
 import { useDramaConfig } from "@/lib/use-drama-config";
@@ -74,6 +76,10 @@ interface ShortShot extends FormShot {
   pendingJob?: { jobId: string; kind: "frame" | "clip" };
   sceneId?: string;
   parentShotId?: string;
+  /** v0.143 提示词直出：本镜出场人物名 / 场景名 / 原时间码（服务端据前两者挂一致性锚点）。 */
+  castNames?: string[];
+  sceneName?: string;
+  timecode?: string;
   audio?: { cdnKey: string; url?: string; durationSec: number; textFingerprint: string; providerTaskId?: string; at?: string };
 }
 
@@ -311,7 +317,7 @@ function AvatarPickerModal({
             </div>
           ) : list.length === 0 ? (
             <div className="col center" style={{ padding: "30px 10px", gap: 8, textAlign: "center" }}>
-              <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>你还没有数字人。去 AiAvatar 创建数字人后，即可在这里绑定为主角形象。</div>
+              <div className="muted" style={{ fontSize: 13, maxWidth: 320 }}>你还没有数字人。在 AiAvatar 创建一个，就能在这里绑成主角形象。</div>
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 12 }}>
@@ -359,6 +365,17 @@ function ShortMakerGate() {
   const fmtKey = sp.get("fmt");
   const reopenParam = sp.get("reopen");
 
+  // 幂等键：由新建控制台带入（一次创建意图一个），本页新建草稿时回传服务端查重防双扣。
+  const createKeyRef = React.useRef<string | null | undefined>(undefined);
+  if (createKeyRef.current === undefined) {
+    if (typeof window !== "undefined") {
+      const v = sessionStorage.getItem("drama.shorts.createKey");
+      if (v) sessionStorage.removeItem("drama.shorts.createKey");
+      createKeyRef.current = v ?? null;
+    } else {
+      createKeyRef.current = null;
+    }
+  }
   // 点子经 sessionStorage 一次性带入（不入 URL：文案长/含敏感内容），读完即清。
   const ideaRef = React.useRef<string | null | undefined>(undefined);
   if (ideaRef.current === undefined) {
@@ -408,6 +425,7 @@ function ShortMakerGate() {
           coverTo: fmt?.to,
           idea: ideaRef.current,
           reopen: reopenParam,
+          clientRequestId: createKeyRef.current ?? undefined,
         });
         // 新建结果即使在 StrictMode 清理后也要落地，否则会卡在加载态。
         createdIdRef.current = detail.meta.id;
@@ -491,7 +509,14 @@ function ShortMakerInner({
   const hasStyle = !hasTemplate && !!styleRef;
   // 显示用的「类型」标签：套了模版才用模版名；套了创意风格用风格名；都没有就中性「短视频」，
   // 不要回落到 SHORT_FORMATS[0]（「口播带货」）—— 那只是 fmt 的兜底，拿来展示会误导。
-  const displayName = hasTemplate ? fmt.name : hasStyle ? styleName || "风格创意" : "短视频";
+  // 提示词直出线用拆解出的风格标签（= initial.fmtName）当类型标签，比中性「短视频」更有信息量。
+  const displayName = hasTemplate
+    ? fmt.name
+    : hasStyle
+      ? styleName || "风格创意"
+      : initial.promptSource?.raw && initial.fmtName
+        ? initial.fmtName
+        : "短视频";
   // 真正发给图像/视频模型的风格名：未套模板时绝不能回落到 SHORT_FORMATS[0]（口播带货）。
   const renderStyleName = hasTemplate
     ? fmt.name
@@ -508,12 +533,12 @@ function ShortMakerInner({
   const styleRefLine = hasStyle ? `参考创意风格【${styleName || "风格短片"}】：${styleRef}` : "";
   const aiReference = [templateRef, styleRefLine].filter(Boolean).join(" ");
   const tplIntro = initial.reopen
-    ? "继续修改这条短视频：说明要怎么调整，AI 将重写口播与分镜。"
+    ? "继续改这条短视频：说要怎么调，AI 重写口播和分镜。"
     : hasStyle
-      ? `已套用【${styleName || "风格创意"}】创意风格：描述你的主题或产品，AI 将按此风格撰写口播与分镜。`
+      ? `已套用【${styleName || "风格创意"}】创意风格。说说你的主题或产品，AI 按这个风格写口播和分镜。`
       : hasTemplate && fmt.beats?.length
-        ? `已套用【${fmt.name}】模板：AI 将按其节拍（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）拆解，描述你的主题或产品即可。`
-        : "描述这条短视频想表达什么，AI 将撰写口播脚本并拆好分镜。";
+        ? `已套用【${fmt.name}】模板（${fmt.beats.length} 镜 · 约 ${fmt.dur}s）。说说你的主题或产品，AI 按它的节拍拆分镜。`
+        : "说说这条短视频想表达什么，AI 来写口播脚本、拆好分镜。";
 
   // v0.88：单页化后不再切步骤；step 仍随草稿保存（兼容旧字段）。
   const [step] = React.useState<"script" | "factory">(initial.step ?? "script");
@@ -555,6 +580,16 @@ function ShortMakerInner({
   const [deleting, setDeleting] = React.useState(false);
   // 后续推荐 action：AI 每生成 / 改写一版脚本就刷新（来自后端 suggestions），并随草稿持久化、重开恢复。
   const [suggestions, setSuggestions] = React.useState<string[]>(() => initial.suggestions ?? []);
+  // v0.143 提示词直出：全片视觉设定 + 来源提示词 + 拆解说明。
+  // 必须随 dataRef 一起回写，否则自动保存会把它们从草稿里抹掉（服务端整存整取 payload）。
+  const [visualBible, setVisualBible] = React.useState<ShortVisualBible | undefined>(() => initial.visualBible);
+  const [promptSource] = React.useState<ShortPromptSource | undefined>(() => initial.promptSource);
+  const [promptNotes, setPromptNotes] = React.useState<string[]>(() => initial.promptNotes ?? []);
+  const fromPrompt = !!promptSource?.raw;
+  const [bibleOpen, setBibleOpen] = React.useState(false);
+  const [rawPromptOpen, setRawPromptOpen] = React.useState(false);
+  const rawPromptRef = React.useRef<HTMLDivElement>(null);
+  useModalA11y(rawPromptRef, () => setRawPromptOpen(false), rawPromptOpen);
   // 左侧 AI 对话可折叠（收起成细边栏，给右侧大纲 / 分镜更多空间）。
   const [chatCollapsed, setChatCollapsed] = React.useState(false);
   // 分镜表放大：全屏弹层展示，方便逐镜编辑。
@@ -605,6 +640,9 @@ function ShortMakerInner({
     refs,
     suggestions,
     assembled,
+    visualBible,
+    promptSource,
+    promptNotes,
   };
 
   const queueSave = React.useCallback(() => {
@@ -631,7 +669,7 @@ function ShortMakerInner({
       return;
     }
     queueSave();
-  }, [step, meta, continuityManifest, logline, charRef, charAvatar, sceneRef, shots, chat, refs, suggestions, assembled, queueSave]);
+  }, [step, meta, continuityManifest, logline, charRef, charAvatar, sceneRef, shots, chat, refs, suggestions, assembled, visualBible, promptNotes, queueSave]);
   React.useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -653,8 +691,8 @@ function ShortMakerInner({
   const deleteCurrentDraft = async () => {
     if (deleting) return;
     const ok = await dramaConfirm({
-      title: "删除这条草稿?",
-      body: "删除后会从短视频工坊移除，当前脚本、分镜和已生成镜头都不会再出现在这条草稿里。",
+      title: "删除这条草稿？",
+      body: "移到回收站，30 天内可以恢复；期间不会出现在短视频工坊列表里。",
       confirmLabel: "删除草稿",
       cancelLabel: "先保留",
       tone: "danger",
@@ -697,7 +735,7 @@ function ShortMakerInner({
     if (audioBusy) return;
     const ok = await dramaConfirm({
       title: "生成逐镜配音？",
-      body: "将使用当前数字人已关联的声音逐镜合成台词。已成功且台词未变的镜头会直接复用，不会重复生成；不会提交视频任务。",
+      body: "用当前数字人的声音逐镜合成台词。台词没改过的镜头直接复用已有配音，不重复生成；这一步不出视频。",
       confirmLabel: "生成配音",
       cancelLabel: "暂不生成",
     });
@@ -748,9 +786,49 @@ function ShortMakerInner({
     }
   };
 
+  /**
+   * 提示词直出线的「改一版」= 按原始提示词重新拆解（可带调整要求）。
+   * 不走主题式 AI 创作 —— 那会丢掉用户提示词里的人物卡与画面设定。免费，与拆解同一条端点。
+   */
+  const reparseFromPrompt = async (instruction?: string, aiReply?: string) => {
+    const raw = promptSource?.raw?.trim();
+    if (!raw) return;
+    setPhase("gen");
+    try {
+      const parsed = await ShortsApi.parsePrompt({ prompt: raw, instruction });
+      const patch = parsedToDraft(parsed);
+      setMeta(patch.meta);
+      setLogline((prev) => patch.logline || prev);
+      setVisualBible(patch.visualBible);
+      setPromptNotes(patch.notes);
+      setShots(patch.shots as ShortShot[]);
+      setSuggestions([]);
+      setContinuityManifest(undefined); // 依赖图由服务端在下一次保存 / 预检时按新分镜重建
+      setAssembled((prev) => (prev ? { ...prev, stale: true } : prev));
+      setDraftStatus("draft");
+      setAssembleError(null);
+      setPreflight(null);
+      setPhase("done");
+      setChat((c) => [
+        ...c,
+        { who: "ai", text: aiReply ?? `已按你的提示词重新拆成 ${patch.shots.length} 镜（约 ${patch.shots.reduce((a, x) => a + x.dur, 0)} 秒），人物设定与画面基调同步刷新。` },
+      ]);
+      toast.success("已按提示词重新拆解");
+    } catch (e) {
+      setPhase(shots.length ? "done" : "idle");
+      const msg = aiErrorMessage(e, "重新拆解失败，请稍后重试");
+      setChat((c) => [...c, { who: "ai", text: `重新拆解失败：${msg}` }]);
+      toast.error(msg);
+    }
+  };
+
   /** 真实 AI 生成口播脚本（DRAMA_SCRIPT_DRAFT）→ 映射为结构化分镜表。 */
   const runScript = async (instruction?: string, aiReply?: string) => {
     if (phase === "gen") return;
+    if (fromPrompt) {
+      await reparseFromPrompt(instruction, aiReply);
+      return;
+    }
     setPhase("gen");
     try {
       // 出脚本的「主题」优先用用户真实点子：创意套用而来时 title 可能是创意名（如「韦斯·安德森风格」），
@@ -807,9 +885,9 @@ function ShortMakerInner({
       const audioBits = script.scenes.some((sc) => sc.sfx || sc.bgm || sc.fx) ? "（含音效 / BGM / 特效建议）" : "";
       setChat((c) => [
         ...c,
-        { who: "ai", text: aiReply ?? `脚本和分镜已生成 ✓ 共 ${script.scenes.length} 个分镜${audioBits}。右侧可逐镜改，满意就去「视频工厂」出片。` },
+        { who: "ai", text: aiReply ?? `口播脚本和分镜已生成，共 ${script.scenes.length} 镜${audioBits}。右侧可以逐镜改，改完在分镜表里出片。` },
       ]);
-      toast.success("口播脚本和分镜已生成,改满意就去出片");
+      toast.success("口播脚本和分镜已生成，改完就能逐镜出片");
     } catch (e) {
       setPhase(shots.length ? "done" : "idle");
       const msg = aiErrorMessage(e, "脚本生成失败，请稍后重试");
@@ -817,7 +895,28 @@ function ShortMakerInner({
       toast.error(msg);
     }
   };
-  const regen = () => void runScript();
+  const regen = () => {
+    // 有镜头正在出片（单镜 busy 或一键连跑）时不许整表替换：旧任务照常扣费，
+    // 但产物会因为 shot id 全换而挂不回草稿 —— 等它跑完或停止连跑再重来。
+    if (busy || runProgress) {
+      toast.error("有镜头正在出片，等它完成或停止连跑后再重新生成分镜");
+      return;
+    }
+    if (!fromPrompt) {
+      void runScript();
+      return;
+    }
+    // 重新拆解会整表替换（含你手改过的镜），覆盖前先确认。免费，故不带积分。
+    void (async () => {
+      const ok = await dramaConfirm({
+        title: "按提示词重新拆解？",
+        body: "用原始提示词重新生成整张分镜表，你手改过的镜头会被替换。已出的首帧和视频不会被删，但新分镜要重新出片。",
+        confirmLabel: "重新拆解",
+        tone: "danger",
+      });
+      if (ok) void runScript();
+    })();
+  };
 
   // 真带入点子且尚无分镜时,自动跑一次真实生成（不伪造结果；失败会在对话里显示真实错误）。
   const autoGenRef = React.useRef(false);
@@ -834,9 +933,14 @@ function ShortMakerInner({
   const sendChat = (text: string) => {
     const t = (text || "").trim();
     if (!t || phase === "gen") return;
+    // 与 regen 同一守门：正在出片时不改整张分镜表，避免在途任务白扣费。
+    if (busy || runProgress) {
+      toast.error("有镜头正在出片，等它完成或停止连跑后再让 AI 改分镜");
+      return;
+    }
     setChat((c) => [...c, { who: "me", text: t }]);
     setDraft("");
-    void runScript(t, "改好了——右侧脚本已更新,你再看看还哪里要调?");
+    void runScript(t, "右侧脚本已更新。");
   };
   const invalidateAssembly = () => {
     setAssembled((prev) => (prev ? { ...prev, stale: true } : prev));
@@ -844,6 +948,62 @@ function ShortMakerInner({
     setAssembleError(null);
     setPreflight(null);
   };
+  /** 视觉设定编辑：改一处即整体回写（dataRef 已带 visualBible，autosave 自动落库）。 */
+  const patchBibleCharacter = (index: number, patch: Partial<{ name: string; visual: string; performance: string }>) => {
+    setVisualBible((prev) =>
+      prev
+        ? { ...prev, characters: prev.characters.map((c, i) => (i === index ? { ...c, ...patch } : c)) }
+        : prev,
+    );
+    invalidateAssembly();
+  };
+  const addBibleCharacter = () => {
+    setVisualBible((prev) => ({
+      universal: prev?.universal ?? "",
+      scenes: prev?.scenes ?? [],
+      characters: [...(prev?.characters ?? []), { name: "", visual: "", performance: "" }],
+    }));
+    invalidateAssembly();
+  };
+  /** 删角色同时清掉各镜对他的引用，否则分镜里会留一个指不到人的名字。 */
+  const removeBibleCharacter = (index: number) => {
+    const gone = visualBible?.characters?.[index]?.name;
+    setVisualBible((prev) =>
+      prev ? { ...prev, characters: prev.characters.filter((_, i) => i !== index) } : prev,
+    );
+    if (gone) {
+      setShots((arr) =>
+        arr.map((shot) =>
+          shot.castNames ? { ...shot, castNames: shot.castNames.filter((n) => n !== gone) } : shot,
+        ),
+      );
+    }
+    invalidateAssembly();
+  };
+  const addBibleScene = () => {
+    setVisualBible((prev) => ({
+      universal: prev?.universal ?? "",
+      characters: prev?.characters ?? [],
+      scenes: [...(prev?.scenes ?? []), { name: "", visual: "" }],
+    }));
+    invalidateAssembly();
+  };
+  const removeBibleScene = (index: number) => {
+    const gone = visualBible?.scenes?.[index]?.name;
+    setVisualBible((prev) => (prev ? { ...prev, scenes: prev.scenes.filter((_, i) => i !== index) } : prev));
+    if (gone) {
+      setShots((arr) => arr.map((shot) => (shot.sceneName === gone ? { ...shot, sceneName: undefined } : shot)));
+    }
+    invalidateAssembly();
+  };
+
+  const patchBibleScene = (index: number, patch: Partial<{ name: string; visual: string }>) => {
+    setVisualBible((prev) =>
+      prev ? { ...prev, scenes: prev.scenes.map((sc, i) => (i === index ? { ...sc, ...patch } : sc)) } : prev,
+    );
+    invalidateAssembly();
+  };
+
   const updShot = (id: string, patch: Partial<ShortShot>) => {
     setShots((arr) => arr.map((s) => (s.id === id ? { ...s, ...patch, ...(patch.voText !== undefined ? { audio: undefined } : {}) } : s)));
     invalidateAssembly();
@@ -864,7 +1024,7 @@ function ShortMakerInner({
     try {
       if (to === "frame") {
         const job = await shotRender.submitFrameJob({
-          vars: buildShortFrameVars({ meta, shot, styleName: renderStyleName, manifest: continuityManifest, shotId: shot.id }),
+          vars: buildShortFrameVars({ meta, shot, styleName: renderStyleName, manifest: continuityManifest, shotId: shot.id, visualBible }),
           count: 1,
           shotId: id,
           refSlots,
@@ -893,7 +1053,7 @@ function ShortMakerInner({
       } else {
         const job = await shotRender.renderClip({
           vars: {
-            ...buildShortClipVars({ meta, shot, styleName: renderStyleName, manifest: continuityManifest, shotId: shot.id }),
+            ...buildShortClipVars({ meta, shot, styleName: renderStyleName, manifest: continuityManifest, shotId: shot.id, visualBible }),
           },
           name: `${displayName} 镜${shot.no}`,
           durationSec: shot.dur,
@@ -1035,13 +1195,13 @@ function ShortMakerInner({
     if (busy || runProgress) return;
     const pending = shots.filter((s) => s.flow !== "done");
     if (!pending.length) {
-      toast("所有镜头都已出片，可直接合成成片");
+      toast("所有镜头都出片了，可以直接合成成片");
       return;
     }
     const cost = pending.length * cfg.prices.clip;
     const ok = await dramaConfirm({
       title: "一键连跑出片",
-      body: `将为 ${pending.length} 个未完成镜头依次生成视频，预计消耗约 ${cost} 积分（按各镜实际计费）。生成期间可看到进度，也可随时停止或离开。`,
+      body: `为 ${pending.length} 个未完成镜头依次出片，预计 ${cost} 积分（按各镜实际计费）。中途可以停，也可以离开页面。`,
       confirmLabel: "开始出片",
       cancelLabel: "取消",
     });
@@ -1077,7 +1237,7 @@ function ShortMakerInner({
     if (!runProgress || stopRunRef.current) return;
     stopRunRef.current = true;
     setStopping(true);
-    toast("将在当前镜头完成后停止");
+    toast("当前镜头完成后停止");
   };
 
   // 主角 / 主场景 参考图上传（→ OSS，存 url+cdnKey），与短剧工坊同一上传端点。
@@ -1127,6 +1287,7 @@ function ShortMakerInner({
       shots={shots}
       beats={shots.map((s) => s.beat ?? "")}
       speakerOptions={["口播", "旁白"]}
+      characters={(visualBible?.characters ?? []).map((c) => c.name).filter(Boolean)}
       locked={draftStatus === "done"}
       busy={busy}
       frameCost={cfg.prices.frame}
@@ -1159,7 +1320,21 @@ function ShortMakerInner({
           <span style={{ fontWeight: 800, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 360 }}>
             {title}
           </span>
-          <span className="faint num" style={{ fontSize: 11 }}>{displayName} · 竖屏 9:16 · 约 {total}s</span>
+          <span className="row gap-1 faint num" style={{ fontSize: 11, alignItems: "center" }}>
+            <span style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName}>
+              {displayName}
+            </span>
+            · 竖屏 9:16 · 约 {total}s
+            {fromPrompt && (
+              <span
+                className="tag tag-accent"
+                style={{ flex: "none", marginLeft: 4 }}
+                title="这条短视频按你写的提示词拆的，人物和画面设定跟着提示词走"
+              >
+                提示词直出
+              </span>
+            )}
+          </span>
         </div>
         {/* v0.88：单页化（去掉 脚本/工厂 步骤切换）—— 设计稿短视频制作为单页：左口播对话 / 右大纲+分镜表（逐镜内联出片）。 */}
         <span className="grow" />
@@ -1218,7 +1393,9 @@ function ShortMakerInner({
                 <Sparkles size={14} />
               </div>
               <span style={{ fontWeight: 700, fontSize: 13.5 }}>AI 脚本助手</span>
-              <span className="faint" style={{ fontSize: 11 }}>聊出你要的脚本</span>
+              <span className="faint" style={{ fontSize: 11 }}>
+                {fromPrompt ? "按你的提示词重拆" : "聊出你要的脚本"}
+              </span>
               <span className="grow" />
               <button
                 type="button"
@@ -1293,7 +1470,7 @@ function ShortMakerInner({
                       sendChat(draft);
                     }
                   }}
-                  placeholder="告诉 AI 怎么改…"
+                  placeholder={fromPrompt ? "说要怎么调整，按原提示词重新拆解…" : "告诉 AI 怎么改…"}
                   rows={1}
                   style={{
                     flex: 1,
@@ -1327,6 +1504,140 @@ function ShortMakerInner({
           {/* 右:结构化分镜脚本(表单式 · 带时间线) */}
           <div className="scroll grow" style={{ minHeight: 0, background: "var(--bg)" }}>
             <div style={{ maxWidth: 760, margin: "0 auto", padding: "22px 28px 110px" }}>
+              {/* v0.143 提示词直出：来源提示词与全片视觉设定（这里的字直接进每一镜的出图与出片提示词） */}
+              {fromPrompt && (
+                <div className="card col" style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
+                  <div className="row gap-2" style={{ padding: "13px 18px", borderBottom: "1px solid var(--line-soft)", alignItems: "center", flexWrap: "wrap" }}>
+                    <ClipboardPaste size={16} style={{ color: "var(--accent-2)", flex: "none" }} />
+                    <span style={{ fontWeight: 800, fontSize: 14, flex: "none" }}>提示词设定</span>
+                    <span
+                      className="faint"
+                      style={{ fontSize: 11, flex: 1, minWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {(visualBible?.characters?.length ?? 0)} 位角色 · {(visualBible?.scenes?.length ?? 0)} 个场景 · 每镜出图按这里锁外观
+                    </span>
+                    <button type="button" className="chip" style={{ flex: "none" }} onClick={() => setRawPromptOpen(true)}>
+                      <ScrollText size={12} /> 原始提示词
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-sm"
+                      aria-expanded={bibleOpen}
+                      aria-label={bibleOpen ? "收起提示词设定" : "展开提示词设定"}
+                      title={bibleOpen ? "收起" : "展开"}
+                      onClick={() => setBibleOpen((v) => !v)}
+                      style={{ flex: "none" }}
+                    >
+                      <ChevronDown size={15} style={{ transform: bibleOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+                    </button>
+                  </div>
+                  {promptNotes.length > 0 && (
+                    <div className="col gap-1" style={{ padding: "10px 18px", borderBottom: "1px solid var(--line-soft)", background: "var(--surface-2)" }}>
+                      {promptNotes.map((n, i) => (
+                        <div key={i} className="row gap-1 faint" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+                          <AlertTriangle size={11} style={{ flex: "none", marginTop: 3 }} /> <span>{n}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {bibleOpen && (
+                    <div className="col" style={{ padding: 18, gap: 14 }}>
+                      {(visualBible?.characters ?? []).map((c, i) => (
+                        <div key={i} className="col gap-2" style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)" }}>
+                          <div className="row gap-2" style={{ alignItems: "center" }}>
+                            <input
+                              value={c.name}
+                              onChange={(e) => patchBibleCharacter(i, { name: e.target.value })}
+                              placeholder="角色名"
+                              style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-icon btn-sm"
+                              title={`删除角色${c.name ? `「${c.name}」` : ""}`}
+                              aria-label={`删除角色${c.name ? `「${c.name}」` : ""}`}
+                              onClick={() => removeBibleCharacter(i)}
+                              style={{ flex: "none", color: "var(--danger)" }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <div className="col gap-1">
+                            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--ink-3)" }}>外观（进画面）</span>
+                            <EditableField
+                              multiline
+                              value={c.visual}
+                              onChange={(v) => patchBibleCharacter(i, { visual: v })}
+                              placeholder="脸型 / 发型 / 服装 / 道具 / 配色"
+                              textStyle={{ fontSize: 12.5, lineHeight: 1.75, color: "var(--ink-2)" }}
+                            />
+                          </div>
+                          <div className="col gap-1">
+                            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--ink-3)" }}>表演（不进画面）</span>
+                            <EditableField
+                              multiline
+                              value={c.performance ?? ""}
+                              onChange={(v) => patchBibleCharacter(i, { performance: v })}
+                              placeholder="性格 / 情绪 / 表演方式"
+                              textStyle={{ fontSize: 12.5, lineHeight: 1.75, color: "var(--ink-3)" }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      {(visualBible?.scenes ?? []).map((sc, i) => (
+                        <div key={i} className="col gap-2" style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)" }}>
+                          <div className="row gap-2" style={{ alignItems: "center" }}>
+                            <span className="tag tag-gray" style={{ flex: "none" }}>场景</span>
+                            <input
+                              value={sc.name}
+                              onChange={(e) => patchBibleScene(i, { name: e.target.value })}
+                              placeholder="场景名"
+                              style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 13.5, fontWeight: 700, color: "var(--ink)", padding: 0, fontFamily: "inherit" }}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-icon btn-sm"
+                              title={`删除场景${sc.name ? `「${sc.name}」` : ""}`}
+                              aria-label={`删除场景${sc.name ? `「${sc.name}」` : ""}`}
+                              onClick={() => removeBibleScene(i)}
+                              style={{ flex: "none", color: "var(--danger)" }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <EditableField
+                            multiline
+                            value={sc.visual}
+                            onChange={(v) => patchBibleScene(i, { visual: v })}
+                            placeholder="环境 / 光线 / 色调 / 空气感"
+                            textStyle={{ fontSize: 12.5, lineHeight: 1.75, color: "var(--ink-2)" }}
+                          />
+                        </div>
+                      ))}
+                      <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                        <button type="button" className="btn btn-line btn-sm" onClick={addBibleCharacter}>
+                          <Plus size={13} /> 加一位角色
+                        </button>
+                        <button type="button" className="btn btn-line btn-sm" onClick={addBibleScene}>
+                          <Plus size={13} /> 加一个场景
+                        </button>
+                        <span className="faint" style={{ fontSize: 11, alignSelf: "center" }}>不填外观的角色，出图时不会用来锁长相</span>
+                      </div>
+                      <div className="col gap-1" style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface-2)", boxShadow: "inset 0 0 0 1px var(--line-soft)" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", color: "var(--ink-3)" }}>全片画面基调</span>
+                        <EditableField
+                          multiline
+                          value={visualBible?.universal ?? ""}
+                          onChange={(v) => setVisualBible((prev) => ({ universal: v, characters: prev?.characters ?? [], scenes: prev?.scenes ?? [] }))}
+                          placeholder="镜头语言 / 质感 / 整体调色"
+                          textStyle={{ fontSize: 12.5, lineHeight: 1.75, color: "var(--ink-2)" }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 短视频大纲：与短剧「故事大纲」面板 1:1 同款设计（header + 新生成 pill /
                   metaLine + 大标题 + 剧情脉络强调块 / • 圆点分区 + 核心人物双列卡），
                   仅把内容换成短视频形态 —— 跨产品零学习成本。 */}
@@ -1337,9 +1648,8 @@ function ShortMakerInner({
                     <ScrollText size={17} style={{ color: "var(--accent)", flex: "none" }} />
                     <span style={{ fontWeight: 800, fontSize: 14, flex: "none", whiteSpace: "nowrap" }}>短视频大纲</span>
                     <span className="faint" style={{ fontSize: 11, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      根据对话整理出的短视频大纲
+                      {fromPrompt ? "按你的提示词整理的大纲" : "根据对话整理的大纲"}
                     </span>
-                    <span style={{ flex: "none", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", background: "var(--surface-2)", padding: "2px 9px", borderRadius: 999 }}>新生成</span>
                   </div>
 
                   <div className="col" style={{ padding: 22, gap: 20 }}>
@@ -1498,8 +1808,20 @@ function ShortMakerInner({
                       <Maximize2 size={12} /> 放大
                     </button>
                   )}
-                  <button type="button" className="chip" disabled={phase === "gen" || shots.length === 0} onClick={regen}>
-                    <RefreshCw size={12} /> 重新生成
+                  <button
+                    type="button"
+                    className="chip"
+                    disabled={phase === "gen" || shots.length === 0 || !!busy || !!runProgress}
+                    onClick={regen}
+                    title={
+                      busy || runProgress
+                        ? "有镜头正在出片，等它完成或停止连跑后再重新生成"
+                        : fromPrompt
+                          ? "用原始提示词重新生成整张分镜表"
+                          : "让 AI 重写一版口播脚本与分镜"
+                    }
+                  >
+                    <RefreshCw size={12} /> {fromPrompt ? "按提示词重拆" : "重新生成"}
                   </button>
                   {shots.length > 0 && draftStatus !== "done" && (
                     runProgress ? (
@@ -1535,21 +1857,18 @@ function ShortMakerInner({
               )}
 
               {shots.length > 0 && (
-                <section className="card" aria-label="一致性与成片预检" style={{ padding: "12px 14px", marginBottom: 14 }}>
+                <section className="card" aria-label="出片前检查" style={{ padding: "12px 14px", marginBottom: 14 }}>
                   <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
                     <ShieldCheck size={15} style={{ color: "var(--accent)" }} />
-                    <strong style={{ fontSize: 13 }}>一致性与成片预检</strong>
-                    <span className="tag" title="Manifest 由服务端确定性派生，不消耗第二次模型 token">
-                      Manifest {preflight?.manifestVersion ?? continuityManifest?.version ?? "1.0"}
-                    </span>
+                    <strong style={{ fontSize: 13 }}>出片前检查</strong>
                     {preflight && (
                       <span className="faint" style={{ fontSize: 11.5 }}>
-                        结构 {preflight.structuralReady ? "通过" : "待修复"} · 配音 {preflight.audioReadyCount}/{preflight.shotCount} · 成片素材 {preflight.completedShotCount}/{preflight.shotCount}
+                        分镜 {preflight.structuralReady ? "通过" : "待修复"} · 配音 {preflight.audioReadyCount}/{preflight.shotCount} 镜 · 镜头视频 {preflight.completedShotCount}/{preflight.shotCount} 镜
                       </span>
                     )}
                     <span className="grow" />
-                    <button type="button" className="btn btn-line btn-sm" onClick={() => void refreshPreflight(true)} disabled={preflightBusy || audioBusy} aria-busy={preflightBusy}>
-                      {preflightBusy ? <Loader2 size={13} className="spin" /> : <ShieldCheck size={13} />} {preflightBusy ? "检查中…" : "零 Token 预检"}
+                    <button type="button" className="btn btn-line btn-sm" onClick={() => void refreshPreflight(true)} disabled={preflightBusy || audioBusy} aria-busy={preflightBusy} title="只检查分镜、配音和镜头视频齐不齐，不生成内容、不扣积分">
+                      {preflightBusy ? <Loader2 size={13} className="spin" /> : <ShieldCheck size={13} />} {preflightBusy ? "检查中…" : "检查一遍"}
                     </button>
                     <button type="button" className="btn btn-sm" onClick={() => void prepareShortAudio()} disabled={audioBusy || preflightBusy || !charAvatar} aria-busy={audioBusy} title={!charAvatar ? "先绑定一位已关联声音的数字人" : "只生成配音，不提交视频任务"}>
                       {audioBusy ? <Loader2 size={13} className="spin" /> : <Volume2 size={13} />} {audioBusy ? "生成配音中…" : "准备逐镜配音"}
@@ -1566,10 +1885,10 @@ function ShortMakerInner({
                     </div>
                   ) : preflight ? (
                     <div role="status" style={{ marginTop: 8, color: "var(--success)", fontSize: 11.5 }}>
-                      结构与依赖图已通过；{preflight.assemblyReady ? "可直接总装。" : "继续补齐配音或已验收镜头后即可总装。"}
+                      分镜检查通过；{preflight.assemblyReady ? "可以合成成片了。" : "补齐配音和镜头视频后就能合成。"}
                     </div>
                   ) : (
-                    <div className="faint" style={{ marginTop: 8, fontSize: 11.5 }}>分镜有改动，建议总装前运行一次预检；预检不会调用模型或扣积分。</div>
+                    <div className="faint" style={{ marginTop: 8, fontSize: 11.5 }}>分镜改过了，合成前建议检查一遍；检查不扣积分。</div>
                   )}
                 </section>
               )}
@@ -1584,7 +1903,7 @@ function ShortMakerInner({
                     <Clapperboard size={26} />
                   </div>
                   <div className="muted" style={{ maxWidth: 340, fontSize: 13.5 }}>
-                    在左侧向 AI 描述你的想法，它会撰写口播脚本并拆好分镜，确认满意后再生成成片。
+                    在左侧告诉 AI 这条片子讲什么，它会写口播脚本并拆好分镜，之后再逐镜出片。
                   </div>
                 </div>
               ) : (
@@ -1597,7 +1916,15 @@ function ShortMakerInner({
                     onClick={() => {
                       setShots((arr) => [
                         ...arr,
-                        { id: "add" + Date.now(), no: arr.length + 1, dur: 4, visual: "", size: "中景", move: "固定", voWho: "口播", voText: "", sfx: "", bgm: "", fx: "", refs: [], sub: true, flow: "draft", engine: "fx", frameIdx: 0 },
+                        {
+                          id: "add" + Date.now(), no: arr.length + 1, dur: 4, visual: "", size: "中景", move: "固定",
+                          voWho: "口播", voText: "", sfx: "", bgm: "", fx: "", refs: [], sub: true,
+                          flow: "draft", engine: "fx", frameIdx: 0,
+                          // 提示词直出线：新镜默认沿用上一镜的出场人物与场景（可再点 chip 改），
+                          // 不留空 —— 留空会被服务端当「未标注」按全员锚定。
+                          castNames: arr[arr.length - 1]?.castNames,
+                          sceneName: arr[arr.length - 1]?.sceneName,
+                        },
                       ]);
                       invalidateAssembly();
                     }}
@@ -1606,10 +1933,56 @@ function ShortMakerInner({
                   </button>
                   <div className="row gap-2" style={{ padding: "4px 2px" }}>
                     <Edit size={12} style={{ color: "var(--ink-3)" }} />
-                    <span className="faint" style={{ fontSize: 11.5 }}>所有字段点击即可改 · 画面里输入 @ 引用素材 · 也可让左侧 AI 整体重写</span>
+                    <span className="faint" style={{ fontSize: 11.5 }}>所有字段点一下就能改 · 画面里输入 @ 引用素材 · 也可以让左侧 AI 整体重写</span>
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 原始提示词（只读查看 + 复制）—— 溯源：这条片子到底是按什么拆的 */}
+      {rawPromptOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="原始提示词"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setRawPromptOpen(false);
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 75, background: "rgba(15,10,30,.55)", backdropFilter: "blur(2px)", display: "grid", placeItems: "center", padding: "5vh 3vw" }}
+        >
+          <div ref={rawPromptRef} tabIndex={-1} className="col" style={{ width: "min(760px, 94vw)", maxHeight: "84vh", background: "var(--bg)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line-soft)", outline: "none" }}>
+            <div className="row gap-2" style={{ padding: "12px 18px", borderBottom: "1px solid var(--line)", background: "var(--surface)", flex: "none", alignItems: "center" }}>
+              <ScrollText size={16} style={{ color: "var(--accent-2)" }} />
+              <span style={{ fontWeight: 800, fontSize: 14.5 }}>原始提示词</span>
+              <span className="faint num" style={{ fontSize: 11 }}>{promptSource?.raw?.length ?? 0} 字</span>
+              <span className="grow" />
+              <button
+                type="button"
+                className="chip"
+                onClick={() => {
+                  const raw = promptSource?.raw ?? "";
+                  navigator.clipboard
+                    ?.writeText(raw)
+                    .then(() => toast.success("已复制原始提示词"))
+                    .catch(() => toast.error("复制失败，请手动选中复制"));
+                }}
+              >
+                复制
+              </button>
+              <button type="button" className="btn btn-icon btn-sm" aria-label="关闭" title="关闭" onClick={() => setRawPromptOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="scroll grow" style={{ minHeight: 0, padding: "16px 20px" }}>
+              <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 13, lineHeight: 1.85, color: "var(--ink-2)" }}>
+                {promptSource?.raw}
+              </div>
+            </div>
+            <div className="row gap-2" style={{ padding: "10px 18px", borderTop: "1px solid var(--line)", background: "var(--surface)", flex: "none" }}>
+              <span className="faint" style={{ fontSize: 11.5 }}>想改提示词本身：在左侧说要调什么，或用分镜表的「按提示词重拆」。</span>
             </div>
           </div>
         </div>
@@ -1637,7 +2010,7 @@ function ShortMakerInner({
               <span className="tag tag-accent" style={{ flex: "none" }}>共 {shots.length} 镜 · 约 {total} 秒</span>
               <span className="grow" />
               <span className="row gap-1 faint" style={{ fontSize: 11.5 }}>
-                <Edit size={12} /> 所有字段点击即可改
+                <Edit size={12} /> 所有字段点一下就能改
               </span>
               <button type="button" className="btn btn-icon btn-sm" title="关闭放大" aria-label="关闭放大" onClick={() => setTableMax(false)}>
                 <X size={16} />
@@ -1702,7 +2075,7 @@ function ShortMakerInner({
           </span>
         ) : (
           <span className="row gap-2" style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-3)", padding: "4px 6px" }}>
-            <ImageIcon size={14} /> 把 {shots.length - doneCount} 个镜头出完即可合成
+            <ImageIcon size={14} /> 还有 {shots.length - doneCount} 个镜头没出片
           </span>
         )}
       </div>

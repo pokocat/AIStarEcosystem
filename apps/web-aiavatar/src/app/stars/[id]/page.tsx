@@ -7,7 +7,7 @@
 import React, { use as usePromise } from "react";
 import { AssetApi } from "@/proto/api";
 import type { StarGrant } from "@/proto/data";
-import { useRequireAuth } from "@/components/hub/auth";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { useHubData } from "@/components/hub/data";
 import { AssetPortrait, Badge, Card, EmptyState, HubScreen, LoadingBlock, NavBar, RegNo } from "@/components/hub/ui";
 import type { BadgeTone } from "@/components/hub/ui";
@@ -24,8 +24,10 @@ export default function StarGrantPage({ params }: { params: Promise<{ id: string
   const { id } = usePromise(params);
   const authState = useRequireAuth();
   const ready = authState === "ok";
+  const noPlatform = authState === "no-platform";
   const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [id], ready);
 
+  if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   if (grants.loading) {

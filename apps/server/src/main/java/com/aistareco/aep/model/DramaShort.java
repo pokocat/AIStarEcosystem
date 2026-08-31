@@ -66,6 +66,14 @@ public class DramaShort {
     @Column(name = "payload_json", columnDefinition = "LONGTEXT")
     private String payloadJson;
 
+    /**
+     * 开拍付费创建的客户端幂等键（v0.145）。与 owner_user_id 组成唯一索引
+     * {@code uk_drama_short_owner_client_req}，并发同键只有一个能落库。
+     * 自建 / 套用创意都用它；老行为 NULL（唯一索引允许多个 NULL）。
+     */
+    @Column(name = "client_request_id", length = 64)
+    private String clientRequestId;
+
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
 

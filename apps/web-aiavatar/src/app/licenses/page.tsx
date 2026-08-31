@@ -8,7 +8,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { AssetApi, LicenseApi } from "@/proto/api";
 import type { License, StarGrant } from "@/proto/data";
-import { useRequireAuth } from "@/components/hub/auth";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref, useHubData } from "@/components/hub/data";
 import { Badge, Card, EmptyState, HubScreen, LoadingBlock, NavBar, RegNo } from "@/components/hub/ui";
 import type { BadgeTone } from "@/components/hub/ui";
@@ -93,10 +93,12 @@ function LicenseCard({ l }: { l: License }) {
 export default function LicensesPage() {
   const authState = useRequireAuth();
   const ready = authState === "ok";
+  const noPlatform = authState === "no-platform";
   const [tab, setTab] = useState<"granted" | "issued">("granted");
   const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [], ready);
   const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [], ready);
 
+  if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   const segBtn = (key: "granted" | "issued", label: string) => {

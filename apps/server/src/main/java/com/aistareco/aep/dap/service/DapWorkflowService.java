@@ -28,6 +28,8 @@ import java.util.UUID;
 @Service
 public class DapWorkflowService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DapWorkflowService.class);
+
     private static final Map<String, String> DERIV_KIND_ZH = Map.of(
             "atlas", "多角度图集", "expr", "表情图集", "scene", "剧情场景图",
             "ward", "换装变体", "d3", "3D 模型", "video", "运镜短视频");
@@ -42,6 +44,7 @@ public class DapWorkflowService {
     private final DapSupport support;
     private final FileStorageService storage;
     private final DapMultimodalClient multimodal;
+    private final com.aistareco.aep.dap.config.DapProperties props;
 
     public DapWorkflowService(DapAvatarService avatarService,
                               DapJobService jobService,
@@ -52,7 +55,8 @@ public class DapWorkflowService {
                               DapCatalogService catalog,
                               DapSupport support,
                               FileStorageService storage,
-                              DapMultimodalClient multimodal) {
+                              DapMultimodalClient multimodal,
+                              com.aistareco.aep.dap.config.DapProperties props) {
         this.avatarService = avatarService;
         this.jobService = jobService;
         this.licenseService = licenseService;
@@ -63,6 +67,7 @@ public class DapWorkflowService {
         this.support = support;
         this.storage = storage;
         this.multimodal = multimodal;
+        this.props = props;
     }
 
     private String engineName() {
@@ -328,6 +333,58 @@ public class DapWorkflowService {
         DapJob job = jobService.submit(userId, a, DapJob.T_DERIVE, DERIV_KIND_ZH.get(key), engine,
                 jobService.priceOf(DapJob.T_DERIVE, key), eta, payload);
         return JobDto.from(job, support::hm);
+    }
+
+    /**
+     * 定稿后自动补一段待机循环视频，作为设定卡首图（设计文档 §1.5）。
+     *
+     * 三条边界：
+     * 1. **绝不阻塞定稿**：任何异常只记 WARN 就放过（§1 铁律 1 / AGENTS §8.0 观测类旁路例外）。
+     *    生成失败时设定卡首图退回定妆图静态展示，用户侧无感。
+     * 2. **不向用户计费**：系统发起而非用户点的按钮，cost 传 0，不走 hold；
+     *    平台侧成本用 aep.dap.auto-idle-loop 开关控制。
+     * 3. **不重复建单**：已有或正在生成 video 衍生时直接跳过。
+     *
+     * 真人线要求已审核素材，缺素材时 requireApprovedGenerationAsset 会抛，
+     * 同样被吞掉 —— 这类账号本来也还不能出片。
+     */
+    public void autoIdleLoopAfterFinalize(String userId, String avatarId) {
+        if (!props.isAutoIdleLoop()) return;
+        try {
+            DapAvatar a = avatarService.required(userId, avatarId);
+            if (a.getImageKey() == null) return;
+            Map<String, Object> deriv = a.derivOrEmpty();
+            Object st = deriv.get("video");
+            if ("running".equals(st) || "done".equals(st)) return;
+
+            String qassetUri = "real".equals(a.getPath())
+                    ? materialService.requireApprovedGenerationAsset(userId, a.getId(), null) : null;
+
+            String prevStatus = a.getStatus();
+            deriv.put("video", "running");
+            a.setDeriv(deriv);
+            if ("finalized".equals(prevStatus) || "archived".equals(prevStatus)) a.setStatus("deriving");
+            avatarService.save(a);
+
+            Map<String, Object> options = new LinkedHashMap<>();
+            options.put("motion", "idle");
+            options.put("durationSec", props.getAutoIdleLoopSeconds());
+            options.put("loop", true);
+            options.put("auto", true);   // 标明系统发起，便于后续对账与排查
+
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("derivKey", "video");
+            payload.put("prevStatus", prevStatus);
+            if (qassetUri != null) payload.put("qassetUri", qassetUri);
+            payload.put("options", options);
+
+            String engine = multimodal.isConfigured() ? "云端视频引擎" : "占位引擎";
+            jobService.submit(userId, a, DapJob.T_DERIVE, "待机循环", engine, 0L, "约 3-6 分钟", payload);
+            log.info("[dap] auto idle loop queued for avatar={} owner={}", avatarId, userId);
+        } catch (Exception e) {
+            // 定稿已经成功，这里只是锦上添花，失败不回滚、不抛给调用方
+            log.warn("[dap] auto idle loop skipped for avatar={}: {}", avatarId, e.toString());
+        }
     }
 
     private static Map<String, Object> formMap(DescribeRequest f) {

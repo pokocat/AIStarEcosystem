@@ -1,5 +1,6 @@
 import type { ScriptMeta } from "@/api/short-drama";
 import type { ShortContinuityManifest } from "@/api/short-drama";
+import type { ShortVisualBible } from "@/api/shorts";
 
 export interface ShortRenderPromptShot {
   visual: string;
@@ -11,6 +12,9 @@ export interface ShortRenderPromptShot {
   sfx?: string;
   bgm?: string;
   fx?: string;
+  /** 提示词直出线：本镜出场人物名 / 场景名（缺失 = 未标注 → 全员 / 主场景）。 */
+  castNames?: string[];
+  sceneName?: string;
 }
 
 interface BuildShortRenderVarsInput {
@@ -19,6 +23,12 @@ interface BuildShortRenderVarsInput {
   styleName: string;
   manifest?: ShortContinuityManifest | null;
   shotId?: string;
+  /**
+   * v0.143 提示词直出：用户自己写的全片画面基调。人物与场景锚点已经由服务端写进
+   * manifest（characters[].visualTraits / scenes[].visualTraits），这里只补「基调」这一层，
+   * 否则用户提示词里的光影、色调、镜头语言到不了图像与视频模型。
+   */
+  visualBible?: ShortVisualBible | null;
 }
 
 function clean(value: string | null | undefined): string {
@@ -71,9 +81,45 @@ function buildStyleSuffix(styleName: string): string {
   return `竖屏风格短片，${style}。保持主角外观、服装、道具和场景连续一致。`;
 }
 
+/** 全片画面基调（提示词直出线）：接在人物 / 场景锚点之后，先锚人物再定基调。 */
+function buildUniversalPrefix(bible: ShortVisualBible | null | undefined): string {
+  const universal = clean(bible?.universal);
+  return universal ? `【全片画面基调】${universal}。` : "";
+}
+
+/**
+ * 提示词直出线的本镜锚点：直接从 visualBible + 本镜 castNames / sceneName 推导，
+ * **不经 continuityManifest** —— manifest 由服务端在保存/预检时重建，用户刚改完人物外观
+ * 或刚重拆完就出图时本地 manifest 可能是旧的甚至为空，那会把用户写的外貌设定丢在半路。
+ * 规则与服务端 DramaShortContinuityService.ensureDraft 对齐：
+ * castNames 缺失 = 未标注 → 全员；显式空数组 = 本镜确实没人；sceneName 命中不到 → 第一个场景。
+ */
+function buildBibleVisualPrefix(bible: ShortVisualBible | null | undefined, shot: ShortRenderPromptShot): string {
+  const characters = (bible?.characters ?? []).filter((c) => clean(c.name) || clean(c.visual));
+  const scenes = bible?.scenes ?? [];
+  if (!characters.length && !scenes.length) return "";
+  const cast = shot.castNames
+    ? characters.filter((c) => shot.castNames?.includes(c.name))
+    : characters;
+  const scene = scenes.find((s) => s.name === shot.sceneName) ?? scenes[0];
+  const parts = [
+    scene?.visual ? `固定场景：${clean(scene.visual)}` : "",
+    ...cast.map((c) => {
+      const visual = clean(c.visual);
+      const name = clean(c.name);
+      return visual ? `固定角色：${name ? `${name}，${visual}` : visual}` : name ? `固定角色：${name}` : "";
+    }),
+  ].filter(Boolean);
+  return parts.length ? `【本镜连续性锚点】${parts.join("；")}。` : "";
+}
+
 export function buildShortFrameVars(input: BuildShortRenderVarsInput): Record<string, string> {
+  const anchors =
+    buildBibleVisualPrefix(input.visualBible, input.shot) ||
+    buildManifestVisualPrefix(input.manifest, input.shotId) ||
+    buildShortVisualMetaPrefix(input.meta);
   return {
-    metaPrefix: buildManifestVisualPrefix(input.manifest, input.shotId) || buildShortVisualMetaPrefix(input.meta),
+    metaPrefix: `${anchors}${buildUniversalPrefix(input.visualBible)}`,
     visual: buildVisual(input.shot),
     styleSuffix: buildStyleSuffix(input.styleName),
   };

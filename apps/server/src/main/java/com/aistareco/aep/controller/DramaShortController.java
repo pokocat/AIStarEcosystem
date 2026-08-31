@@ -1,5 +1,6 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.service.DramaShortPromptService;
 import com.aistareco.aep.service.DramaShortService;
 import com.aistareco.aep.service.DramaShortAssembleService;
 import com.aistareco.aep.service.DramaShortAudioService;
@@ -24,15 +25,18 @@ public class DramaShortController {
     private final DramaShortAssembleService assembleService;
     private final DramaShortAudioService audioService;
     private final DramaRecipeService recipeService;
+    private final DramaShortPromptService promptService;
 
     public DramaShortController(DramaShortService service,
                                 DramaShortAssembleService assembleService,
                                 DramaShortAudioService audioService,
-                                DramaRecipeService recipeService) {
+                                DramaRecipeService recipeService,
+                                DramaShortPromptService promptService) {
         this.service = service;
         this.assembleService = assembleService;
         this.audioService = audioService;
         this.recipeService = recipeService;
+        this.promptService = promptService;
     }
 
     /** 列表卡片 ShortDraftSummary[]。 */
@@ -45,6 +49,15 @@ public class DramaShortController {
     @PostMapping
     public ApiResponse<JsonNode> create(Principal principal, @RequestBody JsonNode body) {
         return ApiResponse.of(service.createShort(body, principal.getName()));
+    }
+
+    /**
+     * 提示词直出：拆解用户粘贴的整段提示词 → 人物卡 / 场景 / 全片基调 / 逐镜分镜（不落库、不扣费）。
+     * body: { prompt, instruction? }。真正建草稿走 POST /me/drama/shorts（seed），那步才扣开拍费。
+     */
+    @PostMapping("/parse-prompt")
+    public ApiResponse<JsonNode> parsePrompt(Principal principal, @RequestBody JsonNode body) {
+        return ApiResponse.of(promptService.parse(body, principal.getName()));
     }
 
     /** 详情 { meta: ShortDraftSummary, data: ShortDraftData }。 */

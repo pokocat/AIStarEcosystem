@@ -12,12 +12,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronLeft, RefreshCw, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, ChevronLeft, ClipboardPaste, RefreshCw, Sparkles, Zap } from "lucide-react";
 import { CreditMark, dramaConfirm } from "@/components/drama-ui";
 import { DramaComposer, type ComposerRef, type DramaComposerHandle } from "./composer";
 import { PreviewModal } from "./preview-modal";
 import { VideoCover } from "./video-cover";
 import { RecipesApi } from "@/api";
+import { newClientRequestId } from "@/api/shorts";
 import type { DramaRecipe } from "@/api/recipes";
 import { useAsync } from "@/lib/drama-query";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
@@ -41,6 +42,8 @@ export function ShortCreateConsole({
   const router = useRouter();
   const composerRef = React.useRef<DramaComposerHandle>(null);
   const inFlight = React.useRef(false); // 同步在途守门：确认弹窗 + 回车可能并发触发，防双扣费
+  // 幂等键：失败重试沿用同一个，服务端按它查重，避免重复扣开拍费（网络层丢响应时的双扣）。
+  const requestIdRef = React.useRef<string | null>(null);
   const [idea, setIdea] = React.useState(initialIdea);
   const [picked, setPicked] = React.useState<DramaRecipe | null>(null);
   const [preview, setPreview] = React.useState<DramaRecipe | null>(null);
@@ -94,10 +97,12 @@ export function ShortCreateConsole({
     }
     inFlight.current = true;
     setStarting(true);
+    // 两条分支都扣同一笔开拍费，都要带幂等键：失败重试沿用同一把，服务端按 (owner,key) 查重。
+    if (!requestIdRef.current) requestIdRef.current = newClientRequestId();
     try {
       if (picked) {
         // 带创意：后端按创意风格 seed 草稿（含扣费）；自由主题经 sessionStorage 带入工厂。
-        const out = await RecipesApi.applyRecipe(picked);
+        const out = await RecipesApi.applyRecipe(picked, requestIdRef.current);
         stashIdea(text);
         if (out.kind === "short") {
           router.push(`/shorts/make?draft=${encodeURIComponent(out.shortId)}`);
@@ -106,7 +111,11 @@ export function ShortCreateConsole({
         }
       } else {
         // 纯自由点子：进工厂新建草稿（扣费在后端 createShort）。
+        // 草稿由 /shorts/make 的网关创建，幂等键随 sessionStorage 一并带过去。
         stashIdea(text);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("drama.shorts.createKey", requestIdRef.current);
+        }
         router.push("/shorts/make");
       }
       // 成功即导航离开，保持 inFlight=true 不重置（避免离开过程中再触发）。
@@ -130,7 +139,7 @@ export function ShortCreateConsole({
       const ok = await dramaConfirm({
         cost,
         title: "开始制作短视频",
-        body: "进入工作台后，AI 将先生成口播脚本与分镜，本次消耗如下。",
+        body: "进工作台后，AI 先出口播脚本和分镜。",
         confirmLabel: "确认生成",
       });
       if (!ok) return;
@@ -159,7 +168,7 @@ export function ShortCreateConsole({
                 </span>
               </h1>
               <div className="muted" style={{ marginTop: 8, fontSize: 14.5 }}>
-                单条速成 · 竖屏 9:16。从下方<strong style={{ color: "var(--ink-2)" }}>创意推荐</strong>中选一个定调，补充想法会更精准。
+                单条速成 · 竖屏 9:16。从下方<strong style={{ color: "var(--ink-2)" }}>创意推荐</strong>里选一个定风格，再补一句自己的主题会更准。
               </div>
             </div>
           </>
@@ -180,7 +189,7 @@ export function ShortCreateConsole({
             <DramaComposer
               ref={composerRef}
               defaultText={initialIdea}
-              placeholder="描述这条短视频想表达什么…例如:一支熬夜也能撑住的精华,油皮姐妹别错过（选一个创意「试试同款」可定调风格）"
+              placeholder="这条短视频想说什么？例如：一支熬夜也能撑住的精华，油皮姐妹别错过（选一个创意「试试同款」可以定风格）"
               refs={refs}
               onRemoveRef={() => setPicked(null)}
               onChange={setIdea}
@@ -218,10 +227,38 @@ export function ShortCreateConsole({
             </div>
           </div>
 
+          {/* v0.143：已经写好整段提示词的用户走「提示词直出」，不必在这里再跟 AI 聊一遍 */}
+          <button
+            type="button"
+            className="row gap-2"
+            onClick={() => router.push("/shorts/prompt")}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              alignItems: "center",
+              padding: "11px 14px",
+              borderRadius: 14,
+              border: "1px dashed var(--line)",
+              background: "var(--surface)",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <ClipboardPaste size={15} style={{ color: "var(--accent-2)", flex: "none" }} />
+            <span style={{ fontWeight: 700, fontSize: 13 }}>已经写好提示词？</span>
+            <span
+              className="faint"
+              style={{ fontSize: 12, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              整段粘贴，AI 直接拆成人物卡、场景和逐镜分镜
+            </span>
+            <ArrowRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
+          </button>
+
           {/* 创意推荐(创意市场单集创意) */}
           <div className="row" style={{ marginTop: 22, marginBottom: 12 }}>
             <span style={{ fontWeight: 700, fontSize: 13.5 }}>创意推荐</span>
-            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>点击卡片预览成片,「试试同款」即可带入对话框制作</span>
+            <span className="faint" style={{ fontSize: 12, marginLeft: 8 }}>点卡片看成片效果，「试试同款」带入对话框接着写</span>
             <span className="grow" />
             {shortRecipes.length > 6 && (
               <button type="button" className="chip" onClick={() => setPage((p) => p + 1)}>
@@ -263,7 +300,7 @@ export function ShortCreateConsole({
               <div className="card col gap-2" style={{ padding: 18, minHeight: 180, justifyContent: "center" }}>
                 <Sparkles size={18} style={{ color: "var(--accent)" }} />
                 <div style={{ fontWeight: 800 }}>正在同步创意市场</div>
-                <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>创意推荐直接来自创意市场；稍等片刻即可显示已上架的单集创意。</div>
+                <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>创意推荐直接来自创意市场，上架的单集创意会显示在这里。</div>
               </div>
             )}
           </div>
@@ -277,7 +314,7 @@ export function ShortCreateConsole({
             previewVideo: preview.previewVideo,
             title: preview.title,
             cat: preview.type,
-            desc: preview.summary || preview.data?.mainline || "试试同款后将按该创意的风格拆解你的主题。",
+            desc: preview.summary || preview.data?.mainline || "点「试试同款」后，按这个创意的风格拆你的主题。",
             tags: recipeTags(preview),
             beats: recipeBeats(preview),
             estimate: recipeEstimate(preview),

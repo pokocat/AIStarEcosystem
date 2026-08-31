@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -37,6 +38,9 @@ public class DramaShortService {
 
     /** 进工作台开拍扣费默认单价（admin「短剧专区」drama.credit.short-entry 可改）。 */
     private static final long SHORT_ENTRY_COST_DEFAULT = 10;
+    /** 开拍付费创建的幂等窗口：客户端超时重试都发生在几秒到几分钟内，2 小时足够覆盖。 */
+    /** 幂等键长度上限（客户端生成的随机串）。 */
+    private static final int CLIENT_REQUEST_ID_MAX = 64;
 
     private final DramaShortRepository repo;
     private final ObjectMapper om;
@@ -112,18 +116,84 @@ public class DramaShortService {
         if (body == null || !body.isObject()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_BODY_REQUIRED", "缺少新建短视频参数");
         }
-        return withEntryCharge(userId, () -> doCreateShort(body, userId));
+        // 提示词直出：seed 语义校验必须在 hold 之前 —— 空分镜表不能先扣费再落一条 0 镜草稿。
+        if (body.path("seed").isObject()) {
+            DramaShortPromptService.requireUsableSeed(body.get("seed"));
+        }
+        // 幂等：响应在网络层丢失后客户端会原样重试，没有幂等键就会再建一条草稿、再扣一笔开拍费。
+        String clientRequestId = clientRequestId(body);
+        IdemLookup idem = lookupIdempotency(userId, clientRequestId);
+        if (idem.hit() != null) return toDetail(idem.hit());
+        try {
+            return withEntryCharge(userId, () -> doCreateShort(body, userId, idem.keyToPersist()));
+        } catch (DataIntegrityViolationException e) {
+            // 并发同键：另一个请求先落库并占住了唯一索引。withEntryCharge 已释放本次冻结
+            // （本次不扣费），回查赢家的草稿返回，两个请求看到同一条、只付一笔。
+            DramaShort winner = clientRequestId == null ? null
+                    : repo.findFirstByOwnerUserIdAndClientRequestId(userId, clientRequestId).orElse(null);
+            if (winner == null) throw e; // 撞的不是幂等键 → 是真的写库问题，别掩盖
+            log.info("[drama-short] create idempotent-race user={} id={} key={}",
+                    userId, winner.getId(), clientRequestId);
+            return toDetail(winner);
+        }
+    }
+
+    /**
+     * 幂等查找结果。一次查询同时决定两件事：
+     *   hit —— 命中且未删的草稿，直接复用（不扣费）；
+     *   keyToPersist —— 新草稿该落哪把键：键没被占就用客户端的；
+     *     已被同账号回收站里的旧草稿占着，就换一把服务端键（不能复活旧草稿，也不能撞唯一索引）。
+     */
+    private record IdemLookup(DramaShort hit, String keyToPersist) {}
+
+    private IdemLookup lookupIdempotency(String userId, String clientRequestId) {
+        if (clientRequestId == null) return new IdemLookup(null, null);
+        DramaShort existing = repo.findFirstByOwnerUserIdAndClientRequestId(userId, clientRequestId).orElse(null);
+        if (existing == null) return new IdemLookup(null, clientRequestId);
+        if (existing.getDeletedAt() != null) {
+            log.info("[drama-short] idempotent-key-on-deleted user={} id={} key={} → 按新请求处理",
+                    userId, existing.getId(), clientRequestId);
+            return new IdemLookup(null, serverIdempotencyKey());
+        }
+        log.info("[drama-short] idempotent-hit user={} id={} key={}", userId, existing.getId(), clientRequestId);
+        return new IdemLookup(existing, clientRequestId);
+    }
+
+    private static String serverIdempotencyKey() {
+        return "srv_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    /**
+     * 客户端幂等键：只接受短的可见字符串；缺省 / 超长 / 空白一律当没传（退回原有非幂等行为）。
+     */
+    private static String clientRequestId(JsonNode body) {
+        String raw = text(body, "clientRequestId");
+        if (raw == null) return null;
+        String value = raw.trim();
+        if (value.isEmpty() || value.length() > CLIENT_REQUEST_ID_MAX) return null;
+        return value;
     }
 
     /** 实际建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
-    private JsonNode doCreateShort(JsonNode body, String userId) {
+    private JsonNode doCreateShort(JsonNode body, String userId, String clientRequestId) {
         OffsetDateTime now = OffsetDateTime.now();
-        String fmtKey = text(body, "fmtKey");
-        String fmtName = orDefault(text(body, "fmtName"), fmtKey == null ? "短视频" : fmtKey);
-        String idea = text(body, "idea");
-        String reopen = text(body, "reopen");
-        String title = orDefault(text(body, "title"),
-                orDefault(idea, orDefault(reopen, fmtKey == null ? "未命名短视频" : fmtName)));
+        // v0.143 提示词直出：body.seed = 已拆解（可能被用户改过）的结构 → 直接 seed 成带分镜的草稿。
+        // 只接创作内容，分镜一律 flow=draft（seed 不得携带首帧 / 视频 / 配音产物）。
+        ObjectNode seeded = body.path("seed").isObject()
+                ? DramaShortPromptService.seedToDraftData(body.get("seed"), om) : null;
+        String fmtKey = seeded != null ? null : text(body, "fmtKey");
+        String fmtName = seeded != null
+                ? seeded.path("fmtName").asText("自定义短片")
+                : orDefault(text(body, "fmtName"), fmtKey == null ? "短视频" : fmtKey);
+        String idea = seeded != null ? null : text(body, "idea");
+        String reopen = seeded != null ? null : text(body, "reopen");
+        String title = seeded != null
+                ? seeded.path("title").asText("未命名短视频")
+                : orDefault(text(body, "title"),
+                        orDefault(idea, orDefault(reopen, fmtKey == null ? "未命名短视频" : fmtName)));
+        ObjectNode payload = seeded != null ? seeded : seedData(title, fmtKey, fmtName, idea, reopen);
+        if (seeded != null) continuity.ensureDraft(payload); // 依赖图按服务端规则派生，不信客户端
+
 
         DramaShort row = DramaShort.builder()
                 .id("dvs_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
@@ -133,17 +203,19 @@ public class DramaShortService {
                 .fmtName(fmtName)
                 .coverFrom(orDefault(text(body, "coverFrom"), "#f97316"))
                 .coverTo(orDefault(text(body, "coverTo"), "#e11d48"))
-                .durationSec(0)
-                .shotCount(0)
+                .durationSec(sumDuration(payload.path("shots")))
+                .shotCount(payload.path("shots").size())
                 .doneCount(0)
                 .status("draft")
                 .progress(0)
-                .payloadJson(write(seedData(title, fmtKey, fmtName, idea, reopen)))
+                .payloadJson(write(payload))
+                .clientRequestId(clientRequestId)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
         repo.save(row);
-        log.info("[drama-short] create user={} id={} fmt={}", userId, row.getId(), fmtKey);
+        log.info("[drama-short] create user={} id={} fmt={} seededShots={}",
+                userId, row.getId(), fmtKey, row.getShotCount());
         return toDetail(row);
     }
 
@@ -313,14 +385,35 @@ public class DramaShortService {
     public String createFromRecipe(String userId, String title, String type,
                                    String coverFrom, String coverTo,
                                    String styleName, String styleRef) {
-        return withEntryCharge(userId, () ->
-                doCreateFromRecipe(userId, title, type, coverFrom, coverTo, styleName, styleRef));
+        return createFromRecipe(userId, title, type, coverFrom, coverTo, styleName, styleRef, null);
+    }
+
+    /**
+     * 套用单集创意建草稿（v0.145 起可带幂等键）。套用同样扣一笔开拍费，
+     * 因此与 {@link #createShort} 共用同一把 (owner, clientRequestId) 唯一键与并发处理。
+     */
+    public String createFromRecipe(String userId, String title, String type,
+                                   String coverFrom, String coverTo,
+                                   String styleName, String styleRef, String clientRequestId) {
+        IdemLookup idem = lookupIdempotency(userId, clientRequestId);
+        if (idem.hit() != null) return idem.hit().getId();
+        try {
+            return withEntryCharge(userId, () -> doCreateFromRecipe(
+                    userId, title, type, coverFrom, coverTo, styleName, styleRef, idem.keyToPersist()));
+        } catch (DataIntegrityViolationException e) {
+            DramaShort winner = clientRequestId == null ? null
+                    : repo.findFirstByOwnerUserIdAndClientRequestId(userId, clientRequestId).orElse(null);
+            if (winner == null) throw e;
+            log.info("[drama-short] create-from-recipe idempotent-race user={} id={} key={}",
+                    userId, winner.getId(), clientRequestId);
+            return winner.getId();
+        }
     }
 
     /** 实际从单集创意建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
     private String doCreateFromRecipe(String userId, String title, String type,
                                       String coverFrom, String coverTo,
-                                      String styleName, String styleRef) {
+                                      String styleName, String styleRef, String clientRequestId) {
         OffsetDateTime now = OffsetDateTime.now();
         String safeTitle = orDefault(title, "未命名短视频");
         String fmtName = orDefault(type, "风格短片");
@@ -353,6 +446,7 @@ public class DramaShortService {
                 .status("draft")
                 .progress(0)
                 .payloadJson(write(data))
+                .clientRequestId(clientRequestId)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -369,6 +463,15 @@ public class DramaShortService {
     }
 
     /** 新建时的最小 ShortDraftData（结构合法、各数组为空，前端各步渲染空状态 + 自动补开场白）。 */
+    /** 分镜时长求和（新建即带分镜的提示词直出草稿要立刻有正确卡片时长）。 */
+    private static int sumDuration(JsonNode shots) {
+        int total = 0;
+        if (shots != null && shots.isArray()) {
+            for (JsonNode s : shots) total += Math.max(0, s.path("dur").asInt(0));
+        }
+        return total;
+    }
+
     private ObjectNode seedData(String title, String fmtKey, String fmtName, String idea, String reopen) {
         ObjectNode root = om.createObjectNode();
         if (idea != null) root.put("idea", idea); else root.putNull("idea");
@@ -406,8 +509,10 @@ public class DramaShortService {
         o.put("doneCount", s.getDoneCount());
         o.put("status", orDefault(s.getStatus(), "draft"));
         o.put("progress", s.getProgress());
-        String coverUrl = resolveAssetUrl(media.coverUrl());
-        String videoUrl = resolveAssetUrl(media.videoUrl());
+        // previewMedia 会退到 shots 里客户端可写的 frameUrl / videoUrl，按不可信处理：
+        // 裸字符串不签名（只有我们自己签过的 URL 才会被重签）。
+        String coverUrl = resolveAssetUrl(media.coverUrl(), false);
+        String videoUrl = resolveAssetUrl(media.videoUrl(), false);
         if (coverUrl != null) o.put("coverUrl", coverUrl); else o.putNull("coverUrl");
         if (videoUrl != null) o.put("videoUrl", videoUrl); else o.putNull("videoUrl");
         o.put("updated", relativeTime(s.getUpdatedAt()));
@@ -458,13 +563,19 @@ public class DramaShortService {
     /**
      * 草稿 payload 保存的是当时生成接口返回的资源 URL，可能是裸 OSS URL，也可能是已经过期的签名 URL。
      * 列表/详情出 wire 时必须重新签名，否则完成态卡片首帧会在签名过期或 OSS 私有桶下变成 403。
+     *
+     * @param trustedKey true = 该字段只由服务端写（assembled.cdnKey / audio.cdnKey），裸字符串可以当 OSS key 直接签；
+     *                   false = 该字段客户端可写（shots 的 frameUrl / videoUrl），**绝不能**把裸字符串当 key 签 ——
+     *                   否则用户 A 只要 PUT 一个 `media/<用户B的对象key>` 就能换回一个有效签名 URL，
+     *                   等于跨账号读别人的私有对象（2026-08-31 Codex 评审发现；此前误判为「只骗自己」）。
      */
-    private String resolveAssetUrl(String raw) {
+    private String resolveAssetUrl(String raw, boolean trustedKey) {
         if (raw == null || raw.isBlank()) return raw;
         String value = raw.trim();
         if (value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://")) {
             return cdnUrlSigner.maybeSign(value);
         }
+        if (!trustedKey) return value; // 客户端写的裸字符串原样返回，不签名
         String signed = cdnUrlSigner.signKey(value);
         return signed == null || signed.isBlank() ? value : signed;
     }
@@ -491,26 +602,26 @@ public class DramaShortService {
         JsonNode assembled = payload.path("assembled");
         if (assembled instanceof ObjectNode object) {
             String key = nonBlank(text(object, "cdnKey"));
-            if (key != null) object.put("url", resolveAssetUrl(key));
+            if (key != null) object.put("url", resolveAssetUrl(key, true));
             else {
                 String url = nonBlank(text(object, "url"));
-                if (url != null) object.put("url", resolveAssetUrl(url));
+                if (url != null) object.put("url", resolveAssetUrl(url, true));
             }
             String coverKey = nonBlank(text(object, "coverCdnKey"));
-            if (coverKey != null) object.put("coverUrl", resolveAssetUrl(coverKey));
+            if (coverKey != null) object.put("coverUrl", resolveAssetUrl(coverKey, true));
         }
         JsonNode shots = payload.path("shots");
         if (!shots.isArray()) return;
         for (JsonNode sh : shots) {
             if (!(sh instanceof ObjectNode shot)) continue;
             String one = nonBlank(text(shot, "frameUrl"));
-            if (one != null) shot.put("frameUrl", resolveAssetUrl(one));
+            if (one != null) shot.put("frameUrl", resolveAssetUrl(one, false));
             String video = nonBlank(text(shot, "videoUrl"));
-            if (video != null) shot.put("videoUrl", resolveAssetUrl(video));
+            if (video != null) shot.put("videoUrl", resolveAssetUrl(video, false));
             JsonNode audio = shot.path("audio");
             if (audio instanceof ObjectNode audioObject) {
                 String audioKey = nonBlank(text(audioObject, "cdnKey"));
-                if (audioKey != null) audioObject.put("url", resolveAssetUrl(audioKey));
+                if (audioKey != null) audioObject.put("url", resolveAssetUrl(audioKey, true));
             }
             JsonNode arr = shot.get("frameUrls");
             if (arr != null && arr.isArray() && !arr.isEmpty()) {
@@ -518,7 +629,7 @@ public class DramaShortService {
                 for (JsonNode el : arr) {
                     if (el.isNull()) { resigned.addNull(); continue; }
                     String u = nonBlank(el.asText(null));
-                    resigned.add(u != null ? resolveAssetUrl(u) : el.asText(null));
+                    resigned.add(u != null ? resolveAssetUrl(u, false) : el.asText(null));
                 }
                 shot.set("frameUrls", resigned);
             }

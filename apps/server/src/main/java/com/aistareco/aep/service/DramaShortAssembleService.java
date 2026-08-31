@@ -1,7 +1,10 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.model.DramaShort;
+import com.aistareco.aep.model.MaterialVideoJob;
 import com.aistareco.aep.repository.DramaShortRepository;
+import com.aistareco.aep.repository.MaterialVideoJobRepository;
+import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
@@ -32,8 +35,10 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -51,6 +56,7 @@ public class DramaShortAssembleService {
             .build();
 
     private final DramaShortRepository repo;
+    private final MaterialVideoJobRepository videoJobs;
     private final FfmpegRunner ffmpeg;
     private final CdnUploader cdnUploader;
     private final CdnUrlSigner signer;
@@ -62,6 +68,7 @@ public class DramaShortAssembleService {
     private final List<String> trustedDownloadOrigins;
 
     public DramaShortAssembleService(DramaShortRepository repo,
+                                     MaterialVideoJobRepository videoJobs,
                                      FfmpegRunner ffmpeg,
                                      CdnUploader cdnUploader,
                                      CdnUrlSigner signer,
@@ -73,6 +80,7 @@ public class DramaShortAssembleService {
                                      @Value("${aep.cdn.public-base-url:/cdn}") String cdnPublicBaseUrl,
                                      @Value("${aep.cdn.oss.base-url:}") String cdnOssBaseUrl) {
         this.repo = repo;
+        this.videoJobs = videoJobs;
         this.ffmpeg = ffmpeg;
         this.cdnUploader = cdnUploader;
         this.signer = signer == null ? CdnUrlSigner.NOOP : signer;
@@ -133,6 +141,7 @@ public class DramaShortAssembleService {
         String uploadedKey = null;
         String uploadedCoverKey = null;
         try {
+            requireOwnClips(shortId, userId, plan);
             storage.checkQuota("drama", userId, 0);
             workDir = Files.createTempDirectory("drama-short-assemble-");
             List<Path> locals = new ArrayList<>();
@@ -274,6 +283,80 @@ public class DramaShortAssembleService {
         } finally {
             cleanup(workDir);
         }
+    }
+
+    /**
+     * 出片产物出处核验：每一镜的视频都必须来自**这个账号自己的**短剧渲染任务。
+     *
+     * <p>草稿 payload 是客户端整份 PUT 上来的，历史上不校验 {@code flow} / {@code videoUrl}
+     * （见 TODO.md「PUT 保存可伪造逐镜产物」）。伪造
+     * {@code {"flow":"done","videoUrl":"/cdn/<平台已有视频>"}} 就能跳过逐镜出片扣费直接总装成片。
+     * 这里在花掉任何 ffmpeg / OSS 资源之前，把每镜视频按资产路径比对本人任务产物。</p>
+     *
+     * <p>先按本草稿的任务比对，再退到该账号全部短剧任务：老草稿的任务可能没落 {@code script_id}，
+     * 且同一账号跨草稿复用自己已付费的成片不算绕过计费。两级都不命中 → 拒绝并要求重新出片。</p>
+     */
+    private void requireOwnClips(String shortId, String userId, AssemblyPlan plan) {
+        Set<String> draftAssets = assetPathsOf(videoJobs.findScopedByScript(
+                userId, MaterialVideoJobService.APP_DRAMA, shortId));
+        Set<String> ownerAssets = null; // 惰性：只有本草稿任务对不上时才全量扫该账号
+        List<Integer> unverified = new ArrayList<>();
+        for (Segment segment : plan.segments()) {
+            String asset = assetPath(segment.clipUrl());
+            if (asset == null || draftAssets.contains(asset)) continue;
+            if (ownerAssets == null) {
+                ownerAssets = assetPathsOf(videoJobs.findScoped(userId, MaterialVideoJobService.APP_DRAMA));
+            }
+            if (ownerAssets.contains(asset)) {
+                log.warn("[drama-short-assemble] clip matched owner-wide job (missing script_id?) short={} shot={}",
+                        shortId, segment.no());
+                continue;
+            }
+            unverified.add(segment.no());
+        }
+        if (!unverified.isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_CLIP_UNVERIFIED",
+                    "镜 " + join(unverified) + " 的视频不是这个账号出片生成的，无法合成；请在分镜表里重新出片。");
+        }
+    }
+
+    /** 任务产物的资产路径集合（同时收 URL 全路径与文件名，容忍 CDN 域名 / 前缀变更）。 */
+    private static Set<String> assetPathsOf(List<MaterialVideoJob> jobs) {
+        Set<String> out = new HashSet<>();
+        for (MaterialVideoJob job : jobs) {
+            String path = assetPath(job.getVideoUrl());
+            if (path != null) out.add(path);
+        }
+        return out;
+    }
+
+    /**
+     * 资产标识：去掉 scheme / host / 查询串，只留路径与文件名。
+     * 签名 URL 每次读取都会重签（§4.7.7），因此不能拿整串 URL 直接比。
+     */
+    static String assetPath(String url) {
+        if (url == null || url.isBlank()) return null;
+        String value = url.trim();
+        int query = value.indexOf('?');
+        if (query >= 0) value = value.substring(0, query);
+        int scheme = value.indexOf("://");
+        if (scheme >= 0) {
+            int slash = value.indexOf('/', scheme + 3);
+            value = slash >= 0 ? value.substring(slash) : "/";
+        }
+        int lastSlash = value.lastIndexOf('/');
+        String file = lastSlash >= 0 ? value.substring(lastSlash + 1) : value;
+        // 文件名带任务/资产 id，足以唯一标识产物；用它比对可跨 CDN 前缀迁移。
+        return file.isBlank() ? value : file;
+    }
+
+    private static String join(List<Integer> nos) {
+        StringBuilder sb = new StringBuilder();
+        for (Integer no : nos) {
+            if (sb.length() > 0) sb.append("、");
+            sb.append(no);
+        }
+        return sb.toString();
     }
 
     static AssemblyPlan buildPlan(JsonNode data) {

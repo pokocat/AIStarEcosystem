@@ -676,7 +676,29 @@ export const AvatarApi = {
     return apiFetch(`/avatars/${id}/looks`, { method: "POST", body: JSON.stringify(body) });
   },
   derivatives: (id: string): Promise<any[]> => {
-    if (USE_MOCK) return mock([]);
+    // mock：给出与 counts 大致对应的样例条目，让设定卡的切换器在演示模式下可用。
+    // fileUrl 留空表示「产物未就绪」，页面据此只显示封面、不冒充可播放视频。
+    if (USE_MOCK) {
+      const c: any = mockChars.find((x: any) => x.id === id);
+      if (!c) return mock([]);
+      const pick = (n: number) => `/plaza/PA-0${(n % 8) + 1}-${(n % 3) + 1}.jpg`;
+      const out: any[] = [];
+      const add = (key: string, labels: string[], kind: string) => {
+        if (c.deriv?.[key] !== "done") return;
+        labels.forEach((label, i) =>
+          out.push({
+            id: `${id}-${key}-${i}`, avatarId: id, key, idx: i, kind,
+            fileUrl: null, thumbUrl: pick(i + key.length), label, spec: null,
+            createdAt: new Date().toISOString(),
+          }),
+        );
+      };
+      add("video", ["待机", "说话", "转身"], "video");
+      add("expr", ["平静", "微笑", "认真", "惊讶", "思考"], "image");
+      add("ward", ["日常", "职业"], "image");
+      add("atlas", ["正面", "四分之三", "侧面"], "image");
+      return mock(out);
+    }
     return apiFetch(`/avatars/${id}/derivatives`);
   },
   createDerivative: (id: string, body: { type: string; options?: { items?: { label: string; prompt: string }[]; extraPrompt?: string; motion?: string }; templateId?: string }): Promise<any> => {

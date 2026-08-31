@@ -11,9 +11,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +46,13 @@ class DramaShortServiceTest {
         repo = mock(DramaShortRepository.class);
         when(repo.save(any())).thenAnswer(inv -> {
             DramaShort s = inv.getArgument(0);
+            // 模拟唯一索引 uk_drama_short_owner_client_req：同 owner 同键的第二次插入直接抛。
+            if (s.getClientRequestId() != null && !db.containsKey(s.getId())) {
+                boolean taken = db.values().stream().anyMatch(o ->
+                        o.getOwnerUserId().equals(s.getOwnerUserId())
+                                && s.getClientRequestId().equals(o.getClientRequestId()));
+                if (taken) throw new DataIntegrityViolationException("uk_drama_short_owner_client_req");
+            }
             db.put(s.getId(), s);
             return s;
         });
@@ -56,6 +65,12 @@ class DramaShortServiceTest {
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null)
                         .toList());
+        // v0.145：幂等键按列直查（不再扫 payload）。
+        when(repo.findFirstByOwnerUserIdAndClientRequestId(anyString(), anyString())).thenAnswer(inv ->
+                db.values().stream()
+                        .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId())
+                                && inv.getArgument(1, String.class).equals(s.getClientRequestId()))
+                        .findFirst());
         when(repo.findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(anyString())).thenAnswer(inv ->
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() != null)
@@ -237,6 +252,154 @@ class DramaShortServiceTest {
     }
 
     @Test
+    void createWithPromptSeedBuildsShotsAndChargesEntryOnce() throws Exception {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        JsonNode body = OM.readTree("""
+                {"seed":{"title":"沙漠访谈","logline":"一场荒诞的复盘","style":["电影感","赛博古装"],
+                  "universalPrompt":"暖金逆光，浮尘",
+                  "characters":[{"name":"云曦","visual":"月白襦裙，鎏金步摇","performance":"温柔但犀利"},
+                                {"name":"赛博猴王","visual":"金橙长发，银蓝机械头冠","performance":"吹牛时手舞足蹈"}],
+                  "scenes":[{"name":"寺院访谈区","visual":"朱红立柱，午后斜阳"}],
+                  "shots":[{"durationSec":4,"visual":"两人入座","voWho":"旁白","voText":"准备开始访谈。",
+                            "castNames":["云曦","赛博猴王"],"sceneName":"寺院访谈区","timecode":"00:00-00:04"},
+                           {"durationSec":6,"visual":"猴王举起乌金锤","castNames":["赛博猴王"]}],
+                  "notes":["有一镜时长按画面复杂度估"],
+                  "promptSource":{"raw":"【角色】云曦：月白襦裙…"}}}
+                """);
+
+        JsonNode detail = svc.createShort(body, USER);
+        JsonNode meta = detail.get("meta");
+        JsonNode data = detail.get("data");
+
+        // 卡片字段立刻正确（提示词直出的草稿一建出来就带分镜）。
+        assertEquals("沙漠访谈", meta.get("title").asText());
+        assertEquals("电影感 · 赛博古装", meta.get("fmtName").asText());
+        assertEquals(2, meta.get("shotCount").asInt());
+        assertEquals(10, meta.get("durationSec").asInt());
+        assertEquals("draft", meta.get("status").asText());
+
+        // 视觉设定与来源提示词落库；一致性锚点由服务端按 visualBible 派生。
+        assertEquals(2, data.path("visualBible").path("characters").size());
+        assertEquals("暖金逆光，浮尘", data.path("visualBible").path("universal").asText());
+        assertEquals("【角色】云曦：月白襦裙…", data.path("promptSource").path("raw").asText());
+        assertEquals(1, data.path("promptNotes").size());
+        assertEquals(2, data.path("continuityManifest").path("characters").size());
+        assertEquals(2, data.path("continuityManifest").path("shots").path(0).path("castIds").size());
+        assertEquals(1, data.path("continuityManifest").path("shots").path(1).path("castIds").size());
+        assertEquals("draft", data.path("shots").path(0).path("flow").asText());
+
+        // 与「一句话生成」同一笔开拍费，不因为带 seed 多扣。
+        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void sameClientRequestIdReturnsTheFirstDraftAndChargesOnlyOnce() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("idea", "熬夜精华")
+                .put("clientRequestId", "req-abc-123");
+
+        JsonNode first = svc.createShort(body.deepCopy(), USER);
+        // 响应丢包后客户端原样重试：必须回到同一条草稿，且不再扣第二笔开拍费。
+        JsonNode retry = svc.createShort(body.deepCopy(), USER);
+
+        assertEquals(first.path("meta").path("id").asText(), retry.path("meta").path("id").asText());
+        assertEquals(1, db.size(), "重试不应再建一条草稿");
+        verify(creditService, times(1)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+    }
+
+    @Test
+    void differentClientRequestIdsCreateSeparateDrafts() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "req-1"), USER);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "req-2"), USER);
+        assertEquals(2, db.size());
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+    }
+
+    @Test
+    void idempotencyKeyIsScopedToOwner() {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "shared"), USER);
+        svc.createShort(OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "shared"), "u_other");
+        assertEquals(2, db.size(), "别人的幂等键不能命中我的草稿");
+    }
+
+    @Test
+    void concurrentSameKeyChargesOnceAndBothSeeTheWinner() {
+        // 真并发：两个请求都没查到对方（各自 idempotentHit 为空），都进扣费包裹；
+        // 唯一索引让第二次插入失败 → 释放本次冻结、回查赢家，两个请求看到同一条、只付一笔。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "race-key");
+
+        // 第一个请求正常落库
+        JsonNode winner = svc.createShort(body.deepCopy(), USER);
+        // 模拟「查重时还没看到对方」：第一次查返回空（逼它走到 save 撞索引），之后能查到赢家。
+        when(repo.findFirstByOwnerUserIdAndClientRequestId(eq(USER), eq("race-key")))
+                .thenReturn(Optional.empty())
+                .thenAnswer(inv -> db.values().stream()
+                        .filter(x -> "race-key".equals(x.getClientRequestId()))
+                        .findFirst());
+
+        JsonNode loser = svc.createShort(body.deepCopy(), USER);
+
+        assertEquals(winner.path("meta").path("id").asText(), loser.path("meta").path("id").asText(),
+                "落败的请求要返回赢家的草稿");
+        assertEquals(1, db.size(), "并发同键只能有一条草稿");
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, times(1)).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
+    }
+
+    @Test
+    void keyOnDeletedDraftIsTreatedAsNewShoot() {
+        // 用户主动删掉草稿后，带同一把旧键再来 = 新的一次开拍：照常扣费、建新草稿，
+        // 且新草稿不能占用那把旧键（否则撞唯一索引）。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "reuse-key");
+        String firstId = svc.createShort(body.deepCopy(), USER).path("meta").path("id").asText();
+        svc.deleteShort(firstId, USER);
+
+        JsonNode again = svc.createShort(body.deepCopy(), USER);
+
+        assertNotEquals(firstId, again.path("meta").path("id").asText());
+        assertEquals(2, db.size());
+        assertNotEquals("reuse-key", db.get(again.path("meta").path("id").asText()).getClientRequestId(),
+                "新草稿必须换一把服务端键，不能占用回收站里那条的键");
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+    }
+
+    @Test
+    void createFromRecipeSharesTheSameIdempotencyKey() {
+        // 套用单集创意同样扣一笔开拍费，重试必须回到同一条草稿。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        String first = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e",
+                "韦斯·安德森风格", "对称构图 · 复古色卡", "recipe-key");
+        String retry = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e",
+                "韦斯·安德森风格", "对称构图 · 复古色卡", "recipe-key");
+
+        assertEquals(first, retry);
+        assertEquals(1, db.size());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+    }
+
+    @Test
+    void emptySeedIsRejectedBeforeAnyCharge() throws Exception {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        JsonNode body = OM.readTree("""
+                {"seed":{"title":"空表","shots":[{"durationSec":4,"visual":"","voText":""}]}}
+                """);
+        BusinessException e = assertThrows(BusinessException.class, () -> svc.createShort(body, USER));
+        assertEquals("DRAMA_SHORT_SEED_EMPTY", e.getCode());
+        // 语义校验在 hold 之前：既不冻结也不 commit，更不落草稿。
+        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        assertTrue(db.isEmpty());
+    }
+
+    @Test
     void createFromRecipeChargesEntryOnce() {
         when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(8L);
         String id = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e", "韦斯·安德森风格", "对称构图 · 复古色卡");
@@ -264,6 +427,30 @@ class DramaShortServiceTest {
         verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
         verify(creditService).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
         verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void clientWrittenBareKeyIsNotSigned() {
+        // Codex 评审（2026-08-31）：shots 的 frameUrl / videoUrl 是客户端 PUT 可写的。
+        // 若把裸字符串当 OSS key 直接签名，用户 A 只要写 `media/<用户B的对象key>` 就能换回
+        // 一个有效签名 URL = 跨账号读别人的私有对象。这里锁住「客户端写的裸 key 不签名」。
+        CdnUrlSigner signer = signerWithFakeOss("https://oss.test");
+        DramaShortService svc2 = new DramaShortService(repo, OM, creditService, configs, signer,
+                new DramaShortContinuityService(OM));
+        String victimKey = "media/drama-shorts/victim-draft/frame-1.jpg";
+        String payload = "{\"step\":\"script\",\"meta\":null,\"chat\":[],\"refs\":[],"
+                + "\"shots\":[{\"id\":\"sh1\",\"no\":1,\"dur\":4,\"visual\":\"画面\",\"flow\":\"done\","
+                + "\"frameUrl\":\"" + victimKey + "\",\"videoUrl\":\"" + victimKey + "\"}]}";
+        db.put("dvs_attacker", DramaShort.builder()
+                .id("dvs_attacker").ownerUserId(USER).title("借壳").status("draft")
+                .payloadJson(payload).createdAt(OffsetDateTime.now()).updatedAt(OffsetDateTime.now())
+                .build());
+
+        JsonNode shot = svc2.getShort("dvs_attacker", USER).path("data").path("shots").get(0);
+
+        assertEquals(victimKey, shot.path("frameUrl").asText(), "客户端写的裸 key 必须原样返回，不能被签名");
+        assertEquals(victimKey, shot.path("videoUrl").asText());
+        assertFalse(shot.path("frameUrl").asText().startsWith("SIGNED::"), "不得为任意 key 签发访问地址");
     }
 
     @Test

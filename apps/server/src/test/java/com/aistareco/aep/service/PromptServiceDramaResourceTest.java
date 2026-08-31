@@ -44,6 +44,28 @@ class PromptServiceDramaResourceTest {
     }
 
     @Test
+    void shortPromptParseResolvesFromResourceWithPlaceholders() {
+        // v0.143 提示词直出：拆解 prompt 的 .md 必须在 classpath（否则 origin=code → 503 不可用）。
+        PromptService.ResolvedPrompt p = realService().resolve(PromptService.KEY_DRAMA_SHORT_PROMPT_PARSE);
+        assertEquals("resource", p.origin(), "drama.short_prompt_parse 应能从 .md 解析（非 code 兜底）");
+        assertFalse(p.system().isBlank());
+        for (String ph : new String[]{"{{prompt}}", "{{instructionClause}}", "{{maxShots}}", "{{maxShotSec}}",
+                "{{maxCharacters}}", "{{maxScenes}}"}) {
+            assertTrue(p.userTemplate().contains(ph) || p.system().contains(ph), "模板应含占位符 " + ph);
+        }
+        // 服务对 system 与 user 都做 fill（上限规则写在 system 段），两段填完都不该残留占位符。
+        java.util.Map<String, String> vars = java.util.Map.of(
+                "prompt", "【角色】阿宁：齐耳短发", "instructionClause", "",
+                "maxShots", "40", "maxShotSec", "15", "maxCharacters", "6", "maxScenes", "6");
+        String filledUser = PromptService.fill(p.userTemplate(), vars);
+        String filledSystem = PromptService.fill(p.system(), vars);
+        assertTrue(filledUser.contains("齐耳短发"));
+        assertFalse(filledUser.contains("{{"), "user 段填充后不应残留占位符");
+        assertFalse(filledSystem.contains("{{"), "system 段填充后不应残留占位符");
+        assertTrue(filledSystem.contains("40") && filledSystem.contains("15"), "上限应落成真实数字");
+    }
+
+    @Test
     void dramaMediaPromptsResolveFromResource() {
         // v0.72：图像/视频是单 prompt（无 system，整块为 user 模板）。
         PromptService svc = realService();

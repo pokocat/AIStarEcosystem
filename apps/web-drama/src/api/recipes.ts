@@ -205,8 +205,9 @@ export type ApplyRecipeResult =
 /**
  * 套用已发布配方。多集创意新建六阶段项目，单集创意（如官方风格短片）新建短视频草稿。
  * 传完整 recipe 以便 mock 模式镜像后端的单 / 多集分流（单集还会把风格 styleRef 带进短视频草稿）。
+ * clientRequestId：单集分流扣开拍费，同一把键重试只扣一笔（服务端 (owner,key) 唯一索引）。
  */
-export async function applyRecipe(r: DramaRecipe): Promise<ApplyRecipeResult> {
+export async function applyRecipe(r: DramaRecipe, clientRequestId?: string): Promise<ApplyRecipeResult> {
   if (USE_MOCK) {
     if (r.episodes > 1) return mockDelay({ kind: "project", projectId: `dp_mock_${Date.now()}` });
     // 单集：建一条带风格的短视频草稿（mock store 里真建，跳转后工厂可加载）
@@ -221,7 +222,11 @@ export async function applyRecipe(r: DramaRecipe): Promise<ApplyRecipeResult> {
     });
     return { kind: "short", shortId: d.meta.id };
   }
-  return apiFetch<ApplyRecipeResult>(`/me/drama/recipes/${encodeURIComponent(r.id)}/apply`, { method: "POST" });
+  return apiFetch<ApplyRecipeResult>(`/me/drama/recipes/${encodeURIComponent(r.id)}/apply`, {
+    method: "POST",
+    // 单集创意会扣一笔开拍费；带幂等键，网络重试不重复扣（v0.145）。
+    body: clientRequestId ? { clientRequestId } : {},
+  });
 }
 
 // ── 运营：从用户作品精选（通道②）+ 手建内置（通道③）；用户：回应邀请 ──────────────

@@ -276,15 +276,18 @@ class DramaRecipeServiceTest {
                 .payloadJson("{\"mainline\":\"\",\"beats\":[],\"characters\":[],\"hooks\":[],\"notes\":\"创作方法…\"}")
                 .build();
         when(recipeRepo.findByIdAndDeletedAtIsNull("dr1")).thenReturn(Optional.of(r));
-        when(shortService.createFromRecipe(eq("u9"), anyString(), anyString(), any(), any(), anyString(), anyString()))
+        // v0.145：套用走带幂等键的 8 参重载（套用同样扣一笔开拍费）。
+        when(shortService.createFromRecipe(eq("u9"), anyString(), anyString(), any(), any(),
+                anyString(), anyString(), nullable(String.class)))
                 .thenReturn("dvs_made1");
 
-        JsonNode out = svc.applyRecipe("dr1", "u9");
+        JsonNode out = svc.applyRecipe("dr1", "u9", "apply-key-1");
         assertEquals("short", out.path("kind").asText());
         assertEquals("dvs_made1", out.path("shortId").asText());
-        // 风格作为 styleRef 传给短视频草稿；不建项目；useCount 累加
+        // 风格作为 styleRef 传给短视频草稿；幂等键透传；不建项目；useCount 累加
         verify(shortService).createFromRecipe(eq("u9"), eq("韦斯·安德森风格短片"), eq("风格短片"),
-                eq("#0ea5e9"), eq("#22c55e"), eq("韦斯·安德森风格短片"), contains("对称构图"));
+                eq("#0ea5e9"), eq("#22c55e"), eq("韦斯·安德森风格短片"), contains("对称构图"),
+                eq("apply-key-1"));
         verify(projectRepo, never()).save(any());
         assertEquals(4, r.getUseCount());
     }

@@ -86,6 +86,8 @@ public class PromptService {
     /** v0.79+: 互动剧（剧情互动短剧，DramaProject 的形态）—— 一句话主题起草整张剧集分支图。
      *  各集视频仍走六阶段（drama.epscript / frame_image / clip_video），互动剧不另起出片提示词。 */
     public static final String KEY_DRAMA_INTERACTIVE_DRAFT = "drama.interactive_draft";
+    /** v0.143+: 短视频「提示词直出」—— 用户粘贴的整段提示词 → 人物卡 / 场景 / 全片基调 / 逐镜分镜结构化拆解。 */
+    public static final String KEY_DRAMA_SHORT_PROMPT_PARSE = "drama.short_prompt_parse";
     /** v0.87+: 首页「跟 AI 聊出故事」脑暴 —— 对话回复 + 由对话生成「故事大纲」。立项之前的可恢复草稿。 */
     public static final String KEY_DRAMA_BRAINSTORM_CHAT = "drama.brainstorm_chat";
     public static final String KEY_DRAMA_BRAINSTORM_OUTLINE = "drama.brainstorm_outline";
@@ -121,6 +123,7 @@ public class PromptService {
                     KEY_DRAMA_RECIPE_EXTRACT,
                     KEY_DRAMA_INTERACTIVE_DRAFT,
                     KEY_DRAMA_BRAINSTORM_CHAT, KEY_DRAMA_BRAINSTORM_OUTLINE, KEY_DRAMA_HOTSPOT_DISTILL,
+                    KEY_DRAMA_SHORT_PROMPT_PARSE,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT,

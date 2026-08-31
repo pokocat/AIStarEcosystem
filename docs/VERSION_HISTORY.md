@@ -1,8 +1,88 @@
-# 版本增量历史（v0.5 → v0.141）
+# 版本增量历史（v0.5 → v0.146）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.146（2026-08-31）— 拆解等 90 秒不再像卡死 + 超长提示词可分卷
+
+生产实测暴露：一次拆解 `durationMs=92971`（403 字提示词、qwen3-5-9b，服务端返回 200 且 4 镜拆解成功），
+但前端只有按钮转圈，用户以为卡死或报错。用户同时看到的 `removeChild` 报错经查是浏览器扩展
+（`contentStart.js`，栈里没有本仓任何帧）在 React 重排后移除自己插入的节点，不是本应用缺陷。
+网关侧确认 `/api` 是 `proxy_read_timeout 180s`，93 秒不会被切断 —— 纯粹是反馈缺失。
+
+- **等待面板**（`/shorts/prompt`）：实时报时（`已等 N 秒`，按钮同步显示 `正在拆解 Ns`）+ 分段说明
+  （<30s「通常 30–90 秒，页面得开着」/ <120s「几千字几十镜超过 90 秒很常见，先别关」/ >120s「这次模型可能特别慢，
+  可以取消后拆短再试」）+ **可取消**（`AbortController` 经 `apiFetch` 的 `signal`，取消不算失败、不弹错）。
+  **不做假进度条** —— 上游不给进度，编一个只会骗人。
+- **分卷 MVP**：服务端命中 40 镜上限时在结果里回 `truncatedAfterTimecode`（最后一镜在原文里的时间码 = 拆到哪的锚点，
+  原文没写时间码则为空串）；预览页「拆解说明」给「接着拆剩下的部分」。切割抽成纯函数
+  `cutPromptTail(prompt, anchor)`（`lib/short-prompt-draft.ts`，5 个 vitest）：优先切在「以该结束点起头的新时间码」那一行
+  （精确边界，下一条不重复上一条最后一镜），否则退到「包含该结束点的行」行首 —— **宁可重复一镜（用户能删），
+  也不静默漏掉用户写的内容**；定位不到返回 null，UI 明确提示手动复制，不猜。
+  仍是一条一条拆，没做「一键批量建多条草稿」：那会一次扣多笔开拍费，该由用户逐条确认。
+- **文案**：修一处自相矛盾（等待面板先说「可以先去做别的」、后说「页面别关会中断」，而取消逻辑是后者）；
+  清掉 v0.144 残留的内部黑话「画面锚定」「上游」。
+- **`saveShort` 层伪造残留：先判「不修」，被 Codex 二轮评审推翻后当轮修掉**。原判断是「残留只剩自欺、不影响他人」——
+  **错的**：`resolveAssetUrl` 对裸字符串直接 `signKey`，而 `shots[].frameUrl/videoUrl/frameUrls` 客户端 PUT 可写，
+  用户 A 写 `media/<用户B的对象key>` 保存后，出 wire 时就会为该 key 签发有效访问地址 = 跨账号读取面。
+  已修：`resolveAssetUrl(raw, trustedKey)` 分流 —— 只有服务端自己写的字段（`assembled.cdnKey` / `audio.cdnKey`）
+  才允许把裸字符串当 key 签，客户端可写字段的裸字符串原样返回不签名；回归测试 `clientWrittenBareKeyIsNotSigned`。
+  **仍遗留**（已记 TODO，跨 drama 项目线同源）：构造 `https://<我方域>/media/<别人的key>` 这种完整 URL 时，
+  §4.7.7 要求的递归 `maybeSign` 仍会重签 —— 彻底解法是产物由服务端回写，或签名时做 key 归属校验。
+- **TODO.md 清理**：v0.144 已修的三项（人物 / 场景增删、分镜表出场人物、拆解限频）在 TODO 里各留着一份过期的
+  `[ ]`「原条目」重复项，一并清掉 —— 本轮动手前也因此重复实现过这三处，发现后已删除。
+- **Codex 二轮评审闭环（同轮修 6 项）**：① **分卷入口在主路径下永不出现** —— 提示词要求模型「超出只回前 40 镜」，
+  而 `dropped` 只在读到第 41 个节点时置位；契约加 `hasMore`，模型守上限时也能触发分卷。② 跨账号签名（见上条）。
+  ③ **上限切在长段中间会静默丢内容** —— 长段按要求被拆成多镜、共用同一时间码，切到「下一个时间码」会跳过该段剩下的动作；
+  服务端新增 `truncatedMidSegment`（第 41 镜与第 40 镜时间码相同即置位，模型声明式的 hasMore 也按此保守处理），
+  前端据此把那一行整行留给下一条。④ **多章时间轴重置时会倒退** —— 原实现只按结束点找、取第一次匹配，会切回前面章节；
+  改为先定位**完整时间码**，出现多次直接返回 null（宁可让用户手动复制也不切错）。⑤ **取消只停浏览器等待**，
+  服务端那次模型调用仍会跑完并占一次限频额度 —— 文案改成实话（"取消只是不再等结果，这次拆解仍会算一次额度"），
+  同时去掉不准确的"关掉就中断了"。⑥ mock 分支现在也尊重 `AbortSignal`，且被取消的旧请求不再清掉新请求的状态。
+- **门禁**：`DramaShort*Test` + `DramaRecipeServiceTest` 86/0（新增 hasMore 主路径 / 长段边界 / 未截断三例 + 跨账号签名回归）
+  + web-drama vitest **46/46**（`cutPromptTail` 6 例，含 Codex 提的长段与多章重置场景）
+  + `typecheck:all` + web-drama build + `check:api-contract` 全绿。浏览器实测：等待面板显示报时与说明、
+  取消后无悬挂无误报错且可重试。
+
+### v0.145（2026-08-31）— 开拍费幂等做成真约束 + 迁移编号真源文档化
+
+- **`V23__drama_short_client_request_id`（Java 迁移）**：`drama_shorts` 加 `client_request_id VARCHAR(64)` + `(owner_user_id, client_request_id)` 唯一索引 `uk_drama_short_owner_client_req`。存量行该列为 NULL，MySQL / H2 唯一索引都允许多个 NULL，加索引不会因存量数据失败；刻意不回填 payloadJson 里的旧键（v0.144 的键只在 2h 窗口内有意义，窗口早过）。用 Java 迁移而非 `.sql` 的原因与 V21/V22 相同：Flyway 早于 Hibernate 跑，而 `drama_shorts` 是 ddl-auto 建的表，全新 H2 dev 库首启时表还不存在，逐条 DDL 各自 try/catch 跳过。
+- **并发同键只扣一笔**：v0.144 的键存在 payloadJson、无唯一约束，只能挡「超时后再点一次」的顺序重试；真并发时两个请求互相看不到，各建一条草稿各扣一笔。现在改为按列直查（`findFirstByOwnerUserIdAndClientRequestId`，退役 payload 扫描与时间窗），落败方由唯一索引拦下 → `withEntryCharge` 释放本次冻结 → 回查赢家草稿返回。两个请求看到同一条，账面 `hold` 2 次但只 `commit` 1 次。
+- **键被回收站里的旧草稿占着**：视为一次新的开拍（用户主动删过那条，旧键不该复活它），换一把服务端键落库并照常计费；单次查询同时给出「是否命中」与「该落哪把键」（`IdemLookup`），不额外多查一次。
+- **「套用单集创意」同路收口**：这条路径也扣同一笔开拍费。`createFromRecipe` 加 8 参重载接幂等键，`applyRecipe(recipeId, userId, clientRequestId)` 透传，`POST /me/drama/recipes/{id}/apply` 接可选 body，前端 `RecipesApi.applyRecipe(r, key)`；创建控制台两条付费分支（套创意 / 自由点子）共用同一把键，失败重试沿用。`promote` 走脑暴自身的 promoted 幂等，不重复加键。
+- **迁移编号真源文档化**（本轮误报的根因收口）：新增 `apps/server/src/main/resources/db/migration/README.md`。编号横跨 `resources/db/migration/*.sql`（V1、V14–V20）与 `src/main/java/db/migration/*.java`（V2–V13、V21–V23）两处，只 `ls` SQL 目录会得出「V1 跳到 V14、停在 V20 → 编号漂移」的错误结论（2026-08-31 踩过，一度写成 P0，已撤回）。README 写明：两处一起数、下一个编号 = 线上 `flyway_schema_history` 最大 version + 1、`script` 列如何区分两类迁移（SQL 记文件名带 checksum / Java 记 `db.migration.V23__xxx` 且 checksum NULL）、以及何时必须写 Java 迁移。
+- **门禁**：server compile + `mvnw test` **716/0 失败**（新增并发同键 / 回收站键 / 套用创意幂等 3 例；`DramaRecipeServiceTest` 桩同步到 8 参）+ `typecheck:all` + `typecheck:admin` + web-drama build + web-aiavatar build + `check:api-contract` 全绿。
+- **无端点新增**（`/apply` 由无 body 改为接可选 body，openapi summary 同步）。
+
+### v0.144（2026-08-31）— 短视频线遗留缺陷收口：出片计费不可绕过 / 开拍费幂等 / 逐镜出场人物
+
+v0.143 上线后按 Codex 评审清单把遗留缺陷逐条修掉。**无表变更、无新迁移**（仓库 Flyway 编号存在漂移，见文末）。
+
+- **出片产物出处核验（原 P1，v0.76/v0.133 起就存在的计费绕过）**：`DramaShortAssembleService.assemble` 新增 `requireOwnClips` —— 每镜视频必须命中**本账号**短剧渲染任务（`MaterialVideoJob`）的产物；先按本草稿 `script_id` 比对，再退到该账号全部短剧任务（老草稿可能没落 script_id，跨草稿复用自己付过费的成片不算绕过），两级都不命中 → 400 `DRAMA_SHORT_CLIP_UNVERIFIED`。核验放在存储配额与 ffmpeg/OSS **之前**，伪造请求不消耗资源；按**资产路径 + 文件名**比对而非整串 URL（签名 URL 每次读取都会重签，§4.7.7）。此前伪造 `{"flow":"done","videoUrl":"/cdn/<平台已有视频>"}` 就能跳过逐镜出片扣费直接总装成片。
+- **开拍付费创建幂等（原 P2，v0.78 起）**：`POST /me/drama/shorts` 接受 `clientRequestId`，服务端按 owner + key 在 2 小时窗口内查重（键落 `payloadJson`，用新增的时间窗查询 `findByOwnerUserIdAndDeletedAtIsNullAndCreatedAtAfterOrderByCreatedAtDesc` 限住要读的 payload 量），命中回原草稿不再扣费。三个创建入口都带键。**限制写在代码注释与 TODO**：无唯一索引 → 只挡顺序重试，并发同键仍可能双写；`createFromRecipe` 暂未接。
+- **逐镜出场人物可见可改**：`ShortStoryboardTable` 在「口播文案 · 画面」格底部加出场人物 chip（与预览页同交互、同「未标注 = 按全员锚定」语义），不新增列避免表格溢出；`FormShot` 加 `castNames`（名字，与短剧线 `cast` 的角色实体 id 刻意分开）；「加一镜」继承上一镜的出场人物与场景。
+- **人物 / 场景可增删**：预览页与工作台「提示词设定」卡都加「加一位角色 / 加一个场景」+ 逐条删除；删角色同步清掉各镜 `castNames` 引用，删场景把引用它的镜头退回默认场景。
+- **拆解限频**：`DramaShortPromptService` 加进程内滑动窗口（单账号 5 分钟 10 次），超限 429 `DRAMA_PROMPT_RATE_LIMITED` 告知等待秒数，不排队不降级。拆解仍免费（总花费与 AI 对话线一致），但不再能靠反复点击持续消耗平台模型额度。
+- **门禁**：server compile + `mvnw test` **713/0**（+6：伪造拒绝 2 / 幂等 3 / 限频 1）+ `typecheck:all` + `typecheck:admin` + web-drama build(32 路由) + vitest 40/40 + contract 全绿；mock 浏览器复验「加/删角色 → 开始制作 → 工作台分镜表出场人物 chip → 提示词设定增删」整链。
+- **部署时一度误判为「Flyway 编号漂移」，已查实撤回**：生产 `flyway_schema_history` 最高 V22，而 `resources/db/migration/` 只有 8 个 SQL（V1、V14–V20）—— 缺的 V2–V13/V21/V22 是 **Java 迁移**（`src/main/java/db/migration/V*.java`）。线上 history 的 `script` 列可直接区分：SQL 迁移记文件名带 checksum，Java 迁移记 `db.migration.V22__...` 且 checksum 为 NULL。8 + 14 = 22，与启动日志 `validated 22 migrations` 一致，**无缺失、无漂移**。教训：**迁移编号横跨两个目录，只看 SQL 目录会得出错误结论**；下一个可用编号是 V23。
+- **未做（是特性不是缺陷）**：超 40 镜提示词的「自动分卷成多条草稿」。
+
+### v0.143（2026-08-31）— 短视频「提示词直出」：整段提示词 → 结构化分镜开拍
+
+**背景**：短视频线此前只有一条入口 —— 经 AI 创意 / AI 对话（一句话 → AI 创作脚本与分镜）。已经把提示词写全（人物设定卡、场景与光影、全片基调、带时间码的分镜脚本）的用户，只能把它塞进一句话输入框重新被 AI「改写」，设定被丢掉。本版补上「我自己的提示词直接开拍」这条路。
+
+- **新页面 `/shorts/prompt`（web-drama）**：粘贴原文 → 「开始拆解」（免费）→ 预览页（标题 / 一句话 / 风格标签 / 人物卡「外观 vs 表演」分栏 / 场景 / 全片画面基调 / 逐镜分镜表，全部可就地改；每镜可点人物 chip 增删出场人物）→ 「开始制作」（扣一笔 `drama.credit.short-entry`，与「一句话生成」同价）→ 进 `/shorts/make` 逐镜出片。入口三处：短视频工坊头部按钮 + 工坊新建卡（与「一句话生成」并列的第二张虚线卡）+ 新建控制台（`ShortCreateConsole`，覆盖首页短视频 tab 与 `/shorts/new`）底部一行。
+- **server 新端点 `POST /api/me/drama/shorts/parse-prompt`**（`DramaShortPromptService`）：新 promptKey **`drama.short_prompt_parse`**（resource 默认 `prompts/material/drama.short_prompt_parse.md`，复用 `DRAMA_SCRIPT_DRAFT` 已绑定端点，admin「短剧专区 · 提示词设置」可改，prompt 级 max_tokens 默认 8192）。**免费、不落库**（与 v0.87 脑暴 chat/outline 同惯例：AI 对话免费，进工作台才扣开拍费；总花费与 AI 对话线一致）。
+- **`POST /me/drama/shorts` 加 `body.seed`**：seed = 拆解结果（可被用户在预览页改过）+ `promptSource.raw` 原文 → 一次 hold→commit 建成带人物卡 / 场景 / 逐镜分镜的草稿，卡片时长与镜数立刻正确。**seed 只接创作内容**：分镜一律 `flow=draft`，`videoUrl` / `frameUrl` / `audio` / `assembled` 全部剥掉 —— 客户端不得借 seed 伪造成片（§8.0）。
+- **设定真的进模型（关键，不是只做展示）**：`ShortDraftData` 新增文档字段 `visualBible{universal,characters[{name,visual,performance}],scenes[{name,visual}]}` / `promptSource{raw,parsedAt}` / `promptNotes[]`（payloadJson 内，**无表变更无迁移**）。`DramaShortContinuityService.ensureDraft` 据此派生多角色（`character-main` / `character-2`…）与多场景（`scene-main` / `scene-2`…）锚点，每镜按 `castNames`（人物名）与 `sceneName` 精确挂人挂景：**显式空数组 = 这一镜确实没人（纯环境镜）**，字段缺失才按全员锚定（老草稿 / 模型漏字段不丢一致性）。人物「外观」进逐镜画面前缀，「表演」只留在 `performanceTraits`（不进画面，避免一句台词污染所有镜头）；`universal` 由前端 `buildShortFrameVars` 追加为「全片画面基调」。无 `visualBible` 时**完全不读 `castNames`**、行为与之前逐字不变（AI 对话线单角色 + 单场景）—— 评审曾指出初版无条件读该字段，理论上会让带 `castNames: []` 的历史 payload 变成无人镜，已收口。
+- **如实回报，不静默改设定**：提示词 20–20000 字（超出 400 挡回，不截断）；单镜 2–15 秒（超长按上限收口）、整条最多 40 镜（超出不拆解）、人物 / 场景视觉描述 240 字、全片基调 320 字（超长截断）—— 每一项处理都写进 `notes`，预览页与工作台都显示。
+- **工作台（`/shorts/make`）**：新增「提示词设定」卡（人物卡外观 / 表演、场景、全片基调可改，随 autosave 落库）+「原始提示词」查看与复制弹层 +「按提示词重拆」（带 danger 确认）。**提示词直出线的「改一版」改走 parse-prompt 重新拆解**（把调整要求作为 `instruction` 追加），不再走主题式 AI 重写 —— 否则用户的人物卡与画面设定会被一句话主题冲掉。类型标签显示拆解出的风格标签 + 「提示词直出」徽标。
+- **admin**：`/drama/prompts` 加「短视频提示词拆解」条目（占位符说明 + 试运行样例 + max_tokens 留空默认 8192）。
+- **门禁**：server compile + `Drama*Test`/`PromptService*Test` **152/152**（新增 `DramaShortPromptServiceTest` 16：输入闸门 / §8.0 三种未配置与失败 / 时长收口与超镜数如实告知 / 出场人物只认已知角色 / seed 拒绝伪造成片；`DramaShortContinuityServiceTest` +2 多角色锚点与老行为不变；`DramaShortServiceTest` +1 seed 建草稿只扣一次）+ `mvnw test` 全量 + `typecheck:all` + `typecheck:admin` + web-drama build（32 路由）+ `pnpm check:api-contract` 全绿；openapi 加 `/me/drama/shorts/parse-prompt`。mock 模式浏览器实测走通「工坊 → 提示词直出 → 拆解 → 预览改 → 开始制作 → 工作台（提示词设定 / 原始提示词 / 按提示词重拆）」整链。
+- **Codex 独立评审闭环（2026-08-31，只读评审 + 同轮修复）**：① 出场人物语义 —— `normalize` 原先无条件落 `castNames: []`，使「字段缺失 → 全员」永远走不到，模型漏写即丢人物锚点；改为「显式给出按它 / 漏写从画面文本推断 / 推不出就省略字段」，模板同步声明必填，预览页显示「未标注」。② 逐镜锚点不再依赖 `continuityManifest` —— 编辑人物外观或刚重拆时本地 manifest 可能过期或为空，会退化成只带主角名的前缀；改为直接由 `visualBible` + 本镜 `castNames`/`sceneName` 推导（规则与服务端 `ensureDraft` 对齐），编辑后立即生效。③ 空分镜表不再能付费 —— `requireUsableSeed` 在 hold 之前校验（400 `DRAMA_SHORT_SEED_EMPTY`），前端按钮同步禁用。④ 出片进行中禁止重拆与 AI 改分镜（旧任务照常扣费，但产物会因 shot id 全换而挂不回草稿）。⑤ 角色 / 场景超上限（各 6）改为如实写进 `notes`，模板也告知模型上限。⑥ 修一处自埋 bug：上限规则写在 system 段而 system 未过 `PromptService.fill`，模型此前会看到字面 `{{maxShots}}`。⑦ 无 `visualBible` 时不再读 `castNames`，老草稿行为严格不变。
+- **评审同时发现两个既有漏洞（非本版引入，已记 TODO.md 独立排期）**：`saveShort` 整份接收客户端 `data` 不清 `flow` / `videoUrl`，而总装只凭 `flow=done` + 非空 `videoUrl` 接受镜头 → 可伪造成片绕过出片计费（v0.76 / v0.133 起）；`withEntryCharge` 无幂等键且与草稿落库非原子 → 网络重试会重复扣开拍费（v0.78 起）。
+- **边界**：未新增视频模型、未提交任何真实付费生成；逐镜出片仍走既有 `/me/drama/render/{frame,clip}` 按次计费链路。
 
 ### v0.141（2026-08-29）— aiavatar 资产中枢重构 P1+P2a：真路由读界面 / studio 双轨 / 明星授权投影
 

@@ -97,10 +97,11 @@ const iconBtnStyle: CSS = {
 
 // ── 底部 Tab ─────────────────────────────────────────────────
 
+// M3 导航合并：工作台退役（内容并入资产主页），制作走 /studio（P3 迁完再换新页）
 const TABS = [
-  { href: "/", label: "工作台", icon: HomeIcon },
-  { href: "/assets", label: "资产", icon: LayersIcon },
-  { href: "/me", label: "我的", icon: UserIcon },
+  { href: "/", label: "资产", icon: LayersIcon, match: (p: string) => p === "/" || p.startsWith("/assets") || p.startsWith("/market") || p.startsWith("/stars") },
+  { href: "/studio", label: "制作", icon: WandIcon, match: (p: string) => p.startsWith("/studio") },
+  { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
 ] as const;
 
 export function HubTabBar() {
@@ -120,7 +121,7 @@ export function HubTabBar() {
     >
       <div style={{ maxWidth: 480, margin: "0 auto", height: 58, display: "flex" }}>
         {TABS.map((t) => {
-          const on = t.href === "/" ? pathname === "/" : pathname.startsWith(t.href);
+          const on = t.match(pathname);
           const Icon = t.icon;
           return (
             <Link
@@ -463,10 +464,11 @@ function svgProps(strong?: boolean) {
   };
 }
 
-function HomeIcon({ strong }: { strong?: boolean }) {
+function WandIcon({ strong }: { strong?: boolean }) {
   return (
     <svg {...svgProps(strong)}>
-      <path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
     </svg>
   );
 }

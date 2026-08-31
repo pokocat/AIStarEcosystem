@@ -21,4 +21,12 @@ public interface DramaShortRepository extends JpaRepository<DramaShort, String> 
 
     /** 软删早于 cutoff 的草稿（定时物理清理用）。 */
     List<DramaShort> findByDeletedAtBefore(OffsetDateTime cutoff);
+
+    /**
+     * 开拍付费创建的幂等查重（v0.145）：按 (owner, clientRequestId) 直查，
+     * 与唯一索引 {@code uk_drama_short_owner_client_req} 同一组键。
+     * **不过滤软删**：唯一索引覆盖全部行，回收站里的行也必须能被查到，
+     * 否则会撞索引却查不到对手。
+     */
+    Optional<DramaShort> findFirstByOwnerUserIdAndClientRequestId(String ownerUserId, String clientRequestId);
 }
