@@ -457,6 +457,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v0.143** | 2026-08-31 | 短视频「提示词直出」：此前短视频只能经 AI 创意 / AI 对话（一句话 → AI 创作），已写好完整提示词的用户设定会被冲掉。新增 `/shorts/prompt`（web-drama）+ `POST /me/drama/shorts/parse-prompt`（新 promptKey `drama.short_prompt_parse`，复用 `DRAMA_SCRIPT_DRAFT` 端点；免费不落库，§8.0 未配置 503 / 失败 502 / 不可解析 502，绝不用规则模板拼假分镜），把整段提示词忠实拆成人物卡 / 场景 / 全片画面基调 / 逐镜分镜；`POST /me/drama/shorts` 加 `body.seed`，一次开拍费建成带分镜草稿（seed 分镜强制 draft，剥掉一切成片字段）。`ShortDraftData` 加文档字段 `visualBible` / `promptSource` / `promptNotes`（**无表变更**），`DramaShortContinuityService.ensureDraft` 据此派生多角色 / 多场景锚点，每镜按 `castNames`（空数组=本镜无人物；**字段缺失=未标注按全员**，拆解漏写时先从画面文本兜底推断）与 `sceneName` 精确挂人挂景（无 `visualBible` 的老草稿不读该字段，行为不变）；人物「外观」进逐镜画面、「表演」只用于配音。超时长收口 / 超 40 镜不拆 / 描述超长截断一律写进 `notes` 如实展示。工作台加「提示词设定」卡 + 原始提示词查看 +「按提示词重拆」（该线的改一版走重新拆解，不走主题式重写）。 |
 | **v0.141** | 2026-08-29 | aiavatar 资产中枢重构 P1+P2a（真源 `docs/aiavatar-asset-hub-redesign.md`）：新五真路由读界面（工作台/货架/名片+设定卡/授权中心/我的）+ 老 SPA 挂 `/studio` 双轨（根路由旧 hash 转发保七牛刷脸回调）；server 新增 `GET /v1/assets/star-grants`（celebrity 域明星授权只读投影，无新表）；授权中心双向。回流记账待带货明星出片真链路上线后接（无生产者不建假账）。 |
 | **v0.140** | 2026-08-19 | clip 增加 owner-scoped `clientRequestId` 查单与保留期到期 owner 级彻底清理，支撑军师模糊提交不退费与 30 天隔离后再删数据。 |
 | **v0.139** | 2026-08-17 | 明星带货短视频重构：生成中心提级真实链路（明星形象生成 live 拦截为建设中，不再真扣积分假出片）；带货线时长策略 hold 前收口（必填 + 协议∩capability 有效区间）；`GET /material/videos/models` 模型选择/按秒报价前置；AI 起稿时长对齐模型上限（产物校验+重试，不静默缩数字）；免商品脚本 `creative_brief`。 |

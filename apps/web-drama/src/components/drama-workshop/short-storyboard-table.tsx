@@ -98,7 +98,7 @@ export function ShortStoryboardTable(props: ShortStoryboardTableProps) {
       {edit && (
         <AiImageEditModal
           tag={`镜 ${edit.no}`}
-          openingText={`这是镜 ${edit.no} 的首帧。描述想要的修改即可，例如「换成夜景」「让她回头」「调整为更高级的色调」。`}
+          openingText={`这是镜 ${edit.no} 的首帧。说想怎么改就行，例如「换成夜景」「让她回头」「换成更高级的色调」。`}
           baseDesc={edit.visual || "分镜画面"}
           initialUrl={edit.frameUrl ?? edit.frameUrls?.[0]}
           ratio="9:16"

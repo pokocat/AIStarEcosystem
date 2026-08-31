@@ -6,7 +6,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Boxes, Clapperboard, Play, Trash2, Wand2, Zap } from "lucide-react";
+import { Boxes, Clapperboard, ClipboardPaste, Play, Trash2, Wand2, Zap } from "lucide-react";
 import { Thumb, dramaConfirm } from "@/components/drama-ui";
 import { PublishCreativeCenterModal } from "@/components/drama-workshop/publish-creative-center-modal";
 import { ShortClipModal } from "@/components/drama-workshop/short-clip-modal";
@@ -373,7 +373,7 @@ export default function ShortsStudioPage() {
               </span>
             </>
           }
-          meta="管理你的短视频、宣传片、个人自传等单集作品，完成后可点开播放，草稿随时继续制作。"
+          meta="短视频、宣传片、个人自传这类单集作品都在这里。做完的可以点开播放，草稿随时接着做。"
           action={
             <>
               <button
@@ -395,6 +395,16 @@ export default function ShortsStudioPage() {
               >
                 <Clapperboard size={16} /> 从短剧切片
                 <span className="tag tag-gray" style={{ marginLeft: 6 }}>建设中</span>
+              </button>
+              {/* v0.143：已经写好提示词的用户不必再跟 AI 聊 —— 直接粘贴原文拆成分镜 */}
+              <button
+                type="button"
+                className="btn btn-line"
+                style={{ height: 44, padding: "0 18px" }}
+                onClick={() => router.push("/shorts/prompt")}
+                title="粘贴你写好的提示词，AI 拆成人物卡 / 场景 / 逐镜分镜"
+              >
+                <ClipboardPaste size={16} /> 提示词直出
               </button>
               <button
                 type="button"
@@ -459,6 +469,50 @@ export default function ShortsStudioPage() {
           </div>
           <span style={{ fontWeight: 700, fontSize: 13 }}>新建短视频</span>
           <span className="faint" style={{ fontSize: 11 }}>一句话生成</span>
+        </button>
+        {/* 第二条入口：整段提示词直出（与「一句话生成」并列，不藏在二级页里） */}
+        <button
+          type="button"
+          onClick={() => router.push("/shorts/prompt")}
+          className="col center"
+          style={{
+            height: "100%",
+            minHeight: 240,
+            borderRadius: "var(--radius)",
+            border: "2px dashed var(--line)",
+            color: "var(--ink-3)",
+            gap: 9,
+            background: "var(--surface)",
+            transition: "all .18s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--accent-2)";
+            e.currentTarget.style.color = "var(--accent-2)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--line)";
+            e.currentTarget.style.color = "var(--ink-3)";
+          }}
+        >
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 13,
+              background: "color-mix(in oklch, var(--accent-2) 12%, transparent)",
+              display: "grid",
+              placeItems: "center",
+              color: "var(--accent-2)",
+            }}
+          >
+            <ClipboardPaste size={21} />
+          </div>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>提示词直出</span>
+          <span className="faint" style={{ fontSize: 11, textAlign: "center", padding: "0 10px", lineHeight: 1.5 }}>
+            粘贴写好的提示词
+            <br />
+            拆成分镜开拍
+          </span>
         </button>
         {draftsLoading && drafts.length === 0
           ? Array.from({ length: 4 }).map((_, i) => <DraftCardSkeleton key={i} />)

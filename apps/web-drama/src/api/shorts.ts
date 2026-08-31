@@ -80,6 +80,18 @@ export interface ShortDraftShot {
   pendingJob?: { jobId: string; kind: "frame" | "clip" };
   sceneId?: string;
   parentShotId?: string;
+  /**
+   * v0.143 提示词直出：本镜画面中出现的角色名（对应 visualBible.characters[].name）。
+   * 与短剧工作台 FormShot.cast（角色实体 id）区分开，这里是名字，故独立字段名。
+   * 显式空数组 = 本镜确实没有人物（纯环境镜）；字段缺失 = 未标注，服务端按全员锚定。
+   */
+  castNames?: string[];
+  /** v0.143：本镜所在场景名（对应 visualBible.scenes[].name），服务端据此挂场景锚点。 */
+  sceneName?: string;
+  /** v0.143：原提示词里的时间码（如 01:08-01:43），只做展示与溯源，不参与计算。 */
+  timecode?: string;
+  /** 本镜节拍语义标签（AI 对话线由脚本 AI 给；提示词直出线由拆解给）。 */
+  beat?: string;
   audio?: {
     cdnKey: string;
     url?: string;
@@ -125,6 +137,72 @@ export interface ShortDraftData {
   suggestions?: string[];
   /** 服务端真实总装产物；只有 assemble 成功后才存在且允许 status=done。 */
   assembled?: ShortAssembledMedia;
+  /** v0.143 提示词直出：全片视觉设定（人物卡 / 场景 / 画面基调）。
+   *  服务端保存 / 预检时据此派生一致性锚点，逐镜出图与出片的前缀因此带上用户原始设定。 */
+  visualBible?: ShortVisualBible;
+  /** v0.143：这条短视频的来源提示词（原文 + 拆解时间），供工作台展示与「按提示词重新拆解」。 */
+  promptSource?: ShortPromptSource;
+  /** v0.143：拆解过程中的处理说明（超长截断 / 超时长拆镜 / 超镜数未拆解…），如实展示给用户。 */
+  promptNotes?: string[];
+}
+
+/** 提示词直出的全片视觉设定（人物卡只放视觉，表演另存，避免台词污染逐镜画面）。 */
+export interface ShortVisualBible {
+  /** 全片画面基调：环境 + 光影 + 质感 + 镜头语言（不含分镜动作与台词）。 */
+  universal?: string;
+  characters: Array<{ name: string; visual: string; performance?: string }>;
+  scenes: Array<{ name: string; visual: string }>;
+}
+
+export interface ShortPromptSource {
+  /** 用户粘贴的提示词原文。 */
+  raw: string;
+  /** 最近一次拆解时间（ISO）。 */
+  parsedAt?: string;
+}
+
+/** 提示词拆解入参：prompt=原文；instruction=在原文基础上追加的调整要求（重新拆解用）。 */
+export interface ParseShortPromptInput {
+  prompt: string;
+  instruction?: string;
+}
+
+/** 拆解出的单镜（与后端 DramaShortPromptService.normalize 对齐）。 */
+export interface ParsedShortShot {
+  no: number;
+  timecode: string;
+  durationSec: number;
+  sceneName: string;
+  /**
+   * 本镜出场人物名（取自 characters[].name）。
+   * 显式空数组 = 本镜确实没有人物（纯环境镜）；**字段缺失 = 未标注**，下游按全员锚定 ——
+   * 两者行为不同，不要把缺失补成空数组。
+   */
+  castNames?: string[];
+  beat: string;
+  visual: string;
+  size: string;
+  move: string;
+  voWho: string;
+  voText: string;
+  sfx: string;
+  bgm: string;
+  fx: string;
+}
+
+/** 拆解结果（不落库；前端预览 / 编辑后作为 createDraft 的 seed 提交）。 */
+export interface ParsedShortPrompt {
+  title: string;
+  logline: string;
+  style: string[];
+  universalPrompt: string;
+  characters: Array<{ name: string; visual: string; performance: string }>;
+  scenes: Array<{ name: string; visual: string }>;
+  shots: ParsedShortShot[];
+  shotCount: number;
+  totalDurationSec: number;
+  /** 拆解过程中的处理说明（如「有镜头超 15s 已收口」「超 40 镜未拆解」）。 */
+  notes: string[];
 }
 
 export interface ShortPreflightIssue {
@@ -172,6 +250,12 @@ export interface CreateShortInput {
   /** v0.77：由「单集创意」套用而来时携带的创意名 / 风格参考（真实后端走 recipes/apply，本字段仅 mock 用）。 */
   styleName?: string;
   styleRef?: string;
+  /**
+   * v0.143 提示词直出：拆解结果（可被用户在预览页改过）+ promptSource.raw 原文。
+   * 带 seed 时服务端直接建成带人物卡 / 场景 / 逐镜分镜的草稿（分镜一律 draft 态），
+   * 扣费仍是同一笔开拍费；title / fmtName / idea 由 seed 决定，无需另传。
+   */
+  seed?: ParsedShortPrompt & { promptSource?: ShortPromptSource };
 }
 
 export interface SaveShortOptions {
@@ -214,6 +298,148 @@ function mockPreviewMedia(data: ShortDraftData): Pick<ShortDraftSummary, "coverU
   };
 }
 
+// ── 提示词直出（v0.143）────────────────────────────────────────────────────────
+
+/** 时间码：00:03-00:19 / 1:08–1:43 / 01:08 - 01:43。 */
+const MOCK_TIMECODE_RE = /(\d{1,3}:\d{2})\s*[-–—~至]\s*(\d{1,3}:\d{2})/;
+
+function mockToSeconds(v: string): number {
+  const [m, sec] = v.split(":");
+  return Number(m) * 60 + Number(sec);
+}
+
+/** 从一行里切出 台词 / 音效 / BGM / 特效 段（同一行常写在画面后面）。 */
+function mockPickSegment(line: string, labels: string[]): { hit: string; rest: string } {
+  for (const label of labels) {
+    const idx = line.indexOf(label);
+    if (idx >= 0) {
+      const after = line.slice(idx + label.length).replace(/^[:：]\s*/, "");
+      const cut = after.search(/(台词|字幕|口播|旁白|音效|BGM|背景音乐|特效)[:：]/);
+      return { hit: (cut >= 0 ? after.slice(0, cut) : after).trim(), rest: line.slice(0, idx).trim() };
+    }
+  }
+  return { hit: "", rest: line };
+}
+
+const MOCK_SIZES = ["远景", "全景", "中近景", "中景", "近景", "特写", "双人中景"];
+const MOCK_MOVES = ["推近", "拉远", "摇", "跟", "手持", "固定"];
+
+/**
+ * USE_MOCK=1 时的本地样例拆解 —— 只按 【角色】/【场景】/【全片基调】块 + 时间码行做朴素切分，
+ * 结果里显式带一条说明，避免把本地样例误当成真实大模型拆解（AGENTS §8.0）。
+ */
+function mockParsePrompt(prompt: string): ParsedShortPrompt {
+  const lines = prompt.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const characters: ParsedShortPrompt["characters"] = [];
+  const scenes: ParsedShortPrompt["scenes"] = [];
+  const shots: ParsedShortShot[] = [];
+  let universal = "";
+  let title = "";
+
+  for (const line of lines) {
+    const block = line.match(/^【(标题|角色|场景|全片基调|分镜)】\s*(.*)$/);
+    if (block) {
+      const [, kind, body] = block;
+      if (kind === "标题") title = body.slice(0, 20);
+      if (kind === "角色" && body) {
+        const [name, ...restParts] = body.split(/[:：]/);
+        const rest = restParts.join("：");
+        const [visual, ...perf] = rest.split(/[;；]/);
+        characters.push({
+          name: name.trim().slice(0, 24),
+          visual: (visual ?? "").trim(),
+          performance: perf.join("；").trim(),
+        });
+      }
+      if (kind === "场景" && body) {
+        scenes.push({ name: body.split(/[，,]/)[0].slice(0, 24), visual: body.trim() });
+      }
+      if (kind === "全片基调") universal = body.trim();
+      continue;
+    }
+    const tc = line.match(MOCK_TIMECODE_RE);
+    const isShotLine = !!tc || shots.length > 0;
+    if (!isShotLine) continue;
+    if (tc) {
+      let text = line.replace(MOCK_TIMECODE_RE, "").replace(/^[｜|·\-—\s]+/, "").trim();
+      const vo = mockPickSegment(text, ["台词", "字幕", "口播"]);
+      text = vo.rest;
+      const sfx = mockPickSegment(text, ["音效"]);
+      text = sfx.rest;
+      const bgm = mockPickSegment(text, ["BGM", "背景音乐"]);
+      text = bgm.rest;
+      const fx = mockPickSegment(text, ["特效"]);
+      text = fx.rest;
+      const size = MOCK_SIZES.find((v) => text.includes(v)) ?? (shots.length === 0 ? "中近景" : "中景");
+      const move = MOCK_MOVES.find((v) => text.includes(v)) ?? "固定";
+      const visual = text.replace(/^[^:：]{0,12}[:：]\s*/, "").trim();
+      const speaker = vo.hit.includes("：") ? vo.hit.split("：")[0].trim() : "";
+      shots.push({
+        no: shots.length + 1,
+        timecode: `${tc[1]}-${tc[2]}`,
+        durationSec: Math.max(2, Math.min(15, mockToSeconds(tc[2]) - mockToSeconds(tc[1]) || 4)),
+        sceneName: scenes[0]?.name ?? "",
+        // 与服务端同规则：推断不出出场人物就不落这个字段（缺失=未标注，不是「明确无人」）。
+        castNames: (() => {
+          const hit = characters.filter((c) => c.name && visual.includes(c.name)).map((c) => c.name);
+          return hit.length ? hit : undefined;
+        })(),
+        beat: shots.length === 0 ? "开场" : "",
+        visual,
+        size,
+        move,
+        voWho: vo.hit ? speaker || "旁白" : "",
+        voText: (speaker ? vo.hit.slice(speaker.length + 1) : vo.hit).trim(),
+        sfx: sfx.hit,
+        bgm: bgm.hit,
+        fx: fx.hit,
+      });
+      continue;
+    }
+    // 时间码之后的续行：补进上一镜的画面。
+    const cur = shots[shots.length - 1];
+    if (cur && line.length > 4 && cur.visual.length < 120) {
+      cur.visual = `${cur.visual}；${line.replace(/^[•·\-\s]+/, "")}`;
+    }
+  }
+
+  if (!shots.length) {
+    // 没有时间码：按句切成 3-6 镜，够看清「拆解 → 预览 → 制作」整条链路。
+    const sentences = prompt.split(/[。！？\n]/).map((t) => t.trim()).filter((t) => t.length > 6).slice(0, 6);
+    sentences.forEach((t, i) =>
+      shots.push({
+        no: i + 1, timecode: "", durationSec: 4, sceneName: scenes[0]?.name ?? "",
+        beat: i === 0 ? "开场" : "", visual: t.slice(0, 120), size: i === 0 ? "中近景" : "中景",
+        move: i === 0 ? "推近" : "固定", voWho: "", voText: "", sfx: "", bgm: "", fx: "",
+      }),
+    );
+  }
+  return {
+    title: title || (shots[0]?.voText || shots[0]?.visual || "未命名短视频").slice(0, 12),
+    logline: shots[0]?.voText ?? "",
+    style: ["电影感", "竖屏短片"],
+    universalPrompt: universal,
+    characters,
+    scenes,
+    shots,
+    shotCount: shots.length,
+    totalDurationSec: shots.reduce((a, s) => a + s.durationSec, 0),
+    notes: ["本地样例拆解（USE_MOCK=1）：真实拆解由大模型完成，接上后端后字段会更完整。"],
+  };
+}
+
+/**
+ * 拆解「我自己写好的提示词」→ 人物卡 / 场景 / 全片基调 / 逐镜分镜。
+ * 免费、不落库：结果供预览与修改，确认后作为 createDraft 的 seed 提交（那一步才扣开拍费）。
+ */
+export async function parsePrompt(input: ParseShortPromptInput): Promise<ParsedShortPrompt> {
+  if (USE_MOCK) return mockDelay(mockParsePrompt(input.prompt), 900);
+  return apiFetch<ParsedShortPrompt>("/me/drama/shorts/parse-prompt", {
+    method: "POST",
+    body: { prompt: input.prompt, instruction: input.instruction },
+  });
+}
+
 export async function listDrafts(): Promise<ShortDraftSummary[]> {
   if (USE_MOCK) {
     return mockDelay(
@@ -234,9 +460,84 @@ export async function getDraft(id: string): Promise<ShortDraftDetail> {
   return apiFetch<ShortDraftDetail>(`/me/drama/shorts/${id}`);
 }
 
+/** mock 侧的 seed → ShortDraftData（与后端 DramaShortPromptService.seedToDraftData 同规则的精简版）。 */
+function mockSeedToData(seed: NonNullable<CreateShortInput["seed"]>): ShortDraftData {
+  const title = seed.title || "未命名短视频";
+  return {
+    idea: null,
+    reopen: null,
+    fmtKey: null,
+    fmtName: seed.style?.length ? seed.style.join(" · ").slice(0, 24) : "自定义短片",
+    title,
+    step: "script",
+    meta: {
+      title,
+      style: seed.style ?? [],
+      scene: seed.scenes?.[0]?.visual || seed.universalPrompt || "",
+      character: {
+        name: seed.characters?.[0]?.name ?? "",
+        description: seed.characters?.[0]?.visual ?? "",
+      },
+    },
+    logline: seed.logline ?? "",
+    visualBible: {
+      universal: seed.universalPrompt ?? "",
+      characters: seed.characters ?? [],
+      scenes: seed.scenes ?? [],
+    },
+    promptSource: { raw: seed.promptSource?.raw ?? "", parsedAt: new Date().toISOString() },
+    promptNotes: seed.notes ?? [],
+    shots: (seed.shots ?? []).map((s, i) => ({
+      id: `sh_p${i + 1}_mock`,
+      no: i + 1,
+      dur: s.durationSec || 4,
+      visual: s.visual,
+      size: s.size || "中景",
+      move: s.move || "固定",
+      voWho: s.voWho || (s.voText ? "旁白" : ""),
+      voText: s.voText,
+      sfx: s.sfx,
+      bgm: s.bgm,
+      fx: s.fx,
+      beat: s.beat,
+      timecode: s.timecode,
+      sceneName: s.sceneName || undefined,
+      castNames: s.castNames,
+      refs: [],
+      sub: true,
+      flow: "draft" as const,
+      engine: "avatar",
+      frameIdx: 0,
+    })),
+    chat: [
+      {
+        who: "ai",
+        text:
+          `已按你的提示词拆成 ${seed.shots?.length ?? 0} 镜，人物和画面设定都在右侧「提示词设定」里。` +
+          "分镜表里的字段都能直接改；想整张表重来，点分镜表右上的「按提示词重拆」。",
+      },
+    ],
+    refs: [],
+  };
+}
+
 export async function createDraft(input: CreateShortInput): Promise<ShortDraftDetail> {
   if (USE_MOCK) {
     const id = `dvs_mock_${Date.now()}_${mockSeq++}`;
+    // 提示词直出：seed 即整份草稿内容（分镜一律 draft 态，与后端同规则）。
+    if (input.seed) {
+      const seeded = mockSeedToData(input.seed);
+      const detail: ShortDraftDetail = {
+        meta: {
+          ...mockSummary(id, { ...input, title: seeded.title, fmtName: seeded.fmtName }),
+          durationSec: seeded.shots.reduce((a, s) => a + (s.dur || 0), 0),
+          shotCount: seeded.shots.length,
+        },
+        data: seeded,
+      };
+      mockStore.set(id, detail);
+      return mockDelay(detail);
+    }
     const detail: ShortDraftDetail = {
       meta: mockSummary(id, input),
       data: {

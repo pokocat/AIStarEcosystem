@@ -94,7 +94,16 @@ public class DramaShortContinuityService {
         return script;
     }
 
-    /** 草稿保存/预检使用：以当前可编辑分镜为准重建，不信任客户端伪造的依赖图。 */
+    /**
+     * 草稿保存/预检使用：以当前可编辑分镜为准重建，不信任客户端伪造的依赖图。
+     *
+     * <p>两种人物 / 场景真值来源：</p>
+     * <ul>
+     *   <li>AI 对话线：meta.character + meta.scene → 单角色 character-main + 单场景 scene-main（原行为不变）；</li>
+     *   <li>提示词直出线（v0.143）：data.visualBible 里的多角色人物卡与多场景 → 逐条落成锚点，
+     *       每镜按 cast / sceneName 精确挂人挂景，出图与出片前缀因此能带上用户原始的外貌与光影设定。</li>
+     * </ul>
+     */
     public ObjectNode ensureDraft(ObjectNode data) {
         ObjectNode manifest = baseManifest();
         ObjectNode meta = object(data.path("meta"));
@@ -103,25 +112,79 @@ public class DramaShortContinuityService {
         ObjectNode avatar = object(data.path("characterAvatar"));
         ObjectNode characterRef = object(data.path("characterRef"));
         ObjectNode sceneRef = object(data.path("sceneRef"));
+        JsonNode bible = data.path("visualBible");
+        JsonNode bibleCharacters = bible.path("characters");
+        JsonNode bibleScenes = bible.path("scenes");
 
-        ObjectNode ch = manifest.putArray("characters").addObject();
-        ch.put("id", "character-main");
-        ch.put("name", characterName);
-        ch.put("visualTraits", characterName);
-        ch.put("performanceTraits", clean(character.path("description").asText("")));
-        putIfText(ch, "avatarId", avatar.path("id"));
-        ObjectNode canonical = ch.putObject("canonicalRef");
+        // ── 角色锚点 ──
+        ArrayNode characters = manifest.putArray("characters");
+        Map<String, String> characterIdsByName = new LinkedHashMap<>();
+        if (bibleCharacters.isArray() && !bibleCharacters.isEmpty()) {
+            int index = 0;
+            for (JsonNode raw : bibleCharacters) {
+                if (!raw.isObject()) continue;
+                String name = clean(raw.path("name").asText(""));
+                if (name.isBlank()) continue;
+                String id = index == 0 ? "character-main" : "character-" + (index + 1);
+                index++;
+                ObjectNode ch = characters.addObject();
+                ch.put("id", id);
+                ch.put("name", name);
+                // 视觉锚点只吃视觉描述；表演 / 性格 / 台词一律留在 performanceTraits，不进逐镜画面前缀。
+                String visual = clean(raw.path("visual").asText(""));
+                // 出 wire 时前端拼成「固定角色：<visualTraits>」，故这里用逗号连名字与外貌，避免双冒号。
+                ch.put("visualTraits", visual.isBlank() ? name : name + "，" + visual);
+                ch.put("performanceTraits", clean(raw.path("performance").asText("")));
+                characterIdsByName.put(name, id);
+            }
+        }
+        if (characters.isEmpty()) {
+            ObjectNode ch = characters.addObject();
+            ch.put("id", "character-main");
+            ch.put("name", characterName);
+            ch.put("visualTraits", characterName);
+            ch.put("performanceTraits", clean(character.path("description").asText("")));
+            if (!characterName.isBlank()) characterIdsByName.put(characterName, "character-main");
+        }
+        // 是否走 visualBible 的多角色规则（决定要不要读逐镜 castNames）。
+        boolean hasBibleCharacters = !characterIdsByName.isEmpty() && bibleCharacters.isArray()
+                && !bibleCharacters.isEmpty();
+        // 上传的参考图 / 绑定的数字人只锚定主角（第一位）。
+        ObjectNode mainCharacter = (ObjectNode) characters.get(0);
+        putIfText(mainCharacter, "avatarId", avatar.path("id"));
+        ObjectNode canonical = mainCharacter.putObject("canonicalRef");
         putIfText(canonical, "cdnKey", characterRef.path("cdnKey"));
         String characterUrl = firstText(avatar.path("image"), characterRef.path("url"));
         if (characterUrl != null) canonical.put("url", characterUrl);
 
-        ObjectNode scene = manifest.putArray("scenes").addObject();
-        scene.put("id", "scene-main");
-        scene.put("name", "主场景");
-        scene.put("visualTraits", clean(meta.path("scene").asText("")));
-        ObjectNode sceneCanonical = scene.putObject("canonicalRef");
+        // ── 场景锚点 ──
+        ArrayNode scenes = manifest.putArray("scenes");
+        Map<String, String> sceneIdsByName = new LinkedHashMap<>();
+        if (bibleScenes.isArray() && !bibleScenes.isEmpty()) {
+            int index = 0;
+            for (JsonNode raw : bibleScenes) {
+                if (!raw.isObject()) continue;
+                String name = clean(raw.path("name").asText(""));
+                String id = index == 0 ? "scene-main" : "scene-" + (index + 1);
+                index++;
+                ObjectNode scene = scenes.addObject();
+                scene.put("id", id);
+                scene.put("name", name.isBlank() ? "主场景" : name);
+                scene.put("visualTraits", clean(raw.path("visual").asText("")));
+                if (!name.isBlank()) sceneIdsByName.put(name, id);
+            }
+        }
+        if (scenes.isEmpty()) {
+            ObjectNode scene = scenes.addObject();
+            scene.put("id", "scene-main");
+            scene.put("name", "主场景");
+            scene.put("visualTraits", clean(meta.path("scene").asText("")));
+        }
+        ObjectNode mainScene = (ObjectNode) scenes.get(0);
+        ObjectNode sceneCanonical = mainScene.putObject("canonicalRef");
         putIfText(sceneCanonical, "cdnKey", sceneRef.path("cdnKey"));
         putIfText(sceneCanonical, "url", sceneRef.path("url"));
+        String defaultSceneId = mainScene.path("id").asText("scene-main");
 
         ArrayNode shotsOut = manifest.putArray("shots");
         JsonNode shots = data.path("shots");
@@ -136,18 +199,32 @@ public class DramaShortContinuityService {
                 id = stableId("shot", index);
                 source.put("id", id);
             }
-            source.put("sceneId", "scene-main");
+            String sceneId = sceneIdsByName.getOrDefault(clean(source.path("sceneName").asText("")), defaultSceneId);
+            source.put("sceneId", sceneId);
             if (previous != null) source.put("parentShotId", previous); else source.remove("parentShotId");
             ObjectNode target = shotsOut.addObject();
             target.put("id", id);
             target.put("no", source.path("no").asInt(index));
-            target.put("sceneId", "scene-main");
+            target.put("sceneId", sceneId);
             int durationSec = Math.max(1, source.path("dur").asInt(4));
             target.put("durationSec", durationSec);
             target.put("continuityMode", previous == null ? "anchor" : "chain");
             if (previous != null) target.put("parentShotId", previous);
             ArrayNode cast = target.putArray("castIds");
-            if (!characterName.isBlank() || characterUrl != null) cast.add("character-main");
+            // 提示词直出线（有 visualBible）：显式 castNames 数组即真值（空数组 = 本镜确实没有人物，
+            // 如纯环境镜）；字段缺失才按全员锚定，避免模型漏字段时丢掉人物一致性。
+            // AI 对话线（无 visualBible）：完全走旧规则，不读 castNames，行为与本版之前逐字一致。
+            JsonNode rawCast = hasBibleCharacters ? source.get("castNames") : null;
+            if (hasBibleCharacters && rawCast != null && rawCast.isArray()) {
+                for (JsonNode name : rawCast) {
+                    String id2 = characterIdsByName.get(clean(name.asText("")));
+                    if (id2 != null && !containsText(cast, id2)) cast.add(id2);
+                }
+            } else if (hasBibleCharacters) {
+                for (String value : characterIdsByName.values()) cast.add(value);
+            } else if (!characterName.isBlank() || characterUrl != null) {
+                cast.add("character-main");
+            }
             ObjectNode dialogue = target.putObject("dialogue");
             dialogue.put("speaker", clean(source.path("voWho").asText("")));
             dialogue.put("text", clean(source.path("voText").asText("")));
@@ -231,6 +308,11 @@ public class DramaShortContinuityService {
         } catch (Exception e) {
             throw new IllegalStateException("SHA-256 unavailable", e);
         }
+    }
+
+    private static boolean containsText(ArrayNode arr, String value) {
+        for (JsonNode n : arr) if (value.equals(n.asText(""))) return true;
+        return false;
     }
 
     private ObjectNode baseManifest() {

@@ -88,6 +88,18 @@ const DRAMA_META: Record<string, DramaPromptMeta> = {
     defaultTemp: 0.9,
     sample: { theme: "上班族手忙脚乱的早晨", genre: "都市喜剧", duration: "38", count: "1" },
   },
+  "drama.short_prompt_parse": {
+    label: "短视频提示词拆解",
+    blurb: "短视频「提示词直出」用：把用户粘贴的整段提示词忠实拆成人物卡 / 场景 / 全片画面基调 / 逐镜分镜。要求只还原不二次创作；人物的外貌与台词性格必须分开（外貌进每镜画面，台词不进），否则一句台词会污染所有镜头。",
+    vars: ["{{prompt}} 用户提示词原文", "{{instructionClause}} 本次调整要求（可空）", "{{maxShots}} 分镜上限", "{{maxShotSec}} 单镜时长上限秒"],
+    defaultTemp: 0.4,
+    sample: {
+      prompt: "【角色】阿宁：齐耳短发，米白针织开衫。【场景】老城咖啡馆，午后逆光。【分镜】00:00-00:04 远景推近：阿宁抱纸箱进门。台词：旁白：搬来第七天。",
+      instructionClause: "",
+      maxShots: "40",
+      maxShotSec: "15",
+    },
+  },
   "drama.frame_image": {
     label: "⑤ 分镜首帧出图（工作台）",
     blurb: "短剧工作台「视频工厂」点首帧时，把分镜镜头描述拼成图像生成提示词。这是给图像模型看的单条 prompt（无 system / 不吃温度参数）。",
@@ -124,6 +136,7 @@ const DRAMA_META: Record<string, DramaPromptMeta> = {
 
 const DRAMA_KEY_ORDER = [
   "drama.outline", "drama.epscript", "drama.split_scene", "drama.cast", "drama.script_draft",
+  "drama.short_prompt_parse",
   "drama.frame_image", "drama.clip_video", "drama.short_frame_image", "drama.short_clip_video",
 ];
 
@@ -355,7 +368,13 @@ export default function DramaPromptsPage() {
                       <Input
                         value={maxTokens}
                         onChange={(e) => setMaxTokens(e.target.value)}
-                        placeholder={activeKey === "drama.script_draft" ? "留空=6144" : "留空=4096"}
+                        placeholder={
+                          activeKey === "drama.short_prompt_parse"
+                            ? "留空=8192"
+                            : activeKey === "drama.script_draft"
+                              ? "留空=6144"
+                              : "留空=4096"
+                        }
                         className="w-32"
                       />
                       <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">

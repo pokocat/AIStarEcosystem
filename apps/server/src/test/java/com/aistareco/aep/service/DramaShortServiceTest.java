@@ -237,6 +237,63 @@ class DramaShortServiceTest {
     }
 
     @Test
+    void createWithPromptSeedBuildsShotsAndChargesEntryOnce() throws Exception {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        JsonNode body = OM.readTree("""
+                {"seed":{"title":"沙漠访谈","logline":"一场荒诞的复盘","style":["电影感","赛博古装"],
+                  "universalPrompt":"暖金逆光，浮尘",
+                  "characters":[{"name":"云曦","visual":"月白襦裙，鎏金步摇","performance":"温柔但犀利"},
+                                {"name":"赛博猴王","visual":"金橙长发，银蓝机械头冠","performance":"吹牛时手舞足蹈"}],
+                  "scenes":[{"name":"寺院访谈区","visual":"朱红立柱，午后斜阳"}],
+                  "shots":[{"durationSec":4,"visual":"两人入座","voWho":"旁白","voText":"准备开始访谈。",
+                            "castNames":["云曦","赛博猴王"],"sceneName":"寺院访谈区","timecode":"00:00-00:04"},
+                           {"durationSec":6,"visual":"猴王举起乌金锤","castNames":["赛博猴王"]}],
+                  "notes":["有一镜时长按画面复杂度估"],
+                  "promptSource":{"raw":"【角色】云曦：月白襦裙…"}}}
+                """);
+
+        JsonNode detail = svc.createShort(body, USER);
+        JsonNode meta = detail.get("meta");
+        JsonNode data = detail.get("data");
+
+        // 卡片字段立刻正确（提示词直出的草稿一建出来就带分镜）。
+        assertEquals("沙漠访谈", meta.get("title").asText());
+        assertEquals("电影感 · 赛博古装", meta.get("fmtName").asText());
+        assertEquals(2, meta.get("shotCount").asInt());
+        assertEquals(10, meta.get("durationSec").asInt());
+        assertEquals("draft", meta.get("status").asText());
+
+        // 视觉设定与来源提示词落库；一致性锚点由服务端按 visualBible 派生。
+        assertEquals(2, data.path("visualBible").path("characters").size());
+        assertEquals("暖金逆光，浮尘", data.path("visualBible").path("universal").asText());
+        assertEquals("【角色】云曦：月白襦裙…", data.path("promptSource").path("raw").asText());
+        assertEquals(1, data.path("promptNotes").size());
+        assertEquals(2, data.path("continuityManifest").path("characters").size());
+        assertEquals(2, data.path("continuityManifest").path("shots").path(0).path("castIds").size());
+        assertEquals(1, data.path("continuityManifest").path("shots").path(1).path("castIds").size());
+        assertEquals("draft", data.path("shots").path(0).path("flow").asText());
+
+        // 与「一句话生成」同一笔开拍费，不因为带 seed 多扣。
+        verify(creditService).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+        verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void emptySeedIsRejectedBeforeAnyCharge() throws Exception {
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        JsonNode body = OM.readTree("""
+                {"seed":{"title":"空表","shots":[{"durationSec":4,"visual":"","voText":""}]}}
+                """);
+        BusinessException e = assertThrows(BusinessException.class, () -> svc.createShort(body, USER));
+        assertEquals("DRAMA_SHORT_SEED_EMPTY", e.getCode());
+        // 语义校验在 hold 之前：既不冻结也不 commit，更不落草稿。
+        verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        assertTrue(db.isEmpty());
+    }
+
+    @Test
     void createFromRecipeChargesEntryOnce() {
         when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(8L);
         String id = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e", "韦斯·安德森风格", "对称构图 · 复古色卡");

@@ -9,6 +9,20 @@
 
 ---
 
+## 2026-08-31 · v0.143 短视频「提示词直出」后续
+
+- [ ] **人物 / 场景只能改不能增删**：`/shorts/prompt` 预览页与 `/shorts/make`「提示词设定」卡都只支持编辑既有人物卡与场景（`ShortDraftData.visualBible`），想加一位角色或一个场景只能改原文重拆。补一组增删按钮（新增时给空 `visual` 并提示「不填外观则该角色不参与画面锚定」）。
+- [x] ~~**拆解结果把「模型漏写出场人物」变成「明确无人」**~~ **v0.143 同轮修复（Codex 评审）**，2026-08-31：`normalize` 原先无条件写 `castNames: []`，使 `ensureDraft` 的「字段缺失 → 全员锚定」永远走不到，漏写的镜头会丢掉全部人物锚点。现改为：模型给了就按它（空数组 = 确实没人）、漏写时从画面文本按角色名兜底推断、推断不出就**省略字段**交给全员兜底；提示词模板同步声明该字段必填，预览页对未标注镜头显示「未标注」并按全员亮起。
+- [ ] **分镜表不显示出场人物**：`ShortStoryboardTable`（`/shorts/make` 的逐镜工作面）没有 `castNames` 列，进工作台后只能在「提示词设定」里改设定、不能改某一镜挂谁；且「加一镜」新建的镜头没有 `castNames` 字段 → 服务端按「未标注」全员锚定（见 `DramaShortContinuityService.ensureDraft`）。加一列人物 chip（与预览页同交互），并让「加一镜」显式落空数组或继承上一镜。
+- [ ] **超长提示词没有自动分卷**：超过 40 镜（`DramaShortPromptService.MAX_SHOTS`）的部分不拆解，只在 `notes` 告知「建议拆成多条」，用户得自己剪原文分批粘。可做「按场景 / 时间码自动分卷成多条草稿」的批量入口。
+- [ ] **拆解免费无频次限制**（Codex 评审确认，2026-08-31）：`POST /me/drama/shorts/parse-prompt` 与脑暴 chat/outline 同惯例免费（总花费与 AI 对话线一致：开拍才扣 `drama.credit.short-entry`），但单次输入可达 20000 字、输出上限 8192 token，反复点「开始拆解」会持续消耗平台模型成本。现有 `AiModelGuardService` 只有端点级 RPM/TPM/日额度，**没有 userId 维度** —— 单账号并发刷大提示词可能把共享端点额度吃掉，导致所有用户 429。若线上出现滥用，加按用户的短窗口频次限制（拒绝时给明确错误码，不降级成假结果）。
+- [ ] **openapi 只登记路径不登记 schema**（Codex 评审提出，2026-08-31）：`parse-prompt` 与带 `seed` 的创建接口都只有 prose summary，没有 `requestBody` / 响应 schema / 错误响应。这是**全仓 drama 段的既有约定**（`check:api-contract` 只比对 URL + method），本次沿用；若要治理应整段 drama 一起 schema 化，不宜只给一个新端点加。
+
+### Codex 评审发现的**既有**漏洞（非 v0.143 引入，需独立排期）
+
+- [ ] **P1 · PUT 保存可伪造逐镜产物，绕过出片计费**（2026-08-31 由 v0.143 评审顺带发现，v0.76/v0.133 起就存在）：`DramaShortService.saveShort` 整份接收客户端 `data`，只剥 `assembled` 与客户端音频，**不清 `flow` / `videoUrl` / `frameUrl` / `jobId`**；`DramaShortAssembleService.buildPlan` 又只凭 `flow=done` + 非空 `videoUrl` 就接受镜头，不校验该 URL 是否来自本用户本草稿的成功渲染任务（`MaterialVideoJob`）。伪造 `{"flow":"done","videoUrl":"/cdn/<已知平台视频>.mp4"}` 即可跳过逐镜出片扣费直接总装成片（外部域名被白名单挡住，平台 CDN / 相对路径可利用）。修法：产物字段一律以服务端为真值（保存时按 shot id 保留库内旧值、忽略客户端传入），总装前按 `MaterialVideoJob`（owner + 本草稿 + 成功态）核验每镜视频出处。注意 `DramaShortServiceTest` 现有用例把「保存后 doneCount=1」当正确结果断言，修时要同步改。
+- [ ] **P2 · 开拍付费创建不幂等，且与草稿落库不原子**（同上，v0.78 起）：`withEntryCharge` 每次随机生成计费 ref，没有 `clientRequestId` / 业务唯一键；响应在网络层丢失后前端解锁重试 → 第二次请求新建草稿并**再扣一次**积分（`/shorts/prompt` 与 `ShortCreateConsole` 两个入口都有）。另：`repo.save` 与 `commitHold` 不在同一事务，commit 失败时释放 hold 但草稿已留在列表里（漏扣）。修法参考 clip 域的 `clientRequestId` 幂等查单（v0.140）：创建请求带客户端幂等键，服务端按 owner + key 命中即回原草稿不重复扣费。
+
 ## 2026-08-29 · aiavatar 资产中枢重构（P1 已落地，后续分期见 docs/aiavatar-asset-hub-redesign.md §4）
 
 - [ ] **P2 下游选择器 + 回流**（**P2a 已完成部分**，v0.141 / 2026-08-29：明星授权只读投影 `GET /v1/assets/star-grants` + 货架明星形象卡 + `/stars/[id]` 名片 + 授权中心双向）。剩余：music 出 MV 选数字人；`dap_asset_usage` 泛化为跨 app 使用边——**前置依赖：带货明星形象出片真链路上线**（v0.139 现拦截为建设中，无生产者不建假账），上线时在成片落点 best-effort 写 usage；名片页"导出设定卡"。

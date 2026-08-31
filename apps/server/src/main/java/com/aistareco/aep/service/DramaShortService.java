@@ -112,18 +112,32 @@ public class DramaShortService {
         if (body == null || !body.isObject()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_BODY_REQUIRED", "缺少新建短视频参数");
         }
+        // 提示词直出：seed 语义校验必须在 hold 之前 —— 空分镜表不能先扣费再落一条 0 镜草稿。
+        if (body.path("seed").isObject()) {
+            DramaShortPromptService.requireUsableSeed(body.get("seed"));
+        }
         return withEntryCharge(userId, () -> doCreateShort(body, userId));
     }
 
     /** 实际建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
     private JsonNode doCreateShort(JsonNode body, String userId) {
         OffsetDateTime now = OffsetDateTime.now();
-        String fmtKey = text(body, "fmtKey");
-        String fmtName = orDefault(text(body, "fmtName"), fmtKey == null ? "短视频" : fmtKey);
-        String idea = text(body, "idea");
-        String reopen = text(body, "reopen");
-        String title = orDefault(text(body, "title"),
-                orDefault(idea, orDefault(reopen, fmtKey == null ? "未命名短视频" : fmtName)));
+        // v0.143 提示词直出：body.seed = 已拆解（可能被用户改过）的结构 → 直接 seed 成带分镜的草稿。
+        // 只接创作内容，分镜一律 flow=draft（seed 不得携带首帧 / 视频 / 配音产物）。
+        ObjectNode seeded = body.path("seed").isObject()
+                ? DramaShortPromptService.seedToDraftData(body.get("seed"), om) : null;
+        String fmtKey = seeded != null ? null : text(body, "fmtKey");
+        String fmtName = seeded != null
+                ? seeded.path("fmtName").asText("自定义短片")
+                : orDefault(text(body, "fmtName"), fmtKey == null ? "短视频" : fmtKey);
+        String idea = seeded != null ? null : text(body, "idea");
+        String reopen = seeded != null ? null : text(body, "reopen");
+        String title = seeded != null
+                ? seeded.path("title").asText("未命名短视频")
+                : orDefault(text(body, "title"),
+                        orDefault(idea, orDefault(reopen, fmtKey == null ? "未命名短视频" : fmtName)));
+        ObjectNode payload = seeded != null ? seeded : seedData(title, fmtKey, fmtName, idea, reopen);
+        if (seeded != null) continuity.ensureDraft(payload); // 依赖图按服务端规则派生，不信客户端
 
         DramaShort row = DramaShort.builder()
                 .id("dvs_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
@@ -133,17 +147,18 @@ public class DramaShortService {
                 .fmtName(fmtName)
                 .coverFrom(orDefault(text(body, "coverFrom"), "#f97316"))
                 .coverTo(orDefault(text(body, "coverTo"), "#e11d48"))
-                .durationSec(0)
-                .shotCount(0)
+                .durationSec(sumDuration(payload.path("shots")))
+                .shotCount(payload.path("shots").size())
                 .doneCount(0)
                 .status("draft")
                 .progress(0)
-                .payloadJson(write(seedData(title, fmtKey, fmtName, idea, reopen)))
+                .payloadJson(write(payload))
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
         repo.save(row);
-        log.info("[drama-short] create user={} id={} fmt={}", userId, row.getId(), fmtKey);
+        log.info("[drama-short] create user={} id={} fmt={} seededShots={}",
+                userId, row.getId(), fmtKey, row.getShotCount());
         return toDetail(row);
     }
 
@@ -369,6 +384,15 @@ public class DramaShortService {
     }
 
     /** 新建时的最小 ShortDraftData（结构合法、各数组为空，前端各步渲染空状态 + 自动补开场白）。 */
+    /** 分镜时长求和（新建即带分镜的提示词直出草稿要立刻有正确卡片时长）。 */
+    private static int sumDuration(JsonNode shots) {
+        int total = 0;
+        if (shots != null && shots.isArray()) {
+            for (JsonNode s : shots) total += Math.max(0, s.path("dur").asInt(0));
+        }
+        return total;
+    }
+
     private ObjectNode seedData(String title, String fmtKey, String fmtName, String idea, String reopen) {
         ObjectNode root = om.createObjectNode();
         if (idea != null) root.put("idea", idea); else root.putNull("idea");

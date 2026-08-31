@@ -1,8 +1,24 @@
-# 版本增量历史（v0.5 → v0.141）
+# 版本增量历史（v0.5 → v0.143）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.143（2026-08-31）— 短视频「提示词直出」：整段提示词 → 结构化分镜开拍
+
+**背景**：短视频线此前只有一条入口 —— 经 AI 创意 / AI 对话（一句话 → AI 创作脚本与分镜）。已经把提示词写全（人物设定卡、场景与光影、全片基调、带时间码的分镜脚本）的用户，只能把它塞进一句话输入框重新被 AI「改写」，设定被丢掉。本版补上「我自己的提示词直接开拍」这条路。
+
+- **新页面 `/shorts/prompt`（web-drama）**：粘贴原文 → 「开始拆解」（免费）→ 预览页（标题 / 一句话 / 风格标签 / 人物卡「外观 vs 表演」分栏 / 场景 / 全片画面基调 / 逐镜分镜表，全部可就地改；每镜可点人物 chip 增删出场人物）→ 「开始制作」（扣一笔 `drama.credit.short-entry`，与「一句话生成」同价）→ 进 `/shorts/make` 逐镜出片。入口三处：短视频工坊头部按钮 + 工坊新建卡（与「一句话生成」并列的第二张虚线卡）+ 新建控制台（`ShortCreateConsole`，覆盖首页短视频 tab 与 `/shorts/new`）底部一行。
+- **server 新端点 `POST /api/me/drama/shorts/parse-prompt`**（`DramaShortPromptService`）：新 promptKey **`drama.short_prompt_parse`**（resource 默认 `prompts/material/drama.short_prompt_parse.md`，复用 `DRAMA_SCRIPT_DRAFT` 已绑定端点，admin「短剧专区 · 提示词设置」可改，prompt 级 max_tokens 默认 8192）。**免费、不落库**（与 v0.87 脑暴 chat/outline 同惯例：AI 对话免费，进工作台才扣开拍费；总花费与 AI 对话线一致）。
+- **`POST /me/drama/shorts` 加 `body.seed`**：seed = 拆解结果（可被用户在预览页改过）+ `promptSource.raw` 原文 → 一次 hold→commit 建成带人物卡 / 场景 / 逐镜分镜的草稿，卡片时长与镜数立刻正确。**seed 只接创作内容**：分镜一律 `flow=draft`，`videoUrl` / `frameUrl` / `audio` / `assembled` 全部剥掉 —— 客户端不得借 seed 伪造成片（§8.0）。
+- **设定真的进模型（关键，不是只做展示）**：`ShortDraftData` 新增文档字段 `visualBible{universal,characters[{name,visual,performance}],scenes[{name,visual}]}` / `promptSource{raw,parsedAt}` / `promptNotes[]`（payloadJson 内，**无表变更无迁移**）。`DramaShortContinuityService.ensureDraft` 据此派生多角色（`character-main` / `character-2`…）与多场景（`scene-main` / `scene-2`…）锚点，每镜按 `castNames`（人物名）与 `sceneName` 精确挂人挂景：**显式空数组 = 这一镜确实没人（纯环境镜）**，字段缺失才按全员锚定（老草稿 / 模型漏字段不丢一致性）。人物「外观」进逐镜画面前缀，「表演」只留在 `performanceTraits`（不进画面，避免一句台词污染所有镜头）；`universal` 由前端 `buildShortFrameVars` 追加为「全片画面基调」。无 `visualBible` 时**完全不读 `castNames`**、行为与之前逐字不变（AI 对话线单角色 + 单场景）—— 评审曾指出初版无条件读该字段，理论上会让带 `castNames: []` 的历史 payload 变成无人镜，已收口。
+- **如实回报，不静默改设定**：提示词 20–20000 字（超出 400 挡回，不截断）；单镜 2–15 秒（超长按上限收口）、整条最多 40 镜（超出不拆解）、人物 / 场景视觉描述 240 字、全片基调 320 字（超长截断）—— 每一项处理都写进 `notes`，预览页与工作台都显示。
+- **工作台（`/shorts/make`）**：新增「提示词设定」卡（人物卡外观 / 表演、场景、全片基调可改，随 autosave 落库）+「原始提示词」查看与复制弹层 +「按提示词重拆」（带 danger 确认）。**提示词直出线的「改一版」改走 parse-prompt 重新拆解**（把调整要求作为 `instruction` 追加），不再走主题式 AI 重写 —— 否则用户的人物卡与画面设定会被一句话主题冲掉。类型标签显示拆解出的风格标签 + 「提示词直出」徽标。
+- **admin**：`/drama/prompts` 加「短视频提示词拆解」条目（占位符说明 + 试运行样例 + max_tokens 留空默认 8192）。
+- **门禁**：server compile + `Drama*Test`/`PromptService*Test` **152/152**（新增 `DramaShortPromptServiceTest` 16：输入闸门 / §8.0 三种未配置与失败 / 时长收口与超镜数如实告知 / 出场人物只认已知角色 / seed 拒绝伪造成片；`DramaShortContinuityServiceTest` +2 多角色锚点与老行为不变；`DramaShortServiceTest` +1 seed 建草稿只扣一次）+ `mvnw test` 全量 + `typecheck:all` + `typecheck:admin` + web-drama build（32 路由）+ `pnpm check:api-contract` 全绿；openapi 加 `/me/drama/shorts/parse-prompt`。mock 模式浏览器实测走通「工坊 → 提示词直出 → 拆解 → 预览改 → 开始制作 → 工作台（提示词设定 / 原始提示词 / 按提示词重拆）」整链。
+- **Codex 独立评审闭环（2026-08-31，只读评审 + 同轮修复）**：① 出场人物语义 —— `normalize` 原先无条件落 `castNames: []`，使「字段缺失 → 全员」永远走不到，模型漏写即丢人物锚点；改为「显式给出按它 / 漏写从画面文本推断 / 推不出就省略字段」，模板同步声明必填，预览页显示「未标注」。② 逐镜锚点不再依赖 `continuityManifest` —— 编辑人物外观或刚重拆时本地 manifest 可能过期或为空，会退化成只带主角名的前缀；改为直接由 `visualBible` + 本镜 `castNames`/`sceneName` 推导（规则与服务端 `ensureDraft` 对齐），编辑后立即生效。③ 空分镜表不再能付费 —— `requireUsableSeed` 在 hold 之前校验（400 `DRAMA_SHORT_SEED_EMPTY`），前端按钮同步禁用。④ 出片进行中禁止重拆与 AI 改分镜（旧任务照常扣费，但产物会因 shot id 全换而挂不回草稿）。⑤ 角色 / 场景超上限（各 6）改为如实写进 `notes`，模板也告知模型上限。⑥ 修一处自埋 bug：上限规则写在 system 段而 system 未过 `PromptService.fill`，模型此前会看到字面 `{{maxShots}}`。⑦ 无 `visualBible` 时不再读 `castNames`，老草稿行为严格不变。
+- **评审同时发现两个既有漏洞（非本版引入，已记 TODO.md 独立排期）**：`saveShort` 整份接收客户端 `data` 不清 `flow` / `videoUrl`，而总装只凭 `flow=done` + 非空 `videoUrl` 接受镜头 → 可伪造成片绕过出片计费（v0.76 / v0.133 起）；`withEntryCharge` 无幂等键且与草稿落库非原子 → 网络重试会重复扣开拍费（v0.78 起）。
+- **边界**：未新增视频模型、未提交任何真实付费生成；逐镜出片仍走既有 `/me/drama/render/{frame,clip}` 按次计费链路。
 
 ### v0.141（2026-08-29）— aiavatar 资产中枢重构 P1+P2a：真路由读界面 / studio 双轨 / 明星授权投影
 
