@@ -3,13 +3,13 @@
 // 首页（M3 导航合并后）：
 //   旧 hash → 转发 /studio（七牛刷脸回调红线，/studio 迁完前不得移除）
 //   访客     → 公开宣传页
-//   已登录   → 资产主页（与 /assets 同一份内容；原「工作台」已并入其顶部）
+//   已登录   → 首页门户（总览 + 待办 + 快捷创作 + 最近更新 + 官方精选）
 // dev 预览宣传页：任意模式加 ?landing=1。
 // ============================================================
 import React, { useEffect, useState } from "react";
 import { auth, AuthApi, onAuthExpired, USE_MOCK } from "@/proto/api";
 import { Landing } from "@/components/hub/landing";
-import { AssetsHome } from "@/components/hub/assets-home";
+import { HubHome } from "@/components/hub/home";
 import { PlatformGateScreen } from "@/components/hub/auth";
 import { HubScreen } from "@/components/hub/ui";
 
@@ -59,5 +59,5 @@ export default function HomePage() {
   if (mode === "landing") return <Landing />;
   if (noPlatform) return <PlatformGateScreen />;
   if (mode !== "app") return <HubScreen tabBar={false}>{null}</HubScreen>;
-  return <AssetsHome />;
+  return <HubHome />;
 }

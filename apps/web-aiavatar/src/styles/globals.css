@@ -1065,6 +1065,9 @@ body {
 }
 .wx-tabbar.hub-tabbar .wx-tab { text-decoration: none; }
 .wx-tabbar.hub-tabbar .wx-fab { text-decoration: none; }
+/* 创作 tab 选中态：中间凸起键没有 .on 视觉，用一圈光环表示"当前就在创作"。
+   用 outline 而非 box-shadow —— 下面有 .wx-fab { box-shadow: ... !important }，改不动 */
+.wx-tabbar.hub-tabbar .wx-fab.on { outline: 3px solid rgba(18,179,222,.22); outline-offset: 2px; }
 
 /* 桌面端：内容列与背景的细分隔（仅描边 + 柔和投影，不做手机外框） */
 @media (min-width: 481px) {

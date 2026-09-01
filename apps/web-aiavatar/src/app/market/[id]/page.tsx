@@ -29,7 +29,7 @@ export default function MarketAssetPage({ params }: { params: Promise<{ id: stri
   if (list.loading) {
     return (
       <HubScreen>
-        <NavBar back="/assets" title="官方资产" />
+        <NavBar back="/discover" title="官方资产" />
         <LoadingBlock />
       </HubScreen>
     );
@@ -38,7 +38,7 @@ export default function MarketAssetPage({ params }: { params: Promise<{ id: stri
   if (list.error || !c) {
     return (
       <HubScreen>
-        <NavBar back="/assets" title="官方资产" />
+        <NavBar back="/discover" title="官方资产" />
         <Card style={{ margin: "12px 16px 0" }}>
           <EmptyState text={list.error ? `加载失败：${list.error}` : "没有找到这个官方资产"} actionHref="/assets" actionLabel="回资产货架" />
         </Card>

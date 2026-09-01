@@ -67,7 +67,7 @@ function WxTabBar({ active, onTab, onCreate, meInitial }) {
 //  铺满视口（桌面端居中为一列），顶部预留状态栏安全区；
 //  内容、底部 Tab、覆盖页、Sheet 都挂在相对定位的 .m-content 里。
 //  onRefresh：传入则启用「下拉刷新」—— 在内容区顶部下拉触发（仅当滚动条在顶部）。
-function AppShell({ children, onRefresh, embedded }) {
+function AppShell({ children, onRefresh, embedded, reserveTabBar }) {
   const ref = useRefM(null);
   const [pull, setPull] = useStateM(0);          // 当前下拉位移（px，已加阻尼）
   const [refreshing, setRefreshing] = useStateM(false);
@@ -120,7 +120,8 @@ function AppShell({ children, onRefresh, embedded }) {
   const pulling = pull > 0;
   const show = pulling || refreshing;
   const y = refreshing ? 12 : Math.min(pull, 56) - 40;                  // 指示器从顶部滑入
-  return hM('div', { className: embedded ? 'app-root app-root--embedded' : 'app-root' },
+  // 内嵌模式下只有底部 tab 栏真的显示时才给它留位（流程屏会隐藏 tab 栏，留位就成了空白条）
+  return hM('div', { className: embedded && reserveTabBar ? 'app-root app-root--embedded' : 'app-root' },
     hM('div', { ref, className: 'm-content', style: { flex: 1, position: 'relative', minHeight: 0 } },
       onRefresh && hM('div', { className: 'm-ptr', style: { opacity: show ? 1 : 0, transition: pulling ? 'opacity .12s' : 'opacity .25s' } },
         hM('div', { className: 'm-ptr-dot', style: {

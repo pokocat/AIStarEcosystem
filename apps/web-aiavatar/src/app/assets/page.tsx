@@ -1,7 +1,7 @@
 "use client";
-// /assets 与 / 渲染同一份资产主页（M3 导航合并），深链保持不变。
-import { AssetsHome } from "@/components/hub/assets-home";
+// 资产 Tab：我的资产库（官方名录在 /discover）。
+import { AssetsLibrary } from "@/components/hub/assets-library";
 
 export default function AssetsPage() {
-  return <AssetsHome />;
+  return <AssetsLibrary />;
 }

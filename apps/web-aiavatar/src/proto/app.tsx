@@ -109,6 +109,8 @@ function MPlatformGate({ onActivated, onLogout }) {
 // ── 哈希路由 ──────────────────────────────────────────────────
 // 把当前视图（tab + 覆盖页栈顶）映射成可分享 / 可刷新的 URL（永久链接），
 // 并通过 pushState/popstate 让浏览器与系统返回 / 前进键自然驱动导航。
+export type StudioStart = "sheet" | "real" | "ai" | "compose";
+
 const TAB_KEYS = ["home", "library", "apps", "me"];
 const TAB_LABEL: any = { home: "首页", library: "资产库", apps: "应用中心", me: "我的" };
 const OVERLAY_LABEL: any = { voice: "声音工作室", licenses: "授权登记", realmaterials: "真人授权素材库", tasks: "任务中心", settings: "设置", security: "账号与安全", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站", detail: "资产详情", derivview: "衍生查看", looks: "造型档案", designlooks: "设计造型", choosevoice: "选择音色", create: "创建链路", aicreate: "AI 创建", realcapture: "真人素材授权", realauthresume: "本人确认结果", ipdetail: "IP 详情", iplicense: "IP 授权", scenedetail: "场景详情", productdetail: "产品详情", styledetail: "风格模板", compose: "合成工作台", composeresult: "合成结果" };
@@ -189,10 +191,13 @@ function parseHash(): { tab: string; screen?: string; id?: string; deriv?: strin
 
 /**
  * @param embedded 内嵌进新版外壳（/studio）：隐藏老 SPA 自带的 5 tab，
- *                 改由新版 HubTabBar 统一承载，避免一个 app 出现两套底部导航。
- * @param autoCreate 进入即拉起「新建资产」面板（新版「制作」tab 的落点）。
+ *                 改由外壳经 tabBar 传入的新版 HubTabBar 承载，避免两套底部导航。
+ * @param tabBar   内嵌模式下的底部导航节点；与老 tab 栏同一个显示条件（覆盖页上隐藏）。
+ * @param start    进入即打开某个创建流程（新版「创作」页的落点）。
+ *                 这些流程属于 FLOW_SCREENS —— 冷启动不按 hash 还原（缺角色上下文），
+ *                 所以不能靠 `#/create/real` 深链，必须由外壳显式发起。
  */
-export function App({ embedded = false, autoCreate = false }: { embedded?: boolean; autoCreate?: boolean } = {}) {
+export function App({ embedded = false, start, tabBar }: { embedded?: boolean; start?: StudioStart; tabBar?: any } = {}) {
   const [authed, setAuthed] = useStateA(USE_MOCK ? true : null as any); // null = 挂载前未知（避免 SSR 闪登录屏）
   // v0.53 平台门禁：null=待检 / true=已开通 / false=未开通（渲染拦截屏）
   const [platformOk, setPlatformOk] = useStateA(USE_MOCK ? true : null as any);
@@ -324,10 +329,20 @@ export function App({ embedded = false, autoCreate = false }: { embedded?: boole
 
   const reload = useCallbackA(() => setReloadKey((k) => k + 1), []);
 
-  // 「制作」tab 落点：进来直接拉起新建资产面板，而不是丢到老首页
+  // 外壳发起的创建流程要用到 ctx，但 ctx 在下面才组装 —— 用 ref 打通
+  const ctxRef = useRefA(null as any);
+
+  // 「创作」页落点：进来直接进对应流程，而不是丢到老首页。
+  // 只在挂载后发起一次；之后用户自己的导航不受影响。
+  const startedRef = useRefA(false);
+  const canStart = USE_MOCK || (authed === true && platformOk !== false);
   useEffectA(() => {
-    if (autoCreate) setSheet(true);
-  }, [autoCreate]);
+    if (!start || startedRef.current || !canStart || !ctxRef.current) return;   // 等登录与平台门禁放行再发起
+    startedRef.current = true;
+    if (start === "sheet") { setSheet(true); return; }
+    if (start === "compose") { ctxRef.current.openCompose({}); return; }
+    ctxRef.current.startCreate(start);
+  }, [start, canStart]);
   // 下拉刷新：重挂当前屏（触发其挂载期数据拉取）+ 刷新共享资产列表。
   const doRefresh = useCallbackA(() => { setRefreshSeq((s) => s + 1); setReloadKey((k) => k + 1); }, []);
 
@@ -393,6 +408,7 @@ export function App({ embedded = false, autoCreate = false }: { embedded?: boole
     submitToLibrary: () => { reload(); setSheet(false); setStack([]); setTab("library"); setLabel("资产库"); },
     openCreateSheet: () => setSheet(true),
   };
+  ctxRef.current = ctx;
 
   // 六类资产的新建流程（IP / 场景 / 产品 / 风格 就地完成；人物 / 声音转既有创建链路）。
   // 挂在根上，让底部 ＋ 创建键在任何 tab 都能拉起同一套流程。
@@ -433,7 +449,7 @@ export function App({ embedded = false, autoCreate = false }: { embedded?: boole
     trash: MTrash,
     ...LAZY_OVERLAYS,
   } as any)[top.screen];
-  const hideTabBar = !!top || embedded;
+  const hideTabBar = !!top;   // 覆盖页 / 创建流程屏上不显示底部导航，避免挡住主按钮
 
   // 「我的」tab 头像：用登录用户名首字（live），无则回退通用图标 —— 不再硬编与用户无关的字。
   const sessionUser = (typeof window !== "undefined" && !USE_MOCK) ? auth.user() : null;
@@ -442,7 +458,7 @@ export function App({ embedded = false, autoCreate = false }: { embedded?: boole
   const canRefresh = !top || FLOW_SCREENS.indexOf(top.screen) < 0;
 
   return hA(React.Fragment, null,
-    hA(PhoneFrame, { onRefresh: canRefresh ? doRefresh : undefined, embedded },
+    hA(PhoneFrame, { onRefresh: canRefresh ? doRefresh : undefined, embedded, reserveTabBar: !hideTabBar },
       hA("div", { key: tab + ":" + refreshSeq, style: { position: "absolute", inset: 0, display: "flex", flexDirection: "column" } },
         hA(tabScreen, { ctx })),
 
@@ -450,7 +466,7 @@ export function App({ embedded = false, autoCreate = false }: { embedded?: boole
         hA(SuspenseA, { fallback: hA(OverlayLoading, { label }) },
           hA(overlayScreen, { ...top.props, ctx }))),
 
-      !hideTabBar && hA(WxTabBar, { active: tab, onTab: ctx.tab, onCreate: ctx.openCreateSheet, meInitial }),
+      !hideTabBar && (embedded ? tabBar : hA(WxTabBar, { active: tab, onTab: ctx.tab, onCreate: ctx.openCreateSheet, meInitial })),
 
       sheet && hA(AssetCreateSheet, {
         onClose: () => setSheet(false),

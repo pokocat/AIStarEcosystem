@@ -97,24 +97,28 @@ const iconBtnStyle: CSS = {
 
 // ── 底部 Tab ─────────────────────────────────────────────────
 
-// 复用老版 5 tab 的视觉（.wx-tabbar / .wx-tab / .wx-fab，含中间凸起创建键），
-// 但落点全部换成新版真路由；/studio 内嵌时隐藏其自带 tab 栏，改由这一套统一承载。
+// 复用老版 5 tab 的视觉（.wx-tabbar / .wx-tab / .wx-fab，含中间凸起创建键）。
+// 落点 = 2026-09-01 定案的完整 5 Tab；/studio 内嵌时隐藏其自带 tab 栏。
+//
+// replace 而非 push：Tab 之间切换不进历史栈，返回键因此不会在 Tab 间来回走
+// （旧版从任一 Tab 返回都退回「我的」就是 push 造成的）。二级页仍用 push。
 const TABS = [
-  { href: "/", label: "资产", icon: LayersIcon, match: (p: string) => p === "/" || p.startsWith("/assets") || p.startsWith("/market") || p.startsWith("/stars") },
-  { href: "/licenses", label: "授权", icon: ShieldIcon, match: (p: string) => p.startsWith("/licenses") },
-  { fab: true as const, href: "/studio?create=1", label: "创建" },
-  { href: "/studio#/tasks", label: "任务", icon: ClockIcon, match: (p: string) => p.startsWith("/studio") },
-  { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") },
+  { href: "/", label: "首页", icon: HomeIcon, match: (p: string) => p === "/" },
+  { href: "/discover", label: "发现", icon: CompassIcon, match: (p: string) => p.startsWith("/discover") || p.startsWith("/market") || p.startsWith("/stars") },
+  { fab: true as const, href: "/create", label: "创作" },
+  { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") },
+  { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
 ];
 
 export function HubTabBar() {
   const pathname = usePathname() || "/";
+  const createOn = pathname.startsWith("/create") || pathname.startsWith("/studio");
   return (
     <nav className="wx-tabbar hub-tabbar">
       {TABS.map((t) =>
         "fab" in t ? (
           <div key="create" className="wx-fab-slot">
-            <Link className="wx-fab" href={t.href} aria-label="新建资产">
+            <Link className={"wx-fab" + (createOn ? " on" : "")} href={t.href} replace aria-label="创作">
               <span className="fab-visual" aria-hidden>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img className="fab-art" src="/generated/create-entry/fab-create.jpg" alt="" draggable={false} loading="lazy" decoding="async" />
@@ -128,7 +132,7 @@ export function HubTabBar() {
             </Link>
           </div>
         ) : (
-          <Link key={t.href} href={t.href} className={"wx-tab" + (t.match(pathname) ? " on" : "")}>
+          <Link key={t.href} href={t.href} replace className={"wx-tab" + (t.match(pathname) ? " on" : "")}>
             {t.icon({ strong: t.match(pathname) })}
             <span className="lbl">{t.label}</span>
           </Link>
@@ -454,20 +458,20 @@ function svgProps(strong?: boolean) {
   };
 }
 
-function ShieldIcon({ strong }: { strong?: boolean }) {
+function HomeIcon({ strong }: { strong?: boolean }) {
   return (
     <svg {...svgProps(strong)}>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      <polyline points="9 12 11 14 15 10" />
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5.5 9.6V20h13V9.6" />
     </svg>
   );
 }
 
-function ClockIcon({ strong }: { strong?: boolean }) {
+function CompassIcon({ strong }: { strong?: boolean }) {
   return (
     <svg {...svgProps(strong)}>
       <circle cx="12" cy="12" r="9" />
-      <polyline points="12 7 12 12 15.5 14" />
+      <polygon points="15.6 8.4 13.4 13.4 8.4 15.6 10.6 10.6 15.6 8.4" />
     </svg>
   );
 }

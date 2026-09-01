@@ -128,6 +128,32 @@ src/
 
 ## 版本日志
 
+### v0.147（2026-09-01）— 完整 5 Tab 重排（首页 / 发现 / 创作 / 资产 / 我的）+ 修返回键乱跳
+
+**起因（用户实测三条）**：① Tab 之间用 push 跳转，从任一 Tab 按返回都退回「我的」；
+② 授权是低频操作却常驻一格；③ 首页被资产清单占满，"今天该干什么"和"有什么可看"都没有落点。
+
+- **五个 Tab 重排**（真源 `docs/aiavatar-asset-hub-redesign.md` §1.5「信息架构（2026-09-01 定案）」）：
+  | Tab | 路由 | 由原先哪些页面合并而来 |
+  |---|---|---|
+  | 首页 | `/` | 原工作台（总览 + 待办）+ 新增快捷创作 / 最近更新 / 官方精选 |
+  | 发现 | `/discover` | 原资产主页的「官方资产」段 + 明星形象申请入口 |
+  | 创作 | `/create` | 原中间凸起键（直接拉老 SPA 弹层）升级为真页面 |
+  | 资产 | `/assets` | 原资产主页的「我的资产」段 |
+  | 我的 | `/me` | 账号 + 授权中心（原 Tab 降为二级）+ 任务中心 + 算力/存储/设置 |
+- **Tab 切换改 replace**：历史里只留"当前 Tab"一条，返回键不再在 Tab 间兜圈；
+  二级页（设定卡 / studio 流程）仍是 push，返回回到来时的 Tab。
+- **修创建流程的死链**：`realcapture` / `aicreate` / `compose` 属 `FLOW_SCREENS`
+  （冷启动不按 hash 还原，缺角色上下文），此前 `/studio#/create/real` 这类深链会静默落到
+  老首页。改为 `App` 新增 `start` 参数（`/studio?start=real|ai|compose|sheet`），由外壳
+  在登录与平台门禁放行后显式发起流程。老 `?create=1` 继续兼容。
+- **流程屏不再被底部导航挡住**：`tabBar` 作为插槽传进 `App`，与老 tab 栏共用同一显示条件
+  （有覆盖页就收起）；`AppShell` 只在 tab 栏真的显示时才留底部空位。
+- **修两处内部黑话**：创作页任务行显示 `mock.generate`（内部 stage 名）与
+  `58.550452234259915%`（未取整的浮点）→ 改用人话的 `kind` + 取整百分比。
+- 文件：新增 `components/hub/{home,discover,create-center,assets-library,asset-cards}.tsx`
+  与 `app/{discover,create}/page.tsx`；删除 `components/hub/assets-home.tsx`。
+
 ### v0.142（2026-08-29）— 公开宣传页回归（访客首页）+ 工作台美化
 
 - **根路径双面**：未登录访客看公开宣传页（`src/components/hub/landing.tsx`），已登录直接进工作台；

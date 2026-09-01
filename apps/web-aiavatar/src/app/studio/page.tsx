@@ -1,23 +1,23 @@
 "use client";
-// 工作室（双轨过渡期的老版整站宿主）：src/proto 的完整 SPA 承载所有"写"流程
-// （创建链路 / 真人刷脸授权 / 合成工作台 / 声音克隆 / 设置等），hash 深链不变。
-//
-// 导航统一：老 SPA 自带的 5 tab 在这里隐藏（embedded），底部改用与新版页面
-// 完全一致的 HubTabBar —— 整个 app 只有一套底部导航。
-// P3 逐屏迁出后本页退役（见 docs/aiavatar-asset-hub-redesign.md §3.1 / §4）。
-import { Suspense } from "react";
+// ============================================================
+// /studio —— 老 SPA（hash 路由）的宿主。
+//   内嵌模式：隐藏它自带的 tab 栏，底部统一用新版 HubTabBar。
+//   ?start=real|ai|compose|sheet：由「创作」页发起具体流程
+//   （这些流程冷启动不按 hash 还原，所以不能用 #/create/real 这类深链）。
+// ============================================================
+import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { App } from "@/proto/app";
+import { App, type StudioStart } from "@/proto/app";
 import { HubTabBar } from "@/components/hub/ui";
+
+const STARTS: StudioStart[] = ["sheet", "real", "ai", "compose"];
 
 function StudioInner() {
   const sp = useSearchParams();
-  return (
-    <>
-      <App embedded autoCreate={sp.get("create") === "1"} />
-      <HubTabBar />
-    </>
-  );
+  const raw = sp.get("start") || (sp.get("create") === "1" ? "sheet" : null);
+  const start = STARTS.find((s) => s === raw);
+  // tabBar 交给 App 渲染：覆盖页 / 创建流程屏上它会自动收起，不挡主按钮
+  return <App embedded start={start} tabBar={<HubTabBar />} />;
 }
 
 export default function StudioPage() {
