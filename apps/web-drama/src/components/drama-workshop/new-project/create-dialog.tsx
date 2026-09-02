@@ -7,13 +7,14 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, ChevronLeft, ChevronUp, Layers, Network, Sparkles, Wand2, X, Zap } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Layers, Network, Sparkles, Wand2, X } from "lucide-react";
 import { VideoCover } from "@/components/drama-workshop/video-cover";
 import { PreviewModal } from "@/components/drama-workshop/preview-modal";
 import { getTplMeta, type ContentType, type Template } from "@/mocks/drama-workshop";
 import { ProjectsApi } from "@/api";
 import type { CreateProjectInput } from "@/api/projects";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
+import { HotTopicChips } from "@/components/drama-workshop/hot-topic-chips";
 import { aiErrorMessage } from "@/lib/ai-error";
 
 type Picked = { tpl: Template; type: ContentType };
@@ -162,7 +163,7 @@ export function CreateDialog({
             </span>
           </h1>
           <div className="muted" style={{ marginTop: 8, fontSize: 14.5 }}>
-            一句话想法即可，AI 替你立项、铺大纲、写剧本、拆分镜；也可以先从上方<strong style={{ color: "var(--ink-2)" }}>套用热门模板</strong>开场。
+            一句话想法就够。进工作台后再让 AI 铺大纲、写剧本、拆分镜；也可以先从上方<strong style={{ color: "var(--ink-2)" }}>套用热门模板</strong>开场。
           </div>
         </div>
 
@@ -181,7 +182,7 @@ export function CreateDialog({
                 </span>
                 <div className="grow col" style={{ gap: 1 }}>
                   <span style={{ fontWeight: 800, fontSize: 13.5 }}>套爆款模板</span>
-                  <span className="faint" style={{ fontSize: 11 }}>选择经过验证的热门结构，AI 据此铺设大纲</span>
+                  <span className="faint" style={{ fontSize: 11 }}>挑一个热门结构，AI 照它铺大纲</span>
                 </div>
                 <button type="button" className="btn btn-icon btn-ghost btn-sm" title="收起" onClick={() => setOverlayOpen(false)}>
                   <ChevronUp size={15} />
@@ -276,7 +277,7 @@ export function CreateDialog({
               </span>
               <span style={{ fontWeight: 700, fontSize: 13.5, flex: "none" }}>套爆款模板</span>
               <span className="faint" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {picked ? `已选 · ${picked.tpl.name}` : "选择经过验证的热门结构开场"}
+                {picked ? `已选 · ${picked.tpl.name}` : "挑一个热门结构开场"}
               </span>
               <span className="grow" />
               <ChevronDown size={16} style={{ color: "var(--ink-3)", flex: "none" }} />
@@ -358,26 +359,14 @@ export function CreateDialog({
             />
 
             {/* 近期热点 */}
-            <div className="row gap-2" style={{ padding: "4px 14px 0", flexWrap: "wrap", alignItems: "center" }}>
-              <span className="row gap-1" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-2)", flex: "none" }}>
-                <Zap size={12} /> 近期热点
-              </span>
-              {cat.hotTopics.slice(0, 4).map((h) => (
-                <button
-                  key={h.label}
-                  type="button"
-                  className="chip"
-                  style={{ height: 26, fontSize: 11.5, padding: "0 10px" }}
-                  title={h.idea}
-                  onClick={() => {
-                    setIdea(h.idea);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  {h.label}
-                </button>
-              ))}
-            </div>
+            <HotTopicChips
+              topics={cat.hotTopics}
+              shuffle
+              onPick={(idea) => {
+                setIdea(idea);
+                inputRef.current?.focus();
+              }}
+            />
 
             <div className="row gap-2" style={{ padding: "10px 14px 12px", flexWrap: "wrap" }}>
               <button

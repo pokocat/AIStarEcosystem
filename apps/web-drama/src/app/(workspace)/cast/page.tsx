@@ -126,9 +126,9 @@ function CastListInner() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <ViewHeader
-        eyebrow="跨项目 IP 资产"
+        eyebrow="跨项目复用"
         title="演员 IP 阵容"
-        meta={`${all.length} 个 IP · ${active} 在线 · ${trainee} 训练中 · 跨项目复用`}
+        meta={`共 ${all.length} 位 · ${active} 在线 · ${trainee} 训练中`}
         action={
           <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
             <Wand2 size={14} />
@@ -159,9 +159,9 @@ function CastListInner() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
         <KpiCard label="在线 · 全部" value={String(active)} tone="success" delta={`${all.length} 总数`} />
-        <KpiCard label="训练中" value={String(trainee)} tone="info" delta="孵化营 · 在岗" />
-        <KpiCard label="S 类 · Legendary" value={String(sClass)} tone="accent" delta="顶级 IP" />
-        <KpiCard label="累计营收" value={formatCny(totalRevenue)} tone="violet" delta="历史汇总" />
+        <KpiCard label="训练中" value={String(trainee)} tone="info" />
+        <KpiCard label="S 类" value={String(sClass)} tone="accent" delta="最高等级" />
+        <KpiCard label="累计营收" value={formatCny(totalRevenue)} tone="violet" delta="全部作品合计" />
       </div>
 
       {/* 搜索 + 过滤 */}

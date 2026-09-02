@@ -1,7 +1,7 @@
 "use client";
 
 // 短视频新建控制台（v0.78）—— 首页「短视频 tab」与 /shorts/new 共用同一套，
-// 取代旧的 ShortCreateDialog（其模版取的是写死的 SHORT_FORMATS，不是创意中心）。
+// 取代旧的 ShortCreateDialog（其模版取的是写死的 SHORT_FORMATS，不是创意市场）。
 //
 // 模版真源 = 创意市场（已发布 DramaRecipe，单集 episodes≤1）。交互：
 //   ① 点创意卡 → 预览弹窗（下方只一个「试试同款」）
@@ -22,6 +22,7 @@ import { newClientRequestId } from "@/api/shorts";
 import type { DramaRecipe } from "@/api/recipes";
 import { useAsync } from "@/lib/drama-query";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
+import { HotTopicChips } from "@/components/drama-workshop/hot-topic-chips";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { recipeBeats, recipeEstimate, recipePromptSeed, recipeTags } from "./recipe-preview";
@@ -168,7 +169,7 @@ export function ShortCreateConsole({
                 </span>
               </h1>
               <div className="muted" style={{ marginTop: 8, fontSize: 14.5 }}>
-                单条速成 · 竖屏 9:16。从下方<strong style={{ color: "var(--ink-2)" }}>创意推荐</strong>里选一个定风格，再补一句自己的主题会更准。
+                单条短片 · 竖屏 9:16。从下方<strong style={{ color: "var(--ink-2)" }}>创意推荐</strong>里选一个定风格，再补一句自己的主题会更准。
               </div>
             </div>
           </>
@@ -198,16 +199,7 @@ export function ShortCreateConsole({
             />
 
             {/* 近期热点:点一个填进对话框 */}
-            <div className="row gap-2" style={{ padding: "4px 14px 0", flexWrap: "wrap", alignItems: "center" }}>
-              <span className="row gap-1" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-2)", flex: "none" }}>
-                <Zap size={12} /> 近期热点
-              </span>
-              {cat.hotTopics.map((h) => (
-                <button key={h.label} type="button" className="chip" style={{ height: 26, fontSize: 11.5, padding: "0 10px" }} title={h.idea} onClick={() => setComposerText(h.idea)}>
-                  {h.label}
-                </button>
-              ))}
-            </div>
+            <HotTopicChips topics={cat.hotTopics} shuffle onPick={setComposerText} />
 
             <div className="row gap-2" style={{ padding: "10px 14px 12px", flexWrap: "wrap" }}>
               <button type="button" className="chip" onClick={dailySpark} style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="随机填个示例点子">
@@ -299,8 +291,8 @@ export function ShortCreateConsole({
             {recs.length === 0 && (
               <div className="card col gap-2" style={{ padding: 18, minHeight: 180, justifyContent: "center" }}>
                 <Sparkles size={18} style={{ color: "var(--accent)" }} />
-                <div style={{ fontWeight: 800 }}>正在同步创意市场</div>
-                <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>创意推荐直接来自创意市场，上架的单集创意会显示在这里。</div>
+                <div style={{ fontWeight: 800 }}>创意推荐还在加载</div>
+                <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>推荐来自创意市场，上架的单集创意会显示在这里。</div>
               </div>
             )}
           </div>

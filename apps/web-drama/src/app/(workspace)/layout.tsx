@@ -57,7 +57,7 @@ interface NavGroup {
   items: NavItem[];
 }
 
-// v4 信息架构 — 设计真源 app-v4.jsx `NAV_V3`:创作 / 提效 / 素材;
+// v4 信息架构 — 设计真源 app-v4.jsx `NAV_V3`:创作 / 创意 / 素材;
 // 既有的分发洞察与账户分组保留在下方。
 const GROUPS: NavGroup[] = [
   {
@@ -70,7 +70,7 @@ const GROUPS: NavGroup[] = [
   },
   {
     // v0.63 补丁:剧本审阅收进「短剧工坊」页内入口,不再占一级菜单
-    title: "提效",
+    title: "创意",
     items: [
       // v0.75：模板库 → 创意市场（官方内置 + 用户发布统一在此）+ 子页「我发布的创意」
       { href: "/templates", icon: Layers, label: "创意市场", children: [{ href: "/templates/published", label: "我发布的创意" }] },

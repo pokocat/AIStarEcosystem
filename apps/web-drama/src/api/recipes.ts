@@ -135,7 +135,7 @@ export async function extractFromProject(projectId: string): Promise<DramaRecipe
   return apiFetch<DramaRecipe>(`/me/drama/projects/${encodeURIComponent(projectId)}/extract-recipe`, { method: "POST" });
 }
 
-/** 用户把一条已完成短视频发布到创意中心（→ status=submitted 待运营审核）。 */
+/** 用户把一条已完成短视频发布到创意市场（→ status=submitted 待运营审核）。 */
 export async function extractFromShort(shortId: string): Promise<DramaRecipe> {
   if (USE_MOCK) return mockDelay(mockRecipe({ sourceProjectId: shortId, type: "风格短片", typeKey: "style", episodes: 1 }), 1400);
   return apiFetch<DramaRecipe>(`/me/drama/shorts/${encodeURIComponent(shortId)}/extract-recipe`, { method: "POST" });

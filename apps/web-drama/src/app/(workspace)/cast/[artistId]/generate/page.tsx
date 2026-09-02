@@ -141,7 +141,7 @@ export default function ArtistGeneratePage({ params }: PageProps) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 16 }}>
         <Card style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 4 }}>
-          <SectionHeader eyebrow="parameters" title="生成参数" />
+          <SectionHeader eyebrow="设置" title="生成参数" />
 
           <Field label="风格">
             <Select value={style} onChange={(e) => setStyle(e.target.value as Style)}>
@@ -218,7 +218,7 @@ export default function ArtistGeneratePage({ params }: PageProps) {
 
         <Card style={{ padding: "22px 24px", minHeight: 480 }}>
           <SectionHeader
-            eyebrow="results"
+            eyebrow="结果"
             title="候选预览"
             right={results.length > 0 ? <StatusBadge tone="success">{results.length} 张</StatusBadge> : null}
           />

@@ -182,7 +182,7 @@ export default function InsightsPage() {
           value={totalRevenue > 0 ? `¥${(totalRevenue / 10_000).toFixed(1)}万` : "—"}
           tone="accent"
         />
-        <KpiCard label="ARPDAU" value="¥0.41" tone="violet" delta="+8.4%" />
+        <KpiCard label="日活人均营收" value="¥0.41" tone="violet" delta="+8.4%" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>

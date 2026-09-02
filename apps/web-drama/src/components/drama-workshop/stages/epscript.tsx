@@ -893,7 +893,7 @@ export function EpScriptStage({ state, dispatch, data, ctx }: {
             <>
               <div className="row gap-2" style={{ alignItems: "center", margin: "2px 0 10px", flexWrap: "wrap" }}>
                 <span style={{ fontWeight: 800, fontSize: 14.5, flex: "none" }}>分镜表</span>
-                <span className="faint" style={{ fontSize: 11, flex: "1 1 240px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳 · 建议逐镜按顺序出片（先出上一镜、再出下一镜首帧），承接上一镜真实末帧更连贯">单元格文字可直接编辑 · 点击首帧进入「AI 改图」· 出 2 版首帧参考图可挑 · 选好后可「补末帧」让出片首尾更稳 · <b style={{ color: "var(--accent)", fontWeight: 700 }}>建议逐镜按顺序出片</b>（先出上一镜、再出下一镜首帧），承接上一镜真实末帧更连贯</span>
+                <span className="faint" style={{ fontSize: 11, flex: "1 1 240px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="文字点一下就能改。点首帧进「AI 改图」，会出 2 版参考图供挑选，选好后可以补末帧，出片起止更稳。建议按顺序一镜一镜出：先出上一镜，下一镜的首帧才接得住它的真实末帧。">文字点一下就能改 · <b style={{ color: "var(--accent)", fontWeight: 700 }}>建议逐镜按顺序出片</b></span>
                 <span className="grow" />
                 {allShots.length > 0 && (
                   <button type="button" className="chip" style={{ height: 24, fontSize: 11 }} title="全屏放大分镜表，方便逐镜编辑" onClick={() => setTableMax(true)}>

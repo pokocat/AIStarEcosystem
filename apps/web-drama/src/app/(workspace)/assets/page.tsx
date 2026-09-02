@@ -402,7 +402,7 @@ function MaterialDetail({
             <span className="faint" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".05em" }}>关联使用</span>
             {usage.length === 0 && (
               <span className="faint" style={{ fontSize: 12.5 }}>
-                尚未在项目中使用，可在视频工厂通过 @ 加入参考
+                还没有项目用到它。在分镜表的「画面」里输入 @ 就能引用
               </span>
             )}
             {usage.map((u) => (
@@ -444,7 +444,7 @@ function MaterialDetail({
               )}
             </div>
             <div className="faint" style={{ fontSize: 11 }}>
-              加入后会出现在视频工厂的 @ 参考里 · 删除不影响已生成的镜头
+              加入后可在分镜表的「画面」里用 @ 引用 · 删除不影响已生成的镜头
             </div>
           </div>
         </div>
@@ -521,7 +521,7 @@ function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated
           </div>
           <div className="grow">
             <div style={{ fontWeight: 800, fontSize: 16 }}>上传素材</div>
-            <div className="faint" style={{ fontSize: 12 }}>上传图片到素材库，可在视频工厂 @ 引用</div>
+            <div className="faint" style={{ fontSize: 12 }}>上传图片到素材库，写分镜时用 @ 引用</div>
           </div>
           <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
             <X size={18} />

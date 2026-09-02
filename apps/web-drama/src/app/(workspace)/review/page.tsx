@@ -89,7 +89,7 @@ export default function ReviewPage() {
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>剧本审阅</h1>
         <div className="muted" style={{ marginTop: 4 }}>
-          所有待审阅的剧本集中在此，可原地通读、原地通过，无需逐个进入项目
+          待审阅的剧本都在这里，可以直接通读、直接通过，不用一个个进项目
         </div>
       </div>
 

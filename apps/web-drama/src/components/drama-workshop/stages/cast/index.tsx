@@ -278,7 +278,7 @@ export function CastStage({ state, dispatch, data, ctx, embedded }: CastStagePro
           no={3}
           scope="项目"
           title="角色与资产"
-          desc="为关键角色绑定数字人分身以锁定形象，是跨集一致性与真人脸效果的基础。"
+          desc="给关键角色绑一个数字人分身，把长相锁住；之后每一集出镜都是同一张脸。"
           right={<div className="row gap-2">{redraftBtn}</div>}
         />
         )}

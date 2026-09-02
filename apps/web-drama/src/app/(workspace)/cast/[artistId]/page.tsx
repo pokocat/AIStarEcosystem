@@ -308,7 +308,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
         </Card>
 
         <Card style={{ padding: "22px 24px" }}>
-          <SectionHeader eyebrow="才艺矩阵" title="才艺六维" />
+          <SectionHeader eyebrow="能力评分" title="才艺六维" />
           {(["acting", "singing", "dancing", "hosting", "comedy", "variety"] as const).map((k) => {
             const v = a.talents[k];
             const label = {

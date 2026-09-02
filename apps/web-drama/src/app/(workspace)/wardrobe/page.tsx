@@ -130,7 +130,7 @@ function WardrobeInner() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="wardrobe & props"
+        eyebrow="造型素材库"
         title={
           <>
             戏服{" "}
@@ -155,7 +155,7 @@ function WardrobeInner() {
         <KpiCard label="素材总数" value={String(items.length + uploaded.length)} tone="accent" />
         <KpiCard label="本月新增" value={String(items.filter((i) => i.isNew).length + uploaded.length)} tone="info" />
         <KpiCard label="已分配演员" value={String(Object.values(assign).flat().length)} tone="success" />
-        <KpiCard label="S 类珍稀" value={String(items.filter((i) => i.rarity === "legendary").length)} tone="violet" />
+        <KpiCard label="S 类" value={String(items.filter((i) => i.rarity === "legendary").length)} tone="violet" />
       </div>
 
       <Card style={{ padding: "16px 18px" }}>

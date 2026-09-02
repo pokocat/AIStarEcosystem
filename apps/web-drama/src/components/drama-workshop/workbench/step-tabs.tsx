@@ -1,7 +1,7 @@
 "use client";
 
 // 顶部步骤页签 — 设计真源 v4 screens-episode-v4.jsx `StepTabs4`:
-// 每一集内三步:① 剧集脚本 › ② 视频工厂 › ③ 成片配方;下一步带提示。
+// 每一集内两步:① 剧集脚本 › ② 成片合成;下一步带提示。
 import * as React from "react";
 import { Check } from "lucide-react";
 import { EP_STEPS, type StageKey } from "../stages-config";
@@ -101,7 +101,7 @@ export function StepTabs({ stage, ep, locked, onJump }: StepTabsProps) {
           whiteSpace: "nowrap",
         }}
       >
-        脚本 → 分镜提示词 → AI 生成视频，全流程一站完成
+        先在分镜表里逐镜出片，再拼成完整一集
       </span>
     </div>
   );

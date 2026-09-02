@@ -254,7 +254,7 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
     const theme = (story.title || data.projectInfo?.title || "").trim();
     const ok = await dramaConfirm({
       title: "用 AI 起草整张分支图?",
-      body: `将以「${theme || "本项目主题"}」为主题生成一张可玩、可达、含结局的剧集分支图，覆盖当前所有集与接线（各集仍需在六阶段里出片）。本次将消耗积分。`,
+      body: `将以「${theme || "本项目主题"}」为主题生成一张可玩、可达、含结局的剧集分支图，覆盖当前所有集与接线（各集的片子仍要到剧集工作台里出）。本次将消耗积分。`,
       confirmLabel: "AI 起草",
       cancelLabel: "暂不",
     });
@@ -343,7 +343,7 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
                   <Network size={28} />
                 </div>
                 <div className="muted" style={{ maxWidth: 380, fontSize: 13.5, lineHeight: 1.6 }}>
-                  还没有剧集。点「AI 起草」用一句话生成整张分支图，或「加一集」手动创建。每一集都会进入六阶段工作台出片。
+                  还没有剧集。点「AI 起草」用一句话生成整张分支图，或「加一集」手动创建。每一集都要进剧集工作台出片。
                 </div>
                 <div className="row gap-2">
                   <button type="button" className="btn btn-grad btn-sm" onClick={aiDraft} disabled={drafting} title="用 AI 生成整张分支图，会消耗积分">
@@ -440,7 +440,7 @@ export function BranchStage({ dispatch, data, ctx }: Props) {
               ) : (
                 <div className="faint col center" style={{ padding: 40, textAlign: "center", gap: 8 }}>
                   <Network size={26} />
-                  <span style={{ fontSize: 13 }}>在左侧选择一集，编辑它的剧情、互动点与接线，或前往六阶段制作视频。</span>
+                  <span style={{ fontSize: 13 }}>在左侧选择一集，编辑它的剧情、互动点与接线，或进剧集工作台制作视频。</span>
                 </div>
               )
             ) : rightTab === "flags" ? (

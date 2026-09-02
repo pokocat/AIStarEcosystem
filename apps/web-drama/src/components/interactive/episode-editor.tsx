@@ -135,7 +135,7 @@ export function EpisodeEditor({
         <textarea value={ep.synopsis ?? ""} onChange={(e) => patch({ synopsis: e.target.value })} rows={2} placeholder="简述本集剧情" style={{ ...INPUT, resize: "vertical" }} />
       </div>
 
-      {/* 本集视频：来自六阶段「剧集脚本 → 视频工厂 → 成片合成」的成片，互动点按其时长校验 */}
+      {/* 本集视频：来自「剧集脚本 → 成片合成」的成片，互动点按其时长校验 */}
       <div className="card col gap-2" style={{ padding: 12, background: "var(--surface-2)" }}>
         <div className="row gap-2">
           <Film size={14} style={{ color: "var(--accent)" }} />
@@ -151,7 +151,7 @@ export function EpisodeEditor({
           <video src={ep.videoUrl} controls muted playsInline style={{ width: "100%", maxHeight: 200, borderRadius: 8, background: "#000" }} />
         ) : (
           <div className="faint" style={{ fontSize: 11.5 }}>
-            本集尚未生成成片。前往「剧集脚本 → 视频工厂 → 成片合成」完成制作，成片将作为本集播放视频，互动点按其时长校验。
+            本集还没有成片。到「剧集脚本」逐镜出片，再用「成片合成」拼成一集；这条成片就是本集播放的视频，互动点按它的时长校验。
           </div>
         )}
         <button type="button" className="btn btn-grad btn-sm" style={{ alignSelf: "flex-start" }} onClick={onProduce}>

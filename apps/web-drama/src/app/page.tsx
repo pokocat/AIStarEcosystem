@@ -22,19 +22,19 @@ const FEATURES = [
   {
     icon: Film,
     title: "演员 IP 阵容",
-    body: "形象塑造、表演风格、人物档案统一治理，跨剧集复用角色资产与肖像授权。",
+    body: "形象、表演风格、人物档案都存在一处，同一个角色可以在不同剧集里反复出演，肖像授权跟着走。",
     accent: "var(--accent)",
   },
   {
     icon: Wand2,
     title: "脚本工坊与脑暴",
-    body: "AI 辅助分场分镜、人物弧光与桥段建议，小团队也能拥有完整的创意中台。",
+    body: "AI 帮着分场分镜、梳理人物弧光、出桥段建议，一两个人的团队也够用。",
     accent: "var(--extra-violet)",
   },
   {
     icon: Layers,
     title: "短剧项目与分发",
-    body: "项目流水线、剪辑流转、多平台投放与上线追踪，闭环短剧生意。",
+    body: "项目流水线、剪辑流转、多平台投放与上线追踪，一部片从开拍到上线都在这里。",
     accent: "var(--info)",
   },
 ] as const;
@@ -218,7 +218,7 @@ export default function DramaLandingPage() {
           >
             <Sparkles size={14} color="var(--accent)" />
             <span className="mono" style={{ fontSize: 11, letterSpacing: "var(--tracking-wide)", color: "var(--fg-1)" }}>
-              短剧工坊 · 2026 影视年
+              短剧工坊 · 从剧本到成片
             </span>
           </div>
 
@@ -287,7 +287,7 @@ export default function DramaLandingPage() {
           }}
         >
           <div style={{ marginBottom: 24 }}>
-            <div className="eyebrow">官方短剧模板 · 开箱即用</div>
+            <div className="eyebrow">官方短剧模板 · 直接套用</div>
             <h2
               style={{
                 fontFamily: "var(--font-serif)",
@@ -457,7 +457,7 @@ export default function DramaLandingPage() {
             <span className="mono" style={{ letterSpacing: 0.6 }}>AI STAR ECO · 短剧创作流水线</span>
           </div>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-            <Link href="/" style={{ color: "var(--fg-2)" }}>产品矩阵</Link>
+            <Link href="/" style={{ color: "var(--fg-2)" }}>首页</Link>
             <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"} style={{ color: "var(--fg-2)" }}>
               {isLoggedIn ? "工作台" : "登录"}
             </Link>

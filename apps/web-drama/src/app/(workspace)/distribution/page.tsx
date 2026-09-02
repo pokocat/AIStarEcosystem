@@ -142,7 +142,7 @@ export default function DistributionOverviewPage() {
           <EmptyState
             icon={<Plug size={24} />}
             title="还没有接入任何平台"
-            description="接入抖音、快手等平台后，成片就能一键分发到这里。"
+            description="接入抖音、快手等平台后，成片就能直接发过去。"
           />
         )}
         {!platformsQ.isLoading && platforms.length > 0 && (

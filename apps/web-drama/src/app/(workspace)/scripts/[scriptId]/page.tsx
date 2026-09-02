@@ -249,7 +249,7 @@ export default function ScriptEditorPage({ params }: PageProps) {
       <div style={{ display: "grid", gridTemplateColumns: "200px 1fr 280px", gap: 16 }}>
         {/* 左：版本树 */}
         <Card style={{ padding: "20px 18px", maxHeight: "calc(100vh - 240px)", overflowY: "auto" }}>
-          <SectionHeader eyebrow="versions" title={<><History size={13} style={{ marginRight: 6 }} />版本树</>} />
+          <SectionHeader eyebrow="历史" title={<><History size={13} style={{ marginRight: 6 }} />版本树</>} />
           {versionsQ.isLoading && <LoadingBlock rows={2} height={40} />}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {versions.map((v) => {
@@ -367,7 +367,7 @@ export default function ScriptEditorPage({ params }: PageProps) {
 
         {/* 右：动作 + AI 建议 */}
         <Card style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <SectionHeader eyebrow="actions" title="工作流" />
+          <SectionHeader eyebrow="操作" title="工作流" />
           {script.status === "draft" && (
             <Button variant="primary" size="md" onClick={submitForReview}>
               <Send size={13} />

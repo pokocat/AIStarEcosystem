@@ -31,7 +31,7 @@ describe("WorkPreviewModal", () => {
     expect(video.playsInline).toBe(true);
   });
 
-  it("紧凑动作模式只展示发布到创意中心和下载图标", () => {
+  it("紧凑动作模式只展示发布到创意市场和下载图标", () => {
     render(
       <WorkPreviewModal
         item={{
@@ -42,21 +42,21 @@ describe("WorkPreviewModal", () => {
           metaLine: "风格短片 · 1/1 镜 · 今天更新",
         }}
         compactActions
-        scriptLabel="发布到创意中心"
-        deriveLabel="发布到创意中心"
+        scriptLabel="发布到创意市场"
+        deriveLabel="发布到创意市场"
         onClose={() => {}}
         onScript={() => {}}
         onDerive={() => {}}
       />,
     );
 
-    expect(screen.getByLabelText("发布到创意中心").tagName).toBe("BUTTON");
+    expect(screen.getByLabelText("发布到创意市场").tagName).toBe("BUTTON");
     const download = screen.getByLabelText("下载视频") as HTMLAnchorElement;
     expect(download.tagName).toBe("A");
     expect(download.getAttribute("href")).toBe("https://cdn.test/clip.mp4");
     const metaRow = screen.getByTestId("compact-preview-meta-row");
     const actions = screen.getByTestId("compact-preview-actions");
-    const publish = screen.getByLabelText("发布到创意中心") as HTMLButtonElement;
+    const publish = screen.getByLabelText("发布到创意市场") as HTMLButtonElement;
     expect(metaRow.style.minHeight).toBe("38px");
     expect(actions.contains(download)).toBe(true);
     expect(publish.style.width).toBe("44px");

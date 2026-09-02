@@ -13,7 +13,7 @@ interface PublishCreativeCenterModalProps {
 
 const BENEFITS = [
   { icon: Sparkles, text: "把风格、节奏与分镜结构整理成一条可套用创意" },
-  { icon: TrendingUp, text: "通过审核后进入创意中心,多一个展示和被精选的机会" },
+  { icon: TrendingUp, text: "通过审核后进入创意市场,多一个展示和被精选的机会" },
   { icon: CheckCircle2, text: "原视频不会被改动,状态和使用次数可在「我发布的创意」查看" },
 ];
 
@@ -26,7 +26,7 @@ export function PublishCreativeCenterModal({
   return (
     <ModalShell
       onClose={publishing ? () => {} : onClose}
-      label={`发布到创意中心 · ${title}`}
+      label={`发布到创意市场 · ${title}`}
       overlayZIndex={110}
       className="card pop-in col"
       style={{ width: 448, maxWidth: "94vw", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
@@ -48,7 +48,7 @@ export function PublishCreativeCenterModal({
             <Boxes size={19} />
           </span>
           <div className="grow" style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 800 }}>发布到创意中心</div>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>发布到创意市场</div>
             <div className="faint" style={{ marginTop: 2, fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               让《{title}》的创意被更多创作者看见并套用
             </div>
@@ -68,7 +68,7 @@ export function PublishCreativeCenterModal({
 
       <div className="col gap-3" style={{ padding: "16px 20px 18px" }}>
         <p className="muted" style={{ margin: 0, fontSize: 13.5, lineHeight: 1.7 }}>
-          系统会把这条成片提炼成一条「可套用创意」,先提交运营审核;通过后,其他创作者即可在创意中心套用同款。
+          系统会把这条成片提炼成一条「可套用创意」,先提交运营审核;通过后,其他创作者即可在创意市场套用同款。
         </p>
         <div className="col gap-2" style={{ padding: "12px 13px", borderRadius: 12, background: "var(--surface-2)", border: "1px solid var(--line-soft)" }}>
           {BENEFITS.map(({ icon: Icon, text }) => (

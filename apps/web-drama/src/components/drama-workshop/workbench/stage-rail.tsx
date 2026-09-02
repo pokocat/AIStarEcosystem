@@ -195,7 +195,7 @@ export function StageRail({ meta, current, ep, interactive, onConvert, onJump, o
             <span className="grow" />
             <span className="tag tag-gray num" style={{ flex: "none", height: 20 }}>第 {ep} 集</span>
           </div>
-          <div className="faint" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}>脚本 → 视频工厂 → 成片</div>
+          <div className="faint" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5 }}>剧集脚本 → 成片合成</div>
           <div className="faint" style={{ fontSize: 11, lineHeight: 1.5 }}>逐集拆分镜、出片</div>
           {!inEp && (
             <div className="row gap-1" style={{ marginTop: 6, color: "var(--accent)", fontSize: 12, fontWeight: 700, alignItems: "center" }}>

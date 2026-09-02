@@ -142,7 +142,7 @@ export default function ScriptsListPage() {
         <PenTool size={16} style={{ color: "var(--accent)", flex: "none" }} />
         <div className="grow" style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
           这里是<b style={{ color: "var(--ink)" }}>跨项目的脚本归档</b>:已写好的剧集、广告、宣传片、配音脚本都在这里复用。
-          要写某部短剧的<b style={{ color: "var(--ink)" }}>单集剧本</b>,请到「我的短剧 → 进入项目 → 单集剧本」阶段。
+          要写某部短剧的<b style={{ color: "var(--ink)" }}>单集剧本</b>,请到「短剧工坊 → 进入项目 → 剧集脚本」。
         </div>
         <Link href="/projects" style={{ textDecoration: "none" }}>
           <button type="button" className="btn btn-line btn-sm">去做短剧 →</button>

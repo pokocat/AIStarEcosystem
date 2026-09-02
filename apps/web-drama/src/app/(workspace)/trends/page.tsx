@@ -25,13 +25,13 @@ export default function TrendsPage() {
             </span>
           </>
         }
-        meta="全网趋势数据接入中，上线后这里展示实时热门题材"
+        meta="趋势数据还在接入，接好后这里列当下的热门题材"
       />
       <Card style={{ padding: "52px 24px" }}>
         <EmptyState
           icon={<Compass size={28} />}
           title="趋势雷达建设中"
-          description="正在接入全网内容声量与站内热度数据，上线后将展示可一键孵化的热门题材，敬请期待。"
+          description="还在接内容热度和站内数据。接好之后，这里会列出当下的热门题材，可以直接拿去立项。"
         />
       </Card>
     </div>

@@ -28,6 +28,7 @@ import type { DramaRecipe } from "@/api/recipes";
 import { useAsync } from "@/lib/drama-query";
 import { useDramaConfig } from "@/lib/use-drama-config";
 import { useDramaCatalog } from "@/lib/use-drama-catalog";
+import { HotTopicChips } from "@/components/drama-workshop/hot-topic-chips";
 import { aiErrorMessage } from "@/lib/ai-error";
 
 function greeting() {
@@ -65,12 +66,6 @@ function HomeLanding() {
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const starting = React.useRef(false); // 防连点重复建脑暴
   const cat = useDramaCatalog(); // 运营可维护的「近期热点 / 创意推荐」
-  // 热点可能配置很多条，首页只随机展示 3 条（每次进页随机一批，不随渲染抖动）。
-  const hotPicks = React.useMemo(() => {
-    const all = cat.hotTopics ?? [];
-    if (all.length <= 3) return all;
-    return [...all].sort(() => Math.random() - 0.5).slice(0, 3);
-  }, [cat.hotTopics]);
   const recipesQ = useAsync("/me/drama/recipes/published", () => RecipesApi.listPublished());
   const publishedRecipes = recipesQ.data ?? [];
   // 首页爆款配方：优先官方首页位（rcp-official-home-*），取 6 条。
@@ -147,7 +142,7 @@ function HomeLanding() {
         <div className="home-blob home-blob-c" style={{ ...blob(60, "46%", undefined, 300, "var(--accent)", 10) }} />
 
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 40px 8px", position: "relative", textAlign: "center" }}>
-          <div className="faint" style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>{greeting()}，创作者</div>
+          <div className="faint" style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>{greeting()}</div>
           <h1 style={{ margin: 0, fontSize: 31, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.25 }}>
             还没想好做什么？
             <span style={{ background: "linear-gradient(120deg,var(--accent),var(--accent-2))", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
@@ -186,26 +181,15 @@ function HomeLanding() {
             />
 
             {/* 近期热点：点一个填进输入框 */}
-            <div className="row gap-2" style={{ padding: "4px 14px 0", flexWrap: "wrap", alignItems: "center" }}>
-              <span className="row gap-1" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-2)", flex: "none" }}>
-                <Zap size={12} /> 近期热点
-              </span>
-              {hotPicks.map((h) => (
-                <button
-                  key={h.label}
-                  type="button"
-                  className="chip"
-                  style={{ height: 26, fontSize: 11.5, padding: "0 10px" }}
-                  title={h.idea}
-                  onClick={() => {
-                    setIdea(h.idea);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  {h.label}
-                </button>
-              ))}
-            </div>
+            <HotTopicChips
+              topics={cat.hotTopics}
+              max={3}
+              shuffle
+              onPick={(idea) => {
+                setIdea(idea);
+                inputRef.current?.focus();
+              }}
+            />
 
             <div className="row gap-2" style={{ padding: "10px 14px 12px", flexWrap: "wrap", alignItems: "center" }}>
               <button type="button" className="chip" onClick={dailySpark} style={{ background: "var(--accent-soft)", color: "var(--accent)" }} title="AI 随机给一个创意">
@@ -292,9 +276,9 @@ function HomeLanding() {
             {recs.length === 0 && (
               <div className="card col gap-2" style={{ padding: 18, minHeight: 180, justifyContent: "center" }}>
                 <Sparkles size={18} style={{ color: "var(--accent)" }} />
-                <div style={{ fontWeight: 800 }}>正在同步创意市场</div>
+                <div style={{ fontWeight: 800 }}>创意推荐还在加载</div>
                 <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
-                  创意推荐现在直接来自创意市场；稍等片刻即可显示已上架创意。
+                  推荐来自创意市场，稍等一下就出来了。
                 </div>
               </div>
             )}

@@ -246,8 +246,8 @@ function DraftCard({
                 <button
                   type="button"
                   className="btn btn-icon btn-sm"
-                  aria-label="发布到创意中心"
-                  title="发布到创意中心"
+                  aria-label="发布到创意市场"
+                  title="发布到创意市场"
                   disabled={publishing}
                   aria-busy={publishing}
                   style={{ width: 24, height: 24, borderRadius: 7, opacity: publishing ? 0.55 : 1 }}
@@ -345,9 +345,9 @@ export default function ShortsStudioPage() {
       setPublishTarget(null);
       setPreview(null);
       invalidate("/me/drama/recipes"); // 刷新「我发布的创意」列表
-      toast.success(`已把《${d.title}》发布到创意中心，运营审核通过后公开可套用`);
+      toast.success(`已把《${d.title}》发布到创意市场，运营审核通过后公开可套用`);
     } catch (e) {
-      toast.error(aiErrorMessage(e, "发布到创意中心失败，请稍后重试"));
+      toast.error(aiErrorMessage(e, "发布到创意市场失败，请稍后重试"));
     } finally {
       setPublishingId(null);
     }
@@ -543,8 +543,8 @@ export default function ShortsStudioPage() {
             durLabel: preview.durationSec > 0 ? fmtDur(preview.durationSec) : undefined,
           }}
           onClose={() => setPreview(null)}
-          scriptLabel={submittedShortIds.has(preview.id) ? "已提交审核" : "发布到创意中心"}
-          deriveLabel="发布到创意中心"
+          scriptLabel={submittedShortIds.has(preview.id) ? "已提交审核" : "发布到创意市场"}
+          deriveLabel="发布到创意市场"
           compactActions
           extracting={publishingId === preview.id || submittedShortIds.has(preview.id)}
           onScript={() => requestPublish(preview)}

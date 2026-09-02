@@ -6,10 +6,10 @@ describe("PublishCreativeCenterModal", () => {
   it("说明发布会做什么以及用户能得到什么", () => {
     render(<PublishCreativeCenterModal title="世界杯趣玩" onClose={() => {}} onConfirm={() => {}} />);
 
-    expect(screen.getByText("发布到创意中心")).toBeTruthy();
+    expect(screen.getByText("发布到创意市场")).toBeTruthy();
     expect(screen.getByText("让《世界杯趣玩》的创意被更多创作者看见并套用")).toBeTruthy();
     expect(screen.getByText(/整理成一条可套用创意/)).toBeTruthy();
-    expect(screen.getByText(/进入创意中心,多一个展示和被精选的机会/)).toBeTruthy();
+    expect(screen.getByText(/进入创意市场,多一个展示和被精选的机会/)).toBeTruthy();
     expect(screen.getByText(/原视频不会被改动/)).toBeTruthy();
   });
 

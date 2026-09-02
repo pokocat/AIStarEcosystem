@@ -94,7 +94,7 @@ export default function TemplatesPage() {
       const res = await RecipesApi.applyRecipe(r);
       if (res.kind === "short") {
         // 单集创意 → 短视频工厂，按这个风格描述主题即可开拍
-        toast.success(`已套用「${r.title}」创意，进入短视频工厂描述主题即可开拍`);
+        toast.success(`已套用「${r.title}」创意，进短视频工坊描述主题即可开拍`);
         router.push(`/shorts/make?draft=${encodeURIComponent(res.shortId)}`);
       } else {
         toast.success(`已套用「${r.title}」，已生成大纲骨架，可继续编辑后开拍`);
@@ -126,7 +126,7 @@ export default function TemplatesPage() {
               </span>
             </>
           }
-          meta="经验证的创作配方，含官方内置与创作者发布，套用后预填新剧"
+          meta="官方内置和创作者发布的创作配方，套用后直接预填一部新剧"
           action={
             <>
               <button
@@ -462,21 +462,21 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
   const hasMethod = !!r.data?.mainline || beatN > 0;
   const features: { label: string; sub: string }[] = isShort
     ? [
-        { label: "风格创意已内置", sub: "套用后 AI 按此风格与方法生成口播脚本和分镜" },
-        { label: "单条速成", sub: `${r.ratio} 画幅 · 进短视频工厂逐镜出片、合成成片` },
+        { label: "自带风格", sub: "套用后 AI 按这个风格写口播脚本、拆分镜" },
+        { label: "单条短片", sub: `${r.ratio} 画幅 · 进短视频工坊逐镜出片、合成成片` },
         r.previewVideo
-          ? { label: "范例成片可对照", sub: "参照上方范例视频，描述主题即可开拍" }
-          : { label: "描述主题即可开拍", sub: "无需搭建结构，描述产品或主题，由 AI 把控节奏" },
+          ? { label: "有范例成片", sub: "对着上面的范例视频，说一句你的主题就能开拍" }
+          : { label: "说个主题就能开拍", sub: "结构已经搭好，说清产品或主题，节奏交给 AI" },
       ]
     : [
-        { label: "主线骨架", sub: hasMethod ? "可迁移的故事主线，套用后自动展开到你的项目" : "完整创作方法已内置，套用后自动铺好大纲" },
+        { label: "主线骨架", sub: hasMethod ? "一条不绑具体人物的故事主线，套用后展开到你的项目" : "创作方法已经写好，套用后自动铺出大纲" },
         beatN > 0
-          ? { label: `${beatN} 段分集节拍`, sub: "逐集钩子与转折骨架，开拍前可逐条改写" }
+          ? { label: `${beatN} 段分集节拍`, sub: "每集的钩子和转折都摆好了，开拍前每条都能改" }
           : { label: `${r.episodes} 集分集结构`, sub: "套用后按集铺好分场骨架" },
         charN > 0
-          ? { label: `${charN} 个角色原型`, sub: "人设原型自动入项目，替换成你的角色即可" }
-          : { label: "角色原型方案", sub: "套用后给出可改写的人设原型" },
-        { label: "完整分镜方案", sub: `${r.ratio} 画幅 · 套用后进六阶段工作台直接出图出片` },
+          ? { label: `${charN} 个角色原型`, sub: "人设直接进项目，换成你自己的角色就行" }
+          : { label: "角色原型", sub: "套用后给一套人设，可以随便改" },
+        { label: "完整分镜方案", sub: `${r.ratio} 画幅 · 套用后进短剧工作台直接出图出片` },
       ];
 
   return (
@@ -620,7 +620,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             {r.summary ? (
               <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.7, color: "var(--ink)", fontWeight: 450 }}>{r.summary}</p>
             ) : (
-              <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>一套验证过的创作配方，套用后自动铺好大纲与分集骨架。</p>
+              <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>这条创意没写简介。套用后会直接铺进新项目，可以继续改。</p>
             )}
 
             <div className="row gap-2" style={{ flexWrap: "wrap" }}>
@@ -643,7 +643,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
         ) : (
           <>
             <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.65 }}>
-              套用后，以下创作方法将自动展开到你的新项目，可继续编辑后开拍
+              套用后，下面这些会直接铺进你的新项目，改完就能开拍
             </p>
             <div className="col" style={{ gap: 2 }}>
               {features.map((f, i) => (
@@ -661,7 +661,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             <div className="row gap-2" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--accent-soft)", color: "var(--accent)", alignItems: "center" }}>
               <Sparkles size={14} style={{ flex: "none" }} />
               <span style={{ fontSize: 12, lineHeight: 1.5, fontWeight: 600 }}>
-                {isShort ? "具体脚本细节不在此预览,套用后在短视频工厂里逐镜可见、可改。" : "具体剧本细节不在此预览,套用后在工作台里逐条可见、可改。"}
+                {isShort ? "具体脚本细节不在这里展开,套用后在短视频工坊里逐镜可见、可改。" : "具体剧本细节不在这里展开,套用后在工作台里逐条可见、可改。"}
               </span>
             </div>
           </>
@@ -787,7 +787,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
             )}
           </div>
-          <Field label="主线骨架（去具体化的可迁移主线，作为套用者大纲生成的输入）">
+          <Field label="主线骨架（不带具体人名地名的故事主线，套用的人会照它生成大纲）">
             <textarea value={mainline} onChange={(e) => setMainline(e.target.value)} placeholder="小人物谷底翻盘：屈辱开局 → 隐藏底牌 → 步步反杀 → 高光收束" style={{ ...inp, height: 64, padding: "10px 12px", resize: "vertical" }} />
           </Field>
           <Field label={`分集节拍（可选 · ${beats.length}）`}>

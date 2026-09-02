@@ -12,6 +12,7 @@ import { generateHotspots, getCatalog, resetCatalog, saveCatalog, type CatalogFi
 import type { IdeaRec } from "@/mocks/drama-workshop";
 import { RecipeReviewSection } from "@/components/drama-workshop/recipe-review-section";
 import { ViewHeader } from "@/components/common";
+import { hotTopicLabel } from "@/lib/hot-topic-label";
 
 export default function OperationsPage() {
   const { user } = useAuth();
@@ -57,7 +58,7 @@ export default function OperationsPage() {
       }
       setHotTopics((arr) => {
         const seen = new Set(arr.map((h) => h.idea.trim()).filter(Boolean));
-        const add = cands.filter((c) => !seen.has(c.trim())).map((c) => ({ label: c, idea: c }));
+        const add = cands.filter((c) => !seen.has(c.trim())).map((c) => ({ label: hotTopicLabel(c), idea: c }));
         return [...arr, ...add];
       });
       toast.success(`AI 生成 ${cands.length} 条候选，已加入下方，审核 / 微调后点「发布」生效`);

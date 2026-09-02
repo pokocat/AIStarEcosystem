@@ -157,7 +157,7 @@ export function BrainstormStudio({ id }: { id: string }) {
       // 先把最新态落库，再带 data promote（后端用最新大纲 / 设置）。
       const result = await BrainstormApi.promote(id, form, data);
       if (result.kind === "short") {
-        toast.success("已生成短视频草稿，去工厂继续");
+        toast.success("已生成短视频草稿，去工坊继续");
         router.push(`/shorts/make?draft=${encodeURIComponent(result.shortId)}`);
       } else {
         toast.success("已立项，去工作台写剧本、拆分镜");
