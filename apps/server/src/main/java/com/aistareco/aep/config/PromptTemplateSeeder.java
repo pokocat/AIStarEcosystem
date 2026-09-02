@@ -32,7 +32,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     // v10：新增近期热点蒸馏 prompt（drama.hotspot_distill）—— bump 让新基线入库 + 刷新未改动的行。
     // v11：热点蒸馏 prompt 重写（同一个人/同一个世界 + 五类错配反面样例 + 宁缺勿滥）。
     //      线上实测产出过「包书皮时意外发现，前任留下的惊天伏笔」这类把两个话题域硬焊的选题。
-    private static final String SEED_VERSION = "v11-2026-09-02-hotspot-coherence";
+    // v12：v11 收得过紧 —— 线上连续 6 次产出 0 条（旧版同批 50 热词能出 10 条）。改为「逐条判断、
+    //      不要整批放弃、通常 4-8 条」，并说明丢弃规则只针对那件事本身、不是放弃整批热词。
+    private static final String SEED_VERSION = "v12-2026-09-02-hotspot-no-collapse";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

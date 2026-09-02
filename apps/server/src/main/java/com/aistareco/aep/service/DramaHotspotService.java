@@ -98,12 +98,22 @@ public class DramaHotspotService {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "热点蒸馏调用失败，请稍后重试。");
         }
 
+        // parseHotspots 返回 null = 输出不是可解析的 JSON（真失败）；返回空 list = 模型合法地
+        // 判定这批热词里没有能立住的选题。提示词明确允许后者（宁缺勿滥），所以空结果不是错误 ——
+        // 由调用方按「这次没生成出可用选题」如实展示，不能报 502 让运营以为服务坏了。
         List<String> out = parseHotspots(resp.content(), cap);
-        if (out.isEmpty()) {
+        if (out == null) {
+            log.warn("[drama-hotspot] unparseable model output, head={}", head(resp.content(), 400));
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "没能从热搜里蒸馏出合适的短剧选题，请重试或更换来源。");
+                    "模型这次没有返回可解析的选题结果，请重试。");
         }
-        log.info("[drama-hotspot] distilled {} drama topics", out.size());
+        if (out.isEmpty()) {
+            // 空结果比非空更需要留证：否则只能看到「没产出」，无从判断是热词确实不可用还是提示词过严。
+            log.info("[drama-hotspot] distilled 0 topics from {} words, model said: {}",
+                    words.size(), head(resp.content(), 400));
+        } else {
+            log.info("[drama-hotspot] distilled {} drama topics", out.size());
+        }
         return out;
     }
 
@@ -146,13 +156,18 @@ public class DramaHotspotService {
         }
     }
 
-    /** 解析 {"hotspots":[...]}（兼容直接数组），去空去重，截断到 cap。 */
+    /**
+     * 解析 {"hotspots":[...]}（兼容直接数组），去空去重，截断到 cap。
+     *
+     * @return null 表示输出压根不是可解析的 JSON / 没有 hotspots 数组（真失败）；
+     *         空 list 表示解析成功但模型给的就是空数组（本批热词无可用选题，属正常结果）。
+     */
     private List<String> parseHotspots(String content, int cap) {
-        List<String> out = new ArrayList<>();
         JsonNode root = tryReadJson(content);
-        if (root == null) return out;
+        if (root == null) return null;
         JsonNode arr = root.isArray() ? root : root.path("hotspots");
-        if (!arr.isArray()) return out;
+        if (!arr.isArray()) return null;
+        List<String> out = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (JsonNode n : arr) {
             String s = n.asText("").trim();
@@ -160,6 +175,13 @@ public class DramaHotspotService {
             if (out.size() >= cap) break;
         }
         return out;
+    }
+
+    /** 日志用：截断模型原文，避免刷屏；不含用户数据，只是热搜蒸馏结果。 */
+    private static String head(String s, int max) {
+        if (s == null) return "<null>";
+        String t = s.replace("\n", " ").trim();
+        return t.length() <= max ? t : t.substring(0, max) + "…(truncated)";
     }
 
     private JsonNode tryReadJson(String content) {

@@ -45,7 +45,7 @@ class PromptServiceDramaResourceTest {
         assertTrue(p.userTemplate().contains("{{topics}}"), "user 模板必须保留 {{topics}} 占位符");
         // ## 小标题不能被当成分隔符提前截断 user 段
         assertTrue(p.userTemplate().contains("同一个人、同一个世界"), "核心约束应落在 user 段");
-        assertTrue(p.userTemplate().contains("宁缺勿滥"), "宁缺勿滥约束应落在 user 段");
+        assertTrue(p.userTemplate().contains("确实全部"), "「只有全部落在丢弃类别才返回空数组」应落在 user 段");
 
         String filled = PromptService.fill(p.userTemplate(), java.util.Map.of("topics", "开学第一天\n贴秋膘"));
         assertTrue(filled.contains("开学第一天"), "热词应被填入");
@@ -55,6 +55,9 @@ class PromptServiceDramaResourceTest {
         // 反面样例必须完整带到模型（这是本次重写的主要信息量）
         assertTrue(filled.contains("包书皮时意外发现"), "话题域错配的反面样例应保留");
         assertTrue(filled.contains("军训偶遇武状元"), "世界错配的反面样例应保留");
+        // v12：v11 收得过紧导致线上连续 0 产出。这两句是防塌到零的关键约束，不能再被删掉。
+        assertTrue(filled.contains("逐条判断，不要整批放弃"), "防整批放弃的约束必须在");
+        assertTrue(filled.contains("4–8 条"), "产出条数期望必须给出，否则模型会保守到 0 条");
     }
 
     @Test
