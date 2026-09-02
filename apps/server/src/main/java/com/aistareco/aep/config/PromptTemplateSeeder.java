@@ -30,7 +30,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
 
     /** 推新默认 prompt 基线时改这个值；下次启动会刷新 version==1 的行。 */
     // v10：新增近期热点蒸馏 prompt（drama.hotspot_distill）—— bump 让新基线入库 + 刷新未改动的行。
-    private static final String SEED_VERSION = "v10-2026-06-30-hotspot-distill";
+    // v11：热点蒸馏 prompt 重写（同一个人/同一个世界 + 五类错配反面样例 + 宁缺勿滥）。
+    //      线上实测产出过「包书皮时意外发现，前任留下的惊天伏笔」这类把两个话题域硬焊的选题。
+    private static final String SEED_VERSION = "v11-2026-09-02-hotspot-coherence";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

@@ -30,6 +30,33 @@ class PromptServiceDramaResourceTest {
                 new ObjectMapper());
     }
 
+    /**
+     * v0.148：热点蒸馏 prompt 重写后（含 ## 小标题、✗/✓ 反面样例、内嵌 JSON 示例）仍要能
+     * 正确解析：system/user 只在首个独占 "---" 行断开，且 fill() 不能把 JSON 示例里的
+     * 单花括号当占位符吃掉——这两点是重写时真实存在的风险，锁死避免回归。
+     */
+    @Test
+    void hotspotDistillPromptSurvivesRewrite() {
+        PromptService svc = realService();
+        PromptService.ResolvedPrompt p = svc.resolve(PromptService.KEY_DRAMA_HOTSPOT_DISTILL);
+
+        assertEquals("resource", p.origin(), "热点蒸馏 prompt 应能从 .md 解析");
+        assertFalse(p.system().isBlank(), "system 不应为空");
+        assertTrue(p.userTemplate().contains("{{topics}}"), "user 模板必须保留 {{topics}} 占位符");
+        // ## 小标题不能被当成分隔符提前截断 user 段
+        assertTrue(p.userTemplate().contains("同一个人、同一个世界"), "核心约束应落在 user 段");
+        assertTrue(p.userTemplate().contains("宁缺勿滥"), "宁缺勿滥约束应落在 user 段");
+
+        String filled = PromptService.fill(p.userTemplate(), java.util.Map.of("topics", "开学第一天\n贴秋膘"));
+        assertTrue(filled.contains("开学第一天"), "热词应被填入");
+        assertFalse(filled.contains("{{topics}}"), "占位符应被替换");
+        // JSON 示例里的单花括号不是占位符，必须原样保留给模型看
+        assertTrue(filled.contains("{\"hotspots\":[\"钩子1\",\"钩子2\"]}"), "输出格式示例不应被 fill 破坏");
+        // 反面样例必须完整带到模型（这是本次重写的主要信息量）
+        assertTrue(filled.contains("包书皮时意外发现"), "话题域错配的反面样例应保留");
+        assertTrue(filled.contains("军训偶遇武状元"), "世界错配的反面样例应保留");
+    }
+
     @Test
     void dramaWorkbenchPromptsResolveFromResource() {
         PromptService svc = realService();

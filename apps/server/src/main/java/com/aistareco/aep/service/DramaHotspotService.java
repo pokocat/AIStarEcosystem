@@ -82,7 +82,9 @@ public class DramaHotspotService {
         }
         messages.add(Map.of("role", "user", "content", userContent));
         Map<String, Object> options = new LinkedHashMap<>();
-        options.put("temperature", prompt.params().temperature() != null ? prompt.params().temperature() : 0.85);
+        // 蒸馏要的是语义一致（热词情境与冲突必须同人同世界），不是发散；0.85 实测容易把
+        // 两个话题域硬焊在一起。创意度本就来自输入热词，故默认降到 0.65；运营仍可在后台覆盖。
+        options.put("temperature", prompt.params().temperature() != null ? prompt.params().temperature() : 0.65);
         options.put("max_tokens", prompt.params().maxTokens() != null && prompt.params().maxTokens() > 0
                 ? prompt.params().maxTokens() : 1024);
         options.put("response_format", Map.of("type", "json_object"));
