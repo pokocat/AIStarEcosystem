@@ -1503,7 +1503,8 @@ function ShortMakerInner({
 
           {/* 右:结构化分镜脚本(表单式 · 带时间线) */}
           <div className="scroll grow" style={{ minHeight: 0, background: "var(--bg)" }}>
-            <div style={{ maxWidth: 760, margin: "0 auto", padding: "22px 28px 110px" }}>
+            {/* 收起 AI 助手 = 把腾出来的宽度真的还给分镜表（表本身 minWidth 860，760 容器下要横向滚动）。 */}
+            <div style={{ maxWidth: chatCollapsed ? 1180 : 760, margin: "0 auto", padding: "22px 28px 110px", transition: "max-width .18s ease" }}>
               {/* v0.143 提示词直出：来源提示词与全片视觉设定（这里的字直接进每一镜的出图与出片提示词） */}
               {fromPrompt && (
                 <div className="card col" style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
