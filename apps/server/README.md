@@ -516,3 +516,215 @@ server 内部 `aep/service/productlink/ProductLinkHandler` 是策略链接口，
 ### 通用工具
 
 - `AepCryptoUtil`（`com.aistareco.common`）—— AES-GCM 加密/脱敏；密钥从 `AEP_SECRET_KEY` 读
+
+## 统一账号中心接入（v0.149，`aep.identity.*`）
+
+真源：[`docs/unified-identity-plan.md`](../../docs/unified-identity-plan.md) §12.1 / §12.3 / §12.4。
+本节只讲 server 侧这一半：**接受账号中心签发的令牌**、**把 uid 映射成本地档案**、**和账号中心对账**。
+
+> **账号中心本身不在本仓**：代码与部署都在独立仓库
+> [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)。本地联调时先 clone 到本仓同级目录
+> （`../aibuzz-id`）并 `./mvnw spring-boot:run` 起在 **8090**，再把本仓的 `AEP_ID_ISSUER`
+> 指过去；生产部署（8091 / 独立库 `aistareco_id` / 本机 Redis）见该仓 `deploy/README.md`。
+
+### 1. 双验（HS256 老令牌 + RS256 新令牌并存）
+
+`JwtAuthenticationFilter` 是唯一鉴权入口，按 JOSE 头选链路：
+
+| 令牌 | 验签 | `sub` 的含义 |
+|---|---|---|
+| HS256（本仓 `/api/auth/**`、`/api/admin/auth/**` 自签） | `AEP_JWT_SECRET` | 本地 `aep_users.id` / `admin_users.id` |
+| RS256（账号中心签发） | 账号中心 JWKS 公钥 | 账号中心 uid |
+
+RS256 分支的进入条件：JOSE 头 `alg=RS256`，或 HS256 验不过但（未验签读到的）`iss` 等于
+`aep.identity.issuer`。校验 `iss` / `exp` / `aud` 含 `aep.identity.audience`（默认 `aistar-api`），
+并要求 `amr` 非空 —— 没有 `amr` 的是机器令牌（client_credentials），不建立用户上下文，
+因此在 `/api/me/**` 上必然落 401。
+
+`aep.identity.issuer` 留空 = **整体关闭**：RS256 令牌一律 401，HS256 链路不受任何影响。
+§8.0：不存在「未配置就本地伪造 uid」的降级路径。
+
+### 2. JIT 建档（登录即有档案，但**不等于开通**）
+
+`IdentityProvisioningService`：`sub`(uid) → `aep_users.identity_uid` 命中就用；没命中就现场建一行
+（`kind=PERSONAL`、`status=ACTIVE`、`username=id_<uid 前 12 位>`、`platforms` 留空）。
+先插后读：唯一键冲突时按 `identity_uid` 回读赢家，并发首登只会有一行。
+建档成功后异步 best-effort 回报账号中心 `PUT /api/products/aistar/links/{uid}` `{localSubjectId, PROVISIONED}`，
+失败只 WARN —— 账号中心抖动不许把用户挡在登录外。
+
+**建档 ≠ 开通**：能不能用某个子产品由 enrollment 决定（§12.2）。本地账号 `SUSPENDED` / `DELETED` 时，
+即便令牌合法也直接 401 `ACCOUNT_DISABLED`。
+
+### 3. 后台令牌与消费者令牌分离（`typ=admin`）
+
+- `POST /api/admin/auth/login`、`POST /api/admin/auth/operator-login` → `JwtUtil.adminToken(...)`，
+  带 `typ=admin`。**只有**这种令牌会被映射成 `ROLE_SUPER_ADMIN` / `ROLE_OPERATOR` / `ROLE_FINANCE_ADMIN`。
+- 激活 / 短信 / 密码 / dev-login → `JwtUtil.consumerToken(user)`，`role` 只放账号类型
+  （`PERSONAL` / `STUDIO`），**不再**放 `operatorRole`。持有 `operatorRole` 的账号要进后台，
+  只能走 `operator-login` 另换一张 `typ=admin` 令牌。
+- RS256 令牌**永不**映射后台角色（账号中心只管「你是谁」）。
+
+> **过渡兼容（限期）**：v0.149 之前签发的后台令牌没有 `typ`（TTL 7 天）。这类令牌只要 `role`
+> 落在后台角色名里仍然放行，但每次都打 WARN（`放行无 typ=admin 的历史后台令牌`）。
+> 上线 7 天后老令牌全部过期，应删掉 `JwtAuthenticationFilter.LEGACY_ADMIN_ROLES` 及其两处分支。
+
+### 4. 事件消费（outbox）
+
+`IdentityOutboxPoller`（默认 30s 一轮，游标存 `aep_platform_configs` 的 `identity.outbox.cursor`）拉
+`GET /api/products/aistar/outbox?after=&limit=`：
+
+| 事件 | 本地动作 |
+|---|---|
+| `USER_MERGED{fromUid,toUid}` | `toUid` 本地没档案 → 被并方档案改指 `toUid`；已有档案 → 被并方解绑 uid + `SUSPENDED` + WARN（两份业务数据本期**不**自动合并） |
+| `USER_CLOSED{uid}` | 本地档案 `DELETED`，`identity_uid` 保留作墓碑 |
+| `PHONE_CHANGED` | 忽略（本地不存账号中心手机号） |
+
+每条事件一个事务；游标只推进到本批最后一条**处理成功**的事件，中途失败就地停住下轮重放
+（三种处理都是幂等的）。`issuer` 或 `client-secret` 留空 → 轮询直接跳过。
+
+### 5. 老用户导入（运维一次性）
+
+```
+POST /api/admin/identity/import        （SUPER_ADMIN）
+body  {"batchSize": 200, "dryRun": false}      两字段都可选
+200   {"success":true,"data":{"scanned":N,"linked":N,"created":N,"skipped":N,"errors":N}}
+503   IDENTITY_NOT_CONFIGURED
+```
+
+把「有手机号且 `identity_uid` 为空」的账号按批送到账号中心 `POST /api/products/aistar/import-users`，
+用返回的 uid 回写 `identity_uid`。幂等可重跑（回写过的行不再进候选集）；分批用 **id 游标**而不是
+offset（处理中候选集在缩小，offset 会漏行）。`dryRun=true` 只统计候选条数，**不调账号中心**
+（那个端点会真的建 uid）、不写库。无手机号的老账号无法映射，继续走 legacy 登录。
+
+### 6. 环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `AEP_ID_ISSUER` | dev `http://localhost:8090` | 账号中心 issuer。**留空 = 关闭整个能力** |
+| `AEP_ID_JWKS_URI` | 空 | 显式覆盖 JWKS 地址；留空则惰性经 `<issuer>/.well-known/openid-configuration` 发现 |
+| `AEP_ID_AUDIENCE` | `aistar-api` | 令牌 `aud` 必须包含它 |
+| `AEP_ID_CLIENT_ID` | `aistar-server` | 机器互调 client id |
+| `AEP_ID_CLIENT_SECRET` | 空 | 机器互调机密。**留空 = 不回报、不拉 outbox、不能导入** |
+| `AEP_ID_OUTBOX_POLL_SECONDS` | `30` | outbox 轮询间隔 |
+
+## 子产品开通（enrollment）（v0.149，`aep.enrollment.*`）
+
+真源：[`docs/unified-identity-plan.md`](../../docs/unified-identity-plan.md) §12.2；
+规则速查另见 [`specs/BUSINESS_RULES.md`](../../specs/BUSINESS_RULES.md) §6.0。
+
+**一句话**：登录只保证「有档案」，能不能进某个子产品由 `product_enrollment` 说了算，
+后端真拦 —— 此前只有前端按 `/api/me` 的 `platforms` 判断，换个子域名直接调 API 就能绕过。
+
+### 1. 两张表
+
+| 表 | 作用 |
+|---|---|
+| `product_enrollment` | 当前开通状态。`UNIQUE(user_id, product)`，一个账号 × 一个子产品一行，写入一律 upsert |
+| `entitlement_grant` | 不可变授权凭据（这次开通凭什么来的）。`UNIQUE(source, source_reference, product)` = 「一把激活码对一个子产品只能兑一次」的硬约束；一把全站秘钥开几个产品就留几行（v0.150） |
+
+建表迁移：`db/migration/V25__product_enrollment.sql`（新表用 `.sql`，H2 与 MySQL 8 通用）。
+
+- `status`：`PENDING` / `ACTIVE` / `SUSPENDED` / `REVOKED`。只有 `ACTIVE` **且** `valid_until`
+  为 null 或在将来才算已开通；过期行不删，前端要能展示「已过期，去续」。
+- `source`：`LICENSE`（激活码）/ `TRIAL` / `ADMIN` / `GRANT_ALL`（dev 全授予）/ `LEGACY`（回填）。
+
+### 2. 回填与新账号
+
+`EnrollmentBackfill`（`ApplicationRunner`，`@Order(110)`，幂等，分页 500 一批）对
+「一条 enrollment 行都没有」的账号按旧 `aep_users.platforms` CSV 建行：CSV 有值 → 每个平台一条
+`ACTIVE/LEGACY`；CSV 为空（历史语义 = 全集）→ 五个子产品各一条。重复启动是 0 写入。
+
+`MeDto.platforms` 从此是 `enrollments` 中 active 项的**兼容投影**；只有账号一条 enrollment 行都没有
+（回填还没跑到的瞬间）才回落读旧 CSV。CSV 仍在双写，给未升级的读取方兜底。
+
+新账号（统一账号中心 JIT 建档、无激活码）调 `EnrollmentService.grantForNewUser(userId, platform)`：
+dev（`aep.platform.dev-grant-all=true`）→ 五个产品 `ACTIVE/GRANT_ALL`；生产 → **一条都不建**，
+用户进产品看到开通页。
+
+### 3. 激活码 = 开通（唯一兑换路径）
+
+三个入口共用 `EnrollmentService` 的同一实现，**不再各写一套**：
+
+| 端点 | 用途 |
+|---|---|
+| `POST /api/me/enrollments/{product}/activate` `{licenseKey}` | v0.149 新契约，返回 `ApiResponse<Enrollment>` |
+| `POST /api/auth/activate` | legacy：激活码注册新账号（响应形状不变） |
+| `POST /api/me/license/activate` | legacy：已登录追加激活（响应形状不变） |
+
+两道防重复兑换的闸：
+
+1. **条件更新占码** —— `UPDATE license_key SET status='ACTIVATED', activated_by=?
+   WHERE id=? AND status='CREATED'`（`LicenseKeyRepository.claimForActivation`）。影响 1 行才继续；
+   0 行一律 409 `LICENSE_KEY_UNAVAILABLE`。此前是「读到 CREATED 再改」的 read-modify-write，
+   并发兑换会各发一份积分。
+2. **`entitlement_grant` 唯一约束** —— 同一 `(LICENSE, 激活码 id, 子产品)` 只能落一行。
+   本次开通的每个子产品各写一条（v0.150）：全站秘钥开五个产品就是五行，
+   日后要按产品分别退权 / 对账时才有凭据可依。
+
+其余步骤：算授权产品集合（批次声明 `platforms` → 按批次；未声明 → 按注册来源策略）→
+调用方指定的 product 不在集合内则 400 `LICENSE_KEY_PRODUCT_MISMATCH`（**先判后占，激活码不被烧掉**）→
+幂等补 `Studio` / `Wallet` → 按批次 `initialCreditGrant` 发积分（走 `CreditService.creditAccount`
+的悲观行锁 + 不可变账本）→ upsert enrollment → 同步旧 CSV → 发 `EnrollmentActivatedEvent`。
+
+> `EnrollmentActivatedEvent(userId, product)` 是给统一账号中心那条线用的：
+> `@EventListener` 监听它，best-effort 把 `id_product_link` 置 `ACTIVE`（§12.2 末句）。
+> 用事件而非直接调客户端，是为了让开通链路不因外部服务抖动而失败。
+
+### 4. 后端开通闸 `EnrollmentGuard`
+
+`OncePerRequestFilter`，挂在 `AuthorizationFilter` 之前（此时 JWT filter 与 dev 自动登录都已跑完，
+`SecurityContext` 是最终状态）。
+
+**产品归属由服务端说了算**（v0.150）。第一版只覆盖 `/api/me/**` 等五个前缀，且除
+`/api/star` / `/api/v1` 外一律信客户端自报的 `X-App-Code` —— 只开通短剧的账号带
+`X-App-Code: drama` 就能调 `/api/celebrity/**`（闸门查 drama 的开通状态，请求打的是带货接口），
+而 `/api/material/**`、`/api/appearance-forge/**` 压根不在管辖内。现在改成一张
+**服务端路由表** `enrollment/config/ProductRouteTable.java`：
+
+| 请求 | 判定 |
+|---|---|
+| 产品无关白名单（精确）：`/api/me`、`/api/me/messages-overview`、`/api/me/password`、`/api/me/tenants`、`/api/me/ledger`<br>产品无关白名单（前缀，按「精确或下一段」匹配）：`/api/me/enrollments`、`/api/me/license`、`/api/me/wallet`、`/api/me/notifications`、`/api/me/storage`、`/api/me/clip`、`/api/notifications`、`/api/auth`、`/api/admin`、`/api/internal`、`/api/config`、`/api/dev`、`/api/pay/notify`、`/api/v1/admin`、`/api/v1/real-auth/callback`、`/api/aiavatar/health` | 不拦 |
+| **单产品路由**：产品由路径决定，`X-App-Code` **只作审计归因**，客户端怎么自报都改不了判定 | 见下表 |
+| **共享路由**：`X-App-Code` 必须落在允许集合内 | 缺头 / 非法 → 403 `APP_CODE_REQUIRED`；合法但不在集合内 → 403 `PRODUCT_NOT_ENROLLED`（`details.allowed` 给出集合） |
+| 未登记的 `/api/**` 业务路由 | 403 `PRODUCT_ROUTE_UNMAPPED`（fail-closed）+ WARN 出路径 |
+| 定到产品后无 ACTIVE enrollment（或已过期） | 403 `PRODUCT_NOT_ENROLLED`，`error.details.product` 给出产品 key |
+
+单产品路由：
+
+| 子产品 | 路径 |
+|---|---|
+| `celebrity` | `/api/celebrity`、`/api/mixcut`、`/api/material`、`/api/products`、`/api/template-scripts`、`/api/me/celebrity`、`/api/me/mixcut`、`/api/me/products`、`/api/me/publish-jobs`、`/api/me/social-accounts` |
+| `drama` | `/api/me/drama`、`/api/me/distribution`、`/api/film` |
+| `music` | `/api/me/songs`、`/api/me/albums`、`/api/me/concerts`、`/api/me/music`、`/api/music`、`/api/tracks`、`/api/singers`、`/api/nft`、`/api/marketplace`、`/api/fan`、`/api/coach`、`/api/distribution`、`/api/analytics` |
+| `star` | `/api/star` |
+| `aiavatar` | `/api/v1/**`（下表的只读形象清单除外） |
+
+共享路由：
+
+| 路径 | 允许集合 | 为什么共享 |
+|---|---|---|
+| `GET /api/v1/avatars`、`GET /api/v1/avatars/*/looks`、`GET /api/v1/avatars/*/derivatives` | `{aiavatar, music, drama}` | music / drama 的「引入数字人」选择器只读 dap 域（v0.61）。同路径的 POST（创建形象）仍只属 `aiavatar` |
+| `/api/me/digital-ips`、`/api/me/inventory` | `{music, drama}` | 数字 IP 壳：music 的「艺人」与 drama 的「演员」共用一套 |
+| `/api/appearance-forge`、`/api/community`、`/api/finance`、`/api/settings`、`/api/store`、`/api/wardrobe`、`/api/poses`、`/api/expressions`、`/api/gestures` | `{music, drama}` | 两端共用的创作素材面 |
+
+**防漂移门**：`ProductRouteTableCoverageTest` 起真实上下文枚举每一个 `/api/**` handler，
+要求它三选一 —— 白名单 / 已登记 / 明确列进 `UNGUARDED_ALLOWLIST`（当前只有 `/api/store/catalog`
+一条：登录前可浏览的公开商品目录）。新增 controller 不登记，构建期就红。
+
+- 未登录请求不抢答（放行给授权链出 401）；机器 / 后台身份（clip 服务令牌、`INTERNAL`、
+  `SUPER_ADMIN` / `OPERATOR` / `FINANCE_ADMIN`）不经此闸。
+- `/api/me/license/**` 在白名单里是**有意为之**：未开通的账号必须能走 legacy 追加激活来开通，
+  否则闸门自锁。
+- 白名单前缀按 `path.equals(p) || path.startsWith(p + "/")` 匹配（不是裸 `startsWith`），
+  否则 `/api/me/license-of-someone-else` 这类同前缀异语义路径会被误放。
+- v0.150 同时把一批此前落在 `anyRequest().permitAll()` 兜底的业务路由收紧为 `authenticated()`
+  （`/api/celebrity/**`、`/api/appearance-forge/**`、`/api/tracks/**`、`/api/nft/**`、
+  `/api/wardrobe/**`、`/api/distribution/**`、`/api/notifications/**` 等），
+  它们此前既可匿名调用、也因此完全绕过本闸（闸门对未登录请求不判定）。
+
+### 5. 环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `AEP_ENROLLMENT_ENFORCE` | `true`（含生产） | 后端是否真拦。**只允许测试关闭** —— 生产关掉等同把子产品隔离退回纯前端拦截 |
+| `AEP_AUTH_LEGACY_ADMIN_ROLES_ENABLED` | `false` | v0.149 之前签发的后台令牌（没有 `typ=admin`）是否仍按后台身份放行。默认关：部署后管理员重新登录一次即可，代价极小；开着则任何持有旧格式令牌的人都能进 `/api/admin/**`（v0.150） |

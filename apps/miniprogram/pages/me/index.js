@@ -1,10 +1,15 @@
 const { WalletApi } = require("../../utils/api.js");
+const Phone = require("../../utils/phone.js");
+const config = require("../../config.js");
 const app = getApp();
 
 Page({
   data: {
     auth: { token: "", activationCode: "", phone: "—" },
-    credits: { totalBalance: 0, licenseBalance: 0, rechargeBalance: 0, giftBalance: 0, pendingBalance: 0 }
+    credits: { totalBalance: 0, licenseBalance: 0, rechargeBalance: 0, giftBalance: 0, pendingBalance: 0 },
+    // v0.149：id 模式下手机号是账号中心的 claim，未绑定时给一个显式入口
+    idMode: config.isIdMode(),
+    phoneVerified: true
   },
 
   onShow() {
@@ -12,9 +17,35 @@ Page({
       const t = this.getTabBar();
       if (t) t.setData({ selected: 4 });
     }
-    const auth = app.globalData.auth || {};
-    this.setData({ auth: { ...auth, phone: auth.phone || "—" } });
+    this.syncAccount();
     this.fetchCredits();
+  },
+
+  /** 手机号真值：id 模式取账号中心令牌里的 claim / /me，legacy 取本地登录态 */
+  syncAccount() {
+    const auth = app.globalData.auth || {};
+    if (!config.isIdMode()) {
+      this.setData({ auth: { ...auth, phone: auth.phone || "—" }, phoneVerified: true });
+      return;
+    }
+    const me = app.globalData.me || {};
+    const verified = Phone.isVerified();
+    this.setData({
+      auth: { ...auth, phone: me.phone || (verified ? "已绑定" : "未绑定") },
+      phoneVerified: verified
+    });
+  },
+
+  /** 「绑定手机号」入口（也是其它页面兜底引导过来的落点） */
+  async bindPhone() {
+    const ok = await Phone.ensurePhoneVerified(this, {
+      reason: "绑定手机号后，换设备也能找回账号，充值与开票也需要它。"
+    });
+    if (ok) {
+      try { await app.refreshMe(); } catch (e) {}
+      this.syncAccount();
+      this.fetchCredits();
+    }
   },
 
   async fetchCredits() {
@@ -56,10 +87,11 @@ Page({
   logout() {
     wx.showModal({
       title: "确认退出？",
+      content: config.isIdMode() ? "退出后需要重新用微信授权进入。" : "",
       success: (res) => {
         if (res.confirm) {
-          app.clearAuth();
-          wx.reLaunch({ url: "/pages/login/index" });
+          app.signOut();
+          wx.reLaunch({ url: config.isIdMode() ? "/pages/launch/index" : "/pages/login/index" });
         }
       }
     });

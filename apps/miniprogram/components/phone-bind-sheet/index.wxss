@@ -1,0 +1,110 @@
+/* 平台坑：WXSS 变量在自定义组件里继承不稳定，这里全部写死色值。详见 agent.md「CSS / WXSS」 */
+.mask {
+  position: fixed;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(10, 10, 10, .45);
+  z-index: 900;
+  display: flex;
+  align-items: flex-end;
+}
+.sheet {
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 40rpx 40rpx 0 0;
+  padding: 20rpx 40rpx 48rpx;
+}
+.grabber {
+  width: 72rpx;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: #EAEAEA;
+  margin: 0 auto 24rpx;
+}
+.head .eyebrow {
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+  color: #6B6B6B;
+}
+.head .title {
+  font-size: 44rpx;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+  color: #0A0A0A;
+  margin-top: 6rpx;
+}
+.reason {
+  margin: 16rpx 0 32rpx;
+  font-size: 26rpx;
+  line-height: 40rpx;
+  color: #6B6B6B;
+}
+.field {
+  display: flex;
+  align-items: center;
+  height: 96rpx;
+  padding: 0 24rpx;
+  margin-bottom: 20rpx;
+  background: #F2F2EE;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 24rpx;
+}
+.prefix { font-size: 28rpx; color: #6B6B6B; }
+.divider { width: 2rpx; height: 36rpx; background: #D4D4D4; margin: 0 20rpx; }
+.label { font-size: 26rpx; color: #6B6B6B; margin-right: 20rpx; }
+.input { flex: 1; min-width: 0; font-size: 30rpx; color: #0A0A0A; }
+.ph { color: #9B9B9B; }
+.mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }
+.sms-btn {
+  flex-shrink: 0;
+  height: 60rpx;
+  line-height: 60rpx;
+  padding: 0 24rpx;
+  border-radius: 999rpx;
+  background: #0A0A0A;
+  color: #FFFFFF;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.sms-btn-off { background: #D4D4D4; color: #FFFFFF; }
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100rpx;
+  margin: 8rpx 0 0;
+  border-radius: 999rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 100rpx;
+}
+.cta::after { border: none; }
+.primary { background: #C8FF00; color: #0A0A0A; }
+.cta-off { background: #EAEAEA; color: #9B9B9B; }
+.alt {
+  margin-top: 24rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #2A6FDB;
+}
+.error {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 20rpx;
+  background: #FDE2DF;
+  color: #E84B3C;
+  font-size: 26rpx;
+  line-height: 38rpx;
+}
+.tip {
+  margin-top: 28rpx;
+  font-size: 22rpx;
+  line-height: 34rpx;
+  color: #9B9B9B;
+}
+.cancel {
+  margin-top: 24rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #9B9B9B;
+}

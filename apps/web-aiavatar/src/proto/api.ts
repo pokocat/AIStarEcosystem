@@ -13,6 +13,16 @@
 // 登录：/api/auth/sms/*（正式账号）+ /api/auth/dev-login（授权内部体验入口）。
 // ============================================================
 import React from "react";
+import {
+  beginLogin as idBeginLogin,
+  clearAuthTokens as idClearTokens,
+  getAuthToken as idGetToken,
+  idLogout,
+  isIdMode,
+  refreshAccessToken as idRefreshToken,
+  setAppCode as setSharedAppCode,
+  setAuthToken as idSetToken,
+} from "@ai-star-eco/api-client";
 import * as Mock from "./data";
 
 // ── 开关 / 错误 ──────────────────────────────────────────────
@@ -90,10 +100,22 @@ export function onAuthExpired(cb: AuthListener): () => void {
   return () => authExpiredListeners.delete(cb);
 }
 
+/**
+ * v0.149：本 app 是否走统一账号中心（docs/unified-identity-plan.md §12.5）。
+ * 本 app 的 USE_MOCK 默认是 true（与共享包相反），所以这里显式与 mock 互斥 ——
+ * mock 模式绝不把人跳去外部域名。
+ */
+export const ID_MODE = !USE_MOCK && isIdMode();
+
 export const auth = {
   token(): string | null {
     if (typeof window === "undefined") return null;
-    return window.localStorage?.getItem(TOKEN_KEY) || null;
+    // id 模式：令牌由共享包（账号中心 OIDC）统一保管。
+    if (ID_MODE) return idGetToken();
+    const legacy = window.localStorage?.getItem(TOKEN_KEY) || null;
+    // legacy 模式下把令牌镜像给共享 apiFetch（开通门等共享组件用的是共享令牌仓库）。
+    if (legacy && !idGetToken()) idSetToken(legacy);
+    return legacy;
   },
   user(): any | null {
     if (typeof window === "undefined") return null;
@@ -107,15 +129,38 @@ export const auth = {
   setSession(token: string, user?: any) {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(TOKEN_KEY, token);
+    // 共享 apiFetch（开通门 / 账号接口）读的是共享令牌仓库，双写保持一致。
+    idSetToken(token);
     if (user) window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    clearMeCache(); // 换了人：/api/me 缓存必须作废
   },
   clear() {
     if (typeof window === "undefined") return;
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(USER_KEY);
+    idClearTokens();
+    clearMeCache();
   },
   isAuthed(): boolean {
     return USE_MOCK || !!auth.token();
+  },
+  /** 登出：id 模式走账号中心的统一登出（整页跳转），legacy 模式只清本地。 */
+  logout() {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(USER_KEY);
+    // 顺序很重要：**先**把共享令牌清掉，**再**作废身份缓存并通知监听者。
+    // 反过来的话，监听者被唤醒时还能读到旧令牌，会用旧令牌发起一次「新代次」的 /api/me，
+    // 返回后把已登出的身份写回缓存（Codex P2 第三轮 #5）。
+    // idLogout 内部会清空共享令牌并整页跳账号中心登出；返回 true 表示已接管跳转。
+    const handled = idLogout();
+    if (!handled) idClearTokens();
+    clearMeCache();
+  },
+  /** id 模式：发起账号中心登录（整页跳转）。legacy 模式返回 false，由调用方走 /login。 */
+  startIdLogin(returnPath?: string): Promise<boolean> {
+    if (!ID_MODE) return Promise.resolve(false);
+    return idBeginLogin(returnPath);
   },
 };
 
@@ -126,6 +171,30 @@ export function isOperatorRole(role?: string | null): boolean {
 
 /** 本子应用审计来源短码 —— 随请求作为 X-App-Code 头带上，让 server 登录日志可区分子应用。 */
 const APP_CODE = "aiavatar";
+// 共享 apiFetch（开通门等）也带上同一个短码。
+setSharedAppCode(APP_CODE);
+
+/**
+ * id 模式下的 401 兜底：先单飞刷新一次令牌再重放同一个请求。
+ * legacy 模式行为完全不变（直接返回首次响应）。
+ */
+async function sendWithIdRetry(exec: () => Promise<Response>): Promise<Response> {
+  const res = await exec();
+  if (res.status !== 401 || !ID_MODE) return res;
+  let refreshed = false;
+  try {
+    refreshed = await idRefreshToken();
+  } catch (e: any) {
+    // 换令牌这一步自己挂了（断网 / 账号中心 5xx / 等锁超时）：令牌还在，不能当成
+    // 「登录过期」—— 把原始 401 交回去会触发 fireAuthExpired 把会话清掉。
+    if (e?.transient) {
+      throw new ApiError("暂时无法确认登录状态，请稍后重试。", "AUTH_REFRESH_UNAVAILABLE", 503);
+    }
+    throw e;
+  }
+  if (!refreshed) return res;
+  return exec();
+}
 
 function authHeaders(): Record<string, string> {
   const t = auth.token();
@@ -164,20 +233,24 @@ async function parseResponse<T>(res: Response): Promise<T> {
 
 /** 统一 fetch（/api/v1 前缀；解包 { success, data } 壳；401 触发登出事件）。 */
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_PREFIX}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers || {}) },
-  });
+  const res = await sendWithIdRetry(() =>
+    fetch(`${API_PREFIX}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers || {}) },
+    }),
+  );
   return parseResponse<T>(res);
 }
 
 /** multipart 上传（不设 Content-Type，浏览器自带 boundary）。 */
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${API_PREFIX}${path}`, {
-    method: "POST",
-    headers: { ...authHeaders() },
-    body: form,
-  });
+  const res = await sendWithIdRetry(() =>
+    fetch(`${API_PREFIX}${path}`, {
+      method: "POST",
+      headers: { ...authHeaders() },
+      body: form,
+    }),
+  );
   return parseResponse<T>(res);
 }
 
@@ -220,7 +293,9 @@ export const AuthApi = {
   // ── v0.53 平台门禁（秘钥按子应用拆分）────────────────────────
   /** 当前登录账号（/api/me，AepUser 形状；platforms 为已开通子产品列表）。 */
   me: async (): Promise<any> => {
-    const res = await fetch(`/api/me`, { headers: { "Content-Type": "application/json", ...authHeaders() } });
+    const res = await sendWithIdRetry(() =>
+      fetch(`/api/me`, { headers: { "Content-Type": "application/json", ...authHeaders() } }),
+    );
     return parseResponse<any>(res);
   },
   /**
@@ -250,6 +325,149 @@ export const AuthApi = {
     return parseResponse<{ changed: boolean; hasPassword: boolean }>(res);
   },
 };
+
+// ── 当前登录账号（/api/me 缓存 + 界面身份投影）─────────────────
+//
+// P2-4：id 模式（统一账号中心）下没有任何东西往 localStorage 写 `aiavatar_user`，
+// `auth.user()` 恒为 null，界面就会落到写死的「柯岚工作室 / 88621049」——用户看到
+// 的是别人的名字和一串假 UID。所以「我是谁」一律以 `/api/me` 为准。
+//
+// 缓存：一个页面生命周期内多处（我的 / 底部头像 / 广场后台门禁）共用一次请求；
+// 登录、登出、令牌失效时作废。
+
+export interface MeIdentity {
+  /** 界面展示名。 */
+  displayName: string;
+  /** 展示用 UID：优先统一账号中心 uid，其次本地账号 id。拿不到为 null（不编）。 */
+  uid: string | null;
+  /** 打码手机号，如 138****8888；账号没有手机号时为 null。 */
+  phoneMasked: string | null;
+  /** 内嵌运营角色（数字人广场后台门禁用）。 */
+  operatorRole: string | null;
+  /** true = 演示数据（USE_MOCK），界面必须显式标注，不能冒充真实账号。 */
+  demo: boolean;
+}
+
+/** 手机号打码：只留前 3 后 4。 */
+export function maskPhone(phone?: string | null): string | null {
+  const s = String(phone ?? "").trim();
+  if (!s) return null;
+  const digits = s.replace(/\D/g, "");
+  if (digits.length < 7) return s;
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+}
+
+/** USE_MOCK 下的演示身份 —— 必须带 demo 标记，界面据此打「演示数据」角标。 */
+const DEMO_IDENTITY: MeIdentity = {
+  displayName: "演示工作室",
+  uid: "DEMO0000",
+  phoneMasked: "138****0000",
+  operatorRole: null,
+  demo: true,
+};
+
+let meCache: any = undefined; // undefined = 没拉过；null = 拉过但没拿到
+let meInFlight: Promise<any> | null = null;
+/** 缓存作废时通知已挂载的 useIdentity 重新拉（登录后马上换成真实身份）。 */
+const meListeners = new Set<() => void>();
+
+/**
+ * 会话代次（P2）。每次换人（登录 / 登出 / 令牌失效）都 +1。
+ *
+ * 光把 `meInFlight` 置空是不够的：那只是丢掉了引用，**请求本身还在飞**。
+ * 切号时序很容易踩到 ——「A 的 /api/me 发出 → 切成 B → A 的响应才回来 → 把 A 写回缓存」，
+ * 于是界面显示上一个账号的名字和 UID。所以每个请求都记下自己出发时的代次，
+ * 回来时代次对不上就整份丢弃。
+ */
+let meSessionVersion = 0;
+
+/**
+ * 结果还作不作数：只有代次没变过才算数（纯函数，便于推理与单测）。
+ */
+export function isSameSession(startedAt: number): boolean {
+  return startedAt === meSessionVersion;
+}
+
+/** 当前登录账号（/api/me），进程内缓存。失败返回 null（不抛，调用方自行降级）。 */
+export function loadMe(force = false): Promise<any> {
+  if (USE_MOCK) return Promise.resolve(null);
+  if (typeof window === "undefined") return Promise.resolve(null);
+  // 未登录就别打 /api/me —— 401 会触发全局登出事件，把还没开始的登录流程搅乱。
+  if (!auth.token()) return Promise.resolve(null);
+  if (!force && meCache !== undefined) return Promise.resolve(meCache);
+  if (!force && meInFlight) return meInFlight;
+  const startedAt = meSessionVersion;
+  const p = AuthApi.me()
+    .then((me: any) => {
+      // 请求在途期间换过人：这份数据属于上一个账号，丢掉（也不能写进缓存）。
+      if (!isSameSession(startedAt)) return null;
+      meCache = me ?? null;
+      return meCache;
+    })
+    .catch(() => {
+      // 失败不写缓存：下次仍然会重试（服务抖动不该让身份永久空着）。
+      return null;
+    })
+    .finally(() => {
+      if (meInFlight === p) meInFlight = null;
+    });
+  meInFlight = p;
+  return p;
+}
+
+/** 作废 /api/me 缓存（登录 / 登出 / 令牌失效时调用）。 */
+export function clearMeCache() {
+  meCache = undefined;
+  meInFlight = null;
+  // 代次 +1：在途的旧请求回来时会被 isSameSession 挡掉，不会把上一个人写回缓存。
+  meSessionVersion += 1;
+  meListeners.forEach((fn) => {
+    try { fn(); } catch { /* noop */ }
+  });
+}
+
+/** 把 /api/me 投影成界面要用的身份。拿不到就返回 null —— 由调用方给中性兜底，绝不编名字。 */
+export function projectIdentity(me: any): MeIdentity | null {
+  if (USE_MOCK) return DEMO_IDENTITY;
+  if (!me) return null;
+  const displayName =
+    String(me.displayName || me.studio?.name || me.username || "").trim() || "我的账号";
+  const uidRaw = me.identityUid || me.id;
+  return {
+    displayName,
+    uid: uidRaw ? String(uidRaw).slice(0, 12) : null,
+    phoneMasked: maskPhone(me.phone),
+    operatorRole: me.operatorRole ?? null,
+    demo: false,
+  };
+}
+
+/**
+ * 当前身份 hook：mock 下直接给演示身份（带 demo 标记），live 下拉 `/api/me`。
+ * 拉取失败 / 未登录返回 null。
+ */
+export function useIdentity(): MeIdentity | null {
+  const [id, setId] = React.useState<MeIdentity | null>(() => (USE_MOCK ? DEMO_IDENTITY : projectIdentity(meCache)));
+  React.useEffect(() => {
+    if (USE_MOCK) return;
+    let live = true;
+    const run = () => {
+      // 与 loadMe 同一把尺子：切号后回来的旧响应不许再往界面上写。
+      const startedAt = meSessionVersion;
+      loadMe().then((me) => {
+        if (live && isSameSession(startedAt)) setId(projectIdentity(me));
+      });
+    };
+    run();
+    // 登录 / 登出 / 令牌失效都会作废缓存 —— 这里跟着刷新，界面不会停在上一个人身上。
+    meListeners.add(run);
+    return () => {
+      live = false;
+      meListeners.delete(run);
+    };
+  }, []);
+  return id;
+}
 
 // ── UI 字典（展示配置，同步再导出）────────────────────────────
 
@@ -1316,10 +1534,12 @@ const MOCK_WALLET_PACKAGES: WalletPackage[] = [
 
 /** 主用户域 fetch（/api 前缀，非 /api/v1；带 Bearer + X-App-Code）。用于复用 /me/wallet/*。 */
 async function meFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers || {}) },
-  });
+  const res = await sendWithIdRetry(() =>
+    fetch(`/api${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...authHeaders(), ...(init?.headers || {}) },
+    }),
+  );
   return parseResponse<T>(res);
 }
 

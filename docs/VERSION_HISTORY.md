@@ -1,8 +1,38 @@
-# 版本增量历史（v0.5 → v0.146）
+# 版本增量历史（v0.5 → v0.149）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.149（2026-09-04）— 统一账号中心 `id.aibuzz.cn`（P1 服务落地 + P2 本仓全部应用接入）
+
+设计真源 [`docs/unified-identity-plan.md`](unified-identity-plan.md)（决策记录 D1–D14、五层模型、§12 接入契约、§11 六轮 Codex 评审记录）。
+背景：本仓 5 个 web app + 小程序、军师 ai-pilot、主理人公社 ai-society 三套后端各自签 HS256 JWT，同一个人在三边是三条无关记录；
+本仓「能进哪些子产品」只有前端拦（`platforms` CSV 为空还宽松放行），后端 `/api/me/**` 只查已登录。
+
+**P1 · 独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)**（初版代码曾在本仓 `apps/id-server` 孵化，v0.149 同日抽离为独立仓库 —— 它服务的是整个生态，不只是本仓；Spring Boot 3.3.5 + Spring Authorization Server，port 8090 本地 / **8091 生产**〔8090 被 sau-service 占用〕，MySQL 独立库 `aistareco_id`，Flyway V1–V3）：
+OIDC 标准端点 + 授权码 PKCE（公开客户端可拿轮换 refresh token，见 README §7）+ client_credentials + 两个自定义 grant
+（`urn:aibuzz:params:oauth:grant-type:wechat-mini` / `…:sms`）+ 账号中心登录页（短信 / 微信扫码 OPEN_WEB / 公众号 MP）。
+身份键：手机号为主，微信 unionid「有则用」（**用户确认三个小程序不一定同主体**，D5 修订）。表：`id_user` / `id_identity`（按 appid 的 openid）/
+`id_wechat_app`（密钥 AES-GCM）/ `id_client_meta` / `id_product_link`（只读汇总）/ `id_outbox`（产品按游标拉）/ `id_login_event` / `id_token_denylist`。
+合并规则（§5）：手机号持有者存活、被并方微信凭据改挂、手机凭据墓碑、注销号 30 天冷静期硬拒；鉴权主体只认令牌原始 `sub` 且行锁复核（§5.1，Codex 第一轮 P0）。
+§8.0 门禁：JWK 内容校验 + `ID_JWK_ACTIVE_KID` 轮换、issuer / 微信网关地址白名单 / 阿里云显式凭据 / CORS 源必填 / Redis 或 `ID_SINGLE_INSTANCE` 显式声明，缺一拒启。
+存储：`KeyValueStore`（内存 / Redis Lettuce + Lua）承载验证码、三层发码限频（手机号 / IP / 全站）与 uid denylist（合并 / 注销即时失效）。
+声明式客户端 + Seeder 回收（配置删掉即禁用，不删行）。真实 MySQL 8 与 Redis 7 Testcontainers 门测。**197 测试全绿**。
+
+**P2 · 本仓接入**：
+- server：`JwtAuthenticationFilter` 过渡期双验（HS256 老令牌 + RS256 账号中心令牌，JWKS 惰性发现、`iss/aud/exp/amr` 校验）；`sub` → `aep_users.identity_uid`（V24）→ 无则 JIT 建档（REQUIRES_NEW + 唯一键回读）；
+  后台令牌 `typ=admin` 才映射 `ROLE_*`，消费者令牌 `role=kind`、**不再**携带 `operatorRole`（应用内运营动作改 `InAppOperatorGuard` 查库；`/api/v1/admin/**` 同步改 authenticated + 控制器判定）；
+  `IdentityCenterClient`（client_credentials `scope=product.link`）回报建档 / 开通链接，`IdentityOutboxPoller` 消费 `USER_MERGED` / `USER_CLOSED`，`POST /api/admin/identity/import` 按手机号导入老用户。
+- **开通成为后端权益真值**：`product_enrollment` + `entitlement_grant`（V25），`EnrollmentBackfill` 幂等回填旧 `platforms` CSV；`EnrollmentGuard` 按 `X-App-Code`（接受 `celebrity-mp` 这类「产品-端」形态）/ `/api/star` / `/api/v1` 定产品，
+  未开通 403 `PRODUCT_NOT_ENROLLED`；激活码核销改**条件更新**（`WHERE status='CREATED'` 影响 1 行才继续）+ 唯一授予，注册激活 / 追加激活 / 新端点 `POST /me/enrollments/{product}/activate` 三入口统一走 `EnrollmentService`；`/api/me` 加 `identityUid` + `enrollments[]`。
+- 前端（`packages/api-client` + `packages/landing`）：`NEXT_PUBLIC_AUTH_MODE=id|legacy`；id 模式 PKCE 全流程（`oidc.ts`，15 vitest）、`/auth/callback` 五 app 各一页、401 单飞刷新、RP 登出；`hasPlatformAccess` 改读 `enrollments`；未开通渲染共享 `EnrollmentGate`（激活码 → 开通）；legacy / mock 零改动。web-aiavatar 自有 token 与共享存储互相镜像。
+- 小程序：`wx.login` → 账号中心 `wechat-mini` grant；`pages/launch` 静默登录 → 未开通 → `pages/enroll`；有副作用动作前强制绑手机（`getPhoneNumber` → `/api/me/phone/wechat-bind`，`reloginRequired` 重登）；legacy 注册页仅 legacy 模式可达。
+- infra：DNS `id A 47.98.162.120`（阿里云 CLI）。账号中心自己的 nginx vhost / systemd 单元 / env 样例 / JWK 生成脚本 / 部署脚本**随服务一并落在 `pokocat/aibuzz-id` 的 `deploy/`**（本仓 `infra/scripts/*` 不构建也不部署它，同日抽离时已摘除 opt-in 分支）；本仓 `build-release.sh` 只保留按 app 注入 `NEXT_PUBLIC_*`（缺省 legacy，存量部署零影响）。**尚未上线**，落点事实见 `infra/README.md` §4.3、bring-up 步骤见新仓 `deploy/README.md`。
+- **Redis 路线**：验证码 / 发码限频 / 令牌 denylist 先用账号中心同机的**本机自建 Redis**（单实例够用、零额外成本）；将来真要跑多实例（集群化）时再换阿里云 Redis，`KeyValueStore` 接口不变。
+
+门禁：server `./mvnw test` 全量 781+ 全绿；账号中心 197；`pnpm typecheck:all` / `typecheck:admin` / `check:api-contract` 全绿；五 app build 全过。openapi 加 `/me/enrollments`、`/me/enrollments/{product}/activate`、`/admin/identity/import`、schema `Enrollment` / `MeDto`。
+**本地端到端实测**（账号中心 :8090 + server:8085 + web-music:3010，id 模式）：`/dashboard` → 跳账号中心登录页 → 短信码（log driver）登录 → `/auth/callback` 换令牌 → server RS256 验签 + JIT 建档 → 无开通 → `EnrollmentGate` → 输入 admin 铸的激活码 → `POST /me/enrollments/music/activate` 200 → 仪表盘加载、产品接口由 403 变 200；server 重启后凭本地令牌静默直达仪表盘。Codex 只读评审共七轮（P1 六轮 + P2 一轮），记录见规划 §11。刻意不做：合并三边钱包、合并员工后台账号、password grant、全域共享 cookie。
 
 ### v0.146（2026-08-31）— 拆解等 90 秒不再像卡死 + 超长提示词可分卷
 

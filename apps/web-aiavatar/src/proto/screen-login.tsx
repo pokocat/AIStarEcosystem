@@ -2,7 +2,8 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { AuthApi, auth, ENABLE_DEV_LOGIN } from "./api";
+import { IdCenterLoginScreen } from "@ai-star-eco/landing/IdCenterLoginScreen";
+import { AuthApi, auth, ENABLE_DEV_LOGIN, ID_MODE } from "./api";
 import { toast } from "./toast";
 
 // ============================================================
@@ -66,9 +67,29 @@ export function MLogin({ onLoggedIn }) {
   const [devAccounts, setDevAccounts] = useStateLG([] as any[]);
 
   useEffectLG(() => {
-    if (!ENABLE_DEV_LOGIN) return;
+    if (!ENABLE_DEV_LOGIN || ID_MODE) return;
     AuthApi.devAccounts().then(setDevAccounts).catch(() => {});
   }, []);
+
+  // v0.149：统一账号中心接管登录后，这里收敛成一个「去账号中心登录」按钮
+  //（老 SPA /studio 的登录门也走这一支）。legacy / mock 模式下 ID_MODE 恒 false。
+  if (ID_MODE) {
+    return hLG(IdCenterLoginScreen, {
+      brandLabel: '数字资产平台',
+      tagline: '登录由账号中心统一处理，一个账号通行全部产品。',
+      postLoginPath: typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/',
+      theme: {
+        bg: 'var(--canvas)',
+        surface: 'var(--surface)',
+        fg: 'var(--ink)',
+        fgMuted: 'var(--ink-2)',
+        accent: 'var(--primary)',
+        accentFg: '#ffffff',
+        border: 'var(--line-2)',
+        radius: 'var(--r-md)',
+      },
+    });
+  }
 
   const finish = (data: { token: string; user: any }) => {
     auth.setSession(data.token, data.user);

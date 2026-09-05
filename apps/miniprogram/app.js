@@ -5,30 +5,33 @@
 // v0.34+ 多环境配置：从 config/env.js 读 useMock / apiBaseUrl；不存在则用内置 fallback。
 // 模板见 config/env.example.js；env.js 已在 .gitignore，请按环境填写。
 
-// 平台坑：小程序 require 缺失模块会 throw；用 try/catch 兜底
+// v0.149：配置读取统一收敛到 config.js（含统一账号中心 authMode / idBaseUrl）。
 // fallback 保留 v0.33 之前的 dev-friendly 默认（useMock=true）：
 //   - 本地开发者首次 clone 没建 env.js 时，仍能用 mock 数据无网络启动
 //   - 生产上线前必须 cp config/env.example.js config/env.js 并改 useMock=false + 真实 apiBaseUrl
-let _env = null;
-try {
-  _env = require("./config/env.js");
-} catch (e) {
-  // env.js 不存在 → fallback 走 mock，避免无声打到不存在的线上域名
-  // apiBaseUrl 此时不会真发请求，仅作占位；要真联本机后端请 cp env.example.js → env.js
-  _env = { useMock: true, apiBaseUrl: "http://localhost:8080/api" };
-}
+const config = require("./config.js");
+const Auth = require("./utils/auth.js");
 
 App({
   globalData: {
     // 由 config/env.js 注入，避免硬编 + 方便多环境切换
-    useMock: _env.useMock,
-    apiBaseUrl: _env.apiBaseUrl,
-    // 当前登录态（激活码 + token）
+    useMock: config.useMock,
+    apiBaseUrl: config.apiBaseUrl,
+    // 登录模式：id = 统一账号中心（微信静默登录）；legacy = 手机号 + 短信 + 激活码
+    authMode: config.authMode,
+    // 当前登录态（激活码 + token）—— legacy 模式使用
     auth: {
       token: "",
       activationCode: "",
       phone: ""
     },
+    // id 模式登录态（真值在 storage 的 "auth.id"，这里只是给页面读的快照）
+    idAuth: null,
+    idClaims: null,
+    // /api/me 快照（含 identityUid + enrollments[]）
+    me: null,
+    // id 模式：首屏登录 + 开通判定完成之前不启动轮询，避免打出必然 403 的请求
+    bootstrapped: false,
     // 当前选择的明星（在 market → detail → generator 之间共享）
     selectedStarId: "",
     // 生成任务上下文（generator → generating → videos）
@@ -54,10 +57,23 @@ App({
   onLaunch() {
     try {
       const cached = wx.getStorageSync("auth");
+      // 平台坑：某些 iOS 版本没值时返回空字符串，判空必须先判对象。详见 agent.md「存储」
       if (cached && cached.token) {
         this.globalData.auth = cached;
       }
     } catch (e) {}
+    if (config.hasConfigError()) {
+      // 启动页会渲染错误屏并停在那里；这里不做任何登录相关的准备工作
+      console.error("[config]", config.configError);
+    } else if (config.isIdMode()) {
+      // 把 storage 里的令牌快照同步进 globalData（页面可直接读 idClaims）
+      const tokens = Auth.peek();
+      if (tokens) {
+        this.globalData.idAuth = tokens;
+        this.globalData.idClaims = Auth.getClaims();
+      }
+      // 轮询等首屏 bootstrap 完成后再开，见 startUnreadPolling
+    }
     this.startUnreadPolling();
   },
 
@@ -80,6 +96,78 @@ App({
     try { wx.removeStorageSync("auth"); } catch (e) {}
   },
 
+  // ── 统一账号中心（id 模式）────────────────────────────────────────────────
+  // 契约真源：docs/unified-identity-plan.md §6 / §12.6
+
+  /** 静默登录（幂等；已有可用令牌直接返回） */
+  ensureIdLogin() {
+    // fail closed：配置错误时绝不尝试登录（idBaseUrl 是空串，请求会打到一个荒唐的地址）。
+    // 正常路径下启动页已经停在错误屏，这里只是兜住漏网的调用方。
+    if (config.hasConfigError()) {
+      const e = new Error(config.configError);
+      e.code = "CONFIG_ERROR";
+      return Promise.reject(e);
+    }
+    if (!config.isIdMode()) return Promise.resolve(null);
+    // mock 模式不打真实账号中心（本地开发者可能压根没跑账号中心服务，它在独立仓库 pokocat/aibuzz-id）
+    if (this.globalData.useMock) return Promise.resolve(null);
+    return Auth.ensureLoggedIn().then((tokens) => {
+      this.globalData.idAuth = tokens;
+      this.globalData.idClaims = Auth.getClaims();
+      return tokens;
+    });
+  },
+
+  /** 拉一次 /api/me，缓存到 globalData（含 enrollments） */
+  refreshMe() {
+    const { MeApi } = require("./utils/api.js");
+    return MeApi.get().then((me) => {
+      this.globalData.me = me || null;
+      if (config.isIdMode()) this.globalData.idClaims = Auth.getClaims();
+      return me;
+    });
+  },
+
+  /** 本产品（celebrity）是否已开通；enrollments 缺失时回落 platforms，兼容尚未升级的后端 */
+  isEnrolled() {
+    const me = this.globalData.me;
+    if (!me) return false;
+    const list = me.enrollments;
+    // 只要后端给了 enrollments 数组，它就是唯一真值 —— **空数组也是**（Codex 三轮 P2-3）。
+    // 原来写的是 `length > 0` 才认，于是「一个产品都没开通」的新账号会掉进下面的
+    // platforms 兼容分支，被老语义（platforms 为空 = 全集）判成已开通，直接跳过开通页。
+    // platforms 只服务「后端还没升级、压根没有 enrollments 字段」这一种情况。
+    if (Array.isArray(list)) {
+      return list.some((e) => e && e.product === config.product && String(e.status || "").toLowerCase() === "active");
+    }
+    const platforms = me.platforms;
+    if (Array.isArray(platforms) && platforms.length > 0) return platforms.indexOf(config.product) >= 0;
+    // 老后端：platforms 为空历史语义 = 全集
+    return Array.isArray(platforms);
+  },
+
+  /** 登录 + /me 就绪之后的落地路由：未开通去开通页，已开通进工作区 */
+  routeAfterLogin() {
+    this.globalData.bootstrapped = true;
+    if (config.isIdMode() && !this.isEnrolled()) {
+      wx.reLaunch({ url: "/pages/enroll/index" });
+      return;
+    }
+    this.startUnreadPolling();
+    wx.switchTab({ url: "/pages/messages/index" });
+  },
+
+  /** 退出登录（两种模式都清干净） */
+  signOut() {
+    this.stopUnreadPolling();
+    this.clearAuth();
+    Auth.logout();
+    this.globalData.idAuth = null;
+    this.globalData.idClaims = null;
+    this.globalData.me = null;
+    this.globalData.bootstrapped = false;
+  },
+
   // ── 未读轮询 ─────────────────────────────────────────────────────────
 
   /**
@@ -88,6 +176,10 @@ App({
    */
   startUnreadPolling() {
     if (this._pollTimer) return; // 幂等
+    // 配置错误（声明 id 模式却没给账号中心地址）：整个应用停在启动页的错误屏上，别再打请求
+    if (config.hasConfigError()) return;
+    // id 模式：首屏还没跑完登录 / 开通判定时不要轮询 —— 未开通账号会打出一串必然 403 的请求
+    if (config.isIdMode() && !this.globalData.bootstrapped) return;
     this.pollUnread(); // 立即一次
     this._pollTimer = setInterval(() => this.pollUnread(), this._POLL_INTERVAL_MS);
   },

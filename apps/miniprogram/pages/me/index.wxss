@@ -153,3 +153,32 @@
   color: #9B9B9B;
   margin-top: 32rpx;
 }
+
+/* v0.149：未绑定手机号提示条（统一账号中心接入） */
+.phone-tip {
+  margin: 0 32rpx 24rpx;
+  display: flex;
+  align-items: center;
+  padding: 24rpx 28rpx;
+  background: #FFF8E6;
+  border: 2rpx solid #F2E2B8;
+  border-radius: 28rpx;
+}
+.phone-tip-meta { flex: 1; min-width: 0; }
+.phone-tip-title { font-size: 28rpx; font-weight: 700; color: #0A0A0A; }
+.phone-tip-sub {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 32rpx;
+  color: #6B6B6B;
+}
+.phone-tip-cta {
+  flex-shrink: 0;
+  margin-left: 20rpx;
+  padding: 12rpx 26rpx;
+  border-radius: 999rpx;
+  background: #0A0A0A;
+  color: #FFFFFF;
+  font-size: 24rpx;
+  font-weight: 600;
+}

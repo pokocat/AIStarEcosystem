@@ -9,6 +9,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AlertCircle, Bell, LayoutGrid, LogOut, Star } from "lucide-react";
 import { useAuth, AuthApi } from "@ai-star-eco/api-client";
+import { EnrollmentGate } from "@ai-star-eco/landing";
 import { STAR_NAV_GROUPS, STAR_BOTTOM_TABS } from "@/constants/star-ui";
 import { StarShellProvider, useStarShell } from "@/lib/star-shell-context";
 import { formatWan } from "@/lib/format";
@@ -63,26 +64,28 @@ function Shell({ children }: { children: React.ReactNode }) {
     totalPending - bottomTabs.reduce((s, t) => s + navBadgeCount(t.badgeKey, byModule), 0)
   );
 
+  // v0.149+：开通门 —— 已登录但账号未开通「明星商务工作台」时渲染开通页
+  //（未登录由 AuthProvider 跳登录 / 账号中心）。
   if (user && !hasPlatformAccess) {
     return (
-      <div className="min-h-dvh flex items-center justify-center px-6">
-        <div className="star-card max-w-md w-full p-8 text-center">
-          <div className="mx-auto w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "var(--brand-soft)" }}>
-            <AlertCircle className="w-6 h-6" style={{ color: "var(--brand)" }} />
-          </div>
-          <h2 className="mt-4 text-base font-bold" style={{ color: "var(--ink-0)" }}>未开通明星商务工作台</h2>
-          <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-1)" }}>
-            当前账号未被授予「明星商务工作台」访问权限。请联系平台运营为账号开通 star 平台后再试。
-          </p>
-          <button
-            onClick={() => { AuthApi.logout(); logout(); }}
-            className="mt-6 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition hover:opacity-90"
-            style={{ background: "var(--ink-0)" }}
-          >
-            <LogOut className="w-4 h-4" /> 退出登录
-          </button>
-        </div>
-      </div>
+      <EnrollmentGate
+        product="star"
+        productLabel="明星商务工作台"
+        onLogout={() => {
+          AuthApi.logout();
+          logout();
+        }}
+        theme={{
+          bg: "var(--bg-0, #f7f8fa)",
+          surface: "var(--bg-1, #ffffff)",
+          fg: "var(--ink-0)",
+          fgMuted: "var(--ink-1)",
+          accent: "var(--brand)",
+          accentFg: "#ffffff",
+          border: "var(--line-strong)",
+          radius: "16px",
+        }}
+      />
     );
   }
 

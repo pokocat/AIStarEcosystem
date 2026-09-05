@@ -31,7 +31,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AccountApi, useAuth } from "@ai-star-eco/api-client";
-import { PlatformAccessDenied } from "@ai-star-eco/landing";
+import { EnrollmentGate } from "@ai-star-eco/landing";
 import type { Wallet } from "@ai-star-eco/types/wallet";
 import { RenderTaskDock } from "@/components/drama-workshop/render-task-dock";
 
@@ -568,11 +568,13 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     };
   }, [drawerOpen]);
 
-  // v0.43+：平台访问隔离 —— 已登录但账号未开通「AI 短剧」时拦截（未登录由 AuthProvider 跳登录）。
+  // v0.149+：开通门 —— 已登录但账号未开通「AI 短剧」时渲染开通页
+  //（未登录由 AuthProvider 跳登录 / 账号中心）。
   if (user && !hasPlatformAccess) {
     return (
-      <PlatformAccessDenied
-        appName="AI 短剧"
+      <EnrollmentGate
+        product="drama"
+        productLabel="AI 短剧"
         theme={{
           bg: "var(--bg)",
           surface: "var(--surface)",

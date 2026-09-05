@@ -1,0 +1,101 @@
+.page {
+  min-height: 100vh;
+  background: #0A0A0A;
+  color: #FFFFFF;
+  padding-left: 48rpx;
+  padding-right: 48rpx;
+  display: flex;
+  flex-direction: column;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  padding-top: 32rpx;
+}
+.brand-en {
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 6rpx;
+  color: #FFFFFF;
+}
+.brand-tag {
+  margin-left: 16rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+.brand-bang { margin-left: 8rpx; color: #C8FF00; font-size: 32rpx; font-weight: 800; }
+
+.center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+.title {
+  font-size: 72rpx;
+  font-weight: 800;
+  letter-spacing: -2rpx;
+  margin-bottom: 40rpx;
+}
+.dots { display: flex; margin-bottom: 24rpx; }
+.dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: #C8FF00;
+  margin-right: 14rpx;
+  opacity: .35;
+  animation: blink 1.2s infinite ease-in-out;
+}
+.d2 { animation-delay: .2s; }
+.d3 { animation-delay: .4s; }
+@keyframes blink {
+  0%, 100% { opacity: .25; }
+  50% { opacity: 1; }
+}
+.status { font-size: 28rpx; color: #B3B3B3; }
+.error {
+  font-size: 28rpx;
+  line-height: 44rpx;
+  color: #FFFFFF;
+  background: rgba(232, 75, 60, .18);
+  border: 2rpx solid rgba(232, 75, 60, .45);
+  border-radius: 24rpx;
+  padding: 24rpx 28rpx;
+  margin-bottom: 32rpx;
+}
+.retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 96rpx;
+  padding: 0 56rpx;
+  border-radius: 999rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.config-hint {
+  font-size: 26rpx;
+  line-height: 40rpx;
+  color: #B3B3B3;
+  margin-bottom: 8rpx;
+}
+.sales {
+  margin-top: 28rpx;
+  font-size: 26rpx;
+  color: #B3B3B3;
+}
+.foot {
+  padding-bottom: 64rpx;
+  font-size: 22rpx;
+  color: #6B6B6B;
+  text-align: center;
+}
+.mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }

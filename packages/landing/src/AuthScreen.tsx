@@ -21,7 +21,8 @@ import {
   Smartphone,
   type LucideIcon,
 } from "lucide-react";
-import { AuthApi, ENABLE_DEV_LOGIN, useAuth } from "@ai-star-eco/api-client";
+import { AuthApi, ENABLE_DEV_LOGIN, isIdMode, useAuth } from "@ai-star-eco/api-client";
+import { IdCenterLoginScreen } from "./IdCenterLoginScreen";
 import {
   STUDIO_KIND_LABEL_ZH,
   type SubProduct,
@@ -97,6 +98,9 @@ function AuthScreenInner(props: AuthScreenProps) {
   const search = useSearchParams();
   const from = search.get("from") || defaultPostLoginPath;
   const { loginAs, refresh, user } = useAuth();
+  // v0.149+：统一账号中心接管登录后，本页收敛成一个「去账号中心登录」按钮。
+  // legacy / USE_MOCK 模式下 isIdMode() 恒 false，下面整套 tab 流程原样保留。
+  const idMode = isIdMode();
 
   const [tab, setTab] = React.useState<Tab>("phone-login");
   // 验证码登录发现未注册时带过来的「已验证手机号 + 注册凭证」，让注册页免重输验证码。
@@ -119,6 +123,26 @@ function AuthScreenInner(props: AuthScreenProps) {
     "--as-border": theme.border,
     "--as-radius": theme.radius,
   } as React.CSSProperties;
+
+  if (idMode) {
+    return (
+      <IdCenterLoginScreen
+        brandLabel={brandLabel}
+        tagline={tagline}
+        postLoginPath={from}
+        theme={{
+          bg: theme.bg,
+          surface: theme.surface,
+          fg: theme.fg,
+          fgMuted: theme.fgMuted,
+          accent: theme.accent,
+          accentFg: theme.accentFg,
+          border: theme.border,
+          radius: theme.radius,
+        }}
+      />
+    );
+  }
 
   return (
     <div

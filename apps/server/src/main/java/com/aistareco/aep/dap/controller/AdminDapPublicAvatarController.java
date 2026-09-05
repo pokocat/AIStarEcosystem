@@ -31,7 +31,11 @@ public class AdminDapPublicAvatarController {
 
     private final DapPublicAvatarService service;
 
-    public AdminDapPublicAvatarController(DapPublicAvatarService service) {
+    private final com.aistareco.aep.security.InAppOperatorGuard operatorGuard;
+
+    public AdminDapPublicAvatarController(DapPublicAvatarService service,
+                                          com.aistareco.aep.security.InAppOperatorGuard operatorGuard) {
+        this.operatorGuard = operatorGuard;
         this.service = service;
     }
 
@@ -42,25 +46,29 @@ public class AdminDapPublicAvatarController {
 
     /** 运营公开数字人列表（仅本表，可编辑项；内置 10 个静态样板不在此列）。 */
     @GetMapping("/avatars")
-    public ApiResponse<List<Map<String, Object>>> list() {
+    public ApiResponse<List<Map<String, Object>>> list(Principal principal) {
+        operatorGuard.require(principal, "仅运营人员可查看公开数字人管理列表");
         return ApiResponse.of(service.listPublicWire());
     }
 
     @PostMapping("/avatars")
     public ApiResponse<Map<String, Object>> create(Principal principal,
                                                     @RequestBody DapPublicAvatarUpsertRequest req) {
+        operatorGuard.require(principal, "仅运营人员可维护公开数字人");
         return ApiResponse.of(service.create(req, uid(principal)));
     }
 
     @PutMapping("/avatars/{id}")
     public ApiResponse<Map<String, Object>> update(Principal principal, @PathVariable String id,
                                                    @RequestBody DapPublicAvatarUpsertRequest req) {
+        operatorGuard.require(principal, "仅运营人员可维护公开数字人");
         uid(principal);
         return ApiResponse.of(service.update(id, req));
     }
 
     @DeleteMapping("/avatars/{id}")
     public ApiResponse<Map<String, Object>> remove(Principal principal, @PathVariable String id) {
+        operatorGuard.require(principal, "仅运营人员可维护公开数字人");
         uid(principal);
         service.delete(id);
         return ApiResponse.of(Map.of("deleted", true));
@@ -71,6 +79,7 @@ public class AdminDapPublicAvatarController {
     public ApiResponse<Map<String, String>> upload(Principal principal,
                                                    @RequestParam("file") MultipartFile file,
                                                    @RequestParam(value = "kind", defaultValue = "front") String kind) {
+        operatorGuard.require(principal, "仅运营人员可维护公开数字人");
         uid(principal);
         return ApiResponse.of(service.uploadImage(file));
     }

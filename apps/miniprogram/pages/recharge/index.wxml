@@ -96,4 +96,6 @@
     </view>
     <view class="cta-tip">提交后按平台提供方式付款，平台确认收款后积分自动到账</view>
   </view>
+
+  <phone-bind-sheet id="phone-bind-sheet" />
 </view>

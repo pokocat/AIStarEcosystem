@@ -20,6 +20,15 @@
     <view class="user-arrow" bindtap="onProfile">›</view>
   </view>
 
+  <!-- v0.149：未绑定手机号时给显式提示（带货生成 / 充值前都会用到） -->
+  <view wx:if="{{idMode && !phoneVerified}}" class="phone-tip" bindtap="bindPhone">
+    <view class="phone-tip-meta">
+      <view class="phone-tip-title">还没绑定手机号</view>
+      <view class="phone-tip-sub">绑定后换设备也能找回账号，生成与充值也需要它</view>
+    </view>
+    <view class="phone-tip-cta">去绑定</view>
+  </view>
+
   <!-- 积分余额 hero -->
   <view class="credits-card">
     <view class="credits-head">
@@ -103,4 +112,6 @@
   </view>
 
   <view class="brand-foot mono">AI 明星带货 · v0.2.0</view>
+
+  <phone-bind-sheet id="phone-bind-sheet" />
 </view>

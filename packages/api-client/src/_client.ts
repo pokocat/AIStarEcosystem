@@ -1,57 +1,36 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // _client.ts — 前端 API 调用底座。
 // 通过 NEXT_PUBLIC_USE_MOCK=1 切换为仅使用 mocks/ 数据（无网络）。
+//
+// 登录模式见 ./config.ts：
+//   - legacy —— 本仓 server 发短信码 / 签 HS256 令牌（历史行为，本文件逻辑不变）
+//   - id     —— 统一账号中心 OIDC + PKCE（./oidc.ts）；401 先单飞刷新一次再重放
+// 跨子域 SSO 的历史 cookie 方案已被账号中心方案取代，见
+// docs/unified-identity-plan.md 决策 D9（令牌仍存 localStorage，由 issuer 统一签发）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ApiResponse, ApiErrorShape } from "@ai-star-eco/types/_shared";
 import { findMockHandler, type MockMethod } from "./_mock-registry";
+import { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK, isIdMode } from "./config";
+import { clearAuthTokens, getAuthToken } from "./token-store";
+import { beginLogin, isTransientOidcError, refreshAccessToken } from "./oidc";
 
-// TODO(cross-subdomain SSO)：当前 token 写 localStorage，仅本子域可见。
-// 三个新 web app 部署到 music/drama/celebrity.aibuzz.cn 后需改写入 cookie
-// 并由后端把 Set-Cookie 的 Domain 设为 .aibuzz.cn。改造点：
-//   - getAuthToken / setAuthToken 改读写 document.cookie
-//   - apiFetch 移除 Authorization header（cookie 由浏览器自动带上）
-//   - server 端 SecurityConfig 启用 cookie 鉴权
-//   - server 端 Set-Cookie 写 Domain=.aibuzz.cn; SameSite=Lax
-
-/** 当 NEXT_PUBLIC_USE_MOCK=1 时，API 层直接返回 mocks/ 目录中的静态数据。 */
-export const USE_MOCK: boolean =
-  typeof process !== "undefined" &&
-  process.env.NEXT_PUBLIC_USE_MOCK === "1";
-
-/** dev-login 入口：生产构建默认隐藏；联调环境可用 NEXT_PUBLIC_ENABLE_DEV_LOGIN=1 显式打开。 */
-export const ENABLE_DEV_LOGIN: boolean =
-  typeof process !== "undefined" &&
-  (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1" ||
-    (process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN !== "0" &&
-      process.env.NODE_ENV !== "production"));
-
-/** 后端基础地址，默认 /api（同域反向代理），可通过环境变量覆盖。 */
-export const API_BASE_URL: string =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL) ||
-  "/api";
-
-/** JWT 存储的 localStorage 键名。 */
-export const AUTH_TOKEN_KEY = "aistareco.auth.token";
-
-export function getAuthToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(AUTH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setAuthToken(token: string | null) {
-  if (typeof window === "undefined") return;
-  try {
-    if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token);
-    else window.localStorage.removeItem(AUTH_TOKEN_KEY);
-  } catch {
-    /* 隐私模式 / storage 满，静默失败 */
-  }
-}
+export { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK };
+export {
+  AUTH_TOKEN_KEY,
+  AUTH_REFRESH_TOKEN_KEY,
+  AUTH_EXPIRES_AT_KEY,
+  AUTH_ID_TOKEN_KEY,
+  clearAuthTokens,
+  getAuthToken,
+  setAuthToken,
+  getRefreshToken,
+  setRefreshToken,
+  getIdToken,
+  setIdToken,
+  getTokenExpiresAt,
+  setTokenExpiresAt,
+} from "./token-store";
 
 /**
  * 来源子应用短码（music / drama / celebrity / aiavatar / star）。由 AuthProvider 在挂载时注入，
@@ -63,8 +42,12 @@ export function setAppCode(code: string | null) {
   appCode = code && code.trim() ? code.trim() : null;
 }
 
-/** 401 回调——由 AuthContext 注册，用于把用户踢回 /login。 */
-type UnauthorizedHandler = () => void;
+/**
+ * 401 回调——由 AuthContext 注册，用于把用户踢回登录页。
+ * 返回 `true` 表示「已自行处理」，此时 id 模式不再兜底跳账号中心
+ * （AuthProvider 在公开路径上就这么用：清掉用户态但让人留在 landing）。
+ */
+type UnauthorizedHandler = () => boolean | void;
 let unauthorizedHandler: UnauthorizedHandler | null = null;
 export function registerUnauthorizedHandler(fn: UnauthorizedHandler | null) {
   unauthorizedHandler = fn;
@@ -101,6 +84,84 @@ interface RequestOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
   suppressParseErrorLog?: boolean;
+  /** @internal id 模式刷新令牌后的重放标记；外部不要传。 */
+  __idRetry?: boolean;
+}
+
+/**
+ * 统一 401 处置（两种模式共用）：清令牌 → 通知 AuthContext → id 模式下若无人接管
+ * 则直接回账号中心重新授权。
+ */
+function handleUnauthorized() {
+  clearAuthTokens();
+  const handled = unauthorizedHandler?.();
+  if (handled === true) return;
+  if (isIdMode()) void beginLogin();
+}
+
+/**
+ * 刷新令牌这一步本身没能完成时的错误码（P1-8）。
+ *
+ * 场景：`/api/me` 回 401 → 去账号中心换新令牌 → **换令牌的请求**撞上断网 / 5xx / 超时。
+ * 这时既不能判定「没登录」（令牌可能好好的），也不能继续用旧令牌重放 —— 于是抛这个
+ * 带 503 的错误：令牌**原样保留**，由 AuthProvider 进 `error` 态给重试屏。
+ */
+export const AUTH_REFRESH_UNAVAILABLE = "AUTH_REFRESH_UNAVAILABLE";
+
+/** 判定一个异常是不是「刷新令牌时后端不可用」（可重试，不是没登录）。 */
+export function isAuthRefreshUnavailableError(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.code === AUTH_REFRESH_UNAVAILABLE;
+}
+
+/**
+ * id 模式的 401 兜底刷新：成功返回 true（调用方重放请求），确认失效返回 false
+ * （令牌已被 oidc 清空，调用方走 handleUnauthorized）。
+ * 暂时性故障抛 `ApiError{AUTH_REFRESH_UNAVAILABLE, 503}` —— **不清令牌、不跳登录**。
+ */
+async function tryIdRefresh(): Promise<boolean> {
+  try {
+    return await refreshAccessToken();
+  } catch (e) {
+    if (isTransientOidcError(e)) {
+      throw new ApiError(
+        {
+          code: AUTH_REFRESH_UNAVAILABLE,
+          message: "暂时无法确认登录状态，请稍后重试。",
+          details: { reason: e.reason ?? e.code },
+        },
+        503,
+      );
+    }
+    throw e;
+  }
+}
+
+/** 后端「本产品未开通」错误码（docs/unified-identity-plan.md §12.2）。 */
+export const PRODUCT_NOT_ENROLLED = "PRODUCT_NOT_ENROLLED";
+
+/**
+ * 403 `PRODUCT_NOT_ENROLLED` 回调 —— 由 AuthProvider 注册。
+ * 任何业务请求撞上开通闸时都会触发，让工作台立刻切到开通页，
+ * 而不是把「你没权限」的原始错误码扔给用户看。
+ */
+type EnrollmentRequiredHandler = (product: string | null) => void;
+let enrollmentRequiredHandler: EnrollmentRequiredHandler | null = null;
+export function registerEnrollmentRequiredHandler(fn: EnrollmentRequiredHandler | null) {
+  enrollmentRequiredHandler = fn;
+}
+
+/** 判定一个异常是不是「本产品未开通」。 */
+export function isProductNotEnrolledError(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.code === PRODUCT_NOT_ENROLLED;
+}
+
+/** 从 403 响应体里取出产品短码（`error.details.product`），取不到返回 null。 */
+function readEnrollmentProduct(details: unknown): string | null {
+  if (details && typeof details === "object" && "product" in details) {
+    const p = (details as { product?: unknown }).product;
+    if (typeof p === "string" && p) return p;
+  }
+  return null;
 }
 
 /**
@@ -111,7 +172,15 @@ export async function apiFetch<T>(
   path: string,
   opts: RequestOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, query, headers, signal, suppressParseErrorLog = false } = opts;
+  const {
+    method = "GET",
+    body,
+    query,
+    headers,
+    signal,
+    suppressParseErrorLog = false,
+    __idRetry = false,
+  } = opts;
 
   // USE_MOCK：在网络层拦截，命中 registry 直接返回 handler 结果（已是 unwrapped T）。
   // handler 抛 ApiError 即可模拟错误。未注册路径会落到下方网络分支（dev 期可见 404，便于发现缺口）。
@@ -141,8 +210,15 @@ export async function apiFetch<T>(
   });
 
   if (res.status === 401) {
-    setAuthToken(null);
-    unauthorizedHandler?.();
+    // id 模式：先单飞刷新一次令牌再重放本次请求（并发 401 共享同一次刷新）。
+    // 刷新本身失败但属于暂时故障时，tryIdRefresh 直接抛 503，不会往下走清令牌分支。
+    if (isIdMode() && !__idRetry) {
+      const refreshed = await tryIdRefresh();
+      if (refreshed) {
+        return apiFetch<T>(path, { ...opts, __idRetry: true });
+      }
+    }
+    handleUnauthorized();
     throw new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401);
   }
 
@@ -209,6 +285,9 @@ export async function apiFetch<T>(
       code: "HTTP_ERROR",
       message: `HTTP ${res.status}`,
     };
+    if (res.status === 403 && err.code === PRODUCT_NOT_ENROLLED) {
+      enrollmentRequiredHandler?.(readEnrollmentProduct(err.details));
+    }
     throw new ApiError(err, res.status);
   }
 
@@ -243,7 +322,7 @@ export async function apiFetchPaginated<T>(
   path: string,
   opts: RequestOptions = {},
 ): Promise<PaginatedResponse<T>> {
-  const { method = "GET", body, query, headers, signal } = opts;
+  const { method = "GET", body, query, headers, signal, __idRetry = false } = opts;
 
   if (USE_MOCK) {
     const match = findMockHandler(method as MockMethod, path);
@@ -268,8 +347,13 @@ export async function apiFetchPaginated<T>(
   });
 
   if (res.status === 401) {
-    setAuthToken(null);
-    unauthorizedHandler?.();
+    if (isIdMode() && !__idRetry) {
+      const refreshed = await tryIdRefresh();
+      if (refreshed) {
+        return apiFetchPaginated<T>(path, { ...opts, __idRetry: true });
+      }
+    }
+    handleUnauthorized();
     throw new ApiError({ code: "UNAUTHORIZED", message: "未登录或登录已失效" }, 401);
   }
 
@@ -296,6 +380,9 @@ export async function apiFetchPaginated<T>(
       code: "HTTP_ERROR",
       message: `HTTP ${res.status}`,
     };
+    if (res.status === 403 && err.code === PRODUCT_NOT_ENROLLED) {
+      enrollmentRequiredHandler?.(readEnrollmentProduct(err.details));
+    }
     throw new ApiError(err, res.status);
   }
 

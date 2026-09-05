@@ -15,8 +15,13 @@ import java.util.List;
  *       其余子产品需另行开通。</li>
  * </ul>
  *
- * 真正的访问拦截在前端（各子产品 workspace 布局按 /api/me 返回的 platforms 判断）；
- * 后端这里只负责「注册时授予哪些平台」这一条策略。
+ * <p><b>v0.149 起本类不再是权益真值</b>：能不能进某个子产品由 {@code product_enrollment}
+ * （{@code EnrollmentService} / {@code EnrollmentGuard}）说了算，后端真拦。本类退化为
+ * 「一把没有声明子应用的全站秘钥，该开通哪些产品」这条**策略**，由
+ * {@code EnrollmentService.resolveGrantedProducts} 消费 —— 它拿到 CSV 后既写
+ * enrollment 行，也继续双写旧 {@code aep_users.platforms} CSV 作兼容。
+ * 无激活码的新账号（账号中心 JIT 建档）走 {@code EnrollmentService.grantForNewUser}：
+ * dev-grant-all 时开通全部（source={@code GRANT_ALL}），生产一条都不建。</p>
  */
 @Service
 public class PlatformAccessService {

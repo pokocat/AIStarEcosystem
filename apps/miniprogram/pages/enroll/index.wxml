@@ -1,0 +1,60 @@
+<view class="page" style="padding-top: {{statusBarHeight}}px;">
+  <view class="brand">
+    <text class="brand-en">STAR</text>
+    <view class="brand-tag">带货式</view>
+    <text class="brand-bang">!</text>
+  </view>
+
+  <view class="hero">
+    <view class="eyebrow">CELEBRITY · AI · COMMERCE</view>
+    <view class="title">开通 AI 明星带货</view>
+    <view class="subtitle">你已用微信登录成功。输入激活码即可开通带货服务，激活码由销售经理发放。</view>
+  </view>
+
+  <view class="field">
+    <view class="field-badge">激活码</view>
+    <text class="field-icon">🎟</text>
+    <input
+      class="field-input mono"
+      type="text"
+      placeholder="XXXX-XXXX-XXXX"
+      placeholder-class="field-placeholder"
+      value="{{code}}"
+      bindinput="onCodeInput"
+      maxlength="14"
+    />
+  </view>
+
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+
+  <view class="cta-wrap">
+    <button class="cta {{canSubmit && !submitting ? '' : 'cta-off'}}" bindtap="submit" disabled="{{!canSubmit || submitting}}">
+      {{submitting ? '开通中…' : '开通并进入 →'}}
+    </button>
+  </view>
+
+  <view class="agreement">
+    <text class="agree-text">开通即表示已阅读并同意</text>
+    <text class="agree-link" catchtap="onAgreement" data-k="user">《用户协议》</text>
+    <text class="agree-text">·</text>
+    <text class="agree-link" catchtap="onAgreement" data-k="privacy">《隐私政策》</text>
+  </view>
+
+  <view class="sales-card">
+    <view class="sales-avatar"></view>
+    <view class="sales-meta">
+      <view class="sales-row">
+        <text class="sales-badge">销售经理</text>
+        <text class="sales-name">Sarah · 张敏</text>
+      </view>
+      <text class="sales-contact mono">微信 STAR_SARAH · 138 8888 1234</text>
+    </view>
+    <view class="sales-call" bindtap="callSales">
+      <text>📞 拨打</text>
+    </view>
+  </view>
+
+  <view class="logout" bindtap="logout">退出登录</view>
+
+  <phone-bind-sheet id="phone-bind-sheet" />
+</view>

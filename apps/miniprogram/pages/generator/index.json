@@ -1,5 +1,7 @@
 {
   "navigationBarTitleText": "生成视频",
   "backgroundColor": "#FAFAF7",
-  "usingComponents": {}
+  "usingComponents": {
+    "phone-bind-sheet": "/components/phone-bind-sheet/index"
+  }
 }

@@ -14,6 +14,7 @@ const nextConfig = {
     "@ai-star-eco/types",
     "@ai-star-eco/ui",
     "@ai-star-eco/api-client",
+    "@ai-star-eco/landing",
   ],
   async rewrites() {
     const apiBase = process.env.NEXT_PUBLIC_SERVER_API_BASE || "http://localhost:8080";

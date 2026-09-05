@@ -2,6 +2,10 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PlatformAccessDenied.tsx — 已登录但当前账号未开通本子产品时的拦截屏（v0.43+）。
+//
+// @deprecated v0.149 起五个 app 的开通门统一走 ./EnrollmentGate（打新的 enrollment
+// 端点，并在老 server 上自动回落本文件用的 /me/license/activate）。本文件暂留一版
+// 作为回滚落点，不要在新代码里引用。
 // 由各子产品 workspace 布局在 `!hasPlatformAccess` 时渲染。主题通过 props 注入。
 // v0.53+：内置「输入激活码开通」表单 —— 秘钥批次按子应用拆分后，老账号可用
 // 新秘钥追加激活本子产品（POST /api/me/license/activate），无需换号。

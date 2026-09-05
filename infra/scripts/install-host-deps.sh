@@ -7,6 +7,8 @@
 # Usage:
 #   sudo ./infra/scripts/install-host-deps.sh all
 #   sudo ./infra/scripts/install-host-deps.sh server,web-aiavatar,web-star
+#
+# 统一账号中心（id.aibuzz.cn）已抽离为独立仓库 pokocat/aibuzz-id，部署脚本见该仓 deploy/README.md。
 
 set -euo pipefail
 

@@ -1,5 +1,7 @@
 {
   "pages": [
+    "pages/launch/index",
+    "pages/enroll/index",
     "pages/login/index",
     "pages/messages/index",
     "pages/chat/index",

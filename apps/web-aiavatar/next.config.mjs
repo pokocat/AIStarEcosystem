@@ -3,6 +3,13 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
   poweredByHeader: false,
+  // v0.149：统一账号中心接入 —— 复用共享包的 OIDC/PKCE 与开通门（源码需 Next 编译）。
+  // 注意本 app 的屏幕层仍是自带的 src/proto/*，只借用 auth 相关能力。
+  transpilePackages: [
+    "@ai-star-eco/types",
+    "@ai-star-eco/api-client",
+    "@ai-star-eco/landing",
+  ],
   // 部署到 aistar.aibuzz.cn 根路径，无 basePath；本地 dev: localhost:3013
   async headers() {
     return [

@@ -12,7 +12,10 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.aistareco.aep.enrollment.config.EnrollmentGuard;
 
 @Configuration
 @EnableWebSecurity
@@ -25,6 +28,8 @@ public class AepSecurityConfig {
     private final ApiOperationLogFilter apiOperationLogFilter;
     private final SecurityJsonEntryPoint jsonEntryPoint;
     private final SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler;
+    /** v0.149 子产品开通闸（docs/unified-identity-plan.md §12.2）。 */
+    private final EnrollmentGuard enrollmentGuard;
 
     /** dev profile 专用。非 dev 环境不会注入。 */
     @Autowired(required = false)
@@ -35,13 +40,15 @@ public class AepSecurityConfig {
                               TraceFilter traceFilter,
                               ApiOperationLogFilter apiOperationLogFilter,
                               SecurityJsonEntryPoint jsonEntryPoint,
-                              SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler) {
+                              SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler,
+                              EnrollmentGuard enrollmentGuard) {
         this.jwtFilter = jwtFilter;
         this.internalFilter = internalFilter;
         this.traceFilter = traceFilter;
         this.apiOperationLogFilter = apiOperationLogFilter;
         this.jsonEntryPoint = jsonEntryPoint;
         this.jsonAccessDeniedHandler = jsonAccessDeniedHandler;
+        this.enrollmentGuard = enrollmentGuard;
     }
 
     @Bean
@@ -65,6 +72,30 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/config/**", "/internal/config/**").permitAll()
                         .requestMatchers("/api/appearance-forge/coze/**").authenticated()
                         .requestMatchers("/api/appearance-forge/chat/**").authenticated() // v0.43 形象锻造对话（大模型）
+                        // v0.150（统一账号中心 P2 复盘）：以下业务路由此前**没有任何显式规则**，
+                        // 落到最后的 anyRequest().permitAll() 兜底 —— 既能匿名调用，也因此完全绕过
+                        // 子产品开通闸 EnrollmentGuard（闸门对未登录请求不判定）。其中
+                        // /api/celebrity/generate、/api/appearance-forge/generate、/api/tracks/generate、
+                        // /api/nft/mint、/api/wardrobe/generate-look、/api/distribution/publish
+                        // 都是真实扣积分 / 写库的动作。统一收紧为 authenticated，公开面只保留
+                        // landing 用的 /api/auth/**、/api/config/**、/api/store/catalog、支付回调与刷脸回跳。
+                        .requestMatchers("/api/appearance-forge/**").authenticated()
+                        .requestMatchers("/api/celebrity/**").authenticated()
+                        .requestMatchers("/api/analytics/**").authenticated()
+                        .requestMatchers("/api/coach/**").authenticated()
+                        .requestMatchers("/api/community/**").authenticated()
+                        .requestMatchers("/api/distribution/**").authenticated()
+                        .requestMatchers("/api/expressions", "/api/gestures", "/api/poses").authenticated()
+                        .requestMatchers("/api/fan/**").authenticated()
+                        .requestMatchers("/api/film/**").authenticated()
+                        .requestMatchers("/api/marketplace/**").authenticated()
+                        .requestMatchers("/api/music/**").authenticated()
+                        .requestMatchers("/api/nft/**").authenticated()
+                        .requestMatchers("/api/notifications/**").authenticated()
+                        .requestMatchers("/api/singers/**").authenticated()
+                        .requestMatchers("/api/template-scripts/**").authenticated()
+                        .requestMatchers("/api/tracks/**").authenticated()
+                        .requestMatchers("/api/wardrobe/**").authenticated()
                         // 军师 BFF 使用独立 service token + externalOwnerId；由 ClipServiceIdentity 做常量时间校验。
                         // 顺序必须早于通用 /api/me/** JWT 规则，且只放行 clip 子树。
                         .requestMatchers("/api/me/clip/**").permitAll()
@@ -91,7 +122,10 @@ public class AepSecurityConfig {
                         .requestMatchers("/api/finance/**").authenticated()
                         // 数字人广场 · 运营内嵌后台（web-aiavatar）：/api/v1/admin/** 需运营 / 超管。
                         // 顺序敏感：必须排在通用 /api/v1/** 之前，否则被宽松规则吃掉。
-                        .requestMatchers("/api/v1/admin/**").hasAnyRole("SUPER_ADMIN", "OPERATOR")
+                        // v0.149：消费者令牌不再携带 operatorRole（后台令牌 typ=admin 才映射 ROLE_*），
+                        // 运营在 web-aiavatar 里用的是普通登录态 → 这里只要求已登录，运营身份由控制器
+                        // 经 InAppOperatorGuard 查库判定（同 DramaRecipeController / DramaCatalogController）。
+                        .requestMatchers("/api/v1/admin/**").authenticated()
                         // v0.105 真人授权刷脸回跳：七牛 modelink 刷脸完成后由**浏览器直接跳转**回来，
                         // 不携带我们的 JWT，故只能 permitAll —— 防伪靠 query 里不可枚举的 state
                         // （= DapMaterialGroup.callbackToken，随机 UUID hex，一次会话一枚）+ 服务端
@@ -133,7 +167,11 @@ public class AepSecurityConfig {
                 .addFilterBefore(traceFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(apiOperationLogFilter, JwtAuthenticationFilter.class);
+                .addFilterAfter(apiOperationLogFilter, JwtAuthenticationFilter.class)
+                // v0.149：开通闸挂在 AuthorizationFilter 之前 —— 此时 JWT filter（以及 dev 的
+                // DevAutoAuthFilter）都已跑完，SecurityContext 一定是最终状态；未登录请求由它放行、
+                // 交给随后的授权链出 401，不抢答。
+                .addFilterBefore(enrollmentGuard, AuthorizationFilter.class);
 
         // dev 环境：在 JWT filter 之后兜底自动登录
         if (devAutoAuthFilter != null) {
@@ -160,6 +198,14 @@ public class AepSecurityConfig {
      * 会重置 context，导致这里设置的 Authentication 被清掉。
      * 禁用 servlet-level 注册，filter 只通过 {@code addFilterBefore(...)} 挂在安全链内部。
      */
+    /** 同 {@link #jwtFilterRegistration}：开通闸只在安全链内部生效，禁用 servlet 级注册避免跑两遍。 */
+    @Bean
+    public FilterRegistrationBean<EnrollmentGuard> enrollmentGuardRegistration(EnrollmentGuard filter) {
+        FilterRegistrationBean<EnrollmentGuard> reg = new FilterRegistrationBean<>(filter);
+        reg.setEnabled(false);
+        return reg;
+    }
+
     @Bean
     public FilterRegistrationBean<JwtAuthenticationFilter> jwtFilterRegistration(JwtAuthenticationFilter filter) {
         FilterRegistrationBean<JwtAuthenticationFilter> reg = new FilterRegistrationBean<>(filter);

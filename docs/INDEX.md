@@ -19,6 +19,7 @@
 | [`product_spec.md`](../product_spec.md) | **AiAvatar / 数字 IP 主线** —— 数字艺人孵化、音乐工坊、内容（影视/综艺/广告/配音）、社群、版权、分发、变现 | v2.7 canonical（2026-05-06） |
 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线** —— 明星市场、授权、模板/脚本、AI 模型、生成器、积分钱包、消息中心、社交账号绑定 profile | v0.17 rolling（2026-05-20） |
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划** —— 全配置化终态（ConfigItem / 灰度 / AB 桶 / 17 个字典上移） | 大目标稿；当前 admin 是其 P0 子集 |
+| [`docs/unified-identity-plan.md`](unified-identity-plan.md) | **统一账号中心（id.aibuzz.cn）** —— 全生态（本仓 5 web app + 小程序 / 军师 / 公社）统一身份：OIDC + RS256、手机号 + unionid 身份键、五层模型（身份 / 建档 / 开通 / 角色 / 资源）、小程序自定义 grant、合并规则、§8.0 门禁、P0–P5 分期；服务落在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（含其 `deploy/`），本仓只留消费方接入 | P1 服务 + P2 本仓接入完成，待预发上线（last-reviewed 2026-09-04，v0.149） |
 
 ### 1.2 子应用产品 + 设计约束（每 app 一份）
 

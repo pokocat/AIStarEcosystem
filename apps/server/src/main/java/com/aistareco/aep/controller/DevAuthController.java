@@ -110,12 +110,11 @@ public class DevAuthController {
         user.setLastLoginAt(Instant.now());
         userRepo.save(user);
 
-        // v0.31+: operatorRole 非空时优先用它（OPERATOR / SUPER_ADMIN），让该账号
-        // 通过 /api/admin/** 门禁；否则回退到 kind 派生的 USER / STUDIO。
-        String role = user.getOperatorRole() != null
-                ? user.getOperatorRole().name()
-                : (user.getKind() == AepUser.AccountKind.STUDIO ? "STUDIO" : "USER");
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), role);
+        // §12.1（v0.149+）：dev-login 也是消费者登录，令牌只带账号类型，不再带 operatorRole
+        // —— 以前它能直通 /api/admin/**，现在要进后台请走 /api/admin/auth/operator-login。
+        // dev profile 下后台页面本来就由 DevAutoAuthFilter 兜底自动登录，不受影响。
+        String token = jwtUtil.consumerToken(user);
+        String role = user.getKind() == null ? "PERSONAL" : user.getKind().name();
         Studio studio = studioRepo.findByOwnerUserId(user.getId()).orElse(null);
         log.info("[dev-login] success userId={} username={} role={} studioId={}",
                 user.getId(), user.getUsername(), role, studio == null ? null : studio.getId());

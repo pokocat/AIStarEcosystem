@@ -8,6 +8,8 @@
 # Override paths:
 #   SERVER_ENV_FILE=/etc/aistareco/server.env
 #   SAU_ENV_FILE=/etc/aistareco/sau-service.env
+#
+# 统一账号中心（id.aibuzz.cn）已抽离为独立仓库 pokocat/aibuzz-id，部署脚本见该仓 deploy/README.md。
 
 set -euo pipefail
 

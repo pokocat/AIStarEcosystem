@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import { AuthProvider } from "@ai-star-eco/api-client";
 
+// 注：/auth/callback（统一账号中心回调）由 AuthProvider 内置放行，无需在此声明。
 const PUBLIC_PREFIXES = ["/", "/login"];
 
 export function AppProviders({ children }: { children: ReactNode }) {

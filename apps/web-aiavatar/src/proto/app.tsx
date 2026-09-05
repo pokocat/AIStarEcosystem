@@ -6,7 +6,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { AvatarApi, VoiceApi, AuthApi, AssetApi, ComposeApi, useApi, seed, auth, onAuthExpired, USE_MOCK } from "./api";
+import { AvatarApi, VoiceApi, AuthApi, AssetApi, ComposeApi, useApi, useIdentity, seed, auth, onAuthExpired, USE_MOCK } from "./api";
 import { MShell } from "./shell";
 import { toast } from "./toast";
 import { MHome } from "./screen-home";
@@ -209,6 +209,7 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
   const [reloadKey, setReloadKey] = useStateA(0);
   const [refreshSeq, setRefreshSeq] = useStateA(0); // 下拉刷新：递增 → 重挂当前屏 → 重新拉数据
   const canLoadPrivateData = USE_MOCK || authed === true;
+  const identity = useIdentity();
   const avatars = useApi(
     () => (canLoadPrivateData ? AvatarApi.list("mine") : Promise.resolve(seed.avatars())),
     seed.avatars(),
@@ -222,8 +223,9 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
     return onAuthExpired(() => { setStack([]); setSheet(false); setAuthed(false); setPlatformOk(null); });
   }, []);
 
-  // v0.53 平台门禁：登录后拉 /api/me 校验 platforms 是否含 aiavatar。
-  // 拉取失败（网络/老后端）宽松放行，避免误锁；platforms 缺失/空 = 全平台。
+  // v0.53 平台门禁：登录后拉 /api/me 校验能否使用 aiavatar。
+  // v0.149：权益真值改为后端 enrollments（status=active）；老后端不返回该字段时
+  // 回落历史的 platforms 判定。拉取失败（网络/老后端）宽松放行，避免误锁。
   useEffectA(() => {
     if (USE_MOCK) return;
     if (authed !== true) { setPlatformOk(null); return; }
@@ -231,6 +233,11 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
     AuthApi.me()
       .then((me) => {
         if (cancelled) return;
+        const enrollments = me?.enrollments;
+        if (Array.isArray(enrollments)) {
+          setPlatformOk(enrollments.some((e: any) => e?.product === "aiavatar" && e?.status === "active"));
+          return;
+        }
         const ps = me?.platforms;
         setPlatformOk(!Array.isArray(ps) || ps.length === 0 || ps.includes("aiavatar"));
       })
@@ -384,7 +391,8 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
         VoiceApi.bind(char.id, name).then(reload).catch((e) => toast(e?.message || "音色保存失败", { tone: "err" }));
       }
     },
-    logout: () => { auth.clear(); setStack([]); setSheet(false); setTab("home"); if (!USE_MOCK) setAuthed(false); toast("已退出登录", { tone: "ok" }); },
+    // v0.149：id 模式下 auth.logout() 会整页跳账号中心统一登出（下面的状态重置不会被看到）。
+    logout: () => { auth.logout(); setStack([]); setSheet(false); setTab("home"); if (!USE_MOCK) setAuthed(false); toast("已退出登录", { tone: "ok" }); },
     back: () => setStack((s) => s.slice(0, -1)),
     startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
     startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars), materialOnly: true } }]); setLabel("新增真人素材"); },
@@ -451,9 +459,9 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
   } as any)[top.screen];
   const hideTabBar = !!top;   // 覆盖页 / 创建流程屏上不显示底部导航，避免挡住主按钮
 
-  // 「我的」tab 头像：用登录用户名首字（live），无则回退通用图标 —— 不再硬编与用户无关的字。
-  const sessionUser = (typeof window !== "undefined" && !USE_MOCK) ? auth.user() : null;
-  const meInitial = sessionUser ? String(sessionUser.displayName || sessionUser.studioName || sessionUser.username || "").trim().slice(0, 1) : "";
+  // 「我的」tab 头像：用当前账号名首字（真源 /api/me），拿不到就回退通用图标 ——
+  // 不再硬编与用户无关的字，也不读 id 模式下永远为空的本地用户缓存。
+  const meInitial = String(identity?.displayName || "").trim().slice(0, 1);
   // 下拉刷新：临时流程屏（创建向导等）不允许刷新重挂（会丢进度）。
   const canRefresh = !top || FLOW_SCREENS.indexOf(top.screen) < 0;
 

@@ -7,7 +7,8 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { KeyRound, Loader2, MessageSquareText, UserRound } from "lucide-react";
-import { AuthApi, ENABLE_DEV_LOGIN, useAuth } from "@ai-star-eco/api-client";
+import { AuthApi, ENABLE_DEV_LOGIN, isIdMode, useAuth } from "@ai-star-eco/api-client";
+import { IdCenterLoginScreen } from "@ai-star-eco/landing";
 
 type Mode = "code" | "password";
 
@@ -107,6 +108,28 @@ export default function LoginPage() {
       setDevLoading(null);
     }
   };
+
+  // v0.149+：统一账号中心接管登录后，本页收敛成一个「去账号中心登录」按钮。
+  // legacy / USE_MOCK 模式下 isIdMode() 恒 false，下面的验证码 / 密码表单原样保留。
+  if (isIdMode()) {
+    return (
+      <IdCenterLoginScreen
+        brandLabel="明星商务工作台"
+        tagline="明星本人 / 经纪团队登录。账号中心统一处理登录，一个账号通行全部产品。"
+        postLoginPath="/dashboard"
+        theme={{
+          bg: "var(--bg-0)",
+          surface: "var(--bg-1)",
+          fg: "var(--ink-0)",
+          fgMuted: "var(--ink-1)",
+          accent: "var(--brand)",
+          accentFg: "#ffffff",
+          border: "var(--line-strong)",
+          radius: "16px",
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-dvh flex flex-col overflow-x-hidden" style={{ background: "var(--bg-0)" }}>

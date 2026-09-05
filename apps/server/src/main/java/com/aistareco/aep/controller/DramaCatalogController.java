@@ -1,5 +1,6 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.security.InAppOperatorGuard;
 import com.aistareco.aep.service.DramaHotspotService;
 import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.common.ApiResponse;
@@ -10,7 +11,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -39,8 +39,11 @@ public class DramaCatalogController {
     private final PlatformConfigService configs;
     private final ObjectMapper om;
     private final DramaHotspotService hotspots;
+    private final InAppOperatorGuard operatorGuard;
 
-    public DramaCatalogController(PlatformConfigService configs, ObjectMapper om, DramaHotspotService hotspots) {
+    public DramaCatalogController(PlatformConfigService configs, ObjectMapper om, DramaHotspotService hotspots,
+                                  InAppOperatorGuard operatorGuard) {
+        this.operatorGuard = operatorGuard;
         this.configs = configs;
         this.om = om;
         this.hotspots = hotspots;
@@ -105,14 +108,12 @@ public class DramaCatalogController {
         return ApiResponse.of(out);
     }
 
-    private static void requireOperator(Authentication auth) {
-        boolean ok = auth != null && auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(a -> a.equals("ROLE_OPERATOR") || a.equals("ROLE_SUPER_ADMIN"));
-        if (!ok) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "OPERATOR_ONLY",
-                    "仅平台运营可维护短剧目录内容。");
-        }
+    /**
+     * v0.149（§12.1）：消费者令牌不再带 operatorRole，所以这里改判 AepUser.operatorRole 真值
+     * （见 InAppOperatorGuard）；typ=admin 令牌照常放行。
+     */
+    private void requireOperator(Authentication auth) {
+        operatorGuard.require(auth, "仅平台运营可维护短剧目录内容。");
     }
 
     /** 暴露给前端的字段清单（便于 CMS 渲染）。 */

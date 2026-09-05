@@ -1,4 +1,5 @@
 const { CelebrityApi, WalletApi } = require("../../utils/api.js");
+const Phone = require("../../utils/phone.js");
 
 const app = getApp();
 
@@ -175,6 +176,12 @@ Page({
   },
 
   async startGenerate() {
+    // 生成会扣积分，属有副作用动作：先确保手机号已验证（docs/unified-identity-plan.md §5 / §12.6）
+    const phoneOk = await Phone.ensurePhoneVerified(this, {
+      reason: "生成带货视频会消耗积分，为了账号与资金安全，请先绑定手机号。"
+    });
+    if (!phoneOk) return;
+
     if (!this.data.enoughCredits) {
       wx.showModal({
         title: "积分余额不足",

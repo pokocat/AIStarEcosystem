@@ -27,4 +27,25 @@ module.exports = {
   // 本地联调：http://localhost:8080/api （需把 localhost 加进小程序「不校验合法域名」白名单）
   // 生产    ：https://api.aibuzz.cn/api
   apiBaseUrl: "https://api.aibuzz.cn/api",
+
+  // ── 统一账号中心（docs/unified-identity-plan.md §12.6）─────────────────────
+  //
+  // authMode:
+  //   "id"     统一账号中心：启动即微信静默授权登录（wx.login），不再填手机号 / 验证码；
+  //            激活码降级为登录后的「开通带货」一步。
+  //   "legacy" 老流程：手机号 + 短信验证码 + 激活码注册页。
+  //   省略此字段时按「填没填 idBaseUrl」自动推导（填了 = id）。
+  authMode: "id",
+
+  // 账号中心地址
+  // 本地联调：http://localhost:8090
+  // 生产    ：https://id.aibuzz.cn
+  // 两个地址都要加进小程序管理后台的 request 合法域名（生产必须 https）。
+  idBaseUrl: "https://id.aibuzz.cn",
+
+  // 本小程序在账号中心注册的 OAuth2 客户端 id（公开客户端，无 secret）
+  idClientId: "mini-aistar",
+
+  // 产品短码：随每个业务请求发 X-App-Code，server 的开通闸据此判定产品归属
+  appCode: "celebrity",
 };

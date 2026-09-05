@@ -60,6 +60,72 @@ components:
         effectiveMaxDurationSec: { type: integer, nullable: true, description: 有效时长上限（协议 ∩ capability；null=无已知上限） }
         selectableById: { type: boolean, description: true=存在 candidate 行，可显式携带 endpoint_id 提交；false=合成默认项，必须走缺省默认路径 }
 
+    # ── 统一账号中心 P2 · 子产品开通（v0.149，docs/unified-identity-plan.md §12.2） ──
+    # TS 真源：packages/types/src/account.ts 的 Enrollment
+    Enrollment:
+      type: object
+      required: [product, status, source, activatedAt, validUntil]
+      properties:
+        product:
+          type: string
+          enum: [music, drama, celebrity, aiavatar, star]
+        status:
+          type: string
+          enum: [pending, active, suspended, revoked]
+        source:
+          type: string
+          description: 开通来源。legacy = 由旧 aep_users.platforms CSV 回填；grant_all = dev 全授予
+          enum: [license, trial, admin, grant_all, legacy]
+        activatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 开通时间；pending 为 null
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: 有效期；null = 长期。已过期的 active 行等同未开通（后端 EnrollmentGuard 会拦）
+
+    # GET /api/me 的响应体（TS 真源：packages/types/src/account.ts 的 AepUser + studio）
+    MeDto:
+      type: object
+      required: [id, username, kind, status, platforms, enrollments, emailVerified, phoneVerified, hasPassword]
+      properties:
+        id:            { type: string }
+        username:      { type: string }
+        email:         { type: string, nullable: true }
+        phone:         { type: string, nullable: true }
+        displayName:   { type: string, nullable: true }
+        avatarUrl:     { type: string, nullable: true }
+        walletAddress: { type: string, nullable: true }
+        bio:           { type: string, nullable: true }
+        kind:          { type: string, enum: [personal, studio, agency] }
+        status:        { type: string, enum: [active, suspended, deleted] }
+        operatorRole:  { type: string, nullable: true, enum: [operator, super_admin] }
+        platforms:
+          type: array
+          description: >-
+            可访问的子产品。v0.149 起为 enrollments 中 active 项的兼容投影；
+            账号一条 enrollment 行都没有时（回填尚未跑到）才回落读旧 platforms CSV。
+          items: { type: string, enum: [music, drama, celebrity, aiavatar, star] }
+        identityUid:
+          type: string
+          nullable: true
+          description: 统一账号中心全局 uid；未经账号中心登录过的旧账号为 null
+        enrollments:
+          type: array
+          description: 各子产品开通状态（后端权益真值）
+          items: { $ref: '#/components/schemas/Enrollment' }
+        emailVerified: { type: boolean }
+        phoneVerified: { type: boolean }
+        hasPassword:   { type: boolean, description: 是否已设置登录密码；永不返回 passwordHash }
+        langPreference: { type: string, nullable: true }
+        createdAt:     { type: string, format: date-time }
+        updatedAt:     { type: string, format: date-time }
+        lastLoginAt:   { type: string, format: date-time, nullable: true }
+        studio:        { nullable: true, description: 名下工作室档案（无则 null） }
+
     SuccessResponse:
       type: object
       required: [success, data]
@@ -5009,15 +5075,90 @@ paths:
     get:
       tags: [account]
       operationId: getMe
-      summary: 获取当前用户档案
+      summary: 获取当前用户档案（含 identityUid 与各子产品开通状态 enrollments）
       responses:
-        '200': { description: ok }
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MeDto' }
     patch:
       tags: [account]
       operationId: updateMyProfile
       summary: 更新当前用户可编辑资料（displayName/avatarUrl/phone/email/bio/langPreference）
       responses:
         '200': { description: ok }
+
+  # ── 统一账号中心 P2 · 子产品开通（v0.149，docs/unified-identity-plan.md §12.2） ──
+  # 这两条在 EnrollmentGuard 白名单里：未开通的账号必须能访问，否则「去开通」这条路自己挡自己。
+  /me/enrollments:
+    get:
+      tags: [account]
+      operationId: listMyEnrollments
+      summary: 当前账号各子产品的开通状态
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Enrollment' }
+
+  /me/enrollments/{product}/activate:
+    post:
+      tags: [account]
+      operationId: activateEnrollment
+      summary: 用激活码开通某个子产品（已开通再激活 = 追加权益，积分照发）
+      parameters:
+        - name: product
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [music, drama, celebrity, aiavatar, star]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [licenseKey]
+              properties:
+                licenseKey: { type: string, description: 原始激活码（服务端 SHA-256 后查找） }
+      responses:
+        '200':
+          description: 开通成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Enrollment' }
+        '400':
+          description: >-
+            PRODUCT_INVALID（未知子产品）/ LICENSE_KEY_PRODUCT_MISMATCH（激活码不覆盖该子产品，
+            此时激活码不会被核销）/ LICENSE_KEY_INVALID（激活码为空）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: LICENSE_KEY_UNAVAILABLE —— 激活码不存在 / 已被使用 / 已过期 / 并发兑换抢输
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /me/password:
     post:
@@ -6642,6 +6783,49 @@ paths:
     post: { tags: [admin-notifications], operationId: adminMarkAllNotificationsRead, responses: { '200': { description: 'ok（{updated: n}）' } } }
 
   # ── 用户账号管理（v0.59 backfill + 停用 / 恢复链路） ────────────────────────
+  # ── 统一账号中心 P2 · 老用户导入（v0.149，docs/unified-identity-plan.md §12.3） ──
+  # 运维一次性触发；把「有手机号且 identity_uid 为空」的 aep_users 分批送到账号中心换 uid 并回写。
+  # 幂等可重跑；无手机号的老账号无法映射，保留 legacy 登录。
+  /admin/identity/import:
+    post:
+      tags: [admin-users]
+      operationId: adminImportIdentityUsers
+      summary: 把本地老账号批量映射到统一账号中心 uid（SUPER_ADMIN）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                batchSize:
+                  type: integer
+                  default: 200
+                  description: 单批送往账号中心的账号数（账号中心侧上限 500）
+                dryRun:
+                  type: boolean
+                  default: false
+                  description: true = 只统计不写库、不调账号中心
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [scanned, linked, created, skipped, errors]
+                        properties:
+                          scanned: { type: integer, description: 本次扫描到的候选账号数 }
+                          linked:  { type: integer, description: 成功回写 identity_uid 的账号数 }
+                          created: { type: integer, description: 账号中心新建 uid 的账号数 }
+                          skipped: { type: integer, description: 跳过数（无手机号 / 账号中心侧已注销等） }
+                          errors:  { type: integer, description: 失败数（可重跑） }
+
   /admin/users:
     get:
       tags: [admin-users]

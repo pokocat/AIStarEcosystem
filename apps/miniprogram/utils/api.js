@@ -2,6 +2,8 @@
 // 单环境开关：app.globalData.useMock。所有 URL 必须能在 specs/openapi.yaml 中找到。
 
 const mocks = require("./mocks.js");
+const config = require("../config.js");
+const Auth = require("./auth.js");
 
 function getApp_() {
   // 平台坑：测试/单元里 getApp 不可用，做兜底。详见 agent.md「API 不一致」
@@ -19,14 +21,18 @@ function unwrap(resp) {
   return resp;
 }
 
-function apiFetch(path, options) {
+function rawRequest(path, options, token) {
   const app = getApp_();
   const baseUrl = app.globalData.apiBaseUrl;
-  const token = (app.globalData.auth && app.globalData.auth.token) || "";
   const opts = options || {};
   const header = Object.assign(
-    // X-App-Code：审计来源短码 —— 让 server 登录日志区分「明星带货·小程序」入口。
-    { "Content-Type": "application/json", "X-App-Code": "celebrity-mp" },
+    {
+      "Content-Type": "application/json",
+      // X-App-Code：
+      //   id 模式 —— server 的开通闸按它判定「本次请求属于哪个产品」（celebrity）。
+      //   legacy 模式 —— 沿用历史审计来源短码 celebrity-mp（区分「明星带货·小程序」入口）。
+      "X-App-Code": config.isIdMode() ? config.appCode : config.legacyAppCode
+    },
     token ? { Authorization: "Bearer " + token } : {},
     opts.header || {}
   );
@@ -45,12 +51,74 @@ function apiFetch(path, options) {
           const e = new Error(err.message || body.message || ("HTTP " + res.statusCode));
           e.status = res.statusCode;
           e.code = err.code || "HTTP_ERROR";
+          e.details = err.details || null;
           reject(e);
         }
       },
       fail(err) { reject(err); }
     });
   });
+}
+
+/** 403 PRODUCT_NOT_ENROLLED —— 账号还没开通带货，导去开通页 */
+function isNotEnrolled(e) {
+  return e && e.status === 403 && e.code === "PRODUCT_NOT_ENROLLED";
+}
+
+const NO_REDIRECT_ROUTES = ["pages/enroll/index", "pages/launch/index", "pages/login/index"];
+
+function currentRoute() {
+  try {
+    const pages = getCurrentPages();
+    const top = pages[pages.length - 1];
+    return (top && top.route) || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+function gotoEnroll() {
+  const route = currentRoute();
+  if (NO_REDIRECT_ROUTES.indexOf(route) >= 0) return;
+  wx.navigateTo({ url: "/pages/enroll/index", fail() { wx.reLaunch({ url: "/pages/enroll/index" }); } });
+}
+
+function gotoLogin() {
+  const target = config.isIdMode() ? "/pages/launch/index" : "/pages/login/index";
+  const route = currentRoute();
+  if (NO_REDIRECT_ROUTES.indexOf(route) >= 0) return;
+  wx.reLaunch({ url: target });
+}
+
+/**
+ * 业务后端请求。
+ * legacy 模式：沿用 globalData.auth.token。
+ * id 模式：带账号中心 access token；401 → 刷新一次 → 还不行就静默重新 wx.login → 再不行回登录页。
+ */
+function apiFetch(path, options) {
+  if (!config.isIdMode()) {
+    const app = getApp_();
+    const token = (app.globalData.auth && app.globalData.auth.token) || "";
+    return rawRequest(path, options, token);
+  }
+
+  return Auth.ensureLoggedIn()
+    .then((tokens) => rawRequest(path, options, tokens.accessToken))
+    .catch((e) => {
+      if (isNotEnrolled(e)) { gotoEnroll(); throw e; }
+      if (e.status !== 401) throw e;
+      // 401 → 刷新一次；刷新失败（令牌被撤销 / 账号已合并）→ 静默重新登录
+      return Auth.refresh()
+        .catch(() => Auth.loginWithWechat())
+        .then(
+          (next) => rawRequest(path, options, next.accessToken).catch((e2) => {
+            if (isNotEnrolled(e2)) gotoEnroll();
+            else if (e2.status === 401) gotoLogin();
+            throw e2;
+          }),
+          () => { gotoLogin(); throw e; }
+        );
+    });
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────────
@@ -289,6 +357,43 @@ const WalletApi = {
   }
 };
 
+// ── 账号档案 / 开通（统一账号中心 · docs/unified-identity-plan.md §12.2）─────
+const MeApi = {
+  /** GET /me — 当前账号档案；id 模式下额外带 identityUid + enrollments[] */
+  get() {
+    const app = getApp_();
+    if (app.globalData.useMock) {
+      return mockDelay({
+        id: "u-mock",
+        username: "mock-user",
+        displayName: "Boss · 带货方",
+        phone: "138****8888",
+        identityUid: "uid-mock",
+        platforms: ["celebrity"],
+        enrollments: [{ product: "celebrity", status: "active", source: "license" }]
+      });
+    }
+    return apiFetch("/me");
+  }
+};
+
+const EnrollmentApi = {
+  /**
+   * POST /me/enrollments/{product}/activate — 用激活码开通本产品。
+   * 成功后 /me 的 enrollments 里会出现一条 status=active。
+   */
+  activate(product, licenseKey) {
+    const app = getApp_();
+    if (app.globalData.useMock) {
+      return mockDelay({ product: product, status: "active", source: "license", activatedAt: new Date().toISOString() });
+    }
+    return apiFetch("/me/enrollments/" + encodeURIComponent(product) + "/activate", {
+      method: "POST",
+      data: { licenseKey }
+    });
+  }
+};
+
 // ── Dashboard ───────────────────────────────────────────────────────────────
 const DashboardApi = {
   get(range) {
@@ -304,5 +409,7 @@ module.exports = {
   CelebrityApi,
   NotificationsApi,
   WalletApi,
+  MeApi,
+  EnrollmentApi,
   DashboardApi
 };

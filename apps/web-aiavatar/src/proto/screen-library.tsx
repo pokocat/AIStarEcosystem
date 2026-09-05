@@ -3,7 +3,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, LicenseApi, PlazaAdminApi, awaitJob, useApi, seed, USE_MOCK, auth, AuthApi, isOperatorRole } from "./api";
+import { DATA, AvatarApi, LicenseApi, PlazaAdminApi, awaitJob, useApi, useIdentity, seed, USE_MOCK, isOperatorRole } from "./api";
 import { Portrait } from "./portrait";
 import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
@@ -19,16 +19,14 @@ const { WxNav: WxNavL } = MShell;
 const { MStatus: MStatusL, MPath: MPathL, CornerTicks: CornerTicksL } = MKit;
 
 // —— 数字人广场 · 运营内嵌后台 —————————————————————————————
-/** 当前用户是否运营（OPERATOR / SUPER_ADMIN）。mock/dev 默认开放，便于本地演示。 */
+/**
+ * 当前用户是否运营（OPERATOR / SUPER_ADMIN）。mock/dev 默认开放，便于本地演示。
+ * 真源是 /api/me（走共用缓存）—— 统一账号中心模式下本地不再存用户信息，
+ * 读 `auth.user()` 永远是 null，会把运营也当成普通用户。
+ */
 function useIsOperator() {
-  const [op, setOp] = useStateML(USE_MOCK || isOperatorRole(auth.user()?.operatorRole));
-  useEffectML(() => {
-    if (USE_MOCK) return;
-    let live = true;
-    AuthApi.me().then((u: any) => { if (live) setOp(isOperatorRole(u?.operatorRole)); }).catch(() => {});
-    return () => { live = false; };
-  }, []);
-  return op;
+  const identity = useIdentity();
+  return USE_MOCK || isOperatorRole(identity?.operatorRole);
 }
 
 const PLAZA_CATS: [string, string][] = [['pro', '专业'], ['life', '生活方式'], ['ugc', 'UGC'], ['community', '社区']];

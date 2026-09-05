@@ -7,6 +7,8 @@
 #
 # Local mode（在 ECS 本机直接跑，不走 SSH）：
 #   LOCAL_MODE=1 PUBLIC_BASE=http://127.0.0.1 ./infra/scripts/verify.sh
+#
+# 统一账号中心（id.aibuzz.cn）已抽离为独立仓库 pokocat/aibuzz-id，部署脚本见该仓 deploy/README.md。
 
 set -euo pipefail
 

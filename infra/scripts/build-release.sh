@@ -9,6 +9,8 @@
 #   server,web-celebrity,web-aiavatar,web-star,admin -> comma-separated
 #   "server web-celebrity web-aiavatar web-star admin" -> space-separated
 #
+# 统一账号中心（id.aibuzz.cn）已抽离为独立仓库 pokocat/aibuzz-id，构建脚本见该仓 deploy/README.md。
+#
 # Output:
 #   dist/deploy/<RELEASE_ID>/
 
@@ -30,6 +32,14 @@ export NEXT_PUBLIC_ENABLE_DEV_LOGIN="${NEXT_PUBLIC_ENABLE_DEV_LOGIN:-0}"
 export NEXT_PUBLIC_MIXCUT_USE_REAL="${NEXT_PUBLIC_MIXCUT_USE_REAL:-1}"
 export NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-/api}"
 export NEXT_PUBLIC_SERVER_API_BASE="${NEXT_PUBLIC_SERVER_API_BASE:-http://127.0.0.1:8080}"
+
+# 登录模式（docs/unified-identity-plan.md §12.5）。NEXT_PUBLIC_* 是**构建期内联**的，
+# 只改 ECS 上的运行期 .env 不生效，所以必须在这里带上。
+# 默认 legacy = 现网行为不变；切统一账号中心时显式：
+#   NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn ./build-release.sh all
+# client_id 按 app 逐个取（web-music … web-star），由下面的 export_auth_env 注入。
+export NEXT_PUBLIC_AUTH_MODE="${NEXT_PUBLIC_AUTH_MODE:-legacy}"
+export NEXT_PUBLIC_ID_ISSUER="${NEXT_PUBLIC_ID_ISSUER:-}"
 export COPYFILE_DISABLE="${COPYFILE_DISABLE:-1}"
 export CI="${CI:-true}"
 
@@ -114,6 +124,12 @@ write_checksums() {
   )
 }
 
+# 每个 web app 在账号中心注册的 client_id 不同（web-music … web-star），
+# 构建各自的产物前设成对应的那个。legacy 模式下这个值没有任何读者，设了也无害。
+export_auth_env() {
+  export NEXT_PUBLIC_ID_CLIENT_ID="$1"
+}
+
 build_server() {
   log "building server jar"
   (cd apps/server && ./mvnw -DskipTests package)
@@ -125,6 +141,7 @@ build_server() {
 
 build_web_music() {
   log "building web-music standalone"
+  export_auth_env "web-music"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
     pnpm install --frozen-lockfile
   fi
@@ -147,6 +164,7 @@ build_web_music() {
 
 build_web_drama() {
   log "building web-drama standalone"
+  export_auth_env "web-drama"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
     pnpm install --frozen-lockfile
   fi
@@ -169,6 +187,7 @@ build_web_drama() {
 
 build_web_celebrity() {
   log "building web-celebrity standalone"
+  export_auth_env "web-celebrity"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
     pnpm install --frozen-lockfile
   fi
@@ -191,6 +210,7 @@ build_web_celebrity() {
 
 build_web_aiavatar() {
   log "building web-aiavatar standalone"
+  export_auth_env "web-aiavatar"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
     pnpm install --frozen-lockfile
   fi
@@ -213,6 +233,7 @@ build_web_aiavatar() {
 
 build_web_star() {
   log "building web-star standalone"
+  export_auth_env "web-star"
   if [[ "$SKIP_INSTALL" != "1" ]]; then
     pnpm install --frozen-lockfile
   fi
@@ -295,6 +316,8 @@ NEXT_PUBLIC_ENABLE_DEV_LOGIN='$NEXT_PUBLIC_ENABLE_DEV_LOGIN'
 NEXT_PUBLIC_MIXCUT_USE_REAL='$NEXT_PUBLIC_MIXCUT_USE_REAL'
 NEXT_PUBLIC_API_BASE_URL='$NEXT_PUBLIC_API_BASE_URL'
 NEXT_PUBLIC_SERVER_API_BASE='$NEXT_PUBLIC_SERVER_API_BASE'
+NEXT_PUBLIC_AUTH_MODE='$NEXT_PUBLIC_AUTH_MODE'
+NEXT_PUBLIC_ID_ISSUER='$NEXT_PUBLIC_ID_ISSUER'
 EOF
 
 has_service server && build_server

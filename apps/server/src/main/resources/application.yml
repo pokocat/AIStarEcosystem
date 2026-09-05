@@ -88,6 +88,19 @@ aep:
   jwt:
     secret: ${AEP_JWT_SECRET:aep-dev-secret-key-change-in-prod-32chars}
     expiration-ms: ${AEP_JWT_EXPIRATION_MS:604800000}
+  # 统一账号中心（id.aibuzz.cn）接入 —— docs/unified-identity-plan.md §12.1 / §12.3 / §12.4。
+  # issuer 留空 = 整体关闭：RS256 令牌一律 401，outbox poller 不跑，导入端点 503；
+  # 老的 HS256 登录链路完全不受影响（过渡期双验的「另一半」）。
+  # §8.0：不存在「未配置就本地伪造 uid / 假身份」的降级路径。
+  identity:
+    issuer: ${AEP_ID_ISSUER:http://localhost:8090}
+    # 留空则惰性经 <issuer>/.well-known/openid-configuration 发现 jwks_uri（结果进程内缓存）
+    jwks-uri: ${AEP_ID_JWKS_URI:}
+    audience: ${AEP_ID_AUDIENCE:aistar-api}
+    client-id: ${AEP_ID_CLIENT_ID:aistar-server}
+    # 机器互调（回报建档 / 拉 outbox / 导入老用户）凭据；留空 = 这三件事都不做
+    client-secret: ${AEP_ID_CLIENT_SECRET:}
+    outbox-poll-seconds: ${AEP_ID_OUTBOX_POLL_SECONDS:30}
   internal:
     # 内部服务（如 sau-service）→ apps/server 调用的共享密钥
     # 生产环境 **必须** 用 env 注入；任何写到 git 的 default 都视同泄漏
@@ -144,6 +157,12 @@ aep:
   # 访问拦截在前端按 /api/me 返回的 platforms 判断；后端只负责注册时授予哪些平台。
   platform:
     dev-grant-all: ${AEP_PLATFORM_DEV_GRANT_ALL:true}
+  # v0.149 子产品「开通」（docs/unified-identity-plan.md §12.2）。权益真值在 product_enrollment 表，
+  # EnrollmentGuard 在 JWT 认证之后按 /api/star|/api/v1 前缀或 X-App-Code 请求头把请求映射到子产品，
+  # 无 ACTIVE 开通记录 → 403 PRODUCT_NOT_ENROLLED。
+  #   enforce=true （默认，含生产）→ 后端真拦。**只允许测试关闭**，生产关掉等同于把子产品隔离退回纯前端拦截。
+  enrollment:
+    enforce: ${AEP_ENROLLMENT_ENFORCE:true}
   # v0.43+ 本地 fake 大模型（OpenAI 兼容）。开启后 DevFakeAiSeeder 自动接入端点 + 绑定用途，
   # 让「真连后端大模型」链路在没有真实 key 时也能端到端跑通（配套 scripts/dev-fake-llm-server.mjs）。
   # 仅 dev 默认开启；prod 关闭，由运营在后台配真实端点。

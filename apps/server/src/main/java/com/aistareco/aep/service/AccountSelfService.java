@@ -3,6 +3,7 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.dto.AepUserDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.MeDto;
+import com.aistareco.aep.enrollment.service.EnrollmentService;
 import com.aistareco.aep.dto.TenantDto;
 import com.aistareco.aep.dto.WalletDto;
 import com.aistareco.aep.model.Membership;
@@ -34,6 +35,7 @@ public class AccountSelfService {
     private final LedgerEntryRepository ledgerRepo;
     private final StudioRepository studioRepo;
     private final PasswordEncoder passwordEncoder;
+    private final EnrollmentService enrollmentService;
 
     public AccountSelfService(
             AepUserRepository userRepo,
@@ -42,7 +44,8 @@ public class AccountSelfService {
             WalletRepository walletRepo,
             LedgerEntryRepository ledgerRepo,
             StudioRepository studioRepo,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            EnrollmentService enrollmentService
     ) {
         this.userRepo = userRepo;
         this.membershipRepo = membershipRepo;
@@ -51,6 +54,7 @@ public class AccountSelfService {
         this.ledgerRepo = ledgerRepo;
         this.studioRepo = studioRepo;
         this.passwordEncoder = passwordEncoder;
+        this.enrollmentService = enrollmentService;
     }
 
     public AepUserDto getCurrentUser(String userId) {
@@ -67,7 +71,8 @@ public class AccountSelfService {
         var user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "当前用户不存在"));
         var studio = studioRepo.findByOwnerUserId(userId).orElse(null);
-        return MeDto.from(user, studio);
+        // v0.149：开通状态是后端权益真值，随 /api/me 一并下发（前端开通门 + platforms 兼容投影）
+        return MeDto.from(user, studio, enrollmentService.listFor(userId));
     }
 
     /**
@@ -88,7 +93,7 @@ public class AccountSelfService {
         user.setUpdatedAt(Instant.now());
         var saved = userRepo.save(user);
         var studio = studioRepo.findByOwnerUserId(userId).orElse(null);
-        return MeDto.from(saved, studio);
+        return MeDto.from(saved, studio, enrollmentService.listFor(userId));
     }
 
     /**

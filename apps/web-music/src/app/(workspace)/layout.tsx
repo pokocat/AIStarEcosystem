@@ -20,7 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useLang } from "@/lib/lang-context";
 import { useAuth } from "@ai-star-eco/api-client";
-import { PlatformAccessDenied } from "@ai-star-eco/landing";
+import { EnrollmentGate } from "@ai-star-eco/landing";
 import { useTheme, themeConfig } from "@ai-star-eco/ui";
 import { CommandPalette } from "@/components/producer/CommandPalette";
 import { NotificationPanel } from "@/components/producer/NotificationPanel";
@@ -154,11 +154,13 @@ function ProducerLayoutInner({ children }: { children: React.ReactNode }) {
     router.push("/login");
   }, [authLogout, router]);
 
-  // v0.43+：平台访问隔离 —— 已登录但账号未开通「AI 音乐人」时拦截（未登录由 AuthProvider 跳登录）。
+  // v0.149+：开通门 —— 已登录但账号未开通「AI 音乐人」时渲染开通页
+  //（未登录由 AuthProvider 跳登录 / 账号中心）。
   if (user && !hasPlatformAccess) {
     return (
-      <PlatformAccessDenied
-        appName="AI 音乐人"
+      <EnrollmentGate
+        product="music"
+        productLabel="AI 音乐人"
         theme={{
           bg: "var(--background)",
           surface: "var(--card)",

@@ -2,7 +2,8 @@
 //
 // 设计原则：
 //   - 网络专用（无 mock 分支）；新 web app 若需 mock，自行在 src/api 包一层。
-//   - 跨子域名（music/drama/celebrity.aibuzz.cn）SSO 见 _client.ts TODO。
+//   - 跨子域名 SSO 由统一账号中心（id.aibuzz.cn）承担，见 docs/unified-identity-plan.md D9；
+//     登录模式开关见 ./config.ts（authMode / idIssuer / idClientId）。
 //
 // 用法：
 //   import { apiFetch, ApiError, AuthProvider, useAuth, AccountApi, AuthApi } from "@ai-star-eco/api-client";
@@ -19,11 +20,65 @@ export {
   setAuthToken,
   setAppCode,
   registerUnauthorizedHandler,
+  registerEnrollmentRequiredHandler,
+  isProductNotEnrolledError,
+  PRODUCT_NOT_ENROLLED,
+  // 刷新令牌时后端不可用（P1-8）：可重试，不等于没登录
+  isAuthRefreshUnavailableError,
+  AUTH_REFRESH_UNAVAILABLE,
   buildQuery,
   mockDelay,
+  // 统一账号中心令牌仓库（id 模式）
+  AUTH_REFRESH_TOKEN_KEY,
+  AUTH_EXPIRES_AT_KEY,
+  AUTH_ID_TOKEN_KEY,
+  getRefreshToken,
+  setRefreshToken,
+  getIdToken,
+  setIdToken,
+  getTokenExpiresAt,
+  setTokenExpiresAt,
+  clearAuthTokens,
 } from "./_client";
 
-export { AuthProvider, useAuth, type AuthProviderProps } from "./auth-context";
+// 登录模式开关（docs/unified-identity-plan.md §12.5）
+export { authMode, idIssuer, idClientId, isIdMode, type AuthMode } from "./config";
+
+// 统一账号中心 OIDC + PKCE 流程
+export {
+  beginLogin,
+  completeAuthCallback,
+  refreshAccessToken,
+  logout as idLogout,
+  sanitizeReturnPath,
+  buildAuthorizeUrl,
+  computeCodeChallenge,
+  generateCodeVerifier,
+  generateState,
+  base64UrlEncode,
+  OidcError,
+  isTransientOidcError,
+  AUTH_CALLBACK_PATH,
+  OIDC_PENDING_KEY,
+} from "./oidc";
+
+export {
+  AuthProvider,
+  useAuth,
+  useAuthOptional,
+  type AuthProviderProps,
+  type AuthState,
+} from "./auth-context";
+
+// 会话状态判定（P1-8：/api/me 失败 ≠ 没登录）
+export {
+  isDefinitiveUnauthorized,
+  isTransientAuthFailure,
+  statusForMeFailure,
+  shouldRedirectToLogin,
+  shouldRenderRetryScreen,
+  type AuthStatus,
+} from "./auth-status";
 
 export {
   registerMock,

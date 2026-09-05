@@ -6,7 +6,8 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, KeyRound, Loader2, Lock, LogIn, Phone, Smartphone } from "lucide-react";
-import { AuthApi, ENABLE_DEV_LOGIN, useAuth } from "@ai-star-eco/api-client";
+import { AuthApi, ENABLE_DEV_LOGIN, isIdMode, useAuth } from "@ai-star-eco/api-client";
+import { IdCenterLoginScreen } from "@ai-star-eco/landing";
 import { STUDIO_KIND_LABEL_ZH, type StudioKind } from "@ai-star-eco/types/account";
 import { Avatar, Button, Card, Chip } from "@/components/creator";
 import { celebrityReturnPath } from "@/lib/celebrity-return-path";
@@ -23,6 +24,9 @@ function CelebrityLoginInner() {
   const from = celebrityReturnPath(search.get("from"));
   const { loginAs, refresh, user } = useAuth();
   const enableDev = ENABLE_DEV_LOGIN;
+  // v0.149+：统一账号中心接管登录后，本页收敛成一个「去账号中心登录」按钮。
+  // legacy / USE_MOCK 模式下 isIdMode() 恒 false，下面整套 tab 流程原样保留。
+  const idMode = isIdMode();
 
   const [tab, setTab] = React.useState<Tab>("phone-login");
   // 验证码登录发现未注册时带过来的「已验证手机号 + 注册凭证」，让注册页免重输验证码。
@@ -31,6 +35,26 @@ function CelebrityLoginInner() {
   React.useEffect(() => {
     if (user) router.replace(from);
   }, [user, from, router]);
+
+  if (idMode) {
+    return (
+      <IdCenterLoginScreen
+        brandLabel="AI 明星带货"
+        tagline="登录由账号中心统一处理，一个账号通行全部产品。"
+        postLoginPath={from}
+        theme={{
+          bg: "var(--bg-0)",
+          surface: "#ffffff",
+          fg: "var(--fg-0)",
+          fgMuted: "var(--fg-2)",
+          accent: "var(--accent)",
+          accentFg: "#ffffff",
+          border: "var(--line)",
+          radius: "var(--radius-lg)",
+        }}
+      />
+    );
+  }
 
   return (
     <div

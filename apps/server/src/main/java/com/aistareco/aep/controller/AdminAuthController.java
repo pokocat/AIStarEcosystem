@@ -93,7 +93,8 @@ public class AdminAuthController {
         admin.setLastLoginAt(java.time.Instant.now());
         adminUserRepo.save(admin);
 
-        String token = jwtUtil.generateToken(admin.getId(), admin.getUsername(), admin.getRole().name());
+        // §12.1：后台令牌带 typ=admin —— 只有它能被 JwtAuthenticationFilter 映射成 ROLE_* 后台权限。
+        String token = jwtUtil.adminToken(admin.getId(), admin.getUsername(), admin.getRole().name());
         log.info("[admin-login] success adminId={} username={} role={}",
                 admin.getId(), admin.getUsername(), admin.getRole());
         auditService.recordAuthSuccess(AuditService.Actions.ADMIN_LOGIN, admin.getId(), admin.getUsername(),

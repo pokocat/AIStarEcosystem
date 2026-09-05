@@ -28,6 +28,22 @@ Current production services are:
 - `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
 - `all` - builds and deploys all current production services above.
 
+### Identity center (`id.aibuzz.cn`) - not in this repo
+
+The identity center lives in its own repository:
+<https://github.com/pokocat/aibuzz-id>. Build, env, JWK keys, systemd unit, nginx vhost,
+deploy and rollback are all in that repo's `deploy/README.md`. The scripts in
+`infra/scripts/` neither build nor deploy it — do not try to add it back to a service list here.
+
+Host facts worth keeping straight when working on this box: it runs on the **same ECS** as
+`aistareco-server`, on port **8091** (8090 is bound by the `aistareco-sau-service` container
+and referenced by `SAU_SERVICE_URL` in `server.env`), with its own database `aistareco_id`
+and a local self-hosted Redis. Its systemd unit is `aistareco-id-server`; start
+troubleshooting with `journalctl -u aistareco-id-server`.
+
+What stays in *this* repo is the consumer side: `AEP_ID_*` in `server.env`, and the
+build-time `NEXT_PUBLIC_*` for the five web apps (see below).
+
 ## Default Production Parameters
 
 Use these defaults unless the user gives a different host or topology:
@@ -130,6 +146,17 @@ REMOTE_ROOT=/opt/ai-star-eco \
 ./infra/scripts/deploy.sh web-music,web-drama
 ```
 
+Switching the five web apps to identity-center login is a **build-time** change
+(`NEXT_PUBLIC_*` is inlined by Next), so it cannot be done by editing an env file on the box:
+
+```bash
+NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn \
+  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star
+```
+
+The default is `legacy`, so ordinary deploys leave current login behaviour untouched.
+Rolling back means rebuilding with `legacy`, not restarting a service.
+
 Deploy an already-built release directory:
 
 ```bash
@@ -217,6 +244,8 @@ templates, OSS credentials, or PEM contents into the repo; runtime app credentia
 - HTML `502 Bad Gateway` from nginx usually means the upstream service is restarting or unreachable. First check `systemctl status aistareco-server` and `journalctl -u aistareco-server`.
 - SMS issues belong to `apps/server`, not `sau-service`. First check `AEP_SMS_DRIVER` in `/etc/aistareco/server.env` and `journalctl -u aistareco-server` for `sms-aliyun`, `sms-disabled`, or `sms-log`.
 - `sau-service` must be built with `--build-arg INSTALL_REAL=1`. After deploy, verify `curl http://127.0.0.1:8090/healthz` returns `mockMode:false`.
+- `aistareco-id-server` failing to start, or `https://id.aibuzz.cn` redirecting to `/admin` (its 443 vhost is missing): both belong to <https://github.com/pokocat/aibuzz-id>; see that repo's `deploy/README.md`. Nothing in `infra/` here fixes them.
+- `apps/server` rejecting identity-center tokens with 401: check that `AEP_ID_CLIENT_SECRET` (server.env) equals the identity center's `ID_CLIENT_SECRET_AISTAR_SERVER`, and that `AEP_ID_ISSUER` matches its `ID_ISSUER` exactly.
 - Chinese text mojibake has two separate causes. For API/usernames, inspect DB stored values and MySQL `utf8mb4` connection/table settings. For picgen/ffmpeg/browser rendering, first run `fc-list :lang=zh family`, `fc-match 'Noto Sans CJK SC:lang=zh-cn'`, and check `journalctl -u aistareco-server` for `[fonts] registry total`.
 - If a deploy changes only one app, pass only that service list. Do not redeploy `all` unless the user asks for a full release or dependencies require it.
 - If production env values need changes, stop and ask the user to edit `/etc/aistareco/*.env` or confirm the exact non-secret change. Do not invent or overwrite secrets.

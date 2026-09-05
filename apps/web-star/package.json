@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ai-star-eco/api-client": "workspace:*",
+    "@ai-star-eco/landing": "workspace:*",
     "@ai-star-eco/types": "workspace:*",
     "@ai-star-eco/ui": "workspace:*",
     "class-variance-authority": "^0.7.1",

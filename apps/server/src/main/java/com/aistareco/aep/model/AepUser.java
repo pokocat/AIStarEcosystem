@@ -77,6 +77,15 @@ public class AepUser {
     @Column(length = 128)
     private String platforms;
 
+    /**
+     * v0.149+（统一账号中心 P2）：账号中心的全局身份 {@code uid}。
+     * 旧账号为 null（尚未经账号中心登录过 / 尚未导入映射）；首次带账号中心令牌进入时由 JIT 建档写入。
+     * 唯一：一个 uid 只对应本产品一条本地档案。业务外键继续用本地 {@code id}，不改。
+     * 详见 docs/unified-identity-plan.md §2.1 / §7 / §12。Lombok @Data 生成 get/setIdentityUid。
+     */
+    @Column(length = 32, unique = true)
+    private String identityUid;
+
     private boolean emailVerified;
     private boolean phoneVerified;
     private String langPreference;

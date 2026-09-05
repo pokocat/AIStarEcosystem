@@ -10,6 +10,8 @@
 #   0 = 全部齐备
 #   1 = 至少一项缺失（required）
 #   2 = 仅 optional 缺失
+#
+# 统一账号中心（id.aibuzz.cn）已抽离为独立仓库 pokocat/aibuzz-id，部署脚本见该仓 deploy/README.md。
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -uo pipefail

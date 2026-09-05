@@ -1,6 +1,10 @@
-// pages/login/index.js — 激活码登录
+// pages/login/index.js — legacy 登录（手机号 + 短信 + 激活码）
+//
+// v0.149 起本页只在 config.authMode === "legacy" 时可达：接了统一账号中心之后，
+// 登录一律走微信静默授权（pages/launch），激活码降级为登录后的「开通」一步（pages/enroll）。
 const { AuthApi } = require("../../utils/api.js");
 const { formatActivationCode } = require("../../utils/format.js");
+const config = require("../../config.js");
 
 const app = getApp();
 let smsTimer = null;
@@ -32,6 +36,11 @@ Page({
   },
 
   onLoad() {
+    // id 模式下本页不应出现（深链 / 历史栈残留兜底）：直接回首屏走微信静默登录
+    if (config.isIdMode()) {
+      wx.reLaunch({ url: "/pages/launch/index" });
+      return;
+    }
     // 平台坑：getSystemInfoSync 在 iOS 14 偶尔返回 statusBarHeight=0；做兜底。详见 agent.md「API 不一致」
     try {
       const sys = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();

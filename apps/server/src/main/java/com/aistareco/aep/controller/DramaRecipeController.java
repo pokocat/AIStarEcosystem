@@ -1,12 +1,12 @@
 package com.aistareco.aep.controller;
 
+import com.aistareco.aep.security.InAppOperatorGuard;
 import com.aistareco.aep.service.DramaRecipeService;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -16,17 +16,20 @@ import java.util.List;
  * 短剧「可复用配方」Recipe（v0.73 抽 skill 飞轮）用户侧 + 运营侧端点。
  *
  * 全部挂 /api/me/drama/recipes/** → authenticated。运营审核 / 发布 **不进 admin 后台**，
- * 维护入口在 web-drama 运营后台（与平台目录 DramaCatalogController 同惯例：JWT 角色
- * OPERATOR / SUPER_ADMIN 才能 review / publish / reject）。
+ * 维护入口在 web-drama 运营后台（与平台目录 DramaCatalogController 同惯例：
+ * AepUser.operatorRole 非空才能 review / publish / reject —— v0.149 起判的是这个真值，
+ * 不再是 JWT 角色，见 InAppOperatorGuard）。
  */
 @RestController
 @RequestMapping("/api/me/drama/recipes")
 public class DramaRecipeController {
 
     private final DramaRecipeService service;
+    private final InAppOperatorGuard operatorGuard;
 
-    public DramaRecipeController(DramaRecipeService service) {
+    public DramaRecipeController(DramaRecipeService service, InAppOperatorGuard operatorGuard) {
         this.service = service;
+        this.operatorGuard = operatorGuard;
     }
 
     /** 我抽取 / 提交过的配方（含审核状态）。 */
@@ -112,12 +115,11 @@ public class DramaRecipeController {
         return ApiResponse.of(service.respondInvite(id, principal.getName(), approve));
     }
 
-    private static void requireOperator(Authentication auth) {
-        boolean ok = auth != null && auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(a -> a.equals("ROLE_OPERATOR") || a.equals("ROLE_SUPER_ADMIN"));
-        if (!ok) {
-            throw new BusinessException(HttpStatus.FORBIDDEN, "OPERATOR_ONLY", "仅平台运营可审核 / 发布短剧配方。");
-        }
+    /**
+     * v0.149（§12.1）：消费者令牌不再带 operatorRole，所以这里改判 AepUser.operatorRole 真值
+     * （见 InAppOperatorGuard）；typ=admin 令牌照常放行。
+     */
+    private void requireOperator(Authentication auth) {
+        operatorGuard.require(auth, "仅平台运营可审核 / 发布短剧配方。");
     }
 }

@@ -11,12 +11,18 @@
     "./auth-context": "./src/auth-context.tsx",
     "./format": "./src/format.ts",
     "./client": "./src/_client.ts",
+    "./config": "./src/config.ts",
+    "./auth-status": "./src/auth-status.ts",
+    "./oidc": "./src/oidc.ts",
+    "./token-store": "./src/token-store.ts",
     "./mock-registry": "./src/_mock-registry.ts",
     "./api/auth": "./src/api/auth.ts",
     "./api/account": "./src/api/account.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -33,6 +39,7 @@
     "next": "^16.2.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
   }
 }

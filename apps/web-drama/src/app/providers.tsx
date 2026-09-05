@@ -11,6 +11,7 @@ import { DramaConfirmHost } from "@/components/drama-ui";
 // USE_MOCK=0 时 registry 不被读取，仅 bundle 多余 KB（后续可按需 tree-shake）。
 import "@/mocks/_register";
 
+// 注：/auth/callback（统一账号中心回调）由 AuthProvider 内置放行，无需在此声明。
 const PUBLIC_PREFIXES = ["/", "/login", "/activate"];
 
 export function AppProviders({ children }: { children: ReactNode }) {

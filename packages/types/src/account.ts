@@ -53,6 +53,13 @@ export interface AepUser {
    * 各子产品 workspace 布局按 `platforms.includes(本子产品)` 决定是否放行。
    */
   platforms?: SubProduct[];
+  /** v0.149+: 统一账号中心全局 uid；未经账号中心登录过的旧账号为 null。 */
+  identityUid?: string | null;
+  /**
+   * v0.149+: 各子产品开通状态（权益真值）。`platforms` 是其 status=active 子集的兼容投影，
+   * 新代码按 `enrollments` 判断「能不能进」，未开通 → 渲染开通页（输入激活码）。
+   */
+  enrollments?: Enrollment[];
   emailVerified: boolean;
   phoneVerified: boolean;
   /** 是否已设置手机号密码登录的密码；后端不会返回 passwordHash。 */
@@ -99,4 +106,17 @@ export interface Membership {
   source: MembershipSource;
   licenseKeyId?: ID;             // 经 License 入会时的 key 引用
   joinedAt: ISODateTime;
+}
+
+/** 统一账号中心 P2：子产品开通状态（docs/unified-identity-plan.md §12）。 */
+export type EnrollmentStatus = "pending" | "active" | "suspended" | "revoked";
+export type EnrollmentSource = "license" | "trial" | "admin" | "grant_all" | "legacy";
+export interface Enrollment {
+  product: SubProduct;
+  status: EnrollmentStatus;
+  source: EnrollmentSource;
+  /** ISO 8601；pending 为 null */
+  activatedAt: string | null;
+  /** ISO 8601；null = 长期 */
+  validUntil: string | null;
 }

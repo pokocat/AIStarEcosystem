@@ -94,6 +94,16 @@
       <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!--
+      统一账号中心（id.aibuzz.cn）RS256 令牌验签（docs/unified-identity-plan.md §12.1）。
+      只用 NimbusJwtDecoder + JWKS 远端取公钥 + 标准 validator，不引入 resource-server 自动配置：
+      本仓的安全链仍由 JwtAuthenticationFilter 统一收口（HS256 老令牌 + RS256 新令牌双验）。
+      版本由 spring-boot-starter-parent 的 spring-security BOM 托管。
+    -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-oauth2-jose</artifactId>
+    </dependency>
     <!-- JJWT -->
     <dependency>
       <groupId>io.jsonwebtoken</groupId>

@@ -14,6 +14,9 @@
     "test": "echo 'No unit tests for web-aiavatar yet (mock-driven 原型移植 app, type-safety guarded by typecheck). Add vitest when real backend lands.' && exit 0"
   },
   "dependencies": {
+    "@ai-star-eco/api-client": "workspace:*",
+    "@ai-star-eco/landing": "workspace:*",
+    "@ai-star-eco/types": "workspace:*",
     "next": "^16.2.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

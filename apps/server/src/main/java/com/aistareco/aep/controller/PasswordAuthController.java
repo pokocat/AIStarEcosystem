@@ -93,10 +93,10 @@ public class PasswordAuthController {
         user.setLastLoginAt(Instant.now());
         userRepo.save(user);
 
-        String role = user.getOperatorRole() != null
-                ? user.getOperatorRole().name()
-                : (user.getKind() == AepUser.AccountKind.STUDIO ? "STUDIO" : "USER");
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(), role);
+        // §12.1：消费者令牌只带账号类型（personal / studio），不再带 operatorRole。
+        // 运营身份要进后台，走 /api/admin/auth/operator-login 换一张 typ=admin 令牌。
+        String token = jwtUtil.consumerToken(user);
+        String role = user.getKind() == null ? "PERSONAL" : user.getKind().name();
         Studio studio = studioRepo.findByOwnerUserId(user.getId()).orElse(null);
         log.info("[auth-password] login success phone={} userId={} role={} studioId={}",
                 trimmedPhone, user.getId(), role, studio == null ? null : studio.getId());

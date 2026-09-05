@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "backgroundColor": "#FAFAF7",
+  "usingComponents": {
+    "phone-bind-sheet": "/components/phone-bind-sheet/index"
+  }
+}

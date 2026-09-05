@@ -9,6 +9,7 @@ import { AuthProvider } from "@ai-star-eco/api-client";
 // - "/login"   登录
 // - "/activate" 激活
 // 工作台所有顶层路径（/dashboard、/artist、/studio…）需要登录，由 AuthProvider 兜底重定向。
+// 注：/auth/callback（统一账号中心回调）由 AuthProvider 内置放行，无需在此声明。
 const PUBLIC_PREFIXES = ["/", "/login", "/activate"];
 
 export function AppProviders({ children }: { children: ReactNode }) {

@@ -9,6 +9,8 @@
 # 后续容器化后改为：docker pull aistareco/<service>:<tag> → 重启
 #
 # **重要**：本地工作区必须无未提交改动；本脚本会 stash 改动后切 tag，结束时 stash pop
+#
+# 统一账号中心（id.aibuzz.cn）已抽离为独立仓库 pokocat/aibuzz-id，部署脚本见该仓 deploy/README.md。
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail

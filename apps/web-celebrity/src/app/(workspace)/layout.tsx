@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { useAuth, PublishJobApi } from "@ai-star-eco/api-client";
 import { formatCredits } from "@ai-star-eco/api-client/format";
-import { PlatformAccessDenied } from "@ai-star-eco/landing";
+import { EnrollmentGate } from "@ai-star-eco/landing";
 import { useIsMobile } from "@ai-star-eco/ui/ui/use-mobile";
 import {
   Avatar,
@@ -551,11 +551,13 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
   const { user, hasPlatformAccess } = useAuth();
 
-  // v0.43+：平台访问隔离 —— 已登录但账号未开通「AI 明星带货」时拦截（未登录由 AuthProvider 跳登录）。
+  // v0.149+：开通门 —— 已登录但账号未开通「AI 明星带货」时渲染开通页
+  //（未登录由 AuthProvider 跳登录 / 账号中心）。
   if (user && !hasPlatformAccess) {
     return (
-      <PlatformAccessDenied
-        appName="AI 明星带货"
+      <EnrollmentGate
+        product="celebrity"
+        productLabel="AI 明星带货"
         theme={{
           bg: "var(--bg-0)",
           surface: "#ffffff",

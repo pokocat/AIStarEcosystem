@@ -6,7 +6,8 @@
 // 让 AuthProvider 启动 / shell 顶栏 wallet badge 在无后端时也能渲染。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { AepUser, Tenant } from "@ai-star-eco/types/account";
+import type { AepUser, Enrollment, SubProduct } from "@ai-star-eco/types/account";
+import type { Tenant } from "@ai-star-eco/types/account";
 import type {
   Wallet,
   LedgerEntry,
@@ -47,6 +48,29 @@ export async function changePassword(payload: ChangePasswordPayload): Promise<Ch
     method: "POST",
     body: payload,
   });
+}
+
+/**
+ * v0.149+: 用激活码开通某个子产品（统一账号中心 P2 的权益真值入口，
+ * docs/unified-identity-plan.md §12.2）。返回该子产品开通后的 enrollment 记录。
+ *
+ * 错误码：409 LICENSE_KEY_UNAVAILABLE（激活码不存在 / 已被用掉）、
+ * 400 LICENSE_KEY_PRODUCT_MISMATCH（激活码不属于本产品）、400 PRODUCT_INVALID。
+ * 「激活发积分」仍在后端执行，但不在本响应里回传，钱包余额由 /me/wallet 兜底。
+ */
+export async function activateEnrollment(
+  product: SubProduct,
+  licenseKey: string,
+): Promise<Enrollment> {
+  return apiFetch<Enrollment>(`/me/enrollments/${product}/activate`, {
+    method: "POST",
+    body: { licenseKey },
+  });
+}
+
+/** v0.149+: 当前账号全部子产品开通状态（/me 也会回同一份，供单独刷新时用）。 */
+export async function listEnrollments(): Promise<Enrollment[]> {
+  return apiFetch<Enrollment[]>("/me/enrollments");
 }
 
 /** 获取当前用户关联的机构列表 */

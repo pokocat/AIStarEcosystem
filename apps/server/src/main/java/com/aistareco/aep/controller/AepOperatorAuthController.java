@@ -115,7 +115,9 @@ public class AepOperatorAuthController {
         aepUserRepo.save(user);
 
         // JWT.role = operatorRole.name() —— OPERATOR / SUPER_ADMIN，可通过 AepSecurityConfig.hasAnyRole 门禁
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername(),
+        // §12.1：operatorRole 持有人进后台的**唯一**通道 —— 这里签的 typ=admin 令牌。
+        // 同一个人用短信 / 密码 / 激活登录拿到的消费者令牌不再带 operatorRole，进不了 /api/admin/**。
+        String token = jwtUtil.adminToken(user.getId(), user.getUsername(),
                 user.getOperatorRole().name());
 
         log.info("[operator-login] success userId={} role={}", user.getId(), user.getOperatorRole());

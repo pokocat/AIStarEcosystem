@@ -32,6 +32,7 @@
 4. [错误码列表](#4-错误码列表)
 5. [前端状态机与接口时序](#5-前端状态机与接口时序)
 6. [新领域的业务约束（v2.x）](#6-新领域的业务约束-v2x)
+   - 6.0 [子产品开通 enrollment（v0.149）](#60-子产品开通-enrollmentv0149--packagestypessrcaccountts--真源-docsunified-identity-planmd-122)
 
 ---
 
@@ -313,6 +314,12 @@ enterprise → 全部无限制
 | 403 | `MODULE_LOCKED` | 模块未解锁（需升级套餐） |
 | 403 | `PERMISSION_DENIED` | 无权限操作他人资源 |
 | 403 | `CELEBRITY_NOT_AUTHORIZED` | 该明星形象未对当前用户授权（v2.7） |
+| 403 | `APP_CODE_REQUIRED` | 共享路由未声明子产品（缺 `X-App-Code` 头或取值非法，v0.149） |
+| 403 | `PRODUCT_NOT_ENROLLED` | 当前账号未开通该子产品；`error.details.product` 给出产品 key；共享路由上头取值不在允许集合内时 `error.details.allowed` 给出集合（v0.149 / v0.150） |
+| 403 | `PRODUCT_ROUTE_UNMAPPED` | 该业务路由未在服务端路由表 `ProductRouteTable` 登记，fail-closed 拒绝；`error.details.path` 给出路径（v0.150） |
+| 400 | `PRODUCT_INVALID` | 未知子产品 key（v0.149） |
+| 400 | `LICENSE_KEY_PRODUCT_MISMATCH` | 激活码不覆盖该子产品；此时激活码**不会**被核销（v0.149） |
+| 409 | `LICENSE_KEY_UNAVAILABLE` | 激活码不存在 / 已被使用 / 已过期 / 并发兑换抢输（v0.149） |
 | 404 | `SINGER_NOT_FOUND` | 歌手不存在 |
 | 404 | `SONG_NOT_FOUND` | 歌曲不存在 |
 | 404 | `LISTING_NOT_FOUND` | 挂牌不存在 |
@@ -436,6 +443,67 @@ GET /celebrity/jobs/:jobId → status = succeeded
 ---
 
 ## 6. 新领域的业务约束（v2.x）
+
+### 6.0 子产品开通 enrollment（v0.149 / `packages/types/src/account.ts` · 真源 `docs/unified-identity-plan.md` §12.2）
+
+**「建档」与「开通」是两件事**：登录只保证有本地账号档案；能不能进某个子产品的业务入口，
+由 `product_enrollment` 说了算。此前这层只有前端按 `/api/me` 的 `platforms` 拦，
+换个子域名直接调 API 就能绕过。
+
+**状态机**：
+
+```
+（无行）──激活码 / 试用 / 运营发放 / 回填──→ ACTIVE ──到期(valid_until 过期)──→ 等同未开通
+   │                                          │
+   └── PENDING（预留：待审核的开通申请）        ├── SUSPENDED（运营冻结）
+                                              └── REVOKED（退款 / 撤权）
+```
+
+- 只有 `status=ACTIVE` **且**（`valid_until` 为 null 或在将来）才算已开通。
+  过期行不删除 —— 前端要能展示「已过期，去续」。
+- `source` 记开通来源：`license`（激活码）/ `trial` / `admin` / `grant_all`（dev 全授予）/
+  `legacy`（由旧 `aep_users.platforms` CSV 一次性回填）。
+- `UNIQUE(user_id, product)`：一个账号 × 一个子产品只有一行，写入一律 upsert。
+- `MeDto.platforms` 是 `enrollments` 中 active 项的**兼容投影**；账号一条 enrollment 行都没有时
+  （回填 runner 尚未跑到）才回落读旧 CSV（空 CSV 仍按历史语义视作全集）。
+
+**激活码兑换（唯一路径）** —— `POST /me/enrollments/{product}/activate`、
+`POST /auth/activate`（注册）、`POST /me/license/activate`（追加激活）三个入口共用同一实现：
+
+1. 校验激活码与批次（状态 / 有效期 / 批次是否被撤销）。
+2. 算出本次授权的子产品集合：批次声明了 `platforms` → 按批次；未声明（全站秘钥）→ 按注册来源策略
+   （`aep.platform.dev-grant-all`）。**调用方指定的 product 不在集合内 → 400
+   `LICENSE_KEY_PRODUCT_MISMATCH`，且激活码保持 CREATED 不被烧掉**（先判后占）。
+3. **条件更新占码**：`UPDATE license_key SET status='ACTIVATED', activated_by=? WHERE id=? AND status='CREATED'`
+   —— 影响 1 行才继续，0 行一律 409 `LICENSE_KEY_UNAVAILABLE`。数据库行锁天然串行化并发兑换。
+4. 为本次开通的**每个**子产品各写一条 `entitlement_grant(source=LICENSE,
+   source_reference=<激活码 id>, product=<子产品>)`；`UNIQUE(source, source_reference, product)`
+   是第二道防重复兑换的闸。一把全站秘钥开五个产品就留五条 —— 日后按产品退权 / 对账才有凭据（v0.150）。
+5. 幂等补 `Studio` / `Wallet`，按批次 `initialCreditGrant` 发积分（走 `CreditService.creditAccount`
+   的悲观行锁 + 不可变账本，遵守 §4.2「余额变动必经 LedgerEntry」）。
+6. upsert 各子产品 enrollment 为 `ACTIVE/LICENSE`，同步旧 `platforms` CSV，发
+   `EnrollmentActivatedEvent` 供账号中心回报链接状态（best-effort，失败不影响开通）。
+
+> **绝不允许**「兑换失败但积分已发」或「一把码发两份积分」：第 3、4 步任一没过就整笔回滚。
+
+**后端开通闸 `EnrollmentGuard`**（在 JWT 认证之后、授权判定之前）。
+v0.150 起产品归属由**服务端路由表** `ProductRouteTable` 决定，不再由客户端自报的
+`X-App-Code` 决定 —— 此前只开通短剧的账号带 `X-App-Code: drama` 就能调 `/api/celebrity/**`：
+
+| 请求 | 判定 |
+|---|---|
+| 产品无关白名单：`/api/me`、`/api/me/messages-overview`、`/api/me/password`、`/api/me/tenants`、`/api/me/ledger`（以上精确匹配）；`/api/me/enrollments`、`/api/me/license`、`/api/me/wallet`、`/api/me/notifications`、`/api/me/storage`、`/api/me/clip`、`/api/notifications`、`/api/auth`、`/api/admin`、`/api/internal`、`/api/config`、`/api/dev`、`/api/pay/notify`、`/api/v1/admin`、`/api/v1/real-auth/callback`、`/api/aiavatar/health`（以上按「精确或下一段」前缀匹配） | 不拦 |
+| **单产品路由**（路径硬映射，请求头只作审计）：`/api/celebrity`、`/api/mixcut`、`/api/material`、`/api/products`、`/api/template-scripts`、`/api/me/celebrity`、`/api/me/mixcut`、`/api/me/products`、`/api/me/publish-jobs`、`/api/me/social-accounts` → `celebrity`；`/api/me/drama`、`/api/me/distribution`、`/api/film` → `drama`；`/api/me/songs`、`/api/me/albums`、`/api/me/concerts`、`/api/me/music`、`/api/music`、`/api/tracks`、`/api/singers`、`/api/nft`、`/api/marketplace`、`/api/fan`、`/api/coach`、`/api/distribution`、`/api/analytics` → `music`；`/api/star` → `star`；其余 `/api/v1/**` → `aiavatar` | 按路径定产品 |
+| **共享路由**（`X-App-Code` 必须 ∈ 允许集合）：`GET /api/v1/avatars`、`GET /api/v1/avatars/*/looks`、`GET /api/v1/avatars/*/derivatives` → `{aiavatar, music, drama}`（music / drama 的数字人选择器只读 dap）；`/api/me/digital-ips`、`/api/me/inventory`、`/api/appearance-forge`、`/api/community`、`/api/finance`、`/api/settings`、`/api/store`、`/api/wardrobe`、`/api/poses`、`/api/expressions`、`/api/gestures` → `{music, drama}` | 缺头或取值非法 → 403 `APP_CODE_REQUIRED`；取值合法但不在集合内 → 403 `PRODUCT_NOT_ENROLLED`（`details.allowed`） |
+| 其余 `/api/**` 已登录请求（未登记的业务路由） | 403 `PRODUCT_ROUTE_UNMAPPED`（fail-closed）+ WARN 出路径。新 controller 必须在 `ProductRouteTable` 登记，`ProductRouteTableCoverageTest` 在构建期守住这一点 |
+| 定到产品后无 ACTIVE enrollment（或已过期） | 403 `PRODUCT_NOT_ENROLLED`，`error.details.product` 给出产品 key |
+
+- 未登录请求不在这里抢答（交给授权链出 401）；机器 / 后台身份（clip 服务令牌、`INTERNAL`、
+  `SUPER_ADMIN` / `OPERATOR` / `FINANCE_ADMIN`）不经此闸。
+- 开关 `aep.enrollment.enforce` 默认 **true**（含生产）。**只允许测试关闭** ——
+  生产关掉等同把子产品隔离退回纯前端拦截。
+
+---
 
 ### 6.1 AI 明星专区（v2.7 / `packages/types/src/celebrity-zone.ts`）
 

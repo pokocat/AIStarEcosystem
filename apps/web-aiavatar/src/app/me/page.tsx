@@ -6,10 +6,9 @@
 // ============================================================
 import React from "react";
 import { useRouter } from "next/navigation";
-import { AccountApi, auth, USE_MOCK } from "@/proto/api";
-import type { Account } from "@/proto/data";
+import { auth, ID_MODE, USE_MOCK, useIdentity } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
-import { studioHref, useHubData } from "@/components/hub/data";
+import { studioHref } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
 
 export default function MePage() {
@@ -17,15 +16,12 @@ export default function MePage() {
   const authState = useRequireAuth();
   const ready = authState === "ok";
   const noPlatform = authState === "no-platform";
-  const account = useHubData<Account | null>(() => AccountApi.get().catch(() => null), null, [], ready);
+  // 「我是谁」的真源是 /api/me（hook 必须在早退之前调用）。
+  const identity = useIdentity();
   if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
-  const sessionUser = !USE_MOCK ? auth.user() : null;
-  const displayName =
-    (sessionUser && (sessionUser.displayName || sessionUser.studioName || sessionUser.username)) ||
-    (account.data as { name?: string } | null)?.name ||
-    "我的账号";
+  const displayName = identity?.displayName || "我的账号";
   const initial = String(displayName).trim().slice(0, 1) || "我";
 
   return (
@@ -55,7 +51,12 @@ export default function MePage() {
             <span style={{ fontSize: 17, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {displayName}
             </span>
-            {USE_MOCK && <Badge tone="mute">演示数据模式</Badge>}
+            {identity?.phoneMasked && (
+              <span style={{ fontSize: 12, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {identity.phoneMasked}
+              </span>
+            )}
+            {(USE_MOCK || identity?.demo) && <Badge tone="mute">演示数据</Badge>}
           </div>
         </Card>
       </div>
@@ -81,8 +82,10 @@ export default function MePage() {
         <div style={{ margin: "20px 16px 0" }}>
           <button
             onClick={() => {
-              auth.clear();
-              router.replace("/login");
+              // v0.149：id 模式下 auth.logout() 会整页跳账号中心统一登出，
+              // 不会走到下面的 router.replace。
+              auth.logout();
+              if (!ID_MODE) router.replace("/login");
             }}
             style={{
               width: "100%",

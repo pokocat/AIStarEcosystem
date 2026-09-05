@@ -1,5 +1,6 @@
 package com.aistareco.aep.config;
 
+import com.aistareco.aep.model.AepUser;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
@@ -61,12 +62,49 @@ public class JwtUtil {
         return Arrays.stream(active).anyMatch(PROD_PROFILES::contains);
     }
 
+    /**
+     * v0.149+（统一账号中心 §12.1）：后台令牌标记。
+     * 只有带 {@code typ=admin} 的令牌，{@link JwtAuthenticationFilter} 才会把 {@code role}
+     * 映射成 {@code ROLE_*} 后台权限。消费者登录签的令牌一律没有这个 claim。
+     */
+    public static final String CLAIM_TOKEN_TYPE = "typ";
+    public static final String TOKEN_TYPE_ADMIN = "admin";
+
     public String generateToken(String userId, String username, String role) {
+        return build(userId, username, role, null);
+    }
+
+    /**
+     * 后台令牌（{@code /api/admin/auth/login} 与 {@code /api/admin/auth/operator-login} 专用）。
+     * 带 {@code typ=admin}，是**唯一**能拿到 {@code ROLE_SUPER_ADMIN} / {@code ROLE_OPERATOR} /
+     * {@code ROLE_FINANCE_ADMIN} 的令牌种类。
+     */
+    public String adminToken(String subjectId, String username, String role) {
+        return build(subjectId, username, role, TOKEN_TYPE_ADMIN);
+    }
+
+    /**
+     * 消费者令牌（激活 / 短信 / 密码 / dev-login）。
+     *
+     * <p>§12.1：{@code role} 只放账号类型（{@code PERSONAL} / {@code STUDIO}），
+     * **绝不**放 {@code operatorRole} —— 持有 operatorRole 的账号要进后台只能走
+     * {@code /api/admin/auth/operator-login} 换一张 {@code typ=admin} 的令牌。
+     */
+    public String consumerToken(AepUser user) {
+        String role = user.getKind() == null
+                ? AepUser.AccountKind.PERSONAL.name()
+                : user.getKind().name();
+        return build(user.getId(), user.getUsername(), role, null);
+    }
+
+    private String build(String subject, String username, String role, String tokenType) {
         Date now = new Date();
-        return Jwts.builder()
-                .subject(userId)
+        var builder = Jwts.builder()
+                .subject(subject)
                 .claim("username", username)
-                .claim("role", role)
+                .claim("role", role);
+        if (tokenType != null) builder.claim(CLAIM_TOKEN_TYPE, tokenType);
+        return builder
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + expirationMs))
                 .signWith(key)

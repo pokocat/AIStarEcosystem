@@ -2,7 +2,7 @@
 import React from "react";
 import { Icons } from "./icons";
 import * as UI from "./ui";
-import { DATA, AvatarApi, LicenseApi, RealAuthApi, JobApi, VoiceApi, AccountApi, useApi, seed, USE_MOCK, auth } from "./api";
+import { DATA, AvatarApi, LicenseApi, RealAuthApi, JobApi, VoiceApi, AccountApi, useApi, useIdentity, seed, USE_MOCK } from "./api";
 import { MShell, MKit } from "./shell";
 import { Portrait } from "./portrait";
 import { LivenessBadge, MaterialSection } from "./material-status";
@@ -342,9 +342,11 @@ function MMe({ ctx }) {
   const jobs = useApi(() => JobApi.list(), seed.jobs());
   const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
   const favCount = avatars.filter(c => c.fav).length;
-  const u = auth.user() || {};
-  const displayName = u.displayName || u.studioName || u.username || '柯岚工作室';
-  const uid = u.id ? String(u.id).slice(0, 8) : '88621049';
+  // 「我是谁」的真源是 /api/me（统一账号中心模式下本地不再存用户信息）。
+  // 拿不到就显示中性占位 —— 绝不用写死的名字和 UID 冒充真实账号。
+  const identity = useIdentity();
+  const displayName = identity?.displayName || '我的账号';
+  const uid = identity?.uid || null;
   return hMS('div', { className: 'm-body has-tabbar', 'data-screen-label': '我的' },
     hMS(WxNavS, { title: '我的',
       right: hMS('button', { className: 'nav-spacer m-tap', onClick: () => ctx.go('settings'), style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink)', display: 'grid', placeItems: 'center' } }, hMS(Icons.settings, { size: 20, stroke: 1.8 })) }),
@@ -353,10 +355,12 @@ function MMe({ ctx }) {
       hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
         hMS('div', { style: { width: 60, height: 60, flex: '0 0 60px', borderRadius: 20, background: 'var(--grad)', display: 'grid', placeItems: 'center', color: '#fff', fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 24, boxShadow: '0 8px 18px rgba(18,179,222,.26)' } }, displayName.slice(0, 1)),
         hMS('div', { style: { minWidth: 0 } },
-          hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            hMS('span', { style: { fontFamily: 'var(--font-disp)', fontWeight: 700, fontSize: 20 } }, displayName),
-            hMS(UI.Badge, { tone: 'primary' }, acct.planLabel || 'PRO')),
-          hMS('div', { className: 'mono', style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 3 } }, 'UID · ' + uid)))),
+          hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } },
+            hMS('span', { className: 'm-clip1', style: { fontFamily: 'var(--font-disp)', fontWeight: 700, fontSize: 20, minWidth: 0 } }, displayName),
+            hMS(UI.Badge, { tone: 'primary' }, acct.planLabel || 'PRO'),
+            identity?.demo && hMS(UI.Badge, { tone: 'mute' }, '演示数据')),
+          identity?.phoneMasked && hMS('div', { className: 'mono', style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 3 } }, identity.phoneMasked),
+          uid && hMS('div', { className: 'mono m-clip1', style: { fontSize: 11.5, color: 'var(--ink-3)', marginTop: 3 } }, 'UID · ' + uid)))),
 
     hMS('div', { style: { padding: '18px 18px 0' } },
       hMS('div', { style: { position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-xl)', padding: '16px 18px', background: 'linear-gradient(155deg,#1C2B3A,#14202B)', color: '#fff', boxShadow: 'var(--sh-2)' } },

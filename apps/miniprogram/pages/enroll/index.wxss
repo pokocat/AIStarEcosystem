@@ -1,0 +1,124 @@
+.page {
+  min-height: 100vh;
+  background: #FAFAF7;
+  padding-left: 48rpx;
+  padding-right: 48rpx;
+  padding-bottom: 64rpx;
+}
+.brand { display: flex; align-items: center; padding-top: 32rpx; }
+.brand-en { font-size: 32rpx; font-weight: 800; letter-spacing: 6rpx; color: #0A0A0A; }
+.brand-tag {
+  margin-left: 16rpx; padding: 4rpx 16rpx; border-radius: 999rpx;
+  background: #C8FF00; color: #0A0A0A; font-size: 22rpx; font-weight: 700;
+}
+.brand-bang { margin-left: 8rpx; color: #C8FF00; font-size: 32rpx; font-weight: 800; }
+
+.hero { margin-top: 72rpx; margin-bottom: 56rpx; }
+.eyebrow { font-size: 22rpx; font-weight: 700; letter-spacing: 4rpx; color: #6B6B6B; }
+.title { margin-top: 16rpx; font-size: 64rpx; font-weight: 800; letter-spacing: -2rpx; color: #0A0A0A; }
+.subtitle { margin-top: 24rpx; font-size: 26rpx; line-height: 42rpx; color: #6B6B6B; }
+
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 120rpx;
+  padding: 0 28rpx;
+  background: #FFFFFF;
+  border: 3rpx solid #0A0A0A;
+  border-radius: 28rpx;
+}
+.field-badge {
+  position: absolute;
+  top: -20rpx;
+  left: 28rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  background: #C8FF00;
+  color: #0A0A0A;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.field-icon { font-size: 34rpx; margin-right: 20rpx; }
+.field-input { flex: 1; min-width: 0; font-size: 36rpx; letter-spacing: 4rpx; color: #0A0A0A; }
+.field-placeholder { color: #9B9B9B; letter-spacing: 4rpx; }
+.mono { font-family: -apple-system-mono, "SF Mono", Menlo, Consolas, monospace; }
+
+.error {
+  margin-top: 28rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 20rpx;
+  background: #FDE2DF;
+  color: #E84B3C;
+  font-size: 26rpx;
+  line-height: 38rpx;
+}
+
+.cta-wrap { margin-top: 48rpx; }
+.cta {
+  display: flex; align-items: center; justify-content: center;
+  height: 104rpx; border-radius: 999rpx;
+  background: #C8FF00; color: #0A0A0A;
+  font-size: 32rpx; font-weight: 700; line-height: 104rpx;
+  box-shadow: 0 16rpx 48rpx rgba(200, 255, 0, .35);
+}
+.cta::after { border: none; }
+.cta-off { background: #EAEAEA; color: #9B9B9B; box-shadow: none; }
+
+.agreement {
+  margin-top: 28rpx;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+.agree-text { font-size: 22rpx; color: #9B9B9B; }
+.agree-link { font-size: 22rpx; color: #0A0A0A; font-weight: 600; }
+
+.sales-card {
+  margin-top: 64rpx;
+  display: flex;
+  align-items: center;
+  padding: 28rpx;
+  background: #FFFFFF;
+  border: 2rpx solid #EAEAEA;
+  border-radius: 32rpx;
+}
+.sales-avatar {
+  width: 88rpx; height: 88rpx; border-radius: 50%;
+  background-image: repeating-linear-gradient(45deg, #EEEEE8, #EEEEE8 12rpx, #F5F5EF 12rpx, #F5F5EF 24rpx);
+  border: 2rpx solid #EAEAEA;
+  flex-shrink: 0;
+}
+.sales-meta { flex: 1; min-width: 0; margin-left: 24rpx; }
+.sales-row { display: flex; align-items: center; }
+.sales-badge {
+  padding: 2rpx 12rpx; border-radius: 999rpx;
+  background: #F2F2EE; color: #6B6B6B;
+  font-size: 20rpx; margin-right: 12rpx;
+}
+.sales-name { font-size: 28rpx; font-weight: 700; color: #0A0A0A; }
+.sales-contact {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #9B9B9B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sales-call {
+  flex-shrink: 0;
+  padding: 12rpx 24rpx;
+  border-radius: 999rpx;
+  background: #0A0A0A;
+  color: #FFFFFF;
+  font-size: 24rpx;
+}
+
+.logout {
+  margin-top: 48rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #9B9B9B;
+}

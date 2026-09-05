@@ -2,14 +2,17 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.config.JwtUtil;
 import com.aistareco.aep.dto.LedgerEntryDto;
+import com.aistareco.aep.enrollment.model.ProductEnrollment;
+import com.aistareco.aep.enrollment.repository.EntitlementGrantRepository;
+import com.aistareco.aep.enrollment.repository.ProductEnrollmentRepository;
+import com.aistareco.aep.enrollment.service.EnrollmentService;
 import com.aistareco.aep.model.AepUser;
 import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.model.LicenseBatch;
 import com.aistareco.aep.model.LicenseKey;
-import com.aistareco.aep.model.Membership;
+import com.aistareco.aep.model.Studio;
 import com.aistareco.aep.model.Wallet;
 import com.aistareco.aep.repository.AepUserRepository;
-import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.aep.repository.LicenseBatchRepository;
 import com.aistareco.aep.repository.LicenseKeyRepository;
 import com.aistareco.aep.repository.MembershipRepository;
@@ -18,6 +21,7 @@ import com.aistareco.aep.repository.TenantRepository;
 import com.aistareco.aep.repository.WalletRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -27,7 +31,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -36,9 +39,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 例行 QA（2026-07-02）回归测试：activateForExistingUser 追加激活积分发放
- * 必须走 CreditService.creditAccount（悲观行锁），不得再对 Wallet 做
- * 无锁 findByUserId + 直接 save 的 read-modify-write（AGENTS.md §4.2 / lost-update 修复）。
+ * 例行 QA（2026-07-02）回归测试：追加激活的积分发放必须走 CreditService.creditAccount
+ * （悲观行锁），不得再对 Wallet 做无锁 findByUserId + 直接 save 的 read-modify-write
+ * （AGENTS.md §4.2 / lost-update 修复）。
+ *
+ * <p>v0.149：兑换实现下沉到 {@link EnrollmentService}，本测试跟着改成「LicenseActivationService
+ * 经 EnrollmentService 兑换」的组合，断言不变 —— 这条不变量守的是钱，不能随重构丢掉。</p>
  */
 class LicenseActivationServiceCreditTest {
 
@@ -48,12 +54,13 @@ class LicenseActivationServiceCreditTest {
     private TenantRepository tenantRepo;
     private MembershipRepository membershipRepo;
     private WalletRepository walletRepo;
-    private LedgerEntryRepository ledgerRepo;
     private StudioRepository studioRepo;
     private JwtUtil jwtUtil;
     private PlatformAccessService platformAccessService;
     private NotificationPublisher notificationPublisher;
     private CreditService creditService;
+    private ProductEnrollmentRepository enrollmentRepo;
+    private EntitlementGrantRepository grantRepo;
     private LicenseActivationService service;
 
     private static final String RAW_CODE = "TEST-CODE-1234";
@@ -66,17 +73,21 @@ class LicenseActivationServiceCreditTest {
         tenantRepo = mock(TenantRepository.class);
         membershipRepo = mock(MembershipRepository.class);
         walletRepo = mock(WalletRepository.class);
-        ledgerRepo = mock(LedgerEntryRepository.class);
         studioRepo = mock(StudioRepository.class);
         jwtUtil = mock(JwtUtil.class);
         platformAccessService = mock(PlatformAccessService.class);
         notificationPublisher = mock(NotificationPublisher.class);
         creditService = mock(CreditService.class);
-        service = new LicenseActivationService(keyRepo, batchRepo, userRepo, tenantRepo,
-                membershipRepo, walletRepo, ledgerRepo, studioRepo, jwtUtil,
-                platformAccessService, notificationPublisher, creditService);
+        enrollmentRepo = mock(ProductEnrollmentRepository.class);
+        grantRepo = mock(EntitlementGrantRepository.class);
 
-        AepUser user = AepUser.builder().id("u1").platforms(null).build();
+        EnrollmentService enrollmentService = new EnrollmentService(enrollmentRepo, grantRepo,
+                keyRepo, batchRepo, userRepo, studioRepo, tenantRepo, walletRepo, creditService,
+                platformAccessService, mock(ApplicationEventPublisher.class));
+        service = new LicenseActivationService(userRepo, membershipRepo, studioRepo, jwtUtil,
+                notificationPublisher, enrollmentService);
+
+        AepUser user = AepUser.builder().id("u1").username("u1").platforms(null).build();
         when(userRepo.findById("u1")).thenReturn(Optional.of(user));
         when(userRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -86,6 +97,8 @@ class LicenseActivationServiceCreditTest {
                 .build();
         when(keyRepo.findByCodeHash(anyString())).thenReturn(Optional.of(key));
         when(keyRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // 条件更新占码：本测试模拟「抢到」
+        when(keyRepo.claimForActivation(eq("key1"), eq("u1"), any(), any(), any())).thenReturn(1);
 
         LicenseBatch batch = LicenseBatch.builder()
                 .id("batch1").issuerTenantId(null).platforms(null)
@@ -96,6 +109,15 @@ class LicenseActivationServiceCreditTest {
         when(batchRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         when(membershipRepo.findByUserId("u1")).thenReturn(java.util.List.of());
+        when(studioRepo.findByOwnerUserId("u1")).thenReturn(Optional.of(
+                Studio.builder().id("s1").ownerUserId("u1").build()));
+        when(platformAccessService.grantedCsvForNewUser(any()))
+                .thenReturn(PlatformSupport.toCsv(PlatformSupport.ALL));
+        when(grantRepo.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(enrollmentRepo.findByUserIdAndProduct(anyString(), anyString())).thenReturn(Optional.empty());
+        when(enrollmentRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(walletRepo.findByUserId("u1")).thenReturn(Optional.of(
+                Wallet.builder().id("w1").userId("u1").totalBalance(1000L).build()));
 
         when(creditService.creditAccount(eq("u1"), eq(500L), eq(LedgerEntry.LedgerEntryType.LICENSE_GRANT),
                 eq("license_key"), eq("key1"), anyString()))
@@ -125,5 +147,21 @@ class LicenseActivationServiceCreditTest {
         verify(walletRepo, never()).save(any(Wallet.class));
         assertEquals(1500L, resp.get("newTotalBalance"));
         assertEquals(500L, resp.get("creditsGranted"));
+    }
+
+    @Test
+    void appendActivation_claimsKeyConditionally_andWritesEntitlementGrantAndEnrollments() {
+        service.activateForExistingUser("u1", RAW_CODE);
+
+        // 占码必须走条件更新（WHERE status='CREATED'），不能是读-改-写
+        verify(keyRepo).claimForActivation(eq("key1"), eq("u1"), any(),
+                eq(LicenseKey.LicenseKeyStatus.CREATED), eq(LicenseKey.LicenseKeyStatus.ACTIVATED));
+        verify(keyRepo, never()).save(any(LicenseKey.class));
+        // 权益凭据（唯一约束防重复兑换）+ 五个子产品的开通记录。
+        // v0.150：凭据按产品逐条写（UNIQUE 三元组 (source, source_reference, product)），
+        // 这把全站秘钥开五个产品就是五条 —— 日后按产品退权 / 对账才有据可依。
+        verify(grantRepo, org.mockito.Mockito.times(PlatformSupport.ALL.size())).saveAndFlush(any());
+        verify(enrollmentRepo, org.mockito.Mockito.times(PlatformSupport.ALL.size()))
+                .save(any(ProductEnrollment.class));
     }
 }

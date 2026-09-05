@@ -211,4 +211,6 @@
       </view>
     </view>
   </view>
+
+  <phone-bind-sheet id="phone-bind-sheet" />
 </view>

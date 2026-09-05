@@ -86,6 +86,27 @@
 
 - `onShow` 会在 tabBar 切换时反复触发，**不要**在 `onShow` 里发起未去重的请求。
 - `onLoad` 的 `options` 对象在某些基础库会缺字段（特别是从 webview 跳回来的 case），关键字段加 `??` 兜底。
+- `getApp()` 在 App 实例化之前（模块顶层 require 时）会 throw；工具模块里凡是要碰 `globalData` 的地方
+  一律 `try { getApp() } catch {}` 兜底（`utils/auth.js` 的 `syncGlobal` 就是这么写的）。
+
+### 登录 / 手机号（v0.149 统一账号中心）
+
+- **没有 `atob` / `TextDecoder` / `Buffer`**。要读 JWT payload 里的 claim（`sub` / `phone_verified` / `wx_openid`）
+  只能自己写 base64url → 字节 → UTF-8 的解码（见 `utils/auth.js`），否则中文 claim 会乱码。
+  这个解码**只用于界面判断**，令牌真伪由 server 用账号中心公钥验证。
+- **`wx.request` 的 form-urlencoded 序列化不可靠**：header 声明 `application/x-www-form-urlencoded` 时，
+  各基础库对 object 的序列化行为不一致，而且不会对 value 里的 `:` 做百分号编码 —— OAuth2 的
+  `grant_type=urn:aibuzz:params:oauth:grant-type:wechat-mini` 必须编码。**自己拼 body 字符串**再传给 `data`。
+- **`wx.login` 的 code 5 分钟有效、一次性**，换失败不能重试同一个 code，只能重新 `wx.login`。
+  账号中心回 `WX_CODE_INVALID` 时自动重跑一次 `wx.login`（只一次，避免死循环）。
+- **`<button open-type="getPhoneNumber">` 只有「已认证的非个人主体」小程序才有**，个人主体 / 未认证会直接
+  回 fail；而且**必须由用户真实点击触发**，JS 主动调不起来。所以一键取号旁边永远要留短信兜底通道。
+  回调里判 `e.detail.code` 存在 **且** `e.detail.errMsg` 含 `ok`，两者缺一都当失败处理。
+- **storage key 不要混**：`auth` 是 legacy 的 server 自签令牌，`auth.id` 是账号中心的
+  `{accessToken, refreshToken, expiresAt}`。退出登录两个都要清（`app.signOut()`）。
+- 令牌刷新必须**单飞**：页面并发发请求时会同时撞 401，不做单飞会连着刷好几次、把 refresh token 转没了。
+- **不要在客户端依赖 unionid**：微信只在同一开放平台主体下才返回相同 unionid，本生态几个小程序不一定同主体。
+  跨端身份一律靠「已验证的手机号」。
 
 ---
 

@@ -1,0 +1,35 @@
+<view class="page" style="padding-top: {{statusBarHeight}}px;">
+  <view class="brand">
+    <text class="brand-en">STAR</text>
+    <view class="brand-tag">带货式</view>
+    <text class="brand-bang">!</text>
+  </view>
+
+  <view class="center">
+    <view class="title">AI 明星带货</view>
+
+    <!-- 配置错误：既不转圈也不给重试，只告诉现场该找谁 -->
+    <block wx:if="{{configError}}">
+      <view class="error">{{configError}}</view>
+      <view class="config-hint">当前发布包缺少统一账号中心的地址配置，无法登录。请联系技术支持更新配置后重新发布。</view>
+      <view class="sales" bindtap="callSales">联系销售经理 · 138 8888 1234</view>
+    </block>
+
+    <block wx:elif="{{!error}}">
+      <view class="dots">
+        <view class="dot d1"></view>
+        <view class="dot d2"></view>
+        <view class="dot d3"></view>
+      </view>
+      <view class="status">{{status}}</view>
+    </block>
+
+    <block wx:else>
+      <view class="error">{{error}}</view>
+      <view wx:if="{{canRetry}}" class="retry" bindtap="retry">重新登录</view>
+      <view class="sales" bindtap="callSales">联系销售经理 · 138 8888 1234</view>
+    </block>
+  </view>
+
+  <view class="foot mono">微信授权登录 · 无需填写验证码</view>
+</view>

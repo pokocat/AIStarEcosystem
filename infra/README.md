@@ -93,7 +93,8 @@ infra/
                           │   ├─ music.aibuzz.cn → web-music (3010)
                           │   ├─ drama.aibuzz.cn → web-drama (3011)
                           │   ├─ aistar.aibuzz.cn → web-aiavatar (3013)
-                          │   └─ api.aibuzz.cn → server (8080)
+                          │   ├─ api.aibuzz.cn → server (8080)
+                          │   └─ id.aibuzz.cn → 账号中心 (8091, 独立仓库 pokocat/aibuzz-id)
                           │
 ECS 集群 (1~N 台, VPC 内网)│
   ├─ systemd                                                                  
@@ -103,6 +104,8 @@ ECS 集群 (1~N 台, VPC 内网)│
   │   • aistareco-web-drama      :3011  (Next 16 standalone)
   │   • aistareco-web-celebrity  :3012  (Next 16 standalone)
   │   • aistareco-web-aiavatar   :3013  (Next 16 standalone)
+  │   • aistareco-web-star       :3014  (Next 16 standalone)
+  │   • aistareco-id-server      :8091  (统一账号中心 / OIDC；本仓不发布，见 pokocat/aibuzz-id)
   └─ Docker                                                                   
       • aistareco-sau-service    :8090  (FastAPI + Playwright/patchright)
                                        │
@@ -430,6 +433,42 @@ sau-service
 ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 ```
 
+### 4.3 统一账号中心（id.aibuzz.cn）
+
+**账号中心已抽离为独立仓库：<https://github.com/pokocat/aibuzz-id>。**
+建库、env、RS256 签名密钥、systemd 单元、nginx vhost、部署与回滚，全部见该仓的
+`deploy/README.md`；本仓的 `infra/scripts/*` 不再构建、不再部署它。
+
+与本仓相关的落点事实（改机器 / 排端口冲突时要知道的）：
+
+- 与 `aistareco-server` **同一台 ECS**，端口 **8091**（本机 8090 已被 `aistareco-sau-service`
+  的 docker 容器占用）
+- **独立库 `aistareco_id`**，与业务库 `aistareco` 分开
+- 验证码 / 发码限频 / 令牌 denylist 用**本机自建 Redis**；将来要跑多实例（集群化）再换阿里云 Redis
+- 证书复用 `*.aibuzz.cn` 泛域名证书，DNS 已有 `id A 47.98.162.120`
+
+本仓这一侧只保留**消费方**配置，两边的值必须对上：
+
+| 账号中心侧（见 pokocat/aibuzz-id） | 本仓 server 侧（`/etc/aistareco/server.env`） |
+|---|---|
+| `ID_ISSUER=https://id.aibuzz.cn` | `AEP_ID_ISSUER=https://id.aibuzz.cn` |
+| `ID_CLIENT_SECRET_AISTAR_SERVER=<X>` | `AEP_ID_CLIENT_SECRET=<同一个 X>` |
+| 客户端 `aistar-server` | `AEP_ID_CLIENT_ID=aistar-server` |
+
+两边 secret 不一致的现象是 server 侧 401 + 账号中心侧一条 `invalid_client`，很难查。
+
+前端（五个 web app）切到账号中心登录靠三个 `NEXT_PUBLIC_*`（见各 `infra/env/web-*.env.example`）。
+⚠️ 它们是**构建期内联**的：只改 ECS 上的运行期 `.env` 不生效，必须打包时带上：
+
+```bash
+NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn \
+  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star
+```
+
+默认值是 `legacy`，所以**不显式指定时现网行为完全不变**。回退 = 用 `legacy` 重新构建部署。
+
+上线顺序：账号中心 → `apps/server` → 五个前端。反过来会让前端拿不到令牌。
+
 ---
 
 ## 5. 关键约定
@@ -445,6 +484,10 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 - **JWT / AES 密钥**：`AEP_JWT_SECRET`（≥32 字符高熵）/ `AEP_SECRET_KEY`（32 字节）必须 env 注入；
   mysql/prod profile 启动看到 dev default 直接抛异常拒绝启动
 - **MixcutPresetSeeder 不受 dev-data gate 控制**（GIF 扰动贴图池是平台基础数据，生产也要种）
+- **账号中心用 8091，不是 8090**：本机 8090 归 `aistareco-sau-service` 的 docker 容器
+  （`server.env` 的 `SAU_SERVICE_URL` 指着它）。新加同机服务前先 `ss -ltn` 看一眼端口，
+  别照抄应用文档里的默认端口。账号中心自身的部署与运维见独立仓库
+  [pokocat/aibuzz-id](https://github.com/pokocat/aibuzz-id) 的 `deploy/README.md`
 
 ### 5.1 nginx vhost：每个子域必须**同时**有 80 和 443
 
@@ -480,9 +523,15 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 | `aibuzz.cn` / `www` | web-celebrity 3012 | `aibuzz-ssl.conf` | `aibuzz-ssl.conf` | 无（含 H5 演示静态站，暂不进仓） |
 | `aistar.aibuzz.cn` | web-aiavatar 3013 | `aistar.aibuzz.cn.conf` | `aistar.aibuzz.cn.conf` | 无（与 aiavatar 同上游的旧域名） |
 | `api.aibuzz.cn` | server 8080 | `aistareco.conf` | **缺失** ❌ | `api.aibuzz.cn.ssl.conf.example`（待应用） |
+| `id.aibuzz.cn` | 账号中心 8091 | **缺失** ❌ | **缺失** ❌ | 不在本仓：见 pokocat/aibuzz-id 的 `deploy/`（80+443 都在那一份里） |
 
 注意 80 和 443 **不在同一个文件里**：多数子域的 80 块集中在 `aistareco.conf`，443 块各占
 一个 `<domain>.ssl.conf`。改动时两边都要看，别只 grep 一个文件就下结论。
+
+`id.aibuzz.cn`（2026-09-04 新开）是例外：它是**新子域**，`aistareco.conf` 的 80
+`server_name` 列表里没有它，所以 80 请求会落到 `listen 80 default_server`（= web-celebrity），
+返回带货站首页。它的 vhost 由独立仓库 [pokocat/aibuzz-id](https://github.com/pokocat/aibuzz-id)
+提供且**自带 80 和 443 两个 block**，装那一份就够，不用去动 `aistareco.conf`。
 
 **现状（2026-08-29 实测）**：6 个 app 子域 `http` / `https` 均 200，admin 按预期 302 到
 `/admin` —— 即本类 bug 在 app 子域上已修复。**唯一仍中招的是 `api.aibuzz.cn`**：

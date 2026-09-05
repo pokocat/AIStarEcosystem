@@ -1,4 +1,5 @@
 const { WalletApi } = require("../../utils/api.js");
+const Phone = require("../../utils/phone.js");
 
 Page({
   data: {
@@ -50,6 +51,11 @@ Page({
 
   async submit() {
     if (!this.data.currentPkgId) return;
+    // 充值属有副作用动作：先确保手机号已验证（docs/unified-identity-plan.md §5 / §12.6）
+    const phoneOk = await Phone.ensurePhoneVerified(this, {
+      reason: "充值前请先绑定手机号，方便后续对账、找回账号与开具凭证。"
+    });
+    if (!phoneOk) return;
     wx.showLoading({ title: "提交中…", mask: true });
     try {
       // v0.56：下单生成充值申请（不直接入账）。平台运营线下收款后核准方到账。
