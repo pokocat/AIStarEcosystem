@@ -28,6 +28,7 @@ const SCAN_TARGETS = [
   { dir: "apps/web-celebrity/src" },
   { dir: "apps/web-aiavatar/src", prefix: "/v1" },
   { dir: "apps/web-star/src" },
+  { dir: "apps/web-ipstudio/src" },
   { dir: "packages/api-client/src" },
 ];
 const OPENAPI_PATH = join(REPO_ROOT, "specs/openapi.yaml");

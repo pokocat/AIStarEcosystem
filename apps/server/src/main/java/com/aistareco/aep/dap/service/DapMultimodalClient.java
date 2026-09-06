@@ -162,6 +162,65 @@ public class DapMultimodalClient {
         }
     }
 
+    /**
+     * 带图 chat（视觉理解）—— 用户照片 → 人物特征卡（v0.151 AI IP 工作台）。
+     *
+     * <p>走 OpenAI 兼容的 content-parts 形态：
+     * {@code content: [{type:"text",text}, {type:"image_url",image_url:{url}}]}。
+     * {@code imageInputs} 的元素是公网 URL 或 {@code data:image/...;base64,...}
+     * （由 {@link DapImageInput#of(String)} 从 storage key 派生）。
+     *
+     * <p>上游模型不支持视觉时会以 HTTP 4xx 回来，本方法原样抛
+     * {@code DAP_MODEL_HTTP_4xx}：调用方负责翻成业务错误码并**不产假产物**（§8.0）。
+     */
+    public String chatWithImages(String systemPrompt, String userPrompt, List<String> imageInputs) {
+        Target t = require(chatTarget(), "chat");
+        ObjectNode body = OM.createObjectNode();
+        body.put("model", t.model());
+        ArrayNode messages = body.putArray("messages");
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            messages.addObject().put("role", "system").put("content", systemPrompt);
+        }
+        ObjectNode userMsg = messages.addObject();
+        userMsg.put("role", "user");
+        ArrayNode parts = userMsg.putArray("content");
+        parts.addObject().put("type", "text").put("text", userPrompt == null ? "" : userPrompt);
+        if (imageInputs != null) {
+            for (String img : imageInputs) {
+                if (img == null || img.isBlank()) continue;
+                ObjectNode part = parts.addObject();
+                part.put("type", "image_url");
+                part.putObject("image_url").put("url", img);
+            }
+        }
+        body.put("temperature", 0.4);
+
+        JsonNode resp = postJson(t, "/v1/chat/completions", body);
+        JsonNode content = resp.path("choices").path(0).path("message").path("content");
+        if (content.isMissingNode() || content.isNull()) {
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 响应缺少 choices[0].message.content");
+        }
+        // 部分兼容实现把 content 也回成 parts 数组，取首个 text 段
+        if (content.isArray()) {
+            for (JsonNode part : content) {
+                if (part.path("text").isTextual()) return part.path("text").asText();
+            }
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 响应 content 数组里没有文本段");
+        }
+        return content.asText();
+    }
+
+    /** 带图 chat 并解析 JSON 产物（剥 markdown 围栏 + 截取首个 {...}）。 */
+    public JsonNode chatJsonWithImages(String systemPrompt, String userPrompt, List<String> imageInputs) {
+        String raw = chatWithImages(systemPrompt, userPrompt, imageInputs);
+        String cleaned = extractJson(raw);
+        try {
+            return OM.readTree(cleaned);
+        } catch (IOException e) {
+            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "带图 chat 输出不是合法 JSON: " + truncate(raw, 300));
+        }
+    }
+
     // ── 图片 ───────────────────────────────────────────────────
 
     /**
@@ -466,6 +525,18 @@ public class DapMultimodalClient {
                 for (JsonNode m : messages) {
                     if (m instanceof ObjectNode mo && mo.path("content").isTextual()) {
                         mo.put("content", truncate(mo.path("content").asText(), 400));
+                    } else if (m instanceof ObjectNode mo && mo.path("content").isArray()) {
+                        // v0.151 带图 chat 的 content-parts：dataURI 只打 mime + 长度，
+                        // 否则一张照片能把一行 io 日志撑到几百 KB。
+                        for (JsonNode part : mo.path("content")) {
+                            if (!(part instanceof ObjectNode po)) continue;
+                            if (po.path("text").isTextual()) {
+                                po.put("text", truncate(po.path("text").asText(), 400));
+                            }
+                            if (po.path("image_url") instanceof ObjectNode iu && iu.path("url").isTextual()) {
+                                iu.put("url", summarizeImageInput(iu.path("url").asText()));
+                            }
+                        }
                     }
                 }
             }
@@ -488,12 +559,28 @@ public class DapMultimodalClient {
         }
     }
 
-    static String summarizeImageInput(String input) {
+    /**
+     * 日志里的图片输入摘要。
+     *
+     * <p>**签名 URL 绝不进日志**（AGENTS.md v0.150 红线）：OSS / CDN 的时效签名带在 query 上
+     * （{@code ?Expires=…&Signature=…} / {@code ?auth_key=…}），原样打进日志等于把任何人都能
+     * 直接下载原图的凭据写进日志文件与日志采集链路。所以 http(s) 输入只留
+     * scheme + host + path，query 整段丢掉。dataURI 只留头部与长度（base64 本体是用户照片）。
+     */
+    public static String summarizeImageInput(String input) {
         if (input == null) return null;
         if (input.startsWith("data:")) {
             int comma = input.indexOf(',');
             String head = comma > 0 ? input.substring(0, comma) : "data:?";
             return head + " len=" + input.length();
+        }
+        if (input.startsWith("http://") || input.startsWith("https://")) {
+            int q = input.indexOf('?');
+            String noQuery = q >= 0 ? input.substring(0, q) : input;
+            // 片段（#）里同样可能带凭据，一并砍掉
+            int hash = noQuery.indexOf('#');
+            if (hash >= 0) noQuery = noQuery.substring(0, hash);
+            return truncate(noQuery, 200) + (q >= 0 ? "?<redacted>" : "");
         }
         return truncate(input, 200);
     }

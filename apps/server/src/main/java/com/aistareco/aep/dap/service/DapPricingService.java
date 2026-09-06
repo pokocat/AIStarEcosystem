@@ -40,6 +40,9 @@ public class DapPricingService {
     public static final String ACTION_PRODUCT_GENERATE = "dap.product-generate";
     public static final String ACTION_PRODUCT_ANGLE = "dap.product-angle";
     public static final String ACTION_COMPOSE = "dap.compose";
+    // AI IP 工作台（v0.151）：特征卡抽取按次，形象出图按张（generate 节点 count 张 × 单价）
+    public static final String ACTION_IP_IDENTITY = "dap.ip-identity";
+    public static final String ACTION_IP_IMAGE = "dap.ip-image";
 
     private final DapProperties props;
     private final CelebrityActionPricingService actionPricing;
@@ -73,6 +76,10 @@ public class DapPricingService {
     public long productAngle()   { return of(ACTION_PRODUCT_ANGLE, props.getPricing().getProductAngle()); }
     /** 合成单价（按出图张数计，提交时 × count）。 */
     public long compose()        { return of(ACTION_COMPOSE, props.getPricing().getCompose()); }
+    /** IP 工作台 · 人物特征卡抽取（按次）。 */
+    public long ipIdentity()     { return of(ACTION_IP_IDENTITY, props.getPricing().getIpIdentity()); }
+    /** IP 工作台 · 形象出图（按张，运行时 × count）。 */
+    public long ipImage()        { return of(ACTION_IP_IMAGE, props.getPricing().getIpImage()); }
 
     public long derive(String derivKey) {
         DapProperties.Pricing p = props.getPricing();

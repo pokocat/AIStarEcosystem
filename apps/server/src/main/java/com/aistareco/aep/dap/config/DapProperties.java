@@ -174,6 +174,11 @@ public class DapProperties {
         private long productAngle = 4;
         /** 跨资产合成，按出图张数计（提交时 × count）。 */
         private long compose = 3;
+        // ── AI IP 工作台（v0.151）────────────────────────────────
+        /** 从照片抽一次人物特征卡（带图 chat，按次）。 */
+        private long ipIdentity = 2;
+        /** IP 形象出图，按张计（运行时 × generate 节点的 count）。 */
+        private long ipImage = 8;
 
         public long getGenerate() { return generate; }
         public void setGenerate(long v) { this.generate = v; }
@@ -209,5 +214,9 @@ public class DapProperties {
         public void setProductAngle(long v) { this.productAngle = v; }
         public long getCompose() { return compose; }
         public void setCompose(long v) { this.compose = v; }
+        public long getIpIdentity() { return ipIdentity; }
+        public void setIpIdentity(long v) { this.ipIdentity = v; }
+        public long getIpImage() { return ipImage; }
+        public void setIpImage(long v) { this.ipImage = v; }
     }
 }

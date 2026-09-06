@@ -47,6 +47,9 @@ const DAP_ACTIONS: ActionRow[] = [
   { code: "dap.derive-d3",       label: "3D 预览",          unit: "积分 / 次（默认 10）", allowEngineFallback: false },
   { code: "dap.derive-video",    label: "运镜视频",         unit: "积分 / 次（默认 30）", allowEngineFallback: false },
   { code: "dap.voice-clone",     label: "声音克隆",         unit: "积分 / 次（默认 10）", allowEngineFallback: false },
+  // v0.151 AI IP 工作台（apps/web-ipstudio）：特征卡按次，形象出图按张（一个生成节点 1/2/4 张）
+  { code: "dap.ip-identity",     label: "IP 人物特征卡抽取", unit: "积分 / 次（默认 2）",  allowEngineFallback: false },
+  { code: "dap.ip-image",        label: "IP 形象出图",       unit: "积分 / 张（默认 8）",  allowEngineFallback: false },
 ];
 
 export default function CelebrityPricingPage() {

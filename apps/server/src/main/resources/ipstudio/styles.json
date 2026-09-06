@@ -1,0 +1,47 @@
+{
+  "_note": "AI IP 工作台内置风格预设。promptEn 会被逐字拼进出图提示词（不让模型自由发挥），negativeEn 拼进负面词。改这里即改线上风格，随代码一起发布。",
+  "styles": [
+    {
+      "id": "bjd",
+      "name": "3D BJD 潮玩",
+      "summary": "球关节娃娃质感的潮玩人偶：哑光树脂皮肤、大眼小鼻、棚拍柔光，最像手办开箱那种效果。",
+      "promptEn": "3D rendered BJD ball-jointed collectible doll figure, matte resin skin with soft subsurface scattering, oversized glossy doll eyes with catchlights, small nose and delicate lips, subtle visible ball joints at shoulders and wrists, fine fabric weave and real stitching on the clothes, designer toy photography, three-point studio softbox lighting on a seamless solid backdrop, shallow depth of field, octane render, ultra detailed.",
+      "negativeEn": "no photorealistic human skin pores, no anime line art, no flat 2d illustration, no plastic seam artifacts on the face,"
+    },
+    {
+      "id": "chibi",
+      "name": "Q 版厚涂",
+      "summary": "两头身 Q 版小人，厚涂笔触、圆润轮廓，做表情包和头像最讨喜。",
+      "promptEn": "Chibi style character illustration, two-heads-tall proportions, oversized head and large expressive eyes, tiny rounded body and stubby limbs, thick painterly semi-realistic rendering with soft airbrush shading and clean rounded silhouette, cute sticker-friendly design, soft even lighting on a plain pastel background.",
+      "negativeEn": "no realistic adult body proportions, no harsh outlines, no gritty texture,"
+    },
+    {
+      "id": "pixar3d",
+      "name": "3D 动画电影",
+      "summary": "皮克斯式 3D 动画角色：亲和的圆润造型、电影级布光，适合品牌吉祥物。",
+      "promptEn": "Stylized 3D animated movie character, appealing rounded features with slightly enlarged eyes, subtle cartoon exaggeration over believable anatomy, soft subsurface skin shading, detailed hair grooming, cinematic three-point lighting with warm rim light, physically based rendering, feature animation quality.",
+      "negativeEn": "no uncanny photoreal face, no anime cel shading, no low-poly game asset look,"
+    },
+    {
+      "id": "flat-vector",
+      "name": "扁平矢量",
+      "summary": "扁平色块 + 干净描边的矢量插画，用作品牌 IP、贴纸和 UI 头像最省心。",
+      "promptEn": "Flat vector character illustration, bold clean geometric shapes, limited flat color palette with no gradients, uniform even line weight, minimal facial detail rendered as simple shapes, crisp edges, generous negative space, brand mascot design language, plain solid background.",
+      "negativeEn": "no photorealistic rendering, no 3d shading, no texture noise, no gradient mesh,"
+    },
+    {
+      "id": "guochao-ink",
+      "name": "国潮水墨",
+      "summary": "水墨笔触配国潮配色：留白、宣纸肌理、朱红点睛，中式品牌形象好用。",
+      "promptEn": "Chinese ink painting style character portrait, expressive calligraphic brush strokes with visible dry-brush texture, ink wash gradients on rice paper texture, generous negative space composition, restrained palette of ink black and warm paper tone accented with vermilion red, modern guochao graphic sensibility.",
+      "negativeEn": "no western oil painting impasto, no photorealistic skin, no neon colors, no heavy 3d shading,"
+    },
+    {
+      "id": "clay",
+      "name": "黏土定格",
+      "summary": "手捏黏土定格动画质感：指纹压痕、哑光表面，憨拙可爱又有手作味。",
+      "promptEn": "Handmade polymer clay stop-motion character, visible fingerprint dents and sculpting tool marks, matte clay surface with slight unevenness, chunky simplified forms, felt and yarn fabric details, miniature practical set with soft diffused studio lighting, tilt-shift macro photography of a physical model.",
+      "negativeEn": "no glossy plastic finish, no digital 2d illustration, no photorealistic human skin,"
+    }
+  ]
+}

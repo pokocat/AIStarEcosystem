@@ -110,6 +110,18 @@ public class PromptService {
     public static final String KEY_DAP_PRODUCT_IMAGE = "dap.product_image";
     public static final String KEY_DAP_PRODUCT_ANGLE = "dap.product_angle";
     public static final String KEY_DAP_COMPOSE = "dap.compose";
+    /**
+     * v0.151+: AI IP 工作台（apps/web-ipstudio）两个点位。
+     *
+     * <p>{@code dap.ip_identity}：带图 chat 从用户照片抽「中文结构化人物特征卡 + 英文身份提示词」，
+     * 一次生成、之后所有形象卡复用同一段 —— 这是「同一个人」的第一层锁定。
+     * <p>{@code dap.ip_look_image}：形象卡出图模板（风格 / 身份 / 服装 / 姿势 / 表情 / 细节 / 道具
+     * + 固定一致性从句 + 负面词），服务端唯一拼装漏斗，用户能在运行详情里看到本次实际提示词。
+     * 刻意不复用 {@code dap.image_look} / {@code dap.image_atlas}：那两条是「同一数字人换造型」
+     * 与「多角度图集」，负面词与镜头约束都不一样。
+     */
+    public static final String KEY_DAP_IP_IDENTITY = "dap.ip_identity";
+    public static final String KEY_DAP_IP_LOOK_IMAGE = "dap.ip_look_image";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
     public static final List<String> KNOWN_KEYS =
@@ -128,7 +140,8 @@ public class PromptService {
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT,
                     KEY_DAP_SCENE_IMAGE, KEY_DAP_SCENE_VARIANT, KEY_DAP_PRODUCT_IMAGE,
-                    KEY_DAP_PRODUCT_ANGLE, KEY_DAP_COMPOSE);
+                    KEY_DAP_PRODUCT_ANGLE, KEY_DAP_COMPOSE,
+                    KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =

@@ -1,0 +1,40 @@
+{
+  "name": "@ai-star-eco/web-ipstudio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI IP 工作台 — 一张照片起步，在无限画布上稳定产出同一人物、同一风格的一组 AI IP 形象，发布为 AiAvatar 数字资产。",
+  "scripts": {
+    "dev": "next dev -p 3015",
+    "build": "next build",
+    "start": "next start -p 3015",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@ai-star-eco/api-client": "workspace:*",
+    "@ai-star-eco/landing": "workspace:*",
+    "@ai-star-eco/types": "workspace:*",
+    "@ai-star-eco/ui": "workspace:*",
+    "@xyflow/react": "^12.8.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.547.0",
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.5.4",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/node": "^20.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.1.12",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
+  }
+}

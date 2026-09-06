@@ -1,0 +1,93 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   web-ipstudio · AI IP 工作台 设计令牌
+   视觉基调沿用 AiAvatar 的 Atelier Ledger（apps/web-aiavatar/DESIGN.md），
+   移植到桌面浅色工作台：冷白画布 + 近黑墨色 + 单一青色（One Ink 原则 —— 青色
+   只给主操作与运行中状态，绝不做装饰）。衬线只给资产名，等宽只给编号。
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── 画布与层级 ── */
+  --canvas: #f7f9fb;
+  --canvas-2: #eef2f6;
+  --surface: #ffffff;
+  --surface-2: #f6f8fb;
+  --surface-3: #edf1f5;
+  --line: #ebeff3;
+  --line-2: #e0e6ec;
+  --line-3: #cfd7df;
+
+  /* 兼容别名：共享组件（EnrollmentGate / landing）按 --bg-* / --ink-* 回退链取色 */
+  --bg-0: var(--canvas);
+  --bg-1: var(--surface);
+  --bg-2: var(--surface-2);
+  --line-strong: var(--line-2);
+
+  /* ── 墨色（无纯黑） ── */
+  --ink: #14202b;
+  --ink-2: #5a6873;
+  --ink-3: #8a96a1;
+  --ink-4: #bac4cd;
+  --ink-0: var(--ink);
+  --ink-1: var(--ink-2);
+
+  /* ── 单一青色（One Ink） ── */
+  --primary: #12b3de;
+  --primary-600: #10a6cf;
+  --primary-700: #0c97be;
+  --primary-soft: #e6f5fa;
+  --primary-tint: #f3fafd;
+  --on-primary: #ffffff;
+  --brand: var(--primary);
+  --accent: var(--primary);
+
+  /* ── 状态色（克制使用） ── */
+  --ok: #1aa06e;
+  --ok-soft: #e2f4ec;
+  --warn: #d9920e;
+  --warn-soft: #fbf0da;
+  --err: #e0455c;
+  --err-soft: #fbe6ea;
+  --info: #2ba6e8;
+  --info-soft: #e6f2fb;
+
+  /* ── 节点端口配色（按类型辨识，饱和度压低，不抢主色） ── */
+  --port-image: #8f6bff;   /* 图片流（照片 / 参考图 / 候选图） */
+  --port-text: #5a6873;    /* 文本流（特征卡 / 风格 / 形象卡） */
+
+  /* ── 字体 ── */
+  --font-sans: "Manrope", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── 圆角 ── */
+  --r-xs: 7px;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 15px;
+  --r-xl: 19px;
+  --radius-lg: var(--r-lg);
+
+  /* ── 阴影：石板蓝调，不用黑色 ── */
+  --shadow-hair: 0 1px 2px rgba(20, 32, 43, 0.04);
+  --shadow-card: 0 1px 3px rgba(20, 32, 43, 0.05), 0 6px 16px -8px rgba(20, 32, 43, 0.08);
+  --shadow-lift: 0 2px 6px rgba(20, 32, 43, 0.07), 0 14px 32px -12px rgba(20, 32, 43, 0.14);
+  --shadow-ring: 0 0 0 3px rgba(18, 179, 222, 0.18);
+}
+
+html,
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 工作台是桌面重交互面，禁掉整页横向滚动（画布自己吃平移） */
+body {
+  overflow-x: hidden;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

@@ -231,11 +231,39 @@ function buildJsonContent(text) {
   return JSON.stringify({ result: "ok", note: "本地联调模型占位 JSON" });
 }
 
+// OpenAI content-parts（[{type:"text",text},{type:"image_url",...}]）→ 只取文字部分；带图消息标 [image]。
+function flattenContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => (part && part.type === "text" ? part.text || "" : part && part.type === "image_url" ? "[image]" : ""))
+    .join("\n");
+}
+
+// AI IP 工作台 · 人物特征卡（v0.151，dap.ip_identity）：带图 chat，不走 json_object 也必须回 JSON
+function buildIdentityCard() {
+  return JSON.stringify({
+    text: [
+      "脸型：偏圆的鹅蛋脸，下颌线柔和",
+      "五官：杏眼、双眼皮，鼻梁挺直，嘴唇偏薄",
+      "发型发色：黑色齐刘海短发波波头，发尾齐下颌",
+      "标志性特征：鼻梁上一枚淡黄色创可贴，鼻翼两侧浅色小雀斑",
+      "肤色：浅暖白",
+      "年龄段：20–25 岁",
+      "气质：安静、俏皮、少年感",
+      "体型：偏瘦、中等身高",
+    ].join("\n"),
+    promptEn:
+      "same person, consistent facial identity, young East Asian woman in her early twenties, soft oval face, almond-shaped double-lidded eyes, straight nose bridge with a small pale yellow adhesive bandage across it, light freckles beside the nose, thin lips, black chin-length bob with straight bangs, fair warm skin, slim build",
+  });
+}
+
 function chatResponse(body) {
   const messages = Array.isArray(body.messages) ? body.messages : [];
-  const all = messages.map((m) => (m && m.content) || "").join("\n");
+  const all = messages.map((m) => (m ? flattenContent(m.content) : "")).join("\n");
   const jsonMode = body.response_format && body.response_format.type === "json_object";
-  const content = jsonMode ? buildJsonContent(all) : buildProse(all);
+  const identityCard = /人物特征卡/.test(all);
+  const content = identityCard ? buildIdentityCard() : jsonMode ? buildJsonContent(all) : buildProse(all);
   return {
     id: "fakecmpl-" + Date.now(),
     object: "chat.completion",

@@ -1,0 +1,132 @@
+{
+  "id": "portrait-bjd-trio",
+  "name": "个人照片 → 潮玩 IP 三连",
+  "summary": "上传一张自己的照片，抽出人物特征卡，选定 3D BJD 潮玩风格，先出 4 张主形象挑一张定脸，再用三张形象卡出三套造型 —— 拿手机、搞怪伸舌头、穿瑜伽服吹泡泡。",
+  "stylePresetId": "bjd",
+  "lookCount": 3,
+  "estimatedCredits": 82,
+  "doc": {
+    "nodes": [
+      {
+        "id": "n-source",
+        "type": "source",
+        "position": { "x": 0, "y": 200 },
+        "label": "我的照片",
+        "data": {}
+      },
+      {
+        "id": "n-identity",
+        "type": "identity",
+        "position": { "x": 320, "y": 200 },
+        "label": "人物特征卡",
+        "data": { "text": "", "promptEn": "", "locked": false }
+      },
+      {
+        "id": "n-style",
+        "type": "style",
+        "position": { "x": 640, "y": 200 },
+        "label": "风格：3D BJD 潮玩",
+        "data": {
+          "presetId": "bjd",
+          "name": "3D BJD 潮玩",
+          "promptEn": "3D rendered BJD ball-jointed collectible doll figure, matte resin skin with soft subsurface scattering, oversized glossy doll eyes with catchlights, small nose and delicate lips, subtle visible ball joints at shoulders and wrists, fine fabric weave and real stitching on the clothes, designer toy photography, three-point studio softbox lighting on a seamless solid backdrop, shallow depth of field, octane render, ultra detailed.",
+          "negativeEn": "no photorealistic human skin pores, no anime line art, no flat 2d illustration, no plastic seam artifacts on the face,",
+          "custom": false
+        }
+      },
+      {
+        "id": "n-master",
+        "type": "generate",
+        "position": { "x": 960, "y": 200 },
+        "label": "主形象 ×4",
+        "data": { "count": 4, "size": "768x1024", "isMaster": true }
+      },
+      {
+        "id": "n-look-1",
+        "type": "look",
+        "position": { "x": 1280, "y": -40 },
+        "label": "穿针织衫拿着手机",
+        "data": {
+          "title": "穿针织衫拿着手机",
+          "outfit": "米白色针织冷帽，浅驼色露肩粗针织毛衫，高腰破洞直筒牛仔裤，米白厚底老爹鞋",
+          "pose": "正对镜头站立，双手横持手机、微微低头看屏幕，重心落在一侧",
+          "expression": "专注看屏幕，嘴角自然放松",
+          "details": "纯色浅灰棚拍背景，三点式柔光，衣物针织纹理与破洞毛边清晰",
+          "props": "一部深色直板手机"
+        }
+      },
+      {
+        "id": "n-look-2",
+        "type": "look",
+        "position": { "x": 1280, "y": 200 },
+        "label": "穿针织衫搞怪伸舌头",
+        "data": {
+          "title": "穿针织衫搞怪伸舌头",
+          "outfit": "米白色针织冷帽，浅驼色露肩粗针织毛衫，高腰破洞直筒牛仔裤，米白厚底老爹鞋",
+          "pose": "微微侧身面向镜头，一只手举 V 字手势贴在脸侧，另一只手插进裤袋",
+          "expression": "眯眼笑着伸出舌头搞怪",
+          "details": "纯色浅灰棚拍背景，三点式柔光，与上一套造型保持完全相同的服装",
+          "props": ""
+        }
+      },
+      {
+        "id": "n-look-3",
+        "type": "look",
+        "position": { "x": 1280, "y": 440 },
+        "label": "穿瑜伽服带耳机吹泡泡",
+        "data": {
+          "title": "穿瑜伽服带耳机吹泡泡",
+          "outfit": "藕粉色紧身瑜伽背心，同色高腰瑜伽裤，白色短运动袜",
+          "pose": "侧身站立，双手把泡泡棒托在唇前轻轻吹气",
+          "expression": "嘟嘴吹气，眼睛看向飘起来的泡泡",
+          "details": "纯色浅灰棚拍背景，三点式柔光，空气中几颗透明大泡泡",
+          "props": "白色头戴式耳机，粉色泡泡棒"
+        }
+      },
+      {
+        "id": "n-gen-1",
+        "type": "generate",
+        "position": { "x": 1600, "y": -40 },
+        "label": "出图 ×2",
+        "data": { "count": 2, "size": "768x1024", "isMaster": false }
+      },
+      {
+        "id": "n-gen-2",
+        "type": "generate",
+        "position": { "x": 1600, "y": 200 },
+        "label": "出图 ×2",
+        "data": { "count": 2, "size": "768x1024", "isMaster": false }
+      },
+      {
+        "id": "n-gen-3",
+        "type": "generate",
+        "position": { "x": 1600, "y": 440 },
+        "label": "出图 ×2",
+        "data": { "count": 2, "size": "768x1024", "isMaster": false }
+      },
+      {
+        "id": "n-publish",
+        "type": "publish",
+        "position": { "x": 1920, "y": 200 },
+        "label": "发布到资产库",
+        "data": { "avatarName": "" }
+      }
+    ],
+    "edges": [
+      { "id": "e-source-identity", "source": "n-source", "target": "n-identity" },
+      { "id": "e-identity-style", "source": "n-identity", "target": "n-style" },
+      { "id": "e-style-master", "source": "n-style", "target": "n-master" },
+      { "id": "e-master-look-1", "source": "n-master", "target": "n-look-1" },
+      { "id": "e-master-look-2", "source": "n-master", "target": "n-look-2" },
+      { "id": "e-master-look-3", "source": "n-master", "target": "n-look-3" },
+      { "id": "e-look-1-gen-1", "source": "n-look-1", "target": "n-gen-1" },
+      { "id": "e-look-2-gen-2", "source": "n-look-2", "target": "n-gen-2" },
+      { "id": "e-look-3-gen-3", "source": "n-look-3", "target": "n-gen-3" },
+      { "id": "e-master-publish", "source": "n-master", "target": "n-publish" },
+      { "id": "e-gen-1-publish", "source": "n-gen-1", "target": "n-publish" },
+      { "id": "e-gen-2-publish", "source": "n-gen-2", "target": "n-publish" },
+      { "id": "e-gen-3-publish", "source": "n-gen-3", "target": "n-publish" }
+    ],
+    "viewport": { "x": 40, "y": 60, "zoom": 0.65 }
+  }
+}

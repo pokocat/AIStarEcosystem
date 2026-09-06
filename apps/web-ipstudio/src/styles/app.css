@@ -1,0 +1,144 @@
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+@source '../../../../packages/ui/src/**/*.{js,ts,jsx,tsx}';
+@import 'tw-animate-css';
+@import '@ai-star-eco/ui/styles/globals.css';
+/* ipstudio 专属设计令牌（覆盖在 ui globals 之后） */
+@import './tokens.css';
+/* React Flow 画布基础样式 */
+@import '@xyflow/react/dist/style.css';
+
+@theme {
+  --font-sans: "Manrope", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Newsreader", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-canvas: #f7f9fb;
+  --color-surface: #ffffff;
+  --color-ink: #14202b;
+  --color-ink-2: #5a6873;
+  --color-ink-3: #8a96a1;
+  --color-line: #ebeff3;
+  --color-line-2: #e0e6ec;
+  --color-primary: #12b3de;
+}
+
+/* ── 工具 ─────────────────────────────────────────────────────────────────── */
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-3) transparent;
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--line-3);
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* 档案卡：白底 + 细边 + 石板蓝柔影 */
+@utility ledger-card {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* 编号 / 记录号排版（等宽 + 字距） */
+@utility reg {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* 资产名 / 节点标题（衬线，仅此一处用衬线） */
+@utility asset-name {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+/* 小标签（等宽大写） */
+@utility field-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── React Flow 视觉适配 ─────────────────────────────────────────────────── */
+
+.react-flow {
+  background: var(--canvas);
+}
+
+.react-flow__node {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  /* 节点卡自带边框与阴影，去掉 RF 默认外观 */
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  width: auto;
+}
+
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-hair);
+}
+
+.react-flow__edge-path {
+  stroke: var(--line-3);
+  stroke-width: 1.75;
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--primary);
+}
+
+.react-flow__node.selected .ip-node-frame {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-lift), var(--shadow-ring);
+}
+
+.react-flow__controls-button {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  fill: var(--ink-2);
+}
+
+.react-flow__minimap {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+}
+
+/* React Flow 归属标记按上游要求保留（不隐藏），仅压低视觉权重 */
+.react-flow__attribution {
+  background: transparent;
+  font-size: 9px;
+}
+
+.react-flow__attribution a {
+  color: var(--ink-4);
+}

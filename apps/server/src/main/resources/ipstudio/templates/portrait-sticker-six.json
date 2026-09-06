@@ -1,0 +1,204 @@
+{
+  "id": "portrait-sticker-six",
+  "name": "个人照片 → Q 版表情包六连",
+  "summary": "上传一张自己的照片，抽出人物特征卡，选定 Q 版厚涂风格，先出 4 张主形象定脸，再用六张形象卡出六个表情 —— 开心、无语、委屈、惊讶、生气、犯困。",
+  "stylePresetId": "chibi",
+  "lookCount": 6,
+  "estimatedCredits": 82,
+  "doc": {
+    "nodes": [
+      {
+        "id": "n-source",
+        "type": "source",
+        "position": { "x": 0, "y": 340 },
+        "label": "我的照片",
+        "data": {}
+      },
+      {
+        "id": "n-identity",
+        "type": "identity",
+        "position": { "x": 320, "y": 340 },
+        "label": "人物特征卡",
+        "data": { "text": "", "promptEn": "", "locked": false }
+      },
+      {
+        "id": "n-style",
+        "type": "style",
+        "position": { "x": 640, "y": 340 },
+        "label": "风格：Q 版厚涂",
+        "data": {
+          "presetId": "chibi",
+          "name": "Q 版厚涂",
+          "promptEn": "Chibi style character illustration, two-heads-tall proportions, oversized head and large expressive eyes, tiny rounded body and stubby limbs, thick painterly semi-realistic rendering with soft airbrush shading and clean rounded silhouette, cute sticker-friendly design, soft even lighting on a plain pastel background.",
+          "negativeEn": "no realistic adult body proportions, no harsh outlines, no gritty texture,",
+          "custom": false
+        }
+      },
+      {
+        "id": "n-master",
+        "type": "generate",
+        "position": { "x": 960, "y": 340 },
+        "label": "主形象 ×4",
+        "data": { "count": 4, "size": "1024x1024", "isMaster": true }
+      },
+      {
+        "id": "n-look-1",
+        "type": "look",
+        "position": { "x": 1280, "y": -80 },
+        "label": "开心大笑",
+        "data": {
+          "title": "开心大笑",
+          "outfit": "米白连帽卫衣，浅蓝直筒牛仔裤",
+          "pose": "双手举高握拳欢呼，身体微微后仰",
+          "expression": "张嘴大笑，眼睛笑成月牙",
+          "details": "浅奶油色纯色背景，头顶几颗小星星装饰",
+          "props": ""
+        }
+      },
+      {
+        "id": "n-look-2",
+        "type": "look",
+        "position": { "x": 1280, "y": 60 },
+        "label": "无语翻白眼",
+        "data": {
+          "title": "无语翻白眼",
+          "outfit": "米白连帽卫衣，浅蓝直筒牛仔裤",
+          "pose": "双臂环抱在胸前，头微微偏向一侧",
+          "expression": "眼睛上翻、嘴角平直，一脸无语",
+          "details": "浅奶油色纯色背景，额角一道竖线汗滴装饰",
+          "props": ""
+        }
+      },
+      {
+        "id": "n-look-3",
+        "type": "look",
+        "position": { "x": 1280, "y": 200 },
+        "label": "委屈哭哭",
+        "data": {
+          "title": "委屈哭哭",
+          "outfit": "米白连帽卫衣，浅蓝直筒牛仔裤",
+          "pose": "双手握拳揉在眼睛下方，肩膀内收",
+          "expression": "嘴角向下、眼里含泪，两行夸张卡通泪水",
+          "details": "浅奶油色纯色背景，脸颊两团淡淡红晕",
+          "props": ""
+        }
+      },
+      {
+        "id": "n-look-4",
+        "type": "look",
+        "position": { "x": 1280, "y": 340 },
+        "label": "惊讶张嘴",
+        "data": {
+          "title": "惊讶张嘴",
+          "outfit": "米白连帽卫衣，浅蓝直筒牛仔裤",
+          "pose": "双手捧在脸颊两侧，身体前倾",
+          "expression": "眼睛睁到最大、嘴巴张成圆形",
+          "details": "浅奶油色纯色背景，头顶一个大感叹号装饰",
+          "props": ""
+        }
+      },
+      {
+        "id": "n-look-5",
+        "type": "look",
+        "position": { "x": 1280, "y": 480 },
+        "label": "生气鼓腮",
+        "data": {
+          "title": "生气鼓腮",
+          "outfit": "米白连帽卫衣，浅蓝直筒牛仔裤",
+          "pose": "双手叉腰，重心前压",
+          "expression": "皱眉、鼓起腮帮子生闷气",
+          "details": "浅奶油色纯色背景，头顶一小团卡通怒气符号",
+          "props": ""
+        }
+      },
+      {
+        "id": "n-look-6",
+        "type": "look",
+        "position": { "x": 1280, "y": 620 },
+        "label": "犯困睡着",
+        "data": {
+          "title": "犯困睡着",
+          "outfit": "米白连帽卫衣，浅蓝直筒牛仔裤",
+          "pose": "侧坐着抱住膝盖，头歪向一边",
+          "expression": "闭着眼睛、嘴巴微张犯困",
+          "details": "浅奶油色纯色背景，头侧飘一串 Z 字睡眠符号",
+          "props": ""
+        }
+      },
+      {
+        "id": "n-gen-1",
+        "type": "generate",
+        "position": { "x": 1600, "y": -80 },
+        "label": "出图 ×1",
+        "data": { "count": 1, "size": "1024x1024", "isMaster": false }
+      },
+      {
+        "id": "n-gen-2",
+        "type": "generate",
+        "position": { "x": 1600, "y": 60 },
+        "label": "出图 ×1",
+        "data": { "count": 1, "size": "1024x1024", "isMaster": false }
+      },
+      {
+        "id": "n-gen-3",
+        "type": "generate",
+        "position": { "x": 1600, "y": 200 },
+        "label": "出图 ×1",
+        "data": { "count": 1, "size": "1024x1024", "isMaster": false }
+      },
+      {
+        "id": "n-gen-4",
+        "type": "generate",
+        "position": { "x": 1600, "y": 340 },
+        "label": "出图 ×1",
+        "data": { "count": 1, "size": "1024x1024", "isMaster": false }
+      },
+      {
+        "id": "n-gen-5",
+        "type": "generate",
+        "position": { "x": 1600, "y": 480 },
+        "label": "出图 ×1",
+        "data": { "count": 1, "size": "1024x1024", "isMaster": false }
+      },
+      {
+        "id": "n-gen-6",
+        "type": "generate",
+        "position": { "x": 1600, "y": 620 },
+        "label": "出图 ×1",
+        "data": { "count": 1, "size": "1024x1024", "isMaster": false }
+      },
+      {
+        "id": "n-publish",
+        "type": "publish",
+        "position": { "x": 1920, "y": 340 },
+        "label": "发布到资产库",
+        "data": { "avatarName": "" }
+      }
+    ],
+    "edges": [
+      { "id": "e-source-identity", "source": "n-source", "target": "n-identity" },
+      { "id": "e-identity-style", "source": "n-identity", "target": "n-style" },
+      { "id": "e-style-master", "source": "n-style", "target": "n-master" },
+      { "id": "e-master-look-1", "source": "n-master", "target": "n-look-1" },
+      { "id": "e-master-look-2", "source": "n-master", "target": "n-look-2" },
+      { "id": "e-master-look-3", "source": "n-master", "target": "n-look-3" },
+      { "id": "e-master-look-4", "source": "n-master", "target": "n-look-4" },
+      { "id": "e-master-look-5", "source": "n-master", "target": "n-look-5" },
+      { "id": "e-master-look-6", "source": "n-master", "target": "n-look-6" },
+      { "id": "e-look-1-gen-1", "source": "n-look-1", "target": "n-gen-1" },
+      { "id": "e-look-2-gen-2", "source": "n-look-2", "target": "n-gen-2" },
+      { "id": "e-look-3-gen-3", "source": "n-look-3", "target": "n-gen-3" },
+      { "id": "e-look-4-gen-4", "source": "n-look-4", "target": "n-gen-4" },
+      { "id": "e-look-5-gen-5", "source": "n-look-5", "target": "n-gen-5" },
+      { "id": "e-look-6-gen-6", "source": "n-look-6", "target": "n-gen-6" },
+      { "id": "e-master-publish", "source": "n-master", "target": "n-publish" },
+      { "id": "e-gen-1-publish", "source": "n-gen-1", "target": "n-publish" },
+      { "id": "e-gen-2-publish", "source": "n-gen-2", "target": "n-publish" },
+      { "id": "e-gen-3-publish", "source": "n-gen-3", "target": "n-publish" },
+      { "id": "e-gen-4-publish", "source": "n-gen-4", "target": "n-publish" },
+      { "id": "e-gen-5-publish", "source": "n-gen-5", "target": "n-publish" },
+      { "id": "e-gen-6-publish", "source": "n-gen-6", "target": "n-publish" }
+    ],
+    "viewport": { "x": 40, "y": 120, "zoom": 0.55 }
+  }
+}
