@@ -22,6 +22,9 @@ import {
   qualityClassFor,
 } from "@/constants/digital-person-ui";
 import { DigitalPersonApi } from "@/api";
+import { USE_MOCK } from "@/api/_client";
+import { ModuleNotice, type ModuleState } from "./module-notice";
+
 
 function fmtClock(sec: number): string {
   if (!sec) return "-";
@@ -31,22 +34,28 @@ function fmtClock(sec: number): string {
 }
 
 export function DigitalPersonPanel() {
-  const [models, setModels] = React.useState<PersonModel[]>(MODELS_SEED);
-  const [genTasks, setGenTasks] = React.useState<DigitalPersonGenTask[]>(TASKS_SEED);
+  // USE_MOCK 时用演示数据；真环境一律从空开始，拿不到就空着（§8.0：不拿假数据冒充）。
+  const [models, setModels] = React.useState<PersonModel[]>(USE_MOCK ? MODELS_SEED : []);
+  const [genTasks, setGenTasks] = React.useState<DigitalPersonGenTask[]>(USE_MOCK ? TASKS_SEED : []);
+  const [modState, setModState] = React.useState<ModuleState>(USE_MOCK ? "ready" : "loading");
   const [tab, setTab] = React.useState<"models" | "tasks">("models");
   const [modelTypeFilter, setModelTypeFilter] = React.useState<PersonModelType | "all">("all");
-  const [selectedModel, setSelectedModel] = React.useState<PersonModel | null>(MODELS_SEED[0] ?? null);
+  const [selectedModel, setSelectedModel] = React.useState<PersonModel | null>(USE_MOCK ? (MODELS_SEED[0] ?? null) : null);
   const [showGenModal, setShowGenModal] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
     Promise.all([
-      DigitalPersonApi.listModels().catch(() => [] as PersonModel[]),
-      DigitalPersonApi.listGenTasks().catch(() => [] as DigitalPersonGenTask[]),
+      DigitalPersonApi.listModels(),
+      DigitalPersonApi.listGenTasks(),
     ]).then(([m, t]) => {
       if (cancelled) return;
-      if (m.length > 0) { setModels(m); setSelectedModel(m[0] ?? null); }
-      if (t.length > 0) setGenTasks(t);
+      setModels(m);
+      setSelectedModel(m[0] ?? null);
+      setGenTasks(t);
+      setModState("ready");
+    }).catch(() => {
+      if (!cancelled) setModState("unavailable");
     });
     return () => { cancelled = true; };
   }, []);
@@ -56,7 +65,7 @@ export function DigitalPersonPanel() {
   const stats = [
     { label: "形象模型",   value: models.filter(m => m.type === "appearance").length, color: "text-cyan-400" },
     { label: "声音模型",   value: models.filter(m => m.type === "voice").length, color: "text-purple-400" },
-    { label: "今日生成",   value: DIGITAL_PERSON_KPI.todayGen, color: "text-pink-400" },
+    { label: "今日生成",   value: USE_MOCK ? DIGITAL_PERSON_KPI.todayGen : "—", color: "text-pink-400" },
     { label: "审核中",     value: genTasks.filter(t => t.status === "review").length, color: "text-amber-400" },
   ];
 
@@ -73,6 +82,8 @@ export function DigitalPersonPanel() {
           <Zap className="w-3.5 h-3.5" />新建生成任务
         </button>
       </div>
+
+      <ModuleNotice state={modState} name="AI 数字人中心" />
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">

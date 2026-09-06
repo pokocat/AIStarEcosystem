@@ -218,6 +218,31 @@ class ClipRenderWorkerStateTest {
         assertEquals(List.of("video:clip/audio/1.mp3", "video:clip/audio/2.mp3"), rows.stream().map(row -> row.get("taskId")).toList());
     }
 
+    /** WORKPLAN §1.6：失败要落到**具体哪一段**，端上才能指着那一段说话，而不是笼统一句「出片失败」。 */
+    @Test
+    void failureIsPinnedToTheSegmentThatWasBeingWorkedOn() {
+        ClipRenderJob job = job("generating", "avatar", false);
+        job.setSegmentJobsJson(new java.util.LinkedHashMap<>(Map.of("segments", List.of(
+                new java.util.LinkedHashMap<>(Map.of("no", 1, "role", "avatar", "audioCdnKey", "a1", "videoCdnKey", "v1")),
+                new java.util.LinkedHashMap<>(Map.of("no", 2, "role", "avatar", "audioCdnKey", "a2")),
+                new java.util.LinkedHashMap<>(Map.of("no", 3, "role", "avatar"))))));
+        when(jobs.findById(job.getId())).thenReturn(Optional.of(job));
+
+        state.fail(job.getId(), "CLIP_ENGINE_CALL_FAILED", "视频生成失败：上游拒绝");
+
+        assertEquals("failed", job.getStatus());
+        assertEquals("CLIP_ENGINE_CALL_FAILED", job.getSegmentJobsJson().get("errorCode"));
+        List<Map<String,Object>> rows = com.aistareco.aep.clip.dto.ClipDtos.mapListValue(job.getSegmentJobsJson().get("segments"));
+        assertNull(rows.get(0).get("errorCode"), "已经做完的段不该被染红");
+        assertEquals("failed", rows.get(1).get("status"));
+        assertEquals("CLIP_ENGINE_CALL_FAILED", rows.get(1).get("errorCode"));
+        assertNull(rows.get(2).get("status"), "后面那些是没轮到，不是失败");
+
+        List<com.aistareco.aep.clip.dto.ClipDtos.JobSegmentDto> view =
+                com.aistareco.aep.clip.dto.ClipDtos.JobDto.from(job).segments();
+        assertEquals(List.of("done", "failed", "failed"), view.stream().map(v -> v.status()).toList());
+    }
+
     private static ClipRenderJob job(String status, String stage, boolean mock) {
         return ClipRenderJob.builder().id("cj_1").externalOwnerId("owner-1").projectId("cp_1")
                 .clientRequestId("request-001").status(status).stage(stage).mock(mock)

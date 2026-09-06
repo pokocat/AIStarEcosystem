@@ -21,12 +21,17 @@ public class ClipRenderWorker {
             try{
                 if(state.acquire(row.getId(),workerId,ACTIVE)==0)continue;
                 state.advance(row.getId(),workerId);
-            }catch(Exception e){state.fail(row.getId(),"视频生成失败："+safe(e.getMessage()));}
+            }catch(Exception e){state.fail(row.getId(),errorCode(e),"视频生成失败："+safe(e.getMessage()));}
         }
     }
 
     /** 与普通 worker 独立的 stale reaper：重启/崩溃后非终态不会永久卡住。 */
     @Scheduled(fixedDelayString="${aep.clip.reaper-delay-ms:60000}")
-    public void reap(){Instant cutoff=Instant.now().minusMillis(Math.max(60_000,props.getStaleMs()));for(ClipRenderJob j:jobs.findTop100ByStatusInAndHeartbeatAtBefore(ACTIVE,cutoff))state.fail(j.getId(),"任务长时间无心跳，已自动终止");}
+    public void reap(){Instant cutoff=Instant.now().minusMillis(Math.max(60_000,props.getStaleMs()));for(ClipRenderJob j:jobs.findTop100ByStatusInAndHeartbeatAtBefore(ACTIVE,cutoff))state.fail(j.getId(),"CLIP_RENDER_TIMEOUT","任务长时间无心跳，已自动终止");}
+    /** 段级状态要的是一个稳定可判的码，不是一句话。业务异常自带码，其余一律算引擎调用失败。 */
+    private static String errorCode(Exception e){
+        return e instanceof com.aistareco.common.BusinessException be&&be.getCode()!=null&&!be.getCode().isBlank()
+                ?be.getCode():"CLIP_ENGINE_CALL_FAILED";
+    }
     private static String safe(String s){if(s==null||s.isBlank())return"未知错误";return s.substring(0,Math.min(160,s.length()));}
 }

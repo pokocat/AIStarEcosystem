@@ -21,9 +21,14 @@ import {
   ASSET_VERSION_LABELS,
 } from "@/constants/asset-ui";
 import { AssetApi } from "@/api";
+import { USE_MOCK } from "@/api/_client";
+import { ModuleNotice, type ModuleState } from "./module-notice";
+
 
 export function AssetVaultPanel() {
-  const [assets, setAssets] = React.useState<Asset[]>(ASSETS_SEED);
+  // USE_MOCK 时用演示数据；真环境一律从空开始，拿不到就空着（§8.0：不拿假数据冒充）。
+  const [assets, setAssets] = React.useState<Asset[]>(USE_MOCK ? ASSETS_SEED : []);
+  const [modState, setModState] = React.useState<ModuleState>(USE_MOCK ? "ready" : "loading");
   const [search, setSearch] = React.useState("");
   const [typeFilter, setTypeFilter] = React.useState<AssetType | "all">("all");
   const [statusFilter, setStatusFilter] = React.useState<AssetStatus | "all">("all");
@@ -33,8 +38,11 @@ export function AssetVaultPanel() {
     let cancelled = false;
     AssetApi.listAssets().then(a => {
       if (cancelled) return;
-      if (a.length > 0) setAssets(a);
-    }).catch(() => { /* mock fallback */ });
+      setAssets(a);
+      setModState("ready");
+    }).catch(() => {
+      if (!cancelled) setModState("unavailable");
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -69,6 +77,8 @@ export function AssetVaultPanel() {
           </button>
         </div>
       </div>
+
+      <ModuleNotice state={modState} name="数字资产库" />
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">

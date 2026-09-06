@@ -9,6 +9,23 @@
 
 ---
 
+## 2026-09-06 · AI IP 工作台 v0.151 后续（真源 `docs/ip-studio-plan.md` §8）
+
+- [ ] **infra 部署登记缺失**：`infra/scripts/build-release.sh` 的 `DEFAULT_SERVICES` / `build_web_*` / `export_auth_env`、nginx vhost（建议 `ipstudio.aibuzz.cn`）、systemd 单元、账号中心 `client_id` 均未为 `web-ipstudio` 登记；上线前必须补，否则只能本地跑。
+- [ ] **一致性打分 + 自动重跑**（§3 ⑥）：用视觉模型比对主图与各 look 的脸部一致性，低于阈值自动重跑一次；打分结果进 `IpRun.output`，前端在候选卡上显示。
+- [ ] **增量发布**：已发布项目再加 look 时追加到同一 `DapAvatar`（现 409 `IP_PROJECT_ALREADY_PUBLISHED`，`IpPublishService`）。
+- [ ] **独立产品码 `ipstudio`**：若要单独售卖 / 单独开通，需加 `PlatformSupport.ALL`、`SubProduct`、`ProductRouteTable` 路由（把 `/api/v1/ip-studio/**` 从 aiavatar 兜底里拆出）与 BUSINESS_RULES 表。
+- [ ] **`DapMultimodalClient` 不读 `AiAppEndpointCandidate.maxRefImages`**：ipstudio 参考图上限现用固定 `aep.ipstudio.max-ref-images=4`（`IpRunService.compile*`），换成按绑定端点能力裁剪。
+- [ ] **识别「引擎不支持看图」只能事后**：`DAP_PERSONA` 绑的模型若不接图片，`dap.ip_identity` 首次调用才失败为 502 `IP_IDENTITY_EXTRACT_FAILED`（冻结已释放）；admin 端点能力若加 `supportsVision` 可前置到 preflight。
+- [ ] **视频节点**：接 clip 域（口播）或 `DAP_VIDEO`（转身 / 运镜），产出挂 `DapDerivative`。
+- [ ] **`specs/openapi.yaml` 非严格合法 YAML（既有）**：8 行未加引号的流式标量含 `?`/`[`/`]`（约 57 / 1653 / 5910–5920 / 8170 行，celebrity / music / clip 段），`check-api-contract.mjs` 是正则解析看不出；换真 YAML 解析器的工具会炸。ipstudio 新增块本身可独立通过 `yaml.safe_load`。
+- [ ] **本地 dev H2（`apps/server/data/aistareco.mv.db`）里 V25 校验和与仓内文件不一致**：是 v0.149 开发期改过已执行迁移留下的本地状态，`server-8085` 起不来；要么 `flyway repair`，要么删本地库重建。联调临时用了 `server-8085-dap-fake`（独立 `data/aistareco-e2e`）。
+- [ ] `IpRunWorker.isCancelRequested` 每张图重查一次行（同 `DapJobRunner.checkCancel`），主形象 4 张多 4 次 select，可忽略；若改批量出图再优化。
+- [ ] mock 模式上传用 `URL.createObjectURL`，刷新即丢；仅影响演示。
+- [ ] **Codex 评审后置的 P2（2026-09-06，均已确认存在）**：① `ip_run` 无 `@Version`，reaper 与 worker 都能写终态（reaper 把 cost 置 0 可能误报已 commit 的图）→ 终态改 CAS `UPDATE … WHERE status='running'` 或加乐观锁，reaper 的 cost 从账本推导；② 同节点 409 是先查后插、发布是先查后建，双击会双冻结 / 双建 `DapAvatar` → `run()` / `publish()` 开头对 `ip_project` 行加悲观锁；③ 软删项目不取消其 running 运行 → `remove` 时给该项目的运行置 `cancelRequested`；④ commit-then-persist 的崩溃窗口（付了一张、候选没落库；文件仍在 `ipstudio_gen/<owner>` 可人工对账）—— 仓内既有范式，接受。
+- [ ] 画布页在 <1100px 宽时左右侧栏把画布挤成一条（`canvas-shell.tsx`），需要可折叠侧栏或按宽度自动收起；桌面 ≥1280 正常。
+- [ ] **dev-login 返回体 `user.enrollments=[]`，共享 `AuthProvider` 据此把 `hasPlatformAccess` 判成 false → 登录后闪一屏「未开通」门禁，等 `/api/me` 回来才恢复**（web-star / web-ipstudio 同样受影响，`DevAuthController` 或 `AuthProvider.loginAs` 二选一修：要么 dev-login 也带 enrollments，要么 `loginAs` 后立即拉 `/me` 再判）。ipstudio 真联调 2026-09-06 复现。
+
 ## 2026-09-04 · 统一账号中心（服务在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)，设计真源 `docs/unified-identity-plan.md`）
 
 > 2026-09-04 抽离：账号中心自身的代码与部署资产（nginx / systemd / env / JWK 脚本 / 部署脚本）全在新仓 `deploy/`；本仓只留消费方接入。下面凡标「账号中心侧」的条目，改到那个仓去做。
@@ -113,13 +130,57 @@
 - [ ] 为 `DapAvatar` / `DapVoice` 本次新增的引擎字段补正式 Flyway 迁移；当前 v0.110 仍依赖 `ddl-auto=update`，`V14__add_clip_domain.sql` 只建 clip 四表。等全仓 Flyway 接管策略确认后再迁，避免与既有表结构漂移冲突。
 - [ ] 生产接入前跑 MySQL 迁移演练、多实例租约/杀进程恢复、长任务 stale reaper、真实供应商限流与成本压测；mock 完成不算验收。
 
+## 2026-09-06 · 线上域名串站排查与收口（客户反馈「链接打开不太对」）
+
+排查结论：`aibuzz.cn` 是 Alidns 泛解析（`* A 47.98.162.120`，DNS 通配符按 RFC 4592 匹配任意层级），
+但 TLS 通配符 `*.aibuzz.cn` **只覆盖一级** —— `www.music.aibuzz.cn` 这类两级名字先证书红页，
+用户点「继续」后又因为没有 443 vhost 落到 443 默认站（字典序第一 = admin），302 到后台登录页。
+日志实测 2026-09-01~06：`www.drama` 252 次 / `www.music` 240 次 / `www.admin` 121 次 / `www.bossclub` 105 次
+打的全是 `/api/admin/*`、`/admin/login`。详见 `infra/README.md` §5.1 / §5.2 / §5.3。
+
+- [x] ~~443 无兜底默认站，未登记 host 静默串到 admin~~（**完成，2026-09-06**）：新增 `000-default-ssl.conf`
+  （`listen 443 ssl default_server`，未登记 host → 404 纯文本 + 单独记 `/var/log/nginx/unmatched-ssl.log`，
+  故意不发 HSTS、不 301 到主站）。仓库同步 `infra/nginx/000-default-ssl.conf.example`。
+- [x] ~~`www.*` 二级子域证书名不匹配 + 无 vhost~~（**完成，2026-09-06**）：用本机 certbot + `aliyun` CLI
+  DNS-01 重签 Let's Encrypt 证书（2026-09-06 → **2026-12-05**），SAN 从 5 个增到 14 个，
+  新增 `www.{music,drama,star,aiavatar,aislides,admin,id,api,bossclub}.aibuzz.cn`；
+  新增 `www-redirect.conf` 把全部 `www.<子域>` 308 跳回不带 www 的地址。
+  `celebrity-ssl.conf` / `aistar.aibuzz.cn.conf` 的 `server_name` 摘掉各自 www 以免重复声明。
+- [x] ~~证书续期无自动化~~（**完成，2026-09-06**）：`~/dev/aliyun/acme/`（certbot config + `alidns-auth.sh` /
+  `alidns-cleanup.sh` DNS-01 钩子 + `deploy-to-ecs.sh` renew_hook），crontab `17 3,15 * * *`，
+  `certbot renew --dry-run` 已跑通。
+- [ ] **续期跑在个人 Mac 上，长期关机 / 换机会失效**：要挪到 ECS 需要一对带 `AliyunDNSFullAccess`
+  的 RAM AK/SK（ECS 上没配 aliyun CLI 凭据），配好后三个脚本原样搬过去即可。**2026-12-05 前必须落实。**
+- [ ] **`api.aibuzz.cn:80` 仍不跳 HTTPS**：其余七个子域已统一 308 跳转，api 的 80 保留明文直通 8080，
+  因为不确定有无老集成在用。确认无 http 调用方后改成 308 —— 否则 JWT 会明文过网。
+- [ ] **`aistareco.conf` 的 `listen 80 default_server`（`server_name 47.98.162.120`）未登记 host 仍回带货站首页**：
+  比落到后台好，但仍是串站。要收口需同时确认 `verify.sh` 的 `PUBLIC_BASE=http://47.98.162.120`
+  与 `/liuyue` 静态演示不受影响。
+- [ ] **AGENTS.md 关于统一账号中心「未上线」的描述已过时**（2026-09-06 审计）：线上 release
+  `20260905115515-fc8c8702` / `20260905120453-fc8c8702` 的 manifest 明确是
+  `NEXT_PUBLIC_AUTH_MODE='id'` + `NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`，
+  五个 web app 已按统一账号中心构建并上线，`id.aibuzz.cn` 的 OIDC discovery / JWKS / 登录页实测均正常。
+  需要同步 AGENTS.md 第 1 节与 v0.149 版本行，以及 `docs/unified-identity-plan.md` §9 的阶段状态。
+- [ ] **web-music 制作工坊四个模块后端从未实现**（2026-09-06 定位）：`/me/{assets,clip-tasks,person-models,
+  digital-person/gen-tasks,batch-tasks,mix-templates}` 在 `specs/openapi.yaml` 里有登记（所以 contract 门过得去），
+  但 server 无对应 controller，`ProductRouteTableCoverageTest` 枚举真实 handler 也就照不到它们，
+  运行时被 `EnrollmentGuard` fail-closed 成 403 `PRODUCT_ROUTE_UNMAPPED`（生产日志 2026-09-06 15:11–15:14 实测 6 次）。
+  前端已改为「不拿 mock 冒充」（见下条），但**模块本身仍是空壳**：要么补后端，要么把这四个入口从
+  `apps/web-music/src/constants/nav.ts` 隐藏。
+- [x] ~~web-music 四个面板在生产环境把 mock 演示数据当真数据展示~~（**完成，2026-09-06**）：
+  `AssetVaultPanel` / `ClipStudioPanel` / `DigitalPersonPanel` / `BatchMixPanel` 此前用 `@/mocks/*`
+  作 `useState` 初值，真接口失败又被 `.catch(() => {})` 吞掉，于是线上给用户看的是假记录（还带具体的
+  「合作方」「今日完成」数字），违反 AGENTS.md §8.0。现改为 `USE_MOCK ? SEED : []` +
+  新增 `module-notice.tsx` 明确提示「还在建设中，暂时没有数据」，写死的演示 KPI 在真环境显示「—」。
+  已构建部署（release `20260906081358-fc8c8702`，构建参数与线上 manifest 逐项一致）。
+
 ## 2026-08-29 · nginx 443 vhost 补齐（v0.136）
 
 - [x] ~~仓库 `infra/nginx/` 缺 music / drama / aiavatar / star 的 443 SSL example~~（**v0.136 完成，2026-08-29**）：新增 `{music,drama,aiavatar,star,celebrity,api}.aibuzz.cn.ssl.conf.example` 六份；前五份的 `server` 块与线上 `/etc/nginx/conf.d/` 对应文件逐字节一致（已 diff 校验），七份合起来过 `nginx -t`（docker nginx:1.27-alpine）。`infra/README.md` 新增 **§5.1「每子域必须同时有 80 和 443」**（含 443 默认站机制、线上 vhost 清单、泛域名证书副本台账、新增子域 checklist + 实测过的验证脚本），`docs/INDEX.md` last-reviewed 同步。
-- [ ] **`api.aibuzz.cn` 缺 443 vhost（线上仍存在的同类 bug）**：`aistareco.conf:151` 只有 80 block，`https://api.aibuzz.cn/` 落到 443 默认站 admin 并 302 到 `/admin`（2026-08-29 实测 `curl -sI https://api.aibuzz.cn/` → `location: https://api.aibuzz.cn/admin`；`http://` 为 404 属正常，命中 server 根路径）。修法：装 `infra/nginx/api.aibuzz.cn.ssl.conf.example` 到 `/etc/nginx/conf.d/api.aibuzz.cn.ssl.conf` 后 `nginx -t && systemctl reload nginx`。**修好前不要把 `https://api.aibuzz.cn` 用作支付/短信回调地址或小程序 request 合法域名。**
-- [ ] **泛域名证书 5 处副本目录**（2026-11-08 到期前必须处理）：`/etc/nginx/ssl/{admin,aistar,bossclub,drama}.aibuzz.cn/` 与 `/etc/nginx/certs/celebrity.aibuzz.cn/` 存的是与 `/etc/nginx/certs/aibuzz.cn/` **完全相同**的证书副本（md5 一致，非独立签发），线上 `drama.aibuzz.cn.ssl.conf` / `celebrity-ssl.conf` / `admin.aibuzz.cn.ssl.conf` 仍指向各自副本。续期若只换 canonical 目录，这几个域会继续用旧证书直到过期。修法二选一：把线上配置改指共享路径（仓库 example 已收敛），或让续期脚本覆盖全部 6 个路径。
-- [ ] 清理 `infra/nginx/{star,aistar}.aibuzz.cn.conf.example` 两份历史「80+443 单文件」example：其 443 块缺 `/api/` `/static/` `/cdn/` 三个反代（装上去前端能开但接口全 404），且引用的 `/etc/nginx/ssl/star.aibuzz.cn/` 线上并不存在。已在 README §5.1 标注「勿再安装」，待确认无人引用后删除。
-- [ ] `aibuzz.cn` 顶级域从 ECS 本机与本地 curl 均 `000`（`www.aibuzz.cn` 正常 200）。本地 DNS 被 VPN 劫持到 198.18.0.0/15，未能确诊，**与本次 443 改动无关**，需在干净网络下复验 DNS A 记录与安全组。
+- [x] ~~**`api.aibuzz.cn` 缺 443 vhost（线上仍存在的同类 bug）**~~（**完成，2026-09-06**：已装 `api.aibuzz.cn.ssl.conf`，`https://api.aibuzz.cn/api/me/profile` 实测直通 8080 返回 401 后端 JSON，不再 302 到 /admin）：`aistareco.conf:151` 只有 80 block，`https://api.aibuzz.cn/` 落到 443 默认站 admin 并 302 到 `/admin`（2026-08-29 实测 `curl -sI https://api.aibuzz.cn/` → `location: https://api.aibuzz.cn/admin`；`http://` 为 404 属正常，命中 server 根路径）。修法：装 `infra/nginx/api.aibuzz.cn.ssl.conf.example` 到 `/etc/nginx/conf.d/api.aibuzz.cn.ssl.conf` 后 `nginx -t && systemctl reload nginx`。**修好前不要把 `https://api.aibuzz.cn` 用作支付/短信回调地址或小程序 request 合法域名。**
+- [x] ~~**泛域名证书 5 处副本目录**（2026-11-08 到期前必须处理）~~（**完成，2026-09-06**：drama / celebrity / admin / aistar 四处配置已改指 `/etc/nginx/certs/aibuzz.cn/`，只剩非本仓的 `bossclub.aibuzz.cn.conf` 还引用副本；续期脚本 `deploy-to-ecs.sh` 同时覆盖真值目录与全部 5 个副本）：`/etc/nginx/ssl/{admin,aistar,bossclub,drama}.aibuzz.cn/` 与 `/etc/nginx/certs/celebrity.aibuzz.cn/` 存的是与 `/etc/nginx/certs/aibuzz.cn/` **完全相同**的证书副本（md5 一致，非独立签发），线上 `drama.aibuzz.cn.ssl.conf` / `celebrity-ssl.conf` / `admin.aibuzz.cn.ssl.conf` 仍指向各自副本。续期若只换 canonical 目录，这几个域会继续用旧证书直到过期。修法二选一：把线上配置改指共享路径（仓库 example 已收敛），或让续期脚本覆盖全部 6 个路径。
+- [x] ~~清理 `infra/nginx/{star,aistar}.aibuzz.cn.conf.example` 两份历史「80+443 单文件」example~~（**完成，2026-09-06**：不是删除而是扶正 —— 线上 `aistar.aibuzz.cn.conf` 已补齐 `/api/` `/static/` `/cdn/` 并改指共享证书，`star.aibuzz.cn.conf` 改成纯 80 跳转，两份 example 重新与线上逐字节对齐，README §5.1 的「勿再安装」警告已撤销）。原描述：其 443 块缺 `/api/` `/static/` `/cdn/` 三个反代（装上去前端能开但接口全 404），且引用的 `/etc/nginx/ssl/star.aibuzz.cn/` 线上并不存在。已在 README §5.1 标注「勿再安装」，待确认无人引用后删除。
+- [x] ~~`aibuzz.cn` 顶级域从 ECS 本机与本地 curl 均 `000`~~（**审计确认，2026-09-06**：本机 DNS 确实被代理劫持到 198.18.0.0/15，绕开后用 `--resolve` 与 DoH 复验，`aibuzz.cn` 的 A 记录与 vhost 均正常，非线上缺陷）。原描述：本地 DNS 被 VPN 劫持到 198.18.0.0/15，未能确诊，**与本次 443 改动无关**，需在干净网络下复验 DNS A 记录与安全组。
 
 ## 2026-04-21 · admin 调 server 全 403 + 缺排错手段
 

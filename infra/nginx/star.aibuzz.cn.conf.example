@@ -1,32 +1,21 @@
-# AI Star Eco — star.aibuzz.cn HTTPS entry for apps/web-star.
-# Install to: /etc/nginx/conf.d/star.aibuzz.cn.conf
-# Certificate path expected by this file:
-#   /etc/nginx/ssl/star.aibuzz.cn/fullchain.pem
-#   /etc/nginx/ssl/star.aibuzz.cn/privkey.key
-
-include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
+# AI Star Eco — star.aibuzz.cn HTTP(:80) entry for apps/web-star。
+#
+# 2026-09-06：此前 80 直接明文反代 3014，而 443（star.aibuzz.cn.ssl.conf）又发 HSTS，
+# 行为不一致。现统一 308 跳 HTTPS；308 保留方法与 body，POST 不会被降级成 GET。
+# 真正的服务端配置在 star.aibuzz.cn.ssl.conf（443，含 /api/ /static/ /cdn/）。
+#
+# 回滚：sudo cp star.aibuzz.cn.conf.before-http-redirect-20260906 star.aibuzz.cn.conf
+#       && sudo nginx -t && sudo systemctl reload nginx
 
 server {
     listen 80;
     server_name star.aibuzz.cn;
-    return 301 https://$host$request_uri;
-}
 
-server {
-    listen 443 ssl;
-    http2 on;
-    server_name star.aibuzz.cn;
-
-    ssl_certificate /etc/nginx/ssl/star.aibuzz.cn/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/star.aibuzz.cn/privkey.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    add_header Strict-Transport-Security "max-age=31536000" always;
-
-    client_max_body_size 200m;
-
-    location / {
-        proxy_pass http://127.0.0.1:3014;
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
     }
+
+    location / { return 308 https://$host$request_uri; }
 }

@@ -41,6 +41,7 @@
 | [`docs/[Fabel5]drama-consistency-engine-design.md`](%5BFabel5%5Ddrama-consistency-engine-design.md) | AI 短剧（一致性引擎） | 一致性引擎实现级设计（C-1 / D-11 / C-2 / C-3）：末帧 CDN 镜像 + applied_refs 回报 / 一用途多候选端点 + capability / 角色场景实体化 + 三视图 / 服务端参考装配；含 file:line 锚点、失败语义、门禁与冲突点裁决输入（last-reviewed 2026-07-10，C-1 已落地） |
 | [`docs/payment-billing-audit-2026-07.md`](payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本（全栈审计） | 充值·支付网关·账本·业务扣费·对账·退款·风控 全面审计报告 + 落地方案台账：33 项 Findings（2 P0 / 8 P1）+ 决策台账 D1-D8 + T1-T17 分波次 Task 卡（带 file:line + 验收断言）；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
 | [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md) | AiAvatar 平台（产品定位规划） | [fable5] 从「数字人生产工具」到「AI 数字资产平台」的定位跃迁方案：五方向（资产宇宙 / 权利层确权授权分成 / 市场流通 / Asset-as-a-Service 调用层 / 组合打包）+ P0-P3 路线图 + 现状事实速查；仅方案未改造，供后续执行 agent 作工作输入（last-reviewed 2026-07-09） |
+| [`docs/ip-studio-plan.md`](ip-studio-plan.md) | **AI IP 工作台（`apps/web-ipstudio`，3015）设计真源** | 个人照片 + 内置工作流 → 稳定产出同一人物同一风格的 AI IP 形象组，发布为 AiAvatar 资产（`DapAvatar` + `DapLook`）。决策：新桌面子应用、共用 aiavatar 开通、React Flow 画布（借 infinite-canvas 形态不搬代码）、全部复用 dap 生成链；§2 节点/运行契约、§3 五层一致性锁定、§4 服务端、§9 并行分工与文件所有权（last-reviewed 2026-09-06，v0.151） |
 | [`docs/aiavatar-asset-hub-redesign.md`](aiavatar-asset-hub-redesign.md) | AiAvatar 平台（**中枢重构真源**） | 数字资产升格为生态资产中枢的产品 + 前端重构设计：四动词模型（注册/引用/回流/授权）+ 档案卡 + 两条铁律（不阻塞下游 / 联邦不集中）+ 新 IA 五路由 + /studio 双轨迁移 + P1-P4 分期；P1（真路由读界面）已落地（last-reviewed 2026-08-29） |
 | [`docs/clip-avatar-video-plan.md`](clip-avatar-video-plan.md) | **`clip` 口播视频线**（军师小程序分包） | v0.135：本人素材单次直传、多数字人、逐句字幕与总装；最终音轨两遍归一并为 AAC 峰值回弹留余量，真实文件继续过严格质量门（last-reviewed 2026-08-18）。 |
 
@@ -99,7 +100,7 @@
 
 | 文档 | 用途 |
 |---|---|
-| [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引；**§5.1 nginx vhost 硬规则**（每子域必须同时有 80 和 443，否则 HTTPS-First / HSTS 会落到 443 默认站 admin）+ 线上 vhost 清单 / 泛域名证书副本台账 / 新增子域 checklist（last-reviewed 2026-08-29，v0.136 nginx 443 vhost example 补齐） |
+| [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引；**§5.1 nginx vhost 硬规则**（每子域必须同时有 80 和 443；443 已有 `000-default-ssl.conf` 兜底）+ **§5.2 www.\* 二级子域**（DNS 泛解析匹配任意层级，TLS 通配符只覆盖一级 —— 客户「链接打开不太对」的真因）+ **§5.3 证书与 certbot+Alidns 自动续期**（到期 2026-12-05）+ 线上 vhost 清单 / 新增子域 checklist（last-reviewed 2026-09-06） |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | Agent 部署技能入口：本地 artifact 部署、按应用部署、GitHub Actions 流水线部署、验证与排障 |
 | [`docs/ALIPAY_SANDBOX.md`](ALIPAY_SANDBOX.md) | **支付宝直连沙箱联调 Runbook**（v2 §6 driver=alipay）：拿沙箱凭证 → 本机配置 → 纯查单兜底 / 公网回调两种姿势 → 验证 → 上生产换 4 项（last-reviewed 2026-06-27） |
 | [`infra/scripts/update-and-deploy.sh`](../infra/scripts/update-and-deploy.sh) | ECS 本机一键更新部署：补依赖、`git pull --ff-only`、build release、落位、restart、verify |

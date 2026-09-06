@@ -1,0 +1,52 @@
+# AI Star Eco — www.<子域>.aibuzz.cn 统一 308 跳到不带 www 的正式地址。
+# 2026-09-06 新增。
+#
+# 【背景】DNS 是泛解析（*.aibuzz.cn → 47.98.162.120），所以 www.music.aibuzz.cn
+# 这种两级名字也解析得通；但旧的泛域名证书 SAN 只有 *.aibuzz.cn（只覆盖一级）
+# 加三个显式 www，于是 www.music / www.drama / www.star / www.aiavatar 打开时
+# 先是证书名不匹配红页，用户点「继续」之后又因为没有 443 vhost 落到后台登录页。
+# 日志实测过去 6 天 www.drama 252 次、www.music 240 次、www.admin 121 次。
+#
+# 【修法】同日重签的证书已把这些 www 名字全部写进 SAN（到期 2026-12-05），
+# 本文件再给它们一个真正的 vhost，统一跳回正式域名 —— 不再 404，也不再串站。
+# 用 308 而不是 301：保留请求方法与 body。
+#
+# 注意：www.aibuzz.cn（主站 apex 的 www）不在这里，它与 aibuzz.cn 成对配置在
+# aibuzz-ssl.conf；www.gallery 同理在 gallery.aibuzz.cn.conf。不要重复声明，
+# 否则 nginx 会报 conflicting server name 并忽略后加载的那个。
+#
+# 回滚：rm 本文件（www.* 会退回 000-default-ssl.conf 的 404 兜底）
+#       && sudo nginx -t && sudo systemctl reload nginx
+
+map $host $aep_naked_host {
+    ~^www\.(?<aep_rest>.+)$  $aep_rest;
+    default                  $host;
+}
+
+server {
+    listen 80;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+
+    server_name www.music.aibuzz.cn
+                www.drama.aibuzz.cn
+                www.celebrity.aibuzz.cn
+                www.star.aibuzz.cn
+                www.aiavatar.aibuzz.cn
+                www.aistar.aibuzz.cn
+                www.aislides.aibuzz.cn
+                www.admin.aibuzz.cn
+                www.id.aibuzz.cn
+                www.api.aibuzz.cn
+                www.wxapi.aibuzz.cn
+                www.bossclub.aibuzz.cn;
+
+    ssl_certificate /etc/nginx/certs/aibuzz.cn/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/aibuzz.cn/privkey.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    return 308 https://$aep_naked_host$request_uri;
+}

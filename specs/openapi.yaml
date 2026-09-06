@@ -2901,9 +2901,22 @@ components:
         total: { type: integer }
         summary: { type: object }
 
+    ClipJobSegmentStatus:
+      type: object
+      description: >
+        段级出片状态（v0.150）。**只读投影**，真值仍是 clip_render_job.segmentJobsJson。
+        no 与 ClipShotPlan.materialize 的镜头编号同源，也就是 ClipTtsPreview.segments 的那套编号，
+        两个接口可以直接对齐。结尾固定段不需要生成，恒为 done。
+      required: [no, role, status]
+      properties:
+        no: { type: integer }
+        role: { type: string, enum: [avatar, broll, tail] }
+        status: { type: string, enum: [queued, generating, done, failed] }
+        errorCode: { type: string, nullable: true, description: 'status=failed 时必有；如 CLIP_ENGINE_CALL_FAILED / CLIP_RENDER_TIMEOUT / CLIP_RENDER_CANCELLED' }
+
     ClipJob:
       type: object
-      required: [id, projectId, status, stage, progress, mock, updatedAt]
+      required: [id, projectId, status, stage, progress, mock, updatedAt, segments]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -2914,6 +2927,157 @@ components:
         errorMessage: { type: string, nullable: true }
         mock: { type: boolean }
         updatedAt: { type: string, format: date-time }
+        segments:
+          type: array
+          description: 'worker 还没写过状态（刚入队、或 force-mock 的确定性任务）时为空数组，调用方回落到整体进度。'
+          items: { $ref: '#/components/schemas/ClipJobSegmentStatus' }
+
+    ClipTtsPreviewSegment:
+      type: object
+      required: [no, durationSec, startSec]
+      properties:
+        no: { type: integer, description: 镜头编号，与 ClipJobSegmentStatus.no 同源 }
+        audioUrl: { type: string, nullable: true, description: '我方存储的短期签名 URL；还没合成、或该段不配音（结尾固定段）时为 null' }
+        durationSec: { type: number, description: '已合成的用真实时长，未合成的先给按字数的估算，好让时间轴在生成过程中也能用' }
+        startSec: { type: number, description: 前面各段 durationSec 的累加 }
+
+    ClipTtsPreview:
+      type: object
+      description: >
+        配音预览时间线（v0.150，WORKPLAN 2026-09-05 §1.5）。逐段用项目当前 voiceId 的 V2 音色合成，
+        结果先镜像我方存储再出短期签名 URL。timelineHash 是「voiceId + 每镜 no/role/文案」的 sha256，
+        文案或音色一变旧结果即作废。**credits 恒为 0**：Scheme A 下 clip 域不碰钻石账本，试听只花供应商点数；
+        字段仍显式返回，好让调用方区分「本轮免费」与「老版本服务端没这个概念」。
+        注意服务端全局 non_null 序列化：errorCode / errorMessage 为空时字段**直接不出现**，等价于 null。
+      required: [status, timelineHash, totalDurationSec, segments, credits]
+      properties:
+        status: { type: string, enum: [generating, ready, failed] }
+        timelineHash: { type: string, example: 'sha256:9f2b…' }
+        voiceId: { type: string, nullable: true }
+        totalDurationSec: { type: number }
+        segments: { type: array, items: { $ref: '#/components/schemas/ClipTtsPreviewSegment' } }
+        errorCode: { type: string, nullable: true, description: 'CLIP_VOICE_NOT_SELECTED / CLIP_VOICE_NOT_READY / CLIP_ENGINE_NOT_CONFIGURED / CLIP_TTS_FAILED / CLIP_TTS_PREVIEW_TIMEOUT / CLIP_TTS_PREVIEW_STALE / CLIP_NO_SEGMENTS / CLIP_EMPTY_TEXT / CLIP_SEGMENT_TOO_LONG' }
+        errorMessage: { type: string, nullable: true }
+        credits: { type: integer, description: '本次试听需要调用方 hold 的钻石数。当前恒为 0。' }
+
+    # ── AI IP 工作台（apps/web-ipstudio，v0.151；TS 真源 packages/types/src/ip-studio.ts）──
+    # 画布文档（IpProjectDoc）由客户端拥有、服务端整存整取，故只声明为 object 不拆结构 ——
+    # 前端加一个节点字段不该要求后端同步改 schema。
+    IpProjectDoc:
+      type: object
+      description: '画布文档。nodes[] 形如 {id, position{x,y}, label, type=source|identity|style|look|generate|reference|publish, data{…}}；edges[] 形如 {id, source, target}。服务端逐字保存、绝不改写；运行结果与发布结果一律另存（IpRun / dap 实体），否则前端防抖自动保存与异步 worker 会互相覆盖。'
+      required: [nodes, edges]
+      properties:
+        nodes: { type: array, items: { type: object } }
+        edges: { type: array, items: { type: object } }
+        viewport: { type: object, properties: { x: { type: number }, y: { type: number }, zoom: { type: number } } }
+    IpProject:
+      type: object
+      required: [id, name, status, createdAt, updatedAt, doc, runs, runsById]
+      properties:
+        id: { type: string, example: IPP-3f9a1c02 }
+        name: { type: string, maxLength: 128 }
+        templateId: { type: string, nullable: true, description: '内置工作流 id；空 = 空白画布' }
+        status: { type: string, enum: [draft, published] }
+        coverUrl: { type: string, nullable: true, description: '主形象选中图的短期签名 URL。DB 真值是 coverKey（§4.7.4），URL 出 wire 时才派生。' }
+        publishedAvatarId: { type: string, nullable: true, example: DH-51234 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        doc: { $ref: '#/components/schemas/IpProjectDoc' }
+        runs:
+          type: object
+          description: 'nodeId → 该节点最近一次运行的服务端投影。'
+          additionalProperties: { $ref: '#/components/schemas/IpRun' }
+        runsById:
+          type: object
+          description: 'runId → 运行；含 runs 里的全部，外加 doc 里被 generate 节点 selectedRunId 显式选中、却已不是最新的那次（否则画布上的选中图会变空白）。'
+          additionalProperties: { $ref: '#/components/schemas/IpRun' }
+    IpRun:
+      type: object
+      description: '一次节点运行。cost 恒为真实账本值：running = 冻结额，done = 已 commit 之和，failed = 已 commit 的部分（可能为 0）。'
+      required: [id, projectId, nodeId, kind, status, pct, cost, inputs, output, createdAt]
+      properties:
+        id: { type: string, example: IPR-7b21de40 }
+        projectId: { type: string }
+        nodeId: { type: string }
+        kind: { type: string, enum: [identity, generate] }
+        status: { type: string, enum: [running, done, failed] }
+        stage: { type: string, nullable: true, description: 'queued / prompt.compile / identity.extract / image.generate.N / storage.persist / done / failed' }
+        pct: { type: integer }
+        cost: { type: integer }
+        errorCode: { type: string, nullable: true, description: 'IP_IDENTITY_EXTRACT_FAILED / IP_IMAGE_FAILED / IP_RUN_CANCELLED / IP_RUN_TIMEOUT / IP_NODE_INPUT_MISSING / DAP_MODEL_*' }
+        errorMessage: { type: string, nullable: true }
+        inputs:
+          type: object
+          description: '本次实际送模型的输入（透明可查）。服务端执行参数（含 storage key）不出 wire。'
+          properties:
+            prompt: { type: string, description: 'generate 的完整英文提示词（服务端模板拼装，用户可查）' }
+            refs:
+              type: array
+              description: '参考图生效回报。顺序即优先级 master → source → reference…；超过 aep.ipstudio.max-ref-images 的按此顺序砍尾并标 applied=false，绝不静默丢弃。'
+              items:
+                type: object
+                properties:
+                  role: { type: string, enum: [master, source, reference] }
+                  applied: { type: boolean }
+                  reason: { type: string, nullable: true, enum: [over_max_refs] }
+            size: { type: string, enum: ['768x1024', '1024x1024', '768x1365'] }
+            count: { type: integer, enum: [1, 2, 4] }
+        output:
+          type: object
+          properties:
+            text: { type: string, description: 'identity —— 中文结构化人物特征卡' }
+            promptEn: { type: string, description: 'identity —— 英文身份提示词' }
+            candidates:
+              type: array
+              description: 'generate 的候选图。key 是 DB 真值，url 是出 wire 时派生的短期签名地址（不落库）。'
+              items: { type: object, properties: { key: { type: string }, url: { type: string } } }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+    IpTemplate:
+      type: object
+      required: [id, name, summary, lookCount, estimatedCredits, doc]
+      properties:
+        id: { type: string, enum: [portrait-bjd-trio, portrait-sticker-six] }
+        name: { type: string }
+        summary: { type: string }
+        coverUrl: { type: string, nullable: true }
+        stylePresetId: { type: string, nullable: true }
+        lookCount: { type: integer }
+        estimatedCredits: { type: integer, description: '按部署默认单价预估（特征卡 2 + 出图 8 每张）' }
+        doc: { $ref: '#/components/schemas/IpProjectDoc' }
+    IpStylePreset:
+      type: object
+      description: '内置风格。promptEn / negativeEn 逐字拼进出图提示词，不让模型自由发挥。'
+      required: [id, name, summary, promptEn]
+      properties:
+        id: { type: string, enum: [bjd, chibi, pixar3d, flat-vector, guochao-ink, clay] }
+        name: { type: string }
+        summary: { type: string }
+        promptEn: { type: string }
+        negativeEn: { type: string, nullable: true }
+        coverUrl: { type: string, nullable: true }
+    IpPricing:
+      type: object
+      required: [identityCredits, imageCredits]
+      properties:
+        identityCredits: { type: integer, description: 'dap.ip-identity —— 默认 2，admin「权益扣减配置 → 动作单价」可改' }
+        imageCredits: { type: integer, description: 'dap.ip-image —— 默认 8，按张计' }
+    IpUploadResult:
+      type: object
+      required: [key, url, fileName]
+      properties:
+        key: { type: string, description: 'storage key（DB 真值）' }
+        url: { type: string, description: '短期签名 URL' }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        fileName: { type: string, description: '归一后的可读文件名（微信 tmp_* 与长哈希名不进产品 UI）' }
+    IpPublishResult:
+      type: object
+      required: [avatarId, lookIds]
+      properties:
+        avatarId: { type: string, example: DH-51234 }
+        lookIds: { type: array, items: { type: string, example: LK-1a2b3c4d } }
 
 paths:
 
@@ -9043,11 +9207,31 @@ paths:
       tags: [clip]
       security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
       operationId: clipRewriteScript
+      summary: '文案改写。scope=all 时 text 是「改写/生成指令」（一句话 brief，≤500 字）：按模板骨架逐段生成全篇，**不改段数、不改 role**，结尾固定段不动；text 留空则退回「在现有文案上润色」。scope=segment 时 text 是那一句的原文。当前只有确定性引擎，真模型未接入时非 mock 网关一律 503 CLIP_SCRIPT_ENGINE_NOT_CONFIGURED，不会拿模板句冒充生成结果。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [scope], properties: { scope: { type: string, enum: [all, segment] }, no: { type: integer, nullable: true }, text: { type: string, nullable: true } } } } } }
       responses: { '200': { description: rewrite result }, '503': { description: production engine or prompt route not configured } }
   /me/clip/projects/{id}/preview-voice:
     post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipPreviewVoice, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: TTS preview and actual duration } } }
+  /me/clip/projects/{id}/tts-preview:
+    post:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipTriggerTtsPreview
+      summary: '触发配音预览时间线（v0.150）。逐段用项目当前 voiceId 的 V2 音色合成、镜像到我方存储、返回短期签名 URL。幂等：timelineHash（= sha256(voiceId + 每镜 no/role/文案)）不变且上次不是 failed 时直接返回已有结果，不重复调供应商；failed 会重排一次。异步生成，先返回 status=generating，用 GET 轮询。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: 'ClipTtsPreview（status=generating|ready|failed）', content: { application/json: { schema: { $ref: '#/components/schemas/ClipTtsPreview' } } } }
+        '404': { description: project not found for this owner }
+    get:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipGetTtsPreview
+      summary: '轮询配音预览。当前这版文案还没有预览、或只有旧一版文案的预览时返回 404 CLIP_TTS_PREVIEW_NOT_FOUND —— 过期时间轴一律不返回，调用方须重新 POST。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: 'ClipTtsPreview', content: { application/json: { schema: { $ref: '#/components/schemas/ClipTtsPreview' } } } }
+        '404': { description: 'no preview for the current script (CLIP_TTS_PREVIEW_NOT_FOUND)' }
   /me/clip/projects/{id}/estimate:
     post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipEstimate, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: authoritative quote }, '503': { description: pricing not configured } } }
   /me/clip/projects/{id}/render:
@@ -9061,7 +9245,14 @@ paths:
   /me/clip/jobs/by-request/{clientRequestId}:
     get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetJobByClientRequest, parameters: [{ in: path, name: clientRequestId, required: true, schema: { type: string } }], responses: { '200': { description: owner-scoped idempotent render result }, '404': { description: no accepted job for this owner and request id } } }
   /me/clip/jobs/{id}:
-    get: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipGetJob, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: job progress } } }
+    get:
+      tags: [clip]
+      security: [{ clipServiceAuth: [], clipExternalOwner: [] }]
+      operationId: clipGetJob
+      summary: '出片任务进度。v0.150 起加 segments[{no,role,status,errorCode?}]（status=queued|generating|done|failed），数据源是 clip_render_job.segmentJobsJson 的只读投影：no 与 ClipShotPlan.materialize 的镜头编号同源（也就是配音预览的那套编号）。worker 还没写过状态时 segments=[]，调用方回落到整体进度。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: 'job progress with per-segment status', content: { application/json: { schema: { $ref: '#/components/schemas/ClipJob' } } } }
   /me/clip/jobs/{id}/cancel:
     post: { tags: [clip], security: [{ clipServiceAuth: [], clipExternalOwner: [] }], operationId: clipCancelJob, parameters: [{ in: path, name: id, required: true, schema: { type: string } }], responses: { '200': { description: cooperatively cancelled } } }
   /me/clip/assets:
@@ -9196,3 +9387,126 @@ paths:
       description: 预置素材必须经本运营上传路由进入存储，不允许 seed 本机路径。
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [video, image, bgm] }, label: { type: string }, group: { type: string } } } } } }
       responses: { '200': { description: preset asset uploaded } }
+  # ────────────────────────────────────────────────────────────
+  # AI IP 工作台（apps/web-ipstudio，v0.151 ipstudio 领域：com.aistareco.aep.ipstudio.*，表 ip_project / ip_run）
+  # 设计真源 = docs/ip-studio-plan.md；TS 契约真源 = packages/types/src/ip-studio.ts。
+  # 全部 authenticated（Bearer JWT）；共用 aiavatar 开通（X-App-Code: aiavatar），
+  # 已被 ProductRouteTable 的 any("/api/v1/**", AIAVATAR) 兜底，不新增产品码。
+  # 注意：实际挂载于 /api/v1/ip-studio/**；本文件按惯例省略 /api 前缀。
+  # 生成链路全部复用 dap 域（DapMultimodalClient / DapImageInput / FileStorageService /
+  # PromptService / CreditService hold→commit / DapPricingService），故错误码里混有 DAP_*。
+  /v1/ip-studio/templates:
+    get: { tags: [ipstudio], operationId: ipStudioTemplates, description: '内置工作流模板（resources/ipstudio/templates/*.json，随代码发布）。doc 是预排好位置的节点图，照片与参考图为空待填。', responses: { '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IpTemplate' } } } } } } }
+  /v1/ip-studio/styles:
+    get: { tags: [ipstudio], operationId: ipStudioStyles, description: '内置风格预设 6 套（bjd / chibi / pixar3d / flat-vector / guochao-ink / clay）。promptEn 与 negativeEn 逐字进出图提示词。', responses: { '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IpStylePreset' } } } } } } }
+  /v1/ip-studio/pricing:
+    get: { tags: [ipstudio], operationId: ipStudioPricing, description: '单价快照，前端展示预估用。真扣费一律在服务端 hold/commit，前端数字只是告知。', responses: { '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpPricing' } } } } } }
+  /v1/ip-studio/uploads:
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioUpload
+      description: >-
+        上传本人照片 / 局部参考图 → FileStorageService.store(category="ipstudio/source")，
+        key 形如 ipstudio_source/<userId>/<uuid>.<ext>（category 里的 / 归一为 _）。
+        只收 jpg / png（**不收 webp**：标准 JDK ImageIO 没有 WebP 解码器，收下必然失败），
+        ≤ aep.ipstudio.upload-max-bytes（默认 15MB），且必须真能被识别成图片
+        （改后缀的假 png 一样拒）；只读文件头判尺寸、不整图解码，最长边 >
+        aep.ipstudio.upload-max-dimension（默认 8000px）直接拒（decompression bomb）。
+        返回 key（DB 真值）+ 短期签名 url。
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpUploadResult' } } } }
+        '400': { description: 'IP_UPLOAD_INVALID —— 类型 / 大小 / 无法识别的图片内容' }
+  /v1/ip-studio/projects:
+    get: { tags: [ipstudio], operationId: ipStudioProjects, description: '我的 IP 项目卡（summary，coverUrl 已签名）。软删项目不出现。', responses: { '200': { description: ok } } }
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioCreateProject
+      description: '新建项目。带 templateId 时按内置工作流预填整张节点图；不带则是空白画布。'
+      requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string, maxLength: 128 }, templateId: { type: string } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpProject' } } } }
+        '400': { description: IP_TEMPLATE_NOT_FOUND }
+  /v1/ip-studio/projects/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioProject
+      description: '详情 = doc（原样返回）+ runs 投影（每节点最新一次，外加 doc 里被 selectedRunId 选中的旧运行）。'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpProject' } } } }
+        '404': { description: 'IP_PROJECT_NOT_FOUND —— 非本人 / 已删' }
+    put:
+      tags: [ipstudio]
+      operationId: ipStudioUpdateProject
+      description: >-
+        保存 name + doc。doc 整存整取、逐字保存（客户端未知字段也原样保留）；
+        服务端只校验「是含 nodes / edges 数组的对象」与大小上限。
+        运行结果与发布结果永远不写进 doc。
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, doc: { $ref: '#/components/schemas/IpProjectDoc' } } } } } }
+      responses:
+        '200': { description: ok }
+        '400': { description: 'IP_DOC_INVALID —— 不是含 nodes/edges 的对象；IP_DOC_TOO_LARGE —— 超过 aep.ipstudio.doc-max-bytes（默认 2MB）' }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+    delete: { tags: [ipstudio], operationId: ipStudioDeleteProject, description: '软删（行保留，只打 deletedAt）。', responses: { '200': { description: soft deleted }, '404': { description: IP_PROJECT_NOT_FOUND } } }
+  /v1/ip-studio/projects/{id}/nodes/{nodeId}/run:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }, { in: path, name: nodeId, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioRunNode
+      description: >-
+        运行一个 identity 或 generate 节点，立即返回 running 的 IpRun，前端轮询 /v1/ip-studio/runs/{id}。
+        body.doc 可选：运行前顺手保存最新文档，避免「先 PUT 再 POST」的竞态。
+        顺序是硬约束（§8.0）：输入编译 → preflight（引擎 + 提示词）→ hold（单价 × count）→ 派发 worker，
+        preflight 一定在 hold 之前，未配置就 503 且不冻结一分钱、不落 run 行。
+        generate 的参考图按 master（上游主形象节点选中图）→ source（原照片）→ reference… 装配，
+        超上限按此顺序砍尾并在 inputs.refs 如实回报 applied=false / reason=over_max_refs。
+        doc 里的 assetKey / selectedRunId 一律按不可信处理：key 必须是本人上传（ipstudio_source/<uid>/）
+        或本人生成（ipstudio_gen/<uid>/）的，selectedRunId 必须属于本人本项目，否则 400 / 404 且不冻结。
+        运行期落在 IpRun.errorCode 上的还有：IP_REF_UNREADABLE（master / source 参考图读不到 ——
+        宁可失败退款也不降级成没有身份锚的文生图）、DAP_MODEL_BAD_OUTPUT（上游回的字节不是可解码图片，
+        不入库不扣款）、IP_RUN_QUEUE_FULL（线程池排满、派发失败，已释放冻结）。
+      requestBody: { content: { application/json: { schema: { type: object, properties: { doc: { $ref: '#/components/schemas/IpProjectDoc' } } } } } }
+      responses:
+        '200': { description: running, content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
+        '400': { description: 'IP_NODE_NOT_RUNNABLE —— 非 identity/generate 节点；IP_NODE_INPUT_MISSING —— details.missing 列出缺的上游类型 / 字段（identity / identity.promptEn / style / style.promptEn / look / source）；IP_ASSET_KEY_INVALID —— doc 里的 assetKey 不是本人上传 / 生成的 key（前缀必须是 ipstudio_source/<uid>/ 或 ipstudio_gen/<uid>/，且不含 .. / 反斜杠 / 绝对路径）' }
+        '402': { description: '积分不足（CreditService 既有）—— run 行不落库' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / IP_NODE_NOT_FOUND / IP_RUN_NOT_FOUND —— 主形象节点 selectedRunId 指向的运行不属于本人本项目（绝不静默当「没选主图」继续出图）' }
+        '409': { description: 'IP_RUN_ALREADY_RUNNING —— 同节点已有 running run' }
+        '503': { description: 'DAP_ENGINE_NOT_CONFIGURED（含引擎不支持看图时的人设通道未绑定）/ PROMPT_NOT_CONFIGURED —— 均不冻结、不产假产物' }
+  /v1/ip-studio/runs/{id}:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioRun
+      description: '轮询一次运行。generate 的 output.candidates 每张都是「key 真值 + 出 wire 派生的短期签名 url」；失败一定带 errorCode。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
+        '404': { description: IP_RUN_NOT_FOUND }
+  /v1/ip-studio/runs/{id}/cancel:
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioCancelRun
+      description: >-
+        请求取消。只置 cancelRequested，终态由 worker 在阶段间收尾时落（两边都写终态会互相覆盖）。
+        已 commit 的图归用户，剩余冻结释放，运行标 IP_RUN_CANCELLED。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: 'cancel requested（返回的仍是 running，稍后轮询到终态）' }
+        '404': { description: IP_RUN_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/publish:
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioPublish
+      description: >-
+        发布为 AiAvatar 数字资产：建 DapAvatar（path=ai / status=finalized / imageKey=主图 key /
+        basePrompt=identity.promptEn / descPrompt=identity.text / variantKeys=主 generate 全部候选 /
+        v1 初始版本事件）+ 每个 look 一条 DapLook（source=design / status=done / prompt=该次运行的实际提示词）。
+        **零积分** —— 图早在 generate 阶段按张扣过了，发布只是登记；图片也直接复用同一 storage key，不重复上传。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [avatarName, masterNodeId, lookNodeIds], properties: { avatarName: { type: string, minLength: 1, maxLength: 128 }, masterNodeId: { type: string }, lookNodeIds: { type: array, items: { type: string } } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpPublishResult' } } } }
+        '400': { description: 'IP_PUBLISH_SELECTION_REQUIRED —— 主图 / look 未选候选，或节点不是 generate，或选中的运行不属于本人本项目；IP_PUBLISH_NAME_REQUIRED —— avatarName 为空（不再悄悄退回项目名）' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / IP_NODE_NOT_FOUND' }
+        '409': { description: 'IP_PROJECT_ALREADY_PUBLISHED —— P1 不做增量发布' }

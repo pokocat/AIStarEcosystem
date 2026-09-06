@@ -10,15 +10,11 @@
 #   /etc/nginx/certs/aibuzz.cn/fullchain.pem
 #   /etc/nginx/certs/aibuzz.cn/privkey.key
 #
-# ⚠️ 与线上的唯一差异（有意为之，2026-08-29 核对）：
-#    线上 drama.aibuzz.cn.ssl.conf 的 ssl_certificate* 仍指向历史遗留路径
-#      /etc/nginx/ssl/drama.aibuzz.cn/{fullchain.pem,privkey.key}
-#    该目录里放的是**同一张泛域名证书的副本**（md5 与 /etc/nginx/certs/aibuzz.cn/
-#    完全相同），不是独立签发的 drama 单域证书。本 example 统一收敛到共享泛域名
-#    路径，避免续期时漏掉某个副本。`diff` 线上文件时会看到这两行不同，属预期。
-#    /etc/nginx/ssl/{admin,aistar,bossclub,drama}.aibuzz.cn/ 均为同一副本情形。
+# 2026-09-06：线上此前指向 /etc/nginx/ssl/drama.aibuzz.cn/ 的证书副本，已改指
+# 上面这个共享泛域名真值路径 —— 之前那份是同一张证书的拷贝（md5 相同），
+# 续期时只换真值目录会让 drama 继续用旧证书直到过期。现在仓库与线上一致。
 #
-# 其余部分与线上 /etc/nginx/conf.d/drama.aibuzz.cn.ssl.conf 逐字节一致。
+# 除注释外与线上 /etc/nginx/conf.d/drama.aibuzz.cn.ssl.conf 逐字节一致。
 
 server {
     listen 443 ssl;

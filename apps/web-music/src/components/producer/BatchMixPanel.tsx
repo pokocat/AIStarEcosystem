@@ -25,10 +25,15 @@ import {
   MIX_SLOT_KIND_ICON,
 } from "@/constants/batch-mix-ui";
 import { BatchMixApi } from "@/api";
+import { USE_MOCK } from "@/api/_client";
+import { ModuleNotice, type ModuleState } from "./module-notice";
+
 
 export function BatchMixPanel() {
-  const [templates, setTemplates] = React.useState<MixTemplate[]>(TEMPLATES_SEED);
-  const [tasks, setTasks] = React.useState<BatchTask[]>(TASKS_SEED);
+  // USE_MOCK 时用演示数据；真环境一律从空开始，拿不到就空着（§8.0：不拿假数据冒充）。
+  const [templates, setTemplates] = React.useState<MixTemplate[]>(USE_MOCK ? TEMPLATES_SEED : []);
+  const [tasks, setTasks] = React.useState<BatchTask[]>(USE_MOCK ? TASKS_SEED : []);
+  const [modState, setModState] = React.useState<ModuleState>(USE_MOCK ? "ready" : "loading");
   const [tab, setTab] = React.useState<"templates" | "tasks" | "new">("templates");
   const [selectedTemplate, setSelectedTemplate] = React.useState<MixTemplate | null>(null);
   const [viewMode, setViewMode] = React.useState<"grid" | "list">("grid");
@@ -37,12 +42,15 @@ export function BatchMixPanel() {
   React.useEffect(() => {
     let cancelled = false;
     Promise.all([
-      BatchMixApi.listTemplates().catch(() => [] as MixTemplate[]),
-      BatchMixApi.listTasks().catch(() => [] as BatchTask[]),
+      BatchMixApi.listTemplates(),
+      BatchMixApi.listTasks(),
     ]).then(([tpl, tk]) => {
       if (cancelled) return;
-      if (tpl.length > 0) setTemplates(tpl);
-      if (tk.length > 0) setTasks(tk);
+      setTemplates(tpl);
+      setTasks(tk);
+      setModState("ready");
+    }).catch(() => {
+      if (!cancelled) setModState("unavailable");
     });
     return () => { cancelled = true; };
   }, []);
@@ -50,8 +58,8 @@ export function BatchMixPanel() {
   const stats = [
     { label: "可用模板",     value: templates.length, color: "text-purple-400" },
     { label: "渲染中",       value: tasks.filter(t => t.status === "rendering").length, color: "text-blue-400" },
-    { label: "今日完成",     value: BATCH_MIX_KPI.todayDone, color: "text-emerald-400" },
-    { label: "待入发布池",   value: BATCH_MIX_KPI.poolReady, color: "text-cyan-400" },
+    { label: "今日完成",     value: USE_MOCK ? BATCH_MIX_KPI.todayDone : "—", color: "text-emerald-400" },
+    { label: "待入发布池",   value: USE_MOCK ? BATCH_MIX_KPI.poolReady : "—", color: "text-cyan-400" },
   ];
 
   return (
@@ -67,6 +75,8 @@ export function BatchMixPanel() {
           <Plus className="w-3.5 h-3.5" />新建批量任务
         </button>
       </div>
+
+      <ModuleNotice state={modState} name="混剪批量生产台" />
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">

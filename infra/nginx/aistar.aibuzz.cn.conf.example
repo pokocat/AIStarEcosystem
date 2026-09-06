@@ -1,24 +1,28 @@
-# AI Star Eco — aistar.aibuzz.cn HTTPS entry for apps/web-aiavatar.
-# Install to: /etc/nginx/conf.d/aistar.aibuzz.cn.conf
-# Certificate path expected by this file:
-#   /etc/nginx/ssl/aistar.aibuzz.cn/fullchain.pem
-#   /etc/nginx/ssl/aistar.aibuzz.cn/privkey.key
-
-include /etc/nginx/conf.d/snippets/proxy-defaults.conf;
+# AI Star Eco — aistar.aibuzz.cn（apps/web-aiavatar，端口 3013，与 aiavatar.aibuzz.cn 同上游）
+#
+# 2026-09-06 修两处：
+#  1) 443 块此前只有 `location /`，缺 /api/ /static/ /cdn/ 三个反代。
+#     /api 侥幸能用是因为 web-aiavatar 自己的 Next rewrite 兜住了，但 /cdn/ /static/
+#     会被 Next 接走返 308，永远拿不到后端资源。现补齐，与 aiavatar.aibuzz.cn.ssl.conf 对齐。
+#  2) 证书改指共享泛域名真值 /etc/nginx/certs/aibuzz.cn/，不再用 /etc/nginx/ssl/aistar.aibuzz.cn/
+#     的独立副本 —— 那份是同一张证书的拷贝（md5 相同），续期时容易漏掉而单独过期。
+#
+# 回滚：sudo cp aistar.aibuzz.cn.conf.before-fix-20260906 aistar.aibuzz.cn.conf
+#       && sudo nginx -t && sudo systemctl reload nginx
 
 server {
     listen 80;
-    server_name aistar.aibuzz.cn www.aistar.aibuzz.cn;
-    return 301 https://$host$request_uri;
+    server_name aistar.aibuzz.cn;
+    location / { return 308 https://$host$request_uri; }
 }
 
 server {
     listen 443 ssl;
     http2 on;
-    server_name aistar.aibuzz.cn www.aistar.aibuzz.cn;
+    server_name aistar.aibuzz.cn;
 
-    ssl_certificate /etc/nginx/ssl/aistar.aibuzz.cn/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/aistar.aibuzz.cn/privkey.key;
+    ssl_certificate /etc/nginx/certs/aibuzz.cn/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/aibuzz.cn/privkey.key;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
@@ -26,7 +30,22 @@ server {
 
     client_max_body_size 200m;
 
-    location / {
-        proxy_pass http://127.0.0.1:3013;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080/api/;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
     }
+
+    location /static/ { proxy_pass http://127.0.0.1:8080/static/; }
+    location /cdn/ { proxy_pass http://127.0.0.1:8080/cdn/; }
+    location / { proxy_pass http://127.0.0.1:3013; }
 }

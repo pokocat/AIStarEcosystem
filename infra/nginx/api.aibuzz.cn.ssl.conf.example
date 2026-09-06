@@ -1,7 +1,8 @@
 # AI Star Eco — api.aibuzz.cn HTTPS entry for apps/server (port 8080).
 # Install to: /etc/nginx/conf.d/api.aibuzz.cn.ssl.conf
 #
-# ⚠️ 与其余 *.ssl.conf.example 不同：本文件**不是**线上现状的镜像，而是待应用的修复。
+# 2026-09-06 已应用到线上（此前本文件是「待应用的修复」，现在是线上现状的镜像）。
+# 下面这段是当时的问题记录，保留作为背景：
 #    2026-08-29 核对：api.aibuzz.cn 只有 80 vhost（在 aistareco.conf 内），没有 443 vhost，
 #    因此 `https://api.aibuzz.cn/` 会落到 443 默认站（admin）并 302 到 /admin：
 #

@@ -339,13 +339,15 @@ DELETE /api/me/clip/projects/{id}                  软删 → 回收站
 POST   /api/me/clip/projects/{id}/restore | /purge
 
 # 文案与试听
-POST   /api/me/clip/projects/{id}/script/ai-rewrite    整段 / 单段 AI 改写
+POST   /api/me/clip/projects/{id}/script/ai-rewrite    整段 / 单段 AI 改写（scope=all 时 text 是「一句话 brief」生成指令）
 POST   /api/me/clip/projects/{id}/preview-voice        单句试听（TTS，回填真实时长）
+POST   /api/me/clip/projects/{id}/tts-preview          整片配音预览：触发（幂等）
+GET    /api/me/clip/projects/{id}/tts-preview          整片配音预览：轮询（旧一版文案 → 404）
 POST   /api/me/clip/projects/{id}/estimate             报价预估（出镜秒数 + TTS + 合成）
 
 # 出片
 POST   /api/me/clip/projects/{id}/render               提交 → clip_render_job
-GET    /api/me/clip/jobs/{id}                          轮询进度
+GET    /api/me/clip/jobs/{id}                          轮询进度（含 segments 段级状态）
 POST   /api/me/clip/jobs/{id}/cancel                   取消（协作式，退 hold）
 
 # 素材
@@ -582,3 +584,40 @@ pnpm typecheck:all && pnpm typecheck:admin && \
 | 移动 H5 SPA 范式 | `apps/web-aiavatar/src/proto/app.tsx:109-188`、`src/proto/shell.tsx` |
 
 **外部文档**：石榴AI 开放平台 https://api.16ai.vip/ （BaseURL `https://api.16ai.chat/api/v1/`）
+
+---
+
+## 附：配音预览与段级状态（v0.150）
+
+真源契约 `/Users/donis/dev/ai-quickreel/docs/WORKPLAN_2026-09-05.md` §1.5 / §1.6 / §1.3。
+
+**为什么加这两条**：出片确认页此前只给用户一个钻石数字。最不确定的两件事 —— 「念出来是什么效果、
+多长」和「正在做的是哪一段」—— 都发生在扣费之后，用户只能事后为一次不满意的成片买单。
+配音预览把第一件事挪到花钱之前；段级状态把第二件事从一条无信息量的进度条拆成看得见的清单。
+
+**配音预览**（表 `clip_tts_preview`，迁移 V26）
+
+- 一个项目一行。`timelineHash = sha256(voiceId + 每镜 no/role/文案)`，文案或音色一变旧结果整体作废，
+  连同它的音频一起从对象存储清掉 —— 留着只会让用户听到一版已经不存在的稿子。
+- 合成粒度是 `ClipShotPlan.materialize` 的**镜头**，和出片 worker 的 tts 阶段完全同一套切分。
+  按原句切会更「精细」，但预览听到的就不是成片会用的那条音频，时间轴对不上，等于没给。
+  副产品是 `no` 与段级状态共用一套编号，端上两个接口可以直接对齐。
+- 异步：POST 只入队并返回 `status:"generating"`，`ClipTtsPreviewWorker` 每轮推进一段。
+  与出片 worker 分开排队 —— 试听是背景动作，不能和「已经付过钱、正在等成片」的人抢供应商。
+  stale reaper 兜底，保证端上轮询一定能等到一个终态。
+- `credits` 恒为 0。Scheme A 下 clip 域不碰钻石账本，试听只花石榴 `validPoint`；字段仍然显式返回，
+  好让调用方区分「本轮免费」和「老版本服务端没这个概念」。
+
+**段级状态**（`GET /api/me/clip/jobs/{id}` 的 `segments`）
+
+- 纯粹是 `clip_render_job.segmentJobsJson` 的只读投影，**没有第二处真值**。哪段做完了看它有没有留下产物：
+  avatar 段看 `videoCdnKey`、broll 段看 `audioCdnKey`，结尾固定段不需要生成所以恒为 done。
+- 失败落到具体那一段：`ClipRenderWorkerState.fail` 在标 job 失败之前，先把第一段没留下产物的那一行
+  标成 `failed` 并记下 `errorCode`。后面那些是「没轮到」，不是「失败」，不跟着染红。
+- worker 还没写过状态（刚入队、force-mock 的确定性任务）时返回空数组，调用方回落到整体进度，
+  而不是看到一排凭空捏造的 queued。
+
+**`ai-rewrite` 的 `scope:"all"`**：修正前它**完全忽略 `text`** —— 不管传什么指令，都只是在每句原文尾巴上
+接一句固定话。现在 `text` 是改写/生成指令（≤500 字），按骨架逐段生成，不改段数、不改 role、不动结尾段；
+`text` 留空退回原来的润色行为。引擎仍然只有确定性实现，真模型未接入时非 mock 网关照旧 503
+`CLIP_SCRIPT_ENGINE_NOT_CONFIGURED` —— 要在生产做「一句话生成全片」，调用方得走自己的 LLM 网关。

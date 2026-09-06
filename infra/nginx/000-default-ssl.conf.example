@@ -1,0 +1,48 @@
+# AI Star Eco — 443 兜底站（catch-all）
+# 2026-09-06 新增。文件名以 000- 开头，是为了在 include conf.d/*.conf 的字典序里排第一。
+#
+# 【为什么需要】
+# 在此之前 conf.d 里没有任何 443 块标 default_server，nginx 就把「加载顺序里第一个
+# listen 443 的 server」当作 443 默认站 —— 恰好是 admin.aibuzz.cn.ssl.conf。
+# 后果：任何没有自己 443 vhost 的 host（www.music / www.drama / www.star /
+# www.aiavatar / api / ai-workroom / 拼错的域名 …）用 HTTPS 打开时不会报错，
+# 而是静默落到后台，再被 admin 的 `location = / { return 302 /admin; }` 跳到后台登录页。
+# 用户侧表现就是「链接打开不太对 / 莫名其妙跳到后台」。
+# 2026-09-06 日志实测：过去 6 天 www.drama 252 次、www.music 240 次落到这里。
+#
+# 【这个块做什么】
+# 明确接管 443 默认站，对未登记的 host 返回 404 纯文本，不再串到任何业务站点。
+# 未匹配请求单独记 /var/log/nginx/unmatched-ssl.log，方便发现「新子域忘配 vhost」。
+#
+# 【故意不做的事】
+# - 不发 HSTS：不能让一个走错门的域名给用户浏览器种下强制 HTTPS 策略。
+# - 不 301 到主站：跳过去会掩盖配置缺失，也会把用户送到并非他想去的产品。
+#
+# 回滚：rm 本文件 + nginx -t && systemctl reload nginx（回到「默认站 = admin」的旧行为）。
+
+# 默认的 main 格式不记 $host，而这里最需要知道的恰恰是「用户敲的是哪个域名」。
+log_format aep_unmatched '$remote_addr [$time_local] host=$host "$request" $status '
+                         '"$http_referer" "$http_user_agent"';
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    ssl_certificate /etc/nginx/certs/aibuzz.cn/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/aibuzz.cn/privkey.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    access_log /var/log/nginx/unmatched-ssl.log aep_unmatched;
+
+    location / {
+        default_type "text/plain; charset=utf-8";
+        return 404 "404 Not Found
+该域名尚未在本服务器上配置站点。
+如果你是从链接过来的，请检查地址是否多了 www. 前缀。
+";
+    }
+}

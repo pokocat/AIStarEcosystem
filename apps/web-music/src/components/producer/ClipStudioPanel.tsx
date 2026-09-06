@@ -23,6 +23,9 @@ import {
   DEMO_CLIP_DURATIONS,
 } from "@/constants/clip-studio-ui";
 import { ClipStudioApi } from "@/api";
+import { USE_MOCK } from "@/api/_client";
+import { ModuleNotice, type ModuleState } from "./module-notice";
+
 
 function fmtClock(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -31,8 +34,10 @@ function fmtClock(sec: number): string {
 }
 
 export function ClipStudioPanel() {
-  const [tasks, setTasks] = React.useState<ClipTask[]>(TASKS_SEED);
-  const [selectedTask, setSelectedTask] = React.useState<ClipTask | null>(TASKS_SEED[0] ?? null);
+  // USE_MOCK 时用演示数据；真环境一律从空开始，拿不到就空着（§8.0：不拿假数据冒充）。
+  const [tasks, setTasks] = React.useState<ClipTask[]>(USE_MOCK ? TASKS_SEED : []);
+  const [selectedTask, setSelectedTask] = React.useState<ClipTask | null>(USE_MOCK ? (TASKS_SEED[0] ?? null) : null);
+  const [modState, setModState] = React.useState<ModuleState>(USE_MOCK ? "ready" : "loading");
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<ClipTaskStatus | "all">("all");
 
@@ -40,11 +45,12 @@ export function ClipStudioPanel() {
     let cancelled = false;
     ClipStudioApi.listTasks().then(t => {
       if (cancelled) return;
-      if (t.length > 0) {
-        setTasks(t);
-        setSelectedTask(t[0] ?? null);
-      }
-    }).catch(() => { /* mock fallback */ });
+      setTasks(t);
+      setSelectedTask(t[0] ?? null);
+      setModState("ready");
+    }).catch(() => {
+      if (!cancelled) setModState("unavailable");
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -56,9 +62,9 @@ export function ClipStudioPanel() {
 
   const stats = [
     { label: "进行中任务",   value: tasks.filter(t => t.status === "in_progress" || t.status === "quality_check").length, color: "text-blue-400" },
-    { label: "今日完成",     value: CLIP_STUDIO_KPI.todayDone, color: "text-emerald-400" },
-    { label: "质检通过率",   value: CLIP_STUDIO_KPI.qcPassRate, color: "text-amber-400" },
-    { label: "已入发布池",   value: CLIP_STUDIO_KPI.inPool, color: "text-purple-400" },
+    { label: "今日完成",     value: USE_MOCK ? CLIP_STUDIO_KPI.todayDone : "—", color: "text-emerald-400" },
+    { label: "质检通过率",   value: USE_MOCK ? CLIP_STUDIO_KPI.qcPassRate : "—", color: "text-amber-400" },
+    { label: "已入发布池",   value: USE_MOCK ? CLIP_STUDIO_KPI.inPool : "—", color: "text-purple-400" },
   ];
 
   const qcItems = selectedTask ? deriveQcForTask(selectedTask) : [];
@@ -75,6 +81,8 @@ export function ClipStudioPanel() {
           <Plus className="w-3.5 h-3.5" />新建制作任务
         </button>
       </div>
+
+      <ModuleNotice state={modState} name="真人切片制作台" />
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">

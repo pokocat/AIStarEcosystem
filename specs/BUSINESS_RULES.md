@@ -11,7 +11,7 @@
 
 **文档版本**: v2.0.0  
 **对应代码版本**: v2.7.x  
-**最后更新**: 2026-08-18
+**最后更新**: 2026-09-05
 
 ### `clip` 军师快出片补充规则（v0.111）
 
@@ -21,6 +21,20 @@
 - 石榴返回的视频 URL 有时效性，任务成功前必须转存我方持久存储；转存只接受公网 HTTPS、限制 512MB，并拒绝本地/私网地址。
 - Scheme A 下 AIStar 不扣军师积分；军师 BFF 是 hold/settle/refund 唯一账本。媒体机器审核未配置或真实发布未接时不得降级为成功。
 - 最终音轨必须先测量、再用 `measured_*` 做第二遍 -16 LUFS / -2.5 dBTP 归一；-2.5 是 AAC 编码前的安全目标，编码后的真实文件仍须满足真峰值 ≤ -1 dBTP。不得通过放宽质量门规避编码峰值回弹。
+- **配音预览（v0.150，`POST|GET /me/clip/projects/{id}/tts-preview`）**：一个项目最多一份预览。
+  `timelineHash = sha256(voiceId + 每镜 no/role/文案)`；POST 幂等（哈希相同且上次不是 failed → 原样返回，不重复调供应商，failed 允许重排一次），
+  GET 只认当前这版文案的结果，旧一版一律 404 `CLIP_TTS_PREVIEW_NOT_FOUND`。
+  合成粒度是 `ClipShotPlan.materialize` 的**镜头**，与出片 tts 阶段同一套切分 —— 预览听到的必须就是成片会用的那条音频，否则时间轴对不上。
+  音频先镜像我方存储再出**短期签名 URL**，库里只存 key。**没有可用音色 / 引擎未配置 / 供应商失败 / 拿不到可镜像的音频 → `status:"failed"` + 明确 `errorCode`**，
+  不许返回空 URL 或静音占位冒充成功（静音 WAV 只在 `AEP_CLIP_FORCE_MOCK` 的确定性测试媒体下产生）。
+  **`credits` 恒为 0**：Scheme A 下 clip 域不碰钻石账本，试听只花供应商 `validPoint`；字段显式返回，非 0 才表示调用方需要先 hold。
+- **段级出片状态（v0.150，`GET /me/clip/jobs/{id}` 的 `segments`）**：`status ∈ queued|generating|done|failed`，
+  **只读投影**，真值仍是 `clip_render_job.segmentJobsJson`，不新增真值来源。做完与否看有没有留下产物（avatar 段看 `videoCdnKey`、broll 段看 `audioCdnKey`），
+  结尾固定段不需要生成恒为 done。失败必须落到**具体哪一段**（第一段没产物的那一段）并带 `errorCode`，不许只给一句笼统的整体失败。
+  worker 还没写过状态时 `segments` 为空数组，调用方回落整体进度。
+- **`script/ai-rewrite` 的 `scope:"all"`**：`text` 是「改写/生成指令」（一句话 brief，≤ 500 字），按模板骨架逐段生成全篇，
+  **不改段数、不改 role、不动结尾固定段**；`text` 留空退回「在现有文案上润色」。当前只有确定性引擎，
+  真模型未接入时非 mock 网关一律 503 `CLIP_SCRIPT_ENGINE_NOT_CONFIGURED`，不拿模板句冒充生成结果。
 
 ---
 
@@ -620,6 +634,147 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
 - 最终视频与封面真值分别写入 `payloadJson.assembled.cdnKey/coverCdnKey`；URL 只在出 wire 时由 `CdnUrlSigner` 派生。列表和详情优先播放非 stale 的最终成片，不再把第一镜视频冒充完整短片。
 - 镜头编号、ID、视频 URL、台词、音频 key 或字幕开关任一变化都会改变 `sourceFingerprint`，旧成片标记为 stale，草稿回到 draft；输入未变化的重复合成幂等复用原成片，不重复上传。
 - 只有拼接、上传与草稿落库都成功后才置 `done/progress=100`；失败保持 draft 并允许用户重试。总装下载只允许本平台同源/CDN 地址，拒绝外部和内网 URL。
+
+### 6.6 AI IP 工作台（ipstudio，v0.151 / 设计真源 `docs/ip-studio-plan.md` · TS 真源 `packages/types/src/ip-studio.ts`）
+
+领域 `com.aistareco.aep.ipstudio.*`，表 `ip_project` / `ip_run`（迁移 **V27**）。挂 `/api/v1/ip-studio/**`，
+**共用 aiavatar 开通**（`X-App-Code: aiavatar`），已被 `ProductRouteTable` 的 `any("/api/v1/**", AIAVATAR)` 兜底，不新增产品码。
+生成链路全部复用 dap 域（`DapMultimodalClient` / `DapImageInput` / `FileStorageService` / `PromptService` / `CreditService` / `DapPricingService`），
+故错误码里混有 `DAP_*`。
+
+**画布文档归客户端所有。** `ip_project.doc_json` 是 `IpProjectDoc`（`nodes` / `edges` / `viewport`）的整存整取文档：
+服务端逐字保存（客户端未知字段也原样保留），只校验「是含 `nodes` / `edges` 数组的对象」（否 → 400 `IP_DOC_INVALID`）
+与大小上限 `aep.ipstudio.doc-max-bytes`（默认 2MB，超 → 400 `IP_DOC_TOO_LARGE`）。
+**运行结果与发布结果永远不写进 doc** —— 前端每 1.2s 防抖 PUT 整块文档，异步 worker 若也往里写就必然互相覆盖
+（v0.101「§6.1 只 upsert 实体表、不重写 payloadJson」同一条教训）。运行产物只落 `ip_run`，`GET project` 以投影形式带出。
+
+**doc 里的资产 URL 出 wire 必须重签（§4.7.7）。** `source` / `reference` 节点的真值是 `assetKey`，`imageUrl` 只是上传当时的派生值；`GET /projects/{id}`（含创建 / 保存的返回体）按 `assetKey` 重签覆盖 `imageUrl`，不回写库。
+
+**runs 投影 = 每节点最新一次 + 被选中的旧运行。** 同节点重跑新开一行、旧行保留；`runs` 按 `nodeId` 只给最新一条；
+`runsById` 按 `runId` 收 `runs` 的全部，另把 doc 里 `generate.selectedRunId` 显式指向、却已不是最新的那次运行一并带上 ——
+只给最新会让画布上用户已选定的候选图变成空白。
+
+**输入编译（沿入边向上找，最多 8 跳）。** `generate` 的上游可有 `style` / `identity` / `look` / `source` /
+另一个 `generate`（主形象）/ 若干 `reference`。风格与身份通常挂在 master 上而非每个 look 上，所以向上多跳查找，
+用户不必为了让风格生效而把风格节点手连到每个 generate。缺输入 → 400 `IP_NODE_INPUT_MISSING`，
+`details.missing` 列出具体项（`source` / `identity` / `identity.promptEn` / `style` / `style.promptEn` / `look`）。
+`identity` 与 `style` 恒为必填；**`look` 只在非主形象节点上必填** —— 内置模板的 master 节点直接挂在 style 之后、
+上游本就没有 look（`docs/ip-studio-plan.md` §6），把它也列为硬必填会让主形象永远跑不起来。
+`generate` 无任何图片参考（既无主图也无照片）**允许**运行，此时 `inputs.refs = []`。
+
+**参考图顺序、砍尾与如实回报。** 装配顺序即优先级：`master`（上游主形象节点 `selectedRunId` + `selectedIndex`
+指向的候选 key）→ `source`（原照片）→ `reference…`。上限 `aep.ipstudio.max-ref-images`（默认 4），
+超出的**按此顺序砍尾**并在 `inputs.refs[]` 标 `applied=false` / `reason=over_max_refs`，**绝不静默丢弃**。
+`reference` 节点的 `note` 拼进提示词的 `{{refNotes}}`（形如 `Reference image 3: hat style only`）。
+本地 `/cdn` 对云端不可达时由 `DapImageInput.of` 自动转 dataURI（已有逻辑）。
+
+**参考图在第一次出图之前就要全部读出来。** 身份锚（`master` / `source`）读不到 → 释放冻结 +
+运行失败 `IP_REF_UNREADABLE`，**绝不降级成没有身份锚的文生图**（那会照价出一张不像本人的脸，
+而 `inputs.refs` 里还写着 `applied=true`）；可选的 `reference` 读不到 → 把库里那一条改成
+`applied=false` / `reason=unreadable` 后继续，界面必须看得见哪张没生效。
+
+**doc 里的 `assetKey` / `selectedRunId` 一律按客户端可写的不可信输入处理。**
+`assetKey` 必须是本人上传（`ipstudio_source/<uid>/…`）或本人生成（`ipstudio_gen/<uid>/…`）的 key
+（前缀由 `FileStorageService` 自己的 key 生成规则派生，不手写猜测），且不含 `..` / 反斜杠 / 前导 `/`，
+否则 400 `IP_ASSET_KEY_INVALID` —— 不校验就等于：抄别人的 key 拿别人的脸出图（越权），
+或用 `../` 让 `FileStorageService.openForRead`（`Paths.get(localDir, key)`，无包含性检查）
+把本机任意文件 base64 上行给外部模型（路径穿越 + 外泄）。
+`selectedRunId` 走 `IpProjectService.ownedRun` 的 **owner + project 双限定**，
+不符 → 参考图装配 404 `IP_RUN_NOT_FOUND` / 发布 400 `IP_PUBLISH_SELECTION_REQUIRED`，
+**绝不退化成「没选主图」静默继续**。
+
+**提示词由服务端唯一拼装。** `dap.ip_identity`（带图 chat → 中文结构化特征卡 + 英文身份提示词）与
+`dap.ip_look_image`（`{{style}}` / `{{identity}}` / `{{outfit}}` / `{{pose}}` / `{{expression}}` / `{{details}}` /
+`{{props}}` / `{{refNotes}}` / `{{negative}}` + 固定一致性从句 + 负面词）。拼装后残留占位符与多余空白一并清掉。
+本次实际提示词原文经 `IpRun.inputs.prompt` 返回给用户（透明可查）。刻意不复用 `dap.image_look` / `dap.image_atlas`。
+
+**preflight 一定在 hold 之前（§8.0）。** 顺序硬约束：输入编译 → preflight → hold → 派发 worker。
+`identity` 校验人设通道（`chatModel()`）、`generate` 校验图片通道（`imageModel()`），未绑定 → 503
+`DAP_ENGINE_NOT_CONFIGURED`；prompt 解析 `origin=code`（= 未配置）→ 503 `PROMPT_NOT_CONFIGURED`。
+两者都**不冻结一分钱、不落 run 行**。绝不产假产物：拿不到图 / 引擎不支持看图一律 failed + `errorCode`。
+
+**计费 hold → 逐张 commit。** `referenceType="ip-run"`、`referenceId=runId`（一次运行一个 hold）。
+整批一次 `hold(单价 × count)`（余额不足在此 402，run 行不落库）；每张图**先 `commitHold(单价)`、
+再把候选写进 `output.candidates`** —— 顺序反了会出现「commitHold 抛错（内部含释放）但图已入库」的白送
+（`DramaReferenceAssetService.generateReferenceSheet` 的原始教训）。首张失败即停、剩余 `releaseHold`、
+已成功的保留；零成功 → failed + 原始 `errorCode` 且 `cost=0`。worker `catch (RuntimeException)` 而非只抓
+`BusinessException` —— `commitHold` 抛的是 `ResponseStatusException`，只抓 `BusinessException` 会跳过释放，
+把冻结额挂到 `CreditHoldSweeper`（默认 180 分钟）才回来。`identity` 同理，单笔。
+`IpRun.cost` 恒为真实账本值：running = 冻结额，done = 已 commit 之和，failed = 已 commit 的部分（可能为 0）。
+
+**结算只认冻结那一刻的单价快照。** hold 时把 `unitCost` / `holdTotal` 写进 `inputs._exec`，
+worker 逐张 commit 用的是这份快照，**不回头再读一次后台单价** —— 运营在 hold 与 commit 之间改价，
+按新价结算要么少扣（用户白得图）要么超过 hold 剩余（`commitHold` 直接 400），都是真金白银的错账。
+循环结束后按**金额**对账：`已 commit 金额 < holdTotal` 一律 `releaseHold` 补退（release 幂等，
+终态 hold 重复调用只记一行 no-op 日志），不把冻结额留给 180 分钟后的 `CreditHoldSweeper`。
+
+**产物必须是能解码的图。** 落 storage / commit 之前校验字节确实是图片（`ImageIO` 可解 或 WebP 魔术字），
+否则按 `DAP_MODEL_BAD_OUTPUT` 中止该次运行并释放剩余 —— 上游回的一段错误 JSON / 空响应体
+不许被当成候选图入库并照价扣款。
+
+**派发失败也要收尾。** `ipRunExecutor` 排满时 `@Async` 抛 `TaskRejectedException`：此时 hold 已冻、
+run 行已落库，必须置 failed `IP_RUN_QUEUE_FULL` + 释放冻结（收尾方法在 worker 上标
+`REQUIRES_NEW`，因为派发发生在 `afterCommit`、当前线程已无事务），否则就是一个永远 running 的节点。
+
+**取消要在扣款之前检查。** identity 在调模型前与 commit 前各查一次 `cancelRequested`：
+模型算完但还没扣款时用户已取消，就不该再扣。
+单价走 `DapPricingService`：`dap.ip-identity`（默认 2，按次）/ `dap.ip-image`（默认 8，**按张**），
+admin「权益扣减配置 → 动作单价」可改，0 = 走部署默认价。
+
+**取消与超时。** `POST /runs/{id}/cancel` 只置 `cancelRequested`，终态由 worker 在阶段间收尾时落
+（两边都写终态会互相覆盖，同 `DapJobService.cancel`）；已 commit 的图归用户、剩余释放、标 `IP_RUN_CANCELLED`。
+`IpRunReaper` @Scheduled 把 running 且心跳超 `aep.ipstudio.stale-minutes`（默认 15）的置 failed +
+`IP_RUN_TIMEOUT` + 释放冻结 —— 没有它，一次进程重启就留下永远 running 的行。
+
+**存储只存 key。** 上传落 `ipstudio/source`、生成产物落 `ipstudio/gen`（`FileStorageService`）。
+DB 只存 storage key，URL 一律出 wire 时经 `signedUrl(key)` 派生，**不落库**（§4.7.4 / §4.7.7）。
+`inputs._exec` 是服务端执行参数（含 storage key），出 wire 时剥掉。
+上传只收 **jpg / png**（**不收 webp** —— 标准 JDK ImageIO 没有 WebP 读取器，宣传支持等于宣传一种
+必然失败的格式，前端 accept 同步去掉 `image/webp`）且 ≤ `aep.ipstudio.upload-max-bytes`（默认 15MB），
+并且必须真能被识别成图片（改后缀的假 png 一样拒 400 `IP_UPLOAD_INVALID`）。
+尺寸只读**文件头**（`ImageIO.getImageReaders` + `reader.getWidth/getHeight`）、**不整图解码**，
+最长边超 `aep.ipstudio.upload-max-dimension`（默认 8000px）直接拒 —— 一张 200KB 的 PNG 可以声明
+50000×50000，整图解码瞬间要几十 GB 堆（decompression bomb）。
+微信 `tmp_*` 与长哈希文件名归一为可读默认名。
+
+**发布约束。** `masterNodeId` 与每个 `lookNodeIds` 都必须是 `generate` 节点且已有选中候选，
+且选中的 run 必须属于**本人本项目**（防伪造 doc 把别处的图拿来发布）—— 否则 400
+`IP_PUBLISH_SELECTION_REQUIRED` 且不留下半个资产。`avatarName` **必填**，为空 → 400
+`IP_PUBLISH_NAME_REQUIRED`（不再悄悄拿项目名替：用户在发布框里删空了名字，
+资产库里冒出一个叫「未命名 IP 项目」的资产，他只会以为发布坏了）。建 `DapAvatar`（`path=ai` / `status=finalized` / `imageKey=主图 key` /
+`basePrompt=identity.promptEn` / `descPrompt=identity.text` / `def` 从特征卡逐行小标题解析 /
+`variantKeys=主 generate 全部候选` / `addVersionAt(1,…,"init",key)`）+ 每个 look 一条 `DapLook`
+（`source=design` / `status=done` / `prompt=该次运行的实际提示词` / `label=上游形象卡标题`）。
+**零积分** —— 图早在 generate 阶段按张扣过了，发布只是登记；图片直接复用同一 storage key，不重复上传。
+项目落 `status=published` / `publishedAvatarId` / `coverKey`。重复发布 → 409 `IP_PROJECT_ALREADY_PUBLISHED`
+（P1 不做增量发布）。
+
+**错误码表**
+
+| code | HTTP | 场景 |
+|---|---|---|
+| `IP_PROJECT_NOT_FOUND` | 404 | 非本人 / 已软删 |
+| `IP_NODE_NOT_FOUND` | 404 | doc 里无该节点 |
+| `IP_NODE_NOT_RUNNABLE` | 400 | 非 identity / generate 节点 |
+| `IP_NODE_INPUT_MISSING` | 400 | `details.missing` 列出缺的上游类型 / 字段；也用于 worker 阶段照片读不到 |
+| `IP_IDENTITY_EXTRACT_FAILED` | 502（落在 run 上） | 视觉抽取失败，含引擎不支持看图与输出为空 |
+| `IP_IMAGE_FAILED` | —（落在 run 上） | 出图失败且非 `DAP_*` 已知码时的兜底 |
+| `IP_RUN_NOT_FOUND` | 404 | 非本人 / 不存在 |
+| `IP_RUN_ALREADY_RUNNING` | 409 | 同节点已有 running run |
+| `IP_RUN_CANCELLED` | —（落在 run 上） | 用户取消；已 commit 的图保留 |
+| `IP_RUN_TIMEOUT` | —（落在 run 上） | reaper 判僵死，已释放冻结 |
+| `IP_PUBLISH_SELECTION_REQUIRED` | 400 | 主图 / look 未选候选，或节点类型不对，或选中运行不属于本项目 |
+| `IP_PROJECT_ALREADY_PUBLISHED` | 409 | P1 不做增量发布 |
+| `IP_UPLOAD_INVALID` | 400 | 类型（仅 jpg/png）/ 字节大小 / 像素尺寸 / 无法识别的图片内容 |
+| `IP_ASSET_KEY_INVALID` | 400 | doc 里的 `assetKey` 不是本人上传 / 生成的 key，或含 `..`、反斜杠、绝对路径 |
+| `IP_PUBLISH_NAME_REQUIRED` | 400 | 发布时 `avatarName` 为空 |
+| `IP_REF_UNREADABLE` | —（落在 run 上） | 身份锚参考图（主形象图 / 原照片）读不到；已释放冻结，不降级出图 |
+| `IP_RUN_QUEUE_FULL` | —（落在 run 上） | 运行线程池排满、派发失败；已释放冻结 |
+| `DAP_MODEL_BAD_OUTPUT` | —（落在 run 上） | 上游返回的字节不是可解码图片；不入库不扣款 |
+| `IP_DOC_INVALID` | 400 | 不是含 nodes / edges 的对象 |
+| `IP_DOC_TOO_LARGE` | 400 | 超过 `aep.ipstudio.doc-max-bytes` |
+| `IP_TEMPLATE_NOT_FOUND` | 400 | 新建时引用了不存在的内置工作流 |
+| 复用 | 503 `DAP_ENGINE_NOT_CONFIGURED`、503 `PROMPT_NOT_CONFIGURED`、402 积分不足（CreditService 既有） |
 
 ```
 packages/types/src/*.ts              ← 唯一前端真值源

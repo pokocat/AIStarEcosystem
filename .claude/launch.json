@@ -13,6 +13,17 @@
       "autoPort": true
     },
     {
+      "name": "ipstudio",
+      "cwd": "apps/web-ipstudio",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3015,
+      "autoPort": true
+    },
+    {
       "name": "celebrity",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
@@ -76,6 +87,24 @@
       "runtimeArgs": [
         "spring-boot:run",
         "-Dspring-boot.run.arguments=--server.port=8085 --aep.cdn.driver=local --aep.identity.client-secret=aistar-server-dev-secret"
+      ],
+      "port": 8085
+    },
+    {
+      "name": "fake-llm",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/dev-fake-llm-server.mjs"
+      ],
+      "port": 8091
+    },
+    {
+      "name": "server-8085-dap-fake",
+      "cwd": "apps/server",
+      "runtimeExecutable": "./mvnw",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.arguments=--server.port=8085 --aep.cdn.driver=local --aep.identity.client-secret=aistar-server-dev-secret --aep.dap.dev-seed.enabled=true --aep.dap.dev-seed.base-url=http://localhost:8091 --spring.datasource.url=jdbc:h2:file:./data/aistareco-e2e;MODE=MySQL;AUTO_SERVER=TRUE;DB_CLOSE_DELAY=-1 --aep.cdn.public-base-url=http://localhost:8085/cdn"
       ],
       "port": 8085
     }

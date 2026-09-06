@@ -128,14 +128,41 @@ public class ClipRenderWorkerState {
     }
 
     @Transactional
-    public void fail(String id,String message) {
+    public void fail(String id,String message) { fail(id,"CLIP_RENDER_FAILED",message); }
+
+    /**
+     * 失败落地 + **把是哪一段挂的记下来**（§1.6 段级状态要用）。
+     *
+     * advance 抛异常时整个事务回滚，所以这里读到的是上一次成功保存的进度：
+     * 第一段没留下产物的就是当时在做的那一段，把 errorCode 记在它身上，
+     * 端上才能指着「第 3 段失败了」而不是笼统一句「出片失败」。
+     */
+    @Transactional
+    public void fail(String id,String errorCode,String message) {
         ClipRenderJob j=jobs.findById(id).orElse(null);if(j==null||Set.of("succeeded","failed","cancelled").contains(j.getStatus()))return;
+        markFailedSegment(j,errorCode);
         Instant now=Instant.now();j.setStatus("failed");j.setErrorMessage(message);j.setCompletedAt(now);j.setUpdatedAt(now);j.setLeaseOwner(null);j.setLeaseUntil(null);jobs.save(j);
         // 项目回落 draft 而不是写 "failed"：ClipProjectService.save 只放行 draft，
         // 写成 failed 等于把项目永久锁死 —— 用户想改一句话重出都不行，只能从头新建。
         // 失败本身由这条 job 记着，不会因为项目变 draft 而丢失。
         // 走 renderService.releaseProject 是为了共用「活跃 job 守卫」，别让旧 job 抢掉新任务的项目。
         renderService.releaseProject(j);
+    }
+
+    /** 只标第一段还没产物的：后面那些是「没轮到」，不是「失败」，不该一起染红。 */
+    private static void markFailedSegment(ClipRenderJob j,String errorCode){
+        if(j.getSegmentJobsJson()==null||j.getSegmentJobsJson().isEmpty())return;
+        String code=errorCode==null||errorCode.isBlank()?"CLIP_RENDER_FAILED":errorCode;
+        Map<String,Object> state=new LinkedHashMap<>(j.getSegmentJobsJson());
+        state.put("errorCode",code);
+        List<Map<String,Object>> rows=ClipDtos.mapListValue(state.get("segments"));
+        for(Map<String,Object> row:rows){
+            String role=String.valueOf(row.get("role"));
+            if("tail".equals(role))continue;
+            boolean produced="avatar".equals(role)?!text(row.get("videoCdnKey")).isBlank():!text(row.get("audioCdnKey")).isBlank();
+            if(!produced){row.put("status","failed");row.put("errorCode",code);break;}
+        }
+        state.put("segments",rows);j.setSegmentJobsJson(state);
     }
 
     private static void advanceMock(ClipRenderJob j,Instant now){

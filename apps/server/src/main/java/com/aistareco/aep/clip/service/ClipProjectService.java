@@ -18,8 +18,9 @@ public class ClipProjectService {
     private final ClipProjectRepository repo;
     private final ClipTemplateService templates;
     private final ClipRenderJobRepository jobs;
+    private final ClipTtsPreviewRepository ttsPreviews;
     private final FileStorageService storage;
-    public ClipProjectService(ClipProjectRepository repo, ClipTemplateService templates, ClipRenderJobRepository jobs, FileStorageService storage) { this.repo = repo; this.templates = templates; this.jobs = jobs; this.storage = storage; }
+    public ClipProjectService(ClipProjectRepository repo, ClipTemplateService templates, ClipRenderJobRepository jobs, ClipTtsPreviewRepository ttsPreviews, FileStorageService storage) { this.repo = repo; this.templates = templates; this.jobs = jobs; this.ttsPreviews = ttsPreviews; this.storage = storage; }
 
     @Transactional
     public ProjectDto create(String owner, String templateId) {
@@ -126,6 +127,11 @@ public class ClipProjectService {
         List<ClipRenderJob> rows = jobs.findByProjectId(p.getId());
         rows.forEach(j -> { storage.delete(j.getOutputCdnKey()); storage.delete(j.getThumbnailCdnKey()); });
         jobs.deleteAll(rows);
+        // 配音预览的音频也归这个项目所有：不跟着删就会在对象存储里留下永远没人引用的孤儿。
+        List<ClipTtsPreview> previews = ttsPreviews.findByProjectId(p.getId());
+        previews.forEach(preview -> ClipDtos.mapListValue(ClipDtos.safeMap(preview.getSegmentsJson()).get("items"))
+                .forEach(item -> { Object key = item.get("audioCdnKey"); if (key != null && !String.valueOf(key).isBlank()) storage.delete(String.valueOf(key)); }));
+        ttsPreviews.deleteAll(previews);
         repo.delete(p);
     }
     private static Map<String, String> defaults(Object value) {

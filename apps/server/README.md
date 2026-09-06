@@ -431,6 +431,26 @@ src/main/java/com/aistareco/aep/
 | `dap_material_group` | **v0.105** 素材分组（MG-xxxx；七牛 modelink asset-group 本地镜像。`kind=liveness_face` 即真人授权刷脸会话，状态 preparing→awaiting_auth→validating→active/failed；`callbackToken` 唯一，是无 JWT 回跳端点的防伪 state；`validateCalledAt` 是一次性凭证 byted_token 的幂等闸；**v0.105-补丁** `kind=aigc` 启用为「数字人专属 aigc 分组」的账号级共享单例行（owner=`__platform__`，`callbackToken` 改承载去重键 `aigc:<model>`）；`recycledAt` = 上游分组已删、配额已还的时间〔本地行保留作审计；账号级只有 3 分组配额，failed 组超期回收、active 组永不删〕） |
 | `dap_material` | **v0.105** 送审素材（MAT-xxxx；modelink asset 本地镜像。`sourceKey` 是 §4.7.4 真值，送审时才派生签名 URL；状态 pending→reviewing→approved/failed；`refType=capture` 挂 liveness 分组、`refType=avatar` 走平台 aigc 默认组） |
 
+### AI IP 工作台域（ip_*，v0.151；迁移 V27）
+
+> 领域 `com.aistareco.aep.ipstudio.*`，挂 `/api/v1/ip-studio/**`，**共用 aiavatar 开通**
+> （已被 `ProductRouteTable` 的 `any("/api/v1/**", AIAVATAR)` 兜底，不新增产品码）。
+> 生成链路全部复用 dap 域（`DapMultimodalClient` / `DapImageInput` / `FileStorageService` /
+> `PromptService` / `CreditService` hold→commit / `DapPricingService`），不另起第二条图像生成链。
+> 设计真源 [`docs/ip-studio-plan.md`](../../docs/ip-studio-plan.md)，业务约束见
+> [`specs/BUSINESS_RULES.md`](../../specs/BUSINESS_RULES.md) §6.6。
+
+| 表 | 说明 |
+|---|---|
+| `ip_project` | 画布项目（IPP- + 8 hex）。`doc_json` = `IpProjectDoc`（nodes/edges/viewport）**整存整取**：客户端拥有、服务端逐字保存、绝不改写 —— 运行与发布结果一律另存，否则前端 1.2s 防抖 PUT 与异步 worker 互相覆盖（v0.101 同一条教训）。`cover_key` 是主形象选中图的 storage key（§4.7.4，coverUrl 出 wire 派生）；`published_avatar_id` 指向发布产出的 `dap_avatar`；软删 `deleted_at` |
+| `ip_run` | 一次节点运行（IPR- + 8 hex，`kind=identity\|generate`，wire 三态 `running\|done\|failed`）。`input_json` 是本次实际提示词 + 参考图生效回报（`_exec` 段是含 storage key 的服务端执行参数，出 wire 时剥掉）；`output_json` 的 `candidates[{key}]` **只存 key 不存签名 URL**（签名有 TTL，落库就是埋雷）。hold `referenceType=ip-run` / `referenceId=runId`，`cost` 恒为真实账本值。同节点重跑新开一行、旧行保留（用户可能仍在用旧运行里选中的候选图）；`cancel_requested` 由用户置、终态由 worker 落；`heartbeat_at` 供 `IpRunReaper` 扫僵死 |
+
+新增服务：`IpProjectService`（CRUD / 上传 / runs 投影 / doc 读写）、`IpRunService`（输入编译 → preflight → hold → 派发）、
+`IpRunWorker`（@Async `ipRunExecutor`，逐张 commit 后才落产物）、`IpRunReaper`（@Scheduled 僵死运行判失败 + 释放冻结）、
+`IpPublishService`（建 `DapAvatar` + `DapLook`，零积分、复用同一 storage key 不重复上传）、
+`IpCatalogService`（`resources/ipstudio/templates/*.json` 两套工作流 + `styles.json` 六套风格）。
+新增 prompt key `dap.ip_identity` / `dap.ip_look_image`，新增单价 `dap.ip-identity`（默认 2）/ `dap.ip-image`（默认 8，按张）。
+
 ### 核心表（账户与计费域）
 
 > 已废弃：`aep_products` / `aep_plans` / `aep_features` / `aep_plan_features` / `aep_entitlements` —— 订阅 / 权益模型被「一次性点数发放 + License」替代，见 product_spec.md §0.1、§0.2。

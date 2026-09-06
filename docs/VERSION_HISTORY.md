@@ -1,8 +1,36 @@
-# 版本增量历史（v0.5 → v0.149）
+# 版本增量历史（v0.5 → v0.151）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.151（2026-09-06）— AI IP 工作台 web-ipstudio（第六子应用，3015）
+
+设计真源 [`docs/ip-studio-plan.md`](ip-studio-plan.md)。用户诉求：一张个人照片 + 内置工作流，稳定产出一组同一人物、同一风格的 AI IP 形象
+（截图范例：3D BJD 潮玩风格「穿针织衫拿着手机 / 搞怪伸舌头 / 穿瑜伽服吹泡泡」三张形象卡），作为 AI Star 生态的应用扩展。
+
+**决策**：① 新桌面子应用 `apps/web-ipstudio`（Next 16 / React 19 / Tailwind v4 / `@xyflow/react` 12 / zustand），不塞进移动端 `web-aiavatar`；
+② 不新增产品码 —— 共用 aiavatar 开通（`requiredPlatform="aiavatar"`，`X-App-Code: aiavatar`），接口全挂 `/api/v1/ip-studio/**`，被 `ProductRouteTable` 的 `any("/api/v1/**", AIAVATAR)` 兜底，`ProductRouteTableCoverageTest` 零改动；
+③ 用户给的 [`basketikun/infinite-canvas`](https://github.com/basketikun/infinite-canvas) 只借交互形态（节点 / 连线 / 小地图 / 撤销重做），不搬代码：它是 Vite 独立应用、模型 API Key 放浏览器 IndexedDB 直连上游，与本仓「模型只走服务端绑定 / 积分服务端结算 / 资产只落 OSS」正面冲突；
+④ 生成链全部复用 dap 域，不造第二条图像链。
+
+**server**（`com.aistareco.aep.ipstudio`，26 个新文件，8 处只追加的既有文件）：新表 `ip_project`（`doc_json` 整存整取）/ `ip_run`（运行结果唯一真值），**V27** SQL 迁移；
+`IpRunService` 编译上游输入（沿入边向上找 ≤8 跳：`generate` 需 `identity` + `style`，非主形象节点另需 `look`；缺 → 400 `IP_NODE_INPUT_MISSING` 带 `details.missing`）→ preflight（引擎 / 提示词，503 不冻结）→ 整批一次 hold → `afterCommit` 派发 `IpRunWorker`（独立线程池 `ipRunExecutor`，免得一次 4 张主形象把数字人线堵在队尾）→ 每张成功 `commitHold` 后才写候选、首张失败释放剩余；`IpRunReaper` 回收 15 分钟无心跳的运行。
+参考图装配 master → source → reference，超 `aep.ipstudio.max-ref-images`（默认 4）按此砍尾并如实回报 `applied=false, reason=over_max_refs`；`inputs.prompt` 即本次实际送模型的英文提示词，`inputs._exec`（含 storage key）出 wire 时剥掉。
+`DapMultimodalClient.chatJsonWithImages`（OpenAI content-parts）供 `dap.ip_identity` 从照片抽「人物特征卡」（八项中文 + 英文身份提示词，明令不猜不编不写身份信息）；`dap.ip_look_image` 模板拼 风格 / 身份 / 服装 / 姿势 / 表情 / 细节 / 道具 / 参考图说明 + 一致性从句与负向词。
+单价 `dap.ip-identity`=2 / `dap.ip-image`=8（`DapPricingService` + admin 动作单价页两行）。发布零积分：`DapAvatar(path=ai, status=finalized, basePrompt=identity.promptEn, variantKeys=主形象全部候选)` + `DapLook(source=design)`；重复发布 409。
+内置：两套工作流模板（`portrait-bjd-trio` 82 积分 / `portrait-sticker-six` 82 积分）+ 6 套风格预设（bjd / chibi / pixar3d / flat-vector / guochao-ink / clay）。
+
+**web**：`/projects`（模板卡 + 空白画布 + 我的项目）与 `/projects/[id]` 画布；7 种档案卡节点（照片 / 特征卡 / 风格 / 形象卡 / 生成 / 参考图 / 发布），Atelier Ledger 视觉移植到桌面浅色（衬线只给资产名、等宽给编号、青色只给主操作与运行中）；
+右侧属性面板：候选网格点选定稿、「设为主形象」（全项目唯一）、本次实际提示词、参考图生效列表（`over_max_refs` → 「参考图超出模型上限，已按优先级省略」）、花费；防抖 1.2s 自动保存 + 离开提醒；「运行全部生成」按拓扑序，主形象未选图时只跑主形象并提示；发布对话框 → `DH-` 编号 + 「去数字资产平台查看」。
+mock 模式（`NEXT_PUBLIC_USE_MOCK=1`，默认）含本地运行模拟器，mock 产物一律带「示例」角标。`packages/types/src/ip-studio.ts` 为契约真源（新立 dap 侧共享类型先例）。
+
+**门禁**：`AEP_CDN_DRIVER=local ./mvnw -o test` 931/931（新增 `IpRunServiceTest` 25 / `IpRunWorkerTest` 20 / `IpProjectServiceTest` 21 / `IpPublishServiceTest` 11 / `IpCatalogServiceTest` 5 / `IpRunReaperTest` 2 / `IpStudioLogRedactionTest` 4，含 Codex 评审修复回归）；`pnpm typecheck:all` 11/11；web-ipstudio build 6 路由；`node scripts/check-api-contract.mjs` OK（新 app 已入 `SCAN_TARGETS`）。
+**真联调**（`.claude/launch.json` 新增 `fake-llm` 8091 与 `server-8085-dap-fake`〔dev-seed 把 DAP 三用途绑到 fake-LLM、独立 H2 文件、签名地址指 8085〕）：dev 登录 → 按模板建项目 → 上传 → 抽特征卡（fake-LLM 新增「人物特征卡」JSON 分支与 content-parts 解析）→ 主形象 ×4（扣 32）→ 形象卡生成带 master + source 双参考（扣 16）→ 发布 `DH-54853` + `LK-`，钱包 1996 → 1948 与逐张 commit 一致，重复发布 409。
+联调发现并修掉一个真 bug：`IpRunService.run` 在 `@Transactional` 内直接派发 worker，worker 提交前查不到行直接返回，任务永远 `queued`（单测 worker 是 mock 看不出）；改为 `afterCommit` 派发（同 `MusicGenJobService` 范式）并加 `dispatchWaitsForTransactionCommitWhenOneIsActive` 回归。
+**分工**：主模型设计 + 收口；Opus 子 agent A（server）/ B（web）按 §9 文件所有权并行开发自测；Codex 只读评审一轮（结论见本节末尾追加）。
+**刻意不做**（进 TODO）：独立产品码、一致性打分 / 自动重跑、增量发布、视频节点、`maxRefImages` 读端点能力、本地 dev H2 里 V25 校验和漂移的清理、`infra` 部署登记（build-release / nginx / systemd）。
+**Codex 只读评审（一轮，约 17 分钟）**：4 个 P1 + 9 个 P2，「修完 P1 再提交」。P1 全部修掉：① 客户端可控的 `assetKey` / `selectedRunId` 未校验归属（跨租户读别人素材、local 驱动下 `../` 读任意文件）→ 素材 key 必须是本用户 `ipstudio_source|ipstudio_gen/<userId>/` 前缀且无 `..`，否则 400 `IP_ASSET_KEY_INVALID`；`candidateKeyOf` 按 owner + project 过滤；② 前端预检只看直接父节点，服务端模板是直链 → 真后端下界面点「运行」被前端自己拦住（B 的 mock 模板接线不同，mock 没暴露）→ 前端改成与服务端同语义的 ≤8 跳祖先查找 + 主形象免形象卡，mock 模板改为直接复用服务端 JSON，并补 vitest 用两套服务端模板做回归；③ worker 提交时重新读后台单价而不是冻结时的单价（改价瞬间要么多冻要么第 4 张 commit 超额失败）→ 单价快照进 `inputs._exec`，尾部一律释放差额；④ 主图 / 照片参考读不到时静默退成文生图仍照常扣费（违反 §8.0）→ 参考先物化，主图 / 照片读不到直接 `IP_REF_UNREADABLE` 失败并释放，可选参考标 `applied=false, reason=unreadable`。顺手修的 P2：线程池满 `TaskRejectedException` → 运行置 failed `IP_RUN_QUEUE_FULL` 并释放；identity 运行补取消检查；供应商返回的字节先验图再存再 commit；带签名的图片 URL 不进日志；上传去掉 WebP（JDK ImageIO 解不了）并加 8000×8000 头部预检；openapi 发布体必填项对齐 TS；前端刷新后重建 `activeRuns` 并续轮询、视口变化计脏、保存串行化；修复时另发现 `style` / `look` 节点缺目标 handle 导致模板 13 条连线有 4 条画不出来。前端补 vitest 26 例（`graph.test.ts`，含 mock 模板与服务端 JSON 逐字节比对防漂移，`pnpm --filter @ai-star-eco/web-ipstudio test` 真跑）。后置 P2 见 TODO.md 2026-09-06 段。
 
 ### v0.149（2026-09-04）— 统一账号中心 `id.aibuzz.cn`（P1 服务落地 + P2 本仓全部应用接入）
 

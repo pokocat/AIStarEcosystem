@@ -8,7 +8,8 @@
 #
 # 注意与 aistar.aibuzz.cn 的关系：两个域名都指向 web-aiavatar(3013)。
 #   aiavatar.aibuzz.cn → 本文件（443）+ aistareco.conf（80）
-#   aistar.aibuzz.cn   → aistar.aibuzz.cn.conf（80 + 443 单文件形态）
+#   aistar.aibuzz.cn   → aistar.aibuzz.cn.conf（80 + 443 单文件形态；
+#                        2026-09-06 已补齐 /api/ /static/ /cdn/，与本文件等价）
 #
 # 证书：全站共用 *.aibuzz.cn 泛域名证书（SAN 含 *.aibuzz.cn + aibuzz.cn），
 #   /etc/nginx/certs/aibuzz.cn/fullchain.pem

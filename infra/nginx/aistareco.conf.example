@@ -1,0 +1,101 @@
+# AI Star Eco production HTTP (:80) entrypoint.
+#
+# 2026-09-06：celebrity / music / drama / aiavatar / admin 五个子域此前在 80 上
+# 直接明文出内容（不跳 HTTPS），与 aistar / aislides / id 的行为不一致，而它们的
+# 443 vhost 又都发 HSTS —— 等于「第一次用 http 打开的人拿明文，之后被强制 https」。
+# 现统一改为 308 跳转到 HTTPS。
+#
+# 用 308（Permanent Redirect）而不是 301：308 保留请求方法与 body，
+# 万一还有客户端在 POST http://<域名>/api/...，不会被降级成 GET 丢掉请求体。
+#
+# 保留不动的两个块：
+#   1) listen 80 default_server（server_name 47.98.162.120）—— IP 直访、
+#      infra/scripts/verify.sh 的 PUBLIC_BASE、以及 /liuyue 静态演示都靠它。
+#   2) api.aibuzz.cn:80 —— 机器客户端入口，不确定有无老集成在用，暂不强跳；
+#      https://api.aibuzz.cn 已于同日补上 443 vhost（api.aibuzz.cn.ssl.conf）。
+#
+# 回滚：sudo cp aistareco.conf.before-http-redirect-20260906 aistareco.conf
+#       && sudo nginx -t && sudo systemctl reload nginx
+
+server {
+    listen 80 default_server;
+    server_name 47.98.162.120;
+    client_max_body_size 200m;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080/api/;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+    location /static/ { proxy_pass http://127.0.0.1:8080/static/; }
+    location /cdn/ { proxy_pass http://127.0.0.1:8080/cdn/; }
+
+    location = /admin { return 302 /dashboard; }
+    location /admin/ { return 302 /dashboard; }
+
+    location = /music { return 302 https://music.aibuzz.cn/; }
+    location /music/ { return 302 https://music.aibuzz.cn/; }
+    location = /drama { return 302 https://drama.aibuzz.cn/; }
+    location /drama/ { return 302 https://drama.aibuzz.cn/; }
+    location = /aiavatar { return 302 https://aiavatar.aibuzz.cn/; }
+    location /aiavatar/ { return 302 https://aiavatar.aibuzz.cn/; }
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    # --- 开放的六月毕业市集 演示版（纯静态 /opt/h5demo/liuyue）---
+    location = /liuyue { return 301 /liuyue/; }
+    location /liuyue/ {
+        root /opt/h5demo;
+        try_files $uri $uri/ /liuyue/index.html;
+        add_header Cache-Control "no-cache";
+    }
+    # --- end 开放的六月 ---
+
+    location / { proxy_pass http://127.0.0.1:3012/; }
+}
+
+# 五个子域的 80 → 443 统一跳转。/healthz 保持在 80 上可直接探活，
+# 免得把外部监控/部署脚本的探测也变成一次跳转。
+server {
+    listen 80;
+    server_name celebrity.aibuzz.cn music.aibuzz.cn drama.aibuzz.cn aiavatar.aibuzz.cn admin.aibuzz.cn;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / { return 308 https://$host$request_uri; }
+}
+
+server {
+    listen 80;
+    server_name api.aibuzz.cn;
+    client_max_body_size 200m;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+}

@@ -65,13 +65,79 @@ public final class ClipDtos {
     public record EstimateSummary(int totalSec, int avatarSec, int tailSec, int avatarCount, int brollCount, int tailCount, int chars) {}
     public record EstimateDto(List<EstimateItem> items, int total, EstimateSummary summary) {}
     public record RenderResult(String jobId, String projectId, String status, boolean mock) {}
+    /**
+     * 段级出片状态（WORKPLAN 2026-09-05 §1.6）。{@code status ∈ queued|generating|done|failed}。
+     * {@code no} 与 {@code ClipShotPlan.materialize} 的镜头序号同源，也就是 segmentJobsJson 里的那套编号。
+     */
+    public record JobSegmentDto(int no, String role, String status, String errorCode) {}
+
     public record JobDto(String id, String projectId, String status, String stage, int progress,
-                         String workId, String errorMessage, boolean mock, String updatedAt) {
+                         String workId, String errorMessage, boolean mock, String updatedAt,
+                         List<JobSegmentDto> segments) {
         public static JobDto from(ClipRenderJob j) {
             return new JobDto(j.getId(), j.getProjectId(), j.getStatus(), j.getStage(), j.getProgress(),
-                    "succeeded".equals(j.getStatus()) ? j.getProjectId() : null, j.getErrorMessage(), j.isMock(), iso(j.getUpdatedAt()));
+                    "succeeded".equals(j.getStatus()) ? j.getProjectId() : null, j.getErrorMessage(), j.isMock(), iso(j.getUpdatedAt()),
+                    jobSegments(j));
         }
     }
+
+    /**
+     * 把 {@code ClipRenderJob.segmentJobsJson} 映射成段级状态。**只读投影，不新增真值**：
+     * 哪一段做完了看它有没有留下产物（avatar 段看 videoCdnKey、broll 段看 audioCdnKey），
+     * 结尾固定段不需要生成所以恒为 done。
+     *
+     * <p>worker 还没写过状态（刚入队、或 force-mock 的确定性任务）时返回空列表 ——
+     * 调用方据此回落到整体进度，而不是看到一排凭空捏造的 queued。
+     */
+    public static List<JobSegmentDto> jobSegments(ClipRenderJob j) {
+        Map<String, Object> state = safeMap(j.getSegmentJobsJson());
+        List<Map<String, Object>> rows = mapListValue(state.get("segments"));
+        if (rows.isEmpty()) return List.of();
+        String jobStatus = j.getStatus();
+        boolean terminalFailed = "failed".equals(jobStatus) || "cancelled".equals(jobStatus);
+        String fallbackCode = string(state.get("errorCode"));
+        if (fallbackCode == null || fallbackCode.isBlank()) {
+            fallbackCode = "cancelled".equals(jobStatus) ? "CLIP_RENDER_CANCELLED" : "CLIP_RENDER_FAILED";
+        }
+        List<JobSegmentDto> result = new ArrayList<>();
+        boolean generatingTaken = false;
+        for (Map<String, Object> row : rows) {
+            int no = number(row.get("no"));
+            String role = String.valueOf(row.get("role"));
+            String rowCode = string(row.get("errorCode"));
+            boolean rowFailed = "failed".equals(String.valueOf(row.get("status"))) || (rowCode != null && !rowCode.isBlank());
+            String status;
+            String errorCode = null;
+            if (rowFailed) { status = "failed"; errorCode = rowCode == null || rowCode.isBlank() ? fallbackCode : rowCode; }
+            else if (produced(row, role)) status = "done";
+            else if (terminalFailed) { status = "failed"; errorCode = fallbackCode; }
+            else if ("succeeded".equals(jobStatus)) status = "done";
+            else if ("queued".equals(jobStatus)) status = "queued";
+            else if (!generatingTaken) { status = "generating"; generatingTaken = true; }
+            else status = "queued";
+            result.add(new JobSegmentDto(no, role, status, errorCode));
+        }
+        return result;
+    }
+
+    private static boolean produced(Map<String, Object> row, String role) {
+        if ("tail".equals(role)) return true;
+        Object key = "avatar".equals(role) ? row.get("videoCdnKey") : row.get("audioCdnKey");
+        return key != null && !String.valueOf(key).isBlank();
+    }
+
+    /** 配音预览的一段（WORKPLAN 2026-09-05 §1.5）。{@code audioUrl} 是短期签名地址，未生成时为 null。 */
+    public record TtsPreviewSegmentDto(int no, String audioUrl, double durationSec, double startSec) {}
+
+    /**
+     * 配音预览时间线（WORKPLAN 2026-09-05 §1.5）。
+     *
+     * <p>{@code credits} 恒为 0：Scheme A 下 clip 域不碰钻石账本，试听只花供应商点数。
+     * 字段仍然显式返回，是为了让调用方能区分「本轮免费」与「老版本服务端没这个概念」。
+     */
+    public record TtsPreviewDto(String status, String timelineHash, String voiceId, double totalDurationSec,
+                                List<TtsPreviewSegmentDto> segments, String errorCode, String errorMessage,
+                                int credits) {}
     /** 素材库存储占用。预置素材由平台提供，不计入用户配额。 */
     public record AssetStorageDto(long usedBytes, long limitBytes, long count) {}
 

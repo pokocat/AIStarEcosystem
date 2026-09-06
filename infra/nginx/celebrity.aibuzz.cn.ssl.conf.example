@@ -7,7 +7,6 @@
 # 详见 infra/README.md §5「nginx vhost：每子域必须同时有 80 和 443」。
 #
 # 本文件比 music / drama / aiavatar / star 四份多出的部分（线上既有，勿删）：
-#   - server_name 带 www.celebrity.aibuzz.cn（泛域名证书 SAN 含该名）
 #   - /healthz 探活；/admin 302 → /dashboard（带货端不暴露后台路径）
 #   - 用 ssl_session_cache 而非 http2 / HSTS —— 与另外四份写法不同，属历史差异
 #
@@ -15,18 +14,17 @@
 #   /etc/nginx/certs/aibuzz.cn/fullchain.pem
 #   /etc/nginx/certs/aibuzz.cn/privkey.key
 #
-# ⚠️ 与线上的唯一差异（有意为之，2026-08-29 核对）：
-#    线上 celebrity-ssl.conf 的 ssl_certificate* 指向
-#      /etc/nginx/certs/celebrity.aibuzz.cn/{fullchain.pem,privkey.key}
-#    该目录里放的是**同一张泛域名证书的副本**（md5 与 /etc/nginx/certs/aibuzz.cn/
-#    完全相同）。本 example 统一收敛到共享泛域名路径，避免续期漏副本。
+# 2026-09-06 两处变化（线上已同步）：
+#   - 证书从副本目录 /etc/nginx/certs/celebrity.aibuzz.cn/ 改指上面的共享真值路径
+#   - server_name 摘掉 www.celebrity.aibuzz.cn —— 全部 www.* 统一由
+#     www-redirect.conf 接管并 308 跳回不带 www 的地址，避免重复声明冲突
 #
-# 其余部分与线上 /etc/nginx/conf.d/celebrity-ssl.conf 逐字节一致。
+# 除注释外与线上 /etc/nginx/conf.d/celebrity-ssl.conf 逐字节一致。
 
 # celebrity.aibuzz.cn TLS entrypoint.
 server {
     listen 443 ssl;
-    server_name celebrity.aibuzz.cn www.celebrity.aibuzz.cn;
+    server_name celebrity.aibuzz.cn;
     client_max_body_size 200m;
 
     ssl_certificate /etc/nginx/certs/aibuzz.cn/fullchain.pem;
