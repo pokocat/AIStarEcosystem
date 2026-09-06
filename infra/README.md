@@ -27,7 +27,9 @@ infra/
 │   ├── web-celebrity.env.example   ← apps/web-celebrity（Next 16, 根路径）
 │   ├── web-music.env.example       ← apps/web-music
 │   ├── web-drama.env.example       ← apps/web-drama
-│   └── web-aiavatar.env.example    ← apps/web-aiavatar
+│   ├── web-aiavatar.env.example    ← apps/web-aiavatar
+│   ├── web-star.env.example        ← apps/web-star（明星商务工作台）
+│   └── web-ipstudio.env.example    ← apps/web-ipstudio（AI IP 工作台）
 │
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
@@ -45,11 +47,13 @@ infra/
 │   ├── drama.aibuzz.cn.ssl.conf.example      ← web-drama    → 3011
 │   ├── aiavatar.aibuzz.cn.ssl.conf.example   ← web-aiavatar → 3013
 │   ├── star.aibuzz.cn.ssl.conf.example       ← web-star     → 3014（80 在 star.*.conf.example）
+│   ├── ipstudio.aibuzz.cn.ssl.conf.example   ← web-ipstudio → 3015（80 在 ipstudio.*.conf.example）
 │   ├── api.aibuzz.cn.ssl.conf.example        ← server       → 8080
 │   │
 │   │   ── 80 + 443 单文件形态（这两个域名线上就是这么配的，2026-09-06 已补齐反代）──
 │   ├── aistar.aibuzz.cn.conf.example ← web-aiavatar → 3013（与 aiavatar.*.ssl 同上游）
 │   ├── star.aibuzz.cn.conf.example   ← web-star 的 80 块（443 在 star.*.ssl.conf.example）
+│   ├── ipstudio.aibuzz.cn.conf.example ← web-ipstudio 的 80 块（443 在 ipstudio.*.ssl.conf.example）
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集
 │
@@ -60,6 +64,8 @@ infra/
 │   ├── aistareco-web-music.service.example
 │   ├── aistareco-web-drama.service.example
 │   ├── aistareco-web-aiavatar.service.example
+│   ├── aistareco-web-star.service.example
+│   ├── aistareco-web-ipstudio.service.example
 │   └── aistareco-sau-service.service.example   ← Docker 启动型
 │
 ├── rds/                            ← 阿里云 RDS MySQL 8.0 初始化
@@ -98,6 +104,8 @@ infra/
                           │   ├─ music.aibuzz.cn → web-music (3010)
                           │   ├─ drama.aibuzz.cn → web-drama (3011)
                           │   ├─ aistar.aibuzz.cn → web-aiavatar (3013)
+                          │   ├─ star.aibuzz.cn → web-star (3014)
+                          │   ├─ ipstudio.aibuzz.cn → web-ipstudio (3015)
                           │   ├─ api.aibuzz.cn → server (8080)
                           │   └─ id.aibuzz.cn → 账号中心 (8091, 独立仓库 pokocat/aibuzz-id)
                           │
@@ -110,6 +118,7 @@ ECS 集群 (1~N 台, VPC 内网)│
   │   • aistareco-web-celebrity  :3012  (Next 16 standalone)
   │   • aistareco-web-aiavatar   :3013  (Next 16 standalone)
   │   • aistareco-web-star       :3014  (Next 16 standalone)
+  │   • aistareco-web-ipstudio   :3015  (Next 16 standalone)
   │   • aistareco-id-server      :8091  (统一账号中心 / OIDC；本仓不发布，见 pokocat/aibuzz-id)
   └─ Docker                                                                   
       • aistareco-sau-service    :8090  (FastAPI + Playwright/patchright)
@@ -472,7 +481,7 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 
 ```bash
 NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn \
-  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star
+  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star,web-ipstudio
 ```
 
 默认值是 `legacy`，所以**不显式指定时现网行为完全不变**。回退 = 用 `legacy` 重新构建部署。
@@ -532,6 +541,7 @@ HSTS（各 443 vhost 都带 `max-age=31536000`）更是强制。**所以「80 �
 | `drama.aibuzz.cn` | web-drama 3011 | `aistareco.conf`（308 → https） | `drama.aibuzz.cn.ssl.conf` | `drama.aibuzz.cn.ssl.conf.example` |
 | `aiavatar.aibuzz.cn` | web-aiavatar 3013 | `aistareco.conf`（308 → https） | `aiavatar.aibuzz.cn.ssl.conf` | `aiavatar.aibuzz.cn.ssl.conf.example` |
 | `star.aibuzz.cn` | web-star 3014 | `star.aibuzz.cn.conf`（308 → https） | `star.aibuzz.cn.ssl.conf` | 两份同名 example |
+| `ipstudio.aibuzz.cn` | web-ipstudio 3015 | `ipstudio.aibuzz.cn.conf`（308 → https） | `ipstudio.aibuzz.cn.ssl.conf` | 两份同名 example ← v0.151 新增 |
 | `aistar.aibuzz.cn` | web-aiavatar 3013 | `aistar.aibuzz.cn.conf` | 同文件 | `aistar.aibuzz.cn.conf.example` |
 | `api.aibuzz.cn` | server 8080 | `aistareco.conf`（**不跳转**，见下） | `api.aibuzz.cn.ssl.conf` ← 2026-09-06 补 | `api.aibuzz.cn.ssl.conf.example` |
 | `www.<任意子域>` | — | `www-redirect.conf`（308 → 去掉 www） | 同文件 | `www-redirect.conf.example` |
@@ -541,7 +551,7 @@ HSTS（各 443 vhost 都带 `max-age=31536000`）更是强制。**所以「80 �
 注意 80 和 443 **不在同一个文件里**：多数子域的 80 块集中在 `aistareco.conf`，443 块各占
 一个 `<domain>.ssl.conf`。改动时两边都要看，别只 grep 一个文件就下结论。
 
-**80 一律 308 跳 HTTPS（2026-09-06）**：`celebrity/music/drama/aiavatar/admin/star/aistar`
+**80 一律 308 跳 HTTPS（2026-09-06）**：`celebrity/music/drama/aiavatar/admin/star/aistar/ipstudio`
 的 80 块此前直接明文出内容，现改为 `return 308 https://$host$request_uri`。
 用 **308** 而不是 301：308 保留请求方法与 body，万一还有客户端在 POST `http://<域名>/api/...`
 不会被降级成 GET 丢掉请求体。`/healthz` 仍留在 80 上直接返回 200，免得把监控探测也变成一次跳转。
@@ -658,6 +668,34 @@ done
 sudo awk '{for(i=1;i<=NF;i++) if($i ~ /^host=/) print $i}' \
   /var/log/nginx/unmatched-ssl.log | sort | uniq -c | sort -rn | head
 ```
+
+### 5.4 新增一个 web 子应用时的部署登记清单
+
+> 2026-09-06 起。`apps/web-ipstudio`（v0.151）代码合入后**七处登记全部漏掉**，
+> 结果是「只能本地跑、线上无从部署」。新增子应用时按下表逐项打勾，缺一项都会在
+> 上线当天变成阻塞。
+
+| # | 位置 | 要加什么 |
+|---|---|---|
+| 1 | `infra/scripts/build-release.sh` | `DEFAULT_SERVICES`、`normalize_services` 的 case 与报错文案、`build_web_<app>()`、`has_service <app> && build_web_<app>` 派发行；用到新的 `NEXT_PUBLIC_*` 还要在顶部 `export`（**构建期内联**，只写 env 文件无效）并落进 `manifest.env` |
+| 2 | `infra/scripts/deploy-release.sh` | `DEFAULT_SERVICES`、case、`require_artifact`、`mkdir -p` / `chown` 的目录列表、`extract_app` 派发行 |
+| 3 | `infra/scripts/deploy-local.sh` | 同上（ECS 本机部署路径，与 2 是两套独立列表，容易只改一边） |
+| 4 | `infra/scripts/check-runtime-env.sh` / `install-host-deps.sh` | `DEFAULT_SERVICES`、case、`needs_release_manifest` / `needs_node` 等判定 |
+| 5 | `infra/scripts/verify.sh` | `check_unit aistareco-web-<app>`；有独立域名再往 `PUBLIC_URLS` 加一条绝对 URL |
+| 6 | `infra/env/` + `infra/systemd/` | `web-<app>.env.example`（端口唯一，先 `ss -ltn` 确认没撞）+ `aistareco-web-<app>.service.example` |
+| 7 | `infra/nginx/` + DNS | **两个** vhost（80 → 308、443 反代，§5.1 硬规则）+ Alidns A 记录；一级子域才被 `*.aibuzz.cn` 证书覆盖（§5.2） |
+
+DNS 记录用本机 `aliyun` CLI 加（与 §5.3 续期脚本同一套凭据）：
+
+```bash
+aliyun alidns AddDomainRecord --DomainName aibuzz.cn --RR <sub> --Type A \
+  --Value 47.98.162.120 --TTL 600
+dig +short <sub>.aibuzz.cn @223.5.5.5
+```
+
+顺序：DNS → env → systemd（`daemon-reload` + `enable`，**先别 start**）→
+`deploy.sh web-<app>`（产物到位后单元才能起来）→ 装两个 vhost →
+`nginx -t` → `systemctl reload nginx` → `verify.sh`。
 
 ---
 

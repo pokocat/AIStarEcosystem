@@ -39,7 +39,7 @@ if [[ -z "$RAW_SERVICES" ]]; then
   RAW_SERVICES="${SERVICES:?manifest SERVICES missing}"
 fi
 
-DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star admin sau-service"
+DEFAULT_SERVICES="server web-music web-drama web-celebrity web-aiavatar web-star web-ipstudio admin sau-service"
 
 log() { printf "\033[1;34m[deploy-release]\033[0m %s\n" "$*"; }
 ok() { printf "\033[1;32m[deploy-release]\033[0m %s\n" "$*"; }
@@ -51,9 +51,9 @@ normalize_services() {
   for item in $raw; do
     case "$item" in
       all) out="$out $DEFAULT_SERVICES" ;;
-      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service) out="$out $item" ;;
+      server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|web-ipstudio|admin|sau-service) out="$out $item" ;;
       "") ;;
-      *) fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|admin|sau-service|all)" ;;
+      *) fail "unknown service '$item' (expected server|web-music|web-drama|web-celebrity|web-aiavatar|web-star|web-ipstudio|admin|sau-service|all)" ;;
     esac
   done
 
@@ -99,6 +99,7 @@ for svc in $SERVICES_TO_DEPLOY; do
     web-celebrity) require_artifact "web-celebrity.tar.gz" ;;
     web-aiavatar) require_artifact "web-aiavatar.tar.gz" ;;
     web-star) require_artifact "web-star.tar.gz" ;;
+    web-ipstudio) require_artifact "web-ipstudio.tar.gz" ;;
     admin) require_artifact "admin.tar.gz" ;;
     sau-service) require_artifact "sau-service.tar.gz" ;;
   esac
@@ -171,7 +172,7 @@ check_runtime_env() {
   $SUDO bash "$REMOTE_STAGE/check-runtime-env.sh" "$SERVICES_TO_DEPLOY" --release-dir "$REMOTE_STAGE"
 }
 
-$SUDO mkdir -p "$REMOTE_ROOT/releases" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-music" "$REMOTE_ROOT/web-drama" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/web-aiavatar" "$REMOTE_ROOT/web-star" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
+$SUDO mkdir -p "$REMOTE_ROOT/releases" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-music" "$REMOTE_ROOT/web-drama" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/web-aiavatar" "$REMOTE_ROOT/web-star" "$REMOTE_ROOT/web-ipstudio" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
 
 ensure_host_deps
 check_runtime_env
@@ -180,7 +181,7 @@ ensure_cjk_fonts
 $SUDO rm -rf "$RELEASE_STORE"
 $SUDO mkdir -p "$RELEASE_STORE"
 $SUDO cp -a "$REMOTE_STAGE"/. "$RELEASE_STORE"/
-$SUDO chown -R "$APP_USER:$APP_GROUP" "$RELEASE_STORE" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-music" "$REMOTE_ROOT/web-drama" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/web-aiavatar" "$REMOTE_ROOT/web-star" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
+$SUDO chown -R "$APP_USER:$APP_GROUP" "$RELEASE_STORE" "$REMOTE_ROOT/server" "$REMOTE_ROOT/web-music" "$REMOTE_ROOT/web-drama" "$REMOTE_ROOT/web-celebrity" "$REMOTE_ROOT/web-aiavatar" "$REMOTE_ROOT/web-star" "$REMOTE_ROOT/web-ipstudio" "$REMOTE_ROOT/admin" "$REMOTE_ROOT/sau-service"
 
 deploy_server() {
   log "install server jar"
@@ -237,6 +238,7 @@ for svc in $SERVICES_TO_DEPLOY; do
     web-celebrity) extract_app web-celebrity web-celebrity.tar.gz "$REMOTE_ROOT/web-celebrity" aistareco-web-celebrity ;;
     web-aiavatar) extract_app web-aiavatar web-aiavatar.tar.gz "$REMOTE_ROOT/web-aiavatar" aistareco-web-aiavatar ;;
     web-star) extract_app web-star web-star.tar.gz "$REMOTE_ROOT/web-star" aistareco-web-star ;;
+    web-ipstudio) extract_app web-ipstudio web-ipstudio.tar.gz "$REMOTE_ROOT/web-ipstudio" aistareco-web-ipstudio ;;
     admin) extract_app admin admin.tar.gz "$REMOTE_ROOT/admin" aistareco-admin ;;
     sau-service) deploy_sau_service ;;
   esac

@@ -1,0 +1,47 @@
+# AI Star Eco — ipstudio.aibuzz.cn HTTPS entry for apps/web-ipstudio (port 3015).
+# Install to: /etc/nginx/conf.d/ipstudio.aibuzz.cn.ssl.conf
+#
+# 该子域的 80 vhost 在 ipstudio.aibuzz.cn.conf（不是本文件），本文件只补 443。
+# 每个子域必须同时有 80 和 443 vhost —— 缺 443 会被浏览器 HTTPS-First / HSTS
+# 打到 nginx 的「443 默认 server」，2026-09-06 起是 000-default-ssl.conf 的 404 兜底。
+# 详见 infra/README.md §5.1「nginx vhost：每子域必须同时有 80 和 443」。
+#
+# 证书：全站共用 *.aibuzz.cn 泛域名证书（SAN 含 *.aibuzz.cn + aibuzz.cn），
+#   /etc/nginx/certs/aibuzz.cn/fullchain.pem
+#   /etc/nginx/certs/aibuzz.cn/privkey.key
+# ipstudio 是一级子域，被通配符覆盖（两级如 www.ipstudio 不覆盖，见 §5.2）。
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ipstudio.aibuzz.cn;
+
+    ssl_certificate /etc/nginx/certs/aibuzz.cn/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/aibuzz.cn/privkey.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # 画布上传原始照片，放宽 body 上限（与其它子域一致）。
+    client_max_body_size 200m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080/api/;
+        proxy_connect_timeout 30s;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location /static/ { proxy_pass http://127.0.0.1:8080/static/; }
+    location /cdn/ { proxy_pass http://127.0.0.1:8080/cdn/; }
+    location / { proxy_pass http://127.0.0.1:3015; }
+}

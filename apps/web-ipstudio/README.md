@@ -89,3 +89,27 @@ src/
 - 工程登记：`pnpm-workspace.yaml` / 根 `package.json`（`dev:ipstudio`、`typecheck:web-ipstudio`）/
   `.claude/launch.json`（3015）/ `scripts/check-api-contract.mjs` 扫描根。
 - 类型契约真源：`packages/types/src/ip-studio.ts`（server DTO 字段名与之 1:1）。
+
+## 生产部署
+
+| 项 | 值 |
+|---|---|
+| 域名 | `https://ipstudio.aibuzz.cn`（80 → 308 跳 HTTPS，共用 `*.aibuzz.cn` 泛域名证书） |
+| systemd 单元 | `aistareco-web-ipstudio`（`/opt/ai-star-eco/web-ipstudio`，监听 `127.0.0.1:3015`） |
+| 运行期 env | `/etc/aistareco/web-ipstudio.env`（模板 `infra/env/web-ipstudio.env.example`） |
+| nginx vhost | `infra/nginx/ipstudio.aibuzz.cn.conf.example`（80）+ `ipstudio.aibuzz.cn.ssl.conf.example`（443） |
+
+发布：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=<本机私钥> \
+  ./infra/scripts/deploy.sh web-ipstudio
+```
+
+⚠️ `NEXT_PUBLIC_*` 是 Next 的**构建期内联**值 —— 包括发布成功链接用的
+`NEXT_PUBLIC_AIAVATAR_URL`。改 `/etc/aistareco/web-ipstudio.env` 不生效，
+必须在 `infra/scripts/build-release.sh` 打包时带上（该脚本已内置默认
+`https://aiavatar.aibuzz.cn`）。登录当前是 legacy 模式：web-ipstudio 尚未在统一账号中心
+注册 `client_id`，切 `NEXT_PUBLIC_AUTH_MODE=id` 前需先完成注册与 CORS 登记。
+
+完整背景与登记清单见 [`infra/README.md`](../../infra/README.md) §5.1 / §5.4。

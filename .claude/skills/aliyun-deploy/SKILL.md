@@ -24,6 +24,8 @@ Current production services are:
 - `web-drama` - Next.js 16 drama app, systemd unit `aistareco-web-drama`.
 - `web-celebrity` - Next.js 16 celebrity app, systemd unit `aistareco-web-celebrity`.
 - `web-aiavatar` - Next.js 16 AiAvatar app, systemd unit `aistareco-web-aiavatar`.
+- `web-star` - Next.js 16 star business console, systemd unit `aistareco-web-star`.
+- `web-ipstudio` - Next.js 16 AI IP studio (`ipstudio.aibuzz.cn`, port 3015), systemd unit `aistareco-web-ipstudio`.
 - `admin` - Next.js admin app, systemd unit `aistareco-admin`.
 - `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
 - `all` - builds and deploys all current production services above.
@@ -151,7 +153,7 @@ Switching the five web apps to identity-center login is a **build-time** change
 
 ```bash
 NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn \
-  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star
+  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star,web-ipstudio
 ```
 
 The default is `legacy`, so ordinary deploys leave current login behaviour untouched.

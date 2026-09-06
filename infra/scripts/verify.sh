@@ -28,7 +28,11 @@ else
   HOST_REMOTE="${DEPLOY_HOST#*@}"
 fi
 PUBLIC_BASE="${PUBLIC_BASE:-http://$HOST_REMOTE}"
-PUBLIC_PATHS="${PUBLIC_PATHS:-/ /login /admin /api/celebrity/dictionaries}"
+# /api/celebrity/dictionaries 已于 v0.150 随 /api/celebrity/** 收紧为 authenticated，
+# 匿名访问返回 401 → 此处一直误报失败；改用真正 permitAll 的 GET /api/config 作后端探针。
+PUBLIC_PATHS="${PUBLIC_PATHS:-/ /login /admin /api/config}"
+# 需要按绝对 URL 探测的子域（各自有独立 vhost，不在 PUBLIC_BASE 之下）。
+PUBLIC_URLS="${PUBLIC_URLS:-https://ipstudio.aibuzz.cn/}"
 
 FAILED=0
 
@@ -57,11 +61,10 @@ remote_exec() {
 READINESS_RETRIES="${READINESS_RETRIES:-20}"     # 20 × 3s ≈ 60s 上限
 READINESS_INTERVAL="${READINESS_INTERVAL:-3}"
 
-log "public endpoints ($PUBLIC_BASE)"
-for path in $PUBLIC_PATHS; do
-  code="000"
+check_url() {
+  local url="$1" label="${2:-$1}" code="000" attempt
   for ((attempt = 1; attempt <= READINESS_RETRIES; attempt++)); do
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$PUBLIC_BASE$path" || echo "000")"
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo "000")"
     case "$code" in
       200|301|302|307|308) break ;;                    # 成功（v0.136 起消费域 /admin 为 302 → admin 子域）
       000|502|503|504) sleep "$READINESS_INTERVAL" ;;  # 还在启动，重试
@@ -69,19 +72,37 @@ for path in $PUBLIC_PATHS; do
     esac
   done
   if [[ "$code" == "200" || "$code" == "301" || "$code" == "302" || "$code" == "307" || "$code" == "308" ]]; then
-    ok "$path -> $code"
+    ok "$label -> $code"
   else
-    fail "$path -> $code"
+    fail "$label -> $code"
   fi
+}
+
+log "public endpoints ($PUBLIC_BASE)"
+for path in $PUBLIC_PATHS; do
+  check_url "$PUBLIC_BASE$path" "$path"
 done
+
+if [[ -n "${PUBLIC_URLS// /}" ]]; then
+  log "public subdomains"
+  for url in $PUBLIC_URLS; do
+    check_url "$url"
+  done
+fi
 
 log "$([[ "$LOCAL_MODE" == "1" ]] && echo "local" || echo "remote") services"
 remote_exec <<'REMOTE_CHECKS' || warn "remote checks partially failed"
 set -euo pipefail
 
+# ⚠️ `systemctl list-unit-files | grep -q` 在 `set -o pipefail` 下永远判假：grep -q 命中即退出，
+# 上游 systemctl 收到 SIGPIPE（141），pipefail 把整条管道判失败 —— 于是**所有 check_unit 静默跳过**，
+# verify 从来没真正检查过任何 systemd 单元（2026-09-06 生产实测确认）。
+# 用 here-string 消掉管道（与 v0.119 预发 ffmpeg 滤镜预检同一修法）。
 check_unit() {
   local svc="$1"
-  if systemctl list-unit-files | grep -q "^${svc}.service"; then
+  local unit_files
+  unit_files="$(systemctl list-unit-files)"
+  if grep -q "^${svc}.service" <<<"$unit_files"; then
     if systemctl is-active --quiet "$svc"; then
       echo "  ✓ $svc active"
     else
@@ -101,13 +122,14 @@ check_unit aistareco-web-drama
 check_unit aistareco-web-celebrity
 check_unit aistareco-web-aiavatar
 check_unit aistareco-web-star
+check_unit aistareco-web-ipstudio
 check_unit aistareco-admin
 check_unit aistareco-sau-service
 
 # 就绪重试：restart 后 Spring Boot ~10s 才监听 8080，轮询最多 ~60s 再判失败。
 api_ready=0
 for _ in $(seq 1 20); do
-  if curl -fsS http://127.0.0.1:8080/api/celebrity/dictionaries >/dev/null 2>&1; then
+  if curl -fsS http://127.0.0.1:8080/api/config >/dev/null 2>&1; then
     api_ready=1
     break
   fi

@@ -1,0 +1,21 @@
+# AI Star Eco — ipstudio.aibuzz.cn HTTP(:80) entry for apps/web-ipstudio。
+# Install to: /etc/nginx/conf.d/ipstudio.aibuzz.cn.conf
+#
+# 与 star.aibuzz.cn 同形态：80 只做 308 跳 HTTPS（308 保留方法与 body，POST 不会被降级成 GET），
+# 真正的服务端配置在 ipstudio.aibuzz.cn.ssl.conf（443，含 /api/ /static/ /cdn/）。
+# 每个子域必须同时有 80 和 443 vhost，见 infra/README.md §5.1。
+#
+# /healthz 留在 80 上直接 200，免得把监控探测也变成一次跳转。
+
+server {
+    listen 80;
+    server_name ipstudio.aibuzz.cn;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / { return 308 https://$host$request_uri; }
+}
