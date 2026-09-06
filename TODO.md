@@ -11,8 +11,8 @@
 
 ## 2026-09-06 · AI IP 工作台 v0.151 后续（真源 `docs/ip-studio-plan.md` §8）
 
-- [x] ~~**infra 部署登记缺失**：`infra/scripts/build-release.sh` 的 `DEFAULT_SERVICES` / `build_web_*` / `export_auth_env`、nginx vhost（建议 `ipstudio.aibuzz.cn`）、systemd 单元、账号中心 `client_id` 均未为 `web-ipstudio` 登记；上线前必须补，否则只能本地跑。~~ **v0.151 完成**，2026-09-06：七处登记全部补齐并**已上线** `https://ipstudio.aibuzz.cn` —— `build-release.sh`（`DEFAULT_SERVICES` / `build_web_ipstudio()` / `export_auth_env` / 派发 + 新增构建期 `NEXT_PUBLIC_AIAVATAR_URL` 并落进 `manifest.env`）、`deploy-release.sh` / `deploy-local.sh` / `check-runtime-env.sh` / `install-host-deps.sh` 的服务列表、`verify.sh`（`check_unit aistareco-web-ipstudio` + 新 `PUBLIC_URLS` 绝对 URL 探针）、`infra/env/web-ipstudio.env.example`（3015）、`infra/systemd/aistareco-web-ipstudio.service.example`、`infra/nginx/ipstudio.aibuzz.cn{,.ssl}.conf.example`（80 → 308 / 443 反代 3015，含 `/api/ /static/ /cdn/`）。生产侧：Alidns 加 `ipstudio A 47.98.162.120`、`/etc/aistareco/web-ipstudio.env`(0600 root:root)、systemd 单元 enable + start、两个 vhost 装入 `/etc/nginx/conf.d/`。**账号中心 `client_id` 仍未注册**（当前 legacy 登录模式，env example 里那三行保持注释），随统一账号中心上线时一并登记 —— 见下一条。
-- [ ] **web-ipstudio 未在统一账号中心注册 `client_id`**（2026-09-06 拆分自上一条）：切 `NEXT_PUBLIC_AUTH_MODE=id` 前需在 `pokocat/aibuzz-id` 注册 `client_id=web-ipstudio`、`redirect_uri=https://ipstudio.aibuzz.cn/auth/callback`，并把该 origin 加进 `ID_CORS_ALLOWED_ORIGINS`；然后用 `NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn ./infra/scripts/deploy.sh web-ipstudio` **重新构建**（`NEXT_PUBLIC_*` 构建期内联，改运行期 env 无效）。
+- [x] ~~**infra 部署登记缺失**：`infra/scripts/build-release.sh` 的 `DEFAULT_SERVICES` / `build_web_*` / `export_auth_env`、nginx vhost（建议 `ipstudio.aibuzz.cn`）、systemd 单元、账号中心 `client_id` 均未为 `web-ipstudio` 登记；上线前必须补，否则只能本地跑。~~ **v0.151 完成**，2026-09-06：七处登记全部补齐并**已上线** `https://ipstudio.aibuzz.cn` —— `build-release.sh`（`DEFAULT_SERVICES` / `build_web_ipstudio()` / `export_auth_env` / 派发 + 新增构建期 `NEXT_PUBLIC_AIAVATAR_URL` 并落进 `manifest.env`）、`deploy-release.sh` / `deploy-local.sh` / `check-runtime-env.sh` / `install-host-deps.sh` 的服务列表、`verify.sh`（`check_unit aistareco-web-ipstudio` + 新 `PUBLIC_URLS` 绝对 URL 探针）、`infra/env/web-ipstudio.env.example`（3015）、`infra/systemd/aistareco-web-ipstudio.service.example`、`infra/nginx/ipstudio.aibuzz.cn{,.ssl}.conf.example`（80 → 308 / 443 反代 3015，含 `/api/ /static/ /cdn/`）。生产侧：Alidns 加 `ipstudio A 47.98.162.120`、`/etc/aistareco/web-ipstudio.env`(0600 root:root)、systemd 单元 enable + start、两个 vhost 装入 `/etc/nginx/conf.d/`。**账号中心 `client_id` 已于 2026-09-06 注册并切 id 模式**（env example 里那三行已放开）—— 见下一条。
+- [x] ~~**web-ipstudio 未在统一账号中心注册 `client_id`**（2026-09-06 拆分自上一条）~~ **完成**，2026-09-06：`pokocat/aibuzz-id` 的 `deploy/env/id-server-clients.yml.example` 与线上 `/etc/aistareco/id-server/application-mysql.yml` 都加了公开 PKCE 客户端 `web-ipstudio`（`product-code: aistar` / `audience: aistar-api` / `redirect_uri=https://ipstudio.aibuzz.cn/auth/callback`，与 `web-star` 同形），`ID_CORS_ALLOWED_ORIGINS` 追加 `https://ipstudio.aibuzz.cn`（7 → 8 个 origin），重启后 `[client-seeder] 新增 client=web-ipstudio · 已同步 9 个客户端`；本站以 `NEXT_PUBLIC_AUTH_MODE=id` 重建部署（release `20260906192915-0908ce37`）。实测：authorize 302 → `https://id.aibuzz.cn/login`、未注册 redirect_uri 400、`/oauth2/token` CORS 预检回 `access-control-allow-origin: https://ipstudio.aibuzz.cn`、线上 chunk 内联 `idIssuer=https://id.aibuzz.cn` + `idClientId=web-ipstudio`。
 - [x] ~~`infra/scripts/verify.sh` 把已收紧的 `/api/celebrity/dictionaries` 当公开路径探测~~ **完成，2026-09-06**：该路由自 v0.150 起随 `/api/celebrity/**` 收紧为 `authenticated`，匿名访问返回 401（生产实测），于是 `PUBLIC_PATHS` 一直误报失败，且远端 `REMOTE_CHECKS` 里的同一探针 `curl -fsS` 失败即 `exit 1`，把它后面的 CJK 字体 / sau-service / `nginx -t` 三项检查整段跳过（降级成一句 warn）。两处均改用真正 permitAll 的 `GET /api/config`（生产实测 200）。
 - [x] ~~`infra/scripts/verify.sh` 的 `check_unit` 从未真正执行过~~ **完成，2026-09-06**（本轮顺带发现）：`systemctl list-unit-files | grep -q "^${svc}.service"` 在远端块的 `set -o pipefail` 下**永远判假** —— `grep -q` 命中即退出并关闭管道，上游 `systemctl` 吃 SIGPIPE 退 141，`pipefail` 把整条管道判失败。于是 12 个 `check_unit` 全部静默跳过，verify 一直「ALL GREEN」却从没检查过任何 systemd 单元（生产实测：改用 here-string 后 12 个单元才首次真正打印）。与 v0.119 预发 ffmpeg 滤镜预检是同一个坑，同样改用 here-string 修复。
 - [ ] **一致性打分 + 自动重跑**（§3 ⑥）：用视觉模型比对主图与各 look 的脸部一致性，低于阈值自动重跑一次；打分结果进 `IpRun.output`，前端在候选卡上显示。
@@ -159,11 +159,13 @@
 - [ ] **`aistareco.conf` 的 `listen 80 default_server`（`server_name 47.98.162.120`）未登记 host 仍回带货站首页**：
   比落到后台好，但仍是串站。要收口需同时确认 `verify.sh` 的 `PUBLIC_BASE=http://47.98.162.120`
   与 `/liuyue` 静态演示不受影响。
-- [ ] **AGENTS.md 关于统一账号中心「未上线」的描述已过时**（2026-09-06 审计）：线上 release
+- [x] ~~**AGENTS.md 关于统一账号中心「未上线」的描述已过时**（2026-09-06 审计）~~ **完成**，2026-09-06：线上 release
   `20260905115515-fc8c8702` / `20260905120453-fc8c8702` 的 manifest 明确是
   `NEXT_PUBLIC_AUTH_MODE='id'` + `NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`，
   五个 web app 已按统一账号中心构建并上线，`id.aibuzz.cn` 的 OIDC discovery / JWKS / 登录页实测均正常。
-  需要同步 AGENTS.md 第 1 节与 v0.149 版本行，以及 `docs/unified-identity-plan.md` §9 的阶段状态。
+  已改正 AGENTS.md 第 1 节核心信息、Phase 表「统一账号中心」行、v0.149 版本行、「未完成事项」（P2–P5 → P3–P5）
+  与 `docs/INDEX.md` 的「待预发上线」，统一表述为「已于 2026-09-05 上线」。`docs/unified-identity-plan.md` §9
+  的阶段状态仍待同步（该文件是设计真源，留给下一次规划更新）。
 - [ ] **web-music 制作工坊四个模块后端从未实现**（2026-09-06 定位）：`/me/{assets,clip-tasks,person-models,
   digital-person/gen-tasks,batch-tasks,mix-templates}` 在 `specs/openapi.yaml` 里有登记（所以 contract 门过得去），
   但 server 无对应 controller，`ProductRouteTableCoverageTest` 枚举真实 handler 也就照不到它们，

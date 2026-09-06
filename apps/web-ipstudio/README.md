@@ -109,7 +109,17 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=<本机私钥> \
 ⚠️ `NEXT_PUBLIC_*` 是 Next 的**构建期内联**值 —— 包括发布成功链接用的
 `NEXT_PUBLIC_AIAVATAR_URL`。改 `/etc/aistareco/web-ipstudio.env` 不生效，
 必须在 `infra/scripts/build-release.sh` 打包时带上（该脚本已内置默认
-`https://aiavatar.aibuzz.cn`）。登录当前是 legacy 模式：web-ipstudio 尚未在统一账号中心
-注册 `client_id`，切 `NEXT_PUBLIC_AUTH_MODE=id` 前需先完成注册与 CORS 登记。
+`https://aiavatar.aibuzz.cn`）。
+
+登录走**统一账号中心** `https://id.aibuzz.cn`（2026-09-06 起）：客户端 `client_id=web-ipstudio`
+（公开客户端 · 授权码 + PKCE），回跳 `https://ipstudio.aibuzz.cn/auth/callback`。因此发布必须带上
+构建期的 `NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`
+（`build-release.sh` 默认是 `legacy`，不带就会退回本仓登录页）：
+
+```bash
+NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn \
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=<本机私钥> \
+  ./infra/scripts/deploy.sh web-ipstudio
+```
 
 完整背景与登记清单见 [`infra/README.md`](../../infra/README.md) §5.1 / §5.4。
