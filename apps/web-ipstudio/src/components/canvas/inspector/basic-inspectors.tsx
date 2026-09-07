@@ -4,8 +4,9 @@
 
 import * as React from "react";
 import { Check, ExternalLink } from "lucide-react";
-import type { IpNode, IpStylePreset } from "@ai-star-eco/types";
+import type { IpNode, IpPromptGroup, IpStylePreset } from "@ai-star-eco/types";
 import { useCanvasStore } from "@/lib/canvas-store";
+import { LEGACY_LOOK_KEYS } from "@/lib/graph";
 import { Collapsible, Field, ImageUploadField, TextAreaInput, TextInput } from "./fields";
 
 const AIAVATAR_URL = process.env.NEXT_PUBLIC_AIAVATAR_URL ?? "http://localhost:3013";
@@ -121,19 +122,33 @@ export function StyleInspector({
   );
 }
 
-const LOOK_FIELDS: Array<{ key: "outfit" | "pose" | "expression" | "details" | "props"; label: string; placeholder: string; rows: number }> = [
-  { key: "outfit", label: "服装", placeholder: "米色粗针织毛衣、浅色直筒牛仔裤", rows: 2 },
-  { key: "pose", label: "姿势", placeholder: "站姿，双手捧着手机低头看屏幕", rows: 2 },
-  { key: "expression", label: "表情", placeholder: "嘴角微扬，眼神专注", rows: 2 },
-  { key: "details", label: "细节", placeholder: "毛衣纹理清晰，屏幕有微弱冷光", rows: 2 },
-  { key: "props", label: "道具（可留空）", placeholder: "一部白色手机", rows: 1 },
-];
-
-export function LookInspector({ node }: { node: IpNode & { type: "look" } }) {
+/**
+ * 形象卡属性面板 —— 一个提示词框 + 下面的常见选项。
+ *
+ * v0.151 是「服装 / 姿势 / 表情 / 细节 / 道具」五个固定框，等于替用户规定了造型只能这么描述；
+ * 现在改成一段自由文字，内置模板只负责把词填进去。老画布的五字段不迁移、原样保留读取
+ * （服务端 IpRunService.lookText 按老顺序拼接回落），所以升级不会让任何人的旧项目变空。
+ */
+export function LookInspector({
+  node, promptGroups,
+}: {
+  node: IpNode & { type: "look" };
+  promptGroups: IpPromptGroup[];
+}) {
   const patchNodeData = useCanvasStore((s) => s.patchNodeData);
+  const [gender, setGender] = React.useState<"female" | "male">("female");
+
+  const legacy = LEGACY_LOOK_KEYS.map((k) => (node.data[k] ?? "").trim()).filter(Boolean).join("，");
+  const prompt = node.data.prompt ?? "";
+
+  // 点模板 = 往输入框里追加一句，不覆盖用户已经写的东西。
+  const append = (text: string) => {
+    const cur = prompt.trim();
+    patchNodeData(node.id, "look", { prompt: cur ? `${cur}，${text}` : text });
+  };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       <Field label="造型名">
         <TextInput
           value={node.data.title}
@@ -141,16 +156,76 @@ export function LookInspector({ node }: { node: IpNode & { type: "look" } }) {
           onChange={(e) => patchNodeData(node.id, "look", { title: e.target.value })}
         />
       </Field>
-      {LOOK_FIELDS.map((f) => (
-        <Field key={f.key} label={f.label}>
-          <TextAreaInput
-            rows={f.rows}
-            value={node.data[f.key] ?? ""}
-            placeholder={f.placeholder}
-            onChange={(e) => patchNodeData(node.id, "look", { [f.key]: e.target.value })}
-          />
-        </Field>
-      ))}
+
+      <Field label="这个造型长什么样" hint="一段话说清楚就行：穿什么、什么表情、在干嘛。下面的常见选项点一下就填进来。">
+        <TextAreaInput
+          rows={5}
+          value={prompt}
+          placeholder="例如：米色粗针织毛衣配浅色直筒牛仔裤，站着低头看手机，嘴角微扬"
+          onChange={(e) => patchNodeData(node.id, "look", { prompt: e.target.value })}
+        />
+      </Field>
+
+      {/* 老画布升上来的：五个字段还在，但不再提供编辑入口 —— 一处编辑，避免两份真值打架。 */}
+      {!prompt.trim() && legacy && (
+        <div className="px-3 py-2.5 rounded-xl text-[13px] leading-[1.7]" style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}>
+          <div className="mb-1.5" style={{ color: "var(--ink-3)" }}>这个造型是旧版填的，出图时仍按原内容：</div>
+          {/* 老文档里可能是一整段没有空格的长文本，侧栏很窄 —— 必须强制断行，否则撑破布局 */}
+          <div style={{ color: "var(--ink)", overflowWrap: "anywhere", wordBreak: "break-word" }}>{legacy}</div>
+          <button
+            className="mt-2 text-[13px] underline underline-offset-2"
+            style={{ color: "var(--primary)" }}
+            onClick={() => patchNodeData(node.id, "look", { prompt: legacy })}
+          >
+            搬到上面的输入框继续编辑
+          </button>
+        </div>
+      )}
+
+      {promptGroups.map((group) => {
+        const isOutfit = group.presets.some((p) => p.gender !== "any");
+        const presets = isOutfit ? group.presets.filter((p) => p.gender === gender || p.gender === "any") : group.presets;
+        return (
+          <div key={group.id}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="field-label">{group.name}</span>
+              {isOutfit && (
+                <span className="flex gap-1 ml-auto">
+                  {(["female", "male"] as const).map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => setGender(g)}
+                      className="px-2 py-[3px] rounded-full text-[12px] leading-none transition-colors"
+                      style={{
+                        background: gender === g ? "var(--primary)" : "var(--surface-2)",
+                        color: gender === g ? "#fff" : "var(--ink-3)",
+                      }}
+                    >
+                      {g === "female" ? "女" : "男"}
+                    </button>
+                  ))}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {presets.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => append(p.prompt)}
+                  title={p.prompt}
+                  className="px-2.5 py-[5px] rounded-full text-[13px] leading-none max-w-full truncate transition-colors hover:opacity-80"
+                  style={{ background: "var(--surface-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}
+                >
+                  {p.name}
+                </button>
+              ))}
+              {!presets.length && (
+                <span className="text-[13px]" style={{ color: "var(--ink-4)" }}>这一组暂时没有可选项</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -31,8 +31,11 @@ public class IpCatalogService {
     private static final Logger log = LoggerFactory.getLogger(IpCatalogService.class);
 
     private static final String STYLES_RESOURCE = "ipstudio/styles.json";
+    private static final String PROMPTS_RESOURCE = "ipstudio/prompt-presets.json";
     /** 模板文件清单（ClassPathResource 不能列目录，故显式登记；新增模板同时加一行）。 */
     private static final List<String> TEMPLATE_RESOURCES = List.of(
+            "ipstudio/templates/ip-launch-female.json",
+            "ipstudio/templates/ip-launch-male.json",
             "ipstudio/templates/portrait-bjd-trio.json",
             "ipstudio/templates/portrait-sticker-six.json");
 
@@ -41,6 +44,7 @@ public class IpCatalogService {
     private volatile List<IpTemplateDto> templates;
     private volatile List<IpStylePresetDto> styles;
     private volatile Map<String, IpStylePresetDto> styleById;
+    private volatile List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptGroupDto> promptGroups;
 
     public IpCatalogService(ObjectMapper om) {
         this.om = om;
@@ -83,6 +87,54 @@ public class IpCatalogService {
                 }
             }
         }
+    }
+
+    /**
+     * 内置提示词模板，按分组返回（装扮 / 表情 / 短动作）。
+     *
+     * <p>模板是产品内容，跟代码一起发布 —— JSON 打错一个逗号，线上就是模板列表少一组、
+     * 用户点「内置模板」得到空列表，所以有构建期单测守着。
+     */
+    public List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptGroupDto> promptPresets() {
+        if (promptGroups == null) {
+            synchronized (this) {
+                if (promptGroups == null) promptGroups = loadPromptPresets();
+            }
+        }
+        return promptGroups;
+    }
+
+    private List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptGroupDto> loadPromptPresets() {
+        JsonNode root = readJson(PROMPTS_RESOURCE);
+        List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptGroupDto> out = new ArrayList<>();
+        if (root != null && root.path("groups").isArray()) {
+            for (JsonNode g : root.path("groups")) {
+                String gid = g.path("id").asText(null);
+                if (gid == null || gid.isBlank()) {
+                    log.warn("[ipstudio] 提示词分组缺 id，跳过");
+                    continue;
+                }
+                List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptPresetDto> presets = new ArrayList<>();
+                for (JsonNode pnode : g.path("presets")) {
+                    String pid = pnode.path("id").asText(null);
+                    String prompt = pnode.path("prompt").asText(null);
+                    if (pid == null || pid.isBlank() || prompt == null || prompt.isBlank()) {
+                        log.warn("[ipstudio] 提示词模板缺 id 或 prompt，跳过 group={}", gid);
+                        continue;
+                    }
+                    presets.add(new com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptPresetDto(
+                            pid,
+                            pnode.path("name").asText(pid),
+                            pnode.path("gender").asText("any"),
+                            prompt,
+                            pnode.path("durationSec").isInt() ? pnode.path("durationSec").asInt() : null));
+                }
+                out.add(new com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptGroupDto(
+                        gid, g.path("name").asText(gid), g.path("summary").asText(""), List.copyOf(presets)));
+            }
+        }
+        log.info("[ipstudio] 内置提示词模板加载 {} 组", out.size());
+        return List.copyOf(out);
     }
 
     private List<IpTemplateDto> loadTemplates() {

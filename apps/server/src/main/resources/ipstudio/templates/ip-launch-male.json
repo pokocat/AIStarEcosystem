@@ -1,0 +1,339 @@
+{
+  "id": "ip-launch-male",
+  "name": "IP 打造 · 男生",
+  "summary": "一张照片起一套完整 IP（男生版）：抽人物特征卡 → 定主形象 → 三套装扮（日常 / 通勤 / 运动）+ 三个表情（大笑 / 惊讶 / 思考）→ 一次发布成数字资产。短动作视频在发布之后到数字资产里生成 —— 它要有形象才能跑，画布上跑不了。",
+  "stylePresetId": "pixar3d",
+  "lookCount": 6,
+  "estimatedCredits": 130,
+  "doc": {
+    "nodes": [
+      {
+        "id": "n-source",
+        "type": "source",
+        "position": {
+          "x": 0,
+          "y": 320
+        },
+        "data": {}
+      },
+      {
+        "id": "n-identity",
+        "type": "identity",
+        "position": {
+          "x": 320,
+          "y": 320
+        },
+        "data": {
+          "text": "",
+          "promptEn": "",
+          "locked": false
+        }
+      },
+      {
+        "id": "n-style",
+        "type": "style",
+        "position": {
+          "x": 640,
+          "y": 320
+        },
+        "data": {
+          "presetId": "pixar3d",
+          "name": "3D 动画电影",
+          "promptEn": "Pixar-style 3D animated character, rounded friendly proportions, cinematic three-point studio lighting, subsurface-scattering skin, clean solid backdrop",
+          "custom": false
+        }
+      },
+      {
+        "id": "n-master",
+        "type": "generate",
+        "position": {
+          "x": 960,
+          "y": 320
+        },
+        "data": {
+          "count": 4,
+          "size": "768x1024",
+          "isMaster": true
+        }
+      },
+      {
+        "id": "n-look-1",
+        "type": "look",
+        "position": {
+          "x": 1280,
+          "y": -120
+        },
+        "data": {
+          "title": "日常潮玩装",
+          "prompt": "戴棒球帽，穿宽松卫衣与工装长裤，脚踩高帮板鞋。正面站立，肩线平直，重心居中，一只手随意插在裤袋里。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。"
+        }
+      },
+      {
+        "id": "n-gen-1",
+        "type": "generate",
+        "position": {
+          "x": 1600,
+          "y": -120
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-2",
+        "type": "look",
+        "position": {
+          "x": 1280,
+          "y": 60
+        },
+        "data": {
+          "title": "商务通勤装",
+          "prompt": "剪裁利落的西装外套内搭素色衬衫，直筒西裤配德比鞋。正面站立，双手自然垂放于身侧，肩线平直。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。"
+        }
+      },
+      {
+        "id": "n-gen-2",
+        "type": "generate",
+        "position": {
+          "x": 1600,
+          "y": 60
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-3",
+        "type": "look",
+        "position": {
+          "x": 1280,
+          "y": 240
+        },
+        "data": {
+          "title": "运动休闲装",
+          "prompt": "宽松运动卫衣配束脚运动裤与跑鞋，外搭一件轻薄防风外套。正面站立，一只手扶着肩带。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。"
+        }
+      },
+      {
+        "id": "n-gen-3",
+        "type": "generate",
+        "position": {
+          "x": 1600,
+          "y": 240
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-4",
+        "type": "look",
+        "position": {
+          "x": 1280,
+          "y": 420
+        },
+        "data": {
+          "title": "表情 · 开心大笑",
+          "prompt": "面部表情为开怀大笑，双眼弯成月牙，嘴角大幅上扬露出牙齿，肩膀微微上耸。服装、机位、光线与主形象完全一致，只改表情。"
+        }
+      },
+      {
+        "id": "n-gen-4",
+        "type": "generate",
+        "position": {
+          "x": 1600,
+          "y": 420
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-5",
+        "type": "look",
+        "position": {
+          "x": 1280,
+          "y": 600
+        },
+        "data": {
+          "title": "表情 · 惊讶",
+          "prompt": "双眼睁大，眉毛高高扬起，嘴巴张成小圆形，一只手轻抬到脸颊旁。服装、机位、光线与主形象完全一致，只改表情与这一个手部动作。"
+        }
+      },
+      {
+        "id": "n-gen-5",
+        "type": "generate",
+        "position": {
+          "x": 1600,
+          "y": 600
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-6",
+        "type": "look",
+        "position": {
+          "x": 1280,
+          "y": 780
+        },
+        "data": {
+          "title": "表情 · 思考",
+          "prompt": "眼神向上方偏移，眉头轻皱，一只手托着下巴。服装、机位、光线与主形象完全一致，只改表情与这一个手部动作。"
+        }
+      },
+      {
+        "id": "n-gen-6",
+        "type": "generate",
+        "position": {
+          "x": 1600,
+          "y": 780
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-publish",
+        "type": "publish",
+        "position": {
+          "x": 1960,
+          "y": 320
+        },
+        "data": {
+          "avatarName": ""
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-n-source-n-identity",
+        "source": "n-source",
+        "target": "n-identity"
+      },
+      {
+        "id": "e-n-identity-n-style",
+        "source": "n-identity",
+        "target": "n-style"
+      },
+      {
+        "id": "e-n-style-n-master",
+        "source": "n-style",
+        "target": "n-master"
+      },
+      {
+        "id": "e-n-master-n-look-1",
+        "source": "n-master",
+        "target": "n-look-1"
+      },
+      {
+        "id": "e-n-look-1-n-gen-1",
+        "source": "n-look-1",
+        "target": "n-gen-1"
+      },
+      {
+        "id": "e-n-master-n-look-2",
+        "source": "n-master",
+        "target": "n-look-2"
+      },
+      {
+        "id": "e-n-look-2-n-gen-2",
+        "source": "n-look-2",
+        "target": "n-gen-2"
+      },
+      {
+        "id": "e-n-master-n-look-3",
+        "source": "n-master",
+        "target": "n-look-3"
+      },
+      {
+        "id": "e-n-look-3-n-gen-3",
+        "source": "n-look-3",
+        "target": "n-gen-3"
+      },
+      {
+        "id": "e-n-master-n-look-4",
+        "source": "n-master",
+        "target": "n-look-4"
+      },
+      {
+        "id": "e-n-look-4-n-gen-4",
+        "source": "n-look-4",
+        "target": "n-gen-4"
+      },
+      {
+        "id": "e-n-master-n-look-5",
+        "source": "n-master",
+        "target": "n-look-5"
+      },
+      {
+        "id": "e-n-look-5-n-gen-5",
+        "source": "n-look-5",
+        "target": "n-gen-5"
+      },
+      {
+        "id": "e-n-master-n-look-6",
+        "source": "n-master",
+        "target": "n-look-6"
+      },
+      {
+        "id": "e-n-look-6-n-gen-6",
+        "source": "n-look-6",
+        "target": "n-gen-6"
+      },
+      {
+        "id": "e-n-master-n-publish",
+        "source": "n-master",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-1-n-publish",
+        "source": "n-gen-1",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-2-n-publish",
+        "source": "n-gen-2",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-3-n-publish",
+        "source": "n-gen-3",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-4-n-publish",
+        "source": "n-gen-4",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-5-n-publish",
+        "source": "n-gen-5",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-6-n-publish",
+        "source": "n-gen-6",
+        "target": "n-publish"
+      }
+    ],
+    "viewport": {
+      "x": 40,
+      "y": 40,
+      "zoom": 0.55
+    }
+  }
+}

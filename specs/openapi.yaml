@@ -8635,6 +8635,69 @@ paths:
   # 数字人资产平台（apps/web-aiavatar，v0.51 dap 领域：com.aistareco.aep.dap.*，表 dap_*）
   # REST 真源 = apps/web-aiavatar/src/proto/api.ts；全部 authenticated（Bearer JWT）。
   # 注意：实际挂载于 /api/v1/**；本文件按惯例省略 /api 前缀。
+  /v1/card/mine:
+    get:
+      tags: [card]
+      summary: 我的名片列表（一个账号可以有多张）
+      responses:
+        "200": { description: 名片摘要列表 }
+  /v1/card:
+    post:
+      tags: [card]
+      summary: 建卡（avatarId 可选：从数字资产一键建卡时带上）
+      responses:
+        "200": { description: 名片摘要 }
+        "400": { description: CARD_SLUG_INVALID / CARD_SLUG_RESERVED / CARD_SLUG_TAKEN }
+  /v1/card/{id}:
+    get:
+      tags: [card]
+      summary: 读自己的名片（含完整文档）
+      responses:
+        "200": { description: 名片文档 }
+        "404": { description: CARD_NOT_FOUND（含「别人的名片」——不暴露存在与否） }
+    put:
+      tags: [card]
+      summary: 保存名片文档（整存整取，服务端逐字保存不改写）
+      responses:
+        "200": { description: 名片摘要 }
+    delete:
+      tags: [card]
+      summary: 软删名片
+      responses:
+        "200": { description: 已删除 }
+  /v1/card/{id}/publish:
+    post:
+      tags: [card]
+      summary: 发布（发布后匿名可读，故此处是唯一内容闸）
+      description: >
+        校验 name / title 必填；顺带写一条 DapAssetUsage(assetType=avatar, usedByType=card)，
+        于是数字资产详情页能看到「已用于 · 名片」，形象被删 / 授权撤销时也能查到影响面。
+        用量写入是旁路：失败只记日志，不阻断发布（§8.0 观测类例外）。
+      responses:
+        "200": { description: 名片摘要 }
+        "400": { description: CARD_NAME_REQUIRED / CARD_TITLE_REQUIRED }
+  /v1/card/{id}/unpublish:
+    post:
+      tags: [card]
+      summary: 取消发布（公开页立刻 404）
+      responses:
+        "200": { description: 名片摘要 }
+  /v1/card/by-avatar/{avatarId}:
+    get:
+      tags: [card]
+      summary: 某个数字人形象被哪些名片用了（资产详情页「已用于 · 名片」）
+      responses:
+        "200": { description: 名片摘要列表 }
+  /v1/ip-studio/prompt-presets:
+    get:
+      tags: [ipstudio]
+      summary: 内置提示词模板（装扮 / 表情 / 短动作）
+      description: >
+        形象卡五字段通用化后的替代品：模板是**一段完整的提示词**，不是字段结构。
+        gender 取 female|male|any，且只决定服装品类与体态基准 ——
+        表情组与短动作组一律 any，男女共用同一套。
+      responses:
+        "200": { description: 模板分组列表 }
   /v1/card/p/{slug}:
     get:
       tags: [card]

@@ -141,6 +141,22 @@ export function hasSelection(node: IpNode & { type: "generate" }): boolean {
  * 缺什么才不能跑（与服务端 `IP_NODE_INPUT_MISSING` 对齐，用于运行前的中文提示）。
  * 返回用户能看懂的缺失项名称，空数组表示可以跑。
  */
+/** 老画布的五字段，只读回落（服务端 IpRunService.lookText 按同一顺序拼接）。 */
+export const LEGACY_LOOK_KEYS = ["outfit", "pose", "expression", "details", "props"] as const;
+
+/** 形象卡里写没写东西 —— 新画布看 prompt，老画布看五字段。 */
+export function lookFilled(data: IpLookData): boolean {
+  if ((data.prompt ?? "").trim()) return true;
+  return LEGACY_LOOK_KEYS.some((k) => (data[k] ?? "").trim().length > 0);
+}
+
+/** 形象卡摘要（节点卡片上展示）。新画布就是 prompt 本身；老画布拼一行。 */
+export function lookSummary(data: IpLookData): string {
+  const prompt = (data.prompt ?? "").trim();
+  if (prompt) return prompt;
+  return LEGACY_LOOK_KEYS.map((k) => (data[k] ?? "").trim()).filter(Boolean).join(" · ");
+}
+
 export function missingInputsForRun(doc: IpProjectDoc, node: IpNode): string[] {
   if (node.type === "identity") {
     // 服务端抽特征卡拿的是已上传素材的 assetKey（本地预览 URL 它取不到），这里同口径。
@@ -157,11 +173,9 @@ export function missingInputsForRun(doc: IpProjectDoc, node: IpNode): string[] {
     if (!style) missing.push("风格");
     else if (!style.data.promptEn.trim() && !style.data.presetId) missing.push("风格内容");
     // 形象卡：主形象节点直接挂在风格之后、本来就没有形象卡（服务端同样豁免）；
-    // 接了形象卡但四栏全空，依然算缺 —— 空白造型出不了图。
+    // 接了形象卡但一个字都没写，依然算缺 —— 空白造型出不了图。
     if (look) {
-      const filled = [look.data.outfit, look.data.pose, look.data.expression, look.data.details, look.data.props]
-        .some((v) => (v ?? "").trim().length > 0);
-      if (!filled) missing.push("形象卡内容");
+      if (!lookFilled(look.data)) missing.push("形象卡内容");
     } else if (!node.data.isMaster) {
       missing.push("形象卡");
     }

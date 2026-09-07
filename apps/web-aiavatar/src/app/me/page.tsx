@@ -63,6 +63,7 @@ export default function MePage() {
 
       <div style={{ margin: "16px 16px 0" }}>
         <Card pad={0}>
+          <ListRow href="/cards" title="我的名片" sub="对外发布面 · 扫码即看" divider />
           <ListRow href="/licenses" title="授权中心" sub="授权证书 · 待补确认" divider />
           <ListRow href={studioHref("#/tasks")} title="任务中心" sub="生成任务的进度与历史" divider />
           <ListRow href={studioHref("#/realmaterials")} title="真人授权素材库" sub="素材录制 · 审核状态" />

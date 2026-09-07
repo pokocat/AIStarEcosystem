@@ -2,7 +2,7 @@
 
 > 三个子产品合成一条链：**造形象 → 登记资产 → 对外发布**。
 > 相关真源：[`ip-studio-plan.md`](ip-studio-plan.md) · [`ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) · [`digital-business-card-plan.md`](digital-business-card-plan.md)
-> last-reviewed：2026-09-06
+> last-reviewed：2026-09-07（v0.153 落地后回填实际形态）
 
 ---
 
@@ -140,14 +140,21 @@ shot:<name>   → 机位照
 |---|---|
 | ~~server~~ | ~~`card_profile` 表~~ **v0.153 已落地**（V28 迁移；核过线上 `flyway_schema_history` 最大值=27） |
 | ~~server~~ | ~~公开读端点~~ **v0.153 已落地**：`GET /api/v1/card/p/{slug}` + `AepSecurityConfig` permitAll + `PUBLIC_GETS` 登记，8 条单测守「未发布 / 软删 / 不存在同一个 404」 |
-| server | `DapAssetUsage` 用途类型 `business_card` |
-| server | `IpCatalogService` 增加 `GET /ip-studio/workflows`（内置工作流模板）与 `GET /ip-studio/prompt-presets` |
+| ~~server~~ | ~~`DapAssetUsage` 用途类型~~ **v0.153 已落地**：发布名片时写一条 `usedByType=card` 的使用记录（best-effort 旁路，失败只 WARN 不挡发布） |
+| ~~server~~ | ~~内置模板端点~~ **v0.153 已落地**：`GET /v1/ip-studio/prompt-presets`（装扮 9 / 表情 6 / 短动作 3）；内置工作流走既有的 `GET /templates`，新增 `ip-launch-female` / `ip-launch-male` 两套 |
+| server | 短动作：复用 `DapWorkflowService.createDerivative(avatarId, "video", …)`，**必须在 ipstudio 发布之后**；需要一个「发布后自动排队跑短动作」的编排（**仍未写**，当前形态见下） |
+| ~~web-ipstudio~~ | ~~出图弹层通用化~~ **v0.153 已落地**：形象卡从五个固定字段改成一个提示词框 + 内置模板 chip（装扮组按性别过滤）；首页「IP 打造」入口沿用既有模板卡片，选男版还是女版 = 选哪张模板卡 |
+| ~~web-aiavatar~~ | ~~资产详情页「已用于 · 名片」~~ **v0.153 已落地**：并进「被用在哪」，与艺人壳引用、合成出片同一张列表 |
+| web-aiavatar | `/card` 域：公开页 `/card/p/{slug}` 与「我的名片」`/cards`（列表 / 发布 / 取消发布 / 复制链接）**已落地**；建卡与编辑表单仍缺 |
+| ~~契约~~ | ~~openapi 补 path~~ **v0.153 已落地**：9 条（card ×8 + prompt-presets ×1），`check:api-contract` 绿 |
 
-| server | 短动作：复用 `DapWorkflowService.createDerivative(avatarId, "video", …)`，**必须在 ipstudio 发布之后**；需要一个「发布后自动排队跑短动作」的编排（现在没有，要新写） |
-| web-ipstudio | 首页「IP 打造」入口 + 性别选择 + 一键铺画布；出图弹层通用化（提示词框 + 配置条 + 模板库） |
-| web-aiavatar | 资产详情页「已用于 · 名片」 |
-| web-aiavatar | `/card` 域全部页面 |
-| 契约 | `specs/openapi.yaml` 补齐上述 path |
+### 短动作现在长什么样（v0.153 实际形态）
+
+画布跑不了短动作 —— `IpRunService` 只认 `identity` / `generate` 两种节点，而
+`DapWorkflowService.createDerivative` 要求先有 `avatarId`，也就是**必须发布之后**。
+所以这一版没有假装能在画布里跑：三条短动作提示词（挥手 / 点头 / 指向下方）作为
+内置模板放进 `prompt-presets` 的 `motion` 组，用户发布成数字资产后到 dap 里生成。
+「发布后自动排队」是下一步，不是这一版。
 
 ---
 

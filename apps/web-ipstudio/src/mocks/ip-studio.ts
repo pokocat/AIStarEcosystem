@@ -8,12 +8,49 @@
 
 import type {
   IpCandidate, IpProject, IpProjectDoc, IpPricing, IpRun, IpRunInputs,
-  IpStylePreset, IpTemplate,
+  IpStylePreset, IpTemplate, IpPromptGroup,
 } from "@ai-star-eco/types";
 import { collectGenerateInputs, identitySource } from "@/lib/graph";
 import { SERVER_TEMPLATES } from "./templates";
 
 // ── 风格预设 ─────────────────────────────────────────────────────────────────
+
+/** 内置提示词模板 —— 与 server `resources/ipstudio/prompt-presets.json` 保持一致。 */
+export const MOCK_PROMPT_GROUPS: IpPromptGroup[] = [
+  {
+    id: "outfit", name: "装扮", summary: "同一个人的几套穿搭。跑之前主形象必须先定，它是参考图第一顺位。",
+    presets: [
+      { id: "outfit-daily-f", name: "日常潮玩", gender: "female", prompt: "戴米白色贴布冷帽、圆形金边墨镜架在帽子上，嘴里叼着棒棒糖，穿浅驼色露肩针织衫和高腰破洞浅色牛仔裤，配复古厚底老爹鞋。略侧身站立，重心落在一侧，肩线自然放松。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-work-f", name: "商务通勤", gender: "female", prompt: "合身西装外套内搭真丝衬衫，下身直筒西裤，配简约乐福鞋。正面站立，肩线放松，一只手自然垂放于身侧。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-sport-f", name: "运动休闲", gender: "female", prompt: "宽松连帽卫衣配阔腿运动裤与厚底板鞋，袖口自然挽起。重心偏移的放松站姿，一只手插在卫衣口袋里。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-winter-f", name: "季节厚织", gender: "female", prompt: "长款羊毛大衣内搭高领毛衣，配同色系围巾与短靴。双手插在大衣口袋，肩部微收。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-daily-m", name: "日常潮玩", gender: "male", prompt: "戴棒球帽，穿宽松卫衣与工装长裤，脚踩高帮板鞋。正面站立，肩线平直，重心居中，一只手随意插在裤袋里。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-work-m", name: "商务通勤", gender: "male", prompt: "剪裁利落的西装外套内搭素色衬衫，直筒西裤配德比鞋。正面站立，双手自然垂放于身侧，肩线平直。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-sport-m", name: "运动休闲", gender: "male", prompt: "宽松运动卫衣配束脚运动裤与跑鞋，外搭一件轻薄防风外套。正面站立，一只手扶着肩带。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-winter-m", name: "季节厚织", gender: "male", prompt: "厚织高领毛衣外搭羊毛大衣，配深色直筒裤与切尔西靴。正面站立，双手插在大衣口袋。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+      { id: "outfit-neutral", name: "中性单品", gender: "any", prompt: "宽松素色卫衣配直筒长裤与白色板鞋，整体无明显性别指向。正面站立，双手自然垂放。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。" },
+    ],
+  },
+  {
+    id: "expression", name: "表情", summary: "男女共用同一套。每条都锁死服装、机位与光线 —— 这是能成套用的前提。",
+    presets: [
+      { id: "expr-laugh", name: "开心大笑", gender: "any", prompt: "面部表情为开怀大笑，双眼弯成月牙，嘴角大幅上扬露出牙齿，肩膀微微上耸。服装、机位、光线与主形象完全一致，只改表情。" },
+      { id: "expr-surprise", name: "惊讶", gender: "any", prompt: "双眼睁大，眉毛高高扬起，嘴巴张成小圆形，一只手轻抬到脸颊旁。服装、机位、光线与主形象完全一致，只改表情与这一个手部动作。" },
+      { id: "expr-think", name: "思考", gender: "any", prompt: "眼神向上方偏移，眉头轻皱，一只手托着下巴。服装、机位、光线与主形象完全一致，只改表情与这一个手部动作。" },
+      { id: "expr-helpless", name: "无奈", gender: "any", prompt: "嘴角向一侧撇，眉毛一高一低，双手摊开做出无奈的手势。服装、机位、光线与主形象完全一致，只改表情与手势。" },
+      { id: "expr-smug", name: "得意", gender: "any", prompt: "下巴微抬，单侧嘴角上扬，眼神带笑地斜看镜头。服装、机位、光线与主形象完全一致，只改表情。" },
+      { id: "expr-sleepy", name: "犯困", gender: "any", prompt: "眼皮半垂，嘴巴微张打哈欠，一只手抬起揉眼睛。服装、机位、光线与主形象完全一致，只改表情与这一个手部动作。" },
+    ],
+  },
+  {
+    id: "motion", name: "短动作", summary: "男女共用。每段 2–3 秒循环，产出带透明通道的动图，名片的「微动」档直接用。注意：短动作走数字资产的视频衍生链路，必须在工作台发布之后才能跑。",
+    presets: [
+      { id: "motion-wave", name: "打招呼挥手", gender: "any", prompt: "2 秒循环。抬起一只手向镜头方向自然挥动两下，脸上带轻松微笑，其余身体保持静止。服装、机位、光线与主形象完全一致。循环的首帧与末帧必须完全一致，不得跳变。", durationSec: 2 },
+      { id: "motion-nod", name: "点头认可", gender: "any", prompt: "1.5–2 秒循环。头部自然向下点两次，幅度轻微，视线始终看向镜头，肩部不动。服装、机位、光线与主形象完全一致。循环的首帧与末帧必须完全一致。", durationSec: 2 },
+      { id: "motion-point-down", name: "指向下方", gender: "any", prompt: "2 秒。抬起手臂伸出食指，动作自然、明确地向下方指一下，随后收回。用于引导访客向下滑动。服装、机位、光线与主形象完全一致，身体不得瞬移或跳帧。", durationSec: 2 },
+    ],
+  },
+];
 
 export const MOCK_STYLES: IpStylePreset[] = [
   {

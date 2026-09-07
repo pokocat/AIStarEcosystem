@@ -16,6 +16,7 @@ import com.aistareco.aep.service.PromptService;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -153,6 +154,34 @@ class IpRunServiceTest {
         seedProject(IpStudioFixtures.chainDoc(null, 0));
         assertEquals("IP_PROJECT_NOT_FOUND",
                 assertThrows(BusinessException.class, () -> svc.run(OTHER, PID, "n-gen", null)).getCode());
+    }
+
+    // ── 形象卡通用化（v0.153）：自由 prompt 与老五字段 ──────────
+
+    @Test
+    void freePromptActuallyReachesTheModelPrompt() {
+        // 通用化最容易踩空的地方：lookText() 只管「填没填」的校验，
+        // 真正拼给模型的提示词在另一处。这两处一旦不同步，用户能点运行、
+        // 服务端不报缺内容，但出的图跟他写的造型毫无关系 —— 而且不会有任何报错。
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
+        ObjectNode look = d.data("n-look");
+        for (String f : List.of("outfit", "pose", "expression", "details", "props")) look.remove(f);
+        look.put("prompt", "米色粗针织毛衫配浅色直筒牛仔裤，低头看手机，嘴角微扬");
+        seedProject(d);
+
+        String prompt = svc.run(USER, PID, "n-gen", null).inputs().path("prompt").asText();
+        assertTrue(prompt.contains("米色粗针织毛衫配浅色直筒牛仔裤，低头看手机，嘴角微扬"),
+                "自由提示词必须原样进入模型提示词：" + prompt);
+        assertFalse(prompt.contains("{{"), "模板占位符必须全部替换掉：" + prompt);
+    }
+
+    @Test
+    void legacyFiveFieldsStillCompileWithoutMigration() {
+        // 老画布（v0.151 存下来的 doc）没有 prompt 字段，只有五栏 —— 零迁移承诺就是这条。
+        seedProject(IpStudioFixtures.chainDoc(null, 0));
+        String prompt = svc.run(USER, PID, "n-gen", null).inputs().path("prompt").asText();
+        assertTrue(prompt.contains("米白色针织冷帽"), prompt);
+        assertTrue(prompt.contains("一部深色手机"), "五栏要一个不落地拼进去：" + prompt);
     }
 
     // ── 参考图顺序与砍尾回报 ─────────────────────────────────

@@ -144,6 +144,17 @@ public class IpStudioController {
         return ApiResponse.of(publish.publish(uid(principal), id, req));
     }
 
+    /**
+     * 内置提示词模板（装扮 / 表情 / 短动作）。
+     *
+     * <p>这是「形象卡五字段」通用化之后的替代品：模板是<b>一段完整提示词</b>，
+     * 不是字段结构 —— 见 docs/ip-studio-generalize-proposal.md。
+     */
+    @GetMapping("/prompt-presets")
+    public ApiResponse<List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpPromptGroupDto>> promptPresets() {
+        return ApiResponse.of(catalog.promptPresets());
+    }
+
     private static String uid(Principal p) {
         if (p == null) throw new BusinessException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "请先登录");
         return p.getName();

@@ -51,6 +51,7 @@ pnpm build:turbo                   # Turbopack 构建（可选）
 | 屏 | 入口 | 说明 |
 |---|---|---|
 | 名片公开页 `/card/p/<slug>` | 扫码 / 转发链接 | **不需要登录、不走开通门** —— 见客户扫码就得能打开。四卷无缝背景纸：纸白首屏 → 青雾「我在做的事」→ 灰白企业与历程 → 深青墨联系。存 vCard 进通讯录；微信内下载被拦时改弹可复制面板 |
+| 我的名片 `/cards` | 我的 → 我的名片 | 名片列表 + 预览 / 复制链接 / 发布 / 取消发布。取消发布后链接立刻打不开。建卡与编辑表单仍缺（二期） |
 
 ### 数字资产平台（v0.104 新增 9 屏 / 改造 4 屏）
 
@@ -149,6 +150,15 @@ src/
 - `src/components/card/card-view.tsx` —— 四卷纸 + 换纸渐变带 + 底部溶解的形象 + 复制 / vCard。
 - `src/app/card/p/[slug]/page.tsx` —— 公开路由，刻意不调 `useRequireAuth` / `EnrollmentGate`。
 - `public/card/demo-*.jpg` —— 演示形象（3D 潮玩渲染），页面底部标「演示数据」。
+- `src/app/cards/page.tsx` —— 「我的名片」（主人视角）。`/me` 加入口。
+
+**接真后端（同版）**
+- server 新域 `card`（表 `card_profile`，V28）。公开读 `GET /api/v1/card/p/{slug}`；
+  写路径 `/mine`、CRUD、`publish|unpublish`、`by-avatar/{avatarId}`。
+- `CardApi` 一律走 `apiFetch` —— 手写 `fetch` 会漏掉 `X-App-Code`，`EnrollmentGuard`
+  直接 403 `APP_CODE_REQUIRED`。路径必须写字面量：`check:api-contract` 是静态扫描，
+  拼接出来的路径（`apiFetch(\`/card${p}\`)`）它读不懂，门会红。
+- 资产详情页「被用在哪」并入名片行（`CardApi.byAvatar`），与艺人壳引用、合成出片同一张列表。
 
 **三条实现红线（都是实测踩出来的）**
 1. **首屏底色 = `#FFFFFF`**，与形象图的棚拍白同色 —— 图片矩形因此隐形，不靠遮罩硬遮。

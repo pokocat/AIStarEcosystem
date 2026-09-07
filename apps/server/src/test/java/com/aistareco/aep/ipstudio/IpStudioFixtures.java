@@ -7,6 +7,7 @@ import com.aistareco.aep.ipstudio.repository.IpProjectRepository;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
 import com.aistareco.aep.service.storage.FileStorageService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -205,6 +206,14 @@ final class IpStudioFixtures {
             n.putObject("position").put("x", 0).put("y", 0);
             n.putObject("data");
             return (ObjectNode) n.get("data");
+        }
+
+        /** 取已建好节点的 data —— 测试要改样本文档里某个节点时用。 */
+        ObjectNode data(String id) {
+            for (JsonNode n : nodes) {
+                if (id.equals(n.path("id").asText())) return (ObjectNode) n.get("data");
+            }
+            throw new IllegalArgumentException("样本文档里没有节点 " + id);
         }
 
         Doc edge(String from, String to) {

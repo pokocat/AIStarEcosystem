@@ -21,7 +21,7 @@ import {
 /** 服务端模板真源目录（副本在 src/mocks/templates，见那里的说明）。 */
 const SERVER_TEMPLATE_DIR = resolve(__dirname, "../../../server/src/main/resources/ipstudio/templates");
 
-const TEMPLATE_IDS = ["portrait-bjd-trio", "portrait-sticker-six"] as const;
+const TEMPLATE_IDS = ["ip-launch-female", "ip-launch-male", "portrait-bjd-trio", "portrait-sticker-six"] as const;
 
 function template(id: string): IpTemplate {
   const found = SERVER_TEMPLATES.find((t) => t.id === id);
@@ -95,15 +95,26 @@ describe("输入闸门（missingInputsForRun）", () => {
       .toEqual(["人物特征卡", "风格", "形象卡"]);
   });
 
-  it("形象卡四栏全空算缺内容", () => {
+  it("形象卡一个字都没写算缺内容", () => {
     const doc = readyDoc("portrait-bjd-trio");
     for (const n of doc.nodes) {
       if (n.type === "look" && n.id === "n-look-1") {
-        n.data = { ...n.data, outfit: "", pose: "", expression: "", details: "", props: "" };
+        n.data = { ...n.data, prompt: "" };
       }
     }
     expect(missingInputsForRun(doc, doc.nodes.find((n) => n.id === "n-gen-1")!))
       .toEqual(["形象卡内容"]);
+  });
+
+  it("老画布只有五字段、没有 prompt，照样算填了内容", () => {
+    const doc = readyDoc("portrait-bjd-trio");
+    for (const n of doc.nodes) {
+      if (n.type === "look" && n.id === "n-look-1") {
+        // 模拟 v0.151 存下来的文档：没有 prompt 字段，只有旧的五栏
+        n.data = { title: n.data.title, outfit: "米色针织衫", pose: "站姿" };
+      }
+    }
+    expect(missingInputsForRun(doc, doc.nodes.find((n) => n.id === "n-gen-1")!)).toEqual([]);
   });
 });
 

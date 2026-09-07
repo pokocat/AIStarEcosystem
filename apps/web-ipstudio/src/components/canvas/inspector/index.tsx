@@ -4,7 +4,7 @@
 
 import * as React from "react";
 import { MousePointerClick, Trash2 } from "lucide-react";
-import type { IpNode, IpPricing, IpRun, IpStylePreset } from "@ai-star-eco/types";
+import type { IpNode, IpPricing, IpPromptGroup, IpRun, IpStylePreset } from "@ai-star-eco/types";
 import { useCanvasStore } from "@/lib/canvas-store";
 import { NODE_META } from "@/lib/node-meta";
 import { GenerateInspector } from "./generate-inspector";
@@ -17,6 +17,7 @@ export interface InspectorProps {
   run?: IpRun;
   running: boolean;
   styles: IpStylePreset[];
+  promptGroups: IpPromptGroup[];
   pricing: IpPricing | null;
   uploadingNodeId: string | null;
   onRun: (nodeId: string) => void;
@@ -25,7 +26,7 @@ export interface InspectorProps {
 }
 
 export function Inspector({
-  node, run, running, styles, pricing, uploadingNodeId, onRun, onCancel, onUpload,
+  node, run, running, styles, promptGroups, pricing, uploadingNodeId, onRun, onCancel, onUpload,
 }: InspectorProps) {
   const removeNode = useCanvasStore((s) => s.removeNode);
   const setNodeLabel = useCanvasStore((s) => s.setNodeLabel);
@@ -85,7 +86,7 @@ export function Inspector({
           <IdentityInspector node={node} run={run} running={running} pricing={pricing} onRun={onRun} onCancel={onCancel} />
         )}
         {node.type === "style" && <StyleInspector node={node} styles={styles} />}
-        {node.type === "look" && <LookInspector node={node} />}
+        {node.type === "look" && <LookInspector node={node} promptGroups={promptGroups} />}
         {node.type === "generate" && (
           <GenerateInspector node={node} run={run} running={running} pricing={pricing} onRun={onRun} onCancel={onCancel} />
         )}

@@ -10,6 +10,7 @@
 import React, { use as usePromise, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AvatarApi, ComposeApi, DATA, LicenseApi } from "@/proto/api";
+import { CardApi, type CardSummary } from "@/proto/card";
 import type { Avatar, AvatarReference, Composition, License } from "@/proto/data";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
@@ -97,6 +98,8 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   const refs = useHubData<AvatarReference[]>(() => AvatarApi.references(id), [], [id], ready);
   const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [id], ready);
   const compositions = useHubData<Composition[]>(() => ComposeApi.list(), [], [id], ready);
+  // 名片是这个形象的对外发布面 —— 换了形象名片跟着变，所以「被用在哪」必须把它算进去。
+  const cards = useHubData<CardSummary[]>(() => CardApi.byAvatar(id), [], [id], ready);
 
   const [picked, setPicked] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("");
@@ -185,11 +188,18 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   }
 
   const licenseKnown = settled(licenses);
-  const usageKnown = settled(refs) && settled(compositions);
+  const usageKnown = settled(refs) && settled(compositions) && settled(cards);
   const license = licenses.data.find((l) => l.char === c.id) || null;
   const usedIn = [
-    ...refs.data.map((r) => ({ key: `ref-${r.app}-${r.ipId}`, tag: APP_LABEL[r.app] || r.app, title: `艺人「${r.ipName}」的形象`, when: (r.importedAt || "").slice(0, 10) })),
-    ...compositions.data.filter((cp) => cp.avatarId === c.id).map((cp) => ({ key: `cp-${cp.id}`, tag: "合成", title: "合成出片", when: cp.created })),
+    ...refs.data.map((r) => ({ key: `ref-${r.app}-${r.ipId}`, tag: APP_LABEL[r.app] || r.app, title: `艺人「${r.ipName}」的形象`, when: (r.importedAt || "").slice(0, 10), href: undefined as string | undefined })),
+    ...compositions.data.filter((cp) => cp.avatarId === c.id).map((cp) => ({ key: `cp-${cp.id}`, tag: "合成", title: "合成出片", when: cp.created, href: undefined as string | undefined })),
+    ...cards.data.map((cd) => ({
+      key: `card-${cd.id}`,
+      tag: "名片",
+      title: cd.status === "published" ? `名片 ${cd.publicUrl}` : `名片 ${cd.publicUrl}（草稿）`,
+      when: (cd.publishedAt || cd.updatedAt || "").slice(0, 10),
+      href: "/cards",
+    })),
   ];
   const g = gaps(c);
   const big = bigName(c);
@@ -427,7 +437,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
       <div style={{ margin: "18px 16px 0" }}>
         <SectionHeader title="被用在哪" count={usageKnown ? usedIn.length : undefined} />
         {!usageKnown ? (
-          <Card>{refs.loading || compositions.loading ? <LoadingBlock label="使用记录加载中" /> : <EmptyState text={`使用记录加载失败：${refs.error || compositions.error}`} />}</Card>
+          <Card>{refs.loading || compositions.loading ? <LoadingBlock label="使用记录加载中" /> : <EmptyState text={`使用记录加载失败：${refs.error || compositions.error || cards.error}`} />}</Card>
         ) : usedIn.length === 0 ? (
           <Card>
             <EmptyState text="还没有被使用的记录，出一条片就有了" actionHref={studioHref(`#/avatar/${c.id}`)} actionLabel="去创作" />
@@ -435,7 +445,8 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
         ) : (
           <Card pad={0}>
             {usedIn.slice(0, 5).map((u, i, arr) => (
-              <ListRow key={u.key} divider={i < arr.length - 1} leading={<Badge tone="mute">{u.tag}</Badge>} title={u.title}
+              <ListRow key={u.key} divider={i < arr.length - 1} href={u.href}
+                leading={<Badge tone="mute">{u.tag}</Badge>} title={u.title}
                 trailing={<span className="mono" style={{ fontSize: 10, color: "var(--ink-4)", flexShrink: 0 }}>{u.when}</span>} />
             ))}
           </Card>

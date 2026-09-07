@@ -17,7 +17,7 @@ import {
 import type { Edge, OnConnect, OnEdgesChange, OnNodesChange } from "@xyflow/react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import type {
-  IpNodeType, IpPricing, IpProject, IpPublishResult, IpRun, IpStylePreset,
+  IpNodeType, IpPricing, IpProject, IpPublishResult, IpRun, IpStylePreset, IpPromptGroup,
 } from "@ai-star-eco/types";
 import { AccountApi, isProductNotEnrolledError } from "@ai-star-eco/api-client";
 import { EnrollmentGate } from "@ai-star-eco/landing";
@@ -52,6 +52,7 @@ export function CanvasShell({ projectId }: { projectId: string }) {
   const [phase, setPhase] = React.useState<"loading" | "ready" | "error" | "enroll">("loading");
   const [errorText, setErrorText] = React.useState<string | null>(null);
   const [styles, setStyles] = React.useState<IpStylePreset[]>([]);
+  const [promptGroups, setPromptGroups] = React.useState<IpPromptGroup[]>([]);
   const [pricing, setPricing] = React.useState<IpPricing | null>(null);
   const [credits, setCredits] = React.useState<number | null>(null);
 
@@ -64,6 +65,8 @@ export function CanvasShell({ projectId }: { projectId: string }) {
       setPhase("ready");
       // 附属数据 best-effort：拿不到不挡画布
       void IpStudioApi.listStyles().then(setStyles).catch(() => setStyles([]));
+      // 内置提示词模板：拉不到就是没有内置模板可点，输入框照常能手写 —— 不阻断画布。
+      void IpStudioApi.listPromptPresets().then(setPromptGroups).catch(() => setPromptGroups([]));
       void IpStudioApi.getPricing().then(setPricing).catch(() => setPricing(null));
       void AccountApi.getMyWallet().then((w) => setCredits(w.totalBalance)).catch(() => setCredits(null));
     } catch (e) {
@@ -110,16 +113,17 @@ export function CanvasShell({ projectId }: { projectId: string }) {
 
   return (
     <ReactFlowProvider>
-      <CanvasWorkspace projectId={projectId} styles={styles} pricing={pricing} credits={credits} toast={toast} />
+      <CanvasWorkspace projectId={projectId} styles={styles} promptGroups={promptGroups} pricing={pricing} credits={credits} toast={toast} />
     </ReactFlowProvider>
   );
 }
 
 function CanvasWorkspace({
-  projectId, styles, pricing, credits, toast,
+  projectId, styles, promptGroups, pricing, credits, toast,
 }: {
   projectId: string;
   styles: IpStylePreset[];
+  promptGroups: IpPromptGroup[];
   pricing: IpPricing | null;
   credits: number | null;
   toast: (message: string, tone?: "info" | "ok" | "warn") => void;
@@ -548,6 +552,7 @@ function CanvasWorkspace({
           run={selectedNode ? runs[selectedNode.id] : undefined}
           running={Boolean(selectedNode && activeRuns[selectedNode.id])}
           styles={styles}
+          promptGroups={promptGroups}
           pricing={pricing}
           uploadingNodeId={uploadingNodeId}
           onRun={(id) => void runOne(id)}

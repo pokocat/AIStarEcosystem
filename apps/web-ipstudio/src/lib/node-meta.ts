@@ -20,7 +20,7 @@ export const NODE_META: Record<IpNodeType, NodeMeta> = {
   source: { label: "照片", hint: "IP 的身份来源，一张正脸清晰的照片", icon: Camera, flow: "image", runnable: false },
   identity: { label: "人物特征卡", hint: "从照片抽出的长相描述，之后每张图都复用它", icon: UserRound, flow: "text", runnable: true },
   style: { label: "风格", hint: "内置风格逐字进提示词，不让模型自由发挥", icon: Palette, flow: "text", runnable: false },
-  look: { label: "形象卡", hint: "一个造型：穿什么、什么姿势、什么表情", icon: Layers, flow: "text", runnable: false },
+  look: { label: "形象卡", hint: "一个造型，一段话说清楚；也可以点内置模板", icon: Layers, flow: "text", runnable: false },
   generate: { label: "生成", hint: "出若干张候选，你挑一张定稿", icon: Sparkles, flow: "image", runnable: true },
   reference: { label: "参考图", hint: "局部参考，例如帽子款式", icon: ImageIcon, flow: "image", runnable: false },
   publish: { label: "发布", hint: "把定稿形象登记为数字资产", icon: Send, flow: "image", runnable: false },
@@ -46,7 +46,7 @@ export function defaultNodeData(type: IpNodeType): IpNode {
       // 具体风格由属性面板从内置预设里选（预设走 /v1/ip-studio/styles）
       return { ...base, type, data: { name: "", promptEn: "", custom: false } };
     case "look":
-      return { ...base, type, data: { title: "新造型", outfit: "", pose: "", expression: "", details: "" } };
+      return { ...base, type, data: { title: "新造型", prompt: "" } };
     case "generate":
       return { ...base, type, data: { count: 2, size: "768x1024", isMaster: false } };
     case "reference":

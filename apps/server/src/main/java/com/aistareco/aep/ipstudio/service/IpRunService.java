@@ -370,11 +370,7 @@ public class IpRunService {
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("style", nz(stylePrompt));
         vars.put("identity", nz(identityPrompt != null ? identityPrompt : identityText));
-        vars.put("outfit", clause("Outfit", IpDocs.text(lookData, "outfit")));
-        vars.put("pose", clause("Pose", IpDocs.text(lookData, "pose")));
-        vars.put("expression", clause("Expression", IpDocs.text(lookData, "expression")));
-        vars.put("details", clause("Details", IpDocs.text(lookData, "details")));
-        vars.put("props", clause("Props", IpDocs.text(lookData, "props")));
+        vars.putAll(lookClauses(lookData));
         vars.put("refNotes", refNotes.isEmpty() ? "" : String.join(" ", refNotes));
         vars.put("negative", nz(styleNegative));
         String prompt = squeeze(PromptService.fill(p.userTemplate(), vars));
@@ -445,9 +441,51 @@ public class IpRunService {
         return null;
     }
 
+    /** 老画布的五字段，按这个顺序拼接（顺序即历史行为，不要改）。 */
+    private static final List<String> LOOK_LEGACY_FIELDS =
+            List.of("outfit", "pose", "expression", "details", "props");
+
+    /**
+     * 形象卡文本。
+     *
+     * <p><b>通用化（v0.153）</b>：新节点只写一个 {@code prompt} 字段 ——
+     * 原来的 {@code outfit/pose/expression/details/props} 五个字段在这里做的事
+     * 一直只是「按顺序拼成一串文本」，服务端从不区分它们的语义，拆分对出图零增益，
+     * 只留下填写负担和边界犹豫（见 docs/ip-studio-generalize-proposal.md）。
+     *
+     * <p>老画布的 doc 里仍是五字段，所以这里保留回落拼接 —— <b>零迁移</b>：
+     * 历史项目不用改数据、不用停机，读的时候按老顺序拼起来即可。
+     */
+    /**
+     * 形象卡 → 提示词模板的五个占位符。
+     *
+     * <p>模板（{@code dap.ip_look_image}）里这五个占位符只是被顺序拼进同一句话，
+     * 服务端从不区分它们的语义。新画布只写一个自由 {@code prompt}，就整段塞进第一个占位符 ——
+     * <b>不改模板</b>：运营在后台存过自定义模板的实例，占位符名一旦变了他们那份就渲染不出内容。
+     *
+     * <p>老画布（只有五字段）逐字保持原行为。
+     */
+    private static Map<String, String> lookClauses(JsonNode lookData) {
+        Map<String, String> vars = new LinkedHashMap<>();
+        for (String f : LOOK_LEGACY_FIELDS) vars.put(f, "");
+        String prompt = IpDocs.text(lookData, "prompt");
+        if (prompt != null) {
+            vars.put("outfit", clause("Look", prompt));
+            return vars;
+        }
+        vars.put("outfit", clause("Outfit", IpDocs.text(lookData, "outfit")));
+        vars.put("pose", clause("Pose", IpDocs.text(lookData, "pose")));
+        vars.put("expression", clause("Expression", IpDocs.text(lookData, "expression")));
+        vars.put("details", clause("Details", IpDocs.text(lookData, "details")));
+        vars.put("props", clause("Props", IpDocs.text(lookData, "props")));
+        return vars;
+    }
+
     private static List<String> lookText(JsonNode lookData) {
+        String prompt = IpDocs.text(lookData, "prompt");
+        if (prompt != null) return List.of(prompt);
         List<String> out = new ArrayList<>();
-        for (String f : List.of("outfit", "pose", "expression", "details", "props")) {
+        for (String f : LOOK_LEGACY_FIELDS) {
             String v = IpDocs.text(lookData, f);
             if (v != null) out.add(v);
         }

@@ -9,12 +9,12 @@
 import type {
   IpCreateProjectRequest, IpPricing, IpProject, IpProjectDoc, IpProjectSummary,
   IpPublishRequest, IpPublishResult, IpRun, IpStylePreset, IpTemplate, IpUpdateProjectRequest,
-  IpUploadResult,
+  IpUploadResult, IpPromptGroup,
 } from "@ai-star-eco/types";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import {
   MOCK_PRICING, MOCK_STYLES, MOCK_TEMPLATES, mockCancelRun, mockNextId,
-  mockPlaceholderImage, mockReadRun, mockStartRun, mockStore,
+  mockPlaceholderImage, mockReadRun, mockStartRun, mockStore, MOCK_PROMPT_GROUPS,
 } from "@/mocks/ip-studio";
 
 const nowIso = () => new Date().toISOString();
@@ -29,6 +29,11 @@ export async function listTemplates(): Promise<IpTemplate[]> {
 export async function listStyles(): Promise<IpStylePreset[]> {
   if (USE_MOCK) return mockDelay(MOCK_STYLES);
   return apiFetch<IpStylePreset[]>("/v1/ip-studio/styles");
+}
+
+export async function listPromptPresets(): Promise<IpPromptGroup[]> {
+  if (USE_MOCK) return mockDelay(MOCK_PROMPT_GROUPS);
+  return apiFetch<IpPromptGroup[]>("/v1/ip-studio/prompt-presets");
 }
 
 export async function getPricing(): Promise<IpPricing> {

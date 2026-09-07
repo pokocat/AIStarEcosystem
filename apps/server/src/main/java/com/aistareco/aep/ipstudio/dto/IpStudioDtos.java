@@ -55,6 +55,20 @@ public final class IpStudioDtos {
     public record IpStylePresetDto(String id, String name, String summary,
                                    String promptEn, String negativeEn, String coverUrl) {}
 
+    /**
+     * 内置提示词模板。每条是**一段完整的提示词**，不是字段结构 ——
+     * 套用后整段落进输入框，用户随便改。见 docs/ip-studio-generalize-proposal.md。
+     *
+     * <p>{@code gender} 取 {@code female|male|any}，且只决定**服装品类与体态基准**：
+     * 表情组与短动作组一律 {@code any}，男女共用同一套。
+     */
+    public record IpPromptPresetDto(String id, String name, String gender, String prompt,
+                                    Integer durationSec) {}
+
+    /** 提示词模板分组（装扮 / 表情 / 短动作）。 */
+    public record IpPromptGroupDto(String id, String name, String summary,
+                                   java.util.List<IpPromptPresetDto> presets) {}
+
     /** 单价（后台可配，前端展示预估用）。 */
     public record IpPricingDto(long identityCredits, long imageCredits) {}
 

@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-09-07 · 三产品整合 v0.153 后续（真源 `docs/ip-ecosystem-integration.md`）
+
+- [ ] **名片建卡 / 编辑表单没写**：server 写路径（`POST /v1/card`、`PUT /v1/card/{id}`）与 `CardApi.create/save/detail` 都在，前端只有列表（`/cards`）与公开页（`/card/p/{slug}`），**没有任何界面能建一张名片或改内容**。当前只能靠直接调接口。二期做：选形象 → 填字段 → 预览 → 发布。
+- [ ] **发布后自动排队跑短动作**：`IpRunService` 只认 `identity` / `generate`，`DapWorkflowService.createDerivative(avatarId, "video", …)` 又要求先有 `avatarId` —— 短动作只能在 ipstudio 发布**之后**跑，画布里排不了。v0.153 的做法是把三条短动作提示词放进 `prompt-presets` 的 `motion` 组，用户自己去 dap 里生成。要做成一条链需要新写「发布 → 排队跑短动作」的编排。
+- [ ] **形象失效时通知名片主人**：`DapAvatarRefResolver` 已有静默回退（形象被删/授权撤销时回落到已缓存的图），但主人不知道自己的名片降级了。`CardService.affectedByAvatar(avatarId)` 反查已就位，缺的是接到 dap 删除 / 授权撤销事件上并发站内信。
+- [x] ~~**新形象卡的自由提示词进不了模型提示词**~~ **v0.153 当场修掉**，2026-09-07（Codex 评审发现）：`lookText()` 只用于「填没填」的校验，真正拼给模型的提示词在另一处、仍只读五个旧字段 → 用户在新面板写的造型能过校验、不报错，但出的图跟他写的毫无关系。抽出 `lookClauses()` 统一两处，自由 prompt 整段进 `{{outfit}}` 占位符（**不改模板占位符名** —— 运营存过自定义模板的实例才不会渲染不出内容），加回归测试 `freePromptActuallyReachesTheModelPrompt` + `legacyFiveFieldsStillCompileWithoutMigration`。
+- [x] ~~**名片保存会把带 TTL 的签名 URL 写进 `payload_json`**~~ **v0.153 当场修掉**，2026-09-07（Codex 评审发现）：编辑器 GET 到的文档带着现签的 `xxxUrl`，原样 PUT 回来就落库了（§4.7.4 真值是 key）。`writeDoc` 前剥掉有 `xxxKey` 兄弟的 URL 字段；没有 key 兄弟的一律保留（那是用户自己填的外链）。测试 `saveDropsSignedUrlsThatWereDerivedFromKeys`。
+
 ## 2026-09-06 · AI IP 工作台 v0.151 后续（真源 `docs/ip-studio-plan.md` §8）
 
 - [x] ~~**infra 部署登记缺失**：`infra/scripts/build-release.sh` 的 `DEFAULT_SERVICES` / `build_web_*` / `export_auth_env`、nginx vhost（建议 `ipstudio.aibuzz.cn`）、systemd 单元、账号中心 `client_id` 均未为 `web-ipstudio` 登记；上线前必须补，否则只能本地跑。~~ **v0.151 完成**，2026-09-06：七处登记全部补齐并**已上线** `https://ipstudio.aibuzz.cn` —— `build-release.sh`（`DEFAULT_SERVICES` / `build_web_ipstudio()` / `export_auth_env` / 派发 + 新增构建期 `NEXT_PUBLIC_AIAVATAR_URL` 并落进 `manifest.env`）、`deploy-release.sh` / `deploy-local.sh` / `check-runtime-env.sh` / `install-host-deps.sh` 的服务列表、`verify.sh`（`check_unit aistareco-web-ipstudio` + 新 `PUBLIC_URLS` 绝对 URL 探针）、`infra/env/web-ipstudio.env.example`（3015）、`infra/systemd/aistareco-web-ipstudio.service.example`、`infra/nginx/ipstudio.aibuzz.cn{,.ssl}.conf.example`（80 → 308 / 443 反代 3015，含 `/api/ /static/ /cdn/`）。生产侧：Alidns 加 `ipstudio A 47.98.162.120`、`/etc/aistareco/web-ipstudio.env`(0600 root:root)、systemd 单元 enable + start、两个 vhost 装入 `/etc/nginx/conf.d/`。**账号中心 `client_id` 已于 2026-09-06 注册并切 id 模式**（env example 里那三行已放开）—— 见下一条。

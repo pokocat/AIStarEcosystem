@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // mocks/templates — 内置工作流模板（mock 模式用）。
 //
-// ⚠️ 这两个 JSON 是**服务端文件的逐字副本**，真源在：
-//     apps/server/src/main/resources/ipstudio/templates/portrait-bjd-trio.json
-//     apps/server/src/main/resources/ipstudio/templates/portrait-sticker-six.json
+// ⚠️ 这些 JSON 是**服务端文件的逐字副本**，真源在
+//     apps/server/src/main/resources/ipstudio/templates/*.json
 //
 // 为什么复制而不是跨包 import：Next 的编译根是本 app 目录，从 apps/server 拉 JSON
 // 会把后端资源目录卷进前端构建图。副本的代价是可能漂移，所以
@@ -18,9 +17,13 @@
 import type { IpTemplate } from "@ai-star-eco/types";
 import bjdTrio from "./portrait-bjd-trio.json";
 import stickerSix from "./portrait-sticker-six.json";
+import ipLaunchFemale from "./ip-launch-female.json";
+import ipLaunchMale from "./ip-launch-male.json";
 
 /** 服务端 `GET /v1/ip-studio/templates` 的等价物。 */
 export const SERVER_TEMPLATES: IpTemplate[] = [
+  ipLaunchFemale as unknown as IpTemplate,
+  ipLaunchMale as unknown as IpTemplate,
   bjdTrio as unknown as IpTemplate,
   stickerSix as unknown as IpTemplate,
 ];

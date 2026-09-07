@@ -9,7 +9,7 @@
 // 一期只做展示：扫码即看（无需登录）/ 形象三档 / 存进通讯录。
 // 交换名片、名片夹、字段分层可见挂二期。
 // ============================================================
-import { USE_MOCK } from "@/proto/api";
+import { apiFetch, USE_MOCK } from "@/proto/api";
 
 // ── 类型 ────────────────────────────────────────────────────
 
@@ -198,7 +198,66 @@ export async function fetchCard(slug: string): Promise<CardProfile | null> {
   return (body?.data ?? body) as CardProfile;
 }
 
-export const CardApi = { bySlug: fetchCard };
+/** 我的名片摘要（列表 / 写入回执）。完整文档走 {@link fetchMyCard}。 */
+export interface CardSummary {
+  id: string;
+  slug: string;
+  regNo: string;
+  status: "draft" | "published";
+  avatarId: string | null;
+  /** 公开页路径，直接可拼成二维码 / 转发链接。 */
+  publicUrl: string;
+  publishedAt: string | null;
+  updatedAt: string | null;
+}
+
+/**
+ * 名片的写路径全部要登录 —— 一律走统一的 apiFetch：它带 JWT、带 X-App-Code
+ * （EnrollmentGuard 少了这个头直接 403 APP_CODE_REQUIRED）、还带账号中心的令牌续期重试。
+ * 这里不要自己拼 fetch。公开读是唯一的例外，见 fetchCard。
+ *
+ * 路径必须逐个写成字面量（不要抽 `apiFetch(\`/card${p}\`)` 这种拼接助手）——
+ * scripts/check-api-contract.mjs 靠静态扫描比对 openapi，拼出来的路径它读不懂，门会红。
+ */
+
+/** mock 模式没有 card 后端。读回空、写明确报错 —— 不假装成功。 */
+const MOCK_MSG = "演示模式下没有名片后端，改动不会保存";
+const mockBlocked = <T>(): Promise<T> => Promise.reject(new Error(MOCK_MSG));
+
+export const CardApi = {
+  bySlug: fetchCard,
+
+  mine: () =>
+    USE_MOCK ? Promise.resolve([] as CardSummary[]) : apiFetch<CardSummary[]>("/card/mine"),
+
+  detail: (id: string) =>
+    apiFetch<CardProfile>(`/card/${encodeURIComponent(id)}`),
+
+  create: (slug: string, avatarId: string | null, doc: Partial<CardProfile>) =>
+    USE_MOCK ? mockBlocked<CardSummary>() : apiFetch<CardSummary>("/card", {
+      method: "POST",
+      body: JSON.stringify({ slug, avatarId, doc }),
+    }),
+
+  save: (id: string, patch: { slug?: string; avatarId?: string | null; doc?: Partial<CardProfile> }) =>
+    USE_MOCK ? mockBlocked<CardSummary>() : apiFetch<CardSummary>(`/card/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+
+  publish: (id: string) =>
+    USE_MOCK ? mockBlocked<CardSummary>() : apiFetch<CardSummary>(`/card/${encodeURIComponent(id)}/publish`, { method: "POST" }),
+
+  unpublish: (id: string) =>
+    USE_MOCK ? mockBlocked<CardSummary>() : apiFetch<CardSummary>(`/card/${encodeURIComponent(id)}/unpublish`, { method: "POST" }),
+
+  remove: (id: string) =>
+    USE_MOCK ? mockBlocked<{ deleted: boolean }>() : apiFetch<{ deleted: boolean }>(`/card/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  /** 某个数字人形象被哪些名片用了 —— 资产详情页的「被用在哪」。 */
+  byAvatar: (avatarId: string) =>
+    USE_MOCK ? Promise.resolve([] as CardSummary[]) : apiFetch<CardSummary[]>(`/card/by-avatar/${encodeURIComponent(avatarId)}`),
+};
 
 /** 演示名片的短链。`demo` 是保留短链，真实名片不得占用。 */
 export const DEMO_CARD_SLUG = "demo";

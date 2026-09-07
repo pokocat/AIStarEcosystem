@@ -101,6 +101,36 @@ https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/character-a
 
 ## 版本日志
 
+### v0.153（2026-09-07）— 形象卡通用化 +「IP 打造」内置工作流
+
+提案与落地记录：[`docs/ip-studio-generalize-proposal.md`](../../docs/ip-studio-generalize-proposal.md)；
+三产品整合：[`docs/ip-ecosystem-integration.md`](../../docs/ip-ecosystem-integration.md)。
+
+**形象卡从五个固定字段改成一段自由提示词**
+
+原来的「服装 / 姿势 / 表情 / 细节 / 道具」等于替用户规定了造型只能这么描述 ——
+而服务端从不区分这五栏的语义，只是按序拼成一串文本喂模型。现在改成一个输入框，
+下面挂内置模板 chip（装扮按性别过滤，表情与短动作不分）。
+
+- **零迁移**：老画布的五字段一个不删，读的时候按老顺序回落拼接。属性面板会把老内容
+  显示出来并给一个「搬到输入框」，但**不再提供五字段的编辑入口** —— 两份真值同时可编辑，
+  用户改了哪份、出图用哪份，谁也说不清。
+- `lookFilled()` / `lookSummary()`（`lib/graph.ts`）是前端判定「填没填」的唯一入口，
+  必须与服务端 `IpRunService.lookText()` 行为一致，否则会出现「前端允许运行、服务端拼出空串」。
+- 新增 `IpStudioApi.listPromptPresets()` → `GET /v1/ip-studio/prompt-presets`。拉不到就是
+  没有模板可点，输入框照常能手写，不阻断画布。
+
+**新内置工作流：`ip-launch-female` / `ip-launch-male`**
+
+各 3 套装扮（日常 / 通勤 / 运动）+ 3 个表情（大笑 / 惊讶 / 思考），130 积分。
+两套除装扮文案外必须是同一张图、同一个价（`IpCatalogServiceTest` 钉死）。
+
+**短动作视频画布里跑不了**，不要试图加节点：`IpRunService` 只认 `identity` / `generate`，
+而 `DapWorkflowService.createDerivative` 要求先有 `avatarId` —— 也就是必须**发布之后**。
+所以三条短动作提示词只作为内置模板给出，用户发布成数字资产后到 dap 里生成。
+
+门禁：server ipstudio 97 + vitest 41 + typecheck + build + `check:api-contract` 全绿。
+
 ### v0.152（2026-09-06）— landing 重构 + 双主色视觉系统
 
 - **配色真源新增 [`design.md`](design.md)**：低饱和群青 `#495B91`（深至 `#344B70`）/

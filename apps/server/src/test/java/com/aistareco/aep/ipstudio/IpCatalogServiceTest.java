@@ -27,11 +27,13 @@ class IpCatalogServiceTest {
     private final IpCatalogService catalog = new IpCatalogService(OM);
 
     @Test
-    void bothBuiltInTemplatesParse() {
+    void allBuiltInTemplatesParse() {
         List<IpTemplateDto> templates = catalog.templates();
-        assertEquals(2, templates.size(), "两套内置工作流都必须能解析出来");
-        assertEquals(List.of("portrait-bjd-trio", "portrait-sticker-six"),
-                templates.stream().map(IpTemplateDto::id).toList());
+        // 顺序即首页展示顺序：「IP 打造」是主推工作流，排在两套单点模板前面。
+        // JSON 打错一个逗号 → 目录里静默少一条（loadTemplates 只 WARN 不抛），所以这里逐条钉死。
+        assertEquals(List.of("ip-launch-female", "ip-launch-male", "portrait-bjd-trio", "portrait-sticker-six"),
+                templates.stream().map(IpTemplateDto::id).toList(),
+                "内置工作流少了或顺序变了");
         for (IpTemplateDto t : templates) {
             assertFalse(t.name().isBlank());
             assertFalse(t.summary().isBlank());
@@ -79,11 +81,26 @@ class IpCatalogServiceTest {
                 if (!IpDocs.T_LOOK.equals(IpDocs.typeOf(n))) continue;
                 JsonNode d = IpDocs.dataOf(n);
                 assertFalse(IpDocs.text(d, "title") == null, t.id() + " 形象卡缺标题");
-                assertFalse(IpDocs.text(d, "outfit") == null, t.id() + " 形象卡缺服装");
-                assertFalse(IpDocs.text(d, "pose") == null, t.id() + " 形象卡缺姿势");
-                assertFalse(IpDocs.text(d, "expression") == null, t.id() + " 形象卡缺表情");
+                // 形象卡自 v0.153 起只有一个自由 prompt（老画布的五字段仍可读，但内置模板一律用新字段）。
+                // 内置模板的 prompt 空着 = 用户点进来看到一张空造型卡，属于打包事故。
+                assertFalse(IpDocs.text(d, "prompt") == null, t.id() + " 形象卡缺造型提示词");
             }
         }
+    }
+
+    @Test
+    void ipLaunchTemplatesAreGenderPairsWithSameShape() {
+        // 「IP 打造」分男女只因为服装品类不同 —— 除了装扮文案，两套必须是同一张图、同一个价。
+        IpTemplateDto f = catalog.template("ip-launch-female").orElseThrow();
+        IpTemplateDto m = catalog.template("ip-launch-male").orElseThrow();
+        assertEquals(f.lookCount(), m.lookCount());
+        assertEquals(f.estimatedCredits(), m.estimatedCredits());
+        assertEquals(f.stylePresetId(), m.stylePresetId());
+        // 三套装扮 + 三个表情
+        assertEquals(6, f.lookCount());
+        // 特征卡 2 + 主形象 8×4 + 六套造型 8×2×6 = 130
+        assertEquals(130, f.estimatedCredits());
+        assertEquals(IpDocs.nodes(f.doc()).size(), IpDocs.nodes(m.doc()).size());
     }
 
     @Test

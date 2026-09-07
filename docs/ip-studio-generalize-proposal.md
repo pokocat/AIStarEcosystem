@@ -1,6 +1,7 @@
 # AI IP 工作台 · 通用化提案
 
-> **状态：提案，未定案。** 真源仍是 [`ip-studio-plan.md`](ip-studio-plan.md)；本文只提出改动主张与依据，采纳后再合并回真源。
+> **状态：已采纳并落地（v0.153，2026-09-07）。** 真源仍是 [`ip-studio-plan.md`](ip-studio-plan.md)；
+> 本文保留提案原文与依据，供日后回看「为什么改」。落地形态见文末「落地记录」。
 > 提出时间：2026-09-06
 
 ---
@@ -99,3 +100,20 @@ for (String f : List.of("outfit", "pose", "expression", "details", "props")) {
 1. 内置模板库放哪：写死在 `IpCatalogService`，还是做成 admin 可配（跟 `dap.*` prompt key 一样进 `PromptService`）？倾向后者 —— 模板是运营资产，运营应该能改。
 2. 与 dap `createDerivative(expr / ward)` 的重叠怎么收：建议 **dap 衍生只保留单张微调，成组生产一律进工作台**。需要产品拍板并同步进两边文档。
 3. 模板是否要按子产品分组（名片 / 带货 / 短剧各有偏好的形象组合）。
+
+---
+
+## 落地记录（v0.153，2026-09-07）
+
+按提案实施，**零迁移**：
+
+| 面 | 改动 |
+|---|---|
+| 类型 | `IpLookData.prompt` 成为真值；`outfit`/`pose`/`expression`/`details`/`props` 降为 `@deprecated` 可选，只读回落 |
+| 服务端 | `IpRunService.lookText()` 优先读 `prompt`，为空才按老顺序拼接五字段 —— 老画布行为逐字不变 |
+| 内置模板 | 新增 `resources/ipstudio/prompt-presets.json`（装扮 9 / 表情 6 / 短动作 3），`GET /v1/ip-studio/prompt-presets` |
+| 节点数 | 仍是 7 种（提案里说的「删 look 节点」没做 —— 形象卡这个**概念**要留着，它是画布上一个可复用、可连线的造型单元；变的只是它内部怎么填） |
+| 前端 | 属性面板从五个固定框改成一个提示词框 + 下面的常见选项 chip；老画布显示原内容并提供「搬到输入框」一键迁移，同时**不再提供五字段的编辑入口**（避免两份真值打架） |
+| 分男女 | 只有装扮组分（服装品类不同），表情与短动作不分 —— 由 `IpPromptPresetsTest.genderOnlySplitsOutfit()` 守着 |
+
+门禁：server 951/951、web-ipstudio vitest 27/27、`typecheck:all`、两个 build、`check:api-contract` 全绿。

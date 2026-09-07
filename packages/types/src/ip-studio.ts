@@ -12,7 +12,7 @@ export type IpNodeType =
   | "source"      // 用户照片（身份来源）
   | "identity"    // 人物特征卡（AI 抽取 / 手写，中文可读 + 英文提示词）
   | "style"       // 风格预设（内置 6 套或自定义）
-  | "look"        // 形象卡（服装 / 姿势 / 表情 / 细节 / 道具）
+  | "look"        // 形象卡（一段造型提示词，内置模板可一键填入）
   | "generate"    // 生成节点（出 N 张候选，选一张；可标记为主形象）
   | "reference"   // 局部参考图（如「帽子款式参考图 2」）
   | "publish";    // 发布到资产库
@@ -22,7 +22,22 @@ export interface IpPosition { x: number; y: number }
 export interface IpSourceData   { assetKey?: string; imageUrl?: string; fileName?: string; width?: number; height?: number }
 export interface IpIdentityData { text: string; promptEn: string; locked: boolean; fromRunId?: string }
 export interface IpStyleData    { presetId?: string; name: string; promptEn: string; negativeEn?: string; custom: boolean }
-export interface IpLookData     { title: string; outfit: string; pose: string; expression: string; details: string; props?: string }
+/**
+ * 形象卡 —— 一个造型说明。
+ *
+ * `prompt` 是真值：一段自由文字，想写什么写什么，内置模板只是往里填词。
+ * 下面五个字段是 v0.151 的老结构，只为老画布保留读取（服务端同样按老顺序拼接回落），
+ * 新代码一律只写 `prompt`。
+ */
+export interface IpLookData {
+  title: string;
+  prompt?: string;
+  /** @deprecated 老画布字段，只读回落 */ outfit?: string;
+  /** @deprecated 老画布字段，只读回落 */ pose?: string;
+  /** @deprecated 老画布字段，只读回落 */ expression?: string;
+  /** @deprecated 老画布字段，只读回落 */ details?: string;
+  /** @deprecated 老画布字段，只读回落 */ props?: string;
+}
 export interface IpGenerateData {
   count: 1 | 2 | 4;
   size: "768x1024" | "1024x1024" | "768x1365";
@@ -89,6 +104,10 @@ export interface IpTemplate {
   doc: IpProjectDoc;              // 预排好的节点图（照片 / 参考图为空待填）
 }
 export interface IpStylePreset { id: string; name: string; summary: string; promptEn: string; negativeEn?: string; coverUrl?: string }
+
+/** 内置提示词模板 —— 装扮按性别分（服装品类不同），表情 / 短动作不分。 */
+export interface IpPromptPreset { id: string; name: string; gender: "female" | "male" | "any"; prompt: string; durationSec?: number }
+export interface IpPromptGroup { id: string; name: string; summary: string; presets: IpPromptPreset[] }
 
 export interface IpPricing { identityCredits: number; imageCredits: number }  // 后台可配，前端展示预估用
 
