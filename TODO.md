@@ -9,6 +9,21 @@
 
 ---
 
+## 2026-09-07 · 画布换成开源无限画布 v0.157 后续
+
+- [ ] **搬进来的 1.7 万行从此我们维护**：上游更新要手动合。改 `src/canvas/` 里的文件要克制、
+      改了在改动处留注释说明原因（方便日后跟上游 diff）；胶水一律放 `src/canvas-bridge/`。
+- [ ] **两套 UI 库共存**（antd 6 在画布目录内，shadcn 在其余）：目前圈得住，但如果将来画布外
+      也开始用 antd 就会失控。定期确认 `grep -rl "from \"antd\"" src | grep -v "^src/canvas"` 为空。
+- [ ] **画布的看图对话（`requestImageQuestion`）还没接**：现在明确报错。要接就在
+      `canvas-bridge/generation.ts` 调服务端的多模态 chat。
+- [ ] **音频生成没接**：同上，`canvas-bridge/audio.ts` 现在明确报错，不产静音占位（§8.0）。
+- [ ] **视频只吃首帧图**：画布还会传视频 / 音频参考（它支持多模态参考），
+      `VideoMediaOptions` 收下但没用。服务端支持了在 `canvas-bridge/video.ts` 接上。
+- [ ] **本机 dev H2 的 V25 校验和不匹配**（既有问题，非本轮引入）：`data/aistareco.mv.db`
+      启动会挂在 `Migration checksum mismatch for migration version 25`。本轮联调改用独立库
+      `canvas-e2e` 绕开，没动那份数据。要修跑 `flyway repair`，或确认可弃后删库重建。
+
 ## 2026-09-07 · 三产品整合 v0.153 后续（真源 `docs/ip-ecosystem-integration.md`）
 
 - [x] ~~**名片建卡 / 编辑表单没写**~~ **v0.155 完成**，2026-09-07：`POST /v1/card/from-avatar` 一键建草稿（名字与衣柜从形象带过来）+ `/cards/{id}/edit` 编辑表单（基础信息 / 联系方式 / 能提供在找）+ ipstudio 发布弹窗「做成数字名片」。同轮修掉一个更根本的缺陷：**名片的形象引用从来没在读路径上解析过**（`CardService` 没注入 `DapAvatarRefResolver`），真建一张卡是没有形象的 —— 演示名片写死 `imageUrl` 把它盖住了。

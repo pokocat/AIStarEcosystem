@@ -9579,6 +9579,62 @@ paths:
         '404': { description: 'IP_PROJECT_NOT_FOUND / IP_NODE_NOT_FOUND / IP_RUN_NOT_FOUND —— 主形象节点 selectedRunId 指向的运行不属于本人本项目（绝不静默当「没选主图」继续出图）' }
         '409': { description: 'IP_RUN_ALREADY_RUNNING —— 同节点已有 running run' }
         '503': { description: 'DAP_ENGINE_NOT_CONFIGURED（含引擎不支持看图时的人设通道未绑定）/ PROMPT_NOT_CONFIGURED —— 均不冻结、不产假产物' }
+  /v1/ip-studio/models:
+    get:
+      tags: [ip-studio]
+      summary: 画布上的模型下拉（出图 / 视频候选）
+      description: >
+        候选来自后台配好的端点（`AiAppBinding` + `ai_app_endpoint_candidate`），
+        **不是用户自己填的 API Key** —— 与短剧线 `GET /me/drama/render/models` 同一形态。
+        一个都没配时返回空数组，前端据此提示「尚未开通」并禁用生成，不假装能跑（§8.0）。
+      responses:
+        "200": { description: "{ image: 候选[], video: 候选[] }" }
+
+  /v1/ip-studio/assets/sign:
+    post:
+      tags: [ip-studio]
+      summary: 按存储键批量重签图片地址
+      description: >
+        签名有 TTL（默认一小时），画布是一开半天的工具 —— 图在编辑途中过期，
+        用户看到的是一片破图。前端发现加载失败时拿 key 回来换新地址。
+        只签**本人的** key：画布文档是客户端拥有的，非本人 key 直接 400 `IP_ASSET_KEY_INVALID`
+        （静默跳过就等于给了一个探测面）。一次最多 200 个。
+      responses:
+        "200": { description: "{ [key]: signedUrl }" }
+
+  /v1/ip-studio/projects/{projectId}/generate:
+    post:
+      tags: [ip-studio]
+      summary: 画布出图
+      description: >
+        **参考图由画布点名**（用户框了哪几张、蒙版编辑只针对当前这张，服务端从文档回溯猜不出来）；
+        服务端保留它该管的：key 归属闸、提示词模板（`dap.ip_canvas_image`）、模型白名单、
+        计价与冻结结算、派发。preflight 一定在 hold 之前（§8.0）——
+        引擎或提示词未配置 → 503，不建任务不冻结。
+      responses:
+        "200": { description: 运行记录（status=running，前端轮询 /runs/{id}） }
+
+  /v1/ip-studio/projects/{projectId}/generate-video:
+    post:
+      tags: [ip-studio]
+      summary: 画布出视频
+      description: >
+        走通用视频链（`MaterialVideoJobService`，分区 `ipstudio`），**不是** dap 的数字人衍生视频 ——
+        那条要求先有 `avatarId`（必须发布之后），而画布上人往往还没发布就想让一张图动起来。
+        首帧图的 key 同样过归属闸。计费 / 时长校验 / 端点白名单 / 未配置即失败快由视频链承担。
+      responses:
+        "200": { description: 视频任务卡（status=rendering，前端轮询 /me/material/videos/jobs/{jobId}） }
+
+  /me/material/videos/jobs/{jobId}:
+    get:
+      tags: [material]
+      summary: 视频任务状态
+      description: >
+        带货 / 短剧 / IP 工作台共用这张表，靠 `app` 查询参数分区隔离
+        （不带就会看到别的子产品的视频，v0.108 的教训）。
+      responses:
+        "200": { description: 任务卡 }
+
   /v1/ip-studio/runs/{id}:
     get:
       tags: [ipstudio]

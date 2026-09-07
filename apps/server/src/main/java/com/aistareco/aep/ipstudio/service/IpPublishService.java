@@ -170,70 +170,60 @@ public class IpPublishService {
     private record Selected(String nodeId, String title, String imageKey, String prompt,
                             List<String> allCandidateKeys) {}
 
-    /** 节点必须是 generate 且已有选中候选，否则 400 —— 没选图就发布只会产出一个空壳资产。 */
+    /**
+     * 节点必须是**已经出好图的图节点**，否则 400 —— 没有图就发布只会产出一个空壳资产。
+     *
+     * <p>归属闸：doc 是客户端写的，抄一个别人的 storageKey 进来就能把别人的图发布成自己的资产，
+     * 所以每个 key 都要过 {@code requireOwnedAssetKey}。
+     */
     private Selected selectedOf(String userId, JsonNode doc, String projectId, String nodeId) {
         JsonNode node = IpDocs.node(doc, nodeId);
         if (node == null) {
             throw BusinessException.notFound("IP_NODE_NOT_FOUND", "画布上找不到节点 " + nodeId);
         }
-        if (!IpDocs.T_GENERATE.equals(IpDocs.typeOf(node))) {
-            throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED",
-                    "只能发布「生成」节点的选中图");
+        if (!IpDocs.T_IMAGE.equals(IpDocs.typeOf(node))) {
+            throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED", "只能发布画布上的图片");
         }
-        JsonNode d = IpDocs.dataOf(node);
-        String runId = IpDocs.text(d, "selectedRunId");
-        if (runId == null) {
-            throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED",
-                    "还有生成节点没有选定图片，请先在候选里选一张");
-        }
-        // owner + project 双限定（与参考图装配同一把闸）：doc 是客户端写的，
-        // 抄一个别人的 runId 进来就能把别人的图发布成自己的资产。
-        IpRun run = projects.ownedRun(userId, projectId, runId).orElseThrow(() ->
-                BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED",
-                        "选定的图片已失效，请重新生成并选图"));
-        String key = projects.candidateKeyOf(userId, projectId, runId, d.path("selectedIndex").asInt(0));
+        String key = projects.requireOwnedAssetKey(userId, IpDocs.primaryStorageKey(node));
         if (key == null) {
             throw BusinessException.badRequest("IP_PUBLISH_SELECTION_REQUIRED",
-                    "选定的图片已失效，请重新生成并选图");
+                    "这张还没出图，先生成再发布");
         }
-        JsonNode out = projects.parseOrEmptyObject(run.getOutputJson());
+
+        JsonNode md = IpDocs.metadataOf(node);
         List<String> all = new ArrayList<>();
-        JsonNode arr = out.path("candidates");
-        if (arr.isArray()) {
-            for (JsonNode c : arr) {
-                String k = c.path("key").asText(null);
-                if (k != null && !k.isBlank()) all.add(k);
+        JsonNode images = md == null ? null : md.path("images");
+        if (images != null && images.isArray()) {
+            for (JsonNode img : images) {
+                String k = projects.requireOwnedAssetKey(userId, IpDocs.text(img, "storageKey"));
+                if (k != null) all.add(k);
             }
         }
-        JsonNode inputs = projects.parseOrEmptyObject(run.getInputJson());
-        String prompt = inputs.path("prompt").isTextual() ? inputs.path("prompt").asText() : null;
+        if (all.isEmpty()) all.add(key);
 
-        String title = lookTitleFor(doc, nodeId);
+        String prompt = IpDocs.text(md, "prompt");
+        String title = IpDocs.text(node, "title");
+        if (title == null) title = "IP 造型";
+        if (title.length() > 128) title = title.substring(0, 128);
         return new Selected(nodeId, title, key, prompt, all);
-    }
-
-    /** 造型名取上游形象卡的 title，没有就退到节点 label / 默认名。 */
-    private String lookTitleFor(JsonNode doc, String nodeId) {
-        for (JsonNode look : IpDocs.ancestorsOfType(doc, nodeId, IpDocs.T_LOOK, 2)) {
-            String t = IpDocs.text(IpDocs.dataOf(look), "title");
-            if (t != null) return t.length() > 128 ? t.substring(0, 128) : t;
-        }
-        JsonNode node = IpDocs.node(doc, nodeId);
-        String label = node == null ? null : IpDocs.text(node, "label");
-        return label != null ? label : "IP 造型";
     }
 
     // ── 特征卡 → dap 设定档案 ────────────────────────────────
 
     private record Identity(String text, String promptEn, String tagline, Map<String, Object> def) {}
 
+    /**
+     * 数字人的设定档案。
+     *
+     * <p>画布通用化之后没有「人物特征卡」这种定型节点了 —— 主形象那张图的提示词就是它的设定。
+     * 从提示词里能解析出「脸型：xxx」这类行就填进档案，解析不出来也不编：
+     * 宁可档案里少几栏，也别把模型提示词当成人设塞给用户看。
+     */
     private Identity identityOf(JsonNode doc, String masterNodeId) {
         String text = null, promptEn = null;
-        List<JsonNode> ids = IpDocs.ancestorsOfType(doc, masterNodeId, IpDocs.T_IDENTITY, 8);
-        if (!ids.isEmpty()) {
-            JsonNode d = IpDocs.dataOf(ids.get(0));
-            text = IpDocs.text(d, "text");
-            promptEn = IpDocs.text(d, "promptEn");
+        JsonNode master = IpDocs.node(doc, masterNodeId);
+        if (master != null) {
+            text = IpDocs.text(IpDocs.metadataOf(master), "prompt");
         }
         Map<String, Object> def = new LinkedHashMap<>();
         def.put("形象来源", "AI IP 工作台");

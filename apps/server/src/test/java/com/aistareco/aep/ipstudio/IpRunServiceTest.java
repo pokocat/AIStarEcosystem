@@ -63,6 +63,7 @@ class IpRunServiceTest {
     private IpRunWorker worker;
     private IpProjectService projectService;
     private IpRunService svc;
+    private com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
 
     @BeforeEach
     void setUp() {
@@ -88,15 +89,15 @@ class IpRunServiceTest {
         credits = mock(CreditService.class);
         worker = mock(IpRunWorker.class);
 
+        videoJobs = mock(com.aistareco.aep.service.materialvideo.MaterialVideoJobService.class);
         svc = new IpRunService(runs.repo, projectService, catalog, IpStudioFixtures.props(),
-                prompts, multimodal, pricing, accounts, credits, worker, OM);
+                prompts, multimodal, pricing, accounts, credits, worker, OM, videoJobs);
     }
 
     private PromptService.ResolvedPrompt resourcePrompt(String key) {
         String user = PromptService.KEY_DAP_IP_IDENTITY.equals(key)
                 ? "请输出人物特征卡 JSON。"
-                : "{{style}} identity: {{identity}} {{outfit}} {{pose}} {{expression}} "
-                  + "{{details}} {{props}} {{refNotes}} avoid: {{negative}} no text.";
+                : "{{prompt}} {{refNotes}} keep the same character as in the reference images. no text.";
         return new PromptService.ResolvedPrompt("你是 IP 形象设定师。", user, new PromptParamsDto(null, null, null), "resource");
     }
 
@@ -107,13 +108,12 @@ class IpRunServiceTest {
     // ── 输入编译 ─────────────────────────────────────────────
 
     @Test
-    void generate_missingIdentityAndStyle_is400WithMissingDetails() {
+    void generate_withoutPrompt_is400AndHoldsNothing() {
+        // 画布通用化之后，一个图节点唯一的必填就是「要画什么」。
         IpStudioFixtures.Doc d = new IpStudioFixtures.Doc();
-        d.node("n-source", "source").put("assetKey", IpStudioFixtures.sourceKey(USER, "p.jpg"));
-        var look = d.node("n-look", "look");
-        look.put("title", "造型").put("outfit", "白衬衫");
-        d.node("n-gen", "generate").put("count", 1).put("isMaster", false);
-        d.edge("n-source", "n-look").edge("n-look", "n-gen");
+        d.imageNode("n-source", IpStudioFixtures.sourceKey(USER, "p.jpg"));
+        d.node("n-gen", "image").put("count", 1);
+        d.edge("n-source", "n-gen");
         seedProject(d);
 
         BusinessException e = assertThrows(BusinessException.class,
@@ -122,29 +122,19 @@ class IpRunServiceTest {
         assertEquals("IP_NODE_INPUT_MISSING", e.getCode());
         @SuppressWarnings("unchecked")
         List<String> missing = (List<String>) ((java.util.Map<String, Object>) e.getDetails()).get("missing");
-        assertTrue(missing.contains("identity"), "应报缺人物特征卡：" + missing);
-        assertTrue(missing.contains("style"), "应报缺风格：" + missing);
+        assertTrue(missing.contains("prompt"), "应报缺提示词：" + missing);
         // 缺输入的时候一分钱都不能冻
         verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
     }
 
     @Test
-    void identity_withoutSourcePhoto_is400() {
-        IpStudioFixtures.Doc d = new IpStudioFixtures.Doc();
-        d.node("n-identity", "identity").put("text", "").put("promptEn", "").put("locked", false);
-        seedProject(d);
-
-        BusinessException e = assertThrows(BusinessException.class,
-                () -> svc.run(USER, PID, "n-identity", null));
-        assertEquals("IP_NODE_INPUT_MISSING", e.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-    }
-
-    @Test
     void nonRunnableNode_is400_andUnknownNodeIs404() {
-        seedProject(IpStudioFixtures.chainDoc(null, 0));
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
+        d.node("n-note", "text").put("content", "这是一张便签");
+        seedProject(d);
+        // 文字节点不产出媒体，跑它没有意义
         assertEquals("IP_NODE_NOT_RUNNABLE",
-                assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-style", null)).getCode());
+                assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-note", null)).getCode());
         assertEquals("IP_NODE_NOT_FOUND",
                 assertThrows(BusinessException.class, () -> svc.run(USER, PID, "nope", null)).getCode());
     }
@@ -159,59 +149,79 @@ class IpRunServiceTest {
     // ── 形象卡通用化（v0.153）：自由 prompt 与老五字段 ──────────
 
     @Test
-    void freePromptActuallyReachesTheModelPrompt() {
-        // 通用化最容易踩空的地方：lookText() 只管「填没填」的校验，
-        // 真正拼给模型的提示词在另一处。这两处一旦不同步，用户能点运行、
-        // 服务端不报缺内容，但出的图跟他写的造型毫无关系 —— 而且不会有任何报错。
+    void promptActuallyReachesTheModelPrompt() {
+        // 最容易踩空的地方：编译时「有没有提示词」的校验和「真正拼给模型的那段」是两处代码。
+        // 一旦不同步，用户能点运行、服务端不报缺内容，但出的图跟他写的毫无关系 —— 而且不会有任何报错。
         IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
-        ObjectNode look = d.data("n-look");
-        for (String f : List.of("outfit", "pose", "expression", "details", "props")) look.remove(f);
-        look.put("prompt", "米色粗针织毛衫配浅色直筒牛仔裤，低头看手机，嘴角微扬");
+        d.data("n-gen").put("prompt", "米色粗针织毛衫配浅色直筒牛仔裤，低头看手机，嘴角微扬");
         seedProject(d);
 
         String prompt = svc.run(USER, PID, "n-gen", null).inputs().path("prompt").asText();
         assertTrue(prompt.contains("米色粗针织毛衫配浅色直筒牛仔裤，低头看手机，嘴角微扬"),
-                "自由提示词必须原样进入模型提示词：" + prompt);
+                "用户写的提示词必须原样进入模型提示词：" + prompt);
         assertFalse(prompt.contains("{{"), "模板占位符必须全部替换掉：" + prompt);
     }
 
+    // ── 画布出视频 ────────────────────────────────────────
+
     @Test
-    void legacyFiveFieldsStillCompileWithoutMigration() {
-        // 老画布（v0.151 存下来的 doc）没有 prompt 字段，只有五栏 —— 零迁移承诺就是这条。
+    void videoGoesThroughTheGeneralVideoLane_notTheAvatarDerivativeOne() {
+        // 关键：画布上的人往往还没发布，没有 avatarId。dap 的衍生视频那条要求先有形象，
+        // 所以这里必须走通用视频链，并且显式带 ipstudio 分区 —— 不带就会跟带货 / 短剧串号。
         seedProject(IpStudioFixtures.chainDoc(null, 0));
-        String prompt = svc.run(USER, PID, "n-gen", null).inputs().path("prompt").asText();
-        assertTrue(prompt.contains("米白色针织冷帽"), prompt);
-        assertTrue(prompt.contains("一部深色手机"), "五栏要一个不落地拼进去：" + prompt);
+        com.fasterxml.jackson.databind.node.ObjectNode card = OM.createObjectNode();
+        card.put("id", "MVJ-1").put("status", "rendering");
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(), eq(USER),
+                eq(com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO)))
+                .thenReturn(List.of(card));
+
+        JsonNode got = svc.generateVideo(USER, PID,
+                new IpRunService.IpVideoRequest("让它挥手", null, 4, "9:16", null));
+
+        assertEquals("MVJ-1", got.path("id").asText());
+        org.mockito.ArgumentCaptor<JsonNode> body = org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(videoJobs).submit(body.capture(), eq(USER),
+                eq(com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO));
+        JsonNode item = body.getValue().path("items").get(0);
+        assertEquals("让它挥手", item.path("prompt").asText());
+        assertEquals(4, item.path("duration_sec").asInt());
+        assertEquals("9:16", item.path("aspect_ratio").asText());
     }
 
-    // ── 参考图顺序与砍尾回报 ─────────────────────────────────
+    @Test
+    void videoFirstFrameKeyIsGuarded() {
+        // 首帧图同样是画布传来的 key —— 不过闸就能拿别人的图当首帧出片
+        seedProject(IpStudioFixtures.chainDoc(null, 0));
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
+                () -> svc.generateVideo(USER, PID, new IpRunService.IpVideoRequest(
+                        "偷图出片", IpStudioFixtures.genKey(OTHER, "victim.png"), 4, null, null))).getCode());
+        verify(videoJobs, never()).submit(org.mockito.ArgumentMatchers.any(), anyString(), anyString());
+    }
 
     @Test
-    void generate_referenceOrderIsMasterThenSourceThenReferences_andOverflowIsReported() {
-        String masterRunId = "IPR-master01";
-        // 4 张局部参考 + master + source = 6 个候选，上限 4 → 末两张 reference 被砍
-        seedProject(IpStudioFixtures.chainDoc(masterRunId, 4));
-        runs.repo.save(IpStudioFixtures.doneGenerateRun(masterRunId, PID, "n-master", 4));
+    void videoWithoutPromptIs400() {
+        seedProject(IpStudioFixtures.chainDoc(null, 0));
+        assertEquals("IP_NODE_INPUT_MISSING", assertThrows(BusinessException.class,
+                () -> svc.generateVideo(USER, PID, new IpRunService.IpVideoRequest("", null, null, null, null))).getCode());
+        verify(videoJobs, never()).submit(org.mockito.ArgumentMatchers.any(), anyString(), anyString());
+    }
+
+    // ── 参考图：上游图按远近排序、有上限 ───────────────────────
+
+    @Test
+    void referencesComeFromUpstreamImages_nearestFirst_andAreCapped() {
+        // 参考图 = 连进来的上游图。近的排前面（用户刚接上的那张最相关），
+        // 超过上限就砍尾 —— 一条长链上所有历史产物都喂进去只会把模型拖花。
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc("ipstudio_gen/" + USER + "/master.png", 4);
+        seedProject(d);
 
         IpRunDto dto = svc.run(USER, PID, "n-gen", null);
         JsonNode refs = dto.inputs().path("refs");
-        assertEquals(6, refs.size());
-        assertEquals("master", refs.get(0).path("role").asText());
-        assertEquals("source", refs.get(1).path("role").asText());
-        assertEquals("reference", refs.get(2).path("role").asText());
-        assertTrue(refs.get(0).path("applied").asBoolean());
-        assertTrue(refs.get(3).path("applied").asBoolean());
-        assertFalse(refs.get(4).path("applied").asBoolean());
-        assertEquals("over_max_refs", refs.get(4).path("reason").asText());
-        assertFalse(refs.get(5).path("applied").asBoolean());
+        assertEquals(IpStudioFixtures.props().getMaxRefImages(), refs.size(), "超过上限要砍掉，不能全喂进去");
+        for (JsonNode r : refs) assertTrue(r.path("applied").asBoolean(), "留下的都得是生效的：" + r);
 
-        // 提示词是服务端拼的，用户看得到原文；风格 / 身份 / 形象卡四栏 / 参考图说明都在里面
         String prompt = dto.inputs().path("prompt").asText();
-        assertTrue(prompt.contains("3D rendered BJD doll figure"), prompt);
-        assertTrue(prompt.contains("consistent facial identity"), prompt);
-        assertTrue(prompt.contains("米白色针织冷帽"), prompt);
-        assertTrue(prompt.contains("Reference image 1: hat style only 1"), prompt);
-        assertTrue(prompt.contains("no photorealistic skin"), prompt);
+        assertTrue(prompt.contains("Reference image 1:"), prompt);
         assertFalse(prompt.contains("{{"), "模板占位符必须全部替换掉：" + prompt);
 
         // _exec 是服务端执行参数（含 storage key），绝不出 wire
@@ -219,29 +229,25 @@ class IpRunServiceTest {
     }
 
     @Test
-    void masterNodeRunsWithoutLook_andWithoutAnyReference() {
-        // 主形象节点上游没有 look（模板 §6 就是这么排的），也还没有选中候选 → 无图参考也允许运行
-        seedProject(IpStudioFixtures.chainDoc(null, 0));
-        IpRunDto dto = svc.run(USER, PID, "n-master", null);
-        assertEquals(IpRun.KIND_GENERATE, dto.kind());
-        assertEquals(4, dto.inputs().path("count").asInt());
-        // 主形象没有 master 参考，但仍会带上原照片
-        JsonNode refs = dto.inputs().path("refs");
-        assertEquals(1, refs.size());
-        assertEquals("source", refs.get(0).path("role").asText());
-    }
+    void runWithoutAnyUpstreamImageStillWorks() {
+        // 一张白纸上写一句话直接出图 —— 这是画布最基本的用法，不能要求必须先连点什么
+        IpStudioFixtures.Doc d = new IpStudioFixtures.Doc();
+        d.node("n-solo", "image").put("prompt", "一只戴墨镜的柴犬，3D 潮玩风格");
+        seedProject(d);
 
-    // ── 资产 key 归属闸（doc 是客户端写的，key 一律不可信）───
+        IpRunDto dto = svc.run(USER, PID, "n-solo", null);
+        assertEquals(0, dto.inputs().path("refs").size());
+        assertTrue(dto.inputs().path("prompt").asText().contains("戴墨镜的柴犬"));
+    }
 
     @Test
     void assetKeyOfAnotherUser_is400_andHoldsNothing() {
         // 把别人的照片 key 抄进自己的画布 = 拿别人的脸出图
         IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
-        ((com.fasterxml.jackson.databind.node.ObjectNode) d.root.path("nodes").get(0).path("data"))
-                .put("assetKey", IpStudioFixtures.sourceKey(OTHER, "victim.jpg"));
+        d.data("n-source").put("storageKey", IpStudioFixtures.sourceKey(OTHER, "victim.jpg"));
         seedProject(d);
 
-        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-master", null));
+        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));
         assertEquals(HttpStatus.BAD_REQUEST, e.getStatus());
         assertEquals("IP_ASSET_KEY_INVALID", e.getCode());
         verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
@@ -253,89 +259,41 @@ class IpRunServiceTest {
         // FileStorageService.openForRead 是 Paths.get(localDir, key) 直接拼路径，
         // 放进来一个 ../ 就能把本机任意文件当参考图 base64 上行给外部模型
         IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
-        ((com.fasterxml.jackson.databind.node.ObjectNode) d.root.path("nodes").get(0).path("data"))
-                .put("assetKey", "ipstudio_source/" + USER + "/../../../../etc/passwd");
+        d.data("n-source").put("storageKey", "ipstudio_source/" + USER + "/../../../../etc/passwd");
         seedProject(d);
 
         assertEquals("IP_ASSET_KEY_INVALID",
-                assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-master", null)).getCode());
+                assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null)).getCode());
         verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
     }
 
     @Test
     void absoluteAssetKey_is400() {
         IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
-        ((com.fasterxml.jackson.databind.node.ObjectNode) d.root.path("nodes").get(0).path("data"))
-                .put("assetKey", "/etc/hosts");
+        d.data("n-source").put("storageKey", "/etc/hosts");
         seedProject(d);
 
         assertEquals("IP_ASSET_KEY_INVALID",
-                assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-master", null)).getCode());
+                assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null)).getCode());
     }
 
     @Test
     void referenceNodeAssetKeyIsGuardedToo() {
         IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 1);
-        for (com.fasterxml.jackson.databind.JsonNode n : d.root.path("nodes")) {
-            if ("n-ref-1".equals(n.path("id").asText())) {
-                ((com.fasterxml.jackson.databind.node.ObjectNode) n.path("data"))
-                        .put("assetKey", IpStudioFixtures.sourceKey(OTHER, "stolen.png"));
-            }
-        }
+        d.data("n-ref-1").put("storageKey", IpStudioFixtures.sourceKey(OTHER, "stolen.png"));
         seedProject(d);
 
         assertEquals("IP_ASSET_KEY_INVALID",
                 assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null)).getCode());
         verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
     }
-
-    @Test
-    void selectedRunFromAnotherProject_isRejectedNotSilentlyIgnored() {
-        // 静默忽略 = 「没选主图」→ 照价出一张没有身份锚的图，用户还以为锁了脸
-        String foreignRunId = "IPR-foreign1";
-        seedProject(IpStudioFixtures.chainDoc(foreignRunId, 0));
-        IpRun foreign = IpStudioFixtures.doneGenerateRun(foreignRunId, "IPP-99999999", "n-master", 4);
-        runs.repo.save(foreign);
-
-        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));
-        assertEquals("IP_RUN_NOT_FOUND", e.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-    }
-
-    @Test
-    void selectedRunOfAnotherOwner_isRejected() {
-        String foreignRunId = "IPR-foreign2";
-        seedProject(IpStudioFixtures.chainDoc(foreignRunId, 0));
-        IpRun foreign = IpStudioFixtures.doneGenerateRun(foreignRunId, PID, "n-master", 4);
-        foreign.setOwnerUserId(OTHER);
-        runs.repo.save(foreign);
-
-        assertEquals("IP_RUN_NOT_FOUND",
-                assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null)).getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-    }
-
-    @Test
-    void ownMasterRunStillWorks_andItsCandidateBecomesTheIdentityAnchor() {
-        String masterRunId = "IPR-mine0001";
-        seedProject(IpStudioFixtures.chainDoc(masterRunId, 0));
-        runs.repo.save(IpStudioFixtures.doneGenerateRun(masterRunId, PID, "n-master", 4));
-
-        IpRunDto dto = svc.run(USER, PID, "n-gen", null);
-        JsonNode refs = dto.inputs().path("refs");
-        assertEquals("master", refs.get(0).path("role").asText());
-        assertTrue(refs.get(0).path("applied").asBoolean());
-        verify(credits).hold(USER, 16L, IpRunService.REF_TYPE, dto.id(), "IP 形象卡出图 ×2");
-    }
-
-    // ── preflight（§8.0）─────────────────────────────────────
 
     @Test
     void engineNotConfigured_is503AndHoldsNothing() {
         when(multimodal.imageModel()).thenReturn(null);
         seedProject(IpStudioFixtures.chainDoc(null, 0));
 
-        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-master", null));
+        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatus());
         assertEquals("DAP_ENGINE_NOT_CONFIGURED", e.getCode());
         verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
@@ -344,27 +302,16 @@ class IpRunServiceTest {
     }
 
     @Test
-    void visionEngineNotConfigured_blocksIdentityRun() {
-        when(multimodal.chatModel()).thenReturn("  ");
-        seedProject(IpStudioFixtures.chainDoc(null, 0));
-        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-identity", null));
-        assertEquals("DAP_ENGINE_NOT_CONFIGURED", e.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-    }
-
-    @Test
     void promptNotConfigured_is503AndHoldsNothing() {
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt(
                 "sys", "{{input}}", new PromptParamsDto(null, null, null), "code"));
         seedProject(IpStudioFixtures.chainDoc(null, 0));
 
-        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-master", null));
+        BusinessException e = assertThrows(BusinessException.class, () -> svc.run(USER, PID, "n-gen", null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, e.getStatus());
         assertEquals("PROMPT_NOT_CONFIGURED", e.getCode());
         verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
     }
-
-    // ── 冻结与派发 ───────────────────────────────────────────
 
     @Test
     void dispatchWaitsForTransactionCommitWhenOneIsActive() {
@@ -372,7 +319,7 @@ class IpRunServiceTest {
         seedProject(IpStudioFixtures.chainDoc(null, 0));
         TransactionSynchronizationManager.initSynchronization();
         try {
-            IpRunDto dto = svc.run(USER, PID, "n-master", null);
+            IpRunDto dto = svc.run(USER, PID, "n-gen", null);
             verify(worker, never()).execute(anyString());
             for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) {
                 sync.afterCommit();
@@ -386,13 +333,13 @@ class IpRunServiceTest {
     @Test
     void holdsWholeBatchBeforeDispatch() {
         seedProject(IpStudioFixtures.chainDoc(null, 0));
-        IpRunDto dto = svc.run(USER, PID, "n-master", null);
+        IpRunDto dto = svc.run(USER, PID, "n-gen", null);
 
-        // 4 张 × 8 = 32 一次性冻结，referenceId 就是 runId
-        verify(credits).hold(USER, 32L, IpRunService.REF_TYPE, dto.id(), "IP 主形象生成 ×4");
+        // 2 张 × 8 = 16 一次性冻结，referenceId 就是 runId
+        verify(credits).hold(USER, 16L, IpRunService.REF_TYPE, dto.id(), "画布出图 ×2");
         verify(worker).execute(dto.id());
         assertEquals(IpRun.STATUS_RUNNING, dto.status());
-        assertEquals(32L, dto.cost());
+        assertEquals(16L, dto.cost());
         assertTrue(dto.id().startsWith("IPR-"), dto.id());
     }
 
@@ -400,7 +347,7 @@ class IpRunServiceTest {
     void holdSnapshotsUnitPriceForTheWorker() {
         // worker 结算时只认这份快照 —— 后台在 hold 与 commit 之间改价不该影响这一单
         seedProject(IpStudioFixtures.chainDoc(null, 0));
-        IpRunDto dto = svc.run(USER, PID, "n-master", null);
+        IpRunDto dto = svc.run(USER, PID, "n-gen", null);
         JsonNode exec = IpStudioFixtures.OM.createObjectNode();
         try {
             exec = IpStudioFixtures.OM.readTree(runs.rows.get(dto.id()).getInputJson()).path("_exec");
@@ -408,7 +355,7 @@ class IpRunServiceTest {
             throw new IllegalStateException(e);
         }
         assertEquals(8L, exec.path("unitCost").asLong());
-        assertEquals(32L, exec.path("holdTotal").asLong());
+        assertEquals(16L, exec.path("holdTotal").asLong());
         // 快照是服务端执行参数，不出 wire
         assertTrue(dto.inputs().path("_exec").isMissingNode());
     }
@@ -426,13 +373,6 @@ class IpRunServiceTest {
         verify(worker).abandon(eq(dto.id()), eq("IP_RUN_QUEUE_FULL"), anyString());
     }
 
-    @Test
-    void identityRunHoldsSingleUnit() {
-        seedProject(IpStudioFixtures.chainDoc(null, 0));
-        IpRunDto dto = svc.run(USER, PID, "n-identity", null);
-        verify(credits).hold(USER, 2L, IpRunService.REF_TYPE, dto.id(), "IP 人物特征卡抽取");
-        assertEquals(IpRun.KIND_IDENTITY, dto.kind());
-    }
 
     @Test
     void sameNodeAlreadyRunning_is409() {

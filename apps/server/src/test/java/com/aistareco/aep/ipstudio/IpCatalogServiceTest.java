@@ -14,6 +14,7 @@ import static com.aistareco.aep.ipstudio.IpStudioFixtures.OM;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -31,7 +32,7 @@ class IpCatalogServiceTest {
         List<IpTemplateDto> templates = catalog.templates();
         // 顺序即首页展示顺序：「IP 打造」是主推工作流，排在两套单点模板前面。
         // JSON 打错一个逗号 → 目录里静默少一条（loadTemplates 只 WARN 不抛），所以这里逐条钉死。
-        assertEquals(List.of("ip-toy-figure", "ip-launch-female", "ip-launch-male", "portrait-bjd-trio", "portrait-sticker-six"),
+        assertEquals(List.of("ip-toy-figure", "ip-launch-female", "ip-launch-male"),
                 templates.stream().map(IpTemplateDto::id).toList(),
                 "内置工作流少了或顺序变了");
         for (IpTemplateDto t : templates) {
@@ -54,41 +55,53 @@ class IpCatalogServiceTest {
             IpDocs.nodes(doc).forEach(n -> ids.add(n.path("id").asText()));
             assertEquals(ids.size(), ids.stream().distinct().count(), "节点 id 不能重复：" + t.id());
 
-            for (JsonNode e : doc.path("edges")) {
-                assertTrue(ids.contains(e.path("source").asText()),
-                        t.id() + " 有一条边指向不存在的 source：" + e);
-                assertTrue(ids.contains(e.path("target").asText()),
-                        t.id() + " 有一条边指向不存在的 target：" + e);
+            for (JsonNode e : doc.path("connections")) {
+                assertTrue(ids.contains(e.path("fromNodeId").asText()),
+                        t.id() + " 有一条连线来自不存在的节点：" + e);
+                assertTrue(ids.contains(e.path("toNodeId").asText()),
+                        t.id() + " 有一条连线指向不存在的节点：" + e);
             }
 
-            // 每个节点都排好了位置（画布打开就是可读的左到右布局，不是全挤在原点）
+            // 每个节点都排好了位置与尺寸（画布打开就是可读的左到右布局，不是全挤在原点）
             for (JsonNode n : IpDocs.nodes(doc)) {
                 assertTrue(n.path("position").path("x").isNumber(), t.id() + " 节点缺 position.x：" + n.path("id"));
                 assertTrue(n.path("position").path("y").isNumber(), t.id() + " 节点缺 position.y：" + n.path("id"));
+                assertTrue(n.path("width").asInt(0) > 0, t.id() + " 节点缺宽度：" + n.path("id"));
+                assertTrue(n.path("height").asInt(0) > 0, t.id() + " 节点缺高度：" + n.path("id"));
+                assertFalse(n.path("title").asText("").isBlank(), t.id() + " 节点缺标题：" + n.path("id"));
             }
 
-            // 形象卡数量与 lookCount 对得上，且每张都有 generate 节点接着
-            // lookCount 数的是**发布时会登记成 DapLook 的那些**，也就是非主形象的出图节点
-            // （IpPublishService 的 lookNodeIds 指的是 generate 节点）。
-            // 不能拿形象卡节点数当代理：主形象自己也可以挂一张招牌造型（潮玩模板就是），
-            // 那张不额外产出一条 DapLook。
-            long publishedLooks = IpDocs.nodes(doc).stream()
-                    .filter(n -> IpDocs.T_GENERATE.equals(IpDocs.typeOf(n)))
-                    .filter(n -> !IpDocs.dataOf(n).path("isMaster").asBoolean(false)).count();
-            assertEquals(t.lookCount(), publishedLooks, t.id() + " 的 lookCount 与实际出图节点数不符");
+            // lookCount 数的是**发布时会登记成 DapLook 的那些**：主形象之外、写了提示词的图节点。
+            // 主形象自己不额外产出一条 DapLook（它是数字人的定妆图）。
+            long variants = IpDocs.nodes(doc).stream()
+                    .filter(n -> IpDocs.T_IMAGE.equals(IpDocs.typeOf(n)))
+                    .filter(n -> IpDocs.text(IpDocs.metadataOf(n), "prompt") != null)
+                    .filter(n -> !"n-master".equals(n.path("id").asText())).count();
+            assertEquals(t.lookCount(), variants, t.id() + " 的 lookCount 与实际变体节点数不符");
 
-            long masters = IpDocs.nodes(doc).stream()
-                    .filter(n -> IpDocs.T_GENERATE.equals(IpDocs.typeOf(n)))
-                    .filter(n -> IpDocs.dataOf(n).path("isMaster").asBoolean(false)).count();
-            assertEquals(1, masters, t.id() + " 必须且只能有一个主形象节点");
+            // 照片位必须是空的：它等着用户把自己的照片拖进来。
+            // 预填了提示词就会被当成「可以直接跑」，跑出来的是个跟用户无关的人。
+            JsonNode photo = IpDocs.node(doc, "n-photo");
+            assertNotNull(photo, t.id() + " 缺照片位 n-photo");
+            assertNull(IpDocs.text(IpDocs.metadataOf(photo), "prompt"), t.id() + " 照片位不该预填提示词");
+            assertNull(IpDocs.primaryStorageKey(photo), t.id() + " 照片位不该预填图片");
 
+            // 主形象必须写了提示词，且照片连着它 —— 否则用户拖完照片点运行会说「缺内容」
+            JsonNode master = IpDocs.node(doc, "n-master");
+            assertNotNull(master, t.id() + " 缺主形象 n-master");
+            assertNotNull(IpDocs.text(IpDocs.metadataOf(master), "prompt"), t.id() + " 主形象缺提示词");
+            assertTrue(IpDocs.upstream(doc, "n-master").stream()
+                            .anyMatch(n -> "n-photo".equals(n.path("id").asText())),
+                    t.id() + " 照片没有连到主形象上");
+
+            // 每个变体都要挂在主形象之后 —— 不挂就拿不到身份锚，出来的不是同一个人
             for (JsonNode n : IpDocs.nodes(doc)) {
-                if (!IpDocs.T_LOOK.equals(IpDocs.typeOf(n))) continue;
-                JsonNode d = IpDocs.dataOf(n);
-                assertFalse(IpDocs.text(d, "title") == null, t.id() + " 形象卡缺标题");
-                // 形象卡自 v0.153 起只有一个自由 prompt（老画布的五字段仍可读，但内置模板一律用新字段）。
-                // 内置模板的 prompt 空着 = 用户点进来看到一张空造型卡，属于打包事故。
-                assertFalse(IpDocs.text(d, "prompt") == null, t.id() + " 形象卡缺造型提示词");
+                String id = n.path("id").asText();
+                if (!id.startsWith("n-look-")) continue;
+                assertTrue(IpDocs.upstream(doc, id).stream()
+                                .anyMatch(u -> "n-master".equals(u.path("id").asText())),
+                        t.id() + " 变体 " + id + " 没有接在主形象之后");
+                assertNotNull(IpDocs.text(IpDocs.metadataOf(n), "prompt"), t.id() + " 变体 " + id + " 缺提示词");
             }
         }
     }
@@ -109,12 +122,12 @@ class IpCatalogServiceTest {
     }
 
     @Test
-    void bjdTrioEstimateMatchesDefaultPricing() {
-        IpTemplateDto t = catalog.template("portrait-bjd-trio").orElseThrow();
-        // 默认单价：特征卡 2 + 主形象 8×4 + 三套造型 8×2×3 = 82
-        assertEquals(82, t.estimatedCredits());
+    void toyFigureEstimateMatchesDefaultPricing() {
+        IpTemplateDto t = catalog.template("ip-toy-figure").orElseThrow();
+        // 默认单价：招牌形象 8×4 + 五套变体 8×2×5 = 112（加上历史沿用的 2 分特征卡余量 = 114）
+        assertEquals(114, t.estimatedCredits());
         assertEquals("bjd", t.stylePresetId());
-        assertEquals(3, t.lookCount());
+        assertEquals(5, t.lookCount());
     }
 
     @Test

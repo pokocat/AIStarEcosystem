@@ -68,6 +68,7 @@ public class IpRunService {
     private final DapAccountService accounts;
     private final CreditService credits;
     private final IpRunWorker worker;
+    private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
     private final ObjectMapper om;
 
     public IpRunService(IpRunRepository runRepo,
@@ -80,7 +81,8 @@ public class IpRunService {
                         DapAccountService accounts,
                         CreditService credits,
                         IpRunWorker worker,
-                        ObjectMapper om) {
+                        ObjectMapper om,
+                         com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs) {
         this.runRepo = runRepo;
         this.projects = projects;
         this.catalog = catalog;
@@ -91,6 +93,7 @@ public class IpRunService {
         this.accounts = accounts;
         this.credits = credits;
         this.worker = worker;
+        this.videoJobs = videoJobs;
         this.om = om;
     }
 
@@ -122,8 +125,10 @@ public class IpRunService {
             throw BusinessException.notFound("IP_NODE_NOT_FOUND", "画布上找不到该节点，请刷新后重试");
         }
         String type = IpDocs.typeOf(node);
-        if (!IpDocs.T_IDENTITY.equals(type) && !IpDocs.T_GENERATE.equals(type)) {
-            throw BusinessException.badRequest("IP_NODE_NOT_RUNNABLE", "该节点不需要运行");
+        // 能跑的只有图节点 —— 文字 / 分组这些不产出媒体，跑它们没有意义。
+        // 视频节点走另一条链（要有形象才能跑），不在这里。
+        if (!IpDocs.T_IMAGE.equals(type)) {
+            throw BusinessException.badRequest("IP_NODE_NOT_RUNNABLE", "这个节点不用运行");
         }
         if (!runRepo.findByProjectIdAndNodeIdAndStatus(projectId, nodeId, IpRun.STATUS_RUNNING).isEmpty()) {
             throw new BusinessException(HttpStatus.CONFLICT, "IP_RUN_ALREADY_RUNNING",
@@ -131,9 +136,79 @@ public class IpRunService {
         }
 
         // 输入编译（含缺失校验 + 资产 key 归属闸）—— 全部在 hold 之前
-        Compiled compiled = IpDocs.T_IDENTITY.equals(type)
-                ? compileIdentity(userId, projectId, doc, node)
-                : compileGenerate(userId, projectId, doc, node);
+        Compiled compiled = compileGeneration(userId, projectId, doc, node);
+        return execute(userId, project, projectId, nodeId, compiled);
+    }
+
+    /**
+     * 显式生成 —— 画布直接说清「用这段提示词、拿这几张图当参考、出几张」。
+     *
+     * <p>为什么不都走上面那条按节点编译的路：<b>该拿哪几张图当参考是画布的判断</b>。
+     * 用户框选了两张、或者在蒙版编辑里只针对当前这一张，服务端从文档里回溯上游是猜不出来的。
+     * 服务端保留的仍然是它该管的部分 —— key 归属闸、提示词模板、模型白名单、计价、
+     * 冻结与结算、派发。只是「参考谁」这件事由画布说了算。
+     */
+    @Transactional
+    public IpRunDto generate(String userId, String projectId, IpGenerateRequest req) {
+        IpProject project = projects.required(userId, projectId);
+        if (req == null || req.prompt() == null || req.prompt().isBlank()) {
+            requireNoMissing(List.of("prompt"));
+        }
+        String nodeId = req.nodeId() == null || req.nodeId().isBlank() ? "adhoc" : req.nodeId();
+        if (!"adhoc".equals(nodeId)
+                && !runRepo.findByProjectIdAndNodeIdAndStatus(projectId, nodeId, IpRun.STATUS_RUNNING).isEmpty()) {
+            throw new BusinessException(HttpStatus.CONFLICT, "IP_RUN_ALREADY_RUNNING",
+                    "这张正在生成中，等它完成再跑");
+        }
+        Compiled compiled = compileExplicit(userId, req);
+        return execute(userId, project, projectId, nodeId, compiled);
+    }
+
+    /** 画布出视频的请求。 */
+    public record IpVideoRequest(String prompt, String refKey, Integer durationSec,
+                                 String aspectRatio, String model) {}
+
+    /**
+     * 画布出视频。
+     *
+     * <p>走的是通用视频链（{@code MaterialVideoJobService}，分区 {@code ipstudio}），
+     * **不是** dap 的数字人衍生视频 —— 那条要求先有 {@code avatarId}，也就是必须发布之后，
+     * 而画布上人往往还没发布就想让一张图动起来。
+     *
+     * <p>计费、时长校验、端点白名单、未配置即失败快，全部由 {@code MaterialVideoJobService}
+     * 承担（它已经把这套走了两条业务线）；这里只负责把画布的说法翻译过去，并守住 key 归属闸。
+     */
+    @Transactional
+    public JsonNode generateVideo(String userId, String projectId, IpVideoRequest req) {
+        projects.required(userId, projectId);
+        if (req == null || req.prompt() == null || req.prompt().isBlank()) {
+            requireNoMissing(List.of("prompt"));
+        }
+        // 首帧图：非本人的 key 直接 400（画布是客户端，能塞任何字符串进来）
+        String refKey = projects.requireOwnedAssetKey(userId, req.refKey());
+
+        ObjectNode item = om.createObjectNode();
+        item.put("name", "画布视频");
+        item.put("kind", "ipstudio-clip");
+        item.put("prompt", req.prompt().trim());
+        if (req.durationSec() != null) item.put("duration_sec", req.durationSec());
+        if (req.aspectRatio() != null && !req.aspectRatio().isBlank()) item.put("aspect_ratio", req.aspectRatio());
+        if (req.model() != null && !req.model().isBlank()) item.put("endpoint_id", req.model().trim());
+        if (refKey != null) item.putObject("variant_config").put("first_frame_key", refKey);
+
+        ObjectNode body = om.createObjectNode();
+        body.putArray("items").add(item);
+
+        List<JsonNode> created = videoJobs.submit(body, userId,
+                com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO);
+        if (created.isEmpty()) {
+            throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务没建起来，请稍后再试");
+        }
+        return created.get(0);
+    }
+
+    /** 冻结 → 落库 → 派发。两条入口共用，计费纪律只有这一处。 */
+    private IpRunDto execute(String userId, IpProject project, String projectId, String nodeId, Compiled compiled) {
 
         // preflight（§8.0）：引擎与提示词，缺一不可，且不冻结
         preflight(compiled);
@@ -235,164 +310,139 @@ public class IpRunService {
                            ObjectNode inputs, boolean needsChat, boolean needsImage,
                            String promptKey) {}
 
-    Compiled compileIdentity(String userId, String projectId, JsonNode doc, JsonNode node) {
-        List<String> missing = new ArrayList<>();
-        String sourceKey = firstSourceKey(userId, doc, node.path("id").asText(null));
-        if (sourceKey == null) missing.add("source");
-        requireNoMissing(missing);
-
-        PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_IDENTITY);
-        String system = p.system();
-        String user = PromptService.fill(p.userTemplate(), Map.of());
-
-        ObjectNode inputs = om.createObjectNode();
-        inputs.put("count", 1);
-        ObjectNode exec = inputs.putObject("_exec");
-        exec.put("sourceKey", sourceKey);
-        exec.put("system", system == null ? "" : system);
-        exec.put("user", user == null ? "" : user);
-        ArrayNode refs = inputs.putArray("refs");
-        ObjectNode r = refs.addObject();
-        r.put("role", "source");
-        r.put("applied", true);
-
-        return new Compiled(IpRun.KIND_IDENTITY, pricing.ipIdentity(), 1, "IP 人物特征卡抽取",
-                inputs, true, false, PromptService.KEY_DAP_IP_IDENTITY);
-    }
-
-    // ── 编译：generate ────────────────────────────────────────
-
     /**
-     * 编译一次出图。
+     * 编译一次生成。
      *
-     * <p>与 plan §4.3 的差异（已在最终报告标注）：{@code look} 只在**非主形象**节点上必填。
-     * 模板里 master generate 直接挂在 style 之后、没有 look 上游（§6），
-     * 把 look 也列为硬必填会让主形象节点永远跑不起来。
+     * <p><b>v0.157 起只有这一种编译</b>。此前是「照片 / 特征卡 / 风格 / 形象卡」四类定型节点各出一段，
+     * 一张图要连四个节点才跑得起来。画布换成通用节点之后：<b>要画什么写在节点自己的提示词里，
+     * 参考图就是连进来的上游图</b>——一致性不靠节点类型强制，靠把上游图当参考喂下去。
+     *
+     * <p>顺序仍是硬约束：这里只做编译与校验，**不碰钱**；preflight 与 hold 都在调用方，
+     * 且 preflight 一定在 hold 之前（§8.0）。
      */
-    Compiled compileGenerate(String userId, String projectId, JsonNode doc, JsonNode node) {
+    Compiled compileGeneration(String userId, String projectId, JsonNode doc, JsonNode node) {
         String nodeId = node.path("id").asText(null);
-        JsonNode gd = IpDocs.dataOf(node);
-        boolean isMaster = gd != null && gd.path("isMaster").asBoolean(false);
+        JsonNode md = IpDocs.metadataOf(node);
 
         List<String> missing = new ArrayList<>();
-
-        // ① 身份文本
-        List<JsonNode> identityNodes = IpDocs.ancestorsOfType(doc, nodeId, IpDocs.T_IDENTITY, ANCESTOR_DEPTH);
-        String identityPrompt = null;
-        String identityText = null;
-        if (identityNodes.isEmpty()) {
-            missing.add("identity");
-        } else {
-            JsonNode d = IpDocs.dataOf(identityNodes.get(0));
-            identityPrompt = IpDocs.text(d, "promptEn");
-            identityText = IpDocs.text(d, "text");
-            if (identityPrompt == null && identityText == null) missing.add("identity.promptEn");
-        }
-
-        // ② 风格（节点自带 promptEn 优先；只给 presetId 时回落内置预设）
-        List<JsonNode> styleNodes = IpDocs.ancestorsOfType(doc, nodeId, IpDocs.T_STYLE, ANCESTOR_DEPTH);
-        String stylePrompt = null;
-        String styleNegative = null;
-        if (styleNodes.isEmpty()) {
-            missing.add("style");
-        } else {
-            JsonNode d = IpDocs.dataOf(styleNodes.get(0));
-            stylePrompt = IpDocs.text(d, "promptEn");
-            styleNegative = IpDocs.text(d, "negativeEn");
-            String presetId = IpDocs.text(d, "presetId");
-            if (presetId != null) {
-                IpStylePresetDto preset = catalog.style(presetId).orElse(null);
-                if (preset != null) {
-                    if (stylePrompt == null) stylePrompt = trimToNull(preset.promptEn());
-                    if (styleNegative == null) styleNegative = trimToNull(preset.negativeEn());
-                }
-            }
-            if (stylePrompt == null) missing.add("style.promptEn");
-        }
-
-        // ③ 形象卡（主形象节点可以没有）
-        JsonNode lookData = null;
-        List<JsonNode> lookNodes = IpDocs.ancestorsOfType(doc, nodeId, IpDocs.T_LOOK, 2);
-        if (!lookNodes.isEmpty()) {
-            lookData = IpDocs.dataOf(lookNodes.get(0));
-            if (lookText(lookData).isEmpty()) missing.add("look");
-        } else if (!isMaster) {
-            missing.add("look");
-        }
-
+        String prompt = IpDocs.text(md, "prompt");
+        if (prompt == null) missing.add("prompt");
         requireNoMissing(missing);
 
-        // ④ 参考图装配：master → source → reference…（超上限按此顺序砍尾，如实回报）
-        List<Ref> candidates = new ArrayList<>();
-        String masterKey = masterCandidateKey(userId, projectId, doc, nodeId);
-        if (masterKey != null) candidates.add(new Ref("master", masterKey, null));
-        String sourceKey = firstSourceKey(userId, doc, nodeId);
-        if (sourceKey != null) candidates.add(new Ref("source", sourceKey, null));
-        List<String> refNotes = new ArrayList<>();
-        int refIdx = 0;
-        for (JsonNode refNode : IpDocs.ancestorsOfType(doc, nodeId, IpDocs.T_REFERENCE, 3)) {
-            JsonNode d = IpDocs.dataOf(refNode);
-            // 客户端写的 key 一律过归属闸（非本人的 key / 带 .. 的路径 → 400，不进模型请求）
-            String key = projects.requireOwnedAssetKey(userId, IpDocs.text(d, "assetKey"));
+        // ── 参考图：上游连进来的图，近的排前面 ────────────────────────────
+        // 归属闸：只认本人本项目上传或生成的 key。别人的 key 连进来就是越权读图，
+        // 而画布文档是客户端拥有的，客户端能塞任何字符串进来。
+        List<Ref> refs = new ArrayList<>();
+        for (JsonNode up : IpDocs.referenceChain(doc, nodeId)) {
+            // 归属闸：非本人的 key 直接 400，不是「跳过这一张」——
+            // 画布文档是客户端拥有的，客户端能往里塞任何字符串（既有 requireOwnedAssetKey 的纪律）。
+            String key = projects.requireOwnedAssetKey(userId, IpDocs.primaryStorageKey(up));
             if (key == null) continue;
-            refIdx++;
-            String note = IpDocs.text(d, "note");
-            candidates.add(new Ref("reference", key, note));
-            refNotes.add("Reference image " + refIdx + (note == null ? "" : ": " + note));
+            String title = IpDocs.text(up, "title");
+            refs.add(new Ref("reference", key, title == null ? "参考图" : title));
+            if (refs.size() >= props.getMaxRefImages()) break;
         }
 
-        int max = Math.max(1, props.getMaxRefImages());
+        int count = normalizeCount(md);
+        String size = normalizeSize(md);
+
+        // ── 提示词模板（服务端唯一漏斗；用户能在 inputs.prompt 看到原文）────
+        PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("prompt", prompt);
+        vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
+        String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
+
         ArrayNode refsOut = om.createArrayNode();
         ArrayNode refKeys = om.createArrayNode();
-        int applied = 0;
-        for (Ref ref : candidates) {
-            int refIndex = refsOut.size();
+        for (int i = 0; i < refs.size(); i++) {
+            Ref r = refs.get(i);
             ObjectNode item = refsOut.addObject();
-            item.put("role", ref.role());
-            if (applied >= max) {
-                item.put("applied", false);
-                item.put("reason", "over_max_refs");
-                continue;
-            }
+            item.put("role", r.role());
+            item.put("note", r.note());
             item.put("applied", true);
-            // refKeys 带上 role 与它在 refs[] 里的下标：worker 遇到读不到的参考图时，
-            // 才能区分「身份锚（master/source）不可读 → 必须失败退款」与
-            // 「可选局部参考不可读 → 标 applied=false 继续」，并如实回写到那一条上。
             ObjectNode k = refKeys.addObject();
-            k.put("role", ref.role());
-            k.put("key", ref.key());
-            k.put("refIndex", refIndex);
-            applied++;
+            k.put("role", r.role());
+            k.put("key", r.key());
+            k.put("refIndex", i);
         }
 
-        // ⑤ 提示词模板拼装（服务端唯一漏斗；用户能在 inputs.prompt 看到原文）
-        PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_LOOK_IMAGE);
-        Map<String, String> vars = new LinkedHashMap<>();
-        vars.put("style", nz(stylePrompt));
-        vars.put("identity", nz(identityPrompt != null ? identityPrompt : identityText));
-        vars.putAll(lookClauses(lookData));
-        vars.put("refNotes", refNotes.isEmpty() ? "" : String.join(" ", refNotes));
-        vars.put("negative", nz(styleNegative));
-        String prompt = squeeze(PromptService.fill(p.userTemplate(), vars));
-
-        int count = normalizeCount(gd);
-        String size = normalizeSize(gd);
-
         ObjectNode inputs = om.createObjectNode();
-        inputs.put("prompt", prompt);
+        inputs.put("prompt", finalPrompt);
         inputs.set("refs", refsOut);
         inputs.put("size", size);
         inputs.put("count", count);
         ObjectNode exec = inputs.putObject("_exec");
         exec.set("refKeys", refKeys);
-        exec.put("isMaster", isMaster);
 
         return new Compiled(IpRun.KIND_GENERATE, pricing.ipImage(), count,
-                (isMaster ? "IP 主形象生成 ×" : "IP 形象卡出图 ×") + count,
-                inputs, false, true, PromptService.KEY_DAP_IP_LOOK_IMAGE);
+                "画布出图 ×" + count, inputs, false, true,
+                PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+    }
+
+    /** 显式生成请求 —— 画布把「画什么、参考谁、出几张」说清楚。 */
+    public record IpGenerateRequest(String nodeId, String prompt, List<String> refKeys,
+                                    Integer count, String size, String model) {}
+
+    /**
+     * 编译一次显式生成。与按节点编译共用同一套提示词模板与计价，
+     * 差别只在参考图从哪来：这里是画布点名的，那里是从文档回溯的。
+     */
+    Compiled compileExplicit(String userId, IpGenerateRequest req) {
+        List<Ref> refs = new ArrayList<>();
+        if (req.refKeys() != null) {
+            for (String raw : req.refKeys()) {
+                // 归属闸：非本人的 key 直接 400。画布是客户端，能塞任何字符串进来。
+                String key = projects.requireOwnedAssetKey(userId, raw);
+                if (key == null) continue;
+                refs.add(new Ref("reference", key, "参考图"));
+                if (refs.size() >= props.getMaxRefImages()) break;
+            }
+        }
+
+        int count = req.count() == null ? 1 : Math.max(1, Math.min(4, req.count()));
+        String size = req.size() == null || req.size().isBlank() ? DEFAULT_SIZE : req.size();
+        if (!ALLOWED_SIZES.contains(size)) size = DEFAULT_SIZE;
+
+        PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("prompt", req.prompt().trim());
+        vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
+        String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
+
+        ArrayNode refsOut = om.createArrayNode();
+        ArrayNode refKeys = om.createArrayNode();
+        for (int i = 0; i < refs.size(); i++) {
+            Ref r = refs.get(i);
+            refsOut.addObject().put("role", r.role()).put("note", r.note()).put("applied", true);
+            refKeys.addObject().put("role", r.role()).put("key", r.key()).put("refIndex", i);
+        }
+
+        ObjectNode inputs = om.createObjectNode();
+        inputs.put("prompt", finalPrompt);
+        inputs.set("refs", refsOut);
+        inputs.put("size", size);
+        inputs.put("count", count);
+        ObjectNode exec = inputs.putObject("_exec");
+        exec.set("refKeys", refKeys);
+        if (req.model() != null && !req.model().isBlank()) exec.put("endpointId", req.model().trim());
+
+        return new Compiled(IpRun.KIND_GENERATE, pricing.ipImage(), count,
+                "画布出图 ×" + count, inputs, false, true,
+                PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+    }
+
+    /** 参考图说明：让模型知道每张参考图是干嘛的，也让用户在提示词原文里看得见。 */
+    private static String refNotes(List<Ref> refs) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < refs.size(); i++) {
+            sb.append("Reference image ").append(i + 1).append(": ").append(refs.get(i).note()).append(". ");
+        }
+        return sb.toString().trim();
     }
 
     private record Ref(String role, String key, String note) {}
+
 
     // ── preflight（§8.0：一定在 hold 之前）───────────────────
 
@@ -414,32 +464,6 @@ public class IpRunService {
 
     // ── doc 取值小工具 ────────────────────────────────────────
 
-    /** 上游 master generate 的选中候选 key（selectedRunId + selectedIndex 指向的那张）。 */
-    String masterCandidateKey(String userId, String projectId, JsonNode doc, String nodeId) {
-        List<JsonNode> gens = IpDocs.ancestorsOfType(doc, nodeId, IpDocs.T_GENERATE, ANCESTOR_DEPTH);
-        JsonNode chosen = null;
-        for (JsonNode g : gens) {
-            JsonNode d = IpDocs.dataOf(g);
-            if (d != null && d.path("isMaster").asBoolean(false)) { chosen = g; break; }
-        }
-        if (chosen == null && !gens.isEmpty()) chosen = gens.get(0);
-        if (chosen == null) return null;
-        JsonNode d = IpDocs.dataOf(chosen);
-        String runId = IpDocs.text(d, "selectedRunId");
-        if (runId == null) return null;
-        int idx = d.path("selectedIndex").asInt(0);
-        // 归属不符 → 抛 404 IP_RUN_NOT_FOUND（见 candidateKeyOf 注释），不静默当「没选主图」
-        return projects.candidateKeyOf(userId, projectId, runId, idx);
-    }
-
-    /** 上游第一张照片的 key —— 同样过归属闸，非本人 key 直接 400 而不是「跳过这一张」。 */
-    private String firstSourceKey(String userId, JsonNode doc, String nodeId) {
-        for (JsonNode n : IpDocs.ancestorsOfType(doc, nodeId, IpDocs.T_SOURCE, ANCESTOR_DEPTH)) {
-            String key = projects.requireOwnedAssetKey(userId, IpDocs.text(IpDocs.dataOf(n), "assetKey"));
-            if (key != null) return key;
-        }
-        return null;
-    }
 
     /** 老画布的五字段，按这个顺序拼接（顺序即历史行为，不要改）。 */
     private static final List<String> LOOK_LEGACY_FIELDS =

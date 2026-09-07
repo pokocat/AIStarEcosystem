@@ -50,15 +50,18 @@ public class IpStudioController {
     private final IpRunService runs;
     private final IpPublishService publish;
     private final IpCatalogService catalog;
+    private final com.aistareco.aep.service.AiModelInvocationService invocation;
 
     public IpStudioController(IpProjectService projects,
                               IpRunService runs,
                               IpPublishService publish,
-                              IpCatalogService catalog) {
+                              IpCatalogService catalog,
+                              com.aistareco.aep.service.AiModelInvocationService invocation) {
         this.projects = projects;
         this.runs = runs;
         this.publish = publish;
         this.catalog = catalog;
+        this.invocation = invocation;
     }
 
     // ── 目录 ──────────────────────────────────────────────────
@@ -77,6 +80,50 @@ public class IpStudioController {
     public ApiResponse<IpPricingDto> pricing() {
         return ApiResponse.of(runs.pricingDto());
     }
+
+    /**
+     * 画布上的模型下拉。
+     *
+     * <p>候选来自后台配好的端点（{@code AiAppBinding} + {@code ai_app_endpoint_candidate}），
+     * **不是用户自己填的 Key** —— 这跟短剧线 {@code GET /me/drama/render/models} 是同一个形态。
+     * 一个都没配时返回空数组，前端据此提示「尚未开通」并禁用生成，不假装能跑（§8.0）。
+     */
+    @GetMapping("/models")
+    public ApiResponse<com.aistareco.aep.dto.RenderModelsDto> models() {
+        return ApiResponse.of(new com.aistareco.aep.dto.RenderModelsDto(
+                modelOptions(com.aistareco.aep.model.AiModelPurpose.IMAGE_GENERATION, runs.pricingDto().imageCredits()),
+                modelOptions(com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION, 0)));
+    }
+
+    private java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> modelOptions(
+            com.aistareco.aep.model.AiModelPurpose purpose, long defaultCost) {
+        java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> out = new java.util.ArrayList<>();
+        for (var r : invocation.listCandidates(purpose)) {
+            if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
+            long cost = r.candidate().getCreditCostOverride() != null
+                    ? r.candidate().getCreditCostOverride() : defaultCost;
+            out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
+                    r.endpoint().getId(), r.endpoint().getName(), r.isDefault(),
+                    com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate()), cost, "per_image"));
+        }
+        return out;
+    }
+
+    /**
+     * 按存储键重签图片地址。
+     *
+     * <p>签名有 TTL（默认一小时），而画布是一开就是半天的工具 —— 编辑到一半图全裂掉，
+     * 用户只会以为东西丢了。前端发现图加载失败时拿 key 回来换一批新地址。
+     *
+     * <p>只签**本人的** key：画布文档是客户端拥有的，客户端能往里塞任何字符串。
+     */
+    @PostMapping("/assets/sign")
+    public ApiResponse<java.util.Map<String, String>> sign(Principal principal,
+                                                           @RequestBody SignRequest req) {
+        return ApiResponse.of(projects.signOwnedKeys(uid(principal), req == null ? null : req.keys()));
+    }
+
+    public record SignRequest(java.util.List<String> keys) {}
 
     // ── 上传 ──────────────────────────────────────────────────
 
@@ -124,6 +171,27 @@ public class IpStudioController {
                                      @PathVariable String nodeId,
                                      @RequestBody(required = false) IpRunNodeRequest req) {
         return ApiResponse.of(runs.run(uid(principal), id, nodeId, req));
+    }
+
+    /**
+     * 画布出图。参考图由画布点名（它才知道用户框了哪几张），服务端管归属闸、
+     * 提示词模板、模型白名单、计价与冻结结算。
+     */
+    @PostMapping("/projects/{id}/generate")
+    public ApiResponse<IpRunDto> generate(Principal principal, @PathVariable String id,
+                                          @RequestBody IpRunService.IpGenerateRequest req) {
+        return ApiResponse.of(runs.generate(uid(principal), id, req));
+    }
+
+    /**
+     * 画布出视频。走通用视频链（分区 ipstudio），不依赖数字人形象 ——
+     * dap 的衍生视频要求先发布，而画布上人往往还没发布就想让一张图动起来。
+     */
+    @PostMapping("/projects/{id}/generate-video")
+    public ApiResponse<com.fasterxml.jackson.databind.JsonNode> generateVideo(
+            Principal principal, @PathVariable String id,
+            @RequestBody IpRunService.IpVideoRequest req) {
+        return ApiResponse.of(runs.generateVideo(uid(principal), id, req));
     }
 
     @GetMapping("/runs/{id}")

@@ -74,7 +74,7 @@ export async function createProject(payload: IpCreateProjectRequest): Promise<Ip
     const template = payload.templateId ? MOCK_TEMPLATES.find((t) => t.id === payload.templateId) : undefined;
     const doc: IpProjectDoc = template
       ? (JSON.parse(JSON.stringify(template.doc)) as IpProjectDoc)
-      : { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+      : { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
     const project: IpProject = {
       id: mockNextId("IPP"),
       name: payload.name?.trim() || template?.name || "未命名 IP 项目",
@@ -181,13 +181,7 @@ export async function publishProject(id: string, payload: IpPublishRequest): Pro
     project.status = "published";
     project.publishedAvatarId = avatarId;
     project.updatedAt = nowIso();
-    for (const n of project.doc.nodes) {
-      if (n.type === "publish") {
-        n.data.avatarName = payload.avatarName;
-        n.data.avatarId = avatarId;
-        n.data.publishedAt = nowIso();
-      }
-    }
+
     return mockDelay({
       avatarId,
       lookIds: payload.lookNodeIds.map((_, i) => `LK-${3200 + i}`),

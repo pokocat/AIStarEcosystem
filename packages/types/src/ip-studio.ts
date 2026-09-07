@@ -8,61 +8,70 @@
 // 避免「前端保存 doc」与「后端写运行产物」互相覆盖。
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type IpNodeType =
-  | "source"      // 用户照片（身份来源）
-  | "identity"    // 人物特征卡（AI 抽取 / 手写，中文可读 + 英文提示词）
-  | "style"       // 风格预设（内置 6 套或自定义）
-  | "look"        // 形象卡（一段造型提示词，内置模板可一键填入）
-  | "generate"    // 生成节点（出 N 张候选，选一张；可标记为主形象）
-  | "reference"   // 局部参考图（如「帽子款式参考图 2」）
-  | "publish";    // 发布到资产库
+/**
+ * 画布节点 —— 与画布实现（`apps/web-ipstudio/src/canvas/types/canvas.ts`）同形。
+ *
+ * v0.157 起画布换成了通用节点：图 / 文字 / 视频 / 音频 / 配置 / 分组，
+ * 而不是此前「照片 / 特征卡 / 风格 / 形象卡 / 出图」那套定型节点。
+ * **要生成什么写在节点自己的 `metadata.prompt` 里，参考图就是连进来的上游图。**
+ *
+ * 这里只声明服务端会读到的那部分：服务端整存整取这份文档、不改内容，
+ * 只在运行与发布时读 type / metadata / connections。画布自己用的字段（选中态、
+ * 历史记录等）不必在这儿重复声明。
+ */
+export type IpNodeType = "image" | "text" | "video" | "audio" | "config" | "group" | (string & {});
 
 export interface IpPosition { x: number; y: number }
+export interface IpViewport { x: number; y: number; k: number }
 
-export interface IpSourceData   { assetKey?: string; imageUrl?: string; fileName?: string; width?: number; height?: number }
-export interface IpIdentityData { text: string; promptEn: string; locked: boolean; fromRunId?: string }
-export interface IpStyleData    { presetId?: string; name: string; promptEn: string; negativeEn?: string; custom: boolean }
-/**
- * 形象卡 —— 一个造型说明。
- *
- * `prompt` 是真值：一段自由文字，想写什么写什么，内置模板只是往里填词。
- * 下面五个字段是 v0.151 的老结构，只为老画布保留读取（服务端同样按老顺序拼接回落），
- * 新代码一律只写 `prompt`。
- */
-export interface IpLookData {
-  title: string;
+/** 一张图（候选图集里的一项）。真值是 storageKey，`content` 是出 wire 时派生的签名地址。 */
+export interface IpNodeImage {
+  id: string;
+  storageKey?: string;
+  content?: string;
+  naturalWidth?: number;
+  naturalHeight?: number;
+  bytes?: number;
+  mimeType?: string;
+}
+
+export interface IpNodeMetadata {
+  /** 要生成什么 —— 用户自己写的那段话。 */
   prompt?: string;
-  /** @deprecated 老画布字段，只读回落 */ outfit?: string;
-  /** @deprecated 老画布字段，只读回落 */ pose?: string;
-  /** @deprecated 老画布字段，只读回落 */ expression?: string;
-  /** @deprecated 老画布字段，只读回落 */ details?: string;
-  /** @deprecated 老画布字段，只读回落 */ props?: string;
+  /** 节点级的图：真值是 storageKey，`url` 出 wire 时按 key 重签。 */
+  storageKey?: string;
+  url?: string;
+  /** 多候选：`primaryImageId` 指定用哪张。 */
+  images?: IpNodeImage[];
+  primaryImageId?: string;
+  /** 这张图是哪次运行出来的 —— 用来回看当时的提示词与花费。 */
+  runId?: string;
+  /** 出几张 / 多大 / 用哪个模型（模型 id 来自服务端候选，不是用户填的 Key）。 */
+  count?: number;
+  size?: string;
+  model?: string;
+  content?: string;
+  [key: string]: unknown;
 }
-export interface IpGenerateData {
-  count: 1 | 2 | 4;
-  size: "768x1024" | "1024x1024" | "768x1365";
-  isMaster: boolean;              // 主形象：其选中图成为下游所有 generate 的身份锁参考
-  selectedRunId?: string;         // 用户选定的候选来自哪次运行
-  selectedIndex?: number;         // 选定候选下标
+
+export interface IpNode {
+  id: string;
+  type: IpNodeType;
+  title: string;
+  position: IpPosition;
+  width: number;
+  height: number;
+  metadata?: IpNodeMetadata;
 }
-export interface IpReferenceData { assetKey?: string; imageUrl?: string; note: string }
-export interface IpPublishData   { avatarName: string; avatarId?: string; publishedAt?: string }
 
-export type IpNodeData =
-  | { type: "source"; data: IpSourceData }
-  | { type: "identity"; data: IpIdentityData }
-  | { type: "style"; data: IpStyleData }
-  | { type: "look"; data: IpLookData }
-  | { type: "generate"; data: IpGenerateData }
-  | { type: "reference"; data: IpReferenceData }
-  | { type: "publish"; data: IpPublishData };
+export interface IpConnection { id: string; fromNodeId: string; toNodeId: string }
 
-export type IpNode = IpNodeData & { id: string; position: IpPosition; label?: string };
-export interface IpEdge { id: string; source: string; target: string }
-export interface IpViewport { x: number; y: number; zoom: number }
-
-/** 画布文档 —— 客户端拥有；服务端整存整取、不改内容（运行结果另存 IpRun，避免并发覆盖）。 */
-export interface IpProjectDoc { nodes: IpNode[]; edges: IpEdge[]; viewport: IpViewport }
+/** 画布文档 —— **客户端拥有**：服务端整存整取、不改内容。 */
+export interface IpProjectDoc {
+  nodes: IpNode[];
+  connections: IpConnection[];
+  viewport: IpViewport;
+}
 
 export type IpRunStatus = "running" | "done" | "failed";
 export type IpRunKind = "identity" | "generate";
@@ -75,7 +84,7 @@ export interface IpRunOutput {
 }
 export interface IpRunInputs {
   prompt?: string;                // generate：实际送入模型的完整英文提示词（透明可查）
-  refs?: { role: "master" | "source" | "reference"; applied: boolean; reason?: string }[];
+  refs?: { role: "master" | "source" | "reference"; note?: string; applied: boolean; reason?: string }[];
   size?: string; count?: number;
 }
 export interface IpRun {

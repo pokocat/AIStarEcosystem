@@ -15,6 +15,7 @@ import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -332,11 +333,12 @@ public class IpProjectService {
             byId.put(r.getId(), dto);
         });
 
-        // doc 里显式选中但已不是最新的 run，按 runId 补进 runsById
+        // doc 里显式引用到的历史运行，按 runId 补进 runsById。
+        // 画布的图节点把「这张图是哪次运行出来的」记在 metadata.runId 上；
+        // 不补的话，用户翻回一张老图时看不到它当时的提示词和花费。
         List<String> selected = new ArrayList<>();
         for (JsonNode n : IpDocs.nodes(doc)) {
-            if (!IpDocs.T_GENERATE.equals(IpDocs.typeOf(n))) continue;
-            String sel = IpDocs.text(IpDocs.dataOf(n), "selectedRunId");
+            String sel = IpDocs.text(IpDocs.metadataOf(n), "runId");
             if (sel != null) selected.add(sel);
         }
         if (!selected.isEmpty()) {
@@ -410,28 +412,67 @@ public class IpProjectService {
         return key == null || key.isBlank() ? null : key;
     }
 
+    /**
+     * 按存储键批量重签地址。签名有 TTL，画布一开半天，图会在编辑途中过期。
+     *
+     * <p>非本人的 key 直接抛（{@code requireOwnedAssetKey} 的既有纪律）—— 这是个能拿 key 换 URL
+     * 的接口，静默跳过就等于给了一个「试到哪个 key 是别人的」的探测面。
+     * 签不出来的 key 不进结果，前端据此保留占位而不是显示破图。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, String> signOwnedKeys(String userId, List<String> keys) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (keys == null) return out;
+        // 一次最多 200 个：画布上图再多也够用，同时挡住拿这个接口当批量探测器
+        int limit = Math.min(keys.size(), 200);
+        for (int i = 0; i < limit; i++) {
+            String key = requireOwnedAssetKey(userId, keys.get(i));
+            if (key == null) continue;
+            try {
+                String url = storage.signedUrl(key);
+                if (url != null && !url.isBlank()) out.put(key, url);
+            } catch (RuntimeException e) {
+                log.warn("[ipstudio] 重签失败 key={}: {}", key, e.getMessage());
+            }
+        }
+        return out;
+    }
+
     // ── 文档读写 ──────────────────────────────────────────────
 
     /**
-     * §4.7.7：doc 是整存整取的 JSON 文档，里面 source / reference 节点的 {@code imageUrl} 只是上传当时的派生值
-     * （签名有 TTL、dev 下还带端口），原样返回会过期图裂。真值是 {@code assetKey}，出 wire 时按 key 重签覆盖。
-     * 只改出 wire 的这棵树，不回写库。
+     * §4.7.7：doc 是整存整取的 JSON 文档，里面每张图的 {@code url} 只是上传当时派生出来的签名地址 ——
+     * 签名带 TTL（默认 1 小时），原样返回就是一小时后满屏图裂。真值是 {@code storageKey}，
+     * 出 wire 时按 key 重签覆盖。**只改出 wire 的这棵树，不回写库。**
+     *
+     * <p>画布把图放在两个地方：节点级的 {@code metadata.storageKey}，和候选图集
+     * {@code metadata.images[].storageKey}。两处都要重签，漏一处就是「有的图好的有的裂」。
      */
     JsonNode resignDocAssetUrls(JsonNode doc) {
         for (JsonNode n : IpDocs.nodes(doc)) {
-            String type = IpDocs.typeOf(n);
-            if (!IpDocs.T_SOURCE.equals(type) && !IpDocs.T_REFERENCE.equals(type)) continue;
-            JsonNode data = IpDocs.dataOf(n);
-            String key = IpDocs.text(data, "assetKey");
-            if (key == null || !(data instanceof com.fasterxml.jackson.databind.node.ObjectNode on)) continue;
-            try {
-                String url = storage.signedUrl(key);
-                if (url != null && !url.isBlank()) on.put("imageUrl", url);
-            } catch (RuntimeException e) {
-                log.warn("[ipstudio] 重签资产 URL 失败 key={}: {}", key, e.getMessage());
+            JsonNode md = IpDocs.metadataOf(n);
+            if (!(md instanceof ObjectNode mo)) continue;
+            resignOne(mo, "storageKey", "url");
+            JsonNode images = mo.path("images");
+            if (images.isArray()) {
+                for (JsonNode img : images) {
+                    if (img instanceof ObjectNode io) resignOne(io, "storageKey", "content");
+                }
             }
         }
         return doc;
+    }
+
+    /** 按 key 重签一个字段。签不出来就保留原值 —— 可用性优先，别把已有的图也擦掉（§8.0 观测类例外同理）。 */
+    private void resignOne(ObjectNode holder, String keyField, String urlField) {
+        String key = IpDocs.text(holder, keyField);
+        if (key == null) return;
+        try {
+            String url = storage.signedUrl(key);
+            if (url != null && !url.isBlank()) holder.put(urlField, url);
+        } catch (RuntimeException e) {
+            log.warn("[ipstudio] 重签资产 URL 失败 key={}: {}", key, e.getMessage());
+        }
     }
 
     public JsonNode readDoc(IpProject p) {

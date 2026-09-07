@@ -50,6 +50,13 @@ public class MaterialVideoJobService {
      */
     public static final String APP_CELEBRITY = "celebrity";
     public static final String APP_DRAMA = "drama";
+    /**
+     * AI IP 工作台的画布视频（v0.157）。
+     *
+     * <p>与 dap 的「数字人衍生视频」是两回事：那条要求先有 {@code avatarId}（必须发布之后），
+     * 画布上还没有形象的时候就想让一张图动起来 —— 走的是这条通用视频链。
+     */
+    public static final String APP_IPSTUDIO = "ipstudio";
 
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
@@ -145,7 +152,7 @@ public class MaterialVideoJobService {
      * 失败快：未配置视频大模型 → 抛 VIDEO_NOT_CONFIGURED（不创建任务 / 不扣费）。
      * 返回创建出的任务卡（MaterialVideo 形状，status=rendering）。
      *
-     * @param app 子产品分区（{@link #APP_CELEBRITY} / {@link #APP_DRAMA}）；决定这批任务归哪个
+     * @param app 子产品分区（{@link #APP_CELEBRITY} / {@link #APP_DRAMA} / {@link #APP_IPSTUDIO}）；决定这批任务归哪个
      *            应用的资产列表，调用方必须显式传（跨应用可见性靠它隔离）。
      */
     @Transactional

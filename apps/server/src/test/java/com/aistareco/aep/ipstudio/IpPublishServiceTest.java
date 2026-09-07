@@ -88,11 +88,20 @@ class IpPublishServiceTest {
                 new DapSupport(), multimodal);
     }
 
-    /** 主形象与形象卡都已选好图的完整画布。 */
+    /** 主形象与变体都已经出好图的完整画布 —— 发布要求每个节点都真有图。 */
     private void seedPublishableProject() {
-        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(MASTER_RUN, 0);
-        ObjectNode gen = (ObjectNode) d.root.path("nodes").get(5).path("data");
-        gen.put("selectedRunId", LOOK_RUN).put("selectedIndex", 0);
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(
+                IpStudioFixtures.genKey(USER, "master-1.png"), 0);
+        ObjectNode master = d.data("n-master");
+        master.put("prompt", "脸型：鹅蛋脸\n五官：大眼高鼻\n标志性特征：左脸颊创可贴\n气质：安静少年感");
+        var imgs = master.putArray("images");
+        for (int i = 1; i <= 4; i++) {
+            imgs.addObject().put("id", "img-" + i)
+                    .put("storageKey", IpStudioFixtures.genKey(USER, "master-" + i + ".png"));
+        }
+        master.put("primaryImageId", "img-1");
+        d.data("n-gen").put("storageKey", IpStudioFixtures.genKey(USER, "look.png"));
+        d.node("n-note", "text").put("content", "一张便签");
         projects.repo.save(IpStudioFixtures.project(PID, USER, d));
         runs.repo.save(IpStudioFixtures.doneGenerateRun(MASTER_RUN, PID, "n-master", 4));
         runs.repo.save(IpStudioFixtures.doneGenerateRun(LOOK_RUN, PID, "n-gen", 2));
@@ -114,13 +123,12 @@ class IpPublishServiceTest {
         assertEquals("ai", a.getPath());
         assertEquals("finalized", a.getStatus());
         assertEquals(USER, a.getOwnerUserId());
-        // 主图复用 generate 阶段的 key，不重复上传
-        assertEquals(IpStudioFixtures.genKey(USER, "n-master-1.png"), a.getImageKey());
-        assertEquals(4, a.getVariantKeys().size(), "主 generate 的全部候选进 variantKeys");
-        assertEquals("same person, consistent facial identity, oval face", a.getBasePrompt());
-        assertTrue(a.getDescPrompt().contains("创可贴"));
+        // 主图直接复用画布上那张图的 key，不重复上传
+        assertEquals(IpStudioFixtures.genKey(USER, "master-1.png"), a.getImageKey());
+        assertEquals(4, a.getVariantKeys().size(), "主形象的全部候选进 variantKeys");
+        assertTrue(a.getDescPrompt().contains("创可贴"), "主形象的提示词就是它的设定：" + a.getDescPrompt());
         assertEquals("some-image-model", a.getEngine());
-        // 特征卡的中文小标题被解析进 dap 的 def 键
+        // 提示词里「中文小标题：内容」那种行被解析进 dap 的设定档案
         assertEquals("鹅蛋脸 / 大眼高鼻", a.getDef().get("脸部特征"));
         assertEquals("左脸颊创可贴", a.getDef().get("标志性特征"));
         assertEquals("安静少年感", a.getDef().get("核心气质"));
@@ -134,17 +142,18 @@ class IpPublishServiceTest {
         DapLook look = lookRows.values().iterator().next();
         assertTrue(look.getId().startsWith("LK-"), look.getId());
         assertEquals("DH-51234", look.getAvatarId());
-        assertEquals("穿针织衫拿着手机", look.getLabel(), "造型名取上游形象卡的标题");
+        assertEquals("穿针织衫拿着手机", look.getLabel(), "造型名取节点标题");
         assertEquals("design", look.getSource());
         assertEquals("done", look.getStatus());
-        assertEquals(IpStudioFixtures.genKey(USER, "n-gen-0.png"), look.getImageKey());
-        assertEquals("a rendered prompt for n-gen", look.getPrompt());
+        assertEquals(IpStudioFixtures.genKey(USER, "look.png"), look.getImageKey());
+        // 造型提示词取节点上用户写的那段 —— 比翻运行记录准：图可能是好几次运行之后才定下来的
+        assertEquals("米白色针织冷帽，浅驼色露肩针织衫，双手持手机低头看屏幕", look.getPrompt());
 
         // 项目落成发布态并记下封面
         IpProject p = projects.rows.get(PID);
         assertEquals(IpProject.STATUS_PUBLISHED, p.getStatus());
         assertEquals("DH-51234", p.getPublishedAvatarId());
-        assertEquals(IpStudioFixtures.genKey(USER, "n-master-1.png"), p.getCoverKey());
+        assertEquals(IpStudioFixtures.genKey(USER, "master-1.png"), p.getCoverKey());
     }
 
     @Test
@@ -172,10 +181,9 @@ class IpPublishServiceTest {
 
     @Test
     void lookWithoutSelectedCandidateIs400() {
-        // master 选好了，但 look 的 generate 没选图
-        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(MASTER_RUN, 0);
+        // 主形象出好了，但变体那个节点还没出图 —— 发布它只会产出一个空壳造型
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(IpStudioFixtures.genKey(USER, "m.png"), 0);
         projects.repo.save(IpStudioFixtures.project(PID, USER, d));
-        runs.repo.save(IpStudioFixtures.doneGenerateRun(MASTER_RUN, PID, "n-master", 4));
 
         BusinessException e = assertThrows(BusinessException.class, () -> svc.publish(USER, PID,
                 new IpPublishRequest("小蓝", "n-master", List.of("n-gen"))));
@@ -185,21 +193,24 @@ class IpPublishServiceTest {
     }
 
     @Test
-    void selectedRunFromAnotherProjectIsRejected() {
-        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(MASTER_RUN, 0);
+    void imageKeyOfAnotherOwnerIsRejected() {
+        // doc 是客户端写的：把别人的图 key 抄进来就想发布成自己的资产。
+        // 拦在 requireOwnedAssetKey（前缀闸）—— 属性不变，换了道门而已。
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(
+                IpStudioFixtures.genKey(OTHER, "victim.png"), 0);
         projects.repo.save(IpStudioFixtures.project(PID, USER, d));
-        // 指向的 run 属于另一个项目 —— 不能靠伪造 doc 把别处的图拿来发布
-        runs.repo.save(IpStudioFixtures.doneGenerateRun(MASTER_RUN, "IPP-elsewhere", "n-master", 4));
 
-        assertEquals("IP_PUBLISH_SELECTION_REQUIRED", assertThrows(BusinessException.class,
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
                 () -> svc.publish(USER, PID, new IpPublishRequest("小蓝", "n-master", List.of()))).getCode());
+        assertTrue(avatarRows.isEmpty(), "越权 key 不该留下任何资产");
     }
 
     @Test
-    void nonGenerateMasterNodeIs400() {
+    void nonImageMasterNodeIs400() {
         seedPublishableProject();
+        // 文字节点上没有图，发布它只会产出一个空壳资产
         assertEquals("IP_PUBLISH_SELECTION_REQUIRED", assertThrows(BusinessException.class,
-                () -> svc.publish(USER, PID, new IpPublishRequest("小蓝", "n-style", List.of()))).getCode());
+                () -> svc.publish(USER, PID, new IpPublishRequest("小蓝", "n-note", List.of()))).getCode());
     }
 
     @Test
@@ -237,15 +248,13 @@ class IpPublishServiceTest {
     }
 
     @Test
-    void selectedRunOfAnotherOwnerIsRejected() {
-        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(MASTER_RUN, 0);
+    void traversalImageKeyIsRejected() {
+        // ../ 能把本机任意文件当图片发布成资产
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
+        d.data("n-master").put("storageKey", "ipstudio_gen/" + USER + "/../../../etc/passwd");
         projects.repo.save(IpStudioFixtures.project(PID, USER, d));
-        // 项目 id 对得上，但那次运行是别人的 —— 只按 runId 查就会把别人的图登记成本人的资产
-        var foreign = IpStudioFixtures.doneGenerateRun(MASTER_RUN, PID, "n-master", 4);
-        foreign.setOwnerUserId(OTHER);
-        runs.repo.save(foreign);
 
-        assertEquals("IP_PUBLISH_SELECTION_REQUIRED", assertThrows(BusinessException.class,
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
                 () -> svc.publish(USER, PID, new IpPublishRequest("小蓝", "n-master", List.of()))).getCode());
         assertTrue(avatarRows.isEmpty());
     }

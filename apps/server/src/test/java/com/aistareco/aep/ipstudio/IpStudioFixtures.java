@@ -189,35 +189,59 @@ final class IpStudioFixtures {
 
     // ── 画布文档构造器 ────────────────────────────────────────
 
+    /**
+     * 画布样本文档构造器 —— 形状与前端 {@code src/canvas/types/canvas.ts} 一致：
+     * {@code nodes[{id,type,title,position,width,height,metadata}]} + {@code connections[{id,fromNodeId,toNodeId}]}。
+     */
     static final class Doc {
         final ObjectNode root = OM.createObjectNode();
         final ArrayNode nodes = root.putArray("nodes");
-        final ArrayNode edges = root.putArray("edges");
+        final ArrayNode connections = root.putArray("connections");
 
         Doc() {
             ObjectNode vp = root.putObject("viewport");
-            vp.put("x", 0).put("y", 0).put("zoom", 1);
+            vp.put("x", 0).put("y", 0).put("k", 1);
         }
 
+        /** 建一个节点，返回它的 metadata（画布把一切都放在 metadata 里）。 */
         ObjectNode node(String id, String type) {
             ObjectNode n = nodes.addObject();
             n.put("id", id);
             n.put("type", type);
+            n.put("title", id);
             n.putObject("position").put("x", 0).put("y", 0);
-            n.putObject("data");
-            return (ObjectNode) n.get("data");
+            n.put("width", 320).put("height", 420);
+            n.putObject("metadata");
+            return (ObjectNode) n.get("metadata");
         }
 
-        /** 取已建好节点的 data —— 测试要改样本文档里某个节点时用。 */
+        /** 建一个已经出好图的图节点 —— 当参考图用的上游都得是这种。 */
+        ObjectNode imageNode(String id, String storageKey) {
+            ObjectNode md = node(id, "image");
+            md.put("storageKey", storageKey);
+            md.put("content", "https://cdn.test/" + storageKey);
+            return md;
+        }
+
+        /** 改节点标题 —— 发布时造型名取的就是它。 */
+        Doc title(String id, String title) {
+            for (JsonNode n : nodes) {
+                if (id.equals(n.path("id").asText())) { ((ObjectNode) n).put("title", title); return this; }
+            }
+            throw new IllegalArgumentException("样本文档里没有节点 " + id);
+        }
+
+        /** 取已建好节点的 metadata —— 测试要改样本文档里某个节点时用。 */
         ObjectNode data(String id) {
             for (JsonNode n : nodes) {
-                if (id.equals(n.path("id").asText())) return (ObjectNode) n.get("data");
+                if (id.equals(n.path("id").asText())) return (ObjectNode) n.get("metadata");
             }
             throw new IllegalArgumentException("样本文档里没有节点 " + id);
         }
 
         Doc edge(String from, String to) {
-            edges.addObject().put("id", from + "->" + to).put("source", from).put("target", to);
+            connections.addObject().put("id", from + "->" + to)
+                    .put("fromNodeId", from).put("toNodeId", to);
             return this;
         }
 
@@ -234,39 +258,28 @@ final class IpStudioFixtures {
      * 完整链路的样本文档：source → identity → style → master(generate ×4)
      * → look → gen(generate ×2)，可选挂 N 个 reference 到 gen 上。
      */
-    static Doc chainDoc(String masterRunId, int referenceCount) {
+    /**
+     * 完整链路的样本文档（画布形态）：
+     * 照片(image) → 主形象(image·已出图) → 出图节点(image·待生成)，另可挂 n 张参考图。
+     *
+     * @param masterKey  主形象那张图的存储键；null = 主形象还没出图
+     * @param referenceCount 额外挂在出图节点上的参考图张数
+     */
+    static Doc chainDoc(String masterKey, int referenceCount) {
         Doc d = new Doc();
-        d.node("n-source", "source").put("assetKey", sourceKey(USER, "photo.jpg"));
-        ObjectNode identity = d.node("n-identity", "identity");
-        identity.put("text", "脸型：鹅蛋脸\n五官：大眼高鼻\n标志性特征：左脸颊创可贴\n气质：安静少年感");
-        identity.put("promptEn", "same person, consistent facial identity, oval face");
-        identity.put("locked", true);
-        ObjectNode style = d.node("n-style", "style");
-        style.put("presetId", "bjd");
-        style.put("name", "3D BJD 潮玩");
-        style.put("promptEn", "3D rendered BJD doll figure");
-        style.put("negativeEn", "no photorealistic skin,");
-        style.put("custom", false);
-        ObjectNode master = d.node("n-master", "generate");
-        master.put("count", 4).put("size", "768x1024").put("isMaster", true);
-        if (masterRunId != null) master.put("selectedRunId", masterRunId).put("selectedIndex", 1);
-        ObjectNode look = d.node("n-look", "look");
-        look.put("title", "穿针织衫拿着手机");
-        look.put("outfit", "米白色针织冷帽，浅驼色露肩针织衫");
-        look.put("pose", "正对镜头双手持手机低头看屏幕");
-        look.put("expression", "专注");
-        look.put("details", "纯色棚拍三点式灯光");
-        look.put("props", "一部深色手机");
-        ObjectNode gen = d.node("n-gen", "generate");
-        gen.put("count", 2).put("size", "768x1024").put("isMaster", false);
+        d.imageNode("n-source", sourceKey(USER, "photo.jpg"));
+        if (masterKey != null) d.imageNode("n-master", masterKey);
+        else d.node("n-master", "image").put("prompt", "3D BJD 潮玩风格的招牌形象");
 
-        d.edge("n-source", "n-identity").edge("n-identity", "n-style").edge("n-style", "n-master")
-                .edge("n-master", "n-look").edge("n-look", "n-gen");
+        ObjectNode gen = d.node("n-gen", "image");
+        d.title("n-gen", "穿针织衫拿着手机");   // 造型名就是节点标题
+        gen.put("prompt", "米白色针织冷帽，浅驼色露肩针织衫，双手持手机低头看屏幕");
+        gen.put("count", 2).put("size", "768x1024");
+
+        d.edge("n-source", "n-master").edge("n-master", "n-gen");
 
         for (int i = 1; i <= referenceCount; i++) {
-            ObjectNode ref = d.node("n-ref-" + i, "reference");
-            ref.put("assetKey", sourceKey(USER, "ref-" + i + ".png"));
-            ref.put("note", "hat style only " + i);
+            d.imageNode("n-ref-" + i, sourceKey(USER, "ref-" + i + ".png"));
             d.edge("n-ref-" + i, "n-gen");
         }
         return d;

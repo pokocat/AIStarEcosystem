@@ -54,14 +54,14 @@ class IpProjectServiceTest {
 
     @Test
     void createFromTemplate_prefillsNodeGraph() {
-        IpProjectDto dto = svc.create(USER, new IpCreateProjectRequest(null, "portrait-bjd-trio"));
+        IpProjectDto dto = svc.create(USER, new IpCreateProjectRequest(null, "ip-toy-figure"));
         assertTrue(dto.id().startsWith("IPP-"), dto.id());
-        assertEquals("portrait-bjd-trio", dto.templateId());
+        assertEquals("ip-toy-figure", dto.templateId());
         assertEquals(IpProject.STATUS_DRAFT, dto.status());
-        assertEquals("个人照片 → 潮玩 IP 三连", dto.name());
-        // 模板骨架已预排好：三张形象卡 + 主形象 + 发布节点
-        assertEquals(11, dto.doc().path("nodes").size());
-        assertEquals(13, dto.doc().path("edges").size());
+        assertEquals("潮玩 IP · 一张照片起一整套", dto.name());
+        // 模板骨架已预排好：说明便签 + 照片位 + 招牌形象 + 五套变体
+        assertEquals(8, dto.doc().path("nodes").size());
+        assertEquals(6, dto.doc().path("connections").size());
         assertTrue(dto.runs().isEmpty());
     }
 
@@ -114,7 +114,7 @@ class IpProjectServiceTest {
         IpProjectDto dto = svc.update(USER, PID, new IpUpdateProjectRequest("改个名", d.root));
         assertEquals("改个名", dto.name());
         assertEquals("keep-me", dto.doc().path("clientOnlyField").asText());
-        assertEquals(8, dto.doc().path("nodes").size());
+        assertEquals(5, dto.doc().path("nodes").size());
     }
 
     @Test
@@ -144,10 +144,12 @@ class IpProjectServiceTest {
 
     @Test
     void runsProjectionKeepsLatestPerNodePlusTheSelectedOlderRun() {
-        // 同一个 master 节点跑了两次；用户仍在用第一次的第 2 张候选
+        // 同一个节点跑了两次；用户画布上留着的还是第一次那张图
         String oldRunId = "IPR-old00001";
         String newRunId = "IPR-new00001";
-        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(oldRunId, 0);
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(
+                IpStudioFixtures.genKey(USER, "old.png"), 0);
+        d.data("n-master").put("runId", oldRunId);
         projects.repo.save(IpStudioFixtures.project(PID, USER, d));
 
         IpRun old = IpStudioFixtures.doneGenerateRun(oldRunId, PID, "n-master", 4);
@@ -162,7 +164,7 @@ class IpProjectServiceTest {
         assertEquals(newRunId, dto.runs().get("n-master").id());
         // runs 只按 nodeId 键，不混入 runId 键
         assertNull(dto.runs().get(oldRunId));
-        // 被 selectedRunId 指着的旧运行放进 runsById，否则画布上的选中图会变空白；最新那次也在里面
+        // 被节点 metadata.runId 指着的旧运行放进 runsById，否则用户翻回一张老图时看不到它的提示词和花费；最新那次也在里面
         assertNotNull(dto.runsById().get(oldRunId));
         assertEquals(oldRunId, dto.runsById().get(oldRunId).id());
         assertEquals(newRunId, dto.runsById().get(newRunId).id());
@@ -171,18 +173,18 @@ class IpProjectServiceTest {
 
     @Test
     void detailResignsSourceAndReferenceImageUrlsFromAssetKey() {
-        // §4.7.7：doc 里存的 imageUrl 是上传当时的派生值（会过期 / 带 dev 端口），出 wire 必须按 assetKey 重签
+        // §4.7.7：doc 里存的图片地址是上传当时派生的签名值（一小时就过期），出 wire 必须按 storageKey 重签。
+        // 不重签的结果是：画布开着开着，图一张张裂掉。
         IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 1);
-        ((ObjectNode) d.nodes.get(0).get("data")).put("imageUrl", "http://localhost:8080/cdn/stale.jpg");
+        d.data("n-source").put("url", "http://localhost:8080/cdn/stale.jpg");
         projects.repo.save(IpStudioFixtures.project(PID, USER, d));
 
         IpProjectDto dto = svc.detail(USER, PID);
-        String sourceUrl = dto.doc().get("nodes").get(0).get("data").get("imageUrl").asText();
-        assertEquals("https://cdn.test/" + IpStudioFixtures.sourceKey(USER, "photo.jpg") + "?sig=x", sourceUrl);
         for (com.fasterxml.jackson.databind.JsonNode n : dto.doc().get("nodes")) {
-            if (!"reference".equals(n.get("type").asText())) continue;
-            String key = n.get("data").get("assetKey").asText();
-            assertEquals("https://cdn.test/" + key + "?sig=x", n.get("data").get("imageUrl").asText());
+            String key = n.path("metadata").path("storageKey").asText(null);
+            if (key == null) continue;
+            assertEquals("https://cdn.test/" + key + "?sig=x", n.path("metadata").path("url").asText(),
+                    "节点 " + n.path("id").asText() + " 的图片地址没有按 key 重签");
         }
     }
 

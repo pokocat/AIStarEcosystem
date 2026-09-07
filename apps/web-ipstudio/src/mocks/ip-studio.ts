@@ -10,7 +10,6 @@ import type {
   IpCandidate, IpProject, IpProjectDoc, IpPricing, IpRun, IpRunInputs,
   IpStylePreset, IpTemplate, IpPromptGroup,
 } from "@ai-star-eco/types";
-import { collectGenerateInputs, identitySource } from "@/lib/graph";
 import { SERVER_TEMPLATES } from "./templates";
 
 // ── 风格预设 ─────────────────────────────────────────────────────────────────
@@ -202,20 +201,14 @@ function seedStore(): MockStore {
   // 样例一：从潮玩三连模板建的草稿，照片与特征卡已填、主形象已出候选待选。
   const draftDoc: IpProjectDoc = JSON.parse(JSON.stringify(MOCK_TEMPLATES[0]!.doc)) as IpProjectDoc;
   for (const n of draftDoc.nodes) {
-    if (n.type === "source") {
-      n.data.imageUrl = mockPlaceholderImage("原始照片", 9);
-      n.data.assetKey = "ipstudio/source/mock/portrait.jpg";
-      n.data.fileName = "我的照片.jpg";
+    // 照片位：样例里当作用户已经拖了一张进来
+    if (n.id === "n-photo") {
+      n.metadata = {
+        ...n.metadata,
+        storageKey: "ipstudio_source/mock/portrait.jpg",
+        content: mockPlaceholderImage("原始照片", 9),
+      };
     }
-    if (n.type === "identity") {
-      n.data.text =
-        "核心气质：亲和、干净的都市感\n脸型：柔和的鹅蛋脸，下颌线条不锋利\n眼睛：温暖的杏眼，双眼皮，眼神平和\n发型：齐肩直发，有薄刘海，发色深棕\n肤色：偏白的暖调\n识别特征：右眼下方一颗小痣";
-      n.data.promptEn =
-        "a young woman with a soft oval face, warm almond eyes with double eyelids, straight shoulder-length dark brown hair with thin bangs, fair warm skin tone, a small mole under the right eye, approachable clean urban vibe";
-      n.data.locked = true;
-      n.data.fromRunId = "IPR-0000seed";
-    }
-    if (n.type === "publish") n.data.avatarName = "";
   }
   const seedRun = seedMasterRun("IPP-0001mock", "n-master");
   const draft: IpProject = {
@@ -265,51 +258,41 @@ export function mockNextId(prefix: string): string {
 
 // ── 提示词编译（与服务端模板同形，供「本次实际提示词」展示） ────────────────
 
+/**
+ * 提示词编译（与服务端 `dap.ip_canvas_image` 模板同形，供「本次实际提示词」展示）。
+ *
+ * 画布模型下这件事很简单：节点自己写的那段 + 连进来的上游图当参考。
+ */
 export function mockCompilePrompt(doc: IpProjectDoc, nodeId: string): { prompt: string; inputs: IpRunInputs; caption: string } {
   const node = doc.nodes.find((n) => n.id === nodeId);
-  if (!node || node.type !== "generate") {
-    return { prompt: "", inputs: {}, caption: "示例" };
-  }
-  const { identity, style, look, source, master, references } = collectGenerateInputs(doc, nodeId);
-  const parts = [
-    style?.data.promptEn ?? "",
-    identity?.data.promptEn ?? "",
-    look ? [look.data.outfit, look.data.pose, look.data.expression, look.data.details, look.data.props].filter(Boolean).join(", ") : "full body, neutral standing pose",
-    references.map((r, i) => `Reference image ${i + 1}: ${r.data.note || "style reference only"}`).join("; "),
-    "same person, same face as the reference, exactly one character, no multi-view grid, no text, no watermark",
-  ].filter((p) => p && p.trim());
+  if (!node || node.type !== "image") return { prompt: "", inputs: {}, caption: "示例" };
 
-  const refs: NonNullable<IpRunInputs["refs"]> = [];
-  const maxRefs = 4;
-  const candidates: Array<{ role: "master" | "source" | "reference"; present: boolean }> = [
-    { role: "master", present: Boolean(master && master.data.selectedRunId) },
-    { role: "source", present: Boolean(source && (source.data.imageUrl || source.data.assetKey)) },
-    ...references.map((r) => ({ role: "reference" as const, present: Boolean(r.data.imageUrl || r.data.assetKey) })),
-  ];
-  let applied = 0;
-  for (const c of candidates) {
-    if (!c.present) continue;
-    if (applied < maxRefs) {
-      refs.push({ role: c.role, applied: true });
-      applied += 1;
-    } else {
-      refs.push({ role: c.role, applied: false, reason: "over_max_refs" });
-    }
-  }
+  const own = (node.metadata?.prompt ?? "").trim();
+  const upstream = doc.connections
+    .filter((c) => c.toNodeId === nodeId)
+    .map((c) => doc.nodes.find((n) => n.id === c.fromNodeId))
+    .filter((n): n is NonNullable<typeof n> => Boolean(n))
+    .filter((n) => n.type === "image" && Boolean(n.metadata?.storageKey || n.metadata?.images?.length))
+    .slice(0, 4);
+
+  const refs: NonNullable<IpRunInputs["refs"]> = upstream.map((n) => ({
+    role: "reference" as const,
+    note: n.title || "参考图",
+    applied: true,
+  }));
+
+  const prompt = [
+    own,
+    refs.map((r, i) => `Reference image ${i + 1}: ${r.note}`).join(" "),
+    "keep the same character as in the reference images, exactly one character, no text, no watermark",
+  ].filter((x) => x && x.trim()).join(" ");
 
   return {
-    prompt: parts.join(" || "),
-    inputs: { prompt: parts.join(" || "), refs, size: node.data.size, count: node.data.count },
-    caption: look?.data.title ?? (node.data.isMaster ? "主形象" : node.label ?? "形象"),
+    prompt,
+    inputs: { prompt, refs, size: node.metadata?.size ?? "768x1024", count: node.metadata?.count ?? 1 },
+    caption: node.title || "画布出图",
   };
 }
-
-const IDENTITY_SAMPLE_TEXT =
-  "核心气质：干净、有亲和力\n脸型：柔和的鹅蛋脸\n眼睛：杏眼，双眼皮，眼神平和\n发型：齐肩直发，薄刘海，深棕色\n肤色：偏白暖调\n识别特征：右眼下方一颗小痣";
-const IDENTITY_SAMPLE_EN =
-  "a young person with a soft oval face, almond eyes with double eyelids, straight shoulder-length dark brown hair with thin bangs, fair warm skin, a small mole under the right eye, clean approachable vibe";
-
-// ── 运行模拟器 ───────────────────────────────────────────────────────────────
 
 export function mockStartRun(projectId: string, nodeId: string, doc: IpProjectDoc): IpRun {
   const s = mockStore();
@@ -322,14 +305,11 @@ export function mockStartRun(projectId: string, nodeId: string, doc: IpProjectDo
   let inputs: IpRunInputs = {};
   let caption = "示例";
   let cost = MOCK_PRICING.identityCredits;
-  if (kind === "generate" && node?.type === "generate") {
+  if (node?.type === "image") {
     const compiled = mockCompilePrompt(doc, nodeId);
     inputs = compiled.inputs;
     caption = compiled.caption;
-    cost = MOCK_PRICING.imageCredits * node.data.count;
-  } else if (kind === "identity") {
-    const src = identitySource(doc, nodeId);
-    inputs = { refs: src ? [{ role: "source", applied: true }] : [] };
+    cost = MOCK_PRICING.imageCredits * (node.metadata?.count ?? 1);
   }
 
   const run: IpRun = {
@@ -395,8 +375,6 @@ export function mockReadRun(runId: string): IpRun {
           url: mockPlaceholderImage(`${entry.caption} 候选 ${i + 1}`, i + run.id.length),
         })),
       };
-    } else {
-      run.output = { text: IDENTITY_SAMPLE_TEXT, promptEn: IDENTITY_SAMPLE_EN };
     }
     // 把最新一次运行投影回项目（与服务端 runs 投影同语义）
     const project = s.projects.get(run.projectId);

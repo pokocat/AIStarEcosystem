@@ -1,339 +1,209 @@
 {
   "id": "ip-launch-male",
   "name": "IP 打造 · 男生",
-  "summary": "一张照片起一套完整 IP（男生版）：抽人物特征卡 → 定主形象 → 三套装扮（日常 / 通勤 / 运动）+ 三个表情（大笑 / 惊讶 / 思考）→ 一次发布成数字资产。短动作视频在发布之后到数字资产里生成 —— 它要有形象才能跑，画布上跑不了。",
-  "stylePresetId": "pixar3d",
+  "summary": "一张正脸照 → 定主形象 → 三套装扮（日常 / 通勤 / 运动）+ 三个表情（大笑 / 惊讶 / 思考）→ 发布成数字资产。",
+  "stylePresetId": "bjd",
   "lookCount": 6,
   "estimatedCredits": 130,
   "doc": {
     "nodes": [
       {
-        "id": "n-source",
-        "type": "source",
+        "id": "t-how",
+        "type": "text",
+        "title": "怎么用",
         "position": {
           "x": 0,
-          "y": 320
+          "y": -260
         },
-        "data": {}
-      },
-      {
-        "id": "n-identity",
-        "type": "identity",
-        "position": {
-          "x": 320,
-          "y": 320
-        },
-        "data": {
-          "text": "",
-          "promptEn": "",
-          "locked": false
+        "width": 300,
+        "height": 180,
+        "metadata": {
+          "content": "① 把自己的正脸照拖到左边那个空图卡上\n② 点「招牌形象」出图，挑一张满意的\n③ 右边每张都点一下，会照着招牌形象出变体\n\n每个卡片上的文字都能改 —— 想要什么就写什么。"
         }
       },
       {
-        "id": "n-style",
-        "type": "style",
+        "id": "n-photo",
+        "type": "image",
+        "title": "① 你的照片",
         "position": {
-          "x": 640,
-          "y": 320
+          "x": 0,
+          "y": 0
         },
-        "data": {
-          "presetId": "pixar3d",
-          "name": "3D 动画电影",
-          "promptEn": "Pixar-style 3D animated character, rounded friendly proportions, cinematic three-point studio lighting, subsurface-scattering skin, clean solid backdrop",
-          "custom": false
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "placeholder": "把一张正脸清晰的照片拖进来",
+          "size": "768x1024"
         }
       },
       {
         "id": "n-master",
-        "type": "generate",
+        "type": "image",
+        "title": "② 招牌形象",
         "position": {
-          "x": 960,
-          "y": 320
+          "x": 380,
+          "y": 0
         },
-        "data": {
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "prompt": "精致的 3D 娃娃质感的男性角色全身照，五官清晰、气质自然。3D BJD 潮玩娃娃质感，精致的搪胶材质，纯色干净的棚拍背景，专业柔和的三点式摄影灯光。",
           "count": 4,
-          "size": "768x1024",
-          "isMaster": true
+          "size": "768x1024"
         }
       },
       {
         "id": "n-look-1",
-        "type": "look",
+        "type": "image",
+        "title": "日常潮玩装",
         "position": {
-          "x": 1280,
-          "y": -120
+          "x": 760,
+          "y": -1175
         },
-        "data": {
-          "title": "日常潮玩装",
-          "prompt": "戴棒球帽，穿宽松卫衣与工装长裤，脚踩高帮板鞋。正面站立，肩线平直，重心居中，一只手随意插在裤袋里。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。"
-        }
-      },
-      {
-        "id": "n-gen-1",
-        "type": "generate",
-        "position": {
-          "x": 1600,
-          "y": -120
-        },
-        "data": {
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "prompt": "戴棒球帽，穿宽松卫衣与工装长裤，高帮板鞋。正面站立，重心自然。3D BJD 潮玩娃娃质感，精致的搪胶材质，纯色干净的棚拍背景，专业柔和的三点式摄影灯光。",
           "count": 2,
-          "size": "768x1024",
-          "isMaster": false
+          "size": "768x1024"
         }
       },
       {
         "id": "n-look-2",
-        "type": "look",
+        "type": "image",
+        "title": "商务通勤装",
         "position": {
-          "x": 1280,
-          "y": 60
+          "x": 760,
+          "y": -705
         },
-        "data": {
-          "title": "商务通勤装",
-          "prompt": "剪裁利落的西装外套内搭素色衬衫，直筒西裤配德比鞋。正面站立，双手自然垂放于身侧，肩线平直。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。"
-        }
-      },
-      {
-        "id": "n-gen-2",
-        "type": "generate",
-        "position": {
-          "x": 1600,
-          "y": 60
-        },
-        "data": {
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "prompt": "剪裁利落的西装外套内搭素色衬衫，直筒西裤配德比鞋。正面站立，肩线放松，一只手自然垂放。3D BJD 潮玩娃娃质感，精致的搪胶材质，纯色干净的棚拍背景，专业柔和的三点式摄影灯光。",
           "count": 2,
-          "size": "768x1024",
-          "isMaster": false
+          "size": "768x1024"
         }
       },
       {
         "id": "n-look-3",
-        "type": "look",
+        "type": "image",
+        "title": "运动休闲装",
         "position": {
-          "x": 1280,
-          "y": 240
+          "x": 760,
+          "y": -235
         },
-        "data": {
-          "title": "运动休闲装",
-          "prompt": "宽松运动卫衣配束脚运动裤与跑鞋，外搭一件轻薄防风外套。正面站立，一只手扶着肩带。纯色干净的棚拍背景，专业柔和的三点式摄影灯光。"
-        }
-      },
-      {
-        "id": "n-gen-3",
-        "type": "generate",
-        "position": {
-          "x": 1600,
-          "y": 240
-        },
-        "data": {
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "prompt": "宽松运动卫衣配束脚运动裤与跑鞋。重心偏移的放松站姿。3D BJD 潮玩娃娃质感，精致的搪胶材质，纯色干净的棚拍背景，专业柔和的三点式摄影灯光。",
           "count": 2,
-          "size": "768x1024",
-          "isMaster": false
+          "size": "768x1024"
         }
       },
       {
         "id": "n-look-4",
-        "type": "look",
+        "type": "image",
+        "title": "表情 · 开心大笑",
         "position": {
-          "x": 1280,
-          "y": 420
+          "x": 760,
+          "y": 235
         },
-        "data": {
-          "title": "表情 · 开心大笑",
-          "prompt": "面部表情为开怀大笑，双眼弯成月牙，嘴角大幅上扬露出牙齿，肩膀微微上耸。服装、机位、光线与主形象完全一致，只改表情。"
-        }
-      },
-      {
-        "id": "n-gen-4",
-        "type": "generate",
-        "position": {
-          "x": 1600,
-          "y": 420
-        },
-        "data": {
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "prompt": "面部表情为开怀大笑，双眼弯成月牙，嘴角大幅上扬露出牙齿，肩膀微微上耸。服装与光线保持不变。3D BJD 潮玩娃娃质感，精致的搪胶材质，纯色干净的棚拍背景，专业柔和的三点式摄影灯光。",
           "count": 2,
-          "size": "768x1024",
-          "isMaster": false
+          "size": "768x1024"
         }
       },
       {
         "id": "n-look-5",
-        "type": "look",
+        "type": "image",
+        "title": "表情 · 惊讶",
         "position": {
-          "x": 1280,
-          "y": 600
+          "x": 760,
+          "y": 705
         },
-        "data": {
-          "title": "表情 · 惊讶",
-          "prompt": "双眼睁大，眉毛高高扬起，嘴巴张成小圆形，一只手轻抬到脸颊旁。服装、机位、光线与主形象完全一致，只改表情与这一个手部动作。"
-        }
-      },
-      {
-        "id": "n-gen-5",
-        "type": "generate",
-        "position": {
-          "x": 1600,
-          "y": 600
-        },
-        "data": {
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "prompt": "双眼睁大，眉毛高高扬起，嘴巴张成小圆形，一只手轻抬到脸颊旁。服装与光线保持不变。3D BJD 潮玩娃娃质感，精致的搪胶材质，纯色干净的棚拍背景，专业柔和的三点式摄影灯光。",
           "count": 2,
-          "size": "768x1024",
-          "isMaster": false
+          "size": "768x1024"
         }
       },
       {
         "id": "n-look-6",
-        "type": "look",
+        "type": "image",
+        "title": "表情 · 思考",
         "position": {
-          "x": 1280,
-          "y": 780
+          "x": 760,
+          "y": 1175
         },
-        "data": {
-          "title": "表情 · 思考",
-          "prompt": "眼神向上方偏移，眉头轻皱，一只手托着下巴。服装、机位、光线与主形象完全一致，只改表情与这一个手部动作。"
-        }
-      },
-      {
-        "id": "n-gen-6",
-        "type": "generate",
-        "position": {
-          "x": 1600,
-          "y": 780
-        },
-        "data": {
+        "width": 300,
+        "height": 400,
+        "metadata": {
+          "prompt": "眼神向上方偏移，眉头轻皱，一只手托着下巴。服装与光线保持不变。3D BJD 潮玩娃娃质感，精致的搪胶材质，纯色干净的棚拍背景，专业柔和的三点式摄影灯光。",
           "count": 2,
-          "size": "768x1024",
-          "isMaster": false
-        }
-      },
-      {
-        "id": "n-publish",
-        "type": "publish",
-        "position": {
-          "x": 1960,
-          "y": 320
-        },
-        "data": {
-          "avatarName": ""
+          "size": "768x1024"
         }
       }
     ],
-    "edges": [
+    "connections": [
       {
-        "id": "e-n-source-n-identity",
-        "source": "n-source",
-        "target": "n-identity"
-      },
-      {
-        "id": "e-n-identity-n-style",
-        "source": "n-identity",
-        "target": "n-style"
-      },
-      {
-        "id": "e-n-style-n-master",
-        "source": "n-style",
-        "target": "n-master"
+        "id": "e-n-photo-n-master",
+        "source": "n-photo",
+        "target": "n-master",
+        "fromNodeId": "n-photo",
+        "toNodeId": "n-master"
       },
       {
         "id": "e-n-master-n-look-1",
         "source": "n-master",
-        "target": "n-look-1"
-      },
-      {
-        "id": "e-n-look-1-n-gen-1",
-        "source": "n-look-1",
-        "target": "n-gen-1"
+        "target": "n-look-1",
+        "fromNodeId": "n-master",
+        "toNodeId": "n-look-1"
       },
       {
         "id": "e-n-master-n-look-2",
         "source": "n-master",
-        "target": "n-look-2"
-      },
-      {
-        "id": "e-n-look-2-n-gen-2",
-        "source": "n-look-2",
-        "target": "n-gen-2"
+        "target": "n-look-2",
+        "fromNodeId": "n-master",
+        "toNodeId": "n-look-2"
       },
       {
         "id": "e-n-master-n-look-3",
         "source": "n-master",
-        "target": "n-look-3"
-      },
-      {
-        "id": "e-n-look-3-n-gen-3",
-        "source": "n-look-3",
-        "target": "n-gen-3"
+        "target": "n-look-3",
+        "fromNodeId": "n-master",
+        "toNodeId": "n-look-3"
       },
       {
         "id": "e-n-master-n-look-4",
         "source": "n-master",
-        "target": "n-look-4"
-      },
-      {
-        "id": "e-n-look-4-n-gen-4",
-        "source": "n-look-4",
-        "target": "n-gen-4"
+        "target": "n-look-4",
+        "fromNodeId": "n-master",
+        "toNodeId": "n-look-4"
       },
       {
         "id": "e-n-master-n-look-5",
         "source": "n-master",
-        "target": "n-look-5"
-      },
-      {
-        "id": "e-n-look-5-n-gen-5",
-        "source": "n-look-5",
-        "target": "n-gen-5"
+        "target": "n-look-5",
+        "fromNodeId": "n-master",
+        "toNodeId": "n-look-5"
       },
       {
         "id": "e-n-master-n-look-6",
         "source": "n-master",
-        "target": "n-look-6"
-      },
-      {
-        "id": "e-n-look-6-n-gen-6",
-        "source": "n-look-6",
-        "target": "n-gen-6"
-      },
-      {
-        "id": "e-n-master-n-publish",
-        "source": "n-master",
-        "target": "n-publish"
-      },
-      {
-        "id": "e-n-gen-1-n-publish",
-        "source": "n-gen-1",
-        "target": "n-publish"
-      },
-      {
-        "id": "e-n-gen-2-n-publish",
-        "source": "n-gen-2",
-        "target": "n-publish"
-      },
-      {
-        "id": "e-n-gen-3-n-publish",
-        "source": "n-gen-3",
-        "target": "n-publish"
-      },
-      {
-        "id": "e-n-gen-4-n-publish",
-        "source": "n-gen-4",
-        "target": "n-publish"
-      },
-      {
-        "id": "e-n-gen-5-n-publish",
-        "source": "n-gen-5",
-        "target": "n-publish"
-      },
-      {
-        "id": "e-n-gen-6-n-publish",
-        "source": "n-gen-6",
-        "target": "n-publish"
+        "target": "n-look-6",
+        "fromNodeId": "n-master",
+        "toNodeId": "n-look-6"
       }
     ],
     "viewport": {
-      "x": 40,
-      "y": 40,
-      "zoom": 0.55
+      "x": 60,
+      "y": 60,
+      "k": 0.55
     }
   }
 }

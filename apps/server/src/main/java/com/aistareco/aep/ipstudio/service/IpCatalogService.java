@@ -36,9 +36,7 @@ public class IpCatalogService {
     private static final List<String> TEMPLATE_RESOURCES = List.of(
             "ipstudio/templates/ip-toy-figure.json",
             "ipstudio/templates/ip-launch-female.json",
-            "ipstudio/templates/ip-launch-male.json",
-            "ipstudio/templates/portrait-bjd-trio.json",
-            "ipstudio/templates/portrait-sticker-six.json");
+            "ipstudio/templates/ip-launch-male.json");
 
     private final ObjectMapper om;
 
