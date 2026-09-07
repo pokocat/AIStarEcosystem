@@ -8648,6 +8648,18 @@ paths:
       responses:
         "200": { description: 名片摘要 }
         "400": { description: CARD_SLUG_INVALID / CARD_SLUG_RESERVED / CARD_SLUG_TAKEN }
+  /v1/card/from-avatar:
+    post:
+      tags: [card]
+      summary: 从数字人形象一键建卡（草稿）
+      description: >
+        名字取形象名、衣柜取该形象全部已出图的造型（`figure.looks[]`，只存 `look:<id>` 引用）——
+        用户在 AI IP 工作台已经起过名、跑过一套装扮与表情，不该再填一遍。
+        返回**草稿**：发布是显式动作，一键不能把联系方式挂上公网。
+        形象不属于本人或已删 → 404 `DAP_AVATAR_NOT_FOUND`。
+      responses:
+        "200": { description: 建好的名片草稿摘要 }
+
   /v1/card/{id}:
     get:
       tags: [card]

@@ -49,6 +49,26 @@ export async function myCards(): Promise<CardSummary[]> {
   return apiFetch<CardSummary[]>("/v1/card/mine");
 }
 
+/**
+ * 从形象一键建卡（草稿）。名字与整柜造型由服务端从形象带过来 ——
+ * 用户在工作台已经起过名、跑过一套装扮和表情，不该再填一遍。
+ *
+ * 回来的是**草稿**：发布是显式动作，不能一键把人的联系方式挂上公网。
+ */
+export async function createCardFromAvatar(avatarId: string): Promise<CardSummary> {
+  if (USE_MOCK) {
+    return mockDelay({
+      id: "CARD-mock", slug: avatarId.toLowerCase(), regNo: "BC-0000", status: "draft",
+      avatarId, publicUrl: `/card/p/${avatarId.toLowerCase()}`,
+      publishedAt: null, updatedAt: new Date().toISOString(),
+    } satisfies CardSummary);
+  }
+  return apiFetch<CardSummary>("/v1/card/from-avatar", {
+    method: "POST",
+    body: JSON.stringify({ avatarId }),
+  });
+}
+
 export async function cardsByAvatar(avatarId: string): Promise<CardSummary[]> {
   if (USE_MOCK) return mockDelay(MOCK_CARDS.filter((c) => c.avatarId === avatarId));
   return apiFetch<CardSummary[]>(`/v1/card/by-avatar/${encodeURIComponent(avatarId)}`);

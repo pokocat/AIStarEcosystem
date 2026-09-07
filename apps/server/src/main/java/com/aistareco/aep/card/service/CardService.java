@@ -2,7 +2,12 @@ package com.aistareco.aep.card.service;
 
 import com.aistareco.aep.card.model.CardProfile;
 import com.aistareco.aep.card.repository.CardProfileRepository;
+import com.aistareco.aep.dap.model.DapAvatar;
+import com.aistareco.aep.dap.model.DapLook;
+import com.aistareco.aep.dap.repository.DapAvatarRepository;
+import com.aistareco.aep.dap.repository.DapLookRepository;
 import com.aistareco.aep.dap.service.DapAssetService;
+import com.aistareco.aep.dap.service.DapAvatarRefResolver;
 import com.aistareco.common.BusinessException;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -43,13 +48,20 @@ public class CardService {
     private final CdnUrlSigner signer;
     private final ObjectMapper mapper;
     private final DapAssetService assets;
+    private final DapAvatarRefResolver refs;
+    private final DapAvatarRepository avatarRepo;
+    private final DapLookRepository lookRepo;
 
     public CardService(CardProfileRepository repo, CdnUrlSigner signer, ObjectMapper mapper,
-                       DapAssetService assets) {
+                       DapAssetService assets, DapAvatarRefResolver refs,
+                       DapAvatarRepository avatarRepo, DapLookRepository lookRepo) {
         this.repo = repo;
         this.signer = signer;
         this.mapper = mapper;
         this.assets = assets;
+        this.refs = refs;
+        this.avatarRepo = avatarRepo;
+        this.lookRepo = lookRepo;
     }
 
     // ── 属主入口（唯一一处校验归属，其余方法都从这里拿实体）──────────
@@ -98,6 +110,94 @@ public class CardService {
                 .createdAt(now).updatedAt(now)
                 .build();
         return repo.save(c);
+    }
+
+    /**
+     * 从数字人形象一键建卡 —— 工作流与名片之间那条断层就断在这里。
+     *
+     * <p>工作台跑完一套 IP，产出的是一个形象 + 一柜子造型（装扮、表情）。此前这些东西
+     * 发布完就散在资产里，做名片还得从零填一遍。现在把能自动带的全带过来：
+     * <ul>
+     *   <li><b>名字</b>取形象名 —— 用户在工作台起过一次名，不该再问第二遍；</li>
+     *   <li><b>衣柜</b>取该形象全部出图成功的造型，标签就是形象卡标题（「日常潮玩装」「表情 · 开心大笑」），
+     *       访客在名片上点着切换；</li>
+     *   <li><b>主图</b>默认跟随定妆照（{@code ref=null}），资产换图名片跟着变。</li>
+     * </ul>
+     * 剩下要用户自己填的只有联系方式和几句介绍 —— 那些没人能替他猜。
+     *
+     * <p>返回的是**草稿**：发布是显式动作，不能一键就把人的手机号挂到公网上。
+     */
+    @Transactional
+    public CardProfile createFromAvatar(String userId, String avatarId, String slug) {
+        String aid = trimToNull(avatarId);
+        if (aid == null) throw BusinessException.badRequest("CARD_AVATAR_REQUIRED", "先选一个数字人形象");
+        DapAvatar avatar = avatarRepo.findById(aid)
+                .filter(a -> a.getDeletedAt() == null)
+                .filter(a -> userId.equals(a.getOwnerUserId()))
+                .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "这个形象不存在"));
+
+        ObjectNode doc = mapper.createObjectNode();
+        doc.put("name", avatar.getName() == null ? "" : avatar.getName());
+        doc.put("latin", "");
+        doc.put("headline", "");
+        doc.put("title", "");
+        doc.put("city", "");
+        doc.put("avatarRegNo", avatar.getId());
+
+        ObjectNode figure = doc.putObject("figure");
+        figure.put("tier", "static");
+        figure.putNull("ref");          // null = 跟随定妆照
+        figure.put("imageUrl", "");     // 出 wire 时由 resolveFigure 填
+        ArrayNode looks = figure.putArray("looks");
+        for (DapLook l : lookRepo.findByAvatarIdOrderByCreatedAtDesc(aid)) {
+            // 没出图的造型放进衣柜，切过去就是一片空白
+            if (l.getImageKey() == null || l.getImageKey().isBlank()) continue;
+            ObjectNode item = looks.addObject();
+            item.put("ref", "look:" + l.getId());
+            item.put("label", l.getLabel() == null || l.getLabel().isBlank() ? "造型" : l.getLabel());
+        }
+
+        // 下面这些是用户要自己填的，先给空结构，省得前端到处判 null
+        ObjectNode offer = doc.putObject("offer");
+        offer.putArray("give");
+        offer.putArray("want");
+        doc.putArray("works");
+        doc.putArray("media");
+        doc.putArray("resume");
+        doc.putArray("contacts");
+        ObjectNode company = doc.putObject("company");
+        company.put("name", "");
+        company.put("meta", "");
+        company.put("intro", "");
+        company.putArray("stats");
+        company.putArray("milestones");
+
+        String s = slug == null || slug.isBlank() ? suggestSlug(avatar) : slug;
+        return create(userId, s, aid, mapper.convertValue(doc, Map.class));
+    }
+
+    /**
+     * 没指定短链时给一个能用的。
+     *
+     * <p>形象名多半是中文，进不了 URL；所以退到形象编号的小写形式（{@code dh-2041}）——
+     * 全局唯一、一定合规，用户回头能自己改成好记的。
+     */
+    private String suggestSlug(DapAvatar avatar) {
+        String base = avatar.getId() == null ? "" : avatar.getId().toLowerCase(java.util.Locale.ROOT);
+        base = base.replaceAll("[^a-z0-9-]", "");
+        if (base.length() < 3 || !Character.isLetterOrDigit(base.charAt(0))) {
+            base = "card-" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 6);
+        }
+        if (base.length() > 32) base = base.substring(0, 32);
+        // 撞了就挂个后缀再试，不要把冲突甩给用户
+        String candidate = base;
+        for (int i = 2; repo.findBySlug(candidate).isPresent() && i < 100; i++) {
+            String suffix = "-" + i;
+            candidate = base.length() + suffix.length() > 32
+                    ? base.substring(0, 32 - suffix.length()) + suffix
+                    : base + suffix;
+        }
+        return candidate;
     }
 
     /** 保存名片文档。整存整取：服务端逐字保存，不改写内容（与 ipstudio 画布同一条纪律）。 */
@@ -289,6 +389,9 @@ public class CardService {
                     "CARD_DOC_BROKEN", "名片内容读不出来了", "payloadJson 解析失败 card=" + card.getId());
         }
 
+        // 形象引用 → 签名图。名片存的是引用不是图（look:<id> / deriv:<id> / null=跟随定妆照），
+        // 资产改了名片自动跟着变。**这一步不做，真名片就是没有形象的** —— 文档里只有 ref。
+        resolveFigure(doc, card.getAvatarId());
         // 文档里的 *Key 字段 → 派生签名 URL（真值是 key，URL 是派生值，§4.7.4）。
         deriveUrls(doc);
         // 老文档若直接存了 URL，兜底重签一次：签名过期后 maybeSign 同样有效（§4.7.7）。
@@ -303,6 +406,51 @@ public class CardService {
         doc.remove("demo");
 
         return mapper.convertValue(doc, Map.class);
+    }
+
+    /**
+     * 解析 {@code figure.ref} 与 {@code figure.looks[].ref} → 签名图地址。
+     *
+     * <p>名片存引用不存图（{@code docs/digital-business-card-plan.md} §5）：
+     * 资产换了图，名片自动跟着变；资产被删，这里静默回退成空 URL 而不是破图 ——
+     * {@link DapAvatarRefResolver} 已经保证永不抛错。主人那边由
+     * {@link #affectedByAvatar} 反查后另行通知，不能只靠访客看到空图。
+     *
+     * <p>{@code looks} 是「换装 / 换表情」用的衣柜：每项一个 ref + 一个标签，
+     * 访客在名片上点着切换。同样只存引用。
+     */
+    private void resolveFigure(ObjectNode doc, String avatarId) {
+        JsonNode figureNode = doc.get("figure");
+        if (figureNode == null || !figureNode.isObject()) return;
+        ObjectNode figure = (ObjectNode) figureNode;
+
+        String mainUrl = resolveRef(avatarId, textOrNull(figure, "ref"));
+        if (mainUrl != null) figure.put("imageUrl", mainUrl);
+
+        JsonNode looksNode = figure.get("looks");
+        if (looksNode == null || !looksNode.isArray()) return;
+        ArrayNode kept = mapper.createArrayNode();
+        for (JsonNode item : looksNode) {
+            if (!item.isObject()) continue;
+            ObjectNode look = (ObjectNode) item;
+            String url = resolveRef(avatarId, textOrNull(look, "ref"));
+            // 解析不出来的那件就从衣柜里拿掉 —— 切过去是一片空白比不给这个选项更糟。
+            if (url == null) continue;
+            look.put("imageUrl", url);
+            kept.add(look);
+        }
+        figure.set("looks", kept);
+    }
+
+    private String resolveRef(String avatarId, String ref) {
+        if (avatarId == null || avatarId.isBlank()) return null;
+        DapAvatarRefResolver.View v = refs.resolve(avatarId, ref);
+        return v.displayImageUrl();
+    }
+
+    private static String textOrNull(JsonNode node, String field) {
+        JsonNode v = node.path(field);
+        return v.isTextual() && !v.asText().isBlank() ? v.asText() : null;
     }
 
     /** {@code xxxKey} → {@code xxxUrl}。key 是真值，URL 每次出 wire 现签。 */

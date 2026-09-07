@@ -67,8 +67,12 @@ export default function AssetsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [notEnrolled, setNotEnrolled] = React.useState(false);
   const [selected, setSelected] = React.useState<string | null>(null);
+  const seq = React.useRef(0);
 
   const load = React.useCallback(async () => {
+    // 请求序号：连点两次刷新时，慢的那次回来不许覆盖快的那次的结果，
+    // 也不许替新请求提前关掉 loading。
+    const mine = ++seq.current;
     setLoading(true);
     setError(null);
     try {
@@ -77,14 +81,18 @@ export default function AssetsPage() {
         AssetsApi.listAvatars(),
         AssetsApi.summary().catch(() => null),
       ]);
+      if (seq.current !== mine) return;
       setAvatars(list);
       setSummary(sum);
-      setSelected((cur) => cur ?? list[0]?.id ?? null);
+      // 选中的形象可能已经被别处删掉了 —— 必须按**新列表**校正，
+      // 否则下面 find 出来是 undefined，详情组件一读 id 就崩。
+      setSelected((cur) => (cur && list.some((a) => a.id === cur) ? cur : list[0]?.id ?? null));
     } catch (e) {
+      if (seq.current !== mine) return;
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
       else setError(e instanceof Error ? e.message : "资产读不出来");
     } finally {
-      setLoading(false);
+      if (seq.current === mine) setLoading(false);
     }
   }, []);
 
@@ -216,7 +224,7 @@ export default function AssetsPage() {
             </div>
 
             <div className="ledger-card min-h-0 overflow-y-auto scrollbar-thin">
-              {selected ? <AvatarDetail key={selected} avatar={avatars.find((a) => a.id === selected)!} /> : null}
+              <SelectedDetail avatars={avatars} selectedId={selected} />
             </div>
           </div>
         )}
@@ -227,30 +235,55 @@ export default function AssetsPage() {
 
 // ── 形象详情 ─────────────────────────────────────────────────────────────────
 
+/**
+ * 选中项与列表之间隔一层 —— 选中的形象可能已经被别处删掉了。
+ * 直接 `avatars.find(...)!` 断言一个可能不存在的东西，详情组件一读字段就白屏。
+ */
+function SelectedDetail({ avatars, selectedId }: { avatars: DapAvatar[]; selectedId: string | null }) {
+  const avatar = selectedId ? avatars.find((a) => a.id === selectedId) : undefined;
+  if (!avatar) {
+    return (
+      <div className="h-full grid place-items-center px-6 text-center">
+        <span className="text-[13.5px]" style={{ color: "var(--ink-3)" }}>
+          {selectedId ? "这个形象已经不在了，从左边挑一个" : "从左边挑一个形象"}
+        </span>
+      </div>
+    );
+  }
+  return <AvatarDetail key={avatar.id} avatar={avatar} />;
+}
+
+
+/**
+ * 一节数据的三态。
+ *
+ * 关键是**失败不能退化成空数组** —— 「还没做成名片」和「名片读不出来」对用户是两件事：
+ * 前者他会去建一张，后者他该重试。用空态冒充失败，人只会以为东西丢了。
+ */
+type Sec<T> = { s: "loading" } | { s: "ok"; v: T[] } | { s: "err"; msg: string };
+
+const LOADING: Sec<never> = { s: "loading" };
+const asSec = <T,>(p: Promise<T[]>, what: string): Promise<Sec<T>> =>
+  p.then((v) => ({ s: "ok", v }) as Sec<T>)
+   .catch((e: unknown) => ({ s: "err", msg: e instanceof Error ? e.message : `${what}读不出来` }) as Sec<T>);
+
 function AvatarDetail({ avatar }: { avatar: DapAvatar }) {
-  const [looks, setLooks] = React.useState<DapLook[] | null>(null);
-  const [derivs, setDerivs] = React.useState<DapDerivative[] | null>(null);
-  const [cards, setCards] = React.useState<CardSummary[] | null>(null);
-  const [failed, setFailed] = React.useState(false);
+  const [looks, setLooks] = React.useState<Sec<DapLook>>(LOADING);
+  const [derivs, setDerivs] = React.useState<Sec<DapDerivative>>(LOADING);
+  const [cards, setCards] = React.useState<Sec<CardSummary>>(LOADING);
+  const [round, setRound] = React.useState(0);
 
   React.useEffect(() => {
     let alive = true;
-    setFailed(false);
-    void Promise.all([
-      AssetsApi.looks(avatar.id),
-      AssetsApi.derivatives(avatar.id).catch(() => [] as DapDerivative[]),
-      AssetsApi.cardsByAvatar(avatar.id).catch(() => [] as CardSummary[]),
-    ])
-      .then(([l, d, c]) => { if (alive) { setLooks(l); setDerivs(d); setCards(c); } })
-      .catch(() => {
-        if (!alive) return;
-        // 失败也必须给三个 state 一个终值 —— 停在 null 的那一节会永远转骨架，
-        // 用户看到的是「一直在加载」而不是「加载失败」。
-        setFailed(true);
-        setLooks([]); setDerivs([]); setCards([]);
-      });
+    setLooks(LOADING); setDerivs(LOADING); setCards(LOADING);
+    // 三节各自成败，互不牵连：名片挂了不该把造型也说成空的。
+    void asSec(AssetsApi.looks(avatar.id), "造型").then((r) => { if (alive) setLooks(r); });
+    void asSec(AssetsApi.derivatives(avatar.id), "衍生物").then((r) => { if (alive) setDerivs(r); });
+    void asSec(AssetsApi.cardsByAvatar(avatar.id), "名片").then((r) => { if (alive) setCards(r); });
     return () => { alive = false; };
-  }, [avatar.id]);
+  }, [avatar.id, round]);
+
+  const retry = () => setRound((n) => n + 1);
 
   return (
     <div className="p-5">
@@ -282,21 +315,17 @@ function AvatarDetail({ avatar }: { avatar: DapAvatar }) {
         </a>
       </div>
 
-      {failed && (
-        <div className="mb-4 px-3 py-2.5 rounded-[11px] text-[13px]" style={{ background: "var(--err-soft)", color: "var(--err)" }}>
-          这个形象的造型读不出来，稍后再试。
-        </div>
-      )}
-
       {/* 名片 —— 这个形象的对外发布面 */}
-      <Section icon={IdCard} title="名片" count={cards?.length}>
-        {cards === null ? <Skeleton /> : cards.length === 0 ? (
+      <Section icon={IdCard} title="名片" count={cards.s === "ok" ? cards.v.length : undefined}>
+        {cards.s === "loading" ? <Skeleton /> : cards.s === "err" ? (
+          <Failed msg={cards.msg} onRetry={retry} />
+        ) : cards.v.length === 0 ? (
           <Empty>
             这个形象还没做成名片。名片是形象的对外发布面 —— 递一条链接出去，对方不用注册就能看。
           </Empty>
         ) : (
           <div className="flex flex-col gap-2">
-            {cards.map((c) => (
+            {cards.v.map((c) => (
               <div key={c.id} className="flex items-center gap-3 px-3 py-2.5 rounded-[11px]" style={{ background: "var(--surface-2)" }}>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13.5px] font-semibold truncate" title={c.publicUrl}>{c.publicUrl}</span>
@@ -321,12 +350,14 @@ function AvatarDetail({ avatar }: { avatar: DapAvatar }) {
       </Section>
 
       {/* 造型 */}
-      <Section icon={Layers} title="造型" count={looks?.length}>
-        {looks === null ? <Skeleton /> : looks.length === 0 ? (
+      <Section icon={Layers} title="造型" count={looks.s === "ok" ? looks.v.length : undefined}>
+        {looks.s === "loading" ? <Skeleton /> : looks.s === "err" ? (
+          <Failed msg={looks.msg} onRetry={retry} />
+        ) : looks.v.length === 0 ? (
           <Empty>还没有造型。在项目里跑形象卡，发布后就会登记到这里。</Empty>
         ) : (
           <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(116px, 1fr))" }}>
-            {looks.map((l) => (
+            {looks.v.map((l) => (
               <div key={l.id} className="rounded-[11px] overflow-hidden" style={{ border: "1px solid var(--line-2)" }}>
                 <Thumb url={l.imageUrl} alt={l.label} label="待出图" />
                 <div className="px-2 py-1.5" style={{ background: "var(--surface)" }}>
@@ -340,14 +371,16 @@ function AvatarDetail({ avatar }: { avatar: DapAvatar }) {
       </Section>
 
       {/* 短动作 / 其他衍生物 */}
-      <Section icon={Video} title="短动作与衍生" count={derivs?.length}>
-        {derivs === null ? <Skeleton /> : derivs.length === 0 ? (
+      <Section icon={Video} title="短动作与衍生" count={derivs.s === "ok" ? derivs.v.length : undefined}>
+        {derivs.s === "loading" ? <Skeleton /> : derivs.s === "err" ? (
+          <Failed msg={derivs.msg} onRetry={retry} />
+        ) : derivs.v.length === 0 ? (
           <Empty>
             还没有短动作视频。短动作要有形象才能跑 —— 发布之后到数字资产平台里生成，画布里排不了。
           </Empty>
         ) : (
           <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(116px, 1fr))" }}>
-            {derivs.map((d) => (
+            {derivs.v.map((d) => (
               <div key={d.id} className="rounded-[11px] overflow-hidden" style={{ border: "1px solid var(--line-2)" }}>
                 <Thumb url={d.thumbUrl} alt={d.label || KIND_LABEL[d.kind] || "衍生物"} label="待出图" ratio="1 / 1" />
                 <div className="px-2 py-1.5" style={{ background: "var(--surface)" }}>
@@ -402,6 +435,24 @@ function Skeleton() {
   return (
     <div className="h-16 rounded-[11px] grid place-items-center" style={{ background: "var(--surface-2)" }}>
       <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--ink-4)" }} />
+    </div>
+  );
+}
+
+function Failed({ msg, onRetry }: { msg: string; onRetry: () => void }) {
+  return (
+    <div
+      className="px-3 py-3 rounded-[11px] text-[13px] leading-[1.7] flex items-center gap-3"
+      style={{ background: "var(--err-soft)", color: "var(--err)" }}
+    >
+      <span className="flex-1 min-w-0" style={{ overflowWrap: "anywhere" }}>{msg}</span>
+      <button
+        onClick={onRetry}
+        className="shrink-0 h-7 px-3 rounded-[8px] text-[12.5px] font-semibold"
+        style={{ background: "var(--surface)", color: "var(--ink)" }}
+      >
+        重试
+      </button>
     </div>
   );
 }

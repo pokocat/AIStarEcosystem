@@ -4,7 +4,7 @@
 // 成功后展示 DH- 编号与「去数字资产平台查看」。
 
 import * as React from "react";
-import { AlertTriangle, Check, CheckCircle2, ExternalLink, Loader2, Send } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ExternalLink, IdCard, Loader2, Send } from "lucide-react";
 import type { IpNode, IpPublishResult } from "@ai-star-eco/types";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -13,6 +13,7 @@ import { useCanvasStore } from "@/lib/canvas-store";
 import { generateNodes } from "@/lib/graph";
 import { resolveSelectedCandidate } from "@/lib/selection";
 import { AIAVATAR_URL } from "@/lib/external";
+import { AssetsApi } from "@/api";
 import { Field, TextInput } from "./inspector/fields";
 
 
@@ -54,6 +55,29 @@ export function PublishDialog({
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<IpPublishResult | null>(null);
+  const [cardBusy, setCardBusy] = React.useState(false);
+  const [cardError, setCardError] = React.useState<string | null>(null);
+
+  /**
+   * 建草稿 → 直接把人送到名片编辑页去填联系方式。
+   *
+   * 新开一个标签页而不是当前页跳走：画布还开着，用户可能只是顺手做张名片。
+   * 弹窗按钮触发的 window.open 一般不会被拦，被拦了也如实说，不装作成功。
+   */
+  const makeCard = async () => {
+    if (!result) return;
+    setCardBusy(true);
+    setCardError(null);
+    try {
+      const card = await AssetsApi.createCardFromAvatar(result.avatarId);
+      const win = window.open(`${AIAVATAR_URL}/cards`, "_blank", "noopener");
+      if (!win) setCardError(`名片已建好（${card.regNo}），浏览器拦了新窗口，去数字资产平台的「我的名片」里填联系方式`);
+    } catch (e) {
+      setCardError(e instanceof Error ? e.message : "建卡没成功，稍后再试");
+    } finally {
+      setCardBusy(false);
+    }
+  };
 
   // 每次打开都按当前画布重置
   React.useEffect(() => {
@@ -121,6 +145,29 @@ export function PublishDialog({
               <div className="text-[11.5px]" style={{ color: "var(--ok)" }}>
                 含 {result.lookIds.length} 个造型
               </div>
+            </div>
+            {/* 做完形象紧接着最想做的事就是把它发出去 —— 名字和整柜造型都能自动带过去，
+                用户只剩联系方式要填。这一步不给，人就得自己去另一个站从零建卡。 */}
+            <div className="p-3.5 rounded-xl" style={{ background: "var(--primary-tint)" }}>
+              <div className="text-[12.5px] leading-[1.7] mb-2.5" style={{ color: "var(--ink-2)" }}>
+                可以直接做成一张 <b style={{ color: "var(--ink)" }}>数字名片</b> ——
+                名字和这 {result.lookIds.length} 套造型自动带过去，访客能点着换装看，
+                你只要再填联系方式。
+              </div>
+              <button
+                onClick={makeCard}
+                disabled={cardBusy}
+                className="h-8 px-3.5 rounded-lg text-[12.5px] font-bold inline-flex items-center gap-1.5 transition hover:brightness-95 disabled:opacity-60"
+                style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+              >
+                {cardBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <IdCard className="w-3.5 h-3.5" />}
+                {cardBusy ? "建卡中" : "做成数字名片"}
+              </button>
+              {cardError && (
+                <div className="mt-2 text-[12px]" style={{ color: "var(--err)", overflowWrap: "anywhere" }}>
+                  {cardError}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <a

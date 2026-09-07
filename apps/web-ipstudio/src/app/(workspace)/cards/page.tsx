@@ -26,8 +26,11 @@ export default function CardsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [notEnrolled, setNotEnrolled] = React.useState(false);
+  const seq = React.useRef(0);
 
   const load = React.useCallback(async () => {
+    // 连点刷新时慢的那次不许覆盖快的那次（同 assets 页）。
+    const mine = ++seq.current;
     setLoading(true);
     setError(null);
     try {
@@ -36,13 +39,15 @@ export default function CardsPage() {
         AssetsApi.myCards(),
         AssetsApi.listAvatars().catch(() => [] as DapAvatar[]),
       ]);
+      if (seq.current !== mine) return;
       setCards(list);
       setAvatars(avs);
     } catch (e) {
+      if (seq.current !== mine) return;
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
       else setError(e instanceof Error ? e.message : "名片读不出来");
     } finally {
-      setLoading(false);
+      if (seq.current === mine) setLoading(false);
     }
   }, []);
 

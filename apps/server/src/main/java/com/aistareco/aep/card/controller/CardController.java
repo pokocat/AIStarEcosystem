@@ -70,6 +70,21 @@ public class CardController {
         return ApiResponse.of(CardSummary.from(c));
     }
 
+    /**
+     * 从数字人形象一键建卡（草稿）。
+     *
+     * <p>名字与整柜造型自动带过来 —— 用户在工作台已经起过名、跑过一套装扮和表情，
+     * 不该再让他填一遍。回来的是草稿：发布是显式动作，一键不能把人的联系方式挂上公网。
+     */
+    @PostMapping("/from-avatar")
+    public ApiResponse<CardSummary> createFromAvatar(Principal principal,
+                                                     @RequestBody FromAvatarRequest req) {
+        CardProfile c = cards.createFromAvatar(uid(principal), req.avatarId(), req.slug());
+        return ApiResponse.of(CardSummary.from(c));
+    }
+
+    public record FromAvatarRequest(String avatarId, String slug) {}
+
     @PutMapping("/{id}")
     public ApiResponse<CardSummary> save(Principal principal, @PathVariable String id,
                                          @RequestBody CardWriteRequest req) {

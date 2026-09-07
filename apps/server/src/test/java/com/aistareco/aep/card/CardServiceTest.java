@@ -3,7 +3,12 @@ package com.aistareco.aep.card;
 import com.aistareco.aep.card.model.CardProfile;
 import com.aistareco.aep.card.repository.CardProfileRepository;
 import com.aistareco.aep.card.service.CardService;
+import com.aistareco.aep.dap.model.DapAvatar;
+import com.aistareco.aep.dap.model.DapLook;
+import com.aistareco.aep.dap.repository.DapAvatarRepository;
+import com.aistareco.aep.dap.repository.DapLookRepository;
 import com.aistareco.aep.dap.service.DapAssetService;
+import com.aistareco.aep.dap.service.DapAvatarRefResolver;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,6 +41,10 @@ class CardServiceTest {
     private DapAssetService assets;
     private CardProfileRepository repo;
 
+    private DapAvatarRefResolver refs;
+    private DapAvatarRepository avatarRepo;
+    private DapLookRepository lookRepo;
+
     private CardService service(CardProfile... rows) {
         repo = mock(CardProfileRepository.class);
         for (CardProfile c : rows) {
@@ -48,7 +57,14 @@ class CardServiceTest {
         assets = mock(DapAssetService.class);
         when(repo.save(org.mockito.ArgumentMatchers.any(CardProfile.class)))
                 .thenAnswer(i -> i.getArgument(0));
-        return new CardService(repo, signer, OM, assets);
+        refs = mock(DapAvatarRefResolver.class);
+        // 默认：解析不出来（多数用例不关心形象）。关心的用例自己 stub。
+        when(refs.resolve(anyString(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(DapAvatarRefResolver.View.EMPTY);
+        avatarRepo = mock(DapAvatarRepository.class);
+        lookRepo = mock(DapLookRepository.class);
+        when(lookRepo.findByAvatarIdOrderByCreatedAtDesc(anyString())).thenReturn(List.of());
+        return new CardService(repo, signer, OM, assets, refs, avatarRepo, lookRepo);
     }
 
     private CardProfile card(String slug, String status, Instant deletedAt, String payload) {
@@ -215,6 +231,64 @@ class CardServiceTest {
         assertFalse(c.getPayloadJson().contains("imageUrl"), "有 key 兄弟的 URL 字段应当被剥掉");
         assertTrue(c.getPayloadJson().contains("cards/CARD-1/hero.jpg"), "key 是真值，必须留着");
         assertTrue(c.getPayloadJson().contains("https://example.com/me"), "用户填的外链不能误删");
+    }
+
+    @Test
+    void figureRefsAreResolvedOnRead_andBrokenLooksDropOutOfTheWardrobe() {
+        // 名片存的是引用不是图。这一步不做，真名片就是「有个 ref 字段、没有形象」——
+        // 演示名片能显示只是因为它写死了 imageUrl，把这个缺陷盖住了。
+        String payload = "{\"name\":\"林一\",\"figure\":{\"tier\":\"static\",\"ref\":null,"
+                + "\"looks\":[{\"ref\":\"look:LK-1\",\"label\":\"日常潮玩装\"},"
+                + "{\"ref\":\"look:LK-GONE\",\"label\":\"已被删掉的造型\"}]}}";
+        CardProfile c = card("lin", CardProfile.STATUS_PUBLISHED, null, payload);
+        CardService s = service(c);
+        when(refs.resolve("DH-2041", null))
+                .thenReturn(new DapAvatarRefResolver.View("林一", "https://cdn.test/main.jpg?sig=1"));
+        when(refs.resolve("DH-2041", "look:LK-1"))
+                .thenReturn(new DapAvatarRefResolver.View("林一", "https://cdn.test/lk1.jpg?sig=1"));
+        when(refs.resolve("DH-2041", "look:LK-GONE"))
+                .thenReturn(DapAvatarRefResolver.View.EMPTY);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> figure = (Map<String, Object>) s.publicBySlug("lin").get("figure");
+        assertEquals("https://cdn.test/main.jpg?sig=1", figure.get("imageUrl"), "主图必须由 ref 解析出来");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> looks = (List<Map<String, Object>>) figure.get("looks");
+        // 解析不出来的那件要从衣柜里拿掉 —— 切过去是一片空白，比不给这个选项更糟
+        assertEquals(1, looks.size(), "解析不出的造型不该留在衣柜里");
+        assertEquals("日常潮玩装", looks.get(0).get("label"));
+        assertEquals("https://cdn.test/lk1.jpg?sig=1", looks.get(0).get("imageUrl"));
+    }
+
+    @Test
+    void createFromAvatarPrefillsNameAndWardrobe() {
+        CardService s = service();
+        when(avatarRepo.findById("DH-9")).thenReturn(Optional.of(DapAvatar.builder()
+                .id("DH-9").ownerUserId("u1").name("林一").build()));
+        when(lookRepo.findByAvatarIdOrderByCreatedAtDesc("DH-9")).thenReturn(List.of(
+                DapLook.builder().id("LK-1").avatarId("DH-9").label("日常潮玩装").imageKey("k1").build(),
+                DapLook.builder().id("LK-2").avatarId("DH-9").label("表情 · 开心大笑").imageKey("k2").build(),
+                // 还没出图的不进衣柜
+                DapLook.builder().id("LK-3").avatarId("DH-9").label("跑失败的").build()));
+        when(repo.findBySlug("dh-9")).thenReturn(Optional.empty());
+
+        CardProfile c = s.createFromAvatar("u1", "DH-9", null);
+        assertEquals(CardProfile.STATUS_DRAFT, c.getStatus(), "一键建卡只能建草稿，不能直接挂上公网");
+        assertEquals("DH-9", c.getAvatarId());
+        String doc = c.getPayloadJson();
+        assertTrue(doc.contains("林一"), "名字要从形象带过来，别再问用户一遍：" + doc);
+        assertTrue(doc.contains("look:LK-1") && doc.contains("look:LK-2"), "造型要进衣柜：" + doc);
+        assertFalse(doc.contains("look:LK-3"), "没出图的造型不该进衣柜：" + doc);
+    }
+
+    @Test
+    void createFromAvatarRejectsSomeoneElsesAvatar() {
+        CardService s = service();
+        when(avatarRepo.findById("DH-9")).thenReturn(Optional.of(DapAvatar.builder()
+                .id("DH-9").ownerUserId("someone-else").name("别人的").build()));
+        assertEquals("DAP_AVATAR_NOT_FOUND",
+                assertThrows(BusinessException.class, () -> s.createFromAvatar("u1", "DH-9", null)).getCode());
     }
 
     @Test

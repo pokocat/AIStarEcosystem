@@ -253,6 +253,54 @@ export default function CardView({ card }: { card: CardProfile }) {
   );
 }
 
+/**
+ * 换装条 —— 名片上唯一的互动。
+ *
+ * 放在形象右侧竖排：横排会压在人脸下沿的溶解带上，竖排贴着屏幕右缘，
+ * 而形象是居中的 340px，两者基本不打架。
+ */
+const Wardrobe: React.FC<{
+  items: Array<{ label: string; url: string }>;
+  activeIdx: number;
+  onPick: (i: number) => void;
+}> = ({ items, activeIdx, onPick }) => (
+  <div
+    role="group"
+    aria-label="切换装扮与表情"
+    style={{
+      position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+      zIndex: 7, display: "flex", flexDirection: "column", gap: 7,
+      maxHeight: "82%", overflowY: "auto", padding: 3,
+      // 竖向滚动条在这条窄栏里很难看，交互上也不需要
+      scrollbarWidth: "none",
+    }}
+  >
+    {items.map((it, i) => {
+      const on = i === activeIdx;
+      return (
+        <button
+          key={`${it.label}-${i}`}
+          type="button"
+          onClick={() => onPick(i)}
+          aria-pressed={on}
+          aria-label={it.label}
+          title={it.label}
+          style={{
+            flex: "0 0 auto", width: 42, height: 42, padding: 0, borderRadius: 3, cursor: "pointer",
+            overflow: "hidden", background: "rgba(255,255,255,.92)",
+            border: on ? "2px solid var(--ink)" : "1px solid var(--line-2)",
+            boxShadow: on ? "0 2px 10px rgba(0,0,0,.16)" : "0 1px 4px rgba(0,0,0,.08)",
+            transition: "border-color .15s, box-shadow .15s",
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={it.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        </button>
+      );
+    })}
+  </div>
+);
+
 // ── Roll 01 · 首屏 ──────────────────────────────────────────
 
 const Hero: React.FC<{
@@ -263,6 +311,31 @@ const Hero: React.FC<{
   onWechat: () => void;
 }> = ({ card, phone, hasWechat, onSave, onWechat }) => {
   const [l1, l2] = card.headline.split("\n");
+
+  // 衣柜 = 定妆主图 + 工作台跑出来的每套装扮 / 每个表情。
+  // 服务端解析不出来的那几件已经在出 wire 时被摘掉了，这里拿到的都是能显示的。
+  const wardrobe = React.useMemo<Array<{ label: string; url: string }>>(() => {
+    const looks = (card.figure.looks ?? []).filter((l) => l.imageUrl);
+    const out: Array<{ label: string; url: string }> = [];
+    if (card.figure.imageUrl) out.push({ label: "定妆", url: card.figure.imageUrl });
+    for (const l of looks) {
+      // 主图本来就取自某套造型时，别在条上重复出现同一张
+      if (l.imageUrl === card.figure.imageUrl) continue;
+      out.push({ label: l.label || "造型", url: l.imageUrl });
+    }
+    return out;
+  }, [card.figure]);
+
+  const [lookIdx, setLookIdx] = useState(0);
+  // 换了名片（或衣柜变短）时把选中项拉回第一件，避免越界拿到 undefined
+  useEffect(() => { setLookIdx(0); }, [wardrobe]);
+
+  const active = wardrobe[lookIdx] ?? wardrobe[0];
+  const heroUrl = active?.url ?? card.figure.imageUrl;
+  const heroAlt = active && wardrobe.length > 1
+    ? `${card.name}的数字人形象 · ${active.label}`
+    : `${card.name}的数字人形象`;
+
   return (
     <section
       style={{
@@ -350,11 +423,16 @@ const Hero: React.FC<{
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={card.figure.imageUrl}
-            alt={`${card.name}的数字人形象`}
+            src={heroUrl}
+            alt={heroAlt}
             style={{ height: "calc(100% - 16px)", width: "auto", display: "block" }}
           />
         </div>
+
+        {/* 换装条：工作台跑出来的装扮与表情，访客点着看。只有一套时不渲染。 */}
+        {wardrobe.length > 1 && (
+          <Wardrobe items={wardrobe} activeIdx={lookIdx} onPick={setLookIdx} />
+        )}
       </div>
 
       <div

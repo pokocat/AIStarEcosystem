@@ -2,7 +2,7 @@
 
 > 三个子产品合成一条链：**造形象 → 登记资产 → 对外发布**。
 > 相关真源：[`ip-studio-plan.md`](ip-studio-plan.md) · [`ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) · [`digital-business-card-plan.md`](digital-business-card-plan.md)
-> last-reviewed：2026-09-07（v0.153 / v0.154 落地后回填实际形态）
+> last-reviewed：2026-09-07（v0.153 / v0.154 / v0.155 落地后回填实际形态）
 
 ---
 
@@ -145,7 +145,7 @@ shot:<name>   → 机位照
 | server | 短动作：复用 `DapWorkflowService.createDerivative(avatarId, "video", …)`，**必须在 ipstudio 发布之后**；需要一个「发布后自动排队跑短动作」的编排（**仍未写**，当前形态见下） |
 | ~~web-ipstudio~~ | ~~出图弹层通用化~~ **v0.153 已落地**：形象卡从五个固定字段改成一个提示词框 + 内置模板 chip（装扮组按性别过滤）；首页「IP 打造」入口沿用既有模板卡片，选男版还是女版 = 选哪张模板卡 |
 | ~~web-aiavatar~~ | ~~资产详情页「已用于 · 名片」~~ **v0.153 已落地**：并进「被用在哪」，与艺人壳引用、合成出片同一张列表 |
-| web-aiavatar | `/card` 域：公开页 `/card/p/{slug}` 与「我的名片」`/cards`（列表 / 发布 / 取消发布 / 复制链接）**已落地**；建卡与编辑表单仍缺 |
+| ~~web-aiavatar~~ | ~~`/card` 域全部页面~~ **v0.155 已落地**：公开页 `/card/p/{slug}`（含换装条）、「我的名片」`/cards`、编辑表单 `/cards/{id}/edit`。建卡走 `POST /v1/card/from-avatar`，名字与衣柜从形象自动带过来 |
 | ~~web-ipstudio~~ | ~~工作台里看得到资产与名片~~ **v0.154 已落地**：`/assets` + `/cards` 两个只读页 + 顶栏导航「项目 · 资产 · 名片」。服务端零改动，复用已有读接口 |
 | ~~契约~~ | ~~openapi 补 path~~ **v0.153 已落地**：9 条（card ×8 + prompt-presets ×1），`check:api-contract` 绿 |
 

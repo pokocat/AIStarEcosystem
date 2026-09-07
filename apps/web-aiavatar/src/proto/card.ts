@@ -16,12 +16,30 @@ import { apiFetch, USE_MOCK } from "@/proto/api";
 /** 形象三档。三档都是完整形态，从最低一档就能把名片发出去。 */
 export type CardFigureTier = "static" | "motion" | "voice";
 
+/**
+ * 衣柜里的一件 —— 工作台跑出来的一套装扮或一个表情。
+ *
+ * 访客在名片上点着切换。同样**只存引用**（`look:<id>`），图是服务端出 wire 时
+ * 由 `dapDisplayRef` 解析出来的：资产换了图名片跟着变，资产被删这一件直接从衣柜里消失
+ * （切过去一片空白比不给这个选项更糟）。
+ */
+export interface CardFigureLook {
+  /** dapDisplayRef，通常是 `look:<id>`。 */
+  ref: string;
+  /** 造型名，直接取自工作台的形象卡标题（「日常潮玩装」「表情 · 开心大笑」）。 */
+  label: string;
+  /** 服务端解析出的签名地址；文档里不存。 */
+  imageUrl: string;
+}
+
 export interface CardFigure {
   tier: CardFigureTier;
   /** dapDisplayRef —— 名片存的是引用，不是图。null = 跟随数字人定妆照。 */
   ref: string | null;
   /** 出 wire 时由 CdnUrlSigner 派生的签名地址；文档里只存 cdnKey。 */
   imageUrl: string;
+  /** 可切换的装扮与表情。空 / 缺省 = 只有一张主图，不渲染切换条。 */
+  looks?: CardFigureLook[];
   /** tier=motion：1–3 秒透明 WebP 循环微动。 */
   motionUrl?: string;
   /** tier=voice：口播成片。 */
@@ -118,6 +136,11 @@ const DEMO: CardProfile = {
     tier: "static",
     ref: "look:LK-2041-a",
     imageUrl: "/card/demo-static.jpg",
+    looks: [
+      { ref: "look:LK-2041-a", label: "商务通勤装", imageUrl: "/card/demo-static.jpg" },
+      { ref: "look:LK-2041-b", label: "日常潮玩装", imageUrl: "/card/demo-works.jpg" },
+      { ref: "look:LK-2041-c", label: "表情 · 开心大笑", imageUrl: "/card/demo-contact.jpg" },
+    ],
   },
   offer: {
     give: [

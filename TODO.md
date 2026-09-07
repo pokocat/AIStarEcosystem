@@ -11,7 +11,9 @@
 
 ## 2026-09-07 · 三产品整合 v0.153 后续（真源 `docs/ip-ecosystem-integration.md`）
 
-- [ ] **名片建卡 / 编辑表单没写**：server 写路径（`POST /v1/card`、`PUT /v1/card/{id}`）与 `CardApi.create/save/detail` 都在，前端只有列表（`/cards`）与公开页（`/card/p/{slug}`），**没有任何界面能建一张名片或改内容**。当前只能靠直接调接口。二期做：选形象 → 填字段 → 预览 → 发布。
+- [x] ~~**名片建卡 / 编辑表单没写**~~ **v0.155 完成**，2026-09-07：`POST /v1/card/from-avatar` 一键建草稿（名字与衣柜从形象带过来）+ `/cards/{id}/edit` 编辑表单（基础信息 / 联系方式 / 能提供在找）+ ipstudio 发布弹窗「做成数字名片」。同轮修掉一个更根本的缺陷：**名片的形象引用从来没在读路径上解析过**（`CardService` 没注入 `DapAvatarRefResolver`），真建一张卡是没有形象的 —— 演示名片写死 `imageUrl` 把它盖住了。
+- [ ] **名片长内容还不能编辑**：作品（`works`）、公司（`company`）、媒体（`media`）、履历（`resume`）四段在公开页会渲染，但 `/cards/{id}/edit` 一期只做了首屏字段与联系方式，这四段只能从 `from-avatar` 的空结构起步、改不了。要么补编辑面，要么在公开页对空段落做隐藏（目前空数组不渲染，暂不刺眼）。
+- [ ] **衣柜顺序与取舍不能调**：`figure.looks[]` 由 `from-avatar` 按造型创建时间倒序全量带入，用户不能挑哪几套上名片、也不能排序。造型多了之后右侧条会很长（已加滚动，但不是好体验）。
 - [ ] **发布后自动排队跑短动作**：`IpRunService` 只认 `identity` / `generate`，`DapWorkflowService.createDerivative(avatarId, "video", …)` 又要求先有 `avatarId` —— 短动作只能在 ipstudio 发布**之后**跑，画布里排不了。v0.153 的做法是把三条短动作提示词放进 `prompt-presets` 的 `motion` 组，用户自己去 dap 里生成。要做成一条链需要新写「发布 → 排队跑短动作」的编排。
 - [ ] **形象失效时通知名片主人**：`DapAvatarRefResolver` 已有静默回退（形象被删/授权撤销时回落到已缓存的图），但主人不知道自己的名片降级了。`CardService.affectedByAvatar(avatarId)` 反查已就位，缺的是接到 dap 删除 / 授权撤销事件上并发站内信。
 - [x] ~~**新形象卡的自由提示词进不了模型提示词**~~ **v0.153 当场修掉**，2026-09-07（Codex 评审发现）：`lookText()` 只用于「填没填」的校验，真正拼给模型的提示词在另一处、仍只读五个旧字段 → 用户在新面板写的造型能过校验、不报错，但出的图跟他写的毫无关系。抽出 `lookClauses()` 统一两处，自由 prompt 整段进 `{{outfit}}` 占位符（**不改模板占位符名** —— 运营存过自定义模板的实例才不会渲染不出内容），加回归测试 `freePromptActuallyReachesTheModelPrompt` + `legacyFiveFieldsStillCompileWithoutMigration`。

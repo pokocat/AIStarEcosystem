@@ -117,7 +117,7 @@ export default function MyCardsPage() {
         <div style={{ margin: "12px 16px 0" }}>
           <Card>
             <EmptyState
-              text="还没有名片。先去数字资产挑一个形象，再建一张。"
+              text="还没有名片。去数字资产挑一个形象，在形象详情里一键做成名片 —— 名字和造型会自动带过来。"
               actionHref="/assets"
               actionLabel="去挑形象"
             />
@@ -169,14 +169,24 @@ export default function MyCardsPage() {
                 </>
               ) : (
                 <span style={{
-                  flex: 2, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
+                  flex: 1, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
                   background: "var(--surface-2)", color: "var(--ink-3)",
-                  display: "grid", placeItems: "center", fontSize: 12.5, padding: "0 10px",
+                  display: "grid", placeItems: "center", fontSize: 12, padding: "0 8px",
                   textAlign: "center", lineHeight: 1.3,
                 }}>
-                  发布后才有可以递出去的链接
+                  未发布
                 </span>
               )}
+              <a
+                href={`/cards/${encodeURIComponent(row.id)}/edit`}
+                style={{
+                  flex: 1, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
+                  border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",
+                  display: "grid", placeItems: "center", fontSize: 13.5, fontWeight: 700, textDecoration: "none",
+                }}
+              >
+                编辑
+              </a>
               <button
                 type="button"
                 disabled={busy === row.id}
