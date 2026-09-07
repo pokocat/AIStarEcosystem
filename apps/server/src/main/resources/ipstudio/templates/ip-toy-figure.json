@@ -1,0 +1,317 @@
+{
+  "id": "ip-toy-figure",
+  "name": "潮玩 IP · 一张照片起一整套",
+  "summary": "一张个人正脸照 → 抽人物特征卡 → 定潮玩招牌形象（墨镜 + 棒棒糖）→ 五套变体（拿手机 / 伸舌头 / 吹泡泡 / 撅屁股 / 压腿）→ 一次发布成数字资产。发布之后到数字资产平台生成配套的五条短视频 —— 短动作要有形象才能跑，画布里排不了。",
+  "stylePresetId": "bjd",
+  "lookCount": 5,
+  "estimatedCredits": 114,
+  "doc": {
+    "nodes": [
+      {
+        "id": "n-source",
+        "type": "source",
+        "position": {
+          "x": 0,
+          "y": 420
+        },
+        "data": {}
+      },
+      {
+        "id": "n-identity",
+        "type": "identity",
+        "position": {
+          "x": 300,
+          "y": 420
+        },
+        "data": {
+          "text": "",
+          "promptEn": "",
+          "locked": false
+        }
+      },
+      {
+        "id": "n-style",
+        "type": "style",
+        "position": {
+          "x": 600,
+          "y": 420
+        },
+        "data": {
+          "presetId": "bjd",
+          "name": "3D BJD 潮玩",
+          "promptEn": "3D rendered BJD ball-jointed collectible doll figure, matte vinyl skin, large expressive eyes, studio softbox lighting, clean seamless backdrop, high-detail collectible toy photography",
+          "negativeEn": "no photorealistic human skin, no live-action photo, no plastic seams",
+          "custom": false
+        }
+      },
+      {
+        "id": "n-look-master",
+        "type": "look",
+        "position": {
+          "x": 900,
+          "y": 420
+        },
+        "data": {
+          "title": "招牌造型 · 墨镜棒棒糖",
+          "prompt": "精致的 3D 娃娃质感，黑色齐刘海短发波波头，鼻梁上有标志性的淡黄色创可贴和面部小雀斑。戴一副复古圆形金色边框太阳镜，嘴里俏皮地叼着一支彩色圆头棒棒糖，白色塑料小棒斜斜地伸出嘴唇。全身照，纯色干净的棚拍背景，柔和均匀的灯光。"
+        }
+      },
+      {
+        "id": "n-master",
+        "type": "generate",
+        "position": {
+          "x": 1200,
+          "y": 420
+        },
+        "data": {
+          "count": 4,
+          "size": "768x1024",
+          "isMaster": true
+        }
+      },
+      {
+        "id": "n-look-1",
+        "type": "look",
+        "position": {
+          "x": 1520,
+          "y": -180
+        },
+        "data": {
+          "title": "穿针织衫拿手机",
+          "prompt": "精致的 3D 娃娃质感，黑色齐刘海短发波波头，鼻梁上有标志性的淡黄色创可贴和面部小雀斑。戴一顶潮酷的米白色针织冷帽，帽子上缝着丰富多彩的小布标、笑脸刺绣和花朵徽章等潮流贴布细节；戴一副复古圆形金色边框太阳镜，嘴里俏皮地叼着一支彩色圆头棒棒糖，白色塑料小棒斜斜伸出嘴唇。穿宽松浅驼色露肩针织衫，配高腰破洞浅色牛仔裤和复古厚底老爹鞋。正对镜头正面站立，双手自然放在胸前持着一部智能手机，头部微微低垂，眼睛专注地看着亮起的屏幕，呈现随性自然的正面对视视角。纯色干净的棚拍背景，专业柔和的三点式摄影灯光，凸显针织纹理与材质细节。"
+        }
+      },
+      {
+        "id": "n-gen-1",
+        "type": "generate",
+        "position": {
+          "x": 1840,
+          "y": -180
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-2",
+        "type": "look",
+        "position": {
+          "x": 1520,
+          "y": 60
+        },
+        "data": {
+          "title": "搞怪伸舌头",
+          "prompt": "精致的 3D 娃娃质感，黑色齐刘海短发波波头，鼻梁上有标志性的淡黄色创可贴和面部小雀斑。戴粉色毛线猫耳帽，戴耳环，不戴墨镜。穿藕粉色夏日针织吊带短上衣（露肩露脐），下身浅色针织短裤。站姿，双手交叉在胸前，身体轻微倾斜。夸张调皮的表情：一只眼睛完全闭上，另一只眼睛睁大并斜向一侧看；舌头调皮地卷成 U 型伸出，嘴角上扬露出整齐的牙齿。干净的白色背景。"
+        }
+      },
+      {
+        "id": "n-gen-2",
+        "type": "generate",
+        "position": {
+          "x": 1840,
+          "y": 60
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-3",
+        "type": "look",
+        "position": {
+          "x": 1520,
+          "y": 300
+        },
+        "data": {
+          "title": "吹泡泡",
+          "prompt": "精致的 3D 娃娃质感，黑色齐刘海短发波波头，鼻梁上有标志性的淡黄色创可贴和面部小雀斑。戴耳机，不戴眼镜。穿一套夏日青绿色短款瑜伽服（吊带上衣和高腰骑行裤，无长裤腿），露脐。站姿，双手向上伸展做出合十姿势，身体放松。全神贯注加搞怪的表情：眼神因专注于吹泡泡而有些斗鸡眼，脸颊因用力吹气而高高鼓起，嘴唇紧紧包住泡泡，吹出一个巨大的粉色泡泡糖泡泡。干净的白色背景。"
+        }
+      },
+      {
+        "id": "n-gen-3",
+        "type": "generate",
+        "position": {
+          "x": 1840,
+          "y": 300
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-4",
+        "type": "look",
+        "position": {
+          "x": 1520,
+          "y": 540
+        },
+        "data": {
+          "title": "撅屁股惊讶",
+          "prompt": "精致的 3D 娃娃质感，黑色齐刘海短发波波头，鼻梁上有标志性的淡黄色创可贴和面部小雀斑。去掉墨镜。穿一件明亮夏日的芥末黄超大号 T 恤，下身同色系紧身短裤，配绿色针织中筒袜。身体前倾，将臀部撅起，双手自然放在大腿上。惊讶加搞怪的表情：眼睛睁得大大的、瞳孔缩小、眉毛高高扬起，嘴巴张开成一个完美的圆圈，露出夸张的「哦」字型。干净的白色背景。"
+        }
+      },
+      {
+        "id": "n-gen-4",
+        "type": "generate",
+        "position": {
+          "x": 1840,
+          "y": 540
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-look-5",
+        "type": "look",
+        "position": {
+          "x": 1520,
+          "y": 780
+        },
+        "data": {
+          "title": "压腿拉伸",
+          "prompt": "精致的 3D 娃娃质感，黑色齐刘海短发波波头，鼻梁上有标志性的淡黄色创可贴和面部小雀斑。耳朵上带银色耳钉与耳夹。穿一套纯灰色的夏日运动短款套装（短袖露脐上衣和短裤），侧面带白色条纹。双腿大大分开，一条腿伸直，身体向下压，一只手放在脚踝上，另一只手向上伸展。用力过猛的搞怪表情：双眼紧闭、眉头紧锁，嘴唇紧紧抿成一条直线、嘴角向上拉，露出夸张的因用力而咬牙切齿的滑稽表情。干净的白色背景。"
+        }
+      },
+      {
+        "id": "n-gen-5",
+        "type": "generate",
+        "position": {
+          "x": 1840,
+          "y": 780
+        },
+        "data": {
+          "count": 2,
+          "size": "768x1024",
+          "isMaster": false
+        }
+      },
+      {
+        "id": "n-publish",
+        "type": "publish",
+        "position": {
+          "x": 2200,
+          "y": 420
+        },
+        "data": {
+          "avatarName": ""
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-n-source-n-identity",
+        "source": "n-source",
+        "target": "n-identity"
+      },
+      {
+        "id": "e-n-identity-n-style",
+        "source": "n-identity",
+        "target": "n-style"
+      },
+      {
+        "id": "e-n-style-n-look-master",
+        "source": "n-style",
+        "target": "n-look-master"
+      },
+      {
+        "id": "e-n-look-master-n-master",
+        "source": "n-look-master",
+        "target": "n-master"
+      },
+      {
+        "id": "e-n-master-n-look-1",
+        "source": "n-master",
+        "target": "n-look-1"
+      },
+      {
+        "id": "e-n-look-1-n-gen-1",
+        "source": "n-look-1",
+        "target": "n-gen-1"
+      },
+      {
+        "id": "e-n-master-n-look-2",
+        "source": "n-master",
+        "target": "n-look-2"
+      },
+      {
+        "id": "e-n-look-2-n-gen-2",
+        "source": "n-look-2",
+        "target": "n-gen-2"
+      },
+      {
+        "id": "e-n-master-n-look-3",
+        "source": "n-master",
+        "target": "n-look-3"
+      },
+      {
+        "id": "e-n-look-3-n-gen-3",
+        "source": "n-look-3",
+        "target": "n-gen-3"
+      },
+      {
+        "id": "e-n-master-n-look-4",
+        "source": "n-master",
+        "target": "n-look-4"
+      },
+      {
+        "id": "e-n-look-4-n-gen-4",
+        "source": "n-look-4",
+        "target": "n-gen-4"
+      },
+      {
+        "id": "e-n-master-n-look-5",
+        "source": "n-master",
+        "target": "n-look-5"
+      },
+      {
+        "id": "e-n-look-5-n-gen-5",
+        "source": "n-look-5",
+        "target": "n-gen-5"
+      },
+      {
+        "id": "e-n-master-n-publish",
+        "source": "n-master",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-1-n-publish",
+        "source": "n-gen-1",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-2-n-publish",
+        "source": "n-gen-2",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-3-n-publish",
+        "source": "n-gen-3",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-4-n-publish",
+        "source": "n-gen-4",
+        "target": "n-publish"
+      },
+      {
+        "id": "e-n-gen-5-n-publish",
+        "source": "n-gen-5",
+        "target": "n-publish"
+      }
+    ],
+    "viewport": {
+      "x": 40,
+      "y": 40,
+      "zoom": 0.5
+    }
+  }
+}

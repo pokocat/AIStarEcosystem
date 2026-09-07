@@ -277,6 +277,16 @@ export const CardApi = {
   remove: (id: string) =>
     USE_MOCK ? mockBlocked<{ deleted: boolean }>() : apiFetch<{ deleted: boolean }>(`/card/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
+  /**
+   * 从形象一键建卡（草稿）。名字与整柜造型由服务端从形象带过来 ——
+   * 用户已经给形象起过名、跑过一套装扮和表情，不该再填一遍。
+   */
+  fromAvatar: (avatarId: string) =>
+    USE_MOCK ? mockBlocked<CardSummary>() : apiFetch<CardSummary>("/card/from-avatar", {
+      method: "POST",
+      body: JSON.stringify({ avatarId }),
+    }),
+
   /** 某个数字人形象被哪些名片用了 —— 资产详情页的「被用在哪」。 */
   byAvatar: (avatarId: string) =>
     USE_MOCK ? Promise.resolve([] as CardSummary[]) : apiFetch<CardSummary[]>(`/card/by-avatar/${encodeURIComponent(avatarId)}`),

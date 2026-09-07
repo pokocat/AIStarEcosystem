@@ -86,15 +86,9 @@ export function CanvasShell({ projectId }: { projectId: string }) {
     return <EnrollmentGate product="aiavatar" productLabel="数字资产平台" onActivated={fetchAll} theme={ENROLL_THEME} />;
   }
 
-  if (phase === "loading" || loadedId !== projectId) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--primary)" }} />
-        <p className="text-[12.5px]" style={{ color: "var(--ink-3)" }}>正在打开画布…</p>
-      </div>
-    );
-  }
-
+  // 错误分支必须排在加载分支**前面**：加载失败时 loadedId 永远等不到 projectId，
+  // 而下面的加载分支带着 `loadedId !== projectId` 这一条 —— 排在前面就把错误吃掉了，
+  // 用户看到的是「正在打开画布…」转到天荒地老，连重试按钮都没有。
   if (phase === "error") {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 px-8 text-center">
@@ -107,6 +101,15 @@ export function CanvasShell({ projectId }: { projectId: string }) {
         >
           重新加载
         </button>
+      </div>
+    );
+  }
+
+  if (phase === "loading" || loadedId !== projectId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--primary)" }} />
+        <p className="text-[12.5px]" style={{ color: "var(--ink-3)" }}>正在打开画布…</p>
       </div>
     );
   }

@@ -137,7 +137,8 @@ export default function CardsPage() {
               <div className="asset-name text-[17px] mb-2">还没有名片</div>
               <p className="text-[13.5px] leading-[1.75] mb-4" style={{ color: "var(--ink-2)" }}>
                 名片要先有一个形象。在项目里跑完一套形象、点「发布」登记成数字资产，
-                再到数字资产平台上建一张名片 —— 之后见客户扫码就能打开。
+                再到<b style={{ color: "var(--ink)" }}>资产页打开那个形象</b>，
+                在「名片」那一节点「做成数字名片」—— 名字和整柜造型会自动带过去。
               </p>
               <div className="flex gap-2 justify-center flex-wrap">
                 <Link
@@ -145,17 +146,15 @@ export default function CardsPage() {
                   className="inline-flex h-9 px-4 rounded-[9px] text-[13.5px] font-semibold items-center"
                   style={{ background: "var(--surface-2)", color: "var(--ink)" }}
                 >
-                  看我的形象
+                  去资产页挑形象
                 </Link>
-                <a
-                  href={`${AIAVATAR_URL}/cards`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex h-9 px-4 rounded-[9px] text-[13.5px] font-semibold items-center gap-1.5"
+                <Link
+                  href="/projects"
+                  className="inline-flex h-9 px-4 rounded-[9px] text-[13.5px] font-semibold items-center"
                   style={{ background: "var(--primary)", color: "var(--on-primary)" }}
                 >
-                  去建一张 <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                  去做一个形象
+                </Link>
               </div>
             </div>
           </div>

@@ -34,6 +34,7 @@ public class IpCatalogService {
     private static final String PROMPTS_RESOURCE = "ipstudio/prompt-presets.json";
     /** 模板文件清单（ClassPathResource 不能列目录，故显式登记；新增模板同时加一行）。 */
     private static final List<String> TEMPLATE_RESOURCES = List.of(
+            "ipstudio/templates/ip-toy-figure.json",
             "ipstudio/templates/ip-launch-female.json",
             "ipstudio/templates/ip-launch-male.json",
             "ipstudio/templates/portrait-bjd-trio.json",

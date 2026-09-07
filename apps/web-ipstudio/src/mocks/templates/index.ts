@@ -17,11 +17,13 @@
 import type { IpTemplate } from "@ai-star-eco/types";
 import bjdTrio from "./portrait-bjd-trio.json";
 import stickerSix from "./portrait-sticker-six.json";
+import ipToyFigure from "./ip-toy-figure.json";
 import ipLaunchFemale from "./ip-launch-female.json";
 import ipLaunchMale from "./ip-launch-male.json";
 
 /** 服务端 `GET /v1/ip-studio/templates` 的等价物。 */
 export const SERVER_TEMPLATES: IpTemplate[] = [
+  ipToyFigure as unknown as IpTemplate,
   ipLaunchFemale as unknown as IpTemplate,
   ipLaunchMale as unknown as IpTemplate,
   bjdTrio as unknown as IpTemplate,

@@ -320,9 +320,7 @@ function AvatarDetail({ avatar }: { avatar: DapAvatar }) {
         {cards.s === "loading" ? <Skeleton /> : cards.s === "err" ? (
           <Failed msg={cards.msg} onRetry={retry} />
         ) : cards.v.length === 0 ? (
-          <Empty>
-            这个形象还没做成名片。名片是形象的对外发布面 —— 递一条链接出去，对方不用注册就能看。
-          </Empty>
+          <MakeCard avatarId={avatar.id} onDone={retry} />
         ) : (
           <div className="flex flex-col gap-2">
             {cards.v.map((c) => (
@@ -435,6 +433,53 @@ function Skeleton() {
   return (
     <div className="h-16 rounded-[11px] grid place-items-center" style={{ background: "var(--surface-2)" }}>
       <Loader2 className="w-4 h-4 animate-spin" style={{ color: "var(--ink-4)" }} />
+    </div>
+  );
+}
+
+/**
+ * 「做成数字名片」—— 空态必须能往下走。
+ *
+ * 名片建卡的唯一起点是形象（名字和整柜造型才有得带），所以入口就该长在这儿；
+ * 只说一句「还没做成名片」而不给路，人就只能自己去另一个站从零翻。
+ */
+function MakeCard({ avatarId, onDone }: { avatarId: string; onDone: () => void }) {
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  const make = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await AssetsApi.createCardFromAvatar(avatarId);
+      // 建的是草稿，联系方式还得填 —— 送到名片列表去接着做
+      const win = window.open(`${AIAVATAR_URL}/cards`, "_blank", "noopener");
+      if (!win) setErr("名片已建好，浏览器拦了新窗口，去数字资产平台的「我的名片」里填联系方式");
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "建卡没成功，稍后再试");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="px-3 py-3 rounded-[11px]" style={{ background: "var(--surface-2)" }}>
+      <div className="text-[13px] leading-[1.7] mb-2.5" style={{ color: "var(--ink-2)" }}>
+        这个形象还没做成名片。名字和它的整柜造型能自动带过去，访客点着换装看，你只要再填联系方式。
+      </div>
+      <button
+        onClick={() => void make()}
+        disabled={busy}
+        className="h-8 px-3.5 rounded-lg text-[12.5px] font-bold inline-flex items-center gap-1.5 transition hover:brightness-95 disabled:opacity-60"
+        style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+      >
+        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <IdCard className="w-3.5 h-3.5" />}
+        {busy ? "建卡中" : "做成数字名片"}
+      </button>
+      {err && (
+        <div className="mt-2 text-[12px]" style={{ color: "var(--err)", overflowWrap: "anywhere" }}>{err}</div>
+      )}
     </div>
   );
 }

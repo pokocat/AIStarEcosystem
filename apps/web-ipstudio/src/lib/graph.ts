@@ -240,9 +240,13 @@ export function canConnect(doc: IpProjectDoc, source: string, target: string): b
   // 照片 / 参考图的内容来自上传，没有上游
   if (t.type === "source" || t.type === "reference") return false;
   if (t.type === "identity") return s.type === "source";
-  // 风格挂在链上（模板是特征卡之后），形象卡挂在主形象之后
+  // 风格挂在链上（模板是特征卡之后）
   if (t.type === "style") return s.type === "source" || s.type === "identity";
-  if (t.type === "look") return s.type === "generate";
+  // 形象卡通常挂在主形象之后（拿主形象当身份锚出变体）；
+  // 但**主形象自己也有一套造型**（潮玩模板的「墨镜 + 棒棒糖」就是招牌脸），
+  // 那一张挂在风格之后。这不会污染下游：形象卡的向上跳数上限是 2，
+  // 下游出图节点最多走到主形象，看不到主形象上面那张形象卡（ANCESTOR_DEPTH.look）。
+  if (t.type === "look") return s.type === "generate" || s.type === "style";
   return true;
 }
 

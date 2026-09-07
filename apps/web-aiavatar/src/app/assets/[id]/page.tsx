@@ -9,8 +9,10 @@
 // ============================================================
 import React, { use as usePromise, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AvatarApi, ComposeApi, DATA, LicenseApi } from "@/proto/api";
 import { CardApi, type CardSummary } from "@/proto/card";
+import type { AsyncState } from "@/components/hub/data";
 import type { Avatar, AvatarReference, Composition, License } from "@/proto/data";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
@@ -433,6 +435,13 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
         </div>
       )}
 
+      {/* ── 做成名片 ───────────────────────────────── */}
+      {/* 名片建卡链路的**唯一起点**：从形象出发，名字和整柜造型才有得带。
+          此前「我的名片」空态让人来挑形象，挑完这里却没有建卡入口 —— 链就断在这儿。 */}
+      <div style={{ margin: "18px 16px 0" }}>
+        <MakeCardCard avatarId={c.id} cards={cards} />
+      </div>
+
       {/* ── 被用在哪 ───────────────────────────────── */}
       <div style={{ margin: "18px 16px 0" }}>
         <SectionHeader title="被用在哪" count={usageKnown ? usedIn.length : undefined} />
@@ -461,5 +470,71 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
         </Link>
       </div>
     </HubScreen>
+  );
+}
+
+/**
+ * 「做成数字名片」—— 已经有名片就给入口，没有就给建卡按钮。
+ *
+ * 建出来的是草稿：名字和整柜造型由服务端从形象带过来，用户只剩联系方式要填，
+ * 所以建完直接送去编辑页，不让他自己找。
+ */
+function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState<CardSummary[]> }) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  const make = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const card = await CardApi.fromAvatar(avatarId);
+      router.push(`/cards/${encodeURIComponent(card.id)}/edit`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "建卡没成功，稍后再试");
+      setBusy(false);
+    }
+  };
+
+  const existing = cards.data[0];
+
+  return (
+    <Card pad={16}>
+      <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 6 }}>数字名片</div>
+      <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--ink-2)", marginBottom: 12 }}>
+        {existing
+          ? "这个形象已经有名片了。访客打开就能点着切换装扮和表情。"
+          : "把这个形象做成一张名片：名字和它的整柜造型自动带过去，访客能点着换装看，你只要再填联系方式。"}
+      </div>
+      {existing ? (
+        <Link
+          href={`/cards/${encodeURIComponent(existing.id)}/edit`}
+          style={{
+            display: "grid", placeItems: "center", height: 44, borderRadius: "var(--r-md)",
+            border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",
+            fontSize: 14, fontWeight: 700, textDecoration: "none",
+          }}
+        >
+          去编辑名片
+        </Link>
+      ) : (
+        <button
+          type="button"
+          disabled={busy || cards.loading}
+          onClick={() => void make()}
+          style={{
+            width: "100%", height: 44, borderRadius: "var(--r-md)", border: "none",
+            background: "var(--ink)", color: "#fff", fontFamily: "inherit",
+            fontSize: 14, fontWeight: 700, cursor: busy ? "default" : "pointer",
+            opacity: busy || cards.loading ? .6 : 1,
+          }}
+        >
+          {busy ? "建卡中" : "做成数字名片"}
+        </button>
+      )}
+      {err && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--err)", overflowWrap: "anywhere" }}>{err}</div>
+      )}
+    </Card>
   );
 }

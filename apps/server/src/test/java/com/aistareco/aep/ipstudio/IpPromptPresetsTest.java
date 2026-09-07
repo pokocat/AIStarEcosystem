@@ -68,23 +68,33 @@ class IpPromptPresetsTest {
         }
     }
 
+    /**
+     * 「除了要改的那一样，其余锁死」的说法不止一种：
+     * 表情组说「与主形象完全一致」，短动作组说「严格保持参考图原有的构图 / 镜头完全静止 / 严禁裁切」。
+     * 断言只认一种措辞会把正确的提示词判红，所以这里认一组等价说法 ——
+     * 但**必须有**，一条都不带就是没锁，成套用出来的图会各穿各的。
+     */
+    private static final List<String> LOCK_PHRASES = List.of(
+            "与主形象完全一致", "严格保持", "保持参考图", "镜头完全静止", "镜头全程", "严禁裁切", "构图不变");
+
     @Test
     void expressionAndMotionLockTheRest() {
-        // 这两组能成套用的前提：只改表情 / 动作，服装机位光线锁死。
         for (String gid : List.of("expression", "motion")) {
             for (IpPromptPresetDto p : group(gid).presets()) {
-                assertTrue(p.prompt().contains("与主形象完全一致"),
-                        gid + "/" + p.id() + " 没锁死服装 / 机位 / 光线");
+                assertTrue(LOCK_PHRASES.stream().anyMatch(p.prompt()::contains),
+                        gid + "/" + p.id() + " 没锁死服装 / 机位 / 构图，成套用会各穿各的");
             }
         }
     }
 
     @Test
     void motionPresetsDeclareDuration() {
-        // 短动作要产出 2–3 秒循环，时长是给视频衍生链路的参数，不能缺。
+        // 时长是给视频衍生链路的参数，不能缺。上限放到 10 秒 ——
+        // 开屏打招呼那条是 8 秒的完整分镜（转体必须连续平滑），不是循环微动。
         for (IpPromptPresetDto p : group("motion").presets()) {
             assertNotNull(p.durationSec(), "motion/" + p.id() + " 缺时长");
-            assertTrue(p.durationSec() >= 1 && p.durationSec() <= 3, "短动作应在 1–3 秒");
+            assertTrue(p.durationSec() >= 1 && p.durationSec() <= 10,
+                    "motion/" + p.id() + " 时长 " + p.durationSec() + " 秒超出 1–10 秒");
         }
     }
 

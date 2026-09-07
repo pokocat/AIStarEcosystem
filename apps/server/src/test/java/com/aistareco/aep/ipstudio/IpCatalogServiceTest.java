@@ -31,7 +31,7 @@ class IpCatalogServiceTest {
         List<IpTemplateDto> templates = catalog.templates();
         // 顺序即首页展示顺序：「IP 打造」是主推工作流，排在两套单点模板前面。
         // JSON 打错一个逗号 → 目录里静默少一条（loadTemplates 只 WARN 不抛），所以这里逐条钉死。
-        assertEquals(List.of("ip-launch-female", "ip-launch-male", "portrait-bjd-trio", "portrait-sticker-six"),
+        assertEquals(List.of("ip-toy-figure", "ip-launch-female", "ip-launch-male", "portrait-bjd-trio", "portrait-sticker-six"),
                 templates.stream().map(IpTemplateDto::id).toList(),
                 "内置工作流少了或顺序变了");
         for (IpTemplateDto t : templates) {
@@ -68,9 +68,14 @@ class IpCatalogServiceTest {
             }
 
             // 形象卡数量与 lookCount 对得上，且每张都有 generate 节点接着
-            long looks = IpDocs.nodes(doc).stream()
-                    .filter(n -> IpDocs.T_LOOK.equals(IpDocs.typeOf(n))).count();
-            assertEquals(t.lookCount(), looks, t.id() + " 的 lookCount 与实际形象卡数量不符");
+            // lookCount 数的是**发布时会登记成 DapLook 的那些**，也就是非主形象的出图节点
+            // （IpPublishService 的 lookNodeIds 指的是 generate 节点）。
+            // 不能拿形象卡节点数当代理：主形象自己也可以挂一张招牌造型（潮玩模板就是），
+            // 那张不额外产出一条 DapLook。
+            long publishedLooks = IpDocs.nodes(doc).stream()
+                    .filter(n -> IpDocs.T_GENERATE.equals(IpDocs.typeOf(n)))
+                    .filter(n -> !IpDocs.dataOf(n).path("isMaster").asBoolean(false)).count();
+            assertEquals(t.lookCount(), publishedLooks, t.id() + " 的 lookCount 与实际出图节点数不符");
 
             long masters = IpDocs.nodes(doc).stream()
                     .filter(n -> IpDocs.T_GENERATE.equals(IpDocs.typeOf(n)))

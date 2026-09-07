@@ -21,7 +21,7 @@ import {
 /** 服务端模板真源目录（副本在 src/mocks/templates，见那里的说明）。 */
 const SERVER_TEMPLATE_DIR = resolve(__dirname, "../../../server/src/main/resources/ipstudio/templates");
 
-const TEMPLATE_IDS = ["ip-launch-female", "ip-launch-male", "portrait-bjd-trio", "portrait-sticker-six"] as const;
+const TEMPLATE_IDS = ["ip-toy-figure", "ip-launch-female", "ip-launch-male", "portrait-bjd-trio", "portrait-sticker-six"] as const;
 
 function template(id: string): IpTemplate {
   const found = SERVER_TEMPLATES.find((t) => t.id === id);
@@ -119,6 +119,24 @@ describe("输入闸门（missingInputsForRun）", () => {
 });
 
 describe("上游收集（collectGenerateInputs）", () => {
+  it("主形象自己的造型不会漏到下游变体上", () => {
+    // 潮玩模板把「墨镜 + 棒棒糖」这张招牌造型挂在主形象前面。
+    // 它必须只作用于主形象 —— 漏下去的话，五套变体会全都戴着墨镜叼着棒棒糖，
+    // 而用户在变体的形象卡里明明写了「去掉墨镜」。靠的是形象卡向上跳数上限 2。
+    const doc = template("ip-toy-figure").doc;
+    const master = collectGenerateInputs(doc, "n-master");
+    expect(master.look?.id).toBe("n-look-master");
+
+    for (const gid of ["n-gen-1", "n-gen-2", "n-gen-3", "n-gen-4", "n-gen-5"]) {
+      const got = collectGenerateInputs(doc, gid);
+      expect(got.look?.id, `${gid} 应当只看到自己那张形象卡`).toBe(gid.replace("gen", "look"));
+      // 特征卡与风格仍然要能穿过主形象拿到（它们的跳数上限是 8）
+      expect(got.identity?.id, `${gid} 缺特征卡`).toBe("n-identity");
+      expect(got.style?.id, `${gid} 缺风格`).toBe("n-style");
+    }
+  });
+
+
   it("出图节点的直接父节点只有形象卡 —— 只看直接父节点必然误报缺特征卡/缺风格", () => {
     const doc = readyDoc("portrait-bjd-trio");
     expect(upstream(doc, "n-gen-1").map((n) => n.type)).toEqual(["look"]);

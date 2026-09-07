@@ -23,6 +23,14 @@ export const MOCK_AVATARS: DapAvatar[] = [
     license: null, engine: "agnes-image", versions: 1, imageUrl: null,
     variantImages: [], ipId: null,
   },
+  // 刻意留一个**没有名片**的形象：「还没做成名片」那条空态是名片建卡的唯一入口，
+  // 如果每个样例形象都已经有卡，这条路径在 mock 里就永远走不到（真踩过）。
+  {
+    id: "DH-2052", name: "阿岚", codename: "A-LAN", path: "ai", archetype: "潮玩少女",
+    tagline: "还没做过名片的那个", status: "finalized", updated: "3 天前", fav: false,
+    license: null, engine: "agnes-image", versions: 2, imageUrl: null,
+    variantImages: [], ipId: null,
+  },
 ];
 
 export const MOCK_LOOKS: Record<string, DapLook[]> = {
@@ -36,11 +44,17 @@ export const MOCK_LOOKS: Record<string, DapLook[]> = {
   ],
 };
 
+MOCK_LOOKS["DH-2052"] = [
+  { id: "LK-8821", avatarId: "DH-2052", label: "日常潮玩装", source: "design", status: "ready", imageUrl: null, createdAt: "2026-09-04T09:00:00Z" },
+  { id: "LK-8822", avatarId: "DH-2052", label: "表情 · 惊讶", source: "design", status: "ready", imageUrl: null, createdAt: "2026-09-04T09:02:00Z" },
+];
+
 export const MOCK_DERIVATIVES: Record<string, DapDerivative[]> = {
   "DH-2041": [
     { id: "DV-501", avatarId: "DH-2041", key: "video", idx: 0, kind: "video", label: "打招呼挥手", spec: "2s · 循环", thumbUrl: null, createdAt: "2026-09-07T03:00:00Z" },
   ],
   "DH-2044": [],
+  "DH-2052": [],
 };
 
 export const MOCK_CARDS: CardSummary[] = [
@@ -57,7 +71,7 @@ export const MOCK_CARDS: CardSummary[] = [
 export const MOCK_ASSET_SUMMARY: AssetSummary = {
   totalCount: 9, totalBytes: 184_320_000, totalSizeLabel: "176 MB",
   types: [
-    { key: "character", label: "人物", prefix: "DH", count: 2 },
+    { key: "character", label: "人物", prefix: "DH", count: 3 },
     { key: "ip", label: "品牌 IP", prefix: "IP", count: 0 },
     { key: "scene", label: "场景", prefix: "SC", count: 3 },
     { key: "product", label: "产品", prefix: "PD", count: 0 },
