@@ -27,6 +27,7 @@ function LoginInner() {
           brandLabel="数字资产平台"
           tagline="登录由账号中心统一处理，一个账号通行全部产品。"
           postLoginPath={next}
+          alreadyAuthenticated={auth.isAuthed()}
           theme={{
             bg: "var(--canvas)",
             surface: "var(--surface)",
