@@ -8,19 +8,37 @@
 /* React Flow 画布基础样式 */
 @import '@xyflow/react/dist/style.css';
 
+/* 字体：**必须写字面量**。这三个 token 名与 tokens.css 里的同名，写成
+   `@theme inline { --font-sans: var(--font-sans) }` 会变成变量自引用。
+   而且不能只留 @theme 一处 —— `@ai-star-eco/ui/styles/globals.css`（上面第 5 行）
+   在 :root 里把 `--font-sans` 定成了 Inter，只有最后导入的 tokens.css 才盖得住它。
+   所以字体是唯一允许两处并存的一组值，改动时两处同改。 */
 @theme {
   --font-sans: "Manrope", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Newsreader", "Songti SC", "Noto Serif SC", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 
-  --color-canvas: #f7f9fb;
-  --color-surface: #ffffff;
-  --color-ink: #14202b;
-  --color-ink-2: #5a6873;
-  --color-ink-3: #8a96a1;
-  --color-line: #ebeff3;
-  --color-line-2: #e0e6ec;
-  --color-primary: #12b3de;
+/* 颜色：`@theme inline` + var 别名 —— Tailwind 调色板直接指向 tokens.css 的运行时变量，
+   **本文件不再复制任何 hex**。色值单一真源 = src/styles/tokens.css（文档真源 design.md）。
+   名字故意与 token 不同（`--color-ink` ↔ `--ink`），所以不存在自引用。 */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-primary: var(--primary);
+  --color-primary-700: var(--primary-700);
+  --color-primary-900: var(--blue-900);
+  --color-action: var(--action);
+  --color-action-600: var(--action-600);
+  --color-action-700: var(--action-700);
 }
 
 /* ── 工具 ─────────────────────────────────────────────────────────────────── */
@@ -52,7 +70,7 @@
 /* 编号 / 记录号排版（等宽 + 字距） */
 @utility reg {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -67,10 +85,10 @@
   line-height: 1.1;
 }
 
-/* 小标签（等宽大写） */
+/* 小标签（等宽大写）—— 属性面板的辅助字段标签下限 12px（design.md §5） */
 @utility field-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -79,6 +97,107 @@
 
 @utility tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* ── landing 专用 ─────────────────────────────────────────────────────────── */
+
+/* 纸标签：麦黄小牌 + 墨字 + 深一档麦黄边（墨 on 麦黄 = 9.5:1） */
+@utility paper-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 13px;
+  border-radius: 4px;
+  background: var(--action);
+  border: 1px solid var(--action-line);
+  box-shadow: var(--shadow-hair);
+  color: var(--on-action);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* 麦黄块上的纸标签：换成纸白底，否则麦黄压麦黄看不见 */
+@utility paper-tag-light {
+  background: var(--paper);
+  border-color: var(--paper-line);
+  color: var(--ink);
+}
+
+/* 作品图裁切格：外框保持 1:1，内容由 background-position 选中图集里的一格 */
+@utility atlas-cell {
+  aspect-ratio: 1 / 1;
+  background-repeat: no-repeat;
+  background-color: var(--surface-3);
+  overflow: hidden;
+}
+
+/* 错落：只在 ≥768px 生效，移动端一律摆正，避免旋转把卡片顶出视口。
+   克制到三档，且只给 landing 的作品纸卡用（不上工作台控件）。 */
+.tilt-a,
+.tilt-b,
+.tilt-c {
+  transform: none;
+}
+
+@media (min-width: 768px) {
+  .tilt-a { transform: rotate(-1.8deg); }
+  .tilt-b { transform: rotate(2.2deg); }
+  .tilt-c { transform: rotate(-1.2deg); }
+}
+
+/* ── 英雄区拼贴 ─────────────────────────────────────────────────────────────
+   移动端：一张大竖主卡占满宽，两张小竖侧卡并排在下。
+   ≥768px：改成**绝对定位的重叠拼贴** —— 主卡大竖幅在左，两张小竖侧卡在右上/右下并互相压边。
+   每张卡的纸标签都定位在**自己这张卡**上（不再挂在 grid 单元格上，所以不会悬空）。
+   容器用 aspect-ratio 撑高度，纯 CSS 响应式、不依赖 JS 量高。 */
+.hero-collage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.hero-collage .shot-main {
+  grid-column: span 2;
+}
+
+@media (min-width: 768px) {
+  .hero-collage {
+    display: block;
+    position: relative;
+    aspect-ratio: 1 / 1.06;
+  }
+
+  .hero-collage > * {
+    position: absolute;
+  }
+
+  .hero-collage .shot-main {
+    left: 0;
+    top: 4%;
+    width: 56%;
+    z-index: 2;
+  }
+
+  .hero-collage .shot-side-a {
+    right: 0;
+    top: 0;
+    width: 46%;
+    z-index: 1;
+  }
+
+  .hero-collage .shot-side-b {
+    right: 2%;
+    top: 50%;
+    width: 36%;
+    z-index: 3;
+  }
+}
+
+/* 深底区块：底为群青，正文走纸白 */
+.on-blue {
+  color: var(--paper);
 }
 
 /* ── React Flow 视觉适配 ─────────────────────────────────────────────────── */
@@ -141,4 +260,20 @@
 
 .react-flow__attribution a {
   color: var(--ink-4);
+}
+
+/* ── 无障碍：尊重系统「减少动态效果」 ───────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

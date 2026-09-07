@@ -26,8 +26,8 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           surface: "var(--surface)",
           fg: "var(--ink)",
           fgMuted: "var(--ink-2)",
-          accent: "var(--primary)",
-          accentFg: "var(--on-primary)",
+          accent: "var(--accent)",
+          accentFg: "var(--accent-fg)",
           border: "var(--line-2)",
           radius: "15px",
         }}
@@ -37,27 +37,33 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: "var(--canvas)" }}>
+      {/* 品牌顶栏：与 landing 同一条深群青，紧接其下的工作面保持浅色（design.md §6） */}
       <header
-        className="shrink-0 flex items-center justify-between px-5 h-[52px] sticky top-0 z-30"
-        style={{ background: "rgba(255,255,255,0.88)", backdropFilter: "blur(12px)", borderBottom: "1px solid var(--line)" }}
+        className="on-blue shrink-0 flex items-center justify-between px-5 h-[52px] sticky top-0 z-30"
+        style={{ background: "var(--blue-800)", borderBottom: "1px solid var(--on-blue-line)" }}
       >
         <Link href="/projects" className="flex items-baseline gap-2.5 min-w-0">
-          <span className="asset-name text-[17px] truncate" style={{ color: "var(--ink)" }}>AI IP 工作台</span>
-          <span className="reg hidden sm:inline">IP STUDIO</span>
+          <span className="asset-name text-[17px] truncate" style={{ color: "var(--on-blue)" }}>AI IP 工作台</span>
+          <span
+            className="hidden sm:inline text-[10px] font-semibold tracking-[0.12em]"
+            style={{ fontFamily: "var(--font-mono)", color: "var(--action)" }}
+          >
+            IP STUDIO
+          </span>
         </Link>
         <div className="flex items-center gap-3 shrink-0">
           {user?.displayName || user?.username ? (
-            <span className="text-[12px] max-w-[10rem] truncate" style={{ color: "var(--ink-2)" }}>
+            <span className="text-[12px] max-w-[10rem] truncate" style={{ color: "var(--on-blue-2)" }}>
               {user.displayName || user.username}
             </span>
           ) : null}
           <button
             onClick={() => { AuthApi.logout(); logout(); }}
-            className="p-1 transition hover:opacity-70"
+            className="p-1 rounded transition hover:opacity-75"
             title="退出登录"
             aria-label="退出登录"
           >
-            <LogOut className="w-4 h-4" style={{ color: "var(--ink-3)" }} />
+            <LogOut className="w-4 h-4" style={{ color: "var(--on-blue)" }} />
           </button>
         </div>
       </header>

@@ -97,7 +97,7 @@ export default function ProjectsPage() {
         onActivated={load}
         theme={{
           bg: "var(--canvas)", surface: "var(--surface)", fg: "var(--ink)",
-          fgMuted: "var(--ink-2)", accent: "var(--primary)", accentFg: "var(--on-primary)",
+          fgMuted: "var(--ink-2)", accent: "var(--accent)", accentFg: "var(--accent-fg)",
           border: "var(--line-2)", radius: "15px",
         }}
       />
@@ -197,8 +197,8 @@ export default function ProjectsPage() {
             <p className="text-[13px] mb-4" style={{ color: "var(--ink-2)" }}>{loadError}</p>
             <button
               onClick={() => void load()}
-              className="px-4 py-2 rounded-xl text-[13px] font-semibold"
-              style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+              className="px-4 py-2 rounded-xl text-[13px] font-semibold transition hover:brightness-95"
+              style={{ background: "var(--action)", color: "var(--on-action)" }}
             >
               重新加载
             </button>
@@ -236,7 +236,7 @@ export default function ProjectsPage() {
                       className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold"
                       style={p.status === "published"
                         ? { background: "var(--ok-soft)", color: "var(--ok)" }
-                        : { background: "rgba(255,255,255,0.9)", color: "var(--ink-2)" }}
+                        : { background: "var(--img-chip)", color: "var(--ink)" }}
                     >
                       {p.status === "published" ? "已发布" : "草稿"}
                     </span>
@@ -289,7 +289,7 @@ export default function ProjectsPage() {
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); void confirmDelete(); }}
               disabled={deleting}
-              style={{ background: "var(--err)", color: "#fff" }}
+              style={{ background: "var(--err)", color: "var(--on-primary)" }}
             >
               {deleting ? "删除中…" : "确认删除"}
             </AlertDialogAction>

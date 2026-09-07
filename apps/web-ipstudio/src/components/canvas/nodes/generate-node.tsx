@@ -62,7 +62,7 @@ export function GenerateNode({ data }: NodeProps<IpFlowNode>) {
               <div key={c.key} className="relative rounded-md overflow-hidden aspect-[3/4]" style={{ background: "var(--surface-3)" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={c.url} alt="" className="w-full h-full object-cover" />
-                <span className="absolute bottom-0 right-0 px-1 text-[8px] font-bold tabular" style={{ background: "rgba(255,255,255,0.85)", color: "var(--ink-2)" }}>
+                <span className="absolute bottom-0 right-0 px-1 text-[8px] font-bold tabular" style={{ background: "var(--img-chip)", color: "var(--ink)" }}>
                   {i + 1}
                 </span>
               </div>

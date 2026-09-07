@@ -40,7 +40,7 @@ const AUTOSAVE_DELAY_MS = 1200;
 
 const ENROLL_THEME = {
   bg: "var(--canvas)", surface: "var(--surface)", fg: "var(--ink)",
-  fgMuted: "var(--ink-2)", accent: "var(--primary)", accentFg: "var(--on-primary)",
+  fgMuted: "var(--ink-2)", accent: "var(--accent)", accentFg: "var(--accent-fg)",
   border: "var(--line-2)", radius: "15px",
 } as const;
 
@@ -99,8 +99,8 @@ export function CanvasShell({ projectId }: { projectId: string }) {
         <p className="text-[13px] max-w-sm" style={{ color: "var(--ink-2)" }}>{errorText}</p>
         <button
           onClick={() => void fetchAll()}
-          className="px-4 py-2 rounded-xl text-[12.5px] font-bold"
-          style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+          className="px-4 py-2 rounded-xl text-[12.5px] font-bold transition hover:brightness-95"
+          style={{ background: "var(--action)", color: "var(--on-action)" }}
         >
           重新加载
         </button>
@@ -525,15 +525,18 @@ function CanvasWorkspace({
             nodesConnectable
             elevateNodesOnSelect
           >
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="#cfd7df" />
+            {/* 颜色一律走 token（SVG 的 fill/stroke 按 CSS 属性解析，var() 有效），
+                画布里不留写死色值。 */}
+            <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="var(--line-3)" />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable nodeColor="#e0e6ec" maskColor="rgba(247,249,251,0.72)" />
+            <MiniMap pannable zoomable nodeColor="var(--line-2)" maskColor="var(--canvas-mask)" />
           </ReactFlow>
 
           {doc.nodes.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-8">
-              <p className="asset-name text-[20px] mb-2" style={{ color: "var(--ink-3)" }}>空白画布</p>
-              <p className="text-[12px] leading-relaxed max-w-xs" style={{ color: "var(--ink-3)" }}>
+              {/* 这两行是要读的字，用 ink-2 而不是 ink-3（design.md §2） */}
+              <p className="asset-name text-[20px] mb-2" style={{ color: "var(--ink-2)" }}>空白画布</p>
+              <p className="text-[12px] leading-relaxed max-w-xs" style={{ color: "var(--ink-2)" }}>
                 从左边把「照片」拖进来开始：照片 → 人物特征卡 → 风格 → 生成 → 形象卡 → 发布。
               </p>
             </div>

@@ -59,16 +59,17 @@ export function GenerateInspector({
           : { background: "var(--surface-2)", border: "1px solid var(--line-2)" }}
         aria-pressed={node.data.isMaster}
       >
-        <Crown className="w-4 h-4 shrink-0" style={{ color: node.data.isMaster ? "var(--primary-700)" : "var(--ink-3)" }} />
+        <Crown className="w-4 h-4 shrink-0" style={{ color: node.data.isMaster ? "var(--primary-700)" : "var(--ink-2)" }} />
         <span className="min-w-0 flex-1">
-          <span className="block text-[12px] font-bold" style={{ color: "var(--ink)" }}>
+          <span className="block text-[14px] font-bold" style={{ color: "var(--ink)" }}>
             {node.data.isMaster ? "这是主形象" : "设为主形象"}
           </span>
-          <span className="block text-[10px] leading-snug" style={{ color: "var(--ink-3)" }}>
+          {/* 选中态底是 primary-soft，说明文字走 ink-2 留足余量（design.md §2） */}
+          <span className="block mt-0.5 text-[14px] leading-[1.6]" style={{ color: "var(--ink-2)" }}>
             主形象定稿图会作为其余形象的第一参考，全项目只能有一个。
           </span>
         </span>
-        {node.data.isMaster && <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--primary-700)" }} />}
+        {node.data.isMaster && <Check className="w-4 h-4 shrink-0" style={{ color: "var(--primary-700)" }} />}
       </button>
 
       {/* 候选网格 */}
@@ -98,8 +99,8 @@ export function GenerateInspector({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={c.url} alt="" className="w-full h-full object-cover" />
                   <span
-                    className="absolute top-1 left-1 w-4 h-4 rounded-md text-[9px] font-bold flex items-center justify-center tabular"
-                    style={{ background: "rgba(255,255,255,0.9)", color: "var(--ink-2)" }}
+                    className="absolute top-1 left-1 w-5 h-5 rounded-md text-[11px] font-bold flex items-center justify-center tabular"
+                    style={{ background: "var(--img-chip)", color: "var(--ink)" }}
                   >
                     {i + 1}
                   </span>
@@ -125,7 +126,7 @@ export function GenerateInspector({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={selected.candidate.url} alt="" className="w-full h-full object-cover" />
           </div>
-          <span className="text-[10.5px] leading-snug min-w-0" style={{ color: "var(--ink-2)" }}>
+          <span className="text-[14px] leading-[1.6] min-w-0" style={{ color: "var(--ink-2)" }}>
             当前定稿来自较早的一次生成。在上面的候选里重新点一张即可替换。
           </span>
         </div>
@@ -138,7 +139,7 @@ export function GenerateInspector({
             <button
               key={c}
               onClick={() => patchNodeData(node.id, "generate", { count: c })}
-              className="flex-1 h-9 rounded-lg text-[12px] font-bold transition"
+              className="flex-1 h-10 rounded-lg text-[14px] font-bold transition"
               style={node.data.count === c
                 ? { background: "var(--primary-soft)", color: "var(--primary-700)", border: "1px solid var(--primary)" }
                 : { background: "var(--surface-2)", color: "var(--ink-2)", border: "1px solid var(--line-2)" }}
@@ -156,7 +157,7 @@ export function GenerateInspector({
             <button
               key={s.value}
               onClick={() => patchNodeData(node.id, "generate", { size: s.value })}
-              className="flex-1 h-9 rounded-lg text-[11px] font-bold transition min-w-0 truncate px-1"
+              className="flex-1 h-10 rounded-lg text-[13px] font-bold transition min-w-0 truncate px-1"
               style={node.data.size === s.value
                 ? { background: "var(--primary-soft)", color: "var(--primary-700)", border: "1px solid var(--primary)" }
                 : { background: "var(--surface-2)", color: "var(--ink-2)", border: "1px solid var(--line-2)" }}
@@ -183,8 +184,8 @@ export function GenerateInspector({
       )}
 
       {missing.length > 0 && (
-        <div className="flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: "var(--warn)" }}>
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-1.5 text-[14px] leading-[1.7]" style={{ color: "var(--warn)" }}>
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span className="min-w-0">还缺{missing.join("、")}，接上以后才能生成。</span>
         </div>
       )}
@@ -192,8 +193,8 @@ export function GenerateInspector({
       {run?.status === "failed" && (
         <div className="p-2.5 rounded-xl" style={{ background: "var(--err-soft)", border: "1px solid color-mix(in srgb, var(--err) 25%, transparent)" }}>
           <div className="flex items-start gap-1.5">
-            <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--err)" }} />
-            <span className="text-[11px] leading-relaxed min-w-0" style={{ color: "var(--err)" }} title={run.errorCode}>
+            <XCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--err)" }} />
+            <span className="text-[14px] leading-[1.7] min-w-0" style={{ color: "var(--err)" }} title={run.errorCode}>
               {describeRunError(run.errorCode, run.errorMessage)}
             </span>
           </div>
@@ -204,7 +205,7 @@ export function GenerateInspector({
       {run?.inputs.prompt && (
         <Collapsible title="本次实际提示词">
           <p
-            className="text-[10.5px] leading-relaxed font-mono break-words whitespace-pre-wrap"
+            className="text-[13px] leading-[1.7] font-mono break-words whitespace-pre-wrap"
             style={{ color: "var(--ink-2)" }}
           >
             {run.inputs.prompt}
@@ -220,16 +221,16 @@ export function GenerateInspector({
             {run.inputs.refs.map((r, i) => (
               <li key={`${r.role}-${i}`} className="flex items-start gap-1.5 min-w-0">
                 {r.applied ? (
-                  <Check className="w-3 h-3 shrink-0 mt-[3px]" style={{ color: "var(--ok)" }} />
+                  <Check className="w-4 h-4 shrink-0 mt-[3px]" style={{ color: "var(--ok)" }} />
                 ) : (
-                  <AlertTriangle className="w-3 h-3 shrink-0 mt-[3px]" style={{ color: "var(--warn)" }} />
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-[3px]" style={{ color: "var(--warn)" }} />
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="text-[11px] font-semibold" style={{ color: "var(--ink-2)" }}>
+                  <span className="text-[14px] font-semibold" style={{ color: "var(--ink-2)" }}>
                     {describeRefRole(r.role)}
                   </span>
                   {!r.applied && (
-                    <span className="block text-[10px] leading-snug" style={{ color: "var(--warn)" }}>
+                    <span className="block text-[13px] leading-[1.6]" style={{ color: "var(--warn)" }}>
                       {describeRefReason(r.reason)}
                     </span>
                   )}
@@ -243,10 +244,10 @@ export function GenerateInspector({
       {/* 花费 */}
       {run && (run.cost > 0 || run.status === "done") && (
         <div
-          className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-[11px]"
+          className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[14px]"
           style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
         >
-          <Coins className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--ink-3)" }} />
+          <Coins className="w-4 h-4 shrink-0" style={{ color: "var(--ink-2)" }} />
           <span className="min-w-0">
             {run.status === "running"
               ? <>本次已冻结 <b className="tabular">{run.cost}</b> 积分，未出图的部分会退回</>

@@ -1,77 +1,131 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    web-ipstudio · AI IP 工作台 设计令牌
-   视觉基调沿用 AiAvatar 的 Atelier Ledger（apps/web-aiavatar/DESIGN.md），
-   移植到桌面浅色工作台：冷白画布 + 近黑墨色 + 单一青色（One Ink 原则 —— 青色
-   只给主操作与运行中状态，绝不做装饰）。衬线只给资产名，等宽只给编号。
+   真源：apps/web-ipstudio/design.md（改这里必须同步改那边）。
+
+   配色：低饱和群青（#495B91，深至 #344B70）/ 麦黄（#E7D58D）/ 纸白（#F5F4EF）/
+   墨（#202C42）。两条主色分工固定 ——
+     群青 = 身份、顶栏、选中态、进行中、连线高亮；
+     麦黄 = 主动作（进入工作台 / 运行 / 发布 / 提交）与商业化强调块。
+   v0.151 的单一青色（#12B3DE）已整体退役，仓内不再有该色值。
    ───────────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* ── 画布与层级 ── */
-  --canvas: #f7f9fb;
-  --canvas-2: #eef2f6;
-  --surface: #ffffff;
-  --surface-2: #f6f8fb;
-  --surface-3: #edf1f5;
-  --line: #ebeff3;
-  --line-2: #e0e6ec;
-  --line-3: #cfd7df;
+  /* ── 纸与面 ─────────────────────────────────────────────────────────────── */
+  /* 纸白只给 landing 与「纸标签」；工作台用略偏冷的浅面，跟节点白卡拉开层次 */
+  --paper: #f5f4ef;
+  --paper-2: #efece2;
+  --paper-line: #ded9c9;
 
-  /* 兼容别名：共享组件（EnrollmentGate / landing）按 --bg-* / --ink-* 回退链取色 */
+  --canvas: #f3f4f8;
+  --canvas-2: #e9ecf3;
+  --surface: #ffffff;
+  --surface-2: #f1f3f7;
+  --surface-3: #e5e9f1;
+  --line: #e4e7ef;
+  --line-2: #d3d9e5;
+  --line-3: #b7c0d2;
+
+  /* 画布 MiniMap 的遮罩（= --canvas 的 72% 透明版），单独成 token 免得组件里写死 */
+  --canvas-mask: rgba(243, 244, 248, 0.72);
+  /* 压在图片上的信息条 / 序号角标底：纸白半透明，字一律用 --ink */
+  --img-chip: rgba(245, 244, 239, 0.92);
+
+  /* 兼容别名：共享组件（EnrollmentGate / landing / AuthProvider）按 --bg-* / --ink-* 回退链取色 */
   --bg-0: var(--canvas);
   --bg-1: var(--surface);
   --bg-2: var(--surface-2);
   --line-strong: var(--line-2);
 
-  /* ── 墨色（无纯黑） ── */
-  --ink: #14202b;
-  --ink-2: #5a6873;
-  --ink-3: #8a96a1;
-  --ink-4: #bac4cd;
+  /* ── 墨（无纯黑；ink / ink-2 / ink-3 在纸白与白面上都过 4.5:1） ────────────── */
+  --ink: #202c42;   /* 12.7:1 on --paper */
+  --ink-2: #55607a; /*  5.7:1 on --paper */
+  /* ink-3 只承载小字提示与编号；落在 --primary-soft / --surface-3 这类浅色块上时改用 ink-2
+     （实测值见 design.md §2，不在这里重复数字） */
+  --ink-3: #626d82;
+  --ink-4: #97a0b2; /* 装饰专用：分隔、禁用图标、空态图形，禁止承载正文 */
   --ink-0: var(--ink);
   --ink-1: var(--ink-2);
 
-  /* ── 单一青色（One Ink） ── */
-  --primary: #12b3de;
-  --primary-600: #10a6cf;
-  --primary-700: #0c97be;
-  --primary-soft: #e6f5fa;
-  --primary-tint: #f3fafd;
-  --on-primary: #ffffff;
+  /* ── 群青（身份 / 顶栏 / 选中 / 进行中） ──────────────────────────────────── */
+  --blue-900: #26334f;
+  --blue-800: #2e3f60;
+  --blue-700: #344b70; /* 深群青：landing 头部与英雄区底 */
+  --blue-600: #3d5482;
+  --blue: #495b91;     /* 主群青 */
+  --blue-500: #5a6c9f;
+
+  --primary: var(--blue);
+  --primary-600: var(--blue-600);
+  --primary-700: var(--blue-700); /* 浅底上的群青文字（≥7:1） */
+  --primary-soft: #e3e7f1;
+  --primary-tint: #f1f3f9;
+  --on-primary: #ffffff; /* 6.6:1 on --primary */
   --brand: var(--primary);
-  --accent: var(--primary);
 
-  /* ── 状态色（克制使用） ── */
-  --ok: #1aa06e;
-  --ok-soft: #e2f4ec;
-  --warn: #d9920e;
-  --warn-soft: #fbf0da;
-  --err: #e0455c;
-  --err-soft: #fbe6ea;
-  --info: #2ba6e8;
-  --info-soft: #e6f2fb;
+  /* ── 麦黄（主动作 / 商业化强调） ─────────────────────────────────────────── */
+  --action: #e7d58d;
+  --action-600: #dcc671;      /* hover / active */
+  --action-700: #8a6f1b;      /* 浅底上的麦黄系文字（4.8:1 on white） */
+  --action-soft: #f7efd5;
+  --action-tint: #fcf8ec;
+  --action-line: #d8c274;
+  --on-action: #202c42;       /* 9.5:1 on --action */
 
-  /* ── 节点端口配色（按类型辨识，饱和度压低，不抢主色） ── */
-  --port-image: #8f6bff;   /* 图片流（照片 / 参考图 / 候选图） */
-  --port-text: #5a6873;    /* 文本流（特征卡 / 风格 / 形象卡） */
+  /* ── 深群青底上的前景色（顶栏 / landing 深色区；全部 ≥4.5:1 on --blue-700） ── */
+  --on-blue: #f5f4ef;        /* 8.0:1 —— 主文字 */
+  --on-blue-2: #c6cddf;      /* 5.5:1 —— 次要文字与图标 */
+  --on-blue-ok: #a8dcc4;     /* 5.7:1 —— 「已保存」这类成功态 */
+  --on-blue-err: #f0a8b2;    /* 4.6:1 —— 顶栏上的失败态 */
+  --on-blue-line: rgba(245, 244, 239, 0.18);
+  --on-blue-hover: rgba(245, 244, 239, 0.12);
+  --on-blue-fill: rgba(245, 244, 239, 0.1);
 
-  /* ── 字体 ── */
+  /* 共享组件（packages/landing、api-client）走 --accent / --accent-fg 回退链 —— 指向主动作 */
+  --accent: var(--action);
+  --accent-fg: var(--on-action);
+  --accent-foreground: var(--on-action);
+
+  /* ── 状态色（同族低饱和；每个前景色在白面与自己的 *-soft 底上都 ≥4.5:1） ───── */
+  --ok: #24705a;    /* 5.9 on white · 5.0 on --ok-soft */
+  --ok-soft: #e1efe9;
+  --warn: #8a5f0e;  /* 5.6 on white · 4.9 on --warn-soft */
+  --warn-soft: #f7eed9;
+  --err: #b03a4d;   /* 5.9 on white · 4.9 on --err-soft */
+  --err-soft: #f8e4e7;
+  --info: #3d5482;  /* 7.6 on white · 6.3 on --info-soft */
+  --info-soft: #e7ebf4;
+
+  /* ── 节点端口配色（按数据流辨识，取自同一色系的两个色相） ──────────────────── */
+  --port-image: #495b91; /* 图片流（照片 / 参考图 / 候选图） */
+  --port-text: #a98a34;  /* 文本流（特征卡 / 风格 / 形象卡） */
+
+  /* ── 字体 ────────────────────────────────────────────────────────────────── */
   --font-sans: "Manrope", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Newsreader", "Songti SC", "Noto Serif SC", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* ── 圆角 ── */
+  /* ── 圆角 ────────────────────────────────────────────────────────────────── */
   --r-xs: 7px;
   --r-sm: 9px;
   --r-md: 12px;
   --r-lg: 15px;
   --r-xl: 19px;
+  --r-2xl: 26px;
   --radius-lg: var(--r-lg);
 
-  /* ── 阴影：石板蓝调，不用黑色 ── */
-  --shadow-hair: 0 1px 2px rgba(20, 32, 43, 0.04);
-  --shadow-card: 0 1px 3px rgba(20, 32, 43, 0.05), 0 6px 16px -8px rgba(20, 32, 43, 0.08);
-  --shadow-lift: 0 2px 6px rgba(20, 32, 43, 0.07), 0 14px 32px -12px rgba(20, 32, 43, 0.14);
-  --shadow-ring: 0 0 0 3px rgba(18, 179, 222, 0.18);
+  /* ── 阴影：墨蓝调，不用黑色 ───────────────────────────────────────────────── */
+  --shadow-hair: 0 1px 2px rgba(32, 44, 66, 0.05);
+  --shadow-card: 0 1px 3px rgba(32, 44, 66, 0.06), 0 6px 16px -8px rgba(32, 44, 66, 0.1);
+  --shadow-lift: 0 2px 6px rgba(32, 44, 66, 0.08), 0 14px 32px -12px rgba(32, 44, 66, 0.16);
+  --shadow-paper: 0 2px 5px rgba(32, 44, 66, 0.1), 0 20px 44px -20px rgba(32, 44, 66, 0.4);
+  --shadow-ring: 0 0 0 3px rgba(73, 91, 145, 0.22);
+}
+
+html {
+  /* landing 的锚点跳转；prefers-reduced-motion 下在 app.css 里改回 auto */
+  scroll-behavior: smooth;
+  /* 粘顶导航条的高度，避免锚点标题被压在条下面 */
+  scroll-padding-top: 72px;
 }
 
 html,
@@ -82,12 +136,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 工作台是桌面重交互面，禁掉整页横向滚动（画布自己吃平移） */
+/* 工作台是桌面重交互面，禁掉整页横向滚动（画布自己吃平移；landing 的错落卡片也不许溢出） */
 body {
   overflow-x: hidden;
 }
 
 *:focus-visible {
   outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* 深底区域（landing 头部 / 英雄区 / 收尾区）内的焦点环换成麦黄，保证在群青上可见 */
+.on-blue *:focus-visible,
+.on-blue:focus-visible {
+  outline: 2px solid var(--action);
   outline-offset: 2px;
 }

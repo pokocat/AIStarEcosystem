@@ -37,8 +37,8 @@ export function Inspector({
         style={{ background: "var(--surface)", borderLeft: "1px solid var(--line)" }}
       >
         <MousePointerClick className="w-6 h-6 mb-3" style={{ color: "var(--ink-4)" }} />
-        <p className="text-[13px] font-semibold mb-1" style={{ color: "var(--ink)" }}>选一个节点</p>
-        <p className="text-[11.5px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+        <p className="text-[15px] font-semibold mb-1.5" style={{ color: "var(--ink)" }}>选一个节点</p>
+        <p className="text-[14px] leading-[1.7]" style={{ color: "var(--ink-2)" }}>
           点画布上的任意节点，这里会显示它的设置、这次生成用的提示词和花费。
         </p>
       </aside>
@@ -55,8 +55,8 @@ export function Inspector({
     >
       <div className="sticky top-0 z-10 px-3.5 py-3" style={{ background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>
         <div className="flex items-center gap-2 min-w-0">
-          <Icon className="w-4 h-4 shrink-0" style={{ color: "var(--ink-3)" }} />
-          <span className="text-[13.5px] font-bold min-w-0 truncate" style={{ color: "var(--ink)" }}>{meta.label}</span>
+          <Icon className="w-4 h-4 shrink-0" style={{ color: "var(--ink-2)" }} />
+          <span className="text-[15px] font-bold min-w-0 truncate" style={{ color: "var(--ink)" }}>{meta.label}</span>
           <button
             onClick={() => removeNode(node.id)}
             className="ml-auto shrink-0 p-1.5 rounded-lg transition hover:bg-[var(--err-soft)]"

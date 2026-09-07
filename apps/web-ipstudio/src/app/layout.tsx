@@ -5,11 +5,12 @@ import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
   title: "AI IP 工作台 — AI Star Eco",
-  description: "一张照片起步，在画布上稳定产出同一人物、同一风格的一组 AI IP 形象，发布为可授权的数字资产。",
+  // 对外描述与 landing 定稿文案一致：讲角色与个性，不讲工作流与模型
+  description: "一个你，不止一种想象。日常里的你，脑海里的你，还没登场的你 —— 在这里，让每一种个性都有自己的角色。",
   icons: { icon: "/icon.svg", shortcut: "/icon.svg" },
   openGraph: {
     title: "AI IP 工作台 — AI Star Eco",
-    description: "一张照片起步，稳定产出同一人物、同一风格的一组 AI IP 形象。",
+    description: "一个你，不止一种想象。在这里，让每一种个性都有自己的角色。",
     siteName: "AI Star Eco",
     locale: "zh_CN",
     type: "website",
@@ -19,7 +20,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#f7f9fb",
+  // landing 与工作台的顶栏都是深群青，浏览器 UI 跟着它（design.md §2）
+  themeColor: "#344b70",
 };
 
 // Atelier Ledger 字体三件套：Manrope（界面）/ Newsreader（资产名）/ JetBrains Mono（编号）。

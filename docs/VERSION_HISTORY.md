@@ -1,8 +1,16 @@
-# 版本增量历史（v0.5 → v0.151）
+# 版本增量历史（v0.5 → v0.152）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.152（2026-09-06）— IP Studio 宣传首页与画布视觉重构
+
+`apps/web-ipstudio` 建立独立视觉真源 [`design.md`](../apps/web-ipstudio/design.md)：低饱和群青负责品牌、选中与进行中状态，麦黄负责主动作与商业化强调，纸白与墨色构成内容底色；运行时色值统一收口到 `src/styles/tokens.css`，Tailwind 调色板通过 `@theme inline` 引用，不再复制第二套 hex。
+
+公开 landing 重构为宣传导向：保留「一个你，不止一种想象。」主 slogan，增加同一 IP 的多造型、多表情展示，以及个人商务名片、AI 短剧、带货视频、品牌合作等未来应用方向与商业化展望；未来场景明确标注分阶段推出，不把视频、音频能力写成已上线功能。角色与场景图使用 4×3 作品图集，生产真源已上传 OSS，页面直接引用版本化对象 `media/ipstudio/landing/character-atlas-v1.png`，仓库不保存二进制副本。
+
+画布同步换肤，保留原有 doc / runs / 自动保存 / 运行 / 发布逻辑：品牌栏与工作栏改为深群青，主操作改为麦黄，节点选中和状态色统一到新 token；属性面板输入、按钮与说明字号提升，点阵、MiniMap、图片信息条不再写死颜色。浏览器复核覆盖桌面首页、约 390px 窄屏无横向溢出、画布候选择优、撤销 / 重做与发布弹窗。门禁：web-ipstudio typecheck、26 项 vitest、生产 build（6 路由）、API contract 全绿；无 server、OpenAPI、数据库或计费逻辑变更。
 
 ### v0.151（2026-09-06）— AI IP 工作台 web-ipstudio（第六子应用，3015）
 

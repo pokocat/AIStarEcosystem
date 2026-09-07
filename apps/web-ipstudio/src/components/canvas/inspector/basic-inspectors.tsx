@@ -19,7 +19,7 @@ export function SourceInspector({
 }) {
   return (
     <div className="space-y-3.5">
-      <div className="px-2.5 py-2 rounded-xl text-[10.5px] leading-relaxed" style={{ background: "var(--primary-tint)", color: "var(--ink-2)" }}>
+      <div className="px-3 py-2.5 rounded-xl text-[14px] leading-[1.7]" style={{ background: "var(--primary-tint)", color: "var(--ink-2)" }}>
         一张正脸、光线均匀、没有重度滤镜的照片效果最好 —— 这张图决定了整套 IP 长什么样。
       </div>
       <ImageUploadField
@@ -67,15 +67,17 @@ export function StyleInspector({
                 aria-pressed={active}
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12px] font-bold truncate" style={{ color: "var(--ink)" }}>{s.name}</span>
-                  <span className="block text-[10px] leading-snug line-clamp-2" style={{ color: "var(--ink-3)" }}>{s.summary}</span>
+                  <span className="block text-[14px] font-bold truncate" style={{ color: "var(--ink)" }}>{s.name}</span>
+                  {/* 说明文字 ≥14px 且允许换行（评审：不靠缩小字号解决）；选中态底是
+                      primary-soft，ink-3 在它上面余量不足，所以统一走 ink-2 */}
+                  <span className="block mt-0.5 text-[14px] leading-[1.6]" style={{ color: "var(--ink-2)" }}>{s.summary}</span>
                 </span>
-                {active && <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--primary-700)" }} />}
+                {active && <Check className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--primary-700)" }} />}
               </button>
             );
           })}
           {styles.length === 0 && (
-            <p className="text-[11px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+            <p className="text-[14px] leading-[1.7]" style={{ color: "var(--ink-2)" }}>
               内置风格还没加载出来，稍后再试，或在下面自己写一段风格描述。
             </p>
           )}
@@ -85,7 +87,7 @@ export function StyleInspector({
       <Collapsible
         title="自定义风格描述"
         defaultOpen={node.data.custom}
-        meta={node.data.custom ? <span className="text-[10px] font-bold shrink-0" style={{ color: "var(--primary-700)" }}>正在用</span> : undefined}
+        meta={node.data.custom ? <span className="text-[12px] font-bold shrink-0" style={{ color: "var(--primary-700)" }}>正在用</span> : undefined}
       >
         <div className="space-y-2.5">
           <Field label="风格名（给自己看）">
@@ -101,7 +103,7 @@ export function StyleInspector({
               value={node.data.promptEn}
               placeholder="glossy cream glass material, soft rim light, …"
               onChange={(e) => patchNodeData(node.id, "style", { promptEn: e.target.value, custom: true, presetId: undefined })}
-              style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}
+              style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
             />
           </Field>
           <Field label="不要出现什么（英文，可留空）">
@@ -110,7 +112,7 @@ export function StyleInspector({
               value={node.data.negativeEn ?? ""}
               placeholder="text, watermark, extra fingers"
               onChange={(e) => patchNodeData(node.id, "style", { negativeEn: e.target.value })}
-              style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}
+              style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
             />
           </Field>
         </div>
@@ -199,21 +201,21 @@ export function PublishInspector({ node }: { node: IpNode & { type: "publish" } 
       </Field>
 
       {published ? (
-        <div className="p-3 rounded-xl" style={{ background: "var(--ok-soft)" }}>
-          <div className="text-[12px] font-bold mb-1" style={{ color: "var(--ok)" }}>已发布为数字资产</div>
+        <div className="p-3.5 rounded-xl" style={{ background: "var(--ok-soft)" }}>
+          <div className="text-[14px] font-bold mb-1" style={{ color: "var(--ok)" }}>已发布为数字资产</div>
           <div className="reg mb-2.5" style={{ color: "var(--ok)" }}>{node.data.avatarId}</div>
           <a
             href={`${AIAVATAR_URL}/assets/${node.data.avatarId}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[11.5px] font-semibold"
+            className="inline-flex items-center gap-1 text-[14px] font-semibold"
             style={{ color: "var(--ok)" }}
           >
-            去数字资产平台查看 <ExternalLink className="w-3 h-3" />
+            去数字资产平台查看 <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
       ) : (
-        <p className="text-[10.5px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+        <p className="text-[14px] leading-[1.7]" style={{ color: "var(--ink-2)" }}>
           形象都定稿之后，用上方工作栏的「发布」按钮选主形象与要一起带上的造型。
         </p>
       )}

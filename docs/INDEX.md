@@ -31,6 +31,8 @@
 | [`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) ★ | AiAvatar 数字资产平台（3013） | 移动端 H5/小程序形态 SPA · **六类资产**（DH- 人物 / IP- 品牌 / SC- 场景 / PD- 产品 / VO- 声音 / ST- 风格）+ IP 容器 + 跨资产合成工作台 · 真人复刻（**v0.105 起本人刷脸实名认证**）/ AI 原创 · 素材平台审核 · 单色青「清爽」皮肤（last-reviewed 2026-08-02，v0.105 真人授权刷脸认证 + 素材送审） |
 | [`apps/web-star/PRODUCT.md`](../apps/web-star/PRODUCT.md) ★ | 明星商务工作台（3014） | 明星/经纪团队审核中枢 · 14+1 模块（IP 资产/带货授权/报白/数字人/AI 形象/内容/商品入库/品牌/收益/规则/侵权/合同/档案设置）· 浅色主题 · celebrity↔star 打通规格（last-reviewed 2026-06-11，v0.62 档案编辑移入） |
 | [`apps/web-star/README.md`](../apps/web-star/README.md) | 明星商务工作台（3014） | 启动 / 路由 / 种子账号（star_shenteng）/ 与 web-celebrity 打通表 / 版本日志 |
+| [`apps/web-ipstudio/PRODUCT.md`](../apps/web-ipstudio/PRODUCT.md) ★ | AI IP 工作台（3015） | 模块清单 / 画布七种节点 / 运行语义 / 设计与文案约束 / 登录入口 · 共用 aiavatar 开通（last-reviewed 2026-09-06，v0.152 landing 重构） |
+| [`apps/web-ipstudio/design.md`](../apps/web-ipstudio/design.md) ★ | AI IP 工作台（3015） | **该子应用视觉系统真源** —— 低饱和群青 `#495B91` / 麦黄 `#E7D58D` / 纸白 `#F5F4EF` / 墨 `#202C42` 全量 token + 语义映射与实测对比度 + 字体·间距·圆角·阴影·交互 + **landing 与画布应用边界**（含 reject 清单）+ **landing 区块清单与文案纪律**（landing 不讲工作流 / 不讲模型）+ 图集素材契约（4×3 等格、12 格位对照、`AtlasFrame` 1:1 与 `AtlasPortrait` 竖幅两种裁切、禁 SVG 冒充作品、**生产真源在 OSS 绝对地址**、`public/landing/` 仅可选本地副本不入 git）（last-reviewed 2026-09-06，v0.152 含浏览器评审改判与图集上线；v0.151 的单一青色 `#12B3DE` 已退役） |
 | [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 平台 | 忠实移植原型 / strict 关闭 / 与 v0.45 server 领域解耦 / 字体策略 / 导航栈 决策记录；v0.104 追加六类资产扩展边界（§G 加类型不重做 · §H 授权只发人物与 IP · §I 作业执行体拆分 · §J mock 回填时机）；v0.105 追加真人刷脸认证边界（§K 假核验退役 · verify 唯一漏斗 · 回调不判定生效 · §L 授权硬闸前移到生成入口 · §M aigc 走平台默认组 + 配额债务）（last-reviewed 2026-08-02） |
 | [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |
 | [`docs/FACE_BEAUTY_RESEARCH.md`](FACE_BEAUTY_RESEARCH.md) | AiAvatar 平台 | 形象「精调 / 美颜」技术方案调研：浏览器端确定性美颜（推荐）vs 云 API vs Agnes i2i（last-reviewed 2026-06-07） |
@@ -85,6 +87,7 @@
 | [`apps/web-music/README.md`](../apps/web-music/README.md) | **AI 音乐人**（Next 16，dev 3010）启动 / 技术栈 / 版本日志 | Phase 4b（v0.6 · 2026-05-15）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-music/PRODUCT.md) |
 | [`apps/web-drama/README.md`](../apps/web-drama/README.md) | **AI 短剧**（Next 16，dev 3011）启动 / 技术栈 / 版本日志 | Phase 4b（v0.6 · 2026-05-14）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-drama/PRODUCT.md) |
 | [`apps/web-celebrity/README.md`](../apps/web-celebrity/README.md) | **AI 明星带货**（Next 16，dev 3012）启动 / 技术栈 / 版本日志（含 mixcut 与分发中心） | v0.17（2026-05-20）— 产品/设计约束见 [`PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) |
+| [`apps/web-ipstudio/README.md`](../apps/web-ipstudio/README.md) | **AI IP 工作台**（Next 16，dev 3015）启动 / mock 切换 / 目录 / **landing 素材（图集 · 生产真源在 OSS · 本地副本仅可选）** / 生产部署 / 版本日志 | v0.152（2026-09-06 landing 重构）— 产品约束见 [`PRODUCT.md`](../apps/web-ipstudio/PRODUCT.md)，视觉真源见 [`design.md`](../apps/web-ipstudio/design.md) |
 
 > `apps/web`（Next.js 用户端 3002）已于 **v0.109 / Phase 5（2026-08-03）删除**，历史版本日志见 [`docs/VERSION_HISTORY.md`](VERSION_HISTORY.md) `### v0.109`。
 
@@ -131,6 +134,7 @@ sudo yum install -y ffmpeg ffmpeg-devel
 |---|---|
 | [`.claude/skills/figma-migrate/SKILL.md`](../.claude/skills/figma-migrate/SKILL.md) | skill 入口：自动按"五件套 + 三端同步"模式落。**⚠️ 待更新**：原迁移目标 `apps/web`（含 `FIGMA_MIGRATION_GUIDE.md` / `specs/DESIGN_CONSTRAINTS.md`）已随 v0.109 删除，skill 内部路径仍指向 apps/web，重新启用前需先 retarget 到具体新 app |
 | [`docs/design/celebrity/DESIGN.md`](../docs/design/celebrity/DESIGN.md) | **`apps/web-celebrity/` 子应用全域视觉系统真源** —— Creator-Friendly codify（tokens + 6 节 spec + 签名组件），对 apps/web-celebrity 整个子应用生效 |
+| [`apps/web-ipstudio/design.md`](../apps/web-ipstudio/design.md) | **`apps/web-ipstudio/` 子应用全域视觉系统文档真源** —— 低饱和群青 + 麦黄双主色（token / 语义 / 实测对比度 / landing 与画布边界 / 图集素材契约）；改颜色前必读。色值代码真源只有 `src/styles/tokens.css`（`app.css` 用 `@theme inline` + `var()` 别名指过去、不复制 hex），故改色只动 tokens.css + 本文档两处；字体是唯一需两处字面量的例外 |
 | [`.impeccable/celebrity/design.json`](../.impeccable/celebrity/design.json) | 上文的机器可读 sidecar（tonal ramps / shadows / motion / 完整组件 HTML+CSS 片段） |
 
 ## 7. 待办 / 已知问题

@@ -113,8 +113,8 @@ export default function LoginPage() {
           surface: "var(--surface)",
           fg: "var(--ink)",
           fgMuted: "var(--ink-2)",
-          accent: "var(--primary)",
-          accentFg: "var(--on-primary)",
+          accent: "var(--accent)",
+          accentFg: "var(--accent-fg)",
           border: "var(--line-2)",
           radius: "15px",
         }}
@@ -204,8 +204,8 @@ export default function LoginPage() {
             <button
               onClick={submit}
               disabled={submitting}
-              className="w-full h-11 rounded-xl text-sm font-bold transition hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
-              style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+              className="w-full h-11 rounded-xl text-sm font-bold transition hover:brightness-95 disabled:opacity-60 flex items-center justify-center gap-2"
+              style={{ background: "var(--action)", color: "var(--on-action)" }}
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               进入工作台

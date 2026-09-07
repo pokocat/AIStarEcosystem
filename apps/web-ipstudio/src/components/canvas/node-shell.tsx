@@ -1,7 +1,8 @@
 "use client";
 
 // 档案卡外壳 —— 所有 7 种节点共用的框：图标 + 中文类型名 + 等宽编号 + 内容区。
-// 视觉沿用 Atelier Ledger：白底细边、石板蓝柔影、衬线只给标题、青色只给「运行中」。
+// 视觉（design.md §7）：白底细边、墨蓝柔影、衬线只给标题；群青只给「运行中」与选中态，
+// 主动作用麦黄（不出现在节点卡上）。
 
 import * as React from "react";
 import { Handle, Position } from "@xyflow/react";
@@ -124,12 +125,15 @@ export function NodeChip({ tone = "neutral", children, title }: {
   );
 }
 
-/** 内容区的空态提示（统一口吻） */
+/**
+ * 内容区的空态提示（统一口吻）。
+ * 文字用 ink-2 而不是 ink-3 —— 这是要读的字，浅色块上留足余量（design.md §2）。
+ */
 export function NodeEmpty({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="text-[10.5px] leading-relaxed rounded-lg px-2 py-1.5"
-      style={{ background: "var(--surface-2)", color: "var(--ink-3)", border: "1px dashed var(--line-2)" }}
+      style={{ background: "var(--surface-2)", color: "var(--ink-2)", border: "1px dashed var(--line-2)" }}
     >
       {children}
     </div>

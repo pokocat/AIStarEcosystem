@@ -30,7 +30,7 @@ export function IdentityInspector({
   return (
     <div className="space-y-3.5">
       <div
-        className="px-2.5 py-2 rounded-xl text-[10.5px] leading-relaxed"
+        className="px-3 py-2.5 rounded-xl text-[14px] leading-[1.7]"
         style={{ background: "var(--primary-tint)", color: "var(--ink-2)" }}
       >
         这段描述是「这个人长什么样」的唯一说法，之后每一张形象都会复用它 —— 改完记得锁定，
@@ -54,7 +54,7 @@ export function IdentityInspector({
           placeholder="a young person with …"
           disabled={node.data.locked}
           onChange={(e) => patchNodeData(node.id, "identity", { promptEn: e.target.value })}
-          style={{ fontFamily: "var(--font-mono)", fontSize: "11px" }}
+          style={{ fontFamily: "var(--font-mono)", fontSize: "13px" }}
         />
       </Collapsible>
 
@@ -74,7 +74,7 @@ export function IdentityInspector({
         </div>
         <button
           onClick={() => patchNodeData(node.id, "identity", { locked: !node.data.locked })}
-          className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition"
+          className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition"
           style={node.data.locked
             ? { background: "var(--primary-soft)", border: "1px solid var(--primary)" }
             : { background: "var(--surface-2)", border: "1px solid var(--line-2)" }}
@@ -83,20 +83,20 @@ export function IdentityInspector({
           aria-pressed={node.data.locked}
         >
           {node.data.locked
-            ? <Lock className="w-3.5 h-3.5" style={{ color: "var(--primary-700)" }} />
-            : <LockOpen className="w-3.5 h-3.5" style={{ color: "var(--ink-3)" }} />}
+            ? <Lock className="w-4 h-4" style={{ color: "var(--primary-700)" }} />
+            : <LockOpen className="w-4 h-4" style={{ color: "var(--ink-2)" }} />}
         </button>
       </div>
 
       {node.data.locked && (
-        <p className="text-[10.5px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+        <p className="text-[14px] leading-[1.7]" style={{ color: "var(--ink-2)" }}>
           已锁定：内容不可编辑、也不会被重新抽取覆盖。要改先点右边的锁。
         </p>
       )}
 
       {missing.length > 0 && !node.data.locked && (
-        <div className="flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: "var(--warn)" }}>
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-1.5 text-[14px] leading-[1.7]" style={{ color: "var(--warn)" }}>
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span className="min-w-0">还缺{missing.join("、")}。也可以不抽取，直接自己写这张卡。</span>
         </div>
       )}
@@ -104,8 +104,8 @@ export function IdentityInspector({
       {run?.status === "failed" && (
         <div className="p-2.5 rounded-xl" style={{ background: "var(--err-soft)", border: "1px solid color-mix(in srgb, var(--err) 25%, transparent)" }}>
           <div className="flex items-start gap-1.5">
-            <XCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--err)" }} />
-            <span className="text-[11px] leading-relaxed min-w-0" style={{ color: "var(--err)" }} title={run.errorCode}>
+            <XCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--err)" }} />
+            <span className="text-[14px] leading-[1.7] min-w-0" style={{ color: "var(--err)" }} title={run.errorCode}>
               {describeRunError(run.errorCode, run.errorMessage)}
             </span>
           </div>

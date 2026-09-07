@@ -126,8 +126,8 @@ export function PublishDialog({
                 href={`${AIAVATAR_URL}/assets/${result.avatarId}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:opacity-90"
-                style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:brightness-95"
+                style={{ background: "var(--action)", color: "var(--on-action)" }}
               >
                 去数字资产平台查看 <ExternalLink className="w-3.5 h-3.5" />
               </a>
@@ -266,8 +266,8 @@ export function PublishDialog({
               <button
                 onClick={() => void submit()}
                 disabled={submitting || ready.length === 0}
-                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:opacity-90 disabled:opacity-50"
-                style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:brightness-95 disabled:opacity-60"
+                style={{ background: "var(--action)", color: "var(--on-action)" }}
               >
                 {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 确认发布

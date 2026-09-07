@@ -10,8 +10,8 @@ export default function NotFound() {
       </p>
       <Link
         href="/projects"
-        className="px-4 py-2 rounded-xl text-[13px] font-bold"
-        style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+        className="px-4 py-2 rounded-xl text-[13px] font-bold transition hover:brightness-95"
+        style={{ background: "var(--action)", color: "var(--on-action)" }}
       >
         回到项目列表
       </Link>
