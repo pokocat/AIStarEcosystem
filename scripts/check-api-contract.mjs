@@ -6,7 +6,8 @@
 // specs/openapi.yaml 中既有 path 又有匹配的 HTTP method。drift 即报错。
 //
 // 比旧版 apps/web/scripts/check-api-contract.mjs 多了：
-//   - 扫描新 app（web-music / web-drama / web-celebrity / web-aiavatar）+ packages/api-client
+//   - 扫描六个子应用（web-music / web-drama / web-celebrity / web-aiavatar / web-star /
+//     web-ipstudio）+ packages/api-client。真源是下面的 SCAN_TARGETS，加 app 记得同步。
 //   - 方法级匹配（旧版只看 path）
 //
 // 用法（在仓库根运行）：

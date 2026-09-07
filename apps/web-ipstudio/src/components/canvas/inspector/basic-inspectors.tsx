@@ -7,9 +7,10 @@ import { Check, ExternalLink } from "lucide-react";
 import type { IpNode, IpPromptGroup, IpStylePreset } from "@ai-star-eco/types";
 import { useCanvasStore } from "@/lib/canvas-store";
 import { LEGACY_LOOK_KEYS } from "@/lib/graph";
+import { AIAVATAR_URL } from "@/lib/external";
 import { Collapsible, Field, ImageUploadField, TextAreaInput, TextInput } from "./fields";
 
-const AIAVATAR_URL = process.env.NEXT_PUBLIC_AIAVATAR_URL ?? "http://localhost:3013";
+
 
 export function SourceInspector({
   node, uploading, onUpload,

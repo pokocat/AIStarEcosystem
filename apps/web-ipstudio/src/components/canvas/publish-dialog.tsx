@@ -12,9 +12,10 @@ import {
 import { useCanvasStore } from "@/lib/canvas-store";
 import { generateNodes } from "@/lib/graph";
 import { resolveSelectedCandidate } from "@/lib/selection";
+import { AIAVATAR_URL } from "@/lib/external";
 import { Field, TextInput } from "./inspector/fields";
 
-const AIAVATAR_URL = process.env.NEXT_PUBLIC_AIAVATAR_URL ?? "http://localhost:3013";
+
 
 function lookTitleFor(doc: ReturnType<typeof useCanvasStore.getState>["doc"], gen: IpNode & { type: "generate" }): string {
   const look = doc.edges

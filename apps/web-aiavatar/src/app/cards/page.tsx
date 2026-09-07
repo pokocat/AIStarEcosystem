@@ -141,27 +141,42 @@ export default function MyCardsPage() {
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-              <a
-                href={row.publicUrl}
-                style={{
-                  flex: 1, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
-                  border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",
-                  display: "grid", placeItems: "center", fontSize: 13.5, fontWeight: 700, textDecoration: "none",
-                }}
-              >
-                预览
-              </a>
-              <button
-                type="button"
-                onClick={() => copyLink(row)}
-                style={{
-                  flex: 1, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
-                  border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",
-                  fontFamily: "inherit", fontSize: 13.5, fontWeight: 700, cursor: "pointer",
-                }}
-              >
-                复制链接
-              </button>
+              {/* 草稿没有「打开」和「复制链接」—— 公开页对未发布的名片一律 404，
+                  本人也一样。给按钮只会让人点出一个「找不到」页，或者把打不开的链接发出去。 */}
+              {row.status === "published" ? (
+                <>
+                  <a
+                    href={row.publicUrl}
+                    style={{
+                      flex: 1, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
+                      border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",
+                      display: "grid", placeItems: "center", fontSize: 13.5, fontWeight: 700, textDecoration: "none",
+                    }}
+                  >
+                    打开
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => copyLink(row)}
+                    style={{
+                      flex: 1, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
+                      border: "1px solid var(--line-2)", background: "var(--surface)", color: "var(--ink)",
+                      fontFamily: "inherit", fontSize: 13.5, fontWeight: 700, cursor: "pointer",
+                    }}
+                  >
+                    复制链接
+                  </button>
+                </>
+              ) : (
+                <span style={{
+                  flex: 2, minWidth: 0, height: 40, borderRadius: "var(--r-md)",
+                  background: "var(--surface-2)", color: "var(--ink-3)",
+                  display: "grid", placeItems: "center", fontSize: 12.5, padding: "0 10px",
+                  textAlign: "center", lineHeight: 1.3,
+                }}>
+                  发布后才有可以递出去的链接
+                </span>
+              )}
               <button
                 type="button"
                 disabled={busy === row.id}

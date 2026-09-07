@@ -101,6 +101,37 @@ https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/character-a
 
 ## 版本日志
 
+### v0.154（2026-09-07）— 工作台内嵌数字资产与名片
+
+**为什么加**：画布点「发布」之后，形象就登记进数字资产了 —— 但在这之前工作台只能给一条
+跳去 aiavatar 的外链。那是**移动端 H5**，在桌面画布应用里打开尺寸和导航都不对，人一走
+「造形象 → 登记资产 → 对外发布」这条链就断了。现在同一套接口在工作台自己渲染。
+
+**顶栏导航 = 这条链**：项目 · 资产 · 名片，顺序别打乱。
+
+| 路由 | 内容 |
+|---|---|
+| `/assets` | 六类资产概览条 + 我的形象列表 + 选中形象详情（名片 / 造型 / 短动作与衍生） |
+| `/cards` | 我的名片：状态、公开链接、用的哪个形象 |
+
+**两页都是只读**：不生成、不编辑、不扣任何积分。要改形象回项目，要出短动作或建名片
+去数字资产平台（各处都有直达外链）。
+
+**服务端零改动** —— 全部复用已有读接口：`/v1/assets/summary`、`/v1/avatars`、
+`/v1/avatars/{id}/looks`、`/v1/avatars/{id}/derivatives`、`/v1/card/mine`、
+`/v1/card/by-avatar/{id}`。
+
+**两个容易踩的地方**
+- **草稿名片没有任何人能打开的链接**：服务端对未发布 / 已软删 / 不存在的 slug 一律 404，
+  名片主人也一样。所以草稿卡片上不给「打开 / 复制链接」，只给「去发布」——
+  给了按钮只会让人点出 404，或者把打不开的链接发给客户。
+- **`publicUrl` 是站内相对路径，但名片页在 aiavatar 站点上**：直接当 href 用会跳到工作台
+  自己的 404。一律经 `lib/external.ts` 的 `cardPublicHref()` 补域名。
+
+`AIAVATAR_URL` 收敛到 `lib/external.ts` 一处（原先 publish-dialog 与 basic-inspectors
+各写了一份）。它是 `NEXT_PUBLIC_*`，**构建期内联** —— 改这个值必须重新构建，
+光改服务器上的 env 文件不生效。
+
 ### v0.153（2026-09-07）— 形象卡通用化 +「IP 打造」内置工作流
 
 提案与落地记录：[`docs/ip-studio-generalize-proposal.md`](../../docs/ip-studio-generalize-proposal.md)；
