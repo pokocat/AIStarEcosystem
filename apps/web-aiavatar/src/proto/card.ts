@@ -179,9 +179,15 @@ const DEMO: CardProfile = {
  * server 侧对应 GET /api/v1/card/p/{slug}，须登记进 ProductRouteTable.PUBLIC_GETS。
  */
 export async function fetchCard(slug: string): Promise<CardProfile | null> {
+  // 内置演示名片在任何模式下都能打开 —— card 域后端上线前，这是唯一能在生产
+  // 看到真实效果的入口。它带 demo:true，页面必须显式标「演示数据」，不冒充真名片。
+  if (DEMO_SLUGS.has(slug)) {
+    await new Promise((r) => setTimeout(r, 120));
+    return DEMO;
+  }
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 120));
-    return slug === DEMO.slug ? DEMO : null;
+    return null;
   }
   const res = await fetch(`/api/v1/card/p/${encodeURIComponent(slug)}`, {
     headers: { Accept: "application/json" },
@@ -194,8 +200,9 @@ export async function fetchCard(slug: string): Promise<CardProfile | null> {
 
 export const CardApi = { bySlug: fetchCard };
 
-/** 演示名片的短链，首页/开发入口用。 */
-export const DEMO_CARD_SLUG = DEMO.slug;
+/** 演示名片的短链。`demo` 是保留短链，真实名片不得占用。 */
+export const DEMO_CARD_SLUG = "demo";
+const DEMO_SLUGS = new Set([DEMO_CARD_SLUG, DEMO.slug]);
 
 // ── vCard ───────────────────────────────────────────────────
 
