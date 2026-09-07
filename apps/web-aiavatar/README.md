@@ -46,6 +46,12 @@ pnpm build:turbo                   # Turbopack 构建（可选）
 
 底部 5 Tab：`首页 · 资产库 · ＋创建 · 应用 · 我的`（＋为中间凸起，弹「先选类型再选来源」sheet）。
 
+### AI 数字名片（v0.153 新增 · 公开页）
+
+| 屏 | 入口 | 说明 |
+|---|---|---|
+| 名片公开页 `/card/p/<slug>` | 扫码 / 转发链接 | **不需要登录、不走开通门** —— 见客户扫码就得能打开。四卷无缝背景纸：纸白首屏 → 青雾「我在做的事」→ 灰白企业与历程 → 深青墨联系。存 vCard 进通讯录；微信内下载被拦时改弹可复制面板 |
+
 ### 数字资产平台（v0.104 新增 9 屏 / 改造 4 屏）
 
 | 屏 | 入口 | 说明 |
@@ -127,6 +133,38 @@ src/
 ---
 
 ## 版本日志
+
+### v0.153（2026-09-07）— AI 数字名片公开页（一期 · 只做展示）
+
+方案真源 [`docs/digital-business-card-plan.md`](../../docs/digital-business-card-plan.md)；
+三产品整合见 [`docs/ip-ecosystem-integration.md`](../../docs/ip-ecosystem-integration.md)。
+
+**这一期只做三件事**：扫码即看（无需注册登录）/ 形象三档 / 一键存进通讯录。
+交换名片、名片夹、字段分层可见挂二期 —— 它们的前提是先有人愿意把链接递出去。
+
+**新增**
+- `src/proto/card.ts` —— 类型契约 + Mock + `fetchCard` + `buildVCard`。形象一律以
+  `dapDisplayRef` 引用数字资产（`look:<id>` / `deriv:<id>` / `null`=跟随定妆照），
+  **名片存引用不存图**，资产改了名片自动跟着变。
+- `src/components/card/card-view.tsx` —— 四卷纸 + 换纸渐变带 + 底部溶解的形象 + 复制 / vCard。
+- `src/app/card/p/[slug]/page.tsx` —— 公开路由，刻意不调 `useRequireAuth` / `EnrollmentGate`。
+- `public/card/demo-*.jpg` —— 演示形象（3D 潮玩渲染），页面底部标「演示数据」。
+
+**三条实现红线（都是实测踩出来的）**
+1. **首屏底色 = `#FFFFFF`**，与形象图的棚拍白同色 —— 图片矩形因此隐形，不靠遮罩硬遮。
+   换成开屏视频时同一条规则照用。
+2. **形象只做底部溶解**（`linear-gradient` mask），不能用径向遮罩 —— 径向会把帽顶吃掉。
+3. **巨号字标是刊头，不压在人身上**。手机上下巴到手之间的干净带只有约 56px，
+   压不下 73px 高的字；桌面画布大才有条件把字压在腿上。
+
+**微信里的兜底**：`.vcf` 下载在微信内置浏览器会被拦。检测到微信 UA 时不走下载，
+改弹一个可逐条复制的面板并说明「右上角用浏览器打开再存」—— 不让按钮点了没反应。
+
+**门禁**：`typecheck:all` 8/8 · `pnpm --filter @ai-star-eco/web-aiavatar build` 通过
+（`/card/p/[slug]` 已在路由表）· `check:api-contract` OK。
+
+**未接后端**：`USE_MOCK=1` 走本地样例。live 模式对应 `GET /api/v1/card/p/{slug}`，
+需在 `ProductRouteTable.PUBLIC_GETS` 登记后才可未登录访问；`card_profile` 表尚未建。
 
 ### v0.147（2026-09-01）— 完整 5 Tab 重排（首页 / 发现 / 创作 / 资产 / 我的）+ 修返回键乱跳
 
