@@ -138,7 +138,12 @@ public final class ProductRouteTable {
             new PublicGet("/api/store/catalog",
                     "登录前可浏览的公开商品目录：AepSecurityConfig 已 permitAll，"
                             + "StoreController#catalog 显式支持匿名（principal 可为 null）。"
-                            + "不豁免会出现「匿名 200 / 已登录 403」的倒挂；写路径 /api/store/items/** 不在此列。"));
+                            + "不豁免会出现「匿名 200 / 已登录 403」的倒挂；写路径 /api/store/items/** 不在此列。"),
+            new PublicGet("/api/v1/card/p/**",
+                    "AI 数字名片公开页（v0.153）：见客户扫码就得能打开，AepSecurityConfig 已对 GET permitAll。"
+                            + "不豁免会出现「匿名访客 200 / 已登录但没开通 aiavatar 的人 403」——"
+                            + "递出去的名片对方能不能看，不该取决于他买没买我们的产品。"
+                            + "只豁免读；建卡 / 编辑 / 发布走 /api/v1/card/** 通配，照常需要登录 + 开通。"));
 
     // ── 路由表（顺序敏感：先匹配先生效，具体规则必须排在通配前缀之前）────────────
 

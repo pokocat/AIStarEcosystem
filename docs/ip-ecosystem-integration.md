@@ -138,10 +138,11 @@ shot:<name>   → 机位照
 
 | 层 | 项 |
 |---|---|
-| server | `card_profile` 表（名片文档 + 短链 + 发布态；只存 cdnKey 与 dapDisplayRef，**不存签名 URL**） |
+| ~~server~~ | ~~`card_profile` 表~~ **v0.153 已落地**（V28 迁移；核过线上 `flyway_schema_history` 最大值=27） |
+| ~~server~~ | ~~公开读端点~~ **v0.153 已落地**：`GET /api/v1/card/p/{slug}` + `AepSecurityConfig` permitAll + `PUBLIC_GETS` 登记，8 条单测守「未发布 / 软删 / 不存在同一个 404」 |
 | server | `DapAssetUsage` 用途类型 `business_card` |
 | server | `IpCatalogService` 增加 `GET /ip-studio/workflows`（内置工作流模板）与 `GET /ip-studio/prompt-presets` |
-| server | `PUBLIC_GETS` 登记 `GET /api/v1/card/p/*`（未登录可看名片正面） |
+
 | server | 短动作：复用 `DapWorkflowService.createDerivative(avatarId, "video", …)`，**必须在 ipstudio 发布之后**；需要一个「发布后自动排队跑短动作」的编排（现在没有，要新写） |
 | web-ipstudio | 首页「IP 打造」入口 + 性别选择 + 一键铺画布；出图弹层通用化（提示词框 + 配置条 + 模板库） |
 | web-aiavatar | 资产详情页「已用于 · 名片」 |

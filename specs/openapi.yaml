@@ -8635,6 +8635,36 @@ paths:
   # 数字人资产平台（apps/web-aiavatar，v0.51 dap 领域：com.aistareco.aep.dap.*，表 dap_*）
   # REST 真源 = apps/web-aiavatar/src/proto/api.ts；全部 authenticated（Bearer JWT）。
   # 注意：实际挂载于 /api/v1/**；本文件按惯例省略 /api 前缀。
+  /v1/card/p/{slug}:
+    get:
+      tags: [card]
+      summary: 按短链读公开名片（匿名可访问）
+      description: >
+        AI 数字名片公开页。**不需要登录、不走开通门** —— 见客户扫码就得能打开。
+        放行需三处同时成立：AepSecurityConfig 对 GET permitAll、
+        ProductRouteTable.PUBLIC_GETS 登记、service 只吐已发布且未软删的名片。
+        找不到 / 未发布 / 已软删一律 404 CARD_NOT_FOUND（同一个码，避免短链枚举）。
+        形象字段是 dapDisplayRef 引用（look:/deriv:/null），图片 URL 由 cdnKey 出 wire 时现签。
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 名片文档
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    description: 名片文档（整存整取；字段契约见 apps/web-aiavatar/src/proto/card.ts）
+        "404":
+          description: 名片不存在或已取消发布（CARD_NOT_FOUND）
   /v1/avatars:
     get:  { tags: [dap], operationId: dapListAvatars, description: scope=mine|public + path/status/fav/q 过滤, responses: { '200': { description: ok } } }
     post: { tags: [dap], operationId: dapCreateAvatar, responses: { '200': { description: ok } } }

@@ -132,6 +132,10 @@ public class AepSecurityConfig {
                         // validateCalledAt 幂等闸；且回调**不直接判定授权生效**，生效与否一律以
                         // 服务端轮询上游 GET 分组的状态为准（官方要求）。顺序敏感：必须在
                         // 通用 /api/v1/** authenticated 之前。
+                        // AI 数字名片公开页（v0.153）：见客户扫码就得能打开，不能要求先注册。
+                        // 顺序敏感：必须排在通用 /api/v1/** authenticated 之前。
+                        // 只放行读；写路径 /api/v1/card/** 仍走登录 + aiavatar 开通。
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/card/p/**").permitAll()
                         .requestMatchers("/api/v1/real-auth/callback").permitAll()
                         // 数字人资产平台（web-aiavatar，v0.51 dap 领域）：/api/v1/** 全部需登录。
                         .requestMatchers("/api/v1/**").authenticated()
