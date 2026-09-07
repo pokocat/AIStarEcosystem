@@ -13,6 +13,7 @@ import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.PromptService;
+import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -69,6 +70,7 @@ public class IpRunService {
     private final CreditService credits;
     private final IpRunWorker worker;
     private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
+    private final com.aistareco.aep.service.AiModelInvocationService aiModels;
     private final ObjectMapper om;
 
     public IpRunService(IpRunRepository runRepo,
@@ -82,7 +84,8 @@ public class IpRunService {
                         CreditService credits,
                         IpRunWorker worker,
                         ObjectMapper om,
-                         com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs) {
+                         com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs,
+                         com.aistareco.aep.service.AiModelInvocationService aiModels) {
         this.runRepo = runRepo;
         this.projects = projects;
         this.catalog = catalog;
@@ -94,6 +97,7 @@ public class IpRunService {
         this.credits = credits;
         this.worker = worker;
         this.videoJobs = videoJobs;
+        this.aiModels = aiModels;
         this.om = om;
     }
 
@@ -454,6 +458,14 @@ public class IpRunService {
         if (c.needsImage() && (multimodal.imageModel() == null || multimodal.imageModel().isBlank())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_ENGINE_NOT_CONFIGURED",
                     "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 图片」用途绑定启用端点");
+        }
+        // 用户选的模型必须现在就验：等到 worker 才发现不合法的话，钱已经冻上、
+        // 运行行已经落库，用户看到的是一次「跑起来又失败」而不是「这个模型不能选」。
+        // 不在白名单不静默回退默认（D-11 纪律）—— 他是按那个模型的价付的钱。
+        String endpointId = IpDocs.text(c.inputs().path("_exec"), "endpointId");
+        if (endpointId != null && aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpointId).isEmpty()) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
+                    "选择的出图模型不可用，请在下拉里重新选一个");
         }
         PromptService.ResolvedPrompt p = prompts.resolve(c.promptKey());
         if (p == null || "code".equals(p.origin())) {

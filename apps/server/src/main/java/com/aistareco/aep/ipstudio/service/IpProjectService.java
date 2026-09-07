@@ -140,10 +140,12 @@ public class IpProjectService {
      */
     void applyUpdate(IpProject p, IpUpdateProjectRequest req) {
         if (req == null) return;
+        requireNotStale(p, req.baseUpdatedAt());
         String name = trimToNull(req.name());
         if (name != null) p.setName(name.length() > 128 ? name.substring(0, 128) : name);
         if (req.doc() != null && !req.doc().isNull()) {
             IpDocs.requireValidDoc(req.doc());
+            stripDerivedUrls(req.doc());
             String json = writeDoc(req.doc());
             long bytes = json.getBytes(StandardCharsets.UTF_8).length;
             if (bytes > props.getDocMaxBytes()) {
@@ -259,6 +261,15 @@ public class IpProjectService {
      * {@code ipstudio_gen/<uid>/…}（前缀由 storage 自己的 key 生成规则派生，见 {@link #keyPrefix}，
      * 不在这里手写猜测 —— 那样一改 {@code buildKey} 的归一规则闸门就会静默失效）。
      */
+    /** 归属判定的只读版本 —— 给「不该抛、只该跳过」的场景用（如出 wire 重签）。 */
+    boolean ownsAssetKey(String userId, String key) {
+        if (userId == null || key == null || key.isBlank()) return false;
+        String k = key.trim();
+        return !k.startsWith("/") && !k.contains("\\") && !k.contains("..")
+                && !k.contains("\n") && !k.contains("\r")
+                && (k.startsWith(keyPrefix(CATEGORY_SOURCE, userId)) || k.startsWith(keyPrefix(CATEGORY_GEN, userId)));
+    }
+
     public String requireOwnedAssetKey(String userId, String key) {
         if (key == null || key.isBlank()) return null;
         String k = key.trim();
@@ -303,7 +314,7 @@ public class IpProjectService {
     }
 
     IpProjectDto toDetail(IpProject p) {
-        JsonNode doc = resignDocAssetUrls(readDoc(p));
+        JsonNode doc = resignDocAssetUrls(readDoc(p), p.getOwnerUserId());
         RunsProjection runs = projectRuns(p.getId(), doc);
         return new IpProjectDto(p.getId(), p.getName(), p.getTemplateId(), p.getStatus(),
                 p.getCoverKey() == null ? null : storage.signedUrl(p.getCoverKey()),
@@ -419,14 +430,21 @@ public class IpProjectService {
      * 的接口，静默跳过就等于给了一个「试到哪个 key 是别人的」的探测面。
      * 签不出来的 key 不进结果，前端据此保留占位而不是显示破图。
      */
+    /** 一次重签的上限：画布上图再多也够用，同时挡住拿这个接口当批量探测器。 */
+    private static final int MAX_SIGN_KEYS = 200;
+
     @Transactional(readOnly = true)
     public Map<String, String> signOwnedKeys(String userId, List<String> keys) {
         Map<String, String> out = new LinkedHashMap<>();
         if (keys == null) return out;
-        // 一次最多 200 个：画布上图再多也够用，同时挡住拿这个接口当批量探测器
-        int limit = Math.min(keys.size(), 200);
-        for (int i = 0; i < limit; i++) {
-            String key = requireOwnedAssetKey(userId, keys.get(i));
+        // 超限**整体拒绝**而不是砍尾：静默丢掉的那几个在前端表现为「签不出来」，
+        // 调用方分不清是超限、非法 key 还是存储故障 —— 而且被丢掉的那些根本没过归属闸。
+        if (keys.size() > MAX_SIGN_KEYS) {
+            throw BusinessException.badRequest("IP_SIGN_TOO_MANY",
+                    "一次最多重签 " + MAX_SIGN_KEYS + " 张图，请分批");
+        }
+        for (String raw : keys) {
+            String key = requireOwnedAssetKey(userId, raw);
             if (key == null) continue;
             try {
                 String url = storage.signedUrl(key);
@@ -441,22 +459,70 @@ public class IpProjectService {
     // ── 文档读写 ──────────────────────────────────────────────
 
     /**
+     * 乐观并发：客户端带上「我加载的是哪一版」，服务端据此拒绝覆盖别人的编辑。
+     *
+     * <p>没有这道闸的话，两个标签页各自打开同一个项目、各改各的节点，
+     * 两边都 PUT 整份文档 —— 后到的那次把先到的整块画布抹掉，**不可逆**。
+     * 画布文档是整存整取的，所以这不是「丢一个字段」，是丢一整份工作。
+     *
+     * <p>不传 {@code baseUpdatedAt} 视为不参与并发控制（老客户端 / 内部调用），
+     * 保持向后兼容；新画布一律传。
+     */
+    private void requireNotStale(IpProject p, String baseUpdatedAt) {
+        if (baseUpdatedAt == null || baseUpdatedAt.isBlank()) return;
+        String current = p.getUpdatedAt() == null ? null : p.getUpdatedAt().toString();
+        if (current != null && !current.equals(baseUpdatedAt)) {
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "IP_PROJECT_STALE",
+                    "这个项目在别处被改过了，刷新后再保存 —— 直接覆盖会把那边的改动整块抹掉");
+        }
+    }
+
+    /**
+     * 落库前扔掉派生出来的图片地址（§4.7.7）。
+     *
+     * <p>为什么必须服务端来做：出 wire 时 {@link #resignDocAssetUrls} 会给每个 key 现签一个
+     * **带 TTL** 的地址；画布把它读进状态，之后任何一次编辑都会把整份文档 PUT 回来 ——
+     * 签名就这么进了库。一小时后重新打开，画布上全是过期地址。
+     *
+     * <p>指望前端在 PUT 之前自己剥是靠不住的：文档是客户端拥有的，我们不能假设它守规矩。
+     * 真值是 {@code storageKey}，地址每次出 wire 现派生。
+     */
+    private static void stripDerivedUrls(JsonNode doc) {
+        for (JsonNode n : IpDocs.nodes(doc)) {
+            JsonNode md = IpDocs.metadataOf(n);
+            if (!(md instanceof ObjectNode mo)) continue;
+            if (IpDocs.text(mo, "storageKey") != null) mo.remove("url");
+            JsonNode images = mo.path("images");
+            if (!images.isArray()) continue;
+            for (JsonNode img : images) {
+                if (img instanceof ObjectNode io && IpDocs.text(io, "storageKey") != null) io.remove("content");
+            }
+        }
+    }
+
+    /**
      * §4.7.7：doc 是整存整取的 JSON 文档，里面每张图的 {@code url} 只是上传当时派生出来的签名地址 ——
      * 签名带 TTL（默认 1 小时），原样返回就是一小时后满屏图裂。真值是 {@code storageKey}，
      * 出 wire 时按 key 重签覆盖。**只改出 wire 的这棵树，不回写库。**
      *
      * <p>画布把图放在两个地方：节点级的 {@code metadata.storageKey}，和候选图集
      * {@code metadata.images[].storageKey}。两处都要重签，漏一处就是「有的图好的有的裂」。
+     *
+     * <p><b>只签属主自己的 key。</b>文档是客户端拥有的 —— 用户完全可以把别人的 key
+     * 写进自己的画布，然后靠读自己的项目换出一个指向别人图片的签名地址。
+     * 这跟 {@link #signOwnedKeys} 是同一个洞的另一扇门。这里选择**跳过**而不是抛：
+     * 抛会让一份被污染的文档把整个项目变成打不开，而跳过不产出 URL、也不多泄露任何信息
+     * （是不是自己的 key，写文档的人本来就知道）。
      */
-    JsonNode resignDocAssetUrls(JsonNode doc) {
+    JsonNode resignDocAssetUrls(JsonNode doc, String ownerUserId) {
         for (JsonNode n : IpDocs.nodes(doc)) {
             JsonNode md = IpDocs.metadataOf(n);
             if (!(md instanceof ObjectNode mo)) continue;
-            resignOne(mo, "storageKey", "url");
+            resignOne(mo, "storageKey", "url", ownerUserId);
             JsonNode images = mo.path("images");
             if (images.isArray()) {
                 for (JsonNode img : images) {
-                    if (img instanceof ObjectNode io) resignOne(io, "storageKey", "content");
+                    if (img instanceof ObjectNode io) resignOne(io, "storageKey", "content", ownerUserId);
                 }
             }
         }
@@ -464,9 +530,13 @@ public class IpProjectService {
     }
 
     /** 按 key 重签一个字段。签不出来就保留原值 —— 可用性优先，别把已有的图也擦掉（§8.0 观测类例外同理）。 */
-    private void resignOne(ObjectNode holder, String keyField, String urlField) {
+    private void resignOne(ObjectNode holder, String keyField, String urlField, String ownerUserId) {
         String key = IpDocs.text(holder, keyField);
         if (key == null) return;
+        if (!ownsAssetKey(ownerUserId, key)) {
+            log.warn("[ipstudio] 文档里出现非本人资产 key，不重签 owner={} key={}", ownerUserId, abbreviate(key));
+            return;
+        }
         try {
             String url = storage.signedUrl(key);
             if (url != null && !url.isBlank()) holder.put(urlField, url);

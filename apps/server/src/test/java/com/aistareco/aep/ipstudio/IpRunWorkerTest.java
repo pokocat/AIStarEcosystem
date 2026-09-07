@@ -157,7 +157,7 @@ class IpRunWorkerTest {
     @Test
     void allImagesSucceed_commitsPerImage_andNoRelease() {
         seedGenerateRun(4);
-        when(multimodal.generateImage(anyString(), anyString(), anyList())).thenReturn(IpStudioFixtures.pngBytes());
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
 
@@ -174,7 +174,7 @@ class IpRunWorkerTest {
     @Test
     void midBatchFailure_keepsSuccesses_releasesRemainder_andReportsErrorCode() {
         seedGenerateRun(4);
-        when(multimodal.generateImage(anyString(), anyString(), anyList()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(IpStudioFixtures.pngBytes())
                 .thenReturn(IpStudioFixtures.pngBytes())
                 .thenThrow(new DapModelException("DAP_MODEL_HTTP_429", "上游限流"));
@@ -193,7 +193,7 @@ class IpRunWorkerTest {
     @Test
     void zeroSuccess_isFailedWithOriginalCodeAndZeroCost() {
         seedGenerateRun(2);
-        when(multimodal.generateImage(anyString(), anyString(), anyList()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new DapModelException("DAP_MODEL_BAD_OUTPUT", "上游没给图"));
 
         worker.runBlocking(RID);
@@ -212,7 +212,7 @@ class IpRunWorkerTest {
         // commitHold 抛的是 ResponseStatusException（不是 BusinessException）——
         // 只抓 BusinessException 会跳过释放，把冻结额挂到 CreditHoldSweeper 三小时后才回来
         seedGenerateRun(2);
-        when(multimodal.generateImage(anyString(), anyString(), anyList())).thenReturn(IpStudioFixtures.pngBytes());
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
         doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "hold 已是终态"))
                 .when(credits).commitHold(anyString(), anyString(), anyLong(), anyString());
 
@@ -228,7 +228,7 @@ class IpRunWorkerTest {
     @Test
     void cancelRequestedBetweenImages_keepsPaidImagesAndReleasesRest() {
         IpRun run = seedGenerateRun(4);
-        when(multimodal.generateImage(anyString(), anyString(), anyList())).thenAnswer(inv -> {
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> {
             // 第一张出完就请求取消
             reload().setCancelRequested(true);
             return IpStudioFixtures.pngBytes();
@@ -248,13 +248,13 @@ class IpRunWorkerTest {
     @Test
     void noReferenceAtAll_generatesTextToImage() {
         seedGenerateRun(1, 8L, 8L);   // 一个参考图都没有（主形象节点、用户也没传照片）
-        when(multimodal.generateImage(anyString(), anyString(), isNull()))
+        when(multimodal.generateImage(anyString(), anyString(), isNull(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
 
         assertEquals(IpRun.STATUS_DONE, reload().getStatus());
-        verify(multimodal).generateImage(anyString(), eq("768x1024"), isNull());
+        verify(multimodal).generateImage(anyString(), eq("768x1024"), isNull(), org.mockito.ArgumentMatchers.any());
     }
 
     // ── 身份参考图不可读：绝不降级成「照价出一张不像他的图」──
@@ -272,7 +272,7 @@ class IpRunWorkerTest {
         assertEquals(IpRun.STATUS_FAILED, r.getStatus());
         assertEquals("IP_REF_UNREADABLE", r.getErrorCode());
         assertEquals(0L, r.getCost());
-        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList());
+        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any());
         verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(RID), anyString());
     }
@@ -285,7 +285,7 @@ class IpRunWorkerTest {
             String key = inv.getArgument(0, String.class);
             return key.endsWith("ref-1.png") ? null : "https://cdn.test/" + key;
         });
-        when(multimodal.generateImage(anyString(), anyString(), anyList()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
@@ -298,7 +298,25 @@ class IpRunWorkerTest {
         assertEquals("unreadable", refs.get(1).path("reason").asText());
         // 只带得动的那一张进了模型请求
         verify(multimodal).generateImage(anyString(), eq("768x1024"), eq(List.of("https://cdn.test/"
-                + IpStudioFixtures.sourceKey(USER, "ref-0.png"))));
+                + IpStudioFixtures.sourceKey(USER, "ref-0.png"))), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void userSelectedModelIsActuallyPassedToTheEngine() throws Exception {
+        // 界面上有模型下拉、按那个模型标价、也按它扣了钱 —— 传不下去就是「选了没用」，
+        // 用户拿到的是默认端点出的图，却付了他选的那个模型的价。
+        IpRun run = seedGenerateRun(1, 8L, 8L);
+        ObjectNode inputs = (ObjectNode) OM.readTree(run.getInputJson());
+        ((ObjectNode) inputs.get("_exec")).put("endpointId", "ep-chosen");
+        run.setInputJson(inputs.toString());
+        runs.repo.save(run);
+        when(multimodal.generateImage(anyString(), anyString(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+
+        worker.execute(RID);
+
+        verify(multimodal).generateImage(anyString(), anyString(),
+                org.mockito.ArgumentMatchers.any(), eq("ep-chosen"));
     }
 
     // ── 单价快照：hold 与 commit 之间后台改价，不许按新价结算 ──
@@ -307,7 +325,7 @@ class IpRunWorkerTest {
     void commitsUseHeldUnitPriceEvenIfAdminChangesItMidRun() {
         seedGenerateRun(4, 8L, 32L, "source");           // 冻结时 8/张 × 4 = 32
         when(pricing.ipImage()).thenReturn(99L);          // 运行途中运营把单价改成 99
-        when(multimodal.generateImage(anyString(), anyString(), anyList()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
@@ -324,7 +342,7 @@ class IpRunWorkerTest {
     void partialCommitAgainstSnapshotReleasesTheRemainder() {
         seedGenerateRun(4, 8L, 32L, "source");
         when(pricing.ipImage()).thenReturn(1L);           // 就算现价变得很低，剩余仍按冻结额退
-        when(multimodal.generateImage(anyString(), anyString(), anyList()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(IpStudioFixtures.pngBytes())
                 .thenThrow(new DapModelException("DAP_MODEL_HTTP_500", "上游炸了"));
 
@@ -341,7 +359,7 @@ class IpRunWorkerTest {
     @Test
     void providerReturnsNonImageBytes_isBadOutputFailureAndNothingIsStored() {
         seedGenerateRun(2, 8L, 16L, "source");
-        when(multimodal.generateImage(anyString(), anyString(), anyList()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("{\"error\":\"quota exceeded\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         worker.runBlocking(RID);
@@ -368,7 +386,7 @@ class IpRunWorkerTest {
         assertEquals("IP_RUN_QUEUE_FULL", r.getErrorCode());
         assertEquals(0L, r.getCost(), "没跑过一张，冻结额全退");
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(RID), anyString());
-        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList());
+        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -490,7 +508,7 @@ class IpRunWorkerTest {
         r.setStatus(IpRun.STATUS_DONE);
         runs.repo.save(r);
         worker.runBlocking(RID);
-        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList());
+        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any());
     }
 
     private com.fasterxml.jackson.databind.JsonNode readJson(String json) {

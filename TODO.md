@@ -20,6 +20,11 @@
 - [ ] **音频生成没接**：同上，`canvas-bridge/audio.ts` 现在明确报错，不产静音占位（§8.0）。
 - [ ] **视频只吃首帧图**：画布还会传视频 / 音频参考（它支持多模态参考），
       `VideoMediaOptions` 收下但没用。服务端支持了在 `canvas-bridge/video.ts` 接上。
+- [ ] **`MaterialVideoJob.videoUrl` 仍是 URL 不是 key**（§4.7.6 欠债）：v0.158 用
+      `CdnUrlSigner.keyOf` 从 URL 反抽出 key 给画布用，是权宜之计 —— 换 CDN 域名或
+      key-prefix 时会抽不出来。彻底修是加 `videoCdnKey` 列并双写，属于视频线的迁移。
+- [ ] **画布的并发只到「拒绝覆盖」**：冲突时让用户刷新重来，改动没有合并。
+      真要多人协同得上 CRDT 或按节点粒度的 patch，那是另一个量级的工程。
 - [ ] **本机 dev H2 的 V25 校验和不匹配**（既有问题，非本轮引入）：`data/aistareco.mv.db`
       启动会挂在 `Migration checksum mismatch for migration version 25`。本轮联调改用独立库
       `canvas-e2e` 绕开，没动那份数据。要修跑 `flyway repair`，或确认可弃后删库重建。

@@ -166,6 +166,16 @@ public class CdnUrlSigner {
     }
 
     /** 从完整 URL 抽出 key —— base 之后的部分（去开头 /，砍 query/fragment）。 */
+    /**
+     * 从一个我方资产 URL 反抽出存储 key（抽不出返回 null）。
+     *
+     * <p>给「历史上只存了 URL、没存 key」的字段用（§4.7.6 的欠债，如 {@code MaterialVideoJob.videoUrl}）：
+     * 出 wire 时把 key 一并给出去，调用方就能按 key 重签而不是抱着一个会过期的地址。
+     */
+    public String keyOf(String url) {
+        return extractKey(url);
+    }
+
     private String extractKey(String url) {
         for (String prefix : signedHostsPrefixes) {
             if (!prefix.isBlank() && url.startsWith(prefix)) {

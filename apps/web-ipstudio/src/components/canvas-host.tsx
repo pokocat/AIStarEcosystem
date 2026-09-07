@@ -22,6 +22,7 @@ const SAVE_LABEL: Record<string, string> = {
   saving: "保存中",
   saved: "已保存",
   failed: "没保存上，改动还在本地",
+  conflict: "这个项目在别处被改过了 · 刷新后再继续",
 };
 
 function Host({ projectId }: { projectId: string }) {
@@ -57,9 +58,9 @@ function Host({ projectId }: { projectId: string }) {
       <CanvasPage />
       {saveState !== "idle" && (
         <span
-          className="absolute top-3 right-4 z-50 px-2.5 py-1 rounded-full text-[11.5px] font-semibold pointer-events-none"
+          className="absolute top-3 right-4 z-50 px-2.5 py-1 rounded-full text-[11.5px] font-semibold pointer-events-none max-w-[60vw] truncate"
           style={
-            saveState === "failed"
+            saveState === "failed" || saveState === "conflict"
               ? { background: "var(--err-soft)", color: "var(--err)" }
               : { background: "var(--surface-2)", color: "var(--ink-3)" }
           }

@@ -123,7 +123,16 @@ export interface IpPricing { identityCredits: number; imageCredits: number }  //
 // ── 请求体 ───────────────────────────────────────────────────────────────────
 
 export interface IpCreateProjectRequest { name?: string; templateId?: string }
-export interface IpUpdateProjectRequest { name?: string; doc?: IpProjectDoc }
+export interface IpUpdateProjectRequest {
+  name?: string;
+  doc?: IpProjectDoc;
+  /**
+   * 客户端加载这份文档时的 `updatedAt`。服务端据此拒绝覆盖别处的编辑（多标签页 / 多设备）——
+   * 画布文档是整存整取的，覆盖掉的不是一个字段，是那边一整份工作。
+   * 冲突时 409 `IP_PROJECT_STALE`。不传 = 不参与并发控制。
+   */
+  baseUpdatedAt?: string;
+}
 export interface IpRunNodeRequest { doc?: IpProjectDoc }   // 运行前顺手保存最新文档（可选，避免「先 PUT 再 POST」竟态）
 export interface IpPublishRequest { avatarName: string; masterNodeId: string; lookNodeIds: string[] }
 export interface IpPublishResult { avatarId: string; lookIds: string[] }

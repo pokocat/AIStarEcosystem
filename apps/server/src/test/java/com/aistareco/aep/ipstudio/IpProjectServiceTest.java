@@ -19,6 +19,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.aistareco.aep.ipstudio.IpStudioFixtures.OM;
@@ -141,6 +142,82 @@ class IpProjectServiceTest {
     }
 
     // ── runs 投影 ───────────────────────────────────────────
+
+    @Test
+    void derivedImageUrlsAreStrippedBeforePersisting() {
+        // 出 wire 时服务端会给每个 key 现签一个带 TTL 的地址；画布读进状态后，
+        // 之后任何一次编辑都会把整份文档 PUT 回来 —— 签名就这么进了库，一小时后全裂。
+        // 指望前端自己剥是靠不住的：文档是客户端拥有的。
+        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
+        IpStudioFixtures.Doc d = new IpStudioFixtures.Doc();
+        ObjectNode md = d.imageNode("n-1", IpStudioFixtures.genKey(USER, "a.png"));
+        md.put("url", "https://cdn.test/a.png?sig=WILL_EXPIRE");
+        md.putArray("images").addObject()
+                .put("id", "i1").put("storageKey", IpStudioFixtures.genKey(USER, "b.png"))
+                .put("content", "https://cdn.test/b.png?sig=WILL_EXPIRE");
+
+        svc.update(USER, PID, new IpUpdateProjectRequest(null, d.root));
+
+        String stored = projects.rows.get(PID).getDocJson();
+        assertFalse(stored.contains("WILL_EXPIRE"), "签名地址不该落库：" + stored);
+        assertTrue(stored.contains("a.png") && stored.contains("b.png"), "key 是真值，必须留着");
+    }
+
+    @Test
+    void staleSaveIsRejectedInsteadOfOverwriting() {
+        // 两个标签页各改各的：后到的那次会把先到的整块画布抹掉，且不可逆。
+        // 画布是整存整取的 —— 覆盖掉的不是一个字段，是那边一整份工作。
+        IpProject p = IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc());
+        p.setUpdatedAt(java.time.Instant.parse("2026-09-07T00:00:00Z"));
+        projects.repo.save(p);
+
+        assertEquals("IP_PROJECT_STALE", assertThrows(BusinessException.class,
+                () -> svc.update(USER, PID, new IpUpdateProjectRequest(
+                        null, new IpStudioFixtures.Doc().root, "2026-09-06T00:00:00Z"))).getCode());
+    }
+
+    @Test
+    void saveWithMatchingVersionGoesThrough() {
+        IpProject p = IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc());
+        p.setUpdatedAt(java.time.Instant.parse("2026-09-07T00:00:00Z"));
+        projects.repo.save(p);
+
+        IpProjectDto dto = svc.update(USER, PID, new IpUpdateProjectRequest(
+                "改个名", new IpStudioFixtures.Doc().root, "2026-09-07T00:00:00Z"));
+        assertEquals("改个名", dto.name());
+    }
+
+    @Test
+    void tooManyKeysToSignIsRejectedWholesale() {
+        // 砍尾会静默丢掉几个：前端表现成「签不出来」，调用方分不清是超限、非法 key 还是存储故障；
+        // 而且被丢掉的那些根本没过归属闸。
+        List<String> many = new ArrayList<>();
+        for (int i = 0; i < 201; i++) many.add(IpStudioFixtures.genKey(USER, "k" + i + ".png"));
+        assertEquals("IP_SIGN_TOO_MANY",
+                assertThrows(BusinessException.class, () -> svc.signOwnedKeys(USER, many)).getCode());
+    }
+
+    @Test
+    void docWithSomeoneElsesKeyIsNotSignedOnRead() {
+        // 文档是客户端拥有的：用户完全可以把别人的 key 写进自己的画布，
+        // 然后靠读自己的项目换出一个指向别人图片的签名地址。
+        // 这跟 signOwnedKeys 是同一个洞的另一扇门 —— 出 wire 重签必须同样过归属闸。
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
+        d.data("n-source").put("storageKey", IpStudioFixtures.genKey(OTHER, "victim.png"));
+        projects.repo.save(IpStudioFixtures.project(PID, USER, d));
+
+        IpProjectDto dto = svc.detail(USER, PID);
+
+        com.fasterxml.jackson.databind.JsonNode src = null;
+        for (com.fasterxml.jackson.databind.JsonNode n : dto.doc().get("nodes")) {
+            if ("n-source".equals(n.path("id").asText())) src = n;
+        }
+        assertNotNull(src);
+        // 别人的 key 不签 —— 项目照常打开（不抛），只是这一张没有地址
+        assertTrue(src.path("metadata").path("url").isMissingNode()
+                        || src.path("metadata").path("url").asText("").isEmpty(),
+                "非本人的 key 不该被签出地址：" + src.path("metadata"));
+    }
 
     @Test
     void runsProjectionKeepsLatestPerNodePlusTheSelectedOlderRun() {

@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
-import { uploadMediaFile, type UploadedFile } from "./file-storage";
+import type { UploadedFile } from "./file-storage";
 import { GenerationCanceled } from "./generation";
 
 export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string; storageKey?: string };
@@ -68,7 +68,12 @@ export async function pollVideoGenerationTask(
   const job = await readVideoJob(task.id);
   if (job.status === "ready" || job.status === "done") {
     if (!job.video_url) return { status: "failed", error: "任务说成了，但没有成片地址" };
-    return { status: "completed", result: { url: job.video_url, mimeType: "video/mp4" } };
+    return {
+      status: "completed",
+      // storageKey 由服务端给：成片已经镜像进我方存储了（视频链的既有纪律：
+      // 所有时效产物先镜像再交付），画布只需要引用它。
+      result: { url: job.video_url, storageKey: job.video_key, mimeType: "video/mp4" },
+    };
   }
   if (job.status === "failed") {
     return { status: "failed", error: job.error_message || "视频生成失败，积分已退回" };
@@ -110,13 +115,24 @@ export function isVideoTaskFailed(error: unknown): boolean {
 }
 
 /**
- * 成片落我们自己的存储。
+ * 成片落存储。
  *
- * 服务端给的成片地址是**上游供应商的时效地址**，直接存进画布文档，过几小时就播不了。
- * 所以要镜像一份到 OSS（与 clip 线「所有时效产物先镜像我方存储」同一条纪律）。
+ * <p>**不要在这里重新上传。** 服务端的视频链已经把成片镜像进我方存储了
+ * （「所有时效产物先镜像我方存储」是 clip 线定下的纪律），这里拿到的
+ * `storageKey` 就是那份镜像。再传一遍不但多花一次钱、多一份对象，而且
+ * `/uploads` 只收 JPG/PNG —— MP4 会被直接拒掉，表现成「视频跑成了却存不下来」，
+ * 而钱已经扣了。
  */
 export async function storeGeneratedVideo(result: VideoGenerationResult): Promise<UploadedFile> {
-  if (result.blob) return uploadMediaFile(result.blob, "canvas-video");
-  if (!result.url) throw new Error("没有可保存的成片");
-  return uploadMediaFile(result.url, "canvas-video");
+  if (result.storageKey && result.url) {
+    return {
+      url: result.url,
+      storageKey: result.storageKey,
+      bytes: 0,
+      mimeType: result.mimeType ?? "video/mp4",
+    };
+  }
+  // 服务端没给 key = 成片没有镜像进我方存储。直接把上游的时效地址存进画布文档，
+  // 过几小时就播不了 —— 那不如现在就说清楚。
+  throw new Error("成片没有落到我方存储，请联系运维检查视频链的镜像配置");
 }

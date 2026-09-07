@@ -92,6 +92,26 @@ describe("自动保存", () => {
     await waitFor(() => expect(result.current.saveState).toBe("saved"));
   });
 
+  it("切到别的项目后，旧项目的待保存不会再打出去", async () => {
+    // 旧项目的防抖计时器 / 在途重试都得掐掉，否则会拿着旧 id 再存一次 ——
+    // 存的还是当时那份内容，等于把用户在新项目里的操作时间线搅乱。
+    getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc });
+    const { result, rerender, unmount } = renderHook(({ id }) => useProjectSync(id), {
+      initialProps: { id: "IPP-1" },
+    });
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
+    // 防抖还没到点就切走
+    getProjectMock.mockResolvedValue({ id: "IPP-2", name: "B", doc: serverDoc });
+    rerender({ id: "IPP-2" });
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    const forProjectOne = updateProjectMock.mock.calls.filter(([id]) => id === "IPP-1");
+    expect(forProjectOne).toHaveLength(0);
+    unmount();
+  });
+
   it("存不上要说出来，不能让用户以为改动落盘了", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });
     updateProjectMock.mockRejectedValue(new Error("网络断了"));

@@ -64,6 +64,7 @@ class IpRunServiceTest {
     private IpProjectService projectService;
     private IpRunService svc;
     private com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
+    private com.aistareco.aep.service.AiModelInvocationService aiModels;
 
     @BeforeEach
     void setUp() {
@@ -90,8 +91,15 @@ class IpRunServiceTest {
         worker = mock(IpRunWorker.class);
 
         videoJobs = mock(com.aistareco.aep.service.materialvideo.MaterialVideoJobService.class);
+        aiModels = mock(com.aistareco.aep.service.AiModelInvocationService.class);
+        // 默认：任何端点 id 都在白名单里（不关心端点的用例不必逐个 stub）。
+        // ResolvedEndpoint 是 record，mock 不了，给个真实例。
+        when(aiModels.resolveEndpoint(org.mockito.ArgumentMatchers.any(), anyString()))
+                .thenReturn(java.util.Optional.of(
+                        new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(
+                                null, null, true)));
         svc = new IpRunService(runs.repo, projectService, catalog, IpStudioFixtures.props(),
-                prompts, multimodal, pricing, accounts, credits, worker, OM, videoJobs);
+                prompts, multimodal, pricing, accounts, credits, worker, OM, videoJobs, aiModels);
     }
 
     private PromptService.ResolvedPrompt resourcePrompt(String key) {

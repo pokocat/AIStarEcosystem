@@ -90,8 +90,10 @@ public class IpStudioController {
      */
     @GetMapping("/models")
     public ApiResponse<com.aistareco.aep.dto.RenderModelsDto> models() {
+        // 用途必须与实际跑的那条链一致：画布出图走 DAP_IMAGE（dap 生成链），
+        // 出视频走 VIDEO_GENERATION（通用视频链）。列错用途 = 列出一批点了不生效的模型。
         return ApiResponse.of(new com.aistareco.aep.dto.RenderModelsDto(
-                modelOptions(com.aistareco.aep.model.AiModelPurpose.IMAGE_GENERATION, runs.pricingDto().imageCredits()),
+                modelOptions(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE, runs.pricingDto().imageCredits()),
                 modelOptions(com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION, 0)));
     }
 

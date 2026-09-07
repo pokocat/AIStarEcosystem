@@ -80,7 +80,20 @@ public class DapMultimodalClient {
                   String model, String source, AiModelPurpose purpose) {}
 
     private Target resolveTarget(AiModelPurpose purpose) {
-        AiModelEndpoint e = aiModels.resolveEndpoint(purpose).orElse(null);
+        return resolveTarget(purpose, null);
+    }
+
+    /**
+     * 指定端点解析。
+     *
+     * <p>{@code endpointId} 非空时走候选白名单（{@code ai_app_endpoint_candidate}）——
+     * 不在白名单里**不静默回退默认**，直接 503 `ENDPOINT_NOT_ALLOWED`（D-11 的既有纪律）。
+     * 用户在画布上选了模型却被悄悄换成另一个，比报错更糟：他按那个模型的价付了钱。
+     */
+    private Target resolveTarget(AiModelPurpose purpose, String endpointId) {
+        AiModelEndpoint e = (endpointId == null || endpointId.isBlank())
+                ? aiModels.resolveEndpoint(purpose).orElse(null)
+                : aiModels.resolveEndpoint(purpose, endpointId).map(r -> r.endpoint()).orElse(null);
         if (e == null) return null;
         try {
             String key = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
@@ -231,7 +244,12 @@ public class DapMultimodalClient {
      * @param inputImages i2i 输入(公网 URL 或 data:image/...;base64,xxx),空 = 文生图
      */
     public byte[] generateImage(String prompt, String size, List<String> inputImages) {
-        Target t = require(imageTarget(), "image");
+        return generateImage(prompt, size, inputImages, null);
+    }
+
+    /** 同上，但用指定端点（画布上的模型下拉；null = 后台默认端点）。 */
+    public byte[] generateImage(String prompt, String size, List<String> inputImages, String endpointId) {
+        Target t = require(resolveTarget(AiModelPurpose.DAP_IMAGE, endpointId), "image");
         String requestId = "dap-img-" + UUID.randomUUID().toString().substring(0, 12);
         long startNanos = System.nanoTime();
         ObjectNode body = OM.createObjectNode();

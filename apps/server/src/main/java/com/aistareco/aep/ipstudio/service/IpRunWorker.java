@@ -194,7 +194,10 @@ public class IpRunWorker {
             if (isCancelRequested(run)) { cancelled = true; break; }
             progress(run, 10 + (int) Math.round(80.0 * i / count), "image.generate." + (i + 1));
             try {
-                byte[] bytes = multimodal.generateImage(prompt, size, refs.isEmpty() ? null : refs);
+                // 用户在画布上选的模型 —— 不传下去就等于「选了没用」：
+                // 界面按那个模型标价、也按它扣了钱，实际却跑的默认端点。
+                byte[] bytes = multimodal.generateImage(prompt, size,
+                        refs.isEmpty() ? null : refs, IpDocs.text(exec, "endpointId"));
                 requireDecodableImage(bytes);
                 progress(run, 10 + (int) Math.round(80.0 * (i + 1) / count), "storage.persist");
                 FileStorageService.StoredFile stored = storage.store(

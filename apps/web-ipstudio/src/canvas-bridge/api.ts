@@ -100,14 +100,22 @@ export type IpVideoRequest = {
 
 /** 画布出视频 —— 走通用视频链，不依赖数字人形象。返回一张「渲染中」的任务卡。 */
 export const generateVideo = (projectId: string, req: IpVideoRequest) =>
-  apiFetch<{ id: string; status: string; video_url?: string; thumbnail_url?: string; error_message?: string }>(
+  apiFetch<IpVideoJob>(
     `/v1/ip-studio/projects/${encodeURIComponent(projectId)}/generate-video`,
     { method: "POST", body: req },
   );
 
 /** 视频任务状态（与带货 / 短剧同一张表，按 app 分区隔离）。 */
+export type IpVideoJob = {
+  id: string; status: string;
+  video_url?: string;
+  /** 成片在我方存储里的 key —— 服务端镜像后给出，画布引用它而不是重新上传。 */
+  video_key?: string;
+  thumbnail_url?: string; error_message?: string;
+};
+
 export const readVideoJob = (jobId: string) =>
-  apiFetch<{ id: string; status: string; video_url?: string; thumbnail_url?: string; error_message?: string }>(
+  apiFetch<IpVideoJob>(
     `/me/material/videos/jobs/${encodeURIComponent(jobId)}`, { query: { app: "ipstudio" } },
   );
 

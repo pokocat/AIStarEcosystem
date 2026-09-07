@@ -338,7 +338,13 @@ public class MaterialVideoJobService {
         // 资产 URL 出 wire 经 signer（OSS 域才签，local /cdn 相对路径不匹配 base → 原样返回，dev 零影响）。
         // C-1 范围选择：last_frame 走 cdnKey 真值派生（§4.7.4，不过期）+ fallback 旧 lastFrameUrl；
         // video/thumbnail 只做 maybeSign 兜底（顺手偿还 §4.7.6 URL 时效欠债，不做完整 URL→key 迁移）。
-        if (job.getVideoUrl() != null) card.put("video_url", signer.maybeSign(job.getVideoUrl()));
+        if (job.getVideoUrl() != null) {
+            card.put("video_url", signer.maybeSign(job.getVideoUrl()));
+            // 顺带把 key 给出去（§4.7.6 欠债的部分偿还）：调用方存 key 就能按 key 重签，
+            // 而不是抱着一个一小时后过期的地址 —— 画布把成片放进文档时正需要它。
+            String vk = signer.keyOf(job.getVideoUrl());
+            if (vk != null && !vk.isBlank()) card.put("video_key", vk);
+        }
         if (job.getThumbnailUrl() != null) card.put("thumbnail_url", signer.maybeSign(job.getThumbnailUrl()));
         String lastFrame = job.getLastFrameCdnKey() != null && !job.getLastFrameCdnKey().isBlank()
                 ? signer.signKey(job.getLastFrameCdnKey()) : null;

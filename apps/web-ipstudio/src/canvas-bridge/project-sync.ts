@@ -40,7 +40,7 @@ function toCanvasProject(id: string, name: string, doc: IpDoc | null | undefined
 }
 
 export type SyncState = "loading" | "ready" | "error";
-export type SaveState = "idle" | "saving" | "saved" | "failed";
+export type SaveState = "idle" | "saving" | "saved" | "failed" | "conflict";
 
 /**
  * 打开一个项目并保持同步。
@@ -53,6 +53,8 @@ export function useProjectSync(projectId: string) {
   const [error, setError] = React.useState<string | null>(null);
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
   const loadedRef = React.useRef(false);
+  /** 加载时那一版的 updatedAt —— 保存时带回去，服务端据此拒绝覆盖别处的编辑。 */
+  const baseRef = React.useRef<string | null>(null);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = React.useRef(false);
   const pendingRef = React.useRef(false);
@@ -72,6 +74,7 @@ export function useProjectSync(projectId: string) {
           deletedProjects: [],
           hydrated: true,
         });
+        baseRef.current = p.updatedAt ?? null;
         loadedRef.current = true;
         setState("ready");
       })
@@ -85,6 +88,11 @@ export function useProjectSync(projectId: string) {
       alive = false;
       setCurrentProjectId(null);
       if (timerRef.current) clearTimeout(timerRef.current);
+      // 切项目时把在途保存的尾巴掐掉：旧项目的 flush 可能在切换之后才 resolve，
+      // 它的 pending 重试会拿着旧 projectId 再跑一次。靠 find 返回 undefined 也能兜住，
+      // 但写明确点 —— 这种「碰巧安全」将来很容易被改坏。
+      loadedRef.current = false;
+      pendingRef.current = false;
     };
   }, [projectId]);
 
@@ -98,14 +106,24 @@ export function useProjectSync(projectId: string) {
       inFlightRef.current = true;
       setSaveState("saving");
       try {
-        await IpStudioApi.updateProject(projectId, {
+        const saved = await IpStudioApi.updateProject(projectId, {
           name: project.title,
           doc: { nodes: project.nodes, connections: project.connections, viewport: project.viewport },
+          baseUpdatedAt: baseRef.current ?? undefined,
         });
+        baseRef.current = saved.updatedAt ?? baseRef.current;
         setSaveState("saved");
-      } catch {
-        // 不吞：存不上就明说，别让用户以为改动落盘了
-        setSaveState("failed");
+      } catch (e) {
+        // 冲突要单独说：这时候不能重试（重试就是覆盖别处的改动，而画布是整存整取的
+        // —— 覆盖掉的不是一个字段，是那边一整份工作）。也不能继续自动保存，
+        // 否则用户越改越远，最后只能二选一丢一边。
+        if (e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "IP_PROJECT_STALE") {
+          loadedRef.current = false;   // 停掉后续自动保存，等用户刷新
+          setSaveState("conflict");
+        } else {
+          // 不吞：存不上就明说，别让用户以为改动落盘了
+          setSaveState("failed");
+        }
       } finally {
         inFlightRef.current = false;
         if (pendingRef.current) { pendingRef.current = false; void flush(); }
