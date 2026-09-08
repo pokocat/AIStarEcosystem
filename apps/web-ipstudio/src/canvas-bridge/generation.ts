@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AiConfig } from "./config-store";
+import { endpointIdFor } from "./models";
 import { rememberUploaded } from "./image-storage";
 import { generate, readRun, currentProjectId, type IpRun } from "./api";
 
@@ -110,7 +111,9 @@ export async function requestEdit(
     refKeys: refKeysOf(references),
     count: Math.max(1, Math.min(4, Number(config.count) || 1)),
     size: config.size,
-    model: config.imageModel || config.model || undefined,
+    // 下拉里选的是**模型名**（agnes-image…），服务端认的是 endpointId。
+    // 翻不出来就不传 —— 服务端走后台配的默认端点。指定了却悄悄换一个才是不允许的（D-11）。
+    model: endpointIdFor(config.imageModel || config.model),
   });
   return toImages(await waitForRun(run.id, options?.signal));
 }

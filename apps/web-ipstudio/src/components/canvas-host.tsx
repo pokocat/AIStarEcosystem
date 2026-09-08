@@ -16,6 +16,8 @@ import zhCN from "antd/locale/zh_CN";
 import { AlertCircle, CheckCircle2, Loader2, Send } from "lucide-react";
 import CanvasPage from "@/canvas/pages/canvas/project";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
+import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
+import { serverModelsLoaded } from "@/canvas-bridge/models";
 import { PublishDialog } from "@/components/publish/publish-dialog";
 import { IpStudioApi } from "@/api";
 import { AIAVATAR_URL } from "@/lib/external";
@@ -31,6 +33,20 @@ const SAVE_LABEL: Record<string, string> = {
 function Host({ projectId }: { projectId: string }) {
   const { state, error, saveState, publishedAvatarId, setPublishedAvatarId } = useProjectSync(projectId);
   const [publishOpen, setPublishOpen] = React.useState(false);
+  const { message } = AntdApp.useApp();
+
+  // 画布在「没有可用模型」时本来会弹上游那个填 API Key 的对话框 —— 那是它作为单机工具的
+  // 设计。本仓的 Key 在服务端，用户在那个表单里什么也做不了，只会以为是自己没配好。
+  React.useEffect(() => {
+    setModelsUnavailableHandler(() => {
+      message.warning(
+        serverModelsLoaded()
+          ? "平台还没有可用的模型，生成暂时用不了 —— 请联系管理员在后台配置。"
+          : "模型列表没加载上，刷新页面再试。",
+      );
+    });
+    return () => setModelsUnavailableHandler(null);
+  }, [message]);
 
   if (state === "loading") {
     return (

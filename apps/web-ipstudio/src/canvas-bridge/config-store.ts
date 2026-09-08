@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
 import i18n from "@/canvas-bridge/i18n";
@@ -71,6 +71,15 @@ export type ChannelCredentialsImportResult = {
 };
 
 export const CONFIG_STORE_KEY = "infinite-canvas:ai_config_store";
+
+/**
+ * 「没有可用模型」时由谁去告诉用户 —— 由画布宿主注册（它拿得到 antd 的 message）。
+ * 放模块级而不是 store 里：store 不该知道怎么弹提示。
+ */
+let modelsUnavailableHandler: (() => void) | null = null;
+export function setModelsUnavailableHandler(fn: (() => void) | null) {
+    modelsUnavailableHandler = fn;
+}
 const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
@@ -89,19 +98,17 @@ export const defaultConfig: AiConfig = {
             baseUrl: OPENAI_BASE_URL,
             apiKey: "",
             apiFormat: "openai",
-            models: [
-                { name: "gpt-image-2", capability: "image" },
-                { name: "grok-imagine-video", capability: "video" },
-                { name: "gpt-5.5", capability: "text" },
-                { name: "gpt-4o-mini-tts", capability: "audio" },
-            ],
+            // 空的：真候选由 canvas-bridge/models.ts 从 `GET /v1/ip-studio/models` 灌进来。
+            // 上游原本在这里写死了 gpt-image-2 等四个 —— 那是它自带 Key 直连厂商时的默认，
+            // 我们一个都没有，列出来的结果是用户选了就 503 ENDPOINT_NOT_ALLOWED。
+            models: [],
         },
     ],
-    model: "default::gpt-image-2",
-    imageModel: "default::gpt-image-2",
-    videoModel: "default::grok-imagine-video",
-    textModel: "default::gpt-5.5",
-    audioModel: "default::gpt-4o-mini-tts",
+    model: "",
+    imageModel: "",
+    videoModel: "",
+    textModel: "",
+    audioModel: "",
     audioVoice: "alloy",
     audioFormat: "mp3",
     audioSpeed: "1",
@@ -198,9 +205,19 @@ export function resolveModelScript(config: AiConfig, value: string) {
     return findChannelModel(config, value)?.model.script?.trim() || "";
 }
 
+/**
+ * 能不能开跑。
+ *
+ * <p>上游这里还要求 baseUrl + apiKey 都填了 —— 因为它是单机工具，用户自带 Key 直连厂商。
+ * 本仓把这条链整个搬到了服务端：模型端点与 Key 都在后台配（`AiAppBinding` +
+ * `ai_app_endpoint_candidate`），浏览器里既没有 Key 也不该有。再按 apiKey 判就绪，
+ * 结果是**点运行永远弹「请先配置 API Key」** —— 一个用户根本无从满足的条件。
+ *
+ * <p>所以就绪条件只剩一条：**选中的模型来自服务端候选**。候选为空（后台没配端点）时
+ * 这里返回 false，画布照常提示不可用 —— 不假装能跑（§8.0）。
+ */
 function isAiConfigReady(config: AiConfig, model: string) {
-    const channel = resolveModelChannel(config, model);
-    return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
+    return Boolean(model.trim() && findChannelModel(config, model));
 }
 
 export const useConfigStore = create<ConfigStore>()(
@@ -232,12 +249,39 @@ export const useConfigStore = create<ConfigStore>()(
                     },
                 })),
             isAiConfigReady: (config, model) => isAiConfigReady(config, model),
-            openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => set({ isConfigOpen: true, shouldPromptContinue, configTab }),
+            openConfigDialog: (shouldPromptContinue = false, configTab = "channels") => {
+                // `shouldPromptContinue = true` 是上游的「模型没配好，请用户去填」那条路径
+                // （画布里 12 个调用点全是它；工具栏的设置按钮传的是 false）。
+                // 上游让用户在这个对话框里填 baseUrl + apiKey —— 本仓的 Key 在服务端，
+                // 用户在这儿什么也做不了，真正的原因是后台没配可用端点。
+                // 所以这条路径改成如实说明，而不是把人送进一个他填不了的表单。
+                if (shouldPromptContinue) {
+                    modelsUnavailableHandler?.();
+                    return;
+                }
+                set({ isConfigOpen: true, shouldPromptContinue, configTab });
+            },
             setConfigDialogOpen: (isConfigOpen) => set({ isConfigOpen }),
             clearPromptContinue: () => set({ shouldPromptContinue: false }),
         }),
         {
             name: CONFIG_STORE_KEY,
+            // 显式给 storage：zustand 默认直接抓 localStorage，而这个模块在 Next 的
+            // 服务端渲染与单测（environment: "node"）里都会被 import —— 那儿没有 localStorage。
+            // 拿不到就退化成不持久化，而不是让一次 setState 抛出来。
+            storage: createJSONStorage(() => {
+                try {
+                    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+                } catch {
+                    // 隐私模式 / 站点数据被禁：同样退化成不持久化
+                }
+                const mem = new Map<string, string>();
+                return {
+                    getItem: (k: string) => mem.get(k) ?? null,
+                    setItem: (k: string, v: string) => { mem.set(k, v); },
+                    removeItem: (k: string) => { mem.delete(k); },
+                };
+            }),
             partialize: (state) => ({ config: state.config, webdav: state.webdav }),
             merge: (persisted, current) => {
                 const persistedState = (persisted || {}) as Partial<ConfigStore>;

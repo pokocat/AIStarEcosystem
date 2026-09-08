@@ -84,6 +84,16 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
     }
   };
 
+  // 发布的硬性前提（与服务端 CardService.publish 的校验一一对应）。
+  // 两边各写一份是有意的：服务端那份是闸，这份是**在用户点之前就说清楚**。
+  const missing = state.s === "ok"
+    ? [
+        state.doc.name?.trim() ? null : "名字",
+        state.doc.title?.trim() ? null : "职位",
+      ].filter((x): x is string => Boolean(x))
+    : [];
+  const canPublish = state.s === "ok" && missing.length === 0;
+
   if (authState === "no-platform") return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
@@ -128,7 +138,9 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                 <Textarea value={state.doc.headline} rows={2} placeholder={"帮连锁品牌\n把门店生意做到线上"}
                   onChange={(v) => patch((d) => ({ ...d, headline: v }))} />
               </FieldRow>
-              <FieldRow label="职位">
+              {/* 服务端发布时硬要求 name + title（CARD_TITLE_REQUIRED）。
+                  不在这儿标必填，用户就是填完一整页、点发布、才被一个没标过的字段拦住。 */}
+              <FieldRow label="职位" required>
                 <Input value={state.doc.title} placeholder="某某科技 · 创始人"
                   onChange={(v) => patch((d) => ({ ...d, title: v }))} />
               </FieldRow>
@@ -181,11 +193,14 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
               保存草稿
             </button>
             <button
-              type="button" disabled={saving} onClick={() => void save(true)}
+              type="button" disabled={saving || !canPublish} onClick={() => void save(true)}
+              title={canPublish ? undefined : `还差：${missing.join(" · ")}`}
               style={{
                 flex: 1.3, height: 46, borderRadius: "var(--r-md)", border: "none",
                 background: "var(--ink)", color: "#fff", fontFamily: "inherit",
-                fontSize: 14, fontWeight: 700, cursor: saving ? "default" : "pointer", opacity: saving ? .6 : 1,
+                fontSize: 14, fontWeight: 700,
+                cursor: saving || !canPublish ? "default" : "pointer",
+                opacity: saving || !canPublish ? .5 : 1,
               }}
             >
               {saving ? "处理中" : "保存并发布"}
@@ -193,7 +208,11 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
           </div>
 
           <div style={{ margin: "12px 24px 0", textAlign: "center", fontSize: 11.5, color: "var(--ink-4)", lineHeight: 1.7 }}>
-            发布后这张名片就能被任何拿到链接的人打开，不需要注册。随时可以取消发布。
+            {/* 缺什么就在点之前说。服务端发布时硬校验 name + title，
+                等点了才报错的话，用户已经填完一整页了。 */}
+            {canPublish
+              ? "发布后这张名片就能被任何拿到链接的人打开，不需要注册。随时可以取消发布。"
+              : `还差 ${missing.join(" 和 ")} 才能发布 —— 草稿可以先存着。`}
           </div>
         </>
       )}

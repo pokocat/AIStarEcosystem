@@ -16,7 +16,12 @@ vi.mock("@/api", () => ({
     updateProject: (...a: unknown[]) => updateProjectMock(...a),
   },
 }));
-vi.mock("./api", () => ({ setCurrentProjectId: vi.fn() }));
+// fetchModels 也从 ./api 出去：不补进 mock 的话 loadServerModels 会走异常分支，
+// 测试照样过、但覆盖的是错的路径。
+vi.mock("./api", () => ({
+  setCurrentProjectId: vi.fn(),
+  fetchModels: vi.fn().mockResolvedValue({ image: [], video: [] }),
+}));
 
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { useProjectSync } from "./project-sync";

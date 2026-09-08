@@ -76,8 +76,11 @@ export function PublishDialog({
     setCardError(null);
     try {
       const card = await AssetsApi.createCardFromAvatar(result.avatarId);
-      const win = window.open(`${AIAVATAR_URL}/cards`, "_blank", "noopener");
-      if (!win) setCardError(`名片已建好（${card.regNo}），浏览器拦了新窗口，去数字资产平台的「我的名片」里填联系方式`);
+      // 直接落在这张卡的编辑页：名字和整柜造型已经带过去了，用户只剩
+      // 「公司 · 职务」和联系方式要填 —— 丢在列表页等于让人自己再找一遍。
+      const href = `${AIAVATAR_URL}/cards/${encodeURIComponent(card.id)}/edit`;
+      const win = window.open(href, "_blank", "noopener");
+      if (!win) setCardError(`名片已建好（${card.regNo}），浏览器拦了新窗口，去数字资产平台的「我的名片」里补上公司 · 职务和联系方式`);
     } catch (e) {
       setCardError(e instanceof Error ? e.message : "建卡没成功，稍后再试");
     } finally {

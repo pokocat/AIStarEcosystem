@@ -16,6 +16,7 @@ import { useCanvasStore, type CanvasProject } from "@/canvas/stores/canvas/use-c
 import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/canvas/types/canvas";
 import { IpStudioApi } from "@/api";
 import { setCurrentProjectId } from "./api";
+import { loadServerModels } from "./models";
 
 const SAVE_DEBOUNCE_MS = 900;
 
@@ -71,6 +72,13 @@ export function useProjectSync(projectId: string) {
     setState("loading");
     setPublishedAvatarId(null);
     setCurrentProjectId(projectId);
+
+    // 模型候选与项目并行拉：拿不到不拦着人打开画布（只是生成不可用，画布会自己说）。
+    // 这一步在 v0.157~v0.159 之间是缺的 —— 画布下拉里于是一直是上游那几个我们没有的模型名，
+    // 选中后 preflight 一律 503，出图从头到尾跑不了。
+    void loadServerModels().catch((e: unknown) => {
+      console.warn("[ipstudio] 模型候选加载失败，生成会显示为不可用", e);
+    });
 
     void IpStudioApi.getProject(projectId)
       .then((p) => {

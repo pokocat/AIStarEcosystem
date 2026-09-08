@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
+import { endpointIdFor } from "./models";
 import type { UploadedFile } from "./file-storage";
 import { GenerationCanceled } from "./generation";
 
@@ -56,7 +57,8 @@ export async function createVideoGenerationTask(
     refKey: firstRefKey({ ...options, references }),
     durationSec: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : undefined,
     aspectRatio: options?.aspectRatio,
-    model: options?.model,
+    // 与出图同理：下拉给的是模型名，服务端认 endpointId（见 canvas-bridge/models.ts）。
+    model: endpointIdFor(options?.model),
   });
   return { id: job.id, provider: "plugin", model: options?.model ?? "" };
 }
