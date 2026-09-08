@@ -354,6 +354,7 @@ public class IpRunService {
         PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("prompt", prompt);
+        vars.put("refLead", refLead(refs));
         vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
         String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
 
@@ -411,6 +412,7 @@ public class IpRunService {
         PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("prompt", req.prompt().trim());
+        vars.put("refLead", refLead(refs));
         vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
         String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
 
@@ -437,12 +439,32 @@ public class IpRunService {
     }
 
     /** 参考图说明：让模型知道每张参考图是干嘛的，也让用户在提示词原文里看得见。 */
+    /**
+     * 「照着参考图里的人」这句要放在**最前面**。
+     *
+     * <p>此前它排在用户那段完整角色描述之后、还夹在一串负面词里。而用户的描述往往是一整段
+     * 独立的形象设定（「精致的 3D 娃娃质感，黑色齐刘海短发…全身照…」）—— 读起来就是文生图，
+     * 模型于是照着文字画了一个符合描述的人，而不是照着上传的照片画。
+     * 官方图生图示例的写法也是先说「保持…不变」，再说要改什么。
+     */
+    private static String refLead(List<Ref> refs) {
+        if (refs.isEmpty()) return "";
+        return "Use the provided reference image"
+                + (refs.size() > 1 ? "s" : "")
+                + " as the identity source. Keep the same person: same face, same facial proportions, "
+                + "same hairstyle and hair color, same skin tone, same signature features "
+                + "(marks, freckles, glasses, accessories). Change only what the following instruction asks for. ";
+    }
+
+    /** 参考图各自是什么。没有有效说明就不写 —— 「Reference image 1: 参考图」这种占位只占注意力。 */
     private static String refNotes(List<Ref> refs) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < refs.size(); i++) {
-            sb.append("Reference image ").append(i + 1).append(": ").append(refs.get(i).note()).append(". ");
+            String note = refs.get(i).note();
+            if (note == null || note.isBlank() || "参考图".equals(note.trim())) continue;
+            sb.append("Reference image ").append(i + 1).append(": ").append(note).append(". ");
         }
-        return sb.toString().trim();
+        return sb.toString();
     }
 
     private record Ref(String role, String key, String note) {}

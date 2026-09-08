@@ -105,7 +105,7 @@ class IpRunServiceTest {
     private PromptService.ResolvedPrompt resourcePrompt(String key) {
         String user = PromptService.KEY_DAP_IP_IDENTITY.equals(key)
                 ? "请输出人物特征卡 JSON。"
-                : "{{prompt}} {{refNotes}} keep the same character as in the reference images. no text.";
+                : "{{refLead}}{{prompt}} {{refNotes}}no text.";
         return new PromptService.ResolvedPrompt("你是 IP 形象设定师。", user, new PromptParamsDto(null, null, null), "resource");
     }
 
@@ -229,7 +229,11 @@ class IpRunServiceTest {
         for (JsonNode r : refs) assertTrue(r.path("applied").asBoolean(), "留下的都得是生效的：" + r);
 
         String prompt = dto.inputs().path("prompt").asText();
-        assertTrue(prompt.contains("Reference image 1:"), prompt);
+        // 「照着参考图里的人」必须排在用户那段描述**之前**（v0.171）：
+        // 排在后面时模型会照着那段完整的角色描述画，而不是照着上传的照片画。
+        assertTrue(prompt.startsWith("Use the provided reference image"),
+                "身份指令没排在最前面：" + prompt);
+        assertTrue(prompt.contains("Keep the same person"), prompt);
         assertFalse(prompt.contains("{{"), "模板占位符必须全部替换掉：" + prompt);
 
         // _exec 是服务端执行参数（含 storage key），绝不出 wire

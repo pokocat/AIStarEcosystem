@@ -283,8 +283,15 @@ public class DapMultimodalClient {
         ObjectNode extra = body.putObject("extra_body");
         extra.put("response_format", "url");
         if (inputImages != null && !inputImages.isEmpty()) {
-            ArrayNode top = body.putArray("image");
-            inputImages.forEach(top::add);
+            // 单张参考图用**裸字符串**，多张才用数组 —— 官方「图生图」示例就是
+            // `"image": "https://…"`。类型标的是 string / string[]，理论上数组也收，
+            // 但单图场景照着示例的形状发最稳，省得在「为什么没参考上」里再多一个变量。
+            if (inputImages.size() == 1) {
+                body.put("image", inputImages.get(0));
+            } else {
+                ArrayNode top = body.putArray("image");
+                inputImages.forEach(top::add);
+            }
             ArrayNode arr = extra.putArray("image");
             inputImages.forEach(arr::add);
         }
