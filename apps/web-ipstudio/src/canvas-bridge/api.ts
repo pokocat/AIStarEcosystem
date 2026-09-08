@@ -5,7 +5,7 @@
 // 这里不要自己拼 fetch。
 
 import { apiFetch } from "@ai-star-eco/api-client";
-import type { IpRun as SharedIpRun } from "@ai-star-eco/types";
+import type { IpRun as SharedIpRun, IpUploadResult as SharedIpUploadResult } from "@ai-star-eco/types";
 
 export type IpModelOption = {
   endpointId: string;
@@ -18,13 +18,8 @@ export type IpModelOption = {
 
 export type IpModels = { image: IpModelOption[]; video: IpModelOption[] };
 
-export type IpUploadResult = {
-  key: string;
-  url: string;
-  width?: number;
-  height?: number;
-  fileName: string;
-};
+/** 与 IpRun 同理：用契约真源那份，不在这儿再抄一遍（抄就会漂移，见 v0.163）。 */
+export type IpUploadResult = SharedIpUploadResult;
 
 export type IpRunStatus = "running" | "done" | "failed";
 

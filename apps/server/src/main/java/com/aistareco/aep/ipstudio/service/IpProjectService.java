@@ -359,27 +359,8 @@ public class IpProjectService {
                 byId.put(r.getId(), toRunDto(r));
             }
         }
-
-        // 已经跑完、出了图、但文档里没有引用到的运行，也补进 runsById。
-        // 画布出图不绑节点（nodeId 一律 adhoc），上面「每个节点保留最新一次」只会留下 1 条 ——
-        // 而客户端要靠这份投影把「已生成、扣过费、却没落进文档」的图找回来
-        // （见 web-ipstudio 的 canvas-bridge/stranded-images.ts）。
-        // 封顶 RECOVERABLE_RUNS 条：这是兜底不是历史记录，不该让老项目的响应无限变大。
-        int recovered = 0;
-        for (IpRun r : all) {
-            if (recovered >= RECOVERABLE_RUNS) break;
-            if (byId.containsKey(r.getId()) || !IpRun.STATUS_DONE.equals(r.getStatus())) continue;
-            IpRunDto dto = toRunDto(r);
-            if (dto.output() == null || !dto.output().path("candidates").isArray()
-                    || dto.output().path("candidates").isEmpty()) continue;
-            byId.put(r.getId(), dto);
-            recovered++;
-        }
         return new RunsProjection(byNode, byId);
     }
-
-    /** 补进 runsById 的「可找回」运行条数上限。 */
-    private static final int RECOVERABLE_RUNS = 60;
 
     /**
      * run → wire。候选图的 key 是真值，出 wire 时逐条派生签名 URL（§4.7.7）；

@@ -252,20 +252,6 @@ class IpProjectServiceTest {
     }
 
     @Test
-    void doneRunsWithUnplacedImagesStayRecoverable() {
-        // 画布出图不绑节点（nodeId 一律 adhoc），而 runsById 原本「每个节点只留最新一次」——
-        // 于是一旦保存没落盘，之前那些已生成、已扣费的图就再也找不回来了。
-        // 客户端的「放回画布」靠这份投影，所以跑完出了图的运行必须都在里面。
-        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
-        for (int i = 1; i <= 3; i++) {
-            runs.repo.save(IpStudioFixtures.doneGenerateRun("IPR-recov" + i, PID, "adhoc", 1));
-        }
-
-        IpProjectDto dto = svc.detail(USER, PID);
-        assertEquals(3, dto.runsById().size(), "跑完出了图的运行必须都能被客户端看到");
-    }
-
-    @Test
     void tooManyKeysToSignIsRejectedWholesale() {
         // 砍尾会静默丢掉几个：前端表现成「签不出来」，调用方分不清是超限、非法 key 还是存储故障；
         // 而且被丢掉的那些根本没过归属闸。

@@ -20,8 +20,6 @@ import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
 import { serverModelsLoaded } from "@/canvas-bridge/models";
 import { useHostActions } from "@/canvas-bridge/host-actions";
-import { buildRecoveryNodes } from "@/canvas-bridge/stranded-images";
-import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { PublishDialog } from "@/components/publish/publish-dialog";
 import { IpStudioApi } from "@/api";
 import { AIAVATAR_URL } from "@/lib/external";
@@ -35,7 +33,7 @@ const SAVE_LABEL: Record<string, string> = {
 };
 
 function Host({ projectId }: { projectId: string }) {
-  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, stranded, setStranded } = useProjectSync(projectId);
+  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId } = useProjectSync(projectId);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const { message } = AntdApp.useApp();
 
@@ -124,45 +122,9 @@ function Host({ projectId }: { projectId: string }) {
   // 放进画布顶栏那一行（见 canvas-bridge/host-actions.tsx）——
   // 此前是绝对定位浮在右上角，正好压住画布自己的「配置 / 快捷键 / Agent」。
 
-  const recover = () => {
-    const project = useCanvasStore.getState().projects.find((p) => p.id === projectId);
-    if (!project) return;
-    const added = buildRecoveryNodes(stranded, project.nodes);
-    useCanvasStore.getState().updateProject(projectId, { nodes: [...project.nodes, ...added] });
-    setStranded([]);
-    message.success(`已放回 ${added.length} 张`);
-  };
-
   return (
     <div className="h-full relative">
       <CanvasPage />
-
-      {/* 已经生成、扣过费，但不在画布上的图。见 canvas-bridge/stranded-images.ts ——
-          保存没落盘时（超时、页面被关、真撞上并发冲突）产物会就此隐形，而它其实还在服务端。 */}
-      {stranded.length > 0 && (
-        <div
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-full shadow-lg"
-          style={{ background: "var(--surface)", border: "1px solid var(--line-2)" }}
-        >
-          <span className="text-[12.5px]" style={{ color: "var(--ink-2)" }}>
-            有 {stranded.length} 张已生成的图不在画布上
-          </span>
-          <button
-            onClick={recover}
-            className="h-7 px-3 rounded-full text-[12px] font-bold transition hover:brightness-95"
-            style={{ background: "var(--action)", color: "var(--on-action)" }}
-          >
-            放回画布
-          </button>
-          <button
-            onClick={() => setStranded([])}
-            className="text-[12px]"
-            style={{ color: "var(--ink-4)" }}
-          >
-            忽略
-          </button>
-        </div>
-      )}
 
       <PublishDialog
         open={publishOpen}
