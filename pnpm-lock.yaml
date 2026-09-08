@@ -117,16 +117,70 @@ importers:
       '@ai-star-eco/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@tanstack/react-query':
+        specifier: ^5.102.8
+        version: 5.102.8(react@19.2.6)
+      antd:
+        specifier: ^6.6.3
+        version: 6.6.3(date-fns@3.6.0)(moment@2.30.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      copy-to-clipboard:
+        specifier: ^4.0.2
+        version: 4.0.2
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+      file-saver:
+        specifier: ^2.0.5
+        version: 2.0.5
+      i18next:
+        specifier: ^26.4.2
+        version: 26.4.2(typescript@5.9.3)
+      localforage:
+        specifier: ^1.10.0
+        version: 1.10.0
+      lucide-react:
+        specifier: ^0.547.0
+        version: 0.547.0(react@19.2.6)
+      motion:
+        specifier: ^12.40.0
+        version: 12.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      nanoid:
+        specifier: ^5.1.11
+        version: 5.1.11
       next:
         specifier: ^16.2.6
         version: 16.2.6(@babel/core@7.21.4)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(sass@1.101.0)
+      radix-ui:
+        specifier: ^1.6.7
+        version: 1.6.7(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       react:
         specifier: ^19.0.0
         version: 19.2.6
       react-dom:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
+      react-i18next:
+        specifier: ^17.0.13
+        version: 17.0.13(i18next@26.4.2(typescript@5.9.3))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@5.9.3)
+      tailwind-merge:
+        specifier: ^2.5.4
+        version: 2.6.1
+      zustand:
+        specifier: ^5.0.3
+        version: 5.0.15(@types/react@19.2.14)(react@19.2.6)(use-sync-external-store@1.6.0(react@19.2.6))
     devDependencies:
+      '@tailwindcss/postcss':
+        specifier: ^4.1.12
+        version: 4.3.0
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@types/file-saver':
+        specifier: ^2.0.7
+        version: 2.0.7
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.41
@@ -136,9 +190,21 @@ importers:
       '@types/react-dom':
         specifier: ^19.0.0
         version: 19.2.3(@types/react@19.2.14)
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1
+      tailwindcss:
+        specifier: ^4.1.12
+        version: 4.3.0
+      tw-animate-css:
+        specifier: ^1.3.8
+        version: 1.4.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.6(@types/node@20.19.41)(jiti@2.7.0)(jsdom@29.1.1)(less@4.5.1)(lightningcss@1.32.0)(sass@1.101.0)
 
   apps/web-celebrity:
     dependencies:

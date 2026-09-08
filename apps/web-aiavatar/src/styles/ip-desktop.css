@@ -1,0 +1,450 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   AI IP 工作台（桌面面）的样式 —— 从 apps/web-ipstudio 搬来的副本。
+   真源文档仍是 apps/web-ipstudio/design.md（迁移完成后随该目录一起移到本 app）。
+
+   与原文件的**四处**有意差异，改动前先读这段：
+
+   1. 令牌挂在 `.ip-surface` 而不是 `:root`。
+      两个 app 有 30 个同名 CSS 变量、约 22 个取值不同（`--primary` 一个是群青
+      一个是青、`--canvas` `--ink` `--surface·` `--line·` 都不一样）。都放 :root
+      的话后加载的那份全局获胜 —— 结果不是「各用各的」，而是整个产品被刷成一套
+      配色。自定义属性会继承，所以桌面外壳与画布子树带上这个类即可。
+      ⚠️ portal 到 document.body 的浮层会**逃出**这个作用域（画布里有 7 处手写
+      createPortal，外加 antd 的 Modal/Dropdown/Popover）。而 ipstudio 有 52 个
+      aiavatar 根本没定义的令牌（--paper· / --action· / --blue· / --shadow-· 等），在
+      body 下会解析成空值 → `background: var(--paper)` 整条声明失效 → 透明弹层。
+      所以浮层容器必须自己带 `.ip-surface`（见 canvas-host 的 getPopupContainer）。
+
+   2. **不引 Tailwind 的 preflight。** aiavatar 是 1000+ 行手写 CSS，从来没有过
+      reset。实测把真实 preflight 注进运行中的页面：一屏 260+ 个节点被改，主因是
+      `line-height: normal` → 1.5，卡片全部变高、底部一行被裁掉；button 字体
+      13.33px/400 → 13px/700、input → 16px。那 14k 行老 SPA 零测试覆盖，这种回归
+      发现不了。所以只引 theme + utilities 两层，reset 自己写、只作用于本作用域。
+
+   3. 字体令牌改名 `--ip-font-*` 并用 `@theme inline` 映射 —— 否则普通 `@theme`
+      会把 `--font-serif`/`--font-mono` 发到 :root，盖掉 aiavatar 自己那份
+      （它的 mono 带更多中文回退）。
+
+   4. 删掉了 React Flow 那一段（约 60 行）与 `@xyflow/react/dist/style.css`。
+      那是 v0.151 自研画布的遗留；v0.157 换成 vendored 无限画布之后整个仓库
+      再没有一处 import xyflow，样式跟着退役。
+   ───────────────────────────────────────────────────────────────────────── */
+
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme) source(none);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+@import 'tw-animate-css';
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   web-ipstudio · AI IP 工作台 设计令牌
+   真源：apps/web-ipstudio/design.md（改这里必须同步改那边）。
+
+   配色：低饱和群青（#495B91，深至 #344B70）/ 麦黄（#E7D58D）/ 纸白（#F5F4EF）/
+   墨（#202C42）。两条主色分工固定 ——
+     群青 = 身份、顶栏、选中态、进行中、连线高亮；
+     麦黄 = 主动作（进入工作台 / 运行 / 发布 / 提交）与商业化强调块。
+   v0.151 的单一青色（#12B3DE）已整体退役，仓内不再有该色值。
+   ───────────────────────────────────────────────────────────────────────── */
+
+.ip-surface {
+  /* ── 纸与面 ─────────────────────────────────────────────────────────────── */
+  /* 纸白只给 landing 与「纸标签」；工作台用略偏冷的浅面，跟节点白卡拉开层次 */
+  --paper: #f5f4ef;
+  --paper-2: #efece2;
+  --paper-line: #ded9c9;
+
+  --canvas: #f3f4f8;
+  --canvas-2: #e9ecf3;
+  --surface: #ffffff;
+  --surface-2: #f1f3f7;
+  --surface-3: #e5e9f1;
+  --line: #e4e7ef;
+  --line-2: #d3d9e5;
+  --line-3: #b7c0d2;
+
+  /* 画布 MiniMap 的遮罩（= --canvas 的 72% 透明版），单独成 token 免得组件里写死 */
+  --canvas-mask: rgba(243, 244, 248, 0.72);
+  /* 压在图片上的信息条 / 序号角标底：纸白半透明，字一律用 --ink */
+  --img-chip: rgba(245, 244, 239, 0.92);
+
+  /* 兼容别名：共享组件（EnrollmentGate / landing / AuthProvider）按 --bg-* / --ink-* 回退链取色 */
+  --bg-0: var(--canvas);
+  --bg-1: var(--surface);
+  --bg-2: var(--surface-2);
+  --line-strong: var(--line-2);
+
+  /* ── 墨（无纯黑；ink / ink-2 / ink-3 在纸白与白面上都过 4.5:1） ────────────── */
+  --ink: #202c42;   /* 12.7:1 on --paper */
+  --ink-2: #55607a; /*  5.7:1 on --paper */
+  /* ink-3 只承载小字提示与编号；落在 --primary-soft / --surface-3 这类浅色块上时改用 ink-2
+     （实测值见 design.md §2，不在这里重复数字） */
+  --ink-3: #626d82;
+  --ink-4: #97a0b2; /* 装饰专用：分隔、禁用图标、空态图形，禁止承载正文 */
+  --ink-0: var(--ink);
+  --ink-1: var(--ink-2);
+
+  /* ── 群青（身份 / 顶栏 / 选中 / 进行中） ──────────────────────────────────── */
+  --blue-900: #26334f;
+  --blue-800: #2e3f60;
+  --blue-700: #344b70; /* 深群青：landing 头部与英雄区底 */
+  --blue-600: #3d5482;
+  --blue: #495b91;     /* 主群青 */
+  --blue-500: #5a6c9f;
+
+  --primary: var(--blue);
+  --primary-600: var(--blue-600);
+  --primary-700: var(--blue-700); /* 浅底上的群青文字（≥7:1） */
+  --primary-soft: #e3e7f1;
+  --primary-tint: #f1f3f9;
+  --on-primary: #ffffff; /* 6.6:1 on --primary */
+  --brand: var(--primary);
+
+  /* ── 麦黄（主动作 / 商业化强调） ─────────────────────────────────────────── */
+  --action: #e7d58d;
+  --action-600: #dcc671;      /* hover / active */
+  --action-700: #8a6f1b;      /* 浅底上的麦黄系文字（4.8:1 on white） */
+  --action-soft: #f7efd5;
+  --action-tint: #fcf8ec;
+  --action-line: #d8c274;
+  --on-action: #202c42;       /* 9.5:1 on --action */
+
+  /* ── 深群青底上的前景色（顶栏 / landing 深色区；全部 ≥4.5:1 on --blue-700） ── */
+  --on-blue: #f5f4ef;        /* 8.0:1 —— 主文字 */
+  --on-blue-2: #c6cddf;      /* 5.5:1 —— 次要文字与图标 */
+  --on-blue-ok: #a8dcc4;     /* 5.7:1 —— 「已保存」这类成功态 */
+  --on-blue-err: #f0a8b2;    /* 4.6:1 —— 顶栏上的失败态 */
+  --on-blue-line: rgba(245, 244, 239, 0.18);
+  --on-blue-hover: rgba(245, 244, 239, 0.12);
+  --on-blue-fill: rgba(245, 244, 239, 0.1);
+
+  /* 共享组件（packages/landing、api-client）走 --accent / --accent-fg 回退链 —— 指向主动作 */
+  --accent: var(--action);
+  --accent-fg: var(--on-action);
+  --accent-foreground: var(--on-action);
+
+  /* ── 状态色（同族低饱和；每个前景色在白面与自己的 *-soft 底上都 ≥4.5:1） ───── */
+  --ok: #24705a;    /* 5.9 on white · 5.0 on --ok-soft */
+  --ok-soft: #e1efe9;
+  --warn: #8a5f0e;  /* 5.6 on white · 4.9 on --warn-soft */
+  --warn-soft: #f7eed9;
+  --err: #b03a4d;   /* 5.9 on white · 4.9 on --err-soft */
+  --err-soft: #f8e4e7;
+  --info: #3d5482;  /* 7.6 on white · 6.3 on --info-soft */
+  --info-soft: #e7ebf4;
+
+  /* ── 节点端口配色（按数据流辨识，取自同一色系的两个色相） ──────────────────── */
+  --port-image: #495b91; /* 图片流（照片 / 参考图 / 候选图） */
+  --port-text: #a98a34;  /* 文本流（特征卡 / 风格 / 形象卡） */
+
+  /* ── 字体 ────────────────────────────────────────────────────────────────── */
+  --ip-font-sans: "Manrope", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --ip-font-serif: "Newsreader", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --ip-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ── 圆角 ────────────────────────────────────────────────────────────────── */
+  --r-xs: 7px;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 15px;
+  --r-xl: 19px;
+  --r-2xl: 26px;
+  --radius-lg: var(--r-lg);
+
+  /* ── 阴影：墨蓝调，不用黑色 ───────────────────────────────────────────────── */
+  --shadow-hair: 0 1px 2px rgba(32, 44, 66, 0.05);
+  --shadow-card: 0 1px 3px rgba(32, 44, 66, 0.06), 0 6px 16px -8px rgba(32, 44, 66, 0.1);
+  --shadow-lift: 0 2px 6px rgba(32, 44, 66, 0.08), 0 14px 32px -12px rgba(32, 44, 66, 0.16);
+  --shadow-paper: 0 2px 5px rgba(32, 44, 66, 0.1), 0 20px 44px -20px rgba(32, 44, 66, 0.4);
+  --shadow-ring: 0 0 0 3px rgba(73, 91, 145, 0.22);
+}
+
+/* ── 作用域内的 reset（替代 preflight，只影响 .ip-surface 子树）──────────────
+   搬来的组件是在 Tailwind preflight 下写的，去掉 preflight 就得把它依赖的那几条
+   补回来 —— 但只补，且只在本作用域内补，不碰 aiavatar 的手写 CSS。
+   `border: 0 solid` 里的 solid 是必须的：Tailwind 的 `border` 类只设宽度，
+   没有它边框不会出现。 */
+.ip-surface,
+.ip-surface *,
+.ip-surface *::before,
+.ip-surface *::after {
+  box-sizing: border-box;
+  border: 0 solid var(--line-2, currentColor);
+}
+
+.ip-surface h1, .ip-surface h2, .ip-surface h3,
+.ip-surface h4, .ip-surface h5, .ip-surface h6,
+.ip-surface p, .ip-surface figure, .ip-surface blockquote,
+.ip-surface dl, .ip-surface dd {
+  margin: 0;
+}
+
+.ip-surface h1, .ip-surface h2, .ip-surface h3,
+.ip-surface h4, .ip-surface h5, .ip-surface h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.ip-surface ul, .ip-surface ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ip-surface button,
+.ip-surface input,
+.ip-surface optgroup,
+.ip-surface select,
+.ip-surface textarea {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.ip-surface button { cursor: pointer; background-image: none; }
+.ip-surface button, .ip-surface [role="button"] { touch-action: manipulation; }
+.ip-surface :disabled { cursor: default; }
+
+.ip-surface img, .ip-surface svg, .ip-surface video,
+.ip-surface canvas, .ip-surface audio, .ip-surface iframe,
+.ip-surface embed, .ip-surface object {
+  display: block;
+  vertical-align: middle;
+}
+
+.ip-surface img, .ip-surface video { max-width: 100%; height: auto; }
+.ip-surface table { border-collapse: collapse; }
+.ip-surface a { color: inherit; text-decoration: inherit; }
+.ip-surface hr { height: 0; color: inherit; border-top-width: 1px; }
+
+/* ── 原 tokens.css 末尾那几条全局规则，逐条收进作用域 ──────────────────────
+   原文件写的是 html{} / html,body{} / *:focus-visible{} —— 直接搬会重刷整个
+   移动端外壳。`.ip-surface html` 是无效选择器，所以 scroll-behavior 那条落到
+   本容器上（桌面面自己就是滚动容器）。 */
+.ip-surface {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--ip-font-sans);
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+  scroll-padding-top: 72px;
+  overflow-x: hidden;
+}
+
+.ip-surface :focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.ip-surface .on-blue :focus-visible,
+.ip-surface .on-blue:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+/* 字体：映射到本作用域的 --ip-font-*（见文件头第 3 条）。
+   改名之后不存在自引用，所以这里可以用 @theme inline —— 值不进 :root，
+   aiavatar 自己的 --font-serif / --font-mono 不会被盖掉。
+   字体值的真源在下面 .ip-surface 块里，只有一处。 */
+@theme inline {
+  --font-sans: var(--ip-font-sans);
+  --font-serif: var(--ip-font-serif);
+  --font-mono: var(--ip-font-mono);
+}
+
+/* 颜色：`@theme inline` + var 别名 —— Tailwind 调色板直接指向 tokens.css 的运行时变量，
+   **本文件不再复制任何 hex**。色值单一真源 = src/styles/tokens.css（文档真源 design.md）。
+   名字故意与 token 不同（`--color-ink` ↔ `--ink`），所以不存在自引用。 */
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-primary: var(--primary);
+  --color-primary-700: var(--primary-700);
+  --color-primary-900: var(--blue-900);
+  --color-action: var(--action);
+  --color-action-600: var(--action-600);
+  --color-action-700: var(--action-700);
+}
+
+/* ── 工具 ─────────────────────────────────────────────────────────────────── */
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-3) transparent;
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--line-3);
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* 档案卡：白底 + 细边 + 石板蓝柔影 */
+@utility ledger-card {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+}
+
+/* 编号 / 记录号排版（等宽 + 字距） */
+@utility reg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* 资产名 / 节点标题（衬线，仅此一处用衬线） */
+@utility asset-name {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+/* 小标签（等宽大写）—— 属性面板的辅助字段标签下限 12px（design.md §5） */
+@utility field-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── landing 专用 ─────────────────────────────────────────────────────────── */
+
+/* 纸标签：麦黄小牌 + 墨字 + 深一档麦黄边（墨 on 麦黄 = 9.5:1） */
+@utility paper-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 13px;
+  border-radius: 4px;
+  background: var(--action);
+  border: 1px solid var(--action-line);
+  box-shadow: var(--shadow-hair);
+  color: var(--on-action);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* 麦黄块上的纸标签：换成纸白底，否则麦黄压麦黄看不见 */
+@utility paper-tag-light {
+  background: var(--paper);
+  border-color: var(--paper-line);
+  color: var(--ink);
+}
+
+/* 作品图裁切格：外框保持 1:1，内容由 background-position 选中图集里的一格 */
+@utility atlas-cell {
+  aspect-ratio: 1 / 1;
+  background-repeat: no-repeat;
+  background-color: var(--surface-3);
+  overflow: hidden;
+}
+
+/* 错落：只在 ≥768px 生效，移动端一律摆正，避免旋转把卡片顶出视口。
+   克制到三档，且只给 landing 的作品纸卡用（不上工作台控件）。 */
+.tilt-a,
+.tilt-b,
+.tilt-c {
+  transform: none;
+}
+
+@media (min-width: 768px) {
+  .tilt-a { transform: rotate(-1.8deg); }
+  .tilt-b { transform: rotate(2.2deg); }
+  .tilt-c { transform: rotate(-1.2deg); }
+}
+
+/* ── 英雄区拼贴 ─────────────────────────────────────────────────────────────
+   移动端：一张大竖主卡占满宽，两张小竖侧卡并排在下。
+   ≥768px：改成**绝对定位的重叠拼贴** —— 主卡大竖幅在左，两张小竖侧卡在右上/右下并互相压边。
+   每张卡的纸标签都定位在**自己这张卡**上（不再挂在 grid 单元格上，所以不会悬空）。
+   容器用 aspect-ratio 撑高度，纯 CSS 响应式、不依赖 JS 量高。 */
+.hero-collage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.hero-collage .shot-main {
+  grid-column: span 2;
+}
+
+@media (min-width: 768px) {
+  .hero-collage {
+    display: block;
+    position: relative;
+    aspect-ratio: 1 / 1.06;
+  }
+
+  .hero-collage > * {
+    position: absolute;
+  }
+
+  .hero-collage .shot-main {
+    left: 0;
+    top: 4%;
+    width: 56%;
+    z-index: 2;
+  }
+
+  .hero-collage .shot-side-a {
+    right: 0;
+    top: 0;
+    width: 46%;
+    z-index: 1;
+  }
+
+  .hero-collage .shot-side-b {
+    right: 2%;
+    top: 50%;
+    width: 36%;
+    z-index: 3;
+  }
+}
+
+/* 深底区块：底为群青，正文走纸白 */
+.on-blue {
+  color: var(--paper);
+}
+
+/* ── 无障碍：尊重系统「减少动态效果」 ───────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .ip-surface,
+  .ip-surface *,
+  .ip-surface *::before,
+  .ip-surface *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

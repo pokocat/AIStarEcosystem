@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "../styles/globals.css";
+// AI IP 工作台（桌面面）的样式。放在 globals 之后：它的令牌挂在 .ip-surface 作用域内，
+// 不含 Tailwind preflight，因此对移动端外壳零影响（见该文件头注释）。
+import "../styles/ip-desktop.css";
 
 export const metadata: Metadata = {
   title: "数字人资产平台 · AiAvatar",
