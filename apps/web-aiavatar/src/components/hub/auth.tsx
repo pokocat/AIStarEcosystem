@@ -21,7 +21,11 @@ export function useRequireAuth(enabled = true): AuthState {
       setState("redirecting");
       if (ID_MODE) {
         // 统一账号中心：直接整页跳授权页，回来还落在同一个页面。
-        void auth.startIdLogin(pathname || "/");
+        // 不要传 usePathname() —— 它只有路径，search 与 hash 都没有。本 app 的
+        // 七牛刷脸回调正是 `#/real-auth/{sessionId}`（见 app/page.tsx 的转发），
+        // 传 pathname 等于把用户刚做完的活体认证会话丢掉，得重刷一遍脸。
+        // 传 undefined 让 beginLogin 自己读 window.location（pathname+search+hash）。
+        void auth.startIdLogin(typeof window === "undefined" ? (pathname || "/") : undefined);
         return;
       }
       const next = encodeURIComponent(pathname || "/");
