@@ -11,6 +11,21 @@
 
 ## 2026-09-07 · 画布换成开源无限画布 v0.157 后续
 
+- [ ] **每个模型支持的画幅不一样，而画布不知道**（v0.166/v0.167 连撞两次）：
+      `flux2-klein-4b` 拒 `768x1024`；火山 `seedream 4.5` 要求 **≥3686400 像素**
+      （只有 2k 1:1 与 4k 全系达标，2k 3:4 差 54 万像素）。现在只能靠 4xx 原话事后告知，
+      用户得自己换档位重试。要做对得给 `ai_app_endpoint_candidate` 的 capability
+      补尺寸约束（最小像素 / 允许列表 / 步长），`GET /models` 带出来，画布据此只列可用画幅、
+      并在切模型时把不合法的当前画幅顶掉。
+- [ ] **节点上的 `size` 会盖过画布全局档位**（`buildGenerationConfig`：
+      `node.metadata.size || config.size`）。模板节点写死了 `768x1024`，所以用户在工具栏把档位
+      切到 4k 之后，模板节点仍然发 768×1024 —— 只能逐个节点在设置里改。改精度取决于上一条：
+      有了 capability 才好判断「这是用户特意设的」还是「模板给的默认值」。
+- [ ] **两套 base_url 约定仍未统一**（v0.167 只是让 `joinUrl` 能容错）：
+      `AiModelInvocationService` 拼 `{base}/chat/completions`（base 含版本段），
+      `DapMultimodalClient` 拼 `{base}/v1/...`（base 是主机根）。统一成一套要动短剧与带货的
+      端点配置，风险不在代码在数据，需要一次带迁移的收敛。
+
 - [ ] **搬画布漏掉的「运行环境」还有没有第三处**：v0.161 补了 `QueryClientProvider`
       （少了它双击节点直接崩）。上游入口里可能还有别的 provider / 全局初始化没搬过来 ——
       对着上游的 `main.tsx` / `App.tsx` 通读一遍比等用户撞上强。
