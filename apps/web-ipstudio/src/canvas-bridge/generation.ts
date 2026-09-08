@@ -9,6 +9,7 @@
 import type { AiConfig } from "./config-store";
 import { endpointIdFor } from "./models";
 import { rememberUploaded } from "./image-storage";
+import { recordRun } from "./last-run";
 import { generate, readRun, currentProjectId, type IpRun } from "./api";
 
 /** 上游的多模态消息形状，画布拼「带图对话」用。保持同名同形，调用点不用改。 */
@@ -59,6 +60,8 @@ async function waitForRun(runId: string, signal?: AbortSignal): Promise<IpRun> {
     const run = await readRun(runId);
     if (run.status === "done") return run;
     if (run.status === "failed") {
+      // 失败这一次同样要留下「发出去的是什么」—— 排查失败原因时最需要看的就是它
+      recordRun(run);
       // 服务端已经退过冻结，这里只负责把话说清楚 —— 不吞、不改写成「成功但没图」
       throw new Error(run.errorMessage || "生成失败，请稍后再试");
     }
@@ -119,7 +122,10 @@ export async function requestEdit(
     // 翻不出来就不传 —— 服务端走后台配的默认端点。指定了却悄悄换一个才是不允许的（D-11）。
     model: endpointIdFor(config.imageModel || config.model),
   });
-  return toImages(await waitForRun(run.id, options?.signal));
+  const done = await waitForRun(run.id, options?.signal);
+  // 先记下真实入参再解图：即使这次没返回候选，顶栏也能告诉用户刚才发出去的是什么
+  recordRun(done);
+  return toImages(done);
 }
 
 /**

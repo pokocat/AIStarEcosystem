@@ -21,6 +21,7 @@ import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
 import { serverModelsLoaded } from "@/canvas-bridge/models";
 import { useHostActions } from "@/canvas-bridge/host-actions";
 import { PublishDialog } from "@/components/publish/publish-dialog";
+import { LastRunPanel } from "@/components/last-run-panel";
 import { IpStudioApi } from "@/api";
 import { AIAVATAR_URL } from "@/lib/external";
 import "@/canvas-bridge/i18n";
@@ -81,6 +82,7 @@ function Host({ projectId }: { projectId: string }) {
   // 画布还没加载完时插槽内容也无所谓，反正顶栏那会儿还没渲染。
   useHostActions(
     <>
+      <LastRunPanel />
       {saveState !== "idle" && (
         <span
           className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold whitespace-nowrap"

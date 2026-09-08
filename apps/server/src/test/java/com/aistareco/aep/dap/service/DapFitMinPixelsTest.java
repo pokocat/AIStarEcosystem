@@ -101,4 +101,24 @@ class DapFitMinPixelsTest {
     void ratioValueIsNotRewritten() {
         assertEquals(null, DapMultimodalClient.sizeFromMinPixelsHint("image size must be at least 3686400 pixels", "1:1"));
     }
+
+    // 下限读出来之后要**记到端点上**，否则每一次出图都先发一版必然被拒的画幅再改一次：
+    // 用户多等一轮，日志里每次一条 400，而且哪天对方换了措辞解析不出来就直接变成出图失败。
+    @Test
+    @DisplayName("从拒绝理由里读出下限像素数（与画幅无关，纯解析）")
+    void readsTheStatedMinimumPixelCount() {
+        assertEquals(Integer.valueOf(3686400),
+                DapMultimodalClient.minPixelsHint("The parameter `size` specified in the request is not valid: "
+                        + "image size must be at least 3686400 pixels. Request id: 021788856216"));
+        assertEquals(Integer.valueOf(3686400),
+                DapMultimodalClient.minPixelsHint("image size must be AT LEAST 3686400 Pixels"));
+    }
+
+    @Test
+    @DisplayName("没说下限就不记 —— 绝不拿别的数字当画幅下限")
+    void doesNotInventAMinimumFromUnrelatedErrors() {
+        assertEquals(null, DapMultimodalClient.minPixelsHint("content policy violation"));
+        assertEquals(null, DapMultimodalClient.minPixelsHint("rate limit exceeded, retry after 30 seconds"));
+        assertEquals(null, DapMultimodalClient.minPixelsHint(null));
+    }
 }

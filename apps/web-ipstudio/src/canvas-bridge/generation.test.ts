@@ -146,3 +146,45 @@ describe("运行结果的字段名必须跟服务端一致", () => {
     expect((err as Error).message).not.toContain("已退回");
   });
 });
+
+// 「这次到底发给模型什么」必须留痕：出的图不像参考图时，用户能看的只有这个。
+// 成功要留，失败更要留 —— 失败那次恰恰是最需要看提示词的一次。
+describe("留下这次的真实入参", () => {
+  it("成功时记下完整提示词与参考图生效情况", async () => {
+    const { useLastRun } = await import("./last-run");
+    useLastRun.getState().set(null);
+    generateMock.mockResolvedValue({ id: "IPR-9", status: "running" });
+    readRunMock.mockResolvedValue({
+      ...done([{ key: "ipstudio_gen/u1/a.png", url: "https://cdn.test/a" }]),
+      id: "IPR-9",
+      inputs: {
+        prompt: "模板前缀 用户写的那段 模板后缀",
+        refs: [{ role: "reference", note: "原照片", applied: true },
+               { role: "reference", note: "风格图", applied: false, reason: "读不到" }],
+        size: "768x1024", count: 1,
+      },
+    });
+
+    await requestEdit(cfg, "用户写的那段", []);
+    const last = useLastRun.getState().last!;
+    expect(last.id).toBe("IPR-9");
+    expect(last.prompt).toContain("模板前缀");
+    expect(last.refs.map((r) => r.applied)).toEqual([true, false]);
+    expect(last.refs[1].reason).toBe("读不到");
+  });
+
+  it("失败时也记 —— 不然最该看提示词的那次反而什么都看不到", async () => {
+    const { useLastRun } = await import("./last-run");
+    useLastRun.getState().set(null);
+    generateMock.mockResolvedValue({ id: "IPR-10", status: "running" });
+    readRunMock.mockResolvedValue({
+      id: "IPR-10", projectId: "IPP-test", nodeId: "n-1", status: "failed",
+      cost: 0, errorMessage: "模型拒绝了这次请求",
+      inputs: { prompt: "发出去的完整提示词", refs: [] },
+      output: {},
+    });
+
+    await expect(requestEdit(cfg, "x", [])).rejects.toThrow("模型拒绝了这次请求");
+    expect(useLastRun.getState().last?.prompt).toBe("发出去的完整提示词");
+  });
+});

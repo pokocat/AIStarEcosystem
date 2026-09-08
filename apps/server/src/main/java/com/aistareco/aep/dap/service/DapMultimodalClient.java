@@ -4,6 +4,7 @@ import com.aistareco.aep.dap.config.DapProperties;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.repository.AiAppEndpointCandidateRepository;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.AiModelUsageService;
 import com.aistareco.aep.service.ai.ModelCallCtx;
@@ -57,16 +58,19 @@ public class DapMultimodalClient {
     private final AiModelInvocationService aiModels;
     private final AiModelUsageService usage;
     private final UpstreamModelHttp upstreamHttp;
+    private final AiAppEndpointCandidateRepository candidates;
     private final HttpClient http;
 
     public DapMultimodalClient(DapProperties props,
                                AiModelInvocationService aiModels,
                                AiModelUsageService usage,
-                               UpstreamModelHttp upstreamHttp) {
+                               UpstreamModelHttp upstreamHttp,
+                               AiAppEndpointCandidateRepository candidates) {
         this.props = props;
         this.aiModels = aiModels;
         this.usage = usage;
         this.upstreamHttp = upstreamHttp;
+        this.candidates = candidates;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -308,6 +312,7 @@ public class DapMultimodalClient {
                 if (retrySize == null) throw e;
                 log.warn("[dap-ai] 画幅被上游拒绝，按它给的下限改一次再试 endpoint={} {} → {}",
                         t.endpointName(), effectiveSize, retrySize);
+                rememberMinPixels(t, e.getMessage());
                 body.put("size", retrySize);
                 resp = postJson(t, "/v1/images/generations", body);
             }
@@ -581,17 +586,49 @@ public class DapMultimodalClient {
      * 这不是「失败了就重试」—— 同一个请求重试多少次都还是同样的错；这是**按对方给的信息改正一次**。
      */
     static String sizeFromMinPixelsHint(String upstreamMessage, String sentSize) {
-        if (upstreamMessage == null || sentSize == null) return null;
+        Integer min = minPixelsHint(upstreamMessage);
+        if (min == null || sentSize == null) return null;
+        String fixed = fitMinPixels(sentSize, min);
+        return fixed == null || fixed.equals(sentSize) ? null : fixed;
+    }
+
+    /** 上游拒绝理由里的画幅下限像素数；没说就返回 null。 */
+    static Integer minPixelsHint(String upstreamMessage) {
+        if (upstreamMessage == null) return null;
         java.util.regex.Matcher m = MIN_PIXELS_HINT.matcher(upstreamMessage);
         if (!m.find()) return null;
-        int min;
         try {
-            min = Integer.parseInt(m.group(1));
+            return Integer.parseInt(m.group(1));
         } catch (NumberFormatException e) {
             return null;
         }
-        String fixed = fitMinPixels(sentSize, min);
-        return fixed == null || fixed.equals(sentSize) ? null : fixed;
+    }
+
+    /**
+     * 把上游说过的画幅下限记到候选端点上，下次一次就发对。
+     *
+     * <p>没有这一步的话，每一次出图都是「先发一版必然被拒的画幅 → 按它给的下限改 → 再发一次」：
+     * 用户等两轮网络往返，日志里每次都有一条 400，而且一旦哪天对方换了措辞、我们解析不出下限，
+     * 就从「慢一点」直接变成「出图失败」。运营也很难自己发现要去后台填这个数 ——
+     * 这个下限本来就只有厂商知道，它已经在报错里告诉我们了。
+     *
+     * <p>旁路写入（§8.0 观测类例外）：失败只记 WARN，绝不影响这次出图。
+     */
+    private void rememberMinPixels(Target t, String upstreamMessage) {
+        Integer hinted = minPixelsHint(upstreamMessage);
+        if (hinted == null || t == null || t.endpointId() == null) return;
+        try {
+            candidates.findByPurposeAndEndpointId(t.purpose(), t.endpointId()).ifPresent(c -> {
+                Integer known = c.getMinImagePixels();
+                if (known != null && known >= hinted) return;
+                c.setMinImagePixels(hinted);
+                candidates.save(c);
+                log.info("[dap-ai] 记下端点画幅下限 purpose={} endpoint={} minPixels={}（下次一次发对）",
+                        t.purpose().wire(), t.endpointName(), hinted);
+            });
+        } catch (Exception e) {
+            log.warn("[dap-ai] 记录端点画幅下限失败 endpoint={}: {}", t.endpointName(), e.getMessage());
+        }
     }
 
     /**
