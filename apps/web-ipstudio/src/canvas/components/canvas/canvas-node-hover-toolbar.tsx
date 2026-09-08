@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { App, Modal, Segmented, Tooltip } from "antd";
 import { Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Plus, RefreshCw, Settings2, Trash2, Ungroup, Upload, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +40,15 @@ type CanvasNodeHoverToolbarProps = {
     onUngroup?: (node: CanvasNodeData) => void;
     extraTools?: CanvasNodeToolbarItem[];
 };
+
+/**
+ * 缩到这个比例以下时，工具条只留图标。
+ *
+ * 判据用**缩放比例**而不是节点宽度：工具条是固定屏幕尺寸的，随缩放变的是它周围的一切。
+ * 按节点宽度判会误伤 —— 内置模板的节点本来就只有 185 宽，100% 时也会被判成「窄」，
+ * 于是正常使用下文字全没了（本轮浏览器实测逮到，写的时候以为节点是 340）。
+ */
+const LABEL_MIN_ZOOM = 0.7;
 
 type ToolbarTool = {
     id: string;
@@ -104,11 +113,50 @@ export function CanvasNodeHoverToolbar({
         setImageToolSettingsOpen(false);
     }, [node?.id]);
 
+    // 工具条会被画布边缘裁掉 —— 跟 v0.161 修节点面板是同一个毛病：画布区 overflow-hidden，
+    // 而这条 -translate-x-1/2 居中的横条在靠边的节点上会有一截伸到可视区外。
+    // 横向照那边的做法：量**当前**位置、加**增量**（自己带着上一次的位移，按绝对值重设会越夹越偏）。
+    // 纵向不这么做 —— 翻上翻下要是也看自己的位置，就会翻完再翻回来来回跳；
+    // 改用**锚点**几何判断（节点顶到可视区顶还剩多少），与工具条自己在哪无关。
+    const barRef = useRef<HTMLDivElement | null>(null);
+    const [shiftX, setShiftX] = useState(0);
+    const [flipBelow, setFlipBelow] = useState(false);
+    const anchorTopScreen = node ? viewport.y + node.position.y * viewport.k : 0;
+    useLayoutEffect(() => {
+        const el = barRef.current;
+        if (!el || !node) return;
+        let box: HTMLElement | null = el.parentElement;
+        while (box && getComputedStyle(box).overflow !== "hidden") box = box.parentElement;
+        const limit = (box ?? document.documentElement).getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        // 量不到东西就别夹：容器或工具条尺寸为 0（画布隐藏、jsdom 里）时每次都会算出同一个
+        // 非零增量，而位置永远不变 —— 增量一轮轮累加下去就是个死循环。
+        if (r.width === 0 || limit.width === 0) return;
+        const pad = 12;
+
+        let dx = 0;
+        if (r.left < limit.left + pad) dx = limit.left + pad - r.left;
+        else if (r.right > limit.right - pad) dx = limit.right - pad - r.right;
+        if (Math.abs(dx) >= 1) setShiftX((prev) => prev + dx);
+
+        const parent = el.offsetParent as HTMLElement | null;
+        const parentTop = (parent ?? document.documentElement).getBoundingClientRect().top;
+        const roomAbove = parentTop + anchorTopScreen - 14 - limit.top;
+        setFlipBelow(roomAbove < r.height + pad);
+    });
+
     if (!node) return null;
 
     const activeNode = node;
     const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
-    const top = viewport.y + node.position.y * viewport.k - 14;
+    // 节点顶 / 底在屏幕上的位置（工具条是**固定屏幕尺寸**的，不随画布缩放）
+    const anchorTop = viewport.y + node.position.y * viewport.k;
+    const anchorBottom = anchorTop + node.height * viewport.k;
+    const top = flipBelow ? anchorBottom + 14 : anchorTop - 14;
+    // 缩小到一定程度后，带文字的工具条会比节点本身宽好几倍、横跨半个画布 ——
+    // 读起来像一个全局菜单，而不是「这个节点的操作」（v0.186 用户实测报的）。
+    // 每个按钮本来就有 Tooltip + aria-label，去掉文字不丢信息。
+    const compact = viewport.k < LABEL_MIN_ZOOM;
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
     const isAudio = node.type === CanvasNodeType.Audio;
@@ -185,8 +233,9 @@ export function CanvasNodeHoverToolbar({
     return (
         <>
             <div
-                className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
-                style={{ left, top }}
+                ref={barRef}
+                className="absolute z-[70] flex h-12 items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+                style={{ left, top, transform: `translate(calc(-50% + ${shiftX}px), ${flipBelow ? "0" : "-100%"})` }}
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
                     if (!imageToolSettingsOpen) onLeave();
@@ -195,9 +244,9 @@ export function CanvasNodeHoverToolbar({
                 onPointerDown={(event) => event.stopPropagation()}
             >
                 {toolbarTools.map((tool) => (
-                    <ToolbarAction key={tool.id} {...tool} showLabel={isImage ? showImageToolLabels : true} />
+                    <ToolbarAction key={tool.id} {...tool} showLabel={!compact && (isImage ? showImageToolLabels : true)} />
                 ))}
-                {hasImage ? <ToolbarAction id="more" title={t("canvas.imageTools.configure")} label={t("canvas.imageTools.more")} icon={<Ellipsis className="size-4" />} active={imageToolSettingsOpen} onClick={openImageToolSettings} showLabel={showImageToolLabels} /> : null}
+                {hasImage ? <ToolbarAction id="more" title={t("canvas.imageTools.configure")} label={t("canvas.imageTools.more")} icon={<Ellipsis className="size-4" />} active={imageToolSettingsOpen} onClick={openImageToolSettings} showLabel={!compact && showImageToolLabels} /> : null}
             </div>
             {hasImage ? (
                 <ImageToolSettingsModal
