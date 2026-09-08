@@ -61,6 +61,8 @@ public class AliyunOssCdnUploader implements CdnUploader {
     private final String keyPrefix;
     private final List<String> absoluteKeyPrefixes;
     private final OSS ossClient;
+    /** 只用于生成预签名 URL —— 对公网域名签名，见构造里的说明。 */
+    private final OSS signClient;
     private final String accessKeyId;
 
     // v0.47+：URL 签名配置
@@ -102,6 +104,24 @@ public class AliyunOssCdnUploader implements CdnUploader {
                 .clientConfiguration(clientConfig)
                 .region(this.region)
                 .build();
+
+        // 预签名要**对公网域名签**，不能签完再改 host（v0.172）。
+        //
+        // V4（OSS4-HMAC-SHA256）的签名是覆盖 host 的。此前的做法是用内网 endpoint 签，
+        // 再把 `-internal.aliyuncs.com` 字符串替换成公网域名 —— 签名于是与 host 对不上，
+        // 换来的是 403。表现极其隐蔽：桶本身是公开可读的，**不带参数**取得到，
+        // 一旦带上（对不上的）签名参数，OSS 反而会去校验并拒掉。
+        //
+        // 上传仍走内网 endpoint（走内网不计流量费、也更快），只有签名用公网客户端。
+        String publicEndpoint = this.endpoint.replace("-internal.aliyuncs.com", ".aliyuncs.com");
+        this.signClient = publicEndpoint.equals(this.endpoint)
+                ? this.ossClient
+                : OSSClientBuilder.create()
+                        .endpoint(publicEndpoint)
+                        .credentialsProvider(new DefaultCredentialProvider(id, secret))
+                        .clientConfiguration(clientConfig)
+                        .region(this.region)
+                        .build();
 
         this.signStrategy = parseStrategy(signStrategyRaw);
         this.defaultTtlSeconds = ttlSeconds > 0 ? ttlSeconds : 3600L;
@@ -283,8 +303,10 @@ public class AliyunOssCdnUploader implements CdnUploader {
                 responseHeaders.setContentDisposition(contentDisposition);
                 req.setResponseHeaders(responseHeaders);
             }
-            String signed = ossClient.generatePresignedUrl(req).toString();
-            // SDK 用构造器传入的 endpoint（可能是 -internal）做 host —— 修正为公网 endpoint
+            // 用公网客户端签：host 从一开始就是公网域名，签名与 host 一致，不需要事后改写。
+            String signed = signClient.generatePresignedUrl(req).toString();
+            // 仍过一道 rewrite：signClient 万一退化成 ossClient（endpoint 本就是公网）时它是恒等的，
+            // 另外统一 http→https。
             return rewritePublicEndpoint(signed);
         } catch (Exception e) {
             log.warn("[cdn] ossPresignedUrl failed key={}: {} → 回退 public URL", objectKey, e.getMessage());
@@ -413,6 +435,7 @@ public class AliyunOssCdnUploader implements CdnUploader {
 
     @PreDestroy
     public void shutdown() {
+        if (signClient != null && signClient != ossClient) signClient.shutdown();
         ossClient.shutdown();
     }
 
