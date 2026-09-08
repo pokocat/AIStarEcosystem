@@ -23,11 +23,9 @@ type CanvasNodeProps = {
     isConnectionTarget: boolean;
     isConnecting: boolean;
     referenceSelectionState?: "target" | "disabled" | "available";
-    showPanel: boolean;
     showImageInfo: boolean;
     mentionReferences?: CanvasResourceReference[];
     registryVersion?: number;
-    renderPanel?: (node: CanvasNodeData) => ReactNode;
     renderNodeContent?: (node: CanvasNodeData) => ReactNode;
     groupChildCount?: number;
     isGroupDropTarget?: boolean;
@@ -86,10 +84,8 @@ export const CanvasNode = React.memo(function CanvasNode({
     isConnectionTarget,
     isConnecting,
     referenceSelectionState,
-    showPanel,
     showImageInfo,
     mentionReferences = [],
-    renderPanel,
     renderNodeContent,
     groupChildCount = 0,
     isGroupDropTarget = false,
@@ -431,11 +427,10 @@ export const CanvasNode = React.memo(function CanvasNode({
             {!referenceSelectionState && !isGroup ? <ConnectionHandleDot side="left" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "target")} /> : null}
             {!referenceSelectionState && (definition?.hasSourceHandle ?? true) && data.type !== CanvasNodeType.Config ? <ConnectionHandleDot side="right" visible={hovered || isSelected || isConnecting} onMouseDown={(event) => onConnectStart(event, data.id, "source")} /> : null}
 
-            {/* 本仓改动（v0.161）：面板原来固定居中在节点下方（left-1/2 + -translate-x-1/2，宽 600）。
-                节点一靠近画布左右边缘，面板就伸到画布区外面 —— 而画布区是 overflow-hidden，
-                伸出去的那半截直接被裁掉（表现是「选择模型」只剩「择模型」）。
-                这里把它夹回画布可视区内。 */}
-            {showPanel && !isGroup && renderPanel ? <NodePanelHolder>{renderPanel(data)}</NodePanelHolder> : null}
+            {/* 本仓改动（v0.187）：节点面板搬去画布区底部停靠（project.tsx 的 dockedPanelNode）。
+                它原来渲染在这里 —— 也就是在 `scale(k)` 图层内部，会跟着画布一起缩放：
+                画到 16% 时那块 600px 的面板只剩 96px，字全糊了。顺带 v0.161 为它加的
+                「越出画布就横向夹回来」也随之退役（停靠在屏幕层，不会再被边缘裁掉）。 */}
         </div>
     );
 });
@@ -1000,45 +995,3 @@ function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "r
 }
 
 
-/**
- * 节点面板的定位壳 —— 默认居中在节点下方，越出画布可视区时横向夹回来。
- *
- * 画布区是 overflow-hidden 的：节点靠近左右边缘时，600px 宽的面板会有一半被裁掉
- * （表现是「选择模型」只剩「择模型」）。
- *
- * 量的是**当前**位置、加的是**增量**：面板自己带着上一次的位移，若按绝对值重设会越夹越偏。
- * 差值小于 1px 就停，避免 setState → 重渲染 → 再测 的循环。
- */
-function NodePanelHolder({ children }: { children: ReactNode }) {
-    const ref = useRef<HTMLDivElement | null>(null);
-    const [shift, setShift] = useState(0);
-
-    useLayoutEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-        const clamp = () => {
-            let box: HTMLElement | null = el.parentElement;
-            while (box && getComputedStyle(box).overflow !== "hidden") box = box.parentElement;
-            const limit = (box ?? document.documentElement).getBoundingClientRect();
-            const r = el.getBoundingClientRect();
-            const pad = 12;
-            let dx = 0;
-            if (r.left < limit.left + pad) dx = limit.left + pad - r.left;
-            else if (r.right > limit.right - pad) dx = limit.right - pad - r.right;
-            if (Math.abs(dx) >= 1) setShift((prev) => prev + dx);
-        };
-        clamp();
-        window.addEventListener("resize", clamp);
-        return () => window.removeEventListener("resize", clamp);
-    });
-
-    return (
-        <div
-            ref={ref}
-            className="absolute left-1/2 top-full z-[70] w-[600px] max-w-[calc(100vw-2rem)] pt-4"
-            style={{ transform: `translateX(calc(-50% + ${shift}px))` }}
-        >
-            {children}
-        </div>
-    );
-}

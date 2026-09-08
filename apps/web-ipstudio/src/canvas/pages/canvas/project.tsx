@@ -3127,6 +3127,26 @@ function InfiniteCanvasPage() {
         setContextMenu({ type: "node", x: event.clientX, y: event.clientY, nodeId });
     }, []);
 
+    /**
+     * 停靠在画布区底部的那个节点面板（本仓改动）。
+     *
+     * 原来它渲染在**节点内部**（`NodePanelHolder`），而节点在 `scale(k)` 的图层里 ——
+     * 面板于是跟着画布一起缩放：画到 16% 时那块 600px 的面板只剩 96px，字全糊了
+     * （用户第一次报「操作卡片不可读」说的就是它）。
+     *
+     * 参照小云雀：操作浮层一律放屏幕层、固定尺寸、固定位置，画布缩放影响不到它。
+     * 判断条件与原来 `showPanel` 一字不差地搬过来。
+     */
+    const dockedPanelNode = useMemo(() => {
+        if (isNodeResizing || selectionBox || !dialogNodeId) return null;
+        const target = nodeById.get(dialogNodeId);
+        // 组节点没有提示词面板（原来在节点内是 `showPanel && !isGroup && renderPanel`，
+        // 搬出来时这条也要跟着搬）
+        if (!target || target.type === CanvasNodeType.Group) return null;
+        if (getNodeDefinition(target.type)?.hidePanel) return null;
+        return target;
+    }, [dialogNodeId, isNodeResizing, selectionBox, nodeById]);
+
     const renderNodePanel = useCallback(
         (panelNode: CanvasNodeData) =>
             panelNode.type === CanvasNodeType.Config ? (
@@ -3269,14 +3289,12 @@ function InfiniteCanvasPage() {
                             isConnectionTarget={connectionTargetNodeId === node.id}
                             isConnecting={Boolean(connectingParams)}
                             referenceSelectionState={!referencePickerNodeId ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"}
-                            showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel}
                             groupChildCount={groupChildCountById.get(node.id) || 0}
                             isGroupDropTarget={dropTargetGroupId === node.id}
                             batchExpanded={expandedBatchNodeIds.has(node.id)}
                             showImageInfo={showImageInfo}
                             mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES}
                             registryVersion={nodeRegistryVersion}
-                            renderPanel={renderNodePanel}
                             renderNodeContent={renderNodeContentPanel}
                             onMouseDown={handleNodeMouseDown}
                             onSelectCapture={handleNodeSelectCapture}
@@ -3329,9 +3347,22 @@ function InfiniteCanvasPage() {
                     ) : null}
                 </InfiniteCanvas>
 
+                {dockedPanelNode ? (
+                    <div
+                        className="pointer-events-none absolute inset-x-0 bottom-[88px] z-[60] flex justify-center px-4"
+                    >
+                        <div
+                            className="thin-scrollbar pointer-events-auto max-h-[58vh] w-[600px] max-w-full overflow-y-auto"
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onPointerDown={(event) => event.stopPropagation()}
+                        >
+                            {renderNodePanel(dockedPanelNode)}
+                        </div>
+                    </div>
+                ) : null}
+
                 <CanvasNodeHoverToolbar
                     node={isNodeDragging || isNodeResizing || nodeImageSettingsOpen || expandedBatchNodeIds.has(toolbarNode?.id || "") ? null : toolbarNode}
-                    viewport={viewport}
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
                     onInfo={(node) => setInfoNodeId(node.id)}

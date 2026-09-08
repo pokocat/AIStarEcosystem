@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { App, Modal, Segmented, Tooltip } from "antd";
 import { Download, Ellipsis, FolderPlus, Image as ImageIcon, Info, MessageSquare, Minus, Music2, Plus, RefreshCw, Settings2, Trash2, Ungroup, Upload, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -8,14 +8,13 @@ import { getNodeDefinition } from "@/canvas/lib/canvas/node-registry";
 import { formatBytes, getDataUrlByteSize } from "@/canvas/lib/image-utils";
 import { useCopyText } from "@/canvas/hooks/use-copy-text";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
-import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/canvas/types/canvas";
+import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import type { CanvasNodeToolbarItem } from "@/canvas/types/canvas-node-def";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
 import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, readImageQuickToolsConfig, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
 
 type CanvasNodeHoverToolbarProps = {
     node: CanvasNodeData | null;
-    viewport: ViewportTransform;
     onKeep: (nodeId: string) => void;
     onLeave: () => void;
     onInfo: (node: CanvasNodeData) => void;
@@ -42,13 +41,15 @@ type CanvasNodeHoverToolbarProps = {
 };
 
 /**
- * 缩到这个比例以下时，工具条只留图标。
+ * 停靠浮层的定位壳：`absolute` 的包含块**已经是画布可视区**
+ * （`relative min-w-0 flex-1 overflow-hidden`，侧栏在它外面），所以左右各留一点内边距、
+ * 在里面居中就行。
  *
- * 判据用**缩放比例**而不是节点宽度：工具条是固定屏幕尺寸的，随缩放变的是它周围的一切。
- * 按节点宽度判会误伤 —— 内置模板的节点本来就只有 185 宽，100% 时也会被判成「窄」，
- * 于是正常使用下文字全没了（本轮浏览器实测逮到，写的时候以为节点是 340）。
+ * ⚠️ 别照抄底部创建工具条那句 `style={{ left: 300, right: 16 }}` —— 它跟我们在同一个包含块里，
+ * 那 300 是它自己想让开左下角缩放控件的偏移，不是「侧栏宽度」。照抄的结果是浮层整体右移 300px，
+ * 窗口一窄就直接被算成 0 宽（实测容器 width:0、工具条只剩 2px 的边框）。
  */
-const LABEL_MIN_ZOOM = 0.7;
+const DOCK_SHELL = "pointer-events-none absolute inset-x-0 z-[70] flex justify-center px-4";
 
 type ToolbarTool = {
     id: string;
@@ -62,7 +63,6 @@ type ToolbarTool = {
 
 export function CanvasNodeHoverToolbar({
     node,
-    viewport,
     onKeep,
     onLeave,
     onInfo,
@@ -113,50 +113,9 @@ export function CanvasNodeHoverToolbar({
         setImageToolSettingsOpen(false);
     }, [node?.id]);
 
-    // 工具条会被画布边缘裁掉 —— 跟 v0.161 修节点面板是同一个毛病：画布区 overflow-hidden，
-    // 而这条 -translate-x-1/2 居中的横条在靠边的节点上会有一截伸到可视区外。
-    // 横向照那边的做法：量**当前**位置、加**增量**（自己带着上一次的位移，按绝对值重设会越夹越偏）。
-    // 纵向不这么做 —— 翻上翻下要是也看自己的位置，就会翻完再翻回来来回跳；
-    // 改用**锚点**几何判断（节点顶到可视区顶还剩多少），与工具条自己在哪无关。
-    const barRef = useRef<HTMLDivElement | null>(null);
-    const [shiftX, setShiftX] = useState(0);
-    const [flipBelow, setFlipBelow] = useState(false);
-    const anchorTopScreen = node ? viewport.y + node.position.y * viewport.k : 0;
-    useLayoutEffect(() => {
-        const el = barRef.current;
-        if (!el || !node) return;
-        let box: HTMLElement | null = el.parentElement;
-        while (box && getComputedStyle(box).overflow !== "hidden") box = box.parentElement;
-        const limit = (box ?? document.documentElement).getBoundingClientRect();
-        const r = el.getBoundingClientRect();
-        // 量不到东西就别夹：容器或工具条尺寸为 0（画布隐藏、jsdom 里）时每次都会算出同一个
-        // 非零增量，而位置永远不变 —— 增量一轮轮累加下去就是个死循环。
-        if (r.width === 0 || limit.width === 0) return;
-        const pad = 12;
-
-        let dx = 0;
-        if (r.left < limit.left + pad) dx = limit.left + pad - r.left;
-        else if (r.right > limit.right - pad) dx = limit.right - pad - r.right;
-        if (Math.abs(dx) >= 1) setShiftX((prev) => prev + dx);
-
-        const parent = el.offsetParent as HTMLElement | null;
-        const parentTop = (parent ?? document.documentElement).getBoundingClientRect().top;
-        const roomAbove = parentTop + anchorTopScreen - 14 - limit.top;
-        setFlipBelow(roomAbove < r.height + pad);
-    });
-
     if (!node) return null;
 
     const activeNode = node;
-    const left = viewport.x + (node.position.x + node.width / 2) * viewport.k;
-    // 节点顶 / 底在屏幕上的位置（工具条是**固定屏幕尺寸**的，不随画布缩放）
-    const anchorTop = viewport.y + node.position.y * viewport.k;
-    const anchorBottom = anchorTop + node.height * viewport.k;
-    const top = flipBelow ? anchorBottom + 14 : anchorTop - 14;
-    // 缩小到一定程度后，带文字的工具条会比节点本身宽好几倍、横跨半个画布 ——
-    // 读起来像一个全局菜单，而不是「这个节点的操作」（v0.186 用户实测报的）。
-    // 每个按钮本来就有 Tooltip + aria-label，去掉文字不丢信息。
-    const compact = viewport.k < LABEL_MIN_ZOOM;
     const isImage = node.type === CanvasNodeType.Image;
     const isVideo = node.type === CanvasNodeType.Video;
     const isAudio = node.type === CanvasNodeType.Audio;
@@ -233,9 +192,9 @@ export function CanvasNodeHoverToolbar({
     return (
         <>
             <div
-                ref={barRef}
-                className="absolute z-[70] flex h-12 items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
-                style={{ left, top, transform: `translate(calc(-50% + ${shiftX}px), ${flipBelow ? "0" : "-100%"})` }}
+                className={`${DOCK_SHELL} top-[68px]`}>
+            <div
+                className="thin-scrollbar pointer-events-auto flex h-12 w-max max-w-full items-center overflow-x-auto overflow-y-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
                 onMouseEnter={() => onKeep(node.id)}
                 onMouseLeave={() => {
                     if (!imageToolSettingsOpen) onLeave();
@@ -243,10 +202,14 @@ export function CanvasNodeHoverToolbar({
                 onMouseDown={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
             >
+                <span className="shrink-0 max-w-[160px] truncate border-r border-black/10 px-3.5 text-[13px] text-black/45" title={activeNode.title}>
+                    {activeNode.title || t("canvas.node.untitled")}
+                </span>
                 {toolbarTools.map((tool) => (
-                    <ToolbarAction key={tool.id} {...tool} showLabel={!compact && (isImage ? showImageToolLabels : true)} />
+                    <ToolbarAction key={tool.id} {...tool} showLabel={isImage ? showImageToolLabels : true} />
                 ))}
-                {hasImage ? <ToolbarAction id="more" title={t("canvas.imageTools.configure")} label={t("canvas.imageTools.more")} icon={<Ellipsis className="size-4" />} active={imageToolSettingsOpen} onClick={openImageToolSettings} showLabel={!compact && showImageToolLabels} /> : null}
+                {hasImage ? <ToolbarAction id="more" title={t("canvas.imageTools.configure")} label={t("canvas.imageTools.more")} icon={<Ellipsis className="size-4" />} active={imageToolSettingsOpen} onClick={openImageToolSettings} showLabel={showImageToolLabels} /> : null}
+            </div>
             </div>
             {hasImage ? (
                 <ImageToolSettingsModal
@@ -340,7 +303,7 @@ function ToolbarAction({ title, label, icon, onClick, showLabel, active = false,
     const hasText = showLabel && Boolean(label);
     return (
         <Tooltip title={title} placement="top" mouseEnterDelay={0.2} color="#ffffff" styles={{ root: { color: "#242529", boxShadow: "0 8px 24px rgba(15,23,42,.16)", fontSize: 13, fontWeight: 500 } }}>
-            <button type="button" className={`group relative flex h-12 items-center whitespace-nowrap px-1.5 ${danger ? "text-[#ef4444]" : ""}`} onClick={onClick} aria-label={title}>
+            <button type="button" className={`group relative flex h-12 shrink-0 items-center whitespace-nowrap px-1.5 ${danger ? "text-[#ef4444]" : ""}`} onClick={onClick} aria-label={title}>
                 <span className={`flex h-9 items-center ${hasText ? "gap-2 px-2.5" : "justify-center px-2"} rounded-lg transition group-hover:bg-[#f0f0f1] ${active ? "bg-[#eeeeef]" : ""}`}>
                     {icon}
                     {hasText ? <span>{label}</span> : null}
