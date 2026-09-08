@@ -1196,3 +1196,24 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 - [ ] **示例素材没有清理路径**。`ipstudio/demo/<demoId>/…` 只增不减：更新一个示例会再复制
   一份，旧的留在 OSS 上（有意为之，回滚只要把 doc 换回去）。攒多了需要一个按 demoId
   对账、删掉没有任何 doc 引用的那些的清理任务。
+
+## 2026-09-08 · 图片类型按字节判（v0.184）
+
+- [x] ~~画布出视频报「参考图上传失败，请稍后重试」~~ **v0.184 修复**，2026-09-08：
+  一张 JPEG 顶着 `.png` 的名字发给聚算，我们按文件名声明 `Content-Type: image/png`，
+  对方照做去解码 → `400 input image cannot be decoded`。修在三处：`ImageBytes.sniff`
+  （magic number）+ `FileStorageService.store` 声明与字节不符时以字节为准（一处改、
+  十几个调用点全好）+ `uploadInputImage` 再判一次（**存量文件仍然是错的**，老图不用重跑）。
+  生产端到端实测：厂商 `usage` 自报 `"generationMode":"i2v"`。
+- [x] ~~上游拒绝的原因被吞掉~~ **v0.184 修复**：`internalDetail` 只在
+  `GlobalExceptionHandler` 那条路上落 `ErrorLog`，`@Async` worker 到不了那儿 ——
+  加 WARN 记全量上下文；4xx 直出厂商 message（与 v0.166 出图链同一套）。
+  **教训（第三次了）**：排「上游为什么拒」先把它的原话记下来，再谈改代码。
+  前两次是 v0.166（`friendly()` 抹掉一切）和 v0.174（拿一个不成立的信号连改两版）。
+- [x] ~~`[upstream-io]` 的视频 submit 请求体一直是空的~~ **v0.184 修复**：
+  `ModelCallCtx` 没设 `requestBodyJson`，那行永远打成 `body=`，出片参数一个都看不到。
+- [ ] **存量图片的类型标签仍然是错的**。`FileStorageService.store` 从 v0.184 起按字节存，
+  但**此前存下的**文件（`ipstudio_gen/**`、`dap/**` 等大量 `.png` 其实是 JPEG）没有回填。
+  今天不影响任何功能（浏览器自己嗅探；转交厂商那条路已在 `uploadInputImage` 兜住），
+  真要清的话是一个「按 key 抽头 32 字节、类型不符就改 OSS Content-Type + 改 DB key」的
+  一次性任务 —— 改 key 会牵动所有引用它的文档，收益不抵风险，先记着不做。

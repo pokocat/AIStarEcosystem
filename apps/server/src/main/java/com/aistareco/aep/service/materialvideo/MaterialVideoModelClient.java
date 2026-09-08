@@ -229,12 +229,14 @@ public class MaterialVideoModelClient {
                 p.getName(), model, protocol, uri.getPath(), durationSec, aspectRatio, prompt == null ? 0 : prompt.length());
 
         HttpRequest req;
+        String bodyJson;
         try {
+            bodyJson = OM.writeValueAsString(body);
             req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(OM.writeValueAsString(body)))
+                    .POST(HttpRequest.BodyPublishers.ofString(bodyJson))
                     .build();
         } catch (Exception e) {
             recordVideoUsage(p, model, durationSec, false, ownerUserId, appCode, requestId, null, elapsedMs(startNanos),
@@ -249,6 +251,9 @@ public class MaterialVideoModelClient {
                 .requestId(requestId)
                 .ownerUserId(ownerUserId)
                 .appCode(appCode)
+                // 不设这个字段的话 [upstream-io] 那行永远打成 `body=` —— 出片参数（generationMode /
+                // 参考图 assetId / 时长比例）一个都看不到，排「参数到底发出去没有」全靠猜（v0.184 踩过）。
+                .requestBodyJson(bodyJson)
                 .client(http)
                 .build();
         HttpResponse<String> resp;
