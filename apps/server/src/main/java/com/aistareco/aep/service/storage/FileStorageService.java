@@ -65,6 +65,18 @@ public class FileStorageService {
      * - signedUrl：带时效签名的可访问 URL（前端直接用）
      * - localPath：本机副本路径（keepLocalCopy=false 时为 null）；ffmpeg / python 本地消费用
      */
+    /**
+     * 未签名的公开 URL。给**服务端到服务端**的场景用（把图交给上游模型去抓）。
+     *
+     * <p>浏览器那侧照旧用 {@link #signedUrl(String)}。这里之所以要另开一条：
+     * 签名 URL 多一层会失败的环节（TTL、签名与实际请求对不对得上），
+     * 而上游抓不到图时往往**不报错**，直接当没有参考图跑完 —— 排查起来极其昂贵。
+     */
+    public String publicUrl(String key) {
+        if (key == null || key.isBlank()) return null;
+        return cdn == null ? props.getPublicUrlBase() + "/" + key : cdn.publicUrlFor(key);
+    }
+
     public record StoredFile(String key, String url, String signedUrl, String localPath, long bytes, String contentType) {}
 
     // ── 写入 ──────────────────────────────────────────────────────────────────

@@ -37,7 +37,14 @@ public class DapImageInput {
     /** key → 图片输入串（公网 URL 或 dataURI）；读不到返回 null。 */
     public String of(String key) {
         if (key == null || key.isBlank()) return null;
-        String url = storage.signedUrl(key);
+        // 优先给**未签名**的公开 URL（v0.172）。
+        //
+        // 这是交给上游模型自己去抓的地址，不是给浏览器的。签名 URL 在这条路上只会多一层
+        // 可能失败的环节（TTL、签名与实际请求对不对得上），而**上游抓不到图时通常不报错**，
+        // 直接当没有参考图把整张图跑完、照价扣钱 —— 排障成本极高（这次就花了一整轮）。
+        // 拿不到公开 URL（比如将来把桶改私有）时自动回落签名 URL，再不行才走 dataURI。
+        String url = storage.publicUrl(key);
+        if (url == null || url.isBlank()) url = storage.signedUrl(key);
         boolean publicUrl = url != null && (url.startsWith("http://") || url.startsWith("https://"))
                 && !url.contains("//localhost") && !url.contains("//127.0.0.1") && !url.contains("//0.0.0.0");
         if (publicUrl) return url;
