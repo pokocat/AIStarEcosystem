@@ -4,8 +4,8 @@
 
 | 目录 | 形态 | 当前占用 |
 |---|---|---|
-| `src/main/resources/db/migration/V*.sql` | SQL 迁移 | V1、V14–V20、V25、V26 |
-| `src/main/java/db/migration/V*.java` | Java 迁移（`BaseJavaMigration`） | V2–V13、V21–V24 |
+| `src/main/resources/db/migration/V*.sql` | SQL 迁移 | V1、V14–V20、V25–V28 |
+| `src/main/java/db/migration/V*.java` | Java 迁移（`BaseJavaMigration`） | V2–V13、V21–V24、V29、V30 |
 
 只 `ls` 本目录会看到「V1 跳到 V14、V20 之后又跳到 V25」的假象，据此推断「编号漂移 / 文件丢了」是**错的**
 （2026-08-31 踩过一次；更早还有一次 V20 撞号事故）。

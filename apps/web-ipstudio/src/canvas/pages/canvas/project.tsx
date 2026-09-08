@@ -6,12 +6,12 @@ import { Group, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 
-import { requestEdit, requestGeneration, requestImageQuestion } from "@/canvas-bridge/generation";
+import { isRunEnded, requestEdit, requestGeneration, requestImageQuestion, resumeRun } from "@/canvas-bridge/generation";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/canvas-bridge/audio";
 import { createVideoGenerationTask, isVideoTaskFailed, storeGeneratedVideo, waitForVideoGenerationTask } from "@/canvas-bridge/video";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/canvas-bridge/config-store";
-import { uploadImage } from "@/canvas-bridge/image-storage";
-import { uploadMediaFile, type UploadedFile } from "@/canvas-bridge/file-storage";
+import { uploadImage, type UploadedImage } from "@/canvas-bridge/image-storage";
+import type { UploadedFile } from "@/canvas-bridge/file-storage";
 import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/canvas/lib/image-utils";
 import { imageReferenceLabel } from "@/canvas/lib/image-reference-prompt";
@@ -49,6 +49,7 @@ import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNod
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/canvas/lib/canvas/canvas-node-factory";
 import { applyGroupSelection, applyUngroupSelection, canGroupSelectedNodes, canUngroupSelectedNodes, collectGroupMemberNodes, findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, getGroupWrapRect, normalizeConnection, snapNodesIntoGroup } from "@/canvas/lib/canvas/canvas-node-geometry";
 import {
+    applyCandidateToNode,
     audioExtension,
     buildAngleLabel,
     buildAnglePrompt,
@@ -57,15 +58,18 @@ import {
     generationReferenceUrls,
     getGenerationCount,
     getInputSummary,
+    hasResumableImageRun,
     hasResumableVideoTask,
     hydrateAssistantImages,
     hydrateCanvasImages,
     imageExtension,
-    isAudioFile,
     isGenerationCanceled,
+    isSupportedUploadImage,
     resetInterruptedGeneration,
     resolveMetadataReferences,
+    resumableImageRuns,
     sourceNodeReferenceImages,
+    UPLOAD_ACCEPT,
 } from "@/canvas/lib/canvas/canvas-generation-helpers";
 import { getNodeDefinition, isBuiltinNodeType as isBuiltinType, useNodeRegistryVersion } from "@/canvas/lib/canvas/node-registry";
 import { registerBuiltinNodes } from "@/canvas/components/canvas/nodes/builtin-nodes";
@@ -291,12 +295,45 @@ function InfiniteCanvasPage() {
         if (request?.controller === controller) generationRequestsRef.current.delete(targetNodeId);
     }, []);
 
+    /**
+     * 本仓新增（v0.179）：服务端一受理这一张，就把运行号写进对应的候选。
+     *
+     * 出图是「已受理、可能已经开始扣费」的动作，而它要跑几十秒。此前运行号只活在
+     * `requestEdit` 的栈里：刷新 / 关标签页 / 网断，这张图就此隐形 —— 服务端跑完、
+     * 扣了钱，产物躺在 `ip_run.output.candidates` 里没人认领（v0.163 那类事故）。
+     * 写进节点（随防抖自动保存落库）之后，进画布时 `resumeImageNodeRun` 能接着轮询。
+     */
+    const rememberImageRun = useCallback((nodeId: string, imageId: string, runId: string) => {
+        setNodes((prev) =>
+            prev.map((node) =>
+                node.id === nodeId
+                    ? { ...node, metadata: { ...node.metadata, images: node.metadata?.images?.map((image) => (image.id === imageId ? { ...image, runId } : image)) } }
+                    : node,
+            ),
+        );
+    }, []);
+
+    /**
+     * 把一张出好的候选写回节点 —— 真正的写回逻辑抽在
+     * `canvas-generation-helpers.applyCandidateToNode`（可单测），这里只负责套 setNodes。
+     * 正常出图、单张重试、刷新后接回三条路径共用它：各写一份的结果就是 v0.175 那次事故。
+     */
+    const applyGeneratedCandidate = useCallback((rootId: string, imageId: string, uploaded: UploadedImage, runId: string | undefined, boxEdge: number) => {
+        setNodes((prev) => applyCandidateToNode(prev, rootId, imageId, uploaded, runId, boxEdge));
+    }, []);
+
     const completeVideoNodeTask = useCallback(
         async (nodeId: string, config: Parameters<typeof buildGenerationConfig>[0], prompt: string, images: Parameters<typeof createVideoGenerationTask>[2], signal: AbortSignal, extra: CanvasNodeData["metadata"] = {}, videos: ReferenceVideo[] = [], audios: ReferenceAudio[] = []) => {
             const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios });
-            if (task.provider !== "plugin") {
-                setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, videoTaskProvider: task.provider === "gemini" ? "gemini" : "openai", model: config.model } } : item)));
-            }
+            // 本仓改动（v0.179）：**无条件**把任务号写进节点。
+            //
+            // 上游这里是 `if (task.provider !== "plugin")` —— 它的 plugin 是浏览器里的插件，
+            // 进程一关任务就没了，存下来也接不回去。而我们的 bridge **恒定返回 "plugin"**
+            // （见 canvas-bridge/video.ts），它代表的是**服务端**的 MaterialVideoJob：
+            // 于是这行判断让 videoTaskId 一次都没被存过，`hasResumableVideoTask` 永远 false，
+            // 下面那个专门为「刷新后接着轮询」写的 effect 从来没生效 ——
+            // 视频照样生成、照样扣费，回来只看到一个「已中断」的空节点。
+            setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, videoTaskProvider: task.provider, model: config.model } } : item)));
             const video = await storeGeneratedVideo(await waitForVideoGenerationTask(config, task, { signal }));
             setNodes((prev) => prev.map((item) => (item.id === nodeId ? applyGeneratedVideo(item, video, { prompt, model: config.model, ...extra }) : item)));
         },
@@ -322,7 +359,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(node.id);
                 setNodes((prev) => prev.map((item) => (item.id === node.id ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined } } : item)));
                 controller = startGenerationRequest(node.id, node.id, node.id);
-                const video = await storeGeneratedVideo(await waitForVideoGenerationTask(generationConfig, { id: taskId, provider: node.metadata?.videoTaskProvider === "gemini" ? "gemini" : "openai", model: generationConfig.model }, { signal: controller.signal }));
+                const video = await storeGeneratedVideo(await waitForVideoGenerationTask(generationConfig, { id: taskId, provider: node.metadata?.videoTaskProvider || "plugin", model: generationConfig.model }, { signal: controller.signal }));
                 setNodes((prev) =>
                     prev.map((item) =>
                         item.id === node.id
@@ -369,6 +406,82 @@ function InfiniteCanvasPage() {
         [effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest, t],
     );
 
+    /**
+     * 接回「刷新之前已经受理」的出图运行（本仓新增，v0.179）。
+     *
+     * <p>与视频那条（`pollVideoNodeTask`）同一个道理，只是出图的凭据是 `runId`。
+     * **只读 `GET /runs/{id}`，绝不重发生成请求** —— 重发就是再扣一次钱。
+     * 服务端那次运行要么还在跑、要么已经跑完（图在 `output.candidates` 里等着被认领），
+     * 要么已经失败并退了款；三种情况这里都如实反映。
+     *
+     * <p>两种节点形状都要接（`resumableImageRuns` 给出 `imageId` 有无之分）：
+     * 有候选数组的走 `applyGeneratedCandidate`；**蒙版编辑 / 视角变化**建的节点没有候选数组，
+     * 结果直接写在节点 metadata 上 —— 它俩也是付费入口，漏掉就是那两条链一中断产物就永远找不回。
+     */
+    const resumeImageNodeRun = useCallback(
+        async (node: CanvasNodeData) => {
+            const pending = resumableImageRuns(node);
+            if (!pending.length || generationRequestsRef.current.has(node.id)) return;
+            const controller = startGenerationRequest(node.id, node.id, node.id);
+            setRunningNodeId(node.id);
+            // 接回期间界面上要看得出「在跑」——（上一轮可能是因为网络抖动停在 error 上的）
+            const pendingIds = new Set(pending.map((entry) => entry.imageId).filter(Boolean) as string[]);
+            setNodes((prev) => prev.map((item) => (item.id === node.id
+                ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_LOADING, errorDetails: undefined, images: item.metadata?.images?.map((image) => (pendingIds.has(image.id) ? { ...image, status: NODE_STATUS_LOADING, errorDetails: undefined } : image)) } }
+                : item)));
+            let failure = "";
+            try {
+                await Promise.all(
+                    pending.map(async ({ runId, imageId }) => {
+                        try {
+                            const [image] = await resumeRun(runId, { signal: controller.signal });
+                            const uploaded = await uploadImage(image.dataUrl, { signal: controller.signal });
+                            if (imageId) {
+                                applyGeneratedCandidate(node.id, imageId, uploaded, runId, Math.max(node.width, node.height));
+                                return;
+                            }
+                            // 没有候选数组：按那两条链自己的写法，直接写进节点（尺寸按节点当前的框收）
+                            const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
+                            setNodes((prev) => prev.map((item) => (item.id === node.id
+                                ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), runId } }
+                                : item)));
+                        } catch (error) {
+                            if (isGenerationCanceled(error)) return;
+                            const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.generationFailed");
+                            if (!failure) failure = errorDetails;
+                            // 只有服务端说这次运行结束了才抹掉运行号（网络抖动要留着，下次还能接）
+                            const ended = isRunEnded(error);
+                            setNodes((prev) => prev.map((item) => {
+                                if (item.id !== node.id) return item;
+                                return {
+                                    ...item,
+                                    metadata: {
+                                        ...item.metadata,
+                                        ...(imageId
+                                            ? { images: item.metadata?.images?.map((image) => (image.id === imageId ? { ...image, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : image.runId } : image)) }
+                                            : ended ? { runId: undefined } : {}),
+                                    },
+                                };
+                            }));
+                        }
+                    }),
+                );
+            } finally {
+                finishGenerationRequest(node.id, controller);
+                setRunningNodeId((current) => (current === node.id ? null : current));
+            }
+            if (controller.signal.aborted) return;
+            setNodes((prev) =>
+                prev.map((item) => {
+                    if (item.id !== node.id) return item;
+                    const done = Boolean(item.metadata?.content) || Boolean(item.metadata?.images?.some((image) => image.status === NODE_STATUS_SUCCESS));
+                    return { ...item, metadata: { ...item.metadata, status: done ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR, errorDetails: done ? undefined : failure || t("canvas.projectPage.allFailed") } };
+                }),
+            );
+        },
+        [applyGeneratedCandidate, finishGenerationRequest, startGenerationRequest, t],
+    );
+
     const stopGenerationByRunningId = useCallback((runningId: string) => {
         const affectedNodeIds = new Set<string>();
         generationRequestsRef.current.forEach((request) => {
@@ -406,10 +519,16 @@ function InfiniteCanvasPage() {
                 okText: t("canvas.projectPage.stop"),
                 cancelText: t("canvas.projectPage.continue"),
                 okButtonProps: { danger: true },
-                onOk: () => stopGenerationByRunningId(nodeId),
+                onOk: () => {
+                    stopGenerationByRunningId(nodeId);
+                    // 停止不是「什么都没发生」：服务端那次运行会被取消，但已经进厂商调用的
+                    // 那一张跑完照价结算（worker 在每张开跑之前才查取消标记）。说清楚，
+                    // 别让用户以为点了停止就不花钱（§8.0：不许承诺我们做不到的退款）。
+                    message.info(t("canvas.projectPage.stopped"));
+                },
             });
         },
-        [modal, stopGenerationByRunningId, t],
+        [message, modal, stopGenerationByRunningId, t],
     );
 
     useEffect(() => {
@@ -453,6 +572,9 @@ function InfiniteCanvasPage() {
     useEffect(() => {
         if (!projectLoaded) return;
         nodesRef.current.filter(hasResumableVideoTask).forEach((node) => void pollVideoNodeTask(node, true));
+        // 出图同理（本仓 v0.179）：候选上留了 runId 的，接着轮询那次运行，
+        // 别让一张已经付过费的图停在「已中断」上。
+        nodesRef.current.filter(hasResumableImageRun).forEach((node) => void resumeImageNodeRun(node));
         // Resume once after the current canvas is restored, not on later config identity changes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [projectLoaded]);
@@ -1404,46 +1526,33 @@ function InfiniteCanvasPage() {
         setDialogNodeId(id);
     }, []);
 
-    const createVideoFileNode = useCallback(async (file: File, position: Position) => {
-        const video = await uploadMediaFile(file, "video");
-        const size = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-        const id = `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        setNodes((prev) => [
-            ...prev,
-            {
-                id,
-                type: CanvasNodeType.Video,
-                title: file.name,
-                position: { x: position.x - size.width / 2, y: position.y - size.height / 2 },
-                width: size.width,
-                height: size.height,
-                metadata: videoMetadata(video),
-            },
-        ]);
-        setSelectedNodeIds(new Set([id]));
-        setSelectedConnectionId(null);
-        setDialogNodeId(id);
-    }, []);
-
-    const createAudioFileNode = useCallback(async (file: File, position: Position) => {
-        const audio = await uploadMediaFile(file, "audio");
-        const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
-        const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        setNodes((prev) => [
-            ...prev,
-            {
-                id,
-                type: CanvasNodeType.Audio,
-                title: file.name,
-                position: { x: position.x - spec.width / 2, y: position.y - spec.height / 2 },
-                width: spec.width,
-                height: spec.height,
-                metadata: audioMetadata(audio),
-            },
-        ]);
-        setSelectedNodeIds(new Set([id]));
-        setSelectedConnectionId(null);
-    }, []);
+    /**
+     * 导入素材的统一入口（本仓新增，v0.179）。
+     *
+     * 两件事此前是坏的：
+     *   ① 视频 / 音频入口调的 `uploadMediaFile` 打的是 `/v1/ip-studio/uploads`，
+     *      而它**只收 JPG / PNG** —— 拖个 mp4 进来必然 400；
+     *   ② 调用点是 `void createXxxFileNode(...)`，**没有 catch**：那个 400
+     *      连带图片的合法失败（webp / heic / 超过 15MB / 边长超限，服务端都给了中文原因）
+     *      一起被吞掉，界面上什么都不发生，只有控制台一条 unhandled rejection。
+     *
+     * 现在：能收的只有 JPG / PNG，收不了的当场说清楚；上传失败把服务端的原话给用户。
+     */
+    const importImageFiles = useCallback(
+        (files: File[], positionOf: (index: number) => Position) => {
+            const accepted = files.filter(isSupportedUploadImage);
+            if (accepted.length < files.length) {
+                message.warning(t("canvas.projectPage.uploadImageOnly"));
+            }
+            accepted.forEach((file, index) => {
+                void createImageFileNode(file, positionOf(index)).catch((error: unknown) => {
+                    message.error(error instanceof Error ? error.message : t("canvas.projectPage.uploadFailed"));
+                });
+            });
+            return accepted;
+        },
+        [createImageFileNode, message, t],
+    );
 
     const createTextNodeFromClipboard = useCallback(
         (text: string) => {
@@ -1948,15 +2057,26 @@ function InfiniteCanvasPage() {
             setRunningNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
-                const image = await requestEdit(generationConfig, prompt, references, { signal: controller.signal }).then((items) => items[0]);
+                // 蒙版编辑也是**付费**入口：运行号一样要在受理时就记下来（v0.179）。
+                // 这个节点没有候选数组（结果直接写进 metadata），所以运行号记在节点级 runId 上，
+                // `resumableImageRuns` 认得这种形状。漏掉它 = 局部重绘一中断，
+                // 那张已经扣过费的图就永远找不回来了。
+                let acceptedRunId: string | undefined;
+                const onAccepted = (runId: string) => {
+                    acceptedRunId = runId;
+                    setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, runId } } : item)));
+                };
+                const image = await requestEdit(generationConfig, prompt, references, { signal: controller.signal, onAccepted }).then((items) => items[0]);
                 const uploaded = await uploadImage(image.dataUrl, { signal: controller.signal });
                 const size = fitNodeSize(uploaded.width, uploaded.height, node.width, node.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata, ...(acceptedRunId ? { runId: acceptedRunId } : {}) } } : item)));
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.maskFailed");
                 message.error(errorDetails);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
+                // 服务端说这次运行结束了才抹掉运行号；网络抖动 / 超时留着它，下次进画布还能接回
+                const ended = isRunEnded(error);
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, ...(ended ? { runId: undefined } : {}) } } : item)));
             } finally {
                 finishGenerationRequest(childId, controller);
                 setRunningNodeId(null);
@@ -2024,19 +2144,26 @@ function InfiniteCanvasPage() {
             setDialogNodeId(childId);
             const controller = startGenerationRequest(childId, node.id, childId);
             try {
+                // 视角变化同样付费、同样没有候选数组 —— 与蒙版编辑一套处理（v0.179）
+                let acceptedRunId: string | undefined;
+                const onAccepted = (runId: string) => {
+                    acceptedRunId = runId;
+                    setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, runId } } : item)));
+                };
                 const image = await requestEdit(
                     generationConfig,
                     prompt,
                     [{ id: node.id, name: `${node.title || node.id}.png`, type: node.metadata.mimeType || "image/png", dataUrl: node.metadata.content, storageKey: node.metadata.storageKey }],
-                    { signal: controller.signal },
+                    { signal: controller.signal, onAccepted },
                 ).then((items) => items[0]);
                 const uploaded = await uploadImage(image.dataUrl, { signal: controller.signal });
                 const size = fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata } } : item)));
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, width: size.width, height: size.height, metadata: { ...item.metadata, ...imageMetadata(uploaded), prompt, ...generationMetadata, ...(acceptedRunId ? { runId: acceptedRunId } : {}) } } : item)));
             } catch (error) {
                 if (isGenerationCanceled(error)) return;
                 const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.generationFailed");
-                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails } } : item)));
+                const ended = isRunEnded(error);
+                setNodes((prev) => prev.map((item) => (item.id === childId ? { ...item, metadata: { ...item.metadata, status: NODE_STATUS_ERROR, errorDetails, ...(ended ? { runId: undefined } : {}) } } : item)));
             } finally {
                 finishGenerationRequest(childId, controller);
                 setRunningNodeId(null);
@@ -2056,9 +2183,9 @@ function InfiniteCanvasPage() {
 
     const handleImageInputChange = useCallback(
         async (event: ReactChangeEvent<HTMLInputElement>) => {
-            const files = Array.from(event.target.files || []).filter(
-                (f) => f.type.startsWith("image/") || f.type.startsWith("video/") || isAudioFile(f),
-            );
+            const picked = Array.from(event.target.files || []);
+            const files = picked.filter(isSupportedUploadImage);
+            if (picked.length && !files.length) message.warning(t("canvas.projectPage.uploadImageOnly"));
             if (!files.length) {
                 uploadTargetRef.current = null;
                 event.target.value = "";
@@ -2077,49 +2204,7 @@ function InfiniteCanvasPage() {
             // When replacing a target node, use the first file as the replacement and create the rest nearby.
             if (target?.nodeId) {
                 const [first, ...rest] = files;
-
-                // Replace the target node with the first file.
-                if (isAudioFile(first)) {
-                    const audio = await uploadMediaFile(first, "audio");
-                    const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
-                    setNodes((prev) =>
-                        prev.map((node) =>
-                            node.id === target.nodeId
-                                ? {
-                                      ...node,
-                                      type: CanvasNodeType.Audio,
-                                      title: first.name,
-                                      position: { x: node.position.x + node.width / 2 - spec.width / 2, y: node.position.y + node.height / 2 - spec.height / 2 },
-                                      width: spec.width,
-                                      height: spec.height,
-                                      metadata: { ...node.metadata, ...audioMetadata(audio), errorDetails: undefined },
-                                  }
-                                : node,
-                        ),
-                    );
-                    setSelectedNodeIds(new Set([target.nodeId]));
-                    setSelectedConnectionId(null);
-                } else if (first.type.startsWith("video/")) {
-                    const video = await uploadMediaFile(first, "video");
-                    const nextSize = fitNodeSize(video.width || 1280, video.height || 720, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
-                    setNodes((prev) =>
-                        prev.map((node) =>
-                            node.id === target.nodeId
-                                ? {
-                                      ...node,
-                                      type: CanvasNodeType.Video,
-                                      title: first.name,
-                                      position: { x: node.position.x + node.width / 2 - nextSize.width / 2, y: node.position.y + node.height / 2 - nextSize.height / 2 },
-                                      width: nextSize.width,
-                                      height: nextSize.height,
-                                      metadata: { ...node.metadata, ...videoMetadata(video), errorDetails: undefined },
-                                  }
-                                : node,
-                        ),
-                    );
-                    setSelectedNodeIds(new Set([target.nodeId]));
-                    setSelectedConnectionId(null);
-                } else {
+                try {
                     const image = await uploadImage(first);
                     setNodes((prev) =>
                         prev.map((node) =>
@@ -2148,6 +2233,9 @@ function InfiniteCanvasPage() {
                                           count: undefined,
                                           references: undefined,
                                           primaryImageId: undefined,
+                                          // 换了图就不再是上一次那次运行的产物了 —— 留着 runId
+                                          // 会让服务端把一次无关的运行投影到这个节点上。
+                                          runId: undefined,
                                       },
                                   }
                                 : node,
@@ -2155,64 +2243,34 @@ function InfiniteCanvasPage() {
                     );
                     setSelectedNodeIds(new Set([target.nodeId]));
                     setSelectedConnectionId(null);
+                } catch (error) {
+                    // 服务端对超限 / 非图片给的是能看懂的中文原因，别吞掉（v0.179）
+                    message.error(error instanceof Error ? error.message : t("canvas.projectPage.uploadFailed"));
                 }
 
                 // Create the remaining files near the target node.
-                for (let i = 0; i < rest.length; i++) {
-                    const offsetPos = { x: basePosition.x + (i + 1) * STAGGER, y: basePosition.y + (i + 1) * STAGGER };
-                    const f = rest[i];
-                    if (isAudioFile(f)) {
-                        void createAudioFileNode(f, offsetPos);
-                    } else if (f.type.startsWith("video/")) {
-                        void createVideoFileNode(f, offsetPos);
-                    } else {
-                        void createImageFileNode(f, offsetPos);
-                    }
-                }
+                importImageFiles(rest, (i) => ({ x: basePosition.x + (i + 1) * STAGGER, y: basePosition.y + (i + 1) * STAGGER }));
             } else {
                 // Without a replacement target, create all files near the canvas center.
-                for (let i = 0; i < files.length; i++) {
-                    const offsetPos = { x: basePosition.x + i * STAGGER, y: basePosition.y + i * STAGGER };
-                    const f = files[i];
-                    if (isAudioFile(f)) {
-                        void createAudioFileNode(f, offsetPos);
-                    } else if (f.type.startsWith("video/")) {
-                        void createVideoFileNode(f, offsetPos);
-                    } else {
-                        void createImageFileNode(f, offsetPos);
-                    }
-                }
+                importImageFiles(files, (i) => ({ x: basePosition.x + i * STAGGER, y: basePosition.y + i * STAGGER }));
             }
 
             uploadTargetRef.current = null;
             event.target.value = "";
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas, size.height, size.width],
+        [importImageFiles, message, screenToCanvas, size.height, size.width, t],
     );
 
     const handleDrop = useCallback(
         (event: ReactDragEvent<HTMLDivElement>) => {
             event.preventDefault();
-            const files = Array.from(event.dataTransfer.files).filter(
-                (item) => item.type.startsWith("image/") || item.type.startsWith("video/") || isAudioFile(item),
-            );
-            if (!files.length) return;
-
+            const dropped = Array.from(event.dataTransfer.files);
+            if (!dropped.length) return;
             const basePos = screenToCanvas(event.clientX, event.clientY);
             const STAGGER = 40;
-            for (let i = 0; i < files.length; i++) {
-                const pos = { x: basePos.x + i * STAGGER, y: basePos.y + i * STAGGER };
-                const f = files[i];
-                if (isAudioFile(f)) {
-                    void createAudioFileNode(f, pos);
-                } else if (f.type.startsWith("video/")) {
-                    void createVideoFileNode(f, pos);
-                } else {
-                    void createImageFileNode(f, pos);
-                }
-            }
+            importImageFiles(dropped, (i) => ({ x: basePos.x + i * STAGGER, y: basePos.y + i * STAGGER }));
         },
-        [createAudioFileNode, createImageFileNode, createVideoFileNode, screenToCanvas],
+        [importImageFiles, screenToCanvas],
     );
 
     const startTitleEditing = useCallback(() => {
@@ -2368,43 +2426,23 @@ function InfiniteCanvasPage() {
                     await Promise.all(
                         imageIds.map(async (imageId) => {
                             try {
+                                // 服务端一受理就把运行号记下来（写进候选 + 留在本地变量）——
+                                // 中途刷新才接得回这张已经开始扣费的图。
+                                let acceptedRunId: string | undefined;
+                                const onAccepted = (runId: string) => {
+                                    acceptedRunId = runId;
+                                    rememberImageRun(rootId, imageId, runId);
+                                };
                                 const image = referenceImages.length
-                                    ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, { signal: controller.signal }).then((items) => items[0])
-                                    : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, { signal: controller.signal }).then((items) => items[0]);
+                                    ? await requestEdit({ ...generationConfig, count: "1" }, effectivePrompt, referenceImages, { signal: controller.signal, onAccepted }).then((items) => items[0])
+                                    : await requestGeneration({ ...generationConfig, count: "1" }, effectivePrompt, { signal: controller.signal, onAccepted }).then((items) => items[0]);
                                 const uploaded = await uploadImage(image.dataUrl, { signal: controller.signal });
                                 // 就地重出按节点当前的长边收（与「往已有节点塞图」同一套算法）——
                                 // 用默认 640 会把模板里 340×240 的卡片一下撑大，跟 v0.162 修过的上传是同一个毛病。
                                 const box = isEmptyImageNode
                                     ? Math.max(sourceNode?.width || imageConfig.width, sourceNode?.height || imageConfig.height)
                                     : 0;
-                                const imageSize = box
-                                    ? fitNodeSize(uploaded.width, uploaded.height, box, box)
-                                    : fitNodeSize(uploaded.width, uploaded.height, imageConfig.width, imageConfig.height);
-                                const item: CanvasNodeImage = { id: imageId, status: NODE_STATUS_SUCCESS, content: uploaded.url, storageKey: uploaded.storageKey, naturalWidth: uploaded.width, naturalHeight: uploaded.height, bytes: uploaded.bytes, mimeType: uploaded.mimeType };
-                                setNodes((prev) =>
-                                    prev.map((node) => {
-                                        if (node.id !== rootId) return node;
-                                        const images = node.metadata?.images?.map((image) => (image.id === imageId ? item : image)) || [];
-                                        if (node.metadata?.primaryImageId) return { ...node, metadata: { ...node.metadata, images } };
-                                        const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
-                                        return {
-                                            ...node,
-                                            position: { x: center.x - imageSize.width / 2, y: center.y - imageSize.height / 2 },
-                                            ...imageSize,
-                                            metadata: {
-                                                ...node.metadata,
-                                                content: item.content,
-                                                storageKey: item.storageKey,
-                                                naturalWidth: item.naturalWidth,
-                                                naturalHeight: item.naturalHeight,
-                                                bytes: item.bytes,
-                                                mimeType: item.mimeType,
-                                                images,
-                                                primaryImageId: imageId,
-                                            },
-                                        };
-                                    }),
-                                );
+                                applyGeneratedCandidate(rootId, imageId, uploaded, acceptedRunId, box);
                                 hasSuccess = true;
                                 if (isConfigNode) setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS, errorDetails: undefined } } : node)));
                                 return true;
@@ -2413,7 +2451,11 @@ function InfiniteCanvasPage() {
                                 const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.generationFailed");
                                 if (!firstError) firstError = errorDetails;
                                 hasFailure = true;
-                                setNodes((prev) => prev.map((node) => (node.id === rootId ? { ...node, metadata: { ...node.metadata, images: node.metadata?.images?.map((image) => (image.id === imageId ? { ...image, status: NODE_STATUS_ERROR, errorDetails } : image)) } } : node)));
+                                // 运行号只在**服务端说这次运行结束了**的时候才抹掉（v0.179）。
+                                // 网络抖动 / 等超时的时候留着它 —— 那次运行可能已经出了图、也已经扣了钱，
+                                // 下次进画布靠它对账接回来（`resumableImageRuns`）。
+                                const ended = isRunEnded(error);
+                                setNodes((prev) => prev.map((node) => (node.id === rootId ? { ...node, metadata: { ...node.metadata, images: node.metadata?.images?.map((image) => (image.id === imageId ? { ...image, status: NODE_STATUS_ERROR, errorDetails, runId: ended ? undefined : image.runId } : image)) } } : node)));
                             }
                             return false;
                         }),
@@ -2658,7 +2700,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, startGenerationRequest, t],
+        [applyGeneratedCandidate, completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, rememberImageRun, startGenerationRequest, t],
     );
     useEffect(() => {
         generateNodeRef.current = handleGenerateNode;
@@ -2668,6 +2710,12 @@ function InfiniteCanvasPage() {
         async (node: CanvasNodeData, imageId?: string) => {
             if (hasResumableVideoTask(node)) {
                 await pollVideoNodeTask(node);
+                return;
+            }
+            // 出图同理（v0.179）：这张已经受理过、可能已经扣过费了 ——
+            // 「重试」应该是接回那次运行，而不是再发一次付费请求。
+            if (hasResumableImageRun(node)) {
+                await resumeImageNodeRun(node);
                 return;
             }
             const sourceNode = findRetrySourceNode(node.id, nodesRef.current, connectionsRef.current) || node;
@@ -2743,13 +2791,21 @@ function InfiniteCanvasPage() {
                     return;
                 }
 
+                // 重试出的这张也要留运行号（同正常出图，v0.179）——
+                // 中途刷新时它同样是一张「已经受理、可能已扣费」的图。
+                const retryImageId = imageId || node.metadata?.primaryImageId || nanoid();
+                let acceptedRunId: string | undefined;
+                const onAccepted = (runId: string) => {
+                    acceptedRunId = runId;
+                    rememberImageRun(node.id, retryImageId, runId);
+                };
                 const image = useReferenceImages
-                    ? await requestEdit(generationConfig, prompt, retryImages, { signal: controller.signal }).then((items) => items[0])
-                    : await requestGeneration(generationConfig, prompt, { signal: controller.signal }).then((items) => items[0]);
+                    ? await requestEdit(generationConfig, prompt, retryImages, { signal: controller.signal, onAccepted }).then((items) => items[0])
+                    : await requestGeneration(generationConfig, prompt, { signal: controller.signal, onAccepted }).then((items) => items[0]);
                 const uploadedImage = await uploadImage(image.dataUrl, { signal: controller.signal });
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const retryImage: CanvasNodeImage = {
-                    id: imageId || node.metadata?.primaryImageId || nanoid(),
+                    id: retryImageId,
                     status: NODE_STATUS_SUCCESS,
                     content: uploadedImage.url,
                     storageKey: uploadedImage.storageKey,
@@ -2757,6 +2813,7 @@ function InfiniteCanvasPage() {
                     naturalHeight: uploadedImage.height,
                     bytes: uploadedImage.bytes,
                     mimeType: uploadedImage.mimeType,
+                    ...(acceptedRunId ? { runId: acceptedRunId } : {}),
                 };
                 const generationMetadata = savedImageMetadata?.generationType
                     ? {
@@ -2772,7 +2829,10 @@ function InfiniteCanvasPage() {
                 setNodes((prev) =>
                     prev.map((item) => {
                         if (item.id !== node.id) return item;
-                        const makePrimary = !imageId || !item.metadata?.content;
+                        // 重出的正好是当前显示的那张主候选时，也要更新节点级 content / storageKey
+                        // （v0.179，同 applyCandidateToNode 的注释）：那两个字段是下游生成的
+                        // 参考图真值，不更新就会「画布上是新图、下游还照着旧图画」。
+                        const makePrimary = !imageId || !item.metadata?.content || item.metadata?.primaryImageId === imageId;
                         const edge = imageId ? Math.max(item.width, item.height) : 0;
                         const imageSize = imageId && item.metadata?.freeResize ? { width: item.width, height: item.height } : imageId ? fitNodeSize(uploadedImage.width, uploadedImage.height, edge, edge) : fitNodeSize(uploadedImage.width, uploadedImage.height, imageConfig.width, imageConfig.height);
                         return {
@@ -2785,6 +2845,7 @@ function InfiniteCanvasPage() {
                                 images: item.metadata?.images?.map((current) => (current.id === retryImage.id ? retryImage : current)),
                                 primaryImageId: makePrimary ? retryImage.id : item.metadata?.primaryImageId,
                                 prompt,
+                                ...(makePrimary && acceptedRunId ? { runId: acceptedRunId } : {}),
                                 ...generationMetadata,
                             },
                         };
@@ -2803,7 +2864,8 @@ function InfiniteCanvasPage() {
                                       ...item.metadata,
                                       status: item.metadata?.content ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
                                       errorDetails: item.metadata?.content ? undefined : errorDetails,
-                                      images: item.metadata?.images?.map((image) => (image.id === imageId ? { ...image, status: NODE_STATUS_ERROR, errorDetails } : image)),
+                                      // 同正常出图：只有服务端说这次运行结束了才抹掉运行号（v0.179）
+                                      images: item.metadata?.images?.map((image) => (image.id === imageId ? { ...image, status: NODE_STATUS_ERROR, errorDetails, runId: isRunEnded(error) ? undefined : image.runId } : image)),
                                       ...(isVideoTaskFailed(error) && item.type === CanvasNodeType.Video ? { videoTaskId: undefined } : {}),
                                   },
                               }
@@ -2815,7 +2877,7 @@ function InfiniteCanvasPage() {
                 setRunningNodeId(null);
             }
         },
-        [completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, pollVideoNodeTask, startGenerationRequest, t],
+        [completeVideoNodeTask, effectiveConfig, finishGenerationRequest, isAiConfigReady, message, openConfigDialog, pollVideoNodeTask, rememberImageRun, resumeImageNodeRun, startGenerationRequest, t],
     );
 
     const deleteBatchImage = useCallback((nodeId: string, imageId: string) => {
@@ -3270,7 +3332,10 @@ function InfiniteCanvasPage() {
                     />
                 ) : null}
 
-                <input ref={imageInputRef} type="file" multiple accept="image/*,video/*,audio/mpeg,audio/wav,audio/x-wav,.mp3,.wav" className="hidden" onChange={handleImageInputChange} />
+                {/* accept 与服务端 UPLOAD_MIMES 一致：只列真能收的（v0.179）。
+                    此前是 image/*,video/*,audio/… —— 选中的 mp4 / webp 到服务端一律 400，
+                    而调用点没有 catch，用户看到的是「什么都没发生」。 */}
+                <input ref={imageInputRef} type="file" multiple accept={UPLOAD_ACCEPT} className="hidden" onChange={handleImageInputChange} />
 
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)} />
 

@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Slider } from "antd";
 import { useTranslation } from "react-i18next";
 
@@ -23,6 +23,28 @@ export const videoResolutionOptions = resolutionOptions.map((item) => ({ value: 
 export const videoSizeOptions = videoRatioOptions.map((item) => ({ value: item.value, get label() { return item.value === "auto" ? i18n.t("settingsPanels.common.auto") : item.value; } }));
 export const videoSecondsRange = { min: VIDEO_SECONDS_MIN, max: VIDEO_SECONDS_MAX };
 
+/**
+ * 这个配置下**真正会提交**的时长，以及它被夹在哪个区间里（本仓，v0.179）。
+ *
+ * 两件事必须由同一处算出来，否则「屏幕上显示的」和「送到服务端的」会不一样：
+ *   · 区间来自**选中的那个模型**的能力（服务端 `/models` 给的协议边界 ∩ 后台配置）。
+ *     取模型的顺序与提交时一致：`config.model` 优先 —— 它才是「节点上选的 > 全局默认」
+ *     合并后的结果（`buildNodeConfig` / `buildGenerationConfig`），
+ *     而 `videoModel` 永远是全局默认。此前这里读的是 `videoModel || model`，
+ *     于是节点上换了模型，滑杆还按全局那个模型的区间夹。
+ *   · 夹过之后必须**回写**到 config（见 VideoSettingsPanel 里的 effect）。
+ *     v0.176 只夹了显示：旧节点存的 4 秒、切到最短 5 秒的模型后屏幕显示 5，
+ *     提交仍然是 4 —— 服务端 400 `VIDEO_DURATION_UNSUPPORTED`，
+ *     而用户明明看到的是 5。上限切换同理（显示 15、提交 30）。
+ */
+export function effectiveVideoSeconds(config: Pick<AiConfig, "videoSeconds" | "videoModel" | "model">) {
+    const bounds = videoDurationBoundsFor(config.model || config.videoModel);
+    const min = Math.max(VIDEO_SECONDS_MIN, bounds?.min ?? VIDEO_SECONDS_MIN);
+    const max = Math.max(min, Math.min(VIDEO_SECONDS_MAX, bounds?.max ?? VIDEO_SECONDS_MAX));
+    const seconds = Math.min(max, Math.max(min, Number(clampVideoSeconds(config.videoSeconds || "6"))));
+    return { seconds, min, max };
+}
+
 type VideoSettingsPanelProps = {
     config: AiConfig;
     onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode", value: string) => void;
@@ -33,13 +55,15 @@ type VideoSettingsPanelProps = {
 
 export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
     const { t } = useTranslation();
-    // 本仓改动（v0.176）：滑杆按**选中模型**能提交的区间来，不再固定 4–30。
-    // 时长下限只有厂商协议知道（聚算媒体 5 秒起），服务端在 /models 里给出来；
-    // 拿不到就退回画布自己的默认范围，不臆造区间限制用户。
-    const bounds = videoDurationBoundsFor(config.videoModel || config.model);
-    const secMin = Math.max(VIDEO_SECONDS_MIN, bounds?.min ?? VIDEO_SECONDS_MIN);
-    const secMax = Math.max(secMin, Math.min(VIDEO_SECONDS_MAX, bounds?.max ?? VIDEO_SECONDS_MAX));
-    const seconds = Math.min(secMax, Math.max(secMin, Number(clampVideoSeconds(config.videoSeconds || "6"))));
+    // 滑杆按**选中模型**能提交的区间来，不再固定 4–30（v0.176）；
+    // 而且夹过之后要回写，别让显示与提交不一致（v0.179，见 effectiveVideoSeconds）。
+    const { seconds, min: secMin, max: secMax } = effectiveVideoSeconds(config);
+    useEffect(() => {
+        // 只在真的不一致时写一次：这不是「悄悄改计费时长」—— 用户屏幕上看到的就是这个值，
+        // 不回写才是悄悄的（看到 5 秒、提交 4 秒）。
+        if (String(seconds) !== String(config.videoSeconds)) onConfigChange("videoSeconds", String(seconds));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seconds, config.videoSeconds]);
     const videoMode = normalizeVideoModeValue(config.videoMode);
     const resolution = parseVideoResolution(config.vquality);
     const selectedRatio = inferVideoRatio(config.size || "auto");

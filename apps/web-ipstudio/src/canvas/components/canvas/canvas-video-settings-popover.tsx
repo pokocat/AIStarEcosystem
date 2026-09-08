@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
-import { VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSizeLabel } from "@/canvas/components/video-settings-panel";
+import { effectiveVideoSeconds, VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSizeLabel } from "@/canvas/components/video-settings-panel";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import type { AiConfig } from "@/canvas-bridge/config-store";
@@ -45,12 +45,29 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
 
     const panel = open && buttonRect ? <VideoSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
 
+    // 收起来的这行显示的是**存着的那个值**，也就是现在点发送真会送出去的时长（v0.179）。
+    //
+    // 别显示夹过的「有效值」：夹 + 回写只发生在**面板打开**的时候（effect 在 VideoSettingsPanel 里），
+    // 没打开过的节点存的还是换模型之前那个数。显示 5 而提交 4，等于这行在骗人 ——
+    // 而提交那头会如实拒绝（「这个模型只接 5–15 秒，当前是 4 秒」），两边就对不上了。
+    //
+    // 超出区间时加一个记号 + 悬浮说明：如实告诉用户「这样发会被拒，点开改一下」，
+    // 而不是替他把计费时长改掉。
+    const effective = effectiveVideoSeconds(config);
+    const storedSeconds = String(config.videoSeconds || "6");
+    const outOfRange = String(effective.seconds) !== storedSeconds;
+    const summary = `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.size)} · ${videoSecondsLabel(storedSeconds)} · ${videoModeLabel(config.videoMode)}`;
+    const hint = outOfRange
+        ? `${summary}（这个模型只接 ${effective.min}–${effective.max} 秒，现在这样发会被拒 —— 点开改一下）`
+        : summary;
+
     return (
         <>
             <span ref={buttonRef} className="inline-flex min-w-0">
-                <Button size="small" type="text" className={buttonClassName || "!h-8 !max-w-[220px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={() => setOpen((current) => !current)}>
+                <Button size="small" type="text" title={hint} className={buttonClassName || "!h-8 !max-w-[220px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={() => setOpen((current) => !current)}>
                     <span className="truncate">
-                        {videoResolutionLabel(config.vquality)} · {videoSizeLabel(config.size)} · {videoSecondsLabel(config.videoSeconds)} · {videoModeLabel(config.videoMode)}
+                        {summary}
+                        {outOfRange ? <span style={{ color: theme.node.muted }}> ⚠</span> : null}
                     </span>
                 </Button>
             </span>

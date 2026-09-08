@@ -11,9 +11,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const generateVideoMock = vi.fn();
+const readVideoJobMock = vi.fn();
 vi.mock("./api", () => ({
   generateVideo: (...a: unknown[]) => generateVideoMock(...a),
-  readVideoJob: vi.fn(),
+  readVideoJob: (...a: unknown[]) => readVideoJobMock(...a),
   currentProjectId: () => "IPP-test",
 }));
 vi.mock("./models", () => ({
@@ -21,7 +22,8 @@ vi.mock("./models", () => ({
   videoDurationBoundsFor: () => undefined,
 }));
 
-import { createVideoGenerationTask } from "./video";
+import { GenerationCanceled } from "./generation";
+import { createVideoGenerationTask, isVideoTaskFailed, VideoTaskFailed } from "./video";
 
 const cfg = {
   videoSeconds: "8",
@@ -33,6 +35,7 @@ const cfg = {
 beforeEach(() => {
   generateVideoMock.mockReset();
   generateVideoMock.mockResolvedValue({ id: "MVJ-1" });
+  readVideoJobMock.mockReset().mockResolvedValue({ id: "mvj_1", status: "ready" });
 });
 
 describe("画布视频提交", () => {
@@ -46,6 +49,21 @@ describe("画布视频提交", () => {
     expect(body.aspectRatio).toBe("9:16");   // 720x1280 → 9:16
     expect(body.model).toBe("ep-MiniMax H3");
     expect(body.refKey).toBe("ipstudio_gen/u/a.png");
+  });
+
+  // 与出图同一个缺陷（v0.179 修）：`videoModel` 是全局默认，排在 `config.model` 前面
+  // 就等于「节点上选了个模型，跑的还是默认那个」，而界面按选中的那个标价。
+  it("节点上选的视频模型（config.model）胜过全局默认（config.videoModel）", async () => {
+    await createVideoGenerationTask({ ...cfg, model: "节点选的", videoModel: "全局默认" } as never, "x", []);
+    expect(generateVideoMock.mock.calls[0][1].model).toBe("ep-节点选的");
+  });
+
+  it("没有 model 时才回落 videoModel；两个都空就不传（服务端走默认端点）", async () => {
+    await createVideoGenerationTask({ ...cfg, model: "", videoModel: "全局默认" } as never, "x", []);
+    expect(generateVideoMock.mock.calls[0][1].model).toBe("ep-全局默认");
+    generateVideoMock.mockClear();
+    await createVideoGenerationTask({ ...cfg, model: "", videoModel: "" } as never, "x", []);
+    expect(generateVideoMock.mock.calls[0][1].model).toBeUndefined();
   });
 
   it("options 显式给的值优先于 config", async () => {
@@ -91,12 +109,43 @@ describe("视频任务轮询路径", () => {
 
 // 名片一键建卡：body 必须给对象。共享 apiFetch 自己会序列化，
 // 调用方再 JSON.stringify 一遍就是双重编码 —— 服务端 500，前端只显示
-// 「服务器处理请求失败」（v0.178 线上踩过）。
+// 「服务器处理请求失败」（v0.179 线上踩过）。
 describe("一键建数字名片", () => {
   it("body 传对象，不自己 stringify", async () => {
     const src = readFileSync(join(__dirname, "../api/assets.ts"), "utf8");
     const call = src.slice(src.indexOf("/v1/card/from-avatar"));
     expect(call).toContain("body: { avatarId }");
     expect(call.slice(0, 200)).not.toContain("JSON.stringify");
+  });
+});
+
+// 调用点靠 isVideoTaskFailed 决定要不要把节点上的 videoTaskId 抹掉 —— 那是唯一能把成片
+// 接回来的凭据。所以这个判断必须站在「还没结束」那一边：抹早了，用户只能重新出一次片、
+// 再付一次钱。上游是「除了取消都算失败」，那个默认方向在本仓会把一次网络抖动变成一次重复付费。
+describe("哪些错误代表「这条任务已经结束了」", () => {
+  it("服务端明确说失败 = 是（任务号可以丢）", () => {
+    expect(isVideoTaskFailed(new VideoTaskFailed("视频生成失败，积分已退回"))).toBe(true);
+  });
+
+  it("前端等超时 = 不是（任务还在服务端跑，任务号要留着）", () => {
+    expect(isVideoTaskFailed(new Error("等太久了（任务号 mvj_1）"))).toBe(false);
+  });
+
+  it("网络抖动 = 不是（轮询这一下没成功，不代表任务失败）", () => {
+    expect(isVideoTaskFailed(new TypeError("Failed to fetch"))).toBe(false);
+  });
+
+  it("用户取消 = 不是", () => {
+    expect(isVideoTaskFailed(new GenerationCanceled())).toBe(false);
+  });
+});
+
+// 「说成了但没有成片地址」不是终态失败：刷新再查一次说不定就有了。
+describe("任务说成了却没有成片地址", () => {
+  it("按「还没结束」处理，保住任务号", async () => {
+    const { pollVideoGenerationTask } = await import("./video");
+    const state = await pollVideoGenerationTask(undefined, { id: "mvj_1", provider: "plugin", model: "" });
+    expect(state.status).toBe("failed");
+    if (state.status === "failed") expect(state.ended).toBeFalsy();
   });
 });

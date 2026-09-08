@@ -10,7 +10,7 @@ import type { AiConfig } from "./config-store";
 import { endpointIdFor } from "./models";
 import { rememberUploaded } from "./image-storage";
 import { recordRun } from "./last-run";
-import { generate, readRun, currentProjectId, type IpRun } from "./api";
+import { cancelRun, generate, readRun, currentProjectId, type IpRun } from "./api";
 
 /** 上游的多模态消息形状，画布拼「带图对话」用。保持同名同形，调用点不用改。 */
 export type AiTextMessage = {
@@ -29,7 +29,18 @@ export type ReferenceImage = {
   storageKey?: string;
 };
 
-export type RequestOptions = { signal?: AbortSignal };
+export type RequestOptions = {
+  signal?: AbortSignal;
+  /**
+   * 服务端一受理就把运行号交出来（在等结果之前）。
+   *
+   * 出图是「已经受理、可能已经开始扣费」的动作，而它要跑几十秒。此前 runId 只活在
+   * 这个函数的栈里 —— 刷新 / 关标签页 / 网断，产物就此隐形：服务端跑完、扣了钱、
+   * 图躺在 `ip_run.output.candidates` 里没人认领（v0.163 记过的那类事故）。
+   * 调用方拿到它写进节点，进画布时就能接着轮询（见 {@link resumeRun}）。
+   */
+  onAccepted?: (runId: string) => void;
+};
 
 /** 画布拿到的一张成图。dataUrl 里放的是签名地址 —— 画布只把它当 img src 用。 */
 export type GeneratedImage = {
@@ -49,6 +60,28 @@ export class GenerationCanceled extends Error {
   }
 }
 
+/**
+ * **服务端明确说这次运行结束了**（status=failed，冻结额已按规则释放）。
+ *
+ * 为什么要单独一个类型：运行号是「这张图还有未了结的事」的唯一凭据，
+ * 调用点只有在**运行真的结束**时才可以把它丢掉。网络抖动、前端等超时、用户取消
+ * 都不是结束 —— 那时候丢掉运行号，服务端跑完的那张图就永远没人认领了
+ * （钱已经扣了）。默认站在「还没结束」这一边。
+ */
+export class RunFailed extends Error {
+  readonly runId: string;
+  constructor(runId: string, message: string) {
+    super(message);
+    this.name = "RunFailed";
+    this.runId = runId;
+  }
+}
+
+/** 这个错误代表「那次运行已经结束」吗？只有服务端说 failed 才算。 */
+export function isRunEnded(error: unknown): boolean {
+  return error instanceof RunFailed;
+}
+
 const POLL_MS = 1500;
 /** 兜底上限：worker 那头有 reaper 收尾，这里只防前端无限等下去。 */
 const POLL_TIMEOUT_MS = 8 * 60_000;
@@ -62,14 +95,50 @@ async function waitForRun(runId: string, signal?: AbortSignal): Promise<IpRun> {
     if (run.status === "failed") {
       // 失败这一次同样要留下「发出去的是什么」—— 排查失败原因时最需要看的就是它
       recordRun(run);
-      // 服务端已经退过冻结，这里只负责把话说清楚 —— 不吞、不改写成「成功但没图」
-      throw new Error(run.errorMessage || "生成失败，请稍后再试");
+      // 服务端已经退过冻结，这里只负责把话说清楚 —— 不吞、不改写成「成功但没图」。
+      // 用 RunFailed（而不是普通 Error）：调用点据此知道「这次运行结束了，运行号可以丢」。
+      throw new RunFailed(runId, run.errorMessage || "生成失败，请稍后再试");
     }
     if (Date.now() - started > POLL_TIMEOUT_MS) {
-      throw new Error("等太久了，任务可能卡住了。刷新看看，积分会自动退回");
+      // 别在这儿承诺退款：**前端等超时不等于服务端结束**。那头要么还在跑，要么真的卡住了
+      // （由 IpRunReaper 按心跳超时释放冻结）—— 而已经出好的那几张是照价结算的，不退。
+      // 所以只给运行号，让人查得到。
+      throw new Error(`等太久了（运行号 ${runId}）。这次运行可能还在服务端跑，把运行号报给运维可以查到它的结果；真卡住时冻结的积分由服务端释放`);
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
+}
+
+/**
+ * 用户点了「停止」→ 顺手告诉服务端一声。
+ *
+ * <p>此前「停止」只是 `controller.abort()`：前端不看了，服务端继续把剩下的张数跑完、
+ * 逐张 commit 扣费。`POST /runs/{id}/cancel` 一直存在却没有任何调用者。
+ *
+ * <p>能取消到什么程度由服务端定，界面不许多说：worker 在**每张开跑之前**查一次
+ * `cancelRequested`，所以**已经进厂商调用的那些会跑完并计费**，取消释放的是还没开始的部分。
+ *
+ * <p>注意是「那些」而不是「那一张」：画布出 N 张图是 **N 次并发的 count=1 运行**
+ * （见 project.tsx 的图片分支），点一次停止会给每一条都发取消 —— 其中已经进厂商调用的
+ * 可能不止一条。所以文案只能说「已经开始的那些会跑完并计费，实际结算以运行记录为准」，
+ * 不能承诺只有一张计费。
+ *
+ * <p>best-effort：取消请求本身失败只记日志 —— 用户点的是「我不等了」，
+ * 不该因为这条附带请求失败而看到一个红色报错。
+ */
+function cancelOnAbort(runId: string, signal?: AbortSignal): () => void {
+  if (!signal) return () => {};
+  const onAbort = () => {
+    void cancelRun(runId).catch((e: unknown) => {
+      console.warn("[ipstudio] 取消运行没送到服务端，它可能会把剩下的张数跑完", runId, e);
+    });
+  };
+  if (signal.aborted) {
+    onAbort();
+    return () => {};
+  }
+  signal.addEventListener("abort", onAbort, { once: true });
+  return () => signal.removeEventListener("abort", onAbort);
 }
 
 function toImages(run: IpRun): GeneratedImage[] {
@@ -120,12 +189,47 @@ export async function requestEdit(
     size: config.size,
     // 下拉里选的是**模型名**（agnes-image…），服务端认的是 endpointId。
     // 翻不出来就不传 —— 服务端走后台配的默认端点。指定了却悄悄换一个才是不允许的（D-11）。
-    model: endpointIdFor(config.imageModel || config.model),
+    //
+    // 顺序必须是 model 在前：`buildGenerationConfig` 把「节点上选的 > 全局默认」
+    // 合并后放在 **model** 里，而 `imageModel` 永远是全局默认（loadServerModels 灌的）。
+    // 反过来写（此前就是 `imageModel || model`）等于**节点选 B、实际跑 A**：
+    // 下拉里选中的是 B，服务端按 A 执行并按 A 的单价扣费（单价是后台按端点配的，
+    // `creditCostOverride` 可以让两个模型价格不同）。**注意**：界面上目前并没有显示单价
+    // —— `creditCostFor` 还没有调用者，所以用户看不到差价，只会发现出来的图不像那个模型
+    // （对着账本才对得出来）。`imageModel` 只作为「调用方传的是原始全局 config」时的回落；
+    // 用 `||` 而不是 `??` —— 空串也要跳过（后台一个候选都没配时就是空串）。
+    model: endpointIdFor(config.model || config.imageModel),
   });
-  const done = await waitForRun(run.id, options?.signal);
-  // 先记下真实入参再解图：即使这次没返回候选，顶栏也能告诉用户刚才发出去的是什么
-  recordRun(done);
-  return toImages(done);
+  options?.onAccepted?.(run.id);
+  const detach = cancelOnAbort(run.id, options?.signal);
+  try {
+    const done = await waitForRun(run.id, options?.signal);
+    // 先记下真实入参再解图：即使这次没返回候选，顶栏也能告诉用户刚才发出去的是什么
+    recordRun(done);
+    return toImages(done);
+  } finally {
+    detach();
+  }
+}
+
+/**
+ * 接回一次**已经受理**的出图。
+ *
+ * <p>用在「刷新 / 换设备之后画布上还挂着 loading 的候选」上：那次运行的 runId 已经写进
+ * 节点（`metadata.images[].runId`，契约里的 `IpNodeMetadata.runId`），这里只是接着轮询。
+ *
+ * <p><b>绝不重发请求</b>：重发就是再扣一次钱。只读 `GET /runs/{id}`。
+ */
+export async function resumeRun(runId: string, options?: RequestOptions): Promise<GeneratedImage[]> {
+  if (options?.signal?.aborted) throw new GenerationCanceled();
+  const detach = cancelOnAbort(runId, options?.signal);
+  try {
+    const done = await waitForRun(runId, options?.signal);
+    recordRun(done);
+    return toImages(done);
+  } finally {
+    detach();
+  }
 }
 
 /**

@@ -14,12 +14,13 @@ import * as React from "react";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, CheckCircle2, Loader2, Send } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Send } from "lucide-react";
 import CanvasPage from "@/canvas/pages/canvas/project";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
 import { serverModelsLoaded } from "@/canvas-bridge/models";
 import { useHostActions } from "@/canvas-bridge/host-actions";
+import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { PublishDialog } from "@/components/publish/publish-dialog";
 import { LastRunPanel } from "@/components/last-run-panel";
 import { IpStudioApi } from "@/api";
@@ -27,6 +28,7 @@ import { AIAVATAR_URL } from "@/lib/external";
 import "@/canvas-bridge/i18n";
 
 const SAVE_LABEL: Record<string, string> = {
+  dirty: "未保存",
   saving: "保存中",
   saved: "已保存",
   failed: "没保存上，改动还在本地",
@@ -34,7 +36,7 @@ const SAVE_LABEL: Record<string, string> = {
 };
 
 function Host({ projectId }: { projectId: string }) {
-  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId } = useProjectSync(projectId);
+  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave } = useProjectSync(projectId);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const { message } = AntdApp.useApp();
 
@@ -95,6 +97,19 @@ function Host({ projectId }: { projectId: string }) {
         >
           {SAVE_LABEL[saveState]}
         </span>
+      )}
+      {/* 存不上时给一个真的能点的重试 —— 此前只有那个小徽标，用户唯一的办法是
+          「再随便改一下」去触发下一次防抖（冲突不给重试：重试就是覆盖别处的改动）。 */}
+      {saveState === "failed" && (
+        <button
+          onClick={() => void retrySave()}
+          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          style={{ background: "var(--err-soft)", color: "var(--err)" }}
+          title="再试一次保存。改动还在这个页面上，别关它"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          重试保存
+        </button>
       )}
       {publishedAvatarId ? (
         // 已发布就别再给一个会 409 的按钮 —— 直接给能用的那条路：去资产库看它
@@ -157,11 +172,16 @@ function Host({ projectId }: { projectId: string }) {
       <PublishDialog
         open={publishOpen}
         onOpenChange={setPublishOpen}
-        onPublish={async (payload) => {
-          const res = await IpStudioApi.publishProject(projectId, payload);
-          setPublishedAvatarId(res.avatarId);
-          return res;
-        }}
+        // **先把画布存上再发布**（v0.179，理由见 canvas-bridge/publish-gate.ts）：
+        // 发布读的是库里那份文档，而弹窗看的是内存里的画布 —— 防抖窗口内点发布，
+        // 服务端拿的是上一版，最坏是把上一张图登记成主形象而两边都不报错。
+        onPublish={(payload) =>
+          publishWithLatestDoc(saveNow, async () => {
+            const res = await IpStudioApi.publishProject(projectId, payload);
+            setPublishedAvatarId(res.avatarId);
+            return res;
+          })
+        }
       />
     </div>
   );

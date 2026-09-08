@@ -9,16 +9,23 @@ const generateMock = vi.fn();
 const readRunMock = vi.fn();
 const currentProjectIdMock = vi.fn(() => "IPP-test" as string | null);
 
+const cancelRunMock = vi.fn();
 vi.mock("./api", () => ({
   generate: (...a: unknown[]) => generateMock(...a),
   readRun: (...a: unknown[]) => readRunMock(...a),
+  cancelRun: (...a: unknown[]) => cancelRunMock(...a),
   currentProjectId: () => currentProjectIdMock(),
   signKeys: vi.fn(),
   uploadImage: vi.fn(),
   setCurrentProjectId: vi.fn(),
 }));
+// 下拉里选的是模型名，服务端认 endpointId。这里按 name → `ep-<name>` 打桩，
+// 就能断言「到底把哪个模型送下去了」。
+vi.mock("./models", () => ({
+  endpointIdFor: (v?: string | null) => (v ? `ep-${v}` : undefined),
+}));
 
-import { GenerationCanceled, requestEdit, requestGeneration } from "./generation";
+import { GenerationCanceled, requestEdit, requestGeneration, resumeRun } from "./generation";
 import type { AiConfig } from "./config-store";
 
 const cfg = { count: "2", size: "768x1024", imageModel: "ep-1" } as unknown as AiConfig;
@@ -33,6 +40,7 @@ const done = (candidates: Array<{ key: string; url: string }>) => ({
 beforeEach(() => {
   generateMock.mockReset();
   readRunMock.mockReset();
+  cancelRunMock.mockReset().mockResolvedValue({});
   currentProjectIdMock.mockReturnValue("IPP-test");
 });
 
@@ -186,5 +194,83 @@ describe("留下这次的真实入参", () => {
 
     await expect(requestEdit(cfg, "x", [])).rejects.toThrow("模型拒绝了这次请求");
     expect(useLastRun.getState().last?.prompt).toBe("发出去的完整提示词");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 用户在**节点上**选的模型必须真的送下去。
+//
+// 真实缺陷（v0.179 修）：`buildGenerationConfig` 把「节点上选的 > 全局默认」合并后放进
+// `config.model`，而 `config.imageModel` 永远是全局默认（loadServerModels 灌的）。
+// 这一层原来写的是 `imageModel || model` —— 于是**节点上选 B、实际跑 A**，
+// 而界面按 B 的单价标价、服务端按 A 扣费。类型检查看不出来（两个都是 string）。
+describe("模型优先级", () => {
+  const ok = () => {
+    generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
+    readRunMock.mockResolvedValue(done([{ key: "k", url: "u" }]));
+  };
+
+  it("节点上选的模型（config.model）胜过全局默认（config.imageModel）", async () => {
+    ok();
+    await requestEdit({ ...cfg, model: "节点选的", imageModel: "全局默认" } as unknown as AiConfig, "x", []);
+    expect(generateMock.mock.calls[0]![1]).toMatchObject({ model: "ep-节点选的" });
+  });
+
+  it("调用方传的是原始全局 config（没有 model）时回落到 imageModel", async () => {
+    ok();
+    await requestEdit({ ...cfg, model: "", imageModel: "全局默认" } as unknown as AiConfig, "x", []);
+    expect(generateMock.mock.calls[0]![1]).toMatchObject({ model: "ep-全局默认" });
+  });
+
+  it("一个候选都没配时不传 model —— 交给服务端的默认端点，不瞎猜", async () => {
+    ok();
+    await requestEdit({ ...cfg, model: "", imageModel: "" } as unknown as AiConfig, "x", []);
+    expect(generateMock.mock.calls[0]![1].model).toBeUndefined();
+  });
+});
+
+// 出图是「已受理、可能已经开始扣费」的动作，还要跑几十秒。
+// 运行号必须在**等结果之前**交给调用方，否则刷新 / 关标签页就把一张付过费的图弄丢了。
+describe("运行号要在受理时就交出去", () => {
+  it("服务端一受理就回调 onAccepted，且早于结果返回", async () => {
+    generateMock.mockResolvedValue({ id: "IPR-42", status: "running" });
+    readRunMock.mockResolvedValue(done([{ key: "k", url: "u" }]));
+    const seen: string[] = [];
+    await requestEdit(cfg, "x", [], { onAccepted: (id) => seen.push(id) });
+    expect(seen).toEqual(["IPR-42"]);
+  });
+
+  it("resumeRun 只读运行、绝不重发生成请求（重发就是再扣一次钱）", async () => {
+    readRunMock.mockResolvedValue(done([{ key: "ipstudio_gen/u/a.png", url: "https://cdn/a" }]));
+    const images = await resumeRun("IPR-42");
+    expect(images[0]!.storageKey).toBe("ipstudio_gen/u/a.png");
+    expect(generateMock).not.toHaveBeenCalled();
+    expect(readRunMock).toHaveBeenCalledWith("IPR-42");
+  });
+});
+
+// 「停止」此前只是本地 abort：服务端继续把剩下的张数跑完、逐张扣费。
+describe("停止要告诉服务端", () => {
+  it("abort 时调 cancelRun，并抛取消（不是失败）", async () => {
+    generateMock.mockResolvedValue({ id: "IPR-7", status: "running" });
+    readRunMock.mockResolvedValue({ id: "IPR-7", status: "running", output: {} });
+    const ac = new AbortController();
+    const task = requestEdit(cfg, "x", [], { signal: ac.signal });
+    // 等 generate 受理之后再点停止 —— 这才是真实时序（受理前 abort 走的是另一条早返回）
+    await new Promise((r) => setTimeout(r, 0));
+    ac.abort();
+    await expect(task).rejects.toBeInstanceOf(GenerationCanceled);
+    expect(cancelRunMock).toHaveBeenCalledWith("IPR-7");
+  });
+
+  it("取消请求本身失败不改变结论 —— 用户点的是「我不等了」", async () => {
+    generateMock.mockResolvedValue({ id: "IPR-8", status: "running" });
+    readRunMock.mockResolvedValue({ id: "IPR-8", status: "running", output: {} });
+    cancelRunMock.mockRejectedValue(new Error("网络断了"));
+    const ac = new AbortController();
+    const task = requestEdit(cfg, "x", [], { signal: ac.signal });
+    await new Promise((r) => setTimeout(r, 0));
+    ac.abort();
+    await expect(task).rejects.toBeInstanceOf(GenerationCanceled);
   });
 });

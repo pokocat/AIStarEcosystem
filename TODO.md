@@ -1089,3 +1089,71 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   `web-aiavatar/src/proto/api.ts` 那个收 `RequestInit`（调用方序列化）。
   aiavatar 迁到共享 client（连带 `authFetch` / `apiUpload`）之前，至少把 proto 那个改名
   （如 `rawApiFetch`），让抄错时编译期就炸。
+
+### 2026-09-08 · IP 画布复核（v0.179）
+
+- [x] ~~节点上选的模型送不到服务端~~ **v0.179 修复**：`generation.ts` / `video.ts` 里
+  `config.imageModel || config.model`（视频是 `videoModel ?? model`）把节点选择盖掉了 ——
+  `buildGenerationConfig` 已经把「节点 > 全局」合并进 `model`。改为 `model` 优先 + `||`。
+- [x] ~~重试悄悄丢参考图~~ **v0.179 修复**：`metadata.references[]` 存的是 OSS 存储键，
+  而 `resolveMetadataReferences` 只认上游的 `image:` 前缀 → refKeys 空数组 → 那一次变成纯文生图。
+- [x] ~~已受理的生成刷新后接不回来~~ **v0.179 修复**：出图受理即把 `runId` 写进候选
+  （契约里的 `IpNodeMetadata.runId`，服务端本来就按它投影 `runsById`），进画布 `resumeRun`
+  接着轮询；视频那条去掉 `task.provider !== "plugin"` 判断（本仓 provider 恒为 plugin =
+  服务端任务）。**只有服务端说运行结束才允许丢掉运行号**（`RunFailed` / `VideoTaskFailed`）。
+- [x] ~~编辑后立刻离开丢最后一笔 / 保存失败没有重试入口~~ **v0.179 修复**：卸载与切项目前
+  带内容快照补存（基线取在途那次返回的新指纹）、`beforeunload` 拦关页、顶栏加「未保存」与「重试保存」。
+- [x] ~~发布用库里的旧文档~~ **v0.179 修复**：`publish-gate.ts` —— 发布前 `saveNow()`，
+  失败 / 冲突不发布；冲突态下 `saveNow` 一直回报 conflict（否则「没什么可存」会把发布放行）。
+- [x] ~~「停止出图」只 abort 本地~~ **v0.179 修复**：abort 时 best-effort `cancelRun`，
+  并如实说明「已经在出的那一张仍会计费」（worker 每张开跑之前才查取消标记）。
+- [x] ~~视频 / 音频上传静默失败~~ **v0.179 如实限制**：上传入口只接 JPG / PNG
+  （服务端 `/uploads` 就只收这两种），其余当场提示；退役 `uploadMediaFile` 与两个只能失败的
+  文件节点入口。视频是产出（服务端已镜像），不走 `/uploads`。
+- [x] ~~离开后立刻重新打开同项目，读回的是补存之前那一版~~ **v0.179 修复**（Codex 复核逮到）：
+  补存在组件卸载之后才落地，新 hook 实例读到旧版、基线也是旧的 → 下一次保存必然假 409。
+  `pendingSaves` 提到模块级（键 projectId），加载前先等它落地。
+- [x] ~~蒙版编辑 / 视角变化两个付费入口没接可恢复~~ **v0.179 复核补上**：它们建的节点没有
+  候选数组（结果直接写进 metadata），所以运行号记在**节点级** `metadata.runId`，
+  `resumableImageRuns` 认这两种形状；`recovery-wiring.test.ts` 用「所有 requestEdit 调用都必须带
+  onAccepted」把它钉死，将来新增付费入口漏接就红。
+- [x] ~~时长控件只夹显示不回写（v0.176 遗留）~~ **v0.179 修复**：新增
+  `effectiveVideoSeconds(config)`（区间按 `config.model` 取 —— 节点选的那个，不是全局
+  `videoModel`），面板打开即夹 + 回写；提交时若仍超区间**当场报错并说清区间**，
+  不悄悄改（PER_SECOND 端点按秒收费，悄悄改就是悄悄改计费）。
+  **收尾修正**：收起状态那行标签显示的是**存着的值**（真会提交的那个）+ 越界加 ⚠ 与悬浮说明 ——
+  回写只发生在面板打开时，标签显示「有效值」在没打开过的节点上是假的。
+- [x] ~~取消文案说「已经在出的那一张」~~ **v0.179 改正**：画布出 N 张是 N 次并发的
+  count=1 运行，点一次停止会给每条都发取消，其中已进厂商调用的**可能不止一条**。
+  文案改成「已经开始的那些会跑完并计费（可能不止一张），没开始的会退回；实际结算以运行记录为准」。
+- [x] ~~「没有 runId = 服务端没受理」这个说法不成立~~ **v0.179 改正**（只改说法，不改机制）：
+  POST 受理后响应丢失 / 页面在 POST 与响应之间被关，就是反例。注释与「已中断」文案都改成
+  「**我们不知道**它有没有跑过，可能已经扣过费，重新生成前先看积分明细」。
+- [ ] **给出图 / 出视频加幂等请求键**，把上面那个「不可恢复窗口」关掉：客户端生成 key、
+  服务端按 `(owner, key)` 去重并把已有运行原样返回（短剧线 `clientRequestId` 已有范式，
+  见 v0.145 的 `drama_shorts` 唯一索引）。这是服务端改动，本轮没做。
+- [ ] **模型单价没有任何界面在显示**：`creditCostFor` 全仓无调用者（v0.179 核实），
+  服务端 `GET /v1/ip-studio/models` 的 `creditCost` 已经给了。要不要在模型下拉 / 参数面板
+  显示「x 积分/张」是产品决定 —— 在此之前，任何文档都不许把「界面按所选模型标价」写成事实。
+- [ ] `IpStudioController.modelOptions` 对所有视频候选写死 `billingUnit="per_video"`，
+  而端点可能是 `PER_SECOND`（按秒计价，见 `MaterialVideoModelClient.itemUnitCost`）。
+  **当前不误导用户**（前端没有任何地方读 `billingUnit`），但字段本身是错的：
+  接价格展示之前必须先按 `endpoint.billingMode` 给出真值，否则一接就是错的。
+- [ ] **画布出图不带 `nodeId`**（服务端因此把它记成 `adhoc`）。带上就能用服务端那道
+  「同节点已在生成中」409 闸，也让 `ip_run.node_id` 对得上画布；但画布出 N 张是 N 次
+  `count=1` 的并发请求，带同一个 nodeId 会让第 2..N 张直接 409 —— 要带就得先把图片分支
+  改成「一次请求 count=N」（服务端本来就支持多候选）。恢复不依赖它（按 runId 就够），故本轮不动。
+- [ ] **前端等超时（出图 8 分钟）之后那张图仍接不回来**。v0.179 已保住 runId，
+  但候选被标成 error 且**当前一轮不会自动重连**（下一次进画布会）。要做到「就地接着等」，
+  得让 UI 区分「还在跑但我们暂时不看了」这一态。
+- [ ] `canvas-bridge/api.ts` 的 `runNode` 仍无调用者（画布出图走 `/generate`），
+  `src/api/ip-studio.ts` 的 `getRun` / `awaitRun` / `cancelRun` 同理。要么接上、要么退役。
+- [x] ~~建名片 500「Data too long for column 'payload_json'」~~ **v0.179 修复**，2026-09-08：
+  `card_profile.payload_json` 是 tinytext（255 字节）—— 全库唯一一个。
+  `CardProfile.payloadJson` 只写 `@Lob` 没写 `columnDefinition`，Hibernate 6 按默认长度 255
+  挑中 tinytext，ddl-auto 只加不改。名片文档空骨架就 300+ 字节，**这条路从上线起没成功过**。
+  已补 columnDefinition + V30 拉宽存量列 + `LobColumnDefinitionTest` 静态钉死（H2 逮不到）。
+- [ ] **交付纪律（写给下一次的我）**：v0.178 我看到日志里的 Jackson 错就改、改完就部署，
+  没有确认「改完之后这条路真的能走通」。结果第一层修好了，底下第二层（列宽）立刻顶上来，
+  用户又白试一次。**日志里的那条错 ≠ 唯一的错**；修完至少要把这条链上后续每一步都过一遍
+  （这次就是：body 能解析了 → 那 insert 能成吗？→ 查列类型，两分钟的事）。

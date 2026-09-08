@@ -11,8 +11,8 @@ import { exportCanvasNodes } from "@/canvas/lib/canvas/canvas-export";
 import { cn } from "@/canvas/lib/utils";
 import { PromptDetailDialog } from "@/canvas/pages/prompts/components/prompt-detail-dialog";
 import { fetchPrompts, type Prompt } from "@/canvas-bridge/prompts";
-import { uploadMediaFile } from "@/canvas-bridge/file-storage";
 import { uploadImage } from "@/canvas-bridge/image-storage";
+import { isSupportedUploadImage, UPLOAD_ACCEPT } from "@/canvas/lib/canvas/canvas-generation-helpers";
 import { useAssetStore, type Asset, type AssetKind } from "@/canvas/stores/use-asset-store";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/canvas/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
@@ -335,14 +335,12 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
         const hide = message.loading(t("canvas.sidePanel.addingAssets"), 0);
         let added = 0;
         try {
+            // 只收 JPG / PNG（v0.179）：服务端 /uploads 只认这两种，此前的 video 分支
+            // 打的是同一条上传接口，必然 400 —— 而这里 catch 只给一句笼统的「添加失败」。
             for (const file of files) {
-                if (file.type.startsWith("image/")) {
+                if (isSupportedUploadImage(file)) {
                     const image = await uploadImage(file);
                     addAsset({ kind: "image", title: file.name || t("assets.kinds.image"), coverUrl: image.url, tags: [], data: { dataUrl: image.url, storageKey: image.storageKey, width: image.width, height: image.height, bytes: image.bytes, mimeType: image.mimeType } });
-                    added += 1;
-                } else if (file.type.startsWith("video/")) {
-                    const media = await uploadMediaFile(file, "video");
-                    addAsset({ kind: "video", title: file.name || t("assets.kinds.video"), coverUrl: "", tags: [], data: { url: media.url, storageKey: media.storageKey, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType } });
                     added += 1;
                 }
             }
@@ -350,7 +348,8 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
             else message.warning(t("canvas.sidePanel.mediaOnly"));
         } catch (error) {
             console.error(error);
-            message.error(t("canvas.sidePanel.addFailed"));
+            // 服务端对超限 / 非图片给的是能看懂的中文原因 —— 别用一句笼统的「添加失败」盖掉
+            message.error(error instanceof Error && error.message ? error.message : t("canvas.sidePanel.addFailed"));
         } finally {
             hide();
             setUploading(false);
@@ -372,7 +371,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
                     <Plus className="size-3.5" />
                     {t("canvas.sidePanel.add")}
                 </button>
-                <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files)} />
+                <input ref={fileInputRef} type="file" accept={UPLOAD_ACCEPT} multiple className="hidden" onChange={(e) => void handleFiles(e.target.files)} />
             </div>
             {allTags.length ? (
                 <div className="flex flex-wrap gap-1.5 px-3 pb-2">

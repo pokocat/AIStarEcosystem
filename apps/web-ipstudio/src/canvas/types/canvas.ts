@@ -31,6 +31,13 @@ export type CanvasNodeImage = {
     errorDetails?: string;
     content: string;
     storageKey?: string;
+    /**
+     * 这张候选是哪次服务端运行出来的（本仓新增，契约里的 `IpNodeMetadata.runId`）。
+     *
+     * 出图是「已受理、可能已开始扣费」的动作，还要跑几十秒。服务端一受理就把运行号写在这儿，
+     * 刷新 / 关标签页回来才接得回去 —— 否则服务端跑完、扣了钱、图躺在运行记录里没人认领。
+     */
+    runId?: string;
     naturalWidth: number;
     naturalHeight: number;
     bytes: number;
@@ -81,8 +88,12 @@ export type CanvasNodeMetadata = {
     mimeType?: string;
     bytes?: number;
     durationMs?: number;
+    /** 节点显示的那张图来自哪次运行 —— 服务端按它把历史运行投影进 `runsById`。 */
+    runId?: string;
     videoTaskId?: string;
-    videoTaskProvider?: "openai" | "gemini";
+    // "plugin" = 本仓的服务端视频任务（`MaterialVideoJob`）。上游的 plugin 是浏览器里的插件，
+    // 进程一关任务就没了，所以它**不存** taskId；我们的恰恰是服务端任务，最该存（v0.179）。
+    videoTaskProvider?: "openai" | "gemini" | "plugin";
     groupId?: string;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
 };

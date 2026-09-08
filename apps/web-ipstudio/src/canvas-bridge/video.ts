@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
-import { endpointIdFor } from "./models";
+import { endpointIdFor, videoDurationBoundsFor } from "./models";
 import { inferVideoRatio } from "@/canvas/lib/media-size";
 import type { AiConfig } from "./config-store";
 import type { UploadedFile } from "./file-storage";
@@ -20,7 +20,8 @@ export type VideoGenerationTask = { id: string; provider: "openai" | "gemini" | 
 export type VideoGenerationTaskState =
   | { status: "pending" }
   | { status: "completed"; result: VideoGenerationResult }
-  | { status: "failed"; error: string };
+  // ended = 服务端明确说这条任务结束了。只有它为真，调用点才可以丢掉任务号。
+  | { status: "failed"; error: string; ended?: boolean };
 
 export type VideoMediaOptions = {
   seconds?: string;
@@ -69,7 +70,12 @@ function videoParams(config: Partial<AiConfig> | undefined, options?: VideoMedia
   return {
     durationSec: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : undefined,
     aspectRatio: ratio === "auto" ? undefined : ratio,
-    model: endpointIdFor(options?.model ?? config?.videoModel ?? config?.model),
+    // 与出图同一条纪律（见 generation.ts）：**config.model 优先**。
+    // `buildGenerationConfig(config, node, "video")` 把「节点上选的视频模型 > 全局默认」
+    // 合并后放在 model 里，而 `videoModel` 永远是全局默认 —— 排在前面就等于
+    // 「节点上选了个模型，跑的还是默认那个」（时长区间也会按错的那个模型来夹）。
+    // `||` 而不是 `??`：空串（后台没配视频候选）也要跳过。
+    model: endpointIdFor(options?.model || config?.model || config?.videoModel),
   };
 }
 
@@ -92,12 +98,25 @@ export async function createVideoGenerationTask(
     // 别让服务端回一句「请提供视频时长」给一个明明已经选过的用户。
     throw new Error("没读到视频时长，请在参数面板里重新选一次时长后再发送");
   }
+  // 时长超出这个模型能提交的区间 → **当场说清楚，不悄悄改**（v0.179）。
+  //
+  // 参数面板打开时会把值夹进区间并回写（`effectiveVideoSeconds`），但节点可能从来没被打开过
+  // （存的是换模型之前那个值）。这里既不能照发（服务端 400 `VIDEO_DURATION_UNSUPPORTED`，
+  // 用户不知道去哪儿改），也不能顺手改成 5 秒 —— 那是在用户没看见的地方动计费时长。
+  // 区间拿不到（模型候选还没加载）就不管，交给服务端校验，绝不臆造限制。
+  const bounds = videoDurationBoundsFor(options?.model || config?.model || config?.videoModel);
+  const tooShort = bounds?.min != null && params.durationSec < bounds.min;
+  const tooLong = bounds?.max != null && params.durationSec > bounds.max;
+  if (tooShort || tooLong) {
+    const range = `${bounds?.min ?? "?"}–${bounds?.max ?? "?"} 秒`;
+    throw new Error(`这个模型只接 ${range}，当前是 ${params.durationSec} 秒。请在参数面板把时长调到区间内再发送`);
+  }
   const job = await generateVideo(projectId, {
     prompt,
     refKey: firstRefKey({ ...options, references }),
     ...params,
   });
-  return { id: job.id, provider: "plugin", model: options?.model ?? config?.videoModel ?? "" };
+  return { id: job.id, provider: "plugin", model: options?.model || config?.model || config?.videoModel || "" };
 }
 
 export async function pollVideoGenerationTask(
@@ -115,7 +134,7 @@ export async function pollVideoGenerationTask(
     };
   }
   if (job.status === "failed") {
-    return { status: "failed", error: job.error_message || "视频生成失败，积分已退回" };
+    return { status: "failed", error: job.error_message || "视频生成失败，积分已退回", ended: true };
   }
   return { status: "pending" };
 }
@@ -130,9 +149,17 @@ export async function waitForVideoGenerationTask(
     if (options?.signal?.aborted) throw new GenerationCanceled();
     const state = await pollVideoGenerationTask(config, task);
     if (state.status === "completed") return state.result;
-    if (state.status === "failed") throw new Error(state.error);
+    if (state.status === "failed") {
+      // 服务端说失败 = 这条任务结束了（VideoTaskFailed，任务号可以丢）；
+      // 「说成了却没有成片地址」不算结束 —— 刷新再查一次说不定就有了，
+      // 丢掉任务号反而让人只能重新出一次片、再付一次钱。
+      throw state.ended ? new VideoTaskFailed(state.error) : new Error(state.error);
+    }
     if (Date.now() - started > POLL_TIMEOUT_MS) {
-      throw new Error("等太久了，任务可能卡住了。刷新看看，积分会自动退回");
+      // 同出图那条：前端等超时不等于服务端结束，别替它承诺退款。
+      // 抛普通 Error（不是 VideoTaskFailed）—— 调用点据此**保住任务号**，
+      // 刷新回来接着轮询这一条；丢了就再也接不回来，而它在服务端还活着。
+      throw new Error(`等太久了（任务号 ${task.id}）。这条任务在服务端还在跑 —— 刷新页面会接着等它；真卡住时冻结的积分由服务端释放`);
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
@@ -148,9 +175,28 @@ export async function requestVideoGeneration(
   return waitForVideoGenerationTask(config, task, options);
 }
 
-/** 上游用它区分「任务失败」与「网络错误」——本仓的失败都带明确文案，一律按任务失败处理。 */
+/** 服务端明确说这条任务失败了（冻结额由视频链按规则处理）。 */
+export class VideoTaskFailed extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VideoTaskFailed";
+  }
+}
+
+/**
+ * 这个错误代表「这条任务已经结束了」吗？
+ *
+ * 调用点（project.tsx）据此决定要不要把节点上的 `videoTaskId` 抹掉 ——
+ * 那是**唯一**能把成片接回来的凭据。所以判断必须站在「还没结束」这一边：
+ * 只有服务端明确说失败才算结束；网络抖动（`TypeError: Failed to fetch`、
+ * 网关 5xx）、前端等超时、用户取消一律不算 —— 任务在服务端还活着，
+ * 抹掉任务号用户就只能重新出一次片、再付一次钱。
+ *
+ * <p>上游这里是 `error instanceof Error`（即「除了取消都算失败」），
+ * 那个默认方向在本仓是错的：它把一次网络抖动变成一次重复付费。
+ */
 export function isVideoTaskFailed(error: unknown): boolean {
-  return error instanceof Error && !(error instanceof GenerationCanceled);
+  return error instanceof VideoTaskFailed;
 }
 
 /**

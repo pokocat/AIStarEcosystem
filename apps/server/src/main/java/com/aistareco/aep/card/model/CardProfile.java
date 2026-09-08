@@ -67,8 +67,14 @@ public class CardProfile {
     @Column(length = 32)
     private String avatarId;
 
+    // columnDefinition 必须显式写（v0.178 线上事故）：`@Lob String` 不带长度时，
+    // Hibernate 6 按 @Column 的默认长度 255 去挑 MySQL 的 text 家族 —— 挑到的是
+    // **tinytext（255 字节）**，一张名片的文档随手就超。而 ddl-auto 只加不改，
+    // 建错一次就一直错着；表现是建卡 500「Data too long for column 'payload_json'」。
+    // 本仓其它整存整取的 JSON 文档字段（DramaProject.payloadJson / IpProject.docJson）
+    // 都写了 columnDefinition，只有这个漏了。
     @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String payloadJson;
 
     private Instant publishedAt;

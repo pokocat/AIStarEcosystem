@@ -54,7 +54,15 @@ export function endpointIdFor(value: string | undefined | null): string | undefi
   return endpointIdByName.get(name);
 }
 
-/** 这个模型出一张图多少积分（后台可配，`creditCostOverride` 优先）。 */
+/**
+ * 这个模型出一张图多少积分（后台可配，`creditCostOverride` 优先）。
+ *
+ * ⚠️ **目前没有任何调用者**（v0.179 复核确认）：模型下拉与参数面板都不显示单价，
+ * 所以「界面按选中的模型标价」这件事**还没有发生** —— 用户选错模型时看不到差价，
+ * 只能事后对账本。留着这个函数是因为它就是「把单价显示出来」唯一缺的一块
+ * （数据服务端已经给了：`GET /v1/ip-studio/models` 的 `creditCost`）；
+ * 接不接是产品决定，记在 TODO 里，不在本轮改动范围内。
+ */
 export function creditCostFor(value: string | undefined | null): number | undefined {
   const id = endpointIdFor(value);
   return id ? creditByEndpointId.get(id) : undefined;
