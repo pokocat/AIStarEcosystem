@@ -102,7 +102,10 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           </button>
         </div>
       </header>
-      <main className="flex-1 min-h-0 min-w-0">{children}</main>
+      {/* flex 容器 + 子页用 flex-1：不能让子页写 h-full —— 外层是 min-h-dvh，
+          main 的 computed height 是 auto，height:100% 会退化成 auto，
+          结果就是「页面高度不满」（内容多高页面就多高，撑不满一屏）。 */}
+      <main className="flex-1 min-h-0 min-w-0 flex flex-col">{children}</main>
     </div>
   );
 }

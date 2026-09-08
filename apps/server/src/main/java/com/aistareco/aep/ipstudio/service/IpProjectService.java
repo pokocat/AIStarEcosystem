@@ -491,7 +491,14 @@ public class IpProjectService {
         for (JsonNode n : IpDocs.nodes(doc)) {
             JsonNode md = IpDocs.metadataOf(n);
             if (!(md instanceof ObjectNode mo)) continue;
-            if (IpDocs.text(mo, "storageKey") != null) mo.remove("url");
+            // 节点级的图 / 视频 / 音频，画布把地址放在 metadata.content（不是 url）——
+            // 图片、视频、音频三种节点都读它。只剥 url 的话，签名地址会原样写进库，
+            // 一小时后 TTL 过期，用户重开项目看到的是一片裂图 / 播不了的视频。
+            // text 节点的 content 是正文，靠 storageKey 是否存在把它挡在外面。
+            if (IpDocs.text(mo, "storageKey") != null) {
+                mo.remove("url");
+                mo.remove("content");
+            }
             JsonNode images = mo.path("images");
             if (!images.isArray()) continue;
             for (JsonNode img : images) {
@@ -518,7 +525,9 @@ public class IpProjectService {
         for (JsonNode n : IpDocs.nodes(doc)) {
             JsonNode md = IpDocs.metadataOf(n);
             if (!(md instanceof ObjectNode mo)) continue;
-            resignOne(mo, "storageKey", "url", ownerUserId);
+            // 重签回 content —— 画布读的是它。此前写的是 url，而**没有任何地方读 url**，
+            // 于是节点级的图从来就显示不出来（stripDerivedUrls 把 content 剥掉之后）。
+            resignOne(mo, "storageKey", "content", ownerUserId);
             JsonNode images = mo.path("images");
             if (images.isArray()) {
                 for (JsonNode img : images) {

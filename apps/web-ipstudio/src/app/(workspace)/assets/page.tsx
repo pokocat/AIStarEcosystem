@@ -112,7 +112,7 @@ export default function AssetsPage() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* 页头 */}
       <div className="shrink-0 px-6 pt-6 pb-4 flex items-end gap-4 flex-wrap">
         <div className="min-w-0">

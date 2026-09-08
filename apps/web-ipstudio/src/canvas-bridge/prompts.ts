@@ -1,5 +1,7 @@
 import localforage from "localforage";
 
+import { IpStudioApi } from "@/api";
+
 import { runPromptSource, type RawPrompt } from "./prompt-source-runtime";
 import { usePromptSourceStore } from "@/canvas/stores/use-prompt-source-store";
 import i18n from "@/canvas-bridge/i18n";
@@ -123,17 +125,42 @@ async function getSourcePrompts(source: PromptSource): Promise<Prompt[]> {
     return (await readSourceCache(source.id))?.items || [];
 }
 
+/**
+ * 提示词库的内容源 —— **本仓自己的预设**，不是上游那批第三方 GitHub 仓库。
+ *
+ * 上游作为单机工具，从 raw.githubusercontent.com 上聚合了七八个社区提示词集
+ * （Banana Prompt Quicker / Awesome GPT-4o …）。放在我们的产品里有两个问题：
+ *   · 那些地址在国内基本拉不动，用户看到的是一直转圈或者空列表；
+ *   · 一屏英文第三方仓库名，跟这个产品要做的事（中文 IP 形象工作台）对不上。
+ *
+ * 我们本来就有整理好的中文提示词（装扮 / 表情 / 短动作，`GET /v1/ip-studio/prompt-presets`，
+ * 后台可维护），直接用它。上游那套 source 机制先留着（配置页还能加自定义源），
+ * 只是默认不再从网上拉。
+ */
 async function getAllPrompts(): Promise<Prompt[]> {
-    const settled = await Promise.all(
-        enabledSources().map(async (source) => {
-            try {
-                return await getSourcePrompts(source);
-            } catch {
-                return [];
-            }
-        }),
+    const groups = await IpStudioApi.listPromptPresets();
+    const now = new Date().toISOString();
+    return groups.flatMap((group) =>
+        group.presets.map((preset) => ({
+            id: `${group.id}:${preset.id}`,
+            title: preset.name,
+            prompt: preset.prompt,
+            description: group.summary ?? "",
+            coverUrl: "",
+            referenceImageUrls: [],
+            // 性别 / 时长本来只在详情里说，做成标签用户才能拿它筛
+            tags: [
+                preset.gender === "female" ? "女生" : preset.gender === "male" ? "男生" : "不分性别",
+                ...(preset.durationSec ? [`${preset.durationSec} 秒`] : []),
+            ],
+            preview: "",
+            createdAt: now,
+            updatedAt: now,
+            sourceId: group.id,
+            category: group.name,
+            githubUrl: "",
+        })),
     );
-    return settled.flat();
 }
 
 export async function fetchPrompts({ keyword = "", tag = [], category = ALL_PROMPTS_OPTION, page = 1, pageSize = 20 }: { keyword?: string; tag?: string[]; category?: string; page?: number; pageSize?: number } = {}) {
@@ -143,7 +170,8 @@ export async function fetchPrompts({ keyword = "", tag = [], category = ALL_PROM
     const normalizedPageSize = Math.max(1, Math.min(100, pageSize));
     const withoutTagFilter = filterPrompts(items, { keyword: normalizedKeyword, category, tags: [] });
     const filtered = filterPrompts(items, { keyword: normalizedKeyword, category, tags: tag });
-    const categories = enabledSources().map((source) => source.name);
+    // 分类就是预设分组（装扮 / 表情 / 短动作），不再是「启用了哪几个远程源」
+    const categories = Array.from(new Set(items.map((i) => i.category)));
 
     return {
         items: filtered.slice((normalizedPage - 1) * normalizedPageSize, normalizedPage * normalizedPageSize),

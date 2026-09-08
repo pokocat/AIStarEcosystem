@@ -12,12 +12,14 @@
 
 import * as React from "react";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
 import { AlertCircle, CheckCircle2, Loader2, Send } from "lucide-react";
 import CanvasPage from "@/canvas/pages/canvas/project";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
 import { serverModelsLoaded } from "@/canvas-bridge/models";
+import { useHostActions } from "@/canvas-bridge/host-actions";
 import { PublishDialog } from "@/components/publish/publish-dialog";
 import { IpStudioApi } from "@/api";
 import { AIAVATAR_URL } from "@/lib/external";
@@ -48,6 +50,50 @@ function Host({ projectId }: { projectId: string }) {
     return () => setModelsUnavailableHandler(null);
   }, [message]);
 
+  // hook 必须在早返回之前调 —— 放在 loading / error 分支之后就是条件调用 hook，
+  // React 会在状态切换的那一刻抛「Rendered more hooks than during the previous render」。
+  // 画布还没加载完时插槽内容也无所谓，反正顶栏那会儿还没渲染。
+  useHostActions(
+    <>
+      {saveState !== "idle" && (
+        <span
+          className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold whitespace-nowrap"
+          style={
+            saveState === "failed" || saveState === "conflict"
+              ? { background: "var(--err-soft)", color: "var(--err)" }
+              : { background: "var(--surface-2)", color: "var(--ink-3)" }
+          }
+          title={SAVE_LABEL[saveState]}
+        >
+          {SAVE_LABEL[saveState]}
+        </span>
+      )}
+      {publishedAvatarId ? (
+        // 已发布就别再给一个会 409 的按钮 —— 直接给能用的那条路：去资产库看它
+        <a
+          href={`${AIAVATAR_URL}/assets/${publishedAvatarId}`}
+          target="_blank"
+          rel="noreferrer"
+          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[220px]"
+          style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
+          title={`已发布为 ${publishedAvatarId}，点开去数字资产平台查看`}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">已发布 · {publishedAvatarId}</span>
+        </a>
+      ) : (
+        <button
+          onClick={() => setPublishOpen(true)}
+          className="h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          style={{ background: "var(--action)", color: "var(--on-action)" }}
+        >
+          <Send className="w-3.5 h-3.5" />
+          发布
+        </button>
+      )}
+    </>,
+  );
+
   if (state === "loading") {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3">
@@ -73,51 +119,12 @@ function Host({ projectId }: { projectId: string }) {
     );
   }
 
+  // 放进画布顶栏那一行（见 canvas-bridge/host-actions.tsx）——
+  // 此前是绝对定位浮在右上角，正好压住画布自己的「配置 / 快捷键 / Agent」。
+
   return (
     <div className="h-full relative">
       <CanvasPage />
-
-      {/* 画布右上角这一条是我们加的，不在搬来的画布里 —— 保持 src/canvas 干净，
-          将来跟上游合并时这块不会冲突。 */}
-      <div className="absolute top-3 right-4 z-50 flex items-center gap-2">
-        {saveState !== "idle" && (
-          <span
-            className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold pointer-events-none max-w-[40vw] truncate"
-            style={
-              saveState === "failed" || saveState === "conflict"
-                ? { background: "var(--err-soft)", color: "var(--err)" }
-                : { background: "var(--surface-2)", color: "var(--ink-3)" }
-            }
-            title={SAVE_LABEL[saveState]}
-          >
-            {SAVE_LABEL[saveState]}
-          </span>
-        )}
-
-        {publishedAvatarId ? (
-          // 已发布就别再给一个会 409 的按钮 —— 直接给能用的那条路：去资产库看它
-          <a
-            href={`${AIAVATAR_URL}/assets/${publishedAvatarId}`}
-            target="_blank"
-            rel="noreferrer"
-            className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[46vw]"
-            style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
-            title={`已发布为 ${publishedAvatarId}，点开去数字资产平台查看`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">已发布 · {publishedAvatarId}</span>
-          </a>
-        ) : (
-          <button
-            onClick={() => setPublishOpen(true)}
-            className="h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95"
-            style={{ background: "var(--action)", color: "var(--on-action)" }}
-          >
-            <Send className="w-3.5 h-3.5" />
-            发布
-          </button>
-        )}
-      </div>
 
       <PublishDialog
         open={publishOpen}
@@ -132,6 +139,17 @@ function Host({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * 画布里有两处用 react-query（节点提示词面板、侧边提示词库）。搬画布时漏了这个 provider，
+ * 于是**双击任意节点就崩**：Error: No QueryClient set。上游在它自己的入口里建，
+ * 我们只搬了画布没搬入口 —— 属于「搬进来之后要自己补齐运行环境」的那一类。
+ *
+ * 建在模块级而不是组件里：放组件里每次重渲染都会新建一个 client，缓存永远命中不了。
+ */
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 5 * 60_000 } },
+});
+
 export function CanvasHost({ projectId }: { projectId: string }) {
   return (
     <ConfigProvider
@@ -141,8 +159,13 @@ export function CanvasHost({ projectId }: { projectId: string }) {
         token: { colorPrimary: "#495b91", borderRadius: 9, fontFamily: "var(--font-sans)" },
       }}
     >
-      <AntdApp>
-        <Host projectId={projectId} />
+      {/* antd 的 App 会在 DOM 里插一个自己的 div。它默认没有高度，而画布靠 h-full 一层层
+          往下继承 —— 断在这儿的结果是画布被压成内容高度（实测 312px），页面下半截全空。
+          所以显式把高度给它。 */}
+      <AntdApp className="h-full">
+        <QueryClientProvider client={queryClient}>
+          <Host projectId={projectId} />
+        </QueryClientProvider>
       </AntdApp>
     </ConfigProvider>
   );

@@ -79,7 +79,7 @@ export default function CardsPage() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col">
       <div className="shrink-0 px-6 pt-6 pb-4 flex items-end gap-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="asset-name text-[24px] mb-1">名片</h1>
@@ -206,14 +206,16 @@ export default function CardsPage() {
                     </a>
                   ) : (
                     <a
-                      href={`${AIAVATAR_URL}/cards`}
+                      // 直接进这张卡的编辑页 —— 发布前要补的就是那儿的「职位」和联系方式。
+                      // 指到列表页等于让用户自己再找一遍自己的卡。
+                      href={`${AIAVATAR_URL}/cards/${encodeURIComponent(c.id)}/edit`}
                       target="_blank"
                       rel="noreferrer"
                       className="flex-1 min-w-0 h-8 rounded-[9px] text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition hover:opacity-80"
                       style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
-                      title="草稿还没发布，链接打不开；去发布它"
+                      title="草稿还没发布，链接打不开；去补齐信息并发布"
                     >
-                      去发布 <ExternalLink className="w-3.5 h-3.5" />
+                      去补齐并发布 <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                   )}
                 </div>

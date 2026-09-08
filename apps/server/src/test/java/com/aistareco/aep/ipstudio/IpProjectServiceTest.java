@@ -164,6 +164,38 @@ class IpProjectServiceTest {
     }
 
     @Test
+    void nodeLevelSignedContentIsStrippedBeforePersisting() {
+        // 画布把节点级的图 / 视频 / 音频地址放在 metadata.content（不是 url）。
+        // 此前落库只剥 url，于是签名地址原样进库，一小时后 TTL 过期 ——
+        // 表现是「昨天做的画布今天全裂」「出的视频播不了」。
+        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
+        IpStudioFixtures.Doc d = new IpStudioFixtures.Doc();
+        ObjectNode vid = d.node("n-video", "video");
+        vid.put("storageKey", IpStudioFixtures.genKey(USER, "clip.mp4"));
+        vid.put("content", "https://cdn.test/clip.mp4?sig=WILL_EXPIRE");
+
+        svc.update(USER, PID, new IpUpdateProjectRequest(null, d.root));
+
+        String stored = projects.rows.get(PID).getDocJson();
+        assertFalse(stored.contains("WILL_EXPIRE"), "签名地址不该落库：" + stored);
+        assertTrue(stored.contains("clip.mp4"), "key 是真值，必须留着");
+    }
+
+    @Test
+    void textNodeContentSurvivesStripping() {
+        // text 节点的 content 是正文本身，不是派生地址 —— 剥错了就是用户写的字没了。
+        // 靠「有没有 storageKey」把它挡在外面。
+        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
+        IpStudioFixtures.Doc d = new IpStudioFixtures.Doc();
+        d.node("n-text", "text").put("content", "这段字是用户写的，不能剥");
+
+        svc.update(USER, PID, new IpUpdateProjectRequest(null, d.root));
+
+        assertTrue(projects.rows.get(PID).getDocJson().contains("这段字是用户写的"),
+                "文字节点的正文被当成派生地址剥掉了");
+    }
+
+    @Test
     void staleSaveIsRejectedInsteadOfOverwriting() {
         // 两个标签页各改各的：后到的那次会把先到的整块画布抹掉，且不可逆。
         // 画布是整存整取的 —— 覆盖掉的不是一个字段，是那边一整份工作。
@@ -260,8 +292,10 @@ class IpProjectServiceTest {
         for (com.fasterxml.jackson.databind.JsonNode n : dto.doc().get("nodes")) {
             String key = n.path("metadata").path("storageKey").asText(null);
             if (key == null) continue;
-            assertEquals("https://cdn.test/" + key + "?sig=x", n.path("metadata").path("url").asText(),
-                    "节点 " + n.path("id").asText() + " 的图片地址没有按 key 重签");
+            // 断言必须查 content：图片 / 视频 / 音频节点在画布里读的都是 metadata.content。
+            // 此前这里查的是 url —— 而**没有任何地方读 url**，于是断言绿着、节点却显示不出图。
+            assertEquals("https://cdn.test/" + key + "?sig=x", n.path("metadata").path("content").asText(),
+                    "节点 " + n.path("id").asText() + " 的图片地址没有按 key 重签到 content");
         }
     }
 

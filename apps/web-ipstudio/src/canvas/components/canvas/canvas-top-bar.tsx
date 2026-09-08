@@ -4,6 +4,7 @@ import { Button, Dropdown, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { UserStatusActions } from "@/canvas/components/layout/user-status-actions";
+import { HostActionsSlot } from "@/canvas-bridge/host-actions";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { useCanvasSidePanelStore } from "@/canvas/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
@@ -140,6 +141,10 @@ export function CanvasTopBar({
                 </div>
 
                 <div className="pointer-events-auto flex items-center gap-1.5">
+                    {/* 本仓改动（v0.161）：宿主（canvas-host）把「保存状态 / 发布」放进这一行。
+                        此前它们是绝对定位浮在画布右上角的 —— 直接压在下面这几个按钮上，
+                        配置 / 快捷键 / Agent 全被挡住点不到。 */}
+                    <HostActionsSlot />
                     <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
                     <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />
                     <Button
