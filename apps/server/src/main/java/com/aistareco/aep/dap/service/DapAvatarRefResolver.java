@@ -25,8 +25,18 @@ import java.util.Set;
 @Service
 public class DapAvatarRefResolver {
 
-    /** 可作展示图的衍生物 kind（排除 d3 模型 / video 视频）。 */
-    private static final Set<String> IMAGE_DERIV_KINDS = Set.of("atlas", "expr", "scene", "ward");
+    /**
+     * 可作展示图的衍生物**分组**（{@code DapDerivative.derivKey}），排除 d3 模型与 video 视频。
+     *
+     * <p>v0.181 修正：这四个值一直是 {@code derivKey}，但下面 {@code requireRefOfAvatar} 拿它去比
+     * {@code getKind()}（取值只有 {@code image | video | model3d}）—— 永远不相等，
+     * 于是任何 {@code deriv:<id>} 展示图指针都被判成非法。没人报是因为界面里还没有选衍生图当展示图的入口。
+     */
+    private static final Set<String> IMAGE_DERIV_GROUPS = Set.of("atlas", "expr", "scene", "ward");
+    /** 图片类产物的 kind。 */
+    private static final String KIND_IMAGE = "image";
+    /** 视频类产物的 kind。 */
+    public static final String KIND_VIDEO = "video";
 
     private final DapAvatarRepository avatarRepo;
     private final DapLookRepository lookRepo;
@@ -74,9 +84,13 @@ public class DapAvatarRefResolver {
                         .orElse(null);
                 if (key != null) return key;
             } else if (ref.startsWith("deriv:")) {
+                // 视频类衍生物的 fileKey 是 MP4 —— 当展示图会渲染成裂图，
+                // 所以这里只取它的封面（thumbKey）；没有封面就回落定妆照。
                 String key = derivRepo.findById(ref.substring(6))
                         .filter(d -> avatar.getId().equals(d.getAvatarId()))
-                        .map(d -> d.getFileKey() != null ? d.getFileKey() : d.getThumbKey())
+                        .map(d -> KIND_VIDEO.equals(d.getKind())
+                                ? d.getThumbKey()
+                                : (d.getFileKey() != null ? d.getFileKey() : d.getThumbKey()))
                         .orElse(null);
                 if (key != null) return key;
             } else if (ref.startsWith("variant:")) {
@@ -130,7 +144,8 @@ public class DapAvatarRefResolver {
         if (ref.startsWith("deriv:")) {
             derivRepo.findById(ref.substring(6))
                     .filter(d -> dapAvatarId.equals(d.getAvatarId())
-                            && IMAGE_DERIV_KINDS.contains(d.getKind())
+                            && KIND_IMAGE.equals(d.getKind())
+                            && IMAGE_DERIV_GROUPS.contains(d.getDerivKey())
                             && (d.getFileKey() != null || d.getThumbKey() != null))
                     .orElseThrow(() -> BusinessException.badRequest("DAP_DISPLAY_REF_INVALID", "指定的场景图不存在、非图片类或不属于该数字人"));
             return;
@@ -148,5 +163,49 @@ public class DapAvatarRefResolver {
         }
         throw BusinessException.badRequest("DAP_DISPLAY_REF_INVALID",
                 "展示图指针格式应为 look:<id> / deriv:<id> / variant:<idx> / shot:<name>");
+    }
+
+    /** 动态形象解析结果：视频地址 + 封面（都可能为 null）。 */
+    public record MediaView(String videoUrl, String posterUrl, String label, Integer durationSec) {
+        public static final MediaView EMPTY = new MediaView(null, null, null, null);
+        public boolean playable() { return videoUrl != null && !videoUrl.isBlank(); }
+    }
+
+    /**
+     * 解析一个**视频类** {@code deriv:<id>} 引用（名片的动态首页资源用）。永不抛错。
+     *
+     * <p>与 {@link #resolve} 分开是因为语义不同：那个回一张能塞进 {@code <img>} 的图，
+     * 这个回一条能塞进 {@code <video>} 的成片 + 它的封面。混在一起的结果就是把 MP4
+     * 当图片渲染（一张裂图），或者把封面当视频播（点了没反应）。
+     */
+    public MediaView resolveMedia(String dapAvatarId, String ref) {
+        if (dapAvatarId == null || dapAvatarId.isBlank() || ref == null || !ref.startsWith("deriv:")) {
+            return MediaView.EMPTY;
+        }
+        DapAvatar avatar = avatarRepo.findById(dapAvatarId).orElse(null);
+        if (avatar == null || avatar.getDeletedAt() != null) return MediaView.EMPTY;
+        return derivRepo.findById(ref.substring(6))
+                .filter(d -> avatar.getId().equals(d.getAvatarId()))
+                .filter(d -> KIND_VIDEO.equals(d.getKind()))
+                .filter(d -> d.getFileKey() != null && !d.getFileKey().isBlank())
+                .map(d -> new MediaView(signQuietly(d.getFileKey()), signQuietly(d.getThumbKey()),
+                        d.getLabel(), secondsOf(d.getSpec())))
+                .orElse(MediaView.EMPTY);
+    }
+
+    private String signQuietly(String key) {
+        if (key == null || key.isBlank()) return null;
+        try {
+            return storage.signedUrl(key);
+        } catch (RuntimeException e) {
+            return null;   // 签不出来当没有：名片那边会回落静态图，不至于一片空白
+        }
+    }
+
+    /** `"8s · MP4"` → 8；读不出来返回 null（不猜一个时长去驱动 UI）。 */
+    private static Integer secondsOf(String spec) {
+        if (spec == null) return null;
+        var m = java.util.regex.Pattern.compile("(\\d+)\\s*s").matcher(spec);
+        return m.find() ? Integer.valueOf(m.group(1)) : null;
     }
 }

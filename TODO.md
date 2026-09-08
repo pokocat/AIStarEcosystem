@@ -1161,7 +1161,10 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   （`material-videos/<jobId>/video.mp4`）里没有 uid，过不了只认前缀的归属闸，出 wire 不重签，
   `content` 为空 → 节点上什么都不剩。改为按 jobId 回查 `MaterialVideoJob` 验 owner + 分区。
   同一条规则此前写了两遍（`ownsAssetKey` / `requireOwnedAssetKey`），已收敛到一处。
-- [ ] **动态名片：把画布视频接到名片页**（用户 2026-09-08 提出；不是回归，是从来没接过）。
+- [x] ~~**动态名片：把画布视频接到名片页**~~ **v0.181 完成**，2026-09-08：四层全接上
+  （发布登记 `DapDerivative(kind=video)` → 名片 doc 存 `figure.motionRef` → `resolveMotion`
+  派生签名地址 → 名片页 `<video autoPlay muted playsInline>` 播一遍 + 重播 + 静态兜底），
+  名片编辑页新增「首页资源」块二选一。原始记录：
   现状：`IpPublishService` 发布只登记 `DapAvatar` + `DapLook`（图片），画布视频不进数字资产；
   `DapAvatarRefResolver` 的 `deriv:` 只解析图片类 kind；名片类型里 `figure.motionUrl` /
   `figure.videoUrl` / `tier=motion|voice` 有字段，但没有任何地方写入或渲染。
@@ -1172,3 +1175,11 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
     3. `CardService.resolveFigure` 支持 video 类 deriv，解析出签名地址 + 封面；
     4. `card-view` 按 tier 渲染 `<video autoplay muted loop playsinline poster=…>`，
        首帧封面兜底、加载失败回落静态图（名片是对外的门面，不能因为一条视频拉不动就空着）。
+- [ ] **画布视频还没有封面帧**。`IpPublishService.registerVideos` 的 `thumbKey` 目前留空
+  （宁可没有，也不塞一个指向 MP4 的假封面）。结果是名片视频的 `poster` 回落到静态主图 ——
+  能用，但首帧和静态图对不上时会有一次跳变。补法：视频链成片后抽一帧存 CDN
+  （`ClipAssetThumbnailExtractor` 已有现成范式），写进 `MaterialVideoJob.thumbnailUrl` /
+  发布时带进 `DapDerivative.thumbKey`。
+- [ ] **名片首页视频没有「声音」这一档**。`CardFigureTier` 还有个 `voice`（口播成片）。
+  自动播必须静音，所以带声音的口播需要用户点一下才能出声 —— 要做得给一个明确的
+  「点击播放（有声）」入口，而不是让人以为坏了。

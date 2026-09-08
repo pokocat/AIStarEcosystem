@@ -50,6 +50,8 @@ class IpPublishServiceTest {
     private Map<String, DapLook> lookRows;
     private List<Object[]> versionCalls;
     private IpPublishService svc;
+    private com.aistareco.aep.dap.repository.DapDerivativeRepository derivRepo;
+    private final java.util.List<com.aistareco.aep.dap.model.DapDerivative> derivRows = new java.util.ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -84,7 +86,14 @@ class IpPublishServiceTest {
         DapMultimodalClient multimodal = mock(DapMultimodalClient.class);
         when(multimodal.imageModel()).thenReturn("some-image-model");
 
-        svc = new IpPublishService(projectService, avatars, lookRepo,
+        derivRepo = mock(com.aistareco.aep.dap.repository.DapDerivativeRepository.class);
+        when(derivRepo.save(org.mockito.ArgumentMatchers.any(com.aistareco.aep.dap.model.DapDerivative.class)))
+                .thenAnswer(i -> {
+                    com.aistareco.aep.dap.model.DapDerivative d = i.getArgument(0);
+                    derivRows.add(d);
+                    return d;
+                });
+        svc = new IpPublishService(projectService, avatars, lookRepo, derivRepo,
                 new DapSupport(), multimodal);
     }
 
@@ -257,5 +266,42 @@ class IpPublishServiceTest {
         assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
                 () -> svc.publish(USER, PID, new IpPublishRequest("小蓝", "n-master", List.of()))).getCode());
         assertTrue(avatarRows.isEmpty());
+    }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("发布把画布上的成片登记成视频类衍生资产 —— 名片才有的选")
+    void publishRegistersCanvasVideosAsAssets() throws Exception {
+        seedPublishableProject();
+        // 一条跑成的视频 + 一个还没跑出来的空节点
+        IpProject p = projects.rows.get(PID);
+        com.fasterxml.jackson.databind.JsonNode doc = IpStudioFixtures.OM.readTree(p.getDocJson());
+        com.fasterxml.jackson.databind.node.ArrayNode nodes =
+                (com.fasterxml.jackson.databind.node.ArrayNode) doc.get("nodes");
+        addVideoNode(nodes, "n-v1", "开屏打招呼", IpStudioFixtures.genKey(USER, "v1.mp4"), "8");
+        addVideoNode(nodes, "n-v2", "还没跑", null, null);
+        p.setDocJson(doc.toString());
+
+        svc.publish(USER, PID, new IpPublishRequest("潮玩个人IP", "n-master", java.util.List.of()));
+
+        assertEquals(1, derivRows.size(), "只该登记已经跑出来的那条");
+        var d = derivRows.get(0);
+        assertEquals("video", d.getKind());
+        assertEquals("video", d.getDerivKey());
+        assertEquals("开屏打招呼", d.getLabel());
+        assertEquals("8s · MP4", d.getSpec());
+        org.junit.jupiter.api.Assertions.assertNull(d.getThumbKey(),
+                "没有真封面就别塞一个指向 MP4 的假封面（那是一张裂图）");
+    }
+
+    private static void addVideoNode(com.fasterxml.jackson.databind.node.ArrayNode nodes,
+                                     String id, String title, String key, String seconds) {
+        com.fasterxml.jackson.databind.node.ObjectNode n = nodes.addObject();
+        n.put("id", id).put("type", "video").put("title", title);
+        n.putObject("position").put("x", 0).put("y", 0);
+        n.put("width", 320).put("height", 480);
+        com.fasterxml.jackson.databind.node.ObjectNode md = n.putObject("metadata");
+        if (key != null) md.put("storageKey", key);
+        if (seconds != null) md.put("seconds", seconds);
+        md.put("status", "success");
     }
 }

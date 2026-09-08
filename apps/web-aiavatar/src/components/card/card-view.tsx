@@ -332,6 +332,25 @@ const Hero: React.FC<{
 
   const active = wardrobe[lookIdx] ?? wardrobe[0];
   const heroUrl = active?.url ?? card.figure.imageUrl;
+
+  // 首页资源选了视频：进页面自动播一遍，播完给「重播」。
+  // 服务端解析不出成片时已经把 tier 打回 static 了，所以这里只需再确认一次地址在。
+  const motionUrl = card.figure.tier === "motion" ? card.figure.videoUrl : undefined;
+  // 视频播不了就退回静态主图 —— 名片是对外的门面，宁可少一个动效，不能空一块。
+  const [motionBroken, setMotionBroken] = useState(false);
+  const showMotion = Boolean(motionUrl) && !motionBroken;
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [motionEnded, setMotionEnded] = useState(false);
+  useEffect(() => { setMotionBroken(false); setMotionEnded(false); }, [motionUrl]);
+  const replay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = 0;
+    setMotionEnded(false);
+    // 自动播被浏览器拦下时 play() 会 reject —— 这是用户手动点的，正常都会通过；
+    // 真失败了就退回静态图，不留一个点了没反应的按钮。
+    void v.play().catch(() => setMotionBroken(true));
+  }, []);
   const heroAlt = active && wardrobe.length > 1
     ? `${card.name}的数字人形象 · ${active.label}`
     : `${card.name}的数字人形象`;
@@ -421,16 +440,62 @@ const Hero: React.FC<{
             overflow: "hidden",
           }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={heroUrl}
-            alt={heroAlt}
-            style={{ height: "calc(100% - 16px)", width: "auto", display: "block" }}
-          />
+          {showMotion ? (
+            <video
+              ref={videoRef}
+              src={motionUrl}
+              poster={card.figure.posterUrl || heroUrl}
+              // muted 是自动播的前提：移动端浏览器一律不给带声音的视频自动播。
+              // 不 loop —— 用户要的是「进来播一遍」，循环播放在名片上很吵。
+              autoPlay
+              muted
+              playsInline
+              preload="metadata"
+              onEnded={() => setMotionEnded(true)}
+              onError={() => setMotionBroken(true)}
+              aria-label={`${card.name}的动态形象`}
+              style={{ height: "calc(100% - 16px)", width: "auto", display: "block", objectFit: "contain" }}
+            />
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={heroUrl}
+              alt={heroAlt}
+              style={{ height: "calc(100% - 16px)", width: "auto", display: "block" }}
+            />
+          )}
         </div>
 
-        {/* 换装条：工作台跑出来的装扮与表情，访客点着看。只有一套时不渲染。 */}
-        {wardrobe.length > 1 && (
+        {/* 播完给一个重播 —— 只在真播完之后出现，播放中不压在画面上 */}
+        {showMotion && motionEnded && (
+          <button
+            type="button"
+            onClick={replay}
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: 18,
+              transform: "translateX(-50%)",
+              zIndex: 7,
+              height: 34,
+              padding: "0 16px",
+              borderRadius: 999,
+              border: "1px solid var(--line)",
+              background: "rgba(255,255,255,.92)",
+              backdropFilter: "blur(10px)",
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: "var(--ink-1)",
+              cursor: "pointer",
+            }}
+          >
+            ↺ 重播
+          </button>
+        )}
+
+        {/* 换装条：工作台跑出来的装扮与表情，访客点着看。
+            首页放视频时不渲染 —— 那条切换的是静态图，跟正在播的视频对不上。 */}
+        {!showMotion && wardrobe.length > 1 && (
           <Wardrobe items={wardrobe} activeIdx={lookIdx} onPick={setLookIdx} />
         )}
       </div>

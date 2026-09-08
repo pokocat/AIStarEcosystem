@@ -9,7 +9,7 @@
 import React, { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CardApi, type CardContact, type CardContactKind, type CardProfile } from "@/proto/card";
-import { USE_MOCK } from "@/proto/api";
+import { AvatarApi, USE_MOCK } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { Card, HubScreen, LoadingBlock, NavBar, RegNo, SectionHeader } from "@/components/hub/ui";
 
@@ -33,6 +33,9 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
   const [state, setState] = useState<State>({ s: "loading" });
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // 首页资源可选的视频 —— 来自这个形象在数字资产里的视频类衍生物
+  // （IP 工作台发布时把画布上的成片一并登记了）。
+  const [videos, setVideos] = useState<Array<{ id: string; label: string; thumbUrl?: string; spec?: string }>>([]);
 
   useEffect(() => {
     if (!ready) return;
@@ -41,7 +44,20 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
       return;
     }
     CardApi.detail(id)
-      .then((doc) => setState({ s: "ok", doc }))
+      .then((doc) => {
+        setState({ s: "ok", doc });
+        // 拉视频候选是**旁路**：拉不到就只是「首页资源」那栏没有视频可选，
+        // 不该把整张名片的编辑挡住。
+        if (doc.avatarRegNo) {
+          AvatarApi.derivatives(doc.avatarRegNo)
+            .then((list: any[]) => setVideos(
+              (list ?? [])
+                .filter((d: any) => d?.kind === "video" && d?.id)
+                .map((d: any) => ({ id: String(d.id), label: String(d.label || "动态形象"), thumbUrl: d.thumbUrl || undefined, spec: d.spec || undefined })),
+            ))
+            .catch(() => setVideos([]));
+        }
+      })
       .catch((e: unknown) => setState({ s: "error", message: e instanceof Error ? e.message : "名片读不出来" }));
   }, [id, ready]);
 
@@ -93,6 +109,9 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
       ].filter((x): x is string => Boolean(x))
     : [];
   const canPublish = state.s === "ok" && missing.length === 0;
+  // 「选了视频」以 motionRef 为准而不是 tier：服务端解析不出成片时会把 tier 打回 static，
+  // 只看 tier 的话用户刚选完视频、保存一次回来就被打回图片，像是没保存上。
+  const videoPicked = state.s === "ok" && Boolean(state.doc.figure.motionRef);
 
   if (authState === "no-platform") return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
@@ -122,6 +141,74 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
               </div>
             </Card>
           </div>
+
+          {/* 首页资源：名片打开时第一眼看到的东西 —— 一张可切换装扮的图，或一条自动播一遍的视频。
+              没有视频候选时整块不渲染：给一个点不了的选项，比不给更让人困惑。 */}
+          {videos.length > 0 && (
+            <>
+              <SectionHeader title="首页资源" />
+              <div style={{ margin: "0 16px" }}>
+                <Card pad={14}>
+                  <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--ink-2)", paddingBottom: 10 }}>
+                    名片打开时第一眼看到的东西。选图片时访客可以点着换装扮和表情；选视频会自动播一遍，播完可以重播。
+                  </div>
+                  <div style={{ display: "flex", gap: 8, paddingBottom: videoPicked ? 10 : 0 }}>
+                    <HeroChoice
+                      active={!videoPicked}
+                      label="图片"
+                      hint={`可切换 ${Math.max(1, (state.doc.figure.looks?.length ?? 0) + 1)} 套`}
+                      onClick={() => patch((d) => ({ ...d, figure: { ...d.figure, tier: "static", motionRef: null } }))}
+                    />
+                    <HeroChoice
+                      active={videoPicked}
+                      label="视频"
+                      hint={`${videos.length} 条可选`}
+                      onClick={() => patch((d) => ({
+                        ...d,
+                        figure: {
+                          ...d.figure,
+                          tier: "motion",
+                          // 之前没选过就默认第一条，省得用户点了「视频」还得再点一次
+                          motionRef: d.figure.motionRef || `deriv:${videos[0].id}`,
+                        },
+                      }))}
+                    />
+                  </div>
+                  {videoPicked && (
+                    <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }}>
+                      {videos.map((v) => {
+                        const ref = `deriv:${v.id}`;
+                        const on = state.doc.figure.motionRef === ref;
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => patch((d) => ({ ...d, figure: { ...d.figure, tier: "motion", motionRef: ref } }))}
+                            title={v.spec ? `${v.label} · ${v.spec}` : v.label}
+                            style={{
+                              flex: "0 0 auto", width: 92, padding: 0, borderRadius: 6, overflow: "hidden",
+                              border: on ? "2px solid var(--primary)" : "1px solid var(--line)",
+                              background: "var(--surface-2)", cursor: "pointer", textAlign: "left",
+                            }}
+                          >
+                            <div style={{ height: 62, background: "var(--surface-3, #eee)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                              {v.thumbUrl
+                                // eslint-disable-next-line @next/next/no-img-element
+                                ? <img src={v.thumbUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                                : <span style={{ fontSize: 18, color: "var(--ink-3)" }}>▶</span>}
+                            </div>
+                            <div style={{ padding: "5px 6px", fontSize: 11, lineHeight: 1.35, color: on ? "var(--primary)" : "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {v.label}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              </div>
+            </>
+          )}
 
           <SectionHeader title="基础信息" />
           <div style={{ margin: "0 16px" }}>
@@ -277,5 +364,28 @@ function Textarea({
     <textarea value={value} placeholder={placeholder} rows={rows}
       style={{ ...FIELD_STYLE, resize: "vertical" }}
       onChange={(e) => onChange(e.target.value)} />
+  );
+}
+
+/** 首页资源二选一的那两个按钮。 */
+function HeroChoice({ active, label, hint, onClick }: { active: boolean; label: string; hint: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: "9px 10px",
+        borderRadius: 8,
+        border: active ? "2px solid var(--primary)" : "1px solid var(--line)",
+        background: active ? "var(--primary-soft, rgba(0,0,0,.03))" : "transparent",
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <div style={{ fontSize: 13.5, fontWeight: 700, color: active ? "var(--primary)" : "var(--ink-1)" }}>{label}</div>
+      <div style={{ fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hint}</div>
+    </button>
   );
 }

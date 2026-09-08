@@ -307,6 +307,7 @@ public class CardService {
         try {
             JsonNode tree = mapper.valueToTree(doc == null ? Map.of() : doc);
             stripDerivedUrls(tree);
+            stripFigureUrls(tree);
             return mapper.writeValueAsString(tree);
         } catch (BusinessException e) {
             throw e;
@@ -427,6 +428,8 @@ public class CardService {
         String mainUrl = resolveRef(avatarId, textOrNull(figure, "ref"));
         if (mainUrl != null) figure.put("imageUrl", mainUrl);
 
+        resolveMotion(figure, avatarId);
+
         JsonNode looksNode = figure.get("looks");
         if (looksNode == null || !looksNode.isArray()) return;
         ArrayNode kept = mapper.createArrayNode();
@@ -501,6 +504,59 @@ public class CardService {
                     resignUrls(v);
                 }
             }
+        }
+    }
+
+    /**
+     * 首页资源选了视频时（{@code tier=motion}）解析 {@code motionRef} → 成片地址 + 封面。
+     *
+     * <p>名片首页可以是**一张图**（可切换装扮 / 表情）或**一条视频**（进页面自动播一遍、可重播）——
+     * 这是名片一开始就设计好的两种形态（{@code CardFigure.tier}），v0.181 才真正接上。
+     *
+     * <p>静态那套（{@code ref} / {@code looks}）**照旧解析、不动**：视频拉不动、被删、
+     * 或者访客的浏览器不给自动播时，名片要能干净地退回静态主图 —— 它是对外的门面，
+     * 不能因为一条视频出问题就空在那儿。解析不出来时顺手把 tier 打回 static，
+     * 免得前端拿着一个空 videoUrl 去渲染播放器。
+     */
+    private void resolveMotion(ObjectNode figure, String avatarId) {
+        figure.remove("videoUrl");
+        figure.remove("posterUrl");
+        String ref = textOrNull(figure, "motionRef");
+        if (ref == null || avatarId == null || avatarId.isBlank()) {
+            if (!"static".equals(textOrNull(figure, "tier"))) figure.put("tier", "static");
+            return;
+        }
+        DapAvatarRefResolver.MediaView m = refs.resolveMedia(avatarId, ref);
+        if (!m.playable()) {
+            figure.put("tier", "static");
+            return;
+        }
+        figure.put("tier", "motion");
+        figure.put("videoUrl", m.videoUrl());
+        if (m.posterUrl() != null) figure.put("posterUrl", m.posterUrl());
+        if (m.durationSec() != null) figure.put("durationSec", m.durationSec());
+    }
+
+    /**
+     * {@code figure} 里那几个派生地址不落库。
+     *
+     * <p>它们的真值是**引用**（{@code ref} / {@code motionRef}），不是 {@code xxxKey}，
+     * 所以通用的 {@link #stripDerivedUrls}（按 {@code xxxUrl} ↔ {@code xxxKey} 配对）捞不到它们。
+     * 编辑器 GET 到的文档带着现签的 TTL 地址，原样 PUT 回来就把签名写进了库（§4.7.7）——
+     * 图片那条一直靠「出 wire 必被 resolveFigure 覆盖」侥幸不出事，视频这条不能再赌一次。
+     */
+    private static void stripFigureUrls(JsonNode tree) {
+        JsonNode figureNode = tree == null ? null : tree.get("figure");
+        if (!(figureNode instanceof ObjectNode figure)) return;
+        if (figure.hasNonNull("ref")) figure.remove("imageUrl");
+        if (figure.hasNonNull("motionRef")) {
+            figure.remove("videoUrl");
+            figure.remove("posterUrl");
+        }
+        JsonNode looks = figure.get("looks");
+        if (looks == null || !looks.isArray()) return;
+        for (JsonNode l : looks) {
+            if (l instanceof ObjectNode lo && lo.hasNonNull("ref")) lo.remove("imageUrl");
         }
     }
 }

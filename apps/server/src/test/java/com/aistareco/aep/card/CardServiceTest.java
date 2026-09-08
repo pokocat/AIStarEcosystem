@@ -12,6 +12,7 @@ import com.aistareco.aep.dap.service.DapAvatarRefResolver;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -61,6 +62,8 @@ class CardServiceTest {
         // 默认：解析不出来（多数用例不关心形象）。关心的用例自己 stub。
         when(refs.resolve(anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(DapAvatarRefResolver.View.EMPTY);
+        when(refs.resolveMedia(anyString(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(DapAvatarRefResolver.MediaView.EMPTY);
         avatarRepo = mock(DapAvatarRepository.class);
         lookRepo = mock(DapLookRepository.class);
         when(lookRepo.findByAvatarIdOrderByCreatedAtDesc(anyString())).thenReturn(List.of());
@@ -295,5 +298,63 @@ class CardServiceTest {
     void affectedByAvatarIsNullSafe() {
         // 形象被删时反查受影响名片；avatarId 为空不该炸，返回空列表。
         assertEquals(List.of(), service().affectedByAvatar(null));
+    }
+
+    // ── 首页资源：图片 or 视频（v0.181）─────────────────────────
+    //
+    // 名片从一开始就设计了两种首页形态（CardFigure.tier）：一张可切换装扮 / 表情的图，
+    // 或一条进页面自动播一遍的视频。此前只接了静态那半 —— videoUrl 有字段，
+    // 但没有任何地方写入或渲染。
+
+    private static final String MOTION_DOC =
+            "{\"name\":\"潮玩个人IP\",\"figure\":{\"tier\":\"motion\",\"motionRef\":\"deriv:DV-1\"}}";
+
+    @Test
+    @DisplayName("选了视频：motionRef 解析成成片地址 + 封面，tier=motion")
+    void resolvesMotionHero() {
+        CardProfile c = card("motion", CardProfile.STATUS_PUBLISHED, null, MOTION_DOC);
+        CardService s = service(c);
+        when(refs.resolveMedia(anyString(), org.mockito.ArgumentMatchers.eq("deriv:DV-1")))
+                .thenReturn(new DapAvatarRefResolver.MediaView(
+                        "https://cdn.test/video.mp4?sig=x", "https://cdn.test/poster.jpg?sig=x", "开屏打招呼", 8));
+
+        Map<?, ?> figure = (Map<?, ?>) s.publicBySlug("motion").get("figure");
+        assertEquals("motion", figure.get("tier"));
+        assertEquals("https://cdn.test/video.mp4?sig=x", figure.get("videoUrl"));
+        assertEquals("https://cdn.test/poster.jpg?sig=x", figure.get("posterUrl"));
+        assertEquals(8, figure.get("durationSec"));
+    }
+
+    @Test
+    @DisplayName("视频解析不出来：打回 tier=static，不给一个播不了的播放器")
+    void fallsBackToStaticWhenVideoGone() {
+        CardProfile c = card("motion", CardProfile.STATUS_PUBLISHED, null, MOTION_DOC);
+        CardService s = service(c);   // 默认 stub 就是 EMPTY
+
+        Map<?, ?> figure = (Map<?, ?>) s.publicBySlug("motion").get("figure");
+        assertEquals("static", figure.get("tier"), "成片没了还说 motion，前端就会渲染一个播不了的播放器");
+        assertNull(figure.get("videoUrl"));
+    }
+
+    @Test
+    @DisplayName("落库不写派生地址：imageUrl / videoUrl / posterUrl 都不进 payload_json")
+    void doesNotPersistDerivedFigureUrls() {
+        CardService s = service();
+        Map<String, Object> figure = new java.util.LinkedHashMap<>();
+        figure.put("ref", "look:LK-1");
+        figure.put("imageUrl", "https://cdn.test/look.jpg?sig=expires-in-an-hour");
+        figure.put("motionRef", "deriv:DV-1");
+        figure.put("videoUrl", "https://cdn.test/video.mp4?sig=expires-in-an-hour");
+        figure.put("posterUrl", "https://cdn.test/poster.jpg?sig=expires-in-an-hour");
+        Map<String, Object> doc = new java.util.LinkedHashMap<>();
+        doc.put("name", "潮玩个人IP");
+        doc.put("figure", figure);
+
+        CardProfile saved = s.create("u1", "slug-motion", "DH-1", doc);
+
+        assertFalse(saved.getPayloadJson().contains("videoUrl"), saved.getPayloadJson());
+        assertFalse(saved.getPayloadJson().contains("posterUrl"), saved.getPayloadJson());
+        assertFalse(saved.getPayloadJson().contains("imageUrl"), saved.getPayloadJson());
+        assertTrue(saved.getPayloadJson().contains("motionRef"), saved.getPayloadJson());
     }
 }

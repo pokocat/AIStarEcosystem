@@ -40,10 +40,15 @@ export interface CardFigure {
   imageUrl: string;
   /** 可切换的装扮与表情。空 / 缺省 = 只有一张主图，不渲染切换条。 */
   looks?: CardFigureLook[];
-  /** tier=motion：1–3 秒透明 WebP 循环微动。 */
-  motionUrl?: string;
-  /** tier=voice：口播成片。 */
+  /**
+   * 首页资源选了视频时指向那条成片（`deriv:<id>`，视频类衍生资产）。
+   * **只存引用**：资产换了名片跟着变，地址每次出 wire 现签（§4.7.7）。
+   */
+  motionRef?: string | null;
+  /** 出 wire 派生：成片的签名地址。tier=motion 且服务端解析得出时才有。 */
   videoUrl?: string;
+  /** 出 wire 派生：成片封面。没有就用静态主图兜底，绝不拿 MP4 当封面。 */
+  posterUrl?: string;
   durationSec?: number;
 }
 

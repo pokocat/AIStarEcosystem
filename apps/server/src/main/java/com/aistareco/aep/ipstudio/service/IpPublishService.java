@@ -1,7 +1,9 @@
 package com.aistareco.aep.ipstudio.service;
 
 import com.aistareco.aep.dap.model.DapAvatar;
+import com.aistareco.aep.dap.model.DapDerivative;
 import com.aistareco.aep.dap.model.DapLook;
+import com.aistareco.aep.dap.repository.DapDerivativeRepository;
 import com.aistareco.aep.dap.repository.DapLookRepository;
 import com.aistareco.aep.dap.service.DapAvatarService;
 import com.aistareco.aep.dap.service.DapMultimodalClient;
@@ -53,17 +55,20 @@ public class IpPublishService {
     private final IpProjectService projects;
     private final DapAvatarService avatars;
     private final DapLookRepository lookRepo;
+    private final DapDerivativeRepository derivRepo;
     private final DapSupport support;
     private final DapMultimodalClient multimodal;
 
     public IpPublishService(IpProjectService projects,
                             DapAvatarService avatars,
                             DapLookRepository lookRepo,
+                            DapDerivativeRepository derivRepo,
                             DapSupport support,
                             DapMultimodalClient multimodal) {
         this.projects = projects;
         this.avatars = avatars;
         this.lookRepo = lookRepo;
+        this.derivRepo = derivRepo;
         this.support = support;
         this.multimodal = multimodal;
     }
@@ -155,6 +160,8 @@ public class IpPublishService {
             avatar.setCounts(c);
             avatars.save(avatar);
         }
+
+        registerVideos(userId, avatar, doc);
 
         project.setStatus(IpProject.STATUS_PUBLISHED);
         project.setPublishedAvatarId(avatar.getId());
@@ -269,6 +276,65 @@ public class IpPublishService {
     }
 
     private static String truncate(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max);
+    }
+
+    /**
+     * 把画布上跑出来的视频登记成这个形象的衍生资产（v0.181）。
+     *
+     * <p>此前发布只登记图片（{@code DapAvatar} + {@code DapLook}），画布视频哪儿也不去 ——
+     * 于是「做成数字名片」时用户没有任何视频可选，动态名片无从谈起。视频本来就是这个 IP
+     * 的资产，发布时一并收下即可，**不需要用户在发布框里再勾一遍**：名片首页放什么，
+     * 到名片编辑页再选（发布 = 登记资产，选门面 = 名片的事，两件事分开）。
+     *
+     * <p>只收**已成功**且 key 属于本人的视频节点；一条都没有就什么也不做（不是错误）。
+     * 旁路写入：登记失败只 WARN，不让它把整次发布带崩（图片资产已经落好了）。
+     */
+    private void registerVideos(String userId, DapAvatar avatar, JsonNode doc) {
+        int idx = 0;
+        for (JsonNode node : IpDocs.nodes(doc)) {
+            if (!IpDocs.T_VIDEO.equals(IpDocs.typeOf(node))) continue;
+            JsonNode md = IpDocs.metadataOf(node);
+            String key = IpDocs.text(md, "storageKey");
+            if (key == null || key.isBlank()) continue;          // 还没跑出来的空节点
+            if (!projects.ownsAssetKey(userId, key)) continue;    // 不是本人的，静默跳过
+            try {
+                String title = IpDocs.text(node, "title");
+                String seconds = IpDocs.text(md, "seconds");
+                derivRepo.save(DapDerivative.builder()
+                        .id("DV-" + IpProjectService.hex8())
+                        .avatarId(avatar.getId())
+                        .ownerUserId(userId)
+                        .derivKey("video")
+                        .idx(idx)
+                        .kind("video")
+                        .fileKey(key)
+                        // 封面：画布视频节点现在还没有单独抽帧，留空 —— 名片那边拿不到封面
+                        // 就用静态主图兜底，不塞一个指向 MP4 的假封面（那会变成一张裂图）。
+                        .thumbKey(null)
+                        .label(title == null || title.isBlank() ? "动态形象 " + (idx + 1) : abbreviate(title, 60))
+                        .spec(seconds == null || seconds.isBlank() ? "MP4" : seconds + "s · MP4")
+                        .bytes(0)
+                        .createdAt(Instant.now())
+                        .build());
+                idx++;
+            } catch (RuntimeException e) {
+                log.warn("[ipstudio] 视频资产登记失败 avatar={} key={}: {}", avatar.getId(), key, e.getMessage());
+            }
+        }
+        if (idx > 0) {
+            Map<String, Object> c = avatar.countsOrEmpty();
+            c.put("video", idx);
+            avatar.setCounts(c);
+            Map<String, Object> d = avatar.derivOrEmpty();
+            d.put("video", "ready");
+            avatar.setDeriv(d);
+            avatars.save(avatar);
+            log.info("[ipstudio] 发布登记视频资产 avatar={} count={}", avatar.getId(), idx);
+        }
+    }
+
+    private static String abbreviate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max);
     }
 }
