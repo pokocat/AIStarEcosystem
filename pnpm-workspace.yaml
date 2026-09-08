@@ -6,5 +6,4 @@ packages:
   - "apps/web-celebrity"
   - "apps/web-aiavatar"
   - "apps/web-star"
-  - "apps/web-ipstudio"
   - "apps/admin"

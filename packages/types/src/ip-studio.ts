@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// ip-studio.ts — AI IP 工作台（apps/web-ipstudio）类型契约真源。
+// ip-studio.ts — AI IP 工作台类型契约真源（前端 v0.190 起并入 apps/web-aiavatar）。
 //
 // 设计真源：docs/ip-studio-plan.md §2。server 侧 `com.aistareco.aep.ipstudio.dto.*`
 // 的 record 字段名必须与本文件 1:1（AGENTS.md §4.1）。
@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 画布节点 —— 与画布实现（`apps/web-ipstudio/src/canvas/types/canvas.ts`）同形。
+ * 画布节点 —— 与画布实现（`apps/web-aiavatar/src/canvas/types/canvas.ts`）同形。
  *
  * v0.157 起画布换成了通用节点：图 / 文字 / 视频 / 音频 / 配置 / 分组，
  * 而不是此前「照片 / 特征卡 / 风格 / 形象卡 / 出图」那套定型节点。

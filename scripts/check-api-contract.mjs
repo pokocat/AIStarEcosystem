@@ -7,7 +7,9 @@
 //
 // 比旧版 apps/web/scripts/check-api-contract.mjs 多了：
 //   - 扫描六个子应用（web-music / web-drama / web-celebrity / web-aiavatar / web-star /
-//     web-ipstudio）+ packages/api-client。真源是下面的 SCAN_TARGETS，加 app 记得同步。
+//     packages/api-client。真源是下面的 SCAN_TARGETS，加 app 记得同步。
+//     （v0.190：web-ipstudio 已并入 web-aiavatar，画布与其 API 层在后者的
+//      canvas-bridge/ 与 ip/ 两棵子树下，各自单列扫描根 —— 见下方注释。）
 //   - 方法级匹配（旧版只看 path）
 //
 // 用法（在仓库根运行）：
@@ -27,9 +29,19 @@ const SCAN_TARGETS = [
   { dir: "apps/web-music/src" },
   { dir: "apps/web-drama/src" },
   { dir: "apps/web-celebrity/src" },
-  { dir: "apps/web-aiavatar/src", prefix: "/v1" },
+  // web-aiavatar 一棵树里有**两种字面量约定**（v0.190 并入 ipstudio 之后）：
+  //   proto/*        自己的 apiFetch 会拼 /api/v1，所以字面量写 `/card/mine` → 补 "/v1"
+  //   canvas-bridge/ 与 ip/  用共享 apiFetch，字面量本来就写全 `/v1/ip-studio/*` → 不补
+  // 混在一个扫描根下，补前缀的那份会把后者算成 /v1/v1/...（30 个调用点全废）。
+  // 所以把搬来的两棵子树排除掉，再各自单列一个不带 prefix 的根。
+  {
+    dir: "apps/web-aiavatar/src",
+    prefix: "/v1",
+    exclude: ["apps/web-aiavatar/src/canvas-bridge", "apps/web-aiavatar/src/ip"],
+  },
+  { dir: "apps/web-aiavatar/src/canvas-bridge" },
+  { dir: "apps/web-aiavatar/src/ip" },
   { dir: "apps/web-star/src" },
-  { dir: "apps/web-ipstudio/src" },
   { dir: "packages/api-client/src" },
 ];
 const OPENAPI_PATH = join(REPO_ROOT, "specs/openapi.yaml");

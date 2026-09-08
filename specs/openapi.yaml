@@ -2961,7 +2961,7 @@ components:
         errorMessage: { type: string, nullable: true }
         credits: { type: integer, description: '本次试听需要调用方 hold 的钻石数。当前恒为 0。' }
 
-    # ── AI IP 工作台（apps/web-ipstudio，v0.151；TS 真源 packages/types/src/ip-studio.ts）──
+    # ── AI IP 工作台（apps/web-aiavatar 的 ip/ + canvas/ 子树，v0.190 并入；TS 真源 packages/types/src/ip-studio.ts）──
     # 画布文档（IpProjectDoc）由客户端拥有、服务端整存整取，故只声明为 object 不拆结构 ——
     # 前端加一个节点字段不该要求后端同步改 schema。
     IpProjectDoc:
@@ -9494,7 +9494,7 @@ paths:
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file, kind], properties: { file: { type: string, format: binary }, kind: { type: string, enum: [video, image, bgm] }, label: { type: string }, group: { type: string } } } } } }
       responses: { '200': { description: preset asset uploaded } }
   # ────────────────────────────────────────────────────────────
-  # AI IP 工作台（apps/web-ipstudio，v0.151 ipstudio 领域：com.aistareco.aep.ipstudio.*，表 ip_project / ip_run）
+  # AI IP 工作台（前端在 apps/web-aiavatar，v0.190 并入；服务端 ipstudio 领域：com.aistareco.aep.ipstudio.*，表 ip_project / ip_run）
   # 设计真源 = docs/ip-studio-plan.md；TS 契约真源 = packages/types/src/ip-studio.ts。
   # 全部 authenticated（Bearer JWT）；共用 aiavatar 开通（X-App-Code: aiavatar），
   # 已被 ProductRouteTable 的 any("/api/v1/**", AIAVATAR) 兜底，不新增产品码。

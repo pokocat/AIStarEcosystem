@@ -13,13 +13,19 @@ type CSS = React.CSSProperties;
 
 // ── 页面骨架 ─────────────────────────────────────────────────
 
-/** 移动端内容列：窄屏铺满，桌面居中一列（同 .app-root 的宽度约定，但走文档流）。 */
+/**
+ * 内容列：窄屏铺满，桌面（≥1024）放宽成一整面。
+ *
+ * 宽度与内边距移到 `.hub-screen`（globals.css v0.190 段）—— 11 个现代路由全部
+ * 经过这里，所以那一条 media query 就是整个资产平台桌面化的总开关，不必逐页改。
+ * 老 SPA /studio 用的是另一层 `.app-root`（position:fixed + 480px 手机笼子），
+ * 不受此影响，按既定双轨逐屏迁出。
+ */
 export function HubScreen({ children, tabBar }: { children: React.ReactNode; tabBar?: boolean }) {
   return (
     <div
+      className="hub-screen"
       style={{
-        maxWidth: 480,
-        margin: "0 auto",
         minHeight: "100dvh",
         background: "var(--canvas)",
         display: "flex",

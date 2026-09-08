@@ -1116,3 +1116,43 @@ body, .app-root { overflow-x: hidden; }
     background-image: none !important;
   }
 }
+
+/* =====================================================================
+   v0.190 · 桌面面（AI IP 工作台并入之后）
+   —— 手机形态一个字没改；下面全部锁在 ≥1024px 里。
+   断点取 1024 而不是 768：桌面顶栏要放四个入口 + 账号块，画布更需要真实宽度，
+   竖持平板（768–1024）上那套 600px 的节点面板也施展不开。
+
+   `.app-root`（老 SPA /studio 的手机笼子，position:fixed + 480px）**不在这里放宽**。
+   那 14k 行原型是按 480 宽写死的，放宽只会散架；它按既定双轨逐屏迁出，
+   在此之前桌面上就是一条居中的窄列 —— 那是「还没迁」，不是坏了。
+   ===================================================================== */
+
+:root { --desktop-bar-h: 52px; }
+
+/* 现代路由的内容列：11 个 App Router 页面全部经 HubScreen，所以这一条就是
+   整个资产平台桌面化的总开关。 */
+.hub-screen {
+  max-width: 480px;
+  margin-inline: auto;
+}
+
+@media (min-width: 1024px) {
+  .hub-screen {
+    max-width: 1120px;
+    padding-inline: 28px;
+    padding-bottom: 40px !important;   /* 覆盖为底部 tab 栏预留的空间：桌面没有 tab 栏 */
+  }
+
+  /* 底部 tab 栏是手机形态的导航，桌面走顶栏 */
+  .wx-tabbar.hub-tabbar { display: none; }
+
+  /* 顶栏占位：内容不要顶到栏底下 */
+  body.has-desktop-bar { padding-top: var(--desktop-bar-h); }
+}
+
+/* 顶栏只在宽屏出现 */
+.desktop-top-bar { display: none; }
+@media (min-width: 1024px) {
+  .desktop-top-bar { display: flex; }
+}

@@ -13,17 +13,6 @@
       "autoPort": true
     },
     {
-      "name": "ipstudio",
-      "cwd": "apps/web-ipstudio",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": [
-        "run",
-        "dev"
-      ],
-      "port": 3015,
-      "autoPort": true
-    },
-    {
       "name": "celebrity",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
