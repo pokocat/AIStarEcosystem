@@ -1175,7 +1175,7 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
     3. `CardService.resolveFigure` 支持 video 类 deriv，解析出签名地址 + 封面；
     4. `card-view` 按 tier 渲染 `<video autoplay muted loop playsinline poster=…>`，
        首帧封面兜底、加载失败回落静态图（名片是对外的门面，不能因为一条视频拉不动就空着）。
-- [ ] **画布视频还没有封面帧**。`IpPublishService.registerVideos` 的 `thumbKey` 目前留空
+- [ ] **画布视频还没有封面帧**（v0.181 起动态名片已可用，这条只影响首帧观感）。`IpPublishService.registerVideos` 的 `thumbKey` 目前留空
   （宁可没有，也不塞一个指向 MP4 的假封面）。结果是名片视频的 `poster` 回落到静态主图 ——
   能用，但首帧和静态图对不上时会有一次跳变。补法：视频链成片后抽一帧存 CDN
   （`ClipAssetThumbnailExtractor` 已有现成范式），写进 `MaterialVideoJob.thumbnailUrl` /
