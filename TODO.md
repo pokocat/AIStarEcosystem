@@ -1070,3 +1070,14 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   （v0.176 的 `video.test.ts` 就是这个形态），或者把 config → 请求参数的映射收进一处纯函数。
 - [ ] 视频链支持「全能参考」（参考图不作为首帧，而是主体 / 风格参考）。
   聚算媒体协议侧是否支持需先核对；支持了再把面板那个选项打开。
+- [x] ~~「该接口尚未登记子产品归属」403~~ **v0.177 修复**，2026-09-08：画布轮询视频任务打的
+  `/api/me/material/videos/jobs/{id}` **服务端从来没有实现过**（只在 openapi 里）。新增
+  `GET /api/v1/ip-studio/videos/{jobId}`（owner + app=ipstudio 双闸），前端改打它。
+  带货线那条同名接口把 app 写死成 celebrity（v0.108 分区），不能复用。
+  视频本身一直在正常生成，坏的只是读回状态那一步。
+- [ ] **`check:api-contract` 的「无 handler」告警要清到 0，然后做成硬门**。v0.177 给脚本加了
+  Spring 路由扫描，当前列出 24 条前端调得到、服务端接不住的 URL：
+  web-music 的 `/me/assets`、`/me/batch-tasks`、`/me/clip-tasks`、`/me/copies`、
+  `/me/person-models`、`/me/digital-person/*`（多半是只在 mock 下用的页面），
+  `/film/dramas` 的 GET-by-id / POST / PATCH / DELETE，以及 `DELETE /celebrity/videos/{id}`。
+  逐条判定「补实现」还是「删前端调用」，清完把告警改成 fail。

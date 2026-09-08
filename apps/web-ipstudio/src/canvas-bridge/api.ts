@@ -114,10 +114,15 @@ export type IpVideoJob = {
   thumbnail_url?: string; error_message?: string;
 };
 
+// 轮询画布自己的视频任务。
+//
+// v0.177 之前打的是 `/me/material/videos/jobs/{id}` —— **那条路径服务端根本没有**
+// （openapi 里有、controller 里没有，所以 check:api-contract 也没拦住）。
+// 真实表现是先被开通闸判成「该接口尚未登记子产品归属」403；就算把路由登记了，
+// 后面还是 404。带货线那条同名接口把 app 写死成 celebrity（v0.108 分区），
+// 拿它查画布的任务只会查不到 —— 所以正确做法是 ip-studio 域自己出一条。
 export const readVideoJob = (jobId: string) =>
-  apiFetch<IpVideoJob>(
-    `/me/material/videos/jobs/${encodeURIComponent(jobId)}`, { query: { app: "ipstudio" } },
-  );
+  apiFetch<IpVideoJob>(`/v1/ip-studio/videos/${encodeURIComponent(jobId)}`);
 
 /** 跑一个节点。服务端整存整取地收下最新画布，再按这个节点编译、扣费、派发。 */
 export const runNode = (projectId: string, nodeId: string, doc: unknown) =>

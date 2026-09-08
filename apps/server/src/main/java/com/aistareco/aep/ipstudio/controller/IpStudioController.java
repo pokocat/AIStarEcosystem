@@ -52,19 +52,22 @@ public class IpStudioController {
     private final IpCatalogService catalog;
     private final com.aistareco.aep.service.AiModelInvocationService invocation;
     private final com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoModels;
+    private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
 
     public IpStudioController(IpProjectService projects,
                               IpRunService runs,
                               IpPublishService publish,
                               IpCatalogService catalog,
                               com.aistareco.aep.service.AiModelInvocationService invocation,
-                              com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoModels) {
+                              com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoModels,
+                              com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs) {
         this.projects = projects;
         this.runs = runs;
         this.publish = publish;
         this.catalog = catalog;
         this.invocation = invocation;
         this.videoModels = videoModels;
+        this.videoJobs = videoJobs;
     }
 
     // ── 目录 ──────────────────────────────────────────────────
@@ -215,6 +218,24 @@ public class IpStudioController {
             Principal principal, @PathVariable String id,
             @RequestBody IpRunService.IpVideoRequest req) {
         return ApiResponse.of(runs.generateVideo(uid(principal), id, req));
+    }
+
+    /**
+     * 画布视频任务的进度 / 结果。
+     *
+     * <p>放在 ip-studio 域下而不是复用带货线的 {@code GET /api/material/videos/jobs/{id}}：
+     * 那个接口把 app 写死成 {@code APP_CELEBRITY}（v0.108 分区，防止两条产品线互相串号），
+     * 拿它查画布的任务只会「查不到」。此前前端轮询的是一条**根本不存在的**路径
+     * {@code /api/me/material/videos/jobs/{id}} —— openapi 里有、controller 里没有，
+     * 于是先被开通闸判成「未登记的业务路由」403，修好路由也还是 404（v0.177）。
+     *
+     * <p>owner 与 app 双闸都在 {@code getJob} 里：不是本人的、或不是 ipstudio 分区的，一律当不存在。
+     */
+    @GetMapping("/videos/{jobId}")
+    public ApiResponse<com.fasterxml.jackson.databind.JsonNode> videoJob(Principal principal,
+                                                                        @PathVariable String jobId) {
+        return ApiResponse.of(videoJobs.getJob(jobId, uid(principal),
+                com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO));
     }
 
     @GetMapping("/runs/{id}")

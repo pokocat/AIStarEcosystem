@@ -7,6 +7,8 @@
 // VideoMediaOptions 全是可选字段，所以 typecheck 一声不吭。
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const generateVideoMock = vi.fn();
 vi.mock("./api", () => ({
@@ -70,5 +72,19 @@ describe("画布视频提交", () => {
       createVideoGenerationTask({ ...cfg, videoMode: "reference" } as never, "x", []),
     ).rejects.toThrow(/首帧/);
     expect(generateVideoMock).not.toHaveBeenCalled();
+  });
+});
+
+// 轮询路径必须打在 ip-studio 域自己的接口上。
+// v0.177 之前打的是 `/me/material/videos/jobs/{id}` —— 服务端从来没实现过那条路径，
+// 先被开通闸判成「该接口尚未登记子产品归属」403，登记了路由也还是 404；
+// 而带货线那条同名接口把 app 写死成 celebrity（v0.108 分区），拿它查画布任务只会查不到。
+describe("视频任务轮询路径", () => {
+  it("打的是 ip-studio 自己的接口，不是带货线那条", async () => {
+    const src = readFileSync(join(__dirname, "api.ts"), "utf8");
+    // 只看真正发出去的模板字面量，注释里提到旧路径不算（那是在解释为什么不能用它）
+    const urls = [...src.matchAll(/apiFetch<[^>]*>\(\s*`([^`]+)`/g)].map((m) => m[1]);
+    expect(urls).toContain("/v1/ip-studio/videos/${encodeURIComponent(jobId)}");
+    expect(urls.some((u) => u.includes("/me/material/"))).toBe(false);
   });
 });

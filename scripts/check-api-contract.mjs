@@ -34,6 +34,11 @@ const SCAN_TARGETS = [
 ];
 const OPENAPI_PATH = join(REPO_ROOT, "specs/openapi.yaml");
 
+// 不由本仓 server 实现的前端调用（本仓之外的服务）。加条目要写清楚谁实现它。
+const SERVER_CHECK_EXEMPT = [
+  /^\/auth\//,        // 统一账号中心 pokocat/aibuzz-id 的 OIDC 端点由它自己实现
+];
+
 // ── 1. 提取所有 apiFetch URL + method ───────────────────────────────────────
 
 function walk(dir, acc = []) {
@@ -152,6 +157,92 @@ function extractOpenapi() {
   return { methodsByPath, deprecated };
 }
 
+
+// ── 2b. 提取 server 真实的 Spring 路由 ──────────────────────────────────────
+//
+// 为什么要有这一段（v0.177）：此前这个门只比对「前端 URL ↔ openapi」。
+// openapi 是**我们手写的文档**，写了一条服务端根本没实现的路径，它照样全绿 ——
+// 画布轮询视频任务打的 `/me/material/videos/jobs/{id}` 就是这么上线的：
+// 文档里有、controller 里没有，用户点发送先撞开通闸 403，修了路由还是 404。
+// 所以再加一道：前端调的每个 URL，server 里必须真有一个 handler。
+
+const SERVER_JAVA_ROOT = "apps/server/src/main/java";
+
+function javaFiles(dir, acc = []) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = statSync(p);
+    if (st.isDirectory()) javaFiles(p, acc);
+    else if (name.endsWith(".java")) acc.push(p);
+  }
+  return acc;
+}
+
+/**
+ * 注解里的**路径**部分。`@GetMapping("/a/{b:.+}")` → `/a/{b}`，`@RequestMapping(value = "/x")` 也认。
+ *
+ * 关键是别把别的属性当成路径：`@PostMapping(consumes = {"multipart/form-data"})` 里那个字符串
+ * 不是路径，注解也就没有子路径（= 类级路径本身）。一开始把所有引号串都当路径，
+ * 于是这类上传接口被算成 `/api/star/profile/uploads/multipart/form-data`，
+ * 真实路径反而「查无此 handler」—— 门自己产生假警报，比没有门更糟。
+ */
+function mappingValue(annotationArgs) {
+  if (!annotationArgs || !annotationArgs.trim()) return [""];
+  const args = annotationArgs;
+  const keyed = args.match(/\b(?:value|path)\s*=\s*(\{[^}]*\}|"[^"]*")/);
+  const source = keyed ? keyed[1] : /^\s*(?:"|\{\s*")/.test(args) ? args.split(",").filter((x) => /"/.test(x)).join(",") : null;
+  if (source === null) return [""];   // 只有 consumes / produces 之类，没有子路径
+  const out = [...source.matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+  return out.length ? out : [""];
+}
+
+function normalizeJavaPath(p) {
+  let s = p.replace(/\{([^}:]+)(:[^}]*)?\}/g, "{$1}");
+  if (s && !s.startsWith("/")) s = "/" + s;
+  if (s.length > 1 && s.endsWith("/")) s = s.slice(0, -1);
+  return s;
+}
+
+const METHOD_ANNOTATIONS = {
+  GetMapping: "GET",
+  PostMapping: "POST",
+  PutMapping: "PUT",
+  DeleteMapping: "DELETE",
+  PatchMapping: "PATCH",
+};
+
+function extractSpringRoutes() {
+  const routes = new Map(); // path → Set(method)
+  const add = (path, method) => {
+    const key = normalizeJavaPath(path);
+    if (!routes.has(key)) routes.set(key, new Set());
+    routes.get(key).add(method);
+  };
+  for (const file of javaFiles(join(REPO_ROOT, SERVER_JAVA_ROOT))) {
+    const src = readFileSync(file, "utf8");
+    if (!/@(RestController|Controller)\b/.test(src)) continue;
+    // 类级 @RequestMapping：取 @RestController 之后、class 声明之前的那一个
+    const classAnn = src.match(/@RequestMapping\s*\(([^)]*)\)[\s\S]{0,400}?\b(?:public\s+)?(?:final\s+)?class\b/);
+    const bases = classAnn ? mappingValue(classAnn[1]) : [""];
+    for (const [ann, method] of Object.entries(METHOD_ANNOTATIONS)) {
+      const re = new RegExp("@" + ann + "\\s*(?:\\(([^)]*)\\))?", "g");
+      let m;
+      while ((m = re.exec(src)) !== null) {
+        for (const base of bases) for (const sub of mappingValue(m[1])) add(base + sub, method);
+      }
+    }
+    // 方法级 @RequestMapping(value=..., method = RequestMethod.X)
+    const reReq = /@RequestMapping\s*\(([^)]*method\s*=\s*RequestMethod\.[A-Z]+[^)]*)\)/g;
+    let m2;
+    while ((m2 = reReq.exec(src)) !== null) {
+      const args = m2[1];
+      const verbs = [...args.matchAll(/RequestMethod\.([A-Z]+)/g)].map((x) => x[1]);
+      for (const base of bases) for (const sub of mappingValue(args)) for (const v of verbs) add(base + sub, v);
+    }
+  }
+  return routes;
+}
+
 // ── 3. 比对 ─────────────────────────────────────────────────────────────────
 
 function matchPath(callPath, paths) {
@@ -188,6 +279,30 @@ function main() {
   }
   const orphans = [...paths].filter((p) => !hitPaths.has(p));
 
+  // 前端调的每个 URL，server 里必须真有 handler（openapi 是手写文档，挡不住这一类）。
+  // Spring 路由带 /api 基址，openapi/前端路径不带 —— 比对前先削掉。
+  const springRoutes = extractSpringRoutes();
+  const serverPaths = new Map();
+  for (const [p, verbs] of springRoutes) {
+    const rel = p.startsWith("/api/") ? p.slice(4) : p.startsWith("/api") ? p.slice(4) || "/" : null;
+    if (rel === null) continue;
+    if (!serverPaths.has(rel)) serverPaths.set(rel, new Set());
+    for (const v of verbs) serverPaths.get(rel).add(v);
+  }
+  const serverPathSet = new Set(serverPaths.keys());
+  const notImplemented = [];
+  for (const c of calls) {
+    if (SERVER_CHECK_EXEMPT.some((re) => re.test(c.path))) continue;
+    const hit = matchPath(c.path, serverPathSet);
+    if (!hit) {
+      notImplemented.push({ ...c, why: "no handler" });
+      continue;
+    }
+    if (!serverPaths.get(hit).has(c.method)) {
+      notImplemented.push({ ...c, why: `handler exists but not ${c.method} (has ${[...serverPaths.get(hit)].sort().join(",")})` });
+    }
+  }
+
   console.log("─".repeat(72));
   console.log("API contract check — monorepo");
   console.log(
@@ -197,6 +312,24 @@ function main() {
     `  Spec    : ${paths.size} paths in specs/openapi.yaml (${deprecated.size} deprecated)`,
   );
   console.log("─".repeat(72));
+
+  // server 里没有 handler 的前端调用。**目前是告警不是失败** —— 存量 24 条（多为 web-music
+  // 只在 mock 下用的页面），要先分批清完才谈得上做成硬门；新代码不该再往这里加。
+  // 它挡的正是 openapi 挡不住的那一类：文档里写了一条服务端根本没实现的路径 ——
+  // 画布轮询视频任务的 `/me/material/videos/jobs/{id}` 就是这么上线的（v0.177）。
+  if (!notImplemented.length) {
+    console.log("\n✓  Every apiFetch URL resolves to a real Spring handler.");
+  } else {
+    console.log(`\n⚠  No server handler for these apiFetch URLs (${notImplemented.length}) —`);
+    console.log("   前端调得到、服务端接不住。openapi 里有 ≠ controller 里有。");
+    const seen = new Set();
+    for (const n of notImplemented) {
+      const k = `${n.method} ${n.path}  [${n.why}]`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      console.log(`     ${k}  ← ${n.file}`);
+    }
+  }
 
   if (missingPath.length === 0) {
     console.log("\n✓  Every apiFetch URL has a matching openapi path.");
