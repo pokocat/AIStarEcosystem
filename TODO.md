@@ -13,8 +13,18 @@
 
 - [ ] **搬进来的 1.7 万行从此我们维护**：上游更新要手动合。改 `src/canvas/` 里的文件要克制、
       改了在改动处留注释说明原因（方便日后跟上游 diff）；胶水一律放 `src/canvas-bridge/`。
-- [ ] **两套 UI 库共存**（antd 6 在画布目录内，shadcn 在其余）：目前圈得住，但如果将来画布外
-      也开始用 antd 就会失控。定期确认 `grep -rl "from \"antd\"" src | grep -v "^src/canvas"` 为空。
+- [ ] **两套 UI 库共存**（antd 6 在画布目录内，shadcn 在其余）：**v0.159 重新量过，规模比原先描述的小得多** ——
+      shadcn 在这个 app 里只剩 `projects/page.tsx` 一个 `AlertDialog`（列表页，周围没有 antd，无层级风险）；
+      画布外的其余界面用的是 Tailwind + 我们自己的 `var(--*)` token，本来就不是 shadcn 组件。
+      v0.159 已把 `publish-dialog` 从 shadcn `Dialog` 换成 antd `Modal` —— 它是**从画布里**调起的，
+      而画布的 Modal 是 z-1000、气泡 z-1200，shadcn 的 Dialog 是 z-50，同屏会被压在下面。
+      **结论：不要「全改 antd」**，那要重写 6 个 app + admin 共 48 个共享组件，换不来任何用户可见的好处。
+      要守的是反方向：定期确认 `grep -rl "from \"antd\"" src | grep -v "^src/canvas"` 只剩 `publish-dialog.tsx`。
+- [ ] **`canvas-bridge/api.ts` 没有 mock 分支**（v0.159 发现，dev-only）：`NEXT_PUBLIC_USE_MOCK=1` 时
+      `src/api/ip-studio.ts` 走 mock，但画布自己的调用（models / uploads / **sign** / generate / video）
+      一律直连真服务端 —— 没起后端时控制台刷 501，且**图的重签在 mock 下必然失败**，
+      表现就是 dev 里「有的图好的有的裂」。生产不受影响（mock 关着）。
+      至少让 `fetchModels` / `signKeys` 在 mock 下返回空结果而不是报错。
 - [ ] **画布的看图对话（`requestImageQuestion`）还没接**：现在明确报错。要接就在
       `canvas-bridge/generation.ts` 调服务端的多模态 chat。
 - [ ] **音频生成没接**：同上，`canvas-bridge/audio.ts` 现在明确报错，不产静音占位（§8.0）。

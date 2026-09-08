@@ -13,9 +13,12 @@
 import * as React from "react";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Send } from "lucide-react";
 import CanvasPage from "@/canvas/pages/canvas/project";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
+import { PublishDialog } from "@/components/publish/publish-dialog";
+import { IpStudioApi } from "@/api";
+import { AIAVATAR_URL } from "@/lib/external";
 import "@/canvas-bridge/i18n";
 
 const SAVE_LABEL: Record<string, string> = {
@@ -26,7 +29,8 @@ const SAVE_LABEL: Record<string, string> = {
 };
 
 function Host({ projectId }: { projectId: string }) {
-  const { state, error, saveState } = useProjectSync(projectId);
+  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId } = useProjectSync(projectId);
+  const [publishOpen, setPublishOpen] = React.useState(false);
 
   if (state === "loading") {
     return (
@@ -56,18 +60,58 @@ function Host({ projectId }: { projectId: string }) {
   return (
     <div className="h-full relative">
       <CanvasPage />
-      {saveState !== "idle" && (
-        <span
-          className="absolute top-3 right-4 z-50 px-2.5 py-1 rounded-full text-[11.5px] font-semibold pointer-events-none max-w-[60vw] truncate"
-          style={
-            saveState === "failed" || saveState === "conflict"
-              ? { background: "var(--err-soft)", color: "var(--err)" }
-              : { background: "var(--surface-2)", color: "var(--ink-3)" }
-          }
-        >
-          {SAVE_LABEL[saveState]}
-        </span>
-      )}
+
+      {/* 画布右上角这一条是我们加的，不在搬来的画布里 —— 保持 src/canvas 干净，
+          将来跟上游合并时这块不会冲突。 */}
+      <div className="absolute top-3 right-4 z-50 flex items-center gap-2">
+        {saveState !== "idle" && (
+          <span
+            className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold pointer-events-none max-w-[40vw] truncate"
+            style={
+              saveState === "failed" || saveState === "conflict"
+                ? { background: "var(--err-soft)", color: "var(--err)" }
+                : { background: "var(--surface-2)", color: "var(--ink-3)" }
+            }
+            title={SAVE_LABEL[saveState]}
+          >
+            {SAVE_LABEL[saveState]}
+          </span>
+        )}
+
+        {publishedAvatarId ? (
+          // 已发布就别再给一个会 409 的按钮 —— 直接给能用的那条路：去资产库看它
+          <a
+            href={`${AIAVATAR_URL}/assets/${publishedAvatarId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[46vw]"
+            style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
+            title={`已发布为 ${publishedAvatarId}，点开去数字资产平台查看`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">已发布 · {publishedAvatarId}</span>
+          </a>
+        ) : (
+          <button
+            onClick={() => setPublishOpen(true)}
+            className="h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95"
+            style={{ background: "var(--action)", color: "var(--on-action)" }}
+          >
+            <Send className="w-3.5 h-3.5" />
+            发布
+          </button>
+        )}
+      </div>
+
+      <PublishDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        onPublish={async (payload) => {
+          const res = await IpStudioApi.publishProject(projectId, payload);
+          setPublishedAvatarId(res.avatarId);
+          return res;
+        }}
+      />
     </div>
   );
 }

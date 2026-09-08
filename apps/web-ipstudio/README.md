@@ -101,6 +101,38 @@ https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/character-a
 
 ## 版本日志
 
+### v0.159（2026-09-08）— 修断掉的发布入口 + 发布弹窗改用 antd
+
+**发布按钮在 v0.157 之后就没有了。** 换画布时旧画布页退役，挂在它上面的发布入口一起没了，
+而 `PublishDialog` 和 `publishProject()` 两个文件都还在、都能编译、`typecheck` 全绿 ——
+只是再没有任何地方引用它们。于是「造形象 → 登记资产 → 对外发布」这条链在生产上断了一版：
+画布里能把 IP 做完，但发不出去。**死代码不会报错，它只是安静地不存在**，
+编译器查不出「组件没人挂」。
+
+- **发布挂回画布右上角**，与保存状态同一条：未发布给「发布」，已发布直接给
+  「已发布 · DH-xxxx」链去数字资产平台 —— 不给一个点了必然 409 的按钮。
+- **这块 UI 放在 `components/canvas-host.tsx`，不放进 `src/canvas/`**：
+  搬来的画布尽量保持原样，日后跟上游 diff 时这块不会冲突。
+- **新增 `components/publish/publish-wiring.test.ts`**：结构测试，钉死「弹窗有人挂、
+  按钮真的调服务端、已发布不再给发布按钮」。守的不是某个函数的行为，是**模块之间还连着**。
+
+**发布弹窗从 shadcn `Dialog` 换成 antd `Modal`。** 它是**从画布里**调起的，而画布整套用 antd：
+Modal 是 z-1000、气泡是 z-1200，shadcn 的 Dialog 是 z-50 —— 同屏时会被压在下面。
+层级交给同一套 modal 管理器最省事。弹窗**内容一行没改**（仍是我们自己的 `var(--*)` token 样式），
+只换外壳。同时：
+
+- 修掉 antd 6 已废弃的 `maskClosable` → `mask={{ closable }}`。
+- 发布在途时遮罩与 Esc 都关不掉：关了也停不下已经发出去的请求，
+  用户只会以为没发成功而重来一次（服务端会 409，但那是让人困惑的报错）。
+
+**顺带把「两套 UI 库共存」这个说法量准了**：shadcn 在这个 app 里只剩 `projects/page.tsx`
+一个 `AlertDialog`（列表页，周围没有 antd，没有层级风险）；画布外的其余界面用的是
+Tailwind + 我们自己的 token，本来就不是 shadcn 组件。**所以「全改 antd」不做** ——
+那要重写 6 个 app + admin 共 48 个共享组件，换不来任何用户可见的好处。
+
+门禁：`typecheck:all` + build（8 路由）+ vitest **28**（新增 6）+ `check:api-contract` 全绿；
+浏览器实测发布弹窗（标题 / 说明 / 预填资产名 / 主形象选中 / 页脚两键）。**无 server 变更。**
+
 ### v0.158（2026-09-07）— Codex 评审六条全修
 
 换画布那一版被独立评审逮到六个问题，都是真的。按严重度：

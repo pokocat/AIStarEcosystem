@@ -6,9 +6,11 @@
 import * as React from "react";
 import { AlertTriangle, Check, CheckCircle2, ExternalLink, IdCard, Loader2, Send } from "lucide-react";
 import type { IpNode, IpPublishResult } from "@ai-star-eco/types";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from "@ai-star-eco/ui/ui/dialog";
+// 用 antd 的 Modal 而不是 @ai-star-eco/ui 的 Dialog：这个弹窗是**从画布里**调起的，
+// 而画布（搬来的 infinite-canvas）整套用 antd —— 它的 Modal 是 z-1000、气泡是 z-1200，
+// shadcn 的 Dialog 是 z-50，同屏时会被压在下面。层级交给同一套 modal 管理器最省事。
+// 弹窗里面的内容仍然是我们自己的 token 样式，antd 只提供外壳。
+import { Modal } from "antd";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { currentProjectId } from "@/canvas-bridge/api";
@@ -124,20 +126,78 @@ export function PublishDialog({
     }
   };
 
+  const desc = (p: string) => (
+    <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: "var(--ink-3)" }}>{p}</p>
+  );
+
+  const title = result ? (
+    <span className="flex items-center gap-2 text-[14px]">
+      <CheckCircle2 style={{ color: "var(--ok)", width: 18, height: 18 }} />
+      发布成功
+    </span>
+  ) : (
+    <span className="text-[14px]">发布到数字资产库</span>
+  );
+
+  const footer = result ? (
+    <div className="flex items-center justify-end gap-2">
+      <a
+        href={`${AIAVATAR_URL}/assets/${result.avatarId}`}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:brightness-95"
+        style={{ background: "var(--action)", color: "var(--on-action)" }}
+      >
+        去数字资产平台查看 <ExternalLink className="w-3.5 h-3.5" />
+      </a>
+      <button
+        onClick={() => onOpenChange(false)}
+        className="h-9 px-4 rounded-lg text-[12.5px] font-semibold"
+        style={{ border: "1px solid var(--line-2)", color: "var(--ink)" }}
+      >
+        留在画布
+      </button>
+    </div>
+  ) : (
+    <div className="flex items-center justify-end gap-2">
+      <button
+        onClick={() => onOpenChange(false)}
+        disabled={submitting}
+        className="h-9 px-4 rounded-lg text-[12.5px] font-semibold disabled:opacity-50"
+        style={{ border: "1px solid var(--line-2)", color: "var(--ink)" }}
+      >
+        取消
+      </button>
+      <button
+        onClick={() => void submit()}
+        disabled={submitting || ready.length === 0}
+        className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:brightness-95 disabled:opacity-60"
+        style={{ background: "var(--action)", color: "var(--on-action)" }}
+      >
+        {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+        确认发布
+      </button>
+    </div>
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        {result ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <CheckCircle2 className="w-4.5 h-4.5" style={{ color: "var(--ok)", width: 18, height: 18 }} />
-                发布成功
-              </DialogTitle>
-              <DialogDescription>
-                形象与造型已经登记进数字资产库，可以在各条业务线里引用了。
-              </DialogDescription>
-            </DialogHeader>
+    <Modal
+      open={open}
+      // 发布在途时不让点遮罩关掉 —— 关了也停不下已经发出去的请求，
+      // 用户只会以为没发成功而重来一次（服务端会 409，但那是让人困惑的报错）
+      onCancel={() => { if (!submitting) onOpenChange(false); }}
+      mask={{ closable: !submitting }}   // antd 6：maskClosable 已废弃
+      keyboard={!submitting}
+      title={title}
+      footer={footer}
+      width={480}
+      centered
+      destroyOnHidden
+    >
+      {result ? (
+        <>
+          {desc("形象与造型已经登记进数字资产库，可以在各条业务线里引用了。")}
+          <div className="space-y-3">
             <div className="p-3.5 rounded-xl" style={{ background: "var(--ok-soft)" }}>
               <div className="field-label mb-1" style={{ color: "var(--ok)" }}>数字人编号</div>
               <div className="text-[15px] font-bold mb-1" style={{ color: "var(--ok)", fontFamily: "var(--font-mono)" }}>
@@ -170,34 +230,12 @@ export function PublishDialog({
                 </div>
               )}
             </div>
-            <DialogFooter>
-              <a
-                href={`${AIAVATAR_URL}/assets/${result.avatarId}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:brightness-95"
-                style={{ background: "var(--action)", color: "var(--on-action)" }}
-              >
-                去数字资产平台查看 <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-              <button
-                onClick={() => onOpenChange(false)}
-                className="h-9 px-4 rounded-lg text-[12.5px] font-semibold"
-                style={{ border: "1px solid var(--line-2)", color: "var(--ink)" }}
-              >
-                留在画布
-              </button>
-            </DialogFooter>
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>发布到数字资产库</DialogTitle>
-              <DialogDescription>
-                只有已经选好定稿图的形象才能发布。发布本身不花积分。
-              </DialogDescription>
-            </DialogHeader>
-
+          </div>
+        </>
+      ) : (
+        <>
+          {desc("只有已经选好定稿图的形象才能发布。发布本身不花积分。")}
+          <div className="space-y-3">
             {ready.length === 0 ? (
               <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background: "var(--warn-soft)" }}>
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--warn)" }} />
@@ -302,29 +340,9 @@ export function PublishDialog({
                 {error}
               </p>
             )}
-
-            <DialogFooter>
-              <button
-                onClick={() => onOpenChange(false)}
-                disabled={submitting}
-                className="h-9 px-4 rounded-lg text-[12.5px] font-semibold disabled:opacity-50"
-                style={{ border: "1px solid var(--line-2)", color: "var(--ink)" }}
-              >
-                取消
-              </button>
-              <button
-                onClick={() => void submit()}
-                disabled={submitting || ready.length === 0}
-                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-lg text-[12.5px] font-bold transition hover:brightness-95 disabled:opacity-60"
-                style={{ background: "var(--action)", color: "var(--on-action)" }}
-              >
-                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                确认发布
-              </button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }

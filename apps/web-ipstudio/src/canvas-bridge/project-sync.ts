@@ -52,6 +52,11 @@ export function useProjectSync(projectId: string) {
   const [state, setState] = React.useState<SyncState>("loading");
   const [error, setError] = React.useState<string | null>(null);
   const [saveState, setSaveState] = React.useState<SaveState>("idle");
+  /**
+   * 发布状态 —— 画布上的「发布」按钮据此显示「发布到资产库」还是「已发布」。
+   * 服务端对重复发布返回 409，但按钮得在点之前就说清楚，而不是让人点了才知道。
+   */
+  const [publishedAvatarId, setPublishedAvatarId] = React.useState<string | null>(null);
   const loadedRef = React.useRef(false);
   /** 加载时那一版的 updatedAt —— 保存时带回去，服务端据此拒绝覆盖别处的编辑。 */
   const baseRef = React.useRef<string | null>(null);
@@ -64,6 +69,7 @@ export function useProjectSync(projectId: string) {
     let alive = true;
     loadedRef.current = false;
     setState("loading");
+    setPublishedAvatarId(null);
     setCurrentProjectId(projectId);
 
     void IpStudioApi.getProject(projectId)
@@ -75,6 +81,7 @@ export function useProjectSync(projectId: string) {
           hydrated: true,
         });
         baseRef.current = p.updatedAt ?? null;
+        setPublishedAvatarId(p.publishedAvatarId ?? null);
         loadedRef.current = true;
         setState("ready");
       })
@@ -143,5 +150,5 @@ export function useProjectSync(projectId: string) {
     return unsub;
   }, [projectId]);
 
-  return { state, error, saveState };
+  return { state, error, saveState, publishedAvatarId, setPublishedAvatarId };
 }
