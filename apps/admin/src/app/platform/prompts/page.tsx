@@ -56,6 +56,8 @@ const KEY_LABEL: Record<string, string> = {
   "dap.image_warp": "数字人 · 几何精调（云端）",
   "dap.image_look": "数字人 · 造型生成",
   "dap.image_atlas": "数字人 · 标准图集",
+  "dap.ip_identity": "AI IP 工作台 · 人物特征卡抽取",
+  "dap.ip_canvas_image": "AI IP 工作台 · 画布出图",
   "dap.image_deriv": "数字人 · 衍生图（表情/场景/服装）",
   "dap.video_orbit": "数字人 · 运镜视频",
 };
@@ -85,6 +87,8 @@ const KEY_DESCRIPTION: Record<string, string> = {
   "dap.image_warp": "数字人几何精调和局部修正，用于面部比例、姿态和局部结构调整。",
   "dap.image_look": "生成数字人的造型方案，覆盖妆发、服装、气质和场景适配。",
   "dap.image_atlas": "生成数字人标准图集，用于头像、半身、全身和多角度资产沉淀。",
+  "dap.ip_identity": "从用户上传的照片里抽出人物特征卡，后续每张图都以它锁住同一个人。",
+  "dap.ip_canvas_image": "AI IP 工作台画布上的出图提示词模板，用户在节点里写的那段话按它拼进去。",
   "dap.image_deriv": "生成数字人衍生图，覆盖表情、场景、服装和营销素材延展。",
   "dap.video_orbit": "生成数字人环绕运镜视频，用于资产展示、发布预览和短视频素材。",
 };
