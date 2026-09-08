@@ -88,3 +88,15 @@ describe("视频任务轮询路径", () => {
     expect(urls.some((u) => u.includes("/me/material/"))).toBe(false);
   });
 });
+
+// 名片一键建卡：body 必须给对象。共享 apiFetch 自己会序列化，
+// 调用方再 JSON.stringify 一遍就是双重编码 —— 服务端 500，前端只显示
+// 「服务器处理请求失败」（v0.178 线上踩过）。
+describe("一键建数字名片", () => {
+  it("body 传对象，不自己 stringify", async () => {
+    const src = readFileSync(join(__dirname, "../api/assets.ts"), "utf8");
+    const call = src.slice(src.indexOf("/v1/card/from-avatar"));
+    expect(call).toContain("body: { avatarId }");
+    expect(call.slice(0, 200)).not.toContain("JSON.stringify");
+  });
+});

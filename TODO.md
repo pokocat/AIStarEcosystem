@@ -1081,3 +1081,11 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   `/me/person-models`、`/me/digital-person/*`（多半是只在 mock 下用的页面），
   `/film/dramas` 的 GET-by-id / POST / PATCH / DELETE，以及 `DELETE /celebrity/videos/{id}`。
   逐条判定「补实现」还是「删前端调用」，清完把告警改成 fail。
+- [x] ~~「做成数字名片」500「服务器处理请求失败」~~ **v0.178 修复**，2026-09-08：
+  `body: JSON.stringify({ avatarId })` 双重编码 —— 共享 `apiFetch` 本来就序列化。
+  同名的 `web-aiavatar/src/proto/api.ts#apiFetch` 收原生 RequestInit，在那边 stringify 才对，
+  抄过来就错。已改调用点 + 共享 apiFetch 对字符串 body 原样发 + 补 api-client 单测。
+- [ ] **两个同名 `apiFetch` 语义相反，迟早还会抄混**。共享包那个收 `body: unknown`（自己序列化），
+  `web-aiavatar/src/proto/api.ts` 那个收 `RequestInit`（调用方序列化）。
+  aiavatar 迁到共享 client（连带 `authFetch` / `apiUpload`）之前，至少把 proto 那个改名
+  （如 `rawApiFetch`），让抄错时编译期就炸。

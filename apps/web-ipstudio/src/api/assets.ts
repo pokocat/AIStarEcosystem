@@ -63,9 +63,14 @@ export async function createCardFromAvatar(avatarId: string): Promise<CardSummar
       publishedAt: null, updatedAt: new Date().toISOString(),
     } satisfies CardSummary);
   }
+  // body 给**对象**，不要自己 JSON.stringify —— 共享的 apiFetch 会替你序列化，
+  // 先 stringify 就成了「把一个 JSON 字符串再序列化一遍」，服务端收到的是一个字符串，
+  // Jackson 直接 "no String-argument constructor" 500（v0.178 踩过）。
+  // web-aiavatar 的 proto/api.ts 里那个同名 apiFetch 收的是原生 RequestInit，
+  // 在那边 JSON.stringify 才是对的 —— 两个同名函数语义不同，容易抄混。
   return apiFetch<CardSummary>("/v1/card/from-avatar", {
     method: "POST",
-    body: JSON.stringify({ avatarId }),
+    body: { avatarId },
   });
 }
 

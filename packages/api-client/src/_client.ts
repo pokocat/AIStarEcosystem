@@ -204,7 +204,15 @@ export async function apiFetch<T>(
       ...(appCode ? { "X-App-Code": appCode } : {}),
       ...(headers || {}),
     },
-    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
+    // 已经是字符串的 body 原样发，不再 stringify 一遍（v0.178）。
+    //
+    // 这一层本来就负责序列化，所以调用方给对象就行；但「顺手写了 JSON.stringify」
+    // 是很自然的手误 —— 尤其 web-aiavatar 的 proto/api.ts 里有个同名 apiFetch，
+    // 它收的是原生 RequestInit，在那边 stringify 才是对的。抄过来就双重编码：
+    // 服务端收到一个 JSON 字符串而不是对象，Jackson 报
+    // "no String-argument constructor"，前端只看到一句「服务器处理请求失败」。
+    // 双重编码没有任何正当用途，所以这里直接吸收掉，而不是留一个静默的坑。
+    body: body === undefined ? undefined : isFormData ? body : typeof body === "string" ? body : JSON.stringify(body),
     signal,
     credentials: "include",
   });
@@ -342,7 +350,8 @@ export async function apiFetchPaginated<T>(
       ...(appCode ? { "X-App-Code": appCode } : {}),
       ...(headers ?? {}),
     },
-    body: body == null ? undefined : JSON.stringify(body),
+    // 同上（v0.178）：字符串 body 原样发，不做二次序列化
+    body: body == null ? undefined : typeof body === "string" ? body : JSON.stringify(body),
     signal,
   });
 
