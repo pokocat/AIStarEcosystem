@@ -12,6 +12,7 @@ import com.aistareco.aep.ipstudio.model.IpProject;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpProjectRepository;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
+import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -60,6 +61,7 @@ public class IpProjectService {
     private final IpRunRepository runRepo;
     private final IpCatalogService catalog;
     private final FileStorageService storage;
+    private final com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs;
     private final IpStudioProperties props;
     private final ObjectMapper om;
 
@@ -68,12 +70,14 @@ public class IpProjectService {
                            IpCatalogService catalog,
                            FileStorageService storage,
                            IpStudioProperties props,
+                           com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs,
                            ObjectMapper om) {
         this.projectRepo = projectRepo;
         this.runRepo = runRepo;
         this.catalog = catalog;
         this.storage = storage;
         this.props = props;
+        this.videoJobs = videoJobs;
         this.om = om;
     }
 
@@ -265,17 +269,46 @@ public class IpProjectService {
     boolean ownsAssetKey(String userId, String key) {
         if (userId == null || key == null || key.isBlank()) return false;
         String k = key.trim();
-        return !k.startsWith("/") && !k.contains("\\") && !k.contains("..")
-                && !k.contains("\n") && !k.contains("\r")
-                && (k.startsWith(keyPrefix(CATEGORY_SOURCE, userId)) || k.startsWith(keyPrefix(CATEGORY_GEN, userId)));
+        if (k.startsWith("/") || k.contains("\\") || k.contains("..") || k.contains("\n") || k.contains("\r")) {
+            return false;
+        }
+        // 图片：key 里带 uid，看前缀就够了
+        if (k.startsWith(keyPrefix(CATEGORY_SOURCE, userId)) || k.startsWith(keyPrefix(CATEGORY_GEN, userId))) {
+            return true;
+        }
+        // 视频：key 是 `material-videos/<jobId>/video.mp4`（可能带 OSS key-prefix），**里面没有 uid** ——
+        // 光看前缀一律判成「不是本人的」，于是画布里的视频节点重签不出地址，
+        // 刷新之后 content 是空的、视频就此消失（v0.180 线上实测，日志里每次加载都刷两条
+        // 「文档里出现非本人资产 key」）。这里改成按 jobId 回查任务的真实归属 ——
+        // 不是放宽，是换成一个真的能判归属的办法：owner 必须是本人、分区必须是 ipstudio。
+        return ownsVideoKey(userId, k);
     }
+
+    /** `material-videos/<jobId>/…` → 回查 MaterialVideoJob 确认 owner + 分区。 */
+    boolean ownsVideoKey(String userId, String key) {
+        var m = VIDEO_KEY.matcher(key);
+        if (!m.matches()) return false;
+        return videoJobs.findById(m.group(1))
+                .filter(j -> userId.equals(j.getOwnerUserId()))
+                .filter(j -> MaterialVideoJobService.APP_IPSTUDIO.equals(j.getApp()))
+                .isPresent();
+    }
+
+    /**
+     * 成片的存储键。开头那个可选段是 OSS 的 key-prefix（生产是 {@code media/}）——
+     * 它来自 {@code CdnUrlSigner#keyOf} 从 URL 反抽，抽出来是**带前缀**的对象键；
+     * 而图片那边的 key 是不带前缀的。两种都收，免得为了一个前缀再把配置传进来。
+     */
+    private static final java.util.regex.Pattern VIDEO_KEY =
+            java.util.regex.Pattern.compile("^(?:[^/]+/)?material-videos/([^/]+)/[^/]+$");
 
     public String requireOwnedAssetKey(String userId, String key) {
         if (key == null || key.isBlank()) return null;
         String k = key.trim();
-        boolean shapeOk = !k.startsWith("/") && !k.contains("\\") && !k.contains("..")
-                && !k.contains("\n") && !k.contains("\r")
-                && (k.startsWith(keyPrefix(CATEGORY_SOURCE, userId)) || k.startsWith(keyPrefix(CATEGORY_GEN, userId)));
+        // 判定只有一处：{@link #ownsAssetKey}。此前这里抄了一份同样的前缀判断，
+        // v0.180 给成片 key 补归属查询时只改了那一处，这条路径照旧拒绝 ——
+        // 同一条规则写两遍，改一遍就是这个下场。
+        boolean shapeOk = ownsAssetKey(userId, k);
         if (!shapeOk) {
             log.warn("[ipstudio] 拒绝非法资产 key owner={} key={}", userId, abbreviate(k));
             throw BusinessException.badRequest("IP_ASSET_KEY_INVALID",

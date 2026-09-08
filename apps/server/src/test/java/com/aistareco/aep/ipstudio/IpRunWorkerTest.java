@@ -66,7 +66,7 @@ class IpRunWorkerTest {
         IpStudioFixtures.Projects projects = new IpStudioFixtures.Projects();
         storage = IpStudioFixtures.storage();
         IpProjectService projectService = new IpProjectService(projects.repo, runs.repo,
-                new IpCatalogService(OM), storage, IpStudioFixtures.props(), OM);
+                new IpCatalogService(OM), storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM);
 
         multimodal = mock(DapMultimodalClient.class);
         imageInput = mock(DapImageInput.class);

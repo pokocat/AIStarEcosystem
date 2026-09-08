@@ -60,7 +60,7 @@ class IpPublishServiceTest {
         versionCalls = new ArrayList<>();
 
         IpProjectService projectService = new IpProjectService(projects.repo, runs.repo,
-                new IpCatalogService(OM), IpStudioFixtures.storage(), IpStudioFixtures.props(), OM);
+                new IpCatalogService(OM), IpStudioFixtures.storage(), IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM);
 
         DapAvatarService avatars = mock(DapAvatarService.class);
         when(avatars.uniqueId(anyString())).thenReturn("DH-51234");

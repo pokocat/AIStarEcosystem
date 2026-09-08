@@ -73,7 +73,7 @@ class IpRunServiceTest {
         storage = IpStudioFixtures.storage();
         IpCatalogService catalog = new IpCatalogService(OM);
         projectService = new IpProjectService(projects.repo, runs.repo, catalog, storage,
-                IpStudioFixtures.props(), OM);
+                IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM);
 
         prompts = mock(PromptService.class);
         when(prompts.resolve(anyString())).thenAnswer(inv -> resourcePrompt(inv.getArgument(0, String.class)));

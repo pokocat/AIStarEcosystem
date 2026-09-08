@@ -1157,3 +1157,18 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   没有确认「改完之后这条路真的能走通」。结果第一层修好了，底下第二层（列宽）立刻顶上来，
   用户又白试一次。**日志里的那条错 ≠ 唯一的错**；修完至少要把这条链上后续每一步都过一遍
   （这次就是：body 能解析了 → 那 insert 能成吗？→ 查列类型，两分钟的事）。
+- [x] ~~画布里生成的视频一刷新就没了~~ **v0.180 修复**，2026-09-08：成片 key
+  （`material-videos/<jobId>/video.mp4`）里没有 uid，过不了只认前缀的归属闸，出 wire 不重签，
+  `content` 为空 → 节点上什么都不剩。改为按 jobId 回查 `MaterialVideoJob` 验 owner + 分区。
+  同一条规则此前写了两遍（`ownsAssetKey` / `requireOwnedAssetKey`），已收敛到一处。
+- [ ] **动态名片：把画布视频接到名片页**（用户 2026-09-08 提出；不是回归，是从来没接过）。
+  现状：`IpPublishService` 发布只登记 `DapAvatar` + `DapLook`（图片），画布视频不进数字资产；
+  `DapAvatarRefResolver` 的 `deriv:` 只解析图片类 kind；名片类型里 `figure.motionUrl` /
+  `figure.videoUrl` / `tier=motion|voice` 有字段，但没有任何地方写入或渲染。
+  要做需要四层一起：
+    1. 发布时把画布的视频节点登记成 `DapDerivative(kind="video", fileKey=成片 key, thumbKey=封面)`；
+    2. `createFromAvatar` / 名片编辑页让用户选一条视频，doc 里存 `figure.ref = "deriv:<id>"` 或
+       单独的 `figure.motionRef`，**只存引用不存地址**（§4.7.7）；
+    3. `CardService.resolveFigure` 支持 video 类 deriv，解析出签名地址 + 封面；
+    4. `card-view` 按 tier 渲染 `<video autoplay muted loop playsinline poster=…>`，
+       首帧封面兜底、加载失败回落静态图（名片是对外的门面，不能因为一条视频拉不动就空着）。

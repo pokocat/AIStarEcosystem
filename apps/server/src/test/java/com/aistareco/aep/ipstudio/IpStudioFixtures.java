@@ -317,4 +317,25 @@ final class IpStudioFixtures {
             throw new IllegalStateException(e);
         }
     }
+
+    /**
+     * 视频任务仓库的替身。画布里的成片 key 是 `material-videos/<jobId>/video.mp4` ——
+     * key 里没有 uid，归属只能回查任务（v0.180）。默认空仓：任何视频 key 都判「不是本人的」，
+     * 需要放行的用例自己 {@link #withVideoJob} 塞一条。
+     */
+    static com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs() {
+        var repo = mock(com.aistareco.aep.repository.MaterialVideoJobRepository.class);
+        when(repo.findById(org.mockito.ArgumentMatchers.anyString())).thenReturn(java.util.Optional.empty());
+        return repo;
+    }
+
+    /** 往替身里塞一条属于 owner 的 ipstudio 成片任务。 */
+    static void withVideoJob(com.aistareco.aep.repository.MaterialVideoJobRepository repo,
+                             String jobId, String ownerUserId, String app) {
+        var job = new com.aistareco.aep.model.MaterialVideoJob();
+        job.setId(jobId);
+        job.setOwnerUserId(ownerUserId);
+        job.setApp(app);
+        when(repo.findById(jobId)).thenReturn(java.util.Optional.of(job));
+    }
 }

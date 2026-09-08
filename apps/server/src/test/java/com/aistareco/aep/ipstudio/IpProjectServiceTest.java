@@ -11,6 +11,7 @@ import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import com.aistareco.aep.ipstudio.config.IpStudioProperties;
@@ -42,14 +43,16 @@ class IpProjectServiceTest {
     private IpStudioFixtures.Runs runs;
     private FileStorageService storage;
     private IpProjectService svc;
+    private com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs;
 
     @BeforeEach
     void setUp() {
         projects = new IpStudioFixtures.Projects();
         runs = new IpStudioFixtures.Runs();
         storage = IpStudioFixtures.storage();
+        videoJobs = IpStudioFixtures.videoJobs();
         svc = new IpProjectService(projects.repo, runs.repo, new IpCatalogService(OM), storage,
-                IpStudioFixtures.props(), OM);
+                IpStudioFixtures.props(), videoJobs, OM);
     }
 
     // ── 创建 ─────────────────────────────────────────────────
@@ -397,7 +400,7 @@ class IpProjectServiceTest {
         IpStudioProperties tight = IpStudioFixtures.props();
         tight.setUploadMaxDimension(64);
         IpProjectService tightSvc = new IpProjectService(projects.repo, runs.repo,
-                new IpCatalogService(OM), storage, tight, OM);
+                new IpCatalogService(OM), storage, tight, IpStudioFixtures.videoJobs(), OM);
 
         BusinessException e = assertThrows(BusinessException.class, () -> tightSvc.upload(USER,
                 new MockMultipartFile("file", "huge.png", "image/png", pngBytes(200, 40))));
@@ -473,5 +476,76 @@ class IpProjectServiceTest {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         javax.imageio.ImageIO.write(img, "png", bos);
         return bos.toByteArray();
+    }
+
+    // ── 成片 key 的归属（v0.180）───────────────────────────────
+    //
+    // 线上实测：画布里生成的视频**一刷新就没了**。文档里 storageKey 存的是
+    // `media/material-videos/<jobId>/video.mp4`，而归属闸只认 `ipstudio_gen/<uid>/` 前缀 ——
+    // 视频 key 里根本没有 uid，于是每次加载都被判成「非本人资产」跳过重签，
+    // content 是空的，节点上什么都没有。日志里每次加载刷两条 WARN。
+    //
+    // 修法不是放宽前缀，是换成真的能判归属的办法：按 jobId 回查任务，
+    // owner 必须是本人、分区必须是 ipstudio。
+
+    @Test
+    @DisplayName("成片 key：本人的 ipstudio 任务 —— 认（带不带 OSS key-prefix 都认）")
+    void ownsOwnIpstudioVideoKey() {
+        IpStudioFixtures.withVideoJob(videoJobs, "mvj_abc", USER, "ipstudio");
+        assertTrue(svc.signOwnedKeys(USER, java.util.List.of("material-videos/mvj_abc/video.mp4")).containsKey("material-videos/mvj_abc/video.mp4"));
+        assertTrue(svc.signOwnedKeys(USER, java.util.List.of("media/material-videos/mvj_abc/video.mp4")).containsKey("media/material-videos/mvj_abc/video.mp4"));
+    }
+
+    @Test
+    @DisplayName("成片 key：别人的任务 —— 不认（把别人的 key 写进自己画布换不出地址）")
+    void rejectsSomeoneElsesVideoKey() {
+        IpStudioFixtures.withVideoJob(videoJobs, "mvj_other", "someone-else", "ipstudio");
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
+                () -> svc.signOwnedKeys(USER, java.util.List.of("media/material-videos/mvj_other/video.mp4"))).getCode());
+    }
+
+    @Test
+    @DisplayName("成片 key：本人但不是 ipstudio 分区的任务 —— 不认（带货 / 短剧的视频不从这儿泄）")
+    void rejectsOtherAppVideoKey() {
+        IpStudioFixtures.withVideoJob(videoJobs, "mvj_celeb", USER, "celebrity");
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
+                () -> svc.signOwnedKeys(USER, java.util.List.of("media/material-videos/mvj_celeb/video.mp4"))).getCode());
+    }
+
+    @Test
+    @DisplayName("成片 key：任务不存在 / 形状不对 —— 不认")
+    void rejectsUnknownOrMalformedVideoKey() {
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
+                () -> svc.signOwnedKeys(USER, java.util.List.of("media/material-videos/mvj_nope/video.mp4"))).getCode());
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
+                () -> svc.signOwnedKeys(USER, java.util.List.of("material-videos/video.mp4"))).getCode());
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
+                () -> svc.signOwnedKeys(USER, java.util.List.of("a/b/material-videos/mvj_abc/video.mp4"))).getCode());
+        assertEquals("IP_ASSET_KEY_INVALID", assertThrows(BusinessException.class,
+                () -> svc.signOwnedKeys(USER, java.util.List.of("media/material-videos/../../etc/passwd"))).getCode());
+    }
+
+    @Test
+    @DisplayName("视频节点出 wire 也要按 key 重签 —— 否则刷新之后画布上的视频就没了")
+    void detailResignsVideoNodeContent() {
+        // 线上实测：画布里生成的视频一刷新就消失。落库的是
+        // storageKey=media/material-videos/<jobId>/video.mp4（content 被 stripDerivedUrls 剥掉了），
+        // 而归属闸只认 ipstudio_gen/<uid>/ 前缀 —— 视频 key 里没有 uid，于是重签被跳过，
+        // content 一直是空的，节点上什么都不剩。
+        String key = "media/material-videos/mvj_v1/video.mp4";
+        IpStudioFixtures.withVideoJob(videoJobs, "mvj_v1", USER, "ipstudio");
+
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
+        d.node("n-video", "video").put("storageKey", key).put("status", "success").put("mimeType", "video/mp4");
+        projects.repo.save(IpStudioFixtures.project(PID, USER, d));
+
+        IpProjectDto dto = svc.detail(USER, PID);
+        com.fasterxml.jackson.databind.JsonNode md = null;
+        for (com.fasterxml.jackson.databind.JsonNode n : dto.doc().get("nodes")) {
+            if ("n-video".equals(n.path("id").asText())) md = n.path("metadata");
+        }
+        assertNotNull(md, "视频节点不见了");
+        assertEquals("https://cdn.test/" + key + "?sig=x", md.path("content").asText(),
+                "视频没有按 storageKey 重签到 content —— 前端读的就是它，空了就等于视频没了");
     }
 }
