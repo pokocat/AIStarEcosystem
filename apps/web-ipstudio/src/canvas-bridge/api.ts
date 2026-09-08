@@ -17,6 +17,9 @@ export type IpModelOption = {
     /** 视频时长可提交区间（协议硬边界 ∩ 后台配置）；null = 未知 */
     minDurationSec?: number | null;
     maxDurationSec?: number | null;
+    /** 这个模型**真正能出**的清晰度短边 / 比例；null = 不受限，面板保留完整选项 */
+    videoResolutions?: string[] | null;
+    videoRatios?: string[] | null;
   } | null;
   creditCost: number;
   billingUnit: string;

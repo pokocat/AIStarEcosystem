@@ -160,6 +160,34 @@ public class MaterialVideoModelClient {
     public record DurationBounds(Integer minSec, Integer maxSec) {}
 
     /**
+     * 这个端点**真正能出**的画幅（协议决定，不是后台能填的）。
+     *
+     * <p>为什么需要：画布的参数面板照搬了上游的通用选项 —— 清晰度 480p/720p/1080p、
+     * 比例 1:1 / 3:4 / 4:3 / 16:9 / 9:16 / 21:9。而聚算媒体协议里**根本没有宽高字段**：
+     * 只有 {@code resolutionTier}（H3 固定 768p）和 {@code orientation}（只有横 / 竖两种），
+     * 出多少像素由厂商的 preset 定。于是用户选「720p · 3:4」，我们送出去的是
+     * 「768p · portrait」，回来的是 768×1376（≈9:16）—— 选的和拿到的对不上，
+     * 而界面上没有任何地方说过这件事（v0.184 用户实测报的）。
+     *
+     * <p>返回 null = 该协议没有这层限制（agnes / generic 我们自己按比例算宽高，
+     * 整张比例表都成立），前端保留完整选项。
+     */
+    public VideoGeometry videoGeometry(AiModelEndpoint endpoint) {
+        if (endpoint == null) return null;
+        String model = endpoint.getModel() != null && !endpoint.getModel().isBlank()
+                ? endpoint.getModel() : props.getDefaultModel();
+        if (!PROTOCOL_JUSUAN_MEDIA.equals(protocolFor(endpoint, model))) return null;
+        // 协议只给横 / 竖两档；标成最接近的通用比例，别报一个我们并不能保证的精确值。
+        return new VideoGeometry(java.util.List.of("768"), java.util.List.of("16:9", "9:16"));
+    }
+
+    /**
+     * 端点能出的画幅。{@code resolutions} 是清晰度短边（"768"），{@code ratios} 是比例。
+     * 两者都非空即表示「只有这些可选」；字段为 null 表示该维度不受限。
+     */
+    public record VideoGeometry(java.util.List<String> resolutions, java.util.List<String> ratios) {}
+
+    /**
      * 返回候选端点显式配置的视频积分价；未配置 override 时返回 {@code null}，由业务线回落自身默认价。
      * PER_SECOND 端点按请求秒数展开，PER_CALL/旧端点仍按次，避免把存量候选价格语义整体改写。
      */
@@ -625,6 +653,12 @@ public class MaterialVideoModelClient {
         return durationSec;
     }
 
+    /**
+     * 比例 → 聚算的 orientation。协议只有横 / 竖两档，**比例信息在这里必然丢失** ——
+     * 3:4 与 9:16 都变成 portrait，实际出多少像素由厂商 preset 定（H3 竖屏是 768×1376）。
+     * 所以能选什么必须由 {@link #videoGeometry} 在前端就限制住，不能让用户选一个
+     * 我们注定兑现不了的比例（v0.184）。
+     */
     static String orientationForAspect(String aspectRatio) {
         String ratio = aspectRatio == null ? "" : aspectRatio.trim();
         return "9:16".equals(ratio) || "3:4".equals(ratio) ? "portrait" : "landscape";

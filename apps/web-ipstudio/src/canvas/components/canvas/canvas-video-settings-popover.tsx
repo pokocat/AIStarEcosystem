@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
-import { effectiveVideoSeconds, VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSizeLabel } from "@/canvas/components/video-settings-panel";
+import { effectiveVideoGeometry, effectiveVideoSeconds, VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSizeLabel } from "@/canvas/components/video-settings-panel";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import type { AiConfig } from "@/canvas-bridge/config-store";
@@ -57,9 +57,20 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
     const storedSeconds = String(config.videoSeconds || "6");
     const outOfRange = String(effective.seconds) !== storedSeconds;
     const summary = `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.size)} · ${videoSecondsLabel(storedSeconds)} · ${videoModeLabel(config.videoMode)}`;
+
+    // 画幅跟时长不一样：超区间的时长会被服务端**拒**，而选不了的画幅会被**悄悄换掉**
+    // —— 用户选 720p·3:4，聚算按 768p·portrait 出，回来 768×1376，没有任何地方报错（v0.184）。
+    // 面板打开时会夹 + 回写，但没打开过的节点存的还是老值，所以这行得如实说会出成什么样。
+    const geometry = effectiveVideoGeometry(config);
+    const geometryMismatch =
+        geometry.constrained &&
+        (videoResolutionLabel(config.vquality) !== `${geometry.resolution}p` || videoSizeLabel(config.size) !== geometry.ratio);
+
     const hint = outOfRange
         ? `${summary}（这个模型只接 ${effective.min}–${effective.max} 秒，现在这样发会被拒 —— 点开改一下）`
-        : summary;
+        : geometryMismatch
+            ? `${summary}（这个模型只出 ${geometry.resolution}p，实际会按 ${geometry.ratio} 出 —— 点开改一下）`
+            : summary;
 
     return (
         <>
@@ -67,7 +78,7 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
                 <Button size="small" type="text" title={hint} className={buttonClassName || "!h-8 !max-w-[220px] !justify-start !rounded-full !px-2.5"} style={{ background: theme.node.fill, color: theme.node.text }} icon={<Settings2 className="size-3.5" />} onClick={() => setOpen((current) => !current)}>
                     <span className="truncate">
                         {summary}
-                        {outOfRange ? <span style={{ color: theme.node.muted }}> ⚠</span> : null}
+                        {outOfRange || geometryMismatch ? <span style={{ color: theme.node.muted }}> ⚠</span> : null}
                     </span>
                 </Button>
             </span>

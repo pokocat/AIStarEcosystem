@@ -482,6 +482,7 @@ pnpm check:api-contract
 | **v0.161** | 2026-09-08 | **页面精细打磨 —— 用户反馈「好多 bug」，逐条复现后修 7 处**（含两处硬崩 / 数据损坏级）。① **双击任意节点就崩**：`No QueryClient set` —— 画布有两处用 react-query（节点提示词面板、侧边提示词库），搬画布时**没搬 `QueryClientProvider`**。上游在它自己的入口里建，我们只搬了画布没搬入口。② **签名 URL 又一次落进库**（§4.7.4，v0.158 只修了 `images[]`）：画布把节点级的图 / 视频 / 音频地址放在 `metadata.content`，而服务端只剥 / 重签 `metadata.url` —— 而 **`url` 根本没有任何地方读**。于是签名原样进库、一小时后过期（「昨天做的画布今天全裂」「出的视频播不了」），同时节点级的图从来就显示不出来。改为剥 / 重签 `content`；text 节点的正文靠「有没有 storageKey」挡在外面（新增两条回归）。③ **页面高度不满**：外层是 `min-h-dvh`（不是 `h-dvh`），`main` 的 computed height 是 `auto`，子页 `h-full` 于是退化成内容高度（实测 277px / 848px）。`main` 改 flex 容器 + 子页用 `flex-1`；**antd 的 `App` 还在 DOM 里插了一个没高度的 div**，画布被压成 312px —— 显式给它 `h-full`。④ **画布右上角冗余按钮**：上游那排图标在我们的产品里一半没意义 —— 指向 `basketikun/infinite-canvas` 的 **GitHub 链接**、`href=""` 的文档按钮（点了重载当前页）、已被硬写成 zh-CN 的语言切换、与外壳打架的主题开关、上游版本说明、已关闭的插件市场入口，全部移除，只留设置与快捷键。⑤ **我自己加的发布按钮压住了画布的按钮**：v0.159 做成绝对定位浮在右上角，正好盖在「配置 / 快捷键 / Agent」上面让它们点不到 —— 新增 `canvas-bridge/host-actions.tsx` 插槽，让宿主把「保存状态 / 发布」放进顶栏**同一行**由 flex 排。⑥ **节点面板被画布裁掉**：面板固定居中在节点下方（宽 600），节点靠边时伸到 `overflow-hidden` 的画布区外，表现是「选择模型」只剩「择模型」—— 加横向夹取（量当前位置、加增量，避免越夹越偏）。⑦ **提示词库全是拉不动的第三方源**：上游内置七八个 GitHub 社区提示词集（`raw.githubusercontent.com`），国内基本拉不动、且一屏英文仓库名 —— 改读本仓自己的中文预设（装扮 9 / 表情 6 / 短动作 5，后台可维护），默认远程源清空。另修名片「去发布」指向列表页而非该卡编辑页。门禁：server 全量 + `typecheck:all` + vitest 36 + 两个 build + `check:api-contract` 全绿；**逐页浏览器实测**（项目列表 / 画布 / 资产 / 名片 + 双击节点 + 顶栏 + 提示词库）。 |
 | **v0.160** | 2026-09-08 | **画布的模型下拉从来没接上服务端 —— 出图在生产上一次都跑不了**。追查起点是用户问「模板能不能预设模型」，顺着查下去发现三条 blocker 叠在一起：① `fetchModels()`（v0.157 建、v0.158 还修过用途）**没有任何调用者**，画布下拉里一直是搬来的上游写死的`gpt-image-2` / `grok-imagine-video` —— 我们一个都没有；② 选中后送到服务端，preflight 按 D-11 白名单校验，一律 503 `ENDPOINT_NOT_ALLOWED`；③ 更前面还有一道：上游的 `isAiConfigReady` 要求 `apiKey` 非空才让跑，而本仓的 Key 在服务端、浏览器里永远是空的 —— **点运行永远弹「请先配置 API Key」，一个用户根本无从满足的条件**。这跟 v0.159 的发布按钮是同一类事故：接口做完了、组件也写好了、typecheck 全绿，就是没人引用；v0.157 的联调是 curl 直打 `/generate`，所以画布 UI 这条路从头到尾没被走过。修法：新增 `canvas-bridge/models.ts` 把 `GET /v1/ip-studio/models` 的候选灌进画布配置 —— **下拉里显示后台配的真模型名**（`agnes-image`、`MiniMax H3 · 768P`），传给服务端的是 `endpointId`；capability 按它来自 image / video 哪个列表定，不用上游那个按关键词猜名字的 `guessCapability`（「MiniMax H3 · 768P」猜不出是视频）。就绪判断改成只看「选中的模型是不是服务端候选」；候选为空时**不塞任何假模型**，并把上游那个填 Key 的对话框换成一句如实说明（§8.0）。**另修名片链路两处断点**（用户要求确认「发布完是不是就能上名片页」，实跑一遍才发现）：「做成数字名片」建完卡把人丢在**列表页**而不是那张卡的编辑页；以及服务端发布名片硬要求 `title`（公司 · 职务）但编辑页**没标必填** —— 用户填完一整页、点发布、才被一个没标过的字段拦住，现在改成按钮直接置灰并说清「还差什么」。门禁：`typecheck:all` + 两个 build + vitest **36**（新增 8）+ `check:api-contract` 全绿；**真 server 实跑全链路**（独立 H2 库）：上传 → 建项目 → 发布 → `DapAvatar` + 2 `DapLook` → 一键建卡（名字与整柜造型自动带过去）→ 补职位 → 发布 → **匿名打开公开页，主形象图与两件衣柜都有图**；浏览器实测模型下拉显示真模型名、已发布态显示「已发布 · DH-xxxx」。 |
 | **v0.159** | 2026-09-08 | **修画布换代时断掉的发布入口 + 发布弹窗改用 antd**。① **发布按钮在 v0.157 之后就没有了**（本轮部署完自查发现）：旧画布页退役时，挂在它上面的发布入口一起没了，而 `PublishDialog` 与 `publishProject()` **两个文件都还在、都能编译、typecheck 全绿** —— 只是再没有任何地方引用。于是「造形象 → 登记资产 → 对外发布」这条链在生产上断了一版：画布里能把 IP 做完，但发不出去。**死代码不会报错，它只是安静地不存在** —— 编译器查不出「组件没人挂」。修法是把发布挂回画布右上角（放在 `canvas-host.tsx` 而不是 `src/canvas/` 里，保持搬来的画布干净、日后好跟上游合），已发布的项目直接给「已发布 · DH-xxxx」链去资产库，**不给一个必然 409 的按钮**；新增结构测试 `publish-wiring.test.ts` 钉死「弹窗有人挂、按钮真的调服务端」。② **发布弹窗从 shadcn `Dialog` 换成 antd `Modal`**：它是**从画布里**调起的，而画布整套用 antd —— Modal z-1000、气泡 z-1200，shadcn 的 Dialog 是 z-50，同屏会被压在下面。弹窗内容一行没改（仍是我们自己的 token 样式），只换外壳；顺带修掉 antd 6 已废弃的 `maskClosable`（改 `mask={{closable}}`），发布在途时遮罩与 Esc 都关不掉（关了也停不下已发出的请求，用户只会以为没成功而重来）。③ **顺带把「两套 UI 库」这个说法量准**：shadcn 在这个 app 里只剩列表页一个 `AlertDialog`，画布外的界面本来就是 Tailwind + 我们自己的 token，不是 shadcn 组件 —— **「全改 antd」不做**（要重写 6 个 app + admin 的 48 个共享组件，换不来任何用户可见的好处）。门禁：`typecheck:all` + web-ipstudio build（8 路由）+ vitest **28**（新增 6）+ `check:api-contract` 全绿；浏览器实测发布弹窗（标题 / 说明 / 预填资产名 / 主形象选中 / 页脚两键）。**无 server 变更**。 |
+| **v0.185** | 2026-09-08 | **选了「720p · 3:4」出来的却是 768×1376** —— 面板摆出的档位，这个模型一个都兑现不了。用户实测报的。查下来是三件事叠在一起：① 服务端把 `resolutionTier` **写死成 `"768p"`**，用户选的清晰度根本没离开浏览器；② 聚算媒体协议里**压根没有宽高 / 比例字段** —— 只有 `resolutionTier`（H3 固定 768p）与 `orientation`（只有横 / 竖两档），`orientationForAspect` 于是把 3:4 和 9:16 一起吃成 `portrait`，出多少像素由厂商 preset 定（实测竖屏 = 768×1376 ≈ 9:16）；③ 而画布参数面板照搬的是上游的**通用**选项：480p/720p/1080p ×（1:1 / 3:4 / 4:3 / 16:9 / 9:16 / 21:9）+ 自由填宽高。**这跟时长那条不一样**：时长超区间服务端会**拒**（用户至少知道出事了），画幅选不了却是被**悄悄换掉**，全程不报错 —— 正是 §8.0 说的那类「把用户选的悄悄换成另一个」。修法照 v0.176 时长区间的既有范式：能力从服务端来，**面板只摆真能出的**。`MaterialVideoModelClient.videoGeometry(endpoint)` 按**协议**给出可出画幅（jusuan-media → `["768"]` × `["16:9","9:16"]`；agnes / generic 我们自己按比例算宽高，返回 null = 不受限，面板保留完整选项），经 `EndpointCapabilityDto` 新增的 `videoResolutions` / `videoRatios` 出 wire；前端 `effectiveVideoGeometry(config)` 夹取并**回写**（与 `effectiveVideoSeconds` 同一条纪律 —— 夹了不回写，屏幕上是一回事、提交是另一回事），受限时不给自由清晰度输入、**整个 W/H 组不渲染**（真实像素是厂商 preset，我们算出来的数字只是另一个谎）；比例落到**最接近的同向**档（3:4 → 9:16，不是一律回第一个 16:9）。收起状态的那行仍显示**存着的**值（那才是现在点发送会送出去的），但兑现不了时带 ⚠ + 悬浮说明「这个模型只出 768p，实际会按 9:16 出」。**测试逮到一个真 bug**：一开始写的是「从静态表里筛」，而面板那三档是 480/720/1080、聚算是 768 —— 筛完一个都不剩，清晰度那格直接空了；改成**按模型给的清单建选项**。门禁：server **1012/1012**（新增 2）+ web-ipstudio vitest **140**（新增 4）+ `typecheck:all` + build + `check:api-contract` 全绿。**同版另加 §8.0.1「排障与验证纪律」**（AGENTS.md）：把本轮反复栽的七条写成规约 —— 先记上游原话再改代码（v0.166→v0.174→v0.184 三次）/ 先确认信号本身成立 / 验证要走到用户屏幕那一步 / 同一件事不留两种调法 / 对外声明类型按字节判 / 组件写完要有结构测试钉住 / 手抄类型必漂移。 |
 | **v0.184** | 2026-09-08 | **参考图上传被聚算拒收 —— 一张 JPEG 顶着 `.png` 的名字发出去了**（v0.183 接通后实测报的）。**这一版真正解决问题的是上一步：先把上游的原话记进日志。** 此前只看得到 `BusinessException: 参考图上传失败，请稍后重试` 和抛错的行号 —— 状态码与响应体我塞进了 `internalDetail`，而那个字段只在走 `GlobalExceptionHandler` 的请求路径上才落进 `ErrorLog`，这里是 `@Async` worker，压根到不了。补上日志后一次就问出来了：`400 {"code":"invalid_argument","message":"input image cannot be decoded"}`，而那个文件 `file` 一看是 `JPEG image data, 1664x2224`。**根因在存的那一步**：`IpRunWorker` 把厂商返回的图一律 `store(bytes, …, "png", "image/png")` —— **全仓十几处都这么写**（dap 线同样）。平时看不出来，浏览器会自己嗅探字节、图照样显示；只有把这张图**转交给另一个厂商**、并按文件名声明 `Content-Type` 时才炸。三处一起修：① 新增 `ImageBytes.sniff(bytes)`（magic number 认 PNG/JPEG/WebP/GIF/BMP，认不出返回 null，**不猜**）；② **`FileStorageService.store(byte[],…)` 声明与字节不符时以字节为准**并记一条 INFO —— 改一处、十几个调用点全好，不必去动 dap / drama 那些线的调用方；认不出格式的字节（音视频）原样沿用声明值；③ `uploadInputImage` 再判一次 —— 第 ② 条只管**新存的**文件，**存量文件仍然是错的**（用户画布上现有的图就是），在这儿判老图不用重跑也能用，顺带把文件名后缀也改成真实格式（有的服务端除了 Content-Type 还看文件名），不是 PNG/JPEG/WebP 直接报 `VIDEO_REF_FORMAT_UNSUPPORTED`，不发一个必然被拒的请求。④ 另修两处**观测**欠债：`uploadInputImage` 的 4xx 改为直出厂商 message（5xx 笼统 + 状态码，非 JSON 不外泄，与 v0.166 出图链同一套）；`submit` 的 `ModelCallCtx` 一直没设 `requestBodyJson`，`[upstream-io]` 那行永远打成 `body=` —— 出片参数（generationMode / 参考图 assetId / 时长比例）一个都看不到，「参数到底发出去没有」全靠猜，已补。**生产端到端实测通过**：上传 → `assetId=asset-in-e8c6ba06c584ab49e4641909` → 提交 202 → 成片 `job_e1efd1203f7029fda7ec87cd`，厂商 `usage` 自报 **`"generationMode":"i2v"`**（此前每一条都是 `t2v`）。门禁：server **1010/1010**（新增 7）+ `check:api-contract` 全绿。 |
 | **v0.183** | 2026-09-08 | **出视频的参考图确实一直没送出去（核对聚算文档后接通）+ 成片历史能看能切能删**。① **参考图**：用户报「生成视频时参考图好像没传过去」—— 属实。`buildSubmitBody` 的聚算分支写死 `generationMode:"t2v"`，**一张图都没发**。核对 [createMediaGeneration](https://docs.jusuanhub.com/docs/reference/models/createMediaGeneration) 后确认聚算的图**不能给 URL**：得先 `POST {base}/v1/assets/input?model=<公开别名>`（multipart，字段名 `image`）换回 `asset.assetId`，再放进 `input_image_asset_id`，并把必填的 `generationMode` 改成 `i2v`（取值 `t2v \| i2v \| first_last_frame_video \| universal_reference_video`）。这跟 seedance（火山）那条「把图片 URL 塞进 content 数组」是**完全不同的协议**，照搬过去自然一张都没送到。现在整条链接通：画布连进来的图 → `refKey` → `variant_config.first_frame_key` → worker → 上传换 assetId → i2v。上传失败一律抛 `VIDEO_REF_UPLOAD_FAILED`，**不静默退回 t2v** —— 用户接了参考图却出一条无关的片，比直接报错难排查得多（§8.0）。**尾帧 / 多参考图（`end_image_asset_id`、`referenceInputs`）仍未接**。顺手**删掉 `submit` 不带首帧的那个重载**：只有一个调用方，留着就是「同一件事两种调法」的坑 —— 今天已经在别处栽过两次（v0.176 参数没读、v0.180 归属规则写两遍）。② **成片历史（抽卡）**：v0.182 已经把每一版留进 `metadata.videos[]`，但看不到也切不回去，等于白留。视频节点底部加历史条「‹ 第 2/5 版 › 🗑」——切换与删除复用图片那套既有的 `setBatchPrimary` / `deleteBatchImage` 回调（两者各加一条 Video 分支），不新起一套。分寸：切一版**不重排版**（同模型同画幅的多版成片，一切就跳会让人以为换了节点）；**只剩一版时不给删**（删空等于把节点变回空壳，找回来只能重跑一次再付一次钱）；删掉当前那版时画面切到剩下的第一版。门禁：server **1003/1003**（新增 3）+ web-ipstudio vitest **136**（新增 6）+ `typecheck:all` + build + `check:api-contract` 全绿。 |
 | **v0.182** | 2026-09-08 | **全局示例工作流 + 视频就地重出 / 保留历史**。① **示例工作流（新表 `ip_demo_template`，V31）**：内置模板（`resources/ipstudio/templates/*.json`）是**空**工作流 —— 用户得自己拖照片、自己跑一遍才知道这条链能干什么。示例是另一回事：素材和成图都在里面，一进目录就看得见效果。它由运营从一个**真实项目**「存为全局示例」生成，所以只能落库（classpath 是只读的）。关键在**复制素材**而不是引用：项目里的键是 `ipstudio/source|gen/<uid>/…`，带着作者 uid —— 别人打开时归属闸会正确地拒绝（画布一片空白），就算放行也不该放行（那等于凭一个 key 读别人的素材）。所以存示例时把素材复制到平台自有的 `ipstudio/demo/<demoId>/…`（**所有人可读、没有人可写** —— 写入侧的 key 一律由调用者 uid 拼出来，落不到这个前缀下），再把文档里的键换掉。复制的副作用正好是想要的：作者之后改项目 / 删项目，示例都不受影响。新端点 `POST /v1/ip-studio/projects/{id}/publish-as-demo`、`POST /v1/ip-studio/demos/{demoId}/enabled`（都走 `InAppOperatorGuard`；**只能拿自己的项目做示例**，运营也不该凭一个 id 把别人的画布连素材抄成公开内容）。`GET /templates` 把示例排在内置模板前面。② **视频就地重出**（用户实测报的）：上游只让「空视频节点」就地填充，已经出过片的再点一次会在旁边多长一个节点，而新节点没接上原来的上游 —— 表现就是「参考素材都变了」。图片在 v0.166 已经改成就地重出，这里补上视频。③ **成片历史（抽卡）**：视频跟出图一样是跑十条挑一条，此前就地重出会把上一版连同存储键一起顶掉，想回到刚才那条只能重跑一次再付一次钱。新增 `metadata.videos[]` + `primaryVideoId`（与图片的 `images[]` / `primaryImageId` 同形），重出前先把当前这版收进历史、新的一版进历史并成为当前。**服务端 `stripDerivedUrls` / `resignDocAssetUrls` 同步吃 `videos[]`** —— 漏了就是「历史里有的能放、有的一小时后放不了」（v0.180 同一类）。⚠️ **历史的浏览 / 切换 UI 还没做**：图片节点有现成的候选面板（展开 / 设为主图 / 下载 / 删除），视频节点还没有，这一版只保证**数据不丢**。门禁：server **1000/1000**（新增 1）+ web-ipstudio vitest 130 + `typecheck:all` + build + `check:api-contract` 全绿。**踩坑**：V31 一开始写 `TINYINT(1)`，H2 不吃显示宽度（`@DataJpaTest` 上下文直接起不来、连带 8 个测试报错），改 `BOOLEAN`（MySQL 自己存成 TINYINT(1)）。 |
@@ -631,6 +632,74 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | dev 免密登录 | `aep.dev-auth.enabled` 默认关 | 显式开 |
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
+
+### 8.0.1 排障与验证纪律（v0.184 起强制 —— 都是本仓真栽过、而且**栽过不止一次**的）
+
+> 这一节不是通则，是事故清单。每一条后面都跟着它是在哪一版、以什么形态发生的；
+> 再犯一次的成本已经量过了：一个 400 我猜了三轮（路径 / 别名 / Key 权限），全不对，
+> 而答案一直在上游的响应体里躺着。
+
+**① 上游拒绝时，先把它的原话记下来，再谈改代码。**
+外部依赖（大模型 / 存储 / 支付 / 供应商 API）返回非 2xx 时，**必须**在服务端日志里留下
+`status` + 响应体（截断）+ 足够定位的上下文（endpoint / model / url / 关键入参）。
+- `BusinessException.internalDetail` **不算**留下 —— 它只在走 `GlobalExceptionHandler` 的
+  请求路径上才落进 `ErrorLog`；`@Async` worker / `@Scheduled` 里抛的异常到不了那儿，
+  等于什么都没记（v0.184 就是这么丢的）。
+- 4xx 的 message **直出给用户**（截断，脱敏）：它说的是「我们请求哪儿不对」，
+  是用户唯一据以行动的信息，而对一个永远不会自己好的 400 说「请稍后重试」本身就是错的。
+  5xx 才笼统 + 状态码（厂商自己的问题，细节留日志）。响应体不是 JSON 时不外泄
+  （别把网关的 HTML 错误页糊到界面上）。范式：`DapMultimodalClient#upstreamMessage`、
+  `MaterialVideoModelClient#uploadFailureMessage`。
+- 发出去的**请求体**也要记（`ModelCallCtx.requestBodyJson` → `[upstream-io] REQUEST`）。
+  不设这个字段那行就打成 `body=`，「参数到底发出去没有」只能靠猜（v0.183 的参考图、
+  v0.176 的时长，两次都栽在这里）。
+- 累犯记录：v0.166（`friendly()` 把所有异常抹成「请稍后重试」）→ v0.174 → v0.184。
+- **Review reject**：新增外部调用的 catch / 非 2xx 分支里没有 `log.warn` 带响应体 → reject。
+
+**② 先确认信号本身成立，再据它改代码。**
+排障时用来支持结论的那个观察，要先证明它**能**支持这个结论。
+- 真实事故（v0.172–v0.174）：我把「响应 `usage` 里没有 `input_images` 字段」当成
+  「参考图没生效」的证据，连改两版（签名 URL → 未签名 URL、对公网域名签名）——
+  而官方图生图示例（确实传了图）的响应**同样没有那个字段**。两版改动都不是对症的。
+- 可操作的判据：这个信号在**已知成功**的样本里是什么值？拿不到成功样本就别用它当证据。
+- **Review reject**：commit message 里写「因为观察到 X 所以改 Y」，但 X 没有对照样本 → reject。
+
+**③ 验证要走到用户屏幕那一步。**
+「服务端产物是对的」推不出「整条链是对的」。
+- 真实事故（v0.174→v0.175）：我核对了产物图确实按参考图合成了，就断言链路正常；
+  真正的 bug 在写回画布那一步（`primaryImageId` 悬空导致永远显示第一张）。
+- 排「结果不对」必须把**服务端产出的那个东西**和**用户屏幕上的那个东西**逐一对上号
+  （key 对 key、id 对 id），再谈模型和提示词。
+- 说「修好了」之前，要么自己跑通到终态（生产实测 / 浏览器实测），要么明说「没验证」。
+  v0.178 我没验就发，用户回「还是不行啊，你自己验证过吗」—— 底下压着的是另一个 bug。
+
+**④ 同一件事不要留两种调法；同一条规则不要写两遍。**
+- v0.176：视频参数在 `config` 和 `options` 两处都可能有，只读了 options → 用户选的时长
+  一路没送到；而字段全是可选，类型检查看不出来。
+- v0.180：资产归属规则在 `ownsAssetKey` 和 `requireOwnedAssetKey` 各写了一份，
+  只改一处 → 另一条路照旧拒绝。
+- v0.183：删掉 `submit` 不带首帧的重载 —— 留着就迟早有人用少一个参数的那个。
+- 做法：**参数收敛到一处解析**（config 为准、options 作显式覆盖）；**规则收敛到一个方法**，
+  另一处 delegate 过去；**重载只在语义真的不同时才留**。
+
+**⑤ 对外声明的类型必须按字节判，不按文件名。**
+v0.184：`ipstudio_gen/**` 一律以 `.png` 落库（全仓十几处都写死 `("png","image/png")`），
+而厂商给的是 JPEG。浏览器会自己嗅探、图照样显示，所以存了很久都没人发现；
+**把这张图转交给另一个厂商**时才炸（`400 input image cannot be decoded`）。
+- 存：`FileStorageService.store(byte[],…)` 已按 `ImageBytes.sniff` 自动改正，调用方不用管。
+- 交给外部：**再判一次**（存量文件仍然是错的），并把文件名后缀也改成真实格式。
+- **Review reject**：新代码按 `filename.endsWith(".png")` 决定 `Content-Type` 发给外部 → reject。
+
+**⑥ 写完没人挂的组件，编译器不会告诉你。**
+v0.159 的发布按钮、v0.160 的 `fetchModels()` —— 文件都在、typecheck 全绿、就是没有任何地方
+引用，功能在生产上整整缺了一版。新增「用户能点到的东西」时，必须有一条**结构测试**
+钉死它真的被挂上了（范式：`publish-wiring.test.ts`），或者当场在浏览器里点一次。
+
+**⑦ 手抄的类型一定会和服务端漂移。**
+v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是「画布出图一次都没成功过」；
+**而单测是绿的** —— fixture 跟被测代码犯了同一个笔误，配成一对互相印证。
+- 跨端类型一律引 `@ai-star-eco/types`，不手抄。
+- fixture 要照**服务端 DTO** 写，不照被测代码写。
 
 ### 跨 app 约定
 

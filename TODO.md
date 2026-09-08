@@ -1217,3 +1217,20 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   今天不影响任何功能（浏览器自己嗅探；转交厂商那条路已在 `uploadInputImage` 兜住），
   真要清的话是一个「按 key 抽头 32 字节、类型不符就改 OSS Content-Type + 改 DB key」的
   一次性任务 —— 改 key 会牵动所有引用它的文档，收益不抵风险，先记着不做。
+
+## 2026-09-08 · 出片画幅只摆真能出的（v0.185）
+
+- [x] ~~选「720p · 3:4」出来的是 768×1376~~ **v0.185 修复**，2026-09-08：
+  服务端 `resolutionTier` 写死 768p + 协议只有 orientation 横/竖两档（没有宽高字段），
+  而面板照搬上游的 480p/720p/1080p × 六种比例。能力改由服务端 `videoGeometry` 声明
+  （`EndpointCapabilityDto.videoResolutions` / `videoRatios`），面板只摆真能出的、
+  夹取后回写、受限时不渲染 W/H。
+- [ ] **带货线的出片模型列表还没带画幅能力**。`MaterialVideoJobService.listModels`
+  用的是 `EndpointCapabilityDto.from(candidate)`（不带 geometry），
+  `GET /material/videos/models` 因此不报画幅。带货 UI 目前不给用户选比例，
+  所以今天不出错；哪天给了就会重演 v0.185。接法：跟 ip-studio 一样传
+  `videoModels.videoGeometry(endpoint)` 进去。
+- [ ] **画幅只按协议判，没有按端点配置**。`videoGeometry` 现在是「jusuan-media → 768p 横/竖，
+  其余不受限」这一条硬编码。将来同一协议下出现画幅不同的模型（或聚算加了新档），
+  需要在 `ai_app_endpoint_candidate` 上加列由后台配，或者从成功响应的
+  `effectiveMediaSpec` 里学（同 v0.174 记 `minImagePixels` 的做法）。

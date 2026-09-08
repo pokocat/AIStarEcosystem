@@ -39,6 +39,12 @@ const creditByEndpointId = new Map<string, number>();
  */
 const durationBoundsByEndpointId = new Map<string, { min?: number; max?: number }>();
 
+/**
+ * 端点 → 真正能出的画幅（清晰度短边 / 比例）。与时长区间同理：只有协议知道。
+ * 空 = 不受限（agnes / generic 我们自己按比例算宽高，整张比例表都成立）。
+ */
+const geometryByEndpointId = new Map<string, { resolutions?: string[]; ratios?: string[] }>();
+
 let loaded = false;
 
 /**
@@ -73,6 +79,20 @@ export function serverModelsLoaded() {
 }
 
 /**
+ * 这个视频模型**真正能出**的清晰度 / 比例。拿不到就返回 undefined ——
+ * 面板保留完整选项，不臆造限制。
+ *
+ * 为什么需要：面板的清晰度（480p/720p/1080p）与比例（六种）是上游的通用选项，
+ * 而聚算媒体协议里根本没有宽高字段 —— 只有固定 768p + 横/竖两档。用户选
+ * 「720p · 3:4」，回来的是 768×1376，选的和拿到的对不上（v0.184 实测）。
+ */
+export function videoGeometryFor(value: string | undefined | null):
+  { resolutions?: string[]; ratios?: string[] } | undefined {
+  const id = endpointIdFor(value);
+  return id ? geometryByEndpointId.get(id) : undefined;
+}
+
+/**
  * 这个视频模型能提交的时长区间（秒）。拿不到就返回 undefined ——
  * 调用方按画布自己的默认范围显示，不臆造一个区间去限制用户。
  */
@@ -88,6 +108,14 @@ function toChannelModels(list: IpModelOption[], capability: ChannelModel["capabi
     const min = m.capability?.minDurationSec ?? undefined;
     const max = m.capability?.maxDurationSec ?? undefined;
     if (min != null || max != null) durationBoundsByEndpointId.set(m.endpointId, { min: min ?? undefined, max: max ?? undefined });
+    const resolutions = m.capability?.videoResolutions ?? undefined;
+    const ratios = m.capability?.videoRatios ?? undefined;
+    if (resolutions?.length || ratios?.length) {
+      geometryByEndpointId.set(m.endpointId, {
+        resolutions: resolutions?.length ? resolutions : undefined,
+        ratios: ratios?.length ? ratios : undefined,
+      });
+    }
     return { name: m.name, capability };
   });
 }
@@ -108,6 +136,7 @@ export async function loadServerModels(): Promise<{ image: number; video: number
   endpointIdByName.clear();
   creditByEndpointId.clear();
   durationBoundsByEndpointId.clear();
+  geometryByEndpointId.clear();
 
   const image = toChannelModels(models.image ?? [], "image");
   const video = toChannelModels(models.video ?? [], "video");

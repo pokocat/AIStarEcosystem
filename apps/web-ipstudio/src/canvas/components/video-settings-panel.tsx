@@ -5,9 +5,9 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/canvas-bridge/i18n";
 import { ImageSettingsTheme } from "@/canvas/components/image-settings-panel";
 import { type CanvasTheme } from "@/canvas/lib/canvas-theme";
-import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/canvas/lib/media-size";
+import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseAspectRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/canvas/lib/media-size";
 import { type AiConfig } from "@/canvas-bridge/config-store";
-import { videoDurationBoundsFor } from "@/canvas-bridge/models";
+import { videoDurationBoundsFor, videoGeometryFor } from "@/canvas-bridge/models";
 
 const resolutionOptions = [
     { value: "480", label: "480p" },
@@ -45,6 +45,69 @@ export function effectiveVideoSeconds(config: Pick<AiConfig, "videoSeconds" | "v
     return { seconds, min, max };
 }
 
+/**
+ * 这个配置下**真正能选**的清晰度与比例，以及夹取后的当前值（本仓，v0.184）。
+ *
+ * 面板这几档（480p/720p/1080p × 六种比例）是上游的通用选项，而聚算媒体协议里
+ * 根本没有宽高字段：只有固定 768p + orientation 横/竖两档，出多少像素由厂商 preset 定。
+ * 于是用户选「720p · 3:4」，服务端送出去的是「768p · portrait」，回来 768×1376 ——
+ * 选的和拿到的对不上，而界面上没有任何地方说过这件事（用户实测报的）。
+ *
+ * 与时长滑杆同一条纪律（v0.179）：**夹过之后必须回写**，
+ * 否则屏幕上显示的和提交的又会不一样。
+ * 拿不到能力（模型候选还没加载 / 该协议不受限）就保留完整选项，不臆造限制。
+ */
+export function effectiveVideoGeometry(config: Pick<AiConfig, "vquality" | "size" | "videoModel" | "model">) {
+    const geo = videoGeometryFor(config.model || config.videoModel);
+    const resolutions = geo?.resolutions?.length ? geo.resolutions : null;
+    const ratios = geo?.ratios?.length ? geo.ratios : null;
+
+    const storedResolution = parseVideoResolution(config.vquality);
+    const resolution = resolutions && !resolutions.includes(storedResolution) ? resolutions[0] : storedResolution;
+
+    const storedRatio = inferVideoRatio(config.size || "auto");
+    // 受限时不保留 auto：它在服务端会被当成横屏，等于替用户做了个没说出口的选择。
+    const ratio = ratios && !ratios.includes(storedRatio) ? nearestRatio(storedRatio, ratios) : storedRatio;
+
+    return {
+        // 注意是**按模型给的清单建**，不是从静态表里筛：面板那三档是 480/720/1080，
+        // 而聚算是 768 —— 筛的话一个都留不下，清晰度那格直接空了（本轮测试逮到）。
+        resolutionOptions: resolutions ? resolutions.map(toResolutionOption) : resolutionOptions,
+        ratioOptions: ratios ? ratios.map(toRatioOption) : videoRatioOptions,
+        resolution,
+        ratio,
+        // 画幅受限时不展示 W/H：真实像素是厂商的 preset，我们算出来的数字只会是另一个谎
+        constrained: Boolean(resolutions || ratios),
+    };
+}
+
+/** 模型报的清晰度档 → 面板选项。表里有就用表里的标签，没有就现造一个（"768" → "768p"）。 */
+function toResolutionOption(value: string) {
+    return resolutionOptions.find((item) => item.value === value) ?? { value, label: `${value}p` };
+}
+
+/** 模型报的比例 → 面板选项（带缩略图要用的宽高）。表里没有就从 "9:16" 里解出来。 */
+function toRatioOption(value: string) {
+    const known = videoRatioOptions.find((item) => item.value === value);
+    if (known) return known;
+    const parsed = parseAspectRatio(value);
+    return { value, width: parsed?.width ?? 1, height: parsed?.height ?? 1 };
+}
+
+/** 落到最接近的可选比例（横的仍然横、竖的仍然竖），而不是一律回到第一个。 */
+function nearestRatio(current: string, allowed: string[]) {
+    const parsed = parseAspectRatio(current);
+    if (!parsed) return allowed[0];
+    const target = parsed.width / parsed.height;
+    return allowed.reduce((best, value) => {
+        const a = parseAspectRatio(value);
+        const b = parseAspectRatio(best);
+        if (!a) return best;
+        if (!b) return value;
+        return Math.abs(a.width / a.height - target) < Math.abs(b.width / b.height - target) ? value : best;
+    }, allowed[0]);
+}
+
 type VideoSettingsPanelProps = {
     config: AiConfig;
     onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode", value: string) => void;
@@ -65,8 +128,10 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [seconds, config.videoSeconds]);
     const videoMode = normalizeVideoModeValue(config.videoMode);
-    const resolution = parseVideoResolution(config.vquality);
-    const selectedRatio = inferVideoRatio(config.size || "auto");
+    // 清晰度 / 比例同样按**选中模型真正能出的**来（v0.184）；夹过之后要回写。
+    const geometry = effectiveVideoGeometry(config);
+    const resolution = geometry.resolution;
+    const selectedRatio = geometry.ratio;
     const dimensions = readVideoDimensions(config.size || "auto", resolution, selectedRatio);
     const applySize = (nextResolution: string, ratio: string) => {
         onConfigChange("vquality", nextResolution);
@@ -76,6 +141,14 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
         if (selectedRatio === "auto") onConfigChange("vquality", nextResolution);
         else applySize(nextResolution, selectedRatio);
     };
+    useEffect(() => {
+        if (!geometry.constrained) return;
+        const storedResolution = parseVideoResolution(config.vquality);
+        const storedRatio = inferVideoRatio(config.size || "auto");
+        if (storedResolution === resolution && storedRatio === selectedRatio) return;
+        applySize(resolution, selectedRatio);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [geometry.constrained, resolution, selectedRatio, config.vquality, config.size]);
 
     return (
         <ImageSettingsTheme theme={theme}>
@@ -83,24 +156,33 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.video.title")}</div> : null}
                 <SettingGroup title={t("settingsPanels.video.quality")} color={theme.node.muted}>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {resolutionOptions.map((item) => (
+                        {geometry.resolutionOptions.map((item) => (
                             <OptionPill key={item.value} selected={resolution === item.value} theme={theme} onClick={() => selectResolution(item.value)}>
                                 {item.label}
                             </OptionPill>
                         ))}
-                        <ResolutionInput value={resolution} theme={theme} onChange={selectResolution} />
+                        {/* 受限时不给自由输入：这个模型只出它那一档，填别的数字不会生效 */}
+                        {geometry.constrained ? null : <ResolutionInput value={resolution} theme={theme} onChange={selectResolution} />}
                     </div>
+                    {geometry.constrained ? (
+                        <div className="mt-2 text-xs leading-relaxed" style={{ color: theme.node.muted }}>
+                            这个模型只出 {geometry.resolutionOptions.map((item) => item.label).join(" / ") || "固定清晰度"}，
+                            画幅由模型按所选比例决定 —— 换个模型可选的档位也会变。
+                        </div>
+                    ) : null}
                 </SettingGroup>
-                <SettingGroup title={t("settingsPanels.video.size")} color={theme.node.muted}>
-                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
-                        <DimensionInput prefix="W" value={dimensions.width} disabled={selectedRatio === "auto"} theme={theme} onChange={(value) => updateDimension("width", value, dimensions, onConfigChange)} />
-                        <span className="text-lg opacity-45">↔</span>
-                        <DimensionInput prefix="H" value={dimensions.height} disabled={selectedRatio === "auto"} theme={theme} onChange={(value) => updateDimension("height", value, dimensions, onConfigChange)} />
-                    </div>
-                </SettingGroup>
+                {geometry.constrained ? null : (
+                    <SettingGroup title={t("settingsPanels.video.size")} color={theme.node.muted}>
+                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5">
+                            <DimensionInput prefix="W" value={dimensions.width} disabled={selectedRatio === "auto"} theme={theme} onChange={(value) => updateDimension("width", value, dimensions, onConfigChange)} />
+                            <span className="text-lg opacity-45">↔</span>
+                            <DimensionInput prefix="H" value={dimensions.height} disabled={selectedRatio === "auto"} theme={theme} onChange={(value) => updateDimension("height", value, dimensions, onConfigChange)} />
+                        </div>
+                    </SettingGroup>
+                )}
                 <SettingGroup title={t("settingsPanels.video.ratio")} color={theme.node.muted}>
                     <div className="grid grid-cols-4 gap-2.5">
-                        {videoRatioOptions.map((item) => (
+                        {geometry.ratioOptions.map((item) => (
                             <button
                                 key={item.value}
                                 type="button"

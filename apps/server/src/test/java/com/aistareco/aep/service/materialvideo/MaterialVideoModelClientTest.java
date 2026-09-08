@@ -327,6 +327,35 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
+    @DisplayName("聚算只出 768p + 横/竖两档 —— 如实告诉前端，别让用户选一个兑现不了的画幅")
+    void videoGeometry_reportsWhatTheProtocolCanActuallyProduce() {
+        MaterialVideoModelClient client =
+                new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+
+        AiModelEndpoint jusuan = AiModelEndpoint.builder()
+                .name("MiniMax H3").model("minimax-h3")
+                .baseUrl("https://api.jusuanhub.com:10443/v1").build();
+        var geo = client.videoGeometry(jusuan);
+        assertEquals(java.util.List.of("768"), geo.resolutions());
+        assertEquals(java.util.List.of("16:9", "9:16"), geo.ratios());
+
+        // 我们自己按比例算宽高的协议不受这层限制 —— 返回 null，前端保留完整选项
+        AiModelEndpoint agnes = AiModelEndpoint.builder()
+                .name("agnes-video").model("agnes-video").baseUrl("https://agnes.example.com").build();
+        assertNull(client.videoGeometry(agnes));
+        assertNull(client.videoGeometry(null));
+    }
+
+    @Test
+    @DisplayName("3:4 在聚算那儿必然被吃成 portrait —— 这正是「选 720p·3:4 拿回 768×1376」的由来")
+    void orientation_collapsesAspectRatio() {
+        assertEquals("portrait", MaterialVideoModelClient.orientationForAspect("3:4"));
+        assertEquals("portrait", MaterialVideoModelClient.orientationForAspect("9:16"));
+        assertEquals("landscape", MaterialVideoModelClient.orientationForAspect("16:9"));
+        assertEquals("landscape", MaterialVideoModelClient.orientationForAspect(null));
+    }
+
+    @Test
     @DisplayName("文件名后缀改成真实格式 —— 有的服务端除了 Content-Type 还看文件名")
     void rewritesFilenameExtension() {
         assertEquals("a.jpg", MaterialVideoModelClient.withExtension("a.png", "jpg"));
