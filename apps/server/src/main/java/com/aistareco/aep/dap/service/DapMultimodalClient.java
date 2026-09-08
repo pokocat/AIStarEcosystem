@@ -636,12 +636,51 @@ public class DapMultimodalClient {
     }
 
     /** base(可带可不带 /v1)+ path(以 /v1/ 开头)→ 不重复 /v1 的完整 URL。 */
+    /**
+     * 拼出真正要请求的地址。
+     *
+     * <p>本仓有两套 base_url 约定，历史原因：通用调用层（{@code AiModelInvocationService}）
+     * 拼的是 {@code {base}/chat/completions}，即 base 里**已经含版本段**（火山方舟就是
+     * {@code .../api/v3}）；这里拼的是 {@code {base}/v1/images/generations}，即 base 是**主机根**
+     * （agnes 就是 {@code https://api.agnes-ai.cn}）。同一个端点满足不了两边。
+     *
+     * <p>真实踩过的三种填法，全部 404：
+     * <pre>
+     * .../api/v3/images/generations → .../api/v3/images/generations/v1/images/generations
+     * .../api/v3/images            → .../api/v3/images/v1/images/generations
+     * .../api/v3                   → .../api/v3/v1/images/generations   ← 这个填法是对的，也照样失败
+     * </pre>
+     * 最后一条尤其要命：**用户按文档填对了，仍然不通**，因为火山方舟的图片接口是
+     * {@code /api/v3/images/generations}，路径里根本没有 {@code /v1} 这一段。
+     *
+     * <p>所以这里认两件事：
+     * <ul>
+     *   <li>base 末尾已经是版本段（{@code /v1}、{@code /v3}、{@code /api/v3}…）→ 不再补 {@code /v1}；</li>
+     *   <li>base 末尾已经是这条资源路径本身 → 不重复追加（运营把文档上的完整接口地址整条粘进来）。</li>
+     * </ul>
+     * 两条都不命中就按原样拼，agnes 这类「base 是主机根」的配置行为不变。
+     */
     static String joinUrl(String base, String path) {
         String b = rstrip(base);
-        if (b.endsWith("/v1") && path.startsWith("/v1/")) {
-            return b + path.substring(3);
-        }
+        if (b.isEmpty() || path == null || path.isEmpty()) return b + (path == null ? "" : path);
+
+        // /v1/images/generations → /images/generations
+        String tail = path.startsWith("/v1/") ? path.substring(3) : path;
+        if (b.endsWith(tail)) return b;               // 整条路径已经在 base 里
+        if (endsWithVersionSegment(b)) return b + tail; // base 自带版本段，别再补 /v1
         return b + path;
+    }
+
+    /** base 的最后一段是不是 {@code v1} / {@code v2} / {@code v3}… 这种版本号。 */
+    private static boolean endsWithVersionSegment(String base) {
+        int slash = base.lastIndexOf('/');
+        if (slash < 0 || slash == base.length() - 1) return false;
+        String last = base.substring(slash + 1);
+        if (last.length() < 2 || (last.charAt(0) != 'v' && last.charAt(0) != 'V')) return false;
+        for (int i = 1; i < last.length(); i++) {
+            if (!Character.isDigit(last.charAt(i))) return false;
+        }
+        return true;
     }
 
     private static String rstrip(String s) {
