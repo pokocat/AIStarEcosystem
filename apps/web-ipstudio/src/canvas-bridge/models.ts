@@ -30,6 +30,14 @@ export const SERVER_CHANNEL_ID = "server";
 const endpointIdByName = new Map<string, string>();
 /** endpointId → 单价，属性面板要显示「这一张多少积分」。 */
 const creditByEndpointId = new Map<string, number>();
+/**
+ * endpointId → 视频时长可提交区间。
+ *
+ * 时长下限只有厂商协议知道（聚算媒体 5 秒起），后台那张候选表里没有这一列，
+ * 运营也填不出来。不把它拿到前端，时长滑杆就还是写死的 4–30 秒：
+ * 用户选个 4 秒点发送，服务端 400 —— 一次白跑（v0.176）。
+ */
+const durationBoundsByEndpointId = new Map<string, { min?: number; max?: number }>();
 
 let loaded = false;
 
@@ -56,10 +64,22 @@ export function serverModelsLoaded() {
   return loaded;
 }
 
+/**
+ * 这个视频模型能提交的时长区间（秒）。拿不到就返回 undefined ——
+ * 调用方按画布自己的默认范围显示，不臆造一个区间去限制用户。
+ */
+export function videoDurationBoundsFor(value: string | undefined | null): { min?: number; max?: number } | undefined {
+  const id = endpointIdFor(value);
+  return id ? durationBoundsByEndpointId.get(id) : undefined;
+}
+
 function toChannelModels(list: IpModelOption[], capability: ChannelModel["capability"]): ChannelModel[] {
   return list.map((m) => {
     endpointIdByName.set(m.name, m.endpointId);
     creditByEndpointId.set(m.endpointId, m.creditCost);
+    const min = m.capability?.minDurationSec ?? undefined;
+    const max = m.capability?.maxDurationSec ?? undefined;
+    if (min != null || max != null) durationBoundsByEndpointId.set(m.endpointId, { min: min ?? undefined, max: max ?? undefined });
     return { name: m.name, capability };
   });
 }
@@ -79,6 +99,7 @@ export async function loadServerModels(): Promise<{ image: number; video: number
   const models = await fetchModels();
   endpointIdByName.clear();
   creditByEndpointId.clear();
+  durationBoundsByEndpointId.clear();
 
   const image = toChannelModels(models.image ?? [], "image");
   const video = toChannelModels(models.video ?? [], "video");

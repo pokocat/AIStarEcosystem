@@ -54,6 +54,7 @@ components:
             supportsFirstLastFrame: { type: boolean, nullable: true }
             supportsSubjectReference: { type: boolean, nullable: true }
             maxDurationSec: { type: integer, nullable: true }
+            minDurationSec: { type: integer, nullable: true, description: '视频时长下限（协议硬边界；null=未知）。ip-studio /models 的 video 项会填；前端据此夹时长滑杆' }
         creditCost: { type: integer, description: 积分单价（override ?? 带货线默认价） }
         billingUnit: { type: string, enum: [per_call, per_second], description: per_second 时实付 = creditCost × duration_sec }
         effectiveMinDurationSec: { type: integer, nullable: true, description: 有效时长下限（协议硬边界；null=无已知下限） }

@@ -13,12 +13,25 @@ public record EndpointCapabilityDto(
         Boolean supportsFirstLastFrame,
         Boolean supportsSubjectReference,
         Integer maxDurationSec,
+        /**
+         * 视频时长下限（秒）；null = 未知。来自**协议**硬边界（如聚算媒体协议 5–15 秒），
+         * 后台那张候选表里没有这一列 —— 只有厂商知道，运营填不出来。
+         * 前端拿它把时长滑杆夹到可提交区间：不给的话滑杆是 4–30，
+         * 用户随手选个 4 秒就撞 400 `VIDEO_DURATION_UNSUPPORTED`（v0.176）。
+         */
+        Integer minDurationSec,
         /** 出图最小像素数（宽 × 高）；null = 无下限。见 AiAppEndpointCandidate#minImagePixels。 */
         Integer minImagePixels
 ) {
     public static EndpointCapabilityDto from(AiAppEndpointCandidate c) {
-        if (c == null) return new EndpointCapabilityDto(null, null, null, null, null);
+        return from(c, null, null);
+    }
+
+    /** 带**有效**时长区间（协议硬边界 ∩ 候选配置）的版本；视频用途用它。 */
+    public static EndpointCapabilityDto from(AiAppEndpointCandidate c, Integer minSec, Integer maxSec) {
+        if (c == null) return new EndpointCapabilityDto(null, null, null, maxSec, minSec, null);
         return new EndpointCapabilityDto(c.getMaxRefImages(), c.getSupportsFirstLastFrame(),
-                c.getSupportsSubjectReference(), c.getMaxDurationSec(), c.getMinImagePixels());
+                c.getSupportsSubjectReference(),
+                maxSec != null ? maxSec : c.getMaxDurationSec(), minSec, c.getMinImagePixels());
     }
 }

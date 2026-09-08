@@ -51,17 +51,20 @@ public class IpStudioController {
     private final IpPublishService publish;
     private final IpCatalogService catalog;
     private final com.aistareco.aep.service.AiModelInvocationService invocation;
+    private final com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoModels;
 
     public IpStudioController(IpProjectService projects,
                               IpRunService runs,
                               IpPublishService publish,
                               IpCatalogService catalog,
-                              com.aistareco.aep.service.AiModelInvocationService invocation) {
+                              com.aistareco.aep.service.AiModelInvocationService invocation,
+                              com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoModels) {
         this.projects = projects;
         this.runs = runs;
         this.publish = publish;
         this.catalog = catalog;
         this.invocation = invocation;
+        this.videoModels = videoModels;
     }
 
     // ── 目录 ──────────────────────────────────────────────────
@@ -99,16 +102,34 @@ public class IpStudioController {
 
     private java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> modelOptions(
             com.aistareco.aep.model.AiModelPurpose purpose, long defaultCost) {
+        boolean video = purpose == com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION;
         java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> out = new java.util.ArrayList<>();
         for (var r : invocation.listCandidates(purpose)) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             long cost = r.candidate().getCreditCostOverride() != null
                     ? r.candidate().getCreditCostOverride() : defaultCost;
+            // 视频候选带上**有效**时长区间（协议硬边界 ∩ 候选配置）——
+            // 下限只有协议知道（聚算媒体 5 秒起），后台那张表里根本没有这一列。
+            // 不给的话画布的时长滑杆是 4–30，用户选个 4 秒点发送就撞 400。
+            var caps = video
+                    ? capabilityWithDuration(r)
+                    : com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
                     r.endpoint().getId(), r.endpoint().getName(), r.isDefault(),
-                    com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate()), cost, "per_image"));
+                    caps, cost, video ? "per_video" : "per_image"));
         }
         return out;
+    }
+
+    private com.aistareco.aep.dto.EndpointCapabilityDto capabilityWithDuration(
+            com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint r) {
+        try {
+            var b = videoModels.effectiveDurationBounds(r.endpoint().getId(), r.endpoint());
+            return com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate(), b.minSec(), b.maxSec());
+        } catch (RuntimeException e) {
+            // 拿不到区间不该让整个模型下拉挂掉 —— 退回「未知区间」，前端按默认范围显示
+            return com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
+        }
     }
 
     /**

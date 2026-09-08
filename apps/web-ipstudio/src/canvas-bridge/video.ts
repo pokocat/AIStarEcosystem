@@ -10,6 +10,8 @@
 
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
 import { endpointIdFor } from "./models";
+import { inferVideoRatio } from "@/canvas/lib/media-size";
+import type { AiConfig } from "./config-store";
 import type { UploadedFile } from "./file-storage";
 import { GenerationCanceled } from "./generation";
 
@@ -43,24 +45,59 @@ function firstRefKey(options?: VideoMediaOptions): string | undefined {
   return options?.references?.map((r) => r.storageKey).find(Boolean) ?? undefined;
 }
 
+/**
+ * 视频参数**必须从 config 里读**（v0.176）。
+ *
+ * 画布是这么调的：`createVideoGenerationTask(config, prompt, images, { signal, videos, audios })`
+ * —— 用户在面板上选的清晰度、比例、秒数、模型全都在 **config** 里（`buildGenerationConfig`
+ * 已经把「节点上的设置 > 全局设置 > 默认值」合并好了），options 里一个都没有。
+ * 而这一层原来只读 options，于是那些选择一路都没送到服务端：
+ * 服务端拿不到时长 → 400 `VIDEO_DURATION_REQUIRED`「请提供视频时长」——
+ * 用户明明选了，界面还告诉他没选。
+ *
+ * 上游没这个问题：它那版直接把整个 config 交给厂商 SDK。改成本仓的服务端提交之后
+ * 参数要一个个挑出来，就漏了 —— 而 VideoMediaOptions 全是可选字段，类型检查看不出来。
+ * options 保留为**显式覆盖**（调用点想临时指定时用），没给就取 config。
+ */
+function videoParams(config: Partial<AiConfig> | undefined, options?: VideoMediaOptions) {
+  const rawSeconds = options?.seconds ?? config?.videoSeconds;
+  const seconds = Number(rawSeconds);
+  // 比例：面板存的是像素（"720x1280"），服务端要的是比例（"9:16"）。
+  // "auto" 表示不指定 —— 交给服务端的默认，不要瞎猜一个塞过去。
+  const size = options?.aspectRatio ?? config?.size;
+  const ratio = size && size !== "auto" ? inferVideoRatio(size) : "auto";
+  return {
+    durationSec: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : undefined,
+    aspectRatio: ratio === "auto" ? undefined : ratio,
+    model: endpointIdFor(options?.model ?? config?.videoModel ?? config?.model),
+  };
+}
+
 export async function createVideoGenerationTask(
-  _config: unknown,
+  config: Partial<AiConfig> | undefined,
   prompt: string,
   references: Array<{ storageKey?: string }> = [],
   options?: VideoMediaOptions,
 ): Promise<VideoGenerationTask> {
   const projectId = currentProjectId();
   if (!projectId) throw new Error("画布还没打开，稍等一下再试");
-  const seconds = Number(options?.seconds);
+  const params = videoParams(config, options);
+  // 「全能参考」画布给得出来，我们的视频链给不出来 —— 它现在只吃**首帧图**。
+  // 照样跑等于把用户选的模式悄悄换成另一个（§8.0），所以直接说清楚。
+  if ((config?.videoMode ?? "frames") === "reference") {
+    throw new Error("这条视频链现在只支持「首帧模式」——参考图会作为视频第一帧。请在参数面板把模式切回首帧");
+  }
+  if (!params.durationSec) {
+    // 到这一步还没有时长，说明面板的值没传进来 —— 说清楚是哪儿的问题，
+    // 别让服务端回一句「请提供视频时长」给一个明明已经选过的用户。
+    throw new Error("没读到视频时长，请在参数面板里重新选一次时长后再发送");
+  }
   const job = await generateVideo(projectId, {
     prompt,
     refKey: firstRefKey({ ...options, references }),
-    durationSec: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : undefined,
-    aspectRatio: options?.aspectRatio,
-    // 与出图同理：下拉给的是模型名，服务端认 endpointId（见 canvas-bridge/models.ts）。
-    model: endpointIdFor(options?.model),
+    ...params,
   });
-  return { id: job.id, provider: "plugin", model: options?.model ?? "" };
+  return { id: job.id, provider: "plugin", model: options?.model ?? config?.videoModel ?? "" };
 }
 
 export async function pollVideoGenerationTask(
@@ -102,7 +139,7 @@ export async function waitForVideoGenerationTask(
 }
 
 export async function requestVideoGeneration(
-  config: unknown,
+  config: Partial<AiConfig> | undefined,
   prompt: string,
   references: Array<{ storageKey?: string }> = [],
   options?: VideoMediaOptions,

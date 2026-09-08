@@ -11,7 +11,13 @@ export type IpModelOption = {
   endpointId: string;
   name: string;
   isDefault: boolean;
-  capability: { maxRefImages?: number | null } | null;
+  // 字段名必须跟服务端 EndpointCapabilityDto 一致 —— 手抄类型抄错字段的教训见 v0.163
+  capability: {
+    maxRefImages?: number | null;
+    /** 视频时长可提交区间（协议硬边界 ∩ 后台配置）；null = 未知 */
+    minDurationSec?: number | null;
+    maxDurationSec?: number | null;
+  } | null;
   creditCost: number;
   billingUnit: string;
 };
