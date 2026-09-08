@@ -211,7 +211,10 @@ export function AuthProvider({
       return;
     }
     if (isIdMode()) {
-      void beginLogin(pathname ?? "/");
+      // usePathname() 只有路径，search 与 hash 都没有 —— 直接传它等于把查询串和
+      // fragment 丢在登录跳转里。传 undefined 让 beginLogin 去读 window.location
+      // （它取 pathname + search + hash），只有拿不到 window 时才回落到 pathname。
+      void beginLogin(typeof window === "undefined" ? (pathname ?? "/") : undefined);
       return;
     }
     router.replace(loginPath);

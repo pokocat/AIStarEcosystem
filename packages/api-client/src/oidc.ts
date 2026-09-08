@@ -134,7 +134,11 @@ export function sanitizeReturnPath(raw: string | null | undefined): string {
   if (!raw.startsWith("/")) return "/";
   if (raw.startsWith("//")) return "/";
   if (raw.includes("\\")) return "/";
-  if (raw === AUTH_CALLBACK_PATH || raw.startsWith(`${AUTH_CALLBACK_PATH}?`) || raw.startsWith(`${AUTH_CALLBACK_PATH}/`)) {
+  // 自循环判定要看**路径部分**，不能只列后缀：原来只挡了 `?` 与 `/`，
+  // `/auth/callback#/x` 会漏过去 —— 回跳到回调页自己，登录就在那儿打转。
+  // （默认回跳目标带上 hash 之后这条真的能走到，所以按路径比而不是按后缀比。）
+  const pathOnly = raw.split(/[?#]/, 1)[0];
+  if (pathOnly === AUTH_CALLBACK_PATH || pathOnly.startsWith(`${AUTH_CALLBACK_PATH}/`)) {
     return "/";
   }
   return raw;
@@ -213,8 +217,12 @@ export async function beginLogin(returnPath?: string): Promise<boolean> {
   const issuer = idIssuer();
   if (!issuer) return false;
 
+  // 默认回跳目标必须带上 hash。web-aiavatar 的七牛刷脸回调是 `#/real-auth/{sessionId}`
+  // （见 apps/web-aiavatar/src/app/page.tsx 的转发），丢掉 fragment 等于把用户刚做完的
+  // 活体认证会话丢了 —— 人回来只看到首页，认证要重来一遍。
+  // sanitizeReturnPath 本来就放行站内 `#`，这里只是别在取默认值时把它抹掉。
   const target = sanitizeReturnPath(
-    returnPath ?? `${window.location.pathname}${window.location.search}`,
+    returnPath ?? `${window.location.pathname}${window.location.search}${window.location.hash}`,
   );
 
   const verifier = generateCodeVerifier();

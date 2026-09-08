@@ -106,6 +106,19 @@ describe("sanitizeReturnPath", () => {
     expect(sanitizeReturnPath(AUTH_CALLBACK_PATH)).toBe("/");
     expect(sanitizeReturnPath(null)).toBe("/");
   });
+  // 七牛刷脸回调回跳的是 `#/real-auth/{sessionId}`（web-aiavatar 的红线路径）。
+  // fragment 被吞掉 = 用户刚做完的活体认证会话丢了，得从头再刷一次脸。
+  it("放行带 fragment 的站内路径（七牛刷脸回调）", () => {
+    expect(sanitizeReturnPath("/studio#/real-auth/DH-2044")).toBe("/studio#/real-auth/DH-2044");
+    expect(sanitizeReturnPath("/#/real-auth/DH-2044")).toBe("/#/real-auth/DH-2044");
+    expect(sanitizeReturnPath("/projects/42?tab=cast#node-7")).toBe("/projects/42?tab=cast#node-7");
+  });
+  // fragment 不能变成绕过外跳检查的后门
+  it("fragment 不放宽外跳与反斜杠的判定", () => {
+    expect(sanitizeReturnPath("//evil.com#/real-auth/x")).toBe("/");
+    expect(sanitizeReturnPath("/\\evil.com#/x")).toBe("/");
+    expect(sanitizeReturnPath(`${AUTH_CALLBACK_PATH}#/x`)).toBe("/");
+  });
 });
 
 describe("completeAuthCallback", () => {
