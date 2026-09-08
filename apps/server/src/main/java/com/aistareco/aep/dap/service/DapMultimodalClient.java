@@ -267,9 +267,24 @@ public class DapMultimodalClient {
             log.info("[dap-ai] 画幅按端点下限上调 endpoint={} {} → {}（下限 {} 像素）",
                     t.endpointName(), size, effectiveSize, t.minImagePixels());
         }
+        // 参考图与出图格式**必须放顶层**（v0.170）。
+        //
+        // 此前只塞在 extra_body 里。`extra_body` 是 OpenAI **Python SDK** 的约定 ——
+        // SDK 会把它摊平进顶层 body；而我们是直接发原始 JSON，那它就只是个厂商不认识的
+        // 嵌套对象。火山方舟的文档里 image / response_format / watermark 全是顶层参数，
+        // 于是**参考图根本没送到**，而且不报错（image 是可选的）——
+        // 表现就是「出的图跟我上传的照片一点不像」，查日志还能看到 image 明明在请求里。
+        //
+        // 顶层与 extra_body 同时给：agnes 那条链一直是按 extra_body 读的，
+        // 贸然只留顶层会把已经在用的端点弄坏；多带一份未知字段厂商会忽略。
+        body.put("response_format", "url");
+        // 火山默认 watermark=true，会在成图上打自己的水印。
+        body.put("watermark", false);
         ObjectNode extra = body.putObject("extra_body");
         extra.put("response_format", "url");
         if (inputImages != null && !inputImages.isEmpty()) {
+            ArrayNode top = body.putArray("image");
+            inputImages.forEach(top::add);
             ArrayNode arr = extra.putArray("image");
             inputImages.forEach(arr::add);
         }

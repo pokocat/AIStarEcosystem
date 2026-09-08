@@ -37,6 +37,32 @@ function Host({ projectId }: { projectId: string }) {
   const [publishOpen, setPublishOpen] = React.useState(false);
   const { message } = AntdApp.useApp();
 
+  // 捏合 / Ctrl+滚轮 只缩放画布，不缩放整个网站。
+  //
+  // 画布自己在容器上挡了滚轮，但放过了 `[data-canvas-no-zoom]`、antd 弹层这些区域
+  // （为了让它们内部能正常滚动）—— 于是光标落在节点面板、下拉、弹窗上时捏合，
+  // 浏览器就把整个站点缩放了，而且缩完很难恢复。
+  //
+  // 分寸：**只挡缩放手势，不挡滚动**。滚动是那些区域真正需要的；
+  // 缩放在画布应用里从来都该由画布接管（Figma / Miro 都是这么做的）。
+  // Safari 的捏合走的是 gesture* 事件，不是 wheel，得单独挡。
+  React.useEffect(() => {
+    const blockZoom = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) e.preventDefault();
+    };
+    const blockGesture = (e: Event) => e.preventDefault();
+    document.addEventListener("wheel", blockZoom, { passive: false });
+    document.addEventListener("gesturestart", blockGesture);
+    document.addEventListener("gesturechange", blockGesture);
+    document.addEventListener("gestureend", blockGesture);
+    return () => {
+      document.removeEventListener("wheel", blockZoom);
+      document.removeEventListener("gesturestart", blockGesture);
+      document.removeEventListener("gesturechange", blockGesture);
+      document.removeEventListener("gestureend", blockGesture);
+    };
+  }, []);
+
   // 画布在「没有可用模型」时本来会弹上游那个填 API Key 的对话框 —— 那是它作为单机工具的
   // 设计。本仓的 Key 在服务端，用户在那个表单里什么也做不了，只会以为是自己没配好。
   React.useEffect(() => {

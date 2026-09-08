@@ -75,4 +75,33 @@ class DapUpstreamMessageTest {
         @Override public java.net.URI uri() { return java.net.URI.create("https://example.test"); }
         @Override public java.net.http.HttpClient.Version version() { return java.net.http.HttpClient.Version.HTTP_1_1; }
     }
+
+    // ── 参考图必须放顶层（v0.170）────────────────────────────────────────
+
+    @Test
+    @DisplayName("参考图与 response_format 走顶层，不能只塞 extra_body")
+    void referenceImagesMustBeTopLevel() throws Exception {
+        // extra_body 是 OpenAI **Python SDK** 的约定（SDK 会摊平进顶层）。我们直接发原始 JSON，
+        // 只塞在 extra_body 里的话，厂商看到的是一个不认识的嵌套对象 —— 参考图根本没送到，
+        // 而且不报错（image 是可选参数），表现就是「出的图跟上传的照片一点不像」。
+        java.lang.reflect.Field f = DapMultimodalClient.class.getDeclaredField("OM");
+        f.setAccessible(true);
+        com.fasterxml.jackson.databind.ObjectMapper om =
+                (com.fasterxml.jackson.databind.ObjectMapper) f.get(null);
+        com.fasterxml.jackson.databind.node.ObjectNode body = om.createObjectNode();
+        body.put("model", "m");
+        body.put("prompt", "p");
+        body.put("response_format", "url");
+        body.put("watermark", false);
+        com.fasterxml.jackson.databind.node.ObjectNode extra = body.putObject("extra_body");
+        extra.put("response_format", "url");
+        body.putArray("image").add("https://cdn/a.png");
+        extra.putArray("image").add("https://cdn/a.png");
+
+        assertTrue(body.path("image").isArray() && !body.path("image").isEmpty(),
+                "参考图不在顶层，火山这类按文档实现的厂商收不到");
+        assertEquals("url", body.path("response_format").asText());
+        assertTrue(body.path("extra_body").path("image").isArray(),
+                "extra_body 那份要留着 —— agnes 那条链一直按它读");
+    }
 }
