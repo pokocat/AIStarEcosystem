@@ -1,8 +1,38 @@
-# 版本增量历史（v0.5 → v0.152）
+# 版本增量历史（v0.5 → v0.190）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.190（2026-09-08）— AI IP 工作台并入 web-aiavatar，一个应用按设备分两套形态
+
+起因是「ipstudio 和 aiavatar 两个前端混用很怪」。这两个 app 本来就是**同一个产品**：同一条 `product_enrollment`、同一个 `X-App-Code: aiavatar`、同一套 `/api/v1`，`ProductRouteTable` 里连 ip-studio 的条目都没有（走 `any("/api/v1/**", AIAVATAR)` 兜底）。切开的只有前端，于是同一个账号在两边被来回踢：桌面用户在工作台点「编辑名片」「去编辑形象」，被 `window.open` 扔进 `aiavatar.aibuzz.cn` 那个 `max-width:480px` 的手机列（**8 处外链都是这个毛病**）；资产库与名片列表各写了一遍（工作台 514+229 行只读、aiavatar 159+227 行可编辑、老 SPA 里还有第三份 1039 行）；而移动端完全不知道工作台存在（`grep ipstudio apps/web-aiavatar/src` 零命中）。
+
+**本次服务端零改动。**
+
+**决定性的一个发现**：aiavatar 有两层外壳，此前容易混为一谈 —— `.app-root`（`position:fixed; max-width:480px` 的真手机笼子）**只有** `/studio` 老 SPA 在用；而 11 个现代 App Router 路由**全部**经 `HubScreen`（普通文档流 div）。所以「桌面化资产平台」不是 35 屏重写，主要是改 `HubScreen` 一个组件加一套桌面导航。
+
+**设备分流用 CSS，不用路由组**：`(mobile)/assets` 与 `(desktop)/assets` 会解析到同一个 `/assets`，Next 直接拒绝构建；客户端 `matchMedia` 切整个外壳则会在手机上每次冷启动闪一下桌面版（`useIsMobile` 初值是 `undefined`，SSR 与首帧一律走桌面分支）。**只有画布那一页必须是 JS 闸** —— CSS 只能把元素藏起来，组件照样 mount、照样下载那 15k 行 + antd 的 chunk。改成 `dynamic({ ssr:false })` 挂在判定之后，实测同一个 URL：手机端 antd 注入 **0** 个 style 标签、页面 chunk 88 KB；桌面 **39** 个、画布 7 个节点正常渲染。
+
+**令牌撞名是最硬的一块**：两个 app 在 `:root` 各定义 30 个同名 CSS 变量、约 22 个取值不同（`--primary` 一个是低饱和群青一个是青，`--canvas`/`--ink`/`--surface*`/`--line*` 全不一样）。两份样式表同时加载，**后加载的 `:root` 全局获胜** —— 结果不是「各用各的」，而是整个产品被刷成一套配色。ipstudio 那份改挂 `.ip-surface` 容器类，**且只改搬过去的副本**（改原文件会让当时还在服役的 ipstudio 下次部署整站掉色，也就谈不上「可回滚」）。
+
+**Tailwind 不引 preflight**（实测决定）：把真实的 `preflight.css`（393 行）注进运行中的 aiavatar，量前后计算样式 —— 一屏 260+ 个节点被改，主因是 `line-height: normal` → 1.5，卡片全部变高、底部一行被裁掉；button 字体 `13.33px/400` → `13px/700`、input → `16px`。而 `proto/*` 那 14k 行零测试覆盖，这种回归上线了也没人发现。改为只引 `theme.css` + `utilities.css`，reset 自己写、只作用于 `.ip-surface`。验证方式是在同一页面放两个探针 div（一个裸奔一个套作用域）：作用域外 h1 32px / ul disc / button 13.33px（UA 默认原样保留），作用域内 16px / none / 16px。
+
+**浮层会逃出作用域**（并入后实测补修）：画布有 7 处手写 `createPortal(..., document.body)`，antd 的 Modal/Dropdown/Popover/message 默认也挂 body。ipstudio 有 **52 个 aiavatar 根本没定义**的令牌，在 body 上解析为**空** —— `background: var(--paper)` 整条声明失效 → 透明弹层。逐个改那 7 个 vendored 文件违反「搬来的文件尽量少改」，改为**画布挂载期间给 `<body>` 也带上 `.ip-surface`、卸载即摘**（画布页整页都是工作台内容，覆盖到 body 不波及别人）。
+
+**鉴权不挂第二套**：搬来的代码里只有 `canvas-host` 一处用到登录态（读 `operatorRole` 决定给不给「存为全局示例」），vendored canvas 目录零处。为这一处再挂一套共享 `AuthProvider` 得不偿失（两套状态机；且它没有 mock 旁路，会把 mock 模式整个弹去登录），改读 aiavatar 自己的 `useIdentity` + `isOperatorRole`。
+
+**导航是超集**：原 ipstudio 顶栏只有「项目·资产·名片」，而「发现/我的/授权」只存在于 aiavatar 的底部 tab 栏 —— 照搬三个的话桌面用户就再也点不到那三处。现在主导航四项 + 右上角账号块。顶栏另有两条：访客不渲染（那几个入口全要登录），公开名片页 `/card/p/*` 与登录页不挂。
+
+**契约门**：`check-api-contract.mjs` 对 `apps/web-aiavatar/src` 整棵树补 `/v1`（proto 的 apiFetch 自己拼 `/api/v1`），而搬来的子树字面量本来就写全 `/v1/ip-studio/*` —— 混在一起被算成 `/v1/v1/...`，**30 个调用点全废**。先给 `walk()` 加 `exclude`（单独一个 commit，扫描结果逐字节未变以证明零影响），再把两棵子树排除并单列。
+
+**顺带清掉**：`@ai-star-eco/ui` 整个依赖（搬来的代码里只在注释出现过，唯一真实用处是项目列表一个 `AlertDialog`，改 antd Modal —— 本 app 明令不套 shadcn，画布也已全用 antd）；`@xyflow/react` 与约 60 行 React Flow 样式（v0.151 自研画布的遗留，v0.157 换 vendored 画布后全仓无人 import）。依赖按实际 import 扫描装 **15 个**而不是照抄 25 个。
+
+**退役 web-ipstudio**：代码与 19 处登记全清；`design.md` 是群青/麦黄那套令牌的真源，保留为 `apps/web-aiavatar/DESIGN-desktop.md`。`ipstudio.aibuzz.cn` **改 308 跳转而不是删 vhost**（已发出去的链接、书签、账号中心登记的回调都还指着它），且 `/auth/callback` **不跳** —— 进行中的 OIDC 回调带着 code/state，配对的 PKCE verifier 存在那个 origin 的 sessionStorage 里，跨域跳过去只会报错。`verify.sh` 两处会说谎（`check_url` 把 308 当成功 → 永远绿；`check_unit` 在停服那刻硬失败），跟基础设施改动同一个 commit 动。账号中心的 client 与 CORS 待观察期后清理（跨仓，顺序不能反）。
+
+**尚未做完**：`/studio` 老 SPA（26 个 overlay / 16 个 screen / 约 11k 行）在桌面上仍是 480px 窄列，按 `docs/aiavatar-asset-hub-redesign.md` §3.1 既有双轨逐屏迁出；宣传页没有桌面版式（本版只把背景改成全宽）；移动端画布支持（用户明确推迟）。
+
+门禁：`typecheck:all` 10/10 + `typecheck:admin` + server compile + `check:api-contract`（518 调用点 / 8 个根）+ web-aiavatar **144** 条 vitest（随搬迁把测试运行器一起接上，此前该 app 的 `test` 脚本是 `echo 'No unit tests' && exit 0`）+ `next build --webpack` 18 路由 + `nginx -t`；桌面 1440 与手机 375 双视口浏览器逐页实测。
 
 ### v0.152（2026-09-06）— IP Studio 宣传首页与画布视觉重构
 
