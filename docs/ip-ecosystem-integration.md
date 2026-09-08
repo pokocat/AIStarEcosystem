@@ -10,7 +10,7 @@
 
 ```
  AI IP 工作台            数字资产平台              数字名片
- (ipstudio 3015)         (dap · web-aiavatar)      (/card)
+ (web-aiavatar 桌面面)   (dap · web-aiavatar)      (/card)
  ─────────────           ─────────────────         ──────────
  一张照片 + 内置工作流   登记 · 版本 · 授权 · 用量  对外发布面
  一次产出一整组          DapAvatar / Look / Deriv   引用，不拷贝

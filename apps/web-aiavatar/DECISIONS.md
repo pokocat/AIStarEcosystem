@@ -12,6 +12,11 @@
 
 **决策**：
 1. **不接 `@ai-star-eco/ui` / `@ai-star-eco/landing` 共享 shadcn 设计系统** —— 原型的视觉语言
+   > **v0.190 状态更新**：`@ai-star-eco/ui` 已彻底不在依赖里（并入 AI IP 工作台时顺手摘掉了它
+   > 唯一的用处）。`@ai-star-eco/landing` 仍在用，但只用它的鉴权 / 开通门组件，不用视觉。
+   > 新增的桌面面用 antd + Tailwind，锁在 `.ip-surface` 作用域内，**不与本节冲突**：
+   > 本节要守的是「别让外来设计系统动到手写 CSS」，作用域隔离恰恰是在守它。
+   （原文）原型的视觉语言
    （纯白纸面 + 单色青 `#12B3DE` + 手机壳 + 微信 chrome + 衬线资产身份）与共享 shadcn 体系
    完全不同，强行套用会摧毁设计。本 app 自带 `src/proto/*` 设计层，依赖只有 next/react。
 2. **屏幕层保留原型的 `React.createElement` + 内联样式写法**（见 `src/proto/screen-*.tsx`）。

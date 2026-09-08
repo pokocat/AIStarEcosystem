@@ -1,15 +1,25 @@
-# AI Star Eco — ipstudio.aibuzz.cn HTTPS entry for apps/web-ipstudio (port 3015).
+# AI Star Eco — ipstudio.aibuzz.cn HTTPS(:443)：**退役跳转站**。
 # Install to: /etc/nginx/conf.d/ipstudio.aibuzz.cn.ssl.conf
 #
-# 该子域的 80 vhost 在 ipstudio.aibuzz.cn.conf（不是本文件），本文件只补 443。
-# 每个子域必须同时有 80 和 443 vhost —— 缺 443 会被浏览器 HTTPS-First / HSTS
-# 打到 nginx 的「443 默认 server」，2026-09-06 起是 000-default-ssl.conf 的 404 兜底。
-# 详见 infra/README.md §5.1「nginx vhost：每子域必须同时有 80 和 443」。
+# v0.190 起 AI IP 工作台并入 aiavatar（apps/web-aiavatar，一个应用按设备分两套形态），
+# apps/web-ipstudio 已从仓库删除，3015 上不再有服务。本域名**保留为跳转**而不是直接
+# 删掉 vhost —— 已经发出去的项目链接、书签、账号中心里登记的回调地址都还指着它，
+# 删了就是一片 404，而且落到 443 默认 server 的兜底页，用户看不出发生了什么。
 #
-# 证书：全站共用 *.aibuzz.cn 泛域名证书（SAN 含 *.aibuzz.cn + aibuzz.cn），
-#   /etc/nginx/certs/aibuzz.cn/fullchain.pem
-#   /etc/nginx/certs/aibuzz.cn/privkey.key
-# ipstudio 是一级子域，被通配符覆盖（两级如 www.ipstudio 不覆盖，见 §5.2）。
+# 路径原样带过去：工作台的路由在 aiavatar 上是同名的（/projects、/projects/<id>），
+# 所以 https://ipstudio.aibuzz.cn/projects/IPP-xxx 会精确落到对应的画布。
+#
+# ⚠️ /auth/callback **不跳**。进行中的 OIDC 回调带着 code/state，而配对的 PKCE
+# verifier 存在 ipstudio.aibuzz.cn 这个 origin 的 sessionStorage 里 —— 跨域跳过去
+# 那边没有待处理状态，只会报错。观察期内在这里给一句人话说明，让用户重新登录。
+#
+# 退役顺序（infra/README.md §5.4）：
+#   1) 本 vhost 改跳转（就是现在）
+#   2) 观察 ≥90 天，确认无真实流量
+#   3) 到账号中心（独立仓库 pokocat/aibuzz-id）删掉 client `web-ipstudio`
+#      与 ID_CORS_ALLOWED_ORIGINS 里的 https://ipstudio.aibuzz.cn
+#   4) 删本 vhost + 80 vhost + DNS A 记录 + systemd 单元 + /opt 目录
+# 顺序反了会让跳转期内的登录 400。
 
 server {
     listen 443 ssl;
@@ -23,25 +33,13 @@ server {
     ssl_prefer_server_ciphers on;
     add_header Strict-Transport-Security "max-age=31536000" always;
 
-    # 画布上传原始照片，放宽 body 上限（与其它子域一致）。
-    client_max_body_size 200m;
-
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto https;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080/api/;
-        proxy_connect_timeout 30s;
-        proxy_read_timeout 180s;
-        proxy_send_timeout 180s;
+    # 回调不跳转：跨域之后 PKCE verifier 找不到，跳过去只会得到一个看不懂的错误。
+    location = /auth/callback {
+        default_type text/html;
+        return 200 '<!doctype html><meta charset="utf-8"><title>登录入口已迁移</title><body style="font:15px/1.7 -apple-system,PingFang SC,sans-serif;max-width:32em;margin:18vh auto;padding:0 1.5em;color:#14202B"><h1 style="font-size:1.25em">登录入口已迁移</h1><p>AI IP 工作台已并入数字资产平台。请到 <a href="https://aiavatar.aibuzz.cn/">aiavatar.aibuzz.cn</a> 重新登录，项目和资产都在。</p></body>';
     }
 
-    location /static/ { proxy_pass http://127.0.0.1:8080/static/; }
-    location /cdn/ { proxy_pass http://127.0.0.1:8080/cdn/; }
-    location / { proxy_pass http://127.0.0.1:3015; }
+    # 其余一律 308 到 aiavatar，保留完整路径与查询串。
+    # 308 而非 301/302：保留方法与 body，POST 不会被降级成 GET。
+    location / { return 308 https://aiavatar.aibuzz.cn$request_uri; }
 }

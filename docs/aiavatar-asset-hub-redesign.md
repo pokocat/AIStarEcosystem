@@ -196,7 +196,12 @@ api.ts 按域拆文件是 P3 工作项，不与页面重构混做。
 
 新代码全部 JSX + 明确类型（实体类型 import 自 `src/proto/data.ts`，它仍是契约真源）；
 `tsconfig strict` 全局仍 false（proto 松类型），新目录以代码纪律保平，P3 拆 proto 后再开。
-样式沿用 `globals.css` V4 令牌（inline style + CSS 变量，与 proto 同语言，不引入 Tailwind）。
+样式沿用 `globals.css` V4 令牌（inline style + CSS 变量，与 proto 同语言）。
+> **v0.190 修订**：AI IP 工作台并入本 app 之后引入了 Tailwind，但**限定在 `.ip-surface`
+> 作用域内**（`src/styles/ip-desktop.css`），且**不含 preflight** —— 实测全局 preflight 会把
+> `line-height: normal` 改成 1.5，一屏 260+ 个节点的垂直节奏全变，而 `proto/*` 那 14k 行
+> 零测试覆盖。所以本节「不引入 Tailwind」的原意（不许它动到手写 CSS）仍然成立，
+> 只是实现方式从「不装」变成「装了但锁在作用域里」。
 
 ---
 

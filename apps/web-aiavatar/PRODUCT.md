@@ -1,6 +1,8 @@
 # Product
 
 > AiAvatar · 数字人资产平台（web-aiavatar）的战略层文档。
+> **v0.190 起本 app 同时承载 AI IP 工作台**（原 `apps/web-ipstudio`）：一个应用两套设备形态 ——
+> <1024px 是原来的移动端 H5，≥1024px 是桌面面（无限画布在这一档）。桌面视觉见 [DESIGN-desktop.md](DESIGN-desktop.md)。
 > 本文件回答「谁 / 做什么 / 为什么」；视觉「长什么样」见 [DESIGN.md](DESIGN.md)；
 > 技术启动与版本日志见 [README.md](README.md)；落地取舍见 [DECISIONS.md](DECISIONS.md)。
 > 三者分工：PRODUCT = 战略，DESIGN = 视觉，README/DECISIONS = 技术 / 架构记录。
@@ -82,6 +84,12 @@ AI 原创人物的形象主图由用户在资产详情里主动「提交平台�
 - **不是「什么都要授权」**。授权登记只发给真人肖像人物与 IP；场景 / 产品 / 风格是轻资产，只记来源（实拍上传 or AI 生成）。授权徽标因此仍然稀有，一眼可信。
 - **不是套壳演示预览**。已删除 iPhone 外壳 / 伪微信胶囊 / 伪状态栏 / 伪 home 指示条；用真实安全区，是能投产的 H5，不是手机模型截图（DECISIONS §F）。
 - **不套用共享 shadcn 设计系统**。强行套用 `@ai-star-eco/ui` 会摧毁 HeyGen 风视觉语言；本 app 自带 `src/proto/*` 设计层（DECISIONS §A）。
+  - **v0.190 仍然成立，而且更彻底了**：AI IP 工作台并入时把它原来那一个 `@ai-star-eco/ui` 依赖（一个 AlertDialog）
+    改成了 antd Modal，`@ai-star-eco/ui` 现在**完全不在本 app 的依赖里**。
+  - 但本 app 现在确实有**两套视觉语言并存**，这是有意的：手机形态是原来的青色 HeyGen 风；
+    桌面的 AI IP 工作台是群青 / 麦黄（`DESIGN-desktop.md`），用 antd + Tailwind，整体锁在 `.ip-surface`
+    作用域内。两边共 30 个同名 CSS 变量、约 22 个取值不同，靠作用域隔离而不是靠约定 —— 细节见
+    `src/styles/ip-desktop.css` 的头注释。**新增页面前先想清楚它属于哪一面**，不要在一个组件里混用两套。
 - **不用浏览器原生 `confirm` / `alert` / `prompt`**。二次确认走 `Confirm` 弹窗，提示走 toast / inline error（仓库 CLAUDE.md §8 强制）。
 - **不伪装能力**。未配引擎 / 调用失败 → 占位产物 + `mock=true` 角标 + 不扣费；绝不假装成功、绝不返回假内容（CLAUDE.md §8.0）。
 

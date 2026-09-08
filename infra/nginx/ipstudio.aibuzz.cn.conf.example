@@ -1,8 +1,9 @@
-# AI Star Eco — ipstudio.aibuzz.cn HTTP(:80) entry for apps/web-ipstudio。
+# AI Star Eco — ipstudio.aibuzz.cn HTTP(:80)：**退役跳转站**的 80 入口。
+# v0.190 工作台已并入 aiavatar；443 那份把流量 308 到 aiavatar.aibuzz.cn。
 # Install to: /etc/nginx/conf.d/ipstudio.aibuzz.cn.conf
 #
 # 与 star.aibuzz.cn 同形态：80 只做 308 跳 HTTPS（308 保留方法与 body，POST 不会被降级成 GET），
-# 真正的服务端配置在 ipstudio.aibuzz.cn.ssl.conf（443，含 /api/ /static/ /cdn/）。
+# 真正的跳转规则在 ipstudio.aibuzz.cn.ssl.conf（443）。
 # 每个子域必须同时有 80 和 443 vhost，见 infra/README.md §5.1。
 #
 # /healthz 留在 80 上直接 200，免得把监控探测也变成一次跳转。

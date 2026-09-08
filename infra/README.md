@@ -29,7 +29,6 @@ infra/
 │   ├── web-drama.env.example       ← apps/web-drama
 │   ├── web-aiavatar.env.example    ← apps/web-aiavatar
 │   ├── web-star.env.example        ← apps/web-star（明星商务工作台）
-│   └── web-ipstudio.env.example    ← apps/web-ipstudio（AI IP 工作台）
 │
 ├── nginx/                          ← Nginx 配置（落 /etc/nginx/conf.d/）
 │   ├── ai.conf.example             ← HTTP 入口形态（首次部署 / 内网联调）
@@ -47,13 +46,13 @@ infra/
 │   ├── drama.aibuzz.cn.ssl.conf.example      ← web-drama    → 3011
 │   ├── aiavatar.aibuzz.cn.ssl.conf.example   ← web-aiavatar → 3013
 │   ├── star.aibuzz.cn.ssl.conf.example       ← web-star     → 3014（80 在 star.*.conf.example）
-│   ├── ipstudio.aibuzz.cn.ssl.conf.example   ← web-ipstudio → 3015（80 在 ipstudio.*.conf.example）
+│   ├── ipstudio.aibuzz.cn.ssl.conf.example   ← 退役跳转站：308 → aiavatar（v0.190）
 │   ├── api.aibuzz.cn.ssl.conf.example        ← server       → 8080
 │   │
 │   │   ── 80 + 443 单文件形态（这两个域名线上就是这么配的，2026-09-06 已补齐反代）──
 │   ├── aistar.aibuzz.cn.conf.example ← web-aiavatar → 3013（与 aiavatar.*.ssl 同上游）
 │   ├── star.aibuzz.cn.conf.example   ← web-star 的 80 块（443 在 star.*.ssl.conf.example）
-│   ├── ipstudio.aibuzz.cn.conf.example ← web-ipstudio 的 80 块（443 在 ipstudio.*.ssl.conf.example）
+│   ├── ipstudio.aibuzz.cn.conf.example ← 同上的 80 块
 │   └── snippets/
 │       └── proxy-defaults.conf     ← 通用 proxy_set_header 集
 │
@@ -65,7 +64,6 @@ infra/
 │   ├── aistareco-web-drama.service.example
 │   ├── aistareco-web-aiavatar.service.example
 │   ├── aistareco-web-star.service.example
-│   ├── aistareco-web-ipstudio.service.example
 │   └── aistareco-sau-service.service.example   ← Docker 启动型
 │
 ├── rds/                            ← 阿里云 RDS MySQL 8.0 初始化
@@ -105,7 +103,7 @@ infra/
                           │   ├─ drama.aibuzz.cn → web-drama (3011)
                           │   ├─ aistar.aibuzz.cn → web-aiavatar (3013)
                           │   ├─ star.aibuzz.cn → web-star (3014)
-                          │   ├─ ipstudio.aibuzz.cn → web-ipstudio (3015)
+                          │   ├─ ipstudio.aibuzz.cn → 308 跳 aiavatar（退役中）
                           │   ├─ api.aibuzz.cn → server (8080)
                           │   └─ id.aibuzz.cn → 账号中心 (8091, 独立仓库 pokocat/aibuzz-id)
                           │
@@ -118,7 +116,6 @@ ECS 集群 (1~N 台, VPC 内网)│
   │   • aistareco-web-celebrity  :3012  (Next 16 standalone)
   │   • aistareco-web-aiavatar   :3013  (Next 16 standalone)
   │   • aistareco-web-star       :3014  (Next 16 standalone)
-  │   • aistareco-web-ipstudio   :3015  (Next 16 standalone)
   │   • aistareco-id-server      :8091  (统一账号中心 / OIDC；本仓不发布，见 pokocat/aibuzz-id)
   └─ Docker                                                                   
       • aistareco-sau-service    :8090  (FastAPI + Playwright/patchright)
@@ -481,7 +478,7 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 
 ```bash
 NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn \
-  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star,web-ipstudio
+  ./infra/scripts/deploy.sh web-music,web-drama,web-celebrity,web-aiavatar,web-star
 ```
 
 默认值是 `legacy`，所以**不显式指定时现网行为完全不变**。回退 = 用 `legacy` 重新构建部署。
@@ -541,7 +538,7 @@ HSTS（各 443 vhost 都带 `max-age=31536000`）更是强制。**所以「80 �
 | `drama.aibuzz.cn` | web-drama 3011 | `aistareco.conf`（308 → https） | `drama.aibuzz.cn.ssl.conf` | `drama.aibuzz.cn.ssl.conf.example` |
 | `aiavatar.aibuzz.cn` | web-aiavatar 3013 | `aistareco.conf`（308 → https） | `aiavatar.aibuzz.cn.ssl.conf` | `aiavatar.aibuzz.cn.ssl.conf.example` |
 | `star.aibuzz.cn` | web-star 3014 | `star.aibuzz.cn.conf`（308 → https） | `star.aibuzz.cn.ssl.conf` | 两份同名 example |
-| `ipstudio.aibuzz.cn` | web-ipstudio 3015 | `ipstudio.aibuzz.cn.conf`（308 → https） | `ipstudio.aibuzz.cn.ssl.conf` | 两份同名 example ← v0.151 新增 |
+| `ipstudio.aibuzz.cn` | **无上游（退役跳转站）** | `ipstudio.aibuzz.cn.conf`（308 → https） | `ipstudio.aibuzz.cn.ssl.conf`（308 → aiavatar） | v0.190 工作台并入 aiavatar；保留跳转不删，退役顺序见该文件头注释 |
 | `aistar.aibuzz.cn` | web-aiavatar 3013 | `aistar.aibuzz.cn.conf` | 同文件 | `aistar.aibuzz.cn.conf.example` |
 | `api.aibuzz.cn` | server 8080 | `aistareco.conf`（**不跳转**，见下） | `api.aibuzz.cn.ssl.conf` ← 2026-09-06 补 | `api.aibuzz.cn.ssl.conf.example` |
 | `www.<任意子域>` | — | `www-redirect.conf`（308 → 去掉 www） | 同文件 | `www-redirect.conf.example` |
@@ -671,7 +668,9 @@ sudo awk '{for(i=1;i<=NF;i++) if($i ~ /^host=/) print $i}' \
 
 ### 5.4 新增一个 web 子应用时的部署登记清单
 
-> 2026-09-06 起。`apps/web-ipstudio`（v0.151）代码合入后**七处登记全部漏掉**，
+> 2026-09-06 起。（**该服务已于 v0.190 并入 web-aiavatar 并退役**，本案例作为
+> 「新增子应用必须登记七处」的教训保留 —— 反过来退役时要清的也正是这七处。）
+> `apps/web-ipstudio`（v0.151）代码合入后**七处登记全部漏掉**，
 > 结果是「只能本地跑、线上无从部署」。新增子应用时按下表逐项打勾，缺一项都会在
 > 上线当天变成阻塞。
 

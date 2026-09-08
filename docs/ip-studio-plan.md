@@ -1,6 +1,17 @@
-# AI IP 工作台（web-ipstudio）设计真源 · v0.151
+# AI IP 工作台设计真源 · v0.151（前端形态见下方 v0.190 修订）
 
-> last-reviewed: 2026-09-06 · 状态：**P1 已落地（v0.151，未上线；infra 部署登记见 TODO.md）**。实现与本文的差异见 §10。
+> last-reviewed: 2026-09-08 · 状态：**已上线并已并入 web-aiavatar**。实现与本文的差异见 §10。
+>
+> ⚠️ **两条 §0 决策已被后续版本推翻，读本文前先看这里**：
+> 1. 「新桌面子应用 `apps/web-ipstudio`（3015）」—— **v0.190 已并入 `apps/web-aiavatar`（3013）**。
+>    一个应用按设备分两套形态：<1024px 移动端 H5，≥1024px 桌面面（画布在这一档）。
+>    原因：切成两个前端之后同一个账号在两边被来回踢（桌面点「编辑名片」会掉进 480px 的手机列），
+>    而两者本来就共用一条 enrollment、一个 `X-App-Code`、一套 `/api/v1`。
+>    代码位置：`src/canvas/`（vendored 画布）、`src/canvas-bridge/`（胶水）、`src/ip/`（工作台专属）。
+> 2. 「画布用 `@xyflow/react`（借 infinite-canvas 形态不搬代码）」—— **v0.157 起改为整体 vendor
+>    `basketikun/infinite-canvas`**，xyflow 已从依赖中移除。
+>
+> `ipstudio.aibuzz.cn` 保留为 308 跳转（退役顺序见 `infra/nginx/ipstudio.aibuzz.cn.ssl.conf.example` 头注释）。
 > 目标：给个人 / 品牌一个「上传一张照片 → 挑一套内置工作流 → 稳定产出一组同一人物、同一风格的 AI IP 形象」的桌面工作台，
 > 形象最终落成 AiAvatar 数字资产（`DapAvatar` + `DapLook`），供音乐 / 短剧 / 带货各线引用。
 
@@ -10,7 +21,7 @@
 
 | 议题 | 决定 | 理由 |
 |---|---|---|
-| 放哪 | **新子应用 `apps/web-ipstudio`（port 3015）**，桌面端 | 无限画布是桌面重交互；`web-aiavatar` 是移动 H5、零 UI 依赖、手写 CSS，塞进去两边都别扭 |
+| 放哪 | ~~**新子应用 `apps/web-ipstudio`（port 3015）**，桌面端~~ **v0.190 推翻：并入 `apps/web-aiavatar`（3013）** | 原理由（「塞进去两边都别扭」）站不住的地方：真正别扭的是**切成两个前端之后同一个账号在两边被来回踢** —— 桌面用户点「编辑名片」会掉进 480px 的手机列。现在一个应用两套设备形态：手机形态一个字没改，桌面面用 `.ip-surface` 作用域隔离自己的令牌与 Tailwind（不引 preflight），互不干扰 |
 | 产品归属 | **共用 aiavatar 开通**（`requiredPlatform="aiavatar"`，`X-App-Code: aiavatar`），后端路由全部挂 `/api/v1/ip-studio/**` | 已被 `ProductRouteTable` 的 `any("/api/v1/**", AIAVATAR)` 兜底，不新增产品码、不改 enrollment；产出物本来就是 AiAvatar 资产。独立成产品码留作后续选项 |
 | 画布 | **React Flow（`@xyflow/react` 12，MIT）**，借鉴 [`basketikun/infinite-canvas`](https://github.com/basketikun/infinite-canvas) 的交互形态（节点/连线/小地图/撤销重做/围绕选中节点对话），**不搬其代码** | 该仓是 Vite 独立应用，模型 API Key 放浏览器 IndexedDB 直连上游 —— 与本仓「模型只走服务端绑定、积分服务端 hold/commit、资产只落 OSS」三条红线正面冲突；React 19 + Next 16 下它也无法作为库引入 |
 | 生成链路 | **全部复用 dap 域**：`DapMultimodalClient.generateImage`（i2i）、`DapImageInput`、`FileStorageService`、`PromptService`、`CreditService` hold→commit、`DapPricingService` 后台可配单价 | 不再造第二条图像生成链；生产门禁（§8.0 无引擎 503 不扣费）天然继承 |
@@ -245,7 +256,7 @@ H2 dev 下 `ddl-auto=update` 也会建表，迁移需与 H2 方言兼容（LONGT
 
 ## 5. 前端设计（agent B）
 
-`apps/web-ipstudio`：Next 16.2.6 / React 19 / Tailwind v4 / `@ai-star-eco/{types,ui,api-client,landing}` / `@xyflow/react@^12` / `lucide-react`，**照 `apps/web-star` 复制脚手架**（package.json、next.config.mjs rewrites、layout、providers、login、auth/callback、`(workspace)` route group）。端口 **3015**。
+~~`apps/web-ipstudio`：…端口 **3015**。~~ **v0.190 作废** —— 前端并入 `apps/web-aiavatar`（3013），`@ai-star-eco/ui` 与 `@xyflow/react` 均已移除（前者唯一用处改成了 antd Modal，后者自 v0.157 换 vendored 画布后无人 import）。
 
 - `providers.tsx`：`<AuthProvider requiredPlatform="aiavatar" publicPathPrefixes={["/", "/login"]} loginPath="/login">`（appCode 自动回退到 aiavatar）；`EnrollmentGate product="aiavatar"` 在 401/403 `PRODUCT_NOT_ENROLLED` 时接管（照 web-star / landing 既有做法）。
 - 路由：`/` → 产品 landing 或直接 redirect `/projects`；`/login`；`/auth/callback`；`(workspace)/projects`；`(workspace)/projects/[id]`。
@@ -256,7 +267,7 @@ H2 dev 下 `ddl-auto=update` 也会建表，迁移需与 H2 方言兼容（LONGT
 - 保存：doc 变化防抖 1.2s PUT；顶栏「已自动保存 / 保存中 / 保存失败重试」；离开前 beforeunload 兜底。
 - 发布对话框：选主形象节点（默认 isMaster）+ 勾选 look 节点 + 资产名 → 成功后展示 `DH-` 编号与「去 AiAvatar 查看」链接（`NEXT_PUBLIC_AIAVATAR_URL`，dev 默认 `http://localhost:3013`）。
 - 文案红线：全部中文；不暴露 `runId`/`errorCode` 原文给主可视文案（放 hover）；可变长文字做省略。禁止原生 `confirm/alert`，用 `@ai-star-eco/ui` 的 AlertDialog。
-- 工程登记（B 负责）：`pnpm-workspace.yaml` 加 `apps/web-ipstudio`；根 `package.json` 加 `dev:ipstudio` / `typecheck:web-ipstudio`；`.claude/launch.json` 加 `ipstudio` 3015；`scripts/check-api-contract.mjs` `SCAN_TARGETS` 加 `{ dir: "apps/web-ipstudio/src" }`；`packages/types/src/index.ts` 导出 ip-studio。
+- ~~工程登记（B 负责）：…~~ **v0.190 全部反向清除**（并入 aiavatar 后这些登记不再需要）；`packages/types/src/index.ts` 的 ip-studio 导出**保留**（类型契约仍在用）。`check-api-contract.mjs` 改为给 aiavatar 那一项加 `exclude`，并为 `canvas-bridge` / `ip` 两棵子树单列扫描根 —— 它们的字面量写全 `/v1/...`，混在补前缀的根里会被算成 `/v1/v1/...`。
 - 门禁：`pnpm --filter @ai-star-eco/web-ipstudio typecheck && build`、`pnpm typecheck:all`、`pnpm check:api-contract`（需 A 的 openapi 先落，B 先按 §4.2 路径表写代码）。
 
 ---

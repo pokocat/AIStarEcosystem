@@ -104,7 +104,7 @@
 - [x] ~~`infra/scripts/verify.sh` 的 `check_unit` 从未真正执行过~~ **完成，2026-09-06**（本轮顺带发现）：`systemctl list-unit-files | grep -q "^${svc}.service"` 在远端块的 `set -o pipefail` 下**永远判假** —— `grep -q` 命中即退出并关闭管道，上游 `systemctl` 吃 SIGPIPE 退 141，`pipefail` 把整条管道判失败。于是 12 个 `check_unit` 全部静默跳过，verify 一直「ALL GREEN」却从没检查过任何 systemd 单元（生产实测：改用 here-string 后 12 个单元才首次真正打印）。与 v0.119 预发 ffmpeg 滤镜预检是同一个坑，同样改用 here-string 修复。
 - [ ] **一致性打分 + 自动重跑**（§3 ⑥）：用视觉模型比对主图与各 look 的脸部一致性，低于阈值自动重跑一次；打分结果进 `IpRun.output`，前端在候选卡上显示。
 - [ ] **增量发布**：已发布项目再加 look 时追加到同一 `DapAvatar`（现 409 `IP_PROJECT_ALREADY_PUBLISHED`，`IpPublishService`）。
-- [ ] **独立产品码 `ipstudio`**：若要单独售卖 / 单独开通，需加 `PlatformSupport.ALL`、`SubProduct`、`ProductRouteTable` 路由（把 `/api/v1/ip-studio/**` 从 aiavatar 兜底里拆出）与 BUSINESS_RULES 表。
+- [ ] **独立产品码 `ipstudio`**（**v0.190 改判：前提变了，优先级下调**）：原描述仍然准确 —— 若要单独售卖 / 单独开通，需加 `PlatformSupport.ALL`、`SubProduct`、`ProductRouteTable` 路由（把 `/api/v1/ip-studio/**` 从 aiavatar 兜底里拆出）与 BUSINESS_RULES 表。但 v0.190 已把前端并进 `web-aiavatar`（一个应用两套设备形态），**「同一个应用里的两块功能」比「两个应用」更难单独售卖** —— 真要拆得先想清楚开通闸怎么在同一个前端里表达（哪些路由属于哪个产品码），不只是后端加一行路由表。
 - [ ] **`DapMultimodalClient` 不读 `AiAppEndpointCandidate.maxRefImages`**：ipstudio 参考图上限现用固定 `aep.ipstudio.max-ref-images=4`（`IpRunService.compile*`），换成按绑定端点能力裁剪。
 - [ ] **识别「引擎不支持看图」只能事后**：`DAP_PERSONA` 绑的模型若不接图片，`dap.ip_identity` 首次调用才失败为 502 `IP_IDENTITY_EXTRACT_FAILED`（冻结已释放）；admin 端点能力若加 `supportsVision` 可前置到 preflight。
 - [ ] **视频节点**：接 clip 域（口播）或 `DAP_VIDEO`（转身 / 运镜），产出挂 `DapDerivative`。
@@ -139,7 +139,7 @@
 - [ ] **server dev · `recharge_order.grant_storage_mb` 列缺失**（2026-09-04 本地 E2E 观察，与账号中心无关）：`PaymentReconcileService` 定时任务在 H2 dev 库报 `Column "RO1_0.GRANT_STORAGE_MB" not found`（每轮吞掉重试）。疑似实体加了字段但 ddl-auto=update 没有补列（或本地 H2 文件库陈旧）。需核对 `RechargeOrder` 与迁移。
 - [ ] **P5 · Web 令牌存储改 BFF + HttpOnly cookie**（Codex P2 评审 P1-6，2026-09-04）：当前 access / refresh 令牌在各子站 localStorage，五个 web 客户端共用 `aistar-api` audience → 任一子站 XSS 可窃取 30 天刷新能力并访问本仓其他已开通产品。目标：每子域 Next 路由处理器做 BFF，refresh 放 HttpOnly + SameSite cookie，access 只驻内存；过渡期至少补 CSP / Trusted Types。规划 D9 已加注。
 - [ ] **server · 匿名 `/api/config` 前缀白名单需随新公开配置维护**（v0.149）：`ConfigController.PUBLIC_KEY_PREFIXES` 只放行 `incubation.` / `forge.` / `drama.credit.`；将来前端要匿名读新配置键，必须加前缀，否则 404。管理端 `/api/admin/platform-configs` 不受影响。
-- [ ] **web-aiavatar 无测试运行器**（v0.149 观察）：`isSameSession` 等纯函数只靠 typecheck；如要补测需引入 vitest 与配置。
+- [x] ~~**web-aiavatar 无测试运行器**（v0.149 观察）：`isSameSession` 等纯函数只靠 typecheck；如要补测需引入 vitest 与配置。~~ **v0.190 完成**，2026-09-08：随 AI IP 工作台并入一起把 `vitest.config.ts` 搬了过来，`test` 脚本从 `echo 'No unit tests' && exit 0` 改成 `vitest run`，现在跑 **144 条**（14 个文件，主要覆盖 canvas-bridge：重复上传短路 / 签名过期重签 / 加载完成前绝不保存 / 保存冲突不静默重试）。`proto/*` 与 `components/hub/*` 仍无测试，属另一件事。
 - [ ] **不做**（记录以免重评）：合并三边积分钱包（结算问题另开决策）；合并员工后台账号；password grant；账号中心发「已开通产品列表」claim。
 - [x] ~~**P1 遗留 · Codex 评审 #14 声明式 Seeder 不回收**~~ **完成，2026-09-04**：`id.clients[].disabled` / `id.wechat-apps[].disabled` + 启动 reconcile：库里有、配置里没有的客户端 WARN 并**禁用**（`id_client_meta.disabled=true` + grant 集换成哨兵 `…:disabled`，SAS 不允许空 grant 集；`DisabledClientAwareRegisteredClientRepository` 让禁用客户端在仓库层返回 null，所有 grant 路径统一拒绝）；配置为空时跳过回收（防挂载失败清空全站）。测试 `ClientReclaimTest`。原条目：：`ClientSeeder` / `WechatAppSeeder` 只对 `id.clients[]` / `id.wechat-apps[]` 做 upsert，从配置里删掉的客户端 / 微信应用在 `oauth2_registered_client` / `id_wechat_app` 里仍然有效（旧 secret、grant 继续可用）。修法：显式 `disabled: true` 清单 + 启动时对「库里有、配置里没有」的对象 WARN 并要求显式禁用；不要静默删。
 - [x] ~~**P1 遗留 · 验证码 / 限频存储换 Redis**（多实例前必做）~~ —— **完成，2026-09-04**：抽 `com.aibuzz.id.store.KeyValueStore`（`InMemoryKeyValueStore` 单 JVM / `RedisKeyValueStore` Lettuce + Lua），`SmsCodeService` 改乐观 CAS 循环（判断逻辑仍只有一份 Java 实现）、`SmsRateLimiter` 改服务端带上限自增 + 窗口号编进 key。§8.0 选择器：`ID_REDIS_URL` 配了就用 Redis（启动 PING，连不上拒启）；mysql/prod 未配且未显式 `ID_SINGLE_INSTANCE=true` → **拒绝启动**。门禁 `KeyValueStoreSelectionTest` / `InMemoryKeyValueStoreTest` / `RedisKeyValueStoreIT`（Testcontainers redis:7）。
@@ -173,6 +173,27 @@
 - [x] ~~**P1 残留（saveShort 层）**~~ **判断被推翻并已修一半**，2026-08-31（Codex 二轮评审）：我此前判定「残留只剩自欺、不影响他人、不值得修」，**这个判断是错的**。`resolveAssetUrl` 对**裸字符串**直接 `cdnUrlSigner.signKey(...)`，而 `shots[].frameUrl/videoUrl/frameUrls` 是客户端 PUT 可写的 —— 用户 A 写入 `media/<用户B的对象key>` 保存后，详情/卡片出 wire 时就会**为该 key 签发有效访问地址**，是跨账号读取面，不是自欺。已修：`resolveAssetUrl(raw, trustedKey)` 分流，只有服务端自己写的字段（`assembled.cdnKey` / `audio.cdnKey`）才允许把裸字符串当 key 签；客户端可写字段的裸字符串原样返回、不签名。回归测试 `clientWrittenBareKeyIsNotSigned`。
 - [ ] **系统性遗留：§4.7.7 的「递归重签 payload 里的资产 URL」本身会重签客户端写入的 URL**（2026-08-31 由上一条牵出，**不只 shorts，`DramaProject` 同源**）：裸 key 已堵，但攻击者若构造 `https://<我方 OSS/CDN 域>/media/<别人的key>` 这种**完整 URL**，`maybeSign` 仍会抽出 key 重签。彻底解法两条选一：① 产物由渲染管线在服务端直接回写草稿（客户端不再是产物的报告者）；② 签名时做归属校验（key → 所属账号，签之前比对 principal）。②更通用但要给 key 建归属索引。**在此之前不要再对外声称「客户端伪造只影响自己」。**
 - [ ] **（原始定位，供追溯）** —— PUT 保存可伪造逐镜产物（2026-08-31 由 v0.143 评审顺带发现，v0.76/v0.133 起就存在）：`DramaShortService.saveShort` 整份接收客户端 `data`，只剥 `assembled` 与客户端音频，**不清 `flow` / `videoUrl` / `frameUrl` / `jobId`**；`DramaShortAssembleService.buildPlan` 又只凭 `flow=done` + 非空 `videoUrl` 就接受镜头，不校验该 URL 是否来自本用户本草稿的成功渲染任务（`MaterialVideoJob`）。伪造 `{"flow":"done","videoUrl":"/cdn/<已知平台视频>.mp4"}` 即可跳过逐镜出片扣费直接总装成片（外部域名被白名单挡住，平台 CDN / 相对路径可利用）。修法：产物字段一律以服务端为真值（保存时按 shot id 保留库内旧值、忽略客户端传入），总装前按 `MaterialVideoJob`（owner + 本草稿 + 成功态）核验每镜视频出处。注意 `DramaShortServiceTest` 现有用例把「保存后 doneCount=1」当正确结果断言，修时要同步改。
+
+## 2026-09-08 · AI IP 工作台并入 aiavatar（v0.190）新发现待办
+
+- [ ] **老 SPA `/studio` 在桌面上仍是 480px 窄列**：26 个 overlay / 16 个 screen 文件 / 约 11k 行
+      （`proto/*.tsx` 7953 + `api.ts` 2048 + `data.ts` 1296），包括声音工作室 / 授权登记 / 真人素材库 /
+      任务中心 / 合成工作台 / 设置 / 会员算力 / 存储 / 回收站 / 创建链路 / IP·场景·产品·风格详情。
+      按 `docs/aiavatar-asset-hub-redesign.md` §3.1 既有双轨逐屏迁成响应式 App Router 路由。
+      **刷脸认证、拍摄采集这类天生要手机摄像头的永远留移动端**，桌面给「这一步请在手机上完成」+ 二维码
+      （正好是画布那条规则的镜像）。不阻塞主链路：桌面用户走「建形象 → 出图 → 发布 → 资产 → 名片」已全程宽屏。
+- [ ] **移动端支持画布**（用户明确推迟）：目前 `<1024px` 进 `/projects/{id}` 给「请到电脑上打开」占位。
+      要做需要重排节点面板（现在固定 600 宽）、把 Ctrl+滚轮缩放换成捏合、以及触摸拖拽连线。
+- [ ] **`canvas-bridge/api.ts` 不认 `USE_MOCK`**（既有，随搬迁暴露）：`fetchModels()` / `signAssets()` 等
+      直接走 `apiFetch`，mock 模式下照样打网络 → 无后端时画布模型下拉为空并在控制台刷 404。
+      在 ipstudio 时期行为相同，不是本次回归；要修得给这一层补 mock 分支。
+- [ ] **`packages/types` 缺名片域类型**（§4.1 规定 `packages/types/src/*` 是类型真源）：`CardProfile` /
+      `CardSummary` / `CardFigure` / `CardContact` / `CardMedia` 目前只在 `apps/web-aiavatar/src/proto/card.ts`。
+      并入后 `src/ip/asset-types.ts` 那份重复已随删除消失，只剩一份，但仍未上移到 packages。
+- [ ] **账号中心与 DNS 的退役收尾**（跨仓，观察期后做）：`ipstudio.aibuzz.cn` 已改 308 跳 aiavatar；
+      ≥90 天无真实流量后，到 `pokocat/aibuzz-id` 删 client `web-ipstudio` 与 `ID_CORS_ALLOWED_ORIGINS`
+      里的该 origin，再删两个 vhost、DNS A 记录、systemd 单元与 `/opt/ai-star-eco/web-ipstudio`。
+      **顺序不能反** —— 先删 client 会让跳转期内的登录 400。
 
 ## 2026-08-29 · aiavatar 资产中枢重构（P1 已落地，后续分期见 docs/aiavatar-asset-hub-redesign.md §4）
 

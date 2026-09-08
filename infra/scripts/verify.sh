@@ -32,7 +32,8 @@ PUBLIC_BASE="${PUBLIC_BASE:-http://$HOST_REMOTE}"
 # 匿名访问返回 401 → 此处一直误报失败；改用真正 permitAll 的 GET /api/config 作后端探针。
 PUBLIC_PATHS="${PUBLIC_PATHS:-/ /login /admin /api/config}"
 # 需要按绝对 URL 探测的子域（各自有独立 vhost，不在 PUBLIC_BASE 之下）。
-PUBLIC_URLS="${PUBLIC_URLS:-https://ipstudio.aibuzz.cn/}"
+# v0.190：ipstudio.aibuzz.cn 已改为 308 跳 aiavatar，探它只会永远绿（check_url 把 308 当成功）。
+PUBLIC_URLS="${PUBLIC_URLS:-https://aiavatar.aibuzz.cn/ https://aiavatar.aibuzz.cn/projects}"
 
 FAILED=0
 
@@ -122,7 +123,6 @@ check_unit aistareco-web-drama
 check_unit aistareco-web-celebrity
 check_unit aistareco-web-aiavatar
 check_unit aistareco-web-star
-check_unit aistareco-web-ipstudio
 check_unit aistareco-admin
 check_unit aistareco-sau-service
 
