@@ -105,7 +105,7 @@ class IpRunServiceTest {
     private PromptService.ResolvedPrompt resourcePrompt(String key) {
         String user = PromptService.KEY_DAP_IP_IDENTITY.equals(key)
                 ? "请输出人物特征卡 JSON。"
-                : "{{refLead}}{{prompt}} {{refNotes}}no text.";
+                : "{{refLead}}{{refOrder}}{{prompt}} {{refNotes}}no text.";
         return new PromptService.ResolvedPrompt("你是 IP 形象设定师。", user, new PromptParamsDto(null, null, null), "resource");
     }
 
@@ -231,9 +231,12 @@ class IpRunServiceTest {
         String prompt = dto.inputs().path("prompt").asText();
         // 「照着参考图里的人」必须排在用户那段描述**之前**（v0.171）：
         // 排在后面时模型会照着那段完整的角色描述画，而不是照着上传的照片画。
-        assertTrue(prompt.startsWith("Use the provided reference image"),
-                "身份指令没排在最前面：" + prompt);
-        assertTrue(prompt.contains("Keep the same person"), prompt);
+        // 多张参考图 = 用户在做合成，不该替他加「保持所有参考图里的人不变」——
+        // 那跟「用图1的脸 + 图2的形态」直接矛盾（v0.173）。取而代之给出编号，
+        // 让他提示词里的「图1 / 图2」有确定指代。
+        assertFalse(prompt.contains("Keep the same person"),
+                "多参考图时不该注入身份指令：" + prompt);
+        assertTrue(prompt.contains("image 1 = 图1"), "没给出参考图编号：" + prompt);
         assertFalse(prompt.contains("{{"), "模板占位符必须全部替换掉：" + prompt);
 
         // _exec 是服务端执行参数（含 storage key），绝不出 wire

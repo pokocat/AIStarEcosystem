@@ -354,7 +354,8 @@ public class IpRunService {
         PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("prompt", prompt);
-        vars.put("refLead", refLead(refs));
+        vars.put("refLead", identityLead(refs, prompt));
+        vars.put("refOrder", refOrderHint(refs));
         vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
         String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
 
@@ -412,7 +413,8 @@ public class IpRunService {
         PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("prompt", req.prompt().trim());
-        vars.put("refLead", refLead(refs));
+        vars.put("refLead", identityLead(refs, req.prompt()));
+        vars.put("refOrder", refOrderHint(refs));
         vars.put("refNotes", refs.isEmpty() ? "" : refNotes(refs));
         String finalPrompt = squeeze(PromptService.fill(p.userTemplate(), vars));
 
@@ -449,11 +451,42 @@ public class IpRunService {
      */
     private static String refLead(List<Ref> refs) {
         if (refs.isEmpty()) return "";
-        return "Use the provided reference image"
-                + (refs.size() > 1 ? "s" : "")
-                + " as the identity source. Keep the same person: same face, same facial proportions, "
-                + "same hairstyle and hair color, same skin tone, same signature features "
-                + "(marks, freckles, glasses, accessories). Change only what the following instruction asks for. ";
+        // 用户自己已经在提示词里指挥参考图了（「用人物图1形象，生成一个同图2的…」），
+        // 就别再替他加一句「保持所有参考图里的人不变」—— 那跟「图2 只取形态」直接矛盾，
+        // 而且我们的话还排在他前面。他比我们清楚这几张图各自要用来干什么。
+        return "";
+    }
+
+    /** 用户是不是自己在提示词里点名了参考图（图1 / 图2 / 参考图 / reference image…）。 */
+    static boolean promptDirectsReferences(String prompt) {
+        if (prompt == null) return false;
+        return prompt.matches("(?s).*(图\\s*[0-9１-９]|参考图|reference image|first image|second image).*");
+    }
+
+    /** 多张参考图时告诉模型编号，用户提示词里的「图1 / 图2」才有确定的指代。 */
+    private static String refOrderHint(List<Ref> refs) {
+        if (refs.size() < 2) return "";
+        StringBuilder sb = new StringBuilder("The reference images are given in order: ");
+        for (int i = 0; i < refs.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append("image ").append(i + 1).append(" = 图").append(i + 1);
+        }
+        return sb.append(". ").toString();
+    }
+
+    /**
+     * 「保持同一个人」这句加不加。
+     *
+     * <p>只在**一张参考图、而且用户没有自己指挥参考图**时加。多张参考图意味着他在做合成
+     * （「用人物图1的脸 + 图2 的形态」），此时替他加一句「所有参考图里的人都保持不变」
+     * 就是在跟他的意图打架 —— 而且我们的话还排在他前面，权重更高。
+     */
+    private static String identityLead(List<Ref> refs, String userPrompt) {
+        if (refs.size() != 1 || promptDirectsReferences(userPrompt)) return "";
+        return "Use the provided reference image as the identity source. Keep the same person: "
+                + "same face, same facial proportions, same hairstyle and hair color, same skin tone, "
+                + "same signature features (marks, freckles, glasses, accessories). "
+                + "Change only what the following instruction asks for. ";
     }
 
     /** 参考图各自是什么。没有有效说明就不写 —— 「Reference image 1: 参考图」这种占位只占注意力。 */
