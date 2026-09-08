@@ -325,4 +325,13 @@ class MaterialVideoModelClientTest {
         assertEquals("参考图被上游拒收（404）",
                 MaterialVideoModelClient.uploadFailureMessage(404, "<html><body>404 Not Found</body></html>"));
     }
+
+    @Test
+    @DisplayName("文件名后缀改成真实格式 —— 有的服务端除了 Content-Type 还看文件名")
+    void rewritesFilenameExtension() {
+        assertEquals("a.jpg", MaterialVideoModelClient.withExtension("a.png", "jpg"));
+        assertEquals("x.y.webp", MaterialVideoModelClient.withExtension("x.y.png", "webp"));
+        assertEquals("noext.jpg", MaterialVideoModelClient.withExtension("noext", "jpg"));
+        assertEquals("reference.png", MaterialVideoModelClient.withExtension(null, "png"));
+    }
 }

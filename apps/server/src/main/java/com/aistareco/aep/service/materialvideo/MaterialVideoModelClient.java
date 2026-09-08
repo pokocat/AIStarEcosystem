@@ -6,6 +6,7 @@ import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.AiModelUsageService;
+import com.aistareco.aep.service.storage.ImageBytes;
 import com.aistareco.aep.service.ai.ModelCallCtx;
 import com.aistareco.aep.service.ai.UpstreamCallException;
 import com.aistareco.aep.service.ai.UpstreamModelHttp;
@@ -962,6 +963,10 @@ public class MaterialVideoModelClient {
     /** 图片上限：文档给的是一般 16 MiB / H3 30 MiB，这里按小的那个挡，够用且不会踩到任何一档。 */
     private static final int JUSUAN_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
 
+    /** 聚算收的静态图格式（文档：PNG / JPEG / WebP）。 */
+    private static final java.util.Set<String> JUSUAN_IMAGE_MIMES =
+            java.util.Set.of("image/png", "image/jpeg", "image/webp");
+
     /**
      * 把首帧图传给聚算，返回 assetId。传不上去就**抛**，不静默退回文生视频 ——
      * 用户接了参考图却出一条跟参考图无关的片，比直接报错难排查得多（§8.0）。
@@ -981,9 +986,20 @@ public class MaterialVideoModelClient {
             throw BusinessException.badRequest("VIDEO_REF_TOO_LARGE",
                     "参考图太大（" + (bytes.length / 1024 / 1024) + "MB），请换一张 16MB 以内的");
         }
+        // 类型必须按**字节**判，不能按文件名：画布出的图一律以 .png 落库，而厂商给的常常是 JPEG
+        // （v0.184 实测：一张 JPEG 顶着 .png 传过去，聚算按我们声明的 image/png 解码，
+        // 400 input image cannot be decoded）。store() 那边已经改成按字节存，但**存量文件仍是错的**，
+        // 这里再判一次，老图不用重跑也能用。
+        ImageBytes.Format fmt = ImageBytes.sniff(bytes);
+        if (fmt == null || !JUSUAN_IMAGE_MIMES.contains(fmt.mime())) {
+            throw BusinessException.badRequest("VIDEO_REF_FORMAT_UNSUPPORTED",
+                    "这张参考图的格式不支持，请换一张 JPG / PNG / WebP 图片"
+                            + (fmt == null ? "" : "（当前是 " + fmt.ext() + "）"));
+        }
+        filename = withExtension(filename, fmt.ext());
 
         String boundary = "----aistareco" + UUID.randomUUID().toString().replace("-", "");
-        byte[] payload = multipartImage(boundary, filename, contentTypeOf(filename), bytes);
+        byte[] payload = multipartImage(boundary, filename, fmt.mime(), bytes);
         URI uri = URI.create(joinUrl(p.getBaseUrl(), "/v1/assets/input")
                 + "?model=" + java.net.URLEncoder.encode(model, java.nio.charset.StandardCharsets.UTF_8));
         try {
@@ -999,7 +1015,7 @@ public class MaterialVideoModelClient {
                 // 是 Key 没这个权限、路径不对、还是这张图本身不合规 —— v0.166 已经在出图那条链上
                 // 栽过一模一样的一次（`friendly()` 把所有非业务异常抹成「请稍后重试」）。
                 log.warn("[material-video] 参考图上传被拒 endpoint={} model={} url={} bytes={} contentType={} status={} body={}",
-                        p.getName(), model, uri, bytes.length, contentTypeOf(filename),
+                        p.getName(), model, uri, bytes.length, fmt.mime(),
                         resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
                         uploadFailureMessage(resp.statusCode(), resp.body()),
@@ -1042,6 +1058,15 @@ public class MaterialVideoModelClient {
         return out;
     }
 
+    /** 把文件名的后缀换成真实格式的 —— 有的服务端除了 Content-Type 还会看文件名。 */
+    static String withExtension(String filename, String ext) {
+        String base = filename == null || filename.isBlank() ? "reference" : filename;
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) base = base.substring(0, dot);
+        return base + "." + ext;
+    }
+
+    /** 按文件名猜类型。**不要**用它对外声明类型（文件名会骗人，见 uploadInputImage）。 */
     static String contentTypeOf(String filename) {
         String f = filename == null ? "" : filename.toLowerCase();
         if (f.endsWith(".jpg") || f.endsWith(".jpeg")) return "image/jpeg";

@@ -33,6 +33,40 @@ class FileStorageServiceTest {
     }
 
     @Test
+    @org.junit.jupiter.api.DisplayName("声明 png 但字节是 JPEG —— 按字节存，别把错类型带到下一个厂商")
+    void store_correctsDeclaredTypeAgainstBytes(@TempDir Path dir) throws Exception {
+        CdnUploader cdn = mock(CdnUploader.class);
+        when(cdn.driverName()).thenReturn("oss");
+        when(cdn.publicUrlFor(any())).thenAnswer(i -> "https://cdn.test/" + i.getArgument(0));
+        FileStorageService svc = new FileStorageService(props(dir, false), cdn, mock(CdnUrlSigner.class));
+
+        byte[] jpeg = new byte[64];
+        jpeg[0] = (byte) 0xFF; jpeg[1] = (byte) 0xD8; jpeg[2] = (byte) 0xFF; jpeg[3] = (byte) 0xE0;
+
+        // 调用方照全仓惯例写死 ("png","image/png") —— 但厂商给的是 JPEG
+        var stored = svc.store(jpeg, "ipstudio/gen", "u1", "png", "image/png");
+
+        assertThat(stored.key()).endsWith(".jpg");
+        assertThat(stored.contentType()).isEqualTo("image/jpeg");
+        verify(cdn).upload(any(Path.class), eq(stored.key()), eq("image/jpeg"));
+    }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("认不出格式的字节（音视频等）沿用调用方声明，不乱改")
+    void store_keepsDeclaredTypeForNonImages(@TempDir Path dir) throws Exception {
+        CdnUploader cdn = mock(CdnUploader.class);
+        when(cdn.driverName()).thenReturn("oss");
+        when(cdn.publicUrlFor(any())).thenAnswer(i -> "https://cdn.test/" + i.getArgument(0));
+        FileStorageService svc = new FileStorageService(props(dir, false), cdn, mock(CdnUrlSigner.class));
+
+        var stored = svc.store("ID3 not an image at all ....".getBytes(),
+                "clip/audio", "u1", "mp3", "audio/mpeg");
+
+        assertThat(stored.key()).endsWith(".mp3");
+        assertThat(stored.contentType()).isEqualTo("audio/mpeg");
+    }
+
+    @Test
     void store_buildsConventionKey_uploads_andSigns(@TempDir Path dir) throws Exception {
         CdnUploader cdn = mock(CdnUploader.class);
         when(cdn.driverName()).thenReturn("oss");

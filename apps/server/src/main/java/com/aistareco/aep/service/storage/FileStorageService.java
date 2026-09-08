@@ -96,10 +96,26 @@ public class FileStorageService {
         }
     }
 
-    /** 存一段字节（如大模型返回的图片 / 程序生成的内容）。 */
+    /**
+     * 存一段字节（如大模型返回的图片 / 程序生成的内容）。
+     *
+     * <p>{@code ext} / {@code contentType} 只是调用方的**声明**：全仓十几处都写死
+     * {@code ("png", "image/png")}，而厂商给的常常是 JPEG。声明与字节不符时以**字节**为准
+     * —— 存错类型平时看不出来（浏览器自己嗅探），但把这张图转交给另一个厂商时，对方按我们
+     * 声明的类型去解码就会直接拒收（v0.184：聚算 400 {@code input image cannot be decoded}）。
+     * 认不出格式的字节（音视频等）原样沿用声明值，这里不猜。
+     */
     public StoredFile store(byte[] data, String category, String ownerId, String ext, String contentType) {
+        ImageBytes.Format real = ImageBytes.sniff(data);
+        if (real != null && !real.mime().equalsIgnoreCase(contentType)) {
+            log.info("[file-storage] 声明类型与字节不符，按字节存 category={} declared={}/{} actual={}/{}",
+                    category, ext, contentType, real.ext(), real.mime());
+            ext = real.ext();
+            contentType = real.mime();
+        }
+        String mime = contentType;
         try (InputStream in = new ByteArrayInputStream(data)) {
-            return ingest(in, category, ownerId, ext, contentType == null ? guessMime(ext) : contentType);
+            return ingest(in, category, ownerId, ext, mime == null ? guessMime(ext) : mime);
         } catch (IOException e) {
             throw new RuntimeException("文件存储失败: " + e.getMessage(), e);
         }
