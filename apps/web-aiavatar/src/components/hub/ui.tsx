@@ -21,10 +21,10 @@ type CSS = React.CSSProperties;
  * 老 SPA /studio 用的是另一层 `.app-root`（position:fixed + 480px 手机笼子），
  * 不受此影响，按既定双轨逐屏迁出。
  */
-export function HubScreen({ children, tabBar }: { children: React.ReactNode; tabBar?: boolean }) {
+export function HubScreen({ children, tabBar, width = "wide" }: { children: React.ReactNode; tabBar?: boolean; width?: "wide" | "form" }) {
   return (
     <div
-      className="hub-screen"
+      className={width === "form" ? "hub-screen hub-screen--form" : "hub-screen"}
       style={{
         minHeight: "100dvh",
         background: "var(--canvas)",

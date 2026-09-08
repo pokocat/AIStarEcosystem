@@ -154,7 +154,7 @@ export function HubHome() {
 
       {/* 官方精选 */}
       {official.data.length > 0 && (
-        <div style={{ margin: "20px 16px 0" }}>
+        <div className="hub-section" style={{ margin: "20px 16px 0" }}>
           <SectionHeader title="官方可授权角色" hint="授权后可直接拿去出片" action={<LinkAction href="/discover">去发现 ›</LinkAction>} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
             {official.data.slice(0, 2).map((c) => (

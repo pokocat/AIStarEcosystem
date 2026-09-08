@@ -114,10 +114,10 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
   const videoPicked = state.s === "ok" && Boolean(state.doc.figure.motionRef);
 
   if (authState === "no-platform") return <PlatformGateScreen />;
-  if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
+  if (!ready) return <HubScreen tabBar={false} width="form">{null}</HubScreen>;
 
   return (
-    <HubScreen tabBar={false}>
+    <HubScreen tabBar={false} width="form">
       <NavBar back="/cards" title="编辑名片" />
 
       {state.s === "loading" && <LoadingBlock />}

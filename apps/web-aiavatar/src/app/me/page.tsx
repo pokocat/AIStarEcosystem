@@ -61,7 +61,7 @@ export default function MePage() {
         </Card>
       </div>
 
-      <div style={{ margin: "16px 16px 0" }}>
+      <div className="hub-section" style={{ margin: "16px 16px 0" }}>
         <Card pad={0}>
           <ListRow href="/cards" title="我的名片" sub="对外发布面 · 扫码即看" divider />
           <ListRow href="/licenses" title="授权中心" sub="授权证书 · 待补确认" divider />
@@ -80,7 +80,7 @@ export default function MePage() {
       </div>
 
       {!USE_MOCK && (
-        <div style={{ margin: "20px 16px 0" }}>
+        <div className="hub-section" style={{ margin: "20px 16px 0" }}>
           <button
             onClick={() => {
               // v0.149：id 模式下 auth.logout() 会整页跳账号中心统一登出，

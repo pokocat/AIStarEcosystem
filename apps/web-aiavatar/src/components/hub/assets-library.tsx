@@ -85,7 +85,7 @@ export function AssetsLibrary() {
             <EmptyState text="还没有数字人，从一段视频就能开始" actionHref="/create" actionLabel="创建数字人" />
           </Card>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="hub-list">
             {avatars.data.map((c) => (
               <AvatarCard key={c.id} c={c} license={licenseByChar.get(c.id) || null} licenseKnown={licenseKnown} />
             ))}
@@ -101,7 +101,7 @@ export function AssetsLibrary() {
         )}
       </div>
 
-      <div style={{ margin: "20px 16px 0" }}>
+      <div className="hub-section" style={{ margin: "20px 16px 0" }}>
         <SectionHeader
           title="声音"
           count={voices.loading ? undefined : voices.data.length}
@@ -118,7 +118,7 @@ export function AssetsLibrary() {
             <EmptyState text="还没有专属声音" actionHref={studioHref("#/voice")} actionLabel="去录一段" />
           </Card>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+          <div className="hub-grid-2">
             {voices.data.slice(0, 4).map((v) => (
               <Link key={v.id} href={studioHref("#/voice")} style={{ textDecoration: "none", color: "inherit" }}>
                 <Card radius={13} pad={12} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -133,7 +133,7 @@ export function AssetsLibrary() {
         )}
       </div>
 
-      <div style={{ margin: "20px 16px 0" }}>
+      <div className="hub-section" style={{ margin: "20px 16px 0" }}>
         <SectionHeader title="素材库" hint="生成视频时搭配使用" action={<LinkAction href={studioHref("#/library")}>管理 ›</LinkAction>} />
         <Link href={studioHref("#/library")} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
           {summary.error ? (

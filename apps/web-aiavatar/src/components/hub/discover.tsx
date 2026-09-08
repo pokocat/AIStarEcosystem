@@ -50,7 +50,7 @@ export function Discover() {
         )}
       </div>
 
-      <div style={{ margin: "20px 16px 0" }}>
+      <div className="hub-section" style={{ margin: "20px 16px 0" }}>
         <SectionHeader title="明星形象" hint="授权与审批在明星端办理" />
         <Card pad={0}>
           <Link

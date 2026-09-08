@@ -1156,3 +1156,49 @@ body, .app-root { overflow-x: hidden; }
 @media (min-width: 1024px) {
   .desktop-top-bar { display: flex; }
 }
+
+/* ── 列表 → 网格 ──────────────────────────────────────────────────────────
+   手机上这些是竖着排的一列卡片；桌面把同一批卡片铺成网格，而不是让每张卡
+   横着抻满 1120px（那样左边一个小缩略图、右边一大片空白，比不放宽还难看）。
+
+   `auto-fill` + minmax：列数随宽度自己定，不写死几列 —— 顶栏、侧边距、
+   将来加不加筛选栏都不会把它算错。卡片本身一行不用改。 */
+.hub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 1024px) {
+  .hub-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+}
+
+/* 手机上就是两列的小格子（声音、素材计数…）—— 桌面放到四列，
+   否则两个格子各占 550px，字比格子小得多。 */
+.hub-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (min-width: 1024px) {
+  .hub-grid-2 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 分节的左右外边距：手机 16px 贴边合适，桌面已有 .hub-screen 的 28px 内边距，
+   再叠 16px 会让内容与顶栏 logo 对不齐。 */
+@media (min-width: 1024px) {
+  .hub-section { margin-inline: 0 !important; }
+}
+
+/* 表单 / 单条记录页：桌面上**不要**铺满 1120px。
+   一行输入框拉到 1100px 宽，眼睛从标签扫到值要横跨整个屏幕，比手机还难填。
+   集合页（列表、网格）才需要宽度，表单页要的是舒适的阅读行宽。 */
+@media (min-width: 1024px) {
+  .hub-screen--form { max-width: 720px; }
+}
