@@ -312,7 +312,7 @@ public class IpPublishService {
                         // 封面：画布视频节点现在还没有单独抽帧，留空 —— 名片那边拿不到封面
                         // 就用静态主图兜底，不塞一个指向 MP4 的假封面（那会变成一张裂图）。
                         .thumbKey(null)
-                        .label(title == null || title.isBlank() ? "动态形象 " + (idx + 1) : abbreviate(title, 60))
+                        .label(videoLabel(title, idx))
                         .spec(seconds == null || seconds.isBlank() ? "MP4" : seconds + "s · MP4")
                         .bytes(0)
                         .createdAt(Instant.now())
@@ -334,7 +334,24 @@ public class IpPublishService {
         }
     }
 
-    private static String abbreviate(String s, int max) {
-        return s.length() <= max ? s : s.substring(0, max);
+
+    /**
+     * 视频节点的标题在画布里就是那段提示词（常常带换行和「【主体与画风】」这种分段标记）——
+     * 直接当资产名会在名片编辑器里挤成一坨看不懂的字（§8「UI 文案：用户友好 + 不溢出」）。
+     * 取第一行、摘掉方括号标记、收到 14 个字；剩不下什么就退回「动态形象 N」。
+     */
+    public static String videoLabel(String rawTitle, int idx) {
+        String t = rawTitle == null ? "" : rawTitle;
+        int nl = t.indexOf('\n');
+        if (nl >= 0) t = t.substring(0, nl);
+        t = t.replaceAll("【[^】]*】", " ").replaceAll("\\s+", " ").trim();
+        // 优先在标点处断开 —— 硬切会切出「…潮玩女孩，纯」这种半句，读着更难受
+        int stop = -1;
+        for (int i = 0; i < Math.min(t.length(), 15); i++) {
+            if ("，。；、,.;".indexOf(t.charAt(i)) >= 0) { stop = i; break; }
+        }
+        if (stop > 0) t = t.substring(0, stop);
+        else if (t.length() > 14) t = t.substring(0, 14);
+        return t.isBlank() ? "动态形象 " + (idx + 1) : t;
     }
 }

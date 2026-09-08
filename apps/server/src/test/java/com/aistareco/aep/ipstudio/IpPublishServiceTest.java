@@ -304,4 +304,16 @@ class IpPublishServiceTest {
         if (seconds != null) md.put("seconds", seconds);
         md.put("status", "success");
     }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("视频资产名收拾成人话 —— 画布里那个「标题」其实是整段提示词")
+    void videoLabelIsReadable() {
+        // 真实的画布视频节点标题长这样（带分段标记 + 换行）
+        assertEquals("主角是参考图中的潮玩女孩",
+                IpPublishService.videoLabel("【主体与画风】主角是参考图中的潮玩女孩，纯白色干净棚拍背景。\n【运镜】缓慢推近", 0));
+        // 只剩标记 / 空白 → 退回可读的默认名，不给一个空标签
+        assertEquals("动态形象 2", IpPublishService.videoLabel("【运镜】", 1));
+        assertEquals("动态形象 1", IpPublishService.videoLabel(null, 0));
+        assertEquals("动态形象 1", IpPublishService.videoLabel("   ", 0));
+    }
 }

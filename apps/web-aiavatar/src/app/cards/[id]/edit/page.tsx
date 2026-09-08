@@ -53,7 +53,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
             .then((list: any[]) => setVideos(
               (list ?? [])
                 .filter((d: any) => d?.kind === "video" && d?.id)
-                .map((d: any) => ({ id: String(d.id), label: String(d.label || "动态形象"), thumbUrl: d.thumbUrl || undefined, spec: d.spec || undefined })),
+                .map((d: any, i: number) => ({ id: String(d.id), label: tidyLabel(d.label, i), thumbUrl: d.thumbUrl || undefined, spec: d.spec || undefined })),
             ))
             .catch(() => setVideos([]));
         }
@@ -388,4 +388,17 @@ function HeroChoice({ active, label, hint, onClick }: { active: boolean; label: 
       <div style={{ fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{hint}</div>
     </button>
   );
+}
+
+/**
+ * 视频资产名在画布里就是那段提示词（带换行、带「【主体与画风】」这种分段标记）。
+ * 服务端从 v0.181 起登记时已经收拾过，但**回填进来的老行还是原样** —— 这里再收一次，
+ * 不必为了几行历史数据去改库。
+ */
+function tidyLabel(raw: unknown, idx: number): string {
+  const first = String(raw ?? "").split("\n")[0].replace(/【[^】]*】/g, " ").replace(/\s+/g, " ").trim();
+  // 优先在标点处断开，硬切会切出「…潮玩女孩，纯」这种半句
+  const stop = first.slice(0, 15).search(/[，。；、,.;]/);
+  const cut = stop > 0 ? first.slice(0, stop) : first.slice(0, 14);
+  return cut || `动态形象 ${idx + 1}`;
 }

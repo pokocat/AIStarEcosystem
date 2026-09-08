@@ -94,7 +94,7 @@ public class IpPublishedVideoBackfill implements CommandLineRunner {
                     .idx(nextIdx++)
                     .kind("video")
                     .fileKey(key)
-                    .label(title == null || title.isBlank() ? "动态形象 " + nextIdx : trim(title))
+                    .label(IpPublishService.videoLabel(title, nextIdx - 1))
                     .spec(seconds == null || seconds.isBlank() ? "MP4" : seconds + "s · MP4")
                     .bytes(0)
                     .createdAt(Instant.now())
@@ -105,7 +105,4 @@ public class IpPublishedVideoBackfill implements CommandLineRunner {
         return added;
     }
 
-    private static String trim(String s) {
-        return s.length() <= 60 ? s : s.substring(0, 60);
-    }
 }
