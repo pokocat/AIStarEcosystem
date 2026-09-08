@@ -514,8 +514,9 @@ public class MaterialVideoModelClient {
         }
 
         // 聚算 JusuanHub 统一媒体协议：受控规格字段替代 width/height/fps 等原始运行时参数。
-        // 当前 MaterialVideo 管线只开放 t2v；图片模式要求先上传为平台 asset_id，不能把短期 URL
-        // 直接冒充 asset id。候选能力因此先如实标为不支持首尾帧，后续补齐 input asset 上传再开放。
+        // 参考图不能给 URL —— 必须先 POST /v1/assets/input 换 assetId（v0.183 已接通，见
+        // uploadInputImage）。尾帧 / 多参考图（end_image_asset_id、referenceInputs）仍未接，
+        // 所以候选能力里的 supportsFirstLastFrame 继续如实标 false。
         if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             body.put("prompt", nz(stripFrameUrlHint(prompt)));
             body.put("resolutionTier", "768p");
@@ -994,12 +995,20 @@ public class MaterialVideoModelClient {
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                // 上游拒绝时**必须**把它的原话留在日志里。只写一句「上传失败」的话，对着它分不出
+                // 是 Key 没这个权限、路径不对、还是这张图本身不合规 —— v0.166 已经在出图那条链上
+                // 栽过一模一样的一次（`friendly()` 把所有非业务异常抹成「请稍后重试」）。
+                log.warn("[material-video] 参考图上传被拒 endpoint={} model={} url={} bytes={} contentType={} status={} body={}",
+                        p.getName(), model, uri, bytes.length, contentTypeOf(filename),
+                        resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                        "参考图上传失败，请稍后重试",
-                        "status=" + resp.statusCode() + " body=" + snippet(resp.body()));
+                        uploadFailureMessage(resp.statusCode(), resp.body()),
+                        "status=" + resp.statusCode() + " url=" + uri + " body=" + snippet(resp.body()));
             }
             String assetId = OM.readTree(resp.body()).path("asset").path("assetId").asText(null);
             if (assetId == null || assetId.isBlank()) {
+                log.warn("[material-video] 参考图上传返回里没有 assetId endpoint={} status={} body={}",
+                        p.getName(), resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
                         "参考图上传失败，请稍后重试", "响应里没有 asset.assetId: " + snippet(resp.body()));
             }
@@ -1038,5 +1047,23 @@ public class MaterialVideoModelClient {
         if (f.endsWith(".jpg") || f.endsWith(".jpeg")) return "image/jpeg";
         if (f.endsWith(".webp")) return "image/webp";
         return "image/png";
+    }
+
+    /** 上游拒绝上传时给用户看的话：4xx 直出厂商原话（是我们请求哪儿不对，用户据此才有得改），5xx 笼统。 */
+    static String uploadFailureMessage(int status, String rawBody) {
+        if (status >= 500) return "参考图上传失败（上游 " + status + "），请稍后重试";
+        String msg = null;
+        try {
+            JsonNode body = OM.readTree(rawBody);
+            for (JsonNode c : new JsonNode[]{body.path("error").path("message"), body.path("message"),
+                    body.path("error").path("msg"), body.path("msg")}) {
+                if (c.isTextual() && !c.asText().isBlank()) { msg = c.asText().trim(); break; }
+            }
+        } catch (Exception ignore) {
+            // 不是 JSON（网关的 HTML 错误页之类）：退回笼统文案，别把一页 HTML 糊到界面上
+        }
+        if (msg == null || msg.isBlank()) return "参考图被上游拒收（" + status + "）";
+        if (msg.length() > 200) msg = msg.substring(0, 200) + "…";
+        return "参考图被上游拒收：" + msg;
     }
 }

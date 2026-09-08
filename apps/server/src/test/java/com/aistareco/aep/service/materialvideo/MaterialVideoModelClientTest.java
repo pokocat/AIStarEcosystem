@@ -308,4 +308,21 @@ class MaterialVideoModelClientTest {
         assertEquals("image/png", MaterialVideoModelClient.contentTypeOf("a.png"));
         assertEquals("image/png", MaterialVideoModelClient.contentTypeOf(null));
     }
+
+    @Test
+    @DisplayName("参考图被上游拒收：4xx 直出厂商原话，5xx 笼统，非 JSON 不外泄")
+    void surfacesUploadRejectionReason() {
+        // 4xx 说的是「我们请求哪儿不对」—— 抹掉它用户就只剩一句「请稍后重试」，而重试永远不会好
+        assertEquals("参考图被上游拒收：model does not accept input assets",
+                MaterialVideoModelClient.uploadFailureMessage(
+                        400, "{\"error\":{\"message\":\"model does not accept input assets\"}}"));
+        assertEquals("参考图被上游拒收：unsupported image format",
+                MaterialVideoModelClient.uploadFailureMessage(415, "{\"message\":\"unsupported image format\"}"));
+        // 5xx 是厂商自己的问题，用户做不了什么，细节留日志
+        assertEquals("参考图上传失败（上游 502），请稍后重试",
+                MaterialVideoModelClient.uploadFailureMessage(502, "{\"message\":\"bad gateway\"}"));
+        // 网关的 HTML 错误页不要糊到界面上
+        assertEquals("参考图被上游拒收（404）",
+                MaterialVideoModelClient.uploadFailureMessage(404, "<html><body>404 Not Found</body></html>"));
+    }
 }
