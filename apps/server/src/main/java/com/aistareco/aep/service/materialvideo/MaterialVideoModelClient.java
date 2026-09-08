@@ -59,16 +59,19 @@ public class MaterialVideoModelClient {
     private final MaterialVideoProperties props;
     private final AiModelUsageService usage;
     private final UpstreamModelHttp upstreamHttp;
+    private final com.aistareco.aep.service.storage.FileStorageService storage;
     private final HttpClient http;
 
     public MaterialVideoModelClient(AiModelInvocationService invocation,
                                     MaterialVideoProperties props,
                                     AiModelUsageService usage,
-                                    UpstreamModelHttp upstreamHttp) {
+                                    UpstreamModelHttp upstreamHttp,
+                                    com.aistareco.aep.service.storage.FileStorageService storage) {
         this.invocation = invocation;
         this.props = props;
         this.usage = usage;
         this.upstreamHttp = upstreamHttp;
+        this.storage = storage;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
     }
 
@@ -192,15 +195,31 @@ public class MaterialVideoModelClient {
      * D-11：endpointId 非空 → 用指定候选端点（白名单，未命中抛 ENDPOINT_NOT_ALLOWED）；为空 → 默认端点（旧路径不变）。
      * 返回的 {@link SubmitResult} 带上 endpointId，使后续 poll 落到同一端点（同 baseUrl/apiKey）。
      */
+    /**
+     * 提交生成任务。{@code firstFrameKey} 是首帧参考图的存储键（聚算 H3 走 i2v）——
+     * 传 null 就是纯文生视频。
+     *
+     * <p>刻意**不留**一个不带首帧的重载：同一件事两种调法，迟早有人用了少一个参数的那个，
+     * 参考图就这么悄悄丢了（今天已经在别处栽过两次）。不需要参考图就显式传 null。
+     */
     public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId,
-                               String appCode, String endpointId) {
+                               String appCode, String endpointId, String firstFrameKey) {
         AiModelEndpoint p = requireEndpoint(endpointId);
         String apiKey = requireKey(p);
         String model = (p.getModel() != null && !p.getModel().isBlank())
                 ? p.getModel() : props.getDefaultModel();
         String protocol = protocolFor(p, model);
 
-        Map<String, Object> body = buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio);
+        // 聚算的图不是给 URL、而是**先上传拿 assetId**（POST /v1/assets/input?model=…）——
+        // 这跟 seedance 那条「把 URL 塞进 content 数组」完全不同的协议。
+        // 之前这里一律发 generationMode=t2v、图一张都没送 —— 用户接了参考图，
+        // 出来的片跟参考图毫无关系（v0.183）。
+        String assetId = null;
+        if (firstFrameKey != null && !firstFrameKey.isBlank() && PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
+            assetId = uploadInputImage(p, apiKey, model, firstFrameKey);
+        }
+
+        Map<String, Object> body = buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, assetId);
 
         URI uri = URI.create(joinUrl(p.getBaseUrl(), submitPathFor(protocol)));
         long startNanos = System.nanoTime();
@@ -451,6 +470,11 @@ public class MaterialVideoModelClient {
 
     Map<String, Object> buildSubmitBody(String protocol, String model, String prompt,
                                         int durationSec, String aspectRatio) {
+        return buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, null);
+    }
+
+    Map<String, Object> buildSubmitBody(String protocol, String model, String prompt,
+                                        int durationSec, String aspectRatio, String inputImageAssetId) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
 
@@ -497,7 +521,15 @@ public class MaterialVideoModelClient {
             body.put("resolutionTier", "768p");
             body.put("orientation", orientationForAspect(aspectRatio));
             body.put("seconds", requireJusuanDuration(durationSec));
-            body.put("generationMode", "t2v");
+            // 有首帧就走图生视频；没有才是纯文生视频。
+            // generationMode 是 H3 的必填项，取值 t2v | i2v | first_last_frame_video |
+            // universal_reference_video（见聚算 createMediaGeneration 文档）。
+            if (inputImageAssetId != null && !inputImageAssetId.isBlank()) {
+                body.put("generationMode", "i2v");
+                body.put("input_image_asset_id", inputImageAssetId);
+            } else {
+                body.put("generationMode", "t2v");
+            }
             return body;
         }
 
@@ -917,4 +949,94 @@ public class MaterialVideoModelClient {
     }
 
     record Dimensions(int width, int height) {}
+
+    // ── 聚算：输入素材上传（v0.183）────────────────────────────
+    //
+    // 聚算的图不能给 URL，得先传上去换一个 assetId：
+    //   POST {base}/v1/assets/input?model=<公开别名>   multipart/form-data，字段名 image
+    //   201 → { "asset": { "assetId": "...", "status": "available", ... } }
+    // 再把 assetId 放进 createMediaGeneration 的 input_image_asset_id。
+    // 与 seedance（火山）那条完全不同：那边是把图片 URL 塞进 content 数组。
+
+    /** 图片上限：文档给的是一般 16 MiB / H3 30 MiB，这里按小的那个挡，够用且不会踩到任何一档。 */
+    private static final int JUSUAN_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
+
+    /**
+     * 把首帧图传给聚算，返回 assetId。传不上去就**抛**，不静默退回文生视频 ——
+     * 用户接了参考图却出一条跟参考图无关的片，比直接报错难排查得多（§8.0）。
+     */
+    private String uploadInputImage(AiModelEndpoint p, String apiKey, String model, String key) {
+        byte[] bytes;
+        String filename;
+        try {
+            java.nio.file.Path local = storage.openForRead(key);
+            bytes = java.nio.file.Files.readAllBytes(local);
+            filename = local.getFileName().toString();
+        } catch (Exception e) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UNREADABLE",
+                    "参考图读不出来，无法生成视频", "key=" + key + " err=" + e);
+        }
+        if (bytes.length > JUSUAN_IMAGE_MAX_BYTES) {
+            throw BusinessException.badRequest("VIDEO_REF_TOO_LARGE",
+                    "参考图太大（" + (bytes.length / 1024 / 1024) + "MB），请换一张 16MB 以内的");
+        }
+
+        String boundary = "----aistareco" + UUID.randomUUID().toString().replace("-", "");
+        byte[] payload = multipartImage(boundary, filename, contentTypeOf(filename), bytes);
+        URI uri = URI.create(joinUrl(p.getBaseUrl(), "/v1/assets/input")
+                + "?model=" + java.net.URLEncoder.encode(model, java.nio.charset.StandardCharsets.UTF_8));
+        try {
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(payload))
+                    .build();
+            HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
+                        "参考图上传失败，请稍后重试",
+                        "status=" + resp.statusCode() + " body=" + snippet(resp.body()));
+            }
+            String assetId = OM.readTree(resp.body()).path("asset").path("assetId").asText(null);
+            if (assetId == null || assetId.isBlank()) {
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
+                        "参考图上传失败，请稍后重试", "响应里没有 asset.assetId: " + snippet(resp.body()));
+            }
+            log.info("[material-video] 参考图已上传 endpoint={} model={} bytes={} assetId={}",
+                    p.getName(), model, bytes.length, assetId);
+            return assetId;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
+                    "参考图上传失败，请稍后重试", "interrupted");
+        } catch (Exception e) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
+                    "参考图上传失败，请稍后重试", "err=" + e);
+        }
+    }
+
+    /** 手写 multipart：只有一个 image 字段，不值得为它引一个 HTTP 客户端库。 */
+    private static byte[] multipartImage(String boundary, String filename, String contentType, byte[] bytes) {
+        String head = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"image\"; filename=\"" + filename + "\"\r\n"
+                + "Content-Type: " + contentType + "\r\n\r\n";
+        String tail = "\r\n--" + boundary + "--\r\n";
+        byte[] h = head.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] t = tail.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] out = new byte[h.length + bytes.length + t.length];
+        System.arraycopy(h, 0, out, 0, h.length);
+        System.arraycopy(bytes, 0, out, h.length, bytes.length);
+        System.arraycopy(t, 0, out, h.length + bytes.length, t.length);
+        return out;
+    }
+
+    static String contentTypeOf(String filename) {
+        String f = filename == null ? "" : filename.toLowerCase();
+        if (f.endsWith(".jpg") || f.endsWith(".jpeg")) return "image/jpeg";
+        if (f.endsWith(".webp")) return "image/webp";
+        return "image/png";
+    }
 }

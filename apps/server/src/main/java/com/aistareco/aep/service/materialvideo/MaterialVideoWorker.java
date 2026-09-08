@@ -182,9 +182,13 @@ public class MaterialVideoWorker {
         String appCode = job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
         // D-11：短剧线可在 variant_config 指定候选出片端点；带货素材线不写此键 → null → 默认端点（默认路径不变）。
         String endpointId = extractEndpointId(job.getVariantConfigJson());
+        // 首帧参考图（画布出视频会带；带货 / 短剧线不写这个键 → null → 纯文生视频，行为不变）。
+        // v0.183 之前这里根本没往下传，聚算那条链一律发 generationMode=t2v —— 用户接了参考图，
+        // 出来的片跟参考图毫无关系。
+        String firstFrameKey = extractFirstFrameKey(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
                 modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
-                        job.getOwnerUserId(), appCode, endpointId);
+                        job.getOwnerUserId(), appCode, endpointId, firstFrameKey);
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
         long start = System.currentTimeMillis();
@@ -456,6 +460,18 @@ public class MaterialVideoWorker {
 
     private static boolean isTerminal(String status) {
         return "succeeded".equals(status) || "failed".equals(status);
+    }
+
+    /** 从 variant_config JSON 抽首帧参考图的存储键；缺省 / 解析失败 → null（纯文生视频）。 */
+    private static String extractFirstFrameKey(String variantConfigJson) {
+        if (variantConfigJson == null || variantConfigJson.isBlank()) return null;
+        try {
+            JsonNode vc = OM.readTree(variantConfigJson);
+            String k = vc.path("first_frame_key").asText(null);
+            return k == null || k.isBlank() ? null : k;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** D-11：从 variant_config JSON 抽 endpoint_id（短剧线指定出片端点）；缺省/解析失败 → null（默认端点）。 */

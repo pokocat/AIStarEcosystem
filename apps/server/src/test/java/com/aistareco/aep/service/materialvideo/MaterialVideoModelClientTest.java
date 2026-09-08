@@ -9,9 +9,11 @@ import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
@@ -140,8 +142,7 @@ class MaterialVideoModelClientTest {
 
     @Test
     void jusuan_protocol_builds_controlled_768p_request() {
-        MaterialVideoModelClient client = new MaterialVideoModelClient(
-                null, new MaterialVideoProperties(), null, null);
+        MaterialVideoModelClient client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
         var body = client.buildSubmitBody("jusuan-media", "minimax-h3",
                 "雨夜街道上的电影感推镜", 5, "9:16");
         assertEquals("minimax-h3", body.get("model"));
@@ -184,8 +185,7 @@ class MaterialVideoModelClientTest {
         AiAppEndpointCandidate candidate = AiAppEndpointCandidate.builder().creditCostOverride(40L).build();
         when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
-        MaterialVideoModelClient client = new MaterialVideoModelClient(
-                invocation, new MaterialVideoProperties(), null, null);
+        MaterialVideoModelClient client = new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null, null);
 
         assertEquals(600L, client.resolveCreditCostOverride("h3", 15));
     }
@@ -198,7 +198,7 @@ class MaterialVideoModelClientTest {
                 .thenReturn(Optional.of(endpoint));
         when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
-        return new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null);
+        return new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null, null);
     }
 
     private static AiModelEndpoint genericEndpoint() {
@@ -210,8 +210,7 @@ class MaterialVideoModelClientTest {
 
     @Test
     void protocolDurationBounds_by_protocol() {
-        MaterialVideoModelClient client = new MaterialVideoModelClient(
-                null, new MaterialVideoProperties(), null, null);
+        MaterialVideoModelClient client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
         var jusuan = client.protocolDurationBounds(AiModelEndpoint.builder()
                 .name("MiniMax H3").baseUrl("https://api.jusuanhub.com:10443/v1").model("minimax-h3").build());
         assertEquals(5, jusuan.minSec());
@@ -271,5 +270,42 @@ class MaterialVideoModelClientTest {
         assertEquals("https://api.jusuanhub.com:10443/v1/assets/asset_1/content?model=minimax-h3",
                 MaterialVideoModelClient.jusuanScopedUri(
                         "https://api.jusuanhub.com:10443/v1", "/assets/asset_1/content", "minimax-h3").toString());
+    }
+
+    // ── v0.183：聚算 H3 的参考图（i2v）─────────────────────────
+    //
+    // 用户实测：「生成视频时参考图好像没传过去」。核对聚算 createMediaGeneration 文档后确认 ——
+    // 这条链一律发 generationMode=t2v、一张图都没送。聚算的图也不是给 URL：
+    // 得先 POST /v1/assets/input?model=… 传上去换 assetId，再放进 input_image_asset_id。
+
+    @Test
+    @DisplayName("有首帧 assetId → generationMode=i2v + input_image_asset_id")
+    void jusuanBodyCarriesFirstFrameAsset() {
+        MaterialVideoModelClient client = new MaterialVideoModelClient(
+                null, new MaterialVideoProperties(), null, null, null);
+        var body = client.buildSubmitBody("jusuan-media", "minimax-h3", "让她眨眼", 8, "9:16", "as_123");
+        assertEquals("i2v", body.get("generationMode"));
+        assertEquals("as_123", body.get("input_image_asset_id"));
+        assertEquals(8, body.get("seconds"));
+    }
+
+    @Test
+    @DisplayName("没有首帧 → 仍是 t2v，且不带 input_image_asset_id（纯文生视频行为不变）")
+    void jusuanBodyStaysTextToVideoWithoutReference() {
+        MaterialVideoModelClient client = new MaterialVideoModelClient(
+                null, new MaterialVideoProperties(), null, null, null);
+        var body = client.buildSubmitBody("jusuan-media", "minimax-h3", "雨夜街道", 5, "9:16", null);
+        assertEquals("t2v", body.get("generationMode"));
+        assertFalse(body.containsKey("input_image_asset_id"));
+    }
+
+    @Test
+    @DisplayName("按文件名给出正确的 Content-Type —— 传错类型上游会拒")
+    void picksContentTypeByExtension() {
+        assertEquals("image/jpeg", MaterialVideoModelClient.contentTypeOf("a.JPG"));
+        assertEquals("image/jpeg", MaterialVideoModelClient.contentTypeOf("a.jpeg"));
+        assertEquals("image/webp", MaterialVideoModelClient.contentTypeOf("a.webp"));
+        assertEquals("image/png", MaterialVideoModelClient.contentTypeOf("a.png"));
+        assertEquals("image/png", MaterialVideoModelClient.contentTypeOf(null));
     }
 }

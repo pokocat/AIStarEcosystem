@@ -1792,6 +1792,23 @@ function InfiniteCanvasPage() {
                     const text = node.metadata?.texts?.find((item) => item.id === itemId);
                     return text?.content ? { ...node, metadata: { ...node.metadata, content: text.content, primaryTextId: text.id } } : node;
                 }
+                // 视频的成片历史（v0.183）：切一版就是把 content / storageKey 换成那一版。
+                // 尺寸不动 —— 同一个节点的多版成片是同一个模型同一个画幅出的，
+                // 切一下就重排版反而让人以为换了个节点。
+                if (node.type === CanvasNodeType.Video) {
+                    const take = node.metadata?.videos?.find((item) => item.id === itemId);
+                    if (!take?.storageKey) return node;
+                    return {
+                        ...node,
+                        metadata: {
+                            ...node.metadata,
+                            content: take.content,
+                            storageKey: take.storageKey,
+                            mimeType: take.mimeType ?? node.metadata?.mimeType,
+                            primaryVideoId: take.id,
+                        },
+                    };
+                }
                 const image = node.metadata?.images?.find((item) => item.id === itemId);
                 if (!image?.content) return node;
                 const edge = Math.max(node.width, node.height);
@@ -2941,6 +2958,27 @@ function InfiniteCanvasPage() {
         setNodes((prev) =>
             prev.map((item) => {
                 if (item.id !== nodeId) return item;
+                // 视频的成片历史（v0.183）：删一版就是从 videos[] 里摘掉它。
+                // 删的正好是当前那一版时，把画面切到剩下的第一版；**一版都不剩时不清空节点** ——
+                // 那样等于把这个节点变回空壳，用户想找回来只能重跑一次再付一次钱。
+                if (item.type === CanvasNodeType.Video) {
+                    const takes = item.metadata?.videos ?? [];
+                    if (takes.length <= 1) return item;
+                    const kept = takes.filter((take) => take.id !== imageId);
+                    const wasCurrent = item.metadata?.primaryVideoId === imageId;
+                    const next = wasCurrent ? kept[0] : takes.find((take) => take.id === item.metadata?.primaryVideoId);
+                    return {
+                        ...item,
+                        metadata: {
+                            ...item.metadata,
+                            videos: kept,
+                            ...(wasCurrent && next
+                                ? { content: next.content, storageKey: next.storageKey, mimeType: next.mimeType ?? item.metadata?.mimeType }
+                                : {}),
+                            primaryVideoId: next?.id ?? item.metadata?.primaryVideoId,
+                        },
+                    };
+                }
                 const images = item.metadata?.images?.filter((image) => image.id !== imageId) || [];
                 return { ...item, metadata: { ...item.metadata, images, count: images.length, primaryImageId: item.metadata?.primaryImageId === imageId ? images[0]?.id : item.metadata?.primaryImageId } };
             }),

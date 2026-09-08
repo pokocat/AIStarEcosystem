@@ -91,7 +91,7 @@ class MaterialVideoWorkerTest {
         modelClient = mock(MaterialVideoModelClient.class);
         // 默认路径回归（D-11）：job.variantConfigJson 无 endpoint_id → worker 传 null → 默认端点，行为不变。
         var submit = new MaterialVideoModelClient.SubmitResult("task_1", null, "vendor", "model-x", "generic", null);
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(new MaterialVideoModelClient.PollResult(
                 "succeeded", base + "/video.mp4", base + "/thumb.png", "SUCCESS", 100, null, base + "/last.png"));
 
@@ -178,7 +178,7 @@ class MaterialVideoWorkerTest {
     void protected_output_asset_is_downloaded_with_model_client_then_mirrored() throws Exception {
         var submit = new MaterialVideoModelClient.SubmitResult(
                 "job_h3", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
                 new MaterialVideoModelClient.PollResult(
                         "succeeded", null, null, "succeeded", 100, null, null, "asset_video_h3"));

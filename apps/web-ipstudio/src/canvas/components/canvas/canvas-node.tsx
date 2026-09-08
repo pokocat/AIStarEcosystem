@@ -682,8 +682,22 @@ function EmptyImageContent({ theme }: NodeContentRendererProps) {
     );
 }
 
-function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
+function VideoNodeContent({ node, theme, onSetBatchPrimary, onDeleteBatchImage }: NodeContentRendererProps) {
     const { t } = useTranslation();
+    // 本仓改动（v0.183）：成片历史条。
+    //
+    // 视频跟出图一样是抽卡 —— 跑十条挑一条。v0.182 已经把每一版都留在 `metadata.videos[]`，
+    // 但**看不到也切不回去**，等于白留。图片那边有现成的候选面板（BatchFrame + 展开网格），
+    // 视频节点撑不下一个网格（它本身就是个播放器），所以做成一条底部的「‹ 第 2/5 版 ›」。
+    const takes = node.metadata?.videos ?? [];
+    const currentId = node.metadata?.primaryVideoId;
+    const idx = Math.max(0, takes.findIndex((v) => v.id === currentId));
+    const go = (delta: number) => {
+        if (takes.length < 2) return;
+        const next = takes[(idx + delta + takes.length) % takes.length];
+        if (next) onSetBatchPrimary?.(next.id);
+    };
+
     if (!node.metadata?.content)
         return (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.placeholder }}>
@@ -691,7 +705,45 @@ function VideoNodeContent({ node, theme }: NodeContentRendererProps) {
                 <span className="text-sm">{t("canvas.node.emptyVideo")}</span>
             </div>
         );
-    return <video src={node.metadata.content} controls className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-video={node.id} data-canvas-no-zoom />;
+    return (
+        <div className="relative h-full w-full">
+            <video src={node.metadata.content} controls className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-video={node.id} data-canvas-no-zoom />
+            {takes.length > 1 ? (
+                <div
+                    className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-1.5 rounded-b-[18px] px-2 py-1.5"
+                    style={{ background: "rgba(15,23,42,.62)", backdropFilter: "blur(8px)" }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => event.stopPropagation()}
+                >
+                    <TakeButton label="上一版" onClick={() => go(-1)}>‹</TakeButton>
+                    <span className="select-none px-1 text-[11px] font-semibold text-white/90">
+                        第 {idx + 1}/{takes.length} 版
+                    </span>
+                    <TakeButton label="下一版" onClick={() => go(1)}>›</TakeButton>
+                    <TakeButton
+                        label="删掉这一版"
+                        onClick={() => onDeleteBatchImage?.(takes[idx]?.id ?? "")}
+                    >
+                        <Trash2 className="size-3" />
+                    </TakeButton>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function TakeButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+    return (
+        <button
+            type="button"
+            title={label}
+            aria-label={label}
+            onClick={(event) => { event.stopPropagation(); onClick(); }}
+            className="flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-[13px] leading-none text-white/90 transition hover:bg-white/20"
+        >
+            {children}
+        </button>
+    );
 }
 
 function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
