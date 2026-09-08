@@ -12,5 +12,7 @@ public record AiAppEndpointCandidateUpsert(
         Boolean supportsFirstLastFrame,
         Boolean supportsSubjectReference,
         Integer maxDurationSec,
+        /** 出图最小像素数（宽 × 高）；null = 无下限。见 AiAppEndpointCandidate#minImagePixels。 */
+        Integer minImagePixels,
         Long creditCostOverride
 ) {}

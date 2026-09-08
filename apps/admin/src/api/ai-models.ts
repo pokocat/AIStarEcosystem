@@ -133,6 +133,8 @@ export interface EndpointCapability {
   supportsFirstLastFrame?: boolean | null;
   supportsSubjectReference?: boolean | null;
   maxDurationSec?: number | null;
+  /** 出图最小像素数（宽×高）；null = 无下限。 */
+  minImagePixels?: number | null;
 }
 
 /** D-11：某用途的候选端点（含 capability + 默认标记 + 单价 override）。 */
@@ -160,6 +162,8 @@ export interface AiAppEndpointCandidateUpsert {
   supportsFirstLastFrame?: boolean | null;
   supportsSubjectReference?: boolean | null;
   maxDurationSec?: number | null;
+  /** 出图最小像素数（宽×高）；null = 无下限。 */
+  minImagePixels?: number | null;
   creditCostOverride?: number | null;
 }
 

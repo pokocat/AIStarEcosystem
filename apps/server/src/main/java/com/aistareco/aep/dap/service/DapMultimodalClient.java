@@ -77,7 +77,9 @@ public class DapMultimodalClient {
 
     /** 一次调用的落地目标:baseUrl 不带尾斜杠;apiKey 明文(仅内存);source 用于日志。 */
     record Target(String endpointId, String endpointName, String baseUrl, String apiKey,
-                  String model, String source, AiModelPurpose purpose) {}
+                  String model, String source, AiModelPurpose purpose,
+                  /** 该端点声明的出图最小像素数；null = 无下限。 */
+                  Integer minImagePixels) {}
 
     private Target resolveTarget(AiModelPurpose purpose) {
         return resolveTarget(purpose, null);
@@ -91,9 +93,13 @@ public class DapMultimodalClient {
      * 用户在画布上选了模型却被悄悄换成另一个，比报错更糟：他按那个模型的价付了钱。
      */
     private Target resolveTarget(AiModelPurpose purpose, String endpointId) {
+        var resolved = (endpointId == null || endpointId.isBlank())
+                ? java.util.Optional.<com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint>empty()
+                : aiModels.resolveEndpoint(purpose, endpointId);
         AiModelEndpoint e = (endpointId == null || endpointId.isBlank())
                 ? aiModels.resolveEndpoint(purpose).orElse(null)
-                : aiModels.resolveEndpoint(purpose, endpointId).map(r -> r.endpoint()).orElse(null);
+                : resolved.map(r -> r.endpoint()).orElse(null);
+        Integer minPixels = resolved.map(r -> r.candidate() == null ? null : r.candidate().getMinImagePixels()).orElse(null);
         if (e == null) return null;
         try {
             String key = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
@@ -109,7 +115,7 @@ public class DapMultimodalClient {
                 return null;
             }
             return new Target(e.getId(), e.getName(), rstrip(e.getBaseUrl()), key, model,
-                    "endpoint:" + e.getName(), purpose);
+                    "endpoint:" + e.getName(), purpose, minPixels);
         } catch (Exception ex) {
             log.warn("[dap-ai] endpoint decrypt failed purpose={} endpoint={} err={} → unconfigured",
                     purpose.wire(), e.getName(), ex.getMessage());
@@ -255,7 +261,12 @@ public class DapMultimodalClient {
         ObjectNode body = OM.createObjectNode();
         body.put("model", t.model());
         body.put("prompt", prompt);
-        if (size != null && !size.isBlank()) body.put("size", size);
+        String effectiveSize = fitMinPixels(size, t.minImagePixels());
+        if (effectiveSize != null && !effectiveSize.isBlank()) body.put("size", effectiveSize);
+        if (effectiveSize != null && !effectiveSize.equals(size)) {
+            log.info("[dap-ai] 画幅按端点下限上调 endpoint={} {} → {}（下限 {} 像素）",
+                    t.endpointName(), size, effectiveSize, t.minImagePixels());
+        }
         ObjectNode extra = body.putObject("extra_body");
         extra.put("response_format", "url");
         if (inputImages != null && !inputImages.isEmpty()) {
@@ -522,6 +533,37 @@ public class DapMultimodalClient {
         } catch (IOException e) {
             throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "大模型返回不是合法 JSON(" + path + "): " + e.getMessage());
         }
+    }
+
+    /**
+     * 按端点声明的最小像素把画幅顶上去（保持比例）。
+     *
+     * <p>不同模型对画幅的要求差得很远：火山方舟 seedream 4.5 要求 ≥3686400 像素（约 1920×1920），
+     * 而 agnes 用 768×1024 就行。画布上的画幅是**逐节点**存的（模板还给写死了 768×1024），
+     * 换一个模型就得把画布上每个节点挨个改一遍 —— 那不是用户该干的活。
+     *
+     * <p>只往上调、不往下调；端点没声明下限就原样返回，行为与此前完全一致。
+     * 边长按 8 对齐（多数出图模型要求能被 8 或 16 整除）。
+     */
+    static String fitMinPixels(String size, Integer minPixels) {
+        if (size == null || minPixels == null || minPixels <= 0) return size;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d+)x(\\d+)$").matcher(size.trim());
+        if (!m.matches()) return size;   // "1:1" 这种比例值交给上游自己解释
+        long w = Long.parseLong(m.group(1));
+        long h = Long.parseLong(m.group(2));
+        if (w <= 0 || h <= 0 || w * h >= minPixels) return size;
+        double factor = Math.sqrt((double) minPixels / (double) (w * h));
+        long nw = align8(Math.ceil(w * factor));
+        long nh = align8(Math.ceil(h * factor));
+        // 对齐时向下取整可能又掉到下限以下，补一格
+        while (nw * nh < minPixels) { nw += 8; nh = align8(Math.ceil(nw * (double) h / (double) w)); }
+        return nw + "x" + nh;
+    }
+
+    private static long align8(double v) {
+        long n = (long) Math.ceil(v);
+        long r = n % 8;
+        return r == 0 ? n : n + (8 - r);
     }
 
     /** 上游 4xx 响应体里那句人话的最大长度 —— 够说清问题，又不至于把整段 JSON 糊到界面上。 */

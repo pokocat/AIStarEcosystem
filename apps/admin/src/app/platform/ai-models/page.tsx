@@ -1699,6 +1699,7 @@ function CandidatePanel({
         supportsFirstLastFrame: row.capability.supportsFirstLastFrame ?? null,
         supportsSubjectReference: row.capability.supportsSubjectReference ?? null,
         maxDurationSec: row.capability.maxDurationSec ?? null,
+        minImagePixels: row.capability.minImagePixels ?? null,
         creditCostOverride: row.creditCostOverride ?? null,
       });
       patchLocal(updated.endpointId, () => updated);
@@ -1771,6 +1772,7 @@ function CandidatePanel({
                       <TableHead className="w-[80px]" title="是否支持首+尾帧关键帧衔接">首尾帧</TableHead>
                       <TableHead className="w-[80px]" title="是否支持主体（人物）参考">主体参考</TableHead>
                       <TableHead className="w-[92px]" title="单条视频最长秒数，留空为未知">最长秒数</TableHead>
+                      <TableHead className="w-[104px]" title="出图最少要多少像素（宽×高）。留空 = 无下限。不同模型差很多：火山 seedream 4.5 要 3686400（约 1920×1920），agnes 用 768×1024 就行。填了之后画幅不够会按比例自动顶上去，用户不必挨个改画布节点。">最小像素</TableHead>
                       <TableHead className="w-[100px]" title="该端点单价（积分），留空用用途默认单价">单价覆盖</TableHead>
                       <TableHead className="w-[190px] text-right">操作</TableHead>
                     </TableRow>
@@ -1868,6 +1870,20 @@ function CandidatePanel({
                         <TableCell className="py-2">
                           <Input
                             type="number"
+                            className="h-7 w-[88px]"
+                            value={row.capability.minImagePixels ?? ""}
+                            placeholder="—"
+                            onChange={(e) =>
+                              patchLocal(row.endpointId, (r) => ({
+                                ...r,
+                                capability: { ...r.capability, minImagePixels: num(e.target.value) },
+                              }))
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Input
+                            type="number"
                             className="h-7 w-[84px]"
                             value={row.creditCostOverride ?? ""}
                             placeholder="默认"
@@ -1928,7 +1944,7 @@ function CandidatePanel({
                 <Button size="sm" variant="outline" className="h-8" disabled={!addId || addId === "__none__"} onClick={() => void add()}>
                   加入候选
                 </Button>
-                <span className="text-[10px] text-muted-foreground">能力字段留空 = 未知，装配按兼容默认（参考图上限 6、首尾帧按模型协议自动判定），与配置前行为一致。</span>
+                <span className="text-[10px] text-muted-foreground">能力字段留空 = 未知，装配按兼容默认（参考图上限 6、首尾帧按模型协议自动判定），与配置前行为一致。「最小像素」填了之后，画幅不够会按比例自动顶上去 —— 换模型不必再去画布上挨个改节点画幅。</span>
               </div>
             </>
           )}

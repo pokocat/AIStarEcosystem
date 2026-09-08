@@ -64,11 +64,11 @@ class AiAppBindingServiceTest {
     }
 
     private static AiAppEndpointCandidateUpsert disableBody() {
-        return new AiAppEndpointCandidateUpsert(null, null, false, null, null, null, null, null);
+        return new AiAppEndpointCandidateUpsert(null, null, false, null, null, null, null, null, null);
     }
 
     private static AiAppEndpointCandidateUpsert sortOrderOnlyBody(int sortOrder) {
-        return new AiAppEndpointCandidateUpsert(null, sortOrder, null, null, null, null, null, null);
+        return new AiAppEndpointCandidateUpsert(null, sortOrder, null, null, null, null, null, null, null);
     }
 
     @Test

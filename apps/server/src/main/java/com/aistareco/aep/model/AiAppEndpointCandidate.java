@@ -66,6 +66,16 @@ public class AiAppEndpointCandidate {
     @Column(name = "max_duration_sec")
     private Integer maxDurationSec;
 
+    /**
+     * 出图最小像素数（宽 × 高）；null = 无下限。
+     *
+     * <p>不同模型对画幅的要求差很多：火山方舟 seedream 4.5 要求 ≥3686400（约 1920×1920），
+     * agnes 用 768×1024 就行。调用前按这个值把画幅顶上去（保持比例），
+     * 免得用户换个模型就得把画布上每个节点的画幅挨个改一遍。
+     */
+    @Column(name = "min_image_pixels")
+    private Integer minImagePixels;
+
     /** 本端点在该用途下的积分单价 override（null=用用途默认单价，如 drama.credit.clip / drama.credit.frame）。 */
     @Column(name = "credit_cost_override")
     private Long creditCostOverride;

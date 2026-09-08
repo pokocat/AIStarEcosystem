@@ -12,11 +12,13 @@ public record EndpointCapabilityDto(
         Integer maxRefImages,
         Boolean supportsFirstLastFrame,
         Boolean supportsSubjectReference,
-        Integer maxDurationSec
+        Integer maxDurationSec,
+        /** 出图最小像素数（宽 × 高）；null = 无下限。见 AiAppEndpointCandidate#minImagePixels。 */
+        Integer minImagePixels
 ) {
     public static EndpointCapabilityDto from(AiAppEndpointCandidate c) {
-        if (c == null) return new EndpointCapabilityDto(null, null, null, null);
+        if (c == null) return new EndpointCapabilityDto(null, null, null, null, null);
         return new EndpointCapabilityDto(c.getMaxRefImages(), c.getSupportsFirstLastFrame(),
-                c.getSupportsSubjectReference(), c.getMaxDurationSec());
+                c.getSupportsSubjectReference(), c.getMaxDurationSec(), c.getMinImagePixels());
     }
 }
