@@ -41,11 +41,18 @@ const SERVER_CHECK_EXEMPT = [
 
 // ── 1. 提取所有 apiFetch URL + method ───────────────────────────────────────
 
-function walk(dir, acc = []) {
+// exclude：绝对路径前缀列表，命中的子树整棵跳过。
+// 用途是「同一棵树里两种字面量约定」——本仓 web-aiavatar 自己的 apiFetch 会拼
+// /api/v1，所以字面量写成 /card/mine（靠 SCAN_TARGETS 的 prefix 补 /v1）；而从
+// web-ipstudio 搬进来的子树写的是完整的 /v1/ip-studio/*。两者混在一个扫描根下，
+// 补前缀的那份会把后者算成 /v1/v1/...。把搬来的子树排除掉、再各自单列一个不带
+// prefix 的扫描根，两种约定才能共存。
+function walk(dir, acc = [], exclude = []) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
+    if (exclude.some((ex) => p === ex || p.startsWith(`${ex}/`))) continue;
     const s = statSync(p);
-    if (s.isDirectory()) walk(p, acc);
+    if (s.isDirectory()) walk(p, acc, exclude);
     else if (/\.tsx?$/.test(name) && !name.endsWith(".test.ts")) acc.push(p);
   }
   return acc;
@@ -88,9 +95,10 @@ function normalizeUrl(raw, constants = new Map()) {
 
 function extractCalls() {
   const calls = [];
-  for (const { dir, prefix = "" } of SCAN_TARGETS) {
+  for (const { dir, prefix = "", exclude = [] } of SCAN_TARGETS) {
     const abs = join(REPO_ROOT, dir);
-    for (const file of walk(abs)) {
+    const absExclude = exclude.map((e) => join(REPO_ROOT, e));
+    for (const file of walk(abs, [], absExclude)) {
       const src = readFileSync(file, "utf8");
       const constants = extractStringConstants(src);
       // apiFetch<T>(`/...`[, { method: "POST", ... }])
