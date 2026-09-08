@@ -69,4 +69,36 @@ class DapFitMinPixelsTest {
         assertEquals("1:1", DapMultimodalClient.fitMinPixels("1:1", SEEDREAM_MIN));
         assertEquals("auto", DapMultimodalClient.fitMinPixels("auto", SEEDREAM_MIN));
     }
+
+    // ── 从上游的拒绝理由里读出下限（v0.169）──────────────────────────────
+
+    @Test
+    @DisplayName("火山方舟那句原话 —— 读出下限并算出该改成多大")
+    void readsMinimumFromVolcanoMessage() {
+        String msg = "The parameter `size` specified in the request is not valid: "
+                + "image size must be at least 3686400 pixels. Request id: 0217888";
+        String out = DapMultimodalClient.sizeFromMinPixelsHint(msg, "768x1024");
+        assertTrue(out != null && pixels(out) >= SEEDREAM_MIN, "没读出来或没改够：" + out);
+    }
+
+    @Test
+    @DisplayName("已经够大 —— 不改（说明是别的原因，重试没意义）")
+    void doesNotRetryWhenSizeAlreadySatisfiesTheStatedMinimum() {
+        String msg = "image size must be at least 3686400 pixels";
+        assertEquals(null, DapMultimodalClient.sizeFromMinPixelsHint(msg, "2480x3312"));
+    }
+
+    @Test
+    @DisplayName("跟画幅无关的拒绝 —— 不改，照常抛错")
+    void unrelatedErrorsAreNotTreatedAsSizeProblems() {
+        assertEquals(null, DapMultimodalClient.sizeFromMinPixelsHint("content policy violation", "768x1024"));
+        assertEquals(null, DapMultimodalClient.sizeFromMinPixelsHint("invalid api key", "768x1024"));
+        assertEquals(null, DapMultimodalClient.sizeFromMinPixelsHint(null, "768x1024"));
+    }
+
+    @Test
+    @DisplayName("比例值（\"1:1\"）读不出像素 —— 不瞎改")
+    void ratioValueIsNotRewritten() {
+        assertEquals(null, DapMultimodalClient.sizeFromMinPixelsHint("image size must be at least 3686400 pixels", "1:1"));
+    }
 }

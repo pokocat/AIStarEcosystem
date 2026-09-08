@@ -275,7 +275,20 @@ public class DapMultimodalClient {
         }
 
         try {
-            JsonNode resp = postJson(t, "/v1/images/generations", body);
+            JsonNode resp;
+            try {
+                resp = postJson(t, "/v1/images/generations", body);
+            } catch (DapModelException e) {
+                // 厂商在 4xx 里直接说了画幅下限（火山方舟：`image size must be at least 3686400 pixels`）。
+                // 它已经把答案给我们了 —— 让用户回后台填一个像素数、或者去画布上把每个节点挨个改，
+                // 都是把厂商说过的话再让人复述一遍。按它说的改一次再试，只重试一次。
+                String retrySize = sizeFromMinPixelsHint(e.getMessage(), effectiveSize);
+                if (retrySize == null) throw e;
+                log.warn("[dap-ai] 画幅被上游拒绝，按它给的下限改一次再试 endpoint={} {} → {}",
+                        t.endpointName(), effectiveSize, retrySize);
+                body.put("size", retrySize);
+                resp = postJson(t, "/v1/images/generations", body);
+            }
             JsonNode data0 = resp.path("data").path(0);
             String upstreamId = resp.path("id").asText(null);
             String url = data0.path("url").asText(null);
@@ -533,6 +546,30 @@ public class DapMultimodalClient {
         } catch (IOException e) {
             throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "大模型返回不是合法 JSON(" + path + "): " + e.getMessage());
         }
+    }
+
+    /** 上游 4xx 里报出的画幅下限，例如 {@code image size must be at least 3686400 pixels}。 */
+    private static final java.util.regex.Pattern MIN_PIXELS_HINT =
+            java.util.regex.Pattern.compile("at least\\s+(\\d{5,9})\\s*pixels", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 从上游的拒绝理由里读出画幅下限，算出该改成多大。
+     *
+     * <p>只在**它确实说了下限、而我们发的确实比这个小**时才返回新画幅；其余一律返回 null（照常抛错）。
+     * 这不是「失败了就重试」—— 同一个请求重试多少次都还是同样的错；这是**按对方给的信息改正一次**。
+     */
+    static String sizeFromMinPixelsHint(String upstreamMessage, String sentSize) {
+        if (upstreamMessage == null || sentSize == null) return null;
+        java.util.regex.Matcher m = MIN_PIXELS_HINT.matcher(upstreamMessage);
+        if (!m.find()) return null;
+        int min;
+        try {
+            min = Integer.parseInt(m.group(1));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        String fixed = fitMinPixels(sentSize, min);
+        return fixed == null || fixed.equals(sentSize) ? null : fixed;
     }
 
     /**
