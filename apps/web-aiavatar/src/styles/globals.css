@@ -1149,6 +1149,14 @@ body, .app-root { overflow-x: hidden; }
 
   /* 顶栏占位：内容不要顶到栏底下 */
   body.has-desktop-bar { padding-top: var(--desktop-bar-h); }
+
+  /* 老 SPA 是 `position: fixed; inset: 0`，**吃不到 body 的 padding-top** ——
+     它会从视口顶端开始，最上面 52px 正好被固定顶栏盖住（实测 hiddenPx=52，
+     它自带的导航条整条被压在下面）。给它单独让位：只改 top，
+     right/bottom/left 仍是 0，所以照旧铺到底。
+     注意选择器带 `body.has-desktop-bar` —— 顶栏不在（访客 / 公开名片页）时
+     不能平白往下推 52px。 */
+  body.has-desktop-bar .app-root { top: var(--desktop-bar-h); }
 }
 
 /* 顶栏只在宽屏出现 */
