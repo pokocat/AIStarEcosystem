@@ -4,7 +4,7 @@
 
 | 目录 | 形态 | 当前占用 |
 |---|---|---|
-| `src/main/resources/db/migration/V*.sql` | SQL 迁移 | V1、V14–V20、V25–V28 |
+| `src/main/resources/db/migration/V*.sql` | SQL 迁移 | V1、V14–V20、V25–V28、V31 |
 | `src/main/java/db/migration/V*.java` | Java 迁移（`BaseJavaMigration`） | V2–V13、V21–V24、V29、V30 |
 
 只 `ls` 本目录会看到「V1 跳到 V14、V20 之后又跳到 V25」的假象，据此推断「编号漂移 / 文件丢了」是**错的**
@@ -31,3 +31,10 @@ SELECT version, description, script, checksum FROM flyway_schema_history ORDER B
 
 线上跑过的 SQL 迁移带 checksum，改动内容会导致 Flyway 校验和漂移、启动失败（v0.124 教训：
 当时改了已执行的 V14，只能恢复原文并新开 V15）。要修就新开一个编号。
+
+## H2 (MODE=MySQL) 收不了的 MySQL 写法
+
+- `TINYINT(1)` —— H2 不吃显示宽度，全新 dev 库直接语法错、应用起不来（v0.182 踩过）。
+  布尔列写 `BOOLEAN NOT NULL DEFAULT TRUE`，MySQL 自己会存成 `TINYINT(1)`。
+- `ENGINE=` / `CHARSET=` 子句 —— 别写，两边都不需要。
+- `ALTER TABLE ... COMMENT` —— H2 拒绝（v0.168 踩过）。

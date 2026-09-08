@@ -9626,6 +9626,30 @@ paths:
       responses:
         "200": { description: 视频任务卡（status=rendering，前端轮询 /v1/ip-studio/videos/{jobId}） }
 
+  /v1/ip-studio/projects/{id}/publish-as-demo:
+    post:
+      tags: [ip-studio]
+      summary: 把项目存成全局示例工作流（仅平台运营）
+      description: >
+        内置模板（resources/ipstudio/templates/*.json）是**空**工作流 —— 用户得自己拖照片、自己跑一遍
+        才知道这条链能干什么。全局示例把素材和成图一起带过来，新用户一进目录就能看见效果。
+        服务端会把文档里的素材**复制**一份到平台自有目录 `ipstudio/demo/<demoId>/…`（所有人可读、
+        没有人可写），再把文档里的键换成新键 —— 所以作者之后继续改项目、甚至删项目，示例都不受影响；
+        直接引用原 key 则换个人打开就是一片空白（归属闸会正确地拒绝）。
+        只能拿**自己的**项目做示例。body：{ demoId?（带上就是更新那一条）, name?, summary? }。
+      responses:
+        "200": { description: "{ id, name, enabled }" }
+        "400": { description: IP_DEMO_TOO_MANY_ASSETS 素材太多 }
+        "403": { description: 非平台运营 }
+  /v1/ip-studio/demos/{demoId}/enabled:
+    post:
+      tags: [ip-studio]
+      summary: 下线 / 重新上线一个全局示例（仅平台运营）
+      description: 不删数据，只改 enabled，随时能再打开。body：{ enabled }。
+      responses:
+        "200": { description: "{ id, enabled }" }
+        "403": { description: 非平台运营 }
+        "404": { description: IP_DEMO_NOT_FOUND }
   /v1/ip-studio/videos/{jobId}:
     get:
       tags: [ip-studio]

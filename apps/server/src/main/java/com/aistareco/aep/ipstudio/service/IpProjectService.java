@@ -276,6 +276,12 @@ public class IpProjectService {
         if (k.startsWith(keyPrefix(CATEGORY_SOURCE, userId)) || k.startsWith(keyPrefix(CATEGORY_GEN, userId))) {
             return true;
         }
+        // 全局示例的素材：平台自有内容，**所有登录用户都可读**（v0.182）。
+        // 这不是放宽越权面 —— 写入侧的 key 一律由调用者的 uid 拼出来，落不到这个前缀下，
+        // 所以「可读」不会变成「可写」；而不放行的话，示例工作流换个人打开就是一片空白。
+        if (k.startsWith(IpDemoTemplateService.CATEGORY_DEMO + "/")) {
+            return true;
+        }
         // 视频：key 是 `material-videos/<jobId>/video.mp4`（可能带 OSS key-prefix），**里面没有 uid** ——
         // 光看前缀一律判成「不是本人的」，于是画布里的视频节点重签不出地址，
         // 刷新之后 content 是空的、视频就此消失（v0.180 线上实测，日志里每次加载都刷两条
@@ -546,6 +552,9 @@ public class IpProjectService {
      * <p>指望前端在 PUT 之前自己剥是靠不住的：文档是客户端拥有的，我们不能假设它守规矩。
      * 真值是 {@code storageKey}，地址每次出 wire 现派生。
      */
+    /** 节点上放候选产物的两个数组：出图的 images[]、出片的 videos[]（v0.182）。 */
+    private static final List<String> CANDIDATE_FIELDS = List.of("images", "videos");
+
     private static void stripDerivedUrls(JsonNode doc) {
         for (JsonNode n : IpDocs.nodes(doc)) {
             JsonNode md = IpDocs.metadataOf(n);
@@ -558,10 +567,14 @@ public class IpProjectService {
                 mo.remove("url");
                 mo.remove("content");
             }
-            JsonNode images = mo.path("images");
-            if (!images.isArray()) continue;
-            for (JsonNode img : images) {
-                if (img instanceof ObjectNode io && IpDocs.text(io, "storageKey") != null) io.remove("content");
+            // 候选数组：出图的 images[] 与出片的 videos[]（v0.182）—— 两处都要剥，
+            // 漏一处就是「历史里有的能放、有的一小时后放不了」。
+            for (String field : CANDIDATE_FIELDS) {
+                JsonNode arr = mo.path(field);
+                if (!arr.isArray()) continue;
+                for (JsonNode item : arr) {
+                    if (item instanceof ObjectNode io && IpDocs.text(io, "storageKey") != null) io.remove("content");
+                }
             }
         }
     }
@@ -587,10 +600,11 @@ public class IpProjectService {
             // 重签回 content —— 画布读的是它。此前写的是 url，而**没有任何地方读 url**，
             // 于是节点级的图从来就显示不出来（stripDerivedUrls 把 content 剥掉之后）。
             resignOne(mo, "storageKey", "content", ownerUserId);
-            JsonNode images = mo.path("images");
-            if (images.isArray()) {
-                for (JsonNode img : images) {
-                    if (img instanceof ObjectNode io) resignOne(io, "storageKey", "content", ownerUserId);
+            for (String field : CANDIDATE_FIELDS) {
+                JsonNode arr = mo.path(field);
+                if (!arr.isArray()) continue;
+                for (JsonNode item : arr) {
+                    if (item instanceof ObjectNode io) resignOne(io, "storageKey", "content", ownerUserId);
                 }
             }
         }

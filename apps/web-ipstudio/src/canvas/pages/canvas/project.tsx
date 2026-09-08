@@ -133,14 +133,60 @@ const NODE_STATUS_LOADING = "loading" as const;
 const NODE_STATUS_SUCCESS = "success" as const;
 const NODE_STATUS_ERROR = "error" as const;
 
+/**
+ * 重出之前先把**上一版成片**收进历史（v0.182）。
+ *
+ * 视频跟出图一样是抽卡：跑十条挑一条。此前就地重出会把节点的 metadata 整个换掉，
+ * 上一版连同它的存储键一起没了 —— 用户想回到刚才那条就只能重新跑一次、再付一次钱。
+ * 图片那边早就有候选数组（`metadata.images[]` + `primaryImageId`），视频这边补上同形的
+ * `videos[]` + `primaryVideoId`。
+ *
+ * 只收**已经出片**的那一版（有 storageKey）；空节点和失败的一版没有保存价值。
+ */
+function keepVideoTake(node: CanvasNodeData): NonNullable<CanvasNodeData["metadata"]>["videos"] {
+    const history = node.metadata?.videos ?? [];
+    const key = node.metadata?.storageKey;
+    if (!key) return history;
+    if (history.some((v) => v.storageKey === key)) return history;
+    return [
+        ...history,
+        {
+            id: node.metadata?.primaryVideoId || nanoid(),
+            status: NODE_STATUS_SUCCESS,
+            storageKey: key,
+            content: node.metadata?.content,
+            prompt: node.metadata?.prompt,
+            seconds: node.metadata?.seconds,
+            mimeType: node.metadata?.mimeType,
+        },
+    ];
+}
+
 function applyGeneratedVideo(item: CanvasNodeData, video: UploadedFile, extra: CanvasNodeData["metadata"] = {}): CanvasNodeData {
     const videoSize = fitNodeSize(video.width || item.width, video.height || item.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+    const takeId = nanoid();
+    const history = item.metadata?.videos ?? [];
     return {
         ...item,
         width: videoSize.width,
         height: videoSize.height,
         position: { x: item.position.x + item.width / 2 - videoSize.width / 2, y: item.position.y + item.height / 2 - videoSize.height / 2 },
-        metadata: { ...item.metadata, ...videoMetadata(video), ...extra },
+        metadata: {
+            ...item.metadata,
+            ...videoMetadata(video),
+            ...extra,
+            // 新的一版进历史并成为当前 —— 之前那版由 keepVideoTake 在重出开始时就收好了
+            videos: [...history, {
+                id: takeId,
+                status: NODE_STATUS_SUCCESS,
+                storageKey: video.storageKey,
+                content: video.url,
+                prompt: (extra?.prompt as string | undefined) ?? item.metadata?.prompt,
+                seconds: item.metadata?.seconds,
+                mimeType: video.mimeType,
+            }],
+            primaryVideoId: takeId,
+        },
     };
 }
 
@@ -2482,7 +2528,14 @@ function InfiniteCanvasPage() {
 
                 if (mode === "video") {
                     const spec = nodeSizeFromRatio(generationConfig.size, NODE_DEFAULT_SIZE[CanvasNodeType.Video].width, NODE_DEFAULT_SIZE[CanvasNodeType.Video].height) || NODE_DEFAULT_SIZE[CanvasNodeType.Video];
-                    const isEmptyVideoNode = sourceNode?.type === CanvasNodeType.Video && !sourceNode.metadata?.content;
+                    // 本仓改动（v0.182）：在**视频节点**上跑生成一律就地重出，不再派生新节点。
+                    //
+                    // 上游只让「空视频节点」就地填充，已经出过片的再点一次会在旁边多长一个节点 ——
+                    // 而用户点的是这个节点上的「重新生成」，意图就是把这条重出。多出来的节点还会
+                    // 顺带把连线关系搅乱：新节点没有接上原来的上游，参考素材整个换了一套
+                    // （用户原话：「会多出来一个节点，这样参考素材就都变了」）。
+                    // 图片节点在 v0.166 已经改成就地重出，这里补上视频。
+                    const isEmptyVideoNode = sourceNode?.type === CanvasNodeType.Video;
                     const videoId = isEmptyVideoNode ? nodeId : nanoid();
                     const parent = sourceNode?.position || { x: 0, y: 0 };
                     const videoNode: CanvasNodeData = {
@@ -2508,7 +2561,9 @@ function InfiniteCanvasPage() {
                     pendingChildIds = [videoId];
                     setNodes((prev) =>
                         isEmptyVideoNode
-                            ? prev.map((node) => (node.id === nodeId ? { ...node, ...videoNode } : node))
+                            ? prev.map((node) => (node.id === nodeId
+                                ? { ...node, ...videoNode, metadata: { ...videoNode.metadata, videos: keepVideoTake(node) } }
+                                : node))
                             : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode],
                     );
                     if (!isEmptyVideoNode) setConnections((prev) => [...prev, { id: nanoid(), fromNodeId: nodeId, toNodeId: videoId }]);

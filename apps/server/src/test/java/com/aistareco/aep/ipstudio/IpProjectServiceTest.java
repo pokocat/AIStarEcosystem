@@ -548,4 +548,30 @@ class IpProjectServiceTest {
         assertEquals("https://cdn.test/" + key + "?sig=x", md.path("content").asText(),
                 "视频没有按 storageKey 重签到 content —— 前端读的就是它，空了就等于视频没了");
     }
+
+    @Test
+    @DisplayName("视频历史（videos[]）同样要剥 / 重签 —— 否则重出几次之后老的那几版都放不了")
+    void resignsVideoTakeHistory() {
+        String cur = "media/material-videos/mvj_cur/video.mp4";
+        String old = "media/material-videos/mvj_old/video.mp4";
+        IpStudioFixtures.withVideoJob(videoJobs, "mvj_cur", USER, "ipstudio");
+        IpStudioFixtures.withVideoJob(videoJobs, "mvj_old", USER, "ipstudio");
+
+        IpStudioFixtures.Doc d = IpStudioFixtures.chainDoc(null, 0);
+        com.fasterxml.jackson.databind.node.ObjectNode md = d.node("n-video", "video");
+        md.put("storageKey", cur).put("status", "success").put("primaryVideoId", "t2");
+        com.fasterxml.jackson.databind.node.ArrayNode takes = md.putArray("videos");
+        takes.addObject().put("id", "t1").put("status", "success").put("storageKey", old);
+        takes.addObject().put("id", "t2").put("status", "success").put("storageKey", cur);
+        projects.repo.save(IpStudioFixtures.project(PID, USER, d));
+
+        com.fasterxml.jackson.databind.JsonNode out = null;
+        for (com.fasterxml.jackson.databind.JsonNode n : svc.detail(USER, PID).doc().get("nodes")) {
+            if ("n-video".equals(n.path("id").asText())) out = n.path("metadata");
+        }
+        assertNotNull(out);
+        assertEquals("https://cdn.test/" + old + "?sig=x", out.path("videos").get(0).path("content").asText(),
+                "历史里的老片没重签 —— 用户切回上一版就是个放不了的播放器");
+        assertEquals("https://cdn.test/" + cur + "?sig=x", out.path("videos").get(1).path("content").asText());
+    }
 }

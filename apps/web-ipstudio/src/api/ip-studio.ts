@@ -189,3 +189,20 @@ export async function publishProject(id: string, payload: IpPublishRequest): Pro
   }
   return apiFetch<IpPublishResult>(`/v1/ip-studio/projects/${id}/publish`, { method: "POST", body: payload });
 }
+
+/**
+ * 把当前项目存成**全局示例工作流**（仅平台运营）。
+ *
+ * 内置模板是空工作流 —— 用户得自己拖照片、自己跑一遍才知道这条链能干什么。
+ * 示例把素材和成图一起带过来，新用户一进来就看见效果。服务端会把素材**复制**一份到
+ * 平台自有目录，所以之后你继续改这个项目、甚至删掉它，示例都不受影响。
+ */
+export async function publishAsDemo(
+  projectId: string,
+  body: { demoId?: string; name?: string; summary?: string } = {},
+): Promise<{ id: string; name: string; enabled: boolean }> {
+  return apiFetch(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/publish-as-demo`, {
+    method: "POST",
+    body,
+  });
+}

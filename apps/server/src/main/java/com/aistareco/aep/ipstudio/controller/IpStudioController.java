@@ -13,6 +13,8 @@ import com.aistareco.aep.ipstudio.dto.IpStudioRequests.IpPublishRequest;
 import com.aistareco.aep.ipstudio.dto.IpStudioRequests.IpRunNodeRequest;
 import com.aistareco.aep.ipstudio.dto.IpStudioRequests.IpUpdateProjectRequest;
 import com.aistareco.aep.ipstudio.service.IpCatalogService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.aistareco.aep.ipstudio.service.IpDemoTemplateService;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
 import com.aistareco.aep.ipstudio.service.IpPublishService;
 import com.aistareco.aep.ipstudio.service.IpRunService;
@@ -29,6 +31,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import org.springframework.security.core.Authentication;
 
 import java.security.Principal;
 import java.util.List;
@@ -53,6 +57,9 @@ public class IpStudioController {
     private final com.aistareco.aep.service.AiModelInvocationService invocation;
     private final com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoModels;
     private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
+    private final IpDemoTemplateService demos;
+    private final com.aistareco.aep.security.InAppOperatorGuard operatorGuard;
+    private final com.aistareco.aep.service.storage.FileStorageService storage;
 
     public IpStudioController(IpProjectService projects,
                               IpRunService runs,
@@ -60,7 +67,10 @@ public class IpStudioController {
                               IpCatalogService catalog,
                               com.aistareco.aep.service.AiModelInvocationService invocation,
                               com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoModels,
-                              com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs) {
+                              com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs,
+                              IpDemoTemplateService demos,
+                              com.aistareco.aep.security.InAppOperatorGuard operatorGuard,
+                              com.aistareco.aep.service.storage.FileStorageService storage) {
         this.projects = projects;
         this.runs = runs;
         this.publish = publish;
@@ -68,13 +78,77 @@ public class IpStudioController {
         this.invocation = invocation;
         this.videoModels = videoModels;
         this.videoJobs = videoJobs;
+        this.demos = demos;
+        this.operatorGuard = operatorGuard;
+        this.storage = storage;
     }
 
     // ── 目录 ──────────────────────────────────────────────────
 
+    /**
+     * 工作流目录 = 内置模板（空工作流，自己拖照片开跑）+ **全局示例**（素材和成图都在里面，
+     * 一进来就能看见这条链最终长什么样）。示例排在前面 —— 新用户要先看到效果，再谈自己动手。
+     */
     @GetMapping("/templates")
     public ApiResponse<List<IpTemplateDto>> templates() {
-        return ApiResponse.of(catalog.templates());
+        List<IpTemplateDto> out = new java.util.ArrayList<>();
+        for (var d : demos.listEnabled()) {
+            out.add(new IpTemplateDto(d.getId(), d.getName(),
+                    d.getSummary() == null ? "" : d.getSummary(),
+                    d.getCoverKey() == null ? "" : signOrEmpty(d.getCoverKey()),
+                    null, 0, 0, demos.docOf(d)));
+        }
+        out.addAll(catalog.templates());
+        return ApiResponse.of(out);
+    }
+
+    private String signOrEmpty(String key) {
+        try {
+            String url = storage.signedUrl(key);
+            return url == null ? "" : url;
+        } catch (RuntimeException e) {
+            return "";   // 封面签不出来只是少一张缩略图，不该让整个目录挂掉
+        }
+    }
+
+    /**
+     * 把自己的项目存成**全局示例**（运营）。素材会复制一份到平台自有目录，
+     * 之后作者继续改项目、甚至删项目，示例都不受影响。
+     * body: {@code { demoId?, name?, summary? }} —— 带已有 demoId 就是更新那一条。
+     */
+    @PostMapping("/projects/{id}/publish-as-demo")
+    public ApiResponse<JsonNode> publishAsDemo(Authentication auth, Principal principal,
+                                               @PathVariable String id,
+                                               @RequestBody(required = false) JsonNode body) {
+        operatorGuard.require(auth, "仅平台运营可发布全局示例工作流。");
+        var row = demos.publishFromProject(uid(principal), id,
+                text(body, "demoId"), text(body, "name"), text(body, "summary"));
+        com.fasterxml.jackson.databind.node.ObjectNode out = ((com.fasterxml.jackson.databind.node.ObjectNode)
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode());
+        out.put("id", row.getId());
+        out.put("name", row.getName());
+        out.put("enabled", row.isEnabled());
+        return ApiResponse.of(out);
+    }
+
+    /** 下线 / 重新上线一个全局示例（运营）。不删数据。 */
+    @PostMapping("/demos/{demoId}/enabled")
+    public ApiResponse<JsonNode> setDemoEnabled(Authentication auth, @PathVariable String demoId,
+                                                @RequestBody(required = false) JsonNode body) {
+        operatorGuard.require(auth, "仅平台运营可下线全局示例工作流。");
+        boolean enabled = body == null || !body.has("enabled") || body.path("enabled").asBoolean(true);
+        demos.setEnabled(demoId, enabled);
+        com.fasterxml.jackson.databind.node.ObjectNode out =
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        out.put("id", demoId);
+        out.put("enabled", enabled);
+        return ApiResponse.of(out);
+    }
+
+    private static String text(JsonNode body, String field) {
+        if (body == null) return null;
+        JsonNode v = body.path(field);
+        return v.isTextual() && !v.asText().isBlank() ? v.asText().trim() : null;
     }
 
     @GetMapping("/styles")

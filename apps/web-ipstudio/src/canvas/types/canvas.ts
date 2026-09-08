@@ -25,6 +25,20 @@ export type CanvasNodeStatus = "idle" | "success" | "loading" | "error";
 export type CanvasGenerationMode = "text" | "image" | "video" | "audio";
 export type CanvasImageGenerationType = "generation" | "edit";
 
+/** 视频节点的一版成片（v0.182）。与 CanvasNodeImage 同形，只是产物是 MP4。 */
+export type CanvasNodeVideoTake = {
+    id: string;
+    status: "loading" | "success" | "error";
+    /** 我方存储里的成片键（真值）。 */
+    storageKey?: string;
+    /** 出 wire 现签的播放地址（派生值，落库前被服务端剥掉）。 */
+    content?: string;
+    prompt?: string;
+    seconds?: string;
+    mimeType?: string;
+    errorDetails?: string;
+};
+
 export type CanvasNodeImage = {
     id: string;
     status: CanvasNodeStatus;
@@ -84,6 +98,13 @@ export type CanvasNodeMetadata = {
     freeResize?: boolean;
     images?: CanvasNodeImage[];
     primaryImageId?: string;
+    /**
+     * 视频节点的历史成片（v0.182）。视频跟出图一样是抽卡：跑十条挑一条，
+     * 所以重出不能把上一版顶掉 —— 想回到刚才那条不该只能重跑一次再付一次钱。
+     * 与 `images[]` / `primaryImageId` 同形。
+     */
+    videos?: CanvasNodeVideoTake[];
+    primaryVideoId?: string;
     storageKey?: string;
     mimeType?: string;
     bytes?: number;
