@@ -211,13 +211,17 @@ const BINDING_GROUPS: Array<{
     key: "drama",
     label: "AI 短剧",
     description:
-      "短剧生成链路：分场景脚本起草、分镜首帧图像、短剧/短视频生成。其中「图像生成 / 视频生成」为跨产品共享端点（同一端点亦服务明星带货视频），在此改绑会同时影响其它产品线。",
+      "短剧生成链路：分场景脚本起草、分镜首帧图像、短剧/短视频生成。其中「图像生成 / 视频生成」为跨产品共享端点（同一端点亦服务明星带货视频），在此改绑会同时影响其它产品线。"
+      + "注意：这里的「图像生成」不供 AI IP 工作台画布使用 —— 画布走的是 AiAvatar 组的「数字人 / IP 画布 出图」。",
     purposes: ["DRAMA_SCRIPT_DRAFT", "IMAGE_GENERATION", "VIDEO_GENERATION"],
   },
   {
     key: "aiavatar",
-    label: "AiAvatar",
-    description: "数字人人设解析、图片生成与视频生成的多模态调用；「真人素材与授权」为七牛 modelink 素材合规接入（刷脸认证 + 素材送审）。",
+    label: "AiAvatar / AI IP 工作台",
+    description:
+      "数字人人设解析、图片生成与视频生成的多模态调用。**AI IP 工作台的画布出图走的就是这里的「数字人 / IP 画布 出图」（DAP_IMAGE）** —— "
+      + "画布上那个模型下拉列的是它的候选端点，在「AI 短剧 → 图像生成」下加模型不会出现在画布里（那是另一个用途）。"
+      + "「真人素材与授权」为七牛 modelink 素材合规接入（刷脸认证 + 素材送审）。",
     purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO", "DAP_REAL_AVATAR"],
   },
   {
