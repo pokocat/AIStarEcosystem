@@ -15,8 +15,9 @@ import { EnrollmentGate } from "@ai-star-eco/landing";
 // shadcn 设计系统（PRODUCT.md / DECISIONS.md），而画布整套已经在用 antd。
 // 这也是搬进来时唯一一处真正用到 @ai-star-eco/ui 的地方，改掉它整个依赖就摘干净了。
 import { Modal } from "antd";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { IpStudioApi } from "@/ip/api";
-import { useToast } from "@/ip/common/toast";
+import { ToastProvider, useToast } from "@/ip/common/toast";
 import { MockBadge } from "@/ip/common/mock-badge";
 
 function formatWhen(iso: string): string {
@@ -31,9 +32,13 @@ function formatWhen(iso: string): string {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function ProjectsPage() {
+function ProjectsPageInner() {
   const router = useRouter();
   const { toast } = useToast();
+  const surfaceRef = React.useRef<HTMLDivElement>(null);
+  // 并入前这一页在 ipstudio 的 AuthProvider 下，未登录会自动跳登录页。
+  // 本 app 没挂那套 —— 不接这个闸的话 legacy 模式下 401 只会显示一句加载失败。
+  const authState = useRequireAuth();
   const [templates, setTemplates] = React.useState<IpTemplate[]>([]);
   const [projects, setProjects] = React.useState<IpProjectSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -59,8 +64,9 @@ export default function ProjectsPage() {
   }, []);
 
   React.useEffect(() => {
+    if (authState !== "ok") return;
     void load();
-  }, [load]);
+  }, [load, authState]);
 
   const create = async (templateId?: string) => {
     setCreating(templateId ?? "blank");
@@ -89,12 +95,17 @@ export default function ProjectsPage() {
     }
   };
 
+  if (authState === "no-platform") return <PlatformGateScreen />;
+  if (authState !== "ok") return null;
+
   if (notEnrolled) {
     return (
       <EnrollmentGate
         product="aiavatar"
         productLabel="数字资产平台"
-        onActivated={load}
+        // 开通成功后要**同时**清掉 notEnrolled —— 只调 load() 的话这个状态一直是 true，
+        // 用户开通完仍停在开通页，只能自己刷新（旧 AuthProvider 的 refreshMe 已随之删除）。
+        onActivated={async () => { setNotEnrolled(false); await load(); }}
         theme={{
           bg: "var(--canvas)", surface: "var(--surface)", fg: "var(--ink)",
           fgMuted: "var(--ink-2)", accent: "var(--accent)", accentFg: "var(--accent-fg)",
@@ -105,7 +116,10 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    // ip-surface：这一页整套视觉都用工作台那份令牌（ledger-card / asset-name /
+    // --shadow-card / --primary-soft …）。不套作用域的话它们要么解析成空
+    // （实测 --shadow-card 为空 → 卡片没有阴影），要么拿到 aiavatar 那套青色值。
+    <div ref={surfaceRef} className="ip-surface max-w-6xl mx-auto px-6 py-8">
       {/* ── 新建 ── */}
       <section className="mb-10">
         <div className="flex items-baseline justify-between gap-4 mb-4">
@@ -289,12 +303,25 @@ export default function ProjectsPage() {
         mask={{ closable: !deleting }}   /* antd 6：maskClosable 已废弃（v0.159 踩过同一条） */
         keyboard={!deleting}
         closable={!deleting}
-        getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}
+        // 容器要指到**本页**的作用域根，不能 querySelector(".ip-surface") ——
+        // 第一个命中的是桌面顶栏那个 <header>，而它在手机上是 display:none，
+        // 弹窗挂进去就整个看不见（手机上没法确认删除）。
+        getContainer={() => surfaceRef.current ?? document.body}
       >
         <p style={{ color: "var(--ink-2)", fontSize: 13.5, lineHeight: 1.7 }}>
           「{pendingDelete?.name}」的画布与已生成的候选图都会一起移除。已发布成数字资产的形象不受影响。
         </p>
       </Modal>
     </div>
+  );
+}
+
+// ToastProvider 在并入时漏挂了 —— `useToast()` 缺 Provider 会静默退化成空函数，
+// 于是「新建失败」「删除失败」这些提示一条都不会出现（组件还在、依赖被删掉了）。
+export default function ProjectsPage() {
+  return (
+    <ToastProvider>
+      <ProjectsPageInner />
+    </ToastProvider>
   );
 }

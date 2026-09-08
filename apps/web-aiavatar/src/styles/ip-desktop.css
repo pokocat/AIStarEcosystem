@@ -159,11 +159,16 @@
   --shadow-ring: 0 0 0 3px rgba(73, 91, 145, 0.22);
 }
 
-/* ── 作用域内的 reset（替代 preflight，只影响 .ip-surface 子树）──────────────
+/* ── 作用域内的 reset（替代 preflight，只影响 .ip-surface 子树）──
+   ⚠️ **必须放进 `@layer base`**：未分层的声明优先级高于任何 @layer 里的规则，
+   而 utilities 是分层的 —— 不套 layer 的话这些 reset 会反过来压住 Tailwind 工具类
+   （`border-2` 被 `border:0` 吃掉、`h-full` 被 `img{height:auto}` 吃掉、
+   `hidden` 被 `canvas{display:block}` 吃掉 —— 蒙版编辑那个隐藏的底图 canvas 正是受害者）。────────────
    搬来的组件是在 Tailwind preflight 下写的，去掉 preflight 就得把它依赖的那几条
    补回来 —— 但只补，且只在本作用域内补，不碰 aiavatar 的手写 CSS。
    `border: 0 solid` 里的 solid 是必须的：Tailwind 的 `border` 类只设宽度，
    没有它边框不会出现。 */
+@layer base {
 .ip-surface,
 .ip-surface *,
 .ip-surface *::before,
@@ -219,6 +224,7 @@
 .ip-surface table { border-collapse: collapse; }
 .ip-surface a { color: inherit; text-decoration: inherit; }
 .ip-surface hr { height: 0; color: inherit; border-top-width: 1px; }
+}
 
 /* ── 原 tokens.css 末尾那几条全局规则，逐条收进作用域 ──────────────────────
    原文件写的是 html{} / html,body{} / *:focus-visible{} —— 直接搬会重刷整个
