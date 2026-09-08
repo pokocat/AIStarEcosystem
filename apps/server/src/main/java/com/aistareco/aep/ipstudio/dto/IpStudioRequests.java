@@ -12,11 +12,11 @@ public final class IpStudioRequests {
     public record IpCreateProjectRequest(String name, String templateId) {}
 
     /**
-     * @param baseUpdatedAt 客户端加载这份文档时的 {@code updatedAt}。
+     * @param baseDocVersion 客户端加载这份文档时的指纹（IpProjectDto.docVersion）。
      *                      服务端据此拒绝覆盖别处的编辑（多标签页 / 多设备）。
      *                      不传 = 不参与并发控制（老客户端与内部调用保持兼容）。
      */
-    public record IpUpdateProjectRequest(String name, JsonNode doc, String baseUpdatedAt) {
+    public record IpUpdateProjectRequest(String name, JsonNode doc, String baseDocVersion) {
         public IpUpdateProjectRequest(String name, JsonNode doc) { this(name, doc, null); }
     }
 

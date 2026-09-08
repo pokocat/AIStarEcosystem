@@ -92,9 +92,11 @@ public class IpRunWorker {
             }
         } catch (RuntimeException e) {
             // 兜底：任何漏网异常都要让冻结回去，不能让用户的钱卡在 pending 桶里
-            log.warn("[ipstudio] 运行异常 run={} err={}", runId, e.toString());
+            // 带上异常本身（不是 toString）—— 用户报回来的追查号就是 runId，
+            // 运维要能顺着它在日志里看到栈，否则「可追查」只是个说法
+            log.warn("[ipstudio] 运行异常 run={}", runId, e);
             release(run, "IP 运行失败 · 释放冻结");
-            failWithoutSpend(run, codeOf(e), friendly(e));
+            failWithoutSpend(run, codeOf(e), friendly(e, run.getId()));
         }
     }
 
@@ -230,7 +232,8 @@ public class IpRunWorker {
             if (cancelled) {
                 fail(run, "IP_RUN_CANCELLED", "已取消");
             } else {
-                fail(run, codeOf(lastErr), friendly(lastErr));
+                log.warn("[ipstudio] 出图全部失败 run={}", run.getId(), lastErr);
+                fail(run, codeOf(lastErr), friendly(lastErr, run.getId()));
             }
             return;
         }
@@ -241,7 +244,7 @@ public class IpRunWorker {
             // 已出的图归用户，但这次运行不是完整的 —— 如实标成失败态并说明原因
             fail(run, "IP_RUN_CANCELLED", "已取消（已生成的 " + committed + " 张仍可使用）");
         } else if (lastErr != null) {
-            fail(run, codeOf(lastErr), friendly(lastErr) + "（已生成 " + committed + " 张）");
+            fail(run, codeOf(lastErr), friendly(lastErr, run.getId()) + "（已生成 " + committed + " 张）");
         } else {
             finish(run);
         }
@@ -419,18 +422,23 @@ public class IpRunWorker {
     }
 
     /**
-     * 只把我们自己写过文案的异常直出给用户。框架异常（如 {@code commitHold} 的
-     * {@code ResponseStatusException}）的 message 是给排障看的技术串，
-     * 塞进界面就是「409 CONFLICT "hold 已是终态"」这种天书 —— 详情已在 WARN 日志里。
+     * 给用户看的失败原因。
+     *
+     * <p>v0.162 之前：只要异常不是 {@code DapModelException} / {@code BusinessException}，
+     * 一律显示「生成失败，请稍后重试」。厂商超时、网络中断、HTTP 5xx、镜像失败全被抹成这一句 ——
+     * 用户看不出该重试、该换模型、还是该找运维，我们自己也无从判断（用户复述不出任何信息）。
+     *
+     * <p>现在的分寸：我们写过文案的异常直出；没写过的**不直出技术串**（那种「409 CONFLICT
+     * hold 已是终态」是天书），但一定给出**异常类型 + 追查号** —— 用户把追查号报过来，
+     * 运维就能在 ErrorLog / 日志里定位到这一次。有信息可查，比一句正确的废话有用。
      */
-    private static String friendly(RuntimeException e) {
-        String fallback = "生成失败，请稍后重试";
-        if (e == null) return fallback;
-        if (!(e instanceof DapModelException) && !(e instanceof com.aistareco.common.BusinessException)) {
-            return fallback;
+    private static String friendly(RuntimeException e, String runId) {
+        if (e == null) return "生成失败，请稍后重试 · 追查号 " + runId;
+        if (e instanceof DapModelException || e instanceof com.aistareco.common.BusinessException) {
+            String m = e.getMessage();
+            if (m != null && !m.isBlank()) return m;
         }
-        String m = e.getMessage();
-        return m == null || m.isBlank() ? fallback : m;
+        return "生成失败（" + e.getClass().getSimpleName() + "）· 追查号 " + runId + " —— 把这个号报给运维可以定位原因";
     }
 
     private static String textOf(JsonNode n, String field) {

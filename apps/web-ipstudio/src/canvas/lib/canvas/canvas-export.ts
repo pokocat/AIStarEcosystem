@@ -1,3 +1,11 @@
+// 把选中的节点连同素材打包下载。
+//
+// 本仓改动（v0.162）：删掉项目级导出（`exportCanvasProjects` —— 它唯一的调用点是上游那个
+// 项目列表页，我们有自己的 /projects，那个页面已经退役）。素材取用改为统一走
+// `getImageBlob`：上游按 `image:` 前缀区分图片与其它媒体，而我们的 key 形如
+// `ipstudio_gen/<uid>/xxx.png`，从来不带那个前缀 —— 照原逻辑判会全部走错分支。
+// 两个 get*Blob 在本仓都是「按 key 换签名地址再 fetch」，对 OSS 一样有效。
+
 import { saveAs } from "file-saver";
 
 import i18n from "@/canvas-bridge/i18n";
@@ -8,28 +16,6 @@ import type { CanvasExportAsset, CanvasExportFile } from "@/canvas/types/canvas-
 import type { CanvasProject } from "@/canvas/stores/canvas/use-canvas-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 
-export async function exportCanvasProjects(projects: CanvasProject[], fileName = i18n.t("canvas.export.defaultProjectName")) {
-    const zipFiles: { name: string; data: BlobPart }[] = [];
-    const exportedProjects = await Promise.all(
-        projects.map(async (project) => {
-            const files: CanvasExportAsset[] = [];
-            await Promise.all(
-                collectStorageKeys(project).map(async (storageKey) => {
-                    const blob = storageKey.startsWith("image:") ? await getImageBlob(storageKey) : await getMediaBlob(storageKey);
-                    if (!blob) return;
-                    const path = `projects/${project.id}/files/${safeFileName(storageKey)}.${fileExtension(blob.type, storageKey)}`;
-                    files.push({ storageKey, path, mimeType: blob.type || "application/octet-stream", bytes: blob.size });
-                    zipFiles.push({ name: path, data: blob });
-                }),
-            );
-            return { project, files };
-        }),
-    );
-
-    const data: CanvasExportFile = { app: "infinite-canvas", version: 3, exportedAt: new Date().toISOString(), projects: exportedProjects };
-    const zip = await createZip([{ name: "projects.json", data: JSON.stringify(data, null, 2) }, ...zipFiles]);
-    saveAs(zip, `${safeFileName(fileName)}.zip`);
-}
 
 export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n.t("canvas.export.defaultNodesName")) {
     const zipFiles: { name: string; data: BlobPart }[] = [];

@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 import i18n from "@/canvas-bridge/i18n";
 
-import type { CanvasNodeDefinition } from "@/canvas/types/canvas-plugin";
+import type { CanvasNodeDefinition } from "@/canvas/types/canvas-node-def";
 import { CanvasNodeType } from "@/canvas/types/canvas";
 
 const definitions = new Map<string, CanvasNodeDefinition>();

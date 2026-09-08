@@ -102,6 +102,8 @@ export interface IpProjectSummary {
   coverUrl?: string; publishedAvatarId?: string; createdAt: string; updatedAt: string;
 }
 export interface IpProject extends IpProjectSummary {
+  /** 文档指纹 —— 保存时回传，服务端据此判断「我读到的那版还在不在」。 */
+  docVersion?: string;
   doc: IpProjectDoc;
   runs: Record<string, IpRun>;    // nodeId → 该节点最近一次运行（服务端投影）
   runsById: Record<string, IpRun>; // runId → 运行；含 runs 全部 + 被 generate 节点 selectedRunId 指向但已非最新的运行
@@ -131,7 +133,7 @@ export interface IpUpdateProjectRequest {
    * 画布文档是整存整取的，覆盖掉的不是一个字段，是那边一整份工作。
    * 冲突时 409 `IP_PROJECT_STALE`。不传 = 不参与并发控制。
    */
-  baseUpdatedAt?: string;
+  baseDocVersion?: string;
 }
 export interface IpRunNodeRequest { doc?: IpProjectDoc }   // 运行前顺手保存最新文档（可选，避免「先 PUT 再 POST」竟态）
 export interface IpPublishRequest { avatarName: string; masterNodeId: string; lookNodeIds: string[] }

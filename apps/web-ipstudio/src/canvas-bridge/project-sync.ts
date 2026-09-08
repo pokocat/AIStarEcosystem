@@ -59,7 +59,13 @@ export function useProjectSync(projectId: string) {
    */
   const [publishedAvatarId, setPublishedAvatarId] = React.useState<string | null>(null);
   const loadedRef = React.useRef(false);
-  /** 加载时那一版的 updatedAt —— 保存时带回去，服务端据此拒绝覆盖别处的编辑。 */
+  /**
+   * 加载时那一版**文档的指纹** —— 保存时带回去，服务端据此拒绝覆盖别处的编辑。
+   *
+   * 早先带的是 updatedAt，那样会**误报**：时间戳内存里是纳秒、落库是微秒，存进去再读出来
+   * 就不相等；而且发布只改状态不动文档，也会 bump 它。用户明明只开了一个窗口，
+   * 却老被告知「在别处改过了」。指纹只跟文档内容有关，这两种情况都进不来。
+   */
   const baseRef = React.useRef<string | null>(null);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = React.useRef(false);
@@ -88,7 +94,7 @@ export function useProjectSync(projectId: string) {
           deletedProjects: [],
           hydrated: true,
         });
-        baseRef.current = p.updatedAt ?? null;
+        baseRef.current = p.docVersion ?? null;
         setPublishedAvatarId(p.publishedAvatarId ?? null);
         loadedRef.current = true;
         setState("ready");
@@ -124,9 +130,9 @@ export function useProjectSync(projectId: string) {
         const saved = await IpStudioApi.updateProject(projectId, {
           name: project.title,
           doc: { nodes: project.nodes, connections: project.connections, viewport: project.viewport },
-          baseUpdatedAt: baseRef.current ?? undefined,
+          baseDocVersion: baseRef.current ?? undefined,
         });
-        baseRef.current = saved.updatedAt ?? baseRef.current;
+        baseRef.current = saved.docVersion ?? baseRef.current;
         setSaveState("saved");
       } catch (e) {
         // 冲突要单独说：这时候不能重试（重试就是覆盖别处的改动，而画布是整存整取的

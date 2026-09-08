@@ -5,11 +5,9 @@ import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Puzzle
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { formatBytes } from "@/canvas/lib/image-utils";
 import { getNodeDefinition } from "@/canvas/lib/canvas/node-registry";
-import { buildNodeContext } from "@/canvas/lib/canvas/plugin-node-context";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import { CanvasResourceMentionTextarea } from "./canvas-resource-mention-textarea";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeImage, type CanvasNodeText, type Position } from "@/canvas/types/canvas";
-import type { CanvasNodeContext, CanvasPluginHost } from "@/canvas/types/canvas-plugin";
 import type { CanvasResourceReference } from "@/canvas/lib/canvas/canvas-resource-references";
 import { useTranslation } from "react-i18next";
 
@@ -28,7 +26,6 @@ type CanvasNodeProps = {
     showPanel: boolean;
     showImageInfo: boolean;
     mentionReferences?: CanvasResourceReference[];
-    pluginHost?: CanvasPluginHost;
     registryVersion?: number;
     renderPanel?: (node: CanvasNodeData) => ReactNode;
     renderNodeContent?: (node: CanvasNodeData) => ReactNode;
@@ -66,7 +63,6 @@ type NodeContentRendererProps = {
     batchCount: number;
     batchExpanded: boolean;
     renderNodeContent?: (node: CanvasNodeData) => ReactNode;
-    pluginContext?: CanvasNodeContext | null;
     onContentChange: (nodeId: string, content: string) => void;
     onStopEditing: () => void;
     mentionReferences: CanvasResourceReference[];
@@ -93,7 +89,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     showPanel,
     showImageInfo,
     mentionReferences = [],
-    pluginHost,
     renderPanel,
     renderNodeContent,
     groupChildCount = 0,
@@ -124,7 +119,6 @@ export const CanvasNode = React.memo(function CanvasNode({
     const { t } = useTranslation();
     const [hovered, setHovered] = useState(false);
     const definition = getNodeDefinition(data.type);
-    const pluginContext = useMemo<CanvasNodeContext | null>(() => (pluginHost ? buildNodeContext(pluginHost, data, theme, scale, isSelected) : null), [pluginHost, data, theme, scale, isSelected]);
     const [isEditingContent, setIsEditingContent] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [titleDraft, setTitleDraft] = useState(data.title || "");
@@ -375,10 +369,6 @@ export const CanvasNode = React.memo(function CanvasNode({
                         event.stopPropagation();
                         return;
                     }
-                    if (definition?.onDoubleClick && pluginContext) {
-                        if (definition.onDoubleClick(pluginContext)) event.stopPropagation();
-                        return;
-                    }
                     if (data.type === CanvasNodeType.Image && hasImageContent) {
                         event.stopPropagation();
                         onViewImage?.(data);
@@ -407,7 +397,6 @@ export const CanvasNode = React.memo(function CanvasNode({
                         batchCount={batchCount}
                         batchExpanded={batchExpanded}
                         renderNodeContent={renderNodeContent}
-                        pluginContext={pluginContext}
                         mentionReferences={mentionReferences}
                         onContentChange={onContentChange}
                         onStopEditing={() => setIsEditingContent(false)}
@@ -461,13 +450,8 @@ function NodeContent(props: NodeContentRendererProps) {
     const Renderer = nodeContentRenderers[props.node.type as CanvasNodeType];
     if (Renderer) return <Renderer {...props} />;
 
-    // Render plugin nodes with their registered renderer, or show the missing-plugin placeholder.
-    const definition = getNodeDefinition(props.node.type);
-    if (definition?.Content && props.pluginContext) {
-        const PluginContent = definition.Content;
-        return <PluginContent ctx={props.pluginContext} />;
-    }
-    return <MissingPluginContent theme={props.theme} type={props.node.type} />;
+    // 认不出的节点类型 —— 插件市场退役后只可能来自「更新版本写进去的新类型 + 旧前端」。
+    return <UnknownNodeContent theme={props.theme} type={props.node.type} />;
 }
 
 const nodeContentRenderers = {
@@ -526,13 +510,13 @@ function ErrorContent({ node, theme, onRetry }: Pick<NodeContentRendererProps, "
     );
 }
 
-function MissingPluginContent({ theme, type }: Pick<NodeContentRendererProps, "theme"> & { type: string }) {
+function UnknownNodeContent({ theme, type }: Pick<NodeContentRendererProps, "theme"> & { type: string }) {
     const { t } = useTranslation();
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center" style={{ color: theme.node.placeholder }}>
             <Puzzle className="size-7 opacity-40" />
-            <span className="text-sm">{t("canvas.node.missingPlugin")}</span>
-            <span className="text-[11px] opacity-70">{t("canvas.node.missingPluginDescription", { type })}</span>
+            <span className="text-sm">这个节点当前版本打不开</span>
+            <span className="text-[11px] opacity-70">{`类型 ${type} · 刷新页面试试`}</span>
         </div>
     );
 }

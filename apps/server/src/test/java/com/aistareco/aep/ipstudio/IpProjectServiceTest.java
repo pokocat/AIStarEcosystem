@@ -25,6 +25,7 @@ import java.util.List;
 import static com.aistareco.aep.ipstudio.IpStudioFixtures.OM;
 import static com.aistareco.aep.ipstudio.IpStudioFixtures.OTHER;
 import static com.aistareco.aep.ipstudio.IpStudioFixtures.USER;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -199,24 +200,55 @@ class IpProjectServiceTest {
     void staleSaveIsRejectedInsteadOfOverwriting() {
         // 两个标签页各改各的：后到的那次会把先到的整块画布抹掉，且不可逆。
         // 画布是整存整取的 —— 覆盖掉的不是一个字段，是那边一整份工作。
-        IpProject p = IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc());
-        p.setUpdatedAt(java.time.Instant.parse("2026-09-07T00:00:00Z"));
-        projects.repo.save(p);
+        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
 
         assertEquals("IP_PROJECT_STALE", assertThrows(BusinessException.class,
                 () -> svc.update(USER, PID, new IpUpdateProjectRequest(
-                        null, new IpStudioFixtures.Doc().root, "2026-09-06T00:00:00Z"))).getCode());
+                        null, new IpStudioFixtures.Doc().root, "0000000000000000"))).getCode());
     }
 
     @Test
     void saveWithMatchingVersionGoesThrough() {
-        IpProject p = IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc());
-        p.setUpdatedAt(java.time.Instant.parse("2026-09-07T00:00:00Z"));
-        projects.repo.save(p);
+        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
+        String version = svc.detail(USER, PID).docVersion();
 
         IpProjectDto dto = svc.update(USER, PID, new IpUpdateProjectRequest(
-                "改个名", new IpStudioFixtures.Doc().root, "2026-09-07T00:00:00Z"));
+                "改个名", new IpStudioFixtures.Doc().root, version));
         assertEquals("改个名", dto.name());
+    }
+
+    @Test
+    void connectedSaveDoesNotFalselyConflict() {
+        // v0.162 的回归：早先比的是 updatedAt 字符串 —— 内存里纳秒、落库微秒，
+        // 存进去再读出来就不相等，于是**只开一个窗口也会一直报「在别处改过了」**。
+        // 连着存两次必须都过。
+        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
+
+        IpStudioFixtures.Doc first = new IpStudioFixtures.Doc();
+        first.node("n-1", "text").put("content", "第一次");
+        IpProjectDto a = svc.update(USER, PID, new IpUpdateProjectRequest(
+                null, first.root, svc.detail(USER, PID).docVersion()));
+
+        IpStudioFixtures.Doc second = new IpStudioFixtures.Doc();
+        second.node("n-1", "text").put("content", "第二次");
+        assertDoesNotThrow(() -> svc.update(USER, PID, new IpUpdateProjectRequest(
+                null, second.root, a.docVersion())));
+    }
+
+    @Test
+    void publishDoesNotInvalidateTheClientsDocVersion() {
+        // 发布只改 status / publishedAvatarId，不动文档。此前它会 bump updatedAt，
+        // 于是「发布完接着改画布」必冲突。指纹只看文档，发布不该影响它。
+        IpProject p = IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc());
+        projects.repo.save(p);
+        String before = svc.detail(USER, PID).docVersion();
+
+        p.setStatus(IpProject.STATUS_PUBLISHED);
+        p.setPublishedAvatarId("DH-1");
+        p.setUpdatedAt(java.time.Instant.now());
+        projects.repo.save(p);
+
+        assertEquals(before, svc.detail(USER, PID).docVersion(), "发布不改文档，指纹不该变");
     }
 
     @Test

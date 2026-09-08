@@ -140,7 +140,7 @@ public class IpProjectService {
      */
     void applyUpdate(IpProject p, IpUpdateProjectRequest req) {
         if (req == null) return;
-        requireNotStale(p, req.baseUpdatedAt());
+        requireNotStale(p, req.baseDocVersion());
         String name = trimToNull(req.name());
         if (name != null) p.setName(name.length() > 128 ? name.substring(0, 128) : name);
         if (req.doc() != null && !req.doc().isNull()) {
@@ -319,6 +319,7 @@ public class IpProjectService {
         return new IpProjectDto(p.getId(), p.getName(), p.getTemplateId(), p.getStatus(),
                 p.getCoverKey() == null ? null : storage.signedUrl(p.getCoverKey()),
                 p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()),
+                docVersion(p.getDocJson()),
                 doc, runs.runs(), runs.runsById());
     }
 
@@ -465,15 +466,40 @@ public class IpProjectService {
      * 两边都 PUT 整份文档 —— 后到的那次把先到的整块画布抹掉，**不可逆**。
      * 画布文档是整存整取的，所以这不是「丢一个字段」，是丢一整份工作。
      *
-     * <p>不传 {@code baseUpdatedAt} 视为不参与并发控制（老客户端 / 内部调用），
+     * <p>不传 {@code baseDocVersion} 视为不参与并发控制（老客户端 / 内部调用），
      * 保持向后兼容；新画布一律传。
      */
-    private void requireNotStale(IpProject p, String baseUpdatedAt) {
-        if (baseUpdatedAt == null || baseUpdatedAt.isBlank()) return;
-        String current = p.getUpdatedAt() == null ? null : p.getUpdatedAt().toString();
-        if (current != null && !current.equals(baseUpdatedAt)) {
+    private void requireNotStale(IpProject p, String baseDocVersion) {
+        if (baseDocVersion == null || baseDocVersion.isBlank()) return;
+        if (!baseDocVersion.equals(docVersion(p.getDocJson()))) {
             throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "IP_PROJECT_STALE",
-                    "这个项目在别处被改过了，刷新后再保存 —— 直接覆盖会把那边的改动整块抹掉");
+                    "这张画布已经有一份更新的内容了。现在保存会把那份覆盖掉，刷新一下再改。");
+        }
+    }
+
+    /**
+     * 文档指纹。
+     *
+     * <p>v0.162 之前比的是 {@code updatedAt} 字符串，那样做有两个毛病，都会**误报冲突**：
+     * <ul>
+     *   <li>内存里的 {@code Instant.now()} 是纳秒精度，落库是微秒 —— 存进去再读出来就不等了，
+     *       于是「我明明只开了一个窗口，它老说别处改过」；</li>
+     *   <li>发布只改 status / publishedAvatarId、并不动文档，却也会 bump {@code updatedAt}，
+     *       发布完接着改画布必冲突。</li>
+     * </ul>
+     * 我们真正要拦的是「存着的那份文档，跟我读到的那份不是同一份」—— 那就直接对文档取指纹，
+     * 时间精度和无关字段都进不来。
+     */
+    static String docVersion(String docJson) {
+        String src = docJson == null ? "" : docJson;
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(src.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) sb.append(String.format("%02x", d[i]));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 不可用", e);
         }
     }
 

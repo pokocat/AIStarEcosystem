@@ -36,6 +36,8 @@ public final class IpStudioDtos {
     public record IpProjectDto(String id, String name, String templateId, String status,
                                String coverUrl, String publishedAvatarId,
                                String createdAt, String updatedAt,
+                               /** 文档指纹：客户端保存时回传，服务端据此判断「我读到的那版还在不在」。 */
+                               String docVersion,
                                JsonNode doc, Map<String, IpRunDto> runs,
                                Map<String, IpRunDto> runsById) {}
 

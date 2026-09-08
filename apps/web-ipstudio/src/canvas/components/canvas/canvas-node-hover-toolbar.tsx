@@ -9,7 +9,7 @@ import { formatBytes, getDataUrlByteSize } from "@/canvas/lib/image-utils";
 import { useCopyText } from "@/canvas/hooks/use-copy-text";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData, type ViewportTransform } from "@/canvas/types/canvas";
-import type { CanvasNodeToolbarItem } from "@/canvas/types/canvas-plugin";
+import type { CanvasNodeToolbarItem } from "@/canvas/types/canvas-node-def";
 import { ImageToolSettingsModal, type ImageToolbarSettingsTool } from "./canvas-image-toolbar-settings-modal";
 import { IMAGE_QUICK_TOOLS_STORAGE_KEY, buildImageToolbarTools, defaultImageQuickToolIds, readImageQuickToolsConfig, type ImageQuickToolId } from "./canvas-image-toolbar-tools";
 

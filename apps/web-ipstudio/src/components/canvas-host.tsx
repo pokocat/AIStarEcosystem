@@ -29,7 +29,7 @@ const SAVE_LABEL: Record<string, string> = {
   saving: "保存中",
   saved: "已保存",
   failed: "没保存上，改动还在本地",
-  conflict: "这个项目在别处被改过了 · 刷新后再继续",
+  conflict: "这张画布有更新的版本 · 刷新后再改",
 };
 
 function Host({ projectId }: { projectId: string }) {

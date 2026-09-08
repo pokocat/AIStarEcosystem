@@ -26,12 +26,8 @@ export function CanvasTopBar({
     onDeleteProject,
     onExportProject,
     onImportImage,
-    onOpenPlugins,
     onUndo,
     onRedo,
-    agentOpen,
-    compactAgentStatus,
-    onToggleAgent,
 }: {
     title: string;
     titleDraft: string;
@@ -48,13 +44,9 @@ export function CanvasTopBar({
     onDeleteProject: () => void;
     onExportProject: () => void;
     onImportImage: () => void;
-    onOpenPlugins: () => void;
     onUndo: () => void;
     onRedo: () => void;
-    agentOpen: boolean;
     /** 上游自带的本地 agent 状态。本仓没有这东西，传 undefined 就不渲染。 */
-    compactAgentStatus?: { connected: boolean; enabled: boolean; activity: string };
-    onToggleAgent: () => void;
 }) {
     const colorTheme = useThemeStore((state) => state.theme);
     const { t } = useTranslation();
@@ -137,7 +129,6 @@ export function CanvasTopBar({
                             </button>
                         )}
                     </div>
-                    {compactAgentStatus && <CompactAgentStatus status={compactAgentStatus} onClick={onToggleAgent} />}
                 </div>
 
                 <div className="pointer-events-auto flex items-center gap-1.5">
@@ -145,17 +136,10 @@ export function CanvasTopBar({
                         此前它们是绝对定位浮在画布右上角的 —— 直接压在下面这几个按钮上，
                         配置 / 快捷键 / Agent 全被挡住点不到。 */}
                     <HostActionsSlot />
-                    <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
-                    <span className="h-6 w-px" style={{ background: theme.toolbar.border }} />
-                    <Button
-                        type="text"
-                        className="!h-10 !rounded-xl !px-3 !font-medium"
-                        style={{ background: agentOpen ? theme.toolbar.activeBg : theme.toolbar.panel, color: theme.node.text, boxShadow: "0 10px 30px rgba(28,25,23,.10)" }}
-                        icon={<Bot className="size-4" />}
-                        onClick={onToggleAgent}
-                    >
-                        Agent
-                    </Button>
+                    <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} />
+                    {/* 本仓改动（v0.162）：删掉「Agent」按钮。上游的 agent 是它自带的**桌面伴随进程**，
+                        前端连的是 http://127.0.0.1:17371 —— 我们的用户在网站上，那个端口上什么都没有，
+                        这个按钮永远连不上，点开只会得到一个连接失败的面板。 */}
                 </div>
             </div>
             <Modal title={t("canvas.shortcuts")} open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>

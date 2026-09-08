@@ -6,15 +6,14 @@ import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes, type CanvasTheme } from "@/canvas/lib/canvas-theme";
-import { exportCanvasNodes } from "@/canvas/lib/canvas/canvas-export";
 import { getNodeDefinition } from "@/canvas/lib/canvas/node-registry";
+import { exportCanvasNodes } from "@/canvas/lib/canvas/canvas-export";
 import { cn } from "@/canvas/lib/utils";
 import { PromptDetailDialog } from "@/canvas/pages/prompts/components/prompt-detail-dialog";
-import { fetchSourcePrompts, type Prompt } from "@/canvas-bridge/prompts";
+import { fetchPrompts, type Prompt } from "@/canvas-bridge/prompts";
 import { uploadMediaFile } from "@/canvas-bridge/file-storage";
 import { uploadImage } from "@/canvas-bridge/image-storage";
 import { useAssetStore, type Asset, type AssetKind } from "@/canvas/stores/use-asset-store";
-import { usePromptSourceStore } from "@/canvas/stores/use-prompt-source-store";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/canvas/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
@@ -467,8 +466,10 @@ function AssetCover({ asset }: { asset: Asset }) {
 const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
     const { message } = App.useApp();
     const { t } = useTranslation();
-    const sources = usePromptSourceStore((state) => state.sources);
-    const enabledSources = useMemo(() => sources.filter((source) => source.enabled), [sources]);
+    // 分组从「启用了哪几个远程源」改成「预设分类」——
+    // 第三方源那套已在 v0.162 摘掉，内容来自 GET /v1/ip-studio/prompt-presets。
+    const catalog = useQuery({ queryKey: ["side-panel-prompt-catalog"], queryFn: () => fetchPrompts({ pageSize: 100 }), staleTime: 1000 * 60 * 10 });
+    const categories = catalog.data?.categories ?? [];
     const [keyword, setKeyword] = useState("");
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [detail, setDetail] = useState<Prompt | null>(null);
@@ -489,15 +490,15 @@ const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { o
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
                 <div className="space-y-1">
-                    {enabledSources.length ? enabledSources.map((source) => (
+                    {categories.length ? categories.map((source) => (
                         <PromptSourceGroup
-                            key={source.id}
-                            sourceId={source.id}
-                            sourceName={source.name}
+                            key={source}
+                            sourceId={source}
+                            sourceName={source}
                             keyword={keyword}
-                            open={!!expanded[source.id]}
+                            open={!!expanded[source]}
                             theme={theme}
-                            onToggle={() => setExpanded((prev) => ({ ...prev, [source.id]: !prev[source.id] }))}
+                            onToggle={() => setExpanded((prev) => ({ ...prev, [source]: !prev[source] }))}
                             onInsert={onInsert}
                             onView={setDetail}
                         />
@@ -531,7 +532,12 @@ function PromptSourceGroup({
     const { t } = useTranslation();
     // Cache a source after its first expansion to avoid repeated requests; search results also need the data for counts.
     const showResults = open || !!keyword.trim();
-    const query = useQuery({ queryKey: ["side-panel-prompts", sourceId], queryFn: () => fetchSourcePrompts(sourceId), enabled: showResults, staleTime: 1000 * 60 * 60 });
+    const query = useQuery({
+        queryKey: ["side-panel-prompts", sourceId],
+        queryFn: () => fetchPrompts({ category: sourceId, pageSize: 100 }).then((r) => r.items),
+        enabled: showResults,
+        staleTime: 1000 * 60 * 10,
+    });
 
     const filtered = useMemo(() => {
         const items = query.data || [];

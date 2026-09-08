@@ -5,7 +5,7 @@ import i18n from "@/canvas-bridge/i18n";
 import { NODE_SPECS } from "@/canvas/constant/canvas";
 import { registerNodeDefinitions } from "@/canvas/lib/canvas/node-registry";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
-import type { CanvasNodeDefinition, CanvasNodeResource } from "@/canvas/types/canvas-plugin";
+import type { CanvasNodeDefinition, CanvasNodeResource } from "@/canvas/types/canvas-node-def";
 
 // Extensible metadata for built-in nodes, reusing NODE_SPECS for size and initial metadata.
 // Rendering remains in canvas-node's internal renderer, so no Content component is provided.
