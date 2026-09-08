@@ -14,7 +14,7 @@ import * as React from "react";
 import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Send } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
 import CanvasPage from "@/canvas/pages/canvas/project";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
@@ -23,6 +23,7 @@ import { useHostActions } from "@/canvas-bridge/host-actions";
 import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { PublishDialog } from "@/components/publish/publish-dialog";
 import { LastRunPanel } from "@/components/last-run-panel";
+import { useAuth } from "@ai-star-eco/api-client";
 import { IpStudioApi } from "@/api";
 import { AIAVATAR_URL } from "@/lib/external";
 import "@/canvas-bridge/i18n";
@@ -39,6 +40,25 @@ function Host({ projectId }: { projectId: string }) {
   const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave } = useProjectSync(projectId);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const { message } = AntdApp.useApp();
+
+  // 「存为全局示例」只给平台运营看 —— 普通用户看到一个点了必然 403 的按钮更糟。
+  // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
+  const { user } = useAuth();
+  const isOperator = Boolean(user?.operatorRole);
+  const [savingDemo, setSavingDemo] = React.useState(false);
+  const saveAsDemo = React.useCallback(async () => {
+    setSavingDemo(true);
+    try {
+      // 先把当前画布存下来再快照 —— 否则示例里少了用户刚做的那几笔
+      await saveNow();
+      const demo = await IpStudioApi.publishAsDemo(projectId);
+      message.success(`已存为全局示例「${demo.name}」，所有人在工作流目录里都能看到`);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "存为示例没成功");
+    } finally {
+      setSavingDemo(false);
+    }
+  }, [projectId, saveNow, message]);
 
   // 捏合 / Ctrl+滚轮 只缩放画布，不缩放整个网站。
   //
@@ -85,6 +105,18 @@ function Host({ projectId }: { projectId: string }) {
   useHostActions(
     <>
       <LastRunPanel />
+      {isOperator && (
+        <button
+          onClick={saveAsDemo}
+          disabled={savingDemo}
+          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
+          style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
+          title="把这张画布连素材复制一份存成全局示例，新用户一进工作流目录就能看到效果"
+        >
+          <Star className="w-3.5 h-3.5 shrink-0" />
+          {savingDemo ? "存为示例中…" : "存为全局示例"}
+        </button>
+      )}
       {saveState !== "idle" && (
         <span
           className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold whitespace-nowrap"
