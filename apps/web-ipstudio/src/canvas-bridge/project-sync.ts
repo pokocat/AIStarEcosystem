@@ -24,13 +24,52 @@ type IpDoc = { nodes?: CanvasNodeData[]; connections?: CanvasConnection[]; viewp
 
 const EMPTY_VIEWPORT: ViewportTransform = { x: 0, y: 0, k: 1 };
 
+/**
+ * 修一类**已经存进文档**的坏数据：primaryImageId 指向一个候选里根本没有的 id。
+ *
+ * 成因见 project.tsx 里「就地重出」那段注释：v0.166 之后重出会整个换掉 images[]，
+ * 但旧的 primaryImageId 留了下来，写回成图那段看见它就只更新候选、不更新
+ * metadata.content / storageKey —— 节点于是一直显示**第一次**那张图，
+ * 而每次新出的图就躺在候选里没人看。写代码那侧已经修了（重出时清掉它），
+ * 但已经存下来的画布还是坏的，光修新代码打不开的还是打不开。
+ *
+ * 处理办法：primary 指向不存在的 id 时，认最后一张**成功**的候选，把它扶正
+ * （content / storageKey 一并更新）。没有成功候选就只把悬空的 primary 去掉。
+ * 只在读进来的时候做一次，不改服务端数据 —— 用户随后任何一次编辑会把它存回去。
+ */
+export function healDanglingPrimary(nodes: CanvasNodeData[]): CanvasNodeData[] {
+  let changed = false;
+  const out = nodes.map((node) => {
+    const meta = node.metadata as Record<string, unknown> | undefined;
+    const primary = meta?.primaryImageId as string | undefined;
+    const images = (meta?.images as Array<Record<string, unknown>> | undefined) ?? [];
+    if (!primary || images.some((i) => i.id === primary)) return node;
+    changed = true;
+    const winner = [...images].reverse().find((i) => i.status === "success" && (i.storageKey || i.content));
+    if (!winner) return { ...node, metadata: { ...meta, primaryImageId: undefined } } as CanvasNodeData;
+    return {
+      ...node,
+      metadata: {
+        ...meta,
+        primaryImageId: winner.id,
+        content: winner.content ?? meta?.content,
+        storageKey: winner.storageKey ?? meta?.storageKey,
+        naturalWidth: winner.naturalWidth ?? meta?.naturalWidth,
+        naturalHeight: winner.naturalHeight ?? meta?.naturalHeight,
+        mimeType: winner.mimeType ?? meta?.mimeType,
+      },
+    } as CanvasNodeData;
+  });
+  return changed ? out : nodes;
+}
+
 function toCanvasProject(id: string, name: string, doc: IpDoc | null | undefined, updatedAt?: string): CanvasProject {
   return {
     id,
     title: name || "未命名 IP",
     createdAt: updatedAt || new Date().toISOString(),
     updatedAt: updatedAt || new Date().toISOString(),
-    nodes: doc?.nodes ?? [],
+    nodes: healDanglingPrimary(doc?.nodes ?? []),
     connections: doc?.connections ?? [],
     chatSessions: [],
     activeChatId: null,

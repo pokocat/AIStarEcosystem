@@ -78,11 +78,11 @@ function toImages(run: IpRun): GeneratedImage[] {
     if (!c.key || !c.url) continue;
     const img: GeneratedImage = {
       dataUrl: c.url, storageKey: c.key,
-      width: 0, height: 0, bytes: 0, mimeType: "image/png",
+      width: c.width ?? 0, height: c.height ?? 0, bytes: 0, mimeType: "image/png",
     };
     // 图已经在 OSS 上了。画布随后会拿 dataUrl 去调 uploadImage —— 记一笔，
     // 让那次调用直接命中已有产物，而不是把同一张图下载下来再传一遍。
-    rememberUploaded(c.url, { url: c.url, storageKey: c.key, width: 0, height: 0, bytes: 0, mimeType: "image/png" });
+    rememberUploaded(c.url, { url: c.url, storageKey: c.key, width: img.width, height: img.height, bytes: 0, mimeType: "image/png" });
     out.push(img);
   }
   if (!out.length) {

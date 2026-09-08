@@ -76,7 +76,9 @@ export interface IpProjectDoc {
 export type IpRunStatus = "running" | "done" | "failed";
 export type IpRunKind = "identity" | "generate";
 
-export interface IpCandidate { key: string; url: string }
+// width / height 是**出图的真实像素**（服务端从文件头读，不整图解码）。
+// 画布拿它算节点尺寸；缺了只能按上限铺成正方形，竖图会被撑成方框。
+export interface IpCandidate { key: string; url: string; width?: number; height?: number }
 export interface IpRunOutput {
   text?: string;                  // identity：中文特征卡
   promptEn?: string;              // identity：英文身份提示词

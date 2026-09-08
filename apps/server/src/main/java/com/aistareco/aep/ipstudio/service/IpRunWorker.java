@@ -208,8 +208,12 @@ public class IpRunWorker {
                     credits.commitHold(IpRunService.REF_TYPE, run.getId(), unit,
                             "IP 形象出图 · 第 " + (i + 1) + " 张");
                 }
-                // commit 成功之后才承认这张图
-                candidates.addObject().put("key", stored.key());
+                // commit 成功之后才承认这张图。
+                // 带上宽高：画布拿它算节点尺寸 —— 不给的话只能按上限铺成正方形，
+                // 竖图会被撑成方框（「框很大图很小」）。文件头里就有，不用整图解码。
+                var cand = candidates.addObject().put("key", stored.key());
+                int[] wh = IpProjectService.readDimensions(bytes);
+                if (wh != null) cand.put("width", wh[0]).put("height", wh[1]);
                 committed++;
                 ObjectNode partial = om.createObjectNode();
                 partial.set("candidates", candidates.deepCopy());
