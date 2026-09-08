@@ -111,9 +111,36 @@ function MobileNotice({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * 画布挂载期间给 `<body>` 也带上 `.ip-surface`。
+ *
+ * 为什么必须这么做：画布里有 7 处手写 `createPortal(..., document.body)`
+ * （四个设置浮层、两个引用菜单、蒙版编辑），antd 的 Modal / Dropdown / Popover /
+ * message 默认也挂 body —— 它们**渲染在 `.ip-surface` 子树之外**，拿不到作用域里的
+ * 令牌。而 ipstudio 有 52 个 aiavatar 根本没定义的变量：实测 body 直属节点上
+ * `--paper` 与 `--action` 解析为**空**，`background: var(--paper)` 整条声明失效
+ * → 透明的浮层；`--primary` 还会拿到 aiavatar 的青色而不是群青。
+ *
+ * 逐个去改那 7 个 vendored 文件违反「搬来的文件尽量少改」，而且以后每加一个浮层
+ * 都要记得改一次。挂在 body 上是一处解决全部：画布页整页都是工作台内容，
+ * 作用域覆盖到 body 不会波及别人 —— 而且**只在画布挂载期间**，卸载即摘。
+ */
+function useBodyScopeWhileMounted() {
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.add("ip-surface");
+    return () => document.body.classList.remove("ip-surface");
+  }, []);
+}
+
+function DesktopCanvas({ projectId }: { projectId: string }) {
+  useBodyScopeWhileMounted();
+  return <CanvasHost projectId={projectId} />;
+}
+
 export function CanvasGate({ projectId }: { projectId: string }) {
   const wide = useIsWide();
   if (wide === null) return <Opening />;
   if (!wide) return <MobileNotice projectId={projectId} />;
-  return <CanvasHost projectId={projectId} />;
+  return <DesktopCanvas projectId={projectId} />;
 }
