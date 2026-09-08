@@ -182,6 +182,11 @@
       按 `docs/aiavatar-asset-hub-redesign.md` §3.1 既有双轨逐屏迁成响应式 App Router 路由。
       **刷脸认证、拍摄采集这类天生要手机摄像头的永远留移动端**，桌面给「这一步请在手机上完成」+ 二维码
       （正好是画布那条规则的镜像）。不阻塞主链路：桌面用户走「建形象 → 出图 → 发布 → 资产 → 名片」已全程宽屏。
+- [ ] **宣传页没有桌面版式**：`components/hub/landing.tsx` 的内容区块全按 480 宽排。
+      v0.190 只把背景改成全宽（否则整页像一张手机截图贴在灰底上），内容仍居中 480。
+      合并之前 ipstudio 有自己的桌面 landing（`apps/web-ipstudio/src/app/page.tsx`，
+      332 行 + `components/landing/atlas.tsx` 图集拼贴），随目录删除 —— **需要时从
+      git 历史 `e43ff426` 取回**参考。真要做桌面版式是一次设计工作，不是加个断点。
 - [ ] **移动端支持画布**（用户明确推迟）：目前 `<1024px` 进 `/projects/{id}` 给「请到电脑上打开」占位。
       要做需要重排节点面板（现在固定 600 宽）、把 Ctrl+滚轮缩放换成捏合、以及触摸拖拽连线。
 - [ ] **`canvas-bridge/api.ts` 不认 `USE_MOCK`**（既有，随搬迁暴露）：`fetchModels()` / `signAssets()` 等

@@ -16,6 +16,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
+import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "./desktop-top-bar";
 
 const BARE_PREFIXES = ["/card/p/", "/login", "/auth/callback"];
@@ -24,12 +25,26 @@ export function AppChrome() {
   const pathname = usePathname() ?? "";
   const bare = BARE_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));
 
+  // 顶栏那几个入口全都要登录才进得去 —— 给访客看等于给一排点了就弹登录的链接。
+  // 判定与首页那套一致（app/page.tsx）：挂载后读 auth.isAuthed()，初值 false。
+  // 初值取 false 而不是 true：SSR 与首帧都不渲染顶栏，既不会 hydration 不匹配，
+  // 也不会让访客先看到一排导航再消失。已登录用户晚一拍出现，代价可以接受。
+  //
+  // 不用 useSearchParams 读 `?landing=1`：那个 hook 在根 layout 里会要求 Suspense
+  // 边界，否则 `/_not-found` 的静态预渲染直接失败（本次踩过）。反正这段只在挂载后
+  // 跑，直接读 window.location.search 更省事。
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    const forcedLanding = new URLSearchParams(window.location.search).get("landing") === "1";
+    setShow(!bare && (USE_MOCK || auth.isAuthed()) && !forcedLanding);
+  }, [bare, pathname]);
+
   React.useEffect(() => {
     if (typeof document === "undefined") return;
-    document.body.classList.toggle("has-desktop-bar", !bare);
+    document.body.classList.toggle("has-desktop-bar", show);
     return () => document.body.classList.remove("has-desktop-bar");
-  }, [bare]);
+  }, [show]);
 
-  if (bare) return null;
+  if (!show) return null;
   return <DesktopTopBar />;
 }

@@ -178,12 +178,20 @@ function AppPreview() {
 
 export function Landing() {
   return (
+    // 背景铺满视口、内容仍居中 480 —— 桌面上把渐变也框进 480 里，整页看起来像
+    // 一张手机截图贴在灰底上。内容区块全是按 480 排的，硬拉宽只会更难看，
+    // 所以这一版只让背景全宽；宣传页真正的桌面版式另排（TODO 2026-09-08 段）。
+    <div
+      style={{
+        minHeight: "100dvh",
+        background: "linear-gradient(180deg, #DFF3FA 0%, #F0FAFD 30%, var(--canvas) 56%)",
+      }}
+    >
     <div
       style={{
         maxWidth: 480,
         margin: "0 auto",
         minHeight: "100dvh",
-        background: "linear-gradient(180deg, #DFF3FA 0%, #F0FAFD 30%, var(--canvas) 56%)",
         paddingBottom: 46,
         position: "relative",
         overflow: "hidden",
@@ -375,6 +383,7 @@ export function Landing() {
         <Cta label="登录 / 注册" />
         <span style={{ fontSize: 10.5, color: "var(--ink-3)" }}>注册需要激活码 · 真人形象需本人授权后才能使用</span>
       </div>
+    </div>
     </div>
   );
 }
