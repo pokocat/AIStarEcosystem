@@ -71,7 +71,7 @@ async function waitForRun(runId: string, signal?: AbortSignal): Promise<IpRun> {
 
 function toImages(run: IpRun): GeneratedImage[] {
   const out: GeneratedImage[] = [];
-  for (const c of run.outputs?.candidates ?? []) {
+  for (const c of run.output?.candidates ?? []) {
     if (!c.key || !c.url) continue;
     const img: GeneratedImage = {
       dataUrl: c.url, storageKey: c.key,
@@ -82,7 +82,11 @@ function toImages(run: IpRun): GeneratedImage[] {
     rememberUploaded(c.url, { url: c.url, storageKey: c.key, width: 0, height: 0, bytes: 0, mimeType: "image/png" });
     out.push(img);
   }
-  if (!out.length) throw new Error("这次没有出图，积分已退回");
+  if (!out.length) {
+    // 别替服务端承诺退款：运行是 done 的时候费用已经结算了（这句话此前一直在骗人）。
+    // 真正退款的是 failed 分支，那条走的是 run.errorMessage。
+    throw new Error(`这次运行没有返回图片（运行号 ${run.id}）—— 把这个号报给运维可以查到原因`);
+  }
   return out;
 }
 

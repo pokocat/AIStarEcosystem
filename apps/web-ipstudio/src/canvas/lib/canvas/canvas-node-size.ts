@@ -1,4 +1,7 @@
 export function fitNodeSize(width: number, height: number, maxWidth = 640, maxHeight = 640) {
+    // 尺寸未知（服务端候选图只回 {key,url}，没有宽高）时按上限铺满。
+    // 此前 Math.max(1, 0) = 1，scale 算成 1，节点直接变成 1×1 像素 —— 图在那儿，但看不见。
+    if (!(width > 0) || !(height > 0)) return { width: maxWidth, height: maxHeight };
     const w = Math.max(1, width);
     const h = Math.max(1, height);
     const scale = Math.min(1, maxWidth / w, maxHeight / h);

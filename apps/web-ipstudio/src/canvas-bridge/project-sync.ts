@@ -17,6 +17,7 @@ import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/canv
 import { IpStudioApi } from "@/api";
 import { setCurrentProjectId } from "./api";
 import { loadServerModels } from "./models";
+import { findStrandedImages, type StrandedImage } from "./stranded-images";
 
 const SAVE_DEBOUNCE_MS = 900;
 
@@ -58,6 +59,8 @@ export function useProjectSync(projectId: string) {
    * 服务端对重复发布返回 409，但按钮得在点之前就说清楚，而不是让人点了才知道。
    */
   const [publishedAvatarId, setPublishedAvatarId] = React.useState<string | null>(null);
+  /** 跑完了、扣过费、但画布上没有的图 —— 见 stranded-images.ts。 */
+  const [stranded, setStranded] = React.useState<StrandedImage[]>([]);
   const loadedRef = React.useRef(false);
   /**
    * 加载时那一版**文档的指纹** —— 保存时带回去，服务端据此拒绝覆盖别处的编辑。
@@ -77,6 +80,7 @@ export function useProjectSync(projectId: string) {
     loadedRef.current = false;
     setState("loading");
     setPublishedAvatarId(null);
+    setStranded([]);
     setCurrentProjectId(projectId);
 
     // 模型候选与项目并行拉：拿不到不拦着人打开画布（只是生成不可用，画布会自己说）。
@@ -96,6 +100,7 @@ export function useProjectSync(projectId: string) {
         });
         baseRef.current = p.docVersion ?? null;
         setPublishedAvatarId(p.publishedAvatarId ?? null);
+        setStranded(findStrandedImages(p));
         loadedRef.current = true;
         setState("ready");
       })
@@ -164,5 +169,5 @@ export function useProjectSync(projectId: string) {
     return unsub;
   }, [projectId]);
 
-  return { state, error, saveState, publishedAvatarId, setPublishedAvatarId };
+  return { state, error, saveState, publishedAvatarId, setPublishedAvatarId, stranded, setStranded };
 }

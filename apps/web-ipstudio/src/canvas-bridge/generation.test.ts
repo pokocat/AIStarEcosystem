@@ -22,9 +22,12 @@ import { GenerationCanceled, requestEdit, requestGeneration } from "./generation
 import type { AiConfig } from "./config-store";
 
 const cfg = { count: "2", size: "768x1024", imageModel: "ep-1" } as unknown as AiConfig;
+// 字段名必须与服务端 IpRunDto 一致：**output**（单数）。
+// 这份 fixture 此前写的是 outputs（复数）—— 跟被测代码里同一个笔误配成了一对，
+// 于是测试一直是绿的，而生产上每一次出图都被判成「这次没有出图」。
 const done = (candidates: Array<{ key: string; url: string }>) => ({
   id: "IPR-1", projectId: "IPP-test", nodeId: "n-1", status: "done" as const, cost: 16,
-  outputs: { candidates },
+  output: { candidates },
 });
 
 beforeEach(() => {
@@ -96,7 +99,7 @@ describe("出错要说清楚，不能装作成功", () => {
     generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
     readRunMock.mockResolvedValue(done([]));
 
-    await expect(requestEdit(cfg, "空结果", [])).rejects.toThrow(/没有出图/);
+    await expect(requestEdit(cfg, "空结果", [])).rejects.toThrow(/没有返回图片/);
   });
 
   it("用户取消抛的是取消，不是失败", async () => {
@@ -112,5 +115,34 @@ describe("出错要说清楚，不能装作成功", () => {
   it("画布还没打开就点生成，给一句人话而不是崩掉", async () => {
     currentProjectIdMock.mockReturnValue(null);
     await expect(requestEdit(cfg, "还没打开", [])).rejects.toThrow(/画布还没打开/);
+  });
+});
+
+describe("运行结果的字段名必须跟服务端一致", () => {
+  it("读的是 output.candidates（不是 outputs）", async () => {
+    // v0.162 修的那条：canvas-bridge 手抄了一份 IpRun 类型，把字段写成 outputs（复数），
+    // 而服务端 IpRunDto 发的是 output（单数）。于是 run.outputs 永远 undefined，
+    // **每一次画布出图都被判成「这次没有出图」** —— 服务端出了图、也扣了费。
+    // 类型现在直接用 @ai-star-eco/types，这条测试守的是「真的按服务端字段读」。
+    generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
+    readRunMock.mockResolvedValue({
+      id: "IPR-1",
+      status: "done",
+      output: { candidates: [{ key: "ipstudio_gen/u/a.png", url: "https://cdn/a.png?sig=1" }] },
+    });
+
+    const out = await requestGeneration({ ...cfg, count: "1" }, "画一个");
+    expect(out).toHaveLength(1);
+    expect(out[0].storageKey).toBe("ipstudio_gen/u/a.png");
+  });
+
+  it("真的没有候选时，不许谎称积分已退回", async () => {
+    // 运行是 done 就意味着已经结算了。此前这里写死「积分已退回」，是错的。
+    generateMock.mockResolvedValue({ id: "IPR-2", status: "running" });
+    readRunMock.mockResolvedValue({ id: "IPR-2", status: "done", output: { candidates: [] } });
+
+    const err = await requestGeneration({ ...cfg, count: "1" }, "画一个").catch((e: Error) => e);
+    expect((err as Error).message).toContain("IPR-2");
+    expect((err as Error).message).not.toContain("已退回");
   });
 });

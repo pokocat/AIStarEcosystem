@@ -5,6 +5,7 @@
 // 这里不要自己拼 fetch。
 
 import { apiFetch } from "@ai-star-eco/api-client";
+import type { IpRun as SharedIpRun } from "@ai-star-eco/types";
 
 export type IpModelOption = {
   endpointId: string;
@@ -27,16 +28,14 @@ export type IpUploadResult = {
 
 export type IpRunStatus = "running" | "done" | "failed";
 
-export type IpRun = {
-  id: string;
-  projectId: string;
-  nodeId: string;
-  status: IpRunStatus;
-  cost: number;
-  errorCode?: string | null;
-  errorMessage?: string | null;
-  outputs?: { candidates?: Array<{ key: string; url: string }> } | null;
-};
+/**
+ * 运行结果 —— **直接用契约真源的类型**（packages/types），不要在这儿再手写一份。
+ *
+ * 这里原本手抄了一份，并且把字段写成了 `outputs`（复数），而服务端 `IpRunDto` 发的是
+ * `output`（单数）。于是 `run.outputs` 永远是 undefined，**每一次画布出图都被判成
+ * 「这次没有出图」** —— 服务端明明出了图、也扣了费。类型自己抄一遍就是给这种漂移开门。
+ */
+export type IpRun = SharedIpRun;
 
 /**
  * 画布上的模型下拉。候选来自后台配好的端点，**不是用户填的 Key**。

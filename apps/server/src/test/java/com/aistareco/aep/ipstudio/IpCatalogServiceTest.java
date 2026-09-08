@@ -116,16 +116,17 @@ class IpCatalogServiceTest {
         assertEquals(f.stylePresetId(), m.stylePresetId());
         // 三套装扮 + 三个表情
         assertEquals(6, f.lookCount());
-        // 特征卡 2 + 主形象 8×4 + 六套造型 8×2×6 = 130
-        assertEquals(130, f.estimatedCredits());
+        // v0.162 起每个节点默认只出 1 张（4 张候选一次要 32 分，试错成本太高）：
+        // 特征卡 2 + 七张图 ×8 = 58
+        assertEquals(58, f.estimatedCredits());
         assertEquals(IpDocs.nodes(f.doc()).size(), IpDocs.nodes(m.doc()).size());
     }
 
     @Test
     void toyFigureEstimateMatchesDefaultPricing() {
         IpTemplateDto t = catalog.template("ip-toy-figure").orElseThrow();
-        // 默认单价：招牌形象 8×4 + 五套变体 8×2×5 = 112（加上历史沿用的 2 分特征卡余量 = 114）
-        assertEquals(114, t.estimatedCredits());
+        // 特征卡 2 + 六张图 ×8 = 50（招牌形象 1 + 五套变体各 1）
+        assertEquals(50, t.estimatedCredits());
         assertEquals("bjd", t.stylePresetId());
         assertEquals(5, t.lookCount());
     }

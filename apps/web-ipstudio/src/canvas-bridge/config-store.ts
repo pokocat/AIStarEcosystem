@@ -120,7 +120,7 @@ export const defaultConfig: AiConfig = {
     size: "1:1",
     background: "",
     count: "1",
-    canvasImageCount: "3",
+    canvasImageCount: "1",
     proxyEnabled: false,
     proxyUrl: DEFAULT_LOCAL_PROXY_URL,
 };
@@ -290,7 +290,7 @@ export const useConfigStore = create<ConfigStore>()(
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
                         videoMode: config.videoMode === "reference" ? "reference" : "frames",
-                        canvasImageCount: config.canvasImageCount || "3",
+                        canvasImageCount: config.canvasImageCount || "1",
                         proxyEnabled: Boolean(config.proxyEnabled),
                         proxyUrl: config.proxyUrl || DEFAULT_LOCAL_PROXY_URL,
                     },
