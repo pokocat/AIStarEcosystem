@@ -2268,11 +2268,19 @@ function InfiniteCanvasPage() {
                     const count = getGenerationCount(generationConfig.count);
                     const isConfigNode = sourceNode?.type === CanvasNodeType.Config;
                     const isImageNode = sourceNode?.type === CanvasNodeType.Image;
-                    const isEmptyImageNode = isImageNode && !sourceNode?.metadata?.content;
-                    const sourceReference =
-                        isImageNode && sourceNode?.metadata?.content
-                            ? [{ id: sourceNode.id, name: `${sourceNode.title || sourceNode.id}.png`, type: sourceNode.metadata.mimeType || "image/png", dataUrl: sourceNode.metadata.content, storageKey: sourceNode.metadata.storageKey }]
-                            : [];
+                    // 本仓改动（v0.166）：在**图片节点**上跑生成一律就地重出，不再派生新节点。
+                    //
+                    // 上游的语义是「生成 = 拿当前这张当参考、派生一个新节点」，所以之前只有
+                    // 空图片节点才就地填充，已经有图的再点一次就多一个卡片、多一条线。
+                    // 但用户点的是那个节点上的「重新生成」，意图就是**把这张重出**——
+                    // 多出来的卡片是意料之外的东西，还得自己去删。
+                    //
+                    // 要「以这张为参考再生成一张」，画布本来就有更明确的做法：拉一条线接到新节点。
+                    // 我们的模板（照片 → 招牌形象 → 变体）也正是这么排的。
+                    const isEmptyImageNode = isImageNode;
+                    // 就地重出时不要把自己当参考图 —— 那会变成「照着上一版再画一版」，
+                    // 越重出越偏离原始提示词；参考图仍然来自上游连进来的节点。
+                    const sourceReference: typeof generationContext.referenceImages = [];
                     const referenceImages = [...new Map([...sourceReference, ...generationContext.referenceImages].map((image) => [image.id, image])).values()];
                     const generationType = referenceImages.length ? ("edit" as const) : ("generation" as const);
                     const generationMetadata = buildImageGenerationMetadata(generationType, generationConfig, count, referenceImages);
