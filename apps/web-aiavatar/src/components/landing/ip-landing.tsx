@@ -2,6 +2,11 @@
 
 // 公开 landing —— 域名根目录（v0.191 从 web-ipstudio 取回，随并入一起搬来）。
 //
+// ⚠️ 品牌用**本 app 的**（AIAVATAR · 数字资产平台），不是原来的 IP STUDIO ——
+// 页面是搬过来的，但它现在是 aiavatar.aibuzz.cn 的门面。字标写着另一个产品名
+// 会让第一次来的人以为走错了地方。工作台是这个平台的一项能力，不是另一个产品，
+// 所以副标写成「数字资产平台 · AI IP 工作台」。内容与视觉一个字没改。
+//
 // 整棵树套 `.ip-surface`：它用的是工作台那套令牌（--paper / --blue-700 / --action /
 // --on-blue…），其中 52 个在 aiavatar 的 :root 里根本没有定义，不套作用域会直接
 // 解析成空值（背景整条声明失效 → 白板）。
@@ -83,16 +88,16 @@ export function IpLanding() {
         style={{ background: "var(--blue-700)", borderBottom: "1px solid var(--on-blue-line)" }}
       >
         <div className="mx-auto max-w-[1440px] px-5 sm:px-8 h-[60px] flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-3 min-w-0" aria-label="IP STUDIO 首页">
+          <Link href="/" className="flex items-center gap-3 min-w-0" aria-label="数字资产平台 首页">
             <span
               className="text-[15px] font-extrabold tracking-[0.14em] shrink-0"
               style={{ color: "var(--action)" }}
             >
-              IP STUDIO
+              AIAVATAR
             </span>
             <span aria-hidden className="hidden sm:block w-px h-4 shrink-0" style={{ background: "var(--on-blue-line)" }} />
             <span className="hidden sm:block text-[13px] truncate" style={{ color: "var(--paper)" }}>
-              AI IP 工作台
+              数字资产平台 · AI IP 工作台
             </span>
           </Link>
 
@@ -109,7 +114,7 @@ export function IpLanding() {
               className="hidden sm:inline-flex items-center px-3 h-9 rounded-lg text-[13.5px] font-semibold transition hover:bg-[var(--on-blue-hover)]"
               style={{ color: "var(--paper)" }}
             >
-              关于 IP Studio
+              关于工作台
             </a>
             <Link
               href={entry}
@@ -291,7 +296,7 @@ export function IpLanding() {
             ))}
           </ul>
 
-          {/* 商业化展望横幅 —— 顶栏「关于 IP Studio」的锚点落在这里（不另起文案段） */}
+          {/* 商业化展望横幅 —— 顶栏「关于工作台」的锚点落在这里（不另起文案段） */}
           <div
             id="about"
             className="mt-10 sm:mt-12 scroll-mt-20 px-5 sm:px-10 py-9 sm:py-11"
@@ -334,7 +339,7 @@ export function IpLanding() {
           className="mx-auto max-w-[1440px] px-5 sm:px-8 py-6 text-center text-[12px] tracking-[0.12em]"
           style={{ color: "var(--paper)" }}
         >
-          IP STUDIO · AI IP 工作台
+          AIAVATAR 数字资产平台 · AI IP 工作台
         </div>
       </footer>
     </div>
