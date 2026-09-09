@@ -95,13 +95,24 @@ export function StarGrantCard({ g }: { g: StarGrant }) {
  * 官方角色卡（B 版：立绘铺满、名字压在图上）。
  * 授权本身尚未打通，卡片只标「可授权」不标价 —— 价格字段还不存在，不编造（§3.3）。
  */
-export function OfficialCard({ c, height = 190 }: { c: Avatar; height?: number }) {
+/**
+ * 官方角色卡 —— **竖屏 3:4**（小红书 / Pinterest 那种瀑布流卡）。
+ *
+ * 原来是写死 `height: 190` 的横条：在桌面多列网格里就成了「宽而矮」的一格，
+ * `object-fit: cover` 把竖幅人像从腰部裁断，脸和造型都看不全 —— 而这一页的
+ * 全部价值就是让人看清角色长什么样。改成用 aspect-ratio 定形状、宽度交给网格，
+ * 于是不管几列都保持竖幅。
+ *
+ * 仍然用 cover 而不是 contain：素材本来就是竖幅人像，3:4 只会切掉上下少许留白；
+ * contain 会在两侧留出灰边，反而更难看。
+ */
+export function OfficialCard({ c, ratio = "3 / 4" }: { c: Avatar; ratio?: string }) {
   return (
     <Link href={`/market/${c.id}`} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
       <div
         style={{
           position: "relative",
-          height,
+          aspectRatio: ratio,
           borderRadius: 18,
           overflow: "hidden",
           background: `linear-gradient(160deg, hsl(${c.hue ?? 200} 55% 82%), hsl(${c.hue ?? 200} 48% 66%))`,
@@ -119,11 +130,11 @@ export function OfficialCard({ c, height = 190 }: { c: Avatar; height?: number }
         <span style={{ position: "absolute", top: 10, right: 10, height: 19, padding: "0 7px", display: "inline-flex", alignItems: "center", borderRadius: 999, background: "rgba(255,255,255,.9)", color: "var(--primary-700)", fontSize: 9, fontWeight: 800 }}>
           可授权
         </span>
-        <div style={{ position: "absolute", left: 12, right: 12, bottom: 11, display: "flex", flexDirection: "column", gap: 2 }}>
-          <span style={{ fontFamily: "var(--font-serif)", fontSize: 17, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, display: "flex", flexDirection: "column", gap: 3 }}>
+          <span style={{ fontFamily: "var(--font-serif)", fontSize: 17.5, fontWeight: 600, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {c.name}
           </span>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,.78)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,.82)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {c.archetype}
           </span>
         </div>

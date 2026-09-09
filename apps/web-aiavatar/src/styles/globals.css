@@ -1210,3 +1210,20 @@ body, .app-root { overflow-x: hidden; }
 @media (min-width: 1024px) {
   .hub-screen--form { max-width: 720px; }
 }
+
+/* 竖屏卡网格（发现页的官方角色）——手机两列，桌面按宽度自动铺列。
+   卡片本身是 3:4 竖幅（asset-cards.tsx 的 OfficialCard），所以列宽一变
+   高度跟着变，不需要写死行高。minmax 下限 200px：再窄人脸就看不清了，
+   auto-fill 会自己减列数而不是把卡压扁。 */
+.hub-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (min-width: 1024px) {
+  .hub-grid-cards {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+}

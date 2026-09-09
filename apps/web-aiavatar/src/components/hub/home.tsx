@@ -156,9 +156,11 @@ export function HubHome() {
       {official.data.length > 0 && (
         <div className="hub-section" style={{ margin: "20px 16px 0" }}>
           <SectionHeader title="官方可授权角色" hint="授权后可直接拿去出片" action={<LinkAction href="/discover">去发现 ›</LinkAction>} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-            {official.data.slice(0, 2).map((c) => (
-              <OfficialCard key={c.id} c={c} height={172} />
+          {/* 竖卡网格与发现页同一套。桌面列数按宽度自适应，所以这里多取几张
+              （手机上 CSS 只排两列，第 3 张之后自然落到下一行，取 6 张不会撑爆一屏）。 */}
+          <div className="hub-grid-cards">
+            {official.data.slice(0, 6).map((c) => (
+              <OfficialCard key={c.id} c={c} />
             ))}
           </div>
         </div>

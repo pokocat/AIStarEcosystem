@@ -29,7 +29,7 @@ export function Discover() {
     <HubScreen tabBar>
       <NavBar title="发现" />
 
-      <div style={{ margin: "6px 16px 0" }}>
+      <div className="hub-section" style={{ margin: "6px 16px 0" }}>
         <SectionHeader title="官方角色" hint="授权后可用于出片" count={official.loading || official.error ? undefined : official.data.length} />
         {official.loading ? (
           <LoadingBlock label="官方资产加载中" />
@@ -42,7 +42,7 @@ export function Discover() {
             <EmptyState text="暂时还没有上架的官方角色" />
           </Card>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+          <div className="hub-grid-cards">
             {official.data.map((c) => (
               <OfficialCard key={c.id} c={c} />
             ))}
