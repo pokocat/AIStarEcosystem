@@ -174,6 +174,30 @@
 - [ ] **系统性遗留：§4.7.7 的「递归重签 payload 里的资产 URL」本身会重签客户端写入的 URL**（2026-08-31 由上一条牵出，**不只 shorts，`DramaProject` 同源**）：裸 key 已堵，但攻击者若构造 `https://<我方 OSS/CDN 域>/media/<别人的key>` 这种**完整 URL**，`maybeSign` 仍会抽出 key 重签。彻底解法两条选一：① 产物由渲染管线在服务端直接回写草稿（客户端不再是产物的报告者）；② 签名时做归属校验（key → 所属账号，签之前比对 principal）。②更通用但要给 key 建归属索引。**在此之前不要再对外声称「客户端伪造只影响自己」。**
 - [ ] **（原始定位，供追溯）** —— PUT 保存可伪造逐镜产物（2026-08-31 由 v0.143 评审顺带发现，v0.76/v0.133 起就存在）：`DramaShortService.saveShort` 整份接收客户端 `data`，只剥 `assembled` 与客户端音频，**不清 `flow` / `videoUrl` / `frameUrl` / `jobId`**；`DramaShortAssembleService.buildPlan` 又只凭 `flow=done` + 非空 `videoUrl` 就接受镜头，不校验该 URL 是否来自本用户本草稿的成功渲染任务（`MaterialVideoJob`）。伪造 `{"flow":"done","videoUrl":"/cdn/<已知平台视频>.mp4"}` 即可跳过逐镜出片扣费直接总装成片（外部域名被白名单挡住，平台 CDN / 相对路径可利用）。修法：产物字段一律以服务端为真值（保存时按 shot id 保留库内旧值、忽略客户端传入），总装前按 `MaterialVideoJob`（owner + 本草稿 + 成功态）核验每镜视频出处。注意 `DramaShortServiceTest` 现有用例把「保存后 doneCount=1」当正确结果断言，修时要同步改。
 
+## 2026-09-09 · AGENTS.md 体检（v0.194 收了大头，剩两条）
+
+- [x] ~~**四份文档还在写「v0.6+ 计划拆 `PLATFORM_OPERATOR`」**~~（**v0.194 修**，2026-09-09：
+      这个拆分 v0.31 就反向决策不做了，`FINANCE_ADMIN` 后来单独落地。
+      `apps/server/README.md` / `docs/ADMIN_PRODUCT_SPEC.md`（两处）/ `product_spec.md` /
+      `AGENTS.md` §4.4 全部改成「已决定不拆」。**是 §9 那条 grep 逮到的** —— 同一个 commit
+      里也把那条 grep 删了，因为它改完之后照样命中正确的句子，见 §9 里的说明。）
+
+
+v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **64%**（80KB / 126KB），
+而每一条都在 `docs/VERSION_HISTORY.md` 有（迁移前逐条核过：43 条只在 AGENTS.md 里的
+已先搬过去，才动的表）。全文 126KB → 46KB。AGENTS.md 每个 session 都注入上下文，
+它的体积就是每次对话的固定成本。
+
+- [ ] **§1「核心信息」里 clip 与 ipstudio 两个 bullet 各 4000 / 3600 字符**（合计占全文 5%），
+      内容是版本日志级的红线细节，而两者都有 真源 doc
+      （`docs/clip-avatar-video-plan.md` 54KB、`docs/ip-studio-plan.md` 29KB）。
+      **不能直接删** —— 要先逐条核对红线是否都在 真源 里，缺的补过去，再把 bullet 压成
+      「这条线是什么 + 三五条最容易踩的 + 指向真源」。这活儿要真读那两个 doc，没做。
+- [ ] **契约门没扫 `apps/web-star`**（`scripts/check-api-contract.mjs` 的 `SCAN_TARGETS` 里
+      只有 music / drama / celebrity / aiavatar），而 web-star 有 2 个文件用 `apiFetch` ——
+      也就是明星商务工作台的接口漂移**目前没有门禁**。加进去要先看它的路径前缀约定
+      （`/api/star/**`），别重蹈 v0.190 给 aiavatar 整棵树补 `/v1` 那个坑。
+
 ## 2026-09-09 · 时间显示与文案统一（v0.194 立规，存量待清）
 
 规约已写进 `AGENTS.md` §4.8（时间字段）与 §8「UI 文案 · 不是翻译腔」，`§9 验收` 里有三条

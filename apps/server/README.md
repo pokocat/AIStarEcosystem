@@ -212,7 +212,7 @@ SPRING_PROFILES_ACTIVE=mysql mvn spring-boot:run
 | `SUPER_ADMIN` | 超级管理员，拥有所有数据操作权限 |
 | `OPERATOR` | 平台运营，拥有所有数据操作权限 |
 
-> v0.6+ 计划拆分为 `PLATFORM_OPERATOR / FINANCE_ADMIN`（职责分离）。当前 `AdminUser.AdminRole` enum 实际是 `{SUPER_ADMIN, OPERATOR}`。
+> `AdminUser.AdminRole` enum 是 `{SUPER_ADMIN, OPERATOR, FINANCE_ADMIN}`。曾计划再拆一个 `PLATFORM_OPERATOR`（**v0.31 已反向决策不拆**：改在 `aep_users` 加 `operatorRole` 复用现有命名；`FINANCE_ADMIN` 后来单独落地了，`PLATFORM_OPERATOR` 不再计划）。
 
 开发环境默认账户（由 `DataInitializer` seed）：
 

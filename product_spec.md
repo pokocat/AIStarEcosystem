@@ -722,7 +722,7 @@ P4 交付时下述页面与常量已从 admin 移除（替代路径在括号内�
 
 ### 9.7 Admin 后端接口清单（`/api/admin/**`）
 
-后端 `apps/server` 现已与 `apps/admin` 1:1 落齐。除 `/auth` 登录外，下列接口均需 Bearer Token（截至 v0.5：`SUPER_ADMIN` / `OPERATOR`；v0.6+ 计划拆分为 `PLATFORM_OPERATOR` / `FINANCE_ADMIN`）。**列表响应走 `PageEnvelope`，单体/命令响应走 `ApiResponse`**（见 §6.4）。
+后端 `apps/server` 现已与 `apps/admin` 1:1 落齐。除 `/auth` 登录外，下列接口均需 Bearer Token（`SUPER_ADMIN` / `OPERATOR` / `FINANCE_ADMIN`；曾计划的 `PLATFORM_OPERATOR` 已决定不拆）。**列表响应走 `PageEnvelope`，单体/命令响应走 `ApiResponse`**（见 §6.4）。
 
 | 路由前缀                              | Controller                         | 对应 admin 页面 / API 客户端                          |
 | ------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
