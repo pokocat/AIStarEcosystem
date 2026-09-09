@@ -284,7 +284,14 @@ public class IpProjectService {
         // 全局示例的素材：平台自有内容，**所有登录用户都可读**（v0.182）。
         // 这不是放宽越权面 —— 写入侧的 key 一律由调用者的 uid 拼出来，落不到这个前缀下，
         // 所以「可读」不会变成「可写」；而不放行的话，示例工作流换个人打开就是一片空白。
-        if (k.startsWith(IpDemoTemplateService.CATEGORY_DEMO + "/")) {
+        // ⚠️ 前缀必须**按写入侧的真实形状**算，不能拿常量拼字符串：
+        // FileStorageService.buildKey 会 sanitizeSegment(category)，把 `/` 换成 `_` ——
+        // 所以 CATEGORY_DEMO="ipstudio/demo" 落地之后是 `ipstudio_demo/<demoId>/…`，
+        // 而 `CATEGORY_DEMO + "/"` 拼出来的是 `ipstudio/demo/`，**永远匹配不上**。
+        // 结果：示例素材过不了归属闸 → 出 wire 不重签 → 用户打开示例工作流一片空白。
+        // 上面 source/gen 两条之所以没事，是因为它们走 keyPrefix() 经 allocateKey 推导，
+        // 天然拿到 sanitize 之后的形状。这里改成同一套推导。
+        if (k.startsWith(categoryPrefix(IpDemoTemplateService.CATEGORY_DEMO))) {
             return true;
         }
         // 视频：key 是 `material-videos/<jobId>/video.mp4`（可能带 OSS key-prefix），**里面没有 uid** ——
@@ -335,6 +342,24 @@ public class IpProjectService {
      * （category / ownerId 里的 {@code /} 与非法字符会被换成 {@code _}）就永远与真正写入时一致，
      * 不是手写的猜测。{@code allocateKey} 只算字符串、不创建对象，没有副作用。
      */
+    /**
+     * 分类级前缀（不含 uid），如 `ipstudio_demo/`。
+     *
+     * <p>与 {@link #keyPrefix} 同理，经 {@code allocateKey} 推导而不是拼常量 ——
+     * 存储层会 sanitize 分类名里的 `/`，硬拼出来的前缀跟真实 key 对不上。
+     */
+    private String categoryPrefix(String category) {
+        // 带一个占位 owner 而不是传 null：存储实现对 null owner 的处理没有约定
+        // （真实实现会省掉那一段，mock 可能直接不匹配），而我们只要**第一段**，
+        // 有没有 owner 段都不影响结果。
+        String probe = storage.allocateKey(category, "probe", "probe.png");
+        if (probe == null) {
+            throw BusinessException.badRequest("IP_ASSET_KEY_INVALID", "图片校验失败，请重新上传");
+        }
+        int slash = probe.indexOf('/');
+        return slash < 0 ? probe : probe.substring(0, slash + 1);
+    }
+
     private String keyPrefix(String category, String userId) {
         String probe = storage.allocateKey(category, userId, "probe.png");
         if (probe == null) {

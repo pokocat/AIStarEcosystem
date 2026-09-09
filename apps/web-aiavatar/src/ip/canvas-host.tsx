@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { App as AntdApp, ConfigProvider, theme } from "antd";
+import { App as AntdApp, ConfigProvider, Modal, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
@@ -23,6 +23,7 @@ import { useHostActions } from "@/canvas-bridge/host-actions";
 import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { LastRunPanel } from "@/ip/last-run-panel";
+import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { IpStudioApi } from "@/ip/api";
 import { useIdentity, isSuperAdminRole } from "@/proto/api";
 import "@/canvas-bridge/i18n";
@@ -53,19 +54,44 @@ function Host({ projectId }: { projectId: string }) {
   // 运营会看到一个点了必然 403 的按钮。
   const isOperator = isSuperAdminRole(identity?.operatorRole);
   const [savingDemo, setSavingDemo] = React.useState(false);
+  // 画布当前标题（画布 store 是这份的真值，顶栏改名改的也是它）
+  const canvasTitle = useCanvasStore(
+    (st) => st.projects.find((p) => p.id === projectId)?.title ?? "",
+  );
+  // 存为示例前先弹一次确认。理由有两条，都不是走流程：
+  //   ① 这一下是**推给全平台每一个用户**的，不该和「保存」一样一点就发生；
+  //   ② 示例在目录里显示的是这个名字，而画布标题往往是「未命名 IP 项目」——
+  //      不给改名的话，所有人看到的就是一排「未命名」。
+  const [demoOpen, setDemoOpen] = React.useState(false);
+  const [demoName, setDemoName] = React.useState("");
+  const [demoSummary, setDemoSummary] = React.useState("");
+
+  const openDemoDialog = React.useCallback(() => {
+    // 预填当前画布名，多数情况下改一两个字就能用
+    setDemoName(canvasTitle || "");
+    setDemoSummary("");
+    setDemoOpen(true);
+  }, [canvasTitle]);
+
   const saveAsDemo = React.useCallback(async () => {
+    const name = demoName.trim();
+    if (!name) return;
     setSavingDemo(true);
     try {
       // 先把当前画布存下来再快照 —— 否则示例里少了用户刚做的那几笔
       await saveNow();
-      const demo = await IpStudioApi.publishAsDemo(projectId);
+      const demo = await IpStudioApi.publishAsDemo(projectId, {
+        name,
+        summary: demoSummary.trim() || undefined,
+      });
+      setDemoOpen(false);
       message.success(`已存为全局示例「${demo.name}」，所有人在工作流目录里都能看到`);
     } catch (e) {
       message.error(e instanceof Error ? e.message : "存为示例没成功");
     } finally {
       setSavingDemo(false);
     }
-  }, [projectId, saveNow, message]);
+  }, [projectId, saveNow, message, demoName, demoSummary]);
 
   // 捏合 / Ctrl+滚轮 只缩放画布，不缩放整个网站。
   //
@@ -114,14 +140,14 @@ function Host({ projectId }: { projectId: string }) {
       <LastRunPanel />
       {isOperator && (
         <button
-          onClick={saveAsDemo}
+          onClick={openDemoDialog}
           disabled={savingDemo}
           className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
           style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
           title="把这张画布连素材复制一份存成全局示例，新用户一进工作流目录就能看到效果"
         >
           <Star className="w-3.5 h-3.5 shrink-0" />
-          {savingDemo ? "存为示例中…" : "存为全局示例"}
+          存为全局示例
         </button>
       )}
       {saveState !== "idle" && (
@@ -220,9 +246,58 @@ function Host({ projectId }: { projectId: string }) {
           })
         }
       />
+
+      {/* 存为全局示例的确认框。刻意不是「点了就发生」——
+          这一下会把画布连素材复制成**所有人**都看得到的内容；而且目录里显示的是
+          这里填的名字，画布标题常常还是「未命名 IP 项目」，不给改就是一排「未命名」。 */}
+      <Modal
+        open={demoOpen}
+        title="存为全局示例"
+        onCancel={() => setDemoOpen(false)}
+        onOk={() => void saveAsDemo()}
+        okText={savingDemo ? "保存中…" : "确认存为示例"}
+        cancelText="取消"
+        okButtonProps={{ loading: savingDemo, disabled: !demoName.trim() }}
+        cancelButtonProps={{ disabled: savingDemo }}
+        mask={{ closable: !savingDemo }}
+        keyboard={!savingDemo}
+        closable={!savingDemo}
+        getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}
+      >
+        <p style={{ fontSize: 12.5, lineHeight: 1.75, color: "var(--ink-2)", margin: "0 0 14px" }}>
+          会把当前画布**连同素材复制一份**存成示例，出现在所有用户的工作流目录里。
+          原项目不受影响，之后改它或删它都不会动到示例。
+        </p>
+        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
+          示例名称
+        </label>
+        <input
+          value={demoName}
+          onChange={(e) => setDemoName(e.target.value)}
+          placeholder="目录里显示的名字"
+          autoFocus
+          style={DEMO_FIELD}
+        />
+        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", margin: "12px 0 5px" }}>
+          一句话说明<span style={{ fontWeight: 400, color: "var(--ink-4)" }}>（选填）</span>
+        </label>
+        <input
+          value={demoSummary}
+          onChange={(e) => setDemoSummary(e.target.value)}
+          placeholder="这条示例能让人看到什么"
+          style={DEMO_FIELD}
+        />
+      </Modal>
     </div>
   );
 }
+
+const DEMO_FIELD: React.CSSProperties = {
+  width: "100%", boxSizing: "border-box", padding: "9px 11px",
+  border: "1px solid var(--line-2)", borderRadius: "var(--r-sm)",
+  background: "var(--surface)", color: "var(--ink)",
+  fontFamily: "inherit", fontSize: 14, lineHeight: 1.5, outline: "none",
+};
 
 /**
  * 画布里有两处用 react-query（节点提示词面板、侧边提示词库）。搬画布时漏了这个 provider，

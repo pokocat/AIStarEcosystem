@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bot, Download, Home, Images, Menu, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Trash2, Undo2, Upload } from "lucide-react";
+import { BookOpen, Bot, Download, Home, Images, Menu, PanelLeftClose, PanelLeftOpen, Plus, Redo2, Trash2, Undo2, Upload, Pencil } from "lucide-react";
 import { Button, Dropdown, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
@@ -119,13 +119,23 @@ export function CanvasTopBar({
                                 style={{ color: theme.node.text }}
                             />
                         ) : (
+                            /* 本仓改动：改名原来只有「双击标题」这一个入口，鼠标不悬停在上面
+                               完全看不出可以改 —— 用户直接反馈「画布内改名改不了」。
+                               现在：单击也进编辑（双击保留），并在标题后面常驻一个铅笔图标
+                               明示可改。虚线下划线只在 hover 时出现，仍然不抢视觉。 */
                             <button
                                 type="button"
-                                className="max-w-[280px] truncate border-b border-dashed border-transparent text-left text-lg font-semibold tracking-normal transition hover:border-current"
+                                className="group inline-flex max-w-[280px] items-center gap-1.5 border-b border-dashed border-transparent text-left text-lg font-semibold tracking-normal transition hover:border-current"
+                                onClick={onStartTitleEditing}
                                 onDoubleClick={onStartTitleEditing}
                                 title={t("canvas.renameHint")}
+                                aria-label={t("canvas.renameHint")}
                             >
-                                {title}
+                                <span className="truncate">{title}</span>
+                                <Pencil
+                                    className="h-3.5 w-3.5 shrink-0 opacity-40 transition group-hover:opacity-90"
+                                    aria-hidden
+                                />
                             </button>
                         )}
                     </div>

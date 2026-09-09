@@ -25,21 +25,22 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** ipstudio 单测共用脚手架：内存 repo + 画布文档构造器。 */
-final class IpStudioFixtures {
+// public：ipstudio.service 包下的测试也要用
+public final class IpStudioFixtures {
 
     static final String USER = "u_owner";
     static final String OTHER = "u_stranger";
-    static final ObjectMapper OM = new ObjectMapper();
+    public static final ObjectMapper OM = new ObjectMapper();
 
     private IpStudioFixtures() {}
 
     // ── 内存 repo ─────────────────────────────────────────────
 
-    static final class Projects {
+    public static final class Projects {
         final Map<String, IpProject> rows = new LinkedHashMap<>();
-        final IpProjectRepository repo = mock(IpProjectRepository.class);
+        public final IpProjectRepository repo = mock(IpProjectRepository.class);
 
-        Projects() {
+        public Projects() {
             when(repo.save(any())).thenAnswer(inv -> {
                 IpProject p = inv.getArgument(0);
                 rows.put(p.getId(), p);
@@ -64,11 +65,11 @@ final class IpStudioFixtures {
         }
     }
 
-    static final class Runs {
+    public static final class Runs {
         final Map<String, IpRun> rows = new LinkedHashMap<>();
-        final IpRunRepository repo = mock(IpRunRepository.class);
+        public final IpRunRepository repo = mock(IpRunRepository.class);
 
-        Runs() {
+        public Runs() {
             when(repo.save(any())).thenAnswer(inv -> {
                 IpRun r = inv.getArgument(0);
                 rows.put(r.getId(), r);
@@ -117,7 +118,7 @@ final class IpStudioFixtures {
      *
      * <p>形状必须真实：资产 key 归属闸就是按这个前缀判的，mock 随便给个形状会把闸门测成空气。
      */
-    static FileStorageService storage() {
+    public static FileStorageService storage() {
         FileStorageService storage = mock(FileStorageService.class);
         when(storage.signedUrl(anyString())).thenAnswer(inv ->
                 "https://cdn.test/" + inv.getArgument(0, String.class) + "?sig=x");
@@ -183,7 +184,7 @@ final class IpStudioFixtures {
         }
     }
 
-    static IpStudioProperties props() {
+    public static IpStudioProperties props() {
         return new IpStudioProperties();
     }
 
@@ -323,7 +324,7 @@ final class IpStudioFixtures {
      * key 里没有 uid，归属只能回查任务（v0.180）。默认空仓：任何视频 key 都判「不是本人的」，
      * 需要放行的用例自己 {@link #withVideoJob} 塞一条。
      */
-    static com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs() {
+    public static com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs() {
         var repo = mock(com.aistareco.aep.repository.MaterialVideoJobRepository.class);
         when(repo.findById(org.mockito.ArgumentMatchers.anyString())).thenReturn(java.util.Optional.empty());
         return repo;

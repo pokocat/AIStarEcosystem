@@ -574,4 +574,5 @@ class IpProjectServiceTest {
                 "历史里的老片没重签 —— 用户切回上一版就是个放不了的播放器");
         assertEquals("https://cdn.test/" + cur + "?sig=x", out.path("videos").get(1).path("content").asText());
     }
+
 }

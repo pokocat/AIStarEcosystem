@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Group, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
+import { deleteProjectOnServer } from "@/canvas-bridge/project-sync";
 
 import { isRunEnded, requestEdit, requestGeneration, requestImageQuestion, resumeRun } from "@/canvas-bridge/generation";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/canvas-bridge/audio";
@@ -582,7 +583,7 @@ function InfiniteCanvasPage() {
         setProjectLoaded(false);
         const project = openProject(projectId);
         if (!project) {
-            router.replace("/canvas");
+            router.replace("/projects");   // 本仓路由是 /projects（上游是 /canvas）
             return;
         }
 
@@ -1267,14 +1268,23 @@ function InfiniteCanvasPage() {
 
     const createAndOpenProject = useCallback(() => {
         const id = createProject(t("canvas.defaultTitle", { count: useCanvasStore.getState().projects.length + 1 }));
-        router.push(`/canvas/${id}`);
+        router.push(`/projects/${id}`);   // 本仓路由是 /projects（上游是 /canvas）
     }, [createProject, router, t]);
 
-    const deleteCurrentProject = useCallback(() => {
+    // 本仓改动：上游是单机工具，删除只动内存 store 就够了；这里项目的真值在服务端，
+    // 只删本地的话「删了刷新又回来」，而且 push 的还是上游的 /canvas 路由 —— 直接 404。
+    // 所以：先请服务端删（软删），成功再清本地、回列表页。
+    const deleteCurrentProject = useCallback(async () => {
+        try {
+            await deleteProjectOnServer(projectId);
+        } catch (e) {
+            message.error(e instanceof Error ? e.message : t("canvas.projectPage.deleteFailed"));
+            return;   // 服务端没删成就别清本地 —— 否则界面上没了、服务端还在
+        }
         deleteProjects([projectId]);
         cleanupAssetImages();
-        router.push("/canvas");
-    }, [cleanupAssetImages, deleteProjects, router, projectId]);
+        router.push("/projects");
+    }, [cleanupAssetImages, deleteProjects, router, projectId, t]);
 
     const exportCurrentProject = useCallback(async () => {
         const project = useCanvasStore.getState().projects.find((item) => item.id === projectId);
@@ -3218,7 +3228,7 @@ function InfiniteCanvasPage() {
                     canUndo={historyState.canUndo}
                     canRedo={historyState.canRedo}
                     onHome={() => router.push("/dashboard")}  /* v0.191：`/` 已是公开宣传页 */
-                    onProjects={() => router.push("/canvas")}
+                    onProjects={() => router.push("/projects")}   /* 本仓路由 */
                     onCreateProject={createAndOpenProject}
                     onDeleteProject={deleteCurrentProject}
                     onExportProject={exportCurrentProject}

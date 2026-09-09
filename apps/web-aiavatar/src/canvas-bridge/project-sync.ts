@@ -443,3 +443,14 @@ export function useProjectSync(projectId: string) {
     retrySave: flush,
   };
 }
+
+/**
+ * 删除项目（服务端软删）。
+ *
+ * 画布自带的删除只动内存 store —— 上游是单机工具，那样就够了。本仓的项目真值在
+ * 服务端，只删本地的话「删了刷新又回来」。放在 bridge 层而不是让画布直接 import
+ * `@/ip/api`，是为了让搬来的文件继续只依赖 canvas-bridge 这一层。
+ */
+export function deleteProjectOnServer(projectId: string): Promise<void> {
+  return IpStudioApi.deleteProject(projectId);
+}
