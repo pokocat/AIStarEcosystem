@@ -74,7 +74,7 @@ export default function MyCardsPage() {
       .then((rows) => { if (seq.current === mine) setState({ s: "ok", rows }); })
       .catch((e: unknown) => {
         if (seq.current !== mine) return;
-        setState({ s: "error", message: e instanceof Error ? e.message : "名片列表读不出来" });
+        setState({ s: "error", message: e instanceof Error ? e.message : "名片列表没加载出来，刷新页面再试" });
       });
   }, [ready]);
 
@@ -144,7 +144,7 @@ export default function MyCardsPage() {
         <div style={{ margin: "12px 16px 0" }}>
           <Card>
             <EmptyState
-              text="还没有名片。打开一个数字人形象，在「数字名片」那一节点「做成数字名片」—— 名字和它的整柜造型会自动带过来，你只要再填联系方式。"
+              text="还没有名片。打开一个数字人形象，在「数字名片」那一节点「做成数字名片」，名字和整柜造型会自动带过来，你只要再填联系方式。"
               actionHref="/assets"
               actionLabel="去打开一个形象"
             />

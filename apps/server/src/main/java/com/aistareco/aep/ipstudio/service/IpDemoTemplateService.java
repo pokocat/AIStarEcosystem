@@ -175,7 +175,7 @@ public class IpDemoTemplateService {
         }
         if (copied > MAX_ASSETS) {
             throw BusinessException.badRequest("IP_DEMO_TOO_MANY_ASSETS",
-                    "这个项目的素材太多（" + copied + " 个），做示例请先精简到 " + MAX_ASSETS + " 个以内");
+                    "这张画布的素材太多（" + copied + " 个），先精简到 " + MAX_ASSETS + " 个以内");
         }
 
         IpDemoTemplate row = repo.findById(id).orElseGet(() -> IpDemoTemplate.builder()
@@ -188,7 +188,7 @@ public class IpDemoTemplateService {
         if (row.getDocJson() != null) collectKeys(docOf(row), stale);
         if (row.getCoverKey() != null) stale.add(row.getCoverKey());
         row.setName(name != null && !name.isBlank() ? name.trim()
-                : (p.getName() == null || p.getName().isBlank() ? "示例 IP 工作流" : p.getName()));
+                : (p.getName() == null || p.getName().isBlank() ? "未命名工作流" : p.getName()));
         row.setSummary(summary);
         row.setKind(asTemplate ? IpDemoTemplate.KIND_TEMPLATE : IpDemoTemplate.KIND_EXAMPLE);
         row.setDocJson(write(doc));
@@ -402,14 +402,14 @@ public class IpDemoTemplateService {
     private static String requireCleanId(String id) {
         if (!id.matches("[A-Za-z0-9_-]{1,64}")) {
             throw BusinessException.badRequest("IP_DEMO_ID_INVALID",
-                    "示例编号只能用字母、数字、- 和 _（最多 64 位）");
+                    "编号只能用字母、数字、- 和 _，最多 64 位");
         }
         return id;
     }
 
     private IpDemoTemplate required(String demoId) {
         return repo.findById(demoId)
-                .orElseThrow(() -> BusinessException.notFound("IP_DEMO_NOT_FOUND", "示例不存在"));
+                .orElseThrow(() -> BusinessException.notFound("IP_DEMO_NOT_FOUND", "这条官方内容不存在"));
     }
 
     @Transactional

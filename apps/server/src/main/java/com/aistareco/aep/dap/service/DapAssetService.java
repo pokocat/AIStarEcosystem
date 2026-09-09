@@ -157,13 +157,13 @@ public class DapAssetService {
         record Row(Instant at, RecentAssetDto dto) {}
         List<Row> rows = new ArrayList<>();
         avatars.forEach(a -> rows.add(new Row(a.getUpdatedAt(), new RecentAssetDto(
-                "character", "人物", a.getId(), a.getName(), support.relativeZh(a.getUpdatedAt()),
+                "character", "人物", a.getId(), a.getName(), support.dateTimeZh(a.getUpdatedAt()),
                 a.getImageKey() != null ? storage.signedUrl(a.getImageKey()) : null))));
         scenes.forEach(s -> rows.add(new Row(s.getUpdatedAt(), new RecentAssetDto(
-                "scene", "场景", s.getId(), s.getName(), support.relativeZh(s.getUpdatedAt()),
+                "scene", "场景", s.getId(), s.getName(), support.dateTimeZh(s.getUpdatedAt()),
                 s.getImageKey() != null ? storage.signedUrl(s.getImageKey()) : null))));
         products.forEach(p -> rows.add(new Row(p.getUpdatedAt(), new RecentAssetDto(
-                "product", "产品", p.getId(), p.getName(), support.relativeZh(p.getUpdatedAt()),
+                "product", "产品", p.getId(), p.getName(), support.dateTimeZh(p.getUpdatedAt()),
                 p.getImageKey() != null ? storage.signedUrl(p.getImageKey()) : null))));
         List<RecentAssetDto> recent = rows.stream()
                 .sorted(Comparator.comparing((Row r) -> r.at() == null ? Instant.EPOCH : r.at()).reversed())
@@ -219,7 +219,7 @@ public class DapAssetService {
                 .map(storage::signedUrl)
                 .orElse(null);
         String licStatus = ip.getLicenseId() == null ? null : licenseService.statusOf(userId, ip.getLicenseId());
-        return IpDto.from(ip, support.relativeZh(ip.getUpdatedAt()), members, works, licStatus,
+        return IpDto.from(ip, support.dateTimeZh(ip.getUpdatedAt()), members, works, licStatus,
                 coverFallback, storage::signedUrl);
     }
 
@@ -386,7 +386,7 @@ public class DapAssetService {
 
     public SceneDto toSceneDto(String userId, DapScene s) {
         long uses = usageRepo.countByOwnerUserIdAndAssetTypeAndAssetId(userId, "scene", s.getId());
-        return SceneDto.from(s, support.relativeZh(s.getUpdatedAt()), uses, storage::signedUrl);
+        return SceneDto.from(s, support.dateTimeZh(s.getUpdatedAt()), uses, storage::signedUrl);
     }
 
     /** 实拍上传入库（轻资产，只记来源，不扣费）。 */
@@ -516,7 +516,7 @@ public class DapAssetService {
 
     public ProductDto toProductDto(String userId, DapProduct p) {
         long uses = usageRepo.countByOwnerUserIdAndAssetTypeAndAssetId(userId, "product", p.getId());
-        return ProductDto.from(p, support.relativeZh(p.getUpdatedAt()), uses, storage::signedUrl);
+        return ProductDto.from(p, support.dateTimeZh(p.getUpdatedAt()), uses, storage::signedUrl);
     }
 
     @Transactional
@@ -631,7 +631,7 @@ public class DapAssetService {
 
     public List<StyleDto> listStyles(String userId) {
         return styleRepo.findByOwnerUserIdAndDeletedAtIsNullOrderByUseCountDescUpdatedAtDesc(userId).stream()
-                .map(s -> StyleDto.from(s, support.relativeZh(s.getUpdatedAt()), storage::signedUrl))
+                .map(s -> StyleDto.from(s, support.dateTimeZh(s.getUpdatedAt()), storage::signedUrl))
                 .toList();
     }
 
@@ -643,7 +643,7 @@ public class DapAssetService {
 
     public StyleDto styleDto(String userId, String id) {
         DapStyle s = requiredStyle(userId, id);
-        return StyleDto.from(s, support.relativeZh(s.getUpdatedAt()), storage::signedUrl);
+        return StyleDto.from(s, support.dateTimeZh(s.getUpdatedAt()), storage::signedUrl);
     }
 
     @Transactional
@@ -664,7 +664,7 @@ public class DapAssetService {
                 .createdAt(now).updatedAt(now)
                 .build();
         styleRepo.save(s);
-        return StyleDto.from(s, support.relativeZh(s.getUpdatedAt()), storage::signedUrl);
+        return StyleDto.from(s, support.dateTimeZh(s.getUpdatedAt()), storage::signedUrl);
     }
 
     @Transactional
@@ -676,7 +676,7 @@ public class DapAssetService {
         if (req.tags() != null) s.setTags(new ArrayList<>(req.tags()));
         s.setUpdatedAt(Instant.now());
         styleRepo.save(s);
-        return StyleDto.from(s, support.relativeZh(s.getUpdatedAt()), storage::signedUrl);
+        return StyleDto.from(s, support.dateTimeZh(s.getUpdatedAt()), storage::signedUrl);
     }
 
     @Transactional

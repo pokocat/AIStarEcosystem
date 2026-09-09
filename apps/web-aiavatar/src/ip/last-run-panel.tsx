@@ -57,7 +57,7 @@ export function LastRunPanel() {
                   <span className="min-w-0">
                     图 {i + 1} · {r.note}
                     <span style={{ color: "var(--ink-3)" }}>
-                      {r.applied ? " —— 已送给模型" : ` —— 没用上${r.reason ? `（${r.reason}）` : ""}`}
+                      {r.applied ? " · 已送给模型" : ` · 没用上${r.reason ? `（${r.reason}）` : ""}`}
                     </span>
                   </span>
                 </li>

@@ -442,7 +442,7 @@ export const CHARS: Avatar[] = [
   {
     id: "DH-2041", name: "林深 Lìn", codename: "lin-anchor", path: "real", ipId: "IP-0007",
     archetype: "品牌虚拟主播", tagline: "科技品牌发布会数字主持人",
-    status: "archived", updated: "2 小时前", fav: true, hue: 246, hairStyle: "short",
+    status: "archived", updated: "2026-09-07 14:20:00", fav: true, hue: 246, hairStyle: "short",
     license: "LIC-0098", mock: false, engine: "InstantID",
     palette: { bg1: "#6E78FF", bg2: "#23244F", skin: "#F2D6BE", hair: "#241F2E", cloth: "#E7E9FB", accent: "#9DA8FF" },
     def: { 年龄: "约 30 岁", 气质: "专业 · 沉稳 · 亲和", 用途: "发布会 / 产品讲解 / 培训", 性格: ["专业", "可信", "温和"], 服饰: "深蓝西装 · 商务", 形象来源: "真人模特授权", 设定语: "科技品牌的官方数字代言人，传递专业与温度。" },
@@ -453,7 +453,7 @@ export const CHARS: Avatar[] = [
   {
     id: "DH-2038", name: "星岚 Sēlan", codename: "selan-stellar", path: "ai", ipId: "IP-0007",
     archetype: "二次元 · 星界少女", tagline: "银河旅人，命运观测者",
-    status: "deriving", updated: "昨天", fav: true, hue: 268, hairStyle: "long",
+    status: "deriving", updated: "2026-09-06 10:12:00", fav: true, hue: 268, hairStyle: "long",
     license: null, mock: false, engine: "SDXL",
     palette: { bg1: "#8B6BFF", bg2: "#2E2470", skin: "#F6DCC8", hair: "#3A2E66", cloth: "#D8CCFF", accent: "#FFD36B" },
     def: { 年龄: "约 17 岁", 气质: "清冷 · 神秘 · 治愈", 用途: "IP 衍生 / 立绘 / 周边", 性格: ["温柔", "疏离", "坚定"], 服饰: "星纱长裙 · 银河披帛", 形象来源: "AI 原创虚构", 设定语: "掌管星轨观测的少女，能听见星辰的低语。" },
@@ -464,7 +464,7 @@ export const CHARS: Avatar[] = [
   {
     id: "DH-2035", name: "苏婉 Sūwǎn", codename: "suwan-edu", path: "real",
     archetype: "教育数字讲师", tagline: "在线课程虚拟讲师形象",
-    status: "finalized", updated: "3 天前", fav: false, hue: 168, hairStyle: "bun",
+    status: "finalized", updated: "2026-09-04 09:15:00", fav: false, hue: 168, hairStyle: "bun",
     license: "LIC-0091", mock: false, engine: "InstantID",
     palette: { bg1: "#3FBE93", bg2: "#0E4D3C", skin: "#F3DAC0", hair: "#241C16", cloth: "#EAF5E8", accent: "#E6B34A" },
     def: { 年龄: "约 28 岁", 气质: "温润 · 清晰 · 耐心", 用途: "课程讲解 / 知识科普", 性格: ["知性", "从容", "亲切"], 服饰: "米色针织 · 简约", 形象来源: "真人讲师授权", 设定语: "把复杂讲简单，是每位学习者的耐心引路人。" },
@@ -475,7 +475,7 @@ export const CHARS: Avatar[] = [
   {
     id: "DH-2030", name: "Vex-09", codename: "vex-mecha", path: "ai", ipId: "IP-0018",
     archetype: "剧情角色 · 赛博机甲", tagline: "废土赏金猎人，义体改造者",
-    status: "refining", updated: "5 天前", fav: true, hue: 18, hairStyle: "short",
+    status: "refining", updated: "2026-09-02 11:40:00", fav: true, hue: 18, hairStyle: "short",
     license: null, mock: true, engine: "SDXL",
     palette: { bg1: "#FF7A45", bg2: "#3A1606", skin: "#E8C3A6", hair: "#1A1410", cloth: "#2A2A33", accent: "#FF4D6D" },
     def: { 年龄: "外观 25 岁", 气质: "凌厉 · 危险 · 孤傲", 用途: "游戏 / 剧情 / 概念设计", 性格: ["寡言", "果决", "护短"], 服饰: "战术义体 · 霓虹回路", 形象来源: "AI 原创虚构", 设定语: "左臂是义体，右眼是瞄具，在霓虹废土上只为筹码扣动扳机。" },
@@ -486,7 +486,7 @@ export const CHARS: Avatar[] = [
   {
     id: "DH-2026", name: "阿茶 Āchá", codename: "acha-mascot", path: "ai", ipId: "IP-0012",
     archetype: "品牌虚拟人 · 萌系吉祥物", tagline: "新茶饮品牌 IP 吉祥物",
-    status: "pending", updated: "上周", fav: false, hue: 42, hairStyle: "short",
+    status: "pending", updated: "2026-08-31 15:48:00", fav: false, hue: 42, hairStyle: "short",
     license: null, mock: false, engine: "FLUX",
     palette: { bg1: "#FFC861", bg2: "#7A4A12", skin: "#FBE6C5", hair: "#6B4A24", cloth: "#FFF0D6", accent: "#5AD1FF" },
     def: { 年龄: "设定 ∞", 气质: "呆萌 · 机灵 · 暖心", 用途: "品牌 IP / 包装 / 表情包", 性格: ["好奇", "贴心", "话痨"], 服饰: "连帽卫衣 · 奶茶色", 形象来源: "AI 原创虚构", 设定语: "一杯茶的快乐传递员，会卖萌也会提醒你多喝水。" },
@@ -499,7 +499,7 @@ export const CHARS: Avatar[] = [
     // 授权登记「待授权」/ 资产详情提示条 / 合成工作台授权核对 三处入口都靠它演示。
     id: "DH-2044", name: "顾岩 Gù", codename: "guyan-host", path: "real",
     archetype: "活动主持数字人", tagline: "线下活动 / 直播开场主持形象",
-    status: "finalized", updated: "刚刚", fav: false, hue: 288, hairStyle: "short",
+    status: "finalized", updated: "2026-09-07 16:30:00", fav: false, hue: 288, hairStyle: "short",
     license: null, mock: false, engine: "InstantID",
     palette: { bg1: "#A57BFF", bg2: "#2B1A52", skin: "#F1D5BD", hair: "#251E2C", cloth: "#EFE7FF", accent: "#FFC46B" },
     def: { 年龄: "约 32 岁", 气质: "热络 · 明快 · 有掌控感", 用途: "活动主持 / 直播开场", 性格: ["外向", "机敏", "稳场"], 服饰: "藏青礼服 · 正式", 形象来源: "真人主持授权", 设定语: "把每一场开场都讲得像老朋友见面。" },
@@ -512,7 +512,7 @@ export const CHARS: Avatar[] = [
   {
     id: "DH-2019", name: "周野 Zhōu", codename: "zhou-presenter", path: "real",
     archetype: "企业数字员工", tagline: "财报 / 内部公告播报形象",
-    status: "proofing", updated: "刚刚", fav: false, hue: 210, hairStyle: "short",
+    status: "proofing", updated: "2026-09-07 16:30:00", fav: false, hue: 210, hairStyle: "short",
     license: "LIC-0102", mock: false, engine: "InstantID",
     palette: { bg1: "#5AB8E8", bg2: "#15324D", skin: "#F2D6BE", hair: "#2A2A38", cloth: "#EAF3FA", accent: "#E6B34A" },
     def: { 年龄: "约 35 岁", 气质: "干练 · 可信 · 正式", 用途: "财报播报 / 内部沟通", 性格: ["严谨", "克制", "稳重"], 服饰: "灰蓝衬衫 · 正装", 形象来源: "真人高管授权", 设定语: "企业对内对外的统一数字面孔，让每次播报都专业一致。" },
@@ -1084,21 +1084,21 @@ export const ASSET_IPS: AssetIp[] = [
     id: "IP-0007", name: "星岚 Sēlan", tagline: "银河旅人 · 品牌虚拟代言 IP",
     summary: "以星轨观测为世界观的品牌虚拟代言 IP，覆盖立绘、周边与短视频种草。",
     status: "ready", licenseId: "LIC-0114", licenseStatus: "active",
-    coverUrl: "/plaza/PA-07-1.jpg", hue: 258, versions: 9, updated: "2 小时前",
+    coverUrl: "/plaza/PA-07-1.jpg", hue: 258, versions: 9, updated: "2026-09-07 14:20:00",
     members: { characters: 3, scenes: 8, products: 12, voices: 2 }, works: 6,
   },
   {
     id: "IP-0012", name: "茶小呆 Cha", tagline: "萌系奶茶吉祥物 IP",
     summary: "新茶饮品牌的吉祥物 IP，主打表情包与包装联名。",
     status: "ready", licenseId: "LIC-0121", licenseStatus: "active",
-    coverUrl: "/plaza/PA-09-1.jpg", hue: 32, versions: 4, updated: "昨天",
+    coverUrl: "/plaza/PA-09-1.jpg", hue: 32, versions: 4, updated: "2026-09-06 10:12:00",
     members: { characters: 1, scenes: 5, products: 6, voices: 1 }, works: 2,
   },
   {
     id: "IP-0018", name: "慕白 Mubai", tagline: "新中式国风雅士 IP",
     summary: "面向文旅与时尚大片的国风人物 IP，授权草案审核中。",
     status: "ready", licenseId: null, licenseStatus: null,
-    coverUrl: "/plaza/PA-10-1.jpg", hue: 158, versions: 2, updated: "3 天前",
+    coverUrl: "/plaza/PA-10-1.jpg", hue: 158, versions: 2, updated: "2026-09-04 09:15:00",
     members: { characters: 1, scenes: 3, products: 0, voices: 1 }, works: 0,
   },
 ];
@@ -1109,7 +1109,7 @@ export const SCENE_ASSETS: SceneAsset[] = [
     description: "早晨侧逆光的家庭厨房，木质台面与浅陶器，适合生活方式与食品类内容。",
     source: "shot", space: "indoor", light: "晨间侧逆光", width: 3840, height: 2160,
     spec: "3840 × 2160", imageUrl: sceneImg("baking-kitchen"), ipId: "IP-0012",
-    status: "ready", jobId: null, hue: 32, updated: "10 分钟前",
+    status: "ready", jobId: null, hue: 32, updated: "2026-09-07 16:05:00",
     variants: [
       { label: "午后", url: sceneImg("baking-kitchen"), spec: "1024 × 640" },
       { label: "夜晚", url: sceneImg("baking-kitchen"), spec: "1024 × 640" },
@@ -1121,28 +1121,28 @@ export const SCENE_ASSETS: SceneAsset[] = [
     description: "南向落地窗的起居室，浅木与米色布艺，光线柔和，适合居家生活方式内容。",
     source: "shot", space: "indoor", light: "晨间柔光", width: 3840, height: 2160,
     spec: "3840 × 2160", imageUrl: sceneImg("home-lifestyle"), ipId: "IP-0007",
-    status: "ready", jobId: null, hue: 200, updated: "昨天", variants: [], usageCount: 3,
+    status: "ready", jobId: null, hue: 200, updated: "2026-09-06 10:12:00", variants: [], usageCount: 3,
   },
   {
     id: "SC-0309", name: "街头夜色",
     description: "夜间城市街道，霓虹与湿地面反光，适合潮流与时尚内容。",
     source: "shot", space: "outdoor", light: "霓虹夜景", width: 3840, height: 2160,
     spec: "3840 × 2160", imageUrl: sceneImg("street-fashion"), ipId: null,
-    status: "ready", jobId: null, hue: 320, updated: "昨天", variants: [], usageCount: 1,
+    status: "ready", jobId: null, hue: 320, updated: "2026-09-06 10:12:00", variants: [], usageCount: 1,
   },
   {
     id: "SC-0301", name: "播客录音棚",
     description: "专业录音棚，吸音墙与桌面麦克风，冷调布光，适合访谈与口播。",
     source: "shot", space: "studio", light: "冷调影棚光", width: 3840, height: 2160,
     spec: "3840 × 2160", imageUrl: sceneImg("podcast-host"), ipId: "IP-0007",
-    status: "ready", jobId: null, hue: 214, updated: "3 天前", variants: [], usageCount: 0,
+    status: "ready", jobId: null, hue: 214, updated: "2026-09-04 09:15:00", variants: [], usageCount: 0,
   },
   {
     id: "SC-0318", name: "极简白棚",
     description: "纯白无缝背景棚，均匀布光，适合产品与人物合成。",
     source: "ai", space: "studio", light: "均匀顶光", width: 2048, height: 1280,
     spec: "2048 × 1280", imageUrl: null, ipId: null,
-    status: "running", jobId: null, hue: 205, updated: "刚刚", variants: [], usageCount: 0,
+    status: "running", jobId: null, hue: 205, updated: "2026-09-07 16:30:00", variants: [], usageCount: 0,
   },
 ];
 
@@ -1166,7 +1166,7 @@ export const PRODUCT_ASSETS: ProductAsset[] = [
     source: "shot", ipId: "IP-0007", brandAuthorized: true, brandLicenseUntil: "2026-12",
     imageUrl: null,
     angles: [{ label: "正面", url: "", spec: "2048 × 2048 · PNG" }],
-    status: "ready", jobId: null, hue: 38, updated: "上周", usageCount: 1,
+    status: "ready", jobId: null, hue: 38, updated: "2026-08-31 15:48:00", usageCount: 1,
   },
   {
     id: "PD-0094", name: "小圆罐手冲咖啡", category: "食品 · 饮品",
@@ -1174,7 +1174,7 @@ export const PRODUCT_ASSETS: ProductAsset[] = [
     source: "ai", ipId: "IP-0012", brandAuthorized: false, brandLicenseUntil: null,
     imageUrl: null,
     angles: [{ label: "正面", url: "", spec: "1024 × 1024 · PNG" }],
-    status: "ready", jobId: null, hue: 18, updated: "3 天前", usageCount: 0,
+    status: "ready", jobId: null, hue: 18, updated: "2026-09-04 09:15:00", usageCount: 0,
   },
 ];
 
@@ -1182,17 +1182,17 @@ export const STYLE_ASSETS: StyleAsset[] = [
   {
     id: "ST-0004", name: "品牌基调", summary: "暖调 · 柔光 · 干净留白",
     promptEn: "warm brand tone, soft diffused light, clean negative space, premium lifestyle look",
-    tags: ["暖调", "柔光", "留白"], source: "manual", coverUrl: null, hue: 32, useCount: 12, updated: "昨天",
+    tags: ["暖调", "柔光", "留白"], source: "manual", coverUrl: null, hue: 32, useCount: 12, updated: "2026-09-06 10:12:00",
   },
   {
     id: "ST-0007", name: "夜色潮流", summary: "冷调 · 高对比 · 霓虹反光",
     promptEn: "cool night tone, high contrast, neon reflections, editorial street fashion look",
-    tags: ["冷调", "高对比", "潮流"], source: "work", coverUrl: null, hue: 220, useCount: 5, updated: "3 天前",
+    tags: ["冷调", "高对比", "潮流"], source: "work", coverUrl: null, hue: 220, useCount: 5, updated: "2026-09-04 09:15:00",
   },
   {
     id: "ST-0011", name: "日系清透", summary: "低饱和 · 通透 · 自然肤色",
     promptEn: "japanese airy tone, low saturation, luminous skin, natural daylight",
-    tags: ["低饱和", "通透", "日系"], source: "manual", coverUrl: null, hue: 190, useCount: 3, updated: "上周",
+    tags: ["低饱和", "通透", "日系"], source: "manual", coverUrl: null, hue: 190, useCount: 3, updated: "2026-08-31 15:48:00",
   },
 ];
 
@@ -1218,7 +1218,7 @@ export const COMPOSITIONS: Composition[] = [
     id: "CP-4903", avatarId: "DH-2038", sceneId: "SC-0287", productId: "PD-0088", styleId: "ST-0004",
     ipId: "IP-0007", ratio: "9:16", count: 4, status: "done", jobId: null,
     licenseNote: "已核对授权：人物为 AI 原创，无需肖像授权，场景为自有实拍，产品已获品牌方授权（至 2027-03），可商用。",
-    cost: 12, created: "2 小时前",
+    cost: 12, created: "2026-09-07 14:20:00",
     outputs: [
       { id: "CO-1", idx: 0, no: "01", url: sceneImg("home-lifestyle"), spec: "768 × 1365 · PNG" },
       { id: "CO-2", idx: 1, no: "02", url: "/plaza/PA-07-1.jpg", spec: "768 × 1365 · PNG" },

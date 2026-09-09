@@ -1,13 +1,13 @@
 "use client";
 
-// 全局内容运营后台 —— 「存为全局」发出去的那些东西的管理面（v0.192）。
+// 官方内容运营后台 —— 「存为官方内容」发出去的那些东西的管理面（v0.192）。
 //
 // 为什么要有这一页：发布端点做好了、下线端点也做好了，但下线**没有任何前端调用方**
 // （v0.159 那类死代码：编译绿、typecheck 绿，就是没人挂）。于是上线一条不合适的示例之后，
 // 产品内没有任何办法把它撤下来。顺带这一页解决另外三件：
 //   · 目录接口只查 enabled=true → 下线之后哪儿都看不见，想重新上线只能自己记住 demoId；
 //   · 发布不传 demoId 就永远新建 → 同一张画布存两次 = 两张一样的卡，还删不掉；
-//   · sortOrder 有字段没人能设，恒为 0 —— 而「开始一个 IP」那一排是新用户的第一印象。
+//   · sortOrder 有字段没人能设，恒为 0 —— 而「新建画布」那一排是新用户的第一印象。
 //
 // 放在 web-aiavatar 而不是 apps/admin：发布这个动作本来就发生在画布顶栏，管理跟它放一起
 // 才是同一条链（同 v0.73 短剧配方审核「在 web-drama 运营后台不进 admin」的先例）。
@@ -23,13 +23,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { useIdentity, isSuperAdminRole, isOperatorRole } from "@/proto/api";
 import { IpStudioApi } from "@/ip/api";
 import { ToastProvider, useToast } from "@/ip/common/toast";
-
-function formatWhen(iso?: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-}
+import { formatDateTime } from "@/lib/datetime";
 
 function DemosPageInner() {
   const { toast } = useToast();
@@ -61,7 +55,7 @@ function DemosPageInner() {
       setRows(list);
     } catch (e) {
       if (seq !== reqRef.current) return;
-      setLoadError(e instanceof Error ? e.message : "加载失败");
+      setLoadError(e instanceof Error ? e.message : "没加载出来，刷新页面再试");
     } finally {
       if (seq === reqRef.current) setLoading(false);
     }
@@ -81,7 +75,7 @@ function DemosPageInner() {
       setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: !r.enabled } : r)));
       toast(row.enabled ? `「${row.name}」已下线，用户看不到了` : `「${row.name}」已重新上线`, "ok");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "操作失败", "warn");
+      toast(e instanceof Error ? e.message : "没成功，再试一次", "warn");
     } finally {
       setBusy(null);
     }
@@ -102,7 +96,7 @@ function DemosPageInner() {
       await load();   // 排序变了要重排，就地改字段不够
       toast("已保存", "ok");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "保存失败", "warn");
+      toast(e instanceof Error ? e.message : "没存上，再试一次", "warn");
     } finally {
       setBusy(null);
     }
@@ -119,13 +113,13 @@ function DemosPageInner() {
       // 说话。说「素材副本已删除」而实际一个都没删，是假成功（§8.0）。
       toast(
         res.assetsFailed > 0
-          ? `「${pendingDelete.name}」已删除，但有 ${res.assetsFailed} 个素材没清掉，需要运维在存储里手动删`
+          ? `「${pendingDelete.name}」已删除，但有 ${res.assetsFailed} 个素材没清掉，要运维去存储里手动删`
           : `「${pendingDelete.name}」及其素材副本（${res.assetsRemoved} 个）已删除`,
         res.assetsFailed > 0 ? "warn" : "ok",
       );
       setPendingDelete(null);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "删除失败", "warn");
+      toast(e instanceof Error ? e.message : "没删掉，再试一次", "warn");
     } finally {
       setBusy(null);
     }
@@ -137,7 +131,7 @@ function DemosPageInner() {
   if (!isOperator) {
     return (
       <div className="ip-surface max-w-6xl mx-auto px-6 py-16 text-center">
-        <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>这一页只对平台运营开放。</p>
+        <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>这一页只有平台运营能看。</p>
         <Link href="/projects" className="inline-block mt-4 text-[13px]" style={{ color: "var(--primary)" }}>
           ← 回到自由画布
         </Link>
@@ -159,11 +153,12 @@ function DemosPageInner() {
           >
             <ArrowLeft className="w-3.5 h-3.5" /> 自由画布
           </Link>
-          <h1 className="asset-name text-[24px]" style={{ color: "var(--ink)" }}>全局内容管理</h1>
+          <h1 className="asset-name text-[24px]" style={{ color: "var(--ink)" }}>官方内容管理</h1>
           <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--ink-2)" }}>
-            画布顶栏「存为全局」发出去的内容都在这里。
-            <b>模板</b>进「开始一个 IP」那一排（只有工作流），
-            <b>实例</b>进画布列表的「官方示例」（连素材）。下线随时可撤回；删除会连素材副本一起清掉，不可恢复。
+            画布顶栏「存为官方内容」发出去的都在这里。
+            <b>模板</b>进「新建画布」那一排，只给节点和提示词；
+            <b>示例</b>进画布列表，素材成图一起给。
+            下线随时能撤回；删除会把素材副本一起清掉，删了找不回来。
           </p>
         </div>
         <button
@@ -195,16 +190,16 @@ function DemosPageInner() {
 
       {!loading && !loadError && rows.length === 0 && (
         <div className="ledger-card p-8 text-center">
-          <p className="text-[13.5px]" style={{ color: "var(--ink-2)" }}>还没有发布过全局内容。</p>
+          <p className="text-[13.5px]" style={{ color: "var(--ink-2)" }}>还没发过官方内容。</p>
           <p className="text-[12px] mt-1.5" style={{ color: "var(--ink-3)" }}>
-            在一张做好的画布里点顶栏「存为全局」，就会出现在这里。
+            在一张做好的画布里点顶栏「存为官方内容」，就会出现在这里。
           </p>
         </div>
       )}
 
-      <Group title="工作流模板" hint="进「开始一个 IP」那一排。只有节点与提示词，素材不跟着走。" rows={templates}
+      <Group title="工作流模板" hint="进「新建画布」那一排。只有节点和提示词，素材不跟着走。" rows={templates}
         {...{ busy, canDelete, toggle, setEditing, setDraft, setPendingDelete }} />
-      <Group title="官方示例" hint="进画布列表。素材成图都在，用户点开是复制一份到自己的画布。" rows={examples}
+      <Group title="官方示例" hint="进画布列表。素材成图都在，用户点开是复制一份到自己那儿。" rows={examples}
         {...{ busy, canDelete, toggle, setEditing, setDraft, setPendingDelete }} />
 
       {/* 编辑：只改展示信息。种类不给改 —— 模板与实例的区别是文档里有没有素材，
@@ -226,7 +221,7 @@ function DemosPageInner() {
               value={draft.name}
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
               style={FIELD}
-              placeholder="用户在目录里看到的名字"
+              placeholder="别人看到的名字"
             />
           </Field>
           <Field label="一句话说明">
@@ -234,10 +229,10 @@ function DemosPageInner() {
               value={draft.summary}
               onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))}
               style={FIELD}
-              placeholder="选填。写清楚这条链能做出什么"
+              placeholder="选填。写清楚这套工作流能做出什么"
             />
           </Field>
-          <Field label="排序" hint="数字小的排前面。同数字按发布时间。">
+          <Field label="排序" hint="数字小的排前面，一样大的按发布时间">
             <input
               type="number"
               value={draft.sortOrder}
@@ -263,7 +258,7 @@ function DemosPageInner() {
           <br />
           已经拿它建过画布的用户不受影响 —— 那些是各自复制的一份。
           <br />
-          如果只是想让用户看不到，用<b>下线</b>就够了，随时能再打开。
+          只是想让别人看不到的话，<b>下线</b>就够了，随时能再打开。
         </p>
       </Modal>
     </div>
@@ -327,7 +322,7 @@ function Group({
               </p>
               {/* 概览数字：判断「这条是不是空的 / 是不是那条重复的」，不用点进去看 */}
               <p className="text-[11px] mt-1 font-mono" style={{ color: "var(--ink-3)" }}>
-                {row.id} · {row.nodeCount} 个节点 · {row.assetCount} 个素材 · 排序 {row.sortOrder} · {formatWhen(row.updatedAt ?? row.createdAt)}
+                {row.id} · {row.nodeCount} 个节点 · {row.assetCount} 个素材 · 排序 {row.sortOrder} · {formatDateTime(row.updatedAt ?? row.createdAt)}
               </p>
             </div>
 
@@ -382,7 +377,7 @@ function IconBtn({
   );
 }
 
-/** 与画布顶栏那个「存为全局」弹窗同一套（ip/canvas-host.tsx 的 DEMO_FIELD）——
+/** 与画布顶栏那个「存为官方内容」弹窗同一套（ip/canvas-host.tsx 的 DEMO_FIELD）——
  *  同一件事的两个界面，输入框长得一样。 */
 const FIELD: React.CSSProperties = {
   width: "100%", boxSizing: "border-box", padding: "9px 11px",

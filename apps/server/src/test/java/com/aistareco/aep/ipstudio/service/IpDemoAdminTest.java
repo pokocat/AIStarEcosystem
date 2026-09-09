@@ -254,6 +254,8 @@ class IpDemoAdminTest {
     @Test
     void 删不存在的一条报404而不是静默成功() {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.deleteDemo("IPD-nope"));
-        assertTrue(e.getMessage().contains("示例不存在"), e.getMessage());
+        // 断言错误码而不是那句文案 —— 文案是会改的（v0.194 就把「示例」统一成了
+        // 「官方内容」），错误码才是调用方真正依赖的契约。
+        assertEquals("IP_DEMO_NOT_FOUND", e.getCode(), e.getMessage());
     }
 }

@@ -9,7 +9,7 @@ import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
 export const metadata: Metadata = {
   title: "数字人资产平台 · AiAvatar",
-  description: "真人授权复刻 / 纯 AI 原创，形象 · 声音 · 衍生物一站式沉淀的数字人资产平台。",
+  description: "真人授权复刻，或者纯 AI 原创。形象、声音、衍生物都存在一处，随时能拿出来用。",
   icons: {
     icon: "/brand/logo.jpg",
     shortcut: "/brand/logo.jpg",

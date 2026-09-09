@@ -102,13 +102,13 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
       </div>
 
       <h1 style={{ fontFamily: "var(--font-serif)", fontSize: 21, fontWeight: 500, textAlign: "center", margin: "0 0 10px" }}>
-        画布在电脑上更顺手
+        画布在电脑上更好用
       </h1>
       <p style={{ fontSize: 13.5, lineHeight: 1.75, color: "var(--ink-2)", textAlign: "center", margin: "0 0 24px" }}>
-        它要拖节点、连线、框选参考图，还要同时看得见一整条生成链 —— 手机屏幕上会比较挤。
+        要拖节点、连线、框选参考图，还得同时看得见整条流程，手机屏幕上会挤。
         <br />
         <span style={{ color: "var(--ink-3)" }}>
-          想看看效果、临时改一句提示词重跑一次，在手机上也能做。
+          只是想看看效果、改一句提示词重跑一次的话，手机上也能做。
         </span>
       </p>
 
@@ -127,7 +127,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0 14px" }}>
         <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
-        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>或者发到电脑上继续</span>
+        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>或者发到电脑上接着做</span>
         <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
       </div>
 
@@ -141,7 +141,7 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
           display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7,
         }}
       >
-        {copied ? <><Check size={16} /> 已复制</> : <><Copy size={16} /> 复制项目链接</>}
+        {copied ? <><Check size={16} /> 已复制</> : <><Copy size={16} /> 复制画布链接</>}
       </button>
 
       {/* 复制不成时把地址亮出来让人自己选 —— 别只留一个点了没反应的按钮 */}
@@ -163,11 +163,11 @@ function MobileNotice({ projectId, onProceed }: { projectId: string; onProceed: 
           background: "transparent", border: "none", color: "var(--ink-3)", fontSize: 12.5,
         }}
       >
-        按桌面版布局打开（整个应用）
+        用电脑版界面打开
       </button>
 
       <p style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "center", marginTop: 16, lineHeight: 1.7 }}>
-        形象做完发布之后，资产、造型和数字名片在手机上都能看能改。
+        形象发布之后，资产、造型和名片在手机上都能看能改。
       </p>
     </div>
   );
@@ -196,7 +196,7 @@ function MobileCanvasBar({ projectId }: { projectId: string }) {
         <ArrowLeft size={13} /> 画布
       </Link>
       <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        电脑上操作更顺手
+        电脑上更好用
       </span>
       <button
         onClick={() => void copy()}

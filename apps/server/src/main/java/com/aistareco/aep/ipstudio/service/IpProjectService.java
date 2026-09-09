@@ -94,7 +94,7 @@ public class IpProjectService {
     /** 属主隔离 + 软删过滤统一在这里，其它服务一律经此取项目。 */
     public IpProject required(String userId, String id) {
         return projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
-                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "IP 项目不存在或已删除"));
+                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在，或者已经删了"));
     }
 
     public IpProjectDto detail(String userId, String id) {
@@ -113,7 +113,7 @@ public class IpProjectService {
                         BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "工作流不存在或已下线：" + templateId));
 
         String name = req == null ? null : trimToNull(req.name());
-        if (name == null) name = tpl != null ? tpl.name() : "未命名 IP 项目";
+        if (name == null) name = tpl != null ? tpl.name() : "未命名画布";
         if (name.length() > 128) name = name.substring(0, 128);
 
         JsonNode doc = tpl != null && tpl.doc() != null && tpl.doc().isObject()

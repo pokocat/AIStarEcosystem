@@ -54,7 +54,7 @@ function freshChar(path, avatars: any[] = []) {
   return {
     id: "DH-NEW", name: "新建数字人", codename: "new-character", path,
     archetype: path === "real" ? "真人授权复刻" : "AI 原创形象", tagline: "创建中…",
-    status: "draft", updated: "刚刚", fav: false, hue: base.hue, hairStyle: base.hairStyle,
+    status: "draft", updated: "2026-09-07 16:30:00", fav: false, hue: base.hue, hairStyle: base.hairStyle,
     palette: { ...base.palette }, counts: { atlas: 0, expr: 0, scene: 0, ward: 0, d3: 0, video: 0 },
     deriv: { atlas: "empty", expr: "empty", scene: "empty", ward: "empty", d3: "empty", video: "empty" },
     versions: 1, _fresh: true,

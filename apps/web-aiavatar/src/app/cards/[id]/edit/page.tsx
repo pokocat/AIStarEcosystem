@@ -480,7 +480,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                 等点了才报错的话，用户已经填完一整页了。 */}
             {canPublish
               ? "发布后这张名片就能被任何拿到链接的人打开，不需要注册。随时可以取消发布。"
-              : `还差 ${missing.join(" 和 ")} 才能发布 —— 草稿可以先存着。`}
+              : `还差 ${missing.join(" 和 ")} 才能发布，草稿可以先存着。`}
           </div>
         </>
       )}

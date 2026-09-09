@@ -86,7 +86,7 @@ describe("发布前先保存", () => {
 
   // 存为全局是另一条「把内存里的画布推到服务端之外」的路 —— 而且推的是**全平台**，
   // 比发布资产影响面更大。它一度只 `await saveNow()` 不看结果（Codex 复核 v0.192 逮到）：
-  // 存失败照样发，推出去的是库里的上一版，界面还说「已存为全局模板」。
+  // 存失败照样发，推出去的是库里的上一版，界面还说「已存为官方模板」。
   it("存为全局也走同一道闸，不是自己 await 一下 saveNow", () => {
     expect(host).toContain("publishAsDemo");
     const gateUses = host.split("publishWithLatestDoc").length - 1;

@@ -21,18 +21,7 @@ import { IpStudioApi } from "@/ip/api";
 import { ToastProvider, useToast } from "@/ip/common/toast";
 import { MockBadge } from "@/ip/common/mock-badge";
 import { CanvasThumb } from "@/ip/canvas-thumb";
-
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const diff = Date.now() - d.getTime();
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "刚刚";
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-}
+import { formatDateTime } from "@/lib/datetime";
 
 function ProjectsPageInner() {
   const router = useRouter();
@@ -65,7 +54,7 @@ function ProjectsPageInner() {
       void IpStudioApi.listDemoExamples().then(setExamples).catch(() => undefined);
     } catch (e) {
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
-      else setLoadError(e instanceof Error ? e.message : "项目列表加载失败");
+      else setLoadError(e instanceof Error ? e.message : "没加载出来，刷新页面再试");
     } finally {
       setLoading(false);
     }
@@ -83,7 +72,7 @@ function ProjectsPageInner() {
       router.push(`/projects/${project.id}`);
     } catch (e) {
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
-      else toast(e instanceof Error ? e.message : "新建失败，请重试", "warn");
+      else toast(e instanceof Error ? e.message : "没建成，再试一次", "warn");
       setCreating(null);
     }
   };
@@ -94,10 +83,10 @@ function ProjectsPageInner() {
     try {
       await IpStudioApi.deleteProject(pendingDelete.id);
       setProjects((list) => list.filter((p) => p.id !== pendingDelete.id));
-      toast("项目已删除", "ok");
+      toast("已删除", "ok");
       setPendingDelete(null);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "删除失败，请重试", "warn");
+      toast(e instanceof Error ? e.message : "没删掉，再试一次", "warn");
     } finally {
       setDeleting(false);
     }
@@ -132,9 +121,9 @@ function ProjectsPageInner() {
       <section className="mb-10">
         <div className="flex items-baseline justify-between gap-4 mb-4">
           <div className="min-w-0">
-            <h1 className="asset-name text-[24px]" style={{ color: "var(--ink)" }}>开始一个 IP</h1>
+            <h1 className="asset-name text-[24px]" style={{ color: "var(--ink)" }}>新建画布</h1>
             <p className="text-[12px] mt-1" style={{ color: "var(--ink-2)" }}>
-              选一套内置工作流，节点已经排好，填照片就能跑；也可以从空白画布自己搭。
+              挑个模板，节点和提示词都排好了，传张照片就能跑。也可以从空白画布自己搭。
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -147,7 +136,7 @@ function ProjectsPageInner() {
                 className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] text-[12.5px]"
                 style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
               >
-                <Settings2 className="w-3.5 h-3.5" /> 全局内容管理
+                <Settings2 className="w-3.5 h-3.5" /> 官方内容管理
               </Link>
             )}
           </div>
@@ -207,7 +196,7 @@ function ProjectsPageInner() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="field-label mb-1.5">自由搭建</div>
+                  <div className="field-label mb-1.5">从零开始</div>
                   <h3 className="asset-name text-[18px]" style={{ color: "var(--ink)" }}>空白画布</h3>
                 </div>
                 <span className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "var(--surface-3)" }}>
@@ -217,7 +206,7 @@ function ProjectsPageInner() {
                 </span>
               </div>
               <p className="mt-2.5 text-[12px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
-                自己拖节点、自己连线。适合已经想清楚要什么的老手。
+                自己拖节点、自己连线，从一张白纸开始。
               </p>
             </button>
           </div>
@@ -232,7 +221,7 @@ function ProjectsPageInner() {
           <div className="flex items-baseline gap-3 mb-4">
             <h2 className="asset-name text-[20px]" style={{ color: "var(--ink)" }}>官方示例</h2>
             <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>
-              做完的成品，素材都在。点开会复制一份到你的画布，原示例不受影响
+              做完的成品，素材都在。点开会复制一份到你的画布，不影响原来那份
             </span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -297,8 +286,8 @@ function ProjectsPageInner() {
         ) : projects.length === 0 ? (
           <div className="ledger-card p-10 text-center">
             <Sparkles className="w-6 h-6 mx-auto mb-3" style={{ color: "var(--ink-4)" }} />
-            <p className="text-[14px] font-semibold mb-1" style={{ color: "var(--ink)" }}>还没有 IP 项目</p>
-            <p className="text-[12px]" style={{ color: "var(--ink-2)" }}>从上面挑一套工作流模板，几分钟就能出第一组形象。</p>
+            <p className="text-[14px] font-semibold mb-1" style={{ color: "var(--ink)" }}>这里还是空的</p>
+            <p className="text-[12px]" style={{ color: "var(--ink-2)" }}>从上面挑个模板开始，或者用空白画布自己搭。</p>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -334,7 +323,7 @@ function ProjectsPageInner() {
                       <span className="reg truncate" title={p.publishedAvatarId ? `资产编号 ${p.publishedAvatarId}` : undefined}>
                         {p.publishedAvatarId ?? "未发布"}
                       </span>
-                      <span className="text-[11px] shrink-0" style={{ color: "var(--ink-3)" }}>{formatWhen(p.updatedAt)}</span>
+                      <span className="text-[11px] shrink-0" style={{ color: "var(--ink-3)" }}>{formatDateTime(p.updatedAt)}</span>
                     </div>
                   </div>
                 </Link>
@@ -349,7 +338,7 @@ function ProjectsPageInner() {
                   <button
                     onClick={() => setPendingDelete(p)}
                     className="p-1.5 rounded-lg transition hover:bg-[var(--err-soft)]"
-                    title="删除项目"
+                    title="删除这张画布"
                     aria-label={`删除项目 ${p.name}`}
                   >
                     <Trash2 className="w-3.5 h-3.5" style={{ color: "var(--ink-3)" }} />
@@ -363,7 +352,7 @@ function ProjectsPageInner() {
 
       <Modal
         open={pendingDelete !== null}
-        title="删除这个项目？"
+        title="删除这张画布？"
         onCancel={() => setPendingDelete(null)}
         onOk={() => void confirmDelete()}
         okText={deleting ? "删除中…" : "确认删除"}

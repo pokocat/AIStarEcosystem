@@ -11,6 +11,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { useHubData } from "@/components/hub/data";
 import { AssetPortrait, Badge, Card, EmptyState, HubScreen, LoadingBlock, NavBar, RegNo } from "@/components/hub/ui";
 import type { BadgeTone } from "@/components/hub/ui";
+import { formatDateTime } from "@/lib/datetime";
 
 const CELEBRITY_URL = process.env.NEXT_PUBLIC_CELEBRITY_URL || "https://celebrity.aibuzz.cn";
 
@@ -94,7 +95,7 @@ export default function StarGrantPage({ params }: { params: Promise<{ id: string
             {g.statusUpdatedAt && (
               <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
                 <span style={{ flexShrink: 0, width: 62, color: "var(--ink-3)" }}>状态更新于</span>
-                <span className="mono" style={{ fontWeight: 600 }}>{g.statusUpdatedAt.slice(0, 10)}</span>
+                <span className="mono" style={{ fontWeight: 600 }}>{formatDateTime(g.statusUpdatedAt)}</span>
               </div>
             )}
           </div>

@@ -42,14 +42,14 @@ function Host({ projectId }: { projectId: string }) {
   const [publishOpen, setPublishOpen] = React.useState(false);
   const { message } = AntdApp.useApp();
 
-  // 「存为全局示例」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
+  // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
   // 本 app 不挂共享 AuthProvider（它自带一套鉴权栈），所以这里读 aiavatar 自己的
   // identity。搬过来的画布**只有这一处**用到登录态，也是整个 vendored canvas 目录
   // 里唯一与鉴权有关的地方 —— 为它再挂一套 AuthProvider 得不偿失（两套状态机、
   // mock 模式还会失效）。判定逻辑复用 proto/api 的 isOperatorRole，与内嵌运营后台同源。
   const identity = useIdentity();
-  // v0.192 收敛到超管：存为全局示例会出现在**所有人**的工作流目录里，
+  // v0.192 收敛到超管：存为官方内容会出现在**所有人**的「新建画布」那一排里，
   // 一键生效、无复核、素材还复制进平台自有存储。与服务端
   // InAppOperatorGuard.requireSuperAdmin 对齐 —— 两边不一致的话，
   // 运营会看到一个点了必然 403 的按钮。
@@ -90,7 +90,7 @@ function Host({ projectId }: { projectId: string }) {
     try {
       // 先把当前画布存下来再快照，**存不上就不发**（同发布资产那条闸，见 publish-gate.ts）：
       // 服务端读的是库里那份文档，存失败 / 撞上别处的编辑还继续发的话，
-      // 推给全平台的是**上一版**，而界面刚说完「已存为全局模板」——两边都不报错，最难查。
+      // 推给全平台的是**上一版**，而界面刚说完「已存为官方模板」——两边都不报错，最难查。
       const demo = await publishWithLatestDoc(saveNow, () =>
         IpStudioApi.publishAsDemo(projectId, {
           demoId: demoTarget || undefined,   // 空 = 新建一条
@@ -101,11 +101,11 @@ function Host({ projectId }: { projectId: string }) {
       );
       setDemoOpen(false);
       const what = demoKind === "template"
-        ? `全局模板「${demo.name}」，所有人在「开始一个 IP」里都能选到`
-        : `全局示例「${demo.name}」，所有人在画布列表里都能打开`;
+        ? `官方模板「${demo.name}」，所有人在「新建画布」那一排都能选到`
+        : `官方示例「${demo.name}」，所有人在画布列表里都能打开`;
       message.success(demoTarget ? `已更新${what}` : `已存为${what}`);
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "存为示例没成功");
+      message.error(e instanceof Error ? e.message : "没存上，再试一次");
     } finally {
       setSavingDemo(false);
     }
@@ -143,8 +143,8 @@ function Host({ projectId }: { projectId: string }) {
     setModelsUnavailableHandler(() => {
       message.warning(
         serverModelsLoaded()
-          ? "平台还没有可用的模型，生成暂时用不了 —— 请联系管理员在后台配置。"
-          : "模型列表没加载上，刷新页面再试。",
+          ? "平台还没配可用的模型，现在生成不了。找管理员在后台加一个。"
+          : "模型列表没加载上，刷新页面再试",
       );
     });
     return () => setModelsUnavailableHandler(null);
@@ -162,10 +162,10 @@ function Host({ projectId }: { projectId: string }) {
           disabled={savingDemo}
           className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
           style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
-          title="把这张画布连素材复制一份存成全局示例，新用户一进工作流目录就能看到效果"
+          title="把这张画布存一份给所有用户，在「新建画布」那一排能选到"
         >
           <Star className="w-3.5 h-3.5 shrink-0" />
-          存为全局示例
+          存为官方内容
         </button>
       )}
       {saveState !== "idle" && (
@@ -188,7 +188,7 @@ function Host({ projectId }: { projectId: string }) {
           onClick={() => void retrySave()}
           className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
           style={{ background: "var(--err-soft)", color: "var(--err)" }}
-          title="再试一次保存。改动还在这个页面上，别关它"
+          title="再存一次。改动还在这个页面上，先别关"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           重试保存
@@ -200,7 +200,7 @@ function Host({ projectId }: { projectId: string }) {
           href={`/assets/${publishedAvatarId}`}
                     className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[220px]"
           style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
-          title={`已发布为 ${publishedAvatarId}，点开去数字资产平台查看`}
+          title={`已发布为 ${publishedAvatarId}，点开去资产库看`}
         >
           <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">已发布 · {publishedAvatarId}</span>
@@ -270,10 +270,10 @@ function Host({ projectId }: { projectId: string }) {
           这里填的名字，画布标题常常还是「未命名 IP 项目」，不给改就是一排「未命名」。 */}
       <Modal
         open={demoOpen}
-        title="存为全局示例"
+        title="存为官方内容"
         onCancel={() => setDemoOpen(false)}
         onOk={() => void saveAsDemo()}
-        okText={savingDemo ? "保存中…" : "确认存为示例"}
+        okText={savingDemo ? "保存中…" : "确认"}
         cancelText="取消"
         okButtonProps={{ loading: savingDemo, disabled: !demoName.trim() }}
         cancelButtonProps={{ disabled: savingDemo }}
@@ -286,13 +286,13 @@ function Host({ projectId }: { projectId: string }) {
           <KindChoice
             active={demoKind === "template"}
             title="存成模板"
-            hint="只共享工作流：节点怎么排、提示词怎么写。素材不跟着走，用户填自己的。出现在「开始一个 IP」那一排。"
+            hint="只给工作流：节点怎么排、提示词怎么写。素材不跟着走，用户填自己的。出现在「新建画布」那一排。"
             onClick={() => setDemoKind("template")}
           />
           <KindChoice
             active={demoKind === "example"}
             title="存成示例"
-            hint="连素材一起复制：用户点开就能看见这条链做完长什么样。出现在画布列表里，标「官方示例」。"
+            hint="连素材一起给：用户点开就能看见做完长什么样。出现在画布列表里，标「官方示例」。"
             onClick={() => setDemoKind("example")}
           />
         </div>
@@ -329,7 +329,7 @@ function Host({ projectId }: { projectId: string }) {
         <input
           value={demoName}
           onChange={(e) => setDemoName(e.target.value)}
-          placeholder="目录里显示的名字"
+          placeholder="别人看到的名字"
           autoFocus
           style={DEMO_FIELD}
         />
@@ -339,7 +339,7 @@ function Host({ projectId }: { projectId: string }) {
         <input
           value={demoSummary}
           onChange={(e) => setDemoSummary(e.target.value)}
-          placeholder="这条示例能让人看到什么"
+          placeholder="这套工作流能做出什么"
           style={DEMO_FIELD}
         />
       </Modal>

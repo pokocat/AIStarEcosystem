@@ -10,7 +10,6 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -28,6 +27,7 @@ public class DapSupport {
     public static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private static final SecureRandom RND = new SecureRandom();
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     // ── 业务 id ────────────────────────────────────────────────
 
@@ -38,19 +38,19 @@ public class DapSupport {
 
     // ── 时间展示 ──────────────────────────────────────────────
 
-    /** 中文相对时间：刚刚 / N 分钟前 / N 小时前 / 昨天 / N 天前 / M-d。 */
-    public String relativeZh(Instant t) {
-        if (t == null) return "—";
-        Duration d = Duration.between(t, Instant.now());
-        long m = d.toMinutes();
-        if (m < 1) return "刚刚";
-        if (m < 60) return m + " 分钟前";
-        long h = d.toHours();
-        if (h < 24) return h + " 小时前";
-        long days = d.toDays();
-        if (days == 1) return "昨天";
-        if (days < 7) return days + " 天前";
-        return DateTimeFormatter.ofPattern("M 月 d 日").withZone(ZONE).format(t);
+    /**
+     * 展示用时间戳：{@code 2026-09-09 14:49:36}（北京时间）。
+     *
+     * <p>此前这里出的是相对时间（刚刚 / 3 小时前 / 昨天 / 9 月 5 日）。读着轻快，
+     * 但要对时间做任何事都得先在脑子里换算一遍 —— 对账、报障、跟同事说是哪一版，
+     * 「3 小时前」都不如一个能直接念出来的时间点。而且它跨了几个精度档
+     * （分钟 / 小时 / 天 / 月日），同一列里两条记录根本没法比先后。
+     *
+     * <p>方法名保留 {@code Zh} 后缀是因为它仍然是「服务端定好格式、前端原样显示」
+     * 的那一类字段（§4.5 的例外，dap 域一直如此）。
+     */
+    public String dateTimeZh(Instant t) {
+        return t == null ? "—" : STAMP.withZone(ZONE).format(t);
     }
 
     /** HH:mm（任务开始时间）。 */

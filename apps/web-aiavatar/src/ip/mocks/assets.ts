@@ -13,13 +13,13 @@ import type {
 export const MOCK_AVATARS: DapAvatar[] = [
   {
     id: "DH-2041", name: "林一", codename: "LIN-YI", path: "ai", archetype: "潮玩少年",
-    tagline: "一个你，不止一种想象", status: "finalized", updated: "2 小时前", fav: true,
+    tagline: "一个你，不止一种想象", status: "finalized", updated: "2026-09-07 14:20:00", fav: true,
     license: null, engine: "agnes-image", versions: 3, imageUrl: null,
     variantImages: [], ipId: null,
   },
   {
     id: "DH-2044", name: "苏禾", codename: "SU-HE", path: "ai", archetype: "商务通勤",
-    tagline: "把专业穿在身上", status: "finalized", updated: "昨天", fav: false,
+    tagline: "把专业穿在身上", status: "finalized", updated: "2026-09-06 10:12:00", fav: false,
     license: null, engine: "agnes-image", versions: 1, imageUrl: null,
     variantImages: [], ipId: null,
   },
@@ -27,7 +27,7 @@ export const MOCK_AVATARS: DapAvatar[] = [
   // 如果每个样例形象都已经有卡，这条路径在 mock 里就永远走不到（真踩过）。
   {
     id: "DH-2052", name: "阿岚", codename: "A-LAN", path: "ai", archetype: "潮玩少女",
-    tagline: "还没做过名片的那个", status: "finalized", updated: "3 天前", fav: false,
+    tagline: "还没做过名片的那个", status: "finalized", updated: "2026-09-04 09:15:00", fav: false,
     license: null, engine: "agnes-image", versions: 2, imageUrl: null,
     variantImages: [], ipId: null,
   },

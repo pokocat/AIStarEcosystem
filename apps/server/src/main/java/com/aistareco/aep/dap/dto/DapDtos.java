@@ -101,9 +101,9 @@ public final class DapDtos {
     // ── 版本时间线 ────────────────────────────────────────────
 
     public record VersionDto(String v, String t, String note, String kind, boolean cur, String imageUrl) {
-        public static VersionDto from(DapAvatarVersion ver, boolean cur, String relativeZh,
+        public static VersionDto from(DapAvatarVersion ver, boolean cur, String dateTimeZh,
                                       Function<String, String> keyToUrl) {
-            return new VersionDto("v" + ver.getV(), relativeZh, ver.getNote(), ver.getKind(), cur,
+            return new VersionDto("v" + ver.getV(), dateTimeZh, ver.getNote(), ver.getKind(), cur,
                     ver.getImageKey() != null ? keyToUrl.apply(ver.getImageKey()) : null);
         }
     }

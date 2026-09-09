@@ -31,10 +31,10 @@ const EMOTIONS: { frame: AtlasFrameKey; label: string; highlight?: boolean }[] =
 ];
 
 const SCENES: { no: string; frame: AtlasFrameKey; title: string; desc: string }[] = [
-  { no: "01", frame: "card", title: "个人商务名片", desc: "让客户记住你的样子，也记住你做什么。" },
-  { no: "02", frame: "drama", title: "AI 短剧", desc: "让你的角色走进故事，拥有自己的观众。" },
-  { no: "03", frame: "goods", title: "带货视频", desc: "让产品有个熟悉的讲述者，让品牌更容易被记住。" },
-  { no: "04", frame: "brand", title: "品牌合作", desc: "联名、代言、形象授权，让角色成为合作的起点。" },
+  { no: "01", frame: "card", title: "个人商务名片", desc: "客户记住你的样子，也记得住你做什么。" },
+  { no: "02", frame: "drama", title: "AI 短剧", desc: "角色走进故事，攒下自己的观众。" },
+  { no: "03", frame: "goods", title: "带货视频", desc: "产品有个熟面孔来讲，品牌好记得多。" },
+  { no: "04", frame: "brand", title: "品牌合作", desc: "联名、代言、形象授权，从这个角色谈起。" },
 ];
 
 /**
@@ -259,7 +259,7 @@ export function IpLanding() {
             你的 IP，还能走进这些地方。
           </h2>
           <p className="mt-3 text-center text-[14.5px] leading-[1.9]" style={{ color: "var(--ink-2)" }}>
-            以下为场景示意，相关能力将分阶段推出。
+            下面这些还在做，会陆续开出来。
           </p>
 
           {/* 2×2（approved.png）；宽容器下限住栅格宽度，免得 1:1 的图被拉成巨幅 */}
@@ -314,7 +314,7 @@ export function IpLanding() {
               从被记住，到被选择。
             </h2>
             <p className="mt-3 text-[14.5px] sm:text-[16px] leading-[1.9] max-w-2xl" style={{ color: "var(--ink)" }}>
-              围绕你的 IP，探索内容创作、商品推广与形象授权的合作机会。
+              内容创作、商品推广、形象授权，都可以从你的 IP 谈起。
             </p>
           </div>
         </div>

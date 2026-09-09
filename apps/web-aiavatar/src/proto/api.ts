@@ -165,6 +165,17 @@ export const auth = {
 };
 
 /** 内嵌运营角色判定（operatorRole wire 全小写）—— 数字人广场后台门禁用。 */
+/** mock 写路径用的「现在」。服务端 dap 域发的是 `2026-09-09 14:49:36`（北京时间），
+ *  mock 要给同一种形状，否则演示模式和真实模式的列表长得不一样。 */
+function nowStamp(): string {
+  const p = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "00";
+  return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}:${g("second")}`;
+}
+
 export function isOperatorRole(role?: string | null): boolean {
   return role === "operator" || role === "super_admin";
 }
@@ -691,7 +702,7 @@ function applyMockDerivDone(apply: { id: string; type: string }) {
   c.deriv = { ...c.deriv, [apply.type]: "done" };
   const inc: any = { atlas: 5, expr: 4, scene: 2, ward: 2, d3: 1, video: 1 };
   c.counts = { ...c.counts, [apply.type]: (c.counts?.[apply.type] || 0) + (inc[apply.type] || 1) };
-  c.updated = "刚刚";
+  c.updated = nowStamp();
 }
 
 /** 轮询任务直到终态；onTick 每次回调最新任务。失败时 reject ApiError。 */
@@ -788,7 +799,7 @@ export const AvatarApi = {
       const fresh = {
         ...base, id, name: body.name || "新建数字人", codename: "new-avatar", path: body.path,
         archetype: body.path === "real" ? "真人授权复刻" : "AI 原创形象", tagline: "创建中…",
-        status: "draft", updated: "刚刚", fav: false, versions: 1, license: null,
+        status: "draft", updated: "2026-09-07 16:30:00", fav: false, versions: 1, license: null,
         deriv: { atlas: "empty", expr: "empty", scene: "empty", ward: "empty", d3: "empty", video: "empty" },
         counts: { atlas: 0, expr: 0, scene: 0, ward: 0, d3: 0, video: 0 },
         def: { ...base.def, 设定语: "" },
@@ -801,7 +812,7 @@ export const AvatarApi = {
   patch: (id: string, body: Record<string, unknown>): Promise<any> => {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
-      if (c) Object.assign(c, body, { updated: "刚刚" });
+      if (c) Object.assign(c, body, { updated: "2026-09-07 16:30:00" });
       return mock(c || { id, ...body });
     }
     return apiFetch(`/avatars/${id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -830,7 +841,7 @@ export const AvatarApi = {
       if (i >= 0) {
         const [c] = mockTrash.splice(i, 1);
         delete c.deletedAt; delete c.daysLeft;
-        c.updated = "刚刚";
+        c.updated = nowStamp();
         mockChars.unshift(c);
         return mock(c);
       }
@@ -852,7 +863,7 @@ export const AvatarApi = {
       const c = mockChars.find((x) => x.id === id) || mockChars[0];
       const n = c?.versions || 3;
       return mock([
-        { v: `v${n}`, t: c?.updated || "刚刚", note: "完成创建 · 锁定标准图集", kind: "archive", cur: true },
+        { v: `v${n}`, t: c?.updated || nowStamp(), note: "完成创建 · 锁定标准图集", kind: "archive", cur: true },
         { v: `v${Math.max(1, n - 1)}`, t: "今天 11:20", note: "定稿确认 · 5 张标准图", kind: "finalize", cur: false },
         { v: "v1", t: "昨天 15:30", note: "初始选稿", kind: "init", cur: false },
       ]);
@@ -862,7 +873,7 @@ export const AvatarApi = {
   switchVersion: (id: string, version: number): Promise<any> => {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
-      if (c) { c.versions = (c.versions || 1) + 1; c.updated = "刚刚"; }
+      if (c) { c.versions = (c.versions || 1) + 1; c.updated = nowStamp(); }
       return mock(c || { id });
     }
     return apiFetch(`/avatars/${id}/versions/${version}/switch`, { method: "POST" });
@@ -870,7 +881,7 @@ export const AvatarApi = {
   forkVersion: (id: string, version: number): Promise<any> => {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
-      const copy = c ? { ...c, id: `DH-${mockSeq++}`, name: `${c.name} · v${version}`, counts: {}, deriv: {}, versions: 1, updated: "刚刚" } : { id: `DH-${mockSeq++}` };
+      const copy = c ? { ...c, id: `DH-${mockSeq++}`, name: `${c.name} · v${version}`, counts: {}, deriv: {}, versions: 1, updated: "2026-09-07 16:30:00" } : { id: `DH-${mockSeq++}` };
       mockChars.unshift(copy as any);
       return mock(copy);
     }
@@ -884,7 +895,7 @@ export const AvatarApi = {
     if (USE_MOCK) {
       const src = Mock.PUBLIC_AVATARS.find((c) => c.id === id) || mockPublicExtra.find((c) => c.id === id);
       const copy: any = src
-        ? { ...JSON.parse(JSON.stringify(src)), id: `DH-${mockSeq++}`, codename: `${src.codename || "avatar"}-copy`, fav: false, versions: 1, updated: "刚刚", managed: undefined }
+        ? { ...JSON.parse(JSON.stringify(src)), id: `DH-${mockSeq++}`, codename: `${src.codename || "avatar"}-copy`, fav: false, versions: 1, updated: "2026-09-07 16:30:00", managed: undefined }
         : { id: `DH-${mockSeq++}` };
       mockChars.unshift(copy);
       return mock(copy);
@@ -942,7 +953,7 @@ export const AvatarApi = {
   finalize: (id: string, body: { templateId?: string; confirmedShots?: string[]; archive?: boolean }): Promise<any> => {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
-      if (c) { c.status = body.archive ? "archived" : "finalized"; c.updated = "刚刚"; }
+      if (c) { c.status = body.archive ? "archived" : "finalized"; c.updated = nowStamp(); }
       return mock(c || { id, status: body.archive ? "archived" : "finalized" });
     }
     return apiFetch(`/avatars/${id}/finalize`, { method: "POST", body: JSON.stringify(body) });
@@ -972,7 +983,7 @@ export const AvatarApi = {
   pick: (id: string, variantIndex: number): Promise<any> => {
     if (USE_MOCK) {
       const c = mockChars.find((x) => x.id === id);
-      if (c) { c.status = "iterating"; c.updated = "刚刚"; }
+      if (c) { c.status = "iterating"; c.updated = nowStamp(); }
       return mock(c || { id, variantIndex });
     }
     return apiFetch(`/avatars/${id}/pick`, { method: "POST", body: JSON.stringify({ variantIndex }) });
@@ -1030,7 +1041,7 @@ export const AvatarApi = {
       if (c) {
         c.imageUrl = dataUrl;
         c.versions = (c.versions || 1) + 1;
-        c.updated = "刚刚";
+        c.updated = nowStamp();
         if (c.status === "iterating" || c.status === "pending") c.status = "refining";
       }
       const job = newMockJob({ kind: "精调 · 端上美化", char: id, charName: c?.name, engine: "端上图像引擎", mode: "local" });
@@ -1244,7 +1255,7 @@ function mockRegisterLicense(avatarId: string | null | undefined): string | unde
     verifiedAt: today.toISOString(),
     certificateVersion: 2,
   });
-  if (c) { c.license = id; c.updated = "刚刚"; }
+  if (c) { c.license = id; c.updated = nowStamp(); }
   return id;
 }
 
@@ -1632,7 +1643,7 @@ export const AssetApi = {
       const ip: Mock.AssetIp = {
         id: `IP-${mockSeq++}`, name: body.name, tagline: body.tagline || null, summary: body.summary || null,
         status: "ready", licenseId: null, licenseStatus: null, coverUrl: null,
-        hue: 210, versions: 1, updated: "刚刚",
+        hue: 210, versions: 1, updated: "2026-09-07 16:30:00",
         members: { characters: 0, scenes: 0, products: 0, voices: 0 }, works: 0,
       };
       mockIps.unshift(ip);
@@ -1647,7 +1658,7 @@ export const AssetApi = {
   patchIp: (id: string, body: Record<string, unknown>): Promise<Mock.AssetIp> => {
     if (USE_MOCK) {
       const ip = mockIps.find((x) => x.id === id);
-      if (ip) Object.assign(ip, body, { updated: "刚刚" });
+      if (ip) Object.assign(ip, body, { updated: "2026-09-07 16:30:00" });
       return mock(ip || ({ id } as any));
     }
     return apiFetch(`/assets/ips/${id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -1686,7 +1697,7 @@ export const AssetApi = {
     if (USE_MOCK) {
       const ip = mockIps.find((x) => x.id === id);
       const licId = ip?.licenseId || `LIC-${mockSeq++}`;
-      if (ip) { ip.licenseId = licId; ip.licenseStatus = "active"; ip.updated = "刚刚"; }
+      if (ip) { ip.licenseId = licId; ip.licenseStatus = "active"; ip.updated = nowStamp(); }
       const year = new Date().getFullYear();
       return mock({
         id: licId, subject: body?.subject || ip?.name || "IP 品牌授权", char: null, ipId: id,
@@ -1725,13 +1736,13 @@ export const AssetApi = {
         id: `SC-${mockSeq++}`, name: body.name || nameFromPrompt(body.prompt), description: body.description || null,
         source: "ai", space: body.space || "indoor", light: body.light || null,
         width: 1024, height: 640, spec: "1024 × 640", imageUrl: null, ipId: body.ipId || null,
-        status: "running", jobId: null, hue: 205, updated: "刚刚", variants: [], usageCount: 0,
+        status: "running", jobId: null, hue: 205, updated: "2026-09-07 16:30:00", variants: [], usageCount: 0,
       };
       mockScenes.unshift(s);
       const job = mockAssetJob("场景生成", s.id, s.name, () => {
         s.status = "ready";
         s.imageUrl = "/generated/avatar-previews/example-home-lifestyle.jpg";
-        s.updated = "刚刚";
+        s.updated = nowStamp();
       });
       s.jobId = job.id;
       return mock({ scene: s, job: { ...job } });
@@ -1746,7 +1757,7 @@ export const AssetApi = {
         description: meta.description || null, source: "shot", space: meta.space || "indoor",
         light: meta.light || null, width: 0, height: 0, spec: "—",
         imageUrl: URL.createObjectURL(file), ipId: meta.ipId || null,
-        status: "ready", jobId: null, hue: 200, updated: "刚刚", variants: [], usageCount: 0,
+        status: "ready", jobId: null, hue: 200, updated: "2026-09-07 16:30:00", variants: [], usageCount: 0,
       };
       mockScenes.unshift(s);
       return mock(s);
@@ -1759,7 +1770,7 @@ export const AssetApi = {
   patchScene: (id: string, body: Record<string, unknown>): Promise<Mock.SceneAsset> => {
     if (USE_MOCK) {
       const s = mockScenes.find((x) => x.id === id);
-      if (s) Object.assign(s, body, { updated: "刚刚" });
+      if (s) Object.assign(s, body, { updated: "2026-09-07 16:30:00" });
       return mock(s || ({ id } as any));
     }
     return apiFetch(`/assets/scenes/${id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -1784,7 +1795,7 @@ export const AssetApi = {
           const item = { label, url: s.imageUrl || "", spec: "1024 × 640" };
           if (at >= 0) s.variants[at] = item; else s.variants.push(item);
         });
-        s.updated = "刚刚";
+        s.updated = nowStamp();
       });
       return mock({ job: { ...job } });
     }
@@ -1816,13 +1827,13 @@ export const AssetApi = {
         id: `PD-${mockSeq++}`, name: body.name || nameFromPrompt(body.prompt), category: body.category || null,
         description: body.description || null, source: "ai", ipId: body.ipId || null,
         brandAuthorized: !!body.brandAuthorized, brandLicenseUntil: body.brandLicenseUntil || null,
-        imageUrl: null, angles: [], status: "running", jobId: null, hue: 26, updated: "刚刚", usageCount: 0,
+        imageUrl: null, angles: [], status: "running", jobId: null, hue: 26, updated: "2026-09-07 16:30:00", usageCount: 0,
       };
       mockProducts.unshift(p);
       const job = mockAssetJob("产品图生成", p.id, p.name, () => {
         p.status = "ready";
         p.angles = [{ label: "正面", url: "", spec: "1024 × 1024 · PNG" }];
-        p.updated = "刚刚";
+        p.updated = nowStamp();
       });
       p.jobId = job.id;
       return mock({ product: p, job: { ...job } });
@@ -1838,7 +1849,7 @@ export const AssetApi = {
         ipId: meta.ipId || null, brandAuthorized: !!meta.brandAuthorized,
         brandLicenseUntil: meta.brandLicenseUntil || null, imageUrl: url,
         angles: [{ label: "正面", url, spec: "原图" }],
-        status: "ready", jobId: null, hue: 26, updated: "刚刚", usageCount: 0,
+        status: "ready", jobId: null, hue: 26, updated: "2026-09-07 16:30:00", usageCount: 0,
       };
       mockProducts.unshift(p);
       return mock(p);
@@ -1851,7 +1862,7 @@ export const AssetApi = {
   patchProduct: (id: string, body: Record<string, unknown>): Promise<Mock.ProductAsset> => {
     if (USE_MOCK) {
       const p = mockProducts.find((x) => x.id === id);
-      if (p) Object.assign(p, body, { updated: "刚刚" });
+      if (p) Object.assign(p, body, { updated: "2026-09-07 16:30:00" });
       return mock(p || ({ id } as any));
     }
     return apiFetch(`/assets/products/${id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -1876,7 +1887,7 @@ export const AssetApi = {
           const item = { label, url: p.imageUrl || "", spec: "1024 × 1024 · PNG" };
           if (at >= 0) p.angles[at] = item; else p.angles.push(item);
         });
-        p.updated = "刚刚";
+        p.updated = nowStamp();
       });
       return mock({ job: { ...job } });
     }
@@ -1897,7 +1908,7 @@ export const AssetApi = {
       const s: Mock.StyleAsset = {
         id: `ST-${mockSeq++}`, name: body.name, summary: body.summary || null,
         promptEn: body.promptEn || null, tags: body.tags || [], source: body.source || "manual",
-        coverUrl: null, hue: 210, useCount: 0, updated: "刚刚",
+        coverUrl: null, hue: 210, useCount: 0, updated: "2026-09-07 16:30:00",
       };
       mockStyles.unshift(s);
       return mock(s);
@@ -1907,7 +1918,7 @@ export const AssetApi = {
   patchStyle: (id: string, body: Record<string, unknown>): Promise<Mock.StyleAsset> => {
     if (USE_MOCK) {
       const s = mockStyles.find((x) => x.id === id);
-      if (s) Object.assign(s, body, { updated: "刚刚" });
+      if (s) Object.assign(s, body, { updated: "2026-09-07 16:30:00" });
       return mock(s || ({ id } as any));
     }
     return apiFetch(`/assets/styles/${id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -2020,7 +2031,7 @@ export const ComposeApi = {
         ipId: avatar.ipId || product?.ipId || scene.ipId || null,
         ratio, count, status: "running", jobId: null,
         licenseNote: `已核对授权：${parts.join("，")}，可商用。`,
-        cost: MOCK_COST_PER_IMAGE * count, created: "刚刚", outputs: [], sources: [],
+        cost: MOCK_COST_PER_IMAGE * count, created: "2026-09-07 16:30:00", outputs: [], sources: [],
       };
       mockCompositions.unshift(comp);
       const pool = [avatar.imageUrl || "/plaza/PA-07-1.jpg", scene.imageUrl || "", "/plaza/PA-07-2.jpg", "/plaza/PA-06-1.jpg"];

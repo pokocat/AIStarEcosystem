@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { CardContact, CardContactKind, CardProfile } from "@/proto/card";
 import { buildVCard } from "@/proto/card";
+import { formatDateTime } from "@/lib/datetime";
 
 // 字标专用字体。只有名片公开页加载，不进全局 layout。
 const CARD_FONT =
@@ -880,7 +881,7 @@ const Contact: React.FC<{
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, marginTop: 26 }}>
-        <Mono color={ON_SLATE_3}>{`REG · ${card.regNo} · ${card.updatedAt}`}</Mono>
+        <Mono color={ON_SLATE_3}>{`REG · ${card.regNo} · ${formatDateTime(card.updatedAt)}`}</Mono>
         <Mono color={ON_SLATE_3}>形象为本人授权数字人 · 内容由本人确认</Mono>
         {card.demo && <span style={{ marginTop: 6 }}><Mono color="var(--primary-500)">演示数据</Mono></span>}
       </div>

@@ -85,7 +85,7 @@ public class DapAvatarService {
      */
     public AvatarDto get(String userId, String id) {
         DapAvatar a = required(userId, id);
-        return AvatarDto.from(a, support.relativeZh(a.getUpdatedAt()), storage::signedUrl,
+        return AvatarDto.from(a, support.dateTimeZh(a.getUpdatedAt()), storage::signedUrl,
                 ModerationDto.from(latestModeration(userId, id)));
     }
 
@@ -103,7 +103,7 @@ public class DapAvatarService {
     }
 
     public AvatarDto toDto(DapAvatar a) {
-        return AvatarDto.from(a, support.relativeZh(a.getUpdatedAt()), storage::signedUrl);
+        return AvatarDto.from(a, support.dateTimeZh(a.getUpdatedAt()), storage::signedUrl);
     }
 
     // ── 创建 / 修改 / 删除 ─────────────────────────────────────
@@ -184,7 +184,7 @@ public class DapAvatarService {
         List<VersionDto> out = new ArrayList<>();
         for (int i = 0; i < rows.size(); i++) {
             DapAvatarVersion v = rows.get(i);
-            out.add(VersionDto.from(v, i == 0, support.relativeZh(v.getCreatedAt()), storage::signedUrl));
+            out.add(VersionDto.from(v, i == 0, support.dateTimeZh(v.getCreatedAt()), storage::signedUrl));
         }
         return out;
     }

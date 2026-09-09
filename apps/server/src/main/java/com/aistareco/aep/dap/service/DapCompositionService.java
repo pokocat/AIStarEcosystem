@@ -104,7 +104,7 @@ public class DapCompositionService {
         List<CompositionOutputDto> outputs = outputRepo.findByCompositionIdOrderByIdxAsc(c.getId()).stream()
                 .map(o -> CompositionOutputDto.from(o, storage::signedUrl))
                 .toList();
-        return CompositionDto.from(c, support.relativeZh(c.getCreatedAt()), outputs, sourcesOf(userId, c));
+        return CompositionDto.from(c, support.dateTimeZh(c.getCreatedAt()), outputs, sourcesOf(userId, c));
     }
 
     private List<CompositionSourceDto> sourcesOf(String userId, DapComposition c) {

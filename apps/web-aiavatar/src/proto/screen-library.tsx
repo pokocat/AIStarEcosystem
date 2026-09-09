@@ -9,6 +9,7 @@ import { LiveJobBadge } from "./job-badge";
 import { MShell, MKit } from "./shell";
 import { MaterialSection } from "./material-status";
 import { toast } from "./toast";
+import { formatDateTime } from "@/lib/datetime";
 
 // ============================================================
 // 移动端 · 数字人库 Library + 资产详情 Detail
@@ -450,7 +451,7 @@ function MAppliedTo({ refs }) {
           hML('div', { style: { flex: 1, minWidth: 0 } },
             hML('div', { className: 'm-clip1', style: { fontSize: 13.5, fontWeight: 700 } }, r.ipName),
             hML('div', { style: { fontSize: 11, color: 'var(--ink-3)', marginTop: 2 } },
-              meta.label + (r.importedAt ? ' · ' + String(r.importedAt).slice(0, 10) + ' 引入' : ''))),
+              meta.label + (r.importedAt ? ' · ' + formatDateTime(String(r.importedAt)) + ' 引入' : ''))),
           hML(UI.Badge, { tone: r.status === 'active' ? 'ok' : 'mute' }, r.status === 'active' ? '活跃' : r.status));
       })));
 }

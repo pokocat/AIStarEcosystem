@@ -139,10 +139,10 @@ function LayoutSwitchRow() {
       }}
     >
       <span style={{ fontSize: 14, color: "var(--ink)" }}>
-        {next === "desktop" ? "切换到桌面版" : "切换到手机版"}
+        {next === "desktop" ? "切换到电脑版" : "切换到手机版"}
       </span>
       <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
-        {next === "desktop" ? "画布、宽表格更好用" : "回到这套竖排界面"}
+        {next === "desktop" ? "画布和宽表格更好用" : "回到竖排界面"}
       </span>
     </button>
   );

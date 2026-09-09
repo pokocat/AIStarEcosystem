@@ -77,7 +77,7 @@ export async function createProject(payload: IpCreateProjectRequest): Promise<Ip
       : { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
     const project: IpProject = {
       id: mockNextId("IPP"),
-      name: payload.name?.trim() || template?.name || "未命名 IP 项目",
+      name: payload.name?.trim() || template?.name || "未命名画布",
       ...(payload.templateId ? { templateId: payload.templateId } : {}),
       status: "draft",
       createdAt: nowIso(),
@@ -95,7 +95,7 @@ export async function createProject(payload: IpCreateProjectRequest): Promise<Ip
 export async function getProject(id: string): Promise<IpProject> {
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
-    if (!project) throw new Error("这个项目不存在或已被删除");
+    if (!project) throw new Error("这张画布不存在，或者已经删了");
     return mockDelay(project);
   }
   return apiFetch<IpProject>(`/v1/ip-studio/projects/${id}`);
@@ -104,7 +104,7 @@ export async function getProject(id: string): Promise<IpProject> {
 export async function updateProject(id: string, payload: IpUpdateProjectRequest): Promise<IpProject> {
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
-    if (!project) throw new Error("这个项目不存在或已被删除");
+    if (!project) throw new Error("这张画布不存在，或者已经删了");
     if (payload.name !== undefined) project.name = payload.name;
     if (payload.doc !== undefined) project.doc = payload.doc;
     project.updatedAt = nowIso();
@@ -128,7 +128,7 @@ export async function runNode(id: string, nodeId: string, doc?: IpProjectDoc): P
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
     const effective = doc ?? project?.doc;
-    if (!effective) throw new Error("这个项目不存在或已被删除");
+    if (!effective) throw new Error("这张画布不存在，或者已经删了");
     return mockDelay(mockStartRun(id, nodeId, effective), 220);
   }
   return apiFetch<IpRun>(`/v1/ip-studio/projects/${id}/nodes/${nodeId}/run`, {
@@ -165,7 +165,7 @@ export async function awaitRun(
     const run = await getRun(runId);
     onTick?.(run);
     if (run.status !== "running") return run;
-    if (Date.now() > deadline) throw new Error("这次生成等待超过 10 分钟，请稍后回到项目查看结果");
+    if (Date.now() > deadline) throw new Error("等了 10 分钟还没出结果，先去做别的，回头再来看这张画布");
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
@@ -175,8 +175,8 @@ export async function awaitRun(
 export async function publishProject(id: string, payload: IpPublishRequest): Promise<IpPublishResult> {
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
-    if (!project) throw new Error("这个项目不存在或已被删除");
-    if (project.status === "published") throw new Error("这个项目已经发布过了");
+    if (!project) throw new Error("这张画布不存在，或者已经删了");
+    if (project.status === "published") throw new Error("这张画布已经发布过了");
     const avatarId = `DH-${2100 + mockStore().projects.size}`;
     project.status = "published";
     project.publishedAvatarId = avatarId;
@@ -191,7 +191,7 @@ export async function publishProject(id: string, payload: IpPublishRequest): Pro
 }
 
 /**
- * 把当前项目存成**全局示例工作流**（仅平台运营）。
+ * 把当前项目存成**官方内容**（仅平台运营）。
  *
  * 内置模板是空工作流 —— 用户得自己拖照片、自己跑一遍才知道这条链能干什么。
  * 示例把素材和成图一起带过来，新用户一进来就看见效果。服务端会把素材**复制**一份到
@@ -213,7 +213,7 @@ export async function publishAsDemo(
   });
 }
 
-// ── 运营后台：全局内容管理 ──────────────────────────────────────
+// ── 运营后台：官方内容管理 ──────────────────────────────────────
 //
 // 目录那两个接口只查启用中的（给用户看）；这里要的是全集，含已下线的。
 // 权限在服务端：列表 / 编辑 / 下线是运营，删除是超管（「难删除、易下线」）。

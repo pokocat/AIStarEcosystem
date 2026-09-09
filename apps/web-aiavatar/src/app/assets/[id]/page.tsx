@@ -17,6 +17,7 @@ import type { Avatar, AvatarReference, Composition, License } from "@/proto/data
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
 import { AssetPortrait, Badge, Card, EmptyState, HubScreen, ListRow, LoadingBlock, NavBar, SectionHeader } from "@/components/hub/ui";
+import { formatDateTime } from "@/lib/datetime";
 
 const APP_LABEL: Record<string, string> = { music: "音乐", drama: "短剧" };
 const VIDEO_RE = /\.(mp4|webm|mov|m4v)(\?|$)/i;
@@ -193,13 +194,13 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
   const usageKnown = settled(refs) && settled(compositions) && settled(cards);
   const license = licenses.data.find((l) => l.char === c.id) || null;
   const usedIn = [
-    ...refs.data.map((r) => ({ key: `ref-${r.app}-${r.ipId}`, tag: APP_LABEL[r.app] || r.app, title: `艺人「${r.ipName}」的形象`, when: (r.importedAt || "").slice(0, 10), href: undefined as string | undefined })),
+    ...refs.data.map((r) => ({ key: `ref-${r.app}-${r.ipId}`, tag: APP_LABEL[r.app] || r.app, title: `艺人「${r.ipName}」的形象`, when: formatDateTime(r.importedAt), href: undefined as string | undefined })),
     ...compositions.data.filter((cp) => cp.avatarId === c.id).map((cp) => ({ key: `cp-${cp.id}`, tag: "合成", title: "合成出片", when: cp.created, href: undefined as string | undefined })),
     ...cards.data.map((cd) => ({
       key: `card-${cd.id}`,
       tag: "名片",
       title: cd.status === "published" ? `名片 ${cd.publicUrl}` : `名片 ${cd.publicUrl}（草稿）`,
-      when: (cd.publishedAt || cd.updatedAt || "").slice(0, 10),
+      when: formatDateTime(cd.publishedAt || cd.updatedAt),
       href: "/cards",
     })),
   ];
@@ -285,7 +286,7 @@ export default function AssetCardPage({ params }: { params: Promise<{ id: string
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <span style={{ fontSize: 14.5, fontWeight: 800 }}>换一个样子看看</span>
-              <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>点一下即可切换</span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>点一下切换</span>
             </div>
             {derivs.error && (
               <div style={{ marginBottom: 10, fontSize: 11.5, color: "var(--err)" }}>
