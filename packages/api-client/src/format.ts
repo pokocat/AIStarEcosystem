@@ -72,3 +72,24 @@ export function formatDuration(totalSec: number): string {
 function trimZero(n: number): string {
   return n.toFixed(1).replace(/\.0$/, "");
 }
+
+/**
+ * 时间戳 → `2026-09-09 14:49:36`（浏览器本地时区）。§4.8 全站唯一的时间显示。
+ *
+ * 别再写 `iso.slice(0, 10)`：它切的是 **UTC** 那一段，晚上八点之后落库的东西
+ * 在 +08 的页面上会显示成前一天。也别再拼「N 分钟前」：跨了四个精度档，
+ * 同一列里两条记录没法比先后，而且要对时间做事的人得先在脑子里换算一遍。
+ */
+export function formatDateTime(iso?: string | null, fallback = "—"): string {
+  if (!iso) return fallback;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return fallback;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  // 按 part 自己拼：不同运行时给的连接符不一样（`2026/09/09` vs `2026-09-09`）
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}

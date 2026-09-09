@@ -174,6 +174,24 @@
 - [ ] **系统性遗留：§4.7.7 的「递归重签 payload 里的资产 URL」本身会重签客户端写入的 URL**（2026-08-31 由上一条牵出，**不只 shorts，`DramaProject` 同源**）：裸 key 已堵，但攻击者若构造 `https://<我方 OSS/CDN 域>/media/<别人的key>` 这种**完整 URL**，`maybeSign` 仍会抽出 key 重签。彻底解法两条选一：① 产物由渲染管线在服务端直接回写草稿（客户端不再是产物的报告者）；② 签名时做归属校验（key → 所属账号，签之前比对 principal）。②更通用但要给 key 建归属索引。**在此之前不要再对外声称「客户端伪造只影响自己」。**
 - [ ] **（原始定位，供追溯）** —— PUT 保存可伪造逐镜产物（2026-08-31 由 v0.143 评审顺带发现，v0.76/v0.133 起就存在）：`DramaShortService.saveShort` 整份接收客户端 `data`，只剥 `assembled` 与客户端音频，**不清 `flow` / `videoUrl` / `frameUrl` / `jobId`**；`DramaShortAssembleService.buildPlan` 又只凭 `flow=done` + 非空 `videoUrl` 就接受镜头，不校验该 URL 是否来自本用户本草稿的成功渲染任务（`MaterialVideoJob`）。伪造 `{"flow":"done","videoUrl":"/cdn/<已知平台视频>.mp4"}` 即可跳过逐镜出片扣费直接总装成片（外部域名被白名单挡住，平台 CDN / 相对路径可利用）。修法：产物字段一律以服务端为真值（保存时按 shot id 保留库内旧值、忽略客户端传入），总装前按 `MaterialVideoJob`（owner + 本草稿 + 成功态）核验每镜视频出处。注意 `DramaShortServiceTest` 现有用例把「保存后 doneCount=1」当正确结果断言，修时要同步改。
 
+## 2026-09-09 · 时间显示与文案统一（v0.194 立规，存量待清）
+
+规约已写进 `AGENTS.md` §4.8（时间字段）与 §8「UI 文案 · 不是翻译腔」，`§9 验收` 里有三条
+可执行 grep。**aiavatar 全线已清、四条门禁 0 命中**；下面是扫出来的存量，新代码不许再加。
+
+- [ ] **服务端还有 6 处相对时间**（`FanActivityDto` / `PlatformDto` / `NotificationService` /
+      `DramaBrainstormService` / `DramaDistributionService` / `DramaProjectService` /
+      `DramaShortService`）—— 都是「N 分钟前 / N 小时前 / N 天前」直接发到 wire 上，
+      前端改不了格式（§4.8 明令新字段不许这么加，这批是存量）。dap 域那一处已在 v0.194
+      改成 `dateTimeZh`，改法照抄即可：一个方法改完，它的全部调用点跟着好。
+      牵动 music / drama / celebrity 三条线的列表页，**要连前端一起验**，故单独排期。
+- [ ] **`web-music` / `web-drama` 的 `src/translations.ts`** 里还有整段营销腔
+      （「打造专属 IP 形象」「智能推荐算法助力内容引爆」「一站式完成」）。它是 §4.6 已
+      tombstone 的遗留中英字典，**理论上没有活引用** —— 清理时先确认真没人读，
+      能整个删掉就别改文案（改了等于给要退役的文件返工）。
+- [ ] **`/studio` 老 SPA（约 11k 行）的文案没过一遍**。它按既有双轨逐屏迁出，
+      现在整体重写等于给要退役的代码返工；**迁一屏就顺手按 §8 清一屏**。
+
 ## 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
 
 - [x] ~~**@Id 落到 static 常量上，服务重启循环、API 全挂**~~ **已修并加网**，2026-09-09：

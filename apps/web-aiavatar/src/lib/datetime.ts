@@ -9,18 +9,7 @@
 // 相对时间（「3 小时前」）也一并退役：它读着轻快，但要对时间做任何事
 // （对账、报障、跟同事说是哪一版）都得先在脑子里换算一遍。
 
-const FMT = new Intl.DateTimeFormat("zh-CN", {
-  year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", second: "2-digit",
-  hour12: false,
-});
-
-/** `2026-09-09 14:49:36`。解析不出来返回 `fallback`（默认 `—`），不显示 `Invalid Date`。 */
-export function formatDateTime(iso?: string | null, fallback = "—"): string {
-  if (!iso) return fallback;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return fallback;
-  const p = Object.fromEntries(FMT.formatToParts(d).map((x) => [x.type, x.value]));
-  // 不同运行时给的连接符不一样（`2026/09/09` vs `2026-09-09`），按 part 自己拼稳当
-  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
-}
+// 实现在共享包（`packages/api-client/src/format.ts`）—— 它跟 formatCredits /
+// formatDuration 是同一类东西，五个 app 都要用，不该有五份。这里只转出去，
+// 好处是本 app 的调用点仍写 `@/lib/datetime`，不必每个页面都从 api-client 引。
+export { formatDateTime } from "@ai-star-eco/api-client";

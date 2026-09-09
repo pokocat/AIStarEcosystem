@@ -31,7 +31,7 @@ import {
 } from "@/components/common";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { ArtistsApi } from "@/api";
-import { ApiError } from "@ai-star-eco/api-client";
+import { formatDateTime, ApiError } from "@ai-star-eco/api-client";
 import { ImportAvatarDialog } from "../_dialogs/ImportAvatarDialog";
 import {
   formatCny,
@@ -218,7 +218,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
           }}
         >
           <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", letterSpacing: 0.4 }}>
-            创建 {a.createdAt.slice(0, 10)} · 最近活跃 {a.lastActive.slice(0, 10)}
+            创建 {formatDateTime(a.createdAt)} · 最近活跃 {formatDateTime(a.lastActive)}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <Button

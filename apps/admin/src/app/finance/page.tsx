@@ -25,7 +25,7 @@ export default function FinanceConsolePage() {
       <div className="admin-page space-y-6">
         <PageHeader
           title="资金财务控制台"
-          description="真实资金账务（FINANCE_ADMIN 专属，与积分运营隔离）—— 充值、退款、对账、结算一站式。"
+          description="真实资金账务（FINANCE_ADMIN 专属，与积分运营隔离）：充值、退款、对账、结算。"
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {MODULES.map((m) => (

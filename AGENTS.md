@@ -19,13 +19,15 @@
 
 - 后端 server: Spring Boot 3.3.5 + Java 17，port **8080**，H2 (dev) / MySQL (prod)
 - 五个新 web app: **web-music**（3010）/ **web-drama**（3011）/ **web-celebrity**（3012）/ **web-aiavatar**（3013，数字资产平台 · 六类资产 **+ AI IP 工作台**）/ **web-star**（3014，明星商务工作台）
-  - **web-aiavatar 一个应用两套形态（v0.190）**：<1024px 是原来的移动端 H5（480px 列 + 底部 tab 栏），≥1024px 是桌面面（52px 深群青顶栏 + 1120px 内容 + 无限画布）。**只有一套路由**，靠响应式 CSS 分流；`(mobile)/x` 与 `(desktop)/x` 会解析到同一个 URL，Next 不允许。画布那一页例外，用 JS 闸 + `dynamic({ssr:false})`——CSS 藏起来组件照样 mount、照样下 15k 行的 chunk。原 `apps/web-ipstudio`（3015）已删除，`ipstudio.aibuzz.cn` 保留为 308 跳转。
+  - **web-aiavatar 一个应用两套形态（v0.190，v0.193 改判定）**：手机端 H5（480px 列 + 底部 tab 栏）与桌面面（52px 深群青顶栏 + 1120px 内容 + 无限画布）。**只有一套路由**（`(mobile)/x` 与 `(desktop)/x` 会解析到同一个 URL，Next 不允许）。
+    **形态的真值是 `<html data-layout>`，CSS 与 JS 读同一个**（`src/shell/layout-mode.ts`）：用户显式选过（「我的 → 切换到电脑版」）以他为准，没选过按 `matchMedia(min-width: 960px)`。**新增桌面样式写 `html[data-layout="desktop"] xxx`，不要写 `@media`** —— 媒体查询绕过用户的选择。断点是 960 不是 1024：手机浏览器的「请求桌面版网站」会忽略 viewport meta、改用约 980px 的布局视口，卡 1024 就等于那个开关不生效（真实反馈）。
+    画布那一页的设备判定是**柔性提示不是拦路**：手机上先给一屏说明，但主按钮是「仍然在手机上打开」。仍走 `dynamic({ssr:false})`，chunk 只有真进画布才下（CSS 藏起来组件照样 mount、照样下 15k 行）。原 `apps/web-ipstudio`（3015）已删除，`ipstudio.aibuzz.cn` 保留为 308 跳转。
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 统一账号中心 **独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)**（Spring Boot 3.3.5 + Spring Authorization Server，本地 `./mvnw spring-boot:run` 起 **8090**，生产 `id.aibuzz.cn`；建议 clone 到本仓同级的 `../aibuzz-id`）：全生态 OIDC 身份源（RS256 + JWKS），**v0.149 P1 落地 + 本仓 P2 接入完成，已于 2026-09-05 上线**；设计真源 [`docs/unified-identity-plan.md`](docs/unified-identity-plan.md)。**身份只有一份 uid，产品侧建档自动、开通显式，权益真值永远在产品侧**，账号中心不做任何「开通」写操作
 - 子产品开通 **enrollment**（v0.149）：「能进哪个子产品」的真值是 `product_enrollment` 表，**后端真拦** —— `EnrollmentGuard` 按 `X-App-Code` 请求头（或 `/api/star`→star、`/api/v1`→aiavatar 前缀）把请求映射到子产品，无 ACTIVE 开通记录 → 403 `PRODUCT_NOT_ENROLLED`，缺头 → 403 `APP_CODE_REQUIRED`；开关 `AEP_ENROLLMENT_ENFORCE` 默认 true，**只允许测试关闭**。`MeDto.platforms` 退化为 active enrollment 的兼容投影（无 enrollment 行才回落读旧 `aep_users.platforms` CSV）。激活码兑换只有一条路径（`EnrollmentService`）：**条件更新占码**（`UPDATE license_key ... WHERE status='CREATED'`，影响 1 行才继续）+ `entitlement_grant` 的 `UNIQUE(source, source_reference)` 双闸，杜绝并发兑换发两份积分；调用方指定的产品不在批次授权范围内先判后占、不烧码。契约见 `specs/BUSINESS_RULES.md` §6.0 与 `apps/server/README.md`「子产品开通（enrollment）」。
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
 - 遗留 **apps/web**（3002，Next 14）已于 **Phase 5（2026-08-03）删除**；类型真源已全部迁至 `packages/types/src/*`，历史沿革见 `docs/VERSION_HISTORY.md`
-- `ipstudio` AI IP 工作台（v0.157 起；**v0.190 并入 `apps/web-aiavatar`**，真源 [`docs/ip-studio-plan.md`](docs/ip-studio-plan.md)）：前端不再是独立 app —— 画布在 `apps/web-aiavatar/src/canvas/`、胶水在 `src/canvas-bridge/`、工作台专属代码在 `src/ip/`，≥1024px 才渲染（`src/ip/canvas-gate.tsx` 的设备闸，手机给「请到电脑上打开」且**不下载画布 chunk**）。样式令牌挂 `.ip-surface` 作用域而非 `:root`（两个 app 有 30 个同名变量、约 22 个值不同，都放 :root 会互相刷掉；见 `src/styles/ip-desktop.css` 头注释）；Tailwind **只引 theme + utilities、不引 preflight**。**不新增产品码**，共用 aiavatar 开通、接口全挂 `/api/v1/ip-studio/**`。**画布是搬来的**（`basketikun/infinite-canvas`，MIT，整体 vendor 进 `apps/web-aiavatar/src/canvas`，见那儿的 README）——**从此由我们维护，上游更新要手动合；搬进来的文件尽量少改、改了留注释**，胶水都放 `src/canvas-bridge/`。画布文档 `doc` 是**客户端拥有**、服务端整存整取不改内容（形状 = `nodes[{id,type,title,position,width,height,metadata}]` + `connections[{fromNodeId,toNodeId}]` + `viewport{x,y,k}`）；节点是通用类型（图 / 文字 / 视频…），**要画什么写在节点自己的 `metadata.prompt` 里，参考图就是连进来的上游图**。生成链复用 dap（`DapMultimodalClient` / `FileStorageService` / `PromptService` / `CreditService`），prompt key `dap.ip_identity` / `dap.ip_canvas_image`，单价 `dap.ip-identity`=2 / `dap.ip-image`=8 后台可配。**出图的参考图由画布点名**（`POST projects/{id}/generate` 带 `refKeys`）—— 用户框了哪几张、蒙版编辑只针对当前这张，服务端从文档回溯猜不出来；服务端管 key 归属闸（`requireOwnedAssetKey`，非本人 key 直接 400 而不是跳过）、提示词模板、模型白名单、计价与结算。计费照 `DramaReferenceAssetService` 范式：preflight（引擎 / 提示词）在 hold 之前、整批一次 hold、单价快照进 `_exec`、每张成功 commit 后才写候选；**worker 派发必须挂在 `afterCommit`**（事务里直接派发会让 worker 查不到行、任务永远 `queued`，真联调踩过）。**画布出视频**走通用视频链（`MaterialVideoJobService` 分区 `APP_IPSTUDIO`），不是 dap 的数字人衍生视频 —— 那条要求先有 `avatarId`（必须发布之后）。**模型配置在后台不在浏览器**：`GET /v1/ip-studio/models` 的候选来自 `AiAppBinding` + `ai_app_endpoint_candidate`（同短剧线 `render/models`），用户能选模型但不能填 Key；上游那套「Key 存 IndexedDB 直连厂商」已剥掉。**签名 URL 有 TTL（1h）而画布一开半天**：文档里只存 `storageKey`，出 wire 由 `resignDocAssetUrls` 按 key 重签（节点级与 `metadata.images[]` 两处都要，漏一处就是「有的图好的有的裂」），前端图加载失败时走 `POST /assets/sign` 换新地址。**画布本地持久化已改成纯内存**（服务端唯一真值），**加载完成前不渲染画布** —— 否则画布认为项目是空的，自动保存会把服务端内容覆盖掉。**上游的插件市场已关**（默认从 CDN 拉第三方代码进页面执行；要开必须先有我方托管 + 签名 + 白名单）。发布零积分：建 `DapAvatar(path=ai, status=finalized)` + `DapLook(source=design)`，重复发布 409 `IP_PROJECT_ALREADY_PUBLISHED`。表 `ip_project` / `ip_run` 走 **V27** SQL 迁移。
+- `ipstudio` AI IP 工作台（v0.157 起；**v0.190 并入 `apps/web-aiavatar`**，真源 [`docs/ip-studio-plan.md`](docs/ip-studio-plan.md)）：前端不再是独立 app —— 画布在 `apps/web-aiavatar/src/canvas/`、胶水在 `src/canvas-bridge/`、工作台专属代码在 `src/ip/`；`src/ip/canvas-gate.tsx` 是**柔性**设备闸（手机上先提示「电脑上更好用」，但可以选择继续打开；不打开就不下画布 chunk）。样式令牌挂 `.ip-surface` 作用域而非 `:root`（两个 app 有 30 个同名变量、约 22 个值不同，都放 :root 会互相刷掉；见 `src/styles/ip-desktop.css` 头注释）；Tailwind **只引 theme + utilities、不引 preflight**。**不新增产品码**，共用 aiavatar 开通、接口全挂 `/api/v1/ip-studio/**`。**画布是搬来的**（`basketikun/infinite-canvas`，MIT，整体 vendor 进 `apps/web-aiavatar/src/canvas`，见那儿的 README）——**从此由我们维护，上游更新要手动合；搬进来的文件尽量少改、改了留注释**，胶水都放 `src/canvas-bridge/`。画布文档 `doc` 是**客户端拥有**、服务端整存整取不改内容（形状 = `nodes[{id,type,title,position,width,height,metadata}]` + `connections[{fromNodeId,toNodeId}]` + `viewport{x,y,k}`）；节点是通用类型（图 / 文字 / 视频…），**要画什么写在节点自己的 `metadata.prompt` 里，参考图就是连进来的上游图**。生成链复用 dap（`DapMultimodalClient` / `FileStorageService` / `PromptService` / `CreditService`），prompt key `dap.ip_identity` / `dap.ip_canvas_image`，单价 `dap.ip-identity`=2 / `dap.ip-image`=8 后台可配。**出图的参考图由画布点名**（`POST projects/{id}/generate` 带 `refKeys`）—— 用户框了哪几张、蒙版编辑只针对当前这张，服务端从文档回溯猜不出来；服务端管 key 归属闸（`requireOwnedAssetKey`，非本人 key 直接 400 而不是跳过）、提示词模板、模型白名单、计价与结算。计费照 `DramaReferenceAssetService` 范式：preflight（引擎 / 提示词）在 hold 之前、整批一次 hold、单价快照进 `_exec`、每张成功 commit 后才写候选；**worker 派发必须挂在 `afterCommit`**（事务里直接派发会让 worker 查不到行、任务永远 `queued`，真联调踩过）。**画布出视频**走通用视频链（`MaterialVideoJobService` 分区 `APP_IPSTUDIO`），不是 dap 的数字人衍生视频 —— 那条要求先有 `avatarId`（必须发布之后）。**模型配置在后台不在浏览器**：`GET /v1/ip-studio/models` 的候选来自 `AiAppBinding` + `ai_app_endpoint_candidate`（同短剧线 `render/models`），用户能选模型但不能填 Key；上游那套「Key 存 IndexedDB 直连厂商」已剥掉。**签名 URL 有 TTL（1h）而画布一开半天**：文档里只存 `storageKey`，出 wire 由 `resignDocAssetUrls` 按 key 重签（节点级与 `metadata.images[]` 两处都要，漏一处就是「有的图好的有的裂」），前端图加载失败时走 `POST /assets/sign` 换新地址。**画布本地持久化已改成纯内存**（服务端唯一真值），**加载完成前不渲染画布** —— 否则画布认为项目是空的，自动保存会把服务端内容覆盖掉。**上游的插件市场已关**（默认从 CDN 拉第三方代码进页面执行；要开必须先有我方托管 + 签名 + 白名单）。发布零积分：建 `DapAvatar(path=ai, status=finalized)` + `DapLook(source=design)`，重复发布 409 `IP_PROJECT_ALREADY_PUBLISHED`。表 `ip_project` / `ip_run` 走 **V27** SQL 迁移。
 
 - `clip` 口播视频线（v0.132）：服务端独立 clip 域供军师 BFF 通过 service token + `externalOwnerId` 调用；Scheme A 下本仓不扣军师用户积分。作品 DTO 用任务 `createdAt` 和终态 `completedAt` 分别提供开始生成/真实成片时间，发布修改项目不得篡改成片时间；`DELETE /api/me/clip/works/{id}` 会取消该项目全部活跃 job，并把项目软删进现有 30 天回收区。本人素材必须走受限 OSS V4 PostObject 单次直传 + `clip_upload_session` 持久化受理；owner + clientRequestId 唯一，HEAD 精确核验后异步深检与供应商提交，HEVC/H.265 形象视频先转 H.264/AAC，禁止因客户端超时重传或重复建任务。项目把可编辑文案 `segments` 与视觉 `shots[{startNo,endNo,role,assetId}]` 分层；`ClipShotPlan` 是报价、preflight、worker 与总装的唯一投影层。一个 shot 可让多句共用画面，但 `materialize()` 必须保留逐句 `captions[{sourceNo,text,durationSec}]`，总装按真实段音频总时长比例缩放每句时间窗、逐张叠加字幕，禁止把合并文案烧成一张两行省略图。石榴链路统一采用 **V2 音色 TTS → avatar 段 `createByVoiceV2` 音频驱动**，b-roll 与数字人段共享同一音频生成策略。`ClipCapturePolicy` 用 ffprobe 在供应商调用前硬验形象/声音素材；声音真实时长必须 `>2s`，形象视频 `>=5s`，较长时长只作质量建议。`/avatar/create` 的 `speakerId` 只是制作 demo 的选填参数，`authId` 也只在确需授权校验时选填：数字人主链必须允许一段视频直接启动 Avatar 训练，不得恢复 `CLIP_CONSENT_REQUIRED` 或先采声音硬闸。没有可用音色时，服务 best-effort 从形象视频提取原声创建基础 V2 speaker；提取/声音训练失败不回滚形象，专属声音是独立增强。数字分身必须按 `DapAvatar` 多条资产返回，项目保存精确 `avatarId/voiceId`，worker 只解析项目指定的 engineRef；新形象可复用已有 ready `DapVoice`，单个形象可独立删除，禁止静默退回最新形象。`AvatarDto.voiceSource` 必须用 `video|dedicated` 区分视频原声与用户主动补录，供端上准确展示训练进度和增强完成结果。形象 ready 即代表数字人创建完成；真正出片仍需 speaker，视频原声不可用时 preflight 引导补录。上传形象视频时 `ClipAvatarPreviewExtractor` 必须先抽取约 0.5 秒 JPEG 并写入 `DapAvatar.imageKey`，`AvatarDto.imagePreviewUrl` 返回签名地址；老记录缺图时 `view()` best-effort 回填。普通视频素材由 `ClipAssetThumbnailExtractor` 抽取独立 JPEG 到 `ClipAsset.thumbnailCdnKey`，`AssetDto.previewUrl` 对图片指向原图、对视频只指向缩略图，禁止把视频源 URL 冒充 image 预览；`AssetDto.contentUrl` 返回原始媒体短期签名地址，只供用户主动点开预览，不得用于列表自动加载。旧视频素材可在读取时 best-effort 补图，删除同步清理缩略图。模板固定片段由 admin preset asset + `tailClips.assetId` 配置，DTO 必须同步回传片段名称、秒数、封面、视频并把同一配置写入项目骨架；内置竖屏固定视频只补缺失配置。完成作品若缺缩略图，读取时从最终 MP4 补抽。该字段必须由独立 `V15` 迁移添加，禁止修改已执行的 V14 导致 Flyway 校验和漂移。微信 `tmp_*`/长哈希文件名在 DTO 层归一为可读默认名。删除全部分身时必须遍历并软删该 owner 下全部未删除的石榴 Avatar/Voice 版本，同时请求供应商删除各 engineRef，并清理原始素材和预览帧；所有石榴时效结果均先镜像我方存储，再由 `ClipAssemblyService` 归一为 720×1280 H.264/AAC、烧录逐句字幕、按 `subtitleStyle.aiWatermark` 可选烧录「AI 生成」（缺省关闭）、混 BGM、固定品牌尾卡并做亮度/响度/真峰值质量门。`AEP_CLIP_FORCE_MOCK=true` 只供不耗点数的确定性测试媒体，production/mysql 硬拒绝；测试总装仍永久烧录独立「测试演示」标识。媒体机器审核、本人素材的供应商质量实测与四平台真实代发仍是生产门槛。当前事实见 `docs/clip-avatar-video-plan.md`。
 - `clip` 配音预览与段级状态红线（v0.150）：`POST|GET /api/me/clip/projects/{id}/tts-preview` 一个项目只存一份预览（表 `clip_tts_preview`，**新迁移 V26**；编号横跨 `resources/db/migration/*.sql` 与 `src/main/java/db/migration/*.java` 两处，已执行的一律不改）。`timelineHash = sha256(voiceId + 每镜 no/role/文案)`，POST 幂等（同哈希且上次非 failed 直接返回已有结果，failed 允许重排一次），GET 只认当前这版文案、旧一版一律 404 `CLIP_TTS_PREVIEW_NOT_FOUND`。合成粒度必须是 `ClipShotPlan.materialize` 的**镜头**，与出片 tts 阶段同一套切分 —— 预览听到的就是成片会用的那条音频，段编号也因此与段级状态天然对齐。音频先镜像我方存储再出**短期签名 URL**，库里只存 key，签名 URL 既不落库也不进日志。没有可用音色 / 引擎未配置 / 供应商失败 / 拿不到可镜像的音频，一律 `status:"failed"` + 明确 `errorCode`，禁止用空 URL 或静音占位冒充成功（静音 WAV 只在 `AEP_CLIP_FORCE_MOCK` 的确定性测试媒体下产生）。`credits` 恒为 0：Scheme A 下 clip 域不碰钻石账本，试听只花石榴 `validPoint`。`GET /api/me/clip/jobs/{id}` 的 `segments[{no,role,status,errorCode?}]` 是 `segmentJobsJson` 的**只读投影**，不得新增第二处真值；出片失败必须落到具体那一段（第一段没留下产物的那一段）并带 `errorCode`；worker 没写过状态时返回空数组，让调用方回落整体进度。`script/ai-rewrite` 的 `scope:"all"` 里 `text` 是**改写/生成指令**（一句话 brief，≤500 字），按模板骨架逐段生成、不改段数不改 role、不动结尾固定段；真模型仍未接入，非 mock 网关一律 503 `CLIP_SCRIPT_ENGINE_NOT_CONFIGURED`，不许拿模板句冒充生成结果。
@@ -100,6 +102,7 @@ Aisingerecosystem/
 - **`cookies()` / `headers()` / `params` / `searchParams` 都是 Promise**，必须 `await`
 - 客户端组件读 `params` 用 `use(params)` (React 19) 或拆 server outer + client inner
 - 新 app 不属 workspace 时不要混 npm/pnpm；`pnpm-workspace.yaml` 纳入 `packages/*`、四个新 web app、`apps/admin`
+- **要在首帧之前跑的内联脚本，用裸 `<script>` 放 `<body>` 第一个子节点**，不要用 `next/script` 的 `beforeInteractive`（v0.193 实测）：后者先把脚本推进 `self.__next_s` 队列，等 app bootstrap 起来才真正插进 head —— 那时 `document.readyState` 已经是 `interactive`、应用标记全解析完了，很可能已经按错的形态画过一帧。裸 script 量到的是 `readyState: "loading"`。放 `<html>` 直下会报 hydration error（`<script>` 不能是 `<html>` 的子节点），放 `<body>` 里干净无报错；加 `async` 能消掉报错但也就不保证首帧前执行了
 
 ### Auth 多域规划
 
@@ -358,6 +361,28 @@ duration: 7820         → formatDuration       → "2h 10min"
 - service 把 `payloadJson` / JSON 文档里存的签名 URL 原样 `return`（未在出 wire 漏斗里
   `signer.maybeSign(...)` 递归重签、或未改存 cdnKey 派生）→ review reject（签名 TTL 过期会图裂，
   v0.98 教训，§4.7.7）。
+
+### 4.8 时间字段（v0.194+ 强制）
+
+**wire 上是 ISO 8601，展示统一 `yyyy-MM-dd HH:mm:ss`。** 与 §4.5「存原始值、格式化在
+展示层」是同一条道理的另一半。
+
+- **服务端**：DTO 出 wire 一律给 ISO 字符串（`Instant.toString()` / `OffsetDateTime`），
+  **不发预格式化的展示串**。dap 域的 `updated` 是历史例外（服务端算好中文），
+  新字段不许再这么加。
+- **前端**：一律 `formatDateTime()`（`apps/web-aiavatar/src/lib/datetime.ts`，
+  按浏览器本地时区），**禁止**页面自己拼。
+- **禁止相对时间**（「刚刚 / 3 小时前 / 昨天 / 上周」）。它读着轻快，但跨了四个精度档，
+  同一列里两条记录没法比先后；而且对账、报障、跟同事说是哪一版，都得先在脑子里换算。
+- **禁止 `iso.slice(0, 10)`**。它切的是 **UTC** 那一段 —— 晚上八点之后落库的东西
+  在 +08 的页面上显示的是**前一天**。这个 bug 在四个页面上活了很久没人发现，因为
+  「看起来是个日期」。
+- **mock 数据必须与服务端同形**：服务端发 ISO，mock 就发 ISO；服务端发格式化串
+  （dap 那种），mock 就发同格式的串。此前 mock 写「3 天前」而线上发的是别的东西，
+  演示模式和真实模式长得不一样。
+
+Review reject：新 DTO 字段发预格式化时间串 / 前端页面自己拼时间 / 出现
+`slice(0, 10)` 或「N 分钟前」/ mock 与服务端时间形状不一致 → reject。
 
 ---
 
@@ -636,7 +661,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
 
-### 8.0.1 排障与验证纪律（v0.184 起强制 —— 都是本仓真栽过、而且**栽过不止一次**的）
+### 8.0.1 排障与验证纪律（v0.184 起强制，v0.194 补到 11 条 —— 都是本仓真栽过、而且多数**栽过不止一次**的）
 
 > 这一节不是通则，是事故清单。每一条后面都跟着它是在哪一版、以什么形态发生的；
 > 再犯一次的成本已经量过了：一个 400 我猜了三轮（路径 / 别名 / Key 权限），全不对，
@@ -665,6 +690,10 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   「参考图没生效」的证据，连改两版（签名 URL → 未签名 URL、对公网域名签名）——
   而官方图生图示例（确实传了图）的响应**同样没有那个字段**。两版改动都不是对症的。
 - 可操作的判据：这个信号在**已知成功**的样本里是什么值？拿不到成功样本就别用它当证据。
+- **浏览器控制台是累积缓冲，改完代码要换个干净标签页再读**（v0.193 又栽一次）：
+  我看到的「script cannot be a child of html」其实是**上一次改动残留的旧消息**，
+  据它把方案换成了 `next/script`，而那个方案实测更差。同理：`preview_logs`、
+  `journalctl` 都要带时间窗。
 - **Review reject**：commit message 里写「因为观察到 X 所以改 Y」，但 X 没有对照样本 → reject。
 
 **③ 验证要走到用户屏幕那一步。**
@@ -703,6 +732,46 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
 **而单测是绿的** —— fixture 跟被测代码犯了同一个笔误，配成一对互相印证。
 - 跨端类型一律引 `@ai-star-eco/types`，不手抄。
 - fixture 要照**服务端 DTO** 写，不照被测代码写。
+- **mock 也要照服务端写**：mock 与真实响应形状不一致时，演示模式验收过了、
+  线上仍然坏（v0.194 的时间字段就是：mock 写「3 天前」，服务端发的是别的东西）。
+
+**⑧ 用脚本改代码时，锚点必须包住"不能被拆开的那一对"。**
+2026-09-09 生产事故：用 python 往 `IpDemoTemplate` 里插两个常量，锚点选的是
+`@Column(length = 32)`，而 `@Id` 在它上一行 —— 常量插进了 `@Id` 与 `id` 字段中间，
+`@Id` 就落到常量上去了。`Entity has no identifier` → EMF 建不起来 → 整个上下文起不来
+→ 服务重启 15 次、API 全挂 3 分钟。
+- **四道门禁一个都没拦住**：`compile` 过（注解放在常量上是合法 Java）、122 个 ipstudio
+  单测全是 mock 不碰 JPA 元模型、typecheck 与契约门不相干；唯一会炸的那批
+  `@SpringBootTest` 早就因为别的原因红着。
+- 做法：锚点取**整段**（注解 + 字段一起匹配），或者插在方法/类的边界上，不要插在
+  「注解和它标的东西」中间。改完 `git diff` 扫一眼被改的那几行上下文。
+- 现在有 `EntityIdentifierTest` 兜底（反射扫全部 `@Entity`），但那是这一类的事后网，
+  不是所有"脚本把配对拆散"都有网。
+
+**⑨ 不抛异常的失败，调用方必须判断返回值。**
+v0.192：`saveNow()` 明确返回 `saved / failed / conflict`（保存失败不抛），而
+「存为官方内容」只 `await saveNow()` 不看结果 —— 网络失败或版本冲突时照样发布，
+推给全平台的是**库里的上一版**，界面还说「已存为官方模板」。两边都不报错，最难查。
+- 判据：函数签名回的是**结果对象/联合类型**而不是 `void`，那它就是在告诉你「我会失败
+  但不抛」。`await` 完直接往下走 = 漏判。
+- 已有范式：`publishWithLatestDoc`（`canvas-bridge/publish-gate.ts`）—— 把「先存再发、
+  存不上就不发」收成一道闸，所有发布路径都走它。
+
+**⑩ 测试断言契约，不断言可视文案。**
+v0.194 改文案时 `IpDemoAdminTest` 红了 —— 它断言的是「示例不存在」这句话。文案本来就会
+改，错误码才是调用方依赖的东西。
+- 断错误码（`e.getCode()`）、断状态码、断结构；不断言可视文案。
+- 例外：**文案本身就是被测行为**时才断（如 §8.0 要求「未配置时必须明确报错而不是产假
+  数据」，那可以断关键词）。这种断言要在测试名里写清楚为什么。
+
+**⑪ 同一个字段名在不同类型上语义不同，"一刀切"必错。**
+v0.192：模板剥素材时无条件删 `metadata.content` —— 图 / 视频 / 音频节点的 `content`
+是派生地址（该删），**文字节点的 `content` 是正文**（删了模板里只剩一排空白方块）。
+同一次还漏删了 `runId` / `videoTaskId`，别人打开模板会去接**作者的**那次运行，被归属闸
+正确地拒掉，干净的模板变成一堆报错节点。
+- 批量删/改字段前，先按**类型**列一遍这个字段在各类型上分别是什么，再决定删哪些。
+- 「剥素材」这类操作要连**运行痕迹**一起剥（runId / taskId / status / errorDetails），
+  只删产物不删凭据，前端会判定「上次没跑完」并自动接续。
 
 ### 跨 app 约定
 
@@ -711,6 +780,25 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   - **不溢出**：任何可能变长或宽度受限的可视文字（表格单元格、卡片、标签、chip、按钮、徽标），必须约束宽度并防溢出——`maxWidth` +（父级）`minWidth:0` + `overflow:hidden` + `textOverflow:"ellipsis"`（单行）或允许换行；超出部分进 `title`/tooltip。不要假设文字一定短。
   - **反例**：`已出末帧 · 变化小`（暴露「变化」黑话 + `whiteSpace:nowrap` 无溢出兜底）。**正例**：可视 `首尾帧就绪`（定宽 + ellipsis），「运动幅度：小幅/中幅/大幅 + 运动描述」放 hover `title`。
   - Review reject：新增/改动 UI 出现内部黑话可视文案，或宽度受限处的可变长文字没做溢出约束 → reject。
+  - **不是翻译腔**（v0.194 起强制）：界面文字要是中文互联网产品**真会这么说**的话，
+    不是把英文产品词直译过来。用户实测点名的一条：「开始一个 IP」—— 那是 Start an IP，
+    中文产品这一栏就叫「新建」。判据不是"读得懂"，是"像不像人在这个界面上写的字"。
+    - **少数几个几乎总是错的词**：`打造`（→ 做 / 起一个）、`赋能`、`助力`、`一站式`、
+      `全方位`、`轻松`、`即可`（「点一下即可切换」→「点一下切换」）、`开启你的 X 之旅`。
+    - **开发词不要漏进界面**：`全局`（global → 官方 / 平台）、`实例`（→ 示例）、
+      `链`（→ 工作流）、`目录`（用户界面上没这个东西 → 说它实际长什么样，
+      如「「新建画布」那一排」）、`项目`（本仓已统一叫**画布**）。
+    - **排比是模板感最强的地方**：同一组卡片四条描述清一色「让……」、
+      清一色「不是 X，而是 Y」，读起来就是模板。改成各说各的具体事。
+    - **界面里不用 `——`**。它在正文里没问题，在按钮、提示、空态里是 AI 味最明显的标点，
+      换成逗号或句号。
+    - **同一个东西全站一个叫法**。改了名要全仓扫一遍，**包括服务端的报错文案、
+      模板/种子数据、mock 和注释里引用界面标签的地方** —— v0.191 把「项目」改成
+      「画布」，v0.194 才发现还有七八处没跟上。
+    - **不动的**：已定稿的品牌主标题与 slogan（如落地页「一个你，不止一种想象。」，
+      v0.152 定的），以及 §4.6 之外的专业术语。去 AI 味不等于把专业文本改口语。
+    - 拿不准就调 `shuorenhua` skill（`/Users/donis/.claude/skills/shuorenhua`）。
+  - Review reject：新增/改动 UI 出现上述任一类 → reject。
 - **shadcn 原语**：放在 `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
 - **`"use client"`**：新 client 组件保留
 - **新代码 API 形态**：`async function xxx(): Promise<T>`，聚合为 namespace 导出（`MusicApi`, `CelebrityZoneApi`, `MixcutApi`, …）
@@ -780,6 +868,25 @@ git diff --name-only | grep -q '^TODO.md$' || echo '⚠️ 本次若动了待办
 # 1) 文档与代码一致性
 git grep -nE 'PLATFORM_OPERATOR' -- '*.md'                  # 0 命中（FINANCE_ADMIN 已拆分落地，docs 提及它不再算 drift）
 git grep -nE 'port 300[01]' -- '*.md'                       # 0 命中
+
+# 1b) 时间字段（§4.8）与界面文案（§8）。**新代码必须 0 命中**；
+#     存量清理进度见 TODO.md「时间显示与文案统一」段，别把存量当成放行理由。
+git grep -nE '(publishedAt|updatedAt|createdAt|importedAt|lastActive)[^)]*\.slice\(0, ?10\)' \
+  -- 'apps/*/src/**'                                                    # 应 0 命中
+git grep -nE '"[^"]*(打造|赋能|助力|一站式|全方位|开启你的)[^"]*"' \
+  -- 'apps/*/src/**' ':!*/translations.ts' ':!*.test.*' ':!*/mocks/*' \
+  ':!*Seeder.java' ':!*/persona-studio.tsx' ':!*/proto/*'               # 应 0 命中
+#     相对时间：前端应 0 命中；服务端 6 处存量（drama / notification / fan 线）待清
+git grep -nE '(分钟|小时|天)前"' -- 'apps/*/src/**' ':!*/mocks/*' ':!*.test.*' ':!*/proto/*' \
+  ':!apps/server/*'
+
+# 排除项说明（改 grep 前先看这个，别把它们当命中）：
+#   · `translations.ts` 是 §4.6 已 tombstone 的遗留字典，不再维护
+#   · seed / mock 里的真实商品标题（如「【爱❤️助力】酒精湿巾」）是数据不是文案
+#   · `persona-studio.tsx` / `proto/card.ts` 里的「赋能、闭环、生态位」是**给用户看的
+#     反面例子**（人设编辑器的「避免这些词」占位）
+#   这几条已经写进上面的 pathspec —— 门禁要么 0 行要么真有问题，
+#   「每次都吐几行已知无害的」等于没有门禁
 
 # 2) 接口契约
 pnpm check:api-contract
