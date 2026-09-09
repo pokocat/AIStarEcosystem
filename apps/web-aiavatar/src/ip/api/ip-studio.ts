@@ -238,7 +238,14 @@ export async function setDemoEnabled(demoId: string, enabled: boolean): Promise<
   });
 }
 
-/** 真删，连素材副本一起。不可逆、没有回收站，所以服务端要超管。 */
-export async function deleteDemo(demoId: string): Promise<{ deleted: boolean }> {
+/**
+ * 真删，连素材副本一起。不可逆、没有回收站，所以服务端要超管。
+ *
+ * `assetsFailed > 0` = 库里的行删了但有素材没清掉（底层删除是 best-effort）。
+ * 必须如实说出来 —— 说「素材副本已删除」而实际留在存储里，就是假成功。
+ */
+export async function deleteDemo(
+  demoId: string,
+): Promise<{ deleted: boolean; assetsRemoved: number; assetsFailed: number }> {
   return apiFetch(`/v1/ip-studio/demos/${encodeURIComponent(demoId)}`, { method: "DELETE" });
 }

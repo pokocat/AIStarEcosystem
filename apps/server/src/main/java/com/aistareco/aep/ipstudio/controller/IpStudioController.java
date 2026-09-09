@@ -187,11 +187,15 @@ public class IpStudioController {
     public ApiResponse<JsonNode> deleteDemo(Authentication auth, @PathVariable String demoId) {
         operatorGuard.requireSuperAdmin(auth,
                 "删除全局内容会连同素材副本一起清掉且不可恢复，仅超级管理员可操作。先「下线」同样能让用户看不到。");
-        demos.deleteDemo(demoId);
+        var res = demos.deleteDemo(demoId);
         com.fasterxml.jackson.databind.node.ObjectNode out =
                 com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
         out.put("id", demoId);
         out.put("deleted", true);
+        // 素材清理是 best-effort（底层 delete 吞异常），所以**把数字如实发回去** ——
+        // 不然界面会说「及其素材副本已删除」，而实际上一个都没删掉（§8.0 不许假成功）。
+        out.put("assetsRemoved", res.removed());
+        out.put("assetsFailed", res.failed());
         return ApiResponse.of(out);
     }
 

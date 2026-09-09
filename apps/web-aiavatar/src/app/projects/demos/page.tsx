@@ -76,6 +76,8 @@ function DemosPageInner() {
     setBusy(row.id);
     try {
       await IpStudioApi.setDemoEnabled(row.id, !row.enabled);
+      // 作废在途的列表请求：慢的那次 GET 若在这之后返回，会把刚改的状态盖回旧值
+      reqRef.current++;
       setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: !r.enabled } : r)));
       toast(row.enabled ? `「${row.name}」已下线，用户看不到了` : `「${row.name}」已重新上线`, "ok");
     } catch (e) {
@@ -110,9 +112,17 @@ function DemosPageInner() {
     if (!pendingDelete) return;
     setBusy(pendingDelete.id);
     try {
-      await IpStudioApi.deleteDemo(pendingDelete.id);
+      const res = await IpStudioApi.deleteDemo(pendingDelete.id);
+      reqRef.current++;   // 作废在途的列表请求，别让旧响应把删掉的这条插回来
       setRows((list) => list.filter((r) => r.id !== pendingDelete.id));
-      toast(`「${pendingDelete.name}」及其素材副本已删除`, "ok");
+      // 素材清理是 best-effort，失败会被后端吞掉并照样返回成功 —— 所以按**它报回来的数字**
+      // 说话。说「素材副本已删除」而实际一个都没删，是假成功（§8.0）。
+      toast(
+        res.assetsFailed > 0
+          ? `「${pendingDelete.name}」已删除，但有 ${res.assetsFailed} 个素材没清掉，需要运维在存储里手动删`
+          : `「${pendingDelete.name}」及其素材副本（${res.assetsRemoved} 个）已删除`,
+        res.assetsFailed > 0 ? "warn" : "ok",
+      );
       setPendingDelete(null);
     } catch (e) {
       toast(e instanceof Error ? e.message : "删除失败", "warn");

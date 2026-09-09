@@ -156,10 +156,98 @@ class IpDemoAdminTest {
         assertTrue(at > 0, "packages/types 里没有 IpDemoAdmin —— 类型真源在那儿，不许在前端手抄一份");
         String body = src.substring(at, src.indexOf('}', at));
 
-        for (var c : com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpDemoAdminDto.class
-                .getRecordComponents()) {
-            assertTrue(body.contains(c.getName() + ":") || body.contains(c.getName() + "?:"),
-                    "DTO 有 " + c.getName() + "，前端 IpDemoAdmin 里没有 —— 出 wire 的字段前端读不到：\n" + body);
+        var comps = com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpDemoAdminDto.class.getRecordComponents();
+        java.util.Set<String> javaFields = new java.util.LinkedHashSet<>();
+        for (var c : comps) javaFields.add(c.getName());
+
+        // 前端有哪些字段：从 interface 体里抠 `name:` / `name?:`
+        java.util.Set<String> tsFields = new java.util.LinkedHashSet<>();
+        var m = java.util.regex.Pattern.compile("([A-Za-z_][A-Za-z0-9_]*)\\s*\\??\\s*:").matcher(body);
+        while (m.find()) tsFields.add(m.group(1));
+
+        // **两个方向都要比**：只查「Java 有的 TS 也有」的话，TS 多出一个前端真会去读的字段
+        // （拼错、或服务端根本不发）照样绿 —— 那正是 v0.163 的形状。
+        assertEquals(javaFields, tsFields,
+                "DTO 与前端 IpDemoAdmin 字段集必须完全一致。\nJava: " + javaFields + "\nTS  : " + tsFields);
+
+        // 类型也粗比一遍：数字字段在 TS 里得是 number，布尔得是 boolean。
+        for (var c : comps) {
+            String want = c.getType() == int.class || c.getType() == long.class ? "number"
+                    : c.getType() == boolean.class ? "boolean" : "string";
+            var f = java.util.regex.Pattern
+                    .compile(c.getName() + "\\s*\\??\\s*:\\s*([A-Za-z\"| ]+)").matcher(body);
+            assertTrue(f.find(), "TS 里找不到字段 " + c.getName());
+            String got = f.group(1).trim();
+            assertTrue(got.contains(want) || ("string".equals(want) && got.contains("\"")),
+                    c.getName() + " 类型对不上：Java " + c.getType().getSimpleName()
+                            + " → 期望 TS " + want + "，实际 " + got);
+        }
+    }
+
+    @Test
+    void 删除不碰路径穿越的_key() {
+        seed("IPD-1", IpDemoTemplate.KIND_EXAMPLE, true, 0, docWith(
+                "ipstudio_demo/IPD-1/../IPD-other/x.png",   // startsWith 过得去，文件系统会解析 ..
+                "ipstudio_demo/IPD-1/ok.png"));
+        svc.deleteDemo("IPD-1");
+        assertEquals(List.of("ipstudio_demo/IPD-1/ok.png"), deletedKeys,
+                "本机 fallback 走 Paths.get(localDir, key)，.. 会被解析掉 —— "
+                        + "一份被污染的文档不该变成删别人文件的杠杆");
+    }
+
+    @Test
+    void 删除如实回报清理结果_失败不冒充成功() {
+        seed("IPD-1", IpDemoTemplate.KIND_EXAMPLE, true, 0, docWith(
+                "ipstudio_demo/IPD-1/a.png", "ipstudio_demo/IPD-1/boom.png"));
+        doAnswer(inv -> {
+            String k = inv.getArgument(0, String.class);
+            if (k.endsWith("boom.png")) throw new RuntimeException("oss down");
+            deletedKeys.add(k);
+            return null;
+        }).when(storage).delete(anyString());
+
+        var res = svc.deleteDemo("IPD-1");
+        assertEquals(1, res.removed());
+        assertEquals(1, res.failed(),
+                "底层 delete 吞异常 —— 不把失败数报上去，界面就会说「素材副本已删除」而实际留在存储里");
+    }
+
+    @Test
+    void 覆盖已有时清掉上一版不再引用的素材() {
+        // 这条只测「清理」这一步：素材复制走 copyKey（要真读文件），这里直接构造旧文档。
+        IpDemoTemplate old = seed("IPD-1", IpDemoTemplate.KIND_EXAMPLE, true, 0,
+                docWith("ipstudio_demo/IPD-1/v1.png"));
+        old.setCoverKey("ipstudio_demo/IPD-1/cover-v1.png");
+        // 新文档没有素材（存成模板）→ 旧的两个都该清掉
+        var projects = mock(IpProjectService.class);
+        when(projects.required(anyString(), anyString())).thenReturn(
+                com.aistareco.aep.ipstudio.model.IpProject.builder()
+                        .id("IPP-1").ownerUserId("u-1").name("p")
+                        .docJson("{\"nodes\":[],\"connections\":[]}").build());
+        when(projects.readDoc(any())).thenReturn(IpStudioFixtures.OM.createObjectNode()
+                .set("nodes", IpStudioFixtures.OM.createArrayNode()));
+        var svc2 = new IpDemoTemplateService(repo, projects, storage, IpStudioFixtures.OM);
+
+        svc2.publishFromProject("u-1", "IPP-1", "IPD-1", "改成模板", null,
+                IpDemoTemplate.KIND_TEMPLATE);
+
+        assertTrue(deletedKeys.contains("ipstudio_demo/IPD-1/v1.png")
+                        && deletedKeys.contains("ipstudio_demo/IPD-1/cover-v1.png"),
+                "每覆盖一次留一组孤儿文件，而库里不存历史文档 —— 那些文件从此没有任何入口能删。"
+                        + " 实际清理：" + deletedKeys);
+    }
+
+    @Test
+    void demoId形状不合法直接拒() {
+        var projects = mock(IpProjectService.class);
+        var svc2 = new IpDemoTemplateService(repo, projects, storage, IpStudioFixtures.OM);
+        // 空串不在此列 —— 它的语义是「新建一条，服务端自己生成 id」
+        for (String bad : new String[]{"IPD/a", "../x", "a b", "IPD.a", "x".repeat(65)}) {
+            assertThrows(BusinessException.class,
+                    () -> svc2.publishFromProject("u-1", "IPP-1", bad, "n", null,
+                            IpDemoTemplate.KIND_TEMPLATE),
+                    "素材目录是拿 demoId 拼的，而 buildKey 会把 / 净化成 _ —— "
+                            + "IPD/a 与 IPD_a 会落进同一个目录：" + bad);
         }
     }
 

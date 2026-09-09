@@ -9676,18 +9676,22 @@ paths:
   /v1/ip-studio/projects/{id}/publish-as-demo:
     post:
       tags: [ip-studio]
-      summary: 把项目存成全局示例工作流（仅平台运营）
+      summary: 把项目存成全局模板 / 实例（仅超级管理员）
       description: >
         内置模板（resources/ipstudio/templates/*.json）是**空**工作流 —— 用户得自己拖照片、自己跑一遍
         才知道这条链能干什么。全局示例把素材和成图一起带过来，新用户一进目录就能看见效果。
         服务端会把文档里的素材**复制**一份到平台自有目录 `ipstudio/demo/<demoId>/…`（所有人可读、
         没有人可写），再把文档里的键换成新键 —— 所以作者之后继续改项目、甚至删项目，示例都不受影响；
         直接引用原 key 则换个人打开就是一片空白（归属闸会正确地拒绝）。
-        只能拿**自己的**项目做示例。body：{ demoId?（带上就是更新那一条）, name?, summary? }。
+        只能拿**自己的**项目做示例。body：{ demoId?（带上就是更新那一条）, name?, summary?, kind? }。
+        kind=template 只共享工作流（素材、派生地址与运行凭据全部剥掉），kind=example（默认）连素材一起复制。
+        **要超管**：这一下推给全平台每一个用户，一键生效、无复核、素材还会长期留在平台存储里
+        （下线只需运营 —— 难发布、易撤回）。带 demoId 覆盖已有的一条时，会顺手清掉上一版
+        不再被引用的素材副本，避免每覆盖一次多一组找不回来的孤儿文件。
       responses:
-        "200": { description: "{ id, name, enabled }" }
-        "400": { description: IP_DEMO_TOO_MANY_ASSETS 素材太多 }
-        "403": { description: 非平台运营 }
+        "200": { description: "{ id, name, enabled, kind }" }
+        "400": { description: IP_DEMO_TOO_MANY_ASSETS 素材太多 · IP_DEMO_ID_INVALID demoId 形状不合法 }
+        "403": { description: 非超级管理员（SUPER_ADMIN_ONLY） }
   /v1/ip-studio/demos:
     get:
       tags: [ip-studio]
@@ -9721,7 +9725,7 @@ paths:
         没有回收站，而「下线」已经足以止血（「难删除、易下线」）。
         素材清理是 best-effort，且只删这条示例自己前缀下的 key。
       responses:
-        "200": { description: "{ id, deleted }" }
+        "200": { description: "{ id, deleted, assetsRemoved, assetsFailed } —— 素材清理是 best-effort，assetsFailed>0 表示行删了但有文件没清掉" }
         "403": { description: 非超级管理员 }
         "404": { description: IP_DEMO_NOT_FOUND }
   /v1/ip-studio/demos/{demoId}/enabled:

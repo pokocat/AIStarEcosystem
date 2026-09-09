@@ -86,6 +86,9 @@ class IpDemoTemplateStripTest {
                 .put("content", "https://cdn.test/x?sig=y")
                 .put("runId", "IPR-aaa");
         im.put("primaryImageId", "c1");
+        // 蒙版编辑那次点名的参考图：存的是**裸 storageKey**，模板里留着就是作者的私有素材键
+        im.put("generationType", "edit");
+        im.putArray("references").add("ipstudio_source/" + OWNER + "/ref.png");
 
         ObjectNode text = nodes.addObject();
         text.put("id", "n-text").put("type", "text").put("title", "第一步");
@@ -172,10 +175,19 @@ class IpDemoTemplateStripTest {
     }
 
     @Test
+    void 模板剥掉蒙版参考图_那是裸的私有素材键() {
+        JsonNode md = byId(publish(IpDemoTemplate.KIND_TEMPLATE)).get("n-img");
+        assertTrue(md.path("references").isMissingNode(),
+                "references 里是 storageKey（不以 http/blob/data 开头的一律当 key，"
+                        + "见 canvas-generation-helpers.ts），留着就是把作者的私有素材键发给所有人");
+    }
+
+    @Test
     void 模板深层不留任何素材指针() {
         String json = publish(IpDemoTemplate.KIND_TEMPLATE).toString();
         assertFalse(json.contains("storageKey"), "任意深度都不该留下 storageKey：" + json);
         assertFalse(json.contains("ipstudio_gen/"), "更不该留下作者的私有 key：" + json);
+        assertFalse(json.contains("ipstudio_source/"), "上传的原始素材键同样不该留：" + json);
     }
 
     @Test

@@ -55,6 +55,10 @@ public class IpDemoTemplateService {
     /** 模板里要清掉的素材字段（节点级 + 候选数组整个丢掉）。 */
     private static final List<String> ASSET_FIELDS = List.of(
             "storageKey", "url", "images", "primaryImageId", "videos", "primaryVideoId",
+            // references 是蒙版编辑那次点名的参考图，存的是**裸 storageKey**
+            // （canvas-generation-helpers.ts 的 referenceStorageKeyOf：不以 http/blob/data 开头
+            // 的一律当 key）—— 留在模板里就是把作者的私有素材键发给所有人。
+            "references", "generationType",
             "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight");
 
     /** 模板里要清掉的运行痕迹 —— 留着会让别人的画布去接作者那次运行。 */
@@ -131,7 +135,9 @@ public class IpDemoTemplateService {
         IpProject p = projects.required(operatorId, projectId);
         JsonNode doc = projects.readDoc(p);
 
-        String id = demoId != null && !demoId.isBlank() ? demoId.trim() : "IPD-" + IpProjectService.hex8();
+        String id = demoId != null && !demoId.isBlank()
+                ? requireCleanId(demoId.trim())
+                : "IPD-" + IpProjectService.hex8();
         Map<String, String> remap = new HashMap<>();
         String cover = null;
         int copied = 0;
@@ -174,6 +180,13 @@ public class IpDemoTemplateService {
 
         IpDemoTemplate row = repo.findById(id).orElseGet(() -> IpDemoTemplate.builder()
                 .id(id).enabled(true).sortOrder(0).createdAt(Instant.now()).build());
+        // 覆盖已有的一条：上一版的素材副本要一起清掉。此前只是「留着不删」——
+        // 但库里不存历史文档，从第一次覆盖起那些文件就再也没有任何入口能找回来
+        // （DELETE 只按**当前**文档收集 key），改一次多一组孤儿（Codex 复核 v0.192 指出）。
+        // 只清这条示例自己前缀下、且新文档不再引用的那些。
+        Set<String> stale = new LinkedHashSet<>();
+        if (row.getDocJson() != null) collectKeys(docOf(row), stale);
+        if (row.getCoverKey() != null) stale.add(row.getCoverKey());
         row.setName(name != null && !name.isBlank() ? name.trim()
                 : (p.getName() == null || p.getName().isBlank() ? "示例 IP 工作流" : p.getName()));
         row.setSummary(summary);
@@ -187,8 +200,20 @@ public class IpDemoTemplateService {
         row.setCreatedBy(operatorId);
         row.setUpdatedAt(Instant.now());
         repo.save(row);
-        log.info("[ipstudio] 存为全局{} demo={} source={} assets={}",
-                asTemplate ? "模板" : "实例", id, projectId, copied);
+
+        Set<String> keep = new LinkedHashSet<>();
+        collectKeys(doc, keep);
+        if (row.getCoverKey() != null) keep.add(row.getCoverKey());
+        String prefix = demoPrefix(id);
+        int swept = 0;
+        for (String k : stale) {
+            if (keep.contains(k) || !ownedByDemo(k, prefix)) continue;
+            try { storage.delete(k); swept++; } catch (Exception e) {
+                log.warn("[ipstudio] 旧版素材清理失败 demo={} key={}: {}", id, k, e.getMessage());
+            }
+        }
+        log.info("[ipstudio] 存为全局{} demo={} source={} assets={} 清理旧版素材={}",
+                asTemplate ? "模板" : "实例", id, projectId, copied, swept);
         return row;
     }
 
@@ -288,11 +313,19 @@ public class IpDemoTemplateService {
     @Transactional
     public IpDemoTemplate updateMeta(String demoId, String name, String summary, Integer sortOrder) {
         IpDemoTemplate row = required(demoId);
-        if (name != null && !name.isBlank()) row.setName(name.trim());
-        if (summary != null) row.setSummary(summary.isBlank() ? null : summary.trim());
-        if (sortOrder != null) row.setSortOrder(sortOrder);
-        row.setUpdatedAt(Instant.now());
-        return repo.save(row);
+        String newName = name != null && !name.isBlank() ? name.trim() : row.getName();
+        String newSummary = summary == null ? row.getSummary() : (summary.isBlank() ? null : summary.trim());
+        int newSort = sortOrder != null ? sortOrder : row.getSortOrder();
+
+        // **定向 UPDATE，不走整行保存。** 实体没有 @Version，Hibernate 默认整行 UPDATE ——
+        // 运营在编辑框里停留期间，超管把这条重新发布成了模板（doc/kind/cover 全变），
+        // 保存名字就会把那三样一起写回旧值，等于把刚发布的内容整个回滚。
+        // 只更这三列，另外几列谁也碰不到（Codex 复核 v0.192 指出）。
+        repo.updateMeta(demoId, newName, newSummary, newSort, Instant.now());
+        row.setName(newName);
+        row.setSummary(newSummary);
+        row.setSortOrder(newSort);
+        return row;
     }
 
     /**
@@ -307,7 +340,7 @@ public class IpDemoTemplateService {
      * 而这个动作没有回收站。跳过并 WARN。
      */
     @Transactional
-    public void deleteDemo(String demoId) {
+    public DeleteResult deleteDemo(String demoId) {
         IpDemoTemplate row = required(demoId);
         String prefix = demoPrefix(demoId);
         Set<String> keys = new LinkedHashSet<>();
@@ -316,14 +349,34 @@ public class IpDemoTemplateService {
 
         repo.delete(row);   // 先删行：素材清理是 best-effort，不能因为它失败就让这条示例删不掉
 
-        int removed = 0, skipped = 0;
+        int removed = 0, skipped = 0, failed = 0;
         for (String k : keys) {
-            if (!k.startsWith(prefix)) { skipped++; continue; }
+            if (!ownedByDemo(k, prefix)) { skipped++; continue; }
             try { storage.delete(k); removed++; }
-            catch (Exception e) { log.warn("[ipstudio] 示例素材删除失败 demo={} key={}: {}", demoId, k, e.getMessage()); }
+            catch (Exception e) {
+                failed++;
+                log.warn("[ipstudio] 示例素材删除失败 demo={} key={}: {}", demoId, k, e.getMessage());
+            }
         }
-        log.info("[ipstudio] 删除全局内容 demo={} kind={} 素材清理 {} 个（跳过非本示例前缀 {} 个）",
-                demoId, row.getKind(), removed, skipped);
+        log.info("[ipstudio] 删除全局内容 demo={} kind={} 素材清理 {} 个（跳过 {} · 失败 {}）",
+                demoId, row.getKind(), removed, skipped, failed);
+        return new DeleteResult(removed, skipped, failed);
+    }
+
+    /** 删除的结果要**如实回报**：底层 delete 是 best-effort（吞异常），全靠这个数字才能发现清不干净。 */
+    public record DeleteResult(int removed, int skipped, int failed) {}
+
+    /**
+     * 这个 key 是不是这条示例自己的。
+     *
+     * <p>光比前缀不够：{@code ipstudio_demo/IPD-1/../IPD-other/x.png} 也 startsWith 得上，
+     * 而本机 fallback 走 {@code Paths.get(localDir, key)}，文件系统会把 {@code ..} 解析掉 ——
+     * 一份被污染的文档就成了删别人文件的杠杆。这是个**删除原语**，宁可少删。
+     */
+    private static boolean ownedByDemo(String key, String prefix) {
+        if (key == null || key.isBlank()) return false;
+        if (key.contains("..") || key.contains("\\") || key.startsWith("/")) return false;
+        return key.startsWith(prefix);
     }
 
     /** 这条示例自己的素材前缀（{@code ipstudio_demo/<demoId>/}）—— 由存储层算，不手写。 */
@@ -337,6 +390,21 @@ public class IpDemoTemplateService {
         if (n == null) return;
         if (n.isObject() && n.hasNonNull("storageKey")) out.add(n.get("storageKey").asText());
         for (JsonNode child : n) collectKeys(child, out);
+    }
+
+    /**
+     * demoId 只收「一段安全的路径片段」。
+     *
+     * <p>素材目录是拿它拼出来的，而 {@code buildKey} 会把里面的 {@code /} 净化成 {@code _}
+     * —— {@code IPD/a} 与 {@code IPD_a} 会落进同一个目录，两条示例的素材混在一起、
+     * 删一条会把另一条的删掉。发布接口允许调用方指定任意 id，所以要在这儿挡住。
+     */
+    private static String requireCleanId(String id) {
+        if (!id.matches("[A-Za-z0-9_-]{1,64}")) {
+            throw BusinessException.badRequest("IP_DEMO_ID_INVALID",
+                    "示例编号只能用字母、数字、- 和 _（最多 64 位）");
+        }
+        return id;
     }
 
     private IpDemoTemplate required(String demoId) {
