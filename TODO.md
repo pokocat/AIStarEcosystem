@@ -174,6 +174,22 @@
 - [ ] **系统性遗留：§4.7.7 的「递归重签 payload 里的资产 URL」本身会重签客户端写入的 URL**（2026-08-31 由上一条牵出，**不只 shorts，`DramaProject` 同源**）：裸 key 已堵，但攻击者若构造 `https://<我方 OSS/CDN 域>/media/<别人的key>` 这种**完整 URL**，`maybeSign` 仍会抽出 key 重签。彻底解法两条选一：① 产物由渲染管线在服务端直接回写草稿（客户端不再是产物的报告者）；② 签名时做归属校验（key → 所属账号，签之前比对 principal）。②更通用但要给 key 建归属索引。**在此之前不要再对外声称「客户端伪造只影响自己」。**
 - [ ] **（原始定位，供追溯）** —— PUT 保存可伪造逐镜产物（2026-08-31 由 v0.143 评审顺带发现，v0.76/v0.133 起就存在）：`DramaShortService.saveShort` 整份接收客户端 `data`，只剥 `assembled` 与客户端音频，**不清 `flow` / `videoUrl` / `frameUrl` / `jobId`**；`DramaShortAssembleService.buildPlan` 又只凭 `flow=done` + 非空 `videoUrl` 就接受镜头，不校验该 URL 是否来自本用户本草稿的成功渲染任务（`MaterialVideoJob`）。伪造 `{"flow":"done","videoUrl":"/cdn/<已知平台视频>.mp4"}` 即可跳过逐镜出片扣费直接总装成片（外部域名被白名单挡住，平台 CDN / 相对路径可利用）。修法：产物字段一律以服务端为真值（保存时按 shot id 保留库内旧值、忽略客户端传入），总装前按 `MaterialVideoJob`（owner + 本草稿 + 成功态）核验每镜视频出处。注意 `DramaShortServiceTest` 现有用例把「保存后 doneCount=1」当正确结果断言，修时要同步改。
 
+## 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
+
+- [x] ~~**@Id 落到 static 常量上，服务重启循环、API 全挂**~~ **已修并加网**，2026-09-09：
+      用脚本往 `IpDemoTemplate` 插常量，锚点选了 `@Column(length = 32)`，而 `@Id` 在它上一行 ——
+      常量插进了注解与字段之间。`Entity has no identifier` → EMF 建不起来 → 上下文起不来。
+      修复用时约 3 分钟（一行归位 + 重新部署），期间 API 不可用。
+      新增 `EntityIdentifierTest`（纯反射、不连库）：每个 `@Entity` 必须有 `@Id`，
+      **且不能落在 static 字段上**。已验证「把 @Id 挪回常量」时它确实变红。
+- [ ] **30 个 `@SpringBootTest` 仍然红着，等于没有「上下文能起来」这道网**（既有，见下一节）。
+      今天的事故本该被它挡住 —— 它是唯一会真的建 EntityManagerFactory 的一批测试。
+      `EntityIdentifierTest` 只补了「缺 @Id」这一个洞，**其它映射错误（列名、类型、关联）
+      依旧没有任何测试会发现，只有部署时才炸**。优先级应当提高。
+- [ ] **用脚本改 Java 源码的纪律**：锚点不要选紧跟注解的那一行 —— 在注解与被注解元素
+      之间插入内容是合法 Java、编译得过，但语义已经变了。改实体 / 注解密集的文件时，
+      要么锚点带上注解本身，要么改完 diff 一眼。
+
 ## 2026-09-09 · 全局示例（v0.192）
 
 - [ ] **30 个 `@SpringBootTest` 起不来（既有，非本轮引入）**：`drama_character` 有一列叫
