@@ -14,7 +14,7 @@ import * as React from "react";
 import { App as AntdApp, ConfigProvider, Modal, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
+import { AlertTriangle, AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
 import CanvasPage from "@/canvas/pages/canvas/project";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
@@ -24,6 +24,7 @@ import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { LastRunPanel } from "@/ip/last-run-panel";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
+import { looksAutoTitled } from "@/canvas-bridge/node-title";
 import type { IpDemoAdmin } from "@ai-star-eco/types";
 import { IpStudioApi } from "@/ip/api";
 import { useIdentity, isSuperAdminRole } from "@/proto/api";
@@ -71,6 +72,22 @@ function Host({ projectId }: { projectId: string }) {
   // 目录里两张一模一样的卡 —— 而普通用户那边没有任何办法分辨或去掉其中一张。
   const [demoTarget, setDemoTarget] = React.useState("");
   const [existingDemos, setExistingDemos] = React.useState<IpDemoAdmin[]>([]);
+
+  // 标题还是「没改过的自动标题」的那些节点。
+  //
+  // 线上第一条官方示例的 10 个标题里有 7 个是提示词截断，别人点开看到的是每张卡都顶着
+  // 一段话。v0.194 手工改了那条数据、也把自动取名改短了，但**只要标题还是从提示词派生的，
+  // 存进官方内容之前就该有人看一眼** —— 自动值最多做到"不难看"，做不到"是个名字"。
+  // 只提醒不拦（§2.4）：运营可能就是想先发出去。
+  // ⚠️ selector 只能返回 store 里**已有的引用**，不能在里面 filter/map 出新数组 ——
+  // 那样每次调用都是一个新数组，useSyncExternalStore 认为快照一直在变，直接把页面搞崩
+  // （实测：整个画布页变成「This page couldn't load」；typecheck / build / 结构测试全绿，
+  // 只有浏览器逮得到。§8.0.1 ③ 说的就是这个）。派生放 useMemo。
+  const nodes = useCanvasStore((st) => st.projects.find((p) => p.id === projectId)?.nodes);
+  const autoTitled = React.useMemo(
+    () => (nodes ?? []).filter((n) => looksAutoTitled(n.title, n.metadata?.prompt)).map((n) => n.title),
+    [nodes],
+  );
 
   const openDemoDialog = React.useCallback(() => {
     // 预填当前画布名，多数情况下改一两个字就能用
@@ -322,6 +339,22 @@ function Host({ projectId }: { projectId: string }) {
               ))}
             </select>
           </>
+        )}
+        {autoTitled.length > 0 && (
+          <div style={{
+            display: "flex", gap: 8, padding: "9px 11px", marginBottom: 14, borderRadius: "var(--r-sm)",
+            background: "var(--warn-soft, #fdf4e3)", border: "1px solid var(--warn, #b8860b)33",
+          }}>
+            <AlertTriangle size={14} style={{ color: "var(--warn, #b8860b)", flexShrink: 0, marginTop: 1 }} />
+            <div style={{ fontSize: 12, lineHeight: 1.65, color: "var(--ink-2)", minWidth: 0 }}>
+              有 <b>{autoTitled.length}</b> 个节点的名字还是自动取的（
+              {autoTitled.slice(0, 2).map((t) => `「${t}」`).join("、")}
+              {autoTitled.length > 2 ? " 等" : ""}）。
+              别人点开会看到每张卡都顶着一段提示词 —— 双击卡片标题可以改名。
+              <br />
+              <span style={{ color: "var(--ink-3)" }}>不改也能发，这里只是提个醒。</span>
+            </div>
+          </div>
         )}
         <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
           示例名称

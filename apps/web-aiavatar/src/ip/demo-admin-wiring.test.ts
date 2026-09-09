@@ -49,3 +49,28 @@ describe("运营后台必须真的接到那四个端点", () => {
     expect(host).toMatch(/demoId:\s*demoTarget\s*\|\|\s*undefined/);
   });
 });
+
+// ── 存为官方内容之前提醒改名（v0.194）──────────────────────────────
+// 线上第一条官方示例的 10 个标题里有 7 个是提示词截断。手工改数据只治了那一条，
+// 这两条钉住根治：自动取名不再是 slice(0,32)，且发布前会把没改过的名字列出来。
+describe("节点自动标题", () => {
+  const project = readFileSync(join(process.cwd(), "src/canvas/pages/canvas/project.tsx"), "utf8");
+  const host = readFileSync(join(process.cwd(), "src/ip/canvas-host.tsx"), "utf8");
+
+  it("画布不再把提示词截 32 字当标题", () => {
+    expect(project).not.toContain("slice(0, 32)");
+    expect(project).toContain("autoNodeTitle");
+  });
+
+  it("默认名不能是英文（§4.6 前端全中文）", () => {
+    for (const s of ["Generated Image", "Generated Video", "Generated Audio", "Generated Text", "Assistant Text"]) {
+      expect(project, `${s} 会直接显示在卡片上`).not.toContain(`"${s}"`);
+    }
+  });
+
+  it("发布弹窗会检查还剩几个自动标题", () => {
+    expect(host).toContain("looksAutoTitled");
+    // 只提醒不拦：不能因为有自动标题就禁用确认按钮
+    expect(host).not.toMatch(/disabled=\{[^}]*autoTitled/);
+  });
+});

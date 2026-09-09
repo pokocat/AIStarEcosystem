@@ -5,6 +5,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Group, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
+// 本仓改动：自动标题从「提示词截 32 字」改成派生一个短名字（见 canvas-bridge/node-title.ts）
+import { autoNodeTitle } from "@/canvas-bridge/node-title";
 import { createProjectOnServer, deleteProjectOnServer } from "@/canvas-bridge/project-sync";
 
 import { isRunEnded, requestEdit, requestGeneration, requestImageQuestion, resumeRun } from "@/canvas-bridge/generation";
@@ -1640,7 +1642,7 @@ function InfiniteCanvasPage() {
 
             const node = {
                 ...createCanvasNode(CanvasNodeType.Text, getCanvasCenter(), { content: trimmed, status: NODE_STATUS_SUCCESS }),
-                title: trimmed.slice(0, 32) || t("canvas.projectPage.clipboardText"),
+                title: autoNodeTitle(trimmed, t("canvas.projectPage.clipboardText")),
             };
 
             setNodes((prev) => [...prev, node]);
@@ -2134,7 +2136,7 @@ function InfiniteCanvasPage() {
                 {
                     id: childId,
                     type: CanvasNodeType.Image,
-                    title: userPrompt.slice(0, 32) || t("canvas.projectPage.maskResult"),
+                    title: autoNodeTitle(userPrompt, t("canvas.projectPage.maskResult")),
                     position: { x: node.position.x + node.width + 96, y: node.position.y },
                     width: node.width,
                     height: node.height,
@@ -2447,7 +2449,7 @@ function InfiniteCanvasPage() {
                     const rootNode: CanvasNodeData = {
                         id: rootId,
                         type: CanvasNodeType.Image,
-                        title: effectivePrompt.slice(0, 32) || "Generated Image",
+                        title: autoNodeTitle(effectivePrompt, t("canvas.projectPage.genImage")),
                         position: {
                             x: isEmptyImageNode ? parentPosition.x : parentPosition.x + parentConfig.width + 96,
                             y: parentPosition.y + parentConfig.height / 2 - imageConfig.height / 2,
@@ -2501,7 +2503,7 @@ function InfiniteCanvasPage() {
                                         : {
                                               ...node,
                                               type: CanvasNodeType.Text,
-                                              title: prompt.slice(0, 32) || "Prompt",
+                                              title: autoNodeTitle(prompt, t("canvas.projectPage.genPrompt")),
                                               width: parentConfig.width,
                                               height: parentConfig.height,
                                               metadata: { ...node.metadata, content: prompt, prompt, status: NODE_STATUS_SUCCESS, fontSize: 14, errorDetails: undefined },
@@ -2591,7 +2593,7 @@ function InfiniteCanvasPage() {
                     const videoNode: CanvasNodeData = {
                         id: videoId,
                         type: CanvasNodeType.Video,
-                        title: effectivePrompt.slice(0, 32) || "Generated Video",
+                        title: autoNodeTitle(effectivePrompt, t("canvas.projectPage.genVideo")),
                         position: isEmptyVideoNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y },
                         width: isEmptyVideoNode ? sourceNode.width : spec.width,
                         height: isEmptyVideoNode ? sourceNode.height : spec.height,
@@ -2642,7 +2644,7 @@ function InfiniteCanvasPage() {
                     const audioNode: CanvasNodeData = {
                         id: audioId,
                         type: CanvasNodeType.Audio,
-                        title: effectivePrompt.slice(0, 32) || "Generated Audio",
+                        title: autoNodeTitle(effectivePrompt, t("canvas.projectPage.genAudio")),
                         position: isEmptyAudioNode ? sourceNode.position : { x: parent.x + (sourceNode?.width || spec.width) + 96, y: parent.y + ((sourceNode?.height || spec.height) - spec.height) / 2 },
                         width: isEmptyAudioNode ? sourceNode.width : spec.width,
                         height: isEmptyAudioNode ? sourceNode.height : spec.height,
@@ -2676,7 +2678,7 @@ function InfiniteCanvasPage() {
                 const rootNode: CanvasNodeData = {
                     id: rootId,
                     type: CanvasNodeType.Text,
-                    title: effectivePrompt.slice(0, 32) || "Generated Text",
+                    title: autoNodeTitle(effectivePrompt, t("canvas.projectPage.genText")),
                     position: isEmptyTextNode ? sourceNode.position : { x: parentPosition.x + parentConfig.width + 96, y: parentPosition.y + parentConfig.height / 2 - textConfig.height / 2 },
                     width: isEmptyTextNode ? sourceNode.width : textConfig.width,
                     height: isEmptyTextNode ? sourceNode.height : textConfig.height,
@@ -3067,7 +3069,7 @@ function InfiniteCanvasPage() {
             const node: CanvasNodeData = {
                 id,
                 type: CanvasNodeType.Image,
-                title: image.prompt.slice(0, 32) || "Generated Image",
+                title: autoNodeTitle(image.prompt, t("canvas.projectPage.genImage")),
                 position: { x: center.x - config.width / 2, y: center.y - config.height / 2 },
                 width: config.width,
                 height: config.height,
@@ -3087,7 +3089,7 @@ function InfiniteCanvasPage() {
             const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
             const node = {
                 ...createCanvasNode(CanvasNodeType.Text, center, { content: text, status: NODE_STATUS_SUCCESS }),
-                title: title || text.slice(0, 32) || "Assistant Text",
+                title: title || autoNodeTitle(text, t("canvas.projectPage.genText")),
             };
 
             setNodes((prev) => [...prev, node]);
