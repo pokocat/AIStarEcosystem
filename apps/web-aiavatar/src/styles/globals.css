@@ -1227,3 +1227,34 @@ body, .app-root { overflow-x: hidden; }
     gap: 16px;
   }
 }
+
+/* 说明条只在桌面出现：手机上这就是本来的样子，不需要解释。
+   ⚠️ 这条必须排在下面那个 media query **之前** —— 同优先级下后写的赢，
+   放在后面会把桌面的 display:flex 盖掉（本次就这么踩过一次）。 */
+.studio-hint { display: none; }
+
+/* ── /studio 在桌面上的取景框 ────────────────────────────────────────────
+   老 SPA 是按 480 宽写死的分步流程（26 屏、约 11k 行、零测试），按既有双轨
+   逐屏迁出，在那之前桌面上就是一条居中窄列。问题不在「窄」——分步表单本来
+   就该窄——而在于**看起来像坏了**：一大片空白里孤零零一条 480 的柱子。
+
+   所以给它一个明确的取景：两侧铺深一档的底色、内容列加描边与投影，
+   读起来是「一个专注的流程面板」，而不是「没做响应式的页面」。
+   配合 studio-hint 那条说明，用户知道自己在哪、以及为什么这里长得不一样。 */
+@media (min-width: 1024px) {
+  body.studio-desktop {
+    background: var(--canvas-2);
+  }
+
+  body.studio-desktop .app-root {
+    box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20, 36, 55, 0.14);
+    border-radius: 14px;
+    /* 顶栏之下、底部留白之上，让它看起来是被端出来的一块面板 */
+    top: calc(var(--desktop-bar-h) + 18px);
+    bottom: 18px;
+    height: auto;
+    overflow: hidden;
+  }
+
+  .studio-hint { display: flex; }
+}
