@@ -201,6 +201,13 @@
       修法：给该列加 `@Column(name = "\`cast\`")` 或改名（改名要配迁移）。
       在此之前 `./mvnw test` 全量必红 —— 别把它当成自己改坏了。
 
+- [ ] **`ip_demo_template` 没有 `@Version`，只有一条写路径做了防护**（Codex 复核 v0.192 提出）。
+      实体没有乐观锁列，Hibernate 默认整行 UPDATE —— 两个写路径并发时后提交的会把
+      前一个刚写进去的列盖回旧值。v0.192 只把「改展示信息」改成了定向 JPQL UPDATE
+      （只更 name/summary/sortOrder），`setEnabled` 与 `publishFromProject` 仍走整行 save。
+      这两条各自读的都是事务内的新行、窗口很窄，暂不改；真要治就加 `@Version`（要迁移）。
+      在此之前**不要**再给这张表加「读-改-写」的新写路径。
+
 ## 2026-09-08 · AI IP 工作台并入 aiavatar（v0.190）新发现待办
 
 - [ ] **老 SPA `/studio` 在桌面上仍是 480px 窄列**：26 个 overlay / 16 个 screen 文件 / 约 11k 行
