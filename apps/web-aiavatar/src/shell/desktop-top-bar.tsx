@@ -9,15 +9,17 @@
 //   主导航 = 项目 · 资产 · 名片 · 发现（这条链 + 一个逛的入口）
 //   账号块 = 我的 / 授权 / 退出（低频，收进右上角）
 //
-// 只在 ≥1024px 显示（`.desktop-top-bar` 的 media query）。公开名片页 /card/p/*
+// 只在**桌面形态**显示（`.desktop-top-bar` 由 html[data-layout="desktop"] 打开，
+// 见 shell/layout-mode.ts）。公开名片页 /card/p/*
 // 与登录页不挂它 —— 见 app-chrome.tsx。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Compass, Home, IdCard, Layers, LogOut, Shield, Sparkles, User } from "lucide-react";
+import { Compass, Home, IdCard, Layers, LogOut, Shield, Smartphone, Sparkles, User } from "lucide-react";
 import { auth, useIdentity } from "@/proto/api";
+import { setLayout } from "./layout-mode";
 
 const NAV = [
   // 「主页」而不是「首页」：根目录 `/` 现在是公开落地页，登录后的门户在 /dashboard。
@@ -48,18 +50,21 @@ export function DesktopTopBar() {
         height: "var(--desktop-bar-h)",
         alignItems: "center", justifyContent: "space-between",
         padding: "0 20px",
+        // 用户可以在窄屏上强选桌面版（见 shell/layout-mode.ts）—— 那时这一行放不下。
+        // 让它横向滚动，而不是让 logo、导航和账号块互相压在一起（实测 375px 下是叠字）。
+        gap: 16, overflowX: "auto", overflowY: "hidden", scrollbarWidth: "none",
         background: "var(--blue-800)",
         borderBottom: "1px solid var(--on-blue-line)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 20, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 20, flexShrink: 0 }}>
         <Link href="/dashboard" style={{ display: "flex", alignItems: "baseline", gap: 10, textDecoration: "none", flexShrink: 0 }}>
           <span className="asset-name" style={{ fontSize: 17, color: "var(--on-blue)" }}>数字资产平台</span>
           <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".12em", fontFamily: "var(--font-mono)", color: "var(--action)" }}>
             AIAVATAR
           </span>
         </Link>
-        <nav style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+        <nav style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
           {NAV.map(({ href, label, icon: Icon }) => {
             // 前缀匹配：/projects/<id> 的画布页也算在「项目」下
             const on = pathname === href || pathname.startsWith(`${href}/`);
@@ -111,6 +116,16 @@ export function DesktopTopBar() {
             {name}
           </span>
         ) : null}
+        {/* 形态切换：手机浏览器选「请求桌面版网站」进来的人，需要一条回得去的路
+            （见 shell/layout-mode.ts）。宽屏用户点它也没坏处 —— 是他自己要看手机版。 */}
+        <button
+          onClick={() => setLayout("mobile")}
+          title="切换到手机版"
+          aria-label="切换到手机版"
+          style={{ padding: 4, border: "none", background: "transparent", cursor: "pointer", lineHeight: 0 }}
+        >
+          <Smartphone size={15} style={{ color: "var(--on-blue-2)" }} />
+        </button>
         <button
           onClick={() => auth.logout()}
           title="退出登录"

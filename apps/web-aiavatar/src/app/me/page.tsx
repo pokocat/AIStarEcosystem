@@ -10,6 +10,7 @@ import { auth, ID_MODE, USE_MOCK, useIdentity } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
+import { resolvedLayout, setLayout } from "@/shell/layout-mode";
 
 export default function MePage() {
   const router = useRouter();
@@ -79,6 +80,14 @@ export default function MePage() {
         </Card>
       </div>
 
+      {/* 形态切换：宽度只是**默认**判据，不是唯一判据 —— 竖持平板、手机浏览器的
+          「请求桌面版网站」（布局视口约 980）都可能想要桌面版。见 shell/layout-mode.ts。 */}
+      <div style={{ margin: "12px 16px 0" }}>
+        <Card pad={0}>
+          <LayoutSwitchRow />
+        </Card>
+      </div>
+
       {!USE_MOCK && (
         <div className="hub-section" style={{ margin: "20px 16px 0" }}>
           <button
@@ -105,5 +114,37 @@ export default function MePage() {
         </div>
       )}
     </HubScreen>
+  );
+}
+
+/**
+ * 「切换到桌面版」。
+ *
+ * 挂在「我的」而不是弹窗：这是个偶尔用一次的设置，不该在每个页面上抢注意力。
+ * 切完整页重载 —— 两套形态的差别不只在 CSS（画布的 chunk 下不下、老 SPA 的定位），
+ * 就地切会留下一半旧一半新的中间态。
+ */
+function LayoutSwitchRow() {
+  // 服务端渲染不知道当前形态，挂载后再读，避免 hydration 前后文案不一致
+  const [mode, setMode] = React.useState<"desktop" | "mobile" | null>(null);
+  React.useEffect(() => setMode(resolvedLayout()), []);
+  if (mode === null) return null;
+  const next = mode === "desktop" ? "mobile" : "desktop";
+  return (
+    <button
+      onClick={() => setLayout(next)}
+      style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 12, padding: "13px 16px", border: "none", background: "transparent",
+        cursor: "pointer", textAlign: "left", font: "inherit",
+      }}
+    >
+      <span style={{ fontSize: 14, color: "var(--ink)" }}>
+        {next === "desktop" ? "切换到桌面版" : "切换到手机版"}
+      </span>
+      <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
+        {next === "desktop" ? "画布、宽表格更好用" : "回到这套竖排界面"}
+      </span>
+    </button>
   );
 }

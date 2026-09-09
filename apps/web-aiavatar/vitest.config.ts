@@ -17,8 +17,12 @@ export default defineConfig({
   test: {
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
-    // 大多是纯逻辑（node 就够）；project-sync 测的是 React hook，那一份要 DOM。
-    environmentMatchGlobs: [["**/project-sync.test.ts", "jsdom"]],
+    // 大多是纯逻辑（node 就够）；这几份要 DOM：project-sync 测 React hook，
+    // layout-mode 要 localStorage / matchMedia / documentElement。
+    environmentMatchGlobs: [
+      ["**/project-sync.test.ts", "jsdom"],
+      ["**/layout-mode.test.ts", "jsdom"],
+    ],
     environment: "node",
   },
 });

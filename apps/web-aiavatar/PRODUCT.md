@@ -2,10 +2,38 @@
 
 > AiAvatar · 数字人资产平台（web-aiavatar）的战略层文档。
 > **v0.190 起本 app 同时承载 AI IP 工作台**（原 `apps/web-ipstudio`）：一个应用两套设备形态 ——
-> <1024px 是原来的移动端 H5，≥1024px 是桌面面（无限画布在这一档）。桌面视觉见 [DESIGN-desktop.md](DESIGN-desktop.md)。
+> 移动端 H5 与桌面面（无限画布在这一档）。桌面视觉见 [DESIGN-desktop.md](DESIGN-desktop.md)。
+> **形态怎么定见下方「设备形态：默认按宽度，但用户说了算」——宽度只是默认值，不是判决。**
 > 本文件回答「谁 / 做什么 / 为什么」；视觉「长什么样」见 [DESIGN.md](DESIGN.md)；
 > 技术启动与版本日志见 [README.md](README.md)；落地取舍见 [DECISIONS.md](DECISIONS.md)。
 > 三者分工：PRODUCT = 战略，DESIGN = 视觉，README/DECISIONS = 技术 / 架构记录。
+
+## 设备形态：默认按宽度，但用户说了算
+
+真值在 `<html data-layout>`，CSS 与 JS 读同一个（`src/shell/layout-mode.ts`）：
+
+| 来源 | 规则 |
+|---|---|
+| 用户显式选过 | 以他为准（「我的 → 切换到桌面版」、桌面顶栏的手机图标） |
+| 没选过 | `matchMedia(min-width: 960px)` |
+
+**为什么是 960 而不是 1024**：手机浏览器的「请求桌面版网站」会忽略 viewport meta、
+改用约 **980px** 的布局视口。断点卡 1024 的话，用户明明在 Chrome 里选了桌面版，
+看到的还是那条 480 的窄列 —— 这是真实反馈。960 恰好接住 980，
+又不会误伤横屏手机（iPhone 16 Pro Max 横屏 956，多数安卓旗舰横屏 < 940）。
+
+**画布的设备提示是柔性的**，不是拦路：手机上先给一屏说明（它确实挤），但主按钮就是
+「仍然在手机上打开」。理由很实在 —— 出门在外想看看昨天那条链出了什么效果、
+临时改一句提示词重跑一次，都是真需求，不该被一个断点判死。画布核心用 PointerEvent，
+拖拽 / 平移在触屏上是通的，缩放有左下角按钮；够「看一眼、改一点」，
+只是不适合从头搭一条链。选择记在 sessionStorage，本次使用内不再拦。
+
+代价没有丢：`CanvasHost` 仍走 `dynamic({ ssr:false })`，那 15k 行 + antd 的 chunk
+**只有真的要进画布时才下载**（实测：进提示屏 antd style 0 个 / 点了继续之后 6 个）。
+
+**新增桌面样式时**：写 `html[data-layout="desktop"] xxx`，不要写 `@media (min-width: …)`
+—— 媒体查询绕过用户的选择。真正的宽度约束（例如某块内容两侧各要 260px 才放得下）
+仍然写媒体查询，那不是形态问题。
 
 ## 页面归属：看在新路由，做在 /studio
 

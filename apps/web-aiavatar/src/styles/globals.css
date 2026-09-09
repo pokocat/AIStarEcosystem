@@ -1128,7 +1128,24 @@ body, .app-root { overflow-x: hidden; }
    在此之前桌面上就是一条居中的窄列 —— 那是「还没迁」，不是坏了。
    ===================================================================== */
 
+/* ── 形态的真值：`<html data-layout>` ─────────────────────────────────────
+   v0.193 起两套形态**不再直接看视口宽度**，改看 <html> 上的 data-layout：
+     · 没有这个属性 = JS 没跑起来（禁用 / 出错）→ 下面这批桌面规则一条都不生效，
+       退回手机形态。窄列在宽屏上只是不好看，反过来（把桌面版塞进 375px）是真的没法用。
+     · desktop / mobile = layout-mode.ts 在首帧之前写好的，来源是
+       「用户显式选过的」优先，其次 matchMedia(min-width: 960px)。
+
+   为什么不再用媒体查询：手机浏览器的「请求桌面版网站」会忽略 viewport meta、
+   改用约 980px 的布局视口 —— 用户明明选了桌面版，媒体查询（原来卡 1024）
+   还是判成手机。宽度只是**默认**判据，不该是唯一判据。
+   真正的宽度约束（比如 studio-hint 要两侧各放得下 260px）仍然写成媒体查询。 */
 :root { --desktop-bar-h: 52px; }
+
+/* 画布页的高度。手机形态整屏都是画布（没有桌面顶栏），桌面形态要给固定顶栏让位。 */
+.canvas-page { height: 100dvh; }
+html[data-layout="desktop"] body.has-desktop-bar .canvas-page {
+  height: calc(100dvh - var(--desktop-bar-h));
+}
 
 /* 现代路由的内容列：11 个 App Router 页面全部经 HubScreen，所以这一条就是
    整个资产平台桌面化的总开关。 */
@@ -1137,33 +1154,29 @@ body, .app-root { overflow-x: hidden; }
   margin-inline: auto;
 }
 
-@media (min-width: 1024px) {
-  .hub-screen {
-    max-width: 1120px;
-    padding-inline: 28px;
-    padding-bottom: 40px !important;   /* 覆盖为底部 tab 栏预留的空间：桌面没有 tab 栏 */
-  }
-
-  /* 底部 tab 栏是手机形态的导航，桌面走顶栏 */
-  .wx-tabbar.hub-tabbar { display: none; }
-
-  /* 顶栏占位：内容不要顶到栏底下 */
-  body.has-desktop-bar { padding-top: var(--desktop-bar-h); }
-
-  /* 老 SPA 是 `position: fixed; inset: 0`，**吃不到 body 的 padding-top** ——
-     它会从视口顶端开始，最上面 52px 正好被固定顶栏盖住（实测 hiddenPx=52，
-     它自带的导航条整条被压在下面）。给它单独让位：只改 top，
-     right/bottom/left 仍是 0，所以照旧铺到底。
-     注意选择器带 `body.has-desktop-bar` —— 顶栏不在（访客 / 公开名片页）时
-     不能平白往下推 52px。 */
-  body.has-desktop-bar .app-root { top: var(--desktop-bar-h); }
+html[data-layout="desktop"] .hub-screen {
+  max-width: 1120px;
+  padding-inline: 28px;
+  padding-bottom: 40px !important;   /* 覆盖为底部 tab 栏预留的空间：桌面没有 tab 栏 */
 }
 
-/* 顶栏只在宽屏出现 */
+/* 底部 tab 栏是手机形态的导航，桌面走顶栏 */
+html[data-layout="desktop"] .wx-tabbar.hub-tabbar { display: none; }
+
+/* 顶栏占位：内容不要顶到栏底下 */
+html[data-layout="desktop"] body.has-desktop-bar { padding-top: var(--desktop-bar-h); }
+
+/* 老 SPA 是 `position: fixed; inset: 0`，**吃不到 body 的 padding-top** ——
+   它会从视口顶端开始，最上面 52px 正好被固定顶栏盖住（实测 hiddenPx=52，
+   它自带的导航条整条被压在下面）。给它单独让位：只改 top，
+   right/bottom/left 仍是 0，所以照旧铺到底。
+   注意选择器带 `body.has-desktop-bar` —— 顶栏不在（访客 / 公开名片页）时
+   不能平白往下推 52px。 */
+html[data-layout="desktop"] body.has-desktop-bar .app-root { top: var(--desktop-bar-h); }
+
+/* 顶栏只在桌面形态出现 */
 .desktop-top-bar { display: none; }
-@media (min-width: 1024px) {
-  .desktop-top-bar { display: flex; }
-}
+html[data-layout="desktop"] .desktop-top-bar { display: flex; }
 
 /* ── 列表 → 网格 ──────────────────────────────────────────────────────────
    手机上这些是竖着排的一列卡片；桌面把同一批卡片铺成网格，而不是让每张卡
@@ -1177,13 +1190,11 @@ body, .app-root { overflow-x: hidden; }
   gap: 10px;
 }
 
-@media (min-width: 1024px) {
-  .hub-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-    gap: 12px;
-    align-items: start;
-  }
+html[data-layout="desktop"] .hub-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+  align-items: start;
 }
 
 /* 手机上就是两列的小格子（声音、素材计数…）—— 桌面放到四列，
@@ -1194,22 +1205,16 @@ body, .app-root { overflow-x: hidden; }
   gap: 8px;
 }
 
-@media (min-width: 1024px) {
-  .hub-grid-2 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
+html[data-layout="desktop"] .hub-grid-2 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* 分节的左右外边距：手机 16px 贴边合适，桌面已有 .hub-screen 的 28px 内边距，
    再叠 16px 会让内容与顶栏 logo 对不齐。 */
-@media (min-width: 1024px) {
-  .hub-section { margin-inline: 0 !important; }
-}
+html[data-layout="desktop"] .hub-section { margin-inline: 0 !important; }
 
 /* 表单 / 单条记录页：桌面上**不要**铺满 1120px。
    一行输入框拉到 1100px 宽，眼睛从标签扫到值要横跨整个屏幕，比手机还难填。
    集合页（列表、网格）才需要宽度，表单页要的是舒适的阅读行宽。 */
-@media (min-width: 1024px) {
-  .hub-screen--form { max-width: 720px; }
-}
+html[data-layout="desktop"] .hub-screen--form { max-width: 720px; }
 
 /* 竖屏卡网格（发现页的官方角色）——手机两列，桌面按宽度自动铺列。
    卡片本身是 3:4 竖幅（asset-cards.tsx 的 OfficialCard），所以列宽一变
@@ -1221,11 +1226,9 @@ body, .app-root { overflow-x: hidden; }
   gap: 10px;
 }
 
-@media (min-width: 1024px) {
-  .hub-grid-cards {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
-  }
+html[data-layout="desktop"] .hub-grid-cards {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
 }
 
 /* 说明条只在桌面出现：手机上这就是本来的样子，不需要解释。
@@ -1241,27 +1244,24 @@ body, .app-root { overflow-x: hidden; }
    所以给它一个明确的取景：两侧铺深一档的底色、内容列加描边与投影，
    读起来是「一个专注的流程面板」，而不是「没做响应式的页面」。
    配合 studio-hint 那条说明，用户知道自己在哪、以及为什么这里长得不一样。 */
-@media (min-width: 1024px) {
-  body.studio-desktop {
-    background: var(--canvas-2);
-  }
-
-  body.studio-desktop .app-root {
-    box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20, 36, 55, 0.14);
-    border-radius: 14px;
-    /* 顶栏之下、底部留白之上，让它看起来是被端出来的一块面板 */
-    top: calc(var(--desktop-bar-h) + 18px);
-    bottom: 18px;
-    height: auto;
-    overflow: hidden;
-  }
-
-  /* 说明区固定在左边距 28、宽 260 → 右缘 288；而 480 宽的面板在 1024 视口下
-     左缘只有 272 —— 会压上去 16px。所以说明区要等两侧真的放得下才出现。
-     1024 + 260*2 + 余量 ≈ 1120。 */
-  .studio-hint { display: none; }
+html[data-layout="desktop"] body.studio-desktop {
+  background: var(--canvas-2);
 }
 
+html[data-layout="desktop"] body.studio-desktop .app-root {
+  box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20, 36, 55, 0.14);
+  border-radius: 14px;
+  /* 顶栏之下、底部留白之上，让它看起来是被端出来的一块面板 */
+  top: calc(var(--desktop-bar-h) + 18px);
+  bottom: 18px;
+  height: auto;
+  overflow: hidden;
+}
+
+/* 说明区固定在左边距 28、宽 260 → 右缘 288；而 480 宽的面板在 1024 视口下
+   左缘只有 272 —— 会压上去 16px。所以说明区要等两侧真的放得下才出现。
+   1024 + 260*2 + 余量 ≈ 1120。这一条是**真实宽度**约束（不是形态选择），
+   所以留作媒体查询：用户在 980 的窗口里强选桌面版，两侧照样放不下。 */
 @media (min-width: 1120px) {
-  .studio-hint { display: flex; }
+  html[data-layout="desktop"] .studio-hint { display: flex; }
 }

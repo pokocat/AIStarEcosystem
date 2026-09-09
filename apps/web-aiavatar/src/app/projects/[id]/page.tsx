@@ -10,10 +10,11 @@ export default async function ProjectCanvasPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  // 顶栏高度是 token，不写死 —— 原来这里是 calc(100dvh - 52px)，
-  // 顶栏一改高度画布就会溢出，而且没人会想到来这里改。
+  // 高度交给 CSS 类，不写死也不在这儿算：手机形态没有桌面顶栏，
+  // 却照样减 52px 的话，画布下面会空出一条（此前手机进不来画布，所以没露出来）。
+  // 见 globals.css 的 .canvas-page（顶栏高度是 token，顶栏改高度这里自动跟着走）。
   return (
-    <div style={{ height: "calc(100dvh - var(--desktop-bar-h, 52px))" }}>
+    <div className="canvas-page">
       <CanvasGate projectId={id} />
     </div>
   );

@@ -5,6 +5,8 @@ import "../styles/globals.css";
 // 不含 Tailwind preflight，因此对移动端外壳零影响（见该文件头注释）。
 import "../styles/ip-desktop.css";
 import { AppChrome } from "@/shell/app-chrome";
+import Script from "next/script";
+import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
 export const metadata: Metadata = {
   title: "数字人资产平台 · AiAvatar",
@@ -36,10 +38,23 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh" suppressHydrationWarning>
       <body>
+        {/* 桌面版 / 手机版的形态必须在**首帧之前**定下来（见 shell/layout-mode.ts）：
+            放进 React effect 里就晚了 —— 第一帧已经按手机版画完，用户会看到闪一下。
+
+            必须走 next/script 的 beforeInteractive，不能自己写 <script>：
+            React 19 会把裸 <script> 从组件树里**提出去**（实测报
+            「Cannot render a sync or defer <script> outside the main document」
+            与「Encountered a script tag while rendering React component」），
+            落点和执行时机都不由我们说了算。加 async 能消掉报错，但那就不保证
+            在首帧之前跑了 —— 正好把这段的意义抹掉。
+            beforeInteractive 由 Next 注入初始 HTML 的 <head>，同步执行。 */}
+        <Script id="layout-mode-boot" strategy="beforeInteractive">
+          {LAYOUT_BOOT_SCRIPT}
+        </Script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONTS_HREF} />
-        {/* 桌面顶栏（≥1024 才显示；公开名片页与登录页不挂）—— 见 shell/app-chrome.tsx */}
+        {/* 桌面顶栏（桌面形态才显示；公开名片页与登录页不挂）—— 见 shell/app-chrome.tsx */}
         <AppChrome />
         {children}
       </body>
