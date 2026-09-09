@@ -158,7 +158,7 @@ public final class IpStudioFixtures {
      * <p>worker 落库前会校验字节确实是图片（假图不许入库更不许扣款），
      * 所以出图 mock 不能再回 {@code new byte[]{1,2,3}}。
      */
-    static byte[] pngBytes() {
+    public static byte[] pngBytes() {
         try {
             java.awt.image.BufferedImage img =
                     new java.awt.image.BufferedImage(8, 8, java.awt.image.BufferedImage.TYPE_INT_RGB);

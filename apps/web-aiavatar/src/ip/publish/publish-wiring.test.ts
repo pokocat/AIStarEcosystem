@@ -84,6 +84,18 @@ describe("发布前先保存", () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
+  // 存为全局是另一条「把内存里的画布推到服务端之外」的路 —— 而且推的是**全平台**，
+  // 比发布资产影响面更大。它一度只 `await saveNow()` 不看结果（Codex 复核 v0.192 逮到）：
+  // 存失败照样发，推出去的是库里的上一版，界面还说「已存为全局模板」。
+  it("存为全局也走同一道闸，不是自己 await 一下 saveNow", () => {
+    expect(host).toContain("publishAsDemo");
+    const gateUses = host.split("publishWithLatestDoc").length - 1;
+    expect(gateUses).toBeGreaterThanOrEqual(3); // import + 发布资产 + 存为全局
+    expect(host.indexOf("publishWithLatestDoc")).toBeLessThan(host.indexOf("publishAsDemo"));
+    // 裸 await saveNow() 不该再出现 —— 它的返回值正是「存上没有」
+    expect(host).not.toMatch(/await\s+saveNow\(\)/);
+  });
+
   it("撞上别处的编辑同样不发布，并指出要刷新", async () => {
     const publish = vi.fn();
     await expect(publishWithLatestDoc(async () => "conflict", publish)).rejects.toThrow(/刷新/);

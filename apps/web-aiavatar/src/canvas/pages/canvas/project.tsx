@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Group, Video } from "lucide-react";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
-import { deleteProjectOnServer } from "@/canvas-bridge/project-sync";
+import { createProjectOnServer, deleteProjectOnServer } from "@/canvas-bridge/project-sync";
 
 import { isRunEnded, requestEdit, requestGeneration, requestImageQuestion, resumeRun } from "@/canvas-bridge/generation";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/canvas-bridge/audio";
@@ -246,7 +246,6 @@ function InfiniteCanvasPage() {
     const addAsset = useAssetStore((state) => state.addAsset);
     const cleanupAssetImages = useAssetStore((state) => state.cleanupImages);
     const hydrated = useCanvasStore((state) => state.hydrated);
-    const createProject = useCanvasStore((state) => state.createProject);
     const openProject = useCanvasStore((state) => state.openProject);
     const updateProject = useCanvasStore((state) => state.updateProject);
     const renameProject = useCanvasStore((state) => state.renameProject);
@@ -1266,20 +1265,44 @@ function InfiniteCanvasPage() {
         applyHistory(next);
     }, [applyHistory]);
 
-    const createAndOpenProject = useCallback(() => {
-        const id = createProject(t("canvas.defaultTitle", { count: useCanvasStore.getState().projects.length + 1 }));
-        router.push(`/projects/${id}`);   // 本仓路由是 /projects（上游是 /canvas）
-    }, [createProject, router, t]);
+    // 本仓改动：上游新建只在内存 store 里生成一个 nanoid（它是单机工具）。这里项目的真值在
+    // 服务端 —— 拿内存 id 跳过去，目标页第一件事就是 GET 服务端项目，必然 404。
+    // 所以：先请服务端建，拿真 id 再跳。与删除是同一类问题，方向相反。
+    const creatingRef = useRef(false);
+    const createAndOpenProject = useCallback(async () => {
+        if (creatingRef.current) return;
+        creatingRef.current = true;
+        const hide = message.loading(t("canvas.projectPage.creating"), 0);
+        try {
+            const created = await createProjectOnServer();
+            router.push(`/projects/${created.id}`);   // 本仓路由是 /projects（上游是 /canvas）
+        } catch (e) {
+            message.error(e instanceof Error ? e.message : t("canvas.projectPage.createFailed"));
+        } finally {
+            hide();
+            creatingRef.current = false;
+        }
+    }, [router, t]);
 
     // 本仓改动：上游是单机工具，删除只动内存 store 就够了；这里项目的真值在服务端，
     // 只删本地的话「删了刷新又回来」，而且 push 的还是上游的 /canvas 路由 —— 直接 404。
     // 所以：先请服务端删（软删），成功再清本地、回列表页。
+    // 本仓改动：删除要走一趟服务端，期间菜单项照样可点 —— 不挡住的话用户会以为没反应
+    // 而连点几下，发出去好几个删除请求。用 ref 而不是 state：这里只需要挡住重入，
+    // 用 state 会为一次删除多渲染两遍整张画布。
+    const deletingRef = useRef(false);
     const deleteCurrentProject = useCallback(async () => {
+        if (deletingRef.current) return;
+        deletingRef.current = true;
+        const hide = message.loading(t("canvas.projectPage.deleting"), 0);
         try {
             await deleteProjectOnServer(projectId);
         } catch (e) {
             message.error(e instanceof Error ? e.message : t("canvas.projectPage.deleteFailed"));
             return;   // 服务端没删成就别清本地 —— 否则界面上没了、服务端还在
+        } finally {
+            hide();
+            deletingRef.current = false;
         }
         deleteProjects([projectId]);
         cleanupAssetImages();

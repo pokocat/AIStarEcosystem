@@ -45,6 +45,18 @@ public class IpDemoTemplateService {
     /** 一个示例最多复制多少个素材 —— 挡住把一个几百节点的项目整个搬进示例。 */
     private static final int MAX_ASSETS = 60;
 
+    /** 节点上放候选产物的两个数组：出图的 images[]、出片历史 videos[]（v0.182）。 */
+    private static final List<String> CANDIDATE_FIELDS = List.of("images", "videos");
+
+    /** 模板里要清掉的素材字段（节点级 + 候选数组整个丢掉）。 */
+    private static final List<String> ASSET_FIELDS = List.of(
+            "storageKey", "url", "images", "primaryImageId", "videos", "primaryVideoId",
+            "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight");
+
+    /** 模板里要清掉的运行痕迹 —— 留着会让别人的画布去接作者那次运行。 */
+    private static final List<String> RUN_FIELDS = List.of(
+            "runId", "videoTaskId", "videoTaskProvider", "errorDetails");
+
     private final IpDemoTemplateRepository repo;
     private final IpProjectService projects;
     private final FileStorageService storage;
@@ -58,10 +70,6 @@ public class IpDemoTemplateService {
         this.projects = projects;
         this.storage = storage;
         this.om = om;
-    }
-
-    public List<IpDemoTemplate> listEnabled() {
-        return repo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc();
     }
 
     /** 启用中的全局**模板**（进「开始一个 IP」那一排）。 */
@@ -129,15 +137,7 @@ public class IpDemoTemplateService {
             if (!(md instanceof ObjectNode mo)) continue;
 
             if (asTemplate) {
-                // 模板只留工作流：把素材相关的字段整个清掉。留着 storageKey 的话，
-                // 别人打开会看到一批指向作者私有素材的空位（签不出来，一片裂图）。
-                mo.remove("storageKey");
-                mo.remove("content");
-                mo.remove("url");
-                mo.remove("images");
-                mo.remove("primaryImageId");
-                mo.remove("videos");
-                mo.remove("primaryVideoId");
+                stripToWorkflow(node, mo);
                 continue;
             }
 
@@ -147,21 +147,21 @@ public class IpDemoTemplateService {
                 copied++;
                 if (cover == null && IpDocs.T_IMAGE.equals(IpDocs.typeOf(node))) cover = newKey;
             }
-            JsonNode images = mo.path("images");
-            if (images.isArray()) {
-                for (JsonNode img : images) {
-                    if (!(img instanceof ObjectNode io)) continue;
+            // 候选数组两处都要复制：出图的 images[] 与出片历史 videos[]（v0.182）。
+            // 漏掉 videos[] 的话，节点当前那一版能放，历史版本仍指着作者的私有 key ——
+            // 别人打开示例切一版历史就是「签不出来」（v0.180 同一类）。
+            for (String field : CANDIDATE_FIELDS) {
+                for (JsonNode item : mo.path(field)) {
+                    if (!(item instanceof ObjectNode io)) continue;
                     String k = copyKey(id, IpDocs.text(io, "storageKey"), remap);
                     if (k != null) { io.put("storageKey", k); copied++; }
+                    // 派生地址不进示例：它们是当次签的、带 TTL（§4.7.7）。真值是 storageKey，
+                    // 用户打开示例时按 key 现签。
+                    io.remove("content");
                 }
             }
-            // 派生地址不进示例：它们是当次签的、带 TTL（§4.7.7）。真值是 storageKey，
-            // 用户打开示例时按 key 现签。
             mo.remove("content");
             mo.remove("url");
-            if (images.isArray()) {
-                for (JsonNode img : images) if (img instanceof ObjectNode io) io.remove("content");
-            }
         }
         if (copied > MAX_ASSETS) {
             throw BusinessException.badRequest("IP_DEMO_TOO_MANY_ASSETS",
@@ -175,7 +175,10 @@ public class IpDemoTemplateService {
         row.setSummary(summary);
         row.setKind(asTemplate ? IpDemoTemplate.KIND_TEMPLATE : IpDemoTemplate.KIND_EXAMPLE);
         row.setDocJson(write(doc));
-        if (cover != null) row.setCoverKey(cover);
+        // 模板不带素材，封面也就无从谈起 —— 而且已有示例**改存成模板**时必须把旧封面清掉，
+        // 否则目录里那张卡还挂着上一版示例的照片，卡片和内容对不上。
+        if (asTemplate) row.setCoverKey(null);
+        else if (cover != null) row.setCoverKey(cover);
         row.setSourceProjectId(projectId);
         row.setCreatedBy(operatorId);
         row.setUpdatedAt(Instant.now());
@@ -183,6 +186,42 @@ public class IpDemoTemplateService {
         log.info("[ipstudio] 存为全局{} demo={} source={} assets={}",
                 asTemplate ? "模板" : "实例", id, projectId, copied);
         return row;
+    }
+
+    /**
+     * 模板节点：只留工作流，素材与「这次跑到哪了」的痕迹全部清掉。
+     *
+     * <p><b>文字节点的 {@code content} 是正文，不能删。</b>模板里那些「① 你的照片」
+     * 「先描述你想要的形象」正是工作流本身 —— 无条件删 content 会把模板的说明文字
+     * 一起抹掉，而用户打开看到的是一排空白方块，还找不出是哪一步出的错。
+     * 图 / 视频 / 音频节点的 content 才是派生地址（§4.7.7），那个要删。
+     *
+     * <p><b>运行凭据也必须删</b>（{@code runId} / {@code videoTaskId}）：画布判定
+     * 「有任务号又没有 content」= 上次没跑完，进画布就自动接着轮询那次运行
+     * （见 canvas-generation-helpers.ts）。只删素材不删凭据的话，别人打开模板会去查
+     * <b>作者的</b>运行，被归属闸正确地拒掉 —— 一个干净的模板变成一堆报错节点。
+     */
+    private static void stripToWorkflow(JsonNode node, ObjectNode mo) {
+        ASSET_FIELDS.forEach(mo::remove);
+        RUN_FIELDS.forEach(mo::remove);
+        if (!IpDocs.T_TEXT.equals(IpDocs.typeOf(node))) {
+            mo.remove("content");
+            mo.remove("status");   // 素材没了，别再显示「已完成」
+        }
+        // 兜底：节点上可能有画布或插件写的、我们不认识的字段。逐层扫一遍，
+        // 凡是叫 storageKey / url 的一律清掉 —— 模板里不该留下任何指向素材的线索。
+        scrubAssetRefs(mo);
+    }
+
+    /** 递归清掉任意深度的素材指针。只认这两个键名，正文一类的字段不碰。 */
+    private static void scrubAssetRefs(JsonNode n) {
+        if (n instanceof ObjectNode o) {
+            o.remove("storageKey");
+            o.remove("url");
+            o.properties().forEach(e -> scrubAssetRefs(e.getValue()));
+        } else if (n.isArray()) {
+            for (JsonNode item : n) scrubAssetRefs(item);
+        }
     }
 
     @Transactional

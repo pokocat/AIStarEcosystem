@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -58,25 +60,38 @@ class MigrationSyntaxTest {
     }
 
     @Test
-    void 所有SQL迁移都能在H2上依次执行() throws Exception {
-        Path[] files;
+    void 所有SQL迁移在同一个库上按版本号依次执行且一条都不许失败() throws Exception {
+        // 此前这条是「每个文件各开一个新库、失败就吞、只要有一个成功就算过」——
+        // 那样它永远不会红，等于没有门禁（Codex 复核 v0.192 逮到）。
+        // 实测：全部 SQL 迁移在**同一个库上按顺序**跑是干净的（依赖 Java 迁移建表的一条都没有），
+        // 所以这里改成真门禁：任何一条失败就红，并指出是哪个文件的哪条语句。
+        List<Path> files;
         try (var s = Files.list(MIGRATIONS)) {
-            files = s.filter(p -> p.toString().endsWith(".sql")).sorted().toArray(Path[]::new);
+            files = s.filter(p -> p.toString().endsWith(".sql"))
+                    .sorted(Comparator.comparingInt(MigrationSyntaxTest::versionOf))   // Flyway 按版本号排，不是字典序
+                    .toList();
         }
-        assertTrue(files.length > 0, "迁移目录不该是空的");
-        // 只跑能独立执行的那些：Java 迁移与依赖既有表的 SQL 不在此列，
-        // 所以失败只报告、不断言全绿 —— 目的是让**新加的**迁移有个语法关。
-        int ok = 0;
-        for (Path f : files) {
-            try (Connection c = DriverManager.getConnection(
-                    "jdbc:h2:mem:m" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
-                 Statement st = c.createStatement()) {
-                for (String s : statements(Files.readString(f))) st.execute(s);
-                ok++;
-            } catch (Exception ignored) {
-                // 依赖前序表的迁移单独跑必然失败，不算问题
+        assertTrue(files.size() > 10, "迁移目录只扫到 " + files.size() + " 个文件，扫描没生效就等于这条永远绿");
+
+        try (Connection c = DriverManager.getConnection(
+                "jdbc:h2:mem:migall" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
+             Statement st = c.createStatement()) {
+            for (Path f : files) {
+                for (String sql : statements(Files.readString(f))) {
+                    try {
+                        st.execute(sql);
+                    } catch (Exception e) {
+                        throw new AssertionError("迁移 " + f.getFileName() + " 执行失败：\n"
+                                + sql.strip() + "\n→ " + e.getMessage(), e);
+                    }
+                }
             }
         }
-        assertTrue(ok > 0, "至少应有一些迁移能独立执行");
+    }
+
+    /** {@code V32__ip_demo_kind.sql} → 32。编号是 Flyway 的排序真值，字典序会把 V1 排到 V19 后面。 */
+    private static int versionOf(Path f) {
+        var m = java.util.regex.Pattern.compile("^V(\\d+)__").matcher(f.getFileName().toString());
+        return m.find() ? Integer.parseInt(m.group(1)) : Integer.MAX_VALUE;
     }
 }

@@ -40,8 +40,10 @@ export function CanvasTopBar({
     canRedo: boolean;
     onHome: () => void;
     onProjects: () => void;
-    onCreateProject: () => void;
-    onDeleteProject: () => void;
+    /** 本仓改动：新建要走服务端，是个异步动作（上游是纯内存建）。 */
+    onCreateProject: () => void | Promise<void>;
+    /** 本仓改动：删除要走服务端，是个异步动作（上游是纯内存删）。 */
+    onDeleteProject: () => void | Promise<void>;
     onExportProject: () => void;
     onImportImage: () => void;
     onUndo: () => void;

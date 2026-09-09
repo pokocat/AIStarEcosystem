@@ -454,3 +454,14 @@ export function useProjectSync(projectId: string) {
 export function deleteProjectOnServer(projectId: string): Promise<void> {
   return IpStudioApi.deleteProject(projectId);
 }
+
+/**
+ * 新建项目（服务端建行，返回真实 id）。
+ *
+ * 画布自带的「新建」只在内存 store 里生成一个 nanoid —— 上游是单机工具，那样就够了。
+ * 本仓的项目真值在服务端：拿内存 id 跳过去，目标页第一件事就是 GET 服务端项目，
+ * 于是必然 404。跟删除是同一类（v0.192 修的那条），只是方向相反。
+ */
+export function createProjectOnServer(): Promise<{ id: string }> {
+  return IpStudioApi.createProject({});
+}

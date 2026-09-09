@@ -30,7 +30,8 @@ type CanvasStore = {
     hydrated: boolean;
     projects: CanvasProject[];
     deletedProjects: CanvasDeletedProject[];
-    createProject: (title?: string) => string;
+    // 本仓改动（v0.192）：上游的「内存里新建一个项目」已退役 —— 项目真值在服务端，
+    // 内存里造个 nanoid 跳过去必然 404。新建走 canvas-bridge 的 createProjectOnServer。
     importProject: (project: Partial<CanvasProject>) => string;
     openProject: (id: string) => CanvasProject | null;
     renameProject: (id: string, title: string) => void;
@@ -67,25 +68,6 @@ export const useCanvasStore = create<CanvasStore>()(
             hydrated: false,
             projects: [],
             deletedProjects: [],
-            createProject: (title = i18n.t("canvas.project.untitled")) => {
-                const now = new Date().toISOString();
-                const id = nanoid();
-                const project: CanvasProject = {
-                    id,
-                    title,
-                    createdAt: now,
-                    updatedAt: now,
-                    nodes: [],
-                    connections: [],
-                    chatSessions: [],
-                    activeChatId: null,
-                    backgroundMode: "lines",
-                    showImageInfo: false,
-                    viewport: initialViewport,
-                };
-                set((state) => ({ projects: [project, ...state.projects] }));
-                return id;
-            },
             importProject: (source) => {
                 const now = new Date().toISOString();
                 const project: CanvasProject = {

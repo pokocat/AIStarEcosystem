@@ -80,13 +80,16 @@ function Host({ projectId }: { projectId: string }) {
     if (!name) return;
     setSavingDemo(true);
     try {
-      // 先把当前画布存下来再快照 —— 否则示例里少了用户刚做的那几笔
-      await saveNow();
-      const demo = await IpStudioApi.publishAsDemo(projectId, {
-        name,
-        summary: demoSummary.trim() || undefined,
-        kind: demoKind,
-      });
+      // 先把当前画布存下来再快照，**存不上就不发**（同发布资产那条闸，见 publish-gate.ts）：
+      // 服务端读的是库里那份文档，存失败 / 撞上别处的编辑还继续发的话，
+      // 推给全平台的是**上一版**，而界面刚说完「已存为全局模板」——两边都不报错，最难查。
+      const demo = await publishWithLatestDoc(saveNow, () =>
+        IpStudioApi.publishAsDemo(projectId, {
+          name,
+          summary: demoSummary.trim() || undefined,
+          kind: demoKind,
+        }),
+      );
       setDemoOpen(false);
       message.success(
         demoKind === "template"
