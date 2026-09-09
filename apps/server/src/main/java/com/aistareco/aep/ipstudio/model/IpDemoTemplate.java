@@ -36,10 +36,10 @@ import java.time.Instant;
 @Builder
 public class IpDemoTemplate {
 
-    @Id
     public static final String KIND_TEMPLATE = "template";
     public static final String KIND_EXAMPLE = "example";
 
+    @Id
     @Column(length = 32)
     private String id;
 
