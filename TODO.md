@@ -202,7 +202,13 @@
 - [ ] **`packages/types` 缺名片域类型**（§4.1 规定 `packages/types/src/*` 是类型真源）：`CardProfile` /
       `CardSummary` / `CardFigure` / `CardContact` / `CardMedia` 目前只在 `apps/web-aiavatar/src/proto/card.ts`。
       并入后 `src/ip/asset-types.ts` 那份重复已随删除消失，只剩一份，但仍未上移到 packages。
-- [ ] **账号中心与 DNS 的退役收尾**（跨仓，观察期后做）：`ipstudio.aibuzz.cn` 已改 308 跳 aiavatar；
+- [ ] **账号中心与 DNS 的退役收尾**（跨仓，观察期后做）—— **前半已于 2026-09-09 完成**：
+      `ipstudio.aibuzz.cn` 两个 vhost 已换成 308 跳 aiavatar（原配置备份在线上
+      `/etc/nginx/conf.d/.backup/*.20260909104454`），`aistareco-web-ipstudio` 已
+      `disable --now`。实测路径原样保留（`/projects/IPP-abc123` → 同路径）、
+      `/auth/callback` 不跳并返回迁移说明。**剩下的**：≥90 天无真实流量后，到
+      `pokocat/aibuzz-id` 删 client `web-ipstudio` 与 CORS origin，再删 vhost、
+      DNS A 记录、systemd 单元文件与 `/opt/ai-star-eco/web-ipstudio`。顺序不能反。：`ipstudio.aibuzz.cn` 已改 308 跳 aiavatar；
       ≥90 天无真实流量后，到 `pokocat/aibuzz-id` 删 client `web-ipstudio` 与 `ID_CORS_ALLOWED_ORIGINS`
       里的该 origin，再删两个 vhost、DNS A 记录、systemd 单元与 `/opt/ai-star-eco/web-ipstudio`。
       **顺序不能反** —— 先删 client 会让跳转期内的登录 400。
