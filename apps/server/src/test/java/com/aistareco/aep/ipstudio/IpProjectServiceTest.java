@@ -51,7 +51,7 @@ class IpProjectServiceTest {
         runs = new IpStudioFixtures.Runs();
         storage = IpStudioFixtures.storage();
         videoJobs = IpStudioFixtures.videoJobs();
-        svc = new IpProjectService(projects.repo, runs.repo, new IpCatalogService(OM), storage,
+        svc = new IpProjectService(projects.repo, runs.repo, new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage,
                 IpStudioFixtures.props(), videoJobs, OM);
     }
 
@@ -400,7 +400,7 @@ class IpProjectServiceTest {
         IpStudioProperties tight = IpStudioFixtures.props();
         tight.setUploadMaxDimension(64);
         IpProjectService tightSvc = new IpProjectService(projects.repo, runs.repo,
-                new IpCatalogService(OM), storage, tight, IpStudioFixtures.videoJobs(), OM);
+                new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage, tight, IpStudioFixtures.videoJobs(), OM);
 
         BusinessException e = assertThrows(BusinessException.class, () -> tightSvc.upload(USER,
                 new MockMultipartFile("file", "huge.png", "image/png", pngBytes(200, 40))));

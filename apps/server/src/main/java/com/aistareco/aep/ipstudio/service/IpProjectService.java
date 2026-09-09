@@ -60,6 +60,7 @@ public class IpProjectService {
     private final IpProjectRepository projectRepo;
     private final IpRunRepository runRepo;
     private final IpCatalogService catalog;
+    private final IpTemplateResolver templates;
     private final FileStorageService storage;
     private final com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs;
     private final IpStudioProperties props;
@@ -68,6 +69,7 @@ public class IpProjectService {
     public IpProjectService(IpProjectRepository projectRepo,
                            IpRunRepository runRepo,
                            IpCatalogService catalog,
+                           IpTemplateResolver templates,
                            FileStorageService storage,
                            IpStudioProperties props,
                            com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs,
@@ -75,6 +77,7 @@ public class IpProjectService {
         this.projectRepo = projectRepo;
         this.runRepo = runRepo;
         this.catalog = catalog;
+        this.templates = templates;
         this.storage = storage;
         this.props = props;
         this.videoJobs = videoJobs;
@@ -103,9 +106,11 @@ public class IpProjectService {
     @Transactional
     public IpProjectDto create(String userId, IpCreateProjectRequest req) {
         String templateId = req == null ? null : trimToNull(req.templateId());
+        // 走 IpTemplateResolver 而不是 catalog：目录里列出来的既有内置模板也有全局示例，
+        // 只查 catalog 的话，运营存的示例点开必报「内置工作流不存在」（目录列一套、建的时候查另一套）。
         IpTemplateDto tpl = templateId == null ? null
-                : catalog.template(templateId).orElseThrow(() ->
-                        BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "内置工作流不存在：" + templateId));
+                : templates.resolve(templateId).orElseThrow(() ->
+                        BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "工作流不存在或已下线：" + templateId));
 
         String name = req == null ? null : trimToNull(req.name());
         if (name == null) name = tpl != null ? tpl.name() : "未命名 IP 项目";

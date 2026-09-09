@@ -169,6 +169,15 @@ export function isOperatorRole(role?: string | null): boolean {
   return role === "operator" || role === "super_admin";
 }
 
+/**
+ * 超级管理员。用于「推给全平台每一个用户」那一类动作（如存为全局示例）——
+ * 服务端是 `InAppOperatorGuard.requireSuperAdmin`，两边判定必须一致，
+ * 否则运营会看到一个点了必然 403 的按钮。
+ */
+export function isSuperAdminRole(role?: string | null): boolean {
+  return role === "super_admin";
+}
+
 /** 本子应用审计来源短码 —— 随请求作为 X-App-Code 头带上，让 server 登录日志可区分子应用。 */
 const APP_CODE = "aiavatar";
 // 共享 apiFetch（开通门等）也带上同一个短码。

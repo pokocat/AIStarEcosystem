@@ -24,7 +24,7 @@ import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { LastRunPanel } from "@/ip/last-run-panel";
 import { IpStudioApi } from "@/ip/api";
-import { useIdentity, isOperatorRole } from "@/proto/api";
+import { useIdentity, isSuperAdminRole } from "@/proto/api";
 import "@/canvas-bridge/i18n";
 
 const SAVE_LABEL: Record<string, string> = {
@@ -40,14 +40,18 @@ function Host({ projectId }: { projectId: string }) {
   const [publishOpen, setPublishOpen] = React.useState(false);
   const { message } = AntdApp.useApp();
 
-  // 「存为全局示例」只给平台运营看 —— 普通用户看到一个点了必然 403 的按钮更糟。
+  // 「存为全局示例」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
   // 本 app 不挂共享 AuthProvider（它自带一套鉴权栈），所以这里读 aiavatar 自己的
   // identity。搬过来的画布**只有这一处**用到登录态，也是整个 vendored canvas 目录
   // 里唯一与鉴权有关的地方 —— 为它再挂一套 AuthProvider 得不偿失（两套状态机、
   // mock 模式还会失效）。判定逻辑复用 proto/api 的 isOperatorRole，与内嵌运营后台同源。
   const identity = useIdentity();
-  const isOperator = isOperatorRole(identity?.operatorRole);
+  // v0.192 收敛到超管：存为全局示例会出现在**所有人**的工作流目录里，
+  // 一键生效、无复核、素材还复制进平台自有存储。与服务端
+  // InAppOperatorGuard.requireSuperAdmin 对齐 —— 两边不一致的话，
+  // 运营会看到一个点了必然 403 的按钮。
+  const isOperator = isSuperAdminRole(identity?.operatorRole);
   const [savingDemo, setSavingDemo] = React.useState(false);
   const saveAsDemo = React.useCallback(async () => {
     setSavingDemo(true);

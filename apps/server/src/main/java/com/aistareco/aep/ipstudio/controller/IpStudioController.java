@@ -59,6 +59,7 @@ public class IpStudioController {
     private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
     private final IpDemoTemplateService demos;
     private final com.aistareco.aep.security.InAppOperatorGuard operatorGuard;
+    private final com.aistareco.aep.ipstudio.service.IpTemplateResolver templateResolver;
     private final com.aistareco.aep.service.storage.FileStorageService storage;
 
     public IpStudioController(IpProjectService projects,
@@ -70,6 +71,7 @@ public class IpStudioController {
                               com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs,
                               IpDemoTemplateService demos,
                               com.aistareco.aep.security.InAppOperatorGuard operatorGuard,
+                              com.aistareco.aep.ipstudio.service.IpTemplateResolver templateResolver,
                               com.aistareco.aep.service.storage.FileStorageService storage) {
         this.projects = projects;
         this.runs = runs;
@@ -80,6 +82,7 @@ public class IpStudioController {
         this.videoJobs = videoJobs;
         this.demos = demos;
         this.operatorGuard = operatorGuard;
+        this.templateResolver = templateResolver;
         this.storage = storage;
     }
 
@@ -91,15 +94,9 @@ public class IpStudioController {
      */
     @GetMapping("/templates")
     public ApiResponse<List<IpTemplateDto>> templates() {
-        List<IpTemplateDto> out = new java.util.ArrayList<>();
-        for (var d : demos.listEnabled()) {
-            out.add(new IpTemplateDto(d.getId(), d.getName(),
-                    d.getSummary() == null ? "" : d.getSummary(),
-                    d.getCoverKey() == null ? "" : signOrEmpty(d.getCoverKey()),
-                    null, 0, 0, demos.docOf(d)));
-        }
-        out.addAll(catalog.templates());
-        return ApiResponse.of(out);
+        // 与「按 id 建项目」共用 IpTemplateResolver —— 列表和建项目必须读同一套来源，
+        // 否则就是目录里点得到、建的时候说不存在（v0.192 修的正是这个）。
+        return ApiResponse.of(templateResolver.list());
     }
 
     private String signOrEmpty(String key) {
@@ -120,7 +117,9 @@ public class IpStudioController {
     public ApiResponse<JsonNode> publishAsDemo(Authentication auth, Principal principal,
                                                @PathVariable String id,
                                                @RequestBody(required = false) JsonNode body) {
-        operatorGuard.require(auth, "仅平台运营可发布全局示例工作流。");
+        // 发布是**推给全平台每一个用户**的动作：一键生效、无复核、素材还会复制进平台
+        // 自有存储长期留着。所以要超管，不是任一运营（v0.192 收敛）。
+        operatorGuard.requireSuperAdmin(auth, "发布全局示例会出现在所有用户的工作流目录里，仅超级管理员可操作。");
         var row = demos.publishFromProject(uid(principal), id,
                 text(body, "demoId"), text(body, "name"), text(body, "summary"));
         com.fasterxml.jackson.databind.node.ObjectNode out = ((com.fasterxml.jackson.databind.node.ObjectNode)
@@ -135,6 +134,8 @@ public class IpStudioController {
     @PostMapping("/demos/{demoId}/enabled")
     public ApiResponse<JsonNode> setDemoEnabled(Authentication auth, @PathVariable String demoId,
                                                 @RequestBody(required = false) JsonNode body) {
+        // 下线**故意维持运营级**：撤掉一个不合适的示例应当尽量容易 ——
+        // 为了删掉一个尴尬的东西还得先找到超管，只会让它在线上多挂几天。
         operatorGuard.require(auth, "仅平台运营可下线全局示例工作流。");
         boolean enabled = body == null || !body.has("enabled") || body.path("enabled").asBoolean(true);
         demos.setEnabled(demoId, enabled);

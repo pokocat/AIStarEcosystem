@@ -25,6 +25,8 @@ import java.util.Set;
 public class InAppOperatorGuard {
 
     private static final Set<String> ADMIN_AUTHORITIES = Set.of("ROLE_OPERATOR", "ROLE_SUPER_ADMIN");
+    /** 库里是枚举 {@code AepUser.OperatorRole}（出 wire 才小写成 super_admin）。 */
+    private static final AepUser.OperatorRole SUPER_ADMIN_ROLE = AepUser.OperatorRole.SUPER_ADMIN;
 
     private final AepUserRepository userRepo;
 
@@ -67,6 +69,39 @@ public class InAppOperatorGuard {
     public void require(Authentication auth, String message) {
         if (!isOperator(auth)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "OPERATOR_ONLY", message);
+        }
+    }
+
+    // ── 超级管理员 ──────────────────────────────────────────────────────────
+    //
+    // 「运营」这一级适合日常操作（审核、下线、调差）。但**把内容推给全平台每一个用户**
+    // 是另一回事：它一键生效、没有复核、产物还会被复制到平台自有存储长期留着。
+    // 这类动作要更高的门槛 —— 而**撤下**反过来要尽量容易，别为了删掉一个尴尬的东西
+    // 还得先找到超管。所以本类刻意分成两级：难发布，易撤回。
+
+    public boolean isSuperAdmin(Authentication auth) {
+        if (auth == null || auth.getName() == null) return false;
+        boolean adminToken = auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("ROLE_SUPER_ADMIN"::equals);
+        if (adminToken) return true;
+        return userRepo.findById(auth.getName())
+                .map(user -> SUPER_ADMIN_ROLE == user.getOperatorRole()
+                        && user.getStatus() == AepUser.UserStatus.ACTIVE)
+                .orElse(false);
+    }
+
+    /** 不是超管 → 403 {@code SUPER_ADMIN_ONLY}。 */
+    public void requireSuperAdmin(java.security.Principal principal, String message) {
+        boolean ok = principal instanceof Authentication auth
+                ? isSuperAdmin(auth)
+                : principal != null && principal.getName() != null
+                        && userRepo.findById(principal.getName())
+                                .map(user -> SUPER_ADMIN_ROLE == user.getOperatorRole()
+                                        && user.getStatus() == AepUser.UserStatus.ACTIVE)
+                                .orElse(false);
+        if (!ok) {
+            throw new BusinessException(HttpStatus.FORBIDDEN, "SUPER_ADMIN_ONLY", message);
         }
     }
 }

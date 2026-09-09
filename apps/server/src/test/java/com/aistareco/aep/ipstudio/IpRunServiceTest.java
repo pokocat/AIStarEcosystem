@@ -72,7 +72,7 @@ class IpRunServiceTest {
         runs = new IpStudioFixtures.Runs();
         storage = IpStudioFixtures.storage();
         IpCatalogService catalog = new IpCatalogService(OM);
-        projectService = new IpProjectService(projects.repo, runs.repo, catalog, storage,
+        projectService = new IpProjectService(projects.repo, runs.repo, catalog, IpStudioFixtures.templateResolver(), storage,
                 IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM);
 
         prompts = mock(PromptService.class);

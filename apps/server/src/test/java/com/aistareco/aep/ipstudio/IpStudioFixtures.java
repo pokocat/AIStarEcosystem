@@ -338,4 +338,19 @@ final class IpStudioFixtures {
         job.setApp(app);
         when(repo.findById(jobId)).thenReturn(java.util.Optional.of(job));
     }
+
+    /**
+     * 只含内置模板的 resolver（示例仓库为空）—— 绝大多数测试不关心全局示例。
+     * 需要示例的测试自己 mock repository，见 IpTemplateResolverTest。
+     */
+    public static com.aistareco.aep.ipstudio.service.IpTemplateResolver templateResolver() {
+        var repo = org.mockito.Mockito.mock(
+                com.aistareco.aep.ipstudio.repository.IpDemoTemplateRepository.class);
+        org.mockito.Mockito.when(repo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc())
+                .thenReturn(java.util.List.of());
+        var storage = org.mockito.Mockito.mock(
+                com.aistareco.aep.service.storage.FileStorageService.class);
+        return new com.aistareco.aep.ipstudio.service.IpTemplateResolver(
+                new com.aistareco.aep.ipstudio.service.IpCatalogService(OM), repo, storage, OM);
+    }
 }

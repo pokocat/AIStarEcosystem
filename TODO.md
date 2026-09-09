@@ -174,6 +174,17 @@
 - [ ] **系统性遗留：§4.7.7 的「递归重签 payload 里的资产 URL」本身会重签客户端写入的 URL**（2026-08-31 由上一条牵出，**不只 shorts，`DramaProject` 同源**）：裸 key 已堵，但攻击者若构造 `https://<我方 OSS/CDN 域>/media/<别人的key>` 这种**完整 URL**，`maybeSign` 仍会抽出 key 重签。彻底解法两条选一：① 产物由渲染管线在服务端直接回写草稿（客户端不再是产物的报告者）；② 签名时做归属校验（key → 所属账号，签之前比对 principal）。②更通用但要给 key 建归属索引。**在此之前不要再对外声称「客户端伪造只影响自己」。**
 - [ ] **（原始定位，供追溯）** —— PUT 保存可伪造逐镜产物（2026-08-31 由 v0.143 评审顺带发现，v0.76/v0.133 起就存在）：`DramaShortService.saveShort` 整份接收客户端 `data`，只剥 `assembled` 与客户端音频，**不清 `flow` / `videoUrl` / `frameUrl` / `jobId`**；`DramaShortAssembleService.buildPlan` 又只凭 `flow=done` + 非空 `videoUrl` 就接受镜头，不校验该 URL 是否来自本用户本草稿的成功渲染任务（`MaterialVideoJob`）。伪造 `{"flow":"done","videoUrl":"/cdn/<已知平台视频>.mp4"}` 即可跳过逐镜出片扣费直接总装成片（外部域名被白名单挡住，平台 CDN / 相对路径可利用）。修法：产物字段一律以服务端为真值（保存时按 shot id 保留库内旧值、忽略客户端传入），总装前按 `MaterialVideoJob`（owner + 本草稿 + 成功态）核验每镜视频出处。注意 `DramaShortServiceTest` 现有用例把「保存后 doneCount=1」当正确结果断言，修时要同步改。
 
+## 2026-09-09 · 全局示例（v0.192）
+
+- [ ] **30 个 `@SpringBootTest` 起不来（既有，非本轮引入）**：`drama_character` 有一列叫
+      `cast` —— H2 的保留字，ddl-auto 建表直接语法错，整个上下文加载失败。
+      受影响：`MaterialOpsE2ETest`(9) / `MaterialAiE2ETest`(8) / `AdminUserControllerWalletSecurityTest`(6) /
+      `AdminCreditControllerSecurityTest`(4) / `MaterialDraftBillingTest`(3)。
+      **已验证是既有问题**：把本轮改动 stash 掉、在已上线的 HEAD 上跑同样报错。
+      MySQL 下 `cast` 不是保留字所以生产没事，只有 H2 测试环境炸。
+      修法：给该列加 `@Column(name = "\`cast\`")` 或改名（改名要配迁移）。
+      在此之前 `./mvnw test` 全量必红 —— 别把它当成自己改坏了。
+
 ## 2026-09-08 · AI IP 工作台并入 aiavatar（v0.190）新发现待办
 
 - [ ] **老 SPA `/studio` 在桌面上仍是 480px 窄列**：26 个 overlay / 16 个 screen 文件 / 约 11k 行
