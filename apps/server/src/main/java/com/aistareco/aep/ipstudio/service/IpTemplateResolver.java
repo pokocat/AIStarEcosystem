@@ -48,13 +48,30 @@ public class IpTemplateResolver {
         this.om = om;
     }
 
-    /** 目录：启用的全局示例 + 内置模板。 */
+    /**
+     * 「开始一个 IP」那一排：全局**模板** + 内置模板。
+     *
+     * <p>v0.192 起只列 {@code kind=template} —— 带素材的**实例**不在这里，
+     * 它们进画布列表（{@link #listExamples()}）。两者用户意图不同：
+     * 模板是「拿它当起点、填我自己的素材」，实例是「点开看看做完长什么样」。
+     */
     public List<IpTemplateDto> list() {
         List<IpTemplateDto> out = new ArrayList<>();
-        for (IpDemoTemplate d : demoRepo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()) {
+        for (IpDemoTemplate d : demoRepo
+                .findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_TEMPLATE)) {
             out.add(toDto(d));
         }
         out.addAll(catalog.templates());
+        return out;
+    }
+
+    /** 全局**实例**（带素材的成品）—— 画布列表里那一批「官方示例」。 */
+    public List<IpTemplateDto> listExamples() {
+        List<IpTemplateDto> out = new ArrayList<>();
+        for (IpDemoTemplate d : demoRepo
+                .findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_EXAMPLE)) {
+            out.add(toDto(d));
+        }
         return out;
     }
 
@@ -67,6 +84,8 @@ public class IpTemplateResolver {
     public Optional<IpTemplateDto> resolve(String id) {
         if (id == null || id.isBlank()) return Optional.empty();
         String want = id.trim();
+        // 这里**两种都要认**：点一个实例是「照它复制一份到我的画布」，
+        // 走的也是「按 id 建项目」这条路。只认模板的话，实例点了就报不存在。
         for (IpDemoTemplate d : demoRepo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()) {
             if (want.equals(d.getId())) return Optional.of(toDto(d));
         }

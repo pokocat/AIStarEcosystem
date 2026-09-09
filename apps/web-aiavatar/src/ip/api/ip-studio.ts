@@ -197,10 +197,16 @@ export async function publishProject(id: string, payload: IpPublishRequest): Pro
  * 示例把素材和成图一起带过来，新用户一进来就看见效果。服务端会把素材**复制**一份到
  * 平台自有目录，所以之后你继续改这个项目、甚至删掉它，示例都不受影响。
  */
+/** 全局实例（带素材的成品）—— 画布列表里那一批「官方示例」。 */
+export async function listDemoExamples(): Promise<IpTemplate[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch<IpTemplate[]>("/v1/ip-studio/demos/examples");
+}
+
 export async function publishAsDemo(
   projectId: string,
-  body: { demoId?: string; name?: string; summary?: string } = {},
-): Promise<{ id: string; name: string; enabled: boolean }> {
+  body: { demoId?: string; name?: string; summary?: string; kind?: "template" | "example" } = {},
+): Promise<{ id: string; name: string; enabled: boolean; kind: string }> {
   return apiFetch(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/publish-as-demo`, {
     method: "POST",
     body,

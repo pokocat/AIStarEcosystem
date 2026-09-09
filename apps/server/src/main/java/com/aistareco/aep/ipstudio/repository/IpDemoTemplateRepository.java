@@ -11,4 +11,7 @@ public interface IpDemoTemplateRepository extends JpaRepository<IpDemoTemplate, 
 
     /** 目录里要展示的示例：启用的，按排序。 */
     List<IpDemoTemplate> findByEnabledTrueOrderBySortOrderAscCreatedAtAsc();
+
+    /** 按种类取启用中的（模板进目录、实例进画布列表，两条列表分开查）。 */
+    List<IpDemoTemplate> findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(String kind);
 }

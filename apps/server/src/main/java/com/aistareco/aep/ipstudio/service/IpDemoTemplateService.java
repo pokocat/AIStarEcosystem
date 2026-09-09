@@ -64,6 +64,16 @@ public class IpDemoTemplateService {
         return repo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc();
     }
 
+    /** 启用中的全局**模板**（进「开始一个 IP」那一排）。 */
+    public List<IpDemoTemplate> listTemplates() {
+        return repo.findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_TEMPLATE);
+    }
+
+    /** 启用中的全局**实例**（进画布列表，带「官方示例」标记）。 */
+    public List<IpDemoTemplate> listExamples() {
+        return repo.findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_EXAMPLE);
+    }
+
     /** 示例文档 → JSON 树；坏了就当空画布（示例坏掉不该让整个目录打不开）。 */
     public JsonNode docOf(IpDemoTemplate row) {
         try {
@@ -82,6 +92,29 @@ public class IpDemoTemplateService {
     @Transactional
     public IpDemoTemplate publishFromProject(String operatorId, String projectId,
                                              String demoId, String name, String summary) {
+        return publishFromProject(operatorId, projectId, demoId, name, summary,
+                IpDemoTemplate.KIND_EXAMPLE);
+    }
+
+    /**
+     * 存为全局内容。{@code kind} 决定**素材跟不跟着走**：
+     *
+     * <ul>
+     *   <li>{@code template} —— 只共享**工作流**：节点怎么排、提示词怎么写。素材是作者
+     *       自己的照片，不该跟着发给所有人；用户拿它当起点，填自己的素材。
+     *       进「开始一个 IP」那一排。</li>
+     *   <li>{@code example} —— 共享**做完的成品**：素材成图都在，用户点开就看得见
+     *       这条链最终长什么样。进画布列表并标「官方示例」。</li>
+     * </ul>
+     *
+     * 剥素材不是「少复制几个文件」而已 —— 模板里如果留着 storageKey，用户打开会看到
+     * 一堆自己没有权限、也不该看到的别人的照片位；所以要连 key 一起清干净。
+     */
+    @Transactional
+    public IpDemoTemplate publishFromProject(String operatorId, String projectId,
+                                             String demoId, String name, String summary,
+                                             String kind) {
+        boolean asTemplate = IpDemoTemplate.KIND_TEMPLATE.equals(kind);
         // 只能拿**自己的**项目做示例：运营也不该凭一个 id 就把别人的画布连素材抄成公开内容。
         IpProject p = projects.required(operatorId, projectId);
         JsonNode doc = projects.readDoc(p);
@@ -94,6 +127,20 @@ public class IpDemoTemplateService {
         for (JsonNode node : IpDocs.nodes(doc)) {
             JsonNode md = IpDocs.metadataOf(node);
             if (!(md instanceof ObjectNode mo)) continue;
+
+            if (asTemplate) {
+                // 模板只留工作流：把素材相关的字段整个清掉。留着 storageKey 的话，
+                // 别人打开会看到一批指向作者私有素材的空位（签不出来，一片裂图）。
+                mo.remove("storageKey");
+                mo.remove("content");
+                mo.remove("url");
+                mo.remove("images");
+                mo.remove("primaryImageId");
+                mo.remove("videos");
+                mo.remove("primaryVideoId");
+                continue;
+            }
+
             String newKey = copyKey(id, IpDocs.text(mo, "storageKey"), remap);
             if (newKey != null) {
                 mo.put("storageKey", newKey);
@@ -126,13 +173,15 @@ public class IpDemoTemplateService {
         row.setName(name != null && !name.isBlank() ? name.trim()
                 : (p.getName() == null || p.getName().isBlank() ? "示例 IP 工作流" : p.getName()));
         row.setSummary(summary);
+        row.setKind(asTemplate ? IpDemoTemplate.KIND_TEMPLATE : IpDemoTemplate.KIND_EXAMPLE);
         row.setDocJson(write(doc));
         if (cover != null) row.setCoverKey(cover);
         row.setSourceProjectId(projectId);
         row.setCreatedBy(operatorId);
         row.setUpdatedAt(Instant.now());
         repo.save(row);
-        log.info("[ipstudio] 存为全局示例 demo={} source={} assets={}", id, projectId, copied);
+        log.info("[ipstudio] 存为全局{} demo={} source={} assets={}",
+                asTemplate ? "模板" : "实例", id, projectId, copied);
         return row;
     }
 

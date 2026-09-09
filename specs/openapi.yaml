@@ -8737,6 +8737,17 @@ paths:
       summary: 某个数字人形象被哪些名片用了（资产详情页「已用于 · 名片」）
       responses:
         "200": { description: 名片摘要列表 }
+  /v1/ip-studio/demos/examples:
+    get:
+      tags: [ipstudio]
+      summary: 全局实例（带素材的成品）—— 画布列表里那一批「官方示例」
+      description: >
+        v0.192 起「存为全局」分两种：`template` 只共享工作流（素材剥掉，进
+        GET /v1/ip-studio/templates 那一排），`example` 连素材一起（进画布列表）。
+        两者用户意图不同：模板是「拿它当起点、填我自己的素材」，
+        实例是「点开看看做完长什么样」。本端点只返回 kind=example 且 enabled 的。
+      responses:
+        "200": { description: 工作流条目列表（与 templates 同形） }
   /v1/ip-studio/prompt-presets:
     get:
       tags: [ipstudio]

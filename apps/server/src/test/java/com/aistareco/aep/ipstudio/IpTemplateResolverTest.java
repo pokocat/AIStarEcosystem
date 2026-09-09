@@ -35,6 +35,12 @@ class IpTemplateResolverTest {
 
     private final IpCatalogService catalog = new IpCatalogService(OM);
 
+    private IpDemoTemplate demo(String id, String name, boolean enabled, String kind) {
+        IpDemoTemplate d = demo(id, name, enabled);
+        d.setKind(kind);
+        return d;
+    }
+
     private IpDemoTemplate demo(String id, String name, boolean enabled) {
         IpDemoTemplate d = new IpDemoTemplate();
         d.setId(id);
@@ -49,6 +55,9 @@ class IpTemplateResolverTest {
     private IpTemplateResolver resolverWith(List<IpDemoTemplate> enabledDemos) {
         IpDemoTemplateRepository repo = mock(IpDemoTemplateRepository.class);
         when(repo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()).thenReturn(enabledDemos);
+        when(repo.findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(org.mockito.ArgumentMatchers.anyString()))
+                .thenAnswer(inv -> enabledDemos.stream()
+                        .filter(d -> inv.getArgument(0, String.class).equals(d.getKind())).toList());
         FileStorageService storage = mock(FileStorageService.class);
         when(storage.signedUrl(anyString())).thenReturn("https://cdn.test/x.png");
         return new IpTemplateResolver(catalog, repo, storage, OM);
@@ -56,7 +65,7 @@ class IpTemplateResolverTest {
 
     @Test
     void 目录里列出来的每一条都必须能按id解析出来() {
-        IpTemplateResolver r = resolverWith(List.of(demo("IPD-abc123", "潮玩示例", true)));
+        IpTemplateResolver r = resolverWith(List.of(demo("IPD-abc123", "潮玩模板", true, IpDemoTemplate.KIND_TEMPLATE)));
 
         List<IpTemplateDto> listed = r.list();
         assertFalse(listed.isEmpty(), "目录不该是空的（至少有内置模板）");
@@ -71,8 +80,8 @@ class IpTemplateResolverTest {
 
     @Test
     void 全局示例排在内置模板前面() {
-        IpTemplateResolver r = resolverWith(List.of(demo("IPD-abc123", "潮玩示例", true)));
-        assertEquals("IPD-abc123", r.list().get(0).id(), "运营精选的示例应当排在最前");
+        IpTemplateResolver r = resolverWith(List.of(demo("IPD-abc123", "潮玩模板", true, IpDemoTemplate.KIND_TEMPLATE)));
+        assertEquals("IPD-abc123", r.list().get(0).id(), "运营精选的模板应当排在最前");
     }
 
     @Test
@@ -102,5 +111,23 @@ class IpTemplateResolverTest {
         Optional<IpTemplateDto> got = r.resolve("IPD-broken");
         assertTrue(got.isPresent(), "解析不该抛异常");
         assertTrue(got.get().doc().isObject(), "坏文档应当退化成空画布而不是 null");
+    }
+
+    @Test
+    void 模板进目录_实例不进目录但仍可按id解析() {
+        IpTemplateResolver r = resolverWith(List.of(
+                demo("IPD-tpl", "只有工作流", true, IpDemoTemplate.KIND_TEMPLATE),
+                demo("IPD-ex", "带素材的成品", true, IpDemoTemplate.KIND_EXAMPLE)));
+
+        List<String> catalogIds = r.list().stream().map(IpTemplateDto::id).toList();
+        assertTrue(catalogIds.contains("IPD-tpl"), "模板应当出现在「开始一个 IP」那一排");
+        assertFalse(catalogIds.contains("IPD-ex"), "实例不进模板目录 —— 它进画布列表");
+
+        List<String> exampleIds = r.listExamples().stream().map(IpTemplateDto::id).toList();
+        assertEquals(List.of("IPD-ex"), exampleIds, "实例列表只应有实例");
+
+        // 但两种都要能按 id 解析：点一个实例是「照它复制一份」，走的也是按 id 建项目
+        assertTrue(r.resolve("IPD-tpl").isPresent());
+        assertTrue(r.resolve("IPD-ex").isPresent(), "实例点了必须建得出来，否则又是「工作流不存在」");
     }
 }

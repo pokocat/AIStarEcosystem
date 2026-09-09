@@ -65,11 +65,13 @@ function Host({ projectId }: { projectId: string }) {
   const [demoOpen, setDemoOpen] = React.useState(false);
   const [demoName, setDemoName] = React.useState("");
   const [demoSummary, setDemoSummary] = React.useState("");
+  const [demoKind, setDemoKind] = React.useState<"template" | "example">("example");
 
   const openDemoDialog = React.useCallback(() => {
     // 预填当前画布名，多数情况下改一两个字就能用
     setDemoName(canvasTitle || "");
     setDemoSummary("");
+    setDemoKind("example");
     setDemoOpen(true);
   }, [canvasTitle]);
 
@@ -83,15 +85,20 @@ function Host({ projectId }: { projectId: string }) {
       const demo = await IpStudioApi.publishAsDemo(projectId, {
         name,
         summary: demoSummary.trim() || undefined,
+        kind: demoKind,
       });
       setDemoOpen(false);
-      message.success(`已存为全局示例「${demo.name}」，所有人在工作流目录里都能看到`);
+      message.success(
+        demoKind === "template"
+          ? `已存为全局模板「${demo.name}」，所有人在「开始一个 IP」里都能选到`
+          : `已存为全局示例「${demo.name}」，所有人在画布列表里都能打开`,
+      );
     } catch (e) {
       message.error(e instanceof Error ? e.message : "存为示例没成功");
     } finally {
       setSavingDemo(false);
     }
-  }, [projectId, saveNow, message, demoName, demoSummary]);
+  }, [projectId, saveNow, message, demoName, demoSummary, demoKind]);
 
   // 捏合 / Ctrl+滚轮 只缩放画布，不缩放整个网站。
   //
@@ -264,9 +271,22 @@ function Host({ projectId }: { projectId: string }) {
         closable={!savingDemo}
         getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}
       >
-        <p style={{ fontSize: 12.5, lineHeight: 1.75, color: "var(--ink-2)", margin: "0 0 14px" }}>
-          会把当前画布**连同素材复制一份**存成示例，出现在所有用户的工作流目录里。
-          原项目不受影响，之后改它或删它都不会动到示例。
+        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+          <KindChoice
+            active={demoKind === "template"}
+            title="存成模板"
+            hint="只共享工作流：节点怎么排、提示词怎么写。素材不跟着走，用户填自己的。出现在「开始一个 IP」那一排。"
+            onClick={() => setDemoKind("template")}
+          />
+          <KindChoice
+            active={demoKind === "example"}
+            title="存成示例"
+            hint="连素材一起复制：用户点开就能看见这条链做完长什么样。出现在画布列表里，标「官方示例」。"
+            onClick={() => setDemoKind("example")}
+          />
+        </div>
+        <p style={{ fontSize: 12, lineHeight: 1.7, color: "var(--ink-3)", margin: "0 0 14px" }}>
+          原项目不受影响 —— 之后你改它、甚至删它，都不会动到这份。
         </p>
         <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
           示例名称
@@ -289,6 +309,31 @@ function Host({ projectId }: { projectId: string }) {
         />
       </Modal>
     </div>
+  );
+}
+
+function KindChoice({
+  active, title, hint, onClick,
+}: { active: boolean; title: string; hint: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1, textAlign: "left", padding: "11px 12px", borderRadius: 11, cursor: "pointer",
+        border: active ? "2px solid var(--primary)" : "1px solid var(--line-2)",
+        background: active ? "var(--primary-soft)" : "var(--surface)",
+        fontFamily: "inherit",
+      }}
+    >
+      <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, marginBottom: 4,
+                     color: active ? "var(--primary-700)" : "var(--ink)" }}>
+        {title}
+      </span>
+      <span style={{ display: "block", fontSize: 11.5, lineHeight: 1.65, color: "var(--ink-3)" }}>
+        {hint}
+      </span>
+    </button>
   );
 }
 

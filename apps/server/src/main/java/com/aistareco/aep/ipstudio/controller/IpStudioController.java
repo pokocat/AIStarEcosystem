@@ -88,9 +88,15 @@ public class IpStudioController {
 
     // ── 目录 ──────────────────────────────────────────────────
 
+    /** 全局**实例**（带素材的成品）—— 画布列表里那一批「官方示例」。 */
+    @GetMapping("/demos/examples")
+    public ApiResponse<List<IpTemplateDto>> demoExamples() {
+        return ApiResponse.of(templateResolver.listExamples());
+    }
+
     /**
-     * 工作流目录 = 内置模板（空工作流，自己拖照片开跑）+ **全局示例**（素材和成图都在里面，
-     * 一进来就能看见这条链最终长什么样）。示例排在前面 —— 新用户要先看到效果，再谈自己动手。
+     * 「开始一个 IP」那一排 = 内置模板 + 全局**模板**（只有工作流，素材不跟着走）。
+     * 带素材的实例不在这里，见 {@code GET /demos/examples}。
      */
     @GetMapping("/templates")
     public ApiResponse<List<IpTemplateDto>> templates() {
@@ -111,7 +117,9 @@ public class IpStudioController {
     /**
      * 把自己的项目存成**全局示例**（运营）。素材会复制一份到平台自有目录，
      * 之后作者继续改项目、甚至删项目，示例都不受影响。
-     * body: {@code { demoId?, name?, summary? }} —— 带已有 demoId 就是更新那一条。
+     * body: {@code { demoId?, name?, summary?, kind? }} —— 带已有 demoId 就是更新那一条。
+     * {@code kind}：{@code template}（只共享工作流，素材剥掉）或 {@code example}
+     * （连素材的成品，默认）。两者落点不同 —— 模板进「开始一个 IP」，实例进画布列表。
      */
     @PostMapping("/projects/{id}/publish-as-demo")
     public ApiResponse<JsonNode> publishAsDemo(Authentication auth, Principal principal,
@@ -120,13 +128,18 @@ public class IpStudioController {
         // 发布是**推给全平台每一个用户**的动作：一键生效、无复核、素材还会复制进平台
         // 自有存储长期留着。所以要超管，不是任一运营（v0.192 收敛）。
         operatorGuard.requireSuperAdmin(auth, "发布全局示例会出现在所有用户的工作流目录里，仅超级管理员可操作。");
+        String kind = text(body, "kind");
         var row = demos.publishFromProject(uid(principal), id,
-                text(body, "demoId"), text(body, "name"), text(body, "summary"));
+                text(body, "demoId"), text(body, "name"), text(body, "summary"),
+                com.aistareco.aep.ipstudio.model.IpDemoTemplate.KIND_TEMPLATE.equals(kind)
+                        ? com.aistareco.aep.ipstudio.model.IpDemoTemplate.KIND_TEMPLATE
+                        : com.aistareco.aep.ipstudio.model.IpDemoTemplate.KIND_EXAMPLE);
         com.fasterxml.jackson.databind.node.ObjectNode out = ((com.fasterxml.jackson.databind.node.ObjectNode)
                 com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode());
         out.put("id", row.getId());
         out.put("name", row.getName());
         out.put("enabled", row.isEnabled());
+        out.put("kind", row.getKind());
         return ApiResponse.of(out);
     }
 

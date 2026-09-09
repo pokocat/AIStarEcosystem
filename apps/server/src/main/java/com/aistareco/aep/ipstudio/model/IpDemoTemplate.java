@@ -29,10 +29,17 @@ import java.time.Instant;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+// @Builder.Default 不是可选的：Lombok 的 builder **忽略字段初始值**，
+// 不加的话 builder().build() 出来 kind=null（NOT NULL 列，插入直接炸）、
+// enabled=false（本意是 true）。现有调用恰好都显式传了或随后 setter 覆盖，
+// 属于侥幸 —— 下一个照着 builder 写的人就会踩到。
 @Builder
 public class IpDemoTemplate {
 
     @Id
+    public static final String KIND_TEMPLATE = "template";
+    public static final String KIND_EXAMPLE = "example";
+
     @Column(length = 32)
     private String id;
 
@@ -51,10 +58,21 @@ public class IpDemoTemplate {
     @Column(name = "cover_key", length = 512)
     private String coverKey;
 
+    /**
+     * `template` = 只有工作流（素材已剥掉），进「开始一个 IP」那一排；
+     * `example`  = 连素材的成品，进画布列表并标「官方示例」。
+     * 存量行按 example（v0.182 起存的都带素材，改判成 template 会让素材凭空消失）。
+     */
+    @Column(nullable = false, length = 16)
+    @Builder.Default
+    private String kind = IpDemoTemplate.KIND_EXAMPLE;
+
     @Column(nullable = false)
+    @Builder.Default
     private boolean enabled = true;
 
     @Column(name = "sort_order", nullable = false)
+    @Builder.Default
     private int sortOrder = 0;
 
     @Column(name = "source_project_id", length = 32)

@@ -19,6 +19,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { IpStudioApi } from "@/ip/api";
 import { ToastProvider, useToast } from "@/ip/common/toast";
 import { MockBadge } from "@/ip/common/mock-badge";
+import { CanvasThumb } from "@/ip/canvas-thumb";
 
 function formatWhen(iso: string): string {
   const d = new Date(iso);
@@ -41,6 +42,8 @@ function ProjectsPageInner() {
   const authState = useRequireAuth();
   const [templates, setTemplates] = React.useState<IpTemplate[]>([]);
   const [projects, setProjects] = React.useState<IpProjectSummary[]>([]);
+  // 全局实例（带素材的成品）—— 与我的画布并列展示，标「官方示例」
+  const [examples, setExamples] = React.useState<IpTemplate[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [notEnrolled, setNotEnrolled] = React.useState(false);
@@ -55,6 +58,8 @@ function ProjectsPageInner() {
       const [tpl, list] = await Promise.all([IpStudioApi.listTemplates(), IpStudioApi.listProjects()]);
       setTemplates(tpl);
       setProjects(list);
+      // 官方示例是**旁路**：拉不到就只是少一排，不该把「我的画布」一起挡住
+      void IpStudioApi.listDemoExamples().then(setExamples).catch(() => undefined);
     } catch (e) {
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
       else setLoadError(e instanceof Error ? e.message : "项目列表加载失败");
@@ -148,9 +153,11 @@ function ProjectsPageInner() {
                 className="ledger-card text-left p-5 transition disabled:opacity-60 hover:-translate-y-0.5"
                 style={{ boxShadow: "var(--shadow-card)" }}
               >
+                {/* 预览：按节点真实坐标画的工作流示意（模板没有素材，见 canvas-thumb.tsx） */}
+                <CanvasThumb doc={t.doc} className="mb-3" />
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="field-label mb-1.5">工作流模板</div>
+                    <div className="mb-1.5"><OriginTag kind="template" /></div>
                     <h3 className="asset-name text-[18px] leading-tight" style={{ color: "var(--ink)" }}>{t.name}</h3>
                   </div>
                   <span
@@ -201,9 +208,57 @@ function ProjectsPageInner() {
         )}
       </section>
 
+      {/* ── 官方示例（带素材的成品）──
+          与「我的画布」分成两节而不是混在一起：它们不是你的东西，点开是复制一份，
+          混排的话用户分不清哪个删得、哪个删不得。 */}
+      {examples.length > 0 && (
+        <section className="mb-10">
+          <div className="flex items-baseline gap-3 mb-4">
+            <h2 className="asset-name text-[20px]" style={{ color: "var(--ink)" }}>官方示例</h2>
+            <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>
+              做完的成品，素材都在。点开会复制一份到你的画布，原示例不受影响
+            </span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {examples.map((ex) => (
+              <button
+                key={ex.id}
+                onClick={() => void create(ex.id)}
+                disabled={creating !== null}
+                className="ledger-card text-left p-4 transition disabled:opacity-60 hover:-translate-y-0.5"
+              >
+                {ex.coverUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={ex.coverUrl} alt="" loading="lazy"
+                    className="w-full h-[96px] object-cover rounded-[9px] mb-3"
+                    style={{ background: "var(--surface-2)" }} />
+                ) : (
+                  <CanvasThumb doc={ex.doc} className="mb-3" />
+                )}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <OriginTag kind="example" />
+                  {creating === ex.id && <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: "var(--ink-3)" }} />}
+                </div>
+                <h3 className="asset-name text-[16px] leading-tight truncate" style={{ color: "var(--ink)" }} title={ex.name}>
+                  {ex.name}
+                </h3>
+                {ex.summary && (
+                  <p className="mt-1.5 text-[12px] leading-relaxed line-clamp-2" style={{ color: "var(--ink-2)" }}>
+                    {ex.summary}
+                  </p>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ── 我的项目 ── */}
       <section>
-        <h2 className="asset-name text-[20px] mb-4" style={{ color: "var(--ink)" }}>我的画布</h2>
+        <div className="flex items-baseline gap-3 mb-4">
+          <h2 className="asset-name text-[20px]" style={{ color: "var(--ink)" }}>我的画布</h2>
+          <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>只有你能看到</span>
+        </div>
 
         {loadError ? (
           <div className="ledger-card p-8 text-center">
@@ -323,5 +378,26 @@ export default function ProjectsPage() {
     <ToastProvider>
       <ProjectsPageInner />
     </ToastProvider>
+  );
+}
+
+/**
+ * 来源标记 —— 一眼分清「这是我的」还是「平台给的」。
+ * 用户实测反馈两者混在一起看不出区别；而它们的可操作性完全不同
+ * （自己的能改能删，官方的点开是复制一份）。
+ */
+function OriginTag({ kind }: { kind: "mine" | "example" | "template" }) {
+  const meta = {
+    mine: { label: "我的", bg: "var(--surface-3, #eef0f5)", fg: "var(--ink-3)" },
+    example: { label: "官方示例", bg: "var(--action, #e7d58d)", fg: "var(--on-action, #202c42)" },
+    template: { label: "工作流模板", bg: "var(--primary-soft, #e3e7f1)", fg: "var(--primary-700, #3b4a75)" },
+  }[kind];
+  return (
+    <span
+      className="inline-flex items-center px-2 h-[19px] rounded-full text-[10.5px] font-bold shrink-0"
+      style={{ background: meta.bg, color: meta.fg }}
+    >
+      {meta.label}
+    </span>
   );
 }
