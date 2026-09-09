@@ -24,6 +24,7 @@ import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { LastRunPanel } from "@/ip/last-run-panel";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
+import type { IpDemoAdmin } from "@ai-star-eco/types";
 import { IpStudioApi } from "@/ip/api";
 import { useIdentity, isSuperAdminRole } from "@/proto/api";
 import "@/canvas-bridge/i18n";
@@ -66,13 +67,20 @@ function Host({ projectId }: { projectId: string }) {
   const [demoName, setDemoName] = React.useState("");
   const [demoSummary, setDemoSummary] = React.useState("");
   const [demoKind, setDemoKind] = React.useState<"template" | "example">("example");
+  // 覆盖哪一条已有的（空 = 新建一条）。不给这个选项的话，同一张画布存两次就是
+  // 目录里两张一模一样的卡 —— 而普通用户那边没有任何办法分辨或去掉其中一张。
+  const [demoTarget, setDemoTarget] = React.useState("");
+  const [existingDemos, setExistingDemos] = React.useState<IpDemoAdmin[]>([]);
 
   const openDemoDialog = React.useCallback(() => {
     // 预填当前画布名，多数情况下改一两个字就能用
     setDemoName(canvasTitle || "");
     setDemoSummary("");
     setDemoKind("example");
+    setDemoTarget("");
     setDemoOpen(true);
+    // 旁路加载已有列表，供「覆盖已有」用。拉不到就只是少一个下拉，不挡发布。
+    void IpStudioApi.listDemosForAdmin().then(setExistingDemos).catch(() => setExistingDemos([]));
   }, [canvasTitle]);
 
   const saveAsDemo = React.useCallback(async () => {
@@ -85,23 +93,23 @@ function Host({ projectId }: { projectId: string }) {
       // 推给全平台的是**上一版**，而界面刚说完「已存为全局模板」——两边都不报错，最难查。
       const demo = await publishWithLatestDoc(saveNow, () =>
         IpStudioApi.publishAsDemo(projectId, {
+          demoId: demoTarget || undefined,   // 空 = 新建一条
           name,
           summary: demoSummary.trim() || undefined,
           kind: demoKind,
         }),
       );
       setDemoOpen(false);
-      message.success(
-        demoKind === "template"
-          ? `已存为全局模板「${demo.name}」，所有人在「开始一个 IP」里都能选到`
-          : `已存为全局示例「${demo.name}」，所有人在画布列表里都能打开`,
-      );
+      const what = demoKind === "template"
+        ? `全局模板「${demo.name}」，所有人在「开始一个 IP」里都能选到`
+        : `全局示例「${demo.name}」，所有人在画布列表里都能打开`;
+      message.success(demoTarget ? `已更新${what}` : `已存为${what}`);
     } catch (e) {
       message.error(e instanceof Error ? e.message : "存为示例没成功");
     } finally {
       setSavingDemo(false);
     }
-  }, [projectId, saveNow, message, demoName, demoSummary, demoKind]);
+  }, [projectId, saveNow, message, demoName, demoSummary, demoKind, demoTarget]);
 
   // 捏合 / Ctrl+滚轮 只缩放画布，不缩放整个网站。
   //
@@ -291,6 +299,30 @@ function Host({ projectId }: { projectId: string }) {
         <p style={{ fontSize: 12, lineHeight: 1.7, color: "var(--ink-3)", margin: "0 0 14px" }}>
           原项目不受影响 —— 之后你改它、甚至删它，都不会动到这份。
         </p>
+        {existingDemos.length > 0 && (
+          <>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
+              新建还是覆盖
+            </label>
+            <select
+              value={demoTarget}
+              onChange={(e) => {
+                setDemoTarget(e.target.value);
+                const hit = existingDemos.find((d) => d.id === e.target.value);
+                if (hit) { setDemoName(hit.name); setDemoSummary(hit.summary); setDemoKind(hit.kind); }
+              }}
+              style={{ ...DEMO_FIELD, marginBottom: 12 }}
+            >
+              <option value="">新建一条</option>
+              {existingDemos.map((d) => (
+                <option key={d.id} value={d.id}>
+                  覆盖「{d.name}」（{d.kind === "template" ? "模板" : "示例"}
+                  {d.enabled ? "" : " · 已下线"}）
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
           示例名称
         </label>

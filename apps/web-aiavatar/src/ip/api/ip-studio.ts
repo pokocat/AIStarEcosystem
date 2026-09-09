@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  IpCreateProjectRequest, IpPricing, IpProject, IpProjectDoc, IpProjectSummary,
+  IpCreateProjectRequest, IpDemoAdmin, IpPricing, IpProject, IpProjectDoc, IpProjectSummary,
   IpPublishRequest, IpPublishResult, IpRun, IpStylePreset, IpTemplate, IpUpdateProjectRequest,
   IpUploadResult, IpPromptGroup,
 } from "@ai-star-eco/types";
@@ -211,4 +211,34 @@ export async function publishAsDemo(
     method: "POST",
     body,
   });
+}
+
+// ── 运营后台：全局内容管理 ──────────────────────────────────────
+//
+// 目录那两个接口只查启用中的（给用户看）；这里要的是全集，含已下线的。
+// 权限在服务端：列表 / 编辑 / 下线是运营，删除是超管（「难删除、易下线」）。
+
+export async function listDemosForAdmin(): Promise<IpDemoAdmin[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch<IpDemoAdmin[]>("/v1/ip-studio/demos");
+}
+
+export async function updateDemo(
+  demoId: string,
+  body: { name?: string; summary?: string; sortOrder?: number },
+): Promise<{ id: string; name: string; sortOrder: number }> {
+  return apiFetch(`/v1/ip-studio/demos/${encodeURIComponent(demoId)}`, { method: "POST", body });
+}
+
+/** 下线 / 重新上线。不删数据，随时能再打开 —— 撤掉一个不合适的示例应当尽量容易。 */
+export async function setDemoEnabled(demoId: string, enabled: boolean): Promise<{ enabled: boolean }> {
+  return apiFetch(`/v1/ip-studio/demos/${encodeURIComponent(demoId)}/enabled`, {
+    method: "POST",
+    body: { enabled },
+  });
+}
+
+/** 真删，连素材副本一起。不可逆、没有回收站，所以服务端要超管。 */
+export async function deleteDemo(demoId: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/v1/ip-studio/demos/${encodeURIComponent(demoId)}`, { method: "DELETE" });
 }

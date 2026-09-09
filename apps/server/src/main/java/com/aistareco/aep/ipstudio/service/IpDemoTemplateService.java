@@ -2,6 +2,7 @@ package com.aistareco.aep.ipstudio.service;
 
 import com.aistareco.aep.ipstudio.model.IpDemoTemplate;
 import com.aistareco.aep.ipstudio.model.IpProject;
+import com.aistareco.aep.ipstudio.dto.IpStudioDtos;
 import com.aistareco.aep.ipstudio.repository.IpDemoTemplateRepository;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -16,9 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 把一个真实项目存成**全局示例工作流**（v0.182）。
@@ -224,10 +228,125 @@ public class IpDemoTemplateService {
         }
     }
 
+    // ── 运营后台 ────────────────────────────────────────────────
+    //
+    // 目录接口（listTemplates / listExamples）只查 enabled=true —— 那是给普通用户看的。
+    // 运营要看的恰恰是「全部，含已下线的」：下线之后如果在任何界面都看不见，
+    // 就等于「下线 = 消失」，想重新上线只能自己记住 demoId。
+
+    /** 全部全局内容（含已下线），先模板后实例、各自按排序。 */
+    public List<IpStudioDtos.IpDemoAdminDto> listForAdmin() {
+        return repo.findAll().stream()
+                .sorted(Comparator.comparing(IpDemoTemplate::getKind, Comparator.reverseOrder())  // template 在前
+                        .thenComparingInt(IpDemoTemplate::getSortOrder)
+                        .thenComparing(IpDemoTemplate::getCreatedAt,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(this::toAdminDto)
+                .toList();
+    }
+
+    private IpStudioDtos.IpDemoAdminDto toAdminDto(IpDemoTemplate d) {
+        JsonNode doc = docOf(d);
+        int nodes = 0, assets = 0;
+        for (JsonNode n : IpDocs.nodes(doc)) {
+            nodes++;
+            assets += countAssetKeys(IpDocs.metadataOf(n));
+        }
+        return new IpStudioDtos.IpDemoAdminDto(
+                d.getId(), d.getName(), d.getSummary() == null ? "" : d.getSummary(),
+                d.getKind(), d.isEnabled(), d.getSortOrder(),
+                d.getCoverKey() == null ? "" : signOrEmpty(d.getCoverKey()),
+                d.getSourceProjectId(), d.getCreatedBy(),
+                d.getCreatedAt() == null ? null : d.getCreatedAt().toString(),
+                d.getUpdatedAt() == null ? null : d.getUpdatedAt().toString(),
+                nodes, assets);
+    }
+
+    private static int countAssetKeys(JsonNode md) {
+        if (md == null) return 0;
+        int n = 0;
+        if (md.isObject() && md.hasNonNull("storageKey")) n++;
+        for (JsonNode child : md) n += countAssetKeys(child);
+        return n;
+    }
+
+    private String signOrEmpty(String key) {
+        try {
+            String url = storage.signedUrl(key);
+            return url == null ? "" : url;
+        } catch (RuntimeException e) {
+            return "";   // 封面签不出来只是少一张缩略图，不该让整个管理列表挂掉
+        }
+    }
+
+    /**
+     * 改展示信息：名字 / 一句话说明 / 排序。传 null 的字段不动。
+     *
+     * <p>不含 kind —— 模板与实例的区别是**文档里有没有素材**，光改一个字段
+     * 只会得到「标着模板、内容却是带素材的实例」。要换种类得重新「存为全局」。
+     */
+    @Transactional
+    public IpDemoTemplate updateMeta(String demoId, String name, String summary, Integer sortOrder) {
+        IpDemoTemplate row = required(demoId);
+        if (name != null && !name.isBlank()) row.setName(name.trim());
+        if (summary != null) row.setSummary(summary.isBlank() ? null : summary.trim());
+        if (sortOrder != null) row.setSortOrder(sortOrder);
+        row.setUpdatedAt(Instant.now());
+        return repo.save(row);
+    }
+
+    /**
+     * 真删一条全局内容，连同它自己那份素材副本。
+     *
+     * <p>为什么要有真删而不是只留下线开关：素材是**复制**进平台目录的
+     * （{@code ipstudio_demo/<demoId>/…}），下线之后它们还占着存储、而且凭 key
+     * 仍然任何登录用户可读。发错一条的处置应当是「撤干净」，不是「藏起来」。
+     *
+     * <p><b>只删这条示例自己前缀下的 key。</b>文档里万一混进了别的 key
+     * （作者的私有素材、另一条示例的素材），删掉就是把别人的东西一起毁了 ——
+     * 而这个动作没有回收站。跳过并 WARN。
+     */
+    @Transactional
+    public void deleteDemo(String demoId) {
+        IpDemoTemplate row = required(demoId);
+        String prefix = demoPrefix(demoId);
+        Set<String> keys = new LinkedHashSet<>();
+        collectKeys(docOf(row), keys);
+        if (row.getCoverKey() != null) keys.add(row.getCoverKey());
+
+        repo.delete(row);   // 先删行：素材清理是 best-effort，不能因为它失败就让这条示例删不掉
+
+        int removed = 0, skipped = 0;
+        for (String k : keys) {
+            if (!k.startsWith(prefix)) { skipped++; continue; }
+            try { storage.delete(k); removed++; }
+            catch (Exception e) { log.warn("[ipstudio] 示例素材删除失败 demo={} key={}: {}", demoId, k, e.getMessage()); }
+        }
+        log.info("[ipstudio] 删除全局内容 demo={} kind={} 素材清理 {} 个（跳过非本示例前缀 {} 个）",
+                demoId, row.getKind(), removed, skipped);
+    }
+
+    /** 这条示例自己的素材前缀（{@code ipstudio_demo/<demoId>/}）—— 由存储层算，不手写。 */
+    private String demoPrefix(String demoId) {
+        String probe = storage.allocateKey(CATEGORY_DEMO, demoId, "probe.png");
+        int cut = probe.lastIndexOf('/');
+        return cut < 0 ? probe : probe.substring(0, cut + 1);
+    }
+
+    private static void collectKeys(JsonNode n, Set<String> out) {
+        if (n == null) return;
+        if (n.isObject() && n.hasNonNull("storageKey")) out.add(n.get("storageKey").asText());
+        for (JsonNode child : n) collectKeys(child, out);
+    }
+
+    private IpDemoTemplate required(String demoId) {
+        return repo.findById(demoId)
+                .orElseThrow(() -> BusinessException.notFound("IP_DEMO_NOT_FOUND", "示例不存在"));
+    }
+
     @Transactional
     public void setEnabled(String demoId, boolean enabled) {
-        IpDemoTemplate row = repo.findById(demoId)
-                .orElseThrow(() -> BusinessException.notFound("IP_DEMO_NOT_FOUND", "示例不存在"));
+        IpDemoTemplate row = required(demoId);
         row.setEnabled(enabled);
         row.setUpdatedAt(Instant.now());
         repo.save(row);

@@ -116,6 +116,22 @@ export interface IpTemplate {
   stylePresetId?: string; lookCount: number; estimatedCredits: number;
   doc: IpProjectDoc;              // 预排好的节点图（照片 / 参考图为空待填）
 }
+/**
+ * 全局内容的**管理**视图（运营后台 `GET /v1/ip-studio/demos`）。
+ *
+ * 与 {@link IpTemplate} 的区别：不带 `doc`（整份画布文档几百 KB，管理列表用不上），
+ * 但带上目录里看不到的那几样 —— 启不启用、排第几、谁在什么时候发的。
+ * `nodeCount` / `assetCount` 是服务端从 doc 现算的概览数字。
+ */
+export interface IpDemoAdmin {
+  id: string; name: string; summary: string;
+  kind: "template" | "example";
+  enabled: boolean; sortOrder: number;
+  coverUrl?: string; sourceProjectId?: string; createdBy?: string;
+  createdAt?: string; updatedAt?: string;
+  nodeCount: number; assetCount: number;
+}
+
 export interface IpStylePreset { id: string; name: string; summary: string; promptEn: string; negativeEn?: string; coverUrl?: string }
 
 /** 内置提示词模板 —— 装扮按性别分（服装品类不同），表情 / 短动作不分。 */

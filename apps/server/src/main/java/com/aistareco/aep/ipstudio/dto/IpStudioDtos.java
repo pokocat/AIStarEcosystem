@@ -53,6 +53,21 @@ public final class IpStudioDtos {
                                 String stylePresetId, int lookCount, long estimatedCredits,
                                 JsonNode doc) {}
 
+    /**
+     * 全局内容的**管理**视图（运营后台用）。与 {@link IpTemplateDto} 的区别是它
+     * <b>不带 doc</b>（管理列表要的是「有哪些、什么状态」，整份画布文档动辄几百 KB，
+     * 一屏几十条会把响应体撑爆），但带上目录里看不到的那几样：
+     * 启不启用、排在第几、谁在什么时候发的、源项目是哪个。
+     *
+     * <p>{@code nodeCount} / {@code assetCount} 是从 doc 现算的概览数字 ——
+     * 运营判断「这条是不是空的 / 是不是那条重复的」靠它，不用点进去看。
+     */
+    public record IpDemoAdminDto(String id, String name, String summary, String kind,
+                                 boolean enabled, int sortOrder, String coverUrl,
+                                 String sourceProjectId, String createdBy,
+                                 String createdAt, String updatedAt,
+                                 int nodeCount, int assetCount) {}
+
     /** 内置风格预设（resources/ipstudio/styles.json）。 */
     public record IpStylePresetDto(String id, String name, String summary,
                                    String promptEn, String negativeEn, String coverUrl) {}

@@ -6,7 +6,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  AlertCircle, ArrowRight, Coins, Layers, Loader2, Plus, Sparkles, Trash2,
+  AlertCircle, ArrowRight, Coins, Layers, Loader2, Plus, Settings2, Sparkles, Trash2,
 } from "lucide-react";
 import type { IpProjectSummary, IpTemplate } from "@ai-star-eco/types";
 import { USE_MOCK, isProductNotEnrolledError } from "@ai-star-eco/api-client";
@@ -16,6 +16,7 @@ import { EnrollmentGate } from "@ai-star-eco/landing";
 // 这也是搬进来时唯一一处真正用到 @ai-star-eco/ui 的地方，改掉它整个依赖就摘干净了。
 import { Modal } from "antd";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
+import { useIdentity, isOperatorRole } from "@/proto/api";
 import { IpStudioApi } from "@/ip/api";
 import { ToastProvider, useToast } from "@/ip/common/toast";
 import { MockBadge } from "@/ip/common/mock-badge";
@@ -40,6 +41,8 @@ function ProjectsPageInner() {
   // 并入前这一页在 ipstudio 的 AuthProvider 下，未登录会自动跳登录页。
   // 本 app 没挂那套 —— 不接这个闸的话 legacy 模式下 401 只会显示一句加载失败。
   const authState = useRequireAuth();
+  const identity = useIdentity();
+  const isOperator = isOperatorRole(identity?.operatorRole);
   const [templates, setTemplates] = React.useState<IpTemplate[]>([]);
   const [projects, setProjects] = React.useState<IpProjectSummary[]>([]);
   // 全局实例（带素材的成品）—— 与我的画布并列展示，标「官方示例」
@@ -134,7 +137,20 @@ function ProjectsPageInner() {
               选一套内置工作流，节点已经排好，填照片就能跑；也可以从空白画布自己搭。
             </p>
           </div>
-          {USE_MOCK && <MockBadge label="示例数据" />}
+          <div className="flex items-center gap-2 shrink-0">
+            {USE_MOCK && <MockBadge label="示例数据" />}
+            {/* 运营入口。发布发生在画布顶栏，管理就挂在目录这一页 —— 同一条链上，
+                运营不用记一个没人链接过去的 URL。非运营看不到（服务端才是真闸）。 */}
+            {isOperator && (
+              <Link
+                href="/projects/demos"
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] text-[12.5px]"
+                style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
+              >
+                <Settings2 className="w-3.5 h-3.5" /> 全局内容管理
+              </Link>
+            )}
+          </div>
         </div>
 
         {loading && templates.length === 0 ? (

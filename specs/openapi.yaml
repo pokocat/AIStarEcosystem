@@ -9688,6 +9688,42 @@ paths:
         "200": { description: "{ id, name, enabled }" }
         "400": { description: IP_DEMO_TOO_MANY_ASSETS 素材太多 }
         "403": { description: 非平台运营 }
+  /v1/ip-studio/demos:
+    get:
+      tags: [ip-studio]
+      summary: 运营后台 · 全部全局内容（含已下线）
+      description: >
+        目录那两个接口（GET /templates、GET /demos/examples）只查 enabled=true，那是给
+        用户看的。运营要看的是全集 —— 下线之后如果哪儿都看不见，就等于「下线 = 消失」，
+        想重新上线只能自己记住 demoId。不带 doc（整份画布文档几百 KB，一屏几十条会撑爆
+        响应体），改为回 nodeCount / assetCount 两个概览数字。
+      responses:
+        "200": { description: IpDemoAdminDto 列表（模板在前，各自按 sortOrder） }
+        "403": { description: 非平台运营 }
+  /v1/ip-studio/demos/{demoId}:
+    post:
+      tags: [ip-studio]
+      summary: 改全局内容的展示信息（仅平台运营）
+      description: >
+        body：{ name?, summary?, sortOrder? }，传 null 的字段不动。
+        不含 kind —— 模板与实例的区别是文档里有没有素材，光改字段只会得到
+        「标着模板、内容却带素材」；换种类要重新「存为全局」。
+      responses:
+        "200": { description: "{ id, name, sortOrder }" }
+        "403": { description: 非平台运营 }
+        "404": { description: IP_DEMO_NOT_FOUND }
+    delete:
+      tags: [ip-studio]
+      summary: 删除一条全局内容及其素材副本（仅超级管理员）
+      description: >
+        真删，连 ipstudio_demo/<demoId>/ 下那份素材副本一起 —— 下线只是藏起来，
+        素材仍占存储、且凭 key 任何登录用户可读。要超管而不是运营：这一步不可逆、
+        没有回收站，而「下线」已经足以止血（「难删除、易下线」）。
+        素材清理是 best-effort，且只删这条示例自己前缀下的 key。
+      responses:
+        "200": { description: "{ id, deleted }" }
+        "403": { description: 非超级管理员 }
+        "404": { description: IP_DEMO_NOT_FOUND }
   /v1/ip-studio/demos/{demoId}/enabled:
     post:
       tags: [ip-studio]

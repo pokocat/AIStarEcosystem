@@ -143,6 +143,58 @@ public class IpStudioController {
         return ApiResponse.of(out);
     }
 
+    /**
+     * 运营后台：全部全局内容（**含已下线的**）。
+     *
+     * <p>目录那两个接口只查启用中的 —— 那是给用户看的。运营要看的是全集：
+     * 下线之后如果哪儿都看不见，就等于「下线 = 消失」，想重新上线只能自己记住 demoId。
+     */
+    @GetMapping("/demos")
+    public ApiResponse<List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpDemoAdminDto>> listDemos(
+            Authentication auth) {
+        operatorGuard.require(auth, "仅平台运营可查看全局内容管理列表。");
+        return ApiResponse.of(demos.listForAdmin());
+    }
+
+    /**
+     * 改展示信息：名字 / 说明 / 排序（运营）。
+     *
+     * <p>排序是「开始一个 IP」那一排的先后 —— 新用户的第一印象，本来就该能调；
+     * 此前 {@code sortOrder} 有字段却没有任何地方能设，恒为 0。
+     */
+    @PostMapping("/demos/{demoId}")
+    public ApiResponse<JsonNode> updateDemo(Authentication auth, @PathVariable String demoId,
+                                            @RequestBody(required = false) JsonNode body) {
+        operatorGuard.require(auth, "仅平台运营可编辑全局内容。");
+        Integer sortOrder = body != null && body.hasNonNull("sortOrder")
+                ? body.path("sortOrder").asInt() : null;
+        var row = demos.updateMeta(demoId, text(body, "name"), text(body, "summary"), sortOrder);
+        com.fasterxml.jackson.databind.node.ObjectNode out =
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        out.put("id", row.getId());
+        out.put("name", row.getName());
+        out.put("sortOrder", row.getSortOrder());
+        return ApiResponse.of(out);
+    }
+
+    /**
+     * 删掉一条全局内容，连它自己那份素材副本一起（超管）。
+     *
+     * <p>要超管而不是运营：这一步**不可逆、也没有回收站**，而下线已经足以止血。
+     * 「难删除、易下线」与发布那条「难发布、易撤回」是同一条分寸。
+     */
+    @DeleteMapping("/demos/{demoId}")
+    public ApiResponse<JsonNode> deleteDemo(Authentication auth, @PathVariable String demoId) {
+        operatorGuard.requireSuperAdmin(auth,
+                "删除全局内容会连同素材副本一起清掉且不可恢复，仅超级管理员可操作。先「下线」同样能让用户看不到。");
+        demos.deleteDemo(demoId);
+        com.fasterxml.jackson.databind.node.ObjectNode out =
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        out.put("id", demoId);
+        out.put("deleted", true);
+        return ApiResponse.of(out);
+    }
+
     /** 下线 / 重新上线一个全局示例（运营）。不删数据。 */
     @PostMapping("/demos/{demoId}/enabled")
     public ApiResponse<JsonNode> setDemoEnabled(Authentication auth, @PathVariable String demoId,
