@@ -1,8 +1,46 @@
-# 版本增量历史（v0.5 → v0.194）
+# 版本增量历史（v0.5 → v0.195）
 
 > 从 `AGENTS.md`（`CLAUDE.md`）拆分出的连续多版本增量日志（明星带货线 + 混剪专区 + dap 数字人 + 三端拆分 + sau-service 等）。本文件按版本号分节，包含新实体 / 路由 / 决策 / 注意事项。新人 agent 不必翻 commit history。
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
+
+### v0.195（2026-09-09）— 后台终于能看见「统一登录接了哪些系统」
+
+**起因**是一句提问：「既然后台已经有 client 认证接入的能力，为啥登录进去看不到应用全景图、哪些应用已开通？」
+查下来是两个视角被混成了一个：「我的账号」页上那块「已接入的产品」是**用户视角**，
+数据源是账号中心的 `id_product_link`，只有产品后端主动回报才有行；而且六个 web app 的
+`product_code` 全是 `aistar`，那张表按 `(uid, product_code)` 唯一，**最多只显示一行**。
+它回答不了「接了哪些系统」—— 应用的维度是 `client_id`，产品的维度才是 `product_code`。
+
+**新页 `/platform/identity-clients`（平台与配置组「统一登录接入」）。** 按 `productCode`
+分组列出账号中心注册的全部接入端（含已退役的），每行给：公开 / 机密、授权方式、scope、
+回跳地址、绑定的微信 appid、**最近一次换出令牌**、**近 7 天授权数**。最后两列才是这页的价值 ——
+区分「清单里登记了但从来没人真用过」和「在跑」。首屏三个数：接入的产品 / 接入端 / **登记了但从没用过**。
+
+**只读。** 生产客户端的唯一真源是账号中心那台机器上的 yaml，加一个接入端 = 改配置 + 重启；
+给这页开写入口就等于让库和配置各说一套。
+
+**server**：`GET /api/admin/identity/clients`（`AdminIdentityImportController#identityClients`，
+SUPER_ADMIN / OPERATOR）转发账号中心的 `GET /api/admin/clients`。新组件 `IdentityAdminClient`
+自带令牌缓存，走**另一个客户端** `admin-server`（scope `clients.read`）—— 与回报产品链接的
+`aistar-server`（scope `product.link`）是两把不同的钥匙，账号中心按客户端发 scope，
+拿产品那把去读全景只会 403，所以两个组件各缓存各的令牌，不共用。
+新配置 `aep.identity.admin-client-id` / `admin-client-secret`（`AEP_ID_ADMIN_CLIENT_SECRET`），
+留空 = 这一页显示「未配置」，不伪造数据。
+
+**三个标志位，把「读不到」和「一个都没接」分开**（§8.0）：`error` 非 null = 这次没读到；
+`configured=false` = 这台环境没配凭据（不是故障）；`activityAvailable=false` = 账号中心那边的
+活跃度聚合没取到，此时每行的 `lastTokenAt` / `tokens7d` 都是 null，页面显示「暂不可用」
+而**不是**「从没用过」。读失败一律走 200 + `error`，不抛 5xx —— 抛了前端就只能笼统报「加载失败」，
+恰好把这页最要紧的区分抹掉。
+
+**账号中心侧**（独立仓 `pokocat/aibuzz-id`，同日上线 release `20260909-162651`）：
+新增 `GET /api/admin/clients`（scope `clients.read`）、运营账号登录名维护、
+`web-admin` 强制密码登录、附身 grant。活跃度查的是 `oauth2_authorization` 而不是 `id_login_event`
+—— 后者在授权码流程里 `client_id` 是 null，拿它做全景会把六个 web 客户端全显示成「从没用过」。
+详见那边的 README §19 与 `docs/admin-console-plan.md`。
+
+门禁：`pnpm typecheck:all` 12/12 + `apps/admin` tsc + `apps/server` compile + `pnpm check:api-contract` 全绿。
 
 ### v0.191（2026-09-08）— 信息架构收口 + 名片补上「人设」
 

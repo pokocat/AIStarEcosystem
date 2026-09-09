@@ -470,6 +470,8 @@ ECS_HOST=ecs-user@<ECS_HOST> ./infra/scripts/rollback.sh <service> <git-sha>
 | `ID_ISSUER=https://id.aibuzz.cn` | `AEP_ID_ISSUER=https://id.aibuzz.cn` |
 | `ID_CLIENT_SECRET_AISTAR_SERVER=<X>` | `AEP_ID_CLIENT_SECRET=<同一个 X>` |
 | 客户端 `aistar-server` | `AEP_ID_CLIENT_ID=aistar-server` |
+| `ID_CLIENT_SECRET_ADMIN_SERVER=<Y>` | `AEP_ID_ADMIN_CLIENT_SECRET=<同一个 Y>`（v0.195，后台「统一登录接入」页；留空 = 那页显示未配置） |
+| 客户端 `admin-server` | `AEP_ID_ADMIN_CLIENT_ID=admin-server` —— **与 `aistar-server` 是两个客户端**，scope 不同，别混用一把 secret |
 
 两边 secret 不一致的现象是 server 侧 401 + 账号中心侧一条 `invalid_client`，很难查。
 

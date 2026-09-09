@@ -38,6 +38,19 @@ public class IdentityProperties {
     private String clientSecret = "";
 
     /** outbox 轮询间隔（秒）。 */
+    /**
+     * 运营后台后端在账号中心的机密客户端（{@code aibuzz-id} README §19）。
+     *
+     * <p>与 {@link #clientId} 是<b>两个不同的客户端</b>：那个是 {@code aistar-server}
+     * （scope {@code product.link}，回报产品链接 / 拉 outbox），这个是 {@code admin-server}
+     * （scope {@code clients.read} 等，读应用接入全景）。账号中心按客户端发 scope，
+     * 拿产品那把去读全景只会 403。
+     */
+    private String adminClientId = "admin-server";
+
+    /** 留空 = 后台的账号中心视图整体关闭（页面显示未配置，不伪造数据）。 */
+    private String adminClientSecret = "";
+
     private int outboxPollSeconds = 30;
 
     /** 本产品在账号中心的 product code（URL 路径段）。 */
@@ -58,6 +71,12 @@ public class IdentityProperties {
     public String getClientSecret() { return clientSecret; }
     public void setClientSecret(String clientSecret) { this.clientSecret = clientSecret; }
 
+    public String getAdminClientId() { return adminClientId; }
+    public void setAdminClientId(String adminClientId) { this.adminClientId = adminClientId; }
+
+    public String getAdminClientSecret() { return adminClientSecret; }
+    public void setAdminClientSecret(String adminClientSecret) { this.adminClientSecret = adminClientSecret; }
+
     public int getOutboxPollSeconds() { return outboxPollSeconds; }
     public void setOutboxPollSeconds(int outboxPollSeconds) { this.outboxPollSeconds = outboxPollSeconds; }
 
@@ -72,6 +91,11 @@ public class IdentityProperties {
     /** 机器互调是否可用（issuer + clientSecret 都配了）。 */
     public boolean isMachineCallEnabled() {
         return isEnabled() && clientSecret != null && !clientSecret.isBlank();
+    }
+
+    /** 后台读账号中心全景是否可用（issuer + adminClientSecret 都配了）。 */
+    public boolean isAdminCallEnabled() {
+        return isEnabled() && adminClientSecret != null && !adminClientSecret.isBlank();
     }
 
     /** issuer 去掉末尾斜杠，便于拼路径。 */

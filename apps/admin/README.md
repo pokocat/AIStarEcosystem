@@ -56,7 +56,7 @@ DataInitializer 默认 seed 两个账号：
 - **积分运营**（积分面，不碰真实资金；OPERATOR 提交 / FINANCE_ADMIN 复核 maker-checker）：调差 / 赠送
 - **分发**：分发渠道、发行队列
 - ~~基础数据~~（v0.59 起整组隐藏：积分包页已删 —— 与「财务 · 充值套餐」重复；其余子项本就隐藏）
-- **平台与配置**：**AI 模型与 Key**（v0.41 合并）、**Prompt 管理**（v0.40 新增）、**Agent 平台**、平台配置
+- **平台与配置**：**AI 模型与 Key**（v0.41 合并）、**Prompt 管理**（v0.40 新增）、**Agent 平台**、平台配置、石榴AI 供应商、**统一登录接入**（v0.195 新增，只读）
 - **消息与日志**：消息中心（v0.58 起为真实运营收件箱：充值下单/取消、新用户激活等业务事件实时入箱）、审计日志
 
 ## 隐藏的菜单（v0.5 sidebar enabled = false，URL 直访仍可用）
@@ -86,6 +86,7 @@ DataInitializer 默认 seed 两个账号：
 
 ## 版本日志
 
+- **v0.195 / 2026-09-09**：新页 `/platform/identity-clients`（平台与配置组「统一登录接入」）。回答「统一登录到底接了哪些系统、哪些还活着」—— 客户端注册表在账号中心（独立仓 `pokocat/aibuzz-id`），我方库里查不到，产品侧只知道自己那一个 client_id，此前只能 ssh 上生产 cat 清单。按 productCode 分组列全部接入端（含已退役的），每行给授权方式 / scope / 回跳地址 / 最近一次发令牌 / 近 7 天授权数。**只读**：加一个接入端是改账号中心的配置并重启，给这页开写入口等于让库和配置各说一套。「读不到」与「一个都没接」分开渲染（`error` / `configured` / `activityAvailable` 三个标志位），活跃度取不到时那两列显示「暂不可用」而不是「从没用过」。对应 server `AdminIdentityImportController#identityClients`（GET `/api/admin/identity/clients`）+ 新组件 `IdentityAdminClient`（走账号中心的 `admin-server` 客户端，scope `clients.read`——与回报产品链接用的 `aistar-server` 是两个不同客户端）。详见 VERSION_HISTORY.md v0.195。
 - **v0.100 / 2026-07-10**：`/platform/ai-models`「AI 应用绑定」Tab 的 drama 组（DRAMA_SCRIPT_DRAFT / IMAGE_GENERATION / VIDEO_GENERATION）每个用途下加折叠「候选端点与能力」块（一致性引擎 D-11）——列候选端点、加入/移除、编辑 capability 四字段（参考图上限 / 首尾帧 / 主体参考 / 最长秒数，留空=未知按保守默认）+ 单价 override、启用开关、设默认（= 改 AiAppBinding.endpointId）。默认端点始终在候选池、不可删。`api/ai-models.ts` 加 `listCandidates`/`addCandidate`/`updateCandidate`/`removeCandidate` + `AiAppEndpointCandidate`/`EndpointCapability` 类型。禁用浏览器原生 confirm（移除走 `useConfirm`）。对应 server `AdminAiAppBindingController` `/{purpose}/candidates[/{endpointId}]`。详见 `apps/server/README.md` v0.100 + VERSION_HISTORY.md v0.100。
 - **v0.86 / 2026-06-27**：财务工作台辨识用户身份 —— `/finance/recharge-orders` 用户列 + `/finance/ledger` `AccountCell`（钱包 / 流水 / 业务交易三 Tab）+ 充值核准确认弹窗 + 对账 CSV 新增**手机号**（与登录名分列展示）。`types/{wallet,finance,recharge-order}.ts` 各加 `phone?`，mocks 补样例手机号（u-003 仍故意缺省，覆盖 server 未回填的 fallback 路径）。server 侧四个财务 DTO read-time 回填 `owner.phone`（详见 `apps/server/README.md` v0.86）。
 - **v0.59 / 2026-06-10**：①`/platform/accounts` 账号「停用 / 恢复」接真链路 —— `api/users.ts` +`suspendUser/reactivateUser`（POST `/admin/users/{id}/suspend|reactivate`，停用原因必填写入审计日志 `admin.user.suspend|reactivate`）；页面改 `useConfirm` + toast 模式，删掉无 onConfirm 的 ActionDialog 与「查看」死按钮；server 侧短信登录补停用闸（403 ACCOUNT_DISABLED，此前停用账号仍可短信登录）。注意：已签发 JWT 到期前仍有效（无状态边界）。②消息中心侧栏未读角标（`badgeKey: notif_unread`，与页面同源 `listNotifications` 数 `viewedAt == null`）。③删除 `/base/credit-packs`（与充值套餐重复 + 全死按钮），连带删除独占的 api/mocks/types settings 文件，「基础数据」组整组隐藏。详见 VERSION_HISTORY.md v0.59。

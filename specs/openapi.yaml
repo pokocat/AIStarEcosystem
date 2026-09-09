@@ -127,6 +127,57 @@ components:
         lastLoginAt:   { type: string, format: date-time, nullable: true }
         studio:        { nullable: true, description: 名下工作室档案（无则 null） }
 
+    IdentityClientRow:
+      type: object
+      description: 一个接入端（web app / 小程序 / 产品后端各算一个）。字段与账号中心 ClientOverviewService.ClientView 1:1。
+      required: [clientId, disabled, publicClient, grants, scopes, redirectUris]
+      properties:
+        clientId:     { type: string, description: OAuth 客户端标识 }
+        displayName:  { type: string, nullable: true }
+        audience:     { type: string, nullable: true, description: 令牌 aud }
+        wechatAppId:  { type: string, nullable: true, description: 绑定的微信 appid（只有小程序客户端有） }
+        disabled:     { type: boolean, description: 已退役 —— grant 集被换成哨兵值，行保留供审计追溯 }
+        publicClient: { type: boolean, description: 公开客户端（无 secret，强制 PKCE） }
+        grants:       { type: array, items: { type: string } }
+        scopes:       { type: array, items: { type: string } }
+        redirectUris: { type: array, items: { type: string } }
+        lastTokenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 最近一次换出令牌；null = 从没换过，**或**活跃度不可用（看 activityAvailable）
+        tokens7d:
+          type: integer
+          nullable: true
+          description: 近 7 天授权数；null = 活跃度不可用，**不是** 0
+
+    IdentityProductRow:
+      type: object
+      description: 一个产品下的全部接入端。注意六个 web app 的 productCode 都是 aistar —— 产品 ≠ 应用。
+      required: [productCode, displayName, clients]
+      properties:
+        productCode: { type: string }
+        displayName: { type: string, description: 取账号中心的 id.product-names，没配则是代号原文 }
+        clients:     { type: array, items: { $ref: '#/components/schemas/IdentityClientRow' } }
+
+    IdentityClientOverview:
+      type: object
+      description: >
+        统一登录接入全景。error 非 null 时其余字段一律空 ——「读失败 / 未配置」与
+        「一个都没接」必须分开渲染。activityAvailable=false 时每行的 lastTokenAt /
+        tokens7d 都是 null，该显示「暂不可用」而不是「从没用过」。
+      required: [error, configured, issuer, checkedAt, activityAvailable, productCount, clientCount, products]
+      properties:
+        error:       { type: string, nullable: true, description: 非 null = 这次没读到 }
+        configured:  { type: boolean, description: false = 这台环境没配后台凭据（不是故障） }
+        issuer:      { type: string, description: 账号中心地址 }
+        checkedAt:   { type: string, format: date-time, description: 我方发起本次读取的时间 }
+        generatedAt: { type: string, format: date-time, nullable: true, description: 账号中心生成快照的时间 }
+        activityAvailable: { type: boolean, description: 账号中心的活跃度聚合这次取到了没有 }
+        productCount: { type: integer }
+        clientCount:  { type: integer }
+        products:     { type: array, items: { $ref: '#/components/schemas/IdentityProductRow' } }
+
     SuccessResponse:
       type: object
       required: [success, data]
@@ -6990,6 +7041,29 @@ paths:
                           created: { type: integer, description: 账号中心新建 uid 的账号数 }
                           skipped: { type: integer, description: 跳过数（无手机号 / 账号中心侧已注销等） }
                           errors:  { type: integer, description: 失败数（可重跑） }
+
+  /admin/identity/clients:
+    get:
+      tags: [admin-users]
+      operationId: adminIdentityClients
+      summary: 统一登录接入全景 —— 账号中心注册了哪些客户端、各自还活不活跃（SUPER_ADMIN / OPERATOR，只读）
+      description: >
+        转发账号中心（独立仓 pokocat/aibuzz-id）的 GET /api/admin/clients，
+        用我方注册在那边的 admin-server 服务令牌（scope clients.read）。
+        读失败与未配置**不返回错误状态码**，而是把 error 填进 200 的 body ——
+        「读不到」和「一个系统都没接」必须分开渲染。
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IdentityClientOverview'
 
   /admin/users:
     get:

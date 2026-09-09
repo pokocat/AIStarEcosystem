@@ -479,7 +479,7 @@ pnpm check:api-contract
 
 ### admin sidebar 启用状态（当前）
 
-启用：Platform / Artists / **Celebrity**（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）/ Distribution / **资金财务**（v2 §6：FINANCE_ADMIN 专属 —— `/finance` 控制台 + 充值订单/退款/对账/结算/异常风控/充值套餐，OPERATOR 看不到且后端 403）/ **积分运营**（OPERATOR 可见：调差/赠送）/ Notifications / Audit / 平台 > AI 模型 / Prompt 管理 / Agent 平台 / 销售渠道 / 后台管理员 / 账号登录日志。
+启用：Platform / Artists / **Celebrity**（含 stars / templates / template-scripts / star-authorizations / engine-pricing / projects / videos）/ Distribution / **资金财务**（v2 §6：FINANCE_ADMIN 专属 —— `/finance` 控制台 + 充值订单/退款/对账/结算/异常风控/充值套餐，OPERATOR 看不到且后端 403）/ **积分运营**（OPERATOR 可见：调差/赠送）/ Notifications / Audit / 平台 > AI 模型 / Prompt 管理 / Agent 平台 / 销售渠道 / 后台管理员 / 账号登录日志 / **统一登录接入**（v0.195，只读）。
 
 隐藏（源码保留，URL 直访仍可用）：music / film / nft / forge / digital-ip / community / coach / fan / membership / store / monetization。
 
@@ -491,11 +491,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **v0.195** | 2026-09-09 | 后台新页「统一登录接入」：账号中心注册了哪些客户端、各自还活不活跃（只读）。新 `GET /api/admin/identity/clients` + `IdentityAdminClient`（走 `admin-server` 客户端，与回报产品链接的 `aistar-server` 是两把不同的钥匙）；「读不到」与「一个都没接」分开渲染 |
 | **v0.194** | 2026-09-09 | 时间戳全站统一 `yyyy-MM-dd HH:mm:ss`（修掉 `slice(0,10)` 切 UTC 差一天）；界面文案去翻译腔；把去 AI 味 / 时间格式 / 四条新踩的坑写成规约（§4.8、§8、§8.0.1 ⑧–⑪）并配可跑门禁 |
 | **v0.193** | 2026-09-09 | 手机上的画布从硬拦改成柔性提示（可以选择继续打开，chunk 仍按需下）；形态真值挪到 `<html data-layout>`，断点 1024→960，手机浏览器的「请求桌面版网站」现在真的生效 |
 | **v0.192** | 2026-09-09 | 官方内容运营后台（发得出去也撤得回来）；存为官方内容区分模板 / 示例；**生产事故**：脚本把 `@Id` 挤到常量上 → EMF 建不起来 → API 挂 3 分钟，补 `EntityIdentifierTest` |
 | **v0.191** | 2026-09-08 | 根域名换回工作台落地页、原主页移到 `/dashboard`；名片补「人设」（对话式，落点是按 voice 重写访客看得见的那几句）；发现页改竖屏卡 |
-| **v0.190** | 2026-09-08 | AI IP 工作台并入 web-aiavatar，一个应用两套设备形态；`apps/web-ipstudio` 退役，`ipstudio.aibuzz.cn` 转 308 |
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
 > session 都会被注入上下文，等于每次都为一份别处已有的版本日志付一遍 token。

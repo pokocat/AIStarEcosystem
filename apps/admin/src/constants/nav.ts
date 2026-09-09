@@ -216,6 +216,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/platform/config",     label: "平台配置", icon: KeySquare, description: "全站开关与文案" },
       // 额度耗尽此前只能靠翻服务器日志才知道；槽位被孤儿占满同样无声无息。
       { href: "/platform/clip-vendor", label: "石榴AI 供应商", icon: Boxes, description: "数字人 / 声音克隆供应商额度、对象清单与我方 DB 对账（只读）" },
+      // 接了哪些系统此前只能 ssh 上生产 cat 客户端清单才知道。
+      { href: "/platform/identity-clients", label: "统一登录接入", icon: ShieldCheck, description: "账号中心注册了哪些客户端、各自最近还在不在换令牌（只读）" },
     ],
   },
   {

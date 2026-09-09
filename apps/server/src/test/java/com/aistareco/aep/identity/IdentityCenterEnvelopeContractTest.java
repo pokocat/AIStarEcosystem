@@ -185,4 +185,84 @@ class IdentityCenterEnvelopeContractTest {
                 .isInstanceOf(IdentityCenterException.class)
                 .hasMessageContaining("localSubjectId");
     }
+
+    // ───────────────────────────────────────────── 应用接入全景（v0.195）
+
+    /**
+     * 账号中心 {@code GET /api/admin/clients} 的响应壳（那边 {@code ClientOverviewService} 的三个 record）。
+     * 下面这段是从它的 README §19.2 示例逐字段抄的，任何一边改形状这里就该红。
+     */
+    private static final String CLIENTS_ENVELOPE = """
+            {"success":true,"data":{
+              "generatedAt":"2026-09-09T16:57:00Z",
+              "activityAvailable":true,
+              "productCount":1,
+              "clientCount":2,
+              "products":[{"productCode":"aistar","displayName":"AI Star","clients":[
+                {"clientId":"web-music","displayName":"AI 音乐人","audience":"aistar-api",
+                 "wechatAppId":null,"disabled":false,"publicClient":true,
+                 "grants":["authorization_code","refresh_token"],
+                 "scopes":["offline_access","openid"],
+                 "redirectUris":["https://music.aibuzz.cn/auth/callback"],
+                 "lastTokenAt":"2026-09-06T07:08:41Z","tokens7d":2},
+                {"clientId":"aistar-server","displayName":"AI Star Eco 后端","audience":"id-api",
+                 "wechatAppId":null,"disabled":false,"publicClient":false,
+                 "grants":["client_credentials"],"scopes":["product.link"],
+                 "redirectUris":[],"lastTokenAt":null,"tokens7d":null}
+              ]}]}}
+            """;
+
+    @Test
+    void clientOverviewEnvelopeIsUnderstood() {
+        IdentityAdminClient.IdentityClientOverview view =
+                IdentityAdminClient.parse(json(CLIENTS_ENVELOPE), "https://id.aibuzz.cn");
+
+        assertThat(view.error()).isNull();
+        assertThat(view.activityAvailable()).isTrue();
+        assertThat(view.clientCount()).isEqualTo(2);
+        assertThat(view.products()).hasSize(1);
+
+        var clients = view.products().get(0).clients();
+        assertThat(clients).hasSize(2);
+        assertThat(clients.get(0).clientId()).isEqualTo("web-music");
+        assertThat(clients.get(0).publicClient()).isTrue();
+        assertThat(clients.get(0).tokens7d()).isEqualTo(2L);
+        assertThat(clients.get(0).redirectUris()).containsExactly("https://music.aibuzz.cn/auth/callback");
+        // 「从没换过令牌」是 null，不是 0 —— 页面据此显示「从未」而不是「近 7 天 0 次」。
+        assertThat(clients.get(1).lastTokenAt()).isNull();
+        assertThat(clients.get(1).tokens7d()).isNull();
+    }
+
+    /**
+     * 活跃度不可用时两列必须是 null。
+     *
+     * <p>账号中心那边聚合失败是允许的（观测类旁路），但它一定会把
+     * {@code activityAvailable=false} 带过来 —— 我方不能把 null 渲染成 0，
+     * 那会让「统计没取到」看起来像「这个客户端从没被用过」。
+     */
+    @Test
+    void activityUnavailableKeepsColumnsNull() {
+        IdentityAdminClient.IdentityClientOverview view = IdentityAdminClient.parse(json("""
+                {"success":true,"data":{"generatedAt":"2026-09-09T16:57:00Z","activityAvailable":false,
+                 "productCount":1,"clientCount":1,
+                 "products":[{"productCode":"aistar","displayName":"AI Star","clients":[
+                   {"clientId":"web-music","displayName":null,"audience":null,"wechatAppId":null,
+                    "disabled":false,"publicClient":true,"grants":[],"scopes":[],"redirectUris":[],
+                    "lastTokenAt":null,"tokens7d":null}]}]}}
+                """), "https://id.aibuzz.cn");
+
+        assertThat(view.activityAvailable()).isFalse();
+        assertThat(view.products().get(0).clients().get(0).tokens7d()).isNull();
+    }
+
+    /** 壳不认识 = 配置或版本对不上，必须抛，不能当成「一个客户端都没有」。 */
+    @Test
+    void unknownClientOverviewEnvelopeThrows() {
+        assertThatThrownBy(() -> IdentityAdminClient.parse(json("[]"), "https://id.aibuzz.cn"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> IdentityAdminClient.parse(
+                json("{\"success\":false,\"error\":{\"code\":\"ADMIN_SCOPE_MISSING\"}}"),
+                "https://id.aibuzz.cn"))
+                .isInstanceOf(IllegalStateException.class);
+    }
 }

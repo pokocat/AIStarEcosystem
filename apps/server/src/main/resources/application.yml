@@ -100,6 +100,11 @@ aep:
     client-id: ${AEP_ID_CLIENT_ID:aistar-server}
     # 机器互调（回报建档 / 拉 outbox / 导入老用户）凭据；留空 = 这三件事都不做
     client-secret: ${AEP_ID_CLIENT_SECRET:}
+    # 后台读「应用接入全景」的凭据（账号中心的 admin-server 客户端，scope clients.read）。
+    # 与上面 aistar-server 是**两个不同的客户端**：账号中心按客户端发 scope，
+    # 拿产品那把去读全景只会 403。留空 = 后台那一页显示「未配置」，不伪造数据。
+    admin-client-id: ${AEP_ID_ADMIN_CLIENT_ID:admin-server}
+    admin-client-secret: ${AEP_ID_ADMIN_CLIENT_SECRET:}
     outbox-poll-seconds: ${AEP_ID_OUTBOX_POLL_SECONDS:30}
   internal:
     # 内部服务（如 sau-service）→ apps/server 调用的共享密钥
