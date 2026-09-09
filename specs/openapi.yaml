@@ -8695,6 +8695,42 @@ paths:
       summary: 取消发布（公开页立刻 404）
       responses:
         "200": { description: 名片摘要 }
+  /v1/card/{id}/persona/chat:
+    post:
+      tags: [card]
+      summary: 人设 · 一轮对话（AI 顾问把「你是谁」问出来）
+      description: >
+        名片字段说的是「他做过什么」，人设说的是「他是谁」—— 在意什么、怎么说话。
+        返回 {reply, ready, draft?}：料不够就继续问（ready=false），够了给出 draft
+        {essence, values[], traits[], voice{tone, avoid[]}}。
+        上下文与历史由客户端带上来（名片文档本就是客户端拥有、服务端整存整取），
+        本端点**不落库** —— 用户满意了才由 PUT /v1/card/{id} 存进文档。
+        用途复用 DAP_PERSONA（「数字人 · 人设/翻译」），不新增枚举、不加迁移。
+        免费：不 hold 不 commit 不写账本 —— 一次对话成本远低于一次出图，
+        而加了计费人就不敢多聊，多聊恰恰是这功能有用的前提。
+        §8.0：端点未绑 503 AI_NOT_CONFIGURED / 提示词回落 code 503 PROMPT_NOT_CONFIGURED /
+        返回非 JSON 502 AI_BAD_OUTPUT —— 绝不用模板套话冒充「AI 帮你梳理的人设」。
+      responses:
+        "200": { description: "{reply, ready, draft?}" }
+        "400": { description: CARD_PERSONA_MESSAGE_REQUIRED }
+        "404": { description: CARD_NOT_FOUND（非本人名片） }
+        "502": { description: AI_CALL_FAILED / AI_BAD_OUTPUT }
+        "503": { description: AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED }
+  /v1/card/{id}/persona/rewrite:
+    post:
+      tags: [card]
+      summary: 人设 · 按它重写名片上访客看得见的文案
+      description: >
+        用人设里的 voice（说话方式 + 不说什么）重写「一句话 / 能提供 / 在找」。
+        **只改说法不改事实** —— 职位、公司、城市、联系方式一个字不动，也不新编经历。
+        返回 {headline, give[], want[], note}；同样不落库，由客户端决定要不要采纳。
+        这是人设不只是摆设的地方：改了人设，名片的说法跟着变。
+      responses:
+        "200": { description: "{headline, give[], want[], note}" }
+        "400": { description: CARD_PERSONA_REQUIRED（还没有人设） }
+        "404": { description: CARD_NOT_FOUND }
+        "502": { description: AI_CALL_FAILED / AI_BAD_OUTPUT }
+        "503": { description: AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED }
   /v1/card/by-avatar/{avatarId}:
     get:
       tags: [card]

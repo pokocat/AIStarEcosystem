@@ -8,10 +8,11 @@
 // ============================================================
 import React, { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CardApi, type CardContact, type CardContactKind, type CardProfile } from "@/proto/card";
+import { CardApi, DEMO_CARD_SLUG, type CardContact, type CardContactKind, type CardProfile } from "@/proto/card";
 import { AvatarApi, USE_MOCK } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { Card, HubScreen, LoadingBlock, NavBar, RegNo, SectionHeader } from "@/components/hub/ui";
+import { PersonaStudio } from "@/components/card/persona-studio";
 
 const CONTACT_META: Array<{ kind: CardContactKind; label: string; placeholder: string; type?: string }> = [
   { kind: "phone", label: "电话", placeholder: "138 0013 8000", type: "tel" },
@@ -40,7 +41,11 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
   useEffect(() => {
     if (!ready) return;
     if (USE_MOCK) {
-      setState({ s: "error", message: "演示模式下没有名片后端，编辑不可用" });
+      // 演示模式没有名片后端。原来这里直接报错「编辑不可用」—— 于是整个编辑页
+      // 在 demo 下根本打不开，改版也没法自查。改成**装载演示名片供浏览**：
+      // 保存与发布仍然会被 CardApi 的 mock 分支挡下并如实说明，
+      // AI 人设对话同理（没有模型可调就说没有，不编一段假人设，§8.0）。
+      void CardApi.bySlug(DEMO_CARD_SLUG).then((doc) => setState({ s: "ok", doc }));
       return;
     }
     CardApi.detail(id)
@@ -238,6 +243,15 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
             </Card>
           </div>
 
+          {/* 人设放在基础信息之后、其余内容之前：它是「怎么说」的规格，
+              「按人设改写文案」会回头把一句话 / 能提供 / 在找顺一遍。 */}
+          <SectionHeader title="人设" />
+          <div style={{ margin: "0 16px" }}>
+            <Card pad={14}>
+              <PersonaStudio cardId={id} doc={state.doc} onPatch={patch} />
+            </Card>
+          </div>
+
           <SectionHeader title="联系方式" />
           <div style={{ margin: "0 16px" }}>
             <Card pad={14}>
@@ -265,6 +279,71 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                 <Textarea value={state.doc.offer.want.join("\n")} rows={3} placeholder="一行一条"
                   onChange={(v) => patch((d) => ({ ...d, offer: { ...d.offer, want: splitLines(v) } }))} />
               </FieldRow>
+            </Card>
+          </div>
+
+          {/* 下面这几段名片上都会渲染，但原来编辑器一个都没覆盖 ——
+              用户只能看着自己的名片上挂着建卡时带过来的内容，改不了。 */}
+          <SectionHeader title="代表作品" />
+          <div style={{ margin: "0 16px" }}>
+            <Card pad={14}>
+              <ListEditor
+                items={state.doc.works}
+                onChange={(works) => patch((d) => ({ ...d, works }))}
+                blank={() => ({ no: String(state.doc.works.length + 1).padStart(2, "0"), title: "", desc: "", tone: "var(--primary)" })}
+                addLabel="加一个作品"
+                render={(w, set) => (
+                  <>
+                    <FieldRow label="标题">
+                      <Input value={w.title} placeholder="做了什么" onChange={(v) => set({ ...w, title: v })} />
+                    </FieldRow>
+                    <FieldRow label="说明" last>
+                      <Textarea value={w.desc} rows={2} placeholder="一两句说清楚它解决了什么"
+                        onChange={(v) => set({ ...w, desc: v })} />
+                    </FieldRow>
+                  </>
+                )}
+              />
+            </Card>
+          </div>
+
+          <SectionHeader title="公司" />
+          <div style={{ margin: "0 16px" }}>
+            <Card pad={14}>
+              <FieldRow label="名称">
+                <Input value={state.doc.company.name} placeholder="公司全称"
+                  onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, name: v } }))} />
+              </FieldRow>
+              <FieldRow label="一行简介" hint="行业 · 规模 · 成立年份这类。">
+                <Input value={state.doc.company.meta} placeholder="连锁零售数字化 · 2019 年创立"
+                  onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, meta: v } }))} />
+              </FieldRow>
+              <FieldRow label="介绍" last>
+                <Textarea value={state.doc.company.intro} rows={3} placeholder="在做什么、服务谁"
+                  onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, intro: v } }))} />
+              </FieldRow>
+            </Card>
+          </div>
+
+          <SectionHeader title="履历" />
+          <div style={{ margin: "0 16px" }}>
+            <Card pad={14}>
+              <ListEditor
+                items={state.doc.resume}
+                onChange={(resume) => patch((d) => ({ ...d, resume }))}
+                blank={() => ({ title: "", period: "" })}
+                addLabel="加一段经历"
+                render={(r, set) => (
+                  <>
+                    <FieldRow label="职位 / 身份">
+                      <Input value={r.title} placeholder="某某科技 · 产品负责人" onChange={(v) => set({ ...r, title: v })} />
+                    </FieldRow>
+                    <FieldRow label="时间" last>
+                      <Input value={r.period} placeholder="2019 — 至今" onChange={(v) => set({ ...r, period: v })} />
+                    </FieldRow>
+                  </>
+                )}
+              />
             </Card>
           </div>
 
@@ -401,4 +480,71 @@ function tidyLabel(raw: unknown, idx: number): string {
   const stop = first.slice(0, 15).search(/[，。；、,.;]/);
   const cut = stop > 0 ? first.slice(0, stop) : first.slice(0, 14);
   return cut || `动态形象 ${idx + 1}`;
+}
+
+/**
+ * 一组条目的增删改（作品 / 履历共用）。
+ *
+ * 刻意不做拖拽排序：一期这两组都只有两三条，上下移动两个按钮就够；
+ * 拖拽在手机上还容易和页面滚动打架。
+ */
+function ListEditor<T>({
+  items, onChange, blank, render, addLabel,
+}: {
+  items: T[];
+  onChange: (v: T[]) => void;
+  blank: () => T;
+  render: (item: T, set: (v: T) => void) => React.ReactNode;
+  addLabel: string;
+}) {
+  const setAt = (i: number, v: T) => onChange(items.map((x, j) => (j === i ? v : x)));
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d;
+    if (j < 0 || j >= items.length) return;
+    const next = [...items];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 11, padding: "4px 11px 6px" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, paddingTop: 6 }}>
+            <MiniBtn label="上移" onClick={() => move(i, -1)} disabled={i === 0}>↑</MiniBtn>
+            <MiniBtn label="下移" onClick={() => move(i, 1)} disabled={i === items.length - 1}>↓</MiniBtn>
+            <MiniBtn label="删除" onClick={() => onChange(items.filter((_, j) => j !== i))} danger>✕</MiniBtn>
+          </div>
+          {render(it, (v) => setAt(i, v))}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...items, blank()])}
+        style={{
+          height: 38, borderRadius: 10, border: "1px dashed var(--line-2)", background: "var(--surface-2)",
+          color: "var(--ink-2)", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer",
+        }}
+      >
+        + {addLabel}
+      </button>
+    </div>
+  );
+}
+
+function MiniBtn({
+  children, label, onClick, disabled, danger,
+}: { children: React.ReactNode; label: string; onClick: () => void; disabled?: boolean; danger?: boolean }) {
+  return (
+    <button
+      type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label}
+      style={{
+        width: 26, height: 26, borderRadius: 7, border: "1px solid var(--line-2)",
+        background: "var(--surface)", cursor: disabled ? "default" : "pointer",
+        color: danger ? "var(--err)" : "var(--ink-3)", fontSize: 12, lineHeight: 1,
+        opacity: disabled ? 0.35 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
 }

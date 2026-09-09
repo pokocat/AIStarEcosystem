@@ -7,7 +7,8 @@
 // ============================================================
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CardApi, DEMO_CARD_SLUG, type CardSummary } from "@/proto/card";
-import { USE_MOCK } from "@/proto/api";
+import { AvatarApi, USE_MOCK } from "@/proto/api";
+import type { Avatar } from "@/proto/data";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { Badge, Card, EmptyState, HubScreen, LoadingBlock, NavBar, RegNo } from "@/components/hub/ui";
 
@@ -15,6 +16,31 @@ type State =
   | { s: "loading" }
   | { s: "ok"; rows: CardSummary[] }
   | { s: "error"; message: string };
+
+/**
+ * 名片行的预览图与名字。
+ *
+ * `CardSummary` 只有 id / slug / regNo / status / avatarId / publicUrl —— **没有图也没有名字**，
+ * 所以原来这一页每张卡就是一行 URL 加一个登记号，光看文字根本认不出是谁的名片。
+ * 逐张去拉完整 profile 是 N 次请求；这里改成**拉一次形象列表按 avatarId 对上号** ——
+ * 名片的形象本来就来自数字资产，名字和定妆图都在那儿，不必让服务端多发一份。
+ */
+function useCardFigures(rows: CardSummary[], ready: boolean) {
+  const [byAvatar, setByAvatar] = useState<Record<string, Avatar>>({});
+  useEffect(() => {
+    if (!ready || rows.length === 0) return;
+    let alive = true;
+    // 拉不到就不显示图，不挡列表本身（名片能不能打开跟有没有封面无关）
+    void AvatarApi.list("mine")
+      .then((list: Avatar[]) => {
+        if (!alive) return;
+        setByAvatar(Object.fromEntries(list.map((a) => [a.id, a])));
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [ready, rows.length]);
+  return byAvatar;
+}
 
 export default function MyCardsPage() {
   const authState = useRequireAuth();
@@ -26,6 +52,7 @@ export default function MyCardsPage() {
   // 请求序号：发布后会立刻重拉一次，慢的那次回来时必须丢掉 ——
   // 否则「发布成功 → 一闪又变回草稿」，用户还会以为没发布成功再点一次。
   const seq = useRef(0);
+  const figures = useCardFigures(state.s === "ok" ? state.rows : [], ready);
 
   const load = useCallback(() => {
     if (!ready) return;
@@ -128,16 +155,49 @@ export default function MyCardsPage() {
       {state.s === "ok" && state.rows.map((row) => (
         <div key={row.id} style={{ margin: "12px 16px 0" }}>
           <Card pad={16}>
-            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-              <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
-                <span style={{ fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {row.publicUrl}
-                </span>
-                <RegNo size={10.5}>{row.regNo}</RegNo>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              {/* 封面：名片的形象来自数字资产，这里直接用它的定妆图。
+                  竖幅 3:4 —— 与发现页的角色卡同一形状，一眼看出「这是谁的名片」。 */}
+              <span
+                style={{
+                  width: 54, aspectRatio: "3 / 4", flexShrink: 0, borderRadius: 10, overflow: "hidden",
+                  background: "var(--surface-2)", display: "grid", placeItems: "center",
+                }}
+              >
+                {figures[row.avatarId]?.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={figures[row.avatarId].imageUrl}
+                    alt=""
+                    loading="lazy"
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  <span style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: "var(--ink-4)" }}>
+                    {(figures[row.avatarId]?.name || "?").trim().slice(0, 1)}
+                  </span>
+                )}
               </span>
-              <Badge tone={row.status === "published" ? "ok" : "mute"} dot>
-                {row.status === "published" ? "已发布" : "草稿"}
-              </Badge>
+
+              <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontFamily: "var(--font-serif)", fontSize: 17, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {figures[row.avatarId]?.name || "未命名名片"}
+                  </span>
+                  <Badge tone={row.status === "published" ? "ok" : "mute"} dot>
+                    {row.status === "published" ? "已发布" : "草稿"}
+                  </Badge>
+                </span>
+                <span style={{ fontSize: 12, color: "var(--ink-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {figures[row.avatarId]?.archetype || row.avatarId}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <RegNo size={10.5}>{row.regNo}</RegNo>
+                  <span style={{ fontSize: 11, color: "var(--ink-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+                    {row.publicUrl}
+                  </span>
+                </span>
+              </span>
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>

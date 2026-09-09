@@ -102,6 +102,52 @@ export interface CardResumeItem {
   period: string;
 }
 
+/**
+ * 人设 —— 名片的「他是谁」那一层。
+ *
+ * 名片上的字段（职位 / 城市 / 作品 / 履历）说的是**他做过什么**；见了面真正记住
+ * 一个人靠的是**他是谁**：在意什么、说话什么调子。这一层就是后者。
+ *
+ * `voice` 是关键，它让人设**可用**而不只是可看：
+ * `POST /v1/card/{id}/persona/rewrite` 按它重写名片上访客看得见的文案，
+ * 将来数字人开口也按它来。所以改人设，名片的说法会跟着变。
+ *
+ * 存在名片文档里（服务端整存整取、不解释内容），因此加这一层**零迁移**。
+ */
+export interface CardPersona {
+  /** 一句话人设：这个人骨子里是谁。 */
+  essence: string;
+  /** 价值观，3-5 条，用他自己的话（不是口号）。 */
+  values: string[];
+  /** 性格特征标签，3-6 个。 */
+  traits: string[];
+  /** 说话方式：怎么说 + 不说什么。 */
+  voice: { tone: string; avoid: string[] };
+  /** chat = AI 对话聊出来的，manual = 自己填的。 */
+  source: "chat" | "manual";
+  updatedAt: string;
+}
+
+/** 人设对话的一轮返回。 */
+export interface CardPersonaTurn {
+  reply: string;
+  ready: boolean;
+  draft?: Omit<CardPersona, "source" | "updatedAt"> | null;
+}
+
+/** 按人设改写文案的返回。只改说法，不改事实。 */
+export interface CardPersonaRewrite {
+  headline: string;
+  give: string[];
+  want: string[];
+  note: string;
+}
+
+export const EMPTY_PERSONA: CardPersona = {
+  essence: "", values: [], traits: [], voice: { tone: "", avoid: [] },
+  source: "manual", updatedAt: "",
+};
+
 export interface CardProfile {
   slug: string;
   /** 名片登记号。 */
@@ -121,6 +167,8 @@ export interface CardProfile {
   media: CardMedia[];
   resume: CardResumeItem[];
   contacts: CardContact[];
+  /** 人设。缺省 = 还没聊过，公开页不渲染「关于」那一段。 */
+  persona?: CardPersona;
   updatedAt: string;
   /** true = 演示数据，界面必须显式标注，不冒充真实名片。 */
   demo?: boolean;
@@ -196,6 +244,23 @@ const DEMO: CardProfile = {
     { kind: "email", value: "df@lubstar.com.cn", shown: true },
     { kind: "address", value: "江苏 · 南京 · 建邺区", shown: true },
   ],
+  // 演示人设 —— 写成「像是聊出来的」而不是口号：价值观都带着具体的取舍，
+  // 这正是 card.persona_chat 提示词要求的效果（问小事、提炼，不要「诚信专业共赢」）。
+  persona: {
+    essence: "做过店长的人，做门店生意的软件",
+    values: [
+      "先去店里站三天，再谈方案",
+      "能用现有系统解决的，不卖新系统",
+      "报价一次报到位，不留后面加钱的口子",
+    ],
+    traits: ["实在", "较真", "话少", "抗压"],
+    voice: {
+      tone: "句子短，先说结论，举例子而不是讲概念",
+      avoid: ["赋能", "闭环", "生态位", "抓手"],
+    },
+    source: "chat",
+    updatedAt: "2026-09-08",
+  },
   updatedAt: "2026-09-06",
   demo: true,
 };
@@ -291,6 +356,32 @@ export const CardApi = {
       method: "POST",
       body: JSON.stringify({ avatarId }),
     }),
+
+  /**
+   * 人设对话的一轮。上下文与历史由**客户端**带上去 —— 名片文档本来就是客户端拥有的，
+   * 服务端不解释内容，也就没必要让它再存一份对话。聊满意了由 `update()` 一起存进文档。
+   *
+   * mock 模式没有模型可调，如实拒绝 —— 编一段假人设写进对外名片，比不给更糟（§8.0）。
+   */
+  personaChat: (
+    id: string,
+    body: { context: Record<string, unknown>; history: { role: string; content: string }[]; message: string },
+  ): Promise<CardPersonaTurn> =>
+    USE_MOCK
+      ? Promise.reject(new Error("演示模式没有接大模型，人设对话用不了"))
+      : apiFetch<CardPersonaTurn>(`/card/${encodeURIComponent(id)}/persona/chat`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+
+  /** 按人设重写「一句话 / 能提供 / 在找」。只改说法不改事实，采不采纳由用户决定。 */
+  personaRewrite: (id: string, context: Record<string, unknown>): Promise<CardPersonaRewrite> =>
+    USE_MOCK
+      ? Promise.reject(new Error("演示模式没有接大模型，改写用不了"))
+      : apiFetch<CardPersonaRewrite>(`/card/${encodeURIComponent(id)}/persona/rewrite`, {
+          method: "POST",
+          body: JSON.stringify({ context }),
+        }),
 
   /** 某个数字人形象被哪些名片用了 —— 资产详情页的「被用在哪」。 */
   byAvatar: (avatarId: string) =>

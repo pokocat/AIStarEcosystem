@@ -640,6 +640,10 @@ const Works: React.FC<{ card: CardProfile }> = ({ card }) => (
         ))}
       </div>
 
+      {/* 人设 —— 名片上唯一讲「他是谁」的一段（其余都在讲他做过什么）。
+          没聊过就整段不渲染：宁可少一段，也不要一块写着「暂无」的空壳。 */}
+      <PersonaBand persona={card.persona} />
+
       <div aria-hidden style={{ height: 1, background: "rgba(20,32,43,.16)", margin: "22px 0 18px" }} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -650,6 +654,61 @@ const Works: React.FC<{ card: CardProfile }> = ({ card }) => (
     </div>
   </section>
 );
+
+/**
+ * 「关于我」——价值观 + 性格 + 一句话人设。
+ *
+ * 放在作品之后、合作诉求之前：先看他做过什么（可信），再看他是个什么人（可亲），
+ * 最后才谈合作。三段的顺序就是一次见面自然的顺序。
+ *
+ * 说话方式（voice）不在这里露出 —— 那是给改写用的规格，不是给访客看的内容。
+ */
+const PersonaBand: React.FC<{ persona?: CardProfile["persona"] }> = ({ persona }) => {
+  if (!persona) return null;
+  const { essence, values = [], traits = [] } = persona;
+  if (!essence && values.length === 0 && traits.length === 0) return null;
+  return (
+    <>
+      <div aria-hidden style={{ height: 1, background: "rgba(20,32,43,.16)", margin: "22px 0 18px" }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Mono color="rgba(20,32,43,.6)">关于我</Mono>
+
+        {essence && (
+          <p style={{ margin: 0, fontFamily: "var(--font-serif)", fontSize: 19, lineHeight: 1.6, color: "var(--ink)" }}>
+            {essence}
+          </p>
+        )}
+
+        {traits.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {traits.map((t) => (
+              <span
+                key={t}
+                style={{
+                  padding: "5px 11px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+                  background: "rgba(20,32,43,.06)", color: "rgba(20,32,43,.72)",
+                }}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {values.length > 0 && (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            {values.map((v) => (
+              <li key={v} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                <span aria-hidden style={{ flex: "0 0 14px", height: 1, marginTop: 10, background: "rgba(20,32,43,.32)" }} />
+                <span style={{ fontSize: 13.5, lineHeight: 1.75, color: "rgba(20,32,43,.78)" }}>{v}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+};
 
 const OfferBlock: React.FC<{ title: string; items: string[]; tone: string }> = ({ title, items, tone }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>

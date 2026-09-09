@@ -1,7 +1,9 @@
 package com.aistareco.aep.card.controller;
 
 import com.aistareco.aep.card.model.CardProfile;
+import com.aistareco.aep.card.service.CardPersonaService;
 import com.aistareco.aep.card.service.CardService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.aistareco.common.ApiResponse;
 import com.aistareco.common.BusinessException;
 import org.springframework.http.HttpStatus;
@@ -34,9 +36,11 @@ import java.util.Map;
 public class CardController {
 
     private final CardService cards;
+    private final CardPersonaService persona;
 
-    public CardController(CardService cards) {
+    public CardController(CardService cards, CardPersonaService persona) {
         this.cards = cards;
+        this.persona = persona;
     }
 
     /** 我的名片列表。一个账号可以有多张 —— 对外身份可能不止一个。 */
@@ -101,6 +105,48 @@ public class CardController {
     @PostMapping("/{id}/unpublish")
     public ApiResponse<CardSummary> unpublish(Principal principal, @PathVariable String id) {
         return ApiResponse.of(CardSummary.from(cards.unpublish(uid(principal), id)));
+    }
+
+    // ── 人设（AI 对话式编辑）─────────────────────────────────────────────────
+    //
+    // 名片上那些字段说的是「他做过什么」，人设说的是「他是谁」—— 在意什么、怎么说话。
+    // `voice` 不是装饰：rewrite 按它重写访客看得见的文案，将来数字人开口也按它来。
+    //
+    // 上下文由**客户端**带上来（名片文档是客户端拥有、服务端整存整取的，见 CardService），
+    // 这里只做归属校验 + 调模型；不落库 —— 用户满意了才由 PUT /{id} 存进文档。
+    // 免费：没有 hold / commit，也不写账本（一次对话的成本远低于一次出图，
+    // 加计费反而会让人不敢多聊两句，而多聊两句正是这个功能有用的前提）。
+
+    public record PersonaChatRequest(Map<String, Object> context, List<Map<String, String>> history, String message) {}
+
+    /** 一轮人设对话。返回 {reply, ready, draft?}。 */
+    @PostMapping("/{id}/persona/chat")
+    public ApiResponse<JsonNode> personaChat(Principal principal, @PathVariable String id,
+                                             @RequestBody PersonaChatRequest req) {
+        cards.required(uid(principal), id); // 归属闸：不是你的名片，连聊都不给聊
+        if (req == null || req.message() == null || req.message().isBlank()) {
+            throw BusinessException.badRequest("CARD_PERSONA_MESSAGE_REQUIRED", "说点什么才能接着聊");
+        }
+        Map<String, Object> ctx = req.context() == null ? Map.of() : req.context();
+        return ApiResponse.of(persona.chat(ctx, req.history(), req.message()));
+    }
+
+    public record PersonaRewriteRequest(Map<String, Object> context) {}
+
+    /** 按已定人设重写「一句话 / 能提供 / 在找」。只改说法，不改事实。 */
+    @PostMapping("/{id}/persona/rewrite")
+    public ApiResponse<JsonNode> personaRewrite(Principal principal, @PathVariable String id,
+                                                @RequestBody PersonaRewriteRequest req) {
+        cards.required(uid(principal), id);
+        Map<String, Object> ctx = req == null || req.context() == null ? Map.of() : req.context();
+        if (str(ctx.get("persona")).isBlank()) {
+            throw BusinessException.badRequest("CARD_PERSONA_REQUIRED", "先把人设聊出来，才能按它改写文案");
+        }
+        return ApiResponse.of(persona.rewrite(ctx));
+    }
+
+    private static String str(Object v) {
+        return v == null ? "" : String.valueOf(v);
     }
 
     @DeleteMapping("/{id}")
