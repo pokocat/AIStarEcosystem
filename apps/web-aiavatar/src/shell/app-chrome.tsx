@@ -19,12 +19,16 @@ import * as React from "react";
 import { usePathname } from "next/navigation";
 import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "./desktop-top-bar";
+import { useLayoutMode } from "./layout-mode";
 
 const BARE_PREFIXES = ["/card/p/", "/login", "/auth/callback"];
 /** 精确匹配（不走前缀）：根目录是落地页，它自带一条顶栏，不能再叠一条产品导航。 */
 const BARE_EXACT = ["/"];
 
 export function AppChrome() {
+  // 订阅形态：这是根布局里**唯一常驻**的客户端组件，靠它保证「视口变了 →
+  // <html data-layout> 跟着改」在每一页都生效（见 shell/layout-mode.ts）。
+  useLayoutMode();
   const pathname = usePathname() ?? "";
   const bare = BARE_EXACT.includes(pathname)
     || BARE_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));

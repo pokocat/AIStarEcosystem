@@ -5,7 +5,6 @@ import "../styles/globals.css";
 // 不含 Tailwind preflight，因此对移动端外壳零影响（见该文件头注释）。
 import "../styles/ip-desktop.css";
 import { AppChrome } from "@/shell/app-chrome";
-import Script from "next/script";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
 export const metadata: Metadata = {
@@ -41,16 +40,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* 桌面版 / 手机版的形态必须在**首帧之前**定下来（见 shell/layout-mode.ts）：
             放进 React effect 里就晚了 —— 第一帧已经按手机版画完，用户会看到闪一下。
 
-            必须走 next/script 的 beforeInteractive，不能自己写 <script>：
-            React 19 会把裸 <script> 从组件树里**提出去**（实测报
-            「Cannot render a sync or defer <script> outside the main document」
-            与「Encountered a script tag while rendering React component」），
-            落点和执行时机都不由我们说了算。加 async 能消掉报错，但那就不保证
-            在首帧之前跑了 —— 正好把这段的意义抹掉。
-            beforeInteractive 由 Next 注入初始 HTML 的 <head>，同步执行。 */}
-        <Script id="layout-mode-boot" strategy="beforeInteractive">
-          {LAYOUT_BOOT_SCRIPT}
-        </Script>
+            位置：<body> 的第一个子节点，裸 <script>（解析阻塞、同步执行）。
+            这里**试过 next/script 的 beforeInteractive，实测不行**：它先把脚本推进
+            `self.__next_s` 队列，等 app bootstrap 起来才真正插进 head ——
+            插桩量到那时 `document.readyState` 已经是 `interactive`、body 有 13 个子节点、
+            应用标记全都解析完了，也就是很可能已经按手机版画过一帧。
+            裸 script 量到的是 `readyState: "loading"` / body 2 个子节点 / 应用标记还没有 ——
+            这才是「首帧之前」。（Codex 复核提出这一点，实测确认它是对的。）
+
+            放在 <html> 直下会报 hydration error（<script> 不能是 <html> 的子节点）；
+            放 <body> 里则干净无报错 —— 我一度被**上一次改动残留在控制台里的旧报错**
+            误导，以为放 body 也不行。§8.0.1 ②：先确认信号本身成立，再据它改代码。 */}
+        <script dangerouslySetInnerHTML={{ __html: LAYOUT_BOOT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONTS_HREF} />

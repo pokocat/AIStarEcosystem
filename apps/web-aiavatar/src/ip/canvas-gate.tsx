@@ -28,7 +28,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Monitor, Copy, Check, ArrowLeft, ArrowRight } from "lucide-react";
-import { DESKTOP_MIN_WIDTH, resolvedLayout, storedLayout, setLayout } from "@/shell/layout-mode";
+import { setLayout, useLayoutMode } from "@/shell/layout-mode";
 
 /** 「这次就在手机上用」的记忆。sessionStorage：本次使用有效，下次重新提示。 */
 const OPT_IN_KEY = "ip-canvas-mobile-optin";
@@ -49,22 +49,14 @@ function Opening() {
 /**
  * 当前是不是桌面形态。SSR 与首帧一律返回 null（= 未知），避免把手机先当成桌面渲染一遍。
  *
- * 读的是 `<html data-layout>` —— 与外壳 CSS **同一个真值**（shell/layout-mode.ts）。
- * 此前这里自己 matchMedia(1024)，于是用户在手机浏览器里选了「请求桌面版网站」
- * （布局视口约 980）时，外壳和画布可以各判各的。现在只有一处判定。
+ * 用的是外壳那个全局 hook —— 与 CSS **同一个真值**（shell/layout-mode.ts）。
+ * 此前这里自己 matchMedia(1024)：既和外壳的断点对不上（用户在手机浏览器里选
+ * 「请求桌面版网站」时布局视口约 980），拖窗口时也只改自己的 state 不改属性，
+ * 会出现「桌面顶栏 + 手机提示屏」这种自相矛盾的组合（Codex 复核 v0.193 指出）。
  */
 function useIsDesktopLayout(): boolean | null {
-  const [desktop, setDesktop] = React.useState<boolean | null>(null);
-  React.useEffect(() => {
-    const read = () => setDesktop(resolvedLayout() === "desktop");
-    read();
-    // 没有显式选择时才跟着视口变（转屏 / 拖窗口）；选过就以选择为准
-    const mq = window.matchMedia(`(min-width: ${DESKTOP_MIN_WIDTH}px)`);
-    const sync = () => { if (!storedLayout()) read(); };
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-  return desktop;
+  const mode = useLayoutMode();
+  return mode === null ? null : mode === "desktop";
 }
 
 function projectUrl(projectId: string) {

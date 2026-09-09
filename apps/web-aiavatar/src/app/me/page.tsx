@@ -10,7 +10,7 @@ import { auth, ID_MODE, USE_MOCK, useIdentity } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
-import { resolvedLayout, setLayout } from "@/shell/layout-mode";
+import { setLayout, useLayoutMode } from "@/shell/layout-mode";
 
 export default function MePage() {
   const router = useRouter();
@@ -126,8 +126,7 @@ export default function MePage() {
  */
 function LayoutSwitchRow() {
   // 服务端渲染不知道当前形态，挂载后再读，避免 hydration 前后文案不一致
-  const [mode, setMode] = React.useState<"desktop" | "mobile" | null>(null);
-  React.useEffect(() => setMode(resolvedLayout()), []);
+  const mode = useLayoutMode();
   if (mode === null) return null;
   const next = mode === "desktop" ? "mobile" : "desktop";
   return (
