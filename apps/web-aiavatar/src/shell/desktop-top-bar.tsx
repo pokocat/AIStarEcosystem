@@ -16,11 +16,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Compass, IdCard, Layers, LogOut, Shield, Sparkles, User } from "lucide-react";
+import { Compass, Home, IdCard, Layers, LogOut, Shield, Sparkles, User } from "lucide-react";
 import { auth, useIdentity } from "@/proto/api";
 
 const NAV = [
-  { href: "/projects", label: "项目", icon: Sparkles },
+  // 「主页」而不是「首页」：根目录 `/` 现在是公开落地页，登录后的门户在 /dashboard。
+  { href: "/dashboard", label: "主页", icon: Home },
+  // 「自由画布」而不是「项目」：这里点进去是无限画布本身，不是一张项目管理表。
+  { href: "/projects", label: "自由画布", icon: Sparkles },
   { href: "/assets",   label: "资产", icon: Layers },
   { href: "/cards",    label: "名片", icon: IdCard },
   { href: "/discover", label: "发现", icon: Compass },
@@ -50,7 +53,7 @@ export function DesktopTopBar() {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 20, minWidth: 0 }}>
-        <Link href="/" style={{ display: "flex", alignItems: "baseline", gap: 10, textDecoration: "none", flexShrink: 0 }}>
+        <Link href="/dashboard" style={{ display: "flex", alignItems: "baseline", gap: 10, textDecoration: "none", flexShrink: 0 }}>
           <span className="asset-name" style={{ fontSize: 17, color: "var(--on-blue)" }}>数字资产平台</span>
           <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".12em", fontFamily: "var(--font-mono)", color: "var(--action)" }}>
             AIAVATAR

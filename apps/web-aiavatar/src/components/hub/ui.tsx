@@ -109,7 +109,8 @@ const iconBtnStyle: CSS = {
 // replace 而非 push：Tab 之间切换不进历史栈，返回键因此不会在 Tab 间来回走
 // （旧版从任一 Tab 返回都退回「我的」就是 push 造成的）。二级页仍用 push。
 const TABS = [
-  { href: "/", label: "首页", icon: HomeIcon, match: (p: string) => p === "/" },
+  // 根目录 `/` 是公开落地页（v0.191），登录后的门户在 /dashboard
+  { href: "/dashboard", label: "首页", icon: HomeIcon, match: (p: string) => p === "/dashboard" },
   { href: "/discover", label: "发现", icon: CompassIcon, match: (p: string) => p.startsWith("/discover") || p.startsWith("/market") || p.startsWith("/stars") },
   { fab: true as const, href: "/create", label: "创作" },
   { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") },

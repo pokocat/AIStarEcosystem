@@ -20,10 +20,13 @@ import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "./desktop-top-bar";
 
 const BARE_PREFIXES = ["/card/p/", "/login", "/auth/callback"];
+/** 精确匹配（不走前缀）：根目录是落地页，它自带一条顶栏，不能再叠一条产品导航。 */
+const BARE_EXACT = ["/"];
 
 export function AppChrome() {
   const pathname = usePathname() ?? "";
-  const bare = BARE_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));
+  const bare = BARE_EXACT.includes(pathname)
+    || BARE_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));
 
   // 顶栏那几个入口全都要登录才进得去 —— 给访客看等于给一排点了就弹登录的链接。
   // 判定与首页那套一致（app/page.tsx）：挂载后读 auth.isAuthed()，初值 false。

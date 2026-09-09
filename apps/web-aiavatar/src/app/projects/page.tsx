@@ -1,6 +1,6 @@
 "use client";
 
-// 项目列表页 —— 我的 IP 项目 + 从模板新建 + 空白画布。
+// 自由画布（原「项目」，v0.191 改名）—— 我的画布 + 从模板新建 + 空白画布。
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -203,7 +203,7 @@ function ProjectsPageInner() {
 
       {/* ── 我的项目 ── */}
       <section>
-        <h2 className="asset-name text-[20px] mb-4" style={{ color: "var(--ink)" }}>我的 IP 项目</h2>
+        <h2 className="asset-name text-[20px] mb-4" style={{ color: "var(--ink)" }}>我的画布</h2>
 
         {loadError ? (
           <div className="ledger-card p-8 text-center">

@@ -1,17 +1,14 @@
 "use client";
 // ============================================================
-// 首页（M3 导航合并后）：
+// 域名根目录（v0.191 起）= **公开落地页**，登录与否都是它。
 //   旧 hash → 转发 /studio（七牛刷脸回调红线，/studio 迁完前不得移除）
-//   访客     → 公开宣传页
-//   已登录   → 首页门户（总览 + 待办 + 快捷创作 + 最近更新 + 官方精选）
-// dev 预览宣传页：任意模式加 ?landing=1。
+//   其余     → AI IP 工作台落地页（登录了 CTA 指 /dashboard，没登录指 /login）
+//
+// 原来「已登录 → 首页门户」那一支搬去了 `/dashboard`。这样根域名对外是一张
+// 讲清楚产品的页面，而不是一进来就看见别人的工作台空壳。
 // ============================================================
 import React, { useEffect, useState } from "react";
-import { auth, AuthApi, onAuthExpired, USE_MOCK } from "@/proto/api";
-import { Landing } from "@/components/hub/landing";
-import { HubHome } from "@/components/hub/home";
-import { PlatformGateScreen } from "@/components/hub/auth";
-import { HubScreen } from "@/components/hub/ui";
+import { IpLanding } from "@/components/landing/ip-landing";
 
 /** 旧链接 / 刷脸回调的 hash 前缀 → 整体转发 /studio。 */
 function isLegacyHash(hash: string): boolean {
@@ -19,45 +16,18 @@ function isLegacyHash(hash: string): boolean {
 }
 
 export default function HomePage() {
-  // 三态：checking（旧 hash 检测中，什么都不下结论）/ landing（访客）/ app（已登录）
-  const [mode, setMode] = useState<"checking" | "landing" | "app">("checking");
+  // 只保留旧 hash 转发这一件事：七牛刷脸回调会带着 `#/real-auth/{sessionId}`
+  // 落到根目录，必须原样转给 /studio 去恢复会话（红线，/studio 迁完前不得移除）。
+  const [forwarding, setForwarding] = useState(true);
   useEffect(() => {
     const hash = window.location.hash || "";
     if (hash && isLegacyHash(hash)) {
       window.location.replace(`/studio${hash}`);
-      return; // 保持 checking（空白）直到跳转完成
+      return; // 保持空白直到跳转完成，别闪一下落地页
     }
-    if (new URLSearchParams(window.location.search).get("landing") === "1") {
-      setMode("landing");
-      return;
-    }
-    setMode(USE_MOCK || auth.isAuthed() ? "app" : "landing");
+    setForwarding(false);
   }, []);
 
-  useEffect(() => {
-    if (USE_MOCK) return;
-    return onAuthExpired(() => setMode("landing"));
-  }, []);
-
-  // 平台门禁：已登录但没开通数字资产 → 引导开通，而不是空货架
-  const [noPlatform, setNoPlatform] = useState(false);
-  useEffect(() => {
-    if (USE_MOCK || mode !== "app") return;
-    let cancelled = false;
-    AuthApi.me()
-      .then((me: { platforms?: string[] } | null) => {
-        if (cancelled) return;
-        const ps = me?.platforms;
-        if (Array.isArray(ps) && ps.length > 0 && !ps.includes("aiavatar")) setNoPlatform(true);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [mode]);
-
-  if (mode === "landing") return <Landing />;
-  if (noPlatform) return <PlatformGateScreen />;
-  if (mode !== "app") return <HubScreen tabBar={false}>{null}</HubScreen>;
-  return <HubHome />;
+  if (forwarding) return null;
+  return <IpLanding />;
 }
