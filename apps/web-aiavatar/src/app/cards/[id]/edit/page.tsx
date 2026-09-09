@@ -318,10 +318,85 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
                 <Input value={state.doc.company.meta} placeholder="连锁零售数字化 · 2019 年创立"
                   onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, meta: v } }))} />
               </FieldRow>
-              <FieldRow label="介绍" last>
+              <FieldRow label="介绍">
                 <Textarea value={state.doc.company.intro} rows={3} placeholder="在做什么、服务谁"
                   onChange={(v) => patch((d) => ({ ...d, company: { ...d.company, intro: v } }))} />
               </FieldRow>
+              <FieldRow label="关键数字" hint="名片上并排显示的那几个数（客户数、门店数、服务年限…）。">
+                <ListEditor
+                  items={state.doc.company.stats}
+                  onChange={(stats) => patch((d) => ({ ...d, company: { ...d.company, stats } }))}
+                  blank={() => ({ value: "", label: "" })}
+                  addLabel="加一个数字"
+                  render={(st, set) => (
+                    <>
+                      <FieldRow label="数值">
+                        <Input value={st.value} placeholder="300+" onChange={(v) => set({ ...st, value: v })} />
+                      </FieldRow>
+                      <FieldRow label="说明" last>
+                        <Input value={st.label} placeholder="服务品牌" onChange={(v) => set({ ...st, label: v })} />
+                      </FieldRow>
+                    </>
+                  )}
+                />
+              </FieldRow>
+              <FieldRow label="大事记" last hint="按时间排。名片上是一条竖线串起来的。">
+                <ListEditor
+                  items={state.doc.company.milestones}
+                  onChange={(milestones) => patch((d) => ({ ...d, company: { ...d.company, milestones } }))}
+                  blank={() => ({ year: "", text: "" })}
+                  addLabel="加一条"
+                  render={(ms, set) => (
+                    <>
+                      <FieldRow label="年份">
+                        <Input value={ms.year} placeholder="2019" onChange={(v) => set({ ...ms, year: v })} />
+                      </FieldRow>
+                      <FieldRow label="发生了什么" last>
+                        <Input value={ms.text} placeholder="公司成立，第一家门店上线" onChange={(v) => set({ ...ms, text: v })} />
+                      </FieldRow>
+                    </>
+                  )}
+                />
+              </FieldRow>
+            </Card>
+          </div>
+
+          <SectionHeader title="媒体与资料" />
+          <div style={{ margin: "0 16px" }}>
+            <Card pad={14}>
+              <ListEditor
+                items={state.doc.media}
+                onChange={(media) => patch((d) => ({ ...d, media }))}
+                blank={() => ({ kind: "article" as const, title: "", meta: "" })}
+                addLabel="加一条"
+                render={(m, set) => (
+                  <>
+                    <FieldRow label="类型">
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {(["video", "article", "doc"] as const).map((k) => (
+                          <button
+                            key={k} type="button" onClick={() => set({ ...m, kind: k })}
+                            style={{
+                              flex: 1, height: 32, borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 12.5,
+                              border: m.kind === k ? "1px solid var(--primary)" : "1px solid var(--line-2)",
+                              background: m.kind === k ? "var(--primary-soft)" : "var(--surface)",
+                              color: m.kind === k ? "var(--primary-700)" : "var(--ink-2)", fontWeight: 700,
+                            }}
+                          >
+                            {k === "video" ? "视频" : k === "article" ? "文章" : "资料"}
+                          </button>
+                        ))}
+                      </div>
+                    </FieldRow>
+                    <FieldRow label="标题">
+                      <Input value={m.title} placeholder="标题" onChange={(v) => set({ ...m, title: v })} />
+                    </FieldRow>
+                    <FieldRow label="说明" last>
+                      <Input value={m.meta} placeholder="来源 · 时长 / 篇幅" onChange={(v) => set({ ...m, meta: v })} />
+                    </FieldRow>
+                  </>
+                )}
+              />
             </Card>
           </div>
 
