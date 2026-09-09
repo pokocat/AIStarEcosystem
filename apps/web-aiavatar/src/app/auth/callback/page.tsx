@@ -9,7 +9,7 @@ export default function AuthCallbackPage() {
   return (
     <div style={{ maxWidth: 480, margin: "0 auto" }}>
       <AuthCallbackScreen
-        fallbackPath="/"
+        fallbackPath="/dashboard"  /* 根目录是宣传页，登录回调不该落在那儿 */
         theme={{
           bg: "var(--canvas)",
           fg: "var(--ink)",

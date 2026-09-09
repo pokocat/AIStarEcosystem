@@ -1256,5 +1256,12 @@ body, .app-root { overflow-x: hidden; }
     overflow: hidden;
   }
 
+  /* 说明区固定在左边距 28、宽 260 → 右缘 288；而 480 宽的面板在 1024 视口下
+     左缘只有 272 —— 会压上去 16px。所以说明区要等两侧真的放得下才出现。
+     1024 + 260*2 + 余量 ≈ 1120。 */
+  .studio-hint { display: none; }
+}
+
+@media (min-width: 1120px) {
   .studio-hint { display: flex; }
 }

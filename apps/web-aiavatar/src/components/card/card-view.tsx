@@ -626,8 +626,9 @@ const Works: React.FC<{ card: CardProfile }> = ({ card }) => (
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", marginTop: 12 }}>
-        {card.works.map((w) => (
-          <div key={w.no} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderTop: "1px solid rgba(20,32,43,.14)" }}>
+        {/* key 用下标而不是 w.no：编号是用户可编辑的，可能重复（历史数据里就有） */}
+        {card.works.map((w, i) => (
+          <div key={`${w.no}-${i}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 0", borderTop: "1px solid rgba(20,32,43,.14)" }}>
             <span style={{ flex: "0 0 18px" }}>
               <Mono color="rgba(20,32,43,.42)">{w.no}</Mono>
             </span>

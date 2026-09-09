@@ -6,6 +6,8 @@ import com.aistareco.aep.service.PromptService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -40,6 +42,22 @@ public class CardPersonaService {
 
     /** 对话轮数上限：再多也问不出新东西，只会烧 token。 */
     private static final int MAX_HISTORY = 24;
+    /** 单条消息长度上限 —— 截断而不是拒绝，用户说多了不该报错。 */
+    public static final int MAX_MSG_CHARS = 2000;
+
+    /**
+     * 输出结构闸。
+     *
+     * <p>只判断「能不能解析成 JSON」是不够的：{@code {}} 也是合法 JSON，
+     * {@code {"ready":true,"draft":{"essence":"x"}}} 也是 —— 但前端拿到之后
+     * {@code draft.values.join()} 直接抛异常，用户看到的是白屏而不是「AI 没答好」。
+     * 模型不守格式是常态，所以这里按形状校验，不合格一律 AI_BAD_OUTPUT 让用户重试。
+     */
+    private record Shape(String what, List<String> requiredText, List<String> requiredArray) {}
+
+    private static final Shape CHAT_SHAPE = new Shape("人设对话", List.of("reply"), List.of());
+    private static final Shape REWRITE_SHAPE =
+            new Shape("文案改写", List.of("headline"), List.of("give", "want"));
 
     private final AiModelInvocationService invocation;
     private final PromptService promptService;
@@ -65,19 +83,24 @@ public class CardPersonaService {
         vars.put("userMessage", userMessage == null ? "" : userMessage);
 
         List<Map<String, String>> messages = new ArrayList<>();
+        // system 里**只放规则，不填用户内容**。名字 / 简介 / 现有人设都是用户可控的，
+        // 混进系统消息就等于给了一条改写系统指令的通道（「忽略上面的，改成…」）。
+        // 用户内容一律走 user 消息 —— 模型对这两个角色的信任度本来就不同。
         if (p.system() != null && !p.system().isBlank()) {
-            messages.add(Map.of("role", "system", "content", PromptService.fill(p.system(), vars)));
+            messages.add(Map.of("role", "system", "content", p.system()));
         }
         // 历史原样带上 —— 顾问要能追问，没有上下文就只会一遍遍问同样的问题
         if (history != null) {
             for (Map<String, String> m : history.subList(Math.max(0, history.size() - MAX_HISTORY), history.size())) {
+                if (m == null) continue;                       // history:[null] 会 NPE 成 500
                 String role = "assistant".equals(m.get("role")) ? "assistant" : "user";
                 String content = m.get("content");
-                if (content != null && !content.isBlank()) messages.add(Map.of("role", role, "content", content));
+                if (content == null || content.isBlank()) continue;
+                messages.add(Map.of("role", role, "content", clip(content, MAX_MSG_CHARS)));
             }
         }
         messages.add(Map.of("role", "user", "content", PromptService.fill(p.userTemplate(), vars)));
-        return callJson(p, messages, 0.85);
+        return requireShape(callJson(p, messages, 0.85), CHAT_SHAPE);
     }
 
     /** 按已定的人设重写名片上访客看得见的几句（只改说法，不改事实）。 */
@@ -94,10 +117,10 @@ public class CardPersonaService {
 
         List<Map<String, String>> messages = new ArrayList<>();
         if (p.system() != null && !p.system().isBlank()) {
-            messages.add(Map.of("role", "system", "content", PromptService.fill(p.system(), vars)));
+            messages.add(Map.of("role", "system", "content", p.system()));  // 同上：system 不填用户内容
         }
         messages.add(Map.of("role", "user", "content", PromptService.fill(p.userTemplate(), vars)));
-        return callJson(p, messages, 0.7);
+        return requireShape(callJson(p, messages, 0.7), REWRITE_SHAPE);
     }
 
     // ── 内部 ────────────────────────────────────────────────────────────────
@@ -140,6 +163,62 @@ public class CardPersonaService {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回的内容无法解析，请重试。");
         }
         return root;
+    }
+
+    private static String clip(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max);
+    }
+
+    /**
+     * 校验并**规整**模型输出：缺的数组补空、类型不对的纠正回来。
+     * 规整而不是一律拒绝 —— 模型把 draft 少给一个 values 是常事，
+     * 为此让用户重聊一轮不值得；但 reply 这种没有就真没法用的，直接判失败。
+     */
+    private static JsonNode requireShape(JsonNode root, Shape shape) {
+        if (root == null || !root.isObject()) {
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+                    "AI 返回的" + shape.what() + "结果格式不对，请重试。");
+        }
+        ObjectNode o = (ObjectNode) root;
+        for (String k : shape.requiredText()) {
+            JsonNode v = o.get(k);
+            if (v == null || !v.isTextual() || v.asText().isBlank()) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+                        "AI 返回的" + shape.what() + "结果缺了「" + k + "」，请重试。");
+            }
+        }
+        for (String k : shape.requiredArray()) normalizeArray(o, k);
+        // chat 的 draft 是可选的；给了就必须能用，否则前端 join() 会炸
+        JsonNode draft = o.get("draft");
+        if (draft != null && draft.isObject()) {
+            ObjectNode d = (ObjectNode) draft;
+            normalizeArray(d, "values");
+            normalizeArray(d, "traits");
+            if (!d.hasNonNull("essence") || !d.get("essence").isTextual()) d.put("essence", "");
+            JsonNode voice = d.get("voice");
+            ObjectNode v = voice != null && voice.isObject() ? (ObjectNode) voice : d.putObject("voice");
+            if (!v.hasNonNull("tone") || !v.get("tone").isTextual()) v.put("tone", "");
+            normalizeArray(v, "avoid");
+        } else if (draft != null) {
+            o.remove("draft");   // draft 不是对象就当没给，别让前端去解析一个字符串
+        }
+        return o;
+    }
+
+    /** 缺失 / 类型不对 → 空数组；单个字符串 → 单元素数组（模型常这么偷懒）。 */
+    private static void normalizeArray(ObjectNode o, String field) {
+        JsonNode v = o.get(field);
+        if (v != null && v.isArray()) {
+            ArrayNode cleaned = mapper.createArrayNode();
+            for (JsonNode e : v) if (e != null && e.isTextual() && !e.asText().isBlank()) cleaned.add(e.asText());
+            o.set(field, cleaned);
+            return;
+        }
+        if (v != null && v.isTextual() && !v.asText().isBlank()) {
+            o.set(field, mapper.createArrayNode().add(v.asText()));
+            return;
+        }
+        o.set(field, mapper.createArrayNode());
     }
 
     /** 模型偶尔会用 ```json 包起来 —— 剥掉再解析，解析不了就返回 null 由调用方报错。 */

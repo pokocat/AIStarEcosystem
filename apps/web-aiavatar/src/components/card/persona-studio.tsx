@@ -38,7 +38,17 @@ export function PersonaStudio({
   doc: CardProfile;
   onPatch: (fn: (d: CardProfile) => CardProfile) => void;
 }) {
-  const persona = doc.persona ?? EMPTY_PERSONA;
+  // 文档是客户端拥有的，历史数据或别处写入都可能缺字段 —— 读的时候统一兜住，
+  // 否则下面每一个 .join() 都是一个白屏点。
+  const raw = doc.persona;
+  const persona: CardPersona = {
+    essence: raw?.essence ?? "",
+    values: Array.isArray(raw?.values) ? raw.values : [],
+    traits: Array.isArray(raw?.traits) ? raw.traits : [],
+    voice: { tone: raw?.voice?.tone ?? "", avoid: Array.isArray(raw?.voice?.avoid) ? raw.voice.avoid : [] },
+    source: raw?.source ?? "manual",
+    updatedAt: raw?.updatedAt ?? "",
+  };
   const has = Boolean(persona.essence || persona.values.length || persona.traits.length);
 
   const [open, setOpen] = React.useState(false);
@@ -81,12 +91,26 @@ export function PersonaStudio({
 
   const adopt = () => {
     if (!draft) return;
+    // 服务端已经按形状规整过一遍，这里再兜一层：草稿是要写进对外名片的，
+    // 少一个数组字段就会让编辑器 `.join()` 抛异常、整页白屏。
     onPatch((d) => ({
       ...d,
-      persona: { ...draft, source: "chat", updatedAt: new Date().toISOString() },
+      persona: {
+        essence: draft.essence ?? "",
+        values: Array.isArray(draft.values) ? draft.values : [],
+        traits: Array.isArray(draft.traits) ? draft.traits : [],
+        voice: {
+          tone: draft.voice?.tone ?? "",
+          avoid: Array.isArray(draft.voice?.avoid) ? draft.voice.avoid : [],
+        },
+        source: "chat",
+        updatedAt: new Date().toISOString(),
+      },
     }));
     setDraft(null);
-    setMsgs((m) => [...m, { role: "assistant", content: "已经写进名片了。要不要按这个人设，把「一句话 / 能提供 / 在找」也顺一遍？" }]);
+    // 说实话：这里只是填进了表单，**还没存**。说「已经写进名片了」是骗人的 ——
+    // 用户据此直接离开，聊了半天的东西就没了。
+    setMsgs((m) => [...m, { role: "assistant", content: "已经填进上面的表单了（记得点页面底部的保存）。要不要按这个人设，把「一句话 / 能提供 / 在找」也顺一遍？" }]);
   };
 
   const doRewrite = async () => {
@@ -112,8 +136,8 @@ export function PersonaStudio({
       ...d,
       headline: rewrite.headline || d.headline,
       offer: {
-        give: rewrite.give?.length ? rewrite.give : d.offer.give,
-        want: rewrite.want?.length ? rewrite.want : d.offer.want,
+        give: Array.isArray(rewrite.give) && rewrite.give.length ? rewrite.give : d.offer.give,
+        want: Array.isArray(rewrite.want) && rewrite.want.length ? rewrite.want : d.offer.want,
       },
     }));
     setRewrite(null);
@@ -136,10 +160,9 @@ export function PersonaStudio({
             />
           </Row>
           <Row label="价值观" hint="一行一条。这些是访客在名片上看得到的。">
-            <textarea
-              value={persona.values.join("\n")} rows={3} placeholder={"一行一条"}
-              onChange={(e) => setPersona((p) => ({ ...p, values: lines(e.target.value) }))}
-              style={{ ...INPUT, resize: "vertical" }}
+            <LinesInput
+              value={persona.values} rows={3} placeholder="一行一条"
+              onCommit={(v) => setPersona((p) => ({ ...p, values: v }))}
             />
           </Row>
           <Row label="性格特征" hint="逗号或换行分隔。">
@@ -158,10 +181,9 @@ export function PersonaStudio({
             />
           </Row>
           <Row label="不说这类话" hint="一行一条。改写时会避开。">
-            <textarea
-              value={persona.voice.avoid.join("\n")} rows={2} placeholder={"例：赋能、闭环、生态位"}
-              onChange={(e) => setPersona((p) => ({ ...p, voice: { ...p.voice, avoid: lines(e.target.value) } }))}
-              style={{ ...INPUT, resize: "vertical" }}
+            <LinesInput
+              value={persona.voice.avoid} rows={2} placeholder="例：赋能、闭环、生态位"
+              onCommit={(v) => setPersona((p) => ({ ...p, voice: { ...p.voice, avoid: v } }))}
             />
           </Row>
 
@@ -245,8 +267,8 @@ export function PersonaStudio({
         <div style={{ border: "1px solid var(--primary)", borderRadius: 14, padding: 14, background: "var(--primary-soft)" }}>
           <span style={{ fontSize: 13, fontWeight: 800, display: "block", marginBottom: 8 }}>按人设改写后</span>
           <Preview label="一句话" value={rewrite.headline} />
-          <Preview label="能提供" value={(rewrite.give || []).join("　·　")} />
-          <Preview label="在找" value={(rewrite.want || []).join("　·　")} />
+          <Preview label="能提供" value={(Array.isArray(rewrite.give) ? rewrite.give : []).join("　·　")} />
+          <Preview label="在找" value={(Array.isArray(rewrite.want) ? rewrite.want : []).join("　·　")} />
           {rewrite.note && (
             <p style={{ margin: "8px 0 0", fontSize: 11.5, lineHeight: 1.7, color: "var(--ink-3)" }}>{rewrite.note}</p>
           )}
@@ -275,6 +297,33 @@ const INPUT: React.CSSProperties = {
 };
 
 const lines = (v: string) => v.split("\n").map((x) => x.trim()).filter(Boolean);
+
+/**
+ * 多行列表输入。
+ *
+ * **不能**直接把 `arr.join("\n")` 当受控值、再在每次 onChange 里 trim+filter ——
+ * 用户在末尾敲回车，`"第一条\n"` 立刻被 filter 成 `"第一条"`，光标弹回上一行，
+ * 根本没法往下加第二条。所以编辑期间保留原始文本，**失焦时才规整**成数组。
+ */
+function LinesInput({
+  value, onCommit, rows = 3, placeholder,
+}: { value: string[]; onCommit: (v: string[]) => void; rows?: number; placeholder?: string }) {
+  const [raw, setRaw] = React.useState(value.join("\n"));
+  // 外部换了内容（比如采用了 AI 草稿）才跟着变，用户正在敲的时候不要打断
+  const lastExternal = React.useRef(value.join("\n"));
+  React.useEffect(() => {
+    const next = value.join("\n");
+    if (next !== lastExternal.current) { lastExternal.current = next; setRaw(next); }
+  }, [value]);
+  return (
+    <textarea
+      value={raw} rows={rows} placeholder={placeholder}
+      onChange={(e) => setRaw(e.target.value)}
+      onBlur={() => { const v = lines(raw); lastExternal.current = v.join("\n"); onCommit(v); }}
+      style={{ ...INPUT, resize: "vertical" }}
+    />
+  );
+}
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -318,10 +367,10 @@ function DraftCard({ draft, onAdopt, onKeepTalking }: { draft: Draft; onAdopt: (
     <div style={{ borderTop: "1px solid var(--line)", padding: 14, background: "var(--surface-2)" }}>
       <span style={{ fontSize: 12.5, fontWeight: 800, display: "block", marginBottom: 9 }}>聊出来的人设</span>
       <Preview label="一句话" value={draft.essence} />
-      <Preview label="价值观" value={(draft.values || []).join("　·　")} />
-      <Preview label="性格" value={(draft.traits || []).join("　·　")} />
+      <Preview label="价值观" value={(Array.isArray(draft.values) ? draft.values : []).join("　·　")} />
+      <Preview label="性格" value={(Array.isArray(draft.traits) ? draft.traits : []).join("　·　")} />
       <Preview label="说话方式" value={draft.voice?.tone ?? ""} />
-      {draft.voice?.avoid?.length ? <Preview label="不说" value={draft.voice.avoid.join("　·　")} /> : null}
+      {Array.isArray(draft.voice?.avoid) && draft.voice.avoid.length ? <Preview label="不说" value={draft.voice.avoid.join("　·　")} /> : null}
       <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
         <Btn onClick={onAdopt} primary icon={<Check size={14} />}>就它了</Btn>
         <Btn onClick={onKeepTalking}>再聊聊</Btn>

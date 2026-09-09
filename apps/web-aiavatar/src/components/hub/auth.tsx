@@ -75,9 +75,11 @@ export function useRequireAuth(enabled = true): AuthState {
  */
 export function useLoginNext(): string {
   const sp = useSearchParams();
-  const raw = sp.get("next") || "/";
+  // 落点默认 /dashboard 而不是 `/` —— v0.191 起根目录是**公开宣传页**，
+  // 登录成功又回宣传页，用户会以为没登上。
+  const raw = sp.get("next") || "/dashboard";
   const safe = raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\") && !raw.startsWith("/login");
-  return safe ? raw : "/";
+  return safe && raw !== "/" ? raw : "/dashboard";
 }
 
 /**

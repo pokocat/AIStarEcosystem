@@ -117,6 +117,9 @@ public class CardController {
     // 免费：没有 hold / commit，也不写账本（一次对话的成本远低于一次出图，
     // 加计费反而会让人不敢多聊两句，而多聊两句正是这个功能有用的前提）。
 
+    /** 入口侧的历史条数上限（service 里还会再截到最后 24 条喂模型）。 */
+    private static final int MAX_HISTORY_IN = 200;
+
     public record PersonaChatRequest(Map<String, Object> context, List<Map<String, String>> history, String message) {}
 
     /** 一轮人设对话。返回 {reply, ready, draft?}。 */
@@ -126,6 +129,15 @@ public class CardController {
         cards.required(uid(principal), id); // 归属闸：不是你的名片，连聊都不给聊
         if (req == null || req.message() == null || req.message().isBlank()) {
             throw BusinessException.badRequest("CARD_PERSONA_MESSAGE_REQUIRED", "说点什么才能接着聊");
+        }
+        // 入口就把体量卡住：截断发生在 service 里、反序列化之后，那时超大 body 已经进内存了。
+        // 这里只挡明显过量的，正常聊天离上限差得远。
+        if (req.message().length() > CardPersonaService.MAX_MSG_CHARS) {
+            throw BusinessException.badRequest("CARD_PERSONA_MESSAGE_TOO_LONG",
+                    "一次说太多了（超过 " + CardPersonaService.MAX_MSG_CHARS + " 字），分几句说。");
+        }
+        if (req.history() != null && req.history().size() > MAX_HISTORY_IN) {
+            throw BusinessException.badRequest("CARD_PERSONA_HISTORY_TOO_LONG", "对话太长了，重新开一段。");
         }
         Map<String, Object> ctx = req.context() == null ? Map.of() : req.context();
         return ApiResponse.of(persona.chat(ctx, req.history(), req.message()));

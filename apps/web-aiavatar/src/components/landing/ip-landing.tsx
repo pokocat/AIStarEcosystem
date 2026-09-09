@@ -71,7 +71,9 @@ export function IpLanding() {
   const [authed, setAuthed] = React.useState(false);
   React.useEffect(() => { setAuthed(USE_MOCK || auth.isAuthed()); }, []);
   // 已登录进个人主页（v0.191 起 dashboard 才是「主页」，根目录是这张落地页）
-  const entry = authed ? "/dashboard" : "/login";
+  // 未登录带上 next：不带的话登录完会回到这张宣传页（默认落点虽已改成
+  // /dashboard，但显式写出来更不容易在后续改动里被弄丢）。
+  const entry = authed ? "/dashboard" : "/login?next=%2Fdashboard";
 
   return (
     <div className="ip-surface min-h-dvh overflow-x-hidden" style={{ background: "var(--paper)" }}>

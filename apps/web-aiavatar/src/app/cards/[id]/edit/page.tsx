@@ -33,10 +33,22 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
   const ready = authState === "ok";
   const [state, setState] = useState<State>({ s: "loading" });
   const [saving, setSaving] = useState(false);
+  // 有没有改过还没存。人设那块聊完「采用」也只是填进表单，
+  // 用户据此直接返回就白聊了 —— 至少要拦一下。
+  const [dirty, setDirty] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   // 首页资源可选的视频 —— 来自这个形象在数字资产里的视频类衍生物
   // （IP 工作台发布时把画布上的成片一并登记了）。
   const [videos, setVideos] = useState<Array<{ id: string; label: string; thumbUrl?: string; spec?: string }>>([]);
+
+  // 浏览器级的离开提醒（刷新 / 关标签 / 前进后退）。站内跳转拦不住，
+  // 所以底部按钮区另有一行「未保存」提示 —— 两者都不是万能，但比什么都没有强。
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   useEffect(() => {
     if (!ready) return;
@@ -69,6 +81,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
   const say = (t: string) => { setNote(t); setTimeout(() => setNote(null), 2200); };
 
   const patch = useCallback((fn: (d: CardProfile) => CardProfile) => {
+    setDirty(true);
     setState((cur) => (cur.s === "ok" ? { s: "ok", doc: fn(cur.doc) } : cur));
   }, []);
 
@@ -102,6 +115,7 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
       say(e instanceof Error ? e.message : "保存没成功");
     } finally {
       setSaving(false);
+      setDirty(false);
     }
   };
 
@@ -290,7 +304,14 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
               <ListEditor
                 items={state.doc.works}
                 onChange={(works) => patch((d) => ({ ...d, works }))}
-                blank={() => ({ no: String(state.doc.works.length + 1).padStart(2, "0"), title: "", desc: "", tone: "var(--primary)" })}
+                // 用「现有最大号 + 1」而不是 length + 1：01/02/03 删掉 02 再加，
+                // length 法会得到 01/03/03 —— 编号重复，公开页还拿 no 当 React key。
+                blank={() => ({
+                  no: String(
+                    state.doc.works.reduce((mx, w) => Math.max(mx, Number(w.no) || 0), 0) + 1,
+                  ).padStart(2, "0"),
+                  title: "", desc: "", tone: "var(--primary)",
+                })}
                 addLabel="加一个作品"
                 render={(w, set) => (
                   <>
@@ -421,6 +442,12 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
               />
             </Card>
           </div>
+
+          {dirty && (
+            <p style={{ margin: "16px 16px 0", fontSize: 12, color: "var(--warn, #B26B00)", lineHeight: 1.7 }}>
+              有改动还没保存 —— 包括人设那块「采用」进来的内容。
+            </p>
+          )}
 
           <div style={{ margin: "18px 16px 0", display: "flex", gap: 8 }}>
             <button
