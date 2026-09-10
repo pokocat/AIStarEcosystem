@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { sniffExtension } from "./download-media";
 
 const bytes = (...b: number[]) => new Uint8Array([...b, ...Array(16).fill(0)]);
@@ -49,5 +51,22 @@ describe("类型按服务端的 key 判，不按画布自己记的", () => {
   it("签名地址要去掉查询串再看后缀", () => {
     expect(extFromUrl("https://oss/x/abc.jpg?Expires=1&Signature=zz")).toBe("jpg");
     expect(extFromUrl("https://oss/x/abc.mp4#t=1")).toBe("mp4");
+  });
+});
+
+describe("不直连 OSS（桶没配 CORS）", () => {
+  const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+
+  it("导出取字节的两处都走同源，不再裸 fetch 签名地址", () => {
+    for (const f of ["src/canvas-bridge/image-storage.ts", "src/canvas-bridge/file-storage.ts"]) {
+      const src = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      expect(src, `${f} 还在直连 OSS —— 会被 CORS 拦，导出就静默丢图`).toContain("fetchAssetBlob");
+      expect(src, `${f} 仍有裸 fetch(url)`).not.toMatch(/fetch\(url\)/);
+    }
+  });
+
+  it("下载有 storageKey 时走同源", () => {
+    const src = read("src/canvas-bridge/download-media.ts");
+    expect(src).toContain("storageKey ? await fetchAssetBlob(storageKey)");
   });
 });

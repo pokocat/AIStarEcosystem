@@ -28,6 +28,8 @@
 
 import { saveAs } from "file-saver";
 
+import { fetchAssetBlob } from "./api";
+
 /** 文件头 → 扩展名。与服务端 `ImageBytes.sniff` 同一套判断，认不出返回 null（不猜）。 */
 export function sniffExtension(bytes: Uint8Array): string | null {
   const b = bytes;
@@ -82,19 +84,30 @@ export async function blobExtension(blob: Blob, declaredMime?: string | null, ur
   return extFromMime(blob.type || declaredMime) ?? (url ? extFromUrl(url) : null);
 }
 
-export async function downloadMedia(url: string, baseName: string, declaredMime?: string | null): Promise<void> {
+export async function downloadMedia(
+  url: string,
+  baseName: string,
+  declaredMime?: string | null,
+  storageKey?: string | null,
+): Promise<void> {
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const blob = await res.blob();
-    saveAs(blob, `${baseName}.${(await blobExtension(blob, declaredMime, url)) ?? "bin"}`);
+    // 有 storageKey 就走同源路由 —— 桶没配 CORS，直接 fetch 那个签名地址必被拦。
+    // 同源之后：字节嗅探真的跑得到，`a[download]` 也才作数。
+    const blob = storageKey ? await fetchAssetBlob(storageKey) : await directBlob(url);
+    saveAs(blob, `${baseName}.${(await blobExtension(blob, declaredMime, storageKey ?? url)) ?? "bin"}`);
   } catch {
     // 兜底：直接交给浏览器。名字未必作数（跨域时 a[download] 被忽略），但不至于下不下来
     // 路径优先于 declaredMime：文档里的 `metadata.mimeType` 是画布自己写死的
     // （实测线上数据里 key 是 `.jpg` 而 mimeType 写着 `image/png`），
     // 而 key 的后缀是服务端按字节改正过的（v0.184），可信得多。
-    saveAs(url, `${baseName}.${extFromUrl(url) ?? extFromMime(declaredMime) ?? "bin"}`);
+    saveAs(url, `${baseName}.${extFromUrl(storageKey ?? url) ?? extFromMime(declaredMime) ?? "bin"}`);
   }
+}
+
+async function directBlob(url: string): Promise<Blob> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.blob();
 }
 
 /** storageKey 的后缀 → MIME。服务端 v0.184 起按字节改正过 key，所以它比画布自己记的可信。 */

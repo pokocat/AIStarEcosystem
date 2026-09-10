@@ -28,6 +28,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -300,6 +302,43 @@ public class IpStudioController {
     public record SignRequest(java.util.List<String> keys) {}
 
     // ── 上传 ──────────────────────────────────────────────────
+
+    /**
+     * 同源取素材原件（下载 / 导出用）。
+     *
+     * <p>为什么不让浏览器直接抓 OSS：**桶没配 CORS**，`fetch()` 一律被拦（实测
+     * `TypeError: Failed to fetch`）。画布的「导出」因此一直在静默丢图 —— 取不到字节就
+     * 掉进 JSON 分支，用户拿到一包 json 而且不报错。走同源绕开这件事，顺带让
+     * `Content-Disposition` 生效（跨域时浏览器忽略 `a[download]`，文件名由 OSS 对象名决定）。
+     *
+     * <p>Content-Type 按**字节**判不按后缀（§8.0.1 ⑤）。归属闸复用
+     * {@code requireOwnedAssetKey} —— 这是个「拿 key 换内容」的端点，非本人的 key 必须拒。
+     *
+     * @param download 传了就当附件下（带文件名），不传就内联（给 <img> / <video> 用）
+     */
+    @GetMapping("/assets/content")
+    public ResponseEntity<org.springframework.core.io.Resource> assetContent(
+            Principal principal,
+            @RequestParam("key") String key,
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "download", required = false) String download) throws java.io.IOException {
+        var found = projects.readOwnedAsset(uid(principal), key);
+        var res = new org.springframework.core.io.FileSystemResource(found.path());
+        var headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.parseMediaType(found.mime()));
+        headers.setCacheControl("private, max-age=300");
+        if (download != null) {
+            String base = (name == null || name.isBlank()) ? "asset" : name.trim();
+            // 只留文件名安全的字符；后缀由服务端按字节定，不听调用方的
+            base = base.replaceAll("[\\\\/:*?\"<>|\\r\\n]", "_");
+            if (base.length() > 80) base = base.substring(0, 80);
+            String file = base + "." + found.ext();
+            headers.add(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename*=UTF-8''" + java.net.URLEncoder.encode(file, java.nio.charset.StandardCharsets.UTF_8)
+                            .replace("+", "%20"));
+        }
+        return new ResponseEntity<>(res, headers, org.springframework.http.HttpStatus.OK);
+    }
 
     @PostMapping("/uploads")
     public ApiResponse<IpUploadResultDto> upload(Principal principal,

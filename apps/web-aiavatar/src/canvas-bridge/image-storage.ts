@@ -11,7 +11,7 @@
 // 签名有 TTL，所以还有个 resolveImageUrl 负责过期后重新换一张。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { signKeys, uploadImage as uploadToOss } from "./api";
+import { fetchAssetBlob, signKeys, uploadImage as uploadToOss } from "./api";
 
 export type UploadedImage = {
   url: string;
@@ -130,11 +130,11 @@ export async function resolveImageUrls(keys: string[]): Promise<Record<string, s
 }
 
 export async function getImageBlob(storageKey: string): Promise<Blob | null> {
-  const url = await resolveImageUrl(storageKey);
-  if (!url) return null;
+  if (!storageKey) return null;
   try {
-    const res = await fetch(url);
-    return res.ok ? await res.blob() : null;
+    // 走同源路由，不直连 OSS —— 桶没配 CORS，直连必被拦（实测 TypeError: Failed to fetch）。
+    // 这正是「导出画布」一直静默丢图的原因：这里返回 null，节点就掉进 JSON 分支。
+    return await fetchAssetBlob(storageKey);
   } catch {
     return null;
   }

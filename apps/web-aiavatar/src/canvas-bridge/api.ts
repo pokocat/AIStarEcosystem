@@ -139,3 +139,6 @@ export const readRun = (runId: string) =>
 
 export const cancelRun = (runId: string) =>
   apiFetch<IpRun>(`/v1/ip-studio/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
+
+/** 同源取素材原件（下载 / 导出用）。见 ip/api/ip-studio.ts 的说明：OSS 桶没配 CORS。 */
+export { fetchAssetBlob } from "@/ip/api/ip-studio";

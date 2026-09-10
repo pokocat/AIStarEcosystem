@@ -11,6 +11,7 @@ import type {
   IpPublishRequest, IpPublishResult, IpRun, IpStylePreset, IpTemplate, IpUpdateProjectRequest,
   IpUploadResult, IpPromptGroup,
 } from "@ai-star-eco/types";
+import { API_BASE_URL, getAuthToken } from "@ai-star-eco/api-client";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import {
   MOCK_PRICING, MOCK_STYLES, MOCK_TEMPLATES, mockCancelRun, mockNextId,
@@ -248,4 +249,34 @@ export async function deleteDemo(
   demoId: string,
 ): Promise<{ deleted: boolean; assetsRemoved: number; assetsFailed: number }> {
   return apiFetch(`/v1/ip-studio/demos/${encodeURIComponent(demoId)}`, { method: "DELETE" });
+}
+
+/**
+ * 同源取素材原件的地址（下载 / 导出用）。
+ *
+ * 不能让浏览器直接抓 OSS —— **桶没配 CORS**，`fetch()` 一律被拦（实测
+ * `TypeError: Failed to fetch`），画布导出因此一直静默丢图。走这条同源路由：
+ * Content-Type 由服务端**按字节**判、文件名由 `Content-Disposition` 说了算
+ * （跨域时浏览器会忽略 `a[download]`）。
+ *
+ * 显示用的图**不要**走这里 —— `<img src>` 不需要 CORS，直连 OSS 更快也不占我们带宽。
+ */
+export function assetContentUrl(storageKey: string, opts?: { downloadAs?: string }): string {
+  const q = new URLSearchParams({ key: storageKey });
+  if (opts?.downloadAs) { q.set("download", "1"); q.set("name", opts.downloadAs); }
+  return `${API_BASE_URL}/v1/ip-studio/assets/content?${q.toString()}`;
+}
+
+/**
+ * 同源取回素材原件的字节（带鉴权头）。
+ *
+ * `<a href>` 直接指过去是不行的 —— 端点要 JWT，而浏览器导航不会带 Authorization 头。
+ * 所以统一走这里：fetch 到 blob（同源，不受 CORS 影响），调用方再决定是存盘还是打包。
+ */
+export async function fetchAssetBlob(storageKey: string): Promise<Blob> {
+  const res = await fetch(assetContentUrl(storageKey), {
+    headers: getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {},
+  });
+  if (!res.ok) throw new Error(`取素材失败 HTTP ${res.status}`);
+  return res.blob();
 }

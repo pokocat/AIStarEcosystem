@@ -1915,13 +1915,13 @@ function InfiniteCanvasPage() {
     // 改名 .jpg 才能看（线上那条示例 16 个素材键有 14 个其实是 .jpg）。
     const downloadNodeImage = useCallback((node: CanvasNodeData) => {
         if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) || !node.metadata?.content) return;
-        void downloadMedia(node.metadata.content, `canvas-${node.type}-${node.id}`, node.metadata.mimeType);
+        void downloadMedia(node.metadata.content, `canvas-${node.type}-${node.id}`, node.metadata.mimeType, node.metadata.storageKey);
     }, []);
 
     const downloadBatchImage = useCallback((node: CanvasNodeData, imageId: string) => {
         const image = node.metadata?.images?.find((item) => item.id === imageId);
         if (!image?.content) return;
-        void downloadMedia(image.content, `canvas-image-${node.id}-${image.id}`, image.mimeType);
+        void downloadMedia(image.content, `canvas-image-${node.id}-${image.id}`, image.mimeType, image.storageKey);
     }, []);
 
     const captureVideoNodeFrame = useCallback(

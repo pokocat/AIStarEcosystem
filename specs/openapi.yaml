@@ -9766,6 +9766,22 @@ paths:
         "200": { description: "{ id, name, enabled, kind }" }
         "400": { description: IP_DEMO_TOO_MANY_ASSETS 素材太多 · IP_DEMO_ID_INVALID demoId 形状不合法 }
         "403": { description: 非超级管理员（SUPER_ADMIN_ONLY） }
+  /v1/ip-studio/assets/content:
+    get:
+      tags: [ip-studio]
+      summary: 同源取素材原件（下载 / 导出用）
+      description: >
+        为什么要有这条：OSS 桶没配 CORS，浏览器 fetch 签名地址一律被拦
+        （实测 TypeError: Failed to fetch），画布「导出」因此一直静默丢图 ——
+        取不到字节的节点会掉进 JSON 分支，用户拿到一包 json 而且不报错。
+        走同源绕开 CORS，顺带让 Content-Disposition 生效（跨域时浏览器忽略 a[download]）。
+        Content-Type 按**字节**判不按 key 后缀（§8.0.1 ⑤）；归属闸复用
+        requireOwnedAssetKey —— 这是「拿 key 换内容」的端点，非本人 key 必须拒。
+        query：key（必填）/ name（下载文件名，后缀由服务端定）/ download（传了就当附件下）。
+      responses:
+        "200": { description: 文件字节流 }
+        "400": { description: IP_ASSET_KEY_INVALID（非本人 key / 路径穿越） }
+        "404": { description: IP_ASSET_NOT_FOUND }
   /v1/ip-studio/demos:
     get:
       tags: [ip-studio]

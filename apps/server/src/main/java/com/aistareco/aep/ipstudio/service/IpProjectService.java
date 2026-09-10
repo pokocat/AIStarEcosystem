@@ -14,6 +14,7 @@ import com.aistareco.aep.ipstudio.repository.IpProjectRepository;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.service.storage.FileStorageService;
+import com.aistareco.aep.service.storage.ImageBytes;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -319,6 +320,54 @@ public class IpProjectService {
      */
     private static final java.util.regex.Pattern VIDEO_KEY =
             java.util.regex.Pattern.compile("^(?:[^/]+/)?material-videos/([^/]+)/[^/]+$");
+
+    /**
+     * 取一个**本人的**素材原件，供同源下载 / 导出用。
+     *
+     * <p>为什么要有这条服务端路由，而不是让浏览器直接抓 OSS：**桶没配 CORS**
+     * （实测在 aiavatar.aibuzz.cn 上 fetch 公开对象 → `TypeError: Failed to fetch`，
+     * 响应头里没有任何 `access-control-*`）。于是画布的「导出」一直在静默丢图 ——
+     * `getImageBlob` 被拦、返回 null，节点掉进 JSON 分支，用户拿到一包 json 还不报错。
+     * 走同源就绕开了这件事，顺带让下载的文件名真的由我们说了算
+     * （跨域时浏览器忽略 `a[download]`）。
+     *
+     * <p>类型按**字节**判不按 key 的后缀（§8.0.1 ⑤）：存量文件里有「key 写 .png、
+     * 内容是 JPEG」的，按后缀发 Content-Type 就还是打不开。
+     *
+     * @return 本机可读的文件路径 + 按字节判定的 MIME；非本人 key 直接抛（不泄露存在性差异）
+     */
+    public record AssetContent(java.nio.file.Path path, String mime, String ext) {}
+
+    public AssetContent readOwnedAsset(String userId, String rawKey) {
+        String key = requireOwnedAssetKey(userId, rawKey);
+        java.nio.file.Path path;
+        try {
+            path = storage.openForRead(key);
+        } catch (Exception e) {
+            throw BusinessException.notFound("IP_ASSET_NOT_FOUND", "这个素材取不到了，可能已被清理");
+        }
+        byte[] head = new byte[16];
+        try (java.io.InputStream in = java.nio.file.Files.newInputStream(path)) {
+            int n = in.read(head);
+            if (n > 0 && n < head.length) head = java.util.Arrays.copyOf(head, n);
+        } catch (Exception e) {
+            head = new byte[0];
+        }
+        ImageBytes.Format f = ImageBytes.sniff(head);
+        if (f != null) return new AssetContent(path, f.mime(), f.ext());
+        // 认不出（音视频）就按 key 的后缀猜一个，猜不出交给浏览器嗅探
+        String ext = key.contains(".") ? key.substring(key.lastIndexOf('.') + 1).toLowerCase() : "";
+        String mime = switch (ext) {
+            case "mp4" -> "video/mp4";
+            case "mov" -> "video/quicktime";
+            case "webm" -> "video/webm";
+            case "mp3" -> "audio/mpeg";
+            case "wav" -> "audio/wav";
+            case "m4a", "aac" -> "audio/aac";
+            default -> "application/octet-stream";
+        };
+        return new AssetContent(path, mime, ext.isBlank() ? "bin" : ext);
+    }
 
     public String requireOwnedAssetKey(String userId, String key) {
         if (key == null || key.isBlank()) return null;

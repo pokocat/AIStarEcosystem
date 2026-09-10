@@ -143,7 +143,7 @@ public final class IpStudioFixtures {
     }
 
     /** 本人上传素材的合法 key（{@code ipstudio_source/<owner>/…}）。 */
-    static String sourceKey(String owner, String name) {
+    public static String sourceKey(String owner, String name) {
         return seg(IpProjectService.CATEGORY_SOURCE) + "/" + seg(owner) + "/" + name;
     }
 

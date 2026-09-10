@@ -3,6 +3,7 @@
 
 import { signKeys } from "./api";
 import { resolveImageUrl } from "./image-storage";
+import { fetchAssetBlob } from "./api";
 
 export type UploadedFile = {
   url: string;
@@ -30,11 +31,10 @@ export type UploadedFile = {
 export const resolveMediaUrl = (storageKey?: string, fallback = "") => resolveImageUrl(storageKey, fallback);
 
 export async function getMediaBlob(storageKey: string): Promise<Blob | null> {
-  const url = await resolveMediaUrl(storageKey);
-  if (!url) return null;
+  if (!storageKey) return null;
   try {
-    const res = await fetch(url);
-    return res.ok ? await res.blob() : null;
+    // 同 getImageBlob：走同源，不直连 OSS（桶没配 CORS）
+    return await fetchAssetBlob(storageKey);
   } catch {
     return null;
   }
