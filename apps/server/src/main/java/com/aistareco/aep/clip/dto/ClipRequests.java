@@ -15,6 +15,14 @@ public final class ClipRequests {
     public record PreviewVoice(Integer no, String text) {}
     public record Estimate(List<Map<String, Object>> segments, List<Map<String, Object>> shots) {}
     public record Render(String clientRequestId, Integer externalCreditsHeld) {}
+    /**
+     * 段级生成。{@code model} 决定用哪条引擎链，其余字段按 model 取用：
+     * avatar 用 avatarId/voiceId/text，t2i/t2v 用 prompt，i2v 用 prompt+refAssetId。
+     * {@code fingerprint} 是端上算的缓存键 —— 同一镜同指纹直接回产物，不重跑也不重扣。
+     */
+    public record GenerateShot(String model, String prompt, String refAssetId, String avatarId, String voiceId,
+                               String text, String fingerprint, String clientRequestId, Integer expectedCredits) {}
+    public record Assemble(String clientRequestId, Integer expectedCredits) {}
     public record CreateCloneUpload(String kind, String clientRequestId, String fileName, String contentType, Long sizeBytes) {}
     public record SubmitCloneUpload(String clientRequestId, String avatarId, String voiceId, String name, String voiceSource) {}
     public record UpdateAsset(String label, String tag) {}

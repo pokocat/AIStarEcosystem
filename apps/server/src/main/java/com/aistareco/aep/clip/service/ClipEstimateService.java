@@ -33,6 +33,39 @@ public class ClipEstimateService {
         EstimateSummary summary=new EstimateSummary(totalSec,avatarSec,tailSec,avatarCount,brollCount,tailCount,chars);
         return new EstimateDto(List.of(new EstimateItem("tts","口播配音",tts,null),new EstimateItem("avatar","分身出镜 "+avatarSec+" 秒",avatar,null),new EstimateItem("tail","结尾固定段",0,"免费"),new EstimateItem("assemble","总装",assemble,null)),tts+avatar+assemble,summary);
     }
+
+    /**
+     * 六档单价一次性出 wire。**任一档没配就在这里 503**，不给端上一张半真的价目表 ——
+     * 少一档端上读到 undefined，算出来是 NaN，用户看到的就是「NaN 钻石」。
+     */
+    public PricingDto pricing() {
+        return new PricingDto(props.requirePrice(props.getPricingAvatarSecond(),"avatar-second"),
+                props.requirePrice(props.getPricingT2iPerImage(),"t2i-per-image"),
+                props.requirePrice(props.getPricingT2vSecond(),"t2v-second"),
+                props.requirePrice(props.getPricingI2vSecond(),"i2v-second"),
+                props.requirePrice(props.getPricingAssemble(),"assemble"),
+                props.requirePrice(props.getPricingTtsPerKchar(),"tts-per-kchar"));
+    }
+
+    /**
+     * 一镜单独生成的报价：**只算这一次调用真正产出的东西**（出镜秒数 / 图张数 / 视频秒数）。
+     *
+     * <p>为什么不把配音摊进来：整片 estimate 的 TTS 是 {@code ceil(全片字数/1000 × 单价)}，
+     * 全片只取一次整。按镜摊就变成每镜各取一次整，十个短镜头能把同样的字数收成十倍
+     * —— 那不是计价，是罚款。配音仍按整片一次结算，{@code creditPerKChar} 照常出 wire 给端上算。
+     */
+    public int shotQuote(String model, Map<String,Object> shot) {
+        PricingDto price=pricing(); int sec=ClipProjectService.seconds(shot);
+        return switch(model==null?"":model) {
+            case "avatar" -> sec*price.creditPerAvatarSecond();
+            case "t2i" -> price.creditPerImage();
+            case "t2v" -> sec*price.creditPerT2vSecond();
+            case "i2v" -> sec*price.creditPerI2vSecond();
+            default -> throw BusinessException.badRequest("CLIP_SHOT_MODEL_INVALID","不支持的分段生成模型");
+        };
+    }
+    /** 总装单独下单时的那一档。与整片 estimate 里的 assemble 同价，避免两条路径能被套利。 */
+    public int assembleQuote() { return props.requirePrice(props.getPricingAssemble(),"assemble"); }
     public void preflight(String owner, ClipProject p) {
         List<Map<String,Object>> segments=ClipShotPlan.materialize(p.getPayloadJson());
         if (segments.isEmpty()) throw BusinessException.badRequest("CLIP_NO_SEGMENTS","文案还是空的");

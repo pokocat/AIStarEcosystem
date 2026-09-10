@@ -7,6 +7,7 @@ import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 // 本仓改动：自动标题从「提示词截 32 字」改成派生一个短名字（见 canvas-bridge/node-title.ts）
 import { autoNodeTitle } from "@/canvas-bridge/node-title";
+import { downloadMedia } from "@/canvas-bridge/download-media";
 import { createProjectOnServer, deleteProjectOnServer } from "@/canvas-bridge/project-sync";
 
 import { isRunEnded, requestEdit, requestGeneration, requestImageQuestion, resumeRun } from "@/canvas-bridge/generation";
@@ -53,7 +54,6 @@ import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buil
 import { applyGroupSelection, applyUngroupSelection, canGroupSelectedNodes, canUngroupSelectedNodes, collectGroupMemberNodes, findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, getGroupWrapRect, normalizeConnection, snapNodesIntoGroup } from "@/canvas/lib/canvas/canvas-node-geometry";
 import {
     applyCandidateToNode,
-    audioExtension,
     buildAngleLabel,
     buildAnglePrompt,
     buildGenerationConfig,
@@ -65,7 +65,6 @@ import {
     hasResumableVideoTask,
     hydrateAssistantImages,
     hydrateCanvasImages,
-    imageExtension,
     isGenerationCanceled,
     isSupportedUploadImage,
     resetInterruptedGeneration,
@@ -1910,15 +1909,19 @@ function InfiniteCanvasPage() {
         setNodes((prev) => prev.map((node) => (node.id === nodeId ? applyNodeConfigPatch(node, patch) : node)));
     }, []);
 
+    // 本仓改动：后缀按**真实字节**定，不按地址猜（见 canvas-bridge/download-media.ts）。
+    // 上游的 `imageExtension()` 只认 data URL，而我们的 content 是签名 OSS 地址 ——
+    // 两条正则都不命中，一律回落 "png"。用户实测：下下来是 .png，电脑上看不了预览，
+    // 改名 .jpg 才能看（线上那条示例 16 个素材键有 14 个其实是 .jpg）。
     const downloadNodeImage = useCallback((node: CanvasNodeData) => {
         if ((node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video && node.type !== CanvasNodeType.Audio) || !node.metadata?.content) return;
-        saveAs(node.metadata.content, `canvas-${node.type}-${node.id}.${node.type === CanvasNodeType.Video ? "mp4" : node.type === CanvasNodeType.Audio ? audioExtension(node.metadata.mimeType) : imageExtension(node.metadata.content)}`);
+        void downloadMedia(node.metadata.content, `canvas-${node.type}-${node.id}`, node.metadata.mimeType);
     }, []);
 
     const downloadBatchImage = useCallback((node: CanvasNodeData, imageId: string) => {
         const image = node.metadata?.images?.find((item) => item.id === imageId);
         if (!image?.content) return;
-        saveAs(image.content, `canvas-image-${node.id}-${image.id}.${imageExtension(image.content)}`);
+        void downloadMedia(image.content, `canvas-image-${node.id}-${image.id}`, image.mimeType);
     }, []);
 
     const captureVideoNodeFrame = useCallback(

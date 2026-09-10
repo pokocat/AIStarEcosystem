@@ -14,6 +14,13 @@ public class ClipProperties {
     private String pricingAvatarSecond = "";
     private String pricingTtsPerKchar = "";
     private String pricingAssemble = "";
+    /**
+     * 分段生成三档（ip studio 侧的 t2i / t2v / i2v 能力）。和上面三档同一口径：**没有默认值**。
+     * 价没配就 503 报错，不能把「不知道多少钱」渲染成一个编出来的数摆在用户面前。
+     */
+    private String pricingT2iPerImage = "";
+    private String pricingT2vSecond = "";
+    private String pricingI2vSecond = "";
     private long staleMs = 600_000L;
     private long maxAssetBytes = 104_857_600L;
     /** 单个用户素材库的总容量上限。默认 2 GiB —— 单文件上限 100MB，够存约 20 条素材。 */
@@ -46,6 +53,12 @@ public class ClipProperties {
     public void setPricingTtsPerKchar(String value) { this.pricingTtsPerKchar = value; }
     public String getPricingAssemble() { return pricingAssemble; }
     public void setPricingAssemble(String value) { this.pricingAssemble = value; }
+    public String getPricingT2iPerImage() { return pricingT2iPerImage; }
+    public void setPricingT2iPerImage(String value) { this.pricingT2iPerImage = value; }
+    public String getPricingT2vSecond() { return pricingT2vSecond; }
+    public void setPricingT2vSecond(String value) { this.pricingT2vSecond = value; }
+    public String getPricingI2vSecond() { return pricingI2vSecond; }
+    public void setPricingI2vSecond(String value) { this.pricingI2vSecond = value; }
     public long getStaleMs() { return staleMs; }
     public void setStaleMs(long staleMs) { this.staleMs = staleMs; }
     public long getMaxAssetBytes() { return maxAssetBytes; }

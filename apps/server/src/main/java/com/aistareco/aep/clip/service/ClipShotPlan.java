@@ -74,6 +74,21 @@ public final class ClipShotPlan {
         return result;
     }
 
+    /**
+     * 一镜已落库的产物：{@code source.artifact}。段级生成把产物写在这里而不是任务行上 ——
+     * 任务行会被清理，项目 payload 不会，用户换台手机重新拉项目时产物必须还在。
+     */
+    public static Map<String, Object> artifact(Map<String, Object> shot) {
+        Map<String, Object> source = ClipDtos.safeMapValue(shot == null ? null : shot.get("source"));
+        Map<String, Object> artifact = ClipDtos.safeMapValue(source == null ? null : source.get("artifact"));
+        return artifact == null ? Map.of() : artifact;
+    }
+
+    /**
+     * 范围校验。**只管 id / startNo / endNo / role 与覆盖完整性，不做键白名单**：
+     * {@code source}（段级产物）这类由端上和 worker 共同维护的键必须原样穿过去，
+     * 在这里拦一道等于每次保存都把用户花过钱的产物抹一遍。范围口径一分不放松。
+     */
     public static void validate(List<Map<String, Object>> shots, List<Map<String, Object>> segments) {
         if (shots.isEmpty() || shots.size() > 200) invalid();
         Set<Integer> sourceNos = new LinkedHashSet<>();

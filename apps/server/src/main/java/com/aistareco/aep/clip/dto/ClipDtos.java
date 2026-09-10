@@ -65,6 +65,36 @@ public final class ClipDtos {
     public record EstimateSummary(int totalSec, int avatarSec, int tailSec, int avatarCount, int brollCount, int tailCount, int chars) {}
     public record EstimateDto(List<EstimateItem> items, int total, EstimateSummary summary) {}
     public record RenderResult(String jobId, String projectId, String status, boolean mock) {}
+
+    /**
+     * 六档单价。**键名是与端上的硬契约**（小程序 config.js 的 PRICING、model.js 的 unitPrice
+     * 按这些键直接读），改一个名字端上不会报错，只会静默拿到 undefined 再把价算成 NaN。
+     * 六个值全部来自配置且 fail-fast：任一档没配就 503 CLIP_PRICING_NOT_CONFIGURED，不兜底。
+     */
+    public record PricingDto(int creditPerAvatarSecond, int creditPerImage, int creditPerT2vSecond,
+                             int creditPerI2vSecond, int creditPerAssemble, int creditPerKChar) {}
+    /** 一镜的产物。{@code url}/{@code posterUrl} 现签现给，不落库 —— 落库就是埋一个几小时后必然 403 的雷。 */
+    public record ShotArtifactDto(String url, String fingerprint, double durationSec, String posterUrl) {}
+    /**
+     * 段级生成受理结果。
+     *
+     * <p>{@code credits} 是**这条 jobId 到目前为止一共被扣掉的数**，与
+     * {@link ShotGenerationDto#credits()} 同一口径 —— 同名字段在两个接口里表示两件事才是真正的坑。
+     * 所以新建时恒为 0（还没成功），重试或指纹命中回同一条 job 时报它已扣的数。
+     * <b>不重扣是靠 jobId 唯一保证的，不是靠这个数字</b>：调用方按 jobId 结算，重复的响应结算不了第二次。
+     */
+    public record ShotGenerateResult(String jobId, String status, int credits, boolean mock) {}
+    /**
+     * 段级生成状态。{@code status ∈ none|queued|running|succeeded|failed|cancelled}。
+     * 查不到那一单时回 {@code none} 而**不是** 404：端上靠 none 判断「这一单没了」，
+     * 404 会被它的错误通道吃掉，用户看到的是一句报错而不是「可以重新生成」。
+     */
+    public record ShotGenerationDto(String jobId, String status, Integer progress, ShotArtifactDto artifact, Integer credits,
+                                    String errorCode, String errorMessage) {
+        public static ShotGenerationDto none() { return new ShotGenerationDto(null, "none", null, null, null, null, null); }
+    }
+    /** 总装受理结果。沿用 {@code /jobs/{id}} 轮询，所以这里只回身份三件套。 */
+    public record AssembleResult(String jobId, String projectId, String status) {}
     /**
      * 段级出片状态（WORKPLAN 2026-09-05 §1.6）。{@code status ∈ queued|generating|done|failed}。
      * {@code no} 与 {@code ClipShotPlan.materialize} 的镜头序号同源，也就是 segmentJobsJson 里的那套编号。

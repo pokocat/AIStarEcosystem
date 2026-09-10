@@ -11,6 +11,7 @@ import { endpointIdFor } from "./models";
 import { rememberUploaded } from "./image-storage";
 import { recordRun } from "./last-run";
 import { cancelRun, generate, readRun, currentProjectId, type IpRun } from "./api";
+import { mimeFromKey } from "./download-media";
 
 /** 上游的多模态消息形状，画布拼「带图对话」用。保持同名同形，调用点不用改。 */
 export type AiTextMessage = {
@@ -145,13 +146,18 @@ function toImages(run: IpRun): GeneratedImage[] {
   const out: GeneratedImage[] = [];
   for (const c of run.output?.candidates ?? []) {
     if (!c.key || !c.url) continue;
+    // 类型按**服务端给的 key** 来，别一律写 image/png：服务端 v0.184 起落库时按字节
+    // 改正过后缀（厂商常返回 JPEG），而这里写死会让文档里留下「key 是 .jpg、
+    // mimeType 写着 image/png」的自相矛盾 —— 线上那条官方示例就是这样，
+    // 下载时按它取名就会下出一个打不开的 .png。
+    const mime = mimeFromKey(c.key) ?? "image/png";
     const img: GeneratedImage = {
       dataUrl: c.url, storageKey: c.key,
-      width: c.width ?? 0, height: c.height ?? 0, bytes: 0, mimeType: "image/png",
+      width: c.width ?? 0, height: c.height ?? 0, bytes: 0, mimeType: mime,
     };
     // 图已经在 OSS 上了。画布随后会拿 dataUrl 去调 uploadImage —— 记一笔，
     // 让那次调用直接命中已有产物，而不是把同一张图下载下来再传一遍。
-    rememberUploaded(c.url, { url: c.url, storageKey: c.key, width: img.width, height: img.height, bytes: 0, mimeType: "image/png" });
+    rememberUploaded(c.url, { url: c.url, storageKey: c.key, width: img.width, height: img.height, bytes: 0, mimeType: mime });
     out.push(img);
   }
   if (!out.length) {

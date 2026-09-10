@@ -227,6 +227,41 @@ public class ClipAssemblyService {
         return style != null && Boolean.TRUE.equals(style.get("aiWatermark"));
     }
 
+    /**
+     * 段级生成在 mock 网关下的确定性产物：与 {@link #assembleMock} 同一套色块 + 测试音轨 + 字幕，
+     * 外加一张封面帧。让本地/预发能把「生成 → 轮询 → 拿产物 → 总装」整条链真跑一遍，
+     * 而不是只验到接口形状。
+     *
+     * <p><b>不是降级路径</b>：只有 mock 网关（本地/预发，且非 production profile）才可能走到，
+     * 生产的石榴永远返回真视频。判断在 {@code ShiliuService.required()}，不在这里。
+     */
+    public Result renderMockShot(String owner, Map<String, Object> shot) {
+        Path work = null;
+        try {
+            work = Files.createTempDirectory("clip-shot-mock-");
+            int no = number(shot.get("no"), 1);
+            String role = String.valueOf(shot.get("role"));
+            if (!Set.of("avatar", "broll", "tail").contains(role)) throw failure("出片分段角色无效");
+            List<Path> overlayLayers = captionOverlays(work, no, shot, true, false);
+            Path output = work.resolve(String.format(Locale.ROOT, "shot-%03d.mp4", no));
+            renderMockSegment(shot, role, no, overlayLayers, output);
+            requireOutput(output);
+            double probed = ffmpeg.probeDurationSec(output.toFile());
+            Path poster = work.resolve("poster.jpg");
+            extractThumbnail(output, poster, false);
+            requireOutput(poster);
+            FileStorageService.StoredFile stored = storage.storeExisting(output, "clip/segments", owner, "mp4", "video/mp4", true);
+            FileStorageService.StoredFile posterStored = storage.storeExisting(poster, "clip/thumbnails", owner, "jpg", "image/jpeg", true);
+            return new Result(stored.key(), posterStored.key(), Math.max(1, (int) Math.round(probed)), stored.bytes() + posterStored.bytes());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ASSEMBLY_FAILED", "测试分段生成失败，请稍后重试", e.toString());
+        } finally {
+            deleteTree(work);
+        }
+    }
+
     private void normalizeAvatar(Map<String, Object> segment, Map<String, Object> state, List<Path> overlayLayers, Path output) throws IOException {
         String key = text(state.get("videoCdnKey"));
         if (key.isBlank()) throw failure("分身出镜段尚未生成完成");

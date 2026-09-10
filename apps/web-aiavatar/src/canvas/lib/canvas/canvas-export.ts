@@ -11,6 +11,9 @@ import { saveAs } from "file-saver";
 import i18n from "@/canvas-bridge/i18n";
 import { createZip } from "@/canvas/lib/zip";
 import { getMediaBlob } from "@/canvas-bridge/file-storage";
+// 本仓改动：压包里的文件名也按**真实字节**定后缀 —— v0.184 之前存的文件，OSS 上的
+// Content-Type 仍是错的（写着 png、内容是 JPEG），只信 blob.type 会把错名字带进压缩包。
+import { blobExtension } from "@/canvas-bridge/download-media";
 import { getImageBlob } from "@/canvas-bridge/image-storage";
 import type { CanvasExportAsset, CanvasExportFile } from "@/canvas/types/canvas-export";
 import type { CanvasProject } from "@/canvas/stores/canvas/use-canvas-store";
@@ -34,13 +37,13 @@ export async function exportCanvasNodes(nodes: CanvasNodeData[], fileName = i18n
             const storageKey = node.metadata?.storageKey || "";
             if (storageKey) {
                 const blob = storageKey.startsWith("image:") ? await getImageBlob(storageKey) : await getMediaBlob(storageKey);
-                if (blob) return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type, storageKey)), data: blob });
+                if (blob) return void zipFiles.push({ name: uniqueName(title, (await blobExtension(blob, null, storageKey)) ?? fileExtension(blob.type, storageKey)), data: blob });
             }
             if (node.type === CanvasNodeType.Text) return void zipFiles.push({ name: uniqueName(title, "txt"), data: node.metadata?.content || node.metadata?.prompt || "" });
             const content = node.metadata?.content;
             if (content && content.startsWith("data:")) {
                 const blob = await (await fetch(content)).blob();
-                return void zipFiles.push({ name: uniqueName(title, fileExtension(blob.type, storageKey)), data: blob });
+                return void zipFiles.push({ name: uniqueName(title, (await blobExtension(blob, null, storageKey)) ?? fileExtension(blob.type, storageKey)), data: blob });
             }
             zipFiles.push({ name: uniqueName(title, "json"), data: JSON.stringify(node, null, 2) });
         }),

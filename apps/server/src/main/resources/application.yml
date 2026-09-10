@@ -67,6 +67,10 @@ aep:
     pricing-avatar-second: ${AEP_CLIP_PRICE_AVATAR_SECOND:}
     pricing-tts-per-kchar: ${AEP_CLIP_PRICE_TTS_PER_KCHAR:}
     pricing-assemble: ${AEP_CLIP_PRICE_ASSEMBLE:}
+    # 分段生成三档。同样不给默认值：没配就 CLIP_PRICING_NOT_CONFIGURED，别编价。
+    pricing-t2i-per-image: ${AEP_CLIP_PRICE_T2I_PER_IMAGE:}
+    pricing-t2v-second: ${AEP_CLIP_PRICE_T2V_SECOND:}
+    pricing-i2v-second: ${AEP_CLIP_PRICE_I2V_SECOND:}
     stale-ms: ${AEP_CLIP_STALE_MS:600000}
     max-asset-bytes: ${AEP_CLIP_MAX_ASSET_BYTES:104857600}
     max-avatar-segment-sec: ${AEP_CLIP_MAX_AVATAR_SEGMENT_SEC:30}

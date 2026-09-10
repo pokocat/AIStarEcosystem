@@ -18,9 +18,10 @@ public class ClipProjectService {
     private final ClipProjectRepository repo;
     private final ClipTemplateService templates;
     private final ClipRenderJobRepository jobs;
+    private final ClipShotJobRepository shotJobs;
     private final ClipTtsPreviewRepository ttsPreviews;
     private final FileStorageService storage;
-    public ClipProjectService(ClipProjectRepository repo, ClipTemplateService templates, ClipRenderJobRepository jobs, ClipTtsPreviewRepository ttsPreviews, FileStorageService storage) { this.repo = repo; this.templates = templates; this.jobs = jobs; this.ttsPreviews = ttsPreviews; this.storage = storage; }
+    public ClipProjectService(ClipProjectRepository repo, ClipTemplateService templates, ClipRenderJobRepository jobs, ClipShotJobRepository shotJobs, ClipTtsPreviewRepository ttsPreviews, FileStorageService storage) { this.repo = repo; this.templates = templates; this.jobs = jobs; this.shotJobs = shotJobs; this.ttsPreviews = ttsPreviews; this.storage = storage; }
 
     @Transactional
     public ProjectDto create(String owner, String templateId) {
@@ -54,8 +55,9 @@ public class ClipProjectService {
         if (req != null) {
             if (req.variables() != null) payload.put("variables", new LinkedHashMap<>(req.variables()));
             if (req.segments() != null) { validateSegments(req.segments()); payload.put("segments", new ArrayList<>(req.segments())); }
-            if (req.shots() != null) { ClipShotPlan.validate(req.shots(), ClipDtos.mapListValue(payload.get("segments"))); payload.put("shots", new ArrayList<>(req.shots())); }
-            else if (req.segments() != null) payload.put("shots", ClipShotPlan.defaultShots(req.segments()));
+            List<Map<String, Object>> previousShots = ClipDtos.mapListValue(payload.get("shots"));
+            if (req.shots() != null) { ClipShotPlan.validate(req.shots(), ClipDtos.mapListValue(payload.get("segments"))); payload.put("shots", carryOverSource(previousShots, req.shots())); }
+            else if (req.segments() != null) payload.put("shots", carryOverSource(previousShots, ClipShotPlan.defaultShots(req.segments())));
             if (req.scriptChat() != null) { validateScriptChat(req.scriptChat()); payload.put("scriptChat", new ArrayList<>(req.scriptChat())); }
             if (req.avatarId() != null) payload.put("avatarId", req.avatarId());
             if (req.voiceId() != null) payload.put("voiceId", req.voiceId());
@@ -68,6 +70,34 @@ public class ClipProjectService {
             if (req.title() != null && !req.title().isBlank()) p.setTitle(req.title().trim().substring(0, Math.min(160, req.title().trim().length())));
         }
         p.setPayloadJson(payload); p.setUpdatedAt(Instant.now()); recompute(p); return ProjectDto.from(repo.save(p));
+    }
+
+    /**
+     * 复制成一份新草稿。
+     *
+     * <p>**产物引用一律清掉**：{@code shots[].source.artifact} 是原主人真金白银换来的，
+     * 复制一份稿子不该顺带白继承一段已经花过钱的视频。{@code creditsHeld} 同理归零 ——
+     * 那笔钱冻在原项目的那一单上，跟这份新稿子没有任何关系。
+     *
+     * <p>保留的是**创作意图**：分镜怎么切、每镜打算用哪个 model、prompt 写了什么都留着，
+     * 只把成品拿走。否则「复制一版再改改」这个动作就退化成了「重新建一个项目」。
+     */
+    @Transactional
+    public ProjectDto duplicate(String owner, String id) {
+        ClipProject source = required(owner, id);
+        Map<String, Object> payload = new LinkedHashMap<>(ClipDtos.safeMap(source.getPayloadJson()));
+        // actualDurationSec 是上一版真跑过一次 TTS 量出来的秒数，新稿子还没跑过，留着会让报价虚高
+        payload.put("segments", ClipDtos.mapListValue(payload.get("segments")).stream()
+                .map(row -> { row.remove("actualDurationSec"); return row; }).toList());
+        payload.put("shots", ClipShotPlan.shots(payload).stream().map(ClipProjectService::withoutArtifact).toList());
+        payload.remove("publishStats");
+        Instant now = Instant.now();
+        String title = (source.getTitle() + "（副本）");
+        ClipProject copy = ClipProject.builder().id(id("cp")).externalOwnerId(owner)
+                .templateId(source.getTemplateId()).templateName(source.getTemplateName())
+                .title(title.substring(0, Math.min(160, title.length()))).status("draft").payloadJson(payload)
+                .step(source.getStep()).creditsHeld(0).progress(0).createdAt(now).updatedAt(now).build();
+        recompute(copy); return ProjectDto.from(repo.save(copy));
     }
 
     @Transactional
@@ -105,6 +135,54 @@ public class ClipProjectService {
         Object duration = row.get("durationSec"); if ("tail".equals(String.valueOf(row.get("role"))) && duration instanceof Number n) return Math.max(0, (int)Math.round(n.doubleValue()));
         return Math.max(1, Math.round(String.valueOf(row.getOrDefault("text", "")).replaceAll("\\s", "").length() / 4f));
     }
+    /**
+     * 端上回存 shots 时没带 {@code source} 的，按 shot id 把旧的接回去。
+     *
+     * <p>{@code source.artifact} 是**用户已经付过钱的产物**。一次漏字段的 PUT（老版本端、
+     * 或只想改个标题的局部保存）不该把它抹掉 —— 抹掉的代价是用户再花一次钱重生成一遍。
+     *
+     * <p>「会不会接回一个过期产物」有两道兜底：分镜范围一变 shot id 就变（{@code shot_起_止}），
+     * 接不上；范围没变而文案变了，端上算的 fingerprint 对不上，下次 generate 照样重跑。
+     * 所以这里只会救回「同一镜、同一份内容」的产物，不会让陈旧产物冒充新的。
+     */
+    static List<Map<String, Object>> carryOverSource(List<Map<String, Object>> previous, List<Map<String, Object>> incoming) {
+        Map<String, Object> byId = new LinkedHashMap<>();
+        for (Map<String, Object> row : previous) if (row.get("source") != null) byId.put(String.valueOf(row.get("id")), row.get("source"));
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : incoming) {
+            Map<String, Object> copy = new LinkedHashMap<>(row);
+            if (copy.get("source") == null && byId.containsKey(String.valueOf(copy.get("id")))) copy.put("source", byId.get(String.valueOf(copy.get("id"))));
+            result.add(copy);
+        }
+        return result;
+    }
+
+    /**
+     * 把一镜的产物落进项目 payload。**段级产物的真源是项目，不是任务行** ——
+     * 任务行会被清理、会过期，而用户换一台手机重新拉项目时，产物必须还在。
+     */
+    @Transactional
+    public void recordShotArtifact(String owner, String projectId, int shotNo, Map<String, Object> artifact, String model, String prompt) {
+        ClipProject p = required(owner, projectId);
+        Map<String, Object> payload = new LinkedHashMap<>(ClipDtos.safeMap(p.getPayloadJson()));
+        List<Map<String, Object>> shots = ClipShotPlan.shots(payload);
+        if (shotNo < 1 || shotNo > shots.size()) return;
+        Map<String, Object> shot = shots.get(shotNo - 1);
+        Map<String, Object> source = new LinkedHashMap<>(ClipDtos.safeMapValue(shot.get("source")) == null ? Map.of() : ClipDtos.safeMapValue(shot.get("source")));
+        source.put("model", model); if (prompt != null && !prompt.isBlank()) source.put("prompt", prompt);
+        source.put("artifact", artifact); shot.put("source", source);
+        payload.put("shots", shots); p.setPayloadJson(payload); p.setUpdatedAt(Instant.now()); recompute(p); repo.save(p);
+    }
+
+    private static Map<String, Object> withoutArtifact(Map<String, Object> shot) {
+        Map<String, Object> copy = new LinkedHashMap<>(shot);
+        Map<String, Object> source = ClipDtos.safeMapValue(copy.get("source"));
+        if (source == null) return copy;
+        source.remove("artifact");
+        if (source.isEmpty()) copy.remove("source"); else copy.put("source", source);
+        return copy;
+    }
+
     public static void validateSegments(List<Map<String, Object>> segments) {
         if (segments.isEmpty() || segments.size() > 200) throw BusinessException.badRequest("CLIP_PROJECT_INVALID", "文案分段数量不合法");
         Set<Integer> nos = new HashSet<>();
@@ -127,6 +205,11 @@ public class ClipProjectService {
         List<ClipRenderJob> rows = jobs.findByProjectId(p.getId());
         rows.forEach(j -> { storage.delete(j.getOutputCdnKey()); storage.delete(j.getThumbnailCdnKey()); });
         jobs.deleteAll(rows);
+        // 段级产物同样归这个项目所有。不跟着删，对象存储里就留下一堆永远没人引用的孤儿 ——
+        // 而且它们还在按字节占用户的容量配额，等于让用户为一个已经删掉的项目继续付空间。
+        List<ClipShotJob> shotRows = shotJobs.findByProjectId(p.getId());
+        shotRows.forEach(j -> { storage.delete(j.getArtifactCdnKey()); storage.delete(j.getArtifactPosterCdnKey()); storage.delete(j.getAudioCdnKey()); });
+        shotJobs.deleteAll(shotRows);
         // 配音预览的音频也归这个项目所有：不跟着删就会在对象存储里留下永远没人引用的孤儿。
         List<ClipTtsPreview> previews = ttsPreviews.findByProjectId(p.getId());
         previews.forEach(preview -> ClipDtos.mapListValue(ClipDtos.safeMap(preview.getSegmentsJson()).get("items"))
