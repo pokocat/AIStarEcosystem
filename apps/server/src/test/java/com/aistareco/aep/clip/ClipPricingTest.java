@@ -14,8 +14,18 @@ import static org.mockito.Mockito.*;
 /** 六档单价：键名是与端上的硬契约，缺一档必须报错而不是兜个默认值。 */
 class ClipPricingTest {
 
+    /**
+     * 六档单价的真源（2026-09-11 起）。这里给一个**空库**的 ClipPricingService ——
+     * 库里没那行就回落 ClipProperties，与这些用例原本的口径逐字节一致。
+     */
+    private static com.aistareco.aep.clip.service.ClipPricingService pricingOf(ClipProperties props) {
+        var repo = mock(com.aistareco.aep.clip.repository.ClipPricingRepository.class);
+        when(repo.findById(org.mockito.ArgumentMatchers.anyString())).thenReturn(java.util.Optional.empty());
+        return new com.aistareco.aep.clip.service.ClipPricingService(repo, props);
+    }
+
     private static ClipEstimateService service(ClipProperties props) {
-        return new ClipEstimateService(props, mock(ClipProjectService.class), mock(ClipAvatarService.class), mock(ClipAssetService.class));
+        return new ClipEstimateService(props, mock(ClipProjectService.class), mock(ClipAvatarService.class), mock(ClipAssetService.class), pricingOf(props));
     }
 
     private static ClipProperties configured() {

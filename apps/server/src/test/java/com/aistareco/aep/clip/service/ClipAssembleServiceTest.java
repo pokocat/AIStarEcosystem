@@ -21,6 +21,16 @@ import static org.mockito.Mockito.*;
  * 别让用户为一条注定拼不出来的片子先付一次总装费。
  */
 class ClipAssembleServiceTest {
+
+    /**
+     * 六档单价的真源（2026-09-11 起）。这里给一个**空库**的 ClipPricingService ——
+     * 库里没那行就回落 ClipProperties，与这些用例原本的口径逐字节一致。
+     */
+    private static com.aistareco.aep.clip.service.ClipPricingService pricingOf(ClipProperties props) {
+        var repo = mock(com.aistareco.aep.clip.repository.ClipPricingRepository.class);
+        when(repo.findById(org.mockito.ArgumentMatchers.anyString())).thenReturn(java.util.Optional.empty());
+        return new com.aistareco.aep.clip.service.ClipPricingService(repo, props);
+    }
     private ClipRenderJobRepository jobs;
     private ClipShotJobRepository shotJobs;
     private ClipProjectRepository projectRepo;
@@ -47,7 +57,7 @@ class ClipAssembleServiceTest {
         ClipProperties props = new ClipProperties();
         props.setPricingAvatarSecond("1"); props.setPricingTtsPerKchar("5"); props.setPricingAssemble("3");
         props.setPricingT2iPerImage("2"); props.setPricingT2vSecond("1"); props.setPricingI2vSecond("1");
-        ClipEstimateService estimates = new ClipEstimateService(props, projects, mock(ClipAvatarService.class), mock(ClipAssetService.class));
+        ClipEstimateService estimates = new ClipEstimateService(props, projects, mock(ClipAvatarService.class), mock(ClipAssetService.class), pricingOf(props));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("segments", segments());

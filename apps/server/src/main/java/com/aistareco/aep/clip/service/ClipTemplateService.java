@@ -3,6 +3,7 @@ package com.aistareco.aep.clip.service;
 import com.aistareco.aep.clip.dto.ClipDtos.TemplateDto;
 import com.aistareco.aep.clip.dto.ClipRequests.UpsertTemplate;
 import com.aistareco.aep.clip.model.ClipTemplate;
+import com.aistareco.aep.clip.model.ClipProject;
 import com.aistareco.aep.clip.repository.ClipTemplateRepository;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -16,7 +17,12 @@ public class ClipTemplateService {
     private final ClipTemplateRepository repo;
     private final FileStorageService storage;
     private final ClipAssetService assets;
-    public ClipTemplateService(ClipTemplateRepository repo, FileStorageService storage, ClipAssetService assets) { this.repo = repo; this.storage = storage; this.assets = assets; }
+    /** 「把草稿存成模板」要读草稿，而且只读**自己的**（projects.required 带属主校验）。 */
+    private final ClipProjectService projects;
+    public ClipTemplateService(ClipTemplateRepository repo, FileStorageService storage, ClipAssetService assets,
+                               @org.springframework.context.annotation.Lazy ClipProjectService projects) {
+        this.repo = repo; this.storage = storage; this.assets = assets; this.projects = projects;
+    }
 
     public List<TemplateDto> published() { return repo.findByStatusAndDeletedAtIsNullOrderByUpdatedAtDesc("published").stream().map(this::dto).toList(); }
     public TemplateDto published(String id) {
@@ -53,6 +59,89 @@ public class ClipTemplateService {
     }
 
     @Transactional public void delete(String id) { ClipTemplate t = required(id); t.setDeletedAt(Instant.now()); t.setUpdatedAt(Instant.now()); repo.save(t); }
+
+    /**
+     * 把一条**自己的**草稿存成模板。运营在小程序里把片子做顺了，回后台一键沉淀成货架上的一套。
+     *
+     * <p>形制照搬 ip studio 的 {@code publish-as-demo}（{@code IpDemoTemplateService.publishFromProject}）：
+     * 同样是「我的项目 → 全平台内容」，同样只能拿自己的项目，同样要超管（军师 BFF 侧压
+     * requireSuper + requireProductAccess('editor')）。
+     *
+     * <p><b>必须剥掉的东西，比 ip studio 那边更要紧。</b> ip studio 剥的是作者自己的照片；
+     * 这里剥的是：
+     * <ul>
+     *   <li>{@code avatarId} —— 运营自己的数字人。不剥的话，每个用这套模板的人做出来的片子
+     *       都顶着运营那张脸。</li>
+     *   <li>{@code voiceId} —— 运营自己的声音，同上。</li>
+     *   <li>非预置素材的 {@code assetId} —— 运营自己上传的空镜。留着的话用户打开模板会看到
+     *       一堆自己没有权限、也不该看到的别人的素材位。</li>
+     * </ul>
+     * 预置素材（{@code brollSource=preset}）是平台自有的，留着 —— 那本来就是给所有人用的。
+     *
+     * <p><b>留下的是「怎么讲」，不是「讲了什么」。</b> 分段的角色、时长、画面提示、镜头切分
+     * 全部保留；正文按 {@code keepText} 决定：默认保留（运营写的示范文案本身就是模板的价值），
+     * 想只留骨架就传 false，正文清空、字数与时长按原样留着当写作约束。
+     *
+     * @param ownerId   调用者的 externalOwnerId。只能拿自己的项目，运营也不该凭一个 id
+     *                  就把别人的草稿连素材抄成公开模板。
+     * @param templateId 传了就是更新那一条（改版），不传新建。
+     */
+    @Transactional
+    public TemplateDto publishFromProject(String ownerId, String projectId, String templateId,
+                                          String name, String industry, String themeKey,
+                                          String description, boolean keepText) {
+        ClipProject p = projects.required(ownerId, projectId);
+        if (blank(name) || blank(industry) || blank(themeKey) || blank(description)) {
+            throw BusinessException.badRequest("CLIP_TEMPLATE_INVALID", "模板名称、行业、主题和说明不能为空");
+        }
+        Map<String, Object> payload = p.getPayloadJson() == null ? Map.of() : p.getPayloadJson();
+        List<Map<String, Object>> segments = com.aistareco.aep.clip.dto.ClipDtos.mapListValue(payload.get("segments"));
+        if (segments.isEmpty()) {
+            throw BusinessException.badRequest("CLIP_TEMPLATE_INVALID", "这条草稿还没有文案分段，存不成模板");
+        }
+
+        List<Map<String, Object>> clean = new ArrayList<>();
+        for (Map<String, Object> row : segments) {
+            Map<String, Object> seg = new LinkedHashMap<>(row);
+            // 段级产物（artifact / job）是这一条草稿跑出来的成品，跟模板没关系
+            seg.remove("artifact"); seg.remove("job"); seg.remove("source");
+            if (!"preset".equals(String.valueOf(seg.get("brollSource")))) {
+                // 运营自己传的素材：连 assetId 和标签一起清干净。只清 assetId 不清 assetLabel 的话，
+                // 用户会在模板里看到一个叫「我家门店实拍.mp4」、却点不开的空位。
+                seg.remove("assetId"); seg.remove("assetLabel"); seg.remove("brollSource");
+            }
+            if (!keepText) seg.put("text", "");
+            clean.add(seg);
+        }
+        ClipProjectService.validateSegments(clean);
+
+        String id = templateId != null && !templateId.isBlank()
+                ? templateId.trim()
+                : "ct_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        if (!id.matches("[A-Za-z0-9_-]{3,64}")) {
+            throw BusinessException.badRequest("CLIP_TEMPLATE_INVALID", "模板标识不合法");
+        }
+        Instant now = Instant.now();
+        ClipTemplate t = repo.findById(id).orElseGet(ClipTemplate::new);
+        if (t.getId() == null) { t.setId(id); t.setCreatedAt(now); }
+        t.setName(name.trim()); t.setIndustry(industry.trim()); t.setThemeKey(themeKey.trim());
+        t.setDescription(description.trim());
+        t.setOwnerScope("official");
+        // **一律存成草稿**，哪怕是在更新一条已经上架的。存模板和上架是两个决定：
+        // 存完先自己在后台看一眼分段对不对、素材剥干净没有，再手动上架。
+        // 直接 published 的话，一次手滑就推给了全平台每一个用户。
+        t.setStatus("draft");
+        t.setScriptSkeletonJson(Map.of("segments", clean));
+        // 时间线是模板自己的编排产物，草稿里没有；更新已有模板时不要把它清掉。
+        if (t.getTimelineJson() == null) t.setTimelineJson(new LinkedHashMap<>());
+        t.setTailClipsJson(Map.of("items", List.of()));
+        t.setBrollPoolJson(Map.of("items", List.of()));
+        t.setRatio("9:16");
+        t.setEstDurationSec(duration(Map.of("segments", clean)));
+        t.setAvatarSecHint(Math.max(0, p.getAvatarSeconds()));
+        t.setDeletedAt(null); t.setUpdatedAt(now);
+        return dto(repo.save(t));
+    }
 
     /**
      * 只改上下架状态，别的字段一个都不碰。

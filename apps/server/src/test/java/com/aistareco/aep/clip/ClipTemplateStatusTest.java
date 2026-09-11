@@ -50,7 +50,8 @@ class ClipTemplateStatusTest {
         // dto() 会去 storage 换封面签名 URL；这条路径与本组用例无关，给个 mock 即可。
         var storage = mock(com.aistareco.aep.service.storage.FileStorageService.class);
         when(storage.signedUrl(anyString())).thenReturn("https://cdn.example/x");
-        service = new ClipTemplateService(repo, storage, mock(com.aistareco.aep.clip.service.ClipAssetService.class));
+        service = new ClipTemplateService(repo, storage, mock(com.aistareco.aep.clip.service.ClipAssetService.class),
+                mock(com.aistareco.aep.clip.service.ClipProjectService.class));
         when(repo.save(any(ClipTemplate.class))).thenAnswer(i -> i.getArgument(0));
     }
 

@@ -4,6 +4,7 @@ import com.aistareco.aep.clip.dto.ClipDtos.TemplateDto;
 import com.aistareco.aep.clip.security.ClipServiceIdentity;
 import com.aistareco.aep.clip.service.ClipTemplateService;
 import com.aistareco.aep.clip.service.ClipVendorService;
+import com.aistareco.aep.clip.service.ClipPricingService;
 import com.aistareco.aep.clip.dto.ClipVendorDtos.VendorOverviewDto;
 import com.aistareco.common.ApiResponse;
 import org.springframework.web.bind.annotation.*;
@@ -24,9 +25,11 @@ import java.util.Map;
  * 首页，内容即产品，上下架是最高频的运营动作。这条路径就是为了把那个动作接进军师运营后台
  * （后台是一个、按产品分区，见 ai-pilot/admin/src/nav.ts）。
  *
- * <p><b>只读 + 上下架，刻意不含创建与整体编辑。</b> 模板的 scriptSkeleton / timeline 是内容创作
- * 产物，不是几个表单字段；给它做一个半吊子的编辑表单，运营一存就可能把配好的片尾和分镜清掉。
- * 创建与整体编辑仍走 {@code /api/admin/clip/templates}（staff JWT），或直接由内容同学导入。
+ * <p><b>建模板的方式是「把自己做好的草稿存下来」，不是填表。</b> scriptSkeleton / timeline
+ * 是内容创作产物，做成表单的话运营一存就可能把配好的片尾和分镜清掉。所以这里给的是
+ * {@code POST /templates/from-project}（照搬 ip studio 的 publish-as-demo）：在小程序里把片子
+ * 做顺，回后台一键沉淀，素材与数字人 / 声音由服务端剥干净。逐字段的整体编辑仍走
+ * {@code /api/admin/clip/templates}（staff JWT）。
  *
  * <p><b>密钥影响面</b>：这条路径让 clip service token 的能力从「某个 owner 的 clip 数据」扩大到
  * 「全站模板的上下架」。token 只在服务端之间流转，且军师 BFF 侧还压了两道闸
@@ -39,9 +42,11 @@ public class ClipServiceAdminController {
     private final ClipServiceIdentity identity;
     private final ClipTemplateService templates;
     private final ClipVendorService vendor;
+    private final ClipPricingService pricing;
 
-    public ClipServiceAdminController(ClipServiceIdentity identity, ClipTemplateService templates, ClipVendorService vendor) {
-        this.identity = identity; this.templates = templates; this.vendor = vendor;
+    public ClipServiceAdminController(ClipServiceIdentity identity, ClipTemplateService templates,
+                                      ClipVendorService vendor, ClipPricingService pricing) {
+        this.identity = identity; this.templates = templates; this.vendor = vendor; this.pricing = pricing;
     }
 
     /**
@@ -81,6 +86,93 @@ public class ClipServiceAdminController {
             @RequestBody Map<String, Object> body) {
         auth(a, o, t);
         return ApiResponse.of(templates.setStatus(id, String.valueOf(body == null ? "" : body.get("status"))));
+    }
+
+    /**
+     * 把一条**自己的**草稿存成模板 —— 运营在小程序里把片子做顺了，回后台一键沉淀成货架上的一套。
+     *
+     * <p>形制照搬 ip studio 的 {@code publish-as-demo}。{@code externalOwnerId} 走
+     * {@code X-External-Owner-Id} 头：军师 BFF 会把**当前运营自己的用户 id** 带过来，
+     * 不是那个哨兵值 —— 只能存自己的草稿，运营也不该凭一个 id 就把别人的草稿抄成公开模板。
+     *
+     * <p>body：{@code { projectId, name, industry, themeKey, description, templateId?, keepText? }}
+     *
+     * <p><b>一律存成草稿</b>，存完要自己再点一次上架。存模板和上架是两个决定 ——
+     * 直接 published 的话，一次手滑就推给了全平台每一个用户。
+     */
+    @PostMapping("/templates/from-project")
+    public ApiResponse<TemplateDto> publishFromProject(
+            @RequestHeader(value = "Authorization", required = false) String a,
+            @RequestHeader(value = "X-External-Owner-Id", required = false) String o,
+            @RequestHeader(value = "X-External-Tenant-Id", required = false) String t,
+            @RequestBody Map<String, Object> body) {
+        var owner = identity.require(a, o, t);
+        return ApiResponse.of(templates.publishFromProject(
+                owner.externalOwnerId(),
+                textOf(body, "projectId"),
+                textOf(body, "templateId"),
+                textOf(body, "name"), textOf(body, "industry"),
+                textOf(body, "themeKey"), textOf(body, "description"),
+                // 缺省保留正文：运营写的示范文案本身就是模板的价值。
+                !Boolean.FALSE.equals(body == null ? null : body.get("keepText"))));
+    }
+
+    /**
+     * 六档生成单价：当前生效值 + 是不是运营核定过的。
+     *
+     * <p>{@code configured=false} 表示库里还没有那一行，现在用的是 application.yml 的兜底值 ——
+     * 后台必须把这件事显式写在页面上，否则运营会以为这六个数是有人定过的。
+     */
+    @GetMapping("/pricing")
+    public ApiResponse<Map<String, Object>> pricing(
+            @RequestHeader(value = "Authorization", required = false) String a,
+            @RequestHeader(value = "X-External-Owner-Id", required = false) String o,
+            @RequestHeader(value = "X-External-Tenant-Id", required = false) String t) {
+        auth(a, o, t);
+        var p = pricing.resolved();
+        return ApiResponse.of(Map.of(
+                "creditPerAvatarSecond", p.creditPerAvatarSecond(),
+                "creditPerImage", p.creditPerImage(),
+                "creditPerT2vSecond", p.creditPerT2vSecond(),
+                "creditPerI2vSecond", p.creditPerI2vSecond(),
+                "creditPerAssemble", p.creditPerAssemble(),
+                "creditPerKChar", p.creditPerKChar(),
+                "configured", pricing.configured()));
+    }
+
+    /**
+     * 整组核定六档单价。**六个一起给**，不接受只改其中几个 —— 只改一档会把另外五档
+     * 「没人核定过的配置兜底值」一并升格成「运营配过的价」（见 ClipPricingService.save）。
+     *
+     * <p>军师 BFF 侧还压着 requireSuper + requireProductAccess('editor')，并落审计。
+     */
+    @PutMapping("/pricing")
+    public ApiResponse<Map<String, Object>> savePricing(
+            @RequestHeader(value = "Authorization", required = false) String a,
+            @RequestHeader(value = "X-External-Owner-Id", required = false) String o,
+            @RequestHeader(value = "X-External-Tenant-Id", required = false) String t,
+            @RequestBody Map<String, Object> body) {
+        auth(a, o, t);
+        pricing.save(textOf(body, "operator"),
+                intOf(body, "creditPerAvatarSecond"), intOf(body, "creditPerKChar"),
+                intOf(body, "creditPerAssemble"), intOf(body, "creditPerImage"),
+                intOf(body, "creditPerT2vSecond"), intOf(body, "creditPerI2vSecond"));
+        return pricing(a, o, t);
+    }
+
+    /** body 里的字符串。缺字段给 null，不要给字面量 "null" —— 那会被当成操作者名字写进审计列。 */
+    private static String textOf(Map<String, Object> body, String key) {
+        Object v = body == null ? null : body.get(key);
+        String s = v == null ? "" : String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    /** body 里的整数。缺字段返回 null，由 ClipPricingService.save 统一报「要 0 到 100 万之间的整数」。 */
+    private static Integer intOf(Map<String, Object> body, String key) {
+        Object v = body == null ? null : body.get(key);
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String str && str.matches("-?\\d{1,9}")) return Integer.parseInt(str);
+        return null;
     }
 
     /**

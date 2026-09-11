@@ -11,7 +11,8 @@ import java.util.*;
 @Service
 public class ClipEstimateService {
     private final ClipProperties props; private final ClipProjectService projects; private final ClipAvatarService avatars; private final ClipAssetService assets;
-    public ClipEstimateService(ClipProperties props, ClipProjectService projects, ClipAvatarService avatars, ClipAssetService assets) { this.props = props; this.projects = projects; this.avatars = avatars; this.assets = assets; }
+    private final ClipPricingService pricingSource;
+    public ClipEstimateService(ClipProperties props, ClipProjectService projects, ClipAvatarService avatars, ClipAssetService assets, ClipPricingService pricingSource) { this.props = props; this.projects = projects; this.avatars = avatars; this.assets = assets; this.pricingSource = pricingSource; }
     public EstimateDto estimate(String owner, String id, List<Map<String, Object>> override, List<Map<String, Object>> overrideShots) {
         ClipProject p = projects.required(owner, id);
         Map<String,Object> payload = new LinkedHashMap<>(p.getPayloadJson());
@@ -26,9 +27,12 @@ public class ClipEstimateService {
             else if ("tail".equals(role)) { tailSec += sec; tailCount++; }
             if (!"tail".equals(role)) chars += String.valueOf(row.getOrDefault("text", "")).replaceAll("\\s", "").length();
         }
-        int avatarRate=props.requirePrice(props.getPricingAvatarSecond(), "avatar-second");
-        int ttsRate=props.requirePrice(props.getPricingTtsPerKchar(), "tts-per-kchar");
-        int assemble=props.requirePrice(props.getPricingAssemble(), "assemble");
+        // 与 pricing() 读同一处。**不能各读各的** —— 端上按 pricing() 的数算报价，
+        // 这里按另一组核对，差一分钱就是每次生成都 409（见 ClipPricingService 类注释）。
+        PricingDto price=pricingSource.resolved();
+        int avatarRate=price.creditPerAvatarSecond();
+        int ttsRate=price.creditPerKChar();
+        int assemble=price.creditPerAssemble();
         int tts=(int)Math.ceil(chars / 1000d * ttsRate), avatar=avatarSec * avatarRate;
         EstimateSummary summary=new EstimateSummary(totalSec,avatarSec,tailSec,avatarCount,brollCount,tailCount,chars);
         return new EstimateDto(List.of(new EstimateItem("tts","口播配音",tts,null),new EstimateItem("avatar","分身出镜 "+avatarSec+" 秒",avatar,null),new EstimateItem("tail","结尾固定段",0,"免费"),new EstimateItem("assemble","总装",assemble,null)),tts+avatar+assemble,summary);
@@ -38,14 +42,7 @@ public class ClipEstimateService {
      * 六档单价一次性出 wire。**任一档没配就在这里 503**，不给端上一张半真的价目表 ——
      * 少一档端上读到 undefined，算出来是 NaN，用户看到的就是「NaN 钻石」。
      */
-    public PricingDto pricing() {
-        return new PricingDto(props.requirePrice(props.getPricingAvatarSecond(),"avatar-second"),
-                props.requirePrice(props.getPricingT2iPerImage(),"t2i-per-image"),
-                props.requirePrice(props.getPricingT2vSecond(),"t2v-second"),
-                props.requirePrice(props.getPricingI2vSecond(),"i2v-second"),
-                props.requirePrice(props.getPricingAssemble(),"assemble"),
-                props.requirePrice(props.getPricingTtsPerKchar(),"tts-per-kchar"));
-    }
+    public PricingDto pricing() { return pricingSource.resolved(); }
 
     /**
      * 一镜单独生成的报价：**只算这一次调用真正产出的东西**（出镜秒数 / 图张数 / 视频秒数）。
@@ -65,7 +62,8 @@ public class ClipEstimateService {
         };
     }
     /** 总装单独下单时的那一档。与整片 estimate 里的 assemble 同价，避免两条路径能被套利。 */
-    public int assembleQuote() { return props.requirePrice(props.getPricingAssemble(),"assemble"); }
+    // 同样走 resolver：这是合成整片那一步真正扣的数，读 props 就会和端上看到的价对不上。
+    public int assembleQuote() { return pricingSource.resolved().creditPerAssemble(); }
     public void preflight(String owner, ClipProject p) {
         List<Map<String,Object>> segments=ClipShotPlan.materialize(p.getPayloadJson());
         if (segments.isEmpty()) throw BusinessException.badRequest("CLIP_NO_SEGMENTS","文案还是空的");
