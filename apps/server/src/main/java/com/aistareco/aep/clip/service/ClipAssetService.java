@@ -79,6 +79,17 @@ public class ClipAssetService {
         List<ClipAsset> rows = new ArrayList<>(repo.findByExternalOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner));
         rows.addAll(repo.findByPresetTrueAndDeletedAtIsNullOrderByCreatedAtDesc()); return rows.stream().map(this::dto).toList();
     }
+
+    /**
+     * 这个素材是不是平台预置的（查库，不看调用方给的标记）。
+     *
+     * 存模板时用：端上可以把自己上传的素材在草稿里标成 {@code brollSource=preset}，
+     * 信那个标记就等于把私有 assetId 随模板发给所有人。
+     */
+    public boolean isPreset(String assetId) {
+        return assetId != null && !assetId.isBlank()
+                && repo.existsByIdAndPresetTrueAndDeletedAtIsNull(assetId.trim());
+    }
     @Transactional public AssetDto upload(String owner, MultipartFile file, String kind, String label, boolean preset, String presetGroup) {
         return upload(owner, file, kind, label, preset, presetGroup, null, null, 0);
     }

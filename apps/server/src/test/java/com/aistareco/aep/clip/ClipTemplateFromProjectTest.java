@@ -58,7 +58,12 @@ class ClipTemplateFromProjectTest {
         when(storage.signedUrl(anyString())).thenReturn("https://cdn.example/x");
         when(repo.save(any(ClipTemplate.class))).thenAnswer(i -> i.getArgument(0));
         when(repo.findById(anyString())).thenReturn(Optional.empty());
-        service = new ClipTemplateService(repo, storage, mock(ClipAssetService.class), projects);
+        // 是不是预置素材**查库**，不看草稿里的 brollSource 标记：端上可以把自己上传的素材
+        // 标成 preset，信那个标记就等于把私有 assetId 随模板发给所有人。
+        var assets = mock(ClipAssetService.class);
+        when(assets.isPreset("ca_preset_tail")).thenReturn(true);
+        when(assets.isPreset("ca_my_upload")).thenReturn(false);
+        service = new ClipTemplateService(repo, storage, assets, projects);
 
         ClipProject p = ClipProject.builder()
                 .id("cp1").externalOwnerId("op1").templateId("ct0").templateName("原模板")
@@ -84,6 +89,19 @@ class ClipTemplateFromProjectTest {
         String json = String.valueOf(t.getScriptSkeletonJson());
         assertFalse(json.contains("av_operator_face"), "运营自己的数字人进了模板 —— 每个用它的人都会顶着这张脸");
         assertFalse(json.contains("vo_operator_voice"), "运营自己的声音进了模板");
+    }
+
+    /** 草稿把自己上传的素材谎称成 preset —— 不能信，要查库。 */
+    @Test
+    void doesNotTrustTheDraftsOwnPresetFlag() {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> segs =
+                (List<Map<String, Object>>) projects.required("op1", "cp1").getPayloadJson().get("segments");
+        segs.get(1).put("brollSource", "preset"); // 自己传的素材，标成预置
+
+        service.publishFromProject("op1", "cp1", null, "n", "i", "k", "d", true);
+        assertNull(segsOf(saved()).get(1).get("assetId"),
+                "信了草稿里的 preset 标记 —— 私有 assetId 会随模板发给所有人");
     }
 
     @Test

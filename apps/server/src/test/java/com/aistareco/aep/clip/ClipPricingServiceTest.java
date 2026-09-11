@@ -33,8 +33,17 @@ class ClipPricingServiceTest {
         props.setPricingAvatarSecond("1"); props.setPricingTtsPerKchar("5");
         props.setPricingAssemble("0"); props.setPricingT2iPerImage("2");
         props.setPricingT2vSecond("1"); props.setPricingI2vSecond("1");
-        when(repo.findById(ClipPricing.ROW_ID)).thenReturn(Optional.empty());
-        when(repo.save(any(ClipPricing.class))).thenAnswer(i -> i.getArgument(0));
+        // 让 mock 像个真仓库：save 之后 findById 要能读回来。
+        // 不这么做的话，save() 清缓存后重新查库仍然读到空，用例验的就不是「存进去了」
+        // 而是「mock 没配」—— 这正是修完缓存竞态之后暴露出来的（写完不再直接塞缓存，
+        // 改成失效 + 下次读重新查库）。
+        var store = new java.util.concurrent.atomic.AtomicReference<ClipPricing>(null);
+        when(repo.findById(ClipPricing.ROW_ID)).thenAnswer(i -> Optional.ofNullable(store.get()));
+        when(repo.save(any(ClipPricing.class))).thenAnswer(i -> {
+            ClipPricing row = i.getArgument(0);
+            store.set(row);
+            return row;
+        });
         svc = new ClipPricingService(repo, props);
     }
 
@@ -49,10 +58,11 @@ class ClipPricingServiceTest {
 
     @Test
     void dbRowWinsOverConfig() {
-        when(repo.findById(ClipPricing.ROW_ID)).thenReturn(Optional.of(ClipPricing.builder()
+        var seeded = mock(ClipPricingRepository.class);
+        when(seeded.findById(ClipPricing.ROW_ID)).thenReturn(Optional.of(ClipPricing.builder()
                 .id(ClipPricing.ROW_ID).avatarSecond(9).ttsPerKchar(8).assemble(7)
                 .t2iPerImage(6).t2vSecond(5).i2vSecond(4).build()));
-        var fresh = new ClipPricingService(repo, props);
+        var fresh = new ClipPricingService(seeded, props);
         assertTrue(fresh.configured());
         var p = fresh.resolved();
         assertEquals(9, p.creditPerAvatarSecond());
@@ -86,6 +96,15 @@ class ClipPricingServiceTest {
         // 从此后台显示「已核定」，而那几个数从来没有人看过。
         assertThrows(BusinessException.class, () -> svc.save("op", 1, null, 1, 1, 1, 1));
         verify(repo, never()).save(any());
+    }
+
+    // 库里的价走 check() 挡住了超范围，回落配置这条路径原来没挡：配置写 100000000，
+    // 30 秒出镜在 estimate 的 int 乘法里溢出成负数 —— 报价变负、扣费口径失真。
+    // 配置写错是运维事故，要当场 503 说清楚，不能一路算成一个看起来正常的负数。
+    @Test
+    void configFallbackAlsoEnforcesTheCeiling() {
+        props.setPricingAvatarSecond("100000000");
+        assertThrows(BusinessException.class, () -> new ClipPricingService(repo, props).resolved());
     }
 
     @Test

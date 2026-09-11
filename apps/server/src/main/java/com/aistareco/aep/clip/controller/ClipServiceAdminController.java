@@ -167,11 +167,25 @@ public class ClipServiceAdminController {
         return s.isEmpty() ? null : s;
     }
 
-    /** body 里的整数。缺字段返回 null，由 ClipPricingService.save 统一报「要 0 到 100 万之间的整数」。 */
+    /**
+     * body 里的整数。缺字段 / 超出 int 范围都返回 null，由 ClipPricingService.save 统一报错。
+     *
+     * <p><b>不能用 {@code Number.intValue()}</b>（codex 2026-09-11 审出）：它对超范围的值是
+     * **截断**而不是报错 —— 传 4294967296 会变成 0，一个「太大了」的输入静默落成
+     * 「这一档免费」。先取 longValue 再判范围，超了就当没给。
+     */
     private static Integer intOf(Map<String, Object> body, String key) {
         Object v = body == null ? null : body.get(key);
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String str && str.matches("-?\\d{1,9}")) return Integer.parseInt(str);
+        if (v instanceof Number n) {
+            // 小数也不接受：4.5 钻没有意义，intValue() 会把它抹成 4
+            if (n instanceof Double || n instanceof Float) {
+                double d = n.doubleValue();
+                if (d != Math.floor(d) || Double.isInfinite(d) || Double.isNaN(d)) return null;
+            }
+            long l = n.longValue();
+            return (l < Integer.MIN_VALUE || l > Integer.MAX_VALUE) ? null : (int) l;
+        }
+        if (v instanceof String str && str.matches("\\d{1,9}")) return Integer.parseInt(str);
         return null;
     }
 

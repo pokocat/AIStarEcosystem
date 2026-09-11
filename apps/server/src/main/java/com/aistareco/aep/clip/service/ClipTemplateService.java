@@ -102,13 +102,24 @@ public class ClipTemplateService {
 
         List<Map<String, Object>> clean = new ArrayList<>();
         for (Map<String, Object> row : segments) {
-            Map<String, Object> seg = new LinkedHashMap<>(row);
-            // 段级产物（artifact / job）是这一条草稿跑出来的成品，跟模板没关系
-            seg.remove("artifact"); seg.remove("job"); seg.remove("source");
-            if (!"preset".equals(String.valueOf(seg.get("brollSource")))) {
-                // 运营自己传的素材：连 assetId 和标签一起清干净。只清 assetId 不清 assetLabel 的话，
-                // 用户会在模板里看到一个叫「我家门店实拍.mp4」、却点不开的空位。
-                seg.remove("assetId"); seg.remove("assetLabel"); seg.remove("brollSource");
+            // **白名单，不是黑名单**（codex 2026-09-11 审出）：原来是 copy 一份再 remove 几个键，
+            // 那等于「我想得到的都删了」。草稿的 payload 是端上与 worker 共同维护的自由结构，
+            // 嵌套里随时可能多出 shots[].source.artifact、avatarId 这类东西，黑名单漏一个
+            // 就把运营的私有标识发给了全平台。改成只**挑出**模板真正需要的那几个键，
+            // 其余一律不带 —— 以后端上加什么字段，默认都进不了模板。
+            Map<String, Object> seg = new LinkedHashMap<>();
+            for (String k : List.of("no", "role", "text", "durationSec", "targetChars", "hint")) {
+                if (row.containsKey(k)) seg.put(k, row.get(k));
+            }
+            // 预置素材是平台自有的，可以留 —— 但**要查库确认它真的是预置的**，
+            // 不能信草稿里那个 brollSource：端上可以把自己上传的素材标成 preset，
+            // 那样私有 assetId 就随模板发给了所有人（拿不到内容，但标识泄了，
+            // 而且所有人用这套模板都会在那一镜上生成失败）。
+            String assetId = row.get("assetId") == null ? "" : String.valueOf(row.get("assetId")).trim();
+            if (!assetId.isEmpty() && assets.isPreset(assetId)) {
+                seg.put("assetId", assetId);
+                if (row.get("assetLabel") != null) seg.put("assetLabel", row.get("assetLabel"));
+                seg.put("brollSource", "preset");
             }
             if (!keepText) seg.put("text", "");
             clean.add(seg);
