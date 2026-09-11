@@ -15,7 +15,10 @@ public final class ClipDtos {
             Map<String, Object> timeline, List<Map<String, Object>> tailClips, List<String> brollPool,
             String previewCoverUrl, String previewVideoUrl, String ratio, int estDurationSec,
             int avatarSecHint, Integer creditHint, int segmentCount,
-            String tailLabel, int tailDurationSec, String tailAssetId, String tailPreviewUrl, String tailVideoUrl
+            String tailLabel, int tailDurationSec, String tailAssetId, String tailPreviewUrl, String tailVideoUrl,
+            // 出处：这一套是从哪条草稿、被谁存的。端上用不到，运营后台倒查用；
+            // 两个都可能是 null（V35 之前直接写库建的官方模板没有来源）。
+            String sourceProjectId, String createdBy
     ) {
         public static TemplateDto from(ClipTemplate t, String coverUrl, String videoUrl,
                                        List<Map<String, Object>> tailClips, int durationSec) {
@@ -37,7 +40,8 @@ public final class ClipDtos {
                     coverUrl, videoUrl, t.getRatio(), durationSec, t.getAvatarSecHint(),
                     t.getCreditHint(), segments.size(), string(clip.getOrDefault("label", tail.get("text"))),
                     number(clip.containsKey("durationSec") ? clip.get("durationSec") : tail.get("durationSec")), string(clip.getOrDefault("assetId", tail.get("assetId"))),
-                    string(clip.get("previewUrl")), string(clip.get("contentUrl")));
+                    string(clip.get("previewUrl")), string(clip.get("contentUrl")),
+                    t.getSourceProjectId(), t.getCreatedBy());
         }
     }
 

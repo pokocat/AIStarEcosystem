@@ -150,6 +150,10 @@ public class ClipTemplateService {
         t.setRatio("9:16");
         t.setEstDurationSec(duration(Map.of("segments", clean)));
         t.setAvatarSecHint(Math.max(0, p.getAvatarSeconds()));
+        // 出处。改版（传了 templateId）时也覆盖成这一次的来源 —— 想知道的是「现在这份是从哪来的」，
+        // 不是第一版从哪来的；历史沿革看审计，不看这两列。
+        t.setSourceProjectId(p.getId());
+        t.setCreatedBy(ownerId);
         t.setDeletedAt(null); t.setUpdatedAt(now);
         return dto(repo.save(t));
     }

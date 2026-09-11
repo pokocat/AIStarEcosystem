@@ -29,6 +29,10 @@ public class ClipTemplate {
     @Builder.Default private int estDurationSec = 0;
     @Builder.Default private int avatarSecHint = 0;
     private Integer creditHint;
+    /** 存成这套模板的那条草稿。null = 不是从草稿存的（V35 之前直接写库建的官方模板）。 */
+    @Column(length = 64) private String sourceProjectId;
+    /** 执行「存成模板」的运营（externalOwnerId）。模板是推给全平台的内容，出了问题要能倒查。 */
+    @Column(length = 128) private String createdBy;
     private Instant createdAt;
     private Instant updatedAt;
     private Instant deletedAt;

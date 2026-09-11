@@ -152,6 +152,28 @@ class ClipTemplateFromProjectTest {
         assertEquals("draft", saved().getStatus());
     }
 
+    // 模板是超管一键推给全平台每个用户的内容。出了问题（分段错了、素材没剥干净、文案要改）
+    // 第一件事是回去看它从哪条草稿来、谁存的 —— 照搬 ip_demo_template 的那两列。
+    @Test
+    void recordsWhichDraftItCameFromAndWhoSavedIt() {
+        service.publishFromProject("op1", "cp1", null, "门店故事", "本地生活", "daily", "说明", true);
+        ClipTemplate t = saved();
+        assertEquals("cp1", t.getSourceProjectId());
+        assertEquals("op1", t.getCreatedBy());
+    }
+
+    // 改版时覆盖成这一次的来源：想知道的是「现在这份是从哪来的」，不是第一版从哪来的。
+    @Test
+    void republishingFromAnotherDraftOverwritesTheProvenance() {
+        ClipTemplate existing = ClipTemplate.builder().id("ct_x")
+                .sourceProjectId("cp_old").createdBy("op_old").build();
+        when(repo.findById("ct_x")).thenReturn(Optional.of(existing));
+        service.publishFromProject("op1", "cp1", "ct_x", "n", "i", "k", "d", true);
+        ClipTemplate t = saved();
+        assertEquals("cp1", t.getSourceProjectId(), "还指着旧草稿的话，倒查会查到一条早就改过的稿子");
+        assertEquals("op1", t.getCreatedBy());
+    }
+
     @Test
     void updatingAnAlreadyPublishedTemplateAlsoGoesBackToDraft() {
         ClipTemplate existing = ClipTemplate.builder().id("ct_x").status("published")
