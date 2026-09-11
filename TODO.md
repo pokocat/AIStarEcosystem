@@ -9,7 +9,22 @@
 
 ---
 
-## 2026-09-07 · 画布换成开源无限画布 v0.157 后续
+## 2026-09-11 · 例行 QA 巡检
+
+- [x] ~~**High：clip 项目 `payloadJson` 并发丢更新——用户草稿编辑 vs 镜头 worker 落产物无锁**~~
+      （**完成**，2026-09-11）：`ClipProject` 无 `@Version`，而 `save`（请求线程）与
+      `recordShotArtifact`（`@Scheduled` 镜头 worker 线程）都对整存整取的 `payloadJson` 做
+      「读快照→改一处→整体写回」。用户在草稿态编辑某镜文案的同时另一镜正在出片，两个事务各读一份、
+      后提交的覆盖先提交的 → 丢的是用户已付费的段级产物（`shots[].source.artifact`，其真源正是项目
+      payload 而非会被清理的任务行），或用户刚做的编辑。修法：新增
+      `ClipProjectRepository.findByIdAndExternalOwnerIdAndDeletedAtIsNullForUpdate`
+      （`@Lock(PESSIMISTIC_WRITE)`，参照 `WalletRepository#findByUserIdForUpdate`），
+      `save` / `reset` / `recordShotArtifact` 改经 `requiredForUpdate` 取行写锁，串行化到该行、
+      关掉丢更新窗口；读路径不变。无需迁移。`ClipShotJobWorkerStateTest`（真 H2 repo 跑 worker
+      落产物路径）等 6 个 clip 测试类全绿，确认 H2 支持该 `FOR UPDATE`。发布/成片写只发生在
+      `done` 项目、不与草稿态 worker 重叠，未纳入。
+
+
 
 - [x] ~~**画布上看不见参考图的顺序**~~ **改判不做**，2026-09-08：产品决定「按添加顺序传进去、让模型自己理解」即可。
       查证结论：顺序**本来就是添加顺序** —— `getContextInputNodes` 按 `connections` 数组顺序过滤，

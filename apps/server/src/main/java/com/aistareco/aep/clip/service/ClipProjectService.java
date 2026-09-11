@@ -49,7 +49,7 @@ public class ClipProjectService {
 
     @Transactional
     public ProjectDto save(String owner, String id, SaveProject req) {
-        ClipProject p = required(owner, id);
+        ClipProject p = requiredForUpdate(owner, id);
         if (!"draft".equals(p.getStatus())) throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "CLIP_PROJECT_NOT_EDITABLE", "当前项目不能继续编辑");
         Map<String, Object> payload = new LinkedHashMap<>(ClipDtos.safeMap(p.getPayloadJson()));
         if (req != null) {
@@ -102,7 +102,7 @@ public class ClipProjectService {
 
     @Transactional
     public Map<String, Object> reset(String owner, String id) {
-        ClipProject p = required(owner, id); ClipTemplate t = templates.required(p.getTemplateId());
+        ClipProject p = requiredForUpdate(owner, id); ClipTemplate t = templates.required(p.getTemplateId());
         List<Map<String, Object>> segments = applyConfiguredTail(ClipDtos.mapListValue(ClipDtos.safeMap(t.getScriptSkeletonJson()).get("segments")), t);
         List<Map<String, Object>> shots = ClipShotPlan.defaultShots(segments);
         Map<String, Object> payload = new LinkedHashMap<>(p.getPayloadJson()); payload.put("segments", segments); payload.put("shots", shots);
@@ -120,6 +120,21 @@ public class ClipProjectService {
     @Transactional public void purgeOwner(String owner) { repo.findByExternalOwnerId(owner).forEach(this::purgeRow); }
     @Transactional public void purgeExpired(ClipProject p) { repo.findById(p.getId()).ifPresent(this::purgeRow); }
     public ClipProject required(String owner, String id) { return repo.findByIdAndExternalOwnerIdAndDeletedAtIsNull(id, owner).orElseThrow(() -> BusinessException.notFound("CLIP_PROJECT_NOT_FOUND", "项目不存在或无权访问")); }
+
+    /**
+     * 取行时加写锁（{@code SELECT ... FOR UPDATE}），供对 {@code payloadJson} 做「读—改—写」
+     * 的写入路径用（{@code save} / {@code reset} / {@code recordShotArtifact}）。
+     *
+     * <p>{@code payloadJson} 是整存整取的 JSON 文档、没有 {@code @Version}：用户草稿态编辑
+     * （请求线程）与镜头 worker 落回段级产物（{@code @Scheduled} worker 线程）会并发地各读一份
+     * 快照、改一处、整体写回，后提交的一方把先提交的覆盖掉 —— 丢的是用户已付费的产物或刚做的
+     * 编辑。这三条写路径都在同一事务里先经此方法取同一行的写锁，串行化到该行上，关掉丢更新窗口。
+     * 读路径（{@code get} / {@code list} / {@code duplicate} 读源）不走这里，不受影响。
+     */
+    private ClipProject requiredForUpdate(String owner, String id) {
+        return repo.findByIdAndExternalOwnerIdAndDeletedAtIsNullForUpdate(id, owner)
+                .orElseThrow(() -> BusinessException.notFound("CLIP_PROJECT_NOT_FOUND", "项目不存在或无权访问"));
+    }
 
     public static void recompute(ClipProject p) {
         List<Map<String, Object>> source = ClipDtos.mapListValue(p.getPayloadJson().get("segments"));
@@ -163,7 +178,7 @@ public class ClipProjectService {
      */
     @Transactional
     public void recordShotArtifact(String owner, String projectId, int shotNo, Map<String, Object> artifact, String model, String prompt) {
-        ClipProject p = required(owner, projectId);
+        ClipProject p = requiredForUpdate(owner, projectId);
         Map<String, Object> payload = new LinkedHashMap<>(ClipDtos.safeMap(p.getPayloadJson()));
         List<Map<String, Object>> shots = ClipShotPlan.shots(payload);
         if (shotNo < 1 || shotNo > shots.size()) return;
