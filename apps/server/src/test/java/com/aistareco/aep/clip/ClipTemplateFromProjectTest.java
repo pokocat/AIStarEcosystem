@@ -1,6 +1,7 @@
 package com.aistareco.aep.clip;
 
 import com.aistareco.aep.clip.model.ClipProject;
+import com.aistareco.aep.clip.dto.ClipDtos.TemplateDto;
 import com.aistareco.aep.clip.model.ClipTemplate;
 import com.aistareco.aep.clip.repository.ClipTemplateRepository;
 import com.aistareco.aep.clip.service.ClipAssetService;
@@ -160,6 +161,29 @@ class ClipTemplateFromProjectTest {
         ClipTemplate t = saved();
         assertEquals("cp1", t.getSourceProjectId());
         assertEquals("op1", t.getCreatedBy());
+    }
+
+    /**
+     * **C 端拿不到出处。**
+     *
+     * TemplateDto 同时喂 /api/me/clip/templates（小程序）和运营面，而 created_by 是运营的
+     * externalOwnerId。第一版把两列直接塞进 from()，等于每个小程序用户都能看到是哪个员工
+     * 存的这套模板。当时没发现，是因为 application.yml 配了 non_null，而线上那 3 条存量模板
+     * 的出处都是 NULL —— 要等到有人第一次存模板并上架，才会真的发出去。
+     *
+     * 这条用例盯的就是那个「要等到以后才暴露」的形态。
+     */
+    @Test
+    void cSideTemplatesNeverCarryProvenance() {
+        ClipTemplate t = ClipTemplate.builder().id("ct_x").status("published")
+                .name("n").industry("i").themeKey("k").description("d")
+                .scriptSkeletonJson(Map.of("segments", List.of()))
+                .sourceProjectId("cp_secret").createdBy("op_secret").build();
+        when(repo.findById("ct_x")).thenReturn(Optional.of(t));
+
+        TemplateDto c = service.published("ct_x");
+        assertNull(c.sourceProjectId(), "C 端不该知道这套模板从哪条草稿来");
+        assertNull(c.createdBy(), "created_by 是运营的账号标识，绝不能发给小程序用户");
     }
 
     // 改版时覆盖成这一次的来源：想知道的是「现在这份是从哪来的」，不是第一版从哪来的。

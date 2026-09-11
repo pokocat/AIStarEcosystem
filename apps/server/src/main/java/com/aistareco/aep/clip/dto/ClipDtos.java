@@ -20,6 +20,15 @@ public final class ClipDtos {
             // 两个都可能是 null（V35 之前直接写库建的官方模板没有来源）。
             String sourceProjectId, String createdBy
     ) {
+        /** 只给运营面：补上出处。C 端一律用 {@link #from} 的默认（两列为 null）。 */
+        public TemplateDto withProvenance(ClipTemplate t) {
+            return new TemplateDto(id, name, industry, themeKey, description, status, ownerScope,
+                    scriptSkeleton, timeline, tailClips, brollPool, previewCoverUrl, previewVideoUrl,
+                    ratio, estDurationSec, avatarSecHint, creditHint, segmentCount,
+                    tailLabel, tailDurationSec, tailAssetId, tailPreviewUrl, tailVideoUrl,
+                    t.getSourceProjectId(), t.getCreatedBy());
+        }
+
         public static TemplateDto from(ClipTemplate t, String coverUrl, String videoUrl,
                                        List<Map<String, Object>> tailClips, int durationSec) {
             Map<String, Object> clip = tailClips == null || tailClips.isEmpty() ? Map.of() : tailClips.get(0);
@@ -41,7 +50,11 @@ public final class ClipDtos {
                     t.getCreditHint(), segments.size(), string(clip.getOrDefault("label", tail.get("text"))),
                     number(clip.containsKey("durationSec") ? clip.get("durationSec") : tail.get("durationSec")), string(clip.getOrDefault("assetId", tail.get("assetId"))),
                     string(clip.get("previewUrl")), string(clip.get("contentUrl")),
-                    t.getSourceProjectId(), t.getCreatedBy());
+                    // **默认不带出处。** 这个 record 同时喂 C 端（/api/me/clip/templates）和运营面，
+                    // 而 created_by 是运营的 externalOwnerId —— 带上就等于把员工账号标识
+                    // 发给每一个小程序用户。要出处的那几条路径显式调 withProvenance()。
+                    // 白名单思路同 publishFromProject：以后再加后台字段，默认也进不了 C 端。
+                    null, null);
         }
     }
 

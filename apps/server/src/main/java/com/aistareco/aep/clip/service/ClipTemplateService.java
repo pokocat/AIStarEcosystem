@@ -30,7 +30,7 @@ public class ClipTemplateService {
         if (!"published".equals(t.getStatus())) throw BusinessException.notFound("CLIP_TEMPLATE_NOT_FOUND", "模板不存在");
         return dto(t);
     }
-    public List<TemplateDto> adminList() { return repo.findByDeletedAtIsNullOrderByUpdatedAtDesc().stream().map(this::dto).toList(); }
+    public List<TemplateDto> adminList() { return repo.findByDeletedAtIsNullOrderByUpdatedAtDesc().stream().map(this::adminDto).toList(); }
 
     @Transactional
     public TemplateDto upsert(String pathId, UpsertTemplate req) {
@@ -55,7 +55,7 @@ public class ClipTemplateService {
         int calculatedDuration = duration(req.scriptSkeleton());
         t.setRatio("9:16"); t.setEstDurationSec(calculatedDuration);
         t.setAvatarSecHint(Math.max(0, req.avatarSecHint() == null ? 0 : req.avatarSecHint())); t.setCreditHint(req.creditHint());
-        t.setDeletedAt(null); t.setUpdatedAt(now); return dto(repo.save(t));
+        t.setDeletedAt(null); t.setUpdatedAt(now); return adminDto(repo.save(t));
     }
 
     @Transactional public void delete(String id) { ClipTemplate t = required(id); t.setDeletedAt(Instant.now()); t.setUpdatedAt(Instant.now()); repo.save(t); }
@@ -155,7 +155,7 @@ public class ClipTemplateService {
         t.setSourceProjectId(p.getId());
         t.setCreatedBy(ownerId);
         t.setDeletedAt(null); t.setUpdatedAt(now);
-        return dto(repo.save(t));
+        return adminDto(repo.save(t));
     }
 
     /**
@@ -172,7 +172,7 @@ public class ClipTemplateService {
         }
         ClipTemplate t = required(id);
         t.setStatus(status); t.setUpdatedAt(Instant.now());
-        return dto(repo.save(t));
+        return adminDto(repo.save(t));
     }
     /** 显式替换片尾（只在 reseed 开关打开时调用）。与 attachTailClipIfMissing 分开命名，
      *  避免"看起来只是补空缺、实际覆盖了运营配置"这种意外。 */
@@ -206,6 +206,16 @@ public class ClipTemplateService {
     }
 
     public ClipTemplate required(String id) { return repo.findById(id).filter(t -> t.getDeletedAt() == null).orElseThrow(() -> BusinessException.notFound("CLIP_TEMPLATE_NOT_FOUND", "模板不存在")); }
+    /**
+     * 运营面用：在 C 端那份的基础上补出处。
+     *
+     * C 端与运营面共用一个 TemplateDto，而 created_by 是运营的 externalOwnerId ——
+     * 直接塞进 from() 就会随 /api/me/clip/templates 发给每个小程序用户
+     * （application.yml 是 non_null，所以在有人存过模板之前还看不出来，更难发现）。
+     * 故默认不带，这里显式补。
+     */
+    private TemplateDto adminDto(ClipTemplate t) { return dto(t).withProvenance(t); }
+
     private TemplateDto dto(ClipTemplate t) {
         List<Map<String,Object>> clips = new ArrayList<>();
         for (Map<String,Object> raw : com.aistareco.aep.clip.dto.ClipDtos.mapList(t.getTailClipsJson(), "items")) {
