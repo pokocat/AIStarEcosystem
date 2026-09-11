@@ -99,6 +99,13 @@ public class AepSecurityConfig {
                         // 军师 BFF 使用独立 service token + externalOwnerId；由 ClipServiceIdentity 做常量时间校验。
                         // 顺序必须早于通用 /api/me/** JWT 规则，且只放行 clip 子树。
                         .requestMatchers("/api/me/clip/**").permitAll()
+                        // 军师运营后台的 clip 运营面（模板上下架 / 供应商对账）。
+                        // 与上面同一个理由：**由 controller 用 clip service token 自行鉴权**
+                        // （ClipServiceIdentity.require，常量时间比较），Spring Security 这层放行。
+                        // 不能挂在 /api/admin/** 下 —— 那里要 staff JWT，而军师 BFF 只有 service token。
+                        // 见 ClipServiceAdminController 的类注释（含密钥影响面说明）。
+                        // 顺序同样必须早于通用 /api/admin/** 规则。
+                        .requestMatchers("/api/service/clip/**").permitAll()
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
                         // 充值/积分包只读展示 + 购买记录回显（写入动作已下线，购买统一走

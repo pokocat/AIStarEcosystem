@@ -53,6 +53,23 @@ public class ClipTemplateService {
     }
 
     @Transactional public void delete(String id) { ClipTemplate t = required(id); t.setDeletedAt(Instant.now()); t.setUpdatedAt(Instant.now()); repo.save(t); }
+
+    /**
+     * 只改上下架状态，别的字段一个都不碰。
+     *
+     * 不复用 upsert：那个方法是**整体替换**语义 —— 必填 name/industry/themeKey/description/scriptSkeleton，
+     * 而且 timeline / tailClips / brollPool 缺省就被清空。运营后台只想点一下「上架」，走 upsert 就得
+     * 先读回整份再原样回传，中间任何一次并发编辑都会被这次回传覆盖掉（典型的 lost update），
+     * 而且漏传一个字段就是静默清空运营配好的片尾。上下架是最高频的运营动作，值得一条专用路径。
+     */
+    @Transactional public TemplateDto setStatus(String id, String status) {
+        if (!"published".equals(status) && !"draft".equals(status)) {
+            throw BusinessException.badRequest("CLIP_TEMPLATE_STATUS_INVALID", "状态只能是 published 或 draft");
+        }
+        ClipTemplate t = required(id);
+        t.setStatus(status); t.setUpdatedAt(Instant.now());
+        return dto(repo.save(t));
+    }
     /** 显式替换片尾（只在 reseed 开关打开时调用）。与 attachTailClipIfMissing 分开命名，
      *  避免"看起来只是补空缺、实际覆盖了运营配置"这种意外。 */
     @Transactional public void replaceTailClip(String templateId, com.aistareco.aep.clip.dto.ClipDtos.AssetDto asset) {
