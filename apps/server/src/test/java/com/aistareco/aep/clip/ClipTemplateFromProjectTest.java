@@ -186,6 +186,19 @@ class ClipTemplateFromProjectTest {
         assertNull(c.createdBy(), "created_by 是运营的账号标识，绝不能发给小程序用户");
     }
 
+    /**
+     * 反向那一半：**运营面必须带着出处**。
+     *
+     * 上一条只盯住「C 端不能有」。只有那一条的话，把 adminDto 改回 dto 仍然全绿 ——
+     * 而那恰好就是加这两列想解决的问题本身（倒查能力静默消失）。两条一起才夹得住。
+     */
+    @Test
+    void adminSideKeepsProvenance() {
+        TemplateDto dto = service.publishFromProject("op1", "cp1", null, "n", "i", "k", "d", true);
+        assertEquals("cp1", dto.sourceProjectId(), "运营面没有出处，这两列就白加了");
+        assertEquals("op1", dto.createdBy());
+    }
+
     // 改版时覆盖成这一次的来源：想知道的是「现在这份是从哪来的」，不是第一版从哪来的。
     @Test
     void republishingFromAnotherDraftOverwritesTheProvenance() {
