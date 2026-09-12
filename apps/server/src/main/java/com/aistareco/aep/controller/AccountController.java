@@ -35,6 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.security.Principal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,6 +49,10 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/me")
 public class AccountController {
+
+    // 展示用日期一律按业务时区（+08）截取，禁止对 Instant.toString() 直接 substring(0,10)——
+    // 那切的是 UTC 段，晚上八点后落库的记录会显示成前一天（§4.8）。
+    private static final ZoneId TZ = ZoneId.of("Asia/Shanghai");
 
     private final AccountSelfService accountSelfService;
     private final DigitalIpService digitalIpService;
@@ -174,7 +179,7 @@ public class AccountController {
                 entry.id(),
                 entry.description(),
                 entry.amount(),
-                entry.createdAt() == null ? "" : entry.createdAt().toString().substring(0, 10),
+                entry.createdAt() == null ? "" : LocalDate.ofInstant(entry.createdAt(), TZ).toString(),
                 entry.createdAt(),
                 "processing",
                 "withdrawal",
@@ -192,6 +197,10 @@ public class AccountController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
+        // page/size 是未校验的用户入参；PageRequest.of 对 page<0 或 size<1 会抛
+        // IllegalArgumentException → 500。先夹到合法区间（size 上限 100 防一次性拉全表）。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         return PageEnvelope.from(accountSelfService.listLedger(principal.getName(), pageable));
     }
@@ -472,8 +481,14 @@ public class AccountController {
         if (range == null) return 30;
         String digits = range.replaceAll("[^0-9]", "");
         if (digits.isBlank()) return 30;
-        int n = Integer.parseInt(digits);
-        return Math.min(Math.max(n, 1), 365);
+        try {
+            int n = Integer.parseInt(digits);
+            return Math.min(Math.max(n, 1), 365);
+        } catch (NumberFormatException e) {
+            // range=99999999999 之类超 int 范围的入参会让 parseInt 抛出 → 500，
+            // 而它本就该被下面的 clamp 收进 [1,365]；超大值等价于取最大窗口。
+            return 365;
+        }
     }
 
     private static int nullSafeCompareDesc(Instant a, Instant b) {

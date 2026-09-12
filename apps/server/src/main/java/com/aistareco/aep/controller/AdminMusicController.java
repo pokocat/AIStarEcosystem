@@ -56,6 +56,10 @@ public class AdminMusicController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String studioId,
             @RequestParam(required = false) String artistId) {
+        // page/size 是未校验的用户入参：page<0 会让下面的 from 为负、page*size 过大会 int 溢出成负，
+        // 两者都会让 subList(负, ...) 抛 IndexOutOfBoundsException → 500。先夹到合法区间。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         // 先全量加载并 enrich，再做 studio/artist 二次过滤 + 手工分页。
         // MVP 量级小（单 studio 几十首歌），不值得为这两个筛选新增 repository 方法。
         List<Song> all = songRepo.findAll(Sort.by("id").ascending());
@@ -69,8 +73,9 @@ public class AdminMusicController {
                 .toList();
 
         int total = filtered.size();
-        int from = Math.min(page * size, total);
-        int to = Math.min(from + size, total);
+        // 用 long 乘避免 page*size 溢出成负数；再夹进 [0,total] 保证 subList 索引合法。
+        int from = (int) Math.min((long) page * size, total);
+        int to = (int) Math.min((long) from + size, total);
         List<SongDto> slice = filtered.subList(from, to);
         int totalPages = size > 0 ? (int) Math.ceil(total / (double) size) : 0;
         return new PageEnvelope<>(true, slice,

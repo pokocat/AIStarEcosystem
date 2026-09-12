@@ -9,6 +9,42 @@
 
 ---
 
+## 2026-09-12 · 例行 QA 巡检（用户端 controller 健壮性）
+
+> 本轮承接同一分支（#102），不新开 PR。以下 6 处均为「用户可控入参未夹到合法区间 → 500 崩溃」或
+> 「对 `Instant.toString()` 直接 `substring(0,10)` → +08 页面差一天」，修法都是最小夹取 / 换时区截取，
+> 有效输入行为不变。服务端 `./mvnw compile` 全绿。
+
+- [x] ~~**High：`parseRangeDays` 对超 int 的 range 入参崩溃（NumberFormatException → 500）**~~
+      （**完成**，2026-09-12）：`AccountController.parseRangeDays`（约 L475）对
+      `GET /api/me/music/trends?range=99999999999` 这类超 `Integer.MAX_VALUE` 的数字串
+      `Integer.parseInt` 直接抛，而本意的 `Math.min(...,365)` clamp 还没跑到。改为 try/catch，
+      解析失败即取最大窗口 365（等价于「值过大 → 收进上限」）。
+
+- [x] ~~**High：`/api/me/ledger` 与社区 `/posts` 分页入参未夹取（size=0 / page=-1 → 500）**~~
+      （**完成**，2026-09-12）：`AccountController.ledger`（L195）与
+      `CommunityController.listPosts`（L89）把未校验的 `page/size` 直接喂 `PageRequest.of`，
+      `size<1` 或 `page<0` 会抛 `IllegalArgumentException` → 500。两处均加
+      `page=max(0,page); size=min(max(1,size),100)`。`AdminMusicController.songs`（L72）手工
+      `page*size` subList 同类崩溃（负 page / int 溢出 → `subList(负,…)` IndexOutOfBounds），
+      加同样夹取 + long 乘防溢出（admin 面，优先级低但同批修）。
+
+- [x] ~~**Medium：四处 `Instant.toString().substring(0,10)` 切 UTC → +08 页面差一天（§4.8）**~~
+      （**完成**，2026-09-12）：`FinanceController.projectTx`（L136，已有 `TZ`）、
+      `AccountController.withdraw`（L177，新增 `TZ` 常量）、`FanController.me`（L99，新增 `TZ` 常量）、
+      `CardService.toWireDoc`（名片页脚 `updatedAt`，L405，新增 `TZ` 常量）的展示用日期字段原来切的是
+      UTC 段——本地 00:00–08:00 落库的记录显示成前一天。统一改
+      `LocalDate.ofInstant(x, ZoneId.of("Asia/Shanghai")).toString()`。wire 形状不变（仍是
+      `yyyy-MM-dd` 串），只是日期值正确了。（`DapJobRunner` / `MockModelinkGateway` 里的
+      `UUID.toString().substring(0,10)` 是随机 id 截断、非日期，不在此列。）
+
+- [ ] **Low：`formatCompactNumber` 负数丢符号**（`packages/api-client/src/format.ts` 约 L37，
+      `apps/web-music/src/lib/format.ts` 同一份副本）：量级分支返回 `trimZero(abs/…)` 用的是绝对值，
+      负数会渲染成正数（`-2300000 → "2.3M"`），而兜底分支保留符号。现有调用点均为非负量
+      （粉丝 / 播放 / 销量 / 营收），实际不可达，故本轮未改；真要修需两份副本同改（§8.0.1 ④）。
+
+---
+
 ## 2026-09-11 · 例行 QA 巡检
 
 - [x] ~~**High：clip 项目 `payloadJson` 并发丢更新——用户草稿编辑 vs 镜头 worker 落产物无锁**~~

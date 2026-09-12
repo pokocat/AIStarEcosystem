@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
 
@@ -33,6 +35,9 @@ import java.util.Locale;
 @RestController
 @RequestMapping("/api/fan")
 public class FanController {
+
+    // 展示用日期按业务时区（+08）截取，禁止对 Instant.toString() 直接 substring(0,10)（§4.8）。
+    private static final ZoneId TZ = ZoneId.of("Asia/Shanghai");
 
     private final DigitalIpRepository ipRepo;
     private final SongRepository songRepo;
@@ -96,7 +101,7 @@ public class FanController {
                 1, 0, 100,
                 0, 0, 0,
                 "0",
-                user.getCreatedAt() != null ? user.getCreatedAt().toString().substring(0, 10) : ""
+                user.getCreatedAt() != null ? LocalDate.ofInstant(user.getCreatedAt(), TZ).toString() : ""
         );
         return ApiResponse.of(out);
     }
