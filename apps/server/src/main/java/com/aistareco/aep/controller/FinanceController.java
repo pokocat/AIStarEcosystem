@@ -133,7 +133,7 @@ public class FinanceController {
                 e.getDescription() != null ? e.getDescription() :
                         (e.getEntryType() != null ? e.getEntryType().name() : ""),
                 e.getAmount(),
-                e.getCreatedAt() == null ? "" : e.getCreatedAt().toString().substring(0, 10),
+                e.getCreatedAt() == null ? "" : LocalDate.ofInstant(e.getCreatedAt(), TZ).toString(),
                 e.getCreatedAt(),
                 "completed",
                 txType(e.getEntryType()),
