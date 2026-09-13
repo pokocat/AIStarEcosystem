@@ -153,6 +153,9 @@ public class AdminMusicController {
     public PageEnvelope<AlbumDto> albums(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        // page/size 是未校验入参；PageRequest.of 对 page<0 或 size<1 抛 IllegalArgumentException → 500。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("id").ascending());
         return PageEnvelope.from(albumRepo.findAll(pageable).map(AlbumDto::from));
     }
@@ -161,6 +164,9 @@ public class AdminMusicController {
     public PageEnvelope<ConcertDto> concerts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        // page/size 是未校验入参；PageRequest.of 对 page<0 或 size<1 抛 IllegalArgumentException → 500。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("id").ascending());
         return PageEnvelope.from(concertRepo.findAll(pageable).map(ConcertDto::from));
     }
@@ -169,6 +175,9 @@ public class AdminMusicController {
     public PageEnvelope<MusicGenreDto> genres(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        // page/size 是未校验入参；PageRequest.of 对 page<0 或 size<1 抛 IllegalArgumentException → 500。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("id").ascending());
         return PageEnvelope.from(genreRepo.findAll(pageable).map(MusicGenreDto::from));
     }

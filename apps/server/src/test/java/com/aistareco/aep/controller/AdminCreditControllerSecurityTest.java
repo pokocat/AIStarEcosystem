@@ -53,4 +53,18 @@ class AdminCreditControllerSecurityTest {
     void superAdmin_canListLedgerEntries() throws Exception {
         mvc.perform(get("/api/admin/ledger-entries")).andExpect(status().isOk());
     }
+
+    // 回归：page<0 / size<1 之前直接喂 PageRequest.of → IllegalArgumentException → 500。
+    // 夹取后应当正常返回（不再崩溃）。见 TODO.md 2026-09-13 例行 QA。
+    @Test
+    @WithMockUser(roles = "SUPER_ADMIN")
+    void negativePage_doesNotCrash() throws Exception {
+        mvc.perform(get("/api/admin/wallets?page=-1")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "SUPER_ADMIN")
+    void zeroSize_doesNotCrash() throws Exception {
+        mvc.perform(get("/api/admin/ledger-entries?size=0")).andExpect(status().isOk());
+    }
 }

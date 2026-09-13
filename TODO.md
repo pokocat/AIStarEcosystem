@@ -9,6 +9,38 @@
 
 ---
 
+## 2026-09-13 · 例行 QA 巡检（admin controller 分页入参健壮性）
+
+> 本轮承接同一分支（#102），不新开 PR。开工前查了三仓开着的 routine PR
+> （本仓 #101 SSRF / #102 合集；ai-pilot #50；shequn-gongju #1），均已覆盖各自问题、
+> 本轮不重复。承接 #102 的分页夹取工作，把上一轮**明确降优先级**的 admin 面补齐。
+
+- [x] ~~**Medium：13 处 admin 列表端点分页入参未夹取（page<0 / size<1 → 500）**~~
+      （**完成**，2026-09-13）：`@RequestParam int page/size` 直接喂 `PageRequest.of`，
+      `page<0` 或 `size<1` 抛 `IllegalArgumentException`，且无 `@ExceptionHandler`，落到
+      `GlobalExceptionHandler.handleGeneric` → 500 + 一条 ErrorLog。全部 `/api/admin/**`
+      （SUPER_ADMIN / OPERATOR / FINANCE_ADMIN 鉴权），故 Medium（自伤 500 / 轻度 DoS，
+      非未授权崩溃或数据泄露）。修法沿用 #102 既定的内联夹取
+      `page=max(0,page); size=min(max(1,size),上限)`，上限取该端点原默认值同量级
+      （默认 20 的用 100；`AdminMembershipController` 默认 500 的用 500，**不缩小既有默认**）。
+      覆盖：`AdminCreditController`(×2) / `AdminLicenseController`(×3) /
+      `AdminFilmController`(×4) / `AdminMusicController` albums/concerts/genres(×3，songs 已夹) /
+      `AdminUserController` / `AdminTenantController` / `AdminStaffController` /
+      `AdminNotificationController` / `AdminDigitalIpController` / `AdminStudioController` /
+      `AdminMembershipController` / `AdminFinanceService.listTransactions`（controller 透传）。
+      回归 `AdminCreditControllerSecurityTest` +2（`page=-1` / `size=0` 以 SUPER_ADMIN 回 200
+      不再 500），6/6 全绿；`./mvnw compile` 通过。已确认**安全**未改：用户端
+      （`/api/me`、community、finance、star）分页与所有 `parseInt`/null-deref/资源关闭
+      站点本轮复核均无缺陷（详见 PR）。
+
+- [ ] **Low：`AlipayNotifyController.java:80` `Double.parseDouble(total_amount)` 只 catch
+      `NumberFormatException`，漏 `total_amount` 缺失时 `parseDouble(null)` 抛 NPE → 500
+      而非预期的 FAIL**（本轮复核发现，未修）。仅在**验签通过**的支付宝回调上可达
+      （合法通知必带 `total_amount`），实际不可达，故降级记录；真要修把 catch 放宽到
+      `Exception` 或先判 null 返 FAIL 即可。
+
+---
+
 ## 2026-09-12 · 例行 QA 巡检（用户端 controller 健壮性）
 
 > 本轮承接同一分支（#102），不新开 PR。以下 6 处均为「用户可控入参未夹到合法区间 → 500 崩溃」或
