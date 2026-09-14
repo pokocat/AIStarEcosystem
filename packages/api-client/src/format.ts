@@ -93,3 +93,21 @@ export function formatDateTime(iso?: string | null, fallback = "—"): string {
   // 按 part 自己拼：不同运行时给的连接符不一样（`2026/09/09` vs `2026-09-09`）
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
+
+/**
+ * ISO 8601 → 本地时区的 `yyyy-MM-dd`（只要日期那一档）。
+ *
+ * 和 {@link formatDateTime} 同源、同理：一律 `new Date(iso)` + `Intl` 按浏览器本地时区取年月日，
+ * **禁止 `iso.slice(0, 10)`** —— 那切的是 UTC 段，晚上八点之后（+08）落库的记录会显示成前一天（§4.8）。
+ */
+export function formatDate(iso?: string | null, fallback = "—"): string {
+  if (!iso) return fallback;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return fallback;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}

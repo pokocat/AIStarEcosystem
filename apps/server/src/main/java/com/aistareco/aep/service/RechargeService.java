@@ -440,8 +440,18 @@ public class RechargeService {
                 storageQuota.grantStorage(order.getSourceApp(), order.getUserId(),
                         order.getGrantStorageMb(), order.getId(), null);
             } catch (Exception e) {
+                // 用户已付费、积分也已入账（markPaid 已占，settle 不能整单回滚——creditAccount 无
+                // (source,ref) 幂等闸，回滚后重试会二次入账，比丢存储更糟）。因此这里不吞成一条 WARN
+                // 就算了：把「已付费但存储未交付」这条落进运营收件箱，让运营手工补授（grantStorage
+                // 幂等 by source，补授安全），杜绝 §8.0 禁止的「收了钱却静默少交付」。
                 log.warn("[recharge] storage grant failed order={} app={} mb={}: {}",
                         order.getId(), order.getSourceApp(), order.getGrantStorageMb(), e.getMessage());
+                notificationPublisher.notifyAdmins(Notification.NotificationType.SYSTEM,
+                        "存储套餐未交付，待手工补授",
+                        "充值订单 " + order.getId() + " 已入账，但存储扩容授予失败（应用 "
+                                + order.getSourceApp() + "，" + order.getGrantStorageMb()
+                                + " MB）。请核实后手工补授（按订单号幂等，不会重复）。原因：" + e.getMessage(),
+                        order.getUserId());
             }
         }
 

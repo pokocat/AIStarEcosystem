@@ -20,6 +20,7 @@ import {
   REVENUE_SOURCES as SEED_REVENUE_SOURCES,
 } from "@/mocks/finance";
 import { formatCredits, formatSignedCredits } from "@/lib/format";
+import { formatDate } from "@ai-star-eco/api-client";
 import { toast } from "@/lib/toast";
 import { AccountApi, FinanceApi, ApiError } from "@/api";
 
@@ -44,7 +45,7 @@ function ledgerToTransaction(entry: LedgerEntry): Transaction {
     id: entry.id,
     source: entry.description || entry.type,
     amount: entry.amount,
-    date: (entry.createdAt || "").slice(0, 10),
+    date: formatDate(entry.createdAt, ""), // 本地时区 yyyy-MM-dd；禁止 slice(0,10) 切 UTC（§4.8）
     status,
     type: LEDGER_TO_TX_TYPE[entry.type] ?? "income",
     userId: entry.userId,

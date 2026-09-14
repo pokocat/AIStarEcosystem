@@ -9,7 +9,34 @@
 
 ---
 
-## 2026-09-13 · 例行 QA 巡检（admin controller 分页入参健壮性）
+## 2026-09-14 · 例行 QA 巡检（充值存储交付 + 前端时间字段存量）
+
+> 本轮承接同一分支（#102），不新开 PR。开工前查了三仓开着的 routine PR
+> （本仓 #101 SSRF / #102 合集；ai-pilot #50；shequn-gongju #1），复用各自分支不新建。
+> 三处均已修并跑过编译门（`./mvnw compile` 绿、web-star/music/drama typecheck 绿、
+> `check:api-contract` 绿、§4.8 slice 门 0 命中）。
+
+- [x] ~~**Medium：充值存储套餐授予失败被静默吞掉——已付费却少交付（§8.0）**~~
+      （**完成**，2026-09-14）：`RechargeService.settlePaidOrder`（约 L438-446）在积分已入账后授予
+      存储扩容，`grantStorage` 抛异常时只 `log.warn` 就算了 —— 用户付了钱、存储永远没到，且无对账/重试。
+      **不能整单回滚重试**：`markPaid` 已条件占位、`creditService.creditAccount` 无 `(source,ref)` 幂等闸，
+      回滚后重试会二次入账（比丢存储更糟）。故改为在 catch 里 `notificationPublisher.notifyAdmins(SYSTEM,…)`
+      把「已付费待手工补授」落进运营收件箱（`grantStorage` 幂等 by source，补授安全），杜绝静默少交付。
+      遗留待办见下条。
+
+- [ ] **Low：`creditAccount`(RECHARGE) 无 `(source, referenceId)` 幂等闸**（`CreditService.java:259`）。
+      当前 `settlePaidOrder` 的重复/并发靠 `markPaid` 条件占位挡住，够用；但这意味着「结算整单回滚后重试」
+      不安全（会二次入账），也是上面那条只能走「告警补授」而非「回滚重试」的根因。真要让存储交付走
+      自动重试/对账队列，需先给充值入账加订单级幂等键（参照 enrollment 的 `entitlement_grant`
+      `UNIQUE(source, source_reference)`）。非漏洞，排期择机。
+
+- [x] ~~**Low–Medium：前端时间字段存量 `slice(0,10)` / 自写格式化不换时区（§4.8）**~~
+      （**完成**，2026-09-14）：`packages/api-client/src/format.ts` 新增 `formatDate(iso)`（`new Date`+`Intl`
+      本地时区 `yyyy-MM-dd`，与既有 `formatDateTime` 同源）。修正三处 `slice(0,10)`：
+      `web-music/FinancePage.tsx`（账本行日期）、`web-music/dashboard/AgencyOverview.tsx`（近期歌曲表）、
+      `web-drama/api/finance.ts`（充值流水展示日期）。另把 `web-star/src/lib/format.ts` 自写的
+      `formatDateTime`（正则抠字面、不换时区）改为复用 api-client 版、`formatDate` 改为 `Intl` 本地时区 ——
+      约 21 处工作台展示（合作/白名单/肖像/数字人/品牌授权/侵权/商品库…）经这一处即全部修正。
 
 > 本轮承接同一分支（#102），不新开 PR。开工前查了三仓开着的 routine PR
 > （本仓 #101 SSRF / #102 合集；ai-pilot #50；shequn-gongju #1），均已覆盖各自问题、
