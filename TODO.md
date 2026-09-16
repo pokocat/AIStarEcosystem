@@ -9,6 +9,31 @@
 
 ---
 
+## 2026-09-16 · 例行 QA 巡检（画布删候选丢参考图真值 + pickColor 负模崩）
+
+> 本轮同样承接 #102 分支、不新开 PR。开工前查了本仓开着的 routine PR（#101 SSRF /
+> #102 合集），复用 #102。用两个子代理对后端 clip/ipstudio/materialvideo 与前端
+> canvas-bridge/ip/shell 做对抗式复核：两块都异常干净，仅落两处确定缺陷（下），
+> 其余（分页 500 / parseInt 崩 / slice(0,10) / SSRF）此前几轮已覆盖，未重复。
+> 验证：`mvn compile` 绿、web-aiavatar typecheck 绿、`video-takes.test.ts` 8/8 绿。
+
+- [x] ~~**Medium-High：画布删掉当前主图候选时，节点级 content/storageKey 仍指向被删的图**~~
+      （**完成**，2026-09-16）：`apps/web-aiavatar/src/canvas/pages/canvas/project.tsx`
+      `deleteBatchImage` 的图片分支（约 L3020）只改 `images[]` 与 `primaryImageId`，没跟着换
+      节点级 `content`/`storageKey`/尺寸。而 `metadata.storageKey` 是下游生成的参考图真值、
+      节点级 `content` 是导出与蒙版编辑的源图（见 `setBatchPrimary` 与 `applyCandidateToNode`
+      的说明）—— 删掉当前主图后，画布显示的是剩下的第一张，但后续每次生成 / 导出 / 发布仍照着
+      **被删的旧图**走，用户看不出、钱照扣，发布出去的形象也可能是被删的图。视频分支（同函数上半段）
+      早有对应修复且有测试，图片分支漏了。修法：删掉当前主图时把节点级
+      content/storageKey/naturalWidth/naturalHeight/bytes/mimeType 一并换到新主图（一张不剩时清空、
+      不留死链——失败图的删除按钮可以删到 0，故不照搬视频分支的「只剩一张不删」）；删的不是主图时早返回、
+      只摘候选。补 `video-takes.test.ts` 两条结构断言钉死。
+- [x] ~~**Low：`MaterialVideoJobService.pickColor` 负模数组越界（latent 500）**~~
+      （**完成**，2026-09-16）：`pickColor`（L414）`Math.abs(id.hashCode()) % len`——
+      `Math.abs(Integer.MIN_VALUE)` 仍为负 → `负 % len` 为负 → `ArrayIndexOutOfBoundsException`。
+      id 是服务端 UUID（概率约 1/2³²）但 `pickColor` 在 `toCard` 里对每一行都跑，真撞上即整个
+      `listJobs` 500。改 `Math.floorMod(hashCode, len)`（恒非负）。cover_color 纯装饰、无测试钉色值。
+
 ## 2026-09-14 · 例行 QA 巡检（充值存储交付 + 前端时间字段存量）
 
 > 本轮承接同一分支（#102），不新开 PR。开工前查了三仓开着的 routine PR
