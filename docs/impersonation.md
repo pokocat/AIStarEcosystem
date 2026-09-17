@@ -4,6 +4,8 @@
 
 ## 使用
 
+入口路径：`/admin/platform/accounts`（admin 应用既有 basePath 为 `/admin`）。
+
 admin → 平台账户 → 账号 & 经纪公司 → 启用中的用户 → 附身登录 → 选择产品 → 登录用户账号。
 新标签页进入目标用户的工作台，原管理后台不退出。五个产品（drama/music/celebrity/aiavatar/star）
 共用回调。页面显示“正在以某用户操作”和“退出附身”。编辑、生成、删除、支付等操作不做附身专属
@@ -48,7 +50,8 @@ XSS 可读取 sessionStorage，仍须沿用现有前端安全治理，不宣称�
 
 默认产品地址为 `https://<product>.aibuzz.cn`；覆盖配置 `aep.impersonation.origins.<product>`。
 本地 dev/test 可以显式设 `http://localhost:<port>`；生产只接受 HTTPS origin，不接受路径/参数。
-无需配置账号中心客户端、密钥或数据库迁移。
+同时确认既有 `aep.cors.allowed-origin-patterns` 允许产品域名；测试显式设置合成来源，
+不通过关闭 CORS 校验放行。无需配置账号中心客户端、密钥或数据库迁移。
 
 发布 server、admin 和使用附身的 web 产品需配套更新。五端回调均为
 `/auth/callback/impersonation`，代理需继续把 `/api` 转发给同一产品后端。
@@ -57,10 +60,10 @@ XSS 可读取 sessionStorage，仍须沿用现有前端安全治理，不宣称�
 测试覆盖：admin 限制、当前角色复核、过期/重放/并发交接、Origin/产品校验、普通写操作、
 目标用户状态、退出隔离、401 不刷新/不重放原账号、sessionStorage 与原登录态隔离。
 
-
 ## 验证命令与验收范围
 
 `Impersonation CI` 只构建/测试，不自动提交、不调用生产部署，也不读取生产凭据。
+CI 安装 FFmpeg 与 Noto CJK 字体，满足既有字幕/尾卡渲染测试的依赖；不跳过图像断言。
 服务端执行 `./mvnw verify`；`ImpersonationSecurityTest` 使用完整 Spring Security 链及 H2，
 验证管理员发起、真实修改测试用户资料、目标产品未开通仍被拒、退出隔离与撤权。
 `ImpersonationTest` 覆盖一次消费/并发/时间边界；共享客户端测试覆盖令牌隔离与回调重入。

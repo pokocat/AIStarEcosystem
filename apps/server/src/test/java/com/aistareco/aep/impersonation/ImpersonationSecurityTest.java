@@ -25,7 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.datasource.url=jdbc:h2:mem:impersonation-security;MODE=MySQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa",
     "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false",
-    "aep.seed.dev-data.enabled=false", "aep.dev-auth.enabled=false"
+    "aep.seed.dev-data.enabled=false", "aep.dev-auth.enabled=false",
+    "aep.cors.allowed-origin-patterns=https://drama.aibuzz.cn"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

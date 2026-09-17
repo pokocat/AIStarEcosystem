@@ -22,7 +22,7 @@ jobs:
           cache: maven
           cache-dependency-path: apps/server/pom.xml
       - name: Media test dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk fontconfig
       - name: Full server tests and package
         working-directory: apps/server
         run: ./mvnw -B -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify

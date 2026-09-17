@@ -16,6 +16,7 @@ const result = [];
       // Admin token key is independent of the consumer token store.
       await ctx.addInitScript(() => localStorage.setItem('aistareco.admin.auth.token', 'synthetic-admin-token'));
       const page = await ctx.newPage();
+      page.on('pageerror', error => console.error('ADMIN_PAGE_ERROR', error.message));
       let startBody;
       await ctx.route('**/api/**', async route => {
         const path = new URL(route.request().url()).pathname;
@@ -30,9 +31,11 @@ const result = [];
         }
         await route.fulfill({ json: { success: true, data } });
       });
-      await page.goto(base + '/platform/accounts');
+      await page.goto(base + '/admin/platform/accounts');
       await page.getByRole('button', { name: '附身登录', exact: true }).click();
       await page.getByRole('combobox', { name: '选择产品' }).selectOption('drama');
+      fs.mkdirSync('test-results', { recursive: true });
+      await page.screenshot({ path: 'test-results/admin-impersonation.png', fullPage: true });
       const popupPromise = page.waitForEvent('popup');
       await page.getByRole('button', { name: '登录用户账号', exact: true }).click();
       const popup = await popupPromise;
