@@ -29,6 +29,8 @@
 // 一旦账号中心支持 `client_id` 参数登出，这个键就可以删掉。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { getImpersonation, isImpersonating } from "./impersonation-session";
+
 /** access token（两种模式共用）。 */
 export const AUTH_TOKEN_KEY = "aistareco.auth.token";
 /** refresh token（仅 id 模式）。 */
@@ -58,31 +60,36 @@ function write(key: string, value: string | null) {
 }
 
 export function getAuthToken(): string | null {
-  return read(AUTH_TOKEN_KEY);
+  return getImpersonation()?.token ?? read(AUTH_TOKEN_KEY);
 }
 
 export function setAuthToken(token: string | null) {
+  if (isImpersonating()) return;
   write(AUTH_TOKEN_KEY, token);
 }
 
 export function getRefreshToken(): string | null {
-  return read(AUTH_REFRESH_TOKEN_KEY);
+  return isImpersonating() ? null : read(AUTH_REFRESH_TOKEN_KEY);
 }
 
 export function setRefreshToken(token: string | null) {
+  if (isImpersonating()) return;
   write(AUTH_REFRESH_TOKEN_KEY, token);
 }
 
 export function getIdToken(): string | null {
-  return read(AUTH_ID_TOKEN_KEY);
+  return isImpersonating() ? null : read(AUTH_ID_TOKEN_KEY);
 }
 
 export function setIdToken(token: string | null) {
+  if (isImpersonating()) return;
   write(AUTH_ID_TOKEN_KEY, token);
 }
 
 /** access token 过期时刻（epoch ms）；未知返回 null。 */
 export function getTokenExpiresAt(): number | null {
+  const acting = getImpersonation();
+  if (acting) return Date.parse(acting.expiresAt);
   const raw = read(AUTH_EXPIRES_AT_KEY);
   if (!raw) return null;
   const n = Number(raw);
@@ -90,11 +97,13 @@ export function getTokenExpiresAt(): number | null {
 }
 
 export function setTokenExpiresAt(at: number | null) {
+  if (isImpersonating()) return;
   write(AUTH_EXPIRES_AT_KEY, at === null ? null : String(at));
 }
 
-/** 清空全部登录痕迹（两种模式都安全）。 */
+/** 普通登录令牌清理；附身由独立退出入口处理，不清掉原账号。 */
 export function clearAuthTokens() {
+  if (isImpersonating()) return; // 附身退出走独立入口，不清原账号令牌。
   setAuthToken(null);
   setRefreshToken(null);
   setIdToken(null);
