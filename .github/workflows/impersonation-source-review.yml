@@ -1,0 +1,26 @@
+name: Impersonation source review
+on:
+  push:
+    branches: [feat/identity-impersonation-20260917]
+    paths: [.github/workflows/impersonation-source-review.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: 导出当前提交供隔离代码审查
+        run: |
+          git rev-parse HEAD > source-commit.txt
+          git archive --format=tar HEAD | gzip > source-review.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: impersonation-source-review
+          path: |
+            source-review.tar.gz
+            source-commit.txt
+          retention-days: 1
