@@ -691,6 +691,35 @@ dev（`aep.platform.dev-grant-all=true`）→ 五个产品 `ACTIVE/GRANT_ALL`；
 > `@EventListener` 监听它，best-effort 把 `id_product_link` 置 `ACTIVE`（§12.2 末句）。
 > 用事件而非直接调客户端，是为了让开通链路不因外部服务抖动而失败。
 
+### 3.5 只读闸 `PhoneVerificationGuard`（微信游客）
+
+`OncePerRequestFilter`，挂在 `EnrollmentGuard` **之前**。
+
+账号中心允许「只有微信、没有手机号」的账号登录进来（令牌 `phone_verified=false`），
+但手机号才是全生态的身份识别。这类账号**能看不能改**：
+
+| 请求 | 判定 |
+|---|---|
+| `GET` / `HEAD` / `OPTIONS` | 不拦 —— 这正是「只读」的定义 |
+| 未登录 | 不拦（留给安全链出 401，别把它改写成一个词不达意的 403） |
+| `/api/auth/**`、`/api/internal/**` | 不拦（登录本身；服务间调用主体不是人） |
+| 已登录且 `phone_verified=false`，方法为写 | **403 `PHONE_VERIFICATION_REQUIRED`**，`error.details.bindUrl` 给出账号中心的绑定入口 |
+
+`bindUrl` 由 `aep.identity.issuer` 派生（`<issuer>/account/manage/phone`），不硬编码域名；
+issuer 没配时只是少一条 `details`，不编假地址。
+
+**标记从哪来**：`JwtAuthenticationFilter` 在两条认证链路上都会把 `phoneVerified` 显式写进
+`Authentication.details` —— 账号中心 RS256 令牌按 `phone_verified` claim（缺这个 claim 的旧令牌
+按已验证处理），legacy HS256 一律 `true`（微信游客只由账号中心的微信登录建出来，而它从不签
+HS256，所以 legacy 定义上不可能是游客）。标记缺失（内部服务令牌）一律放行。
+
+同时 `IdentityProvisioningService.syncPhoneVerified` 会按令牌把本地 `aep_users.phone_verified`
+回填 —— 此前 JIT 建档一律写 `false` 且无人回填，`/api/me` 对所有账号中心用户都报「未验证」。
+只在值变了才写库。
+
+> 为什么不在各个 controller 里判：本仓有上百个写端点，「每个都记得判一下」守不住，
+> 漏一个就是一个缺口。与 `EnrollmentGuard` 一样，统一闸门一处拦住全部。
+
 ### 4. 后端开通闸 `EnrollmentGuard`
 
 `OncePerRequestFilter`，挂在 `AuthorizationFilter` 之前（此时 JWT filter 与 dev 自动登录都已跑完，

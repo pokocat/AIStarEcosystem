@@ -34,6 +34,7 @@ import {
   getAuthToken,
   registerEnrollmentRequiredHandler,
   registerUnauthorizedHandler,
+  registerPhoneVerificationRequiredHandler,
   setAppCode,
 } from "./_client";
 import { isIdMode } from "./config";
@@ -191,6 +192,17 @@ export function AuthProvider({
     });
     return () => registerEnrollmentRequiredHandler(null);
   }, [loadMe]);
+
+  // 403 PHONE_VERIFICATION_REQUIRED：微信游客（只有微信、没绑手机号）发起写操作 →
+  // 整页跳到账号中心的绑定入口。地址由后端随 403 给出，前端不硬编码域名；
+  // 后端没给（issuer 没配）时什么都不做，让调用方自己处理这个 ApiError。
+  React.useEffect(() => {
+    registerPhoneVerificationRequiredHandler((bindUrl) => {
+      if (!bindUrl || typeof window === "undefined") return;
+      window.location.assign(bindUrl);
+    });
+    return () => registerPhoneVerificationRequiredHandler(null);
+  }, []);
 
   // 在首个请求前注入 X-App-Code（v0.149 起后端共享路由按它判定产品，缺头 403 APP_CODE_REQUIRED）。
   // 必须在**渲染期**设置而不是 useEffect：React 先跑子组件的 effect 再跑父组件的，仪表盘各卡片的

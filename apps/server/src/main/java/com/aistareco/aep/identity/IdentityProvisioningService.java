@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * uid → 本地档案解析（{@code docs/unified-identity-plan.md} §12.1「主体解析」）。
@@ -90,6 +91,28 @@ public class IdentityProvisioningService {
             }
         }
         throw new IllegalStateException("JIT 建档失败：username 连续冲突 uid=" + uid);
+    }
+
+    /**
+     * 把账号中心令牌里的 {@code phone_verified} 同步到本地档案。
+     *
+     * <p>本地 {@code phoneVerified} 在 JIT 建档时一律写 {@code false}
+     * （{@link IdentityUserInserter}），此前没有任何地方回填它 —— 于是
+     * {@code /api/me} 对所有账号中心用户都报「未验证」。前端要靠这个字段决定
+     * 该不该提示绑定手机号，所以这里按令牌回填。
+     *
+     * <p><b>只在值变了才写</b>：否则每个请求都要写一次库。真值始终是令牌里的 claim，
+     * 本地这份只是给 {@code /api/me} 用的副本。
+     */
+    @Transactional
+    public void syncPhoneVerified(String localUserId, boolean phoneVerified) {
+        userRepo.findById(localUserId).ifPresent(user -> {
+            if (user.isPhoneVerified() == phoneVerified) return;
+            user.setPhoneVerified(phoneVerified);
+            userRepo.save(user);
+            log.info("[identity] 回填手机号验证状态 localUserId={} phoneVerified={}",
+                    localUserId, phoneVerified);
+        });
     }
 
     private void grantForNewUserSafely(String localUserId) {

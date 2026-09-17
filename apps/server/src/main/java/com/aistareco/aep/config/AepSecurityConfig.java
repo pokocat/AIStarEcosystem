@@ -31,6 +31,7 @@ public class AepSecurityConfig {
     private final SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler;
     /** v0.149 子产品开通闸（docs/unified-identity-plan.md §12.2）。 */
     private final EnrollmentGuard enrollmentGuard;
+    private final PhoneVerificationGuard phoneVerificationGuard;
 
     /** dev profile 专用。非 dev 环境不会注入。 */
     @Autowired(required = false)
@@ -43,7 +44,8 @@ public class AepSecurityConfig {
                               ApiOperationLogFilter apiOperationLogFilter,
                               SecurityJsonEntryPoint jsonEntryPoint,
                               SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler,
-                              EnrollmentGuard enrollmentGuard) {
+                              EnrollmentGuard enrollmentGuard,
+                              PhoneVerificationGuard phoneVerificationGuard) {
         this.impersonationFilter = impersonationFilter;
         this.jwtFilter = jwtFilter;
         this.internalFilter = internalFilter;
@@ -52,6 +54,7 @@ public class AepSecurityConfig {
         this.jsonEntryPoint = jsonEntryPoint;
         this.jsonAccessDeniedHandler = jsonAccessDeniedHandler;
         this.enrollmentGuard = enrollmentGuard;
+        this.phoneVerificationGuard = phoneVerificationGuard;
     }
 
     @Bean
@@ -179,7 +182,10 @@ public class AepSecurityConfig {
                 // v0.149：开通闸挂在 AuthorizationFilter 之前 —— 此时 JWT filter（以及 dev 的
                 // DevAutoAuthFilter）都已跑完，SecurityContext 一定是最终状态；未登录请求由它放行、
                 // 交给随后的授权链出 401，不抢答。
-                .addFilterBefore(enrollmentGuard, AuthorizationFilter.class);
+                // 顺序：先只读闸门、后开通闸门 —— 游客写操作该看到「请先绑定手机号」，
+                // 而不是一个更靠后的「请先开通该产品」。
+                .addFilterBefore(enrollmentGuard, AuthorizationFilter.class)
+                .addFilterBefore(phoneVerificationGuard, EnrollmentGuard.class);
 
         // dev 环境：在 JWT filter 之后兜底自动登录
         if (devAutoAuthFilter != null) {
@@ -210,6 +216,15 @@ public class AepSecurityConfig {
     @Bean
     public FilterRegistrationBean<EnrollmentGuard> enrollmentGuardRegistration(EnrollmentGuard filter) {
         FilterRegistrationBean<EnrollmentGuard> reg = new FilterRegistrationBean<>(filter);
+        reg.setEnabled(false);
+        return reg;
+    }
+
+    /** 同上：只读闸门也只在安全链内部生效。 */
+    @Bean
+    public FilterRegistrationBean<PhoneVerificationGuard> phoneVerificationGuardRegistration(
+            PhoneVerificationGuard filter) {
+        FilterRegistrationBean<PhoneVerificationGuard> reg = new FilterRegistrationBean<>(filter);
         reg.setEnabled(false);
         return reg;
     }
