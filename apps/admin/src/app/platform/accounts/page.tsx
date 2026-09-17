@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { getMe as getAdminMe } from "@/api/auth";
+import { ImpersonationDialog } from "@/components/ImpersonationDialog";
 import { Users, UserCheck, UserX, Search, Building2, Coins } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
@@ -20,6 +22,9 @@ import { formatDateCN } from "@/lib/utils";
 import { formatCredits } from "@/lib/format";
 
 export default function AccountsPage() {
+  const [actingTarget, setActingTarget] = React.useState<AepUser | null>(null);
+  const [canImpersonate, setCanImpersonate] = React.useState(false);
+  React.useEffect(() => { void getAdminMe().then(u => setCanImpersonate(u.role === "super_admin")).catch(() => setCanImpersonate(false)); }, []);
   const [users, setUsers] = React.useState<AepUser[]>([]);
   const [studios, setStudios] = React.useState<AdminStudio[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -132,6 +137,7 @@ export default function AccountsPage() {
 
   return (
     <div className="admin-page">
+      <ImpersonationDialog user={actingTarget} onClose={() => setActingTarget(null)} />
       <PageHeader
         title="账号 & 经纪公司"
         description="AepUser ↔ Studio 1:1 绑定：登录账号、所属经纪公司 / 工作室、聚合收益与状态。"
@@ -242,6 +248,7 @@ export default function AccountsPage() {
                     <TableCell className="text-xs">{u.lastLoginAt ? formatDateCN(u.lastLoginAt) : "—"}</TableCell>
                     <TableCell><StatusBadge meta={ACCOUNT_STATUS[u.status]} /></TableCell>
                     <TableCell className="text-right">
+                      {canImpersonate && u.status === "active" && <Button size="sm" variant="outline" className="mr-2" onClick={() => setActingTarget(u)}>附身登录</Button>}
                       {u.status === "active" ? (
                         <Button size="sm" variant="destructive" disabled={busyId === u.id} onClick={() => void onSuspend(u)}>
                           {busyId === u.id ? "处理中…" : "停用"}

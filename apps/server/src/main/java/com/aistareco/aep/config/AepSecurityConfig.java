@@ -22,6 +22,7 @@ import com.aistareco.aep.enrollment.config.EnrollmentGuard;
 @EnableMethodSecurity
 public class AepSecurityConfig {
 
+    private final com.aistareco.aep.impersonation.ImpersonationFilter impersonationFilter;
     private final JwtAuthenticationFilter jwtFilter;
     private final InternalAuthFilter internalFilter;
     private final TraceFilter traceFilter;
@@ -35,13 +36,15 @@ public class AepSecurityConfig {
     @Autowired(required = false)
     private DevAutoAuthFilter devAutoAuthFilter;
 
-    public AepSecurityConfig(JwtAuthenticationFilter jwtFilter,
+    public AepSecurityConfig(com.aistareco.aep.impersonation.ImpersonationFilter impersonationFilter,
+                              JwtAuthenticationFilter jwtFilter,
                               InternalAuthFilter internalFilter,
                               TraceFilter traceFilter,
                               ApiOperationLogFilter apiOperationLogFilter,
                               SecurityJsonEntryPoint jsonEntryPoint,
                               SecurityJsonAccessDeniedHandler jsonAccessDeniedHandler,
                               EnrollmentGuard enrollmentGuard) {
+        this.impersonationFilter = impersonationFilter;
         this.jwtFilter = jwtFilter;
         this.internalFilter = internalFilter;
         this.traceFilter = traceFilter;
@@ -171,6 +174,7 @@ public class AepSecurityConfig {
                 .addFilterBefore(traceFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(internalFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(impersonationFilter, JwtAuthenticationFilter.class)
                 .addFilterAfter(apiOperationLogFilter, JwtAuthenticationFilter.class)
                 // v0.149：开通闸挂在 AuthorizationFilter 之前 —— 此时 JWT filter（以及 dev 的
                 // DevAutoAuthFilter）都已跑完，SecurityContext 一定是最终状态；未登录请求由它放行、

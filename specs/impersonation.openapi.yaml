@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: AI Star Eco — administrator impersonation
+  version: 1.0.0
+  description: >-
+    Supplement to specs/openapi.yaml. Only active SUPER_ADMIN staff can start.
+    The resulting session has the target consumer's existing permissions, not read-only
+    restrictions or additional admin privileges. Single-process, non-refreshable sessions.
+servers:
+  - url: /api
+paths:
+  /admin/aep-users/{id}/impersonate:
+    post:
+      operationId: startImpersonation
+      security: [{adminBearer: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product]
+              properties:
+                product: {$ref: '#/components/schemas/Product'}
+      responses:
+        '200':
+          description: Single-use handoff code expires after 60 seconds; response is no-store.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {const: true}
+                  data:
+                    type: object
+                    required: [handoffUrl]
+                    properties:
+                      handoffUrl: {type: string, format: uri}
+        '401': {description: Missing or invalid administrator authentication}
+        '403': {description: Not an active super admin, or target is disabled}
+        '400': {description: Unsupported product or invalid server origin configuration}
+        '429': {description: Single-process session capacity reached}
+  /auth/impersonation/exchange:
+    post:
+      operationId: exchangeImpersonation
+      security: []
+      parameters:
+        - name: Origin
+          in: header
+          required: true
+          schema: {type: string}
+          description: Exact product origin registered in the server configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, product]
+              properties:
+                code: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+                product: {$ref: '#/components/schemas/Product'}
+      responses:
+        '200':
+          description: Consumed handoff. Session expires after 30 minutes, no refresh token.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {const: true}
+                  data: {$ref: '#/components/schemas/Session'}
+        '401': {description: Missing, expired, reused or mismatched handoff code}
+        '403': {description: Administrator privileges removed or target disabled}
+  /auth/impersonation/exit:
+    post:
+      operationId: exitImpersonation
+      security: [{impersonationBearer: []}]
+      responses:
+        '200':
+          description: Idempotent. Removes this session only; normal target sessions remain valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {const: true}
+                  data:
+                    type: object
+                    required: [closed]
+                    properties:
+                      closed: {const: true}
+components:
+  securitySchemes:
+    adminBearer: {type: http, scheme: bearer, bearerFormat: JWT}
+    impersonationBearer: {type: http, scheme: bearer, bearerFormat: opaque}
+  schemas:
+    Product:
+      type: string
+      enum: [drama, music, celebrity, aiavatar, star]
+    Session:
+      type: object
+      required: [token, targetName, product, expiresAt]
+      properties:
+        token: {type: string, pattern: '^imp_[A-Za-z0-9_-]{43}$'}
+        targetName: {type: string}
+        product: {$ref: '#/components/schemas/Product'}
+        expiresAt: {type: string, format: date-time}

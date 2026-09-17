@@ -1,0 +1,101 @@
+name: Impersonation CI
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: impersonation-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: apps/server/pom.xml
+      - name: Media test dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk fontconfig
+      - name: Full server tests and package
+        working-directory: apps/server
+        run: ./mvnw -B -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: impersonation-server-tests
+          path: apps/server/target/surefire-reports/
+          retention-days: 3
+  frontend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck:all
+      - run: pnpm test:all
+      - run: pnpm check:api-contract
+  build-and-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [admin-new, web-music, web-drama, web-celebrity, web-aiavatar, web-star]
+    env:
+      NEXT_PUBLIC_USE_MOCK: '0'
+      NEXT_PUBLIC_AUTH_MODE: id
+      NEXT_PUBLIC_ID_ISSUER: https://id.example.com
+      NEXT_PUBLIC_SERVER_API_BASE: http://127.0.0.1:8080
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ai-star-eco/${{ matrix.product }} build
+      - name: Install isolated browser test dependency
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser-test" --no-package-lock --no-save playwright@1.55.1
+          "$RUNNER_TEMP/browser-test/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify handoff and exit in production pages
+        env:
+          PRODUCT: ${{ matrix.product }}
+        run: |
+          pnpm --filter "@ai-star-eco/$PRODUCT" exec next start -p 3800 > /tmp/impersonation-next.log 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true; cat /tmp/impersonation-next.log' EXIT
+          for i in $(seq 1 60); do
+            if curl --silent --output /dev/null http://127.0.0.1:3800/; then break; fi
+            sleep 1
+          done
+          NODE_PATH="$RUNNER_TEMP/browser-test/node_modules" node scripts/impersonation/browser.cjs "${PRODUCT#web-}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: impersonation-browser-${{ matrix.product }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 3

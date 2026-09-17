@@ -15,6 +15,8 @@
     "./auth-status": "./src/auth-status.ts",
     "./oidc": "./src/oidc.ts",
     "./token-store": "./src/token-store.ts",
+    "./impersonation-session": "./src/impersonation-session.ts",
+    "./impersonation-ui": "./src/impersonation-ui.tsx",
     "./mock-registry": "./src/_mock-registry.ts",
     "./api/auth": "./src/api/auth.ts",
     "./api/account": "./src/api/account.ts"

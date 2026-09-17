@@ -21,6 +21,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { ImpersonationBar } from "./impersonation-ui";
+import { isImpersonating, exitImpersonation, expireImpersonation, isImpersonationCallback, IMPERSONATION_PATH } from "./impersonation-session";
 import { useRouter, usePathname } from "next/navigation";
 import type {
   AepUser,
@@ -128,6 +130,10 @@ export function AuthProvider({
   );
 
   const loadMe = React.useCallback(async () => {
+    if (isImpersonationCallback()) {
+      setUser(null); setStatus("unauthenticated"); setLoading(false);
+      return;
+    }
     const token = getAuthToken();
     if (!token) {
       setUser(null);
@@ -159,6 +165,7 @@ export function AuthProvider({
 
   React.useEffect(() => {
     registerUnauthorizedHandler(() => {
+      if (isImpersonating()) { expireImpersonation(); return true; }
       // 走到这里说明 apiFetch 拿到的是确定的 401（id 模式下还刷新重试过一次）。
       setUser(null);
       setStatus("unauthenticated");
@@ -199,6 +206,10 @@ export function AuthProvider({
 
   React.useEffect(() => {
     if (loading) return;
+    if (isImpersonating()) {
+      if (status === "unauthenticated" && pathname !== IMPERSONATION_PATH) expireImpersonation();
+      return;
+    }
     // status=error（后端不可用）时**绝不**跳登录：那正是登录死循环的入口 ——
     // 回调页刚把人送回来，/api/me 就 502，再跳一次授权只会原地打转。
     if (
@@ -221,6 +232,7 @@ export function AuthProvider({
   }, [loading, status, user, pathname, router, loginPath, isPublicPath]);
 
   const loginAs = React.useCallback(async (username?: string) => {
+    if (isImpersonating()) throw new Error("请先退出附身，再切换登录账号");
     const { user: me } = await AuthApi.devLogin(username);
     setUser(me);
     setStatus("ready");
@@ -228,6 +240,7 @@ export function AuthProvider({
   }, []);
 
   const logout = React.useCallback(() => {
+    if (isImpersonating()) { void exitImpersonation().catch(() => expireImpersonation()); return; }
     setUser(null);
     setStatus("unauthenticated");
     // id 模式：oidcLogout 清令牌后整页跳账号中心登出，返回 true 表示已接管跳转。
@@ -279,7 +292,7 @@ export function AuthProvider({
     children
   );
 
-  return <AuthContext.Provider value={value}>{content}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}><ImpersonationBar />{content}</AuthContext.Provider>;
 }
 
 // ── 「服务暂时不可用」重试屏 ─────────────────────────────────────────────────

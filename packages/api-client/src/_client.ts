@@ -9,6 +9,7 @@
 // docs/unified-identity-plan.md 决策 D9（令牌仍存 localStorage，由 issuer 统一签发）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { isImpersonating, expireImpersonation } from "./impersonation-session";
 import type { ApiResponse, ApiErrorShape } from "@ai-star-eco/types/_shared";
 import { findMockHandler, type MockMethod } from "./_mock-registry";
 import { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK, isIdMode } from "./config";
@@ -217,6 +218,11 @@ export async function apiFetch<T>(
     credentials: "include",
   });
 
+  if (res.status === 401 && token?.startsWith("imp_")) {
+    expireImpersonation();
+    throw new ApiError({ code: "IMPERSONATION_EXPIRED", message: "附身登录已失效，请从后台重新发起" }, 401);
+  }
+
   if (res.status === 401) {
     // id 模式：先单飞刷新一次令牌再重放本次请求（并发 401 共享同一次刷新）。
     // 刷新本身失败但属于暂时故障时，tryIdRefresh 直接抛 503，不会往下走清令牌分支。
@@ -354,6 +360,11 @@ export async function apiFetchPaginated<T>(
     body: body == null ? undefined : typeof body === "string" ? body : JSON.stringify(body),
     signal,
   });
+
+  if (res.status === 401 && token?.startsWith("imp_")) {
+    expireImpersonation();
+    throw new ApiError({ code: "IMPERSONATION_EXPIRED", message: "附身登录已失效，请从后台重新发起" }, 401);
+  }
 
   if (res.status === 401) {
     if (isIdMode() && !__idRetry) {
