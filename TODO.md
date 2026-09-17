@@ -9,6 +9,29 @@
 
 ---
 
+## 2026-09-17 · 例行 QA 巡检（商品链接抓取 SSRF：白名单只卡初始 URL、重定向照跟）
+
+> 本轮同样承接 #102 分支、不新开 PR。开工前查了三仓开着的 routine PR（本仓 #101 SSRF /
+> #102 合集；ai-pilot #50；shequn-gongju 无），复用 #102。用三个子代理对三仓做对抗式复核：
+> shequn-gongju 基本全是静态原型、无可达缺陷；后端 money/auth/幂等面已被历轮打磨得很干净，
+> 仅落一处新确定缺陷（下）。ai-pilot 侧另落两处（settleVideoJob/httpTool，见 PR #50）。
+> 验证：`./mvnw compile` 绿。
+
+- [x] ~~**Medium：抖音商品链接抓取的 SSRF 白名单被重定向绕过**~~
+      （**完成**，2026-09-17）：`DouyinHtmlScrapeHandler` 的 `HttpClient` 建成
+      `followRedirects(NORMAL)`，而 host 白名单（`*.douyin.com` / `*.jinritemai.com`）**只校验了
+      初始 URL**。任一认证用户 `POST /api/me/products/parse-link` 传一个白名单域上的开放重定向
+      链接，服务端就会跟着 302 去请求任意 host —— 例如 `http://169.254.169.254/…`（云元数据）
+      或内网服务；抓回来的 `og:*` / 图片字段还会部分回显进 `ProductLinkInfoDto`，非全盲。
+      与 #101 的 mixcut `AssetDownloader` SSRF 是不同站点（那条是 file_url 零校验，这条是
+      重定向绕过白名单）。修法：`HttpClient` 改 `Redirect.NEVER` + 手动逐跳跟随
+      （`getFollowingWhitelistedRedirects`），**每一跳的目标 host 都重新过白名单、协议必须
+      http(s)、跳数上限 5 防环**——既堵住 SSRF，又保留抖音短链常见的一两跳合法重定向
+      （直接 NEVER 会让合法短链解析失败）。`fetchPromotionDetail` 的固定可信 URL 也改走同一
+      漏斗做纵深防御。`./mvnw compile` 绿。
+
+---
+
 ## 2026-09-16 · 例行 QA 巡检（画布删候选丢参考图真值 + pickColor 负模崩）
 
 > 本轮同样承接 #102 分支、不新开 PR。开工前查了本仓开着的 routine PR（#101 SSRF /

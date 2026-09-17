@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -43,6 +44,8 @@ public class DouyinHtmlScrapeHandler implements ProductLinkHandler {
 
     private static final Logger log = LoggerFactory.getLogger(DouyinHtmlScrapeHandler.class);
     private static final Set<String> DOUYIN_HOSTS = Set.of("jinritemai.com", "douyin.com");
+    // 手动跟随重定向时最多跳几次——抖音短链常见一两跳，5 次足够且防重定向环。
+    private static final int MAX_REDIRECTS = 5;
     private static final String UA =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) "
                     + "Chrome/126.0.0.0 Safari/537.36";
@@ -59,10 +62,63 @@ public class DouyinHtmlScrapeHandler implements ProductLinkHandler {
 
     public DouyinHtmlScrapeHandler(ObjectMapper mapper) {
         this.mapper = mapper;
+        // 不用 HttpClient 自带的自动跟随重定向（NORMAL）：它只在发起时不校验、跟到 30x 的 Location
+        // 就去请求，而下面的 host 白名单只校验了**初始** URL。抖音/精选联盟这种大站上的开放重定向
+        // 一旦被利用，白名单域上的一个 302 就能把服务端导去 169.254.169.254 / 内网地址（SSRF），
+        // 抓回来的 og:* / 图片字段还会部分回显进 DTO。改为 NEVER + 手动逐跳跟随，每一跳的目标 host
+        // 都重新过一遍白名单（见 getFollowingWhitelistedRedirects）。
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
-                .followRedirects(HttpClient.Redirect.NORMAL)
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
+    }
+
+    /** host 是否命中抖音白名单（精确匹配或子域）。每一跳都要过这道闸。 */
+    private static boolean isWhitelistedHost(String host) {
+        if (host == null) return false;
+        return DOUYIN_HOSTS.stream().anyMatch(h -> host.equals(h) || host.endsWith("." + h));
+    }
+
+    /**
+     * 发 GET 并**手动**跟随重定向：每一跳（含初始 URL 与每个 Location）的目标 host 都必须仍在
+     * 抖音白名单内、协议必须是 http(s)，否则立刻拒绝——这样白名单域上的开放重定向就无法把请求
+     * 导去内网 / 云元数据地址（SSRF）。跳数上限 {@link #MAX_REDIRECTS} 防重定向环。
+     */
+    private HttpResponse<String> getFollowingWhitelistedRedirects(URI url, String accept, String referer)
+            throws IOException, InterruptedException {
+        URI current = url;
+        for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
+            if (!isWhitelistedHost(current.getHost())) {
+                throw new IOException("非白名单跳转目标，已拒绝（防 SSRF）：" + current.getHost());
+            }
+            HttpRequest.Builder builder = HttpRequest.newBuilder(current)
+                    .timeout(Duration.ofSeconds(8))
+                    .GET()
+                    .header("User-Agent", UA)
+                    .header("Accept", accept)
+                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+            if (referer != null) builder.header("Referer", referer);
+            HttpResponse<String> res = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            int sc = res.statusCode();
+            if (sc >= 300 && sc < 400) {
+                String location = res.headers().firstValue("Location").orElse(null);
+                if (location == null || location.isBlank()) return res; // 无 Location，交回调用方按非 2xx 处理
+                URI next;
+                try {
+                    next = current.resolve(location); // 支持相对 Location
+                } catch (IllegalArgumentException e) {
+                    throw new IOException("重定向 Location 非法，已拒绝：" + location);
+                }
+                String scheme = next.getScheme();
+                if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
+                    throw new IOException("重定向到非 http(s) 协议，已拒绝：" + next.getScheme());
+                }
+                current = next; // 下一轮循环开头会重新过白名单
+                continue;
+            }
+            return res;
+        }
+        throw new IOException("重定向次数过多，已中止：" + url);
     }
 
     @Override
@@ -70,21 +126,14 @@ public class DouyinHtmlScrapeHandler implements ProductLinkHandler {
         if (url == null) return Optional.empty();
         String host = url.getHost();
         if (host == null) return Optional.empty();
-        boolean douyin = DOUYIN_HOSTS.stream().anyMatch(h -> host.equals(h) || host.endsWith("." + h));
-        if (!douyin) {
+        if (!isWhitelistedHost(host)) {
             // 不在白名单 → 不处理（防 SSRF）；让 chain 继续到下一个 handler 或最终 fail
             return Optional.empty();
         }
 
         try {
-            HttpRequest req = HttpRequest.newBuilder(url)
-                    .timeout(Duration.ofSeconds(8))
-                    .GET()
-                    .header("User-Agent", UA)
-                    .header("Accept", "text/html,application/xhtml+xml")
-                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                    .build();
-            HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> res = getFollowingWhitelistedRedirects(
+                    url, "text/html,application/xhtml+xml", null);
             if (res.statusCode() < 200 || res.statusCode() >= 300) {
                 log.warn("[product-link] douyin scrape non-2xx status={} url={}", res.statusCode(), url);
                 return Optional.empty();
@@ -197,15 +246,8 @@ public class DouyinHtmlScrapeHandler implements ProductLinkHandler {
             String encodedId = URLEncoder.encode(promotionId.get(), StandardCharsets.UTF_8);
             URI apiUrl = URI.create("https://haohuo.jinritemai.com/aweme/v2/shop/promotion/pack/detail/"
                     + "?is_h5=1&promotion_id=" + encodedId);
-            HttpRequest req = HttpRequest.newBuilder(apiUrl)
-                    .timeout(Duration.ofSeconds(8))
-                    .GET()
-                    .header("User-Agent", UA)
-                    .header("Accept", "application/json,text/plain,*/*")
-                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                    .header("Referer", originalUrl.toString())
-                    .build();
-            HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> res = getFollowingWhitelistedRedirects(
+                    apiUrl, "application/json,text/plain,*/*", originalUrl.toString());
             if (res.statusCode() < 200 || res.statusCode() >= 300) {
                 log.warn("[product-link] douyin promotion detail non-2xx status={} url={}", res.statusCode(), apiUrl);
                 return Optional.empty();
