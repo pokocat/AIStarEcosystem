@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { apiFetch } from "@/api/_client";
+import { apiFetch, USE_MOCK } from "@/api/_client";
 import type { AepUser } from "@/types/account";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ export function ImpersonationDialog({ user, onClose }: { user: AepUser | null; o
   React.useEffect(() => { setError(""); }, [user?.id]);
   async function login() {
     if (!user || busy) return;
+    if (USE_MOCK) { setError("演示模式不能附身真实用户，请连接真实后端后重试。"); return; }
     // 在用户点击时打开，避免异步响应后触发浏览器弹窗拦截。
     const tab = window.open("", "_blank");
     if (!tab) { setError("浏览器拦截了新窗口，请允许此站点打开弹窗后重试。"); return; }
@@ -24,6 +25,9 @@ export function ImpersonationDialog({ user, onClose }: { user: AepUser | null; o
       const result = await apiFetch<{ handoffUrl: string }>(`/admin/aep-users/${encodeURIComponent(user.id)}/impersonate`, {
         method: "POST", body: { product },
       });
+      const destination = new URL(result.handoffUrl);
+      if (destination.pathname !== "/auth/callback/impersonation"
+          || !["https:", "http:"].includes(destination.protocol)) throw new Error("登录地址无效，请检查产品配置。");
       if (tab.closed) throw new Error("新窗口已关闭，请重新发起。");
       tab.location.replace(result.handoffUrl);
       onClose();

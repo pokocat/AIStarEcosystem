@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import { ImpersonationBridge } from "@/proto/impersonation-bridge";
+import { ImpersonationBar } from "@ai-star-eco/api-client/impersonation-ui";
 import type { ReactNode } from "react";
 import "../styles/globals.css";
 // AI IP 工作台（桌面面）的样式。放在 globals 之后：它的令牌挂在 .ip-surface 作用域内，
@@ -56,8 +58,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONTS_HREF} />
         {/* 桌面顶栏（桌面形态才显示；公开名片页与登录页不挂）—— 见 shell/app-chrome.tsx */}
-        <AppChrome />
-        {children}
+        <ImpersonationBridge>
+          <AppChrome />
+          <ImpersonationBar />
+          {children}
+        </ImpersonationBridge>
       </body>
     </html>
   );

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { API_BASE_URL } from "./config";
-import { exitImpersonation, getImpersonation, setImpersonation, type ImpersonationSession } from "./impersonation-session";
+import { exitImpersonation, getImpersonation, setImpersonation, validImpersonation, type ImpersonationSession } from "./impersonation-session";
 
 export function ImpersonationBar() {
   const [session, setSession] = React.useState<ImpersonationSession | null>(null);
@@ -15,7 +15,7 @@ export function ImpersonationBar() {
     padding: "12px 16px", borderRadius: 10, background: "#213c31", color: "#fff", boxShadow: "0 4px 18px #0003", fontSize: 13 }}>
     <div style={{ overflowWrap: "anywhere" }}>正在以 <strong>{session.targetName}</strong> 操作</div>
     <div style={{ marginTop: 4 }}>权限、权益和扣费与该用户一致。</div>
-    <button type="button" disabled={busy} style={{ marginTop: 8, padding: "6px 12px", cursor: "pointer" }}
+    <button type="button" disabled={busy} style={{ marginTop: 8, minHeight: 44, padding: "6px 12px", cursor: "pointer" }}
       onClick={() => { setBusy(true); setError(""); void exitImpersonation().catch(e => { setError(e.message); setBusy(false); }); }}>
       {busy ? "正在退出…" : "退出附身"}
     </button>
@@ -32,14 +32,14 @@ export function ImpersonationLogin({ product }: { product: string }) {
     ran.current = true;
     const code = new URLSearchParams(window.location.hash.slice(1)).get("code");
     window.history.replaceState(null, "", window.location.pathname);
-    if (!code) { setError("附身链接已失效，请从后台账号列表重新发起。"); return; }
+    if (!code || !/^[A-Za-z0-9_-]{43}$/.test(code)) { setError("附身链接已失效，请从后台账号列表重新发起。"); return; }
     void (async () => {
       const response = await fetch(`${API_BASE_URL}/auth/impersonation/exchange`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, product }), cache: "no-store",
+        body: JSON.stringify({ code, product }), cache: "no-store", signal: AbortSignal.timeout(15000),
       });
       const body = await response.json();
-      if (!response.ok || body.success !== true || !body.data?.token?.startsWith("imp_")
+      if (!response.ok || body.success !== true || !validImpersonation(body.data)
           || body.data.product !== product) throw new Error(body.error?.message || "附身登录失败，请从后台重试。");
       setImpersonation(body.data);
       window.location.replace("/dashboard");

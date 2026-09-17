@@ -45,7 +45,7 @@ public class ImpersonationFilter extends OncePerRequestFilter {
         AepUser user = acting.user();
         String role = user.getKind() == null ? "PERSONAL" : user.getKind().name();
         var auth = new UsernamePasswordAuthenticationToken(user.getId(), null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
-        auth.setDetails(Map.of("username", user.getUsername(), "role", role, "impersonation", true, "actorId", acting.actorId()));
+        auth.setDetails(Map.of("username", user.getUsername() == null ? "" : user.getUsername(), "role", role, "impersonation", true, "actorId", acting.actorId()));
         SecurityContextHolder.getContext().setAuthentication(auth);
         response.setHeader("Cache-Control", "no-store");
         try { chain.doFilter(request, response); }

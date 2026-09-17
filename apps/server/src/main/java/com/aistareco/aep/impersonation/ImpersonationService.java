@@ -76,15 +76,22 @@ public class ImpersonationService {
         Session session = new Session(ticket.actor(), ticket.targetId(), product, clock.instant().plusSeconds(1800));
         sessions.put(hash(token), session);
         record("admin.impersonation.enter", session, request);
-        return new LoggedIn(token, target.getDisplayName() == null ? target.getUsername() : target.getDisplayName(),
+        return new LoggedIn(token, target.getDisplayName() != null ? target.getDisplayName()
+                : (target.getUsername() != null ? target.getUsername() : target.getId()),
                 product, session.expiresAt());
     }
     public synchronized Acting authenticate(String token) {
+        if (token == null || !token.matches("imp_[A-Za-z0-9_-]{43}")) throw expired();
         Session session = sessions.get(hash(token));
         if (session == null) throw expired();
         if (!session.expiresAt().isAfter(clock.instant())) { sessions.remove(hash(token)); throw expired(); }
-        requireAdmin(session.actor());
-        return new Acting(target(session.targetId()), session.actor().id(), session.actor().source());
+        try {
+            requireAdmin(session.actor());
+            return new Acting(target(session.targetId()), session.actor().id(), session.actor().source());
+        } catch (BusinessException e) {
+            sessions.remove(hash(token));
+            throw expired();
+        }
     }
     public synchronized void exit(String token, HttpServletRequest request) {
         if (token == null || !token.startsWith(TOKEN_PREFIX)) return;
