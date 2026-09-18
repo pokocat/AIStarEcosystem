@@ -143,12 +143,23 @@ exp   iat + 3600（可按客户端下调）
 iat / jti / sid
 amr   ["sms"] | ["wx"] | ["pwd"] | ["refresh"]
 phone_verified   boolean
+name             昵称。**每个账号都有**（建号即生成，见下），不按 scope 门控
+picture          头像 URL，可能不带（用户没授权过微信资料时就没有，不发空串）
 wx_openid        仅当客户端绑定了 appid 且该 uid 有对应 openid 时带（微信支付 JSAPI 用）
 ```
 
 **不带**：手机号（隐私，走 `/userinfo` scope `phone`）、已开通产品列表（D13）、产品角色。
 
-ID token 标准 claims + `phone_verified`。Refresh token 不透明。
+ID token 标准 claims + `phone_verified` + `name` / `picture`。Refresh token 不透明。
+
+**昵称是账号中心的唯一真源**（aibuzz-id README §22）。产品**不要**自己生成显示名 ——
+以前 JIT 建档只写 `username = id_<uid 前 12 位>`，界面回落到那串 `id_xxxx`，
+结果同一个人在每个产品里叫的名字都不一样。现在 `JwtAuthenticationFilter` 取
+`name` / `picture` 交给 `IdentityProvisioningService.syncFromIdentityToken`，
+写进 `aep_users.display_name` / `avatar_url`；`username` 退化成纯内部登录名，不再拿来显示。
+
+令牌没带这两个 claim（老版本账号中心签的）时**保留本地已有的值**，
+不要拿 null 去清空 —— 那会让界面上的名字忽然消失。
 
 ### 4.4 账号中心自有 API
 

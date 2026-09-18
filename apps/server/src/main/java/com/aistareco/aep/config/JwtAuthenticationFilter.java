@@ -213,11 +213,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 是随本次改动一起出现的，更早的令牌不可能属于游客。
         Boolean claim = jwt.getClaim("phone_verified");
         boolean phoneVerified = claim == null || claim;
+        // 昵称与头像同样以账号中心为准（OIDC 标准 claim）。本地 displayName / avatarUrl
+        // 以前没有任何来源，界面只能显示 JIT 建档时那串 id_xxxx，或各产品自己编一个。
+        // 令牌没带这两个（老版本账号中心）时是 null，下面会保留本地已有的值，不会清空。
+        String name = jwt.getClaimAsString("name");
+        String picture = jwt.getClaimAsString("picture");
         try {
-            provisioningService.syncPhoneVerified(user.getId(), phoneVerified);
+            provisioningService.syncFromIdentityToken(user.getId(), phoneVerified, name, picture);
         } catch (RuntimeException e) {
-            // 回填只影响 /api/me 的展示，失败不该让登录失败（闸门读的是下面这份 details）。
-            log.warn("[auth] 回填手机号验证状态失败 uid={} localUserId={} err={}",
+            // 回填只影响展示，失败不该让登录失败（闸门读的是下面这份 details）。
+            log.warn("[auth] 回填账号中心身份字段失败 uid={} localUserId={} err={}",
                     uid, user.getId(), e.toString());
         }
 
