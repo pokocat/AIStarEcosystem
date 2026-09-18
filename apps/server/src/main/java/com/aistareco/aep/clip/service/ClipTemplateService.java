@@ -240,8 +240,26 @@ public class ClipTemplateService {
     }
     public static int duration(Map<String,Object> skeleton) {
         int total = 0;
-        for (Map<String,Object> row : com.aistareco.aep.clip.dto.ClipDtos.mapListValue(skeleton == null ? null : skeleton.get("segments"))) total += ClipProjectService.seconds(row);
+        for (Map<String,Object> row : com.aistareco.aep.clip.dto.ClipDtos.mapListValue(skeleton == null ? null : skeleton.get("segments"))) total += templateSeconds(row);
         return total;
+    }
+    /**
+     * 模板估时的每段秒数。与计费用的 {@link ClipProjectService#seconds} 只差一处：
+     * 非结尾段在没有实测时长（{@code actualDurationSec}）时，优先认模板骨架里保留下来的
+     * {@code durationSec} —— 那是存模板时特意留下的「写作约束」。
+     *
+     * <p>存模板时 {@code keepText=false} 会清空正文，而 {@code actualDurationSec} 又不进模板骨架
+     * （白名单只留 {@code durationSec}/{@code targetChars}），于是只靠 {@code seconds} 的
+     * 「字数/4」兜底会把每个非结尾段塌成 1 秒，整条模板的预计时长凭空缩水（本 QA 巡检定位）。
+     * 计费不受影响：计费仍直接走 {@code seconds}（按实测/字数，不认用户填的目标时长）。
+     */
+    private static int templateSeconds(Map<String,Object> row) {
+        boolean hasActual = row.get("actualDurationSec") instanceof Number a && a.doubleValue() > 0;
+        if (!"tail".equals(String.valueOf(row.get("role"))) && !hasActual
+                && row.get("durationSec") instanceof Number n && n.doubleValue() > 0) {
+            return Math.max(1, (int) Math.round(n.doubleValue()));
+        }
+        return ClipProjectService.seconds(row);
     }
     private static boolean blank(String value) { return value == null || value.isBlank(); }
 }
