@@ -100,6 +100,10 @@ public final class ProductRouteTable {
             "/api/notifications",
             // 军师 BFF 的 clip 域：service token + externalOwnerId，不是本仓用户身份
             "/api/me/clip",
+            // 军师运营后台的 clip 运营面：同样是 service token，主体不是本仓用户。
+            // 开通（enrollment）是「某个用户开通了某个子产品」，对机器主体没有意义，
+            // 所以归产品无关白名单，而不是映射到某个产品。
+            "/api/service/clip",
             // 认证 / 后台 / 内部 / 公共配置 / 支付回调
             "/api/auth",
             "/api/admin",

@@ -32,7 +32,11 @@ CREATE TABLE clip_pricing (
     updated_by VARCHAR(128),
     updated_at DATETIME(3) NOT NULL,
     created_at DATETIME(3) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+);
+-- 刻意不写 ENGINE / CHARSET / COLLATE 子句：本仓 34 个迁移里只有这一条写过，
+-- 而 H2 不认（"expected identifier"），凡是跑 Flyway 的测试全部起不来。
+-- 生产库 aistareco 的默认值本来就是 InnoDB + utf8mb4 + utf8mb4_unicode_ci，
+-- 省掉子句建出的表与原来逐字段一致（已比对线上 information_schema）。
 
 -- 刻意**不**插初始行。空表 = 运营没核定过 = 回落 application.yml 的值，
 -- 后台据此显示「当前是配置兜底价，尚未核定」。在这里 seed 一行就等于替运营做了定价决定。
