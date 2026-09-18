@@ -63,6 +63,9 @@ import java.util.Set;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    /** 鉴权上下文 {@code details} 里放手机号验证状态的键，{@code PhoneVerificationGuard} 读它。 */
+    public static final String PHONE_VERIFIED_DETAIL = "phoneVerified";
+
     private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -154,7 +157,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         userId, role);
             }
         }
-        applyAuthentication(userId, username, role, adminToken);
+        // legacy HS256 定义上不可能是「微信游客」：游客只由账号中心的微信登录建出来，
+        // 而账号中心从不签 HS256。所以这条链路一律按「已验证」处理，不进只读闸门。
+        applyAuthentication(userId, username, role, adminToken, true);
     }
 
     // -------------------------------------------------------------- identity RS256
@@ -203,17 +208,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return true;
         }
 
+        // 手机号是否已验证 —— 真值在令牌里，本地那份只是给 /api/me 用的副本。
+        // 缺这个 claim（老版本账号中心签的令牌）按「已验证」处理：微信游客这个概念
+        // 是随本次改动一起出现的，更早的令牌不可能属于游客。
+        Boolean claim = jwt.getClaim("phone_verified");
+        boolean phoneVerified = claim == null || claim;
+        try {
+            provisioningService.syncPhoneVerified(user.getId(), phoneVerified);
+        } catch (RuntimeException e) {
+            // 回填只影响 /api/me 的展示，失败不该让登录失败（闸门读的是下面这份 details）。
+            log.warn("[auth] 回填手机号验证状态失败 uid={} localUserId={} err={}",
+                    uid, user.getId(), e.toString());
+        }
+
         // RS256 令牌只按账号类型派权限，永不映射后台角色。
         String role = user.getKind() == null
                 ? AepUser.AccountKind.PERSONAL.name()
                 : user.getKind().name();
-        applyAuthentication(user.getId(), user.getUsername(), role, false);
+        applyAuthentication(user.getId(), user.getUsername(), role, false, phoneVerified);
         return false;
     }
 
     // -------------------------------------------------------------- shared
 
-    private void applyAuthentication(String userId, String username, String role, boolean adminToken) {
+    private void applyAuthentication(String userId, String username, String role, boolean adminToken,
+                                     boolean phoneVerified) {
         List<SimpleGrantedAuthority> authorities;
         if (role == null || role.isBlank()) {
             authorities = List.of();
@@ -227,6 +246,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         Map<String, Object> details = new HashMap<>();
         if (username != null && !username.isBlank()) details.put("username", username);
         if (role != null && !role.isBlank()) details.put("role", role);
+        // PhoneVerificationGuard 据此拦写操作；两条认证链路都显式写，不留「缺省」这一档。
+        details.put(PHONE_VERIFIED_DETAIL, phoneVerified);
         auth.setDetails(details);
         SecurityContextHolder.getContext().setAuthentication(auth);
     }

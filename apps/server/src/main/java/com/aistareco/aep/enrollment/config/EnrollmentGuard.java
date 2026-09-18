@@ -154,7 +154,8 @@ public class EnrollmentGuard extends OncePerRequestFilter {
 
     // ── 路由映射 ──────────────────────────────────────────────────────────────
 
-    static String pathOf(HttpServletRequest request) {
+    /** 提为 public：{@code PhoneVerificationGuard} 与本闸门必须对「这是哪条路径」有同一个答案。 */
+    public static String pathOf(HttpServletRequest request) {
         String uri = request.getRequestURI();
         String ctx = request.getContextPath();
         if (ctx != null && !ctx.isEmpty() && uri.startsWith(ctx)) {
