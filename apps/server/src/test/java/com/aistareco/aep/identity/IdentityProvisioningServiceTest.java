@@ -141,6 +141,74 @@ class IdentityProvisioningServiceTest {
         verify(inserter, org.mockito.Mockito.never()).insert(anyString(), anyString());
     }
 
+    // ── 从账号中心令牌回填身份字段（昵称 / 头像 / 手机号验证位）──────────────────
+
+    /**
+     * 昵称与头像来自账号中心，不再各产品自己编（aibuzz-id README §22）。
+     *
+     * <p>以前 JIT 建档只写 {@code username = id_<uid 前 12 位>}，{@code displayName}
+     * 一直是空的，界面只能显示那串 {@code id_xxxx} —— 同一个人在每个产品里叫的名字都不一样。
+     */
+    @Test
+    void syncFromIdentityToken_writesNicknameAndAvatar() {
+        AepUser user = existingLocalUser();
+
+        service.syncFromIdentityToken(user.getId(), true, "静谧山雀418", "https://cdn/x.png");
+
+        assertThat(user.getDisplayName()).isEqualTo("静谧山雀418");
+        assertThat(user.getAvatarUrl()).isEqualTo("https://cdn/x.png");
+        assertThat(user.isPhoneVerified()).isTrue();
+        verify(repo).save(user);
+    }
+
+    /**
+     * 令牌没带这两个 claim（老版本账号中心签的）时<b>保留</b>本地已有的值。
+     *
+     * <p>拿 null 去清空的后果是：一个老令牌的请求过来，界面上的名字就忽然消失了。
+     */
+    @Test
+    void syncFromIdentityToken_withoutTheClaims_keepsWhatIsAlreadyThere() {
+        AepUser user = existingLocalUser();
+        user.setDisplayName("原来的名字");
+        user.setAvatarUrl("https://cdn/old.png");
+
+        service.syncFromIdentityToken(user.getId(), true, null, "   ");
+
+        assertThat(user.getDisplayName()).isEqualTo("原来的名字");
+        assertThat(user.getAvatarUrl()).isEqualTo("https://cdn/old.png");
+    }
+
+    /**
+     * 什么都没变就<b>不写库</b>。
+     *
+     * <p>这个方法每个请求都会被调到，无条件 save 等于给每次 API 调用加一次 UPDATE。
+     */
+    @Test
+    void syncFromIdentityToken_withNothingChanged_doesNotWrite() {
+        AepUser user = existingLocalUser();
+        user.setDisplayName("静谧山雀418");
+        user.setAvatarUrl("https://cdn/x.png");
+        user.setPhoneVerified(true);
+
+        service.syncFromIdentityToken(user.getId(), true, "静谧山雀418", "https://cdn/x.png");
+
+        verify(repo, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    private AepUser existingLocalUser() {
+        AepUser user = AepUser.builder()
+                .id("local-1")
+                .username("id_abcdef123456")
+                .kind(AepUser.AccountKind.PERSONAL)
+                .status(AepUser.UserStatus.ACTIVE)
+                .platforms("")
+                .identityUid("U-1")
+                .createdAt(Instant.now())
+                .build();
+        when(repo.findById("local-1")).thenReturn(Optional.of(user));
+        return user;
+    }
+
     /** 单测不装 EnrollmentService：ObjectProvider 返回空，JIT 后的开通策略静默跳过。 */
     private static org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.enrollment.service.EnrollmentService> noEnrollment() {
         return new org.springframework.beans.factory.support.DefaultListableBeanFactory()

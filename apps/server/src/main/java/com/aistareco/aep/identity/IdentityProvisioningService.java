@@ -94,25 +94,54 @@ public class IdentityProvisioningService {
     }
 
     /**
-     * 把账号中心令牌里的 {@code phone_verified} 同步到本地档案。
+     * 把账号中心令牌里的身份字段同步到本地档案：{@code phone_verified} + 昵称 + 头像。
      *
-     * <p>本地 {@code phoneVerified} 在 JIT 建档时一律写 {@code false}
-     * （{@link IdentityUserInserter}），此前没有任何地方回填它 —— 于是
-     * {@code /api/me} 对所有账号中心用户都报「未验证」。前端要靠这个字段决定
-     * 该不该提示绑定手机号，所以这里按令牌回填。
+     * <p><b>账号中心是这三样的唯一真源</b>，本地这份只是给 {@code /api/me} 和界面用的副本。
      *
-     * <p><b>只在值变了才写</b>：否则每个请求都要写一次库。真值始终是令牌里的 claim，
-     * 本地这份只是给 {@code /api/me} 用的副本。
+     * <ul>
+     *   <li>{@code phoneVerified} 在 JIT 建档时一律写 {@code false}
+     *       （{@link IdentityUserInserter}），此前没有任何地方回填 —— 于是 {@code /api/me}
+     *       对所有账号中心用户都报「未验证」，前端据此永远提示绑定手机号。</li>
+     *   <li><b>昵称 / 头像此前根本没有来源</b>。JIT 建档只写一个
+     *       {@code username = id_<uid 前 12 位>}，{@code displayName} / {@code avatarUrl} 留空，
+     *       界面只好回落到那串 {@code id_xxxx}，或者各产品自己编一个 ——
+     *       同一个人在每个产品里叫的名字都不一样。现在统一取令牌里的
+     *       {@code name} / {@code picture}。</li>
+     * </ul>
+     *
+     * <p><b>一次读、只在真的变了才写</b>：这个方法每个请求都会被调到，
+     * 无条件写库等于给每次 API 调用加一次 UPDATE。
+     *
+     * <p>{@code name} / {@code picture} 为空表示「这次令牌没带」（老版本账号中心签的令牌），
+     * 此时<b>保留</b>本地已有的值，不要拿 null 去清空 —— 那会让界面上的名字忽然消失。
      */
     @Transactional
-    public void syncPhoneVerified(String localUserId, boolean phoneVerified) {
+    public void syncFromIdentityToken(String localUserId, boolean phoneVerified,
+                                      String name, String picture) {
         userRepo.findById(localUserId).ifPresent(user -> {
-            if (user.isPhoneVerified() == phoneVerified) return;
-            user.setPhoneVerified(phoneVerified);
-            userRepo.save(user);
-            log.info("[identity] 回填手机号验证状态 localUserId={} phoneVerified={}",
-                    localUserId, phoneVerified);
+            boolean changed = false;
+            if (user.isPhoneVerified() != phoneVerified) {
+                user.setPhoneVerified(phoneVerified);
+                changed = true;
+                log.info("[identity] 回填手机号验证状态 localUserId={} phoneVerified={}",
+                        localUserId, phoneVerified);
+            }
+            if (isPresent(name) && !name.equals(user.getDisplayName())) {
+                user.setDisplayName(name);
+                changed = true;
+            }
+            if (isPresent(picture) && !picture.equals(user.getAvatarUrl())) {
+                user.setAvatarUrl(picture);
+                changed = true;
+            }
+            if (changed) {
+                userRepo.save(user);
+            }
         });
+    }
+
+    private static boolean isPresent(String value) {
+        return value != null && !value.isBlank();
     }
 
     private void grantForNewUserSafely(String localUserId) {
