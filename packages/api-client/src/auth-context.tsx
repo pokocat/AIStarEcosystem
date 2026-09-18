@@ -21,6 +21,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { ImpersonationBar } from "./impersonation-ui";
+import { isImpersonating, exitImpersonation, expireImpersonation, isImpersonationCallback, IMPERSONATION_PATH } from "./impersonation-session";
 import { useRouter, usePathname } from "next/navigation";
 import type {
   AepUser,
@@ -32,6 +34,7 @@ import {
   getAuthToken,
   registerEnrollmentRequiredHandler,
   registerUnauthorizedHandler,
+  registerPhoneVerificationRequiredHandler,
   setAppCode,
 } from "./_client";
 import { isIdMode } from "./config";
@@ -128,6 +131,10 @@ export function AuthProvider({
   );
 
   const loadMe = React.useCallback(async () => {
+    if (isImpersonationCallback()) {
+      setUser(null); setStatus("unauthenticated"); setLoading(false);
+      return;
+    }
     const token = getAuthToken();
     if (!token) {
       setUser(null);
@@ -159,6 +166,7 @@ export function AuthProvider({
 
   React.useEffect(() => {
     registerUnauthorizedHandler(() => {
+      if (isImpersonating()) { expireImpersonation(); return true; }
       // 走到这里说明 apiFetch 拿到的是确定的 401（id 模式下还刷新重试过一次）。
       setUser(null);
       setStatus("unauthenticated");
@@ -185,6 +193,17 @@ export function AuthProvider({
     return () => registerEnrollmentRequiredHandler(null);
   }, [loadMe]);
 
+  // 403 PHONE_VERIFICATION_REQUIRED：微信游客（只有微信、没绑手机号）发起写操作 →
+  // 整页跳到账号中心的绑定入口。地址由后端随 403 给出，前端不硬编码域名；
+  // 后端没给（issuer 没配）时什么都不做，让调用方自己处理这个 ApiError。
+  React.useEffect(() => {
+    registerPhoneVerificationRequiredHandler((bindUrl) => {
+      if (!bindUrl || typeof window === "undefined") return;
+      window.location.assign(bindUrl);
+    });
+    return () => registerPhoneVerificationRequiredHandler(null);
+  }, []);
+
   // 在首个请求前注入 X-App-Code（v0.149 起后端共享路由按它判定产品，缺头 403 APP_CODE_REQUIRED）。
   // 必须在**渲染期**设置而不是 useEffect：React 先跑子组件的 effect 再跑父组件的，仪表盘各卡片的
   // 数据请求会抢在 Provider 的 effect 之前发出。useMemo 在 render 阶段同步执行，且幂等（只写模块变量）。
@@ -199,6 +218,10 @@ export function AuthProvider({
 
   React.useEffect(() => {
     if (loading) return;
+    if (isImpersonating()) {
+      if (status === "unauthenticated" && pathname !== IMPERSONATION_PATH) expireImpersonation();
+      return;
+    }
     // status=error（后端不可用）时**绝不**跳登录：那正是登录死循环的入口 ——
     // 回调页刚把人送回来，/api/me 就 502，再跳一次授权只会原地打转。
     if (
@@ -221,6 +244,7 @@ export function AuthProvider({
   }, [loading, status, user, pathname, router, loginPath, isPublicPath]);
 
   const loginAs = React.useCallback(async (username?: string) => {
+    if (isImpersonating()) throw new Error("请先退出附身，再切换登录账号");
     const { user: me } = await AuthApi.devLogin(username);
     setUser(me);
     setStatus("ready");
@@ -228,6 +252,7 @@ export function AuthProvider({
   }, []);
 
   const logout = React.useCallback(() => {
+    if (isImpersonating()) { void exitImpersonation().catch(() => expireImpersonation()); return; }
     setUser(null);
     setStatus("unauthenticated");
     // id 模式：oidcLogout 清令牌后整页跳账号中心登出，返回 true 表示已接管跳转。
@@ -279,7 +304,7 @@ export function AuthProvider({
     children
   );
 
-  return <AuthContext.Provider value={value}>{content}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}><ImpersonationBar />{content}</AuthContext.Provider>;
 }
 
 // ── 「服务暂时不可用」重试屏 ─────────────────────────────────────────────────

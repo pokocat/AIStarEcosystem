@@ -23,6 +23,9 @@ export {
   registerEnrollmentRequiredHandler,
   isProductNotEnrolledError,
   PRODUCT_NOT_ENROLLED,
+  PHONE_VERIFICATION_REQUIRED,
+  registerPhoneVerificationRequiredHandler,
+  isPhoneVerificationRequiredError,
   // 刷新令牌时后端不可用（P1-8）：可重试，不等于没登录
   isAuthRefreshUnavailableError,
   AUTH_REFRESH_UNAVAILABLE,

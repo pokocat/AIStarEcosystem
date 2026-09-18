@@ -9,6 +9,7 @@
 // docs/unified-identity-plan.md 决策 D9（令牌仍存 localStorage，由 issuer 统一签发）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { isImpersonating, expireImpersonation } from "./impersonation-session";
 import type { ApiResponse, ApiErrorShape } from "@ai-star-eco/types/_shared";
 import { findMockHandler, type MockMethod } from "./_mock-registry";
 import { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK, isIdMode } from "./config";
@@ -155,6 +156,37 @@ export function isProductNotEnrolledError(e: unknown): e is ApiError {
   return e instanceof ApiError && e.code === PRODUCT_NOT_ENROLLED;
 }
 
+/** 后端「未绑手机号，只读」错误码（apps/server/README.md §3.5）。 */
+export const PHONE_VERIFICATION_REQUIRED = "PHONE_VERIFICATION_REQUIRED";
+
+/**
+ * 403 `PHONE_VERIFICATION_REQUIRED` 回调 —— 由 AuthProvider 注册。
+ *
+ * 微信游客（账号只有微信、没有手机号）发起写操作时触发。绑定入口在账号中心，
+ * 地址由后端随 403 一起给（`error.details.bindUrl`），前端不硬编码域名。
+ */
+type PhoneVerificationRequiredHandler = (bindUrl: string | null) => void;
+let phoneVerificationRequiredHandler: PhoneVerificationRequiredHandler | null = null;
+export function registerPhoneVerificationRequiredHandler(
+  fn: PhoneVerificationRequiredHandler | null,
+) {
+  phoneVerificationRequiredHandler = fn;
+}
+
+/** 判定一个异常是不是「未绑手机号」。 */
+export function isPhoneVerificationRequiredError(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.code === PHONE_VERIFICATION_REQUIRED;
+}
+
+/** 从 403 响应体里取出绑定入口（`error.details.bindUrl`），取不到返回 null。 */
+function readBindUrl(details: unknown): string | null {
+  if (details && typeof details === "object" && "bindUrl" in details) {
+    const u = (details as { bindUrl?: unknown }).bindUrl;
+    if (typeof u === "string" && u) return u;
+  }
+  return null;
+}
+
 /** 从 403 响应体里取出产品短码（`error.details.product`），取不到返回 null。 */
 function readEnrollmentProduct(details: unknown): string | null {
   if (details && typeof details === "object" && "product" in details) {
@@ -216,6 +248,11 @@ export async function apiFetch<T>(
     signal,
     credentials: "include",
   });
+
+  if (res.status === 401 && token?.startsWith("imp_")) {
+    expireImpersonation();
+    throw new ApiError({ code: "IMPERSONATION_EXPIRED", message: "附身登录已失效，请从后台重新发起" }, 401);
+  }
 
   if (res.status === 401) {
     // id 模式：先单飞刷新一次令牌再重放本次请求（并发 401 共享同一次刷新）。
@@ -296,6 +333,9 @@ export async function apiFetch<T>(
     if (res.status === 403 && err.code === PRODUCT_NOT_ENROLLED) {
       enrollmentRequiredHandler?.(readEnrollmentProduct(err.details));
     }
+    if (res.status === 403 && err.code === PHONE_VERIFICATION_REQUIRED) {
+      phoneVerificationRequiredHandler?.(readBindUrl(err.details));
+    }
     throw new ApiError(err, res.status);
   }
 
@@ -355,6 +395,11 @@ export async function apiFetchPaginated<T>(
     signal,
   });
 
+  if (res.status === 401 && token?.startsWith("imp_")) {
+    expireImpersonation();
+    throw new ApiError({ code: "IMPERSONATION_EXPIRED", message: "附身登录已失效，请从后台重新发起" }, 401);
+  }
+
   if (res.status === 401) {
     if (isIdMode() && !__idRetry) {
       const refreshed = await tryIdRefresh();
@@ -391,6 +436,9 @@ export async function apiFetchPaginated<T>(
     };
     if (res.status === 403 && err.code === PRODUCT_NOT_ENROLLED) {
       enrollmentRequiredHandler?.(readEnrollmentProduct(err.details));
+    }
+    if (res.status === 403 && err.code === PHONE_VERIFICATION_REQUIRED) {
+      phoneVerificationRequiredHandler?.(readBindUrl(err.details));
     }
     throw new ApiError(err, res.status);
   }
