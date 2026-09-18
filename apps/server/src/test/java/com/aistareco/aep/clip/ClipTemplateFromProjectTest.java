@@ -146,6 +146,21 @@ class ClipTemplateFromProjectTest {
         assertEquals(3, segs.size());
     }
 
+    /**
+     * 留下的 durationSec 写作约束必须真的被用到预计时长上。
+     *
+     * <p>keepText=false 清空正文，而 actualDurationSec 不进模板骨架 —— 此时 durationSec 是每段
+     * 时长的唯一来源。原先估时只认「字数/4」，正文一空就把每个非结尾段塌成 1 秒
+     * （6+4+5 → 1+1+5），模板卡上的预计时长凭空缩水。留不留正文，预计时长都应当一致。
+     */
+    @Test
+    void estimatesDurationFromKeptConstraintsEvenWhenTextStripped() {
+        TemplateDto kept = service.publishFromProject("op1", "cp1", null, "n", "i", "k", "d", true);
+        TemplateDto stripped = service.publishFromProject("op1", "cp1", null, "n", "i", "k", "d", false);
+        assertEquals(15, kept.estDurationSec(), "预计时长应按 durationSec 写作约束求和（6+4+5）");
+        assertEquals(15, stripped.estDurationSec(), "清空正文后预计时长塌了 —— durationSec 写作约束没被用上");
+    }
+
     // 存模板和上架是两个决定。直接 published 的话，一次手滑就推给了全平台每一个用户。
     @Test
     void alwaysLandsAsDraftNeverPublished() {
