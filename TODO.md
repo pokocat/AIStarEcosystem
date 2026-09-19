@@ -9,6 +9,46 @@
 
 ---
 
+## 2026-09-19 · 例行 QA 巡检（成片/音频/分镜下载：非 2xx 分支漏关 HttpClient 连接）
+
+> 本轮同样承接 #102 分支、不新开 PR。开工前查了三仓开着的 routine PR（本仓 #101/#102/#106；
+> ai-pilot #49/#50；shequn-gongju 无），复用 #102（本仓）与 #50（ai-pilot）。两个子代理对本仓
+> server 与 ai-pilot server 做对抗式复核：money/auth/幂等/IDOR 面历轮已很干净。历轮「资源关闭」
+> 复核只覆盖用户端 controller，未覆盖 worker 侧的成片/音频/分镜下载助手——本轮补上。
+> 验证：`./mvnw compile` 绿；`DramaAssembleServiceTest` / `DramaShortAssembleServiceTest` 回归绿。
+
+- [x] ~~**Low：四处 `HttpResponse<InputStream>` 下载在非 2xx / 超限分支漏关 body → 连接泄漏**~~
+      （**完成**，2026-09-19）：`DramaShortAssembleService.download`（约 L452）、
+      `DramaAssembleService.download`（约 L220）、`ClipOutputStorage.persist`（约 L53）、
+      `MusicOutputStorage.persist`（约 L71）都用 `BodyHandlers.ofInputStream()`，其 body 必须显式
+      关闭才释放底层连接；旧代码在读 body 之前就对非 2xx（及 clip/music 的 content-length 超限）
+      直接 `throw`，成功路径的 try-with-resources 只覆盖正常分支——错误分支漏关。上游反复 4xx/5xx
+      （典型：§4.7.7 签名 URL 过期 403）会逐次泄漏连接，最终耗尽 JDK HttpClient 连接池、后续下载
+      挂起/失败。修法：把 `response.body()` 收进覆盖状态/大小校验的 try-with-resources，任何分支
+      （含 throw）都走 close，交付语义与产物不变。**未加专门的泄漏回归测试**：四处 HttpClient 均在
+      类内自建、非注入，写 close 断言需改生产代码做依赖注入，收益不抵风险；本轮以编译 + 既有
+      assemble 测试（成功路径不回归）+ 代码审阅（t-w-r 覆盖全部退出路径）确认，如实记此限制。
+
+- [ ] **Medium：`DramaShort.payloadJson` 请求线程间并发丢更新（无 `@Version`/行锁）**
+      （本轮复核发现，未修）：`DramaShort` 实体无乐观锁列、仓库无 `@Lock`。多条写路径对整存整取的
+      `payloadJson` 做读-改-写：`DramaShortAssembleService.assemble`（读 L104、写回 L118/L239，中间
+      隔着数秒 ffmpeg+上传）、`DramaShortService.save`（L293）、`DramaShortAudioService.prepare`
+      （L101）。一次 `PUT` 保存若落在某次 assemble 进行中，二者互相覆盖（丢用户编辑，或丢已合成结果）。
+      与 #102 已修的 `ClipProject` 是同一类（丢更新），但这里是**请求线程 vs 请求线程**（已确认无
+      `@Async`/`@Scheduled` worker 写 `DramaShort.payloadJson`——视频 worker 只写
+      `MaterialVideoJob.payloadJson`）。**未直接修**：简单加行锁会让锁横跨整段 ffmpeg（长事务/长持锁，
+      更糟）；正确修法是写回前在锁内重读、只并入合成字段，或上 `@Version` 乐观锁 + 重试——属更大改造，
+      不宜在例行巡检里盲改，留待专项。
+
+- [ ] **Low/待产品定：明星带货 `listProjectVideos` / `getVideo` 不按 owner 过滤（疑似 IDOR）**
+      （本轮复核发现）：`CelebrityZoneService.listProjectVideos(projectId)`（L266）与 `getVideo(id)`
+      （L283）不按 `ownerUserId` 过滤，任一认证用户可读他人 projectId 的视频列表 / 按 id 取任意视频
+      （`GET /api/celebrity/projects/{projectId}/videos`、`/api/celebrity/videos/{id}`，controller 不传
+      principal）。但 `listAllVideos`（L288）注释明说是「跨项目公共库」，强烈暗示视频库本就是共享展示位
+      ——故**判定为需产品拍板，不武断当缺陷改**。`getProject`（L229）自身归属校验正确。
+
+---
+
 ## 2026-09-17 · 例行 QA 巡检（商品链接抓取 SSRF：白名单只卡初始 URL、重定向照跟）
 
 > 本轮同样承接 #102 分支、不新开 PR。开工前查了三仓开着的 routine PR（本仓 #101 SSRF /
