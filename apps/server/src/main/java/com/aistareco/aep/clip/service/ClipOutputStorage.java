@@ -51,24 +51,29 @@ public class ClipOutputStorage {
         try {
             HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(5)).GET().build();
             HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw failure(label + "下载失败（HTTP " + response.statusCode() + ")");
-            }
-            long declared = response.headers().firstValueAsLong("content-length").orElse(-1);
-            if (declared > maxBytes) throw failure(label + "超过大小限制");
-            temp = Files.createTempFile("clip-output-", "." + ext);
-            long total = 0;
-            try (InputStream in = response.body(); var out = Files.newOutputStream(temp)) {
-                byte[] buffer = new byte[64 * 1024];
-                int read;
-                while ((read = in.read(buffer)) >= 0) {
-                    total += read;
-                    if (total > maxBytes) throw failure(label + "超过大小限制");
-                    out.write(buffer, 0, read);
+            // ofInputStream() 的 body 必须显式关闭才会释放底层连接；错误分支（非 2xx / 超限）
+            // 若在读 body 前就 throw 会漏关连接，上游反复 4xx/5xx（如签名 URL 过期 403）时耗尽
+            // HttpClient 连接池。把 body 收进覆盖状态/大小校验的 try-with-resources，任何分支都关。
+            try (InputStream in = response.body()) {
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw failure(label + "下载失败（HTTP " + response.statusCode() + ")");
                 }
+                long declared = response.headers().firstValueAsLong("content-length").orElse(-1);
+                if (declared > maxBytes) throw failure(label + "超过大小限制");
+                temp = Files.createTempFile("clip-output-", "." + ext);
+                long total = 0;
+                try (var out = Files.newOutputStream(temp)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int read;
+                    while ((read = in.read(buffer)) >= 0) {
+                        total += read;
+                        if (total > maxBytes) throw failure(label + "超过大小限制");
+                        out.write(buffer, 0, read);
+                    }
+                }
+                if (total == 0) throw failure(label + "为空");
+                return storage.storeExisting(temp, category, ownerId, ext, contentType, true).key();
             }
-            if (total == 0) throw failure(label + "为空");
-            return storage.storeExisting(temp, category, ownerId, ext, contentType, true).key();
         } catch (BusinessException e) {
             throw e;
         } catch (InterruptedException e) {

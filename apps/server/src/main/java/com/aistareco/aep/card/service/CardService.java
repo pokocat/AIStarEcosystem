@@ -18,6 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,9 @@ import java.util.Set;
 public class CardService {
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(CardService.class);
+
+    // 名片页脚展示的日期按业务时区（+08）截取；禁止对 Instant.toString() 直接 substring(0,10)（§4.8）。
+    private static final ZoneId TZ = ZoneId.of("Asia/Shanghai");
 
     /** 前端保留短链：后端未接通时的演示入口，不允许真实名片占用。 */
     public static final Set<String> RESERVED_SLUGS = Set.of("demo", "p", "new", "preview");
@@ -402,7 +407,7 @@ public class CardService {
         doc.put("slug", card.getSlug());
         doc.put("regNo", card.getRegNo());
         if (card.getUpdatedAt() != null) {
-            doc.put("updatedAt", card.getUpdatedAt().toString().substring(0, 10));
+            doc.put("updatedAt", LocalDate.ofInstant(card.getUpdatedAt(), TZ).toString());
         }
         doc.remove("demo");
 

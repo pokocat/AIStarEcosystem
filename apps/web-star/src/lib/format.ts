@@ -4,7 +4,12 @@
 // 通用工具复用 @ai-star-eco/api-client/format，此处补充中文单位形态。
 // ─────────────────────────────────────────────────────────────────────────────
 
-export { formatNumber, formatPercent } from "@ai-star-eco/api-client";
+// formatDateTime 复用共享实现（`new Date(iso)` + `Intl`，按浏览器本地时区 → `yyyy-MM-dd HH:mm:ss`，
+// §4.8）。此前 web-star 自写的版本用正则/`slice(0,10)` 直接抠 ISO 字符里的字面数字、不做时区换算：
+// 服务端发的是 OffsetDateTime（UTC 时区 JVM 上带 `Z`），+08 的浏览器会看到差最多 8 小时、
+// 16:00 UTC 之后还整整差一天——正是 §4.8 记的那个坑。约 21 处工作台展示（合作 / 白名单 / 肖像 /
+// 数字人 / 品牌授权 / 侵权 / 商品库…）都经这两个函数，改这一处即全部修正。
+export { formatNumber, formatPercent, formatDateTime } from "@ai-star-eco/api-client";
 
 /** 金额（分）→ 整数价 "¥398"；非整元保留两位 "¥99.50"。 */
 export function formatYuan(cents: number): string {
@@ -53,16 +58,15 @@ export function formatMonthsZh(months: number): string {
   return rest > 0 ? `${years}年${rest}个月` : `${years}年`;
 }
 
-/** ISO 时间 → "2026-05-06 14:30"（无时间部分时仅日期）。 */
-export function formatDateTime(iso: string | undefined | null): string {
-  if (!iso) return "—";
-  const m = iso.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
-  if (m) return `${m[1]} ${m[2]}`;
-  return iso.slice(0, 10);
-}
-
-/** ISO 日期 → "2026-05-06"。 */
+/** ISO 日期 → "2026-05-06"（按浏览器本地时区取年月日；禁止 `slice(0,10)` 切 UTC 段——§4.8）。 */
 export function formatDate(iso: string | undefined | null): string {
   if (!iso) return "—";
-  return iso.slice(0, 10);
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }

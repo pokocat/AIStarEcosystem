@@ -450,10 +450,13 @@ public class DramaShortAssembleService {
         HttpRequest request = HttpRequest.newBuilder(URI.create(abs))
                 .timeout(Duration.ofSeconds(120)).GET().build();
         HttpResponse<InputStream> response = HTTP.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        if (response.statusCode() / 100 != 2) {
-            throw new IllegalStateException("download failed HTTP " + response.statusCode());
-        }
+        // ofInputStream() 的 body 必须显式关闭才释放连接；非 2xx 时旧代码在拿 body 前直接
+        // throw 会漏关连接，上游反复失败会耗尽 HttpClient 连接池。把 body 收进 try-with-resources
+        // 再判状态——错误分支也走 close。
         try (InputStream in = response.body()) {
+            if (response.statusCode() / 100 != 2) {
+                throw new IllegalStateException("download failed HTTP " + response.statusCode());
+            }
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
         if (Files.size(target) == 0) throw new IllegalStateException("downloaded clip is empty");

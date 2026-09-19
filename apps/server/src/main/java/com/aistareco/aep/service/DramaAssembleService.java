@@ -218,10 +218,13 @@ public class DramaAssembleService {
         HttpRequest req = HttpRequest.newBuilder(URI.create(abs))
                 .timeout(Duration.ofSeconds(120)).GET().build();
         HttpResponse<InputStream> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofInputStream());
-        if (resp.statusCode() / 100 != 2) {
-            throw new IllegalStateException("下载分镜失败 HTTP " + resp.statusCode() + " · " + abs);
-        }
+        // ofInputStream() 的 body 必须显式关闭才释放连接；非 2xx 时旧代码在拿 body 前直接
+        // throw 会漏关连接，上游反复失败会耗尽 HttpClient 连接池。把 body 收进 try-with-resources
+        // 再判状态——错误分支也走 close。
         try (InputStream in = resp.body()) {
+            if (resp.statusCode() / 100 != 2) {
+                throw new IllegalStateException("下载分镜失败 HTTP " + resp.statusCode() + " · " + abs);
+            }
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
         if (Files.size(target) == 0) throw new IllegalStateException("分镜文件为空 · " + abs);

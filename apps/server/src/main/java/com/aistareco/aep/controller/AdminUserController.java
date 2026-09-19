@@ -46,6 +46,9 @@ public class AdminUserController {
 
         AepUser.UserStatus statusEnum = parseEnum(status, AepUser.UserStatus.class, "不支持的用户状态筛选值");
         AepUser.AccountKind kindEnum = parseEnum(kind, AepUser.AccountKind.class, "不支持的账号类型筛选值");
+        // page/size 是未校验入参；PageRequest.of 对 page<0 或 size<1 抛 IllegalArgumentException → 500。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         return PageEnvelope.from(userService.list(statusEnum, kindEnum, pageable));
     }

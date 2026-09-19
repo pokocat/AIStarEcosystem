@@ -32,6 +32,21 @@ describe("成片历史接线", () => {
     expect(block).toContain("content: next.content, storageKey: next.storageKey");
   });
 
+  it("删图：删的不是主图时只摘候选、不动节点显示的那张", () => {
+    const src = projectSrc();
+    const block = src.slice(src.indexOf("const deleteBatchImage"));
+    // 早返回：非主图分支不碰节点级 content/storageKey
+    expect(block).toContain("if (!wasPrimary) {");
+  });
+
+  it("删掉当前主图时节点级 content/storageKey 必须换到新主图（否则下游照旧图出图、钱照扣）", () => {
+    const src = projectSrc();
+    const block = src.slice(src.indexOf("const deleteBatchImage"));
+    expect(block).toContain("const nextPrimary = images[0];");
+    expect(block).toContain("content: nextPrimary?.content");
+    expect(block).toContain("storageKey: nextPrimary?.storageKey");
+  });
+
   it("重出之前先把当前这版收进历史（keepVideoTake）", () => {
     const src = projectSrc();
     expect(src).toContain("videos: keepVideoTake(node)");

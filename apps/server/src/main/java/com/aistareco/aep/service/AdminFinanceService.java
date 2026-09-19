@@ -66,6 +66,10 @@ public class AdminFinanceService {
     }
 
     public List<TransactionDto> listTransactions(int page, int size, String userId) {
+        // controller 透传未校验的 page/size；PageRequest.of 对 page<0 或 size<1 抛
+        // IllegalArgumentException → 500。夹到合法区间（size 上限 100 防一次性拉全表）。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         List<LedgerEntry> entries = (userId == null || userId.isBlank())
                 ? ledgerRepo.findAll(pageable).getContent()

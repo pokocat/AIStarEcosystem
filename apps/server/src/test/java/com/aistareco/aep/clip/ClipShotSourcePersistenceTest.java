@@ -48,6 +48,8 @@ class ClipShotSourcePersistenceTest {
                 .title("项目").status("draft").payloadJson(payload).step(2).creditsHeld(12)
                 .createdAt(Instant.now()).updatedAt(Instant.now()).build();
         when(repo.findByIdAndExternalOwnerIdAndDeletedAtIsNull("cp_1", "owner-1")).thenReturn(Optional.of(project));
+        // save / recordShotArtifact 走加写锁的 forUpdate finder（防 payloadJson 读改写丢更新），mock 需一并 stub。
+        when(repo.findByIdAndExternalOwnerIdAndDeletedAtIsNullForUpdate("cp_1", "owner-1")).thenReturn(Optional.of(project));
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

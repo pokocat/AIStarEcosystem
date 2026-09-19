@@ -29,6 +29,10 @@ public class AdminMembershipController {
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String userId) {
 
+        // page/size 是未校验入参；PageRequest.of 对 page<0 或 size<1 抛 IllegalArgumentException → 500。
+        // 上限取 500（= 本端点默认值），夹取不缩小既有默认行为。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 500);
         Pageable pageable = PageRequest.of(page, size, Sort.by("joinedAt").descending());
 
         if (tenantId != null && !tenantId.isBlank()) {

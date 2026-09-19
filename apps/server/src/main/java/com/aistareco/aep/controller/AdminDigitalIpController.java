@@ -47,6 +47,9 @@ public class AdminDigitalIpController {
             @RequestParam(required = false) String kind) {
 
         DigitalIp.DigitalIpKind kindEnum = parseEnum(kind, DigitalIp.DigitalIpKind.class, "不支持的类型筛选值");
+        // page/size 是未校验入参；PageRequest.of 对 page<0 或 size<1 抛 IllegalArgumentException → 500。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
 
         Page<DigitalIp> entityPage;

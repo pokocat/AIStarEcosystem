@@ -9,7 +9,205 @@
 
 ---
 
-## 2026-09-07 · 画布换成开源无限画布 v0.157 后续
+## 2026-09-19 · 例行 QA 巡检（成片/音频/分镜下载：非 2xx 分支漏关 HttpClient 连接）
+
+> 本轮同样承接 #102 分支、不新开 PR。开工前查了三仓开着的 routine PR（本仓 #101/#102/#106；
+> ai-pilot #49/#50；shequn-gongju 无），复用 #102（本仓）与 #50（ai-pilot）。两个子代理对本仓
+> server 与 ai-pilot server 做对抗式复核：money/auth/幂等/IDOR 面历轮已很干净。历轮「资源关闭」
+> 复核只覆盖用户端 controller，未覆盖 worker 侧的成片/音频/分镜下载助手——本轮补上。
+> 验证：`./mvnw compile` 绿；`DramaAssembleServiceTest` / `DramaShortAssembleServiceTest` 回归绿。
+
+- [x] ~~**Low：四处 `HttpResponse<InputStream>` 下载在非 2xx / 超限分支漏关 body → 连接泄漏**~~
+      （**完成**，2026-09-19）：`DramaShortAssembleService.download`（约 L452）、
+      `DramaAssembleService.download`（约 L220）、`ClipOutputStorage.persist`（约 L53）、
+      `MusicOutputStorage.persist`（约 L71）都用 `BodyHandlers.ofInputStream()`，其 body 必须显式
+      关闭才释放底层连接；旧代码在读 body 之前就对非 2xx（及 clip/music 的 content-length 超限）
+      直接 `throw`，成功路径的 try-with-resources 只覆盖正常分支——错误分支漏关。上游反复 4xx/5xx
+      （典型：§4.7.7 签名 URL 过期 403）会逐次泄漏连接，最终耗尽 JDK HttpClient 连接池、后续下载
+      挂起/失败。修法：把 `response.body()` 收进覆盖状态/大小校验的 try-with-resources，任何分支
+      （含 throw）都走 close，交付语义与产物不变。**未加专门的泄漏回归测试**：四处 HttpClient 均在
+      类内自建、非注入，写 close 断言需改生产代码做依赖注入，收益不抵风险；本轮以编译 + 既有
+      assemble 测试（成功路径不回归）+ 代码审阅（t-w-r 覆盖全部退出路径）确认，如实记此限制。
+
+- [ ] **Medium：`DramaShort.payloadJson` 请求线程间并发丢更新（无 `@Version`/行锁）**
+      （本轮复核发现，未修）：`DramaShort` 实体无乐观锁列、仓库无 `@Lock`。多条写路径对整存整取的
+      `payloadJson` 做读-改-写：`DramaShortAssembleService.assemble`（读 L104、写回 L118/L239，中间
+      隔着数秒 ffmpeg+上传）、`DramaShortService.save`（L293）、`DramaShortAudioService.prepare`
+      （L101）。一次 `PUT` 保存若落在某次 assemble 进行中，二者互相覆盖（丢用户编辑，或丢已合成结果）。
+      与 #102 已修的 `ClipProject` 是同一类（丢更新），但这里是**请求线程 vs 请求线程**（已确认无
+      `@Async`/`@Scheduled` worker 写 `DramaShort.payloadJson`——视频 worker 只写
+      `MaterialVideoJob.payloadJson`）。**未直接修**：简单加行锁会让锁横跨整段 ffmpeg（长事务/长持锁，
+      更糟）；正确修法是写回前在锁内重读、只并入合成字段，或上 `@Version` 乐观锁 + 重试——属更大改造，
+      不宜在例行巡检里盲改，留待专项。
+
+- [ ] **Low/待产品定：明星带货 `listProjectVideos` / `getVideo` 不按 owner 过滤（疑似 IDOR）**
+      （本轮复核发现）：`CelebrityZoneService.listProjectVideos(projectId)`（L266）与 `getVideo(id)`
+      （L283）不按 `ownerUserId` 过滤，任一认证用户可读他人 projectId 的视频列表 / 按 id 取任意视频
+      （`GET /api/celebrity/projects/{projectId}/videos`、`/api/celebrity/videos/{id}`，controller 不传
+      principal）。但 `listAllVideos`（L288）注释明说是「跨项目公共库」，强烈暗示视频库本就是共享展示位
+      ——故**判定为需产品拍板，不武断当缺陷改**。`getProject`（L229）自身归属校验正确。
+
+---
+
+## 2026-09-17 · 例行 QA 巡检（商品链接抓取 SSRF：白名单只卡初始 URL、重定向照跟）
+
+> 本轮同样承接 #102 分支、不新开 PR。开工前查了三仓开着的 routine PR（本仓 #101 SSRF /
+> #102 合集；ai-pilot #50；shequn-gongju 无），复用 #102。用三个子代理对三仓做对抗式复核：
+> shequn-gongju 基本全是静态原型、无可达缺陷；后端 money/auth/幂等面已被历轮打磨得很干净，
+> 仅落一处新确定缺陷（下）。ai-pilot 侧另落两处（settleVideoJob/httpTool，见 PR #50）。
+> 验证：`./mvnw compile` 绿。
+
+- [x] ~~**Medium：抖音商品链接抓取的 SSRF 白名单被重定向绕过**~~
+      （**完成**，2026-09-17）：`DouyinHtmlScrapeHandler` 的 `HttpClient` 建成
+      `followRedirects(NORMAL)`，而 host 白名单（`*.douyin.com` / `*.jinritemai.com`）**只校验了
+      初始 URL**。任一认证用户 `POST /api/me/products/parse-link` 传一个白名单域上的开放重定向
+      链接，服务端就会跟着 302 去请求任意 host —— 例如 `http://169.254.169.254/…`（云元数据）
+      或内网服务；抓回来的 `og:*` / 图片字段还会部分回显进 `ProductLinkInfoDto`，非全盲。
+      与 #101 的 mixcut `AssetDownloader` SSRF 是不同站点（那条是 file_url 零校验，这条是
+      重定向绕过白名单）。修法：`HttpClient` 改 `Redirect.NEVER` + 手动逐跳跟随
+      （`getFollowingWhitelistedRedirects`），**每一跳的目标 host 都重新过白名单、协议必须
+      http(s)、跳数上限 5 防环**——既堵住 SSRF，又保留抖音短链常见的一两跳合法重定向
+      （直接 NEVER 会让合法短链解析失败）。`fetchPromotionDetail` 的固定可信 URL 也改走同一
+      漏斗做纵深防御。`./mvnw compile` 绿。
+
+---
+
+## 2026-09-16 · 例行 QA 巡检（画布删候选丢参考图真值 + pickColor 负模崩）
+
+> 本轮同样承接 #102 分支、不新开 PR。开工前查了本仓开着的 routine PR（#101 SSRF /
+> #102 合集），复用 #102。用两个子代理对后端 clip/ipstudio/materialvideo 与前端
+> canvas-bridge/ip/shell 做对抗式复核：两块都异常干净，仅落两处确定缺陷（下），
+> 其余（分页 500 / parseInt 崩 / slice(0,10) / SSRF）此前几轮已覆盖，未重复。
+> 验证：`mvn compile` 绿、web-aiavatar typecheck 绿、`video-takes.test.ts` 8/8 绿。
+
+- [x] ~~**Medium-High：画布删掉当前主图候选时，节点级 content/storageKey 仍指向被删的图**~~
+      （**完成**，2026-09-16）：`apps/web-aiavatar/src/canvas/pages/canvas/project.tsx`
+      `deleteBatchImage` 的图片分支（约 L3020）只改 `images[]` 与 `primaryImageId`，没跟着换
+      节点级 `content`/`storageKey`/尺寸。而 `metadata.storageKey` 是下游生成的参考图真值、
+      节点级 `content` 是导出与蒙版编辑的源图（见 `setBatchPrimary` 与 `applyCandidateToNode`
+      的说明）—— 删掉当前主图后，画布显示的是剩下的第一张，但后续每次生成 / 导出 / 发布仍照着
+      **被删的旧图**走，用户看不出、钱照扣，发布出去的形象也可能是被删的图。视频分支（同函数上半段）
+      早有对应修复且有测试，图片分支漏了。修法：删掉当前主图时把节点级
+      content/storageKey/naturalWidth/naturalHeight/bytes/mimeType 一并换到新主图（一张不剩时清空、
+      不留死链——失败图的删除按钮可以删到 0，故不照搬视频分支的「只剩一张不删」）；删的不是主图时早返回、
+      只摘候选。补 `video-takes.test.ts` 两条结构断言钉死。
+- [x] ~~**Low：`MaterialVideoJobService.pickColor` 负模数组越界（latent 500）**~~
+      （**完成**，2026-09-16）：`pickColor`（L414）`Math.abs(id.hashCode()) % len`——
+      `Math.abs(Integer.MIN_VALUE)` 仍为负 → `负 % len` 为负 → `ArrayIndexOutOfBoundsException`。
+      id 是服务端 UUID（概率约 1/2³²）但 `pickColor` 在 `toCard` 里对每一行都跑，真撞上即整个
+      `listJobs` 500。改 `Math.floorMod(hashCode, len)`（恒非负）。cover_color 纯装饰、无测试钉色值。
+
+## 2026-09-14 · 例行 QA 巡检（充值存储交付 + 前端时间字段存量）
+
+> 本轮承接同一分支（#102），不新开 PR。开工前查了三仓开着的 routine PR
+> （本仓 #101 SSRF / #102 合集；ai-pilot #50；shequn-gongju #1），复用各自分支不新建。
+> 三处均已修并跑过编译门（`./mvnw compile` 绿、web-star/music/drama typecheck 绿、
+> `check:api-contract` 绿、§4.8 slice 门 0 命中）。
+
+- [x] ~~**Medium：充值存储套餐授予失败被静默吞掉——已付费却少交付（§8.0）**~~
+      （**完成**，2026-09-14）：`RechargeService.settlePaidOrder`（约 L438-446）在积分已入账后授予
+      存储扩容，`grantStorage` 抛异常时只 `log.warn` 就算了 —— 用户付了钱、存储永远没到，且无对账/重试。
+      **不能整单回滚重试**：`markPaid` 已条件占位、`creditService.creditAccount` 无 `(source,ref)` 幂等闸，
+      回滚后重试会二次入账（比丢存储更糟）。故改为在 catch 里 `notificationPublisher.notifyAdmins(SYSTEM,…)`
+      把「已付费待手工补授」落进运营收件箱（`grantStorage` 幂等 by source，补授安全），杜绝静默少交付。
+      遗留待办见下条。
+
+- [ ] **Low：`creditAccount`(RECHARGE) 无 `(source, referenceId)` 幂等闸**（`CreditService.java:259`）。
+      当前 `settlePaidOrder` 的重复/并发靠 `markPaid` 条件占位挡住，够用；但这意味着「结算整单回滚后重试」
+      不安全（会二次入账），也是上面那条只能走「告警补授」而非「回滚重试」的根因。真要让存储交付走
+      自动重试/对账队列，需先给充值入账加订单级幂等键（参照 enrollment 的 `entitlement_grant`
+      `UNIQUE(source, source_reference)`）。非漏洞，排期择机。
+
+- [x] ~~**Low–Medium：前端时间字段存量 `slice(0,10)` / 自写格式化不换时区（§4.8）**~~
+      （**完成**，2026-09-14）：`packages/api-client/src/format.ts` 新增 `formatDate(iso)`（`new Date`+`Intl`
+      本地时区 `yyyy-MM-dd`，与既有 `formatDateTime` 同源）。修正三处 `slice(0,10)`：
+      `web-music/FinancePage.tsx`（账本行日期）、`web-music/dashboard/AgencyOverview.tsx`（近期歌曲表）、
+      `web-drama/api/finance.ts`（充值流水展示日期）。另把 `web-star/src/lib/format.ts` 自写的
+      `formatDateTime`（正则抠字面、不换时区）改为复用 api-client 版、`formatDate` 改为 `Intl` 本地时区 ——
+      约 21 处工作台展示（合作/白名单/肖像/数字人/品牌授权/侵权/商品库…）经这一处即全部修正。
+
+> 本轮承接同一分支（#102），不新开 PR。开工前查了三仓开着的 routine PR
+> （本仓 #101 SSRF / #102 合集；ai-pilot #50；shequn-gongju #1），均已覆盖各自问题、
+> 本轮不重复。承接 #102 的分页夹取工作，把上一轮**明确降优先级**的 admin 面补齐。
+
+- [x] ~~**Medium：13 处 admin 列表端点分页入参未夹取（page<0 / size<1 → 500）**~~
+      （**完成**，2026-09-13）：`@RequestParam int page/size` 直接喂 `PageRequest.of`，
+      `page<0` 或 `size<1` 抛 `IllegalArgumentException`，且无 `@ExceptionHandler`，落到
+      `GlobalExceptionHandler.handleGeneric` → 500 + 一条 ErrorLog。全部 `/api/admin/**`
+      （SUPER_ADMIN / OPERATOR / FINANCE_ADMIN 鉴权），故 Medium（自伤 500 / 轻度 DoS，
+      非未授权崩溃或数据泄露）。修法沿用 #102 既定的内联夹取
+      `page=max(0,page); size=min(max(1,size),上限)`，上限取该端点原默认值同量级
+      （默认 20 的用 100；`AdminMembershipController` 默认 500 的用 500，**不缩小既有默认**）。
+      覆盖：`AdminCreditController`(×2) / `AdminLicenseController`(×3) /
+      `AdminFilmController`(×4) / `AdminMusicController` albums/concerts/genres(×3，songs 已夹) /
+      `AdminUserController` / `AdminTenantController` / `AdminStaffController` /
+      `AdminNotificationController` / `AdminDigitalIpController` / `AdminStudioController` /
+      `AdminMembershipController` / `AdminFinanceService.listTransactions`（controller 透传）。
+      回归 `AdminCreditControllerSecurityTest` +2（`page=-1` / `size=0` 以 SUPER_ADMIN 回 200
+      不再 500），6/6 全绿；`./mvnw compile` 通过。已确认**安全**未改：用户端
+      （`/api/me`、community、finance、star）分页与所有 `parseInt`/null-deref/资源关闭
+      站点本轮复核均无缺陷（详见 PR）。
+
+- [ ] **Low：`AlipayNotifyController.java:80` `Double.parseDouble(total_amount)` 只 catch
+      `NumberFormatException`，漏 `total_amount` 缺失时 `parseDouble(null)` 抛 NPE → 500
+      而非预期的 FAIL**（本轮复核发现，未修）。仅在**验签通过**的支付宝回调上可达
+      （合法通知必带 `total_amount`），实际不可达，故降级记录；真要修把 catch 放宽到
+      `Exception` 或先判 null 返 FAIL 即可。
+
+---
+
+## 2026-09-12 · 例行 QA 巡检（用户端 controller 健壮性）
+
+> 本轮承接同一分支（#102），不新开 PR。以下 6 处均为「用户可控入参未夹到合法区间 → 500 崩溃」或
+> 「对 `Instant.toString()` 直接 `substring(0,10)` → +08 页面差一天」，修法都是最小夹取 / 换时区截取，
+> 有效输入行为不变。服务端 `./mvnw compile` 全绿。
+
+- [x] ~~**High：`parseRangeDays` 对超 int 的 range 入参崩溃（NumberFormatException → 500）**~~
+      （**完成**，2026-09-12）：`AccountController.parseRangeDays`（约 L475）对
+      `GET /api/me/music/trends?range=99999999999` 这类超 `Integer.MAX_VALUE` 的数字串
+      `Integer.parseInt` 直接抛，而本意的 `Math.min(...,365)` clamp 还没跑到。改为 try/catch，
+      解析失败即取最大窗口 365（等价于「值过大 → 收进上限」）。
+
+- [x] ~~**High：`/api/me/ledger` 与社区 `/posts` 分页入参未夹取（size=0 / page=-1 → 500）**~~
+      （**完成**，2026-09-12）：`AccountController.ledger`（L195）与
+      `CommunityController.listPosts`（L89）把未校验的 `page/size` 直接喂 `PageRequest.of`，
+      `size<1` 或 `page<0` 会抛 `IllegalArgumentException` → 500。两处均加
+      `page=max(0,page); size=min(max(1,size),100)`。`AdminMusicController.songs`（L72）手工
+      `page*size` subList 同类崩溃（负 page / int 溢出 → `subList(负,…)` IndexOutOfBounds），
+      加同样夹取 + long 乘防溢出（admin 面，优先级低但同批修）。
+
+- [x] ~~**Medium：四处 `Instant.toString().substring(0,10)` 切 UTC → +08 页面差一天（§4.8）**~~
+      （**完成**，2026-09-12）：`FinanceController.projectTx`（L136，已有 `TZ`）、
+      `AccountController.withdraw`（L177，新增 `TZ` 常量）、`FanController.me`（L99，新增 `TZ` 常量）、
+      `CardService.toWireDoc`（名片页脚 `updatedAt`，L405，新增 `TZ` 常量）的展示用日期字段原来切的是
+      UTC 段——本地 00:00–08:00 落库的记录显示成前一天。统一改
+      `LocalDate.ofInstant(x, ZoneId.of("Asia/Shanghai")).toString()`。wire 形状不变（仍是
+      `yyyy-MM-dd` 串），只是日期值正确了。（`DapJobRunner` / `MockModelinkGateway` 里的
+      `UUID.toString().substring(0,10)` 是随机 id 截断、非日期，不在此列。）
+
+- [ ] **Low：`formatCompactNumber` 负数丢符号**（`packages/api-client/src/format.ts` 约 L37，
+      `apps/web-music/src/lib/format.ts` 同一份副本）：量级分支返回 `trimZero(abs/…)` 用的是绝对值，
+      负数会渲染成正数（`-2300000 → "2.3M"`），而兜底分支保留符号。现有调用点均为非负量
+      （粉丝 / 播放 / 销量 / 营收），实际不可达，故本轮未改；真要修需两份副本同改（§8.0.1 ④）。
+
+---
+
+## 2026-09-11 · 例行 QA 巡检
+
+- [x] ~~**High：clip 项目 `payloadJson` 并发丢更新——用户草稿编辑 vs 镜头 worker 落产物无锁**~~
+      （**完成**，2026-09-11）：`ClipProject` 无 `@Version`，而 `save`（请求线程）与
+      `recordShotArtifact`（`@Scheduled` 镜头 worker 线程）都对整存整取的 `payloadJson` 做
+      「读快照→改一处→整体写回」。用户在草稿态编辑某镜文案的同时另一镜正在出片，两个事务各读一份、
+      后提交的覆盖先提交的 → 丢的是用户已付费的段级产物（`shots[].source.artifact`，其真源正是项目
+      payload 而非会被清理的任务行），或用户刚做的编辑。修法：新增
+      `ClipProjectRepository.findByIdAndExternalOwnerIdAndDeletedAtIsNullForUpdate`
+      （`@Lock(PESSIMISTIC_WRITE)`，参照 `WalletRepository#findByUserIdForUpdate`），
+      `save` / `reset` / `recordShotArtifact` 改经 `requiredForUpdate` 取行写锁，串行化到该行、
+      关掉丢更新窗口；读路径不变。无需迁移。`ClipShotJobWorkerStateTest`（真 H2 repo 跑 worker
+      落产物路径）等 6 个 clip 测试类全绿，确认 H2 支持该 `FOR UPDATE`。发布/成片写只发生在
+      `done` 项目、不与草稿态 worker 重叠，未纳入。
+
+
 
 - [x] ~~**画布上看不见参考图的顺序**~~ **改判不做**，2026-09-08：产品决定「按添加顺序传进去、让模型自己理解」即可。
       查证结论：顺序**本来就是添加顺序** —— `getContextInputNodes` 按 `connections` 数组顺序过滤，

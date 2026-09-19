@@ -412,8 +412,12 @@ public class MaterialVideoJobService {
 
     private static final String[] PALETTE = {"#7c5cff", "#ff5b8a", "#22b59a", "#f0a83a", "#5b3fe0", "#ff8a5b"};
     private static String pickColor(String id) {
-        int h = id == null ? 0 : Math.abs(id.hashCode());
-        return PALETTE[h % PALETTE.length];
+        // Math.abs(hashCode) 会漏一个数：Math.abs(Integer.MIN_VALUE) 仍是负的，
+        // 于是 `负 % 长度` 也是负 → ArrayIndexOutOfBoundsException。id 是服务端 UUID、
+        // 概率约 1/2³²，但 pickColor 在 toCard 里对每一行都跑，真撞上就是整个 listJobs 500。
+        // floorMod 恒返回 [0,len) 的非负结果。
+        int h = id == null ? 0 : Math.floorMod(id.hashCode(), PALETTE.length);
+        return PALETTE[h];
     }
 
     private String write(JsonNode node) {
