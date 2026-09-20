@@ -19,7 +19,7 @@ import {
   REVENUE_MONTHLY as SEED_MONTHLY_REVENUE,
   REVENUE_SOURCES as SEED_REVENUE_SOURCES,
 } from "@/mocks/finance";
-import { formatCredits, formatSignedCredits } from "@/lib/format";
+import { formatCredits, formatSignedCredits, formatDate } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { AccountApi, FinanceApi, ApiError } from "@/api";
 
@@ -44,7 +44,7 @@ function ledgerToTransaction(entry: LedgerEntry): Transaction {
     id: entry.id,
     source: entry.description || entry.type,
     amount: entry.amount,
-    date: (entry.createdAt || "").slice(0, 10),
+    date: formatDate(entry.createdAt, ""),
     status,
     type: LEDGER_TO_TX_TYPE[entry.type] ?? "income",
     userId: entry.userId,

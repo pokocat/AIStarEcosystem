@@ -10,6 +10,7 @@ import type {
 } from "@ai-star-eco/types/finance";
 import type { Wallet } from "@ai-star-eco/types/wallet";
 import { apiFetch } from "./_client";
+import { formatDate } from "@ai-star-eco/api-client";
 
 // ── Read ───────────────────────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ export async function createRecharge(input: RechargeInput): Promise<Transaction>
     id: order.id,
     source: `充值下单（${pick.name ?? pick.credits + " 积分"}）· 待运营确认`,
     amount: order.credits ?? pick.credits,
-    date: (order.createdAt ?? new Date().toISOString()).slice(0, 10),
+    date: formatDate(order.createdAt ?? new Date().toISOString()),
     status: "processing",
     type: "recharge",
   } as Transaction;
