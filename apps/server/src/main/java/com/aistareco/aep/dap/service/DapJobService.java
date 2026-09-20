@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -104,10 +106,28 @@ public class DapJobService {
                 .stageUpdatedAt(Instant.now())
                 .build();
         jobRepo.save(job);
-        runner.run(id);
+        dispatch(id);
         log.info("[dap-job] submitted id={} type={} subject={} mode={} engine={} cost={} stage=queued",
                 id, type, subject, job.getMode(), job.getEngine(), cost);
         return job;
+    }
+
+    /**
+     * 派发 runner —— **有外层事务时必须等 commit 之后**（{@code @Async} worker 在自己的新事务里
+     * {@code findById} 这条刚建的作业；生产 MySQL 的 READ_COMMITTED 下未提交的行它看不到，
+     * 直接 {@code job == null} 静默退出，作业永远停在 running、冻结的积分要等 180 分钟兜底清扫）。
+     * {@code submit}/{@code retry} 被 {@code DapCompositionService.create}、{@code DapAssetService.generateScene}
+     * 等 {@code @Transactional} 方法调用，正是这种情形。没有外层事务（直连 / 单测）时当场派发。
+     * 与 {@code MaterialVideoJobService} / {@code IpRunService} 同一套 afterCommit 派发范式。
+     */
+    private void dispatch(String jobId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { runner.run(jobId); }
+            });
+        } else {
+            runner.run(jobId);
+        }
     }
 
     /**
@@ -169,7 +189,7 @@ public class DapJobService {
         job.setHeartbeatAt(Instant.now());
         job.setStageUpdatedAt(Instant.now());
         jobRepo.save(job);
-        runner.run(job.getId());
+        dispatch(job.getId());
         return JobDto.from(job, support::hm);
     }
 

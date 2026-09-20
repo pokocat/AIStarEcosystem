@@ -93,3 +93,27 @@ export function formatDateTime(iso?: string | null, fallback = "—"): string {
   // 按 part 自己拼：不同运行时给的连接符不一样（`2026/09/09` vs `2026-09-09`）
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
+
+/**
+ * 时间戳 → `2026-09-10`（浏览器本地时区），只要日期不要时分秒。
+ *
+ * §4.8：**别再写 `iso.slice(0, 10)`** —— 它切的是 UTC 那一段，晚上八点之后落库的
+ * 东西在 +08 的页面上会显示成前一天。这里按本地时区取日历日，跟 {@link formatDateTime}
+ * 是同一套时区口径。
+ *
+ * 纯日期串（`2026-09-10`，没有时间部分）没有时区含义，原样返回 —— 不拿它当
+ * UTC 午夜去按本地时区偏移，否则又会引入一次差一天。
+ */
+export function formatDate(iso?: string | null, fallback = "—"): string {
+  if (!iso) return fallback;
+  const trimmed = iso.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return fallback;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}

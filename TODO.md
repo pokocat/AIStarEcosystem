@@ -241,6 +241,30 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
       能整个删掉就别改文案（改了等于给要退役的文件返工）。
 - [ ] **`/studio` 老 SPA（约 11k 行）的文案没过一遍**。它按既有双轨逐屏迁出，
       现在整体重写等于给要退役的代码返工；**迁一屏就顺手按 §8 清一屏**。
+- [x] ~~**前端还有 4 处 `iso.slice(0, 10)` 切 UTC 差一天**（例行 QA 巡检发现）~~
+      **完成，2026-09-20**：`web-star/src/lib/format.ts`（`formatDate` / `formatDateTime`
+      自成一份，直接从 ISO 串抠字符 = 切 UTC）、`web-drama/src/api/finance.ts`（充值单
+      `createdAt`）、`web-music` 的 `AgencyOverview.tsx`（作品日期）与 `FinancePage.tsx`
+      （账本流水日期）。都因 mock 用 `+08:00`（本地串抠着正好对）而线上发 `Z`（UTC）被掩盖。
+      修法：`packages/api-client/src/format.ts` 新增本地时区 `formatDate()`（与 `formatDateTime`
+      同口径、纯日期串原样返回）；四处改用它（web-star 的 `formatDateTime` 改为按本地时区解析、
+      保留分钟精度）。这几处的字段名是通用 `iso` / 带 `??` 收尾，`§9` 的字段名 grep 逮不到，
+      故一直漏网。
+
+## 2026-09-20 · 例行 QA 巡检（bugfix）
+
+- [x] ~~**DAP 异步作业在事务提交前就派发 worker**~~ **完成，2026-09-20**：
+      `DapJobService.submit` / `retry` 直接 `runner.run(id)`，而 `DapJobRunner.run` 是
+      `@Async`（真线程池 `dapJobExecutor`）。被 `@Transactional` 的 `DapCompositionService.create`
+      / `DapAssetService.generateScene|sceneVariants|generateProduct|productAngles` 调用时，
+      worker 在自己的新事务里 `findById` 查这条尚未提交的作业（生产 MySQL READ_COMMITTED）
+      → `job == null` 静默退出，作业永远停在 running、冻结积分等 180 分钟兜底才回收。改成
+      `TransactionSynchronizationManager` 有活跃事务时挂 `afterCommit` 派发、否则当场派发
+      （范式同 `MaterialVideoJobService` / `IpRunService`）。回归 `DapJobDispatchTest`（有事务→afterCommit 才派、无事务→当场派）。
+- [x] ~~**短剧首帧任务卡把带 TTL 的签名 URL 原样返回（§4.7.7）**~~ **完成，2026-09-20**：
+      `DramaFrameJobService.toFrameTask` 把 `resultJson` 里的 `frames[].url`（1h 签名）
+      原样透到 wire，一小时后任务卡首帧预览 403 图裂。加 `CdnUrlSigner` 依赖，在出 wire 前
+      对 result 递归 `maybeSign`（范式同 `DramaProjectService.resignAssetUrls`）。
 
 ## 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
 

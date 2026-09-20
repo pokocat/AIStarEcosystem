@@ -4,7 +4,7 @@
 // 通用工具复用 @ai-star-eco/api-client/format，此处补充中文单位形态。
 // ─────────────────────────────────────────────────────────────────────────────
 
-export { formatNumber, formatPercent } from "@ai-star-eco/api-client";
+export { formatNumber, formatPercent, formatDate } from "@ai-star-eco/api-client";
 
 /** 金额（分）→ 整数价 "¥398"；非整元保留两位 "¥99.50"。 */
 export function formatYuan(cents: number): string {
@@ -53,16 +53,25 @@ export function formatMonthsZh(months: number): string {
   return rest > 0 ? `${years}年${rest}个月` : `${years}年`;
 }
 
-/** ISO 时间 → "2026-05-06 14:30"（无时间部分时仅日期）。 */
+/**
+ * ISO 时间 → "2026-05-06 14:30"（浏览器本地时区；无时间部分时仅日期）。
+ *
+ * §4.8：不能直接从 ISO 串上抠 `YYYY-MM-DD HH:mm` —— 那切的是 UTC，晚上八点之后
+ * 落库的东西在 +08 页面上会显示成前一天、并差 8 小时。按本地时区解析后再拼，
+ * 与 `@ai-star-eco/api-client` 的 formatDateTime 同一套时区口径（这里只到分钟）。
+ * 纯日期串（无时间部分）没有时区含义，交给 formatDate 原样处理。
+ */
 export function formatDateTime(iso: string | undefined | null): string {
   if (!iso) return "—";
-  const m = iso.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
-  if (m) return `${m[1]} ${m[2]}`;
-  return iso.slice(0, 10);
-}
-
-/** ISO 日期 → "2026-05-06"。 */
-export function formatDate(iso: string | undefined | null): string {
-  if (!iso) return "—";
-  return iso.slice(0, 10);
+  const trimmed = iso.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return "—";
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }

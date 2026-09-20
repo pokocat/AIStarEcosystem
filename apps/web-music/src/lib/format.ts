@@ -72,3 +72,11 @@ export function formatDuration(totalSec: number): string {
 function trimZero(n: number): string {
   return n.toFixed(1).replace(/\.0$/, "");
 }
+
+/**
+ * ISO 时间戳 → 本地时区日历日 "2026-09-10"。
+ *
+ * §4.8：别再用 `iso.slice(0, 10)`（切 UTC，晚上八点后落库的会显示成前一天）。
+ * 复用 api-client 里同一套时区口径的实现。
+ */
+export { formatDate, formatDateTime } from "@ai-star-eco/api-client";
