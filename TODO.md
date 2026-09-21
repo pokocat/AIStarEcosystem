@@ -9,6 +9,47 @@
 
 ---
 
+## 2026-09-10 · 例行 QA 巡检（SSRF sweep）
+
+> 本轮开工前确认：唯一开着的旧 routine PR #98（mixcut SSRF）其分支已随 main 历史重写而
+> 与当前 main 分叉（949/50 提交、1199 文件差），**无法 merge**；其修复内容仍有效且被本轮
+> 承接（见下第一条），#98 应作为「已被取代」关闭。
+
+- [x] ~~**Critical：mixcut 素材下载 SSRF——`AssetDownloader.ensureLocal()` 对 `file_url` 零校验**~~
+  （**v0.196 后续 完成**，2026-09-10：`ensureLocal` 在 `openConnection()` 前按 host 解析出的
+  实际 IP 校验，拒绝环回 / link-local / RFC1918 / 组播 / CGNAT `100.64.0.0/10`（含阿里云
+  metadata `100.100.100.200`）/ IPv6 ULA `fc00::/7`，DNS 失败一律拒；新增 `AssetDownloaderTest`
+  14 例全绿。承接失效的 #98。`file_url` 来自 `POST /api/mixcut/jobs` 的 `slot_bindings`
+  客户端字段，`/api/mixcut/**` 仅 `authenticated()`，任意登录用户可触发。）
+
+- [ ] **Medium：短剧成片下载跟随重定向不逐跳复核 origin（SSRF via open-redirect）**
+  `DramaAssembleService.java`（共享 `HTTP` 客户端 `followRedirects(NORMAL)` at ~L57；`download()`
+  at L207-229 只校验首跳 origin）与 `DramaShortAssembleService.java`（同形，客户端 ~L55、
+  `download()` L439-460）。`videoUrl`/`clipUrl` 来自 `DramaProject.payloadJson`（用户可经
+  `PUT /me/drama/projects/{id}` 写入）。首跳 origin 命中 `trustedDownloadOrigins`（自身 +
+  CDN/OSS）后，若该可信 origin 存在 open-redirect，`NORMAL` 会自动跟到内网/metadata 地址，
+  不再复核。**修复口径**（与 `MaterialOpsService.resolveSubmittedVideoUrl` L471-509 已有的正确
+  范式一致）：客户端改 `Redirect.NEVER`，手动逐跳跟随并对每个 `Location` 复核 origin 在
+  白名单内（或按 `AssetDownloader` 新范式解析→IP 段黑名单）。**本轮未修的原因**：改动落在生产
+  短剧合成下载链，其对平台自身 CDN/OSS 的合法重定向行为无法在沙箱内集成验证，收益（Medium，
+  且需二级 open-redirect 才可利用）不抵在无人值守巡检里改产线下载路径的回归风险；建议专门排期
+  （最好抽一个可单测的共享 `TrustedRedirectDownloader` 收敛三处，避免 §8.0.1 ④ 一处规则多份写）。
+
+- [ ] **Medium/Low：抖音商品链抓取跟随重定向不逐跳复核 host（SSRF via open-redirect）**
+  `DouyinHtmlScrapeHandler.java`（客户端 `followRedirects(NORMAL)` ~L62-66；host 白名单
+  `*.douyin.com`/`*.jinritemai.com` 只在入口 `tryParse` ~L71-77 校验）。用户提交商品链，需
+  白名单域上存在 open-redirect 方可达内网。修复同上（`NEVER` + 逐跳复核）。未修原因：产品链
+  解析链的重定向行为改动有回归风险，需专门排期。
+
+- [ ] **Low：`DapMultimodalClient.download()` 完全无 SSRF 防护**
+  `DapMultimodalClient.java`（`download()` ~L457-485，客户端 `followRedirects(NORMAL)` ~L74-77）。
+  仓库其余下载点均已加防护，仅此一处零校验。**非终端用户直接可控**——URL 来自 AI provider
+  响应体（`data0.path("url")` ~L321，源自 admin 配置的端点），真要利用需上游 provider 被攻陷。
+  与其余下载点保持一致性建议后补；但 provider 下载可能合法重定向到无法枚举的任意 CDN，加严格
+  白名单反而有破坏正常下载的风险，需评估后再定口径。
+
+---
+
 ## 2026-09-07 · 画布换成开源无限画布 v0.157 后续
 
 - [x] ~~**画布上看不见参考图的顺序**~~ **改判不做**，2026-09-08：产品决定「按添加顺序传进去、让模型自己理解」即可。
