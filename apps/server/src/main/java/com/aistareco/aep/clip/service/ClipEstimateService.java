@@ -33,7 +33,15 @@ public class ClipEstimateService {
         int avatarRate=price.creditPerAvatarSecond();
         int ttsRate=price.creditPerKChar();
         int assemble=price.creditPerAssemble();
-        int tts=(int)Math.ceil(chars / 1000d * ttsRate), avatar=avatarSec * avatarRate;
+        // 单价上限是 100 万（ClipPricingService 的 MAX），而 estimate 可直接吃 override 文案/镜头、
+        // 不过 preflight 的段数与时长上限——极端配价下 avatarSec*avatarRate、超长文案的 tts 会把 int
+        // 乘爆成负数，报出一张负积分的价目表（预扣据此可少扣甚至倒贴）。全程用 long 算，越过 int 上限
+        // 直接报错、绝不返回负数。
+        long ttsL=(long)Math.ceil(chars / 1000d * ttsRate), avatarL=(long)avatarSec * avatarRate;
+        long totalL=ttsL + avatarL + assemble;
+        if (ttsL > Integer.MAX_VALUE || avatarL > Integer.MAX_VALUE || totalL > Integer.MAX_VALUE)
+            throw BusinessException.badRequest("CLIP_ESTIMATE_TOO_LARGE","报价金额过大，请缩短文案或分批生成");
+        int tts=(int)ttsL, avatar=(int)avatarL;
         EstimateSummary summary=new EstimateSummary(totalSec,avatarSec,tailSec,avatarCount,brollCount,tailCount,chars);
         return new EstimateDto(List.of(new EstimateItem("tts","口播配音",tts,null),new EstimateItem("avatar","分身出镜 "+avatarSec+" 秒",avatar,null),new EstimateItem("tail","结尾固定段",0,"免费"),new EstimateItem("assemble","总装",assemble,null)),tts+avatar+assemble,summary);
     }
