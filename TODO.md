@@ -360,6 +360,7 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
 - [ ] 抖音、快手、小红书、视频号逐一接真实发布和状态回查；当前非 mock 固定 `CLIP_PUBLISH_NOT_CONFIGURED`。不要扩写“全平台一键发布”。
 - [ ] 为 `DapAvatar` / `DapVoice` 本次新增的引擎字段补正式 Flyway 迁移；当前 v0.110 仍依赖 `ddl-auto=update`，`V14__add_clip_domain.sql` 只建 clip 四表。等全仓 Flyway 接管策略确认后再迁，避免与既有表结构漂移冲突。
 - [ ] 生产接入前跑 MySQL 迁移演练、多实例租约/杀进程恢复、长任务 stale reaper、真实供应商限流与成本压测；mock 完成不算验收。
+- [x] ~~`ClipEstimateService.estimate` 整片报价 int 溢出成负积分~~（例行 QA 巡检完成，2026-09-22）：`avatarSec*avatarRate` 与超长文案的 tts 在 32 位 int 里相乘，配价接近单价上限（100 万）时溢出成负数，报出一张负积分价目表（预扣据此可少扣甚至倒贴）；estimate 直接吃 override 文案/镜头、不过 preflight 的段数/时长上限，故可达。改为全程 long 计算、越过 `Integer.MAX_VALUE` 抛 `CLIP_ESTIMATE_TOO_LARGE`（400），绝不返回负数。`ClipEstimateService.java`。
 
 ## 2026-09-06 · 线上域名串站排查与收口（客户反馈「链接打开不太对」）
 
