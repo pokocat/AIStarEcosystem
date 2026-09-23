@@ -24,6 +24,7 @@ import java.time.OffsetDateTime;
 @Service
 public class DramaShortAudioService {
     private final DramaShortRepository repo;
+    private final DramaShortService shorts;
     private final ClipAvatarService avatars;
     private final ShiliuService shiliu;
     private final ClipOutputStorage outputStorage;
@@ -31,12 +32,14 @@ public class DramaShortAudioService {
     private final ObjectMapper om;
 
     public DramaShortAudioService(DramaShortRepository repo,
+                                  DramaShortService shorts,
                                   ClipAvatarService avatars,
                                   ShiliuService shiliu,
                                   ClipOutputStorage outputStorage,
                                   CdnUrlSigner signer,
                                   ObjectMapper om) {
         this.repo = repo;
+        this.shorts = shorts;
         this.avatars = avatars;
         this.shiliu = shiliu;
         this.outputStorage = outputStorage;
@@ -98,9 +101,14 @@ public class DramaShortAudioService {
             audio.put("at", OffsetDateTime.now().toString());
             shot.set("audio", audio);
             // 外部调用后立即 checkpoint；后续某镜失败时，重试不会再次生成已成功音频。
-            row.setPayloadJson(write(data));
-            row.setUpdatedAt(OffsetDateTime.now());
-            repo.save(row);
+            // 只把这一镜的 audio merge 回**当前最新** payload（行锁内），不拿几秒前的旧快照整份覆盖，
+            // 否则用户这期间的自动保存会被抹掉（lost update）。草稿已删则跳过（音频已镜像存储，孤儿对象无害）。
+            String shotId = text(shot, "id");
+            int shotNo = shot.path("no").asInt(-1);
+            shorts.applyServerUpdate(shortId, userId, (r, current) -> {
+                ObjectNode target = findShot(current, shotId, shotNo);
+                if (target != null) target.set("audio", audio.deepCopy());
+            });
             prepared.add(wireShot(shot, audio));
         }
 
@@ -138,9 +146,19 @@ public class DramaShortAudioService {
         }
     }
 
-    private String write(JsonNode node) {
-        try { return om.writeValueAsString(node); }
-        catch (Exception e) { throw new IllegalStateException("write drama short payload", e); }
+    /** 在最新 payload 的 shots 里按 id（缺 id 退到镜号 no）定位这一镜，找不到返回 null（用户已删该镜）。 */
+    private static ObjectNode findShot(ObjectNode data, String shotId, int shotNo) {
+        JsonNode shots = data == null ? null : data.path("shots");
+        if (shots == null || !shots.isArray()) return null;
+        for (JsonNode raw : shots) {
+            if (!(raw instanceof ObjectNode shot)) continue;
+            if (shotId != null) {
+                if (shotId.equals(text(shot, "id"))) return shot;
+            } else if (shotNo >= 0 && shot.path("no").asInt(-1) == shotNo) {
+                return shot;
+            }
+        }
+        return null;
     }
 
     private static String text(JsonNode node, String field) {

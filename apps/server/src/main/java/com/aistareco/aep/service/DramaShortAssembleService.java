@@ -56,6 +56,7 @@ public class DramaShortAssembleService {
             .build();
 
     private final DramaShortRepository repo;
+    private final DramaShortService shorts;
     private final MaterialVideoJobRepository videoJobs;
     private final FfmpegRunner ffmpeg;
     private final CdnUploader cdnUploader;
@@ -68,6 +69,7 @@ public class DramaShortAssembleService {
     private final List<String> trustedDownloadOrigins;
 
     public DramaShortAssembleService(DramaShortRepository repo,
+                                     DramaShortService shorts,
                                      MaterialVideoJobRepository videoJobs,
                                      FfmpegRunner ffmpeg,
                                      CdnUploader cdnUploader,
@@ -80,6 +82,7 @@ public class DramaShortAssembleService {
                                      @Value("${aep.cdn.public-base-url:/cdn}") String cdnPublicBaseUrl,
                                      @Value("${aep.cdn.oss.base-url:}") String cdnOssBaseUrl) {
         this.repo = repo;
+        this.shorts = shorts;
         this.videoJobs = videoJobs;
         this.ffmpeg = ffmpeg;
         this.cdnUploader = cdnUploader;
@@ -111,18 +114,23 @@ public class DramaShortAssembleService {
             int shotCount = existing.path("shotCount").asInt(plan.clipUrls().size());
             // 镜头曾编辑后又恢复成完全相同的输入时，旧成片仍有效：无需再次消耗 ffmpeg/OSS，
             // 但必须清掉 stale 并把行恢复为 done，不能只返回一个“看似成功”的响应。
+            // 走锁定 merge：只在当前 payload 的 assembled 仍是这一版（指纹匹配）时清 stale，
+            // 不整份覆盖用户这期间的自动保存。
             if (existing.path("stale").asBoolean(false) || !"done".equals(row.getStatus())) {
-                ObjectNode current = ((ObjectNode) existing).deepCopy();
-                current.remove("stale");
-                data.set("assembled", current);
-                row.setPayloadJson(write(data));
-                row.setDurationSec((int) Math.min(Integer.MAX_VALUE, durationSec));
-                row.setShotCount(shotCount);
-                row.setDoneCount(shotCount);
-                row.setStatus("done");
-                row.setProgress(100);
-                row.setUpdatedAt(OffsetDateTime.now());
-                repo.save(row);
+                final long confirmDuration = durationSec;
+                final int confirmShotCount = shotCount;
+                final String confirmFingerprint = plan.fingerprint();
+                shorts.applyServerUpdate(shortId, userId, (r, current) -> {
+                    JsonNode cur = current.path("assembled");
+                    if (!(cur instanceof ObjectNode assembledNode)) return;
+                    if (!confirmFingerprint.equals(text(assembledNode, "sourceFingerprint"))) return;
+                    assembledNode.remove("stale");
+                    r.setDurationSec((int) Math.min(Integer.MAX_VALUE, confirmDuration));
+                    r.setShotCount(confirmShotCount);
+                    r.setDoneCount(confirmShotCount);
+                    r.setStatus("done");
+                    r.setProgress(100);
+                });
             }
             ObjectNode response = (ObjectNode) wire(existingKey, durationSec, shotCount, text(existing, "at"));
             String coverKey = text(existing, "coverCdnKey");
@@ -224,9 +232,7 @@ public class DramaShortAssembleService {
                     ? requestedCoverKey : coverUpload.key();
             uploadedCoverKey = coverKey;
 
-            String previousKey = text(existing, "cdnKey");
-            String previousCoverKey = text(existing, "coverCdnKey");
-            ObjectNode assembled = om.createObjectNode();
+            final ObjectNode assembled = om.createObjectNode();
             assembled.put("cdnKey", uploadedKey);
             assembled.put("coverCdnKey", coverKey);
             assembled.put("durationSec", durationSec);
@@ -234,16 +240,35 @@ public class DramaShortAssembleService {
             assembled.put("sourceFingerprint", plan.fingerprint());
             assembled.put("assemblyVersion", DramaShortContinuityService.ASSEMBLY_VERSION);
             assembled.put("at", OffsetDateTime.now().toString());
-            data.set("assembled", assembled);
 
-            row.setPayloadJson(write(data));
-            row.setDurationSec((int) Math.min(Integer.MAX_VALUE, durationSec));
-            row.setShotCount(plan.clipUrls().size());
-            row.setDoneCount(plan.clipUrls().size());
-            row.setStatus("done");
-            row.setProgress(100);
-            row.setUpdatedAt(OffsetDateTime.now());
-            repo.save(row);
+            // 落库：行锁内 merge 到**当前最新** payload，只改服务端拥有的 assembled + 卡片列，
+            // 不拿几分钟前（隔着 ffmpeg）读到的旧快照整份覆盖用户这期间的自动保存（lost update）。
+            // previousKey/previousCoverKey 取自锁内当前 payload（真正被替换的那份），而非初始快照。
+            final long finalDurationSec = durationSec;
+            final int finalShotCount = plan.clipUrls().size();
+            final String[] previous = new String[2];
+            boolean applied = shorts.applyServerUpdate(shortId, userId, (r, current) -> {
+                JsonNode prevAssembled = current.path("assembled");
+                previous[0] = text(prevAssembled, "cdnKey");
+                previous[1] = text(prevAssembled, "coverCdnKey");
+                current.set("assembled", assembled.deepCopy());
+                r.setDurationSec((int) Math.min(Integer.MAX_VALUE, finalDurationSec));
+                r.setShotCount(finalShotCount);
+                r.setDoneCount(finalShotCount);
+                r.setStatus("done");
+                r.setProgress(100);
+            });
+            if (!applied) {
+                // 草稿在总装期间被软删：成片无处可挂，把刚上传的成片/封面当孤儿清掉再报错。
+                try { cdnUploader.delete(uploadedKey); } catch (Exception ignore) { /* best-effort */ }
+                try { cdnUploader.delete(coverKey); } catch (Exception ignore) { /* best-effort */ }
+                uploadedKey = null;
+                uploadedCoverKey = null;
+                throw new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND",
+                        "短视频草稿不存在或已删除，无法保存成片");
+            }
+            String previousKey = previous[0];
+            String previousCoverKey = previous[1];
 
             // 替换成片后再清旧对象；失败不影响新成片交付。
             if (previousKey != null && !previousKey.equals(uploadedKey)) {
@@ -512,11 +537,6 @@ public class DramaShortAssembleService {
         if (node == null || !node.has(field) || node.get(field).isNull()) return null;
         String value = node.get(field).asText(null);
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private String write(JsonNode node) {
-        try { return om.writeValueAsString(node); }
-        catch (Exception e) { throw new IllegalStateException("serialize drama short payload", e); }
     }
 
     private static void cleanup(Path dir) {

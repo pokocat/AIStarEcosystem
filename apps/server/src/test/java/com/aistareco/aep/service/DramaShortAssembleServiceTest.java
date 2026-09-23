@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -155,7 +156,6 @@ class DramaShortAssembleServiceTest {
         assertEquals("done", row.getStatus());
         assertEquals(100, row.getProgress());
         assertFalse(OM.readTree(row.getPayloadJson()).path("assembled").has("stale"));
-        verify(repo).save(row);
         verifyNoInteractions(ffmpeg, storage);
         verify(uploader, never()).upload(any(), anyString(), anyString());
         verify(uploader, never()).delete(anyString());
@@ -173,9 +173,34 @@ class DramaShortAssembleServiceTest {
                                                       CdnUploader uploader,
                                                       StorageQuotaService storage,
                                                       MaterialVideoJobRepository videoJobs) {
-        return new DramaShortAssembleService(repo, videoJobs, ffmpeg, uploader, CdnUrlSigner.NOOP,
-                storage, mock(FileStorageService.class), mock(ClipOverlayRenderer.class),
+        return new DramaShortAssembleService(repo, shortsMerging(repo), videoJobs, ffmpeg, uploader,
+                CdnUrlSigner.NOOP, storage, mock(FileStorageService.class), mock(ClipOverlayRenderer.class),
                 OM, 8080, "/cdn", "https://oss.example.com/media");
+    }
+
+    /**
+     * DramaShortService 桩：applyServerUpdate 模拟真实语义 —— 从 repo 读当前 payload、应用 mutator、写回，
+     * 草稿不存在则回 false。让总装的落库改动落到用例里的 row 上，供断言观察。
+     */
+    private static DramaShortService shortsMerging(DramaShortRepository repo) {
+        DramaShortService shorts = mock(DramaShortService.class);
+        when(shorts.applyServerUpdate(anyString(), anyString(), any())).thenAnswer(inv -> {
+            String id = inv.getArgument(0);
+            String uid = inv.getArgument(1);
+            @SuppressWarnings("unchecked")
+            BiConsumer<DramaShort, ObjectNode> mutator = inv.getArgument(2);
+            DramaShort row = repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, uid).orElse(null);
+            if (row == null) return false;
+            try {
+                ObjectNode data = (ObjectNode) OM.readTree(row.getPayloadJson());
+                mutator.accept(row, data);
+                row.setPayloadJson(OM.writeValueAsString(data));
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            return true;
+        });
+        return shorts;
     }
 
     /** 任务表桩：这些 URL 都是本人渲染任务真实产出的（默认覆盖各用例里的 /cdn/vN.mp4 等）。 */

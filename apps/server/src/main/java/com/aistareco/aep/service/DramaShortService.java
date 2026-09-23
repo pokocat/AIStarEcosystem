@@ -13,12 +13,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 
 /**
  * 短视频制作草稿服务（v0.76，drama 子产品）。
@@ -221,9 +223,14 @@ public class DramaShortService {
 
     /**
      * 保存整页草稿。body: { data: ShortDraftData, status?, progress? } → 落库并回算卡片字段。
+     *
+     * <p>{@code @Transactional} + 锁定读：本方法是「读整份 payload → 合并 → 写整份」，
+     * 与配音 / 总装 worker 的结果回写并发。三者统一在 {@code findByIdAndOwnerUserIdAndDeletedAtIsNullForUpdate}
+     * 的行锁上串行化，避免任一方拿旧快照整份覆盖对方的改动（lost update）。</p>
      */
+    @Transactional
     public JsonNode saveShort(String id, JsonNode body, String userId) {
-        DramaShort row = requireOwned(id, userId);
+        DramaShort row = requireOwnedForUpdate(id, userId);
         if (body == null || !body.has("data") || !body.get("data").isObject()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_DATA_REQUIRED", "缺少要保存的短视频数据");
         }
@@ -460,6 +467,40 @@ public class DramaShortService {
     private DramaShort requireOwned(String id, String userId) {
         return repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "短视频草稿不存在"));
+    }
+
+    private DramaShort requireOwnedForUpdate(String id, String userId) {
+        return repo.findByIdAndOwnerUserIdAndDeletedAtIsNullForUpdate(id, userId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "短视频草稿不存在"));
+    }
+
+    /**
+     * 配音 / 总装 worker 把服务端产物（每镜 audio.cdnKey、总装 assembled）回写 payloadJson 的唯一入口。
+     *
+     * <p>为什么不能让 worker 自己 {@code repo.save(整份旧快照)}：worker 在读到 payload 之后要隔着
+     * TTS / ffmpeg 外部调用（数秒到数分钟），期间用户的自动保存（{@link #saveShort}）可能已提交新版本。
+     * worker 若拿最初的旧快照整份覆盖，就把用户这期间的改动悄悄抹掉（lost update，与 ClipProject 同类）。
+     *
+     * <p>这里在行锁下**重新读当前最新 payload**，只让 {@code mutator} 改服务端拥有的那一小块子树
+     * （某镜的 audio、或 assembled 节点 + 回算卡片列），再整份写回。外部调用永远在本方法之外先跑完，
+     * 锁只覆盖这最后一小步 merge，绝不横跨外部调用。</p>
+     *
+     * @return true = 已应用并落库；false = 草稿已被软删 / 不存在，worker 产物无处可挂（调用方据此清理孤儿对象）。
+     */
+    @Transactional
+    public boolean applyServerUpdate(String id, String userId, BiConsumer<DramaShort, ObjectNode> mutator) {
+        DramaShort row = repo.findByIdAndOwnerUserIdAndDeletedAtIsNullForUpdate(id, userId).orElse(null);
+        if (row == null) return false;
+        ObjectNode data = asObject(readPayload(row));
+        mutator.accept(row, data);
+        row.setPayloadJson(write(data));
+        row.setUpdatedAt(OffsetDateTime.now());
+        repo.save(row);
+        return true;
+    }
+
+    private ObjectNode asObject(JsonNode node) {
+        return node instanceof ObjectNode object ? object : om.createObjectNode();
     }
 
     /** 新建时的最小 ShortDraftData（结构合法、各数组为空，前端各步渲染空状态 + 自动补开场白）。 */
