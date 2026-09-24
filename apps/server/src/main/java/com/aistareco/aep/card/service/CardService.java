@@ -401,8 +401,11 @@ public class CardService {
         // 列上的字段永远盖过文档里的同名值 —— 短链和登记号的真值在列上，不在文档里。
         doc.put("slug", card.getSlug());
         doc.put("regNo", card.getRegNo());
+        // 出 wire 给完整 ISO（§4.8）：前端统一 formatDateTime 按浏览器本地时区渲染。
+        // 旧代码 substring(0,10) 切的是 Instant 的 UTC 段 —— 晚上八点后落库的名片在 +08
+        // 页面上会显示成前一天，且 formatDateTime 会把只到天的串补成假的 08:00:00。
         if (card.getUpdatedAt() != null) {
-            doc.put("updatedAt", card.getUpdatedAt().toString().substring(0, 10));
+            doc.put("updatedAt", card.getUpdatedAt().toString());
         }
         doc.remove("demo");
 
