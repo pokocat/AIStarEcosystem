@@ -423,6 +423,13 @@ public class IpDemoTemplateService {
     /** 把一个素材复制进示例目录，返回新 key；同一个 key 只复制一次。读不出来返回 null（跳过那一张）。 */
     private String copyKey(String demoId, String key, Map<String, String> remap) {
         if (key == null || key.isBlank()) return null;
+        // 文档是客户端拥有的，storageKey 能塞任意字符串；本机 fallback 走 Paths.get(localDir, key)，
+        // 文件系统会解析掉 `..` —— 一份被污染的文档就能把 ../../etc/passwd 抄进公开示例目录
+        // （示例前缀对所有登录用户可读）。与删除侧 ownedByDemo 同样的闸：可疑 key 直接跳过。
+        if (key.contains("..") || key.contains("\\") || key.startsWith("/")) {
+            log.warn("[ipstudio] 示例素材 key 非法，跳过 demo={} key={}", demoId, key);
+            return null;
+        }
         String hit = remap.get(key);
         if (hit != null) return hit;
         try {

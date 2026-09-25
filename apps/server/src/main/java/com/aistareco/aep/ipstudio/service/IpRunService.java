@@ -197,8 +197,16 @@ public class IpRunService {
         item.put("prompt", req.prompt().trim());
         if (req.durationSec() != null) item.put("duration_sec", req.durationSec());
         if (req.aspectRatio() != null && !req.aspectRatio().isBlank()) item.put("aspect_ratio", req.aspectRatio());
-        if (req.model() != null && !req.model().isBlank()) item.put("endpoint_id", req.model().trim());
-        if (refKey != null) item.putObject("variant_config").put("first_frame_key", refKey);
+        // endpoint_id 与 first_frame_key 都必须落在 variant_config 里：submit 只持久化 variant_config
+        // （见 MaterialVideoJobService，item 根上的字段整条丢弃），计价（endpointIdOf）与 worker 出片
+        // （extractEndpointId）也只从 variant_config 读 endpoint_id。写在 item 根上 → 用户选的模型既不
+        // 计价也不出片，一律回落默认端点（与短剧 DramaRenderService / 音乐 MusicGenJobService 的写法对齐）。
+        boolean hasModel = req.model() != null && !req.model().isBlank();
+        if (hasModel || refKey != null) {
+            ObjectNode variantConfig = item.putObject("variant_config");
+            if (hasModel) variantConfig.put("endpoint_id", req.model().trim());
+            if (refKey != null) variantConfig.put("first_frame_key", refKey);
+        }
 
         ObjectNode body = om.createObjectNode();
         body.putArray("items").add(item);
