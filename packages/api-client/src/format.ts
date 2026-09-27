@@ -93,3 +93,25 @@ export function formatDateTime(iso?: string | null, fallback = "—"): string {
   // 按 part 自己拼：不同运行时给的连接符不一样（`2026/09/09` vs `2026-09-09`）
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
+
+/**
+ * 时间戳 → `2026-09-09`（只到日；浏览器本地时区）。§4.8 全站唯一的日期显示。
+ *
+ * 同样别再写 `iso.slice(0, 10)`：它切的是 **UTC** 那一段。带时间的 ISO 串
+ * （`...T22:30:00Z`）必须先换算到本地再取日，否则晚上落库的东西会显示成前一天。
+ * 而纯日历日（`2026-09-09`，没有时间部分）就是它字面那一天，**不做时区换算** ——
+ * 否则 `new Date("2026-09-09")` 按 UTC 零点解析，在西区反而会倒退一天。
+ */
+export function formatDate(iso?: string | null, fallback = "—"): string {
+  if (!iso) return fallback;
+  const trimmed = iso.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed; // 纯日历日，原样
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return fallback;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}

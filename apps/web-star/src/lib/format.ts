@@ -4,7 +4,10 @@
 // 通用工具复用 @ai-star-eco/api-client/format，此处补充中文单位形态。
 // ─────────────────────────────────────────────────────────────────────────────
 
-export { formatNumber, formatPercent } from "@ai-star-eco/api-client";
+// §4.8：时间显示统一走共享包（浏览器本地时区）。此前本文件的 formatDateTime /
+// formatDate 是 `iso.slice(0, 10)` / 直接截 ISO 字面串 —— 切的是 UTC 段，
+// 晚上八点之后落库的记录在 +08 页面上会显示成前一天且时刻错 8 小时。
+export { formatNumber, formatPercent, formatDateTime, formatDate } from "@ai-star-eco/api-client";
 
 /** 金额（分）→ 整数价 "¥398"；非整元保留两位 "¥99.50"。 */
 export function formatYuan(cents: number): string {
@@ -51,18 +54,4 @@ export function formatMonthsZh(months: number): string {
   const years = Math.floor(m / 12);
   const rest = m % 12;
   return rest > 0 ? `${years}年${rest}个月` : `${years}年`;
-}
-
-/** ISO 时间 → "2026-05-06 14:30"（无时间部分时仅日期）。 */
-export function formatDateTime(iso: string | undefined | null): string {
-  if (!iso) return "—";
-  const m = iso.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
-  if (m) return `${m[1]} ${m[2]}`;
-  return iso.slice(0, 10);
-}
-
-/** ISO 日期 → "2026-05-06"。 */
-export function formatDate(iso: string | undefined | null): string {
-  if (!iso) return "—";
-  return iso.slice(0, 10);
 }

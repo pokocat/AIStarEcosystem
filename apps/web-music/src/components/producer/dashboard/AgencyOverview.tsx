@@ -26,7 +26,7 @@ import type { Artist } from "@ai-star-eco/types/artist";
 import type { Song } from "@ai-star-eco/types/music";
 import type { MonthlyRevenuePoint, RevenueSource } from "@ai-star-eco/types/finance";
 import { FinanceApi } from "@/api";
-import { formatCredits, formatCompactNumber } from "@/lib/format";
+import { formatCredits, formatCompactNumber, formatDate } from "@/lib/format";
 import { ActivityFeed } from "../ActivityFeed";
 import { ARTIST_TYPE_LABELS } from "../ArtistTypes";
 import { TypeDistributionPie } from "./charts/TypeDistributionPie";
@@ -246,7 +246,7 @@ export function AgencyOverview({
               <tbody>
                 {recentSongs.map((song) => {
                   const meta = SONG_STATUS_LABEL[song.status];
-                  const date = (song.releaseDate ?? song.createdAt ?? "").slice(0, 10);
+                  const date = formatDate(song.releaseDate ?? song.createdAt, "");
                   return (
                     <tr
                       key={song.id}
