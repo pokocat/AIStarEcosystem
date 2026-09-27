@@ -72,3 +72,24 @@ export function formatDuration(totalSec: number): string {
 function trimZero(n: number): string {
   return n.toFixed(1).replace(/\.0$/, "");
 }
+
+/**
+ * 时间戳 → `2026-05-06`（只到日；浏览器本地时区）。§4.8。
+ *
+ * 不要写 `iso.slice(0, 10)`：它切的是 UTC 段，晚上落库的记录在 +08 会显示成前一天。
+ * 带时间的 ISO 串先换算到本地再取日；纯日历日（`2026-05-06`，无时间部分）原样返回，
+ * 避免 `new Date("2026-05-06")` 按 UTC 零点解析导致西区倒退一天。
+ */
+export function formatDate(iso?: string | null, fallback = ""): string {
+  if (!iso) return fallback;
+  const trimmed = iso.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return fallback;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
