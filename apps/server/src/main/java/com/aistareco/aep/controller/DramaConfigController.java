@@ -43,6 +43,9 @@ public class DramaConfigController {
         prices.put("shotRewrite", configs.getLong(DramaConfigSeeder.KEY_SHOT_REWRITE, 2));
         prices.put("shortEntry", configs.getLong(DramaConfigSeeder.KEY_SHORT_ENTRY, 10));
         prices.put("clip", configs.getLong(DramaConfigSeeder.KEY_CLIP, 30));
+        // 互动剧 AI 起草分支图：确认框要报的就是 DramaProjectService 实际冻结的那个数（同 key、同默认值）。
+        prices.put("interactiveDraft", configs.getLong(DramaConfigSeeder.KEY_INTERACTIVE_DRAFT,
+                DramaConfigSeeder.DEFAULT_INTERACTIVE_DRAFT));
         return ApiResponse.of(out);
     }
 }

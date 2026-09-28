@@ -1,13 +1,25 @@
 // 全局元数据 — 设计真源 data.js（projects / contentTypes / templates / avatarLibrary）。
 import type { AvatarLibItem, ContentType, DramaProjectSummary, Template } from "./types";
 
+// 与服务端 DramaProjectService.toSummary 同形（§8.0.1 ⑦）：`updatedAt` 发 ISO，
+// `updated` 是服务端算的相对时间（今天 / 昨天 / N 天前 / N 周前），界面不展示它。
+function ago(days: number, hh: number, mm: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  d.setHours(hh, mm, 0, 0);
+  return d.toISOString();
+}
+function minsAgo(n: number): string {
+  return new Date(Date.now() - n * 60_000).toISOString();
+}
+
 export const PROJECTS: DramaProjectSummary[] = [
-  { id: "p1", title: "落地窗后", type: "悬疑短剧", typeKey: "mystery", ratio: "9:16", episodes: 80, progress: 64, stage: 4, cover: { from: "#f97316", to: "#e11d48" }, mode: "guided", updated: "今天 14:32", main: true },
-  { id: "p2", title: "重生后她在冷宫杀疯了", type: "宫斗", typeKey: "palace", ratio: "9:16", episodes: 98, progress: 100, stage: 6, cover: { from: "#db2777", to: "#9333ea" }, mode: "template", updated: "昨天 21:08", done: true },
-  { id: "p3", title: "闪婚老公竟是隐藏首富", type: "都市甜宠", typeKey: "romance", ratio: "9:16", episodes: 76, progress: 28, stage: 2, cover: { from: "#f472b6", to: "#fb7185" }, mode: "guided", updated: "3 天前" },
-  { id: "p4", title: "向阳而生 · 乡村支教纪实", type: "公益宣传片", typeKey: "public", ratio: "16:9", episodes: 1, progress: 80, stage: 5, cover: { from: "#10b981", to: "#22d3ee" }, mode: "template", updated: "上周二" },
-  { id: "p5", title: "星核纪元", type: "科幻短剧", typeKey: "scifi", ratio: "9:16", episodes: 60, progress: 9, stage: 1, cover: { from: "#3b82f6", to: "#8b5cf6" }, mode: "guided", updated: "上周五" },
-  { id: "p6", title: "匠心智造 · 品牌片", type: "企业宣传片", typeKey: "corporate", ratio: "16:9", episodes: 1, progress: 45, stage: 3, cover: { from: "#f59e0b", to: "#ef4444" }, mode: "template", updated: "2 周前" },
+  { id: "p1", title: "落地窗后", type: "悬疑短剧", typeKey: "mystery", ratio: "9:16", episodes: 80, progress: 64, stage: 4, cover: { from: "#f97316", to: "#e11d48" }, mode: "guided", updated: "今天", updatedAt: minsAgo(95), main: true },
+  { id: "p2", title: "重生后她在冷宫杀疯了", type: "宫斗", typeKey: "palace", ratio: "9:16", episodes: 98, progress: 100, stage: 6, cover: { from: "#db2777", to: "#9333ea" }, mode: "template", updated: "昨天", updatedAt: ago(1, 21, 8), done: true },
+  { id: "p3", title: "闪婚老公竟是隐藏首富", type: "都市甜宠", typeKey: "romance", ratio: "9:16", episodes: 76, progress: 28, stage: 2, cover: { from: "#f472b6", to: "#fb7185" }, mode: "guided", updated: "3 天前", updatedAt: ago(3, 10, 15) },
+  { id: "p4", title: "向阳而生 · 乡村支教纪实", type: "公益宣传片", typeKey: "public", ratio: "16:9", episodes: 1, progress: 80, stage: 5, cover: { from: "#10b981", to: "#22d3ee" }, mode: "template", updated: "1 周前", updatedAt: ago(8, 16, 40) },
+  { id: "p5", title: "星核纪元", type: "科幻短剧", typeKey: "scifi", ratio: "9:16", episodes: 60, progress: 9, stage: 1, cover: { from: "#3b82f6", to: "#8b5cf6" }, mode: "guided", updated: "1 周前", updatedAt: ago(11, 9, 5) },
+  { id: "p6", title: "匠心智造 · 品牌片", type: "企业宣传片", typeKey: "corporate", ratio: "16:9", episodes: 1, progress: 45, stage: 3, cover: { from: "#f59e0b", to: "#ef4444" }, mode: "template", updated: "2 周前", updatedAt: ago(15, 18, 22) },
 ];
 
 export const CONTENT_TYPES: ContentType[] = [
@@ -19,7 +31,7 @@ export const CONTENT_TYPES: ContentType[] = [
   { key: "social",    name: "社会热点",     desc: "共鸣、话题、强代入",    ratio: "竖屏 9:16", pace: "真实感·口播多",     from: "#f59e0b", to: "#fb923c" },
   { key: "public",    name: "公益宣传片",   desc: "温暖、呼吁、有力量",    ratio: "横屏 16:9", pace: "叙事·情绪向",       from: "#10b981", to: "#22d3ee" },
   { key: "corporate", name: "企业宣传片",   desc: "品牌、产品、代言人",    ratio: "横屏 16:9", pace: "产品·口播",         from: "#f59e0b", to: "#ef4444" },
-  { key: "custom",    name: "通用 / 自定义", desc: "自由搭建你的骨架",     ratio: "可选",       pace: "灵活",               from: "#94a3b8", to: "#cbd5e1", plain: true },
+  { key: "custom",    name: "通用 / 自定义", desc: "自己搭故事框架",     ratio: "可选",       pace: "灵活",               from: "#94a3b8", to: "#cbd5e1", plain: true },
 ];
 
 export const TEMPLATES: Record<string, Template[]> = {

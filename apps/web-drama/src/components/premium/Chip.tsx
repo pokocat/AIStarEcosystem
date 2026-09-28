@@ -16,12 +16,37 @@ const toneVar: Record<Tone, string> = {
 
 export function Chip({
   tone = "accent",
+  solid = false,
   children,
 }: {
   tone?: Tone;
+  /** 压在图片 / 视频上时用：深色实底 + 白字，否则半透明色字在深色画面上看不清 */
+  solid?: boolean;
   children: ReactNode;
 }) {
   const color = toneVar[tone];
+  if (solid) {
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "3px 10px",
+          borderRadius: "var(--radius-pill)",
+          fontSize: 11.5,
+          fontWeight: 600,
+          fontFamily: "var(--font)",
+          color: "#fff",
+          background: "rgba(0,0,0,.55)",
+          boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 55%, transparent)`,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {children}
+      </span>
+    );
+  }
   return (
     <span
       style={{

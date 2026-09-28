@@ -72,8 +72,10 @@ class DramaScriptServiceTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> service.aiDraft(OM.createObjectNode().put("theme", "喵影江湖"), "u1"));
 
+        // 断错误码与状态（§8.0.1 ⑩）：前端按 code 判定「写太长被截断」，文案会随改版变。
         assertEquals("AI_OUTPUT_TRUNCATED", ex.getCode());
-        assertTrue(ex.getMessage().contains("长度上限"));
+        assertEquals(org.springframework.http.HttpStatus.BAD_GATEWAY, ex.getStatus());
+        assertFalse(ex.getMessage().isBlank(), "截断必须给用户一句能看懂的说明，不能是空消息");
     }
 
     @Test

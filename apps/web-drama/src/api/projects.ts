@@ -4,10 +4,12 @@
 // 后端：/api/me/drama/projects/**（DramaProjectController），按 ownerUserId 隔离。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import { ApiError, apiFetch, USE_MOCK, mockDelay } from "./_client";
 import {
   PROJECTS,
+  deleteProjectData,
   getProjectData,
+  setProjectData,
   type AssembledEpisode,
   type BoardScene,
   type BoardShot,
@@ -52,7 +54,7 @@ export interface SaveProjectOptions {
  * （mock 同样返回全集，保持与真后端一致。）
  */
 export async function listProjects(): Promise<DramaProjectSummary[]> {
-  if (USE_MOCK) return mockDelay(PROJECTS);
+  if (USE_MOCK) return mockDelay([...PROJECTS]);
   return apiFetch<DramaProjectSummary[]>("/me/drama/projects");
 }
 
@@ -60,15 +62,30 @@ export async function getProject(id: string): Promise<ProjectDetail> {
   if (USE_MOCK) {
     const data = getProjectData(id);
     const meta = PROJECTS.find((p) => p.id === id);
-    if (!data || !meta) throw new Error("项目不存在");
+    if (!data || !meta) throw mockProjectNotFound();
     return mockDelay({ meta, data });
   }
   return apiFetch<ProjectDetail>(`/me/drama/projects/${id}`);
 }
 
+/**
+ * 照服务端 DramaProjectService#requireOwned：不在列表里（没建过，或者已经移进回收站）→ 404。
+ * 读、存、合成都走这一处，mock 与服务端同一个错误码、同一个状态码。
+ */
+function mockProjectNotFound(): ApiError {
+  return new ApiError({ code: "DRAMA_PROJECT_NOT_FOUND", message: "找不到这部短剧" }, 404);
+}
+
+// ── mock 回收站（进程内存；整页刷新清空，与 brainstorm / shorts 的 mock 一致）──────────
+const MOCK_TRASH: DramaProjectTrashItem[] = [];
+let mockSeq = 0;
+const TRASH_DAYS = 30;
+
 export async function createProject(input: CreateProjectInput): Promise<ProjectDetail> {
   if (USE_MOCK) {
-    const id = `dp_mock_${Date.now()}`;
+    // 与服务端一致：新建完就能在列表里看到、在工作台里打开（§8.0.1 ⑦）。
+    // 脑暴「去制作」、多集模板「做同款」、「照这部新建一部」都走这里。
+    const id = `dp_mock_${Date.now().toString(36)}_${mockSeq++}`;
     const meta: DramaProjectSummary = {
       id,
       title: input.title || "未命名短剧",
@@ -80,14 +97,18 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectD
       stage: 1,
       cover: { from: input.coverFrom || "#f97316", to: input.coverTo || "#e11d48" },
       mode: input.mode,
-      updated: "刚刚",
+      updated: "今天",
+      updatedAt: new Date().toISOString(),
     };
+    // 形状照服务端 DramaProjectService#seedProjectData 写：横屏「每集 60 秒」、其余「每集 75 秒」，
+    // 大纲参数、场景设定、按集存档、互动剧叠加层也一并给上（字段缺了，演示模式和线上长得不一样）。
+    const landscape = meta.ratio.startsWith("16");
     const data: ProjectData = {
       projectInfo: {
         title: meta.title,
         type: input.type,
-        episodes: meta.episodes,
-        duration: "每集 ~60 秒",
+        episodes: Math.max(1, meta.episodes),
+        duration: landscape ? "每集 60 秒" : "每集 75 秒",
         ratio: meta.ratio,
         logline: input.logline || "",
         mainline: input.mainline || "",
@@ -95,13 +116,58 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectD
       topicCards: [],
       episodes: [],
       characters: [],
+      scenes: [],
+      outlinePrefs: { scope: "trial", dur: landscape ? "60 秒/集" : "75 秒/集" },
       script: { ep: 1, scenes: [] },
       storyboard: { ep: 1, scenes: [] },
       promptPack: { ep: 1, scene: "", shots: [] },
+      episodeDocs: {},
+      ...(input.mode === "interactive"
+        ? { interactive: { enabled: true, startEpisodeId: "ep1", globalFlags: {}, nodes: {} } }
+        : {}),
     };
+    PROJECTS.unshift(meta);
+    setProjectData(id, data);
     return mockDelay({ meta, data });
   }
   return apiFetch<ProjectDetail>("/me/drama/projects", { method: "POST", body: input });
+}
+
+const clampInt = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)));
+const nonBlank = (s: unknown): s is string => typeof s === "string" && s.trim() !== "";
+
+/**
+ * mock 保存时回算列表卡片字段，照服务端 DramaProjectService#saveProject + toSummary 写（§8.0.1 ⑦）：
+ * - 标题 / 类型 / 画幅以 projectInfo 为准回写（空值不覆盖）；集数 > 0 才回写；
+ * - stage 夹到 1..6、progress 夹到 0..100（只在调用方带了才改）；
+ * - 文档里 interactive.enabled 为真 → mode 同步成 interactive（不会反向改回去）；
+ * - done 由 progress 推出：≥ 100 才有 done=true，否则不带这个字段。
+ * 此前有旧记录时直接展开旧卡片，这些都没同步 —— 新做完的 mock 短剧在列表里点开还是进工作台，
+ * 而不是成片预览（列表按 p.done 分流）。
+ */
+function mockSyncSummary(
+  base: DramaProjectSummary,
+  data: ProjectData,
+  opts?: SaveProjectOptions,
+): DramaProjectSummary {
+  const info = data.projectInfo;
+  const eps = Number(info?.episodes);
+  const progress = opts?.progress != null ? clampInt(opts.progress, 0, 100) : base.progress;
+  const { done: _done, ...rest } = base;
+  void _done;
+  return {
+    ...rest,
+    title: nonBlank(info?.title) ? info.title : base.title,
+    type: nonBlank(info?.type) ? info.type : base.type,
+    ratio: nonBlank(info?.ratio) ? info.ratio : base.ratio,
+    episodes: Number.isFinite(eps) && eps > 0 ? Math.trunc(eps) : base.episodes,
+    stage: opts?.stage != null ? clampInt(opts.stage, 1, 6) : base.stage > 0 ? base.stage : 1,
+    progress,
+    mode: data.interactive?.enabled ? "interactive" : base.mode,
+    updated: "今天",
+    updatedAt: new Date().toISOString(),
+    ...(progress >= 100 ? { done: true } : {}),
+  };
 }
 
 /** 保存整套工作台文档（可选携带 stage / progress）。 */
@@ -111,25 +177,16 @@ export async function saveProject(
   opts?: SaveProjectOptions,
 ): Promise<ProjectDetail> {
   if (USE_MOCK) {
-    const meta = PROJECTS.find((p) => p.id === id);
-    return mockDelay({
-      meta: {
-        ...(meta ?? {
-          id,
-          title: data.projectInfo.title,
-          type: data.projectInfo.type,
-          typeKey: "custom",
-          ratio: data.projectInfo.ratio,
-          episodes: data.projectInfo.episodes,
-          cover: { from: "#f97316", to: "#e11d48" },
-          mode: "guided" as const,
-          updated: "刚刚",
-        }),
-        stage: opts?.stage ?? meta?.stage ?? 1,
-        progress: opts?.progress ?? meta?.progress ?? 0,
-      },
-      data,
-    });
+    // 与服务端 requireOwned 一致：已经移进回收站（或根本没有）的短剧不能再存 → 404。
+    // 此前这里会凭空补一张卡片，删除之后才落地的自动保存让同一部短剧同时出现在列表和回收站里。
+    const idx = PROJECTS.findIndex((p) => p.id === id);
+    if (idx < 0) throw mockProjectNotFound();
+    const meta = mockSyncSummary(PROJECTS[idx], data, opts);
+    // 服务端按 updatedAt 倒序返回列表：刚保存的排到最前。
+    PROJECTS.splice(idx, 1);
+    PROJECTS.unshift(meta);
+    setProjectData(id, data);
+    return mockDelay({ meta, data });
   }
   return apiFetch<ProjectDetail>(`/me/drama/projects/${id}`, {
     method: "PUT",
@@ -139,7 +196,16 @@ export async function saveProject(
 
 /** 软删（移入回收站，保留 30 天后由后端定时物理删除，期间可恢复）。 */
 export async function deleteProject(id: string): Promise<void> {
-  if (USE_MOCK) return mockDelay(undefined);
+  if (USE_MOCK) {
+    const idx = PROJECTS.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      const [meta] = PROJECTS.splice(idx, 1);
+      const now = new Date();
+      const purge = new Date(now.getTime() + TRASH_DAYS * 86_400_000);
+      MOCK_TRASH.unshift({ ...meta, deletedAt: now.toISOString(), purgeAt: purge.toISOString(), daysLeft: TRASH_DAYS });
+    }
+    return mockDelay(undefined);
+  }
   await apiFetch<void>(`/me/drama/projects/${id}`, { method: "DELETE" });
 }
 
@@ -153,19 +219,33 @@ export interface DramaProjectTrashItem extends DramaProjectSummary {
 
 /** 回收站列表（当前用户已软删的短剧）。 */
 export async function listTrashProjects(): Promise<DramaProjectTrashItem[]> {
-  if (USE_MOCK) return mockDelay([]);
+  if (USE_MOCK) return mockDelay([...MOCK_TRASH]);
   return apiFetch<DramaProjectTrashItem[]>("/me/drama/projects/trash");
 }
 
 /** 从回收站恢复到工坊列表。 */
 export async function restoreProject(id: string): Promise<void> {
-  if (USE_MOCK) return mockDelay(undefined);
+  if (USE_MOCK) {
+    const idx = MOCK_TRASH.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      const [item] = MOCK_TRASH.splice(idx, 1);
+      const { deletedAt: _d, purgeAt: _p, daysLeft: _l, ...meta } = item;
+      void _d; void _p; void _l;
+      PROJECTS.unshift(meta);
+    }
+    return mockDelay(undefined);
+  }
   await apiFetch<ProjectDetail>(`/me/drama/projects/${id}/restore`, { method: "POST" });
 }
 
 /** 彻底删除（物理，需已在回收站）。 */
 export async function purgeProject(id: string): Promise<void> {
-  if (USE_MOCK) return mockDelay(undefined);
+  if (USE_MOCK) {
+    const idx = MOCK_TRASH.findIndex((p) => p.id === id);
+    if (idx >= 0) MOCK_TRASH.splice(idx, 1);
+    deleteProjectData(id);
+    return mockDelay(undefined);
+  }
   await apiFetch<void>(`/me/drama/projects/${id}/purge`, { method: "DELETE" });
 }
 
@@ -358,11 +438,47 @@ export async function generateReferenceSheet(
   );
 }
 
+/**
+ * mock 合成要拼哪几镜 —— 与服务端 DramaAssembleService#collectClipUrls 同一口径：
+ * 取 episodeDocs[ep].storyboard；没有这一集的分镜、且整个项目还没启用 episodeDocs（老项目）时
+ * 回落老的 storyboard 字段；逐场按镜号排序，只收有 videoUrl 的镜头。
+ */
+function mockAssembleClips(data: ProjectData, ep: number): BoardShot[] {
+  let scenes = data.episodeDocs?.[String(ep)]?.storyboard?.scenes;
+  if (!scenes) {
+    const docsEnabled = !!data.episodeDocs && Object.keys(data.episodeDocs).length > 0;
+    scenes = docsEnabled ? [] : data.storyboard?.scenes ?? [];
+  }
+  return scenes.flatMap((sc) =>
+    [...(sc.shots ?? [])].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)).filter((sh) => !!sh.videoUrl?.trim()),
+  );
+}
+
 /** 成片合成（v0.66）：把某集已出片分镜按序拼成完整片（未落库，前端合并后 saveProject）。 */
 export async function assembleEpisode(id: string, ep: number): Promise<AssembledEpisode> {
   if (USE_MOCK) {
+    // 与服务端同形（§8.0.1 ⑦）：镜数 = 这一集有 videoUrl 的镜头数；时长服务端量的是拼好的成片，
+    // mock 没有真文件，用这几镜的时长之和（成片就是它们首尾相接）。没有可拼的镜头时同样报
+    // DRAMA_ASSEMBLE_NO_CLIPS。视频地址固定用 public/videos 里那段标了「本地演示视频」的样片。
+    const data = getProjectData(id);
+    if (!data || !PROJECTS.some((p) => p.id === id)) throw mockProjectNotFound();
+    const clips = mockAssembleClips(data, ep);
+    if (!clips.length) {
+      throw new ApiError(
+        {
+          code: "DRAMA_ASSEMBLE_NO_CLIPS",
+          message: `第 ${ep} 集还没有生成好视频的镜头，先在「分镜」里给镜头生成视频。`,
+        },
+        400,
+      );
+    }
     return mockDelay(
-      { url: "/videos/showreel-01.mp4", durationSec: 36, shotCount: 6, at: new Date().toISOString() },
+      {
+        url: "/videos/showreel-01.mp4",
+        durationSec: Math.round(clips.reduce((sum, sh) => sum + (Number(sh.dur) || 0), 0)),
+        shotCount: clips.length,
+        at: new Date().toISOString(),
+      },
       1800,
     );
   }
@@ -379,8 +495,8 @@ export async function outlineAiDraft(id: string, count?: number): Promise<Episod
     return mockDelay(
       Array.from({ length: count ?? 6 }, (_, i) => ({
         no: i + 1,
-        hook: `第 ${i + 1} 集的强钩子（本地联调样例）`,
-        synopsis: "AI 按主线铺出的本集梗概占位文案。",
+        hook: `第 ${i + 1} 集的钩子（本地演示数据）`,
+        synopsis: "按故事主线写出的本集梗概（本地演示数据）。",
         beat: beats[i % beats.length],
       })),
       1200,
@@ -456,7 +572,7 @@ export async function interactiveDraft(id: string, theme?: string): Promise<Inte
               id: "ep4_i1", triggerTime: 44, interactionType: "choice",
               condition: "globalFlags.hasKey == true",
               uiConfig: {
-                question: "你手里正好有钥匙——", countdownSec: 10,
+                question: "你手里正好有钥匙", countdownSec: 10,
                 options: [{ id: "A", text: "插入钥匙开门", nextVideoId: "ep5" }],
               },
             },

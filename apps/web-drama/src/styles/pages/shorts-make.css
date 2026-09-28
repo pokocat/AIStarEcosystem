@@ -1,0 +1,177 @@
+/* ============================================================
+   pages/shorts-make.css —— v0.197 响应式分文件（见 docs/drama-ux-copy-pass.md §5）
+   只放本簇页面自己的样式；全站通用规则写 app.css。
+   新增窄屏规则沿用 app.css 的断点：1024 / 860 / 720 / 560。
+   类名一律带本簇前缀，避免和别的页面撞。
+
+   本簇：/shorts/make（app/(workspace)/shorts/make/page.tsx）
+         + 短视频分镜表（components/drama-workshop/short-storyboard-table.tsx）
+   前缀：smk-
+   ============================================================ */
+
+/* ---------- 桌面默认 ---------- */
+
+/* 对话 / 分镜页签：桌面上两栏并排，不需要页签 */
+.pane-tabs.smk-pane-tabs { display: none; }
+
+.smk-board-inner { padding: 22px 28px 110px; }
+
+/* ---------- 短视频分镜表：宽表格 ↔ 每镜一张卡片 ----------
+   桌面上对话栏展开时，分镜表所在的容器只有 ~700px，860px 宽的表格会把「景别 · 运镜」
+   「音效 · BGM · 特效」两列藏进没人发现的横向滚动里。所以按**容器宽度**（不是视口）切：
+   容器 <860 就进卡片模式，手机、平板、桌面窄栏同一套。 */
+.smk-board { container-type: inline-size; container-name: smk-board; }
+.smk-table { min-width: 860px; }
+
+@container smk-board (max-width: 859px) {
+  .smk-table-scroll { overflow-x: visible !important; }
+  .smk-table { display: block; min-width: 0; }
+  .smk-table thead { display: none; }
+  .smk-table tbody { display: block; }
+
+  .smk-row {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    grid-template-areas:
+      "no    no"
+      "frame text"
+      "shot  shot"
+      "audio audio";
+    column-gap: 12px;
+    row-gap: 10px;
+    padding: 14px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .smk-row:last-child { border-bottom: none; }
+  .smk-row > td {
+    display: block;
+    min-width: 0;
+    padding: 0 !important;
+    border-bottom: none !important;
+  }
+
+  /* 卡片头：镜号 · 转折标签 · 时间 · 时长 · 删除，一行排开 */
+  .smk-cell-no {
+    grid-area: no;
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    text-align: left !important;
+  }
+  .smk-cell-no > * { margin: 0 !important; }
+  .smk-cell-no .smk-no { order: -1; font-size: 20px !important; }
+  .smk-cell-no .smk-beat { max-width: 160px !important; }
+  .smk-cell-no .smk-del { margin-left: auto !important; }
+
+  .smk-cell-frame { grid-area: frame; }
+  .smk-cell-text { grid-area: text; }
+  .smk-cell-shot { grid-area: shot; }
+  .smk-cell-audio { grid-area: audio; }
+
+  /* 景别 / 运镜、音效 / BGM / 特效：卡片底部各一行，横排可换行 */
+  .smk-cell-shot,
+  .smk-cell-audio {
+    padding-top: 10px !important;
+    border-top: 1px dashed var(--line-soft);
+  }
+  .smk-fields {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 6px 14px !important;
+  }
+  .smk-field { flex: 1 1 88px; min-width: 0; }
+}
+
+/* ---------- ≤1024：对话 / 分镜一次只显示一栏 ----------
+   861–1024 时侧栏还在，内容区只剩 ~780px，380px 的对话栏 + 分镜表放不下。 */
+@media (max-width: 1024px) {
+  .pane-tabs.smk-pane-tabs { display: flex; margin: 10px 16px 0; }
+
+  /* 窄屏没有「收起对话」这回事 */
+  .smk-chat-rail,
+  .smk-chat-collapse { display: none !important; }
+
+  .smk-chat {
+    width: auto !important;
+    flex: 1 1 auto !important;
+    min-width: 0;
+    border-right: none !important;
+  }
+  .smk-page[data-pane="board"] .smk-chat { display: none; }
+  .smk-page[data-pane="chat"] .smk-board-pane { display: none; }
+
+  /* 悬浮条在对话页签里会压住发送按钮 → 只在分镜页签出现 */
+  .smk-page[data-pane="chat"] .smk-dock { display: none !important; }
+}
+
+/* 桌面上分镜表表头已有「一起生成 / 停止」，贴底条里那份只给窄屏 */
+.smk-dock-run { display: none; }
+/* 空态「去对话框」只在页签模式下有意义（桌面上对话框就在旁边） */
+.smk-to-chat { display: none; }
+@media (max-width: 1024px) {
+  .smk-to-chat { display: inline-flex; }
+}
+
+/* ---------- ≤860：侧栏收成抽屉；悬浮条贴底通栏 ---------- */
+@media (max-width: 860px) {
+  .smk-dock {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    max-width: none !important;
+    justify-content: center;
+  }
+  .smk-dock > .btn-grad { flex: 1 1 auto; justify-content: center; }
+  .smk-dock-run { display: inline-flex; }
+  .smk-board-inner { padding-bottom: calc(132px + env(safe-area-inset-bottom)) !important; }
+}
+
+/* ---------- ≤720：手机横屏 / 小平板 ---------- */
+@media (max-width: 720px) {
+  .pane-tabs.smk-pane-tabs { margin: 8px 12px 0; }
+  .smk-board-inner { padding: 14px 12px calc(132px + env(safe-area-inset-bottom)) !important; }
+  .smk-outline-body { padding: 16px !important; }
+
+  /* 放大后的表在手机上和内联一样大，没意义 */
+  .smk-hide-sm { display: none !important; }
+
+  /* 触屏点击区 ≥32px */
+  .smk-del {
+    min-width: 32px;
+    min-height: 32px;
+    display: inline-grid !important;
+    place-items: center;
+    padding: 0 !important;
+  }
+  .smk-speaker,
+  .smk-dur-input { height: 32px !important; }
+  /* 分镜卡里的「先出首帧 / 跳过首帧出视频 / 生成视频 / 查看进度」：内联只有 24–26px 高，
+     min-height 压过内联 height（不用 !important）。 */
+  .smk-board .sfc-btn { min-height: 32px; }
+  /* 模型和价格没读到时的「重试」 */
+  .smk-retry { min-height: 32px; }
+  .smk-thumb-x {
+    width: 24px !important;
+    height: 24px !important;
+  }
+}
+
+/* ---------- ≤560：小屏手机 ---------- */
+@media (max-width: 560px) {
+  .smk-header {
+    padding: 0 12px !important;
+    gap: 8px !important;
+  }
+  .smk-swatch { display: none; }
+  .smk-dock-icon { display: none; }
+  .smk-meta { display: none !important; }
+  .smk-title-input { font-size: 20px !important; }
+
+  /* 弹窗：外边距收到 12px，弹窗本身不超过可用宽度 */
+  .smk-modal-wrap { padding: 12px !important; }
+  .smk-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}

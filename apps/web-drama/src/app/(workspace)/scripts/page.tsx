@@ -2,63 +2,42 @@
 
 export const dynamic = "force-dynamic";
 
+// 脚本库（v0.197：侧栏「即将上线」分组，见 docs/drama-ux-copy-pass.md §3.1）。
+// 如实改名：原「归档」调的是 DELETE（真删）→ 改叫「删除」并如实确认；「完成度」是按状态写死的假百分比 → 去掉；
+// 顶部横幅说明写好的脚本还不能直接带进某部短剧。
+// 第三轮：去掉「草稿 / 待定稿 / 已定稿」筛选和状态标 —— 服务端每次保存都把状态写成 ready
+// （DramaScriptService#saveScript），这套状态存不住，按它筛出来的结果不可信。
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Archive, Copy, Download, Filter, PenTool, Plus, Search, Sparkles } from "lucide-react";
-import type { Script, ScriptKind, ScriptStatus } from "@ai-star-eco/types/script";
-import { Button, Card, Chip, KpiCard } from "@/components/premium";
+import { Copy, Download, Info, PenTool, Plus, Search, Trash2 } from "lucide-react";
+import type { Script } from "@ai-star-eco/types/script";
+import { Button, Card, Chip } from "@/components/premium";
 import {
   ConfirmDialog,
   EmptyState,
   ErrorBlock,
   LoadingBlock,
-  SectionHeader,
-  StatusBadge,
   ViewHeader,
 } from "@/components/common";
 import { ScriptsApi } from "@/api";
 import { useAsync, invalidate } from "@/lib/drama-query";
-import { ApiError } from "@ai-star-eco/api-client";
+import { ApiError, formatDateTime } from "@ai-star-eco/api-client";
 import { NewScriptDialog } from "./_dialogs/NewScriptDialog";
-
-const KIND_LABEL: Record<ScriptKind, string> = {
-  drama: "剧集",
-  ad: "广告",
-  trailer: "宣传片",
-  voice: "配音",
-};
-
-const STATUS_LABEL: Record<ScriptStatus, string> = {
-  draft: "草稿",
-  review: "审稿中",
-  approved: "已通过",
-  archived: "已归档",
-};
-
-const STATUS_TONE: Record<ScriptStatus, "info" | "accent" | "success" | "neutral"> = {
-  draft: "info",
-  review: "accent",
-  approved: "success",
-  archived: "neutral",
-};
-
-type StatusFilter = "all" | ScriptStatus;
+import { SCRIPT_KIND_LABEL, downloadScriptText } from "./_script-labels";
 
 export default function ScriptsListPage() {
   const router = useRouter();
   const [q, setQ] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [showNew, setShowNew] = React.useState(false);
-  const [archiveTarget, setArchiveTarget] = React.useState<Script | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<Script | null>(null);
 
   const scriptsQ = useAsync<Script[]>("/me/scripts", () => ScriptsApi.listScripts());
   const all = scriptsQ.data ?? [];
 
   const filtered = React.useMemo(() => {
     return all.filter((s) => {
-      if (statusFilter !== "all" && s.status !== statusFilter) return false;
       if (q) {
         const needle = q.toLowerCase();
         if (
@@ -70,15 +49,15 @@ export default function ScriptsListPage() {
       }
       return true;
     });
-  }, [all, q, statusFilter]);
+  }, [all, q]);
 
   async function handleClone(s: Script) {
     try {
       const copy = await ScriptsApi.cloneScript(s.id);
       invalidate("/me/scripts");
-      toast.success(`已克隆为「${copy.title}」`);
+      toast.success(`已复制为「${copy.title}」`);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "克隆失败");
+      toast.error(e instanceof ApiError ? e.message : "复制失败，请重试");
     }
   }
 
@@ -86,50 +65,41 @@ export default function ScriptsListPage() {
     try {
       const versions = await ScriptsApi.listVersionsByScript(s.id);
       const cur = versions.find((v) => v.id === s.currentVersionId) ?? versions[0];
-      const content = cur?.content ?? "";
-      const blob = new Blob([`Title: ${s.title}\n\n${content}`], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${s.title}.fountain`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("已导出 .fountain 文件");
-    } catch (e) {
-      toast.error("导出失败");
+      downloadScriptText(s.title, cur?.content ?? "");
+      toast.success("已下载剧本文件");
+    } catch {
+      toast.error("下载失败，请重试");
     }
   }
 
-  async function handleArchive() {
-    if (!archiveTarget) return;
+  async function handleDelete() {
+    if (!deleteTarget) return;
     try {
-      await ScriptsApi.archiveScript(archiveTarget.id);
+      await ScriptsApi.deleteScript(deleteTarget.id);
       invalidate("/me/scripts");
-      toast.success(`「${archiveTarget.title}」已归档`);
+      toast.success(`已删除「${deleteTarget.title}」`);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "归档失败");
+      toast.error(e instanceof ApiError ? e.message : "删除失败，请重试");
     }
   }
 
-  const draftCount = all.filter((s) => s.status === "draft").length;
-  const reviewCount = all.filter((s) => s.status === "review").length;
-  const approvedCount = all.filter((s) => s.status === "approved").length;
+  const filtering = !!q;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="跨项目脚本素材"
-        title="脚本工坊"
-        meta={`${all.length} 份脚本 · ${reviewCount} 待审 · 跨项目通用素材`}
+        eyebrow="即将上线"
+        title="脚本库"
+        meta={`${all.length} 份脚本`}
         action={
-          <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
+          <Button variant="primary" size="md" onClick={() => setShowNew(true)} style={{ flex: "none" }}>
             <Plus size={14} />
             新建脚本
           </Button>
         }
       />
 
-      {/* 与短剧工坊的职能分工说明 */}
+      {/* 如实说明：脚本库和短剧还没打通 */}
       <div
         className="card row gap-3"
         style={{
@@ -137,30 +107,26 @@ export default function ScriptsListPage() {
           background: "var(--surface-2)",
           border: "1px solid var(--line-soft)",
           alignItems: "center",
+          flexWrap: "wrap",
         }}
       >
-        <PenTool size={16} style={{ color: "var(--accent)", flex: "none" }} />
-        <div className="grow" style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
-          这里是<b style={{ color: "var(--ink)" }}>跨项目的脚本归档</b>:已写好的剧集、广告、宣传片、配音脚本都在这里复用。
-          要写某部短剧的<b style={{ color: "var(--ink)" }}>单集剧本</b>,请到「短剧工坊 → 进入项目 → 剧集脚本」。
+        <Info size={16} style={{ color: "var(--accent)", flex: "none" }} />
+        <div style={{ flex: "1 1 240px", minWidth: 0, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+          {"写好的脚本"}
+          <b style={{ color: "var(--ink)" }}>还不能直接带进某部短剧</b>
+          {"，这里只能写、存和下载。要给某部短剧写分镜，到「我的短剧」打开那部短剧，在「逐集制作」里写。"}
         </div>
-        <Link href="/projects" style={{ textDecoration: "none" }}>
-          <button type="button" className="btn btn-line btn-sm">去做短剧 →</button>
+        <Link href="/projects" style={{ textDecoration: "none", flex: "none" }}>
+          <button type="button" className="btn btn-line btn-sm">去我的短剧</button>
         </Link>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="脚本总数" value={String(all.length)} tone="accent" />
-        <KpiCard label="草稿" value={String(draftCount)} tone="info" />
-        <KpiCard label="审稿中" value={String(reviewCount)} tone="violet" />
-        <KpiCard label="已通过" value={String(approvedCount)} tone="success" />
-      </div>
-
       <Card style={{ padding: "16px 18px" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <div
             style={{
               flex: 1,
+              minWidth: 0,
               display: "flex",
               alignItems: "center",
               gap: 8,
@@ -170,13 +136,15 @@ export default function ScriptsListPage() {
               borderRadius: "var(--radius-md)",
             }}
           >
-            <Search size={14} color="var(--fg-2)" />
+            <Search size={14} color="var(--fg-2)" style={{ flex: "none" }} />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="按标题 / 剧集 / 关键字搜索…"
+              placeholder="搜标题、所属剧集或关键词"
+              aria-label="搜索脚本"
               style={{
                 flex: 1,
+                minWidth: 0,
                 background: "transparent",
                 border: "none",
                 color: "var(--fg-0)",
@@ -186,30 +154,6 @@ export default function ScriptsListPage() {
             />
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(["all", "draft", "review", "approved", "archived"] as StatusFilter[]).map((f) => {
-            const active = statusFilter === f;
-            return (
-              <button
-                key={f}
-                onClick={() => setStatusFilter(f)}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "var(--radius-pill)",
-                  border: active
-                    ? "1px solid color-mix(in srgb, var(--accent) 50%, transparent)"
-                    : "1px solid var(--line-2)",
-                  background: active ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
-                  color: active ? "var(--accent)" : "var(--fg-1)",
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                {f === "all" ? "全部" : STATUS_LABEL[f]}
-              </button>
-            );
-          })}
-        </div>
       </Card>
 
       {scriptsQ.isLoading && <LoadingBlock rows={4} height={88} />}
@@ -217,7 +161,7 @@ export default function ScriptsListPage() {
       {!scriptsQ.isLoading && !scriptsQ.error && filtered.length === 0 && (
         <EmptyState
           icon={<PenTool size={28} />}
-          title="没有匹配的脚本"
+          title={filtering ? "没有匹配的脚本" : "还没有脚本"}
           action={
             <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
               <Plus size={14} />
@@ -246,21 +190,27 @@ export default function ScriptsListPage() {
                 (e.currentTarget as HTMLDivElement).style.borderColor = "var(--line)";
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div className="mk-script-row">
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, minWidth: 0 }}>
                     <div
+                      title={s.title}
                       style={{
                         fontSize: 15,
                         fontWeight: 600,
                         fontFamily: "var(--font-display)",
                         color: "var(--fg-0)",
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {s.title}
                     </div>
-                    <StatusBadge tone={STATUS_TONE[s.status]}>{STATUS_LABEL[s.status]}</StatusBadge>
-                    <Chip tone="neutral">{KIND_LABEL[s.kind]}</Chip>
+                    <span style={{ flex: "none", whiteSpace: "nowrap" }}>
+                      <Chip tone="neutral">{SCRIPT_KIND_LABEL[s.kind]}</Chip>
+                    </span>
                   </div>
                   {s.suggestion && (
                     <div
@@ -270,54 +220,35 @@ export default function ScriptsListPage() {
                         marginBottom: 10,
                         fontStyle: "italic",
                         fontFamily: "var(--font-serif)",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
                       }}
                     >
-                      "{s.suggestion}"
+                      「{s.suggestion}」
                     </div>
                   )}
                   <div
                     className="mono"
-                    style={{ display: "flex", gap: 14, fontSize: 10.5, color: "var(--fg-3)", letterSpacing: 0.3 }}
+                    style={{ display: "flex", gap: "4px 14px", flexWrap: "wrap", fontSize: 10.5, color: "var(--fg-3)", letterSpacing: 0.3 }}
                   >
-                    <span>{s.series ?? "—"}</span>
-                    <span>{s.episode ?? "—"}</span>
+                    {s.series && <span>{s.series}</span>}
+                    {s.episode && <span>{s.episode}</span>}
                     <span>{s.authorName}</span>
-                    <span>更新 {new Date(s.updatedAt).toLocaleString("zh-CN")}</span>
+                    <span>更新于 {formatDateTime(s.updatedAt)}</span>
                   </div>
                 </div>
-                <div style={{ minWidth: 200, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div
-                    style={{
-                      height: 4,
-                      background: "rgba(255,255,255,0.06)",
-                      borderRadius: "var(--radius-pill)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${s.progress}%`,
-                        height: "100%",
-                        background: "var(--gradient-gold)",
-                      }}
-                    />
-                  </div>
-                  <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-2)", textAlign: "right" }}>
-                    完成度 {s.progress}%
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="sm" onClick={() => handleClone(s)}>
-                    <Copy size={11} />
+                <div className="mk-script-actions" onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="sm" title="复制一份" aria-label="复制一份" className="mk-script-icon" onClick={() => handleClone(s)}>
+                    <Copy size={13} />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleExport(s)}>
-                    <Download size={11} />
+                  <Button variant="ghost" size="sm" title="下载成文本文件" aria-label="下载成文本文件" className="mk-script-icon" onClick={() => handleExport(s)}>
+                    <Download size={13} />
                   </Button>
-                  {s.status !== "archived" && (
-                    <Button variant="ghost" size="sm" onClick={() => setArchiveTarget(s)}>
-                      <Archive size={11} />
-                    </Button>
-                  )}
+                  <Button variant="ghost" size="sm" title="删除" aria-label="删除" className="mk-script-icon" onClick={() => setDeleteTarget(s)}>
+                    <Trash2 size={13} />
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -336,13 +267,13 @@ export default function ScriptsListPage() {
       />
 
       <ConfirmDialog
-        open={!!archiveTarget}
-        onOpenChange={(o) => !o && setArchiveTarget(null)}
-        title={`归档「${archiveTarget?.title ?? ""}」`}
-        description="归档后该脚本不再出现在主列表，但历史版本仍然可见。"
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title={`删除「${deleteTarget?.title ?? ""}」`}
+        description="删了没法恢复，确定删除吗？"
         destructive
-        confirmLabel="归档"
-        onConfirm={handleArchive}
+        confirmLabel="删除"
+        onConfirm={handleDelete}
       />
     </div>
   );

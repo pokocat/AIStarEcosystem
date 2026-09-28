@@ -5,5 +5,5 @@
 import { RetiredFeatureNotice } from "../_shared/RetiredFeatureNotice";
 
 export default function ForgePage() {
-  return <RetiredFeatureNotice feature="形象锻造炉" />;
+  return <RetiredFeatureNotice feature="数字人造型" />;
 }

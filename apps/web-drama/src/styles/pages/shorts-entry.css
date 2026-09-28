@@ -1,0 +1,255 @@
+/* ============================================================
+   pages/shorts-entry.css —— v0.197 响应式分文件（见 docs/drama-ux-copy-pass.md §5）
+   只放本簇页面自己的样式；全站通用规则写 app.css。
+   新增窄屏规则沿用 app.css 的断点：1024 / 860 / 720 / 560。
+   类名一律带本簇前缀，避免和别的页面撞。
+   覆盖：/shorts（我的短视频）· /shorts/new（从一句话开始）· /shorts/prompt（粘贴写好的脚本）
+         · 作品预览弹窗（work-preview-modal，/projects 与 /shorts 共用）
+   ============================================================ */
+
+/* ---------- /shorts：入口卡 + 草稿卡网格 ---------- */
+.se-shorts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.se-entry-card {
+  /* 卡片等高：草稿卡是「封面 3/4 + 底部文字」，入口卡随网格拉伸到同高（minHeight 兜底无草稿时的孤卡）。 */
+  height: 100%;
+  min-height: 240px;
+  gap: 8px;
+  padding: 16px 12px;
+  text-align: center;
+  border-radius: var(--radius);
+  border: 2px dashed var(--line);
+  color: var(--ink-3);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color .18s, color .18s;
+}
+.se-entry-card:hover,
+.se-entry-card:focus-visible { border-color: var(--se-tone, var(--accent)); }
+.se-entry-cost {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.se-card-del {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, .45);
+  color: #fff;
+  backdrop-filter: blur(2px);
+}
+.se-card-pub {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+@media (max-width: 720px) {
+  /* 手机上的点击区至少 32px */
+  .se-card-del { width: 32px; height: 32px; }
+  .se-card-pub { width: 32px; height: 32px; }
+  .se-shorts-grid { gap: 12px; }
+  .se-entry-card { min-height: 220px; }
+}
+
+/* ---------- /shorts/new：从一句话开始 ---------- */
+.se-new-back-row { padding: 16px 24px 0; }
+.se-new-hero { padding: 20px 28px 0; }
+.se-new-hero-title { font-size: clamp(22px, 6.2vw, 30px); text-wrap: balance; }
+/* 标题按意群分两段，每段内部不断行：「脚本」不会被拆到两行。 */
+.se-new-keep { display: inline-block; }
+.se-new-body { padding: 14px 28px 0; }
+.se-new-paste-entry {
+  margin-top: 12px;
+  width: 100%;
+  align-items: center;
+  padding: 11px 14px;
+  border-radius: 14px;
+  border: 1px dashed var(--line);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+}
+.se-new-paste-title { flex: none; }
+.se-new-paste-desc {
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .se-new-hero { padding: 12px 16px 0; }
+  .se-new-body { padding: 12px 16px 0; }
+  .se-new-back-row { padding: 12px 16px 0; }
+  /* 「已经写好脚本？」那一条：说明文字换到第二行完整显示，不被省略号吃掉 */
+  .se-new-paste-entry { flex-wrap: wrap; row-gap: 4px; }
+  .se-new-paste-title { flex: 1 1 auto; }
+  .se-new-paste-desc { order: 10; flex: 1 1 100%; white-space: normal; padding-left: 23px; line-height: 1.55; }
+  /* 模板区标题行：说明另起一行，标题不再被挤成两行 */
+  .se-new-recs-hint { order: 10; flex: 1 1 100%; }
+  .se-new-recs-grid { gap: 10px !important; }
+}
+
+/* ---------- /shorts/prompt：粘贴写好的脚本 ---------- */
+.se-prompt-page { max-width: 1040px; margin: 0 auto; padding-bottom: 32px; }
+.se-prompt-page.has-cta { padding-bottom: 104px; }
+.se-prompt-topbar { margin-bottom: 12px; flex-wrap: wrap; row-gap: 6px; }
+.se-prompt-hero { text-align: center; padding: 6px 20px 18px; }
+.se-prompt-hero-title { margin: 0; font-size: clamp(22px, 6vw, 28px); font-weight: 800; letter-spacing: -.02em; line-height: 1.3; text-wrap: balance; }
+.se-prompt-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: vertical;
+  padding: 18px 20px;
+  font-size: 14px;
+  line-height: 1.85;
+  font-family: inherit;
+  background: transparent;
+  color: var(--ink);
+  min-height: 300px;
+}
+.se-prompt-actions { padding: 10px 16px 14px; border-top: 1px solid var(--line-soft); flex-wrap: wrap; align-items: center; row-gap: 8px; }
+.se-prompt-parse-btn { height: 40px; padding: 0 20px; flex: none; }
+@media (max-width: 560px) {
+  .se-prompt-hero { padding: 0 4px 12px; }
+  .se-prompt-hero-sub { font-size: 13px !important; }
+  /* 手机上输入框别把「开始拆解」挤出首屏；需要更高可以拖右下角 */
+  .se-prompt-input { min-height: 0; height: 200px; padding: 14px 14px; }
+  .se-prompt-actions { padding: 10px 12px 12px; }
+  .se-prompt-cost-hint { flex: 1 1 auto; }
+  .se-prompt-parse-btn { flex: 1 1 100%; justify-content: center; }
+}
+
+/* 「人物与画面设定」折叠头 + 带说明的字段：窄屏上说明另起一行，标题不被挤成两行 */
+.se-bible-title { flex: none; }
+.se-bible-hint { font-size: 11px; min-width: 0; }
+.se-field-hint { font-size: 11px; flex: 1; min-width: 0; }
+@media (max-width: 560px) {
+  .se-bible-toggle { flex-wrap: wrap; row-gap: 2px; }
+  .se-bible-hint { order: 10; flex: 1 1 100%; padding-left: 23px; }
+  .se-field-hint { flex-basis: 100%; }
+}
+
+/* 拆解结果分镜表：宽的时候是表格；容器窄于 860（768 平板、1024 带侧栏、手机）改成一镜一张卡，
+   不再让「台词」「景别 · 运镜」「音效」几列藏在没人发现的横向滚动里。
+   用容器查询而不是媒体查询：1024 宽时侧栏还在，内容区只剩 ~780px，按视口判断会漏掉。 */
+.se-shot-wrap { container-type: inline-size; container-name: se-shots; }
+.se-shot-table { width: 100%; min-width: 880px; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.se-shot-table th {
+  padding: 11px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-3);
+  letter-spacing: .04em;
+  border-bottom: 2px solid var(--line);
+  white-space: nowrap;
+  background: var(--surface);
+}
+.se-shot-table td { padding: 12px; vertical-align: top; border-bottom: 1px solid var(--line-soft); }
+.se-shot-table td.se-shot-no,
+.se-shot-table td.se-shot-del { text-align: center; }
+.se-shot-head { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.se-shot-scroll { overflow-x: auto; }
+
+@container se-shots (max-width: 859px) {
+  .se-shot-scroll { overflow-x: visible; }
+  .se-shot-table { min-width: 0; table-layout: auto; }
+  .se-shot-table thead { display: none; }
+  .se-shot-table,
+  .se-shot-table tbody { display: block; width: 100%; }
+  .se-shot-table tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 16px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .se-shot-table tr:last-child { border-bottom: none; }
+  .se-shot-table td { display: block; min-width: 0; padding: 6px 0; border-bottom: none; }
+  .se-shot-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-3);
+    letter-spacing: .04em;
+    margin-bottom: 4px;
+  }
+  /* 第一格（镜号 · 时长）变成卡片的横排标题行，删除键挪到这一行右端 */
+  .se-shot-table td.se-shot-no { grid-column: 1 / -1; text-align: left; padding: 0 44px 6px 0; }
+  .se-shot-head { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .se-shot-table td.se-shot-del { position: absolute; top: 8px; right: 8px; padding: 0; }
+}
+@container se-shots (max-width: 559px) {
+  .se-shot-table tr { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 拆解结果里每一镜的「出场人物」chip：桌面紧凑 22px；手机上点击区至少 32px。
+   两个类名叠在一起，压过 app.css 里 .chip 的 28px 高度（单类同优先级时要看引入顺序，不可靠）。 */
+.chip.se-cast-chip {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .chip.se-cast-chip { height: 32px; padding: 0 12px; font-size: 12px; max-width: 140px; }
+}
+
+/* 「开始制作」浮动条：桌面在右下角浮着；≤720 贴底通栏（左右各留 12px），不挡分镜表最后一镜 */
+.se-cta {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  z-index: 80;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  background: var(--surface);
+  padding: 10px 10px 10px 14px;
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line-soft);
+  max-width: calc(100vw - 24px);
+}
+.se-cta-note { font-size: 11.5px; line-height: 1.5; max-width: 300px; }
+@media (max-width: 720px) {
+  .se-cta {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    max-width: none;
+    flex-wrap: nowrap;
+  }
+  .se-cta-note { flex: 1 1 auto; min-width: 0; max-width: none; }
+  .se-cta .btn { flex: none; }
+  .se-prompt-page.has-cta { padding-bottom: 120px; }
+}
+
+/* ---------- 作品预览弹窗（work-preview-modal） ---------- */
+.se-preview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.se-preview-actions > .btn { flex: 1 1 140px; justify-content: center; min-width: 0; }

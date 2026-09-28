@@ -26,6 +26,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
           theme="light"
           closeButton
           gap={10}
+          // 手机上 toast 默认贴顶，8 秒的报错会整条盖住顶栏（菜单、余额都点不到）→ 让出顶栏的高度
+          mobileOffset={{ top: 68, left: 12, right: 12 }}
           toastOptions={{
             className: "drama-toast",
             style: {

@@ -118,7 +118,7 @@ public class DramaRenderService {
         PromptService.ResolvedPrompt p = promptService.resolve(key);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "分镜出图 / 出片的提示词尚未配置（promptKey=" + key
+                    "出首帧 / 生成视频用的提示词尚未配置（promptKey=" + key
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
         Map<String, String> vars = new LinkedHashMap<>();
@@ -143,7 +143,7 @@ public class DramaRenderService {
     public JsonNode renderFrame(JsonNode body, String userId) {
         String prompt = buildMediaPrompt(body, frameKeyForKind(orDefault(text(body, "kind"), "shot")));
         if (prompt.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再渲染首帧");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先写这一镜的画面，再出首帧。");
         }
         // D-11：可选 endpoint_id（候选端点白名单）。传了 → 校验命中（未命中 503 ENDPOINT_NOT_ALLOWED，
         // 不扣费、不生成）；没传 → 默认端点（旧路径）。单价 override + capability(maxRefImages) 随命中的 candidate。
@@ -153,11 +153,11 @@ public class DramaRenderService {
         if (endpointId != null && !endpointId.isBlank()) {
             resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, endpointId)
                     .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
-                            "所选出片模型不可用或未在该用途候选池内，请刷新后重选。"));
+                            "选的模型现在用不了，刷新页面后重新选一个。"));
         } else {
             resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, null)
                     .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
-                            "首帧渲染还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+                            "出首帧还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         }
         AiModelEndpoint ep = resolved.endpoint();
         if (resolved.candidate() != null && resolved.candidate().getCreditCostOverride() != null) {
@@ -199,7 +199,7 @@ public class DramaRenderService {
                 }
             } catch (Exception e) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED",
-                        "首帧已生成但存储失败，请重试。");
+                        "首帧生成了但没保存下来，请再试一次。");
             }
             storage.record("drama", userId, "分镜首帧", null, key, bytes.length);
             ObjectNode f = om.createObjectNode();
@@ -212,7 +212,7 @@ public class DramaRenderService {
         if (cost > 0) {
             creditService.debit(userId, cost, "DRAMA_FRAME",
                     "frame_" + UUID.randomUUID().toString().substring(0, 8),
-                    "短剧首帧渲染（" + count + " 版）");
+                    "出首帧（" + count + " 版）");
         }
         log.info("[drama-render] frame ok user={} count={} endpoint={} size={}", userId, count, ep.getName(), size);
 
@@ -261,12 +261,12 @@ public class DramaRenderService {
                 resp = upstreamHttp.sendJson(httpReq, ctx);
             } catch (UpstreamCallException ex) {
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
-                        "图像生成失败，请稍后重试",
+                        "图片没生成出来，稍后再试一次",
                         "endpoint=" + ep.getName() + " err=" + ex.getCause());
             }
             if (resp.statusCode() / 100 != 2) {
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
-                        "图像生成失败，请稍后重试",
+                        "图片没生成出来，稍后再试一次",
                         "endpoint=" + ep.getName() + " model=" + ep.getModel()
                                 + " status=" + resp.statusCode() + " body=" + truncate(resp.body(), 300));
             }
@@ -284,7 +284,7 @@ public class DramaRenderService {
                     if (b64 == null || b64.isBlank()) {
                         upstreamHttp.recordBadOutput(ctx, resp.body(), "IMAGE_BAD_OUTPUT", elapsedMs(startNanos));
                         throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_BAD_OUTPUT",
-                                "图像模型响应缺少 data[0].url / b64_json。");
+                                "这次没拿到图片，再试一次。");
                     }
                     bytes = Base64.getDecoder().decode(b64);
                 }
@@ -297,7 +297,7 @@ public class DramaRenderService {
                         requestId, upstreamId, elapsedMs(startNanos), e.getClass().getSimpleName(), e.getMessage());
                 log.warn("[drama-render] image post-process failed: {}", e.toString());
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
-                        "图像生成失败，请稍后重试",
+                        "图片没生成出来，稍后再试一次",
                         "endpoint=" + ep.getName() + " err=" + e);
             }
             // 用量观测（best-effort，token 数图像接口通常不回）
@@ -317,7 +317,7 @@ public class DramaRenderService {
                     requestId, null, elapsedMs(startNanos), e.getClass().getSimpleName(), e.getMessage());
             log.warn("[drama-render] image call failed: {}", e.toString());
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
-                    "图像生成失败，请稍后重试",
+                    "图片没生成出来，稍后再试一次",
                     "endpoint=" + ep.getName() + " err=" + e);
         }
     }
@@ -345,7 +345,7 @@ public class DramaRenderService {
                         ? PromptService.KEY_DRAMA_SHORT_CLIP_VIDEO
                         : PromptService.KEY_DRAMA_CLIP_VIDEO);
         if (prompt.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先填写画面描述再生成视频");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先写这一镜的画面，再生成视频。");
         }
         // 存储配额前置：已满则不提交任务、不 hold 积分（成片字节出片后由 worker 记账）。
         storage.checkQuota("drama", userId, 0);
@@ -370,13 +370,13 @@ public class DramaRenderService {
             AiModelInvocationService.ResolvedEndpoint resolved =
                     invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
                             .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
-                                    "所选出片模型不可用或未在该用途候选池内，请刷新后重选。"));
+                                    "选的模型现在用不了，刷新页面后重新选一个。"));
             chosenVideoEp = resolved.endpoint();
             if (resolved.candidate() != null) {
                 if (resolved.candidate().getMaxDurationSec() != null
                         && durationSec > resolved.candidate().getMaxDurationSec()) {
                     throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
-                            "所选出片模型单条最长支持 " + resolved.candidate().getMaxDurationSec() + " 秒，请调整分镜时长。");
+                            "选的视频模型一条最长 " + resolved.candidate().getMaxDurationSec() + " 秒，把这一镜的时长改短一点再试。");
                 }
                 clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
                 capMaxRefImages = resolved.candidate().getMaxRefImages();
@@ -393,7 +393,7 @@ public class DramaRenderService {
                     if (resolved.candidate().getMaxDurationSec() != null
                             && durationSec > resolved.candidate().getMaxDurationSec()) {
                         throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
-                                "默认出片模型单条最长支持 " + resolved.candidate().getMaxDurationSec() + " 秒，请调整分镜时长。");
+                                "默认的视频模型一条最长 " + resolved.candidate().getMaxDurationSec() + " 秒，把这一镜的时长改短一点再试。");
                     }
                     clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
                     capMaxRefImages = resolved.candidate().getMaxRefImages();
@@ -433,7 +433,7 @@ public class DramaRenderService {
         item.put("kind", "drama-shot");
         // 短剧按 app 维度独立定价（drama.credit.clip，D-11 候选端点可 override），不耦合带货线 material.video-generate。
         item.put("credit_cost", clipCost);
-        item.put("credit_label", "短剧分镜视频");
+        item.put("credit_label", "短剧镜头视频");
         item.put("name", name);
         item.put("prompt", full.toString());
         item.put("duration_sec", durationSec);
@@ -473,11 +473,11 @@ public class DramaRenderService {
     public void preflightCharacterReferenceSheet(String userId) {
         invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
                 .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
-                        "角色参考图渲染还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+                        "生成角色参考图还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "角色定妆参考图的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE
+                    "角色定妆照用的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
         storage.checkQuota("drama", userId, 0);
@@ -494,16 +494,16 @@ public class DramaRenderService {
                                                 String ratio, List<String> lockRefImages) {
         AiModelEndpoint ep = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
                 .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
-                        "角色参考图渲染还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+                        "生成角色参考图还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "角色定妆参考图的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE + "）。");
+                    "角色定妆照用的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE + "）。");
         }
         String prompt = PromptService.fill(p.userTemplate(), vars == null ? Map.of() : vars)
                 .replaceAll("\\{\\{[^}]*}}", "").trim();
         if (prompt.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "角色参考图缺少画面描述");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先写这个角色的外貌，再生成参考图。");
         }
         storage.checkQuota("drama", userId, 0);
         ArrayNode refArr = om.createArrayNode();
@@ -525,7 +525,7 @@ public class DramaRenderService {
             throw e;
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED",
-                    "参考图已生成但存储失败，请重试。");
+                    "参考图生成了但没保存下来，请再试一次。");
         }
         storage.record("drama", userId, "角色参考图", null, key, bytes.length);
         log.info("[drama-render] char-ref ok user={} endpoint={} key={}", userId, ep.getName(), key);
@@ -575,7 +575,7 @@ public class DramaRenderService {
             try {
                 return Math.multiplyExact(rate, Math.max(1, durationSec));
             } catch (ArithmeticException e) {
-                throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_PRICE_OVERFLOW", "视频积分报价超出可用范围");
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_PRICE_OVERFLOW", "这条视频的积分算不出来，请把时长改短一点，或联系平台。");
             }
         }
         return rate;

@@ -1,0 +1,322 @@
+# web-drama 文案 · 用户路径 · 响应式 一次性收口（v0.197）
+
+> 真源文档。2026-09-28 起。实现、评审、以后再改 drama 的界面文字，都以这里的**术语表（§2）**为准。
+> 触发：用户原话「把 drama 子应用文案优化一下去 AI 味，指示更直接一些，比如现在什么『提示词直出』就不够清晰，
+> 啥叫直出；然后把整个用户路径优化一下；还有响应式布局也要适配好」。
+> 依据：10 个只读审查 agent 对 33 个路由 × 375/768/1280 的截图、点击实测和代码通读，
+> 共约 1200 条文案、165 条路径、100 条响应式问题（原始结果不入库）。
+
+---
+
+## 1. 这次要解决的三件事（按用户看得见的现象说）
+
+1. **看不懂的词**。「提示词直出」「直接出片」「验收入片」「镜间一致性承接」「立项」「脑暴」「配方」「衍生新剧」……
+   同一个东西好几个名字（模板 = 配方 = 创意 = 爆款模板 = 同款），同一个词好几个意思（「成片」既是单镜视频又是整集，
+   「锁」既是确认又是固定长相又是绑定数字人，「工坊」既是品牌又是菜单）。
+2. **路走不通或走错**。首页只有一条「开始脑暴」；想做短视频要先聊完出大纲再找一个叫「单片」的开关；
+   短剧合成完没有下一步；工作台里余额写死 1,280；点余额去的是「财务中心」而不是能充值的「积分钱包」；
+   几个会覆盖已生成内容、会扣积分的按钮点了直接执行；本地 mock 下新建的短剧打开就是「没找到这部短剧」。
+3. **手机和平板上用不了**。脑暴页、短视频制作页、短剧工作台都是写死宽度的左右两栏，375 宽下右栏被挤出屏幕；
+   分镜表 860–960px 宽，768 下就被截断；公共页头不换行，标题被挤成一列竖字；按钮图标在所有宽度下被压成 0 宽。
+
+---
+
+## 2. 术语表（全站唯一叫法）
+
+**规则**：左列是界面上唯一允许的说法；右列的旧说法**不再出现在可视文案里**（代码注释、变量名不用改）。
+行业里真在用的词保留（分镜、首帧、尾帧、画幅、口播、旁白、BGM、景别、运镜、钩子），但第一次出现的地方要能看懂。
+
+### 2.1 产品与导航
+
+| 统一叫法 | 不再使用 | 说明 |
+|---|---|---|
+| **短剧工坊** | —— | **只作品牌**：Logo、浏览器标题、落地页、登录页、开通页。不再当菜单名 |
+| **我的短剧** | 短剧工坊（菜单）、短剧项目 | `/projects`：多集短剧列表 |
+| **我的短视频** | 短视频工坊 | `/shorts`：单条短视频列表 |
+| **模板广场** / **我发布的模板** | 创意市场、我发布的创意、配方、创作配方、热门配方、爆款模板、精选模板、创意推荐、可套用创意、同款（名词） | `/templates`。条目一律叫「模板」 |
+| **做同款** | 套用、套用开拍、套用并开拍、试试同款、用这个模板 | 按钮。会扣积分的必须带钻石标记并弹确认；多集模板写「做同款短剧（新建不花积分）」 |
+| **发布成模板** | 发布到创意中心、发布创意 | 把自己的作品发到模板广场 |
+| **数字人演员** | 演员 IP 阵容、演员 IP | `/cast`。里面的东西叫「数字人」 |
+| **数字人** | 数字人分身、形象、IP、艺名 | 在 AiAvatar 创建的虚拟人。第一次提到 AiAvatar 写「AiAvatar（数字人平台）」 |
+| **脚本库** | 脚本工坊 | `/scripts` |
+| **发布与数据**（分组） | 分发与洞察 | |
+| **多平台发布** / **数据分析** | 多平台分发 / 数据洞察 | |
+| **积分钱包** | —— | `/wallet`：余额、充值、积分明细 |
+| **收入与提现** | 财务中心 | `/finance`：现金收入与提现，不再重复展示积分余额 |
+| **热点与推荐**（运营） | 内容目录 | `/operations` |
+| **即将上线**（分组） | 散落在各处的「建设中」主菜单项 | 见 §3.1 |
+| **作品** | 项目 | 泛指短剧和短视频。**界面上不出现「项目」** |
+| **草稿** | —— | 没做完的短视频 |
+| **多集短剧** / **单条短视频** | 剧集连载、单片、单集短片、单集创意、单条短片 | 卡片角标可简写「N 集 / 单条」 |
+
+### 2.2 创作流程
+
+| 统一叫法 | 不再使用 | 说明 |
+|---|---|---|
+| **粘贴写好的脚本**（入口） / **把写好的脚本拆成分镜**（页标题） / **按你的脚本**（制作页来源标签） | **提示词直出** | `/shorts/prompt`。页内说明写清「脚本、分镜稿、AI 视频提示词都可以」，让从即梦 / 可灵过来的人也认得。粘进来的文字叫「**原文**」 |
+| **从一句话开始**（入口） | 一句话生成 | `/shorts/new`。副标题「只有想法？写一句话，AI 写口播脚本和分镜」 |
+| **人物与画面设定** | 视觉设定、提示词设定 | 拆解页和制作页同一块内容用同一个名字 |
+| **新建短剧** / **新建不花积分** | 立项、开始立项、重新立项、立项免费、开拍（指新建时） | |
+| **开始制作** | 开拍（指扣积分建短视频草稿时） | 按钮旁写清扣多少积分 |
+| **和 AI 聊** / **AI 故事助手** / **接着聊** | 脑暴、AI 脑暴助手、开始脑暴、继续脑暴、跟 AI 聊出故事 | |
+| **随机来一个** | 今日灵感、给我灵感、AI 随机给一个创意 | 它不是 AI 生成的，别说是 |
+| **推荐点子**（运营维护的那份） | 创意推荐（指 catalog.ideas 时） | |
+| **故事大纲** | 剧情大纲、剧情脉络、主线骨架 | 整体故事 |
+| **分集剧情** | 大纲分集、分集大纲 | 每集的钩子 + 梗概 |
+| **一句话剧情** | 一句话设定、一句话故事大纲、logline | |
+| **剧情转折** / **每集看点** | 节拍、分集节拍 | 「钩子」保留 |
+| **生成 / 补齐 / 框架** | 铺、铺大纲、铺完整、已铺满、骨架 | |
+| **短剧设定** | 项目设置、选题立项、大纲分集、角色与资产、跨集共享 | 工作台第一大块。里面分「故事大纲 / 分集剧情 / 角色与场景」；「跨集共享」→「所有集通用」 |
+| **逐集制作**（第 N 集） | 剧集工作台、分镜工作台、短剧工作台 | 工作台第二大块 |
+| 逐集两步：**① 分镜**（副标题「逐镜出首帧和视频」） **② 合成成片** | 剧集脚本、视频工厂、成片配方、阶段 N | 步骤页签。`stageNameByNo`：1–3 →「短剧设定」，4 →「分镜」，5 →「合成成片」 |
+| **主要角色** / **配角** / **临时演员** | 关键角色、主角/主演（指分级时）、龙套、群演 | |
+| **定妆照** / **多角度参考图** / **参考图** | 定妆图、三视图、角色参考、生成参考 | |
+| **固定长相** / **长相保持一致** | 锁形象、锁外观、锁长相、锁脸 | |
+| **绑定** / **已绑定**（数字人） | 锁定 X、已锁 | |
+| **已确认**（某一步） | 已锁定、已锁 | 确认后仍可改，文案别暗示改不了 |
+| **照这部新建一部** | 衍生新剧 | toast 如实写清带过去了什么（类型 / 集数 / 画幅），没复制剧情就别说复制了 |
+
+### 2.3 逐镜生成
+
+| 统一叫法 | 不再使用 | 说明 |
+|---|---|---|
+| **先出首帧**（主按钮） | 首帧参考图（按钮） | 首帧 = 这一镜视频的第一张画面。表头「首帧」加 title 解释 |
+| **跳过首帧出视频** | **直接出片**、直出视频 | 第二种「直出」。确认弹窗标题「跳过首帧，直接出视频？」说清人物可能和别的镜对不上 |
+| **尾帧** / **补尾帧** | 末帧、补末帧、双关键帧、镜头分解、拆镜（指补尾帧时） | 即梦 / 可灵都说「首尾帧」 |
+| **生成视频**（空间不够写「出视频」） | 出片、逐镜出片、渲染、重出、渲动态 | **单镜一律叫「视频」** |
+| **镜头视频** | 成片（指单镜时） | |
+| **成片** | —— | **只指合成后的整集 / 整条** |
+| **合成成片** / **合成前检查** | 成片合成（可保留作页签名）、出片前检查、入片 | |
+| **范例视频** | 同款成片、范例成片 | 模板里的示例 |
+| **就用这版**（按钮） / **待确认** / **已确认**（状态） | 验收、待验收、验收入片 | **短剧**：有视频就能合成，「就用这版」只是标记。**短视频**：服务端合成（`DramaShortAssembleService.buildPlan`）要求每一镜都点过「就用这版」，这条没改（见 TODO）→ 界面上把「还没视频」和「有视频、还没点就用这版」分开说，并给「有视频的镜头全部就用这版」批量动作。两条线旁边都必须能「重新生成视频」 |
+| **剩下的镜头一起生成** / **停止** | 一键连跑、连跑出片、停止连跑 | 确认弹窗写清：几镜有首帧、几镜会跳过首帧；关掉页面会停在当前这一镜 |
+| **拆分镜** / **按剧情重写本集分镜** | 拆镜、让 AI 拆分镜（可保留）、基于剧情重新生成分场分镜 | |
+| **接着上一镜的画面生成**（开关） / 「可能和别的镜对不上」（后果） | 一致性、镜间一致性承接、承接、锚点、环境无锚易漂、漂 | 界面上说后果，不说机制 |
+| **视频模型** | 出片模型、引擎 | |
+| **后台生成** | 生成队列 | |
+
+### 2.4 积分
+
+| 统一叫法 | 不再使用 |
+|---|---|
+| **积分** | 钻石（指单位时）、额度（指积分时） |
+| **充值积分 / 赠送积分 / 激活码积分 / 冻结中** | 充值额度、授权额度、待结算（指同一个桶时） |
+| 「冻结中」的解释：**生成中先扣下，失败会退回** | |
+| 「额度」只在确实不是积分时用，而且说清是什么，例：「5 分钟内最多拆 10 次」 | 「仍会算一次额度」 |
+
+### 2.5 互动剧
+
+保留：分支图、互动点、起始集、结局集、试玩、连线。
+改：接线 → 连线；声明 → 添加；布尔 / 数值 / 文本 → 是否 / 数字 / 文字；断点 → 没接上；下发 → 导出给播放器；
+Story Config v2 → 互动配置文件；全局标记 → 剧情状态；界面上不显示 episodeId、setFlags、condition、isEnding 这类字段名。
+剧情状态名允许中文（现在输入中文点「添加」没反应，是 bug）。
+
+### 2.6 文风（在 AGENTS.md §8「不是翻译腔」之上，drama 额外）
+
+- **说后果，不说机制**：「会替换本集已生成的 3 张首帧、2 条视频，已花的积分不退」，而不是「将覆盖 shotsMap」。
+- **花钱的按钮说清花多少**：带钻石标记；会覆盖已有内容的，不论金额大小都弹确认（`alwaysConfirm`），确认框写清会丢什么。
+- **禁用的按钮就地说原因**：别只写在 hover `title` 里（手机上没有 hover），在按钮下方或旁边一行小字写。
+- **不承诺不存在的功能**：「@ 引用素材」（只有短剧分镜里 @ 选角色是真的）、「加入生成参考」、「直接分发」、「可以离开页面」这类，要么做出来，要么删掉。
+- **不写方位**：「左侧 / 右侧 / 下方」在手机上不成立。说名字：「在对话框里」「在分镜表里」「在「人物与画面设定」卡片里」。
+- 界面文字里不用「——」；不用半角逗号 `,` 夹在中文里；不用「即可」。
+
+---
+
+## 3. 信息架构与用户路径（决定）
+
+### 3.1 侧栏
+
+```
+[Logo 短剧工坊 · AI 做短剧和短视频] → /dashboard（原来去 /projects）
+
+创作      首页 · 我的短剧 · 我的短视频 · 模板广场（子项：我发布的模板）
+素材      素材库 · 数字人演员
+账户      积分钱包 · 收入与提现 · 工作室设置
+运营      热点与推荐（仅运营身份）
+即将上线  多平台发布 · 数据分析 · 趋势雷达 · 脚本库 · 戏服与道具   ← 灰一点的样式，不带「建设中」胶囊
+```
+
+「即将上线」里的页面**路由保留**，但页面顶部必须有一条如实说明（不是恐吓，是告诉用户哪一部分是假的）：
+- **多平台发布**：服务端目前是模拟推进（连接不绑定真账号，发布记录会自动变成「已发布」，外链是 `v.example.com`）→
+  横幅「发布到平台还没接通：连接不会绑定你的平台账号，发布记录也不会真的发出去」；「打开 ↗」外链隐藏。
+- **数据分析**：KPI、曲线、分布全是写死的数 → 照 `/trends` 先例改成如实空态，删掉假 KPI / 假图表 / 导出按钮。
+- **脚本库**：「归档」实为删除 → 改成「删除」并如实确认；「另存版本 / 版本树」永远只有一版 → 改成「保存」、去掉版本树；
+  横幅说明「写好的脚本还不能直接带进某部短剧」。
+- **戏服与道具**：上传是 `setTimeout` 假上传 → 禁用上传并说明「服装参考图先传到素材库」，给去素材库的按钮。
+- **趋势雷达**：已是如实占位，不动。
+
+### 3.2 首页 `/dashboard`
+
+保留居中对话框作为「还没想好」的那条路（品牌设计），但**删重复入口**、**补直接入口**：
+
+1. 对话框：主按钮「开始聊」，输入框空着也能点（空着就进纯聊天）。删掉「跟 AI 聊出故事」「套爆款模板」两个 chip。
+   「今日灵感」→「随机来一个」。近期热点保留。
+2. 对话框正下方一行「**已经想好了？直接开始**」三张小卡，每张写清花不花积分：
+   - 做一部多集短剧 → `/projects/new`（新建不花积分）
+   - 从一句话做短视频 → `/shorts/new`（开始制作扣 N 积分，N 取 `useDramaConfig().prices.shortEntry`）
+   - 粘贴写好的脚本 → `/shorts/prompt`（拆成分镜免费）
+3. 热门模板区：标题「热门模板」，右上角「去模板广场看全部 →」。
+4. 「继续上次」卡：修缩略图高度为 0 的 bug。
+5. 近期热点渲染时用 `Math.random` 打乱导致 hydration 报错 → 改确定性顺序（或只在 effect 里打乱）。
+
+### 3.3 短剧线
+
+- `/projects` 三处「新建短剧」→ `/projects/new`（原来去脑暴页）。`/projects/new` 输入框下加次要链接「还没想清楚？先和 AI 聊聊」。
+- 脑暴页的返回按钮按来源显示「返回首页 / 返回我的短剧」。
+- 脑暴页里「做成：多集短剧 / 单条短视频」从大纲最底部挪到底部主按钮旁，每个选项下一行小字写去向和花费；
+  选「单条短视频」时确认弹窗复用 `/shorts/new` 同一套（同一句说明、同一个确认按钮、同一把幂等键）。
+- 工作台：
+  - 余额读真实钱包（`useWallet()`，见 §4），删掉 `balance: 1280` 和本地扣减；余额可点，去 `/wallet`。
+  - 右侧角色面板点「绑定」→ 原地打开数字人选择器，不再把人踢回设定页顶部。
+  - 会覆盖已有内容 / 会扣积分的按钮一律 `alwaysConfirm` 且确认框写清会丢什么：按大纲重新抽取角色、分集剧情重新生成、
+    补齐剩余分集、互动剧 AI 起草、按剧情重写本集分镜（本集已有首帧 / 视频时降级成次要按钮）、补尾帧、AI 改写快捷词。
+  - 试做补齐卡按真实集数算（修 1 集宣传片显示「剩下 -5 集」）。
+  - 「转换为互动剧」先确认，写清「观众会在剧中做选择」「集数按分支图算」「改完不能改回」；修截断标题写回大纲的 bug。
+  - 单镜：见 §2.3。「就用这版」旁边必须有「重新生成视频」（保留首帧）。
+  - 合成成片完成后：「下载成片」旁放「发布到平台」**禁用 + 即将上线**（分发还是模拟的，见 §3.1），删掉「或直接分发」。
+  - `/projects/<id>/distribute` 走通用外壳（改 `layout.tsx` 的 `isWorkshop` 判断，只匹配 `/projects/<id>`）；
+    读不到旧 film 数据时给如实空态，不再是「项目不存在 · 返回流水线」。
+
+### 3.4 短视频线
+
+- `/shorts` 页头只留「回收站」。删掉页头的「提示词直出」「新建短视频」「从短剧切片 · 建设中」（`ShortClipModal` 从来打不开）。
+  两张入口卡改成对照式：
+  - **从一句话开始**：「只有想法？写一句话，AI 写口播脚本和分镜」
+  - **粘贴写好的脚本**：「脚本、分镜稿、AI 视频提示词都行。AI 按原文拆成分镜，拆解免费」
+  - 两张卡底部同一行小字「开始制作扣 N 积分」——让人看出两条路花的钱一样，区别只在脚本谁来写。
+- `/shorts/prompt`：
+  - 「接着拆剩下的部分」不能丢掉当前结果（新标签页 + sessionStorage 带过去，或至少先确认）。
+  - 「看看示例」「改原文重拆」会覆盖用户写过 / 改过的内容 → 先确认。
+  - 「开始拆解」变灰时就地说原因（如「至少写 20 个字」）。
+  - 「额度」那句改成真实含义（服务端限频，不扣积分）。
+- `/shorts/make`：
+  - AI 对话 / 快捷改法会重写整张分镜表 → 表里已有首帧或视频时先确认「已生成的 X 张首帧、Y 段视频会从表里移除，已花的积分不退」。
+  - 配音和合成要先绑定数字人：没绑时，悬浮条和合成前检查里**直接写出来**并给「绑定数字人」按钮；选择器空态给「去 AiAvatar 创建数字人」外链（新标签页，草稿自动保存）。
+  - 「剩下的镜头一起生成」：只处理**没有视频**的镜（修重复扣费）；带钻石标记；确认框说实话（见 §2.3）。
+  - ~~合成就绪判定改为「有视频」~~ **核实后不改**：服务端短视频合成要求每一镜 `flow==='done'`（有测试 `buildPlanRejectsAnyUnacceptedOrMissingClip` 钉着），只改前端不改服务端会让用户点合成后才被拒。
+    改成把这一步说清楚 + 给批量「全部就用这版」；两边一起放宽记进 TODO。
+  - 合成成功后跳 `/shorts?open=<草稿 id>`，落地直接弹出成片预览，不用再去列表里找。
+- 模板广场「做同款」单条模板：弹带费用的确认 + 传 `clientRequestId`（与首页预览、`/shorts/new` 同一口径）。
+
+### 3.5 积分与充值
+
+- 顶栏余额 → `/wallet`，title「积分余额，点开可充值、看明细」。
+- `/wallet` 加「积分明细」区（`AccountApi.getMyLedger`，时间用 `formatDateTime`）；余额卡各分项加起来要等于总余额。
+- `/finance` 改名「收入与提现」，去掉与钱包重复的余额卡（换成一行「积分余额在积分钱包 →」）；分项名与钱包统一。
+- 收银台：弹窗被拦时给「重新打开支付页」按钮（文案里提到的那个按钮真的要有）；到账后 `invalidate` 钱包缓存并 `notifyWalletChanged()`；
+  `?order=` 进来「重新支付」用订单里的套餐；支付渠道读失败给「重试」；mock 注册一个影子支付渠道，本地能走完整个流程。
+
+### 3.6 本地 mock 必须能走完主路径（§8.0.1 ⑦：mock 与服务端同形）
+
+- mock `createProject` 要把新短剧真的写进列表和详情表（现在新建完打开是「没找到这部短剧」）。
+- mock 多集模板「做同款」、脑暴「去制作」、「照这部新建一部」都走同一个 mock `createProject`。
+- mock 支付渠道（见 §3.5）。
+
+### 3.7 报错
+
+- 全局报错提示不再直出「HTTP 502 · 错误码 VIDEO_SUBMIT_FAILED」：主文案给人话，技术细节放 `title` 或「复制错误信息」。
+- `ai-error.ts` 里「去后台配置」这类话是给运营看的，用户打不开后台 → 改成「这个功能还没开通，请联系我们」一类。
+- 登录页 tagline 按当前登录方式写（账号中心模式下不存在验证码 / 密码 / 激活码页签）；品牌名写「短剧工坊」。
+
+---
+
+## 4. 共享底座（主模型已建好，实现者直接用，不要各写一套）
+
+| 文件 | 用途 |
+|---|---|
+| `src/lib/use-wallet.ts` | `useWallet()` → `{ wallet, refresh }`；`notifyWalletChanged()`。通用顶栏、工作台顶栏、钱包页都读它。花完积分（`CreditButton` 的动作结束）、充值到账、后台任务结束时调 `notifyWalletChanged()` |
+| `src/components/common/PaneTabs.tsx` | 窄屏两栏切换的分段按钮。只画按钮；何时出现、哪栏隐藏由页面 CSS 决定 |
+| `src/styles/pages/*.css` | 每簇一个样式文件，已在 `src/app/layout.tsx` 里按顺序导入（在 `app.css` 之后）。**各簇只写自己的文件**，全站通用规则只由 shell 写进 `app.css` |
+| `src/styles/pages/shared.css` | `PaneTabs` 的默认样式 |
+| `src/components/drama-workshop/short-start-confirm.ts` | 「开始制作短视频」的扣费确认，**全站唯一一份**：`confirmShortStart(cfg, lead)` + `SHORT_START_LEAD`。四个入口（`/shorts/new`、粘贴脚本拆完、聊天页选单条短视频、模板「做同款」）都走它 |
+| `src/components/drama-workshop/render-task-dock.tsx` → `useRenderTasks()` / `<RenderTaskTopbarEntry/>` | 后台生成任务全站共用一个轮询；≤860 侧栏收起后，顶栏（通用顶栏与工作台顶栏）用 `RenderTaskTopbarEntry` 显示「后台生成 N」 |
+
+**app.css 里的通用类**（shell 维护，页面直接用）：
+
+| 类 | 作用 |
+|---|---|
+| `.hover-reveal` | 只在鼠标悬停时出现的按钮（卡片删除键等）；`(hover: none)` 下常显 |
+| `.tap-target` | ≤720 时点击区至少 32×32 |
+| `.keep-cols` | 退出全局「内联 grid 在 ≤720 折单列」的规则（用 grid 画的表格行必须加，或者改用 class 写 grid） |
+| `.view-header` / `-main` / `-action` | `ViewHeader` 自带；≤560 按钮组另起一行、h1 降到 28px。`eyebrow` 改为可选 |
+| `.overlay` | 已改成单列 `minmax(0,1fr)` 网格：弹窗 `max-width:100%` 这才真正生效（之前网格轨道被弹窗固定宽度撑开，手机上照样贴边） |
+
+`ShotFrameCell`（`storyboard-table.tsx`，短剧与短视频共用）的接口约定：由 episode 簇实现，shorts-make 簇只传参数：
+- 新增可选 prop `onRedoClip?: (id: string) => void`：传了才显示「重新生成视频」（`flow==='clip'` 时与「就用这版」并排；`flow==='done'` 时与「从头重做」并排），保留首帧与尾帧。
+- 按钮文案按 §2.3。
+
+---
+
+## 5. 响应式规范
+
+### 5.1 断点（沿用现有，不新增）
+
+| 宽度 | 含义 |
+|---|---|
+| ≤1024 | 平板。侧栏还在（861–1024 时内容区只剩 ~780px）→ 380px 宽的对话栏 + 分镜表放不下 |
+| ≤860 | 侧栏收成抽屉 |
+| ≤720 | 手机横 / 小平板：多列折单列，表格改卡片 |
+| ≤560 | 小屏手机：藏次要文案（`.ws-btn-label` / `.ws-topbar-sub` 已有） |
+
+判定用 CSS 媒体查询；需要 JS 知道宽度的（如自动切到「分镜」页签）才用 `matchMedia`，**两边用同一个断点值**。
+
+### 5.2 模式
+
+1. **左右两栏 → 页签**（脑暴页 ≤860、短视频制作页 ≤1024；AI 改图弹窗 ≤720 例外，改成**上下排**：
+   打改图要求时要能同时看着图，页签切来切去反而更难用 —— v0.197 实现时的判断，评审后保留）：顶部 `PaneTabs`，一次只显示一栏、占满宽度；
+   结果出来（大纲生成好 / 分镜生成好）自动切到结果那一栏并在页签上打点。收起 / 展开对话栏的竖条在窄屏隐藏。
+2. **侧轨 → 顶部条**（短剧工作台）：≤860 左阶段轨隐藏，顶栏下出一条横向可滚的阶段切换；设定页不渲染右侧角色面板（设定页自己有完整的角色区），
+   剧集阶段 ≤1180 隐藏角色面板、顶栏给「角色」按钮打开抽屉；≤720 分集轨隐藏，步骤页签左侧「第 N 集」变成集选择器。
+3. **宽表格 → 卡片**（短剧分镜表、短视频分镜表、拆解预览表）：≤720 每一镜一张卡（`td` 带 `data-label`，CSS 把表头藏掉）；
+   短视频制作页在桌面上对话栏展开时，分镜表容器宽度 <860 也要进卡片模式（用容器查询 `container-type: inline-size`），
+   不要让「镜头」「音效 · BGM」两列藏在没人发现的横向滚动里。
+4. **悬浮操作条 → 贴底通栏**（≤720）：`left:12px; right:12px; bottom: calc(12px + env(safe-area-inset-bottom))`，
+   内容区 `padding-bottom` 让出它的高度；**绝不能盖住输入框的发送按钮**。
+5. **弹窗**：≤560 `.overlay` 内边距 12px，弹窗 `max-width: 100%`（现在 `94vw` 比可用宽度还宽，贴边甚至被裁）。
+6. **公共页头 `ViewHeader`** 允许换行：标题块 `flex: 1 1 260px; min-width: 0`，按钮组 ≤560 另起一行。
+7. **触屏**：`@media (hover: none)` 下把只在 hover 时出现的按钮（卡片删除键等）常显；≤720 点击区 ≥32px。
+8. **按钮图标不许被压没**：`.btn > svg, .chip > svg, .tag > svg { flex-shrink: 0 }`。
+9. **全局 `[style*="fr 1fr"]` 折单列的规则**会误伤用 grid 画的表格行（发布记录、数据表）：新代码用 class，不用内联 grid 字符串；
+   shell 给这批规则加 `:not(.keep-cols)` 退出口；4 列 KPI 在 ≤720 折成 2 列而不是 1 列。
+
+### 5.3 验收宽度
+
+每个页面在 **375 / 768 / 1024 / 1280** 四个宽度下：没有被裁掉看不见的内容、没有一字一行的竖排文字、主操作按钮在首屏或贴底条里能点到、
+没有横向滚动（有意设计的横滑条除外，且要有可见的滑动提示）。
+
+---
+
+## 6. 文件所有权（v0.197 并行实现用）
+
+路径相对 `apps/web-drama/src`。**只改自己名下的文件**；要动别人的文件，在报告里写「需要 X 改什么」，由主模型协调。
+
+| 簇 | 独占文件 |
+|---|---|
+| **shell** | `app/(workspace)/layout.tsx` · `app/layout.tsx`（只改 metadata，导入行别动）· `app/providers.tsx` · `app/page.tsx` · `app/login/**` · `app/auth/**` · `styles/app.css` · `styles/tokens.css` · `styles/pages/shared.css` · `components/common/**` · `components/premium/**` · `components/drama-ui/**` · `components/drama-workshop/render-task-dock.tsx` · `lib/ai-error.ts(+test)` · `lib/toast.ts` · `lib/use-wallet.ts` · `lib/format.ts(+test)` · `lib/use-drama-config.ts` · `lib/markdown-lite.tsx` · `api/_client.ts` · `api/config.ts` · `api/drama-config.ts` |
+| **home** | `app/(workspace)/dashboard/**` · `components/drama-workshop/home/**` · `hot-topic-chips.tsx` · `composer.tsx` · `composer-ref.ts` · `quick-create-modal.tsx` · `video-cover.tsx` · `preview-modal.tsx(+test)` · `recipe-preview.ts` · `new-project/**` · `project-card.tsx` · `app/(workspace)/projects/page.tsx` · `app/(workspace)/projects/new/**` · `app/(workspace)/projects/trash/**` · `app/(workspace)/trash/**` · `lib/hot-topic-label.ts(+test)` · `lib/use-drama-catalog.ts` · `api/projects.ts` · `api/recipes.ts` · `api/brainstorm.ts` · `api/catalog.ts` · `mocks/drama-workshop/{meta,projects,home-ideas,template-meta,avatar-themes,index,types}.ts` · `styles/pages/home.css` |
+| **shorts-entry** | `app/(workspace)/shorts/page.tsx` · `app/(workspace)/shorts/new/**` · `app/(workspace)/shorts/prompt/**` · `short-create-console.tsx` · `short-clip-modal.tsx` · `work-preview-modal.tsx(+test)` · `lib/short-prompt-draft.ts(+test)` · `api/shorts.ts` · `mocks/drama-workshop/shorts.ts` · `styles/pages/shorts-entry.css` |
+| **shorts-make** | `app/(workspace)/shorts/make/**` · `short-storyboard-table.tsx` · `lib/short-render-prompt.ts(+test)` · `api/short-drama.ts` · `styles/pages/shorts-make.css` |
+| **workbench** | `app/(workspace)/projects/[projectId]/page.tsx` · `components/drama-workshop/workbench/**` · `stages/{setup,topic,outline,branch,index,stage-context}.tsx/ts` · `stages/topic.test.tsx` · `stages/cast/**` · `stages-config.ts` · `components/interactive/**` · `lib/interactive-graph.ts` · `lib/interactive-types.ts` · `lib/cast-derive.ts` · `styles/pages/workbench.css` |
+| **episode** | `stages/{epscript,scene-block,assemble}.tsx` · `storyboard-table.tsx` · `script-refs.tsx` · `shot-form.tsx` · `render-model-select.tsx` · `character-mention-input.tsx` · `ai-image-edit-modal.tsx` · `media-lightbox.tsx` · `save-status.tsx` · `lib/use-shot-render.ts` · `lib/use-save-status.ts` · `api/render.ts` · `app/(workspace)/projects/[projectId]/distribute/**` · `styles/pages/episode.css` |
+| **market** | `app/(workspace)/templates/**` · `publish-creative-center-modal.tsx(+test)` · `app/(workspace)/review/**` · `app/(workspace)/assets/**` · `app/(workspace)/cast/**` · `app/(workspace)/wardrobe/**` · `app/(workspace)/scripts/**` · `api/{scripts,artists,wardrobe,dap-avatars,drama-assets,asset-library}.ts` · `mocks/{artists,dap-avatars,scripts,wardrobe}.ts` · `mocks/_handlers/{artists,dap-avatars,scripts,wardrobe}.ts` · `mocks/drama-workshop/{materials,review}.ts` · `constants/{artist-config,wardrobe-ui,wardrobe-v2-ui}.ts` · `styles/pages/market.css` |
+| **account** | `app/(workspace)/{distribution,insights,trends,wallet,finance,settings,operations,incubator,forge,short-drama}/**` · `app/(workspace)/_shared/**` · `recipe-review-section.tsx` · `recipe-skeleton-view.tsx` · `api/{finance,account,distribution,settings,storage}.ts` · `mocks/{distribution,publish-jobs,finance,wallet,settings,account}.ts` · `mocks/_handlers/{distribution,finance,settings}.ts` · `constants/settings-sections.ts` · `styles/pages/account.css` |
+| **server-copy** | `apps/server/src/main/java/**/Drama*.java` 里**用户看得见**的字符串（`BusinessException` 的 message、AI 对话开场白）+ 断言这些字符串的测试。**错误码一个都不许改** |
+
+没列的文件（`translations.ts` 已 tombstone、`constants/` 里的旧音乐线常量等）谁都不动。
+
+---
+
+## 7. 这次不做（记 TODO.md）
+
+- 分发接真实平台、数据分析接真实数据（本次只如实标注）。
+- 钱包与收入页彻底合并成一页（本次只修链接、命名、重复展示）。
+- 脚本库后端软删与版本表（本次只把假功能如实改名 / 去掉）。
+- 短剧「粘贴整季大纲」入口（journey 审查建议，本次不做）。
+- admin 后台「分镜视频（直出 / 动态渲染）」这类运营侧标签（给运营看的，不在本次范围）。
+
+---
+
+## 8. 门禁
+
+写进 AGENTS.md §9 验收块（v0.197 起）：web-drama 可视字符串里不许再出现本表「不再使用」列的高频旧词，
+pathspec 排除注释、测试、mock 与已 tombstone 文件。具体 grep 见 AGENTS.md。

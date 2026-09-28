@@ -1,6 +1,6 @@
 "use client";
 
-// AI 生成状态助手 + 骨架屏 + 失败块（带追查号）。
+// AI 生成状态助手 + 骨架屏 + 失败块（有真实问题编号时才显示）。
 // 设计真源：components.jsx `useGen / GenSkeleton / GenError`。
 import * as React from "react";
 import { Copy, RefreshCw, TriangleAlert } from "lucide-react";
@@ -63,19 +63,16 @@ export function GenSkeleton({ lines = 3, label = "AI 正在起草…" }: GenSkel
 
 interface GenErrorProps {
   reason?: string;
-  /** 追查号；不传则现场生成一个 */
+  /** 服务端给的问题编号；没有就不显示（v0.197：之前现场随机编一个，用户报给客服谁也查不到） */
   trace?: string;
   onRetry?: () => void;
 }
 
 export function GenError({ reason, trace, onRetry }: GenErrorProps) {
-  const id = React.useMemo(
-    () => trace ?? "LX-" + Math.floor(1000 + Math.random() * 9000),
-    [trace],
-  );
+  const id = trace?.trim() || null;
   const [copied, setCopied] = React.useState(false);
   function copy() {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
+    if (id && typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(id).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
@@ -105,11 +102,11 @@ export function GenError({ reason, trace, onRetry }: GenErrorProps) {
           <div className="grow">
             <div style={{ fontWeight: 700, color: "#b91c1c" }}>生成失败</div>
             <div style={{ fontSize: 13, color: "#7f1d1d", marginTop: 2, lineHeight: 1.55 }}>
-              {reason ?? "AI 服务暂时无响应，你的内容已自动保留，请重试或稍后再试。"}
+              {reason ?? "AI 暂时没响应，你写的内容都还在，稍后再试一次。"}
             </div>
           </div>
         </div>
-        <div className="row gap-3" style={{ paddingLeft: 46 }}>
+        <div className="row gap-3" style={{ paddingLeft: 46, flexWrap: "wrap" }}>
           {onRetry && (
             <button
               type="button"
@@ -120,10 +117,12 @@ export function GenError({ reason, trace, onRetry }: GenErrorProps) {
               <RefreshCw size={14} /> 重新生成
             </button>
           )}
-          <button type="button" className="chip" onClick={copy}>
-            <Copy size={12} /> {copied ? "已复制" : "复制追查号"}{" "}
-            <b className="num" style={{ marginLeft: 2 }}>#{id}</b>
-          </button>
+          {id && (
+            <button type="button" className="chip" onClick={copy} title="联系我们时报这个编号，方便查问题">
+              <Copy size={12} /> {copied ? "已复制" : "复制问题编号"}{" "}
+              <b className="num" style={{ marginLeft: 2 }}>#{id}</b>
+            </button>
+          )}
         </div>
       </div>
     </div>

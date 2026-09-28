@@ -44,7 +44,7 @@ public class DramaAssetService {
     public JsonNode create(JsonNode body, String userId) {
         String cdnKey = text(body, "cdnKey");
         if (cdnKey == null || cdnKey.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "ASSET_CDN_KEY_REQUIRED", "缺少素材文件（请先上传）");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "ASSET_CDN_KEY_REQUIRED", "请先上传素材文件。");
         }
         String name = orDefault(text(body, "name"), "未命名素材");
         String cat = normCat(text(body, "cat"));
@@ -66,7 +66,7 @@ public class DramaAssetService {
 
     public JsonNode update(String id, JsonNode body, String userId) {
         DramaAsset a = repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", "素材不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", "找不到这个素材"));
         if (body.has("name")) a.setName(orDefault(text(body, "name"), a.getName()).trim());
         if (body.has("cat")) a.setCat(normCat(text(body, "cat")));
         if (body.has("tags")) a.setTags(normTags(body.path("tags")));

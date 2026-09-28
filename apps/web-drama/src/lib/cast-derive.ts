@@ -45,20 +45,22 @@ export const QUALITY_LABEL: Record<Artist["quality"], string> = {
   common: "C 类",
 };
 
+// v0.197：短剧端的「演员」就是数字人，没有「在线 / 出道期 / 休养」这些偶像孵化的说法（音乐线沿用下来的）。
+// 页面按钮与筛选都叫「归档」，徽标也叫「已归档」，不再写「退役」。
 export const STATUS_LABEL: Record<Artist["status"], string> = {
-  active: "在线",
-  trainee: "训练中",
-  debut: "出道期",
-  rest: "休养",
-  retired: "退役",
+  active: "可出演",
+  trainee: "制作中",
+  debut: "可出演",
+  rest: "暂停使用",
+  retired: "已归档",
 };
 
 const STATUS_HINT: Record<Artist["status"], string> = {
   active: "",
-  trainee: "（训练中）",
-  debut: "（出道期）",
-  rest: "（休养）",
-  retired: "（退役）",
+  trainee: "（制作中）",
+  debut: "",
+  rest: "（暂停使用）",
+  retired: "（已归档）",
 };
 
 export function formatCompact(n: number): string {
@@ -80,13 +82,11 @@ export function deriveRole(a: Artist): string {
   const firstClause = (a.bio ?? "").split(/[，,。.;；]/)[0].trim();
   const rawHint = STATUS_HINT[a.status] ?? "";
   const statusHint = rawHint && !firstClause.includes(rawHint) ? rawHint : "";
+  // v0.197：不再拼「S 类 / C 类」等级 —— 从 AiAvatar 引入的数字人一律是 C 类，这个等级在短剧端没有意义。
   if (!firstClause) {
-    return `${QUALITY_LABEL[a.quality]}${statusHint}`;
+    return `数字人${statusHint}`;
   }
-  if (/[A-Z]\s*类|S\s*类|[一二三四五六七八九十]\s*类/.test(firstClause)) {
-    return `${firstClause}${statusHint}`;
-  }
-  return `${firstClause}${statusHint} · ${QUALITY_LABEL[a.quality]}`;
+  return `${firstClause}${statusHint}`;
 }
 
 export function deriveCastView(a: Artist): CastView {

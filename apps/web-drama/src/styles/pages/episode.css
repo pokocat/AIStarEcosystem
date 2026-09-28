@@ -1,0 +1,218 @@
+/* ============================================================
+   pages/episode.css —— v0.197 响应式分文件（见 docs/drama-ux-copy-pass.md §5）
+   只放本簇页面自己的样式；全站通用规则写 app.css。
+   新增窄屏规则沿用 app.css 的断点：1024 / 860 / 720 / 560。
+   类名一律带本簇前缀，避免和别的页面撞。
+
+   本簇：逐集制作 ① 分镜（stages/epscript + storyboard-table）· ② 合成成片（stages/assemble）
+        · AI 改图弹窗（ai-image-edit-modal）· /projects/<id>/distribute
+   前缀：ep-（sfc = ShotFrameCell 根节点，短剧 / 短视频两张分镜表共用，只在 .ep-sb 里改它的排版）
+   ============================================================ */
+
+/* ---------- ① 分镜页外层 ---------- */
+.ep-wrap { max-width: 1280px; margin: 0 auto; padding: 20px 28px 130px; }
+.ep-setting-title { white-space: nowrap; }
+
+/* 右下悬浮条：桌面上浮在右下角；≤720 变成贴底通栏（见下方媒体查询） */
+.ep-cta {
+  position: absolute;
+  right: 24px;
+  bottom: 22px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  padding: 9px;
+  border-radius: 15px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line-soft);
+  max-width: calc(100% - 24px);
+}
+.ep-cta-note { font-size: 11px; padding-left: 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 本集还没有分镜：一行说明，指向本集剧情卡上的「按剧情生成本集分镜」 */
+.ep-sb-none {
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* ---------- 分镜表：≥820 平铺表格，容器 <820 每一镜一张卡片 ---------- */
+.ep-sb { container: ep-sb / inline-size; }
+.ep-sb-scroll { overflow-x: auto; }
+.ep-sb-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.ep-sb-table thead tr { background: var(--surface); }
+.ep-sb-th {
+  padding: 11px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-3);
+  letter-spacing: .04em;
+  border-bottom: 2px solid var(--line);
+  white-space: nowrap;
+}
+.ep-sb-col-no { width: 76px; }
+.ep-sb-col-frame { width: 112px; }
+.ep-sb-col-cam { width: 96px; }
+.ep-sb-col-audio { width: 220px; }
+.ep-sb-col-fx { width: 118px; }
+
+.ep-sb-scene { background: var(--surface-2); }
+.ep-sb-scene > td { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.ep-sb-empty > td { padding: 14px 12px; border-bottom: 1px solid var(--line-soft); }
+
+.ep-sb-shot > td { padding: 12px; vertical-align: top; border-bottom: 1px solid var(--line-soft); }
+.ep-sb-shot > .ep-sb-no,
+.ep-sb-shot > .ep-sb-frame { text-align: center; }
+
+/* 镜号格（桌面）：镜号 / 起止时间 / 秒数 / 状态 / 改写 + 删除，竖排 */
+.ep-sb-no-in { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ep-sb-no-n { font-size: 22px; font-weight: 800; color: var(--accent); line-height: 1.1; }
+.ep-sb-no-t { font-size: 11.5px; font-weight: 800; line-height: 1.35; }
+.ep-sb-no-t > span { display: block; }
+.ep-sb-no-t > .ep-sb-no-dash { display: none; }
+.ep-sb-dur { display: inline-flex; align-items: center; gap: 2px; font-size: 10.5px; }
+.ep-sb-dur input {
+  width: 40px; height: 22px;
+  border: 1px solid var(--line); border-radius: 6px;
+  font-size: 11px; text-align: center; outline: none; background: var(--surface);
+}
+.ep-sb-no-grow { display: none; }
+.ep-sb-acts { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 2px; }
+.ep-sb-iconbtn {
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  background: none; border: none; border-radius: 7px;
+  color: var(--ink-3); cursor: pointer; flex: none; padding: 0;
+}
+.ep-sb-iconbtn:hover { background: var(--surface-2); color: var(--ink-2); }
+.ep-sb-iconbtn:disabled { opacity: .5; cursor: default; }
+
+@container ep-sb (max-width: 819px) {
+  .ep-sb-scroll { overflow-x: visible; }
+  .ep-sb-table { min-width: 0; table-layout: auto; }
+  .ep-sb-table,
+  .ep-sb-table tbody,
+  .ep-sb-table tr,
+  .ep-sb-table td { display: block; }
+  .ep-sb-table thead { display: none; }
+
+  .ep-sb-table tr.ep-sb-shot {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    grid-template-areas:
+      "no no"
+      "frame visual"
+      "frame cam"
+      "audio audio"
+      "fx fx";
+    gap: 10px 12px;
+    padding: 12px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .ep-sb-table tr.ep-sb-shot > td { padding: 0; border-bottom: 0; min-width: 0; }
+  .ep-sb-shot > .ep-sb-no { grid-area: no; text-align: left; }
+  .ep-sb-shot > .ep-sb-frame { grid-area: frame; }
+  .ep-sb-shot > .ep-sb-visual { grid-area: visual; }
+  .ep-sb-shot > .ep-sb-cam { grid-area: cam; }
+  .ep-sb-shot > .ep-sb-audio { grid-area: audio; }
+  .ep-sb-shot > .ep-sb-fx { grid-area: fx; }
+  .ep-sb-shot > td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--ink-3);
+    letter-spacing: .04em;
+    margin-bottom: 3px;
+  }
+  /* 卡片头：镜号 · 起止时间 · 秒数 · 状态 ……… 改写 · 删除 横排 */
+  .ep-sb-no-in { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .ep-sb-no-n { font-size: 18px; }
+  .ep-sb-no-t > span,
+  .ep-sb-no-t > .ep-sb-no-dash { display: inline; }
+  .ep-sb-no-grow { display: block; flex: 1 1 0; }
+  .ep-sb-acts { flex-direction: row; margin-top: 0; }
+  /* 景别和运镜并排，省一行 */
+  .ep-sb-cam > .col { flex-direction: row; gap: 16px; }
+}
+
+@container ep-sb (max-width: 459px) {
+  .ep-sb-table tr.ep-sb-shot {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "no" "frame" "visual" "cam" "audio" "fx";
+  }
+  /* 首帧格改横排：缩略图在左，按钮跟在右边 */
+  .ep-sb-shot > .ep-sb-frame { text-align: left; }
+  .ep-sb .sfc { flex-direction: row !important; flex-wrap: wrap; align-items: center !important; justify-content: flex-start; }
+}
+
+/* ---------- ② 合成成片 ---------- */
+.ep-asm { max-width: 920px; margin: 0 auto; padding: 28px 32px 64px; }
+.ep-asm-head { margin-bottom: 20px; }
+.ep-asm-head h1 { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.01em; }
+.ep-asm-hero { display: flex; gap: 16px; align-items: flex-start; padding: 16px; margin-bottom: 16px; }
+.ep-asm-hero video { width: 220px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; background: #000; flex: none; }
+.ep-asm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 140px)); justify-content: start; gap: 10px; margin-bottom: 18px; }
+.ep-asm-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; }
+.ep-asm-foot-text { flex: 1 1 220px; min-width: 0; }
+
+/* ---------- AI 改图弹窗：桌面左对话右预览；≤720 预览在上、对话在下 ---------- */
+.ep-imgedit { width: min(900px, 94vw); height: min(580px, 90vh); }
+.ep-imgedit-body { display: flex; flex: 1 1 auto; min-height: 0; align-items: stretch; }
+.ep-imgedit-chat { width: 340px; flex: none; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; min-height: 0; }
+.ep-imgedit-preview { flex: 1 1 auto; min-width: 0; padding: 22px; }
+
+/* ---------- /projects/<id>/distribute ---------- */
+.ep-dist-main { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+.ep-dist-platforms { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr)); gap: 10px; }
+.ep-dist-banner {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid color-mix(in oklch, var(--warning, #d97706) 40%, transparent);
+  background: color-mix(in oklch, var(--warning, #d97706) 10%, transparent);
+  color: var(--fg-1, var(--ink));
+  font-size: 13px; line-height: 1.6;
+}
+
+/* ---------- 窄屏 ---------- */
+@media (max-width: 720px) {
+  .ep-wrap { padding: 14px 12px 150px; }
+  .ep-hide-sm { display: none !important; }
+  .ep-cta {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    max-width: none;
+  }
+  .ep-cta .btn { flex: 1 1 auto; justify-content: center; }
+
+  .ep-asm { padding: 16px 12px 48px; }
+  .ep-asm-head h1 { font-size: 20px; }
+
+  .ep-imgedit { width: 100%; height: min(680px, 92vh); }
+  .ep-imgedit-body { flex-direction: column; }
+  .ep-imgedit-preview { order: -1; flex: none; height: 36vh; padding: 12px; }
+  .ep-imgedit-chat { width: 100%; flex: 1 1 auto; border-right: 0; border-top: 1px solid var(--line-soft); }
+}
+
+@media (max-width: 560px) {
+  .ep-asm-hero { flex-direction: column; align-items: stretch; }
+  .ep-asm-hero video { width: 100%; max-width: 220px; align-self: center; }
+  .ep-asm-foot .btn { width: 100%; justify-content: center; }
+}
+
+/* 触屏：点击区不小于 32px（桌面鼠标不受影响） */
+@media (max-width: 720px), (hover: none) and (pointer: coarse) {
+  .ep-sb-iconbtn { width: 32px; height: 32px; }
+  .ep-sb-chip,
+  .ep-sb .sfc-btn,
+  .ep-sb-select,
+  .ep-chip-touch { min-height: 32px; }
+  .ep-sb-dur input { width: 48px; height: 32px; }
+}

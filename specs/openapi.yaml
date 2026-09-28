@@ -5730,13 +5730,16 @@ paths:
       tags: [finance]
       operationId: listMyLedger
       summary: 当前用户的不可变流水（分页）
+      description: '页码从 0 起（Spring PageRequest），每页条数的参数名是 size（不是 limit）；返回的 pagination.page 同样从 0 起。排序固定为 createdAt 倒序、同一时刻再按 id 倒序（v0.197：加 id 做次排序键，顺序是全序，按 offset 连续翻页不重不漏；web-drama「收入与提现」靠它一页页往前翻找收入 / 提现）。'
       parameters:
         - in: query
           name: page
-          schema: { type: integer, default: 1 }
+          description: 页码，从 0 起
+          schema: { type: integer, default: 0, minimum: 0 }
         - in: query
-          name: limit
-          schema: { type: integer, default: 20 }
+          name: size
+          description: 每页条数
+          schema: { type: integer, default: 20, minimum: 1 }
       responses:
         '200':
           description: ok
@@ -8310,7 +8313,7 @@ paths:
   /me/drama/brainstorms/{id}:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     get:    { tags: [drama], operationId: getDramaBrainstorm,    summary: '脑暴草稿详情（meta + 整页 BrainstormData，恢复）', responses: { '200': { description: ok } } }
-    put:    { tags: [drama], operationId: saveDramaBrainstorm,   summary: '保存整页脑暴草稿（对话/故事大纲/制作设置，回算标题）', responses: { '200': { description: ok } } }
+    put:    { tags: [drama], operationId: saveDramaBrainstorm,   summary: '保存整页脑暴草稿（对话/故事大纲/制作设置，回算标题）。v0.197 起已去制作（status=promoted）后只读：409 DRAMA_BRAINSTORM_ALREADY_PROMOTED，不覆盖、也不假装保存成功', responses: { '200': { description: ok } } }
     delete: { tags: [drama], operationId: deleteDramaBrainstorm, summary: '删除脑暴草稿（软删）', responses: { '204': { description: ok } } }
   /me/drama/brainstorms/{id}/chat:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
@@ -8320,7 +8323,7 @@ paths:
     post: { tags: [drama], operationId: dramaBrainstormOutline, summary: '由对话生成故事大纲 OutlineDraft（大模型，免费，§8.0；不落库）', responses: { '200': { description: ok } } }
   /me/drama/brainstorms/{id}/promote:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
-    post: { tags: [drama], operationId: promoteDramaBrainstorm, summary: '去制作：form=series 立项 DramaProject（免费，预填角色）/ form=single 建 DramaShort（扣开拍费）', responses: { '200': { description: ok } } }
+    post: { tags: [drama], operationId: promoteDramaBrainstorm, summary: '去制作：form=series 立项 DramaProject（免费，预填角色）/ form=single 建 DramaShort（扣开拍费；草稿 data.idea = 一句话剧情 + 主线，制作页进来即自动写口播脚本）。body { form?, data?, clientRequestId? }；v0.197 起 single 按 clientRequestId 幂等（(owner,key) 唯一索引，同键重试返回原草稿、不重复扣费；不带键行为不变）；已去制作过的直接返回原去向，且不落库 body.data（旧标签页 / 重放不会覆盖已封存的对话）', responses: { '200': { description: ok } } }
   # ── v0.76 短视频制作草稿（整页编辑态可恢复：刷新/返回/换设备接着做）──
   /me/drama/shorts:
     get:  { tags: [drama], operationId: listDramaShorts,  summary: '我的短视频草稿列表（工坊卡片）', responses: { '200': { description: ok } } }
@@ -8355,7 +8358,7 @@ paths:
     delete: { tags: [drama], operationId: purgeDramaShort, summary: '彻底删除回收站短视频草稿（物理删除，不可恢复）', responses: { '204': { description: ok } } }
   # ── v0.66 短剧专区配置 + 成片合成 ──
   /me/drama/config:
-    get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,shortEntry,clip}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价）', responses: { '200': { description: ok } } }
+    get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,decompose,shotRewrite,shortEntry,clip,interactiveDraft}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价；v0.197 加 prices.interactiveDraft=互动剧 AI 起草分支图单价（drama.credit.interactive-draft，默认 18，与扣费同源））', responses: { '200': { description: ok } } }
   # ── v0.89 素材库上传：角色 / 场景「上传参考图」（multipart），落 OSS + 收进用户素材库 ──
   /me/drama/assets/uploads:
     post: { tags: [drama], operationId: uploadDramaAssetRef, summary: '上传角色 / 场景参考图（multipart：file + cat）→ { cdnKey, url, cat, name }', responses: { '200': { description: ok } } }

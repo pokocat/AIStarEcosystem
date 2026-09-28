@@ -107,13 +107,13 @@ public class DramaAssembleService {
     /** body: { ep } → { url, cdnKey, durationSec, shotCount, at }。 */
     public JsonNode assemble(String projectId, JsonNode body, String userId) {
         DramaProject row = repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(projectId, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "找不到这部短剧"));
         int ep = body != null ? body.path("ep").asInt(1) : 1;
 
         List<String> clipUrls = collectClipUrls(row, ep);
         if (clipUrls.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_ASSEMBLE_NO_CLIPS",
-                    "第 " + ep + " 集还没有已出片的镜头 —— 先去视频工厂渲染分镜视频。");
+                    "第 " + ep + " 集还没有生成好视频的镜头，先在「分镜」里给镜头生成视频。");
         }
 
         Path workDir = null;
@@ -169,8 +169,9 @@ public class DramaAssembleService {
             throw e;
         } catch (Exception e) {
             log.warn("[drama-assemble] failed user={} project={} ep={}: {}", userId, projectId, ep, e.toString());
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "DRAMA_ASSEMBLE_FAILED",
-                    "成片拼接失败，请稍后重试（" + e.getMessage() + "）");
+            // 技术细节（下载 HTTP 码 / ffmpeg 报错）只进日志与错误日志，不直出给用户（§8.0.1 ①：5xx 笼统）。
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "DRAMA_ASSEMBLE_FAILED",
+                    "成片没合成出来，稍后再试一次。", e.toString());
         } finally {
             cleanup(workDir);
         }
@@ -212,7 +213,7 @@ public class DramaAssembleService {
             boolean trusted = origin != null && trustedDownloadOrigins.stream().anyMatch(origin::equals);
             if (!trusted) {
                 throw BusinessException.badRequest("VIDEO_URL_NOT_ALLOWED",
-                        "分镜视频地址必须来自平台自身的 CDN 域，不支持外部/内网地址");
+                        "镜头视频必须是在平台里生成的，不支持外部链接。");
             }
         }
         HttpRequest req = HttpRequest.newBuilder(URI.create(abs))

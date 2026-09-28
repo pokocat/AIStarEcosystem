@@ -14,10 +14,19 @@ export interface UploadedAssetRef {
   name: string;
 }
 
+/** mock 模式：cdnKey → 本地预览地址（素材库 mock 建库记录时据此回显图片，同服务端「key 派生 URL」）。 */
+const MOCK_KEY_URLS = new Map<string, string>();
+export function mockUrlForKey(cdnKey: string): string | undefined {
+  return MOCK_KEY_URLS.get(cdnKey);
+}
+
 /** 上传一张参考图（角色 / 场景）。cat ∈ 人物 / 场景 / 道具 / 其他。 */
 export async function uploadAssetRef(file: File, cat: string): Promise<UploadedAssetRef> {
   if (USE_MOCK) {
-    return mockDelay({ cdnKey: `mock/asset-refs/${Date.now()}`, url: URL.createObjectURL(file), cat, name: file.name || "参考图" });
+    const cdnKey = `mock/asset-refs/${Date.now()}`;
+    const url = URL.createObjectURL(file);
+    MOCK_KEY_URLS.set(cdnKey, url);
+    return mockDelay({ cdnKey, url, cat, name: file.name || "参考图" });
   }
   const form = new FormData();
   form.append("file", file);

@@ -255,19 +255,35 @@ class DramaBrainstormServiceTest {
     @Test
     void promoteSingleCreatesShort() {
         when(shortService.createFromRecipe(eq("u1"), anyString(), anyString(), anyString(), anyString(),
-                anyString(), anyString())).thenReturn("dvs_s1");
+                any(), any(), any(), any())).thenReturn("dvs_s1");
         String id = createReturningId(null, "u1");
         svc.saveBrainstorm(id, node("{\"data\":{\"messages\":[{\"role\":\"user\",\"text\":\"种草\"}],"
                 + "\"outline\":{\"title\":\"熬夜面膜种草\",\"type\":\"口播种草\",\"logline\":\"熬夜也能救\","
                 + "\"mainline\":\"\",\"beats\":[\"痛点\"],\"roles\":[],\"scenes\":[]},"
                 + "\"settings\":{\"form\":\"single\",\"ratio\":\"9:16\"}}}"), "u1");
 
-        JsonNode out = svc.promote(id, node("{\"form\":\"single\"}"), "u1");
+        JsonNode out = svc.promote(id, node("{\"form\":\"single\",\"clientRequestId\":\"brs-confirm-1\"}"), "u1");
         assertEquals("short", out.path("kind").asText());
         assertEquals("dvs_s1", out.path("shortId").asText());
+        ArgumentCaptor<String> idea = ArgumentCaptor.forClass(String.class);
         verify(shortService).createFromRecipe(eq("u1"), eq("熬夜面膜种草"), eq("口播种草"),
-                anyString(), anyString(), eq("熬夜面膜种草"), anyString());
+                anyString(), anyString(),
+                isNull(), isNull(),               // 故事名不再当「风格」：制作页不会变成「照【故事名】的风格来做」
+                idea.capture(),
+                eq("brs-confirm-1"));             // 幂等键原样透传给建草稿
+        // 草稿的点子带着一句话剧情和主线（主线为空时取剧情节点），制作页据此直接写脚本。
+        assertTrue(idea.getValue().contains("熬夜也能救"), idea.getValue());
+        assertTrue(idea.getValue().contains("痛点"), idea.getValue());
         verify(projectService, never()).createProject(any(), anyString());
+    }
+
+    @Test
+    void singleIdeaFallsBackToTitleOnlyWhenStoryIsEmpty() {
+        assertEquals("熬夜面膜种草", DramaBrainstormService.singleIdea("熬夜面膜种草", "", " "));
+        assertEquals("熬夜也能救", DramaBrainstormService.singleIdea("t", "熬夜也能救", ""));
+        assertEquals("痛点 → 反转", DramaBrainstormService.singleIdea("t", null, "痛点 → 反转"));
+        String both = DramaBrainstormService.singleIdea("t", "熬夜也能救！", "痛点 → 反转");
+        assertTrue(both.startsWith("熬夜也能救！") && both.endsWith("痛点 → 反转"), both);
     }
 
     @Test

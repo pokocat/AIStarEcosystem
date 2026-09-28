@@ -65,10 +65,10 @@ public class DramaCatalogController {
         String cfgKey = KEYS.get(field);
         if (cfgKey == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CATALOG_KEY_INVALID",
-                    "未知目录：" + field + "（可选 " + String.join(" / ", KEYS.keySet()) + "）");
+                    "不认识的内容类型：" + field + "（可选 " + String.join(" / ", KEYS.keySet()) + "）");
         }
         if (value == null || value.isNull()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CATALOG_VALUE_REQUIRED", "缺少要保存的目录内容");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CATALOG_VALUE_REQUIRED", "没收到要保存的内容，请重试。");
         }
         var saved = configs.upsert(cfgKey, value, "短剧平台目录 · " + field, auth.getName());
         ObjectNode out = om.createObjectNode();
@@ -99,7 +99,7 @@ public class DramaCatalogController {
         requireOperator(auth);
         String cfgKey = KEYS.get(field);
         if (cfgKey == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CATALOG_KEY_INVALID", "未知目录：" + field);
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CATALOG_KEY_INVALID", "不认识的内容类型：" + field);
         }
         configs.delete(cfgKey);
         ObjectNode out = om.createObjectNode();
@@ -113,7 +113,7 @@ public class DramaCatalogController {
      * （见 InAppOperatorGuard）；typ=admin 令牌照常放行。
      */
     private void requireOperator(Authentication auth) {
-        operatorGuard.require(auth, "仅平台运营可维护短剧目录内容。");
+        operatorGuard.require(auth, "只有平台运营能改热点与推荐。");
     }
 
     /** 暴露给前端的字段清单（便于 CMS 渲染）。 */

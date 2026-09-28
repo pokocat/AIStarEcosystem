@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +25,7 @@ import java.time.OffsetDateTime;
  */
 @Service
 public class DramaShortAudioService {
+    private static final Logger log = LoggerFactory.getLogger(DramaShortAudioService.class);
     private final DramaShortRepository repo;
     private final ClipAvatarService avatars;
     private final ShiliuService shiliu;
@@ -50,21 +53,28 @@ public class DramaShortAudioService {
         ObjectNode data = readPayload(row);
         JsonNode shots = data.path("shots");
         if (!shots.isArray() || shots.isEmpty()) {
-            throw BusinessException.badRequest("DRAMA_SHORT_AUDIO_NO_SHOTS", "还没有分镜，无法准备配音");
+            throw BusinessException.badRequest("DRAMA_SHORT_AUDIO_NO_SHOTS", "还没有分镜，没法配音。");
         }
         String avatarId = text(data.path("characterAvatar"), "id");
         boolean hasDialogue = false;
         for (JsonNode shot : shots) if (!clean(shot.path("voText").asText("")).isBlank()) hasDialogue = true;
         if (hasDialogue && (avatarId == null || avatarId.isBlank())) {
             throw new BusinessException(HttpStatus.CONFLICT, "DRAMA_SHORT_VOICE_SOURCE_REQUIRED",
-                    "请先绑定一位已关联声音的数字人，再生成配音");
+                    "请先绑定一位有声音的数字人，再生成配音。");
         }
 
         String voiceRef = hasDialogue ? avatars.requiredVoiceEngineRef(userId, avatarId, null) : null;
         ShiliuGateway gateway = hasDialogue ? shiliu.required() : null;
         if (gateway != null && gateway.mock()) {
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DRAMA_SHORT_TTS_NOT_CONFIGURED",
-                    "当前环境没有配置真实配音引擎，无法生成可交付音频");
+            // 测试替身出不了真配音，也不许拿它冒充成品（§8.0）。给用户的话只说「还没开通」
+            // （前端按错误码再换一次说法）；运营该去配什么写进 internalDetail —— 它随追查号落进
+            // 后台错误日志，同时打一行 WARN，查这个报错时两处都能看到。
+            String opsHint = "配音走石榴 V2 音色 TTS（ShiliuService），当前拿到的是测试替身：要么 AEP_CLIP_FORCE_MOCK=true，"
+                    + "要么没配 AEP_CLIP_SHILIU_BASE_URL / AEP_CLIP_SHILIU_TOKEN 且 AEP_CLIP_ALLOW_MOCK=true。"
+                    + "在 server.env 配齐这两项、把 AEP_CLIP_FORCE_MOCK 关掉，重启后可用。";
+            log.warn("[drama-short-audio] tts not configured user={} short={} —— {}", userId, shortId, opsHint);
+            throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "DRAMA_SHORT_TTS_NOT_CONFIGURED",
+                    "配音功能还没开通，请联系平台开通后再用。", opsHint);
         }
         ArrayNode prepared = om.createArrayNode();
         int reused = 0;
@@ -83,7 +93,7 @@ public class DramaShortAudioService {
             ShiliuGateway.Task task = gateway.previewVoice(userId, voiceRef, dialogue);
             if (!"succeeded".equals(task.status()) || task.outputRef() == null || task.outputRef().isBlank()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "DRAMA_SHORT_TTS_FAILED",
-                        "镜 " + shot.path("no").asInt() + " 配音生成失败，已完成的镜头会保留，重试只补失败项");
+                        "镜 " + shot.path("no").asInt() + " 的配音没生成出来。已配好的镜头会保留，再试一次只补没配好的。");
             }
             // HttpShiliuGateway 已把 base64 音频直接写入我方 FileStorage；优先复用该 key，
             // 避免再经签名 URL 下载一遍。旧/替代网关没返回 key 时才走安全镜像兼容路径。
@@ -126,7 +136,7 @@ public class DramaShortAudioService {
     private DramaShort requireOwned(String id, String userId) {
         return repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
-                        "DRAMA_SHORT_NOT_FOUND", "短视频草稿不存在"));
+                        "DRAMA_SHORT_NOT_FOUND", "找不到这条短视频"));
     }
 
     private ObjectNode readPayload(DramaShort row) {

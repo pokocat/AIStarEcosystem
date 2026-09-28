@@ -67,7 +67,7 @@ interface RechargeOrderWire {
 export async function createRecharge(input: RechargeInput): Promise<Transaction> {
   const packages = await apiFetch<RechargePackageWire[]>("/me/wallet/packages");
   if (!packages.length) {
-    throw new Error("运营还没配置充值套餐，请联系平台。");
+    throw new Error("暂时没有可买的套餐，请稍后再试或联系我们。");
   }
   // 优先积分数恰好等于充值额的套餐，否则取不小于该额度的最小套餐（再退化为最大）。
   const exact = packages.find((p) => p.credits === input.amount);
@@ -79,12 +79,18 @@ export async function createRecharge(input: RechargeInput): Promise<Transaction>
   });
   return {
     id: order.id,
-    source: `充值下单（${pick.name ?? pick.credits + " 积分"}）· 待运营确认`,
+    source: `充值订单（${pick.name ?? pick.credits + " 积分"}）· 等平台确认收款`,
     amount: order.credits ?? pick.credits,
-    date: (order.createdAt ?? new Date().toISOString()).slice(0, 10),
+    // 到天的日期按本地日历算（§4.8：不能切 ISO 串的前 10 位，那是 UTC 日期）
+    date: localDate(order.createdAt ? new Date(order.createdAt) : new Date()),
+    createdAt: order.createdAt ?? new Date().toISOString(),
     status: "processing",
     type: "recharge",
   } as Transaction;
+}
+
+function localDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export interface WithdrawalInput {

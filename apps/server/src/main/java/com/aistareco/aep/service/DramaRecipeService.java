@@ -81,7 +81,7 @@ public class DramaRecipeService {
     /** 用户把自己已完成项目蒸馏成 Recipe（status=submitted，待运营审核）。返回 Recipe DTO。 */
     public JsonNode extractFromProject(String projectId, String userId) {
         DramaProject project = projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull(projectId, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "找不到这部短剧"));
         guardNoActiveRecipe(projectId);
         DramaRecipe recipe = distillAndSave(project, "submitted", "extracted", resolveAuthorName(userId), null);
         log.info("[drama-recipe] extracted(self) id={} project={} user={}", recipe.getId(), projectId, userId);
@@ -95,15 +95,15 @@ public class DramaRecipeService {
         JsonNode data = detail.path("data");
         if (!"done".equals(meta.path("status").asText(""))) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NEEDS_DONE_SHORT",
-                    "这条短视频还没有完成，完成成片后再发布到创意中心。");
+                    "这条短视频还没做完，合成成片后再发布成模板。");
         }
         if (meta.path("shotCount").asInt(0) <= 0 || !data.path("shots").isArray() || data.path("shots").isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NEEDS_SHORT_SHOTS",
-                    "这条短视频还没有分镜内容，无法抽成创意。");
+                    "这条短视频还没有分镜，没法发布成模板。");
         }
         if (nonBlank(text(meta, "videoUrl")) == null) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NEEDS_SHORT_VIDEO",
-                    "这条短视频还没有可播放成片，生成成片后再发布到创意中心。");
+                    "这条短视频还没有能播放的成片，合成成片后再发布成模板。");
         }
         guardNoActiveRecipe(shortId);
         DramaRecipe recipe = distillAndSaveShort(shortId, userId, meta, data, "submitted", "extracted", resolveAuthorName(userId));
@@ -158,14 +158,14 @@ public class DramaRecipeService {
     /** 运营对某用户项目发起「邀请精选」→ status=invited，给作者发授权站内信。 */
     public JsonNode inviteFromProject(String projectId, String operatorId) {
         DramaProject project = projectRepo.findByIdAndDeletedAtIsNull(projectId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "找不到这部短剧"));
         guardNoActiveRecipe(projectId);
         String authorName = orDefault(resolveAuthorName(project.getOwnerUserId()), "用户");
         DramaRecipe recipe = distillAndSave(project, "invited", "featured", authorName, operatorId);
         notifier.notifyUser(project.getOwnerUserId(), Notification.NotificationType.CONTENT,
-                "运营想把你的《" + orDefault(project.getTitle(), "短剧") + "》精选进创意市场",
-                "平台运营希望把这部作品做成可复用的创意模板、公开供他人套用，并署名「来自你」。"
-                        + "去「创意市场 · 我发布的创意」确认是否授权。");
+                "平台想把你的《" + orDefault(project.getTitle(), "短剧") + "》做成模板公开",
+                "同意后它会出现在模板广场，别人能用它做同款，模板上署你的名字。"
+                        + "去「模板广场 · 我发布的模板」里选择同意或不同意。");
         log.info("[drama-recipe] invited id={} project={} operator={} owner={}",
                 recipe.getId(), projectId, operatorId, project.getOwnerUserId());
         return toDto(recipe);
@@ -178,7 +178,7 @@ public class DramaRecipeService {
             throw new BusinessException(HttpStatus.FORBIDDEN, "DRAMA_RECIPE_NOT_OWNER", "只能处理对你自己作品的邀请。");
         }
         if (!"invited".equals(r.getStatus())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_INVITED", "该配方不在「待授权」状态。");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_INVITED", "这个模板现在不是等你同意的状态，刷新页面看看最新情况。");
         }
         OffsetDateTime now = OffsetDateTime.now();
         if (approve) {
@@ -203,7 +203,7 @@ public class DramaRecipeService {
     public JsonNode createBuiltin(JsonNode body, String operatorId) {
         String title = text(body, "title");
         if (title == null || title.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_TITLE_REQUIRED", "请填写创意名称。");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_TITLE_REQUIRED", "请填写模板名称。");
         }
         ObjectNode payload = om.createObjectNode();
         payload.put("mainline", orDefault(text(body, "mainline"), ""));
@@ -242,14 +242,14 @@ public class DramaRecipeService {
                                        String authorName, String invitedBy) {
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "抽取配方还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+                    "发布成模板还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
         JsonNode data = readPayload(project);
         JsonNode info = data.path("projectInfo");
         JsonNode episodes = data.path("episodes");
         if (!episodes.isArray() || episodes.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NEEDS_OUTLINE",
-                    "这部短剧还没有分集大纲，先把大纲铺出来再抽成配方。");
+                    "这部短剧还没有分集剧情，先把分集剧情生成出来，再发布成模板。");
         }
 
         String title = orDefault(text(info, "title"), orDefault(project.getTitle(), "未命名短剧"));
@@ -268,7 +268,7 @@ public class DramaRecipeService {
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_RECIPE_EXTRACT);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "配方抽取的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_RECIPE_EXTRACT
+                    "发布成模板用的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_RECIPE_EXTRACT
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
         log.info("[drama-recipe] distill project={} owner={} invitedBy={} vars={}",
@@ -290,11 +290,11 @@ public class DramaRecipeService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "配方抽取调用失败，请稍后重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 服务暂时连不上，稍后再试一次。");
         }
         JsonNode root = tryReadJson(resp.content());
         if (root == null || !root.isObject()) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "配方抽取返回的内容无法解析，请重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次整理出来的模板用不了，再试一次。");
         }
 
         ObjectNode payload = om.createObjectNode();
@@ -313,7 +313,7 @@ public class DramaRecipeService {
                 .origin(origin)
                 .authorName(authorName)
                 .invitedBy(invitedBy)
-                .title(orDefault(text(root, "title"), title + " · 配方"))
+                .title(orDefault(text(root, "title"), title + " · 模板"))
                 .summary(orDefault(text(root, "summary"), ""))
                 .typeKey(orDefault(project.getTypeKey(), "custom"))
                 .type(type)
@@ -335,7 +335,7 @@ public class DramaRecipeService {
                                             String status, String origin, String authorName) {
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "抽取配方还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+                    "发布成模板还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
 
         String title = orDefault(text(meta, "title"), orDefault(text(data, "title"), "未命名短视频"));
@@ -355,7 +355,7 @@ public class DramaRecipeService {
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_RECIPE_EXTRACT);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "配方抽取的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_RECIPE_EXTRACT
+                    "发布成模板用的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_RECIPE_EXTRACT
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
         log.info("[drama-recipe] distill short={} vars={}", shortId, vars);
@@ -376,11 +376,11 @@ public class DramaRecipeService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "配方抽取调用失败，请稍后重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 服务暂时连不上，稍后再试一次。");
         }
         JsonNode root = tryReadJson(resp.content());
         if (root == null || !root.isObject()) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "配方抽取返回的内容无法解析，请重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次整理出来的模板用不了，再试一次。");
         }
 
         ObjectNode payload = om.createObjectNode();
@@ -398,7 +398,7 @@ public class DramaRecipeService {
                 .status(status)
                 .origin(origin)
                 .authorName(authorName)
-                .title(orDefault(text(root, "title"), title + " · 创意"))
+                .title(orDefault(text(root, "title"), title + " · 模板"))
                 .summary(orDefault(text(root, "summary"), ""))
                 .typeKey(typeKey)
                 .type(type)
@@ -452,8 +452,8 @@ public class DramaRecipeService {
         repo.save(r);
         if (!OFFICIAL_OWNER.equals(r.getOwnerUserId())) {
             notifier.notifyUser(r.getOwnerUserId(), Notification.NotificationType.CONTENT,
-                    "你的创意已上架创意市场",
-                    "《" + orDefault(r.getTitle(), "短剧") + "》已通过审核，进入创意市场公开可套用。");
+                    "你的模板上架了",
+                    "《" + orDefault(r.getTitle(), "短剧") + "》通过了审核，现在大家都能在模板广场用它做同款。");
         }
         log.info("[drama-recipe] published id={}", recipeId);
         return toDto(r);
@@ -468,8 +468,8 @@ public class DramaRecipeService {
         repo.save(r);
         if (!OFFICIAL_OWNER.equals(r.getOwnerUserId())) {
             notifier.notifyUser(r.getOwnerUserId(), Notification.NotificationType.CONTENT,
-                    "创意未通过审核",
-                    "《" + orDefault(r.getTitle(), "短剧") + "》暂未通过。"
+                    "模板没通过审核",
+                    "《" + orDefault(r.getTitle(), "短剧") + "》这次没通过审核。"
                             + (note == null || note.isBlank() ? "" : "原因：" + note));
         }
         log.info("[drama-recipe] rejected id={} note={}", recipeId, note);
@@ -492,7 +492,7 @@ public class DramaRecipeService {
     public JsonNode applyRecipe(String recipeId, String userId, String clientRequestId) {
         DramaRecipe r = requireRecipe(recipeId);
         if (!"published".equals(r.getStatus())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_PUBLISHED", "该配方尚未发布，不能套用。");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_RECIPE_NOT_PUBLISHED", "这个模板还没上架，暂时不能做同款。");
         }
         OffsetDateTime now = OffsetDateTime.now();
         ObjectNode out = om.createObjectNode();
@@ -504,7 +504,7 @@ public class DramaRecipeService {
                     orDefault(r.getTitle(), "未命名短视频"),
                     orDefault(r.getType(), "风格短片"),
                     r.getCoverFrom(), r.getCoverTo(),
-                    orDefault(r.getTitle(), "风格创意"),
+                    orDefault(r.getTitle(), "风格模板"),
                     buildStyleRef(r),
                     clientRequestId);
             out.put("kind", "short");
@@ -554,7 +554,7 @@ public class DramaRecipeService {
 
     private DramaRecipe requireRecipe(String id) {
         return repo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_RECIPE_NOT_FOUND", "配方不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_RECIPE_NOT_FOUND", "找不到这个模板"));
     }
 
     /**
@@ -568,7 +568,7 @@ public class DramaRecipeService {
             String s = r.getStatus();
             if ("submitted".equals(s) || "invited".equals(s) || "published".equals(s)) {
                 throw new BusinessException(HttpStatus.CONFLICT, "DRAMA_RECIPE_ALREADY_EXISTS",
-                        "这部作品已经在创意市场流程中（待审核 / 待授权 / 已上架），无需重复提交。");
+                        "这部作品已经提交过模板了（在审核中、在等你同意或已上架），不用重复提交。");
             }
         }
     }
@@ -581,7 +581,7 @@ public class DramaRecipeService {
         info.put("type", orDefault(r.getType(), "短剧"));
         int eps = r.getEpisodes() > 0 ? r.getEpisodes() : 12;
         info.put("episodes", eps);
-        info.put("duration", "每集 ~75 秒");
+        info.put("duration", "每集 75 秒");
         info.put("ratio", orDefault(r.getRatio(), "9:16"));
         info.put("logline", "");
         info.put("mainline", data.path("mainline").asText(""));
@@ -745,7 +745,7 @@ public class DramaRecipeService {
         o.put("origin", r.getOrigin());
         if (r.getAuthorName() != null && !r.getAuthorName().isBlank()) o.put("authorName", r.getAuthorName());
         if (r.getInvitedBy() != null && !r.getInvitedBy().isBlank()) o.put("invitedBy", r.getInvitedBy());
-        o.put("title", orDefault(r.getTitle(), "未命名配方"));
+        o.put("title", orDefault(r.getTitle(), "未命名模板"));
         o.put("summary", orDefault(r.getSummary(), ""));
         o.put("typeKey", orDefault(r.getTypeKey(), "custom"));
         o.put("type", orDefault(r.getType(), "短剧"));

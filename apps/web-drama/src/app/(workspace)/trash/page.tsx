@@ -2,8 +2,8 @@
 
 export const dynamic = "force-dynamic";
 
-// 统一回收站 —— 短剧项目 + 短视频草稿都在这里（软删保留 30 天，可恢复 / 彻底删除）。
-// 不再只挂在「短剧工坊」下：作为顶层入口，两类作品分 Tab 管理。
+// 统一回收站 —— 短剧 + 短视频草稿都在这里（软删保留 30 天，可恢复 / 彻底删除）。
+// 入口在「我的短剧」「我的短视频」页头，两类作品分 Tab 管理。
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -28,6 +28,7 @@ export default function TrashPage() {
 
 function TrashInner() {
   const sp = useSearchParams();
+  const router = useRouter();
   const [tab, setTab] = React.useState<TabKey>(sp?.get("tab") === "shorts" ? "shorts" : "drama");
 
   const dramaQ = useAsync("/me/drama/projects/trash", () => ProjectsApi.listTrashProjects(), {
@@ -52,15 +53,15 @@ function TrashInner() {
     try {
       await ProjectsApi.restoreProject(p.id);
       refreshDrama();
-      toast.success(`已恢复《${p.title}》到短剧工坊`);
+      toast.success(`《${p.title}》已放回「我的短剧」`, { action: { label: "去看看", onClick: () => router.push("/projects") } });
     } catch (e) {
-      toast.error(aiErrorMessage(e, "恢复失败，请稍后重试"));
+      toast.error(aiErrorMessage(e, "没恢复成功，请重试"));
     }
   };
   const purgeDrama = async (p: DramaProjectTrashItem) => {
     const ok = await dramaConfirm({
-      title: "彻底删除",
-      body: `《${p.title}》将被永久删除，无法恢复。确定继续？`,
+      title: "彻底删除？",
+      body: `删了就找不回来了。确定彻底删除《${p.title}》？`,
       tone: "danger",
       confirmLabel: "彻底删除",
       cancelLabel: "取消",
@@ -71,7 +72,7 @@ function TrashInner() {
       refreshDrama();
       toast.success("已彻底删除");
     } catch (e) {
-      toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
+      toast.error(aiErrorMessage(e, "没删掉，请重试"));
     }
   };
 
@@ -79,15 +80,15 @@ function TrashInner() {
     try {
       await ShortsApi.restoreDraft(s.id);
       refreshShorts();
-      toast.success(`已恢复《${s.title}》到短视频工坊`);
+      toast.success(`《${s.title}》已放回「我的短视频」`, { action: { label: "去看看", onClick: () => router.push("/shorts") } });
     } catch (e) {
-      toast.error(aiErrorMessage(e, "恢复失败，请稍后重试"));
+      toast.error(aiErrorMessage(e, "没恢复成功，请重试"));
     }
   };
   const purgeShort = async (s: ShortDraftTrashItem) => {
     const ok = await dramaConfirm({
-      title: "彻底删除",
-      body: `《${s.title}》将被永久删除，无法恢复。确定继续？`,
+      title: "彻底删除？",
+      body: `删了就找不回来了。确定彻底删除《${s.title}》？`,
       tone: "danger",
       confirmLabel: "彻底删除",
       cancelLabel: "取消",
@@ -98,7 +99,7 @@ function TrashInner() {
       refreshShorts();
       toast.success("已彻底删除");
     } catch (e) {
-      toast.error(aiErrorMessage(e, "删除失败，请稍后重试"));
+      toast.error(aiErrorMessage(e, "没删掉，请重试"));
     }
   };
 
@@ -109,16 +110,8 @@ function TrashInner() {
     <div style={{ maxWidth: 1180, margin: "0 auto" }}>
       <div style={{ marginBottom: 18 }}>
         <ViewHeader
-          eyebrow="回收站"
-          title={
-            <>
-              回收{" "}
-              <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
-                站
-              </span>
-            </>
-          }
-          meta="删除的短剧与短视频在此保留 30 天，期间可恢复，到期后自动彻底删除。"
+          title="回收站"
+          meta="删掉的短剧和短视频会在这里放 30 天，随时能恢复，到期自动清除。"
         />
       </div>
 
@@ -133,8 +126,8 @@ function TrashInner() {
 
       {!!active.error && !active.isLoading && (
         <div className="card col center" style={{ padding: 28, gap: 12, textAlign: "center", marginBottom: 20 }}>
-          <div className="muted" style={{ fontSize: 13.5 }}>
-            回收站加载失败 —— {active.error instanceof Error ? active.error.message : "请稍后重试"}
+          <div className="muted" style={{ fontSize: 13.5 }} title={active.error instanceof Error ? active.error.message : undefined}>
+            回收站没加载出来，点下面重新加载
           </div>
           <button type="button" className="btn btn-line btn-sm" onClick={active.refetch}>重新加载</button>
         </div>
@@ -143,11 +136,11 @@ function TrashInner() {
       {active.isLoading && !active.error && <TrashGridSkeleton />}
 
       {!active.isLoading && !active.error && activeEmpty && (
-        <EmptyTrash kind={tab} />
+        <EmptyTrash kind={tab} onBack={() => router.push(tab === "drama" ? "/projects" : "/shorts")} />
       )}
 
       {tab === "drama" && dramaItems.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "start" }}>
+        <div className="hm-trash-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "start" }}>
           {dramaItems.map((p) => (
             <TrashCard
               key={p.id}
@@ -166,7 +159,7 @@ function TrashInner() {
       )}
 
       {tab === "shorts" && shortsItems.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "start" }}>
+        <div className="hm-trash-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "start" }}>
           {shortsItems.map((s) => (
             <TrashCard
               key={s.id}
@@ -175,7 +168,7 @@ function TrashInner() {
               to={s.to}
               ratio="3/4"
               tag={s.fmtName}
-              meta={s.durationSec > 0 ? `${s.durationSec}s` : "草稿"}
+              meta={s.durationSec > 0 ? `${s.durationSec} 秒` : "草稿"}
               daysLeft={s.daysLeft}
               onRestore={() => void restoreShort(s)}
               onPurge={() => void purgeShort(s)}
@@ -291,17 +284,17 @@ function TrashCard({
         </Thumb>
       </div>
       <div className="col gap-2" style={{ padding: "11px 12px 12px" }}>
-        <div className="row gap-2">
-          <span className="tag tag-gray" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{tag}</span>
+        <div className="row gap-2" style={{ minWidth: 0 }}>
+          <span className="tag tag-gray" title={tag} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", display: "block", lineHeight: "22px" }}>{tag}</span>
         </div>
-        <div className="row gap-2" style={{ fontSize: 11.5, color: daysLeft <= 3 ? "var(--accent-2)" : "var(--ink-3)" }}>
-          <Clock size={12} /> 还有 {daysLeft} 天彻底删除
+        <div className="row gap-2" style={{ fontSize: 11.5, color: daysLeft <= 3 ? "var(--accent-2)" : "var(--ink-3)", whiteSpace: "nowrap" }}>
+          <Clock size={12} style={{ flex: "none" }} /> {daysLeft} 天后自动清除
         </div>
         <div className="row gap-2" style={{ marginTop: 2 }}>
           <button type="button" className="btn btn-primary btn-sm grow" style={{ justifyContent: "center" }} onClick={onRestore}>
             <RotateCcw size={13} /> 恢复
           </button>
-          <button type="button" className="btn btn-line btn-sm btn-icon" title="彻底删除" onClick={onPurge}>
+          <button type="button" className="btn btn-line btn-sm btn-icon hm-trash-purge" title="彻底删除" aria-label="彻底删除" onClick={onPurge}>
             <Trash2 size={14} />
           </button>
         </div>
@@ -310,7 +303,7 @@ function TrashCard({
   );
 }
 
-function EmptyTrash({ kind }: { kind: TabKey }) {
+function EmptyTrash({ kind, onBack }: { kind: TabKey; onBack: () => void }) {
   const label = kind === "drama" ? "短剧" : "短视频";
   return (
     <div className="card col center" style={{ padding: "52px 24px", gap: 12, textAlign: "center" }}>
@@ -319,13 +312,16 @@ function EmptyTrash({ kind }: { kind: TabKey }) {
       </div>
       <div style={{ fontWeight: 800, fontSize: 15 }}>{label}回收站是空的</div>
       <div className="muted" style={{ fontSize: 13 }}>删除{label}后会先放到这里，30 天内都能找回来。</div>
+      <button type="button" className="btn btn-line btn-sm" onClick={onBack} style={{ marginTop: 4 }}>
+        回我的{label}
+      </button>
     </div>
   );
 }
 
 function TrashGridSkeleton() {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "start" }}>
+    <div className="hm-trash-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(156px, 1fr))", gap: 16, alignItems: "start" }}>
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div className="skel" style={{ aspectRatio: "1/1", borderRadius: 0 }} />

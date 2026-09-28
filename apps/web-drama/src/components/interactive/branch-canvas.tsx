@@ -2,12 +2,12 @@
 
 // 互动剧分支图画布（v0.79）—— 自绘 SVG，无第三方图库。
 // 剧集按分支深度 BFS 左→右分层铺开；贝塞尔连线把互动选项文案标在线上；
-// 起始集（★）/ 结局集（旗）/ 孤立节点（虚线）分别高亮；节点带出片态圆点。
+// 起始集（★）/ 结局集（旗）/ 从起始集走不到的集（虚线）分别高亮；节点带成片态圆点。
 // 点节点 = 选中（父级打开单集编辑器）；点节点「拉线」手柄 → 再点目标 = 请求父级接一条分支。
 import * as React from "react";
 import { Flag, GitBranch, Star, Film } from "lucide-react";
 import type { InteractiveStoryData } from "@/lib/interactive-types";
-import { layoutGraph, NODE_SIZE, type GraphLayout } from "@/lib/interactive-graph";
+import { epDisplayTitle, layoutGraph, NODE_SIZE, type GraphLayout } from "@/lib/interactive-graph";
 
 interface Props {
   data: InteractiveStoryData;
@@ -76,9 +76,9 @@ export function BranchCanvas({
             color: "var(--accent)",
           }}
         >
-          <GitBranch size={14} /> 连线中：点击目标剧集建立分支
-          <button type="button" className="chip" style={{ height: 24 }} onClick={onCancelConnect}>
-            取消 (Esc)
+          <GitBranch size={14} style={{ flex: "none" }} /> 点一下要连过去的那一集
+          <button type="button" className="chip" style={{ height: 24 }} onClick={onCancelConnect} title="也可以按 Esc 取消">
+            取消
           </button>
         </div>
       )}
@@ -138,6 +138,8 @@ export function BranchCanvas({
           const interactionCount = ep.interactions?.length ?? 0;
           const status = ep.videoStatus ?? (ep.videoUrl ? "ready" : "idle");
           const clickable = !!connectFrom && !isSource;
+          const name = epDisplayTitle(ep);
+          const hasOwnTitle = !!ep.title?.trim();
           return (
             <div
               key={ep.episodeId}
@@ -178,13 +180,14 @@ export function BranchCanvas({
                     whiteSpace: "nowrap",
                     flex: 1,
                   }}
-                  title={ep.title}
+                  title={name}
                 >
-                  {ep.title || ep.episodeId}
+                  {name}
                 </span>
               </div>
-              <div className="faint" style={{ fontSize: 10.5, fontFamily: "var(--font-num)" }}>
-                {ep.episodeId} · {ep.durationSec > 0 ? `${ep.durationSec}s` : "未制作"}
+              <div className="faint" style={{ fontSize: 10.5, fontFamily: "var(--font-num)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {hasOwnTitle || name !== `第 ${ep.no} 集` ? `第 ${ep.no} 集 · ` : ""}
+                {ep.durationSec > 0 ? `${ep.durationSec} 秒` : "还没成片"}
               </div>
               <div className="row gap-2" style={{ marginTop: "auto", justifyContent: "space-between" }}>
                 <span className="row gap-1" style={{ fontSize: 10 }}>
@@ -192,7 +195,7 @@ export function BranchCanvas({
                   {status === "ready" ? <Film size={10} style={{ color: "var(--success)" }} /> : null}
                   {interactionCount > 0 && (
                     <span className="tag tag-accent" style={{ height: 16, padding: "0 5px", fontSize: 9.5 }}>
-                      {interactionCount} 互动
+                      {interactionCount} 个互动点
                     </span>
                   )}
                   {ep.endingLabel && (
@@ -204,7 +207,9 @@ export function BranchCanvas({
                 {!ep.isEnding && !connectFrom && (
                   <button
                     type="button"
-                    title="新建分支连线"
+                    title="从这一集连到另一集"
+                    aria-label={`从「${name}」连到另一集`}
+                    className="wb-node-connect"
                     onClick={(e) => {
                       e.stopPropagation();
                       onConnectStart(ep.episodeId);

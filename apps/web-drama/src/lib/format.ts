@@ -72,3 +72,7 @@ export function formatDuration(totalSec: number): string {
 function trimZero(n: number): string {
   return n.toFixed(1).replace(/\.0$/, "");
 }
+
+// 时间一律 yyyy-MM-dd HH:mm:ss（AGENTS.md §4.8），真源在共享包；这里转出一份，drama 代码从 @/lib/format 取也行。
+// 禁止页面自己拼时间、禁止 iso.slice(0, 10)（切的是 UTC，晚上八点后落库的会显示成前一天）。
+export { formatDateTime } from "@ai-star-eco/api-client";
