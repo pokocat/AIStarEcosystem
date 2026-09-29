@@ -78,6 +78,27 @@ public class CardService {
         return c;
     }
 
+    /**
+     * 名片可以引用一个数字人形象，但只能引用**自己的**。
+     *
+     * <p>否则把别人的形象 id（可枚举，如 {@code dh-2041}）填进 create / save 的
+     * {@code avatarId} 一发布，公开名片（{@code GET /card/p/{slug}}）就会经
+     * {@code resolveFigure → DapAvatarRefResolver} 签出别人私有的定妆照 / 造型 / 动态视频 —— 既是
+     * 隐私泄漏也是冒名（把别人的数字人挂到自己的公开名片上）。{@code createFromAvatar} 本来就这么校验，
+     * 两条通用写入路径此前漏了这一步。
+     *
+     * @return 归一后的 avatarId；入参 blank 时返回 null（= 解绑，无需校验）。
+     */
+    private String requireOwnedAvatarId(String userId, String avatarId) {
+        String aid = trimToNull(avatarId);
+        if (aid == null) return null;
+        avatarRepo.findById(aid)
+                .filter(a -> a.getDeletedAt() == null)
+                .filter(a -> userId.equals(a.getOwnerUserId()))
+                .orElseThrow(() -> BusinessException.notFound("DAP_AVATAR_NOT_FOUND", "这个形象不存在"));
+        return aid;
+    }
+
     @Transactional(readOnly = true)
     public List<CardProfile> listMine(String userId) {
         return repo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId);
@@ -105,7 +126,7 @@ public class CardService {
                 .slug(s)
                 .regNo("BC-" + (1000 + Math.abs(s.hashCode() % 9000)))
                 .status(CardProfile.STATUS_DRAFT)
-                .avatarId(trimToNull(avatarId))
+                .avatarId(requireOwnedAvatarId(userId, avatarId))
                 .payloadJson(writeDoc(doc))
                 .createdAt(now).updatedAt(now)
                 .build();
@@ -209,7 +230,7 @@ public class CardService {
             requireSlugFree(s, c.getId());
             c.setSlug(s);
         }
-        if (avatarId != null) c.setAvatarId(trimToNull(avatarId));
+        if (avatarId != null) c.setAvatarId(requireOwnedAvatarId(userId, avatarId));
         if (doc != null) c.setPayloadJson(writeDoc(doc));
         c.setUpdatedAt(Instant.now());
         return repo.save(c);
