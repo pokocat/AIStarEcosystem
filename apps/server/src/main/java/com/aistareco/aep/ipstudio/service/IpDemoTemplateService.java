@@ -140,7 +140,18 @@ public class IpDemoTemplateService {
                 : "IPD-" + IpProjectService.hex8();
         Map<String, String> remap = new HashMap<>();
         String cover = null;
-        int copied = 0;
+
+        // 素材上限必须在复制之前判：copyKey 会同步把文件写进 OSS（storage.store →
+        // cdn.upload），而 @Transactional 只回滚 DB 行、回滚不了这些 OSS 对象。若先复制
+        // 再在循环后判超限抛 400，那一批已写进 ipstudio_demo/<id>/ 的对象再无任何行引用、
+        // deleteDemo 也扫不到，永久成孤儿。改为先点数、超限直接拒、零副作用。
+        if (!asTemplate) {
+            int referenced = countAssetRefs(doc);
+            if (referenced > MAX_ASSETS) {
+                throw BusinessException.badRequest("IP_DEMO_TOO_MANY_ASSETS",
+                        "这张画布的素材太多（" + referenced + " 个），先精简到 " + MAX_ASSETS + " 个以内");
+            }
+        }
 
         for (JsonNode node : IpDocs.nodes(doc)) {
             JsonNode md = IpDocs.metadataOf(node);
@@ -154,7 +165,6 @@ public class IpDemoTemplateService {
             String newKey = copyKey(id, IpDocs.text(mo, "storageKey"), remap);
             if (newKey != null) {
                 mo.put("storageKey", newKey);
-                copied++;
                 if (cover == null && IpDocs.T_IMAGE.equals(IpDocs.typeOf(node))) cover = newKey;
             }
             // 候选数组两处都要复制：出图的 images[] 与出片历史 videos[]（v0.182）。
@@ -164,7 +174,7 @@ public class IpDemoTemplateService {
                 for (JsonNode item : mo.path(field)) {
                     if (!(item instanceof ObjectNode io)) continue;
                     String k = copyKey(id, IpDocs.text(io, "storageKey"), remap);
-                    if (k != null) { io.put("storageKey", k); copied++; }
+                    if (k != null) { io.put("storageKey", k); }
                     // 派生地址不进示例：它们是当次签的、带 TTL（§4.7.7）。真值是 storageKey，
                     // 用户打开示例时按 key 现签。
                     io.remove("content");
@@ -172,10 +182,6 @@ public class IpDemoTemplateService {
             }
             mo.remove("content");
             mo.remove("url");
-        }
-        if (copied > MAX_ASSETS) {
-            throw BusinessException.badRequest("IP_DEMO_TOO_MANY_ASSETS",
-                    "这张画布的素材太多（" + copied + " 个），先精简到 " + MAX_ASSETS + " 个以内");
         }
 
         IpDemoTemplate row = repo.findById(id).orElseGet(() -> IpDemoTemplate.builder()
@@ -213,7 +219,7 @@ public class IpDemoTemplateService {
             }
         }
         log.info("[ipstudio] 存为全局{} demo={} source={} assets={} 清理旧版素材={}",
-                asTemplate ? "模板" : "实例", id, projectId, copied, swept);
+                asTemplate ? "模板" : "实例", id, projectId, remap.size(), swept);
         return row;
     }
 
@@ -418,6 +424,26 @@ public class IpDemoTemplateService {
         row.setEnabled(enabled);
         row.setUpdatedAt(Instant.now());
         repo.save(row);
+    }
+
+    /** 点数文档里引用了多少个素材 key（节点级 storageKey + images[]/videos[] 各项），
+     *  与复制循环的计数口径一致，用于复制前的上限预检。 */
+    private static int countAssetRefs(JsonNode doc) {
+        int n = 0;
+        for (JsonNode node : IpDocs.nodes(doc)) {
+            if (!(IpDocs.metadataOf(node) instanceof ObjectNode mo)) continue;
+            if (notBlank(IpDocs.text(mo, "storageKey"))) n++;
+            for (String field : CANDIDATE_FIELDS) {
+                for (JsonNode item : mo.path(field)) {
+                    if (item instanceof ObjectNode io && notBlank(IpDocs.text(io, "storageKey"))) n++;
+                }
+            }
+        }
+        return n;
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
     }
 
     /** 把一个素材复制进示例目录，返回新 key；同一个 key 只复制一次。读不出来返回 null（跳过那一张）。 */
