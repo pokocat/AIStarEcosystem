@@ -1,0 +1,362 @@
+/* pages/canvas-board.css —— v0.198 画布 · React Flow 画布（/canvas/<id>/assets?view=board）：节点、分组、连线、工具条。归画布实现者，只写 .cvb- 前缀的类；外壳样式在 canvas.css。 */
+
+/* 卡片尺寸和 canvas/board/auto-layout.ts 的 CARD / GROUP 是同一组数字。**改这里要同步改 auto-layout.ts**（反过来也一样）：
+     造型 176×316（图 232）  场景 256×226（图 144）  素材图 200×214（图 150）  文字 232×172
+     分组标题条 46，内边距 14，最小宽 312 */
+
+.cvb-root { position: relative; height: 100%; overflow: hidden; background: var(--bg); }
+
+.cvb-flow {
+  --xy-edge-stroke: var(--ink-3);
+  --xy-edge-stroke-width: 1.6;
+  --xy-edge-stroke-selected: var(--accent-2);
+  --xy-connectionline-stroke: var(--accent);
+  --xy-connectionline-stroke-width: 2;
+  background: var(--bg);
+  font-family: var(--font);
+}
+.cvb-flow .react-flow__node { font-family: var(--font); }
+.cvb-flow .react-flow__node:focus-visible { outline: none; }
+.cvb-flow .react-flow__node:focus-visible .cvb-card { box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow-sm); }
+.cvb-flow.is-hand .react-flow__node,
+.cvb-flow.is-hand .react-flow__pane { cursor: grab; }
+.cvb-flow .react-flow__attribution { background: transparent; font-size: 10px; opacity: .6; }
+
+/* ---------- 连线：默认看得清（暖灰 0.7）；有选中时，它的上游线亮成主色，其余降到 0.25 ---------- */
+.cvb-flow .react-flow__edge.cvb-edge .react-flow__edge-path {
+  stroke: var(--ink-3);
+  stroke-opacity: .7;
+  stroke-width: 1.6;
+  transition: stroke-opacity .15s, stroke .15s;
+}
+.cvb-flow .react-flow__edge.cvb-edge.is-dim .react-flow__edge-path { stroke-opacity: .25; }
+.cvb-flow .react-flow__edge.cvb-edge.is-up .react-flow__edge-path { stroke: var(--accent); stroke-opacity: 1; stroke-width: 2; }
+.cvb-flow .react-flow__edge.cvb-edge.is-picked .react-flow__edge-path { stroke: var(--accent-2); stroke-opacity: 1; stroke-width: 2.4; }
+.cvb-flow .react-flow__edge.cvb-edge.selectable:hover .react-flow__edge-path { stroke-opacity: 1; stroke-width: 2.2; }
+
+/* ---------- 接线区（整张卡铺满的 target handle）与出线点 ---------- */
+/* React Flow 的 handle 默认不接鼠标；拖线时可落点的 handle 会带 .connectionindicator 才接 —— 所以平时点卡片、拖卡片都不受影响。
+   z-index 要压过卡片内容，否则拖线时鼠标下面是图而不是接线区。 */
+.cvb-flow .react-flow__handle.cvb-drop {
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: auto; height: auto; min-width: 0; min-height: 0;
+  transform: none;
+  border: none; border-radius: inherit;
+  background: transparent;
+  opacity: 0;
+  z-index: 5;
+}
+.cvb-flow .react-flow__handle.cvb-drop.connectingto {
+  opacity: 1;
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+.cvb-flow .react-flow__handle.cvb-drop.connectingto:not(.valid) {
+  cursor: not-allowed;
+  background: color-mix(in oklch, var(--danger) 6%, transparent);
+  outline-color: var(--danger);
+}
+/* 两侧的圆点（照小云雀：线从卡片右边的点出、进左边的点）。右边是真的出线点（拖它连线），左边只是画出来的进线点。
+   放大用 transform，不改宽高 —— handle 的尺寸决定连线端点，只在节点尺寸变时才重新量。 */
+.cvb-flow .react-flow__handle.cvb-out,
+.cvb-in {
+  width: 10px; height: 10px; min-width: 0; min-height: 0;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--ink-3);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink-3) 40%, transparent);
+}
+.cvb-flow .react-flow__handle.cvb-out { z-index: 6; transition: transform .15s, background .15s; }
+.cvb-in {
+  position: absolute; left: 0; top: 50%; z-index: 4;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.cvb-flow .react-flow__node:hover .react-flow__handle.cvb-out,
+.cvb-flow .react-flow__handle.cvb-out.connectingfrom { transform: translate(50%, -50%) scale(1.35); background: var(--accent); }
+.cvb-flow .react-flow__node.selected .react-flow__handle.cvb-out,
+.cvb-flow .react-flow__node.selected .cvb-in { background: var(--accent); }
+/* 只读 / 抓手模式：点照样画（它是连线的端点），只是不跟着鼠标放大 */
+.cvb-root.is-readonly .cvb-flow .react-flow__node:hover .react-flow__handle.cvb-out,
+.cvb-flow.is-hand .react-flow__node:hover .react-flow__handle.cvb-out { transform: translate(50%, -50%); background: var(--ink-3); }
+
+.cvb-conn-tip {
+  position: absolute; z-index: 12; pointer-events: none;
+  max-width: 260px; padding: 6px 10px; border-radius: 8px;
+  background: var(--ink); color: #fff;
+  font-size: 12.5px; font-weight: 600; line-height: 1.4;
+  box-shadow: var(--shadow);
+}
+
+/* ---------- 分组 ---------- */
+.cvb-group {
+  position: relative; width: 100%; height: 100%;
+  border-radius: 18px;
+  background: color-mix(in oklch, var(--ink) 5%, var(--bg));
+  border: 1px solid var(--line);
+}
+.cvb-group-scenes { background: color-mix(in oklch, var(--ink) 4%, var(--bg)); }
+.cvb-group-head { display: flex; align-items: center; gap: 6px; height: 46px; padding: 0 10px 0 8px; min-width: 0; }
+.cvb-group-name { flex: 0 1 auto; min-width: 0; font-size: 14px; font-weight: 800; color: var(--ink); }
+.cvb-group-tag { flex: none; }
+.cvb-group-count { flex: none; font-size: 12px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+.cvb-spacer { flex: 1 1 0; min-width: 0; }
+.cvb-group-add {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  height: 28px; padding: 0 10px; border: none; border-radius: 999px;
+  background: var(--surface); color: var(--ink-2); box-shadow: var(--shadow-sm);
+  font-size: 12.5px; font-weight: 700; white-space: nowrap; cursor: pointer;
+}
+.cvb-group-add:hover { color: var(--accent); }
+.cvb-group-add > svg { flex-shrink: 0; }
+.cvb-group .hover-reveal { opacity: 0; transition: opacity .15s; }
+.cvb-group:hover .hover-reveal,
+.cvb-group .hover-reveal:focus-visible { opacity: 1; }
+.cvb-group-del:hover { color: var(--danger); }
+
+.cvb-icon-btn {
+  display: inline-grid; place-items: center; flex: none;
+  width: 26px; height: 26px; padding: 0; border: none; border-radius: 8px;
+  background: transparent; color: var(--ink-3); cursor: pointer;
+}
+.cvb-icon-btn:hover:not(:disabled) { background: var(--surface); color: var(--ink); }
+.cvb-icon-btn:disabled { cursor: default; opacity: .5; }
+
+/* ---------- 卡片（造型 / 场景 / 素材图 / 文字）---------- */
+.cvb-card {
+  position: relative; width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .15s;
+}
+.cvb-card.is-selected { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+.cvb-card.is-highlighted { box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 45%, transparent), var(--shadow-sm); }
+
+.cvb-media { position: relative; flex: none; overflow: hidden; border-radius: 13px 13px 0 0; background: var(--surface-2); }
+.cvb-look-media { height: 232px; }
+.cvb-scene-media { height: 144px; }
+.cvb-image-media { height: 150px; }
+.cvb-img { display: block; width: 100%; height: 100%; }
+.cvb-ph {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; height: 100%;
+  color: var(--ink-3); font-size: 12.5px; font-weight: 700;
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 10px, color-mix(in oklch, var(--surface-2) 60%, #fff) 10px 20px);
+}
+.cvb-busy {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: color-mix(in oklch, var(--ink) 42%, transparent);
+  color: #fff; font-size: 12.5px; font-weight: 700;
+}
+.cvb-count {
+  position: absolute; right: 8px; bottom: 8px;
+  height: 22px; padding: 0 8px; border: none; border-radius: 999px;
+  background: color-mix(in oklch, var(--ink) 72%, transparent); color: #fff;
+  font-size: 11.5px; font-weight: 700; white-space: nowrap; cursor: pointer;
+}
+.cvb-count:hover { background: var(--accent); }
+.cvb-del {
+  position: absolute; top: 8px; right: 8px;
+  display: grid; place-items: center;
+  width: 26px; height: 26px; padding: 0; border: none; border-radius: 8px;
+  background: color-mix(in oklch, #fff 90%, transparent); color: var(--ink-2);
+  cursor: pointer; opacity: 0; transition: opacity .15s;
+}
+.cvb-card:hover .cvb-del,
+.cvb-card.is-selected .cvb-del,
+.cvb-del:focus-visible { opacity: 1; }
+.cvb-del:hover { color: var(--danger); }
+
+.cvb-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; overflow: hidden; }
+.cvb-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; height: 22px; flex: none; }
+.cvb-title { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 800; color: var(--ink); }
+.cvb-more {
+  display: grid; place-items: center; flex: none;
+  width: 26px; height: 22px; padding: 0; border: none; border-radius: 6px;
+  background: transparent; color: var(--ink-3); cursor: pointer;
+}
+.cvb-more:hover { background: var(--surface-2); color: var(--ink); }
+.cvb-meta { flex: none; font-size: 12px; line-height: 18px; color: var(--ink-3); }
+.cvb-fail { flex: none; font-size: 12px; font-weight: 600; line-height: 18px; color: var(--danger); }
+.cvb-kind { flex: none; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--ink-3); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.cvb-name-input {
+  flex: 1 1 auto; min-width: 0; height: 24px; padding: 0 6px;
+  border: 1px solid var(--accent); border-radius: 6px; outline: none;
+  background: #fff; color: var(--ink);
+  font: inherit; font-size: 13px; font-weight: 700;
+}
+
+.cvb-text-head { display: flex; align-items: center; gap: 6px; flex: none; height: 36px; padding: 0 6px 0 10px; min-width: 0; border-bottom: 1px solid var(--line-soft); }
+.cvb-text-icon { flex: none; color: var(--ink-3); }
+.cvb-text .hover-reveal { opacity: 0; transition: opacity .15s; }
+.cvb-text:hover .hover-reveal,
+.cvb-text.is-selected .hover-reveal,
+.cvb-text .hover-reveal:focus-visible { opacity: 1; }
+.cvb-text-input {
+  flex: 1; min-height: 0; width: 100%; margin: 0; padding: 8px 10px 10px;
+  border: none; border-radius: 0 0 14px 14px; outline: none; resize: none;
+  background: transparent; color: var(--ink);
+  font: inherit; font-size: 13px; line-height: 1.55; cursor: text;
+}
+.cvb-text-input:focus { background: color-mix(in oklch, var(--accent) 4%, transparent); }
+.cvb-text-input::placeholder { color: var(--ink-3); }
+
+/* ---------- 浮在画布上的东西：工具条、加一个、下一步、出图面板、抽屉 ---------- */
+.cvb-toolbar,
+.cvb-addbar {
+  position: absolute; bottom: 16px; z-index: 8;
+  display: flex; align-items: center; gap: 2px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.cvb-toolbar { left: 16px; }
+.cvb-addbar { left: 50%; transform: translateX(-50%); gap: 6px; }
+.cvb-tool {
+  display: inline-grid; place-items: center; flex: none;
+  min-width: 32px; height: 32px; padding: 0 6px;
+  border: none; border-radius: 8px;
+  background: transparent; color: var(--ink-2);
+  font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.cvb-tool:hover { background: var(--surface-2); color: var(--ink); }
+.cvb-tool.is-on { background: var(--accent-soft); color: var(--accent); }
+.cvb-tool-sep { width: 1px; height: 18px; margin: 0 3px; background: var(--line); flex: none; }
+.cvb-zoom { position: relative; }
+.cvb-zoom-btn { min-width: 52px; }
+.cvb-modes { display: flex; gap: 2px; }
+.cvb-add { position: relative; }
+.cvb-add-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 14px; border: none; border-radius: 9px;
+  background: var(--ink); color: #fff;
+  font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer;
+}
+.cvb-add-btn > svg { flex-shrink: 0; }
+.cvb-add-btn[aria-busy="true"] { opacity: .7; cursor: progress; }
+
+.cvb-menu {
+  position: absolute; z-index: 20;
+  display: flex; flex-direction: column;
+  min-width: 120px; padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.cvb-menu-up { bottom: calc(100% + 8px); left: 0; }
+.cvb-add-menu { left: 0; min-width: 176px; }
+.cvb-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  height: 34px; padding: 0 10px;
+  border: none; border-radius: 8px;
+  background: transparent; color: var(--ink);
+  font-size: 13px; font-weight: 600; text-align: left; white-space: nowrap; cursor: pointer;
+}
+.cvb-menu-item > svg { flex-shrink: 0; color: var(--ink-3); }
+.cvb-menu-item:hover:not(:disabled) { background: var(--surface-2); }
+.cvb-menu-item:disabled { opacity: .5; cursor: not-allowed; }
+
+.cvb-next {
+  position: absolute; right: 16px; bottom: 16px; z-index: 8;
+  display: flex; align-items: center; gap: 12px;
+  max-width: calc(100% - 32px); min-width: 0;
+  padding: 7px 7px 7px 16px;
+  border-radius: 14px;
+  background: var(--ink); color: #fff;
+  text-decoration: none;
+  box-shadow: var(--shadow-lg);
+}
+.cvb-next-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; color: color-mix(in oklch, #fff 72%, var(--ink)); }
+.cvb-next-go {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  height: 30px; padding: 0 12px; border-radius: 10px;
+  background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.cvb-next-go > svg { flex-shrink: 0; }
+.cvb-next:hover .cvb-next-go { background: color-mix(in oklch, var(--accent) 90%, #000); }
+
+/* 小地图在「下一步」上面 */
+.cvb-flow .react-flow__minimap.cvb-minimap {
+  bottom: 50px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow);
+}
+
+/* 出图面板（assets 块的 AssetGenPanel variant="docked"）：面板自己按「所在容器的底部中间」定位，
+   这里给它一个容器 = 画布去掉底部工具条那一条（工具条、加一个、下一步都在最下面 60px 里），面板就停在它们上面。
+   容器本身不接鼠标，只有面板接。 */
+.cvb-dock {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 60px; z-index: 9;
+  pointer-events: none;
+}
+.cvb-dock > * { pointer-events: auto; }
+
+.cvb-drawer {
+  position: absolute; left: 16px; top: 16px; bottom: 64px; z-index: 7;
+  display: flex; flex-direction: column;
+  width: 272px; max-width: calc(100% - 32px);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.cvb-drawer-head { display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.cvb-drawer-title { font-size: 14px; font-weight: 800; color: var(--ink); }
+.cvb-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 6px 10px; }
+.cvb-drawer-empty { padding: 12px 8px; }
+.cvb-drawer-sec { display: flex; flex-direction: column; gap: 1px; padding-top: 8px; }
+.cvb-drawer-sec-title { padding: 4px 8px; font-size: 12px; font-weight: 700; color: var(--ink-3); }
+.cvb-drawer-group { display: flex; flex-direction: column; gap: 1px; }
+.cvb-drawer-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; min-width: 0; height: 36px; padding: 0 8px;
+  border: none; border-radius: 8px;
+  background: transparent; color: var(--ink);
+  font-size: 13px; text-align: left; cursor: pointer;
+}
+.cvb-drawer-item:hover { background: var(--surface-2); }
+.cvb-drawer-item .tag,
+.cvb-drawer-item .cv-count { flex: none; }
+.cvb-drawer-char { font-weight: 700; }
+.cvb-drawer-sub { padding-left: 18px; }
+.cvb-drawer-name { flex: 1 1 auto; min-width: 0; }
+.cvb-drawer-note { flex: none; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.cvb-drawer-thumb {
+  display: grid; place-items: center; flex: none;
+  width: 26px; height: 26px; border-radius: 6px; overflow: hidden;
+  background: var(--surface-2); color: var(--ink-3);
+}
+.cvb-drawer-thumb .cvb-img { object-fit: cover; }
+
+.cvb-empty {
+  position: absolute; left: 50%; top: 42%; z-index: 6;
+  transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 20px 24px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.cvb-empty-title { font-size: 15px; font-weight: 800; color: var(--ink); }
+.cvb-empty-sub { font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+
+/* 画布只在桌面上打开（≥960，§8）；窄一点的桌面窗口把「下一步」的提示收起来，免得和工具条挤在一起 */
+@media (max-width: 1180px) {
+  .cvb-next-hint { display: none; }
+  .cvb-next { padding-left: 7px; }
+}

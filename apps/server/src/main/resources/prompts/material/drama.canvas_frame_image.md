@@ -1,0 +1,1 @@
+Cinematic short drama still frame, the opening frame of this clip. 画面：{{firstShot}} 这个片段接下来的内容（只用来理解情境，画面只画第一个镜头的开场）：{{segmentText}} {{refClause}}{{styleClause}}{{ratioClause}} 人物长相、服装与参考图保持一致，场景环境与参考图保持一致。Realistic lighting, clear composition, no text, no subtitles, no watermark, no split screen.

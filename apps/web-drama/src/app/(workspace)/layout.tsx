@@ -28,6 +28,7 @@ import {
   Sparkles,
   Users,
   Wallet as WalletIcon,
+  Workflow,
   X,
   Zap,
 } from "lucide-react";
@@ -69,6 +70,8 @@ const GROUPS: NavGroup[] = [
       { href: "/dashboard", icon: Sparkles, label: "首页", exact: true },
       { href: "/projects", icon: Film, label: "我的短剧" },
       { href: "/shorts", icon: Zap, label: "我的短视频" },
+      // v0.198：画布（剧本 → 角色和场景 → 逐集制作，独立于「我的短剧」）。/canvas/<id> 是沉浸态，见下面 isCanvas。
+      { href: "/canvas", icon: Workflow, label: "画布" },
       { href: "/templates", icon: Layers, label: "模板广场", children: [{ href: "/templates/published", label: "我发布的模板" }] },
     ],
   },
@@ -448,6 +451,7 @@ const FALLBACK_TITLES: { href: string; label: string }[] = [
   { href: "/shorts/new", label: "从一句话开始" },
   { href: "/shorts/prompt", label: "粘贴写好的脚本" },
   { href: "/shorts/make", label: "制作短视频" },
+  { href: "/canvas/new", label: "新建画布" },
   { href: "/trash", label: "回收站" },
   { href: "/wallet/checkout", label: "收银台" },
   { href: "/review", label: "剧本审阅" },
@@ -598,6 +602,10 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   //     既没侧栏也没顶栏，内容贴着屏幕左边）。
   const projectMatch = pathname?.match(/^\/projects\/([^/]+)\/?$/);
   const isWorkshop = !!projectMatch && !["new", "trash"].includes(projectMatch[1]);
+  // v0.198：画布沉浸态 —— 进到一张画布（`/canvas/<id>` 及其子路由）后换成画布自己的竖条 + 顶栏，
+  // 不挂通用侧栏 / 顶栏。列表 `/canvas` 与新建 `/canvas/new` 走通用外壳。
+  const canvasMatch = pathname?.match(/^\/canvas\/([^/]+)(?:\/.*)?$/);
+  const isCanvas = !!canvasMatch && canvasMatch[1] !== "new";
 
   // 换页时收起抽屉
   React.useEffect(() => {
@@ -625,8 +633,8 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // 工作台沉浸态：跳过通用 sidebar/topbar，把整屏交给 page.tsx
-  if (isWorkshop) {
+  // 工作台 / 画布沉浸态：跳过通用 sidebar/topbar，把整屏交给 page.tsx（画布交给 canvas/[canvasId]/layout.tsx）
+  if (isWorkshop || isCanvas) {
     return (
       <div className="ws-shell" style={{ display: "block", gridTemplateColumns: "none", overflow: "hidden" }}>
         {children}

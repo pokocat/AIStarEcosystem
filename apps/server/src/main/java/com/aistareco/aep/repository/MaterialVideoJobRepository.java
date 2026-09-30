@@ -46,6 +46,31 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
     long countByOwnerUserIdAndStatusIn(String ownerUserId, java.util.Collection<String> statuses);
 
     /**
+     * v0.198 worker 条件认领：只有还在 queued 的任务才改成 submitting（影响 1 行才继续提交）。
+     * 与 {@link #failIfQueued}（排队中取消 / 超时）互斥 —— 两边同时动手，数据库只让一个成功，
+     * 取消了的任务不会再被交给厂商。
+     */
+    String CLAIM_QUEUED = "update MaterialVideoJob j set j.status = 'submitting', j.progress = 5, j.updatedAt = :now "
+            + "where j.id = :id and j.status = 'queued'";
+
+    /** 只把「还在 queued、从没交给厂商」的任务置 failed；返回影响行数（0 = 已经开始 / 不是本人的）。 */
+    String FAIL_IF_QUEUED = "update MaterialVideoJob j set j.status = 'failed', j.errorMessage = :message, "
+            + "j.completedAt = :now, j.updatedAt = :now "
+            + "where j.id = :id and j.ownerUserId = :userId and j.status = 'queued' "
+            + "and (j.externalTaskId is null or j.externalTaskId = '')";
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(CLAIM_QUEUED)
+    int claimQueued(@Param("id") String id, @Param("now") java.time.OffsetDateTime now);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query(FAIL_IF_QUEUED)
+    int failIfQueued(@Param("id") String id, @Param("userId") String userId, @Param("message") String message,
+                     @Param("now") java.time.OffsetDateTime now);
+
+    /**
      * 老数据一次性回填 app（本列 v0.108 才加）：判定同 {@link #APP_EXPR}。
      * 幂等：只改 app is null 的行。回填只为让查询走 (owner_user_id, app) 索引，
      * 列表正确性不依赖它。

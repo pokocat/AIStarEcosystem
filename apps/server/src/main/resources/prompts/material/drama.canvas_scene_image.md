@@ -1,0 +1,1 @@
+Cinematic establishing shot of an empty location, no people. 场景：{{name}}。环境：{{prompt}} {{textClause}}{{refClause}}{{styleClause}}{{ratioClause}} Realistic lighting, coherent perspective, production still quality, no characters, no text, no watermark, no split screen.

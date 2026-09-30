@@ -244,7 +244,10 @@ public class DramaScriptService {
     }
 
     public List<JsonNode> listEpisodeJobs(String userId, String scriptId) {
-        return videoJobService.listJobs(userId, scriptId, null, MaterialVideoJobService.APP_DRAMA);
+        // 画布（v0.198）的片段视频和短剧同一个分区，但属于另一条独立流水：老工作台的视频列表不显示它们
+        return videoJobService.listJobs(userId, scriptId, null, MaterialVideoJobService.APP_DRAMA).stream()
+                .filter(v -> !DramaCanvasRunService.isCanvasVideoJob(v))
+                .toList();
     }
 
     public JsonNode getEpisodeJob(String id, String userId) {

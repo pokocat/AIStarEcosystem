@@ -58,6 +58,9 @@ public class MaterialVideoJobService {
      */
     public static final String APP_IPSTUDIO = "ipstudio";
 
+    /** {@link #cancelQueued} 写进 errorMessage 的固定文案；调用方（画布同步）据此认出「是取消，不是失败」。 */
+    public static final String CANCELED_MESSAGE = "已取消";
+
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
     private final MaterialVideoWorker worker;
@@ -224,6 +227,40 @@ public class MaterialVideoJobService {
                 .filter(j -> scope.equals(appOf(j)))
                 .map(this::toCard)
                 .orElse(null);
+    }
+
+    /**
+     * 取消一个<b>还在排队</b>的任务（worker 还没接手、没交给厂商：status=queued 且没有 externalTaskId）：
+     * 置 failed（{@link #CANCELED_MESSAGE}）并退回冻结。返回是否取消成功；不满足条件（已开始 / 不是本人的）→ false，
+     * 什么都不动。
+     *
+     * <p>v0.198 画布「排队中的视频可以取消」用（视频线程池排满时，任务可能排很久）。和 worker 的认领都是
+     * <b>条件更新</b>（{@code WHERE status='queued'}），数据库保证两边只有一个成功：取消赢了，worker 认领失败、不提交；
+     * worker 赢了，这里返回 false。
+     */
+    @Transactional
+    public boolean cancelQueued(String jobId, String userId) {
+        return failQueued(jobId, userId, CANCELED_MESSAGE, "视频生成已取消 · 退回积分");
+    }
+
+    /**
+     * 排队太久一直没被接手（典型：进程重启，内存里的派发队列丢了）→ 置 failed 并退回冻结。条件同 {@link #cancelQueued}：
+     * 只动从没交给厂商的任务（已有 externalTaskId 的只能走管理端对账，绝不在这里判失败或重提）。
+     */
+    @Transactional
+    public boolean expireQueued(String jobId, String userId, String message) {
+        return failQueued(jobId, userId, message, "视频排队超时 · 退回积分");
+    }
+
+    private boolean failQueued(String jobId, String userId, String message, String releaseReason) {
+        if (jobId == null || userId == null) return false;
+        if (jobRepo.failIfQueued(jobId, userId, message, OffsetDateTime.now()) != 1) return false;
+        MaterialVideoJob job = jobRepo.findById(jobId).orElse(null);
+        if (job != null && job.getCreditsHeld() > 0) {
+            creditService.releaseHold(CREDIT_REF_TYPE, jobId, releaseReason + " · " + safe(job.getName(), "视频"));
+        }
+        log.info("[material-video] queued job failed before submit job={} user={} reason={}", jobId, userId, message);
+        return true;
     }
 
     /** 管理端按 externalTaskId 对账恢复误判失败任务；不重提上游。 */

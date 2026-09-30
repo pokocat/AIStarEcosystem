@@ -3131,6 +3131,275 @@ components:
         avatarId: { type: string, example: DH-51234 }
         lookIds: { type: array, items: { type: string, example: LK-1a2b3c4d } }
 
+    # ── 短剧画布（web-drama /canvas，v0.198；TS 真源 packages/types/src/drama-canvas.ts · 设计真源 docs/drama-canvas-plan.md）──
+    # 文档 DramaCanvasDoc 由客户端拥有、服务端整存整取，这里只声明顶层结构与服务端校验的那几条；
+    # 子结构（造型 / 场景 / 片段 / 图集…）以 TS 为准，前端加一个子字段不该要求后端同步改 schema。
+    # 资产一律只存 key：url / lastFrameUrl 是出 wire 时派生的短期签名地址，只给属于本人的 key 签，保存时服务端剥掉。
+    CanvasStyle:
+      type: object
+      required: [id, name, prompt]
+      properties:
+        id: { type: string, maxLength: 64, description: '前端常量列表里的风格 id；none = 无风格' }
+        name: { type: string, maxLength: 40 }
+        prompt: { type: string, maxLength: 300, description: '风格提示词，出图 / 出视频时拼进提示词；none 时为空串' }
+    CanvasAsset:
+      type: object
+      required: [key]
+      properties:
+        key: { type: string, description: 'storage key（真值）' }
+        url: { type: string, description: '出 wire 时派生的短期签名地址（只给本人的 key 签；不许存回文档）' }
+        runId: { type: string, description: '哪次生成产出的（上传的没有）' }
+    CanvasVideoVersion:
+      type: object
+      required: [key, runId, createdAt]
+      properties:
+        key: { type: string }
+        url: { type: string }
+        lastFrameKey: { type: string, description: '视频真实末帧（模型回传并镜像时才有）' }
+        lastFrameUrl: { type: string }
+        durationSec: { type: integer }
+        runId: { type: string }
+        createdAt: { type: string, format: date-time }
+    CanvasAssembled:
+      type: object
+      required: [key, durationSec, at, videoKeys, runId]
+      properties:
+        key: { type: string }
+        url: { type: string }
+        durationSec: { type: integer }
+        at: { type: string, format: date-time }
+        videoKeys: { type: array, items: { type: string }, description: '合成时各片段挑中的视频 key（按顺序）；和现在挑中的对不上 = 成片过期' }
+        runId: { type: string }
+    DramaCanvasDoc:
+      type: object
+      description: >-
+        画布文档（TS DramaCanvasDoc）。服务端保存时只校验：schema=1；source ∈ idea|paste；style / script / board 是对象；
+        script.episodes / script.history / characters / scenes / materials / episodes / board.edges 是对象数组；
+        board.positions / board.viewport 是对象；board.collapsed 是数组。不过 → 400 DRAMA_CANVAS_INVALID_DOC（error.details.path 指出第一处）。
+        规范化（键名排序、紧凑）后 UTF-8 超过 4MB → 413 DRAMA_CANVAS_TOO_LARGE。
+      required: [schema, source, style, script, characters, scenes, materials, board, episodes]
+      properties:
+        schema: { type: integer, enum: [1] }
+        source: { type: string, enum: [idea, paste] }
+        style: { $ref: '#/components/schemas/CanvasStyle' }
+        script:
+          type: object
+          description: 'CanvasScript：idea? / targetEpisodes? / episodeDurationSec? / setting? / outline? / episodes[{no,title,text,locked?,run?}] / history[] / extractedAt? / extractRun?'
+          required: [episodes, history]
+          properties:
+            episodes: { type: array, items: { type: object } }
+            history: { type: array, items: { type: object } }
+            extractedAt: { type: string, format: date-time, description: '缺省 = 还没拆过角色和场景（决定 step）' }
+        characters: { type: array, items: { type: object }, description: 'CanvasCharacter[]（looks[].images 是 CanvasImageSet）' }
+        scenes: { type: array, items: { type: object }, description: 'CanvasScene[]' }
+        materials: { type: array, items: { type: object }, description: 'CanvasMaterial[]' }
+        board:
+          type: object
+          required: [positions, edges, collapsed, viewport]
+          properties:
+            positions: { type: object, additionalProperties: { type: object, properties: { x: { type: number }, y: { type: number } } } }
+            edges: { type: array, items: { type: object, properties: { id: { type: string }, source: { type: string }, target: { type: string } } } }
+            collapsed: { type: array, items: { type: string } }
+            viewport: { type: object, properties: { x: { type: number }, y: { type: number }, zoom: { type: number } } }
+        episodes: { type: array, items: { type: object }, description: 'CanvasEpisode[]：{no, segments[], storyboardRun?, assembled?, assembleRun?}' }
+    DramaCanvasSummary:
+      type: object
+      required: [id, title, ratio, step, episodeCount, characterCount, sceneCount, segmentsDone, segmentsTotal, episodesAssembled, createdAt, updatedAt]
+      properties:
+        id: { type: string, example: dcv_3f9a1c02e4b5 }
+        title: { type: string, maxLength: 128 }
+        ratio: { type: string, enum: ['9:16', '16:9'] }
+        step: { type: string, enum: [script, assets, episodes], description: '服务端按文档推：script.extractedAt 缺 → script；所有集都没有片段 → assets；否则 episodes' }
+        episodeCount: { type: integer, description: script.episodes 的集数 }
+        characterCount: { type: integer }
+        sceneCount: { type: integer }
+        segmentsDone: { type: integer, description: 所有集的片段里已有挑中视频的个数 }
+        segmentsTotal: { type: integer }
+        episodesAssembled: { type: integer, description: 已合成成片的集数 }
+        coverUrl: { type: string, description: '第一张属于本人的挑中图（造型优先，其次场景）的短期签名地址；没有时缺省' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    DramaCanvasDetail:
+      allOf:
+        - $ref: '#/components/schemas/DramaCanvasSummary'
+        - type: object
+          required: [doc, docVersion]
+          properties:
+            doc: { $ref: '#/components/schemas/DramaCanvasDoc' }
+            docVersion: { type: string, pattern: '^[0-9a-f]{16}$', description: '画布版本 = sha256(规范化文档 JSON + NUL + 标题) 前 16 位，只改标题也会变；前端当不透明串，保存与每个生成请求都原样带回' }
+            splitNotes: { type: array, items: { type: string }, description: '只在 POST 新建且 source=paste 的那次响应里有：按集切开时的说明（为空则不带）；GET 详情不带' }
+    CreateDramaCanvasBody:
+      type: object
+      required: [ratio, source, style]
+      properties:
+        title: { type: string, maxLength: 128, description: '缺省：idea 取想法前 20 字，paste 取「未命名画布」' }
+        ratio: { type: string, enum: ['9:16', '16:9'] }
+        source: { type: string, enum: [idea, paste] }
+        idea: { type: string, minLength: 1, maxLength: 500, description: 'source=idea 必填' }
+        text: { type: string, minLength: 1, maxLength: 100000, description: 'source=paste 必填；服务端按「第 X 集」切开放进 script.episodes（规则同 script/split）' }
+        targetEpisodes: { type: integer, minimum: 1, maximum: 80, default: 10, description: 'source=idea 时生效' }
+        episodeDurationSec: { type: integer, minimum: 30, maximum: 180, default: 60, description: 'source=idea 时生效' }
+        style: { $ref: '#/components/schemas/CanvasStyle' }
+    SaveDramaCanvasBody:
+      type: object
+      required: [doc, baseDocVersion]
+      properties:
+        doc: { $ref: '#/components/schemas/DramaCanvasDoc' }
+        title: { type: string, maxLength: 128 }
+        baseDocVersion: { type: string, description: '前端认为库里当前的版本；对不上 409 DRAMA_CANVAS_STALE' }
+    SaveDramaCanvasResult:
+      type: object
+      required: [docVersion, updatedAt]
+      properties:
+        docVersion: { type: string }
+        updatedAt: { type: string, format: date-time, description: '与之后 GET 读回来的逐字相同（微秒截断、UTC）' }
+    SignCanvasAssetsBody:
+      type: object
+      required: [keys]
+      properties:
+        keys: { type: array, minItems: 1, maxItems: 100, items: { type: string }, description: '要换新签名地址的 storage key（文档里 key / lastFrameKey 的值）' }
+    SignCanvasAssetsResult:
+      type: object
+      required: [urls]
+      properties:
+        urls: { type: object, additionalProperties: { type: string }, description: 'key → 新的短期签名地址；只含属于本人的 key，不是本人的 / 不存在的不出现（不报错）' }
+    SplitCanvasScriptBody:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 100000 }
+    SplitCanvasScriptResult:
+      type: object
+      required: [episodes, notes]
+      properties:
+        episodes:
+          type: array
+          items: { type: object, required: [no, title, text], properties: { no: { type: integer }, title: { type: string, description: '没有集名时为空串' }, text: { type: string } } }
+        notes: { type: array, items: { type: string }, description: '切分说明，给用户看' }
+    CanvasRunRef:
+      type: object
+      required: [runId, status]
+      properties:
+        runId: { type: string }
+        status: { type: string, enum: [queued, running, succeeded, failed, canceled] }
+    DramaCanvasRunResult:
+      type: object
+      description: '按 kind 只有其中一块（setting / outline / episode / extract / storyboard / images / video / assembled），结构见 TS DramaCanvasRunResult。资产只给 key + 派生 url。'
+      properties:
+        setting: { type: object, properties: { text: { type: string } } }
+        outline: { type: object, properties: { episodes: { type: array, items: { type: object } } } }
+        episode: { type: object, properties: { no: { type: integer }, title: { type: string }, text: { type: string } } }
+        extract: { type: object, properties: { characters: { type: array, items: { type: object } }, scenes: { type: array, items: { type: object } }, notes: { type: array, items: { type: string } } } }
+        storyboard: { type: object, properties: { episodeNo: { type: integer }, segments: { type: array, items: { type: object, properties: { text: { type: string }, durationSec: { type: integer } } } }, notes: { type: array, items: { type: string } } } }
+        images: { type: array, items: { $ref: '#/components/schemas/CanvasAsset' } }
+        video: { $ref: '#/components/schemas/CanvasVideoVersion' }
+        assembled: { $ref: '#/components/schemas/CanvasAssembled' }
+    DramaCanvasRun:
+      type: object
+      required: [id, canvasId, kind, target, status, cost, createdAt]
+      properties:
+        id: { type: string }
+        canvasId: { type: string }
+        kind: { type: string, enum: [script, extract, image, storyboard, video, assemble] }
+        target: { type: string, description: 'script:setting | script:outline | script:episode:<no> | extract | look:<id> | scene:<id> | material:<id> | frame:<no>:<segmentId> | storyboard:<no> | video:<no>:<segmentId> | assemble:<no>' }
+        status: { type: string, enum: [queued, running, succeeded, failed, canceled] }
+        cost: { type: integer, description: '这次冻结 / 扣掉的积分（失败退回后仍显示原值，status 说明结果）' }
+        result: { $ref: '#/components/schemas/DramaCanvasRunResult' }
+        refs:
+          type: object
+          description: '参考图实际送到模型的情况（kind=image/video）；没用上的在 notes 里说人话'
+          properties:
+            requested: { type: integer }
+            applied: { type: integer }
+            notes: { type: array, items: { type: string } }
+        errorCode:
+          type: string
+          description: >-
+            运行失败 / 取消时落在运行记录上的错误码（不是 HTTP 错误；给用户看的话在 errorMessage）。
+            通用：DRAMA_CANVAS_QUEUE_FULL（线程池排满、没派发出去，已退回）/ DRAMA_CANVAS_RUN_DEADLINE（受理后超过 90 分钟停止，剩余退回）/
+            DRAMA_CANVAS_RUN_TIMEOUT（心跳超时被回收，已退回）/ DRAMA_CANVAS_RUN_FAILED（未归类的失败，已退回）/
+            DRAMA_CANVAS_CREDIT_SETTLE_FAILED（结算失败）/ DRAMA_CANVAS_RUN_KIND_UNSUPPORTED。
+            文字（script / extract / storyboard）：AI_CALL_FAILED（模型调用失败或输出形状不对，已退回）。
+            出图：IMAGE_CALL_FAILED / IMAGE_BAD_OUTPUT（拿到的不是可用图片）/ IMAGE_STORE_FAILED（没存进我方存储），失败的张数退回。
+            视频：VIDEO_GENERATION_FAILED（厂商失败，已退回）/ VIDEO_MIRROR_FAILED（require_mirror 镜像失败，已退回）/
+            DRAMA_CANVAS_VIDEO_QUEUE_TIMEOUT（排队 30 分钟从未交给厂商，已退回）/ DRAMA_CANVAS_VIDEO_JOB_MISSING（视频任务找不到）/
+            DRAMA_CANVAS_VIDEO_RECORD_FAILED（成片已存但登记归属出错，可重试：GET runs 与回收器会再接回）/
+            DRAMA_CANVAS_VIDEO_NOT_STORED（成片没有我方存储 key，不可恢复）。
+            合成：DRAMA_ASSEMBLE_FAILED / DRAMA_ASSEMBLE_BAD_CLIP / DRAMA_CANVAS_NOTHING_TO_ASSEMBLE。
+            其余情况沿用抛出方 BusinessException 的错误码。
+        errorMessage: { type: string }
+        createdAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    CanvasImageTarget:
+      oneOf:
+        - { type: object, required: [kind, id], properties: { kind: { type: string, enum: [look, scene, material] }, id: { type: string } } }
+        - { type: object, required: [kind, episodeNo, segmentId], properties: { kind: { type: string, enum: [segment] }, episodeNo: { type: integer }, segmentId: { type: string } } }
+    CanvasRunBase:
+      type: object
+      required: [clientRequestId, docVersion]
+      properties:
+        clientRequestId: { type: string, minLength: 8, maxLength: 64, pattern: '^[A-Za-z0-9_-]{8,64}$', description: '幂等键（前端生成的 uuid，8–64 位字母数字 / 下划线 / 连字符，不含冒号）：同一个键重复请求回原运行记录，不重复扣费。不合规 400 DRAMA_CANVAS_REQUEST_ID_INVALID；同一个键已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用 → 409 DRAMA_CANVAS_REQUEST_ID_REUSED（所有生成接口都适用）' }
+        docVersion: { type: string, description: '前端认为已保存的文档版本；不是库里当前版本 → 409 DRAMA_CANVAS_STALE（先存再生成）' }
+    CanvasScriptRunBody:
+      allOf:
+        - $ref: '#/components/schemas/CanvasRunBase'
+        - type: object
+          required: [stage]
+          properties:
+            stage: { type: string, enum: [setting, outline, episode] }
+            episodeNo: { type: integer, description: 'stage=episode 时必填' }
+            instruction: { type: string, maxLength: 200, description: '重写要求；缺省 = 按上一段直接写' }
+    CanvasExtractRunBody:
+      $ref: '#/components/schemas/CanvasRunBase'
+    CanvasImageRunBody:
+      allOf:
+        - $ref: '#/components/schemas/CanvasRunBase'
+        - type: object
+          required: [target, count]
+          properties:
+            target: { $ref: '#/components/schemas/CanvasImageTarget' }
+            count: { type: integer, minimum: 1, maximum: 4, description: '计价 = 单价 × 张数' }
+            ratio: { type: string, enum: ['9:16', '16:9', '1:1', '4:3', '3:4'], description: '缺省：造型 9:16，场景 / 素材跟画布；片段首帧忽略此字段、强制跟画布' }
+            endpointId: { type: string, description: 'GET /me/drama/render/models 的 image[].endpointId；缺省默认端点' }
+    CanvasImageBatchBody:
+      allOf:
+        - $ref: '#/components/schemas/CanvasRunBase'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              minItems: 1
+              maxItems: 20
+              description: '最多 20 项、所有项 count 合计最多 40 张，超了 400 DRAMA_CANVAS_BATCH_TOO_LARGE'
+              items: { type: object, required: [target, count], properties: { target: { $ref: '#/components/schemas/CanvasImageTarget' }, count: { type: integer, minimum: 1, maximum: 4 }, ratio: { type: string, enum: ['9:16', '16:9', '1:1', '4:3', '3:4'] } } }
+            endpointId: { type: string }
+    CanvasStoryboardRunBody:
+      allOf:
+        - $ref: '#/components/schemas/CanvasRunBase'
+        - type: object
+          required: [episodeNo]
+          properties:
+            episodeNo: { type: integer }
+            maxSegmentSec: { type: integer, description: '单个片段时长上限（秒）= 所选视频模型的 maxDurationSec；缺省 10，服务端夹在 4–30' }
+    CanvasVideoRunBody:
+      allOf:
+        - $ref: '#/components/schemas/CanvasRunBase'
+        - type: object
+          required: [episodeNo, segmentId]
+          properties:
+            episodeNo: { type: integer }
+            segmentId: { type: string }
+            endpointId: { type: string, description: 'GET /me/drama/render/models 的 video[].endpointId；缺省默认端点' }
+            useFirstFrame: { type: boolean, default: true, description: '片段没有首帧时服务端当 false 处理并在 refs.notes 里说明' }
+    CanvasAssembleRunBody:
+      allOf:
+        - $ref: '#/components/schemas/CanvasRunBase'
+        - type: object
+          required: [episodeNo]
+          properties:
+            episodeNo: { type: integer }
+
 paths:
 
   # ── 3.1 Auth ────────────────────────────
@@ -8358,7 +8627,7 @@ paths:
     delete: { tags: [drama], operationId: purgeDramaShort, summary: '彻底删除回收站短视频草稿（物理删除，不可恢复）', responses: { '204': { description: ok } } }
   # ── v0.66 短剧专区配置 + 成片合成 ──
   /me/drama/config:
-    get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,decompose,shotRewrite,shortEntry,clip,interactiveDraft}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价；v0.197 加 prices.interactiveDraft=互动剧 AI 起草分支图单价（drama.credit.interactive-draft，默认 18，与扣费同源））', responses: { '200': { description: ok } } }
+    get: { tags: [drama], operationId: getDramaCreditConfig, summary: '短剧个性化配置（confirmThreshold + prices{outlineTrial,outlineFull,epscript,splitScene,cast,frame,decompose,shotRewrite,shortEntry,clip,interactiveDraft,canvasScriptSetting,canvasScriptOutline,canvasScriptEpisode,canvasExtract,canvasStoryboard}；真值在 admin 短剧专区。v0.78 加 prices.shortEntry=进短视频工作台开拍单价；v0.197 加 prices.interactiveDraft=互动剧 AI 起草分支图单价（drama.credit.interactive-draft，默认 18，与扣费同源）；v0.198 加画布五项：canvasScriptSetting（drama.credit.canvas-script-setting，默认 2，写故事大纲）/ canvasScriptOutline（canvas-script-outline，默认 6，写分集剧情）/ canvasScriptEpisode（canvas-script-episode，默认 4，按集）/ canvasExtract（canvas-extract，默认 4）/ canvasStoryboard（canvas-storyboard，默认 4，按集），与运行记录服务冻结同一组 key 与默认值）', responses: { '200': { description: ok } } }
   # ── v0.89 素材库上传：角色 / 场景「上传参考图」（multipart），落 OSS + 收进用户素材库 ──
   /me/drama/assets/uploads:
     post: { tags: [drama], operationId: uploadDramaAssetRef, summary: '上传角色 / 场景参考图（multipart：file + cat）→ { cdnKey, url, cat, name }', responses: { '200': { description: ok } } }
@@ -8456,6 +8725,203 @@ paths:
   /me/drama/projects/{id}/interactive/draft:
     parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
     post: { tags: [drama], operationId: interactiveDraftDramaProject, summary: '互动剧 AI 起草整张分支图（大模型，body:{theme?} → 大纲分集 + 分支叠加层 {episodes, interactive}，未落库，前端合并后 PUT 保存）。未配置 → 503 AI_NOT_CONFIGURED', responses: { '200': { description: ok } } }
+  # ── v0.198 短剧画布（web-drama /canvas；和「我的短剧」DramaProject 互相独立）。DramaCanvasController + 运行记录 controller ──
+  # 设计真源 docs/drama-canvas-plan.md §4；TS 真源 packages/types/src/drama-canvas.ts；业务规则 specs/BUSINESS_RULES.md §6.7。
+  # 响应一律 ApiResponse 壳 { success, data }，下面的 schema 指 data。走短剧开通（ProductRouteTable any("/api/me/drama/**", DRAMA)）。
+  # 所有 {id} 都按 principal 隔离：不存在 / 不是本人 / 已删一律 404 DRAMA_CANVAS_NOT_FOUND。
+  /me/drama/canvases:
+    get:
+      tags: [drama]
+      operationId: listDramaCanvases
+      summary: '我的画布（按 updatedAt 倒序）。封面只签本人的 key，所有画布的归属一次查完'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/DramaCanvasSummary' } } } } }
+    post:
+      tags: [drama]
+      operationId: createDramaCanvas
+      summary: '新建画布（免费）。source=paste 时服务端按「第 X 集」切集写进 script.episodes；source=idea 时写 idea / targetEpisodes / episodeDurationSec，script.episodes=[]'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateDramaCanvasBody' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasDetail' } } } }
+        '400': { description: 'DRAMA_CANVAS_BODY_INVALID（error.details.field：ratio / source / idea / text / targetEpisodes / episodeDurationSec / style / style.prompt）' }
+        '413': { description: DRAMA_CANVAS_TOO_LARGE }
+  /me/drama/canvases/{id}:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:
+      tags: [drama]
+      operationId: getDramaCanvas
+      summary: '画布详情。doc 里每个带 key / lastFrameKey 的对象派生 url / lastFrameUrl（只签本人的 key，别人的不签不报错）'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasDetail' } } } }
+        '404': { description: DRAMA_CANVAS_NOT_FOUND }
+        '500': { description: 'DRAMA_CANVAS_DOC_CORRUPT（库里的文档读不出来；不回退成空文档，免得前端自动保存把它覆盖掉）' }
+    put:
+      tags: [drama]
+      operationId: saveDramaCanvas
+      summary: '保存整份文档（可同时改标题）。顺序：版本 → 外形 → 剥 url / lastFrameUrl → 规范化 → 4MB → 条件更新（数据库里再判一次版本）'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SaveDramaCanvasBody' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/SaveDramaCanvasResult' } } } }
+        '400': { description: 'DRAMA_CANVAS_INVALID_DOC（error.details.path 指出第一处不对的字段）' }
+        '404': { description: DRAMA_CANVAS_NOT_FOUND }
+        '409': { description: 'DRAMA_CANVAS_STALE（baseDocVersion 缺省或不是库里当前版本；error.details.docVersion = 当前版本）' }
+        '413': { description: DRAMA_CANVAS_TOO_LARGE }
+    delete:
+      tags: [drama]
+      operationId: deleteDramaCanvas
+      summary: '软删（运行记录保留，已花的积分不退）'
+      responses:
+        '204': { description: deleted }
+        '404': { description: DRAMA_CANVAS_NOT_FOUND }
+  /me/drama/canvases/{id}/script/split:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: splitDramaCanvasScript
+      summary: '粘贴的剧本按「第 X 集」切开（免费、同步、纯规则不调模型、不落库）。集号按出现顺序重排成 1..N；第一个集标题之前的文字放进第 1 集开头；没有标记整篇当第 1 集。前端拿结果自己合进文档再保存'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SplitCanvasScriptBody' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/SplitCanvasScriptResult' } } } }
+        '400': { description: DRAMA_CANVAS_BODY_INVALID }
+        '404': { description: DRAMA_CANVAS_NOT_FOUND }
+  /me/drama/canvases/{id}/assets/sign:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: signDramaCanvasAssets
+      summary: '签名地址换新（签名有 TTL，画布一开半天；图 / 视频加载失败时前端按 key 换新地址，不重拉整份文档）。归属一次查完，只签本人的 key；不是本人的 / 不存在的不出现在 urls 里，不报错'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SignCanvasAssetsBody' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/SignCanvasAssetsResult' } } } }
+        '400': { description: 'DRAMA_CANVAS_BODY_INVALID（keys 为空或超过 100 个）' }
+        '404': { description: DRAMA_CANVAS_NOT_FOUND }
+  # ── 生成（运行记录）：结果另存 drama_canvas_run，服务端从不改文档；前端按 runId 幂等合并后再保存 ──
+  # 公共：body 带 clientRequestId（同 owner 同键回原记录、不重复扣费）+ docVersion（不是库里当前版本 → 409 DRAMA_CANVAS_STALE）。
+  # 提示词、参考图、首帧、片段时长、合成顺序都从已保存的文档里读；读出来的每个 key 过归属闸，不是本人的 → 400 DRAMA_CANVAS_ASSET_NOT_OWNED，不扣费。
+  # 请求里只建记录并冻结积分，派发挂在事务 afterCommit；立即返回 queued 的 DramaCanvasRun，前端轮询 GET runs?ids=。
+  /me/drama/canvases/{id}/runs:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:
+      tags: [drama]
+      operationId: listDramaCanvasRuns
+      summary: '批量查运行记录（刷新后接回在途的生成）。只回本人本画布的；查不到的 id 不出现在结果里'
+      parameters: [ { in: query, name: ids, required: true, schema: { type: string }, description: '逗号分隔的 runId' } ]
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/DramaCanvasRun' } } } } }
+        '404': { description: DRAMA_CANVAS_NOT_FOUND }
+  /me/drama/canvases/{id}/runs/lookup:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    get:
+      tags: [drama]
+      operationId: lookupDramaCanvasRuns
+      summary: '按 clientRequestId 查这个请求有没有被受理（只查不建、无副作用、不扣费）。用于「请求发出后响应丢了 / 请求返回前离开页面」时确认是否受理；前端不许用原键重发 POST 来确认'
+      description: >-
+        返回这个键在本人本画布下受理出来的运行记录：单条请求 0 或 1 条；批量出图返回整批（第 0 项占原键，其余 clientRequestId:i）。
+        没受理过 → 空数组（不是 404）。只按本人查，不会返回别人的记录。
+      parameters: [ { in: query, name: clientRequestId, required: true, schema: { type: string, minLength: 8, maxLength: 64, pattern: '^[A-Za-z0-9_-]{8,64}$' } } ]
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/DramaCanvasRun' } } } } }
+        '400': { description: 'DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '404': { description: DRAMA_CANVAS_NOT_FOUND }
+  /me/drama/canvases/{id}/runs/script:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: runDramaCanvasScript
+      summary: '写故事大纲（stage=setting，drama.credit.canvas-script-setting）/ 分集剧情（outline，canvas-script-outline）/ 某一集剧本（episode，canvas-script-episode）。提交时冻结，成功结算，失败 / 取消退回；锁住的集拒绝'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CanvasScriptRunBody' } } } }
+      responses:
+        '200': { description: 'queued', content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasRun' } } } }
+        '400': { description: 'DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '402': { description: 积分不足（CreditService 既有），不建记录 }
+        '409': { description: 'DRAMA_CANVAS_STALE / DRAMA_CANVAS_EPISODE_LOCKED（stage=episode 且这一集 locked） / DRAMA_CANVAS_REQUEST_ID_REUSED（同一个 clientRequestId 已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用）' }
+        '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED（在冻结之前判，不建记录）' }
+  /me/drama/canvases/{id}/runs/extract:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: runDramaCanvasExtract
+      summary: '从全部分集剧本拆出角色（含造型、出场集数、结构化外貌）与场景（drama.credit.canvas-extract）。结果合并规则见 DramaCanvasRunResult.extract'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CanvasExtractRunBody' } } } }
+      responses:
+        '200': { description: 'queued', content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasRun' } } } }
+        '400': { description: 'DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '402': { description: 积分不足 }
+        '409': { description: 'DRAMA_CANVAS_STALE / DRAMA_CANVAS_REQUEST_ID_REUSED（同一个 clientRequestId 已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用）' }
+        '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED' }
+  /me/drama/canvases/{id}/runs/image:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: runDramaCanvasImage
+      summary: '造型 / 场景 / 素材 / 片段首帧出图。参考图 = 连进来的图（board.edges）+ 片段文本里 @ 到的造型 / 场景 / 素材挑中的那张；preflight（引擎、提示词、归属）在冻结之前；单价（drama.credit.frame，候选可覆盖）× count 一次冻结，快照进 input_json，每张成功才结算，失败的退回'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CanvasImageRunBody' } } } }
+      responses:
+        '200': { description: 'queued', content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasRun' } } } }
+        '400': { description: 'DRAMA_CANVAS_ASSET_NOT_OWNED（error.details.keys）/ 目标在文档里找不到 / DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '402': { description: 积分不足 }
+        '409': { description: 'DRAMA_CANVAS_STALE / DRAMA_CANVAS_REQUEST_ID_REUSED（同一个 clientRequestId 已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用）' }
+        '503': { description: 'IMAGE_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / ENDPOINT_NOT_ALLOWED' }
+  /me/drama/canvases/{id}/runs/image-batch:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: runDramaCanvasImageBatch
+      summary: '批量出图（最多 20 项、总 40 张）：一次报总价、一次冻结，逐项成功结算、失败退回。每项一条运行记录：第 0 项直接占用原始 clientRequestId，其余项用 clientRequestId:i（i≥1），单条请求与批量请求抢同一把唯一索引，同一个键不会被两边各受理一次'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CanvasImageBatchBody' } } } }
+      responses:
+        '200': { description: 'queued', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/DramaCanvasRun' } } } } }
+        '400': { description: 'DRAMA_CANVAS_ASSET_NOT_OWNED / DRAMA_CANVAS_BATCH_EMPTY（一项都没有）/ DRAMA_CANVAS_BATCH_TOO_LARGE（超过 20 项或合计超过 40 张）/ DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '402': { description: 积分不足 }
+        '409': { description: 'DRAMA_CANVAS_STALE / DRAMA_CANVAS_REQUEST_ID_REUSED（同一个 clientRequestId 已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用）' }
+        '503': { description: 'IMAGE_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / ENDPOINT_NOT_ALLOWED' }
+  /me/drama/canvases/{id}/runs/storyboard:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: runDramaCanvasStoryboard
+      summary: '把一集剧本切成片段（每段 1–4 镜，逐行「（N 秒）……」，用 @[名字](look:id) 引用），drama.credit.canvas-storyboard'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CanvasStoryboardRunBody' } } } }
+      responses:
+        '200': { description: 'queued', content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasRun' } } } }
+        '400': { description: 'DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '402': { description: 积分不足 }
+        '409': { description: 'DRAMA_CANVAS_STALE / DRAMA_CANVAS_REQUEST_ID_REUSED（同一个 clientRequestId 已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用）' }
+        '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED' }
+  /me/drama/canvases/{id}/runs/video:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: runDramaCanvasVideo
+      summary: '片段视频（MaterialVideoJobService 分区 drama）。首帧 = 片段挑中的首帧 key（写进 variant_config.first_frame_key）；提交时冻结（候选单价，按秒计费的端点 = 单价 × durationSec），worker 结算或退回'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CanvasVideoRunBody' } } } }
+      responses:
+        '200': { description: 'queued', content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasRun' } } } }
+        '400': { description: 'DRAMA_CANVAS_ASSET_NOT_OWNED / 片段时长超过模型上限 / DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '402': { description: 积分不足 }
+        '409': { description: 'DRAMA_CANVAS_STALE / DRAMA_CANVAS_REQUEST_ID_REUSED（同一个 clientRequestId 已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用）' }
+        '503': { description: 'VIDEO_NOT_CONFIGURED / ENDPOINT_NOT_ALLOWED' }
+  /me/drama/canvases/{id}/runs/assemble:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: runDramaCanvasAssemble
+      summary: '合成成片（免费）：按片段顺序拼接每个片段挑中的视频（沿用 DramaAssembleService 的拼接与质量门）；有片段没有视频 → 拒绝'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CanvasAssembleRunBody' } } } }
+      responses:
+        '200': { description: 'queued', content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasRun' } } } }
+        '400': { description: 'DRAMA_CANVAS_ASSET_NOT_OWNED / 有片段还没有视频 / DRAMA_CANVAS_REQUEST_ID_INVALID（clientRequestId 不是 8–64 位 [A-Za-z0-9_-]）' }
+        '409': { description: 'DRAMA_CANVAS_STALE / DRAMA_CANVAS_REQUEST_ID_REUSED（同一个 clientRequestId 已用在另一张画布、另一种请求（kind 或 target 不同），或单条与批量互用）' }
+  /me/drama/canvases/{id}/runs/{runId}/cancel:
+    parameters: [ { in: path, name: id, required: true, schema: { type: string } }, { in: path, name: runId, required: true, schema: { type: string } } ]
+    post:
+      tags: [drama]
+      operationId: cancelDramaCanvasRun
+      summary: '取消排队中的运行（退回冻结）；已经交给厂商的停不下来'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DramaCanvasRun' } } } }
+        '404': { description: 'DRAMA_CANVAS_NOT_FOUND / DRAMA_CANVAS_RUN_NOT_FOUND' }
+        '409': { description: 'DRAMA_CANVAS_RUN_NOT_CANCELABLE（已经开始生成）' }
   # ── v0.65 短剧分发（用户侧平台连接 + 发布任务）。DramaDistributionController。 ──
   /me/distribution/platforms:
     get: { tags: [distribution], operationId: listMyDistributionPlatforms, summary: '平台目录 + 我的连接状态', responses: { '200': { description: ok } } }

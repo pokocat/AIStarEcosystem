@@ -93,6 +93,21 @@ public class PromptService {
     public static final String KEY_DRAMA_BRAINSTORM_OUTLINE = "drama.brainstorm_outline";
     /** 近期热点蒸馏：抓来的抖音热搜热词 → 过滤新闻/敏感、改写成短剧选题钩子（运营手动触发）。 */
     public static final String KEY_DRAMA_HOTSPOT_DISTILL = "drama.hotspot_distill";
+    /**
+     * v0.198 短剧画布（web-drama /canvas，真源 docs/drama-canvas-plan.md §4.2）。文字类共用
+     * DRAMA_SCRIPT_DRAFT 端点绑定、一律 JSON 输出（服务端按形状校验，不合格 502 AI_CALL_FAILED 并退款）；
+     * 出图 / 出视频是给图像 / 视频模型的单条 prompt（无 system）。参考图由服务端按连线 / @ 引用带上，模板里不写地址。
+     */
+    public static final String KEY_DRAMA_CANVAS_SCRIPT_SETTING = "drama.canvas_script_setting";
+    public static final String KEY_DRAMA_CANVAS_SCRIPT_OUTLINE = "drama.canvas_script_outline";
+    public static final String KEY_DRAMA_CANVAS_SCRIPT_EPISODE = "drama.canvas_script_episode";
+    public static final String KEY_DRAMA_CANVAS_EXTRACT = "drama.canvas_extract";
+    public static final String KEY_DRAMA_CANVAS_STORYBOARD = "drama.canvas_storyboard";
+    public static final String KEY_DRAMA_CANVAS_LOOK_IMAGE = "drama.canvas_look_image";
+    public static final String KEY_DRAMA_CANVAS_SCENE_IMAGE = "drama.canvas_scene_image";
+    public static final String KEY_DRAMA_CANVAS_MATERIAL_IMAGE = "drama.canvas_material_image";
+    public static final String KEY_DRAMA_CANVAS_FRAME_IMAGE = "drama.canvas_frame_image";
+    public static final String KEY_DRAMA_CANVAS_SEGMENT_VIDEO = "drama.canvas_segment_video";
     /** v0.51+: 数字人资产平台（dap）各大模型调用点位（DapMultimodalClient / DapJobRunner）。 */
     public static final String KEY_DAP_PERSONA = "dap.persona";
     public static final String KEY_DAP_TRANSLATE_EDIT = "dap.translate_edit";
@@ -138,6 +153,10 @@ public class PromptService {
                     KEY_DRAMA_INTERACTIVE_DRAFT,
                     KEY_DRAMA_BRAINSTORM_CHAT, KEY_DRAMA_BRAINSTORM_OUTLINE, KEY_DRAMA_HOTSPOT_DISTILL,
                     KEY_DRAMA_SHORT_PROMPT_PARSE,
+                    KEY_DRAMA_CANVAS_SCRIPT_SETTING, KEY_DRAMA_CANVAS_SCRIPT_OUTLINE, KEY_DRAMA_CANVAS_SCRIPT_EPISODE,
+                    KEY_DRAMA_CANVAS_EXTRACT, KEY_DRAMA_CANVAS_STORYBOARD,
+                    KEY_DRAMA_CANVAS_LOOK_IMAGE, KEY_DRAMA_CANVAS_SCENE_IMAGE, KEY_DRAMA_CANVAS_MATERIAL_IMAGE,
+                    KEY_DRAMA_CANVAS_FRAME_IMAGE, KEY_DRAMA_CANVAS_SEGMENT_VIDEO,
                     KEY_DAP_PERSONA, KEY_DAP_TRANSLATE_EDIT, KEY_DAP_IMAGE_GENERATE, KEY_DAP_IMAGE_CLONE,
                     KEY_DAP_IMAGE_ITERATE, KEY_DAP_IMAGE_WARP, KEY_DAP_IMAGE_LOOK, KEY_DAP_IMAGE_ATLAS,
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT,
