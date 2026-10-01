@@ -214,6 +214,43 @@ class IpRunServiceTest {
         verify(videoJobs, never()).submit(org.mockito.ArgumentMatchers.any(), anyString(), anyString());
     }
 
+    @Test
+    void videoChosenModelTravelsInVariantConfig_nextToTheFirstFrame() {
+        // 通用视频链只从 variant_config.endpoint_id 读用户选的端点（校验、报价、调用都是）。
+        // 此前这里写在 item 顶层，没人读 —— 画布上选哪个模型，跑的都是后台默认那个。
+        seedProject(IpStudioFixtures.chainDoc(null, 0));
+        com.fasterxml.jackson.databind.node.ObjectNode card = OM.createObjectNode();
+        card.put("id", "MVJ-2").put("status", "rendering");
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(), eq(USER), anyString())).thenReturn(List.of(card));
+        String ref = IpStudioFixtures.sourceKey(USER, "p.jpg");
+
+        svc.generateVideo(USER, PID, new IpRunService.IpVideoRequest("让它挥手", ref, 5, "9:16", " ep-h3 "));
+
+        org.mockito.ArgumentCaptor<JsonNode> body = org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(videoJobs).submit(body.capture(), eq(USER), anyString());
+        JsonNode item = body.getValue().path("items").get(0);
+        assertEquals("ep-h3", item.path("variant_config").path("endpoint_id").asText());
+        assertEquals(ref, item.path("variant_config").path("first_frame_key").asText());
+        assertFalse(item.has("endpoint_id"), "顶层 endpoint_id 没有任何地方读，写在那儿等于没传：" + item);
+    }
+
+    @Test
+    void videoWithoutChosenModel_leavesTheEndpointToTheDefault() {
+        // 没选模型 = 用后台默认端点（D-11 允许）；不能凭空塞一个 id 进去
+        seedProject(IpStudioFixtures.chainDoc(null, 0));
+        com.fasterxml.jackson.databind.node.ObjectNode card = OM.createObjectNode();
+        card.put("id", "MVJ-3").put("status", "rendering");
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(), eq(USER), anyString())).thenReturn(List.of(card));
+
+        svc.generateVideo(USER, PID, new IpRunService.IpVideoRequest("让它挥手", null, 5, "9:16", "  "));
+
+        org.mockito.ArgumentCaptor<JsonNode> body = org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(videoJobs).submit(body.capture(), eq(USER), anyString());
+        JsonNode item = body.getValue().path("items").get(0);
+        assertFalse(item.has("variant_config"), "没选模型也没首帧图时不该带 variant_config：" + item);
+        assertFalse(item.has("endpoint_id"));
+    }
+
     // ── 参考图：上游图按远近排序、有上限 ───────────────────────
 
     @Test

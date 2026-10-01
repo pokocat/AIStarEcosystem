@@ -776,6 +776,210 @@ DB 只存 storage key，URL 一律出 wire 时经 `signedUrl(key)` 派生，**�
 | `IP_TEMPLATE_NOT_FOUND` | 400 | 新建时引用了不存在的内置工作流 |
 | 复用 | 503 `DAP_ENGINE_NOT_CONFIGURED`、503 `PROMPT_NOT_CONFIGURED`、402 积分不足（CreditService 既有） |
 
+### 6.8 视频生成区（web-celebrity「AI 创作 → 视频生成」，v0.199 / 设计真源 `docs/video-studio-plan.md` · TS 真源 `packages/types/src/video-studio.ts`）
+
+领域 `com.aistareco.aep.videostudio.*`，挂 `/api/me/celebrity/video-studio/**`：登录必需（`/api/me/**`），开通闸按
+`/api/me/celebrity/**` → celebrity（不新增产品码）；未绑手机号的账号发 POST 由 `PhoneVerificationGuard` 挡成 403。
+把 MiniMax H3（聚算 JusuanHub）的四种原生模式原样开放，**不做产品化封装**：没有脚本、不绑商品。二版（同 v0.199，
+用户第二轮要求）加了：后台可配的计价、可选的「智能优化」、成片存为模板 / 做同款（见下面三节）。新表
+`video_studio_prompt_optimization` / `video_studio_template` 由 **V37** 建（编号横跨 SQL 与 Java 两个迁移目录）。
+
+**复用通用视频链，不新建表。** 提交走 `MaterialVideoJobService.submit(body, uid, "video-studio")`：冻结 → 落
+`material_video_job` → `afterCommit` 派发 worker → 轮询 → 成片镜像 OSS → 成功扣 / 失败退。分区 `video-studio`
+（`APP_VIDEO_STUDIO`）的任务不会出现在素材运营、短剧、画布的任何列表里。`kind` = `studio-t2v` / `studio-i2v` /
+`studio-flf` / `studio-ref`，`name` = 「<模式中文名> · <清晰度> · <比例> · <秒数> 秒」。
+
+**厂商合同只写在 `JusuanH3Contract` 一处**，前端从 `GET …/models` 的 `contract` 拿，不写死：
+
+- 清晰度 `768p` / `544p`，每档六种固定画布（21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16，像素见 `JusuanH3Contract`）；
+  朝向由画布宽高定（宽 > 高 landscape、相等 **square**、宽 < 高 portrait），尺寸编码 `h3-<768|544>-<W>x<H>`。
+  1:1 的 `square` 取自 Portal 调用示例、公开文档只列了 landscape / portrait，**未实测**；上游拒收时厂商原话直接显示。
+- 时长：整数秒，有效区间 = 5..15 ∩ 候选 `maxDurationSec`；区间为空的模型不出现在列表里。
+- 提示词：去首尾空白（含不换行空格 / BOM）后 1..7000 个 Unicode 字符（按 code point 数，表情符号算 1 个）。
+- 随机种子：可选整数 0..2147483647，不传 = 随机。
+
+**计价（二版：我们自己定、后台可配，不照搬厂商价格；服务端一处算，前端照着显示，报价与冻结同源）。**
+一版按厂商价格结构等比换算（544p 减半、第 7 张图起加 ¼）的做法已经撤掉。
+
+- 配置：平台配置 key `celebrity.video-studio-pricing`（形状 = `VideoStudioPricingConfig`），后台「明星带货 → 引擎定价 →
+  视频生成」编辑，`GET / PUT /api/admin/celebrity/video-studio-pricing`（角色同 `action-pricing`：`/api/admin/**` 的
+  SUPER_ADMIN / OPERATOR / FINANCE_ADMIN）。整份替换，60 秒缓存在保存时立即失效。首次启动写入全 null / 0
+  （= 生成按模型单价、不加价、智能优化不收费）。
+- 每一格（模式 × 清晰度）的每秒价 = **配置那一格 ?? 这个模型的每秒价**（候选 `creditCostOverride` 且端点 `PER_SECOND`，
+  即 `videoBillingUnit` = `per_second`）**?? 未定价**。未定价的格子下发给用户是显式 null：前端不报价、不许提交；
+  服务端提交 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`（冻结之前），**不回落任何写死的价**（§8.0）。
+  不再有「按条计价」分支；合成的默认项没有候选行、没有模型每秒价，只认配置的格子。
+- 生成总价 = (每秒价 + max(0, 参考图张数 − `freeRefImages`) × `extraRefImagePerSecond`) × 秒数，只有全能参考算图片张数；
+  `Math.multiplyExact`，溢出 → 400 `VIDEO_PRICE_OVERFLOW`。算好的总价以 `credit_cost` 交给 `MaterialVideoJobService.submit`
+  冻结，`credit_label = "视频生成"`；**提交请求体没有任何价格字段**，客户端传什么都不读。
+- 智能优化每次 `promptOptimizationPerCall`（0 = 不收费），与生成分开冻结 / 扣除。
+- 后台保存校验：格子 null 或 1..100000，`freeRefImages` 0..9，`extraRefImagePerSecond` / `promptOptimizationPerCall`
+  0..100000，标量必填，模式 / 清晰度必须认识，否则 400 `VIDEO_STUDIO_PRICING_INVALID`。
+- **库里的配置读不出来（手工改坏 JSON、值越界）一律 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`，不回落默认值**：
+  默认值是「不加价、优化免费」，悄悄回落等于把运营定的价改成白送。与 `CelebrityActionPricingService`（读失败回落默认）
+  刻意不同。库里不认识的模式 / 清晰度忽略（以后删了一个模式，旧配置不至于让整个区停摆）。后台重新 PUT 一份即可恢复。
+
+**校验顺序固定，全部在冻结之前**：模型 → 模式 → 提示词 → 清晰度 / 比例 / 时长 → 种子 → 该模式的素材 →
+素材归属与类型（做同款时含模板素材）→ 智能优化结果（带了 `optimizationId` 时）→ 价格。提交生成与智能优化**共用同一个
+校验器**（`VideoStudioService.validate`，同一套错误码；优化不带种子）。模型必须在本区列表里（启用候选 × 启用端点 × 有 baseUrl 与 Key × 聚算媒体协议；列表为空时，
+**只有默认绑定端点根本没有候选行**才合成一条 `selectableById=false`（价格只认配置）。候选行在、只是被停用 → 不合成、
+不列出：那是运营有意下线，合成等于绕过停用）；省略 `endpointId` = 默认那一条；合成项带了 `endpointId` → 400。
+能按编号选的模型会把 `endpoint_id` 写进任务（报价用的是这个候选的单价，worker 必须跑在它上面）。
+
+**每种模式要的素材**（不匹配 → 400 `VIDEO_STUDIO_INPUT_INVALID`，文案说清是哪一条）：
+
+| 模式 | 首帧 | 尾帧 | 参考素材 |
+|---|---|---|---|
+| `t2v` 文生视频 | 不传 | 不传 | 不传 |
+| `i2v` 首帧生视频 | 必传（图，≤16MB） | 不传 | 不传 |
+| `first_last_frame_video` 首尾帧生视频 | 必传（图，≤16MB） | 必传（图，≤16MB） | 不传 |
+| `universal_reference_video` 全能参考 | 不传 | 不传 | 1..12 项：图 ≤9（**有视频时 ≤8**）、视频 ≤1、音频 ≤3；图 + 视频 ≥1；同一个 key 不能出现两次；音频加起来 ≤15 秒 |
+
+参考素材按客户端给的顺序落库与发给厂商；同类按出现顺序编号（图1、图2…、视频1、音频1…），任务卡、提交报错、
+worker 传素材失败的报错用的是同一套编号（`VideoGenSpec.referenceLabels`）。首帧与尾帧**可以**是同一张图
+（首尾一致的循环镜头），不许重复只针对参考素材。音频合计：单段已在上传时验过 2..15 秒，所以只有两段以上时才重新
+ffprobe 求和（读不出 → 400 `VIDEO_STUDIO_ASSET_INVALID`）。
+
+**归属闸。** 每个 key 必须以 `video-studio-<声明类型>/<本人 uid>/` 开头（前缀由 `FileStorageService.ownedKeyPrefix`
+按存储层自己的 sanitize 规则派生，不手拼）、前缀后面只有文件名、不含 `..` 与反斜杠；首帧 / 尾帧只能是 image 分类。
+否则 400 `VIDEO_STUDIO_ASSET_INVALID`。**key 里的分类就是上传时验过的类型**，提交时据此判类型。
+
+**分区闸（`MaterialVideoJobService.submit` 的规划阶段，冻结之前）。** `variant_config` 里的原生规格
+（`generation_mode` / `resolution_tier` / `seed` / `last_frame_key` / `reference_inputs`）只许 `video-studio` 分区带；
+`first_frame_key` 只许 `ipstudio`、`video-studio` 与 `drama` 分区带（三处的 variant_config 都由服务端组装，写 key 前验过归属；短剧见 2026-09-30 首帧热修的 `DRAMA_FRAME_NOT_OWNED`）。其它分区（带货素材运营会透传客户端的 variant_config）出现 → 400 `VIDEO_MODE_UNSUPPORTED`。
+原因：素材运营的 `POST /api/material/videos/generate` 把客户端的 `variant_config` 原样透传，不挡住就是按带货单价
+开出原生能力（多张参考图的厂商加价没人付），或拿不属于自己的 key 出片。
+
+**上传（`POST …/uploads`，multipart `file` + `mediaType`）。** 顺序：`mediaType` ∈ image / video / audio（否则
+`VIDEO_STUDIO_FORMAT_UNSUPPORTED`）→ 空（`VIDEO_STUDIO_FILE_EMPTY`）→ 超该类上限：图 30MB / 视频 50MB / 音频 15MB
+（`VIDEO_STUDIO_FILE_TOO_LARGE`，文案带 MB）→ **按字节**判格式（`MediaBytes.sniff`；图 PNG / JPEG / WEBP，视频 MP4
+即 `ftyp` 且品牌不是 `qt  `，音频 WAV / MP3 / FLAC / OGG / AAC(ADTS) / M4A / MOV；后缀用判出来的）→ 音视频写临时文件过
+`FfmpegRunner.probeMedia`、用完即删（读不出 / 视频没画面 / 音频没声音 → `VIDEO_STUDIO_MEDIA_UNREADABLE`，音频不在
+2..15 秒 → `VIDEO_STUDIO_AUDIO_DURATION_INVALID`）→ `StorageQuotaService.checkQuota("celebrity", …)`（402
+`STORAGE_QUOTA_EXCEEDED`）→ `FileStorageService.store(bytes, "video-studio-<mediaType>", uid, ext, mime)` →
+`record("celebrity", uid, "视频生成素材", null, key, bytes)`。图片像素只读文件头，不整图解码；读不到（WEBP）为 null。
+
+**worker 与模型客户端。**
+
+- `VideoGenSpec.fromVariantConfigJson` 是 worker 唯一的解析入口，解析失败 = 空规格（= 老路径的纯文生视频）；
+  `MaterialVideoModelClient.submit` 的最后一个参数就是它，不留只带首帧 key 的旧重载。
+- 聚算 + 完整原生规格：素材先 `POST {base}/v1/assets/input?model=<别名>` 逐个换 assetId（multipart 字段名 =
+  `image` / `video` / `audio`，Content-Type 与文件名后缀按字节判；上限帧图 16MB、参考图 30MB、视频 50MB、音频 15MB），
+  再按 Portal 示例的字段集与顺序组包：`model, generationMode, prompt, resolutionTier, orientation, aspectRatio,
+  outputSizeCode, seconds, [seed], [input_image_asset_id], [end_image_asset_id], [referenceInputs[{role, mediaType, assetId}]]`。
+  不传 fps / frames / width / height / steps。
+- 老路径（没有清晰度：画布、脚本视频、短剧）组出来的聚算请求体与改动前逐字段一致。
+- 非聚算协议（seedance / agnes / 通用）收到任何原生参数 → 400 `VIDEO_MODE_UNSUPPORTED`，不静默丢；只带首帧 key 时，
+  key 换成厂商自己去抓的 URL（`FileStorageService.upstreamFetchUrl`：**先签名 URL**，签不出来才退公开 URL。
+  `publicUrl` 只是拼域名、不管桶能不能匿名读，生产默认按 OSS 签名出 wire，私有桶下未签名地址是 403；
+  短剧交给 seedance 的首尾帧一直是签名地址），放进该协议的首帧位
+  （seedance `content[role=first_frame]`、agnes / 通用 `image`），**优先于** prompt 里的首帧标记；换出来的不是绝对
+  http(s) 地址 → `VIDEO_REF_UNREADABLE`，不假装传了图。只带标记的短剧请求逐字节不变。
+- 上游拒绝：创建或素材上传非 2xx 一律 `log.warn` 带响应体；4xx 的任务失败原因 = 「视频模型拒绝了这次请求：<厂商原话>」
+  （素材上传：「<编号>被上游拒收：<厂商原话>」，≤200 字，Bearer 凭据与 32 位以上的长串脱敏），5xx 只给状态码，
+  响应体不是 JSON 时不外泄。轮询到 failed 时失败原因先读说人话的字段（含 `error.message` 对象形态、`errorMessage`），
+  都没有才退到 `errorCode`。**给用户看的失败原因不带内部字段**（任务号、上游状态码只进日志）：
+  「视频生成失败：<原因>」/「视频生成失败，模型没有给出原因」/「视频生成超时，等了 N 分钟还没有出结果」/
+  「视频模型报告已完成，但没有交回成片」/「成片已经生成，但平台存储还没配置好，暂时取不回来，请联系运营」。
+  这几句所有用通用视频链的产品线共用。
+- **管理端对账恢复**（`MaterialVideoWorker.reconcileSucceeded`）：提交时 item 带了 `credit_cost`（调用方自己定价：
+  本区、短剧）的任务在 payload 里标 `caller_priced=true`，对账按**冻结价**结算；没有这个标记的沿用 v0.131：
+  按端点当前每秒价重算（那一版为补收计费规则上线前按每条 30 冻结的老任务）。HTTP 入口已剥掉 `credit_cost`，
+  外部请求建出来的任务永远没有这个标记。
+- 账本文案用提交时的 `credit_label`（冻结 / 扣除 / 退回三笔同一个说法；此前 worker 写死「带货视频生成」）；
+  存储用量分类：`studio-*` 成片记「视频生成」。
+
+**智能优化（`POST / GET …/prompt-optimizations`，docs/video-studio-plan.md §9）。** 厂商
+`POST {base}/media/prompt-optimizations` 是同步接口，但最长要等十分钟上下，所以做成后台任务：
+
+- 发起：`clientRequestId` 必须是 8–128 个可见 ASCII（否则 400 `VIDEO_STUDIO_REQUEST_ID_INVALID`，先于一切校验）；
+  同一用户同一 `clientRequestId` 已有记录 → 原样返回，不再校验、不再冻结。校验同提交生成（见上，不看种子）。
+  价格 = `promptOptimizationPerCall`，> 0 才 `CreditService.hold`（refType `video_studio_prompt_optimization`，refId = 记录 id）。
+  **同一事务里先插行（立刻 flush，占住 `UNIQUE(owner_user_id, client_request_id)`）再冻结**：并发的同一串卡在自己的插入上，
+  等先到的那条提交后撞唯一键（InnoDB 与 H2 都是等对方提交才判重复），这边整个回滚、什么都没冻，读回先到的那条 ——
+  余额只够一次时两边也拿到同一条记录，不会一边 402。余额不足 402：刚插的行随同一事务回滚，什么都不落（同一个串充值后还能用）。
+  落 `queued`，派发挂在 `afterCommit`；线程池（`videoStudioOptimizationExecutor`，与出片池分开）排满 → 经下面的结算
+  当场判失败并退冻结。返回的是提交之后重读的那一份（排满时就是 failed + 原因）。
+- 执行：worker 先条件更新 queued → running（抢不到就不做）→ 素材照生成那套 `uploadInputAsset` 上传（字段名、按字节判类型、
+  大小上限、编号文案都一样）→ 按 Portal 示例组包：`clientRequestId, model, generationMode, originalPrompt,
+  mediaSpec{resolutionTier, orientation, aspectRatio, seconds, outputSizeCode}, referenceInputs[{role, assetId}]`
+  （**不带 mediaType**；role：首帧生视频 `first_frame`，首尾帧 `first_frame` + `last_frame`，全能参考
+  `reference_image|reference_video|reference_audio` 同生成的顺序，文生视频给空数组），有音频参考时加
+  `audioReferencePolicy: "preserve_without_understanding"`。`Idempotency-Key` = body 的 `clientRequestId` = **我们的记录 id**。
+- 重发：409（还在处理）/ 429 / 5xx / 超时 / 网络错误 → **同一正文同一键**重发（素材只传一次），优先听 `Retry-After`，
+  否则 5 秒起指数退避（封顶 60 秒），总预算 12 分钟；每次调用的读超时 = min(630 秒, 剩余预算)。其它 4xx → 失败原因
+  「智能优化被拒：<厂商原话>」（与生成同一个厂商原话解析 `vendorMessage`，≤200 字、脱敏、非 JSON 不外泄）；2xx 但没有
+  `optimizedPrompt` → 失败；预算用完 → 「智能优化超时，积分已退回」（没收钱则「智能优化超时，请重新优化」）。
+  请求体与响应体都进日志（§8.0.1 ①）。优化调用不记进「视频生成」的按秒用量表。
+- 结算：**改状态和扣 / 退在同一个短事务里**（`VideoStudioOptimizationSettlement`，`REQUIRES_NEW`）。running → succeeded、
+  queued / running → failed 都是条件更新，返回 1 才在同一事务里 `commitHold` / `releaseHold`，返回 0（别人先改了）什么都不动。
+  扣 / 退抛异常 → 整个回滚：记录保持原状态、冻结原样，调用方记 WARN（带 id），留给兜底回收。**不吞异常** —— 吞了就会出现
+  「成功了却没扣钱」或「显示已退回却还冻着」，而记录已是终态，回收再也看不见它。`REQUIRES_NEW` 是给排满时的判失败用的：
+  它发生在 afterCommit 回调里，那时上一个事务已提交、资源还绑在线程上，`REQUIRED` 会加入那个已结束的事务，写了等于没写。
+  兜底回收（`@Scheduled` 每 5 分钟）把 `updated_at` 超过 20 分钟仍 queued / running 的判失败并退冻结，走结算的 `failIfStale`：
+  条件更新里**再带一次同一个 cutoff**（`updated_at < cutoff`）—— 回收先列出卡住的记录再逐条结算，中间 worker 可能刚把某一条
+  领走（`claimRunning` 刷新了 updated_at，正在调厂商），那一条不再卡住，不能判失败（否则退了钱、厂商结果回来只能作废）。
+  与 worker 同时到场时只有一方动这笔钱，某一条结算回滚就跳过、下一轮再试。20 分钟大于 12 分钟预算（从上传素材之前算起），
+  活着的 worker 一定先结束。
+- 查询：本人才看得到，否则 404 `VIDEO_STUDIO_OPTIMIZATION_NOT_FOUND`；优化结果只在 succeeded 时给，失败原因只在 failed 时给。
+- 用结果生成：生成请求带 `optimizationId` → 必须是本人的、succeeded 的，否则 400 `VIDEO_STUDIO_OPTIMIZATION_INVALID`；
+  不要求模式 / 规格与优化时一致。送去生成的仍是请求里的最终文本（可能是用户改过的优化结果，不传厂商的 optimizationId）；
+  任务的 `variant_config` 记 `optimization_id` + `original_prompt`（worker 不读），`VideoStudioJob.originalPrompt` 由此出 wire。
+
+**模板 / 做同款（`…/templates`，docs/video-studio-plan.md §10）。**
+
+- 存模板：任务必须是本人的、本区的、成功的；标题去空白后 1–40 字、说明 ≤200 字，否则 400 `VIDEO_STUDIO_TEMPLATE_INVALID`。
+  `official=true` 需要运营（`aep_users.operatorRole` ∈ operator / super_admin 且账号 ACTIVE，**服务端查库**，
+  `InAppOperatorGuard.isOperatorUserId`），否则 403 `VIDEO_STUDIO_TEMPLATE_FORBIDDEN`。
+- 配方（`recipe_json`）只拷「怎么做」：模式、最终提示词、清晰度、比例、秒数、种子、模型（endpointId + 展示名）、
+  素材（role / mediaType / key / label）。**不拷运行痕迹**（任务状态、错误、积分、外部任务号、优化记录；§8.0.1 ⑪）。
+  素材不复制文件，直接引用原作的 key；成片 / 封面存 key（`FileStorageService.keyOfStoredUrl`），出 wire 现签。
+- 可见性：在架（active）且（官方，或本人的）。列表 = 在架官方 + 本人在架的，新 → 旧最多 100 条，每条带 `mine`；
+  查单条看不到 → 404 `VIDEO_STUDIO_TEMPLATE_NOT_FOUND`。
+- 下架（`DELETE`，软删为 withdrawn，回 204）：本人的本人可删；官方的本人或任一运营可撤回；其它一律 404（不暴露存在与否）。
+- **做同款的归属闸**：生成 / 优化请求带 `templateId` 时模板必须可见（否则 404 `VIDEO_STUDIO_TEMPLATE_NOT_FOUND`）；每个素材
+  key 要么是本人上传的同类素材（原规则），要么是**这个**模板的素材且类型一致（模板里的图不能当音频用）；其它一律 400
+  `VIDEO_STUDIO_ASSET_INVALID`。任务 `variant_config` 记 `template_id`，成功建出任务时模板 `use_count + 1`
+  （单条 UPDATE 自增，与建任务同一事务）。计费与普通生成完全一样，智能优化照常可选。
+
+**出 wire（`VideoStudioJob`）。** 状态 `queued` → queued、`submitting` / `generating` → running、`succeeded`、`failed`；
+进度文案与 `MaterialVideoJobService.stageLabel` 同一套；`inputs` 从 `variant_config` 里的 key 出 wire 时现签（库里不存 URL）；
+成片 / 封面经 `CdnUrlSigner.maybeSign`；`credits = creditsHeld`（进行中 = 冻结，成功 = 扣除，失败 = 已退回）；
+宽高按合同查；`modelName = providerUsed ?? modelUsed`；失败原因只在 failed 时给；`originalPrompt` / `templateId` 来自
+`variant_config`（没优化 / 不是做同款为 null）；时间是 ISO 8601。
+列表新 → 旧最多 100 条；查单条不是本人或不是本区 → 404。所有 `T | null` 字段出 wire 为显式 null
+（包括计价表 `perSecond` 里未定价的格子：那两个 Map 字段单独标了 content = ALWAYS，全局 non_null 吞不掉）。
+
+**错误码表**
+
+| code | HTTP | 场景 |
+|---|---|---|
+| `VIDEO_STUDIO_MODEL_UNSUPPORTED` | 400 | 所选端点不在本区模型列表里；合成的默认项却带了 `endpointId`；省略 `endpointId` 但列表里没有默认项 |
+| `VIDEO_STUDIO_MODE_INVALID` | 400 | 模式不是四种之一 |
+| `VIDEO_STUDIO_PROMPT_REQUIRED` | 400 | 提示词去空白后为空 |
+| `VIDEO_STUDIO_PROMPT_TOO_LONG` | 400 | 超过 7000 个字符 |
+| `VIDEO_STUDIO_SPEC_INVALID` | 400 | 清晰度 / 比例不在合同内，时长缺失或越界，种子越界 |
+| `VIDEO_STUDIO_INPUT_INVALID` | 400 | 素材与模式不匹配（缺首帧、文生视频带了素材、超数量、无视觉素材、重复、音频合计超 15 秒…） |
+| `VIDEO_STUDIO_ASSET_INVALID` | 400 | key 不是本人在本区上传的、类型对不上、含 `..`；参考音频读不出来 |
+| `VIDEO_STUDIO_FILE_EMPTY` / `VIDEO_STUDIO_FILE_TOO_LARGE` / `VIDEO_STUDIO_FORMAT_UNSUPPORTED` | 400 | 上传：空文件 / 超大小 / 按字节判不是允许的格式（或 mediaType 不对） |
+| `VIDEO_STUDIO_MEDIA_UNREADABLE` | 400 | 上传：ffprobe 读不出，或视频没画面、音频没声音 |
+| `VIDEO_STUDIO_AUDIO_DURATION_INVALID` | 400 | 上传：单段音频不在 2–15 秒 |
+| `VIDEO_STUDIO_JOB_NOT_FOUND` | 404 | 查任务：不存在 / 不是本人 / 不是本区 |
+| `VIDEO_STUDIO_SUBMIT_FAILED` | 500 | 任务受理后读不回落库行（不应发生） |
+| `VIDEO_STUDIO_PRICE_NOT_CONFIGURED` | 503 | 所选模式 × 清晰度没定价（配置空着、模型也没每秒价）；或库里的计价配置读不出来。文案指向后台「引擎定价 → 视频生成」 |
+| `VIDEO_STUDIO_PRICING_INVALID` | 400 | 后台保存定价：格子不在 1..100000、加价 / 免费张数 / 优化单价越界或缺、模式或清晰度不认识 |
+| `VIDEO_STUDIO_REQUEST_ID_INVALID` | 400 | 智能优化的 clientRequestId 不是 8–128 个可见 ASCII |
+| `VIDEO_STUDIO_OPTIMIZATION_NOT_FOUND` | 404 | 查优化记录：不存在 / 不是本人 |
+| `VIDEO_STUDIO_OPTIMIZATION_INVALID` | 400 | 生成时带的 optimizationId 不是本人的或还没成功 |
+| `VIDEO_STUDIO_TEMPLATE_NOT_FOUND` | 404 | 模板不存在 / 已下架 / 不是官方也不是本人的（查询、下架、做同款时带的 templateId） |
+| `VIDEO_STUDIO_TEMPLATE_FORBIDDEN` | 403 | 不是运营却要发布官方模板 |
+| `VIDEO_STUDIO_TEMPLATE_INVALID` | 400 | 存模板：任务不是本人的 / 不是本区的 / 没成功；标题或说明长度不对 |
+| `VIDEO_STUDIO_OPTIMIZATION_REJECTED` / `VIDEO_STUDIO_OPTIMIZATION_TIMEOUT` / `VIDEO_STUDIO_OPTIMIZATION_FAILED` | —（落在优化记录上） | 厂商 4xx（带原话）/ 重试预算用完 / 2xx 但没有优化结果；已退回冻结 |
+| `VIDEO_MODE_UNSUPPORTED` | 400 | 非聚算协议收到原生参数；`video-studio` 以外的分区带了原生规格；`ipstudio` / `video-studio` / `drama` 以外的分区带了首帧 key |
+| `VIDEO_REF_UNREADABLE` / `VIDEO_REF_TOO_LARGE` / `VIDEO_REF_FORMAT_UNSUPPORTED` / `VIDEO_REF_UPLOAD_FAILED` | —（落在任务上） | worker 把素材交给厂商前后失败；已退回冻结 |
+| `VIDEO_SUBMIT_FAILED` | —（落在任务上） | 创建被拒：4xx 带厂商原话，5xx 只给状态码；已退回冻结 |
+| 复用 | 503 `VIDEO_NOT_CONFIGURED`（一个可用模型都没有）/ `ENDPOINT_NOT_ALLOWED`、402 `PAYMENT_REQUIRED`、402 `STORAGE_QUOTA_EXCEEDED`、400 `VIDEO_PRICE_OVERFLOW` |
+
 ```
 packages/types/src/*.ts              ← 唯一前端真值源
 apps/web-*/src/api/*.ts              ← 调用契约（USE_MOCK 切换 mocks/ vs apiFetch）

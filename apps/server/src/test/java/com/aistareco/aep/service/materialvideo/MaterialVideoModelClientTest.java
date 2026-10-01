@@ -144,7 +144,7 @@ class MaterialVideoModelClientTest {
     void jusuan_protocol_builds_controlled_768p_request() {
         MaterialVideoModelClient client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
         var body = client.buildSubmitBody("jusuan-media", "minimax-h3",
-                "雨夜街道上的电影感推镜", 5, "9:16");
+                "雨夜街道上的电影感推镜", 5, "9:16", VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE);
         assertEquals("minimax-h3", body.get("model"));
         assertEquals("雨夜街道上的电影感推镜", body.get("prompt"));
         assertEquals("768p", body.get("resolutionTier"));
@@ -283,7 +283,9 @@ class MaterialVideoModelClientTest {
     void jusuanBodyCarriesFirstFrameAsset() {
         MaterialVideoModelClient client = new MaterialVideoModelClient(
                 null, new MaterialVideoProperties(), null, null, null);
-        var body = client.buildSubmitBody("jusuan-media", "minimax-h3", "让她眨眼", 8, "9:16", "as_123");
+        var body = client.buildSubmitBody("jusuan-media", "minimax-h3", "让她眨眼", 8, "9:16",
+                VideoGenSpec.firstFrameOnly("ipstudio_gen/u1/a.png"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameAsset("as_123"));
         assertEquals("i2v", body.get("generationMode"));
         assertEquals("as_123", body.get("input_image_asset_id"));
         assertEquals(8, body.get("seconds"));
@@ -294,7 +296,8 @@ class MaterialVideoModelClientTest {
     void jusuanBodyStaysTextToVideoWithoutReference() {
         MaterialVideoModelClient client = new MaterialVideoModelClient(
                 null, new MaterialVideoProperties(), null, null, null);
-        var body = client.buildSubmitBody("jusuan-media", "minimax-h3", "雨夜街道", 5, "9:16", null);
+        var body = client.buildSubmitBody("jusuan-media", "minimax-h3", "雨夜街道", 5, "9:16",
+                VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE);
         assertEquals("t2v", body.get("generationMode"));
         assertFalse(body.containsKey("input_image_asset_id"));
     }
@@ -315,15 +318,15 @@ class MaterialVideoModelClientTest {
         // 4xx 说的是「我们请求哪儿不对」—— 抹掉它用户就只剩一句「请稍后重试」，而重试永远不会好
         assertEquals("参考图被上游拒收：model does not accept input assets",
                 MaterialVideoModelClient.uploadFailureMessage(
-                        400, "{\"error\":{\"message\":\"model does not accept input assets\"}}"));
+                        "参考图", 400, "{\"error\":{\"message\":\"model does not accept input assets\"}}"));
         assertEquals("参考图被上游拒收：unsupported image format",
-                MaterialVideoModelClient.uploadFailureMessage(415, "{\"message\":\"unsupported image format\"}"));
+                MaterialVideoModelClient.uploadFailureMessage("参考图", 415, "{\"message\":\"unsupported image format\"}"));
         // 5xx 是厂商自己的问题，用户做不了什么，细节留日志
         assertEquals("参考图上传失败（上游 502），请稍后重试",
-                MaterialVideoModelClient.uploadFailureMessage(502, "{\"message\":\"bad gateway\"}"));
+                MaterialVideoModelClient.uploadFailureMessage("参考图", 502, "{\"message\":\"bad gateway\"}"));
         // 网关的 HTML 错误页不要糊到界面上
         assertEquals("参考图被上游拒收（404）",
-                MaterialVideoModelClient.uploadFailureMessage(404, "<html><body>404 Not Found</body></html>"));
+                MaterialVideoModelClient.uploadFailureMessage("参考图", 404, "<html><body>404 Not Found</body></html>"));
     }
 
     @Test

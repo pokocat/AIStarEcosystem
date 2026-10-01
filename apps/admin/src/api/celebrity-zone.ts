@@ -12,6 +12,7 @@ import type {
   CelebrityTemplate,
   CelebrityZoneOverview,
 } from "@/types/celebrity-zone";
+import type { VideoStudioPricingConfig } from "@/types/video-studio";
 import { apiFetch, USE_MOCK, mockDelay, buildQuery } from "./_client";
 import {
   ADMIN_CELEBRITY_PROJECTS,
@@ -189,6 +190,18 @@ export async function replaceActionPricing(
   body: Record<string, ActionPricing>,
 ): Promise<Record<string, ActionPricing>> {
   return apiFetch("/admin/celebrity/action-pricing", { method: "PUT", body });
+}
+
+// ── v0.199：视频生成（AI 创作）定价（PlatformConfig key=celebrity.video-studio-pricing） ──
+
+/** GET /admin/celebrity/video-studio-pricing */
+export async function getVideoStudioPricing(): Promise<VideoStudioPricingConfig> {
+  return apiFetch("/admin/celebrity/video-studio-pricing");
+}
+
+/** PUT /admin/celebrity/video-studio-pricing（整份替换） */
+export async function replaceVideoStudioPricing(body: VideoStudioPricingConfig): Promise<VideoStudioPricingConfig> {
+  return apiFetch("/admin/celebrity/video-studio-pricing", { method: "PUT", body });
 }
 
 // ── v0.34+：明星档案 / 模板的图片上传（multipart） ─────────────────────────

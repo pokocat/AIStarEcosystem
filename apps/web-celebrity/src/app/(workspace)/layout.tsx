@@ -10,6 +10,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Clapperboard,
   Coins,
   Flame,
   FlaskConical,
@@ -113,6 +114,13 @@ function buildGroups(pathname: string, activeJobs: number, inflightPublishJobs: 
       ],
     },
     {
+      // v0.199：视频模型原生能力直接开放（四种生成模式），不绑模板 / 脚本 / 商品。docs/video-studio-plan.md
+      title: "AI 创作",
+      items: [
+        { icon: Clapperboard, label: "视频生成", href: "/studio/video", selected: pathname === "/studio/video" },
+      ],
+    },
+    {
       title: "制作",
       items: [
         { icon: Megaphone, label: "我的项目", href: "/projects", selected: isExact("/projects") },
@@ -205,6 +213,9 @@ function CrumbsFromPathname(pathname: string): string[] {
   if (pathname === "/material/radar") return ["素材运营", "爆款雷达"];
   if (pathname === "/material/agent") return ["素材运营", "智能体训练"];
   if (pathname === "/material/loop") return ["素材运营", "效果回流"];
+
+  // AI 创作
+  if (pathname === "/studio/video") return ["AI 创作", "视频生成"];
 
   return ["工作台"];
 }
@@ -477,6 +488,11 @@ function Shell({ children }: { children: React.ReactNode }) {
       style={{
         display: "grid",
         gridTemplateColumns: "220px 1fr",
+        // 行高必须钉死在这一屏。不写的话隐式行按内容撑：侧栏条目一多（现在约 1100px），
+        // 整行被撑得比屏幕还高，右边内容区跟着变高、底部被 main 的 overflow:hidden 裁掉 ——
+        // 900px 高的笔记本上每一页最底下一截都滚不到（v0.199 视频生成页的「生成」按钮就被裁了）。
+        // 钉住之后侧栏自己那层 overflowY:auto 才真正生效。
+        gridTemplateRows: "minmax(0, 1fr)",
         height: "100vh",
         background: "var(--bg-0)",
         color: "var(--fg-0)",

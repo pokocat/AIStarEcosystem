@@ -11,6 +11,7 @@ import com.aistareco.aep.service.CelebrityActionPricingService;
 import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.ProductService;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
+import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -57,6 +58,21 @@ public class MaterialVideoJobService {
      * 画布上还没有形象的时候就想让一张图动起来 —— 走的是这条通用视频链。
      */
     public static final String APP_IPSTUDIO = "ipstudio";
+    /**
+     * 明星带货工作台「AI 创作 → 视频生成」（v0.199，docs/video-studio-plan.md）：
+     * 把 MiniMax H3 的四种原生模式原样开放。只有这个分区的任务可以带原生规格（见 {@link #requireInputsAllowedIn}）。
+     */
+    public static final String APP_VIDEO_STUDIO = "video-studio";
+
+    /** payload 里记账文案的键：worker 扣 / 退积分时用它写账本，与冻结那一笔同一个说法。 */
+    static final String PAYLOAD_CREDIT_LABEL = "credit_label";
+    /** 调用方没传 credit_label 时的账本文案（带货素材运营线的历史说法）。 */
+    static final String DEFAULT_CREDIT_LABEL = "带货视频生成";
+    /**
+     * payload 里「单价由调用方按自己的规则算好」的标记（item 带了 {@code credit_cost}：视频生成区按清晰度 /
+     * 参考图张数、短剧按自己的单价）。管理端对账恢复据此沿用冻结价，不拿端点单价 × 秒数重算。
+     */
+    static final String PAYLOAD_CALLER_PRICED = "caller_priced";
 
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
@@ -115,7 +131,7 @@ public class MaterialVideoJobService {
     private MaterialVideoModelsDto.VideoModelOptionDto toModelOption(
             AiModelEndpoint endpoint, com.aistareco.aep.model.AiAppEndpointCandidate candidate, boolean isDefault) {
         long cost = candidate != null && candidate.getCreditCostOverride() != null
-                ? Math.max(0L, candidate.getCreditCostOverride()) : videoUnitCost();
+                ? Math.max(0L, candidate.getCreditCostOverride()) : defaultUnitCost();
         MaterialVideoModelClient.DurationBounds bounds =
                 MaterialVideoModelClient.intersect(modelClient.protocolDurationBounds(endpoint), candidate);
         return new MaterialVideoModelsDto.VideoModelOptionDto(
@@ -174,6 +190,7 @@ public class MaterialVideoJobService {
         record PlannedItem(JsonNode item, long unit) {}
         List<PlannedItem> planned = new ArrayList<>();
         for (JsonNode item : items) {
+            requireInputsAllowedIn(normalizeApp(app), item == null ? null : item.get("variant_config"));
             String endpointId = endpointIdOf(item);
             int durationSec = item.path("duration_sec").asInt(0);
             modelClient.validateRequest(endpointId, durationSec);
@@ -186,7 +203,7 @@ public class MaterialVideoJobService {
             MaterialVideoJob job = buildJob(p.item(), userId, app);
             if (billable && p.unit() > 0) {
                 // 余额不足 → CreditService 抛 402（PAYMENT_REQUIRED），整批回滚（同事务）。
-                String label = orDefault(text(p.item(), "credit_label"), "带货视频生成");
+                String label = orDefault(text(p.item(), PAYLOAD_CREDIT_LABEL), DEFAULT_CREDIT_LABEL);
                 creditService.hold(userId, p.unit(), CREDIT_REF_TYPE, job.getId(),
                         label + " · " + safe(job.getName(), "视频"));
                 job.setCreditsHeld(p.unit());
@@ -254,6 +271,32 @@ public class MaterialVideoJobService {
         return app != null && !app.isBlank() ? app : APP_CELEBRITY;
     }
 
+    /**
+     * 一个分区的任务能在 variant_config 里带哪些生成输入（worker 会把它们原样交给厂商）。
+     *
+     * <ul>
+     *   <li>原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只属于视频生成区：只有那里的计价
+     *       覆盖得到清晰度与参考图张数，也只有那里在提交前校验过每个 key 的归属。</li>
+     *   <li>首帧参考图 key 只许三个分区带：画布（提交前过 {@code requireOwnedAssetKey}）、视频生成区，和短剧 ——
+     *       短剧的 variant_config 全部由服务端逐字段组装（{@code DramaRenderService} / 短剧画布），首帧 key 只在
+     *       确认属于本人之后才写进去（2026-09-30 首帧热修：{@code DramaReferenceAssembler.requireOwnedFrameKey}）。</li>
+     * </ul>
+     * 带货（素材运营）的 variant_config 直接来自客户端（HTTP 入口原样透传），不挡住就等于让任何人带着别人的 key、
+     * 按带货单价开出原生能力。<b>新增分区要放行首帧之前，先确认它的 variant_config 不透传客户端。</b>全部在冻结积分之前判。
+     */
+    static void requireInputsAllowedIn(String app, JsonNode variantConfig) {
+        VideoGenSpec spec = VideoGenSpec.fromVariantConfig(variantConfig);
+        if (!APP_VIDEO_STUDIO.equals(app) && spec.hasNativeOptions()) {
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "这里不支持指定生成模式、清晰度、尾帧或参考素材");
+        }
+        if (spec.firstFrameKey() != null && (app == null || !FIRST_FRAME_KEY_APPS.contains(app))) {  // Set.of 不收 null
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "这里不支持首帧参考图");
+        }
+    }
+
+    /** 允许在 variant_config 里带首帧 key 的分区（见 {@link #requireInputsAllowedIn}）。 */
+    private static final java.util.Set<String> FIRST_FRAME_KEY_APPS = java.util.Set.of(APP_IPSTUDIO, APP_VIDEO_STUDIO, APP_DRAMA);
+
     /** 行的实际分区：老数据 app 为 null（回填前）时按 kind 前缀推断，读路径不漏也不串。 */
     static String appOf(MaterialVideoJob job) {
         if (job.getApp() != null && !job.getApp().isBlank()) return job.getApp();
@@ -282,6 +325,11 @@ public class MaterialVideoJobService {
         if (vc != null && vc.isObject()) payload.set("variant_config", vc);
         payload.put("cover_color", pickColor(id));
         payload.put("created_at", now.toString());
+        // 记账文案随任务存下来：worker 扣 / 退积分时读它，与上面冻结那一笔同一个说法（toCard 不外露）。
+        String creditLabel = text(item, PAYLOAD_CREDIT_LABEL);
+        if (creditLabel != null && !creditLabel.isBlank()) payload.put(PAYLOAD_CREDIT_LABEL, creditLabel);
+        // 与 itemUnitCost 同一个判定：item.credit_cost ≥ 0 就是调用方定的价（HTTP 入口已剥掉这个字段）
+        if (item.path("credit_cost").asLong(-1L) >= 0) payload.put(PAYLOAD_CALLER_PRICED, true);
 
         return MaterialVideoJob.builder()
                 .id(id)
@@ -314,6 +362,9 @@ public class MaterialVideoJobService {
         } catch (Exception e) {
             card = om.createObjectNode();
         }
+        // 账本文案与「调用方定价」标记都是给 worker / 对账用的内部字段，不属于 MaterialVideo 契约。
+        card.remove(PAYLOAD_CREDIT_LABEL);
+        card.remove(PAYLOAD_CALLER_PRICED);
         card.put("id", job.getId());
         card.put("script_id", nz(job.getScriptId()));
         if (job.getProductId() != null) card.put("product_id", job.getProductId());
@@ -366,7 +417,8 @@ public class MaterialVideoJobService {
         };
     }
 
-    private static String stageLabel(String jobStatus) {
+    /** 进度文案（已入队 / 提交生成请求 / AI 生成中 / 已完成 / 生成失败）。视频生成区的任务卡用同一套。 */
+    public static String stageLabel(String jobStatus) {
         if (jobStatus == null) return "处理中";
         return switch (jobStatus) {
             case "queued" -> "已入队";
@@ -384,7 +436,7 @@ public class MaterialVideoJobService {
         if (override >= 0) return override;
         Long modelOverride = modelClient.resolveCreditCostOverride(endpointId, durationSec);
         if (modelOverride != null) return modelOverride;
-        return videoUnitCost();
+        return defaultUnitCost();
     }
 
     private static String endpointIdOf(JsonNode item) {
@@ -392,7 +444,12 @@ public class MaterialVideoJobService {
         return text(vc, "endpoint_id");
     }
 
-    private long videoUnitCost() {
+    /**
+     * 带货线每条视频的默认单价（后台「动作单价」material.video-generate，没配 = 30）。
+     * 候选没配 override、或端点不按秒计费时就是这个价；视频生成区的「每条固定价」报价也读它，
+     * 报价与冻结同源。
+     */
+    public long defaultUnitCost() {
         Long p = actionPricing.creditPriceOf(CelebrityActionPricingService.ACTION_VIDEO_GENERATE);
         return p != null && p > 0 ? p : VIDEO_UNIT_COST_DEFAULT;
     }

@@ -4,6 +4,8 @@ const ALLOWED_WORKSPACE_PREFIXES = [
   "/dashboard",
   "/market",
   "/generate",
+  // v0.199「AI 创作 → 视频生成」。漏了它，没登录时点进 /studio/video，登录完会被送回首页。
+  "/studio",
   "/star",
   "/projects",
   "/library",

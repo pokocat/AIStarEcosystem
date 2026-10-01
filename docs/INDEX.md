@@ -47,6 +47,7 @@
 | [`docs/digital-business-card-plan.md`](digital-business-card-plan.md) | **AI 数字名片（`apps/web-aiavatar` 下 `/card` 域）方案真源** | 见客户递一条链接就把人说清楚。一期只做门面（扫码即看 / 形象三档 / 存通讯录），交换与名片夹挂二期。§3 不发新产品码（`/api/v1/**` 兜底到 aiavatar）、§5 形象走 `dapDisplayRef` 引用不拷贝、§6 与 dap / IP 工作台的职责边界、§8 视频层叠三方案与交付清单、§9 需新增项（last-reviewed 2026-09-07） |
 | [`docs/ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) | **IP 工作台通用化提案（v0.153 已落地）** | 形象卡五字段（outfit/pose/expression/details/props）在服务端只是按序拼成一串文本，拆分对出图无增益；改为「一个提示词框 + 内置模板库」，五层一致性锁定与计费纪律不动，零迁移（老画布读取回落）。文末有落地记录（last-reviewed 2026-09-07） |
 | [`docs/aiavatar-asset-hub-redesign.md`](aiavatar-asset-hub-redesign.md) | AiAvatar 平台（**中枢重构真源**） | 数字资产升格为生态资产中枢的产品 + 前端重构设计：四动词模型（注册/引用/回流/授权）+ 档案卡 + 两条铁律（不阻塞下游 / 联邦不集中）+ 新 IA 五路由 + /studio 双轨迁移 + P1-P4 分期；P1（真路由读界面）已落地（last-reviewed 2026-08-29） |
+| [`docs/video-studio-plan.md`](video-studio-plan.md) | **视频生成区设计真源**（`apps/web-celebrity` `/studio/video`，v0.199） | 把 MiniMax H3 四种原生模式（文生 / 首帧 / 首尾帧 / 全能参考）原样搬进带货工作台，不做产品化封装。§2 厂商合同（读自 docs.jusuanhub.com + Portal「API 接入」，含 1:1 用 `square` 未实测）、§3 计价（我们自己定、后台按模式 × 清晰度配每秒价，没定价不能提交）、§4 接口与错误码、§5 复用通用视频链（新分区 `video-studio`，`VideoGenSpec` 一处解析）、§8 没做的、§9 智能优化（可选、默认勾上，后台任务 + 同键重试）、§10 模板 / 做同款（官方模板只有运营能发）、§11 后台定价页签、§12 V37 迁移（last-reviewed 2026-10-01） |
 | [`docs/clip-avatar-video-plan.md`](clip-avatar-video-plan.md) | **`clip` 口播视频线**（军师小程序分包） | v0.135：本人素材单次直传、多数字人、逐句字幕与总装；最终音轨两遍归一并为 AAC 峰值回弹留余量，真实文件继续过严格质量门（last-reviewed 2026-08-18）。 |
 
 不动产品规格的方向时不必读 §3 ~ §7。

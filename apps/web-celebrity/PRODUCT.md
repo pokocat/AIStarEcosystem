@@ -67,6 +67,7 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 | `/star/[starId]/apply` | 详情 | 授权申请表单（定价档位选择） |
 | `/generate` | 工作台 | **生成中心**（v0.132：聚合三种生成方式——脚本带货视频（主推）/ 模板混剪 / 明星形象生成——+ 真实任务合并区；替代旧「快速生成」） |
 | `/generate/star` | 工作台 | 明星形象生成入口列表（**演示**，仅 USE_MOCK；live 显示「能力建设中」） |
+| `/studio/video` | AI 创作 | **视频生成**（v0.199）：把视频模型的原生模式原样开放，当前对标 MiniMax H3 四种 —— 文生视频 / 首帧生视频 / 首尾帧生视频 / 全能参考（最多 9 图、1 视频、3 音频）。清晰度 768p/544p、六种画面比例、5–15 秒、随机种子；价格是我们自己定的，运营在后台「引擎定价 → 视频生成」按模式 × 清晰度配每秒价，报价由服务端下发，没定价的组合不能提交；提交冻结、成功扣、失败退。**智能优化**（可选，默认勾上）：先把提示词交给模型改写，用户看过、能改，再决定用哪一版生成，优化单独计价（后台配，0 = 不收费）。**模板 / 做同款**：成功的作品可以存为模板（普通用户只有自己看得到，运营可以发布成所有人可见的官方模板），做同款把模式、提示词、规格、种子、原素材一起填进表单，素材可逐个换。右侧两个页签：本区自己的生成记录（与脚本视频 / 混剪 / 短剧不串）、模板。不做产品化封装，设计真源 [`docs/video-studio-plan.md`](../../docs/video-studio-plan.md) |
 | `/star/[starId]/generate` | 详情 | 生成工作流（模板 / 盲盒选择 → AI 生成视频；**v0.132：live 拦截为「能力建设中」**——真实引擎未接入前不再真扣积分假出片，演示仅 USE_MOCK） |
 | `/projects` | 制作 | 我的项目（多项目管理） |
 | `/projects/[projectId]` | 制作 | 项目详情（视频管理 / 状态推进） |
@@ -89,9 +90,14 @@ route group `(workspace)` 不出现在 URL；公开路径：`/`（landing）、`
 
 **Sidebar 分组**（[`src/app/(workspace)/layout.tsx`](src/app/(workspace)/layout.tsx) 第 37-63 行）：
 
-1. **工作台** — `/dashboard` / `/market` / `/cast`
-2. **制作** — `/projects` / `/library` / `/products` / `/mixcut`
-3. **洞察** — `/data`
+1. **工作台** — `/dashboard` / `/market` / `/generate`
+2. **AI 创作**（v0.199）— `/studio/video`（视频生成）
+3. **制作** — `/projects` / `/library` / `/products` / `/mixcut` / `/distribution`
+4. **素材运营** — `/material/*`
+5. **洞察** — `/data` / `/wallet` / `/account`
+
+外壳网格的行高钉死在一屏（`gridTemplateRows: minmax(0, 1fr)`，v0.199）：侧栏条目比屏幕高时侧栏自己滚动，
+内容区始终能滚到底。此前隐式行按侧栏内容撑高，900px 高的屏幕上每页最底下一截被裁掉。
 
 详情页 `/star/<id>`、`/projects/<id>`、`/mixcut/*` 子路由不挂在 sidebar 父级（设计选择 —— 避免与 list 父级竞争高亮）。
 
