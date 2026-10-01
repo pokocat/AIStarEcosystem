@@ -75,7 +75,10 @@ public class IpPublishService {
 
     @Transactional
     public IpPublishResultDto publish(String userId, String projectId, IpPublishRequest req) {
-        IpProject project = projects.required(userId, projectId);
+        // 悲观写锁取项目：发布是「读状态→建资产→回写 status」的长事务，不加锁时并发发布
+        // （双击/重试）会各建一份 DapAvatar 产生孤儿形象、绕过下面的 409。加锁后第二次阻塞
+        // 到第一次提交、再读到 PUBLISHED 正确命中 409。
+        IpProject project = projects.requiredForUpdate(userId, projectId);
         if (IpProject.STATUS_PUBLISHED.equals(project.getStatus()) && project.getPublishedAvatarId() != null) {
             throw new BusinessException(HttpStatus.CONFLICT, "IP_PROJECT_ALREADY_PUBLISHED",
                     "该项目已发布为数字资产 " + project.getPublishedAvatarId() + "，暂不支持追加发布");
