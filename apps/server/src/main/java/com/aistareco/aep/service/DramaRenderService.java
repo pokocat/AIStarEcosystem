@@ -407,14 +407,18 @@ public class DramaRenderService {
         // 首尾帧能力：候选显式 supportsFirstLastFrame 最高优先；未配置（null，含 seeder 回填存量候选）
         // → C-1 协议关键字静态判定兜底（seedance/generic 支持、agnes 仅首帧），不一律 false（回归修正口径）。
         boolean flf = capFirstLastFrame != null ? capFirstLastFrame : supportsFirstLastFrame(chosenVideoEp);
+        // 2026-09-30 热修：聚算 H3 收首帧只认存储 key（worker 读 variant_config.first_frame_key 上传换 assetId），
+        // 提示词里的首帧 URL 标记在那条协议下会被剥掉。判定只在 MaterialVideoModelClient 一处。
+        boolean firstFrameByKey = videoJobs.firstFrameNeedsStorageKey(endpointId);
 
         // C-3：服务端参考装配（视频线）。shot_ref 时服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；
         // 本镜末帧 → 同场下一镜开场首帧），无 shot_ref 时退回显式 frame_url/last_frame_url。
         // clip 线只用首/末帧两槽；maxRefImages=0 明确表示当前适配仅开放 t2v，首帧也不得误报已送达。
+        // 首帧只认 key 的协议下：派生本人的 key（不是本人的 → 400 DRAMA_FRAME_NOT_OWNED，此时还没 hold）。
         DramaReferenceAssembler.ClipAssembly assembled = assembler.assembleClip(body, userId,
                 new DramaReferenceAssembler.Capability(capMaxRefImages != null
                         ? capMaxRefImages : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES, flf,
-                        capSubjectReference != null ? capSubjectReference : false));
+                        capSubjectReference != null ? capSubjectReference : false, firstFrameByKey));
         String frameUrl = assembled.firstFrameUrl();
         String lastFrameUrl = assembled.lastFrameUrl();
 
@@ -447,6 +451,9 @@ public class DramaRenderService {
         // D-11：指定的候选端点随 item 透传到 worker（MaterialVideoWorker → MaterialVideoModelClient.pickEndpoint）；
         // 缺省时不写此键 → worker 回落默认端点（celebrity 素材线默认路径完全不变）。
         if (endpointId != null && !endpointId.isBlank()) vc.put("endpoint_id", endpointId);
+        // 首帧存储 key（与 IpRunService 同一个键、同一层）：worker 交给聚算上传换 assetId 走 i2v；
+        // 上传失败抛 VIDEO_REF_UPLOAD_FAILED，不退回文生视频。提示词里的首帧标记照留（seedance 等协议靠它）。
+        if (assembled.firstFrameKey() != null) vc.put("first_frame_key", assembled.firstFrameKey());
         ObjectNode submit = om.createObjectNode();
         ArrayNode items = submit.putArray("items");
         items.add(item);

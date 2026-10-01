@@ -8,6 +8,9 @@ import com.aistareco.aep.repository.DramaCharacterRepository;
 import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaSceneRepository;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
+import com.aistareco.aep.repository.StorageAssetRepository;
+import com.aistareco.aep.model.StorageAsset;
+import com.aistareco.common.BusinessException;
 import com.aistareco.aep.service.DramaReferenceAssembler.AppliedRef;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.service.DramaReferenceAssembler.Candidate;
@@ -45,13 +48,22 @@ class DramaReferenceAssemblerTest {
     private final DramaCharacterRepository charRepo = mock(DramaCharacterRepository.class);
     private final DramaSceneRepository sceneRepo = mock(DramaSceneRepository.class);
     private final MaterialVideoJobRepository videoJobRepo = mock(MaterialVideoJobRepository.class);
+    private final StorageAssetRepository storageAssetRepo = mock(StorageAssetRepository.class);
     private final CdnUrlSigner signer = mock(CdnUrlSigner.class);
 
     private DramaReferenceAssembler assembler() {
-        // signKey：cdnKey → 稳定可抓取的 https URL；maybeSign：透传（不改）。
+        // signKey：cdnKey → 稳定可抓取的 https URL；maybeSign：透传（不改）；
+        // keyOf：只认 https://oss.test/ 域（模拟 CdnUrlSigner 只从我方 CDN 域反抽 key，砍掉 query）。
         when(signer.signKey(anyString())).thenAnswer(inv -> "https://oss.test/" + inv.getArgument(0));
         when(signer.maybeSign(anyString())).thenAnswer(inv -> inv.getArgument(0));
-        return new DramaReferenceAssembler(projectRepo, charRepo, sceneRepo, videoJobRepo, signer, om);
+        when(signer.keyOf(anyString())).thenAnswer(inv -> {
+            String u = inv.getArgument(0);
+            if (!u.startsWith("https://oss.test/")) return null;
+            String rest = u.substring("https://oss.test/".length());
+            int q = rest.indexOf('?');
+            return q >= 0 ? rest.substring(0, q) : rest;
+        });
+        return new DramaReferenceAssembler(projectRepo, charRepo, sceneRepo, videoJobRepo, storageAssetRepo, signer, om);
     }
 
     private Candidate c(String role, String url) {
@@ -392,5 +404,118 @@ class DramaReferenceAssemblerTest {
         // supportsFlf=true → 首尾帧都送达。
         var flf = assembler().assembleClip(shotRefBodyS2(true), "u1", new Capability(1, true, false));
         assertEquals(2, flf.appliedRefs().get("applied").asInt());
+        // 走 URL 的协议不派生 key、不查归属（非聚算行为不变）。
+        assertEquals(null, flf.firstFrameKey());
+        org.mockito.Mockito.verifyNoInteractions(storageAssetRepo);
+    }
+
+    // ── 2026-09-30 热修：聚算 H3 首帧只认存储 key（派生 + 归属 + 如实回报） ───────────
+
+    private static StorageAsset ledger(String owner, String key) {
+        return StorageAsset.builder().id("sa_" + key.hashCode()).app("drama").ownerUserId(owner)
+                .category("分镜首帧").cdnKey(key).bytes(10).build();
+    }
+
+    private ObjectNode clipBody(String frameUrl) {
+        ObjectNode body = om.createObjectNode();
+        body.put("frame_url", frameUrl);
+        return body;
+    }
+
+    @Test
+    void h3_own_frame_from_ledger_yields_ledger_key_even_when_url_carries_oss_prefix() {
+        // 台账记的是不带 OSS key-prefix 的 key，URL 里是带 media/ 的对象键 —— 两种都要对得上，用台账那份。
+        when(storageAssetRepo.findByAppAndOwnerUserIdAndCdnKeyIn(eq("drama"), eq("u1"), any()))
+                .thenAnswer(inv -> {
+                    java.util.Collection<String> keys = inv.getArgument(2);
+                    return keys.contains("drama/frames/f1.png") ? List.of(ledger("u1", "drama/frames/f1.png")) : List.of();
+                });
+        var asm = assembler().assembleClip(
+                clipBody("https://oss.test/media/drama/frames/f1.png?auth_key=1-2-3"), "u1",
+                new Capability(6, false, false, true));
+        assertEquals("drama/frames/f1.png", asm.firstFrameKey());
+        JsonNode first = asm.appliedRefs().get("items").get(0);
+        assertEquals("first_frame", first.get("role").asText());
+        assertTrue(first.get("applied").asBoolean());
+    }
+
+    @Test
+    void h3_own_last_frame_of_drama_job_counts_as_owned() {
+        // 承接上一镜末帧作首帧：末帧不进台账，只记在本人短剧任务行上（lastFrameCdnKey 带 OSS 前缀）。
+        when(storageAssetRepo.findByAppAndOwnerUserIdAndCdnKeyIn(any(), any(), any())).thenReturn(List.of());
+        MaterialVideoJob job = MaterialVideoJob.builder().id("mvj_1").ownerUserId("u1").app("drama")
+                .lastFrameCdnKey("media/material-videos/mvj_1/last-frame.png").build();
+        when(videoJobRepo.findScopedByLastFrameCdnKeyIn(eq("u1"), eq("drama"), any()))
+                .thenAnswer(inv -> {
+                    java.util.Collection<String> keys = inv.getArgument(2);
+                    return keys.contains("media/material-videos/mvj_1/last-frame.png") ? List.of(job) : List.of();
+                });
+        var asm = assembler().assembleClip(
+                clipBody("https://oss.test/media/material-videos/mvj_1/last-frame.png"), "u1",
+                new Capability(6, false, false, true));
+        assertEquals("media/material-videos/mvj_1/last-frame.png", asm.firstFrameKey());
+    }
+
+    @Test
+    void h3_frame_not_owned_throws_400_DRAMA_FRAME_NOT_OWNED() {
+        // 别人的 key：台账 / 任务行都查不到本人的记录 → 400（renderClip 里先于 hold）。
+        when(storageAssetRepo.findByAppAndOwnerUserIdAndCdnKeyIn(any(), any(), any())).thenReturn(List.of());
+        when(videoJobRepo.findScopedByLastFrameCdnKeyIn(any(), any(), any())).thenReturn(List.of());
+        BusinessException e = org.junit.jupiter.api.Assertions.assertThrows(BusinessException.class,
+                () -> assembler().assembleClip(clipBody("https://oss.test/media/drama/frames/victim.png"), "u1",
+                        new Capability(6, false, false, true)));
+        assertEquals("DRAMA_FRAME_NOT_OWNED", e.getCode());
+        assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, e.getStatus());
+    }
+
+    @Test
+    void h3_external_frame_reports_not_in_storage_and_no_key() {
+        // 外链派不出 key：保持原行为（不报错），但如实报首帧没送到，不许说「已送达」。
+        var asm = assembler().assembleClip(clipBody("https://img.vendor.example/f.png"), "u1",
+                new Capability(6, false, false, true));
+        assertEquals(null, asm.firstFrameKey());
+        JsonNode first = asm.appliedRefs().get("items").get(0);
+        assertFalse(first.get("applied").asBoolean());
+        assertEquals("not_in_storage", first.get("reason").asText());
+        assertEquals(0, asm.appliedRefs().get("applied").asInt());
+        org.mockito.Mockito.verifyNoInteractions(storageAssetRepo);
+    }
+
+    @Test
+    void h3_text_only_candidate_skips_key_derivation_and_keeps_model_no_image_input() {
+        // 后台把候选标成 maxRefImages=0（只开放文生视频）：不派生、不查归属、不因归属报错，照旧如实回报。
+        var asm = assembler().assembleClip(clipBody("https://oss.test/media/drama/frames/anyone.png"), "u1",
+                new Capability(0, false, false, true));
+        assertEquals(null, asm.firstFrameKey());
+        assertEquals("model_no_image_input", asm.appliedRefs().get("items").get(0).get("reason").asText());
+        org.mockito.Mockito.verifyNoInteractions(storageAssetRepo);
+    }
+
+    @Test
+    void ownedFrameKey_rejects_traversal_shapes_without_querying() {
+        DramaReferenceAssembler a = assembler();
+        assertEquals(null, a.ownedFrameKey("u1", "../../etc/passwd"));
+        assertEquals(null, a.ownedFrameKey("u1", "media/../drama/frames/x.png"));
+        assertEquals(null, a.ownedFrameKey("u1", "/abs/x.png"));
+        assertEquals(null, a.ownedFrameKey("u1", "a\\b.png"));
+        org.mockito.Mockito.verifyNoInteractions(storageAssetRepo);
+    }
+
+    @Test
+    void keySuffixes_strip_leading_segments_but_not_to_bare_filename() {
+        assertEquals(List.of("media/drama/frames/x.png", "drama/frames/x.png", "frames/x.png"),
+                DramaReferenceAssembler.keySuffixes("media/drama/frames/x.png"));
+        assertEquals(List.of("x.png"), DramaReferenceAssembler.keySuffixes("x.png"));
+    }
+
+    @Test
+    void classify_storage_key_mode_ignores_url_fetchability() {
+        // 聚算协议不用 URL：dev 相对路径但有 key → 送达；https 但没 key → not_in_storage。
+        assertTrue(DramaReferenceAssembler.classifyClipFrames("/cdn/f.png", null, true, false, true, "drama/frames/f.png")
+                .get(0).applied());
+        AppliedRef noKey = DramaReferenceAssembler.classifyClipFrames("https://oss.test/f.png", null, true, false, true, null)
+                .get(0);
+        assertFalse(noKey.applied());
+        assertEquals("not_in_storage", noKey.reason());
     }
 }
