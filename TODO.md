@@ -11,7 +11,7 @@
 
 ## 2026-09-30 · 视频生成区 v0.199 后续（真源 `docs/video-studio-plan.md` §8）
 
-- [ ] **线上用真实账号把视频生成区走一遍**（2026-10-02 已上线 `20261002052931-1f569079`，只差这一步）：用户在浏览器里登录 celebrity 和 admin 后，在后台把自己的用户 id 写进 `celebrity.video-studio.test-mock-user-ids`（测试 mock 只在发布分支 `release/v0199-combined` 上，见 `docs/video-studio-plan.md` §8.1 / §7），跑四种模式 + 智能优化 + 存为模板 / 做同款 + 发官方模板 / 撤回，核对积分，最后删配置。测试账号（18801931018）只有 269 积分，完整流程要 1,000–1,400：先补测试积分，或者只跑一两条。
+- [ ] **线上用真实账号把视频生成区走一遍**（2026-10-02 已上线 `20261002052931-1f569079`，只差这一步）：用户在浏览器里登录 celebrity 和 admin 后，在后台把自己的用户 id 写进 `celebrity.video-studio.test-mock-user-ids`（测试 mock 只在发布分支 `release/v0199-combined` 上，说明见该分支的 `docs/video-studio-plan.md` §8.1；本次核对结果见本分支 §7），跑四种模式 + 智能优化 + 存为模板 / 做同款 + 发官方模板 / 撤回，核对积分，最后删配置。测试账号（18801931018）只有 269 积分，完整流程要 1,000–1,400：先补测试积分，或者只跑一两条。
 - [ ] **main 与线上对齐**：线上跑的是发布分支 `release/v0199-combined`（#115 + #116 + #117 + #118 + 测试 mock）。按顺序合 #116 → #117（先把 base 改成 main）→ #118；合之前**不要从 main 发 server / web-drama / web-celebrity**，否则会把画布和视频生成区撤掉（V36 / V37 的表还在，只是代码没了）。#118 合进 main 时的冲突解法照发布分支上的那几个合并提交（`00df37ab` / `683af813`）。
 - [x] ~~**提示词智能优化没接**~~ **v0.199 二版完成**，2026-09-30：照厂商试用页做成可选、默认勾上。`POST / GET /api/me/celebrity/video-studio/prompt-optimizations[/{id}]`，新表 `video_studio_prompt_optimization`（V37，`UNIQUE(owner_user_id, client_request_id)`）；厂商同步最长约 10 分钟，所以做成后台任务（独立线程池 + 每 5 分钟回收卡住的记录），`Idempotency-Key` = `clientRequestId` = 我方记录 id，409 / 429 / 5xx 同键同正文重发。单价后台配（`promptOptimizationPerCall`，默认 0 = 不收费）。评审后补：状态迁移与积分结算同一事务、线程池拒绝时在新事务里失败并退款、同键并发先插行再冻结（见 docs/video-studio-plan.md §5.9）。
 - [ ] **视频生成区：智能优化的单价默认是 0（不收费）**：上线前运营要在后台「明星带货 → 引擎定价 → 视频生成」定一个价；厂商那边优化是单独计费的，不定价等于我们替用户付。
