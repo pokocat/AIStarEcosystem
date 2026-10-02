@@ -476,27 +476,51 @@ export function episodesPhrase(episodes: number[] | undefined): string | undefin
 
 // ── 批量出视频 ───────────────────────────────────────────────────────────────
 
+/** 选了但这次不发的原因。 */
+export type BatchVideoSkip = "empty" | "no-duration" | "too-short" | "too-long" | "running";
+
 export interface BatchVideoPlan {
   /** 这次真的会发出去的片段（按片段顺序）。 */
   eligible: CanvasSegment[];
   withFrame: number;
   withoutFrame: number;
-  /** 选了但这次跳过的（没写内容 / 没写时长 / 超过上限 / 正在生成）。 */
+  /** 选了但这次跳过的（没写内容 / 没写时长 / 比所选视频模型下限短 / 超过上限 / 正在生成）。 */
   skipped: number;
+  /** 跳过的按原因数。 */
+  skippedBy: Record<BatchVideoSkip, number>;
   cost: number;
 }
 
 export function batchVideoPlan(
   segments: CanvasSegment[],
   selected: ReadonlySet<string>,
-  opts: { maxSec: number; price: (durationSec: number) => number; isRunning: (segmentId: string) => boolean },
+  opts: { maxSec: number; minSec?: number; price: (durationSec: number) => number; isRunning: (segmentId: string) => boolean },
 ): BatchVideoPlan {
-  const plan: BatchVideoPlan = { eligible: [], withFrame: 0, withoutFrame: 0, skipped: 0, cost: 0 };
+  const plan: BatchVideoPlan = {
+    eligible: [],
+    withFrame: 0,
+    withoutFrame: 0,
+    skipped: 0,
+    skippedBy: { empty: 0, "no-duration": 0, "too-short": 0, "too-long": 0, running: 0 },
+    cost: 0,
+  };
+  const minSec = opts.minSec ?? 1;
   for (const s of segments) {
     if (!selected.has(s.id)) continue;
-    const ok = !!s.text.trim() && s.durationSec > 0 && s.durationSec <= opts.maxSec && !opts.isRunning(s.id);
-    if (!ok) {
+    const why: BatchVideoSkip | null = !s.text.trim()
+      ? "empty"
+      : s.durationSec <= 0
+        ? "no-duration"
+        : s.durationSec < minSec
+          ? "too-short"
+          : s.durationSec > opts.maxSec
+            ? "too-long"
+            : opts.isRunning(s.id)
+              ? "running"
+              : null;
+    if (why) {
       plan.skipped += 1;
+      plan.skippedBy[why] += 1;
       continue;
     }
     plan.eligible.push(s);
@@ -505,4 +529,17 @@ export function batchVideoPlan(
     plan.cost += opts.price(s.durationSec);
   }
   return plan;
+}
+
+/** 「2 个这次跳过：1 个只有不到 5 秒（这个视频模型一条至少 5 秒），1 个正在生成。」没跳过的返回 null。 */
+export function batchVideoSkipText(plan: BatchVideoPlan, limits: { minSec: number; maxSec: number }): string | null {
+  if (!plan.skipped) return null;
+  const by = plan.skippedBy;
+  const parts: string[] = [];
+  if (by["too-short"]) parts.push(`${by["too-short"]} 个不到 ${limits.minSec} 秒（这个视频模型一条至少 ${limits.minSec} 秒，把镜头写长一点或和相邻片段合并）`);
+  if (by["too-long"]) parts.push(`${by["too-long"]} 个超过 ${limits.maxSec} 秒（这个视频模型一条最长 ${limits.maxSec} 秒，拆短一点）`);
+  if (by["no-duration"]) parts.push(`${by["no-duration"]} 个没写镜头时长`);
+  if (by.empty) parts.push(`${by.empty} 个还没写内容`);
+  if (by.running) parts.push(`${by.running} 个正在生成`);
+  return `${plan.skipped} 个这次跳过：${parts.join("，")}。`;
 }

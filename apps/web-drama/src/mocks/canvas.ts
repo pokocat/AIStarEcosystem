@@ -63,7 +63,7 @@ export const MOCK_CANVAS_RENDER_MODELS: RenderModelsResponse = {
       endpointId: "mock-video-i2v",
       name: "首帧生视频",
       isDefault: true,
-      capability: { maxDurationSec: 10, maxRefImages: 1, supportsFirstLastFrame: true },
+      capability: { maxDurationSec: 10, minDurationSec: 5, maxRefImages: 1, supportsFirstLastFrame: true },
       creditCost: 6,
       billingUnit: "per_second",
     },
@@ -71,7 +71,7 @@ export const MOCK_CANVAS_RENDER_MODELS: RenderModelsResponse = {
       endpointId: "mock-video-t2v",
       name: "文字生视频（不看首帧）",
       isDefault: false,
-      capability: { maxDurationSec: 15, maxRefImages: 0 },
+      capability: { maxDurationSec: 15, minDurationSec: null, maxRefImages: 0 },
       creditCost: 4,
       billingUnit: "per_second",
     },
@@ -679,7 +679,7 @@ const SHOT_LINES = [
   (who: string, where: string) => `${where}。全景，${who} 站在窗边，外面下着雨。`,
 ];
 
-function demoStoryboard(doc: DramaCanvasDoc, no: number, maxSec: number) {
+function demoStoryboard(doc: DramaCanvasDoc, no: number, maxSec: number, minSec = 1) {
   const looks = doc.characters
     .map((c) => {
       const l = c.looks.find((x) => x.episodes.includes(no)) ?? c.looks[0];
@@ -690,7 +690,7 @@ function demoStoryboard(doc: DramaCanvasDoc, no: number, maxSec: number) {
     (s) => `@[${s.name}](scene:${s.id})`,
   );
   const count = no % 2 === 1 ? 3 : 4;
-  const segments = Array.from({ length: count }, (_, i) => {
+  const raw = Array.from({ length: count }, (_, i) => {
     let plan = SHOT_PLANS[(i + no) % SHOT_PLANS.length];
     const sum = plan.reduce((a, b) => a + b, 0);
     if (sum > maxSec) plan = plan.map((d) => Math.max(1, Math.floor((d * maxSec) / sum)));
@@ -699,7 +699,22 @@ function demoStoryboard(doc: DramaCanvasDoc, no: number, maxSec: number) {
     const lines = plan.map((d, j) => `（${d} 秒）${SHOT_LINES[(i + j) % SHOT_LINES.length](who, where)}`);
     return { text: lines.join("\n"), durationSec: plan.reduce((a, b) => a + b, 0) };
   });
-  return { episodeNo: no, segments, notes: ["演示模式：示例分镜脚本，不是 AI 写的。"] };
+  // 和服务端一样：比所选视频模型下限还短的片段并进相邻片段（合并后不超过上限、内容不改），并进不去的留着
+  const segments: { text: string; durationSec: number }[] = [];
+  let merged = 0;
+  for (const seg of raw) {
+    const prev = segments[segments.length - 1];
+    if (prev && (seg.durationSec < minSec || prev.durationSec < minSec) && prev.durationSec + seg.durationSec <= maxSec) {
+      prev.text = `${prev.text}\n${seg.text}`;
+      prev.durationSec += seg.durationSec;
+      merged += 1;
+    } else {
+      segments.push({ ...seg });
+    }
+  }
+  const notes = ["演示模式：示例分镜脚本，不是 AI 写的。"];
+  if (merged) notes.push(`有 ${merged} 个片段太短（这个视频模型一条至少 ${minSec} 秒），并进了相邻片段。`);
+  return { episodeNo: no, segments, notes };
 }
 
 // ── 出图：目标、提示词、参考图 ───────────────────────────────────────────────
@@ -1042,10 +1057,12 @@ export const mockCanvasServer = {
     const ep = row.doc.script.episodes.find((e) => e.no === body.episodeNo);
     if (!ep || !ep.text.trim()) throw err(400, "DRAMA_CANVAS_SCRIPT_EMPTY", `第 ${body.episodeNo} 集还没有剧本，先去剧本页写好`);
     const maxSec = Math.min(30, Math.max(4, Math.trunc(body.maxSegmentSec ?? 10)));
+    // 与服务端同：不带时缺省 4 秒，夹在 1–上限
+    const minSec = Math.min(maxSec, Math.max(1, Math.trunc(body.minSegmentSec ?? 4)));
     const fail = wantsFail(ep.text) ? DEMO_FAIL : undefined;
     const rr = addRun(id, body.clientRequestId, "storyboard", `storyboard:${body.episodeNo}`, PRICE.storyboard, {
       fail,
-      result: { storyboard: demoStoryboard(row.doc, body.episodeNo, maxSec) },
+      result: { storyboard: demoStoryboard(row.doc, body.episodeNo, maxSec, minSec) },
     });
     persist();
     return publicRun(rr);
@@ -1064,7 +1081,9 @@ export const mockCanvasServer = {
     const dur = Math.trunc(seg.durationSec);
     if (dur <= 0) throw err(400, "DRAMA_CANVAS_SEGMENT_DURATION_INVALID", "片段里还没写镜头时长，每一行开头写「（4 秒）」这样的时长");
     const max = model.capability.maxDurationSec ?? 10;
+    const min = model.capability.minDurationSec ?? 1;
     if (dur > max) throw err(400, "DRAMA_CANVAS_SEGMENT_TOO_LONG", `这个片段 ${dur} 秒，超过了这个视频模型单条最长 ${max} 秒`);
+    if (dur < min) throw err(400, "DRAMA_CANVAS_SEGMENT_TOO_SHORT", `这个片段只有 ${dur} 秒，这个视频模型一条至少 ${min} 秒`);
     const frameKey = body.useFirstFrame === false ? undefined : pickedKeyOf(seg.frame);
     if (frameKey) requireOwned([frameKey]);
     const sees = (model.capability.maxRefImages ?? 1) !== 0;

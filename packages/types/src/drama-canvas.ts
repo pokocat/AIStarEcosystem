@@ -496,6 +496,13 @@ export interface CanvasStoryboardRunBody extends CanvasRunBase {
   episodeNo: number;
   /** 单个片段的时长上限（秒）= 所选视频模型的 maxDurationSec；缺省 10。服务端夹在 4–30。 */
   maxSegmentSec?: number;
+  /**
+   * 单个片段的时长下限（秒）= 所选视频模型的 minDurationSec（GET /me/drama/render/models 的
+   * video[].capability.minDurationSec，如 H3 = 5）；模型没写明下限时前端不带，服务端用缺省（4）。
+   * 服务端夹在 1–maxSegmentSec 并写进提示词；模型还是切出了更短的片段时，装段时把它并进相邻片段
+   * （合并后不超过 maxSegmentSec，内容一字不改，notes 里说明）。
+   */
+  minSegmentSec?: number;
 }
 
 export interface CanvasVideoRunBody extends CanvasRunBase {

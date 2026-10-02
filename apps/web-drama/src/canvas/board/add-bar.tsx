@@ -160,7 +160,7 @@ export function AddCharacterDialog({
           className="cv-input"
           value={name}
           maxLength={20}
-          placeholder="角色名，比如：林微"
+          placeholder="角色名"
           aria-label="角色名"
           onChange={(e) => setName(e.target.value)}
         />

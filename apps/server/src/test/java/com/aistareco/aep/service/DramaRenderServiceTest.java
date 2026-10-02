@@ -125,7 +125,8 @@ class DramaRenderServiceTest {
                 mock(PromptService.class),
                 mock(DramaReferenceAssembler.class),
                 mock(StorageQuotaService.class),
-                om);
+                om,
+                mock(com.aistareco.aep.service.materialvideo.MaterialVideoModelClient.class));
     }
 
     @Test

@@ -54,9 +54,12 @@ import { SegmentTimeline } from "./segment-timeline";
 
 // ── 顶栏里的两样（桌面放顶栏，手机放页首）────────────────────────────────────
 
-/** 「每秒 6 积分，单条最长 10 秒」 */
+/** 「每秒 6 积分，一条 5–15 秒」/「每秒 6 积分，单条最长 10 秒」 */
 export function modelDetail(m: CanvasModelOption): string {
   const price = m.billingUnit === "per_second" ? `每秒 ${m.creditCost} 积分` : `每条 ${m.creditCost} 积分`;
+  const min = m.minDurationSec && m.minDurationSec > 1 ? m.minDurationSec : null;
+  if (min && m.maxDurationSec) return `${price}，一条 ${min}–${m.maxDurationSec} 秒`;
+  if (min) return `${price}，一条至少 ${min} 秒`;
   return m.maxDurationSec ? `${price}，单条最长 ${m.maxDurationSec} 秒` : price;
 }
 
@@ -359,12 +362,19 @@ export function EpisodeEditor({ no }: { no: number }) {
   const videoModel = pricing.videoModels.find((m) => m.endpointId === pricing.videoModelId);
   const rate = videoRateOf(videoModel, pricing.videoPrice(1));
   const maxSec = pricing.maxSegmentSec();
+  const minSec = pricing.minSegmentSec();
   const over = !!current && current.durationSec > maxSec;
+  const under = !!current && current.durationSec > 0 && current.durationSec < minSec;
   const noDuration = !!current && !!current.text.trim() && totalDuration(current.text) === 0;
   const uses = current ? segmentUses(doc, current.text) : [];
 
   return (
-    <div className="cve-editor" data-testid="cve-editor" data-episode={no}>
+    <div
+      className="cve-editor"
+      data-testid="cve-editor"
+      data-episode={no}
+      data-film={ep?.assembled || assembleRun.status === "failed" ? "" : undefined}
+    >
       <CanvasTopbarSlot slot="left">{crumb}</CanvasTopbarSlot>
       <CanvasTopbarSlot slot="right">
         <div className="cve-top-actions">
@@ -448,11 +458,11 @@ export function EpisodeEditor({ no }: { no: number }) {
                 <h2 className="cve-seg-title">片段 {segmentNo(index)}</h2>
                 {pricing.ready ? (
                   <PriceLine
-                    className={`cve-seg-price${over ? " is-over" : ""}`}
+                    className={`cve-seg-price${over || under ? " is-over" : ""}`}
                     parts={segmentPriceParts(rate, current.durationSec, pricing.videoPrice(current.durationSec, pricing.videoModelId))}
                   />
                 ) : (
-                  <span className={`cve-seg-price${over ? " is-over" : ""}`} data-pending="price">
+                  <span className={`cve-seg-price${over || under ? " is-over" : ""}`} data-pending="price">
                     本片段 {current.durationSec} 秒 · 价格读取中…
                   </span>
                 )}
@@ -475,6 +485,11 @@ export function EpisodeEditor({ no }: { no: number }) {
               {over && (
                 <div className="cve-warn is-danger" data-reason="too-long">
                   这个片段 {current.durationSec} 秒，超过当前视频模型的上限 {maxSec} 秒，拆成两个片段或换模型
+                </div>
+              )}
+              {under && (
+                <div className="cve-warn is-danger" data-reason="too-short">
+                  这个片段只有 {current.durationSec} 秒，当前视频模型一条至少 {minSec} 秒，把镜头写长一点，或者把它和相邻片段合并
                 </div>
               )}
               {noDuration && (

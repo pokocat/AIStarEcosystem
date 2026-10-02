@@ -10,6 +10,9 @@
 // 规矩（contract.ts）：只通过 update() 改文档；生成一律 useCanvasRuns().submit()；价格一律 useCanvasPricing()。
 // AI 覆盖已有内容时 core 的 merge 自动存一版修改记录；「通过」由这里（script-ops）先存一版再写 approvedAt。
 // 文档只读（别的页面改过，stale）时，所有编辑和生成都禁用。
+// 「写全部分集剧本」一集写完再写下一集（submitSequence awaitEach）：后一集的提示词要接上一集的结尾，而服务端
+// 只读已保存的文档 —— 同时发出去，每一集都看不到前一集（v0.198.1 线上实测；而且 AI Key 同时只许 2 个，第 3 个就 429）。
+// 进度记在模块里（按画布）：写的途中切到别的步骤再回来，按钮上照样是「正在写第 N 集」，不会再发起一批。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -58,6 +61,43 @@ import {
 } from "./script-ops";
 
 type ScriptStage = "setting" | "outline" | "episode";
+
+// ── 「写全部分集剧本」的进度（模块级，按画布记；页面卸载再挂上仍然看得到）───────────────
+
+interface WriteAllProgress {
+  /** 这一批要写的集号（按顺序）。 */
+  nos: number[];
+  /** 正在写第几个（从 0 数）；-1 = 还没开始发。 */
+  index: number;
+}
+
+const writeAllProgress = new Map<string, WriteAllProgress>();
+const writeAllListeners = new Set<() => void>();
+
+function setWriteAllProgress(canvasId: string, p: WriteAllProgress | null): void {
+  if (p) writeAllProgress.set(canvasId, p);
+  else writeAllProgress.delete(canvasId);
+  for (const l of [...writeAllListeners]) l();
+}
+
+function useWriteAllProgress(canvasId: string): WriteAllProgress | undefined {
+  return React.useSyncExternalStore(
+    (l) => {
+      writeAllListeners.add(l);
+      return () => {
+        writeAllListeners.delete(l);
+      };
+    },
+    () => writeAllProgress.get(canvasId),
+    () => undefined,
+  );
+}
+
+/** 测试用。 */
+export function __resetWriteAllProgressForTest(): void {
+  writeAllProgress.clear();
+  for (const l of [...writeAllListeners]) l();
+}
 
 /** 多于这么多集时，进页只展开第一集（几十集、每集几万字全展开会很长）。 */
 const EXPAND_ALL_UP_TO = 3;
@@ -227,16 +267,36 @@ export function ScriptPage() {
   // 正在提交的集不算「要写的」（刚点的那一集 POST 还没回来，文档里还没有运行引用）
   const toWrite = episodesToWrite(doc).filter((no) => !busy.has(`ep:${no}`) && !isSubmitting(RunTarget.scriptEpisode(no)));
   const canWriteAll = isIdea && outlineApproved;
-  const [batch, setBatch] = React.useState(false);
-  const batchRef = React.useRef(false);
+  const progress = useWriteAllProgress(canvasId);
+  const batch = !!progress;
+  /** 这一批里还没轮到的集（「写这一集」灰着，就地写「等前一集写完」）。 */
+  const waitingNos = React.useMemo(() => new Set(progress ? progress.nos.slice(Math.max(1, progress.index + 1)) : []), [progress]);
+  const writingNo = progress && progress.index >= 0 ? progress.nos[progress.index] : undefined;
+  /**
+   * 不在「写全部」里、却正在单独写的集（请求在提交，或运行在排队 / 生成）。这时不让点「写全部」：
+   * 那一集的结尾还没进文档，紧接着写的下一集就接不上它（Codex 评审 P2）。等它写完再点。
+   */
+  const writingSolo = batch
+    ? []
+    : s.episodes
+        .filter(
+          (e) =>
+            busy.has(`ep:${e.no}`) ||
+            isSubmitting(RunTarget.scriptEpisode(e.no)) ||
+            runView(runFor(RunTarget.scriptEpisode(e.no)), e.run).pending,
+        )
+        .map((e) => e.no);
+  const writingSoloRef = React.useRef(writingSolo);
+  writingSoloRef.current = writingSolo;
 
   /**
    * 写全部：整批交给 core 的 submitSequence（一进来整批都登记为提交中，后面那几集的「写这一集」随之禁用；
    * 每一集发出前 core 再核对一次，已经在写的跳过）。不在这里自己循环 submit —— 那样只锁当前那一集，
    * 后面的集还能被单独点一次，轮到它时再写一次 = 扣两份（Codex 复审 N3）。
+   * awaitEach：上一集写完、结果存进文档，再写下一集（见头注释）。
    */
   const writeAll = async () => {
-    if (batchRef.current) return;
+    if (writeAllProgress.has(canvasId) || writingSoloRef.current.length) return;
     const nos = episodesToWrite(getDoc()).filter(
       (no) => !busyRef.current.has(`ep:${no}`) && !isSubmittingRef.current(RunTarget.scriptEpisode(no)),
     );
@@ -244,36 +304,51 @@ export function ScriptPage() {
     const unit = pricingRef.current.scriptPrice("episode");
     const ok = await dramaConfirm({
       title: `写 ${nos.length} 集剧本？`,
-      body: `会写${formatEpisodeList(nos)}（还没有剧本、也没锁上的集），已经有剧本的集不动。每集单独生成，哪一集没写出来，那一集不扣积分。`,
+      body: `会写${formatEpisodeList(nos)}（还没有剧本、也没锁上的集），已经有剧本的集不动。一集写完再写下一集，后一集会接着前一集往下写。哪一集没写出来，那一集不扣积分，后面的先不写。`,
       cost: unit * nos.length,
       confirmLabel: "开始写",
     });
-    if (!ok) return;
-    batchRef.current = true;
-    setBatch(true);
+    if (!ok || writeAllProgress.has(canvasId)) return;
+    // 确认框开着的时候又有一集开始单独写了：这一批先不发（一分钱没花），等它写完再点
+    if (writingSoloRef.current.length) {
+      toast.info(`${formatEpisodeList(writingSoloRef.current)}正在写，写完再点「写全部分集剧本」`);
+      return;
+    }
+    const cid = canvasId;
+    setWriteAllProgress(cid, { nos, index: -1 });
     try {
       const results = await submitSequence(
         nos.map((no) => scriptBody("episode", no)),
-        { stopOnError: true },
+        { stopOnError: true, awaitEach: true, onProgress: (index) => setWriteAllProgress(cid, { nos, index }) },
       );
-      // 第一个真失败（不是跳过）之前被跳过的 = 已经在写；之后被跳过的 = 因为前面那集没发出去而停下
-      const failedAt = results.findIndex((r) => !r.ok && r.reason !== "skipped");
+      // 停在哪一集：被服务端拒了（没发出去），或者发出去了但没写出来
+      const failedAt = results.findIndex(
+        (r) => (!r.ok && r.reason !== "skipped") || (r.ok && r.runs.some((x) => x.status === "failed" || x.status === "canceled")),
+      );
+      // 跳过的：core 标了 stopped（前面停下了才没发）的、或排在失败那一集后面的 = 没写；其余 = 已经在写
       const running: number[] = [];
       const stopped: number[] = [];
+      let stopMessage: string | undefined;
       results.forEach((r, i) => {
         if (r.ok || r.reason !== "skipped") return;
-        (failedAt >= 0 && i > failedAt ? stopped : running).push(nos[i]);
+        if (r.stopped || (failedAt >= 0 && i > failedAt)) {
+          stopped.push(nos[i]);
+          stopMessage ??= r.message;
+        } else running.push(nos[i]);
       });
       if (running.length) toast.info(`${formatEpisodeList(running)}已经在写，跳过了`);
+      const notSent = stopped.length ? `${formatEpisodeList(stopped)}没有写，可以再点一次「写全部分集剧本」。` : undefined;
       const failed = failedAt >= 0 ? results[failedAt] : undefined;
       if (failed && !failed.ok && failed.reason === "rejected") {
-        toast.error(failed.message, {
-          ...(stopped.length ? { description: `${formatEpisodeList(stopped)}没有发出去，可以再点一次「写全部分集剧本」。` } : {}),
-        });
+        toast.error(failed.message, notSent ? { description: notSent } : {});
+      } else if (failed && failed.ok) {
+        // 没写出来的那一集，core 轮询到失败时已经报过原因；这里只说后面的为什么没写
+        if (notSent) toast.info(`第 ${nos[failedAt]} 集没写出来，后面的先不写了`, { description: notSent });
+      } else if (notSent) {
+        toast.info(stopMessage ?? "后面的没有写", { description: notSent });
       }
     } finally {
-      batchRef.current = false;
-      setBatch(false);
+      setWriteAllProgress(cid, null);
     }
   };
 
@@ -695,14 +770,20 @@ export function ScriptPage() {
                 <button
                   type="button"
                   className="btn btn-grad btn-sm"
-                  disabled={readOnly || !toWrite.length || batch}
+                  disabled={readOnly || !toWrite.length || batch || writingSolo.length > 0}
                   aria-busy={batch || undefined}
                   data-action="write-all"
                   onClick={() => void writeAll()}
                 >
                   <ListChecks size={14} />
                   {batch ? (
-                    "正在提交…"
+                    writingNo != null ? (
+                      <span className="cv-ellipsis" data-progress={`${progress!.index + 1}/${progress!.nos.length}`}>
+                        正在写第 {writingNo} 集（{progress!.index + 1} / {progress!.nos.length}）
+                      </span>
+                    ) : (
+                      "正在提交…"
+                    )
                   ) : (
                     <>
                       写全部分集剧本（{toWrite.length} 集）
@@ -714,6 +795,9 @@ export function ScriptPage() {
             </>
           }
         >
+          {canWriteAll && writingSolo.length > 0 && toWrite.length > 0 && (
+            <Reason>{formatEpisodeList(writingSolo)}正在写，写完再点「写全部分集剧本」，后面的集才接得上它。</Reason>
+          )}
           {canWriteAll && !toWrite.length && !batch && s.episodes.length > 0 && (
             <Reason>没有要写的集：每一集都有剧本了，或者锁上了。要重写哪一集，在那一集里点「重写这一集」。</Reason>
           )}
@@ -732,6 +816,7 @@ export function ScriptPage() {
                   open={!closedEps.has(e.no)}
                   view={runView(runFor(RunTarget.scriptEpisode(e.no)), e.run)}
                   submitting={busy.has(key) || isSubmitting(RunTarget.scriptEpisode(e.no))}
+                  waiting={waitingNos.has(e.no)}
                   readOnly={readOnly}
                   price={price("episode")}
                   deletable={!isIdea}

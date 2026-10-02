@@ -20,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,11 +61,14 @@ class DramaCanvasRunWorkerTest {
     /** 会真回滚内存仓库的事务管理器：用来验证「结算抛错 → 这张图的结果也不在」。 */
     private final DramaCanvasRunTestSupport.TestTxManager tm = new DramaCanvasRunTestSupport.TestTxManager(store);
     private final DramaCanvasRunWorker worker = new DramaCanvasRunWorker(runs, credits, invocation, render, ownership,
-            assembler, jobs, videoJobs, signer, OM, tm, 1);
+            assembler, jobs, videoJobs, signer, OM, tm, 1, 2);
+    /** 退避等待：记下来、不真睡。 */
+    private final List<Long> slept = new ArrayList<>();
     private final AiModelEndpoint ep = AiModelEndpoint.builder().id("ep-img").name("img").model("m").build();
 
     @BeforeEach
     void setUp() {
+        worker.sleeper = slept::add;
         when(render.resolveImagePlan(any(), anyString())).thenReturn(new DramaRenderService.ImagePlan(ep, 2L, 6));
         when(signer.signKey(anyString())).thenAnswer(inv -> "https://cdn.example.com/" + inv.getArgument(0));
         int[] n = {0};
@@ -121,6 +125,7 @@ class DramaCanvasRunWorkerTest {
         assertNotNull(r.getFinishedAt());
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_t1"), anyString());
         verify(credits, never()).commitHold(any(), any(), anyLong(), any());
+        verify(invocation, times(2)).invokeChat(any(), any(), any()); // 不合格先重试一次，两次都不行才判失败
     }
 
     @Test
@@ -172,6 +177,8 @@ class DramaCanvasRunWorkerTest {
         assertEquals("AI_CALL_FAILED", r.getErrorCode());
         assertTrue(r.getErrorMessage().contains("max_tokens too large"), "4xx 把上游原话告诉用户：" + r.getErrorMessage());
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_t4"), anyString());
+        verify(invocation, times(1)).invokeChat(any(), any(), any()); // 400 是请求本身不对：不重试
+        assertTrue(slept.isEmpty());
     }
 
     @Test
@@ -181,6 +188,213 @@ class DramaCanvasRunWorkerTest {
         worker.runBlocking("dcr_t5");
         verifyNoInteractions(invocation);
         verifyNoInteractions(credits);
+    }
+
+    // ── 文字类：输出不合格重试、临时错误退避、并发闸（v0.198.1） ──────────────────
+
+    private static final String GOOD_STORYBOARD =
+            "{\"segments\":[{\"text\":\"（5 秒）@[林微](look:lk1) 蹲着。\",\"durationSec\":5}],\"notes\":[]}";
+
+    private static BusinessException upstream(int status, String body) {
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试",
+                "endpoint=e purpose=p model=m status=" + status + " body=" + body);
+    }
+
+    private static final String CONCURRENCY_429 = "{\"code\":\"api_key_concurrency_limited\",\"message\":\"Too many "
+            + "concurrent requests for this API key\",\"details\":{\"limit\":2,\"remaining\":0,\"resetSeconds\":60},"
+            + "\"retryable\":true}";
+
+    @Test
+    void badOutputOnce_isAskedAgainWithSameMessages_thenSucceeds_chargedOnce() {
+        textRun("dcr_r1", "storyboard", storyboardMeta(), "切片段");
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any()))
+                .thenReturn(reply("好的，下面是分镜：segments 写不出来"))
+                .thenReturn(reply(GOOD_STORYBOARD));
+        worker.runBlocking("dcr_r1");
+
+        DramaCanvasRun r = store.get("dcr_r1");
+        assertEquals("succeeded", r.getStatus());
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        ArgumentCaptor<List<Map<String, String>>> msgs = ArgumentCaptor.forClass((Class) List.class);
+        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), msgs.capture(), any());
+        assertEquals(msgs.getAllValues().get(0), msgs.getAllValues().get(1), "重试用同样的消息");
+        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r1", 4L, "画布 · 测试");
+        assertTrue(slept.isEmpty(), "输出不合格不是上游临时错误，不退避");
+    }
+
+    @Test
+    void truncatedOutput_finishLength_isNotRepairedIntoHalfAResult_askedAgain() {
+        // 补括号能把被 max_tokens 截断的输出补成合法对象（少了后半截），形状校验看不出来；finish=length 一律当不合格
+        textRun("dcr_r9", "storyboard", storyboardMeta(), "切片段");
+        String cut = "{\"segments\":[{\"text\":\"（5 秒）@[林微](look:lk1) 蹲着。\",\"durationSec\":5}";
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any()))
+                .thenReturn(new AiModelInvocationService.AiModelResponse(cut, "length", 10L, "ep", "m"))
+                .thenReturn(reply(GOOD_STORYBOARD));
+        worker.runBlocking("dcr_r9");
+
+        assertEquals("succeeded", store.get("dcr_r9").getStatus());
+        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any());
+        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r9", 4L, "画布 · 测试");
+    }
+
+    @Test
+    void badOutputTwice_failureLogCarriesExcerptOfSecondOutput_notDetailNull() {
+        ch.qos.logback.classic.Logger lg =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(DramaCanvasRunWorker.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> app =
+                new ch.qos.logback.core.read.ListAppender<>();
+        app.start();
+        lg.addAppender(app);
+        try {
+            textRun("dcr_r2", "storyboard", storyboardMeta(), "切片段");
+            when(invocation.invokeChat(any(), any(), any()))
+                    .thenReturn(reply("第一次\n不是 JSON"))
+                    .thenReturn(reply("{\"segments\":\"不是数组\"}\n第二次的尾巴 sk-abcdef1234567890"));
+            worker.runBlocking("dcr_r2");
+        } finally {
+            lg.detachAppender(app);
+        }
+        DramaCanvasRun r = store.get("dcr_r2");
+        assertEquals("failed", r.getStatus());
+        assertEquals("AI_CALL_FAILED", r.getErrorCode());
+        verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r2"), anyString());
+
+        List<String> lines = app.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage).toList();
+        assertTrue(lines.stream().anyMatch(l -> l.contains("重试一次") && l.contains("第一次\\n不是 JSON")), lines.toString());
+        String failure = lines.stream().filter(l -> l.contains("生成失败")).findFirst().orElseThrow();
+        assertFalse(failure.contains("detail=null"), failure);
+        assertTrue(failure.contains("第二次的尾巴"), "第二次输出的摘录进日志：" + failure);
+        assertFalse(failure.contains("abcdef1234567890"), "像密钥的串要打码：" + failure);
+    }
+
+    @Test
+    void extract_modelDroppedOneArrayCloser_isRepaired_withoutAskingAgain() throws Exception {
+        ObjectNode meta = OM.createObjectNode().put("maxEpisodeNo", 3);
+        meta.putObject("existing").putArray("characters");
+        textRun("dcr_r3", "extract", meta, "拆角色");
+        // 线上原样的形状：第一个角色的 looks 少了一个 ]
+        String broken = "{\"characters\":[{\"name\":\"人物甲\",\"role\":\"lead\",\"bio\":\"女侦探\",\"looks\":["
+                + "{\"name\":\"基础造型\",\"prompt\":\"基本信息：女，30 岁\",\"episodes\":[1,2]}},"
+                + "{\"name\":\"人物乙\",\"role\":\"support\",\"bio\":\"女儿\",\"looks\":["
+                + "{\"name\":\"基础造型\",\"prompt\":\"基本信息：女，8 岁\",\"episodes\":[2]}]}],"
+                + "\"scenes\":[{\"name\":\"旧街\",\"prompt\":\"老街，傍晚\",\"episodes\":[1]}],\"notes\":[\"n1\"]}";
+        when(invocation.invokeChat(any(), any(), any())).thenReturn(reply(broken));
+        worker.runBlocking("dcr_r3");
+
+        DramaCanvasRun r = store.get("dcr_r3");
+        assertEquals("succeeded", r.getStatus());
+        JsonNode ex = OM.readTree(r.getResultJson()).path("extract");
+        assertEquals(2, ex.path("characters").size());
+        assertEquals(1, ex.path("scenes").size());
+        verify(invocation, times(1)).invokeChat(any(), any(), any());
+    }
+
+    @Test
+    void upstream429_backsOff_withoutHoldingThePermit_thenSucceeds() {
+        textRun("dcr_r4", "storyboard", storyboardMeta(), "切片段");
+        List<Integer> permitsWhileWaiting = new ArrayList<>();
+        worker.sleeper = ms -> {
+            slept.add(ms);
+            permitsWhileWaiting.add(worker.textGate.availablePermits());
+        };
+        when(invocation.invokeChat(any(), any(), any()))
+                .thenThrow(upstream(429, CONCURRENCY_429))
+                .thenReturn(reply(GOOD_STORYBOARD));
+        worker.runBlocking("dcr_r4");
+
+        assertEquals("succeeded", store.get("dcr_r4").getStatus());
+        assertEquals(List.of(5_000L), slept);
+        assertEquals(List.of(2), permitsWhileWaiting, "退避等待时不占许可");
+        assertEquals(2, worker.textGate.availablePermits(), "用完都还回去");
+        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r4", 4L, "画布 · 测试");
+    }
+
+    /** 这里断言文案：「不把厂商英文原话甩给用户、说太忙」本身就是被测行为（§8.0.1 ⑩ 的例外）。 */
+    @Test
+    void upstream429_allRetriesUsed_failsWithBusyCopyNotEnglish_refunds() {
+        textRun("dcr_r5", "storyboard", storyboardMeta(), "切片段");
+        when(invocation.invokeChat(any(), any(), any())).thenThrow(upstream(429, CONCURRENCY_429));
+        worker.runBlocking("dcr_r5");
+
+        DramaCanvasRun r = store.get("dcr_r5");
+        assertEquals("failed", r.getStatus());
+        assertEquals("AI_CALL_FAILED", r.getErrorCode());
+        assertEquals(DramaCanvasRunWorker.TEXT_BUSY_MESSAGE, r.getErrorMessage());
+        assertEquals(List.of(5_000L, 15_000L, 30_000L), slept);
+        verify(invocation, times(4)).invokeChat(any(), any(), any());
+        verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r5"), anyString());
+        assertEquals(2, worker.textGate.availablePermits());
+    }
+
+    @Test
+    void networkErrorsAndUpstream5xx_areRetried() {
+        textRun("dcr_r6", "storyboard", storyboardMeta(), "切片段");
+        when(invocation.invokeChat(any(), any(), any()))
+                .thenThrow(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_TIMEOUT", "AI 生成超时",
+                        "endpoint=e purpose=p model=m err=java.net.http.HttpTimeoutException"))
+                .thenThrow(new IllegalStateException("connection reset"))
+                .thenThrow(upstream(503, "{\"message\":\"overloaded\"}"))
+                .thenReturn(reply(GOOD_STORYBOARD));
+        worker.runBlocking("dcr_r6");
+        assertEquals("succeeded", store.get("dcr_r6").getStatus());
+        assertEquals(List.of(5_000L, 15_000L, 30_000L), slept);
+    }
+
+    @Test
+    void waitingForPermit_pastDeadline_failsWithDeadline_refunds_neverCallsModel() {
+        DramaCanvasRun r = textRun("dcr_r7", "storyboard", storyboardMeta(), "切片段");
+        // 离 90 分钟时限只差一点：排队等许可的过程中越过时限
+        r.setCreatedAt(OffsetDateTime.now().minus(DramaCanvasRunWorker.RUN_DEADLINE).plusNanos(800_000_000L));
+        worker.textGate.drainPermits(); // 两个名额都被别的运行占着
+        worker.permitPollMillis = 20;
+        worker.runBlocking("dcr_r7");
+
+        DramaCanvasRun after = store.get("dcr_r7");
+        assertEquals("failed", after.getStatus());
+        assertEquals("DRAMA_CANVAS_RUN_DEADLINE", after.getErrorCode());
+        verifyNoInteractions(invocation);
+        verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r7"), anyString());
+        verify(runs, atLeast(3)).touch(eq(List.of("dcr_r7")), any()); // 排队时刷心跳，别被回收器当成僵死
+    }
+
+    @Test
+    void textGate_capsConcurrentChatCalls() throws Exception {
+        Map<String, DramaCanvasRun> store2 = new java.util.concurrent.ConcurrentHashMap<>();
+        DramaCanvasRunRepository runs2 = inMemoryRuns(store2);
+        AiModelInvocationService inv2 = mock(AiModelInvocationService.class);
+        java.util.concurrent.atomic.AtomicInteger inFlight = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger peak = new java.util.concurrent.atomic.AtomicInteger();
+        when(inv2.invokeChat(any(), any(), any())).thenAnswer(i -> {
+            peak.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            Thread.sleep(60);
+            inFlight.decrementAndGet();
+            return reply(GOOD_STORYBOARD);
+        });
+        // 线程池 3、文字名额 1：三条同时跑，模型那边同一时刻只有一个请求
+        DramaCanvasRunWorker w = new DramaCanvasRunWorker(runs2, credits, inv2, render, ownership, assembler, jobs,
+                videoJobs, signer, OM, new DramaCanvasRunTestSupport.TestTxManager(), 3, 1);
+        w.permitPollMillis = 10;
+        try {
+            List<String> ids = List.of("dcr_c1", "dcr_c2", "dcr_c3");
+            for (String id : ids) {
+                ObjectNode exec = OM.createObjectNode();
+                exec.put("unitCost", 0).put("holdRef", id).put("label", "画布 · 测试");
+                exec.putArray("calls").addObject().put("system", "sys").put("user", "切片段").put("jsonMode", true);
+                exec.set("meta", storyboardMeta());
+                store2.put(id, run(id, "storyboard", DramaCanvasRun.STATUS_QUEUED, exec));
+            }
+            w.dispatch(ids);
+            long until = System.currentTimeMillis() + 5_000;
+            while (System.currentTimeMillis() < until
+                    && !store2.values().stream().allMatch(DramaCanvasRun::isTerminal)) {
+                Thread.sleep(10);
+            }
+            for (String id : ids) assertEquals("succeeded", store2.get(id).getStatus(), id);
+            assertEquals(1, peak.get(), "同一时刻最多 1 个 chat 请求");
+            assertEquals(1, w.textGate.availablePermits());
+        } finally {
+            w.shutdown();
+        }
     }
 
     // ── 出图 ───────────────────────────────────────────────────────────────────
@@ -673,5 +887,75 @@ class DramaCanvasRunWorkerTest {
         String masked = DramaCanvasRunWorker.upstreamRejection(
                 "status=401 body={\"error\":{\"message\":\"invalid key sk-abcdef1234567890\"}}");
         assertFalse(masked.contains("abcdef1234567890"), masked);
+    }
+
+    @Test
+    void upstreamRejection_truncatedBody_stillFindsTheMessageField() {
+        // 出图客户端截断了响应体：整体不是合法 JSON，但第一个 message 字段是完整的
+        String up = DramaCanvasRunWorker.upstreamRejection("endpoint=img status=400 body={\"error\":{\"code\":\"invalid\","
+                + "\"message\":\"image \\\"size\\\" must match preset (768x768)\",\"param\":\"si…");
+        assertNotNull(up);
+        assertTrue(up.contains("image \"size\" must match preset (768x768)"), up);
+        // message 本身被截在半中间（没有收尾引号）→ 不硬抽，给笼统的
+        assertFalse(DramaCanvasRunWorker.upstreamRejection("status=400 body={\"message\":\"image size mu…")
+                .contains("image size"));
+    }
+
+    /** 文案本身就是被测行为：429 不甩英文原话；尺寸不支持原样转出 DramaRenderService 写好的那句。 */
+    @Test
+    void friendly_429SaysBusy_imageSizeUnsupportedPassesThrough() {
+        assertEquals(DramaCanvasRunWorker.TEXT_BUSY_MESSAGE,
+                DramaCanvasRunWorker.friendly(upstream(429, CONCURRENCY_429), "dcr_x"));
+        assertEquals(DramaCanvasRunWorker.MODEL_BUSY_MESSAGE, DramaCanvasRunWorker.friendly(
+                BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED", "图片没生成出来",
+                        "endpoint=img status=429 body=" + CONCURRENCY_429), "dcr_x"));
+        BusinessException size = BusinessException.wrapped(HttpStatus.BAD_REQUEST, "IMAGE_SIZE_UNSUPPORTED",
+                "这个模型只能出 768×768 的图", "endpoint=img preset=768x768 requested=720x1280");
+        assertEquals("这个模型只能出 768×768 的图", DramaCanvasRunWorker.friendly(size, "dcr_x"));
+    }
+
+    @Test
+    void friendly_reasonNotExtractableFromDetail_prefersCallerMessageThatCarriesIt_butNotChatGeneric() {
+        // 出图客户端从完整响应体里抽到了原话、放进了自己的文案；internalDetail 里的那份是 HTML，抽不出
+        BusinessException img = BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
+                "出图模型拒绝了这次请求：prompt rejected", "endpoint=img model=m status=400 body=<html>bad</html>");
+        assertEquals("出图模型拒绝了这次请求：prompt rejected", DramaCanvasRunWorker.friendly(img, "dcr_x"));
+        // chat 的文案是笼统的「AI 生成失败」：不替换，还是上游状态那句
+        String chat = DramaCanvasRunWorker.friendly(upstream(400, "<html>bad</html>"), "dcr_x");
+        assertEquals(DramaCanvasRunWorker.upstreamRejection("status=400 body=<html>bad</html>"), chat);
+        // 抽得出来时仍用抽出来的
+        assertTrue(DramaCanvasRunWorker.friendly(upstream(400, "{\"message\":\"max_tokens too large\"}"), "dcr_x")
+                .contains("max_tokens too large"));
+    }
+
+    @Test
+    void isTransient_onlyRateLimitGatewayAndNetwork() {
+        for (int st : new int[]{429, 502, 503, 504}) {
+            assertTrue(DramaCanvasRunWorker.isTransient(upstream(st, "{}")), String.valueOf(st));
+        }
+        for (int st : new int[]{400, 401, 404, 422, 500}) {
+            assertFalse(DramaCanvasRunWorker.isTransient(upstream(st, "{}")), String.valueOf(st));
+        }
+        assertTrue(DramaCanvasRunWorker.isTransient(new IllegalStateException("socket closed")));
+        assertTrue(DramaCanvasRunWorker.isTransient(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
+                "AI_PROVIDER_ERROR", "AI 生成失败", "endpoint=e err=java.io.IOException")));
+        assertFalse(DramaCanvasRunWorker.isTransient(new BusinessException(HttpStatus.BAD_GATEWAY,
+                "AI_PROVIDER_ERROR", "调用端点失败")), "没有技术细节的 AI_PROVIDER_ERROR 不是网络层的");
+        assertFalse(DramaCanvasRunWorker.isTransient(new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+                "AI_NOT_CONFIGURED", "没配")));
+        assertFalse(DramaCanvasRunWorker.isTransient(new BusinessException(HttpStatus.TOO_MANY_REQUESTS,
+                "LLM_RPM_LIMIT_EXCEEDED", "本平台的限流")), "我们自己的额度守卫不靠重试");
+    }
+
+    @Test
+    void excerpt_headAndTail_newlinesEscaped_secretsMasked() {
+        String s = "开头\n" + "中".repeat(2000) + " sk-abcdef1234567890 结尾";
+        String e = DramaCanvasRunWorker.excerpt(s);
+        assertTrue(e.startsWith("开头\\n"), e);
+        assertTrue(e.endsWith("结尾"), e);
+        assertFalse(e.contains("\n"));
+        assertFalse(e.contains("abcdef1234567890"));
+        assertTrue(e.length() < 700, String.valueOf(e.length()));
+        assertEquals("(空)", DramaCanvasRunWorker.excerpt(null));
     }
 }

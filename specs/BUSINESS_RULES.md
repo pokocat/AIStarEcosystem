@@ -876,6 +876,18 @@ web-drama 的 `/canvas`：照小云雀「短剧 Agent」做的一条**独立**�
 
 **软删。** 只打 `deleted_at`（条件更新，不整行写回）；运行记录保留，已花的积分不退。
 
+**文字类调用（v0.198.1，线上实测补的）。** 剧本 / 拆角色和场景 / 分镜脚本都走同一套：
+- **并发闸**：同一时刻最多 `aep.drama.canvas.text-concurrency`（缺省 2，`AEP_DRAMA_CANVAS_TEXT_CONCURRENCY`）个 chat 请求在飞，公平排队；
+  等许可不占钱，按运行时限（90 分钟）收尾并定时刷心跳。只管这一台实例上的画布 worker，老短剧的文字调用不在闸里。
+- **临时错误退避**：上游 429 / 502 / 503 / 504、网络错误按 5s → 15s → 30s 最多重试 3 次；超时（单次 180 秒）只再试一次。
+  最后还是 429 → 「AI 写作这会儿太忙…」，不把厂商英文原话给用户。
+- **输出不合格**：先按「只补能唯一确定的 `]` / `}`」修一次（`ModelJsonRepair`，与 `DramaScriptService` 同一份），
+  仍不合格就同样的消息再问一次，不额外扣钱；还不合格 → `AI_CALL_FAILED` 退回，日志里有第二次输出的头尾摘录。
+- **写全部分集剧本**：前端逐集发，**上一集写完并保存后才发下一集**（`submitSequence({ awaitEach })`），
+  这样每一集的提示词里都有上一集的结尾。
+- **分镜片段时长**：`minSegmentSec` = 所选视频模型的最短时长（H3 = 5 秒）。模型仍切出太短的片段 → 并进相邻片段
+  （先后一段、再前一段，合并后不超过上限，内容一字不改），并不进去就留着并在 notes 里说明；编辑器里时长越界的片段不让点「生成视频」。
+
 **错误码表**
 
 | code | HTTP | 场景 |
@@ -910,6 +922,7 @@ web-drama 的 `/canvas`：照小云雀「短剧 Agent」做的一条**独立**�
 | `IMAGE_CALL_FAILED` | image | 图像模型调用失败；失败的张数退回 |
 | `IMAGE_BAD_OUTPUT` | image | 上游回的不是可用图片，不入库不扣款 |
 | `IMAGE_STORE_FAILED` | image | 图没存进我方存储，不扣款 |
+| `IMAGE_SIZE_UNSUPPORTED` | image | v0.198.1：出图端点只认固定尺寸（厂商 400「size must match preset (W×H)」），比例与所选画幅不一致；比例一致时服务端已按固定尺寸重试过一次。进程内记住每个端点的固定尺寸，之后比例不对直接报、不再调上游；不扣款 |
 | `VIDEO_GENERATION_FAILED` | video | 厂商返回失败；已退回 |
 | `VIDEO_MIRROR_FAILED` | video | 提交时带了 `require_mirror`，成片没镜像进我方存储；视频 worker 已判失败并退款 |
 | `DRAMA_CANVAS_VIDEO_QUEUE_TIMEOUT` | video | 排队 30 分钟一直没交给厂商；已退回 |

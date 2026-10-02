@@ -5,6 +5,7 @@ import {
   applyPrevLastFrame,
   assembleInfo,
   batchVideoPlan,
+  batchVideoSkipText,
   cellThumb,
   episodeAssets,
   episodeCardStatus,
@@ -322,5 +323,18 @@ describe("片段轴 / 批量出视频", () => {
     const plan = batchVideoPlan(segs, new Set(["a", "b", "c", "d", "e", "f"]), { maxSec: 10, price: (s) => s * 6, isRunning: (id) => id === "e" });
     expect(plan.eligible.map((s) => s.id)).toEqual(["a", "b"]);
     expect(plan).toMatchObject({ withFrame: 1, withoutFrame: 1, skipped: 4, cost: 48 });
+    expect(plan.skippedBy).toEqual({ empty: 1, "no-duration": 1, "too-short": 0, "too-long": 1, running: 1 });
+  });
+
+  it("比所选视频模型下限短的跳过，按原因数清楚（给确认框和就地提示用）", () => {
+    const segs = [seg("a", { durationSec: 4 }), seg("b", { durationSec: 6 }), seg("c", { durationSec: 16 }), seg("d", { durationSec: 3 })];
+    const plan = batchVideoPlan(segs, new Set(["a", "b", "c", "d"]), { minSec: 5, maxSec: 15, price: (s) => s, isRunning: () => false });
+    expect(plan.eligible.map((s) => s.id)).toEqual(["b"]);
+    expect(plan.skippedBy).toMatchObject({ "too-short": 2, "too-long": 1 });
+    const text = batchVideoSkipText(plan, { minSec: 5, maxSec: 15 })!;
+    expect(text).toContain("3 个");
+    expect(text).toContain("2 个不到 5 秒");
+    expect(text).toContain("1 个超过 15 秒");
+    expect(batchVideoSkipText(batchVideoPlan(segs, new Set(["b"]), { minSec: 5, maxSec: 15, price: (s) => s, isRunning: () => false }), { minSec: 5, maxSec: 15 })).toBeNull();
   });
 });

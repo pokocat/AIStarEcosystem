@@ -60,7 +60,7 @@ import { CanvasApi } from "@/api/canvas";
 import { listRenderModels } from "@/api/render";
 import { __resetCanvasPricingForTest } from "@/canvas/core/use-canvas-pricing";
 import { __resetMockCanvasForTest } from "@/mocks/canvas";
-import { CanvasDocProvider, CanvasRunsProvider, findSegment } from "@/canvas/core";
+import { CanvasDocProvider, CanvasRunsProvider, findSegment, updateSegment, useCanvasDoc } from "@/canvas/core";
 import { CanvasGate } from "@/canvas/shell/canvas-gate";
 import { CanvasTopbar, CanvasTopbarSlotProvider } from "@/canvas/shell/canvas-topbar";
 import { EpisodeEditor, EpisodeListView } from "./index";
@@ -88,6 +88,7 @@ const RUN_APIS = ["runImage", "runImageBatch", "runVideo", "runStoryboard", "run
 
 beforeEach(() => {
   __resetMockCanvasForTest();
+  __resetCanvasPricingForTest(); // 视频 / 出图模型的选择是模块级的：每条用例从默认模型开始
   vi.mocked(CanvasApi.save).mockClear();
   for (const k of RUN_APIS) vi.mocked(CanvasApi[k]).mockClear();
   vi.mocked(CanvasApi.cancelRun).mockClear();
@@ -118,7 +119,7 @@ describe("逐集制作 · 示例画布", () => {
     expect(cards[1].querySelector('[data-action="edit"]')).not.toBeNull();
   });
 
-  it("生成分镜脚本：先存再发，带上当前视频模型的片段上限；这一集没有片段、价格没到门槛就不弹确认", async () => {
+  it("生成分镜脚本：先存再发，带上当前视频模型的片段上下限；这一集没有片段、价格没到门槛就不弹确认", async () => {
     render(
       <Harness>
         <EpisodeListView />
@@ -130,9 +131,13 @@ describe("逐集制作 · 示例画布", () => {
       fireEvent.click(sb);
     });
     await waitFor(() => expect(CanvasApi.runStoryboard).toHaveBeenCalledTimes(1));
-    const [id, body] = vi.mocked(CanvasApi.runStoryboard).mock.calls[0] as unknown as [string, { episodeNo: number; maxSegmentSec: number; docVersion: string }];
+    const [id, body] = vi.mocked(CanvasApi.runStoryboard).mock.calls[0] as unknown as [
+      string,
+      { episodeNo: number; maxSegmentSec: number; minSegmentSec: number; docVersion: string },
+    ];
     expect(id).toBe(EX);
-    expect(body).toMatchObject({ episodeNo: 2, maxSegmentSec: 10 });
+    // 片段时长范围 = 所选视频模型（mock 的默认视频模型 5–10 秒）
+    expect(body).toMatchObject({ episodeNo: 2, maxSegmentSec: 10, minSegmentSec: 5 });
     expect(body.docVersion).toBeTruthy();
     expect(confirmMock).not.toHaveBeenCalled();
   });
@@ -299,6 +304,111 @@ describe("单集编辑器 · 示例画布第 1 集", () => {
     expect(preview.dataset.segment).toBe("sg_ex1_01");
     expect(preview.querySelector<HTMLButtonElement>('[data-action="last-frame"]')!.disabled).toBe(true);
     expect(preview.querySelector('[data-reason="last-frame"]')).not.toBeNull();
+  });
+});
+
+describe("单集编辑器 · 出图模型与片段时长（v0.198.1）", () => {
+  let edit: ((fn: (d: DramaCanvasDoc) => DramaCanvasDoc) => void) | null = null;
+  function DocProbe() {
+    edit = useCanvasDoc().update;
+    return null;
+  }
+  async function mountEditor() {
+    render(
+      <Harness>
+        <EpisodeEditor no={1} />
+        <DocProbe />
+      </Harness>,
+    );
+    await screen.findByTestId("cve-editor");
+    await waitFor(() => expect(CanvasApi.getRuns).toHaveBeenCalled());
+    return screen.getByTestId("cve-timeline");
+  }
+  const preview = () => screen.getByTestId("cve-preview");
+
+  it("「出首帧」旁边写着用哪个出图模型、就地能换；价格跟着变，请求带上选的模型", async () => {
+    await mountEditor();
+    const sel = await waitFor(() => {
+      const el = preview().querySelector<HTMLSelectElement>('[data-action="frame-model"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(sel.value).toBe("mock-image-std");
+    expect(preview().querySelector('[data-action="frame"] .cve-credits')?.getAttribute("aria-label")).toBe("2 积分");
+    fireEvent.change(sel, { target: { value: "mock-image-hd" } });
+    await waitFor(() => expect(preview().querySelector('[data-action="frame"] .cve-credits')?.getAttribute("aria-label")).toBe("4 积分"));
+    await act(async () => {
+      fireEvent.click(preview().querySelector('[data-action="frame"]')!);
+    });
+    await waitFor(() => expect(CanvasApi.runImage).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(CanvasApi.runImage).mock.calls[0][1]).toMatchObject({
+      target: { kind: "segment", episodeNo: 1, segmentId: "sg_ex1_01" },
+      count: 1,
+      endpointId: "mock-image-hd",
+    });
+  });
+
+  it("预览画面高度按视口收：时有时无的几行（版本切换 / 视频时间 / 末帧原因 / 成片条）都标在节点上，CSS 据此让出高度", async () => {
+    const tl = await mountEditor();
+    const p1 = preview();
+    expect(p1.hasAttribute("data-fit-meta")).toBe(true); // 01 在看视频：下面有一行时长和生成时间
+    expect(p1.hasAttribute("data-fit-lf")).toBe(true); // 第一个片段：「用上一片段最后一帧」下面有原因
+    expect(p1.hasAttribute("data-fit-versions")).toBe(false);
+    fireEvent.click(tl.querySelector('[data-segment="sg_ex1_02"]')!);
+    expect(preview().hasAttribute("data-fit-versions")).toBe(true); // 02 有两版
+    expect(screen.getByTestId("cve-editor").hasAttribute("data-film")).toBe(false); // 还没合成过
+    // 「出首帧」和出图模型在同一行（不多占高度）
+    expect(preview().querySelector('.cve-frame-row [data-action="frame"]')).not.toBeNull();
+    await waitFor(() => expect(preview().querySelector('.cve-frame-row [data-action="frame-model"]')).not.toBeNull()); // 候选读到之后才出现
+  });
+
+  it("片段比所选视频模型下限短：「生成视频」禁用并就地说原因，点了也不弹确认、不发请求；换个没有下限的模型就能生成", async () => {
+    await mountEditor();
+    act(() => edit!((d) => updateSegment(d, 1, "sg_ex1_01", { text: "（3 秒）近景，她回头。" })));
+    await waitFor(() => expect(preview().querySelector('[data-reason="video"]')).not.toBeNull());
+    const btn = preview().querySelector<HTMLButtonElement>('[data-action="video"]')!;
+    expect(btn.disabled).toBe(true);
+    expect(screen.getByTestId("cve-segment").querySelector('[data-reason="too-short"]')).not.toBeNull();
+    confirmMock.mockClear();
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(CanvasApi.runVideo).not.toHaveBeenCalled();
+
+    const model = document.querySelector<HTMLSelectElement>('.cv-topbar [data-action="video-model"]')!;
+    fireEvent.change(model, { target: { value: "mock-video-t2v" } });
+    await waitFor(() => expect(preview().querySelector<HTMLButtonElement>('[data-action="video"]')!.disabled).toBe(false));
+    expect(preview().querySelector('[data-reason="video"]')).toBeNull();
+  });
+
+  it("片段超过上限同样就地禁用（不是弹 160 积分的确认框再被服务端拒）", async () => {
+    await mountEditor();
+    act(() => edit!((d) => updateSegment(d, 1, "sg_ex1_01", { text: "（8 秒）全景。\n（6 秒）近景。" })));
+    await waitFor(() => expect(preview().querySelector<HTMLButtonElement>('[data-action="video"]')!.disabled).toBe(true));
+    expect(preview().querySelector('[data-reason="video"]')).not.toBeNull();
+  });
+
+  it("多选生成视频：时长越界的片段跳过，就地写清跳过几个；确认框里也写，只发范围内的", async () => {
+    const tl = await mountEditor();
+    act(() => edit!((d) => updateSegment(d, 1, "sg_ex1_01", { text: "（4 秒）近景，她回头。" })));
+    fireEvent.click(tl.querySelector('[data-action="multi-segments"]')!);
+    fireEvent.click(tl.querySelector('[data-segment="sg_ex1_01"]')!);
+    fireEvent.click(tl.querySelector('[data-segment="sg_ex1_02"]')!);
+    const batch = tl.querySelector<HTMLElement>('[data-action="batch-video"]')!;
+    expect(batch.dataset.count).toBe("1");
+    expect(tl.querySelector<HTMLElement>('[data-reason="batch-video"]')?.dataset.skipped).toBe("1");
+    confirmMock.mockClear();
+    await act(async () => {
+      fireEvent.click(batch);
+    });
+    await waitFor(() => expect(CanvasApi.runVideo).toHaveBeenCalledTimes(1));
+    const body = (confirmMock.mock.calls[0] as unknown as [{ body: React.ReactElement }])[0].body;
+    const host = document.createElement("div");
+    const r = render(<>{body}</>, { container: host });
+    expect(host.textContent).toContain("1 个这次跳过");
+    r.unmount();
+    expect((vi.mocked(CanvasApi.runVideo).mock.calls[0][1] as unknown as { segmentId: string }).segmentId).toBe("sg_ex1_02");
   });
 });
 
@@ -499,6 +609,49 @@ describe("片段文本编辑器", () => {
     fireEvent.compositionEnd(input);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onPick).toHaveBeenCalledWith(items[0]);
+  });
+
+  it("编辑完点「完成」：查看态里的文字只出现一遍（两态不复用同一个 DOM 节点，回归 v0.198.1）", () => {
+    function Host() {
+      const [text, setText] = React.useState("（4 秒）近景，蹲下");
+      const [editing, setEditing] = React.useState(true);
+      return (
+        <>
+          <SegmentTextEditor
+            value={text}
+            editing={editing}
+            placeholder="写分镜"
+            ariaLabel="片段文本"
+            view={view}
+            viewKey="k"
+            items={items}
+            onChange={setText}
+            onRequestEdit={() => setEditing(true)}
+          />
+          <button type="button" data-action="done" onClick={() => setEditing(false)} />
+        </>
+      );
+    }
+    render(<Host />);
+    const el = screen.getByTestId("cve-text-edit");
+    // 用户在编辑框里打字（编辑框的内容是命令式画的，React 不管它的子节点）
+    act(() => {
+      el.textContent = "（4 秒）近景，蹲下，捡起照片";
+      fireEvent.input(el);
+    });
+    act(() => {
+      fireEvent.click(document.querySelector('[data-action="done"]')!);
+    });
+    expect(screen.queryByTestId("cve-text-edit")).toBeNull();
+    expect(screen.getByTestId("cve-text-view").textContent).toBe("（4 秒）近景，蹲下，捡起照片");
+    // 再进编辑、再出来，仍然只有一遍
+    act(() => {
+      fireEvent.click(screen.getByTestId("cve-text-view"));
+    });
+    act(() => {
+      fireEvent.click(document.querySelector('[data-action="done"]')!);
+    });
+    expect(screen.getByTestId("cve-text-view").textContent).toBe("（4 秒）近景，蹲下，捡起照片");
   });
 
   it("退格紧挨着标签时整块删掉", () => {

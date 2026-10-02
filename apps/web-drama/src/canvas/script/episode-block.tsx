@@ -28,6 +28,8 @@ export interface EpisodeBlockProps {
   view: RunView;
   /** 正在提交（flush + 请求，还没拿到运行记录）。 */
   submitting: boolean;
+  /** 在「写全部分集剧本」这一批里、还没轮到（一集写完再写下一集）。 */
+  waiting?: boolean;
   readOnly: boolean;
   price: number | null;
   /** 粘贴来的剧本：能删这一集。 */
@@ -44,6 +46,7 @@ function propsEqual(a: EpisodeBlockProps, b: EpisodeBlockProps): boolean {
     a.episode === b.episode &&
     a.open === b.open &&
     a.submitting === b.submitting &&
+    a.waiting === b.waiting &&
     a.readOnly === b.readOnly &&
     a.price === b.price &&
     a.deletable === b.deletable &&
@@ -59,6 +62,7 @@ export const EpisodeBlock = React.memo(function EpisodeBlock({
   open,
   view,
   submitting,
+  waiting,
   readOnly,
   price,
   deletable,
@@ -101,8 +105,8 @@ export const EpisodeBlock = React.memo(function EpisodeBlock({
           readOnly={readOnly}
           onChange={(e) => h.onTitle(ep.no, e.target.value)}
         />
-        <span className="cvs-ep-meta">
-          {view.pending ? "正在写…" : blank ? "还没写" : `${count.toLocaleString("zh-CN")} 字`}
+        <span className="cvs-ep-meta" data-waiting={(waiting && !view.pending) || undefined}>
+          {view.pending ? "正在写…" : waiting ? "等前一集写完" : blank ? "还没写" : `${count.toLocaleString("zh-CN")} 字`}
         </span>
         <button
           type="button"

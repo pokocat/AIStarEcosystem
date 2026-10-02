@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasImageTarget;
+import com.aistareco.aep.service.ai.ModelJsonRepair;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,7 +43,10 @@ public class DramaCanvasPromptBuilder {
     static final int EXTRACT_BATCH_CHARS = 12_000;
     /** 分镜脚本里给模型的素材对照表最多列多少条。 */
     static final int ASSET_TABLE_MAX = 60;
-    /** 片段最少多少秒（写进提示词；视频模型大多 4–5 秒起）。 */
+    /**
+     * 片段最少多少秒的缺省值：请求里没带 {@code minSegmentSec}（前端按所选视频模型的下限带，如 H3 是 5）时用它。
+     * 写进提示词，装段时比它短的片段会并进相邻片段（{@link #parseStoryboard}）。
+     */
     static final int SEGMENT_MIN_SEC = 4;
     public static final int INSTRUCTION_MAX = 200;
     public static final Set<String> IMAGE_RATIOS = Set.of("9:16", "16:9", "1:1", "4:3", "3:4");
@@ -172,8 +176,10 @@ public class DramaCanvasPromptBuilder {
                 + "\n钩子：" + nz(text(e, "hook")) + "\n梗概：" + nz(text(e, "summary")) + "\n").orElse(""));
         Optional<JsonNode> prev = DramaCanvasDocs.findScriptEpisode(doc, no - 1);
         String prevText = prev.map(p -> text(p, "text")).orElse(null);
+        // v0.198.1：原来写「接着它往下写」，线上第 3 集把第 2 集几乎原样重写了一遍 —— 结尾只是前情，不是要续写的那一场
         vars.put("prevClause", prevText == null ? ""
-                : "上一集（第 " + (no - 1) + " 集）的结尾，接着它往下写：\n" + tail(prevText, 800) + "\n");
+                : "上一集（第 " + (no - 1) + " 集）的结尾如下，只是让你接上前情。这一集从它之后发生的事开始写，"
+                        + "不要重写或重复上一集的场景、动作和台词：\n" + tail(prevText, 800) + "\n");
         String current = scriptEp.map(e -> text(e, "text")).orElse(null);
         vars.put("currentClause", current == null ? ""
                 : "这是这一集现在的剧本，按要求重写（没提到的尽量保留）：\n" + current + "\n");
@@ -222,6 +228,10 @@ public class DramaCanvasPromptBuilder {
         }
         if (!cur.isEmpty()) batches.add(cur);
 
+        // v0.198.1：拆角色时看得到故事大纲的人物小传（线上把「女侦探」拆成了男性 —— 剧本里没写明性别时模型就猜）
+        String setting = text(doc.path("script").path("setting"), "text");
+        String settingClause = setting == null ? ""
+                : "故事大纲（人物的性别、年龄、身份以这里的人物小传为准）：\n" + setting + "\n";
         List<TextCall> calls = new ArrayList<>();
         ArrayNode ranges = F.arrayNode();
         for (List<JsonNode> b : batches) {
@@ -235,6 +245,7 @@ public class DramaCanvasPromptBuilder {
             int from = b.get(0).path("no").asInt();
             int to = b.get(b.size() - 1).path("no").asInt();
             Map<String, String> vars = new LinkedHashMap<>();
+            vars.put("settingClause", settingClause);
             vars.put("scriptText", sb.toString().trim());
             vars.put("episodeRange", from == to ? "第 " + from + " 集" : "第 " + from + "–" + to + " 集");
             vars.put("maxEpisodeNo", String.valueOf(maxNo));
@@ -250,8 +261,11 @@ public class DramaCanvasPromptBuilder {
         return new TextPlan(PromptService.KEY_DRAMA_CANVAS_EXTRACT, "extract", "画布 · 拆角色和场景", calls, meta);
     }
 
-    /** 本集分镜脚本（storyboard:&lt;no&gt;）：这一集要有剧本正文。maxSec 调用方已夹到 4–30。 */
-    public TextPlan storyboard(JsonNode doc, Integer episodeNo, int maxSec) {
+    /**
+     * 本集分镜脚本（storyboard:&lt;no&gt;）：这一集要有剧本正文。maxSec 调用方已夹到 4–30；
+     * minSec = 所选视频模型一条最短多少秒（调用方已夹到 1..maxSec），写进提示词，并随 meta 带给装段校验。
+     */
+    public TextPlan storyboard(JsonNode doc, Integer episodeNo, int maxSec, int minSec) {
         if (episodeNo == null || episodeNo < 1) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CANVAS_EPISODE_REQUIRED", "要给哪一集生成分镜脚本？");
         }
@@ -309,14 +323,16 @@ public class DramaCanvasPromptBuilder {
         vars.put("title", title == null ? "" : title);
         vars.put("scriptText", scriptText);
         vars.put("assetTable", table.length() == 0 ? "（画布里还没有角色和场景，直接用文字写，不要写 @ 引用）" : table.toString().trim());
+        int min = clampMin(minSec, maxSec);
         vars.put("maxSec", String.valueOf(maxSec));
-        vars.put("minSec", String.valueOf(Math.min(SEGMENT_MIN_SEC, maxSec)));
+        vars.put("minSec", String.valueOf(min));
         vars.put("episodeDurationSec", String.valueOf(episodeDurationSec(doc.path("script"))));
         vars.put("styleClause", styleClause(doc));
         TextCall call = call(PromptService.KEY_DRAMA_CANVAS_STORYBOARD, vars, 0.5, 8192);
         ObjectNode meta = F.objectNode();
         meta.put("no", no);
         meta.put("maxSec", maxSec);
+        meta.put("minSec", min);
         meta.set("ids", ids);
         return new TextPlan(PromptService.KEY_DRAMA_CANVAS_STORYBOARD, "storyboard:" + no,
                 "画布 · 第 " + no + " 集分镜脚本", List.of(call), meta);
@@ -542,9 +558,11 @@ public class DramaCanvasPromptBuilder {
      *   <li>@ 引用的 id 必须在文档里（提交时的快照）存在，不存在的标记换成纯文字名字，notes 里说明；</li>
      *   <li>每行开头的时长规范成「（N 秒）」；片段时长 = 各行之和（向上取整），模型自己报的数只在没写行时长时用；</li>
      *   <li>单个镜头超过上限 → 改成上限并说明；片段总长超过上限 → 按镜头拆成几段并说明（内容一个字不改）。</li>
+     *   <li>片段比下限 {@code minSec}（所选视频模型一条最短多少秒）短 → 并进相邻片段（先看后一段、再看前一段，
+     *       合起来不超过上限才并；文本用换行接起来，内容一个字不改）并说明；两边都放不下就保留，说明要写长一点。</li>
      * </ul>
      */
-    public static ObjectNode parseStoryboard(String content, int episodeNo, int maxSec, JsonNode ids) {
+    public static ObjectNode parseStoryboard(String content, int episodeNo, int maxSec, int minSec, JsonNode ids) {
         JsonNode root = readJsonObject(content);
         JsonNode segs = root.get("segments");
         if (segs == null || !segs.isArray() || segs.isEmpty()) throw badOutput("分镜脚本");
@@ -590,7 +608,8 @@ public class DramaCanvasPromptBuilder {
                     notes.add("第 " + segNo + " 段写了 " + d + " 秒，超过单段上限 " + maxSec + " 秒，按上限算。");
                     d = maxSec;
                 }
-                out.addObject().put("text", joinShots(shots)).put("durationSec", Math.max(1, d));
+                out.addObject().put("text", joinShots(shots)).put("durationSec", Math.max(1, d))
+                        .put(EXACT_SEC, Math.max(1, d));
                 continue;
             }
             // 按镜头贪心装段：一段不超过 maxSec；没写时长的行跟着上一行走
@@ -613,9 +632,11 @@ public class DramaCanvasPromptBuilder {
             for (List<Shot> p : parts) {
                 double sum = 0;
                 for (Shot sh : p) if (sh.sec() > 0) sum += sh.sec();
-                out.addObject().put("text", joinShots(p)).put("durationSec", (int) Math.max(1, Math.ceil(sum - 1e-9)));
+                out.addObject().put("text", joinShots(p)).put("durationSec", ceilSec(sum)).put(EXACT_SEC, sum);
             }
         }
+        mergeShortSegments(out, clampMin(minSec, maxSec), maxSec, notes);
+        for (JsonNode seg : out) ((ObjectNode) seg).remove(EXACT_SEC);
         if (!unknown.isEmpty()) {
             notes.add("有 " + unknown.size() + " 处引用在画布里找不到（" + String.join("、", unknown) + "），改成了纯文字。");
         }
@@ -940,6 +961,69 @@ public class DramaCanvasPromptBuilder {
 
     private record Shot(double sec, String text) {}
 
+    /**
+     * 装段 / 并段时用的精确秒数（各行时长之和，不取整）；出 wire 前删掉。
+     * 并段要按精确和重新取整：两段 2.1 秒各自取整是 3 + 3 = 6，实际只要 ceil(4.2) = 5（Codex 评审 P2）。
+     */
+    private static final String EXACT_SEC = "_exactSec";
+
+    /** 片段时长：精确和向上取整，至少 1 秒。 */
+    private static int ceilSec(double exact) {
+        return (int) Math.max(1, Math.ceil(exact - 1e-9));
+    }
+
+    private static double exactOf(ObjectNode seg) {
+        JsonNode e = seg.get(EXACT_SEC);
+        return e != null && e.isNumber() ? e.asDouble() : seg.path("durationSec").asDouble();
+    }
+
+    /** 片段下限：夹到 1..maxSec（下限比上限还大时没法同时满足，按上限算）。 */
+    private static int clampMin(int minSec, int maxSec) {
+        return Math.max(1, Math.min(minSec, maxSec));
+    }
+
+    /**
+     * 比 {@code minSec} 短的片段并进相邻片段（v0.198.1：H3 一条至少 5 秒，模型切出 3、4 秒的片段时视频根本生成不了）。
+     * 先试后一段、再试前一段，合起来不超过 {@code maxSec} 才并；文本按换行接起来，内容不改。
+     * 并完的那段还短就接着并；两边都放不下的保留原样，notes 里说明要写长一点。
+     * 「第 N 段」按并之前它在这一集里的位置数。
+     */
+    private static void mergeShortSegments(ArrayNode segs, int minSec, int maxSec, List<String> notes) {
+        int i = 0;
+        int shift = 0; // 前面已经并掉了几段：notes 里的段号按合并前的位置报
+        while (i < segs.size()) {
+            ObjectNode cur = (ObjectNode) segs.get(i);
+            int d = cur.path("durationSec").asInt();
+            double exact = exactOf(cur);
+            if (d >= minSec) {
+                i++;
+                continue;
+            }
+            int no = i + 1 + shift;
+            ObjectNode next = i + 1 < segs.size() ? (ObjectNode) segs.get(i + 1) : null;
+            ObjectNode prev = i > 0 ? (ObjectNode) segs.get(i - 1) : null;
+            if (next != null && ceilSec(exact + exactOf(next)) <= maxSec) {
+                double sum = exact + exactOf(next);
+                next.put("text", cur.path("text").asText() + "\n" + next.path("text").asText());
+                next.put("durationSec", ceilSec(sum)).put(EXACT_SEC, sum);
+                segs.remove(i);
+                shift++;
+                notes.add("第 " + no + " 段只有 " + d + " 秒，视频模型一条至少 " + minSec + " 秒，和后一段合在了一起。");
+                // 不前进：并出来的这段（现在在 i）还短的话接着并
+            } else if (prev != null && ceilSec(exactOf(prev) + exact) <= maxSec) {
+                double sum = exactOf(prev) + exact;
+                prev.put("text", prev.path("text").asText() + "\n" + cur.path("text").asText());
+                prev.put("durationSec", ceilSec(sum)).put(EXACT_SEC, sum);
+                segs.remove(i);
+                shift++;
+                notes.add("第 " + no + " 段只有 " + d + " 秒，视频模型一条至少 " + minSec + " 秒，和前一段合在了一起。");
+            } else {
+                notes.add("第 " + no + " 段只有 " + d + " 秒，视频模型一条至少 " + minSec + " 秒，生成视频前把它写长一点。");
+                i++;
+            }
+        }
+    }
+
     private static String joinShots(List<Shot> shots) {
         StringBuilder sb = new StringBuilder();
         for (Shot s : shots) {
@@ -1028,7 +1112,16 @@ public class DramaCanvasPromptBuilder {
         return Optional.empty();
     }
 
-    /** 模型输出 → JSON 对象：容忍 ```json 围栏和前后的废话，但必须能解析成一个对象。 */
+    /**
+     * 模型输出 → JSON 对象：容忍 ```json 围栏和前后的废话，但必须能解析成一个对象。依次试：
+     * <ol>
+     *   <li>第一个「{」到最后一个「}」，原样解析；</li>
+     *   <li>第一个「{」到结尾，补齐漏写的闭合符（{@link ModelJsonRepair}）。模型漏的是末尾那个「}」时，
+     *       「最后一个 }」会切在半中间，把后面的内容丢掉；</li>
+     *   <li>第一个「{」到最后一个「}」，补齐闭合符（结尾跟着废话时）。</li>
+     * </ol>
+     * 修出来的对象照样要过各自的形状校验（v0.198.1：拆角色线上每次都失败，就是模型漏写了一个「]」）。
+     */
     static JsonNode readJsonObject(String content) {
         if (content == null || content.isBlank()) throw badOutput("内容");
         String s = content.strip();
@@ -1039,16 +1132,37 @@ public class DramaCanvasPromptBuilder {
             if (fence >= 0) s = s.substring(0, fence);
         }
         int a = s.indexOf('{');
+        if (a < 0) throw badOutput("内容");
         int b = s.lastIndexOf('}');
-        if (a < 0 || b <= a) throw badOutput("内容");
+        String bounded = b > a ? s.substring(a, b + 1) : null;
+        JsonNode root = parseObject(bounded);
+        if (root == null) root = parseObject(ModelJsonRepair.repairUnbalancedClosers(s.substring(a)));
+        // 第三种只在「最后一个 } 后面是纯废话」时才试：后面还跟着 { [ " : 说明那是没写完的 JSON，
+        // 切掉再补括号会得到一个合法但少了后半截的对象（Codex 评审 P1：分镜只剩第一段，形状校验照过）。
+        if (root == null && bounded != null && isPlainTrailer(s.substring(b + 1))) {
+            root = parseObject(ModelJsonRepair.repairUnbalancedClosers(bounded));
+        }
+        if (root == null) throw badOutput("内容");
+        return root;
+    }
+
+    /** 最后一个「}」之后的内容是不是纯说明文字（不含任何 JSON 结构字符）。 */
+    private static boolean isPlainTrailer(String tail) {
+        for (int i = 0; i < tail.length(); i++) {
+            char c = tail.charAt(i);
+            if (c == '{' || c == '[' || c == '"' || c == ':' || c == ',') return false;
+        }
+        return true;
+    }
+
+    /** 解析成 JSON 对象；null / 解析不了 / 不是对象 → null。 */
+    private static JsonNode parseObject(String json) {
+        if (json == null) return null;
         try {
-            JsonNode root = OM.readTree(s.substring(a, b + 1));
-            if (root == null || !root.isObject()) throw badOutput("内容");
-            return root;
-        } catch (BusinessException e) {
-            throw e;
+            JsonNode n = OM.readTree(json);
+            return n != null && n.isObject() ? n : null;
         } catch (Exception e) {
-            throw badOutput("内容");
+            return null;
         }
     }
 

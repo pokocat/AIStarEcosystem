@@ -35,6 +35,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -60,7 +62,19 @@ import java.util.regex.Pattern;
  * {@code aep.credit.stale-hold-ttl-minutes=180}，不看运行是否还活着；运行必须远早于它结束，否则冻结被那边退掉后、
  * 这边再调上游就是白花厂商的钱（结算会失败、结果交付不了）。批量出图的规模上限也按这个算（见 DramaCanvasRunService）。
  *
- * <p>派发用自己的线程池（{@code aep.drama.canvas.max-concurrent}，默认 4，队列 256）；排满时在新事务里把这批判失败并退款。
+ * <p>派发用自己的线程池：出图 / 合成走 {@code aep.drama.canvas.max-concurrent}（默认 4，队列 256）；文字类另走一个大池
+ * （v0.198.1，见 {@link #textExecutor}）。排满时在新事务里把这批判失败并退款。
+ *
+ * <h3>文字类调用模型（v0.198.1，线上实测换来的）</h3>
+ * <ul>
+ *   <li><b>并发闸</b>：同一时刻最多 {@code aep.drama.canvas.text-concurrency}（默认 2）个 chat 请求在飞 ——
+ *       聚算这把 Key 同时只许 2 个推理，超了直接 429。许可只在 HTTP 调用前后持有，退避等待时不占；
+ *       排队等许可时按运行时限收尾，并定时刷心跳（别让超时回收当成僵死）。</li>
+ *   <li><b>临时错误退避重试</b>：上游 429 / 502 / 503 / 504、网络错误 / 超时，按 5s → 15s → 30s 最多重试 3 次，
+ *       每次之前看运行时限。最后还是 429 时告诉用户「太忙」，不把厂商的英文原话甩给用户。</li>
+ *   <li><b>输出不合格重试一次</b>：同样的消息再问一次（不多扣钱，冻结覆盖整次运行）；还不合格就失败退款，
+ *       把第二次输出的头尾摘录写进 internalDetail（日志里不再是 {@code detail=null}）。</li>
+ * </ul>
  */
 @Service
 public class DramaCanvasRunWorker {
@@ -69,6 +83,10 @@ public class DramaCanvasRunWorker {
 
     private static final Pattern UPSTREAM_STATUS = Pattern.compile("status=(\\d{3})\\s+body=(.*)", Pattern.DOTALL);
     private static final Pattern SECRET_LIKE = Pattern.compile("(?i)(sk-|key[=:]\\s*|bearer\\s+)[A-Za-z0-9._-]{8,}");
+    /** internalDetail 里的上游 HTTP 状态（不要求后面跟 body=）。 */
+    private static final Pattern STATUS_CODE = Pattern.compile("\\bstatus=(\\d{3})\\b");
+    /** 响应体被截断、整体解析不了时，退而求其次抽第一个 "message" 字段。 */
+    private static final Pattern MESSAGE_FIELD = Pattern.compile("\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.){1,300})\"");
     private static final ObjectMapper JSON = new ObjectMapper();
 
     static final List<String> RUNNING_ONLY = List.of(DramaCanvasRun.STATUS_RUNNING);
@@ -79,6 +97,15 @@ public class DramaCanvasRunWorker {
     /** 画布视频运行在底层任务上等了多久算「久」（排队没开始 → 判失败退款；已交给厂商 → 只提示）。 */
     static final Duration VIDEO_STUCK_AFTER = Duration.ofMinutes(30);
     static final String SLOW_VIDEO_NOTE = "比平时久，还在生成。";
+
+    /** 文字类调用遇到临时错误时的退避（毫秒）：最多重试这么多次。 */
+    static final long[] TRANSIENT_BACKOFF_MS = {5_000, 15_000, 30_000};
+    /** 等并发许可时多久醒一次（看运行时限、刷心跳）；必须远小于回收器的 10 分钟。 */
+    static final Duration PERMIT_POLL = Duration.ofSeconds(15);
+    /** 文字类最后败在上游 429（同时在推理的太多）时给用户的话。 */
+    static final String TEXT_BUSY_MESSAGE = "AI 写作这会儿太忙（同时在写的太多），积分已退回，过一分钟再试。";
+    /** 出图等其它调用败在上游 429 时给用户的话。 */
+    static final String MODEL_BUSY_MESSAGE = "模型这会儿太忙（同时在生成的太多），积分已退回，过一分钟再试。";
 
     private final DramaCanvasRunRepository runs;
     private final CreditService credits;
@@ -93,6 +120,24 @@ public class DramaCanvasRunWorker {
     /** 每次状态迁移 + 动钱的短事务（REQUIRES_NEW：afterCommit 回调里调也能真的开一个新事务、真的提交）。 */
     private final TransactionTemplate txNew;
     private final ThreadPoolTaskExecutor executor;
+    /**
+     * 文字类（剧本 / 拆角色和场景 / 分镜脚本）单独一个池（Codex 评审 P2）：它们大部分时间在等并发许可，
+     * 和出图 / 合成挤一个 4 线程的池时，排在后面的出图一直没线程、也没人刷心跳，十分钟后被回收器当成卡死退掉。
+     * 这个池开得比许可数大得多：每条文字运行一进来就有线程，在线程里排队等许可并自己刷心跳；真正同时调模型的仍只有许可数那么多。
+     */
+    private final ThreadPoolTaskExecutor textExecutor;
+    /** 文字类 chat 的并发闸（公平：先排先得）。包内可见给测试看许可数。 */
+    final Semaphore textGate;
+    /** 退避等待（测试换成不真睡的）。 */
+    Sleeper sleeper = Thread::sleep;
+    /** 等许可的轮询间隔（测试调小）。 */
+    long permitPollMillis = PERMIT_POLL.toMillis();
+
+    /** 可替换的 sleep（单测里不真睡）。 */
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
 
     public DramaCanvasRunWorker(DramaCanvasRunRepository runs,
                                 CreditService credits,
@@ -105,7 +150,8 @@ public class DramaCanvasRunWorker {
                                 CdnUrlSigner signer,
                                 ObjectMapper om,
                                 PlatformTransactionManager txManager,
-                                @Value("${aep.drama.canvas.max-concurrent:4}") int maxConcurrent) {
+                                @Value("${aep.drama.canvas.max-concurrent:4}") int maxConcurrent,
+                                @Value("${aep.drama.canvas.text-concurrency:2}") int textConcurrency) {
         this.runs = runs;
         this.credits = credits;
         this.invocation = invocation;
@@ -129,11 +175,24 @@ public class DramaCanvasRunWorker {
         exec.setTaskDecorator(new MdcTaskDecorator());
         exec.initialize();
         this.executor = exec;
+        this.textGate = new Semaphore(Math.max(1, textConcurrency), true);
+        ThreadPoolTaskExecutor textExec = new ThreadPoolTaskExecutor();
+        int textPool = Math.max(16, Math.max(1, textConcurrency) * 8);
+        textExec.setCorePoolSize(textPool);
+        textExec.setMaxPoolSize(textPool);
+        textExec.setQueueCapacity(256);
+        textExec.setThreadNamePrefix("drama-canvas-text-");
+        textExec.setWaitForTasksToCompleteOnShutdown(true);
+        textExec.setAwaitTerminationSeconds(30);
+        textExec.setTaskDecorator(new MdcTaskDecorator());
+        textExec.initialize();
+        this.textExecutor = textExec;
     }
 
     @PreDestroy
     void shutdown() {
         executor.shutdown();
+        textExecutor.shutdown();
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -142,17 +201,26 @@ public class DramaCanvasRunWorker {
 
     /** 每条单独派发（文字类 / 单条出图 / 合成）。必须在事务提交之后调（afterCommit）。 */
     public void dispatch(List<String> runIds) {
-        for (String id : runIds) submit(() -> runBlocking(id), List.of(id), null);
+        for (String id : runIds) {
+            // afterCommit 里调，行已经提交，按种类分池；查不到就走出图 / 合成那个池（runBlocking 里会再判）
+            String kind = runs.findById(id).map(DramaCanvasRun::getKind).orElse(null);
+            submit(isTextKind(kind) ? textExecutor : executor, () -> runBlocking(id), List.of(id), null);
+        }
+    }
+
+    static boolean isTextKind(String kind) {
+        return DramaCanvasRun.KIND_SCRIPT.equals(kind) || DramaCanvasRun.KIND_EXTRACT.equals(kind)
+                || DramaCanvasRun.KIND_STORYBOARD.equals(kind);
     }
 
     /** 批量出图：整批一个任务，按顺序跑，跑完一次退回剩余冻结。 */
     public void dispatchBatch(List<String> runIds, String holdRef) {
-        submit(() -> runBatch(runIds, holdRef), runIds, holdRef);
+        submit(executor, () -> runBatch(runIds, holdRef), runIds, holdRef);
     }
 
-    private void submit(Runnable task, List<String> ids, String sharedHoldRef) {
+    private void submit(ThreadPoolTaskExecutor pool, Runnable task, List<String> ids, String sharedHoldRef) {
         try {
-            executor.execute(task);
+            pool.execute(task);
         } catch (RejectedExecutionException e) { // 含 TaskRejectedException
             // 冻结已经做了、记录已经落库，没人会再来跑它：立即判失败并退款，而不是留给十分钟后的回收
             log.warn("[drama-canvas] 运行队列已满，拒绝派发 runs={}", ids);
@@ -246,16 +314,11 @@ public class DramaCanvasRunWorker {
             List<JsonNode> done = new ArrayList<>();
             JsonNode calls = exec.path("calls");
             for (int i = 0; i < calls.size(); i++) {
-                if (pastDeadline(run)) {
-                    throw new BusinessException(HttpStatus.GATEWAY_TIMEOUT, "DRAMA_CANVAS_RUN_DEADLINE",
-                            "这次生成太久没做完，已经停下；积分已退回，请重试。");
-                }
                 JsonNode c = calls.get(i);
-                touch(run);
+                // 运行时限与心跳在 chat 的每次尝试之前看（含重试、排队等许可）
                 String user = c.path("user").asText("")
                         .replace(DramaCanvasPromptBuilder.CARRY, DramaCanvasPromptBuilder.carryFor(kind, meta, done));
-                String content = chat(c, user);
-                done.add(parseText(kind, stage, meta, i, content));
+                done.add(chatAndParse(run, c, user, kind, stage, meta, i));
             }
             ObjectNode result = om.createObjectNode();
             switch (kind) {
@@ -292,6 +355,46 @@ public class DramaCanvasRunWorker {
         }
     }
 
+    /**
+     * 调一次模型并校验输出；输出不合格（{@code AI_CALL_FAILED}）就用同样的消息再问一次。第二次还不合格 →
+     * 同样的错误码和文案，但 internalDetail 带上第二次输出的头尾摘录（worker 的异常到不了 ErrorLog，日志是唯一的线索）。
+     * 不额外扣费：冻结覆盖整次运行。
+     */
+    private JsonNode chatAndParse(DramaCanvasRun run, JsonNode call, String user, String kind, String stage,
+                                  ObjectNode meta, int index) {
+        AiModelInvocationService.AiModelResponse first = chat(run, call, user);
+        String content = first == null ? null : first.content();
+        try {
+            return parseChecked(kind, stage, meta, index, first);
+        } catch (BusinessException bad) {
+            if (!"AI_CALL_FAILED".equals(bad.getCode())) throw bad;
+            log.warn("[drama-canvas] 模型输出不合格，重试一次 run={} kind={} call={} finish={} excerpt={}",
+                    run.getId(), kind, index, first == null ? null : first.finishReason(), excerpt(content));
+        }
+        AiModelInvocationService.AiModelResponse second = chat(run, call, user);
+        String again = second == null ? null : second.content();
+        try {
+            return parseChecked(kind, stage, meta, index, second);
+        } catch (BusinessException bad) {
+            if (!"AI_CALL_FAILED".equals(bad.getCode())) throw bad;
+            throw new BusinessException(bad.getStatus(), bad.getCode(), bad.getMessage(), bad.getDetails(),
+                    "模型输出两次都不合格 call=" + index + " finish=" + (second == null ? null : second.finishReason())
+                            + " len=" + (again == null ? 0 : again.length()) + " excerpt=" + excerpt(again));
+        }
+    }
+
+    /**
+     * 输出被 max_tokens 截断（finish_reason=length）时不解析：补括号能把它补成一个「合法但少了后半截」的对象
+     * （拆角色少几个人、分镜少几段），形状校验看不出来，照常结算就是收了钱给半份。当作不合格，让上面重试。
+     */
+    private JsonNode parseChecked(String kind, String stage, ObjectNode meta, int index,
+                                  AiModelInvocationService.AiModelResponse resp) {
+        if (resp != null && "length".equalsIgnoreCase(resp.finishReason())) {
+            throw DramaCanvasPromptBuilder.badOutput("内容");
+        }
+        return parseText(kind, stage, meta, index, resp == null ? null : resp.content());
+    }
+
     private JsonNode parseText(String kind, String stage, ObjectNode meta, int index, String content) {
         switch (kind) {
             case DramaCanvasRun.KIND_SCRIPT -> {
@@ -310,13 +413,20 @@ public class DramaCanvasRunWorker {
                 return DramaCanvasPromptBuilder.parseExtractBatch(content, meta.path("maxEpisodeNo").asInt(1));
             }
             default -> {
-                return DramaCanvasPromptBuilder.parseStoryboard(content, meta.path("no").asInt(1),
-                        meta.path("maxSec").asInt(10), meta.path("ids"));
+                int maxSec = meta.path("maxSec").asInt(10);
+                // v0.198.1 之前受理的运行 meta 里没有 minSec：按当时写进提示词的值（缺省 4，不超过上限）
+                int minSec = meta.path("minSec").asInt(Math.min(DramaCanvasPromptBuilder.SEGMENT_MIN_SEC, maxSec));
+                return DramaCanvasPromptBuilder.parseStoryboard(content, meta.path("no").asInt(1), maxSec, minSec,
+                        meta.path("ids"));
             }
         }
     }
 
-    private String chat(JsonNode call, String user) {
+    /**
+     * 一次 chat（含并发闸与临时错误的退避重试）。每次尝试之前看运行时限、刷心跳；许可只在 HTTP 调用期间持有。
+     * 不是临时错误、或重试用完了 → 抛最后那次的错（非业务异常包成 {@code AI_CALL_FAILED}）。
+     */
+    private AiModelInvocationService.AiModelResponse chat(DramaCanvasRun run, JsonNode call, String user) {
         List<Map<String, String>> messages = new ArrayList<>();
         String system = call.path("system").asText("");
         if (!system.isBlank()) messages.add(Map.of("role", "system", "content", system));
@@ -326,16 +436,92 @@ public class DramaCanvasRunWorker {
         options.put("max_tokens", call.path("maxTokens").asInt(4096));
         options.put("timeout_seconds", 180);
         if (call.path("jsonMode").asBoolean(true)) options.put("response_format", Map.of("type", "json_object"));
-        try {
-            AiModelInvocationService.AiModelResponse resp =
-                    invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
-            return resp == null ? null : resp.content();
-        } catch (BusinessException e) {
-            throw e;
-        } catch (RuntimeException e) {
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                    "AI 服务暂时连不上，积分已退回，稍后再试一次。", e.toString());
+        for (int attempt = 0; ; attempt++) {
+            if (pastDeadline(run)) throw deadlineError();
+            touch(run);
+            acquireTextPermit(run);
+            RuntimeException err;
+            try {
+                AiModelInvocationService.AiModelResponse resp =
+                        invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+                return resp;
+            } catch (RuntimeException e) {
+                err = e;
+            } finally {
+                textGate.release();
+            }
+            // 超时只再试一次：一次就是 180 秒，按 429 的节奏重试三次，用户要干等十几分钟
+            boolean timedOut = err instanceof BusinessException tbe && "AI_PROVIDER_TIMEOUT".equals(tbe.getCode());
+            if (attempt >= TRANSIENT_BACKOFF_MS.length || !isTransient(err) || (timedOut && attempt >= 1)) {
+                throw asBusiness(err);
+            }
+            long wait = TRANSIENT_BACKOFF_MS[attempt];
+            String detail = err instanceof BusinessException be ? be.getInternalDetail() : err.toString();
+            log.warn("[drama-canvas] 上游暂时不可用，{} 秒后重试 run={} kind={} attempt={} code={} detail={}",
+                    wait / 1000, run.getId(), run.getKind(), attempt + 1, codeOf(err), mask(truncate(detail, 400)));
+            pause(wait);
         }
+    }
+
+    /**
+     * 拿一个文字类 chat 的并发许可。拿不到就排队（公平），每 {@link #permitPollMillis} 醒一次：过了运行时限 → 失败退款；
+     * 没过 → 刷心跳接着等。
+     */
+    private void acquireTextPermit(DramaCanvasRun run) {
+        boolean logged = false;
+        while (true) {
+            try {
+                if (textGate.tryAcquire(permitPollMillis, TimeUnit.MILLISECONDS)) return;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw interruptedError();
+            }
+            if (!logged) {
+                log.info("[drama-canvas] AI 写作名额已满，排队 run={} kind={} queued={}", run.getId(), run.getKind(),
+                        textGate.getQueueLength());
+                logged = true;
+            }
+            if (pastDeadline(run)) throw deadlineError();
+            touch(run);
+        }
+    }
+
+    /**
+     * 值得退避重试的临时错误：上游 429 / 502 / 503 / 504（internalDetail 里的 {@code status=}）；
+     * 网络层失败 / 超时（{@code AI_PROVIDER_TIMEOUT}，以及带技术细节的 {@code AI_PROVIDER_ERROR} —— 那是
+     * {@code UpstreamCallException} 包出来的）；没包装过的非业务异常。其余（4xx、没配置、额度守卫…）不重试。
+     */
+    static boolean isTransient(RuntimeException e) {
+        if (!(e instanceof BusinessException be)) return true;
+        Integer status = upstreamStatus(be.getInternalDetail());
+        if (status != null) return status == 429 || status == 502 || status == 503 || status == 504;
+        return "AI_PROVIDER_TIMEOUT".equals(be.getCode())
+                || ("AI_PROVIDER_ERROR".equals(be.getCode()) && be.getInternalDetail() != null);
+    }
+
+    private static BusinessException asBusiness(RuntimeException e) {
+        if (e instanceof BusinessException be) return be;
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
+                "AI 服务暂时连不上，积分已退回，稍后再试一次。", e.toString());
+    }
+
+    private void pause(long millis) {
+        try {
+            sleeper.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw interruptedError();
+        }
+    }
+
+    private static BusinessException deadlineError() {
+        return new BusinessException(HttpStatus.GATEWAY_TIMEOUT, "DRAMA_CANVAS_RUN_DEADLINE",
+                "这次生成太久没做完，已经停下；积分已退回，请重试。");
+    }
+
+    private static BusinessException interruptedError() {
+        return new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DRAMA_CANVAS_RUN_INTERRUPTED",
+                "服务正在重启，这次生成停下了；积分已退回，请重试。");
     }
 
     // ── 出图 ───────────────────────────────────────────────────────────────────
@@ -858,7 +1044,7 @@ public class DramaCanvasRunWorker {
     private void logFailure(DramaCanvasRun run, RuntimeException e) {
         String detail = e instanceof BusinessException be ? be.getInternalDetail() : null;
         log.warn("[drama-canvas] 生成失败 run={} kind={} target={} code={} msg={} detail={}",
-                run.getId(), run.getKind(), run.getTarget(), codeOf(e), e.getMessage(), truncate(detail, 600));
+                run.getId(), run.getKind(), run.getTarget(), codeOf(e), e.getMessage(), mask(truncate(detail, 1500)));
     }
 
     static String codeOf(Throwable e) {
@@ -869,12 +1055,31 @@ public class DramaCanvasRunWorker {
 
     /**
      * 给用户看的失败原因：上游 4xx 把它的原话（截断、脱敏）说出来 —— 那是「我们请求哪儿不对」，用户据此改；
+     * 429 例外（同时在跑的太多，不是请求写错了）：说「太忙，过一分钟再试」，不甩厂商的英文原话；
      * 5xx / 网络问题笼统说（细节在日志）；我们自己写过文案的直出；其余给异常类型 + 追查号。
      */
     static String friendly(Throwable e, String runId) {
         if (e instanceof BusinessException be) {
+            // 出图尺寸不支持：DramaRenderService 已经写清楚这个模型能出多大、该怎么换，原样给
+            if ("IMAGE_SIZE_UNSUPPORTED".equals(be.getCode()) && be.getMessage() != null && !be.getMessage().isBlank()) {
+                return be.getMessage();
+            }
+            Integer status = upstreamStatus(be.getInternalDetail());
+            if (status != null && status == 429) {
+                // chat 的上游非 2xx 一律是 AI_CALL_FAILED（AiModelInvocationService）；出图等其它调用另一句
+                return "AI_CALL_FAILED".equals(be.getCode()) ? TEXT_BUSY_MESSAGE : MODEL_BUSY_MESSAGE;
+            }
             String up = upstreamRejection(be.getInternalDetail());
-            if (up != null) return up;
+            if (up != null) {
+                // 从 internalDetail 里抽不出上游原话（只剩「上游 NNN」那句笼统的），而调用方自己的文案已经带着原因
+                // （出图客户端是从完整响应体里抽的：「出图模型拒绝了这次请求：……」）→ 用调用方的。
+                // chat 的 AI_CALL_FAILED 文案是笼统的「AI 生成失败」，不算。
+                if (up.equals(genericRejection(status)) && !"AI_CALL_FAILED".equals(be.getCode())
+                        && be.getMessage() != null && !be.getMessage().isBlank()) {
+                    return be.getMessage();
+                }
+                return up;
+            }
             if (be.getMessage() != null && !be.getMessage().isBlank()) return be.getMessage();
         }
         if (e instanceof ResponseStatusException) {
@@ -901,11 +1106,45 @@ public class DramaCanvasRunWorker {
                 }
             }
         } catch (Exception ignore) {
-            // 响应体不是 JSON（网关的 HTML 错误页）或被截断：不外泄，给笼统的
+            // 响应体不是 JSON（网关的 HTML 错误页）或被截断：下面按字段抽；抽不到不外泄，给笼统的
         }
-        if (msg == null) return "模型拒绝了这次请求（上游 " + status + "），积分已退回。";
+        if (msg == null) {
+            // 出图客户端会截断响应体，整体解析不了；第一个 "message" 字段往往还是完整的
+            Matcher mm = MESSAGE_FIELD.matcher(body);
+            if (mm.find()) {
+                String v = mm.group(1).replace("\\\"", "\"").replace("\\n", " ").strip();
+                if (!v.isBlank()) msg = v;
+            }
+        }
+        if (msg == null) return genericRejection(status);
         msg = SECRET_LIKE.matcher(msg).replaceAll("$1***");
         return "模型拒绝了这次请求：" + truncate(msg, 200) + "（积分已退回）";
+    }
+
+    /** 上游 4xx 但抽不出它的原话时给用户的那句。 */
+    private static String genericRejection(Integer status) {
+        return "模型拒绝了这次请求（上游 " + status + "），积分已退回。";
+    }
+
+    /** internalDetail 里的上游 HTTP 状态码；没有 → null。 */
+    static Integer upstreamStatus(String internalDetail) {
+        if (internalDetail == null) return null;
+        Matcher m = STATUS_CODE.matcher(internalDetail);
+        return m.find() ? Integer.valueOf(m.group(1)) : null;
+    }
+
+    /** 模型输出的日志摘录：头 300 + 尾 300 字，换行转义成 \n，像密钥的串打码。 */
+    static String excerpt(String s) {
+        if (s == null) return "(空)";
+        String v = mask(s);
+        if (v.length() > 600) {
+            v = v.substring(0, 300) + " …（中间省略 " + (v.length() - 600) + " 字）… " + v.substring(v.length() - 300);
+        }
+        return v.replace("\r", "\\r").replace("\n", "\\n");
+    }
+
+    private static String mask(String s) {
+        return s == null ? null : SECRET_LIKE.matcher(s).replaceAll("$1***");
     }
 
     // ═════════════════════════════════════════════════════════════════════════

@@ -59,9 +59,12 @@ public record DramaCanvasRunDto(
     public record CanvasImageBatchBody(String clientRequestId, String docVersion, List<CanvasImageBatchItem> items,
                                        String endpointId) {}
 
-    /** TS {@code CanvasStoryboardRunBody}。 */
+    /**
+     * TS {@code CanvasStoryboardRunBody}。maxSegmentSec / minSegmentSec = 所选视频模型一条最长 / 最短多少秒
+     * （v0.198.1 加 minSegmentSec：H3 至少 5 秒，模型切出 3、4 秒的片段生成不了）；不带时按服务端缺省。
+     */
     public record CanvasStoryboardRunBody(String clientRequestId, String docVersion, Integer episodeNo,
-                                          Integer maxSegmentSec) {}
+                                          Integer maxSegmentSec, Integer minSegmentSec) {}
 
     /** TS {@code CanvasVideoRunBody}。 */
     public record CanvasVideoRunBody(String clientRequestId, String docVersion, Integer episodeNo, String segmentId,

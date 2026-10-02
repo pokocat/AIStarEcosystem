@@ -114,13 +114,23 @@ export interface CanvasRunsValue {
    * - 一进来就把整批目标都登记为「提交中」（isSubmitting 对它们都返回 true），直到轮到并提交完或被跳过；
    * - 每一项发出前重新核对：这个目标此刻有提交中的请求、或 runFor 是 queued / running → 跳过（结果里记 skipped）；
    * - stopOnError=true（默认）时，遇到 ok:false 就停，剩下的解除登记、记 skipped。
-   * 返回与 reqs 一一对应的结果。
+   * - awaitEach=true：一项受理之后**等它跑完**（运行到终态、结果已合进文档）再发下一项 —— 下一项发之前的 flush()
+   *   会把上一项的结果存上，服务端读到的文档里就有它（写全部分集剧本：后一集要接上一集的结尾）。
+   *   上一项没成功（failed / canceled）且 stopOnError → 停下，剩下的记 skipped，这一项的结果仍是 ok:true，
+   *   runs 是**终态**的那几条（调用方看 status 判断）。等的途中离开画布 / 换画布 / 文档进了 stale：
+   *   不再等、不再发，剩下的记 skipped（stopped=true），这一项的 runs 是最后知道的状态。
+   *   awaitEach 下 ok:true 的结果里 runs 都是等完之后的状态；不 awaitEach 时是刚受理时的状态。
+   * - onProgress(index, total)：轮到第 index 项（从 0 数）、发出之前调一次（界面写「正在写第 2 / 3 集」）。
+   * 返回与 reqs 一一对应的结果。skipped 项的 stopped=true 表示「因为前面停下了才没发」，否则是「已经在生成，跳过」。
    */
   submitSequence: (
     reqs: CanvasRunRequest[],
-    opts?: { stopOnError?: boolean },
-  ) => Promise<(SubmitResult | { ok: false; reason: "skipped"; message: string })[]>;
+    opts?: { stopOnError?: boolean; awaitEach?: boolean; onProgress?: (index: number, total: number) => void },
+  ) => Promise<SequenceItemResult[]>;
 }
+
+/** submitSequence 每一项的结果。 */
+export type SequenceItemResult = SubmitResult | { ok: false; reason: "skipped"; message: string; stopped?: boolean };
 
 // 实现：canvas/core/use-canvas-runs.tsx 导出 CanvasRunsProvider（挂在 CanvasDocProvider 里面）与 useCanvasRuns(): CanvasRunsValue。
 // 进页时按文档里所有非终态的 run ref 自动接回（GET runs?ids=），刷新不丢。
@@ -150,6 +160,8 @@ export interface CanvasModelOption {
   billingUnit: "per_call" | "per_second";
   /** 视频：单条最长秒数（null = 未知，按 10 算）。 */
   maxDurationSec: number | null;
+  /** 视频：单条最短秒数（null = 未知，按 1 算）。 */
+  minDurationSec: number | null;
   /** 视频：是否看首帧（图生视频）。未知按 true，跑完以服务端 refs.notes 为准。 */
   acceptsFirstFrame: boolean;
 }
@@ -161,16 +173,25 @@ export interface CanvasPricingValue {
   /** 当前选中的视频模型（单集编辑器顶栏选；存 localStorage，按画布记）。 */
   videoModelId: string | undefined;
   setVideoModelId: (id: string) => void;
+  /**
+   * 当前选中的出图模型（出图面板、列表批量出图、片段「出首帧」**共用这一个选择**；存 localStorage
+   * `drama-canvas:image-model:<canvasId>`，按画布记）。存的那个还在候选里就用它，否则用默认模型。
+   * 发请求时一律带上它（endpointId），不要不带 —— 不带 = 后台默认模型，用户在别处选的不生效。
+   */
+  imageModelId: string | undefined;
+  setImageModelId: (id: string) => void;
   confirmThreshold: number;
   scriptPrice: (stage: "setting" | "outline" | "episode") => number;
   extractPrice: () => number;
   storyboardPrice: () => number;
-  /** 出图：单价 × 张数（endpointId 缺省 = 默认端点）。 */
+  /** 出图：单价 × 张数（endpointId 缺省 = 当前选中的出图模型）。 */
   imagePrice: (count: number, endpointId?: string) => number;
   /** 视频：按秒计费的端点 = 单价 × 秒数，按次的 = 单价。 */
   videoPrice: (durationSec: number, endpointId?: string) => number;
   /** 当前视频模型的片段时长上限（秒）。 */
   maxSegmentSec: () => number;
+  /** 当前视频模型的片段时长下限（秒；不知道时 1）。 */
+  minSegmentSec: () => number;
 }
 
 // 实现：canvas/core/use-canvas-pricing.tsx 导出 useCanvasPricing(): CanvasPricingValue（读 getDramaConfig + render models，模块级缓存）。

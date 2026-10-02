@@ -4,7 +4,7 @@ vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info:
 vi.mock("@/components/drama-ui/confirm-dialog", () => ({ dramaConfirm: vi.fn(async () => true) }));
 
 import { toast } from "@/lib/toast";
-import { needsSpendConfirm, summarizeSequence, toastSequence, type SequenceResult } from "./actions";
+import { needsSpendConfirm, storyboardBody, summarizeSequence, toastSequence, type SequenceResult } from "./actions";
 
 // 批量提交结果的归纳与提示：断结构和调用，不断整句文案（§8.0.1 ⑩）。
 
@@ -37,5 +37,23 @@ describe("summarizeSequence / toastSequence", () => {
     expect(needsSpendConfirm(2, 10)).toBe(false);
     expect(needsSpendConfirm(10, 10)).toBe(true);
     expect(needsSpendConfirm(2, 10, true)).toBe(true);
+  });
+});
+
+describe("storyboardBody", () => {
+  const model = (id: string, minDurationSec: number | null) => ({
+    endpointId: id,
+    name: id,
+    isDefault: false,
+    creditCost: 1,
+    billingUnit: "per_second" as const,
+    maxDurationSec: 15,
+    minDurationSec,
+    acceptsFirstFrame: true,
+  });
+  it("所选视频模型写明了下限才带 minSegmentSec；不知道时不带（服务端用它的缺省，不是 1 秒）", () => {
+    const base = { maxSegmentSec: () => 15, minSegmentSec: () => 5, videoModels: [model("h3", 5), model("x", null)] };
+    expect(storyboardBody(2, { ...base, videoModelId: "h3" })).toEqual({ episodeNo: 2, maxSegmentSec: 15, minSegmentSec: 5 });
+    expect(storyboardBody(2, { ...base, minSegmentSec: () => 1, videoModelId: "x" })).toEqual({ episodeNo: 2, maxSegmentSec: 15 });
   });
 });

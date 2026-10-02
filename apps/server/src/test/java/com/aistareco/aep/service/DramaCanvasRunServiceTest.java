@@ -7,6 +7,7 @@ import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasImageBatchItem;
 import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasImageRunBody;
 import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasImageTarget;
 import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasScriptRunBody;
+import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasStoryboardRunBody;
 import com.aistareco.aep.dto.DramaCanvasRunDto.CanvasVideoRunBody;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
@@ -450,7 +451,7 @@ class DramaCanvasRunServiceTest {
                 mock(AiModelUsageService.class), mock(com.aistareco.aep.service.ai.UpstreamModelHttp.class), jobs,
                 mock(CreditService.class), mock(CdnUploader.class), mock(CdnUrlSigner.class),
                 mock(PlatformConfigService.class), mock(PromptService.class), mock(DramaReferenceAssembler.class),
-                mock(StorageQuotaService.class), OM);
+                mock(StorageQuotaService.class), OM, mock(MaterialVideoModelClient.class));
         ObjectNode vc = OM.createObjectNode().put("segment_id", "sg1");
         real.submitClip(new DramaRenderService.ClipPlan("ep-h3", videoEp, 200L, null, false, false),
                 new DramaRenderService.ClipSubmission("drama-canvas", "片段", "短剧画布 · 片段视频", "PROMPT",
@@ -592,5 +593,28 @@ class DramaCanvasRunServiceTest {
         for (int i = 0; i < 51; i++) many.append("id").append(i).append(',');
         assertEquals("DRAMA_CANVAS_TOO_MANY_RUN_IDS",
                 assertThrows(BusinessException.class, () -> svc.list(USER, CANVAS, many.toString())).getCode());
+    }
+
+    // ── 分镜：片段下限跟所选视频模型（v0.198.1） ──────────────────────────────────
+
+    private JsonNode storyboardMeta(DramaCanvasRunDto r) throws Exception {
+        return OM.readTree(store.get(r.id()).getInputJson()).path("_exec").path("meta");
+    }
+
+    @Test
+    void storyboard_minSegmentSec_followsTheVideoModel_clampedToMax_defaultsTo4() throws Exception {
+        JsonNode h3 = storyboardMeta(svc.submitStoryboard(USER, CANVAS,
+                new CanvasStoryboardRunBody("request-sb1", ver(), 1, 15, 5)));
+        assertEquals(15, h3.path("maxSec").asInt());
+        assertEquals(5, h3.path("minSec").asInt());
+
+        JsonNode tooBig = storyboardMeta(svc.submitStoryboard(USER, CANVAS,
+                new CanvasStoryboardRunBody("request-sb2", ver(), 1, 8, 40)));
+        assertEquals(8, tooBig.path("minSec").asInt(), "下限不超过上限");
+
+        JsonNode absent = storyboardMeta(svc.submitStoryboard(USER, CANVAS,
+                new CanvasStoryboardRunBody("request-sb3", ver(), 1, null, null)));
+        assertEquals(DramaCanvasPromptBuilder.SEGMENT_MIN_SEC, absent.path("minSec").asInt());
+        assertEquals(DramaCanvasRunService.DEFAULT_MAX_SEGMENT_SEC, absent.path("maxSec").asInt());
     }
 }

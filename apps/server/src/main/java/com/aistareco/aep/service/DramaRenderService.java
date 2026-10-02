@@ -10,14 +10,17 @@ import com.aistareco.aep.service.ai.UpstreamModelHttp;
 import com.aistareco.aep.service.cdn.CdnUploader;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
+import com.aistareco.aep.service.materialvideo.MaterialVideoModelClient;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +36,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 短剧渲染服务（v0.65）：分镜「首帧」图像生成 + 「直出/动态」视频生成。
@@ -51,6 +57,7 @@ import java.util.UUID;
 public class DramaRenderService {
 
     private static final Logger log = LoggerFactory.getLogger(DramaRenderService.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -69,7 +76,17 @@ public class DramaRenderService {
     private final DramaReferenceAssembler assembler;
     private final com.aistareco.aep.service.storage.StorageQuotaService storage;
     private final ObjectMapper om;
+    /**
+     * 出片模型下拉要带视频的有效时长区间 / 可出画幅（协议硬边界只有它知道）。
+     * 依赖图：本类早已经 {@link MaterialVideoJobService} 间接依赖它，这里直连不引入新的环。
+     * null 只出现在下面那个旧构造器（单测用），此时视频选项退回「区间未知」。
+     */
+    private final MaterialVideoModelClient videoModels;
 
+    /** 出图端点 → 它只认的固定画幅（上游 400「size must match preset … (WxH)」里学来的，进程内记住）。 */
+    private final Map<String, ImageSize> sizePresets = new ConcurrentHashMap<>();
+
+    @Autowired
     public DramaRenderService(AiModelInvocationService invocation,
                               AiModelUsageService usage,
                               UpstreamModelHttp upstreamHttp,
@@ -81,7 +98,8 @@ public class DramaRenderService {
                               PromptService promptService,
                               DramaReferenceAssembler assembler,
                               com.aistareco.aep.service.storage.StorageQuotaService storage,
-                              ObjectMapper om) {
+                              ObjectMapper om,
+                              MaterialVideoModelClient videoModels) {
         this.invocation = invocation;
         this.usage = usage;
         this.upstreamHttp = upstreamHttp;
@@ -94,6 +112,7 @@ public class DramaRenderService {
         this.assembler = assembler;
         this.storage = storage;
         this.om = om;
+        this.videoModels = videoModels;
     }
 
     /**
@@ -244,8 +263,9 @@ public class DramaRenderService {
     }
 
     /**
-     * 调一次图像模型拿到图片字节（**不存、不计费**）。失败抛 502 IMAGE_CALL_FAILED / IMAGE_BAD_OUTPUT
-     * （上游状态码与响应体由 UpstreamModelHttp 记进日志，internalDetail 里也有，§8.0.1 ①）。
+     * 调一次图像模型拿到图片字节（**不存、不计费**）。失败抛 502 IMAGE_CALL_FAILED / IMAGE_BAD_OUTPUT，
+     * 端点只认固定画幅且比例对不上时抛 400 IMAGE_SIZE_UNSUPPORTED（上游状态码与响应体由 UpstreamModelHttp
+     * 记进日志，internalDetail 里也有，§8.0.1 ①）。
      *
      * @param refUrls 已过滤为外部模型可抓取的绝对 http(s) 地址（本地 /cdn 相对路径要调用方剔掉）
      */
@@ -284,9 +304,47 @@ public class DramaRenderService {
         return new StoredImage(key, bytes == null ? 0 : bytes.length, mime);
     }
 
-    /** OpenAI images 兼容调用：data[0].url（下载）或 b64_json（解码）→ 图像字节。
-     *  validRefs 已由 {@link #computeFrameAppliedRefs} 过滤为外部模型可抓取的绝对 http(s) URL。 */
+    /**
+     * OpenAI images 兼容调用：data[0].url（下载）或 b64_json（解码）→ 图像字节。
+     * validRefs 已由 {@link #computeFrameAppliedRefs} 过滤为外部模型可抓取的绝对 http(s) URL。
+     *
+     * <p>固定画幅端点（2026-10-03 生产实测：聚算 ernie-Image 只认 768×768，其它尺寸一律
+     * 400「size must match preset image_standard_square_1x (768x768)」）：
+     * <ol>
+     *   <li>上游这样拒过一次，就按端点记住它的画幅（进程内，换了 model / baseUrl 就不算同一个）；</li>
+     *   <li>要的比例和它的一致（2% 以内）→ 按它的尺寸重发<b>一次</b>；不一致 → 400 IMAGE_SIZE_UNSUPPORTED，
+     *       明说只能出什么比例，让用户换模型或改画幅 —— 不偷偷出一张比例不对的图；</li>
+     *   <li>记住之后：比例对得上就直接发它的尺寸，对不上不发请求、直接报同一个错。</li>
+     * </ol>
+     * 本方法不计费；调用方在它抛异常时都不扣（首帧在成功后才 debit，三视图 / 画布按张 commit、其余退冻结）。
+     */
     private byte[] callImageModel(AiModelEndpoint ep, String prompt, String size, java.util.List<String> validRefs) {
+        ImageSize requested = ImageSize.parse(size);
+        ImageSize known = sizePresets.get(presetKey(ep));
+        String firstSize = size;
+        if (known != null) {
+            if (requested != null && !requested.sameRatio(known)) throw sizeUnsupported(ep, known, requested);
+            firstSize = known.wire();
+        }
+        try {
+            return callImageModelOnce(ep, prompt, firstSize, validRefs, true);
+        } catch (PresetRejected rejected) {
+            ImageSize preset = rejected.preset();
+            if (requested != null && !requested.sameRatio(preset)) throw sizeUnsupported(ep, preset, requested);
+            // 已经按它说的尺寸发过了还被这样拒：不再兜圈子，把上游原话交出去
+            if (preset.wire().equals(firstSize)) throw rejected.callFailed();
+            log.info("[drama-render] 端点只认固定画幅，按它重发一次 endpoint={} preset={} requested={}",
+                    ep.getName(), preset.wire(), firstSize);
+            return callImageModelOnce(ep, prompt, preset.wire(), validRefs, false);
+        }
+    }
+
+    /**
+     * 发一次出图请求。{@code detectPreset}=true 时，400「size must match preset」抛 {@link PresetRejected}
+     * 交给 {@link #callImageModel} 决定重发还是报错；false（已经重发过）时按普通 4xx 处理。两种情况都会记住画幅。
+     */
+    private byte[] callImageModelOnce(AiModelEndpoint ep, String prompt, String size, java.util.List<String> validRefs,
+                                      boolean detectPreset) {
         String requestId = "img-" + UUID.randomUUID().toString().substring(0, 16);
         long startNanos = System.nanoTime();
         try {
@@ -311,10 +369,12 @@ public class DramaRenderService {
                     .POST(HttpRequest.BodyPublishers.ofString(om.writeValueAsString(req)))
                     .build();
             // v0.85：发送 + 原始日志 + 非 2xx WARN + 失败用量统一走共享原语。
+            // 请求体也要进 [upstream-io] REQUEST（§8.0.1 ①）；参考图是签名地址，日志里去掉签名。
             ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.IMAGE_GENERATION)
                     .endpoint(ep.getId(), ep.getName())
                     .model(ep.getModel())
                     .requestId(requestId)
+                    .requestBodyJson(requestBodyForLog(req))
                     .client(HTTP)
                     .build();
             HttpResponse<String> resp;
@@ -326,10 +386,13 @@ public class DramaRenderService {
                         "endpoint=" + ep.getName() + " err=" + ex.getCause());
             }
             if (resp.statusCode() / 100 != 2) {
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED",
-                        "图片没生成出来，稍后再试一次",
-                        "endpoint=" + ep.getName() + " model=" + ep.getModel()
-                                + " status=" + resp.statusCode() + " body=" + truncate(resp.body(), 300));
+                BusinessException failed = upstreamRejected(ep.getName(), ep.getModel(), resp.statusCode(), resp.body());
+                ImageSize preset = resp.statusCode() == 400 ? sizePresetHint(resp.body()) : null;
+                if (preset != null) {
+                    rememberSizePreset(ep, preset);
+                    if (detectPreset) throw new PresetRejected(preset, failed);
+                }
+                throw failed;
             }
             String upstreamId = null;
             byte[] bytes;
@@ -369,7 +432,7 @@ public class DramaRenderService {
                         requestId, upstreamId, elapsedMs(startNanos), null, null);
             } catch (Exception ignore) { /* 观测旁路，不阻塞主链路 */ }
             return bytes;
-        } catch (BusinessException e) {
+        } catch (BusinessException | PresetRejected e) {
             throw e;
         } catch (Exception e) {
             // 仅覆盖发送前的准备阶段（序列化 / URI 构造等）；发送及之后的失败已在内层处理。
@@ -381,6 +444,191 @@ public class DramaRenderService {
                     "图片没生成出来，稍后再试一次",
                     "endpoint=" + ep.getName() + " err=" + e);
         }
+    }
+
+    // ── 出图：固定画幅 / 上游拒绝的原话 / 请求体日志 ─────────────────────────────────
+
+    /** 上游报的固定画幅，如 {@code size must match preset image_standard_square_1x (768x768)}。 */
+    private static final Pattern SIZE_PRESET_HINT =
+            Pattern.compile("(?i)size must match preset\\s+\\S+\\s*\\((\\d+)\\s*[x×]\\s*(\\d+)\\)");
+    /** 响应体被截断、整段解析不了 JSON 时，退一步找第一个 "message":"…" 字段。 */
+    private static final Pattern JSON_MESSAGE_FIELD = Pattern.compile("\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+    /** 上游原话里像密钥的片段（sk-… / key=… / Bearer …）打码后再给用户看。与画布 worker 同口径。 */
+    private static final Pattern SECRET_LIKE = Pattern.compile("(?i)(sk-|key[=:]\\s*|bearer\\s+)[A-Za-z0-9._-]{8,}");
+    /** internalDetail 里留多少响应体：要够画布 worker 整段解析出 JSON（以前 300 字把它截坏了）。 */
+    static final int INTERNAL_BODY_LIMIT = 1000;
+    /** 给用户看的上游原话最多多长。 */
+    static final int UPSTREAM_MESSAGE_LIMIT = 120;
+    /** 要的比例和端点固定画幅的比例相差多少以内算一致。 */
+    private static final double RATIO_TOLERANCE = 0.02;
+
+    /** 一个画幅（宽 × 高，像素）。 */
+    record ImageSize(int width, int height) {
+        /** "720x1280" / "768×768" → 画幅；空 / 认不出 → null。 */
+        static ImageSize parse(String s) {
+            if (s == null) return null;
+            String[] parts = s.trim().toLowerCase().split("[x×*]");
+            if (parts.length != 2) return null;
+            try {
+                int w = Integer.parseInt(parts[0].trim());
+                int h = Integer.parseInt(parts[1].trim());
+                return w > 0 && h > 0 ? new ImageSize(w, h) : null;
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+
+        /** 发给上游的写法：{@code 768x768}。 */
+        String wire() {
+            return width + "x" + height;
+        }
+
+        /** 约分后的比例：768x768 → 1:1，720x1280 → 9:16。 */
+        String ratioLabel() {
+            int g = gcd(width, height);
+            return (width / g) + ":" + (height / g);
+        }
+
+        boolean sameRatio(ImageSize o) {
+            double mine = (double) width / height;
+            double theirs = (double) o.width / o.height;
+            return Math.abs(mine - theirs) / theirs <= RATIO_TOLERANCE;
+        }
+
+        private static int gcd(int a, int b) {
+            return b == 0 ? a : gcd(b, a % b);
+        }
+    }
+
+    /** 上游 400 说只认某个固定画幅；带着按普通 4xx 准备好的错误，重发不成时直接抛它。 */
+    private static final class PresetRejected extends RuntimeException {
+        private final ImageSize preset;
+        private final BusinessException callFailed;
+
+        PresetRejected(ImageSize preset, BusinessException callFailed) {
+            super("size preset " + preset.wire(), null, false, false);
+            this.preset = preset;
+            this.callFailed = callFailed;
+        }
+
+        ImageSize preset() { return preset; }
+        BusinessException callFailed() { return callFailed; }
+    }
+
+    /** 画幅记忆按「端点 + 模型 + 地址」区分：后台把同一个端点改成别的模型后，旧的画幅不该再拦它。 */
+    private static String presetKey(AiModelEndpoint ep) {
+        return ep.getId() + "|" + ep.getModel() + "|" + ep.getBaseUrl();
+    }
+
+    private void rememberSizePreset(AiModelEndpoint ep, ImageSize preset) {
+        ImageSize before = sizePresets.put(presetKey(ep), preset);
+        if (!preset.equals(before)) {
+            log.info("[drama-render] 记下端点固定画幅 endpoint={} model={} preset={}（下次直接按它发）",
+                    ep.getName(), ep.getModel(), preset.wire());
+        }
+    }
+
+    /** 400 响应体里的固定画幅；没有 → null。 */
+    static ImageSize sizePresetHint(String body) {
+        if (body == null) return null;
+        Matcher m = SIZE_PRESET_HINT.matcher(body);
+        if (!m.find()) return null;
+        try {
+            int w = Integer.parseInt(m.group(1));
+            int h = Integer.parseInt(m.group(2));
+            return w > 0 && h > 0 ? new ImageSize(w, h) : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 端点只出固定画幅、而要的比例对不上：400，明说它能出什么、用户能怎么办。
+     * internalDetail 故意不带 {@code status=}：画布 worker 见到 status=4xx 会改用上游原话，这里要的是这句话本身。
+     */
+    private static BusinessException sizeUnsupported(AiModelEndpoint ep, ImageSize preset, ImageSize requested) {
+        String ratio = preset.ratioLabel();
+        return BusinessException.wrapped(HttpStatus.BAD_REQUEST, "IMAGE_SIZE_UNSUPPORTED",
+                "「" + ep.getName() + "」只能出 " + preset.width() + "×" + preset.height() + "（" + ratio
+                        + "）的图。换一个出图模型，或者把画幅改成 " + ratio + " 再试。",
+                "endpoint=" + ep.getName() + " preset=" + preset.wire() + " requested=" + requested.wire());
+    }
+
+    /**
+     * 上游非 2xx → 502 IMAGE_CALL_FAILED（错误码不变，调用方照旧按它处理）。
+     * 4xx 把上游原话（打码、截断）说给用户 —— 是我们的请求哪儿不对，重试不会好；
+     * 5xx 笼统说，细节在日志和 internalDetail（格式 {@code endpoint=… model=… status=NNN body=…}，画布 worker 按它解析）。
+     */
+    static BusinessException upstreamRejected(String endpointName, String model, int status, String body) {
+        String detail = "endpoint=" + endpointName + " model=" + model + " status=" + status
+                + " body=" + truncate(body, INTERNAL_BODY_LIMIT);
+        String message;
+        if (status >= 400 && status < 500) {
+            String up = upstreamMessage(body);
+            message = up == null ? "出图模型拒绝了这次请求（" + status + "）。" : "出图模型拒绝了这次请求：" + up;
+        } else {
+            message = "图片没生成出来，稍后再试一次";
+        }
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED", message, detail);
+    }
+
+    /**
+     * 从上游错误体里取那句话：{@code error.message} / {@code message} / 字符串形态的 {@code error}；
+     * 整段不是合法 JSON（被截断）时找第一个 {@code "message":"…"}。HTML 错误页之类取不出 → null（不外泄）。
+     */
+    static String upstreamMessage(String body) {
+        if (body == null || body.isBlank()) return null;
+        String msg = null;
+        try {
+            JsonNode root = JSON.readTree(body);
+            for (JsonNode c : new JsonNode[]{root.path("error").path("message"), root.path("message"), root.path("error")}) {
+                if (c.isTextual() && !c.asText().isBlank()) {
+                    msg = c.asText();
+                    break;
+                }
+            }
+        } catch (Exception ignore) {
+            // 不是完整 JSON：下面按字段找
+        }
+        if (msg == null) {
+            Matcher m = JSON_MESSAGE_FIELD.matcher(body);
+            if (m.find()) {
+                try {
+                    msg = JSON.readValue("\"" + m.group(1) + "\"", String.class);
+                } catch (Exception e) {
+                    msg = m.group(1);
+                }
+            }
+        }
+        if (msg == null || msg.isBlank()) return null;
+        msg = SECRET_LIKE.matcher(msg.strip()).replaceAll("$1***");
+        return truncate(msg, UPSTREAM_MESSAGE_LIMIT);
+    }
+
+    /** 记进 [upstream-io] 的请求体：参考图地址去掉查询串（签名不进日志），其余原样。 */
+    private String requestBodyForLog(ObjectNode req) {
+        try {
+            ObjectNode copy = req.deepCopy();
+            JsonNode images = copy.path("extra_body").path("image");
+            if (images instanceof ArrayNode arr) {
+                for (int i = 0; i < arr.size(); i++) {
+                    arr.set(i, TextNode.valueOf(withoutQuery(arr.get(i).asText(""))));
+                }
+            }
+            return om.writeValueAsString(copy);
+        } catch (Exception e) {
+            return null; // 只影响日志
+        }
+    }
+
+    static String withoutQuery(String url) {
+        if (url == null) return "";
+        int cut = url.length();
+        int q = url.indexOf('?');
+        if (q >= 0) cut = q;
+        int hash = url.indexOf('#');
+        if (hash >= 0 && hash < cut) cut = hash;
+        return url.substring(0, cut);
     }
 
     private static byte[] download(String url) throws Exception {
@@ -640,6 +888,10 @@ public class DramaRenderService {
      * 仅含启用的候选 + 启用的端点；creditCost = candidate.override ?? 用途默认单价（frame / clip）。
      * capability 未配置（null）时按 legacy 兼容默认装配：maxRefImages→6（v0.97 前端既有上限）、
      * 首尾帧→协议关键字静态判定（非降级；applied_refs 会如实回报）。
+     *
+     * <p>视频选项带**有效**时长区间（协议硬边界 ∩ 候选配置，与提交时 {@code validateRequest} 同一个算法）
+     * 和协议能出的画幅：聚算媒体协议 5–15 秒，下限只有协议知道，后台那张候选表里没有这一列 ——
+     * 不给的话画布能建出 3–4 秒的片段，提交时才被拒。图片选项不变。
      */
     public com.aistareco.aep.dto.RenderModelsDto listRenderModels() {
         long frameCost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);
@@ -656,15 +908,32 @@ public class DramaRenderService {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             long cost = r.candidate().getCreditCostOverride() != null ? r.candidate().getCreditCostOverride() : defaultCost;
             String billingUnit = candidateBillingUnit(purpose, r.endpoint(), r.candidate());
+            com.aistareco.aep.dto.EndpointCapabilityDto capability = purpose == AiModelPurpose.VIDEO_GENERATION
+                    ? videoCapability(r)
+                    : com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
                     r.endpoint().getId(),
                     r.endpoint().getName(),
                     r.isDefault(),
-                    com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate()),
+                    capability,
                     cost,
                     billingUnit));
         }
         return out;
+    }
+
+    /** 视频候选的能力 + 有效时长区间 + 可出画幅；算不出来不让整个下拉挂掉，退回「区间未知」并记 WARN。 */
+    private com.aistareco.aep.dto.EndpointCapabilityDto videoCapability(AiModelInvocationService.ResolvedEndpoint r) {
+        if (videoModels == null) return com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
+        try {
+            MaterialVideoModelClient.DurationBounds b =
+                    videoModels.effectiveDurationBounds(r.endpoint().getId(), r.endpoint());
+            return com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate(), b.minSec(), b.maxSec(),
+                    videoModels.videoGeometry(r.endpoint()));
+        } catch (RuntimeException e) {
+            log.warn("[drama-render] 视频模型时长区间算不出来 endpoint={}: {}", r.endpoint().getName(), e.toString());
+            return com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
+        }
     }
 
     /** VIDEO 候选只有显式 override + 端点 PER_SECOND 时才按秒；存量默认价继续保持按次。 */

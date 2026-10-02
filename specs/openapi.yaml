@@ -3320,7 +3320,8 @@ components:
             DRAMA_CANVAS_RUN_TIMEOUT（心跳超时被回收，已退回）/ DRAMA_CANVAS_RUN_FAILED（未归类的失败，已退回）/
             DRAMA_CANVAS_CREDIT_SETTLE_FAILED（结算失败）/ DRAMA_CANVAS_RUN_KIND_UNSUPPORTED。
             文字（script / extract / storyboard）：AI_CALL_FAILED（模型调用失败或输出形状不对，已退回）。
-            出图：IMAGE_CALL_FAILED / IMAGE_BAD_OUTPUT（拿到的不是可用图片）/ IMAGE_STORE_FAILED（没存进我方存储），失败的张数退回。
+            出图：IMAGE_CALL_FAILED / IMAGE_BAD_OUTPUT（拿到的不是可用图片）/ IMAGE_STORE_FAILED（没存进我方存储）/
+            IMAGE_SIZE_UNSUPPORTED（v0.198.1：这个出图模型只认固定尺寸、和所选画幅比例对不上，换模型或改画幅），失败的张数退回。
             视频：VIDEO_GENERATION_FAILED（厂商失败，已退回）/ VIDEO_MIRROR_FAILED（require_mirror 镜像失败，已退回）/
             DRAMA_CANVAS_VIDEO_QUEUE_TIMEOUT（排队 30 分钟从未交给厂商，已退回）/ DRAMA_CANVAS_VIDEO_JOB_MISSING（视频任务找不到）/
             DRAMA_CANVAS_VIDEO_RECORD_FAILED（成片已存但登记归属出错，可重试：GET runs 与回收器会再接回）/
@@ -3382,6 +3383,7 @@ components:
           properties:
             episodeNo: { type: integer }
             maxSegmentSec: { type: integer, description: '单个片段时长上限（秒）= 所选视频模型的 maxDurationSec；缺省 10，服务端夹在 4–30' }
+            minSegmentSec: { type: integer, description: 'v0.198.1：单个片段时长下限（秒）= 所选视频模型的 minDurationSec（如 H3 = 5）；缺省 4，服务端夹在 1–maxSegmentSec。写进提示词；模型仍切出太短的片段时并进相邻片段（合并后不超过上限、内容不改），notes 里说明' }
     CanvasVideoRunBody:
       allOf:
         - $ref: '#/components/schemas/CanvasRunBase'
@@ -8708,7 +8710,7 @@ paths:
     post: { tags: [drama], operationId: rewriteDramaShot, summary: 'v0.97 P5 行级就地改写本镜（对齐 ViMax design_storyboard 逐镜可控，替代整篇推倒重写浮窗；drama.shot_rewrite，计费 drama.credit.shot-rewrite）。body={desc,size?,move?,line?,instruction,cast?:[名]} → {desc,size,move,line}。', responses: { '200': { description: ok } } }
   # ── v0.65 短剧渲染（分镜首帧图像 + 直出/动态视频）。DramaRenderController。 ──
   /me/drama/render/models:
-    get: { tags: [drama], operationId: listDramaRenderModels, summary: 'D-11 出片模型下拉：{ image:[...], video:[...] }，每项 { endpointId, name, isDefault, capability{maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec}, creditCost, billingUnit(per_call|per_second) }。仅含启用候选 + 启用端点；capability 未配置（null）时服务端装配按 legacy 兼容默认（maxRefImages→6=v0.97 前端既有上限、首尾帧→协议关键字静态判定；显式配置最高优先）。视频端点 billingMode=PER_SECOND 且候选有 override 时，creditCost 表示每秒费率，实际 hold=费率×时长。前端默认选 isDefault 项。', responses: { '200': { description: ok } } }
+    get: { tags: [drama], operationId: listDramaRenderModels, summary: 'D-11 出片模型下拉：{ image:[...], video:[...] }，每项 { endpointId, name, isDefault, capability{maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,minImagePixels,videoResolutions,videoRatios}, creditCost, billingUnit(per_call|per_second) }。v0.198.1 起视频项的 maxDurationSec / minDurationSec 是有效区间（协议硬边界 ∩ 候选配置，如聚算 H3 5–15 秒），算不出来时为 null。仅含启用候选 + 启用端点；capability 未配置（null）时服务端装配按 legacy 兼容默认（maxRefImages→6=v0.97 前端既有上限、首尾帧→协议关键字静态判定；显式配置最高优先）。视频端点 billingMode=PER_SECOND 且候选有 override 时，creditCost 表示每秒费率，实际 hold=费率×时长。前端默认选 isDefault 项。', responses: { '200': { description: ok } } }
   /me/drama/render/frame:
     post: { tags: [drama], operationId: renderDramaFrame, summary: '分镜首帧渲染（IMAGE_GENERATION 图像模型 → CDN，按次扣积分）。v0.72 起 body={kind?(shot|short|scene|character),vars{},ratio?,count?,ref_images?}：出图提示词模板服务端化（shot→drama.frame_image / short→drama.short_frame_image / v0.98 scene→drama.scene_frame_image 空景场景参考图 / character→drama.character_frame_image 角色定妆参考图），前端传 vars 填充。C-1（一致性引擎）起返回体加 applied_refs（实际生效参考清单 + 过滤原因：local_unfetchable 等），前端「参考 N/M 生效」回报。C-3 起服务端参考装配：body 可传 shot_ref{project_id?,episode_no,scene_id,shot_id,chain_consistency}（服务端按 payloadJson + drama_character/scene 实体自装配角色/场景/上一镜真实末帧）/ ref_slots{character_refs,scene_ref,prev_last_frame}（前端显式槽位，短视频线用）/ ref_leading[]（置顶锚，如拆镜末帧出图用本镜首帧），三级优先级 shot_ref>ref_slots>ref_images，按端点 capability(maxRefImages) 裁剪，applied_refs.items[].role 升级为精确槽位（character/scene/prev_last_frame/first_frame/last_frame）。D-11 起 body 可选 endpoint_id（候选端点白名单；未命中 503 ENDPOINT_NOT_ALLOWED，不扣费；命中的 candidate 单价 override 覆盖 drama.credit.frame）', responses: { '200': { description: ok } } }
   /me/drama/render/frame-jobs:
