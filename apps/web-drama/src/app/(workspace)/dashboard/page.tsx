@@ -2,7 +2,7 @@
 
 // 首页 — 设计真源 AI短剧工作台.dc.html：
 // chatOff（落地）: 居中对话框是「还没想好」的那条路（一句话点子 → 开始聊，空着也能聊）；
-//                  正下方「已经想好了？直接开始」三张卡直达新建短剧 / 一句话做短视频 / 粘贴脚本；
+//                  正下方「已经想好了？直接开始」四张卡直达新建短剧 / 一句话做短视频 / 粘贴脚本 / 画布（v0.198）；
 //                  再往下是继续上次 + 热门模板（与模板广场同源）。
 // chatOn（?b=<id>）: 对话 / 可编辑故事大纲 → 新建短剧或开始制作（BrainstormStudio）。
 import * as React from "react";
@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Sparkles,
   Wand2,
+  Workflow,
   Zap,
 } from "lucide-react";
 import { formatDateTime } from "@ai-star-eco/api-client";
@@ -246,7 +247,8 @@ function HomeLanding() {
         {/* 已经想好了？直接开始 */}
         <div className="hm-section" style={{ maxWidth: 1000, margin: "0 auto", padding: "26px 40px 0", position: "relative" }}>
           <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10 }}>已经想好了？直接开始</div>
-          <div className="hm-direct">
+          {/* v0.198：多了一张「画布」卡，四张一排（cv-home-direct 的列数写在 styles/pages/canvas.css） */}
+          <div className="hm-direct cv-home-direct">
             <DirectCard
               href="/projects/new"
               icon={<Clapperboard size={17} />}
@@ -268,6 +270,13 @@ function HomeLanding() {
               title="粘贴写好的脚本"
               sub="脚本、分镜稿、AI 视频提示词都可以，AI 按原文拆成分镜"
               cost="拆成分镜免费"
+            />
+            <DirectCard
+              href="/canvas"
+              icon={<Workflow size={17} />}
+              title="在画布上做短剧"
+              sub="剧本、角色和场景、逐集视频放在一张画布上，按片段出视频再合成"
+              cost="新建不花积分"
             />
           </div>
         </div>

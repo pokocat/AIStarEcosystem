@@ -177,6 +177,125 @@ public class DramaAssembleService {
         }
     }
 
+    // ── v0.198 画布：按给定视频 key 顺序拼接 ─────────────────────────────────────────
+
+    /** 画布合成成片的产物（key 已记进 storage_asset，app=drama）。 */
+    public record AssembledVideo(String key, long durationSec, long bytes) {}
+
+    /** 成片时长与各段时长之和的允许偏差：取 1.5 秒与 5% 中较大的那个。 */
+    static double durationTolerance(double expectedSec) {
+        return Math.max(1.5, expectedSec * 0.05);
+    }
+
+    /**
+     * 画布「合成成片」（v0.198）：按调用方给定的顺序把这些视频 key 拼成一条，存进我方存储并记 storage_asset。
+     *
+     * <p>和 {@link #assemble} 同一套拼接（先流复制，失败回退重编码）与下载白名单；key 由调用方从**库里的文档**取、
+     * 并且已经过归属闸（{@code DramaCanvasOwnership.requireOwned}）—— 这里不再判归属，只负责拼。
+     *
+     * <p>质量门（失败即抛，不交付一条坏片）：
+     * <ol>
+     *   <li>每段必须是 ffprobe 读得出、带视频流、时长 &gt; 0 的文件；</li>
+     *   <li>成片同样要读得出、带视频流；时长与各段之和偏差超过 {@link #durationTolerance} → 流复制的结果不可信，
+     *       改用重编码再拼一次；还不对就失败（时间戳错乱的成片播起来会卡顿或丢段）。</li>
+     * </ol>
+     *
+     * @param refId storage_asset 的 refId（画布 id）
+     */
+    public AssembledVideo assembleKeys(String userId, String refId, int episodeNo, List<String> videoKeys) {
+        if (videoKeys == null || videoKeys.isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CANVAS_NOTHING_TO_ASSEMBLE",
+                    "这一集还没有可以合成的视频。");
+        }
+        Path workDir = null;
+        try {
+            workDir = Files.createTempDirectory("drama-canvas-assemble-");
+            List<Path> locals = new ArrayList<>();
+            double expected = 0;
+            for (int i = 0; i < videoKeys.size(); i++) {
+                String key = videoKeys.get(i);
+                String url = signer.signKey(key);
+                if (url == null || url.isBlank()) url = signer.publicUrlFor(key);
+                if (url == null || url.isBlank()) {
+                    throw new IllegalStateException("片段视频没有可读地址 key=" + key);
+                }
+                Path local = download(url, workDir.resolve("clip_" + i + ".mp4"));
+                FfmpegRunner.MediaProbe probe = ffmpeg.probeMedia(local.toFile());
+                if (!probe.readable() || !probe.hasVideo() || probe.durationSec() <= 0) {
+                    throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "DRAMA_ASSEMBLE_BAD_CLIP",
+                            "第 " + (i + 1) + " 个片段的视频文件读不出来，重新生成这个片段再合成。",
+                            "key=" + key + " readable=" + probe.readable() + " video=" + probe.videoCodec()
+                                    + " dur=" + probe.durationSec());
+                }
+                expected += probe.durationSec();
+                locals.add(local);
+            }
+            Path listFile = workDir.resolve("list.txt");
+            StringBuilder sb = new StringBuilder();
+            for (Path p : locals) {
+                sb.append("file '").append(p.toAbsolutePath().toString().replace("'", "'\\''")).append("'\n");
+            }
+            Files.writeString(listFile, sb.toString());
+
+            Path out = workDir.resolve("episode.mp4");
+            double tolerance = durationTolerance(expected);
+            double actual = -1;
+            boolean copied = false;
+            try {
+                ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
+                        "-i", listFile.toString(), "-c", "copy", out.toString()));
+                copied = true;
+                actual = gatedDuration(out);
+            } catch (Exception copyFail) {
+                log.info("[drama-assemble] canvas -c copy 失败，回退重编码: {}", copyFail.getMessage());
+            }
+            if (!copied || actual < 0 || Math.abs(actual - expected) > tolerance) {
+                if (copied) {
+                    log.info("[drama-assemble] canvas 流复制时长不对 expected={} actual={}，改重编码", expected, actual);
+                }
+                ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
+                        "-i", listFile.toString(),
+                        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-movflags", "+faststart", out.toString()));
+                actual = gatedDuration(out);
+                if (actual < 0 || Math.abs(actual - expected) > tolerance) {
+                    throw new IllegalStateException("成片质量门没过 expected=" + expected + " actual=" + actual);
+                }
+            }
+
+            String key = "drama/canvas/assemblies/" + safeSegment(refId) + "_ep" + episodeNo + "_"
+                    + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".mp4";
+            cdnUploader.upload(out, key, "video/mp4");
+            long bytes = Files.size(out);
+            // 记入存储用量（成片，归属画布）。画布的归属闸也查这张表；调用方会再用 DramaCanvasOwnership.record 兜一次。
+            storage.record("drama", userId, "成片", refId, key, bytes);
+            log.info("[drama-assemble] canvas ok user={} canvas={} ep={} clips={} dur={}s key={}",
+                    userId, refId, episodeNo, locals.size(), Math.round(actual), key);
+            return new AssembledVideo(key, Math.round(actual), bytes);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[drama-assemble] canvas failed user={} canvas={} ep={}: {}", userId, refId, episodeNo, e.toString());
+            // 技术细节（下载 HTTP 码 / ffmpeg 报错）只进日志，不直出给用户（§8.0.1 ①：5xx 笼统）。
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "DRAMA_ASSEMBLE_FAILED",
+                    "成片没合成出来，稍后再试一次。", e.toString());
+        } finally {
+            cleanup(workDir);
+        }
+    }
+
+    /** 成片读得出且带视频流 → 时长（秒）；否则 -1。 */
+    private double gatedDuration(Path out) {
+        FfmpegRunner.MediaProbe probe = ffmpeg.probeMedia(out.toFile());
+        if (!probe.readable() || !probe.hasVideo() || probe.durationSec() <= 0) return -1;
+        return probe.durationSec();
+    }
+
+    private static String safeSegment(String s) {
+        String v = s == null ? "canvas" : s.replaceAll("[^A-Za-z0-9_-]", "");
+        return v.isEmpty() ? "canvas" : v;
+    }
+
     /** episodeDocs[ep].storyboard 优先，缺则回退老 storyboard 字段；按场序 + 镜号取 videoUrl。 */
     private List<String> collectClipUrls(DramaProject row, int ep) {
         JsonNode data;

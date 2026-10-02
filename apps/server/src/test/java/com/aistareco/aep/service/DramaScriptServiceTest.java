@@ -22,6 +22,7 @@ class DramaScriptServiceTest {
 
     private AiModelInvocationService invocation;
     private PromptService promptService;
+    private MaterialVideoJobService videoJobs;
     private DramaScriptService service;
 
     @BeforeEach
@@ -30,8 +31,19 @@ class DramaScriptServiceTest {
         promptService = mock(PromptService.class);
         service = new DramaScriptService(
                 mock(DramaScriptRepository.class), invocation, promptService,
-                mock(MaterialVideoJobService.class), new DramaShortContinuityService(OM), OM);
+                videoJobs = mock(MaterialVideoJobService.class), new DramaShortContinuityService(OM), OM);
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+    }
+
+    /** v0.198：画布的片段视频和短剧同一个分区，但老工作台的视频列表不显示它们。 */
+    @Test
+    void listEpisodeJobs_excludesCanvasVideos() {
+        when(videoJobs.listJobs("u1", null, null, MaterialVideoJobService.APP_DRAMA)).thenReturn(java.util.List.of(
+                OM.createObjectNode().put("id", "mvj_ep").put("kind", "drama-episode"),
+                OM.createObjectNode().put("id", "mvj_canvas").put("kind", DramaCanvasRunService.VIDEO_JOB_KIND)));
+        var jobs = service.listEpisodeJobs("u1", null);
+        assertEquals(1, jobs.size());
+        assertEquals("mvj_ep", jobs.get(0).path("id").asText());
     }
 
     @Test

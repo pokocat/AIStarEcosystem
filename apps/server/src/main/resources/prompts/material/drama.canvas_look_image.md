@@ -1,0 +1,1 @@
+Character design sheet, single person, full body, standing front view, plain light grey studio background. 角色：{{name}}。外貌：{{prompt}} {{textClause}}{{refClause}}{{styleClause}}{{ratioClause}} Keep one consistent person, clear face, accurate costume details, no text, no watermark, no split screen, no extra people.

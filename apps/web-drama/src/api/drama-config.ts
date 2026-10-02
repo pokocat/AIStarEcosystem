@@ -22,6 +22,16 @@ export interface DramaCreditPrices {
   shortEntry: number;
   /** v0.197：互动剧 AI 起草分支图单次积分（服务端 KEY_INTERACTIVE_DRAFT，默认 18）。 */
   interactiveDraft: number;
+  /** v0.198 画布：由想法写故事大纲（默认 2）。 */
+  canvasScriptSetting: number;
+  /** v0.198 画布：由故事大纲写 N 集分集剧情（默认 6）。 */
+  canvasScriptOutline: number;
+  /** v0.198 画布：写（或重写）一集剧本（默认 4，按集计）。 */
+  canvasScriptEpisode: number;
+  /** v0.198 画布：从分集剧本拆出角色和场景（默认 4）。 */
+  canvasExtract: number;
+  /** v0.198 画布：生成一集的分镜脚本（默认 4，按集计）。 */
+  canvasStoryboard: number;
 }
 
 export interface DramaCreditConfig {
@@ -44,6 +54,11 @@ export const DRAMA_CONFIG_DEFAULTS: DramaCreditConfig = {
     shotRewrite: 2,
     shortEntry: 10,
     interactiveDraft: 18,
+    canvasScriptSetting: 2,
+    canvasScriptOutline: 6,
+    canvasScriptEpisode: 4,
+    canvasExtract: 4,
+    canvasStoryboard: 4,
   },
 };
 

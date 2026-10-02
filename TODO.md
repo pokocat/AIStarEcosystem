@@ -154,11 +154,33 @@
 
 ---
 
+## 2026-09-30 · web-drama 画布 v0.198 第二期候选（真源 `docs/drama-canvas-plan.md` §9）
+
+第一期只做照小云雀的短剧流水（剧本 → 角色和场景 → 逐集制作 → 片段 → 合成成片），和「我的短剧」互相独立。下面是用户已确认放到第二期、或设计时明确不做的：
+- [ ] **自由画布 + 右侧 AI 对话**（小云雀「创建画布」/ 创作 Agent）：先把计划摆出来、用户确认后才花积分，运行中可中止。
+- [ ] **故事板助手**（单集编辑器右栏对话）、剧本页**选中一段「引用 → 改写」**。
+- [ ] **音色 / 配音**（文本音色、上传音频、石榴 V2 配音）、**绑定数字人**（要跨产品校验 DapAvatar 归属）、**角色库**（预设角色大库）。
+- [ ] **智能预演**（一组片段统一出关键帧）、**三视图**、**片段拖动排序**、**ffmpeg 截末帧**（「用上一片段最后一帧」目前只在视频有真实末帧时可用）、**.docx 导入**、**修改记录对比视图**。
+- [ ] **视频多参考图 / 尾帧**（聚算尾帧、多参考未接，见 AGENTS.md 视频生成段）。
+- [ ] **画布和「我的短剧」互通**（存成短剧 / 从短剧生成画布）：第一期跑一段再定要不要做。
+- [ ] **片段「用到的造型换过图了」目前是近似判断**（按「引用的挑中图出图时间晚于片段视频」推，上传图 / 挑回旧图判断不出来）：服务端在视频 / 首帧运行结果里回传实际送给模型的 key（`refKeys`），前端按 key 比对。
+- [ ] **openapi 画布接口的参数校验类错误码没逐个列**（`DRAMA_CANVAS_TARGET_NOT_FOUND` / `DRAMA_CANVAS_SEGMENT_TOO_LONG` / `DRAMA_CANVAS_VIDEO_SUBMIT_FAILED` 502 等只写在 BUSINESS_RULES §6.7 与代码里）：补进各接口的 400 / 404 / 502 说明。
+- [ ] **AGENTS.md §8.0 审计表写 dev-fake-llm「默认 false，显式开」，但 `application-dev.yml` 里 dev profile 默认开**（Codex 2026-09-30 评审顺带指出，存量）：二选一对齐（改表述或改默认值），不要让表和配置对不上。
+- [ ] 两套画布引擎并存（aiavatar 的 vendored infinite-canvas 与 drama 的 React Flow）：以后要合一，先评估把 aiavatar 迁到 React Flow。
+
 ## 2026-09-28 · web-drama 文案 / 用户路径 / 响应式收口 v0.197 后续（真源 `docs/drama-ux-copy-pass.md`）
 
 本轮只改了前端与服务端的**用户可见字符串**，以及文档 §3 列出的路径 bug；下面是扫出来但本轮不修的。
 
 **要和服务端一起动的**
+- [x] ~~**P1 · 短剧在聚算 H3 上「生成视频」首帧送不到模型，静默退成文生视频**~~ **2026-09-30 热修完成**（#115，2026-10-02 已上线），合并 v0.198 画布时并入新结构：`renderClip` 走 `resolveClipPlan` + `submitClip`，首帧 key 由 `assembleClip`（含 `requireOwnedFrameKey` 归属闸，在 hold 之前）派生后放进 `ClipSubmission.firstFrameKey`；详情见下方热修那一条。原描述（2026-09-28 画布调研时发现，已核实代码）：
+      聚算分支 `MaterialVideoModelClient`（约 551 行）把提示词里的首帧标记 `stripFrameUrlHint` 剥掉，首帧只认
+      `variant_config.first_frame_key`（`MaterialVideoWorker.extractFirstFrameKey`，约 465 行）；全仓只有
+      `IpRunService`（约 201 行）写了这个字段，`DramaRenderService.renderClip`（约 440 行）没写。违反 AGENTS.md
+      顶部视频生成段「上传失败一律抛、不静默退回 t2v」的同一原则。修：renderClip 由首帧 URL / key 派生 `first_frame_key`
+      写进 variant_config；applied_refs 在该协议下如实回报。（v0.198 画布自己的片段视频走新路径并写了 first_frame_key，老路没动。）
+- [ ] **短剧合成下载的是库里存的 videoUrl，下载前不重签**（`DramaAssembleService` 约 181–205 行）：最后一次保存超过签名 TTL（默认 1h）
+      后合成，下载可能 403（未实测）。修：按 key 重签后再下载，或文档改存 cdnKey。
 - [ ] **短视频合成要求每一镜都点过「就用这版」，短剧只要有视频就能合成**：两条线口径不一。服务端
       `DramaShortAssembleService.buildPlan`（`approved = "done".equals(flow)`，测试
       `buildPlanRejectsAnyUnacceptedOrMissingClip` 钉着）与 `DramaShortContinuityService.preflight`

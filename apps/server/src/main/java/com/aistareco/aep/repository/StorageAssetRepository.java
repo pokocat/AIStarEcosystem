@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface StorageAssetRepository extends JpaRepository<StorageAsset, String> {
@@ -29,4 +30,20 @@ public interface StorageAssetRepository extends JpaRepository<StorageAsset, Stri
 
     /** 彻底删除某业务对象时释放其占用。 */
     void deleteByAppAndRefId(String app, String refId);
+
+    // ── v0.198 短剧画布归属闸（DramaCanvasOwnership）─────────────────────────────
+
+    String FIND_OWNED_CDN_KEYS =
+            "SELECT s.cdnKey FROM StorageAsset s WHERE s.app = :app AND s.ownerUserId = :uid AND s.cdnKey IN :keys";
+
+    /**
+     * 这批 key 里哪些是「本人在该子应用下的资产」（生成 / 上传时记过的）。
+     * 调用方负责分批（IN 列表别太长）并跳过空集合。
+     */
+    @Query(FIND_OWNED_CDN_KEYS)
+    List<String> findOwnedCdnKeys(@Param("app") String app, @Param("uid") String uid,
+                                  @Param("keys") Collection<String> keys);
+
+    /** 按 key 找记录（通常 0 或 1 行；并发记账时可能多于 1 行）。 */
+    List<StorageAsset> findByCdnKey(String cdnKey);
 }

@@ -114,23 +114,36 @@ public class DramaRenderService {
     private String buildMediaPrompt(JsonNode body, String key) {
         String legacy = text(body, "prompt");
         if (legacy != null && !legacy.isBlank()) return legacy; // 过渡兼容；新前端走 vars
-        String kind = orDefault(text(body, "kind"), "shot");
-        PromptService.ResolvedPrompt p = promptService.resolve(key);
-        if ("code".equals(p.origin())) {
-            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "出首帧 / 生成视频用的提示词尚未配置（promptKey=" + key
-                            + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
-        }
         Map<String, String> vars = new LinkedHashMap<>();
         JsonNode v = body.get("vars");
         if (v != null && v.isObject()) {
             v.fields().forEachRemaining(e ->
                     vars.put(e.getKey(), e.getValue() == null || e.getValue().isNull() ? "" : e.getValue().asText()));
         }
+        return fillMediaPrompt(key, vars, orDefault(text(body, "kind"), "shot"));
+    }
+
+    /**
+     * 按模板 key 填出图 / 出片提示词。renderFrame / renderClip 与画布出图 / 出视频（v0.198）共用这一个漏斗，
+     * 规则只写在这里（§8.0.1 ④）。
+     *
+     * <p>§8.0：模板未配置（origin=code）即 503 {@code PROMPT_NOT_CONFIGURED}，不静默兜底。
+     * 调用方应在冻结积分之前调它（画布在提交时就把最终提示词算好存进运行记录）。
+     *
+     * @param kind 只进排查日志（shot / short / canvas-look …）
+     */
+    public String fillMediaPrompt(String key, Map<String, String> vars, String kind) {
+        PromptService.ResolvedPrompt p = promptService.resolve(key);
+        if (p == null || "code".equals(p.origin())) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
+                    "出首帧 / 生成视频用的提示词尚未配置（promptKey=" + key
+                            + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
+        }
+        Map<String, String> safe = vars == null ? Map.of() : vars;
         // fill 后清掉未填充的残留占位符，避免把 {{x}} 原样喂给图像/视频模型
-        String finalPrompt = PromptService.fill(p.userTemplate(), vars).replaceAll("\\{\\{[^}]*}}", "").trim();
+        String finalPrompt = PromptService.fill(p.userTemplate(), safe).replaceAll("\\{\\{[^}]*}}", "").trim();
         // 排查用：出图/出片拼装数据 + 最终发给模型的提示词全文（图像生成不走 ai-chat-io，这里兜底记录）。
-        log.info("[drama-render] promptKey={} kind={} origin={} vars={} prompt={}", key, kind, p.origin(), vars, finalPrompt);
+        log.info("[drama-render] promptKey={} kind={} origin={} vars={} prompt={}", key, kind, p.origin(), safe, finalPrompt);
         return finalPrompt;
     }
 
@@ -147,24 +160,11 @@ public class DramaRenderService {
         }
         // D-11：可选 endpoint_id（候选端点白名单）。传了 → 校验命中（未命中 503 ENDPOINT_NOT_ALLOWED，
         // 不扣费、不生成）；没传 → 默认端点（旧路径）。单价 override + capability(maxRefImages) 随命中的 candidate。
-        String endpointId = text(body, "endpoint_id");
-        long cost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);
-        AiModelInvocationService.ResolvedEndpoint resolved;
-        if (endpointId != null && !endpointId.isBlank()) {
-            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, endpointId)
-                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
-                            "选的模型现在用不了，刷新页面后重新选一个。"));
-        } else {
-            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, null)
-                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
-                            "出首帧还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
-        }
-        AiModelEndpoint ep = resolved.endpoint();
-        if (resolved.candidate() != null && resolved.candidate().getCreditCostOverride() != null) {
-            cost = resolved.candidate().getCreditCostOverride();
-        }
+        ImagePlan plan = resolveImagePlan(text(body, "endpoint_id"), "出首帧");
+        AiModelEndpoint ep = plan.endpoint();
+        long cost = plan.cost();
         int count = clamp(body.path("count").asInt(1), 1, 4);
-        String size = ratioToSize(orDefault(text(body, "ratio"), "9:16"));
+        String ratio = orDefault(text(body, "ratio"), "9:16");
 
         // 存储配额前置：已满则不生成、不扣费，提示清理或购买存储套餐（产物字节未知，按已用是否超额校验）。
         storage.checkQuota("drama", userId, 0);
@@ -174,10 +174,8 @@ public class DramaRenderService {
         // applied_refs（role 升级为精确槽位）。valid 才喂给图像模型；本地 /cdn 标 local_unfetchable。
         // maxRefImages 未显式配置（null，含 D-11 seeder 回填的全部存量候选）→ legacy 兼容默认 6
         // （= v0.97 前端 slice(0,6) 既有上限）；按 1 会让升级当天多参考一致性整体削弱（回归修正）。
-        int maxRefImages = resolved.candidate() != null && resolved.candidate().getMaxRefImages() != null
-                ? resolved.candidate().getMaxRefImages() : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES;
         DramaReferenceAssembler.FrameAssembly assembled = assembler.assembleFrame(body, userId,
-                new DramaReferenceAssembler.Capability(maxRefImages, false, false));
+                new DramaReferenceAssembler.Capability(plan.maxRefImages(), false, false));
         java.util.List<String> validRefs = assembled.imageRefs();
         int droppedCount = assembled.appliedRefs().path("requested").asInt() - assembled.appliedRefs().path("applied").asInt();
         if (droppedCount > 0) {
@@ -187,24 +185,12 @@ public class DramaRenderService {
 
         ArrayNode frames = om.createArrayNode();
         for (int i = 0; i < count; i++) {
-            byte[] bytes = callImageModel(ep, prompt, size, validRefs);
-            String key = "drama/frames/" + UUID.randomUUID().toString().replace("-", "") + ".png";
-            try {
-                Path tmp = Files.createTempFile("drama-frame-", ".png");
-                try {
-                    Files.write(tmp, bytes);
-                    cdnUploader.upload(tmp, key, "image/png");
-                } finally {
-                    Files.deleteIfExists(tmp);
-                }
-            } catch (Exception e) {
-                throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED",
-                        "首帧生成了但没保存下来，请再试一次。");
-            }
-            storage.record("drama", userId, "分镜首帧", null, key, bytes.length);
+            byte[] bytes = generateImageBytes(ep, prompt, ratio, validRefs);
+            StoredImage stored = storeImageBytes(bytes, "drama/frames/", "首帧生成了但没保存下来，请再试一次。");
+            storage.record("drama", userId, "分镜首帧", null, stored.key(), stored.bytes());
             ObjectNode f = om.createObjectNode();
-            f.put("cdnKey", key);
-            f.put("url", signer.signKey(key));
+            f.put("cdnKey", stored.key());
+            f.put("url", signer.signKey(stored.key()));
             frames.add(f);
         }
 
@@ -214,13 +200,88 @@ public class DramaRenderService {
                     "frame_" + UUID.randomUUID().toString().substring(0, 8),
                     "出首帧（" + count + " 版）");
         }
-        log.info("[drama-render] frame ok user={} count={} endpoint={} size={}", userId, count, ep.getName(), size);
+        log.info("[drama-render] frame ok user={} count={} endpoint={} ratio={}", userId, count, ep.getName(), ratio);
 
         ObjectNode out = om.createObjectNode();
         out.set("frames", frames);
         out.put("cost", cost);
         out.set("applied_refs", assembled.appliedRefs());
         return out;
+    }
+
+    // ── 出图积木（v0.198：renderFrame 与画布出图共用，不另写一份） ─────────────────────
+
+    /** 出图计划：命中的端点 + 本次单价（每一「份」的价，与出几张的关系由调用方定）+ 参考图上限。 */
+    public record ImagePlan(AiModelEndpoint endpoint, long cost, int maxRefImages) {}
+
+    /**
+     * 解析出图端点与单价，全部在生成与扣费之前抛：传了 endpointId → 必须命中候选白名单
+     * （未命中 503 ENDPOINT_NOT_ALLOWED）；没传 → 默认端点（未绑定 503 IMAGE_NOT_CONFIGURED）。
+     * 单价 = {@code drama.credit.frame}，命中的候选有 creditCostOverride 时以它为准。
+     * 参考图上限 = 候选 maxRefImages；未配置 → legacy 6（{@link DramaReferenceAssembler#LEGACY_MAX_REF_IMAGES}）。
+     *
+     * @param action 报错文案里的动作（「出首帧」「出图」），只影响提示语
+     */
+    public ImagePlan resolveImagePlan(String endpointId, String action) {
+        AiModelInvocationService.ResolvedEndpoint resolved;
+        if (endpointId != null && !endpointId.isBlank()) {
+            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, endpointId)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
+                            "选的模型现在用不了，刷新页面后重新选一个。"));
+        } else {
+            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, null)
+                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
+                            action + "还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
+        }
+        long cost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_FRAME, FRAME_COST);
+        AiAppEndpointCandidate candidate = resolved.candidate();
+        if (candidate != null && candidate.getCreditCostOverride() != null) {
+            cost = candidate.getCreditCostOverride();
+        }
+        int maxRefImages = candidate != null && candidate.getMaxRefImages() != null
+                ? candidate.getMaxRefImages() : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES;
+        return new ImagePlan(resolved.endpoint(), cost, maxRefImages);
+    }
+
+    /**
+     * 调一次图像模型拿到图片字节（**不存、不计费**）。失败抛 502 IMAGE_CALL_FAILED / IMAGE_BAD_OUTPUT
+     * （上游状态码与响应体由 UpstreamModelHttp 记进日志，internalDetail 里也有，§8.0.1 ①）。
+     *
+     * @param refUrls 已过滤为外部模型可抓取的绝对 http(s) 地址（本地 /cdn 相对路径要调用方剔掉）
+     */
+    public byte[] generateImageBytes(AiModelEndpoint ep, String prompt, String ratio, List<String> refUrls) {
+        return callImageModel(ep, prompt, ratioToSize(orDefault(ratio, "9:16")), refUrls);
+    }
+
+    /** 一张已经存进我方存储的生成图（还没记账；记 storage_asset 由调用方做 —— 首帧记用量、画布记归属）。 */
+    public record StoredImage(String key, long bytes, String contentType) {}
+
+    /**
+     * 把图片字节存进我方存储，返回 key。存不下来抛 502 IMAGE_STORE_FAILED（提示语用 storeFailMessage）。
+     *
+     * <p>存储格式按**字节**判（§8.0.1 ⑤）：厂商常给 JPEG，以前一律顶着 .png / image/png 落库，
+     * 浏览器自己嗅探看不出问题，转交给另一个厂商时才被拒。认不出的字节才沿用 png（与改动前一致）。
+     *
+     * @param keyPrefix 以 / 结尾的 key 前缀（如 {@code drama/frames/}）
+     */
+    public StoredImage storeImageBytes(byte[] bytes, String keyPrefix, String storeFailMessage) {
+        com.aistareco.aep.service.storage.ImageBytes.Format fmt = com.aistareco.aep.service.storage.ImageBytes.sniff(bytes);
+        String ext = fmt != null ? fmt.ext() : "png";
+        String mime = fmt != null ? fmt.mime() : "image/png";
+        String key = keyPrefix + UUID.randomUUID().toString().replace("-", "") + "." + ext;
+        try {
+            Path tmp = Files.createTempFile("drama-image-", "." + ext);
+            try {
+                Files.write(tmp, bytes);
+                cdnUploader.upload(tmp, key, mime);
+            } finally {
+                Files.deleteIfExists(tmp);
+            }
+        } catch (Exception e) {
+            log.warn("[drama-render] 生成图存储失败 key={} bytes={} err={}", key, bytes == null ? 0 : bytes.length, e.toString());
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "IMAGE_STORE_FAILED", storeFailMessage);
+        }
+        return new StoredImage(key, bytes == null ? 0 : bytes.length, mime);
     }
 
     /** OpenAI images 兼容调用：data[0].url（下载）或 b64_json（解码）→ 图像字节。
@@ -360,114 +421,163 @@ public class DramaRenderService {
         // D-11：可选 endpoint_id（视频候选端点白名单）。传了 → 校验命中（未命中 503 ENDPOINT_NOT_ALLOWED，
         // 不提交任务、不 hold 积分）；命中的 candidate 单价 override 覆盖 drama.credit.clip，并把 endpoint_id
         // 随 item 存 variant_config 透传到 worker（§6.4 四层串联）；没传 → 默认端点（旧路径完全不变）。
-        String endpointId = text(body, "endpoint_id");
+        ClipPlan plan = resolveClipPlan(text(body, "endpoint_id"), durationSec);
+        // 2026-09-30 热修：聚算 H3 收首帧只认存储 key（worker 读 variant_config.first_frame_key 上传换 assetId），
+        // 提示词里的首帧 URL 标记在那条协议下会被剥掉。判定只在 MaterialVideoModelClient 一处。
+        boolean firstFrameByKey = videoJobs.firstFrameNeedsStorageKey(plan.endpointId());
+
+        // C-3：服务端参考装配（视频线）。shot_ref 时服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；
+        // 本镜末帧 → 同场下一镜开场首帧），无 shot_ref 时退回显式 frame_url/last_frame_url。
+        // clip 线只用首/末帧两槽；maxRefImages=0 明确表示当前适配仅开放 t2v，首帧也不得误报已送达。
+        // 首帧只认 key 的协议下：派生本人的 key（不是本人的 → 400 DRAMA_FRAME_NOT_OWNED；assembleClip 在
+        // submitClip 之前，此时还没 hold）。
+        DramaReferenceAssembler.ClipAssembly assembled =
+                assembler.assembleClip(body, userId, plan.capability(firstFrameByKey));
+
+        ObjectNode vc = om.createObjectNode();
+        vc.put("target", orDefault(target, orDefault(text(body, "kind"), "shot")));
+        if (sceneId != null && !sceneId.isBlank()) vc.put("scene_id", sceneId);
+        if (shotId != null && !shotId.isBlank()) vc.put("shot_id", shotId);
+        if (body != null && body.hasNonNull("episode_no")) vc.put("episode_no", body.path("episode_no").asInt());
+
+        // 短剧按 app 维度独立定价（drama.credit.clip，D-11 候选端点可 override），不耦合带货线 material.video-generate。
+        // 首帧存储 key（2026-09-30 热修）：worker 交给聚算上传换 assetId 走 i2v；上传失败抛 VIDEO_REF_UPLOAD_FAILED，
+        // 不退回文生视频。提示词里的首帧标记照留（seedance 等协议靠它）。
+        JsonNode card = submitClip(plan, new ClipSubmission("drama-shot", name, "短剧镜头视频", prompt,
+                assembled.firstFrameUrl(), assembled.lastFrameUrl(), assembled.firstFrameKey(), durationSec, ratio,
+                projectId, vc), userId);
+        log.info("[drama-render] clip queued user={} project={} dur={}s", userId, projectId, durationSec);
+
+        // C-1/C-3：首/末帧生效情况回报（applied_refs，role=first_frame/last_frame）——末帧是否送达取决于
+        // 视频端点是否支持首尾帧关键帧（seedance / generic best-effort 支持；agnes 仅首帧）。纯做如实回报。
+        if (card instanceof ObjectNode on) {
+            on.set("applied_refs", assembled.appliedRefs());
+        }
+        return card;
+    }
+
+    // ── 出视频积木（v0.198：renderClip 与画布出视频共用，不另写一份） ─────────────────────
+
+    /**
+     * 出视频计划：端点 id（null = worker 回落默认端点）+ 命中的端点（可空）+ 本次冻结额（候选 override，
+     * 端点 PER_SECOND 时按秒 × 时长）+ 参考能力。{@link #resolveClipPlan} 产出时协议级校验已经做完。
+     */
+    public record ClipPlan(String endpointId, AiModelEndpoint endpoint, long cost, Integer maxRefImages,
+                           boolean supportsFirstLastFrame, boolean supportsSubjectReference) {
+        /** clip 线参考装配能力：maxRefImages 未配置 → legacy 6；=0 表示这个候选只开放文生视频。 */
+        public DramaReferenceAssembler.Capability capability() {
+            return capability(false);
+        }
+
+        /**
+         * 同上，另带「首帧只认我方存储 key」（聚算媒体协议，{@code MaterialVideoJobService#firstFrameNeedsStorageKey}
+         * 判定；2026-09-30 热修）。为 true 时 assembleClip 会派生本人的首帧 key 并过归属闸。
+         */
+        public DramaReferenceAssembler.Capability capability(boolean firstFrameByStorageKey) {
+            return new DramaReferenceAssembler.Capability(
+                    maxRefImages != null ? maxRefImages : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES,
+                    supportsFirstLastFrame, supportsSubjectReference, firstFrameByStorageKey);
+        }
+
+        /** 这个候选收不收首帧（maxRefImages=0 明确表示只开放文生视频；未配置按收）。 */
+        public boolean acceptsFirstFrame() {
+            return maxRefImages == null || maxRefImages > 0;
+        }
+    }
+
+    /**
+     * 解析出视频端点、单价与能力，全部在提交（= hold）之前抛：
+     * 传了 endpointId 未命中候选 → 503 ENDPOINT_NOT_ALLOWED；超候选时长上限 → 400 VIDEO_DURATION_UNSUPPORTED；
+     * 协议硬边界（H3 = 5..15 秒）/ API Key → {@code MaterialVideoJobService.validateRequest}。
+     * 没传 endpointId → 默认端点不强制存在（worker 提交时解析），这里只取能力与单价。
+     */
+    public ClipPlan resolveClipPlan(String endpointId, int durationSec) {
+        boolean explicit = endpointId != null && !endpointId.isBlank();
         long clipCost = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CLIP, 30);
         AiModelEndpoint chosenVideoEp = null;
         Integer capMaxRefImages = null;
         Boolean capFirstLastFrame = null;
         Boolean capSubjectReference = null;
-        if (endpointId != null && !endpointId.isBlank()) {
-            AiModelInvocationService.ResolvedEndpoint resolved =
-                    invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
-                            .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
-                                    "选的模型现在用不了，刷新页面后重新选一个。"));
+        AiModelInvocationService.ResolvedEndpoint resolved = explicit
+                ? invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
+                        .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
+                                "选的模型现在用不了，刷新页面后重新选一个。"))
+                // 默认端点：不强制存在（worker 提交时解析；此处仅取 capability 用于首尾帧判定与 applied_refs 回报）。
+                : invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null).orElse(null);
+        if (resolved != null) {
             chosenVideoEp = resolved.endpoint();
-            if (resolved.candidate() != null) {
-                if (resolved.candidate().getMaxDurationSec() != null
-                        && durationSec > resolved.candidate().getMaxDurationSec()) {
+            AiAppEndpointCandidate candidate = resolved.candidate();
+            if (candidate != null) {
+                if (candidate.getMaxDurationSec() != null && durationSec > candidate.getMaxDurationSec()) {
                     throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
-                            "选的视频模型一条最长 " + resolved.candidate().getMaxDurationSec() + " 秒，把这一镜的时长改短一点再试。");
+                            (explicit ? "选的" : "默认的") + "视频模型一条最长 " + candidate.getMaxDurationSec()
+                                    + " 秒，把这一镜的时长改短一点再试。");
                 }
-                clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
-                capMaxRefImages = resolved.candidate().getMaxRefImages();
-                capFirstLastFrame = resolved.candidate().getSupportsFirstLastFrame();
-                capSubjectReference = resolved.candidate().getSupportsSubjectReference();
-            }
-        } else {
-            // 默认端点：不强制存在（worker 提交时解析；此处仅取 capability 用于首尾帧判定与 applied_refs 回报）。
-            AiModelInvocationService.ResolvedEndpoint resolved =
-                    invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null).orElse(null);
-            if (resolved != null) {
-                chosenVideoEp = resolved.endpoint();
-                if (resolved.candidate() != null) {
-                    if (resolved.candidate().getMaxDurationSec() != null
-                            && durationSec > resolved.candidate().getMaxDurationSec()) {
-                        throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
-                                "默认的视频模型一条最长 " + resolved.candidate().getMaxDurationSec() + " 秒，把这一镜的时长改短一点再试。");
-                    }
-                    clipCost = effectiveVideoCreditCost(chosenVideoEp, resolved.candidate(), durationSec, clipCost);
-                    capMaxRefImages = resolved.candidate().getMaxRefImages();
-                    capFirstLastFrame = resolved.candidate().getSupportsFirstLastFrame();
-                    capSubjectReference = resolved.candidate().getSupportsSubjectReference();
-                }
+                clipCost = effectiveVideoCreditCost(chosenVideoEp, candidate, durationSec, clipCost);
+                capMaxRefImages = candidate.getMaxRefImages();
+                capFirstLastFrame = candidate.getSupportsFirstLastFrame();
+                capSubjectReference = candidate.getSupportsSubjectReference();
             }
         }
         // 协议级失败快（H3=5..15 秒）+ API Key 有效性检查，必须发生在 hold 积分之前。
-        videoJobs.validateRequest(endpointId, durationSec);
+        videoJobs.validateRequest(explicit ? endpointId : null, durationSec);
         // 首尾帧能力：候选显式 supportsFirstLastFrame 最高优先；未配置（null，含 seeder 回填存量候选）
         // → C-1 协议关键字静态判定兜底（seedance/generic 支持、agnes 仅首帧），不一律 false（回归修正口径）。
         boolean flf = capFirstLastFrame != null ? capFirstLastFrame : supportsFirstLastFrame(chosenVideoEp);
-        // 2026-09-30 热修：聚算 H3 收首帧只认存储 key（worker 读 variant_config.first_frame_key 上传换 assetId），
-        // 提示词里的首帧 URL 标记在那条协议下会被剥掉。判定只在 MaterialVideoModelClient 一处。
-        boolean firstFrameByKey = videoJobs.firstFrameNeedsStorageKey(endpointId);
+        return new ClipPlan(explicit ? endpointId : null, chosenVideoEp, clipCost, capMaxRefImages, flf,
+                capSubjectReference != null ? capSubjectReference : false);
+    }
 
-        // C-3：服务端参考装配（视频线）。shot_ref 时服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；
-        // 本镜末帧 → 同场下一镜开场首帧），无 shot_ref 时退回显式 frame_url/last_frame_url。
-        // clip 线只用首/末帧两槽；maxRefImages=0 明确表示当前适配仅开放 t2v，首帧也不得误报已送达。
-        // 首帧只认 key 的协议下：派生本人的 key（不是本人的 → 400 DRAMA_FRAME_NOT_OWNED，此时还没 hold）。
-        DramaReferenceAssembler.ClipAssembly assembled = assembler.assembleClip(body, userId,
-                new DramaReferenceAssembler.Capability(capMaxRefImages != null
-                        ? capMaxRefImages : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES, flf,
-                        capSubjectReference != null ? capSubjectReference : false, firstFrameByKey));
-        String frameUrl = assembled.firstFrameUrl();
-        String lastFrameUrl = assembled.lastFrameUrl();
+    /**
+     * 一条要提交的短剧视频。
+     *
+     * @param firstFrameUrl 首帧地址：拼进提示词标记（seedance / agnes / generic 从标记里抽）；没有传 null
+     * @param firstFrameKey 首帧的**本人**存储 key：写进 variant_config.first_frame_key（聚算 H3 只认它）；没有传 null
+     * @param variantConfig 业务自己的 variant_config（target / shot_id…）；endpoint_id 与 first_frame_key 由 submitClip 补
+     */
+    public record ClipSubmission(String kind, String name, String creditLabel, String prompt,
+                                 String firstFrameUrl, String lastFrameUrl, String firstFrameKey,
+                                 int durationSec, String ratio, String scriptId, ObjectNode variantConfig) {}
 
-        StringBuilder full = new StringBuilder(prompt);
-        if (frameUrl != null && !frameUrl.isBlank()) {
-            full.append("\n（严格基于该首帧画面延展动态：").append(frameUrl).append("）");
+    /**
+     * 构建 item 并提交 {@link MaterialVideoJobService#submit}（{@code APP_DRAMA}；提交即冻结、worker 结算或退回）。
+     * 单价用 {@code plan.cost()}（item.credit_cost）—— 报价、冻结、结算同一个数。
+     *
+     * @return 视频任务卡（MaterialVideo 形状）；没建出任务时是空对象（调用方判 {@code id}）
+     */
+    public JsonNode submitClip(ClipPlan plan, ClipSubmission s, String userId) {
+        StringBuilder full = new StringBuilder(s.prompt());
+        if (s.firstFrameUrl() != null && !s.firstFrameUrl().isBlank()) {
+            full.append("\n（严格基于该首帧画面延展动态：").append(s.firstFrameUrl()).append("）");
         }
         // v0.97 P2：尾帧（来自下一镜首帧 / decompose 末帧）→ seedance 双关键帧插值；
         // 视频客户端按协议抽出（seedance content[role=last_frame] / generic end_image），
         // 下游不支持则忽略不报错（§8.0：传入不生效 ≠ 静默伪造）。
-        if (lastFrameUrl != null && !lastFrameUrl.isBlank()) {
-            full.append("\n（并以该画面作为结尾帧：").append(lastFrameUrl).append("）");
+        if (s.lastFrameUrl() != null && !s.lastFrameUrl().isBlank()) {
+            full.append("\n（并以该画面作为结尾帧：").append(s.lastFrameUrl()).append("）");
         }
 
         ObjectNode item = om.createObjectNode();
-        item.put("kind", "drama-shot");
-        // 短剧按 app 维度独立定价（drama.credit.clip，D-11 候选端点可 override），不耦合带货线 material.video-generate。
-        item.put("credit_cost", clipCost);
-        item.put("credit_label", "短剧镜头视频");
-        item.put("name", name);
+        item.put("kind", s.kind());
+        item.put("credit_cost", plan.cost());
+        item.put("credit_label", s.creditLabel());
+        item.put("name", s.name());
         item.put("prompt", full.toString());
-        item.put("duration_sec", durationSec);
-        item.put("aspect_ratio", ratio);
-        if (projectId != null && !projectId.isBlank()) item.put("script_id", projectId);
-        ObjectNode vc = item.putObject("variant_config");
-        vc.put("target", orDefault(target, orDefault(text(body, "kind"), "shot")));
-        if (sceneId != null && !sceneId.isBlank()) vc.put("scene_id", sceneId);
-        if (shotId != null && !shotId.isBlank()) vc.put("shot_id", shotId);
-        if (body != null && body.hasNonNull("episode_no")) vc.put("episode_no", body.path("episode_no").asInt());
+        item.put("duration_sec", s.durationSec());
+        item.put("aspect_ratio", s.ratio());
+        if (s.scriptId() != null && !s.scriptId().isBlank()) item.put("script_id", s.scriptId());
+        ObjectNode vc = s.variantConfig() != null ? s.variantConfig().deepCopy() : om.createObjectNode();
         // D-11：指定的候选端点随 item 透传到 worker（MaterialVideoWorker → MaterialVideoModelClient.pickEndpoint）；
         // 缺省时不写此键 → worker 回落默认端点（celebrity 素材线默认路径完全不变）。
-        if (endpointId != null && !endpointId.isBlank()) vc.put("endpoint_id", endpointId);
-        // 首帧存储 key（与 IpRunService 同一个键、同一层）：worker 交给聚算上传换 assetId 走 i2v；
-        // 上传失败抛 VIDEO_REF_UPLOAD_FAILED，不退回文生视频。提示词里的首帧标记照留（seedance 等协议靠它）。
-        if (assembled.firstFrameKey() != null) vc.put("first_frame_key", assembled.firstFrameKey());
+        if (plan.endpointId() != null) vc.put("endpoint_id", plan.endpointId());
+        // 聚算 H3 把提示词里的首帧标记剥掉、只认 variant_config.first_frame_key（先把图传上去换 assetId）。
+        if (s.firstFrameKey() != null && !s.firstFrameKey().isBlank()) vc.put("first_frame_key", s.firstFrameKey());
+        item.set("variant_config", vc);
         ObjectNode submit = om.createObjectNode();
-        ArrayNode items = submit.putArray("items");
-        items.add(item);
+        submit.putArray("items").add(item);
 
         List<JsonNode> jobs = videoJobs.submit(submit, userId, MaterialVideoJobService.APP_DRAMA);
-        log.info("[drama-render] clip queued user={} project={} dur={}s", userId, projectId, durationSec);
-
-        // C-1/C-3：首/末帧生效情况回报（applied_refs，role=first_frame/last_frame）——末帧是否送达取决于
-        // 视频端点是否支持首尾帧关键帧（seedance / generic best-effort 支持；agnes 仅首帧）。纯做如实回报。
-        JsonNode card = jobs.isEmpty() ? om.createObjectNode() : jobs.get(0);
-        if (card instanceof ObjectNode on) {
-            on.set("applied_refs", assembled.appliedRefs());
-        }
-        return card;
+        return jobs.isEmpty() ? om.createObjectNode() : jobs.get(0);
     }
 
     // ── C-2：角色多角度参考图集出图（供 DramaAssetService 的三视图端点编排） ──────────

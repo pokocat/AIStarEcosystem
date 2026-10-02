@@ -118,7 +118,8 @@ public class DramaFrameJobService {
         List<JsonNode> videos = projectId != null && !projectId.isBlank()
                 ? videoJobs.listJobs(userId, projectId, null, MaterialVideoJobService.APP_DRAMA)
                 : videoJobs.listJobs(userId, null, null, MaterialVideoJobService.APP_DRAMA);
-        videos.stream().map(this::toVideoTask).forEach(all::add);
+        // 画布（v0.198）的片段视频和短剧同一个分区，但属于另一条独立流水：任务中心不显示它们
+        videos.stream().filter(v -> !DramaCanvasRunService.isCanvasVideoJob(v)).map(this::toVideoTask).forEach(all::add);
         all.sort(Comparator.comparing((JsonNode n) -> n.path("created_at").asText("")).reversed());
 
         ArrayNode tasks = om.createArrayNode();
