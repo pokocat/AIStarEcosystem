@@ -322,6 +322,9 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
     2 音频按顺序、角色对）；素材上传字段 `image` / `video` / `audio`，类型按字节判；
   - 四条冻结 570、成功扣 570；厂商 422 与任务失败两条全额退回，原因是厂商原话；
   - 老的带货出片请求体与改动前一致；老接口塞原生规格 / 首帧 key 被 400 挡住；成片在页面能播放（768×1344）。
+- **2026-10-03 补**：老路径（画布 / 短剧 / 脚本视频）只发 `orientation` 时，厂商的竖屏默认 preset 已经变成 3:4
+  （线上 `effectiveSpec.outputSizeCode=h3-768-3x4`，出来 768×1024），而这几条线要的是 9:16。老路径改为横竖两档也带
+  `aspectRatio` + `outputSizeCode`（同视频生成区的取值）；1:1 的 `square` 仍未实测，老路径 1:1 保持只发 `orientation`。
   - 唯一一项「不通过」是测试脚本自己的：开发库存在硬盘上，配置脚本跑了两次，列表里有两个一样的模拟端点。
 - 四道门：`pnpm typecheck:all`、`pnpm typecheck:admin`、`./mvnw compile -q -o`、`pnpm check:api-contract`。
 - **二版本机端到端**（2026-09-30，同一个模拟聚算服务，脚本 `e2e2`）：
@@ -336,6 +339,19 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
   - 后台定价页：模拟读取失败时表单和保存按钮都不出现，只有「重试」；重试后读回线上的值。
   - server 相关测试 70 个类 550 条全绿（含真事务的 `VideoStudioOptimizationTransactionTest` 8 条，其中一条是复审补的回收竞态），web-celebrity 99/99，四道门全绿。
   - 复审修完后重启再跑一遍脚本的前两段（同键并发 + 常规路径）17/17。
+
+- **线上发布**（2026-10-02 13:31 CST，release `20261002052931-1f569079`，分支 `release/v0199-combined`）：
+  按用户决定与短剧 #115（已先单独上线）/ #116 / #117 合成一个包，发 server、web-celebrity、web-drama、admin（web 包 `AUTH_MODE=id`）。
+  - 发布分支门禁：server 全量 219 个类 1562 条 0 失败、web-drama 646/646、web-celebrity 99/99、typecheck / admin / 契约门、§9 grep 门禁全绿。
+  - 上线核对：`verify.sh` 全绿；server 15 秒起来，Flyway 先 V36 再 V37（`Successfully applied 2 migrations … now at version v37`），
+    重启后 0 条 ERROR；库里 36 / 37 两行 success=1，四张新表和两个唯一索引都在，没有卡在排队的视频任务；
+    `/studio/video` 200、编造的路由 404；jar 里有 `VideoStudioController` / 结算 bean / 测试 mock / `DramaCanvasController`。
+  - 线上配置：「视频生成」默认是聚算 MiniMax H3（每秒 40），计价配置是种子值（全部回落到 40/秒、智能优化不收费），
+    **测试 mock 没开**（`celebrity.video-studio.test-mock-user-ids` 不存在）。
+  - 同一个生产 jar 在本机（内存库 + 模拟聚算）把测试 mock 那条路走了一遍，27/27：名单里的账号智能优化与四种模式都不调厂商，
+    演示视频是真 H.264（1280×720 / 720×1280 / 1280×1280 / 1280×960，约 5 秒，带封面），扣费正好 4 × 200、不留冻结；
+    模板与做同款能用演示作品；名单外的账号照常调厂商；后台删掉配置后 30 秒内不重启就关掉。浏览器里看过卡片与视频帧（「测试演示」标识清楚）。
+  - **线上用真实账号走一遍还没做**：要用户自己在浏览器里登录（不能代填密码 / 验证码）。另外测试账号只有 269 积分，完整流程（5–7 条视频）要 1,000–1,400。
 
 ## 8. 没做 / 待定
 
