@@ -104,6 +104,10 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
     setSaving(true);
     try {
       await CardApi.save(id, { doc: state.doc });
+      // 存成功了才撤「未保存」护栏。原来放在 finally 里，保存失败（抛异常）也照撤，
+      // 于是 beforeunload 提醒和底部「未保存」行一起消失、用户以为存上了，
+      // 刷新/关页就丢了改动（§8.0.1 ⑨：会抛的失败要让调用方据实处理）。
+      setDirty(false);
       if (thenPublish) {
         await CardApi.publish(id);
         say("已发布，链接可以递出去了");
@@ -115,7 +119,6 @@ export default function CardEditPage({ params }: { params: Promise<{ id: string 
       say(e instanceof Error ? e.message : "保存没成功");
     } finally {
       setSaving(false);
-      setDirty(false);
     }
   };
 

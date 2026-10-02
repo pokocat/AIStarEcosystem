@@ -472,8 +472,11 @@ public class AccountController {
         if (range == null) return 30;
         String digits = range.replaceAll("[^0-9]", "");
         if (digits.isBlank()) return 30;
-        int n = Integer.parseInt(digits);
-        return Math.min(Math.max(n, 1), 365);
+        // 用 long 接 + 兜住溢出：range=99999999999 这类超 int 的数字串，
+        // Integer.parseInt 会抛 NumberFormatException 冒成 500；这里本就该夹到 [1,365]。
+        long n;
+        try { n = Long.parseLong(digits); } catch (NumberFormatException e) { return 365; }
+        return (int) Math.min(Math.max(n, 1), 365);
     }
 
     private static int nullSafeCompareDesc(Instant a, Instant b) {
