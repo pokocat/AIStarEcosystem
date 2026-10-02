@@ -211,7 +211,8 @@ class DramaRenderServiceTest {
                 mock(PromptService.class),
                 assembler,
                 mock(StorageQuotaService.class),
-                om);
+                om,
+                mock(com.aistareco.aep.service.materialvideo.MaterialVideoModelClient.class));
     }
 
     private ObjectNode clipBody(String frameUrl) {
