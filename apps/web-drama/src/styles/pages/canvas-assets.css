@@ -331,6 +331,8 @@
 .cva-cand-badge.on { background: var(--accent); color: #fff; }
 
 .cva-panel-foot { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; min-width: 0; }
+/* 生成按钮下面那一行提示：没字时也占一行（12px × 1.5），面板贴底停靠时高度不跟着提示变，按钮不会挪位 */
+.cva-foot-note { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 18px; flex: none; }
 .cva-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .cva-field-label { font-size: 12px; font-weight: 700; color: var(--ink-2); }
 .cva-field .cv-select { max-width: 240px; }
@@ -444,6 +446,23 @@
 .cva-name-dialog { width: 420px; }
 .cva-name-form { display: flex; flex-direction: column; gap: 12px; }
 .cva-expand-dialog { width: 760px; }
+/* 批量出图确认框：写明用哪个出图模型、可以就地换，总价跟着变 */
+.cva-batch-dialog { width: 440px; }
+.cva-batch-text { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink-2); overflow-wrap: anywhere; }
+.cva-batch-model .cv-select { width: 100%; max-width: 100%; }
+.cva-batch-cost {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+.cva-batch-cost-num { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-2); font-weight: 700; white-space: nowrap; }
+.cva-batch-cost-num > svg { flex-shrink: 0; color: var(--gem); }
 .cva-expand-text { min-height: 50dvh; resize: vertical; font-size: 14px; }
 
 /* 角色设计 */

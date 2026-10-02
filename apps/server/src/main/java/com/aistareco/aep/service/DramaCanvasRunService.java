@@ -201,7 +201,10 @@ public class DramaCanvasRunService {
         return single(userId, canvasId, cri, "storyboard:" + body.episodeNo(), () -> {
             Ctx c = load(userId, canvasId, body.docVersion());
             int maxSec = clamp(body.maxSegmentSec() == null ? DEFAULT_MAX_SEGMENT_SEC : body.maxSegmentSec(), 4, 30);
-            DramaCanvasPromptBuilder.TextPlan plan = builder.storyboard(c.doc(), body.episodeNo(), maxSec);
+            // 下限 = 所选视频模型一条最短多少秒（前端带；不带按缺省 4），夹到 1..maxSec。写进提示词与 meta，装段时短的并进相邻片段
+            int minSec = clamp(body.minSegmentSec() == null ? DramaCanvasPromptBuilder.SEGMENT_MIN_SEC : body.minSegmentSec(),
+                    1, maxSec);
+            DramaCanvasPromptBuilder.TextPlan plan = builder.storyboard(c.doc(), body.episodeNo(), maxSec, minSec);
             requireLlm();
             long price = configs.getLong(DramaConfigSeeder.KEY_CANVAS_STORYBOARD, DramaConfigSeeder.DEFAULT_CANVAS_STORYBOARD);
             return List.of(textRun(c, cri, DramaCanvasRun.KIND_STORYBOARD, plan, price));

@@ -50,6 +50,8 @@ export interface EndpointCapability {
   supportsSubjectReference?: boolean | null;
   /** 单条视频最大时长（秒）；null=未知。 */
   maxDurationSec?: number | null;
+  /** 单条视频最短时长（秒）；null=未知（按 1 算）。如聚算 H3 一条 5–15 秒。 */
+  minDurationSec?: number | null;
 }
 
 export interface RenderModelOption {

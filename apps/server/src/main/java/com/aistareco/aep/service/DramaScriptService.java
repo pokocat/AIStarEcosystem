@@ -3,6 +3,7 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.DramaScript;
 import com.aistareco.aep.repository.DramaScriptRepository;
+import com.aistareco.aep.service.ai.ModelJsonRepair;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -392,7 +393,7 @@ public class DramaScriptService {
             // 部分 OpenAI-compatible 模型在 finish_reason=stop 时仍可能漏掉容器闭合符，
             // 例如 {"scripts":[{...}}（少一个 ]）。只补齐可由当前嵌套栈唯一确定的
             // ] / }，不改字段和值；后续仍由 scripts/scenes 结构校验决定是否接受。
-            String repaired = repairUnbalancedJsonClosers(s);
+            String repaired = ModelJsonRepair.repairUnbalancedClosers(s);
             if (repaired != null && !repaired.equals(s)) {
                 try {
                     return om.readTree(repaired);
@@ -414,50 +415,6 @@ public class DramaScriptService {
             }
             return null;
         }
-    }
-
-    /**
-     * 修复 JSON 末尾遗漏的容器闭合符。若遇到无法由嵌套关系唯一解释的闭合符，直接拒绝修复。
-     */
-    private static String repairUnbalancedJsonClosers(String json) {
-        StringBuilder repaired = new StringBuilder(json.length() + 8);
-        List<Character> stack = new ArrayList<>();
-        boolean inString = false;
-        boolean escaped = false;
-
-        for (int i = 0; i < json.length(); i++) {
-            char ch = json.charAt(i);
-            repaired.append(ch);
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (ch == '\\') {
-                    escaped = true;
-                } else if (ch == '"') {
-                    inString = false;
-                }
-                continue;
-            }
-            if (ch == '"') {
-                inString = true;
-            } else if (ch == '{' || ch == '[') {
-                stack.add(ch);
-            } else if (ch == '}' || ch == ']') {
-                char expectedOpen = ch == '}' ? '{' : '[';
-                int matchingIndex = stack.lastIndexOf(expectedOpen);
-                if (matchingIndex < 0) return null;
-                while (stack.size() - 1 > matchingIndex) {
-                    char missingOpen = stack.remove(stack.size() - 1);
-                    repaired.insert(repaired.length() - 1, missingOpen == '{' ? '}' : ']');
-                }
-                stack.remove(stack.size() - 1);
-            }
-        }
-        if (inString) return null;
-        for (int i = stack.size() - 1; i >= 0; i--) {
-            repaired.append(stack.get(i) == '{' ? '}' : ']');
-        }
-        return repaired.toString();
     }
 
     private JsonNode readScript(DramaScript row) {

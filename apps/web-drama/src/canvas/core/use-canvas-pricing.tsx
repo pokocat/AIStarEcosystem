@@ -7,8 +7,10 @@
 // 两份都模块级缓存（一次会话拉一次）。按钮上写的是**本次预计**，真实扣费以服务端为准（run.cost）。
 // 还没读到（ready=false）时价格函数按默认单价算，界面可以先显示「—」。
 //
-// 视频模型的选择按画布记在 localStorage（读写都 try/catch：隐私模式下读不到就用默认模型）；
-// 同一张画布里所有调用 useCanvasPricing 的组件共享一个选择（模块级 store）。
+// 视频模型、出图模型的选择都按画布记在 localStorage（读写都 try/catch：隐私模式下读不到就用默认模型）；
+// 同一张画布里所有调用 useCanvasPricing 的组件共享一个选择（模块级 store）。出图面板、列表批量出图、
+// 片段「出首帧」都读同一个 imageModelId 并把它带进请求（v0.198.1：以前只有面板记在内存里，批量和首帧
+// 不带 endpointId，一律走后台默认模型，而线上那个默认模型任何画幅都 400）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -21,6 +23,8 @@ import { useOptionalCanvasDoc } from "./use-canvas-doc";
 
 /** 视频模型不知道单条上限时按这个算。 */
 export const DEFAULT_MAX_SEGMENT_SEC = 10;
+/** 视频模型不知道单条下限时按这个算。 */
+export const DEFAULT_MIN_SEGMENT_SEC = 1;
 
 let modelsCache: Promise<RenderModelsResponse> | null = null;
 
@@ -49,33 +53,42 @@ function toOption(m: RenderModelOption): CanvasModelOption {
     creditCost: m.creditCost,
     billingUnit: m.billingUnit,
     maxDurationSec: m.capability?.maxDurationSec ?? null,
+    minDurationSec: m.capability?.minDurationSec ?? null,
     // 能力元数据里没有「看不看首帧」这一项；明确写了最多 0 张参考图的才算不看，其余按看（跑完以服务端 refs.notes 为准）
     acceptsFirstFrame: m.capability?.maxRefImages !== 0,
   };
 }
 
-// ── 视频模型选择（按画布记）──────────────────────────────────────────────────
+// ── 模型选择（视频 / 出图各一个，按画布记）──────────────────────────────────
 
-const STORAGE_PREFIX = "drama-canvas:video-model:";
+type ModelKind = "video" | "image";
+const STORAGE_PREFIX: Record<ModelKind, string> = {
+  video: "drama-canvas:video-model:",
+  image: "drama-canvas:image-model:",
+};
+/** 键 = STORAGE_PREFIX[kind] + canvasKey（就是 localStorage 的键）。 */
 const choices = new Map<string, string | undefined>();
 const listeners = new Set<() => void>();
 
-function readChoice(canvasKey: string): string | undefined {
-  if (choices.has(canvasKey)) return choices.get(canvasKey);
+function readChoice(kind: ModelKind, canvasKey: string): string | undefined {
+  const key = STORAGE_PREFIX[kind] + canvasKey;
+  if (choices.has(key)) return choices.get(key);
   let v: string | undefined;
   try {
-    v = window.localStorage.getItem(STORAGE_PREFIX + canvasKey) ?? undefined;
+    v = window.localStorage.getItem(key) ?? undefined;
   } catch {
     v = undefined;
   }
-  choices.set(canvasKey, v);
+  choices.set(key, v);
   return v;
 }
 
-function writeChoice(canvasKey: string, id: string): void {
-  choices.set(canvasKey, id);
+function writeChoice(kind: ModelKind, canvasKey: string, id: string): void {
+  const key = STORAGE_PREFIX[kind] + canvasKey;
+  if (choices.get(key) === id) return;
+  choices.set(key, id);
   try {
-    window.localStorage.setItem(STORAGE_PREFIX + canvasKey, id);
+    window.localStorage.setItem(key, id);
   } catch {
     /* 存不下就只在这一页记着 */
   }
@@ -117,9 +130,14 @@ export function useCanvasPricing(): CanvasPricingValue {
     };
   }, []);
 
-  const stored = React.useSyncExternalStore(
+  const storedVideo = React.useSyncExternalStore(
     subscribe,
-    () => readChoice(canvasKey),
+    () => readChoice("video", canvasKey),
+    () => undefined,
+  );
+  const storedImage = React.useSyncExternalStore(
+    subscribe,
+    () => readChoice("image", canvasKey),
     () => undefined,
   );
 
@@ -130,19 +148,23 @@ export function useCanvasPricing(): CanvasPricingValue {
     const videoModels = loaded?.video ?? [];
     const defaultOf = (list: CanvasModelOption[]) => list.find((m) => m.isDefault) ?? list[0];
 
-    const videoModelId = loaded
-      ? (videoModels.find((m) => m.endpointId === stored) ?? defaultOf(videoModels))?.endpointId
-      : stored;
+    // 存的那个还在候选里就用它，否则默认模型（候选还没读到时先按存的报，读到后再校正）
+    const resolve = (list: CanvasModelOption[], stored: string | undefined) =>
+      loaded ? (list.find((m) => m.endpointId === stored) ?? defaultOf(list))?.endpointId : stored;
+    const videoModelId = resolve(videoModels, storedVideo);
+    const imageModelId = resolve(imageModels, storedImage);
     const videoModel = (id?: string) =>
       videoModels.find((m) => m.endpointId === (id ?? videoModelId)) ?? defaultOf(videoModels);
-    const imageModel = (id?: string) => (id ? imageModels.find((m) => m.endpointId === id) : undefined) ?? defaultOf(imageModels);
+    const imageModel = (id?: string) => imageModels.find((m) => m.endpointId === (id ?? imageModelId)) ?? defaultOf(imageModels);
 
     return {
       ready: !!loaded,
       imageModels,
       videoModels,
       videoModelId,
-      setVideoModelId: (id: string) => writeChoice(canvasKey, id),
+      setVideoModelId: (id: string) => writeChoice("video", canvasKey, id),
+      imageModelId,
+      setImageModelId: (id: string) => writeChoice("image", canvasKey, id),
       confirmThreshold: config.confirmThreshold,
       scriptPrice: (stage) =>
         stage === "setting" ? prices.canvasScriptSetting : stage === "outline" ? prices.canvasScriptOutline : prices.canvasScriptEpisode,
@@ -158,6 +180,7 @@ export function useCanvasPricing(): CanvasPricingValue {
         return m.billingUnit === "per_second" ? m.creditCost * Math.max(1, Math.ceil(durationSec || 0)) : m.creditCost;
       },
       maxSegmentSec: () => videoModel()?.maxDurationSec ?? DEFAULT_MAX_SEGMENT_SEC,
+      minSegmentSec: () => Math.max(DEFAULT_MIN_SEGMENT_SEC, videoModel()?.minDurationSec ?? DEFAULT_MIN_SEGMENT_SEC),
     };
-  }, [loaded, stored, canvasKey]);
+  }, [loaded, storedVideo, storedImage, canvasKey]);
 }

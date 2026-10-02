@@ -2,7 +2,8 @@
 
 // 单集编辑器底部「片段轴」（plan §2.6）：总时长「已有视频 / 全部」；一排缩略格「01 · 10s」（空 / 有首帧 / 有视频 /
 // 生成中 / 失败 / 用到的造型换过图了），点格子切换片段；格子之间 + 插一个空片段；删当前片段（有东西时确认）；
-// 「多选」→「生成选中的 N 个视频 ✦M」（有首帧 / 没首帧在确认框里分开写）。≤720 横滑。
+// 「多选」→「生成选中的 N 个视频 ✦M」（有首帧 / 没首帧在确认框里分开写；时长不在所选视频模型范围里的
+// 跳过，就地和确认框里都写清跳过几个、为什么）。≤720 横滑。
 import * as React from "react";
 import { Check, CheckCircle2, Circle, Image as ImageIcon, Loader2, PlayCircle, Plus, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import type { CanvasSegment } from "@ai-star-eco/types/drama-canvas";
@@ -10,7 +11,7 @@ import { CanvasImage } from "@/canvas/shell";
 import { pickedVideo, useCanvasPricing, useCanvasRuns } from "@/canvas/core";
 import { confirmSpend, summarizeSequence, toastSequence } from "./actions";
 import { Credits } from "./bits";
-import { batchVideoPlan, cellThumb, formatClock, segmentNo, timelineTotals, type SegmentCellState } from "./derive";
+import { batchVideoPlan, batchVideoSkipText, cellThumb, formatClock, segmentNo, timelineTotals, type SegmentCellState } from "./derive";
 
 const STATE_ICON: Record<SegmentCellState, React.ReactNode> = {
   empty: <Circle size={12} />,
@@ -55,11 +56,14 @@ export function SegmentTimeline({ no, segments, currentId, readOnly, cellStatus,
   const currentRunning = current ? isRunning(current.id) : false;
 
   const maxSec = pricing.maxSegmentSec();
+  const minSec = pricing.minSegmentSec();
   const plan = batchVideoPlan(segments, selected, {
     maxSec,
+    minSec,
     price: (d) => pricing.videoPrice(d, pricing.videoModelId),
     isRunning,
   });
+  const skipText = batchVideoSkipText(plan, { minSec, maxSec });
   const model = pricing.videoModels.find((m) => m.endpointId === pricing.videoModelId);
 
   const toggle = (id: string) =>
@@ -76,7 +80,7 @@ export function SegmentTimeline({ no, segments, currentId, readOnly, cellStatus,
     if (plan.withFrame) lines.push(`${plan.withFrame} 个有首帧，按首帧生成。`);
     if (plan.withoutFrame) lines.push(`${plan.withoutFrame} 个没有首帧，只按文字生成，角色长相可能对不上。`);
     if (model && !model.acceptsFirstFrame) lines.push("当前视频模型不看首帧，角色可能对不上。");
-    if (plan.skipped) lines.push(`${plan.skipped} 个这次跳过（没写内容或时长、超过上限、或正在生成）。`);
+    if (skipText) lines.push(skipText);
     lines.push("已经有视频的会多出新的一版，原来的还留着。");
     const ok = await confirmSpend({
       title: `生成选中的 ${plan.eligible.length} 个视频？`,
@@ -140,8 +144,8 @@ export function SegmentTimeline({ no, segments, currentId, readOnly, cellStatus,
     : selected.size === 0
       ? "先点选要生成的片段"
       : !plan.eligible.length
-        ? "选中的片段都没法生成：没写时长、超过上限或正在生成"
-        : undefined;
+        ? `选中的片段这次都生成不了。${skipText ?? ""}`
+        : skipText ?? undefined;
 
   return (
     <section className="card cve-timeline" aria-label="片段轴" data-testid="cve-timeline">
@@ -202,7 +206,7 @@ export function SegmentTimeline({ no, segments, currentId, readOnly, cellStatus,
         </div>
       )}
       {batchReason && (
-        <div className="cve-reason" data-reason="batch-video">
+        <div className="cve-reason" data-reason="batch-video" data-skipped={plan.skipped || undefined}>
           {batchReason}
         </div>
       )}

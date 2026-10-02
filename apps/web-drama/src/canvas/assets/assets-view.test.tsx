@@ -30,15 +30,20 @@ vi.mock("@/api/canvas", async () => {
   };
 });
 
+// 出图模型的选择整张画布一个（契约：imageModelId / setImageModelId）。替身也得是共享的、改了会重画，
+// 不然「面板里换了模型」「批量确认框里换了模型」都测不出来。
+const imageChoice = vi.hoisted(() => ({ id: "img-a", listeners: new Set<() => void>() }));
 const PRICING: CanvasPricingValue = {
   ready: true,
   imageModels: [
-    { endpointId: "img-a", name: "标准出图", isDefault: true, creditCost: 7, billingUnit: "per_call", maxDurationSec: null, acceptsFirstFrame: true },
-    { endpointId: "img-b", name: "高清出图", isDefault: false, creditCost: 11, billingUnit: "per_call", maxDurationSec: null, acceptsFirstFrame: true },
+    { endpointId: "img-a", name: "标准出图", isDefault: true, creditCost: 7, billingUnit: "per_call", maxDurationSec: null, minDurationSec: null, acceptsFirstFrame: true },
+    { endpointId: "img-b", name: "高清出图", isDefault: false, creditCost: 11, billingUnit: "per_call", maxDurationSec: null, minDurationSec: null, acceptsFirstFrame: true },
   ],
   videoModels: [],
   videoModelId: undefined,
   setVideoModelId: () => {},
+  imageModelId: "img-a",
+  setImageModelId: () => {},
   confirmThreshold: 1000,
   scriptPrice: () => 0,
   extractPrice: () => 0,
@@ -46,8 +51,27 @@ const PRICING: CanvasPricingValue = {
   imagePrice: (count, endpointId) => (endpointId === "img-b" ? 11 : 7) * Math.max(1, count),
   videoPrice: () => 0,
   maxSegmentSec: () => 10,
+  minSegmentSec: () => 1,
 };
-vi.mock("@/canvas/core/use-canvas-pricing", () => ({ useCanvasPricing: () => PRICING, DEFAULT_MAX_SEGMENT_SEC: 10 }));
+function usePricingDouble(): CanvasPricingValue {
+  const id = React.useSyncExternalStore(
+    (l) => {
+      imageChoice.listeners.add(l);
+      return () => imageChoice.listeners.delete(l);
+    },
+    () => imageChoice.id,
+  );
+  return {
+    ...PRICING,
+    imageModelId: id,
+    setImageModelId: (v: string) => {
+      imageChoice.id = v;
+      for (const l of [...imageChoice.listeners]) l();
+    },
+    imagePrice: (count, endpointId) => PRICING.imagePrice(count, endpointId ?? id),
+  };
+}
+vi.mock("@/canvas/core/use-canvas-pricing", () => ({ useCanvasPricing: () => usePricingDouble(), DEFAULT_MAX_SEGMENT_SEC: 10, DEFAULT_MIN_SEGMENT_SEC: 1 }));
 
 // isSubmitting（契约见 core/contract.ts）：用真的；测试里可以强制某个目标「提交中」。
 // 底座还没实现时补一个恒 false 的（只为了在它落地前这份测试也能跑，落地后走真的）。
@@ -80,7 +104,6 @@ import { __resetMockCanvasForTest } from "@/mocks/canvas";
 import { CanvasDocProvider, CanvasRunsProvider, useCanvasDoc } from "@/canvas/core";
 import { CanvasGate } from "@/canvas/shell";
 import * as Assets from "./index";
-import { __resetAssetGenPanelForTest } from "./asset-gen-panel";
 import { AssetGenPanel, AssetListView, LookDetailDialog, TraitsDialog, type AssetTab } from "./index";
 
 let latest: DramaCanvasDoc | null = null;
@@ -129,7 +152,7 @@ async function renderList(tab: AssetTab = "characters", onLocate = vi.fn()) {
 
 beforeEach(() => {
   __resetMockCanvasForTest();
-  __resetAssetGenPanelForTest();
+  imageChoice.id = "img-a";
   forcedSubmitting.clear();
   latest = null;
   updateDoc = null;
@@ -215,7 +238,14 @@ describe("列表", () => {
     expect(within(drawer).getByRole("tab", { name: "便装" }).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("多选：按钮上的总价来自 pricing（单价 × 个数），先确认再按 image-batch 提交", async () => {
+  /** 点批量按钮 → 画布里的确认框（不是全站 dramaConfirm：框里能换模型、总价跟着变）。 */
+  async function openBatchDialog(count: number) {
+    const go = screen.getByRole("button", { name: new RegExp(`为选中的 ${count} 个出图`) });
+    fireEvent.click(go);
+    return screen.findByRole("dialog", { name: `为选中的 ${count} 个出图？` });
+  }
+
+  it("多选：按钮上的总价来自 pricing（单价 × 个数），先确认再按 image-batch 提交，带上这张画布选的出图模型", async () => {
     api.runImageBatch.mockImplementation(async (_id: string, body: CanvasImageBatchBody) =>
       body.items.map((it, i) => runOf({ id: `r_b${i}`, target: `look:${(it.target as { id: string }).id}` })),
     );
@@ -223,14 +253,16 @@ describe("列表", () => {
     fireEvent.click(screen.getByRole("button", { name: "多选" }));
     fireEvent.click(screen.getByRole("button", { name: "选中「周岳」的全部造型" }));
     fireEvent.click(screen.getByRole("button", { name: "选中「沈念」的全部造型" }));
-    const go = screen.getByRole("button", { name: /为选中的 3 个出图/ });
-    expect(go.textContent).toContain(String(7 * 3));
+    expect(screen.getByRole("button", { name: /为选中的 3 个出图/ }).textContent).toContain(String(7 * 3));
+    const dialog = await openBatchDialog(3);
+    expect((within(dialog).getByLabelText("出图模型") as HTMLSelectElement).value).toBe("img-a");
+    expect(dialog.querySelector<HTMLElement>("[data-cost]")!.dataset.cost).toBe("21");
+    expect(api.runImageBatch).not.toHaveBeenCalled(); // 确认之前不发
     await act(async () => {
-      fireEvent.click(go);
+      fireEvent.click(within(dialog).getByRole("button", { name: "确认生成" }));
     });
     await waitFor(() => expect(api.runImageBatch).toHaveBeenCalledTimes(1));
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][0]).toMatchObject({ cost: 21 });
+    expect(confirm).not.toHaveBeenCalled();
     const [id, body] = api.runImageBatch.mock.calls[0] as [string, CanvasImageBatchBody];
     expect(id).toBe(EXAMPLE);
     expect(body.items).toEqual([
@@ -238,8 +270,27 @@ describe("列表", () => {
       { target: { kind: "look", id: "lk_ex_zhouyue_casual" }, count: 1 },
       { target: { kind: "look", id: "lk_ex_shennian" }, count: 1 },
     ]);
+    expect(body.endpointId).toBe("img-a");
     expect(body.docVersion).toBeTruthy();
     expect(body.clientRequestId).toBeTruthy();
+  });
+
+  it("批量确认框里换出图模型：总价跟着变，请求带新模型，整张画布的选择也跟着换（出图面板读到的是同一个）", async () => {
+    api.runImageBatch.mockImplementation(async (_id: string, body: CanvasImageBatchBody) =>
+      body.items.map((it, i) => runOf({ id: `r_c${i}`, target: `scene:${(it.target as { id: string }).id}` })),
+    );
+    await renderList("scenes");
+    fireEvent.click(screen.getByRole("button", { name: "多选" }));
+    fireEvent.click(screen.getByRole("button", { name: "选中「23 路末班车车厢」" }));
+    const dialog = await openBatchDialog(1);
+    fireEvent.change(within(dialog).getByLabelText("出图模型"), { target: { value: "img-b" } });
+    expect(dialog.querySelector<HTMLElement>("[data-cost]")!.dataset.cost).toBe("11");
+    expect(imageChoice.id).toBe("img-b");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "确认生成" }));
+    });
+    await waitFor(() => expect(api.runImageBatch).toHaveBeenCalledTimes(1));
+    expect((api.runImageBatch.mock.calls[0][1] as CanvasImageBatchBody).endpointId).toBe("img-b");
   });
 
   it("多选超过 20 个（服务端上限）：批量按钮禁用并就地说原因，不截断、不提交", async () => {
@@ -275,14 +326,14 @@ describe("列表", () => {
   });
 
   it("多选后取消确认：不提交", async () => {
-    confirm.mockResolvedValue(false);
     await renderList("scenes");
     fireEvent.click(screen.getByRole("button", { name: "多选" }));
     fireEvent.click(screen.getByRole("button", { name: "选中「23 路末班车车厢」" }));
+    const dialog = await openBatchDialog(1);
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /为选中的 1 个出图/ }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     });
-    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog", { name: "为选中的 1 个出图？" })).toBeNull();
     expect(api.runImageBatch).not.toHaveBeenCalled();
   });
 });
@@ -325,6 +376,29 @@ describe("出图面板", () => {
     expect(screen.getByText("正在生成，等这次出完再生成。")).toBeTruthy();
     fireEvent.click(gen);
     expect(api.runImage).not.toHaveBeenCalled();
+  });
+
+  it("出图模型是整张画布一个选择：面板里换了，存回 pricing（批量、出首帧读同一个）；再打开面板还是它", async () => {
+    api.runImage.mockImplementation(async () => runOf({ id: "r_3", target: "look:lk_ex_shennian" }));
+    const first = await renderPanel();
+    fireEvent.change(screen.getByLabelText("出图模型"), { target: { value: "img-b" } });
+    expect(imageChoice.id).toBe("img-b");
+    first.unmount();
+    const again = await renderPanel();
+    expect((screen.getByLabelText("出图模型") as HTMLSelectElement).value).toBe("img-b");
+    await act(async () => {
+      fireEvent.click(again.container.querySelector<HTMLButtonElement>(".cva-gen")!);
+    });
+    await waitFor(() => expect(api.runImage).toHaveBeenCalledTimes(1));
+    expect(api.runImage.mock.calls[0][1]).toMatchObject({ endpointId: "img-b" });
+  });
+
+  it("生成按钮下面那一行提示一直占着位置：有原因 / 没原因，这一行的元素都在（面板不跟着变高变矮）", async () => {
+    const { container } = await renderPanel();
+    expect(container.querySelector('[data-testid="cva-foot-note"]')).not.toBeNull();
+    forcedSubmitting.add("look:lk_ex_shennian");
+    act(() => updateDoc!((d) => ({ ...d }))); // 触发重画
+    expect(container.querySelector('[data-testid="cva-foot-note"]')?.textContent).toBeTruthy();
   });
 
   it("造型的画幅缺省 9:16，模型缺省是默认模型", async () => {

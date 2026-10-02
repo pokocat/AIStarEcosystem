@@ -328,7 +328,35 @@
   background: var(--surface-2);
   overflow: hidden;
 }
-.cve-stage-tall { aspect-ratio: 9 / 16; height: min(52dvh, 480px); margin: 0 auto; }
+/*
+ * 预览画面高度（竖屏）：按视口收，让「出首帧 / 生成视频」不滚动就看得见、不被底部吸住的片段轴盖住
+ * （v0.198.1：1280×800 下按钮在片段轴底下，要滚一下才找得到主按钮）。宽度跟着 aspect-ratio 走。
+ * 画面要让出的高度 = 顶栏 57 + 页面上边距 16 + 预览卡片标题区 57 + 画面下面到「生成视频」的固定几行 118
+ *                 + 片段轴（吸底 12 + 本身 157）+ 余量 8 ≈ 428px，
+ * 再加上时有时无的几行（预览上的 data-fit-* / 编辑器上的 data-film 标着有没有）：
+ *   成片条 62 · 版本切换 42 · 这版视频的时长和生成时间 24 · 「用上一片段最后一帧」的原因 24。
+ * 改了这几块的高度，这里的数要跟着改。≤720 改成上下三段，高度在下面的媒体查询里另算（不受这里影响）。
+ */
+.cve-preview {
+  --cve-fit-film: 0px;
+  --cve-fit-versions: 0px;
+  --cve-fit-meta: 0px;
+  --cve-fit-lf: 0px;
+  --cve-fit-top: 0px;
+}
+.cve-editor[data-film] .cve-preview { --cve-fit-film: 62px; }
+.cve-preview[data-fit-versions] { --cve-fit-versions: 42px; }
+.cve-preview[data-fit-meta] { --cve-fit-meta: 24px; }
+.cve-preview[data-fit-lf] { --cve-fit-lf: 24px; }
+.cve-stage-tall {
+  aspect-ratio: 9 / 16;
+  height: clamp(
+    180px,
+    calc(100dvh - 428px - var(--cve-fit-film) - var(--cve-fit-versions) - var(--cve-fit-meta) - var(--cve-fit-lf) - var(--cve-fit-top)),
+    480px
+  );
+  margin: 0 auto;
+}
 .cve-stage-wide { aspect-ratio: 16 / 9; width: 100%; }
 .cve-stage-media { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
 .cve-stage-empty {
@@ -348,6 +376,10 @@
 .cve-version-meta { margin-top: -4px; }
 .cve-preview-actions { display: flex; flex-direction: column; gap: 6px; }
 .cve-act { justify-content: center; width: 100%; min-width: 0; }
+/* 「出首帧」和它用的出图模型放一行（不多占一行高度，见上面「预览画面高度」） */
+.cve-frame-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cve-frame-row .cve-act { flex: 1 1 auto; width: auto; }
+.cve-frame-model { flex: 0 1 132px; min-width: 0; max-width: 46%; height: 32px; padding: 0 8px; font-size: 12.5px; }
 .cve-runs { display: flex; flex-direction: column; gap: 6px; }
 .cve-runs:empty { display: none; }
 .cve-run {
@@ -532,6 +564,8 @@
   .cve-mobile-actions .cve-assemble { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
   .cve-mobile-actions .cve-model-label { display: inline; }
   .cve-mobile-actions .cve-assemble-reason { max-width: none; white-space: normal; }
+  /* 页首多了一行「视频模型 / 合成成片」：画面再让出这么高 */
+  .cve-preview { --cve-fit-top: 50px; }
 }
 
 /* ≤720：上下三段（片段文本 → 预览 → 片段轴横滑） */

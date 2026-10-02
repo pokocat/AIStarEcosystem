@@ -3,12 +3,14 @@
 // 单集编辑器右栏「预览」（plan §2.6 / §5.3 / §5.4）：挑中的视频或首帧；「出首帧」「用上一片段最后一帧」「生成视频」；
 // 多个版本左右切换 +「用这版」；在跑的显示进度，排队中的可以停；失败写原因；跑完把 refs.notes 如实写出来。
 // 父组件按片段 id 给它 key：换片段 = 换一个实例（看哪一版、看视频还是首帧都从头来）。
+// 「出首帧」旁边写着用哪个出图模型、可以就地换（整张画布一个出图模型选择，和出图面板、批量出图同一个）。
+// 片段时长不在所选视频模型的范围里（太短 / 太长）：「生成视频」禁用并就地说原因，不弹花钱的确认框再被服务端拒。
 import * as React from "react";
 import { ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, Info, Loader2, SkipForward, Square } from "lucide-react";
 import { formatDateTime } from "@ai-star-eco/api-client";
 import type { CanvasRunRef, CanvasSegment, DramaCanvasRatio, DramaCanvasRun, DramaCanvasRunStatus, DramaCanvasRunTarget } from "@ai-star-eco/types/drama-canvas";
 import { CanvasImage, CanvasVideo } from "@/canvas/shell";
-import { RunTarget, pickedImage, pickedVideo, setPicked, useCanvasDoc, useCanvasPricing, useCanvasRuns } from "@/canvas/core";
+import { RunTarget, pickedImage, pickedVideo, setPicked, useCanvasDoc, useCanvasPricing, useCanvasRuns, type CanvasPricingValue } from "@/canvas/core";
 import { confirmSpend, submitOrToast } from "./actions";
 import { Credits } from "./bits";
 import { applyPrevLastFrame, isActiveStatus, prevLastFrame, segmentNo } from "./derive";
@@ -104,6 +106,41 @@ export function RunLine({
   );
 }
 
+/** 片段时长和所选视频模型对不上时，就地说的那句话（没问题返回 undefined）。 */
+export function durationBlock(durationSec: number, minSec: number, maxSec: number): string | undefined {
+  if (durationSec <= 0) return undefined; // 没写时长另有提示
+  if (durationSec < minSec) return `这个视频模型一条至少 ${minSec} 秒，这个片段只有 ${durationSec} 秒，把镜头写长一点或和相邻片段合并。`;
+  if (durationSec > maxSec) return `这个视频模型一条最长 ${maxSec} 秒，这个片段有 ${durationSec} 秒，拆短一点或换个视频模型。`;
+  return undefined;
+}
+
+/** 「出首帧」旁边的出图模型下拉（整张画布一个选择）。候选还没读到 / 一个都没有时不显示。 */
+function FrameModelSelect({ pricing, disabled }: { pricing: CanvasPricingValue; disabled: boolean }) {
+  const models = pricing.imageModels;
+  if (!pricing.ready || !models.length) return null;
+  const current = models.find((m) => m.endpointId === pricing.imageModelId);
+  const title = current
+    ? `出首帧用「${current.name}」，每张 ${current.creditCost} 积分。换了之后，出图面板和批量出图也用这个模型`
+    : "出首帧用的出图模型";
+  return (
+    <select
+      className="cv-select cve-frame-model"
+      value={pricing.imageModelId ?? ""}
+      disabled={disabled || models.length <= 1}
+      onChange={(e) => pricing.setImageModelId(e.target.value)}
+      aria-label={current ? `出首帧用的出图模型，现在是${current.name}` : "出首帧用的出图模型"}
+      title={title}
+      data-action="frame-model"
+    >
+      {models.map((m) => (
+        <option key={m.endpointId} value={m.endpointId} title={`每张 ${m.creditCost} 积分`}>
+          {m.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export interface PreviewPanelProps {
   no: number;
   seg: CanvasSegment;
@@ -149,20 +186,22 @@ export function PreviewPanel({ no, seg, index, ratio }: PreviewPanelProps) {
 
   const hasText = !!seg.text.trim();
   const model = pricing.videoModels.find((m) => m.endpointId === pricing.videoModelId);
-  const maxSec = pricing.maxSegmentSec();
-  const over = seg.durationSec > maxSec;
+  const imageModelId = pricing.imageModelId;
+  const imageModel = pricing.imageModels.find((m) => m.endpointId === imageModelId);
   const noDuration = hasText && seg.durationSec <= 0;
   const noModels = pricing.ready && pricing.videoModels.length === 0;
-  const framePrice = pricing.imagePrice(1);
+  const framePrice = pricing.imagePrice(1, imageModelId);
   const videoCost = pricing.videoPrice(seg.durationSec, pricing.videoModelId);
   const plf = prevLastFrame(doc, no, seg.id);
+  // 时长范围按所选视频模型（H3 一条 5–15 秒，超出服务端直接拒）；候选还没读到时按默认的 1–10 秒
+  const outOfRange = durationBlock(seg.durationSec, pricing.minSegmentSec(), pricing.maxSegmentSec());
 
   const videoBlock = !hasText
     ? undefined
     : noDuration
       ? "每一行开头写上这一镜的时长，比如「（4 秒）」"
-      : over
-        ? `超过当前视频模型的上限 ${maxSec} 秒`
+      : outOfRange
+        ? outOfRange
         : noModels
           ? "还没有可用的视频模型"
           : undefined;
@@ -183,13 +222,21 @@ export function PreviewPanel({ no, seg, index, ratio }: PreviewPanelProps) {
   const genFrame = async () => {
     const ok = await confirmSpend({
       title: `给${label}出一张首帧？`,
-      body: "首帧会参考片段里 @ 到的角色、场景和素材图。先看画面对不对，再生成视频。",
+      body: `首帧会参考片段里 @ 到的角色、场景和素材图${imageModel ? `，用「${imageModel.name}」出图` : ""}。先看画面对不对，再生成视频。`,
       cost: framePrice,
       threshold: pricing.confirmThreshold,
       priceKnown: pricing.ready,
     });
     if (!ok) return;
-    await submitOrToast(runs.submit, { kind: "image", body: { target: { kind: "segment", episodeNo: no, segmentId: seg.id }, count: 1 } }, "首帧没开始生成");
+    // 一律带上这张画布选的出图模型：不带 = 后台默认模型（v0.198.1：线上默认模型任何画幅都 400，首帧永远出不来）
+    await submitOrToast(
+      runs.submit,
+      {
+        kind: "image",
+        body: { target: { kind: "segment", episodeNo: no, segmentId: seg.id }, count: 1, ...(imageModelId ? { endpointId: imageModelId } : {}) },
+      },
+      "首帧没开始生成",
+    );
   };
 
   const genVideo = async () => {
@@ -237,7 +284,17 @@ export function PreviewPanel({ no, seg, index, ratio }: PreviewPanelProps) {
   const curFrame = showing === "frame" ? seg.frame.versions[curIdx] : undefined;
 
   return (
-    <aside className="card cve-preview" aria-label="预览" data-testid="cve-preview" data-segment={seg.id}>
+    <aside
+      className="card cve-preview"
+      aria-label="预览"
+      data-testid="cve-preview"
+      data-segment={seg.id}
+      // 画面高度按视口收（canvas-episodes.css「预览画面高度」）：这几行有没有，决定画面要让出多少高度，
+      // 好让「生成视频」在 1280×800 下不被底部的片段轴盖住
+      data-fit-versions={versions.length > 1 || undefined}
+      data-fit-meta={!!curVideo || undefined}
+      data-fit-lf={!!lastFrameReason || undefined}
+    >
       <div className="cve-panel-head">
         <span className="cve-panel-title">预览</span>
         {pickedV && pickedF && (
@@ -302,18 +359,21 @@ export function PreviewPanel({ no, seg, index, ratio }: PreviewPanelProps) {
       )}
 
       <div className="cve-preview-actions">
-        <button
-          type="button"
-          className="btn btn-line btn-sm cve-act"
-          disabled={readOnly || !hasText || frameActive}
-          aria-busy={frameActive || undefined}
-          onClick={() => void genFrame()}
-          data-action="frame"
-        >
-          {frameActive ? <Loader2 size={14} className="cv-spin" /> : <ImageIcon size={14} />}
-          <span className="cv-ellipsis">{frameActive ? "首帧生成中" : "出首帧"}</span>
-          {!frameActive && <Credits n={pricing.ready ? framePrice : null} />}
-        </button>
+        <div className="cve-frame-row">
+          <button
+            type="button"
+            className="btn btn-line btn-sm cve-act"
+            disabled={readOnly || !hasText || frameActive}
+            aria-busy={frameActive || undefined}
+            onClick={() => void genFrame()}
+            data-action="frame"
+          >
+            {frameActive ? <Loader2 size={14} className="cv-spin" /> : <ImageIcon size={14} />}
+            <span className="cv-ellipsis">{frameActive ? "首帧生成中" : "出首帧"}</span>
+            {!frameActive && <Credits n={pricing.ready ? framePrice : null} />}
+          </button>
+          <FrameModelSelect pricing={pricing} disabled={readOnly} />
+        </div>
 
         <button
           type="button"

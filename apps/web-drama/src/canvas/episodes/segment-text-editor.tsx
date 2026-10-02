@@ -9,6 +9,8 @@
 //   · 回车、粘贴、剪切、退格删标签、插入引用 → 先算出新文本再重画（不靠浏览器各自的实现）；
 //   · 输入法组字期间一律不动 DOM（中文输入法组字时重画会把字吞掉）。
 // 父组件按片段 id 给它 key：换片段 = 换一个编辑器实例。
+// 查看态和编辑态的根节点各给一个 key：两态都是同一位置的 <div>，不给 key 的话 React 会复用同一个 DOM 节点，
+// 编辑时命令式画进去的内容留在里面，点「完成」后文字显示两遍（v0.198.1 线上实测，数据没坏）。
 import * as React from "react";
 import { parseShots, type SegmentRef } from "@/canvas/core";
 import { CanvasImage } from "@/canvas/shell";
@@ -341,6 +343,7 @@ export const SegmentTextEditor = React.forwardRef<SegmentTextEditorHandle, Segme
     const empty = !value.trim();
     return (
       <div
+        key="view"
         className={`cve-text cve-text-view${empty ? " is-empty" : ""}${readOnly ? " is-readonly" : ""}`}
         role={readOnly ? undefined : "button"}
         tabIndex={readOnly ? undefined : 0}
@@ -362,6 +365,7 @@ export const SegmentTextEditor = React.forwardRef<SegmentTextEditorHandle, Segme
   return (
     <>
       <div
+        key="edit"
         ref={rootRef}
         className="cve-text cve-text-edit"
         contentEditable
