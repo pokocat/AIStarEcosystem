@@ -4,12 +4,15 @@ import com.aistareco.aep.model.DramaCharacter;
 import com.aistareco.aep.model.DramaProject;
 import com.aistareco.aep.model.DramaScene;
 import com.aistareco.aep.model.MaterialVideoJob;
+import com.aistareco.aep.model.StorageAsset;
 import com.aistareco.aep.repository.DramaCharacterRepository;
 import com.aistareco.aep.repository.DramaProjectRepository;
 import com.aistareco.aep.repository.DramaSceneRepository;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
+import com.aistareco.aep.repository.StorageAssetRepository;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
+import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -54,6 +57,7 @@ public class DramaReferenceAssembler {
     private final DramaCharacterRepository charRepo;
     private final DramaSceneRepository sceneRepo;
     private final MaterialVideoJobRepository videoJobRepo;
+    private final StorageAssetRepository storageAssetRepo;
     private final CdnUrlSigner signer;
     private final ObjectMapper om;
 
@@ -61,12 +65,14 @@ public class DramaReferenceAssembler {
                                    DramaCharacterRepository charRepo,
                                    DramaSceneRepository sceneRepo,
                                    MaterialVideoJobRepository videoJobRepo,
+                                   StorageAssetRepository storageAssetRepo,
                                    CdnUrlSigner signer,
                                    ObjectMapper om) {
         this.projectRepo = projectRepo;
         this.charRepo = charRepo;
         this.sceneRepo = sceneRepo;
         this.videoJobRepo = videoJobRepo;
+        this.storageAssetRepo = storageAssetRepo;
         this.signer = signer;
         this.om = om;
     }
@@ -81,16 +87,34 @@ public class DramaReferenceAssembler {
      */
     public static final int LEGACY_MAX_REF_IMAGES = 6;
 
-    /** 消费方（端点 capability）画像。字段由调用方按「显式配置最高优先」解析：maxRefImages null →
-     *  {@link #LEGACY_MAX_REF_IMAGES}（legacy 兼容默认）；supportsFirstLastFrame null → C-1 协议关键字
-     *  静态判定（{@code DramaRenderService.supportsFirstLastFrame}：seedance/generic 支持、agnes 仅首帧）。 */
-    public record Capability(int maxRefImages, boolean supportsFirstLastFrame, boolean supportsSubjectReference) {}
+    /**
+     * 消费方（端点 capability）画像。字段由调用方按「显式配置最高优先」解析：maxRefImages null →
+     * {@link #LEGACY_MAX_REF_IMAGES}（legacy 兼容默认）；supportsFirstLastFrame null → C-1 协议关键字
+     * 静态判定（{@code DramaRenderService.supportsFirstLastFrame}：seedance/generic 支持、agnes 仅首帧）。
+     *
+     * <p>{@code firstFrameByStorageKey}：端点收首帧只认我方存储 key、不收 URL（聚算媒体协议，
+     * 由 {@code MaterialVideoJobService#firstFrameNeedsStorageKey} 判定）。为 true 时首帧「送没送到」
+     * 不看 URL 抓不抓得到，只看派不派得出本人的 key（2026-09-30 热修）。
+     */
+    public record Capability(int maxRefImages, boolean supportsFirstLastFrame, boolean supportsSubjectReference,
+                             boolean firstFrameByStorageKey) {
+        /** 首帧出图 / 走 URL 的出片协议：首帧按 URL 送达。 */
+        public Capability(int maxRefImages, boolean supportsFirstLastFrame, boolean supportsSubjectReference) {
+            this(maxRefImages, supportsFirstLastFrame, supportsSubjectReference, false);
+        }
+    }
 
     /** 首帧装配结果：imageRefs 送 {@code extra_body.image[]}；appliedRefs 回报「参考 N/M 生效」。 */
     public record FrameAssembly(List<String> imageRefs, ObjectNode appliedRefs) {}
 
-    /** 视频装配结果：first/last 帧拼进 prompt（下游按协议抽取）；appliedRefs 回报首尾帧是否生效。 */
-    public record ClipAssembly(String firstFrameUrl, String lastFrameUrl, ObjectNode appliedRefs) {}
+    /**
+     * 视频装配结果：first/last 帧拼进 prompt（下游按协议抽取）；appliedRefs 回报首尾帧是否生效。
+     * {@code firstFrameKey}：仅「首帧只认 key」的协议才派生，且已确认归属本人；其余情况为 null。
+     */
+    public record ClipAssembly(String firstFrameUrl, String lastFrameUrl, String firstFrameKey, ObjectNode appliedRefs) {}
+
+    /** 首帧不在我方存储里（外链 / 上游临时地址 / dev 相对路径），派不出 key、传不上去。wire 全小写。 */
+    static final String REASON_NOT_IN_STORAGE = "not_in_storage";
 
     /** 一条参考项归类：精确槽位 role + 是否送达模型 + 未送达原因（wire 全小写枚举）。 */
     record AppliedRef(String role, String url, boolean applied, String reason) {}
@@ -209,9 +233,92 @@ public class DramaReferenceAssembler {
                 }
             }
         }
+        boolean supportsFirstFrame = cap.maxRefImages() != 0;
+        // 2026-09-30 热修：聚算 H3 的首帧不收 URL，只认 variant_config.first_frame_key。此前这里只拼了提示词标记，
+        // 聚算分支把标记剥掉后首帧就没了，静默变成文生视频。现在由首帧 URL 反抽我方存储 key 并确认归属本人。
+        // maxRefImages=0（后台明确标了「只开放文生视频」）时不派生，照旧如实回报 model_no_image_input。
+        String firstFrameKey = null;
+        if (cap.firstFrameByStorageKey() && supportsFirstFrame && firstFrame != null && !firstFrame.isBlank()) {
+            firstFrameKey = requireOwnedFrameKey(ownerUserId, firstFrame);
+        }
         List<AppliedRef> classified = classifyClipFrames(firstFrame, lastFrame,
-                cap.maxRefImages() != 0, cap.supportsFirstLastFrame());
-        return new ClipAssembly(firstFrame, lastFrame, appliedRefsJson(classified));
+                supportsFirstFrame, cap.supportsFirstLastFrame(), cap.firstFrameByStorageKey(), firstFrameKey);
+        return new ClipAssembly(firstFrame, lastFrame, firstFrameKey, appliedRefsJson(classified));
+    }
+
+    // ── 首帧存储 key：派生 + 归属（2026-09-30 热修） ─────────────────────────────
+
+    /**
+     * 首帧 URL → 本人的存储 key。
+     *
+     * @return 归属已确认的 key（台账 / 任务行里记的那个，后续由 worker 读字节上传）；
+     *         URL 不是我方存储（外链、上游临时地址、dev 相对路径）派不出 key → null，调用方如实回报未送达
+     * @throws BusinessException 400 {@code DRAMA_FRAME_NOT_OWNED}：是我方存储的 key，但查不到属于本人。
+     *         必须在冻结积分之前抛（renderClip 里本方法先于 videoJobs.submit）。
+     */
+    String requireOwnedFrameKey(String ownerUserId, String firstFrameUrl) {
+        // 反抽 key 只用 signer 现成的能力：只认我方 CDN 域名，外链一律抽不出
+        String key = signer.keyOf(firstFrameUrl);
+        if (key == null || key.isBlank()) return null;
+        String owned = ownedFrameKey(ownerUserId, key);
+        if (owned == null) {
+            log.warn("[drama-ref-assembler] 首帧不属于本人，拒绝交给出片模型 owner={} key={}",
+                    ownerUserId, abbreviate(key));
+            throw BusinessException.badRequest("DRAMA_FRAME_NOT_OWNED",
+                    "这张首帧核对不到是你账号里的图片，没法交给所选的出片模型。请重新生成这一镜的首帧再试。");
+        }
+        return owned;
+    }
+
+    /**
+     * 归属判定：key 必须是本人在短剧下记过账的资产，返回记账时的那个 key；查不到 → null。
+     *
+     * <p>两处真值，覆盖短剧首帧的全部来源：
+     * <ul>
+     *   <li>存储台账 {@code storage_assets(app=drama, owner)}：分镜首帧（{@code renderFrame}，含 AI 改图 / 拆镜末帧）、
+     *       角色参考图、上传的参考图素材 —— 都在落 CDN 时 {@code StorageQuotaService.record} 记了 owner；</li>
+     *   <li>短剧视频任务的真实末帧 {@code material_video_job.last_frame_cdn_key}（owner + 分区 drama）：
+     *       承接上一镜末帧作首帧时用，末帧不进台账。</li>
+     * </ul>
+     *
+     * <p>为什么比对「多个候选」：台账里记的是**不带** OSS key-prefix 的 key（{@code drama/frames/…}），
+     * 而 {@code keyOf} 从 URL 抽出来的是**带**前缀的对象键（生产 {@code media/drama/frames/…}）；任务行里的
+     * 末帧 key 又是带前缀的。所以拿「完整 key + 依次去掉开头每一段」去查，命中谁就用谁记的那个 key。
+     * 不会放宽归属：命中的必须是 owner=本人 的行，用的也是那一行里服务端自己写的 key。
+     */
+    String ownedFrameKey(String ownerUserId, String key) {
+        if (ownerUserId == null || ownerUserId.isBlank() || key == null || key.isBlank()) return null;
+        String k = key.trim();
+        // 形状不对的直接不认（openForRead 是 localDir + key 拼路径，`..` 这类必须挡在归属判定之前）
+        if (k.startsWith("/") || k.contains("..") || k.contains("\\") || k.contains("\n") || k.contains("\r")) {
+            return null;
+        }
+        List<String> candidates = keySuffixes(k);
+        for (StorageAsset a : storageAssetRepo.findByAppAndOwnerUserIdAndCdnKeyIn(
+                MaterialVideoJobService.APP_DRAMA, ownerUserId, candidates)) {
+            if (a.getCdnKey() != null && !a.getCdnKey().isBlank()) return a.getCdnKey();
+        }
+        for (MaterialVideoJob j : videoJobRepo.findScopedByLastFrameCdnKeyIn(
+                ownerUserId, MaterialVideoJobService.APP_DRAMA, candidates)) {
+            if (j.getLastFrameCdnKey() != null && !j.getLastFrameCdnKey().isBlank()) return j.getLastFrameCdnKey();
+        }
+        return null;
+    }
+
+    /** {@code media/drama/frames/x.png} → [自身, {@code drama/frames/x.png}, {@code frames/x.png}]（不含裸文件名）。 */
+    static List<String> keySuffixes(String key) {
+        List<String> out = new ArrayList<>();
+        out.add(key);
+        int slash = key.indexOf('/');
+        while (slash >= 0 && key.indexOf('/', slash + 1) >= 0) {
+            out.add(key.substring(slash + 1));
+            slash = key.indexOf('/', slash + 1);
+        }
+        return out;
+    }
+
+    private static String abbreviate(String s) {
+        return s == null || s.length() <= 120 ? s : s.substring(0, 120) + "…";
     }
 
     // ── 优先级链数据来源 ──────────────────────────────────────────────────────────
@@ -547,10 +654,23 @@ public class DramaReferenceAssembler {
     /** supportsFirstFrame=false 用于尚未接通上游资产上传的纯文生视频候选，避免把首帧误报为已送达。 */
     static List<AppliedRef> classifyClipFrames(String firstFrameUrl, String lastFrameUrl,
                                                boolean supportsFirstFrame, boolean supportsFlf) {
+        return classifyClipFrames(firstFrameUrl, lastFrameUrl, supportsFirstFrame, supportsFlf, false, null);
+    }
+
+    /**
+     * firstFrameByStorageKey=true（聚算媒体协议）：首帧送没送到只看派没派出本人的 key ——
+     * 那条协议根本不用 URL，URL 抓不抓得到与此无关；派不出就是 {@code not_in_storage}，不许报「已送达」。
+     */
+    static List<AppliedRef> classifyClipFrames(String firstFrameUrl, String lastFrameUrl,
+                                               boolean supportsFirstFrame, boolean supportsFlf,
+                                               boolean firstFrameByStorageKey, String firstFrameKey) {
         List<AppliedRef> out = new ArrayList<>();
         if (firstFrameUrl != null && !firstFrameUrl.isBlank()) {
             if (!supportsFirstFrame) {
                 out.add(new AppliedRef("first_frame", firstFrameUrl, false, "model_no_image_input"));
+            } else if (firstFrameByStorageKey) {
+                boolean ok = firstFrameKey != null && !firstFrameKey.isBlank();
+                out.add(new AppliedRef("first_frame", firstFrameUrl, ok, ok ? null : REASON_NOT_IN_STORAGE));
             } else {
                 boolean ok = isFetchableImageRef(firstFrameUrl);
                 out.add(new AppliedRef("first_frame", firstFrameUrl, ok, ok ? null : "local_unfetchable"));

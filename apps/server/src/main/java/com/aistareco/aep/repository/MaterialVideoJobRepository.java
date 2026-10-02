@@ -37,6 +37,15 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
     List<MaterialVideoJob> findScopedByProduct(@Param("userId") String userId, @Param("app") String app,
                                                @Param("productId") String productId);
 
+    /**
+     * 归属查询（2026-09-30 热修）：本人在某分区下、真实末帧 key 落在这几个候选之一的任务。
+     * 短剧承接上一镜末帧作首帧时，末帧不进存储台账（只记在任务行上），靠它证明归属。
+     */
+    @Query("select j from MaterialVideoJob j where j.ownerUserId = :userId and " + APP_EXPR + " = :app "
+            + "and j.lastFrameCdnKey in :keys")
+    List<MaterialVideoJob> findScopedByLastFrameCdnKeyIn(@Param("userId") String userId, @Param("app") String app,
+                                                         @Param("keys") java.util.Collection<String> keys);
+
     long countByStatus(String status);
 
     long countByStatusIn(java.util.Collection<String> statuses);
