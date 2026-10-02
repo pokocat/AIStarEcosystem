@@ -112,6 +112,21 @@ class VideoStudioOptimizationWorkerTest {
         }
 
         @Test
+        @DisplayName("测试 mock（临时）：名单里的账号不调厂商，拿带「测试演示」标识的固定改写，照常结算")
+        void testMockSkipsTheVendor() {
+            com.aistareco.aep.service.materialvideo.VideoStudioTestMock testMock =
+                    mock(com.aistareco.aep.service.materialvideo.VideoStudioTestMock.class);
+            when(testMock.appliesTo("u1")).thenReturn(true);
+            when(testMock.optimizedPrompt("图1跳舞")).thenReturn("【测试演示，未调用厂商】图1跳舞。镜头：…");
+            worker.setTestMock(testMock);
+
+            worker.run("vso_1");
+
+            verify(modelClient, never()).optimizePrompt(any(), any(), anyInt(), any(), any(), any(), any());
+            verify(settlement).succeed(row, "【测试演示，未调用厂商】图1跳舞。镜头：…", null, "智能优化 · 全能参考");
+        }
+
+        @Test
         @DisplayName("没抢到开工（不在排队：已被回收判失败 / 重复派发）→ 不调厂商、不结算")
         void notQueuedAnymore() {
             when(repo.claimRunning(eq("vso_1"), any())).thenReturn(0);

@@ -2,6 +2,7 @@ package com.aistareco.aep.videostudio.service;
 
 import com.aistareco.aep.service.materialvideo.MaterialVideoModelClient;
 import com.aistareco.aep.service.materialvideo.VideoGenSpec;
+import com.aistareco.aep.service.materialvideo.VideoStudioTestMock;
 import com.aistareco.aep.videostudio.model.StudioPromptOptimization;
 import com.aistareco.aep.videostudio.repository.StudioPromptOptimizationRepository;
 import com.aistareco.common.BusinessException;
@@ -9,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -43,6 +45,14 @@ public class VideoStudioOptimizationWorker {
         this.om = om;
     }
 
+    /** 测试 mock（临时，见 {@link VideoStudioTestMock}）。setter 注入：单测里手工 new 的没有它 = 不 mock。 */
+    private VideoStudioTestMock testMock;
+
+    @Autowired(required = false)
+    public void setTestMock(VideoStudioTestMock testMock) {
+        this.testMock = testMock;
+    }
+
     @Async("videoStudioOptimizationExecutor")
     public void runAsync(String id) {
         run(id);
@@ -63,14 +73,19 @@ public class VideoStudioOptimizationWorker {
         String ledgerLabel;
         try {
             JsonNode spec = om.readTree(row.getSpecJson());
-            result = modelClient.optimizePrompt(
-                    row.getId(),
-                    row.getOriginalPrompt(),
-                    spec.path(VideoStudioOptimizationService.SPEC_SECONDS).asInt(0),
-                    spec.path(VideoStudioOptimizationService.SPEC_ASPECT_RATIO).asText(null),
-                    row.getOwnerUserId(),
-                    row.getEndpointId(),
-                    VideoGenSpec.fromVariantConfig(spec));
+            if (testMock != null && testMock.appliesTo(row.getOwnerUserId())) {
+                // 测试账号：不调厂商，返回带「测试演示」标识的固定改写；计价与结算照常走（同一个 settlement）
+                result = new MaterialVideoModelClient.OptimizeResult(testMock.optimizedPrompt(row.getOriginalPrompt()), null);
+            } else {
+                result = modelClient.optimizePrompt(
+                        row.getId(),
+                        row.getOriginalPrompt(),
+                        spec.path(VideoStudioOptimizationService.SPEC_SECONDS).asInt(0),
+                        spec.path(VideoStudioOptimizationService.SPEC_ASPECT_RATIO).asText(null),
+                        row.getOwnerUserId(),
+                        row.getEndpointId(),
+                        VideoGenSpec.fromVariantConfig(spec));
+            }
             ledgerLabel = VideoStudioOptimizationService.CREDIT_LABEL + " · "
                     + VideoStudioService.modeName(spec.path(VideoGenSpec.KEY_GENERATION_MODE).asText(null));
         } catch (BusinessException e) {

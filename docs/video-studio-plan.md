@@ -347,6 +347,14 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
 
 ---
 
+## 8.1 线上端到端验证用的测试 mock（临时，2026-10-01）
+
+用户要求在线上用真实账号把流程走一遍、但不调厂商。发布分支 `release/v0199-combined` 多带一个 `VideoStudioTestMock`：
+
+- 名单：平台配置 `celebrity.video-studio.test-mock-user-ids`（JSON 数组，用户 id），30 秒缓存；缺省 / 空 = 关，开关就是后台 `PUT` / `DELETE /api/admin/platform-configs/{key}`，不用重启。
+- 只管视频生成区：名单里的账号在分区 `video-studio` 出片时不调厂商，用 Java2D 画一张写着「测试演示 · 未调用厂商」的卡片、ffmpeg 按所选比例和秒数编码成 H.264 MP4，再走与真成片同一条存储（`material-videos/<jobId>/…`）、记账、扣费路径；智能优化返回带「【测试演示，未调用厂商】」开头的固定改写，计价与结算照常。其它账号、其它分区（带货脚本视频 / 短剧 / 画布）不受影响。
+- §8.0：缺省关、命中与读到名单都打 ERROR、产物带显式标识，已登记进 AGENTS.md §8.0 审计表。代码不进 PR #118，下次按 main 发布自然去掉。
+
 ## 9. 智能优化（照厂商试用页：可选，默认勾上）
 
 **厂商合同**（Portal「API 接入 → 智能优化后生成」完整示例 + OpenAPI `createPromptOptimization`，2026-09-30）：

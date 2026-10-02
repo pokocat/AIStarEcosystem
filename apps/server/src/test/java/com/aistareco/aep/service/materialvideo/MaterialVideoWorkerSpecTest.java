@@ -108,6 +108,48 @@ class MaterialVideoWorkerSpecTest {
     }
 
     @Test
+    @DisplayName("测试 mock（临时）：名单里的账号在视频生成区不调厂商，演示视频走同一条存储 / 扣费路径")
+    void testMockSkipsTheVendorButSettlesNormally() throws Exception {
+        VideoStudioTestMock testMock = mock(VideoStudioTestMock.class);
+        when(testMock.appliesTo("u1")).thenReturn(true);
+        Path dir = Files.createTempDirectory("vs-mock-test-");
+        Path video = Files.write(dir.resolve("video.mp4"), new byte[]{1, 2, 3, 4});
+        Path thumb = Files.write(dir.resolve("thumbnail.png"), new byte[]{5});
+        when(testMock.render(eq("mvj_studio"), eq(5), eq("9:16"), eq("图1在跳舞")))
+                .thenReturn(new VideoStudioTestMock.DemoMedia(dir, video, thumb));
+        MaterialVideoWorker w = worker();
+        w.setTestMock(testMock);
+
+        w.generateAsync("mvj_studio");
+
+        verify(modelClient, never()).submit(any(), anyInt(), any(), any(), any(), any(), any());
+        assertEquals("succeeded", job.getStatus());
+        assertEquals("https://cdn.test/material-videos/mvj_studio/video.mp4", job.getVideoUrl());
+        assertEquals("https://cdn.test/material-videos/mvj_studio/thumbnail.png", job.getThumbnailUrl());
+        assertEquals(VideoStudioTestMock.MODEL_LABEL, job.getModelUsed());
+        verify(creditService).commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, "mvj_studio", 200L, "视频生成 · " + job.getName());
+        verify(storage).record(eq("celebrity"), eq("u1"), eq("视频生成"), any(),
+                eq("material-videos/mvj_studio/video.mp4"), anyLong());
+    }
+
+    @Test
+    @DisplayName("测试 mock 只管视频生成区：同一个账号在别的分区照常调厂商")
+    void testMockOnlyAppliesToTheStudioPartition() {
+        VideoStudioTestMock testMock = mock(VideoStudioTestMock.class);
+        when(testMock.appliesTo("u1")).thenReturn(true);
+        job.setApp(MaterialVideoJobService.APP_CELEBRITY);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("真厂商被调用了"));
+        MaterialVideoWorker w = worker();
+        w.setTestMock(testMock);
+
+        w.generateAsync("mvj_studio");
+
+        verify(modelClient).submit(any(), anyInt(), any(), any(), any(), any(), any());
+        assertEquals("failed", job.getStatus());
+    }
+
+    @Test
     @DisplayName("成功：解析出的规格原样交给 submit；扣费文案用 credit_label；存储用量记「视频生成」")
     void successPassesSpecAndUsesCreditLabel() throws Exception {
         var submit = new MaterialVideoModelClient.SubmitResult("job_h3", null, "MiniMax H3", "minimax-h3",

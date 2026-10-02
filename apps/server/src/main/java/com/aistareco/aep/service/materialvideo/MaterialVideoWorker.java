@@ -11,6 +11,7 @@ import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -77,6 +78,14 @@ public class MaterialVideoWorker {
         } else {
             log.warn("[material-video] no CdnUploader bean -> provider video URLs will be stored directly");
         }
+    }
+
+    /** 视频生成区的测试 mock（临时，见 {@link VideoStudioTestMock}）。setter 注入：手工 new 的 worker（单测）没有它 = 不 mock。 */
+    private VideoStudioTestMock testMock;
+
+    @Autowired(required = false)
+    void setTestMock(VideoStudioTestMock testMock) {
+        this.testMock = testMock;
     }
 
     @Async("materialVideoExecutor")
@@ -189,6 +198,12 @@ public class MaterialVideoWorker {
             log.info("[material-video] job {} 已不在排队（取消 / 超时 / 已被接手），不提交", jobId);
             return;
         }
+        // 视频生成区的测试 mock（临时，只对配置里的测试账号）：不调厂商，现做一段演示视频走同一条存储 / 扣费路径
+        if (testMock != null && MaterialVideoJobService.APP_VIDEO_STUDIO.equals(job.getApp())
+                && testMock.appliesTo(job.getOwnerUserId())) {
+            runTestMock(job);
+            return;
+        }
 
         // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余（素材运营 / 视频生成区 / 画布）记到 celebrity。
         String appCode = appCodeOf(job);
@@ -295,6 +310,34 @@ public class MaterialVideoWorker {
                 releaseCredits(job, "视频生成超时");
                 return;
             }
+        }
+    }
+
+    /** 测试 mock 出片：演示视频 + 封面传到平台存储（同真成片的 key 规则），成功扣、失败退。 */
+    private void runTestMock(MaterialVideoJob job) {
+        String jobId = job.getId();
+        markGenerating(jobId, "test-mock-" + jobId, VideoStudioTestMock.PROVIDER_LABEL, VideoStudioTestMock.MODEL_LABEL);
+        if (cdnUploader == null) {
+            markFailed(jobId, "测试演示视频没法保存：平台存储没有配置");
+            releaseCredits(job, "测试演示视频没法保存");
+            return;
+        }
+        VideoStudioTestMock.DemoMedia media = null;
+        try {
+            media = testMock.render(jobId, job.getDurationSec(), job.getAspectRatio(), job.getPrompt());
+            var video = cdnUploader.upload(media.video(), "material-videos/" + jobId + "/video.mp4", "video/mp4");
+            var thumb = cdnUploader.upload(media.thumbnail(), "material-videos/" + jobId + "/thumbnail.png", "image/png");
+            storage.record(appCodeOf(job), job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
+                    video.key(), video.uploadedBytes());
+            markSucceeded(jobId, video.cdnUrl(), thumb.cdnUrl(), null, null);
+            commitCredits(job);
+            log.error("[material-video] job {} 测试 mock 出片完成（未调用厂商） url={}", jobId, video.cdnUrl());
+        } catch (Exception e) {
+            log.error("[material-video] job {} 测试 mock 出片失败", jobId, e);
+            markFailed(jobId, "测试演示视频生成失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+            releaseCredits(job, "测试演示视频生成失败");
+        } finally {
+            VideoStudioTestMock.cleanup(media);
         }
     }
 

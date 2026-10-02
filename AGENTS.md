@@ -557,6 +557,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | 支付渠道（v0.94 多渠道）| 渠道启用但机密缺失 → 下单/回调期 503 PAYMENT_CHANNEL_NOT_CONFIGURED（不入账、不回退）；机密走 admin 后台「支付配置」DB（加密），env 仅 bootstrap | shadow 影子渠道 `aep.payment.shadow.enabled`（dev true / mysql false，启用打 ERROR 横幅） |
 | dev 免密登录 | `aep.dev-auth.enabled` 默认关 | 显式开 |
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
+| 视频生成区测试 mock（**临时**，2026-10-01 线上端到端验证用） | 默认关：平台配置 `celebrity.video-studio.test-mock-user-ids`（用户 id 数组）缺省 / 空 = 谁都不 mock；只管分区 `video-studio`，名单外的账号与其它分区照常调厂商 | 名单里的账号智能优化与出片不调厂商（`VideoStudioTestMock`）：读到名单 / 每次命中都打 ERROR，产物带「测试演示」标识，计价扣费照常；测完 `DELETE /api/admin/platform-configs/celebrity.video-studio.test-mock-user-ids` |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
 
 ### 8.0.1 排障与验证纪律（v0.184 起强制，v0.197 补到 12 条 —— 都是本仓真栽过、而且多数**栽过不止一次**的）
