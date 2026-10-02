@@ -272,7 +272,7 @@ class MaterialVideoModelClientWireTest {
     }
 
     @Test
-    @DisplayName("老路径（画布首帧）：上传一张图 → i2v，请求体与改动前逐字段一致")
+    @DisplayName("老路径（画布首帧）：上传一张图 → i2v；竖屏带上 aspectRatio + outputSizeCode")
     void legacyCanvasFirstFrameStillWorks() throws Exception {
         useJusuan();
         stored("ipstudio_gen/u1/a.png", png());
@@ -282,7 +282,8 @@ class MaterialVideoModelClientWireTest {
         assertEquals(1, uploads().size());
         assertEquals("image", part(uploads().get(0)).name());
         assertEquals("{\"model\":\"minimax-h3\",\"prompt\":\"让她眨眼\",\"resolutionTier\":\"768p\","
-                + "\"orientation\":\"portrait\",\"seconds\":8,\"generationMode\":\"i2v\",\"input_image_asset_id\":\"asset_1\"}",
+                + "\"orientation\":\"portrait\",\"aspectRatio\":\"9:16\",\"outputSizeCode\":\"h3-768-9x16\","
+                + "\"seconds\":8,\"generationMode\":\"i2v\",\"input_image_asset_id\":\"asset_1\"}",
                 create().text());
     }
 

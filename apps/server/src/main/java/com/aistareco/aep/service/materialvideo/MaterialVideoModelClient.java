@@ -698,13 +698,23 @@ public class MaterialVideoModelClient {
             return body;
         }
 
-        // 聚算 JusuanHub 统一媒体协议的老路径（画布 / 脚本视频 / 短剧）：字段集与 v0.183 逐字段一致。
+        // 聚算 JusuanHub 统一媒体协议的老路径（画布 / 脚本视频 / 短剧）。
         // 受控规格字段替代 width/height/fps 等原始运行时参数；参考图不能给 URL，必须先
         // POST /v1/assets/input 换 assetId（见 uploadInputAsset）。
         if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             body.put("prompt", nz(stripFrameUrlHint(prompt)));
             body.put("resolutionTier", JusuanH3Contract.TIER_768P);
             body.put("orientation", orientationForAspect(aspectRatio));
+            // 只发 orientation 时竖屏由厂商默认 preset 决定：2026-10-03 线上实测已变成 3:4
+            // （effectiveSpec.outputSizeCode=h3-768-3x4，768×1024），画布 / 短剧要的是 9:16。
+            // 横竖两档照视频生成区的做法补上 aspectRatio + outputSizeCode；1:1 要发 square，
+            // 那个值还没实测过（JusuanH3Contract 头注释），老路径保持原样不跟。
+            JusuanH3Contract.Canvas canvas = JusuanH3Contract.canvas(JusuanH3Contract.TIER_768P,
+                    aspectRatio == null ? null : aspectRatio.trim());
+            if (canvas != null && !"square".equals(JusuanH3Contract.orientation(canvas))) {
+                body.put("aspectRatio", canvas.aspectRatio());
+                body.put("outputSizeCode", JusuanH3Contract.outputSizeCode(JusuanH3Contract.TIER_768P, canvas.aspectRatio()));
+            }
             body.put("seconds", requireJusuanDuration(durationSec));
             // 有首帧就走图生视频；没有才是纯文生视频。generationMode 是 H3 的必填项。
             if (in.firstFrameAssetId() != null && !in.firstFrameAssetId().isBlank()) {
