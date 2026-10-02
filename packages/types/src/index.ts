@@ -34,5 +34,6 @@ export * from "./settings";
 export * from "./social-account";
 export * from "./star-workbench";
 export * from "./studio";
+export * from "./video-studio";
 export * from "./wallet";
 export * from "./wardrobe";

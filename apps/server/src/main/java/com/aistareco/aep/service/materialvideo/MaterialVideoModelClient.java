@@ -6,10 +6,10 @@ import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.AiModelUsageService;
-import com.aistareco.aep.service.storage.ImageBytes;
 import com.aistareco.aep.service.ai.ModelCallCtx;
 import com.aistareco.aep.service.ai.UpstreamCallException;
 import com.aistareco.aep.service.ai.UpstreamModelHttp;
+import com.aistareco.aep.service.storage.MediaBytes;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -19,17 +19,24 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * 带货视频生成 —— 视频大模型的「提交 + 轮询」HTTP 客户端（单一可替换点）。
@@ -95,6 +102,20 @@ public class MaterialVideoModelClient {
     }
 
     /**
+     * 这个端点是否走聚算媒体协议（MiniMax H3 的四种原生模式只有这条协议能表达）。
+     * 视频生成区的模型列表据此过滤；判定与提交时用的是同一个 {@link #protocolFor}。
+     */
+    public boolean isJusuanMedia(AiModelEndpoint endpoint) {
+        return endpoint != null && PROTOCOL_JUSUAN_MEDIA.equals(protocolFor(endpoint, modelOf(endpoint)));
+    }
+
+    /** 端点实际调用的模型名：端点上配了就用它，没配回落 aep.material.video.default-model。 */
+    private String modelOf(AiModelEndpoint endpoint) {
+        return endpoint.getModel() != null && !endpoint.getModel().isBlank()
+                ? endpoint.getModel() : props.getDefaultModel();
+    }
+
+    /**
      * 提交/冻结积分前的时长策略收口（同一归一值供校验、报价、落库、供应商请求四处使用）：
      *   1) duration 必填且 &gt;0（400 VIDEO_DURATION_REQUIRED）——不同协议默认时长各异，
      *      放任 0 会让校验、PER_SECOND 报价（max(1,·)）、任务落库与实际生成用上不同真值；
@@ -119,10 +140,10 @@ public class MaterialVideoModelClient {
 
     /** 协议硬时长边界（秒）；未知边界 = null（不臆造）。agnes 上限 = 441 帧 / 24fps ≈ 18 秒。 */
     public DurationBounds protocolDurationBounds(AiModelEndpoint endpoint) {
-        String model = endpoint.getModel() != null && !endpoint.getModel().isBlank()
-                ? endpoint.getModel() : props.getDefaultModel();
-        String protocol = protocolFor(endpoint, model);
-        if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) return new DurationBounds(5, 15);
+        String protocol = protocolFor(endpoint, modelOf(endpoint));
+        if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
+            return new DurationBounds(JusuanH3Contract.MIN_SECONDS, JusuanH3Contract.MAX_SECONDS);
+        }
         if (PROTOCOL_AGNES.equals(protocol)) return new DurationBounds(null, 441 / AGNES_FRAME_RATE);
         return new DurationBounds(null, null);
     }
@@ -173,10 +194,7 @@ public class MaterialVideoModelClient {
      * 整张比例表都成立），前端保留完整选项。
      */
     public VideoGeometry videoGeometry(AiModelEndpoint endpoint) {
-        if (endpoint == null) return null;
-        String model = endpoint.getModel() != null && !endpoint.getModel().isBlank()
-                ? endpoint.getModel() : props.getDefaultModel();
-        if (!PROTOCOL_JUSUAN_MEDIA.equals(protocolFor(endpoint, model))) return null;
+        if (!isJusuanMedia(endpoint)) return null;
         // 协议只给横 / 竖两档；标成最接近的通用比例，别报一个我们并不能保证的精确值。
         return new VideoGeometry(java.util.List.of("768"), java.util.List.of("16:9", "9:16"));
     }
@@ -225,36 +243,32 @@ public class MaterialVideoModelClient {
      * 返回的 {@link SubmitResult} 带上 endpointId，使后续 poll 落到同一端点（同 baseUrl/apiKey）。
      */
     /**
-     * 提交生成任务。{@code firstFrameKey} 是首帧参考图的存储键（聚算 H3 走 i2v）——
-     * 传 null 就是纯文生视频。
+     * 提交生成任务。{@code spec} 是这次的输入规格（worker 用 {@link VideoGenSpec#fromVariantConfigJson} 解析）：
+     * 老路径（画布 / 脚本视频 / 短剧）至多带一个首帧 key；视频生成区带完整的 H3 原生规格。
+     * 什么输入都没有就传 {@link VideoGenSpec#EMPTY}。
      *
-     * <p>刻意**不留**一个不带首帧的重载：同一件事两种调法，迟早有人用了少一个参数的那个，
-     * 参考图就这么悄悄丢了（今天已经在别处栽过两次）。不需要参考图就显式传 null。
+     * <p>刻意**不留**旧的「只带首帧 key」的重载：同一件事两种调法，迟早有人用了少一个参数的那个，
+     * 参考图就这么悄悄丢了（今天已经在别处栽过两次，§8.0.1 ④）。
      */
     public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId,
-                               String appCode, String endpointId, String firstFrameKey) {
+                               String appCode, String endpointId, VideoGenSpec spec) {
+        VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
         AiModelEndpoint p = requireEndpoint(endpointId);
         String apiKey = requireKey(p);
-        String model = (p.getModel() != null && !p.getModel().isBlank())
-                ? p.getModel() : props.getDefaultModel();
+        String model = modelOf(p);
         String protocol = protocolFor(p, model);
+        // 先判能不能表达，再动素材：组不出来的包不该先把素材传给厂商。
+        requireProtocolSupports(protocol, genSpec, aspectRatio);
 
-        // 聚算的图不是给 URL、而是**先上传拿 assetId**（POST /v1/assets/input?model=…）——
-        // 这跟 seedance 那条「把 URL 塞进 content 数组」完全不同的协议。
-        // 之前这里一律发 generationMode=t2v、图一张都没送 —— 用户接了参考图，
-        // 出来的片跟参考图毫无关系（v0.183）。
-        String assetId = null;
-        if (firstFrameKey != null && !firstFrameKey.isBlank() && usesUploadedFirstFrame(protocol)) {
-            assetId = uploadInputImage(p, apiKey, model, firstFrameKey);
-        }
-
-        Map<String, Object> body = buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, assetId);
+        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec);
+        Map<String, Object> body = buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, genSpec, inputs);
 
         URI uri = URI.create(joinUrl(p.getBaseUrl(), submitPathFor(protocol)));
         long startNanos = System.nanoTime();
         String requestId = "vid-" + UUID.randomUUID().toString().substring(0, 16);
-        log.info("[material-video] submit start endpoint={} model={} protocol={} path={} durationSec={} aspectRatio={} promptLength={}",
-                p.getName(), model, protocol, uri.getPath(), durationSec, aspectRatio, prompt == null ? 0 : prompt.length());
+        log.info("[material-video] submit start endpoint={} model={} protocol={} path={} durationSec={} aspectRatio={} generationMode={} tier={} refs={} promptLength={}",
+                p.getName(), model, protocol, uri.getPath(), durationSec, aspectRatio, genSpec.generationMode(),
+                genSpec.resolutionTier(), genSpec.references().size(), prompt == null ? 0 : prompt.length());
 
         HttpRequest req;
         String bodyJson;
@@ -293,8 +307,13 @@ public class MaterialVideoModelClient {
                     "endpoint=" + p.getName() + " err=" + ex.getCause());
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            // 上游的原话必须留在日志里（§8.0.1 ①）：internalDetail 只在 HTTP 请求路径上落 ErrorLog，
+            // 而这里跑在 @Async worker 里，不写这一行就等于什么都没记。
+            log.warn("[material-video] submit rejected endpoint={} model={} protocol={} status={} durationMs={} body={}",
+                    p.getName(), model, protocol, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
+            // 4xx 是「我们请求哪儿不对」，厂商原话直出给用户；5xx 是厂商自己的问题，只给状态码。
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                    "视频生成失败，请稍后重试",
+                    submitFailureMessage(resp.statusCode(), resp.body()),
                     "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
                             + " body=" + snippet(resp.body()));
         }
@@ -502,13 +521,140 @@ public class MaterialVideoModelClient {
 
     // ── 协议适配 ──────────────────────────────────────────────────────────────
 
-    Map<String, Object> buildSubmitBody(String protocol, String model, String prompt,
-                                        int durationSec, String aspectRatio) {
-        return buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, null);
+    /**
+     * 一次提交里交给厂商的输入，已经换成厂商认得的形式：
+     * 聚算是先上传拿到的 assetId；seedance / agnes / 通用协议是一个厂商自己去抓的首帧 URL。
+     * 顺序与 {@link VideoGenSpec#references()} 一致。
+     */
+    record UpstreamInputs(String firstFrameUrl, String firstFrameAssetId, String lastFrameAssetId,
+                          List<ReferenceAsset> references) {
+        static final UpstreamInputs NONE = new UpstreamInputs(null, null, null, List.of());
+
+        UpstreamInputs {
+            references = references == null ? List.of() : List.copyOf(references);
+        }
+
+        static UpstreamInputs firstFrameUrl(String url) {
+            return new UpstreamInputs(url, null, null, List.of());
+        }
+
+        static UpstreamInputs firstFrameAsset(String assetId) {
+            return new UpstreamInputs(null, assetId, null, List.of());
+        }
     }
 
-    Map<String, Object> buildSubmitBody(String protocol, String model, String prompt,
-                                        int durationSec, String aspectRatio, String inputImageAssetId) {
+    /** 全能参考的一项素材，已上传到聚算。 */
+    record ReferenceAsset(String mediaType, String assetId) {}
+
+    /**
+     * 这个协议能不能表达这份规格。表达不了就在动任何素材之前 400，**不静默丢参数**（§8.0）：
+     * <ul>
+     *   <li>非聚算协议收到原生参数（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）→ {@code VIDEO_MODE_UNSUPPORTED}；
+     *       只带首帧 key 的老路径照常（首帧换成 URL 交给厂商，见 {@link #resolveUpstreamInputs}）。</li>
+     *   <li>聚算收到原生参数但缺清晰度 → 组不出完整的 H3 请求，同样拒绝，不退回老路径的 768p 包。</li>
+     *   <li>完整的原生规格：模式 / 清晰度 / 比例 / 该模式必需的素材再核一遍 —— 服务端已在冻结积分前校验过，
+     *       这里是最后一道，防止组出一个厂商必拒的包。</li>
+     * </ul>
+     */
+    static void requireProtocolSupports(String protocol, VideoGenSpec spec, String aspectRatio) {
+        if (!PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
+            if (spec.hasNativeOptions()) {
+                throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED",
+                        "所选视频模型不支持指定生成模式、清晰度、尾帧或参考素材，请换一个视频模型");
+            }
+            return;
+        }
+        if (!spec.isExplicit()) {
+            if (spec.hasNativeOptions()) {
+                throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "视频参数不完整，缺少清晰度，无法提交");
+            }
+            return;
+        }
+        if (!JusuanH3Contract.isMode(spec.generationMode())) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "生成模式不在支持范围内");
+        }
+        if (JusuanH3Contract.canvas(spec.resolutionTier(), aspectRatio) == null) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "清晰度或画面比例不在支持范围内");
+        }
+        switch (spec.generationMode()) {
+            case JusuanH3Contract.MODE_I2V -> requireInput(spec.firstFrameKey() != null, "首帧生视频缺少首帧图");
+            case JusuanH3Contract.MODE_FIRST_LAST_FRAME -> {
+                requireInput(spec.firstFrameKey() != null, "首尾帧生视频缺少首帧图");
+                requireInput(spec.lastFrameKey() != null, "首尾帧生视频缺少尾帧图");
+            }
+            case JusuanH3Contract.MODE_UNIVERSAL_REFERENCE ->
+                    requireInput(!spec.references().isEmpty(), "全能参考至少要一个参考素材");
+            default -> { /* t2v：不需要素材 */ }
+        }
+    }
+
+    private static void requireInput(boolean ok, String message) {
+        if (!ok) throw BusinessException.badRequest("VIDEO_STUDIO_INPUT_INVALID", message);
+    }
+
+    /**
+     * 把规格里的素材 key 换成厂商认得的形式。
+     *
+     * <p>聚算：图 / 视频 / 音频都不给 URL，得先传上去换 assetId（v0.183 起首帧、v0.199 起全部）。
+     * 之前这里一律发 generationMode=t2v、图一张都没送 —— 用户接了参考图，出来的片跟参考图毫无关系。
+     *
+     * <p>seedance / agnes / 通用协议：首帧给一个厂商自己去抓的 URL（{@link com.aistareco.aep.service.storage.FileStorageService#upstreamFetchUrl}）。
+     * 画布能选这些模型以后，只认 prompt 里的首帧标记就等于把用户连进来的参考图悄悄丢掉（§8.0）。
+     */
+    private UpstreamInputs resolveUpstreamInputs(AiModelEndpoint p, String apiKey, String model,
+                                                 String protocol, VideoGenSpec spec) {
+        // 「首帧走上传换 assetId 还是给 URL」只在 usesUploadedFirstFrame 一处判定（2026-09-30 热修收口，§8.0.1 ④）
+        if (!usesUploadedFirstFrame(protocol)) {
+            return spec.firstFrameKey() == null ? UpstreamInputs.NONE
+                    : UpstreamInputs.firstFrameUrl(requireFetchableUrl(spec.firstFrameKey()));
+        }
+        if (!spec.isExplicit()) {
+            return spec.firstFrameKey() == null ? UpstreamInputs.NONE
+                    : UpstreamInputs.firstFrameAsset(uploadInputAsset(p, apiKey, model, spec.firstFrameKey(),
+                            JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.FRAME_IMAGE_MAX_BYTES, "参考图"));
+        }
+        String mode = spec.generationMode();
+        String first = null;
+        String last = null;
+        if (JusuanH3Contract.MODE_I2V.equals(mode) || JusuanH3Contract.MODE_FIRST_LAST_FRAME.equals(mode)) {
+            first = uploadInputAsset(p, apiKey, model, spec.firstFrameKey(),
+                    JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.FRAME_IMAGE_MAX_BYTES, "首帧图");
+        }
+        if (JusuanH3Contract.MODE_FIRST_LAST_FRAME.equals(mode)) {
+            last = uploadInputAsset(p, apiKey, model, spec.lastFrameKey(),
+                    JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.FRAME_IMAGE_MAX_BYTES, "尾帧图");
+        }
+        List<ReferenceAsset> refs = new ArrayList<>();
+        if (JusuanH3Contract.MODE_UNIVERSAL_REFERENCE.equals(mode)) {
+            List<String> labels = VideoGenSpec.referenceLabels(spec.references());
+            for (int i = 0; i < spec.references().size(); i++) {
+                VideoGenSpec.Reference r = spec.references().get(i);
+                if (!JusuanH3Contract.isMediaType(r.mediaType())) {
+                    throw BusinessException.badRequest("VIDEO_STUDIO_INPUT_INVALID", "参考素材的类型只能是图片、视频或音频");
+                }
+                String assetId = uploadInputAsset(p, apiKey, model, r.key(), r.mediaType(),
+                        JusuanH3Contract.referenceMaxBytes(r.mediaType()), labels.get(i));
+                refs.add(new ReferenceAsset(r.mediaType(), assetId));
+            }
+        }
+        return new UpstreamInputs(null, first, last, refs);
+    }
+
+    /** 首帧交给厂商去抓的地址；拿到的不是绝对 http(s) 地址（无 CDN 的本机路径）就报错，不假装传了图。 */
+    private String requireFetchableUrl(String key) {
+        String url = storage == null ? null : storage.upstreamFetchUrl(key);
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            log.warn("[material-video] 首帧没有厂商能访问的地址 key={} url={}", key, url);
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UNREADABLE",
+                    "参考图没有视频模型能访问的地址，无法生成视频", "key=" + key + " url=" + url);
+        }
+        return url;
+    }
+
+    Map<String, Object> buildSubmitBody(String protocol, String model, String prompt, int durationSec,
+                                        String aspectRatio, VideoGenSpec spec, UpstreamInputs inputs) {
+        VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
+        UpstreamInputs in = inputs == null ? UpstreamInputs.NONE : inputs;
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
 
@@ -521,7 +667,8 @@ public class MaterialVideoModelClient {
             String text = stripFrameUrlHint(prompt);
             t.put("text", text == null ? "" : text);
             content.add(t);
-            String first = extractFrameUrlHint(prompt);
+            // 显式首帧（画布连进来的图）优先于 prompt 里的首帧标记（短剧那条路才有标记）。
+            String first = in.firstFrameUrl() != null ? in.firstFrameUrl() : extractFrameUrlHint(prompt);
             if (first != null && !first.isBlank()) content.add(seedanceImage(first, "first_frame"));
             String last = extractLastFrameUrlHint(prompt);
             if (last != null && !last.isBlank()) content.add(seedanceImage(last, "last_frame"));
@@ -530,6 +677,11 @@ public class MaterialVideoModelClient {
             if (durationSec > 0) body.put("duration", durationSec);
             body.put("return_last_frame", true);
             return body;
+        }
+
+        // 视频生成区：完整的 H3 原生规格，按 Portal 生成的调用示例组包（字段集与顺序照抄）。
+        if (PROTOCOL_JUSUAN_MEDIA.equals(protocol) && genSpec.isExplicit()) {
+            return jusuanNativeBody(body, prompt, durationSec, aspectRatio, genSpec, in);
         }
 
         // 首/尾帧 marker 由 vars 拼进 prompt（DramaRenderService），这里抽出来作结构化入参，
@@ -542,28 +694,25 @@ public class MaterialVideoModelClient {
             body.put("height", size.height());
             body.put("num_frames", normalizeFrames((durationSec > 0 ? durationSec : props.getDefaultDurationSec()) * AGNES_FRAME_RATE));
             body.put("frame_rate", AGNES_FRAME_RATE);
-            String image = extractFrameUrlHint(prompt);
+            String image = in.firstFrameUrl() != null ? in.firstFrameUrl() : extractFrameUrlHint(prompt);
             if (image != null && !image.isBlank()) body.put("image", image);
             return body;
         }
 
-        // 聚算 JusuanHub 统一媒体协议：受控规格字段替代 width/height/fps 等原始运行时参数。
-        // 参考图不能给 URL —— 必须先 POST /v1/assets/input 换 assetId（v0.183 已接通，见
-        // uploadInputImage）。尾帧 / 多参考图（end_image_asset_id、referenceInputs）仍未接，
-        // 所以候选能力里的 supportsFirstLastFrame 继续如实标 false。
+        // 聚算 JusuanHub 统一媒体协议的老路径（画布 / 脚本视频 / 短剧）：字段集与 v0.183 逐字段一致。
+        // 受控规格字段替代 width/height/fps 等原始运行时参数；参考图不能给 URL，必须先
+        // POST /v1/assets/input 换 assetId（见 uploadInputAsset）。
         if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             body.put("prompt", nz(stripFrameUrlHint(prompt)));
-            body.put("resolutionTier", "768p");
+            body.put("resolutionTier", JusuanH3Contract.TIER_768P);
             body.put("orientation", orientationForAspect(aspectRatio));
             body.put("seconds", requireJusuanDuration(durationSec));
-            // 有首帧就走图生视频；没有才是纯文生视频。
-            // generationMode 是 H3 的必填项，取值 t2v | i2v | first_last_frame_video |
-            // universal_reference_video（见聚算 createMediaGeneration 文档）。
-            if (inputImageAssetId != null && !inputImageAssetId.isBlank()) {
-                body.put("generationMode", "i2v");
-                body.put("input_image_asset_id", inputImageAssetId);
+            // 有首帧就走图生视频；没有才是纯文生视频。generationMode 是 H3 的必填项。
+            if (in.firstFrameAssetId() != null && !in.firstFrameAssetId().isBlank()) {
+                body.put("generationMode", JusuanH3Contract.MODE_I2V);
+                body.put("input_image_asset_id", in.firstFrameAssetId());
             } else {
-                body.put("generationMode", "t2v");
+                body.put("generationMode", JusuanH3Contract.MODE_T2V);
             }
             return body;
         }
@@ -575,11 +724,61 @@ public class MaterialVideoModelClient {
             body.put("aspect_ratio", aspectRatio);
             body.put("size", aspectRatio);
         }
-        String firstFrame = extractFrameUrlHint(prompt);
+        String firstFrame = in.firstFrameUrl() != null ? in.firstFrameUrl() : extractFrameUrlHint(prompt);
         if (firstFrame != null && !firstFrame.isBlank()) body.put("image", firstFrame);
         String lastFrame = extractLastFrameUrlHint(prompt);
         if (lastFrame != null && !lastFrame.isBlank()) body.put("end_image", lastFrame);
         return body;
+    }
+
+    /**
+     * H3 原生请求体。字段集与顺序照抄 Portal「API 接入」生成的示例：
+     * {@code model, generationMode, prompt, resolutionTier, orientation, aspectRatio, outputSizeCode, seconds,
+     * [seed], [input_image_asset_id], [end_image_asset_id], [referenceInputs]}。
+     * 厂商明确不许传的 fps / frames / width / height / steps 一个都不带。
+     */
+    private static Map<String, Object> jusuanNativeBody(Map<String, Object> body, String prompt, int durationSec,
+                                                        String aspectRatio, VideoGenSpec spec, UpstreamInputs in) {
+        requireProtocolSupports(PROTOCOL_JUSUAN_MEDIA, spec, aspectRatio);
+        JusuanH3Contract.Canvas canvas = JusuanH3Contract.canvas(spec.resolutionTier(), aspectRatio);
+        body.put("generationMode", spec.generationMode());
+        // 用户原文照发（服务端已去首尾空白），不做首帧标记剥离 —— 那是短剧路径的内部约定。
+        body.put("prompt", nz(prompt));
+        body.put("resolutionTier", spec.resolutionTier());
+        body.put("orientation", JusuanH3Contract.orientation(canvas));
+        body.put("aspectRatio", canvas.aspectRatio());
+        body.put("outputSizeCode", JusuanH3Contract.outputSizeCode(spec.resolutionTier(), canvas.aspectRatio()));
+        body.put("seconds", requireJusuanDuration(durationSec));
+        if (spec.seed() != null) body.put("seed", spec.seed());
+        switch (spec.generationMode()) {
+            case JusuanH3Contract.MODE_I2V ->
+                    body.put("input_image_asset_id", requireAsset(in.firstFrameAssetId(), "首帧图"));
+            case JusuanH3Contract.MODE_FIRST_LAST_FRAME -> {
+                body.put("input_image_asset_id", requireAsset(in.firstFrameAssetId(), "首帧图"));
+                body.put("end_image_asset_id", requireAsset(in.lastFrameAssetId(), "尾帧图"));
+            }
+            case JusuanH3Contract.MODE_UNIVERSAL_REFERENCE -> {
+                if (in.references().isEmpty()) requireAsset(null, "参考素材");
+                List<Map<String, Object>> refs = new ArrayList<>();
+                for (ReferenceAsset r : in.references()) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("role", JusuanH3Contract.referenceRole(r.mediaType()));
+                    item.put("mediaType", r.mediaType());
+                    item.put("assetId", requireAsset(r.assetId(), "参考素材"));
+                    refs.add(item);
+                }
+                body.put("referenceInputs", refs);
+            }
+            default -> { /* t2v：纯文生视频，不带任何素材字段 */ }
+        }
+        return body;
+    }
+
+    private static String requireAsset(String assetId, String label) {
+        if (assetId == null || assetId.isBlank()) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_INPUT_INVALID", label + "还没有传给视频模型，无法提交");
+        }
+        return assetId;
     }
 
     private static com.fasterxml.jackson.databind.node.ObjectNode seedanceImage(String url, String role) {
@@ -698,18 +897,37 @@ public class MaterialVideoModelClient {
         };
     }
 
-    /** 失败原因：上游 fail 时常见把原因放这些字段，抽出来回传给用户/运营，不再只给一句「status=failed」。 */
+    /**
+     * 失败原因：上游 fail 时常见把原因放这些字段，抽出来回传给用户/运营，不再只给一句「status=failed」。
+     *
+     * <p>先找说人话的那句（顶层再 data），都没有才退到错误码 —— 聚算的失败任务是
+     * {@code error: {code, message}}（对象）/ {@code errorMessage} / {@code errorCode} 这几种形态。
+     */
     static String extractFailReason(JsonNode root) {
-        String direct = firstText(root, "fail_reason", "failReason", "error_message", "errorMessage",
-                "error", "message", "msg", "reason", "detail");
-        if (direct != null && !direct.isBlank()) return direct;
+        if (root == null) return null;
         JsonNode data = root.get("data");
-        if (data != null) {
-            String d = firstText(data, "fail_reason", "failReason", "error_message", "errorMessage",
-                    "error", "message", "msg", "reason", "detail");
-            if (d != null && !d.isBlank()) return d;
-        }
-        return null;
+        String message = failMessageIn(root);
+        if (message == null) message = failMessageIn(data);
+        if (message != null) return message;
+        String code = failCodeIn(root);
+        return code != null ? code : failCodeIn(data);
+    }
+
+    private static String failMessageIn(JsonNode node) {
+        if (node == null) return null;
+        String direct = firstText(node, "fail_reason", "failReason", "error_message", "errorMessage",
+                "error", "message", "msg", "reason", "detail");
+        if (direct != null) return direct;
+        JsonNode error = node.get("error");
+        return error != null && error.isObject() ? firstText(error, "message", "msg", "detail", "reason") : null;
+    }
+
+    private static String failCodeIn(JsonNode node) {
+        if (node == null) return null;
+        String code = firstText(node, "errorCode", "error_code");
+        if (code != null) return code;
+        JsonNode error = node.get("error");
+        return error != null && error.isObject() ? firstText(error, "code") : null;
     }
 
     /** 常见成片 URL 位置：video_result[0].url / data.video_url / output.video_url / videos[0].url / video_url / Agnes remixed_from_video_id。 */
@@ -1013,110 +1231,115 @@ public class MaterialVideoModelClient {
 
     record Dimensions(int width, int height) {}
 
-    // ── 聚算：输入素材上传（v0.183）────────────────────────────
+    // ── 聚算：输入素材上传（v0.183 首帧；v0.199 起图 / 视频 / 音频）────────────────────────────
     //
-    // 聚算的图不能给 URL，得先传上去换一个 assetId：
-    //   POST {base}/v1/assets/input?model=<公开别名>   multipart/form-data，字段名 image
-    //   201 → { "asset": { "assetId": "...", "status": "available", ... } }
-    // 再把 assetId 放进 createMediaGeneration 的 input_image_asset_id。
+    // 聚算的素材不能给 URL，得先传上去换一个 assetId：
+    //   POST {base}/v1/assets/input?model=<公开别名>   multipart/form-data，字段名 image / video / audio
+    //   201 → { "asset": { "assetId": "...", "status": "available", ... } }   （读 asset.assetId，不是顶层）
+    // 再把 assetId 放进 input_image_asset_id / end_image_asset_id / referenceInputs[].assetId。
     // 与 seedance（火山）那条完全不同：那边是把图片 URL 塞进 content 数组。
 
-    /** 图片上限：文档给的是一般 16 MiB / H3 30 MiB，这里按小的那个挡，够用且不会踩到任何一档。 */
-    private static final int JUSUAN_IMAGE_MAX_BYTES = 16 * 1024 * 1024;
-
-    /** 聚算收的静态图格式（文档：PNG / JPEG / WebP）。 */
-    private static final java.util.Set<String> JUSUAN_IMAGE_MIMES =
-            java.util.Set.of("image/png", "image/jpeg", "image/webp");
+    /** 判格式只需要文件头这么多字节；大文件不整个读进内存。 */
+    private static final int SNIFF_HEAD_BYTES = 64;
 
     /**
-     * 把首帧图传给聚算，返回 assetId。传不上去就**抛**，不静默退回文生视频 ——
-     * 用户接了参考图却出一条跟参考图无关的片，比直接报错难排查得多（§8.0）。
+     * 把一个素材传给聚算，返回 assetId。传不上去就**抛**，不静默退回文生视频 ——
+     * 用户接了参考素材却出一条跟素材无关的片，比直接报错难排查得多（§8.0）。
+     *
+     * @param mediaType image / video / audio，同时就是 multipart 的字段名
+     * @param maxBytes  这个位置的厂商上限（帧图 16 MiB、参考图 30、视频 50、音频 15，见 {@link JusuanH3Contract}）
+     * @param label     报错里怎么称呼它（首帧图 / 尾帧图 / 图2 / 音频1 …），和任务卡上的编号一致
      */
-    private String uploadInputImage(AiModelEndpoint p, String apiKey, String model, String key) {
-        byte[] bytes;
-        String filename;
+    private String uploadInputAsset(AiModelEndpoint p, String apiKey, String model, String key,
+                                    String mediaType, long maxBytes, String label) {
+        Path local;
+        long size;
+        byte[] head;
         try {
-            java.nio.file.Path local = storage.openForRead(key);
-            bytes = java.nio.file.Files.readAllBytes(local);
-            filename = local.getFileName().toString();
+            local = storage.openForRead(key);
+            size = Files.size(local);
+            try (InputStream in = Files.newInputStream(local)) {
+                head = in.readNBytes(SNIFF_HEAD_BYTES);
+            }
         } catch (Exception e) {
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UNREADABLE",
-                    "参考图读不出来，无法生成视频", "key=" + key + " err=" + e);
+                    label + "读不出来，无法生成视频", "key=" + key + " err=" + e);
         }
-        if (bytes.length > JUSUAN_IMAGE_MAX_BYTES) {
+        if (size > maxBytes) {
             throw BusinessException.badRequest("VIDEO_REF_TOO_LARGE",
-                    "参考图太大（" + (bytes.length / 1024 / 1024) + "MB），请换一张 16MB 以内的");
+                    label + "太大了（" + ceilMb(size) + "MB），不能超过 " + ceilMb(maxBytes) + "MB");
         }
-        // 类型必须按**字节**判，不能按文件名：画布出的图一律以 .png 落库，而厂商给的常常是 JPEG
+        // 类型必须按**字节**判，不能按文件名（§8.0.1 ⑤）：画布出的图一律以 .png 落库，而厂商给的常常是 JPEG
         // （v0.184 实测：一张 JPEG 顶着 .png 传过去，聚算按我们声明的 image/png 解码，
         // 400 input image cannot be decoded）。store() 那边已经改成按字节存，但**存量文件仍是错的**，
         // 这里再判一次，老图不用重跑也能用。
-        ImageBytes.Format fmt = ImageBytes.sniff(bytes);
-        if (fmt == null || !JUSUAN_IMAGE_MIMES.contains(fmt.mime())) {
+        MediaBytes.Format fmt = MediaBytes.sniff(mediaType, head);
+        if (fmt == null) {
             throw BusinessException.badRequest("VIDEO_REF_FORMAT_UNSUPPORTED",
-                    "这张参考图的格式不支持，请换一张 JPG / PNG / WebP 图片"
-                            + (fmt == null ? "" : "（当前是 " + fmt.ext() + "）"));
+                    label + "的格式不支持，请换成 " + String.join(" / ", JusuanH3Contract.formatsOf(mediaType)));
         }
-        filename = withExtension(filename, fmt.ext());
+        String filename = withExtension(local.getFileName().toString(), fmt.ext());
 
         String boundary = "----aistareco" + UUID.randomUUID().toString().replace("-", "");
-        byte[] payload = multipartImage(boundary, filename, fmt.mime(), bytes);
-        URI uri = URI.create(joinUrl(p.getBaseUrl(), "/v1/assets/input")
-                + "?model=" + java.net.URLEncoder.encode(model, java.nio.charset.StandardCharsets.UTF_8));
+        URI uri = URI.create(joinUrl(p.getBaseUrl(), "/v1/assets/input") + "?model=" + encodeQuery(model));
         try {
             HttpRequest req = HttpRequest.newBuilder(uri)
-                    .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
+                    // 视频最大 50 MiB：按大文件的下载超时给，别用 JSON 调用那一档把大素材卡死。
+                    .timeout(Duration.ofSeconds(Math.max(props.getHttpTimeoutSeconds(), props.getDownloadTimeoutSeconds())))
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(payload))
+                    .POST(multipartFile(boundary, mediaType, filename, fmt.mime(), local))
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
                 // 上游拒绝时**必须**把它的原话留在日志里。只写一句「上传失败」的话，对着它分不出
-                // 是 Key 没这个权限、路径不对、还是这张图本身不合规 —— v0.166 已经在出图那条链上
+                // 是 Key 没这个权限、路径不对、还是这个素材本身不合规 —— v0.166 已经在出图那条链上
                 // 栽过一模一样的一次（`friendly()` 把所有非业务异常抹成「请稍后重试」）。
-                log.warn("[material-video] 参考图上传被拒 endpoint={} model={} url={} bytes={} contentType={} status={} body={}",
-                        p.getName(), model, uri, bytes.length, fmt.mime(),
-                        resp.statusCode(), snippet(resp.body()));
+                log.warn("[material-video] 素材上传被拒 endpoint={} model={} url={} field={} bytes={} contentType={} status={} body={}",
+                        p.getName(), model, uri, mediaType, size, fmt.mime(), resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                        uploadFailureMessage(resp.statusCode(), resp.body()),
+                        uploadFailureMessage(label, resp.statusCode(), resp.body()),
                         "status=" + resp.statusCode() + " url=" + uri + " body=" + snippet(resp.body()));
             }
             String assetId = OM.readTree(resp.body()).path("asset").path("assetId").asText(null);
             if (assetId == null || assetId.isBlank()) {
-                log.warn("[material-video] 参考图上传返回里没有 assetId endpoint={} status={} body={}",
-                        p.getName(), resp.statusCode(), snippet(resp.body()));
+                log.warn("[material-video] 素材上传返回里没有 assetId endpoint={} field={} status={} body={}",
+                        p.getName(), mediaType, resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                        "参考图上传失败，请稍后重试", "响应里没有 asset.assetId: " + snippet(resp.body()));
+                        label + "上传失败，请稍后重试", "响应里没有 asset.assetId: " + snippet(resp.body()));
             }
-            log.info("[material-video] 参考图已上传 endpoint={} model={} bytes={} assetId={}",
-                    p.getName(), model, bytes.length, assetId);
+            log.info("[material-video] 素材已上传 endpoint={} model={} field={} bytes={} contentType={} assetId={}",
+                    p.getName(), model, mediaType, size, fmt.mime(), assetId);
             return assetId;
         } catch (BusinessException e) {
             throw e;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                    "参考图上传失败，请稍后重试", "interrupted");
+                    label + "上传失败，请稍后重试", "interrupted");
         } catch (Exception e) {
+            log.warn("[material-video] 素材上传异常 endpoint={} field={} url={} err={}", p.getName(), mediaType, uri, e.toString());
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
-                    "参考图上传失败，请稍后重试", "err=" + e);
+                    label + "上传失败，请稍后重试", "err=" + e);
         }
     }
 
-    /** 手写 multipart：只有一个 image 字段，不值得为它引一个 HTTP 客户端库。 */
-    private static byte[] multipartImage(String boundary, String filename, String contentType, byte[] bytes) {
+    private static long ceilMb(long bytes) {
+        long mib = 1024L * 1024L;
+        return (bytes + mib - 1) / mib;
+    }
+
+    /** 手写 multipart：只有一个文件字段，不值得为它引一个 HTTP 客户端库。文件体直接从磁盘流出去。 */
+    private static HttpRequest.BodyPublisher multipartFile(String boundary, String field, String filename,
+                                                           String contentType, Path file) throws FileNotFoundException {
         String head = "--" + boundary + "\r\n"
-                + "Content-Disposition: form-data; name=\"image\"; filename=\"" + filename + "\"\r\n"
+                + "Content-Disposition: form-data; name=\"" + field + "\"; filename=\"" + filename + "\"\r\n"
                 + "Content-Type: " + contentType + "\r\n\r\n";
         String tail = "\r\n--" + boundary + "--\r\n";
-        byte[] h = head.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] t = tail.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] out = new byte[h.length + bytes.length + t.length];
-        System.arraycopy(h, 0, out, 0, h.length);
-        System.arraycopy(bytes, 0, out, h.length, bytes.length);
-        System.arraycopy(t, 0, out, h.length + bytes.length, t.length);
-        return out;
+        return HttpRequest.BodyPublishers.concat(
+                HttpRequest.BodyPublishers.ofByteArray(head.getBytes(StandardCharsets.UTF_8)),
+                HttpRequest.BodyPublishers.ofFile(file),
+                HttpRequest.BodyPublishers.ofByteArray(tail.getBytes(StandardCharsets.UTF_8)));
     }
 
     /** 把文件名的后缀换成真实格式的 —— 有的服务端除了 Content-Type 还会看文件名。 */
@@ -1127,7 +1350,7 @@ public class MaterialVideoModelClient {
         return base + "." + ext;
     }
 
-    /** 按文件名猜类型。**不要**用它对外声明类型（文件名会骗人，见 uploadInputImage）。 */
+    /** 按文件名猜类型。**不要**用它对外声明类型（文件名会骗人，见 uploadInputAsset）。 */
     static String contentTypeOf(String filename) {
         String f = filename == null ? "" : filename.toLowerCase();
         if (f.endsWith(".jpg") || f.endsWith(".jpeg")) return "image/jpeg";
@@ -1135,21 +1358,341 @@ public class MaterialVideoModelClient {
         return "image/png";
     }
 
-    /** 上游拒绝上传时给用户看的话：4xx 直出厂商原话（是我们请求哪儿不对，用户据此才有得改），5xx 笼统。 */
-    static String uploadFailureMessage(int status, String rawBody) {
-        if (status >= 500) return "参考图上传失败（上游 " + status + "），请稍后重试";
-        String msg = null;
+    // ── 聚算：智能优化（POST {base}/media/prompt-optimizations，v0.199，docs/video-studio-plan.md §9）────────
+    //
+    // 同步接口，但厂商示例的读超时是 630 秒 —— 最长要等十分钟上下，所以调用方（视频生成区）把它做成后台任务。
+    // 请求头 Idempotency-Key 必填且必须等于 body 的 clientRequestId；结果未知时用**同一正文同一键**重发。
+    // 素材与生成一样先上传换 assetId（同一个 uploadInputAsset：字段名、按字节判类型、大小上限、编号文案）。
+
+    /** 单次调用的读超时（厂商示例值）。 */
+    static final Duration OPTIMIZE_ATTEMPT_TIMEOUT = Duration.ofSeconds(630);
+    /**
+     * 一次智能优化的总预算（从上传素材之前算起，含同一键重发）。必须小于视频生成区兜底回收的 20 分钟：
+     * 每次调用的超时都按剩余预算截短，所以一个活着的调用一定在回收判它失败之前结束。
+     * 素材上传不受预算截短（每个按 http-timeout，默认 30 秒 × 最多 13 个），只是用掉预算；
+     * 上传本身超过预算时不再发起优化调用，直接按超时失败。
+     */
+    static final Duration OPTIMIZE_BUDGET = Duration.ofMinutes(12);
+    private static final long OPTIMIZE_FIRST_BACKOFF_MS = 5_000L;
+    private static final long OPTIMIZE_MAX_BACKOFF_MS = 60_000L;
+    /** 剩余预算不到这么多就不再发起新的一次（发出去也等不到结果）。 */
+    private static final long OPTIMIZE_MIN_ATTEMPT_MS = 1_000L;
+    /** 有音频参考时必须带：保留音频、不让厂商「理解」它（照 Portal 示例）。 */
+    static final String AUDIO_REFERENCE_POLICY = "preserve_without_understanding";
+
+    /** 重试之间怎么等。生产就是 {@link Thread#sleep}；测试换成不真等的。 */
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    private Sleeper optimizeSleeper = Thread::sleep;
+    private java.util.function.LongSupplier optimizeNanoClock = System::nanoTime;
+    private Duration optimizeBudget = OPTIMIZE_BUDGET;
+
+    /** 测试钩子：换掉等待、时钟与预算（不改生产行为）。 */
+    void setOptimizeRetryHooksForTest(Sleeper sleeper, java.util.function.LongSupplier nanoClock, Duration budget) {
+        this.optimizeSleeper = sleeper;
+        this.optimizeNanoClock = nanoClock;
+        this.optimizeBudget = budget;
+    }
+
+    /** 优化结果：优化后的完整提示词（必有）+ 厂商的 optimizationId（只用于排查）。 */
+    public record OptimizeResult(String optimizedPrompt, String vendorOptimizationId) {}
+
+    /**
+     * 智能优化一段提示词。
+     *
+     * @param idempotencyKey 同时作为 Idempotency-Key 与 body 的 clientRequestId（视频生成区传它自己的记录 id，8–128 字符）
+     * @param spec           必须是完整的原生规格（有清晰度、模式与素材匹配）；种子不看
+     * @throws BusinessException 400 {@code VIDEO_MODE_UNSUPPORTED}：端点不是聚算媒体协议；
+     *                           {@code VIDEO_STUDIO_OPTIMIZATION_REJECTED}：厂商 4xx（文案带厂商原话）；
+     *                           {@code VIDEO_STUDIO_OPTIMIZATION_TIMEOUT}：重试预算用完；
+     *                           {@code VIDEO_STUDIO_OPTIMIZATION_FAILED}：2xx 但没有优化结果；素材上传失败沿用 {@code VIDEO_REF_*}
+     */
+    public OptimizeResult optimizePrompt(String idempotencyKey, String originalPrompt, int seconds, String aspectRatio,
+                                         String ownerUserId, String endpointId, VideoGenSpec spec) {
+        VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
+        if (idempotencyKey == null || idempotencyKey.length() < 8 || idempotencyKey.length() > 128) {
+            throw new IllegalArgumentException("idempotencyKey must be 8..128 chars");
+        }
+        AiModelEndpoint p = requireEndpoint(endpointId);
+        String apiKey = requireKey(p);
+        String model = modelOf(p);
+        String protocol = protocolFor(p, model);
+        if (!PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "所选视频模型不支持智能优化，请换一个视频模型");
+        }
+        if (!genSpec.isExplicit()) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "智能优化缺少清晰度，无法提交");
+        }
+        requireProtocolSupports(protocol, genSpec, aspectRatio);
+
+        // 预算从上传素材之前就开始算：最多 13 个素材、每个按 http-timeout 等，若只给「优化调用」计时，
+        // 上传慢 + 重试满就可能超过兜底回收的 20 分钟。从这里算起，整个 worker 的耗时不超过 max(预算, 上传耗时)。
+        long deadline = optimizeNanoClock.getAsLong() + optimizeBudget.toNanos();
+        // 素材只上传一次：重发必须是「同一正文同一键」，换了 assetId 就不是同一个请求了。
+        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec);
+        Map<String, Object> body = buildOptimizationBody(idempotencyKey, model, originalPrompt, seconds, aspectRatio,
+                genSpec, inputs);
+        String bodyJson;
         try {
-            JsonNode body = OM.readTree(rawBody);
-            for (JsonNode c : new JsonNode[]{body.path("error").path("message"), body.path("message"),
-                    body.path("error").path("msg"), body.path("msg")}) {
-                if (c.isTextual() && !c.asText().isBlank()) { msg = c.asText().trim(); break; }
+            bodyJson = OM.writeValueAsString(body);
+        } catch (Exception e) {
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_STUDIO_OPTIMIZATION_FAILED",
+                    "智能优化失败，请稍后重试", "serialize body err=" + e);
+        }
+        URI uri = URI.create(joinUrl(p.getBaseUrl(), "/media/prompt-optimizations"));
+
+        long backoffMs = OPTIMIZE_FIRST_BACKOFF_MS;
+        String lastProblem = "no attempt";
+        for (int attempt = 1; ; attempt++) {
+            long remainingMs = (deadline - optimizeNanoClock.getAsLong()) / 1_000_000L;
+            if (remainingMs < OPTIMIZE_MIN_ATTEMPT_MS) {
+                log.warn("[material-video] 智能优化重试预算用完 endpoint={} key={} attempts={} last={}",
+                        p.getName(), idempotencyKey, attempt - 1, lastProblem);
+                throw BusinessException.wrapped(HttpStatus.GATEWAY_TIMEOUT, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
+                        "智能优化超时", "key=" + idempotencyKey + " last=" + lastProblem);
+            }
+            Duration timeout = Duration.ofMillis(Math.min(OPTIMIZE_ATTEMPT_TIMEOUT.toMillis(), remainingMs));
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .timeout(timeout)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .header("Idempotency-Key", idempotencyKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(bodyJson))
+                    .build();
+            ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.VIDEO_GENERATION)
+                    .endpoint(p.getId(), p.getName())
+                    .model(model)
+                    .requestId(idempotencyKey + "#" + attempt)
+                    .ownerUserId(ownerUserId)
+                    .appCode("celebrity")
+                    .requestBodyJson(bodyJson)
+                    // 优化是厂商单独计费的另一种调用，不记进「视频生成」的按秒用量（那张表按出片秒数算成本）。
+                    .recordFailureUsage(false)
+                    .client(http)
+                    .build();
+            HttpResponse<String> resp;
+            try {
+                resp = upstreamHttp.sendJson(req, ctx);
+            } catch (UpstreamCallException ex) {
+                if (ex.getCause() instanceof InterruptedException || Thread.currentThread().isInterrupted()) {
+                    throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
+                            "智能优化被中断", "interrupted key=" + idempotencyKey);
+                }
+                lastProblem = (ex.isTimeout() ? "timeout " : "io ") + ex.getMessage();
+                log.warn("[material-video] 智能优化调用没有结果，同一键重发 endpoint={} key={} attempt={} err={}",
+                        p.getName(), idempotencyKey, attempt, lastProblem);
+                backoffMs = pause(backoffMs, null, deadline);
+                continue;
+            }
+            int status = resp.statusCode();
+            if (status >= 200 && status < 300) {
+                OptimizeResult result = parseOptimizationResponse(resp.body());
+                if (result == null) {
+                    log.warn("[material-video] 智能优化返回成功但没有优化结果 endpoint={} key={} status={} body={}",
+                            p.getName(), idempotencyKey, status, snippet(resp.body()));
+                    throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_STUDIO_OPTIMIZATION_FAILED",
+                            "智能优化没有返回结果，请稍后重试", "status=" + status + " body=" + snippet(resp.body()));
+                }
+                log.info("[material-video] 智能优化完成 endpoint={} key={} attempt={} vendorId={} optimizedLength={}",
+                        p.getName(), idempotencyKey, attempt, result.vendorOptimizationId(),
+                        result.optimizedPrompt().length());
+                return result;
+            }
+            if (status == 409 || status == 429 || status >= 500) {
+                // 409 = 同一操作还在处理（optimization_in_progress）；429 / 5xx = 厂商忙。同一正文同一键重发。
+                lastProblem = "status=" + status + " body=" + snippet(resp.body());
+                log.warn("[material-video] 智能优化暂时没结果，同一键重发 endpoint={} key={} attempt={} status={} body={}",
+                        p.getName(), idempotencyKey, attempt, status, snippet(resp.body()));
+                backoffMs = pause(backoffMs, retryAfterMs(resp), deadline);
+                continue;
+            }
+            log.warn("[material-video] 智能优化被拒 endpoint={} model={} key={} status={} body={}",
+                    p.getName(), model, idempotencyKey, status, snippet(resp.body()));
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_STUDIO_OPTIMIZATION_REJECTED",
+                    optimizationFailureMessage(status, resp.body()),
+                    "status=" + status + " body=" + snippet(resp.body()));
+        }
+    }
+
+    /** 等一会儿再重发：优先听 Retry-After，否则指数退避；不超过剩余预算。返回下一次的退避时长。 */
+    private long pause(long backoffMs, Long retryAfterMs, long deadlineNanos) {
+        long remainingMs = (deadlineNanos - optimizeNanoClock.getAsLong()) / 1_000_000L;
+        long wait = Math.max(0L, Math.min(retryAfterMs != null ? retryAfterMs : backoffMs, remainingMs));
+        try {
+            optimizeSleeper.sleep(wait);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
+                    "智能优化被中断", "interrupted while waiting to retry");
+        }
+        return Math.min(backoffMs * 2, OPTIMIZE_MAX_BACKOFF_MS);
+    }
+
+    /**
+     * 厂商建议的重试间隔：先看 Retry-After 头（秒数形态；HTTP 日期形态不认），没有再看正文里的
+     * {@code retryAfterSeconds}（顶层或 {@code error} / {@code error.details} 下）—— 聚算文档说的就是
+     * 「Retry-After 或正文中的轮询建议」，两种都会出现。都没有 → null，退回指数退避。
+     */
+    static Long retryAfterMs(HttpResponse<String> resp) {
+        String v = resp.headers().firstValue("Retry-After").orElse(null);
+        if (v != null && !v.isBlank()) {
+            try {
+                long seconds = Long.parseLong(v.trim());
+                if (seconds >= 0) return seconds * 1000L;
+            } catch (NumberFormatException ignore) {
+                // 日期形态：交给正文 / 指数退避
+            }
+        }
+        try {
+            JsonNode root = OM.readTree(resp.body() == null ? "" : resp.body());
+            for (JsonNode n : new JsonNode[]{root.path("retryAfterSeconds"), root.path("error").path("retryAfterSeconds"),
+                    root.path("error").path("details").path("retryAfterSeconds")}) {
+                if (n.isNumber() && n.asDouble() >= 0) return Math.round(n.asDouble() * 1000d);
             }
         } catch (Exception ignore) {
-            // 不是 JSON（网关的 HTML 错误页之类）：退回笼统文案，别把一页 HTML 糊到界面上
+            // 正文不是 JSON：没有建议
         }
-        if (msg == null || msg.isBlank()) return "参考图被上游拒收（" + status + "）";
-        if (msg.length() > 200) msg = msg.substring(0, 200) + "…";
-        return "参考图被上游拒收：" + msg;
+        return null;
+    }
+
+    /**
+     * 智能优化的请求体（照 Portal「智能优化后生成」示例）：
+     * {@code clientRequestId, model, generationMode, originalPrompt,
+     * mediaSpec{resolutionTier, orientation, aspectRatio, seconds, outputSizeCode}, referenceInputs[{role, assetId}],
+     * [audioReferencePolicy]}。referenceInputs **不带 mediaType**；文生视频给空数组（字段必填）。
+     * role：首帧生视频 first_frame；首尾帧 first_frame + last_frame；全能参考 reference_image / reference_video /
+     * reference_audio（同生成的顺序）。有音频参考时加 audioReferencePolicy。
+     */
+    static Map<String, Object> buildOptimizationBody(String clientRequestId, String model, String originalPrompt,
+                                                     int seconds, String aspectRatio, VideoGenSpec spec,
+                                                     UpstreamInputs in) {
+        requireProtocolSupports(PROTOCOL_JUSUAN_MEDIA, spec, aspectRatio);
+        if (!spec.isExplicit()) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "智能优化缺少清晰度，无法提交");
+        }
+        JusuanH3Contract.Canvas canvas = JusuanH3Contract.canvas(spec.resolutionTier(), aspectRatio);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("clientRequestId", clientRequestId);
+        body.put("model", model);
+        body.put("generationMode", spec.generationMode());
+        body.put("originalPrompt", nz(originalPrompt));
+        Map<String, Object> mediaSpec = new LinkedHashMap<>();
+        mediaSpec.put("resolutionTier", spec.resolutionTier());
+        mediaSpec.put("orientation", JusuanH3Contract.orientation(canvas));
+        mediaSpec.put("aspectRatio", canvas.aspectRatio());
+        mediaSpec.put("seconds", requireJusuanDuration(seconds));
+        mediaSpec.put("outputSizeCode", JusuanH3Contract.outputSizeCode(spec.resolutionTier(), canvas.aspectRatio()));
+        body.put("mediaSpec", mediaSpec);
+        List<Map<String, Object>> refs = new ArrayList<>();
+        boolean hasAudio = false;
+        switch (spec.generationMode()) {
+            case JusuanH3Contract.MODE_I2V ->
+                    refs.add(roleRef("first_frame", requireAsset(in.firstFrameAssetId(), "首帧图")));
+            case JusuanH3Contract.MODE_FIRST_LAST_FRAME -> {
+                refs.add(roleRef("first_frame", requireAsset(in.firstFrameAssetId(), "首帧图")));
+                refs.add(roleRef("last_frame", requireAsset(in.lastFrameAssetId(), "尾帧图")));
+            }
+            case JusuanH3Contract.MODE_UNIVERSAL_REFERENCE -> {
+                if (in.references().isEmpty()) requireAsset(null, "参考素材");
+                for (ReferenceAsset r : in.references()) {
+                    refs.add(roleRef(JusuanH3Contract.referenceRole(r.mediaType()), requireAsset(r.assetId(), "参考素材")));
+                    hasAudio |= JusuanH3Contract.MEDIA_AUDIO.equals(r.mediaType());
+                }
+            }
+            default -> { /* t2v：空数组，字段本身必填 */ }
+        }
+        body.put("referenceInputs", refs);
+        if (hasAudio) body.put("audioReferencePolicy", AUDIO_REFERENCE_POLICY);
+        return body;
+    }
+
+    private static Map<String, Object> roleRef(String role, String assetId) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("role", role);
+        item.put("assetId", assetId);
+        return item;
+    }
+
+    /** 读 {@code optimization.optimizedPrompt}（必有）与 optimizationId；也认放在顶层的形态。没有结果 / 不是 JSON → null。 */
+    static OptimizeResult parseOptimizationResponse(String rawBody) {
+        try {
+            JsonNode root = OM.readTree(rawBody);
+            if (root == null || !root.isObject()) return null;
+            JsonNode opt = root.path("optimization");
+            String prompt = firstText(opt, "optimizedPrompt");
+            if (prompt == null) prompt = firstText(root, "optimizedPrompt");
+            if (prompt == null || prompt.isBlank()) return null;
+            String vendorId = firstText(opt, "optimizationId");
+            if (vendorId == null) vendorId = firstText(root, "optimizationId");
+            return new OptimizeResult(prompt, vendorId);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ── 上游拒绝时给用户看的话（§8.0.1 ①）────────────────────────────
+    //
+    // 4xx 说的是「我们请求哪儿不对」，是用户唯一据以行动的信息：厂商原话直出（截断、脱敏）。
+    // 对一个永远不会自己好的 400 说「请稍后重试」本身就是错的。5xx 是厂商自己的问题，只给状态码。
+    // 响应体不是 JSON（网关的 HTML 错误页之类）时不外泄。上传与创建共用 vendorMessage 这一处解析。
+
+    /** 素材上传被拒。 */
+    static String uploadFailureMessage(String label, int status, String rawBody) {
+        if (!isClientError(status)) return label + "上传失败（上游 " + status + "），请稍后重试";
+        String msg = vendorMessage(rawBody);
+        return msg == null ? label + "被上游拒收（" + status + "）" : label + "被上游拒收：" + msg;
+    }
+
+    /** 创建生成任务被拒（POST /media/generations 等）。 */
+    static String submitFailureMessage(int status, String rawBody) {
+        if (!isClientError(status)) return "视频生成失败（上游 " + status + "），请稍后重试";
+        String msg = vendorMessage(rawBody);
+        return msg == null ? "视频模型拒绝了这次请求（" + status + "）" : "视频模型拒绝了这次请求：" + msg;
+    }
+
+    /** 智能优化被拒（POST /media/prompt-optimizations 的 4xx；409 / 429 / 5xx 会重发，到不了这里）。 */
+    static String optimizationFailureMessage(int status, String rawBody) {
+        if (!isClientError(status)) return "智能优化失败（上游 " + status + "），请稍后重试";
+        String msg = vendorMessage(rawBody);
+        return msg == null ? "智能优化被拒（" + status + "）" : "智能优化被拒：" + msg;
+    }
+
+    private static boolean isClientError(int status) {
+        return status >= 400 && status < 500;
+    }
+
+    private static final int VENDOR_MESSAGE_MAX_CHARS = 200;
+    /** 脱敏：Bearer 凭据与看起来像密钥 / 签名的长串，不上屏。 */
+    private static final Pattern BEARER = Pattern.compile("(?i)bearer\\s+\\S+");
+    private static final Pattern LONG_TOKEN = Pattern.compile("[A-Za-z0-9_\\-]{32,}");
+
+    /** 从上游错误体里取出厂商那句原话；不是 JSON、或没有可读的字段 → null。 */
+    static String vendorMessage(String rawBody) {
+        if (rawBody == null || rawBody.isBlank()) return null;
+        JsonNode body;
+        try {
+            body = OM.readTree(rawBody);
+        } catch (Exception ignore) {
+            return null;   // 网关的 HTML 错误页之类：退回笼统文案，别糊到界面上
+        }
+        if (body == null || !body.isObject()) return null;
+        String msg = null;
+        for (JsonNode c : new JsonNode[]{body.path("error").path("message"), body.path("message"),
+                body.path("error").path("msg"), body.path("msg"), body.path("errorMessage"),
+                body.path("detail"), body.path("error")}) {
+            if (c.isTextual() && !c.asText().isBlank()) {
+                msg = c.asText();
+                break;
+            }
+        }
+        if (msg == null) return null;
+        msg = msg.replaceAll("\\s+", " ").trim();
+        msg = LONG_TOKEN.matcher(BEARER.matcher(msg).replaceAll("***")).replaceAll("***");
+        if (msg.codePointCount(0, msg.length()) > VENDOR_MESSAGE_MAX_CHARS) {
+            msg = msg.substring(0, msg.offsetByCodePoints(0, VENDOR_MESSAGE_MAX_CHARS)) + "…";
+        }
+        return msg;
     }
 }

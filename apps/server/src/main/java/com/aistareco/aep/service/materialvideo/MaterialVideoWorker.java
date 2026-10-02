@@ -136,7 +136,10 @@ public class MaterialVideoWorker {
                     "上游产物需要鉴权读取，但当前未配置 OSS 镜像");
         }
 
-        Long override = modelClient.resolveCreditCostOverride(endpointId, job.getDurationSec());
+        // 调用方自己定的价（视频生成区按清晰度 / 参考图张数、短剧按自己的单价）按冻结价结算 ——
+        // 拿端点单价 × 秒数重算会把 544p 收成 768p 的价、把多参考图的加价丢掉。
+        // 其余任务沿用 v0.131：按端点当前每秒价重算，那一版是为了补收计费规则上线前按每条 30 冻结的老任务。
+        Long override = callerPriced(job) ? null : modelClient.resolveCreditCostOverride(endpointId, job.getDurationSec());
         long expectedCredits = override != null ? override : Math.max(0L, job.getCreditsHeld());
         CreditHold recoveryHold = null;
         if (billable(job.getOwnerUserId()) && expectedCredits > 0) {
@@ -154,9 +157,7 @@ public class MaterialVideoWorker {
         try {
             CdnMirrorResult mirror = mirrorToCdn(jobId, poll.videoUrl(), poll.thumbnailUrl(), poll.lastFrameUrl(),
                     submit, poll.outputAssetId());
-            String appCode = job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
-            String category = "drama".equals(appCode) ? "分镜视频" : "素材视频";
-            storage.record(appCode, job.getOwnerUserId(), category, job.getScriptId(),
+            storage.record(appCodeOf(job), job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
                     mirror.videoKey(), mirror.videoBytes());
             if (recoveryHold != null && recoveryHold.getStatus() == CreditHold.Status.ACTIVE) {
                 creditService.commitHold(RECOVERY_CREDIT_REF_TYPE, jobId, expectedCredits,
@@ -189,17 +190,18 @@ public class MaterialVideoWorker {
             return;
         }
 
-        // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余素材运营记到 celebrity。
-        String appCode = job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
+        // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余（素材运营 / 视频生成区 / 画布）记到 celebrity。
+        String appCode = appCodeOf(job);
         // D-11：短剧线可在 variant_config 指定候选出片端点；带货素材线不写此键 → null → 默认端点（默认路径不变）。
         String endpointId = extractEndpointId(job.getVariantConfigJson());
-        // 首帧参考图（画布出视频会带；带货 / 短剧线不写这个键 → null → 纯文生视频，行为不变）。
-        // v0.183 之前这里根本没往下传，聚算那条链一律发 generationMode=t2v —— 用户接了参考图，
+        // 输入规格只在这里解析一次（§8.0.1 ④）：画布出视频带首帧 key，视频生成区带完整的 H3 原生规格，
+        // 带货 / 短剧线什么都不写 → EMPTY → 纯文生视频，行为不变。
+        // v0.183 之前首帧根本没往下传，聚算那条链一律发 generationMode=t2v —— 用户接了参考图，
         // 出来的片跟参考图毫无关系。
-        String firstFrameKey = extractFirstFrameKey(job.getVariantConfigJson());
+        VideoGenSpec spec = VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
                 modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
-                        job.getOwnerUserId(), appCode, endpointId, firstFrameKey);
+                        job.getOwnerUserId(), appCode, endpointId, spec);
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
         long start = System.currentTimeMillis();
@@ -215,7 +217,9 @@ public class MaterialVideoWorker {
                 boolean hasVideoUrl = poll.videoUrl() != null && !poll.videoUrl().isBlank();
                 boolean hasProtectedAsset = poll.outputAssetId() != null && !poll.outputAssetId().isBlank();
                 if (!hasVideoUrl && !hasProtectedAsset) {
-                    markFailed(jobId, "视频大模型返回成功但未给出成片 URL 或产物资产（taskId=" + submit.taskId() + "）");
+                    // 任务号、上游状态只进日志；失败原因是给用户看的，不放内部字段（AGENTS.md §8 界面文案）
+                    log.warn("[material-video] job {} upstream succeeded without output taskId={}", jobId, submit.taskId());
+                    markFailed(jobId, "视频模型报告已完成，但没有交回成片");
                     releaseCredits(job, "视频生成无成片产物");
                     return;
                 }
@@ -224,7 +228,9 @@ public class MaterialVideoWorker {
                 String lastFrameUrl = poll.lastFrameUrl();
                 String lastFrameCdnKey = null;
                 if (hasProtectedAsset && (!props.isUploadToCdn() || cdnUploader == null)) {
-                    markFailed(jobId, "上游返回受保护产物，但当前未配置 OSS 镜像，无法安全交付视频");
+                    log.error("[material-video] job {} protected output but OSS mirror disabled (uploadToCdn={} uploader={}) taskId={}",
+                            jobId, props.isUploadToCdn(), cdnUploader != null, submit.taskId());
+                    markFailed(jobId, "成片已经生成，但平台存储还没配置好，暂时取不回来，请联系运营");
                     releaseCredits(job, "视频产物镜像未配置");
                     return;
                 }
@@ -246,8 +252,7 @@ public class MaterialVideoWorker {
                         lastFrameCdnKey = mirror.lastFrameKey();
                         // 成片落 CDN → 记入存储用量（按 job 归属子应用记账；best-effort 不阻断）。
                         // refId=scriptId：drama 即项目 id，项目彻底删除时由 StorageQuotaService.releaseByRef 释放。
-                        String category = "drama".equals(appCode) ? "分镜视频" : "素材视频";
-                        storage.record(appCode, job.getOwnerUserId(), category, job.getScriptId(),
+                        storage.record(appCode, job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
                                 mirror.videoKey(), mirror.videoBytes());
                     } catch (IOException | RuntimeException e) {
                         if (requireMirror) {
@@ -270,8 +275,9 @@ public class MaterialVideoWorker {
             if (poll.failed()) {
                 String reason = poll.failReason() != null && !poll.failReason().isBlank()
                         ? "：" + poll.failReason() : "";
-                markFailed(jobId, "视频大模型返回失败（status=" + poll.rawStatus() + reason
-                        + "，taskId=" + submit.taskId() + "）");
+                log.warn("[material-video] job {} failed upstream status={} taskId={} reason={}",
+                        jobId, poll.rawStatus(), submit.taskId(), poll.failReason());
+                markFailed(jobId, reason.isEmpty() ? "视频生成失败，模型没有给出原因" : "视频生成失败" + reason);
                 releaseCredits(job, "视频生成失败");
                 return;
             }
@@ -284,7 +290,8 @@ public class MaterialVideoWorker {
             updateStatus(jobId, "generating", pct, null);
 
             if (elapsed >= maxWaitMs) {
-                markFailed(jobId, "视频生成超时（已等待 " + props.getMaxWaitSeconds() + "s，taskId=" + submit.taskId() + "）");
+                log.warn("[material-video] job {} timed out after {}s taskId={}", jobId, props.getMaxWaitSeconds(), submit.taskId());
+                markFailed(jobId, "视频生成超时，等了 " + Math.max(1, (props.getMaxWaitSeconds() + 59) / 60) + " 分钟还没有出结果");
                 releaseCredits(job, "视频生成超时");
                 return;
             }
@@ -470,7 +477,7 @@ public class MaterialVideoWorker {
         if (job.getCreditsHeld() <= 0) return;
         try {
             creditService.commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, job.getId(),
-                    job.getCreditsHeld(), "带货视频生成 · " + safe(job.getName()));
+                    job.getCreditsHeld(), creditLabelOf(job) + " · " + safe(job.getName()));
         } catch (Exception e) {
             log.warn("[material-video] commit credits failed job={} err={}", job.getId(), e.getMessage());
         }
@@ -480,25 +487,54 @@ public class MaterialVideoWorker {
         if (job.getCreditsHeld() <= 0) return;
         try {
             creditService.releaseHold(MaterialVideoJobService.CREDIT_REF_TYPE, job.getId(),
-                    "带货视频生成失败 · 退回积分 · " + truncate(reason, 200));
+                    creditLabelOf(job) + "失败 · 退回积分 · " + truncate(reason, 200));
         } catch (Exception e) {
             log.warn("[material-video] release credits failed job={} err={}", job.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * 账本文案用提交时的 {@code credit_label}（冻结那一笔也是用它写的，扣 / 退要对得上）。
+     * 此前这里写死「带货视频生成」，短剧分镜和视频生成区的账单都显示成了带货。
+     */
+    static String creditLabelOf(MaterialVideoJob job) {
+        String payload = job.getPayloadJson();
+        if (payload != null && !payload.isBlank()) {
+            try {
+                String label = OM.readTree(payload).path(MaterialVideoJobService.PAYLOAD_CREDIT_LABEL).asText("");
+                if (!label.isBlank()) return label;
+            } catch (Exception ignore) {
+                // payload 读不出来：退回默认文案，不影响扣 / 退本身
+            }
+        }
+        return MaterialVideoJobService.DEFAULT_CREDIT_LABEL;
+    }
+
+    /** 用量归属子应用：短剧（kind=drama-*）记 drama，其余记 celebrity。 */
+    static String appCodeOf(MaterialVideoJob job) {
+        return job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
+    }
+
+    /** 存储用量里的分类名：短剧「分镜视频」、视频生成区（kind=studio-*）「视频生成」、其余「素材视频」。 */
+    static String storageCategoryOf(MaterialVideoJob job) {
+        String kind = job.getKind() == null ? "" : job.getKind();
+        if (kind.startsWith("drama")) return "分镜视频";
+        if (kind.startsWith("studio-")) return "视频生成";
+        return "素材视频";
     }
 
     private static boolean isTerminal(String status) {
         return "succeeded".equals(status) || "failed".equals(status);
     }
 
-    /** 从 variant_config JSON 抽首帧参考图的存储键；缺省 / 解析失败 → null（纯文生视频）。 */
-    private static String extractFirstFrameKey(String variantConfigJson) {
-        if (variantConfigJson == null || variantConfigJson.isBlank()) return null;
+    /** 提交时单价是否由调用方算好（见 {@link MaterialVideoJobService#PAYLOAD_CALLER_PRICED}）；读不出 = 否（老任务照旧）。 */
+    static boolean callerPriced(MaterialVideoJob job) {
+        String payload = job.getPayloadJson();
+        if (payload == null || payload.isBlank()) return false;
         try {
-            JsonNode vc = OM.readTree(variantConfigJson);
-            String k = vc.path("first_frame_key").asText(null);
-            return k == null || k.isBlank() ? null : k;
+            return OM.readTree(payload).path(MaterialVideoJobService.PAYLOAD_CALLER_PRICED).asBoolean(false);
         } catch (Exception e) {
-            return null;
+            return false;
         }
     }
 

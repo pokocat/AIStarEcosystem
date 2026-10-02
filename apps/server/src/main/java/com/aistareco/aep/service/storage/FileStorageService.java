@@ -77,6 +77,67 @@ public class FileStorageService {
         return cdn == null ? props.getPublicUrlBase() + "/" + key : cdn.publicUrlFor(key);
     }
 
+    /**
+     * 交给视频厂商**自己去抓**的地址（seedance / agnes / 通用协议的首帧）：先给签名 URL，签不出来再退公开 URL。
+     *
+     * <p>为什么签名优先（与 {@code DapImageInput.of} 的「公开优先」不同）：{@link #publicUrl} 只是把域名和 key
+     * 拼起来，**不管桶能不能匿名读**。生产默认按 OSS 签名出 wire（{@code aep.cdn.signed-url.strategy}），
+     * 桶是私有的话未签名地址就是 403，厂商要么报错、要么当没有首帧跑完。签名地址对公开桶同样有效，
+     * 短剧线交给 seedance 的首尾帧也一直是签名地址（{@code DramaReferenceAssembler} → {@code signKey}），
+     * 生产上跑通过。厂商在提交时就抓图，一小时的 TTL 足够。
+     *
+     * <p>这个选择只写在这里，视频链调它，不各自再判一遍。返回的可能是本机静态路径（无 CDN 的 dev 环境），
+     * 调用方要自己判断上游能不能访问。
+     */
+    public String upstreamFetchUrl(String key) {
+        if (key == null || key.isBlank()) return null;
+        String url = signedUrl(key);
+        if (url == null || url.isBlank()) url = publicUrl(key);
+        return url;
+    }
+
+    /**
+     * 把我方存储给出去的地址反解回 key（签名 / 未签名、OSS / 本机静态都认）；不是我方地址返回 null。
+     *
+     * <p>给「历史上只存了 URL」的字段用（如 {@code MaterialVideoJob.videoUrl}）：先问 {@link CdnUrlSigner#keyOf}
+     * （认 OSS 域名）；它认不出时再按存储驱动自己的公开地址前缀剥一次 —— dev 用本机 fake CDN 时
+     * OSS 域名是空的，只靠 {@code keyOf} 会一律返回 null。
+     */
+    public String keyOfStoredUrl(String url) {
+        if (url == null || url.isBlank()) return null;
+        if (signer != null) {
+            String k = signer.keyOf(url);
+            if (k != null && !k.isBlank()) return k;
+        }
+        String probe = "__key_probe__";
+        String sample = cdn != null ? cdn.publicUrlFor(probe) : props.getPublicUrlBase() + "/" + probe;
+        if (sample == null || !sample.endsWith(probe)) return null;
+        String base = sample.substring(0, sample.length() - probe.length());
+        if (base.isBlank() || !url.startsWith(base)) return null;
+        String rest = url.substring(base.length());
+        int cut = rest.length();
+        int q = rest.indexOf('?');
+        if (q >= 0) cut = q;
+        int h = rest.indexOf('#');
+        if (h >= 0 && h < cut) cut = h;
+        rest = rest.substring(0, cut);
+        return rest.isBlank() || rest.contains("..") ? null : rest;
+    }
+
+    /**
+     * 某分类下某人的 key 前缀：{@code <category>/<owner>/}。与 {@link #store} 系列生成 key 用的是
+     * **同一套** sanitize（{@code buildKey}），归属闸据此判「这个 key 是不是本人在这个分类下存的」，
+     * 调用方不要自己拼前缀 —— 存储层会把分类名里的 `/` 等字符换成 `_`，手拼的前缀跟真实 key 对不上。
+     *
+     * @throws IllegalArgumentException ownerId 为空（没有属主段的前缀会匹配到所有人的文件）
+     */
+    public static String ownedKeyPrefix(String category, String ownerId) {
+        if (ownerId == null || ownerId.isBlank()) {
+            throw new IllegalArgumentException("ownerId is required for an owned key prefix");
+        }
+        return categorySegment(category) + "/" + sanitizeSegment(ownerId) + "/";
+    }
+
     public record StoredFile(String key, String url, String signedUrl, String localPath, long bytes, String contentType) {}
 
     // ── 写入 ──────────────────────────────────────────────────────────────────
@@ -251,13 +312,18 @@ public class FileStorageService {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private static String buildKey(String category, String ownerId, String ext) {
-        String cat = sanitizeSegment(category == null || category.isBlank() ? "misc" : category);
+        String cat = categorySegment(category);
         String uuid = UUID.randomUUID().toString().replace("-", "");
         String e = (ext == null || ext.isBlank()) ? "bin" : ext.replaceFirst("^\\.", "").toLowerCase();
         if (ownerId == null || ownerId.isBlank()) {
             return cat + "/" + uuid + "." + e;
         }
         return cat + "/" + sanitizeSegment(ownerId) + "/" + uuid + "." + e;
+    }
+
+    /** key 的第一段（分类）。buildKey 与 ownedKeyPrefix 共用，保证两边永远一致。 */
+    private static String categorySegment(String category) {
+        return sanitizeSegment(category == null || category.isBlank() ? "misc" : category);
     }
 
     private static String sanitizeSegment(String s) {

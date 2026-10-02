@@ -3400,6 +3400,289 @@ components:
           properties:
             episodeNo: { type: integer }
 
+    # ── 视频生成区（v0.199，web-celebrity「AI 创作 → 视频生成」）────────────────────────────
+    # TS 真源 packages/types/src/video-studio.ts；设计真源 docs/video-studio-plan.md；
+    # server mirror com.aistareco.aep.videostudio.dto.VideoStudioDtos（字段名 1:1）。
+    # 所有 `T | null` 字段出 wire 都是显式的 null（DTO 标了 @JsonInclude(ALWAYS)），不是省略。
+    VideoStudioMode:
+      type: string
+      description: 生成模式，取值即厂商 wire 值（MiniMax H3 generationMode）。
+      enum: [t2v, i2v, first_last_frame_video, universal_reference_video]
+    VideoStudioMediaType:
+      type: string
+      enum: [image, video, audio]
+    VideoStudioCanvas:
+      type: object
+      description: 一个受控画布：比例 + 像素（厂商固定的六种之一）。
+      required: [aspectRatio, width, height]
+      properties:
+        aspectRatio: { type: string, enum: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'] }
+        width: { type: integer, example: 768 }
+        height: { type: integer, example: 1344 }
+    VideoStudioTier:
+      type: object
+      required: [tier, canvases]
+      properties:
+        tier: { type: string, enum: [768p, 544p] }
+        canvases: { type: array, items: { $ref: '#/components/schemas/VideoStudioCanvas' } }
+    VideoStudioMediaLimit:
+      type: object
+      required: [mediaType, maxCount, maxBytes, formats, minDurationSec, maxDurationSec]
+      properties:
+        mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
+        maxCount: { type: integer, description: 本类最多几个（全能参考：图 9 / 视频 1 / 音频 3；帧图 1） }
+        maxBytes: { type: integer, format: int64, description: 单个文件上限（字节） }
+        formats: { type: array, items: { type: string }, example: [PNG, JPEG, WEBP] }
+        minDurationSec: { type: integer, nullable: true, description: 单段时长下限（秒）；null = 不限。音频为 2 }
+        maxDurationSec: { type: integer, nullable: true, description: 单段时长上限（秒）；null = 不限。音频为 15 }
+    VideoStudioReferenceRules:
+      type: object
+      description: 全能参考模式的组合限制。
+      required: [image, video, audio, maxImagesWithVideo, maxTotal, minVisual, maxAudioTotalSec]
+      properties:
+        image: { $ref: '#/components/schemas/VideoStudioMediaLimit' }
+        video: { $ref: '#/components/schemas/VideoStudioMediaLimit' }
+        audio: { $ref: '#/components/schemas/VideoStudioMediaLimit' }
+        maxImagesWithVideo: { type: integer, description: 带了视频时图片最多几张（H3 为 8） }
+        maxTotal: { type: integer, description: 素材总数上限（H3 为 12） }
+        minVisual: { type: integer, description: 视觉素材（图 + 视频）至少几个（H3 为 1） }
+        maxAudioTotalSec: { type: integer, description: 所有音频加起来最长几秒（H3 为 15） }
+    VideoStudioModeSpec:
+      type: object
+      required: [mode, needsFirstFrame, needsLastFrame, frameImage, references]
+      properties:
+        mode: { $ref: '#/components/schemas/VideoStudioMode' }
+        needsFirstFrame: { type: boolean }
+        needsLastFrame: { type: boolean }
+        frameImage:
+          description: 首帧 / 尾帧图的限制；本模式不用帧图时为 null。
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/VideoStudioMediaLimit' }]
+        references:
+          description: 参考素材规则；只有全能参考非 null。
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/VideoStudioReferenceRules' }]
+    VideoStudioContract:
+      type: object
+      description: 一个模型的完整合同（服务端下发，前端不写死；数字全部来自 JusuanH3Contract）。
+      required: [modes, tiers, minSeconds, maxSeconds, promptMaxChars, seedMax]
+      properties:
+        modes: { type: array, items: { $ref: '#/components/schemas/VideoStudioModeSpec' } }
+        tiers: { type: array, items: { $ref: '#/components/schemas/VideoStudioTier' } }
+        minSeconds: { type: integer, description: 有效时长下限（秒，整数）= 厂商硬边界 ∩ 后台候选配置 }
+        maxSeconds: { type: integer, description: 有效时长上限（秒，整数） }
+        promptMaxChars: { type: integer, description: 去掉首尾空白后按 Unicode 字符数计（H3 为 7000） }
+        seedMax: { type: integer, format: int64, description: 随机种子上限（含）；下限为 0 }
+    VideoStudioPricing:
+      type: object
+      description: >-
+        下发给用户的计价参数（v0.199 二版：我们自己定、后台可配，不照搬厂商价格；服务端已把「配置空格子 → 模型每秒价」
+        这层回落算好）。生成总价 = (perSecond[模式][清晰度] + max(0, 全能参考图片张数 − freeRefImages)
+        × extraRefImagePerSecond) × 秒数，只有全能参考算图片张数。perSecond 某一格为 null = 这个组合还没定价：
+        前端不报价、不许提交，服务端提交 → 503 VIDEO_STUDIO_PRICE_NOT_CONFIGURED（不回落任何写死的价）。
+        智能优化每次 promptOptimizationPerCall（0 = 不收费）。提交时服务端用同一组数冻结积分。
+      required: [perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall]
+      properties:
+        perSecond: { $ref: '#/components/schemas/VideoStudioPerSecondGrid' }
+        freeRefImages: { type: integer, minimum: 0, maximum: 9, description: 全能参考里前几张参考图不加价 }
+        extraRefImagePerSecond: { type: integer, format: int64, minimum: 0, description: 第 freeRefImages+1 张起每张每秒加价（0 = 不加） }
+        promptOptimizationPerCall: { type: integer, format: int64, minimum: 0, description: 智能优化每次多少积分（0 = 不收费） }
+    VideoStudioPerSecondGrid:
+      type: object
+      description: >-
+        每秒价表：模式 → 清晰度（768p / 544p）→ 积分 / 秒。四种模式、两档清晰度的键总是都在，未定价的格子值为 null
+        （显式 null，不是省略）。
+      additionalProperties:
+        type: object
+        additionalProperties: { type: integer, format: int64, nullable: true }
+      example:
+        t2v: { 768p: 40, 544p: 20 }
+        i2v: { 768p: 40, 544p: null }
+        first_last_frame_video: { 768p: 40, 544p: 20 }
+        universal_reference_video: { 768p: 40, 544p: 20 }
+    VideoStudioPricingConfig:
+      type: object
+      description: >-
+        后台「明星带货 → 引擎定价 → 视频生成」编辑的配置（PlatformConfig key celebrity.video-studio-pricing，整份替换，
+        60 秒缓存在保存时立即失效）。perSecond 的 null 格子 = 不单独定价、按后台给模型配的每秒价（候选 creditCostOverride
+        且端点按秒计费）；格子 1..100000，freeRefImages 0..9，extraRefImagePerSecond / promptOptimizationPerCall 0..100000，
+        越界、缺标量、模式或清晰度不认识 → 400 VIDEO_STUDIO_PRICING_INVALID。首次启动写入全 null / 0。
+      required: [perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall]
+      properties:
+        perSecond: { $ref: '#/components/schemas/VideoStudioPerSecondGrid' }
+        freeRefImages: { type: integer, minimum: 0, maximum: 9 }
+        extraRefImagePerSecond: { type: integer, format: int64, minimum: 0, maximum: 100000 }
+        promptOptimizationPerCall: { type: integer, format: int64, minimum: 0, maximum: 100000 }
+    VideoStudioModel:
+      type: object
+      required: [endpointId, name, isDefault, selectableById, contract, pricing]
+      properties:
+        endpointId: { type: string }
+        name: { type: string, description: 展示名（后台端点名） }
+        isDefault: { type: boolean }
+        selectableById: { type: boolean, description: false = 合成的默认项（无候选行），提交时必须省略 endpointId }
+        contract: { $ref: '#/components/schemas/VideoStudioContract' }
+        pricing: { $ref: '#/components/schemas/VideoStudioPricing' }
+    VideoStudioUpload:
+      type: object
+      required: [key, url, mediaType, bytes, name, durationSec, width, height]
+      properties:
+        key: { type: string, description: 'storage key（DB 真值，形如 video-studio-<mediaType>/<uid>/<uuid>.<ext>）；提交任务时原样带回' }
+        url: { type: string, description: 短期签名地址，只用于预览 }
+        mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
+        bytes: { type: integer, format: int64 }
+        name: { type: string, description: 原文件名（展示用） }
+        durationSec: { type: number, nullable: true, description: 音频 / 视频的时长（秒，可带小数）；图片为 null }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+    VideoStudioReferenceInput:
+      type: object
+      description: 全能参考的一项素材。顺序有意义：同类素材按出现顺序编号（图1、图2…）。
+      required: [mediaType, key]
+      properties:
+        mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
+        key: { type: string }
+    VideoStudioJobRequest:
+      type: object
+      description: 提交一条生成任务。没有任何价格字段 —— 价格只由服务端按 VideoStudioPricing 算。
+      required: [mode, prompt, resolutionTier, aspectRatio, seconds]
+      properties:
+        endpointId: { type: string, nullable: true, description: 省略 = 默认端点；selectableById=false 的模型必须省略 }
+        mode: { $ref: '#/components/schemas/VideoStudioMode' }
+        prompt: { type: string, description: 去首尾空白后 1–7000 个 Unicode 字符 }
+        resolutionTier: { type: string, enum: [768p, 544p] }
+        aspectRatio: { type: string, enum: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'] }
+        seconds: { type: integer, minimum: 5, maximum: 15 }
+        seed: { type: integer, format: int64, minimum: 0, maximum: 2147483647, nullable: true, description: 不传 = 随机 }
+        firstFrameKey: { type: string, nullable: true, description: i2v / 首尾帧必填 }
+        lastFrameKey: { type: string, nullable: true, description: 首尾帧必填 }
+        references:
+          type: array
+          nullable: true
+          description: 全能参考必填（1 ~ maxTotal 项）
+          items: { $ref: '#/components/schemas/VideoStudioReferenceInput' }
+        templateId: { type: string, nullable: true, description: '做同款时带上：素材 key 可以是自己上传的，也可以是这个模板自带的同类素材' }
+        optimizationId: { type: string, nullable: true, description: '用了智能优化的结果时带上（必须是本人的、已成功的）；送去生成的仍是 prompt 里的最终文本' }
+    VideoStudioJobStatus:
+      type: string
+      enum: [queued, running, succeeded, failed]
+    VideoStudioJobInput:
+      type: object
+      required: [mediaType, label, url]
+      properties:
+        mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
+        label: { type: string, description: 首帧 / 尾帧 / 图1 / 视频1 / 音频1 … }
+        url: { type: string, nullable: true, description: 出 wire 时按 key 现签的短期地址 }
+    VideoStudioJob:
+      type: object
+      required: [id, mode, prompt, resolutionTier, aspectRatio, width, height, seconds, seed, modelName, status,
+                 progressPct, stage, inputs, videoUrl, thumbnailUrl, errorMessage, credits, originalPrompt, templateId,
+                 createdAt, completedAt]
+      properties:
+        id: { type: string }
+        mode: { $ref: '#/components/schemas/VideoStudioMode' }
+        prompt: { type: string }
+        resolutionTier: { type: string }
+        aspectRatio: { type: string }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        seconds: { type: integer }
+        seed: { type: integer, format: int64, nullable: true }
+        modelName: { type: string, nullable: true, description: 实际调用的模型展示名；还没提交到厂商时为 null }
+        status: { $ref: '#/components/schemas/VideoStudioJobStatus' }
+        progressPct: { type: integer, minimum: 0, maximum: 100 }
+        stage: { type: string, description: 已入队 / 提交生成请求 / AI 生成中 / 已完成 / 生成失败 }
+        inputs: { type: array, items: { $ref: '#/components/schemas/VideoStudioJobInput' } }
+        videoUrl: { type: string, nullable: true, description: 成片短期签名地址；未完成为 null }
+        thumbnailUrl: { type: string, nullable: true }
+        errorMessage: { type: string, nullable: true, description: 失败原因（可直接给用户看，含厂商 4xx 原话）；未失败为 null }
+        credits: { type: integer, format: int64, description: 进行中 = 已冻结，成功 = 已扣，失败 = 已退回 }
+        originalPrompt: { type: string, nullable: true, description: 用了智能优化时的原提示词（prompt 是最终送去生成的那版）；没优化为 null }
+        templateId: { type: string, nullable: true, description: 做同款时来自哪个模板；不是做同款为 null }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+    VideoStudioOptimizationStatus:
+      type: string
+      enum: [queued, running, succeeded, failed]
+    VideoStudioOptimizationRequest:
+      type: object
+      description: >-
+        发起一次智能优化。与生成请求同一套字段（同一个校验器、同一套错误码；不带种子），外加防重复点击的 clientRequestId：
+        同一用户同一 clientRequestId 重复提交 → 返回同一条记录，不重复冻结。
+      required: [clientRequestId, mode, prompt, resolutionTier, aspectRatio, seconds]
+      properties:
+        clientRequestId: { type: string, minLength: 8, maxLength: 128, pattern: '^[\x21-\x7E]+$', description: 前端生成的唯一串（8–128 个可见 ASCII），同一次点击重试时不变 }
+        endpointId: { type: string, nullable: true }
+        mode: { $ref: '#/components/schemas/VideoStudioMode' }
+        prompt: { type: string }
+        resolutionTier: { type: string, enum: [768p, 544p] }
+        aspectRatio: { type: string, enum: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'] }
+        seconds: { type: integer, minimum: 5, maximum: 15 }
+        firstFrameKey: { type: string, nullable: true }
+        lastFrameKey: { type: string, nullable: true }
+        references:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/VideoStudioReferenceInput' }
+        templateId: { type: string, nullable: true }
+    VideoStudioOptimization:
+      type: object
+      description: 一次智能优化（后台执行；厂商同步接口最长要等十分钟上下，前端每 2 秒查一次）。
+      required: [id, status, originalPrompt, optimizedPrompt, errorMessage, credits, createdAt, completedAt]
+      properties:
+        id: { type: string }
+        status: { $ref: '#/components/schemas/VideoStudioOptimizationStatus' }
+        originalPrompt: { type: string }
+        optimizedPrompt: { type: string, nullable: true, description: 优化后的完整提示词；成功前为 null。用户可以改了再用 }
+        errorMessage: { type: string, nullable: true, description: '失败原因（可直接给用户看，如「智能优化被拒：<厂商原话>」）；未失败为 null' }
+        credits: { type: integer, format: int64, description: 进行中 = 冻结，成功 = 扣除，失败 = 已退回；0 = 不收费 }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+    VideoStudioTemplateScope:
+      type: string
+      enum: [official, private]
+    VideoStudioTemplateMaterial:
+      type: object
+      description: 模板里的一个原素材。做同款时可以原样带回（配合 templateId），也可以换成自己上传的。
+      required: [role, mediaType, key, label, url]
+      properties:
+        role: { type: string, enum: [first_frame, last_frame, reference] }
+        mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
+        key: { type: string, description: '素材 key：做同款时原样放进请求（firstFrameKey / lastFrameKey / references[].key）' }
+        label: { type: string, description: 首帧 / 尾帧 / 图1 / 视频1 / 音频1 … }
+        url: { type: string, nullable: true, description: 出 wire 时按 key 现签的短期地址 }
+    VideoStudioTemplate:
+      type: object
+      required: [id, scope, title, description, mode, prompt, resolutionTier, aspectRatio, seconds, seed, endpointId,
+                 modelName, materials, previewVideoUrl, previewThumbnailUrl, useCount, mine, createdAt]
+      properties:
+        id: { type: string }
+        scope: { $ref: '#/components/schemas/VideoStudioTemplateScope' }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        mode: { $ref: '#/components/schemas/VideoStudioMode' }
+        prompt: { type: string }
+        resolutionTier: { type: string }
+        aspectRatio: { type: string }
+        seconds: { type: integer }
+        seed: { type: integer, format: int64, nullable: true }
+        endpointId: { type: string, nullable: true, description: 原作用的模型；做同款时若还能选就默认选它 }
+        modelName: { type: string, nullable: true }
+        materials: { type: array, items: { $ref: '#/components/schemas/VideoStudioTemplateMaterial' } }
+        previewVideoUrl: { type: string, nullable: true, description: 原作成片（库里存 key，出 wire 现签） }
+        previewThumbnailUrl: { type: string, nullable: true }
+        useCount: { type: integer, format: int64, description: 有多少次「做同款」成功建出了任务 }
+        mine: { type: boolean, description: 是不是当前用户自己存的 }
+        createdAt: { type: string, format: date-time }
+    VideoStudioTemplateCreateRequest:
+      type: object
+      required: [jobId, title]
+      properties:
+        jobId: { type: string, description: 本人在本区的一条成功的生成记录 }
+        title: { type: string, minLength: 1, maxLength: 40, description: 去首尾空白后 1–40 个字 }
+        description: { type: string, nullable: true, maxLength: 200 }
+        official: { type: boolean, description: 发布为官方模板（全员可见）；只有运营账号能传 true（服务端查库判定） }
+
 paths:
 
   # ── 3.1 Auth ────────────────────────────
@@ -10343,3 +10626,185 @@ paths:
         '400': { description: 'IP_PUBLISH_SELECTION_REQUIRED —— 主图 / look 未选候选，或节点不是 generate，或选中的运行不属于本人本项目；IP_PUBLISH_NAME_REQUIRED —— avatarName 为空（不再悄悄退回项目名）' }
         '404': { description: 'IP_PROJECT_NOT_FOUND / IP_NODE_NOT_FOUND' }
         '409': { description: 'IP_PROJECT_ALREADY_PUBLISHED —— P1 不做增量发布' }
+
+  # ── 视频生成区（v0.199，web-celebrity「AI 创作 → 视频生成」；docs/video-studio-plan.md §4）────────
+  # 登录必需（/api/me/**）；开通闸按 /api/me/celebrity/** → celebrity。未绑手机号的账号发 POST 由
+  # PhoneVerificationGuard 挡成 403 PHONE_VERIFICATION_REQUIRED。提交走通用视频链（MaterialVideoJobService，
+  # 分区 video-studio）：冻结 → 落 material_video_job → worker 轮询 → 成片镜像 OSS → 成功扣 / 失败退。
+  /me/celebrity/video-studio/models:
+    get:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioListModels
+      description: >-
+        能在本区用的视频模型：「视频生成」用途下启用候选 × 启用端点 × 可提交（有 baseUrl + Key）× 聚算媒体协议。
+        一个候选都没有时，默认绑定的端点若也满足条件就合成一条（selectableById=false）。一个都没有时是空数组，
+        前端显示「视频模型暂未开通」并禁用提交。合同与计价都由服务端给，前端不写死、接口失败时不回落写死单价。
+      responses:
+        '200':
+          description: VideoStudioModel[]
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/VideoStudioModel' } }
+  /me/celebrity/video-studio/uploads:
+    post:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioUpload
+      description: >-
+        上传一个素材。上限：图 30MB / 视频 50MB / 音频 15MB。格式**按字节判**（后缀用判出来的，不信文件名）：
+        图 PNG / JPEG / WEBP；视频 MP4（ftyp 且品牌不是 QuickTime）；音频 WAV / MP3 / FLAC / OGG / AAC(ADTS) / M4A / MOV。
+        音视频过 ffprobe：视频必须有画面，音频必须有声音且单段 2–15 秒。存储分类 video-studio-<mediaType>，
+        key 里的分类就是验过的类型，提交时据此判归属与类型。计入 celebrity 存储配额（超额 402 STORAGE_QUOTA_EXCEEDED）。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, mediaType]
+              properties:
+                file: { type: string, format: binary }
+                mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioUpload' } } } }
+        '400': { description: 'VIDEO_STUDIO_FORMAT_UNSUPPORTED / VIDEO_STUDIO_FILE_EMPTY / VIDEO_STUDIO_FILE_TOO_LARGE / VIDEO_STUDIO_MEDIA_UNREADABLE / VIDEO_STUDIO_AUDIO_DURATION_INVALID' }
+        '402': { description: STORAGE_QUOTA_EXCEEDED }
+  /me/celebrity/video-studio/jobs:
+    get:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioListJobs
+      description: 本人在本区的生成记录，新 → 旧，最多 100 条。素材 / 成片地址出 wire 时按 key 现签。
+      responses:
+        '200':
+          description: VideoStudioJob[]
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/VideoStudioJob' } }
+    post:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioSubmitJob
+      description: >-
+        提交一条生成任务。冻结积分之前按固定顺序校验：模型 → 模式 → 提示词 → 清晰度 / 比例 / 时长 → 种子 →
+        该模式的素材 → 素材归属与类型（做同款时这个模板自带的同类素材也算）→ 智能优化结果（带了 optimizationId 时）→ 价格。
+        价格只由服务端算（请求里没有价格字段），计价规则见 VideoStudioPricing 与 specs/BUSINESS_RULES.md §6.8。
+        做同款成功建出任务后模板 useCount +1。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioJobRequest' } } }
+      responses:
+        '200': { description: 新建的任务（status=queued，credits=已冻结额）, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioJob' } } } }
+        '400': { description: 'VIDEO_STUDIO_MODEL_UNSUPPORTED / VIDEO_STUDIO_MODE_INVALID / VIDEO_STUDIO_PROMPT_REQUIRED / VIDEO_STUDIO_PROMPT_TOO_LONG / VIDEO_STUDIO_SPEC_INVALID / VIDEO_STUDIO_INPUT_INVALID / VIDEO_STUDIO_ASSET_INVALID / VIDEO_STUDIO_OPTIMIZATION_INVALID / VIDEO_PRICE_OVERFLOW' }
+        '402': { description: PAYMENT_REQUIRED（余额不足，无任务无冻结） }
+        '404': { description: VIDEO_STUDIO_TEMPLATE_NOT_FOUND（带了 templateId 但模板已下架或看不到） }
+        '503': { description: 'VIDEO_STUDIO_PRICE_NOT_CONFIGURED（所选模式 × 清晰度没定价）/ VIDEO_NOT_CONFIGURED / ENDPOINT_NOT_ALLOWED' }
+  /me/celebrity/video-studio/jobs/{id}:
+    get:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioGetJob
+      description: 单条任务的最新状态。不是本人的、不是本区（分区 video-studio）的，一律 404。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioJob' } } } }
+        '404': { description: VIDEO_STUDIO_JOB_NOT_FOUND }
+
+  # ── 视频生成区 · 智能优化 / 模板（v0.199 二版；docs/video-studio-plan.md §9 / §10）────────
+  /me/celebrity/video-studio/prompt-optimizations:
+    post:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioCreateOptimization
+      description: >-
+        发起一次智能优化（厂商 POST /media/prompt-optimizations 是同步接口但最长要等十分钟上下，这里做成后台任务，
+        前端轮询 GET）。校验与提交生成同一个校验器、同一套错误码（不看种子）。同一用户同一 clientRequestId 已有记录 →
+        原样返回，不再冻结。价格 = 计价配置的 promptOptimizationPerCall，> 0 才冻结（余额不足 402）。
+        后台 worker 用记录 id 作 Idempotency-Key（= 厂商 body 的 clientRequestId），409 / 429 / 5xx / 超时同一正文同一键
+        重发，总预算 12 分钟；其它 4xx → 失败原因「智能优化被拒：<厂商原话>」并退回冻结。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioOptimizationRequest' } } }
+      responses:
+        '200': { description: 优化记录（新建为 queued；重复提交返回已有那条）, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioOptimization' } } } }
+        '400': { description: 'VIDEO_STUDIO_REQUEST_ID_INVALID / 与提交生成相同的校验错误码（MODEL_UNSUPPORTED / MODE_INVALID / PROMPT_REQUIRED / PROMPT_TOO_LONG / SPEC_INVALID / INPUT_INVALID / ASSET_INVALID）' }
+        '402': { description: PAYMENT_REQUIRED（余额不足，不落记录） }
+        '404': { description: VIDEO_STUDIO_TEMPLATE_NOT_FOUND }
+        '503': { description: 'VIDEO_NOT_CONFIGURED / VIDEO_STUDIO_PRICE_NOT_CONFIGURED（计价配置读不出来）' }
+  /me/celebrity/video-studio/prompt-optimizations/{id}:
+    get:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioGetOptimization
+      description: 一次智能优化的最新状态。不是本人的 → 404。卡在半路超过 20 分钟的由兜底回收判失败并退冻结。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioOptimization' } } } }
+        '404': { description: VIDEO_STUDIO_OPTIMIZATION_NOT_FOUND }
+  /me/celebrity/video-studio/templates:
+    get:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioListTemplates
+      description: 在架的官方模板 + 我自己的（官方的我发的也算我的），新 → 旧，最多 100 条；每条带 mine。素材与成片地址出 wire 时现签。
+      responses:
+        '200':
+          description: VideoStudioTemplate[]
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/VideoStudioTemplate' } }
+    post:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioCreateTemplate
+      description: >-
+        把一条成功的生成记录存成模板。配方只拷「怎么做」（模式、最终提示词、规格、种子、模型、素材 key），不拷运行痕迹；
+        素材不复制文件，直接引用原作的 key；成片 / 封面存 key、出 wire 现签。official=true 只有运营账号能用
+        （aep_users.operatorRole ∈ operator / super_admin，服务端查库判定），否则 403。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioTemplateCreateRequest' } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioTemplate' } } } }
+        '400': { description: 'VIDEO_STUDIO_TEMPLATE_INVALID —— 任务不是本人的 / 不是本区的 / 没成功；标题或说明长度不对' }
+        '403': { description: VIDEO_STUDIO_TEMPLATE_FORBIDDEN（不是运营却要发布官方模板） }
+  /me/celebrity/video-studio/templates/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioGetTemplate
+      description: 官方且在架，或本人在架的模板；否则 404。
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioTemplate' } } } }
+        '404': { description: VIDEO_STUDIO_TEMPLATE_NOT_FOUND }
+    delete:
+      tags: [celebrity, video-studio]
+      operationId: videoStudioWithdrawTemplate
+      description: 下架（软删）。本人的 → 本人可删；官方的 → 本人或任一运营可撤回；其它一律 404（不暴露存在与否）。
+      responses:
+        '204': { description: 已下架 }
+        '404': { description: VIDEO_STUDIO_TEMPLATE_NOT_FOUND }
+
+  # ── 后台 · 视频生成区计价（v0.199 二版；角色同 /admin/celebrity/action-pricing）────────
+  /admin/celebrity/video-studio-pricing:
+    get:
+      tags: [admin-celebrity, video-studio]
+      operationId: adminGetVideoStudioPricing
+      description: 当前生效的视频生成区计价配置（PlatformConfig key celebrity.video-studio-pricing；首次启动写入全 null / 0）。
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioPricingConfig' } } } }
+        '503': { description: VIDEO_STUDIO_PRICE_NOT_CONFIGURED（库里的配置被改坏读不出来；重新 PUT 一份即可恢复） }
+    put:
+      tags: [admin-celebrity, video-studio]
+      operationId: adminReplaceVideoStudioPricing
+      description: 整份替换（缺的格子按 null 补齐）。缓存立即失效，下一次 GET /me/celebrity/video-studio/models 就是新价。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioPricingConfig' } } }
+      responses:
+        '200': { description: 补齐后的配置, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioPricingConfig' } } } }
+        '400': { description: VIDEO_STUDIO_PRICING_INVALID }

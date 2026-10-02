@@ -40,7 +40,16 @@ public class InAppOperatorGuard {
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(ADMIN_AUTHORITIES::contains);
         if (adminToken) return true;
-        return userRepo.findById(auth.getName())
+        return isOperatorUserId(auth.getName());
+    }
+
+    /**
+     * 只看库：这个用户（{@code aep_users.id}）是不是在职的运营（operatorRole = operator / super_admin 且账号 ACTIVE）。
+     * 给只拿得到 uid 的服务层用（如视频生成区发布官方模板），判定与上面的令牌入口是同一条规则。
+     */
+    public boolean isOperatorUserId(String userId) {
+        if (userId == null || userId.isBlank()) return false;
+        return userRepo.findById(userId)
                 .map(user -> user.getOperatorRole() != null
                         && user.getStatus() == AepUser.UserStatus.ACTIVE)
                 .orElse(false);
@@ -55,11 +64,7 @@ public class InAppOperatorGuard {
             require(auth, message);
             return;
         }
-        boolean ok = principal != null && principal.getName() != null
-                && userRepo.findById(principal.getName())
-                        .map(user -> user.getOperatorRole() != null
-                                && user.getStatus() == AepUser.UserStatus.ACTIVE)
-                        .orElse(false);
+        boolean ok = principal != null && isOperatorUserId(principal.getName());
         if (!ok) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "OPERATOR_ONLY", message);
         }

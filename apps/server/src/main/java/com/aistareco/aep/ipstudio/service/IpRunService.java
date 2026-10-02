@@ -197,8 +197,13 @@ public class IpRunService {
         item.put("prompt", req.prompt().trim());
         if (req.durationSec() != null) item.put("duration_sec", req.durationSec());
         if (req.aspectRatio() != null && !req.aspectRatio().isBlank()) item.put("aspect_ratio", req.aspectRatio());
-        if (req.model() != null && !req.model().isBlank()) item.put("endpoint_id", req.model().trim());
-        if (refKey != null) item.putObject("variant_config").put("first_frame_key", refKey);
+        // 选的模型和首帧图都放进 variant_config —— MaterialVideoJobService（时长校验、报价、冻结）
+        // 和 worker（真正调哪个端点）只从这里读 endpoint_id。此前模型 id 写在 item 顶层，
+        // 没有任何地方读它：画布上选哪个模型，跑的、校验的、计价的都是后台默认那个。
+        ObjectNode variantConfig = om.createObjectNode();
+        if (req.model() != null && !req.model().isBlank()) variantConfig.put("endpoint_id", req.model().trim());
+        if (refKey != null) variantConfig.put("first_frame_key", refKey);
+        if (!variantConfig.isEmpty()) item.set("variant_config", variantConfig);
 
         ObjectNode body = om.createObjectNode();
         body.putArray("items").add(item);

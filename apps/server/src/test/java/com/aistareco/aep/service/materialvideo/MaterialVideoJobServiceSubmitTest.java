@@ -96,6 +96,37 @@ class MaterialVideoJobServiceSubmitTest {
     }
 
     @Test
+    void caller_priced_items_are_marked_in_the_payload_so_reconcile_keeps_the_frozen_price() throws Exception {
+        doNothing().when(modelClient).validateRequest(any(), anyInt());
+        when(modelClient.resolveCreditCostOverride(any(), anyInt())).thenReturn(200L);
+        when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // 内部调用方自己算好的价（视频生成区 544p · 5 秒 = 100）
+        var cards = svc.submit(body("""
+            {"items":[{"name":"文生视频 · 544p","kind":"studio-t2v","duration_sec":5,
+                       "credit_cost":100,"credit_label":"视频生成"}]}"""),
+                "user-1", MaterialVideoJobService.APP_VIDEO_STUDIO);
+        // 两个都是 worker / 对账用的内部字段，不出 wire（MaterialVideo 契约里没有）
+        assertFalse(cards.get(0).has("caller_priced"));
+        assertFalse(cards.get(0).has("credit_label"));
+        // 端点定价（没有 credit_cost）
+        svc.submit(body("""
+            {"items":[{"script_id":"s1","name":"v1","duration_sec":5}]}"""),
+                "user-1", MaterialVideoJobService.APP_CELEBRITY);
+
+        ArgumentCaptor<MaterialVideoJob> saved = ArgumentCaptor.forClass(MaterialVideoJob.class);
+        verify(jobRepo, times(2)).save(saved.capture());
+        MaterialVideoJob callerPriced = saved.getAllValues().get(0);
+        MaterialVideoJob endpointPriced = saved.getAllValues().get(1);
+        assertEquals(100L, callerPriced.getCreditsHeld());
+        assertTrue(om.readTree(callerPriced.getPayloadJson()).path("caller_priced").asBoolean(false));
+        assertTrue(MaterialVideoWorker.callerPriced(callerPriced));
+        assertEquals(200L, endpointPriced.getCreditsHeld());
+        assertFalse(om.readTree(endpointPriced.getPayloadJson()).has("caller_priced"));
+        assertFalse(MaterialVideoWorker.callerPriced(endpointPriced));
+    }
+
+    @Test
     void listModels_filters_disabled_and_unready_endpoints_and_marks_synthetic_default() {
         AiModelEndpoint ready = AiModelEndpoint.builder().id("ep-a").name("A")
                 .baseUrl("https://a.example/v1").billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();

@@ -3,10 +3,13 @@ package com.aistareco.aep.controller;
 import com.aistareco.aep.dto.*;
 import com.aistareco.aep.service.CelebrityActionPricingService;
 import com.aistareco.aep.service.CelebrityZoneService;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioPricingConfig;
+import com.aistareco.aep.videostudio.service.VideoStudioPricingService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 
@@ -14,6 +17,7 @@ import java.util.Map;
  * Admin 侧 AI 明星专区运营：/api/admin/celebrity/*。
  * v0.5：补齐 CRUD（明星 / 模板 / 资料图集 / 视频 / 引擎价）。
  * v0.35：加 action-pricing 端点（动作级权益扣减配置）。
+ * v0.199：加 video-studio-pricing 端点（视频生成区计价，docs/video-studio-plan.md §3）。
  * 由 AepSecurityConfig 强制管理员角色（SUPER_ADMIN / OPERATOR）。
  */
 @RestController
@@ -22,11 +26,14 @@ public class AdminCelebrityController {
 
     private final CelebrityZoneService service;
     private final CelebrityActionPricingService actionPricing;
+    private final VideoStudioPricingService videoStudioPricing;
 
     public AdminCelebrityController(CelebrityZoneService service,
-                                     CelebrityActionPricingService actionPricing) {
+                                     CelebrityActionPricingService actionPricing,
+                                     VideoStudioPricingService videoStudioPricing) {
         this.service = service;
         this.actionPricing = actionPricing;
+        this.videoStudioPricing = videoStudioPricing;
     }
 
     // ── Stars 读 ────────────────────────────────────────────────────────────
@@ -158,5 +165,19 @@ public class AdminCelebrityController {
     public ApiResponse<Map<String, ActionPricingDto>> replaceActionPricing(
             @RequestBody Map<String, ActionPricingDto> next) {
         return ApiResponse.of(actionPricing.replaceAll(next));
+    }
+
+    // ── v0.199：视频生成区计价（PlatformConfig key=celebrity.video-studio-pricing）──────
+    // 角色同上面的动作单价（由 AepSecurityConfig 的 /api/admin/** 规则收口）。整份替换，缓存立即失效。
+
+    @GetMapping("/video-studio-pricing")
+    public ApiResponse<VideoStudioPricingConfig> videoStudioPricing() {
+        return ApiResponse.of(videoStudioPricing.current());
+    }
+
+    @PutMapping("/video-studio-pricing")
+    public ApiResponse<VideoStudioPricingConfig> replaceVideoStudioPricing(
+            Principal principal, @RequestBody VideoStudioPricingConfig next) {
+        return ApiResponse.of(videoStudioPricing.replace(next, principal == null ? null : principal.getName()));
     }
 }

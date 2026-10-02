@@ -32,6 +32,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 /products                  ← 商品库（CelebrityProductLibrary + ProductFormDialog）
 /library                   ← 视频中心（CelebrityVideoLibrary + 水印 / 缩略图组件）
 /data                      ← 数据中心（CelebrityDataCenter）
+/studio/video              ← 视频生成（v0.199，AI 创作组；H3 四种原生模式，components/video-studio/*）
 /mixcut                    ← 混剪专区首页（KPI + 热门模板 + 最近任务）
 /mixcut/templates          ← 模板库（含筛选 / 搜索）
 /mixcut/templates/[id]     ← 模板详情（slot schema + 扰动变体预览）
@@ -70,6 +71,29 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - 真后端尚未上线，USE_MOCK=0 分支保留 `apiFetch` 占位（507/501 后端原因）。
 
 ## 版本日志
+
+### v0.199 · 2026-09-30 · 「AI 创作 → 视频生成」：把 H3 的四种原生模式原样搬进来
+
+- 新页 `/studio/video`（侧栏新组「AI 创作」，紧跟「工作台」）：左边填参数，右边是本区自己的生成记录。四种模式照厂商叫法：文生视频 / 首帧生视频 / 首尾帧生视频 / 全能参考。
+  - 全能参考的素材块分图片 n/9、视频 n/1、音频 n/3 三个页签，每项标编号（图1…、视频1、音频1…），可以上移、下移、删除。
+  - 规格：清晰度 768p/544p、六种画面比例（按钮上带像素）、5–15 秒、随机种子（高级）。
+  - 模式、规格、素材限制、价格全部来自 `GET /me/celebrity/video-studio/models`，前端不写死。报价算法在 `lib/video-studio.ts`，与服务端冻结同一套数；模型没加载成功就不报价、不许提交。
+  - 设计真源 [`docs/video-studio-plan.md`](../../docs/video-studio-plan.md)，类型真源 `packages/types/src/video-studio.ts`。
+- 文件：`api/video-studio.ts`（带 USE_MOCK 分支）、`mocks/video-studio.ts`（与服务端同形，ISO 时间）、`constants/video-studio-ui.ts`、`lib/video-studio.ts`、`components/video-studio/*`。
+- 生成记录的轮询和播放：
+  - 有排队中 / 生成中的任务、且页面在前台时，每 5 秒刷新；切到后台就停，回来马上补一次。
+  - 服务端每次都给新签名的地址，播放器和缩略图不跟着换（`useStableUrl`），只有加载失败后才换，免得正在看的成片每 5 秒被打断。
+  - 演示模式没有真实成片，卡片上明确标「演示」。
+- 顺手修了三处：
+  - **外壳网格行高**（`layout.tsx` 加 `gridTemplateRows: minmax(0, 1fr)`）：侧栏条目比屏幕高时，整行被撑高、内容区底部被裁，900px 高的屏幕上每页最底下一截滚不到。
+  - **登录跳回白名单**（`lib/celebrity-return-path.ts`）补 `/studio`。
+  - 「重新拉取」改「重新加载」。
+- 测试：`lib/video-studio.test.mts`（报价、编号、预检）和 `lib/video-studio-wiring.test.mts`（侧栏、页面、接口真的挂上了，§8.0.1 ⑥），都已加进 `pnpm test`。
+- **二版（同日）**：
+  - **报价跟着后台走**：每秒价、参考图加价、智能优化单价都从 `/models` 的 `pricing` 读；某个模式 × 清晰度没定价时，报价那行写「还没定价」，生成按钮不可点。
+  - **智能优化**（`OptimizePanel` + `use-prompt-optimization`）：提示词框旁的勾选框默认勾上（记在本机）；勾上时按钮是「优化并继续」，表单里出一块「正在优化提示词…」，每 2 秒查一次（页面在后台时暂停）。成功后显示可编辑的优化结果和原提示词，三个按钮：「用这版生成」（带 `optimizationId`）/「改用原提示词生成」/「先不生成」；失败显示厂商原话，可以重新优化或直接用原提示词。每次优化带自己的 `clientRequestId`；发起请求没拿到明确答复（断网 / 5xx）时，重试沿用同一个，服务端认出来直接返回原记录，不会扣两次。
+  - **模板 / 做同款**（`SaveTemplateDialog`、`TemplateList`、`TemplateCard`、`use-video-studio-templates`）：成功的记录卡上有「存为模板」，运营多一个「发布为官方模板」勾选；右栏「模板」页签分官方 / 我的两组；「做同款」把配方和原素材填进表单（标「模板素材」，可逐个换），表单顶上一条「正在做同款」+「不做同款了」。删除 / 撤回走 `useConfirm`。
+  - 测试补了报价（配置价、未定价、参考图加价）、优化与做同款请求体的组装，`pnpm test` 99/99。
 
 ### v0.132 · 2026-08-17 · 明星带货短视频重构（入口提级 / 模型时长与报价前置 / 免商品脚本）
 

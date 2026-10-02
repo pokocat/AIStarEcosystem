@@ -9,7 +9,7 @@
     "start": "next start -p 3012",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
-    "test": "node --test src/lib/celebrity-return-path.test.mts"
+    "test": "node --test src/lib/celebrity-return-path.test.mts src/lib/video-studio.test.mts src/lib/video-studio-wiring.test.mts"
   },
   "dependencies": {
     "@ai-star-eco/api-client": "workspace:*",
