@@ -430,6 +430,67 @@ class DramaShortServiceTest {
     }
 
     @Test
+    void commitFailureDiscardsTheDraftSoSameKeyRetryPaysInsteadOfGettingItFree() {
+        // 草稿落库与扣费不在一个事务里：扣费失败时草稿已经在库里了。以前只退冻结、草稿留着，
+        // 同一把键重试会在幂等查找里命中它、直接返回 —— 用户拿到一条一分钱没付的草稿。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        when(creditService.commitHold(anyString(), anyString(), anyLong(), anyString()))
+                .thenThrow(new RuntimeException("ledger blip"))
+                .thenReturn(null);
+        when(creditService.findHold(eq("DRAMA_SHORT"), anyString())).thenReturn(
+                com.aistareco.aep.model.CreditHold.builder().status(com.aistareco.aep.model.CreditHold.Status.ACTIVE).build());
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "commit-blip");
+
+        assertThrows(RuntimeException.class, () -> svc.createShort(body.deepCopy(), USER));
+        assertTrue(db.isEmpty(), "没扣上钱的草稿不能留在库里");
+        verify(creditService, times(1)).releaseHold(eq("DRAMA_SHORT"), anyString(), anyString());
+
+        // 同一次确认的重试：按新请求处理，重新冻结、真的扣费，拿到一条付过钱的草稿。
+        JsonNode retry = svc.createShort(body.deepCopy(), USER);
+        assertEquals(1, db.size());
+        assertTrue(db.containsKey(retry.path("meta").path("id").asText()));
+        verify(creditService, times(2)).hold(eq(USER), eq(10L), eq("DRAMA_SHORT"), anyString(), anyString());
+        verify(creditService, times(2)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+    }
+
+    @Test
+    void commitThatThrowsAfterTheLedgerRecordedItKeepsThePaidDraft() {
+        // 反过来：commit 抛了，但账本里这笔冻结已经是 COMMITTED（钱确实扣了）→ 草稿是用户的，照常返回。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        when(creditService.commitHold(anyString(), anyString(), anyLong(), anyString()))
+                .thenThrow(new RuntimeException("after-commit callback failed"));
+        when(creditService.findHold(eq("DRAMA_SHORT"), anyString())).thenReturn(
+                com.aistareco.aep.model.CreditHold.builder().status(com.aistareco.aep.model.CreditHold.Status.COMMITTED).build());
+
+        String id = svc.createFromRecipe(USER, "韦斯·安德森风格", "风格短片", "#0ea5e9", "#22c55e",
+                null, null, "paid-key");
+
+        assertTrue(db.containsKey(id));
+        verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void raceLoserStillGetsTheWinnerWhenReleasingItsOwnHoldFails() {
+        // 落败方退冻结失败：不能把原本正确的结果（拿到赢家那条）变成报错；冻结由清扫器超时退回，并打 ERROR 留痕。
+        when(configs.getLong(eq(DramaConfigSeeder.KEY_SHORT_ENTRY), anyLong())).thenReturn(10L);
+        var body = OM.createObjectNode().put("fmtKey", "sell").put("clientRequestId", "race-release");
+        JsonNode winner = svc.createShort(body.deepCopy(), USER);
+        when(repo.findFirstByOwnerUserIdAndClientRequestId(eq(USER), eq("race-release")))
+                .thenReturn(Optional.empty())
+                .thenAnswer(inv -> db.values().stream()
+                        .filter(x -> "race-release".equals(x.getClientRequestId()))
+                        .findFirst());
+        when(creditService.releaseHold(anyString(), anyString(), anyString()))
+                .thenThrow(new RuntimeException("db blip on release"));
+
+        JsonNode loser = svc.createShort(body.deepCopy(), USER);
+
+        assertEquals(winner.path("meta").path("id").asText(), loser.path("meta").path("id").asText());
+        assertEquals(1, db.size());
+        verify(creditService, times(1)).commitHold(eq("DRAMA_SHORT"), anyString(), eq(10L), anyString());
+    }
+
+    @Test
     void clientWrittenBareKeyIsNotSigned() {
         // Codex 评审（2026-08-31）：shots 的 frameUrl / videoUrl 是客户端 PUT 可写的。
         // 若把裸字符串当 OSS key 直接签名，用户 A 只要写 `media/<用户B的对象key>` 就能换回

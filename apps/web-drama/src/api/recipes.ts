@@ -9,6 +9,8 @@
 
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import { createDraft as createShortDraft } from "./shorts";
+import { createProject } from "./projects";
+import { setProjectData, type CharacterDef, type EpisodeOutline, type ProjectData } from "@/mocks/drama-workshop";
 
 // submitted=用户自助待审 · invited=运营邀请待用户授权 · published=已上架 · rejected=审核驳回 · declined=用户谢绝
 export type RecipeStatus = "draft" | "submitted" | "invited" | "published" | "rejected" | "declined";
@@ -168,7 +170,7 @@ export async function listPublished(): Promise<DramaRecipe[]> {
         data: { mainline: "", beats: [], characters: [], hooks: [], notes: "【创作方法】对称机位…" },
       }),
       // 多集用户短剧（套用 → 六阶段项目）
-      mockRecipe({ status: "published", publishedAt: new Date().toISOString(), useCount: 12 }),
+      mockRecipe({ id: "dr_mock_series", status: "published", publishedAt: new Date().toISOString(), useCount: 12 }),
     ]);
   return apiFetch<DramaRecipe[]>("/me/drama/recipes/published");
 }
@@ -209,7 +211,49 @@ export type ApplyRecipeResult =
  */
 export async function applyRecipe(r: DramaRecipe, clientRequestId?: string): Promise<ApplyRecipeResult> {
   if (USE_MOCK) {
-    if (r.episodes > 1) return mockDelay({ kind: "project", projectId: `dp_mock_${Date.now()}` });
+    if (r.episodes > 1) {
+      // 多集：与服务端 seedProjectFromRecipe 同形 —— 主线 + 分集剧情框架 + 角色原型，
+      // 真的写进 mock 列表与详情表，跳过去工作台能打开（此前只造了一个 id，打开就是「没找到」）。
+      const detail = await createProject({
+        title: r.title,
+        type: r.type,
+        typeKey: r.typeKey,
+        mode: "template",
+        ratio: r.ratio,
+        episodes: r.episodes,
+        mainline: r.data?.mainline,
+        coverFrom: r.cover.from,
+        coverTo: r.cover.to,
+      });
+      const episodes: EpisodeOutline[] = (r.data?.beats ?? []).map((b, i) => ({
+        no: b.no || i + 1,
+        hook: b.hook,
+        synopsis: b.beat,
+        beat: b.beat,
+      }));
+      const characters: CharacterDef[] = (r.data?.characters ?? []).map((c, i) => ({
+        id: `ch_${i + 1}`,
+        name: c.archetype || `角色 ${i + 1}`,
+        role: c.role === "key" ? "key" : "extra",
+        cast: "",
+        desc: c.desc,
+        avatar: `a${(i % 8) + 1}`,
+        bound: false,
+      }));
+      // seedProjectFromRecipe 不分横竖屏，一律「每集 75 秒」，也不带大纲参数和场景设定
+      // （那两样是 createProject 才 seed 的）—— 照它改，别让模板建出来的短剧在演示模式里多出东西。
+      const seeded: ProjectData = {
+        ...detail.data,
+        projectInfo: { ...detail.data.projectInfo, duration: "每集 75 秒" },
+        episodes,
+        characters,
+      };
+      delete seeded.outlinePrefs;
+      delete seeded.scenes;
+      setProjectData(detail.meta.id, seeded);
+      if (episodes.length) detail.meta.stage = 2;
+      return { kind: "project", projectId: detail.meta.id };
+    }
     // 单集：建一条带风格的短视频草稿（mock store 里真建，跳转后工厂可加载）
     const styleRef = [r.summary, r.data?.mainline ? `主线：${r.data.mainline}` : ""].filter(Boolean).join("。");
     const d = await createShortDraft({

@@ -100,7 +100,7 @@ function toDramaWire(script: Script): DramaScriptWire {
     kind: script.kind,
     genre: script.series || (script.kind === "drama" ? "短剧" : script.kind),
     duration_sec: 60,
-    status: script.status === "approved" ? "ready" : script.status,
+    status: "ready", // 同服务端：存下来的脚本一律是 ready
     series: script.series,
     episode: script.episode,
     dramaId: script.dramaId,
@@ -144,9 +144,9 @@ function saveDramaWire(body: DramaScriptWire): DramaScriptWire {
   const authorName = body.authorName ?? body.author_name ?? existing?.authorName ?? "我";
   const content = body.content ?? scenesToContent(body.scenes) ?? "";
   const currentVersionId = upsertCurrentVersion(id, content, authorName);
-  const status = (body.status === "draft" || body.status === "review" || body.status === "archived")
-    ? body.status
-    : "approved";
+  // 同服务端 DramaScriptService#saveScript：每次保存都写 ready，请求里带的 status 一律不认
+  //（此前 mock 保留 draft/review，演示模式里「待定稿」看着能用，线上根本存不住）。
+  const status: ScriptStatus = "approved"; // wire 上的 ready 在 api/scripts.ts 里映射成 approved
   const script: Script = {
     id,
     title: body.title || existing?.title || "未命名短剧",
@@ -156,7 +156,7 @@ function saveDramaWire(body: DramaScriptWire): DramaScriptWire {
     episode: body.episode ?? existing?.episode,
     dramaId: body.dramaId ?? body.drama_id ?? existing?.dramaId,
     currentVersionId,
-    progress: status === "approved" ? 100 : status === "review" ? 72 : 35,
+    progress: 100,
     suggestion: body.suggestion ?? existing?.suggestion,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -164,7 +164,7 @@ function saveDramaWire(body: DramaScriptWire): DramaScriptWire {
   };
   if (existingIdx >= 0) scriptStore[existingIdx] = script;
   else scriptStore.unshift(script);
-  return { ...toDramaWire(script), status: status === "approved" ? "ready" : status };
+  return toDramaWire(script);
 }
 
 registerMocks([

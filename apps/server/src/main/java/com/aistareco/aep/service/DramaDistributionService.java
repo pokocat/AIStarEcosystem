@@ -86,7 +86,7 @@ public class DramaDistributionService {
     @Transactional
     public JsonNode connect(String platformId, String userId) {
         PlatformDef def = PLATFORMS.stream().filter(p -> p.id().equals(platformId)).findFirst()
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PLATFORM_NOT_FOUND", "平台不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PLATFORM_NOT_FOUND", "找不到这个平台"));
         DramaPlatformConnection conn = connRepo.findByOwnerUserIdAndPlatformId(userId, platformId)
                 .orElseGet(() -> connRepo.save(DramaPlatformConnection.builder()
                         .id("dpc_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10))
@@ -119,7 +119,7 @@ public class DramaDistributionService {
 
     public JsonNode getJob(String id, String userId) {
         return jobRepo.findByIdAndOwnerUserId(id, userId).map(this::toCard)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PUBLISH_JOB_NOT_FOUND", "发布任务不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PUBLISH_JOB_NOT_FOUND", "找不到这条发布记录"));
     }
 
     /** body: { projectId, platformId, platformName?, scheduledAt? } */
@@ -128,10 +128,10 @@ public class DramaDistributionService {
         String projectId = text(body, "projectId");
         String platformId = text(body, "platformId");
         if (projectId == null || projectId.isBlank() || platformId == null || platformId.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "PUBLISH_JOB_PARAMS_REQUIRED", "缺少项目或平台参数");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "PUBLISH_JOB_PARAMS_REQUIRED", "缺少作品或平台参数");
         }
         if (connRepo.findByOwnerUserIdAndPlatformId(userId, platformId).isEmpty()) {
-            throw new BusinessException(HttpStatus.CONFLICT, "PLATFORM_NOT_CONNECTED", "请先连接该平台再发布");
+            throw new BusinessException(HttpStatus.CONFLICT, "PLATFORM_NOT_CONNECTED", "请先连接这个平台，再发布。");
         }
         String platformName = PLATFORMS.stream().filter(p -> p.id().equals(platformId))
                 .map(PlatformDef::name).findFirst().orElse(orDefault(text(body, "platformName"), platformId));
@@ -142,7 +142,7 @@ public class DramaDistributionService {
             try {
                 scheduledAt = OffsetDateTime.parse(sched);
             } catch (Exception e) {
-                throw new BusinessException(HttpStatus.BAD_REQUEST, "PUBLISH_SCHEDULE_INVALID", "定时发布时间格式不合法");
+                throw new BusinessException(HttpStatus.BAD_REQUEST, "PUBLISH_SCHEDULE_INVALID", "定时发布的时间格式不对。");
             }
         }
         DramaPublishJob job = jobRepo.save(DramaPublishJob.builder()
@@ -166,7 +166,7 @@ public class DramaDistributionService {
     public JsonNode retryJob(String id, String userId) {
         DramaPublishJob job = requireJob(id, userId);
         if (!"failed".equals(job.getStatus()) && !"cancelled".equals(job.getStatus())) {
-            throw new BusinessException(HttpStatus.CONFLICT, "PUBLISH_JOB_NOT_RETRYABLE", "仅失败/已取消的任务可重试");
+            throw new BusinessException(HttpStatus.CONFLICT, "PUBLISH_JOB_NOT_RETRYABLE", "只有失败或已取消的发布才能重试。");
         }
         job.setStatus("queued");
         job.setProgress(0);
@@ -179,7 +179,7 @@ public class DramaDistributionService {
     public JsonNode cancelJob(String id, String userId) {
         DramaPublishJob job = requireJob(id, userId);
         if ("live".equals(job.getStatus())) {
-            throw new BusinessException(HttpStatus.CONFLICT, "PUBLISH_JOB_ALREADY_LIVE", "已上线的任务无法取消");
+            throw new BusinessException(HttpStatus.CONFLICT, "PUBLISH_JOB_ALREADY_LIVE", "已经发出去的不能取消。");
         }
         job.setStatus("cancelled");
         job.setUpdatedAt(OffsetDateTime.now());
@@ -220,7 +220,7 @@ public class DramaDistributionService {
 
     private DramaPublishJob requireJob(String id, String userId) {
         return jobRepo.findByIdAndOwnerUserId(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PUBLISH_JOB_NOT_FOUND", "发布任务不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PUBLISH_JOB_NOT_FOUND", "找不到这条发布记录"));
     }
 
     private ObjectNode toCard(DramaPublishJob job) {

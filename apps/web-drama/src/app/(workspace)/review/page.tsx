@@ -5,18 +5,19 @@ export const dynamic = "force-dynamic";
 // 剧本审阅中心 — 设计真源 screens-hub-v2.jsx `ReviewHub` / `ReviewRow` +
 // screens-review-table.jsx `ReviewSheet` / `SceneRows` / `SheetHead`:
 // 跨项目待审队列 + Excel 式平铺表格(场/场景/动作/角色/对白/情绪/审阅/意见),原地通读、原地通过。
+// v0.197：页面目前没有入口（队列无后端，恒为空），只按术语表改了文案；
+// 「按意见让 AI 重写」「让 AI 写这一集」都没接后端，界面上如实说，不再假装已排队。
 import * as React from "react";
 import {
   AlertTriangle,
   Check,
   ChevronLeft,
-  Clock,
   Edit,
-  Layers,
   Mic,
   Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatDateTime } from "@ai-star-eco/api-client";
 import { Avatar, Thumb } from "@/components/drama-ui";
 import {
   episodeContent,
@@ -64,11 +65,11 @@ export default function ReviewPage() {
   const approve = (item: ReviewItem) => {
     setQueue((q) => q.map((x) => (x.id === item.id ? { ...x, status: "approved" as const } : x)));
     setReviewItem(null);
-    toast.success(`《${item.title}》第 ${item.ep} 集剧本已通过`);
+    toast.success(`《${item.title}》第 ${item.ep} 集的剧本已确认`);
   };
-  const sendFix = (item: ReviewItem, n: number) => {
-    setReviewItem(null);
-    toast.success(`已把 ${n} 条意见已发送给 AI 重写，完成后将重新进入待审`);
+  const sendFix = (_item: ReviewItem, n: number) => {
+    // 按意见重写还没有后端：如实告知，不假装已发出。
+    toast.info(`让 AI 按意见重写还没上线。你标的 ${n} 场意见先记在这一页，离开后不会保留`);
   };
 
   if (reviewItem) {
@@ -89,7 +90,7 @@ export default function ReviewPage() {
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>剧本审阅</h1>
         <div className="muted" style={{ marginTop: 4 }}>
-          待审阅的剧本都在这里，可以直接通读、直接通过，不用一个个进项目
+          等你过目的分集剧本都在这里，不用一部部点进去看
         </div>
       </div>
 
@@ -100,7 +101,7 @@ export default function ReviewPage() {
         {pending.length === 0 && (
           <div className="card col center" style={{ padding: 32, color: "var(--ink-3)", gap: 8 }}>
             <Check size={26} />
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>暂无待审剧本，项目提交审阅后会出现在这里</span>
+            <span style={{ fontSize: 13.5, fontWeight: 600 }}>暂时没有要审的剧本</span>
           </div>
         )}
         {pending.map((it, i) => (
@@ -111,7 +112,7 @@ export default function ReviewPage() {
       {done.length > 0 && (
         <>
           <div className="faint" style={{ fontSize: 12, fontWeight: 700, marginBottom: 10, letterSpacing: ".05em" }}>
-            已通过 · {done.length}
+            已确认 · {done.length}
           </div>
           <div className="col gap-3">
             {done.map((it) => (
@@ -138,23 +139,23 @@ function ReviewRow({
   const scenes = getProjectData(it.pid)!.script.scenes.length;
   return (
     <div
-      className={"card row gap-4" + (delay != null ? " fade-up" : "")}
-      style={{ padding: 14, animationDelay: (delay || 0) + "ms", opacity: done ? 0.72 : 1 }}
+      className={"card row gap-4 mk-review-row" + (delay != null ? " fade-up" : "")}
+      style={{ padding: 14, animationDelay: (delay || 0) + "ms", opacity: done ? 0.72 : 1, flexWrap: "wrap" }}
     >
       <Thumb from={it.cover.from} to={it.cover.to} w={48} ratio="3/4" radius={10} stripes={false} />
       <div className="grow" style={{ minWidth: 0 }}>
-        <div className="row gap-2">
-          <span style={{ fontWeight: 800, fontSize: 14.5 }}>{it.title}</span>
-          <span className="tag tag-gray">{it.type}</span>
-          <span className="tag tag-accent num">第 {it.ep} 集</span>
+        <div className="row gap-2" style={{ minWidth: 0 }}>
+          <span title={it.title} style={{ fontWeight: 800, fontSize: 14.5, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.title}</span>
+          <span className="tag tag-gray" style={{ flex: "none" }}>{it.type}</span>
+          <span className="tag tag-accent num" style={{ flex: "none" }}>第 {it.ep} 集</span>
         </div>
         <div className="faint num" style={{ fontSize: 12, marginTop: 4 }}>
-          {scenes} 场 · 约 {it.words} 字 · {it.updated}生成
+          {scenes} 场 · 约 {it.words} 字 · 生成于 {formatDateTime(it.updated)}
         </div>
       </div>
       {done ? (
         <span className="tag tag-green" style={{ flex: "none" }}>
-          <Check size={11} /> 已通过
+          <Check size={11} /> 已确认
         </span>
       ) : null}
       <button className={done ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"} style={{ flex: "none" }} onClick={onOpen}>
@@ -263,7 +264,7 @@ function SceneRows({
                 <span className="faint">—</span>
               )}
             </td>
-            <td style={cell({})}>{l ? l.text : <span className="faint">本场无台词(空镜 / 动作场)</span>}</td>
+            <td style={cell({})}>{l ? l.text : <span className="faint">这一场没有台词（空镜或动作戏）</span>}</td>
             <td style={cell({})}>
               {l && l.emotion ? <span className="tag tag-pink">{l.emotion}</span> : <span className="faint">—</span>}
             </td>
@@ -305,7 +306,7 @@ function SceneRows({
                   <textarea
                     value={mark?.note || ""}
                     onChange={(e) => onNote(e.target.value)}
-                    placeholder="给 AI 的修改意见，例如：台词偏书面，建议更口语化"
+                    placeholder="写下要怎么改，比如：台词太书面，改口语一点"
                     style={{
                       width: "100%",
                       minHeight: 56,
@@ -345,7 +346,6 @@ function ReviewSheet({
 }) {
   const [marks, setMarks] = React.useState<Marks>({});
   const [filter, setFilter] = React.useState<"all" | "fix">("all");
-  const [queued, setQueued] = React.useState<Record<number, boolean>>({});
 
   const d = getProjectData(item.pid)!;
   const scenes = d.script.scenes;
@@ -362,15 +362,15 @@ function ReviewSheet({
     <div className="col ws-flush" style={{ background: "var(--bg)" }}>
       {/* 顶部 */}
       <div
-        className="row gap-3"
-        style={{ padding: "14px 28px", borderBottom: "1px solid var(--line)", background: "var(--surface)", flex: "none" }}
+        className="row gap-3 mk-review-bar"
+        style={{ padding: "14px 28px", borderBottom: "1px solid var(--line)", background: "var(--surface)", flex: "none", flexWrap: "wrap" }}
       >
         <button className="btn btn-ghost btn-sm" onClick={onBack}>
-          <ChevronLeft size={15} /> 待审列表
+          <ChevronLeft size={15} /> 返回待审列表
         </button>
         <Thumb from={item.cover.from} to={item.cover.to} w={28} ratio="9/16" radius={8} stripes={false} />
-        <div className="row gap-2">
-          <span style={{ fontWeight: 800, fontSize: 15 }}>{item.title}</span>
+        <div className="row gap-2" style={{ minWidth: 0 }}>
+          <span title={item.title} style={{ fontWeight: 800, fontSize: 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
           <span className="tag tag-gray">{item.type}</span>
           <span className="tag tag-accent num">第 {item.ep} 集待审</span>
         </div>
@@ -398,16 +398,16 @@ function ReviewSheet({
               boxShadow: filter === "fix" ? "var(--shadow-sm)" : "none",
             }}
           >
-            仅待改 · {flagged.length}
+            只看要改的 · {flagged.length}
           </button>
         </div>
         <span className="tag tag-gray num">
-          已过 {okCount}/{scenes.length} 场
+          已通过 {okCount}/{scenes.length} 场
         </span>
       </div>
 
       {/* 表格 */}
-      <div className="scroll grow" style={{ minHeight: 0, padding: "18px 28px 24px" }}>
+      <div className="scroll grow mk-review-body" style={{ minHeight: 0, padding: "18px 28px 24px" }}>
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
@@ -439,7 +439,7 @@ function ReviewSheet({
                 {shown.length === 0 && (
                   <tr>
                     <td colSpan={8} style={{ padding: "26px 14px", textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
-                      没有标记「需修改」的场次，可切回「全部场次」继续通读
+                      还没有标「需修改」的场次
                     </td>
                   </tr>
                 )}
@@ -463,23 +463,10 @@ function ReviewSheet({
                             <span className="grow"></span>
                             {e.locked ? (
                               <span className="tag tag-green">
-                                <Check size={10} /> 剧本已锁
-                              </span>
-                            ) : queued[e.no] ? (
-                              <span className="tag tag-accent">
-                                <Clock size={10} /> 已排队生成
+                                <Check size={10} /> 剧本已确认
                               </span>
                             ) : (
-                              <>
-                                <span className="tag tag-gray">剧本待写</span>
-                                <button
-                                  className="chip"
-                                  style={{ height: 24, fontSize: 11 }}
-                                  onClick={() => setQueued((q) => ({ ...q, [e.no]: true }))}
-                                >
-                                  <Layers size={11} /> 用模板补写
-                                </button>
-                              </>
+                              <span className="tag tag-gray">剧本还没写</span>
                             )}
                           </span>
                         </td>
@@ -490,28 +477,28 @@ function ReviewSheet({
           </div>
         </div>
         <div className="faint" style={{ fontSize: 11.5, marginTop: 10 }}>
-          未标记的场次默认视为通过；其余分集在下方平铺，生成剧本后会自动展开为同样的表格
+          没标记的场次算通过。其他集的剧本写好后，也会按这个表格列在下面。
         </div>
       </div>
 
       {/* 底部操作 */}
       <div
-        className="row gap-3"
-        style={{ padding: "12px 28px", borderTop: "1px solid var(--line)", background: "var(--surface)", flex: "none" }}
+        className="row gap-3 mk-review-bar"
+        style={{ padding: "12px 28px", borderTop: "1px solid var(--line)", background: "var(--surface)", flex: "none", flexWrap: "wrap" }}
       >
         {flagged.length > 0 ? (
           <span className="row gap-2" style={{ fontSize: 12.5, fontWeight: 700, color: "#b45309" }}>
-            <AlertTriangle size={15} /> {flagged.length} 场已标记「需修改」，修改意见将随场次发送给 AI
+            <AlertTriangle size={15} style={{ flex: "none" }} /> {flagged.length} 场标了「需修改」。让 AI 按意见重写还没上线
           </span>
         ) : (
           <span className="row gap-2" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-3)" }}>
-            <Check size={15} /> 确认无误后可直接通过，本集将自动锁定
+            <Check size={15} style={{ flex: "none" }} /> 没问题就点通过，这一集的剧本会标成已确认，之后还能改
           </span>
         )}
         <span className="grow"></span>
         {flagged.length > 0 ? (
-          <button className="btn btn-grad" onClick={() => onSendFix(item, flagged.length)}>
-            <Wand2 size={15} /> 发给 AI 重写 {flagged.length} 场
+          <button className="btn btn-grad" disabled style={{ opacity: 0.55, cursor: "not-allowed" }} title="让 AI 按意见重写还没上线" onClick={() => onSendFix(item, flagged.length)}>
+            <Wand2 size={15} /> 让 AI 重写 {flagged.length} 场
           </button>
         ) : (
           <button className="btn btn-primary" onClick={() => onApprove(item)}>

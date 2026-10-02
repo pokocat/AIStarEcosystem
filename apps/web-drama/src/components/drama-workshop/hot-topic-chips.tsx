@@ -13,19 +13,30 @@ interface Props {
   topics: HotTopic[];
   /** 最多显示几条（默认 4）。 */
   max?: number;
-  /** 每次进页随机取一批（首页用；不随渲染抖动）。默认按配置顺序取前 max 条。 */
+  /** 每次进页随机取一批（挂载后才打乱，首帧按配置顺序）。默认按配置顺序取前 max 条。 */
   shuffle?: boolean;
   /** 点一个 chip：把整句钩子填进输入框。 */
   onPick: (idea: string) => void;
 }
 
 export function HotTopicChips({ topics, max = 4, shuffle = false, onPick }: Props) {
-  const picks = React.useMemo(() => {
+  // 打乱只能在挂载之后做：渲染期调 Math.random，服务端和浏览器抽到的不一样 → hydration 报错、
+  // 整棵树重建、热点 chip 在页面加载后跳一下。首帧先按配置顺序取前 max 条，挂载后再换成随机的一批。
+  const [order, setOrder] = React.useState<HotTopic[] | null>(null);
+  React.useEffect(() => {
     const all = topics ?? [];
-    if (all.length <= max) return all;
-    return (shuffle ? [...all].sort(() => Math.random() - 0.5) : all).slice(0, max);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!shuffle || all.length <= max) {
+      setOrder(null);
+      return;
+    }
+    const a = [...all];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    setOrder(a);
   }, [topics, max, shuffle]);
+  const picks = (order ?? topics ?? []).slice(0, max);
 
   if (!picks.length) return null;
 
@@ -38,7 +49,7 @@ export function HotTopicChips({ topics, max = 4, shuffle = false, onPick }: Prop
         <button
           key={(h.idea || h.label) + i}
           type="button"
-          className="chip"
+          className="chip hm-hot-chip"
           style={{
             height: 26,
             fontSize: 11.5,

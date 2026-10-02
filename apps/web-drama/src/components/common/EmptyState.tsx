@@ -13,7 +13,7 @@ export function EmptyState({ icon, title, description, action }: Props) {
   return (
     <div
       style={{
-        padding: "48px 32px",
+        padding: "clamp(28px, 6vw, 48px) clamp(16px, 5vw, 32px)",
         textAlign: "center",
         background: "rgba(255,255,255,0.02)",
         border: "1px dashed var(--line-2)",
@@ -42,7 +42,9 @@ export function EmptyState({ icon, title, description, action }: Props) {
           {description}
         </div>
       )}
-      {action && <div style={{ marginTop: 18, display: "flex", justifyContent: "center", gap: 10 }}>{action}</div>}
+      {action && (
+        <div style={{ marginTop: 18, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 10 }}>{action}</div>
+      )}
     </div>
   );
 }

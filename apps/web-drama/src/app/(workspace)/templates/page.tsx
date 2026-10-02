@@ -2,11 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-// 创意市场（v0.75）—— 统一承载「官方内置创意」+「用户发布的创意」。
+// 模板广场（v0.75 起；v0.197 按 docs/drama-ux-copy-pass.md §2 统一叫法）—— 统一承载官方模板 + 创作者发布的模板。
 // 数据真源 = 已发布的 DramaRecipe（origin: official=官方 / extracted=用户自助 / featured=运营精选）。
-// 用户：浏览 + 「套用开拍」（预填新项目，建-时选）。
-// 运营（后端授予的 operatorRole）：新建内置创意 + 从用户作品精选（邀请授权）。
-// 子页「我发布的创意」= /templates/published。
+// 用户：浏览 + 「做同款」（多集 → 新建短剧，不花积分；单条 → 新建短视频草稿，扣开拍费，
+//   走全站共用的 confirmShortStart 确认（阈值语义同 CreditButton）+ 幂等键）。
+// 运营（后端授予的 operatorRole）：新建官方模板 + 邀请创作者公开作品。
+// 子页「我发布的模板」= /templates/published。
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -27,23 +28,74 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@ai-star-eco/api-client";
+import { formatDateTime, useAuth } from "@ai-star-eco/api-client";
 import { RecipesApi } from "@/api";
 import type { BuiltinRecipeInput, DramaRecipe, RecipeBeat, RecipeCandidate } from "@/api/recipes";
+import { newClientRequestId } from "@/api/shorts";
+import { CreditMark } from "@/components/drama-ui";
+import { confirmShortStart, SHORT_START_LEAD } from "@/components/drama-workshop/short-start-confirm";
+import { useDramaConfig } from "@/lib/use-drama-config";
 import { CONTENT_TYPES } from "@/mocks/drama-workshop";
 import { aiErrorMessage } from "@/lib/ai-error";
+import { notifyWalletChanged } from "@/lib/use-wallet";
 import { ModalShell } from "@/components/common/ModalShell";
 import { ViewHeader } from "@/components/common";
 
 type Scope = "all" | "official" | "user";
 
 const isOfficial = (r: DramaRecipe) => r.origin === "official";
+/** 单条模板（episodes ≤ 1）做同款 = 新建短视频草稿（扣开拍费）；多集 = 新建短剧（不花积分）。 */
+const isShortRecipe = (r: DramaRecipe) => r.episodes <= 1;
+
+/** AI 写分集剧情最多写到第几集（服务端 DramaProjectService#outlineAiDraft clamp 1..12，见 stages/outline.tsx）。 */
+const AI_OUTLINE_MAX_EP = 12;
+
+/**
+ * 多集模板「包含什么」里分集那一行的小字：按 AI 真实能写到的集数说，超过第 12 集的要自己写。
+ * beatN = 模板里写好钩子和转折的集数（从第 1 集起）。
+ */
+function episodeFillSub(beatN: number, episodes: number): string {
+  if (beatN >= episodes) return "每一集都能改";
+  const aiTo = Math.min(episodes, AI_OUTLINE_MAX_EP);
+  const selfFrom = Math.max(beatN, AI_OUTLINE_MAX_EP) + 1; // 从这一集起 AI 写不了
+  const selfPart = episodes > AI_OUTLINE_MAX_EP ? `第 ${selfFrom} 集起要自己写` : "";
+  if (beatN >= aiTo) return selfPart; // 前 12 集都已写好，剩下的只能自己写
+  if (beatN === 0) {
+    return selfPart
+      ? `AI 可以按故事主线写前 ${AI_OUTLINE_MAX_EP} 集的分集剧情，${selfPart}`
+      : "分集剧情可以让 AI 按故事主线写";
+  }
+  const aiRange = beatN + 1 === aiTo ? `第 ${aiTo} 集` : `第 ${beatN + 1}–${aiTo} 集`;
+  const aiPart = `${aiRange}可以让 AI 按故事主线补齐`;
+  return selfPart ? `${aiPart}，${selfPart}` : aiPart;
+}
+
+/** 「做同款」按钮文案：写清去向，单条的带钻石标记，多集的注明新建不花积分。 */
+function ApplyLabel({ r, applying }: { r: DramaRecipe; applying: boolean }) {
+  if (applying) return <>正在准备…</>;
+  if (isShortRecipe(r)) {
+    return (
+      <>
+        做同款短视频 <CreditMark tone="inherit" size={13} />
+      </>
+    );
+  }
+  return (
+    <>
+      做同款短剧
+      <span style={{ fontSize: "0.82em", fontWeight: 500, opacity: 0.85 }}>（新建不花积分）</span>
+    </>
+  );
+}
 
 export default function TemplatesPage() {
   const router = useRouter();
   const { user } = useAuth();
-  // 运营操作（新建内置创意 / 从用户作品精选）仅对后端授予运营身份的账号显示。
+  const cfg = useDramaConfig();
+  // 运营操作（新建官方模板 / 邀请创作者公开作品）仅对后端授予运营身份的账号显示。
   const showOperator = !!user?.operatorRole;
+  // 单条模板做同款会扣开拍费：同一个模板失败重试沿用同一把幂等键，服务端按 (owner,key) 查重只扣一笔。
+  const requestIds = React.useRef(new Map<string, string>());
 
   const [recipes, setRecipes] = React.useState<DramaRecipe[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -62,7 +114,7 @@ export default function TemplatesPage() {
     try {
       setRecipes(await RecipesApi.listPublished());
     } catch (e) {
-      setError(aiErrorMessage(e, "创意市场加载失败，请稍后重试"));
+      setError(aiErrorMessage(e, "模板没加载出来，请重试"));
       setRecipes([]);
     } finally {
       setLoading(false);
@@ -87,21 +139,45 @@ export default function TemplatesPage() {
         (r.data?.hooks || []).some((h) => h.includes(q))),
   );
 
+  const busy = React.useRef(false);
   const apply = async (r: DramaRecipe) => {
-    if (applying) return;
-    setApplying(r.id);
+    if (applying || busy.current) return;
+    busy.current = true; // 同步守门：确认弹窗打开期间再点别的卡片不会叠出第二个弹窗
     try {
-      const res = await RecipesApi.applyRecipe(r);
+      await applyInner(r);
+    } finally {
+      busy.current = false;
+    }
+  };
+  const applyInner = async (r: DramaRecipe) => {
+    const short = isShortRecipe(r);
+    if (short) {
+      // 单条模板会扣一笔开拍费：确认弹窗、按钮和免打扰阈值都走全站共用的那一份（与 /shorts/new 一致）。
+      const ok = await confirmShortStart(cfg, SHORT_START_LEAD.fromTemplate);
+      if (!ok) return;
+    }
+    setApplying(r.id);
+    let key = requestIds.current.get(r.id);
+    if (short && !key) {
+      key = newClientRequestId();
+      requestIds.current.set(r.id, key);
+    }
+    try {
+      const res = await RecipesApi.applyRecipe(r, short ? key : undefined);
+      requestIds.current.delete(r.id);
       if (res.kind === "short") {
-        // 单集创意 → 短视频工厂，按这个风格描述主题即可开拍
-        toast.success(`已套用「${r.title}」创意，进短视频工坊描述主题即可开拍`);
+        notifyWalletChanged(); // 建草稿这一步扣了开拍费，顶栏余额跟着重读（与首页同一入口一致）
+        toast.success(`已按「${r.title}」的风格新建短视频草稿`);
         router.push(`/shorts/make?draft=${encodeURIComponent(res.shortId)}`);
       } else {
-        toast.success(`已套用「${r.title}」，已生成大纲骨架，可继续编辑后开拍`);
+        toast.success(`已按「${r.title}」新建短剧，故事框架已经填好，接着改就行`);
         router.push(`/projects/${res.projectId}`);
       }
     } catch (e) {
-      toast.error(aiErrorMessage(e, "套用失败，请稍后重试"));
+      // 失败保留幂等键：再点一次重试，服务端不会扣第二笔。
+      // 单条的请求可能已经在服务端扣过费才失败（如超时），余额以服务端为准重读一次。
+      if (short) notifyWalletChanged();
+      toast.error(aiErrorMessage(e, "没做成同款，请重试"));
     } finally {
       setApplying(null);
     }
@@ -109,24 +185,24 @@ export default function TemplatesPage() {
 
   const scopeTabs: [Scope, string, number][] = [
     ["all", "全部", recipes.length],
-    ["official", "官方内置", officialN],
-    ["user", "用户作品", userN],
+    ["official", "官方", officialN],
+    ["user", "创作者发布", userN],
   ];
 
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto" }}>
       <div style={{ marginBottom: 14 }}>
         <ViewHeader
-          eyebrow="创意市场"
+          eyebrow="官方和创作者发布的模板"
           title={
             <>
-              创意{" "}
+              模板{" "}
               <span className="text-gradient-gold" style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontWeight: 400 }}>
-                市场
+                广场
               </span>
             </>
           }
-          meta="官方内置和创作者发布的创作配方，套用后直接预填一部新剧"
+          meta={`多集模板：新建一部短剧并填好故事框架，新建不花积分。单条模板：照它的风格做一条短视频，开始制作扣 ${cfg.prices.shortEntry} 积分。`}
           action={
             <>
               <button
@@ -135,15 +211,15 @@ export default function TemplatesPage() {
                 style={{ height: 40, flex: "none" }}
                 onClick={() => router.push("/templates/published")}
               >
-                <Boxes size={15} /> 我发布的创意 <ArrowRight size={14} />
+                <Boxes size={15} /> 我发布的模板 <ArrowRight size={14} />
               </button>
               {showOperator && (
                 <>
                   <button type="button" className="btn btn-line" style={{ height: 40, flex: "none" }} onClick={() => setShowCandidates(true)}>
-                    <UserPlus size={15} /> 从用户作品精选
+                    <UserPlus size={15} /> 邀请创作者公开作品
                   </button>
                   <button type="button" className="btn btn-grad" style={{ height: 40, flex: "none" }} onClick={() => setShowBuiltin(true)}>
-                    <Plus size={15} /> 新建内置创意
+                    <Plus size={15} /> 新建官方模板
                   </button>
                 </>
               )}
@@ -152,8 +228,8 @@ export default function TemplatesPage() {
         />
       </div>
 
-      <div className="row" style={{ marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
-        <div className="row gap-2">
+      <div className="row mk-tpl-toolbar" style={{ marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
+        <div className="row gap-2" style={{ flexWrap: "wrap" }}>
           {scopeTabs.map(([k, label, n]) => {
             const on = scope === k;
             return (
@@ -182,14 +258,15 @@ export default function TemplatesPage() {
             );
           })}
         </div>
-        <div className="grow" />
-        <div className="row card" style={{ padding: "0 14px", height: 40, width: 240, gap: 8, borderRadius: 999, flex: "none" }}>
-          <Search size={16} style={{ color: "var(--ink-3)" }} />
+        <div className="grow mk-tpl-grow" />
+        <div className="row card mk-tpl-search" style={{ padding: "0 14px", height: 40, width: 240, gap: 8, borderRadius: 999, flex: "none" }}>
+          <Search size={16} style={{ color: "var(--ink-3)", flex: "none" }} />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜创意 / 作者 / 钩子…"
-            style={{ border: "none", outline: "none", background: "transparent", flex: 1, fontSize: 13.5 }}
+            placeholder="搜模板名、作者或钩子"
+            aria-label="搜索模板"
+            style={{ border: "none", outline: "none", background: "transparent", flex: 1, minWidth: 0, fontSize: 13.5 }}
           />
         </div>
       </div>
@@ -234,15 +311,17 @@ export default function TemplatesPage() {
           <Boxes size={26} style={{ color: "var(--ink-3)" }} />
           {recipes.length > 0 ? (
             <>
-              <div style={{ fontWeight: 700 }}>没有匹配的创意</div>
-              <div className="faint" style={{ fontSize: 12.5 }}>试试调整搜索词或类型筛选</div>
+              <div style={{ fontWeight: 700 }}>没有符合条件的模板</div>
+              <div className="faint" style={{ fontSize: 12.5 }}>换个关键词，或者清掉筛选</div>
               <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => { setQ(""); setFilter("all"); setScope("all"); }}>清除筛选</button>
             </>
           ) : (
             <>
-              <div style={{ fontWeight: 700 }}>这里还没有创意</div>
-              <div className="faint" style={{ fontSize: 12.5 }}>
-                {showOperator ? "用「新建内置创意」添加官方内容，或从用户作品中精选。" : "创作者发布与运营精选的创意会陆续出现在这里。"}
+              <div style={{ fontWeight: 700 }}>还没有模板</div>
+              <div className="faint" style={{ fontSize: 12.5, maxWidth: 420, lineHeight: 1.6 }}>
+                {showOperator
+                  ? "点「新建官方模板」加一个，或者邀请创作者公开作品。"
+                  : "做好的短剧或短视频，可以在成片预览里点「发布成模板」，审核通过后会出现在这里。"}
               </div>
             </>
           )}
@@ -288,7 +367,7 @@ export default function TemplatesPage() {
   );
 }
 
-/* ── 创意卡片 ─────────────────────────────────────────────────────────────────── */
+/* ── 模板卡片 ─────────────────────────────────────────────────────────────────── */
 function SourceBadge({ r }: { r: DramaRecipe }) {
   if (isOfficial(r)) {
     return (
@@ -298,8 +377,12 @@ function SourceBadge({ r }: { r: DramaRecipe }) {
     );
   }
   return (
-    <span className="tag tag-gray" style={{ fontSize: 10.5 }}>
-      来自 @{r.authorName || "用户"}
+    <span
+      className="tag tag-gray"
+      title={`来自 @${r.authorName || "创作者"}`}
+      style={{ fontSize: 10.5, maxWidth: 160, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}
+    >
+      来自 @{r.authorName || "创作者"}
     </span>
   );
 }
@@ -340,7 +423,7 @@ function RecipeCard({
           <SourceBadge r={r} />
         </span>
         <span className="thumb-label num" style={{ position: "absolute", top: 8, right: 8 }}>
-          {r.episodes > 1 ? `${r.episodes} 集` : "单集"}
+          {r.episodes > 1 ? `${r.episodes} 集` : "单条"}
         </span>
         {r.useCount > 0 && (
           <span className="num" style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,.5)", color: "#fff", fontSize: 10.5, padding: "1px 6px", borderRadius: 6 }}>
@@ -350,8 +433,8 @@ function RecipeCard({
       </div>
       <div className="col" style={{ padding: 14, gap: 9, flex: 1 }}>
         <div className="row gap-2" style={{ alignItems: "center" }}>
-          <span style={{ fontWeight: 800, fontSize: 15, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
-          <span className="tag tag-gray" style={{ fontSize: 10.5, flex: "none" }}>{r.type}</span>
+          <span title={r.title} style={{ fontWeight: 800, fontSize: 15, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
+          <span className="tag tag-gray" title={r.type} style={{ fontSize: 10.5, flex: "none", maxWidth: 96, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.type}</span>
         </div>
         <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.55, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
           {r.summary || r.data?.mainline || "—"}
@@ -366,7 +449,7 @@ function RecipeCard({
             onApply();
           }}
         >
-          <Zap size={14} /> {applying ? "套用中…" : "套用开拍"}
+          <Zap size={14} /> <ApplyLabel r={r} applying={applying} />
         </button>
       </div>
     </div>
@@ -395,6 +478,14 @@ function RecipePreviewHeroVideo({ r }: { r: DramaRecipe }) {
     video.muted = true;
     video.defaultMuted = true;
     void video.play().then(() => setState("playing")).catch(() => setState("error"));
+  };
+  // 加载失败时原地重试（不再把签名过的源地址外链给用户：过期后就是 403）。
+  const retry = () => {
+    const video = ref.current;
+    if (!video) return;
+    setState("loading");
+    video.load();
+    playSilently();
   };
 
   return (
@@ -431,58 +522,59 @@ function RecipePreviewHeroVideo({ r }: { r: DramaRecipe }) {
       {state === "error" && (
         <div className="col center" style={{ position: "absolute", inset: 0, zIndex: 3, gap: 8, padding: 20, textAlign: "center", color: "#fff", background: "rgba(0,0,0,.58)" }}>
           <AlertCircle size={22} />
-          <span style={{ fontSize: 13, fontWeight: 800 }}>范例视频加载失败</span>
-          <a href={r.previewVideo} target="_blank" rel="noreferrer" style={{ color: "#fff", fontSize: 12, textDecoration: "underline", textUnderlineOffset: 3 }}>
-            打开视频源地址
-          </a>
+          <span style={{ fontSize: 13, fontWeight: 800 }}>范例视频没加载出来</span>
+          <button type="button" className="btn btn-sm" onClick={retry} style={{ background: "rgba(255,255,255,.92)", color: "var(--ink)", pointerEvents: "auto" }}>
+            重试
+          </button>
         </div>
       )}
     </>
   );
 }
 
-/* ── 创意详情弹窗（editorial · 只读 + 套用） ──────────────────────────────────────
+/* ── 模板详情弹窗（editorial · 只读 + 做同款） ──────────────────────────────────────
    编辑/精品向：媒体 hero 上叠标题+作者（gradient scrim）；下方简介/内容双 tab。
-   硬约束：不外露 payload（beats/characters/notes/mainline 原文），内容 tab 只给「套用后你会得到什么」的计数能力清单。 */
+   硬约束：不外露 payload（beats/characters/notes/mainline 原文），内容 tab 只给「做同款后你会得到什么」的计数能力清单，
+   而且只列模板里真有的东西（没有角色设定就不说有）。 */
 function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; applying: boolean; onClose: () => void; onApply: () => void }) {
+  const cfg = useDramaConfig();
   const [tab, setTab] = React.useState<"intro" | "content">("intro");
 
   const portrait = !/16\s*:\s*9/.test(r.ratio); // 竖屏剧（9:16 等）hero 更高
   const ratioMatch = r.ratio.match(/(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/);
   const fallbackAspect = ratioMatch ? Number(ratioMatch[1]) / Number(ratioMatch[2]) : portrait ? 9 / 16 : 16 / 9;
-  const fmtTime = (s: string | null) =>
-    s ? new Date(s).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/\//g, "-") : null;
-  const updated = fmtTime(r.updatedAt) || fmtTime(r.publishedAt);
+  const updatedIso = r.updatedAt || r.publishedAt;
 
-  // 内容 tab：套用后你会得到什么（计数 + 能力，不外露具体文字）。
-  // 单集创意 → 短视频工厂；多集创意 → 六阶段项目，文案各自如实。
-  const isShort = r.episodes <= 1;
+  // 内容 tab：做同款后你会得到什么（计数 + 能力，不外露具体文字）。
+  // 单条模板 → 短视频草稿（短视频一律竖屏 9:16，模板自己的画幅不带过去）；多集模板 → 新建短剧，文案各自如实。
+  const isShort = isShortRecipe(r);
   const beatN = r.data?.beats?.length ?? 0;
   const charN = r.data?.characters?.length ?? 0;
-  const hasMethod = !!r.data?.mainline || beatN > 0;
+  const hasMainline = !!r.data?.mainline;
   const features: { label: string; sub: string }[] = isShort
     ? [
-        { label: "自带风格", sub: "套用后 AI 按这个风格写口播脚本、拆分镜" },
-        { label: "单条短片", sub: `${r.ratio} 画幅 · 进短视频工坊逐镜出片、合成成片` },
+        { label: "风格已经定好", sub: "AI 按这个风格写口播脚本、拆分镜" },
+        { label: "一条竖屏短视频", sub: "做出来是 9:16 竖屏。在短视频制作页里逐镜生成视频，最后合成成片" },
         r.previewVideo
-          ? { label: "有范例成片", sub: "对着上面的范例视频，说一句你的主题就能开拍" }
-          : { label: "说个主题就能开拍", sub: "结构已经搭好，说清产品或主题，节奏交给 AI" },
+          ? { label: "有范例视频", sub: "上面就是照这个模板做出来的样子，换成你的主题再做一条" }
+          : { label: "你只要说主题", sub: "写清产品或主题，AI 照这个风格写脚本、排镜头" },
       ]
     : [
-        { label: "主线骨架", sub: hasMethod ? "一条不绑具体人物的故事主线，套用后展开到你的项目" : "创作方法已经写好，套用后自动铺出大纲" },
+        hasMainline
+          ? { label: "故事主线", sub: "不带具体人名地名的故事走向，新建后填进这部剧的「故事大纲」" }
+          : { label: "写法已经定好", sub: "新建后 AI 照这个写法写故事大纲" },
         beatN > 0
-          ? { label: `${beatN} 段分集节拍`, sub: "每集的钩子和转折都摆好了，开拍前每条都能改" }
-          : { label: `${r.episodes} 集分集结构`, sub: "套用后按集铺好分场骨架" },
-        charN > 0
-          ? { label: `${charN} 个角色原型`, sub: "人设直接进项目，换成你自己的角色就行" }
-          : { label: "角色原型", sub: "套用后给一套人设，可以随便改" },
-        { label: "完整分镜方案", sub: `${r.ratio} 画幅 · 套用后进短剧工作台直接出图出片` },
+          ? { label: `${beatN} 集写好了钩子和转折`, sub: episodeFillSub(beatN, r.episodes) }
+          : { label: `${r.episodes} 集`, sub: `新建后按这个集数排好。${episodeFillSub(0, r.episodes)}` },
+        ...(charN > 0 ? [{ label: `${charN} 个角色设定`, sub: "新建后带进这部剧，想换成自己的角色也行" }] : []),
+        { label: `${r.ratio} 画幅`, sub: "这部剧按这个画幅出图和视频。分镜要到逐集制作时再生成" },
       ];
 
   return (
-    <ModalShell onClose={onClose} label={r.title} overlayZIndex={90} className="card pop-in col" style={{ width: 560, maxWidth: "94vw", maxHeight: "92vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+    <ModalShell onClose={onClose} label={r.title} overlayZIndex={90} className="card pop-in col mk-modal" style={{ width: 560, maxWidth: "100%", maxHeight: "92vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
       {/* ── 媒体 hero ── */}
       <div
+        className="mk-tpl-hero"
         style={{
           position: "relative",
           flex: "none",
@@ -505,16 +597,12 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             {/* 底部渐变 scrim，承托叠加标题 */}
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,.34) 0%,rgba(0,0,0,0) 32%,rgba(0,0,0,0) 50%,rgba(0,0,0,.72) 100%)" }} />
 
-            <div className="col center" style={{ position: "absolute", inset: 0, gap: 8 }}>
-              <span className="center" style={{ width: 50, height: 50, borderRadius: 999, background: "rgba(255,255,255,.22)", backdropFilter: "blur(2px)" }}>
-                <Film size={20} color="#fff" />
-              </span>
-              <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.92)", fontWeight: 600, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>范例视频整理中</span>
-            </div>
-
-            {/* 叠加：源标 + 关闭 */}
-            <span style={{ position: "absolute", top: 12, left: 12 }}>
+            {/* 叠加：源标 +「暂无范例视频」小标 + 关闭（不再在封面正中写字，16:9 封面上会和标题叠在一起） */}
+            <span className="row gap-1" style={{ position: "absolute", top: 12, left: 12, right: 52, flexWrap: "wrap", alignItems: "center" }}>
               <SourceBadge r={r} />
+              <span className="row gap-1" style={{ fontSize: 10.5, fontWeight: 600, color: "#fff", background: "rgba(0,0,0,.42)", padding: "2px 7px", borderRadius: 6 }}>
+                <Film size={11} /> 暂无范例视频
+              </span>
             </span>
             <button type="button" aria-label="关闭" onClick={onClose} className="btn btn-icon btn-sm" style={{ position: "absolute", top: 10, right: 10, background: "rgba(255,255,255,.9)" }}>
               <X size={16} />
@@ -534,7 +622,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             <div className="col" style={{ position: "absolute", left: 18, right: 18, bottom: r.useCount > 0 ? 44 : 14, gap: 2 }}>
               {!isOfficial(r) && (
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,.85)", textShadow: "0 1px 3px rgba(0,0,0,.5)" }}>
-                  @{r.authorName || "用户"}
+                  @{r.authorName || "创作者"}
                 </span>
               )}
               <span style={{ fontSize: portrait ? 22 : 20, fontWeight: 800, letterSpacing: "-.02em", color: "#fff", lineHeight: 1.2, textShadow: "0 2px 10px rgba(0,0,0,.5)" }}>
@@ -563,7 +651,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             <div className="col" style={{ position: "absolute", left: 18, right: 18, bottom: r.useCount > 0 ? 44 : 14, gap: 2, zIndex: 2 }}>
               {!isOfficial(r) && (
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: "rgba(255,255,255,.85)", textShadow: "0 1px 3px rgba(0,0,0,.5)" }}>
-                  @{r.authorName || "用户"}
+                  @{r.authorName || "创作者"}
                 </span>
               )}
               <span style={{ fontSize: portrait ? 22 : 20, fontWeight: 800, letterSpacing: "-.02em", color: "#fff", lineHeight: 1.2, textShadow: "0 2px 10px rgba(0,0,0,.5)" }}>
@@ -576,7 +664,7 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
 
       {/* ── tab 栏（下划线选中指示） ── */}
       <div className="row" style={{ flex: "none", padding: "0 20px", borderBottom: "1px solid var(--line-soft)", gap: 22 }}>
-        {([["intro", "简介"], ["content", "套用后获得"]] as const).map(([k, label]) => {
+        {([["intro", "简介"], ["content", "包含什么"]] as const).map(([k, label]) => {
           const on = tab === k;
           return (
             <button
@@ -620,13 +708,13 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             {r.summary ? (
               <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.7, color: "var(--ink)", fontWeight: 450 }}>{r.summary}</p>
             ) : (
-              <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>这条创意没写简介。套用后会直接铺进新项目，可以继续改。</p>
+              <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}>作者没写简介。做同款以后所有内容都能改。</p>
             )}
 
             <div className="row gap-2" style={{ flexWrap: "wrap" }}>
               <span className="tag tag-accent" style={{ fontSize: 11.5 }}>{r.type}</span>
-              <span className="tag tag-gray" style={{ fontSize: 11.5 }}>{r.episodes > 1 ? `${r.episodes} 集` : "单集短片"}</span>
-              <span className="tag tag-gray num" style={{ fontSize: 11.5 }}>{r.ratio}</span>
+              <span className="tag tag-gray" style={{ fontSize: 11.5 }}>{r.episodes > 1 ? `${r.episodes} 集短剧` : "单条短视频"}</span>
+              <span className="tag tag-gray num" style={{ fontSize: 11.5 }}>{isShort ? "竖屏 9:16" : r.ratio}</span>
               {r.useCount > 0 && (
                 <span className="tag tag-gray num row gap-1" style={{ fontSize: 11.5 }}>
                   <Users size={11} /> {r.useCount} 人用过
@@ -634,16 +722,16 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
               )}
             </div>
 
-            {updated && (
+            {updatedIso && (
               <div className="row gap-1 faint num" style={{ fontSize: 11.5, marginTop: 2 }}>
-                <Clock size={12} /> 最近更新 {updated}
+                <Clock size={12} /> 更新于 {formatDateTime(updatedIso)}
               </div>
             )}
           </>
         ) : (
           <>
             <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.65 }}>
-              套用后，下面这些会直接铺进你的新项目，改完就能开拍
+              {isShort ? "做同款会新建一条短视频草稿，带着下面这些，每一项都能改：" : "做同款会新建一部短剧，带着下面这些，每一项都能改："}
             </p>
             <div className="col" style={{ gap: 2 }}>
               {features.map((f, i) => (
@@ -661,30 +749,40 @@ function RecipeDetailModal({ r, applying, onClose, onApply }: { r: DramaRecipe; 
             <div className="row gap-2" style={{ padding: "10px 12px", borderRadius: 12, background: "var(--accent-soft)", color: "var(--accent)", alignItems: "center" }}>
               <Sparkles size={14} style={{ flex: "none" }} />
               <span style={{ fontSize: 12, lineHeight: 1.5, fontWeight: 600 }}>
-                {isShort ? "具体脚本细节不在这里展开,套用后在短视频工坊里逐镜可见、可改。" : "具体剧本细节不在这里展开,套用后在工作台里逐条可见、可改。"}
+                {/* 单条模板做同款只带风格，不复制原作者的脚本（RecipesApi.applyRecipe → 空草稿 + 风格说明），别说「能看到原文」 */}
+                {isShort
+                  ? "做同款只带上这个模板的风格，不带原作者的口播脚本。脚本由 AI 按你的主题重新写，写好后在短视频制作页里能改。"
+                  : "模板里的剧情原文这里不展示。做同款后在这部短剧的「短剧设定」里能看到、能改。"}
               </span>
             </div>
           </>
         )}
       </div>
 
-      {/* ── 底部动作：源标 + 关闭 + 强化主 CTA ── */}
-      <div className="row gap-3" style={{ padding: "12px 20px", borderTop: "1px solid var(--line-soft)", alignItems: "center", flex: "none" }}>
-        <span style={{ flex: "none" }}>
-          <SourceBadge r={r} />
-        </span>
-        <div className="row gap-2" style={{ flex: 1, justifyContent: "flex-end", alignItems: "stretch" }}>
-          <button type="button" className="btn btn-ghost" onClick={onClose} style={{ flex: "none" }}>关闭</button>
-          <button type="button" className="btn btn-grad" disabled={applying} onClick={onApply} style={{ flex: 1, maxWidth: 200, justifyContent: "center", fontWeight: 800, fontSize: 15 }}>
-            <Zap size={16} /> {applying ? "套用中…" : "套用开拍"}
-          </button>
+      {/* ── 底部动作：源标 + 关闭 + 主 CTA（下面一行小字写清花不花积分） ── */}
+      <div className="col" style={{ padding: "12px 20px", borderTop: "1px solid var(--line-soft)", gap: 6, flex: "none" }}>
+        <div className="row gap-3" style={{ alignItems: "center" }}>
+          <span className="mk-tpl-foot-src" style={{ flex: "none", minWidth: 0 }}>
+            <SourceBadge r={r} />
+          </span>
+          <div className="row gap-2" style={{ flex: 1, minWidth: 0, justifyContent: "flex-end", alignItems: "stretch" }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ flex: "none" }}>关闭</button>
+            <button type="button" className="btn btn-grad" disabled={applying} onClick={onApply} style={{ flex: 1, minWidth: 0, maxWidth: 260, justifyContent: "center", fontWeight: 800, fontSize: 14.5 }}>
+              <Zap size={16} /> {applying ? "正在准备…" : isShort ? <>做同款短视频 <CreditMark tone="inherit" size={14} /></> : "做同款短剧"}
+            </button>
+          </div>
+        </div>
+        <div className="faint" style={{ fontSize: 11.5, textAlign: "right" }}>
+          {isShort
+            ? `开始制作扣 ${cfg.prices.shortEntry} 积分${cfg.prices.shortEntry >= cfg.confirmThreshold ? "，点了会先确认" : ""}`
+            : "新建不花积分，之后让 AI 写剧情、拆分镜、出图和视频时按次扣"}
         </div>
       </div>
     </ModalShell>
   );
 }
 
-/* ── 运营：新建内置创意 ───────────────────────────────────────────────────────── */
+/* ── 运营：新建官方模板 ───────────────────────────────────────────────────────── */
 const PALS: [string, string][] = [
   ["#7c3aed", "#ec4899"],
   ["#db2777", "#9333ea"],
@@ -730,7 +828,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
     setSaving(true);
     try {
       const r = await RecipesApi.createBuiltin(input);
-      toast.success(`内置创意「${r.title}」已上架创意市场`);
+      toast.success(`官方模板「${r.title}」已公开`);
       onCreated();
     } catch (e) {
       toast.error(aiErrorMessage(e, "创建失败，请重试"));
@@ -740,17 +838,17 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
   };
 
   return (
-    <ModalShell onClose={onClose} label="新建内置创意" overlayZIndex={95} className="card pop-in col" style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+    <ModalShell onClose={onClose} label="新建官方模板" overlayZIndex={95} className="card pop-in col mk-modal" style={{ width: 560, maxWidth: "100%", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
         <div className="row gap-3" style={{ padding: "16px 20px 12px", flex: "none" }}>
           <div style={{ width: 36, height: 36, borderRadius: 11, background: "linear-gradient(135deg,var(--accent),var(--accent-2))", display: "grid", placeItems: "center", flex: "none" }}>
             <Sparkles size={18} color="#fff" />
           </div>
-          <div className="grow">
-            <div style={{ fontWeight: 800, fontSize: 16 }}>新建内置创意</div>
-            <div className="faint" style={{ fontSize: 12 }}>运营身份 · 直接上架，所有人均可套用</div>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>新建官方模板</div>
+            <div className="faint" style={{ fontSize: 12 }}>保存后直接公开，所有人都能做同款</div>
           </div>
           <span className="tag tag-accent" style={{ flex: "none" }}>官方</span>
-          <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+          <button className="btn btn-icon btn-ghost btn-sm" aria-label="关闭" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="scroll col gap-4" style={{ padding: "4px 20px 16px", minHeight: 0 }}>
           <div className="col gap-2">
@@ -764,7 +862,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
             </div>
           </div>
-          <Field label="创意名称">
+          <Field label="模板名称">
             <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="比如：都市逆袭·三幕式" style={inp} />
           </Field>
           <Field label="一句话说明（适合拍什么、爽点在哪）">
@@ -779,7 +877,7 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
           </Field>
           <div className="row gap-3" style={{ alignItems: "center", flexWrap: "wrap" }}>
             <button className={"chip" + (!single ? " on" : "")} onClick={() => setSingle(false)}>多集短剧</button>
-            <button className={"chip" + (single ? " on" : "")} onClick={() => setSingle(true)}>单集短视频</button>
+            <button className={"chip" + (single ? " on" : "")} onClick={() => setSingle(true)}>单条短视频</button>
             {!single && (
               <div className="row gap-2" style={{ alignItems: "center" }}>
                 <span className="faint" style={{ fontSize: 12 }}>集数</span>
@@ -787,21 +885,21 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
             )}
           </div>
-          <Field label="主线骨架（不带具体人名地名的故事主线，套用的人会照它生成大纲）">
+          <Field label="故事主线（不写具体人名地名，别人做同款时 AI 照它写故事大纲）">
             <textarea value={mainline} onChange={(e) => setMainline(e.target.value)} placeholder="小人物谷底翻盘：屈辱开局 → 隐藏底牌 → 步步反杀 → 高光收束" style={{ ...inp, height: 64, padding: "10px 12px", resize: "vertical" }} />
           </Field>
-          <Field label={`分集节拍（可选 · ${beats.length}）`}>
+          <Field label={`每集钩子和转折（选填 · ${beats.length}）`}>
             <div className="col gap-2">
               {beats.map((b, i) => (
                 <div key={i} className="row gap-2" style={{ alignItems: "center" }}>
-                  <span className="num faint" style={{ fontSize: 12, width: 30, flex: "none" }}>第{b.no}集</span>
-                  <input value={b.hook} onChange={(e) => setBeat(i, { hook: e.target.value })} placeholder="钩子" style={{ ...inp, height: 32, width: 120, flex: "none" }} />
-                  <input value={b.beat} onChange={(e) => setBeat(i, { beat: e.target.value })} placeholder="节拍 / 转折" style={{ ...inp, height: 32, flex: 1 }} />
-                  <button className="btn btn-icon btn-ghost btn-sm" onClick={() => delBeat(i)}><X size={14} /></button>
+                  <span className="num faint" style={{ fontSize: 12, width: 42, flex: "none" }}>第 {b.no} 集</span>
+                  <input value={b.hook} onChange={(e) => setBeat(i, { hook: e.target.value })} placeholder="钩子" className="mk-tpl-beat-hook" style={{ ...inp, height: 32, width: 120, flex: "none" }} />
+                  <input value={b.beat} onChange={(e) => setBeat(i, { beat: e.target.value })} placeholder="这一集的转折" style={{ ...inp, height: 32, flex: 1, minWidth: 0 }} />
+                  <button className="btn btn-icon btn-ghost btn-sm" aria-label="删掉这一集" onClick={() => delBeat(i)}><X size={14} /></button>
                 </div>
               ))}
               <button className="btn btn-line btn-sm" style={{ alignSelf: "flex-start" }} onClick={addBeat}>
-                <Plus size={13} /> 加一段节拍
+                <Plus size={13} /> 再加一集
               </button>
             </div>
           </Field>
@@ -809,14 +907,14 @@ function BuiltinCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
         <div className="row gap-3" style={{ padding: "12px 20px", borderTop: "1px solid var(--line-soft)", justifyContent: "flex-end", flex: "none" }}>
           <button className="btn btn-ghost" onClick={onClose}>取消</button>
           <button className="btn btn-grad" disabled={!ok || saving} style={{ opacity: ok ? 1 : 0.5 }} onClick={() => void submit()}>
-            <Check size={15} /> {saving ? "上架中…" : "上架到创意市场"}
+            <Check size={15} /> {saving ? "保存中…" : "保存并公开"}
           </button>
         </div>
     </ModalShell>
   );
 }
 
-/* ── 运营：从用户作品精选（邀请授权） ─────────────────────────────────────────── */
+/* ── 运营：邀请创作者公开作品（对方同意后署名公开） ─────────────────────────────────────────── */
 function CandidatesModal({ onClose }: { onClose: () => void }) {
   const [items, setItems] = React.useState<RecipeCandidate[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -827,7 +925,7 @@ function CandidatesModal({ onClose }: { onClose: () => void }) {
     let alive = true;
     RecipesApi.listCandidates()
       .then((r) => alive && setItems(r))
-      .catch((e) => alive && (toast.error(aiErrorMessage(e, "候选加载失败")), setItems([])))
+      .catch((e) => alive && (toast.error(aiErrorMessage(e, "作品列表没加载出来，请重试")), setItems([])))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -840,7 +938,7 @@ function CandidatesModal({ onClose }: { onClose: () => void }) {
     try {
       await RecipesApi.invite(c.projectId);
       setInvited((s) => new Set(s).add(c.projectId));
-      toast.success(`已向 @${c.authorName} 发出精选邀请,待对方授权后进创意市场`);
+      toast.success(`已邀请 @${c.authorName}，对方同意后模板会公开`);
     } catch (e) {
       toast.error(aiErrorMessage(e, "邀请失败，请重试"));
     } finally {
@@ -849,43 +947,43 @@ function CandidatesModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalShell onClose={onClose} label="从用户作品精选" overlayZIndex={95} className="card pop-in col" style={{ width: 600, maxWidth: "94vw", maxHeight: "88vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
+    <ModalShell onClose={onClose} label="邀请创作者公开作品" overlayZIndex={95} className="card pop-in col mk-modal" style={{ width: 600, maxWidth: "100%", maxHeight: "88vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}>
         <div className="row gap-3" style={{ padding: "16px 20px 12px", flex: "none", borderBottom: "1px solid var(--line-soft)" }}>
           <div style={{ width: 36, height: 36, borderRadius: 11, background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)", flex: "none" }}>
             <UserPlus size={18} />
           </div>
-          <div className="grow">
-            <div style={{ fontWeight: 800, fontSize: 16 }}>从用户作品精选</div>
-            <div className="faint" style={{ fontSize: 12 }}>挑一部创作者的作品发起邀请 · 对方授权后署名「来自@TA」进创意市场</div>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>邀请创作者公开作品</div>
+            <div className="faint" style={{ fontSize: 12 }}>选一部作品发邀请，对方同意后署 TA 的名字公开到模板广场</div>
           </div>
-          <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+          <button className="btn btn-icon btn-ghost btn-sm" aria-label="关闭" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="scroll col gap-2" style={{ padding: 16, minHeight: 0 }}>
           {loading ? (
-            <span className="muted" style={{ fontSize: 13 }}>正在加载候选作品…</span>
+            <span className="muted" style={{ fontSize: 13 }}>正在加载作品…</span>
           ) : items.length === 0 ? (
-            <span className="faint" style={{ fontSize: 13 }}>暂无可精选的用户作品（需对方已铺好大纲）。</span>
+            <span className="faint" style={{ fontSize: 13 }}>暂时没有能邀请的作品（对方要先写好故事大纲）。</span>
           ) : (
             items.map((c) => {
               const done = invited.has(c.projectId);
               const locked = c.hasRecipe && !done;
               return (
-                <div key={c.projectId} className="row gap-3" style={{ padding: 10, borderRadius: 10, background: "var(--surface-2)", alignItems: "center" }}>
+                <div key={c.projectId} className="row gap-3 mk-tpl-cand" style={{ padding: 10, borderRadius: 10, background: "var(--surface-2)", alignItems: "center" }}>
                   <span style={{ width: 40, height: 54, borderRadius: 7, flex: "none", background: `linear-gradient(140deg,${c.cover.from},${c.cover.to})` }} />
                   <div className="col grow" style={{ minWidth: 0, gap: 2 }}>
                     <div className="row gap-2" style={{ alignItems: "center" }}>
-                      <span style={{ fontWeight: 700, fontSize: 13.5 }}>{c.title}</span>
-                      <span className="tag tag-gray" style={{ fontSize: 10.5 }}>{c.type}</span>
+                      <span title={c.title} style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</span>
+                      <span className="tag tag-gray" style={{ fontSize: 10.5, flex: "none" }}>{c.type}</span>
                     </div>
                     <div className="faint num" style={{ fontSize: 11.5 }}>来自 @{c.authorName} · {c.episodes} 集 · {c.ratio}</div>
                   </div>
                   {done ? (
                     <span className="tag tag-accent" style={{ flex: "none" }}><Check size={12} /> 已邀请</span>
                   ) : locked ? (
-                    <span className="tag tag-gray" style={{ flex: "none" }}>已在市场流程中</span>
+                    <span className="tag tag-gray" style={{ flex: "none" }}>已在审核或已公开</span>
                   ) : (
                     <button type="button" className="btn btn-grad btn-sm" style={{ flex: "none" }} disabled={busyId === c.projectId} onClick={() => void doInvite(c)}>
-                      <UserPlus size={13} /> {busyId === c.projectId ? "发送中…" : "邀请精选"}
+                      <UserPlus size={13} /> {busyId === c.projectId ? "发送中…" : "发邀请"}
                     </button>
                   )}
                 </div>

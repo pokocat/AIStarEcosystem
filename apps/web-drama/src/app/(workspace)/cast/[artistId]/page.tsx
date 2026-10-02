@@ -5,18 +5,9 @@ export const dynamic = "force-dynamic";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  ArrowLeft,
-  Calendar,
-  Heart,
-  Sparkles,
-  TrendingUp,
-  Wand2,
-  Archive,
-  PlayCircle,
-} from "lucide-react";
-import type { Artist } from "@ai-star-eco/types/artist";
-import { Button, Card, Chip, KpiCard } from "@/components/premium";
+import { ArrowLeft, ExternalLink, Image as ImageIcon, Sparkles, Archive, PlayCircle } from "lucide-react";
+import type { Artist, ArtistStatus } from "@ai-star-eco/types/artist";
+import { Button, Card, Chip } from "@/components/premium";
 import {
   ConfirmDialog,
   EmptyState,
@@ -27,20 +18,17 @@ import {
   StatusBadge,
   TextInput,
   TextArea,
-  ViewHeader,
 } from "@/components/common";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { ArtistsApi } from "@/api";
+import { dapAvatarDeepLink } from "@/api/dap-avatars";
 import { formatDateTime, ApiError } from "@ai-star-eco/api-client";
 import { ImportAvatarDialog } from "../_dialogs/ImportAvatarDialog";
-import {
-  formatCny,
-  formatCompact,
-  QUALITY_GRADIENT,
-  QUALITY_LABEL,
-  QUALITY_TONE,
-  STATUS_LABEL,
-} from "@/lib/cast-derive";
+import { QUALITY_GRADIENT } from "@/lib/cast-derive";
+import { ARCHIVE_DESCRIPTION, CAST_STATUS_LABEL, CAST_STATUS_TONE } from "../_cast-labels";
+
+// v0.197：去掉照搬音乐线的 KPI（粉丝 / 营收 / 人气）、「才艺六维」和永远「开发中」的「查看档期」——
+// 导入的数字人演员没有这些数据；「生成新形象」改成去 AiAvatar 做新造型的外链（原来进的是已下线的假锻造炉）。
 
 interface PageProps {
   params: Promise<{ artistId: string }>;
@@ -63,21 +51,27 @@ export default function ArtistDetailPage({ params }: PageProps) {
   React.useEffect(() => {
     if (q.data) {
       setName(q.data.name);
-      setBio(q.data.bio);
+      setBio(q.data.bio ?? "");
     }
   }, [q.data]);
 
-  if (q.isLoading) return <LoadingBlock rows={3} height={120} label="加载演员档案…" />;
+  const backButton = (
+    <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => router.push("/cast")}>
+      <ArrowLeft size={14} /> 返回数字人演员
+    </button>
+  );
+
+  if (q.isLoading) return <LoadingBlock rows={3} height={120} label="正在加载演员…" />;
   if (q.error) return <ErrorBlock onRetry={q.refetch} />;
   if (!q.data) {
     return (
       <EmptyState
         icon={<Sparkles size={28} />}
-        title="演员不存在"
-        description="该演员可能已被归档或删除。"
+        title="找不到这位演员"
+        description="可能已经被删除了。"
         action={
           <Button variant="primary" size="md" onClick={() => router.push("/cast")}>
-            返回阵容
+            返回数字人演员
           </Button>
         }
       />
@@ -85,6 +79,8 @@ export default function ArtistDetailPage({ params }: PageProps) {
   }
 
   const a = q.data;
+  const statusLabel = CAST_STATUS_LABEL[a.status as ArtistStatus] ?? CAST_STATUS_LABEL.active;
+  const statusTone = CAST_STATUS_TONE[a.status as ArtistStatus] ?? "neutral";
 
   async function save() {
     setSaving(true);
@@ -95,7 +91,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
       toast.success("已保存");
       setEditing(false);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "保存失败");
+      toast.error(e instanceof ApiError ? e.message : "保存失败，请重试");
     } finally {
       setSaving(false);
     }
@@ -106,10 +102,10 @@ export default function ArtistDetailPage({ params }: PageProps) {
       await ArtistsApi.archiveArtist(a.id);
       invalidate(key);
       invalidate("/me/artists");
-      toast.success(`${a.name} 已归档`);
+      toast.success(`已归档「${a.name}」`);
       router.push("/cast");
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "归档失败");
+      toast.error(e instanceof ApiError ? e.message : "归档失败，请重试");
     }
   }
 
@@ -118,31 +114,15 @@ export default function ArtistDetailPage({ params }: PageProps) {
       await ArtistsApi.activateArtist(a.id);
       invalidate(key);
       invalidate("/me/artists");
-      toast.success(`${a.name} 已重新上线`);
+      toast.success(`已恢复「${a.name}」`);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "操作失败");
+      toast.error(e instanceof ApiError ? e.message : "恢复失败，请重试");
     }
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      <button
-        onClick={() => router.push("/cast")}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "4px 8px",
-          fontSize: 12,
-          color: "var(--fg-2)",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          alignSelf: "flex-start",
-        }}
-      >
-        <ArrowLeft size={12} /> 返回阵容
-      </button>
+      {backButton}
 
       {/* Hero */}
       <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -162,7 +142,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
               background: "linear-gradient(180deg, transparent 35%, rgba(0,0,0,0.55))",
             }}
           />
-          <div style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ position: "absolute", top: 16, right: 16, left: 16, display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
             {a.dapAvatarId && (
               <button
                 onClick={() => setDisplayPickerOpen(true)}
@@ -170,29 +150,28 @@ export default function ArtistDetailPage({ params }: PageProps) {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 5,
-                  padding: "5px 10px",
+                  padding: "6px 11px",
+                  minHeight: 30,
                   borderRadius: "var(--radius-pill)",
                   border: "1px solid rgba(255,255,255,0.35)",
                   background: "rgba(0,0,0,0.35)",
                   color: "#fff",
-                  fontSize: 11,
+                  fontSize: 11.5,
                   cursor: "pointer",
                   fontFamily: "var(--font-sans)",
                 }}
               >
-                <Sparkles size={11} /> 更换展示图
+                <ImageIcon size={12} /> 换封面图
               </button>
             )}
-            <StatusBadge tone={a.status === "active" ? "success" : a.status === "retired" ? "neutral" : "info"}>
-              {STATUS_LABEL[a.status]}
-            </StatusBadge>
-            <Chip tone={QUALITY_TONE[a.quality]}>{QUALITY_LABEL[a.quality]}</Chip>
+            <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
           </div>
-          <div style={{ position: "absolute", bottom: 20, left: 28 }}>
+          <div className="mk-cast-hero-title" style={{ position: "absolute", bottom: 20, left: 28, right: 28 }}>
             <div className="eyebrow" style={{ color: "#f8f3e8" }}>
-              ARTIST IP · {a.type}
+              数字人演员
             </div>
             <h1
+              title={a.name}
               style={{
                 fontSize: 40,
                 fontWeight: 700,
@@ -200,6 +179,9 @@ export default function ArtistDetailPage({ params }: PageProps) {
                 fontFamily: "var(--font-display)",
                 margin: "8px 0 0",
                 letterSpacing: -0.5,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
               {a.name}
@@ -208,6 +190,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
         </div>
 
         <div
+          className="mk-cast-hero-bar"
           style={{
             padding: "20px 28px",
             display: "flex",
@@ -217,26 +200,25 @@ export default function ArtistDetailPage({ params }: PageProps) {
             flexWrap: "wrap",
           }}
         >
-          <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", letterSpacing: 0.4 }}>
-            创建 {formatDateTime(a.createdAt)} · 最近活跃 {formatDateTime(a.lastActive)}
+          <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", letterSpacing: 0.4, minWidth: 0 }}>
+            导入于 {formatDateTime(a.createdAt)} · 最近更新 {formatDateTime(a.lastActive)}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={() => router.push(`/cast/${encodeURIComponent(a.id)}/generate`)}
-            >
-              <Wand2 size={14} />
-              生成新形象
-            </Button>
-            <Button
-              variant="ghost"
-              size="md"
-              onClick={() => toast.info("演员档期功能开发中")}
-            >
-              <Calendar size={14} />
-              查看档期
-            </Button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {a.dapAvatarId && (
+              <a
+                href={dapAvatarDeepLink(String(a.dapAvatarId), "looks")}
+                target="_blank"
+                rel="noreferrer"
+                style={{ textDecoration: "none" }}
+                title="在 AiAvatar（数字人平台）里给这位数字人做新造型，新标签页打开"
+              >
+                <Button variant="secondary" size="md">
+                  <Sparkles size={14} />
+                  去 AiAvatar 做新造型
+                  <ExternalLink size={12} />
+                </Button>
+              </a>
+            )}
             {a.status !== "retired" ? (
               <Button variant="danger" size="md" onClick={() => setArchiveOpen(true)}>
                 <Archive size={14} />
@@ -245,57 +227,49 @@ export default function ArtistDetailPage({ params }: PageProps) {
             ) : (
               <Button variant="primary" size="md" onClick={activate}>
                 <PlayCircle size={14} />
-                重新上线
+                恢复
               </Button>
             )}
           </div>
         </div>
       </Card>
 
-      {/* KPI */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="参演剧集" value={String(a.stats.dramas)} tone="violet" />
-        <KpiCard label="粉丝数" value={formatCompact(a.stats.fans)} tone="info" />
-        <KpiCard label="累计营收" value={formatCny(a.stats.revenue)} tone="accent" />
-        <KpiCard label="人气指数" value={`${a.stats.popularity}`} tone="success" delta="/ 100" />
-      </div>
-
-      {/* 主体两栏 */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-        <Card style={{ padding: "24px 26px" }}>
-          <SectionHeader
-            eyebrow="档案"
-            title="档案"
-            right={
-              !editing && (
-                <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-                  编辑
-                </Button>
-              )
-            }
-          />
-          {editing ? (
-            <>
-              <Field label="艺名" required>
-                <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={32} />
-              </Field>
-              <Field label="简介" hint="≤ 200 字">
-                <TextArea value={bio} onChange={(e) => setBio(e.target.value)} maxLength={200} rows={4} />
-              </Field>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <Button variant="ghost" size="md" onClick={() => setEditing(false)} disabled={saving}>
-                  取消
-                </Button>
-                <Button variant="primary" size="md" loading={saving} onClick={save}>
-                  保存
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 13.5, color: "var(--fg-1)", lineHeight: 1.65, marginBottom: 16 }}>
-                {a.bio}
-              </div>
+      {/* 基本信息 */}
+      <Card style={{ padding: "24px 26px" }}>
+        <SectionHeader
+          eyebrow="基本信息"
+          title="名字和简介"
+          right={
+            !editing && (
+              <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                编辑
+              </Button>
+            )
+          }
+        />
+        {editing ? (
+          <>
+            <Field label="名字" required>
+              <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={32} />
+            </Field>
+            <Field label="简介" hint="最多 200 字">
+              <TextArea value={bio} onChange={(e) => setBio(e.target.value)} maxLength={200} rows={4} />
+            </Field>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Button variant="ghost" size="md" onClick={() => setEditing(false)} disabled={saving}>
+                取消
+              </Button>
+              <Button variant="primary" size="md" loading={saving} onClick={save}>
+                保存
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 13.5, color: a.bio ? "var(--fg-1)" : "var(--fg-3)", lineHeight: 1.65, marginBottom: 16 }}>
+              {a.bio || "还没写简介。点「编辑」补一句这位演员适合演什么。"}
+            </div>
+            {(a.domains ?? []).length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {(a.domains ?? []).map((d) => (
                   <Chip key={d} tone="neutral">
@@ -303,47 +277,12 @@ export default function ArtistDetailPage({ params }: PageProps) {
                   </Chip>
                 ))}
               </div>
-            </>
-          )}
-        </Card>
+            )}
+          </>
+        )}
+      </Card>
 
-        <Card style={{ padding: "22px 24px" }}>
-          <SectionHeader eyebrow="能力评分" title="才艺六维" />
-          {(["acting", "singing", "dancing", "hosting", "comedy", "variety"] as const).map((k) => {
-            const v = a.talents[k];
-            const label = {
-              acting: "演技",
-              singing: "唱功",
-              dancing: "舞蹈",
-              hosting: "主持",
-              comedy: "喜剧",
-              variety: "综艺",
-            }[k];
-            return (
-              <div key={k} style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
-                  <span style={{ color: "var(--fg-2)" }}>{label}</span>
-                  <span className="mono" style={{ color: "var(--accent)" }}>
-                    {v}
-                  </span>
-                </div>
-                <div style={{ height: 6, background: "rgba(255,255,255,0.06)", borderRadius: "var(--radius-pill)" }}>
-                  <div
-                    style={{
-                      width: `${v}%`,
-                      height: "100%",
-                      background: "var(--gradient-gold)",
-                      borderRadius: "var(--radius-pill)",
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      </div>
-
-      {/* v0.60：更换数字人展示图（引用指针，AiAvatar 渲染新图后自动跟随） */}
+      {/* v0.60：换封面图（引用指针，AiAvatar 做了新图后自动跟随） */}
       <ImportAvatarDialog
         open={displayPickerOpen}
         onOpenChange={setDisplayPickerOpen}
@@ -358,7 +297,7 @@ export default function ArtistDetailPage({ params }: PageProps) {
         open={archiveOpen}
         onOpenChange={setArchiveOpen}
         title={`归档「${a.name}」`}
-        description="归档后该演员不再出现在选角池中。历史数据保留，可随时恢复。"
+        description={ARCHIVE_DESCRIPTION}
         destructive
         confirmLabel="归档"
         onConfirm={archive}

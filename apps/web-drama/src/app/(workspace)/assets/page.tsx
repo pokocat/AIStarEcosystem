@@ -3,19 +3,20 @@
 export const dynamic = "force-dynamic";
 
 // 素材库 — 设计真源 screens-hub-v2.jsx `AssetsHub` / `MaterialCard` / `MaterialDetail` / `MaterialUpload`:
-// 自由上传图片 / 视频,用标签区分人物 / 场景 / 道具 —— 生成时 @ 进来作参考。
+// 上传参考图,用类型 + 标签区分人物 / 场景 / 道具。
+// v0.197：上传只收图片（视频上传没做）→ 去掉「全部/图片/视频」页签；删掉所有「@ 引用素材」的承诺、
+// 假的「加入生成参考」按钮和读写死演示数据的「关联使用」（真实模式下永远为空）。
 import * as React from "react";
 import {
   Check,
-  Film,
   Image as ImageIcon,
   Layers,
   Package,
   Play,
   Plus,
   Search,
+  Trash2,
   User,
-  Users,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,7 +25,6 @@ import { AssetLibraryApi, DramaAssetsApi } from "@/api";
 import { aiErrorMessage } from "@/lib/ai-error";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import {
-  ASSET_USAGE,
   MAT_CATS,
   setMaterials,
   type Material,
@@ -45,15 +45,12 @@ const CAT_ICONS: Record<string, React.ElementType> = {
 };
 
 
-type MediaFilter = "all" | "image" | "video";
-
 export default function AssetsPage() {
   // 真实后端素材库（/me/drama/assets，按用户隔离、跨设备持久）。
   const assetsQ = useAsync<Material[]>("/me/drama/assets", () => AssetLibraryApi.listAssets());
   const items = React.useMemo(() => assetsQ.data ?? [], [assetsQ.data]);
   const [q, setQ] = React.useState("");
   const [cat, setCat] = React.useState("all"); // all / 人物 / 场景 / 道具 / 其他
-  const [media, setMedia] = React.useState<MediaFilter>("all"); // all / image / video
   const [sel, setSel] = React.useState<Material | null>(null);
   const [adding, setAdding] = React.useState(false);
 
@@ -82,7 +79,7 @@ export default function AssetsPage() {
       await AssetLibraryApi.deleteAsset(id);
       invalidate("/me/drama/assets");
       setSel(null);
-      toast.success("已删除，关联项目不受影响");
+      toast.success("已删除，用过它的镜头不受影响");
     } catch (e) {
       toast.error(aiErrorMessage(e, "删除失败，请重试"));
     }
@@ -91,62 +88,35 @@ export default function AssetsPage() {
   const list = items.filter(
     (a) =>
       (cat === "all" || a.cat === cat) &&
-      (media === "all" || a.kind === media) &&
       (!q || a.name.includes(q) || (a.tags || []).some((t) => t.includes(q)) || a.cat.includes(q)),
   );
   const catCount = (k: string) => items.filter((a) => a.cat === k).length;
 
-  const mediaTabs: { key: MediaFilter; label: string }[] = [
-    { key: "all", label: "全部" },
-    { key: "image", label: "图片" },
-    { key: "video", label: "视频" },
-  ];
-
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto" }}>
-      <div className="row" style={{ marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
-        <div>
+      <div className="row" style={{ marginBottom: 18, flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+        <div style={{ flex: "1 1 260px", minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, letterSpacing: "-.02em" }}>素材库</h1>
           <div className="muted" style={{ marginTop: 4 }}>
-            自由上传图片、视频，用标签区分人物、场景、道具，生成时 @ 引用为参考
+            把人物、场景、道具的参考图存在这里，用类型和标签分好。目前只能传图片。
           </div>
         </div>
-        <div className="grow"></div>
-        <button className="btn btn-grad" style={{ height: 42 }} onClick={() => setAdding(true)}>
+        <button className="btn btn-grad" style={{ height: 42, flex: "none" }} onClick={() => setAdding(true)}>
           <Plus size={15} /> 上传素材
         </button>
       </div>
 
-      {/* 查:搜索 + 类型标签 + 媒体类型 */}
+      {/* 查:搜索 + 类型标签 */}
       <div className="row gap-2" style={{ marginBottom: 12, flexWrap: "wrap" }}>
-        <div className="row card" style={{ padding: "0 13px", height: 38, width: 240, gap: 8, borderRadius: 999 }}>
-          <Search size={15} style={{ color: "var(--ink-3)" }} />
+        <div className="row card mk-mat-search" style={{ padding: "0 13px", height: 38, width: 240, gap: 8, borderRadius: 999 }}>
+          <Search size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜名称 / 标签…"
-            style={{ border: "none", outline: "none", background: "transparent", flex: 1, fontSize: 13 }}
+            placeholder="搜名称或标签"
+            aria-label="搜索素材"
+            style={{ border: "none", outline: "none", background: "transparent", flex: 1, minWidth: 0, fontSize: 13 }}
           />
-        </div>
-        <span className="grow"></span>
-        <div className="row" style={{ background: "var(--surface-2)", borderRadius: 999, padding: 3, gap: 2, flex: "none" }}>
-          {mediaTabs.map(({ key, label }) => (
-            <button
-              key={key}
-              className="chip"
-              onClick={() => setMedia(key)}
-              style={{
-                height: 28,
-                background: media === key ? "var(--surface)" : "transparent",
-                color: media === key ? "var(--accent)" : "var(--ink-3)",
-                boxShadow: media === key ? "var(--shadow-sm)" : "none",
-              }}
-            >
-              {key === "video" && <Play size={11} />}
-              {key === "image" && <ImageIcon size={11} />}
-              {label}
-            </button>
-          ))}
         </div>
       </div>
       <div className="row gap-2" style={{ marginBottom: 22, flexWrap: "wrap" }}>
@@ -168,13 +138,13 @@ export default function AssetsPage() {
           <div style={{ width: 50, height: 50, borderRadius: 15, background: "var(--surface-2)", display: "grid", placeItems: "center" }}>
             <ImageIcon size={24} />
           </div>
-          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{q || cat !== "all" || media !== "all" ? "没有匹配的素材" : "素材库为空，上传图片或视频以创建素材"}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600, textAlign: "center", padding: "0 16px" }}>{q || cat !== "all" ? "没有匹配的素材" : "还没有素材，先传一张人物或场景的参考图"}</span>
           <button className="btn btn-line btn-sm" onClick={() => setAdding(true)}>
             <Plus size={14} /> 上传素材
           </button>
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(172px,1fr))", gap: 14, alignItems: "start" }}>
+      <div className="mk-mat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(172px,1fr))", gap: 14, alignItems: "start" }}>
         {list.map((a, i) => (
           <MaterialCard key={a.id} a={a} delay={i * 22} onOpen={() => setSel(a)} />
         ))}
@@ -255,7 +225,7 @@ function MaterialCard({ a, onOpen, delay }: { a: Material; onOpen: () => void; d
   );
 }
 
-/* 素材详情:大预览 + 元信息(类型可改) + 关联使用 + 改 / 删 / 设为参考 */
+/* 素材详情:大预览 + 元信息(类型可改) + 改 / 删 */
 function MaterialDetail({
   item,
   onClose,
@@ -267,21 +237,23 @@ function MaterialDetail({
   onSave: (patch: Partial<Material>) => void;
   onDelete: () => void;
 }) {
-  const [added, setAdded] = React.useState(false);
   const [name, setName] = React.useState(item.name);
   const [catv, setCatv] = React.useState(item.cat);
   const [tags, setTags] = React.useState((item.tags || []).join("、"));
   const [confirmDel, setConfirmDel] = React.useState(false);
-  const usage = ASSET_USAGE[item.id] || [];
   const dirty = name !== item.name || catv !== item.cat || tags !== (item.tags || []).join("、");
   return (
     <div className="overlay" onClick={onClose}>
       <div
-        className="card pop-in row"
-        style={{ width: 780, maxWidth: "94vw", maxHeight: "88vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)", alignItems: "stretch" }}
+        className="card pop-in row mk-mat-detail mk-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={item.name}
+        style={{ width: 780, maxWidth: "100%", maxHeight: "88vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)", alignItems: "stretch" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
+          className="mk-mat-detail-preview"
           style={{
             flex: "0 0 44%",
             minWidth: 0,
@@ -314,9 +286,6 @@ function MaterialDetail({
               )}
             </span>
           )}
-          <span className="thumb-label" style={{ position: "absolute", bottom: 12, left: 12, whiteSpace: "nowrap" }}>
-            {item.kind === "video" ? "视频素材 · 预览" : "图片素材 · 预览"}
-          </span>
         </div>
 
         <div className="col scroll grow" style={{ minWidth: 0, padding: "18px 22px 20px", gap: 13 }}>
@@ -328,12 +297,13 @@ function MaterialDetail({
               {item.kind === "video" ? "视频" : "图片"}
             </span>
             <span className="grow"></span>
-            <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
+            <button className="btn btn-icon btn-ghost btn-sm" aria-label="关闭" onClick={onClose}>
               <X size={18} />
             </button>
           </div>
 
           <input
+            aria-label="素材名称"
             value={name}
             onChange={(e) => setName(e.target.value)}
             style={{
@@ -350,7 +320,7 @@ function MaterialDetail({
           />
 
           <div className="col gap-2">
-            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>类型标签</span>
+            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>类型</span>
             <div className="row gap-2" style={{ flexWrap: "wrap" }}>
               {MAT_CATS.map((c) => {
                 const Icon = CAT_ICONS[c.key] ?? Layers;
@@ -363,11 +333,11 @@ function MaterialDetail({
             </div>
           </div>
           <div className="row gap-2">
-            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700, flex: "none" }}>自定义标签</span>
+            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700, flex: "none" }}>标签</span>
             <input
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="用、分隔,如:冷感、室内"
+              placeholder="用顿号分隔，如：冷感、室内"
               style={{ flex: 1, minWidth: 0, height: 30, border: "1px solid var(--line)", borderRadius: 9, padding: "0 10px", fontSize: 12, outline: "none", background: "var(--surface-2)" }}
             />
           </div>
@@ -387,64 +357,29 @@ function MaterialDetail({
             </button>
           )}
 
-          <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.65 }}>
-            生成时 @ 引用为参考：
-            {catv === "人物"
-              ? "替换镜头里的出镜人物,长相气质集集一致。"
-              : catv === "场景"
-                ? "替换镜头的环境、色调与置景,多镜连戏不跳。"
-                : catv === "道具"
-                  ? "锁定关键道具的外观与细节,反复出现保持一致。"
-                  : "作为整体风格参考参与生成。"}
-          </div>
-
-          <div className="col gap-2">
-            <span className="faint" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".05em" }}>关联使用</span>
-            {usage.length === 0 && (
-              <span className="faint" style={{ fontSize: 12.5 }}>
-                还没有项目用到它。在分镜表的「画面」里输入 @ 就能引用
-              </span>
-            )}
-            {usage.map((u) => (
-              <div key={u.p} className="row gap-3" style={{ padding: "8px 12px", borderRadius: 11, background: "var(--surface-2)" }}>
-                <Film size={14} style={{ color: "var(--accent)" }} />
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{u.p}</span>
-                <span className="faint" style={{ fontSize: 12 }}>{u.role}</span>
-                <span className="grow"></span>
-                <span className="faint num" style={{ fontSize: 12, whiteSpace: "nowrap" }}>出镜 {u.n} 镜</span>
-              </div>
-            ))}
-          </div>
-
           <div className="col gap-2" style={{ marginTop: "auto" }}>
-            <div className="row gap-2">
-              <button className="btn btn-grad grow" style={{ justifyContent: "center" }} onClick={() => setAdded(true)}>
-                {added ? (
-                  <>
-                    <Check size={15} /> 已加入参考
-                  </>
-                ) : (
-                  <>
-                    <Users size={15} /> 加入生成参考
-                  </>
-                )}
-              </button>
+            <div className="row gap-2" style={{ flexWrap: "wrap" }}>
               {!confirmDel ? (
                 <button
                   className="btn btn-line"
                   style={{ flex: "none", color: "#dc2626", borderColor: "#fecaca" }}
                   onClick={() => setConfirmDel(true)}
                 >
-                  <X size={14} /> 删除
+                  <Trash2 size={14} /> 删除
                 </button>
               ) : (
-                <button className="btn" style={{ flex: "none", background: "#dc2626", color: "#fff" }} onClick={onDelete}>
-                  确认删除?
-                </button>
+                <>
+                  <button className="btn" style={{ flex: "none", background: "#dc2626", color: "#fff" }} onClick={onDelete}>
+                    <Trash2 size={14} /> 确认删除
+                  </button>
+                  <button className="btn btn-ghost" style={{ flex: "none" }} onClick={() => setConfirmDel(false)}>
+                    先不删
+                  </button>
+                </>
               )}
             </div>
             <div className="faint" style={{ fontSize: 11 }}>
-              加入后可在分镜表的「画面」里用 @ 引用 · 删除不影响已生成的镜头
+              {confirmDel ? "删了没法恢复。用过这张图的镜头不受影响。" : "删掉它不影响已经生成的镜头。"}
             </div>
           </div>
         </div>
@@ -476,6 +411,8 @@ function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated
   };
 
   const ok = Boolean(file && name.trim() && catv) && !uploading;
+  // 禁用时就地说还差什么（手机上没有 hover title）
+  const missing = [!file && "选一张图片", !name.trim() && "写名称", !catv && "选类型"].filter(Boolean) as string[];
 
   const submit = async () => {
     if (!file || !catv || !name.trim() || uploading) return;
@@ -501,8 +438,11 @@ function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated
   return (
     <div className="overlay" onClick={onClose}>
       <div
-        className="card pop-in col"
-        style={{ width: 460, maxWidth: "94vw", padding: 22, gap: 14, boxShadow: "var(--shadow-lg)" }}
+        className="card pop-in col mk-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="上传素材"
+        style={{ width: 460, maxWidth: "100%", maxHeight: "92vh", overflowY: "auto", padding: 22, gap: 14, boxShadow: "var(--shadow-lg)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="row gap-3">
@@ -519,11 +459,11 @@ function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated
           >
             <Plus size={17} color="#fff" />
           </div>
-          <div className="grow">
+          <div className="grow" style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>上传素材</div>
-            <div className="faint" style={{ fontSize: 12 }}>上传图片到素材库，写分镜时用 @ 引用</div>
+            <div className="faint" style={{ fontSize: 12 }}>只支持图片，传好后按类型和标签找</div>
           </div>
-          <button className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
+          <button className="btn btn-icon btn-ghost btn-sm" aria-label="关闭" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
@@ -557,11 +497,11 @@ function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated
               <span style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--accent-soft)", display: "grid", placeItems: "center", color: "var(--accent)" }}>
                 <Plus size={19} />
               </span>
-              <span style={{ color: "var(--ink-3)", fontSize: 12.5, fontWeight: 700 }}>点击选择图片上传</span>
+              <span style={{ color: "var(--ink-3)", fontSize: 12.5, fontWeight: 700 }}>点这里选一张图片</span>
             </>
           )}
           {preview && (
-            <span className="thumb-label" style={{ position: "absolute", bottom: 8, right: 8 }}>点击更换</span>
+            <span className="thumb-label" style={{ position: "absolute", bottom: 8, right: 8 }}>点一下换一张</span>
           )}
         </label>
 
@@ -570,6 +510,7 @@ function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="素材名称"
+          aria-label="素材名称"
           style={{ height: 40, border: "1.5px solid var(--line)", borderRadius: 11, padding: "0 12px", fontSize: 13.5, outline: "none", background: "var(--surface-2)" }}
         />
 
@@ -590,16 +531,19 @@ function MaterialUpload({ onClose, onCreated }: { onClose: () => void; onCreated
 
         {/* 自定义标签 */}
         <div className="col gap-2">
-          <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>标签(用、分隔)</span>
+          <span className="faint" style={{ fontSize: 11.5, fontWeight: 700 }}>标签（选填，用顿号分隔）</span>
           <input
             value={tags}
             onChange={(e) => setTags(e.target.value)}
-            placeholder="如:冷感、室内、特写"
+            placeholder="如：冷感、室内、特写"
             style={{ height: 38, border: "1.5px solid var(--line)", borderRadius: 11, padding: "0 12px", fontSize: 13, outline: "none", background: "var(--surface-2)" }}
           />
         </div>
 
-        <div className="row gap-3" style={{ justifyContent: "flex-end" }}>
+        <div className="row gap-3" style={{ justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
+          {!ok && !uploading && missing.length > 0 && (
+            <span className="faint" style={{ fontSize: 11.5, marginRight: "auto" }}>还差：{missing.join("、")}</span>
+          )}
           <button className="btn btn-ghost" onClick={onClose} disabled={uploading}>取消</button>
           <button
             className="btn btn-grad"

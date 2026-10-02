@@ -24,7 +24,15 @@ import java.time.OffsetDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "drama_shorts")
+// 唯一索引必须写在实体上，不能只靠 V23 迁移：Flyway 早于 Hibernate 跑，全新库上 V23 执行时
+// drama_shorts 还不存在，建索引那句被 try/catch 跳过；随后 ddl-auto 按实体建表 —— 实体上没写，
+// 新环境就永远没有这把索引，同键并发两次都能落库、各扣一笔开拍费（v0.145 起一直如此）。
+// 写在这里之后：新库由 ddl-auto 建表时一并建出；已有表缺这把索引的，ddl-auto=update 启动时补上
+// （同名索引已存在则跳过，V23 建过的库不受影响）。名字与 V23 一致。
+@Table(name = "drama_shorts", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_drama_short_owner_client_req",
+                columnNames = {"owner_user_id", "client_request_id"})
+})
 public class DramaShort {
 
     @Id
@@ -68,7 +76,7 @@ public class DramaShort {
 
     /**
      * 开拍付费创建的客户端幂等键（v0.145）。与 owner_user_id 组成唯一索引
-     * {@code uk_drama_short_owner_client_req}，并发同键只有一个能落库。
+     * {@code uk_drama_short_owner_client_req}（声明在类上的 {@code @Table}），并发同键只有一个能落库。
      * 自建 / 套用创意都用它；老行为 NULL（唯一索引允许多个 NULL）。
      */
     @Column(name = "client_request_id", length = 64)

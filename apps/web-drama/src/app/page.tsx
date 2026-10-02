@@ -4,11 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Film,
-  Layers,
+  ClipboardList,
+  LayoutTemplate,
   LogOut,
-  PlayCircle,
   Sparkles,
+  Users,
   Wand2,
 } from "lucide-react";
 import { useAuth } from "@ai-star-eco/api-client";
@@ -18,28 +18,29 @@ import { Button, Card, Chip } from "@/components/premium";
 // 视觉来源：AI IP Design Directions 03（dark + gold + glass + hero gradient）。
 // 工作台落地：登录后跳 /dashboard。
 
+// v0.197：只写现在真能用的（「多平台发布」「数据分析」还在「即将上线」，不当卖点）。
 const FEATURES = [
   {
-    icon: Film,
-    title: "演员 IP 阵容",
-    body: "形象、表演风格、人物档案都存在一处，同一个角色可以在不同剧集里反复出演，肖像授权跟着走。",
+    icon: Wand2,
+    title: "和 AI 聊出一部短剧",
+    body: "说一个想法，AI 陪你聊出故事大纲和分集剧情，再按集拆成分镜，一镜一镜生成画面和视频，拼成完整的一集。",
     accent: "var(--accent)",
   },
   {
-    icon: Wand2,
-    title: "脚本工坊与脑暴",
-    body: "AI 帮着分场分镜、梳理人物弧光、出桥段建议，一两个人的团队也够用。",
+    icon: ClipboardList,
+    title: "粘贴脚本，直接拆分镜",
+    body: "手里有写好的脚本、分镜稿或 AI 视频提示词，贴进来，AI 按原文拆成分镜，做成一条短视频。拆分镜不花积分。",
     accent: "var(--extra-violet)",
   },
   {
-    icon: Layers,
-    title: "短剧项目与分发",
-    body: "项目流水线、剪辑流转、多平台投放与上线追踪，一部片从开拍到上线都在这里。",
+    icon: Users,
+    title: "数字人演员，每集长相一致",
+    body: "在 AiAvatar（数字人平台）建好的数字人可以绑定到角色上，同一个角色换了集、换了镜头，长相都保持一致。",
     accent: "var(--info)",
   },
 ] as const;
 
-// 官方短剧模板案例 —— 真实封面取自 web-drama/public/recipes/home/*（与创意市场内置配方同源）。
+// 官方模板案例 —— 真实封面取自 web-drama/public/recipes/home/*（与模板广场内置模板同源）。
 const SHOWREEL = [
   {
     title: "婚礼上掏出的不是戒指",
@@ -79,11 +80,14 @@ const SHOWREEL = [
   },
 ];
 
+const CONTACT_MAILTO = "mailto:bd@aistareco.com?subject=%E5%BC%80%E9%80%9A%E7%9F%AD%E5%89%A7%E5%B7%A5%E5%9D%8A";
+
 export default function DramaLandingPage() {
   const { user, logout } = useAuth();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
   const isLoggedIn = mounted && !!user;
+  const templatesHref = isLoggedIn ? "/templates" : "/login?from=%2Ftemplates";
 
   return (
     <div
@@ -133,33 +137,31 @@ export default function DramaLandingPage() {
 
       {/* 顶栏 */}
       <header
+        className="landing-head"
         style={{
           position: "relative",
           zIndex: 10,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-          padding: "16px clamp(16px, 4vw, 48px)",
+          padding: "14px clamp(16px, 4vw, 48px)",
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img src="/brand/logo.svg" alt="短剧工坊" style={{ height: 40, width: "auto", display: "block" }} />
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo.svg" alt="短剧工坊" className="landing-logo" />
         </Link>
-        <nav style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <Link
-            href="#trial"
+        <nav>
+          <a
+            href={CONTACT_MAILTO}
+            className="landing-contact"
             style={{
               fontSize: 13,
               color: "var(--fg-1)",
-              padding: "8px 14px",
+              padding: "8px 12px",
               borderRadius: "var(--radius-md)",
             }}
           >
-            申请试用
-          </Link>
+            联系开通
+          </a>
           {isLoggedIn ? (
             <>
               <Link href="/dashboard">
@@ -169,10 +171,16 @@ export default function DramaLandingPage() {
                 </Button>
               </Link>
               <button
+                type="button"
                 onClick={logout}
                 title="退出登录"
+                aria-label="退出登录"
                 style={{
-                  padding: 9,
+                  width: 36,
+                  height: 36,
+                  display: "grid",
+                  placeItems: "center",
+                  flex: "none",
                   borderRadius: "var(--radius-md)",
                   background: "transparent",
                   color: "var(--fg-2)",
@@ -186,7 +194,7 @@ export default function DramaLandingPage() {
           ) : (
             <Link href="/login?from=%2Fdashboard">
               <Button variant="primary" size="md">
-                立即登录
+                登录 / 注册
                 <ArrowRight size={14} />
               </Button>
             </Link>
@@ -218,13 +226,14 @@ export default function DramaLandingPage() {
           >
             <Sparkles size={14} color="var(--accent)" />
             <span className="mono" style={{ fontSize: 11, letterSpacing: "var(--tracking-wide)", color: "var(--fg-1)" }}>
-              短剧工坊 · 从剧本到成片
+              短剧工坊 · AI 做短剧和短视频
             </span>
           </div>
 
           <h1
+            className="landing-hero-title"
             style={{
-              fontSize: "clamp(40px, 9vw, 88px)",
+              fontSize: "clamp(32px, 9vw, 88px)",
               lineHeight: 0.98,
               fontFamily: "var(--font-display)",
               fontWeight: 800,
@@ -237,44 +246,52 @@ export default function DramaLandingPage() {
               值得被拍出来
             </span>
             <span>，</span>
-            <span style={{ display: "block", marginTop: 4 }}>哪怕只有你一个人</span>
+            <span className="keep-line" style={{ display: "block", marginTop: 4 }}>哪怕只有你一个人</span>
           </h1>
 
           <p
             style={{
-              fontSize: 18,
-              lineHeight: 1.55,
+              fontSize: "clamp(15px, 2.2vw, 18px)",
+              lineHeight: 1.65,
               color: "var(--fg-1)",
-              maxWidth: 720,
-              margin: "32px auto 12px",
+              maxWidth: 680,
+              margin: "28px auto 12px",
+              textWrap: "pretty",
             }}
           >
-            不用组建剧组，也不必通宵赶工。把一个灵感交给短剧工坊，
-            <br />
-            从剧本、角色到画面、分发，完成一部可以发布的成片。
+            说一个想法，或者贴一段写好的脚本。AI 帮你拆成分镜、定好角色，一镜一镜生成画面和视频，拼成完整的短剧或短视频。
           </p>
 
           <div
             style={{
               display: "flex",
               justifyContent: "center",
-              gap: 14,
-              marginTop: 40,
+              flexWrap: "wrap",
+              gap: 12,
+              marginTop: 36,
             }}
           >
             <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
               <Button variant="primary" size="lg">
-                {isLoggedIn ? "进入工作台" : "立即登录"}
+                {isLoggedIn ? "进入工作台" : "登录 / 注册"}
                 <ArrowRight size={16} />
               </Button>
             </Link>
             <Link href="#showreel">
               <Button variant="secondary" size="lg">
-                <PlayCircle size={16} />
-                查看样片
+                <LayoutTemplate size={16} />
+                看看模板
               </Button>
             </Link>
           </div>
+          {!isLoggedIn && (
+            <p style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 16 }}>
+              第一次使用需要激活码，
+              <a href={CONTACT_MAILTO} style={{ color: "var(--accent)" }}>
+                联系我们开通
+              </a>
+            </p>
+          )}
         </section>
 
         {/* showreel 横幅 */}
@@ -287,35 +304,35 @@ export default function DramaLandingPage() {
           }}
         >
           <div style={{ marginBottom: 24 }}>
-            <div className="eyebrow">官方短剧模板 · 直接套用</div>
+            <div className="eyebrow">官方模板</div>
             <h2
               style={{
                 fontFamily: "var(--font-serif)",
-                fontSize: "clamp(24px, 3vw, 34px)",
-                lineHeight: 1.15,
+                fontSize: "clamp(22px, 3vw, 34px)",
+                lineHeight: 1.2,
                 marginTop: 8,
                 color: "var(--fg-0)",
+                textWrap: "balance",
               }}
             >
-              套用官方配方，从灵感到成片
+              挑一个官方模板，改成你自己的故事
             </h2>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 18,
-            }}
-          >
+          <div className="landing-reel keep-cols">
             {SHOWREEL.map((s) => (
-              <Card
+              <Link
                 key={s.title}
+                href={templatesHref}
+                aria-label={`${s.title}，去模板广场看看`}
+                style={{ display: "block", color: "inherit", textDecoration: "none" }}
+              >
+              <Card
                 glass
+                className="landing-reel-card"
                 style={{
                   padding: 0,
                   overflow: "hidden",
                   position: "relative",
-                  height: 240,
                   cursor: "pointer",
                 }}
               >
@@ -343,25 +360,23 @@ export default function DramaLandingPage() {
                   style={{
                     position: "absolute",
                     inset: 0,
-                    padding: "18px 20px",
+                    padding: "clamp(12px, 3vw, 18px) clamp(12px, 3vw, 20px)",
                     display: "flex",
                     flexDirection: "column",
                     justifyContent: "space-between",
                   }}
                 >
                   <div>
-                    <Chip tone={s.tone}>{s.genre}</Chip>
+                    <Chip tone={s.tone} solid>
+                      {s.genre}
+                    </Chip>
                   </div>
                   <div style={{ textShadow: "0 1px 8px rgba(0,0,0,0.85)" }}>
-                    <div className="eyebrow" style={{ color: "#fff", opacity: 0.82 }}>
-                      短剧模板
-                    </div>
                     <div
+                      className="landing-reel-title"
                       style={{
                         fontFamily: "var(--font-serif)",
-                        fontSize: 24,
-                        lineHeight: 1.15,
-                        marginTop: 6,
+                        lineHeight: 1.25,
                         fontWeight: 600,
                         color: "#fff",
                       }}
@@ -371,6 +386,7 @@ export default function DramaLandingPage() {
                   </div>
                 </div>
               </Card>
+              </Link>
             ))}
           </div>
         </section>
@@ -424,15 +440,16 @@ export default function DramaLandingPage() {
 
       {/* footer */}
       <footer
-        id="trial"
+        id="contact"
         style={{
           position: "relative",
           zIndex: 5,
-          padding: "28px clamp(16px, 4vw, 48px)",
+          padding: "24px clamp(16px, 4vw, 48px)",
           borderTop: "1px solid var(--line)",
         }}
       >
         <div
+          className="landing-foot"
           style={{
             maxWidth: 1180,
             margin: "0 auto",
@@ -440,7 +457,7 @@ export default function DramaLandingPage() {
             justifyContent: "space-between",
             alignItems: "center",
             flexWrap: "wrap",
-            gap: 16,
+            gap: "8px 16px",
             fontSize: 12,
             color: "var(--fg-2)",
           }}
@@ -452,16 +469,16 @@ export default function DramaLandingPage() {
                 height: 6,
                 borderRadius: "50%",
                 background: "var(--gradient-gold)",
+                flex: "none",
               }}
             />
-            <span className="mono" style={{ letterSpacing: 0.6 }}>AI STAR ECO · 短剧创作流水线</span>
+            <span style={{ letterSpacing: 0.4 }}>短剧工坊 · AI Star Eco</span>
           </div>
-          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-            <Link href="/" style={{ color: "var(--fg-2)" }}>首页</Link>
-            <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"} style={{ color: "var(--fg-2)" }}>
-              {isLoggedIn ? "工作台" : "登录"}
+          <div style={{ display: "flex", alignItems: "center", gap: "0 16px", flexWrap: "wrap" }}>
+            <Link href={isLoggedIn ? "/dashboard" : "/login?from=%2Fdashboard"}>
+              {isLoggedIn ? "进入工作台" : "登录"}
             </Link>
-            <span style={{ color: "var(--fg-3)" }}>商务咨询：bd@aistareco.com</span>
+            <a href={CONTACT_MAILTO}>开通和商务合作：bd@aistareco.com</a>
           </div>
         </div>
       </footer>

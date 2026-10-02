@@ -35,7 +35,7 @@ export function MediaLightbox({ media, onClose }: { media: LightboxMedia | null;
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="媒体预览"
+      aria-label="预览"
       onClick={onClose}
       style={{
         position: "fixed",
@@ -89,7 +89,7 @@ export function MediaLightbox({ media, onClose }: { media: LightboxMedia | null;
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={media.src}
-          alt="首帧预览"
+          alt="大图预览"
           onClick={(e) => e.stopPropagation()}
           style={{
             maxWidth: "92vw",

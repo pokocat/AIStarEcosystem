@@ -186,13 +186,24 @@ public class AccountController {
 
     public record WithdrawRequest(long amount, String bankCard) {}
 
+    /**
+     * 流水分页的排序：时间倒序，同一时刻再按 id 倒序。
+     *
+     * <p>只按 createdAt 排时，同一时刻的几条（如充值 + 充值赠送）在两次分页请求之间的先后并不固定
+     * —— MySQL 对非唯一列 ORDER BY 加 LIMIT/OFFSET 不保证稳定，页边界上的那条可能这一页没有、
+     * 下一页也没有。前端 /finance 靠 offset 连续翻页找收入 / 提现（web-drama `_shared/ledger.ts`
+     * 的 scanLedger），漏的那条正好是收入时就会少一条、甚至判为翻完。id 是 UUID、全表唯一，
+     * 加它做次排序键后整个顺序是全序，翻页不会重、也不会漏。
+     */
+    static final Sort LEDGER_SORT = Sort.by("createdAt").descending().and(Sort.by("id").descending());
+
     @GetMapping("/ledger")
     public PageEnvelope<LedgerEntryDto> ledger(
             Principal principal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        PageRequest pageable = PageRequest.of(page, size, LEDGER_SORT);
         return PageEnvelope.from(accountSelfService.listLedger(principal.getName(), pageable));
     }
 

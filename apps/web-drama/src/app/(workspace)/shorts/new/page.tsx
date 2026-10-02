@@ -2,8 +2,8 @@
 
 export const dynamic = "force-dynamic";
 
-// 新建短视频 —— 复用首页「短视频 tab」的创建控制台（ShortCreateConsole）：
-// 创意市场单集创意 + TipTap 对话框 + 试试同款引用 chip。不再重复实现一套模版浮层。
+// 从一句话开始（新建短视频）—— 复用创建控制台（ShortCreateConsole）：
+// 模板广场里的单条短视频模板 + TipTap 对话框 + 「做同款」引用 chip。不再重复实现一套模版浮层。
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { ShortCreateConsole } from "@/components/drama-workshop/short-create-console";

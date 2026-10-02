@@ -3,6 +3,7 @@ export type { ThumbProps } from "./thumb";
 export { Avatar } from "./avatar";
 export { CreditMark, CreditButton } from "./credit";
 export type { CreditMarkProps, CreditButtonProps } from "./credit";
+export { acquireActionLock, isActionLocked, withActionLock, useActionLock } from "./action-lock";
 export { useGen, GenSkeleton, GenError } from "./gen-state";
 export type { GenPhase } from "./gen-state";
 export { AICollab, RewriteTagPill, REWRITE_LABEL, REWRITE_TONE } from "./ai-collab";
