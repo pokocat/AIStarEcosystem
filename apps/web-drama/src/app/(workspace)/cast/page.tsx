@@ -6,9 +6,9 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Award, Crown, Eye, Search, Shield, Sparkles, Star, Users, Users as UsersIcon, Wand2, X } from "lucide-react";
-import type { Artist, ArtistStatus, ArtistQuality } from "@ai-star-eco/types/artist";
-import { Button, Card, Chip, KpiCard } from "@/components/premium";
+import { Archive, ExternalLink, PlayCircle, Search, Sparkles, Users, Users as UsersIcon, Wand2, X } from "lucide-react";
+import type { Artist, ArtistStatus } from "@ai-star-eco/types/artist";
+import { Button, Card } from "@/components/premium";
 import {
   ConfirmDialog,
   EmptyState,
@@ -19,44 +19,22 @@ import {
 } from "@/components/common";
 import { useAsync, invalidate } from "@/lib/drama-query";
 import { ArtistsApi } from "@/api";
+import { dapAvatarDeepLink } from "@/api/dap-avatars";
 import { ApiError } from "@ai-star-eco/api-client";
-import {
-  deriveCastView,
-  formatCny,
-  formatCompact,
-  QUALITY_GRADIENT,
-  QUALITY_LABEL,
-  QUALITY_TONE,
-  STATUS_LABEL,
-} from "@/lib/cast-derive";
+import { QUALITY_GRADIENT } from "@/lib/cast-derive";
 import { ImportAvatarDialog } from "./_dialogs/ImportAvatarDialog";
+import { CAST_STATUS_LABEL, CAST_STATUS_TONE, ARCHIVE_DESCRIPTION } from "./_cast-labels";
 
-type StatusFilter = "all" | ArtistStatus;
-type QualityFilter = "all" | ArtistQuality;
+// v0.197：这一页原来照搬音乐线的偶像孵化指标（在线 / 训练中 / 出道期 / S·A·B 类 / 累计营收），
+// 从 AiAvatar 导入的数字人一律是 active + common，这些筛选和统计对真实用户永远是空或 0 → 去掉。
+// 「生成新形象」原来进已下线的形象锻造炉（出假图）→ 改成去 AiAvatar 做新造型的外链。
+type StatusFilter = "all" | "active" | "retired";
 
-const STATUS_FILTERS: Array<{ id: StatusFilter; label: string; icon: React.ElementType }> = [
-  { id: "all", label: "全部", icon: Users },
-  { id: "active", label: "在线", icon: Eye },
-  { id: "trainee", label: "训练中", icon: Sparkles },
-  { id: "debut", label: "出道期", icon: Star },
-  { id: "rest", label: "休养", icon: Shield },
-  { id: "retired", label: "归档", icon: Shield },
+const STATUS_FILTERS: Array<{ id: StatusFilter; label: string }> = [
+  { id: "all", label: "全部" },
+  { id: "active", label: "在用" },
+  { id: "retired", label: "已归档" },
 ];
-
-const QUALITY_FILTERS: Array<{ id: QualityFilter; label: string; icon: React.ElementType }> = [
-  { id: "all", label: "全等级", icon: Shield },
-  { id: "legendary", label: "S 类", icon: Crown },
-  { id: "epic", label: "A 类", icon: Award },
-  { id: "rare", label: "B 类", icon: Star },
-];
-
-const STATUS_TONE: Record<ArtistStatus, "success" | "info" | "violet" | "accent" | "neutral"> = {
-  active: "success",
-  trainee: "info",
-  debut: "violet",
-  rest: "accent",
-  retired: "neutral",
-};
 
 export default function CastListPage() {
   return (
@@ -70,14 +48,13 @@ function CastListInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // URL 持久化：?q=&status=&quality=
+  // URL 持久化：?q=&status=
   const qInit = searchParams.get("q") ?? "";
-  const statusInit = (searchParams.get("status") as StatusFilter) ?? "all";
-  const qualityInit = (searchParams.get("quality") as QualityFilter) ?? "all";
+  const rawStatus = searchParams.get("status");
+  const statusInit: StatusFilter = rawStatus === "active" || rawStatus === "retired" ? rawStatus : "all";
 
   const [q, setQ] = React.useState(qInit);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>(statusInit);
-  const [qualityFilter, setQualityFilter] = React.useState<QualityFilter>(qualityInit);
   const [showNew, setShowNew] = React.useState(false);
   const [archiveTarget, setArchiveTarget] = React.useState<Artist | null>(null);
 
@@ -86,18 +63,17 @@ function CastListInner() {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (statusFilter !== "all") params.set("status", statusFilter);
-    if (qualityFilter !== "all") params.set("quality", qualityFilter);
     const newUrl = params.toString() ? `?${params.toString()}` : "";
     window.history.replaceState(null, "", `/cast${newUrl}`);
-  }, [q, statusFilter, qualityFilter]);
+  }, [q, statusFilter]);
 
   const artistsQ = useAsync<Artist[]>("/me/artists", () => ArtistsApi.listArtists());
   const all = artistsQ.data ?? [];
 
   const filtered = React.useMemo(() => {
     return all.filter((a) => {
-      if (statusFilter !== "all" && a.status !== statusFilter) return false;
-      if (qualityFilter !== "all" && a.quality !== qualityFilter) return false;
+      if (statusFilter === "retired" && a.status !== "retired") return false;
+      if (statusFilter === "active" && a.status === "retired") return false;
       if (q) {
         const needle = q.toLowerCase();
         if (!a.name.toLowerCase().includes(needle) && !(a.bio ?? "").toLowerCase().includes(needle))
@@ -105,63 +81,66 @@ function CastListInner() {
       }
       return true;
     });
-  }, [all, q, statusFilter, qualityFilter]);
+  }, [all, q, statusFilter]);
 
-  const active = all.filter((a) => a.status === "active").length;
-  const trainee = all.filter((a) => a.status === "trainee").length;
-  const sClass = all.filter((a) => a.quality === "legendary").length;
-  const totalRevenue = all.reduce((sum, a) => sum + a.stats.revenue, 0);
+  const retiredN = all.filter((a) => a.status === "retired").length;
+  const filtering = !!q || statusFilter !== "all";
 
   async function handleArchive() {
     if (!archiveTarget) return;
     try {
       await ArtistsApi.archiveArtist(archiveTarget.id);
       invalidate("/me/artists");
-      toast.success(`${archiveTarget.name} 已归档`);
+      toast.success(`已归档「${archiveTarget.name}」`);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "归档失败");
+      toast.error(e instanceof ApiError ? e.message : "归档失败，请重试");
+    }
+  }
+
+  async function handleRestore(a: Artist) {
+    try {
+      await ArtistsApi.activateArtist(a.id);
+      invalidate("/me/artists");
+      toast.success(`已恢复「${a.name}」`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "恢复失败，请重试");
     }
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <ViewHeader
-        eyebrow="跨项目复用"
-        title="演员 IP 阵容"
-        meta={`共 ${all.length} 位 · ${active} 在线 · ${trainee} 训练中`}
+        eyebrow="从 AiAvatar 导入的数字人"
+        title="数字人演员"
+        meta={`共 ${all.length} 位${retiredN > 0 ? `，其中 ${retiredN} 位已归档` : ""}`}
         action={
-          <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
+          <Button variant="primary" size="md" onClick={() => setShowNew(true)} style={{ flex: "none" }}>
             <Wand2 size={14} />
-            从 AiAvatar 引入数字人
+            从 AiAvatar 导入数字人
           </Button>
         }
       />
 
-      {/* 与短剧工坊 角色与资产 的职能分工 */}
+      {/* 和短剧里「角色绑定数字人」的关系：绑定时直接从 AiAvatar 的数字人里选，不经过这里 */}
       <div
-        className="card row gap-3"
+        className="card row gap-3 mk-cast-note"
         style={{
           padding: "12px 16px",
           background: "var(--surface-2)",
           border: "1px solid var(--line-soft)",
           alignItems: "center",
+          flexWrap: "wrap",
         }}
       >
         <UsersIcon size={16} style={{ color: "var(--accent)", flex: "none" }} />
-        <div className="grow" style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
-          这里是<b style={{ color: "var(--ink)" }}>跨项目的演员 IP 库</b>：可以反复在不同短剧里出演。
-          要给某部短剧的<b style={{ color: "var(--ink)" }}>角色绑数字人</b>，请到「短剧工坊 → 进入项目 → 角色与资产」阶段。
+        <div style={{ flex: "1 1 240px", minWidth: 0, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+          {"这里放你从 AiAvatar（数字人平台）导入的数字人，可以统一改名字、换封面。给某部短剧的角色"}
+          <b style={{ color: "var(--ink)" }}>绑定数字人</b>
+          {"：到「我的短剧」打开那部短剧，在「短剧设定」的角色卡上点「绑定数字人」，直接从你在 AiAvatar 的数字人里选，不用先导入到这里。"}
         </div>
-        <Link href="/projects" style={{ textDecoration: "none" }}>
-          <button type="button" className="btn btn-line btn-sm">去短剧工坊 →</button>
+        <Link href="/projects" style={{ textDecoration: "none", flex: "none" }}>
+          <button type="button" className="btn btn-line btn-sm">去我的短剧</button>
         </Link>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="在线 · 全部" value={String(active)} tone="success" delta={`${all.length} 总数`} />
-        <KpiCard label="训练中" value={String(trainee)} tone="info" />
-        <KpiCard label="S 类" value={String(sClass)} tone="accent" delta="最高等级" />
-        <KpiCard label="累计营收" value={formatCny(totalRevenue)} tone="violet" delta="全部作品合计" />
       </div>
 
       {/* 搜索 + 过滤 */}
@@ -177,6 +156,7 @@ function CastListInner() {
           <div
             style={{
               flex: 1,
+              minWidth: 0,
               display: "flex",
               alignItems: "center",
               gap: 8,
@@ -186,13 +166,15 @@ function CastListInner() {
               borderRadius: "var(--radius-md)",
             }}
           >
-            <Search size={14} color="var(--fg-2)" />
+            <Search size={14} color="var(--fg-2)" style={{ flex: "none" }} />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="按演员名 / 简介关键字搜索…"
+              placeholder="搜演员名或简介"
+              aria-label="搜索演员"
               style={{
                 flex: 1,
+                minWidth: 0,
                 background: "transparent",
                 border: "none",
                 color: "var(--fg-0)",
@@ -204,11 +186,13 @@ function CastListInner() {
             {q && (
               <button
                 onClick={() => setQ("")}
+                aria-label="清空搜索"
                 style={{
                   background: "none",
                   border: "none",
                   color: "var(--fg-3)",
                   cursor: "pointer",
+                  flex: "none",
                 }}
               >
                 <X size={14} />
@@ -217,14 +201,14 @@ function CastListInner() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {STATUS_FILTERS.map((f) => {
-            const Icon = f.icon;
             const active = statusFilter === f.id;
             return (
               <button
                 key={f.id}
                 onClick={() => setStatusFilter(f.id)}
+                className="mk-tap"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -241,39 +225,6 @@ function CastListInner() {
                   cursor: "pointer",
                 }}
               >
-                <Icon size={12} />
-                {f.label}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {QUALITY_FILTERS.map((f) => {
-            const Icon = f.icon;
-            const active = qualityFilter === f.id;
-            return (
-              <button
-                key={f.id}
-                onClick={() => setQualityFilter(f.id)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 12px",
-                  borderRadius: "var(--radius-pill)",
-                  border: active
-                    ? "1px solid color-mix(in srgb, var(--extra-violet) 50%, transparent)"
-                    : "1px solid var(--line-2)",
-                  background: active
-                    ? "color-mix(in srgb, var(--extra-violet) 12%, transparent)"
-                    : "transparent",
-                  color: active ? "var(--extra-violet)" : "var(--fg-1)",
-                  fontSize: 12,
-                  fontFamily: "var(--font-sans)",
-                  cursor: "pointer",
-                }}
-              >
-                <Icon size={12} />
                 {f.label}
               </button>
             );
@@ -287,18 +238,23 @@ function CastListInner() {
       {!artistsQ.isLoading && !artistsQ.error && filtered.length === 0 && (
         <EmptyState
           icon={<Users size={28} />}
-          title="没有匹配的演员"
-          description={q ? `没有找到与「${q}」相关的演员，试试清除筛选条件。` : "你的演员阵容里还没有 IP，从 AiAvatar 引入第一位数字人。"}
+          title={filtering ? "没有匹配的演员" : "还没有数字人演员"}
+          description={
+            q
+              ? `没找到和「${q}」有关的演员，换个词或清掉筛选。`
+              : filtering
+                ? "这个分类下还没有演员。"
+                : "先在 AiAvatar 做好数字人，再回这里导入。"
+          }
           action={
             <>
-              {(q || statusFilter !== "all" || qualityFilter !== "all") && (
+              {filtering && (
                 <Button
                   variant="ghost"
                   size="md"
                   onClick={() => {
                     setQ("");
                     setStatusFilter("all");
-                    setQualityFilter("all");
                   }}
                 >
                   清除筛选
@@ -306,7 +262,7 @@ function CastListInner() {
               )}
               <Button variant="primary" size="md" onClick={() => setShowNew(true)}>
                 <Wand2 size={14} />
-                引入数字人
+                导入数字人
               </Button>
             </>
           }
@@ -314,9 +270,9 @@ function CastListInner() {
       )}
 
       {!artistsQ.isLoading && filtered.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+        <div className="mk-cast-grid">
           {filtered.map((a) => {
-            const v = deriveCastView(a);
+            const dramas = a.stats?.dramas ?? 0;
             return (
               <Card
                 key={a.id}
@@ -327,6 +283,7 @@ function CastListInner() {
                   display: "flex",
                   flexDirection: "column",
                   transition: "border-color 140ms ease, transform 140ms ease",
+                  opacity: a.status === "retired" ? 0.72 : 1,
                 }}
                 onClick={() => router.push(`/cast/${encodeURIComponent(a.id)}`)}
                 onMouseEnter={(e) => {
@@ -356,60 +313,68 @@ function CastListInner() {
                     }}
                   />
                   <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 6 }}>
-                    <StatusBadge tone={STATUS_TONE[a.status]}>{STATUS_LABEL[a.status]}</StatusBadge>
+                    <StatusBadge tone={CAST_STATUS_TONE[a.status as ArtistStatus] ?? "neutral"}>
+                      {CAST_STATUS_LABEL[a.status as ArtistStatus] ?? CAST_STATUS_LABEL.active}
+                    </StatusBadge>
                   </div>
                   <div style={{ position: "absolute", bottom: 12, left: 14, right: 14 }}>
                     <div
+                      title={a.name}
                       style={{
                         fontSize: 20,
                         fontWeight: 700,
                         color: "#fff",
                         fontFamily: "var(--font-display)",
-                        marginBottom: 2,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {a.name}
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <Chip tone={QUALITY_TONE[a.quality]}>{QUALITY_LABEL[a.quality]}</Chip>
                     </div>
                   </div>
                 </div>
 
                 <div style={{ padding: "16px 18px", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ fontSize: 12, color: "var(--fg-1)", lineHeight: 1.5, minHeight: 36 }}>
-                    {(a.bio ?? "").length > 56 ? `${a.bio.slice(0, 56)}…` : a.bio}
-                  </div>
-
                   <div
-                    className="mono"
                     style={{
-                      display: "flex",
-                      gap: 12,
-                      fontSize: 10.5,
-                      color: "var(--fg-3)",
-                      letterSpacing: 0.3,
+                      fontSize: 12,
+                      color: a.bio ? "var(--fg-1)" : "var(--fg-3)",
+                      lineHeight: 1.5,
+                      minHeight: 36,
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
                     }}
                   >
-                    <span>{v.series} 部剧集</span>
-                    <span>{v.plays} 播放</span>
-                    <span style={{ color: "var(--accent)" }}>{v.revenue}</span>
+                    {a.bio || "还没写简介"}
                   </div>
 
-                  <div style={{ display: "flex", gap: 6, marginTop: "auto", paddingTop: 8 }}>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      style={{ flex: 1 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/cast/${encodeURIComponent(a.id)}/generate`);
-                      }}
-                    >
-                      <Sparkles size={12} />
-                      生成新形象
-                    </Button>
-                    {a.status !== "retired" && (
+                  {dramas > 0 && (
+                    <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", letterSpacing: 0.3 }}>
+                      参演 {dramas} 部短剧
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 6, marginTop: "auto", paddingTop: 8, flexWrap: "wrap" }}>
+                    {a.dapAvatarId && (
+                      <a
+                        href={dapAvatarDeepLink(String(a.dapAvatarId), "looks")}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ textDecoration: "none", flex: "1 1 auto", minWidth: 0 }}
+                        title="在 AiAvatar（数字人平台）里给这位数字人做新造型，新标签页打开"
+                      >
+                        <Button variant="secondary" size="sm" style={{ width: "100%", justifyContent: "center" }}>
+                          <Sparkles size={12} />
+                          去 AiAvatar 做新造型
+                          <ExternalLink size={11} />
+                        </Button>
+                      </a>
+                    )}
+                    {a.status !== "retired" ? (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -418,7 +383,20 @@ function CastListInner() {
                           setArchiveTarget(a);
                         }}
                       >
+                        <Archive size={12} />
                         归档
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleRestore(a);
+                        }}
+                      >
+                        <PlayCircle size={12} />
+                        恢复
                       </Button>
                     )}
                   </div>
@@ -429,7 +407,7 @@ function CastListInner() {
         </div>
       )}
 
-      {/* v0.60 收敛：演员创建改为从 AiAvatar 引入数字人（取代本地孵化表单） */}
+      {/* v0.60 收敛：演员创建改为从 AiAvatar 导入数字人（取代本地孵化表单） */}
       <ImportAvatarDialog
         open={showNew}
         onOpenChange={setShowNew}
@@ -447,7 +425,7 @@ function CastListInner() {
         open={!!archiveTarget}
         onOpenChange={(o) => !o && setArchiveTarget(null)}
         title={`归档「${archiveTarget?.name ?? ""}」`}
-        description="归档后该演员将不再出现在选角池中，但历史作品和数据仍然可见。可随时恢复。"
+        description={ARCHIVE_DESCRIPTION}
         destructive
         confirmLabel="归档"
         onConfirm={handleArchive}

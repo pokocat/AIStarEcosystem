@@ -60,18 +60,18 @@ public class DramaHotspotService {
         int cap = max > 0 ? Math.min(max, 30) : 12;
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "热点蒸馏还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+                    "AI 整理热点还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
         PromptService.ResolvedPrompt prompt = promptService.resolve(PromptService.KEY_DRAMA_HOTSPOT_DISTILL);
         if ("code".equals(prompt.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "近期热点蒸馏的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_HOTSPOT_DISTILL + "）。");
+                    "AI 整理热点用的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_HOTSPOT_DISTILL + "）。");
         }
 
         List<String> words = fetchHotWords();
         if (words.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "HOTSPOT_SOURCE_EMPTY",
-                    "热搜源没抓到内容，请稍后重试或更换来源。");
+                    "热搜来源这次没抓到内容，稍后再试，或换一个来源。");
         }
         log.info("[drama-hotspot] fetched {} raw hot words", words.size());
 
@@ -95,7 +95,7 @@ public class DramaHotspotService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "热点蒸馏调用失败，请稍后重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 服务暂时连不上，稍后再试一次。");
         }
 
         // parseHotspots 返回 null = 输出不是可解析的 JSON（真失败）；返回空 list = 模型合法地
@@ -105,7 +105,7 @@ public class DramaHotspotService {
         if (out == null) {
             log.warn("[drama-hotspot] unparseable model output, head={}", head(resp.content(), 400));
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "模型这次没有返回可解析的选题结果，请重试。");
+                    "这次 AI 整理出的选题用不了，再试一次。");
         }
         if (out.isEmpty()) {
             // 空结果比非空更需要留证：否则只能看到「没产出」，无从判断是热词确实不可用还是提示词过严。
@@ -134,7 +134,7 @@ public class DramaHotspotService {
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() / 100 != 2) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "HOTSPOT_FETCH_FAILED",
-                        "热搜源返回 " + resp.statusCode() + "，请稍后重试或更换来源。");
+                        "热搜来源暂时打不开（状态码 " + resp.statusCode() + "），稍后再试，或换一个来源。");
             }
             JsonNode root = om.readTree(resp.body());
             JsonNode list = root.path("word_list");
@@ -152,7 +152,7 @@ public class DramaHotspotService {
         } catch (Exception e) {
             log.warn("[drama-hotspot] fetch failed url={} err={}", url, e.toString());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "HOTSPOT_FETCH_FAILED",
-                    "抓取热搜源失败，请检查来源地址或稍后重试。");
+                    "热搜来源没抓下来，检查一下来源地址，或稍后再试。");
         }
     }
 

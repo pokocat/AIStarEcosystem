@@ -3,6 +3,12 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { ApiError } from "@ai-star-eco/api-client";
+import { aiErrorMessage } from "@/lib/ai-error";
+
+// 全局兜底报错提示：没被页面自己 catch 住的接口错误，在这里弹一条 toast。
+// v0.197（docs/drama-ux-copy-pass.md §3.7）：主文案只给人话 —— 能按错误码翻译的走 aiErrorMessage，
+// HTTP 状态、错误码原文不再显示；需要报障时点「复制错误信息」，把问题编号、错误码、原始信息一起复制走。
+const FALLBACK_TEXT = "操作没成功，请稍后再试。";
 
 type GlobalApiFailure = {
   message: string;
@@ -62,9 +68,12 @@ function toGlobalApiFailure(reason: unknown): GlobalApiFailure | null {
 
   if (!isBackendError) return null;
 
+  // aiErrorMessage 会按 code 翻译、把技术细节换成兜底；传 Error 形态让它读得到原文
+  const friendly = aiErrorMessage(Object.assign(new Error(parsed.text), { code }), FALLBACK_TEXT);
+
   return {
     message,
-    text: parsed.text || "服务器处理请求失败，请稍后重试。",
+    text: friendly || FALLBACK_TEXT,
     logId,
     code,
     status,
@@ -86,20 +95,27 @@ export function GlobalApiErrorNotification() {
 
     lastKeyRef.current = { key, at: now };
 
-    const meta = [
-      failure.status ? `HTTP ${failure.status}` : null,
+    // 复制给客服 / 报障用的完整信息（界面上不显示这些技术细节）
+    const detail = [
+      failure.logId ? `问题编号 ${failure.logId}` : null,
       failure.code ? `错误码 ${failure.code}` : null,
-      failure.logId ? `日志 ID ${failure.logId}` : null,
-    ].filter(Boolean).join(" · ");
+      failure.status ? `HTTP ${failure.status}` : null,
+      failure.message && failure.message !== failure.text ? `原始信息 ${failure.message}` : null,
+    ].filter(Boolean).join("\n");
 
-    toast.error(failure.unauthorized ? "登录状态已失效" : "请求处理失败", {
-      description: meta ? `${failure.text}\n${meta}` : failure.text,
+    toast.error(failure.unauthorized ? "登录已过期，请重新登录" : "操作没成功", {
+      // 登录过期：标题已经说清了，不再重复一遍
+      description: failure.unauthorized
+        ? undefined
+        : failure.logId
+          ? `${failure.text}\n问题编号 ${failure.logId}`
+          : failure.text,
       duration: 8000,
-      action: failure.logId
+      action: detail
         ? {
-            label: "复制日志 ID",
+            label: "复制错误信息",
             onClick: () => {
-              void navigator.clipboard?.writeText(failure.logId ?? "");
+              void navigator.clipboard?.writeText(detail);
             },
           }
         : undefined,

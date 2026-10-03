@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.config.DramaConfigSeeder;
+import com.aistareco.aep.model.CreditHold;
 import com.aistareco.aep.model.DramaShort;
 import com.aistareco.aep.repository.DramaShortRepository;
 import com.aistareco.aep.service.cdn.CdnUrlSigner;
@@ -38,6 +39,8 @@ public class DramaShortService {
 
     /** 进工作台开拍扣费默认单价（admin「短剧专区」drama.credit.short-entry 可改）。 */
     private static final long SHORT_ENTRY_COST_DEFAULT = 10;
+    /** 开拍冻结 / 扣费的账本 referenceType。 */
+    private static final String ENTRY_REF_TYPE = "DRAMA_SHORT";
     /** 开拍付费创建的幂等窗口：客户端超时重试都发生在几秒到几分钟内，2 小时足够覆盖。 */
     /** 幂等键长度上限（客户端生成的随机串）。 */
     private static final int CLIENT_REQUEST_ID_MAX = 64;
@@ -66,21 +69,82 @@ public class DramaShortService {
      * 「进工作台」= 新建一条短视频草稿（自建 createShort / 套用单集创意 createFromRecipe），
      * 等价于一次 AI 出口播脚本与分镜的开销 —— 单价 admin「短剧专区」可配。
      * 重开已有草稿（getShort / saveShort）走读取分支，不经此扣费。
+     *
+     * <p>草稿落库与扣费不在同一个事务里（落库是 repo.save 自己的事务），所以三种失败各有收尾：
+     * 建草稿失败 → 退冻结；扣费失败 → 退冻结并删掉刚建的草稿（否则同键重试会命中它、白拿）；
+     * 扣费抛错但账本显示已扣 → 草稿留给用户。退冻结 / 删草稿本身失败都打 ERROR 带 ref，不再静默吞掉。
      */
-    private <T> T withEntryCharge(String userId, java.util.function.Supplier<T> work) {
+    private DramaShort withEntryCharge(String userId, java.util.function.Supplier<DramaShort> work) {
         long price = configs.getLong(DramaConfigSeeder.KEY_SHORT_ENTRY, SHORT_ENTRY_COST_DEFAULT);
         if (price <= 0) return work.get();
         String ref = "dse_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-        creditService.hold(userId, price, "DRAMA_SHORT", ref, "短视频开拍 · AI 出口播脚本与分镜");
+        creditService.hold(userId, price, ENTRY_REF_TYPE, ref, "开始制作短视频 · AI 写口播脚本和分镜");
+
+        DramaShort created;
         try {
-            T out = work.get();
-            creditService.commitHold("DRAMA_SHORT", ref, price, "短视频开拍 · AI 出口播脚本与分镜");
-            return out;
+            created = work.get();
         } catch (RuntimeException e) {
-            try {
-                creditService.releaseHold("DRAMA_SHORT", ref, "短视频开拍 · 失败释放");
-            } catch (Exception ignore) { /* 释放失败仅记账问题，不掩盖原始错误 */ }
+            // 草稿没落库（含并发同键撞唯一索引）：退回本次冻结。退不回也不掩盖原始错误，但必须留痕。
+            releaseEntryHold(userId, ref, price, "draft-not-created");
             throw e;
+        }
+
+        try {
+            creditService.commitHold(ENTRY_REF_TYPE, ref, price, "开始制作短视频 · AI 写口播脚本和分镜");
+            return created;
+        } catch (RuntimeException commitErr) {
+            // 草稿已经落库（本服务没有外层事务），钱却没扣上。不能把它留着：
+            // 同一把幂等键的重试会在 lookupIdempotency 命中这条草稿、直接返回 —— 用户白拿一条没付钱的草稿。
+            CreditHold.Status status = entryHoldStatus(ref);
+            if (status == CreditHold.Status.COMMITTED) {
+                // commit 其实已经记账成功、只是之后抛了（提交回调等）：钱扣了，草稿就是用户的。
+                log.warn("[drama-short] commit threw but hold is COMMITTED, keep draft user={} id={} ref={} err={}",
+                        userId, created.getId(), ref, commitErr.toString());
+                return created;
+            }
+            releaseEntryHold(userId, ref, price, "commit-failed");
+            discardUnpaidDraft(userId, created, ref);
+            throw commitErr;
+        }
+    }
+
+    /** 开拍冻结当前状态；查不到（含查询本身失败）一律按「没扣上」处理 —— 宁可让用户重付一次，也不白给草稿。 */
+    private CreditHold.Status entryHoldStatus(String ref) {
+        try {
+            CreditHold h = creditService.findHold(ENTRY_REF_TYPE, ref);
+            return h == null ? null : h.getStatus();
+        } catch (RuntimeException e) {
+            log.warn("[drama-short] entry hold lookup failed ref={} err={}", ref, e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * 退回开拍冻结。releaseHold 本身幂等（已终态 / 不存在都是 no-op）；抛错时这笔钱会一直冻着，
+     * 直到 {@link CreditHoldSweeper} 超时清扫 —— 所以必须打 ERROR 带 ref，对账才找得到。
+     */
+    private void releaseEntryHold(String userId, String ref, long price, String reason) {
+        try {
+            creditService.releaseHold(ENTRY_REF_TYPE, ref, "开始制作短视频 · 没做成，已退回");
+        } catch (RuntimeException e) {
+            log.error("[drama-short] entry hold release FAILED user={} ref={}:{} amount={} reason={} err={}"
+                            + " —— 冻结会由 CreditHoldSweeper 超时退回，需要时按 ref 对账",
+                    userId, ENTRY_REF_TYPE, ref, price, reason, e.toString());
+        }
+    }
+
+    /**
+     * 删掉一条没付上钱的草稿（物理删，连同它占着的幂等键）：同键重试就会按新请求处理、重新扣费，
+     * 而不是命中这条白拿。刚建出来、用户还没拿到 id，不会丢任何用户内容。删不掉只能留痕。
+     */
+    private void discardUnpaidDraft(String userId, DramaShort row, String ref) {
+        try {
+            repo.delete(row);
+            log.info("[drama-short] discarded unpaid draft user={} id={} ref={}", userId, row.getId(), ref);
+        } catch (RuntimeException e) {
+            log.error("[drama-short] unpaid draft could NOT be discarded user={} id={} key={} ref={} err={}"
+                            + " —— 同键重试会拿到这条未付费草稿，需要人工处理",
+                    userId, row.getId(), row.getClientRequestId(), ref, e.toString());
         }
     }
 
@@ -114,7 +178,7 @@ public class DramaShortService {
      */
     public JsonNode createShort(JsonNode body, String userId) {
         if (body == null || !body.isObject()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_BODY_REQUIRED", "缺少新建短视频参数");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_BODY_REQUIRED", "没收到新建短视频的信息，请重试。");
         }
         // 提示词直出：seed 语义校验必须在 hold 之前 —— 空分镜表不能先扣费再落一条 0 镜草稿。
         if (body.path("seed").isObject()) {
@@ -125,7 +189,7 @@ public class DramaShortService {
         IdemLookup idem = lookupIdempotency(userId, clientRequestId);
         if (idem.hit() != null) return toDetail(idem.hit());
         try {
-            return withEntryCharge(userId, () -> doCreateShort(body, userId, idem.keyToPersist()));
+            return toDetail(withEntryCharge(userId, () -> doCreateShort(body, userId, idem.keyToPersist())));
         } catch (DataIntegrityViolationException e) {
             // 并发同键：另一个请求先落库并占住了唯一索引。withEntryCharge 已释放本次冻结
             // （本次不扣费），回查赢家的草稿返回，两个请求看到同一条、只付一笔。
@@ -167,7 +231,14 @@ public class DramaShortService {
      * 客户端幂等键：只接受短的可见字符串；缺省 / 超长 / 空白一律当没传（退回原有非幂等行为）。
      */
     private static String clientRequestId(JsonNode body) {
-        String raw = text(body, "clientRequestId");
+        return normalizeClientRequestId(text(body, "clientRequestId"));
+    }
+
+    /**
+     * 幂等键的唯一校验规则。createShort 与 createFromRecipe（套用模板 / 聊天转短视频）都走这里，
+     * 不各写一份 —— 否则一条入口收了空串当键，所有「没带键」的请求都会撞到同一条草稿上。
+     */
+    private static String normalizeClientRequestId(String raw) {
         if (raw == null) return null;
         String value = raw.trim();
         if (value.isEmpty() || value.length() > CLIENT_REQUEST_ID_MAX) return null;
@@ -175,7 +246,7 @@ public class DramaShortService {
     }
 
     /** 实际建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
-    private JsonNode doCreateShort(JsonNode body, String userId, String clientRequestId) {
+    private DramaShort doCreateShort(JsonNode body, String userId, String clientRequestId) {
         OffsetDateTime now = OffsetDateTime.now();
         // v0.143 提示词直出：body.seed = 已拆解（可能被用户改过）的结构 → 直接 seed 成带分镜的草稿。
         // 只接创作内容，分镜一律 flow=draft（seed 不得携带首帧 / 视频 / 配音产物）。
@@ -216,7 +287,7 @@ public class DramaShortService {
         repo.save(row);
         log.info("[drama-short] create user={} id={} fmt={} seededShots={}",
                 userId, row.getId(), fmtKey, row.getShotCount());
-        return toDetail(row);
+        return row;
     }
 
     /**
@@ -225,7 +296,7 @@ public class DramaShortService {
     public JsonNode saveShort(String id, JsonNode body, String userId) {
         DramaShort row = requireOwned(id, userId);
         if (body == null || !body.has("data") || !body.get("data").isObject()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_DATA_REQUIRED", "缺少要保存的短视频数据");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_DATA_REQUIRED", "没收到要保存的内容，请重试。");
         }
         ObjectNode data = ((ObjectNode) body.get("data")).deepCopy();
         JsonNode existingPayload = readPayload(row);
@@ -281,7 +352,7 @@ public class DramaShortService {
             String st = body.path("status").asText("draft");
             if ("done".equals(st) && !assemblyCurrent) {
                 throw new BusinessException(HttpStatus.CONFLICT, "DRAMA_SHORT_ASSEMBLY_REQUIRED",
-                        "请先合成完整短片，成功后才能标记为已完成。");
+                        "请先合成成片，合成成功后才能标记为已完成。");
             }
             row.setStatus("done".equals(st) ? "done" : "draft");
         }
@@ -321,7 +392,7 @@ public class DramaShortService {
     /** 从回收站恢复：清除 deletedAt，回到短视频工坊列表。→ { meta, data }。 */
     public JsonNode restoreShort(String id, String userId) {
         DramaShort row = repo.findByIdAndOwnerUserId(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "短视频草稿不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "找不到这条短视频"));
         if (row.getDeletedAt() != null) {
             row.setDeletedAt(null);
             row.setUpdatedAt(OffsetDateTime.now());
@@ -333,9 +404,9 @@ public class DramaShortService {
     /** 彻底删除（物理）：必须已在回收站。 */
     public void purgeShort(String id, String userId) {
         DramaShort row = repo.findByIdAndOwnerUserId(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "短视频草稿不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "找不到这条短视频"));
         if (row.getDeletedAt() == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_NOT_IN_TRASH", "请先移入回收站再彻底删除");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_NOT_IN_TRASH", "要先移到回收站，才能彻底删除。");
         }
         repo.delete(row);
     }
@@ -395,31 +466,44 @@ public class DramaShortService {
     public String createFromRecipe(String userId, String title, String type,
                                    String coverFrom, String coverTo,
                                    String styleName, String styleRef, String clientRequestId) {
-        IdemLookup idem = lookupIdempotency(userId, clientRequestId);
+        return createFromRecipe(userId, title, type, coverFrom, coverTo, styleName, styleRef, null, clientRequestId);
+    }
+
+    /**
+     * 带「点子」的建草稿：聊天页「去制作 · 单条短视频」用（{@link DramaBrainstormService#promote}）。
+     * idea 非空时落进草稿的 {@code data.idea}：制作页见到 idea 且还没有分镜，就直接按它写口播脚本，
+     * 用户不用把故事再讲一遍。其余与上面的套用模板完全相同（同一笔开拍费、同一把幂等键）。
+     * idea 为空 = 上面那个重载的行为（套用模板一直是 idea=null，等用户说主题）。
+     */
+    public String createFromRecipe(String userId, String title, String type,
+                                   String coverFrom, String coverTo,
+                                   String styleName, String styleRef, String idea, String clientRequestId) {
+        String key = normalizeClientRequestId(clientRequestId);
+        IdemLookup idem = lookupIdempotency(userId, key);
         if (idem.hit() != null) return idem.hit().getId();
         try {
             return withEntryCharge(userId, () -> doCreateFromRecipe(
-                    userId, title, type, coverFrom, coverTo, styleName, styleRef, idem.keyToPersist()));
+                    userId, title, type, coverFrom, coverTo, styleName, styleRef, idea, idem.keyToPersist())).getId();
         } catch (DataIntegrityViolationException e) {
-            DramaShort winner = clientRequestId == null ? null
-                    : repo.findFirstByOwnerUserIdAndClientRequestId(userId, clientRequestId).orElse(null);
+            DramaShort winner = key == null ? null
+                    : repo.findFirstByOwnerUserIdAndClientRequestId(userId, key).orElse(null);
             if (winner == null) throw e;
             log.info("[drama-short] create-from-recipe idempotent-race user={} id={} key={}",
-                    userId, winner.getId(), clientRequestId);
+                    userId, winner.getId(), key);
             return winner.getId();
         }
     }
 
     /** 实际从单集创意建草稿（在 {@link #withEntryCharge} 扣费包裹内执行）。 */
-    private String doCreateFromRecipe(String userId, String title, String type,
+    private DramaShort doCreateFromRecipe(String userId, String title, String type,
                                       String coverFrom, String coverTo,
-                                      String styleName, String styleRef, String clientRequestId) {
+                                      String styleName, String styleRef, String idea, String clientRequestId) {
         OffsetDateTime now = OffsetDateTime.now();
         String safeTitle = orDefault(title, "未命名短视频");
         String fmtName = orDefault(type, "风格短片");
 
         ObjectNode data = om.createObjectNode();
-        data.putNull("idea");
+        if (idea != null && !idea.isBlank()) data.put("idea", idea.trim()); else data.putNull("idea");
         data.putNull("reopen");
         data.putNull("fmtKey");
         data.put("fmtName", fmtName);
@@ -451,15 +535,16 @@ public class DramaShortService {
                 .updatedAt(now)
                 .build();
         repo.save(row);
-        log.info("[drama-short] create-from-recipe user={} id={} style={}", userId, row.getId(), styleName);
-        return row.getId();
+        log.info("[drama-short] create-from-recipe user={} id={} style={} withIdea={}",
+                userId, row.getId(), styleName, !data.path("idea").isNull());
+        return row;
     }
 
     // ── 内部工具 ────────────────────────────────────────────────────────────────
 
     private DramaShort requireOwned(String id, String userId) {
         return repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "短视频草稿不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SHORT_NOT_FOUND", "找不到这条短视频"));
     }
 
     /** 新建时的最小 ShortDraftData（结构合法、各数组为空，前端各步渲染空状态 + 自动补开场白）。 */

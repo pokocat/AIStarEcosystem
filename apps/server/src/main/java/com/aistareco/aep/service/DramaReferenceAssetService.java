@@ -243,7 +243,7 @@ public class DramaReferenceAssetService {
      */
     public JsonNode generateReferenceSheet(String projectId, String charId, JsonNode body, String ownerUserId) {
         DramaProject row = projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull(projectId, ownerUserId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "找不到这部短剧"));
         JsonNode data = readPayload(row);
         ensureBackfilled(projectId, ownerUserId, data);
 
@@ -251,7 +251,7 @@ public class DramaReferenceAssetService {
         if (ch == null) {
             JsonNode docChar = findDocChar(data, charId);
             if (docChar == null) {
-                throw new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_CHARACTER_NOT_FOUND", "角色不存在");
+                throw new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_CHARACTER_NOT_FOUND", "找不到这个角色，刷新页面后再试。");
             }
             ch = charFromDoc(projectId, ownerUserId, docChar, OffsetDateTime.now());
             charRepo.save(ch);
@@ -269,7 +269,7 @@ public class DramaReferenceAssetService {
 
         String ref = "cs_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         creditService.hold(ownerUserId, total, REF_TYPE_CHAR_SHEET, ref,
-                "角色三视图（" + orDefault(ch.getName(), "角色") + "）");
+                "多角度参考图（" + orDefault(ch.getName(), "角色") + "）");
 
         ArrayNode refImages = readRefImages(ch.getRefImagesJson());
         int committed = 0;
@@ -278,7 +278,7 @@ public class DramaReferenceAssetService {
             try {
                 String cdnKey = renderService.renderCharacterReferenceFrame(
                         ownerUserId, charVars(ch, angle, appearanceHint), ratio, lockRefs);
-                creditService.commitHold(REF_TYPE_CHAR_SHEET, ref, frameCost, "角色三视图 · " + angleLabel(angle));
+                creditService.commitHold(REF_TYPE_CHAR_SHEET, ref, frameCost, "多角度参考图 · " + angleLabel(angle));
                 // 只在 commitHold 真成功之后才落 refImages：commitHold 也在 try 块内、也会抛异常
                 // （见下方 catch 注释），先前的实现在 render 成功后就无条件 addObject，一旦随后
                 // commitHold 失败（未提交扣费、已 release），这条「未付费」的图仍会残留在数组里，
@@ -302,12 +302,12 @@ public class DramaReferenceAssetService {
         }
         if (committed < angles.size()) {
             try {
-                creditService.releaseHold(REF_TYPE_CHAR_SHEET, ref, "角色三视图 · 剩余释放");
+                creditService.releaseHold(REF_TYPE_CHAR_SHEET, ref, "多角度参考图 · 没生成的已退回");
             } catch (Exception ignore) { /* 释放失败仅记账问题，不掩盖原始错误 */ }
         }
         if (committed == 0) {
             throw lastErr != null ? lastErr
-                    : new BusinessException(HttpStatus.BAD_GATEWAY, "REFERENCE_SHEET_FAILED", "角色三视图生成失败，请稍后重试。");
+                    : new BusinessException(HttpStatus.BAD_GATEWAY, "REFERENCE_SHEET_FAILED", "多角度参考图没生成出来，稍后再试一次。");
         }
 
         // §6.1：产物只写实体表，不回写 payloadJson。

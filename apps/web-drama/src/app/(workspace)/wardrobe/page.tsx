@@ -2,28 +2,19 @@
 
 export const dynamic = "force-dynamic";
 
+// 戏服与道具（v0.197：侧栏「即将上线」分组）。
+// 如实标注：这一页的上传原来是 setTimeout 假上传（只存在组件 state 里，刷新就没了，却提示「已加入素材库」），
+// 「分配给演员」永远是灰的、分配弹窗永远打不开，「稀有度 S/A/B/C 类」是游戏概念 → 全部去掉。
+// 上传禁用并说明「服装参考图先传到素材库」，给去素材库的按钮。服装目录本身读 /wardrobe/items（真接口）。
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
-import { Plus, Search, Shirt, Trash2, Upload, Users } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { ArrowRight, Info, Search, Shirt, Upload } from "lucide-react";
 import type { ClothingItem } from "@ai-star-eco/types/wardrobe";
-import type { Artist } from "@ai-star-eco/types/artist";
-import { Button, Card, Chip, KpiCard } from "@/components/premium";
-import {
-  ConfirmDialog,
-  Dialog,
-  EmptyState,
-  Field,
-  LoadingBlock,
-  SectionHeader,
-  Select,
-  StatusBadge,
-  TextInput,
-  ViewHeader,
-} from "@/components/common";
-import { ArtistsApi, WardrobeApi } from "@/api";
-import { useAsync, invalidate, mutate } from "@/lib/drama-query";
-import { ApiError } from "@ai-star-eco/api-client";
+import { Button, Card, Chip } from "@/components/premium";
+import { EmptyState, ErrorBlock, LoadingBlock, ViewHeader } from "@/components/common";
+import { WardrobeApi } from "@/api";
+import { useAsync } from "@/lib/drama-query";
 
 type Kind = "all" | "top" | "bottom" | "accessory" | "shoes" | "hair";
 
@@ -35,35 +26,7 @@ const KINDS: Array<{ id: Kind; label: string }> = [
   { id: "accessory", label: "配饰" },
   { id: "hair", label: "发型" },
 ];
-
-const RARITY_TONE: Record<ClothingItem["rarity"], "accent" | "violet" | "info" | "neutral"> = {
-  legendary: "accent",
-  epic: "violet",
-  rare: "info",
-  common: "neutral",
-};
-
-const RARITY_LABEL: Record<ClothingItem["rarity"], string> = {
-  legendary: "S 类",
-  epic: "A 类",
-  rare: "B 类",
-  common: "C 类",
-};
-
-// 戏服分配（mock 本地）：itemId -> artistId[]
-const ASSIGN_KEY = "drama:wardrobe:assignments";
-function loadAssign(): Record<string, string[]> {
-  if (typeof window === "undefined") return {};
-  try {
-    return JSON.parse(localStorage.getItem(ASSIGN_KEY) ?? "{}");
-  } catch {
-    return {};
-  }
-}
-function saveAssign(v: Record<string, string[]>) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(ASSIGN_KEY, JSON.stringify(v));
-}
+const KIND_LABEL: Record<string, string> = Object.fromEntries(KINDS.map((k) => [k.id, k.label]));
 
 export default function WardrobePage() {
   return (
@@ -75,16 +38,11 @@ export default function WardrobePage() {
 
 function WardrobeInner() {
   const sp = useSearchParams();
-  const router = useRouter();
-  const kindInit = (sp.get("kind") as Kind) ?? "all";
+  const rawKind = sp.get("kind");
+  const kindInit: Kind = KINDS.some((k) => k.id === rawKind) ? (rawKind as Kind) : "all";
   const [kind, setKind] = React.useState<Kind>(kindInit);
   const [q, setQ] = React.useState("");
-  const [assign, setAssign] = React.useState<Record<string, string[]>>({});
-  const [uploadOpen, setUploadOpen] = React.useState(false);
-  const [assignTarget, setAssignTarget] = React.useState<ClothingItem | null>(null);
-  const [delTarget, setDelTarget] = React.useState<ClothingItem | null>(null);
 
-  React.useEffect(() => setAssign(loadAssign()), []);
   React.useEffect(() => {
     const params = new URLSearchParams();
     if (kind !== "all") params.set("kind", kind);
@@ -92,10 +50,7 @@ function WardrobeInner() {
   }, [kind]);
 
   const itemsQ = useAsync<ClothingItem[]>("/wardrobe/items", () => WardrobeApi.listClothing());
-  const artistsQ = useAsync<Artist[]>("/me/artists", () => ArtistsApi.listArtists());
-
   const items = itemsQ.data ?? [];
-  const artists = artistsQ.data ?? [];
 
   const filtered = items.filter((it) => {
     if (kind !== "all" && it.category !== kind) return false;
@@ -107,30 +62,10 @@ function WardrobeInner() {
     return true;
   });
 
-  // Uploaded items 在客户端缓存（仅 mock 演示）
-  const [uploaded, setUploaded] = React.useState<ClothingItem[]>([]);
-  const allDisplay = React.useMemo(() => [...uploaded, ...filtered], [uploaded, filtered]);
-
-  function handleAssign(itemId: string, artistIds: string[]) {
-    const next = { ...assign, [itemId]: artistIds };
-    setAssign(next);
-    saveAssign(next);
-  }
-
-  function handleDelete() {
-    if (!delTarget) return;
-    setUploaded(uploaded.filter((u) => u.id !== delTarget.id));
-    const next = { ...assign };
-    delete next[delTarget.id];
-    setAssign(next);
-    saveAssign(next);
-    toast.success(`${delTarget.name} 已下架`);
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="造型素材库"
+        eyebrow="即将上线"
         title={
           <>
             戏服{" "}
@@ -142,20 +77,35 @@ function WardrobeInner() {
             </span>
           </>
         }
-        meta={`${items.length} 件素材 · ${uploaded.length} 件本次上传`}
+        meta={`${items.length} 件服装参考`}
         action={
-          <Button variant="primary" size="md" onClick={() => setUploadOpen(true)}>
+          <Button variant="ghost" size="md" disabled title="上传还没接通" style={{ flex: "none", opacity: 0.55, cursor: "not-allowed" }}>
             <Upload size={14} />
-            上传素材
+            上传服装图
           </Button>
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="素材总数" value={String(items.length + uploaded.length)} tone="accent" />
-        <KpiCard label="本月新增" value={String(items.filter((i) => i.isNew).length + uploaded.length)} tone="info" />
-        <KpiCard label="已分配演员" value={String(Object.values(assign).flat().length)} tone="success" />
-        <KpiCard label="S 类" value={String(items.filter((i) => i.rarity === "legendary").length)} tone="violet" />
+      {/* 如实说明：上传没接通，先传素材库 */}
+      <div
+        className="card row gap-3"
+        style={{
+          padding: "12px 16px",
+          background: "var(--surface-2)",
+          border: "1px solid var(--line-soft)",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <Info size={16} style={{ color: "var(--accent)", flex: "none" }} />
+        <div style={{ flex: "1 1 240px", minWidth: 0, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+          这一页的上传还没接通，传了也不会保存。服装参考图先传到<b style={{ color: "var(--ink)" }}>素材库</b>：类型选「其他」，标签写「服装」。道具也放素材库，类型选「道具」。
+        </div>
+        <Link href="/assets" style={{ textDecoration: "none", flex: "none" }}>
+          <button type="button" className="btn btn-grad btn-sm">
+            去素材库上传 <ArrowRight size={13} />
+          </button>
+        </Link>
       </div>
 
       <Card style={{ padding: "16px 18px" }}>
@@ -163,6 +113,7 @@ function WardrobeInner() {
           <div
             style={{
               flex: 1,
+              minWidth: 0,
               display: "flex",
               alignItems: "center",
               gap: 8,
@@ -172,13 +123,15 @@ function WardrobeInner() {
               borderRadius: "var(--radius-md)",
             }}
           >
-            <Search size={14} color="var(--fg-2)" />
+            <Search size={14} color="var(--fg-2)" style={{ flex: "none" }} />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="按名称或标签搜索素材…"
+              placeholder="搜名称或标签"
+              aria-label="搜索服装"
               style={{
                 flex: 1,
+                minWidth: 0,
                 background: "transparent",
                 border: "none",
                 color: "var(--fg-0)",
@@ -195,6 +148,7 @@ function WardrobeInner() {
               <button
                 key={k.id}
                 onClick={() => setKind(k.id)}
+                className="mk-tap"
                 style={{
                   padding: "6px 12px",
                   borderRadius: "var(--radius-pill)",
@@ -215,331 +169,55 @@ function WardrobeInner() {
       </Card>
 
       {itemsQ.isLoading && <LoadingBlock rows={3} height={140} />}
-      {!itemsQ.isLoading && allDisplay.length === 0 && (
+      {!!itemsQ.error && <ErrorBlock onRetry={itemsQ.refetch} />}
+      {!itemsQ.isLoading && !itemsQ.error && filtered.length === 0 && (
         <EmptyState
           icon={<Shirt size={28} />}
-          title="没有匹配的素材"
-          description="清除筛选或上传一件新素材。"
+          title={items.length === 0 ? "还没有服装参考" : "没有匹配的服装"}
+          description={items.length === 0 ? "服装参考图先传到素材库。" : "换个分类或关键词试试。"}
         />
       )}
-      {!itemsQ.isLoading && allDisplay.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-          {allDisplay.map((it) => {
-            const assignedIds = assign[it.id] ?? [];
-            const isUploaded = uploaded.some((u) => u.id === it.id);
-            return (
-              <Card
-                key={it.id}
-                style={{
-                  padding: 0,
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div
-                  style={{
-                    height: 160,
-                    background: it.imageUrl
-                      ? `url(${it.imageUrl}) center/cover`
-                      : "linear-gradient(135deg, rgba(212,175,106,0.25), rgba(164,76,255,0.18))",
-                    position: "relative",
-                  }}
-                >
-                  <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 4 }}>
-                    <Chip tone={RARITY_TONE[it.rarity]}>{RARITY_LABEL[it.rarity]}</Chip>
-                    {it.isNew && <Chip tone="success">新</Chip>}
-                    {it.isTrending && <Chip tone="violet">热</Chip>}
-                  </div>
-                </div>
-                <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-display)" }}>{it.name}</div>
-                  <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>
-                    {it.tags.slice(0, 3).join(" · ") || it.category}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--fg-2)" }}>
-                    分配给 {assignedIds.length} 位演员
-                  </div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                    {/* 演员分配暂无后端（旧实现只存浏览器 localStorage 假保存）→ 建设中禁用，不假装已保存 */}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      style={{ flex: 1, opacity: 0.55, cursor: "not-allowed" }}
-                      disabled
-                      title="演员分配功能建设中"
-                    >
-                      <Users size={11} />
-                      分配（建设中）
-                    </Button>
-                    {isUploaded && (
-                      <Button variant="ghost" size="sm" onClick={() => setDelTarget(it)}>
-                        <Trash2 size={11} />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      <UploadDialog
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        onUploaded={(it) => {
-          setUploaded((prev) => [it, ...prev]);
-          toast.success(`${it.name} 已加入素材库`);
-        }}
-      />
-
-      <AssignDialog
-        item={assignTarget}
-        onClose={() => setAssignTarget(null)}
-        artists={artists}
-        initial={assignTarget ? assign[assignTarget.id] ?? [] : []}
-        onConfirm={(ids) => {
-          if (!assignTarget) return;
-          handleAssign(assignTarget.id, ids);
-          toast.success(`${assignTarget.name} 已分配给 ${ids.length} 位演员`);
-        }}
-      />
-
-      <ConfirmDialog
-        open={!!delTarget}
-        onOpenChange={(o) => !o && setDelTarget(null)}
-        title="下架素材"
-        description={`将下架「${delTarget?.name ?? ""}」，分配关系也会移除。`}
-        destructive
-        confirmLabel="下架"
-        onConfirm={handleDelete}
-      />
-    </div>
-  );
-}
-
-// ── 上传 dialog ─────────────────────────────────────────────────────────────
-
-function UploadDialog({
-  open,
-  onOpenChange,
-  onUploaded,
-}: {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  onUploaded: (it: ClothingItem) => void;
-}) {
-  const [name, setName] = React.useState("");
-  const [category, setCategory] = React.useState<ClothingItem["category"]>("top");
-  const [rarity, setRarity] = React.useState<ClothingItem["rarity"]>("rare");
-  const [tags, setTags] = React.useState("");
-  const [preview, setPreview] = React.useState<string | null>(null);
-  const [uploading, setUploading] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!open) {
-      setName("");
-      setCategory("top");
-      setRarity("rare");
-      setTags("");
-      setPreview(null);
-    }
-  }, [open]);
-
-  function handleFile(f: File) {
-    const r = new FileReader();
-    r.onload = () => setPreview(r.result as string);
-    r.readAsDataURL(f);
-  }
-
-  async function submit() {
-    if (!name.trim()) {
-      toast.error("请填写素材名称");
-      return;
-    }
-    setUploading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    const it: ClothingItem = {
-      id: `up-${Date.now()}`,
-      name: name.trim(),
-      category,
-      imageUrl: preview ?? "",
-      rarity,
-      price: 0,
-      tags: tags.split(/[,，\s]+/).filter(Boolean),
-      isNew: true,
-    };
-    setUploading(false);
-    onOpenChange(false);
-    onUploaded(it);
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (uploading) return;
-        onOpenChange(o);
-      }}
-      title="上传新素材"
-      description="上传参考图，填写名称与标签。"
-      width={560}
-      footer={
-        <>
-          <Button variant="ghost" size="md" onClick={() => onOpenChange(false)} disabled={uploading}>
-            取消
-          </Button>
-          <Button variant="primary" size="md" loading={uploading} onClick={submit}>
-            <Upload size={13} />
-            上传
-          </Button>
-        </>
-      }
-    >
-      <Field label="参考图">
-        <div
-          style={{
-            position: "relative",
-            height: 200,
-            borderRadius: "var(--radius-md)",
-            border: "1px dashed var(--line-2)",
-            background: preview ? `url(${preview}) center/cover` : "rgba(255,255,255,0.03)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            overflow: "hidden",
-          }}
-        >
-          {!preview && (
-            <div style={{ textAlign: "center", color: "var(--fg-2)" }}>
-              <Plus size={20} />
-              <div style={{ fontSize: 12, marginTop: 6 }}>点击选择本地图片</div>
-            </div>
-          )}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-            style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-          />
-        </div>
-      </Field>
-      <Field label="名称" required>
-        <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="如：午夜风衣" />
-      </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field label="分类">
-          <Select value={category} onChange={(e) => setCategory(e.target.value as ClothingItem["category"])}>
-            <option value="top">上衣</option>
-            <option value="bottom">下装</option>
-            <option value="shoes">鞋子</option>
-            <option value="accessory">配饰</option>
-            <option value="hair">发型</option>
-          </Select>
-        </Field>
-        <Field label="稀有度">
-          <Select value={rarity} onChange={(e) => setRarity(e.target.value as ClothingItem["rarity"])}>
-            <option value="legendary">S 类</option>
-            <option value="epic">A 类</option>
-            <option value="rare">B 类</option>
-            <option value="common">C 类</option>
-          </Select>
-        </Field>
-      </div>
-      <Field label="标签" hint="用逗号或空格分隔。">
-        <TextInput value={tags} onChange={(e) => setTags(e.target.value)} placeholder="cinematic, urban" />
-      </Field>
-    </Dialog>
-  );
-}
-
-// ── 分配 dialog ─────────────────────────────────────────────────────────────
-
-function AssignDialog({
-  item,
-  onClose,
-  artists,
-  initial,
-  onConfirm,
-}: {
-  item: ClothingItem | null;
-  onClose: () => void;
-  artists: Artist[];
-  initial: string[];
-  onConfirm: (ids: string[]) => void;
-}) {
-  const [picked, setPicked] = React.useState<Set<string>>(new Set(initial));
-  React.useEffect(() => {
-    setPicked(new Set(initial));
-  }, [initial, item?.id]);
-
-  function toggle(id: string) {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  return (
-    <Dialog
-      open={!!item}
-      onOpenChange={(o) => !o && onClose()}
-      title={item ? `分配「${item.name}」` : ""}
-      description="勾选要绑定的演员。"
-      width={460}
-      footer={
-        <>
-          <Button variant="ghost" size="md" onClick={onClose}>
-            取消
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => {
-              onConfirm(Array.from(picked));
-              onClose();
-            }}
-          >
-            确认（{picked.size}）
-          </Button>
-        </>
-      }
-    >
-      {artists.length === 0 && <EmptyState icon={<Users size={20} />} title="还没有演员" />}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 360, overflowY: "auto" }}>
-        {artists.map((a) => {
-          const checked = picked.has(a.id);
-          return (
-            <label
-              key={a.id}
+      {!itemsQ.isLoading && filtered.length > 0 && (
+        <div className="mk-wd-grid">
+          {filtered.map((it) => (
+            <Card
+              key={it.id}
               style={{
+                padding: 0,
+                overflow: "hidden",
                 display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 10px",
-                background: checked ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "rgba(255,255,255,0.02)",
-                border: checked
-                  ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)"
-                  : "1px solid var(--line)",
-                borderRadius: "var(--radius-sm)",
-                cursor: "pointer",
+                flexDirection: "column",
               }}
             >
-              <input type="checkbox" checked={checked} onChange={() => toggle(a.id)} style={{ accentColor: "var(--accent)" }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13 }}>{a.name}</div>
-                <div className="mono" style={{ fontSize: 10, color: "var(--fg-3)" }}>
-                  {a.type}
+              <div
+                style={{
+                  height: 160,
+                  background: it.imageUrl
+                    ? `url(${JSON.stringify(it.imageUrl)}) center/cover`
+                    : "linear-gradient(135deg, rgba(212,175,106,0.25), rgba(164,76,255,0.18))",
+                  position: "relative",
+                }}
+              >
+                <div style={{ position: "absolute", top: 10, left: 10, display: "flex", gap: 4 }}>
+                  {it.isNew && <Chip tone="success">新</Chip>}
+                  {it.isTrending && <Chip tone="violet">热门</Chip>}
                 </div>
               </div>
-            </label>
-          );
-        })}
-      </div>
-    </Dialog>
+              <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+                <div
+                  title={it.name}
+                  style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-display)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  {it.name}
+                </div>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {[KIND_LABEL[it.category] ?? "", ...it.tags.slice(0, 3)].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

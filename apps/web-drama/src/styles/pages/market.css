@@ -1,0 +1,151 @@
+/* ============================================================
+   pages/market.css —— v0.197 响应式分文件（见 docs/drama-ux-copy-pass.md §5）
+   只放本簇页面自己的样式；全站通用规则写 app.css。
+   新增窄屏规则沿用 app.css 的断点：1024 / 860 / 720 / 560。
+   类名一律带本簇前缀，避免和别的页面撞。
+   覆盖路由：/templates（含详情弹窗）/templates/published /review /assets /cast /cast/[id] /wardrobe /scripts /scripts/[id]
+   注意：这里的栅格一律用 class，不写内联 grid 字符串 —— app.css 在 ≤720 会把内联
+   repeat(2|3|4 / fr 1fr 一刀切成单列，class 写法不受它影响，才能在手机上保持 2 列。
+   ============================================================ */
+
+/* ---------- 通用 ---------- */
+/* 弹窗最宽 = 视口减去遮罩内边距。不能只写 max-width:100% —— .overlay 是 display:grid，
+   隐式轨道按内容（width:560px）撑开，100% 解析成 560，手机上照样被裁（375 实测）。 */
+.overlay > .card.mk-modal,
+.overlay > [role="dialog"].mk-modal { max-width: calc(100vw - 48px) !important; }
+@media (max-width: 640px) {
+  .overlay > .card.mk-modal,
+  .overlay > [role="dialog"].mk-modal { max-width: calc(100vw - 24px) !important; }
+}
+
+@media (max-width: 720px) {
+  /* 触屏点击区 ≥32px（§5.2-7） */
+  .mk-tap { min-height: 32px; }
+}
+
+/* ---------- 模板广场 /templates ---------- */
+@media (max-width: 560px) {
+  /* 搜索框折到第二行时占满，别靠右留一大块空 */
+  .mk-tpl-grow { display: none; }
+  .mk-tpl-search { width: 100% !important; flex: 1 1 100% !important; }
+  /* 竖屏模板封面别吃掉整屏，给下面的「包含什么」留地方 */
+  .mk-tpl-hero {
+    max-height: min(40vh, 300px) !important;
+    min-height: 180px !important;
+  }
+  /* 底栏太挤：来源标签在封面上已经有了，这里藏掉 */
+  .mk-tpl-foot-src { display: none; }
+  /* 运营弹窗：候选行按钮换行 */
+  .mk-tpl-cand { flex-wrap: wrap; }
+  .mk-tpl-beat-hook { width: 88px !important; }
+}
+
+/* ---------- 我发布的模板 /templates/published ---------- */
+@media (max-width: 560px) {
+  .mk-pub-row { flex-wrap: wrap; }
+  .mk-pub-actions {
+    flex: 1 1 100% !important;
+    justify-content: flex-end;
+    align-items: flex-end;
+  }
+}
+
+/* ---------- 剧本审阅 /review（目前无入口，只做不溢出） ---------- */
+@media (max-width: 720px) {
+  .mk-review-bar { padding: 12px 16px !important; }
+  .mk-review-body { padding: 12px 16px 16px !important; }
+}
+
+/* ---------- 素材库 /assets ---------- */
+@media (max-width: 560px) {
+  .mk-mat-search { width: 100% !important; }
+  .mk-mat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  /* 详情弹窗：左右并排 → 上下排（预览在上） */
+  .mk-mat-detail {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+  }
+  .mk-mat-detail-preview {
+    flex: none !important;
+    min-height: 0 !important;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+  }
+  .mk-mat-detail > .scroll { overflow: visible; flex: none; }
+}
+
+/* ---------- 数字人演员 /cast ---------- */
+.mk-cast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+@media (max-width: 560px) {
+  .mk-cast-hero-title { left: 16px !important; right: 16px !important; bottom: 14px !important; }
+  .mk-cast-hero-title h1 { font-size: 28px !important; }
+  .mk-cast-hero-bar { padding: 14px 16px !important; }
+}
+
+/* 导入数字人 / 换封面图弹窗（cast/_dialogs/ImportAvatarDialog.tsx） */
+.mk-avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+.mk-avatar-pick { display: flex; gap: 20px; align-items: flex-start; }
+.mk-avatar-pick > :last-child { flex: 1; min-width: 0; }
+.mk-avatar-pick-preview { width: 280px; flex: none; position: sticky; top: 0; }
+.mk-avatar-opts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  .mk-avatar-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  /* 375 下原来右侧图片墙被挤成 0 宽：改上下排，预览在上、图片墙在下 */
+  .mk-avatar-pick { flex-direction: column; gap: 16px; }
+  .mk-avatar-pick > :last-child { width: 100%; }
+  .mk-avatar-pick-preview {
+    width: 100%;
+    max-width: 160px;
+    position: static;
+    align-self: center;
+  }
+  .mk-avatar-opts { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+}
+
+/* ---------- 戏服与道具 /wardrobe ---------- */
+.mk-wd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+@media (max-width: 560px) {
+  .mk-wd-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+}
+
+/* ---------- 脚本库 /scripts ---------- */
+.mk-script-row { display: flex; align-items: center; gap: 16px; }
+.mk-script-actions { display: flex; gap: 6px; flex: none; }
+@media (max-width: 560px) {
+  /* 原来标题区被挤到 40px、一行一个字：操作按钮换到下一行 */
+  .mk-script-row { flex-wrap: wrap; gap: 10px; }
+  .mk-script-actions { flex: 1 1 100%; justify-content: flex-end; }
+  .mk-script-icon { min-width: 36px !important; min-height: 36px !important; }
+}
+
+/* 脚本编辑器 /scripts/[id]：编辑器 | 操作栏 */
+.mk-script-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .mk-script-editor { grid-template-columns: minmax(0, 1fr) 240px; }
+}
+@media (max-width: 720px) {
+  /* 单列：编辑器在上（DOM 顺序），操作在下 */
+  .mk-script-editor { grid-template-columns: minmax(0, 1fr); }
+  .mk-script-editor textarea { min-height: 320px !important; }
+}

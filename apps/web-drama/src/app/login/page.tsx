@@ -1,18 +1,24 @@
 "use client";
 
-// AI 短剧登录页 — v0.43+：手机号 + 验证码 / 注册 / 体验账号三 tab（共享 AuthScreen）。
+// 短剧工坊登录页（共享 AuthScreen）。
+// 两种形态：统一账号中心模式下只有一个「去账号中心登录」按钮；本地 / 旧模式下是手机号验证码、密码、注册几个页签。
+// tagline 要和当前形态对得上（v0.197：之前统一写验证码 / 密码 / 激活码，账号中心模式下这几样页面上都没有）。
 import { Clapperboard } from "lucide-react";
+import { isIdMode } from "@ai-star-eco/api-client";
 import { AuthScreen } from "@ai-star-eco/landing";
+
+const TAGLINE_ID_CENTER = "登录后就能开始做短剧和短视频。同一个账号可以登录 AI Star Eco 的所有产品。";
+const TAGLINE_LEGACY = "用手机号登录，验证码和密码都可以。第一次来需要激活码注册，没有激活码请联系 bd@aistareco.com。";
 
 export default function LoginPage() {
   return (
     <AuthScreen
       platform="drama"
-      brandLabel="AI 短剧"
-      brandSub="AI Star Eco · Cinematic"
+      brandLabel="短剧工坊"
+      brandSub="AI 做短剧和短视频"
       brandLogoSrc="/brand/logo.svg"
       icon={Clapperboard}
-      tagline="手机号支持验证码或密码登录；新用户用激活码 + 手机号完成注册，开通后就能开始做短剧。"
+      tagline={isIdMode() ? TAGLINE_ID_CENTER : TAGLINE_LEGACY}
       defaultPostLoginPath="/dashboard"
       theme={{
         bg: "var(--bg-0)",

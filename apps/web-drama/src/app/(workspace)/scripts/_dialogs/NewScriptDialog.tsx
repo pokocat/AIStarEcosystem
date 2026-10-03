@@ -50,7 +50,7 @@ export function NewScriptDialog({
   async function submit() {
     setErr(null);
     if (!title.trim()) {
-      setErr("脚本标题不能为空");
+      setErr("请填写标题");
       return;
     }
     try {
@@ -65,7 +65,7 @@ export function NewScriptDialog({
       onOpenChange(false);
       onCreated(s);
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : "创建失败";
+      const msg = e instanceof ApiError ? e.message : "创建失败，请重试";
       toast.error(msg);
       setErr(msg);
     }
@@ -76,8 +76,8 @@ export function NewScriptDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="新建脚本"
-      description="可以直接生成空白稿，进入编辑器后再调用 AI 续写。"
-      submitLabel="创建并进入编辑"
+      description="先建一份空白稿，打开后可以让 AI 接着写。"
+      submitLabel="创建并打开"
       width={560}
       onSubmit={submit}
     >
@@ -87,7 +87,7 @@ export function NewScriptDialog({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           maxLength={60}
-          placeholder="如：《暮色未央》EP10 · 雨夜对峙"
+          placeholder="如：《暮色未央》第 10 集 · 雨夜对峙"
         />
       </Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -101,13 +101,13 @@ export function NewScriptDialog({
           </Select>
         </Field>
         <Field label="所属剧集">
-          <TextInput value={series} onChange={(e) => setSeries(e.target.value)} placeholder="可空" />
+          <TextInput value={series} onChange={(e) => setSeries(e.target.value)} placeholder="选填" />
         </Field>
       </div>
       <Field label="集 / 场">
-        <TextInput value={episode} onChange={(e) => setEpisode(e.target.value)} placeholder="如：EP10 / 第 2 场" />
+        <TextInput value={episode} onChange={(e) => setEpisode(e.target.value)} placeholder="如：第 10 集 · 第 2 场" />
       </Field>
-      <Field label="开头几句（可选）" hint="留空将从空白页开始。">
+      <Field label="开头几句（选填）" hint="不填就从空白页开始。">
         <TextArea
           rows={4}
           value={initialContent}

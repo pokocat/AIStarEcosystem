@@ -635,6 +635,9 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
 - 镜头编号、ID、视频 URL、台词、音频 key 或字幕开关任一变化都会改变 `sourceFingerprint`，旧成片标记为 stale，草稿回到 draft；输入未变化的重复合成幂等复用原成片，不重复上传。
 - 只有拼接、上传与草稿落库都成功后才置 `done/progress=100`；失败保持 draft 并允许用户重试。总装下载只允许本平台同源/CDN 地址，拒绝外部和内网 URL。
 
+- （v0.197）从首页聊天「去制作」成单条短视频（`POST /me/drama/brainstorms/{id}/promote`，`form=single`）与其他三个入口扣同一笔 `drama.credit.short-entry`，**必须带 `clientRequestId` 才幂等**：同一 `(owner, clientRequestId)` 重试返回原草稿、不重复冻结；前端用 `brs-<brainstormId>` 作键，保证两个标签页同时点也只扣一次。草稿 `data.idea` = 一句话剧情 + 「主线：」+ 主线（都空时用标题）。
+- （v0.197）短视频合成的就绪判定**仍然**是每一镜 `flow=done` 且有 `videoUrl`（短剧只要有视频）。两条线口径不一致已记 TODO；放宽时服务端 `buildPlan` / `preflight` 与前端 `readyToAssemble` / mock 必须一起改。
+
 ### 6.6 AI IP 工作台（ipstudio，v0.151 / 设计真源 `docs/ip-studio-plan.md` · TS 真源 `packages/types/src/ip-studio.ts`）
 
 领域 `com.aistareco.aep.ipstudio.*`，表 `ip_project` / `ip_run`（迁移 **V27**）。挂 `/api/v1/ip-studio/**`，

@@ -20,6 +20,8 @@ export interface DramaCreditPrices {
   shotRewrite: number;
   /** v0.78：进短视频工作台开拍（新建草稿 = AI 出口播脚本与分镜）单次积分。 */
   shortEntry: number;
+  /** v0.197：互动剧 AI 起草分支图单次积分（服务端 KEY_INTERACTIVE_DRAFT，默认 18）。 */
+  interactiveDraft: number;
 }
 
 export interface DramaCreditConfig {
@@ -41,8 +43,24 @@ export const DRAMA_CONFIG_DEFAULTS: DramaCreditConfig = {
     decompose: 3,
     shotRewrite: 2,
     shortEntry: 10,
+    interactiveDraft: 18,
   },
 };
+
+/** 服务端少给了某个单价（如新字段上线前的旧版本）时按默认值补齐，确认框里不会出现「undefined 积分」。
+ *  只用于展示报价，真实扣费以服务端为准。 */
+function withDefaults(c: Partial<DramaCreditConfig> | null | undefined): DramaCreditConfig {
+  const prices = { ...DRAMA_CONFIG_DEFAULTS.prices };
+  for (const k of Object.keys(prices) as (keyof DramaCreditPrices)[]) {
+    const v = c?.prices?.[k];
+    if (typeof v === "number" && Number.isFinite(v)) prices[k] = v;
+  }
+  const t = c?.confirmThreshold;
+  return {
+    confirmThreshold: typeof t === "number" && Number.isFinite(t) ? t : DRAMA_CONFIG_DEFAULTS.confirmThreshold,
+    prices,
+  };
+}
 
 let cache: Promise<DramaCreditConfig> | null = null;
 
@@ -50,7 +68,7 @@ export function getDramaConfig(): Promise<DramaCreditConfig> {
   if (!cache) {
     cache = (USE_MOCK
       ? mockDelay(DRAMA_CONFIG_DEFAULTS, 80)
-      : apiFetch<DramaCreditConfig>("/me/drama/config")
+      : apiFetch<DramaCreditConfig>("/me/drama/config").then(withDefaults)
     ).catch((e) => {
       cache = null; // 失败不缓存，下次重试
       throw e;

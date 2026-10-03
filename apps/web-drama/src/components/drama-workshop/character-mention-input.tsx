@@ -57,7 +57,7 @@ function extractCast(editor: { state: { doc: { descendants: (cb: (n: { type: { n
   return ids;
 }
 
-export function CharacterMentionInput({ value, characters, onChange, placeholder = "画面内容（输入 @ 提及人物）…", disabled }: CharacterMentionInputProps) {
+export function CharacterMentionInput({ value, characters, onChange, placeholder = "这一镜拍什么？输入 @ 选出场人物", disabled }: CharacterMentionInputProps) {
   const charsRef = React.useRef(characters);
   charsRef.current = characters;
   const onChangeRef = React.useRef(onChange);
@@ -96,7 +96,7 @@ export function CharacterMentionInput({ value, characters, onChange, placeholder
               el.innerHTML = "";
               if (!items.length) {
                 const d = document.createElement("div");
-                d.textContent = "无匹配角色（去「角色与场景」添加）";
+                d.textContent = "没有这个角色，去「短剧设定」的「角色与场景」里添加";
                 d.style.cssText = "padding:6px 8px;color:var(--ink-3);font-size:12px";
                 el.appendChild(d);
                 return;

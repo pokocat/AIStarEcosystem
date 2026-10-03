@@ -279,7 +279,7 @@ public class DramaShortAssembleService {
             }
             log.warn("[drama-short-assemble] failed user={} short={}: {}", userId, shortId, e.toString());
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "DRAMA_SHORT_ASSEMBLE_FAILED",
-                    "短视频合成失败，请稍后重试");
+                    "成片没合成出来，稍后再试一次。");
         } finally {
             cleanup(workDir);
         }
@@ -316,7 +316,7 @@ public class DramaShortAssembleService {
         }
         if (!unverified.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_CLIP_UNVERIFIED",
-                    "镜 " + join(unverified) + " 的视频不是这个账号出片生成的，无法合成；请在分镜表里重新出片。");
+                    "镜 " + join(unverified) + " 的视频不是用这个账号生成的，不能合成。请在分镜表里重新生成这几镜的视频。");
         }
     }
 
@@ -363,7 +363,7 @@ public class DramaShortAssembleService {
         JsonNode shotsNode = data == null ? null : data.path("shots");
         if (shotsNode == null || !shotsNode.isArray() || shotsNode.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_ASSEMBLE_NO_CLIPS",
-                    "还没有可合成的分镜视频，请先完成逐镜出片。");
+                    "还没有能合成的镜头视频，先把每一镜的视频生成出来。");
         }
         List<JsonNode> shots = new ArrayList<>();
         shotsNode.forEach(shots::add);
@@ -402,11 +402,11 @@ public class DramaShortAssembleService {
         }
         if (!missing.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_ASSEMBLE_INCOMPLETE",
-                    "还有分镜缺少已验收视频：镜 " + missing + "。请补齐后重试。");
+                    "镜 " + join(missing) + " 还没有确认好的视频。每一镜生成视频并点「就用这版」后再合成。");
         }
         if (!missingAudio.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_ASSEMBLE_AUDIO_INCOMPLETE",
-                    "还有分镜缺少与当前台词匹配的配音：镜 " + missingAudio + "。请先生成配音后重试。");
+                    "镜 " + join(missingAudio) + " 还没有配音，或配音和现在的台词对不上。请先生成配音再合成。");
         }
         return new AssemblyPlan(List.copyOf(urls), expectedDuration, sha256(fingerprintSource.toString()), List.copyOf(segments));
     }
@@ -444,7 +444,7 @@ public class DramaShortAssembleService {
             boolean trusted = origin != null && trustedDownloadOrigins.stream().anyMatch(origin::equals);
             if (!trusted) {
                 throw BusinessException.badRequest("VIDEO_URL_NOT_ALLOWED",
-                        "分镜视频地址必须来自平台自身的 CDN 域，不支持外部或内网地址");
+                        "镜头视频必须是在平台里生成的，不支持外部链接。");
             }
         }
         HttpRequest request = HttpRequest.newBuilder(URI.create(abs))
@@ -463,7 +463,7 @@ public class DramaShortAssembleService {
     private DramaShort requireOwned(String id, String userId) {
         return repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
-                        "DRAMA_SHORT_NOT_FOUND", "短视频草稿不存在"));
+                        "DRAMA_SHORT_NOT_FOUND", "找不到这条短视频"));
     }
 
     private ObjectNode readPayload(DramaShort row) {
@@ -472,7 +472,7 @@ public class DramaShortAssembleService {
             return parsed instanceof ObjectNode object ? object : om.createObjectNode();
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.CONFLICT, "DRAMA_SHORT_PAYLOAD_INVALID",
-                    "短视频草稿数据损坏，无法合成，请先重新保存分镜。");
+                    "这条短视频的数据读不出来，没法合成。刷新页面、重新保存一次分镜后再试。");
         }
     }
 

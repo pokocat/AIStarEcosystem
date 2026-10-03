@@ -1,5 +1,5 @@
-// 素材库 — 设计真源 v4:统一素材源(人物/场景/道具,图片+视频),
-// 素材库页与视频工厂 @ 参考、脚本 [参考N] 引用共用。
+// 素材库 — 设计真源 v4:统一素材源(人物/场景/道具)。上传目前只收图片（视频上传没做）。
+// v0.197：删掉写死的「关联使用」演示数据 ASSET_USAGE（真实素材 id 永远对不上，页面上只会误导）。
 export interface Material {
   id: string;
   name: string;
@@ -57,12 +57,3 @@ export function addLibraryMaterial(m: Material) {
 export function matById(id: string): Material | null {
   return MATERIALS.find((m) => m.id === id) ?? null;
 }
-
-/** 素材在项目中的关联使用(演示数据) */
-export const ASSET_USAGE: Record<string, { p: string; role: string; n: number }[]> = {
-  a1: [{ p: "落地窗后", role: "林夏 · 女主", n: 18 }],
-  a4: [{ p: "落地窗后", role: "顾沉舟 · 男主", n: 12 }],
-  a6: [{ p: "重生后她在冷宫杀疯了", role: "沈昭 · 贵妃", n: 26 }],
-  r1: [{ p: "落地窗后", role: "女主公寓 · 主场景", n: 9 }],
-  r2: [{ p: "落地窗后", role: "街头夜戏", n: 4 }],
-};

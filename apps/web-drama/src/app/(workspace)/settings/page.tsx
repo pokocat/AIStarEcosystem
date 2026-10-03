@@ -4,16 +4,20 @@ export const dynamic = "force-dynamic";
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Eye, EyeOff, Lock, Users } from "lucide-react";
-import { AccountApi } from "@ai-star-eco/api-client";
+import { ExternalLink, Eye, EyeOff, Lock, Users } from "lucide-react";
+import { AccountApi, idIssuer, isIdMode } from "@ai-star-eco/api-client";
 import { Card } from "@/components/premium";
 import { Button } from "@/components/premium";
-import { EmptyState, Field, SectionHeader, TextInput, ViewHeader } from "@/components/common";
+import { Field, SectionHeader, TextInput, ViewHeader } from "@/components/common";
 
 // 工作室设置：仅「登录密码」有真实后端（AccountApi）。早期这里还有 studioName/预算/水印/币种
 // 与一份写死的团队名单（李雨萱等），全部只存浏览器 localStorage、假「已保存」——对所有用户展示
-// 同一批编造成员。上线前移除编造数据：团队协作 / 工作室偏好暂无后端 → 老实标「建设中」。
+// 同一批编造成员。上线前移除编造数据：团队协作 / 工作室偏好暂无后端 → 老实标「还没上线」。
+// v0.197：团队协作只剩一行说明，不再占半页；密码卡在手机上占满宽度。
+// 统一账号中心模式下登录走账号中心，这里改的本地密码登录时用不上 → 不再显示表单，改成去账号中心的入口。
 export default function SettingsPage() {
+  const idMode = isIdMode();
+  const issuer = idIssuer();
   const [hasPassword, setHasPassword] = React.useState(false);
   const [passwordForm, setPasswordForm] = React.useState({
     currentPassword: "",
@@ -56,7 +60,7 @@ export default function SettingsPage() {
       toast.success(hasPassword ? "密码已更新" : "密码已设置");
     } catch (err) {
       const apiErr = err as { error?: { message?: string }; message?: string };
-      toast.error(apiErr.error?.message ?? apiErr.message ?? "密码保存失败");
+      toast.error(apiErr.error?.message ?? apiErr.message ?? "密码没保存上，请重试");
     } finally {
       setPasswordSaving(false);
     }
@@ -65,7 +69,7 @@ export default function SettingsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="工作室设置"
+        eyebrow="账户"
         title={
           <>
             工作室{" "}
@@ -77,11 +81,26 @@ export default function SettingsPage() {
             </span>
           </>
         }
-        meta="账户与登录 · 团队协作"
+        meta="登录密码"
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
-        <Card style={{ padding: "26px 28px" }}>
+      <div className="acct-settings">
+        {idMode ? (
+          <Card style={{ padding: "24px 26px" }}>
+            <SectionHeader eyebrow="登录" title="登录密码" />
+            <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.7, marginBottom: issuer ? 14 : 0 }}>
+              现在用统一账号登录。登录密码、手机号和微信绑定都在账号中心改，改完所有产品一起生效。
+            </div>
+            {issuer && (
+              <a href={`${issuer}/`} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                <Button variant="secondary" size="md">
+                  去账号中心 <ExternalLink size={12} />
+                </Button>
+              </a>
+            )}
+          </Card>
+        ) : (
+        <Card style={{ padding: "24px 26px" }}>
           <SectionHeader
             eyebrow="登录"
             title={hasPassword ? "修改登录密码" : "设置登录密码"}
@@ -94,7 +113,7 @@ export default function SettingsPage() {
           />
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, color: "var(--fg-2)", fontSize: 12 }}>
             <Lock size={13} />
-            <span>设置后登录页可选择手机号 + 密码登录。</span>
+            <span>设好后，登录时可以用手机号加密码，不用每次等验证码。</span>
           </div>
           {hasPassword && (
             <Field label="当前密码">
@@ -126,15 +145,26 @@ export default function SettingsPage() {
             {hasPassword ? "更新密码" : "设置密码"}
           </Button>
         </Card>
+        )}
 
-        <Card style={{ padding: "26px 28px" }}>
-          <SectionHeader eyebrow="团队" title="团队协作" />
-          <EmptyState
-            icon={<Users size={26} />}
-            title="团队协作建设中"
-            description="多成员协作（邀请成员、分配角色与权限）正在开发，上线后可在这里管理工作室团队。"
-          />
-        </Card>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px dashed var(--line)",
+            color: "var(--ink-3)",
+            fontSize: 12.5,
+            lineHeight: 1.6,
+          }}
+        >
+          <Users size={15} style={{ flex: "none", marginTop: 2 }} />
+          <span style={{ minWidth: 0 }}>
+            团队协作还没上线：邀请同事一起做剧、分配权限的功能还在做，上线后在这里加成员。
+          </span>
+        </div>
       </div>
     </div>
   );

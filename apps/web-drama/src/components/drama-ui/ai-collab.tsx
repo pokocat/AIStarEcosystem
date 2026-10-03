@@ -3,7 +3,7 @@
 // AI 协作壳 — 设计真源：components.jsx `AICollab`。
 // 统一范式：输入/上文 → AI 起草（积分预估）→ 可编辑结构化结果 → 局部重写 / 整体重生成 → ✓锁定进下一步。
 import * as React from "react";
-import { Check, Lock, RefreshCw, Sparkles, Wand2 } from "lucide-react";
+import { Check, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { CreditButton } from "./credit";
 import { GenError } from "./gen-state";
 
@@ -16,7 +16,7 @@ export interface AICollabProps {
   error?: boolean;
   errorReason?: string;
   locked?: boolean;
-  /** 锁定按钮文案；默认"锁定本阶段，进入下一步" */
+  /** 确认按钮文案；默认"确认，进入下一步" */
   lockLabel?: string;
   /** "AI 起草"按钮文案；默认"AI 起草" */
   generateLabel?: string;
@@ -35,7 +35,7 @@ export function AICollab({
   error,
   errorReason,
   locked,
-  lockLabel = "锁定本阶段，进入下一步",
+  lockLabel = "确认，进入下一步",
   generateLabel = "AI 起草",
   onGenerate,
   onRetry,
@@ -103,11 +103,11 @@ export function AICollab({
           {onGenerate &&
             (cost != null ? (
               <CreditButton cost={cost} onConfirm={onGenerate} confirmTitle={title} className="btn btn-line btn-sm">
-                <RefreshCw size={15} /> 整体重新生成
+                <RefreshCw size={15} /> 全部重新生成
               </CreditButton>
             ) : (
               <button type="button" className="btn btn-line btn-sm" onClick={onGenerate}>
-                <RefreshCw size={15} /> 整体重新生成
+                <RefreshCw size={15} /> 全部重新生成
               </button>
             ))}
           {onLock && (
@@ -129,7 +129,7 @@ export function AICollab({
             fontSize: 13,
           }}
         >
-          <Lock size={15} /> 本阶段已锁定 · 可随时返回修改
+          <Check size={15} /> 已确认，之后想改随时回来改
         </div>
       )}
     </div>
@@ -145,7 +145,7 @@ export type RewriteTag = "keep" | "modify" | "subvert" | "add";
 export const REWRITE_LABEL: Record<RewriteTag, string> = {
   keep: "保留",
   modify: "修改",
-  subvert: "颠覆",
+  subvert: "推翻重写",
   add: "新增",
 };
 

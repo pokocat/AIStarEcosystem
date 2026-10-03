@@ -257,12 +257,12 @@ public class DramaShortContinuityService {
         } else for (JsonNode shot : shots) {
             String id = clean(shot.path("id").asText(""));
             int no = shot.path("no").asInt(ids.size() + 1);
-            if (!ids.add(id)) issue(issues, "error", "DUPLICATE_SHOT_ID", "分镜 ID 重复，无法建立依赖关系。", no);
+            if (!ids.add(id)) issue(issues, "error", "DUPLICATE_SHOT_ID", "分镜表里有重复的镜头，刷新页面后再试。", no);
             int duration = shot.path("dur").asInt(0);
             totalDuration += Math.max(0, duration);
-            if (duration <= 0) issue(issues, "error", "INVALID_DURATION", "分镜时长必须大于 0 秒。", no);
+            if (duration <= 0) issue(issues, "error", "INVALID_DURATION", "这一镜的时长要大于 0 秒。", no);
             if (clean(shot.path("visual").asText("")).isBlank())
-                issue(issues, "error", "VISUAL_REQUIRED", "请补充本镜纯画面描述。", no);
+                issue(issues, "error", "VISUAL_REQUIRED", "请补上这一镜的画面描述。", no);
             String dialogue = clean(shot.path("voText").asText(""));
             hasDialogue |= !dialogue.isBlank();
             if ("done".equals(shot.path("flow").asText("")) && !clean(shot.path("videoUrl").asText("")).isBlank()) completed++;
@@ -271,16 +271,16 @@ public class DramaShortContinuityService {
                     && fingerprint(dialogue).equals(audio.path("textFingerprint").asText("")))) audioReady++;
             JsonNode refs = shot.path("appliedRefs");
             if (refs.isObject() && refs.path("requested").asInt(0) > refs.path("applied").asInt(0))
-                issue(issues, "warning", "REFS_DROPPED", "上次渲染有参考图未被模型采用，请查看参考明细。", no);
+                issue(issues, "warning", "REFS_DROPPED", "上次生成时有参考图没被用上，人物或画面可能和别的镜对不上。", no);
         }
         if (totalDuration <= 0 && shots.isArray() && !shots.isEmpty())
-            issue(issues, "error", "TOTAL_DURATION_INVALID", "总时长无效。", null);
+            issue(issues, "error", "TOTAL_DURATION_INVALID", "总时长不对，检查一下每一镜的时长。", null);
         boolean hasCanonicalCharacter = !clean(data.path("characterAvatar").path("id").asText("")).isBlank()
                 || !clean(data.path("characterRef").path("cdnKey").asText("")).isBlank();
         if (!hasCanonicalCharacter)
-            issue(issues, "warning", "CHARACTER_REFERENCE_RECOMMENDED", "建议绑定数字人或主角参考图，以锁定人物外观。", null);
+            issue(issues, "warning", "CHARACTER_REFERENCE_RECOMMENDED", "建议绑定数字人，或给主角加一张参考图，人物长相会更一致。", null);
         if (hasDialogue && clean(data.path("characterAvatar").path("id").asText("")).isBlank())
-            issue(issues, "error", "VOICE_SOURCE_REQUIRED", "有台词的短片需绑定一位已关联声音的数字人，才能生成配音。", null);
+            issue(issues, "error", "VOICE_SOURCE_REQUIRED", "有台词的短视频要先绑定一位有声音的数字人，才能生成配音。", null);
 
         boolean structuralReady = !hasError(issues, Set.of("NO_SHOTS", "DUPLICATE_SHOT_ID", "INVALID_DURATION", "VISUAL_REQUIRED", "TOTAL_DURATION_INVALID"));
         boolean audioComplete = shots.isArray() && audioReady == shots.size();

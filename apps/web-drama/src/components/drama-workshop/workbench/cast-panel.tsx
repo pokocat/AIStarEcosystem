@@ -1,9 +1,10 @@
 "use client";
 
 // 右侧角色面板(常驻 · 可折叠) — 设计真源:components.jsx `CastPanel`。
-// 关键角色:绑数字人 / 已锁徽标 / 参考图计数;龙套:文字外观。
+// 主要角色:绑数字人 / 已绑定徽标;配角:按文字描述出图。
+// v0.197：只在逐集制作阶段出现；≤1180 由顶栏「角色」按钮打开抽屉（inDrawer）。
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Sparkles, User, Users } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, Sparkles, User, Users, X } from "lucide-react";
 import { Avatar } from "@/components/drama-ui";
 import type { CharacterDef } from "@/mocks/drama-workshop";
 
@@ -14,16 +15,19 @@ interface CastPanelProps {
   onBind?: (c: CharacterDef) => void;
   /** 当前高亮的关键角色 id(分镜屏可视化引用关系用) */
   activeRef?: string | null;
+  /** 渲染在抽屉里：占满抽屉宽度，收起按钮变成关闭。 */
+  inDrawer?: boolean;
 }
 
-export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: CastPanelProps) {
+export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef, inDrawer }: CastPanelProps) {
   const keys = chars.filter((c) => c.role === "key");
   const extras = chars.filter((c) => c.role === "extra");
 
-  if (collapsed) {
+  if (collapsed && !inDrawer) {
     return (
       <aside
-        className="col"
+        className="col wb-cast-panel"
+        aria-label="角色"
         style={{
           width: 60,
           flex: "none",
@@ -38,9 +42,10 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
           type="button"
           className="btn btn-icon btn-ghost btn-sm"
           title="展开角色面板"
+          aria-label="展开角色面板"
           onClick={onToggle}
         >
-          <ChevronLeft size={16} />
+          <PanelRightOpen size={16} />
         </button>
         <div style={{ width: 28, height: 1, background: "var(--line)" }} />
         <div className="col" style={{ gap: 8, alignItems: "center" }}>
@@ -83,31 +88,34 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
 
   return (
     <aside
-      className="col scroll"
+      className={inDrawer ? "col scroll" : "col scroll wb-cast-panel"}
+      aria-label="角色"
       style={{
-        width: "var(--cast-w)",
+        width: inDrawer ? "100%" : "var(--cast-w)",
+        height: inDrawer ? "100%" : undefined,
         flex: "none",
         background: "var(--surface)",
-        borderLeft: "1px solid var(--line)",
+        borderLeft: inDrawer ? "none" : "1px solid var(--line)",
         padding: 16,
       }}
     >
       <div className="row gap-2" style={{ marginBottom: 4 }}>
         <Users size={17} style={{ color: "var(--accent)" }} />
-        <span style={{ fontWeight: 700 }}>角色面板</span>
+        <span style={{ fontWeight: 700 }}>角色</span>
         <span className="tag tag-gray num">{chars.length}</span>
         <span className="grow" />
         <button
           type="button"
           className="btn btn-icon btn-ghost btn-sm"
-          title="收起角色面板"
+          title={inDrawer ? "关闭" : "收起角色面板"}
+          aria-label={inDrawer ? "关闭" : "收起角色面板"}
           onClick={onToggle}
         >
-          <ChevronRight size={16} />
+          {inDrawer ? <X size={16} /> : <PanelRightClose size={16} />}
         </button>
       </div>
       <div className="faint" style={{ fontSize: 11.5, marginBottom: 12 }}>
-        剧本、分镜中的 @角色 均来自此处
+        在分镜「画面」里输入 @ 选的就是这些角色
       </div>
 
       <div
@@ -119,7 +127,7 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
           letterSpacing: ".05em",
         }}
       >
-        关键角色 · 锁形象
+        主要角色 · 固定长相
       </div>
       <div className="col gap-2" style={{ marginBottom: 16 }}>
         {keys.map((c) => (
@@ -133,7 +141,7 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
           >
             <Avatar theme={c.avatar} bound={c.bound} size={40} />
             <div className="grow" style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{c.name}</div>
+              <div style={{ fontWeight: 700, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{c.name}</div>
               <div
                 className="faint"
                 style={{
@@ -147,17 +155,18 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
               </div>
             </div>
             {c.bound ? (
-              <span className="tag tag-accent">
-                <Sparkles size={11} fill="currentColor" strokeWidth={0} /> 已锁
+              <span className="tag tag-accent" style={{ flex: "none" }} title="已绑定数字人，每一集都用这张脸">
+                <Sparkles size={11} fill="currentColor" strokeWidth={0} /> 已绑定
               </span>
             ) : (
               <button
                 type="button"
                 className="chip"
-                style={{ height: 26, fontSize: 11.5 }}
+                style={{ height: 26, fontSize: 11.5, flex: "none" }}
+                title={`给「${c.name}」绑定数字人`}
                 onClick={() => onBind?.(c)}
               >
-                绑定
+                绑定数字人
               </button>
             )}
           </div>
@@ -173,7 +182,7 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
           letterSpacing: ".05em",
         }}
       >
-        龙套 · 文字外观
+        配角 · 按文字描述出图
       </div>
       <div className="col gap-2">
         {extras.map((c) => (
@@ -193,7 +202,7 @@ export function CastPanel({ chars, collapsed, onToggle, onBind, activeRef }: Cas
               <User size={16} />
             </div>
             <div className="grow" style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
+              <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{c.name}</div>
               <div
                 className="faint"
                 style={{

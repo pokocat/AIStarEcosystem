@@ -93,26 +93,26 @@ public class DramaShortPromptService {
     public JsonNode parse(JsonNode body, String userId) {
         String prompt = trimToNull(text(body, "prompt"));
         if (prompt == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "请先粘贴你的提示词");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_REQUIRED", "先把原文粘进来");
         }
         if (prompt.length() < MIN_PROMPT_CHARS) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_TOO_SHORT",
-                    "提示词太短，拆不出分镜：至少写清画面、人物或台词（" + MIN_PROMPT_CHARS + " 字以上）。");
+                    "原文太短，拆不出分镜。至少写 " + MIN_PROMPT_CHARS + " 个字，写清画面、人物或台词。");
         }
         if (prompt.length() > MAX_PROMPT_CHARS) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROMPT_TOO_LONG",
-                    "提示词长度 " + prompt.length() + " 字，超过单次上限 " + MAX_PROMPT_CHARS
-                            + " 字。请拆成多条短视频分别制作。");
+                    "原文有 " + prompt.length() + " 字，一次最多拆 " + MAX_PROMPT_CHARS
+                            + " 字。请分成几段，一段做一条短视频。");
         }
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "提示词拆解还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+                    "拆分镜还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
         requireWithinRateLimit(userId);
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_SHORT_PROMPT_PARSE);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "提示词拆解的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_SHORT_PROMPT_PARSE
+                    "拆分镜用的提示词尚未配置（promptKey=" + PromptService.KEY_DRAMA_SHORT_PROMPT_PARSE
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
 
@@ -152,16 +152,19 @@ public class DramaShortPromptService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "提示词拆解调用失败，请稍后重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 服务暂时连不上，稍后再试一次。");
         }
         if ("length".equalsIgnoreCase(resp.finishReason())) {
+            // 给运营的处理办法留在日志里（用户改不了 max_tokens）；界面只说用户能做的。
+            log.warn("[drama-short-prompt] parse truncated (finish_reason=length) user={} promptChars={} maxTokens={}"
+                    + " —— 运营可在「短剧专区 · 提示词设置」调高 max_tokens", userId, prompt.length(), options.get("max_tokens"));
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_OUTPUT_TRUNCATED",
-                    "拆解结果超出模型输出上限：请把提示词拆短一些再试；运营也可在「短剧专区 · 提示词设置」调高 max_tokens。");
+                    "原文太长，AI 没拆完就停了。把原文分成几段，一段一段拆。");
         }
         JsonNode root = readJson(resp.content());
         if (root == null || !root.isObject()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "拆解结果无法解析，请重试；若反复失败，把提示词里的分镜段落和时间码写清楚会更稳。");
+                    "这次拆出来的结果用不了，再试一次。老是失败的话，把原文里的分镜段落和时间码写清楚会更稳。");
         }
         ObjectNode out = normalize((ObjectNode) root);
         log.info("[drama-short-prompt] parse ok user={} shots={} totalSec={} characters={} model={}",
@@ -184,7 +187,7 @@ public class DramaShortPromptService {
             if (hits.size() >= RATE_LIMIT_MAX) {
                 long waitSec = Math.max(1, (hits.peekFirst() + RATE_LIMIT_WINDOW.toMillis() - now) / 1000);
                 throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "DRAMA_PROMPT_RATE_LIMITED",
-                        "拆解太频繁了：" + RATE_LIMIT_WINDOW.toMinutes() + " 分钟内最多 " + RATE_LIMIT_MAX
+                        "拆得太频繁了，" + RATE_LIMIT_WINDOW.toMinutes() + " 分钟内最多拆 " + RATE_LIMIT_MAX
                                 + " 次，请 " + waitSec + " 秒后再试。");
             }
             hits.addLast(now);
@@ -212,7 +215,7 @@ public class DramaShortPromptService {
         out.put("title", cap(orDefault(clean(text(root, "title")), "未命名短视频"), 40));
         out.put("logline", cap(clean(text(root, "logline")), 200));
         out.put("universalPrompt", capNoting(clean(text(root, "universalPrompt")), UNIVERSAL_CHARS,
-                notes, "全片画面基调超过 " + UNIVERSAL_CHARS + " 字，已保留前半段。"));
+                notes, "整体画风超过 " + UNIVERSAL_CHARS + " 字，只保留了前面一部分。"));
 
         ArrayNode style = out.putArray("style");
         for (JsonNode s : root.path("style")) {
@@ -235,13 +238,13 @@ public class DramaShortPromptService {
             ObjectNode item = characters.addObject();
             item.put("name", name);
             item.put("visual", capNoting(clean(text(c, "visual")), VISUAL_CHARS, notes,
-                    "角色「" + name + "」的视觉描述超过 " + VISUAL_CHARS + " 字，已保留前半段。"));
+                    "角色「" + name + "」的外貌描述超过 " + VISUAL_CHARS + " 字，只保留了前面一部分。"));
             item.put("performance", cap(clean(text(c, "performance")), VISUAL_CHARS));
         }
 
         if (charactersDropped) {
-            notes.add("提示词里的角色超过 " + MAX_CHARACTERS + " 位，只保留了前 " + MAX_CHARACTERS
-                    + " 位；其余角色请拆成另一条短视频。");
+            notes.add("原文里的角色超过 " + MAX_CHARACTERS + " 位，只保留了前 " + MAX_CHARACTERS
+                    + " 位。其余角色请另拆一条短视频。");
         }
 
         ArrayNode scenes = out.putArray("scenes");
@@ -259,11 +262,11 @@ public class DramaShortPromptService {
             ObjectNode item = scenes.addObject();
             item.put("name", name);
             item.put("visual", capNoting(clean(text(s, "visual")), VISUAL_CHARS, notes,
-                    "场景「" + name + "」的描述超过 " + VISUAL_CHARS + " 字，已保留前半段。"));
+                    "场景「" + name + "」的描述超过 " + VISUAL_CHARS + " 字，只保留了前面一部分。"));
         }
 
         if (scenesDropped) {
-            notes.add("提示词里的场景超过 " + MAX_SCENES + " 个，只保留了前 " + MAX_SCENES + " 个。");
+            notes.add("原文里的场景超过 " + MAX_SCENES + " 个，只保留了前 " + MAX_SCENES + " 个。");
         }
 
         ArrayNode shots = out.putArray("shots");
@@ -325,14 +328,14 @@ public class DramaShortPromptService {
         }
         if (shots.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "没能从这段提示词里拆出可用分镜：请补上画面描述或分镜段落（带时间码更准）后重试。");
+                    "没能从这段原文里拆出分镜。补上画面描述或分镜段落再试，带时间码会更准。");
         }
         if (clamped) {
             notes.add("有镜头超过 " + MAX_SHOT_SEC + " 秒，已经压到 " + MAX_SHOT_SEC
-                    + " 秒；想保留原来的长度，在分镜表里手动拆成多镜。");
+                    + " 秒。想保留原来的长度，在分镜表里手动拆成多镜。");
         }
         if (dropped) {
-            notes.add("提示词内容超过单条短视频上限（" + MAX_SHOTS + " 镜），后面的部分没有拆解；建议拆成多条分别制作。");
+            notes.add("原文超过一条短视频的上限（" + MAX_SHOTS + " 镜），后面的部分这次没有拆，建议拆成多条分别制作。");
             // 最后一镜的时间码 = 原文里「拆到哪」的锚点。前端据此把剩余原文接着拆下一条；
             // 原文没写时间码时这里是空串，前端就不给「接着拆」入口（切不准就别猜）。
             String lastKept = shots.get(shots.size() - 1).path("timecode").asText("");
@@ -468,8 +471,8 @@ public class DramaShortPromptService {
         ArrayNode chat = data.putArray("chat");
         ObjectNode hello = chat.addObject();
         hello.put("who", "ai");
-        hello.put("text", "已按你的提示词拆成 " + shots.size() + " 镜，人物和画面设定都在右侧「提示词设定」里。"
-                + "分镜表里的字段都能直接改；想整张表重来，点分镜表右上的「按提示词重拆」。");
+        hello.put("text", "已按你的脚本拆成 " + shots.size() + " 镜，人物和画面设定在「人物与画面设定」卡片里。"
+                + "分镜表里的内容都能直接改；想整张表重来，点分镜表上方的「按原文重拆」。");
         data.set("refs", om.createArrayNode());
         ArrayNode notes = data.putArray("promptNotes");
         for (JsonNode n : parsed.path("notes")) {
@@ -505,7 +508,7 @@ public class DramaShortPromptService {
         }
         if (usable == 0) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHORT_SEED_EMPTY",
-                    "拆解结果里没有可用分镜：请至少给一镜填上画面或台词，再开始制作。");
+                    "分镜都是空的，至少给一镜写上画面或台词，再开始制作。");
         }
     }
 

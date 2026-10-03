@@ -1,10 +1,10 @@
 "use client";
 
 // 统一预览组件 — 设计真源 v4 preview-modal.jsx:
-// 创意推荐 / 模板库 / 快速开剧右栏共用同一套预览(封面 + 描述 + 估时大纲 + 动作)。
+// 首页热门模板 / 新建短剧的热门结构 / 新建短视频的推荐共用同一套预览（封面 + 描述 + 节奏预估 + 动作）。
 import * as React from "react";
 import { Clock, Film, Sparkles, X } from "lucide-react";
-import { CreditButton, Thumb } from "@/components/drama-ui";
+import { CreditMark, Thumb } from "@/components/drama-ui";
 import { ModalShell } from "@/components/common/ModalShell";
 import type { Template } from "@/mocks/drama-workshop";
 import { tplBeats, type PreviewBeat } from "@/mocks/drama-workshop";
@@ -15,7 +15,7 @@ export interface TplPreviewItem {
   title: string;
   cat?: string;
   desc: string;
-  /** 给了模板就按模板出"估时大纲";否则用 beats */
+  /** 给了目录结构（catalog template）就按它出「节奏预估」；否则用 beats */
   tpl?: Template;
   tags?: string[];
   personal?: boolean;
@@ -36,7 +36,8 @@ function PreviewHeroMedia({
   previewVideo?: string;
   cat?: string;
   personal?: boolean;
-  label: string;
+  /** 封面左下角的小标签；不传就不显示（没有视频时别写「成片片段」这种不属实的话）。 */
+  label?: string;
 }) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [natural, setNatural] = React.useState<{ w: number; h: number } | null>(null);
@@ -87,9 +88,11 @@ function PreviewHeroMedia({
             <Sparkles size={10} fill="currentColor" strokeWidth={0} /> 猜你想拍
           </span>
         )}
-        <span className="thumb-label" style={{ position: "absolute", left: 10, bottom: 10 }}>
-          {videoError ? "视频加载失败 · 已显示封面" : label}
-        </span>
+        {(videoError || label) && (
+          <span className="thumb-label" style={{ position: "absolute", left: 10, bottom: 10 }}>
+            {videoError ? "视频没加载出来，先看封面" : label}
+          </span>
+        )}
       </Thumb>
     );
   }
@@ -119,7 +122,7 @@ function PreviewHeroMedia({
         preload="auto"
         disablePictureInPicture
         controlsList="nodownload nofullscreen noremoteplayback"
-        aria-label={`${cat || "创意"}范例视频`}
+        aria-label={`${cat || "模板"}范例视频`}
         onLoadedMetadata={(e) => {
           const video = e.currentTarget;
           if (video.videoWidth > 0 && video.videoHeight > 0) {
@@ -156,7 +159,7 @@ function PreviewHeroMedia({
         </span>
       )}
       <span className="thumb-label" style={{ position: "absolute", left: 10, bottom: 10 }}>
-        {label}
+        {label ?? "范例视频"}
       </span>
       {personal && (
         <span
@@ -185,7 +188,7 @@ export function TplPreviewBody({
   estimate,
 }: TplPreviewItem) {
   const beats = tpl ? tplBeats(tpl) : beatsProp;
-  const label = beatsLabel ?? (tpl ? "估时大纲" : "AI 制作思路");
+  const label = beatsLabel ?? (tpl ? "节奏预估" : "AI 会怎么做");
   return (
     <div className="col gap-3">
       <div style={{ borderRadius: 14, overflow: "hidden", flex: "none" }}>
@@ -194,15 +197,15 @@ export function TplPreviewBody({
           previewVideo={previewVideo}
           cat={cat}
           personal={personal}
-          label={coverLabel ?? (tpl ? "模板效果预览 · 同结构成片片段" : "效果预览 · 同类型成片片段")}
+          label={coverLabel}
         />
       </div>
       <div>
-        <div className="row gap-2">
-          <span style={{ fontWeight: 800, fontSize: 16 }}>{title}</span>
+        <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800, fontSize: 16, minWidth: 0, overflowWrap: "anywhere" }}>{title}</span>
           {tpl && (
             <span className="faint num" style={{ fontSize: 12 }}>
-              {tpl.eps > 1 ? `${tpl.eps} 集 · ${tpl.scene}` : `单集 · ${tpl.scene}`}
+              {tpl.eps > 1 ? `${tpl.eps} 集 · ${tpl.scene}` : `单条 · ${tpl.scene}`}
             </span>
           )}
         </div>
@@ -228,7 +231,7 @@ export function TplPreviewBody({
               <Sparkles size={14} style={{ color: "var(--accent)" }} />
             )}
             <span style={{ fontWeight: 700, fontSize: 12.5 }}>{label}</span>
-            <span className="faint" style={{ fontSize: 11.5 }}>开拍后可整段调整</span>
+            <span className="faint" style={{ fontSize: 11.5 }}>做同款后都能改</span>
           </div>
           {beats.map((b, i) => (
             <div
@@ -238,16 +241,18 @@ export function TplPreviewBody({
             >
               <span
                 className="num"
-                style={{ fontWeight: 700, fontSize: 12, color: "var(--accent)", flex: "none", width: 86 }}
+                style={{ fontWeight: 700, fontSize: 12, color: "var(--accent)", flex: "none", width: 86, overflowWrap: "anywhere" }}
               >
                 {b.range}
               </span>
-              <span className="grow" style={{ fontSize: 12.5, fontWeight: 600 }}>
+              <span className="grow" style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>
                 {b.beat}
               </span>
-              <span className="faint num" style={{ fontSize: 11 }}>
-                {b.est}
-              </span>
+              {b.est && (
+                <span className="faint num" style={{ fontSize: 11, flex: "none" }}>
+                  {b.est}
+                </span>
+              )}
             </div>
           ))}
           {tpl && tpl.eps > 1 && (
@@ -262,7 +267,7 @@ export function TplPreviewBody({
                 color: "var(--accent)",
               }}
             >
-              <Film size={13} /> 共 {tpl.eps} 集 · 成片约 {Math.round((tpl.eps * 76) / 60)} 分钟 · {tpl.scene}
+              <Film size={13} style={{ flex: "none" }} /> 共 {tpl.eps} 集，全剧约 {Math.round((tpl.eps * 76) / 60)} 分钟 · {tpl.scene}
             </div>
           )}
         </div>
@@ -279,21 +284,39 @@ export function TplPreviewBody({
             fontWeight: 600,
           }}
         >
-          <Clock size={13} style={{ color: "var(--accent)" }} />{" "}
-          {estimate ?? "AI 估算 · 开拍后根据你的主题生成逐镜节奏和完整估时大纲"}
+          <Clock size={13} style={{ color: "var(--accent)", flex: "none" }} />{" "}
+          {estimate ?? "做同款后按你的主题生成分镜和每段时长"}
         </div>
       )}
     </div>
   );
 }
 
-export interface PreviewAction {
+interface PreviewActionBase {
   label: string;
   icon?: React.ReactNode;
   variant?: "grad" | "primary" | "line" | "ghost";
-  cost?: number;
+  disabled?: boolean;
   onClick: () => void;
 }
+
+/**
+ * 预览弹窗底部的动作。
+ *
+ * 不扣积分的动作：不传 cost / confirm，点了直接执行，不挂钻石。
+ * 扣积分的动作：cost 与 confirm 必须一起给 —— cost 只用来挂钻石标记和悬停提示，
+ * 扣费确认由调用方给（如单条模板「做同款」= 开始制作短视频，走共享的 confirmShortStart）。
+ * v0.197 起弹窗自己不再拼扣费确认：之前这里走 CreditButton 的通用确认，标题、说明、按钮
+ * 由各调用方各写一份，同一笔 shortEntry 在不同入口问法不一样。扣费后刷新余额也由调用方负责。
+ */
+export type PreviewAction =
+  | (PreviewActionBase & { cost?: undefined; confirm?: undefined })
+  | (PreviewActionBase & {
+      /** 本次消耗（只用于钻石标记的悬停提示，真实计费在后台）。 */
+      cost: number;
+      /** 扣费确认：resolve true 才执行 onClick。 */
+      confirm: () => Promise<boolean>;
+    });
 
 export function PreviewModal({
   item,
@@ -317,13 +340,17 @@ export function PreviewModal({
       label="模板预览"
       overlayZIndex={90}
       className="card pop-in col"
-      style={{ width: 560, maxWidth: "94vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
+      // 宽度用 vw 兜底：.overlay 是 grid，格子按内容撑开，max-width:100% 在这里约束不住定宽弹窗（375 下右边被裁）。
+      // 100vw - 24px = 窄屏 .overlay 左右各 12px 内边距后的可用宽度。
+      style={{ width: "min(560px, calc(100vw - 24px))", maxWidth: "100%", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
     >
         <div className="scroll col" style={{ padding: "18px 20px 16px", minHeight: 0, position: "relative" }}>
           <button
             type="button"
             className="btn btn-icon btn-sm"
             onClick={onClose}
+            aria-label="关闭"
+            title="关闭"
             style={{ position: "absolute", top: 26, right: 28, zIndex: 2, background: "rgba(255,255,255,.92)", boxShadow: "var(--shadow-sm)" }}
           >
             <X size={16} />
@@ -332,17 +359,14 @@ export function PreviewModal({
         </div>
         {actions.length > 0 && (
           <div
-            className="row gap-2"
-            style={{ padding: "12px 20px 16px", borderTop: "1px solid var(--line-soft)", background: "var(--surface)", flex: "none" }}
+            className="row gap-2 hm-pv-actions"
+            style={{ padding: "12px 20px 16px", borderTop: "1px solid var(--line-soft)", background: "var(--surface)", flex: "none", flexWrap: "wrap", justifyContent: "flex-end" }}
           >
-            <span className="grow" />
             {actions.map((a, i) =>
               a.cost != null ? (
-                <CreditButton key={i} cost={a.cost} onConfirm={a.onClick} confirmTitle={a.label} className={cls[a.variant ?? "line"]}>
-                  {a.icon} {a.label}
-                </CreditButton>
+                <PaidActionButton key={i} action={a} className={cls[a.variant ?? "line"]} />
               ) : (
-                <button key={i} type="button" className={cls[a.variant ?? "line"]} onClick={a.onClick}>
+                <button key={i} type="button" className={cls[a.variant ?? "line"]} onClick={a.onClick} disabled={a.disabled}>
                   {a.icon} {a.label}
                 </button>
               ),
@@ -350,5 +374,39 @@ export function PreviewModal({
           </div>
         )}
     </ModalShell>
+  );
+}
+
+/** 扣积分的动作：挂钻石标记；点了先走调用方的扣费确认，确认了才执行。确认框开着时不接受重复点击。 */
+function PaidActionButton({
+  action,
+  className,
+}: {
+  action: Extract<PreviewAction, { cost: number }>;
+  className: string;
+}) {
+  const [asking, setAsking] = React.useState(false);
+  const onClick = async () => {
+    if (action.disabled || asking) return;
+    setAsking(true);
+    let ok = false;
+    try {
+      ok = await action.confirm();
+    } finally {
+      setAsking(false);
+    }
+    if (ok) action.onClick();
+  };
+  return (
+    <button
+      type="button"
+      className={className}
+      title={`会消耗 ${action.cost} 积分`}
+      disabled={action.disabled || asking}
+      onClick={() => void onClick()}
+    >
+      {action.icon} {action.label}
+      <CreditMark tone="inherit" size={13} />
+    </button>
   );
 }

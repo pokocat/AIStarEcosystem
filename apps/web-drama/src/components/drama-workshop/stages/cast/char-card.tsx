@@ -1,7 +1,8 @@
 "use client";
 
 // 角色卡 — 设计真源:screens-project.jsx `CharCard`。
-// 关键角色:大数字人封面(已绑) / 待绑占位(未绑) + 三张参考图槽;龙套:文字外观。
+// 主要角色:大数字人封面(已绑) / 待绑占位(未绑) + 定妆照 + 多角度参考图;配角:文字描述。
+// v0.197：会扣积分的「AI 画定妆照」带钻石标记，重画（会换掉现在那张）先确认。
 import * as React from "react";
 import { ImagePlus, Layers, RefreshCw, Sparkles, User } from "lucide-react";
 import { Avatar, GenFramePlaceholder, Thumb } from "@/components/drama-ui";
@@ -13,30 +14,38 @@ interface CharCardProps {
   delay?: number;
   onBind: () => void;
   onToggleRole: () => void;
-  /** 上传真人参考图（→ 素材库）。 */
+  /** 上传定妆照（→ 素材库）。 */
   onUploadRef?: (file: File) => void;
-  /** AI 生成角色定妆参考图（锁脸用）。 */
-  onGenRef?: () => void;
+  /** AI 画定妆照（固定长相用）。 */
+  onGenRef?: () => void | Promise<unknown>;
+  /** 定妆照单张积分（确认弹窗展示；真实计费在后台）。 */
+  refCost?: number;
   /** 点开参考图看大图。 */
   onViewRef?: () => void;
   /** 上传中 / 生成中。 */
   uploading?: boolean;
   /** C-2：一键生成 正/侧/全身 三视图参考图集。 */
-  onGenSheet?: () => void;
+  onGenSheet?: () => void | Promise<unknown>;
   /** 三视图单次消耗（用于确认弹窗展示；真实计费后台）。 */
   sheetCost?: number;
   /** 三视图生成中。 */
   sheetBusy?: boolean;
   /** 点开某张多角度参考图看大图。 */
   onViewImage?: (url: string) => void;
+  /** 「AI 画定妆照 / 重画」的跨实例在途锁 key（切走再切回来也不能再点一次、再扣一份）。 */
+  refLockKey?: string;
+  /** 「生成多角度参考图」的跨实例在途锁 key。 */
+  sheetLockKey?: string;
 }
 
 const ANGLE_LABEL: Record<string, string> = { front: "正面", side: "侧面", full: "全身", expression: "表情", env: "空景" };
 
-export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGenRef, onViewRef, uploading, onGenSheet, sheetCost = 6, sheetBusy, onViewImage }: CharCardProps) {
+export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGenRef, refCost = 2, onViewRef, uploading, onGenSheet, sheetCost = 6, sheetBusy, onViewImage, refLockKey, sheetLockKey }: CharCardProps) {
   const isKey = c.role === "key";
   const theme = AVATAR_THEMES[c.avatar] ?? AVATAR_THEMES.default;
   const refImages = c.refImages ?? [];
+  // 真实参考图张数（定妆照 + 多角度参考图）；之前绑定时一律写 3，卡片显示「参考图 ×3」其实一张都没有。
+  const refTotal = refImages.length + (c.refUrl ? 1 : 0);
 
   return (
     <div
@@ -47,7 +56,7 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
         animationDelay: delay + "ms",
       }}
     >
-      {/* 形象区:关键角色显数字人分身;龙套:无 */}
+      {/* 形象区:主要角色显数字人;配角:无 */}
       {isKey ? (
         <div style={{ position: "relative" }}>
           {c.bound ? (
@@ -87,27 +96,26 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
                 ) : (
                   <Avatar theme={c.avatar} size={64} ring />
                 )}
-                <div style={{ color: "#fff" }}>
+                <div style={{ color: "#fff", minWidth: 0 }}>
                   <div
                     style={{
                       fontWeight: 800,
                       fontSize: 18,
                       textShadow: "0 1px 6px rgba(0,0,0,.3)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
+                    title={c.name}
                   >
                     {c.name}
                   </div>
-                  <div className="row gap-2" style={{ fontSize: 11.5, marginTop: 4 }}>
-                    <span className="thumb-label">
-                      <Sparkles
-                        size={10}
-                        fill="#fff"
-                        strokeWidth={0}
-                        style={{ verticalAlign: -1, marginRight: 3 }}
-                      />
-                      数字人已绑
+                  <div className="row gap-2" style={{ fontSize: 11.5, marginTop: 4, flexWrap: "wrap" }}>
+                    <span className="thumb-label" style={{ whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                      <Sparkles size={10} fill="#fff" strokeWidth={0} style={{ flex: "none" }} />
+                      已绑定数字人
                     </span>
-                    <span className="thumb-label num">参考图 ×{c.refCount ?? 3}</span>
+                    {refTotal > 0 && <span className="thumb-label num">参考图 ×{refTotal}</span>}
                   </div>
                 </div>
               </div>
@@ -141,7 +149,7 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
                 className="btn btn-grad btn-sm"
                 onClick={onBind}
               >
-                <Sparkles size={14} fill="currentColor" strokeWidth={0} /> 绑定数字人分身
+                <Sparkles size={14} fill="currentColor" strokeWidth={0} /> 绑定数字人
               </button>
             </div>
           )}
@@ -166,30 +174,32 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
               <User size={17} />
             </div>
           )}
-          <div className="grow">
-            <div style={{ fontWeight: 800, fontSize: 15 }}>{c.name}</div>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{c.name}</div>
             <div className="faint" style={{ fontSize: 11.5 }}>{c.cast}</div>
           </div>
           <button
             type="button"
             className="chip"
             onClick={onToggleRole}
+            title={isKey ? "现在是主要角色，点一下改成配角" : "现在是配角，点一下改成主要角色"}
             style={{
+              flex: "none",
               height: 26,
               fontSize: 11.5,
               background: isKey ? "var(--accent-soft)" : "var(--surface-2)",
               color: isKey ? "var(--accent)" : "var(--ink-2)",
             }}
           >
-            {isKey ? "关键角色" : "龙套"}
+            {isKey ? "主要角色" : "配角"}
           </button>
         </div>
         <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.55 }}>{c.desc}</div>
-        {/* 真人参考图：上传真实剧照锁形象（→ 素材库）；点开看大图 */}
+        {/* 定妆照：上传照片或让 AI 画一张（→ 素材库）；点开看大图 */}
         <div className="col gap-2" style={{ marginTop: 2 }}>
-          <div className="faint" style={{ fontSize: 11, fontWeight: 700 }}>真人参考图 · 上传真实剧照锁定形象</div>
+          <div className="faint" style={{ fontSize: 11, fontWeight: 700 }}>定妆照 · 上传照片，或让 AI 画一张</div>
           {c.refUrl ? (
-            <div className="row gap-2" style={{ alignItems: "center" }}>
+            <div className="row gap-2" style={{ alignItems: "center", flexWrap: "wrap" }}>
               <button
                 type="button"
                 onClick={onViewRef}
@@ -214,28 +224,47 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
                 {uploading ? "上传中…" : (<><RefreshCw size={13} /> 重新上传</>)}
               </label>
               {onGenRef && (
-                <button type="button" className="btn btn-line btn-sm btn-icon" title="AI 重新生成定妆图" disabled={uploading} onClick={onGenRef} style={{ flex: "none" }}>
+                <CreditButton
+                  cost={refCost}
+                  alwaysConfirm
+                  onConfirm={onGenRef}
+                  lockKey={refLockKey}
+                  confirmTitle="让 AI 重画定妆照？"
+                  confirmBody="现在这张定妆照会被换掉，已花的积分不退。"
+                  confirmLabel="重画"
+                  className="btn btn-line btn-sm"
+                  title="让 AI 重画定妆照（扣积分）"
+                  aria-label="让 AI 重画定妆照"
+                  disabled={uploading}
+                  markSize={11}
+                  style={{ flex: "none" }}
+                >
                   <Sparkles size={13} />
-                </button>
+                </CreditButton>
               )}
               {isKey && c.bound && (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={onBind} style={{ flex: "none" }}>
-                  换形象
+                  换数字人
                 </button>
               )}
             </div>
           ) : (
             <div className="row gap-2">
               {onGenRef && (
-                <button
-                  type="button"
+                <CreditButton
+                  cost={refCost}
+                  onConfirm={onGenRef}
+                  lockKey={refLockKey}
+                  data-testid="char-gen-ref"
+                  confirmTitle="让 AI 画定妆照"
+                  confirmBody="AI 按角色的名字和长相描述画一张单人定妆照，出分镜时照着它画。"
                   className="btn btn-line btn-sm grow"
                   style={{ justifyContent: "center" }}
                   disabled={uploading}
-                  onClick={onGenRef}
+                  mark={!uploading}
                 >
-                  {uploading ? "生成中…" : (<><Sparkles size={14} /> AI 定妆图</>)}
-                </button>
+                  {uploading ? "生成中…" : (<><Sparkles size={14} /> AI 画定妆照</>)}
+                </CreditButton>
               )}
               <label
                 className="row center grow"
@@ -252,30 +281,37 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
                     if (f) onUploadRef?.(f);
                   }}
                 />
-                {uploading ? "上传中…" : (<><ImagePlus size={15} /> 上传</>)}
+                {uploading ? "上传中…" : (<><ImagePlus size={15} /> 上传照片</>)}
               </label>
             </div>
           )}
         </div>
 
-        {/* C-2 多角度参考图集（正/侧/全身）：跨镜锁形象的一致性地基 */}
+        {/* C-2 多角度参考图集（正/侧/全身）：让每个镜头里的长相保持一致 */}
         {onGenSheet && (
           <div className="col gap-2" style={{ marginTop: 2 }}>
             <div className="row gap-2" style={{ alignItems: "center" }}>
-              <span className="faint" style={{ fontSize: 11, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                多角度参考图 · 正侧全身锁形象
+              <span className="faint" title="多角度参考图：正面、侧面、全身三张" style={{ fontSize: 11, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                多角度参考图 · 正面、侧面、全身
               </span>
               <span className="grow" />
               <CreditButton
                 cost={sheetCost}
                 onConfirm={onGenSheet}
-                confirmTitle="生成多角度参考图"
-                confirmBody="AI 会为该角色生成 正面 / 侧面 / 全身 三张参考图，用于跨镜锁定形象。"
+                lockKey={sheetLockKey}
+                alwaysConfirm={refImages.length > 0}
+                confirmTitle={refImages.length > 0 ? "重新生成多角度参考图？" : "生成多角度参考图"}
+                confirmBody={
+                  refImages.length > 0
+                    ? "现在这几张会被换掉，已花的积分不退。"
+                    : "AI 给这个角色画正面、侧面、全身三张图，之后每个镜头都照着画，长相不容易变。"
+                }
                 className="btn btn-line btn-sm"
                 disabled={sheetBusy}
-                title="生成 正/侧/全身 三视图"
+                title="生成正面、侧面、全身三张参考图（扣积分）"
+                style={{ flex: "none" }}
               >
-                <Layers size={13} /> {sheetBusy ? "生成中…" : refImages.length > 0 ? "重新生成" : "一键三视图"}
+                <Layers size={13} /> {sheetBusy ? "生成中…" : refImages.length > 0 ? "重新生成" : "生成三张"}
               </CreditButton>
             </div>
             {sheetBusy ? (
@@ -306,7 +342,7 @@ export function CharCard({ c, delay = 0, onBind, onToggleRole, onUploadRef, onGe
                 ))}
               </div>
             ) : (
-              <div className="faint" style={{ fontSize: 11 }}>还没有多角度参考图，点「一键三视图」生成正/侧/全身。</div>
+              <div className="faint" style={{ fontSize: 11 }}>还没有多角度参考图。</div>
             )}
           </div>
         )}

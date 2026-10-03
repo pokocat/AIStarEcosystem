@@ -32,11 +32,25 @@ export interface ValidationResult {
   ok: boolean;
 }
 
-const FLAG_REF = /globalFlags\.([A-Za-z0-9_]+)/g;
+// v0.197：剧情状态名允许中文（之前正则只认 A-Z0-9_，输入「钥匙」点添加没反应）。
+const FLAG_REF = /globalFlags\.([\p{L}\p{N}_]+)/gu;
+
+/** 剧情状态名的合法字符（字母 / 数字 / 下划线，含中文）。 */
+export const FLAG_NAME_STRIP = /[^\p{L}\p{N}_]/gu;
+
+/** 界面上显示的集名：有标题用标题，没有就从剧情首句派生，兜底「第 N 集」。 */
+export function epDisplayTitle(e: { no: number; title?: string; synopsis?: string }): string {
+  const t = (e.title ?? "").trim();
+  if (t) return t;
+  return episodeTitle({ no: e.no, content: e.synopsis });
+}
 
 /** 从 condition 表达式里抽出引用的标记名（用于「引用的标记需先声明」校验）。 */
 export function flagsInCondition(condition: string | undefined): string[] {
   if (!condition) return [];
+  // 能按标准形状解析就只认左边那个状态名（右边的文字值里写了 "globalFlags.x" 也不算引用）。
+  const parsed = parseCondition(condition);
+  if (parsed) return [parsed.flag];
   const out: string[] = [];
   let m: RegExpExecArray | null;
   FLAG_REF.lastIndex = 0;
@@ -96,88 +110,123 @@ export function validateStory(data: InteractiveStoryData): ValidationResult {
   const byId = new Map<string, InteractiveEpisode>();
   for (const e of eps) {
     if (ids.has(e.episodeId)) {
-      errors.push({ level: "error", code: "DUP_EPISODE_ID", message: `集 id 重复：${e.episodeId}`, episodeId: e.episodeId });
+      errors.push({ level: "error", code: "DUP_EPISODE_ID", message: `有两集的集号重复（第 ${e.no} 集）`, episodeId: e.episodeId });
     }
     ids.add(e.episodeId);
     byId.set(e.episodeId, e);
   }
   if (eps.length === 0) {
-    errors.push({ level: "error", code: "NO_EPISODES", message: "还没有任何集" });
+    errors.push({ level: "error", code: "NO_EPISODES", message: "还没有任何一集" });
   }
   if (!data.startEpisodeId) {
-    errors.push({ level: "error", code: "NO_START", message: "未设置起始集" });
+    errors.push({ level: "error", code: "NO_START", message: "还没设起始集" });
   } else if (!byId.has(data.startEpisodeId)) {
-    errors.push({ level: "error", code: "BAD_START", message: `起始集不存在：${data.startEpisodeId}` });
+    errors.push({ level: "error", code: "BAD_START", message: "起始集已经删掉了，请重新选一集「设为起始集」" });
   }
 
   // 至少一个结局
   if (eps.length > 0 && !eps.some((e) => e.isEnding)) {
-    errors.push({ level: "error", code: "NO_ENDING", message: "缺少结局集（至少要有一个 isEnding=true 的集）" });
+    errors.push({ level: "error", code: "NO_ENDING", message: "还没有结局集：至少把一集勾成「这一集是结局集」" });
   }
 
   const reachable = reachableIds(data);
   let hasBranch = false;
+  const flagDecl = data.globalFlags ?? {};
 
   for (const e of eps) {
+    const name = epDisplayTitle(e);
     const targets = outgoingTargets(e);
     // 出边目标必须存在
     for (const it of e.interactions ?? []) {
       if ((it.uiConfig?.options?.length ?? 0) > 1) hasBranch = true;
       if (!it.uiConfig?.question?.trim()) {
-        errors.push({ level: "error", code: "NO_QUESTION", message: `「${e.title}」有互动点缺少问题文案`, episodeId: e.episodeId });
+        errors.push({ level: "error", code: "NO_QUESTION", message: `「${name}」有个互动点还没写问观众什么`, episodeId: e.episodeId });
       }
       const opts = it.uiConfig?.options ?? [];
       if (e.interactions?.length && opts.length === 0 && it.interactionType === "choice") {
-        warnings.push({ level: "warning", code: "NO_OPTIONS", message: `「${e.title}」的选择互动点还没有选项`, episodeId: e.episodeId });
+        warnings.push({ level: "warning", code: "NO_OPTIONS", message: `「${name}」的互动点还没有选项`, episodeId: e.episodeId });
       }
       for (const o of opts) {
         if (!o.nextVideoId) {
-          errors.push({ level: "error", code: "OPTION_DANGLING", message: `「${e.title}」选项「${o.text || o.id}」还没接到任何集`, episodeId: e.episodeId });
+          errors.push({ level: "error", code: "OPTION_DANGLING", message: `「${name}」的选项「${o.text || o.id}」还没连到任何一集`, episodeId: e.episodeId });
         } else if (!byId.has(o.nextVideoId)) {
-          errors.push({ level: "error", code: "OPTION_BAD_TARGET", message: `「${e.title}」选项「${o.text || o.id}」指向不存在的集 ${o.nextVideoId}`, episodeId: e.episodeId });
+          errors.push({ level: "error", code: "OPTION_BAD_TARGET", message: `「${name}」的选项「${o.text || o.id}」要去的那一集已经删掉了`, episodeId: e.episodeId });
         }
         // setFlags 引用的标记需先声明
         for (const k of Object.keys(o.setFlags ?? {})) {
           if (!declared.has(k)) {
-            errors.push({ level: "error", code: "UNDECLARED_FLAG", message: `「${e.title}」选项写入了未声明的标记「${k}」（请先在全局标记里声明）`, episodeId: e.episodeId });
+            errors.push({ level: "error", code: "UNDECLARED_FLAG", message: `「${name}」的选项用到了「${k}」，请先在「剧情状态」里添加它`, episodeId: e.episodeId });
           }
         }
       }
       // condition 引用的标记需先声明
       for (const k of flagsInCondition(it.condition)) {
         if (!declared.has(k)) {
-          errors.push({ level: "error", code: "UNDECLARED_FLAG", message: `「${e.title}」的条件引用了未声明的标记「${k}」`, episodeId: e.episodeId });
+          errors.push({ level: "error", code: "UNDECLARED_FLAG", message: `「${name}」的弹出条件用到了「${k}」，请先在「剧情状态」里添加它`, episodeId: e.episodeId });
+        }
+      }
+      // v0.197 评审 WB6：剧情状态改了类型（比如「是否」改成「数字」）之后，旧条件 / 旧选项值还是原来的类型，
+      // 判定永远不成立（=== 不跨类型）。提醒去改，不拦导出。
+      const cond = parseCondition(it.condition);
+      if (cond && declared.has(cond.flag) && !conditionFitsFlag(cond, flagDecl[cond.flag])) {
+        warnings.push({
+          level: "warning",
+          code: "FLAG_TYPE_MISMATCH",
+          message: `「${name}」的弹出条件按旧的写法判断「${cond.flag}」，它现在记的是${FLAG_KIND_LABEL[flagKindOf(flagDecl[cond.flag])]}，要重新设一下`,
+          episodeId: e.episodeId,
+        });
+      }
+      for (const o of opts) {
+        for (const [k, v] of Object.entries(o.setFlags ?? {})) {
+          if (declared.has(k) && flagKindOf(v) !== flagKindOf(flagDecl[k])) {
+            warnings.push({
+              level: "warning",
+              code: "FLAG_TYPE_MISMATCH",
+              message: `「${name}」的选项「${o.text || o.id}」记下的「${k}」还是旧的值，它现在记的是${FLAG_KIND_LABEL[flagKindOf(flagDecl[k])]}，要重新填一下`,
+              episodeId: e.episodeId,
+            });
+          }
         }
       }
       // triggerTime ≤ 本集时长（已出片才可严格判定）
       if (e.durationSec > 0 && it.triggerTime > e.durationSec) {
-        errors.push({ level: "error", code: "TRIGGER_OVERFLOW", message: `「${e.title}」互动点触发时间 ${it.triggerTime}s 超过了本集时长 ${e.durationSec}s`, episodeId: e.episodeId });
+        errors.push({ level: "error", code: "TRIGGER_OVERFLOW", message: `「${name}」的互动点设在第 ${it.triggerTime} 秒弹出，但这一集只有 ${e.durationSec} 秒`, episodeId: e.episodeId });
       }
       if (e.durationSec <= 0 && (e.interactions?.length ?? 0) > 0) {
-        warnings.push({ level: "warning", code: "DURATION_UNKNOWN", message: `「${e.title}」还没出片，触发时间暂无法按时长校验`, episodeId: e.episodeId });
+        warnings.push({ level: "warning", code: "DURATION_UNKNOWN", message: `「${name}」还没成片，暂时核对不了互动点的弹出时间`, episodeId: e.episodeId });
       }
     }
     // 线性续播目标必须存在
     if (e.nextVideoId && !byId.has(e.nextVideoId)) {
-      errors.push({ level: "error", code: "NEXT_BAD_TARGET", message: `「${e.title}」的续播目标不存在：${e.nextVideoId}`, episodeId: e.episodeId });
+      errors.push({ level: "error", code: "NEXT_BAD_TARGET", message: `「${name}」播完要接的那一集已经删掉了`, episodeId: e.episodeId });
     }
     // 非结局集必须有后续（否则断点）
     if (!e.isEnding && targets.length === 0) {
-      errors.push({ level: "error", code: "DEAD_END", message: `「${e.title}」既不是结局也没有任何后续（断点）`, episodeId: e.episodeId });
+      errors.push({ level: "error", code: "DEAD_END", message: `「${name}」没接上：播完不接下一集，也不是结局集，观众会卡在这里`, episodeId: e.episodeId });
     }
     // 孤立节点（不可达）
     if (eps.length > 1 && !reachable.has(e.episodeId)) {
-      warnings.push({ level: "warning", code: "UNREACHABLE", message: `「${e.title}」从起始集走不到（孤立节点）`, episodeId: e.episodeId });
+      warnings.push({ level: "warning", code: "UNREACHABLE", message: `从起始集走不到「${name}」`, episodeId: e.episodeId });
     }
   }
 
   // 结局可达性
   if (eps.some((e) => e.isEnding) && !eps.some((e) => e.isEnding && reachable.has(e.episodeId))) {
-    errors.push({ level: "error", code: "ENDING_UNREACHABLE", message: "没有任何结局集是从起始集可达的" });
+    errors.push({ level: "error", code: "ENDING_UNREACHABLE", message: "从起始集走不到任何一个结局集" });
   }
   // 鼓励分支（纯线性给个温和提示）
   if (eps.length > 1 && !hasBranch) {
-    warnings.push({ level: "warning", code: "NO_BRANCH", message: "目前是纯线性剧情，加一个「选择」互动点才有互动剧的意义" });
+    warnings.push({ level: "warning", code: "NO_BRANCH", message: "现在还是一条线走到底，加一个有两个以上选项的互动点才算互动剧" });
+  }
+  // v0.197：走得到的集里还没成片的，导出后那几集播不了（之前照样说「可以下发」）。
+  const noVideo = eps.filter((e) => reachable.has(e.episodeId) && !e.videoUrl);
+  if (noVideo.length > 0) {
+    warnings.push({
+      level: "warning",
+      code: "NO_VIDEO",
+      message: `还有 ${noVideo.length} 集没成片，导出后这几集播不了`,
+      episodeId: noVideo[0].episodeId,
+    });
   }
 
   return { errors, warnings, ok: errors.length === 0 };
@@ -369,17 +418,135 @@ export function buildStoryConfig(dramaId: string, data: InteractiveStoryData): S
 
 // ── 试玩走查（创作端验证工具，非播放器运行时） ──────────────────────────────
 
+export type ConditionOp = "==" | "!=" | ">=" | "<=" | ">" | "<";
+
+export interface ParsedCondition {
+  flag: string;
+  op: ConditionOp;
+  value: FlagValue;
+}
+
+const NUMBER_LITERAL = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+
+/**
+ * 条件右边的值。与 buildCondition 互逆（v0.197 评审 WB5）：
+ * 文字值由 buildCondition 用 JSON.stringify 写成双引号串，这里就用 JSON.parse 还原 ——
+ * 之前只去掉首尾引号、不反转义，值里有引号或反斜杠时（如 `他说"好"`）读回来多了反斜杠，试玩判定永远不成立。
+ * 单引号串是老数据手写的 JS 写法，只还原 \' 与 \\；裸词（老数据 `== abc`）原样当文字。
+ */
+function parseConditionValue(raw: string): FlagValue {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  if (NUMBER_LITERAL.test(raw)) return Number(raw);
+  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+    try {
+      const v: unknown = JSON.parse(raw);
+      if (typeof v === "string") return v;
+    } catch {
+      /* 不是合法的双引号串：按旧规则只去掉首尾引号 */
+    }
+  }
+  if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1).replace(/\\(['\\])/g, "$1");
+  }
+  return raw.replace(/^["']|["']$/g, "");
+}
+
+/**
+ * 解析 "globalFlags.X (==|!=|>|<|>=|<=) value"（导出契约里 condition 的形状，不改）。
+ * 解析不了返回 null。v0.197：编辑器用它把条件拆成下拉，创作者不再手写表达式。
+ * 带 s 标志：文字值里的换行 / 段落分隔符（JSON.stringify 不转义 U+2028）也要能匹配上。
+ */
+export function parseCondition(condition: string | undefined): ParsedCondition | null {
+  if (!condition || !condition.trim()) return null;
+  const m = condition.match(/^\s*globalFlags\.([\p{L}\p{N}_]+)\s*(==|!=|>=|<=|>|<)\s*(.+?)\s*$/su);
+  if (!m) return null;
+  const [, flag, op, rawRhs] = m;
+  return { flag, op: op as ConditionOp, value: parseConditionValue(rawRhs.trim()) };
+}
+
+/** parseCondition 的逆：拼回导出契约里的 condition 字符串。 */
+export function buildCondition(c: ParsedCondition): string {
+  const v = typeof c.value === "string" ? JSON.stringify(c.value) : String(c.value);
+  return `globalFlags.${c.flag} ${c.op} ${v}`;
+}
+
+// ── 剧情状态的类型（是否 / 数字 / 文字） ─────────────────────────────────────
+
+export type FlagKind = "boolean" | "number" | "string";
+
+export function flagKindOf(v: FlagValue): FlagKind {
+  if (typeof v === "boolean") return "boolean";
+  if (typeof v === "number") return "number";
+  return "string";
+}
+
+/** 界面上对类型的叫法（与剧情状态面板里「记的是什么」下拉一致）。 */
+export const FLAG_KIND_LABEL: Record<FlagKind, string> = { boolean: "是否", number: "数字", string: "文字" };
+
+/** 每种类型能用的比较方式：数字能比大小，是否 / 文字只有等于 / 不等于。 */
+export function opsForFlagKind(kind: FlagKind): readonly ConditionOp[] {
+  return kind === "number" ? (["==", "!=", ">", "<", ">=", "<="] as const) : (["==", "!="] as const);
+}
+
+/** 条件的写法和状态现在的类型对不对得上（值的类型一致、比较方式这种类型能用）。 */
+export function conditionFitsFlag(c: ParsedCondition, declared: FlagValue): boolean {
+  const kind = flagKindOf(declared);
+  return flagKindOf(c.value) === kind && opsForFlagKind(kind).includes(c.op);
+}
+
+/** 某个剧情状态在哪几处被用到（弹出条件 / 选项记下 / 填空记录），删之前告诉创作者。 */
+export interface FlagUsage {
+  episodeId: string;
+  kind: "condition" | "setFlags" | "inputKey";
+  /** 界面上怎么说这一处，如「第 2 集「门厅」的弹出条件」。 */
+  label: string;
+  /** 这一处还是按改类型之前的写法填的（值的类型 / 比较方式对不上），要重新设。 */
+  stale: boolean;
+}
+
+export function flagUsages(data: InteractiveStoryData, flag: string): FlagUsage[] {
+  const out: FlagUsage[] = [];
+  const flags = data.globalFlags ?? {};
+  const declared = Object.prototype.hasOwnProperty.call(flags, flag);
+  for (const e of data.episodes ?? []) {
+    const where = `第 ${e.no} 集「${epDisplayTitle(e)}」`;
+    for (const it of e.interactions ?? []) {
+      if (flagsInCondition(it.condition).includes(flag)) {
+        const cond = parseCondition(it.condition);
+        out.push({
+          episodeId: e.episodeId,
+          kind: "condition",
+          label: `${where}的弹出条件`,
+          stale: declared && !!cond && !conditionFitsFlag(cond, flags[flag]),
+        });
+      }
+      if (it.uiConfig?.inputKey === flag) {
+        out.push({ episodeId: e.episodeId, kind: "inputKey", label: `${where}记录观众填的内容`, stale: false });
+      }
+      for (const o of it.uiConfig?.options ?? []) {
+        if (o.setFlags && Object.prototype.hasOwnProperty.call(o.setFlags, flag)) {
+          out.push({
+            episodeId: e.episodeId,
+            kind: "setFlags",
+            label: `${where}的选项「${o.text || o.id}」`,
+            stale: declared && flagKindOf(o.setFlags[flag]) !== flagKindOf(flags[flag]),
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** 极简条件判定：仅支持 "globalFlags.X (==|!=|>|<|>=|<=) value"，解析失败按 true（不挡走查）。 */
 export function evalCondition(condition: string | undefined, flags: Record<string, FlagValue>): boolean {
   if (!condition || !condition.trim()) return true;
-  const m = condition.match(/globalFlags\.([A-Za-z0-9_]+)\s*(==|!=|>=|<=|>|<)\s*(.+)/);
-  if (!m) return true;
-  const [, key, op, rawRhs] = m;
+  const parsed = parseCondition(condition);
+  if (!parsed) return true;
+  const { flag: key, op } = parsed;
   const lhs = flags[key];
-  let rhs: FlagValue = rawRhs.trim().replace(/^["']|["']$/g, "");
-  if (rhs === "true") rhs = true;
-  else if (rhs === "false") rhs = false;
-  else if (/^-?\d+(\.\d+)?$/.test(rhs)) rhs = Number(rhs);
+  const rhs: FlagValue = parsed.value;
   switch (op) {
     case "==": return lhs === rhs;
     case "!=": return lhs !== rhs;
@@ -441,7 +608,9 @@ export function projectToStory(data: ProjectData): InteractiveStoryData {
     return {
       episodeId,
       no: o.no,
-      title: episodeTitle(o),
+      // v0.197：用原始标题，不用 episodeTitle() 派生的截断版 —— 之前派生出来的「废土追猎中,凌霄掌心第一…」
+      // 会在第一次保存时被 writeStoryToProject 当成标题写回大纲。显示时用 epDisplayTitle() 兜底。
+      title: o.title ?? "",
       synopsis: episodeContent(o),
       videoUrl: assembled?.url ?? null,
       durationSec: assembled?.durationSec ?? 0,
@@ -473,10 +642,15 @@ export function writeStoryToProject(data: ProjectData, story: InteractiveStoryDa
   const outline: EpisodeOutline[] = story.episodes.map((e, i) => {
     const no = Number.isNaN(noFromEpId(e.episodeId)) ? i + 1 : noFromEpId(e.episodeId);
     const prev = prevByNo.get(no);
+    const prevContent = prev ? episodeContent(prev) : "";
+    const title = (e.title ?? "").trim();
+    const content = e.synopsis ?? prevContent;
+    // 没改过的集原样保留（不改写旧数据的 hook / synopsis 结构）。
+    if (prev && title === (prev.title ?? "").trim() && content === prevContent) return { ...prev, no };
     return {
       no,
-      title: e.title,
-      content: e.synopsis ?? episodeContent(prev ?? { no }),
+      ...(title ? { title } : {}),
+      content,
       ...(prev?.locked ? { locked: prev.locked } : {}),
     };
   });

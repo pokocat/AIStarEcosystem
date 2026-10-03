@@ -5,5 +5,5 @@
 import { RetiredFeatureNotice } from "../_shared/RetiredFeatureNotice";
 
 export default function IncubatorPage() {
-  return <RetiredFeatureNotice feature="孵化新演员" />;
+  return <RetiredFeatureNotice feature="新建数字人" />;
 }
