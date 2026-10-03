@@ -149,6 +149,14 @@ public class MaterialVideoJobService {
     }
 
     /**
+     * 所选端点收首帧是不是只认「我方存储 key」（聚算媒体协议，见 {@link MaterialVideoModelClient#firstFrameNeedsStorageKey}）。
+     * 是 → 调用方必须把首帧的 key 写进 {@code variant_config.first_frame_key}，否则首帧到不了模型。
+     */
+    public boolean firstFrameNeedsStorageKey(String endpointId) {
+        return modelClient.firstFrameNeedsStorageKey(endpointId);
+    }
+
+    /**
      * 提交一批生成任务（body = { items: [ {script_id, product_id, name, kind, parent_video_id,
      * prompt, variant_config, duration_sec, aspect_ratio} ... ] }）。
      *
