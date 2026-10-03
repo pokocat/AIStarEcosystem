@@ -244,7 +244,7 @@ public class MaterialVideoModelClient {
         // 之前这里一律发 generationMode=t2v、图一张都没送 —— 用户接了参考图，
         // 出来的片跟参考图毫无关系（v0.183）。
         String assetId = null;
-        if (firstFrameKey != null && !firstFrameKey.isBlank() && PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
+        if (firstFrameKey != null && !firstFrameKey.isBlank() && usesUploadedFirstFrame(protocol)) {
             assetId = uploadInputImage(p, apiKey, model, firstFrameKey);
         }
 
@@ -633,6 +633,28 @@ public class MaterialVideoModelClient {
         }
         String path = props.getPollPathTemplate().replace("{id}", submit.externalId());
         return URI.create(joinUrl(p.getBaseUrl(), path));
+    }
+
+    /**
+     * 这个端点收首帧，是不是只认「我方存储 key」（2026-09-30 热修）。
+     *
+     * <p>聚算媒体协议的图不收 URL：{@link #submit} 只看 {@code firstFrameKey}，按 key 读出字节上传换 assetId，
+     * 提示词里的首帧 URL 标记会被 {@code stripFrameUrlHint} 剥掉。业务线（短剧 renderClip）据此决定
+     * 要不要往 {@code variant_config.first_frame_key} 写 key —— 不写的话首帧根本到不了模型。
+     * 其余协议（seedance / agnes / generic）从提示词标记里取 URL，返回 false。
+     *
+     * <p>端点解析与 {@link #submit} 同一条（{@code requireEndpoint}），判定与 submit 同一处（{@link #usesUploadedFirstFrame}）。
+     */
+    public boolean firstFrameNeedsStorageKey(String endpointId) {
+        AiModelEndpoint p = requireEndpoint(endpointId);
+        String model = (p.getModel() != null && !p.getModel().isBlank())
+                ? p.getModel() : props.getDefaultModel();
+        return usesUploadedFirstFrame(protocolFor(p, model));
+    }
+
+    /** 首帧要「先上传换 assetId」的协议（目前只有聚算媒体协议）。submit 与业务线判定共用这一处。 */
+    static boolean usesUploadedFirstFrame(String protocol) {
+        return PROTOCOL_JUSUAN_MEDIA.equals(protocol);
     }
 
     static String protocolFor(AiModelEndpoint p, String model) {

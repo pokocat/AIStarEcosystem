@@ -422,11 +422,17 @@ public class DramaRenderService {
         // 不提交任务、不 hold 积分）；命中的 candidate 单价 override 覆盖 drama.credit.clip，并把 endpoint_id
         // 随 item 存 variant_config 透传到 worker（§6.4 四层串联）；没传 → 默认端点（旧路径完全不变）。
         ClipPlan plan = resolveClipPlan(text(body, "endpoint_id"), durationSec);
+        // 2026-09-30 热修：聚算 H3 收首帧只认存储 key（worker 读 variant_config.first_frame_key 上传换 assetId），
+        // 提示词里的首帧 URL 标记在那条协议下会被剥掉。判定只在 MaterialVideoModelClient 一处。
+        boolean firstFrameByKey = videoJobs.firstFrameNeedsStorageKey(plan.endpointId());
 
         // C-3：服务端参考装配（视频线）。shot_ref 时服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；
         // 本镜末帧 → 同场下一镜开场首帧），无 shot_ref 时退回显式 frame_url/last_frame_url。
         // clip 线只用首/末帧两槽；maxRefImages=0 明确表示当前适配仅开放 t2v，首帧也不得误报已送达。
-        DramaReferenceAssembler.ClipAssembly assembled = assembler.assembleClip(body, userId, plan.capability());
+        // 首帧只认 key 的协议下：派生本人的 key（不是本人的 → 400 DRAMA_FRAME_NOT_OWNED；assembleClip 在
+        // submitClip 之前，此时还没 hold）。
+        DramaReferenceAssembler.ClipAssembly assembled =
+                assembler.assembleClip(body, userId, plan.capability(firstFrameByKey));
 
         ObjectNode vc = om.createObjectNode();
         vc.put("target", orDefault(target, orDefault(text(body, "kind"), "shot")));
@@ -435,9 +441,11 @@ public class DramaRenderService {
         if (body != null && body.hasNonNull("episode_no")) vc.put("episode_no", body.path("episode_no").asInt());
 
         // 短剧按 app 维度独立定价（drama.credit.clip，D-11 候选端点可 override），不耦合带货线 material.video-generate。
-        // firstFrameKey 这里仍传 null：工作台这条线漏写 first_frame_key 是已知老问题（TODO），不在 v0.198 范围。
+        // 首帧存储 key（2026-09-30 热修）：worker 交给聚算上传换 assetId 走 i2v；上传失败抛 VIDEO_REF_UPLOAD_FAILED，
+        // 不退回文生视频。提示词里的首帧标记照留（seedance 等协议靠它）。
         JsonNode card = submitClip(plan, new ClipSubmission("drama-shot", name, "短剧镜头视频", prompt,
-                assembled.firstFrameUrl(), assembled.lastFrameUrl(), null, durationSec, ratio, projectId, vc), userId);
+                assembled.firstFrameUrl(), assembled.lastFrameUrl(), assembled.firstFrameKey(), durationSec, ratio,
+                projectId, vc), userId);
         log.info("[drama-render] clip queued user={} project={} dur={}s", userId, projectId, durationSec);
 
         // C-1/C-3：首/末帧生效情况回报（applied_refs，role=first_frame/last_frame）——末帧是否送达取决于
@@ -458,9 +466,17 @@ public class DramaRenderService {
                            boolean supportsFirstLastFrame, boolean supportsSubjectReference) {
         /** clip 线参考装配能力：maxRefImages 未配置 → legacy 6；=0 表示这个候选只开放文生视频。 */
         public DramaReferenceAssembler.Capability capability() {
+            return capability(false);
+        }
+
+        /**
+         * 同上，另带「首帧只认我方存储 key」（聚算媒体协议，{@code MaterialVideoJobService#firstFrameNeedsStorageKey}
+         * 判定；2026-09-30 热修）。为 true 时 assembleClip 会派生本人的首帧 key 并过归属闸。
+         */
+        public DramaReferenceAssembler.Capability capability(boolean firstFrameByStorageKey) {
             return new DramaReferenceAssembler.Capability(
                     maxRefImages != null ? maxRefImages : DramaReferenceAssembler.LEGACY_MAX_REF_IMAGES,
-                    supportsFirstLastFrame, supportsSubjectReference);
+                    supportsFirstLastFrame, supportsSubjectReference, firstFrameByStorageKey);
         }
 
         /** 这个候选收不收首帧（maxRefImages=0 明确表示只开放文生视频；未配置按收）。 */

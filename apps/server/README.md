@@ -7,6 +7,7 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 ## 版本日志
 
+- **2026-09-30 热修（不占版本号，基线 `ada3e17c`）**：短剧 / 短视频在聚算 H3 上「生成视频」首帧送不到模型、静默变成文生视频。聚算协议的图不收 URL，worker 只认 `variant_config.first_frame_key`，而 `DramaRenderService.renderClip` 从没写过它。现在 `renderClip` 经 `MaterialVideoJobService.firstFrameNeedsStorageKey`（判定只在 `MaterialVideoModelClient.usesUploadedFirstFrame`）识别聚算端点后，由 `DramaReferenceAssembler` 用 `CdnUrlSigner.keyOf` 从最终首帧 URL 反抽 key，按存储台账（`storage_assets`，app=drama + owner）或本人短剧任务的 `lastFrameCdnKey` 确认归属，再写进 `first_frame_key`（同 `IpRunService`）。不属于本人 → 冻结积分前 400 `DRAMA_FRAME_NOT_OWNED`；外链派不出 key → 照旧出片但 `applied_refs` 报 `not_in_storage`；候选 `maxRefImages=0` → 不派生，照旧 `model_no_image_input`。非聚算协议（seedance / agnes / generic）行为不变。新增两条只读查询：`StorageAssetRepository.findByAppAndOwnerUserIdAndCdnKeyIn`、`MaterialVideoJobRepository.findScopedByLastFrameCdnKeyIn`，无表结构变更、无迁移。
 - **v0.135（2026-08-18）**：`clip` 最终音轨改为两遍响度归一，第二遍消费第一遍 `measured_*`，编码前目标 -16 LUFS / -2.5 dBTP，为 AAC 峰值回弹留余量；编码后的真实文件仍按 ≤ -1 dBTP 质量门失败关闭，并在日志记录实测亮度/响度/真峰值。
 - **v0.132（2026-08-18）**：`clip` 本人素材改为受限 OSS V4 PostObject 单次直传 + `clip_upload_session` 持久化受理号 + 异步媒体校验/供应商提交；同一 owner + clientRequestId 只复用一个对象和任务。形象视频若为 HEVC/H.265，服务端先转 H.264/AAC 再走既有 ffprobe/预览/克隆，旧 multipart 路由保留兼容。
 - **v0.131（2026-08-17）**：修复聚算 Account API Key 的模型作用域：Job 查询和产物读取统一携带 `?model=minimax-h3`；带货素材入口在 hold 前校验 H3 时长并按 40 积分/秒报价。新增既有上游成功 Job 的幂等对账恢复，不重新提交生成。
