@@ -130,19 +130,33 @@ class MaterialVideoModelClientBodyTest {
     // ── 老路径：聚算 768p 包逐字段不变 ──────────────────────────────────────
 
     @Test
-    @DisplayName("老路径（画布 / 脚本视频 / 短剧）：字段集与顺序与 v0.183 完全一致")
-    void legacyJusuanBodyUnchanged() {
+    @DisplayName("老路径（画布 / 脚本视频 / 短剧）：横竖屏带上 aspectRatio + outputSizeCode，不然竖屏出成 3:4")
+    void legacyJusuanBodyCarriesAspect() {
         Map<String, Object> t2v = client.buildSubmitBody(JUSUAN, "minimax-h3", "雨夜街道", 5, "9:16",
                 VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE);
         assertEquals("{\"model\":\"minimax-h3\",\"prompt\":\"雨夜街道\",\"resolutionTier\":\"768p\","
-                + "\"orientation\":\"portrait\",\"seconds\":5,\"generationMode\":\"t2v\"}", json(t2v));
+                + "\"orientation\":\"portrait\",\"aspectRatio\":\"9:16\",\"outputSizeCode\":\"h3-768-9x16\","
+                + "\"seconds\":5,\"generationMode\":\"t2v\"}", json(t2v));
 
         Map<String, Object> i2v = client.buildSubmitBody(JUSUAN, "minimax-h3", "让她眨眼", 8, "16:9",
                 VideoGenSpec.firstFrameOnly("ipstudio_gen/u1/a.png"),
                 MaterialVideoModelClient.UpstreamInputs.firstFrameAsset("as_123"));
         assertEquals("{\"model\":\"minimax-h3\",\"prompt\":\"让她眨眼\",\"resolutionTier\":\"768p\","
-                + "\"orientation\":\"landscape\",\"seconds\":8,\"generationMode\":\"i2v\",\"input_image_asset_id\":\"as_123\"}",
+                + "\"orientation\":\"landscape\",\"aspectRatio\":\"16:9\",\"outputSizeCode\":\"h3-768-16x9\","
+                + "\"seconds\":8,\"generationMode\":\"i2v\",\"input_image_asset_id\":\"as_123\"}",
                 json(i2v));
+    }
+
+    @Test
+    @DisplayName("老路径：1:1 / 没给比例 / 合同外的比例仍按原样只发 orientation（square 未实测）")
+    void legacyJusuanBodyKeepsOrientationOnlyOutsideContract() {
+        for (String ratio : new String[]{"1:1", null, "2:3"}) {
+            Map<String, Object> body = client.buildSubmitBody(JUSUAN, "minimax-h3", "雨夜街道", 5, ratio,
+                    VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE);
+            assertFalse(body.containsKey("aspectRatio"), String.valueOf(ratio));
+            assertFalse(body.containsKey("outputSizeCode"), String.valueOf(ratio));
+            assertEquals("landscape", body.get("orientation"), String.valueOf(ratio));
+        }
     }
 
     // ── seedance / agnes / 通用协议：首帧 ─────────────────────────────────
