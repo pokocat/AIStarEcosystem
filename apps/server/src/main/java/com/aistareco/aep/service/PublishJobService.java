@@ -336,7 +336,7 @@ public class PublishJobService {
         // v0.33+: hold 替代 debit。任务终态 LIVE → commit；FAILED / CANCELLED → release。
         // v0.35+: cost 来源走 CelebrityActionPricingService（action="publish.upload"），fallback 旧 default。
         // 402 PAYMENT_REQUIRED 时事务回滚，任务保持 queued。
-        creditService.hold(userId, cost, "publish_job_upload", job.getId(),
+        creditService.hold(userId, cost, "publish_job_upload", holdRef(job),
                 "发布任务上传 - " + account.getPlatform().wire() + " - " + job.getTitle());
         job.setCreditsSpent(cost);
 
@@ -542,7 +542,7 @@ public class PublishJobService {
             Long spent = job.getCreditsSpent();
             if (spent != null && spent > 0) {
                 try {
-                    creditService.commitHold("publish_job_upload", job.getId(), spent,
+                    creditService.commitHold("publish_job_upload", holdRef(job), spent,
                             "发布上线 · " + job.getPlatform().wire() + " · " + safeTitle(job.getTitle()));
                 } catch (Exception e) {
                     log.warn("publish commit hold failed jobId={} err={}", job.getId(), e.getMessage());
@@ -605,7 +605,7 @@ public class PublishJobService {
         if (spent != null && spent > 0) {
             try {
                 // v0.33+: 走 releaseHold（pending → 原桶），不再用 creditAccount(REFUND) 凭空入账。
-                creditService.releaseHold("publish_job_upload", job.getId(),
+                creditService.releaseHold("publish_job_upload", holdRef(job),
                         "发布前账号校验漏判，上传阶段发现账号登录失效，自动退回积分");
                 job.setCreditsSpent(null);
                 writeEvent(job.getId(), "refund", job.getStatus(), job.getStatus(), job.getProgress(),
@@ -620,11 +620,20 @@ public class PublishJobService {
      * v0.33+: 任务真正失败（非 cookie-invalid 那条路径）时退回 hold。
      * 幂等：releaseHold 内部检查 hold 状态；重复调用安全 return null。
      */
+    /**
+     * 本次尝试的 CreditHold referenceId：jobId + ":r" + retryCount。
+     * hold / commitHold / releaseHold 四处必须用同一个值，且每次重试（retryCount++）各不相同，
+     * 否则重试会复用上一次的终态 hold → 不扣分（免费重发）。与 DapJob 的 :rN 范式一致。
+     */
+    private static String holdRef(PublishJob job) {
+        return job.getId() + ":r" + job.getRetryCount();
+    }
+
     private void releaseHoldOnFailure(PublishJob job, String reason) {
         Long spent = job.getCreditsSpent();
         if (spent == null || spent <= 0) return;
         try {
-            creditService.releaseHold("publish_job_upload", job.getId(), reason);
+            creditService.releaseHold("publish_job_upload", holdRef(job), reason);
             writeEvent(job.getId(), "refund", job.getStatus(), job.getStatus(), job.getProgress(),
                     "credit:+" + spent + " " + reason);
             job.setCreditsSpent(null);
@@ -742,6 +751,9 @@ public class PublishJobService {
         job.setErrorCode(null);
         job.setErrorMessage(null);
         job.setExternalTaskId(null);
+        // 每次重试铸造独立的 hold referenceId（见 PublishJob.retryCount）：若沿用上一次的
+        // jobId，startJob 的 hold 会命中已 RELEASED 的终态 hold → 幂等返回不扣分 → 免费重发。
+        job.setRetryCount(job.getRetryCount() + 1);
         jobRepo.save(job);
         writeEvent(job.getId(), "transition", from, PublishJobStatus.QUEUED, 0, "retry");
         log.info("[publish] retry user={} jobId={} from={}", userId, jobId, from.wire());
