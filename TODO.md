@@ -9,6 +9,10 @@
 
 ---
 
+## 2026-10-03 · 例行 QA 巡检
+
+- [x] ~~**发布任务重试免费（revenue loss）**~~ **2026-10-03 完成**：`PublishJobService` 的 hold / commitHold / releaseHold 四处都用裸 `job.getId()` 当 CreditHold referenceId，而 `CreditService.hold` 以 `(referenceType, referenceId)` 幂等、对已存在的终态 hold 也直接返回不再扣。失败 → `releaseHoldOnFailure` 把 hold 置 RELEASED；用户重试（`POST /me/publish/jobs/{id}/retry` 或批量 `retryFailedBatch`）复用同一行 → `startJob` 的 hold 命中已 RELEASED 的终态 hold → 扣 0 分，随后 LIVE 的 commit 因 hold 终态抛 409 被 catch 吞掉 → 重发免费。修复：`PublishJob` 加 `retryCount`（ddl-auto 补列，范式同 `DapJob.retryCount`），四处改用 `jobId:r{retryCount}`，`retry()` 先自增，与 DapJob 的 `:rN` 一致；回归测试 `PublishJobServiceTest#retryMintsFreshHoldReferenceSoItChargesAgain`。
+
 ## 2026-09-30 · 视频生成区 v0.199 后续（真源 `docs/video-studio-plan.md` §8）
 
 - [x] ~~**线上用真实账号把视频生成区走一遍**~~ **2026-10-03 完成**：四种模式 + 智能优化 + 存为官方模板 / 做同款 / 撤回全部在线上页面点通，五条各扣 200、无残留冻结，测试 mock 已删配置关闭；细节见 `docs/video-studio-plan.md` §7。原描述（2026-10-02 已上线 `20261002052931-1f569079`，只差这一步）：用户在浏览器里登录 celebrity 和 admin 后，在后台把自己的用户 id 写进 `celebrity.video-studio.test-mock-user-ids`（测试 mock 只在发布分支 `release/v0199-combined` 上，说明见该分支的 `docs/video-studio-plan.md` §8.1；本次核对结果见本分支 §7），跑四种模式 + 智能优化 + 存为模板 / 做同款 + 发官方模板 / 撤回，核对积分，最后删配置。测试账号（18801931018）只有 269 积分，完整流程要 1,000–1,400：先补测试积分，或者只跑一两条。

@@ -114,6 +114,18 @@ public class PublishJob {
     private Long creditsSpent;
 
     /**
+     * 重试次数，从 0 开始。用于给每次尝试铸造独立的 CreditHold referenceId
+     * （publish_job_upload:{jobId}:r{retryCount}）—— CreditService.hold 以
+     * (referenceType, referenceId) 幂等，且对已存在的终态 hold 也直接返回不再扣。
+     * 若所有尝试共用 jobId，重试时会命中上一次已 RELEASED 的 hold → 扣 0 分，
+     * commit 又因 hold 终态被 catch 吞掉 → 重试发布变成免费。与 DapJob 的
+     * :rN 范式一致。
+     */
+    @Builder.Default
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount = 0;
+
+    /**
      * 当 status=AWAITING_USER 时，sau-service 透传的人机交互上下文 JSON。
      * 其它状态期间为 null。
      *

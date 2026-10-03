@@ -135,6 +135,28 @@ class PublishJobServiceTest {
     }
 
     @Test
+    void retryMintsFreshHoldReferenceSoItChargesAgain() {
+        // 回归：CreditService.hold 以 (referenceType, referenceId) 幂等，且对已存在的终态 hold
+        // 也直接返回不再扣。若每次尝试都用裸 jobId 当 referenceId，重试会命中上一次已 RELEASED 的
+        // hold → 扣 0 分（免费重发）。修复后每次尝试用 jobId:r{retryCount}，两次 hold 的 ref 必须不同。
+        PublishJob j = job(TRUSTED_VIDEO_URL);
+        when(jobRepo.findByIdAndUserId(JOB_ID, USER_ID)).thenReturn(Optional.of(j));
+        when(accountRepo.findByIdAndUserId(ACCOUNT_ID, USER_ID)).thenReturn(Optional.of(account()));
+
+        svc.startJob(USER_ID, JOB_ID);          // 首次：ref = job1:r0
+        j.setStatus(PublishJobStatus.FAILED);   // 模拟上传失败，置为可重试
+        svc.retry(USER_ID, JOB_ID);             // 重试：ref 必须是 job1:r1
+
+        org.mockito.ArgumentCaptor<String> refs = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(creditService, times(2)).hold(eq(USER_ID), anyLong(), eq("publish_job_upload"),
+                refs.capture(), anyString());
+        assertEquals(JOB_ID + ":r0", refs.getAllValues().get(0));
+        assertEquals(JOB_ID + ":r1", refs.getAllValues().get(1));
+        assertNotEquals(refs.getAllValues().get(0), refs.getAllValues().get(1),
+                "重试必须用不同的 hold referenceId，否则命中终态 hold 免费重发");
+    }
+
+    @Test
     void resumeInflightDispatchesThroughSelfProxyNotRawThis() {
         // 独立起一份实例，注入可观察的 self mock —— 断言 resumeInflight() 走 self.resumeFail(...)
         // 而不是同类自调用 this.resumeFail(...)（后者会绕过 Spring AOP 代理，@Transactional 失效）。
