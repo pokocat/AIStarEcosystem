@@ -30,10 +30,29 @@ public class DramaConfigSeeder implements CommandLineRunner {
     public static final String KEY_SHORT_ENTRY = "drama.credit.short-entry";
     /** 互动剧 · AI 起草整张分支图单次积分（v0.79）。 */
     public static final String KEY_INTERACTIVE_DRAFT = "drama.credit.interactive-draft";
+    /** 互动剧起草的默认单价。扣费（DramaProjectService）与报价（/me/drama/config）都读这一个，别各写一个 18。 */
+    public static final long DEFAULT_INTERACTIVE_DRAFT = 18;
     /** 镜头分解（首/末帧 + 运动 + 变化等级）单次积分（v0.97 P2）。 */
     public static final String KEY_DECOMPOSE = "drama.credit.decompose";
     /** 行级「就地改写本镜」单次积分（v0.97 P5）。 */
     public static final String KEY_SHOT_REWRITE = "drama.credit.shot-rewrite";
+
+    // ── v0.198 画布（docs/drama-canvas-plan.md §4）：冻结积分（运行记录服务）与报价（/me/drama/config）读同一组常量 ──
+    /** 画布 · 由想法写故事大纲（题材、主线、人物小传）单次积分。 */
+    public static final String KEY_CANVAS_SCRIPT_SETTING = "drama.credit.canvas-script-setting";
+    public static final long DEFAULT_CANVAS_SCRIPT_SETTING = 2;
+    /** 画布 · 由故事大纲写 N 集分集剧情单次积分。 */
+    public static final String KEY_CANVAS_SCRIPT_OUTLINE = "drama.credit.canvas-script-outline";
+    public static final long DEFAULT_CANVAS_SCRIPT_OUTLINE = 6;
+    /** 画布 · 写 / 重写一集剧本正文单次积分（按集计）。 */
+    public static final String KEY_CANVAS_SCRIPT_EPISODE = "drama.credit.canvas-script-episode";
+    public static final long DEFAULT_CANVAS_SCRIPT_EPISODE = 4;
+    /** 画布 · 从全部分集剧本拆出角色和场景单次积分。 */
+    public static final String KEY_CANVAS_EXTRACT = "drama.credit.canvas-extract";
+    public static final long DEFAULT_CANVAS_EXTRACT = 4;
+    /** 画布 · 生成一集的分镜脚本（切片段）单次积分（按集计）。 */
+    public static final String KEY_CANVAS_STORYBOARD = "drama.credit.canvas-storyboard";
+    public static final long DEFAULT_CANVAS_STORYBOARD = 4;
 
     private final PlatformConfigService configs;
 
@@ -54,11 +73,21 @@ public class DramaConfigSeeder implements CommandLineRunner {
         configs.seedIfAbsent(KEY_CLIP, IntNode.valueOf(30), "短剧 · 分镜视频出片（直出/动态）单次积分（短剧独立定价，不耦合带货线）");
         configs.seedIfAbsent(KEY_SHORT_ENTRY, IntNode.valueOf(10),
                 "短视频 · 进工作台开拍单次积分（新建一条短视频草稿 = AI 出口播脚本与分镜；从创意市场套用单集创意同样计费）");
-        configs.seedIfAbsent(KEY_INTERACTIVE_DRAFT, IntNode.valueOf(18),
+        configs.seedIfAbsent(KEY_INTERACTIVE_DRAFT, IntNode.valueOf((int) DEFAULT_INTERACTIVE_DRAFT),
                 "互动剧 · AI 起草整张剧集分支图单次积分（一句话主题 → 可玩可达含结局的有向图）");
         configs.seedIfAbsent(KEY_DECOMPOSE, IntNode.valueOf(3),
                 "短剧 · 镜头分解单次积分（单镜 → 首/末帧静态快照 + 运动描述 + 变化等级，供首尾帧双关键帧 i2v）");
         configs.seedIfAbsent(KEY_SHOT_REWRITE, IntNode.valueOf(2),
                 "短剧 · 行级就地改写本镜单次积分（按指令只改这一个镜头，不推倒整集）");
+        configs.seedIfAbsent(KEY_CANVAS_SCRIPT_SETTING, IntNode.valueOf((int) DEFAULT_CANVAS_SCRIPT_SETTING),
+                "画布 · 由想法写故事大纲（题材、主线、人物小传）单次积分");
+        configs.seedIfAbsent(KEY_CANVAS_SCRIPT_OUTLINE, IntNode.valueOf((int) DEFAULT_CANVAS_SCRIPT_OUTLINE),
+                "画布 · 由故事大纲写分集剧情单次积分");
+        configs.seedIfAbsent(KEY_CANVAS_SCRIPT_EPISODE, IntNode.valueOf((int) DEFAULT_CANVAS_SCRIPT_EPISODE),
+                "画布 · 写或重写一集剧本正文单次积分（按集计）");
+        configs.seedIfAbsent(KEY_CANVAS_EXTRACT, IntNode.valueOf((int) DEFAULT_CANVAS_EXTRACT),
+                "画布 · 从分集剧本拆出角色和场景单次积分");
+        configs.seedIfAbsent(KEY_CANVAS_STORYBOARD, IntNode.valueOf((int) DEFAULT_CANVAS_STORYBOARD),
+                "画布 · 生成一集的分镜脚本单次积分（按集计）");
     }
 }

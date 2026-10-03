@@ -77,7 +77,7 @@ public class DramaProjectService {
             return out;
         } catch (RuntimeException e) {
             try {
-                creditService.releaseHold("DRAMA_AI", ref, desc + " · 失败释放");
+                creditService.releaseHold("DRAMA_AI", ref, desc + " · 没做成，已退回");
             } catch (Exception ignore) { /* 释放失败仅记账问题，不掩盖原始错误 */ }
             throw e;
         }
@@ -117,7 +117,7 @@ public class DramaProjectService {
      */
     public JsonNode createProject(JsonNode body, String userId) {
         if (body == null || !body.isObject()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROJECT_BODY_REQUIRED", "缺少新建项目参数");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROJECT_BODY_REQUIRED", "没收到新建短剧的信息，请重试。");
         }
         OffsetDateTime now = OffsetDateTime.now();
         String type = orDefault(text(body, "type"), "通用短剧");
@@ -157,7 +157,7 @@ public class DramaProjectService {
     public JsonNode saveProject(String id, JsonNode body, String userId) {
         DramaProject row = requireOwned(id, userId);
         if (body == null || !body.has("data") || !body.get("data").isObject()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROJECT_DATA_REQUIRED", "缺少要保存的工作台数据");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROJECT_DATA_REQUIRED", "没收到要保存的内容，请重试。");
         }
         ObjectNode data = ((ObjectNode) body.get("data")).deepCopy();
         // 卡片核心字段以 projectInfo 为准回写，列表才会同步。
@@ -210,7 +210,7 @@ public class DramaProjectService {
     /** 从回收站恢复：清除 deletedAt，回到工坊列表。→ { meta, data }。 */
     public JsonNode restoreProject(String id, String userId) {
         DramaProject row = repo.findByIdAndOwnerUserId(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "找不到这部短剧"));
         if (row.getDeletedAt() != null) {
             row.setDeletedAt(null);
             row.setUpdatedAt(OffsetDateTime.now());
@@ -222,9 +222,9 @@ public class DramaProjectService {
     /** 彻底删除（物理）：必须已在回收站。 */
     public void purgeProject(String id, String userId) {
         DramaProject row = repo.findByIdAndOwnerUserId(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "找不到这部短剧"));
         if (row.getDeletedAt() == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_NOT_IN_TRASH", "请先移入回收站再彻底删除");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_NOT_IN_TRASH", "要先移到回收站，才能彻底删除。");
         }
         repo.delete(row);
         storage.releaseByRef("drama", id); // 释放该项目占用的存储（成片等）
@@ -262,7 +262,7 @@ public class DramaProjectService {
         DramaProject row = requireOwned(id, userId);
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "大纲生成还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+                    "生成分集剧情还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
         JsonNode data = readPayload(row);
         JsonNode info = data.path("projectInfo");
@@ -284,12 +284,12 @@ public class DramaProjectService {
         long price = count <= 6
                 ? configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_TRIAL, 6)
                 : configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_OUTLINE_FULL, 18);
-        return withCharge(userId, price, "短剧大纲 AI 起草（" + count + " 集）", () -> {
+        return withCharge(userId, price, "AI 生成分集剧情（" + count + " 集）", () -> {
             AiModelInvocationService.AiModelResponse resp = invoke(pc);
             ArrayNode episodes = parseEpisodes(resp.content());
             if (episodes.isEmpty()) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                        "大纲生成返回的内容无法解析，请重试或换个说法。");
+                        "这次生成的分集剧情用不了，换个说法或再试一次。");
             }
             log.info("[drama-project] outline ai-draft ok user={} id={} got={} model={}",
                     userId, id, episodes.size(), resp.modelUsed());
@@ -317,7 +317,7 @@ public class DramaProjectService {
             }
         }
         if (plot.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PLOT_REQUIRED", "请先填写本集剧情再生成分场分镜");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PLOT_REQUIRED", "请先写本集剧情，再按剧情写分镜。");
         }
         String style = orDefault(text(body, "style"), "");
         StringBuilder castSb = new StringBuilder();
@@ -337,12 +337,12 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_EPSCRIPT, 10),
-                "整集分场分镜 AI 重写（第 " + ep + " 集）", () -> {
+                "按剧情重写第 " + ep + " 集分镜", () -> {
         JsonNode root = callJson(pc);
         JsonNode scenesIn = root.path("scenes");
         if (!scenesIn.isArray() || scenesIn.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "分场分镜生成返回的内容无法解析，请重试或换个说法。");
+                    "这次写出来的分镜用不了，换个说法或再试一次。");
         }
         ArrayNode scriptScenes = om.createArrayNode();
         ArrayNode boardScenes = om.createArrayNode();
@@ -395,7 +395,7 @@ public class DramaProjectService {
         String action = orDefault(text(body, "action"), "");
         String sceneId = orDefault(text(body, "sceneId"), "sc");
         if (action.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SCENE_REQUIRED", "请先写这场的场面描述再拆镜");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SCENE_REQUIRED", "请先写这场的场面描述，再拆分镜。");
         }
         StringBuilder linesSb = new StringBuilder();
         if (body.get("lines") != null && body.get("lines").isArray()) {
@@ -411,11 +411,11 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SPLIT_SCENE, 6),
-                "单场拆镜 AI", () -> {
+                "AI 拆分镜（单场）", () -> {
             JsonNode root = callJson(pc);
             JsonNode shotsIn = root.path("shots");
             if (!shotsIn.isArray() || shotsIn.isEmpty()) {
-                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "拆镜返回的内容无法解析，请重试。");
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次拆出来的分镜用不了，再试一次。");
             }
             ArrayNode shots = om.createArrayNode();
             int no = 1;
@@ -436,7 +436,7 @@ public class DramaProjectService {
         requireLlm();
         String visual = orDefault(text(body, "desc"), "");
         if (visual.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHOT_REQUIRED", "请先填写镜头画面再做镜头分解");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SHOT_REQUIRED", "请先写这一镜的画面，再补尾帧。");
         }
         // 已知人物名集合：项目角色 ∪ 本镜传入 cast —— 用于校验 ff/lf_chars 不编造（不存在的名字过滤掉）。
         java.util.LinkedHashSet<String> known = new java.util.LinkedHashSet<>();
@@ -464,12 +464,12 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_DECOMPOSE, 3),
-                "镜头分解（首/末帧 + 运动）", () -> {
+                "AI 补尾帧", () -> {
             JsonNode root = callJson(pc);
             String ffDesc = text(root, "ff_desc");
             String motionDesc = text(root, "motion_desc");
             if ((ffDesc == null || ffDesc.isBlank()) && (motionDesc == null || motionDesc.isBlank())) {
-                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "镜头分解返回的内容无法解析，请重试。");
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次补的尾帧用不了，再试一次。");
             }
             String vt = orDefault(text(root, "variation_type"), "small");
             ObjectNode out = om.createObjectNode();
@@ -495,7 +495,7 @@ public class DramaProjectService {
         String visual = orDefault(text(body, "desc"), "");
         String instruction = orDefault(text(body, "instruction"), "");
         if (instruction.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_INSTRUCTION_REQUIRED", "请描述想怎么改这一镜");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_INSTRUCTION_REQUIRED", "请写一下想怎么改这一镜。");
         }
         StringBuilder castSb = new StringBuilder();
         if (body != null && body.get("cast") != null && body.get("cast").isArray()) {
@@ -522,11 +522,11 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_SHOT_REWRITE, 2),
-                "就地改写本镜", () -> {
+                "AI 改写这一镜", () -> {
             JsonNode root = callJson(pc);
             String desc = text(root, "desc");
             if (desc == null || desc.isBlank()) {
-                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "改写返回的内容无法解析，请重试。");
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次改写的内容用不了，再试一次。");
             }
             ObjectNode out = om.createObjectNode();
             out.put("desc", desc);
@@ -579,11 +579,11 @@ public class DramaProjectService {
 
         return withCharge(userId,
                 configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_CAST, 5),
-                "从大纲重抽角色 AI", () -> {
+                "按大纲重新抽取角色", () -> {
         JsonNode root = callJson(pc);
         JsonNode charsIn = root.path("characters");
         if (!charsIn.isArray() || charsIn.isEmpty()) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "角色生成返回的内容无法解析，请重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次抽取的角色用不了，再试一次。");
         }
         ArrayNode chars = om.createArrayNode();
         int i = 1;
@@ -622,18 +622,19 @@ public class DramaProjectService {
         String theme = orDefault(text(body, "theme"),
                 orDefault(text(info, "title"), orDefault(row.getTitle(), ""))).trim();
         if (theme.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_THEME_REQUIRED", "请先填写一句话主题再起草互动剧");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_THEME_REQUIRED", "请先给这部剧起个名字，AI 按片名起草互动剧。");
         }
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("theme", theme);
         PromptCall pc = preparePrompt(PromptService.KEY_DRAMA_INTERACTIVE_DRAFT, vars, 0.9);
 
-        long price = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_INTERACTIVE_DRAFT, 18);
-        return withCharge(userId, price, "互动剧 AI 起草分支图", () -> {
+        long price = configs.getLong(com.aistareco.aep.config.DramaConfigSeeder.KEY_INTERACTIVE_DRAFT,
+                com.aistareco.aep.config.DramaConfigSeeder.DEFAULT_INTERACTIVE_DRAFT);
+        return withCharge(userId, price, "AI 起草互动剧分支图", () -> {
             ObjectNode out = buildInteractiveDraft(callJson(pc));
             if (out.path("episodes").size() == 0) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                        "互动剧起草返回的内容无法解析，请重试或换个说法。");
+                        "这次起草的分支图用不了，换个说法或再试一次。");
             }
             log.info("[drama-project] interactive ai-draft ok user={} id={} episodes={}",
                     userId, id, out.path("episodes").size());
@@ -836,7 +837,7 @@ public class DramaProjectService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成调用失败，请稍后重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 服务暂时连不上，稍后再试一次。");
         }
     }
 
@@ -844,7 +845,7 @@ public class DramaProjectService {
     private JsonNode callJson(PromptCall pc) {
         JsonNode root = tryReadJson(invoke(pc).content());
         if (root == null) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回的内容无法解析，请重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次生成的内容用不了，再试一次。");
         }
         return root;
     }
@@ -853,7 +854,7 @@ public class DramaProjectService {
 
     private DramaProject requireOwned(String id, String userId) {
         return repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "短剧项目不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_PROJECT_NOT_FOUND", "找不到这部短剧"));
     }
 
     /** 新建时的空 ProjectData（结构合法、各数组为空，前端各阶段渲染空状态）。 */
@@ -864,7 +865,7 @@ public class DramaProjectService {
         info.put("title", title);
         info.put("type", type);
         info.put("episodes", Math.max(1, episodes));
-        info.put("duration", ratio.startsWith("16") ? "约 60 秒" : "每集 ~75 秒");
+        info.put("duration", ratio.startsWith("16") ? "每集 60 秒" : "每集 75 秒");
         info.put("ratio", ratio);
         info.put("logline", logline);
         info.put("mainline", mainline);

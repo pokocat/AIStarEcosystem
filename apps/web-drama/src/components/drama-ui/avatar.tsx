@@ -43,7 +43,7 @@ export function Avatar({ theme = "default", size = 44, bound, ring, title }: Ava
       </div>
       {bound && (
         <span
-          title="已绑定数字人分身"
+          title="已绑定数字人"
           style={{
             position: "absolute",
             right: -2,

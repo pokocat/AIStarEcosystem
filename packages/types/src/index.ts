@@ -13,6 +13,7 @@ export * from "./community";
 export * from "./copy";
 export * from "./digital-person";
 export * from "./distribution";
+export * from "./drama-canvas";
 export * from "./fan";
 export * from "./film";
 export * from "./finance";

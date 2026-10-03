@@ -183,6 +183,133 @@
 
 ---
 
+## 2026-10-03 · web-drama 画布线上实测 v0.198.1 后续（真源 `docs/drama-canvas-plan.md` §11）
+
+v0.198.1 修了线上实测跑出来的生成链问题（拆角色 JSON、429、出图固定尺寸、分镜时长下限、写全部逐集、提示词、编辑器两个界面 bug）。下面是同一轮看到、这一版没修的：
+- [ ] **运维 · 「图像生成」默认绑定是 ernie-Image（只认 768×768），短剧所有出图默认都走它**（2026-10-03 线上实测）：画布现在会就地说「这个模型只能出 768×768」，
+      但老短剧「先出首帧」等入口没有模型下拉时仍会撞上。建议后台把 `IMAGE_GENERATION` 默认端点改成 agnes-image（需用户确认，生产配置）。
+- [ ] **运维 · 端点显示名是内部名**：画布模型下拉里是 `image-jusuanhub` / `agnes-image` / `jusuanhub- MiniMax H3`，后台「AI 模型」里改成用户看得懂的名字；
+      另外 `image-jusuanhub` 的 `model_alias` 填的是 `minimax-h3`，像是从视频端点抄过来的，核对后改掉。
+- [ ] **聚算 Key 并发上限 2 是全站共享的**（`api_key_concurrency_limited`，`limit:2`）：画布 worker 有并发闸（`aep.drama.canvas.text-concurrency`），
+      但老短剧 `DramaScriptService` 等其它文字调用不在闸里，多用户同时写会互相挤成 429。要么和厂商谈额度，要么把闸提到 `AiModelInvocationService` 按端点统一管。
+- [ ] **删除片段不确认、也不能撤销**（单集编辑器「删除片段 NN」）：分镜文本是花积分写出来的，误删只能重新生成分镜。加确认或撤销提示。
+- [ ] **手动加的角色一律「配角」**：拆角色失败时用户手动加主角，要去详情里改；加角色时给个主角 / 配角选择。
+- [ ] **列表点角色卡会跳到画布视图并定位**，不是小云雀那样就地打开详情弹窗；确认这是想要的交互，否则列表里直接开 `LookDetailDialog`。
+- [ ] **合成归一的目标尺寸平局时取第一段的**（`DramaAssembleService.targetSize`，2026-10-03 线上实测：一段 768×1024 + 一段 768×1344 → 拼成 768×1024）：
+      平局时应优先取和画布比例（`doc.meta.ratio`）一致的尺寸。现在新出的 H3 片段都是 9:16，只有修复之前出的老片段会触发。
+- [x] ~~**H3 竖屏比例（`fix/h3-generic-aspect`，基于 #118）合并后要实测一次**~~ **已实测**，2026-10-03：线上 `release/v0199-combined-2` 出一条 5 秒片段，厂商回 `effectiveMediaSpec.aspectRatio=9:16`、成片 768×1344。原记录：：老路径补了 `aspectRatio` + `outputSizeCode`，单测与请求体都对，
+      但还没在线上真出一条看 `effectiveSpec` 是不是 `h3-768-9x16`（要 200 积分）。
+
+## 2026-09-30 · web-drama 画布 v0.198 第二期候选（真源 `docs/drama-canvas-plan.md` §9）
+
+第一期只做照小云雀的短剧流水（剧本 → 角色和场景 → 逐集制作 → 片段 → 合成成片），和「我的短剧」互相独立。下面是用户已确认放到第二期、或设计时明确不做的：
+- [ ] **自由画布 + 右侧 AI 对话**（小云雀「创建画布」/ 创作 Agent）：先把计划摆出来、用户确认后才花积分，运行中可中止。
+- [ ] **故事板助手**（单集编辑器右栏对话）、剧本页**选中一段「引用 → 改写」**。
+- [ ] **音色 / 配音**（文本音色、上传音频、石榴 V2 配音）、**绑定数字人**（要跨产品校验 DapAvatar 归属）、**角色库**（预设角色大库）。
+- [ ] **智能预演**（一组片段统一出关键帧）、**三视图**、**片段拖动排序**、**ffmpeg 截末帧**（「用上一片段最后一帧」目前只在视频有真实末帧时可用）、**.docx 导入**、**修改记录对比视图**。
+- [ ] **视频多参考图 / 尾帧**（聚算尾帧、多参考未接，见 AGENTS.md 视频生成段）。
+- [ ] **画布和「我的短剧」互通**（存成短剧 / 从短剧生成画布）：第一期跑一段再定要不要做。
+- [ ] **片段「用到的造型换过图了」目前是近似判断**（按「引用的挑中图出图时间晚于片段视频」推，上传图 / 挑回旧图判断不出来）：服务端在视频 / 首帧运行结果里回传实际送给模型的 key（`refKeys`），前端按 key 比对。
+- [ ] **openapi 画布接口的参数校验类错误码没逐个列**（`DRAMA_CANVAS_TARGET_NOT_FOUND` / `DRAMA_CANVAS_SEGMENT_TOO_LONG` / `DRAMA_CANVAS_VIDEO_SUBMIT_FAILED` 502 等只写在 BUSINESS_RULES §6.7 与代码里）：补进各接口的 400 / 404 / 502 说明。
+- [ ] **AGENTS.md §8.0 审计表写 dev-fake-llm「默认 false，显式开」，但 `application-dev.yml` 里 dev profile 默认开**（Codex 2026-09-30 评审顺带指出，存量）：二选一对齐（改表述或改默认值），不要让表和配置对不上。
+- [ ] 两套画布引擎并存（aiavatar 的 vendored infinite-canvas 与 drama 的 React Flow）：以后要合一，先评估把 aiavatar 迁到 React Flow。
+
+## 2026-09-28 · web-drama 文案 / 用户路径 / 响应式收口 v0.197 后续（真源 `docs/drama-ux-copy-pass.md`）
+
+本轮只改了前端与服务端的**用户可见字符串**，以及文档 §3 列出的路径 bug；下面是扫出来但本轮不修的。
+
+**要和服务端一起动的**
+- [x] ~~**P1 · 短剧在聚算 H3 上「生成视频」首帧送不到模型，静默退成文生视频**~~ **2026-09-30 热修完成**（#115，2026-10-02 已上线），合并 v0.198 画布时并入新结构：`renderClip` 走 `resolveClipPlan` + `submitClip`，首帧 key 由 `assembleClip`（含 `requireOwnedFrameKey` 归属闸，在 hold 之前）派生后放进 `ClipSubmission.firstFrameKey`；详情见下方热修那一条。原描述（2026-09-28 画布调研时发现，已核实代码）：
+      聚算分支 `MaterialVideoModelClient`（约 551 行）把提示词里的首帧标记 `stripFrameUrlHint` 剥掉，首帧只认
+      `variant_config.first_frame_key`（`MaterialVideoWorker.extractFirstFrameKey`，约 465 行）；全仓只有
+      `IpRunService`（约 201 行）写了这个字段，`DramaRenderService.renderClip`（约 440 行）没写。违反 AGENTS.md
+      顶部视频生成段「上传失败一律抛、不静默退回 t2v」的同一原则。修：renderClip 由首帧 URL / key 派生 `first_frame_key`
+      写进 variant_config；applied_refs 在该协议下如实回报。（v0.198 画布自己的片段视频走新路径并写了 first_frame_key，老路没动。）
+- [ ] **短剧合成下载的是库里存的 videoUrl，下载前不重签**（`DramaAssembleService` 约 181–205 行）：最后一次保存超过签名 TTL（默认 1h）
+      后合成，下载可能 403（未实测）。修：按 key 重签后再下载，或文档改存 cdnKey。
+- [ ] **短视频合成要求每一镜都点过「就用这版」，短剧只要有视频就能合成**：两条线口径不一。服务端
+      `DramaShortAssembleService.buildPlan`（`approved = "done".equals(flow)`，测试
+      `buildPlanRejectsAnyUnacceptedOrMissingClip` 钉着）与 `DramaShortContinuityService.preflight`
+      的 `completedShotCount / assemblyReady` 都只认 `flow==='done'`。v0.197 前端没改判定，改成把
+      「还没视频」和「有视频、还没点就用这版」分开说，并加了批量「有视频的镜头全部就用这版」。
+      要放宽：服务端这两处 + 前端 `shorts/make/page.tsx` 的 `readyToAssemble / missingAssemblyMedia`
+      + mock `api/shorts.ts` 的 `assembleDraft / preflightDraft` 一起改，那条测试要同步改语义。
+- [ ] **多平台发布仍是服务端模拟**：`DramaDistributionService` 的 `@Scheduled` tick 把任务自动推进到
+      「已发布」、`externalUrl` 写 `https://v.example.com/...`，「连接」不绑定任何真账号。v0.197 前端已如实
+      标注并收进侧栏「即将上线」。**接真实平台之前不要把它挪回主菜单。**同文件 `Platform.lastSync`
+      仍是 `relativeTime()` 相对时间串（§4.8），接真平台时改发 ISO `lastSyncAt`。
+- [ ] **数据分析 `/insights` 已改成如实空态**（原页面的完播率、曲线、分布全是写死的数）。接真实数据时
+      **不要复用 `FilmApi.listDramas`**：`FilmController` 返回 `dramaRepo.findAll()`，没有按用户过滤 ——
+      先核实这张旧 film 表里是不是有用户数据，有的话这是一个跨账号读取面，单独排期。
+- [ ] **互动剧「AI 生成分支图」的单价没进 `/me/drama/config`**（服务端键 `KEY_INTERACTIVE_DRAFT`，默认 18）：
+      确认框只能写「会扣积分」写不出数。给 `DramaCreditPrices` 加 `interactiveDraft`，`branch.tsx` 传 `cost`。
+- [ ] **分集剧情没有「从第 N 集接着写」**：服务端 `outlineAiDraft` 只能从第 1 集写、一次最多 12 集；前端「补齐」
+      是只追加新集号的折中，续写的集不知道用户改过的前几集。「每集时长」也不传给大纲生成的提示词，目前只是显示值。
+- [ ] **钱包与「收入与提现」合并成一页**（§7，本轮只修链接、命名、重复展示）。另：`FinanceController.txType`
+      把 `GIFT / UNFREEZE / ADJUST / REFUND_CASH` 都映射成 `income`，任何读 `/finance/transactions`
+      的页面都会把退款、赠送标成「收入」（drama `/finance` 已改读 `AccountApi.getMyLedger`，不受影响）。
+- [ ] **脚本库没有后端软删与版本表**：前端已把「归档」如实改成「删除」、去掉永远只有一版的版本树；要恢复版本功能
+      需要后端 `script_version` 表 + 软删。脚本库目前也没法把脚本带进某部短剧（所以在「即将上线」）。
+- [ ] **素材库与角色卡上传不打通**：`DramaAssetUploadController` 上传的角色照不建素材库记录，真实模式下 `/assets`
+      看不到它们（前端已删掉「角色区上传会存进素材库」这类说法）。
+- [ ] **admin 侧的旧叫法**（给运营看的，§7 不在本轮范围）：`DramaConfigSeeder` 的配置说明（拆镜 / 出片 / 直出 /
+      创意市场）、`DramaRecipeService.respondInvite → notifyAdmins` 的站内通知（「…进入创意市场」）、admin
+      `drama/config` 与 `drama/prompts` 页的标签（「分镜视频（直出 / 动态渲染）」）。
+- [ ] **生成视频的提交没有按镜头去重**（v0.197 Codex 评审）：`MaterialVideoJobService`（约 186 行）每次提交都新建任务并
+      独立 `hold`，没有「这一镜已有在途任务」的判断，也不收幂等键。v0.197 在前端挡住了已知的两条重复提交路径
+      （轮询超时后再点、批量生成里的在途镜头），但服务端仍然接受重复请求。应给 `/render/clip` 加
+      `clientRequestId` 或按 `(owner, script_id, shot_id)` 拒绝在途重复。
+- [ ] **镜头的「当前任务」只由前端报告**：恢复回填靠前端存下的 `jobId` 与镜头坐标判断哪个任务属于这一镜，任务号
+      还没存下来就刷新时只能靠时间推断。彻底的做法是服务端受理时原子记录镜头当前任务 / 生成代次（与 §8.0.1 相关的
+      「产物由服务端回写」同一条路）。
+- [ ] **两处外部调用失败时不留响应体**（§8.0.1 ①，存量）：`DramaAssembleService`（约 222 行）下载分镜非 2xx 只抛
+      `下载分镜失败 HTTP <status>`，没读响应体、4xx 也笼统；`DramaHotspotService`（约 135 行）非 2xx 直接抛
+      `BusinessException`，不经过下面的 `log.warn`。
+- [ ] **两处 503 的运维指引不完整**（§8.0，存量）：`DramaShortAudioService` 配音未配置、`DramaHotspotService`
+      只有 promptKey 没有配置入口。v0.197 只改了口吻，没补真实的配置位置。
+- [ ] **后台任务的默认名「首帧渲染」「短剧分镜」**（`DramaFrameJobService` / `DramaRenderService`）是
+      `render-task-dock.tsx` 的 `GENERIC_NAMES` 认的占位值，改名要两端一起改。
+
+- [ ] **分集剧情生成没有服务端幂等键**：`DramaProjectService#outlineAiDraft` 每次自己生成 UUID 冻结扣费。v0.197 前端加了
+      跨组件实例的在途锁（`drama-ui/action-lock.ts`，卸载不释放），同一页面会话里连点 / 重挂载都只扣一次；**两个标签页同时点仍会扣两次**。
+      服务端应照 promote 的做法收 `clientRequestId`。
+- [ ] **聊天「去制作」成多集短剧没有防重**：两个标签页同时点，都读到 `status=draft`，`createProject` 无幂等 → 建出两部（免费，不扣积分）。
+      修法：对 brainstorm 行做条件更新占位（`UPDATE … SET status='promoting' WHERE status='draft'`）或给项目也派生幂等键。
+- [ ] **积分流水的「冻结转扣除」靠一条约定识别**：web-drama `_shared/ledger.ts` 的 `isHoldSettlement` 认定「写 SPEND 的只有
+      `commitHold` 与 `store_*` 两处」。服务端以后每加一处 `debit(…, SPEND, …)` 都要同步改它；根治是 `LedgerEntryDto` 带显式标记
+      （如 `settlesHold`）或 `commitHold` 改写独立类型。另：`/me/ledger` 不支持按 `type` 过滤，「收入与提现」只能一页页往前翻找。
+- [ ] **删除有在途任务的镜头**：结果晚到时会被判为过期丢掉，积分照扣。给在途镜头的删除加确认（写明「正在生成，删了积分不退」）。
+- [ ] **角色区的场景图 / AI 画参考照 / 场景 AI 改图仍按全局图片单价报价**（`cfg.prices.frame`），没接 `renderCreditCost`；默认图片端点
+      有单价覆盖时显示的数和实扣不一致。
+- [ ] **「发布成模板」对短视频的说法**写「风格、节奏和分镜结构」，但套用单条模板只用 summary + mainline（`DramaRecipeService#buildStyleRef`），
+      提炼出的分镜节拍从没用上 —— 要么接上，要么改说法（产品决定）。
+- [ ] 「随机来一个」的取点规则在 `short-create-console.tsx`（`pickSparkIdea`）与 `new-project/create-dialog.tsx` 各写一份，
+      先挪进 `lib/` 再让两处共用（§8.0.1 ④）。
+- [ ] 后台生成面板没有任务时每 15 秒才轮询一次，刚提交的任务最多 15 秒后才出现；可以在提交后发一个「立即刷新」事件（同 `notifyWalletChanged`）。
+
+**纯前端，可以单独做的**
+- [ ] `/review` 剧本审阅没有后端队列（`useState([])` 恒空）、也没有任何页面把剧本送审：入口保持隐藏。
+      等后端审阅队列做了，再在「我的短剧」页头加「待审剧本 (N)」。
+- [ ] 「我发布的模板」有运营邀请（`status==='invited'`）时侧栏没有提示，只能点进子页才发现；加一个计数角标。
+- [ ] 全局搜索只搜数字人演员（跳 `/cast?q=`），已如实改名；要么扩成全站搜索，要么去掉。
+- [ ] 后台生成面板的任务行不能点击跳到对应那一镜（工作台没有 `?ep=` 深链）。
+- [ ] 分支图节点是 `div + onClick`，键盘选不中。
+- [ ] 分镜「AI 改图」没有版本历史 / 「用这一版」：每次改图直接替换首帧（文案已如实说明）。
+- [ ] `/shorts` 已完成的短视频没有「接着改」回制作页的入口。
+- [ ] `/shorts/new` 的近期热点用的是短剧钩子（「闪婚老公有马甲」），不适合短视频；需要 catalog 字段区分适用形态。
+- [ ] 工作台左轨「逐集制作」入口不写 `stage:4 / progress:50`，只有设定页浮动按钮会写 —— 「上次做到」的进度只有走浮动按钮才更新。
+- [ ] 旧 drama-ui 死代码（`AICollab` / `GenError` / `EngineTag` / `RewriteTagPill` / `useGen`、`quick-create-modal.tsx`、
+      `short-clip-modal.tsx`、`shot-form.tsx` 的 `ShotFormCard`、`script-refs.tsx`）本轮只改了文案没删，
+      因为并行改动时删导出风险大；下一轮确认无引用后整块删。
+- [ ] 演示数据里的 `projectInfo.ratio` 写的是「竖屏 9:16」，服务端写「9:16」（mock 与服务端不同形，§8.0.1 ⑦）。
+
+**本轮没有实测到的（下次上线前补一遍）**
+- [ ] **真实模式（`USE_MOCK=0` + server）没有端到端走过**：充值收银台（弹窗被拦 →「重新打开支付页」、二维码路径、
+      `?order=` 重新支付）、短视频配音 → 合成、工作台余额在扣费后刷新、运营页 strict 读目录失败时禁止发布。
+- [ ] 长脚本「剩下的部分另开一页拆」只读代码验证过（mock 解析器不返回 `truncatedAfterTimecode`），
+      要用超过 40 镜的真实脚本实测一次。
+- [ ] 运营页在 mock 下看不到（`MOCK_USER` 没有 `operatorRole`），本轮是注入同样的样式和结构验证的布局。
+
 ## 2026-08-31 · v0.143 短视频「提示词直出」后续
 
 - [x] ~~**人物 / 场景只能改不能增删**~~ **v0.144 修复**，2026-08-31：`/shorts/prompt` 预览页与 `/shorts/make`「提示词设定」卡都加了「加一位角色 / 加一个场景」和逐条删除；删角色会同时清掉各镜对他的 `castNames` 引用，删场景把引用它的镜头退回默认场景，不留指不到人的名字。
@@ -264,6 +391,8 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
       前端改不了格式（§4.8 明令新字段不许这么加，这批是存量）。dap 域那一处已在 v0.194
       改成 `dateTimeZh`，改法照抄即可：一个方法改完，它的全部调用点跟着好。
       牵动 music / drama / celebrity 三条线的列表页，**要连前端一起验**，故单独排期。
+      **v0.197 进展**：drama 前端已不再展示这几个字段（改读 `updatedAt` + `formatDateTime`，分发页不再显示
+      `lastSync`），剩下的是服务端把字段删掉或改 ISO，drama 这边改了不会再影响界面。
 - [ ] **`web-music` / `web-drama` 的 `src/translations.ts`** 里还有整段营销腔
       （「打造专属 IP 形象」「智能推荐算法助力内容引爆」「一站式完成」）。它是 §4.6 已
       tombstone 的遗留中英字典，**理论上没有活引用** —— 清理时先确认真没人读，
@@ -639,6 +768,10 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
 - [x] ~~**C-2 角色/场景实体化 + 多角度参考图集**~~ **C-2 完成**（v0.101，2026-07-10）：一致性引擎 L0 地基。两新表 `drama_character`/`drama_scene`（字段名对齐 `CharacterDef`/`SceneAsset`；`ref_images_json`=多角度参考图集 `[{cdnKey,angle,label}]`，真值 cdnKey，出 wire signer 派生，软删随项目）；新服务 `DramaReferenceAssetService`（懒回填 `ensureBackfilled` + 双写 `syncFromDoc`〔§6.1 只 upsert 实体表、不重写 payloadJson〕+ 出 wire overlay + 三视图 `generateReferenceSheet`）。新端点 `POST /me/drama/projects/{id}/characters/{charId}/reference-sheet`（复用 `IMAGE_GENERATION`+`drama.character_frame_image` 加 `{{angleClause}}` 注角度、锁脸用定妆图；计费 **hold→逐角度 commit**，部分失败剩余 release，全失败 release 全额+抛错；§8.0 preflight 在 hold 前）。前端角色卡「一键三视图」+ 正/侧/全身缩略图墙。测试 `DramaReferenceAssetServiceTest`(8)。真源 `docs/[Fabel5]drama-consistency-engine-design.md` §4。类型沿用 drama 本地约定（不进 packages/types）。
 - [x] ~~**C-3 服务端参考装配（Reference Assembler）+ 双线共享 useShotRender**~~ **C-3 完成**（v0.102，2026-07-10）：一致性引擎 L1 收官。新服务 `DramaReferenceAssembler`（`@Service`，**只读文档/实体、绝不回写 payloadJson**，§6.1）把前端 `epscript.tsx:shotRefImages` 优先级链下沉服务端：三级入参 `shot_ref` > `ref_slots` > `ref_images`（老前端数组直通兼容）+ `ref_leading` 置顶锚；角色 `drama_character.refImages`(front 优先，@cast→文本名→全员，实体缺兜底文档 avatarImage)/场景 `drama_scene`(显式 sceneRefId→名称兜底)/同场上一镜真实末帧（文档优先 + `MaterialVideoJob.lastFrameCdnKey` 权威回退，`variant_config` 内存扫）。按 D-11 capability 裁剪（`maxRefImages` 未配置 null→legacy 兼容默认 6=v0.97 前端既有上限、视频首尾帧 null→协议关键字静态判定；显式配置最高优先——review 回归修正，初版误按保守默认 1），优先级保 identity(character>scene>prev 末位先砍)、超出 `over_max_refs`、本地 `/cdn` `local_unfetchable`（如实回报 §8.0），`applied_refs.role` 精确槽位。`DramaRenderService.renderFrame/renderClip` 接入（删旧 `computeClipAppliedRefs`/`appliedRefsJson`）；前端共享 `lib/use-shot-render.ts`，`epscript` 删 `shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`（体检留 UI 级 `sceneHasRef`）、`shorts/make` 删 `shortRefImages` 改走 `ref_slots`。测试 `DramaReferenceAssemblerTest`(16) + `DramaRenderServiceTest` 精简。真源 `docs/[Fabel5]drama-consistency-engine-design.md` §5。无新 path（复用 `/render/frame,clip`）。
 - [ ] **C-4 MaterialVideoJob shotId/sceneId 索引列**（C-3 遗留，DAG 时必做）：C-3 的「同场上一镜真实末帧」权威回退目前用 `MaterialVideoJobRepository.findByOwnerUserIdAndScriptIdOrderByCreatedAtDesc` 拉该项目全部 job 后**内存解析 `variantConfigJson`** 匹配 `scene_id`/`shot_id`（`DramaReferenceAssembler.jobLastFrame`）。大项目 job 多时有内存/扫描成本。C-4（跨镜 DAG 编排）应给 `MaterialVideoJob` 加 `shot_id`/`scene_id` 索引列（ddl-auto=update 自动加）+ Repo `findFirstByOwnerUserIdAndScriptIdAndShotIdAndStatusOrderByCreatedAtDesc`，把内存扫换成索引查询。当前 C-3 内存扫描可接受（架构师裁决），不阻塞。
+- [x] ~~**P1 · 短剧在聚算 H3 上「生成视频」首帧送不到模型，静默退成文生视频**~~ **2026-09-30 热修完成**（基线 `ada3e17c`，不占版本号）：聚算分支把提示词里的首帧标记剥掉、只认 `variant_config.first_frame_key`，而 `DramaRenderService.renderClip` 从没写过它，`applied_refs` 还按 URL 可抓取报「已送达」。现在 `renderClip` 先问 `MaterialVideoJobService.firstFrameNeedsStorageKey`（协议判定只在 `MaterialVideoModelClient.usesUploadedFirstFrame` 一处，`submit` 也改用它）；是聚算就由 `DramaReferenceAssembler.requireOwnedFrameKey` 用 `CdnUrlSigner.keyOf` 从最终首帧 URL（显式 frame_url / 文档本镜首帧 / 承接的上一镜末帧，优先级不变）反抽 key，再按 `storage_assets(app=drama, owner=本人)` 或本人短剧任务的 `lastFrameCdnKey` 确认归属，写进 `variant_config.first_frame_key`（与 `IpRunService` 同键同层）。不属于本人 → hold 之前 400 `DRAMA_FRAME_NOT_OWNED`；外链派不出 key → 照旧出片，但 `applied_refs` 报 `not_in_storage`；候选 `maxRefImages=0` 时不派生，照旧 `model_no_image_input`。非聚算协议行为不变（不派生、不查归属，提示词标记照留）。上传失败仍由 worker 抛 `VIDEO_REF_UPLOAD_FAILED`。测试：`DramaRenderServiceTest`(+4) / `DramaReferenceAssemblerTest`(+8) / `MaterialVideoModelClientTest`(+1) / 新 `DramaFrameOwnershipH2Test`(3，真 H2 跑两条新查询)，并验证过去掉写 key 那一行时用例是红的。
+- [ ] **部署后核对线上聚算 H3 候选的「最多参考图」**（2026-09-30 热修附带）：v0.131 接 H3 时候选按当时能力标了 `maxRefImages=0`（见 `docs/VERSION_HISTORY.md` v0.131 段），v0.183 接通 i2v 后没人改回来。若线上仍是 0，热修后 H3 照旧不收首帧（界面如实报「当前模型仅开放文生视频」）；要让首帧生效需在后台「AI 应用绑定 → 候选端点与能力」把 H3 改成 1。尾帧仍未接，`supportsFirstLastFrame` 保持 false。
+- [ ] **web-drama 没有 `not_in_storage` 的文案**（2026-09-30 热修引入的新原因码）：`components/drama-workshop/storyboard-table.tsx` 的 `REF_REASON_LABEL` 与 `api/render.ts` 的 `AppliedRefReason` 各加一条（建议「这张首帧不是本站存的图片，这个模型收不到」）。未加之前 hover 显示「首帧：未生效」，如实但不具体。
+- [ ] **v0.92 之前生成的短剧首帧没有存储台账行**（2026-09-30 热修时核实，低优先级）：`storage_assets` 是 v0.92（2026-06-29）才加的、没有回填，`StorageQuotaService.record` 也是 best-effort。这类老首帧拿去聚算 H3 出视频会被 `DRAMA_FRAME_NOT_OWNED` 拒（提示语让用户重新生成这一镜首帧，重新生成即可）；走 URL 的协议（seedance 等）不受影响。真有人碰到再按 `drama_projects.payload_json` 里的 `drama/frames/…` key 给项目 owner 回填台账，不要为此放宽归属判定。
 - [ ] **D-13 渲染扣费形态统一（debit vs hold→commit）**（v0.101 C-2 引入的有意分裂，待未来收敛）：`renderFrame` 单产物用一次性 `CreditService.debit`（SPEND），C-2 三视图批产物用 `hold→逐角度 commit`（FREEZE→SPEND，需部分成功部分退）。两形态并存 → 短剧「首帧类扣费」在账本上出现 SPEND 与 FREEZE→SPEND 两种流水形态。可接受（语义不同：单产物 vs 批产物部分退），但若未来统一渲染扣费口径，应把 `renderFrame` 也改 hold→commit（或反之）以让账本形态一致。定位：`DramaRenderService.renderFrame`(`creditService.debit`) vs `DramaReferenceAssetService.generateReferenceSheet`(`hold/commitHold/releaseHold`)。
 - [x] **D-6 单元测试**（v0.67）：真后端已落地，建立首个测试基线 —— vitest + jsdom + @testing-library/react；`format.test.ts`（15 例：货币/积分/紧凑/时长/带符号边界）+ `drama-query.test.tsx`（6 例：命中复用 / 精确失效 / 前缀失效 / 乐观写入 / refetch / clearAll）。**测试驱动修了一个真实 bug**：`drama-query` 的 `load` catch 里 re-throw 导致 `useAsync` 丢弃的 promise 变 unhandled rejection（改为错误只落 `entry.error`）。`package.json` test 脚本 placeholder → `vitest run`。状态机过渡在后端 `DramaProjectServiceTest` 11/11 已覆盖；前端无 zod 表单 schema 故略。
 - [x] **D-7 a11y dialog**（v0.67）：**不换 shadcn**（那套亮色 token 会破坏 drama 暗色 premium 玻璃视觉），改为强化共享容器 —— 抽 `lib/use-modal-a11y.ts`（ESC + 焦点陷阱 + 初始/还原焦点 + body 锁，单一来源），`common/Dialog.tsx` 接入并补 `aria-labelledby/-describedby`；新增 `common/ModalShell.tsx` 给命令式弹层（`.overlay` + role=dialog + a11y），收编 short-clip / quick-create / preview 三个此前裸 `<div className="overlay">`（全缺 ESC/focus）。
@@ -649,7 +782,7 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
   - [x] ③ 首帧 AI 改图弹窗 —— `storyboard-table.tsx` 内（左指令对话+右 9:16 预览+版本号），复用 `renderFrame` + `ref_images` 迭代回填落库（**未新增 prompt key，复用 `drama.frame_image` + 指令拼进 desc**）。
   - [x] ④ 短视频 `/shorts/make` 单页化（v0.88）：去掉 脚本/工厂 步骤切换 → 单页（左 AI 口播对话 / 右 短视频大纲[口播种草 + beat 流 痛点开场→卖点演示→强CTA] + 分镜脚本，逐镜内联出片）；`meta.style` 可编辑落库；每镜 beat 语义标签。删退役 `ShortShotCard` 工厂网格 + 步骤态。
   - [x] ⑤ `epscript` 的 本集叙事/作品风格/出场人物 + `outline` scope/dur 落库（`episodeDocs[ep].meta` + `outlinePrefs`，持久化 API E2E 验证）。
-- [ ] **D-10 USE_MOCK promote 导航**：mock 下 `BrainstormApi.promote`→`ProjectsApi.createProject` 返回 `dp_mock_*`，但 `getProject` mock 只认静态 `PROJECTS` → `/projects/{新id}` 落「项目不存在」（脑暴自身的 chat→大纲在 mock 下完整可用）。属既有 mock 局限（首页旧立项流程同样存在）；要么给 projects/shorts mock 加可恢复 store，要么文档标注「mock 仅演示前半程，真链路走 USE_MOCK=0 + server」。
+- [x] ~~**D-10 USE_MOCK promote 导航**~~ **v0.197 修复**，2026-09-28：mock `createProject` 现在把新短剧写进列表与详情表（`api/projects.ts`，测试 `projects.test.ts`），脑暴「去制作」、多集模板「做同款」、「照这部新建一部」都走它，新建完能直接打开工作台。原描述：mock 下 `BrainstormApi.promote`→`ProjectsApi.createProject` 返回 `dp_mock_*`，但 `getProject` mock 只认静态 `PROJECTS` → `/projects/{新id}` 落「项目不存在」（脑暴自身的 chat→大纲在 mock 下完整可用）。属既有 mock 局限（首页旧立项流程同样存在）；要么给 projects/shorts mock 加可恢复 store，要么文档标注「mock 仅演示前半程，真链路走 USE_MOCK=0 + server」。
 
 ### apps/web-celebrity 专项（C-*）
 

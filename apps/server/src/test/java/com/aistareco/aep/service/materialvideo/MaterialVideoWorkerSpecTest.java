@@ -77,6 +77,13 @@ class MaterialVideoWorkerSpecTest {
         jobRepo = mock(MaterialVideoJobRepository.class);
         when(jobRepo.findById("mvj_studio")).thenReturn(Optional.of(job));
         when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // v0.198 条件认领（同 MaterialVideoWorkerTest）：只有 queued 才认领得到；不打这个桩 Mockito 回 0，worker 直接不提交
+        when(jobRepo.claimQueued(eq("mvj_studio"), any())).thenAnswer(inv -> {
+            if (!"queued".equals(job.getStatus())) return 0;
+            job.setStatus("submitting");
+            job.setProgress(5);
+            return 1;
+        });
         modelClient = mock(MaterialVideoModelClient.class);
         creditService = mock(CreditService.class);
         storage = mock(StorageQuotaService.class);

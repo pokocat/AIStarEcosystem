@@ -19,7 +19,13 @@ export interface DramaProjectSummary {
   stage: number;
   cover: { from: string; to: string };
   mode: CreationMode;
+  /**
+   * 服务端算好的相对时间（「今天 / 3 天前」），历史字段。§4.8 禁止展示相对时间 ——
+   * 界面一律用 `updatedAt` + formatDateTime，这个字段只为兼容旧数据保留。
+   */
   updated: string;
+  /** ISO 8601；服务端 DramaProjectService.toSummary 一直在发，前端此前没声明。 */
+  updatedAt?: string | null;
   /** 标记为"主样例" */
   main?: boolean;
   done?: boolean;
@@ -98,11 +104,17 @@ export function episodeTitle(ep: { no: number; title?: string; hook?: string; co
   return `第 ${ep.no} 集`;
 }
 
+/** 中文 / 英文句末标点（含省略号、引号收尾），用来判断一段剧情是不是已经说完一句。 */
+const SENTENCE_END = /[。！？!?…；;」』”]$/u;
+
 /** 本集剧情（新 content 优先；老数据回退旧三段拼接）。 */
 export function episodeContent(ep: { content?: string; hook?: string; synopsis?: string; beat?: string }): string {
   const c = (ep.content || "").trim();
   if (c) return c;
-  return [ep.hook, ep.synopsis, ep.beat].map((s) => (s || "").trim()).filter(Boolean).join("。");
+  const parts = [ep.hook, ep.synopsis, ep.beat].map((s) => (s || "").trim()).filter(Boolean);
+  // 每段自己可能已经带了句末标点（旧数据里常见「……。」），再补一个「。」就成了「。。」。
+  // 已经有句末标点的段原样接上（保留「！」「？」的语气），没有的才补句号；最后一段照旧不补。
+  return parts.map((s, i) => (i < parts.length - 1 && !SENTENCE_END.test(s) ? `${s}。` : s)).join("");
 }
 
 /**
@@ -157,6 +169,8 @@ export interface ScriptScene {
 export interface BoardShot {
   id: string;
   no: number;
+  /** v0.197：这一镜最近一次「从头重做」的时间（ISO）。进页恢复回填时，早于它创建的任务一律不认，挡掉旧任务写回。 */
+  resetAt?: string;
   /** 景别 */
   size: string;
   /** 运镜 */

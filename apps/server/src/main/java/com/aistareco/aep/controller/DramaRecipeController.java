@@ -95,7 +95,7 @@ public class DramaRecipeController {
         requireOperator(auth);
         String projectId = body != null && body.hasNonNull("projectId") ? body.get("projectId").asText() : null;
         if (projectId == null || projectId.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROJECT_ID_REQUIRED", "缺少 projectId。");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_PROJECT_ID_REQUIRED", "没指定要邀请哪部作品。");
         }
         return ApiResponse.of(service.inviteFromProject(projectId, auth.getName()));
     }
@@ -120,6 +120,6 @@ public class DramaRecipeController {
      * （见 InAppOperatorGuard）；typ=admin 令牌照常放行。
      */
     private void requireOperator(Authentication auth) {
-        operatorGuard.require(auth, "仅平台运营可审核 / 发布短剧配方。");
+        operatorGuard.require(auth, "只有平台运营能审核和发布模板。");
     }
 }

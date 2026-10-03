@@ -292,6 +292,23 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
+    @DisplayName("2026-09-30 热修：只有聚算协议的首帧要走存储 key，业务线据此决定写不写 first_frame_key")
+    void firstFrameNeedsStorageKeyOnlyForJusuan() {
+        AiModelEndpoint h3 = AiModelEndpoint.builder()
+                .id("h3").name("聚算 JusuanHub · MiniMax H3 视频").baseUrl("https://api.jusuanhub.com:10443/v1")
+                .model("minimax-h3").build();
+        AiModelEndpoint seedance = AiModelEndpoint.builder()
+                .id("sd").name("豆包 Seedance").baseUrl("https://ark.example/api/v3").model("doubao-seedance-pro").build();
+        assertEquals(true, clientWith(h3, null).firstFrameNeedsStorageKey("h3"));
+        assertEquals(true, clientWith(h3, null).firstFrameNeedsStorageKey(null)); // 默认端点同一判定
+        assertEquals(false, clientWith(seedance, null).firstFrameNeedsStorageKey("sd"));
+        assertEquals(false, clientWith(genericEndpoint(), null).firstFrameNeedsStorageKey(null));
+        // submit 用的就是这一处判定
+        assertEquals(true, MaterialVideoModelClient.usesUploadedFirstFrame("jusuan-media"));
+        assertEquals(false, MaterialVideoModelClient.usesUploadedFirstFrame("seedance"));
+    }
+
+    @Test
     @DisplayName("没有首帧 → 仍是 t2v，且不带 input_image_asset_id（纯文生视频行为不变）")
     void jusuanBodyStaysTextToVideoWithoutReference() {
         MaterialVideoModelClient client = new MaterialVideoModelClient(

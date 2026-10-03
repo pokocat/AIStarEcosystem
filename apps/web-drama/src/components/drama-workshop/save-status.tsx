@@ -2,7 +2,7 @@
 
 // 草稿保存状态指示器（v0.89）—— 顶栏右上角内联「状态说明」，实时反映自动保存进度。
 // 设计：不再是底部悬浮药丸（浮框），而是随各页 header 排版的一行轻量状态文字，
-//       常驻显示「自动保存」，随编辑实时切到 保存中 / 已保存 / 未保存，颜色与图标平滑过渡。
+//       常驻显示「自动保存」，随编辑实时切到 编辑中 / 保存中 / 已保存 / 保存失败，颜色与图标平滑过渡。
 import * as React from "react";
 import { Check, Cloud, CloudOff, Pencil } from "lucide-react";
 import type { SaveStatus as Status } from "@/lib/use-save-status";
@@ -38,7 +38,7 @@ export function SaveStatus({ status }: { status: Status }) {
     color = "var(--success)";
   } else if (status === "error") {
     icon = <CloudOff size={13} />;
-    text = "未保存";
+    text = "保存失败";
     color = "var(--danger)";
   } else {
     // idle：常驻轻提示，让用户知道改动会自动保存。

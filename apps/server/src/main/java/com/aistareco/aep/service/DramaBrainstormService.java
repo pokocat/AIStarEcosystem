@@ -40,7 +40,7 @@ public class DramaBrainstormService {
     private static final Logger log = LoggerFactory.getLogger(DramaBrainstormService.class);
 
     private static final String GREETING =
-            "来，把你脑子里的画面或者一句话丢给我 —— 哪怕只是一个模糊的念头。";
+            "来，把你脑子里的画面或者一句话丢给我，哪怕只是一个模糊的念头。";
 
     private final DramaBrainstormRepository repo;
     private final ObjectMapper om;
@@ -98,11 +98,20 @@ public class DramaBrainstormService {
         return toDetail(row);
     }
 
-    /** 自动保存整页脑暴。body: { data: BrainstormData } → 落库并回算标题。promoted 后只读。 */
+    /**
+     * 自动保存整页脑暴。body: { data: BrainstormData } → 落库并回算标题。
+     * promoted 后只读：409 {@code DRAMA_BRAINSTORM_ALREADY_PROMOTED}（旧标签页 / 返回键回到这页后的自动保存
+     * 会带着这里的旧内容来，照单全收就把已经拿去制作的那份对话和大纲覆盖了）。
+     * 明确报错而不是悄悄不存 —— 否则页面显示「已保存」，刷新后改动却没了。
+     */
     public JsonNode saveBrainstorm(String id, JsonNode body, String userId) {
         DramaBrainstorm row = requireOwned(id, userId);
+        if (isPromoted(row)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "DRAMA_BRAINSTORM_ALREADY_PROMOTED",
+                    "这段对话已经拿去制作了，这里的改动不会再保存。");
+        }
         if (body == null || !body.has("data") || !body.get("data").isObject()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_BRAINSTORM_DATA_REQUIRED", "缺少要保存的脑暴数据");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_BRAINSTORM_DATA_REQUIRED", "没收到要保存的对话内容，请重试。");
         }
         applyData(row, (ObjectNode) body.get("data"));
         return toDetail(row);
@@ -138,7 +147,7 @@ public class DramaBrainstormService {
         JsonNode root = callJson(pc);
         String reply = orDefault(text(root, "reply"), "");
         if (reply.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "脑暴助手没说出话来，请再试一次。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 故事助手这次没回话，请再试一次。");
         }
         ObjectNode message = om.createObjectNode();
         message.put("role", "ai");
@@ -165,7 +174,7 @@ public class DramaBrainstormService {
         requireLlm();
         List<String[]> turns = transcriptTurns(body, row);
         if (turns.stream().noneMatch(t -> "user".equals(t[0]))) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_BRAINSTORM_EMPTY", "先跟 AI 聊几句，再生成故事大纲。");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_BRAINSTORM_EMPTY", "先和 AI 聊几句，再生成故事大纲。");
         }
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("transcript", renderTranscript(turns));
@@ -185,19 +194,21 @@ public class DramaBrainstormService {
     // ── 去制作（promote 成 项目 / 短视频） ────────────────────────────────────────
 
     /**
-     * 「去制作」。body: { form?, data? }。
+     * 「去制作」。body: { form?, data?, clientRequestId? }。
      *   form=series（默认）→ 新建一部 {@link DramaProject}（免费立项，预填 projectInfo + characters），返回 {kind:"project",projectId}。
-     *   form=single        → 新建一条 {@link DramaShort}（扣开拍费），返回 {kind:"short",shortId}。
+     *   form=single        → 新建一条 {@link DramaShort}（扣开拍费，按 clientRequestId 幂等），返回 {kind:"short",shortId}。
      * data 为前端当前 BrainstormData（含最新大纲 / 设置），传入则先落库再 promote；脑暴标 promoted（幂等）。
      */
     public JsonNode promote(String id, JsonNode body, String userId) {
         DramaBrainstorm row = requireOwned(id, userId);
+        // 幂等：已 promote 过直接回原去向，避免重复立项 / 重复扣费。
+        // 必须在落库 body.data 之前判：重放的请求 / 旧标签页带着旧对话来，不能把已封存的对话、大纲、设置整份换掉
+        // （与 saveBrainstorm 的只读是同一条规则，见 isPromoted）。
+        if (isPromoted(row)) {
+            return promotedResult(row.getPromotedKind(), row.getPromotedId());
+        }
         if (body != null && body.has("data") && body.get("data").isObject()) {
             applyData(row, (ObjectNode) body.get("data"));
-        }
-        // 幂等：已 promote 过直接回原去向，避免重复立项 / 重复扣费。
-        if ("promoted".equals(row.getStatus()) && row.getPromotedId() != null) {
-            return promotedResult(row.getPromotedKind(), row.getPromotedId());
         }
         JsonNode data = readPayload(row);
         JsonNode outline = data.path("outline");
@@ -214,10 +225,18 @@ public class DramaBrainstormService {
         String mainline = orDefault(text(outline, "mainline"), joinBeats(outline.path("beats")));
 
         if (single) {
-            String styleRef = (logline.isBlank() ? "" : logline)
-                    + (mainline.isBlank() ? "" : (logline.isBlank() ? "" : " ") + "主线：" + mainline);
+            // 一句话剧情 + 主线落成草稿的 idea：制作页见到 idea 且还没有分镜，就直接写口播脚本。
+            // 以前把故事名塞进 styleName/styleRef —— 制作页会把它当成
+            // 「照【故事名】的风格来做」，再问用户一遍主题（聊天里已经讲过了）。
+            //
+            // 这条会扣一笔开拍费，所以带幂等键：前端一次确认一把 clientRequestId，失败重试沿用同一把。
+            // 上面的「已 promoted 直接返回」只挡得住已经标记完的情况；两次请求都在标记之前到达
+            // （双击 / 网络重发 / 建完草稿但标记 promoted 时失败），靠的是这把键 +
+            // (owner, clientRequestId) 唯一索引：第二次拿回同一条草稿，不再冻结、不再扣费。
+            // 没带键 = 旧客户端，行为不变。
             String shortId = shortService.createFromRecipe(userId, title, type,
-                    "#f97316", "#e11d48", title, styleRef.isBlank() ? title : styleRef);
+                    "#f97316", "#e11d48", null, null,
+                    singleIdea(title, logline, mainline), text(body, "clientRequestId"));
             markPromoted(row, "short", shortId);
             log.info("[drama-brainstorm] promote->short user={} brs={} short={}", userId, id, shortId);
             return promotedResult("short", shortId);
@@ -266,7 +285,7 @@ public class DramaBrainstormService {
         greet.put("text", GREETING);
         ArrayNode quick = om.createArrayNode();
         quick.add("我没想法，给点灵感");
-        quick.add("套爆款模板");
+        quick.add("去模板广场看看");
         greet.set("quick", quick);
         messages.add(greet);
         root.set("messages", messages);
@@ -287,6 +306,14 @@ public class DramaBrainstormService {
         row.setPayloadJson(write(data));
         row.setUpdatedAt(OffsetDateTime.now());
         repo.save(row);
+    }
+
+    /**
+     * 已经去制作过：这段对话已变成一部短剧 / 一条短视频，此后只读。promote 的幂等返回与 saveBrainstorm 的只读
+     * 都只认这一处，不各写一份判断。
+     */
+    private static boolean isPromoted(DramaBrainstorm row) {
+        return "promoted".equals(row.getStatus()) && row.getPromotedId() != null;
     }
 
     private void markPromoted(DramaBrainstorm row, String kind, String promotedId) {
@@ -424,6 +451,20 @@ public class DramaBrainstormService {
         return null;
     }
 
+    /**
+     * 单条短视频的「点子」= 一句话剧情 + 主线（制作页拿它当主题直接写口播脚本）。
+     * 两样都空才退回故事名，保证制作页总有东西可写、不会停在「说说你想拍什么」。
+     */
+    static String singleIdea(String title, String logline, String mainline) {
+        String l = logline == null ? "" : logline.trim();
+        String m = mainline == null ? "" : mainline.trim();
+        if (l.isEmpty() && m.isEmpty()) return title;
+        if (m.isEmpty()) return l;
+        if (l.isEmpty()) return m;
+        boolean closed = "。！？!?.…".indexOf(l.charAt(l.length() - 1)) >= 0;
+        return l + (closed ? "" : "。") + "主线：" + m;
+    }
+
     private static String joinBeats(JsonNode beats) {
         if (!beats.isArray()) return "";
         List<String> parts = new ArrayList<>();
@@ -469,7 +510,7 @@ public class DramaBrainstormService {
     }
 
     private static String seedTitle(String seed) {
-        if (seed == null || seed.isBlank()) return "新的脑暴";
+        if (seed == null || seed.isBlank()) return "新的对话";
         String s = seed.trim();
         return s.length() > 40 ? s.substring(0, 40) : s;
     }
@@ -480,7 +521,7 @@ public class DramaBrainstormService {
         JsonNode data = readPayload(b);
         ObjectNode o = om.createObjectNode();
         o.put("id", b.getId());
-        o.put("title", orDefault(b.getTitle(), "新的脑暴"));
+        o.put("title", orDefault(b.getTitle(), "新的对话"));
         o.put("status", orDefault(b.getStatus(), "draft"));
         if (b.getPromotedKind() != null) o.put("promotedKind", b.getPromotedKind()); else o.putNull("promotedKind");
         if (b.getPromotedId() != null) o.put("promotedId", b.getPromotedId()); else o.putNull("promotedId");
@@ -503,13 +544,13 @@ public class DramaBrainstormService {
 
     private DramaBrainstorm requireOwned(String id, String userId) {
         return repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_BRAINSTORM_NOT_FOUND", "脑暴草稿不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_BRAINSTORM_NOT_FOUND", "这段对话找不到了"));
     }
 
     private void requireLlm() {
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "AI 脑暴还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+                    "AI 故事助手还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
     }
 
@@ -519,7 +560,7 @@ public class DramaBrainstormService {
         PromptService.ResolvedPrompt p = promptService.resolve(promptKey);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
-                    "该脑暴 AI 动作的提示词尚未配置（promptKey=" + promptKey
+                    "AI 故事助手的提示词尚未配置（promptKey=" + promptKey
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
         double temperature = p.params().temperature() != null ? p.params().temperature() : defaultTemp;
@@ -544,14 +585,14 @@ public class DramaBrainstormService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 脑暴调用失败，请稍后重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 服务暂时连不上，稍后再试一次。");
         }
     }
 
     private JsonNode callJson(PromptCall pc) {
         JsonNode root = tryReadJson(invoke(pc).content());
         if (root == null) {
-            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回的内容无法解析，请重试。");
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "这次 AI 回的内容用不了，再试一次。");
         }
         return root;
     }

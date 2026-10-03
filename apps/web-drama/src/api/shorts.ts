@@ -292,6 +292,8 @@ export interface SaveShortOptions {
 // ── mock：进程内存表（USE_MOCK=1 时本地回放）。同会话内 create→get→save 可恢复
 //    （满足新建流程在 mock 下可用 + 前进/后退导航不丢）；整页刷新会清空（mock 本无后端）。
 const mockStore = new Map<string, ShortDraftDetail>();
+/** mock 找不到草稿时的报错（整页刷新会清空内存表，演示时最常见的就是这个）。 */
+const MOCK_NOT_FOUND = "找不到这条短视频，可能已经移到回收站了";
 const mockTrash = new Map<string, ShortDraftTrashItem>();
 let mockSeq = 0;
 
@@ -340,7 +342,10 @@ function mockPickSegment(line: string, labels: string[]): { hit: string; rest: s
     const idx = line.indexOf(label);
     if (idx >= 0) {
       const after = line.slice(idx + label.length).replace(/^[:：]\s*/, "");
-      const cut = after.search(/(台词|字幕|口播|旁白|音效|BGM|背景音乐|特效)[:：]/);
+      // 从第 2 个字符起找下一段的标签：「台词：旁白：搬来第七天…」开头那个「旁白：」是说话人，
+      // 不是下一段 —— 从 0 开始找会把整句台词截成空串（服务端不会这样，mock 要与它同形）。
+      const nextAt = after.slice(1).search(/(台词|字幕|口播|旁白|音效|BGM|背景音乐|特效)[:：]/);
+      const cut = nextAt >= 0 ? nextAt + 1 : -1;
       return { hit: (cut >= 0 ? after.slice(0, cut) : after).trim(), rest: line.slice(0, idx).trim() };
     }
   }
@@ -361,12 +366,15 @@ function mockParsePrompt(prompt: string): ParsedShortPrompt {
   const shots: ParsedShortShot[] = [];
   let universal = "";
   let title = "";
+  let logline = "";
 
   for (const line of lines) {
-    const block = line.match(/^【(标题|角色|场景|全片基调|分镜)】\s*(.*)$/);
+    // 「全片基调」是 v0.197 之前的写法，界面上现在叫「整体画风」，两种都认。
+    const block = line.match(/^【(标题|一句话|角色|场景|全片基调|整体画风|画风|分镜)】\s*(.*)$/);
     if (block) {
       const [, kind, body] = block;
       if (kind === "标题") title = body.slice(0, 20);
+      if (kind === "一句话") logline = body.trim();
       if (kind === "角色" && body) {
         const [name, ...restParts] = body.split(/[:：]/);
         const rest = restParts.join("：");
@@ -380,7 +388,7 @@ function mockParsePrompt(prompt: string): ParsedShortPrompt {
       if (kind === "场景" && body) {
         scenes.push({ name: body.split(/[，,]/)[0].slice(0, 24), visual: body.trim() });
       }
-      if (kind === "全片基调") universal = body.trim();
+      if (kind === "全片基调" || kind === "整体画风" || kind === "画风") universal = body.trim();
       continue;
     }
     const tc = line.match(MOCK_TIMECODE_RE);
@@ -442,7 +450,7 @@ function mockParsePrompt(prompt: string): ParsedShortPrompt {
   }
   return {
     title: title || (shots[0]?.voText || shots[0]?.visual || "未命名短视频").slice(0, 12),
-    logline: shots[0]?.voText ?? "",
+    logline: logline || (shots[0]?.voText ?? ""),
     style: ["电影感", "竖屏短片"],
     universalPrompt: universal,
     characters,
@@ -450,7 +458,7 @@ function mockParsePrompt(prompt: string): ParsedShortPrompt {
     shots,
     shotCount: shots.length,
     totalDurationSec: shots.reduce((a, s) => a + s.durationSec, 0),
-    notes: ["本地样例拆解（USE_MOCK=1）：真实拆解由大模型完成，接上后端后字段会更完整。"],
+    notes: ["演示模式：这是按固定规则拆的样例，不是 AI 拆出来的结果。接上服务后会拆得更完整。"],
   };
 }
 
@@ -495,7 +503,7 @@ export async function listDrafts(): Promise<ShortDraftSummary[]> {
 export async function getDraft(id: string): Promise<ShortDraftDetail> {
   if (USE_MOCK) {
     const d = mockStore.get(id);
-    if (!d) throw new Error("短视频草稿不存在");
+    if (!d) throw new Error(MOCK_NOT_FOUND);
     return mockDelay(d);
   }
   return apiFetch<ShortDraftDetail>(`/me/drama/shorts/${id}`);
@@ -554,9 +562,10 @@ function mockSeedToData(seed: NonNullable<CreateShortInput["seed"]>, clientReque
     chat: [
       {
         who: "ai",
+        // 与服务端 DramaShortPromptService 的开场白逐字一致（server-copy 同步改）。
         text:
-          `已按你的提示词拆成 ${seed.shots?.length ?? 0} 镜，人物和画面设定都在右侧「提示词设定」里。` +
-          "分镜表里的字段都能直接改；想整张表重来，点分镜表右上的「按提示词重拆」。",
+          `已按你的脚本拆成 ${seed.shots?.length ?? 0} 镜，人物和画面设定在「人物与画面设定」卡片里。` +
+          "分镜表里的内容都能直接改；想整张表重来，点分镜表上方的「按原文重拆」。",
       },
     ],
     refs: [],
@@ -645,9 +654,12 @@ export async function saveDraft(
 export async function assembleDraft(id: string): Promise<ShortAssembledMedia> {
   if (USE_MOCK) {
     const detail = mockStore.get(id);
-    if (!detail) throw new Error("短视频草稿不存在");
+    if (!detail) throw new Error(MOCK_NOT_FOUND);
+    // 与服务端 DramaShortAssembleService 同判定：每一镜都要有视频且点过「就用这版」（flow=done）。
     const missing = detail.data.shots.filter((shot) => shot.flow !== "done" || !shot.videoUrl);
-    if (missing.length) throw new Error(`还有 ${missing.length} 个镜头缺少已验收视频`);
+    if (missing.length) {
+      throw new Error(`还有 ${missing.length} 镜的视频没确认：镜 ${missing.map((m) => m.no).join("、")}。点「就用这版」确认后才能合成成片`);
+    }
     const assembled: ShortAssembledMedia = {
       url: detail.data.shots[0]?.videoUrl ?? "/videos/showreel-01.mp4",
       cdnKey: `mock/drama/shorts/${id}/final.mp4`,
@@ -693,7 +705,7 @@ export async function preflightDraft(id: string): Promise<ShortPreflight> {
 export async function prepareAudio(id: string): Promise<PreparedShortAudio> {
   if (USE_MOCK) {
     const detail = mockStore.get(id);
-    if (!detail) throw new Error("短视频草稿不存在");
+    if (!detail) throw new Error(MOCK_NOT_FOUND);
     const prepared = detail.data.shots.filter((shot) => shot.voText?.trim()).map((shot) => {
       const item = { shotId: shot.id, shotNo: shot.no, cdnKey: `mock/audio/${shot.id}.mp3`, url: "/audio/mock.mp3", durationSec: Math.max(1, Math.round(shot.voText.length / 4)), textFingerprint: `mock-${shot.voText}` };
       shot.audio = { cdnKey: item.cdnKey, url: item.url, durationSec: item.durationSec, textFingerprint: item.textFingerprint };

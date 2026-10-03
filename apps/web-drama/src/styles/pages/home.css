@@ -1,0 +1,101 @@
+/* ============================================================
+   pages/home.css —— v0.197 响应式分文件（见 docs/drama-ux-copy-pass.md §5）
+   只放本簇页面自己的样式；全站通用规则写 app.css。
+   新增窄屏规则沿用 app.css 的断点：1024 / 860 / 720 / 560。
+   类名一律带本簇前缀，避免和别的页面撞。
+   本簇：首页 /dashboard（含 ?b= 聊天页）· 我的短剧 /projects · 新建短剧 /projects/new · 回收站 /trash
+   ============================================================ */
+
+/* ---------- 首页 · 「已经想好了？直接开始」三张卡 ---------- */
+.hm-direct { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.hm-direct-card { transition: box-shadow .15s, transform .15s; }
+.hm-direct-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+@media (max-width: 720px) {
+  .hm-direct { grid-template-columns: 1fr; gap: 10px; }
+}
+
+/* ---------- 首页 · 窄屏留白 / 标题 / 模板卡两列 ---------- */
+@media (max-width: 560px) {
+  .hm-hero { padding: 24px 16px 8px !important; }
+  .hm-section { padding-left: 16px !important; padding-right: 16px !important; }
+  .hm-title { font-size: 25px !important; }
+  /* 3:4 的卡单列能占满一屏，两列刚好 */
+  .hm-recs { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .hm-recs-hint { flex-basis: 100%; order: 5; }
+  /* 「继续上次」：按钮另起一行占满，标题不再被挤成竖排 */
+  .hm-continue { flex-wrap: wrap; }
+  .hm-continue-btn { width: 100%; justify-content: center; height: 36px; }
+  /* 近期热点 chip 手指好点 */
+  .hm-hot-chip { height: 32px !important; }
+  .hm-cta-main { flex: 1 1 auto !important; justify-content: center; }
+}
+
+/* ---------- 模板预览弹窗（首页 / 新建短剧共用 preview-modal） ---------- */
+@media (max-width: 560px) {
+  .hm-pv-actions { padding: 12px 14px 14px !important; }
+  .hm-pv-actions > .btn { flex: 1 1 100%; justify-content: center; }
+}
+
+/* ---------- 聊天页（brainstorm-studio）：≤860 一次只显示一栏 ---------- */
+.pane-tabs.hm-bs-pane-tabs { display: none; }
+.hm-bs-chat-cta { display: none; }
+@media (max-width: 1024px) {
+  .hm-bs-chat { width: 320px !important; }
+}
+@media (min-width: 861px) and (max-width: 1024px) {
+  /* 侧栏还在、大纲栏只剩 ~400px：「做成」两个选项占一整行，主按钮换到下一行靠右 */
+  .hm-bs-cta-row { flex-wrap: wrap; }
+  .hm-bs-form-pick { flex-basis: 100% !important; }
+  .hm-bs-cta-main { margin-left: auto; }
+  /* 已去制作的对话：两个按钮一起靠右 */
+  .hm-bs-cta-alt { margin-left: auto; }
+  .hm-bs-cta-alt + .hm-bs-cta-main { margin-left: 0; }
+}
+@media (max-width: 860px) {
+  .hm-bs-topbar { padding: 10px 12px 0 !important; }
+  .pane-tabs.hm-bs-pane-tabs { display: flex; margin: 8px 12px 0; }
+  .hm-bs-studio { padding: 8px 12px 12px !important; gap: 0 !important; }
+  .hm-bs-chat { width: 100% !important; flex: 1 1 auto !important; }
+  .hm-bs-chat-cta { display: block; }
+  .hm-bs-studio[data-pane="chat"] .hm-bs-outline { display: none !important; }
+  .hm-bs-studio[data-pane="outline"] .hm-bs-chat { display: none !important; }
+  .hm-bs-outline-body { padding: 16px !important; }
+  .hm-bs-cta { padding: 12px 14px 14px !important; }
+}
+@media (max-width: 560px) {
+  .hm-bs-outline-sub { display: none; }
+  .hm-bs-cta-row { flex-direction: column; }
+  .hm-bs-cta-main,
+  .hm-bs-cta-alt { width: 100%; justify-content: center; }
+}
+
+/* ---------- 项目卡（project-card）：触屏没有 hover，删除键常显 ---------- */
+.hm-card-del { opacity: 0; }
+.hm-card-wrap:hover .hm-card-del,
+.hm-card-del:focus-visible { opacity: 1; }
+@media (hover: none) {
+  .hm-card-del { opacity: 1; }
+}
+
+/* ---------- 我的短剧 /projects ---------- */
+@media (max-width: 560px) {
+  .hm-proj-continue { flex-wrap: wrap; padding: 14px !important; }
+  .hm-proj-continue-btn { width: 100%; justify-content: center; }
+  .hm-proj-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
+  .hm-proj-new { min-height: 180px !important; }
+}
+
+/* ---------- 新建短剧 /projects/new ---------- */
+@media (max-width: 560px) {
+  .hm-new-back { padding: 12px 16px 0 !important; }
+  .hm-new-hero { padding: 14px 16px 4px !important; }
+  .hm-new-hero h1 { font-size: 25px !important; }
+  .hm-new-body { padding: 12px 16px 0 !important; }
+  .hm-new-actions > .btn-grad { flex: 1 1 auto !important; justify-content: center; }
+}
+
+/* ---------- 回收站 /trash ---------- */
+@media (max-width: 560px) {
+  .hm-trash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
+  .hm-trash-purge { width: 36px !important; height: 36px !important; }
+}

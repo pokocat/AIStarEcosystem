@@ -1,13 +1,14 @@
 "use client";
 
-// 运营侧 · 配方骨架可视化（option 1）。把一条 DramaRecipe 的 payload
+// 运营侧 · 模板结构可视化（option 1）。把一条 DramaRecipe（界面上叫「模板」）的 payload
 // （mainline / beats / characters / hooks / notes）画成时间线 + 角色卡 + 钩子标签，
-// 比纯文字折叠更一目了然。仅运营审核 / 已上架巡检使用 —— 不在创意市场对用户外露 payload。
+// 比纯文字折叠更一目了然。仅运营审核 / 已上架查看使用 —— 不在模板广场对用户外露 payload。
+// v0.197 文案按 docs/drama-ux-copy-pass.md §2：节拍 → 每集看点，主角 → 主要角色。
 import * as React from "react";
 import { GitBranch, ListOrdered, Sparkles, Users } from "lucide-react";
 import type { RecipeData } from "@/api/recipes";
 
-const ROLE_LABEL: Record<string, string> = { key: "主角", extra: "配角" };
+const ROLE_LABEL: Record<string, string> = { key: "主要角色", extra: "配角" };
 
 function Block({ icon, title, count, children }: { icon: React.ReactNode; title: string; count?: number; children: React.ReactNode }) {
   return (
@@ -28,8 +29,8 @@ export function RecipeSkeletonView({ data }: { data: RecipeData }) {
 
   return (
     <div className="col gap-3" style={{ padding: "12px 12px 14px", background: "var(--surface)", borderRadius: 10 }}>
-      {/* 主线模板 */}
-      <Block icon={<GitBranch size={13} />} title="主线模板">
+      {/* 故事主线 */}
+      <Block icon={<GitBranch size={13} />} title="故事主线">
         {mainlineSteps ? (
           <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
             {mainlineSteps.map((s, i) => (
@@ -46,9 +47,9 @@ export function RecipeSkeletonView({ data }: { data: RecipeData }) {
         )}
       </Block>
 
-      {/* 分集节拍时间线 */}
+      {/* 每集看点时间线 */}
       {data.beats.length > 0 && (
-        <Block icon={<ListOrdered size={13} />} title="分集节拍" count={data.beats.length}>
+        <Block icon={<ListOrdered size={13} />} title="每集看点" count={data.beats.length}>
           <div className="col" style={{ position: "relative", paddingLeft: 22 }}>
             <span style={{ position: "absolute", left: 9, top: 6, bottom: 6, width: 2, background: "var(--line-soft)" }} />
             {data.beats.map((b) => (
@@ -73,10 +74,10 @@ export function RecipeSkeletonView({ data }: { data: RecipeData }) {
         </Block>
       )}
 
-      {/* 角色原型卡 */}
+      {/* 角色设定卡 */}
       {data.characters.length > 0 && (
-        <Block icon={<Users size={13} />} title="角色原型" count={data.characters.length}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
+        <Block icon={<Users size={13} />} title="角色设定" count={data.characters.length}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(180px, 100%), 1fr))", gap: 8 }}>
             {data.characters.map((c, i) => (
               <div key={i} className="col gap-1" style={{ padding: "8px 10px", background: "var(--surface-2)", borderRadius: 8 }}>
                 <div className="row gap-1" style={{ alignItems: "center" }}>
@@ -105,10 +106,10 @@ export function RecipeSkeletonView({ data }: { data: RecipeData }) {
         </Block>
       )}
 
-      {/* 套用建议 */}
+      {/* 做同款时注意 */}
       {data.notes?.trim() && (
         <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.6, whiteSpace: "pre-wrap", paddingTop: 2, borderTop: "1px dashed var(--line-soft)" }}>
-          <b>套用建议：</b>{data.notes.trim()}
+          <b>做同款时注意：</b>{data.notes.trim()}
         </div>
       )}
     </div>

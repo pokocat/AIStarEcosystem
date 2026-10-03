@@ -3,6 +3,7 @@ package com.aistareco.aep.service;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.DramaScript;
 import com.aistareco.aep.repository.DramaScriptRepository;
+import com.aistareco.aep.service.ai.ModelJsonRepair;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -74,12 +75,12 @@ public class DramaScriptService {
     public JsonNode getScript(String id, String userId) {
         return repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id, userId)
                 .map(this::toCard)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SCRIPT_NOT_FOUND", "短剧脚本不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SCRIPT_NOT_FOUND", "找不到这份脚本"));
     }
 
     public JsonNode saveScript(JsonNode body, String userId) {
         if (body == null || !body.isObject()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SCRIPT_BODY_REQUIRED", "缺少脚本内容");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SCRIPT_BODY_REQUIRED", "没收到脚本内容，请重试。");
         }
         String id = text(body, "id");
         OffsetDateTime now = OffsetDateTime.now();
@@ -121,7 +122,7 @@ public class DramaScriptService {
         PromptService.ResolvedPrompt prompt = promptService.resolve(AiModelPurpose.DRAMA_SCRIPT_DRAFT);
         if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
-                    "短剧脚本生成还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
+                    "AI 写脚本还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
         if ("code".equals(prompt.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",
@@ -130,7 +131,7 @@ public class DramaScriptService {
 
         String theme = orDefault(text(body, "theme"), "");
         if (theme.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_THEME_REQUIRED", "请先填写短剧主题 / 一句话灵感");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_THEME_REQUIRED", "请先写一句话，说说想拍什么。");
         }
         String genre = orDefault(text(body, "genre"), "都市情感");
         int durationSec = body != null ? body.path("duration_sec").asInt(60) : 60;
@@ -185,18 +186,21 @@ public class DramaScriptService {
             throw e;
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                    "短剧脚本生成调用失败，请稍后重试。");
+                    "AI 服务暂时连不上，稍后再试一次。");
         }
 
         if ("length".equalsIgnoreCase(resp.finishReason())) {
+            // 给运营的处理办法留在日志里（用户改不了 max_tokens）；界面只说用户能做的。
+            log.warn("[drama-script] ai-draft truncated (finish_reason=length) user={} maxTokens={} count={} durationSec={}"
+                    + " —— 运营可在提示词设置中调高 max_tokens", userId, options.get("max_tokens"), count, durationSec);
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_OUTPUT_TRUNCATED",
-                    "脚本输出达到长度上限，请缩短目标时长或减少生成份数后重试；运营也可在提示词设置中调高 max_tokens。");
+                    "内容太长，AI 没写完就停了。把要求写短一点再试。");
         }
 
         List<JsonNode> scripts = parseScripts(resp.content(), genre, durationSec);
         if (scripts.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
-                    "短剧脚本生成返回的内容无法解析，请重试或换个说法。");
+                    "这次写出来的脚本用不了，换个说法或再试一次。");
         }
         log.info("[drama-script] ai-draft ok user={} theme='{}' got={} model={}",
                 userId, preview(theme), scripts.size(), resp.modelUsed());
@@ -209,10 +213,10 @@ public class DramaScriptService {
     public List<JsonNode> generateEpisodes(JsonNode body, String userId) {
         String scriptId = text(body, "script_id");
         if (scriptId == null || scriptId.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SCRIPT_ID_REQUIRED", "请先选择要生成的短剧脚本");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_SCRIPT_ID_REQUIRED", "请先选一份脚本。");
         }
         DramaScript row = repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(scriptId, userId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SCRIPT_NOT_FOUND", "短剧脚本不存在"));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "DRAMA_SCRIPT_NOT_FOUND", "找不到这份脚本"));
         JsonNode script = readScript(row);
         int count = clamp(body != null ? body.path("count").asInt(1) : 1, 1, 5);
         int durationSec = script.path("duration_sec").asInt(row.getDurationSec() > 0 ? row.getDurationSec() : 60);
@@ -241,7 +245,10 @@ public class DramaScriptService {
     }
 
     public List<JsonNode> listEpisodeJobs(String userId, String scriptId) {
-        return videoJobService.listJobs(userId, scriptId, null, MaterialVideoJobService.APP_DRAMA);
+        // 画布（v0.198）的片段视频和短剧同一个分区，但属于另一条独立流水：老工作台的视频列表不显示它们
+        return videoJobService.listJobs(userId, scriptId, null, MaterialVideoJobService.APP_DRAMA).stream()
+                .filter(v -> !DramaCanvasRunService.isCanvasVideoJob(v))
+                .toList();
     }
 
     public JsonNode getEpisodeJob(String id, String userId) {
@@ -386,7 +393,7 @@ public class DramaScriptService {
             // 部分 OpenAI-compatible 模型在 finish_reason=stop 时仍可能漏掉容器闭合符，
             // 例如 {"scripts":[{...}}（少一个 ]）。只补齐可由当前嵌套栈唯一确定的
             // ] / }，不改字段和值；后续仍由 scripts/scenes 结构校验决定是否接受。
-            String repaired = repairUnbalancedJsonClosers(s);
+            String repaired = ModelJsonRepair.repairUnbalancedClosers(s);
             if (repaired != null && !repaired.equals(s)) {
                 try {
                     return om.readTree(repaired);
@@ -408,50 +415,6 @@ public class DramaScriptService {
             }
             return null;
         }
-    }
-
-    /**
-     * 修复 JSON 末尾遗漏的容器闭合符。若遇到无法由嵌套关系唯一解释的闭合符，直接拒绝修复。
-     */
-    private static String repairUnbalancedJsonClosers(String json) {
-        StringBuilder repaired = new StringBuilder(json.length() + 8);
-        List<Character> stack = new ArrayList<>();
-        boolean inString = false;
-        boolean escaped = false;
-
-        for (int i = 0; i < json.length(); i++) {
-            char ch = json.charAt(i);
-            repaired.append(ch);
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (ch == '\\') {
-                    escaped = true;
-                } else if (ch == '"') {
-                    inString = false;
-                }
-                continue;
-            }
-            if (ch == '"') {
-                inString = true;
-            } else if (ch == '{' || ch == '[') {
-                stack.add(ch);
-            } else if (ch == '}' || ch == ']') {
-                char expectedOpen = ch == '}' ? '{' : '[';
-                int matchingIndex = stack.lastIndexOf(expectedOpen);
-                if (matchingIndex < 0) return null;
-                while (stack.size() - 1 > matchingIndex) {
-                    char missingOpen = stack.remove(stack.size() - 1);
-                    repaired.insert(repaired.length() - 1, missingOpen == '{' ? '}' : ']');
-                }
-                stack.remove(stack.size() - 1);
-            }
-        }
-        if (inString) return null;
-        for (int i = stack.size() - 1; i >= 0; i--) {
-            repaired.append(stack.get(i) == '{' ? '}' : ']');
-        }
-        return repaired.toString();
     }
 
     private JsonNode readScript(DramaScript row) {

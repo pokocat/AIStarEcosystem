@@ -43,6 +43,20 @@ public class DramaConfigController {
         prices.put("shotRewrite", configs.getLong(DramaConfigSeeder.KEY_SHOT_REWRITE, 2));
         prices.put("shortEntry", configs.getLong(DramaConfigSeeder.KEY_SHORT_ENTRY, 10));
         prices.put("clip", configs.getLong(DramaConfigSeeder.KEY_CLIP, 30));
+        // 互动剧 AI 起草分支图：确认框要报的就是 DramaProjectService 实际冻结的那个数（同 key、同默认值）。
+        prices.put("interactiveDraft", configs.getLong(DramaConfigSeeder.KEY_INTERACTIVE_DRAFT,
+                DramaConfigSeeder.DEFAULT_INTERACTIVE_DRAFT));
+        // v0.198 画布：报价与运行记录服务冻结的是同一个 key、同一个默认值（常量都在 DramaConfigSeeder）。
+        prices.put("canvasScriptSetting", configs.getLong(DramaConfigSeeder.KEY_CANVAS_SCRIPT_SETTING,
+                DramaConfigSeeder.DEFAULT_CANVAS_SCRIPT_SETTING));
+        prices.put("canvasScriptOutline", configs.getLong(DramaConfigSeeder.KEY_CANVAS_SCRIPT_OUTLINE,
+                DramaConfigSeeder.DEFAULT_CANVAS_SCRIPT_OUTLINE));
+        prices.put("canvasScriptEpisode", configs.getLong(DramaConfigSeeder.KEY_CANVAS_SCRIPT_EPISODE,
+                DramaConfigSeeder.DEFAULT_CANVAS_SCRIPT_EPISODE));
+        prices.put("canvasExtract", configs.getLong(DramaConfigSeeder.KEY_CANVAS_EXTRACT,
+                DramaConfigSeeder.DEFAULT_CANVAS_EXTRACT));
+        prices.put("canvasStoryboard", configs.getLong(DramaConfigSeeder.KEY_CANVAS_STORYBOARD,
+                DramaConfigSeeder.DEFAULT_CANVAS_STORYBOARD));
         return ApiResponse.of(out);
     }
 }

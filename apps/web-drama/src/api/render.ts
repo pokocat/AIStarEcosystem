@@ -21,7 +21,7 @@ export interface RenderedFrame {
  * 消费方（如 shorts/make 的 isPollTimeout）用它做**全等**比较区分「超时」与「真实失败」，
  * 避免上游真实失败文案里恰好含「超时」被子串匹配误判。frame / clip 两条轮询超时路径共用此常量。
  */
-export const POLL_TIMEOUT_MESSAGE = "生成仍在后台进行，请稍后回到本页或任务列表查看";
+export const POLL_TIMEOUT_MESSAGE = "还在生成，稍后回到这页，或者在「后台生成」里看进度";
 
 // C-1（一致性引擎）：一次渲染实际生效 / 被过滤的参考清单，供「参考 N/M 生效」回报。
 export type AppliedRefReason = "local_unfetchable" | "model_no_flf" | "model_no_image_input" | "over_max_refs" | "empty";
@@ -50,6 +50,8 @@ export interface EndpointCapability {
   supportsSubjectReference?: boolean | null;
   /** 单条视频最大时长（秒）；null=未知。 */
   maxDurationSec?: number | null;
+  /** 单条视频最短时长（秒）；null=未知（按 1 算）。如聚算 H3 一条 5–15 秒。 */
+  minDurationSec?: number | null;
 }
 
 export interface RenderModelOption {
@@ -220,6 +222,11 @@ export interface DramaRenderTask {
   thumbnail_url?: string | null;
   /** v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考。 */
   last_frame_url?: string | null;
+  /**
+   * 视频任务：服务端把 MaterialVideoJob 的原始卡片挂在这里（DramaFrameJobService.toVideoTask）。
+   * 列表里的 last_frame_url 目前只在这一层，顶层没有 —— 读末帧用 epscript-recovery 的 lastFrameOf。
+   */
+  source?: { last_frame_url?: string | null } | null;
   duration_sec?: number;
   error_message?: string | null;
   created_at?: string;
@@ -327,7 +334,7 @@ export async function submitFrameJob(input: RenderFrameInput): Promise<DramaFram
       id,
       task_type: "frame",
       kind: input.kind ?? "shot",
-      name: input.name ?? "首帧渲染",
+      name: input.name ?? "首帧",
       status: "queued",
       progress_pct: 0,
       stage: "排队中",
@@ -366,7 +373,7 @@ export async function submitFrameJob(input: RenderFrameInput): Promise<DramaFram
 export async function getFrameJob(id: string): Promise<DramaFrameJob> {
   if (USE_MOCK) {
     const job = mockFrameJobs.get(id);
-    if (!job) throw new Error("首帧任务不存在");
+    if (!job) throw new Error("找不到这个首帧任务");
     return mockDelay(mockReadyFrameJob(job));
   }
   return apiFetch<DramaFrameJob>(`/me/drama/render/frame-jobs/${encodeURIComponent(id)}`);
@@ -404,7 +411,7 @@ export async function renderClip(input: RenderClipInput): Promise<DramaEpisodeJo
         id: `mvj_mock_${Date.now()}`,
         script_id: input.projectId ?? "mock",
         kind: "drama-shot",
-        name: input.name ?? "短剧分镜",
+        name: input.name ?? "分镜视频",
         status: "ready",
         video_url: "/videos/showreel-01.mp4",
         progress_pct: 100,
@@ -453,21 +460,27 @@ export async function listRenderTasks(projectId?: string): Promise<RenderTaskSna
   });
 }
 
+/** 查一次视频任务（单任务查询，末帧在顶层 last_frame_url）。轮询和「列表里找不到了再单查」都走它。 */
+export async function getClipJob(jobId: string): Promise<DramaEpisodeJob> {
+  if (USE_MOCK) {
+    return mockDelay({
+      id: jobId, script_id: "mock", kind: "drama-shot", name: "分镜视频",
+      status: "ready", video_url: "/videos/showreel-01.mp4", progress_pct: 100,
+    });
+  }
+  return apiFetch<DramaEpisodeJob>(`/me/drama/episodes/jobs/${encodeURIComponent(jobId)}`);
+}
+
 /** 轮询视频任务直到终态或超时。onTick 可用于刷新进度。 */
 export async function pollClipJob(
   jobId: string,
   opts?: { intervalMs?: number; timeoutMs?: number; onTick?: (job: DramaEpisodeJob) => void },
 ): Promise<DramaEpisodeJob> {
-  if (USE_MOCK) {
-    return mockDelay({
-      id: jobId, script_id: "mock", kind: "drama-shot", name: "短剧分镜",
-      status: "ready", video_url: "/videos/showreel-01.mp4", progress_pct: 100,
-    });
-  }
+  if (USE_MOCK) return getClipJob(jobId);
   const interval = opts?.intervalMs ?? 2500;
   const deadline = Date.now() + (opts?.timeoutMs ?? 300_000);
   for (;;) {
-    const job = await apiFetch<DramaEpisodeJob>(`/me/drama/episodes/jobs/${encodeURIComponent(jobId)}`);
+    const job = await getClipJob(jobId);
     opts?.onTick?.(job);
     if (job.status === "ready" || job.status === "failed") return job;
     if (Date.now() > deadline) return { ...job, status: "failed", error_message: POLL_TIMEOUT_MESSAGE };

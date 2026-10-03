@@ -52,21 +52,40 @@ function merge(w: CatalogWire | Partial<CatalogWire>): DramaCatalog {
   };
 }
 
+/** 进程内缓存：进行中或已成功的那次读取。缓存的是「原样」结果 —— 失败时它是 reject 的，
+ *  回落默认值在 getCatalog 里按调用方要求再做，这样严格读和普通读可以共用同一次请求。 */
 let cache: Promise<DramaCatalog> | null = null;
 
-export function getCatalog(): Promise<DramaCatalog> {
+function loadCatalog(): Promise<DramaCatalog> {
   if (!cache) {
     const source = USE_MOCK
       ? mockDelay<Partial<CatalogWire>>({}, 60)
       : apiFetch<CatalogWire>("/me/drama/catalog");
-    cache = source
-      .then(merge)
-      .catch(() => {
-        cache = null; // 失败不缓存，下次重试
-        return CATALOG_DEFAULTS; // 拉取失败回退默认，不阻塞页面
-      });
+    const p = source.then(merge);
+    cache = p;
+    // 失败不缓存，下次重试（只清自己：期间被 invalidateCatalog 换成新请求的，不去动它）。
+    p.catch(() => {
+      if (cache === p) cache = null;
+    });
   }
   return cache;
+}
+
+export interface GetCatalogOptions {
+  /**
+   * 严格读：读失败直接抛原始错误，不回落 CATALOG_DEFAULTS。
+   * 要把读到的内容再写回去的页面（运营「热点与推荐」）必须用它 —— 否则读失败时编辑区里是默认值，
+   * 一点发布就把线上内容盖成默认。只是展示的页面用默认读法（失败回落默认，不阻塞页面）。
+   *
+   * 注意「后端某项没配（wire 里是 null）」不算读失败：那一项线上用的本来就是默认值，严格读也照样补上。
+   */
+  strict?: boolean;
+}
+
+export function getCatalog(opts?: GetCatalogOptions): Promise<DramaCatalog> {
+  const p = loadCatalog();
+  if (opts?.strict) return p;
+  return p.catch(() => CATALOG_DEFAULTS); // 拉取失败回退默认，不阻塞页面
 }
 
 export function invalidateCatalog(): void {

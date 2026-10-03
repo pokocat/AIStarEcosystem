@@ -22,6 +22,7 @@ class DramaScriptServiceTest {
 
     private AiModelInvocationService invocation;
     private PromptService promptService;
+    private MaterialVideoJobService videoJobs;
     private DramaScriptService service;
 
     @BeforeEach
@@ -30,8 +31,19 @@ class DramaScriptServiceTest {
         promptService = mock(PromptService.class);
         service = new DramaScriptService(
                 mock(DramaScriptRepository.class), invocation, promptService,
-                mock(MaterialVideoJobService.class), new DramaShortContinuityService(OM), OM);
+                videoJobs = mock(MaterialVideoJobService.class), new DramaShortContinuityService(OM), OM);
         when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+    }
+
+    /** v0.198：画布的片段视频和短剧同一个分区，但老工作台的视频列表不显示它们。 */
+    @Test
+    void listEpisodeJobs_excludesCanvasVideos() {
+        when(videoJobs.listJobs("u1", null, null, MaterialVideoJobService.APP_DRAMA)).thenReturn(java.util.List.of(
+                OM.createObjectNode().put("id", "mvj_ep").put("kind", "drama-episode"),
+                OM.createObjectNode().put("id", "mvj_canvas").put("kind", DramaCanvasRunService.VIDEO_JOB_KIND)));
+        var jobs = service.listEpisodeJobs("u1", null);
+        assertEquals(1, jobs.size());
+        assertEquals("mvj_ep", jobs.get(0).path("id").asText());
     }
 
     @Test
@@ -72,8 +84,10 @@ class DramaScriptServiceTest {
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> service.aiDraft(OM.createObjectNode().put("theme", "喵影江湖"), "u1"));
 
+        // 断错误码与状态（§8.0.1 ⑩）：前端按 code 判定「写太长被截断」，文案会随改版变。
         assertEquals("AI_OUTPUT_TRUNCATED", ex.getCode());
-        assertTrue(ex.getMessage().contains("长度上限"));
+        assertEquals(org.springframework.http.HttpStatus.BAD_GATEWAY, ex.getStatus());
+        assertFalse(ex.getMessage().isBlank(), "截断必须给用户一句能看懂的说明，不能是空消息");
     }
 
     @Test

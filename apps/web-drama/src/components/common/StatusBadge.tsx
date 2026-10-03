@@ -44,6 +44,8 @@ export function StatusBadge({ tone = "neutral", dot = true, children }: Props) {
         fontWeight: 500,
         fontFamily: "var(--font-sans)",
         letterSpacing: 0.2,
+        whiteSpace: "nowrap",
+        flex: "none",
       }}
     >
       {dot && (
@@ -54,6 +56,7 @@ export function StatusBadge({ tone = "neutral", dot = true, children }: Props) {
             borderRadius: "50%",
             background: t.fg,
             opacity: 0.85,
+            flex: "none",
           }}
         />
       )}

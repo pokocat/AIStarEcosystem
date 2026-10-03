@@ -1,22 +1,23 @@
 "use client";
 
 // 阶段顶部标题区 — 设计真源:components.jsx `StageHeader`。
+// v0.197：去掉「阶段 N」标签 —— 合成成片页写「阶段 5」、页签却是「2 合成成片」，两个编号对不上。
 import * as React from "react";
 
 interface StageHeaderProps {
-  no: number;
+  /** @deprecated v0.197 起不再显示阶段序号，保留参数只为不改调用方。 */
+  no?: number;
   scope: "项目" | "剧集";
   title: React.ReactNode;
   desc?: React.ReactNode;
   right?: React.ReactNode;
 }
 
-export function StageHeader({ no, scope, title, desc, right }: StageHeaderProps) {
+export function StageHeader({ scope, title, desc, right }: StageHeaderProps) {
   return (
-    <div className="row" style={{ marginBottom: 20, gap: 14, alignItems: "flex-start" }}>
-      <div>
+    <div className="row wb-stage-header" style={{ marginBottom: 20, gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ minWidth: 0, flex: "1 1 260px" }}>
         <div className="row gap-2" style={{ marginBottom: 5 }}>
-          <span className="tag tag-gray num">阶段 {no}</span>
           <span
             className="tag"
             style={{
@@ -24,7 +25,7 @@ export function StageHeader({ no, scope, title, desc, right }: StageHeaderProps)
               color: scope === "项目" ? "var(--accent)" : "var(--accent-2)",
             }}
           >
-            {scope === "项目" ? "跨集共享" : "当前剧集"}
+            {scope === "项目" ? "所有集通用" : "这一集"}
           </span>
         </div>
         <h1
@@ -43,7 +44,6 @@ export function StageHeader({ no, scope, title, desc, right }: StageHeaderProps)
           </div>
         )}
       </div>
-      <div className="grow" />
       {right}
     </div>
   );

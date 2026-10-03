@@ -1,7 +1,8 @@
 "use client";
 
-// 快速开剧弹窗 — 设计真源 v4 screens-home-v3.jsx `QuickCreateModal3`:
-// 左挑模板(封面 + 一句话描述),右看效果与估时大纲(统一预览组件),满意直接开拍。
+// 快速新建弹窗 — 设计真源 v4 screens-home-v3.jsx `QuickCreateModal3`:
+// 左挑热门结构(封面 + 一句话描述),右看效果与节奏预估(统一预览组件),满意直接新建。
+// v0.197：目前没有任何页面挂它（新建短剧走 /projects/new）；文案先按术语表改好，免得重新挂上时带回旧叫法。
 import * as React from "react";
 import { ArrowRight, Check, Wand2, X, Zap } from "lucide-react";
 import { ModalShell } from "@/components/common/ModalShell";
@@ -34,7 +35,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
   return (
     <ModalShell
       onClose={onClose}
-      label="快速开剧 · 套用精选模板"
+      label="快速新建短剧"
       className="card pop-in col"
       style={{ width: 940, maxWidth: "96vw", maxHeight: "90vh", padding: 0, overflow: "hidden", boxShadow: "var(--shadow-lg)" }}
     >
@@ -43,8 +44,8 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
             <Zap size={20} fill="currentColor" strokeWidth={0} />
           </div>
           <div className="grow">
-            <div style={{ fontWeight: 800, fontSize: 17 }}>快速开剧 · 套用精选模板</div>
-            <div className="faint" style={{ fontSize: 12 }}>左侧选择模板,右侧预览效果与时长大纲,确认后即可开拍</div>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>快速新建短剧</div>
+            <div className="faint" style={{ fontSize: 12 }}>选一个热门结构，看看效果和分集安排，满意就新建</div>
           </div>
           <button type="button" className="btn btn-icon btn-ghost btn-sm" onClick={onClose}>
             <X size={18} />
@@ -63,7 +64,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
                     key={t.key}
                     type="button"
                     className={"chip" + (on ? " on" : "")}
-                    title={has ? t.desc : "该类型模板整理中"}
+                    title={has ? t.desc : "这个类型的结构还在整理"}
                     disabled={!has}
                     style={{ opacity: has ? 1 : 0.42, cursor: has ? "pointer" : "not-allowed" }}
                     onClick={() => {
@@ -74,13 +75,13 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
                     }}
                   >
                     {t.name}
-                    {!has && " ·即将上线"}
+                    {!has && "（即将上线）"}
                   </button>
                 );
               })}
             </div>
             <div className="faint" style={{ fontSize: 12, fontWeight: 700 }}>
-              「{typeName}」的成熟剧情结构 · 均经过验证
+              「{typeName}」常用的剧情结构
             </div>
             <div className="col gap-2">
               {list.map((tp) => {
@@ -100,7 +101,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
                     <div className="grow col" style={{ minWidth: 0, gap: 4, padding: "2px 0" }}>
                       <div className="row gap-2">
                         <span style={{ fontWeight: 800, fontSize: 14 }}>{tp.name}</span>
-                        <span className="faint num" style={{ fontSize: 11.5 }}>{tp.eps > 1 ? `${tp.eps} 集` : "单集"}</span>
+                        <span className="faint num" style={{ fontSize: 11.5 }}>{tp.eps > 1 ? `${tp.eps} 集` : "单条"}</span>
                         {on && (
                           <span className="tag tag-accent" style={{ marginLeft: "auto" }}>
                             <Check size={11} /> 已选
@@ -139,7 +140,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
               title={cur.name}
               desc={meta.desc}
               tpl={cur}
-              coverLabel="模板效果预览 · 同结构成片片段"
+              coverLabel={undefined}
             />
           </div>
         </div>
@@ -151,7 +152,7 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
           <input
             value={idea}
             onChange={(e) => setIdea(e.target.value)}
-            placeholder="你的特色（选填）,例如:把女主职业换成法医、故事放在 90 年代小城…"
+            placeholder="想改哪里写在这里（选填），比如：女主换成法医、故事放在 90 年代小城"
             style={{
               height: 42,
               border: "1.5px solid var(--line)",
@@ -172,12 +173,12 @@ export function QuickCreateModal({ onClose, onCreate, onGuided }: QuickCreateMod
                 onGuided();
               }}
             >
-              <Wand2 size={13} /> 想从零创作?试试 AI 引导式 <ArrowRight size={13} />
+              <Wand2 size={13} /> 还没想清楚？先和 AI 聊聊 <ArrowRight size={13} />
             </button>
             <span className="grow" />
-            <span className="faint" style={{ fontSize: 11, alignSelf: "center", whiteSpace: "nowrap" }}>立项免费 · 后续生成按量计费</span>
+            <span className="faint" style={{ fontSize: 11, alignSelf: "center", whiteSpace: "nowrap" }}>新建不花积分，之后生成按次扣积分</span>
             <button type="button" className="btn btn-grad" onClick={() => onCreate({ type, template: tpl, idea })}>
-              <Zap size={16} /> 立即开剧
+              <Zap size={16} /> 新建短剧
             </button>
           </div>
         </div>

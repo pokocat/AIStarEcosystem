@@ -8,10 +8,12 @@
 @import './tokens.css';
 
 @layer base {
+  /* v0.197：不再给 html / body 写 height:100%。之前 html、body 都是 height:100% + overflow-x:hidden，
+     body 就变成了一个只有一屏高的滚动容器：落地页在 body 里滚、窗口本身不滚（iOS 地址栏不收起、
+     点状态栏回不到顶、整页截图只有一屏）。工作台页面用 .ws-shell 的 100dvh 自己管滚动，不依赖这里。 */
   html,
   body {
     min-height: 100vh;
-    height: 100%;
     margin: 0;
   }
   body {
@@ -97,18 +99,25 @@
 }
 .btn:active { transform: translateY(1px) scale(.99); }
 .btn:disabled { cursor: not-allowed; opacity: .5; }
+/* 在途（CreditButton 读配置 / 等确认 / 等动作结束期间）：看着和禁用一样，点了不算。
+   不用原生 disabled 是为了确认框关掉后焦点还能回到这个按钮上。 */
+.btn[aria-busy="true"] { cursor: progress; opacity: .5; }
+.btn[aria-busy="true"]:active { transform: none; }
 .btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-accent); }
-.btn-primary:hover:not(:disabled) { background: color-mix(in oklch, var(--accent) 90%, #000); }
+.btn-primary:hover:not(:disabled):not([aria-busy="true"]) { background: color-mix(in oklch, var(--accent) 90%, #000); }
 .btn-grad    { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: var(--shadow-accent); }
-.btn-grad:hover:not(:disabled) { filter: brightness(1.04); }
+.btn-grad:hover:not(:disabled):not([aria-busy="true"]) { filter: brightness(1.04); }
 /* 次级按钮文字用 --ink-2（暖灰），与 chip 一致 —— 明亮创意风，避免次级动作上近黑文字的「管理系统灰沉感」；hover 收深为 --ink 给反馈。 */
 .btn-ghost   { background: var(--surface-2); color: var(--ink-2); }
-.btn-ghost:hover:not(:disabled) { background: color-mix(in oklch, var(--surface-2) 80%, var(--accent) 8%); color: var(--ink); }
+.btn-ghost:hover:not(:disabled):not([aria-busy="true"]) { background: color-mix(in oklch, var(--surface-2) 80%, var(--accent) 8%); color: var(--ink); }
 .btn-line    { background: var(--surface); color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--line); }
-.btn-line:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
+.btn-line:hover:not(:disabled):not([aria-busy="true"]) { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
 .btn-sm   { height: 32px; padding: 0 13px; font-size: 13px; }
-.btn-icon { width: 40px; padding: 0; justify-content: center; }
+.btn-icon { width: 40px; padding: 0; justify-content: center; flex: none; }
 .btn-icon.btn-sm { width: 32px; }
+/* v0.197：按钮 / chip / tag 里的图标不许被压没。它们是 inline-flex，svg 默认 flex-shrink:1，
+   再加上全局 svg{max-width:100%}，一行空间紧一点图标就被压成 0 宽（/shorts 页头实测所有宽度都是 0）。 */
+.btn > svg, .chip > svg, .tag > svg { flex-shrink: 0; }
 
 /* ============================================================
    标签 / chip
@@ -121,10 +130,16 @@
   border: none; cursor: pointer;
   transition: background .15s, color .15s;
 }
-.chip:hover { background: var(--accent-soft); color: var(--accent); }
+/* hover 不给禁用 / 在途的 chip。条件包在 :where() 里 —— 它不加优先级，
+   .chip.on / .chip.static:hover 这些原本压得住 hover 的规则照旧压得住。 */
+.chip:hover:where(:not(:disabled):not([aria-busy="true"])) { background: var(--accent-soft); color: var(--accent); }
 .chip.on    { background: var(--accent); color: #fff; }
 .chip.static { cursor: default; }
 .chip.static:hover { background: var(--surface-2); color: var(--ink-2); }
+/* chip 当按钮用时的禁用 / 在途（如分镜「AI 改写」的快捷项就是 chip 样式的 CreditButton）：和 .btn 一个样子。
+   行内写了 opacity 的（如新建弹窗里还没整理好的类型）以行内为准。 */
+.chip:disabled { cursor: not-allowed; opacity: .5; }
+.chip[aria-busy="true"] { cursor: progress; opacity: .5; }
 
 .tag {
   display: inline-flex; align-items: center; gap: 5px;
@@ -170,7 +185,18 @@
   background: color-mix(in oklch, var(--ink) 38%, transparent);
   backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   display: grid; place-items: center;
+  /* 单列轨道限定在遮罩内容区里：否则隐式 auto 轨道会按弹窗的 width（如 420px）撑开，
+     max-width:100% 算的是被撑开的轨道，窄屏上弹窗照样冲出屏幕右边 */
+  grid-template-columns: minmax(0, 1fr);
   animation: drama-fade-up .2s ease both; padding: 24px;
+}
+/* v0.197：手机上弹窗贴边 / 被裁。弹窗普遍写 maxWidth:94vw，而 .overlay 还有 24px 内边距，
+   375 宽下 94vw=352 比可用的 327 还宽。窄屏把内边距收到 12px，弹窗最宽就是遮罩的内容区。
+   （≤640 时所有弹窗本来就该占满可用宽度，!important 不会把桌面上的定宽弹窗撑大。） */
+@media (max-width: 640px) {
+  .overlay { padding: 12px; }
+  .overlay > [role="dialog"],
+  .overlay > .card { max-width: 100% !important; }
 }
 
 /* ============================================================
@@ -206,8 +232,23 @@
 /* ============================================================
    防横滚 + 媒体兜底
    ============================================================ */
-html, body { overflow-x: hidden; }
+/* html 用 hidden（传给视口），body 用 clip（不会让 body 自己变成滚动容器，见上方 @layer base 的说明）。 */
+html { overflow-x: hidden; }
+body { overflow-x: clip; }
 img, video, canvas, svg { max-width: 100%; }
+
+/* ============================================================
+   v0.197 全站通用的小规则（各页面直接用类名，不要再各写一套）
+   ============================================================ */
+/* 只在鼠标悬停时出现的按钮（卡片右上角的删除键等）：给它加 .hover-reveal。
+   触屏设备没有 hover，这类按钮一律常显，否则手机上根本点不到。 */
+@media (hover: none) {
+  .hover-reveal { opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; }
+}
+/* 手机上的最小点击区：给小图标按钮加 .tap-target，≤720 时至少 32×32。 */
+@media (max-width: 720px) {
+  .tap-target { min-width: 32px; min-height: 32px; }
+}
 
 /* ============================================================
    工作台 shell（侧栏 + 顶栏 + 内容；保旧选择器可用）
@@ -245,12 +286,35 @@ img, video, canvas, svg { max-width: 100%; }
 }
 @keyframes drawerIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 
-/* ---------- ≤1024：平板，4 列降 2 列 ---------- */
+/* ---------- 顶栏（通用外壳） ---------- */
+.ws-topbar-crumb { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.ws-topbar-crumb > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ws-topbar-crumb a { color: inherit; text-decoration: none; flex: none; }
+.ws-topbar-crumb a:hover { color: var(--accent); }
+.ws-topbar-search-icon { display: none !important; }
+.ws-topbar-tasks { display: none !important; }
+.ws-topbar-balance { flex: none; }
+
+/* ---------- 公共页头 ViewHeader（components/common/ViewHeader.tsx） ----------
+   标题块可伸缩（flex:1 1 260px + min-width:0），按钮组放不下就另起一行 ——
+   之前不换行，375 宽下右侧按钮把标题挤成一列竖字、按钮被推出屏幕。 */
+.view-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; column-gap: 24px; row-gap: 14px; }
+.view-header-main { flex: 1 1 260px; min-width: 0; }
+.view-header-action { display: flex; flex-wrap: wrap; gap: 10px; flex: none; max-width: 100%; }
+.section-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.section-header > :first-child { min-width: 0; }
+
+/* ---------- ≤1024：平板，4 列降 2 列；顶栏搜索收成图标 ---------- */
 @media (min-width: 721px) and (max-width: 1024px) {
-  .ws-content [style*="repeat(4"],
-  .public-page [style*="repeat(4"] {
+  .ws-content [style*="repeat(4"]:not(.keep-cols),
+  .public-page [style*="repeat(4"]:not(.keep-cols) {
     grid-template-columns: repeat(2, 1fr) !important;
   }
+}
+@media (max-width: 1024px) {
+  /* 侧栏还在时（861–1024）内容区只剩 ~780px：280px 的搜索框会把余额和退出按钮挤没（实测退出按钮被压成 1px）。 */
+  .ws-topbar-search { display: none !important; }
+  .ws-topbar-search-icon { display: inline-flex !important; }
 }
 
 /* ---------- ≤860：收起侧栏，启用汉堡抽屉 ---------- */
@@ -259,24 +323,30 @@ img, video, canvas, svg { max-width: 100%; }
   .ws-sidebar-wrap { display: none; }
   .ws-hamburger { display: inline-flex; }
   .ws-topbar { padding: 12px 16px !important; gap: 10px !important; }
-  .ws-topbar-search { display: none !important; }
+  /* 后台生成面板在侧栏里，手机上看不到 → 顶栏给一个小入口 */
+  .ws-topbar-tasks { display: inline-flex !important; }
   .ws-content { padding: 18px 16px; }
 }
 
-/* ---------- ≤720：多列栅格折单列 ---------- */
+/* ---------- ≤720：多列栅格折单列 ----------
+   这批规则按内联 style 字符串匹配，会误伤用 grid 画的表格行（发布记录、数据表）。
+   新代码用 class 写栅格，不要写内联 grid 字符串；确实要保留多列的，给元素加 .keep-cols 退出。 */
 @media (max-width: 720px) {
-  .ws-content [style*="repeat(2"],
-  .ws-content [style*="repeat(3"],
-  .ws-content [style*="repeat(4"],
-  .ws-content [style*="fr 1fr"],
-  .ws-content [style*="fr 2fr"],
-  .ws-content [style*="1fr 1."],
-  .ws-content [style*="px 1fr"],
-  .public-page [style*="repeat(2"],
-  .public-page [style*="repeat(3"],
-  .public-page [style*="repeat(4"],
-  .public-page [style*="fr 1fr"] {
+  .ws-content [style*="repeat(2"]:not(.keep-cols),
+  .ws-content [style*="repeat(3"]:not(.keep-cols),
+  .ws-content [style*="fr 1fr"]:not(.keep-cols),
+  .ws-content [style*="fr 2fr"]:not(.keep-cols),
+  .ws-content [style*="1fr 1."]:not(.keep-cols),
+  .ws-content [style*="px 1fr"]:not(.keep-cols),
+  .public-page [style*="repeat(2"]:not(.keep-cols),
+  .public-page [style*="repeat(3"]:not(.keep-cols),
+  .public-page [style*="fr 1fr"]:not(.keep-cols) {
     grid-template-columns: 1fr !important;
+  }
+  /* 4 列的 KPI 折成 2 列，不折成 1 列（1 列时四张数字卡就占满首屏，列表被挤到下面） */
+  .ws-content [style*="repeat(4"]:not(.keep-cols),
+  .public-page [style*="repeat(4"]:not(.keep-cols) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
 
@@ -285,6 +355,10 @@ img, video, canvas, svg { max-width: 100%; }
   .ws-btn-label { display: none; }
   .ws-topbar-sub { display: none; }
   .ws-content-badge { display: none !important; }
+  .ws-topbar-search-icon { display: none !important; }
+  .view-header { align-items: flex-start; }
+  .view-header h1 { font-size: 28px !important; }
+  .view-header-action { flex: 1 1 100%; }
 }
 
 /* ---------- v4:首页背景动效(reduced-motion 下自动静止) ---------- */
@@ -374,3 +448,108 @@ img, video, canvas, svg { max-width: 100%; }
   transition: color .15s, border-color .15s;
 }
 [data-sonner-toast] [data-close-button]:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* ============================================================
+   落地页（app/page.tsx）
+   ============================================================ */
+.landing-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
+.landing-head nav { display: flex; align-items: center; gap: 10px; flex: none; }
+.landing-logo { height: 40px; width: auto; display: block; }
+.landing-hero-title .keep-line { white-space: nowrap; }
+.landing-foot a { display: inline-block; padding: 8px 4px; color: var(--fg-2); }
+.landing-foot a:hover { color: var(--accent); }
+@media (max-width: 560px) {
+  .landing-contact { display: none !important; }
+  .landing-logo { height: 32px; }
+}
+
+/* ============================================================
+   后台生成面板（components/drama-workshop/render-task-dock.tsx）
+   侧栏 / 阶段轨里是一块可展开的卡片；≤860 顶栏另有一个小入口，点开是底部弹层。
+   ============================================================ */
+.render-task-dock { width: 100%; color: var(--ink); }
+.render-task-head,
+.render-task-panel {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.render-task-head {
+  width: 100%; height: 44px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 12px; border-radius: 12px; cursor: pointer; color: var(--ink);
+}
+.render-task-icon {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center; flex: none;
+  color: var(--accent); background: var(--accent-soft);
+}
+.render-task-title {
+  min-width: 0; flex: 1;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  font-size: 12.5px; font-weight: 800;
+}
+.render-task-title span { color: var(--ink-3); font-size: 10.5px; font-weight: 600; }
+.render-task-panel { margin-bottom: 8px; border-radius: 14px; overflow: hidden; }
+.render-task-sheet .render-task-panel { margin-bottom: 0; box-shadow: none; border: none; border-radius: 0; }
+.render-task-meter { padding: 12px; border-bottom: 1px solid var(--line-soft); }
+.render-task-meter-top,
+.render-task-lanes {
+  display: flex; justify-content: space-between; gap: 10px;
+  color: var(--ink-3); font-size: 11px; font-weight: 700;
+}
+.render-task-meter-top { color: var(--ink); font-size: 12px; margin-bottom: 8px; }
+/* 全平台排队：和上面「自己的」分开一块，字更淡 */
+.render-task-platform { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); background: var(--surface-2); }
+.render-task-platform-top {
+  display: flex; justify-content: space-between; gap: 10px;
+  color: var(--ink-2); font-size: 11px; font-weight: 700;
+}
+.render-task-note { margin-top: 4px; color: var(--ink-3); font-size: 10.5px; line-height: 1.5; }
+.render-task-list { max-height: 260px; overflow: auto; padding: 6px; }
+.render-task-row { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 10px; }
+.render-task-row + .render-task-row { margin-top: 2px; }
+.render-task-row:hover { background: var(--surface-2); }
+.render-task-state {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center; flex: none;
+  color: var(--accent); background: var(--accent-soft);
+}
+.render-task-state.state-failed { color: oklch(0.58 0.17 28); background: oklch(0.95 0.035 28); }
+.render-task-state.state-ready { color: oklch(0.48 0.12 150); background: oklch(0.94 0.035 150); }
+.render-task-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.render-task-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 800; }
+.render-task-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 11px; }
+.render-task-copy span.render-task-err { color: oklch(0.58 0.17 28); white-space: normal; }
+.render-task-pct { color: var(--ink-3); font-size: 11px; font-weight: 800; flex: none; }
+.render-task-spin { animation: drama-spin 0.8s linear infinite; }
+/* 顶栏小入口（≤860 才显示，见上方 .ws-topbar-tasks） */
+.render-task-pill {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  height: 32px; padding: 0 12px; border-radius: 999px; border: none;
+  background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.render-task-pill b { font-family: var(--font-num); color: var(--accent); }
+.render-task-pill > svg { flex-shrink: 0; }
+.render-task-sheet {
+  align-self: end; width: 100%; max-width: 480px; justify-self: center;
+  max-height: 80dvh; overflow: auto;
+  background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-lg);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.render-task-sheet-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 14px 10px 16px; font-weight: 800; font-size: 14px;
+}
+.landing-reel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.landing-reel-card { height: 240px; }
+.landing-reel-title { font-size: 24px; text-wrap: balance; }
+@media (max-width: 860px) {
+  .landing-reel { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+}
+@media (max-width: 560px) {
+  /* 手机上两列小卡：一列 240 高的大卡要滑六屏 */
+  .landing-reel { gap: 10px; }
+  .landing-reel-card { height: 200px; }
+  .landing-reel-title { font-size: 15px; }
+}

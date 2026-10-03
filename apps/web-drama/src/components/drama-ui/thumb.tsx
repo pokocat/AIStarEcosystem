@@ -47,7 +47,10 @@ export function Thumb({
       title={title}
       className={["thumb", stripes && !src ? "thumb-stripes" : "", className].filter(Boolean).join(" ")}
       style={{
-        aspectRatio: w ? undefined : ratio,
+        // 只给宽或只给高时按比例算另一边；两个都给才不要比例。
+        // （之前是「给了宽就不要比例」，只给宽的调用方高度算出来是 0，「继续上次」卡的缩略图一直是空白）
+        aspectRatio: w != null && h != null ? undefined : ratio,
+        flex: w != null ? "none" : undefined,
         width: w,
         height: h,
         borderRadius: radius,

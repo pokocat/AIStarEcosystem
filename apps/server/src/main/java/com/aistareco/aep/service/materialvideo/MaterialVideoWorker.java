@@ -42,6 +42,11 @@ public class MaterialVideoWorker {
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoWorker.class);
     private static final ObjectMapper OM = new ObjectMapper();
     static final String RECOVERY_CREDIT_REF_TYPE = "material_video_job_recovery";
+    /**
+     * v0.198：任务要求「成片必须镜像到我方存储」（variant_config.require_mirror=true，画布视频提交时写）而镜像失败时，
+     * errorMessage 以它开头。任务表没有错误码列，调用方据此前缀认出失败原因。
+     */
+    public static final String MIRROR_FAILED_CODE = "VIDEO_MIRROR_FAILED";
 
     private final MaterialVideoJobRepository jobRepo;
     private final MaterialVideoModelClient modelClient;
@@ -177,7 +182,13 @@ public class MaterialVideoWorker {
 
     private void runGeneration(MaterialVideoJob job) throws InterruptedException {
         String jobId = job.getId();
-        updateStatus(jobId, "submitting", 5, null);
+        // v0.198 条件认领（queued → submitting，影响 1 行才继续）：与 MaterialVideoJobService.cancelQueued /
+        // expireQueued 的条件更新互斥。以前是读出来再整行写回，排队中取消与 worker 接手撞在一起时，
+        // 取消写的 failed 会被这里的 submitting 盖掉，任务照样交给厂商。
+        if (jobRepo.claimQueued(jobId, OffsetDateTime.now()) != 1) {
+            log.info("[material-video] job {} 已不在排队（取消 / 超时 / 已被接手），不提交", jobId);
+            return;
+        }
 
         // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余（素材运营 / 视频生成区 / 画布）记到 celebrity。
         String appCode = appCodeOf(job);
@@ -223,6 +234,15 @@ public class MaterialVideoWorker {
                     releaseCredits(job, "视频产物镜像未配置");
                     return;
                 }
+                // v0.198：要求必须存进我方存储的任务（画布只存 key，厂商外链交付不了）—— 镜像不了就不交付、不扣费（§8.0）。
+                // 不带这个标记的老任务行为不变（镜像失败保留厂商地址、照常结算）。
+                boolean requireMirror = extractRequireMirror(job.getVariantConfigJson());
+                if (requireMirror && (!props.isUploadToCdn() || cdnUploader == null)) {
+                    log.warn("[material-video] job {} require_mirror 但没配置我方存储镜像，判失败并退回冻结", jobId);
+                    markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但当前没配置我方存储，没能存下来");
+                    releaseCredits(job, "视频没存进我方存储");
+                    return;
+                }
                 if (props.isUploadToCdn() && cdnUploader != null) {
                     try {
                         CdnMirrorResult mirror = mirrorToCdn(jobId, videoUrl, thumbnailUrl, lastFrameUrl,
@@ -235,6 +255,14 @@ public class MaterialVideoWorker {
                         storage.record(appCode, job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
                                 mirror.videoKey(), mirror.videoBytes());
                     } catch (IOException | RuntimeException e) {
+                        if (requireMirror) {
+                            log.warn("[material-video] job {} require_mirror 镜像失败，判失败并退回冻结 taskId={} err={}",
+                                    jobId, submit.taskId(), e.toString());
+                            markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但没能存进我方存储（"
+                                    + truncate(e.getMessage(), 200) + "）");
+                            releaseCredits(job, "视频没存进我方存储");
+                            return;
+                        }
                         log.warn("[material-video] job {} CDN mirror failed (keeping provider URL): {}",
                                 jobId, e.getMessage());
                     }
@@ -505,6 +533,16 @@ public class MaterialVideoWorker {
         if (payload == null || payload.isBlank()) return false;
         try {
             return OM.readTree(payload).path(MaterialVideoJobService.PAYLOAD_CALLER_PRICED).asBoolean(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** v0.198：variant_config.require_mirror=true → 成片必须镜像到我方存储，否则判失败退款；缺省 / 解析失败 → false。 */
+    static boolean extractRequireMirror(String variantConfigJson) {
+        if (variantConfigJson == null || variantConfigJson.isBlank()) return false;
+        try {
+            return OM.readTree(variantConfigJson).path("require_mirror").asBoolean(false);
         } catch (Exception e) {
             return false;
         }

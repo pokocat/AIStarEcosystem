@@ -13,7 +13,7 @@ export default function TrendsPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <ViewHeader
-        eyebrow="内容雷达"
+        eyebrow="即将上线"
         title={
           <>
             趋势{" "}
@@ -30,8 +30,8 @@ export default function TrendsPage() {
       <Card style={{ padding: "52px 24px" }}>
         <EmptyState
           icon={<Compass size={28} />}
-          title="趋势雷达建设中"
-          description="还在接内容热度和站内数据。接好之后，这里会列出当下的热门题材，可以直接拿去立项。"
+          title="趋势雷达还没上线"
+          description="还在接内容热度和站内数据。接好之后，这里会列出当下的热门题材，点一下就能照着新建短剧。现在可以先看首页的「近期热点」。"
         />
       </Card>
     </div>
