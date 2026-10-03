@@ -1,0 +1,304 @@
+/* pages/canvas-script.css —— v0.198 画布 · 剧本页（/canvas/<id>/script）。归剧本页的实现者，只写 .cvs- 前缀的类；外壳样式在 canvas.css。
+   断点沿用 app.css：720（折单列、按钮换行）/ 560（小屏手机，按钮占满一行）。只用 tokens.css 的令牌。 */
+
+/* ---------- 页头：「共 N 集」+ ··· ---------- */
+.cvs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; min-width: 0; }
+.cvs-title { margin: 0; min-width: 0; }
+.cvs-more { position: relative; flex: none; }
+.cvs-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.cvs-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.cvs-menu button > svg { flex-shrink: 0; }
+.cvs-menu button:hover { background: var(--surface-2); color: var(--ink); }
+.cvs-menu-count { margin-left: auto; padding: 0 7px; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink-3); font-size: 11px; }
+.cvs-note { margin: -4px 0 12px; font-size: 13px; line-height: 1.6; color: var(--ink-2); overflow-wrap: anywhere; }
+
+/* ---------- 大卡片里的几节 ---------- */
+.cvs-card { padding: 0; min-width: 0; }
+.cvs-sec { padding: 14px 20px 16px; min-width: 0; }
+.cvs-sec + .cvs-sec { border-top: 1px solid var(--line-soft); }
+.cvs-sec-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; min-height: 36px; min-width: 0; }
+.cvs-sec-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-left: -6px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+}
+.cvs-sec-toggle:hover { background: var(--surface-2); }
+.cvs-sec-toggle > svg { flex-shrink: 0; }
+.cvs-sec-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cvs-chev { transition: transform .15s; }
+.cvs-chev.is-closed { transform: rotate(-90deg); }
+.cvs-sec-meta { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.cvs-sec-count { font-size: 12px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+.cvs-sec-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; min-width: 0; }
+.cvs-sec-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding-top: 10px; }
+/* 整节禁用（故事大纲没通过时的分集剧情）：内容变淡，原因那一行不变淡 */
+.cvs-sec.is-disabled .cvs-sec-body > :not(.cvs-reason) { opacity: .55; }
+
+.cvs-idea { margin: 0; font-size: 14px; line-height: 1.7; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- 文本框（高度跟内容走，超过上限在框里滚） ---------- */
+.cvs-text {
+  display: block;
+  min-height: 120px;
+  max-height: 70vh;
+  overflow-y: auto;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cvs-text[readonly] { background: var(--surface-2); color: var(--ink-2); }
+/* 剧本正文：等宽字形好对齐「△」「【】」这些行首记号，中文回落到系统字体 */
+.cvs-script-text {
+  min-height: 180px;
+  max-height: 72vh;
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, var(--font);
+  font-size: 13.5px;
+  line-height: 1.8;
+  tab-size: 2;
+}
+
+/* ---------- 按钮行 / 原因 / 状态 ---------- */
+.cvs-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.cvs-actions .btn,
+.cvs-sec-actions .btn { max-width: 100%; }
+.cvs-cost { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; opacity: .92; }
+.cvs-cost > svg { flex-shrink: 0; }
+.cvs-reason { font-size: 12px; line-height: 1.55; color: var(--ink-3); overflow-wrap: anywhere; }
+.cvs-err { font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--danger); overflow-wrap: anywhere; }
+.cvs-warn {
+  padding: 8px 12px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--warning) 14%, var(--surface));
+  color: color-mix(in oklch, var(--warning) 45%, var(--ink));
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.cvs-run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 8px 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.cvs-run > svg { flex-shrink: 0; }
+.cvs-run-text { flex: 1; min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.cvs-run-stop { flex: none; }
+
+/* 还没写时的开始块 */
+.cvs-start {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-2) 55%, var(--surface));
+}
+.cvs-start-copy { font-size: 13.5px; line-height: 1.65; color: var(--ink-2); overflow-wrap: anywhere; }
+.cvs-empty {
+  padding: 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 分集剧情 ---------- */
+.cvs-ol { display: flex; flex-direction: column; min-width: 0; }
+.cvs-ol-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 12px 0; min-width: 0; }
+.cvs-ol-row + .cvs-ol-row { border-top: 1px solid var(--line-soft); }
+.cvs-ol-row:first-child { padding-top: 2px; }
+.cvs-ol-no { padding-top: 10px; font-size: 13px; font-weight: 800; color: var(--ink-2); white-space: nowrap; }
+.cvs-ol-fields { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cvs-ol-title { font-weight: 700; }
+.cvs-ol-title[readonly],
+.cvs-ol-text[readonly] { background: var(--surface-2); color: var(--ink-2); }
+.cvs-ol-field { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; }
+.cvs-ol-label { padding-top: 9px; font-size: 12px; font-weight: 700; color: var(--ink-3); white-space: nowrap; }
+.cvs-ol-text {
+  display: block;
+  min-height: 40px;
+  max-height: 40vh;
+  padding: 8px 12px;
+  overflow-y: auto;
+  font-size: 13.5px;
+  resize: none;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 分集剧本：每集一块 ---------- */
+.cvs-eps { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cvs-eps:empty { display: none; }
+.cvs-ep { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.cvs-ep.is-locked { border-color: color-mix(in oklch, var(--ink) 22%, var(--line)); }
+.cvs-ep-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; padding: 8px 10px; }
+.cvs-ep-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 4px 4px 4px 2px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+.cvs-ep-toggle:hover { background: var(--surface-2); }
+.cvs-ep-toggle > svg { flex-shrink: 0; }
+.cvs-ep-no { min-width: 1.4em; }
+.cvs-ep-title {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 800;
+  outline: none;
+  text-overflow: ellipsis;
+  transition: border-color .15s, background .15s;
+}
+.cvs-ep-title:hover:not([readonly]) { border-color: var(--line); }
+.cvs-ep-title:focus:not([readonly]) { border-color: var(--accent); background: var(--surface); }
+.cvs-ep-meta { flex: none; font-size: 12px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+.cvs-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cvs-lock > svg { flex-shrink: 0; }
+.cvs-lock:hover:not(:disabled) { color: var(--ink); background: color-mix(in oklch, var(--surface-2) 80%, var(--ink) 6%); }
+.cvs-lock.on { background: var(--ink); color: #fff; }
+.cvs-lock:disabled { cursor: not-allowed; opacity: .5; }
+.cvs-ep-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 0 12px 12px; }
+.cvs-ep-delete { margin-left: auto; }
+
+/* 底部提示条里「直接去角色和场景」（提示条是深色底） */
+.cvs-next-link { margin-left: 6px; color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+
+/* ---------- 弹层：重写要求 / 修改记录 ---------- */
+.cvs-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 460px;
+  max-width: 100%;
+  max-height: 88dvh;
+  padding: 18px;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+.cvs-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.cvs-dialog-title { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+.cvs-dialog-title > svg { flex-shrink: 0; }
+.cvs-dialog-input { min-height: 84px; resize: vertical; }
+.cvs-dialog-count { margin-top: -6px; text-align: right; }
+.cvs-dialog-note { padding: 8px 10px; border-radius: var(--radius-xs); background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.cvs-dialog-foot { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.cvs-history { width: 540px; }
+.cvs-history-empty { padding: 20px 0; color: var(--ink-3); font-size: 13px; text-align: center; }
+.cvs-history-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.cvs-history-item { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 0; }
+.cvs-history-item + .cvs-history-item { border-top: 1px solid var(--line-soft); }
+.cvs-history-copy { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.cvs-history-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.cvs-history-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; color: var(--ink-3); }
+.cvs-history-sum { min-width: 0; overflow-wrap: anywhere; }
+.cvs-history-item > .btn { flex: none; }
+
+/* ============================================================
+   响应式
+   ============================================================ */
+@media (max-width: 720px) {
+  .cvs-sec { padding: 12px 14px 14px; }
+  .cvs-sec-actions { justify-content: flex-start; width: 100%; margin-left: 0; }
+  .cvs-ol-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .cvs-ol-no { padding-top: 0; }
+  .cvs-ol-field { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .cvs-ol-label { padding-top: 0; }
+  .cvs-ep-head { padding: 8px; }
+  .cvs-ep-body { padding: 0 10px 10px; }
+  .cvs-script-text { font-size: 13px; max-height: 64vh; }
+  .cvs-start { padding: 14px; }
+  .cvs-history-item { flex-wrap: wrap; }
+  .cvs-history-item > .btn { margin-left: auto; }
+}
+
+@media (max-width: 560px) {
+  /* 按钮换行：每个按钮至少占半行，长文案允许折行，不把行撑出屏幕 */
+  .cvs-actions .btn,
+  .cvs-sec-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    height: auto;
+    min-height: 34px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    white-space: normal;
+    text-align: center;
+  }
+  .cvs-ep-delete { margin-left: 0; }
+  .cvs-ep-title { flex-basis: calc(100% - 64px); }
+  .cvs-ep-meta { margin-left: auto; }
+  .cvs-dialog-foot .btn { flex: 1 1 auto; justify-content: center; }
+}

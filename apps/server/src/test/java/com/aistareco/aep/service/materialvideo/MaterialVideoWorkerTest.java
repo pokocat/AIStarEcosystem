@@ -87,6 +87,13 @@ class MaterialVideoWorkerTest {
         jobRepo = mock(MaterialVideoJobRepository.class);
         when(jobRepo.findById("mvj_test")).thenReturn(Optional.of(job));
         when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // v0.198 条件认领：模拟数据库「只有 queued 才认领得到」（真 JPQL 见 MaterialVideoJobClaimTest）
+        when(jobRepo.claimQueued(eq("mvj_test"), any())).thenAnswer(inv -> {
+            if (!"queued".equals(job.getStatus())) return 0;
+            job.setStatus("submitting");
+            job.setProgress(5);
+            return 1;
+        });
 
         modelClient = mock(MaterialVideoModelClient.class);
         // 默认路径回归（D-11）：job.variantConfigJson 无 endpoint_id → worker 传 null → 默认端点，行为不变。

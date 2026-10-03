@@ -19,7 +19,7 @@ interface FieldDef {
   key: string;
   label: string;
   hint: string;
-  group: "threshold" | "price";
+  group: "threshold" | "price" | "canvas";
 }
 
 const FIELDS: FieldDef[] = [
@@ -39,6 +39,12 @@ const FIELDS: FieldDef[] = [
   { key: "drama.credit.decompose", label: "AI 拆镜（补末帧）", hint: "单镜拆出首/末帧快照 + 运动 + 变化等级 单次积分（供首尾帧双关键帧 i2v）", group: "price" },
   { key: "drama.credit.shot-rewrite", label: "行级改写本镜", hint: "按指令只改这一个镜头（不推倒整集）单次积分", group: "price" },
   { key: "drama.credit.short-entry", label: "短视频 · 进工作台开拍", hint: "新建一条短视频草稿 = AI 出口播脚本与分镜单次积分；从创意市场套用单集创意同样计费（重开已有草稿不计费）", group: "price" },
+  // v0.198 画布（web-drama /canvas）。出图沿用上面的「分镜首帧渲染」，视频按出片模型的候选单价按秒计。
+  { key: "drama.credit.canvas-script-setting", label: "画布 · 写故事大纲", hint: "由一句话想法写题材、主线和人物小传，单次积分", group: "canvas" },
+  { key: "drama.credit.canvas-script-outline", label: "画布 · 写分集剧情", hint: "由故事大纲写出每一集的标题、钩子和梗概，单次积分（不按集数乘）", group: "canvas" },
+  { key: "drama.credit.canvas-script-episode", label: "画布 · 写一集剧本", hint: "写或重写一集剧本正文，按集计；一次写全部集时 = 单价 × 集数", group: "canvas" },
+  { key: "drama.credit.canvas-extract", label: "画布 · 拆出角色和场景", hint: "从全部分集剧本里拆出角色、造型和场景，单次积分", group: "canvas" },
+  { key: "drama.credit.canvas-storyboard", label: "画布 · 生成分镜脚本", hint: "把一集剧本切成片段，按集计", group: "canvas" },
 ];
 
 const DEFAULTS: Record<string, number> = {
@@ -53,6 +59,11 @@ const DEFAULTS: Record<string, number> = {
   "drama.credit.decompose": 3,
   "drama.credit.shot-rewrite": 2,
   "drama.credit.short-entry": 10,
+  "drama.credit.canvas-script-setting": 2,
+  "drama.credit.canvas-script-outline": 6,
+  "drama.credit.canvas-script-episode": 4,
+  "drama.credit.canvas-extract": 4,
+  "drama.credit.canvas-storyboard": 4,
 };
 
 export default function DramaConfigPage() {
@@ -179,6 +190,18 @@ export default function DramaConfigPage() {
               <Link href="/celebrity/engine-pricing">去「引擎价格」调整</Link>
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">画布（积分 / 次）</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {FIELDS.filter((f) => f.group === "canvas").map(renderField)}
+          <p className="text-xs text-muted-foreground pt-3">
+            画布里的出图按上面「分镜首帧渲染」的单价按张计；片段视频按出片模型的候选单价计（按秒计费的模型 = 单价 × 片段秒数）。合成成片免费。
+          </p>
         </CardContent>
       </Card>
     </div>

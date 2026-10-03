@@ -21,11 +21,18 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 ```
 /                    ← 公开落地页
 /login               ← 公开
-/dashboard           ← 首页：和 AI 聊（?b=<id> 聊天页）+「已经想好了？直接开始」三张卡 + 热门模板 + 继续上次
+/dashboard           ← 首页：和 AI 聊（?b=<id> 聊天页）+「已经想好了？直接开始」四张卡（v0.198 加「在画布上做短剧」） + 热门模板 + 继续上次
 /projects            ← 我的短剧（多集短剧列表）
 /projects/new        ← 新建短剧（新建不花积分；可切互动剧）
 /projects/[id]       ← 短剧工作台（沉浸式）：短剧设定 → 逐集制作（① 分镜 ② 合成成片）
 /projects/[id]/distribute ← 发布到平台（即将上线，服务端仍是模拟；走通用外壳）
+/canvas              ← 我的画布（v0.198，和「我的短剧」互相独立）
+/canvas/new          ← 新建画布：粘贴写好的剧本 / 让 AI 写剧本（新建不花积分）
+/canvas/[id]         ← 画布（沉浸式，自己的竖条 + 顶栏；按进度跳到下面三步之一）
+/canvas/[id]/script  ← 剧本：原始想法 → 故事大纲 → 分集剧情 → 分集剧本（每段「通过」才写下一段）
+/canvas/[id]/assets  ← 角色和场景：?view=board（React Flow 画布，桌面）| list（列表，手机只有这个）
+/canvas/[id]/episodes      ← 逐集制作（每集一张卡）
+/canvas/[id]/episodes/[no] ← 单集编辑器：本集素材 / 片段文本（@ 引用）/ 预览（出首帧 → 生成视频）/ 片段轴 → 合成成片
 /shorts              ← 我的短视频（?open=<id> 自动弹出成片预览）
 /shorts/new          ← 从一句话开始
 /shorts/prompt       ← 粘贴写好的脚本（v0.143 起，v0.197 前叫「提示词直出」）
@@ -68,6 +75,16 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 - 真后端尚未上线，USE_MOCK=0 分支会保留 `apiFetch` 占位（507/501 后端原因）。
 
 ## 版本日志
+
+### v0.198 · 2026-09-30 · 画布（照小云雀短剧 Agent 的流水，和「我的短剧」独立）
+
+真源 [`docs/drama-canvas-plan.md`](../../docs/drama-canvas-plan.md)（含 2026-09-29/30 小云雀实地走查记录）；契约 `packages/types/src/drama-canvas.ts`；术语 [`docs/drama-ux-copy-pass.md`](../../docs/drama-ux-copy-pass.md) §2.7。
+
+- **新路由** `/canvas`（我的画布）、`/canvas/new`、`/canvas/[id]/{script,assets,episodes,episodes/[no]}`；侧栏「创作」组加「画布」，首页入口卡加一张。进到一张画布后隐藏全站侧栏，换成画布自己的竖条（≤720 变底部三格页签）。
+- **四屏**：剧本（AI 分三段写、每段通过 / 重写、修改记录可恢复、集可锁；或粘贴剧本按「第 X 集」切）→ 角色和场景（拆出来就摆好，造型 / 场景 / 素材卡、连线当参考、选中卡片下方停出图面板、角色设计标签选择器、批量出图；列表与画布两种看法）→ 逐集制作（每集状态与到成片的价格估算、生成分镜脚本）→ 单集编辑器（片段文本里角色 / 场景以头像标签嵌入、先出首帧再生成视频、多版本挑选、用上一片段最后一帧、片段轴、合成成片、下载）。
+- **底座**：`src/canvas/core`（`useCanvasDoc` 唯一真值 + 防抖保存 + 版本号 409 进只读、`useCanvasRuns` 所有生成的唯一入口：先存再发、按目标去重、幂等键、轮询、合并；未确认请求表 + 进页只用 `runs/lookup` 查不重发；`merge` / `refs` / `doc-ops` 纯函数有单测）、`src/canvas/shell`（竖条 / 顶栏 / 底部提示条 / `CanvasImage`·`CanvasVideo` 签名过期自动换新）、`src/api/canvas.ts` + `src/mocks/canvas.ts`（和服务端同形的内存假服务端，示例画布「示例：末班车」覆盖各种状态）。
+- **新依赖** `@xyflow/react` ^12（只在打开画布时按需加载；署名保留）。视角存本机（`drama-canvas-viewport:<id>`），平移缩放不改共享文档。
+- 测试 web-drama 425 → 646（画布 core / shell / 四屏 / 画布视图），mock 模式浏览器 1280 与 375 从新建一路点到合成成片。
 
 ### v0.197 · 2026-09-28 · 文案去 AI 味 + 用户路径 + 响应式一次性收口
 

@@ -231,6 +231,75 @@ function buildJsonContent(text) {
   return JSON.stringify({ result: "ok", note: "本地联调模型占位 JSON" });
 }
 
+// ── 短剧画布（v0.198，drama.canvas_*）：服务端按形状严格校验，这里必须回形状正确的 JSON ─────────────
+// 识别靠 system prompt 里的「任务：画布 · X」。产物里一律带「本地联调模型生成」字样，一眼能认出是假的。
+const CANVAS_MARK = "（本地联调模型生成，仅用于打通链路）";
+function range(from, to) {
+  const out = [];
+  for (let i = from; i <= to; i++) out.push(i);
+  return out;
+}
+function buildCanvasContent(text) {
+  const task = (text.match(/任务：画布 · (故事大纲|分集剧情|分集剧本|拆角色和场景|分镜脚本)/) || [])[1];
+  if (!task) return null;
+  if (task === "故事大纲") {
+    return JSON.stringify({
+      text: `题材与基调：都市悬疑情感，一封旧信牵出十七年前的误会。${CANVAS_MARK}\n主线：老中学拆除前，林微在旧教室找到一封没寄出的信，顺着信找到当年的同学陈屹，两人一起拼出真相，最后和解。\n人物小传：\n林微：三十岁的语文老师，外柔内刚，想弄清当年为什么被所有人疏远。\n陈屹：林微的高中同学，如今是建筑工程师，负责拆除这栋楼，心里一直有愧。`,
+    });
+  }
+  if (task === "分集剧情") {
+    const m = text.match(/这次写第 (\d+) 到第 (\d+) 集/);
+    const from = m ? Number(m[1]) : 1;
+    const to = m ? Number(m[2]) : from;
+    return JSON.stringify({
+      episodes: range(from, to).map((no) => ({
+        no,
+        title: `旧信第${no}封`,
+        hook: `第 ${no} 集开场：一张旧照片从抽屉里滑出来。`,
+        summary: `林微顺着第 ${no} 条线索找到新的证人，真相又近了一步，结尾发现有人在跟踪她。${CANVAS_MARK}`,
+      })),
+    });
+  }
+  if (task === "分集剧本") {
+    const m = text.match(/现在写第 (\d+) 集/);
+    const no = m ? Number(m[1]) : 1;
+    return JSON.stringify({
+      title: `旧信第${no}封`,
+      text: `### 场${no}-1\n日 内 旧教室\n出场人物：林微\n【字幕：2024 年，南方县城老中学】\n△ 林微蹲在地上整理旧物，从抽屉里摸出一个生锈的铁盒。${CANVAS_MARK}\n林微（轻声）：这是谁留下的？\n### 场${no}-2\n夜 外 教学楼门口\n出场人物：林微、陈屹\n△ 陈屹举着手电走过来。\n陈屹：这栋楼下周就拆了。`,
+    });
+  }
+  if (task === "拆角色和场景") {
+    const m = text.match(/剧本的第 (\d+)(?:–(\d+))? 集/);
+    const from = m ? Number(m[1]) : 1;
+    const to = m && m[2] ? Number(m[2]) : from;
+    const eps = range(from, to);
+    const look = (desc) =>
+      `基本信息：${desc}\n面部特征：鹅蛋脸，眉眼清秀，黑色齐肩发\n服饰装备：米白针织开衫，深色长裤，白色帆布鞋\n配饰：无\n姿态构图：全身立绘、正面站立、双手自然下垂、纯色浅灰背景\n光影渲染：柔和影棚光、写实质感、清晰锐利`;
+    return JSON.stringify({
+      characters: [
+        { name: "林微", role: "lead", bio: "三十岁的语文老师，外柔内刚。", looks: [{ name: "基础造型", prompt: look("女，30 岁左右，中等身高，偏瘦"), episodes: eps }] },
+        { name: "陈屹", role: "support", bio: "建筑工程师，林微的高中同学。", looks: [{ name: "基础造型", prompt: look("男，30 岁左右，高个子，肩背挺拔"), episodes: eps }] },
+      ],
+      scenes: [
+        { name: "旧教室", prompt: "老中学教室，木课桌斑驳，午后阳光透过布满灰尘的窗户，暖黄调。", episodes: eps },
+        { name: "教学楼门口·夜", prompt: "老教学楼门口，夜里只有一盏路灯，地面潮湿反光，冷蓝调。", episodes: eps },
+      ],
+      notes: [CANVAS_MARK],
+    });
+  }
+  // 分镜脚本：素材对照表在示例之前，取第一个 look / scene 引用
+  const maxSec = Number((text.match(/单个片段不超过 (\d+) 秒/) || [])[1] || 10);
+  const lookRef = (text.match(/@\[[^\]\n]{1,40}\]\(look:[A-Za-z0-9_-]{1,64}\)/) || ["林微"])[0];
+  const sceneRef = (text.match(/@\[[^\]\n]{1,40}\]\(scene:[A-Za-z0-9_-]{1,64}\)/) || ["旧教室"])[0];
+  const first = Math.min(4, maxSec);
+  const second = Math.max(1, Math.min(3, maxSec - first));
+  const seg = (i) => ({
+    text: `（${first} 秒）日，${sceneRef}。近景，平视。${lookRef} 蹲在地上整理旧物（第 ${i} 段）。\n（${second} 秒）特写，${lookRef} 拉开书桌抽屉，摸到一个生锈的铁盒。`,
+    durationSec: first + second,
+  });
+  return JSON.stringify({ segments: [seg(1), seg(2), seg(3)], notes: [CANVAS_MARK] });
+}
+
 // OpenAI content-parts（[{type:"text",text},{type:"image_url",...}]）→ 只取文字部分；带图消息标 [image]。
 function flattenContent(content) {
   if (typeof content === "string") return content;
@@ -263,7 +332,9 @@ function chatResponse(body) {
   const all = messages.map((m) => (m ? flattenContent(m.content) : "")).join("\n");
   const jsonMode = body.response_format && body.response_format.type === "json_object";
   const identityCard = /人物特征卡/.test(all);
-  const content = identityCard ? buildIdentityCard() : jsonMode ? buildJsonContent(all) : buildProse(all);
+  // 画布最先判：它的提示词里有「剧本 / 大纲 / 分镜」等字样，会误中下面的旧分支
+  const canvas = buildCanvasContent(all);
+  const content = canvas ?? (identityCard ? buildIdentityCard() : jsonMode ? buildJsonContent(all) : buildProse(all));
   return {
     id: "fakecmpl-" + Date.now(),
     object: "chat.completion",

@@ -779,6 +779,146 @@ DB 只存 storage key，URL 一律出 wire 时经 `signedUrl(key)` 派生，**�
 | `IP_TEMPLATE_NOT_FOUND` | 400 | 新建时引用了不存在的内置工作流 |
 | 复用 | 503 `DAP_ENGINE_NOT_CONFIGURED`、503 `PROMPT_NOT_CONFIGURED`、402 积分不足（CreditService 既有） |
 
+### 6.7 短剧画布（v0.198 / 设计真源 `docs/drama-canvas-plan.md` · TS 真源 `packages/types/src/drama-canvas.ts`）
+
+web-drama 的 `/canvas`：照小云雀「短剧 Agent」做的一条**独立**流水（剧本 → 角色和场景 → 逐集制作 → 单集编辑器 → 合成成片）。
+和「我的短剧」（`DramaProject` / 旧工作台）**互相独立**：自己的表 `drama_canvas` / `drama_canvas_run`（迁移 **V36**，部署前核对线上
+`flyway_schema_history`）、自己的接口 `/api/me/drama/canvases/**`，`DramaProject*` / `drama_character` / `drama_scene` 一律不动。
+走短剧开通（`ProductRouteTable` 的 `any("/api/me/drama/**", DRAMA)`）。所有 `{id}` 按 principal 隔离：
+不存在 / 不是本人 / 已软删**不区分**，一律 404 `DRAMA_CANVAS_NOT_FOUND`（免得成为探测面）。
+
+**文档归客户端所有，服务端从不改它。** `drama_canvas.doc_json` 是 `DramaCanvasDoc` 的整存整取文档：
+服务端只校验外形（`schema=1`；`source ∈ idea|paste`；`style` / `script` / `board` 是对象；`script.episodes` / `script.history` /
+`characters` / `scenes` / `materials` / `episodes` / `board.edges` 是对象数组；`board.positions` / `board.viewport` 是对象；
+`board.collapsed` 是数组），不过 → 400 `DRAMA_CANVAS_INVALID_DOC`（`error.details.path` 指出第一处）。
+**生成结果永远不写进文档**：写 `drama_canvas_run.result_json`，前端按 `runId` 幂等合并回文档再保存 ——
+服务端写文档必然和前端的防抖保存互相覆盖（ipstudio 同一条教训）。
+
+**保存 409。** `PUT` 必须带 `baseDocVersion`（`docVersion` = sha256(规范化文档 JSON + NUL + 标题) 前 16 位 hex；规范化 = 对象键名递归排序 + 紧凑输出，
+所以字段顺序不同的同一份内容指纹相同；**标题也算进版本**，只改名同样换版本，旧页面带旧版本保存会 409，不会悄悄把新标题盖回去）。缺省或不是库里当前版本 → 409 `DRAMA_CANVAS_STALE`，`error.details.docVersion` 给当前版本；
+版本先在内存比一次，再由条件更新（`UPDATE … WHERE doc_version = :base`）在数据库里判一次，两个标签页同时存只有一个赢。
+前端 409 时停止自动保存、给「载入最新」。返回的 `updatedAt` 截到微秒、UTC，与之后读回来的逐字相同。
+
+**文档上限 4MB。** 按**剥掉 url 之后**的规范化 JSON 的 UTF-8 字节数算，超 → 413 `DRAMA_CANVAS_TOO_LARGE`（新建时同样判）。
+
+**只存 key。** 保存前递归剥掉所有**字符串值**的 `url` / `lastFrameUrl`（签名有 TTL，存进库一小时后裂图，§4.7.7）；
+值是对象的同名字段不动。读出（详情、新建返回体）时收齐整棵树里的 `key` / `lastFrameKey`，**一次**批量查归属，
+只给**本人**的 key 用 `CdnUrlSigner.signKey` 派生 `url` / `lastFrameUrl`；不是本人的不签、不报错、key 原样返回（前端显示占位）。
+列表只签封面：第一张属于本人的挑中图（造型优先、其次场景；`pickedKey` 在 versions 里就用它，否则 versions 里第一张），
+所有画布的候选合在一起一次查。库里的文档解析不出来 → 500 `DRAMA_CANVAS_DOC_CORRUPT`（**不**回退空文档：
+前端拿到空文档会自动保存，把库里那份覆盖掉）；列表里遇到这种行按空统计出卡片，不让整个列表打不开。
+
+**归属闸。** drama 生成的 key 里没有 uid（`drama/frames/<uuid>.png`），前缀判不出归属。唯一真值 = `storage_assets` 里
+`(app=drama, owner_user_id=本人, cdn_key)` 三者对上（`DramaCanvasOwnership`）。所以**画布的所有产物**（出图、视频镜像、末帧、成片）
+落库时都必须 `DramaCanvasOwnership.record(...)` 记一行；上传参考图（`POST /me/drama/assets/uploads`）已由
+`StorageQuotaService.record("drama", …)` 记过。`record` 与用量记账不同，**失败会抛**（它是归属真值，静默丢一行 = 用户花钱的图下次打开不签）；
+同一个 key 已记在别人名下 → 500 `DRAMA_CANVAS_ASSET_RECORD_CONFLICT`，不悄悄改归属。
+外形不安全的 key（`..` / 前导 `/` / 反斜杠 / 控制字符 / 首尾空白 / 超 512）一律不算本人的，不查库。
+生成时从**已保存的文档**里读出的每个 key（参考图、首帧、片段视频）都过 `requireOwned`：
+任一不是本人的 → 400 `DRAMA_CANVAS_ASSET_NOT_OWNED`（`error.details.keys` 列出，最多 20 个），**在冻结之前，不扣费、不生成**（不是跳过）。
+
+**生成只读已保存的文档（生成 409）。** 提示词正文、参考图（连线 / `@[名字](look|scene|material:id)` 引用）、首帧、片段时长、
+合成顺序一律从库里那份文档取，客户端不传；每个生成请求带 `docVersion`，不是当前版本 → 409 `DRAMA_CANVAS_STALE`（前端先 flush 保存成功再发）。
+
+**幂等。** 每个生成请求带 `clientRequestId`（8–64 位 `[A-Za-z0-9_-]`，不合规 → 400 `DRAMA_CANVAS_REQUEST_ID_INVALID`），`drama_canvas_run` 上 `UNIQUE(owner_user_id, client_request_id)`：
+同一个键重复请求（重试 / 双击 / 两个标签页）回原运行记录，不重复冻结、不重复提交。**所有生成接口**遇到下面三种情况一律 409
+`DRAMA_CANVAS_REQUEST_ID_REUSED`：同一个键已用在另一张画布；用在另一种请求上（`kind` 或 `target` 不同）；单条请求和批量请求互用同一个键。
+批量出图每项一条运行记录：**第 0 项直接占用原始 `clientRequestId`**，其余项用 `${clientRequestId}:${i}`（i≥1）——
+单条和批量抢的是同一把唯一索引，同一个键不会被两边各受理一次；客户端的键里不许有 `:`（正则本身就排除了），免得和派生键撞上。
+批量最多 20 项、所有项张数合计最多 40 张，超了 400 `DRAMA_CANVAS_BATCH_TOO_LARGE`（在冻结之前判）；一项都没有 400 `DRAMA_CANVAS_BATCH_EMPTY`。
+**确认是否受理只能查、不能重发。** 请求发出后响应丢了、或请求返回前用户离开了页面，前端用
+`GET /me/drama/canvases/{id}/runs/lookup?clientRequestId=…` 确认：只查不建、无副作用、不扣费，返回这个键在本人本画布下受理出来的运行记录
+（单条 0 或 1 条；批量出图返回整批），没受理过是空数组；键不合规 400 `DRAMA_CANVAS_REQUEST_ID_INVALID`，画布不是本人的 404。
+**前端不许用原键重发 POST 来「确认」**：重发在没受理时会真的受理一次、冻结积分，确认动作不该有这个副作用。
+
+**计费（冻结 → 结算 / 退回）。** 单价常量都在 `DramaConfigSeeder`（冻结与 `/me/drama/config` 报价读同一个 key、同一个默认值）：
+
+| 动作 | key | 默认 | 计价 |
+|---|---|---|---|
+| 写故事大纲 | `drama.credit.canvas-script-setting` | 2 | 按次 |
+| 写分集剧情 | `drama.credit.canvas-script-outline` | 6 | 按次（不乘集数） |
+| 写 / 重写一集剧本 | `drama.credit.canvas-script-episode` | 4 | 按集 |
+| 拆出角色和场景 | `drama.credit.canvas-extract` | 4 | 按次 |
+| 生成一集分镜脚本 | `drama.credit.canvas-storyboard` | 4 | 按集 |
+| 出图（造型 / 场景 / 素材 / 片段首帧） | `drama.credit.frame`（候选 `creditCostOverride` 可覆盖） | 2 | × 张数（1–4） |
+| 片段视频 | `/me/drama/render/models` 的视频候选单价 | — | 按秒计费的端点 = 单价 × 片段 `durationSec`，否则按次 |
+| 合成成片 | — | 0 | 免费 |
+| 新建 / 切集 / 保存 | — | 0 | 免费 |
+
+- 文字类（script / extract / storyboard）：请求里只建记录并冻结，`afterCommit` 派发到后台跑；成功结算，失败 / 取消退回。
+  模型 JSON 输出按形状校验，不合格 = 失败（502 `AI_CALL_FAILED` 落在 run 上）并退回，不许拿模板句冒充结果（§8.0）。
+- 出图：preflight（引擎、提示词、归属）在冻结**之前**（未配置 503，不建记录、不冻结）；整批一次冻结，单价快照进 `input_json`，
+  **每张成功才结算**、失败的退回；不再「先出图后扣费」。
+- 视频：提交时冻结（单价 × 秒数），worker 结算或退回（沿用 `MaterialVideoJobService`）；首帧必须写进 `variant_config.first_frame_key`。
+- worker 派发一律挂 `afterCommit`（事务里派发 worker 查不到行，任务永远 queued —— ipstudio 真联调踩过）。
+- `DramaCanvasRun.cost` = 这次冻结 / 扣掉的积分；失败退回后仍显示原值，`status` 说明结果。
+- 取消：只有还在排队的能取消（退回冻结）；已交给厂商的 409 `DRAMA_CANVAS_RUN_NOT_CANCELABLE`。
+
+**锁住的集。** `script.episodes[].locked=true` 的集，AI 重写（`runs/script` 的 `stage=episode`）一律拒绝 409 `DRAMA_CANVAS_EPISODE_LOCKED`，
+在冻结之前判；前端按钮同时禁用并说原因。手改正文不受锁影响（锁只挡 AI 覆盖）。
+
+**新建（免费）。** `CreateDramaCanvasBody` 校验：`ratio ∈ 9:16|16:9`；`source ∈ idea|paste`；`style.id` / `style.name` 必填（≤ 64 / ≤ 40），
+`style.prompt` ≤ 300；`source=idea` 时 `idea` 1–500 字、`targetEpisodes` 1–80（缺省 10）、`episodeDurationSec` 30–180（缺省 60），
+写进 `script.idea` / `targetEpisodes` / `episodeDurationSec`，`script.episodes=[]`；`source=paste` 时 `text` 1–100000 字，
+按下条规则切集写进 `script.episodes`（此时不写那三个字段）。字数按码点算。不过 → 400 `DRAMA_CANVAS_BODY_INVALID`
+（`error.details.field`）。标题缺省：idea 取想法前 20 字，paste 取「未命名画布」；最长 128。其余字段按空文档
+（`characters` / `scenes` / `materials` / `episodes` = `[]`，`board = {positions:{}, edges:[], collapsed:[], viewport:{x:0,y:0,zoom:1}}`，`script.history=[]`）。
+
+**切集（`script/split` 与 paste 新建同一套，纯规则、不调模型、免费、不落库）。** 集标题行 = 一行开头（可带 `#` 标题记号、`【` / `[` / `（` 括号）是
+「第 N 集」，N 为阿拉伯数字（含全角）或中文数字；后面可跟 `：` `:` `·` `、` `-` `—` `|` 或空格再跟集名。正文里的「第一集的时候……」不算
+（集字后紧跟的不是分隔符且像一句话，或含 `。！？；，`）；「第 X 集 完 / 终 / 结束」是结尾标记不算。集号**一律按出现顺序重排成 1..N**
+（原文漏号、重号在 notes 里说明）；第一个集标题之前的文字（剧名、人物表）放进第 1 集开头并说明；一个标记都没有 → 整篇当第 1 集并说明；
+只有标题没有正文的集保留（正文为空）并说明。每集正文统一换行、去行尾空白、去首尾空行、连续空行压成一个；集名最长 40 字。
+
+**画布停在哪一步（`step`，服务端推）。** `script.extractedAt` 缺 → `script`；所有集都没有片段 → `assets`；否则 `episodes`。
+列表卡片统计：`episodeCount` = `script.episodes` 数；`segmentsDone` / `segmentsTotal` = 所有集片段里有挑中视频的 / 总数；
+`episodesAssembled` = 有 `assembled.key` 的集数。
+
+**软删。** 只打 `deleted_at`（条件更新，不整行写回）；运行记录保留，已花的积分不退。
+
+**错误码表**
+
+| code | HTTP | 场景 |
+|---|---|---|
+| `DRAMA_CANVAS_NOT_FOUND` | 404 | 不存在 / 不是本人 / 已软删（不区分） |
+| `DRAMA_CANVAS_BODY_INVALID` | 400 | 新建 / 切集请求体不合法（`details.field`） |
+| `DRAMA_CANVAS_INVALID_DOC` | 400 | 保存的文档外形不对（`details.path`） |
+| `DRAMA_CANVAS_TOO_LARGE` | 413 | 规范化后超过 4MB |
+| `DRAMA_CANVAS_STALE` | 409 | 保存的 `baseDocVersion` / 生成的 `docVersion` 缺省或不是当前版本（`details.docVersion`） |
+| `DRAMA_CANVAS_DOC_CORRUPT` | 500 | 库里的文档解析不出来（只可能是被手工改坏） |
+| `DRAMA_CANVAS_ASSET_NOT_OWNED` | 400 | 生成要用的 key 里有不属于本人的（`details.keys` / `details.count`），不扣费 |
+| `DRAMA_CANVAS_ASSET_RECORD_CONFLICT` | 500 | 记归属时 key 已记在别人名下 |
+| `DRAMA_CANVAS_EPISODE_LOCKED` | 409 | AI 重写锁住的集 |
+| `DRAMA_CANVAS_RUN_NOT_CANCELABLE` | 409 | 已经交给厂商的运行不能取消 |
+| `DRAMA_CANVAS_REQUEST_ID_INVALID` | 400 | `clientRequestId` 不是 8–64 位 `[A-Za-z0-9_-]` |
+| `DRAMA_CANVAS_REQUEST_ID_REUSED` | 409 | 所有生成接口：同一个 `clientRequestId` 已用在另一张画布、另一种请求（`kind` 或 `target` 不同），或单条与批量互用 |
+| `DRAMA_CANVAS_BATCH_TOO_LARGE` | 400 | 批量出图超过 20 项或合计超过 40 张 |
+| `DRAMA_CANVAS_BATCH_EMPTY` | 400 | 批量出图一项都没有 |
+| 复用 | 402 积分不足（CreditService 既有）、503 `AI_NOT_CONFIGURED` / `IMAGE_NOT_CONFIGURED` / `VIDEO_NOT_CONFIGURED` / `PROMPT_NOT_CONFIGURED` / `ENDPOINT_NOT_ALLOWED`、502 `AI_CALL_FAILED`（落在 run 上） |
+
+**运行记录上的错误码**（落在 `DramaCanvasRun.errorCode`，不是 HTTP 错误；给用户看的话在 `errorMessage`）
+
+| code | 适用 | 场景 / 钱 |
+|---|---|---|
+| `DRAMA_CANVAS_QUEUE_FULL` | 全部 | 运行线程池排满、没派发出去；已退回 |
+| `DRAMA_CANVAS_RUN_DEADLINE` | 全部（主要是批量出图） | 受理后超过 90 分钟就停止，已出的保留并结算，剩余退回 |
+| `DRAMA_CANVAS_RUN_TIMEOUT` | 全部 | 心跳超时被回收器判死；已退回 |
+| `DRAMA_CANVAS_RUN_FAILED` | 全部 | 没归类的失败；已退回 |
+| `DRAMA_CANVAS_CREDIT_SETTLE_FAILED` | 全部 | 结算（commitHold）失败 |
+| `DRAMA_CANVAS_RUN_KIND_UNSUPPORTED` | 全部 | 运行记录的 kind 不认识（不应出现） |
+| `AI_CALL_FAILED` | script / extract / storyboard | 模型调用失败，或 JSON 输出形状不对（不拿模板句冒充）；已退回 |
+| `IMAGE_CALL_FAILED` | image | 图像模型调用失败；失败的张数退回 |
+| `IMAGE_BAD_OUTPUT` | image | 上游回的不是可用图片，不入库不扣款 |
+| `IMAGE_STORE_FAILED` | image | 图没存进我方存储，不扣款 |
+| `VIDEO_GENERATION_FAILED` | video | 厂商返回失败；已退回 |
+| `VIDEO_MIRROR_FAILED` | video | 提交时带了 `require_mirror`，成片没镜像进我方存储；视频 worker 已判失败并退款 |
+| `DRAMA_CANVAS_VIDEO_QUEUE_TIMEOUT` | video | 排队 30 分钟一直没交给厂商；已退回 |
+| `DRAMA_CANVAS_VIDEO_JOB_MISSING` | video | 底层视频任务找不到了 |
+| `DRAMA_CANVAS_VIDEO_RECORD_FAILED` | video | 成片已有平台 key，但登记到用户名下时出错；**可重试**（GET runs 与回收器的对账恢复会再捡起来） |
+| `DRAMA_CANVAS_VIDEO_NOT_STORED` | video | 成片没有平台 key（只有厂商临时地址），**不可恢复** |
+| `DRAMA_ASSEMBLE_FAILED` / `DRAMA_ASSEMBLE_BAD_CLIP` / `DRAMA_CANVAS_NOTHING_TO_ASSEMBLE` | assemble | 拼接或质量门失败 / 某段视频不可用 / 没有可合成的片段（合成免费，无钱可退） |
+| 其余 | — | 沿用抛出方 `BusinessException` 的错误码 |
+
 ```
 packages/types/src/*.ts              ← 唯一前端真值源
 apps/web-*/src/api/*.ts              ← 调用契约（USE_MOCK 切换 mocks/ vs apiFetch）

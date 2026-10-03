@@ -132,12 +132,93 @@ const DRAMA_META: Record<string, DramaPromptMeta> = {
     sample: { metaPrefix: "全片视觉设定：固定主角阿杰；固定场景清晨出租屋。", visual: "阿杰听见门外异响，迅速贴墙回头", lineClause: "本镜表演对白：阿杰说“门外有人。”；画面中不要显示对白文字或字幕。", styleSuffix: "竖屏风格短片，邵氏港片喜剧风格。" },
     kind: "media",
   },
+  // ── v0.198 画布（web-drama /canvas）：文字类共用「短剧脚本起草」端点、一律 JSON 输出，服务端按形状校验，
+  //    不合格退款；出图 / 出视频是给图像 / 视频模型的单条 prompt。参考图由后端按连线 / @ 引用带上，模板里不写地址。
+  "drama.canvas_script_setting": {
+    label: "画布 · 故事大纲",
+    blurb: "画布里「让 AI 写剧本」的第一步：由用户的一句话想法写题材、主线和人物小传。输出 JSON {text}。",
+    vars: ["{{idea}} 用户的想法", "{{targetEpisodes}} 计划集数", "{{episodeDurationSec}} 每集秒数", "{{styleClause}} 全剧风格（可空）", "{{currentClause}} 重写时的上一版（可空）", "{{instructionClause}} 这次的要求（可空）"],
+    defaultTemp: 0.9,
+    sample: { idea: "老中学拆除前，女老师在旧教室发现一封十七年前的信", targetEpisodes: "10", episodeDurationSec: "60", styleClause: "", currentClause: "", instructionClause: "" },
+  },
+  "drama.canvas_script_outline": {
+    label: "画布 · 分集剧情",
+    blurb: "按故事大纲写每集的标题、开场钩子和梗概。集数多时后端每 20 集一批，后一批会带上前一批最后几集（{{prevClause}}）。输出 JSON {episodes:[{no,title,hook,summary}]}，条数必须正好。",
+    vars: ["{{setting}} 故事大纲", "{{total}} 全剧集数", "{{fromNo}} / {{toNo}} 这一批从第几集到第几集", "{{count}} 这一批集数", "{{episodeDurationSec}} 每集秒数", "{{prevClause}} 前一批最后几集（可空）", "{{styleClause}} 全剧风格（可空）", "{{instructionClause}} 这次的要求（可空）"],
+    defaultTemp: 0.85,
+    sample: { setting: "题材与基调：悬疑情感……", total: "10", fromNo: "1", toNo: "10", count: "10", episodeDurationSec: "60", prevClause: "", styleClause: "", instructionClause: "" },
+  },
+  "drama.canvas_script_episode": {
+    label: "画布 · 分集剧本",
+    blurb: "把某一集写成标准剧本格式（场次、时间地点、出场人物、△ 动作、台词）。锁上的集后端直接拒绝，不会调到这里。输出 JSON {title,text}。",
+    vars: ["{{no}} 集号", "{{total}} 全剧集数", "{{settingClause}} 故事大纲（可空）", "{{outlineClause}} 这一集的分集剧情（可空）", "{{prevClause}} 上一集结尾（可空）", "{{currentClause}} 重写时的现有正文（可空）", "{{instructionClause}} 这次的要求（可空）", "{{episodeDurationSec}} 每集秒数", "{{styleClause}} 全剧风格（可空）"],
+    defaultTemp: 0.85,
+    sample: { no: "1", total: "10", settingClause: "", outlineClause: "这一集的分集剧情：\n标题：旧教室重逢\n钩子：……\n梗概：……\n", prevClause: "", currentClause: "", instructionClause: "", episodeDurationSec: "60", styleClause: "" },
+  },
+  "drama.canvas_extract": {
+    label: "画布 · 拆角色和场景",
+    blurb: "从全部分集剧本里拆出角色（含造型、出现集数、六段式外貌描述）和场景。剧本长时后端按集分批，结果按名字合并；{{knownClause}} 是已有 / 前几批拆出的名字，让模型沿用同一叫法。",
+    vars: ["{{scriptText}} 这一批的剧本正文", "{{episodeRange}} 这一批是第几集", "{{maxEpisodeNo}} 全剧最后一集", "{{knownClause}} 已有的角色和场景名字（可空）", "{{styleClause}} 全剧风格（可空）"],
+    defaultTemp: 0.3,
+    sample: { scriptText: "## 第 1 集\n### 场1-1\n日 内 旧教室\n出场人物：林微\n△ 林微蹲在地上整理旧物。", episodeRange: "第 1 集", maxEpisodeNo: "10", knownClause: "", styleClause: "" },
+  },
+  "drama.canvas_storyboard": {
+    label: "画布 · 分镜脚本",
+    blurb: "把一集剧本切成片段（每段 1–4 个镜头，逐行「（N 秒）……」），角色和场景用 @[名字](look:id) 引用。后端会校验：片段时长不超过上限、引用的 id 必须在画布里（不在的改成纯文字）。",
+    vars: ["{{no}} 集号", "{{title}} 集标题", "{{scriptText}} 这一集剧本", "{{assetTable}} 画布里的造型 / 场景对照表", "{{maxSec}} 单个片段时长上限", "{{minSec}} 建议最短", "{{episodeDurationSec}} 每集秒数", "{{styleClause}} 全剧风格（可空）"],
+    defaultTemp: 0.5,
+    sample: { no: "1", title: "旧教室重逢", scriptText: "### 场1-1\n日 内 旧教室\n△ 林微蹲在地上整理旧物。", assetTable: "- 林微·基础造型（角色「林微」的造型「基础造型」）→ @[林微·基础造型](look:lk_demo)", maxSec: "10", minSec: "4", episodeDurationSec: "60", styleClause: "" },
+  },
+  "drama.canvas_look_image": {
+    label: "画布 · 造型出图",
+    blurb: "角色造型卡出图（全身立绘）。连进来的造型 / 场景 / 素材图由后端当参考图带上，文字素材拼进 {{textClause}}。",
+    vars: ["{{name}} 角色·造型名", "{{prompt}} 外貌描述", "{{textClause}} 连进来的文字素材（可空）", "{{refClause}} 参考图说明（可空）", "{{styleClause}} 全剧风格（可空）", "{{ratioClause}} 画幅"],
+    defaultTemp: 0,
+    sample: { name: "林微·基础造型", prompt: "基本信息：女，30 岁左右……", textClause: "", refClause: "", styleClause: "风格：90 年代写实电影风格。", ratioClause: "竖屏 9:16 构图。" },
+    kind: "media",
+  },
+  "drama.canvas_scene_image": {
+    label: "画布 · 场景出图",
+    blurb: "场景卡出图（空景，不画人）。",
+    vars: ["{{name}} 场景名", "{{prompt}} 环境描述", "{{textClause}} 连进来的文字素材（可空）", "{{refClause}} 参考图说明（可空）", "{{styleClause}} 全剧风格（可空）", "{{ratioClause}} 画幅"],
+    defaultTemp: 0,
+    sample: { name: "旧教室", prompt: "老中学教室，木课桌，午后阳光透过灰尘……", textClause: "", refClause: "", styleClause: "", ratioClause: "竖屏 9:16 构图。" },
+    kind: "media",
+  },
+  "drama.canvas_material_image": {
+    label: "画布 · 素材图出图",
+    blurb: "画布上自由素材图按用户写的提示词出图。",
+    vars: ["{{prompt}} 素材图提示词", "{{textClause}} 连进来的文字素材（可空）", "{{refClause}} 参考图说明（可空）", "{{styleClause}} 全剧风格（可空）", "{{ratioClause}} 画幅"],
+    defaultTemp: 0,
+    sample: { prompt: "一个生锈的铁皮饼干盒，放在旧课桌抽屉里", textClause: "", refClause: "", styleClause: "", ratioClause: "竖屏 9:16 构图。" },
+    kind: "media",
+  },
+  "drama.canvas_frame_image": {
+    label: "画布 · 片段首帧",
+    blurb: "单集编辑器里给片段出首帧：画第一个镜头的开场画面，参考片段里 @ 到的造型 / 场景 / 素材图。画幅强制跟画布。",
+    vars: ["{{firstShot}} 第一个镜头", "{{segmentText}} 整个片段（换掉了 @ 标记）", "{{refClause}} 参考图说明（可空）", "{{styleClause}} 全剧风格（可空）", "{{ratioClause}} 画幅"],
+    defaultTemp: 0,
+    sample: { firstShot: "日，旧教室。近景，平视。林微·成年 蹲在地上整理旧物。", segmentText: "（4 秒）日，旧教室。近景，平视。林微·成年 蹲在地上整理旧物。", refClause: "", styleClause: "", ratioClause: "竖屏 9:16 构图。" },
+    kind: "media",
+  },
+  "drama.canvas_segment_video": {
+    label: "画布 · 片段出视频",
+    blurb: "片段首帧 + 分镜脚本 → 一条视频。每行保留「（N 秒）」让模型按时长切镜头；首帧由后端随任务带给视频模型，模板里不用写图片地址。",
+    vars: ["{{segmentText}} 片段分镜脚本（换掉了 @ 标记）", "{{styleClause}} 全剧风格（可空）", "{{ratioClause}} 画幅"],
+    defaultTemp: 0,
+    sample: { segmentText: "（4 秒）日，旧教室。近景。林微蹲在地上整理旧物。\n（3 秒）特写，林微拉开抽屉。", styleClause: "", ratioClause: "竖屏 9:16 构图。" },
+    kind: "media",
+  },
 };
 
 const DRAMA_KEY_ORDER = [
   "drama.outline", "drama.epscript", "drama.split_scene", "drama.cast", "drama.script_draft",
   "drama.short_prompt_parse",
   "drama.frame_image", "drama.clip_video", "drama.short_frame_image", "drama.short_clip_video",
+  "drama.canvas_script_setting", "drama.canvas_script_outline", "drama.canvas_script_episode",
+  "drama.canvas_extract", "drama.canvas_storyboard",
+  "drama.canvas_look_image", "drama.canvas_scene_image", "drama.canvas_material_image",
+  "drama.canvas_frame_image", "drama.canvas_segment_video",
 ];
 
 export default function DramaPromptsPage() {

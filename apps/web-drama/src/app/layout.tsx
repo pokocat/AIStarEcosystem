@@ -10,6 +10,12 @@ import "../styles/pages/workbench.css";
 import "../styles/pages/episode.css";
 import "../styles/pages/market.css";
 import "../styles/pages/account.css";
+// v0.198 画布：外壳 + 我的画布 + 新建在 canvas.css；四个页面各写各的文件，不再碰这里。
+import "../styles/pages/canvas.css";
+import "../styles/pages/canvas-script.css";
+import "../styles/pages/canvas-assets.css";
+import "../styles/pages/canvas-board.css";
+import "../styles/pages/canvas-episodes.css";
 import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
