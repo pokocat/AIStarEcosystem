@@ -32,12 +32,15 @@ export function formatCurrency(cents: number, currency: CurrencyCode = "CNY"): s
   })}`;
 }
 
-/** 紧凑数字：用于粉丝量、播放量。例：2300000 → "2.3M"，128000 → "128K" */
+/** 紧凑数字：用于粉丝量、播放量。例：2300000 → "2.3M"，128000 → "128K"，-128000 → "-128K" */
 export function formatCompactNumber(n: number): string {
   const abs = Math.abs(n);
-  if (abs >= 1_000_000_000) return trimZero(abs / 1_000_000_000) + "B";
-  if (abs >= 1_000_000) return trimZero(abs / 1_000_000) + "M";
-  if (abs >= 1_000) return trimZero(abs / 1_000) + "K";
+  // 负号单独保留：>=1000 的分支此前用绝对值拼接，会把 -128000 显示成 "128K"（符号丢了），
+  // 而 <1000 分支又保留符号，同一函数两种行为。统一前缀负号。
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000_000) return sign + trimZero(abs / 1_000_000_000) + "B";
+  if (abs >= 1_000_000) return sign + trimZero(abs / 1_000_000) + "M";
+  if (abs >= 1_000) return sign + trimZero(abs / 1_000) + "K";
   return String(Math.trunc(n));
 }
 

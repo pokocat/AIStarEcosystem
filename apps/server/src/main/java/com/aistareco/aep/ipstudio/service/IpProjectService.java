@@ -98,6 +98,15 @@ public class IpProjectService {
                 .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在，或者已经删了"));
     }
 
+    /**
+     * 带行级写锁取项目：只给「读-改-写同一行、且必须串行」的长事务用（当前：发布）。
+     * 必须在调用方的 {@code @Transactional} 里调，锁随事务提交释放。
+     */
+    public IpProject requiredForUpdate(String userId, String id) {
+        return projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNullForUpdate(id, userId)
+                .orElseThrow(() -> BusinessException.notFound("IP_PROJECT_NOT_FOUND", "这张画布不存在，或者已经删了"));
+    }
+
     public IpProjectDto detail(String userId, String id) {
         return toDetail(required(userId, id));
     }
