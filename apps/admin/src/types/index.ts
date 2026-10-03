@@ -5,6 +5,7 @@ export * from "./artist";
 export * from "./account";
 export * from "./audit";
 export * from "./studio";
+export * from "./video-studio";
 export * from "./license";
 export * from "./wallet";
 export * from "./finance";

@@ -7,6 +7,30 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 ## 版本日志
 
+- **v0.199（2026-09-30）**：**视频生成区**（web-celebrity「AI 创作 → 视频生成」，设计真源 [`docs/video-studio-plan.md`](../../docs/video-studio-plan.md)，规则 `specs/BUSINESS_RULES.md` §6.8）。
+  - **新域** `com.aistareco.aep.videostudio`：`/api/me/celebrity/video-studio/{models, uploads, jobs, jobs/{id}}`，把 MiniMax H3 的四种原生模式（`t2v` / `i2v` / `first_last_frame_video` / `universal_reference_video`）原样开放。厂商合同集中在 `JusuanH3Contract`：768p/544p × 六种画布、`orientation` 含 `square`、`outputSizeCode h3-<tier>-<W>x<H>`、5–15 秒、种子。
+  - **出片不建表**：复用 `MaterialVideoJobService` / `Worker` / `ModelClient`，新分区 `app=video-studio`（`APP_VIDEO_STUDIO`），`kind=studio-*`。
+  - **价格我们自己定、后台可配**（二版）：`VideoStudioPricingService` 读平台配置 `celebrity.video-studio-pricing`（60 秒缓存，`GET / PUT /api/admin/celebrity/video-studio-pricing`）。
+    每格 = 配置 ?? 模型候选的每秒价（`creditCostOverride` > 0 且端点按秒）?? 未定价 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`。
+    总价 = (每秒价 + 超出 `freeRefImages` 的图片数 × `extraRefImagePerSecond`) × 秒数，以 `credit_cost` 冻结。
+  - **智能优化**（二版）：`VideoStudioOptimizationService` / `Worker` / `Reaper` / `Settlement`，`POST / GET …/prompt-optimizations[/{id}]`。
+    厂商 `/media/prompt-optimizations` 同步但最长约 10 分钟，所以做成后台任务（独立线程池 8 线程 / 队列 64）。
+    `Idempotency-Key` = `clientRequestId` = 我方记录 id，409 / 429 / 5xx 同键同正文重发，总预算 12 分钟（从上传素材前开始算）。
+    同一用户同一 clientRequestId 先插行再冻结；状态迁移与扣 / 退在 `VideoStudioOptimizationSettlement` 的同一个 `REQUIRES_NEW` 事务里；
+    每 5 分钟回收超过 20 分钟仍未结束的记录（判失败、退冻结；结算时用 `failIfStale` 再判一次「还卡着」，列出后刚被 worker 领走的不动）。单价 `promptOptimizationPerCall`（默认 0 = 不收费）。
+  - **模板 / 做同款**（二版）：`VideoStudioTemplateService`，`GET / POST …/templates`、`GET / DELETE …/templates/{id}`。只存配方
+    （模式、最终提示词、规格、种子、模型、素材 key），不拷运行痕迹；官方模板只有 `aep_users.operatorRole` ∈ operator / super_admin 能发
+    （`InAppOperatorGuard.isOperatorUserId`，服务端查库）。做同款时归属闸放行该模板自己的素材（类型一致），成功建任务后 `use_count + 1`（单条 UPDATE）。
+  - **迁移 V37**（`V37__video_studio_optimization_and_template.sql`，两张新表，见下方数据模型）。
+  - **上传**：`VideoStudioUploadService` 按字节判格式（新 `MediaBytes`），音视频过 ffprobe，key 分类 `video-studio-<image|video|audio>/<uid>/` 即类型真值，归属闸用新的 `FileStorageService.ownedKeyPrefix`。
+  - **共享链改动**：
+    - `MaterialVideoModelClient.submit` 的最后一个参数从首帧 key 换成 `VideoGenSpec`（worker 唯一解析入口），老路径的聚算请求体逐字段不变。
+    - 素材上传泛化为 `image` / `video` / `audio`；创建请求被 4xx 拒时，任务失败原因用厂商原话。
+    - **修画布两处老问题**：`IpRunService` 选的模型写错层、一直没生效；非聚算协议把画布首帧 key 静默丢掉，现在改为经 `FileStorageService.upstreamFetchUrl`（签名优先）传过去。
+    - `submit` 加分区闸：原生规格只许 `video-studio` 带，首帧 key 只许 `ipstudio` / `video-studio` / `drama` 带（短剧在 2026-09-30 首帧热修后会写 `first_frame_key`，写之前验过归属；带货素材运营的入口透传客户端 `variant_config`，挡着）。
+    - 对账恢复：调用方定价的任务（payload `caller_priced`）按冻结价结算。
+    - worker 写给用户的失败原因去掉 `status=` / `taskId=`，账本文案用 `credit_label`；`toCard` 出 wire 时剥掉 `credit_label` 与 `caller_priced` 两个内部字段。
+  - **测试**：`videostudio/*Test`（含真事务的 `VideoStudioOptimizationTransactionTest`：结算原子、线程池拒绝后确实退了冻结、同键并发拿到同一条）、`VideoStudioMigrationTest`、`JusuanH3ContractTest`、`VideoGenSpecTest`、`MediaBytesTest`、`MaterialVideoModelClientBodyTest` / `WireTest` / `RetryHintTest`、`MaterialVideoWorkerSpecTest`、`MaterialVideoJobServiceStudioTest`、`IpVideoModelChoiceWiringTest`；本机对模拟聚算服务的端到端检查见 `docs/video-studio-plan.md` §7。
 - **2026-09-30 热修（不占版本号，基线 `ada3e17c`）**：短剧 / 短视频在聚算 H3 上「生成视频」首帧送不到模型、静默变成文生视频。聚算协议的图不收 URL，worker 只认 `variant_config.first_frame_key`，而 `DramaRenderService.renderClip` 从没写过它。现在 `renderClip` 经 `MaterialVideoJobService.firstFrameNeedsStorageKey`（判定只在 `MaterialVideoModelClient.usesUploadedFirstFrame`）识别聚算端点后，由 `DramaReferenceAssembler` 用 `CdnUrlSigner.keyOf` 从最终首帧 URL 反抽 key，按存储台账（`storage_assets`，app=drama + owner）或本人短剧任务的 `lastFrameCdnKey` 确认归属，再写进 `first_frame_key`（同 `IpRunService`）。不属于本人 → 冻结积分前 400 `DRAMA_FRAME_NOT_OWNED`；外链派不出 key → 照旧出片但 `applied_refs` 报 `not_in_storage`；候选 `maxRefImages=0` → 不派生，照旧 `model_no_image_input`。非聚算协议（seedance / agnes / generic）行为不变。新增两条只读查询：`StorageAssetRepository.findByAppAndOwnerUserIdAndCdnKeyIn`、`MaterialVideoJobRepository.findScopedByLastFrameCdnKeyIn`，无表结构变更、无迁移。
 - **v0.135（2026-08-18）**：`clip` 最终音轨改为两遍响度归一，第二遍消费第一遍 `measured_*`，编码前目标 -16 LUFS / -2.5 dBTP，为 AAC 峰值回弹留余量；编码后的真实文件仍按 ≤ -1 dBTP 质量门失败关闭，并在日志记录实测亮度/响度/真峰值。
 - **v0.132（2026-08-18）**：`clip` 本人素材改为受限 OSS V4 PostObject 单次直传 + `clip_upload_session` 持久化受理号 + 异步媒体校验/供应商提交；同一 owner + clientRequestId 只复用一个对象和任务。形象视频若为 HEVC/H.265，服务端先转 H.264/AAC 再走既有 ffprobe/预览/克隆，旧 multipart 路由保留兼容。
@@ -502,7 +526,9 @@ src/main/java/com/aistareco/aep/
 | `celebrity_templates` 扩字段 | preview_cover / preview_video_url / duration_sec |
 | `aep_notifications` 扩字段 | bot_id（关联 5 个 AI Bot 同事；v0.5.2 拉模式后保留作扩展点）；**v0.58** +`audience_scope`/`audience_target_id`/`audience_target_name`（推送对象溯源，可空，老行回退 scope=all）。运营收件箱行用保留 `user_id='__admin__'`（`Notification.ADMIN_INBOX_USER_ID`），由 `NotificationPublisher` 写入（充值下单/取消、新用户激活），admin `/api/admin/notifications` 只读写该收件箱 |
 | `aep_social_accounts` | sau 绑定账号，存 `display_name` / `platform_account_id` / `avatar_url` 清洁 profile；`storage_state_encrypted` 为 AES-GCM 密文且不出 DTO |
-| `material_video_job` 扩字段 (v0.108) | `app`（VARCHAR(16)：`celebrity`\|`drama`，索引 `idx_mvj_user_app`）—— 本表被带货线与短剧线共用，列表 / 单查按本列分区，否则会跨子产品串号（带货素材库出现短剧分镜视频）。老行 `app=null` 时查询按 `kind like 'drama-%'` 兜底推断（`MaterialVideoJobRepository.APP_EXPR`），`MaterialVideoJobAppBackfill` 幂等回填仅为走索引 |
+| `material_video_job` 扩字段 (v0.108) | `app`（VARCHAR(16)：`celebrity`\|`drama`\|`ipstudio`（v0.157）\|`video-studio`（v0.199），索引 `idx_mvj_user_app`）—— 本表被带货线与短剧线共用，列表 / 单查按本列分区，否则会跨子产品串号（带货素材库出现短剧分镜视频）。老行 `app=null` 时查询按 `kind like 'drama-%'` 兜底推断（`MaterialVideoJobRepository.APP_EXPR`），`MaterialVideoJobAppBackfill` 幂等回填仅为走索引 |
+| `video_studio_prompt_optimization` (v0.199，V37) | 视频生成区的智能优化记录：`id`（= 交给厂商的 Idempotency-Key）、`owner_user_id`、`client_request_id`（`UNIQUE(owner_user_id, client_request_id)`）、`endpoint_id`、`status`（queued / running / succeeded / failed，只经条件更新迁移）、`spec_json`（已校验的请求快照）、`original_prompt`、`optimized_prompt`、`vendor_optimization_id`、`error_message`、`credits_held`（冻结额，refType `video_studio_prompt_optimization`、refId = id）、`created_at` / `updated_at` / `completed_at` |
+| `video_studio_template` (v0.199，V37) | 视频生成区的模板：`owner_user_id`、`scope`（official / private）、`status`（active / withdrawn，软删）、`title`、`description`、`source_job_id`、`recipe_json`（模式、最终提示词、规格、种子、模型、素材 role / mediaType / key / label；不含任务状态 / 积分等运行痕迹）、`preview_video_key` / `preview_thumbnail_key`（存 key，出 wire 现签）、`use_count` |
 | `mixcut_render_output` 扩字段 (v0.19) | `publish_count`（INT NOT NULL DEFAULT 0）/ `last_published_at`（OffsetDateTime nullable）—— `MixcutPublishService` 每次派单成功后按 target 数累加；视频库 UI 用此显示「已发 ×N」徽标，允许同一变体再次分发 |
 | `mixcut_render_output` 扩字段 (v0.21) | `deleted_at`（OffsetDateTime nullable）—— 用户在「视频库」点删除后置非空；DTO 转换过滤 `deletedAt != null` 的 output；`MixcutOutputCleanupScheduler @Scheduled(cron="0 30 3 * * *")` 每日凌晨清理 30 天前软删行（本地 mp4 / CDN / DB 全删） |
 | `mixcut_asset` 扩字段 (v0.21) | `is_official`（BOOLEAN NOT NULL DEFAULT false）/ `official_category`（直播切片 / 综艺 / 访谈…）/ `related_star_id`（关联 `celebrity_stars.id`，可空）—— 运营后台上传的「官方明星片段」，端点 `POST /api/admin/mixcut/official-clips`；用户端只读 `GET /api/mixcut/assets/official-clips` |

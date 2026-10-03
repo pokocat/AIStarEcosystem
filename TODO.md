@@ -9,6 +9,35 @@
 
 ---
 
+## 2026-09-30 · 视频生成区 v0.199 后续（真源 `docs/video-studio-plan.md` §8）
+
+- [x] ~~**线上用真实账号把视频生成区走一遍**~~ **2026-10-03 完成**：四种模式 + 智能优化 + 存为官方模板 / 做同款 / 撤回全部在线上页面点通，五条各扣 200、无残留冻结，测试 mock 已删配置关闭；细节见 `docs/video-studio-plan.md` §7。原描述（2026-10-02 已上线 `20261002052931-1f569079`，只差这一步）：用户在浏览器里登录 celebrity 和 admin 后，在后台把自己的用户 id 写进 `celebrity.video-studio.test-mock-user-ids`（测试 mock 只在发布分支 `release/v0199-combined` 上，说明见该分支的 `docs/video-studio-plan.md` §8.1；本次核对结果见本分支 §7），跑四种模式 + 智能优化 + 存为模板 / 做同款 + 发官方模板 / 撤回，核对积分，最后删配置。测试账号（18801931018）只有 269 积分，完整流程要 1,000–1,400：先补测试积分，或者只跑一两条。
+- [ ] **视频生成区表单：`update` 用旧选择拼新选择**（2026-10-03 线上实测发现）：`VideoStudioForm.tsx` 的 `update = (patch) => setSelection({ ...sel, ...patch })` 读的是上一次渲染的 `sel`，同一拍里连调两次（脚本连点、或以后某处一次改多项）后一次会盖掉前一次。人手点两次中间必有一次渲染，用户碰不到；改成函数式 `setSelection(prev => …)` 即可。
+- [ ] **main 与线上对齐**：线上跑的是发布分支 `release/v0199-combined`（#115 + #116 + #117 + #118 + 测试 mock）。按顺序合 #116 → #117（先把 base 改成 main）→ #118；合之前**不要从 main 发 server / web-drama / web-celebrity**，否则会把画布和视频生成区撤掉（V36 / V37 的表还在，只是代码没了）。#118 合进 main 时的冲突解法照发布分支上的那几个合并提交（`00df37ab` / `683af813`）。
+- [x] ~~**提示词智能优化没接**~~ **v0.199 二版完成**，2026-09-30：照厂商试用页做成可选、默认勾上。`POST / GET /api/me/celebrity/video-studio/prompt-optimizations[/{id}]`，新表 `video_studio_prompt_optimization`（V37，`UNIQUE(owner_user_id, client_request_id)`）；厂商同步最长约 10 分钟，所以做成后台任务（独立线程池 + 每 5 分钟回收卡住的记录），`Idempotency-Key` = `clientRequestId` = 我方记录 id，409 / 429 / 5xx 同键同正文重发。单价后台配（`promptOptimizationPerCall`，默认 0 = 不收费）。评审后补：状态迁移与积分结算同一事务、线程池拒绝时在新事务里失败并退款、同键并发先插行再冻结（见 docs/video-studio-plan.md §5.9）。
+- [ ] **视频生成区：智能优化的单价默认是 0（不收费）**：上线前运营要在后台「明星带货 → 引擎定价 → 视频生成」定一个价；厂商那边优化是单独计费的，不定价等于我们替用户付。
+- [ ] **视频生成区：智能优化调用没进用量统计**：`MaterialVideoModelClient.optimizePrompt` 只写日志，不进「视频生成」的按秒用量表，也没有别的用量表收它。对账厂商账单时会少这一块；量起来之后给它单独记一笔（按次）。
+- [ ] **视频生成区：模板直接引用原作素材的 key，不复制文件**（docs/video-studio-plan.md §10）。今天本区没有删除素材的入口、存储也不自动清理，所以不会断；哪天加了「删除素材」或存储清理任务，要先查 `video_studio_template.recipe_json` 里的引用，否则别人做同款时素材 404。
+- [ ] **合并时核对迁移编号 V37，且 V36 必须先上线**：主干最新 V35，`feat/drama-xyq-flow` 占了 V36。线上 Flyway `out-of-order=false` + `validate-on-migrate=true`：V37 先上线的话 V36 再也进不去、服务启动失败。合本分支前确认 main 上已有 `V36__drama_canvas.sql`，部署也按 V36 → V37 的顺序；合并时再对一次线上 `flyway_schema_history`（编号横跨 `resources/db/migration/*.sql` 与 `src/main/java/db/migration/*.java`）。
+- [ ] **本机 `aep.cdn.driver=local` 时，非聚算协议（seedance / agnes / 通用）带首帧 key 会在 worker 里 502 `VIDEO_REF_UNREADABLE`**（2026-10-01 短剧画布会话告知）：`FileStorageService.upstreamFetchUrl` 给的是本机 `/cdn` 地址，厂商拿不到；生产走 OSS 签名地址不受影响。本地联调这几个协议的首帧要配一个公网能访问的 CDN，或者只用聚算协议测。
+- [ ] **合并顺序：短剧首帧热修 → 短剧画布（v0.197 / v0.198）→ 本分支（v0.199）**（2026-10-01 与短剧画布会话对齐，细节见 `docs/video-studio-plan.md` §12）：
+  合并后给 `MaterialVideoWorkerSpecTest` 补 `jobRepo.claimQueued` 的桩；解 `MaterialVideoWorker` 冲突时保留 `claimQueued`、删掉本分支的 `updateStatus(jobId, "submitting", 5, null)`；
+  真跑一次短剧带首帧出片（分区闸已放行 drama，但短剧那边的测试 mock 了 submit，拦错了也是绿的）。
+- [ ] **1:1 的 `orientation:"square"` 未实测**：取自 Portal「API 接入」生成的示例，公开 OpenAPI 的 `orientation` 枚举只有 landscape / portrait。第一次真实出 1:1 时看一眼上游是否 400；拒收的话把 `JusuanH3Contract` 里 1:1 的 orientation 改掉。
+- [ ] **出片的创建请求没带 `Idempotency-Key`**（智能优化已经带了）：厂商强烈建议创建请求带稳定幂等键。今天 worker 不重发创建，所以不加也不会重复出片；哪天要做「提交超时后按原键恢复」时再加（键用任务 id）。
+- [ ] **带平台标识的成片**（`deliveryMode=marked`）没接：默认镜像的是无可见水印的原片。需要时在 worker 下载受保护产物那一步追加参数并处理 202 重试。
+- [x] ~~**画布出视频两个老问题**~~ **v0.199 完成**，2026-09-30：`IpRunService.generateVideo` 把模型 id 写进 `variant_config`（与首帧 key 同一层），`IpVideoModelChoiceWiringTest` 用真的 `MaterialVideoJobService` 钉住「选的模型 = 被校验、被计价、被 worker 调用的那个」；非聚算协议的首帧 key 经 `FileStorageService.upstreamFetchUrl`（签名优先）放进 seedance `content[role=first_frame]` / agnes、通用 `image`。
+- [ ] **带货脚本视频的模型下拉：停用的默认候选显示价与冻结价对不上**（v0.199 评审时顺带确认的老问题）：`MaterialVideoJobService.listModels` 在列表为空时合成默认项（`candidate=null` → 显示每条 30），而提交时 `resolveCreditCostOverride(null, …)` → `AiModelInvocationService.resolveEndpoint(purpose, null)` 取候选行**不看 enabled**，照样按候选 override × 秒数冻结（15 秒 600）。视频生成区已改成「候选在但停用 → 不合成」（`VideoStudioService.listModels`），带货脚本线要不要跟着改是产品决定：改了之后运营停用默认候选，脚本视频工坊会显示「未开通」。
+- [ ] **提交要求有默认绑定**：`MaterialVideoJobService.submit` 开头的 `modelClient.ensureConfigured()` 只看默认绑定，即使请求显式选了一个可用的候选，默认绑定缺失也会 503 `VIDEO_NOT_CONFIGURED`。目前生产一直有默认绑定，不影响；哪天要支持「只有候选没有默认」再改成按所选端点判。
+- [ ] **`DapImageInput` 交给厂商的参考图是公开地址优先**（v0.172 的取舍）：`FileStorageService.publicUrl` 只拼域名、不管桶能不能匿名读，桶是私有的话就是 403。视频链 v0.199 已改为签名优先（短剧交给 seedance 一直用签名地址、生产跑通过）。dap 这条要先在生产核实桶的读权限再决定，别照搬。
+- [ ] **视频生成区的生成记录是内存截断 100 条**：`MaterialVideoJobRepository.findScoped` 把该用户该分区的行全捞出来，服务层再截。量大之后加一个带分页的查询（`Pageable`），前端加「加载更多」。
+- [ ] **`specs/openapi.yaml` 用严格 YAML 解析器读不过**（主干上就这样，v0.199 没有新增）：契约门禁是按行扫的，所以一直没暴露。2026-10-01 用 PyYAML 逐个扫出来的：
+  - 流式映射里的值没加引号、内容含 `?` / `:` / `[...]`：`creditCost`（「override ?? 带货线默认价」）、`lyrics`（「[verse]/[chorus]」）、ip-studio 两处 `"200": { description: …status=running… }` 与 `…status=rendering…`；
+  - 重复的键：`components.schemas.AsyncJobStarted` 定义了两次、`paths./me/wallet/withdraw` 出现两次（后一份会静默覆盖前一份）。
+  哪天要用 openapi 生成客户端或文档时先修；修完可以把「严格解析能过」加进 `pnpm check:api-contract`。
+
+---
+
 ## 2026-09-07 · 画布换成开源无限画布 v0.157 后续
 
 - [x] ~~**画布上看不见参考图的顺序**~~ **改判不做**，2026-09-08：产品决定「按添加顺序传进去、让模型自己理解」即可。
@@ -137,7 +166,7 @@
 - [ ] **identity · `LEGACY_ADMIN_ROLES` 过渡垫片按期删除**（v0.149）：见上条同名条目，发布 7 天后删（后台令牌 TTL 7d）。
 - [ ] **账号中心侧（`pokocat/aibuzz-id`）· MP（公众号）扫码分支无测试**（v0.149）：`WechatWebLoginTest` 只覆盖 OPEN_WEB；配一个 kind=MP 的测试应用补一条微信内 UA 的用例。`HttpWechatGateway.oauthAccessToken` 未对真 appid 打过。
 - [ ] **账号中心侧（`pokocat/aibuzz-id`）· 未配 Redis 时 Boot 仍自动创建 localhost Lettuce 连接工厂**（v0.149 观察）：惰性连接、不会外呼，但若想干净可在非 Redis 路径 `spring.autoconfigure.exclude` 掉 `RedisAutoConfiguration`。
-- [ ] **identity · 并发首登的 Hibernate ERROR 日志噪音**（v0.149 本地 E2E 观察）：仪表盘首屏并发十几个请求 → 十几个线程同时 JIT 建档，只有一个赢，其余撞 `aep_users.username` 唯一键后回读赢家（**业务结果正确**，`/api/me` 200），但 Hibernate `SqlExceptionHelper` 每次都打一条 ERROR 栈。可选修法：JIT 前对同一 uid 做进程内 `computeIfAbsent` 单飞，或把 `org.hibernate.engine.jdbc.spi.SqlExceptionHelper` 对该路径降级。不影响功能。
+- [ ] **identity · 并发首登的 Hibernate ERROR 日志噪音**（v0.149 本地 E2E 观察；**2026-10-02 20:40 线上实际出现一次**：新账号 `id_akgh222kf1sg` 首屏 5 个并发请求，4 条 `Duplicate entry … aep_users` ERROR）：仪表盘首屏并发十几个请求 → 十几个线程同时 JIT 建档，只有一个赢，其余撞 `aep_users.username` 唯一键后回读赢家（**业务结果正确**，`/api/me` 200），但 Hibernate `SqlExceptionHelper` 每次都打一条 ERROR 栈。可选修法：JIT 前对同一 uid 做进程内 `computeIfAbsent` 单飞，或把 `org.hibernate.engine.jdbc.spi.SqlExceptionHelper` 对该路径降级。不影响功能。
 - [ ] **server dev · `recharge_order.grant_storage_mb` 列缺失**（2026-09-04 本地 E2E 观察，与账号中心无关）：`PaymentReconcileService` 定时任务在 H2 dev 库报 `Column "RO1_0.GRANT_STORAGE_MB" not found`（每轮吞掉重试）。疑似实体加了字段但 ddl-auto=update 没有补列（或本地 H2 文件库陈旧）。需核对 `RechargeOrder` 与迁移。
 - [ ] **P5 · Web 令牌存储改 BFF + HttpOnly cookie**（Codex P2 评审 P1-6，2026-09-04）：当前 access / refresh 令牌在各子站 localStorage，五个 web 客户端共用 `aistar-api` audience → 任一子站 XSS 可窃取 30 天刷新能力并访问本仓其他已开通产品。目标：每子域 Next 路由处理器做 BFF，refresh 放 HttpOnly + SameSite cookie，access 只驻内存；过渡期至少补 CSP / Trusted Types。规划 D9 已加注。
 - [ ] **server · 匿名 `/api/config` 前缀白名单需随新公开配置维护**（v0.149）：`ConfigController.PUBLIC_KEY_PREFIXES` 只放行 `incubation.` / `forge.` / `drama.credit.`；将来前端要匿名读新配置键，必须加前缀，否则 404。管理端 `/api/admin/platform-configs` 不受影响。

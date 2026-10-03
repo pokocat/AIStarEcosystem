@@ -6,6 +6,7 @@ test("keeps valid celebrity workspace return paths", () => {
   assert.equal(celebrityReturnPath("/dashboard"), "/dashboard");
   assert.equal(celebrityReturnPath("/products/p-1?tab=assets#video"), "/products/p-1?tab=assets#video");
   assert.equal(celebrityReturnPath(" /material/workshop "), "/material/workshop");
+  assert.equal(celebrityReturnPath("/studio/video"), "/studio/video");
 });
 
 test("rejects admin, API and cross-origin return paths", () => {

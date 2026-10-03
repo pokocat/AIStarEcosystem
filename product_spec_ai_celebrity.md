@@ -408,6 +408,26 @@ prod 启动时 DataInitializer 不跑，真实账号通过 SMS register 流程�
 
 ## 七、版本日志（按时间倒序追加，**不删除历史**）
 
+### v0.199 · 2026-09-30 — web 工作台新增「AI 创作 → 视频生成」（小程序不变）
+
+制作人 / MCN 在 web-celebrity 的 `/studio/video` 直接调用视频模型出片，当前对标 MiniMax H3 的四种原生模式：
+文生视频、首帧生视频、首尾帧生视频、全能参考（最多 9 图 + 1 视频 + 3 音频）。规格可选 768p / 544p、六种画面比例、5–15 秒。
+不绑商品、不走脚本，功能照厂商原样平移，不做产品化封装。
+
+- **计价**：价格我们自己定，不照搬厂商价。运营在后台「明星带货 → 引擎定价 → 视频生成」按四种模式 × 两档清晰度配每秒价（空着的格子按该模型在「AI 模型与 Key」里配的每秒价），
+  全能参考可配「前 N 张图不加价、之后每张每秒加价」。总价 = (每秒价 + 超出张数 × 每张加价) × 秒数。某个组合两边都没价 → 用户看到「还没定价」，提交被拒（503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`），不会按 0 出片。
+  提交时冻结，成功扣，失败全额退，与其它带货出片同一本账。
+- **智能优化**（同厂商试用页：可选，默认勾上）：先把提示词交给模型改写，用户看过、能改，再选「用这版生成」或「改用原提示词生成」。
+  优化单独计价（后台配，0 = 不收费），发起时冻结，优化成功扣、失败退。厂商同步最长要等约十分钟，服务端做成后台任务，前端轮询。
+- **模板 / 做同款**：成功的作品可以存为模板，把模式、最终提示词、规格、种子、模型和原素材一起保存（不拷任务状态、积分等运行痕迹）。
+  普通用户的模板只有自己看得到；运营账号可以发布成所有人可见的官方模板，也可以撤回。做同款时原素材直接可用，也能逐个换成自己上传的，计费与普通生成一样。
+- **记录**：生成记录只在本区可见，不进素材库、视频库。
+- **接口**：`/api/me/celebrity/video-studio/{models, uploads, jobs, jobs/{id}, prompt-optimizations, prompt-optimizations/{id}, templates, templates/{id}}`，
+  后台 `GET / PUT /api/admin/celebrity/video-studio-pricing`。沿用明星带货的开通（不新增产品码），未绑手机号的账号只读。
+- **数据**：出片复用 `material_video_job`（分区 `video-studio`）；新表 `video_studio_prompt_optimization`、`video_studio_template`（V37）。
+
+完整口径见 [`docs/video-studio-plan.md`](docs/video-studio-plan.md) 与 `specs/BUSINESS_RULES.md` §6.8。
+
 ### v0.132 · 2026-08-18 — 共享 server 增加「快出片」单次直传与异步受理（明星带货流程不变）
 
 共享后端新增 `clip_upload_session` 与 `/api/me/clip/avatar/uploads**`：军师客户端凭精确限制的 OSS V4 policy 直接上传本人形象/声音/照片，服务端 HEAD 核验后异步受理，owner + clientRequestId 保证网络重试不会重复创建供应商任务；HEVC/H.265 形象视频会先转为 H.264。该能力仍属于独立 `clip` 域，不改变明星带货授权、素材、钱包或小程序页面；完整口径见 [`docs/clip-avatar-video-plan.md`](docs/clip-avatar-video-plan.md) v0.132。
