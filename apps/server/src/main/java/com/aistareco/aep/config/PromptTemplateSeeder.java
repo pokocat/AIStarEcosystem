@@ -34,7 +34,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      线上实测产出过「包书皮时意外发现，前任留下的惊天伏笔」这类把两个话题域硬焊的选题。
     // v12：v11 收得过紧 —— 线上连续 6 次产出 0 条（旧版同批 50 热词能出 10 条）。改为「逐条判断、
     //      不要整批放弃、通常 4-8 条」，并说明丢弃规则只针对那件事本身、不是放弃整批热词。
-    private static final String SEED_VERSION = "v12-2026-09-02-hotspot-no-collapse";
+    // v13：画布提示词（drama.canvas_script_setting / outline / episode / extract / storyboard）按线上实测改写：
+    //      示例名换成人物甲 / 乙、人物小传列全想法里的人且不撞字、台词不加 △、相邻集不重复、拆角色看大纲、片段下限。
+    private static final String SEED_VERSION = "v13-2026-10-03-canvas-prompts";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

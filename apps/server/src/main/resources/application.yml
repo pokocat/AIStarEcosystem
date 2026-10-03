@@ -293,6 +293,8 @@ aep:
       # 画布（v0.198）后台任务线程池：文字 / 出图 / 合成（视频走 material 视频链自己的池）。
       # 队列 256，排满时新事务里直接判失败并退款（DramaCanvasRunWorker）。
       max-concurrent: ${AEP_DRAMA_CANVAS_MAX_CONCURRENT:4}
+      # 文字类（写剧本 / 拆角色 / 分镜）同时在飞的 chat 请求上限（v0.198.1）：聚算 Key 同时只许 2 个推理，超了 429。
+      text-concurrency: ${AEP_DRAMA_CANVAS_TEXT_CONCURRENCY:2}
   # 数字人资产平台（apps/web-aiavatar，v0.51 dap 领域：com.aistareco.aep.dap.*；表 dap_*；账户复用 aep_users + 钱包）。
   # 大模型接入点（chat / image / video）统一在后台「AI 模型与 Key + AI 应用绑定」配置
   # （purpose=DAP_PERSONA / DAP_IMAGE / DAP_VIDEO），DapMultimodalClient 运行时只读 admin 端点，无 env 兜底。

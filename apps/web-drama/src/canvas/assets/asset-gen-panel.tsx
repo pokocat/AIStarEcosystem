@@ -8,7 +8,11 @@
 //   连进来的参考（每张右上 × 断开）+ 上传参考（建素材图 + 连线，board 通过 onReferenceAdded 摆位置）
 //   候选图一排（点一张 = 用这张）、生成状态（排队中可停 / 失败原因 / 参考图实际用上几张）
 //   出图模型 ▾ · 画幅 ▾ · 角色设计（只对造型）· 出几张 1–4 · 生成 ✦N
+//   底下一行提示（为什么不能生成 / 出错原因）：**一直占着一行的高度**。面板贴着底边停靠，这一行时有时无的话
+//   面板高度跟着变，「生成」按钮会在鼠标底下挪位（v0.198.1 线上实测）。
 //
+// 出图模型是**整张画布一个选择**（useCanvasPricing().imageModelId，按画布记在 localStorage）：
+// 这里改了，列表批量出图、片段「出首帧」也跟着用这个。
 // docked：position:absolute 停在所在容器（画布的 .cv-fill，position:relative）的底部中间，最宽 820，小屏整宽；
 //   整体最高 min(46vh, 360px)：描述最多约 5 行（超出在框里滚，「放大编辑」开大弹窗），上传参考 / 已连参考 /
 //   候选图合成一行 56px 小图横向滚动，底部一行放 模型 / 画幅 / 角色设计 / 出几张 / 生成。inline 是普通块，排版不压。
@@ -112,14 +116,6 @@ function runTargetOf(s: Pick<Subject, "kind" | "id">): DramaCanvasRunTarget {
 
 const UPLOAD_CAT: Record<Target["kind"], string> = { look: "人物", scene: "场景", material: "其他" };
 
-/** 上一次选的出图模型（切到别的卡片时沿用；只在这一页记着）。 */
-let lastImageModel: string | undefined;
-
-/** 测试用：忘掉上一次选的出图模型。 */
-export function __resetAssetGenPanelForTest(): void {
-  lastImageModel = undefined;
-}
-
 export function AssetGenPanel(props: AssetGenPanelProps) {
   // 换了目标就从头来（画幅缺省值跟着类型变、出几张回到 1、报错清掉）
   return <PanelInner key={`${props.target.kind}:${props.target.id}`} {...props} />;
@@ -133,7 +129,6 @@ function PanelInner({ target, variant, onClose, onReferenceAdded }: AssetGenPane
 
   const [count, setCount] = React.useState(1);
   const [ratio, setRatio] = React.useState<CanvasImageRatio>(() => defaultImageRatio(target.kind, meta.ratio));
-  const [chosenModel, setChosenModel] = React.useState<string | undefined>(lastImageModel);
   const [busy, setBusy] = React.useState(false);
   /** 同一帧里连点两下：state 还没更新，靠 ref 同步上锁（从确认框到请求返回整段都算在途）。 */
   const lock = React.useRef(false);
@@ -145,9 +140,7 @@ function PanelInner({ target, variant, onClose, onReferenceAdded }: AssetGenPane
   const [detailOpen, setDetailOpen] = React.useState(false);
 
   const models = pricing.imageModels;
-  const defaultModel = models.find((m) => m.isDefault) ?? models[0];
-  const model = models.find((m) => m.endpointId === chosenModel) ?? defaultModel;
-  const endpointId = model?.endpointId;
+  const endpointId = pricing.imageModelId;
 
   const onPick = React.useCallback(
     async (file: File) => {
@@ -414,10 +407,7 @@ function PanelInner({ target, variant, onClose, onReferenceAdded }: AssetGenPane
                 className="cv-select"
                 value={endpointId ?? ""}
                 disabled={readOnly || models.length <= 1}
-                onChange={(e) => {
-                  lastImageModel = e.target.value;
-                  setChosenModel(e.target.value);
-                }}
+                onChange={(e) => pricing.setImageModelId(e.target.value)}
                 aria-label="出图模型"
               >
                 {models.length === 0 && <option value="">默认模型</option>}
@@ -466,12 +456,15 @@ function PanelInner({ target, variant, onClose, onReferenceAdded }: AssetGenPane
               <Cost value={pricing.ready ? price : null} />
             </button>
           </div>
-          <Reason>{disabledReason}</Reason>
-          {error && (
-            <div className="cv-error" role="alert">
-              {error}
-            </div>
-          )}
+          {/* 有没有字都占着一行（见头注释）：提示时有时无，面板就不会跟着变高变矮 */}
+          <div className="cva-foot-note" data-testid="cva-foot-note">
+            <Reason>{disabledReason}</Reason>
+            {error && (
+              <div className="cv-error" role="alert">
+                {error}
+              </div>
+            )}
+          </div>
         </>
       )}
 

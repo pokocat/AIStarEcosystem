@@ -19,6 +19,11 @@
 // 再把表里剩下的逐项接回（有运行 id 直接查；没有就按幂等键 lookup 只查不建 —— 查不到 = 当初没受理，删掉）。
 // 进页流程里**不重发任何 POST**；只有用户在会话里再次点同一个动作时才沿用原键重发（那是用户自己点的）。
 // 轮询同时盯着 state 里在跑的和文档里记着「在跑」的引用（首次接回失败也不会一直转圈）。卸载时停止轮询。
+//
+// submitSequence({ awaitEach: true })（写全部分集剧本用）：一项受理之后等它跑完再发下一项。「跑完」= 运行到了终态、
+// 而且结果已经合进文档（轮询 / 接回 / 取消合完之后才放行）；下一项发之前的 flush() 把它存上，服务端读到的文档里
+// 就有上一集。等待挂在这个 Provider 的「这一代」上（lifeRef）：卸载、换画布、文档进了 stale / 打不开 → 全部放掉，
+// 按「停下了」处理（剩下的不发、记 skipped）。等待里不发任何请求，只是不往下走。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -27,7 +32,7 @@ import { aiErrorMessage } from "@/lib/ai-error";
 import { toast } from "@/lib/toast";
 import { notifyWalletChanged } from "@/lib/use-wallet";
 import type { CanvasRunBase, DramaCanvasRun, DramaCanvasRunKind, DramaCanvasRunTarget } from "@ai-star-eco/types/drama-canvas";
-import type { CanvasDocValue, CanvasRunRequest, CanvasRunsValue, SubmitResult } from "./contract";
+import type { CanvasDocValue, CanvasRunRequest, CanvasRunsValue, SequenceItemResult, SubmitResult } from "./contract";
 import { newClientRequestId } from "./ids";
 import { applyRunRef, applyRunResult, collectRunRefs, isTerminalStatus, runRefAt } from "./merge";
 import {
@@ -65,6 +70,15 @@ const IN_BATCH_MESSAGE = "这一项正跟着一批一起生成，等它出完再
 const RUNNING_MESSAGE = "这一项正在生成，等它出完再点";
 const SKIP_BUSY_MESSAGE = "这一项已经在生成了，这次跳过";
 const SKIP_STOPPED_MESSAGE = "前面有一项没发出去，后面的先不发";
+const SKIP_RUN_FAILED_MESSAGE = "前面有一项没生成出来，后面的先不发";
+const SKIP_LEFT_MESSAGE = "离开了这张画布，后面的没有发";
+const SKIP_STALE_MESSAGE = "这张画布在别的页面改过了，后面的没有发";
+const SKIP_WAIT_TIMEOUT_MESSAGE = "前一项太久没做完，后面的先不发了；它做完会自己出现在这里";
+/**
+ * awaitEach 每一项最多等多久（Codex 评审 P2：轮询一直失败、或请求一直不回时，没有这个上限「写全部」会永远占着）。
+ * 一集剧本平时半分钟左右，排队等许可加上 429 退避也很少超过十分钟；到点只是不再往下发，已经受理的那一项照样在服务端跑、照样会被接回。
+ */
+export const AWAIT_EACH_TIMEOUT_MS = 20 * 60_000;
 
 const FAILED_TITLE: Record<DramaCanvasRunKind, string> = {
   script: "剧本没写出来",
@@ -232,6 +246,29 @@ async function doSubmit(
   return { ok: true, runs };
 }
 
+// ── 等运行跑完（submitSequence awaitEach）──────────────────────────────────────
+
+type WaitOutcome = { done: true; runs: DramaCanvasRun[] } | { done: false; message: string };
+
+interface RunWaiter {
+  ids: string[];
+  resolve: (o: WaitOutcome) => void;
+}
+
+/** Provider 的「这一代」：换画布 / 卸载时作废，挂在它上面的等待一起放掉。 */
+interface Life {
+  alive: boolean;
+  waiters: Set<RunWaiter>;
+}
+
+const newLife = (): Life => ({ alive: true, waiters: new Set() });
+
+function releaseWaiters(life: Life, message: string): void {
+  const ws = [...life.waiters];
+  life.waiters.clear();
+  for (const w of ws) w.resolve({ done: false, message });
+}
+
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 interface RunState {
@@ -284,11 +321,69 @@ export function CanvasRunsProvider({ children }: { children: React.ReactNode }) 
     strikes.current.clear();
   }, [canvasId]);
 
-  /** 把轮询 / 取消拿到的运行合进文档（applyRunResult：只动引用还指着这次的状态，终态才合内容，幂等）。 */
-  const mergeIntoDoc = React.useCallback((runs: DramaCanvasRun[]) => {
-    if (!runs.length) return;
-    docRef.current.update((d) => runs.reduce((acc, r) => applyRunResult(acc, r), d));
+  // 这一代：换画布 / 卸载时作废，等着的 submitSequence 一律放掉（按「离开了」停下）
+  const lifeRef = React.useRef<Life>(newLife());
+  React.useEffect(() => {
+    const life = newLife();
+    lifeRef.current = life;
+    return () => {
+      life.alive = false;
+      releaseWaiters(life, SKIP_LEFT_MESSAGE);
+    };
+  }, [canvasId]);
+  // 文档进了 stale / 打不开：轮询停了，等不到结果，也放掉（下一项本来也发不出去）
+  React.useEffect(() => {
+    if (docStatus === "stale" || docStatus === "error" || docStatus === "not-found") releaseWaiters(lifeRef.current, SKIP_STALE_MESSAGE);
+  }, [docStatus]);
+
+  /** 等着的运行都到了终态（而且结果已经合进文档）就放行。合并之后调。 */
+  const settleWaiters = React.useCallback(() => {
+    const life = lifeRef.current;
+    if (!life.waiters.size) return;
+    const byId = stateRef.current.byId;
+    for (const w of [...life.waiters]) {
+      const runs = w.ids.map((id) => byId[id]);
+      if (runs.every((r) => r && isTerminalStatus(r.status))) {
+        life.waiters.delete(w);
+        w.resolve({ done: true, runs: runs as DramaCanvasRun[] });
+      }
+    }
   }, []);
+
+  /** 等这几条运行跑完。life 不是当前这一代（已经卸载 / 换了画布）→ 立刻按「离开了」回。 */
+  const waitForRuns = React.useCallback(
+    (ids: string[], life: Life): Promise<WaitOutcome> => {
+      if (!life.alive || life !== lifeRef.current) return Promise.resolve({ done: false, message: SKIP_LEFT_MESSAGE });
+      if (docRef.current.status !== "ready") return Promise.resolve({ done: false, message: SKIP_STALE_MESSAGE });
+      return new Promise<WaitOutcome>((resolve) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const waiter: RunWaiter = {
+          ids,
+          resolve: (o) => {
+            if (timer) clearTimeout(timer);
+            resolve(o);
+          },
+        };
+        timer = setTimeout(() => {
+          if (!life.waiters.delete(waiter)) return;
+          resolve({ done: false, message: SKIP_WAIT_TIMEOUT_MESSAGE });
+        }, AWAIT_EACH_TIMEOUT_MS);
+        life.waiters.add(waiter);
+        settleWaiters(); // 受理时就已经是终态（同一个幂等键回了原记录）：马上放行
+      });
+    },
+    [settleWaiters],
+  );
+
+  /** 把轮询 / 取消拿到的运行合进文档（applyRunResult：只动引用还指着这次的状态，终态才合内容，幂等）。 */
+  const mergeIntoDoc = React.useCallback(
+    (runs: DramaCanvasRun[]) => {
+      if (!runs.length) return;
+      docRef.current.update((d) => runs.reduce((acc, r) => applyRunResult(acc, r), d));
+      settleWaiters();
+    },
+    [settleWaiters],
+  );
 
   /**
    * 接回刚受理（或找回来）的运行：记进 state、引用写进文档、立刻保存；保存成功才从未确认表里删掉。
@@ -309,11 +404,12 @@ export function CanvasRunsProvider({ children }: { children: React.ReactNode }) 
           return isTerminalStatus(r.status) ? applyRunResult(next, r) : next;
         }, d),
       );
+      settleWaiters();
       const flushed = await docRef.current.flush();
       if (flushed.ok && opts.clientRequestId) removePending(docRef.current.canvasId, opts.clientRequestId);
       return flushed.ok;
     },
-    [commit],
+    [commit, settleWaiters],
   );
 
   React.useEffect(() => {
@@ -561,21 +657,26 @@ export function CanvasRunsProvider({ children }: { children: React.ReactNode }) 
   const submitSequence = React.useCallback<CanvasRunsValue["submitSequence"]>(
     async (reqs, opts) => {
       const stopOnError = opts?.stopOnError ?? true;
+      const awaitEach = opts?.awaitEach ?? false;
+      const life = lifeRef.current;
       const cid = docRef.current.canvasId;
       const perReq = reqs.map((r) => targetsOf(r));
       // 一进来整批登记为「提交中」：轮到之前，这些目标单独点 / 别的批量都会被挡住
       const mine: Reservation = { canvasId: cid, targets: new Set(perReq.flat()) };
       reservations.add(mine);
       bumpInflight();
-      const out: (SubmitResult | { ok: false; reason: "skipped"; message: string })[] = [];
-      let stopped = false;
+      const out: SequenceItemResult[] = [];
+      /** 停下之后剩下那些记的原因（null = 还没停）。 */
+      let stopped: string | null = null;
       try {
         for (let i = 0; i < reqs.length; i++) {
           const ts = perReq[i];
           for (const t of ts) mine.targets.delete(t);
           bumpInflight();
+          // awaitEach：上一项等的途中离开了 / 换了画布 → 不再发
+          if (!stopped && awaitEach && (!life.alive || life !== lifeRef.current)) stopped = SKIP_LEFT_MESSAGE;
           if (stopped) {
-            out.push({ ok: false, reason: "skipped", message: SKIP_STOPPED_MESSAGE });
+            out.push({ ok: false, reason: "skipped", message: stopped, stopped: true });
             continue;
           }
           // 发之前重新核对：这期间它可能已经被别处提交了、或者正在生成
@@ -583,9 +684,29 @@ export function CanvasRunsProvider({ children }: { children: React.ReactNode }) 
             out.push({ ok: false, reason: "skipped", message: SKIP_BUSY_MESSAGE });
             continue;
           }
+          opts?.onProgress?.(i, reqs.length);
           const r = await submitInternal(reqs[i], mine);
-          out.push(r);
-          if (!r.ok && stopOnError) stopped = true;
+          if (!r.ok) {
+            out.push(r);
+            if (stopOnError) stopped = SKIP_STOPPED_MESSAGE;
+            continue;
+          }
+          if (!awaitEach) {
+            out.push(r);
+            continue;
+          }
+          // 等它跑完、结果合进文档（下一项发之前的 flush 会把它存上），再往下走
+          const w = await waitForRuns(
+            r.runs.map((x) => x.id),
+            life,
+          );
+          if (!w.done) {
+            out.push(r); // 这一项已经受理（服务端照样在跑，下次进页接回）；剩下的不发
+            stopped = w.message;
+            continue;
+          }
+          out.push({ ok: true, runs: w.runs });
+          if (stopOnError && w.runs.some((x) => x.status !== "succeeded")) stopped = SKIP_RUN_FAILED_MESSAGE;
         }
       } finally {
         reservations.delete(mine);
@@ -593,7 +714,7 @@ export function CanvasRunsProvider({ children }: { children: React.ReactNode }) 
       }
       return out;
     },
-    [submitInternal, targetRunning],
+    [submitInternal, targetRunning, waitForRuns],
   );
 
   const isSubmitting = React.useCallback(

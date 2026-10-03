@@ -158,14 +158,14 @@ const DRAMA_META: Record<string, DramaPromptMeta> = {
   "drama.canvas_extract": {
     label: "画布 · 拆角色和场景",
     blurb: "从全部分集剧本里拆出角色（含造型、出现集数、六段式外貌描述）和场景。剧本长时后端按集分批，结果按名字合并；{{knownClause}} 是已有 / 前几批拆出的名字，让模型沿用同一叫法。",
-    vars: ["{{scriptText}} 这一批的剧本正文", "{{episodeRange}} 这一批是第几集", "{{maxEpisodeNo}} 全剧最后一集", "{{knownClause}} 已有的角色和场景名字（可空）", "{{styleClause}} 全剧风格（可空）"],
+    vars: ["{{scriptText}} 这一批的剧本正文", "{{episodeRange}} 这一批是第几集", "{{maxEpisodeNo}} 全剧最后一集", "{{settingClause}} 故事大纲（人物性别、年龄、身份以它为准；可空）", "{{knownClause}} 已有的角色和场景名字（可空）", "{{styleClause}} 全剧风格（可空）"],
     defaultTemp: 0.3,
-    sample: { scriptText: "## 第 1 集\n### 场1-1\n日 内 旧教室\n出场人物：林微\n△ 林微蹲在地上整理旧物。", episodeRange: "第 1 集", maxEpisodeNo: "10", knownClause: "", styleClause: "" },
+    sample: { scriptText: "## 第 1 集\n### 场1-1\n日 内 旧教室\n出场人物：林微\n△ 林微蹲在地上整理旧物。", episodeRange: "第 1 集", maxEpisodeNo: "10", settingClause: "故事大纲（人物的性别、年龄、身份以这里的人物小传为准）：\n人物小传：\n林微：女，28 岁，中学老师。\n", knownClause: "", styleClause: "" },
   },
   "drama.canvas_storyboard": {
     label: "画布 · 分镜脚本",
     blurb: "把一集剧本切成片段（每段 1–4 个镜头，逐行「（N 秒）……」），角色和场景用 @[名字](look:id) 引用。后端会校验：片段时长不超过上限、引用的 id 必须在画布里（不在的改成纯文字）。",
-    vars: ["{{no}} 集号", "{{title}} 集标题", "{{scriptText}} 这一集剧本", "{{assetTable}} 画布里的造型 / 场景对照表", "{{maxSec}} 单个片段时长上限", "{{minSec}} 建议最短", "{{episodeDurationSec}} 每集秒数", "{{styleClause}} 全剧风格（可空）"],
+    vars: ["{{no}} 集号", "{{title}} 集标题", "{{scriptText}} 这一集剧本", "{{assetTable}} 画布里的造型 / 场景对照表", "{{maxSec}} 单个片段时长上限", "{{minSec}} 单个片段时长下限（所选视频模型的最短时长，太短的片段会并进相邻片段）", "{{episodeDurationSec}} 每集秒数", "{{styleClause}} 全剧风格（可空）"],
     defaultTemp: 0.5,
     sample: { no: "1", title: "旧教室重逢", scriptText: "### 场1-1\n日 内 旧教室\n△ 林微蹲在地上整理旧物。", assetTable: "- 林微·基础造型（角色「林微」的造型「基础造型」）→ @[林微·基础造型](look:lk_demo)", maxSec: "10", minSec: "4", episodeDurationSec: "60", styleClause: "" },
   },

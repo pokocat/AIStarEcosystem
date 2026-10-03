@@ -7,6 +7,7 @@
 //   [角色 3] [场景 3] [素材 2]      [搜索] [全部集 ▾] [多选] [加一个角色]
 //   卡片网格（角色竖版定妆照 / 场景图 / 素材图或文字）
 //   底部：提示条（剧本 ← → 逐集制作）；多选时换成「为选中的 N 个出图 ✦M」
+//   批量出图的确认框里写着用哪个出图模型、可以就地换（整张画布一个出图模型选择，见 batch-image-dialog.tsx）
 //
 // 点卡片：桌面上点角色 / 场景 → onLocate(`character:<id>` / `scene:<id>`)（page 切到画布并定位）；
 // 手机上（≤720）→ 抽屉（造型列表 + 出图面板）；素材卡任何宽度都开抽屉。
@@ -29,9 +30,9 @@ import {
   useCanvasRuns,
 } from "@/canvas/core";
 import { CanvasNextBar, DesktopHint } from "@/canvas/shell";
-import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { toast } from "@/lib/toast";
 import { AssetDrawer, type DrawerTarget } from "./asset-drawers";
+import { BatchImageDialog } from "./batch-image-dialog";
 import { assetRunView, READ_ONLY_REASON, useNarrow, withSubmitting } from "./bits";
 import { CharacterCard, MaterialCard, SceneCard, type RunOf } from "./cards";
 import { NameDialog } from "./inputs";
@@ -97,7 +98,11 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
   const [drawer, setDrawer] = React.useState<DrawerTarget | null>(null);
   const [adding, setAdding] = React.useState<"character" | "scene" | null>(null);
   const [batchBusy, setBatchBusy] = React.useState(false);
+  /** 确认框开着时：打开那一刻要出图的那几项（确认之后只会比它少、不会多：框里报的价是上限）。 */
+  const [batchConfirm, setBatchConfirm] = React.useState<ReadonlySet<string> | null>(null);
   const batchLock = React.useRef(false);
+  const pricingRef = React.useRef(pricing);
+  pricingRef.current = pricing;
 
   // 带着 focus 进来：打开那一项（同一个 focus 只开一次，关掉之后不再弹）
   const handledFocus = React.useRef<string | undefined>(undefined);
@@ -176,37 +181,38 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
   const statusOf = (p: BatchPick): DramaCanvasRunStatus | undefined => runOf(p.kind, p.id).status;
   const plan = planBatch(doc, picks, statusOf);
   const n = plan.items.length;
-  const total = pricing.imagePrice(Math.max(1, n));
+  const total = pricing.imagePrice(Math.max(1, n), pricing.imageModelId);
   const skipped = skippedText(plan.skipped);
   /** 超过服务端上限（20 项 / 40 张）：按钮禁用、就地说原因，不截断、不自动分批。 */
   const overLimit = batchLimitReason(plan.items);
+  const itemKey = (i: (typeof plan.items)[number]) => `${i.target.kind}:${(i.target as { id: string }).id}`;
 
-  const runBatch = async () => {
+  const runBatch = () => {
     if (!n || overLimit || batchLock.current || readOnly) return;
+    setBatchConfirm(new Set(plan.items.map(itemKey)));
+  };
+
+  const confirmBatch = async () => {
+    const confirmed = batchConfirm;
+    setBatchConfirm(null);
+    if (!confirmed || batchLock.current) return;
     batchLock.current = true;
     try {
-      await runBatchOnce();
+      await submitBatch(confirmed);
     } finally {
       batchLock.current = false;
     }
   };
 
-  const runBatchOnce = async () => {
-    const ok = await dramaConfirm({
-      title: `为选中的 ${n} 个出图？`,
-      body: `每个出 1 张，共 ${n} 张，用默认出图模型。${skipped ?? ""}生成失败的那几张会退回积分。`,
-      cost: total,
-      confirmLabel: "确认生成",
-    });
-    if (!ok) return;
+  const submitBatch = async (confirmed: ReadonlySet<string>) => {
     setBatchBusy(true);
     try {
-      // 提交那一刻按最新文档再算一遍（确认框开着的时候可能有东西被删 / 开始生成）；
-      // 只会比确认时少、不会多（确认框里报的价是上限）
-      const confirmed = new Set(plan.items.map((i) => `${i.target.kind}:${(i.target as { id: string }).id}`));
-      const items = planBatch(getDoc(), picks, statusOf).items.filter((i) => confirmed.has(`${i.target.kind}:${(i.target as { id: string }).id}`));
+      // 提交那一刻按最新文档再算一遍（确认框开着的时候可能有东西被删 / 开始生成）
+      const items = planBatch(getDoc(), picks, statusOf).items.filter((i) => confirmed.has(itemKey(i)));
       if (!items.length || batchLimitReason(items)) return;
-      const res = await submit({ kind: "image-batch", body: { items } });
+      // 一律带上这张画布选的出图模型（确认框里可能刚换过）；不带 = 后台默认模型
+      const endpointId = pricingRef.current.imageModelId;
+      const res = await submit({ kind: "image-batch", body: { items, ...(endpointId ? { endpointId } : {}) } });
       if (res.ok) {
         toast.success(`已开始生成 ${items.length} 张`, { description: "生成好的会直接出现在卡片上。" });
         exitSelect();
@@ -435,7 +441,7 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
           next={{
             label: n ? `为选中的 ${n} 个出图` : "为选中的出图",
             cost: n ? (pricing.ready ? total : undefined) : undefined,
-            onClick: () => void runBatch(),
+            onClick: runBatch,
             busy: batchBusy,
             disabled: readOnly || n === 0 || !!overLimit,
             disabledReason: readOnly ? READ_ONLY_REASON : n === 0 ? "还没选能出图的造型或场景。" : overLimit ?? undefined,
@@ -450,10 +456,17 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
       )}
 
       <AssetDrawer target={drawer} onClose={() => setDrawer(null)} />
+      <BatchImageDialog
+        open={!!batchConfirm}
+        count={batchConfirm?.size ?? 0}
+        skippedNote={skipped}
+        onCancel={() => setBatchConfirm(null)}
+        onConfirm={() => void confirmBatch()}
+      />
       <NameDialog
         open={adding === "character"}
         title="加一个角色"
-        placeholder="角色名，如「林微」"
+        placeholder="角色名"
         confirmLabel="加上"
         onClose={() => setAdding(null)}
         onConfirm={(name) => {

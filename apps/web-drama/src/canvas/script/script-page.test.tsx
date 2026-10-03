@@ -44,6 +44,7 @@ vi.mock("@/lib/toast", () => ({ toast: { error: h.toastError, success: vi.fn(), 
 
 import { __resetMockCanvasForTest, mockCanvasServer } from "@/mocks/canvas";
 import CanvasScriptPage from "../../app/(workspace)/canvas/[canvasId]/script/page";
+import { __resetWriteAllProgressForTest } from "./script-page";
 
 // ── 替身 ─────────────────────────────────────────────────────────────────────
 
@@ -104,9 +105,12 @@ const pricing: CanvasPricingValue = {
   scriptPrice: (stage) => ({ setting: 3, outline: 9, episode: 7 })[stage],
   extractPrice: () => 5,
   storyboardPrice: () => 4,
+  imageModelId: undefined,
+  setImageModelId: () => {},
   imagePrice: () => 2,
   videoPrice: () => 6,
   maxSegmentSec: () => 10,
+  minSegmentSec: () => 1,
 };
 
 const runsByTarget = new Map<string, DramaCanvasRun>();
@@ -126,15 +130,16 @@ const submit = vi.fn(async (req: CanvasRunRequest): Promise<SubmitResult> => {
 const submittingTargets = new Set<string>();
 type SeqResult = Awaited<ReturnType<CanvasRunsValue["submitSequence"]>>;
 /** 批量提交的替身：照契约一进来就把整批目标登记为提交中；结果由测试决定（默认全成功），可以挂起不返回。 */
-let seqImpl: ((reqs: CanvasRunRequest[]) => Promise<SeqResult>) | null = null;
+type SeqOpts = Parameters<CanvasRunsValue["submitSequence"]>[1];
+let seqImpl: ((reqs: CanvasRunRequest[], opts?: SeqOpts) => Promise<SeqResult>) | null = null;
 const targetOf = (req: CanvasRunRequest) => {
   const b = req.body as { stage?: string; episodeNo?: number };
   return req.kind === "extract" ? "extract" : b.stage === "episode" ? `script:episode:${b.episodeNo}` : `script:${b.stage}`;
 };
-const submitSequence = vi.fn(async (reqs: CanvasRunRequest[], _opts?: { stopOnError?: boolean }): Promise<SeqResult> => {
+const submitSequence = vi.fn(async (reqs: CanvasRunRequest[], opts?: SeqOpts): Promise<SeqResult> => {
   for (const r of reqs) submittingTargets.add(targetOf(r));
   try {
-    if (seqImpl) return await seqImpl(reqs);
+    if (seqImpl) return await seqImpl(reqs, opts);
     return reqs.map((r, i) => ({ ok: true as const, runs: [run({ id: `seq-${i}`, target: targetOf(r) as DramaCanvasRunTarget })] }));
   } finally {
     for (const r of reqs) submittingTargets.delete(targetOf(r));
@@ -167,6 +172,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  __resetWriteAllProgressForTest();
   submit.mockClear();
   submitSequence.mockClear();
   seqImpl = null;
@@ -274,7 +280,90 @@ describe("剧本页 · 示例画布（source=idea，大纲和分集剧情已通�
       { kind: "script", body: { stage: "episode", episodeNo: 2 } },
       { kind: "script", body: { stage: "episode", episodeNo: 3 } },
     ]);
-    expect(submitSequence.mock.calls[0][1]).toEqual({ stopOnError: true });
+    // 一集写完再写下一集（后一集接着前一集写；服务端只读已保存的文档）
+    expect(submitSequence.mock.calls[0][1]).toMatchObject({ stopOnError: true, awaitEach: true });
+  });
+
+  it("写全部进行中：按钮上写正在写第几集（第几个 / 共几个），还没轮到的集就地写在等；切走再回来进度还在", async () => {
+    const doc = structuredClone(example);
+    doc.script.episodes[1] = { ...doc.script.episodes[1], text: "" };
+    delete doc.script.episodes[1].run;
+    doc.script.episodes.push({ no: 3, title: "第三晚", text: "" });
+    let finish: (r: SeqResult) => void = () => {};
+    let progress: ((i: number, n: number) => void) | undefined;
+    seqImpl = (_reqs, opts) =>
+      new Promise<SeqResult>((resolve) => {
+        finish = resolve;
+        progress = opts?.onProgress;
+      });
+    const first = mount(doc);
+    await click(btn(first.container, '[data-action="write-all"]'));
+    await act(async () => {
+      progress!(0, 2);
+      await settle();
+    });
+    const all = () => btn(document.body, '[data-action="write-all"]')!;
+    expect(all().querySelector("[data-progress]")?.getAttribute("data-progress")).toBe("1/2");
+    expect(all().textContent).toContain("2"); // 正在写第 2 集
+    expect(q(q(document.body, '[data-episode="3"]')!, ".cvs-ep-meta")?.hasAttribute("data-waiting")).toBe(true);
+
+    // 切到别的步骤再回来（页面卸载再挂上）：进度还在，按钮仍然禁用
+    first.unmount();
+    mount(doc);
+    expect(all().disabled).toBe(true);
+    expect(all().querySelector("[data-progress]")?.getAttribute("data-progress")).toBe("1/2");
+    await act(async () => {
+      progress!(1, 2);
+      await settle();
+    });
+    expect(all().querySelector("[data-progress]")?.getAttribute("data-progress")).toBe("2/2");
+    expect(q(q(document.body, '[data-episode="3"]')!, ".cvs-ep-meta")?.hasAttribute("data-waiting")).toBe(false);
+
+    await act(async () => {
+      finish([
+        { ok: true, runs: [run({ id: "s2", target: "script:episode:2", status: "succeeded" })] },
+        { ok: true, runs: [run({ id: "s3", target: "script:episode:3", status: "succeeded" })] },
+      ]);
+      await settle();
+    });
+    expect(all().querySelector("[data-progress]")).toBeNull();
+    expect(h.toastInfo).not.toHaveBeenCalled();
+    expect(h.toastError).not.toHaveBeenCalled();
+  });
+
+  it("写全部：前一集发出去了但没写出来 → 后面的集没写，提示里说清是哪几集", async () => {
+    const doc = structuredClone(example);
+    doc.script.episodes[1] = { ...doc.script.episodes[1], text: "" };
+    delete doc.script.episodes[1].run;
+    doc.script.episodes.push({ no: 3, title: "第三晚", text: "" }, { no: 4, title: "第四晚", text: "" });
+    seqImpl = async () => [
+      { ok: true, runs: [run({ id: "s2", target: "script:episode:2", status: "failed", errorMessage: "AI 写作这会儿太忙" })] },
+      { ok: false, reason: "skipped", message: "前面有一项没生成出来，后面的先不发", stopped: true },
+      { ok: false, reason: "skipped", message: "前面有一项没生成出来，后面的先不发", stopped: true },
+    ];
+    const { container } = mount(doc);
+    await click(btn(container, '[data-action="write-all"]'));
+    expect(h.toastError).not.toHaveBeenCalled(); // 失败原因 core 轮询到时已经报过
+    expect(h.toastInfo).toHaveBeenCalledTimes(1);
+    expect(h.toastInfo.mock.calls[0][0]).toContain("2");
+    expect(h.toastInfo.mock.calls[0][1]?.description).toContain("3");
+    expect(h.toastInfo.mock.calls[0][1]?.description).toContain("4");
+  });
+
+  it("写全部：等的途中离开了画布 → 没发的集照样说清（用 core 给的原因）", async () => {
+    const doc = structuredClone(example);
+    doc.script.episodes[1] = { ...doc.script.episodes[1], text: "" };
+    delete doc.script.episodes[1].run;
+    doc.script.episodes.push({ no: 3, title: "第三晚", text: "" });
+    seqImpl = async () => [
+      { ok: true, runs: [run({ id: "s2", target: "script:episode:2", status: "running" })] },
+      { ok: false, reason: "skipped", message: "离开了这张画布，后面的没有发", stopped: true },
+    ];
+    const { container } = mount(doc);
+    await click(btn(container, '[data-action="write-all"]'));
+    expect(h.toastInfo).toHaveBeenCalledTimes(1);
+    expect(h.toastInfo.mock.calls[0][0]).toBe("离开了这张画布，后面的没有发");
+    expect(h.toastInfo.mock.calls[0][1]?.description).toContain("3");
   });
 
   it("写全部进行中：后面那集的「写这一集」是禁用的；跑完解禁", async () => {
@@ -407,6 +496,8 @@ describe("剧本页 · 提交中（core 的 isSubmitting）也算生成中", () 
     // 第 2 集在提交中：写全部只剩分集剧情里的第 3 集
     expect(btn(container, '[data-action="write-all"]')?.textContent).toContain(`${pricing.scriptPrice("episode") * 1}`);
     expect(btn(container, '[data-action="write-all"]')?.textContent).toContain("1 集");
+    // v0.198.1（Codex 评审 P2）：第 2 集还在单独写，这时「写全部」不让点 —— 第 3 集要接着第 2 集写，得等它写完、进了文档
+    expect(btn(container, '[data-action="write-all"]')?.disabled).toBe(true);
     const next = btn(container, ".cv-next-next");
     expect(next?.getAttribute("aria-busy")).toBe("true");
   });

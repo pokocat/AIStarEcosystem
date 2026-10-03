@@ -27,7 +27,10 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -200,6 +203,16 @@ public class DramaAssembleService {
      *       改用重编码再拼一次；还不对就失败（时间戳错乱的成片播起来会卡顿或丢段）。</li>
      * </ol>
      *
+     * <p>两条拼法（按各段 ffprobe 结果选）：
+     * <ul>
+     *   <li><b>copy</b>：各段宽高、视频编码、有没有音轨（以及音轨的编码 / 采样率 / 声道）全一致 →
+     *       concat 分离器流复制（失败或时长不对回退 concat 分离器重编码）。</li>
+     *   <li><b>normalize</b>：有任何一项不一致 —— 每段可以选不同的视频模型（2026-10 生产：H3 竖屏回 768×1024，
+     *       别的模型回 9:16），有的段没有音轨 —— concat 分离器拼出来是坏片或直接失败。改成一条 filter_complex：
+     *       每段缩放到目标画幅内、补边、统一 30fps / yuv420p，音轨统一 44.1kHz 立体声，没音轨的段补同长静音，
+     *       再 concat 滤镜拼。目标画幅取出现最多的那个（并列取靠前的段）。参数见 {@link #normalizeArgs}。</li>
+     * </ul>
+     *
      * @param refId storage_asset 的 refId（画布 id）
      */
     public AssembledVideo assembleKeys(String userId, String refId, int episodeNo, List<String> videoKeys) {
@@ -211,6 +224,7 @@ public class DramaAssembleService {
         try {
             workDir = Files.createTempDirectory("drama-canvas-assemble-");
             List<Path> locals = new ArrayList<>();
+            List<FfmpegRunner.MediaProbe> probes = new ArrayList<>();
             double expected = 0;
             for (int i = 0; i < videoKeys.size(); i++) {
                 String key = videoKeys.get(i);
@@ -229,37 +243,52 @@ public class DramaAssembleService {
                 }
                 expected += probe.durationSec();
                 locals.add(local);
+                probes.add(probe);
             }
-            Path listFile = workDir.resolve("list.txt");
-            StringBuilder sb = new StringBuilder();
-            for (Path p : locals) {
-                sb.append("file '").append(p.toAbsolutePath().toString().replace("'", "'\\''")).append("'\n");
-            }
-            Files.writeString(listFile, sb.toString());
 
             Path out = workDir.resolve("episode.mp4");
             double tolerance = durationTolerance(expected);
             double actual = -1;
-            boolean copied = false;
-            try {
-                ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
-                        "-i", listFile.toString(), "-c", "copy", out.toString()));
-                copied = true;
-                actual = gatedDuration(out);
-            } catch (Exception copyFail) {
-                log.info("[drama-assemble] canvas -c copy 失败，回退重编码: {}", copyFail.getMessage());
-            }
-            if (!copied || actual < 0 || Math.abs(actual - expected) > tolerance) {
-                if (copied) {
-                    log.info("[drama-assemble] canvas 流复制时长不对 expected={} actual={}，改重编码", expected, actual);
+            if (uniformForCopy(probes)) {
+                log.info("[drama-assemble] canvas path=copy canvas={} ep={} clips={} size={}x{}",
+                        refId, episodeNo, locals.size(), probes.get(0).width(), probes.get(0).height());
+                Path listFile = workDir.resolve("list.txt");
+                StringBuilder sb = new StringBuilder();
+                for (Path p : locals) {
+                    sb.append("file '").append(p.toAbsolutePath().toString().replace("'", "'\\''")).append("'\n");
                 }
-                ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
-                        "-i", listFile.toString(),
-                        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-                        "-c:a", "aac", "-movflags", "+faststart", out.toString()));
+                Files.writeString(listFile, sb.toString());
+
+                boolean copied = false;
+                try {
+                    ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
+                            "-i", listFile.toString(), "-c", "copy", out.toString()));
+                    copied = true;
+                    actual = gatedDuration(out);
+                } catch (Exception copyFail) {
+                    log.info("[drama-assemble] canvas -c copy 失败，回退重编码: {}", copyFail.getMessage());
+                }
+                if (!copied || actual < 0 || Math.abs(actual - expected) > tolerance) {
+                    if (copied) {
+                        log.info("[drama-assemble] canvas 流复制时长不对 expected={} actual={}，改重编码", expected, actual);
+                    }
+                    ffmpeg.runFfmpeg(List.of("-y", "-f", "concat", "-safe", "0",
+                            "-i", listFile.toString(),
+                            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                            "-c:a", "aac", "-movflags", "+faststart", out.toString()));
+                    actual = gatedDuration(out);
+                    if (actual < 0 || Math.abs(actual - expected) > tolerance) {
+                        throw new IllegalStateException("成片质量门没过 expected=" + expected + " actual=" + actual);
+                    }
+                }
+            } else {
+                int[] target = targetSize(probes);
+                log.info("[drama-assemble] canvas path=normalize canvas={} ep={} clips={} target={}x{} clipsMeta={}",
+                        refId, episodeNo, locals.size(), target[0], target[1], describe(probes));
+                ffmpeg.runFfmpeg(normalizeArgs(locals, probes, target[0], target[1], out));
                 actual = gatedDuration(out);
                 if (actual < 0 || Math.abs(actual - expected) > tolerance) {
-                    throw new IllegalStateException("成片质量门没过 expected=" + expected + " actual=" + actual);
+                    throw new IllegalStateException("成片质量门没过（统一画幅重编码）expected=" + expected + " actual=" + actual);
                 }
             }
 
@@ -289,6 +318,121 @@ public class DramaAssembleService {
         FfmpegRunner.MediaProbe probe = ffmpeg.probeMedia(out.toFile());
         if (!probe.readable() || !probe.hasVideo() || probe.durationSec() <= 0) return -1;
         return probe.durationSec();
+    }
+
+    /** 合成统一画幅时的帧率 / 音频采样率。 */
+    static final int NORMALIZE_FPS = 30;
+    static final int NORMALIZE_SAMPLE_RATE = 44100;
+    private static final String AUDIO_FORMAT =
+            "aformat=sample_fmts=fltp:sample_rates=" + NORMALIZE_SAMPLE_RATE + ":channel_layouts=stereo";
+
+    /**
+     * 能不能直接流复制：各段宽高、视频编码、有没有音轨一致；都有音轨时音轨编码 / 采样率 / 声道也要一致
+     * （concat 分离器流复制不会转音频参数，采样率不同的段拼出来音调会变）。
+     */
+    static boolean uniformForCopy(List<FfmpegRunner.MediaProbe> probes) {
+        if (probes == null || probes.isEmpty()) return true;
+        FfmpegRunner.MediaProbe first = probes.get(0);
+        for (FfmpegRunner.MediaProbe p : probes) {
+            if (p.width() != first.width() || p.height() != first.height()) return false;
+            if (!sameCodec(p.videoCodec(), first.videoCodec())) return false;
+            if (p.hasAudio() != first.hasAudio()) return false;
+            if (first.hasAudio() && (!sameCodec(p.audioCodec(), first.audioCodec())
+                    || p.sampleRate() != first.sampleRate() || p.channels() != first.channels())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameCodec(String a, String b) {
+        return (a == null ? "" : a.toLowerCase(Locale.ROOT)).equals(b == null ? "" : b.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * 统一画幅的目标宽高：出现次数最多的那个，并列取最先出现的（第一段在并列里就是第一段的）。
+     * 取偶数（libx264 + yuv420p 不收奇数宽高）。
+     */
+    static int[] targetSize(List<FfmpegRunner.MediaProbe> probes) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (FfmpegRunner.MediaProbe p : probes) {
+            counts.merge(p.width() + "x" + p.height(), 1, Integer::sum);
+        }
+        String best = null;
+        int bestCount = 0;
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            if (e.getValue() > bestCount) {
+                best = e.getKey();
+                bestCount = e.getValue();
+            }
+        }
+        String[] wh = best == null ? new String[]{"720", "1280"} : best.split("x");
+        return new int[]{even(Integer.parseInt(wh[0])), even(Integer.parseInt(wh[1]))};
+    }
+
+    private static int even(int v) {
+        int e = v - (v % 2);
+        return Math.max(2, e);
+    }
+
+    /**
+     * 统一画幅重编码的 ffmpeg 参数（一条 filter_complex）：每段缩放到目标画幅内（保持比例）+ 补边 + 30fps + yuv420p；
+     * 有音轨的段重采样到 44.1kHz 立体声，没音轨的段用同长静音顶上；再 {@code concat=n=N:v=1:a=1}。
+     * libx264 veryfast + aac + faststart，输出路径在最后一个参数。
+     */
+    static List<String> normalizeArgs(List<Path> inputs, List<FfmpegRunner.MediaProbe> probes,
+                                      int width, int height, Path out) {
+        if (inputs.size() != probes.size()) {
+            throw new IllegalArgumentException("inputs/probes 数量不一致 " + inputs.size() + " vs " + probes.size());
+        }
+        List<String> args = new ArrayList<>();
+        args.add("-y");
+        for (Path p : inputs) {
+            args.add("-i");
+            args.add(p.toAbsolutePath().toString());
+        }
+        StringBuilder graph = new StringBuilder();
+        StringBuilder concatIn = new StringBuilder();
+        for (int i = 0; i < inputs.size(); i++) {
+            graph.append('[').append(i).append(":v]")
+                    .append("scale=").append(width).append(':').append(height)
+                    .append(":force_original_aspect_ratio=decrease,")
+                    .append("pad=").append(width).append(':').append(height).append(":(ow-iw)/2:(oh-ih)/2,")
+                    .append("setsar=1,fps=").append(NORMALIZE_FPS).append(",format=yuv420p")
+                    .append("[v").append(i).append("];");
+            FfmpegRunner.MediaProbe probe = probes.get(i);
+            if (probe.hasAudio()) {
+                graph.append('[').append(i).append(":a]")
+                        .append("aresample=").append(NORMALIZE_SAMPLE_RATE).append(',').append(AUDIO_FORMAT);
+            } else {
+                graph.append("anullsrc=r=").append(NORMALIZE_SAMPLE_RATE).append(":cl=stereo,")
+                        .append("atrim=duration=").append(String.format(Locale.ROOT, "%.3f", probe.durationSec()))
+                        .append(',').append(AUDIO_FORMAT);
+            }
+            graph.append("[a").append(i).append("];");
+            concatIn.append("[v").append(i).append("][a").append(i).append(']');
+        }
+        graph.append(concatIn).append("concat=n=").append(inputs.size()).append(":v=1:a=1[vout][aout]");
+        args.addAll(List.of(
+                "-filter_complex", graph.toString(),
+                "-map", "[vout]", "-map", "[aout]",
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-ar", String.valueOf(NORMALIZE_SAMPLE_RATE), "-ac", "2",
+                "-movflags", "+faststart",
+                out.toString()));
+        return args;
+    }
+
+    /** 日志用：每段的宽高 / 视频编码 / 音轨。 */
+    private static String describe(List<FfmpegRunner.MediaProbe> probes) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < probes.size(); i++) {
+            FfmpegRunner.MediaProbe p = probes.get(i);
+            if (i > 0) sb.append(", ");
+            sb.append(p.width()).append('x').append(p.height()).append('/').append(p.videoCodec())
+                    .append('/').append(p.hasAudio() ? p.audioCodec() + "@" + p.sampleRate() : "noaudio");
+        }
+        return sb.append(']').toString();
     }
 
     private static String safeSegment(String s) {

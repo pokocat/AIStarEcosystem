@@ -6,7 +6,15 @@
 import * as React from "react";
 import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { toast } from "@/lib/toast";
-import { findEpisode, useCanvasDoc, useCanvasPricing, useCanvasRuns, type CanvasRunRequest, type CanvasRunsValue } from "@/canvas/core";
+import {
+  findEpisode,
+  useCanvasDoc,
+  useCanvasPricing,
+  useCanvasRuns,
+  type CanvasPricingValue,
+  type CanvasRunRequest,
+  type CanvasRunsValue,
+} from "@/canvas/core";
 import { storyboardReplaceNote } from "./derive";
 
 /** 要不要先弹确认：覆盖已有内容 / 批量一律确认；否则花费到了门槛才确认。 */
@@ -90,6 +98,16 @@ export function toastSequence(s: SequenceSummary, unit: "个" | "集", what: str
   }
 }
 
+/**
+ * 分镜请求里的片段时长范围 = 所选视频模型的上下限（服务端写进提示词；切出来太短的并进相邻片段）。
+ * 下限只在模型**写明了**最短时长时才带：不知道时不带，服务端按它的缺省（4 秒）—— 带个 1 上去等于让 AI 切 1 秒的镜头。
+ * 单集、批量都走它，不各拼一份（§8.0.1 ④）。
+ */
+export function storyboardBody(no: number, p: Pick<CanvasPricingValue, "maxSegmentSec" | "minSegmentSec" | "videoModels" | "videoModelId">) {
+  const known = p.videoModels.find((m) => m.endpointId === p.videoModelId)?.minDurationSec;
+  return { episodeNo: no, maxSegmentSec: p.maxSegmentSec(), ...(known != null ? { minSegmentSec: p.minSegmentSec() } : {}) };
+}
+
 /** 生成分镜脚本（单集 / 批量）。 */
 export function useStoryboardAction() {
   const { getDoc } = useCanvasDoc();
@@ -102,7 +120,7 @@ export function useStoryboardAction() {
     (no: number) =>
       submitOrToast(
         submit,
-        { kind: "storyboard", body: { episodeNo: no, maxSegmentSec: pricingRef.current.maxSegmentSec() } },
+        { kind: "storyboard", body: storyboardBody(no, pricingRef.current) },
         `第 ${no} 集的分镜脚本没开始生成`,
       ),
     [submit],
@@ -156,7 +174,7 @@ export function useStoryboardAction() {
       if (!ok) return 0;
       // 整批交给 core 按顺序提交（一进来整批都算「提交中」，每项发前再核对一次），不在这里自己循环（Codex 复审 N3）
       const results = await submitSequence(
-        nos.map((no) => ({ kind: "storyboard" as const, body: { episodeNo: no, maxSegmentSec: pricingRef.current.maxSegmentSec() } })),
+        nos.map((no) => ({ kind: "storyboard" as const, body: storyboardBody(no, pricingRef.current) })),
         { stopOnError: true },
       );
       const summary = summarizeSequence(results, (i) => `第 ${nos[i]} 集`);

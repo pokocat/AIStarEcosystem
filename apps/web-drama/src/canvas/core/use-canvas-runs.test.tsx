@@ -25,6 +25,7 @@ vi.mock("@/lib/use-wallet", () => ({ notifyWalletChanged: vi.fn() }));
 import { CanvasDocProvider, useCanvasDoc } from "./use-canvas-doc";
 import {
   __resetCanvasRunsForTest,
+  AWAIT_EACH_TIMEOUT_MS,
   CanvasRunsProvider,
   PENDING_RETRY_DELAYS_MS,
   RECONNECT_DELAYS_MS,
@@ -774,5 +775,256 @@ describe("useCanvasRuns · 第三次复核", () => {
     } finally {
       if (original) Object.defineProperty(window, "localStorage", original);
     }
+  });
+});
+
+// ── v0.198.1：submitSequence({ awaitEach }) —— 写全部分集剧本一集一集写，后一集能看到前一集 ──────────
+
+describe("useCanvasRuns · submitSequence awaitEach", () => {
+  const reqLk2 = { kind: "image" as const, body: { target: { kind: "look" as const, id: "lk_2" }, count: 1 } };
+  /** 服务端那边每条运行现在的样子（getRuns 按它回）。 */
+  let server: Map<string, DramaCanvasRun>;
+  /** 按时间顺序记下保存与生成请求，断「发第二项之前先存上了第一项的结果」。 */
+  let events: { type: "save" | "post"; doc?: DramaCanvasDoc; docVersion?: string; body?: CanvasImageRunBody }[];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    for (const f of Object.values(api)) f.mockReset();
+    toastError.mockReset();
+    __resetCanvasRunsForTest();
+    __resetPendingForTest();
+    server = new Map();
+    events = [];
+    api.get.mockResolvedValue(detail());
+    let n = 0;
+    api.save.mockImplementation(async (_id: string, body: { doc: DramaCanvasDoc }) => {
+      const docVersion = `v${++n}`;
+      events.push({ type: "save", doc: body.doc, docVersion });
+      return { docVersion, updatedAt: "2026-09-30T01:00:00.000Z" };
+    });
+    api.getRuns.mockImplementation(async (_id: string, ids: string[]) => ids.map((id) => server.get(id)).filter((r): r is DramaCanvasRun => !!r));
+    api.lookupRuns.mockResolvedValue([]);
+    let k = 0;
+    api.runImage.mockImplementation(async (_id: string, body: CanvasImageRunBody) => {
+      events.push({ type: "post", body });
+      const target = `look:${(body.target as { id: string }).id}`;
+      const r = run({ id: `r${++k}`, target, createdAt: `2026-09-30T01:00:0${k}.000Z` });
+      server.set(r.id, r);
+      return r;
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const finish = (id: string, over: Partial<DramaCanvasRun> = {}) =>
+    server.set(id, {
+      ...server.get(id)!,
+      status: "succeeded",
+      finishedAt: "2026-09-30T01:00:30.000Z",
+      result: { images: [{ key: `mock/${id}.png`, runId: id }] },
+      ...over,
+    });
+  const poll = async () => {
+    await act(async () => {
+      vi.advanceTimersByTime(RUN_POLL_MS);
+      await flushMicrotasks();
+    });
+  };
+
+  it("上一项跑完、结果合进文档并存上之后才发下一项；下一项带的文档版本里有上一项的结果", async () => {
+    const { result } = await mount();
+    const progress: [number, number][] = [];
+    let seq!: Promise<unknown[]>;
+    let settled = false;
+    act(() => {
+      seq = result.current.runs.submitSequence([imageReq, reqLk2], { awaitEach: true, onProgress: (i, n) => progress.push([i, n]) });
+      void seq.then(() => (settled = true));
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    expect(progress).toEqual([[0, 2]]);
+    expect(result.current.runs.isSubmitting("look:lk_2")).toBe(true); // 还没轮到的仍然登记着
+
+    // 第一项还在跑：不发第二项
+    server.set("r1", { ...server.get("r1")!, status: "running" });
+    await poll();
+    await poll();
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+
+    // 第一项跑完：合进文档 → 下一项发之前 flush 存上 → 再发
+    finish("r1");
+    await poll();
+    expect(api.runImage).toHaveBeenCalledTimes(2);
+    expect(progress).toEqual([
+      [0, 2],
+      [1, 2],
+    ]);
+    const second = events.findIndex((e, i) => e.type === "post" && events.slice(0, i).some((x) => x.type === "post"));
+    const lastSave = events.slice(0, second).filter((e) => e.type === "save").pop()!;
+    expect(findLook(lastSave.doc!, "lk_1")!.look.images.versions.map((v) => v.key)).toEqual(["mock/r1.png"]);
+    expect(events[second].body!.docVersion).toBe(lastSave.docVersion);
+
+    finish("r2");
+    await poll();
+    let out: { ok: boolean; runs?: DramaCanvasRun[] }[] = [];
+    await act(async () => {
+      out = (await seq) as typeof out;
+    });
+    expect(out.map((r) => r.ok)).toEqual([true, true]);
+    expect(out.map((r) => r.runs![0].status)).toEqual(["succeeded", "succeeded"]); // awaitEach 下回的是终态
+    expect(result.current.runs.isSubmitting("look:lk_2")).toBe(false);
+  });
+
+  it("上一项没生成出来（stopOnError）：停下，后面的不发、记 skipped（stopped），这一项回终态的失败记录", async () => {
+    const { result } = await mount();
+    let seq!: Promise<unknown[]>;
+    act(() => {
+      seq = result.current.runs.submitSequence([imageReq, reqLk2], { awaitEach: true, stopOnError: true });
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    finish("r1", { status: "failed", result: undefined, errorCode: "AI_CALL_FAILED", errorMessage: "上游忙" });
+    await poll();
+    let out: { ok: boolean; reason?: string; stopped?: boolean; runs?: DramaCanvasRun[] }[] = [];
+    await act(async () => {
+      out = (await seq) as typeof out;
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    expect(out[0]).toMatchObject({ ok: true });
+    expect(out[0].runs![0].status).toBe("failed");
+    expect(out[1]).toMatchObject({ ok: false, reason: "skipped", stopped: true });
+    expect(result.current.runs.isSubmitting("look:lk_2")).toBe(false); // 登记解除，可以单独点了
+  });
+
+  it("受理时已经是终态（同一个幂等键回了原记录）：不用等轮询，直接发下一项", async () => {
+    api.runImage.mockImplementationOnce(async (_id: string, body: CanvasImageRunBody) => {
+      events.push({ type: "post", body });
+      const r = run({ id: "r0", status: "succeeded", finishedAt: "2026-09-30T01:00:03.000Z", result: { images: [{ key: "mock/r0.png" }] } });
+      server.set(r.id, r);
+      return r;
+    });
+    const { result } = await mount();
+    act(() => {
+      void result.current.runs.submitSequence([imageReq, reqLk2], { awaitEach: true });
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("等的途中卸载（离开画布）：不再等、不再发，剩下的记 skipped（stopped）；Promise 照样结束、登记解除", async () => {
+    const { result, unmount } = await mount();
+    let seq!: Promise<unknown[]>;
+    let out: { ok: boolean; reason?: string; stopped?: boolean }[] | null = null;
+    act(() => {
+      seq = result.current.runs.submitSequence([imageReq, reqLk2, { kind: "image", body: { target: { kind: "scene", id: "sc_1" }, count: 1 } }], {
+        awaitEach: true,
+      });
+      void seq.then((r) => (out = r as typeof out));
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    unmount();
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(out).not.toBeNull();
+    expect(out!.map((r) => (r.ok ? "ok" : `${r.reason}:${r.stopped ? "stopped" : ""}`))).toEqual(["ok", "skipped:stopped", "skipped:stopped"]);
+    // 之后服务端跑完了也不会再发
+    finish("r1");
+    await act(async () => {
+      vi.advanceTimersByTime(RUN_POLL_MS * 4);
+      await flushMicrotasks();
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    // 登记解除：重新进来能单独点后面那一项
+    const again = await mount();
+    expect(again.result.current.runs.isSubmitting("look:lk_2")).toBe(false);
+  });
+
+  it("轮询一直失败：最多等 AWAIT_EACH_TIMEOUT_MS，到点后面的不发、登记解除，已受理的不判失败也不重发（Codex 评审 P2）", async () => {
+    const { result } = await mount();
+    let out: { ok: boolean; reason?: string; stopped?: boolean }[] | null = null;
+    act(() => {
+      void result.current.runs.submitSequence([imageReq, reqLk2], { awaitEach: true }).then((r) => (out = r as typeof out));
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    api.getRuns.mockRejectedValue(new Error("502"));
+    await act(async () => {
+      vi.advanceTimersByTime(AWAIT_EACH_TIMEOUT_MS + 1000);
+      await flushMicrotasks();
+    });
+    expect(out).not.toBeNull();
+    expect(out!.map((r) => (r.ok ? "ok" : `${r.reason}:${r.stopped ? "stopped" : ""}`))).toEqual(["ok", "skipped:stopped"]);
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    expect(result.current.runs.isSubmitting("look:lk_2")).toBe(false);
+  });
+
+  it("等的途中换画布：同样放掉、剩下的不发", async () => {
+    let canvasId = "dcv_1";
+    const switchable = ({ children }: { children: React.ReactNode }) => (
+      <CanvasDocProvider canvasId={canvasId}>
+        <CanvasRunsProvider>{children}</CanvasRunsProvider>
+      </CanvasDocProvider>
+    );
+    const hook = renderHook(() => ({ doc: useCanvasDoc(), runs: useCanvasRuns() }), { wrapper: switchable });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    let out: { ok: boolean; reason?: string; stopped?: boolean }[] | null = null;
+    act(() => {
+      void hook.result.current.runs.submitSequence([imageReq, reqLk2], { awaitEach: true }).then((r) => (out = r as typeof out));
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+    canvasId = "dcv_2";
+    hook.rerender();
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(out).not.toBeNull();
+    expect(out!.map((r) => r.ok || r.stopped)).toEqual([true, true]);
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("文档进了 stale（别的页面改过）：放掉，剩下的不发", async () => {
+    const { result } = await mount();
+    let out: { ok: boolean; reason?: string; stopped?: boolean }[] | null = null;
+    act(() => {
+      void result.current.runs.submitSequence([imageReq, reqLk2], { awaitEach: true }).then((r) => (out = r as typeof out));
+    });
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    // 下一次自动保存撞 409 → stale
+    api.save.mockRejectedValueOnce(new ApiError({ code: "DRAMA_CANVAS_STALE", message: "x" }, 409));
+    act(() => result.current.doc.update((d) => ({ ...d, materials: [{ id: "m9", name: "m", kind: "text", text: "y" }] })));
+    await act(async () => {
+      await result.current.doc.flush();
+      await flushMicrotasks();
+    });
+    expect(result.current.doc.status).toBe("stale");
+    expect(out).not.toBeNull();
+    expect(out![1]).toMatchObject({ ok: false, reason: "skipped", stopped: true });
+    expect(api.runImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("不带 awaitEach：照旧只等受理就发下一项（视频 / 分镜批量不受影响）", async () => {
+    const { result } = await mount();
+    await act(async () => {
+      await result.current.runs.submitSequence([imageReq, reqLk2]);
+    });
+    expect(api.runImage).toHaveBeenCalledTimes(2);
   });
 });
