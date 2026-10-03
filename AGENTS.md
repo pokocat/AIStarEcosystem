@@ -592,6 +592,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   我看到的「script cannot be a child of html」其实是**上一次改动残留的旧消息**，
   据它把方案换成了 `next/script`，而那个方案实测更差。同理：`preview_logs`、
   `journalctl` 都要带时间窗。
+- **数日志也要先确认 grep 能命中**（2026-10-03）：线上日志的级别字段是 `-ERROR`（`%5p` 正好 5 个字符，前面没空格），`grep ' ERROR '` 永远 0 命中，我据此报过一次「重启后 0 条 ERROR」。用 `grep -E ' -ERROR | ERROR [0-9]+ ---'`，并先拿一条已知会打 ERROR 的日志试一下这个 grep。
 - **Review reject**：commit message 里写「因为观察到 X 所以改 Y」，但 X 没有对照样本 → reject。
 
 **③ 验证要走到用户屏幕那一步。**
