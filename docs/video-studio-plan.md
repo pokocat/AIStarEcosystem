@@ -65,7 +65,8 @@
   | 3:4 | 768×1024 | 544×736 | portrait | `h3-768-3x4` / … |
   | 9:16 | 768×1344 | 544×960 | portrait | `h3-768-9x16` / … |
   - ⚠️ 1:1 的 `orientation:"square"` 取自 Portal 生成的调用示例；公开 OpenAPI 的枚举只写了 landscape / portrait。
-    按 Portal（它按服务实时合同生成）走，**未实测**；上游若拒收，错误原话会直接显示给用户（§5.4）。
+    按 Portal（它按服务实时合同生成）走。**2026-10-03 真厂商实测通过**：首尾帧 768p 1:1 发 `orientation:"square"` +
+    `aspectRatio:"1:1"` + `outputSizeCode:"h3-768-1x1"`，厂商受理，`effectiveMediaSpec` 回 768×768。
   - Portal 示例同时发 `aspectRatio` 和 `outputSizeCode`，我们照发。
 - **素材**：先 `POST {base}/assets/input?model=<别名>`（multipart，字段名 `image` / `video` / `audio`）换 `asset.assetId`。
   - 首帧 / 尾帧图：各 1 张，≤16 MiB，PNG / JPEG / WEBP；字段 `input_image_asset_id` / `end_image_asset_id`。
@@ -236,6 +237,7 @@
 从 `MaterialVideoJob` 直接组：状态 queued/submitting → `queued`… 具体：`queued`→queued，`submitting|generating`→running，
 `succeeded`，`failed`；进度 / 文案同 `toCard`；`inputs` 从 variant_config 的 key **出 wire 时现签**（§4.7.7，不存 URL）；
 成片 / 封面经 `CdnUrlSigner.maybeSign`；`credits = creditsHeld`；宽高按合同查；`modelName = providerUsed ?? modelUsed`。
+封面：厂商不给（H3 就不给）时由 worker 从成片截一帧（v0.199.1，`MaterialVideoCover`），老任务启动时后台补（`MaterialVideoCoverBackfill`）。
 
 ### 5.7 其他顺手的一致性
 
@@ -324,7 +326,8 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
   - 老的带货出片请求体与改动前一致；老接口塞原生规格 / 首帧 key 被 400 挡住；成片在页面能播放（768×1344）。
 - **2026-10-03 补**：老路径（画布 / 短剧 / 脚本视频）只发 `orientation` 时，厂商的竖屏默认 preset 已经变成 3:4
   （线上 `effectiveSpec.outputSizeCode=h3-768-3x4`，出来 768×1024），而这几条线要的是 9:16。老路径改为横竖两档也带
-  `aspectRatio` + `outputSizeCode`（同视频生成区的取值）；1:1 的 `square` 仍未实测，老路径 1:1 保持只发 `orientation`。
+  `aspectRatio` + `outputSizeCode`（同视频生成区的取值）；老路径 1:1 保持只发 `orientation`（`square` 这个值厂商认，
+  见 §2 的实测；「只发 orientation 的 1:1」这个组合没单独测）。
   - 唯一一项「不通过」是测试脚本自己的：开发库存在硬盘上，配置脚本跑了两次，列表里有两个一样的模拟端点。
 - 四道门：`pnpm typecheck:all`、`pnpm typecheck:admin`、`./mvnw compile -q -o`、`pnpm check:api-contract`。
 - **二版本机端到端**（2026-09-30，同一个模拟聚算服务，脚本 `e2e2`）：
@@ -366,10 +369,19 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
 
 - **合进 main 并从 main 重发**（2026-10-03 15:27 CST，release `20261003072530-bcca32c4`）：五个 PR 按顺序合完后从 main 构建发布，Flyway 校验 37 个迁移、无新迁移，启动 14 秒、0 条 ERROR（用 `-ERROR` 格式数）；线上代码与 main 一致，测试 mock 不在 main 里、随之下线。
 
+- **真厂商实测**（2026-10-03 19:51–19:57 CST，账号 18801931018，智能优化先在后台定成每次 2 积分）：没有 mock，四种模式各一条全部成功。
+  - 文生 768p 16:9（先智能优化，约 17 秒）→ 1344×768，126 秒；首帧 544p 9:16 → 544×960，117 秒；首尾帧 768p 1:1 → 768×768，204 秒；
+    全能参考 544p 4:3（2 张图 + 1 段音频）→ 736×544，187 秒（含在我们这边排队 44 秒：出片线程池 3 个，第 4 条等前面一条做完）。
+  - 成片都是 H.264 24fps + AAC 音轨（厂商默认带声音），要 5 秒实得 5.175 秒，都镜像进 OSS、能播。
+  - 积分 2 + 4 × 200 = 802，余额 825 → 23，没有残留冻结；服务端（`aistareco-server`）该时段 0 ERROR、0 WARN，每次调厂商的请求与响应都在 `[upstream-io]` 里。
+  - 厂商账号额度：2 条在跑 + 3 条排队（响应里的 `admission`）。我们一次最多送 3 条，单台服务撞不上。
+  - 发现两件事，v0.199.1 修：**成片没有封面**（厂商结果里只有视频资产 → 模板卡片只剩黑底；下午的 mock 端到端没发现，因为 mock 自带封面）；
+    **智能优化回的是英文**（见 §9 的实测）。
+
 ## 8. 没做 / 待定
 
 - **带平台标识的成片**（`deliveryMode=marked`）：默认拿无水印原片镜像到 OSS。
-- **1:1 的 `orientation:"square"`**：见 §2，未实测。
+- ~~**1:1 的 `orientation:"square"`**~~：2026-10-03 真厂商实测通过，见 §2。
 - **出片创建请求的 Idempotency-Key**：厂商强烈建议；出片的 worker 从不重发创建请求，这一版不加（智能优化那条已经带了，见 §9）。
 - ~~**画布出视频的两个老问题**~~ 本轮一起修了：画布选的模型没传到位（`IpRunService` 把 `endpoint_id` 写在 item 顶层，
   通用视频链只读 `variant_config.endpoint_id`）；非聚算协议下首帧 key 被静默丢掉（见 §5.2 最后一条）。
@@ -387,6 +399,10 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
   首尾帧 `first_frame` + `last_frame`；全能参考 `reference_image` / `reference_video` / `reference_audio`（同生成的顺序）；
   文生视频 `[]`（字段必填，给空数组）。有音频参考时必须加 `audioReferencePolicy: "preserve_without_understanding"`。
   可选 `dialogueLanguage`（默认 auto）、`style` —— 这一版不开放。
+- **实测**（2026-10-03 真厂商）：`optimizedPrompt` 是英文的结构化描述（`integrated_multimodal_description: [Shot 1] …`、
+  `overall_soundscape: …`、`non_diegetic_music: …`），中文输入也一样，约 17 秒返回。`dialogueLanguage` 管的是片里台词的语言，
+  不管优化结果用什么语言写。v0.199.1 起面板在结果以英文为主时（`isMostlyEnglish`：英文单词数 > 汉字数，按优化原文判、不按草稿）
+  加一句「优化结果是英文的，模型直接读得懂。想改的话用中文写也行。」；演示模式的优化结果也改成照这个格式的英文。
 - 响应：`optimization.optimizedPrompt`（必有）、`optimizationId`、`originalPrompt`、`outcome`、`noticeCodes[]`、`expiresAt`。
   生成时**仍传最终文本**（`prompt`），不传 optimizationId。409 = 同一操作还在处理（`optimization_in_progress`）或冲突。
 - 素材 id：示例里上传一次、优化和生成复用同一个 assetId（在 `expiresAt` 之前有效）。**我们不复用**：生成时 worker 照旧重新上传，

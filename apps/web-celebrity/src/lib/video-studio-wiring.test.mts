@@ -183,6 +183,11 @@ describe("智能优化接上了（plan §9）", () => {
     assert.match(panel, /onClick=\{onRetry\}[\s\S]{0,200}重新优化/);
   });
 
+  test("优化结果是英文时有一句说明，按厂商给的原文判（v0.199.1：聚算 H3 一律回英文）", () => {
+    assert.match(panel, /import \{[^}]*\bisMostlyEnglish\b[^}]*\} from "@\/lib\/video-studio"/);
+    assert.match(panel, /isMostlyEnglish\(view\.optimization\.optimizedPrompt \?\? ""\) \?/);
+  });
+
   test("「重新优化」用新的 clientRequestId（只有上一次结果不明时才沿用旧的）", () => {
     assert.match(form, /startOptimization\(optView\.phase === "failed" \? optView\.reuseRequestId : null\)/);
     assert.match(hook, /reuseRequestId: definitive \? null : request\.clientRequestId/);

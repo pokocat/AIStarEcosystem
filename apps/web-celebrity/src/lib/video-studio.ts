@@ -154,6 +154,17 @@ export function countPromptChars(prompt: string): number {
   return Array.from(prompt.trim()).length;
 }
 
+/**
+ * 智能优化的结果是不是以英文为主。聚算 H3 的优化目前一律回英文的分镜描述（2026-10-03 线上实测，
+ * docs/video-studio-plan.md §9），用户写的是中文，突然看到一大段英文会以为出了错，面板据此加一句说明。
+ * 按「英文单词数 > 汉字数」判：英文描述里夹几句中文台词仍算英文，中文里夹几个英文词不算。
+ */
+export function isMostlyEnglish(text: string): boolean {
+  const han = (text.match(/\p{Script=Han}/gu) ?? []).length;
+  const words = (text.match(/[A-Za-z]+/g) ?? []).length;
+  return words > han;
+}
+
 // ── 规格：默认值与联动 ───────────────────────────────────────────────────────
 
 export interface VideoStudioSelection {

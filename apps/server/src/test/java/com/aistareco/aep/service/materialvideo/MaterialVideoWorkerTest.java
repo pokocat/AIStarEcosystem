@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -56,11 +57,17 @@ class MaterialVideoWorkerTest {
     private MaterialVideoModelClient modelClient;
     private CreditService creditService;
     private StorageQuotaService storage;
+    private MaterialVideoCover cover;
     private MaterialVideoJob job;
 
     @BeforeEach
     void setUp() throws IOException {
         http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        // 厂商给了封面地址、但那个地址已经取不到了（过期 / 404）
+        http.createContext("/gone/", ex -> {
+            ex.sendResponseHeaders(404, -1);
+            ex.close();
+        });
         http.createContext("/", ex -> {
             byte[] body = new byte[]{1, 2, 3, 4};
             String ct = ex.getRequestURI().getPath().endsWith(".mp4") ? "video/mp4" : "image/png";
@@ -105,6 +112,7 @@ class MaterialVideoWorkerTest {
 
         creditService = mock(CreditService.class);
         storage = mock(StorageQuotaService.class);
+        cover = mock(MaterialVideoCover.class);
     }
 
     @AfterEach
@@ -120,7 +128,7 @@ class MaterialVideoWorkerTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(uploader);
-        return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, storage, provider);
+        return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, storage, provider, cover);
     }
 
     /** 假 CDN：记录 upload 过的 key；lastFrameFails=true 时 last-frame key 抛 IOException（模拟末帧镜像失败）。 */
@@ -210,6 +218,84 @@ class MaterialVideoWorkerTest {
         assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", job.getVideoUrl());
         assertTrue(uploader.uploaded.containsKey("material-videos/mvj_test/video.mp4"));
         verify(modelClient).downloadOutputAsset(eq(submit), eq("asset_video_h3"), any(Path.class));
+    }
+
+    // ── v0.199.1 成片封面：厂商不给就从成片截一帧 ───────────────────────────────────
+
+    /** 聚算 H3 的样子：只回受保护的视频资产，不给封面（2026-10-03 线上真厂商实测）。 */
+    private void stubH3OutputWithoutCover() throws Exception {
+        var submit = new MaterialVideoModelClient.SubmitResult(
+                "job_h3", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult(
+                        "succeeded", null, null, "succeeded", 100, null, null, "asset_video_h3"));
+        @SuppressWarnings("unchecked")
+        HttpResponse<Path> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.headers()).thenReturn(HttpHeaders.of(
+                Map.of("content-type", List.of("video/mp4")), (a, b) -> true));
+        when(modelClient.downloadOutputAsset(eq(submit), eq("asset_video_h3"), any(Path.class)))
+                .thenAnswer(inv -> {
+                    Files.write(inv.getArgument(2), new byte[]{1, 2, 3, 4});
+                    return response;
+                });
+    }
+
+    @Test
+    void vendor_gives_no_cover_so_one_is_taken_from_the_downloaded_video() throws Exception {
+        stubH3OutputWithoutCover();
+        byte[][] seen = new byte[1][];
+        when(cover.extractAndUpload(eq("mvj_test"), any(Path.class))).thenAnswer(inv -> {
+            // 截帧时成片还在本机（临时文件到 mirrorToCdn 收尾才删）
+            seen[0] = Files.readAllBytes(inv.getArgument(1));
+            return "https://cdn.test/material-videos/mvj_test/thumbnail.jpg";
+        });
+
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+
+        assertEquals("succeeded", job.getStatus());
+        assertArrayEquals(new byte[]{1, 2, 3, 4}, seen[0]);
+        assertEquals("https://cdn.test/material-videos/mvj_test/thumbnail.jpg", job.getThumbnailUrl());
+    }
+
+    @Test
+    void vendor_cover_is_mirrored_and_no_frame_is_taken() {
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+
+        assertEquals("succeeded", job.getStatus());
+        assertEquals("https://cdn.test/material-videos/mvj_test/thumbnail.png", job.getThumbnailUrl());
+        verify(cover, never()).extractAndUpload(anyString(), any(Path.class));
+    }
+
+    @Test
+    void vendor_cover_that_cannot_be_fetched_is_replaced_by_a_frame_from_the_video() {
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(new MaterialVideoModelClient.PollResult(
+                "succeeded", base + "/video.mp4", base + "/gone/thumb.png", "SUCCESS", 100, null, null));
+        when(cover.extractAndUpload(eq("mvj_test"), any(Path.class)))
+                .thenReturn("https://cdn.test/material-videos/mvj_test/thumbnail.jpg");
+
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+
+        assertEquals("succeeded", job.getStatus());
+        // 厂商那个地址取不到，留着它早晚是张裂图；换成自己截的
+        assertEquals("https://cdn.test/material-videos/mvj_test/thumbnail.jpg", job.getThumbnailUrl());
+    }
+
+    @Test
+    void no_cover_at_all_still_delivers_the_video_and_charges() throws Exception {
+        stubH3OutputWithoutCover();
+        job.setCreditsHeld(200L);
+        // cover 的 mock 默认返回 null，等于截不出来
+
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+
+        assertEquals("succeeded", job.getStatus());
+        assertNull(job.getThumbnailUrl());
+        assertNull(job.getErrorMessage());
+        assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", job.getVideoUrl());
+        verify(creditService).commitHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE), eq("mvj_test"), eq(200L), anyString());
+        verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
     }
 
     @Test

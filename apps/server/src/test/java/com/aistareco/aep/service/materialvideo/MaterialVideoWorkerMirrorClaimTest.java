@@ -85,7 +85,8 @@ class MaterialVideoWorkerMirrorClaimTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(uploader);
-        return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, mock(StorageQuotaService.class), provider);
+        return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, mock(StorageQuotaService.class), provider,
+                mock(MaterialVideoCover.class));
     }
 
     /** 成片上传一律失败的假 CDN。 */

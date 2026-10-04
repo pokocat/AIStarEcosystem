@@ -104,7 +104,8 @@ class MaterialVideoWorkerSpecTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(uploader);
-        return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, storage, provider);
+        return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, storage, provider,
+                mock(MaterialVideoCover.class));
     }
 
     @Test

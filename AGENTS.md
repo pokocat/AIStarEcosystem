@@ -34,7 +34,7 @@
 - `clip` 配音预览与段级状态红线（v0.150）：`POST|GET /api/me/clip/projects/{id}/tts-preview` 一个项目只存一份预览（表 `clip_tts_preview`，**新迁移 V26**；编号横跨 `resources/db/migration/*.sql` 与 `src/main/java/db/migration/*.java` 两处，已执行的一律不改）。`timelineHash = sha256(voiceId + 每镜 no/role/文案)`，POST 幂等（同哈希且上次非 failed 直接返回已有结果，failed 允许重排一次），GET 只认当前这版文案、旧一版一律 404 `CLIP_TTS_PREVIEW_NOT_FOUND`。合成粒度必须是 `ClipShotPlan.materialize` 的**镜头**，与出片 tts 阶段同一套切分 —— 预览听到的就是成片会用的那条音频，段编号也因此与段级状态天然对齐。音频先镜像我方存储再出**短期签名 URL**，库里只存 key，签名 URL 既不落库也不进日志。没有可用音色 / 引擎未配置 / 供应商失败 / 拿不到可镜像的音频，一律 `status:"failed"` + 明确 `errorCode`，禁止用空 URL 或静音占位冒充成功（静音 WAV 只在 `AEP_CLIP_FORCE_MOCK` 的确定性测试媒体下产生）。`credits` 恒为 0：Scheme A 下 clip 域不碰钻石账本，试听只花石榴 `validPoint`。`GET /api/me/clip/jobs/{id}` 的 `segments[{no,role,status,errorCode?}]` 是 `segmentJobsJson` 的**只读投影**，不得新增第二处真值；出片失败必须落到具体那一段（第一段没留下产物的那一段）并带 `errorCode`；worker 没写过状态时返回空数组，让调用方回落整体进度。`script/ai-rewrite` 的 `scope:"all"` 里 `text` 是**改写/生成指令**（一句话 brief，≤500 字），按模板骨架逐段生成、不改段数不改 role、不动结尾固定段；真模型仍未接入，非 mock 网关一律 503 `CLIP_SCRIPT_ENGINE_NOT_CONFIGURED`，不许拿模板句冒充生成结果。
 - `clip` 成片音频红线（v0.135）：最终音轨必须经 `ClipLoudnessNormalizer` 两遍测量/归一，处理目标为 -16 LUFS / -2.5 dBTP（给 AAC 编码回弹留余量）；编码后的真实文件仍以 ≤ -1 dBTP 失败关闭并记录实测指标，禁止通过放宽质量门掩盖峰值问题。
 - `clip` 预发部署运维红线（2026-08-15）：军师宿主 `/tmp` 是最大 3.7GiB 的 tmpfs，`deploy-clip-preprod.sh` 上传的时间戳 JAR 必须由远端 `trap` 在成功/失败时删除，并在下次预检时兜底清理超过 60 分钟的同类残留；禁止把 `/tmp/aistareco-clip-*.jar` 留成随发布次数增长的 Shmem 占用。
-- 视频生成（v0.131）：聚算 JusuanHub `minimax-h3` 走独立媒体 Job 协议（`/media/generations` → `/jobs/{id}?model=minimax-h3` → 受保护 `/assets/{id}/content?model=minimax-h3` 镜像 OSS），Account API Key 的查询/下载必须携带模型作用域，不能按 GENERIC `/videos/generations` 调。端点 `billingMode=PER_SECOND` + 候选 `creditCostOverride=40` 表示 40 积分/秒，带货与短剧入口都必须在 hold 前按费率×时长展开；存量端点仍按次。**首帧参考图（i2v）v0.183 已接通**：聚算的图不给 URL —— 先 `POST {base}/v1/assets/input?model=<别名>`（multipart，字段名 `image`）换 `asset.assetId`，再把它放进 `createMediaGeneration` 的 `input_image_asset_id`，并把必填的 `generationMode` 从 `t2v` 改成 `i2v`。**尾帧 / 多参考图 / 544p / 六种画布 / seed 只在「视频生成区」开放（v0.199，分区 `video-studio`，真源 `docs/video-studio-plan.md`）**：入参只由 `VideoGenSpec.fromVariantConfigJson` 一处解析，`MaterialVideoJobService.submit` 的分区闸挡住别的分区夹带原生规格（首帧 key 只许 `ipstudio` / `video-studio` / `drama` —— 三处的 variant_config 都由服务端组装、写 key 前验过归属；带货素材运营的入口原样透传客户端的 variant_config，所以挡着；新增分区放行首帧前先确认它不透传）；**没有清晰度的老路径（画布 / 脚本视频 / 短剧）只按画面比例补齐**：2026-10-03 厂商把「只发 `orientation`」的竖屏默认改成了 3:4，老路径横竖两档改为也带 `aspectRatio` + `outputSizeCode`（取值同视频生成区，#120），1:1 的 `square` 未实测、仍只发 `orientation`；除此之外字段不变，其它产品线仍只有首帧，候选的 `supportsFirstLastFrame` 对它们照旧是 false。非聚算协议的首帧 key 经 `FileStorageService.upstreamFetchUrl`（签名优先）交给厂商，不再静默丢。调用方自己定价（item 带 `credit_cost`）的任务 payload 标 `caller_priced`，管理端对账按冻结价结算。视频生成区的价格是**我们自己定的**（平台配置 `celebrity.video-studio-pricing`，每格 = 配置 ?? 候选每秒价（>0 才算）?? 未定价 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`），不照搬厂商价；智能优化走厂商 `/media/prompt-optimizations`（同步但最长约 10 分钟，`Idempotency-Key` = `clientRequestId` = 我方记录 id，重试必须同键同正文），**状态迁移与积分结算必须在同一个事务里**，派发挂 `afterCommit`。上传失败一律抛（`VIDEO_REF_UPLOAD_FAILED`），**不静默退回 t2v** —— 用户接了参考图却出一条无关的片，比直接报错难排查得多（§8.0）。误判失败但已有 `externalTaskId` 的任务只能走管理端对账恢复，禁止重新提交。
+- 视频生成（v0.131）：聚算 JusuanHub `minimax-h3` 走独立媒体 Job 协议（`/media/generations` → `/jobs/{id}?model=minimax-h3` → 受保护 `/assets/{id}/content?model=minimax-h3` 镜像 OSS），Account API Key 的查询/下载必须携带模型作用域，不能按 GENERIC `/videos/generations` 调。端点 `billingMode=PER_SECOND` + 候选 `creditCostOverride=40` 表示 40 积分/秒，带货与短剧入口都必须在 hold 前按费率×时长展开；存量端点仍按次。**首帧参考图（i2v）v0.183 已接通**：聚算的图不给 URL —— 先 `POST {base}/v1/assets/input?model=<别名>`（multipart，字段名 `image`）换 `asset.assetId`，再把它放进 `createMediaGeneration` 的 `input_image_asset_id`，并把必填的 `generationMode` 从 `t2v` 改成 `i2v`。**尾帧 / 多参考图 / 544p / 六种画布 / seed 只在「视频生成区」开放（v0.199，分区 `video-studio`，真源 `docs/video-studio-plan.md`）**：入参只由 `VideoGenSpec.fromVariantConfigJson` 一处解析，`MaterialVideoJobService.submit` 的分区闸挡住别的分区夹带原生规格（首帧 key 只许 `ipstudio` / `video-studio` / `drama` —— 三处的 variant_config 都由服务端组装、写 key 前验过归属；带货素材运营的入口原样透传客户端的 variant_config，所以挡着；新增分区放行首帧前先确认它不透传）；**没有清晰度的老路径（画布 / 脚本视频 / 短剧）只按画面比例补齐**：2026-10-03 厂商把「只发 `orientation`」的竖屏默认改成了 3:4，老路径横竖两档改为也带 `aspectRatio` + `outputSizeCode`（取值同视频生成区，#120），1:1 仍只发 `orientation`（`square` 这个值厂商认，视频生成区 10-03 真厂商实测出了 768×768）；除此之外字段不变，其它产品线仍只有首帧，候选的 `supportsFirstLastFrame` 对它们照旧是 false。非聚算协议的首帧 key 经 `FileStorageService.upstreamFetchUrl`（签名优先）交给厂商，不再静默丢。调用方自己定价（item 带 `credit_cost`）的任务 payload 标 `caller_priced`，管理端对账按冻结价结算。视频生成区的价格是**我们自己定的**（平台配置 `celebrity.video-studio-pricing`，每格 = 配置 ?? 候选每秒价（>0 才算）?? 未定价 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`），不照搬厂商价；智能优化走厂商 `/media/prompt-optimizations`（同步但最长约 10 分钟，`Idempotency-Key` = `clientRequestId` = 我方记录 id，重试必须同键同正文），**状态迁移与积分结算必须在同一个事务里**，派发挂 `afterCommit`。上传失败一律抛（`VIDEO_REF_UPLOAD_FAILED`），**不静默退回 t2v** —— 用户接了参考图却出一条无关的片，比直接报错难排查得多（§8.0）。误判失败但已有 `externalTaskId` 的任务只能走管理端对账恢复，禁止重新提交。**成片封面**（v0.199.1）：厂商不给（聚算 H3 就不给）时 worker 从成片截一帧（`MaterialVideoCover`，best-effort，截不出不影响出片与结算），视频生成区的老任务启动时后台补（`MaterialVideoCoverBackfill`）。
 
 ---
 
@@ -492,11 +492,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **v0.199.1** | 2026-10-04 | 视频生成区真厂商实测后的修补：厂商不给封面，worker 就从成片截一帧当封面（`MaterialVideoCover`，老任务启动时后台补），模板卡片不再是黑块；智能优化结果是英文时加一句说明，演示数据照真厂商改成英文。1:1 的 `square` 实测通过 |
 | **v0.199** | 2026-09-30 | 明星带货新增「AI 创作 → 视频生成」（`/studio/video`）：把 MiniMax H3 四种原生模式原样搬过来（文生 / 首帧 / 首尾帧 / 全能参考，768p·544p × 六种画布，5–15 秒），出片复用通用视频链（分区 `video-studio`）；价格我们自己定、后台「引擎定价 → 视频生成」可配；可选的提示词智能优化（默认勾上，优化完能改再生成）；作品存为模板、做同款（官方模板只有运营能发）；V37 两张新表；顺手修画布选模型不生效、非聚算协议丢首帧、老接口可夹带原生规格、对账错价、工作台底部被裁 |
 | **v0.198.1** | 2026-10-03 | 画布线上实测修复：拆角色 JSON 漏括号（共用 `ModelJsonRepair` + 不合格重问一次 + 截断不收）、聚算 Key 并发 2 撞 429（文字类并发闸 + 退避 + 独立线程池，写全部逐集写）、默认出图模型只认 768×768（出图模型按画布记、`IMAGE_SIZE_UNSUPPORTED`）、分镜片段短于视频模型下限（`minSegmentSec` + 并段）、五个提示词改写、合成按众数尺寸归一。真源 `docs/drama-canvas-plan.md` §11 |
 | **v0.198** | 2026-09-30 | web-drama「画布」`/canvas`：照小云雀短剧 Agent 做的独立流水（剧本 AI 分段写 → 角色和场景画布 / 列表 → 逐集制作 → 单集编辑器按片段出首帧与视频 → 合成成片），和「我的短剧」互不相通。新表 `drama_canvas` / `drama_canvas_run`（V36），只存 key + 版本号 409 + 结果另存运行记录 + 生成只读已保存文档；视频镜像失败退款、`MaterialVideoWorker` 条件认领。真源 `docs/drama-canvas-plan.md` |
 | **v0.197** | 2026-09-28 | web-drama 文案 / 路径 / 响应式收口：术语表真源 `docs/drama-ux-copy-pass.md`（「提示词直出」→「粘贴写好的脚本」等），侧栏「即将上线」如实标出模拟 / 假数据功能，余额全站一个读法，手机上两栏变页签、表格变卡片；§8.0.1 ⑫ + §9 1c 门禁 |
-| **v0.195** | 2026-09-09 | 后台新页「统一登录接入」：账号中心注册了哪些客户端、各自还活不活跃（只读）。新 `GET /api/admin/identity/clients` + `IdentityAdminClient`（走 `admin-server` 客户端，与回报产品链接的 `aistar-server` 是两把不同的钥匙）；「读不到」与「一个都没接」分开渲染 |
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
 > session 都会被注入上下文，等于每次都为一份别处已有的版本日志付一遍 token。
@@ -592,7 +592,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   我看到的「script cannot be a child of html」其实是**上一次改动残留的旧消息**，
   据它把方案换成了 `next/script`，而那个方案实测更差。同理：`preview_logs`、
   `journalctl` 都要带时间窗。
-- **数日志也要先确认 grep 能命中**（2026-10-03）：线上日志的级别字段是 `-ERROR`（`%5p` 正好 5 个字符，前面没空格），`grep ' ERROR '` 永远 0 命中，我据此报过一次「重启后 0 条 ERROR」。用 `grep -E ' -ERROR | ERROR [0-9]+ ---'`，并先拿一条已知会打 ERROR 的日志试一下这个 grep。
+- **数日志也要先确认 grep 能命中**（2026-10-03）：线上日志的级别字段是 `-ERROR`（`%5p` 正好 5 个字符，前面没空格），`grep ' ERROR '` 永远 0 命中，我据此报过一次「重启后 0 条 ERROR」。用 `grep -E ' -ERROR | ERROR [0-9]+ ---'`，并先拿一条已知会打 ERROR 的日志试一下这个 grep。同一天还栽了一次：脚本按名字里带 `server` 自动挑 systemd 单元，挑中的是账号中心 `aistareco-id-server`，查出来 0 ERROR、0 条上游日志，看着全绿。主服务是 `aistareco-server`；本该有 `[upstream-io]` 的时间窗里一条都没有，就是查错了地方。
 - **Review reject**：commit message 里写「因为观察到 X 所以改 Y」，但 X 没有对照样本 → reject。
 
 **③ 验证要走到用户屏幕那一步。**
@@ -633,6 +633,9 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
 - fixture 要照**服务端 DTO** 写，不照被测代码写。
 - **mock 也要照服务端写**：mock 与真实响应形状不一致时，演示模式验收过了、
   线上仍然坏（v0.194 的时间字段就是：mock 写「3 天前」，服务端发的是别的东西）。
+- **模拟厂商也要照真厂商写**（2026-10-03）：视频生成区的线上 mock 端到端全绿，但 mock 出片自带封面、真厂商（聚算 H3）不给，
+  模板卡片全是黑块，直到真厂商实测才发现（v0.199.1 修）；智能优化的 mock 回中文、真厂商回英文，也是同一类。
+  写 mock 前先拿一条真响应对一遍：真的有才给，真的没有就别编。
 
 **⑧ 用脚本改代码时，锚点必须包住"不能被拆开的那一对"。**
 2026-09-09 生产事故：用 python 往 `IpDemoTemplate` 里插两个常量，锚点选的是
