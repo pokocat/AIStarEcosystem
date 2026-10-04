@@ -7,6 +7,7 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 ## 版本日志
 
+- **v0.199.1（2026-10-04）**：**成片封面**。聚算 H3 的结果里只有视频、没有封面，`material_video_job.thumbnail_url` 一直空着，模板卡片只剩黑底。新 `MaterialVideoCover`：厂商不给封面（或给了没存下来）时，`MaterialVideoWorker` 在镜像成片那一步从本机成片 0.5 秒处截一帧（宽 ≤ 720、不放大；每次 30 秒超时，`FfmpegRunner` 新增带超时的重载），存 `material-videos/<jobId>/thumbnail.jpg`；best-effort，截不出来不影响出片与结算。新 `config/MaterialVideoCoverBackfill`（`CommandLineRunner`，后台线程，开关 `aep.material.video.cover-backfill.enabled`，dev 关）：启动后给视频生成区（`kind=studio-*`）已成功但没封面的老任务补截，每次最多 50 条。仓库新增 `findCoverless`、`setThumbnailIfMissing`（条件更新，只写封面和更新时间）。测试 `MaterialVideoCoverTest`（真 ffmpeg，没有就跳过）、`MaterialVideoCoverBackfillTest`（真 JPQL）、`MaterialVideoWorkerTest` +4。无迁移、无接口变化。
 - **v0.199（2026-09-30）**：**视频生成区**（web-celebrity「AI 创作 → 视频生成」，设计真源 [`docs/video-studio-plan.md`](../../docs/video-studio-plan.md)，规则 `specs/BUSINESS_RULES.md` §6.8）。
   - **新域** `com.aistareco.aep.videostudio`：`/api/me/celebrity/video-studio/{models, uploads, jobs, jobs/{id}}`，把 MiniMax H3 的四种原生模式（`t2v` / `i2v` / `first_last_frame_video` / `universal_reference_video`）原样开放。厂商合同集中在 `JusuanH3Contract`：768p/544p × 六种画布、`orientation` 含 `square`、`outputSizeCode h3-<tier>-<W>x<H>`、5–15 秒、种子。
   - **出片不建表**：复用 `MaterialVideoJobService` / `Worker` / `ModelClient`，新分区 `app=video-studio`（`APP_VIDEO_STUDIO`），`kind=studio-*`。

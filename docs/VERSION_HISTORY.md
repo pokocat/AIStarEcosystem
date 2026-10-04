@@ -4,6 +4,41 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### v0.199.1（2026-10-04）— 视频生成区真厂商实测后的两处修补：成片自己截封面、英文优化结果加一句说明
+
+**起因**：2026-10-03 晚按用户要求把智能优化定成每次 2 积分，然后不开 mock、用真厂商（聚算 MiniMax H3）把四种模式各跑一条
+（细节见 `docs/video-studio-plan.md` §7「真厂商实测」）。全部出片，积分 2 + 4 × 200 = 802 对得上，服务端该时段 0 ERROR、0 WARN。
+实测暴露两件事：
+
+1. **成片没有封面**：厂商的任务结果里只有视频资产，`material_video_job.thumbnail_url` 一直是空的。作品卡片靠播放器自己画第一帧
+   还看得过去，模板卡片只剩黑底加播放钮，运营拿真作品发官方模板的话，整个模板页都是黑块。同一天下午的线上 mock 端到端没发现，
+   因为 mock 出片自带封面（AGENTS.md §8.0.1 ⑦ 补了一条「模拟厂商也要照真厂商写」）。
+2. **智能优化回的是英文**：`integrated_multimodal_description: [Shot 1] … / overall_soundscape: … / non_diegetic_music: …`，
+   中文输入也一样。厂商没有「输出中文」的选项（`dialogueLanguage` 管的是片里台词的语言）。
+
+**改了什么**：
+
+- `MaterialVideoCover`（新）：厂商没给封面、或给了但没存下来时，worker 在镜像成片那一步从本机成片 0.5 秒处截一帧
+  （宽不超过 720、不放大；截不到就退回第 0 秒再截一次；每次 30 秒超时、超时不再重试，不用全局 10 分钟的渲染超时），
+  存到 `material-videos/<jobId>/thumbnail.jpg`（和镜像厂商封面放在同一处，厂商的按原扩展名存）。`FfmpegRunner` 加了带超时的 `runFfmpeg` 重载。
+  best-effort：截不出来不影响出片与结算，只打 WARN（§8.0 观测类例外）。所有分区的新任务都生效。
+- `MaterialVideoCoverBackfill`（新，`CommandLineRunner`，在后台线程上跑，不拖慢启动）：视频生成区（`kind=studio-*`）已成功但没封面的
+  老任务，启动后补截，每次最多 50 条；补上的行不再被查到，截不出来的下次启动再试。只补视频生成区（别的分区界面不靠封面）。
+  仓库新增 `findCoverless` 与 `setThumbnailIfMissing`（只在封面还空着时写封面和更新时间，不整行 save，免得盖掉同一时刻别处的改动）。
+  开关 `aep.material.video.cover-backfill.enabled`（默认开；dev 关：本机 local 驱动下读不到 cdn-mock 里的成片，@SpringBootTest 也用 dev）。
+- 智能优化面板：优化结果以英文为主时（`isMostlyEnglish`：去掉厂商固定的结构字段后，英文单词数 > 汉字数；按优化给回来的原文判，不按草稿）在「优化后的提示词」
+  下面加一句「优化结果是英文的，模型直接读得懂。想改的话用中文写也行。」演示模式的优化结果改成照真厂商格式的英文。
+
+**实测数据**（2026-10-03，账号 18801931018）：文生 768p 16:9 → 1344×768；首帧 544p 9:16 → 544×960；首尾帧 768p 1:1 → 768×768；
+全能参考 544p 4:3 → 736×544。都是 H.264 24fps + AAC 音轨，要 5 秒实得 5.175 秒，单条 2–3.5 分钟。1:1 发
+`orientation:"square"` + `aspectRatio:"1:1"` + `outputSizeCode:"h3-768-1x1"`，厂商受理（TODO 里「square 未实测」那条关掉）。
+厂商账号额度 2 条在跑 + 3 条排队，我们出片线程池 3 个，单台服务撞不上。
+
+**测试**：`MaterialVideoCoverTest`（本机真 ffmpeg 截帧，没有 ffmpeg 就跳过）、`MaterialVideoCoverBackfillTest`（真 JPQL，H2 MySQL 模式）、
+`MaterialVideoWorkerTest` +4（厂商无封面 / 有封面 / 封面地址取不到 / 截不出来仍交付并结算）；web-celebrity `isMostlyEnglish` 单测 + 面板接线测试。
+Codex 只读评审（无 P0 / P1）提的几条都在合并前改了：截帧独立 30 秒超时、超时不重试（`FfmpegRunner.TimedOutException`）、结构字段不计入语言判断、补封面加开关、文档措辞。
+本机全量测试还抓到一处版本差异：超出时长的 `-ss`，2018 版 ffmpeg（线上）正常退出一帧不写，8.x 报错退出，所以「截不到就退回第 0 秒」两种都认。
+
 ### v0.199（2026-09-30）— 明星带货里单独开一块「视频生成」，把 H3 的四种模式原样搬过来
 
 **起因**：要一个简单的提示词出视频、参考图出视频的地方，对标 MiniMax H3 的几种模式，功能平移、不做产品化封装。

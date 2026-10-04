@@ -54,6 +54,7 @@ public class MaterialVideoWorker {
     private final CreditService creditService;
     private final CdnUploader cdnUploader;
     private final StorageQuotaService storage;
+    private final MaterialVideoCover cover;
     private final HttpClient downloadHttp;
 
     public MaterialVideoWorker(MaterialVideoJobRepository jobRepo,
@@ -61,12 +62,14 @@ public class MaterialVideoWorker {
                                MaterialVideoProperties props,
                                CreditService creditService,
                                StorageQuotaService storage,
-                               ObjectProvider<CdnUploader> cdnUploaderProvider) {
+                               ObjectProvider<CdnUploader> cdnUploaderProvider,
+                               MaterialVideoCover cover) {
         this.jobRepo = jobRepo;
         this.modelClient = modelClient;
         this.props = props;
         this.creditService = creditService;
         this.storage = storage;
+        this.cover = cover;
         this.cdnUploader = cdnUploaderProvider.getIfAvailable();
         this.downloadHttp = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -314,16 +317,24 @@ public class MaterialVideoWorker {
             var uploadedVideo = cdnUploader.upload(video.path(), videoKey, video.contentType());
 
             String finalThumbnailUrl = thumbnailUrl;
+            boolean coverStored = false;
             if (thumbnailUrl != null && !thumbnailUrl.isBlank()) {
                 try {
                     thumbnail = downloadMedia(thumbnailUrl, "material-video-thumb-" + jobId, ".jpg", "image/jpeg");
                     String thumbKey = "material-videos/" + jobId + "/thumbnail" + thumbnail.extension();
                     var uploadedThumb = cdnUploader.upload(thumbnail.path(), thumbKey, thumbnail.contentType());
                     finalThumbnailUrl = uploadedThumb.cdnUrl();
+                    coverStored = true;
                 } catch (IOException | RuntimeException e) {
                     log.warn("[material-video] job {} CDN thumbnail mirror failed (keeping provider thumbnail): {}",
                             jobId, e.getMessage());
                 }
+            }
+            // v0.199.1：厂商没给封面（聚算 H3 一律不给）或封面没存下来 → 从刚下到本机的成片里截一帧。
+            // best-effort，截不出来就照旧（没有封面 / 保留厂商地址），不影响出片与结算。
+            if (!coverStored && cover != null) {
+                String taken = cover.extractAndUpload(jobId, video.path());
+                if (taken != null) finalThumbnailUrl = taken;
             }
 
             // C-1（一致性引擎）：把成片真实末帧镜像到 CDN（不过期），落 lastFrameCdnKey 作真值供跨镜链式承接。

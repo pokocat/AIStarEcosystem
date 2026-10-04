@@ -36,3 +36,9 @@ aep:
   # 生产把这个值设为 OSS/CDN 公网域名（如 https://aiartist.oss-cn-hangzhou.aliyuncs.com）。
   cdn:
     public-base-url: ${AEP_CDN_PUBLIC_BASE_URL:http://localhost:8080/cdn}
+  # 补封面（v0.199.1）在本机没用：local 驱动下读不到 cdn-mock 里的成片，只会每次启动打一串 WARN；
+  # @SpringBootTest 也用 dev，关掉免得测试库里有匹配的行时真去截帧、在测试事务之外提交。
+  material:
+    video:
+      cover-backfill:
+        enabled: false

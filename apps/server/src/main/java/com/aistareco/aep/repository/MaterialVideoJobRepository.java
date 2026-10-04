@@ -80,6 +80,26 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
                      @Param("now") java.time.OffsetDateTime now);
 
     /**
+     * v0.199.1 补封面：已成功、成片还在、但没有封面的任务（按 kind 前缀限定分区），新完成的排前面。
+     * 见 {@code MaterialVideoCoverBackfill}。
+     */
+    @Query("select j from MaterialVideoJob j where j.status = 'succeeded' and j.thumbnailUrl is null "
+            + "and j.videoUrl is not null and j.kind like concat(:kindPrefix, '%') order by j.completedAt desc")
+    List<MaterialVideoJob> findCoverless(@Param("kindPrefix") String kindPrefix,
+                                         org.springframework.data.domain.Pageable page);
+
+    /**
+     * 只在还没有封面时写入封面地址，返回影响行数（0 = 已经有了）。只动封面和更新时间两列：整行 save 会把
+     * 同一时刻别处对这一行的改动盖掉。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("update MaterialVideoJob j set j.thumbnailUrl = :url, j.updatedAt = :now "
+            + "where j.id = :id and j.thumbnailUrl is null")
+    int setThumbnailIfMissing(@Param("id") String id, @Param("url") String url,
+                              @Param("now") java.time.OffsetDateTime now);
+
+    /**
      * 老数据一次性回填 app（本列 v0.108 才加）：判定同 {@link #APP_EXPR}。
      * 幂等：只改 app is null 的行。回填只为让查询走 (owner_user_id, app) 索引，
      * 列表正确性不依赖它。

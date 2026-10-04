@@ -499,25 +499,34 @@ function mockGetJob(id: string): VideoStudioJob {
 // ── 演示：智能优化 ───────────────────────────────────────────────────────────
 
 const REFERENCE_USE: Record<VideoStudioMediaType, string> = {
-  image: "外观参考",
-  video: "动作与运镜参考",
-  audio: "节奏参考",
+  image: "appearance reference",
+  video: "motion and camera reference",
+  audio: "rhythm reference",
 };
 
-/** 演示用的「改写」：把原提示词拆成镜头、光线、素材用法几块，一眼能看出改过。 */
+/**
+ * 演示用的「改写」：照真厂商的样子回英文分镜描述（聚算 H3 的优化一律回英文，2026-10-03 线上实测；
+ * mock 要照真的写，AGENTS.md §8.0.1 ⑦），开头引原提示词的前一小段，一眼能看出是从它改过来的。
+ */
 function mockRewrite(req: VideoStudioOptimizationRequest): string {
   const refs = req.references ?? [];
   const labels = referenceLabels(refs);
-  const lines = [
-    `【主体与动作】${req.prompt.trim()}`,
-    "【镜头】开场 1 秒内给到主体，中段镜头缓慢推近，结尾停在主体特写",
-    "【光线与色调】柔和的自然光，暖色调，主体和背景分得开",
-    refs.length > 0 ? `【素材用法】${refs.map((r, i) => `${labels[i]} 作为${REFERENCE_USE[r.mediaType]}`).join("，")}` : null,
-    req.firstFrameKey ? "【首帧】保持首帧的构图和人物外观，动作从首帧自然接上" : null,
-    req.lastFrameKey ? "【尾帧】最后一秒自然过渡到尾帧画面" : null,
-    `【时长与画面】${req.seconds} 秒，${req.aspectRatio}，${req.resolutionTier}`,
+  const original = Array.from(req.prompt.trim());
+  const brief = original.slice(0, 20).join("") + (original.length > 20 ? "…" : "");
+  const shot = [
+    `[Shot 1] A ${req.seconds}-second ${req.aspectRatio} ${req.resolutionTier} clip in a cinematic live-action style, based on "${brief}".`,
+    "The camera finds the subject within the first second, pushes in slowly through the middle and ends on a close-up.",
+    "Soft natural light and warm tones keep the subject clearly apart from the background.",
+    refs.length > 0 ? `${refs.map((r, i) => `${labels[i]} is used as the ${REFERENCE_USE[r.mediaType]}`).join("; ")}.` : null,
+    req.firstFrameKey ? "The opening keeps the first frame's composition and the person's look, and the motion carries on from it." : null,
+    req.lastFrameKey ? "In the final second the shot settles into the last frame." : null,
   ].filter((line): line is string => line !== null);
-  return Array.from(lines.join("\n")).slice(0, 7000).join("");
+  const text = [
+    `integrated_multimodal_description: ${shot.join(" ")}`,
+    "overall_soundscape: Ambient sound that fits the scene, steady and calm, with no sudden noises.",
+    "non_diegetic_music: N/A",
+  ].join("\n\n");
+  return Array.from(text).slice(0, 7000).join("");
 }
 
 function advanceOptimization(record: MockOptimizationRecord, nowMs: number): VideoStudioOptimization {

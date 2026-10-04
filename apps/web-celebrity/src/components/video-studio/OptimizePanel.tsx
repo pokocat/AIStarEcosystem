@@ -3,7 +3,8 @@
 // 提示词下面的「智能优化」那一块（docs/video-studio-plan.md §9，照厂商试用页）：
 //   正在优化 → 「正在优化提示词…（一般几十秒，长的要几分钟）」
 //   成功     → 可编辑的「优化后的提示词」（n / 7000）、可展开的「原提示词」，
-//              「用这版生成」「改用原提示词生成」「先不生成」
+//              「用这版生成」「改用原提示词生成」「先不生成」；
+//              结果是英文时多一句说明（聚算 H3 目前一律回英文，v0.199.1）
 //   失败     → 服务端给的原因，「直接用原提示词生成」「重新优化」
 
 import * as React from "react";
@@ -12,7 +13,7 @@ import { ChevronDown, Loader2, Sparkles, TriangleAlert, Wand2 } from "lucide-rea
 import { formatCredits } from "@ai-star-eco/api-client/format";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import { AiErrorNotice } from "@/components/common/ai-error-notice";
-import { countPromptChars } from "@/lib/video-studio";
+import { countPromptChars, isMostlyEnglish } from "@/lib/video-studio";
 import type { OptimizationView } from "./use-prompt-optimization";
 
 const primaryBtn =
@@ -97,6 +98,12 @@ export function OptimizePanel({
           <span className="text-[12.5px] font-semibold text-zinc-800">优化后的提示词</span>
           <span className="ml-auto shrink-0 text-[11px] text-zinc-500">可以先改再用</span>
         </div>
+        {/* 按优化给回来的原文判，不按草稿：用户边改边判会一会儿有一会儿没有 */}
+        {isMostlyEnglish(view.optimization.optimizedPrompt ?? "") ? (
+          <p className="text-[11.5px] leading-relaxed text-zinc-500">
+            优化结果是英文的，模型直接读得懂。想改的话用中文写也行。
+          </p>
+        ) : null}
         <div className="relative">
           <textarea
             value={view.draft}

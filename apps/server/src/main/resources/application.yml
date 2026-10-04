@@ -281,6 +281,9 @@ aep:
       upload-to-cdn: ${AEP_VIDEO_UPLOAD_TO_CDN:true}
       download-timeout-seconds: ${AEP_VIDEO_DOWNLOAD_TIMEOUT_SEC:120}
       max-download-bytes: ${AEP_VIDEO_MAX_DOWNLOAD_BYTES:536870912}
+      # v0.199.1：启动后给视频生成区没封面的老任务补截（MaterialVideoCoverBackfill）。dev 里关掉，见 application-dev.yml。
+      cover-backfill:
+        enabled: ${AEP_VIDEO_COVER_BACKFILL_ENABLED:true}
   coze:
     enabled: ${AEP_COZE_ENABLED:true}
     token: ${AEP_COZE_TOKEN:}
