@@ -158,12 +158,18 @@ export function countPromptChars(prompt: string): number {
  * 智能优化的结果是不是以英文为主。聚算 H3 的优化目前一律回英文的分镜描述（2026-10-03 线上实测，
  * docs/video-studio-plan.md §9），用户写的是中文，突然看到一大段英文会以为出了错，面板据此加一句说明。
  * 按「英文单词数 > 汉字数」判：英文描述里夹几句中文台词仍算英文，中文里夹几个英文词不算。
+ * 先去掉厂商固定的结构字段（`integrated_multimodal_description:` 这类）、镜头标记和 N/A，
+ * 否则「字段名是英文、正文是中文」的短结果会被字段名算成英文。
  */
 export function isMostlyEnglish(text: string): boolean {
-  const han = (text.match(/\p{Script=Han}/gu) ?? []).length;
-  const words = (text.match(/[A-Za-z]+/g) ?? []).length;
+  const body = text.replace(OPTIMIZED_PROMPT_SCAFFOLD, " ");
+  const han = (body.match(/\p{Script=Han}/gu) ?? []).length;
+  const words = (body.match(/[A-Za-z]+/g) ?? []).length;
   return words > han;
 }
+
+/** 厂商优化结果里固定的结构字段（蛇形命名 + 冒号）、`[Shot 1]` 这样的镜头标记、`N/A`。 */
+const OPTIMIZED_PROMPT_SCAFFOLD = /\b[a-z]+(?:_[a-z]+)+\s*:|\[\s*shot\s*\d+\s*\]|\bN\/A\b/gi;
 
 // ── 规格：默认值与联动 ───────────────────────────────────────────────────────
 

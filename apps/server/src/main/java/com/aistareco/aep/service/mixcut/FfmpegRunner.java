@@ -117,6 +117,22 @@ public class FfmpegRunner {
         return run(props.getFfmpegBin(), args);
     }
 
+    /**
+     * ffmpeg / ffprobe 超过时限被杀掉。单独一个类型（仍是 RuntimeException，老的 catch 照旧接得住），
+     * 调用方据此区分「慢」和「报错」：如截封面，报错可以换个位置再试，超时就不该再占着线程试一遍。
+     */
+    public static class TimedOutException extends RuntimeException {
+        public TimedOutException(String message) { super(message); }
+    }
+
+    /**
+     * 同 {@link #runFfmpeg(List)}，但超时由调用方定：短小的旁路活（如从成片截一帧当封面）
+     * 不该占着线程等全局的渲染超时（生产 10 分钟）。
+     */
+    public String runFfmpeg(List<String> args, long timeoutMs) {
+        return run(props.getFfmpegBin(), args, 32_000, timeoutMs);
+    }
+
     public String runFfprobe(List<String> args) {
         return run(props.getFfprobeBin(), args);
     }
@@ -126,6 +142,10 @@ public class FfmpegRunner {
     }
 
     private String run(String bin, List<String> args, int maxOutputChars) {
+        return run(bin, args, maxOutputChars, props.getFfmpegTimeoutMs());
+    }
+
+    private String run(String bin, List<String> args, int maxOutputChars, long timeoutMs) {
         List<String> cmd = new ArrayList<>(args.size() + 1);
         cmd.add(bin);
         cmd.addAll(args);
@@ -159,7 +179,7 @@ public class FfmpegRunner {
         long startNs = System.nanoTime();
         boolean finished;
         try {
-            finished = p.waitFor(props.getFfmpegTimeoutMs(), TimeUnit.MILLISECONDS);
+            finished = p.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             p.destroyForcibly();
@@ -174,8 +194,8 @@ public class FfmpegRunner {
             // 超时时带上 stderr 尾巴 —— 否则用户只看到 "timed out" 完全不知道
             // ffmpeg 卡在哪一步（demuxing? filter chain init? encoding?）。
             // 历史上这条错只有时长，每次都得手动加 -loglevel verbose 重跑。
-            throw new RuntimeException(
-                    "ffmpeg timed out after " + elapsedMs + "ms (limit=" + props.getFfmpegTimeoutMs()
+            throw new TimedOutException(
+                    "ffmpeg timed out after " + elapsedMs + "ms (limit=" + timeoutMs
                             + "ms). 调大 aep.mixcut.ffmpeg-timeout-ms 或减小 variants / source 尺寸. tail=" + tail);
         }
         try { reader.join(2000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }

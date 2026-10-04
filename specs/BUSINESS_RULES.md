@@ -1107,9 +1107,11 @@ ffprobe 求和（读不出 → 400 `VIDEO_STUDIO_ASSET_INVALID`）。
 （包括计价表 `perSecond` 里未定价的格子：那两个 Map 字段单独标了 content = ALWAYS，全局 non_null 吞不掉）。
 
 **封面（v0.199.1）。** 厂商不给封面（聚算 H3 就不给）、或给了但没存下来时，worker 在镜像成片那一步从本机成片 0.5 秒处截一帧
-（宽不超过 720、不放大；不到 0.5 秒的片取第 0 秒），存 `material-videos/<jobId>/thumbnail.jpg`（与镜像厂商封面同一个 key），
+（宽不超过 720、不放大；截不到就退回第 0 秒再截一次，每次 30 秒超时，超时了不再重试），
+存 `material-videos/<jobId>/thumbnail.jpg`（和镜像厂商封面放在同一处，厂商的按原扩展名存），
 所有分区的新任务都这样。best-effort：截不出来不影响出片与结算，只打 WARN。视频生成区（`kind=studio-*`）已成功但没封面的老任务，
-服务启动后在后台补（每次最多 50 条，只写还空着的封面列，不整行保存）；别的分区的老任务不补。
+服务启动后在后台补（每次最多 50 条，条件更新只写封面与更新时间、不整行保存；`aep.material.video.cover-backfill.enabled`，
+dev 关）；别的分区的老任务不补。
 模板的封面是存模板那一刻从任务拷过去的 key，之后不跟着变。
 
 **错误码表**

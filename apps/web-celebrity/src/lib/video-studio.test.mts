@@ -280,6 +280,12 @@ describe("isMostlyEnglish（智能优化结果的语言）", () => {
     assert.equal(isMostlyEnglish(`${vendor}\n(S1) says: "早上好，今天的海真蓝"`), true);
   });
 
+  test("结构字段是英文、正文是中文，不算（字段名不计数）", () => {
+    const zhBody = "integrated_multimodal_description: [Shot 1] 猫在草地上奔跑\n\noverall_soundscape: 风声\n\nnon_diegetic_music: N/A";
+    assert.equal(isMostlyEnglish(zhBody), false);
+    assert.equal(isMostlyEnglish("integrated_multimodal_description: 猫奔跑\noverall_soundscape: 风声\nnon_diegetic_music: 无"), false);
+  });
+
   test("中文为主、夹几个英文词，不算", () => {
     assert.equal(isMostlyEnglish("清晨的海边，镜头缓慢推近，4K 画质，cinematic lighting"), false);
     assert.equal(isMostlyEnglish("画面里白色的圆慢慢升起，像日出一样"), false);

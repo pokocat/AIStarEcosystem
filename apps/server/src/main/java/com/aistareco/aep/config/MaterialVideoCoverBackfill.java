@@ -7,6 +7,7 @@ import com.aistareco.aep.service.storage.FileStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
@@ -24,9 +25,15 @@ import java.util.List;
  *
  * <p>幂等：补上的行不会再被查到；截不出来的（成片没了 / 文件坏了）下次启动再试一次，只打 WARN。
  * 跑在后台线程上，不拖慢启动；每次最多 {@link #BATCH} 条。
+ *
+ * <p>两个已知的限度（见 TODO.md）：每次都从最新的 {@link #BATCH} 条看起，补不上的行不会被跳过，
+ * 积到 50 条以上就会挡住更早的；本机 {@code aep.cdn.driver=local} 时 {@code openForRead} 读不到 cdn-mock 里的成片，
+ * 所以 dev 关掉（{@code aep.material.video.cover-backfill.enabled=false}，@SpringBootTest 用的也是 dev）。
+ * 线上新任务出片时就截好封面，积压只会是截帧失败的个例。
  */
 @Component
 @Order(71)
+@ConditionalOnProperty(name = "aep.material.video.cover-backfill.enabled", havingValue = "true", matchIfMissing = true)
 public class MaterialVideoCoverBackfill implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoCoverBackfill.class);

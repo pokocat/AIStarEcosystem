@@ -89,8 +89,8 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
                                          org.springframework.data.domain.Pageable page);
 
     /**
-     * 只在还没有封面时写入封面地址，返回影响行数（0 = 已经有了）。只动这一列：整行 save 会把同一时刻
-     * 别处对这一行的改动盖掉。
+     * 只在还没有封面时写入封面地址，返回影响行数（0 = 已经有了）。只动封面和更新时间两列：整行 save 会把
+     * 同一时刻别处对这一行的改动盖掉。
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional

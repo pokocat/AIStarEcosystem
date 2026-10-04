@@ -18,9 +18,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -135,6 +139,69 @@ class MaterialVideoCoverTest {
 
         assertNull(cover(up).extractAndUpload("mvj_junk", junk));
         assertTrue(up.files.isEmpty());
+    }
+
+    @Test
+    void grab_usesItsOwnShortTimeout_notTheGlobalRenderTimeout(@TempDir Path dir) throws Exception {
+        // 截帧跑在出片线程上（全平台 3 个），卡住不能等生产那 10 分钟的渲染超时
+        FfmpegRunner stub = mock(FfmpegRunner.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(new Recorder());
+        Path any = dir.resolve("v.mp4");
+        Files.write(any, new byte[]{1});
+
+        assertNull(new MaterialVideoCover(stub, provider).extractAndUpload("mvj_t", any));
+
+        verify(stub, org.mockito.Mockito.times(2)).runFfmpeg(anyList(), eq(MaterialVideoCover.GRAB_TIMEOUT_MS));
+        assertEquals(30_000L, MaterialVideoCover.GRAB_TIMEOUT_MS);
+    }
+
+    @Test
+    void ordinaryError_isRetriedOnceAtTheFirstFrame(@TempDir Path dir) throws Exception {
+        // 8.x 的 ffmpeg 对超出时长的 -ss 直接报错退出（2018 版是正常退出、一帧不写），两种都要退回第 0 秒
+        FfmpegRunner stub = mock(FfmpegRunner.class);
+        when(stub.runFfmpeg(anyList(), eq(MaterialVideoCover.GRAB_TIMEOUT_MS)))
+                .thenThrow(new RuntimeException("ffmpeg exit=234 bin=ffmpeg tail=Output file is empty"));
+        @SuppressWarnings("unchecked")
+        ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(new Recorder());
+        Path any = dir.resolve("v.mp4");
+        Files.write(any, new byte[]{1});
+
+        assertNull(new MaterialVideoCover(stub, provider).extractAndUpload("mvj_t", any));
+
+        verify(stub, org.mockito.Mockito.times(2)).runFfmpeg(anyList(), eq(MaterialVideoCover.GRAB_TIMEOUT_MS));
+    }
+
+    @Test
+    void timeout_isNotRetried(@TempDir Path dir) throws Exception {
+        // 超时再试一次多半一样慢，白占出片线程（全平台 3 个）
+        FfmpegRunner stub = mock(FfmpegRunner.class);
+        when(stub.runFfmpeg(anyList(), eq(MaterialVideoCover.GRAB_TIMEOUT_MS)))
+                .thenThrow(new FfmpegRunner.TimedOutException("ffmpeg timed out after 30000ms (limit=30000ms)"));
+        @SuppressWarnings("unchecked")
+        ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);
+        Recorder up = new Recorder();
+        when(provider.getIfAvailable()).thenReturn(up);
+        Path any = dir.resolve("v.mp4");
+        Files.write(any, new byte[]{1});
+
+        assertNull(new MaterialVideoCover(stub, provider).extractAndUpload("mvj_t", any));
+
+        verify(stub, org.mockito.Mockito.times(1)).runFfmpeg(anyList(), eq(MaterialVideoCover.GRAB_TIMEOUT_MS));
+        assertTrue(up.files.isEmpty());
+    }
+
+    @Test
+    void ffmpegTimeoutOverload_cutsALongRunAtTheGivenLimit() {
+        assumeTrue(ffmpegAvailable(), "本机没有 ffmpeg / ffprobe");
+        long t0 = System.nanoTime();
+        RuntimeException e = assertThrows(FfmpegRunner.TimedOutException.class, () -> ffmpeg.runFfmpeg(List.of("-v", "error",
+                "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24:duration=600", "-f", "null", "-"), 300L));
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        assertTrue(e.getMessage().contains("limit=300ms"), e.getMessage());
+        assertTrue(ms < 10_000, "超时没按传入的值生效，跑了 " + ms + "ms");
     }
 
     @Test
