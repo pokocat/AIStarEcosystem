@@ -559,7 +559,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
 
-### 8.0.1 排障与验证纪律（v0.184 起强制，v0.197 补到 12 条 —— 都是本仓真栽过、而且多数**栽过不止一次**的）
+### 8.0.1 排障与验证纪律（v0.184 起强制，2026-10-04 补到 13 条 —— 都是本仓真栽过、而且多数**栽过不止一次**的）
 
 > 这一节不是通则，是事故清单。每一条后面都跟着它是在哪一版、以什么形态发生的；
 > 再犯一次的成本已经量过了：一个 400 我猜了三轮（路径 / 别名 / Key 权限），全不对，
@@ -686,6 +686,20 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
   全局规则，会把用 grid 画的表格行（发布记录、数据表）也折成一列五行。新代码的 grid 写进 class；
   确实要内联时加 `.keep-cols` 退出。
 - 验证要在 **375** 下真打开弹窗看（`shot.mjs` / 浏览器），桌面宽度下这两个问题都不出现。
+
+**⑬ CI 红、本机绿：先在本机复现出 CI 的那条红。「本机是好的」不算证据。**
+2026-10-03 起 `frontend-tests` 在 main 上一直红（web-drama `episodes-view.test.tsx` 两条片段时长用例，v0.198.1 带进来的），
+#119 / #118 / #121 / #123 带着它合进了 main，每个人本机都是绿的。两层原因：前一条用例在顶栏换了视频模型，选择按画布记进
+localStorage，`beforeEach` 只清了模块内存那份，串到了后两条；本机看不到，是因为 Node 25 自带的全局 `localStorage`（没给
+`--localstorage-file` 时连 `getItem` 都没有）盖住了 jsdom 的，写入全被业务代码的 try/catch 吞掉，本机测试里「记在 localStorage」
+从没真记住过；CI 的 Node 22 用的是 jsdom 的、能写。
+- 判据：CI 红、本机绿，先列两边环境差在哪（Node 版本、浏览器存储、时区、并行跑），**在本机复现出 CI 的那条红**再改（同 ②）。
+  这次的复现办法是 `NODE_OPTIONS=--no-experimental-webstorage`。
+- 测试的「重置」要覆盖状态的**每一层**：模块内存、localStorage / sessionStorage、mock 服务端。web-drama 的 `vitest.setup.ts`
+  每条用例前清空存储，并在 Node 25 上换回 jsdom 的存储，`src/test-env.test.ts` 钉住这两条；别的工作区要用存储照抄。
+- 用例依赖某个前置（默认模型、价格已读到）时先**断言前置**，别让它在后面以「按钮没禁用」的样子炸出来。
+- `frontend-tests` 红着不合，哪怕红的那条看着和本 PR 无关：先看 main 上是不是也红，是就单独修掉。
+- **Review reject**：新增「按画布 / 按用户记在 localStorage」的状态，测试只调模块级 `__reset…ForTest()`、既没清存储也没断言前置 → reject。
 
 ### 跨 app 约定
 

@@ -14,5 +14,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
+    // 浏览器存储：本机（Node 25）和 CI（Node 22）用同一种，每条用例前清空（见 vitest.setup.ts 头注释）
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

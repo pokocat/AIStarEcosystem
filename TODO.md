@@ -201,6 +201,18 @@ v0.198.1 修了线上实测跑出来的生成链问题（拆角色 JSON、429、
       平局时应优先取和画布比例（`doc.meta.ratio`）一致的尺寸。现在新出的 H3 片段都是 9:16，只有修复之前出的老片段会触发。
 - [x] ~~**H3 竖屏比例（`fix/h3-generic-aspect`，基于 #118）合并后要实测一次**~~ **已实测**，2026-10-03：线上 `release/v0199-combined-2` 出一条 5 秒片段，厂商回 `effectiveMediaSpec.aspectRatio=9:16`、成片 768×1344。原记录：：老路径补了 `aspectRatio` + `outputSizeCode`，单测与请求体都对，
       但还没在线上真出一条看 `effectiveSpec` 是不是 `h3-768-9x16`（要 200 积分）。
+- [x] ~~**`frontend-tests` 在 main 上一直红：`episodes-view.test.tsx` 两条片段时长用例**~~ **2026-10-04 修复**（纯测试，无功能变更）：
+      v0.198.1（`ba8be3fd`）自己第一次跑 CI（run 37100160174）就是这两条红，那时它还没合 #115 / #117，所以不是合并组合的问题；之后 #119、#118、#121、#123 带着它合进了 main，例行 QA 的 #122（还开着）也是红在这两条上。
+      根因是用例之间串了状态：「片段比下限短」那条在顶栏换成 `mock-video-t2v`（一条最长 15 秒、没下限），选择按画布记进 localStorage，`beforeEach` 的 `__resetCanvasPricingForTest()` 只清内存那份（它是故意的：`use-canvas-pricing.test.tsx` 拿它模拟刷新页面），
+      后两条就按 t2v 判了（CI 报错时的 DOM 里顶栏选中的就是它）。本机一直绿：Node 25 自带的全局 localStorage 没给 `--localstorage-file` 时不能用，vitest 3 的 jsdom 环境又不覆盖它，写入全被吞掉；CI 是 Node 22，用 jsdom 的、能写。
+      处理：`apps/web-drama/vitest.setup.ts` 换回 jsdom 的存储、每条用例前清空，`src/test-env.test.ts` 钉住；时长那一组先等视频模型读到并断言是默认模型；「生成分镜脚本不弹确认」先等价格读到（run 37100725769 在这里单独红过一次，点得比价格读到早）。
+      本机按 CI 的存储跑（`NODE_OPTIONS=--no-experimental-webstorage`）复现出同样的 2 条，修完两种跑法都全绿；打乱用例顺序（5 个种子）也全绿。
+- [ ] **低优先级 · 视频模型还没读到时点「生成选中的 N 个视频」，按回退的 1–10 秒判越界**（`segment-timeline.tsx` 的 `batchVideoPlan` 用 `pricing.minSegmentSec()` / `maxSegmentSec()`，没读到时是回退值）：
+      低于模型下限的片段也会发出去，服务端 400 `DRAMA_CANVAS_SEGMENT_TOO_SHORT`（不冻结、不扣费），但 `submitSequence({ stopOnError: true })` 会让后面的片段也不发。窗口只有进页后几百毫秒；修法是 `!pricing.ready` 时批量按钮禁用并就地说「视频模型还在读取」。
+- [ ] **仓库设置 · main 没有分支保护**（2026-10-04 查：`protected: false`，没有必过的检查）：`frontend-tests` 红着也能合，这次从 10-03 05:32Z 红到 10-04 下午，中间合了好几个 PR 才有人追。
+      建议把 Impersonation CI 的 `frontend-tests` / `backend` / `build-and-browser` 设为合并前必过。这是 GitHub 仓库设置，需要仓库管理员决定。
+- [ ] **低优先级 · web-aiavatar 的测试在 Node 25 上也读到了 Node 自带的 localStorage**（`pnpm test:all` 打出 4 行 `--localstorage-file` 警告）：用到存储的两个测试文件（`docked-overlays` / `layout-mode`）自己挂了假存储，现在本机和 CI 都绿。
+      以后它有用例经界面写存储时，照 web-drama 的 `vitest.setup.ts` 收（那边默认 `environment: "node"`，要 DOM 的文件靠 `environmentMatchGlobs` 或 docblock 开 jsdom，setup 里的 `globalThis.jsdom` 判断照样适用）。
 
 ## 2026-09-30 · web-drama 画布 v0.198 第二期候选（真源 `docs/drama-canvas-plan.md` §9）
 

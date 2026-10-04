@@ -88,7 +88,8 @@ const RUN_APIS = ["runImage", "runImageBatch", "runVideo", "runStoryboard", "run
 
 beforeEach(() => {
   __resetMockCanvasForTest();
-  __resetCanvasPricingForTest(); // 视频 / 出图模型的选择是模块级的：每条用例从默认模型开始
+  // 视频 / 出图模型的选择是模块级的，还按画布记在 localStorage（vitest.setup.ts 每条用例前清空）：两处都清，每条用例才从默认模型开始
+  __resetCanvasPricingForTest();
   vi.mocked(CanvasApi.save).mockClear();
   for (const k of RUN_APIS) vi.mocked(CanvasApi[k]).mockClear();
   vi.mocked(CanvasApi.cancelRun).mockClear();
@@ -126,6 +127,8 @@ describe("逐集制作 · 示例画布", () => {
       </Harness>,
     );
     const list = await screen.findByTestId("cve-episode-list");
+    // 价格读到之前点，确认框一律要弹（见「价格还没读到」）；这条断的是读到之后、低于门槛不弹，所以先等价格
+    await waitFor(() => expect(list.querySelector('[data-pending="price"]')).toBeNull());
     const sb = list.querySelector<HTMLButtonElement>('[data-episode="2"] [data-action="storyboard"]')!;
     await act(async () => {
       fireEvent.click(sb);
@@ -322,6 +325,15 @@ describe("单集编辑器 · 出图模型与片段时长（v0.198.1）", () => {
     );
     await screen.findByTestId("cve-editor");
     await waitFor(() => expect(CanvasApi.getRuns).toHaveBeenCalled());
+    // 这一组断的是默认视频模型（mock-video-i2v，一条 5–10 秒）的上下限。先等候选读到：没读到时按回退的 1–10 秒算，
+    // 多选会把 4 秒的片段也算进去。再确认确实是默认模型：前一条用例换过模型、这一条没从默认开始（2026-10-04 的 CI 红），
+    // 就在这里报「选的是哪个」，而不是在后面报一个看不出原因的「按钮没禁用」
+    const model = await waitFor(() => {
+      const el = document.querySelector<HTMLSelectElement>('.cv-topbar [data-action="video-model"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(model.value).toBe("mock-video-i2v");
     return screen.getByTestId("cve-timeline");
   }
   const preview = () => screen.getByTestId("cve-preview");

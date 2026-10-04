@@ -10,9 +10,12 @@ pnpm install
 pnpm dev:drama       # http://localhost:3011
 pnpm --filter @ai-star-eco/web-drama typecheck
 pnpm --filter @ai-star-eco/web-drama build
+pnpm --filter @ai-star-eco/web-drama test
 ```
 
 USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.ts` 内存可变缓存，关掉浏览器后重置。
+
+测试（vitest + jsdom）的浏览器存储由 `vitest.setup.ts` 管：每条用例前清空 localStorage / sessionStorage，并且不论本机是 Node 22 还是 25 都用 jsdom 自己的那两个（Node 25 自带的 localStorage 不能用，又会盖掉 jsdom 的，本机测试就和 CI 不一样）。用例要预置存储，在自己的 `beforeEach` 或用例里写。
 
 ## 路由结构
 
@@ -75,6 +78,18 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 - 真后端尚未上线，USE_MOCK=0 分支会保留 `apiFetch` 占位（507/501 后端原因）。
 
 ## 版本日志
+
+### 2026-10-04 · 测试：本机和 CI 用同一种浏览器存储，frontend-tests 修绿（无功能变更）
+
+CI 的 `frontend-tests` 从 v0.198.1（`ba8be3fd`）起一直红，红的是 `episodes-view.test.tsx` 里两条片段时长用例，本机一直是绿的。原因不在 #115 / #117 / #119 的合并，而是用例之间串了状态：
+- 前一条用例在顶栏把视频模型换成「文字生视频」（一条最长 15 秒、没有下限），这个选择按画布记进 localStorage；`beforeEach` 只清了模块内存那份，后两条读回来的就不是默认模型（一条 5–10 秒），「超过上限就禁用」「4 秒的片段跳过」都不成立。
+- 本机看不到，是因为 Node 25 自带一个不能用的全局 localStorage，vitest 的 jsdom 环境不覆盖它，写入全被吞掉；CI 用 Node 22，拿到的是 jsdom 的、能写。
+
+改动：
+- 新增 `vitest.setup.ts`：换回 jsdom 的存储，并在每条用例前清空（见上「启动」一节）；`src/test-env.test.ts` 钉住这两条。
+- 片段时长那一组先等视频模型读到、并断言是默认模型。再串状态时，报的就是「选的是哪个模型」，而不是「按钮没禁用」。
+- 「生成分镜脚本不弹确认」那条先等价格读到再点（价格没读到时确认框本来就该弹；CI 有一次就是在这里红的）。
+- 测试 web-drama 671 → 673。本机按 CI 的存储跑（`NODE_OPTIONS=--no-experimental-webstorage`）和默认跑都是全绿。
 
 ### v0.198.1 · 2026-10-03 · 画布线上实测修复
 
