@@ -238,7 +238,8 @@ public class MaterialVideoWorker {
                     return;
                 }
                 // v0.198：要求必须存进我方存储的任务（画布只存 key，厂商外链交付不了）—— 镜像不了就不交付、不扣费（§8.0）。
-                // 不带这个标记的老任务行为不变（镜像失败保留厂商地址、照常结算）。
+                // 不带这个标记、且带公网厂商地址的老任务行为不变（镜像失败保留厂商地址、照常结算）；
+                // 受保护产物（poll.videoUrl()==null，只能镜像交付）无论带不带标记都按镜像强制处理，见下方 catch。
                 boolean requireMirror = extractRequireMirror(job.getVariantConfigJson());
                 if (requireMirror && (!props.isUploadToCdn() || cdnUploader == null)) {
                     log.warn("[material-video] job {} require_mirror 但没配置我方存储镜像，判失败并退回冻结", jobId);
@@ -258,9 +259,14 @@ public class MaterialVideoWorker {
                         storage.record(appCode, job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
                                 mirror.videoKey(), mirror.videoBytes());
                     } catch (IOException | RuntimeException e) {
-                        if (requireMirror) {
-                            log.warn("[material-video] job {} require_mirror 镜像失败，判失败并退回冻结 taskId={} err={}",
-                                    jobId, submit.taskId(), e.toString());
+                        // 受保护资产（聚算媒体 Job，如视频生成区全部走 minimax-h3）没有可出 wire 的厂商地址 ——
+                        // poll.videoUrl() 为 null，唯一能交付的就是镜像到我方存储这一条路。镜像一旦抛（资产端点 403/5xx、
+                        // 网络抖动、资产过期），再往下走就会 markSucceeded(null) + 扣费：用户付了钱、任务显示成功、却取不回成片，
+                        // 且 admin 对账对已 succeeded 的任务早退出、永远修不回来。所以受保护资产等同 require_mirror：镜像失败即
+                        // 判失败退款（§8.0 不交付不扣费）。只有「带公网厂商地址」的老协议才保留地址照常结算。
+                        if (requireMirror || hasProtectedAsset) {
+                            log.warn("[material-video] job {} {} 镜像失败，判失败并退回冻结 taskId={} err={}",
+                                    jobId, hasProtectedAsset ? "受保护产物" : "require_mirror", submit.taskId(), e.toString());
                             markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但没能存进我方存储（"
                                     + truncate(e.getMessage(), 200) + "）");
                             releaseCredits(job, "视频没存进我方存储");

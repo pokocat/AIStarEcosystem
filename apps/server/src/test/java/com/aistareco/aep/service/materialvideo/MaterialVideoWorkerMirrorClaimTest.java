@@ -128,6 +128,29 @@ class MaterialVideoWorkerMirrorClaimTest {
     }
 
     @Test
+    void protectedAsset_withoutFlag_mirrorFails_jobFailsAndHoldIsReleasedNotCommitted() throws Exception {
+        // 回归 charge-on-failure：受保护产物（聚算媒体 Job，视频生成区全部走 minimax-h3）没有公网厂商地址 ——
+        // poll.videoUrl()==null，只能靠镜像交付。即便没带 require_mirror，镜像失败也必须判失败退款，
+        // 否则 markSucceeded(null) + commitHold：用户付了钱、任务显示成功，却取不回成片，且 admin 对账对
+        // 已 succeeded 的任务早退出、永远修不回来（§8.0 不交付不扣费）。此前只在 require_mirror 下才拦。
+        var submit = new MaterialVideoModelClient.SubmitResult("task_m", null, "vendor", "minimax-h3", "jusuan-media", "ep");
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult(
+                        "succeeded", null, null, "succeeded", 100, null, null, "asset_h3"));
+        when(modelClient.downloadOutputAsset(eq(submit), eq("asset_h3"), any(Path.class)))
+                .thenThrow(new IOException("asset endpoint 403"));
+        // 注意：任务没有 require_mirror 标记（variantConfigJson 为 null）。
+        worker(new FailingUploader()).generateAsync("mvj_m");
+
+        assertEquals("failed", job.getStatus());
+        assertTrue(job.getErrorMessage().startsWith(MaterialVideoWorker.MIRROR_FAILED_CODE), job.getErrorMessage());
+        assertNull(job.getVideoUrl());
+        verify(creditService).releaseHold(eq("material_video_job"), eq("mvj_m"), anyString());
+        verify(creditService, never()).commitHold(any(), any(), anyLong(), any());
+    }
+
+    @Test
     void canceledBeforeClaim_isNeverSubmitted() {
         // 取消先赢：cancelQueued 的条件更新已经把它置 failed → worker 接手时直接跳过
         job.setStatus("failed");
