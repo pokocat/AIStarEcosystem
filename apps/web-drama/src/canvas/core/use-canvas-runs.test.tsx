@@ -577,6 +577,7 @@ describe("useCanvasRuns · 复审", () => {
     toastError.mockReset();
     __resetCanvasRunsForTest();
     __resetPendingForTest();
+    window.localStorage.clear(); // 未确认请求表存在 localStorage：只清内存会让上一组用例留下的表项串过来（打乱顺序时才会撞上）
     api.get.mockResolvedValue(detail());
     let n = 0;
     api.save.mockImplementation(async () => ({ docVersion: `v${++n}`, updatedAt: "2026-09-30T01:00:00.000Z" }));
@@ -717,6 +718,7 @@ describe("useCanvasRuns · 第三次复核", () => {
     toastError.mockReset();
     __resetCanvasRunsForTest();
     __resetPendingForTest();
+    window.localStorage.clear(); // 未确认请求表存在 localStorage：只清内存会让上一组用例留下的表项串过来（打乱顺序时才会撞上）
     api.get.mockResolvedValue(detail());
     let n = 0;
     api.save.mockImplementation(async () => ({ docVersion: `v${++n}`, updatedAt: "2026-09-30T01:00:00.000Z" }));
@@ -793,6 +795,7 @@ describe("useCanvasRuns · submitSequence awaitEach", () => {
     toastError.mockReset();
     __resetCanvasRunsForTest();
     __resetPendingForTest();
+    window.localStorage.clear(); // 未确认请求表存在 localStorage：只清内存会让上一组用例留下的表项串过来（打乱顺序时才会撞上）
     server = new Map();
     events = [];
     api.get.mockResolvedValue(detail());

@@ -14,5 +14,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
+    // 本机 Node 25 的 localStorage 是个不能用的空壳、CI 的 Node 22 是 jsdom 真的 Storage：统一成能用的（见文件头注释）
+    setupFiles: ["src/test/setup-dom-storage.ts"],
   },
 });

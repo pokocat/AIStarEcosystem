@@ -185,6 +185,18 @@
 
 ---
 
+## 2026-10-05 · 测试环境：本机 Node 25 与 CI Node 22 的 localStorage 不一样（AGENTS.md §8.0.1 ⑬）
+
+- [x] ~~**main 上 `frontend-tests` 自 #119 起一直红**（web-drama `episodes-view.test.tsx` 两条）~~ **已修**，2026-10-05：
+      一条用例换了视频模型、选择存进 localStorage，`beforeEach` 只清内存缓存，后面的用例在 CI 上读到换过的模型；
+      本机 Node 25 的 localStorage 不能用所以看不出来。`beforeEach` 里 `localStorage.clear()`，web-drama vitest 加
+      `setupFiles: src/test/setup-dom-storage.ts`（Storage 不能用时换内存版，本机与 CI 一致）；同文件里「价格没读到就点」的抢跑也改成先等读到。复核时打乱用例顺序又挖出 `use-canvas-runs.test.tsx` 的三个 describe 同样只清内存不清 localStorage（未确认请求表串过来，seed 5 必挂），一并补了 `localStorage.clear()`。
+- [ ] **web-aiavatar / packages/api-client 的 vitest 也没有这层**：它们的测试在本机 Node 25 上同样跑在「存不下」的 localStorage 上，
+      CI 现在是绿的，但本机看不出串状态的问题。照 web-drama 的 `src/test/setup-dom-storage.ts` 加上（或抽到共享位置）。
+- [ ] **产品侧小毛病（不急）**：单集「生成分镜脚本」在价格 / 视频模型还没读到时，确认框照常弹（`confirmSpend` 的 `priceKnown:false`），
+      用户点确定后 `storyboardBody`（`apps/web-drama/src/canvas/episodes/actions.tsx`）按缺省上下限发（上限 10、不带下限）。
+      平时确认框点完价格早就读到了，只有 `render/models` 一直读不到时才会发生；要收就在点确定之后再看一次 `ready`，没读到就不发。
+
 ## 2026-10-03 · web-drama 画布线上实测 v0.198.1 后续（真源 `docs/drama-canvas-plan.md` §11）
 
 v0.198.1 修了线上实测跑出来的生成链问题（拆角色 JSON、429、出图固定尺寸、分镜时长下限、写全部逐集、提示词、编辑器两个界面 bug）。下面是同一轮看到、这一版没修的：
