@@ -266,6 +266,11 @@ export function EpisodeEditor({ no }: { no: number }) {
     },
     [segments, segStatuses],
   );
+  // 删片段的确认框是异步的：点完「删除」时要按那一刻的最新状态再判一次（不用弹框前闭包里的旧值）
+  const isRunningRef = React.useRef(isRunning);
+  isRunningRef.current = isRunning;
+  const readOnlyRef = React.useRef(readOnly);
+  readOnlyRef.current = readOnly;
 
   // ── 片段增删改 ───────────────────────────────────────────────────────────
   const onText = React.useCallback(
@@ -290,7 +295,10 @@ export function EpisodeEditor({ no }: { no: number }) {
     }
   };
 
+  // 删片段只有这一个入口（片段轴的按钮调它；以后加快捷键也调它，§8.0.1 ④）：只读 / 正在生成的不删；
+  // 片段里有任何东西（文字、首帧、视频、生成记录）先确认 —— 删了没有撤销；完全空的直接删。
   const deleteSeg = async (segId: string) => {
+    if (readOnly || isRunning(segId)) return;
     const i = segments.findIndex((s) => s.id === segId);
     if (i < 0) return;
     const seg = segments[i];
@@ -298,6 +306,8 @@ export function EpisodeEditor({ no }: { no: number }) {
     if (note) {
       const ok = await dramaConfirm({ title: `删除片段 ${segmentNo(i)}？`, body: note, tone: "danger", confirmLabel: "删除", cancelLabel: "再想想" });
       if (!ok) return;
+      // 确认框开着的这会儿，片段可能开始生成了、画布可能变成只读了：按最新状态再看一次
+      if (readOnlyRef.current || isRunningRef.current(segId)) return;
     }
     const neighbor = segments[i + 1] ?? segments[i - 1];
     update((d) => removeSegment(d, no, segId));

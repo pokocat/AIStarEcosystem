@@ -167,9 +167,19 @@ describe("会丢什么", () => {
     expect(storyboardReplaceNote(1, [])).toBeUndefined();
   });
 
-  it("删片段：空片段不用确认", () => {
-    expect(segmentDeleteNote("片段 01 ", seg("s1"))).toBeUndefined();
-    expect(segmentDeleteNote("片段 01 ", seg("s1", { video: { versions: [vid("a"), vid("b")] } }))).toContain("2 段视频");
+  it("删片段：完全空的片段（没字、没首帧视频、没生成记录）不用确认", () => {
+    expect(segmentDeleteNote("片段 01 ", seg("s1", { text: "" }))).toBeUndefined();
+    expect(segmentDeleteNote("片段 01 ", seg("s1", { text: "  \n " }))).toBeUndefined(); // 只有空白也算空
+    expect(segmentDeleteNote("片段 01 ", seg("s1", { text: "", video: { versions: [vid("a"), vid("b")] } }))).toContain("2 段视频");
+  });
+
+  it("删片段：有任何东西都要确认 —— 只有文字、只有首帧、只有视频、只有生成记录（哪怕失败了）", () => {
+    const empty = { text: "" };
+    expect(segmentDeleteNote("片段 01 ", seg("s1"))).toBeDefined(); // 只有分镜文字
+    expect(segmentDeleteNote("片段 01 ", seg("s1", { ...empty, frame: { versions: [{ key: "f" }] } }))).toBeDefined();
+    expect(segmentDeleteNote("片段 01 ", seg("s1", { ...empty, video: { versions: [vid("v")] } }))).toBeDefined();
+    expect(segmentDeleteNote("片段 01 ", seg("s1", { ...empty, frameRun: { runId: "r1", status: "failed" } }))).toBeDefined();
+    expect(segmentDeleteNote("片段 01 ", seg("s1", { ...empty, videoRun: { runId: "r2", status: "succeeded" } }))).toBeDefined();
   });
 });
 

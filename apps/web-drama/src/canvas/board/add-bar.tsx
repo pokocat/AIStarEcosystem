@@ -3,6 +3,8 @@
 // 画布底部中间：「加一个」（角色 / 场景 / 素材图 / 文字）+ 指针 / 抓手切换；以及加角色时输名字的弹窗。
 import * as React from "react";
 import { Hand, ImageUp, Loader2, Mountain, MousePointer2, Plus, Type, UserRound, X } from "lucide-react";
+import type { CanvasCharacterRole } from "@ai-star-eco/types/drama-canvas";
+import { RolePicker } from "@/canvas/assets";
 import { useModalA11y } from "@/lib/use-modal-a11y";
 import { usePopover } from "./use-popover";
 
@@ -111,23 +113,33 @@ export function AddBar(p: AddBarProps) {
   );
 }
 
-/** 加一个角色：输名字（同名的角色已经有了就不让加 —— 拆角色时按名字合并，重名会乱）。 */
+/**
+ * 加一个角色：输名字、选分级（同名的角色已经有了就不让加 —— 拆角色时按名字合并，重名会乱）。
+ * 分级每次打开时重置成 defaultRole（调用方按 defaultNewRole 算：还没有主要角色就是主要角色，否则配角）。
+ */
 export function AddCharacterDialog({
   open,
   existingNames,
+  defaultRole,
   onClose,
   onSubmit,
 }: {
   open: boolean;
   existingNames: readonly string[];
+  defaultRole: CanvasCharacterRole;
   onClose: () => void;
-  onSubmit: (name: string) => void;
+  onSubmit: (name: string, role: CanvasCharacterRole) => void;
 }) {
   const ref = React.useRef<HTMLFormElement | null>(null);
   const [name, setName] = React.useState("");
+  const [role, setRole] = React.useState<CanvasCharacterRole>(defaultRole);
   useModalA11y(ref, onClose, open);
+  const defaultRoleRef = React.useRef(defaultRole);
+  defaultRoleRef.current = defaultRole;
   React.useEffect(() => {
-    if (open) setName("");
+    if (!open) return;
+    setName("");
+    setRole(defaultRoleRef.current);
   }, [open]);
   if (!open) return null;
   const trimmed = name.trim();
@@ -135,7 +147,7 @@ export function AddCharacterDialog({
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!trimmed || dup) return;
-    onSubmit(trimmed);
+    onSubmit(trimmed, role);
   };
   return (
     <div className="overlay" onClick={onClose}>
@@ -164,6 +176,7 @@ export function AddCharacterDialog({
           aria-label="角色名"
           onChange={(e) => setName(e.target.value)}
         />
+        <RolePicker value={role} onChange={setRole} />
         {dup ? (
           <div className="cv-error">已经有叫「{trimmed}」的角色了，换个名字，或者给它加一个造型。</div>
         ) : (

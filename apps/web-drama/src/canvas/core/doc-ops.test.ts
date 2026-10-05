@@ -7,6 +7,7 @@ import {
   addScene,
   canvasStep,
   characterGroupId,
+  defaultNewRole,
   emptyDoc,
   episodeProgress,
   findLook,
@@ -51,6 +52,19 @@ describe("doc-ops", () => {
     const m = addMaterial(c.doc, "text");
     for (const id of [a.characterId, a.lookId, b.lookId, c.id, m.id]) expect(id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(addLook(emptyDoc(), "nope").lookId).toBe("");
+  });
+
+  it("手动加角色的分级：没给时还没有主要角色就是主要角色、有了就是配角；给了就按给的存", () => {
+    expect(defaultNewRole([])).toBe("lead");
+    expect(defaultNewRole([{ role: "support" }, { role: "extra" }])).toBe("lead");
+    expect(defaultNewRole([{ role: "support" }, { role: "lead" }])).toBe("support");
+    const a = addCharacter(emptyDoc(), "林微");
+    expect(a.doc.characters[0].role).toBe("lead");
+    const b = addCharacter(a.doc, "陈屹");
+    expect(b.doc.characters[1].role).toBe("support");
+    const c = addCharacter(b.doc, "路人", "extra");
+    expect(c.doc.characters[2].role).toBe("extra");
+    expect(addCharacter(c.doc, "第二主角", "lead").doc.characters[3].role).toBe("lead");
   });
 
   it("删造型连带删连线和位置；删最后一个造型 = 删整个角色（含分组位置）", () => {

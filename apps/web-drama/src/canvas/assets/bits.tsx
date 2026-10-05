@@ -94,6 +94,38 @@ export const ROLE_LABEL: Record<CanvasCharacterRole, string> = {
   extra: "临时演员",
 };
 
+/** 分级的排列顺序（抽屉里的下拉、加角色时的选择都按它）。 */
+export const ROLE_ORDER: readonly CanvasCharacterRole[] = ["lead", "support", "extra"];
+
+/**
+ * 加角色时选分级（列表页和画布上的「加一个角色」共用）。用 cv-seg 的分段按钮，三档就是 ROLE_LABEL 那三个叫法。
+ */
+export function RolePicker({ value, onChange, disabled }: { value: CanvasCharacterRole; onChange: (r: CanvasCharacterRole) => void; disabled?: boolean }) {
+  const labelId = React.useId();
+  return (
+    <div className="cv-new-row">
+      <span className="cv-inline-field" id={labelId}>
+        分级
+      </span>
+      <div className="cv-seg" role="group" aria-labelledby={labelId} data-field="role">
+        {ROLE_ORDER.map((r) => (
+          <button
+            key={r}
+            type="button"
+            className={value === r ? "on" : ""}
+            aria-pressed={value === r}
+            disabled={disabled}
+            onClick={() => onChange(r)}
+            data-role={r}
+          >
+            {ROLE_LABEL[r]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** 禁用按钮旁边就地写原因（手机上没有 hover）。 */
 export function Reason({ children }: { children?: React.ReactNode }) {
   if (!children) return null;

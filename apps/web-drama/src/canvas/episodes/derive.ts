@@ -154,11 +154,23 @@ export function storyboardReplaceNote(no: number, segments: CanvasSegment[]): st
   return `第 ${no} 集现在的 ${segments.length} 个片段会换成新生成的，你改过的文字也会被替换。`;
 }
 
-/** 删一个片段：有首帧 / 视频时写清会丢什么；空片段回 undefined（不用确认）。 */
+/**
+ * 删一个片段要不要先确认、确认框里写什么。片段里有**任何**东西都要确认：分镜文字（不算空白）、首帧 / 视频的任一版、
+ * 或者生成记录（frameRun / videoRun，哪怕没出东西）—— 删掉就从文档里没了，没有撤销。
+ * 完全空的片段回 undefined（直接删，和以前一样）。label 形如「片段 02 」。
+ */
 export function segmentDeleteNote(label: string, seg: CanvasSegment): string | undefined {
+  const hasText = !!(seg.text ?? "").trim();
   const loss = segmentsLoss([seg]);
-  if (!loss.frames && !loss.videos) return undefined;
-  return `${label}的 ${lossPhrase(loss)}会一起删掉，已花的积分不退。`;
+  const hasRun = !!(seg.frameRun || seg.videoRun);
+  if (!hasText && !loss.frames && !loss.videos && !hasRun) return undefined;
+  const parts: string[] = [];
+  if (hasText) parts.push("分镜文字");
+  const media = lossPhrase(loss);
+  if (media) parts.push(media);
+  const what = parts.length ? parts.join("、") : "生成记录";
+  const spend = loss.frames || loss.videos ? "已花的积分不退。" : "";
+  return `${label}的${/^\d/.test(what) ? " " : ""}${what}会从这一集移走，删了找不回来。${spend}`;
 }
 
 // ── 片段格子 ─────────────────────────────────────────────────────────────────

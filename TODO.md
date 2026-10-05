@@ -190,9 +190,10 @@
 - [x] ~~**main 上 `frontend-tests` 自 #119 起一直红**（web-drama `episodes-view.test.tsx` 两条）~~ **已修**，2026-10-05：
       一条用例换了视频模型、选择存进 localStorage，`beforeEach` 只清内存缓存，后面的用例在 CI 上读到换过的模型；
       本机 Node 25 的 localStorage 不能用所以看不出来。`beforeEach` 里 `localStorage.clear()`，web-drama vitest 加
-      `setupFiles: src/test/setup-dom-storage.ts`（Storage 不能用时换内存版，本机与 CI 一致）；同文件里「价格没读到就点」的抢跑也改成先等读到。复核时打乱用例顺序又挖出 `use-canvas-runs.test.tsx` 的三个 describe 同样只清内存不清 localStorage（未确认请求表串过来，seed 5 必挂），一并补了 `localStorage.clear()`。
-- [ ] **web-aiavatar / packages/api-client 的 vitest 也没有这层**：它们的测试在本机 Node 25 上同样跑在「存不下」的 localStorage 上，
-      CI 现在是绿的，但本机看不出串状态的问题。照 web-drama 的 `src/test/setup-dom-storage.ts` 加上（或抽到共享位置）。
+      `setupFiles: src/test/setup-dom-storage.ts`（后来挪成共用的 `scripts/vitest/setup-storage.ts`，见下一条）；同文件里「价格没读到就点」的抢跑也改成先等读到。复核时打乱用例顺序又挖出 `use-canvas-runs.test.tsx` 的三个 describe 同样只清内存不清 localStorage（未确认请求表串过来，seed 5 必挂），一并补了 `localStorage.clear()`。
+- [x] ~~**web-aiavatar / packages/api-client 的 vitest 也没有这层**~~ **已做**，2026-10-05：三个 vitest 项目共用 `scripts/vitest/setup-storage.ts`
+      （jsdom 环境换回 jsdom 自己的 Storage；node 环境删掉 Node 25 的空壳，和 Node 22 一样没有）。两种模式、三个打乱种子下
+      api-client 66/66、web-aiavatar 195/195 全过；web-celebrity 走 `node --test`、不碰 Storage，不用加。
 - [ ] **产品侧小毛病（不急）**：单集「生成分镜脚本」在价格 / 视频模型还没读到时，确认框照常弹（`confirmSpend` 的 `priceKnown:false`），
       用户点确定后 `storyboardBody`（`apps/web-drama/src/canvas/episodes/actions.tsx`）按缺省上下限发（上限 10、不带下限）。
       平时确认框点完价格早就读到了，只有 `render/models` 一直读不到时才会发生；要收就在点确定之后再看一次 `ready`，没读到就不发。
@@ -200,17 +201,24 @@
 ## 2026-10-03 · web-drama 画布线上实测 v0.198.1 后续（真源 `docs/drama-canvas-plan.md` §11）
 
 v0.198.1 修了线上实测跑出来的生成链问题（拆角色 JSON、429、出图固定尺寸、分镜时长下限、写全部逐集、提示词、编辑器两个界面 bug）。下面是同一轮看到、这一版没修的：
-- [ ] **运维 · 「图像生成」默认绑定是 ernie-Image（只认 768×768），短剧所有出图默认都走它**（2026-10-03 线上实测）：画布现在会就地说「这个模型只能出 768×768」，
-      但老短剧「先出首帧」等入口没有模型下拉时仍会撞上。建议后台把 `IMAGE_GENERATION` 默认端点改成 agnes-image（需用户确认，生产配置）。
+- [x] ~~**运维 · 「图像生成」默认绑定是 ernie-Image（只认 768×768）**~~ **已改**，2026-10-05：用户同意后在后台「AI 应用绑定」改成 agnes-image
+      （`ai-7f6cce37-778`；原值 `ai-4911be80-67e` image-jusuanhub）。这个绑定明星带货共用，一起换了；agnes-image 后台记价 ¥1/张，ernie 记 ¥0。
 - [ ] **运维 · 端点显示名是内部名**：画布模型下拉里是 `image-jusuanhub` / `agnes-image` / `jusuanhub- MiniMax H3`，后台「AI 模型」里改成用户看得懂的名字；
-      另外 `image-jusuanhub` 的 `model_alias` 填的是 `minimax-h3`，像是从视频端点抄过来的，核对后改掉。
+      另外 `image-jusuanhub` 的 `model_alias` 填的是 `minimax-h3`，像是从视频端点抄过来的，核对后改掉
+      （2026-10-05 看后台：`jusuanhub-通用参考图生图`、`Qwen34B-jusuanhub` 的别名也是 `minimax-h3`，三条一起核对）。
 - [ ] **聚算 Key 并发上限 2 是全站共享的**（`api_key_concurrency_limited`，`limit:2`）：画布 worker 有并发闸（`aep.drama.canvas.text-concurrency`），
       但老短剧 `DramaScriptService` 等其它文字调用不在闸里，多用户同时写会互相挤成 429。要么和厂商谈额度，要么把闸提到 `AiModelInvocationService` 按端点统一管。
-- [ ] **删除片段不确认、也不能撤销**（单集编辑器「删除片段 NN」）：分镜文本是花积分写出来的，误删只能重新生成分镜。加确认或撤销提示。
-- [ ] **手动加的角色一律「配角」**：拆角色失败时用户手动加主角，要去详情里改；加角色时给个主角 / 配角选择。
+- [x] ~~**删除片段不确认、也不能撤销**~~ **已做**，2026-10-05：片段里有文字 / 首帧 / 视频 / 版本 / 生成记录时先弹确认（危险样式，说清丢什么），
+      完全空的直接删；点完「删除」按那一刻的最新状态再判一次（确认框开着时开始生成的不删）。只做了确认，没做撤销。
+- [x] ~~**手动加的角色一律「配角」**~~ **已做**，2026-10-05：画布和列表两处「加一个角色」都能选分级（主要角色 / 配角 / 临时演员，沿用卡片上的叫法）；
+      画布里还没有主要角色时默认主要角色，否则配角。
+- [ ] **桌面上改不了已有角色的分级**（2026-10-05 复核发现）：唯一的控件在列表视图的角色抽屉里，而桌面上点角色卡会跳到画布视图，
+      抽屉只在刚从列表加完角色时出现；画布分组头上只显示「主要角色」标签、不能改。在画布分组头（`apps/web-drama/src/canvas/board/nodes.tsx` 角色分组）加一个分级切换。
+- [ ] **列表视图加角色不拦重名**（2026-10-05 复核发现）：画布里的加角色弹窗拦重名，列表视图的不拦（`asset-list-view.tsx` 的 `NameDialog`），两处应该一样。
 - [ ] **列表点角色卡会跳到画布视图并定位**，不是小云雀那样就地打开详情弹窗；确认这是想要的交互，否则列表里直接开 `LookDetailDialog`。
-- [ ] **合成归一的目标尺寸平局时取第一段的**（`DramaAssembleService.targetSize`，2026-10-03 线上实测：一段 768×1024 + 一段 768×1344 → 拼成 768×1024）：
-      平局时应优先取和画布比例（`doc.meta.ratio`）一致的尺寸。现在新出的 H3 片段都是 9:16，只有修复之前出的老片段会触发。
+- [x] ~~**合成归一的目标尺寸平局时取第一段的**（2026-10-03 线上实测：一段 768×1024 + 一段 768×1344 → 拼成 768×1024）~~ **已做**，2026-10-05：
+      `DramaAssembleService.targetSize(probes, canvasRatio)` 先只看和画布比例（`DramaCanvas.ratio`，受理时快照进运行的 `_exec.canvasRatio`）
+      相差 2% 以内的片段，取其中出现最多的尺寸（并列取面积大的、再取靠前的）；一个都对不上才按老规则。只要有一段是 9:16，9:16 画布的成片就是 9:16。
 - [x] ~~**H3 竖屏比例（`fix/h3-generic-aspect`，基于 #118）合并后要实测一次**~~ **已实测**，2026-10-03：线上 `release/v0199-combined-2` 出一条 5 秒片段，厂商回 `effectiveMediaSpec.aspectRatio=9:16`、成片 768×1344。原记录：：老路径补了 `aspectRatio` + `outputSizeCode`，单测与请求体都对，
       但还没在线上真出一条看 `effectiveSpec` 是不是 `h3-768-9x16`（要 200 积分）。
 

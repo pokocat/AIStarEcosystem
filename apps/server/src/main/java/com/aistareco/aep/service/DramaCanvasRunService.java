@@ -556,6 +556,9 @@ public class DramaCanvasRunService {
             input.put("target", "assemble:" + no);
             ObjectNode exec = input.putObject("_exec");
             exec.put("episodeNo", no);
+            // 画布比例建画布时定死；快照进来，合成多尺寸片段时按它选成片画幅
+            String ratio = c.canvas().getRatio();
+            if (ratio != null && !ratio.isBlank()) exec.put("canvasRatio", ratio);
             ArrayNode vk = exec.putArray("videoKeys");
             keys.forEach(vk::add);
             DramaCanvasRun run = newRun(runId, c, cri, DramaCanvasRun.KIND_ASSEMBLE, "assemble:" + no, 0, input, null);

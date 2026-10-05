@@ -319,6 +319,128 @@ describe("单集编辑器 · 示例画布第 1 集", () => {
   });
 });
 
+describe("单集编辑器 · 删除片段", () => {
+  let docNow: DramaCanvasDoc | null = null;
+  let edit: ((fn: (d: DramaCanvasDoc) => DramaCanvasDoc) => void) | null = null;
+  function DocProbe() {
+    const v = useCanvasDoc();
+    docNow = v.doc;
+    edit = v.update;
+    return null;
+  }
+  async function mountEditor() {
+    render(
+      <Harness>
+        <EpisodeEditor no={1} />
+        <DocProbe />
+      </Harness>,
+    );
+    await screen.findByTestId("cve-editor");
+    await waitFor(() => expect(CanvasApi.getRuns).toHaveBeenCalled());
+    await pricingLoaded();
+    return screen.getByTestId("cve-timeline");
+  }
+  const segIds = () => findSegmentIds(docNow!);
+  function findSegmentIds(d: DramaCanvasDoc) {
+    return d.episodes.find((e) => e.no === 1)!.segments.map((x) => x.id);
+  }
+  const deleteBtn = () => screen.getByTestId("cve-timeline").querySelector<HTMLButtonElement>('[data-action="delete-segment"]')!;
+  /** 在最前面插一个空片段（插完它就是当前片段），回它的 id。 */
+  async function insertFirst(tl: HTMLElement) {
+    fireEvent.click(tl.querySelector('[data-action="insert-segment"][data-index="0"]')!);
+    await waitFor(() => expect(segIds()).toHaveLength(4));
+    return segIds()[0];
+  }
+
+  it("完全空的片段：不弹确认，直接删掉", async () => {
+    const tl = await mountEditor();
+    const id = await insertFirst(tl);
+    expect(tl.querySelector(`[data-segment="${id}"]`)?.getAttribute("aria-current")).toBe("true");
+    await act(async () => {
+      fireEvent.click(deleteBtn());
+    });
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(segIds()).not.toContain(id);
+    expect(segIds()).toHaveLength(3);
+  });
+
+  it("确认框开着时这一段开始生成了：点「删除」也不删（按点击那一刻的最新状态判）", async () => {
+    const tl = await mountEditor();
+    const id = await insertFirst(tl);
+    act(() => edit!((d) => updateSegment(d, 1, id, { text: "（4 秒）近景，她回头。" })));
+    confirmMock.mockImplementationOnce(async () => {
+      // 用户还在看确认框，别处（另一个按钮 / 接回的运行）让这一段进入生成中
+      await act(async () => {
+        edit!((d) => updateSegment(d, 1, id, { frameRun: { runId: "dcr_late", status: "queued" } }));
+      });
+      return true;
+    });
+    await act(async () => {
+      fireEvent.click(deleteBtn());
+    });
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(segIds()).toContain(id);
+  });
+
+  it("只有分镜文字的片段：先确认（危险样式），取消就什么都不动，确认才删", async () => {
+    const tl = await mountEditor();
+    const id = await insertFirst(tl);
+    act(() => edit!((d) => updateSegment(d, 1, id, { text: "（4 秒）近景，她回头。" })));
+    confirmMock.mockResolvedValueOnce(false);
+    await act(async () => {
+      fireEvent.click(deleteBtn());
+    });
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect((confirmMock.mock.calls[0] as unknown as [{ tone?: string }])[0].tone).toBe("danger");
+    expect(segIds()).toContain(id);
+    expect(findSegment(docNow!, 1, id)?.text).toContain("她回头");
+
+    await act(async () => {
+      fireEvent.click(deleteBtn());
+    });
+    expect(confirmMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(segIds()).not.toContain(id));
+  });
+
+  it("只有一条生成记录（没出东西）的片段也要确认", async () => {
+    const tl = await mountEditor();
+    const id = await insertFirst(tl);
+    act(() => edit!((d) => updateSegment(d, 1, id, { frameRun: { runId: "dcr_gone", status: "failed" } })));
+    confirmMock.mockResolvedValueOnce(false);
+    await act(async () => {
+      fireEvent.click(deleteBtn());
+    });
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(segIds()).toContain(id);
+  });
+
+  it("有视频的片段（01）：取消后视频和文字都还在", async () => {
+    const tl = await mountEditor();
+    fireEvent.click(tl.querySelector('[data-segment="sg_ex1_01"]')!);
+    const before = findSegment(docNow!, 1, "sg_ex1_01")!;
+    confirmMock.mockResolvedValueOnce(false);
+    await act(async () => {
+      fireEvent.click(deleteBtn());
+    });
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    const after = findSegment(docNow!, 1, "sg_ex1_01")!;
+    expect(after.video.versions.length).toBe(before.video.versions.length);
+    expect(after.text).toBe(before.text);
+  });
+
+  it("正在生成的片段（03）：删除按钮禁用并就地说原因，点了也不弹确认、不删", async () => {
+    const tl = await mountEditor();
+    fireEvent.click(tl.querySelector('[data-segment="sg_ex1_03"]')!);
+    await waitFor(() => expect(deleteBtn().disabled).toBe(true));
+    expect(tl.querySelector('[data-reason="delete-segment"]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(deleteBtn());
+    });
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(segIds()).toContain("sg_ex1_03");
+  });
+});
+
 describe("单集编辑器 · 出图模型与片段时长（v0.198.1）", () => {
   let edit: ((fn: (d: DramaCanvasDoc) => DramaCanvasDoc) => void) | null = null;
   function DocProbe() {

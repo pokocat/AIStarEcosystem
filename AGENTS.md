@@ -698,8 +698,9 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 同一个文件里还有一条纯时序的抢跑（价格没读到就点按钮），本机偶发、CI 上被前一个问题盖住。
 - 判据：CI 稳定红、本机稳定绿 → 差的是环境（Node 版本、`.env*` 文件、时区、CPU 快慢），不是运气。
   先在**干净的 worktree**（没有本机 `.env.local`）里复现，再用能让失败率从 0% 变 100% 的开关证明根因（§8.0.1 ②）。
-- 已做：web-drama 的 vitest `setupFiles` 在 Storage 不能用时换成内存版（`src/test/setup-dom-storage.ts`），本机与 CI 一致；
-  用到 localStorage 的测试文件在 `beforeEach` 里 `localStorage.clear()`。其它 app 的 vitest 还没加（见 TODO.md）。
+- 已做：所有 vitest 项目（web-drama / web-aiavatar / packages/api-client）的 `setupFiles` 共用 `scripts/vitest/setup-storage.ts`：
+  jsdom 环境把 Storage 换回 jsdom 自己的那份，node 环境把 Node 25 的空壳删掉（Node 22 的 node 环境里本来就没有），本机与 CI 一致；
+  用到 localStorage 的测试文件在 `beforeEach` 里 `localStorage.clear()`。web-celebrity 的测试走 `node --test`、不碰 Storage，不受影响。
 
 ### 跨 app 约定
 

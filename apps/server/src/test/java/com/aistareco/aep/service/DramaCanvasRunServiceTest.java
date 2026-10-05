@@ -487,6 +487,8 @@ class DramaCanvasRunServiceTest {
         verifyNoInteractions(credits);
         JsonNode keys = OM.readTree(store.get(r.id()).getInputJson()).path("_exec").path("videoKeys");
         assertEquals("[\"material-videos/mvj_a/video.mp4\",\"material-videos/mvj_b/video.mp4\"]", keys.toString());
+        // 画布比例在受理时快照进运行，合成按它选成片画幅（合成不再读画布）
+        assertEquals("9:16", OM.readTree(store.get(r.id()).getInputJson()).path("_exec").path("canvasRatio").asText());
         verify(worker).dispatch(List.of(r.id()));
     }
 

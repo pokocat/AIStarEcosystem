@@ -16,12 +16,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { CheckSquare, ImagePlus, Plus, Search, Type, X } from "lucide-react";
-import type { DramaCanvasRunStatus } from "@ai-star-eco/types/drama-canvas";
+import type { CanvasCharacterRole, DramaCanvasRunStatus } from "@ai-star-eco/types/drama-canvas";
 import {
   RunTarget,
   addCharacter,
   addMaterial,
   addScene,
+  defaultNewRole,
   findLook,
   findMaterial,
   findScene,
@@ -33,7 +34,7 @@ import { CanvasNextBar, DesktopHint } from "@/canvas/shell";
 import { toast } from "@/lib/toast";
 import { AssetDrawer, type DrawerTarget } from "./asset-drawers";
 import { BatchImageDialog } from "./batch-image-dialog";
-import { assetRunView, READ_ONLY_REASON, useNarrow, withSubmitting } from "./bits";
+import { assetRunView, READ_ONLY_REASON, RolePicker, useNarrow, withSubmitting } from "./bits";
 import { CharacterCard, MaterialCard, SceneCard, type RunOf } from "./cards";
 import { NameDialog } from "./inputs";
 import {
@@ -97,6 +98,8 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
   const [selected, setSelected] = React.useState<ReadonlySet<SelKey>>(new Set());
   const [drawer, setDrawer] = React.useState<DrawerTarget | null>(null);
   const [adding, setAdding] = React.useState<"character" | "scene" | null>(null);
+  /** 加角色时选的分级：每次打开按「还没有主要角色就是主要角色，否则配角」重置。 */
+  const [newRole, setNewRole] = React.useState<CanvasCharacterRole>("support");
   const [batchBusy, setBatchBusy] = React.useState(false);
   /** 确认框开着时：打开那一刻要出图的那几项（确认之后只会比它少、不会多：框里报的价是上限）。 */
   const [batchConfirm, setBatchConfirm] = React.useState<ReadonlySet<string> | null>(null);
@@ -314,7 +317,15 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
             </button>
           )}
           {tab === "characters" && (
-            <button type="button" className="btn btn-line btn-sm" disabled={readOnly} onClick={() => setAdding("character")}>
+            <button
+              type="button"
+              className="btn btn-line btn-sm"
+              disabled={readOnly}
+              onClick={() => {
+                setNewRole(defaultNewRole(getDoc().characters));
+                setAdding("character");
+              }}
+            >
               <Plus size={14} /> 加一个角色
             </button>
           )}
@@ -472,14 +483,16 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
         onConfirm={(name) => {
           let cid = "";
           update((d) => {
-            const r = addCharacter(d, name);
+            const r = addCharacter(d, name, newRole);
             cid = r.characterId;
             return r.doc;
           });
           setAdding(null);
           if (cid) setDrawer({ kind: "character", id: cid });
         }}
-      />
+      >
+        <RolePicker value={newRole} onChange={setNewRole} />
+      </NameDialog>
       <NameDialog
         open={adding === "scene"}
         title="加一个场景"

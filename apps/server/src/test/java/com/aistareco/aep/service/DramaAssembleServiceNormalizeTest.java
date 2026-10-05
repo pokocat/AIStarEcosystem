@@ -66,16 +66,66 @@ class DramaAssembleServiceNormalizeTest {
     }
 
     @Test
-    void targetSize_mostCommon_tieGoesToFirstClip_evenDimensions() {
+    void targetSize_noRatio_mostCommon_tieGoesToFirstClip_evenDimensions() {
         FfmpegRunner.MediaProbe h3 = clip(768, 1024, "h264", null, 0, 0, 5);
         assertArrayEquals(new int[]{720, 1280},
-                DramaAssembleService.targetSize(List.of(h3, portrait(true), portrait(true))));
+                DramaAssembleService.targetSize(List.of(h3, portrait(true), portrait(true)), null));
         assertArrayEquals(new int[]{768, 1024},
-                DramaAssembleService.targetSize(List.of(h3, portrait(true))));
+                DramaAssembleService.targetSize(List.of(h3, portrait(true)), null));
         assertArrayEquals(new int[]{720, 1280},
-                DramaAssembleService.targetSize(List.of(portrait(true), h3)));
+                DramaAssembleService.targetSize(List.of(portrait(true), h3), null));
         assertArrayEquals(new int[]{720, 1278},
-                DramaAssembleService.targetSize(List.of(clip(721, 1279, "h264", null, 0, 0, 5))));
+                DramaAssembleService.targetSize(List.of(clip(721, 1279, "h264", null, 0, 0, 5)), null));
+        // 比例读不出 → 同 null
+        assertArrayEquals(new int[]{768, 1024},
+                DramaAssembleService.targetSize(List.of(h3, portrait(true)), "竖屏"));
+    }
+
+    /** 2026-10-03 生产：9:16 画布，第一段老的 768×1024（3:4），第二段新的 768×1344 → 成片要 9:16。 */
+    @Test
+    void targetSize_canvasRatio_productionCase_followsCanvasNotFirstClip() {
+        FfmpegRunner.MediaProbe h3Old = clip(768, 1024, "h264", null, 0, 0, 5);
+        FfmpegRunner.MediaProbe h3New = clip(768, 1344, "h264", null, 0, 0, 5);
+        assertArrayEquals(new int[]{768, 1344},
+                DramaAssembleService.targetSize(List.of(h3Old, h3New), "9:16"));
+    }
+
+    @Test
+    void targetSize_canvasRatio_beatsMajorityOfOtherRatio() {
+        FfmpegRunner.MediaProbe h3Old = clip(768, 1024, "h264", null, 0, 0, 5);
+        assertArrayEquals(new int[]{720, 1280},
+                DramaAssembleService.targetSize(List.of(h3Old, h3Old, portrait(true)), "9:16"));
+    }
+
+    @Test
+    void targetSize_canvasRatio_tieAmongMatching_largerAreaWins_thenFirst() {
+        FfmpegRunner.MediaProbe big = clip(1080, 1920, "h264", null, 0, 0, 5);
+        assertArrayEquals(new int[]{1080, 1920},
+                DramaAssembleService.targetSize(List.of(portrait(true), big), "9:16"));
+        // 次数多的仍然优先于面积大的
+        assertArrayEquals(new int[]{720, 1280},
+                DramaAssembleService.targetSize(List.of(big, portrait(true), portrait(true)), "9:16"));
+        // 对得上画布比例、次数相同、面积也相同的两种尺寸 → 取先出现的
+        // （918×1664 与 936×1632 面积都是 1,527,552，宽高比都在 9:16 的 2% 以内）
+        FfmpegRunner.MediaProbe a = clip(918, 1664, "h264", null, 0, 0, 5);
+        FfmpegRunner.MediaProbe b = clip(936, 1632, "h264", null, 0, 0, 5);
+        assertArrayEquals(new int[]{936, 1632},
+                DramaAssembleService.targetSize(List.of(b, a), "9:16"));
+        assertArrayEquals(new int[]{918, 1664},
+                DramaAssembleService.targetSize(List.of(a, b), "9:16"));
+    }
+
+    @Test
+    void targetSize_canvasRatio_noClipMatches_fallsBackToMostCommon_tieFirst() {
+        FfmpegRunner.MediaProbe h3Old = clip(768, 1024, "h264", null, 0, 0, 5);
+        FfmpegRunner.MediaProbe square = clip(768, 768, "h264", null, 0, 0, 5);
+        assertArrayEquals(new int[]{768, 1024},
+                DramaAssembleService.targetSize(List.of(h3Old, square), "9:16"));
+        assertArrayEquals(new int[]{768, 768},
+                DramaAssembleService.targetSize(List.of(h3Old, square, square), "9:16"));
+        // 16:9 画布里全是竖屏片段 → 同样按旧规则
+        assertArrayEquals(new int[]{720, 1280},
+                DramaAssembleService.targetSize(List.of(portrait(true), h3Old, portrait(true)), "16:9"));
     }
 
     @Test
@@ -156,7 +206,7 @@ class DramaAssembleServiceNormalizeTest {
     @Test
     void sameParameters_copyPath() {
         clipProbes.addAll(List.of(portrait(true), portrait(true)));
-        svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"));
+        svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"), "9:16");
         assertEquals(1, ffmpegCalls.size());
         assertTrue(ffmpegCalls.get(0).containsAll(List.of("-f", "concat", "-c", "copy")), ffmpegCalls.get(0).toString());
     }
@@ -164,7 +214,7 @@ class DramaAssembleServiceNormalizeTest {
     @Test
     void differentSizes_normalizePath_singleFilterGraphEncode() throws Exception {
         clipProbes.addAll(List.of(portrait(true), clip(768, 1024, "h264", "aac", 44100, 2, 5), portrait(true)));
-        DramaAssembleService.AssembledVideo a = svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4", "k2.mp4"));
+        DramaAssembleService.AssembledVideo a = svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4", "k2.mp4"), "9:16");
         assertEquals(1, ffmpegCalls.size());
         List<String> args = ffmpegCalls.get(0);
         assertFalse(args.contains("concat"), args.toString());
@@ -176,9 +226,22 @@ class DramaAssembleServiceNormalizeTest {
     }
 
     @Test
+    void normalizePath_targetFollowsCanvasRatio_nullRatioKeepsOldRule() {
+        clipProbes.addAll(List.of(clip(768, 1024, "h264", "aac", 44100, 2, 5), clip(768, 1344, "h264", "aac", 44100, 2, 5)));
+        svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"), "9:16");
+        String graph = ffmpegCalls.get(0).get(ffmpegCalls.get(0).indexOf("-filter_complex") + 1);
+        assertTrue(graph.contains("scale=768:1344:"), graph);
+
+        ffmpegCalls.clear();
+        svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"), null); // 老运行没快照比例
+        graph = ffmpegCalls.get(0).get(ffmpegCalls.get(0).indexOf("-filter_complex") + 1);
+        assertTrue(graph.contains("scale=768:1024:"), graph);
+    }
+
+    @Test
     void someClipsWithoutAudio_normalizePath_withSilence() {
         clipProbes.addAll(List.of(portrait(true), portrait(false)));
-        svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"));
+        svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"), "9:16");
         assertEquals(1, ffmpegCalls.size());
         String graph = ffmpegCalls.get(0).get(ffmpegCalls.get(0).indexOf("-filter_complex") + 1);
         assertTrue(graph.contains("anullsrc"), graph);
@@ -201,7 +264,7 @@ class DramaAssembleServiceNormalizeTest {
             return new FfmpegRunner.MediaProbe(3.0, "mp4", "h264", "aac", 720, 1280, 44100, 2, true); // 应是 10 秒
         });
         var e = assertThrows(com.aistareco.common.BusinessException.class,
-                () -> svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4")));
+                () -> svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"), "9:16"));
         assertEquals("DRAMA_ASSEMBLE_FAILED", e.getCode());
         verify(uploader, never()).upload(any(), any(), any());
     }
@@ -245,7 +308,7 @@ class DramaAssembleServiceNormalizeTest {
                     mock(StorageQuotaService.class), new ObjectMapper(), srv.getAddress().getPort(), "/cdn", "");
 
             DramaAssembleService.AssembledVideo a = realSvc.assembleKeys("u1", "dcv_1", 1,
-                    List.of("k0.mp4", "k1.mp4", "k2.mp4"));
+                    List.of("k0.mp4", "k1.mp4", "k2.mp4"), "9:16");
             FfmpegRunner.MediaProbe outProbe = real.probeMedia(kept.toFile());
             assertTrue(outProbe.readable() && outProbe.hasVideo() && outProbe.hasAudio(), outProbe.toString());
             assertEquals(720, outProbe.width());

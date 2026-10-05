@@ -178,6 +178,7 @@ export function NameDialog({
   initial = "",
   onClose,
   onConfirm,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -186,6 +187,8 @@ export function NameDialog({
   initial?: string;
   onClose: () => void;
   onConfirm: (name: string) => void;
+  /** 名字下面多放的东西（如加角色时选分级）。 */
+  children?: React.ReactNode;
 }) {
   const [name, setName] = React.useState(initial);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
@@ -219,6 +222,7 @@ export function NameDialog({
           aria-label={title}
           onChange={(e) => setName(e.target.value)}
         />
+        {children}
         <div className="cva-modal-foot">
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
             取消

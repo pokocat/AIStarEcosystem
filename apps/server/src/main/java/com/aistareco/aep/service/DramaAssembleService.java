@@ -210,12 +210,15 @@ public class DramaAssembleService {
      *   <li><b>normalize</b>：有任何一项不一致 —— 每段可以选不同的视频模型（2026-10 生产：H3 竖屏回 768×1024，
      *       别的模型回 9:16），有的段没有音轨 —— concat 分离器拼出来是坏片或直接失败。改成一条 filter_complex：
      *       每段缩放到目标画幅内、补边、统一 30fps / yuv420p，音轨统一 44.1kHz 立体声，没音轨的段补同长静音，
-     *       再 concat 滤镜拼。目标画幅取出现最多的那个（并列取靠前的段）。参数见 {@link #normalizeArgs}。</li>
+     *       再 concat 滤镜拼。目标画幅按画布比例选，见 {@link #targetSize}。参数见 {@link #normalizeArgs}。</li>
      * </ul>
      *
      * @param refId storage_asset 的 refId（画布 id）
+     * @param canvasRatio 画布画幅（"9:16" / "16:9"，建画布时定死）；只影响 normalize 路径选目标画幅。
+     *                    null（受理时没快照比例的老运行）→ 不看比例，按出现最多的尺寸选
      */
-    public AssembledVideo assembleKeys(String userId, String refId, int episodeNo, List<String> videoKeys) {
+    public AssembledVideo assembleKeys(String userId, String refId, int episodeNo, List<String> videoKeys,
+                                       String canvasRatio) {
         if (videoKeys == null || videoKeys.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CANVAS_NOTHING_TO_ASSEMBLE",
                     "这一集还没有可以合成的视频。");
@@ -282,9 +285,9 @@ public class DramaAssembleService {
                     }
                 }
             } else {
-                int[] target = targetSize(probes);
-                log.info("[drama-assemble] canvas path=normalize canvas={} ep={} clips={} target={}x{} clipsMeta={}",
-                        refId, episodeNo, locals.size(), target[0], target[1], describe(probes));
+                int[] target = targetSize(probes, canvasRatio);
+                log.info("[drama-assemble] canvas path=normalize canvas={} ep={} clips={} ratio={} target={}x{} clipsMeta={}",
+                        refId, episodeNo, locals.size(), canvasRatio, target[0], target[1], describe(probes));
                 ffmpeg.runFfmpeg(normalizeArgs(locals, probes, target[0], target[1], out));
                 actual = gatedDuration(out);
                 if (actual < 0 || Math.abs(actual - expected) > tolerance) {
@@ -349,11 +352,39 @@ public class DramaAssembleService {
         return (a == null ? "" : a.toLowerCase(Locale.ROOT)).equals(b == null ? "" : b.toLowerCase(Locale.ROOT));
     }
 
+    /** 片段宽高比与画布比例的容差（相对误差）：768×1344 ≈ 0.571 对 9:16 = 0.5625 差 1.6%，算同一比例。 */
+    static final double RATIO_TOLERANCE = 0.02;
+
     /**
-     * 统一画幅的目标宽高：出现次数最多的那个，并列取最先出现的（第一段在并列里就是第一段的）。
+     * 统一画幅的目标宽高。成片尽量跟画布比例走（2026-10-03 生产：9:16 画布里一条老的 768×1024（3:4）
+     * 加一条新的 768×1344，按「出现最多、并列取第一段」拼成了 3:4）：
+     * <ol>
+     *   <li>先只看宽高比与画布比例相差 {@link #RATIO_TOLERANCE} 以内的片段：取其中出现最多的尺寸，
+     *       并列取像素面积大的，再并列取靠前的；</li>
+     *   <li>一个对得上画布比例的都没有，或 {@code canvasRatio} 为 null / 读不出 → 所有片段里出现最多的，
+     *       并列取靠前的（第一段在并列里就是第一段的）。</li>
+     * </ol>
      * 取偶数（libx264 + yuv420p 不收奇数宽高）。
      */
-    static int[] targetSize(List<FfmpegRunner.MediaProbe> probes) {
+    static int[] targetSize(List<FfmpegRunner.MediaProbe> probes, String canvasRatio) {
+        Double want = parseRatio(canvasRatio);
+        if (want != null) {
+            Map<String, int[]> matched = new LinkedHashMap<>(); // "WxH" → {w, h, count}
+            for (FfmpegRunner.MediaProbe p : probes) {
+                if (p.width() <= 0 || p.height() <= 0) continue;
+                double r = (double) p.width() / p.height();
+                if (Math.abs(r - want) / want > RATIO_TOLERANCE) continue;
+                matched.computeIfAbsent(p.width() + "x" + p.height(), k -> new int[]{p.width(), p.height(), 0})[2]++;
+            }
+            int[] best = null;
+            for (int[] c : matched.values()) {
+                if (best == null || c[2] > best[2]
+                        || (c[2] == best[2] && (long) c[0] * c[1] > (long) best[0] * best[1])) {
+                    best = c;
+                }
+            }
+            if (best != null) return new int[]{even(best[0]), even(best[1])};
+        }
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (FfmpegRunner.MediaProbe p : probes) {
             counts.merge(p.width() + "x" + p.height(), 1, Integer::sum);
@@ -368,6 +399,21 @@ public class DramaAssembleService {
         }
         String[] wh = best == null ? new String[]{"720", "1280"} : best.split("x");
         return new int[]{even(Integer.parseInt(wh[0])), even(Integer.parseInt(wh[1]))};
+    }
+
+    /** "9:16" → 0.5625；null / 读不出 → null。 */
+    static Double parseRatio(String ratio) {
+        if (ratio == null) return null;
+        String[] parts = ratio.trim().split(":");
+        if (parts.length != 2) return null;
+        try {
+            double w = Double.parseDouble(parts[0].trim());
+            double h = Double.parseDouble(parts[1].trim());
+            if (w <= 0 || h <= 0) return null;
+            return w / h;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static int even(int v) {

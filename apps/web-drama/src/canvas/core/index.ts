@@ -56,6 +56,7 @@ export {
   mapEpisode,
   mapSegment,
   addCharacter,
+  defaultNewRole,
   addLook,
   addScene,
   addMaterial,

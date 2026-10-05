@@ -78,7 +78,7 @@ class DramaAssembleServiceCanvasTest {
     @Test
     void assemblesInGivenOrder_uploadsAndRecordsStorage() throws Exception {
         DramaAssembleService.AssembledVideo a = svc.assembleKeys("u1", "dcv_1", 2,
-                List.of("material-videos/b/video.mp4", "material-videos/a/video.mp4"));
+                List.of("material-videos/b/video.mp4", "material-videos/a/video.mp4"), "9:16");
         assertEquals(List.of("/cdn/material-videos/b/video.mp4", "/cdn/material-videos/a/video.mp4"), downloaded);
         assertTrue(a.key().startsWith("drama/canvas/assemblies/dcv_1_ep2_"), a.key());
         assertEquals(10, a.durationSec());
@@ -92,7 +92,7 @@ class DramaAssembleServiceCanvasTest {
         outDurations.add(3.0);  // 流复制后只有 3 秒（两段各 5 秒）
         outDurations.add(4.0);  // 重编码还是不对
         BusinessException e = assertThrows(BusinessException.class, () -> svc.assembleKeys("u1", "dcv_1", 1,
-                List.of("k1.mp4", "k2.mp4")));
+                List.of("k1.mp4", "k2.mp4"), "9:16"));
         assertEquals("DRAMA_ASSEMBLE_FAILED", e.getCode());
         verify(ffmpeg, times(2)).runFfmpeg(anyList());
         verify(uploader, never()).upload(any(), any(), any());
@@ -104,7 +104,7 @@ class DramaAssembleServiceCanvasTest {
         when(ffmpeg.probeMedia(any(File.class))).thenReturn(
                 new FfmpegRunner.MediaProbe(0, "", null, null, 0, 0, 0, 0, false));
         BusinessException e = assertThrows(BusinessException.class, () -> svc.assembleKeys("u1", "dcv_1", 1,
-                List.of("k1.mp4")));
+                List.of("k1.mp4"), "9:16"));
         assertEquals("DRAMA_ASSEMBLE_BAD_CLIP", e.getCode());
         assertTrue(e.getMessage().contains("第 1 个片段"));
         verify(uploader, never()).upload(any(), any(), any());
@@ -113,6 +113,6 @@ class DramaAssembleServiceCanvasTest {
     @Test
     void nothingToAssemble_400() {
         assertEquals("DRAMA_CANVAS_NOTHING_TO_ASSEMBLE",
-                assertThrows(BusinessException.class, () -> svc.assembleKeys("u1", "dcv_1", 1, List.of())).getCode());
+                assertThrows(BusinessException.class, () -> svc.assembleKeys("u1", "dcv_1", 1, List.of(), "9:16")).getCode());
     }
 }

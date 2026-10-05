@@ -203,6 +203,28 @@ describe("列表", () => {
     await waitFor(() => expect(within(card).getByText(/出图服务这次没有回应/)).toBeTruthy());
   });
 
+  it("加角色时选分级：示例里已经有主要角色，缺省是配角；选了别的就按选的存", async () => {
+    await renderList();
+    fireEvent.click(screen.getByRole("button", { name: /加一个角色/ }));
+    const pressed = () => document.querySelector<HTMLElement>('[data-field="role"] [aria-pressed="true"]')?.dataset.role;
+    expect(pressed()).toBe("support");
+    fireEvent.click(document.querySelector('[data-field="role"] [data-role="extra"]')!);
+    expect(pressed()).toBe("extra");
+    fireEvent.change(screen.getByRole("textbox", { name: "加一个角色" }), { target: { value: "售票员" } });
+    fireEvent.submit(screen.getByRole("textbox", { name: "加一个角色" }).closest("form")!);
+    await waitFor(() => expect(latest!.characters.find((c) => c.name === "售票员")?.role).toBe("extra"));
+  });
+
+  it("加角色时选分级：画布里还没有主要角色时缺省就是主要角色", async () => {
+    await renderList();
+    act(() => updateDoc!((d) => ({ ...d, characters: d.characters.map((c) => ({ ...c, role: "support" as const })) })));
+    fireEvent.click(screen.getByRole("button", { name: /加一个角色/ }));
+    expect(document.querySelector<HTMLElement>('[data-field="role"] [aria-pressed="true"]')?.dataset.role).toBe("lead");
+    fireEvent.change(screen.getByRole("textbox", { name: "加一个角色" }), { target: { value: "售票员" } });
+    fireEvent.submit(screen.getByRole("textbox", { name: "加一个角色" }).closest("form")!);
+    await waitFor(() => expect(latest!.characters.find((c) => c.name === "售票员")?.role).toBe("lead"));
+  });
+
   it("按集过滤：只看第 1 集时没有「终点站站台」", async () => {
     await renderList("scenes");
     fireEvent.change(screen.getByLabelText("只看出现在某一集的"), { target: { value: "1" } });

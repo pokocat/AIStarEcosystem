@@ -34,7 +34,9 @@ import static com.aistareco.aep.service.DramaCanvasRunTestSupport.pngBytes;
 import static com.aistareco.aep.service.DramaCanvasRunTestSupport.run;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -873,6 +875,30 @@ class DramaCanvasRunWorkerTest {
         assertEquals("succeeded", after.getStatus());
         assertEquals("media/material-videos/mvj_w2/video.mp4",
                 OM.readTree(after.getResultJson()).path("video").path("key").asText());
+    }
+
+    // ── 合成 ───────────────────────────────────────────────────────────────────
+
+    private void assembleRun(String id, String canvasRatio) {
+        ObjectNode exec = OM.createObjectNode().put("episodeNo", 2);
+        if (canvasRatio != null) exec.put("canvasRatio", canvasRatio);
+        exec.putArray("videoKeys").add("k0.mp4").add("k1.mp4");
+        store.put(id, run(id, DramaCanvasRun.KIND_ASSEMBLE, DramaCanvasRun.STATUS_QUEUED, exec));
+    }
+
+    @Test
+    void assemble_passesSnapshottedCanvasRatio_oldRunWithoutItPassesNull() {
+        when(assembler.assembleKeys(any(), any(), anyInt(), any(), any()))
+                .thenReturn(new DramaAssembleService.AssembledVideo("drama/canvas/assemblies/x.mp4", 10, 3));
+        assembleRun("dcr_a1", "9:16");
+        worker.runBlocking("dcr_a1");
+        verify(assembler).assembleKeys(USER, store.get("dcr_a1").getCanvasId(), 2, List.of("k0.mp4", "k1.mp4"), "9:16");
+        assertEquals("succeeded", store.get("dcr_a1").getStatus());
+
+        assembleRun("dcr_a2", null);
+        worker.runBlocking("dcr_a2");
+        verify(assembler).assembleKeys(eq(USER), any(), eq(2), eq(List.of("k0.mp4", "k1.mp4")), isNull());
+        assertEquals("succeeded", store.get("dcr_a2").getStatus());
     }
 
     // ── 错误文案 ───────────────────────────────────────────────────────────────

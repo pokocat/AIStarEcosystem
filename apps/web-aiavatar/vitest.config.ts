@@ -24,5 +24,8 @@ export default defineConfig({
       ["**/layout-mode.test.ts", "jsdom"],
     ],
     environment: "node",
+    // 本机 Node 25 和 CI 的 Node 22 看到的 Web Storage 不一样：jsdom 那两份要能用、node 环境里要「没有」
+    // （全仓共用一份，见 scripts/vitest/setup-storage.ts 文件头注释）
+    setupFiles: [resolve(__dirname, "../../scripts/vitest/setup-storage.ts")],
   },
 });

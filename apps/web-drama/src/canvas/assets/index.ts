@@ -21,7 +21,7 @@ export { AssetGenPanel, IMAGE_RATIOS, IMAGE_COUNTS } from "./asset-gen-panel";
 export { LookDetailDialog } from "./look-detail-dialog";
 export { TraitsDialog, type TraitsDialogProps } from "./traits-dialog";
 export { AssetListView, ASSET_TABS, type AssetTab, type AssetListViewProps } from "./asset-list-view";
-export { assetRunView, withSubmitting, useNarrow, NARROW_QUERY, ROLE_LABEL, type AssetRunView } from "./bits";
+export { assetRunView, withSubmitting, useNarrow, NARROW_QUERY, ROLE_LABEL, ROLE_ORDER, RolePicker, type AssetRunView } from "./bits";
 export { applyTraits, applyTraitsLine, normalizeTraits, toggleTrait, traitCount, traitsLine, type Traits } from "./traits";
 export {
   BATCH_MAX_IMAGES,

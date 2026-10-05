@@ -656,9 +656,11 @@ public class DramaCanvasRunWorker {
         int no = exec.path("episodeNo").asInt(1);
         List<String> keys = new ArrayList<>();
         exec.path("videoKeys").forEach(k -> keys.add(k.asText()));
+        // 受理时快照的画布比例；老运行没有 → null → 合成按出现最多的尺寸选画幅
+        String ratio = exec.hasNonNull("canvasRatio") ? exec.get("canvasRatio").asText() : null;
         try {
             touch(run);
-            DramaAssembleService.AssembledVideo a = assembler.assembleKeys(run.getOwnerUserId(), run.getCanvasId(), no, keys);
+            DramaAssembleService.AssembledVideo a = assembler.assembleKeys(run.getOwnerUserId(), run.getCanvasId(), no, keys, ratio);
             ObjectNode result = om.createObjectNode();
             ObjectNode as = result.putObject("assembled");
             as.put("key", a.key());

@@ -9,6 +9,7 @@
 import type {
   CanvasAsset,
   CanvasCharacter,
+  CanvasCharacterRole,
   CanvasEpisode,
   CanvasImageSet,
   CanvasLook,
@@ -240,14 +241,23 @@ const emptyImages = (): CanvasImageSet => ({ versions: [] });
 
 // ── 增 ───────────────────────────────────────────────────────────────────────
 
-/** 加一个角色（带一个「基础造型」）。 */
-export function addCharacter(doc: DramaCanvasDoc, name: string): { doc: DramaCanvasDoc; characterId: string; lookId: string } {
+/** 手动加角色时分级的缺省：画布里还没有主要角色就是主要角色，否则配角（加的时候可以改）。 */
+export function defaultNewRole(characters: readonly Pick<CanvasCharacter, "role">[]): CanvasCharacterRole {
+  return characters.some((c) => c.role === "lead") ? "support" : "lead";
+}
+
+/** 加一个角色（带一个「基础造型」）。分级不给时按 defaultNewRole。 */
+export function addCharacter(
+  doc: DramaCanvasDoc,
+  name: string,
+  role: CanvasCharacterRole = defaultNewRole(doc.characters),
+): { doc: DramaCanvasDoc; characterId: string; lookId: string } {
   const characterId = newId("character");
   const lookId = newId("look");
   const character: CanvasCharacter = {
     id: characterId,
     name: name.trim() || `角色 ${doc.characters.length + 1}`,
-    role: "support",
+    role,
     looks: [{ id: lookId, name: BASE_LOOK_NAME, prompt: "", episodes: [], images: emptyImages() }],
   };
   return { doc: { ...doc, characters: [...doc.characters, character] }, characterId, lookId };

@@ -21,13 +21,11 @@ import {
 } from "@/canvas/core";
 import { dramaConfirm } from "@/components/drama-ui/confirm-dialog";
 import { AssetGenPanel } from "./asset-gen-panel";
-import { READ_ONLY_REASON, Reason, ROLE_LABEL, useNarrow } from "./bits";
+import { READ_ONLY_REASON, Reason, ROLE_LABEL, ROLE_ORDER, useNarrow } from "./bits";
 import { CvaDrawer, ModalHead } from "./inputs";
 import { episodeOptions, toggleEpisode } from "./list-ops";
 
 export type DrawerTarget = { kind: "character" | "scene" | "material"; id: string; lookId?: string };
-
-const ROLES: CanvasCharacterRole[] = ["lead", "support", "extra"];
 
 export function AssetDrawer({ target, onClose }: { target: DrawerTarget | null; onClose: () => void }) {
   const title = target?.kind === "character" ? "角色" : target?.kind === "scene" ? "场景" : "素材";
@@ -98,7 +96,7 @@ function CharacterBody({ id, initialLookId, onClose }: { id: string; initialLook
                 update((d) => ({ ...d, characters: d.characters.map((x) => (x.id === id ? { ...x, role } : x)) }));
               }}
             >
-              {ROLES.map((r) => (
+              {ROLE_ORDER.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABEL[r]}
                 </option>

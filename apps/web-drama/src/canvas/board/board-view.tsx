@@ -20,6 +20,7 @@ import "@xyflow/react/dist/style.css";
 import * as React from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import type { CanvasCharacterRole } from "@ai-star-eco/types/drama-canvas";
 import {
   Background,
   BackgroundVariant,
@@ -45,6 +46,7 @@ import {
   addMaterial,
   addScene,
   characterGroupId,
+  defaultNewRole,
   findCharacter,
   findLook,
   findMaterial,
@@ -372,11 +374,11 @@ function Board({ focus }: { focus?: string }) {
   }, [update, viewportCenter, select, reveal]);
 
   const addCharacterAction = React.useCallback(
-    (name: string) => {
+    (name: string, role: CanvasCharacterRole) => {
       let lookId = "";
       const c = viewportCenter();
       update((d) => {
-        const r = addCharacter(d, name);
+        const r = addCharacter(d, name, role);
         lookId = r.lookId;
         const h = GROUP.header + CARD.look.h + GROUP.pad;
         return writePositions(r.doc, {
@@ -732,6 +734,7 @@ function Board({ focus }: { focus?: string }) {
         <AddCharacterDialog
           open={addCharOpen}
           existingNames={doc.characters.map((c) => c.name)}
+          defaultRole={defaultNewRole(doc.characters)}
           onClose={() => setAddCharOpen(false)}
           onSubmit={addCharacterAction}
         />
