@@ -84,9 +84,18 @@ function Harness({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** 价格和视频模型读到了：顶栏的视频模型下拉只在读到之后才出现（读到之前是「视频模型读取中…」）。 */
+async function pricingLoaded() {
+  await waitFor(() => expect(document.querySelector('[data-action="video-model"]')).not.toBeNull());
+}
+
 const RUN_APIS = ["runImage", "runImageBatch", "runVideo", "runStoryboard", "runAssemble", "runScript", "runExtract"] as const;
 
 beforeEach(() => {
+  // 上一条用例存下的「这张画布选的视频 / 出图模型」在 localStorage 里；__resetCanvasPricingForTest 只清内存
+  // （它模拟的是刷新页面，刷新后本来就该读回 localStorage），所以这里另清。不清的话，换过模型的用例之后
+  // 的用例在 CI（Node 22，jsdom 真 Storage）上读到的是换过的模型（v0.198.1 后 main 上 frontend-tests 一直红）。
+  window.localStorage.clear();
   __resetMockCanvasForTest();
   __resetCanvasPricingForTest(); // 视频 / 出图模型的选择是模块级的：每条用例从默认模型开始
   vi.mocked(CanvasApi.save).mockClear();
@@ -126,6 +135,8 @@ describe("逐集制作 · 示例画布", () => {
       </Harness>,
     );
     const list = await screen.findByTestId("cve-episode-list");
+    // 等价格和视频模型读到再点：没读到时一律弹确认、片段上下限也还是缺省值（机器一忙就点在它前面）
+    await waitFor(() => expect(list.querySelector('[data-pending="price"]')).toBeNull());
     const sb = list.querySelector<HTMLButtonElement>('[data-episode="2"] [data-action="storyboard"]')!;
     await act(async () => {
       fireEvent.click(sb);
@@ -153,6 +164,7 @@ describe("单集编辑器 · 示例画布第 1 集", () => {
     await screen.findByTestId("cve-editor");
     // 等运行记录接回（02 的 refs.notes、03 的排队状态都来自它）
     await waitFor(() => expect(CanvasApi.getRuns).toHaveBeenCalled());
+    await pricingLoaded();
     return screen.getByTestId("cve-timeline");
   }
 
@@ -322,6 +334,7 @@ describe("单集编辑器 · 出图模型与片段时长（v0.198.1）", () => {
     );
     await screen.findByTestId("cve-editor");
     await waitFor(() => expect(CanvasApi.getRuns).toHaveBeenCalled());
+    await pricingLoaded();
     return screen.getByTestId("cve-timeline");
   }
   const preview = () => screen.getByTestId("cve-preview");
