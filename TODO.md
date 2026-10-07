@@ -1169,6 +1169,8 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
 
 ### sau-service（v0.17 ~ v0.19）
 
+- [x] ~~小红书发布类在 Python 3.11 无法导入~~ **v0.200 完成，2026-10-07**：固定上游 f-string 精确兼容修复；Docker 构建实际导入四个平台发布类，失败阻断发布。
+
 - [ ] **SMS 风控人机交互 — 真实 selector driver**（v0.19 §B）：当前 `_PlaceholderSmsDriver.detect()` 永远返回 `None`；整 stack 已联通但**生产不会触发**。需要在抖音/视频号触发风控时抓 SMS 弹窗 DOM 选择器替换占位实现。
 - [ ] **sau-service driver selector 首次绑定后按诊断 WARNING 回填**（v0.17.1 ~ v0.17.3）：XHS / 视频号 / 快手 driver selectors 是基于上游 sau 命名约定**猜的**；首次真实绑定后看 `[<platform>] extract_profile incomplete after retry budget` WARNING dump 取真 class / outerHTML 回填。
 - [ ] **XHS 改用 `xhs-toolkit.XhsClient.get_qrcode()` API 替代 DOM scrape**（v0.17.3 注意事项）：上游 `pokocat/social-auto-upload` 的 `xhs_uploader/xhs_login_qrcode.py` 走的就是这条 API；DOM scrape 是临时活路。

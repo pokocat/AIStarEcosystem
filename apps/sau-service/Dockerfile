@@ -53,6 +53,13 @@ RUN if [ "$INSTALL_REAL" = "1" ]; then \
         pip install -e '/app[real]' ; \
     fi
 
+# The pinned XHS driver uses a Python 3.12-only f-string. Apply the exact
+# compatibility patch and import all four real drivers before accepting an image.
+COPY scripts/prepare_real_runtime.py /app/scripts/prepare_real_runtime.py
+RUN if [ "$INSTALL_REAL" = "1" ]; then \
+        python /app/scripts/prepare_real_runtime.py ; \
+    fi
+
 EXPOSE 8090
 
 HEALTHCHECK --interval=20s --timeout=3s --start-period=10s --retries=3 \

@@ -288,6 +288,8 @@ VALUES (UUID(), 'your-admin', '<bcrypt-hash>', 'super_admin', 'active', NOW());
 
 当前生产机采用「CI / 本地构建 release 包 → rsync 到 ECS → 远端解包 + systemd 重启」。
 构建机不需要 Docker；`sau-service` 的真实模式镜像在 ECS 上构建，避免跨架构镜像问题。
+SAU 镜像构建会执行 `scripts/prepare_real_runtime.py`：兼容固定上游的小红书 Python 3.11 语法，
+并实际导入四个平台的发布类；失败必须修复后重建，不能只看 `/healthz` 就跳过。
 
 ### 4.1 本地手动部署
 

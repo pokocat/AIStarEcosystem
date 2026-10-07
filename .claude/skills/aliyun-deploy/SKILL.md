@@ -30,6 +30,9 @@ Current production services are:
 - `web-star` - Next.js 16 star business console, systemd unit `aistareco-web-star`.
 - `admin` - Next.js admin app, systemd unit `aistareco-admin`.
 - `sau-service` - Dockerized FastAPI/Playwright service, systemd unit `aistareco-sau-service`.
+  Real-image builds run `apps/sau-service/scripts/prepare_real_runtime.py` to patch
+  the pinned upstream's Python 3.11-incompatible XHS f-string and import all four
+  upload drivers. Keep this build gate: `/healthz` alone does not load the drivers.
 - `all` - builds and deploys all current production services above.
 
 ### Identity center (`id.aibuzz.cn`) - not in this repo

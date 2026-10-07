@@ -9,6 +9,11 @@ Stateless Python + Playwright worker that bridges `apps/server` (Spring Boot) an
 
 ## Why a separate service
 
+生产镜像使用 Python 3.11。固定上游 SHA 的小红书模块包含 3.12 才支持的 f-string，
+`scripts/prepare_real_runtime.py` 在构建时做精确兼容替换（不改变日志内容），然后实际导入
+抖音、视频号、快手、小红书四个发布类；任一语法/依赖错误直接阻止镜像构建。
+该检查不启动浏览器、不登录、不上传。升级上游 SHA 时需同步复核并移除此兼容补丁。
+
 Java cannot drive Playwright directly. `apps/server` owns the source of truth (DB,
 encrypted cookies, jobs, ledger) and delegates the browser-automation step to this
 worker over HTTP. The worker is stateless — Playwright contexts only live in memory
