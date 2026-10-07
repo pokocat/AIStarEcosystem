@@ -55,6 +55,8 @@ public final class IpStudioFixtures {
                         && inv.getArgument(1, String.class).equals(p.getOwnerUserId());
                 return Optional.ofNullable(ok ? p : null);
             });
+            when(repo.findByIdAndOwnerUserIdAndDeletedAtIsNullForUpdate(anyString(), anyString())).thenAnswer(inv ->
+                    repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(inv.getArgument(0), inv.getArgument(1)));
             when(repo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(anyString())).thenAnswer(inv -> {
                 String owner = inv.getArgument(0, String.class);
                 return rows.values().stream()

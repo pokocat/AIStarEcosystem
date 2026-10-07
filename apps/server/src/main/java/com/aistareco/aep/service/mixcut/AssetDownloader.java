@@ -13,8 +13,6 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
-import java.net.URL;
-import java.net.URLConnection;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.security.MessageDigest;
@@ -45,31 +43,48 @@ public class AssetDownloader {
     private static final Logger log = LoggerFactory.getLogger(AssetDownloader.class);
 
     private final MixcutProperties props;
+    private final okhttp3.OkHttpClient http;
 
+
+    @org.springframework.beans.factory.annotation.Autowired
     public AssetDownloader(MixcutProperties props) {
+        this(props, new okhttp3.OkHttpClient.Builder()
+                .proxy(java.net.Proxy.NO_PROXY)
+                .dns(host -> validatedAddresses(java.util.Arrays.asList(InetAddress.getAllByName(host))))
+                .connectTimeout(java.time.Duration.ofSeconds(15))
+                .readTimeout(java.time.Duration.ofSeconds(60))
+                .callTimeout(java.time.Duration.ofMinutes(5))
+                .followRedirects(false).followSslRedirects(false).build());
+    }
+
+    AssetDownloader(MixcutProperties props, okhttp3.OkHttpClient http) {
         this.props = props;
+        this.http = http;
+    }
+
+    static java.util.List<InetAddress> validatedAddresses(java.util.List<InetAddress> addresses) throws UnknownHostException {
+        if (addresses.isEmpty() || addresses.stream().anyMatch(AssetDownloader::isBlockedAddress))
+            throw new UnknownHostException("asset host resolves to a disallowed internal address");
+        return addresses;
+    }
+
+    static URI validateUrl(String value) throws IOException {
+        try {
+            URI uri = URI.create(value);
+            if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    || uri.getUserInfo() != null || isBlockedHost(uri.getHost()))
+                throw new IOException("asset URL has a disallowed scheme or internal address");
+            return uri;
+        } catch (IllegalArgumentException e) { throw new IOException("invalid asset URL", e); }
     }
 
     public File ensureLocal(String urlOrPath) throws IOException {
         if (urlOrPath == null || urlOrPath.isBlank()) {
             throw new IOException("empty asset url");
         }
-        // 本地路径直接返回
-        if (urlOrPath.startsWith("/") || urlOrPath.startsWith("file:")) {
-            File f = new File(urlOrPath.replace("file:", ""));
-            if (f.exists()) return f;
-            throw new IOException("local file not found: " + urlOrPath);
-        }
-        if (!urlOrPath.startsWith("http://") && !urlOrPath.startsWith("https://")) {
-            throw new IOException("unsupported asset url: " + urlOrPath);
-        }
-        String host = URI.create(urlOrPath).getHost();
-        if (isBlockedHost(host)) {
-            throw new IOException(
-                    "asset url resolves to a disallowed internal/metadata address, refusing to fetch: " + urlOrPath);
-        }
+        URI uri = validateUrl(urlOrPath);
 
-        File cacheDir = new File(props.getWorkDir(), "asset-cache");
+        File cacheDir = new File(props.getWorkDir(), "asset-cache-v2");
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
             throw new IOException("Cannot create cache dir: " + cacheDir);
         }
@@ -81,30 +96,43 @@ public class AssetDownloader {
             return target;
         }
 
-        log.info("[mixcut] downloading asset: {}", urlOrPath);
-        URL url = URI.create(urlOrPath).toURL();
-        URLConnection conn = url.openConnection();
-        conn.setConnectTimeout(15_000);
-        conn.setReadTimeout(60_000);
-        conn.setRequestProperty("User-Agent", "aistareco-mixcut/0.1");
-
-        File tmp = new File(cacheDir, hash + ".part");
-        long total = 0;
-        try (InputStream in = conn.getInputStream();
-             FileOutputStream out = new FileOutputStream(tmp)) {
-            byte[] buf = new byte[16 * 1024];
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                total += n;
-                if (total > props.getMaxAssetBytes()) {
-                    throw new IOException("asset exceeds max bytes: " + urlOrPath);
+        // 用唯一临时文件，避免同 URL 并发下载覆盖彼此的半成品。
+        var temp = Files.createTempFile(cacheDir.toPath(), hash + "-", ".part");
+        try {
+            for (int redirects = 0; redirects <= 5; redirects++) {
+                uri = validateUrl(uri.toString());
+                var request = new okhttp3.Request.Builder().url(uri.toString())
+                        .header("User-Agent", "aistareco-mixcut/0.1").build();
+                try (var response = http.newCall(request).execute()) {
+                    int status = response.code();
+                    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                        String location = response.header("Location");
+                        if (location == null || redirects == 5) throw new IOException("invalid or excessive asset redirects");
+                        uri = validateUrl(uri.resolve(location).toString());
+                        continue;
+                    }
+                    if (!response.isSuccessful() || response.body() == null) {
+                        log.warn("[mixcut] asset download rejected host={} status={}", uri.getHost(), status);
+                        throw new IOException("asset download failed HTTP " + status);
+                    }
+                    if (response.body().contentLength() > props.getMaxAssetBytes()) throw new IOException("asset exceeds max bytes");
+                    long total = 0;
+                    try (InputStream in = response.body().byteStream(); var out = Files.newOutputStream(temp)) {
+                        byte[] buffer = new byte[16384];
+                        int n;
+                        while ((n = in.read(buffer)) != -1) {
+                            total += n;
+                            if (total > props.getMaxAssetBytes()) throw new IOException("asset exceeds max bytes");
+                            out.write(buffer, 0, n);
+                        }
+                    }
+                    if (total == 0) throw new IOException("empty asset response");
+                    Files.move(temp, target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    return target;
                 }
-                out.write(buf, 0, n);
             }
-        }
-        Files.move(tmp.toPath(), target.toPath());
-        log.info("[mixcut] downloaded {} → {} ({} bytes)", urlOrPath, target.getName(), total);
-        return target;
+            throw new IOException("too many asset redirects");
+        } finally { Files.deleteIfExists(temp); }
     }
 
     /**
@@ -117,8 +145,7 @@ public class AssetDownloader {
         try {
             // 字面量 IP（含 "100.100.100.200" / "169.254.169.254" 这类）本地解析，不发起 DNS 查询；
             // 真实域名才会触发一次 DNS 查询——与 openConnection() 本就要做的解析等价，不新增网络面。
-            InetAddress addr = InetAddress.getByName(host);
-            return isBlockedAddress(addr);
+            return java.util.Arrays.stream(InetAddress.getAllByName(host)).anyMatch(AssetDownloader::isBlockedAddress);
         } catch (UnknownHostException e) {
             return true;
         }
@@ -135,7 +162,8 @@ public class AssetDownloader {
             int second = b[1] & 0xFF;
             // 100.64.0.0/10（RFC 6598 共享地址空间 / CGNAT）——阿里云 metadata 100.100.100.200 落在此段，
             // 不属于 RFC1918 私网，Java 的 isSiteLocalAddress() 不会覆盖，须显式拦。
-            if (first == 100 && (second & 0xC0) == 64) return true;
+            if (first == 0 || first >= 224 || (first == 100 && (second & 0xC0) == 64)
+                    || (first == 198 && (second == 18 || second == 19))) return true;
         } else if (addr instanceof Inet6Address) {
             byte[] b = addr.getAddress();
             // fc00::/7（Unique Local Address）——IPv6 版私网段，isSiteLocalAddress() 只覆盖已废弃的

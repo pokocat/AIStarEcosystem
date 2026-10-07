@@ -80,4 +80,57 @@ class AssetDownloaderTest {
                 () -> downloader.ensureLocal("http://169.254.169.254/latest/meta-data/"));
         assertTrue(ex.getMessage().contains("disallowed"), "异常信息应说明地址被拒绝: " + ex.getMessage());
     }
+
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path temp;
+
+    @Test
+    void rejectsExistingLocalFileAndFileScheme() throws Exception {
+        var file = java.nio.file.Files.writeString(temp.resolve("private.txt"), "fixture");
+        var downloader = new AssetDownloader(new MixcutProperties());
+        assertThrows(IOException.class, () -> downloader.ensureLocal(file.toString()));
+        assertThrows(IOException.class, () -> downloader.ensureLocal(file.toUri().toString()));
+    }
+
+    @Test
+    void rejectsMixedDnsAnswersBeforeConnecting() throws Exception {
+        var addresses = java.util.List.of(java.net.InetAddress.getByName("1.1.1.1"), java.net.InetAddress.getByName("127.0.0.1"));
+        assertThrows(java.net.UnknownHostException.class, () -> AssetDownloader.validatedAddresses(addresses));
+    }
+
+    @Test
+    void rechecksRedirectBeforeAnySecondRequest() throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var http = new okhttp3.OkHttpClient.Builder().followRedirects(false).addInterceptor(chain -> {
+            requests.incrementAndGet();
+            return new okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(302).message("redirect").header("Location", "http://127.0.0.1/private")
+                    .body(okhttp3.ResponseBody.create("", okhttp3.MediaType.get("text/plain"))).build();
+        }).build();
+        var props = new MixcutProperties(); props.setWorkDir(temp.toString());
+        assertThrows(IOException.class, () -> new AssetDownloader(props, http).ensureLocal("https://1.1.1.1/image.png"));
+        org.junit.jupiter.api.Assertions.assertEquals(1, requests.get());
+        try (var files = java.nio.file.Files.list(temp.resolve("asset-cache-v2"))) { assertTrue(files.findAny().isEmpty()); }
+    }
+
+    @Test
+    void validPublicResponseIsPersistedWithoutRealNetwork() throws Exception {
+        var http = new okhttp3.OkHttpClient.Builder().addInterceptor(chain ->
+                new okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(200).message("ok").body(okhttp3.ResponseBody.create("fixture", okhttp3.MediaType.get("image/png"))).build()).build();
+        var props = new MixcutProperties(); props.setWorkDir(temp.toString());
+        var file = new AssetDownloader(props, http).ensureLocal("https://1.1.1.1/image.png");
+        org.junit.jupiter.api.Assertions.assertEquals("fixture", java.nio.file.Files.readString(file.toPath()));
+    }
+
+    @Test
+    void localAssetDirectoryRejectsTraversalAndSymlink() throws Exception {
+        var root = java.nio.file.Files.createDirectory(temp.resolve("owned"));
+        var own = java.nio.file.Files.writeString(root.resolve("own.png"), "own");
+        var outside = java.nio.file.Files.writeString(temp.resolve("outside.png"), "other");
+        org.junit.jupiter.api.Assertions.assertEquals(own.toRealPath().toFile(), MixcutRenderingService.confinedFile(root.toFile(), "own.png"));
+        assertThrows(IOException.class, () -> MixcutRenderingService.confinedFile(root.toFile(), "../outside.png"));
+        java.nio.file.Files.createSymbolicLink(root.resolve("link.png"), outside);
+        assertThrows(IOException.class, () -> MixcutRenderingService.confinedFile(root.toFile(), "link.png"));
+    }
 }

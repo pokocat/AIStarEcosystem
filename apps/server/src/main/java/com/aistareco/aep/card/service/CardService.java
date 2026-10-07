@@ -127,7 +127,7 @@ public class CardService {
                 .regNo("BC-" + (1000 + Math.abs(s.hashCode() % 9000)))
                 .status(CardProfile.STATUS_DRAFT)
                 .avatarId(requireOwnedAvatarId(userId, avatarId))
-                .payloadJson(writeDoc(doc))
+                .payloadJson(writeDoc(doc, userId, null))
                 .createdAt(now).updatedAt(now)
                 .build();
         return repo.save(c);
@@ -231,7 +231,7 @@ public class CardService {
             c.setSlug(s);
         }
         if (avatarId != null) c.setAvatarId(requireOwnedAvatarId(userId, avatarId));
-        if (doc != null) c.setPayloadJson(writeDoc(doc));
+        if (doc != null) c.setPayloadJson(writeDoc(doc, userId, c.getId()));
         c.setUpdatedAt(Instant.now());
         return repo.save(c);
     }
@@ -324,11 +324,12 @@ public class CardService {
         return !v.isTextual() || v.asText().isBlank();
     }
 
-    private String writeDoc(Map<String, Object> doc) {
+    private String writeDoc(Map<String, Object> doc, String ownerId, String cardId) {
         try {
             JsonNode tree = mapper.valueToTree(doc == null ? Map.of() : doc);
             stripDerivedUrls(tree);
             stripFigureUrls(tree);
+            guardDocumentAssets(tree, ownerId, cardId, true);
             return mapper.writeValueAsString(tree);
         } catch (BusinessException e) {
             throw e;
@@ -346,7 +347,7 @@ public class CardService {
      * 既把一段签名写进了持久化存储，又留下一堆读的时候必然被覆盖的死数据。
      *
      * <p>没有 key 兄弟的 URL 一律保留 —— 那可能是用户自己填的外链（个人主页、社交账号），
-     * 不是我们的资产。这类老文档里的自有资产 URL 由 {@link #resignUrls} 在读的时候兜底重签。
+     * 不是我们的资产。这类老文档里的自有资产 URL 由 {@link #guardDocumentAssets} 在读的时候兜底重签。
      */
     private static void stripDerivedUrls(JsonNode node) {
         if (node == null) return;
@@ -413,11 +414,17 @@ public class CardService {
 
         // 形象引用 → 签名图。名片存的是引用不是图（look:<id> / deriv:<id> / null=跟随定妆照），
         // 资产改了名片自动跟着变。**这一步不做，真名片就是没有形象的** —— 文档里只有 ref。
-        resolveFigure(doc, card.getAvatarId());
+        // 存量文档也经过归属闸，再解析已验证形象的引用；绝不为不可信文档续签。
+        stripFigureUrls(doc);
+        guardDocumentAssets(doc, card.getOwnerUserId(), card.getId(), false);
+        String avatarId = card.getAvatarId();
+        boolean owned = avatarId != null && avatarRepo.findById(avatarId)
+                .filter(a -> a.getDeletedAt() == null && card.getOwnerUserId().equals(a.getOwnerUserId())).isPresent();
+        resolveFigure(doc, owned ? avatarId : null);
         // 文档里的 *Key 字段 → 派生签名 URL（真值是 key，URL 是派生值，§4.7.4）。
         deriveUrls(doc);
         // 老文档若直接存了 URL，兜底重签一次：签名过期后 maybeSign 同样有效（§4.7.7）。
-        resignUrls(doc);
+        // 旧自有 URL 在 guardDocumentAssets 内校验后重签，引用产物已由 resolver 签名。
 
         // 列上的字段永远盖过文档里的同名值 —— 短链和登记号的真值在列上，不在文档里。
         doc.put("slug", card.getSlug());
@@ -502,31 +509,48 @@ public class CardService {
         }
     }
 
-    private void resignUrls(JsonNode node) {
+    /** 名片契约只接受数字人引用；兼容旧名片专属上传目录，不允许任意存储 key 换签名。 */
+    private boolean ownsCardKey(String ownerId, String cardId, String key) {
+        if (key == null || key.isBlank() || key.startsWith("/") || key.contains("..")
+                || key.contains("\\") || key.contains("%") || key.chars().anyMatch(Character::isISOControl)) return false;
+        return key.startsWith(com.aistareco.aep.service.storage.FileStorageService.ownedKeyPrefix("card", ownerId))
+                || (cardId != null && key.startsWith(
+                    com.aistareco.aep.service.storage.FileStorageService.ownedKeyPrefix("cards", cardId)));
+    }
+
+    private void guardDocumentAssets(JsonNode node, String ownerId, String cardId, boolean writing) {
         if (node == null) return;
-        if (node.isObject()) {
-            ObjectNode o = (ObjectNode) node;
-            List<String> keys = new ArrayList<>();
-            o.fieldNames().forEachRemaining(keys::add);
-            for (String k : keys) {
-                JsonNode v = o.get(k);
-                if (v != null && v.isTextual()) {
-                    String signed = signer.maybeSign(v.asText());
-                    if (signed != null && !signed.equals(v.asText())) o.put(k, signed);
-                } else {
-                    resignUrls(v);
-                }
+        if (node instanceof ObjectNode object) {
+            List<String> fields = new ArrayList<>();
+            object.fieldNames().forEachRemaining(fields::add);
+            for (String field : fields) {
+                JsonNode value = object.get(field);
+                if (value == null) continue;
+                if (value.isTextual()) {
+                    boolean keyField = field.endsWith("Key");
+                    String key = keyField ? value.asText() : signer.keyOf(value.asText());
+                    if (key == null || key.isBlank()) continue;
+                    if (!ownsCardKey(ownerId, cardId, key)) {
+                        if (writing) throw BusinessException.badRequest("CARD_ASSET_NOT_OWNED", "名片中的素材不可用，请重新选择自己的数字人");
+                        object.remove(field);
+                        if (keyField) object.remove(field.substring(0, field.length() - 3) + "Url");
+                    } else if (!keyField && !writing) {
+                        object.put(field, signer.signKey(key));
+                    }
+                } else guardDocumentAssets(value, ownerId, cardId, writing);
             }
-        } else if (node.isArray()) {
-            ArrayNode a = (ArrayNode) node;
-            for (int i = 0; i < a.size(); i++) {
-                JsonNode v = a.get(i);
-                if (v != null && v.isTextual()) {
-                    String signed = signer.maybeSign(v.asText());
-                    if (signed != null && !signed.equals(v.asText())) a.set(i, signed);
-                } else {
-                    resignUrls(v);
-                }
+        } else if (node instanceof ArrayNode array) {
+            for (int i = 0; i < array.size(); i++) {
+                JsonNode value = array.get(i);
+                if (value.isTextual()) {
+                    String key = signer.keyOf(value.asText());
+                    if (key != null && !key.isBlank()) {
+                        if (!ownsCardKey(ownerId, cardId, key)) {
+                            if (writing) throw BusinessException.badRequest("CARD_ASSET_NOT_OWNED", "名片中的素材不可用，请重新选择自己的数字人");
+                            array.set(i, com.fasterxml.jackson.databind.node.NullNode.instance);
+                        } else if (!writing) array.set(i, signer.signKey(key));
+                    }
+                } else guardDocumentAssets(value, ownerId, cardId, writing);
             }
         }
     }
@@ -572,7 +596,7 @@ public class CardService {
     private static void stripFigureUrls(JsonNode tree) {
         JsonNode figureNode = tree == null ? null : tree.get("figure");
         if (!(figureNode instanceof ObjectNode figure)) return;
-        if (figure.hasNonNull("ref")) figure.remove("imageUrl");
+        figure.remove("imageUrl");
         if (figure.hasNonNull("motionRef")) {
             figure.remove("videoUrl");
             figure.remove("posterUrl");

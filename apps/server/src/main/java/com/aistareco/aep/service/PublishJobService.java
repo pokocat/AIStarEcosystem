@@ -626,7 +626,8 @@ public class PublishJobService {
      * 否则重试会复用上一次的终态 hold → 不扣分（免费重发）。与 DapJob 的 :rN 范式一致。
      */
     private static String holdRef(PublishJob job) {
-        return job.getId() + ":r" + job.getRetryCount();
+        // 首次保留裸 jobId，兼容升级前仍在途的冻结记录；只有真正重试才换号。
+        return job.getRetryCount() == 0 ? job.getId() : job.getId() + ":r" + job.getRetryCount();
     }
 
     private void releaseHoldOnFailure(PublishJob job, String reason) {

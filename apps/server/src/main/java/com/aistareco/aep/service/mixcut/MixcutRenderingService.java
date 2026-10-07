@@ -881,7 +881,7 @@ public class MixcutRenderingService {
                     continue;
                 }
 
-                File local = resolveOne(b);
+                File local = resolveOne(b, job.getUserId());
                 if (local == null) continue;
 
                 SlotInfo slot = ctx.slotMap.get(slotId);
@@ -899,7 +899,8 @@ public class MixcutRenderingService {
                 }
             }
         } catch (Exception e) {
-            log.warn("[mixcut] slot_bindings parse error: {}", e.getMessage());
+            log.warn("[mixcut] slot_bindings rejected: {}", e.getMessage());
+            throw new IllegalArgumentException("素材配置不可用，请检查素材后重试", e);
         }
 
         overlays.sort(Comparator.comparingInt(OverlaySpec::zIndex));
@@ -998,41 +999,54 @@ public class MixcutRenderingService {
     }
 
     /** 把单个 binding 解析为本地 File（找不到返回 null）。 */
-    private File resolveOne(JsonNode b) {
-        // 1) asset_id → DB → localPath
+    private File resolveOne(JsonNode b, String userId) {
         String assetId = b.path("asset_id").asText(null);
         if (assetId != null && !assetId.isBlank()) {
-            var asset = assetService.get(assetId).orElse(null);
-            if (asset != null && asset.getLocalPath() != null) {
-                File f = new File(asset.getLocalPath());
-                if (f.exists()) return f;
+            // 一旦指定资产编号，只能从本人/平台预置资产读取，不能失败后退回不可信 file_url。
+            var asset = assetService.getVisibleTo(assetId, userId).orElse(null);
+            if (asset == null) throw new IllegalArgumentException("素材不存在或无权访问");
+            if (asset.getLocalPath() != null) {
+                File file = new File(asset.getLocalPath());
+                if (file.isFile()) return file;
             }
+            return null;
         }
-        // 2) file_url
         String fileUrl = b.path("file_url").asText(null);
-        if (fileUrl != null && !fileUrl.isBlank()) {
-            // 2a) 我们自己 server 上的 /static/mixcut-assets/<user>/<file> → 直接 resolve
+        if (fileUrl == null || fileUrl.isBlank()) return null;
+        try {
             String assetBase = props.getAssetPublicUrlBase();
             if (fileUrl.startsWith(assetBase + "/")) {
-                String rel = fileUrl.substring(assetBase.length() + 1);
-                File f = new File(props.getAssetDir(), rel);
-                if (f.exists()) return f;
+                String relative = fileUrl.substring(assetBase.length() + 1);
+                if (userId == null || !relative.startsWith(userId + "/"))
+                    throw new java.io.IOException("素材不属于当前用户，请从素材库重新选择");
+                return confinedFile(new File(props.getAssetDir(), userId), relative.substring(userId.length() + 1));
             }
-            // 2b) 我们 server 的 /static/mixcut/<job>/<file> （较罕见：跨 job 复用产出）→ 直接 resolve
             String outBase = props.getPublicUrlBase();
             if (fileUrl.startsWith(outBase + "/")) {
-                String rel = fileUrl.substring(outBase.length() + 1);
-                File f = new File(props.getOutputDir(), rel);
-                if (f.exists()) return f;
+                String relative = fileUrl.substring(outBase.length() + 1);
+                int slash = relative.indexOf('/');
+                if (slash <= 0) throw new java.io.IOException("成片路径不合法");
+                String sourceJobId = relative.substring(0, slash);
+                var sourceJob = jobRepo.findById(sourceJobId).orElse(null);
+                if (sourceJob == null || userId == null || !userId.equals(sourceJob.getUserId()))
+                    throw new java.io.IOException("成片不属于当前用户");
+                return confinedFile(new File(props.getOutputDir(), sourceJobId), relative.substring(slash + 1));
             }
-            // 2c) HTTP(S) URL 或外部 → downloader.ensureLocal
-            try {
-                return downloader.ensureLocal(fileUrl);
-            } catch (Exception e) {
-                log.warn("[mixcut] failed to resolve file_url {}: {}", fileUrl, e.getMessage());
-            }
+            return downloader.ensureLocal(fileUrl);
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("素材读取失败：" + e.getMessage(), e);
         }
-        return null;
+    }
+
+    /** 本地兼容路径只能引用已验证属主的目录，真实路径检查同时挡住 .. 与符号链接。 */
+    static File confinedFile(File directory, String relative) throws java.io.IOException {
+        if (relative == null || relative.isBlank() || relative.contains("\\") || relative.contains("%")
+                || relative.startsWith("/") || java.util.Arrays.asList(relative.split("/")).contains(".."))
+            throw new java.io.IOException("素材路径不合法");
+        var root = directory.toPath().toRealPath();
+        var file = root.resolve(relative).toRealPath();
+        if (!file.startsWith(root) || !Files.isRegularFile(file)) throw new java.io.IOException("素材路径越界");
+        return file.toFile();
     }
 
     // v0.30+: locateDemoVideosDir() 已删除。v0.23~v0.29 时用来定位

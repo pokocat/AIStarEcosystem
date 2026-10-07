@@ -37,7 +37,7 @@ class DramaFrameJobServiceTest {
                 .put("status", "rendering").put("created_at", "2026-09-30T02:00:00Z"));
         when(videoJobs.listJobs(eq("u1"), isNull(), isNull(), eq(MaterialVideoJobService.APP_DRAMA))).thenReturn(cards);
         DramaFrameJobService svc = new DramaFrameJobService(frameRepo, mock(MaterialVideoJobRepository.class), videoJobs,
-                mock(DramaFrameJobWorker.class), new DramaFrameProperties(), new MaterialVideoProperties(), OM);
+                mock(DramaFrameJobWorker.class), new DramaFrameProperties(), new MaterialVideoProperties(), OM, com.aistareco.aep.service.cdn.CdnUrlSigner.NOOP);
 
         JsonNode tasks = svc.listTasks("u1", null).path("tasks");
         assertEquals(1, tasks.size(), tasks.toString());

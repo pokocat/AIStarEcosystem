@@ -7,11 +7,21 @@
 > - **角色拆分 `SUPER_ADMIN/OPERATOR → PLATFORM_OPERATOR/FINANCE_ADMIN` 已反向决策不做**（v0.31 改在 `aep_users` 加 `operatorRole` 复用现有命名 — 见 `AGENTS.md` v0.31 B 节）。
 > - v0.7 ~ v0.34 期间累积的新待办见文末「v0.7 ~ v0.34 累积待办」段。
 
+
+## 2026-10-07 · v0.200 接手整合
+
+- [x] ~~名片资产归属遗漏（写入 + 存量公开读）~~ **v0.200 完成，2026-10-07**：CardService 同时校验 avatar、嵌套 key 与旧 URL，新增跨用户与公开读回归。
+- [x] ~~混剪下载保护不完整~~ **v0.200 完成，2026-10-07**：AssetDownloader 拒绝任意本地路径、逐跳检查重定向、固定已校验 DNS；MixcutRenderingService 校验资产归属、路径穿越和符号链接。测试不访问真实内网。
+- [x] ~~发布重试升级兼容旧冻结~~ **v0.200 完成，2026-10-07**：V38 显式补 retry_count；0 次仍使用裸 jobId，重试才加 :rN；成功/失败旧回调和迁移幂等测试覆盖。
+- [x] ~~受保护视频镜像失败空成功、DAP 提交前派发~~ **v0.200 完成，2026-10-07**：整合 #126/#107 有效修复及回归测试。
+- [x] ~~开放 PR 分散、冲突及测试基线不同步~~ **v0.200 完成，2026-10-07**：本地整合 #101/#102/#106–#114/#122/#126/#127；#124 被共享 Storage 设置覆盖；保留旧 worktree 未提交内容。部署结果另以实际 release 为准。
+
+
 ---
 
 ## 2026-10-03 · 例行 QA 巡检
 
-- [x] ~~**发布任务重试免费（revenue loss）**~~ **2026-10-03 完成**：`PublishJobService` 的 hold / commitHold / releaseHold 四处都用裸 `job.getId()` 当 CreditHold referenceId，而 `CreditService.hold` 以 `(referenceType, referenceId)` 幂等、对已存在的终态 hold 也直接返回不再扣。失败 → `releaseHoldOnFailure` 把 hold 置 RELEASED；用户重试（`POST /me/publish/jobs/{id}/retry` 或批量 `retryFailedBatch`）复用同一行 → `startJob` 的 hold 命中已 RELEASED 的终态 hold → 扣 0 分，随后 LIVE 的 commit 因 hold 终态抛 409 被 catch 吞掉 → 重发免费。修复：`PublishJob` 加 `retryCount`（ddl-auto 补列，范式同 `DapJob.retryCount`），四处改用 `jobId:r{retryCount}`，`retry()` 先自增，与 DapJob 的 `:rN` 一致；回归测试 `PublishJobServiceTest#retryMintsFreshHoldReferenceSoItChargesAgain`。
+- [x] ~~**发布任务重试免费（revenue loss）**~~ **2026-10-03 完成**：`PublishJobService` 的 hold / commitHold / releaseHold 四处都用裸 `job.getId()` 当 CreditHold referenceId，而 `CreditService.hold` 以 `(referenceType, referenceId)` 幂等、对已存在的终态 hold 也直接返回不再扣。失败 → `releaseHoldOnFailure` 把 hold 置 RELEASED；用户重试（`POST /me/publish/jobs/{id}/retry` 或批量 `retryFailedBatch`）复用同一行 → `startJob` 的 hold 命中已 RELEASED 的终态 hold → 扣 0 分，随后 LIVE 的 commit 因 hold 终态抛 409 被 catch 吞掉 → 重发免费。修复：`PublishJob` 加 `retryCount`（v0.200 由 V38 显式补列，存量 0），首次继续用裸 `jobId`（兼容旧在途冻结），重试用 `jobId:r{retryCount}`，`retry()` 先自增，与 DapJob 的 `:rN` 一致；回归测试 `PublishJobServiceTest#retryMintsFreshHoldReferenceSoItChargesAgain`。
 
 ## 2026-09-30 · 视频生成区 v0.199 后续（真源 `docs/video-studio-plan.md` §8）
 
@@ -104,7 +114,7 @@
       类内自建、非注入，写 close 断言需改生产代码做依赖注入，收益不抵风险；本轮以编译 + 既有
       assemble 测试（成功路径不回归）+ 代码审阅（t-w-r 覆盖全部退出路径）确认，如实记此限制。
 
-- [ ] **Medium：`DramaShort.payloadJson` 请求线程间并发丢更新（无 `@Version`/行锁）**
+- [x] ~~**Medium：`DramaShort.payloadJson` 请求线程间并发丢更新（无 `@Version`/行锁）**~~ **v0.200 完成，2026-10-07**：整合 #109，worker 写回前在短事务里加锁重读并合并字段。以下为原诊断：
       （本轮复核发现，未修）：`DramaShort` 实体无乐观锁列、仓库无 `@Lock`。多条写路径对整存整取的
       `payloadJson` 做读-改-写：`DramaShortAssembleService.assemble`（读 L104、写回 L118/L239，中间
       隔着数秒 ffmpeg+上传）、`DramaShortService.save`（L293）、`DramaShortAudioService.prepare`
@@ -406,7 +416,7 @@
 - [ ] **P3 · 军师接入**：Fastify 公钥验证（jose）；wx 登录改走账号中心；`externalOwnerId` → uid；`User.identity_uid` 唯一映射，默认个人 Tenant 只建一次（owner 唯一）。
 - [ ] **P4 · 公社会员端接入**：`member` 绑 uid；`app_user` 员工与企微留本地；同一自然人跨员工 / 会员只建显式 `person_link` 供审计，不自动授权。
 - [ ] **P5 · 收尾**：关旧登录端点；统一登出；自助页（改手机 / 绑微信 / 注销）；注销 30 天 reaper 释放手机号；outbox 投递监控；验证码存储从内存换 Redis（多实例前）。
-- [ ] **P2 收尾 · 预发联调**（2026-09-04 待做）：账号中心在 ECS 上线（按 `pokocat/aibuzz-id` 的 `deploy/README.md`，含**在同机装本机自建 Redis** —— 验证码 / 发码限频 / 令牌 denylist 先用它，单实例够用；将来真要跑多实例再换阿里云 Redis）→ server 配 `AEP_ID_ISSUER=https://id.aibuzz.cn` + `AEP_ID_CLIENT_SECRET` → 五个 web app 构建时注入 `NEXT_PUBLIC_AUTH_MODE=id`（`build-release.sh` 已支持）→ 跑一次 `POST /api/admin/identity/import` 导入老用户 → 小程序 `config/env.js` 切 `idBaseUrl`。上线顺序必须是账号中心 → server → 前端，反过来会让前端拿不到令牌。
+- [x] ~~**P2 收尾 · 预发联调**~~ **审计确认，2026-10-07**：本仓 P1/P2 已于 2026-09-05 上线（见 unified-identity-plan.md）；跨仓后续仍按 P3–P5 跟踪。原条目：（2026-09-04 待做）：账号中心在 ECS 上线（按 `pokocat/aibuzz-id` 的 `deploy/README.md`，含**在同机装本机自建 Redis** —— 验证码 / 发码限频 / 令牌 denylist 先用它，单实例够用；将来真要跑多实例再换阿里云 Redis）→ server 配 `AEP_ID_ISSUER=https://id.aibuzz.cn` + `AEP_ID_CLIENT_SECRET` → 五个 web app 构建时注入 `NEXT_PUBLIC_AUTH_MODE=id`（`build-release.sh` 已支持）→ 跑一次 `POST /api/admin/identity/import` 导入老用户 → 小程序 `config/env.js` 切 `idBaseUrl`。上线顺序必须是账号中心 → server → 前端，反过来会让前端拿不到令牌。
 - [ ] **identity · `LEGACY_ADMIN_ROLES` 过渡垫片按期删除**（v0.149）：见上条同名条目，发布 7 天后删（后台令牌 TTL 7d）。
 - [ ] **账号中心侧（`pokocat/aibuzz-id`）· MP（公众号）扫码分支无测试**（v0.149）：`WechatWebLoginTest` 只覆盖 OPEN_WEB；配一个 kind=MP 的测试应用补一条微信内 UA 的用例。`HttpWechatGateway.oauthAccessToken` 未对真 appid 打过。
 - [ ] **账号中心侧（`pokocat/aibuzz-id`）· 未配 Redis 时 Boot 仍自动创建 localhost Lettuce 连接工厂**（v0.149 观察）：惰性连接、不会外呼，但若想干净可在非 Redis 路径 `spring.autoconfigure.exclude` 掉 `RedisAutoConfiguration`。

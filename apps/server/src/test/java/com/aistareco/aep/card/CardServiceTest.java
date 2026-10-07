@@ -55,6 +55,10 @@ class CardServiceTest {
         CdnUrlSigner signer = mock(CdnUrlSigner.class);
         when(signer.signKey(anyString())).thenAnswer(i -> "https://cdn.test/" + i.getArgument(0) + "?sig=1");
         when(signer.maybeSign(anyString())).thenAnswer(i -> i.getArgument(0));
+        when(signer.keyOf(anyString())).thenAnswer(i -> {
+            String value = i.getArgument(0);
+            return value.startsWith("https://cdn.test/") ? value.substring(17).split("\\?")[0] : null;
+        });
         assets = mock(DapAssetService.class);
         when(repo.save(org.mockito.ArgumentMatchers.any(CardProfile.class)))
                 .thenAnswer(i -> i.getArgument(0));
@@ -65,6 +69,8 @@ class CardServiceTest {
         when(refs.resolveMedia(anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(DapAvatarRefResolver.MediaView.EMPTY);
         avatarRepo = mock(DapAvatarRepository.class);
+        when(avatarRepo.findById("DH-2041")).thenReturn(Optional.of(DapAvatar.builder().id("DH-2041").ownerUserId("u1").build()));
+        when(avatarRepo.findById("DH-1")).thenReturn(Optional.of(DapAvatar.builder().id("DH-1").ownerUserId("u1").build()));
         lookRepo = mock(DapLookRepository.class);
         when(lookRepo.findByAvatarIdOrderByCreatedAtDesc(anyString())).thenReturn(List.of());
         return new CardService(repo, signer, OM, assets, refs, avatarRepo, lookRepo);
@@ -88,7 +94,7 @@ class CardServiceTest {
         // 列上的值必须盖过文档里的旧值 —— 短链和登记号的真值在列上。
         assertEquals("bingfeng", wire.get("slug"));
         assertEquals("BC-2041", wire.get("regNo"));
-        assertEquals("2026-09-07", wire.get("updatedAt"));
+        assertEquals("2026-09-07T00:00:00Z", wire.get("updatedAt"));
     }
 
     @Test
@@ -118,12 +124,12 @@ class CardServiceTest {
     @Test
     void cdnKeyDerivesSignedUrlAndKeyIsNotTheContract() {
         CardProfile c = card("k", CardProfile.STATUS_PUBLISHED, null,
-                "{\"figure\":{\"tier\":\"static\",\"ref\":\"look:LK-1\",\"imageKey\":\"card/1.jpg\"}}");
+                "{\"figure\":{\"tier\":\"static\",\"ref\":\"look:LK-1\",\"imageKey\":\"card/u1/1.jpg\"}}");
         Map<String, Object> wire = service(c).publicBySlug("k");
 
         @SuppressWarnings("unchecked")
         Map<String, Object> fig = (Map<String, Object>) wire.get("figure");
-        assertEquals("https://cdn.test/card/1.jpg?sig=1", fig.get("imageUrl"));
+        assertEquals("https://cdn.test/card/u1/1.jpg?sig=1", fig.get("imageUrl"));
         // 引用本身要留着：名片存的是 dapDisplayRef，不是图。
         assertEquals("look:LK-1", fig.get("ref"));
     }
@@ -356,5 +362,39 @@ class CardServiceTest {
         assertFalse(saved.getPayloadJson().contains("posterUrl"), saved.getPayloadJson());
         assertFalse(saved.getPayloadJson().contains("imageUrl"), saved.getPayloadJson());
         assertTrue(saved.getPayloadJson().contains("motionRef"), saved.getPayloadJson());
+    }
+
+    @Test
+    void rejectsForeignAvatarAndNestedAssetKeysOnCreateAndSave() {
+        CardProfile own = card("own", CardProfile.STATUS_DRAFT, null, "{}");
+        CardService s = service(own);
+        when(repo.findById(own.getId())).thenReturn(Optional.of(own));
+        when(avatarRepo.findById("foreign")).thenReturn(Optional.of(DapAvatar.builder().id("foreign").ownerUserId("u2").build()));
+        assertEquals("DAP_AVATAR_NOT_FOUND", assertThrows(BusinessException.class,
+                () -> s.create("u1", "new-card", "foreign", Map.of())).getCode());
+        assertEquals("DAP_AVATAR_NOT_FOUND", assertThrows(BusinessException.class,
+                () -> s.save("u1", own.getId(), null, "foreign", null)).getCode());
+        for (Map<String,Object> doc : List.of(
+                Map.<String,Object>of("company", Map.of("logoKey", "card/u2/private.jpg")),
+                Map.<String,Object>of("company", Map.of("logoUrl", "https://cdn.test/card/u2/private.jpg?old=1")),
+                Map.<String,Object>of("nested", List.of(Map.of("imageKey", "card/u1/../u2/private.jpg"))))) {
+            assertEquals("CARD_ASSET_NOT_OWNED", assertThrows(BusinessException.class,
+                    () -> s.create("u1", "new-card", null, doc)).getCode());
+            assertEquals("CARD_ASSET_NOT_OWNED", assertThrows(BusinessException.class,
+                    () -> s.save("u1", own.getId(), null, null, doc)).getCode());
+        }
+    }
+
+    @Test
+    void legacyPublicCardCannotSignForeignKeysOrResolveForeignAvatar() {
+        CardProfile c = card("legacy", CardProfile.STATUS_PUBLISHED, null,
+                "{\"figure\":{\"ref\":null},\"company\":{\"logoKey\":\"card/u2/private.jpg\"},\"linkUrl\":\"https://cdn.test/card/u2/private.jpg?old=1\"}");
+        c.setAvatarId("foreign");
+        CardService s = service(c);
+        when(avatarRepo.findById("foreign")).thenReturn(Optional.of(DapAvatar.builder().id("foreign").ownerUserId("u2").build()));
+        Map<String,Object> wire = s.publicBySlug("legacy");
+        assertFalse(((Map<?,?>)wire.get("company")).containsKey("logoUrl"));
+        assertFalse(wire.containsKey("linkUrl"));
+        org.mockito.Mockito.verifyNoInteractions(refs);
     }
 }

@@ -30,9 +30,11 @@ class JwtUtilTest {
     void registerTicket_tamperedTokenRejected() {
         JwtUtil jwt = newJwtUtil();
         String ticket = jwt.generateRegisterTicket("13800138000");
-        // 改动签名末位 → 签名校验失败 → null
-        String tampered = ticket.substring(0, ticket.length() - 1)
-                + (ticket.endsWith("a") ? "b" : "a");
+        // Base64URL 末位含未使用的填充位，改字母可能仍解出相同签名字节；改首位才确定篡改。
+        int signatureStart = ticket.lastIndexOf('.') + 1;
+        String tampered = ticket.substring(0, signatureStart)
+                + (ticket.charAt(signatureStart) == 'a' ? 'b' : 'a')
+                + ticket.substring(signatureStart + 1);
         assertNull(jwt.verifyRegisterTicket(tampered));
     }
 

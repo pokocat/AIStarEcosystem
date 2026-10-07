@@ -123,6 +123,12 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- 混剪下载使用可校验并固定 DNS 结果的 HTTP 客户端，避免二次解析绕过 SSRF 闸。 -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
+      <version>4.12.0</version>
+    </dependency>
     <!-- Coze official Java SDK -->
     <dependency>
       <groupId>com.coze</groupId>

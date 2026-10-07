@@ -143,17 +143,34 @@ class PublishJobServiceTest {
         when(jobRepo.findByIdAndUserId(JOB_ID, USER_ID)).thenReturn(Optional.of(j));
         when(accountRepo.findByIdAndUserId(ACCOUNT_ID, USER_ID)).thenReturn(Optional.of(account()));
 
-        svc.startJob(USER_ID, JOB_ID);          // 首次：ref = job1:r0
+        svc.startJob(USER_ID, JOB_ID);          // 首次/升级前在途：ref = job1
         j.setStatus(PublishJobStatus.FAILED);   // 模拟上传失败，置为可重试
         svc.retry(USER_ID, JOB_ID);             // 重试：ref 必须是 job1:r1
 
         org.mockito.ArgumentCaptor<String> refs = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(creditService, times(2)).hold(eq(USER_ID), anyLong(), eq("publish_job_upload"),
                 refs.capture(), anyString());
-        assertEquals(JOB_ID + ":r0", refs.getAllValues().get(0));
+        assertEquals(JOB_ID, refs.getAllValues().get(0));
         assertEquals(JOB_ID + ":r1", refs.getAllValues().get(1));
         assertNotEquals(refs.getAllValues().get(0), refs.getAllValues().get(1),
                 "重试必须用不同的 hold referenceId，否则命中终态 hold 免费重发");
+    }
+
+
+    @Test
+    void preUpgradeInflightCallbacksKeepOriginalHoldReference() {
+        for (String terminal : new String[]{"live", "failed"}) {
+            PublishJob j = job(TRUSTED_VIDEO_URL);
+            j.setStatus(PublishJobStatus.UPLOADING);
+            j.setExternalTaskId("old-" + terminal);
+            j.setCreditsSpent(20L);
+            when(jobRepo.findByExternalTaskId(j.getExternalTaskId())).thenReturn(Optional.of(j));
+            svc.applyCallback(new com.aistareco.aep.dto.PublishJobCallbackDto(
+                    j.getExternalTaskId(), terminal, 100, null, null, null, null));
+        }
+        verify(creditService).commitHold(eq("publish_job_upload"), eq(JOB_ID), eq(20L), anyString());
+        verify(creditService).releaseHold(eq("publish_job_upload"), eq(JOB_ID), anyString());
+        verify(creditService, never()).releaseHold(eq("publish_job_upload"), eq(JOB_ID + ":r0"), anyString());
     }
 
     @Test
