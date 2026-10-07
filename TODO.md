@@ -426,6 +426,16 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
       能整个删掉就别改文案（改了等于给要退役的文件返工）。
 - [ ] **`/studio` 老 SPA（约 11k 行）的文案没过一遍**。它按既有双轨逐屏迁出，
       现在整体重写等于给要退役的代码返工；**迁一屏就顺手按 §8 清一屏**。
+- [x] ~~**`web-star` / `web-music` 三处展示时间戳仍写成 UTC（§4.8 off-by-one）**~~
+      **例行 QA 巡检修复**，2026-09-27：`web-star/src/lib/format.ts` 的 `formatDateTime`
+      （截 ISO 字面串）与 `formatDate`（`slice(0, 10)`）都取的是 UTC 段——晚上八点后落库的
+      记录在 +08 页面显示成前一天且时刻错 8 小时，波及 cooperation / whitelist / ai-likeness /
+      digital-human / brand-auth / infringement / product-library / contracts 等页；
+      `web-music` 的 `FinancePage.tsx`（账本流水日期）与 `AgencyOverview.tsx`（歌曲日期回落
+      `createdAt`）同样 `slice(0, 10)`。修复：两处 `formatDate` 统一走浏览器本地时区
+      （`packages/api-client` 新增共享 `formatDate`，web-star 改为 re-export、web-music 本地
+      lib/format 补同款），带时间的 ISO 先换算到本地再取日；纯日历日（`YYYY-MM-DD` 无时间部分）
+      原样返回，避免西区 `new Date()` 按 UTC 零点解析倒退一天。
 
 ## 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
 
