@@ -211,7 +211,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 手机号是否已验证 —— 真值在令牌里，本地那份只是给 /api/me 用的副本。
         // 缺这个 claim（老版本账号中心签的令牌）按「已验证」处理：微信游客这个概念
         // 是随本次改动一起出现的，更早的令牌不可能属于游客。
-        Boolean claim = jwt.getClaim("phone_verified");
+        // getClaimAsBoolean 而非泛型 getClaim：账号中心若把该 claim 发成非布尔 JSON
+        // （如字符串 "false"），泛型取值处的 (Boolean) 强转会在 try/catch 之外抛
+        // ClassCastException → 每个带此令牌的请求 500。同一次改动里 name/picture 已改用
+        // getClaimAsString 规避同一问题，这里保持一致。缺 claim 仍按「已验证」处理。
+        Boolean claim = jwt.getClaimAsBoolean("phone_verified");
         boolean phoneVerified = claim == null || claim;
         // 昵称与头像同样以账号中心为准（OIDC 标准 claim）。本地 displayName / avatarUrl
         // 以前没有任何来源，界面只能显示 JIT 建档时那串 id_xxxx，或各产品自己编一个。
