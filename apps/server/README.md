@@ -822,3 +822,14 @@ HS256，所以 legacy 定义上不可能是游客）。标记缺失（内部服�
 |---|---|---|
 | `AEP_ENROLLMENT_ENFORCE` | `true`（含生产） | 后端是否真拦。**只允许测试关闭** —— 生产关掉等同把子产品隔离退回纯前端拦截 |
 | `AEP_AUTH_LEGACY_ADMIN_ROLES_ENABLED` | `false` | v0.149 之前签发的后台令牌（没有 `typ=admin`）是否仍按后台身份放行。默认关：部署后管理员重新登录一次即可，代价极小；开着则任何持有旧格式令牌的人都能进 `/api/admin/**`（v0.150） |
+
+
+### v0.201 · 2026-10-07 · 画布历史恢复与云端素材
+
+生成结果重新打开后只能看到最新候选，旧 `adhoc` 运行没有可见入口；「加入我的资产」只写浏览器 IndexedDB，顶部资产页无法找到。新增完整运行历史（30 条分页）、最近 50 个画布内容版本与恢复入口、云端画布素材（图片/视频/文本）。历史成图与提示词可恢复到画布，无须重新生成或扣费；新运行另保留原始指令。项目卡自动从本人图片取封面。
+
+V39 新增 `ip_project_revision` / `ip_saved_asset`，项目文档 TEXT 扩为 LONGTEXT，与既有 2MB 上限一致。版本与当前文档同事务，PUT 行锁串行检查指纹；素材按本人内容幂等，owner 行锁防并发重复。只保存 key，读取重签；删除素材条目不删除被文档/历史共用的原件。旧浏览器中有本人 key 的素材迁移到云端，未能确认归属的文本/data URL 不自动导入。
+
+离开画布的导航先等待保存，保存失败留在画布并允许重试；在途失败不自动再次发 PUT，避免无限重试和错误基线。节点内容同步提前到 layout effect，候选图加载失败强制重签一次并给出明确重试入口。版本记录从更新后开始；旧操作不能凭空补造，既有生成记录直接可查。
+
+接口：`GET /api/v1/ip-studio/projects/{id}/runs?page=0`；`GET projects/{id}/history`；`GET projects/{id}/history/{revisionId}`；`GET|POST /api/v1/ip-studio/saved-assets`；`DELETE saved-assets/{id}`。恢复整版沿用项目 PUT 与 `baseDocVersion`。运行历史、版本与素材均只允许属主访问。

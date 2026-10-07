@@ -239,7 +239,7 @@ describe("saveNow 给调用方一个能据以决策的结果", () => {
 });
 
 describe("在途时的 saveNow 不许把「排队了」当成「存好了」", () => {
-  it("一直存不上就返回 failed（并且只补存一次，不是死循环重试）", async () => {
+  it("在途保存失败就返回 failed，不自动再发请求", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc });
     let rejectSave: (e: unknown) => void = () => {};
     updateProjectMock.mockReset();
@@ -259,8 +259,8 @@ describe("在途时的 saveNow 不许把「排队了」当成「存好了」", (
     expect(outcome).toBeUndefined();
     await act(async () => { rejectSave(new Error("网络断了")); await pending; });
     expect(outcome).toBe("failed");
-    // 第一次失败会把「还没存上」重新标脏，所以补存一次；再失败就如实回报，不无限重试
-    expect(updateProjectMock).toHaveBeenCalledTimes(2);
+    // 失败由用户明确重试，导航/发布不自动重发。
+    expect(updateProjectMock).toHaveBeenCalledTimes(1);
   });
 
   it("在途那次成功了就返回 saved（不再多存一次）", async () => {

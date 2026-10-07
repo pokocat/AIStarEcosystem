@@ -22,6 +22,8 @@ import { serverModelsLoaded } from "@/canvas-bridge/models";
 import { useHostActions } from "@/canvas-bridge/host-actions";
 import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
+import { ProjectHistory } from "@/ip/project-history";
+import { useAssetStore } from "@/canvas/stores/use-asset-store";
 import { LastRunPanel } from "@/ip/last-run-panel";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { looksAutoTitled } from "@/canvas-bridge/node-title";
@@ -54,6 +56,7 @@ function Host({ projectId }: { projectId: string }) {
   // 一键生效、无复核、素材还复制进平台自有存储。与服务端
   // InAppOperatorGuard.requireSuperAdmin 对齐 —— 两边不一致的话，
   // 运营会看到一个点了必然 403 的按钮。
+  React.useEffect(() => { const store = useAssetStore.getState(); store.reset(); void store.loadAssets(); return () => store.reset(); }, [identity?.uid]);
   const isOperator = isSuperAdminRole(identity?.operatorRole);
   const [savingDemo, setSavingDemo] = React.useState(false);
   // 画布当前标题（画布 store 是这份的真值，顶栏改名改的也是它）
@@ -128,6 +131,27 @@ function Host({ projectId }: { projectId: string }) {
     }
   }, [projectId, saveNow, message, demoName, demoSummary, demoKind, demoTarget]);
 
+  React.useEffect(() => {
+    if (state !== "ready") return;
+    let leaving = false;
+    const guard = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!target || target.target === "_blank" || target.hasAttribute("download")) return;
+      const dest = new URL(target.href, window.location.href);
+      if (dest.origin !== window.location.origin || dest.pathname === window.location.pathname) return;
+      event.preventDefault(); event.stopPropagation();
+      if (leaving) return;
+      leaving = true;
+      void saveNow().then((outcome) => {
+        if (outcome === "failed" || outcome === "conflict") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
+        else window.location.assign(dest.href);
+      }).catch(() => { message.error("画布保存失败，请重试"); leaving = false; });
+    };
+    document.addEventListener("click", guard, true);
+    return () => document.removeEventListener("click", guard, true);
+  }, [state, saveNow, message]);
+
   // 捏合 / Ctrl+滚轮 只缩放画布，不缩放整个网站。
   //
   // 画布自己在容器上挡了滚轮，但放过了 `[data-canvas-no-zoom]`、antd 弹层这些区域
@@ -172,6 +196,7 @@ function Host({ projectId }: { projectId: string }) {
   // 画布还没加载完时插槽内容也无所谓，反正顶栏那会儿还没渲染。
   useHostActions(
     <>
+      <ProjectHistory projectId={projectId} saveNow={saveNow} />
       <LastRunPanel />
       {isOperator && (
         <button

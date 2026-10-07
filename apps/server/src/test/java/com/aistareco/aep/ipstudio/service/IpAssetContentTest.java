@@ -27,7 +27,7 @@ class IpAssetContentTest {
     private final IpProjectService svc = new IpProjectService(
             new IpStudioFixtures.Projects().repo, new IpStudioFixtures.Runs().repo,
             new IpCatalogService(IpStudioFixtures.OM), IpStudioFixtures.templateResolver(),
-            storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), IpStudioFixtures.OM);
+            storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), IpStudioFixtures.OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
 
     private Path tempWith(byte[] bytes) throws Exception {
         Path f = Files.createTempFile("ip-asset", ".bin");

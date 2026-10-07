@@ -2,7 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
-> last-reviewed：2026-10-07 / v0.200 接手整合，V38 发布重试与资产归属、下载边界修复（见 VERSION_HISTORY.md）
+> last-reviewed：2026-10-07 / v0.201 画布历史恢复、云端画布素材，V39（见 VERSION_HISTORY.md）
 > last-reviewed：2026-05-29 / v0.41 合并「AI 模型」+「外部 API Token」为「模型接入端点 + Token」+ AI 应用绑定
 > last-reviewed：2026-05-23 / v0.5.4
 > last-reviewed：2026-05-21 / v0.21 混剪 / 分发用户视角文案 + 视频库（软删 30 天）+ 官方明星片段
@@ -45,7 +45,7 @@
 | [`docs/[Fabel5]drama-consistency-engine-design.md`](%5BFabel5%5Ddrama-consistency-engine-design.md) | AI 短剧（一致性引擎） | 一致性引擎实现级设计（C-1 / D-11 / C-2 / C-3）：末帧 CDN 镜像 + applied_refs 回报 / 一用途多候选端点 + capability / 角色场景实体化 + 三视图 / 服务端参考装配；含 file:line 锚点、失败语义、门禁与冲突点裁决输入（last-reviewed 2026-07-10，C-1 已落地） |
 | [`docs/payment-billing-audit-2026-07.md`](payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本（全栈审计） | 充值·支付网关·账本·业务扣费·对账·退款·风控 全面审计报告 + 落地方案台账：33 项 Findings（2 P0 / 8 P1）+ 决策台账 D1-D8 + T1-T17 分波次 Task 卡（带 file:line + 验收断言）；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
 | [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md) | AiAvatar 平台（产品定位规划） | [fable5] 从「数字人生产工具」到「AI 数字资产平台」的定位跃迁方案：五方向（资产宇宙 / 权利层确权授权分成 / 市场流通 / Asset-as-a-Service 调用层 / 组合打包）+ P0-P3 路线图 + 现状事实速查；仅方案未改造，供后续执行 agent 作工作输入（last-reviewed 2026-07-09） |
-| [`docs/ip-studio-plan.md`](ip-studio-plan.md) | **AI IP 工作台设计真源**（前端 v0.190 起并入 `apps/web-aiavatar`） | 个人照片 + 内置工作流 → 稳定产出同一人物同一风格的 AI IP 形象组，发布为 AiAvatar 资产（`DapAvatar` + `DapLook`）。决策：共用 aiavatar 开通；⚠️ §0 里「新桌面子应用」与「React Flow 画布」两条**均已被后续版本推翻** —— v0.157 改为整体 vendor infinite-canvas，v0.190 并回 web-aiavatar、全部复用 dap 生成链；§2 节点/运行契约、§3 五层一致性锁定、§4 服务端、§9 并行分工与文件所有权（last-reviewed 2026-09-06，v0.151） |
+| [`docs/ip-studio-plan.md`](ip-studio-plan.md) | **AI IP 工作台设计真源**（前端 v0.190 起并入 `apps/web-aiavatar`） | 个人照片 + 内置工作流 → 稳定产出同一人物同一风格的 AI IP 形象组，发布为 AiAvatar 资产（`DapAvatar` + `DapLook`）。决策：共用 aiavatar 开通；⚠️ §0 里「新桌面子应用」与「React Flow 画布」两条**均已被后续版本推翻** —— v0.157 改为整体 vendor infinite-canvas，v0.190 并回 web-aiavatar、全部复用 dap 生成链；§2 节点/运行契约、§3 五层一致性锁定、§4 服务端、§9 并行分工与文件所有权；v0.201 完整生成记录 / 版本恢复 / 云端画布素材（last-reviewed 2026-10-07） |
 | [`docs/ip-ecosystem-integration.md`](ip-ecosystem-integration.md) | **IP 工作台 / 数字资产 / 数字名片 整合方案** | 一条链：造形象 → 登记资产 → 对外发布。§2 打通只靠 `dapDisplayRef` + `DapAssetUsage` 两样现成东西、§3 内置工作流模板「IP 打造」（`ip-launch-female` / `ip-launch-male`，装扮 3 + 表情 3；短动作要发布后到 dap 里跑，画布跑不了）、§4 用户动线、§5 需新增项、§6 三条红线（last-reviewed 2026-09-07） |
 | [`docs/digital-business-card-plan.md`](digital-business-card-plan.md) | **AI 数字名片（`apps/web-aiavatar` 下 `/card` 域）方案真源** | 见客户递一条链接就把人说清楚。一期只做门面（扫码即看 / 形象三档 / 存通讯录），交换与名片夹挂二期。§3 不发新产品码（`/api/v1/**` 兜底到 aiavatar）、§5 形象走 `dapDisplayRef` 引用不拷贝、§6 与 dap / IP 工作台的职责边界、§8 视频层叠三方案与交付清单、§9 需新增项（last-reviewed 2026-09-07） |
 | [`docs/ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) | **IP 工作台通用化提案（v0.153 已落地）** | 形象卡五字段（outfit/pose/expression/details/props）在服务端只是按序拼成一串文本，拆分对出图无增益；改为「一个提示词框 + 内置模板库」，五层一致性锁定与计费纪律不动，零迁移（老画布读取回落）。文末有落地记录（last-reviewed 2026-09-07） |

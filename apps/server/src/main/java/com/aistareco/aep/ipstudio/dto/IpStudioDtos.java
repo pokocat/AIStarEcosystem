@@ -21,6 +21,9 @@ public final class IpStudioDtos {
 
     private IpStudioDtos() {}
 
+    public record IpRevisionDto(String id,String name,String createdAt,int nodeCount) {}
+    public record IpRevisionDetailDto(String name,JsonNode doc) {}
+
     /** 项目卡（列表用）。 */
     public record IpProjectSummaryDto(String id, String name, String templateId, String status,
                                       String coverUrl, String publishedAvatarId,

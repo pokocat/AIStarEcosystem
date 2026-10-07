@@ -4,6 +4,7 @@
 //   人物与形象（自建 + 明星授权给我的）/ 声音 / 素材库
 // ============================================================
 import React from "react";
+import { SavedCanvasAssets } from "@/ip/saved-canvas-assets";
 import Link from "next/link";
 import { AssetApi, AvatarApi, LicenseApi, VoiceApi } from "@/proto/api";
 import type { AssetSummary, Avatar, License, StarGrant, VoiceAsset } from "@/proto/data";
@@ -68,6 +69,7 @@ export function AssetsLibrary() {
         }
       />
 
+      <SavedCanvasAssets />
       <div style={{ margin: "6px 16px 0" }}>
         <SectionHeader
           title="人物与形象"

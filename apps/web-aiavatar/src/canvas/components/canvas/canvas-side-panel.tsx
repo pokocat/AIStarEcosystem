@@ -13,6 +13,7 @@ import { PromptDetailDialog } from "@/canvas/pages/prompts/components/prompt-det
 import { fetchPrompts, type Prompt } from "@/canvas-bridge/prompts";
 import { uploadImage } from "@/canvas-bridge/image-storage";
 import { isSupportedUploadImage, UPLOAD_ACCEPT } from "@/canvas/lib/canvas/canvas-generation-helpers";
+import { SignedImage } from "@/canvas-bridge/signed-image";
 import { useAssetStore, type Asset, type AssetKind } from "@/canvas/stores/use-asset-store";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/canvas/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
@@ -311,6 +312,9 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
     const { message } = App.useApp();
     const { t } = useTranslation();
     const assets = useAssetStore((state) => state.assets);
+    const loading = useAssetStore((state) => state.loading);
+    const error = useAssetStore((state) => state.error);
+    const loadAssets = useAssetStore((state) => state.loadAssets);
     const addAsset = useAssetStore((state) => state.addAsset);
     const removeAsset = useAssetStore((state) => state.removeAsset);
     const [keyword, setKeyword] = useState("");
@@ -340,7 +344,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
             for (const file of files) {
                 if (isSupportedUploadImage(file)) {
                     const image = await uploadImage(file);
-                    addAsset({ kind: "image", title: file.name || t("assets.kinds.image"), coverUrl: image.url, tags: [], data: { dataUrl: image.url, storageKey: image.storageKey, width: image.width, height: image.height, bytes: image.bytes, mimeType: image.mimeType } });
+                    await addAsset({ kind: "image", title: file.name || t("assets.kinds.image"), coverUrl: image.url, tags: [], data: { dataUrl: image.url, storageKey: image.storageKey, width: image.width, height: image.height, bytes: image.bytes, mimeType: image.mimeType } });
                     added += 1;
                 }
             }
@@ -386,7 +390,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
                 </div>
             ) : null}
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-                {groups.length ? (
+                {loading ? <p className="px-2 py-4 text-xs">正在加载素材…</p> : error ? <div role="alert" className="px-2 py-4 text-xs">{error} <button onClick={() => void loadAssets()}>重试</button></div> : groups.length ? (
                     <div className="space-y-1">
                         {groups.map((group) => {
                             const isCollapsed = collapsed[group.kind];
@@ -405,7 +409,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onI
                                     {isCollapsed ? null : (
                                         <div className="grid grid-cols-2 gap-2 px-1 pb-2 pt-1">
                                             {group.items.map((asset) => (
-                                                <AssetCard key={asset.id} asset={asset} theme={theme} onInsert={() => onInsert(buildInsertPayload(asset))} onRemove={() => (removeAsset(asset.id), message.success(t("canvas.sidePanel.assetRemoved")))} />
+                                                <AssetCard key={asset.id} asset={asset} theme={theme} onInsert={() => onInsert(buildInsertPayload(asset))} onRemove={async () => { try { await removeAsset(asset.id); message.success(t("canvas.sidePanel.assetRemoved")); } catch (e) { message.error(e instanceof Error ? e.message : "素材删除失败，请重试"); } }} />
                                             ))}
                                         </div>
                                     )}
@@ -455,7 +459,7 @@ function AssetCover({ asset }: { asset: Asset }) {
         if (asset.coverUrl) return <img src={asset.coverUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
         return <video src={`${asset.data.url}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
     }
-    return <img src={asset.coverUrl || asset.data.dataUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
+    return <SignedImage storageKey={asset.data.storageKey} src={asset.coverUrl || asset.data.dataUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
 }
 
 // ---------------------------------------------------------------------------

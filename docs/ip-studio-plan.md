@@ -338,3 +338,14 @@ H2 dev 下 `ddl-auto=update` 也会建表，迁移需与 H2 方言兼容（LONGT
 | 派发时机 | 未写 | `afterCommit` | 真联调发现事务内派发任务永远 queued |
 | 月度赠额 | 未写 | hold 前 `DapAccountService.ensureMonthlyGrant`（同 `DapJobService.submit`） | 同一钱包，否则未领赠额的用户误报 402 |
 | 前端 | — | `count===1` 自动定稿；「运行全部」首个失败即停；「设为主形象」可取消；积分余额 best-effort | 见 `apps/web-ipstudio/README.md` |
+
+
+### v0.201 · 2026-10-07 · 画布历史恢复与云端素材
+
+生成结果重新打开后只能看到最新候选，旧 `adhoc` 运行没有可见入口；「加入我的资产」只写浏览器 IndexedDB，顶部资产页无法找到。新增完整运行历史（30 条分页）、最近 50 个画布内容版本与恢复入口、云端画布素材（图片/视频/文本）。历史成图与提示词可恢复到画布，无须重新生成或扣费；新运行另保留原始指令。项目卡自动从本人图片取封面。
+
+V39 新增 `ip_project_revision` / `ip_saved_asset`，项目文档 TEXT 扩为 LONGTEXT，与既有 2MB 上限一致。版本与当前文档同事务，PUT 行锁串行检查指纹；素材按本人内容幂等，owner 行锁防并发重复。只保存 key，读取重签；删除素材条目不删除被文档/历史共用的原件。旧浏览器中有本人 key 的素材迁移到云端，未能确认归属的文本/data URL 不自动导入。
+
+离开画布的导航先等待保存，保存失败留在画布并允许重试；在途失败不自动再次发 PUT，避免无限重试和错误基线。节点内容同步提前到 layout effect，候选图加载失败强制重签一次并给出明确重试入口。版本记录从更新后开始；旧操作不能凭空补造，既有生成记录直接可查。
+
+接口：`GET /api/v1/ip-studio/projects/{id}/runs?page=0`；`GET projects/{id}/history`；`GET projects/{id}/history/{revisionId}`；`GET|POST /api/v1/ip-studio/saved-assets`；`DELETE saved-assets/{id}`。恢复整版沿用项目 PUT 与 `baseDocVersion`。运行历史、版本与素材均只允许属主访问。

@@ -63,7 +63,7 @@ class IpDemoTemplateStripTest {
     private final IpProjectService projects = new IpProjectService(
             new IpStudioFixtures.Projects().repo, new IpStudioFixtures.Runs().repo,
             new IpCatalogService(IpStudioFixtures.OM), IpStudioFixtures.templateResolver(),
-            storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), IpStudioFixtures.OM);
+            storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), IpStudioFixtures.OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
 
     /** 一份「跑完了的」画布：一个出过图的图节点 + 一个正文文字节点 + 一个出过片的视频节点。 */
     private ObjectNode busyDoc() {
@@ -120,7 +120,7 @@ class IpDemoTemplateStripTest {
         IpProjectService ps = new IpProjectService(
                 projRepo.repo, new IpStudioFixtures.Runs().repo,
                 new IpCatalogService(IpStudioFixtures.OM), IpStudioFixtures.templateResolver(),
-                storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), IpStudioFixtures.OM);
+                storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), IpStudioFixtures.OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
         when(demoRepo.findById(anyString())).thenReturn(Optional.empty());
         when(demoRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         return new IpDemoTemplateService(demoRepo, ps, storage, IpStudioFixtures.OM);

@@ -66,6 +66,7 @@ public class IpProjectService {
     private final com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs;
     private final IpStudioProperties props;
     private final ObjectMapper om;
+    private final com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions;
 
     public IpProjectService(IpProjectRepository projectRepo,
                            IpRunRepository runRepo,
@@ -74,7 +75,7 @@ public class IpProjectService {
                            FileStorageService storage,
                            IpStudioProperties props,
                            com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs,
-                           ObjectMapper om) {
+                           ObjectMapper om, com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions) {
         this.projectRepo = projectRepo;
         this.runRepo = runRepo;
         this.catalog = catalog;
@@ -83,6 +84,7 @@ public class IpProjectService {
         this.props = props;
         this.videoJobs = videoJobs;
         this.om = om;
+        this.revisions = revisions;
     }
 
     // ── 查询 ──────────────────────────────────────────────────
@@ -147,7 +149,7 @@ public class IpProjectService {
 
     @Transactional
     public IpProjectDto update(String userId, String id, IpUpdateProjectRequest req) {
-        IpProject p = required(userId, id);
+        IpProject p = requiredForUpdate(userId, id);
         applyUpdate(p, req);
         projectRepo.save(p);
         return toDetail(p);
@@ -160,6 +162,8 @@ public class IpProjectService {
     void applyUpdate(IpProject p, IpUpdateProjectRequest req) {
         if (req == null) return;
         requireNotStale(p, req.baseDocVersion());
+        String previousDoc = p.getDocJson();
+        String previousName = p.getName();
         String name = trimToNull(req.name());
         if (name != null) p.setName(name.length() > 128 ? name.substring(0, 128) : name);
         if (req.doc() != null && !req.doc().isNull()) {
@@ -173,7 +177,45 @@ public class IpProjectService {
             }
             p.setDocJson(json);
         }
+        if (!previousName.equals(p.getName()) || !contentOf(previousDoc).equals(contentOf(p.getDocJson()))) {
+            revisions.save(com.aistareco.aep.ipstudio.model.IpProjectRevision.builder()
+                .id("IPV-" + UUID.randomUUID().toString().replace("-", "").substring(0,24))
+                .projectId(p.getId()).name(previousName).docJson(cleanRevisionDoc(previousDoc)).createdAt(Instant.now()).build());
+            var older = revisions.findByProjectIdOrderByCreatedAtDesc(p.getId());
+            if (older.size() > 50) revisions.deleteAll(older.subList(50, older.size()));
+        }
         p.setUpdatedAt(Instant.now());
+    }
+
+    private String cleanRevisionDoc(String json) {
+        JsonNode doc = parseOrEmptyObject(json);
+        stripDerivedUrls(doc);
+        return writeDoc(doc);
+    }
+
+    private JsonNode contentOf(String json) {
+        JsonNode d = parseOrEmptyObject(json);
+        return om.createObjectNode().set("content", om.createArrayNode().add(d.path("nodes")).add(d.path("connections")));
+    }
+
+    public List<com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRevisionDto> history(String userId, String id) {
+        required(userId,id);
+        return revisions.findByProjectIdOrderByCreatedAtDesc(id).stream().map(r ->
+            new com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRevisionDto(r.getId(),r.getName(),iso(r.getCreatedAt()),
+                parseOrEmptyObject(r.getDocJson()).path("nodes").size())).toList();
+    }
+
+    public com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRevisionDetailDto revision(String userId, String id, String revisionId) {
+        required(userId,id);
+        var r = revisions.findByIdAndProjectId(revisionId,id).orElseThrow(() -> BusinessException.notFound("IP_REVISION_NOT_FOUND","这个历史版本不存在"));
+        return new com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRevisionDetailDto(r.getName(),resignDocAssetUrls(parseOrEmptyObject(r.getDocJson()),userId));
+    }
+
+    public org.springframework.data.domain.Page<IpRunDto> runHistory(String userId,String id,int page) {
+        required(userId,id);
+        var result = runRepo.findByProjectId(id,org.springframework.data.domain.PageRequest.of(Math.max(0,page),30,
+            org.springframework.data.domain.Sort.by("createdAt","id").descending()));
+        return result.map(this::toRunDto);
     }
 
     @Transactional
@@ -434,9 +476,24 @@ public class IpProjectService {
 
     // ── DTO ───────────────────────────────────────────────────
 
+    private String coverUrl(IpProject p) {
+        String key = p.getCoverKey();
+        if (key == null) {
+            for (JsonNode n : IpDocs.nodes(readDoc(p))) {
+                if (!"image".equals(n.path("type").asText())) continue;
+                String k = IpDocs.text(IpDocs.metadataOf(n),"storageKey");
+                if (k != null && ownsAssetKey(p.getOwnerUserId(),k)) {
+                    key = k;
+                    if (IpDocs.text(IpDocs.metadataOf(n),"runId") != null) break;
+                }
+            }
+        }
+        return key == null ? null : storage.signedUrl(key);
+    }
+
     IpProjectSummaryDto toSummary(IpProject p) {
         return new IpProjectSummaryDto(p.getId(), p.getName(), p.getTemplateId(), p.getStatus(),
-                p.getCoverKey() == null ? null : storage.signedUrl(p.getCoverKey()),
+                coverUrl(p),
                 p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()));
     }
 
@@ -444,7 +501,7 @@ public class IpProjectService {
         JsonNode doc = resignDocAssetUrls(readDoc(p), p.getOwnerUserId());
         RunsProjection runs = projectRuns(p.getId(), doc);
         return new IpProjectDto(p.getId(), p.getName(), p.getTemplateId(), p.getStatus(),
-                p.getCoverKey() == null ? null : storage.signedUrl(p.getCoverKey()),
+                coverUrl(p),
                 p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()),
                 docVersion(p.getDocJson()),
                 doc, runs.runs(), runs.runsById());

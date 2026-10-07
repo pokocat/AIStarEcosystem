@@ -62,7 +62,7 @@ class IpPublishServiceTest {
         versionCalls = new ArrayList<>();
 
         IpProjectService projectService = new IpProjectService(projects.repo, runs.repo,
-                new IpCatalogService(OM), IpStudioFixtures.templateResolver(), IpStudioFixtures.storage(), IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM);
+                new IpCatalogService(OM), IpStudioFixtures.templateResolver(), IpStudioFixtures.storage(), IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
 
         DapAvatarService avatars = mock(DapAvatarService.class);
         when(avatars.uniqueId(anyString())).thenReturn("DH-51234");

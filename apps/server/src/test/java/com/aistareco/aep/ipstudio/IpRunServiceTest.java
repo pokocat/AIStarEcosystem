@@ -73,7 +73,7 @@ class IpRunServiceTest {
         storage = IpStudioFixtures.storage();
         IpCatalogService catalog = new IpCatalogService(OM);
         projectService = new IpProjectService(projects.repo, runs.repo, catalog, IpStudioFixtures.templateResolver(), storage,
-                IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM);
+                IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
 
         prompts = mock(PromptService.class);
         when(prompts.resolve(anyString())).thenAnswer(inv -> resourcePrompt(inv.getArgument(0, String.class)));

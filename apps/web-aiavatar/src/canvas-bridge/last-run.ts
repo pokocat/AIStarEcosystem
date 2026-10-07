@@ -36,7 +36,7 @@ export function recordRun(run: IpRun): void {
   const inputs = run.inputs ?? {};
   useLastRun.getState().set({
     id: run.id,
-    at: Date.now(),
+    at: Date.parse(run.createdAt) || Date.now(),
     prompt: inputs.prompt ?? "",
     refs: (inputs.refs ?? []).map((r) => ({
       note: r.note?.trim() || "参考图",

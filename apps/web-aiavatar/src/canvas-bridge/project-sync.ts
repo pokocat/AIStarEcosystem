@@ -16,6 +16,7 @@ import { useCanvasStore, type CanvasProject } from "@/canvas/stores/canvas/use-c
 import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/canvas/types/canvas";
 import { IpStudioApi } from "@/ip/api";
 import { setCurrentProjectId } from "./api";
+import { recordRun, useLastRun } from "./last-run";
 import { loadServerModels } from "./models";
 
 const SAVE_DEBOUNCE_MS = 900;
@@ -247,6 +248,7 @@ export function useProjectSync(projectId: string) {
     setSaveState("idle");
     setPublishedAvatarId(null);
     setCurrentProjectId(projectId);
+    useLastRun.getState().set(null);
 
     // 模型候选与项目并行拉：拿不到不拦着人打开画布（只是生成不可用，画布会自己说）。
     // 这一步在 v0.157~v0.159 之间是缺的 —— 画布下拉里于是一直是上游那几个我们没有的模型名，
@@ -275,6 +277,8 @@ export function useProjectSync(projectId: string) {
           deletedProjects: [],
           hydrated: true,
         });
+        const last = Object.values(p.runsById ?? p.runs ?? {}).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+        if (last) recordRun(last);
         baseRef.current = p.docVersion ?? null;
         setPublishedAvatarId(p.publishedAvatarId ?? null);
         loadedRef.current = true;
@@ -369,7 +373,7 @@ export function useProjectSync(projectId: string) {
     if (conflictRef.current) return Promise.resolve({ outcome: "conflict" });
     if (!loadedRef.current) return Promise.resolve({ outcome: "nothing-to-save" });
     const inFlight = inFlightRef.current;
-    if (inFlight) return inFlight.then((r) => (dirtyRef.current || inFlightRef.current ? flushResult() : r));
+    if (inFlight) return inFlight.then((r) => (r.outcome === "saved" && (dirtyRef.current || inFlightRef.current) ? flushResult() : r));
     // 没有待存的改动就别白发一次 PUT（比如：发布前刚 saveNow 过，紧接着防抖计时器又到点）。
     // 「服务端已经有这份内容了」对调用方来说和「刚存好」是一个意思。
     if (!dirtyRef.current) return Promise.resolve({ outcome: "nothing-to-save" });
@@ -398,7 +402,7 @@ export function useProjectSync(projectId: string) {
     const inFlight = inFlightRef.current;
     dirtyRef.current = false;
     void (inFlight
-      ? inFlight.then((r) => put({ ...snap, base: r.docVersion ?? snap.base }, epoch))
+      ? inFlight.then((r) => r.outcome === "saved" ? put({ ...snap, base: r.docVersion ?? snap.base }, epoch) : r)
       : put(snap, epoch));
   }, [put, snapshot]);
 

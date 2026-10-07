@@ -1,105 +1,47 @@
+// 本仓：云端保存，服务端返回成功后才能提示「加入我的资产」。不再把 IndexedDB 当真值。
 import { create } from "zustand";
-import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
-
-import { nanoid } from "nanoid";
-import { localForageStorage } from "@/canvas/lib/localforage-storage";
-import { cleanupUnusedImages, resolveImageUrl, uploadImage } from "@/canvas-bridge/image-storage";
-import { cleanupUnusedMedia, resolveMediaUrl } from "@/canvas-bridge/file-storage";
-
-export type AssetKind = "text" | "image" | "video";
-export type TextAsset = AssetBase<"text"> & { data: { content: string } };
-export type ImageAsset = AssetBase<"image"> & { data: { dataUrl: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
-export type VideoAsset = AssetBase<"video"> & { data: { url: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
-export type Asset = TextAsset | ImageAsset | VideoAsset;
-
-type AssetBase<T extends AssetKind> = {
-    id: string;
-    kind: T;
-    title: string;
-    coverUrl: string;
-    tags: string[];
-    source?: string;
-    note?: string;
-    createdAt: string;
-    updatedAt: string;
-    metadata?: Record<string, unknown>;
-};
-
+import { listSavedAssets, saveAsset, deleteSavedAsset, type SavedAssetInput } from "@/canvas-bridge/saved-assets";
+import { uploadImage } from "@/canvas-bridge/image-storage";
+import type { IpSavedAsset } from "@ai-star-eco/types";
+export type { IpSavedAssetKind as AssetKind, IpTextAsset as TextAsset, IpImageAsset as ImageAsset, IpVideoAsset as VideoAsset } from "@ai-star-eco/types";
+export type Asset = IpSavedAsset;
 type AssetStore = {
-    hydrated: boolean;
-    assets: Asset[];
-    addAsset: (asset: Omit<Asset, "id" | "createdAt" | "updatedAt">) => string;
-    updateAsset: (id: string, patch: Partial<Omit<Asset, "id" | "createdAt">>) => void;
-    removeAsset: (id: string) => void;
-    replaceAssets: (assets: Asset[]) => void;
-    cleanupImages: (extra?: unknown) => void;
+  hydrated: boolean; loading: boolean; error: string | null; assets: Asset[];
+  loadAssets: () => Promise<void>; reset: () => void;
+  addAsset: (asset: SavedAssetInput) => Promise<string>;
+  removeAsset: (id: string) => Promise<void>;
+  cleanupImages: (extra?: unknown) => void;
 };
-
-const ASSET_STORE_KEY = "infinite-canvas:asset_store";
-
-const assetStorage: PersistStorage<AssetStore> = {
-    getItem: async (name) => {
-        const value = await localForageStorage.getItem(name);
-        if (!value) return null;
-        const parsed = JSON.parse(value) as StorageValue<AssetStore>;
-        parsed.state.assets = await Promise.all(
-            parsed.state.assets.map(async (asset) => {
-                if (asset.kind === "video" && asset.data.storageKey) return { ...asset, data: { ...asset.data, url: await resolveMediaUrl(asset.data.storageKey, asset.data.url) } };
-                if (asset.kind !== "image") return asset;
-                if (asset.data.storageKey)
-                    return {
-                        ...asset,
-                        coverUrl: asset.coverUrl.startsWith("blob:") ? await resolveImageUrl(asset.data.storageKey, asset.coverUrl) : asset.coverUrl,
-                        data: { ...asset.data, dataUrl: await resolveImageUrl(asset.data.storageKey, asset.data.dataUrl) },
-                    };
-                if (!asset.data.dataUrl.startsWith("data:image/")) return asset;
-                const image = await uploadImage(asset.data.dataUrl);
-                return { ...asset, coverUrl: asset.coverUrl.startsWith("data:image/") ? image.url : asset.coverUrl, data: { ...asset.data, dataUrl: image.url, storageKey: image.storageKey, bytes: image.bytes, mimeType: image.mimeType } };
-            }),
-        );
-        return parsed;
-    },
-    setItem: (name, value) => localForageStorage.setItem(name, JSON.stringify(value)),
-    removeItem: (name) => localForageStorage.removeItem(name),
-};
-
-export const useAssetStore = create<AssetStore>()(
-    persist(
-        (set, get) => ({
-            hydrated: false,
-            assets: [],
-            addAsset: (asset) => {
-                const now = new Date().toISOString();
-                const id = nanoid();
-                set((state) => ({ assets: [{ ...asset, id, createdAt: now, updatedAt: now } as Asset, ...state.assets] }));
-                return id;
-            },
-            updateAsset: (id, patch) =>
-                set((state) => ({
-                    assets: state.assets.map((asset) => (asset.id === id ? ({ ...asset, ...patch, updatedAt: new Date().toISOString() } as Asset) : asset)),
-                })),
-            removeAsset: (id) =>
-                set((state) => {
-                    const assets = state.assets.filter((asset) => asset.id !== id);
-                    get().cleanupImages({ assets });
-                    return { assets };
-                }),
-            replaceAssets: (assets) => set({ assets }),
-            cleanupImages: (extra) => {
-                window.setTimeout(async () => {
-                    const { useCanvasStore } = await import("@/canvas/stores/canvas/use-canvas-store");
-                    await cleanupUnusedImages({ assets: get().assets, projects: useCanvasStore.getState().projects, extra });
-                    await cleanupUnusedMedia({ assets: get().assets, projects: useCanvasStore.getState().projects, extra });
-                }, 0);
-            },
-        }),
-        {
-            name: ASSET_STORE_KEY,
-            storage: assetStorage,
-            partialize: (state) => ({ assets: state.assets }) as StorageValue<AssetStore>["state"],
-            onRehydrateStorage: () => () => {
-                useAssetStore.setState({ hydrated: true });
-            },
-        },
-    ),
-);
+let epoch = 0;
+let loadId = 0;
+let mutations = 0;
+export const useAssetStore = create<AssetStore>((set) => ({
+  hydrated: false, loading: false, error: null, assets: [],
+  reset: () => { epoch++; loadId++; mutations++; set({ assets: [], hydrated: false, error: null, loading: false }); },
+  loadAssets: async () => {
+    const current = epoch;
+    const request = ++loadId;
+    const started = mutations;
+    set({ loading: true, error: null });
+    try { const assets = await listSavedAssets(); if (epoch === current && loadId === request) { if (mutations !== started) { void useAssetStore.getState().loadAssets(); return; } set({ assets, hydrated: true, loading: false }); } }
+    catch (e) { if (epoch === current && loadId === request) set({ loading: false, hydrated: true, error: e instanceof Error ? e.message : "素材加载失败，请重试" }); }
+  },
+  addAsset: async (input) => {
+    const current = epoch;
+    let asset = input;
+    if (asset.kind === "image" && !asset.data.storageKey) {
+      const image = await uploadImage(asset.data.dataUrl);
+      asset = { ...asset, data: { ...asset.data, storageKey: image.storageKey } };
+    }
+    const saved = await saveAsset(asset);
+    if (epoch === current) { mutations++; set((s) => ({ assets: [saved, ...s.assets.filter((a) => a.id !== saved.id)] })); }
+    return saved.id;
+  },
+  removeAsset: async (id) => {
+    const current = epoch;
+    await deleteSavedAsset(id);
+    if (epoch === current) { mutations++; set((s) => ({ assets: s.assets.filter((a) => a.id !== id) })); }
+  },
+  // 文档和运行历史共用这些文件；只移除素材条目，不删原图。
+  cleanupImages: () => {},
+}));

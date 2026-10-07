@@ -11,7 +11,7 @@ import type {
   IpPublishRequest, IpPublishResult, IpRun, IpStylePreset, IpTemplate, IpUpdateProjectRequest,
   IpUploadResult, IpPromptGroup,
 } from "@ai-star-eco/types";
-import { API_BASE_URL, getAuthToken } from "@ai-star-eco/api-client";
+import { API_BASE_URL, getAuthToken, apiFetchPaginated } from "@ai-star-eco/api-client";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import {
   MOCK_PRICING, MOCK_STYLES, MOCK_TEMPLATES, mockCancelRun, mockNextId,
@@ -279,4 +279,22 @@ export async function fetchAssetBlob(storageKey: string): Promise<Blob> {
   });
   if (!res.ok) throw new Error(`取素材失败 HTTP ${res.status}`);
   return res.blob();
+}
+
+// 完整运行历史独立分页，旧的 adhoc 运行也能找回。
+export async function listProjectRuns(id: string, page = 0): Promise<import("@ai-star-eco/types").IpRunPage> {
+  if (USE_MOCK) {
+    const p = mockStore().projects.get(id);
+    const all = Object.values(p?.runsById ?? {}).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return mockDelay({ items: all.slice(page * 30, (page + 1) * 30), hasMore: all.length > (page + 1) * 30 });
+  }
+  const result = await apiFetchPaginated<IpRun>(`/v1/ip-studio/projects/${id}/runs?page=${page}`);
+  return { items: result.data, hasMore: result.pagination.hasNext };
+}
+export async function listProjectHistory(id: string): Promise<import("@ai-star-eco/types").IpRevision[]> {
+  if (USE_MOCK) return mockDelay([]);
+  return apiFetch(`/v1/ip-studio/projects/${id}/history`);
+}
+export async function getProjectRevision(id: string, revisionId: string): Promise<import("@ai-star-eco/types").IpRevisionDetail> {
+  return apiFetch(`/v1/ip-studio/projects/${id}/history/${revisionId}`);
 }

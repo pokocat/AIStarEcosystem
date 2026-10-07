@@ -37,6 +37,27 @@ components:
   # ── Reusable response wrappers ──────────
   schemas:
 
+    IpSavedAssetInput:
+      type: object
+      required: [kind, data]
+      properties:
+        kind: { type: string, enum: [image, video, text] }
+        title: { type: string, maxLength: 128 }
+        data:
+          type: object
+          properties:
+            storageKey: { type: string, maxLength: 512 }
+            content: { type: string, maxLength: 100000 }
+            width: { type: integer, minimum: 0 }
+            height: { type: integer, minimum: 0 }
+            bytes: { type: integer, minimum: 0 }
+            mimeType: { type: string, maxLength: 100 }
+        metadata:
+          type: object
+          properties:
+            prompt: { type: string, maxLength: 100000 }
+
+
     # 带货线「生成模型」候选（v0.132；TS 真源 packages/types/src/material-ops.ts VideoModelOption）
     VideoModelOption:
       type: object
@@ -10421,7 +10442,7 @@ paths:
       tags: [ipstudio]
       operationId: ipStudioUpdateProject
       description: >-
-        保存 name + doc。doc 整存整取、逐字保存（客户端未知字段也原样保留）；
+        保存 name + doc。内容变化时保留上一版（最近 50 份），视口变化不产生历史版本。doc 整存整取、逐字保存（客户端未知字段也原样保留）；
         服务端只校验「是含 nodes / edges 数组的对象」与大小上限。
         运行结果与发布结果永远不写进 doc。
       requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, doc: { $ref: '#/components/schemas/IpProjectDoc' } } } } } }
@@ -10430,6 +10451,58 @@ paths:
         '400': { description: 'IP_DOC_INVALID —— 不是含 nodes/edges 的对象；IP_DOC_TOO_LARGE —— 超过 aep.ipstudio.doc-max-bytes（默认 2MB）' }
         '404': { description: IP_PROJECT_NOT_FOUND }
     delete: { tags: [ipstudio], operationId: ipStudioDeleteProject, description: '软删（行保留，只打 deletedAt）。', responses: { '200': { description: soft deleted }, '404': { description: IP_PROJECT_NOT_FOUND } } }
+  /v1/ip-studio/projects/{id}/history:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioHistory
+      description: '本人画布的最近 50 个内容版本。视口移动不产生版本。V39 起记录，不伪造旧操作。'
+      responses:
+        '200': { description: 'ApiResponse<IpRevision[]>' }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/history/{revisionId}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }, { in: path, name: revisionId, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioRevision
+      description: '读取本人画布历史版本，返回 name/doc，媒体按 key 重签。恢复通过现有项目 PUT，须带 baseDocVersion；当前版本先备份。'
+      responses:
+        '200': { description: 'ApiResponse<IpRevisionDetail>' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / IP_REVISION_NOT_FOUND' }
+  /v1/ip-studio/projects/{id}/runs:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioRunHistory
+      description: '完整运行历史，含旧 adhoc 运行，每页 30 条按 createdAt/id 倒序，候选重签，去掉 _exec。userPrompt 为新运行的用户原始指令；旧记录只有完整 prompt。'
+      parameters: [{ in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }]
+      responses:
+        '200': { description: 'PageEnvelope<IpRun>，data 为运行数组，pagination 含 hasNext/total/page/size' }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+  /v1/ip-studio/saved-assets:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioSavedAssets
+      description: '本人云端画布素材列表。图片/视频 URL 按 storageKey 重签，文本返回完整 content。画布素材面板与顶部资产页共用。'
+      responses:
+        '200': { description: 'ApiResponse<IpSavedAsset[]>' }
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioSaveAsset
+      description: '保存本人画布素材；同 owner/kind/key（或文本）幂等。媒体必须带本人 storageKey，不存客户端 URL。metadata.prompt 上限 100000 字符；文本同限。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IpSavedAssetInput' } } } }
+      responses:
+        '200': { description: 'ApiResponse<IpSavedAsset>，云端确认后客户端才能显示成功' }
+        '400': { description: 'IP_ASSET_INVALID / IP_ASSET_KEY_INVALID' }
+  /v1/ip-studio/saved-assets/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    delete:
+      tags: [ipstudio]
+      operationId: ipStudioDeleteSavedAsset
+      description: '本人素材条目软删。文档与生成记录仍可引用原文件，不删 OSS 对象。'
+      responses:
+        '200': { description: 'ApiResponse<void>' }
+        '404': { description: IP_ASSET_NOT_FOUND }
   /v1/ip-studio/projects/{id}/nodes/{nodeId}/run:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }, { in: path, name: nodeId, required: true, schema: { type: string } }]
     post:

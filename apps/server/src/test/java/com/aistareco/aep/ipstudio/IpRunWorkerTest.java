@@ -66,7 +66,7 @@ class IpRunWorkerTest {
         IpStudioFixtures.Projects projects = new IpStudioFixtures.Projects();
         storage = IpStudioFixtures.storage();
         IpProjectService projectService = new IpProjectService(projects.repo, runs.repo,
-                new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM);
+                new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage, IpStudioFixtures.props(), IpStudioFixtures.videoJobs(), OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
 
         multimodal = mock(DapMultimodalClient.class);
         imageInput = mock(DapImageInput.class);

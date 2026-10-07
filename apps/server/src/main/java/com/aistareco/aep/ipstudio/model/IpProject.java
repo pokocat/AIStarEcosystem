@@ -60,7 +60,7 @@ public class IpProject {
 
     /** IpProjectDoc 整存整取（nodes/edges/viewport）。 */
     @Lob
-    @Column(nullable = false, columnDefinition = "TEXT")
+    @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String docJson;
 
     /** 封面 = 主形象选中图的 storage key（发布时写入；coverUrl 出 wire 派生）。 */

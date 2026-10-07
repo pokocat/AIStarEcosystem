@@ -107,6 +107,14 @@ export async function resolveImageUrl(storageKey?: string, fallback = ""): Promi
   return fallback;
 }
 
+export async function refreshImageUrl(storageKey: string): Promise<string> {
+  signedCache.delete(storageKey);
+  const map = await signKeys([storageKey]);
+  const url = map[storageKey];
+  if (!url) throw new Error("图片地址暂时无法读取");
+  return remember(storageKey, url);
+}
+
 /** 批量重签 —— 画布一次要几十张图，逐张问服务端太浪费。 */
 export async function resolveImageUrls(keys: string[]): Promise<Record<string, string>> {
   const missing = keys.filter((k) => {

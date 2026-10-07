@@ -66,6 +66,7 @@ export type CanvasNodeText = {
 };
 
 export type CanvasNodeMetadata = {
+    batchExpanded?: boolean; // 本仓：重新打开保留候选组展开状态。
     content?: string;
     composerContent?: string;
     prompt?: string;

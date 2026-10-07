@@ -11,6 +11,8 @@ import java.util.Optional;
 @Repository
 public interface IpRunRepository extends JpaRepository<IpRun, String> {
 
+    org.springframework.data.domain.Page<IpRun> findByProjectId(String projectId, org.springframework.data.domain.Pageable pageable);
+
     /** 项目全部运行，新的在前 —— 投影「每节点最近一次」时从头扫一遍即可。 */
     List<IpRun> findByProjectIdOrderByCreatedAtDesc(String projectId);
 

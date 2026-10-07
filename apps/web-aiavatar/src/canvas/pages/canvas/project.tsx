@@ -7,6 +7,7 @@ import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 // 本仓改动：自动标题从「提示词截 32 字」改成派生一个短名字（见 canvas-bridge/node-title.ts）
 import { autoNodeTitle } from "@/canvas-bridge/node-title";
+import { registerCanvasRecovery } from "@/canvas-bridge/canvas-recovery";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { createProjectOnServer, deleteProjectOnServer } from "@/canvas-bridge/project-sync";
 
@@ -591,6 +592,7 @@ function InfiniteCanvasPage() {
             const restoredNodes = await hydrateCanvasImages(resetInterruptedGeneration(project.nodes));
             const restoredSessions = await hydrateAssistantImages(project.chatSessions || []);
             setNodes(restoredNodes);
+            setExpandedBatchNodeIds(new Set(restoredNodes.filter((node) => node.metadata?.batchExpanded === true).map((node) => node.id)));
             setConnections(project.connections);
             setChatSessions(restoredSessions);
             setActiveChatId(project.activeChatId || null);
@@ -664,7 +666,7 @@ function InfiniteCanvasPage() {
         };
     }, [activeChatId, backgroundMode, chatSessions, connections, createHistoryEntry, nodes, projectLoaded, showImageInfo]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!projectLoaded || historyPausedRef.current) return;
         updateProject(projectId, { nodes, connections, chatSessions, activeChatId, backgroundMode, showImageInfo });
     }, [activeChatId, backgroundMode, chatSessions, connections, nodes, projectId, projectLoaded, showImageInfo, updateProject]);
@@ -1810,13 +1812,14 @@ function InfiniteCanvasPage() {
     }, []);
 
     const toggleBatchExpanded = useCallback((nodeId: string) => {
+        const expanded = !expandedBatchNodeIds.has(nodeId);
         setExpandedBatchNodeIds((current) => {
             const next = new Set(current);
-            if (next.has(nodeId)) next.delete(nodeId);
-            else next.add(nodeId);
+            if (expanded) next.add(nodeId); else next.delete(nodeId);
             return next;
         });
-    }, []);
+        setNodes((prev) => prev.map((node) => node.id === nodeId ? { ...node, metadata: { ...node.metadata, batchExpanded: expanded } } : node));
+    }, [expandedBatchNodeIds]);
 
     const setBatchPrimary = useCallback((nodeId: string, itemId: string) => {
         setNodes((prev) =>
@@ -1958,18 +1961,26 @@ function InfiniteCanvasPage() {
         [message, t],
     );
 
+    // 本仓：历史恢复复用节点更新和自动保存，结果与指令一起回到画布。
+    useEffect(() => registerCanvasRecovery(projectId, (node) => {
+        setNodes((prev) => [...prev, node]);
+        setSelectedNodeIds(new Set([node.id]));
+        setDialogNodeId(node.id);
+    }), [projectId]);
+
     const saveNodeAsset = useCallback(
         async (node: CanvasNodeData) => {
+            try {
             if (node.type === CanvasNodeType.Text) {
                 const content = node.metadata?.content?.trim();
                 if (!content) return message.error(t("canvas.projectPage.noTextToSave"));
-                addAsset({ kind: "text", title: node.metadata?.prompt?.slice(0, 24) || t("canvas.projectPage.canvasText"), coverUrl: "", tags: [], source: "Canvas", data: { content }, metadata: { source: "canvas", nodeId: node.id } });
+                await addAsset({ kind: "text", title: node.metadata?.prompt?.slice(0, 24) || t("canvas.projectPage.canvasText"), coverUrl: "", tags: [], source: "Canvas", data: { content }, metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt } });
                 message.success(t("common.addedToAssets"));
                 return;
             }
             if (node.type === CanvasNodeType.Video) {
                 if (!node.metadata?.content) return message.error(t("canvas.projectPage.noVideoToSave"));
-                addAsset({
+                await addAsset({
                     kind: "video",
                     title: node.metadata?.prompt?.slice(0, 24) || t("canvas.projectPage.canvasVideo"),
                     coverUrl: "",
@@ -1983,7 +1994,7 @@ function InfiniteCanvasPage() {
             }
             if (!node.metadata?.content) return message.error(t("canvas.projectPage.noImageToSave"));
             const dataUrl = node.metadata.storageKey ? "" : node.metadata.content;
-            addAsset({
+            await addAsset({
                 kind: "image",
                 title: node.metadata?.prompt?.slice(0, 24) || t("canvas.projectPage.canvasImage"),
                 coverUrl: node.metadata.content,
@@ -2000,6 +2011,7 @@ function InfiniteCanvasPage() {
                 metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt },
             });
             message.success(t("common.addedToAssets"));
+            } catch (e) { message.error(e instanceof Error ? e.message : "素材保存失败，请重试"); }
         },
         [addAsset, message, t],
     );

@@ -1,3 +1,4 @@
+import { SignedImage } from "@/canvas-bridge/signed-image";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Star, Trash2, Video } from "lucide-react";
@@ -800,7 +801,7 @@ function ImageContent({
                 : null}
             <div className="h-full w-full overflow-hidden rounded-3xl">
                 {primaryContent ? (
-                    <img
+                    <SignedImage storageKey={primaryImage?.storageKey || node.metadata?.storageKey}
                         src={primaryContent}
                         alt={node.title}
                         draggable={false}
@@ -877,7 +878,7 @@ function ExpandedImageCard({ node, image, index, onView, onSetPrimary, onDuplica
                 onView();
             }}
         >
-            {image.content ? <img src={image.content} alt={node.title} draggable={false} className="pointer-events-none h-full w-full select-none object-contain" /> : <ImageSlotStatus image={image} />}
+            {image.content ? <SignedImage storageKey={image.storageKey} src={image.content} alt={node.title} draggable={false} className="pointer-events-none h-full w-full select-none object-contain" /> : <ImageSlotStatus image={image} />}
             {image.content ? (
                 <div className="absolute inset-x-2 top-2 flex items-center gap-1">
                     <button type="button" className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] font-medium shadow-[0_6px_18px_rgba(15,23,42,.16)] backdrop-blur-md transition hover:scale-[1.02]" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border, color: theme.toolbar.activeText }} title={t("common.download")} onClick={(event) => (event.stopPropagation(), onDownload())}>

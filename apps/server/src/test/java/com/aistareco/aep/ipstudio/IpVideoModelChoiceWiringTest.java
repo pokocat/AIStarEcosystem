@@ -61,7 +61,7 @@ class IpVideoModelChoiceWiringTest {
         IpCatalogService catalog = new IpCatalogService(OM);
         IpProjectService projectService = new IpProjectService(projects.repo, runs.repo, catalog,
                 IpStudioFixtures.templateResolver(), IpStudioFixtures.storage(), IpStudioFixtures.props(),
-                IpStudioFixtures.videoJobs(), OM);
+                IpStudioFixtures.videoJobs(), OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
         projects.repo.save(IpStudioFixtures.project(PID, USER, IpStudioFixtures.chainDoc(null, 0)));
 
         modelClient = mock(MaterialVideoModelClient.class);

@@ -116,7 +116,7 @@ public class IpRunService {
      */
     @Transactional
     public IpRunDto run(String userId, String projectId, String nodeId, IpRunNodeRequest req) {
-        IpProject project = projects.required(userId, projectId);
+        IpProject project = projects.requiredForUpdate(userId, projectId);
         if (req != null && req.doc() != null && !req.doc().isNull()) {
             projects.applyUpdate(project, new com.aistareco.aep.ipstudio.dto.IpStudioRequests
                     .IpUpdateProjectRequest(null, req.doc()));
@@ -380,6 +380,7 @@ public class IpRunService {
 
         ObjectNode inputs = om.createObjectNode();
         inputs.put("prompt", finalPrompt);
+        inputs.put("userPrompt", prompt);
         inputs.set("refs", refsOut);
         inputs.put("size", size);
         inputs.put("count", count);
@@ -433,6 +434,7 @@ public class IpRunService {
 
         ObjectNode inputs = om.createObjectNode();
         inputs.put("prompt", finalPrompt);
+        inputs.put("userPrompt", req.prompt().trim());
         inputs.set("refs", refsOut);
         inputs.put("size", size);
         inputs.put("count", count);

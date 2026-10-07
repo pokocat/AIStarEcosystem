@@ -43,6 +43,8 @@ class IpProjectServiceTest {
     private IpStudioFixtures.Runs runs;
     private FileStorageService storage;
     private IpProjectService svc;
+    private com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions;
+    private final List<com.aistareco.aep.ipstudio.model.IpProjectRevision> history = new ArrayList<>();
     private com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs;
 
     @BeforeEach
@@ -51,8 +53,14 @@ class IpProjectServiceTest {
         runs = new IpStudioFixtures.Runs();
         storage = IpStudioFixtures.storage();
         videoJobs = IpStudioFixtures.videoJobs();
+        history.clear();
+        revisions = org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class);
+        org.mockito.Mockito.when(revisions.save(org.mockito.ArgumentMatchers.any())).thenAnswer(i -> { com.aistareco.aep.ipstudio.model.IpProjectRevision r=i.getArgument(0); history.add(0,r); return r; });
+        org.mockito.Mockito.when(revisions.findByProjectIdOrderByCreatedAtDesc(org.mockito.ArgumentMatchers.anyString())).thenAnswer(i -> new ArrayList<>(history));
+        org.mockito.Mockito.when(revisions.findByIdAndProjectId(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenAnswer(i -> history.stream().filter(r -> r.getId().equals(i.getArgument(0)) && r.getProjectId().equals(i.getArgument(1))).findFirst());
+        org.mockito.Mockito.doAnswer(i -> { history.removeAll(i.getArgument(0)); return null; }).when(revisions).deleteAll(org.mockito.ArgumentMatchers.anyIterable());
         svc = new IpProjectService(projects.repo, runs.repo, new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage,
-                IpStudioFixtures.props(), videoJobs, OM);
+                IpStudioFixtures.props(), videoJobs, OM, revisions);
     }
 
     // ── 创建 ─────────────────────────────────────────────────
@@ -400,7 +408,7 @@ class IpProjectServiceTest {
         IpStudioProperties tight = IpStudioFixtures.props();
         tight.setUploadMaxDimension(64);
         IpProjectService tightSvc = new IpProjectService(projects.repo, runs.repo,
-                new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage, tight, IpStudioFixtures.videoJobs(), OM);
+                new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage, tight, IpStudioFixtures.videoJobs(), OM, org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository.class));
 
         BusinessException e = assertThrows(BusinessException.class, () -> tightSvc.upload(USER,
                 new MockMultipartFile("file", "huge.png", "image/png", pngBytes(200, 40))));
@@ -573,6 +581,39 @@ class IpProjectServiceTest {
         assertEquals("https://cdn.test/" + old + "?sig=x", out.path("videos").get(0).path("content").asText(),
                 "历史里的老片没重签 —— 用户切回上一版就是个放不了的播放器");
         assertEquals("https://cdn.test/" + cur + "?sig=x", out.path("videos").get(1).path("content").asText());
+    }
+
+    @Test void contentChangesPreserveRecoverableVersionsButViewportChangesDoNot() throws Exception {
+        var p=svc.create(USER,new IpCreateProjectRequest("原画布",null));
+        ObjectNode doc=(ObjectNode)p.doc().deepCopy();
+        doc.withArray("nodes").addObject().put("id","n1").put("type","image").put("title","图")
+            .putObject("metadata").put("storageKey","ipstudio_gen/"+USER+"/1.jpg").put("prompt","原始指令");
+        var saved=svc.update(USER,p.id(),new IpUpdateProjectRequest(null,doc,p.docVersion()));
+        var viewportDoc=saved.doc().deepCopy(); ((ObjectNode)viewportDoc.path("viewport")).put("x",100);
+        saved=svc.update(USER,p.id(),new IpUpdateProjectRequest(null,viewportDoc,saved.docVersion()));
+        assertEquals(1,history.size());
+        var changed=saved.doc().deepCopy(); ((ObjectNode)changed.path("nodes").get(0).path("metadata")).put("prompt","新指令");
+        svc.update(USER,p.id(),new IpUpdateProjectRequest(null,changed,saved.docVersion()));
+        var version=svc.revision(USER,p.id(),history.get(0).getId());
+        assertEquals("原始指令",version.doc().path("nodes").get(0).path("metadata").path("prompt").asText());
+        assertFalse(history.get(0).getDocJson().contains("https://"));
+        assertThrows(BusinessException.class,() -> svc.history(OTHER,p.id()));
+        assertThrows(BusinessException.class,() -> svc.revision(OTHER,p.id(),history.get(0).getId()));
+        assertThrows(BusinessException.class,() -> svc.runHistory(OTHER,p.id(),0));
+    }
+    @Test void retainsOnlyLatestFiftyContentVersions() throws Exception {
+        var p=svc.create(USER,new IpCreateProjectRequest("v0",null));
+        for(int n=1;n<=55;n++) svc.update(USER,p.id(),new IpUpdateProjectRequest("v"+n,null));
+        assertEquals(50,history.size()); assertEquals("v54",history.get(0).getName()); assertEquals("v5",history.get(49).getName());
+    }
+    @Test void fullRunHistoryIncludesOldAdhocRunsAndKeepsPagination() {
+        var p=svc.create(USER,new IpCreateProjectRequest("history",null));
+        var run=IpRun.builder().id("IPR-old").projectId(p.id()).ownerUserId(USER).nodeId("adhoc")
+            .kind("generate").status("done").inputJson("{}").outputJson("{}").createdAt(Instant.now()).build();
+        org.mockito.Mockito.when(runs.repo.findByProjectId(org.mockito.ArgumentMatchers.eq(p.id()),org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+            .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(run),org.springframework.data.domain.PageRequest.of(0,30),31));
+        var result=svc.runHistory(USER,p.id(),0);
+        assertEquals("IPR-old",result.getContent().get(0).id()); assertTrue(result.hasNext());
     }
 
 }

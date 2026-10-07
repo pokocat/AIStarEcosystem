@@ -16,6 +16,10 @@ import java.util.Optional;
 public interface AepUserRepository extends JpaRepository<AepUser, String>,
         PagingAndSortingRepository<AepUser, String> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from AepUser u where u.id = :id")
+    Optional<AepUser> findByIdForUpdate(@Param("id") String id);
+
     Optional<AepUser> findByUsername(String username);
 
     Optional<AepUser> findByEmail(String email);

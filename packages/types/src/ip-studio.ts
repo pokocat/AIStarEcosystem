@@ -85,6 +85,7 @@ export interface IpRunOutput {
   candidates?: IpCandidate[];     // generate：候选图（签名 URL，短期）
 }
 export interface IpRunInputs {
+  userPrompt?: string;            // 用户原始指令；旧记录可能只有完整模板提示词
   prompt?: string;                // generate：实际送入模型的完整英文提示词（透明可查）
   refs?: { role: "master" | "source" | "reference"; note?: string; applied: boolean; reason?: string }[];
   size?: string; count?: number;
@@ -157,3 +158,17 @@ export interface IpRunNodeRequest { doc?: IpProjectDoc }   // 运行前顺手保
 export interface IpPublishRequest { avatarName: string; masterNodeId: string; lookNodeIds: string[] }
 export interface IpPublishResult { avatarId: string; lookIds: string[] }
 export interface IpUploadResult { key: string; url: string; width?: number; height?: number; fileName: string }
+
+/** 服务端保留的画布内容版本（最近 50 份；视口移动不产生版本）。 */
+export interface IpRevision { id: string; name: string; createdAt: string; nodeCount: number }
+export interface IpRevisionDetail { name: string; doc: IpProjectDoc }
+export interface IpRunPage { items: IpRun[]; hasMore: boolean }
+export type IpSavedAssetKind = "text" | "image" | "video";
+type IpSavedAssetBase<T extends IpSavedAssetKind> = {
+  id: string; kind: T; title: string; coverUrl: string; tags: string[];
+  source?: string; note?: string; createdAt: string; updatedAt: string; metadata?: Record<string, unknown>;
+};
+export type IpTextAsset = IpSavedAssetBase<"text"> & { data: { content: string } };
+export type IpImageAsset = IpSavedAssetBase<"image"> & { data: { dataUrl: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
+export type IpVideoAsset = IpSavedAssetBase<"video"> & { data: { url: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
+export type IpSavedAsset = IpTextAsset | IpImageAsset | IpVideoAsset;
