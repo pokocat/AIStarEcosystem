@@ -85,6 +85,10 @@ public class CommunityController {
     public ApiResponse<List<CommunityPostDto>> listPosts(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        // page/size 是未校验的用户入参；PageRequest.of 对 page<0 或 size<1 会抛
+        // IllegalArgumentException → 500。先夹到合法区间（size 上限 100）。
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         List<CommunityPostDto> items = postRepo.findAllByOrderByCreatedAtDesc(
                         PageRequest.of(page, size))
                 .stream().map(CommunityPostDto::from).toList();

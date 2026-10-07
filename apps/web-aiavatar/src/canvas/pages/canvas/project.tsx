@@ -3017,8 +3017,35 @@ function InfiniteCanvasPage() {
                         },
                     };
                 }
-                const images = item.metadata?.images?.filter((image) => image.id !== imageId) || [];
-                return { ...item, metadata: { ...item.metadata, images, count: images.length, primaryImageId: item.metadata?.primaryImageId === imageId ? images[0]?.id : item.metadata?.primaryImageId } };
+                const images = (item.metadata?.images ?? []).filter((image) => image.id !== imageId);
+                const wasPrimary = item.metadata?.primaryImageId === imageId;
+                // 删的不是当前主图：只从候选里摘掉，节点显示的那张不动。
+                if (!wasPrimary) {
+                    return { ...item, metadata: { ...item.metadata, images, count: images.length } };
+                }
+                // 删的正好是当前主图：把画面切到剩下的第一张，而且**必须连节点级的
+                // content / storageKey / 尺寸一起换**（v0.196 复核逮到，与 setBatchPrimary /
+                // applyCandidateToNode 同理）：`metadata.storageKey` 是下游生成的参考图真值、
+                // 节点级 `content` 是导出与蒙版编辑的源图，只改 images[] 会让画布显示新图、
+                // 而后面每一次生成都还照着被删的旧图画，用户看不出来、钱照扣。
+                // 一张都不剩时把这些字段清空 —— 别留着指向已删图的死链（失败图的删除按钮
+                // 可以删到 0，见 canvas-node.tsx 的 BatchImageFailureActions）。
+                const nextPrimary = images[0];
+                return {
+                    ...item,
+                    metadata: {
+                        ...item.metadata,
+                        images,
+                        count: images.length,
+                        primaryImageId: nextPrimary?.id,
+                        content: nextPrimary?.content,
+                        storageKey: nextPrimary?.storageKey,
+                        naturalWidth: nextPrimary?.naturalWidth,
+                        naturalHeight: nextPrimary?.naturalHeight,
+                        bytes: nextPrimary?.bytes,
+                        mimeType: nextPrimary?.mimeType,
+                    },
+                };
             }),
         );
     }, []);

@@ -35,6 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.security.Principal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,6 +49,10 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/me")
 public class AccountController {
+
+    // 展示用日期一律按业务时区（+08）截取，禁止对 Instant.toString() 直接 substring(0,10)——
+    // 那切的是 UTC 段，晚上八点后落库的记录会显示成前一天（§4.8）。
+    private static final ZoneId TZ = ZoneId.of("Asia/Shanghai");
 
     private final AccountSelfService accountSelfService;
     private final DigitalIpService digitalIpService;
@@ -174,7 +179,7 @@ public class AccountController {
                 entry.id(),
                 entry.description(),
                 entry.amount(),
-                entry.createdAt() == null ? "" : entry.createdAt().toString().substring(0, 10),
+                entry.createdAt() == null ? "" : LocalDate.ofInstant(entry.createdAt(), TZ).toString(),
                 entry.createdAt(),
                 "processing",
                 "withdrawal",
@@ -203,6 +208,8 @@ public class AccountController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
+        page = Math.max(0, page);
+        size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, LEDGER_SORT);
         return PageEnvelope.from(accountSelfService.listLedger(principal.getName(), pageable));
     }
