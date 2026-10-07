@@ -349,3 +349,7 @@ V39 新增 `ip_project_revision` / `ip_saved_asset`，项目文档 TEXT 扩为 L
 离开画布的导航先等待保存，保存失败留在画布并允许重试；在途失败不自动再次发 PUT，避免无限重试和错误基线。节点内容同步提前到 layout effect，候选图加载失败强制重签一次并给出明确重试入口。版本记录从更新后开始；旧操作不能凭空补造，既有生成记录直接可查。
 
 接口：`GET /api/v1/ip-studio/projects/{id}/runs?page=0`；`GET projects/{id}/history`；`GET projects/{id}/history/{revisionId}`；`GET|POST /api/v1/ip-studio/saved-assets`；`DELETE saved-assets/{id}`。恢复整版沿用项目 PUT 与 `baseDocVersion`。运行历史、版本与素材均只允许属主访问。
+
+生产验收（2026-10-07）：`server` / `web-aiavatar` 已发布 `20261007-v0201-6e044646`，代码 SHA `6e044646ab6da92f44061b43b318cc8f870f34fd`；运行中的 JAR 与发布包 SHA256 一致，web BUILD_ID 一致，Flyway V39 成功，`ip_project.doc_json` 实际为 LONGTEXT，两张新表已建。发布前备份 `ip_project` / `ip_run`。本地 158 项 IP 后端测试、204 项前端测试、全仓类型检查、后端编译、API 契约检查与生产构建通过。
+
+在反馈账号的原项目 `IPP-47e0c008` 中实际点通：15 条既有生成记录全部加载图片，最早记录的完整提示词可展开；该图片与 753 字符提示词恢复成新节点并保存到云端资产。顶部资产页刷新后仍可查看图片与指令；切回原画布、再次刷新后节点与可编辑提示词仍在，原有节点保留。内容版本列表实际出现记录。未提交生成请求，既有 15 条运行数量与终态未变；验收页控制台无错误/警告，后端发布后无 ERROR。整版恢复由服务端版本/归属/指纹回归测试覆盖；本次未在原项目执行整版恢复。
