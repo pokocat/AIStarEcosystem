@@ -61,6 +61,12 @@ class DramaShortServiceTest {
             boolean ok = s != null && inv.getArgument(1, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null;
             return Optional.ofNullable(ok ? s : null);
         });
+        // 悲观锁版与非锁版在这层内存 db 上语义相同（真库靠行锁串行化，测试无并发，只需能读到同一条）。
+        when(repo.findByIdAndOwnerUserIdAndDeletedAtIsNullForUpdate(anyString(), anyString())).thenAnswer(inv -> {
+            DramaShort s = db.get(inv.getArgument(0, String.class));
+            boolean ok = s != null && inv.getArgument(1, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null;
+            return Optional.ofNullable(ok ? s : null);
+        });
         when(repo.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(anyString())).thenAnswer(inv ->
                 db.values().stream()
                         .filter(s -> inv.getArgument(0, String.class).equals(s.getOwnerUserId()) && s.getDeletedAt() == null)
@@ -138,6 +144,52 @@ class DramaShortServiceTest {
         JsonNode reloaded = svc.getShort(id, USER).get("data");
         assertEquals(2, reloaded.get("shots").size());
         assertEquals("factory", reloaded.get("step").asText());
+    }
+
+    @Test
+    void serverUpdateMergesOntoLatestPayloadWithoutClobberingConcurrentUserEdits() {
+        // 回归：配音 / 总装 worker 隔着外部调用读到旧快照，写回时不得整份覆盖用户这期间的自动保存。
+        // applyServerUpdate 必须在锁内读到**最新** payload，只改服务端拥有的那块子树。
+        String id = svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER).get("meta").get("id").asText();
+
+        var first = OM.createObjectNode();
+        first.set("data", readTree("{\"step\":\"factory\",\"title\":\"版本A\","
+                + "\"shots\":[{\"id\":\"s1\",\"no\":1,\"dur\":5,\"voText\":\"原台词\"}],\"chat\":[],\"refs\":[]}"));
+        svc.saveShort(id, first, USER);
+
+        // 用户在 worker 写回之前又自动保存改了标题 / 时长 / 台词（这就是要保住的改动）。
+        var edit = OM.createObjectNode();
+        edit.set("data", readTree("{\"step\":\"factory\",\"title\":\"版本B\","
+                + "\"shots\":[{\"id\":\"s1\",\"no\":1,\"dur\":8,\"voText\":\"改过的台词\"}],\"chat\":[],\"refs\":[]}"));
+        svc.saveShort(id, edit, USER);
+
+        // worker 把某镜 audio 结果 merge 回来（拿到的是锁内最新 payload，只动自己那一镜的 audio）。
+        boolean applied = svc.applyServerUpdate(id, USER, (row, data) -> {
+            for (JsonNode raw : data.path("shots")) {
+                if (raw instanceof com.fasterxml.jackson.databind.node.ObjectNode shot
+                        && "s1".equals(shot.path("id").asText())) {
+                    shot.set("audio", OM.createObjectNode().put("cdnKey", "clip/segment-audio/u/a.mp3"));
+                }
+            }
+        });
+
+        assertTrue(applied);
+        JsonNode data = svc.getShort(id, USER).get("data");
+        assertEquals("版本B", data.path("title").asText(), "用户的标题改动不能被 worker 抹掉");
+        assertEquals(8, data.path("shots").get(0).path("dur").asInt(), "用户的时长改动不能被抹掉");
+        assertEquals("改过的台词", data.path("shots").get(0).path("voText").asText(), "用户的台词改动不能被抹掉");
+        assertEquals("clip/segment-audio/u/a.mp3",
+                data.path("shots").get(0).path("audio").path("cdnKey").asText(), "worker 的产物也要落库");
+    }
+
+    @Test
+    void serverUpdateOnDeletedDraftReportsNotApplied() {
+        // 草稿在 worker 干活期间被软删：merge 返回 false（调用方据此清理孤儿对象），不复活草稿。
+        String id = svc.createShort(OM.createObjectNode().put("fmtKey", "sell"), USER).get("meta").get("id").asText();
+        svc.deleteShort(id, USER);
+        boolean applied = svc.applyServerUpdate(id, USER,
+                (row, data) -> data.put("touched", true));
+        assertFalse(applied);
     }
 
     @Test
