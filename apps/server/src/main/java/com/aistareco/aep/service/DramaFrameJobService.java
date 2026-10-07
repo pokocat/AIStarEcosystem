@@ -37,6 +37,7 @@ public class DramaFrameJobService {
     private final DramaFrameProperties frameProps;
     private final MaterialVideoProperties videoProps;
     private final ObjectMapper om;
+    private final com.aistareco.aep.service.cdn.CdnUrlSigner signer;
 
     public DramaFrameJobService(DramaFrameJobRepository frameRepo,
                                 MaterialVideoJobRepository videoRepo,
@@ -44,7 +45,8 @@ public class DramaFrameJobService {
                                 DramaFrameJobWorker worker,
                                 DramaFrameProperties frameProps,
                                 MaterialVideoProperties videoProps,
-                                ObjectMapper om) {
+                                ObjectMapper om,
+                                com.aistareco.aep.service.cdn.CdnUrlSigner signer) {
         this.frameRepo = frameRepo;
         this.videoRepo = videoRepo;
         this.videoJobs = videoJobs;
@@ -52,6 +54,7 @@ public class DramaFrameJobService {
         this.frameProps = frameProps;
         this.videoProps = videoProps;
         this.om = om;
+        this.signer = signer;
     }
 
     @Transactional
@@ -180,6 +183,10 @@ public class DramaFrameJobService {
         putTime(n, "completed_at", job.getCompletedAt());
         JsonNode result = parse(job.getResultJson());
         if (result != null && result.isObject()) {
+            // §4.7.7：结果 JSON 里存的 frames[].url 是带 TTL 的签名地址（默认 1h），存下来原样返回，
+            // 一小时后任务卡上的首帧预览就 403 图裂。出 wire 时按 key 递归重签（maybeSign 对已过期
+            // URL 同样有效；driver=local 的相对 /cdn 路径不匹配 OSS base，原样返回、dev 不受影响）。
+            resignAssetUrls(result);
             n.set("result", result);
             if (result.has("frames")) n.set("frames", result.get("frames"));
             if (result.has("cost")) n.set("cost", result.get("cost"));
@@ -187,6 +194,37 @@ public class DramaFrameJobService {
             if (result.has("applied_refs")) n.set("applied_refs", result.get("applied_refs"));
         }
         return n;
+    }
+
+    /** 递归重签文档内所有 OSS 资产 URL，避免存下的签名 URL 过期后 403 图裂（范式同 DramaProjectService.resignAssetUrls，§4.7.7）。 */
+    private void resignAssetUrls(JsonNode node) {
+        if (node == null) return;
+        if (node.isObject()) {
+            ObjectNode o = (ObjectNode) node;
+            List<String> keys = new ArrayList<>();
+            o.fieldNames().forEachRemaining(keys::add);
+            for (String k : keys) {
+                JsonNode v = o.get(k);
+                if (v != null && v.isTextual()) {
+                    String signed = signer.maybeSign(v.asText());
+                    if (signed != null && !signed.equals(v.asText())) o.put(k, signed);
+                } else {
+                    resignAssetUrls(v);
+                }
+            }
+        } else if (node.isArray()) {
+            ArrayNode a = (ArrayNode) node;
+            for (int i = 0; i < a.size(); i++) {
+                JsonNode v = a.get(i);
+                if (v != null && v.isTextual()) {
+                    String signed = signer.maybeSign(v.asText());
+                    if (signed != null && !signed.equals(v.asText()))
+                        a.set(i, com.fasterxml.jackson.databind.node.TextNode.valueOf(signed));
+                } else {
+                    resignAssetUrls(v);
+                }
+            }
+        }
     }
 
     private ObjectNode toVideoTask(JsonNode card) {
