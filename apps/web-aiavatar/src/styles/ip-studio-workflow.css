@@ -263,6 +263,59 @@ html[data-layout="mobile"] .studio-commerce-launch { top:121px; left:130px; righ
 .studio-template-section, .studio-template-plan { padding: 16px; border: 1px solid var(--line-2, #e5e8ef); border-radius: 12px; display: grid; gap: 10px; }
 .studio-template-upload { margin-top: 8px; }
 
+/* Template use is a focused media setup, not the generic publishing form.
+   Keep its portal in .ip-surface and its desktop layout under the shared mode. */
+.studio-template-file-input { display: none; }
+html[data-layout="desktop"] .ip-surface .studio-template-use-modal { max-width: calc(100vw - 48px); padding-block: 24px; }
+html[data-layout="desktop"] .studio-template-use-modal :is(.ant-modal-container, .ant-modal-content) { padding: 28px; border-radius: 16px; color: var(--ink); background: var(--surface); }
+html[data-layout="desktop"] .studio-template-use-modal .ant-modal-header { margin-bottom: 24px; background: var(--surface); }
+html[data-layout="desktop"] .studio-template-use-modal .ant-modal-close { top: 24px; right: 24px; color: var(--ink-2); }
+html[data-layout="desktop"] .studio-template-use-title { padding-right: 36px; }
+html[data-layout="desktop"] .studio-template-use-title h2 { margin: 0; font-family: var(--ip-font-sans); font-size: 20px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+html[data-layout="desktop"] .studio-template-use-title p { margin: 6px 0 0; color: var(--ink-2); font-size: 13px; font-weight: 400; line-height: 1.6; }
+html[data-layout="desktop"] .studio-template-use-modal .ant-modal-body { max-height: calc(100dvh - 250px); overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line-3) transparent; }
+html[data-layout="desktop"] .studio-template-use-form { display: grid; gap: 22px; padding: 2px 8px 2px 2px; color: var(--ink); }
+html[data-layout="desktop"] .studio-template-use-form :is(input, textarea) { caret-color: var(--primary); }
+html[data-layout="desktop"] .studio-template-use-form ::selection { background: var(--primary-soft); color: var(--ink); }
+html[data-layout="desktop"] .studio-template-use-form :is(label, .studio-template-text-field) { display: grid; gap: 8px; min-width: 0; font-size: 13px; }
+html[data-layout="desktop"] .studio-template-use-form .studio-template-field-label { display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
+html[data-layout="desktop"] .studio-template-required { color: var(--ink-2); font-size: 11px; font-weight: 400; }
+html[data-layout="desktop"] .studio-template-use-form :is(.ant-select, .ant-input) { width: 100%; }
+html[data-layout="desktop"] .studio-template-use-form .ant-input::placeholder { color: var(--ink-2); }
+html[data-layout="desktop"] .studio-template-use-form .ant-select-placeholder { color: var(--ink-2); }
+html[data-layout="desktop"] .studio-template-references { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 20px; }
+html[data-layout="desktop"] .studio-template-reference { display: grid; align-content: start; gap: 10px; min-width: 0; }
+html[data-layout="desktop"] .studio-template-media { position: relative; height: 172px; overflow: hidden; border: 1px dashed var(--line-3); border-radius: 12px; background: var(--surface-2); }
+html[data-layout="desktop"] .studio-template-media.is-selected { border-style: solid; border-color: var(--line); }
+html[data-layout="desktop"] .studio-template-media figure { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100%; margin: 0; }
+html[data-layout="desktop"] .studio-template-media img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+html[data-layout="desktop"] .studio-template-media figcaption { display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 6px 10px; color: var(--ink); background: var(--surface); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+html[data-layout="desktop"] .studio-template-media figcaption > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+html[data-layout="desktop"] .studio-template-media figcaption small { margin-left: auto; color: var(--ink-2); font-size: 11px; }
+html[data-layout="desktop"] .studio-template-media-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100%; color: var(--ink-2); font-size: 12px; }
+html[data-layout="desktop"] .studio-template-media-empty small { font-size: 11px; }
+html[data-layout="desktop"] .studio-template-reference-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+html[data-layout="desktop"] .studio-template-reference-actions .ant-select { flex: 1; min-width: 150px; width: auto; }
+html[data-layout="desktop"] .studio-template-reference-actions .ant-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+html[data-layout="desktop"] .studio-template-media .studio-template-remove { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; color: var(--ink); background: var(--surface); }
+html[data-layout="desktop"] .studio-template-uploading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--ink); background: var(--surface-2); font-size: 13px; }
+html[data-layout="desktop"] .studio-template-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; padding-top: 18px; border-top: 1px solid var(--line); }
+html[data-layout="desktop"] .studio-template-use-plan { padding-top: 18px; border-top: 1px solid var(--line); }
+html[data-layout="desktop"] .studio-template-use-plan h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+html[data-layout="desktop"] .studio-template-use-plan ol { margin: 0; padding-left: 20px; font-size: 13px; }
+html[data-layout="desktop"] .studio-template-use-plan li { padding: 5px 0; }
+html[data-layout="desktop"] .studio-template-use-plan li small { margin-left: 12px; color: var(--ink-2); font-size: 12px; }
+html[data-layout="desktop"] .studio-template-use-plan p { margin: 10px 0 0; color: var(--ink-2); font-size: 12px; line-height: 1.7; }
+html[data-layout="desktop"] .studio-template-use-modal .ant-modal-footer { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+html[data-layout="desktop"] .studio-template-use-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+html[data-layout="desktop"] .studio-template-use-footer p { margin: 0; color: var(--ink-2); font-size: 12px; }
+html[data-layout="desktop"] .studio-template-use-footer > div { display: flex; gap: 10px; margin-left: auto; }
+html[data-layout="desktop"] .studio-template-use-footer .ant-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; margin-inline-start: 0; }
+html[data-layout="desktop"] .studio-template-use-footer .studio-template-use-primary:not(:disabled) { color: var(--on-action); border-color: var(--action-line); background: var(--action); box-shadow: none; }
+html[data-layout="desktop"] .studio-template-use-footer .studio-template-use-primary:not(:disabled):hover { color: var(--on-action); border-color: var(--action-line); background: var(--action-600); }
+html[data-layout="desktop"] .studio-template-use-modal :is(.ant-btn, .ant-input, .ant-select):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+html[data-layout="desktop"] .studio-template-load-state { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 180px; color: var(--ink-2); font-size: 13px; }
+
 /* v0.206: screen-space regions share one layout contract. Canvas zoom only affects nodes. */
 .studio-canvas-stage { container-type:inline-size; --studio-dock-bottom:88px; --studio-context-top:124px; --studio-node-tools-top:180px; --studio-composer-clearance:248px; --studio-command-top:64px; }
 .studio-command-strip { position:absolute; top:var(--studio-command-top); left:16px; right:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; pointer-events:auto; }
