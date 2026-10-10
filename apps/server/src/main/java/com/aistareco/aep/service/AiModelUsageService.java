@@ -842,7 +842,7 @@ public class AiModelUsageService {
                     VIDEO_REF_ANALYSIS, TEMPLATE_REWRITE -> "celebrity";
             case DRAMA_SCRIPT_DRAFT, IMAGE_GENERATION -> "drama";
             case APPEARANCE_FORGE, MUSIC_GENERATION -> "music";
-            case DAP_PERSONA, DAP_IMAGE, DAP_VIDEO, DAP_REAL_AVATAR -> "aiavatar";
+            case DAP_PERSONA, DAP_IMAGE, DAP_VIDEO, DAP_AUDIO, DAP_LIP_SYNC, DAP_REAL_AVATAR -> "aiavatar";
             case SAFETY_REVIEW, GENERAL -> null;
         };
     }
@@ -878,7 +878,7 @@ public class AiModelUsageService {
     private static AiModelBillingMode inferBillingModeForPurpose(String purpose) {
         return switch (AiModelPurpose.fromWire(purpose)) {
             case IMAGE_GENERATION, DAP_IMAGE -> AiModelBillingMode.PER_CALL;
-            case VIDEO_GENERATION, DAP_VIDEO -> AiModelBillingMode.PER_SECOND;
+            case VIDEO_GENERATION, DAP_VIDEO, DAP_AUDIO, DAP_LIP_SYNC -> AiModelBillingMode.PER_SECOND;
             default -> AiModelBillingMode.TOKENS;
         };
     }

@@ -781,3 +781,8 @@ ssh <ECS_HOST> 'systemctl restart aistareco-sau-service'
 **原因**：nginx `/api/` 的 `proxy_read_timeout` 太短，首次 patchright + SPA 慢可达 60-90s。
 
 **解决**：确认 nginx 配的是 `proxy_read_timeout 180s` + `proxy_send_timeout 180s`（见 `nginx/ai.conf.example`）。
+
+
+### Studio 本地模型响应样例开关（v0.202，2026-10-08）
+
+`aep.ipstudio.fixture-enabled` 缺省 false，`fixture-directory` 缺省 `../../.studio-fixtures`。只在本地隔离 H2 验证显式使用命令行参数开启；prod/production/mysql profile 启动硬拒绝。不要加入生产环境文件或部署包。开关只替换模型返回，存储/数据库/ffmpeg 仍需有效的本地配置；素材准备、启动和验收见 `docs/ip-studio-unified-canvas-validation.md`。

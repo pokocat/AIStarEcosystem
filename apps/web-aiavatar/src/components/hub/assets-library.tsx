@@ -127,7 +127,7 @@ export function AssetsLibrary() {
                   <span style={{ fontFamily: "var(--font-serif)", fontSize: 14.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {v.name}
                   </span>
-                  <RegNo size={9.5}>{`${v.id} · ${v.kind === "clone" ? "克隆声" : "设计声"} · ${v.dur}`}</RegNo>
+                  <RegNo size={9.5}>{`${v.id} · ${v.kind === "clone" ? "克隆声" : v.kind === "preset" ? "预设音色" : "设计声"} · ${v.dur}`}</RegNo>
                 </Card>
               </Link>
             ))}

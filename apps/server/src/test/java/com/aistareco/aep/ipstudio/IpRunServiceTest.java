@@ -196,6 +196,59 @@ class IpRunServiceTest {
         assertEquals("9:16", item.path("aspect_ratio").asText());
     }
 
+    @Test void nativeVideoWritesValidatedSpecAndApprovedPriceIntoTheExistingJob() {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
+        var spec=new com.aistareco.aep.service.materialvideo.VideoGenSpec("first_last_frame_video","544p",42L,"first","last",List.of());
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,280));
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(List.of(OM.createObjectNode().put("id","advanced")));
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("first_last_frame_video","544p",42L,"first","last",List.of());
+        svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("过渡",null,7,"3:4","ep-h3",280L,settings));
+        var body=org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(videoJobs).submit(body.capture(),eq(USER),eq("ipstudio"));
+        var item=body.getValue().path("items").get(0);assertEquals(280,item.path("credit_cost").asLong());
+        assertEquals("last",item.path("variant_config").path("last_frame_key").asText());
+        assertEquals("544p",item.path("variant_config").path("resolution_tier").asText());
+        assertEquals(42,item.path("variant_config").path("seed").asLong());
+    }
+    @Test void changedNativePriceCannotSubmitOrFreeze() {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,400));
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of());
+        assertThrows(BusinessException.class,()->svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("x",null,5,"9:16","ep-h3",200L,settings)));
+        verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+    }
+
+    @Test void batchPreflightsOnceAndSubmitsAllCandidatesUnderTheTotalCeiling() {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
+        var spec=new com.aistareco.aep.service.materialvideo.VideoGenSpec("t2v","544p",2_147_483_647L,null,null,List.of());
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,280));
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(java.util.stream.IntStream.range(0,4).mapToObj(i->(JsonNode)OM.createObjectNode().put("id","job"+i)).toList());
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","544p",2_147_483_647L,null,null,List.of());
+        var request=new IpRunService.IpVideoRequest("动作",null,7,"9:16","ep-h3",1120L,settings);
+        assertEquals(4,svc.generateVideoBatch(USER,PID,request,4).size());
+        var body=org.mockito.ArgumentCaptor.forClass(JsonNode.class);verify(videoJobs).submit(body.capture(),eq(USER),eq("ipstudio"));
+        var items=body.getValue().path("items");assertEquals(4,items.size());
+        assertEquals(280,items.get(3).path("max_credit_cost").asLong());assertEquals(280,items.get(3).path("credit_cost").asLong());
+        assertEquals(2_147_483_647L,items.get(0).path("variant_config").path("seed").asLong());
+        assertEquals(0,items.get(1).path("variant_config").path("seed").asLong());
+        verify(nativeVideo,org.mockito.Mockito.times(1)).prepare(eq(USER),org.mockito.ArgumentMatchers.any());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+    }
+    @Test void batchRejectsAnUnderquotedTotalAndInvalidQuantityBeforeSubmission() {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,280));
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of());
+        var request=new IpRunService.IpVideoRequest("动作",null,7,"9:16","ep-h3",280L,settings);
+        assertThrows(BusinessException.class,()->svc.generateVideoBatch(USER,PID,request,2));
+        assertEquals("STUDIO_VIDEO_COUNT_INVALID",assertThrows(BusinessException.class,()->svc.generateVideoBatch(USER,PID,request,3)).getCode());
+        verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
+    }
+
     @Test
     void videoFirstFrameKeyIsGuarded() {
         // 首帧图同样是画布传来的 key —— 不过闸就能拿别人的图当首帧出片
@@ -455,6 +508,8 @@ class IpRunServiceTest {
     void cancelOnlyMarksFlagAndLeavesTerminalStateToWorker() {
         seedProject(IpStudioFixtures.chainDoc(null, 0));
         IpRunDto dto = svc.run(USER, PID, "n-master", null);
+        // This case covers a claimed worker; unstarted queued runs now cancel immediately.
+        runs.rows.get(dto.id()).setStartedAt(Instant.now());
         IpRunDto cancelled = svc.cancel(USER, dto.id());
         assertEquals(IpRun.STATUS_RUNNING, cancelled.status(), "取消只置标记，终态由 worker 落");
         assertTrue(runs.rows.get(dto.id()).isCancelRequested());

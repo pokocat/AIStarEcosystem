@@ -121,6 +121,7 @@ DataInitializer 默认 seed 两个账号：
 - **v0.5.0 / 2026-05-08**：明星 / 模板 / 授权 / 套餐 / 引擎价 / 模板脚本 / AI 模型 全栈 admin CRUD；sidebar 聚焦明星带货线。详见 `product_spec_ai_celebrity.md` v0.5 节。
 - **v0.4.0 / 2026-05-07**：server 端用户侧接口打通（小程序和 server 双端跑通）；admin 维持 GET-only。
 - 之前版本：见 `product_spec_ai_celebrity.md`。
+- **v0.220 / 2026-10-09（本地未发布）**：「模型接入端点」编辑新增生成并发上限，留空不限制，1–1000；模型列表显示当前限制。省略配置保持原值，表单清空发送 0。超限自动排队，视频/配音按上游任务完整生命周期占用名额，详见 `docs/ai-endpoint-generation-queue.md`。
 
 - **v0.66**：新增导航组「短剧专区」→ `/drama/config`（web-drama 个性化配置：扣费确认阈值 + 大纲/分场分镜/拆镜/选角/首帧单价；真值存 `aep_platform_configs` `drama.credit.*`，分镜视频单价沿用「引擎价格」`material.video-generate`）。
 - **v0.71**：短剧专区新增 `/drama/prompts`「提示词设置」。短剧各 AI 动作（大纲 `drama.outline` / 整集分场分镜 `drama.epscript` / 单场拆镜 `drama.split_scene` / 选角 `drama.cast` + 短视频脚本 `drama.script_draft`）的 system + user 提示词与调参在此维护。复用「Prompt 管理」同一后端 `/api/admin/prompts`（SUPER_ADMIN/OPERATOR），按 `drama.*` 过滤；每个 prompt 给友好名 / 用途 / 可用占位符提示 / 试运行，并对 `temperature`（创意发散度）/ `max_tokens`（单次最长输出）/ `jsonMode`（强制 JSON）三个专业参数加人性化说明 + 推荐默认占位（留空即用，无需每次设）。改完保存 1 分钟内全节点生效。

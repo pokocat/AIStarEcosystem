@@ -122,11 +122,15 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
         quality: node?.metadata?.quality || config.quality || defaultConfig.quality,
         size: node?.metadata?.size || config.size || defaultConfig.size,
         background: node?.metadata?.background ?? config.background ?? defaultConfig.background,
+        // 本仓：video quantity is independent of image quantity.
+        videoCount: node?.metadata?.videoCount || config.videoCount || defaultConfig.videoCount,
         videoSeconds: node?.metadata?.seconds || config.videoSeconds || defaultConfig.videoSeconds,
         vquality: node?.metadata?.vquality || config.vquality || defaultConfig.vquality,
         videoGenerateAudio: node?.metadata?.generateAudio || config.videoGenerateAudio || defaultConfig.videoGenerateAudio,
         videoWatermark: node?.metadata?.watermark || config.videoWatermark || defaultConfig.videoWatermark,
         videoMode: node?.metadata?.videoMode || config.videoMode || defaultConfig.videoMode,
+        // 本仓：retain the seed chosen in the Studio video drawer during native node regeneration.
+        videoSeed: node?.metadata?.studio?.request?.video?.seed,
         audioVoice: node?.metadata?.audioVoice || config.audioVoice || defaultConfig.audioVoice,
         audioFormat: node?.metadata?.audioFormat || config.audioFormat || defaultConfig.audioFormat,
         audioSpeed: node?.metadata?.audioSpeed || config.audioSpeed || defaultConfig.audioSpeed,
@@ -191,6 +195,8 @@ export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
     const interrupted = i18n.t("canvas.generation.interrupted");
     return nodes.map((node) => {
         if (node.metadata?.status !== "loading") return node;
+        // Studio persists a request key before submission and resumes against its server run.
+        if (node.metadata.studio?.request || node.metadata.studio?.speechRequest || node.metadata.studio?.lipSyncRequest) return node;
         if (hasResumableVideoTask(node)) return node;
         const images = node.metadata.images?.map((image) => (image.status === "loading" && !image.runId ? { ...image, status: "error" as const, errorDetails: interrupted } : image));
         const texts = node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: interrupted } : text));

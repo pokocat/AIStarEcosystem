@@ -25,7 +25,7 @@ public class IpSavedAssetService {
     @Transactional public JsonNode save(String user,JsonNode request) {
         if(request==null || !request.isObject()) throw invalid();
         String kind=request.path("kind").asText();
-        if(!Set.of("image","video","text").contains(kind)) throw invalid();
+        if(!Set.of("image","video","audio","text").contains(kind)) throw invalid();
         JsonNode source=request.path("data");
         String value = "text".equals(kind) ? source.path("content").asText("").trim() : source.path("storageKey").asText("").trim();
         if(value.isBlank() || value.length()>100000 || (!"text".equals(kind) && value.length()>512)) throw invalid();
@@ -83,5 +83,5 @@ public class IpSavedAssetService {
     private void lockOwner(String user) {
         users.findByIdForUpdate(user).orElseThrow(() -> BusinessException.notFound("USER_NOT_FOUND","账号不存在"));
     }
-    private BusinessException invalid() {return BusinessException.badRequest("IP_ASSET_INVALID","请提供有效的图片、视频或文本素材");}
+    private BusinessException invalid() {return BusinessException.badRequest("IP_ASSET_INVALID","请提供有效的图片、视频、音频或文本素材");}
 }

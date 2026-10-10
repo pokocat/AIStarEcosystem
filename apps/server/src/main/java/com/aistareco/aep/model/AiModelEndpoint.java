@@ -71,6 +71,10 @@ public class AiModelEndpoint {
     @Column(name = "rpm_limit")
     private Integer rpmLimit;
 
+    /** Active generation tasks for this endpoint; null = unlimited. */
+    @Column(name = "concurrency_limit")
+    private Integer concurrencyLimit;
+
     /** 每分钟 token 估算限制；为空表示不限制。 */
     @Column(name = "tpm_limit")
     private Integer tpmLimit;

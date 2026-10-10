@@ -1,4 +1,4 @@
-import { FileText, Image as ImageIcon, Music2, Plus, Puzzle, Video, X } from "lucide-react";
+import { FileText, Image as ImageIcon, Music2, Plus, Puzzle, UserRound, Video, X } from "lucide-react";
 import { Popover } from "antd";
 import { useTranslation } from "react-i18next";
 
@@ -7,16 +7,28 @@ import { getNodeDefinition } from "@/canvas/lib/canvas/node-registry";
 import { getGroupResourceNodes } from "@/canvas/lib/canvas/canvas-resource-references";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
+import { useConfigStore } from "@/canvas-bridge/config-store";
 
 export function CanvasNodeReferenceBar({ nodeId, nodes, connectedNodes, onDisconnect, onStartSelection }: { nodeId: string; nodes: CanvasNodeData[]; connectedNodes: CanvasNodeData[]; onDisconnect?: (fromNodeId: string, toNodeId: string) => void; onStartSelection?: (nodeId: string) => void }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const references = connectedNodes.flatMap((sourceNode) => (sourceNode.type === CanvasNodeType.Group ? getGroupResourceNodes(sourceNode.id, nodes) : [sourceNode]).map((node) => ({ node, sourceNodeId: sourceNode.id })));
+    // 本仓：display the same ordered frame/reference roles that the video bridge submits.
+    const target=nodes.find(n=>n.id===nodeId);
+    const config=useConfigStore(state=>state.config);
+    const frameMode=(target?.metadata?.videoMode||config.videoMode)!=="reference";
+    const counts={image:0,video:0,audio:0};
+    const labeled=references.map(ref=>{const kind=getNodeDefinition(ref.node.type)?.resource?.(ref.node)?.kind;
+      const number=kind&&kind in counts?++counts[kind as keyof typeof counts]:0;
+      const label=target?.type===CanvasNodeType.Video&&number?frameMode&&kind==="image"?(number===1?"首帧":number===2?"尾帧":`多余图${number}`):`${kind==="image"?"图":kind==="video"?"视频":"音频"}${number}`:undefined;
+      return {...ref,label};});
     return (
         <div className="mb-2">
             <div className="mb-1.5 text-[11px] font-medium" style={{ color: theme.node.muted }}>{t("canvas.references.title")}</div>
             <div className="thin-scrollbar flex min-h-12 gap-2 overflow-x-auto pb-1">
-                {references.map(({ node, sourceNodeId }) => <ReferenceItem key={`${sourceNodeId}:${node.id}`} node={node} onRemove={() => onDisconnect?.(sourceNodeId, nodeId)} />)}
+                {labeled.map(({ node, sourceNodeId,label }) => <ReferenceItem key={`${sourceNodeId}:${node.id}`} node={node} label={label} onRemove={() => onDisconnect?.(sourceNodeId, nodeId)} />)}
+                {/* 本仓：use the same library as toolbar; import connects to this exact node. */}
+                <button type="button" className="studio-reference-person" aria-label="从 IP 人物库添加参考" onClick={()=>window.dispatchEvent(new CustomEvent("studio-command",{detail:{action:"ip-library",nodeId}}))}><UserRound size={16}/><span>IP 人物</span></button>
                 <button type="button" className="grid size-12 shrink-0 place-items-center rounded-xl border bg-transparent transition hover:opacity-70" style={{ borderColor: theme.toolbar.border, color: theme.node.muted }} title={t("canvas.references.select")} onClick={() => onStartSelection?.(nodeId)}>
                     <Plus className="size-4" />
                 </button>
@@ -25,7 +37,7 @@ export function CanvasNodeReferenceBar({ nodeId, nodes, connectedNodes, onDiscon
     );
 }
 
-function ReferenceItem({ node, onRemove }: { node: CanvasNodeData; onRemove: () => void }) {
+function ReferenceItem({ node, onRemove,label }: { node: CanvasNodeData; onRemove: () => void;label?:string }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const resource = getNodeDefinition(node.type)?.resource?.(node);
@@ -37,6 +49,7 @@ function ReferenceItem({ node, onRemove }: { node: CanvasNodeData; onRemove: () 
                 <span className="grid size-full place-items-center overflow-hidden rounded-[inherit]">
                     {(resource?.kind === "image" || node.type === CanvasNodeType.Image) && content ? <img src={content} alt="" className="size-full object-cover" /> : (resource?.kind === "video" || node.type === CanvasNodeType.Video) && content ? <video src={content} className="size-full object-cover" muted /> : <Icon className="size-4 opacity-65" />}
                 </span>
+                {label&&<span className="absolute bottom-0 inset-x-0 rounded-b-[inherit] px-1 text-center text-[10px]" style={{background:theme.toolbar.panel,color:theme.node.text}}>{label}</span>}
                 <button type="button" className="absolute right-0 top-0 grid size-5 place-items-center rounded-full border opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }} aria-label={t("canvas.references.disconnect")} title={t("canvas.references.disconnect")} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(); }}><X className="size-3" /></button>
             </div>
         </Popover>

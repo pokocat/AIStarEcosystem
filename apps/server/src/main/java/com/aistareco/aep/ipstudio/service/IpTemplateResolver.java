@@ -56,11 +56,15 @@ public class IpTemplateResolver {
      * 模板是「拿它当起点、填我自己的素材」，实例是「点开看看做完长什么样」。
      */
     public List<IpTemplateDto> list() {
+        return list(null);
+    }
+    public List<IpTemplateDto> list(String userId) {
         List<IpTemplateDto> out = new ArrayList<>();
         for (IpDemoTemplate d : demoRepo
                 .findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_TEMPLATE)) {
-            out.add(toDto(d));
+            if(visible(d,userId))out.add(toDto(d,userId));
         }
+        if(userId!=null)for(var d:demoRepo.findAll())if(!d.isEnabled() && "personal".equals(d.getVisibility()) && userId.equals(d.getCreatedBy()) && "template".equals(d.getKind()))out.add(toDto(d,userId));
         out.addAll(catalog.templates());
         return out;
     }
@@ -70,7 +74,7 @@ public class IpTemplateResolver {
         List<IpTemplateDto> out = new ArrayList<>();
         for (IpDemoTemplate d : demoRepo
                 .findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_EXAMPLE)) {
-            out.add(toDto(d));
+            if(visible(d,null))out.add(toDto(d));
         }
         return out;
     }
@@ -87,19 +91,31 @@ public class IpTemplateResolver {
         // 这里**两种都要认**：点一个实例是「照它复制一份到我的画布」，
         // 走的也是「按 id 建项目」这条路。只认模板的话，实例点了就报不存在。
         for (IpDemoTemplate d : demoRepo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()) {
-            if (want.equals(d.getId())) return Optional.of(toDto(d));
+            if (want.equals(d.getId()) && visible(d,null)) return Optional.of(toDto(d));
         }
         return catalog.template(want);
     }
 
     private IpTemplateDto toDto(IpDemoTemplate d) {
+        return toDto(d,null);
+    }
+    private IpTemplateDto toDto(IpDemoTemplate d,String userId) {
         return new IpTemplateDto(
                 d.getId(),
                 d.getName(),
                 d.getSummary() == null ? "" : d.getSummary(),
                 d.getCoverKey() == null ? "" : signOrEmpty(d.getCoverKey()),
                 null, 0, 0,
-                docOf(d));
+                docOf(d),d.getCurrentVersionId(),versionNumber(d),d.getVisibility(),userId!=null && userId.equals(d.getCreatedBy()),d.isEnabled());
+    }
+
+    private boolean visible(IpDemoTemplate d,String userId) {
+        return !"personal".equals(d.getVisibility()) || userId != null && userId.equals(d.getCreatedBy());
+    }
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.aistareco.aep.ipstudio.repository.IpTemplateVersionRepository versions;
+    private Integer versionNumber(IpDemoTemplate d) {
+        return versions==null || d.getCurrentVersionId()==null?null:versions.findById(d.getCurrentVersionId()).map(com.aistareco.aep.ipstudio.model.IpTemplateVersion::getVersion).orElse(null);
     }
 
     /** 示例文档 → JSON 树；坏了就当空画布（一个示例坏掉不该让整个目录打不开）。 */

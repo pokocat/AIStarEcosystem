@@ -37,11 +37,400 @@ components:
   # ── Reusable response wrappers ──────────
   schemas:
 
+    StudioVideoEffect:
+      type: object
+      required: [id, name, summary, prompt, author, visibility, tags, models, favorite, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string, maxLength: 128 }
+        summary: { type: string, maxLength: 1024 }
+        prompt: { type: string, maxLength: 8000 }
+        author: { type: string }
+        visibility: { type: string, enum: [personal, official] }
+        tags: { type: array, maxItems: 8, items: { type: string, maxLength: 32 } }
+        models: { type: array, maxItems: 32, items: { type: string } }
+        previewKey: { type: string, nullable: true }
+        previewUrl: { type: string, nullable: true }
+        favorite: { type: boolean }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    StudioVideoEffectPublishRequest:
+      type: object
+      required: [name, prompt, tags, models, visibility]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        summary: { type: string, maxLength: 1024 }
+        prompt: { type: string, minLength: 1, maxLength: 8000 }
+        tags: { type: array, maxItems: 8, items: { type: string, minLength: 1, maxLength: 32 } }
+        models: { type: array, maxItems: 32, items: { type: string } }
+        visibility: { type: string, enum: [personal, official] }
+        previewKey: { type: string }
+    StudioReference:
+      type: object
+      required: [storageKey, role]
+      properties:
+        storageKey: { type: string }
+        role: { type: string, enum: [character, scene, product, frame, clip] }
+        ipId: { type: string, nullable: true }
+        avatarId: { type: string, nullable: true }
+        version: { type: integer, minimum: 1, nullable: true }
+        lookId: { type: string, nullable: true }
+    StudioVideoSettings:
+      type: object
+      required: [mode, resolutionTier]
+      properties:
+        mode: { type: string, enum: [t2v, i2v, first_last_frame_video, universal_reference_video] }
+        resolutionTier: { type: string, enum: [544p, 768p] }
+        seed: { type: integer, minimum: 0, nullable: true }
+        firstFrameKey: { type: string, nullable: true }
+        lastFrameKey: { type: string, nullable: true }
+        references: { type: array, items: { $ref: '#/components/schemas/VideoStudioReferenceInput' } }
+    StudioRunRequest:
+      type: object
+      required: [clientRequestId, nodeId, operation, prompt]
+      properties:
+        clientRequestId: { type: string, minLength: 1, maxLength: 64 }
+        nodeId: { type: string, minLength: 1, maxLength: 64 }
+        operation: { type: string, enum: [script, storyboard, image, video, assemble, assistant] }
+        prompt: { type: string, maxLength: 16000 }
+        scriptEdit:
+          type: object
+          nullable: true
+          description: '仅用于 assistant 的全屏剧本编辑改稿；沿用原端点队列、价格上限与幂等键。返回 output.scriptRevision {summary,markdown}，不产生生成计划。'
+          required: [markdown]
+          properties:
+            markdown: { type: string, minLength: 1, maxLength: 48000 }
+        references: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/StudioReference' } }
+        model: { type: string, nullable: true }
+        size: { type: string, nullable: true }
+        count: { type: integer, enum: [1, 2, 4], nullable: true, description: '图片张数或视频条数，默认 1。视频作为一个幂等批次提交。' }
+        durationSec: { type: integer, nullable: true }
+        aspectRatio: { type: string, nullable: true }
+        maxCost: { type: integer, minimum: 0, nullable: true, description: 'Approved total ceiling for the whole batch, never a caller-defined price. An increase rejects before freeze.' }
+        episodeNo: { type: integer, minimum: 1, maximum: 50, nullable: true }
+        settings: { $ref: '#/components/schemas/StudioScriptSettings' }
+        packaging: { $ref: '#/components/schemas/StudioPackaging' }
+        video: { $ref: '#/components/schemas/StudioVideoSettings' }
+        mode: { type: string, enum: [general, original, adapt, director], nullable: true }
+        contextNodeIds: { type: array, maxItems: 16, items: { type: string } }
+        readVisuals:
+          type: boolean
+          nullable: true
+          description: '仅用于assistant。true需要匹配模型的supportsVision声明；读取所选图片和60秒内视频的四帧，最多16张画面，不含音轨。缺省按历史纯文字路径；运行快照只存本人素材key，不存URL或图像字节。读取失败释放原冻结，不降级为无图成功。'
+        history:
+          type: array
+          maxItems: 16
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: { type: string, enum: [user, assistant] }
+              content: { type: string, maxLength: 4000 }
+    StudioLipSyncInput:
+      type: object
+      required: [model, videoStorageKey, audioStorageKey]
+      properties:
+        model: { type: string, description: 'DAP_LIP_SYNC 白名单 endpointId' }
+        videoStorageKey: { type: string, description: '本人单画面 MP4 人物视频；15–60fps，最多128MiB' }
+        audioStorageKey: { type: string, description: '本人 WAV 配音；最多60秒、25MiB，不得长于人物视频' }
+    StudioLipSyncRequest:
+      allOf:
+        - { $ref: '#/components/schemas/StudioLipSyncInput' }
+        - type: object
+          required: [clientRequestId, nodeId, maxCost]
+          properties:
+            clientRequestId: { type: string, maxLength: 64 }
+            nodeId: { type: string, maxLength: 64 }
+            maxCost: { type: integer, minimum: 0 }
+    StudioLipSyncQuote:
+      type: object
+      properties:
+        cost: { type: integer }
+        billableSeconds: { type: integer }
+        audioDurationSec: { type: number }
+        videoDurationSec: { type: number }
+    StudioLipSyncCatalog:
+      type: object
+      properties:
+        maxAudioSeconds: { type: integer }
+        models:
+          type: array
+          items:
+            type: object
+            properties:
+              endpointId: { type: string }
+              name: { type: string }
+              isDefault: { type: boolean }
+              creditCostPerSecond: { type: number, nullable: true }
+    StudioSpeechRequest:
+      type: object
+      required: [clientRequestId, nodeId, model, text, speaker, maxCost]
+      properties:
+        clientRequestId: { type: string, maxLength: 64 }
+        nodeId: { type: string, maxLength: 64 }
+        model: { type: string, description: 'DAP_AUDIO 白名单 endpointId' }
+        text: { type: string, maxLength: 600 }
+        speaker: { type: string, description: '当前官方音色 displayName，不是本人训练音色 id' }
+        instruct: { type: string, maxLength: 160 }
+        maxCost: { type: integer, minimum: 0 }
+        avatarId: { type: string, nullable: true }
+        voiceId: { type: string, nullable: true, description: '精确 DapVoice 版本；须属于 avatarId，speaker/instruct 必须匹配。省略表示临时预设，不改变人物默认。' }
+    StudioVoiceProfile:
+      type: object
+      required: [voiceId, avatarId, name, version, speaker, sourceRunId]
+      properties:
+        voiceId: { type: string }
+        avatarId: { type: string }
+        name: { type: string, maxLength: 64 }
+        version: { type: integer, minimum: 1 }
+        speaker: { type: string }
+        instruct: { type: string, nullable: true, maxLength: 160 }
+        demoUrl: { type: string, nullable: true }
+        demoStorageKey: { type: string, nullable: true }
+        sourceRunId: { type: string }
+    StudioVoiceCatalog:
+      type: object
+      required: [performers, profiles]
+      properties:
+        performers:
+          type: array
+          items:
+            type: object
+            properties:
+              avatarId: { type: string }
+              ipId: { type: string, nullable: true }
+              name: { type: string }
+              voiceId: { type: string, nullable: true }
+        profiles: { type: array, items: { $ref: '#/components/schemas/StudioVoiceProfile' } }
+    StudioAdoptVoiceRequest:
+      type: object
+      required: [runId, avatarId, name]
+      properties:
+        runId: { type: string }
+        avatarId: { type: string }
+        name: { type: string, maxLength: 64 }
+        expectedVoiceId: { type: string, nullable: true }
+    StudioBindVoiceRequest:
+      type: object
+      required: [voiceId]
+      properties:
+        voiceId: { type: string }
+        expectedVoiceId: { type: string, nullable: true }
+    StudioSpeechCatalog:
+      type: object
+      required: [models, voices, maxTextLength, maxInstructLength]
+      properties:
+        models:
+          type: array
+          items:
+            type: object
+            properties:
+              endpointId: { type: string }
+              name: { type: string }
+              isDefault: { type: boolean }
+              creditCost: { type: integer, nullable: true, description: '旧版单次配音积分；按秒计费时为 null' }
+              creditCostPerSecond: { type: number, nullable: true, description: '供应商积分成本乘换算比例及溢价，可为小数；两项价格均为 null 时禁止调用' }
+        voices:
+          type: array
+          items:
+            type: object
+            properties:
+              speaker: { type: string }
+              name: { type: string }
+              language: { type: string }
+              description: { type: string }
+        maxTextLength: { type: integer }
+        maxInstructLength: { type: integer }
+    StudioPackaging:
+      type: object
+      properties:
+        voiceoverStorageKey: { type: string, description: '本人音频 key，只许 assemble；替换原音轨，长于成片拒绝，禁止截断台词或冒称口型同步' }
+        brand: { type: string, maxLength: 60 }
+        title: { type: string, maxLength: 120 }
+        cta: { type: string, maxLength: 100 }
+        captions:
+          type: array
+          maxItems: 24
+          description: '用户明确填写的时间窗，须有序且不重叠，不冒称自动识别字幕。超过真实成片时长拒绝。'
+          items:
+            type: object
+            required: [start, end, text]
+            properties:
+              start: { type: number, minimum: 0 }
+              end: { type: number, maximum: 600 }
+              text: { type: string, maxLength: 160 }
+    StudioAssetCatalog:
+      type: object
+      required: [products, performers, voices, voiceEngineReady, videoLipSyncReady]
+      properties:
+        videoLipSyncReady: { type: boolean, description: '已配置可用视频+音频口型引擎；不代表人物已训练或已具备清晰的视频素材' }
+        voiceEngineReady: { type: boolean, description: '已配置真实声音引擎；不表示某个人物已有驱动或声音。' }
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              description: { type: string }
+              storageKey: { type: string }
+              url: { type: string }
+              status: { type: string }
+        performers:
+          type: array
+          items:
+            type: object
+            properties:
+              avatarId: { type: string }
+              ipId: { type: string }
+              name: { type: string }
+              imageReady: { type: boolean }
+              driverStatus: { type: string, enum: [unavailable, not_created, training, ready, failed] }
+              voiceId: { type: string }
+        voices:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              avatarId: { type: string }
+              status: { type: string }
+              demoUrl: { type: string }
+    StudioScriptSettings:
+      type: object
+      properties:
+        genre: { type: string, maxLength: 1000 }
+        fusionGenres: { type: array, maxItems: 3, items: { type: string, minLength: 1, maxLength: 100 } }
+        characterBrief: { type: string, maxLength: 1000 }
+        structure: { type: string, maxLength: 1000 }
+        audience: { type: string, maxLength: 1000 }
+        era: { type: string, maxLength: 1000 }
+        core: { type: string, maxLength: 1000 }
+        style: { type: string, maxLength: 1000 }
+        episodeCount: { type: integer, minimum: 1, maximum: 6 }
+        episodeDurationSec: { type: integer, minimum: 5, maximum: 300 }
+    StudioPlan:
+      type: object
+      required: [summary, steps, questions]
+      properties:
+        summary: { type: string }
+        questions: { type: array, items: { type: string } }
+        notes: { type: array, maxItems: 12, items: { type: string }, description: 不支持的动作保留为只读建议，不能直接执行。 }
+        steps:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [id, operation, title, prompt, referenceNodeIds]
+            properties:
+              id: { type: string }
+              operation: { type: string, enum: [script, storyboard, image, video] }
+              title: { type: string }
+              prompt: { type: string, maxLength: 16000 }
+              referenceNodeIds: { type: array, items: { type: string } }
+              unresolvedReferences: { type: array, maxItems: 16, items: { type: string }, description: 模型使用的未知名称，需要用户明确补选，服务端不猜测映射。 }
+    StudioCapabilities:
+      type: object
+      required: [mock, operations, imageCost, textCost, videoCost]
+      properties:
+        mock: { type: boolean }
+        operations: { type: array, items: { type: string } }
+        imageCost: { type: integer }
+        textCost: { type: integer }
+        videoCost: { type: integer, nullable: true }
+        textModels:
+          type: array
+          items:
+            type: object
+            required: [endpointId, name, isDefault]
+            properties:
+              endpointId: { type: string }
+              name: { type: string }
+              isDefault: { type: boolean }
+              supportsVision: { type: boolean, description: '来自端点models列表中实际model对应的明确声明，缺省false，不按模型名称猜测。' }
+    StudioAdoptRequest:
+      type: object
+      required: [nodeId, storageKey, name]
+      properties:
+        nodeId: { type: string, maxLength: 64 }
+        storageKey: { type: string }
+        name: { type: string, maxLength: 128 }
+        ipId: { type: string, nullable: true }
+        avatarId: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        intent: { type: string, enum: [main, look], nullable: true }
+        assetRole: { type: string, enum: [main, sheet, portrait, three-view, front, side, back, expression, detail, look], nullable: true, description: '人物素材明确分类；旧请求缺此字段时保持原归档幂等性。' }
+    StudioAdoptResult:
+      type: object
+      required: [ipId, avatarId, version, storageKey]
+      properties:
+        ipId: { type: string }
+        avatarId: { type: string }
+        version: { type: integer }
+        storageKey: { type: string }
+        lookId: { type: string, nullable: true }
+    StudioIpAsset:
+      type: object
+      required: [avatarId, version, storageKey, name, url, current]
+      properties:
+        ipId: { type: string, nullable: true, description: '旧发布人物尚未归入 IP 时为空，用户显式关联' }
+        avatarId: { type: string }
+        version: { type: integer }
+        storageKey: { type: string }
+        lookId: { type: string, nullable: true }
+        name: { type: string }
+        url: { type: string, description: '短期派生地址，不落库' }
+        current: { type: boolean }
+        characterName: { type: string, description: '所属人物名称，素材标题不会覆盖人物名称。' }
+        path: { type: string, enum: [ai, real], nullable: true }
+        assetRole: { type: string, enum: [main, history, sheet, portrait, three-view, front, side, back, expression, detail, look] }
+        description: { type: string, nullable: true }
+        attributes: { type: object, additionalProperties: { type: string }, description: '既有人物 def 中的文本属性，未填写的属性不推测。' }
+    StudioScript:
+      type: object
+      required: [title, outline, characters, scenes, props, episodes, shots]
+      properties:
+        title: { type: string }
+        outline: { type: string }
+        characters: { type: array, items: { $ref: '#/components/schemas/StudioSetting' } }
+        scenes: { type: array, items: { $ref: '#/components/schemas/StudioSetting' } }
+        props: { type: array, items: { $ref: '#/components/schemas/StudioSetting' } }
+        episodes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [no, title, content]
+            properties:
+              no: { type: integer, minimum: 1 }
+              title: { type: string }
+              content: { type: string }
+        shots:
+          type: array
+          items:
+            type: object
+            required: [id, title, description, dialogue, durationSec, characters]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              description: { type: string }
+              dialogue: { type: string }
+              durationSec: { type: number, exclusiveMinimum: 0, maximum: 120 }
+              episodeNo: { type: integer, minimum: 1, description: 'Required for new multiepisode output; legacy single-episode shots may omit it.' }
+              characters: { type: array, items: { type: string } }
+    StudioSetting:
+      type: object
+      required: [name, description]
+      properties:
+        name: { type: string }
+        description: { type: string }
+
     IpSavedAssetInput:
       type: object
       required: [kind, data]
       properties:
-        kind: { type: string, enum: [image, video, text] }
+        kind: { type: string, enum: [image, video, audio, text] }
         title: { type: string, maxLength: 128 }
         data:
           type: object
@@ -3038,19 +3427,20 @@ components:
     # 前端加一个节点字段不该要求后端同步改 schema。
     IpProjectDoc:
       type: object
-      description: '画布文档。nodes[] 形如 {id, position{x,y}, label, type=source|identity|style|look|generate|reference|publish, data{…}}；edges[] 形如 {id, source, target}。服务端逐字保存、绝不改写；运行结果与发布结果一律另存（IpRun / dap 实体），否则前端防抖自动保存与异步 worker 会互相覆盖。'
-      required: [nodes, edges]
+      description: '客户端拥有的通用画布文档：nodes[{id,type,title,position,width,height,metadata}]、connections[{id,fromNodeId,toNodeId}]、viewport{x,y,k}。服务端整存整取不改内容；运行与发布结果另存 IpRun/dap 资产。'
+      required: [nodes, connections]
       properties:
         nodes: { type: array, items: { type: object } }
-        edges: { type: array, items: { type: object } }
-        viewport: { type: object, properties: { x: { type: number }, y: { type: number }, zoom: { type: number } } }
+        connections: { type: array, items: { type: object } }
+        viewport: { type: object, properties: { x: { type: number }, y: { type: number }, k: { type: number } } }
     IpProject:
       type: object
       required: [id, name, status, createdAt, updatedAt, doc, runs, runsById]
       properties:
         id: { type: string, example: IPP-3f9a1c02 }
         name: { type: string, maxLength: 128 }
-        templateId: { type: string, nullable: true, description: '内置工作流 id；空 = 空白画布' }
+        templateId: { type: string, nullable: true, description: '来源模板 id；空 = 空白画布' }
+        templateVersionId: { type: string, nullable: true, description: '创建时锁定的不可变发布版本' }
         status: { type: string, enum: [draft, published] }
         coverUrl: { type: string, nullable: true, description: '主形象选中图的短期签名 URL。DB 真值是 coverKey（§4.7.4），URL 出 wire 时才派生。' }
         publishedAvatarId: { type: string, nullable: true, example: DH-51234 }
@@ -3065,6 +3455,15 @@ components:
           type: object
           description: 'runId → 运行；含 runs 里的全部，外加 doc 里被 generate 节点 selectedRunId 显式选中、却已不是最新的那次（否则画布上的选中图会变空白）。'
           additionalProperties: { $ref: '#/components/schemas/IpRun' }
+    AiGenerationQueuePosition:
+      type: object
+      description: '同一模型接入端点的实时聚合。position 是仅等待任务中的 1 基序号，执行中任务不算前面的排队项；不返回其他用户任务。'
+      required: [position, waiting, running, concurrencyLimit]
+      properties:
+        position: { type: integer, minimum: 1 }
+        waiting: { type: integer, minimum: 1 }
+        running: { type: integer, minimum: 0 }
+        concurrencyLimit: { type: integer, minimum: 1, nullable: true }
     IpRun:
       type: object
       description: '一次节点运行。cost 恒为真实账本值：running = 冻结额，done = 已 commit 之和，failed = 已 commit 的部分（可能为 0）。'
@@ -3073,17 +3472,24 @@ components:
         id: { type: string, example: IPR-7b21de40 }
         projectId: { type: string }
         nodeId: { type: string }
-        kind: { type: string, enum: [identity, generate] }
+        kind: { type: string, enum: [identity, generate, studio-script, studio-storyboard, studio-image, studio-video, studio-assemble, studio-adopt] }
         status: { type: string, enum: [running, done, failed] }
         stage: { type: string, nullable: true, description: 'queued / prompt.compile / identity.extract / image.generate.N / storage.persist / done / failed' }
         pct: { type: integer }
+        queue:
+          allOf: [{ $ref: '#/components/schemas/AiGenerationQueuePosition' }]
+          nullable: true
+          description: '只在仍等待本端点名额时返回；每次读取重新计算。开始执行/取消/完成后为 null。'
         cost: { type: integer }
         errorCode: { type: string, nullable: true, description: 'IP_IDENTITY_EXTRACT_FAILED / IP_IMAGE_FAILED / IP_RUN_CANCELLED / IP_RUN_TIMEOUT / IP_NODE_INPUT_MISSING / DAP_MODEL_*' }
         errorMessage: { type: string, nullable: true }
         inputs:
           type: object
-          description: '本次实际送模型的输入（透明可查）。服务端执行参数（含 storage key）不出 wire。'
+          description: '实际请求输入透明可查；本人参考的 key/版本可查。私有 _exec（模板执行快照、凭据及端点内部参数）不出 wire。'
           properties:
+            clientRequestId: { type: string, description: 'Studio 请求幂等键，刷新后按原键匹配已受理运行' }
+            references: { type: array, items: { $ref: '#/components/schemas/StudioReference' } }
+            studioRequest: { $ref: '#/components/schemas/StudioRunRequest' }
             prompt: { type: string, description: 'generate 的完整英文提示词（服务端模板拼装，用户可查）' }
             refs:
               type: array
@@ -3094,24 +3500,249 @@ components:
                   role: { type: string, enum: [master, source, reference] }
                   applied: { type: boolean }
                   reason: { type: string, nullable: true, enum: [over_max_refs] }
-            size: { type: string, enum: ['768x1024', '1024x1024', '768x1365'] }
+            size: { type: string, enum: ['768x1024', '1024x1024', '768x1365', '1365x768'] }
             count: { type: integer, enum: [1, 2, 4] }
         output:
           type: object
           properties:
+            mock: { type: boolean, description: '本地 fixture 返回标识；生产禁用' }
+            script: { $ref: '#/components/schemas/StudioScript' }
+            plan: { $ref: '#/components/schemas/StudioPlan' }
+            shots: { type: array, items: { type: object }, description: 'Studio 分镜，与 script.shots 同一结果投影' }
+            storageKey: { type: string, description: 'Studio 视频及合成文件的存储真值' }
+            url: { type: string, description: '短期派生地址，不落库' }
+            durationSec: { type: number }
             text: { type: string, description: 'identity —— 中文结构化人物特征卡' }
             promptEn: { type: string, description: 'identity —— 英文身份提示词' }
+            videoCandidates:
+              type: array
+              description: '原生视频批次逐条投影，固定 index；部分成功可预览采用。视频 Job 为状态和结算唯一真值，URL 出 wire 重签。'
+              items:
+                type: object
+                required: [index, jobId, status, pct, durationSec]
+                properties:
+                  index: { type: integer, minimum: 0, maximum: 3 }
+                  jobId: { type: string }
+                  status: { type: string, enum: [running, done, failed] }
+                  pct: { type: integer, minimum: 0, maximum: 100 }
+                  durationSec: { type: integer }
+                  storageKey: { type: string, nullable: true }
+                  url: { type: string, nullable: true }
+                  errorMessage: { type: string, nullable: true }
+                  queue:
+                    allOf: [{ $ref: '#/components/schemas/AiGenerationQueuePosition' }]
+                    nullable: true
             candidates:
               type: array
               description: 'generate 的候选图。key 是 DB 真值，url 是出 wire 时派生的短期签名地址（不落库）。'
               items: { type: object, properties: { key: { type: string }, url: { type: string } } }
         createdAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time, nullable: true }
+    StudioTemplateRecipe:
+      type: object
+      required: [inputs, steps]
+      properties:
+        inputs:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [id, nodeId, label, type, required]
+            properties:
+              id: { type: string }
+              nodeId: { type: string }
+              label: { type: string }
+              type: { type: string, enum: [character, image, text, option] }
+              required: { type: boolean }
+              options: { type: array, items: { type: string } }
+              defaultValue: { type: string }
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            required: [id, nodeId, title, operation, prompt, references, outputRole, requiresAdoption]
+            properties:
+              id: { type: string }
+              nodeId: { type: string }
+              title: { type: string }
+              operation: { type: string, enum: [image, video] }
+              prompt: { type: string }
+              references: { type: array, items: { type: string } }
+              size: { type: string, enum: [768x1024, 1024x1024, 768x1365, 1365x768] }
+              outputRole: { type: string, enum: [main, sheet, front, side, back, expression, detail, custom, video] }
+              requiresAdoption: { type: boolean }
+              durationSec: { type: integer, minimum: 1, maximum: 30 }
+              aspectRatio: { type: string, enum: ['9:16', '16:9', '1:1', '3:4', '4:3', '21:9'] }
+              video:
+                type: object
+                required: [mode, resolutionTier]
+                properties:
+                  mode: { type: string, enum: [t2v, i2v, first_last_frame_video, universal_reference_video] }
+                  resolutionTier: { type: string, enum: [768p, 544p] }
+                  seed: { type: integer, minimum: 0, maximum: 2147483647 }
+    StudioTemplateVersion:
+      type: object
+      required: [id, templateId, version, name, summary, visibility, recipe, doc, createdAt]
+      properties:
+        id: { type: string }
+        templateId: { type: string }
+        version: { type: integer }
+        name: { type: string }
+        summary: { type: string }
+        visibility: { type: string, enum: [personal, official] }
+        recipe: { $ref: '#/components/schemas/StudioTemplateRecipe' }
+        doc: { $ref: '#/components/schemas/IpProjectDoc' }
+        createdAt: { type: string, format: date-time }
+    StudioTemplateValue:
+      type: object
+      properties:
+        text: { type: string, maxLength: 2000 }
+        reference: { $ref: '#/components/schemas/StudioReference' }
+    StudioTemplateUseRequest:
+      type: object
+      required: [versionId, inputs]
+      properties:
+        versionId: { type: string }
+        name: { type: string, maxLength: 128 }
+        inputs: { type: object, additionalProperties: { $ref: '#/components/schemas/StudioTemplateValue' } }
+        model: { type: string, description: 平台当前 DAP_IMAGE 候选端点 id }
+        videoModel: { type: string, description: 平台当前 VIDEO_GENERATION 候选端点 id }
+    StudioTemplatePublishRequest:
+      type: object
+      required: [name, visibility, recipe]
+      properties:
+        templateId: { type: string }
+        name: { type: string, maxLength: 128 }
+        summary: { type: string, maxLength: 1024 }
+        visibility: { type: string, enum: [personal, official] }
+        recipe: { $ref: '#/components/schemas/StudioTemplateRecipe' }
+    StudioTemplatePlan:
+      type: object
+      required: [versionId, version, totalCost, imageCount, steps]
+      properties:
+        versionId: { type: string }
+        version: { type: integer }
+        model: { type: string }
+        totalCost: { type: integer }
+        imageCount: { type: integer }
+        videoCount: { type: integer }
+        videoModel: { type: string, nullable: true }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [id, title, nodeId, outputRole, cost, status, dependsOn, requiresAdoption]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              nodeId: { type: string }
+              outputRole: { type: string }
+              cost: { type: integer }
+              status: { type: string, enum: [ready, waiting_dependency, waiting_adoption] }
+              dependsOn: { type: array, items: { type: string } }
+              requiresAdoption: { type: boolean }
+              operation: { type: string, enum: [image, video] }
+    StudioTemplateInstance:
+      type: object
+      required: [project, source, plan]
+      properties:
+        project: { $ref: '#/components/schemas/IpProject' }
+        source: { $ref: '#/components/schemas/StudioTemplateVersion' }
+        plan: { $ref: '#/components/schemas/StudioTemplatePlan' }
+    StudioTemplateExecutionStep:
+      type: object
+      required: [id, title, nodeId, outputRole, status, requiresAdoption, accepted]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        nodeId: { type: string }
+        outputRole: { type: string }
+        operation: { type: string, enum: [image, video] }
+        status: { type: string, enum: [ready, waiting_dependency, waiting_adoption, running, failed, done, stale] }
+        requiresAdoption: { type: boolean }
+        cost: { type: integer }
+        run: { $ref: '#/components/schemas/IpRun' }
+        storageKey: { type: string }
+        url: { type: string }
+        accepted: { type: boolean }
+        adoption: { $ref: '#/components/schemas/StudioAdoptResult' }
+    StudioTemplateExecution:
+      type: object
+      required: [versionId, version, steps, complete]
+      properties:
+        versionId: { type: string }
+        version: { type: integer }
+        steps: { type: array, items: { $ref: '#/components/schemas/StudioTemplateExecutionStep' } }
+        complete: { type: boolean }
+    StudioTemplateExecuteRequest:
+      type: object
+      required: [clientRequestId, maxCost]
+      properties:
+        clientRequestId: { type: string, maxLength: 64 }
+        maxCost: { type: integer, minimum: 0 }
+        replaceRunId: { type: string }
+        prompt: { type: string, maxLength: 16000, description: 本次实例图片指令覆盖；不修改发布配方和引用 }
+    StudioTemplateAcceptRequest:
+      type: object
+      required: [runId, storageKey, accepted]
+      properties:
+        runId: { type: string }
+        storageKey: { type: string }
+        accepted: { type: boolean }
+    StudioTemplatePackageRequest:
+      type: object
+      required: [title, stepIds]
+      properties:
+        title: { type: string, maxLength: 80 }
+        description: { type: string, maxLength: 300 }
+        stepIds: { type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: { type: string } }
+    StudioTemplatePackage:
+      type: object
+      required: [id, title, versionId, boardKey, boardUrl, bundleKey, bundleUrl, width, height, imageCount, requiredCount, complete, createdAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        versionId: { type: string }
+        boardKey: { type: string }
+        boardUrl: { type: string }
+        bundleKey: { type: string }
+        bundleUrl: { type: string }
+        width: { type: integer }
+        height: { type: integer }
+        imageCount: { type: integer }
+        requiredCount: { type: integer }
+        complete: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    StudioTemplateMetrics:
+      type: object
+      required: [versionId, version, scope, instances, completedInstances, generatedSteps, acceptedSteps, firstPassAcceptedSteps, failedRuns, runningRuns, spentCredits, pendingCredits, packages, archivedAssets]
+      properties:
+        versionId: { type: string }
+        version: { type: integer }
+        scope: { type: string, enum: [owner] }
+        instances: { type: integer }
+        completedInstances: { type: integer }
+        generatedSteps: { type: integer }
+        acceptedSteps: { type: integer }
+        firstPassAcceptedSteps: { type: integer }
+        failedRuns: { type: integer }
+        runningRuns: { type: integer }
+        spentCredits: { type: integer }
+        pendingCredits: { type: integer }
+        packages: { type: integer }
+        archivedAssets: { type: integer }
     IpTemplate:
       type: object
       required: [id, name, summary, lookCount, estimatedCredits, doc]
       properties:
-        id: { type: string, enum: [portrait-bjd-trio, portrait-sticker-six] }
+        id: { type: string }
+        mine: { type: boolean, nullable: true }
+        enabled: { type: boolean, nullable: true }
+        versionId: { type: string, nullable: true }
+        version: { type: integer, nullable: true }
+        visibility: { type: string, enum: [personal, official], nullable: true }
         name: { type: string }
         summary: { type: string }
         coverUrl: { type: string, nullable: true }
@@ -7729,7 +8360,7 @@ paths:
   # 端点 = 固定 {上游密钥 + 单模型 + 地址}，仅供平台内部 AI 应用绑定（ai_app_binding）调用。
   /admin/ai-models:
     get:  { tags: [admin-ai-models], operationId: adminListAiModelEndpoints,  responses: { '200': { description: ok } } }
-    post: { tags: [admin-ai-models], operationId: adminCreateAiModelEndpoint, responses: { '201': { description: created } } }
+    post: { tags: [admin-ai-models], operationId: adminCreateAiModelEndpoint, description: 'concurrencyLimit 可选整数 0–1000；0/null 表示不限制，同一端点共用生成名额，超出排队。', responses: { '201': { description: created } } }
   /admin/ai-models/presets:
     get: { tags: [admin-ai-models], operationId: adminListAiModelPresets, responses: { '200': { description: 内置常见服务商预设（火山方舟 / Kimi / DeepSeek / 千问 / OpenAI） } } }
   /admin/ai-models/usage:
@@ -7777,7 +8408,7 @@ paths:
   /admin/ai-models/{id}:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get:    { tags: [admin-ai-models], operationId: adminGetAiModelProvider,    responses: { '200': { description: ok } } }
-    put:    { tags: [admin-ai-models], operationId: adminUpdateAiModelProvider, responses: { '200': { description: ok } } }
+    put:    { tags: [admin-ai-models], operationId: adminUpdateAiModelProvider, description: 'concurrencyLimit 省略/null 保留原值，0 清空限制，1–1000 设置上限；新上限不取消已有任务。', responses: { '200': { description: ok } } }
     delete: { tags: [admin-ai-models], operationId: adminDeleteAiModelProvider, responses: { '204': { description: ok } } }
   /admin/ai-models/{id}/test:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
@@ -10397,8 +11028,154 @@ paths:
   # 注意：实际挂载于 /api/v1/ip-studio/**；本文件按惯例省略 /api 前缀。
   # 生成链路全部复用 dap 域（DapMultimodalClient / DapImageInput / FileStorageService /
   # PromptService / CreditService hold→commit / DapPricingService），故错误码里混有 DAP_*。
+  /v1/ip-studio/video-effects:
+    get:
+      tags: [ipstudio]
+      operationId: studioVideoEffects
+      description: '官方广场与本人特效描述；收藏、最近使用按当前账号派生。previewUrl 是短期签名，不入库。'
+      responses: { '200': { description: 'ApiResponse<StudioVideoEffect[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioVideoEffect' } } } } } }
+    post:
+      tags: [ipstudio]
+      operationId: studioPublishVideoEffect
+      description: '发布不可变效果描述。personal 仅本人，official 仅超级管理员。作者从账号派生；封面必须为本人可读取图片；models 只接受已配置视频模型，空数组代表通用描述。零积分，不创建生成任务。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioVideoEffectPublishRequest' } } } }
+      responses: { '200': { description: 'ApiResponse<StudioVideoEffect>' }, '400': { description: STUDIO_EFFECT_INPUT_INVALID }, '403': { description: SUPER_ADMIN_ONLY } }
+  /v1/ip-studio/video-effects/{id}/favorite:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    put:
+      tags: [ipstudio]
+      operationId: studioFavoriteVideoEffect
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [favorite], properties: { favorite: { type: boolean } } } } } }
+      responses: { '200': { description: 'ApiResponse<StudioVideoEffect>' }, '404': { description: STUDIO_EFFECT_NOT_FOUND } }
+  /v1/ip-studio/video-effects/{id}/apply:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioApplyVideoEffect
+      description: '校验当前视频模型与作品可见范围，更新最近使用并返回完整描述。前端在光标处插入可编辑标签，原生 IpRun 按完整提示词生成；此调用不触发供应商，不冻结积分。'
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [model], properties: { model: { type: string } } } } } }
+      responses: { '200': { description: 'ApiResponse<StudioVideoEffect>' }, '400': { description: STUDIO_EFFECT_MODEL_UNSUPPORTED / STUDIO_EFFECT_MODEL_UNAVAILABLE }, '404': { description: STUDIO_EFFECT_NOT_FOUND } }
   /v1/ip-studio/templates:
     get: { tags: [ipstudio], operationId: ipStudioTemplates, description: '内置工作流模板（resources/ipstudio/templates/*.json，随代码发布）。doc 是预排好位置的节点图，照片与参考图为空待填。', responses: { '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IpTemplate' } } } } } } }
+  /v1/ip-studio/projects/{id}/template-versions:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioPublishTemplateVersion
+      description: '从本人画布发布不可变配方；personal 仅本人可用，official 仅超级管理员。只保留声明的输入/图片步骤，剥除全部作者媒体/运行/批准/身份；已发布版本不可覆盖。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplatePublishRequest' } } } }
+      responses:
+        '200': { description: ApiResponse<StudioTemplateVersion>, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateVersion' } } } }
+        '400': { description: STUDIO_TEMPLATE_INVALID }
+        '403': { description: SUPER_ADMIN_ONLY }
+  /v1/ip-studio/template-versions/{versionId}:
+    parameters: [{ in: path, name: versionId, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: studioReadTemplateVersion
+      responses:
+        '200': { description: ApiResponse<StudioTemplateVersion>, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateVersion' } } } }
+        '404': { description: STUDIO_TEMPLATE_NOT_FOUND }
+  /v1/ip-studio/templates/{templateId}/availability:
+    parameters: [{ in: path, name: templateId, required: true, schema: { type: string } }]
+    put:
+      tags: [ipstudio]
+      operationId: studioTemplateAvailability
+      description: '个人模板仅作者可上下架；官方模板由超级管理员管理；下架不删除版本或旧项目。'
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } } } } }
+      responses: { '200': { description: ok } }
+  /v1/ip-studio/template-versions/{versionId}/metrics:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioTemplateMetrics
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Owner-only version cohort, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateMetrics' } } } }
+
+  /v1/ip-studio/template-plan:
+    post:
+      tags: [ipstudio]
+      operationId: studioTemplatePlan
+      description: '本人输入与当前平台图片价格/引擎 preflight；返回逐步费用、依赖和人工确认点；不冻结、不调用供应商。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateUseRequest' } } } }
+      responses:
+        '200': { description: ApiResponse<StudioTemplatePlan>, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplatePlan' } } } }
+        '400': { description: STUDIO_TEMPLATE_INPUT_INVALID }
+        '503': { description: ENDPOINT_NOT_ALLOWED / PROMPT_NOT_CONFIGURED }
+  /v1/ip-studio/template-instances:
+    post:
+      tags: [ipstudio]
+      operationId: studioInstantiateTemplate
+      description: '验证输入后新建独立画布，重建所有 node/connection id 并锁定版本；仅创建，不启动生成。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateUseRequest' } } } }
+      responses:
+        '200': { description: ApiResponse<StudioTemplateInstance>, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateInstance' } } } }
+        '404': { description: STUDIO_TEMPLATE_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/template-instance:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: studioReadTemplateInstance
+      description: '只按项目锁定的版本恢复来源和创建时的制作计划；不因模板更新/下架变化。'
+      responses:
+        '200': { description: ApiResponse<StudioTemplateInstance>, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateInstance' } } } }
+        '404': { description: STUDIO_TEMPLATE_INSTANCE_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/template-execution:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioTemplateExecution
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateExecution' } } } }
+  /v1/ip-studio/projects/{id}/template-steps/{stepId}/runs:
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioTemplateExecute
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: stepId, in: path, required: true, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateExecuteRequest' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
+  /v1/ip-studio/projects/{id}/template-steps/{stepId}/accept:
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioTemplateAccept
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: stepId, in: path, required: true, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateAcceptRequest' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateExecution' } } } }
+  /v1/ip-studio/projects/{id}/template-steps/{stepId}/archive:
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioTemplateArchive
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: stepId, in: path, required: true, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioAdoptRequest' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplateExecution' } } } }
+  /v1/ip-studio/projects/{id}/template-packages:
+    get:
+      tags: [ipstudio]
+      operationId: ipStudioTemplatePackages
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioTemplatePackage' } } } } }
+    post:
+      tags: [ipstudio]
+      operationId: ipStudioTemplateCreatePackage
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplatePackageRequest' } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/StudioTemplatePackage' } } } }
+
   /v1/ip-studio/styles:
     get: { tags: [ipstudio], operationId: ipStudioStyles, description: '内置风格预设 6 套（bjd / chibi / pixar3d / flat-vector / guochao-ink / clay）。promptEn 与 negativeEn 逐字进出图提示词。', responses: { '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IpStylePreset' } } } } } } }
   /v1/ip-studio/pricing:
@@ -10419,6 +11196,235 @@ paths:
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpUploadResult' } } } }
         '400': { description: 'IP_UPLOAD_INVALID —— 类型 / 大小 / 无法识别的图片内容' }
+  /v1/ip-studio/studio/lip-sync-catalog:
+    get:
+      tags: [ipstudio]
+      operationId: studioLipSyncCatalog
+      responses:
+        '200': { description: 'ApiResponse<StudioLipSyncCatalog>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioLipSyncCatalog' } } } }
+  /v1/ip-studio/projects/{id}/lip-sync-quote:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioLipSyncQuote
+      description: '只验证本人真实视频/WAV与平台每秒价格，不冻结、不调用供应商。真实音频秒向上取整 × 明确配置单价。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioLipSyncInput' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioLipSyncQuote>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioLipSyncQuote' } } } }
+        '400': { description: 'STUDIO_LIP_SYNC_INPUT_INVALID / STUDIO_LIP_SYNC_MEDIA_INVALID / IP_ASSET_KEY_INVALID' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND' }
+        '503': { description: 'STUDIO_LIP_SYNC_PRICE_NOT_CONFIGURED' }
+  /v1/ip-studio/projects/{id}/lip-sync-runs:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioLipSyncRun
+      description: '原生 X-Dub 视频+音频口型同步。owner与真实媒体检查、冻结价格先于上传/提交；逐素材checkpoint、Idempotency-Key=IpRun.id，同请求重放返回原任务，已受理后只查询。失败原子释放冻结，成功转存我方且只结算一次；输出另存片段，需用户检查并采用。用途 DAP_LIP_SYNC/V42 与普通图生视频分开。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioLipSyncRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<IpRun>', content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
+        '400': { description: 'STUDIO_LIP_SYNC_INPUT_INVALID / STUDIO_LIP_SYNC_MEDIA_INVALID / IP_ASSET_KEY_INVALID' }
+        '402': { description: '积分不足' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND' }
+        '409': { description: 'STUDIO_REQUEST_CHANGED / STUDIO_PRICE_CHANGED' }
+        '503': { description: 'STUDIO_LIP_SYNC_PRICE_NOT_CONFIGURED' }
+  /v1/ip-studio/projects/{id}/lip-sync-runs/{runId}/extract:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: runId, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioLipSyncExtract
+      description: '免费整理已完成的本人原口型结果。单画面直接沿用；左右对照仅在画幅及左侧与原视频的 SSIM 匹配后提取右侧，保留 comparisonStorageKey/签名 comparisonUrl。lipSyncNormalized 标记让重复调用直接返回原产物；不改输入、费用或账本，不调用供应商，不支持任意客户端裁切。未知布局明确报错，原视频仍可查看。'
+      responses:
+        '200': { description: 'ApiResponse<IpRun>', content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
+        '400': { description: 'STUDIO_LIP_SYNC_INPUT_INVALID / STUDIO_LIP_SYNC_LAYOUT_UNKNOWN / IP_ASSET_KEY_INVALID' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND' }
+  /v1/ip-studio/studio/voice-profiles:
+    get:
+      tags: [ipstudio]
+      operationId: studioVoiceProfiles
+      responses:
+        '200': { description: '本人已有的人物及官方预设声音版本。无供应商调用。', content: { application/json: { schema: { $ref: '#/components/schemas/StudioVoiceCatalog' } } } }
+  /v1/ip-studio/projects/{id}/adopt-voice:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioAdoptVoice
+      description: '从本人当前项目 done 的 studio-audio 采纳声音。音色/风格/试听取服务端成功任务，建立不可变 DapVoice preset 版本；人物行锁 + expectedVoiceId 防覆盖。avatarId+sourceRunId 唯一，原请求重放不切回旧默认。保存免费，不调用供应商。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioAdoptVoiceRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioVoiceProfile>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioVoiceProfile' } } } }
+        '400': { description: 'STUDIO_VOICE_INPUT_INVALID / STUDIO_VOICE_SOURCE_INVALID / STUDIO_VOICE_AVATAR_INVALID / STUDIO_VOICE_UNAVAILABLE' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND' }
+        '409': { description: 'STUDIO_VOICE_CHANGED' }
+  /v1/ip-studio/studio/performers/{avatarId}/voice:
+    parameters: [{ in: path, name: avatarId, required: true, schema: { type: string } }]
+    put:
+      tags: [ipstudio]
+      operationId: studioBindVoice
+      description: '明确切换人物默认声音至本人同人物已有版本；人物行锁 + expectedVoiceId CAS。旧任务和作品不变，免费。已是同一默认时幂等返回。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioBindVoiceRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioVoiceProfile>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioVoiceProfile' } } } }
+        '400': { description: 'STUDIO_VOICE_INPUT_INVALID / STUDIO_VOICE_AVATAR_INVALID / STUDIO_VOICE_UNAVAILABLE' }
+        '409': { description: 'STUDIO_VOICE_CHANGED' }
+  /v1/ip-studio/studio/speech-catalog:
+    get:
+      tags: [ipstudio]
+      operationId: studioSpeechCatalog
+      responses:
+        '200': { description: 'ApiResponse<StudioSpeechCatalog>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSpeechCatalog' } } } }
+  /v1/ip-studio/projects/{id}/speech-runs:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioSpeechRun
+      description: '固定音色 TTS。owner 行锁 + 同键同内容返回原 IpRun，不重复冻结。DAP_AUDIO 白名单与明确的单次积分配置，maxCost 校验先于 hold。afterCommit 派发，Idempotency-Key=runId；已受理原 Job 持久化、重启只查询。下载同 Key 鉴权并校验主机/路径/model 作用域，ffprobe 验真实音频，转存我方后出短期签名 URL。供应商按秒成本与平台单次价格分开。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSpeechRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<IpRun>', content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
+        '400': { description: 'STUDIO_SPEECH_INPUT_INVALID / STUDIO_SPEECH_VOICE_INVALID / ENDPOINT_NOT_ALLOWED' }
+        '402': { description: '积分不足；不受理' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND' }
+        '409': { description: 'STUDIO_REQUEST_CHANGED / STUDIO_PRICE_CHANGED' }
+        '503': { description: 'STUDIO_SPEECH_PRICE_NOT_CONFIGURED；不冻结' }
+  /v1/ip-studio/studio/video-models:
+    get:
+      tags: [ip-studio]
+      summary: 画布原生视频模式、素材限制及定价
+      responses:
+        "200":
+          description: 仅已配置且支持原生规格的模型；缺失定价格子不允许提交
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { type: array, items: { $ref: '#/components/schemas/VideoStudioModel' } }
+  /v1/ip-studio/studio/capabilities:
+    get:
+      tags: [ipstudio]
+      operationId: studioCapabilities
+      description: '统一创作入口能力与基础报价。mock 只在显式本地测试配置开启，生产/mysql 启动硬拒绝；mock=true 时模型返回使用样例且生成成本为 0。视频报价取 /models 的单价与 billingUnit，不能照 textCost。'
+      responses:
+        '200': { description: 'ApiResponse<StudioCapabilities>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioCapabilities' } } } }
+  /v1/ip-studio/studio/asset-catalog:
+    get:
+      tags: [ipstudio]
+      operationId: studioAssetCatalog
+      description: '本人未删除商品、人物与声音的只读目录。形象、驱动和声音分别返回真实状态；主形象采用成功不代表口型驱动或声音训练完成。所有地址在出 wire 时重签。'
+      responses:
+        '200': { description: 'ApiResponse<StudioAssetCatalog>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioAssetCatalog' } } } }
+  /v1/ip-studio/studio/ip-assets:
+    get:
+      tags: [ipstudio]
+      operationId: studioIpAssets
+      description: '本人未删除人物的主形象、历史版本与完成造型。以 characterName/avatarId 汇总人物，返回已填写属性与明确 assetRole（旧未分类造型为 look），不推测图片内容。稳定 ipId/avatarId/version/storageKey、可选 lookId，url 为出 wire 时重签；旧未关联 IP 人物仍能明确关联。'
+      responses:
+        '200': { description: 'ApiResponse<StudioIpAsset[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioIpAsset' } } } } }
+  /v1/ip-studio/studio/performers/{avatarId}/looks/{lookId}/role:
+    parameters:
+      - { in: path, name: avatarId, required: true, schema: { type: string } }
+      - { in: path, name: lookId, required: true, schema: { type: string } }
+    put:
+      tags: [ipstudio]
+      operationId: studioClassifyIpLook
+      description: '免费整理本人指定人物已完成造型的素材类别。强验 owner/avatar/look 归属，不生成图片，不修改主形象、key、版本或声音。'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assetRole]
+              properties:
+                assetRole: { type: string, enum: [sheet, portrait, three-view, front, side, back, expression, detail, look] }
+      responses:
+        '200': { description: 'ApiResponse<StudioIpAsset>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioIpAsset' } } } }
+  /v1/ip-studio/projects/{id}/media-import:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioMediaImport
+      description: '本人项目附件导入免费。JPG/PNG 8MiB/24Mpx/8000px；H.264/AAC MP4 128MiB/60秒；MP3/WAV/M4A 25MiB/600秒且不能含画面。按实际字节、ImageIO头/ffprobe校验，再计aiavatar存储用量；key沿用ipstudio_source本人空间；返回短期签名URL，画布持久化只存key。音频助手只读文字设定，不代表语音理解。'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, mediaType]
+              properties:
+                file: { type: string, format: binary }
+                mediaType: { type: string, enum: [image, video, audio] }
+      responses:
+        '200': { description: 'ApiResponse<StudioMediaImportResult>：key/url/mediaType/mimeType/bytes/fileName/width?/height?/durationSec?' }
+        '400': { description: STUDIO_MEDIA_INVALID }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+        '402': { description: STORAGE_QUOTA_EXCEEDED }
+  /v1/ip-studio/projects/{id}/story-import:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: importStudioStory
+      description: '免费提取本人画布的 PDF / Word（DOC / DOCX）故事正文。文件最多 8 MB，PDF 最多 100 页，正文最多 24000 字。只返回文字，不保存原文件、不创建任务、不扣积分；前端将正文存为可编辑文字节点。扫描件无文字层、密码保护、损坏文件明确拒绝，不执行宏、链接、嵌入对象或 OCR。'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties: { file: { type: string, format: binary } }
+      responses:
+        '200':
+          description: ApiResponse<StudioStoryImportResult>
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    required: [text, format]
+                    properties:
+                      text: { type: string, maxLength: 24000 }
+                      format: { type: string, enum: [pdf, doc, docx] }
+        '400': { description: 'STUDIO_STORY_INVALID：格式、大小、正文长度、密码或文字提取失败' }
+        '401': { description: 未登录 }
+        '404': { description: 'IP_PROJECT_NOT_FOUND：项目非本人或已删除' }
+  /v1/ip-studio/projects/{id}/studio-runs:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioSubmitRun
+      description: >-
+        script/storyboard/image/video/assemble/assistant 统一提交。本人项目行锁 + V40 唯一(project_id,client_request_id) 保证同请求重试返回原任务；同键不同正文 409。
+        输入引用先校验真实 owner/IP/人物/版本/key，旧主形象版本仍能引用。worker afterCommit 派发，不改客户端 doc。
+        真实图片复用原图像链；真实视频绑定 MaterialVideoJob(ipstudio)，状态/产物/费用只读投影、不新增第二处结算。
+        mock 只替换模型返回，数据库、签名、保存、采用和 ffmpeg 合成真实执行；失败不回退成功占位。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioRunRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<IpRun>', content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_REFERENCE_* / STUDIO_IP_VERSION_MISMATCH / IP_ASSET_KEY_INVALID' }
+        '402': { description: '积分不足；不建任务' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / 资产非本人或已删除' }
+        '409': { description: 'STUDIO_REQUEST_CHANGED / STUDIO_PRICE_CHANGED（价格超过批准上限，冻结前拒绝）' }
+        '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / STUDIO_FIXTURE_UNAVAILABLE / 视频与图像链既有 preflight 错误；不建任务不冻结' }
+  /v1/ip-studio/projects/{id}/adopt:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioAdoptImage
+      description: '零积分显式采用本人图片。intent=main（缺省）创建/更新人物主形象并保留版本；intent=look 要求已有 avatarId，建 DapLook 不改变主形象。同项目同正文幂等。IP 与项目多对多，不能重绑属于别的 IP 的人物。原 /publish 兼容及重复 409 保留。'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioAdoptRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioAdoptResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioAdoptResult' } } } }
+        '400': { description: 'STUDIO_ADOPT_IMAGE_REQUIRED / STUDIO_LOOK_AVATAR_REQUIRED / STUDIO_AVATAR_ALREADY_LINKED / IP_ASSET_KEY_INVALID' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / 资产非本人或已删除' }
   /v1/ip-studio/projects:
     get: { tags: [ipstudio], operationId: ipStudioProjects, description: '我的 IP 项目卡（summary，coverUrl 已签名）。软删项目不出现。', responses: { '200': { description: ok } } }
     post:
@@ -10483,7 +11489,7 @@ paths:
     get:
       tags: [ipstudio]
       operationId: ipStudioSavedAssets
-      description: '本人云端画布素材列表。图片/视频 URL 按 storageKey 重签，文本返回完整 content。画布素材面板与顶部资产页共用。'
+      description: '本人云端画布素材列表。图片/视频/音频 URL 按 storageKey 重签，文本返回完整 content。画布素材面板与顶部资产页共用。'
       responses:
         '200': { description: 'ApiResponse<IpSavedAsset[]>' }
     post:
@@ -10551,6 +11557,38 @@ paths:
       responses:
         "200": { description: "{ [key]: signedUrl }" }
 
+  /v1/ip-studio/projects/{id}/conversations/{nodeId}/share:
+    get:
+      tags: [ip-studio]
+      operationId: previewStudioConversationShare
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }, { in: path, name: nodeId, required: true, schema: { type: string } }]
+      responses: { '200': { description: '本人已完成对话的文字白名单快照、snapshotHash 和已有分享链接；未发布' } }
+    post:
+      tags: [ip-studio]
+      operationId: createStudioConversationShare
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }, { in: path, name: nodeId, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [snapshotHash], properties: { snapshotHash: { type: string, minLength: 64, maxLength: 64 } } } } } }
+      responses: { '200': { description: 'token/path/createdAt，免费；同快照返回原链接，更新快照使旧链接失效' }, '409': { description: 'STUDIO_SHARE_CHANGED，需重新预览' } }
+  /v1/ip-studio/projects/{id}/conversations/{nodeId}/share/{token}:
+    delete:
+      tags: [ip-studio]
+      operationId: revokeStudioConversationShare
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }, { in: path, name: nodeId, required: true, schema: { type: string } }, { in: path, name: token, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'revoked=true；本人撤销幂等，不修改源画布' } }
+  /v1/ip-studio/shared/conversations/{token}:
+    get:
+      tags: [ip-studio]
+      operationId: readStudioConversationShare
+      security: []
+      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
+      responses: { '200': { description: '匿名只读 snapshot/createdAt；no-store/noindex，不含源节点、媒体绑定、执行请求或账号信息' }, '404': { description: '不存在、已撤销或源画布已删除' } }
+  /v1/ip-studio/shared/conversations/{token}/copy:
+    post:
+      tags: [ip-studio]
+      operationId: copyStudioConversationShare
+      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [clientRequestId], properties: { clientRequestId: { type: string, minLength: 8, maxLength: 128 } } } } } }
+      responses: { '200': { description: 'projectId；登录且开通后复制文字到本人新画布，同owner/请求键幂等，0生成0积分，参考需重新选择' } }
   /v1/ip-studio/projects/{projectId}/generate:
     post:
       tags: [ip-studio]
@@ -10669,7 +11707,7 @@ paths:
     get:
       tags: [ipstudio]
       operationId: ipStudioRun
-      description: '轮询一次运行。generate 的 output.candidates 每张都是「key 真值 + 出 wire 派生的短期签名 url」；失败一定带 errorCode。'
+      description: '轮询一次运行，每次重算实时 queue 位置；原生视频每条候选独立返回 queue，整批仍排队时运行 queue 取最近的一条。generate 的 output.candidates 每张都是「key 真值 + 出 wire 派生的短期签名 url」；失败一定带 errorCode。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }

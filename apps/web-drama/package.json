@@ -17,6 +17,7 @@
     "@ai-star-eco/landing": "workspace:*",
     "@ai-star-eco/types": "workspace:*",
     "@ai-star-eco/ui": "workspace:*",
+    "@tiptap/core": "2.27.2",
     "@tiptap/extension-mention": "^2.27.2",
     "@tiptap/extension-placeholder": "^2.27.2",
     "@tiptap/pm": "^2.27.2",

@@ -9,6 +9,7 @@ import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -82,12 +83,12 @@ public class IpDemoTemplateService {
 
     /** 启用中的全局**模板**（进「开始一个 IP」那一排）。 */
     public List<IpDemoTemplate> listTemplates() {
-        return repo.findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_TEMPLATE);
+        return repo.findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_TEMPLATE).stream().filter(t->!"personal".equals(t.getVisibility())).toList();
     }
 
     /** 启用中的全局**实例**（进画布列表，带「官方示例」标记）。 */
     public List<IpDemoTemplate> listExamples() {
-        return repo.findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_EXAMPLE);
+        return repo.findByKindAndEnabledTrueOrderBySortOrderAscCreatedAtAsc(IpDemoTemplate.KIND_EXAMPLE).stream().filter(t->!"personal".equals(t.getVisibility())).toList();
     }
 
     /** 示例文档 → JSON 树；坏了就当空画布（示例坏掉不该让整个目录打不开）。 */
@@ -131,9 +132,14 @@ public class IpDemoTemplateService {
                                              String demoId, String name, String summary,
                                              String kind) {
         boolean asTemplate = IpDemoTemplate.KIND_TEMPLATE.equals(kind);
+        if(demoId != null && !demoId.isBlank())repo.findById(demoId.trim()).ifPresent(existing -> {
+            if(existing.getCurrentVersionId()!=null || "personal".equals(existing.getVisibility()))
+                throw BusinessException.badRequest("STUDIO_TEMPLATE_VERSIONED", "请从发布为模板入口新增版本，不能覆盖已发布配方");
+        });
         // 只能拿**自己的**项目做示例：运营也不该凭一个 id 就把别人的画布连素材抄成公开内容。
         IpProject p = projects.required(operatorId, projectId);
         JsonNode doc = projects.readDoc(p);
+        removeStudioExecutionNodes(doc);
 
         String id = demoId != null && !demoId.isBlank()
                 ? requireCleanId(demoId.trim())
@@ -151,12 +157,14 @@ public class IpDemoTemplateService {
                 throw BusinessException.badRequest("IP_DEMO_TOO_MANY_ASSETS",
                         "这张画布的素材太多（" + referenced + " 个），先精简到 " + MAX_ASSETS + " 个以内");
             }
+            preparePublishedCharacters(doc);
         }
 
         for (JsonNode node : IpDocs.nodes(doc)) {
             JsonNode md = IpDocs.metadataOf(node);
             if (!(md instanceof ObjectNode mo)) continue;
 
+            stripStudioExecution(mo); // Studio run, approval, chat and adopted identity never become another user's execution.
             if (asTemplate) {
                 stripToWorkflow(node, mo);
                 continue;
@@ -180,6 +188,8 @@ public class IpDemoTemplateService {
                     io.remove("content");
                 }
             }
+            RUN_FIELDS.forEach(mo::remove);
+            for(String field:CANDIDATE_FIELDS)for(JsonNode item:mo.path(field))if(item instanceof ObjectNode candidate)RUN_FIELDS.forEach(candidate::remove);
             mo.remove("content");
             mo.remove("url");
         }
@@ -236,9 +246,74 @@ public class IpDemoTemplateService {
      * （见 canvas-generation-helpers.ts）。只删素材不删凭据的话，别人打开模板会去查
      * <b>作者的</b>运行，被归属闸正确地拒掉 —— 一个干净的模板变成一堆报错节点。
      */
+    private static void removeStudioExecutionNodes(JsonNode doc) {
+        // Assistant summaries and approved batches are private execution records, not reusable authored steps.
+        Set<String> removed=new java.util.HashSet<>();
+        if(doc.path("nodes") instanceof ArrayNode nodes)for(int i=nodes.size()-1;i>=0;i--) {
+            var node=nodes.get(i);
+            if(Set.of("assistant","batch").contains(node.path("metadata").path("studio").path("kind").asText())) {
+                removed.add(node.path("id").asText());nodes.remove(i);
+            }
+        }
+        if(doc.path("connections") instanceof ArrayNode connections)for(int i=connections.size()-1;i>=0;i--) {
+            var connection=connections.get(i);
+            if(removed.contains(connection.path("fromNodeId").asText())||removed.contains(connection.path("toNodeId").asText()))connections.remove(i);
+        }
+        for(var node:IpDocs.nodes(doc))if(node.path("metadata").path("studio") instanceof ObjectNode studio
+                &&removed.contains(studio.path("parentNodeId").asText()))studio.remove("parentNodeId");
+    }
+
+    private static void stripStudioExecution(ObjectNode metadata) {
+        JsonNode studio=metadata.path("studio");if(!(studio instanceof ObjectNode source))return;
+        // Keep only reusable authored structure. Request/reference/adoption/chat/batch records are owner-bound.
+        if(Set.of("assistant","batch").contains(source.path("kind").asText())) {metadata.remove("studio");return;}
+        ObjectNode clean=source.objectNode();
+        for(String field:List.of("kind","settings","episodeNo","script","shot","parentNodeId","assetRole","order",
+                "libraryCharacterId","libraryCharacterName","libraryAssetRole"))
+            if(source.has(field))clean.set(field,source.get(field).deepCopy());
+        metadata.set("studio",clean);
+    }
+    /** Group public character copies before removing owner-bound adoption/reference records. */
+    private static void preparePublishedCharacters(JsonNode doc) {
+        Map<String,String> groups=new java.util.LinkedHashMap<>();
+        Map<String,String> names=new HashMap<>();
+        for(JsonNode node:IpDocs.nodes(doc)) {
+            JsonNode source=node.path("metadata").path("studio");
+            if(!IpDocs.T_IMAGE.equals(IpDocs.typeOf(node)) || !(source instanceof ObjectNode studio)
+                    || !"ip".equals(studio.path("kind").asText()) && !studio.has("libraryAssetRole"))continue;
+            String group=characterSource(node);
+            groups.computeIfAbsent(group,unused->"character-"+(groups.size()+1));
+            String name=studio.path("libraryCharacterName").asText("");
+            if(name.isBlank())name=node.path("title").asText("未命名人物");
+            // A main image identifies the person; a detail node title names only that asset.
+            if(!names.containsKey(group) || "main".equals(studio.path("libraryAssetRole").asText("main")))
+                names.put(group,name);
+        }
+        for(JsonNode node:IpDocs.nodes(doc)) {
+            JsonNode source=node.path("metadata").path("studio");
+            if(!IpDocs.T_IMAGE.equals(IpDocs.typeOf(node)) || !(source instanceof ObjectNode studio)
+                    || !"ip".equals(studio.path("kind").asText()) && !studio.has("libraryAssetRole"))continue;
+            String group=characterSource(node);
+            if(!groups.containsKey(group))continue;
+            studio.put("libraryCharacterId",groups.get(group));
+            studio.put("libraryCharacterName",names.get(group));
+            studio.put("libraryAssetRole",studio.path("libraryAssetRole").asText("main"));
+        }
+    }
+    private static String characterSource(JsonNode node) {
+        JsonNode studio=node.path("metadata").path("studio");
+        String avatar=studio.path("adoption").path("avatarId").asText("");
+        if(avatar.isBlank())for(JsonNode reference:studio.path("references")) {
+            avatar=reference.path("avatarId").asText("");if(!avatar.isBlank())break;
+        }
+        if(!avatar.isBlank())return "avatar:"+avatar;
+        String published=studio.path("libraryCharacterId").asText("");
+        return published.isBlank()?"node:"+node.path("id").asText():"published:"+published;
+    }
     private static void stripToWorkflow(JsonNode node, ObjectNode mo) {
         ASSET_FIELDS.forEach(mo::remove);
         RUN_FIELDS.forEach(mo::remove);
+        mo.remove("status");
         if (!IpDocs.T_TEXT.equals(IpDocs.typeOf(node))) {
             mo.remove("content");
             mo.remove("status");   // 素材没了，别再显示「已完成」
@@ -268,6 +343,7 @@ public class IpDemoTemplateService {
     /** 全部全局内容（含已下线），先模板后实例、各自按排序。 */
     public List<IpStudioDtos.IpDemoAdminDto> listForAdmin() {
         return repo.findAll().stream()
+                .filter(d -> !"personal".equals(d.getVisibility()))
                 .sorted(Comparator.comparing(IpDemoTemplate::getKind, Comparator.reverseOrder())  // template 在前
                         .thenComparingInt(IpDemoTemplate::getSortOrder)
                         .thenComparing(IpDemoTemplate::getCreatedAt,
@@ -349,6 +425,9 @@ public class IpDemoTemplateService {
     public DeleteResult deleteDemo(String demoId) {
         IpDemoTemplate row = required(demoId);
         String prefix = demoPrefix(demoId);
+        if(row.getCurrentVersionId()!=null) {
+            throw BusinessException.badRequest("STUDIO_TEMPLATE_VERSIONED", "已发布的模板版本需要保留，请改用下架");
+        }
         Set<String> keys = new LinkedHashSet<>();
         collectKeys(docOf(row), keys);
         if (row.getCoverKey() != null) keys.add(row.getCoverKey());
@@ -415,6 +494,7 @@ public class IpDemoTemplateService {
 
     private IpDemoTemplate required(String demoId) {
         return repo.findById(demoId)
+                .filter(d -> !"personal".equals(d.getVisibility()))
                 .orElseThrow(() -> BusinessException.notFound("IP_DEMO_NOT_FOUND", "这条官方内容不存在"));
     }
 

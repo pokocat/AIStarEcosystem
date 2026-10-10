@@ -22,7 +22,8 @@ const defaultBrushSize = 100;
 const maskOverlayColor = "#2563eb";
 const maskOverlayAlpha = 0.4;
 
-export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (payload: CanvasImageMaskEditPayload) => void }) {
+// Host integrations can route generation through their own model/price confirmation panel.
+export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm, generationLabel }: { dataUrl: string; open: boolean; onClose: () => void; onConfirm: (payload: CanvasImageMaskEditPayload) => void; generationLabel?: string }) {
     const { t } = useTranslation();
     const maskCanvasRef = useRef<HTMLCanvasElement>(null);
     const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -330,7 +331,7 @@ export function CanvasNodeMaskEditDialog({ dataUrl, open, onClose, onConfirm }: 
                                 {t("canvas.editors.maskExport")}
                             </Button>
                             <Button type="primary" icon={<WandSparkles className="size-4" />} onClick={() => submit(true)}>
-                                {t("canvas.editors.maskGenerate")}
+                                {generationLabel || t("canvas.editors.maskGenerate")}
                             </Button>
                         </div>
                     </div>

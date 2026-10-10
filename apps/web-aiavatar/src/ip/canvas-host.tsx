@@ -15,14 +15,18 @@ import { App as AntdApp, ConfigProvider, Modal, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
 import { AlertTriangle, AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
-import CanvasPage from "@/canvas/pages/canvas/project";
+import StudioFlowCanvas from "./studio-flow-canvas";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
 import { serverModelsLoaded } from "@/canvas-bridge/models";
 import { useHostActions } from "@/canvas-bridge/host-actions";
 import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
+import { registerStudioSave } from "@/canvas-bridge/studio-save";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { ProjectHistory } from "@/ip/project-history";
+import { StudioTemplatePublish } from "@/ip/studio-template-publish";
+import { StudioTemplateSource } from "@/ip/studio-template-source";
+import { USE_MOCK } from "@ai-star-eco/api-client";
 import { useAssetStore } from "@/canvas/stores/use-asset-store";
 import { LastRunPanel } from "@/ip/last-run-panel";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
@@ -42,7 +46,9 @@ const SAVE_LABEL: Record<string, string> = {
 
 function Host({ projectId }: { projectId: string }) {
   const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave } = useProjectSync(projectId);
+  React.useEffect(() => registerStudioSave(projectId, saveNow), [projectId, saveNow]);
   const [publishOpen, setPublishOpen] = React.useState(false);
+  const [templateOpen, setTemplateOpen] = React.useState(false);
   const { message } = AntdApp.useApp();
 
   // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
@@ -198,6 +204,7 @@ function Host({ projectId }: { projectId: string }) {
     <>
       <ProjectHistory projectId={projectId} saveNow={saveNow} />
       <LastRunPanel />
+      {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>setTemplateOpen(true)} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>发布为模板</button></>}
       {isOperator && (
         <button
           onClick={openDemoDialog}
@@ -290,7 +297,8 @@ function Host({ projectId }: { projectId: string }) {
 
   return (
     <div className="h-full relative">
-      <CanvasPage />
+      <StudioFlowCanvas projectId={projectId}/>
+      {templateOpen && <StudioTemplatePublish projectId={projectId} superAdmin={isOperator} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
 
       <PublishDialog
         open={publishOpen}

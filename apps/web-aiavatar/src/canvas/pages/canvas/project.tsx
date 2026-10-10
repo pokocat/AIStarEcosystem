@@ -1,12 +1,22 @@
+// 本仓 v0.210：native video composer delegates to the same idempotent Studio batch as the drawer.
+import { applyStudioRun, adoptStudioTake, deleteStudioVideoTake, prepareStudioVideoRegeneration, studioGenerationPending, dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
+import { saveStudioDocument } from '@/canvas-bridge/studio-save';
+import { currentProjectId, cancelRun } from '@/canvas-bridge/api';
+import { isVideoSubmissionUnconfirmed } from '@/canvas-bridge/video';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 // 上游是 react-router，本仓是 Next App Router
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Group, Video } from "lucide-react";
+import { Group, Video, X } from "lucide-react";
 import { saveAs } from "file-saver";
 import { useTranslation } from "react-i18next";
 // 本仓改动：自动标题从「提示词截 32 字」改成派生一个短名字（见 canvas-bridge/node-title.ts）
 import { autoNodeTitle } from "@/canvas-bridge/node-title";
+// Studio business UI is hosted outside the vendored graph/viewport engine.
+import { StudioWorkspace } from "@/ip/studio-workspace";
+import { StudioNodeContent } from "@/ip/studio-node-content";
+// 本仓模板胶水：任务结果投影回客户端拥有的画布，服务端不改 doc。
+import { useTemplateProjection } from "@/canvas-bridge/template-projection";
 import { registerCanvasRecovery } from "@/canvas-bridge/canvas-recovery";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { createProjectOnServer, deleteProjectOnServer } from "@/canvas-bridge/project-sync";
@@ -255,6 +265,7 @@ function InfiniteCanvasPage() {
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
+    useTemplateProjection(projectId, setNodes);
     const [connections, setConnections] = useState<CanvasConnection[]>([]);
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -372,18 +383,28 @@ function InfiniteCanvasPage() {
 
     const completeVideoNodeTask = useCallback(
         async (nodeId: string, config: Parameters<typeof buildGenerationConfig>[0], prompt: string, images: Parameters<typeof createVideoGenerationTask>[2], signal: AbortSignal, extra: CanvasNodeData["metadata"] = {}, videos: ReferenceVideo[] = [], audios: ReferenceAudio[] = []) => {
-            const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios });
-            // 本仓改动（v0.179）：**无条件**把任务号写进节点。
-            //
-            // 上游这里是 `if (task.provider !== "plugin")` —— 它的 plugin 是浏览器里的插件，
-            // 进程一关任务就没了，存下来也接不回去。而我们的 bridge **恒定返回 "plugin"**
-            // （见 canvas-bridge/video.ts），它代表的是**服务端**的 MaterialVideoJob：
-            // 于是这行判断让 videoTaskId 一次都没被存过，`hasResumableVideoTask` 永远 false，
-            // 下面那个专门为「刷新后接着轮询」写的 effect 从来没生效 ——
-            // 视频照样生成、照样扣费，回来只看到一个「已中断」的空节点。
-            setNodes((prev) => prev.map((item) => (item.id === nodeId ? { ...item, metadata: { ...item.metadata, videoTaskId: task.id, videoTaskProvider: task.provider, model: config.model } } : item)));
-            const video = await storeGeneratedVideo(await waitForVideoGenerationTask(config, task, { signal }));
-            setNodes((prev) => prev.map((item) => (item.id === nodeId ? applyGeneratedVideo(item, video, { prompt, model: config.model, ...extra }) : item)));
+            const projectId=currentProjectId();
+            const onRun=(run:import('@ai-star-eco/types').IpRun)=>{
+                setNodes(prev=>prev.map(item=>item.id===nodeId?applyStudioRun(item,run):item));
+                window.dispatchEvent(new CustomEvent('studio-native-run',{detail:run}));
+            };
+            const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios, nodeId, onRun,
+                beforeSubmit:async request=>{
+                    setNodes(prev=>prev.map(item=>item.id===nodeId?{...item,metadata:{...item.metadata,...extra,prompt,videoCount:String(request.count),videoTaskId:undefined,status:'loading',
+                        studio:{...item.metadata?.studio,kind:item.metadata?.studio?.kind||'shot',request,runId:undefined}}}:item));
+                    if(!projectId)throw new Error('画布尚未打开');
+                    await saveStudioDocument(projectId);
+                },
+            });
+            setNodes(prev=>prev.map(item=>item.id===nodeId?{...item,metadata:{...item.metadata,videoTaskId: task.id, videoTaskProvider: task.provider,model:config.model}}:item));
+            const result=await waitForVideoGenerationTask(config,task,{signal,onRun});
+            if(result.run) onRun(result.run);
+            else {
+                const video=await storeGeneratedVideo(result);
+                setNodes(prev=>prev.map(item=>item.id===nodeId?applyGeneratedVideo(item,video,{prompt,model:config.model,...extra}):item));
+            }
+            if(projectId)await saveStudioDocument(projectId);
+
         },
         [],
     );
@@ -391,7 +412,7 @@ function InfiniteCanvasPage() {
     const pollVideoNodeTask = useCallback(
         async (node: CanvasNodeData, silent = false) => {
             const taskId = node.metadata?.videoTaskId;
-            if (!taskId || node.metadata?.content || generationRequestsRef.current.has(node.id) || videoPollIdsRef.current.has(node.id)) return;
+            if (!taskId || node.metadata?.studio?.request || node.metadata?.content || generationRequestsRef.current.has(node.id) || videoPollIdsRef.current.has(node.id)) return;
             videoPollIdsRef.current.add(node.id);
             let controller: AbortController | undefined;
             try {
@@ -435,7 +456,7 @@ function InfiniteCanvasPage() {
                                   ...item,
                                   metadata: {
                                       ...item.metadata,
-                                      status: item.metadata?.content ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
+                                      status: isVideoSubmissionUnconfirmed(error)||item.type===CanvasNodeType.Video&&!!item.metadata?.videoTaskId&&!isVideoTaskFailed(error)?NODE_STATUS_LOADING:item.metadata?.content ? NODE_STATUS_SUCCESS : NODE_STATUS_ERROR,
                                       errorDetails: item.metadata?.content ? undefined : errorDetails,
                                       ...(isVideoTaskFailed(error) ? { videoTaskId: undefined } : {}),
                                   },
@@ -561,6 +582,22 @@ function InfiniteCanvasPage() {
 
     const confirmStopGeneration = useCallback(
         (nodeId: string) => {
+            // 本仓：stop a Studio video batch through its server binding, never abandon accepted work locally.
+            const request=[...generationRequestsRef.current.values()].find(r=>r.runningNodeId===nodeId);
+            const target=nodesRef.current.find(n=>n.id===(request?.targetNodeId||nodeId));
+            if(target?.metadata?.studio?.request?.operation==='video') {
+                const runId=target.metadata.studio.runId;
+                if(!runId){dispatchStudioCommand('tasks',target.id);return;}
+                modal.confirm({title:'停止本批视频',content:'只有整批候选尚未交给引擎时可以停止。已开始生成的批次会继续保留进度和结果。',okText:'请求停止',cancelText:'继续等待',onOk:async()=>{
+                    try {
+                        const run=await cancelRun(runId);
+                        stopGenerationByRunningId(nodeId);
+                        setNodes(prev=>prev.map(n=>n.id===target.id?applyStudioRun(n,run):n));
+                        window.dispatchEvent(new CustomEvent('studio-native-run',{detail:run}));
+                    } catch(error){message.error(error instanceof Error?error.message:'停止失败，请继续等待原任务。');}
+                }});
+                return;
+            }
             modal.confirm({
                 title: t("canvas.projectPage.stopTitle"),
                 content: t("canvas.projectPage.stopDescription"),
@@ -1822,29 +1859,14 @@ function InfiniteCanvasPage() {
     }, [expandedBatchNodeIds]);
 
     const setBatchPrimary = useCallback((nodeId: string, itemId: string) => {
-        setNodes((prev) =>
-            prev.map((node) => {
+        setNodes((prev) => {
+            // 本仓 v0.210：native and comparison adoption share the state gate and downstream invalidation.
+            if(prev.find(n=>n.id===nodeId)?.type===CanvasNodeType.Video)return adoptStudioTake(prev,nodeId,itemId);
+            return prev.map((node) => {
                 if (node.id !== nodeId) return node;
                 if (node.type === CanvasNodeType.Text) {
                     const text = node.metadata?.texts?.find((item) => item.id === itemId);
                     return text?.content ? { ...node, metadata: { ...node.metadata, content: text.content, primaryTextId: text.id } } : node;
-                }
-                // 视频的成片历史（v0.183）：切一版就是把 content / storageKey 换成那一版。
-                // 尺寸不动 —— 同一个节点的多版成片是同一个模型同一个画幅出的，
-                // 切一下就重排版反而让人以为换了个节点。
-                if (node.type === CanvasNodeType.Video) {
-                    const take = node.metadata?.videos?.find((item) => item.id === itemId);
-                    if (!take?.storageKey) return node;
-                    return {
-                        ...node,
-                        metadata: {
-                            ...node.metadata,
-                            content: take.content,
-                            storageKey: take.storageKey,
-                            mimeType: take.mimeType ?? node.metadata?.mimeType,
-                            primaryVideoId: take.id,
-                        },
-                    };
                 }
                 const image = node.metadata?.images?.find((item) => item.id === itemId);
                 if (!image?.content) return node;
@@ -1865,8 +1887,8 @@ function InfiniteCanvasPage() {
                         primaryImageId: image.id,
                     },
                 };
-            }),
-        );
+            });
+        });
     }, []);
 
     const duplicateBatchImage = useCallback((node: CanvasNodeData, imageId: string) => {
@@ -1977,6 +1999,14 @@ function InfiniteCanvasPage() {
                 await addAsset({ kind: "text", title: node.metadata?.prompt?.slice(0, 24) || t("canvas.projectPage.canvasText"), coverUrl: "", tags: [], source: "Canvas", data: { content }, metadata: { source: "canvas", nodeId: node.id, prompt: node.metadata?.prompt } });
                 message.success(t("common.addedToAssets"));
                 return;
+            }
+            // 本仓：音频与图/视频使用同一云端素材库，不误存成图片。
+            if (node.type === CanvasNodeType.Audio) {
+                if (!node.metadata?.storageKey || !node.metadata.content) return message.error("没有可保存的音频");
+                await addAsset({ kind: "audio", title: node.title || "画布音频", coverUrl: "", tags: [], source: "Canvas",
+                    data: { url: node.metadata.content, storageKey: node.metadata.storageKey, bytes: node.metadata.bytes || 0, mimeType: node.metadata.mimeType || "audio/wav" },
+                    metadata: { prompt: node.metadata.prompt } });
+                message.success(t("common.addedToAssets")); return;
             }
             if (node.type === CanvasNodeType.Video) {
                 if (!node.metadata?.content) return message.error(t("canvas.projectPage.noVideoToSave"));
@@ -2406,6 +2436,9 @@ function InfiniteCanvasPage() {
     const handleGenerateNode = useCallback(
         async (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => {
             const sourceNode = nodesRef.current.find((node) => node.id === nodeId);
+            // 本仓 v0.210：the persisted original request blocks every normal generation entry.
+            if(generationRequestsRef.current.has(nodeId))return;
+            if(studioGenerationPending(sourceNode)){dispatchStudioCommand("tasks",nodeId);message.info("请等待或确认原任务，当前批次不会重复提交。");return;}
             const generationConfig = buildGenerationConfig(effectiveConfig, sourceNode, mode);
             if (!isAiConfigReady(generationConfig, generationConfig.model)) {
                 openConfigDialog(true);
@@ -2629,7 +2662,7 @@ function InfiniteCanvasPage() {
                     setNodes((prev) =>
                         isEmptyVideoNode
                             ? prev.map((node) => (node.id === nodeId
-                                ? { ...node, ...videoNode, metadata: { ...videoNode.metadata, videos: keepVideoTake(node) } }
+                                ? { ...prepareStudioVideoRegeneration(node, videoNode.metadata, keepVideoTake(node)), title:videoNode.title }
                                 : node))
                             : [...prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_SUCCESS } } : node)), videoNode],
                     );
@@ -2809,7 +2842,7 @@ function InfiniteCanvasPage() {
                                       ...node,
                                       metadata: {
                                           ...node.metadata,
-                                          status: NODE_STATUS_ERROR,
+                                          status: isVideoSubmissionUnconfirmed(error)||node.type===CanvasNodeType.Video&&!!node.metadata?.videoTaskId&&!isVideoTaskFailed(error)?NODE_STATUS_LOADING:NODE_STATUS_ERROR,
                                           errorDetails,
                                           ...(isVideoTaskFailed(error) && node.type === CanvasNodeType.Video ? { videoTaskId: undefined } : {}),
                                       },
@@ -3005,30 +3038,11 @@ function InfiniteCanvasPage() {
     const deleteBatchImage = useCallback((nodeId: string, imageId: string) => {
         const node = nodesRef.current.find((item) => item.id === nodeId);
         if ((node?.metadata?.images?.length || 0) <= 2) setExpandedBatchNodeIds((current) => new Set([...current].filter((id) => id !== nodeId)));
-        setNodes((prev) =>
-            prev.map((item) => {
+        setNodes((prev) => {
+            // 本仓 v0.210：only another successful take may replace an adopted clip.
+            if(prev.find(n=>n.id===nodeId)?.type===CanvasNodeType.Video)return deleteStudioVideoTake(prev,nodeId,imageId);
+            return prev.map((item) => {
                 if (item.id !== nodeId) return item;
-                // 视频的成片历史（v0.183）：删一版就是从 videos[] 里摘掉它。
-                // 删的正好是当前那一版时，把画面切到剩下的第一版；**一版都不剩时不清空节点** ——
-                // 那样等于把这个节点变回空壳，用户想找回来只能重跑一次再付一次钱。
-                if (item.type === CanvasNodeType.Video) {
-                    const takes = item.metadata?.videos ?? [];
-                    if (takes.length <= 1) return item;
-                    const kept = takes.filter((take) => take.id !== imageId);
-                    const wasCurrent = item.metadata?.primaryVideoId === imageId;
-                    const next = wasCurrent ? kept[0] : takes.find((take) => take.id === item.metadata?.primaryVideoId);
-                    return {
-                        ...item,
-                        metadata: {
-                            ...item.metadata,
-                            videos: kept,
-                            ...(wasCurrent && next
-                                ? { content: next.content, storageKey: next.storageKey, mimeType: next.mimeType ?? item.metadata?.mimeType }
-                                : {}),
-                            primaryVideoId: next?.id ?? item.metadata?.primaryVideoId,
-                        },
-                    };
-                }
                 const images = (item.metadata?.images ?? []).filter((image) => image.id !== imageId);
                 const wasPrimary = item.metadata?.primaryImageId === imageId;
                 // 删的不是当前主图：只从候选里摘掉，节点显示的那张不动。
@@ -3058,8 +3072,8 @@ function InfiniteCanvasPage() {
                         mimeType: nextPrimary?.mimeType,
                     },
                 };
-            }),
-        );
+            });
+        });
     }, []);
 
     const retryBatchImage = useCallback((node: CanvasNodeData, imageId: string) => void handleRetryNode(node, imageId), [handleRetryNode]);
@@ -3145,6 +3159,13 @@ function InfiniteCanvasPage() {
         (payload: InsertAssetPayload) => {
             if (payload.kind === "text") {
                 insertAssistantText(payload.content, payload.title);
+            } else if (payload.kind === "audio") {
+                // 本仓：素材库音频插入普通可试听节点。
+                const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
+                const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                setNodes(prev => [...prev, { id, type: CanvasNodeType.Audio, title: payload.title, width: 360, height: 150,
+                    position: { x: center.x - 180, y: center.y - 75 }, metadata: { content: payload.url, storageKey: payload.storageKey, mimeType: payload.mimeType, status: NODE_STATUS_SUCCESS } }]);
+                setSelectedNodeIds(new Set([id]));
             } else if (payload.kind === "video") {
                 const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
                 const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
@@ -3220,6 +3241,7 @@ function InfiniteCanvasPage() {
         // 组节点没有提示词面板（原来在节点内是 `showPanel && !isGroup && renderPanel`，
         // 搬出来时这条也要跟着搬）
         if (!target || target.type === CanvasNodeType.Group) return null;
+        if (target.type === CanvasNodeType.Text && target.metadata?.studio) return null;
         if (getNodeDefinition(target.type)?.hidePanel) return null;
         return target;
     }, [dialogNodeId, isNodeResizing, selectionBox, nodeById]);
@@ -3242,7 +3264,7 @@ function InfiniteCanvasPage() {
                 <CanvasNodePromptPanel
                     node={panelNode}
                     nodes={nodes}
-                    isRunning={runningNodeId === panelNode.id}
+                    isRunning={runningNodeId === panelNode.id || studioGenerationPending(panelNode)}
                     mentionReferences={mentionReferencesByNodeId.get(panelNode.id) || EMPTY_REFERENCES}
                     connectedNodes={connectedNodesByNodeId.get(panelNode.id) || []}
                     onPromptChange={handleNodePromptChange}
@@ -3261,7 +3283,7 @@ function InfiniteCanvasPage() {
     );
 
     const renderNodeContentPanel = useCallback(
-        (contentNode: CanvasNodeData) => (
+        (contentNode: CanvasNodeData) => contentNode.type === CanvasNodeType.Text && contentNode.metadata?.studio ? <StudioNodeContent node={contentNode} /> : (
             <CanvasConfigNodePanel
                 node={contentNode}
                 isRunning={runningNodeId === contentNode.id}
@@ -3283,7 +3305,9 @@ function InfiniteCanvasPage() {
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
             <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} />
-            <section className="relative min-w-0 flex-1 overflow-hidden">
+            <section className="studio-canvas-stage relative min-w-0 flex-1 overflow-hidden">
+                <StudioWorkspace referencePicking={!!referencePickerNodeId} activeComposerId={dockedPanelNode?.id} projectId={projectId} nodes={nodes} connections={connections} selectedNodeIds={selectedNodeIds}
+                    setNodes={setNodes} setConnections={setConnections} onFocusNode={focusNode} onClosePanel={() => {setDialogNodeId(null);setReferencePickerNodeId(null);}} onRestorePanel={id=>{setSelectedNodeIds(new Set([id]));setDialogNodeId(id);}} />
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.projectPage.untitledCanvas")}
                     titleDraft={titleDraft}
@@ -3396,7 +3420,7 @@ function InfiniteCanvasPage() {
                         />
                     ))}
 
-                    {referencePickerNodeId ? <button type="button" className="absolute left-1/2 top-4 z-[90] -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-medium shadow-lg backdrop-blur" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }} onClick={exitNodeReferenceSelection}>{t("canvas.references.selectingHint")}</button> : null}
+
 
                     {selectionBox ? (
                         <svg
@@ -3424,22 +3448,27 @@ function InfiniteCanvasPage() {
                     ) : null}
                 </InfiniteCanvas>
 
+                {/* 本仓：reference picking instructions belong to the screen layer. */}
+                {referencePickerNodeId ? <button type="button" className="studio-reference-hint" onClick={exitNodeReferenceSelection}>{t("canvas.references.selectingHint")}</button> : null}
+
                 {dockedPanelNode ? (
                     <div
-                        className="pointer-events-none absolute inset-x-0 bottom-[88px] z-[60] flex justify-center px-4"
+                        /* 本仓：dock spacing is shared with the host toolbar, independent of canvas zoom. */
+                        className="studio-composer-dock pointer-events-none absolute inset-x-0 z-[60] flex justify-center px-4"
                     >
                         <div
-                            className="thin-scrollbar pointer-events-auto max-h-[58vh] w-[600px] max-w-full overflow-y-auto"
+                            className="studio-composer-scroll thin-scrollbar pointer-events-auto w-[600px] max-w-full overflow-y-auto"
                             onMouseDown={(event) => event.stopPropagation()}
                             onPointerDown={(event) => event.stopPropagation()}
                         >
+                            <header className="studio-composer-heading"><span>{dockedPanelNode.title} · 生成设置</span><button type="button" aria-label="收起生成面板" onClick={()=>setDialogNodeId(null)}><X size={16}/></button></header>
                             {renderNodePanel(dockedPanelNode)}
                         </div>
                     </div>
                 ) : null}
 
                 <CanvasNodeHoverToolbar
-                    node={isNodeDragging || isNodeResizing || nodeImageSettingsOpen || expandedBatchNodeIds.has(toolbarNode?.id || "") ? null : toolbarNode}
+                    node={referencePickerNodeId || isNodeDragging || isNodeResizing || nodeImageSettingsOpen || expandedBatchNodeIds.has(toolbarNode?.id || "") ? null : toolbarNode}
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
                     onInfo={(node) => setInfoNodeId(node.id)}

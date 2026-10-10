@@ -7,7 +7,7 @@ import { ImageSettingsTheme } from "@/canvas/components/image-settings-panel";
 import { type CanvasTheme } from "@/canvas/lib/canvas-theme";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseAspectRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/canvas/lib/media-size";
 import { type AiConfig } from "@/canvas-bridge/config-store";
-import { videoDurationBoundsFor, videoGeometryFor } from "@/canvas-bridge/models";
+import { videoDurationBoundsFor, videoGeometryFor, nativeVideoModelFor } from "@/canvas-bridge/models";
 
 const resolutionOptions = [
     { value: "480", label: "480p" },
@@ -110,7 +110,7 @@ function nearestRatio(current: string, allowed: string[]) {
 
 type VideoSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode", value: string) => void;
+    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode" | "videoCount", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     className?: string;
@@ -128,6 +128,9 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [seconds, config.videoSeconds]);
     const videoMode = normalizeVideoModeValue(config.videoMode);
+    // 本仓：reference is a real provider mode, only list it for capable server candidates.
+    const nativeModel=nativeVideoModelFor(config.model||config.videoModel);
+    const modeOptions=nativeModel?videoModeOptions:videoModeOptions.filter(item=>item.value==="frames");
     // 清晰度 / 比例同样按**选中模型真正能出的**来（v0.184）；夹过之后要回写。
     const geometry = effectiveVideoGeometry(config);
     const resolution = geometry.resolution;
@@ -154,6 +157,10 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
         <ImageSettingsTheme theme={theme}>
             <div className={className} style={{ color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()}>
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.video.title")}</div> : null}
+                {/* 本仓：one atomic batch, matching the Studio video drawer. */}
+                <SettingGroup title="候选数量" color={theme.node.muted}>
+                    <div className="grid grid-cols-3 gap-2.5">{[1,2,4].map(count=><OptionPill key={count} selected={String(count)===(config.videoCount||"1")} theme={theme} onClick={()=>onConfigChange("videoCount",String(count))}>{count} 条</OptionPill>)}</div>
+                </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.quality")} color={theme.node.muted}>
                     <div className="grid grid-cols-4 gap-2.5">
                         {geometry.resolutionOptions.map((item) => (
@@ -206,12 +213,13 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.mode")} color={theme.node.muted}>
                     <div className="grid grid-cols-2 gap-2.5">
-                        {videoModeOptions.map((item) => (
+                        {modeOptions.map((item) => (
                             <OptionPill key={item.value} selected={videoMode === item.value} theme={theme} onClick={() => onConfigChange("videoMode", item.value)}>
-                                {t(`settingsPanels.video.modes.${item.labelKey}`)}
+                                {item.value==="frames"?(nativeModel?"首帧 / 首尾帧":"首帧"):t(`settingsPanels.video.modes.${item.labelKey}`)}
                             </OptionPill>
                         ))}
                     </div>
+                    <p className="mt-2 text-xs leading-relaxed" style={{color:theme.node.muted}}>{videoMode==="reference"?"按参考素材编号描述用途，支持图片、视频和音频。":nativeModel?"不接图片为文生视频；一张为首帧；两张按连线顺序作为首帧、尾帧。":"不接图片为文生视频；接一张图片作为首帧。"}</p>
                 </SettingGroup>
             </div>
         </ImageSettingsTheme>
@@ -232,7 +240,9 @@ export function videoSecondsLabel(value: string) {
     return `${value || "6"}s`;
 }
 
-export function videoModeLabel(value: string) {
+export function videoModeLabel(value: string, model?: string) {
+    // 本仓 v0.208：原生帧模式可使用首尾帧，不再统一标成仅首帧。
+    if(normalizeVideoModeValue(value)==="frames"&&nativeVideoModelFor(model))return "首帧 / 首尾帧";
     return i18n.t(`settingsPanels.video.modes.${normalizeVideoModeValue(value)}`);
 }
 
@@ -258,7 +268,7 @@ function updateDimension(key: "width" | "height", value: number | null, dimensio
 
 function OptionPill({ selected, disabled = false, theme, onClick, children }: { selected: boolean; disabled?: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {
     return (
-        <button type="button" disabled={disabled} className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35" style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={onClick}>
+        <button type="button" aria-pressed={selected} disabled={disabled} className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35" style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={onClick}>
             {children}
         </button>
     );

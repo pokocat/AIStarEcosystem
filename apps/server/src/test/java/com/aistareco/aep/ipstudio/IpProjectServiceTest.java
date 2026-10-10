@@ -65,6 +65,38 @@ class IpProjectServiceTest {
 
     // ── 创建 ─────────────────────────────────────────────────
 
+    @Test void liveQueuePositionIsProjectedWithoutExecutionInternals() {
+        var queue=org.mockito.Mockito.mock(com.aistareco.aep.service.AiGenerationQueueService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"generationQueue",queue);
+        var position=new com.aistareco.aep.dto.AiGenerationQueuePositionDto(2,4,1,1);
+        org.mockito.Mockito.when(queue.position("ip-image","queued")).thenReturn(position);
+        var run=IpRun.builder().id("queued").kind("generate").status("running").stage("queued").pct(8)
+            .inputJson("{\"_exec\":{\"endpointId\":\"private-endpoint\"}}").outputJson("{}").build();
+        var dto=svc.toRunDto(run);
+        assertEquals(position,dto.queue());assertEquals("endpoint.queued",dto.stage());assertEquals(0,dto.pct());
+        assertFalse(dto.inputs().has("_exec"));
+        run.setStatus("failed");assertNull(svc.toRunDto(run).queue());
+    }
+
+    @Test void videoBatchHasIndependentQueuePositionsAndOnlyAllWaitingHasParentQueue() {
+        var queue=org.mockito.Mockito.mock(com.aistareco.aep.service.AiGenerationQueueService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"generationQueue",queue);
+        var one=com.aistareco.aep.model.MaterialVideoJob.builder().id("v1").ownerUserId(USER).app("ipstudio").status("queued").durationSec(5).build();
+        var two=com.aistareco.aep.model.MaterialVideoJob.builder().id("v2").ownerUserId(USER).app("ipstudio").status("queued").durationSec(5).build();
+        org.mockito.Mockito.when(videoJobs.findById("v1")).thenReturn(java.util.Optional.of(one));
+        org.mockito.Mockito.when(videoJobs.findById("v2")).thenReturn(java.util.Optional.of(two));
+        var position=new com.aistareco.aep.dto.AiGenerationQueuePositionDto(2,3,1,1);
+        org.mockito.Mockito.when(queue.position("material-video","v1")).thenReturn(position);
+        org.mockito.Mockito.when(queue.position("material-video","v2")).thenReturn(new com.aistareco.aep.dto.AiGenerationQueuePositionDto(3,3,1,1));
+        var run=IpRun.builder().id("video-run").ownerUserId(USER).kind("studio-video").status("running")
+            .inputJson("{\"_exec\":{\"nativeVideoJobIds\":[\"v1\",\"v2\"]}}").build();
+        var dto=svc.toRunDto(run);assertEquals(position,dto.queue());
+        assertEquals(3,dto.output().path("videoCandidates").path(1).path("queue").path("position").asInt());
+        one.setStatus("generating");org.mockito.Mockito.when(queue.position("material-video","v1")).thenReturn(null);
+        assertNull(svc.toRunDto(run).queue());
+        assertFalse(dto.inputs().has("_exec"));
+    }
+
     @Test
     void createFromTemplate_prefillsNodeGraph() {
         IpProjectDto dto = svc.create(USER, new IpCreateProjectRequest(null, "ip-toy-figure"));

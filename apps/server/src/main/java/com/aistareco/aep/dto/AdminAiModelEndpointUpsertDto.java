@@ -19,6 +19,7 @@ public record AdminAiModelEndpointUpsertDto(
         Integer defaultMaxTokens,
         Double defaultTopP,
         Integer rpmLimit,
+        Integer concurrencyLimit,
         Integer tpmLimit,
         Long dailyTokenQuota,
         Long dailyCostQuotaMicros,

@@ -423,6 +423,29 @@ class MaterialVideoModelClientWireTest {
     }
 
     @Test
+    @DisplayName("Agnes 本机 CDN 首帧改为真实 data URI，不向厂商传 localhost 或退回文生视频")
+    void agnesLocalFirstFrameCarriesOwnedBytes() throws Exception {
+        useEndpoint("Agnes", base("/agnes/v1"), "agnes-video-v2.0");
+        java.nio.file.Path image = java.nio.file.Files.createTempFile("agnes-ref-", ".png");
+        try {
+            byte[] bytes = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==");
+            java.nio.file.Files.write(image, bytes);
+            when(storage.upstreamFetchUrl(any())).thenReturn("http://localhost:18080/cdn/ref.png");
+            when(storage.publicUrl(any())).thenReturn("http://localhost:18080/cdn/ref.png");
+            when(storage.openForRead(any())).thenReturn(image);
+            client.submit("挥手", 5, "9:16", "u1", "ipstudio", null,
+                    VideoGenSpec.firstFrameOnly("ipstudio_gen/u1/ref.png"));
+            JsonNode body = om.readTree(requests.get(0).body());
+            assertEquals("data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(bytes), body.path("image").asText());
+            assertEquals("720x1280", body.path("size").asText());
+            assertEquals("5", body.path("seconds").asText());
+            String audit = MaterialVideoModelClient.auditBody(requests.get(0).text());
+            assertFalse(audit.contains(java.util.Base64.getEncoder().encodeToString(bytes)));
+            assertEquals("720x1280", om.readTree(audit).path("size").asText());
+        } finally { java.nio.file.Files.deleteIfExists(image); }
+    }
+
+    @Test
     @DisplayName("isJusuanMedia 与提交时判协议是同一个规则")
     void isJusuanMediaMatchesSubmitProtocol() {
         assertTrue(client.isJusuanMedia(AiModelEndpoint.builder().name("H3").baseUrl("https://api.jusuanhub.com/v1")

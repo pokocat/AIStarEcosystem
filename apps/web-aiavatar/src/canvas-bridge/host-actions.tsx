@@ -28,7 +28,7 @@ const useHostActionsStore = create<HostActionsStore>((set) => ({
 export function HostActionsSlot() {
   const node = useHostActionsStore((s) => s.node);
   if (!node) return null;
-  return <div className="flex items-center gap-2">{node}</div>;
+  return <div className="ip-canvas-host-actions flex items-center gap-2">{node}</div>;
 }
 
 /** 宿主侧：把一段 UI 放进画布顶栏，组件卸载时自动撤走。 */

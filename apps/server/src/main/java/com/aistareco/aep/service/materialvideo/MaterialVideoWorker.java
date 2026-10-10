@@ -39,6 +39,7 @@ import java.util.Locale;
 @Service
 public class MaterialVideoWorker {
 
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoWorker.class);
     private static final ObjectMapper OM = new ObjectMapper();
     static final String RECOVERY_CREDIT_REF_TYPE = "material_video_job_recovery";
@@ -94,16 +95,44 @@ public class MaterialVideoWorker {
             log.info("[material-video] job {} already terminal ({}), skip", jobId, job.getStatus());
             return;
         }
+        if(queue!=null) {
+            var admission=queue.acquire(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,
+                queue.endpointFor(com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION,extractEndpointId(job.getVariantConfigJson())),false);
+            if(admission!=com.aistareco.aep.service.AiGenerationQueueService.Admission.READY)return;
+        }
+        boolean[] terminal={false};
         try {
-            runGeneration(job);
+            runGeneration(job,terminal);
         } catch (Throwable t) {
+            if(jobRepo.findById(jobId).map(j->j.getExternalTaskId()==null||j.getExternalTaskId().isBlank()).orElse(true)
+                    && !(t instanceof MaterialVideoModelClient.SubmissionUnknown)) terminal[0]=true;
             log.error("[material-video] job {} failed", jobId, t);
             String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
             markFailed(jobId, msg);
             // 提交阶段（submit）抛错时积分已 hold 但 runGeneration 内部没机会 release；
             // 这里兜底退款。releaseHold 幂等：若内部失败路径已退过，这次是 no-op。
             releaseCredits(job, msg);
+        } finally {
+            if(queue!=null && terminal[0])queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
         }
+    }
+
+    /** After a process loss, resume only a recorded upstream ID. Never submit a second task. */
+    @Async("materialVideoExecutor")
+    public void recoverQueuedGeneration(String jobId) {
+        var job=jobRepo.findById(jobId).orElse(null);
+        if(job==null)return;
+        if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank())return; // unknown acceptance holds its slot for reconciliation
+        boolean[] terminal={false};
+        try {
+            if(isTerminal(job.getStatus())) {
+                String endpointId=queue==null?null:queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+                if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
+                var submit=modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed());
+                var poll=modelClient.poll(submit);terminal[0]=poll.succeeded()||poll.failed();
+            } else runGeneration(job,terminal);
+        } catch(Exception error){log.warn("[material-video] original task recovery pending job={}",jobId);}
+        finally {if(queue!=null && terminal[0])queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);}
     }
 
     /**
@@ -120,7 +149,8 @@ public class MaterialVideoWorker {
                     "该任务没有上游 Job ID，无法对账恢复");
         }
 
-        String endpointId = extractEndpointId(job.getVariantConfigJson());
+        String endpointId = queue==null?extractEndpointId(job.getVariantConfigJson()):queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+        if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit = modelClient.resumeExistingTask(
                 job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed());
         MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
@@ -183,12 +213,14 @@ public class MaterialVideoWorker {
         }
     }
 
-    private void runGeneration(MaterialVideoJob job) throws InterruptedException {
+    private void runGeneration(MaterialVideoJob job,boolean[] terminal) throws InterruptedException {
         String jobId = job.getId();
         // v0.198 条件认领（queued → submitting，影响 1 行才继续）：与 MaterialVideoJobService.cancelQueued /
         // expireQueued 的条件更新互斥。以前是读出来再整行写回，排队中取消与 worker 接手撞在一起时，
         // 取消写的 failed 会被这里的 submitting 盖掉，任务照样交给厂商。
-        if (jobRepo.claimQueued(jobId, OffsetDateTime.now()) != 1) {
+        boolean accepted=job.getExternalTaskId()!=null&&!job.getExternalTaskId().isBlank();
+        if (!accepted && jobRepo.claimQueued(jobId, OffsetDateTime.now()) != 1) {
+            terminal[0]=true;
             log.info("[material-video] job {} 已不在排队（取消 / 超时 / 已被接手），不提交", jobId);
             return;
         }
@@ -196,14 +228,15 @@ public class MaterialVideoWorker {
         // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余（素材运营 / 视频生成区 / 画布）记到 celebrity。
         String appCode = appCodeOf(job);
         // D-11：短剧线可在 variant_config 指定候选出片端点；带货素材线不写此键 → null → 默认端点（默认路径不变）。
-        String endpointId = extractEndpointId(job.getVariantConfigJson());
+        String endpointId = queue==null?extractEndpointId(job.getVariantConfigJson()):queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+        if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
         // 输入规格只在这里解析一次（§8.0.1 ④）：画布出视频带首帧 key，视频生成区带完整的 H3 原生规格，
         // 带货 / 短剧线什么都不写 → EMPTY → 纯文生视频，行为不变。
         // v0.183 之前首帧根本没往下传，聚算那条链一律发 generationMode=t2v —— 用户接了参考图，
         // 出来的片跟参考图毫无关系。
         VideoGenSpec spec = VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
-                modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
+                accepted?modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed()):modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
                         job.getOwnerUserId(), appCode, endpointId, spec);
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
@@ -215,7 +248,9 @@ public class MaterialVideoWorker {
             Thread.sleep(intervalMs);
             long elapsed = System.currentTimeMillis() - start;
 
+            if(queue!=null)queue.touch(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
             MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
+            terminal[0]=poll.succeeded()||poll.failed();
             if (poll.succeeded()) {
                 boolean hasVideoUrl = poll.videoUrl() != null && !poll.videoUrl().isBlank();
                 boolean hasProtectedAsset = poll.outputAssetId() != null && !poll.outputAssetId().isBlank();

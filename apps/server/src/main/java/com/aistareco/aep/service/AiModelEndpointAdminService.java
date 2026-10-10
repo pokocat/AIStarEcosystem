@@ -29,6 +29,7 @@ import java.util.UUID;
 @Service
 @Transactional
 public class AiModelEndpointAdminService {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.repository.AiGenerationQueueRepository generationQueue;
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -91,6 +92,7 @@ public class AiModelEndpointAdminService {
         if (req == null || req.name() == null || req.name().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "NAME_REQUIRED", "name 必填");
         }
+        validateConcurrency(req.concurrencyLimit());
         if (req.baseUrl() == null || req.baseUrl().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "BASE_URL_REQUIRED", "baseUrl 必填");
         }
@@ -117,6 +119,7 @@ public class AiModelEndpointAdminService {
                 .defaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0))
                 .defaultMaxTokens(req.defaultMaxTokens() != null && req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null)
                 .defaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0))
+                .concurrencyLimit(req.concurrencyLimit() != null && req.concurrencyLimit() > 0 ? req.concurrencyLimit() : null)
                 .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
                 .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
                 .dailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null)
@@ -136,7 +139,9 @@ public class AiModelEndpointAdminService {
     }
 
     public AiModelEndpointDto update(String id, AdminAiModelEndpointUpsertDto req) {
+        validateConcurrency(req.concurrencyLimit());
         AiModelEndpoint entity = load(id);
+        if (req.concurrencyLimit() != null) entity.setConcurrencyLimit(req.concurrencyLimit() == 0 ? null : req.concurrencyLimit());
         if (req.name() != null) entity.setName(req.name());
         if (req.providerType() != null) entity.setProviderType(AiModelProviderType.fromWire(req.providerType()));
         if (req.baseUrl() != null) entity.setBaseUrl(req.baseUrl());
@@ -177,6 +182,10 @@ public class AiModelEndpointAdminService {
         if (!repo.existsById(id)) {
             return;
         }
+        repo.lockById(id);
+        if(generationQueue!=null && (generationQueue.countByEndpointIdAndState(id,"waiting")+
+                generationQueue.countByEndpointIdAndState(id,"running")>0))
+            throw BusinessException.badRequest("ENDPOINT_HAS_ACTIVE_GENERATIONS","此端点还有生成或排队任务，请等任务结束后再删除");
         long bound = bindingRepo.countByEndpointId(id);
         if (bound > 0) {
             throw new BusinessException(HttpStatus.CONFLICT, "ENDPOINT_IN_USE",
@@ -213,6 +222,11 @@ public class AiModelEndpointAdminService {
             return AiModelDiscoveryResultDto.fail(null, "已存 apiKey 解密失败：" + e.getMessage());
         }
         return invocation.listModels(entity.getProviderType(), entity.getBaseUrl(), apiKey);
+    }
+
+    private static void validateConcurrency(Integer value) {
+        if(value != null && (value < 0 || value > 1000))
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CONCURRENCY_LIMIT", "并发上限须为 0–1000 的整数，0 表示不限制");
     }
 
     private static String serializeModels(List<AiModelEntryDto> models) {

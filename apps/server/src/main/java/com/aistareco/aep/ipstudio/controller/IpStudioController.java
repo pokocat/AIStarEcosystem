@@ -101,10 +101,10 @@ public class IpStudioController {
      * 带素材的实例不在这里，见 {@code GET /demos/examples}。
      */
     @GetMapping("/templates")
-    public ApiResponse<List<IpTemplateDto>> templates() {
+    public ApiResponse<List<IpTemplateDto>> templates(Principal principal) {
         // 与「按 id 建项目」共用 IpTemplateResolver —— 列表和建项目必须读同一套来源，
         // 否则就是目录里点得到、建的时候说不存在（v0.192 修的正是这个）。
-        return ApiResponse.of(templateResolver.list());
+        return ApiResponse.of(templateResolver.list(uid(principal)));
     }
 
     private String signOrEmpty(String key) {
@@ -246,7 +246,7 @@ public class IpStudioController {
         // 出视频走 VIDEO_GENERATION（通用视频链）。列错用途 = 列出一批点了不生效的模型。
         return ApiResponse.of(new com.aistareco.aep.dto.RenderModelsDto(
                 modelOptions(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE, runs.pricingDto().imageCredits()),
-                modelOptions(com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION, 0)));
+                modelOptions(com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION, videoJobs.defaultUnitCost())));
     }
 
     private java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> modelOptions(
@@ -256,7 +256,7 @@ public class IpStudioController {
         for (var r : invocation.listCandidates(purpose)) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             long cost = r.candidate().getCreditCostOverride() != null
-                    ? r.candidate().getCreditCostOverride() : defaultCost;
+                    ? Math.max(0L, r.candidate().getCreditCostOverride()) : defaultCost;
             // 视频候选带上**有效**时长区间（协议硬边界 ∩ 候选配置）——
             // 下限只有协议知道（聚算媒体 5 秒起），后台那张表里根本没有这一列。
             // 不给的话画布的时长滑杆是 4–30，用户选个 4 秒点发送就撞 400。
@@ -265,7 +265,7 @@ public class IpStudioController {
                     : com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
                     r.endpoint().getId(), r.endpoint().getName(), r.isDefault(),
-                    caps, cost, video ? "per_video" : "per_image"));
+                    caps, cost, video ? com.aistareco.aep.service.AiModelInvocationService.videoBillingUnit(r.endpoint(), r.candidate()) : "per_image"));
         }
         return out;
     }

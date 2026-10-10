@@ -37,6 +37,8 @@ export type CanvasNodeVideoTake = {
     seconds?: string;
     mimeType?: string;
     errorDetails?: string;
+    // 本仓 Studio：每条视频候选的实时排队投影，不是客户端调度真值。
+    queue?: import("@ai-star-eco/types").AiGenerationQueuePosition | null;
 };
 
 export type CanvasNodeImage = {
@@ -66,6 +68,12 @@ export type CanvasNodeText = {
 };
 
 export type CanvasNodeMetadata = {
+    // 本仓：homepage brief is a saved text node; the bridge opens its creation panel.
+    studioStart?: import("@/ip/studio-entry").StudioEntry;
+    // Studio business metadata is owned by the bridge, not the vendored engine.
+    studio?: import("@ai-star-eco/types/ip-studio-workflow").StudioNodeMetadata;
+    // 本仓：template nodes open the locked execution plan rather than a separate generator.
+    templateStepId?: string;
     batchExpanded?: boolean; // 本仓：重新打开保留候选组展开状态。
     content?: string;
     composerContent?: string;
@@ -89,6 +97,7 @@ export type CanvasNodeMetadata = {
     generateAudio?: string;
     watermark?: string;
     videoMode?: string;
+    videoCount?: string;
     audioVoice?: string;
     audioFormat?: string;
     audioSpeed?: string;

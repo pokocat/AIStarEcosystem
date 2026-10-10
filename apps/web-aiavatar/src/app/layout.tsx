@@ -6,6 +6,11 @@ import "../styles/globals.css";
 // AI IP 工作台（桌面面）的样式。放在 globals 之后：它的令牌挂在 .ip-surface 作用域内，
 // 不含 Tailwind preflight，因此对移动端外壳零影响（见该文件头注释）。
 import "../styles/ip-desktop.css";
+import "../styles/ip-studio-workflow.css";
+import "../styles/studio-home.css";
+// Load graph styles before its dynamic chunk mounts, including after a development hot update.
+import "@xyflow/react/dist/style.css";
+import "../styles/studio-flow.css";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 

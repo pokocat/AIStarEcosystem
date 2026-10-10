@@ -79,6 +79,17 @@ function MIpDetail({ ip: initialIp, ctx }) {
   const [attach, setAttach] = useStateI("");
   const [detail, setDetail] = useStateI(null as any);
   const [loading, setLoading] = useStateI(true);
+  const [studioWorks, setStudioWorks] = useStateI<any[]>([]);
+  const [studioError, setStudioError] = useStateI("");
+
+  useEffectI(() => {
+    let live=true;
+    if(!ipId)return;
+    setStudioError("");
+    AssetApi.usages("ip",ipId).then(list=>{if(live)setStudioWorks(list.filter(w=>w.usedByType==="studio-project"));})
+      .catch(()=>{if(live)setStudioError("Studio 作品未加载，请刷新重试");});
+    return ()=>{live=false;};
+  },[ipId,seq]);
 
   const load = useCallbackI(() => {
     if (!ipId) return;
@@ -198,7 +209,10 @@ function MIpDetail({ ip: initialIp, ctx }) {
                       hI(Icons.mic, { size: 13, stroke: 2 }), v.name)))))
         : tab === "works"
         ? hI("div", { className: "m-fade", style: { padding: "16px 18px 0" } },
-            works.length === 0
+            studioError && hI("p", { role:"alert" },studioError),
+            studioWorks.map(w=>hI("a",{key:w.usedById,href:`/projects/${encodeURIComponent(w.usedById)}`,className:"m-tap",style:{display:"block",padding:14,marginBottom:12,border:"1px solid var(--line)",borderRadius:15,color:"var(--ink)",background:"var(--surface)",textDecoration:"none"}},
+              hI("strong",null,w.title),hI("p",{style:{fontSize:12,color:"var(--ink-3)",marginTop:6}},"打开 Studio 查看视频与制作过程"))),
+            works.length === 0 && studioWorks.length === 0
               ? hI(EmptyBlock, { icon: Icons.sparkle, title: "还没有作品",
                   desc: "用合成工作台把 人物 × 场景 × 产品 出成一组内容，产物会自动登记为这个 IP 的衍生物。",
                   action: "打开合成工作台", onAction: compose })

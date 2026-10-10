@@ -55,4 +55,11 @@ class IpSavedAssetServiceTest {
         var text=om.createObjectNode().put("kind","text"); text.putObject("data").put("content","a".repeat(100001));
         assertThrows(BusinessException.class,() -> service.save("u",text));
     }
+    @Test void audioSharesCloudOwnershipAndNeverPersistsSignedUrls() throws Exception {
+        var request=om.readTree("{\"kind\":\"audio\",\"title\":\"配音\",\"data\":{\"storageKey\":\"ipstudio_source/u/voice.wav\",\"url\":\"https://expired\",\"mimeType\":\"audio/wav\"}}");
+        var saved=service.save("u",request);
+        assertFalse(rows.get(saved.path("id").asText()).getPayloadJson().contains("https://"));
+        assertTrue(saved.path("data").path("url").asText().contains("fresh"));
+        verify(projects).requireOwnedAssetKey("u","ipstudio_source/u/voice.wav");
+    }
 }

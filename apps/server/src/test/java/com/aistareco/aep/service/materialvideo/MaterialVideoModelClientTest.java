@@ -136,8 +136,8 @@ class MaterialVideoModelClientTest {
     @Test
     void dimensionsForAspect_maps_vertical_short_video() {
         MaterialVideoModelClient.Dimensions d = MaterialVideoModelClient.dimensionsForAspect("9:16");
-        assertEquals(768, d.width());
-        assertEquals(1152, d.height());
+        assertEquals(720, d.width());
+        assertEquals(1280, d.height());
     }
 
     @Test

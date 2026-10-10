@@ -42,19 +42,33 @@ public final class IpStudioDtos {
                                /** 文档指纹：客户端保存时回传，服务端据此判断「我读到的那版还在不在」。 */
                                String docVersion,
                                JsonNode doc, Map<String, IpRunDto> runs,
-                               Map<String, IpRunDto> runsById) {}
+                               Map<String, IpRunDto> runsById, String templateVersionId) {
+        public IpProjectDto(String id,String name,String templateId,String status,String coverUrl,String publishedAvatarId,String createdAt,String updatedAt,String docVersion,JsonNode doc,Map<String,IpRunDto> runs,Map<String,IpRunDto> runsById) {
+            this(id,name,templateId,status,coverUrl,publishedAvatarId,createdAt,updatedAt,docVersion,doc,runs,runsById,null);
+        }
+    }
 
     /** 一次运行。{@code cost} 恒为真实账本值（running=冻结额 / done=已提交之和）。 */
     public record IpRunDto(String id, String projectId, String nodeId, String kind,
                            String status, String stage, int pct, long cost,
                            String errorCode, String errorMessage,
                            JsonNode inputs, JsonNode output,
-                           String createdAt, String finishedAt) {}
+                           String createdAt, String finishedAt,
+                           com.aistareco.aep.dto.AiGenerationQueuePositionDto queue) {
+        public IpRunDto(String id,String projectId,String nodeId,String kind,String status,String stage,int pct,long cost,
+                String errorCode,String errorMessage,JsonNode inputs,JsonNode output,String createdAt,String finishedAt) {
+            this(id,projectId,nodeId,kind,status,stage,pct,cost,errorCode,errorMessage,inputs,output,createdAt,finishedAt,null);
+        }
+    }
 
     /** 内置工作流模板（resources/ipstudio/templates/*.json）。 */
     public record IpTemplateDto(String id, String name, String summary, String coverUrl,
                                 String stylePresetId, int lookCount, long estimatedCredits,
-                                JsonNode doc) {}
+                                JsonNode doc, String versionId, Integer version, String visibility, Boolean mine, Boolean enabled) {
+        public IpTemplateDto(String id,String name,String summary,String coverUrl,String stylePresetId,int lookCount,long estimatedCredits,JsonNode doc) {
+            this(id,name,summary,coverUrl,stylePresetId,lookCount,estimatedCredits,doc,null,null,null,null,null);
+        }
+    }
 
     /**
      * 全局内容的**管理**视图（运营后台用）。与 {@link IpTemplateDto} 的区别是它

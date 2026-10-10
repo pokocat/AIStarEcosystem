@@ -56,7 +56,8 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
     const effective = effectiveVideoSeconds(config);
     const storedSeconds = String(config.videoSeconds || "6");
     const outOfRange = String(effective.seconds) !== storedSeconds;
-    const summary = `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.size)} · ${videoSecondsLabel(storedSeconds)} · ${videoModeLabel(config.videoMode)}`;
+    // 本仓 v0.208：摘要按所选模型显示可用的帧参考能力。
+    const summary = `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.size)} · ${videoSecondsLabel(storedSeconds)} · ${config.videoCount||"1"} 条 · ${videoModeLabel(config.videoMode, config.model || config.videoModel)}`;
 
     // 画幅跟时长不一样：超区间的时长会被服务端**拒**，而选不了的画幅会被**悄悄换掉**
     // —— 用户选 720p·3:4，聚算按 768p·portrait 出，回来 768×1376，没有任何地方报错（v0.184）。

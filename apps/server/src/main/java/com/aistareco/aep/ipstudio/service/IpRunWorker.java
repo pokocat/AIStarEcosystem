@@ -40,6 +40,8 @@ import java.util.List;
 @Service
 public class IpRunWorker {
 
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
+
     private static final Logger log = LoggerFactory.getLogger(IpRunWorker.class);
 
     private final IpRunRepository runRepo;
@@ -82,9 +84,20 @@ public class IpRunWorker {
             return;
         }
         if (!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
+        if(queue != null) {
+            JsonNode exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
+            var purpose=IpRun.KIND_IDENTITY.equals(run.getKind())?com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA:com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE;
+            var admission=queue.acquire(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId,queue.endpointFor(purpose,exec.path("endpointId").asText(null)),false);
+            if(admission==com.aistareco.aep.service.AiGenerationQueueService.Admission.WAITING){progress(run,0,"endpoint.queued");return;}
+            if(admission==com.aistareco.aep.service.AiGenerationQueueService.Admission.BUSY)return;
+            if(runRepo.claimUnstarted(runId,Instant.now())!=1) {
+                queue.finish(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);return;
+            }
+        }
         run.setStartedAt(Instant.now());
-        progress(run, 8, "prompt.compile");
+        var context=queue==null?null:queue.bind(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);
         try {
+            progress(run, 8, "prompt.compile");
             if (IpRun.KIND_IDENTITY.equals(run.getKind())) {
                 runIdentity(run);
             } else {
@@ -97,6 +110,9 @@ public class IpRunWorker {
             log.warn("[ipstudio] 运行异常 run={}", runId, e);
             release(run, "IP 运行失败 · 释放冻结");
             failWithoutSpend(run, codeOf(e), friendly(e, run.getId()));
+        } finally {
+            if(context!=null)context.close();
+            if(queue!=null)queue.finish(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);
         }
     }
 
@@ -378,7 +394,8 @@ public class IpRunWorker {
         run.setPct(Math.min(99, Math.max(0, pct)));
         run.setStage(stage);
         run.setHeartbeatAt(Instant.now());
-        runRepo.save(run);
+        // Queue cancellation owns status/cancelRequested; progress must never overwrite those fields.
+        runRepo.updateProgressIfRunning(run.getId(),run.getPct(),stage,run.getHeartbeatAt(),run.getStartedAt());
     }
 
     private void finish(IpRun run) {

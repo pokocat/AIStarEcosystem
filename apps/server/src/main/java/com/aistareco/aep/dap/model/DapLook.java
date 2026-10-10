@@ -44,6 +44,10 @@ public class DapLook {
     @Column(length = 16)
     private String source;
 
+    /** Explicit Studio library classification; an old unclassified look remains a look. */
+    @Column(length = 24)
+    private String assetRole;
+
     @Lob
     @Column(columnDefinition = "TEXT")
     private String prompt;

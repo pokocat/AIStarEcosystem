@@ -1,3 +1,4 @@
+import type { AiModelConcurrencyConfig } from "../../../../packages/types/src/ai-model-concurrency";
 // ─────────────────────────────────────────────────────────────────────────────
 // api/ai-models.ts: Admin AI 模型接入端点 + AI 应用绑定。
 // 对应 AdminAiModelEndpointController + AdminAiAppBindingController。
@@ -34,6 +35,8 @@ export type AiModelPurpose =
   | "DAP_PERSONA"
   | "DAP_IMAGE"
   | "DAP_VIDEO"
+  | "DAP_AUDIO"
+  | "DAP_LIP_SYNC"
   | "DAP_REAL_AVATAR"
   | "GENERAL";
 
@@ -48,7 +51,7 @@ export interface AiModelEntry {
 }
 
 /** 模型接入端点读 DTO（上游 apiKey 不返回明文）。 */
-export interface AiModelEndpoint {
+export interface AiModelEndpoint extends AiModelConcurrencyConfig {
   id: string;
   name: string;
   providerType: AiModelProviderType;
@@ -86,7 +89,7 @@ export interface AiModelEndpoint {
 }
 
 /** 写请求（上游 apiKey 走明文，service 端加密落库；PUT 时省略表示不修改）。 */
-export interface AdminAiModelEndpointUpsert {
+export interface AdminAiModelEndpointUpsert extends AiModelConcurrencyConfig {
   id?: string;
   name: string;
   providerType: AiModelProviderType;

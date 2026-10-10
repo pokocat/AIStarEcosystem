@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, Ref } from "react";
 import { createPortal } from "react-dom";
 import { Image } from "antd";
 import { FileText, Image as ImageIcon, Music2, Video } from "lucide-react";
@@ -10,7 +10,10 @@ import { isImeComposing, isPlainEnterKey } from "@/canvas/lib/keyboard-event";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import type { CanvasResourceReference } from "@/canvas/lib/canvas/canvas-resource-references";
 
-type Props = {
+// 本仓 v0.211：generic instruction chips; host owns the catalogue. Serialized value stays plain prompt text.
+export type CanvasPromptCommand = { label: string; text: string };
+export type CanvasPromptChipInputHandle = { rememberCaret: () => void; insertCommand: (command: CanvasPromptCommand, options?: { replaceCommands: readonly CanvasPromptCommand[] }) => void };
+export type CanvasPromptChipInputProps = {
     value: string;
     references: CanvasResourceReference[];
     onChange: (value: string) => void;
@@ -18,6 +21,9 @@ type Props = {
     className?: string;
     style?: CSSProperties;
     placeholder?: string;
+    ariaLabel?: string;
+    commands?: readonly CanvasPromptCommand[];
+    ref?: Ref<CanvasPromptChipInputHandle>;
 };
 
 type MentionState = {
@@ -27,17 +33,24 @@ type MentionState = {
 
 type Token =
     | { type: "text"; value: string }
-    | { type: "reference"; label: string };
+    | { type: "reference"; label: string }
+    | { type: "command"; text: string };
 
 // Prompt-panel contentEditable input: @ references embed thumbnail chips instead of plain label text.
 // Serialization converts chips back to reference labels so the generated value matches the former textarea semantics.
-export function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, style, placeholder }: Props) {
+export function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, style, placeholder, ariaLabel, commands = [], ref }: CanvasPromptChipInputProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
+    const savedCaretRef = useRef<Range | null>(null);
+    // 本仓 v0.212: async catalogue refresh can rebuild an unfocused editor while its picker is open.
+    // Keep serialized offsets, so inserting an effect retains the original caret/selection across that rebuild.
+    const savedTextRangeRef = useRef<{start:number;end:number} | null>(null);
     // Track the last value emitted to the parent. An identical focused value is this component's own echo,
     // so skip rebuilding to preserve the caret and IME. Rebuild external changes even while focused.
     const lastEmittedRef = useRef(value);
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -46,7 +59,8 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const referenceByLabel = useMemo(() => new Map(activeReferences.map((item) => [item.label, item])), [activeReferences]);
     // Match longer labels first so a shorter label cannot split a longer one.
     const activeLabels = useMemo(() => Array.from(new Set(activeReferences.map((item) => item.label))).sort((a, b) => b.length - a.length), [activeReferences]);
-    const tokens = useMemo(() => parseTokens(value, activeLabels), [value, activeLabels]);
+    const commandByText = useMemo(() => new Map(commands.map(command => [command.text, command])), [commands]);
+    const tokens = useMemo(() => parseTokens(value, activeLabels, commands), [value, activeLabels, commands]);
 
     const candidates = useMemo(() => {
         if (!mention) return [];
@@ -55,28 +69,107 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
         return activeReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
     }, [mention, activeReferences]);
 
+    const renderTokens = (editor: HTMLElement, nextTokens: Token[], catalogue = commandByText) => {
+        editor.replaceChildren();
+        nextTokens.forEach(token => {
+            if (token.type === "text") { editor.append(document.createTextNode(token.value)); return; }
+            if (token.type === "command") {
+                const command = catalogue.get(token.text);
+                if (command) editor.append(createCommandChip(command, editCommand, removeCommand));
+                return;
+            }
+            const reference = referenceByLabel.get(token.label);
+            editor.append(reference ? createReferenceChip(reference, theme, setImagePreview) : document.createTextNode(token.label));
+        });
+    };
+
     // Rebuild the DOM from value when unfocused, or when a focused value is an external change rather than an emitted echo.
     useEffect(() => {
         const editor = editorRef.current;
         if (!editor) return;
         if (document.activeElement === editor && value === lastEmittedRef.current) return;
-        editor.textContent = "";
-        tokens.forEach((token) => {
-            if (token.type === "text") {
-                editor.append(document.createTextNode(token.value));
-                return;
-            }
-            const reference = referenceByLabel.get(token.label);
-            if (reference) editor.append(createReferenceChip(reference, theme, setImagePreview));
-            else editor.append(document.createTextNode(token.label));
-        });
+        const savedTextRange = value === lastEmittedRef.current ? savedTextRangeRef.current : null;
+        savedCaretRef.current = null;
+        savedTextRangeRef.current = savedTextRange;
+        renderTokens(editor, tokens);
+        if(savedTextRange) savedCaretRef.current=rangeAtTextOffsets(editor,savedTextRange.start,savedTextRange.end);
         lastEmittedRef.current = value;
-    }, [tokens, referenceByLabel, theme, value]);
+    }, [tokens, referenceByLabel, commandByText, theme, value]);
 
     const emit = (next: string) => {
         lastEmittedRef.current = next;
-        onChange(next);
+        onChangeRef.current(next);
     };
+
+    const rememberCaret = () => {
+        const selection = window.getSelection();
+        const editor=editorRef.current;
+        if (selection?.rangeCount && editor?.contains(selection.getRangeAt(0).commonAncestorContainer)) {
+            const range=selection.getRangeAt(0).cloneRange();savedCaretRef.current=range;
+            const prefix=document.createRange();prefix.setStart(editor,0);prefix.setEnd(range.startContainer,range.startOffset);
+            const start=serializeNodes(prefix.cloneContents().childNodes).length;
+            prefix.setEnd(range.endContainer,range.endOffset);
+            savedTextRangeRef.current={start,end:serializeNodes(prefix.cloneContents().childNodes).length};
+        }
+    };
+    const restoreCaret = () => {
+        const editor = editorRef.current;
+        if (!editor) return null;
+        editor.focus();
+        const selection = window.getSelection();
+        const range = savedCaretRef.current;
+        if (range && editor.contains(range.commonAncestorContainer)) {
+            selection?.removeAllRanges(); selection?.addRange(range);
+        } else placeCaretAtEnd(editor);
+        return selection?.rangeCount ? selection.getRangeAt(0) : null;
+    };
+    const removeCommand = (chip: HTMLElement) => {
+        const editor = editorRef.current;
+        if (!editor?.contains(chip)) return;
+        const text = document.createTextNode(""); chip.replaceWith(text);
+        editor.focus(); selectText(text, false); rememberCaret(); emit(serializeEditor(editor));
+    };
+    const editCommand = (chip: HTMLElement) => {
+        const editor = editorRef.current;
+        if (!editor?.contains(chip)) return;
+        const text = document.createTextNode(chip.dataset.commandText || ""); chip.replaceWith(text);
+        editor.focus(); selectText(text, true); rememberCaret();
+        // Keep this replacement editable until the user changes it; it remains the same persisted prompt.
+        emit(serializeEditor(editor));
+    };
+    useImperativeHandle(ref, () => ({ rememberCaret, insertCommand(command, options) {
+        const editor = editorRef.current;
+        let range = restoreCaret();
+        if (!editor || !range) return;
+        // 本仓 v0.213: a host can make one command family exclusive, without removing edited text or refs.
+        // Rehydrate at selection time too: a fast click may precede the async catalogue's DOM effect.
+        if (options) {
+            rememberCaret();
+            const offsets = savedTextRangeRef.current;
+            const catalogue = new Map([...commands, ...options.replaceCommands].map(item => [item.text, item]));
+            renderTokens(editor, parseTokens(serializeEditor(editor), activeLabels, [...catalogue.values()]), catalogue);
+            savedCaretRef.current = offsets ? rangeAtTextOffsets(editor, offsets.start, offsets.end) : null;
+            range = restoreCaret();
+            if (!range) return;
+        }
+        const replaceTexts = new Set(options?.replaceCommands.map(item => item.text));
+        const existing = [...editor.querySelectorAll<HTMLElement>("[data-command-text]")].filter(chip => replaceTexts.has(chip.dataset.commandText || ""));
+        if (existing.length) {
+            const chip = createCommandChip(command, editCommand, removeCommand);
+            existing[0].replaceWith(chip);
+            existing.slice(1).forEach(old => old.remove());
+            range.setStartAfter(chip); range.collapse(true);
+            const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+            rememberCaret(); closeMention(); emit(serializeEditor(editor));
+            return;
+        }
+        range.deleteContents();
+        const chip = createCommandChip(command, editCommand, removeCommand);
+        const space = document.createTextNode(" ");
+        range.insertNode(space); range.insertNode(chip); range.setStartAfter(space); range.collapse(true);
+        const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+        rememberCaret(); closeMention(); emit(serializeEditor(editor));
+    } }));
 
     const syncFromEditor = () => {
         const editor = editorRef.current;
@@ -129,7 +222,8 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     return (
         <div className="relative w-full">
             {showPlaceholder && placeholder ? (
-                <div className="pointer-events-none absolute left-3 top-2 text-sm leading-5" style={{ color: theme.node.placeholder }}>
+                <div className="pointer-events-none absolute left-3 top-2 text-sm leading-5" /* 本仓：host placeholder token meets reading contrast on the paper surface. */
+                style={{ color: `var(--ink-2, ${theme.node.placeholder})` }}>
                     {placeholder}
                 </div>
             ) : null}
@@ -139,10 +233,41 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                 suppressContentEditableWarning
                 role="textbox"
                 aria-multiline="true"
+                aria-label={ariaLabel}
                 className={`${className || ""} overflow-y-auto whitespace-pre-wrap break-words outline-none`}
                 style={{ ...style, cursor: "text" }}
                 onInput={() => {
                     if (!composingRef.current) syncFromEditor();
+                }}
+                onMouseUp={rememberCaret}
+                onKeyUp={rememberCaret}
+                onCopy={(event) => {
+                    const selection = window.getSelection();
+                    if (!selection?.rangeCount || !editorRef.current?.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
+                    event.preventDefault(); event.clipboardData.setData("text/plain", serializeNodes(selection.getRangeAt(0).cloneContents().childNodes));
+                }}
+                onCut={(event) => {
+                    const selection = window.getSelection(); const editor = editorRef.current;
+                    if (!selection?.rangeCount || !editor?.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
+                    event.preventDefault(); const range = selection.getRangeAt(0);
+                    event.clipboardData.setData("text/plain", serializeNodes(range.cloneContents().childNodes));
+                    range.deleteContents(); rememberCaret(); syncFromEditor();
+                }}
+                onPaste={(event) => {
+                    event.preventDefault(); const editor = editorRef.current; if (!editor) return;
+                    rememberCaret(); const range = restoreCaret(); if (!range) return;
+                    range.deleteContents(); const fragment = document.createDocumentFragment();
+                    parseTokens(event.clipboardData.getData("text/plain"), activeLabels, commands).forEach(token => {
+                        if (token.type === "text") fragment.append(document.createTextNode(token.value));
+                        else if (token.type === "command") fragment.append(createCommandChip(commandByText.get(token.text)!, editCommand, removeCommand));
+                        else {
+                            const reference = referenceByLabel.get(token.label);
+                            fragment.append(reference ? createReferenceChip(reference, theme, setImagePreview) : document.createTextNode(token.label));
+                        }
+                    });
+                    const tail = document.createTextNode(""); fragment.append(tail);
+                    range.insertNode(fragment); range.setStartAfter(tail); range.collapse(true);
+                    rememberCaret(); syncFromEditor();
                 }}
                 onCompositionStart={() => {
                     composingRef.current = true;
@@ -152,8 +277,16 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                     syncFromEditor();
                 }}
                 onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
-                    event.stopPropagation();
-                    if (isImeComposing(event)) return;
+                    // Studio's containing floating panel owns Escape after the mention menu closes.
+                    // Keep editing keys and IME events isolated from canvas shortcuts.
+                    const composing = isImeComposing(event);
+                    if (event.key !== "Escape" || composing || mention) event.stopPropagation();
+                    if (composing) return;
+                    if (mention && event.key === "Escape") {
+                        event.preventDefault();
+                        closeMention();
+                        return;
+                    }
                     if (mention && candidates.length) {
                         if (event.key === "ArrowDown") {
                             event.preventDefault();
@@ -170,11 +303,6 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                             insertReference(candidates[Math.min(activeIndex, candidates.length - 1)]);
                             return;
                         }
-                        if (event.key === "Escape") {
-                            event.preventDefault();
-                            closeMention();
-                            return;
-                        }
                     }
                     if ((event.key === "Backspace" || event.key === "Delete") && deleteAdjacentReference(event.key)) {
                         event.preventDefault();
@@ -188,7 +316,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                     }
                     requestAnimationFrame(syncMention);
                 }}
-                onBlur={() => window.setTimeout(closeMention, 120)}
+                onBlur={() => { rememberCaret(); window.setTimeout(closeMention, 120); }}
             />
             {mention && candidates.length ? (
                 <MentionMenu rect={mention.rect} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} />
@@ -309,10 +437,13 @@ function serializeNodes(nodes: NodeListOf<ChildNode>) {
     nodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) result += node.textContent || "";
         if (!(node instanceof HTMLElement)) return;
-        const label = node.dataset.refLabel;
+        const label = node.dataset.commandText || node.dataset.refLabel;
         if (label) result += label;
         else if (node.tagName === "BR") result += "\n";
-        else result += serializeNodes(node.childNodes);
+        else {
+            if ((node.tagName === "DIV" || node.tagName === "P") && result && !result.endsWith("\n")) result += "\n";
+            result += serializeNodes(node.childNodes);
+        }
     });
     return result;
 }
@@ -360,7 +491,7 @@ function adjacentReferenceNode(range: Range, key: string) {
 function findReferenceSibling(node: Node, previous: boolean, includeSelf = false): HTMLElement | null {
     let current: Node | null = includeSelf ? node : previous ? node.previousSibling : node.nextSibling;
     while (current && current.nodeType === Node.TEXT_NODE && !(current.textContent || "").trim()) current = previous ? current.previousSibling : current.nextSibling;
-    return current instanceof HTMLElement && current.dataset.refLabel ? current : null;
+    return current instanceof HTMLElement && (current.dataset.refLabel || current.dataset.commandText) ? current : null;
 }
 
 function textBeforeCaret() {
@@ -399,21 +530,62 @@ function placeCaretAtEnd(element: HTMLElement) {
     selection?.addRange(range);
 }
 
+// Rebuilt editors contain plain text and atomic reference/instruction chips only.
+function rangeAtTextOffsets(editor:HTMLElement,start:number,end:number) {
+    const point=(offset:number):[Node,number]=>{
+        let consumed=0;
+        for(let i=0;i<editor.childNodes.length;i++) {
+            const node=editor.childNodes[i];const length=node instanceof HTMLElement?(node.dataset.commandText||node.dataset.refLabel||node.textContent||'').length:(node.textContent||'').length;
+            if(offset<=consumed+length) {
+                if(node.nodeType===Node.TEXT_NODE)return [node,Math.max(0,offset-consumed)];
+                return [editor,i+(offset>consumed?1:0)];
+            }
+            consumed+=length;
+        }
+        return [editor,editor.childNodes.length];
+    };
+    const range=document.createRange();const a=point(start),b=point(end);range.setStart(...a);range.setEnd(...b);return range;
+}
+
 // Split value into text fragments and matching active labels, which are already sorted by descending length.
-function parseTokens(value: string, labels: string[]): Token[] {
-    if (!labels.length) return value ? [{ type: "text", value }] : [];
-    const escaped = labels.map(escapeRegExp).join("|");
+function parseTokens(value: string, labels: string[], commands: readonly CanvasPromptCommand[]): Token[] {
+    const commandTexts = new Set(commands.map(command => command.text));
+    const matches = [...new Set([...labels, ...commandTexts])].filter(Boolean).sort((a,b) => b.length-a.length);
+    if (!matches.length) return value ? [{ type: "text", value }] : [];
+    const escaped = matches.map(escapeRegExp).join("|");
     const pattern = new RegExp(`(${escaped})`, "g");
     const tokens: Token[] = [];
     let lastIndex = 0;
     for (const match of value.matchAll(pattern)) {
         if (match.index === undefined) continue;
         if (match.index > lastIndex) tokens.push({ type: "text", value: value.slice(lastIndex, match.index) });
-        tokens.push({ type: "reference", label: match[0] });
+        tokens.push(commandTexts.has(match[0]) ? { type: "command", text: match[0] } : { type: "reference", label: match[0] });
         lastIndex = match.index + match[0].length;
     }
     if (lastIndex < value.length) tokens.push({ type: "text", value: value.slice(lastIndex) });
     return tokens;
+}
+
+// 本仓：named chips are editable/removable, while clipboard and requests retain the full instruction.
+function createCommandChip(command: CanvasPromptCommand, edit: (chip: HTMLElement) => void, remove: (chip: HTMLElement) => void) {
+    const chip = document.createElement("span");
+    chip.contentEditable = "false"; chip.dataset.commandText = command.text; chip.className = "studio-motion-chip";
+    const label = document.createElement("button"); label.type = "button"; label.textContent = command.label;
+    label.title = `${command.text} 点击编辑指令`; label.setAttribute("aria-label", `编辑${command.label}指令`);
+    label.onclick = event => { event.preventDefault(); event.stopPropagation(); edit(chip); };
+    const close = document.createElement("button"); close.type = "button"; close.setAttribute("aria-label", `移除${command.label}指令`);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("width", "12"); svg.setAttribute("height", "12"); svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", "M6 6l12 12M18 6L6 18");
+    path.setAttribute("stroke", "currentColor"); path.setAttribute("stroke-width", "2"); path.setAttribute("fill", "none");
+    svg.append(path); close.append(svg);
+    close.onclick = event => { event.preventDefault(); event.stopPropagation(); remove(chip); };
+    chip.append(label, close); return chip;
+}
+
+function selectText(text: Text, all: boolean) {
+    const range = document.createRange(); range.selectNodeContents(text); if (!all) range.collapse(false);
+    const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
 }
 
 function escapeRegExp(value: string) {

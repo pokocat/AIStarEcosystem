@@ -161,13 +161,13 @@ public class AiModelInvocationService {
 
     /** 管理端试运行 / 重放等场景：显式指定端点，仍使用同一调用与观测链路。 */
     public AiModelResponse invokeChatOnEndpoint(AiModelEndpoint endpoint, AiModelPurpose purpose,
-                                                List<Map<String, String>> messages,
+                                                List<? extends Map<String, ?>> messages,
                                                 Map<String, Object> options) {
         return invokeChatOnEndpoint(endpoint, purpose, messages, options, null);
     }
 
     public AiModelResponse invokeChatOnEndpoint(AiModelEndpoint endpoint, AiModelPurpose purpose,
-                                                List<Map<String, String>> messages,
+                                                List<? extends Map<String, ?>> messages,
                                                 Map<String, Object> options,
                                                 String replayOfRecordId) {
         if (endpoint == null || !endpoint.isEnabled()) {
@@ -263,7 +263,27 @@ public class AiModelInvocationService {
 
     // ── 内部 ───────────────────────────────────────────────────────────────
 
-    private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<Map<String, String>> messages,
+    static List<Map<String,Object>> observedChatMessages(List<? extends Map<String,?>> messages) {
+        if(messages==null)return null;
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(var message:messages) {
+            if(message==null){result.add(null);continue;}
+            Map<String,Object> safe=new LinkedHashMap<>(message);
+            if(message.get("content") instanceof List<?> parts) {
+                List<Object> observed=new ArrayList<>();
+                for(Object part:parts) {
+                    if(part instanceof Map<?,?> map && "image_url".equals(map.get("type")))
+                        observed.add(Map.of("type","image_url","image_url",Map.of("url","[image payload omitted]")));
+                    else observed.add(part);
+                }
+                safe.put("content",observed);
+            }
+            result.add(safe);
+        }
+        return result;
+    }
+
+    private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<? extends Map<String, ?>> messages,
                                    Map<String, Object> options, String replayOfRecordId) throws Exception {
         AiModelProviderType type = e.getProviderType();
         if (!isOpenAiCompatible(type)) {
@@ -303,13 +323,17 @@ public class AiModelInvocationService {
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
         String requestJson = OM.writeValueAsString(body);
+        // Media payloads are transient: observation must never persist signed URLs or inline image bytes.
+        var observedMessages=observedChatMessages(messages);
+        Map<String,Object> observedBody=new LinkedHashMap<>(body);observedBody.put("messages",observedMessages);
+        String observedJson=OM.writeValueAsString(observedBody);
         try {
             guard.checkBeforeCall(e, guard.estimateChatTokens(messages, body));
         } catch (BusinessException ex) {
             usage.recordObserved(e.getId(), e.getName(), model,
                     purpose != null ? purpose.wire() : null, null, null, null, false,
                     requestId, null, elapsedMs(startNanos), ex.getCode(), ex.getMessage(),
-                    requestJson, null, replayOfRecordId);
+                    observedJson, null, replayOfRecordId);
             throw ex;
         }
         log.info("[ai-chat] invoke start requestId={} purpose={} endpointId={} endpoint={} providerType={} model={} messages={} maxTokens={} jsonMode={}",
@@ -326,7 +350,7 @@ public class AiModelInvocationService {
         if (ioLog.isInfoEnabled()) {
             try {
                 ioLog.info("[ai-chat-io] REQUEST requestId={} purpose={} endpoint={} model={} messages={}",
-                        requestId, purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(messages));
+                        requestId, purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(observedMessages));
             } catch (Exception ignore) { /* 序列化失败不阻塞主链路 */ }
         }
         HttpRequest req = HttpRequest.newBuilder(uri)
@@ -340,7 +364,7 @@ public class AiModelInvocationService {
                 .endpoint(e.getId(), e.getName())
                 .model(model)
                 .requestId(requestId)
-                .requestBodyJson(requestJson)
+                .requestBodyJson(observedJson)
                 .replayOfRecordId(replayOfRecordId)
                 .client(HTTP)
                 .build();
@@ -409,7 +433,7 @@ public class AiModelInvocationService {
                 purpose != null ? purpose.wire() : null,
                 promptTokens, completionTokens, tokensUsed, true,
                 requestId, upstreamId, elapsedMs(startNanos), null, null,
-                requestJson, resp.body(), replayOfRecordId);
+                observedJson, resp.body(), replayOfRecordId);
         log.info("[ai-chat] invoke ok requestId={} upstreamId={} purpose={} endpointId={} endpoint={} model={} finish={} tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
                 requestId,
                 upstreamId,

@@ -21,6 +21,7 @@ vi.mock("@/ip/api", () => ({
 vi.mock("./api", () => ({
   setCurrentProjectId: vi.fn(),
   fetchModels: vi.fn().mockResolvedValue({ image: [], video: [] }),
+  fetchStudioVideoModels: vi.fn().mockResolvedValue([]),
 }));
 
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";

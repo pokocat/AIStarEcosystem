@@ -149,6 +149,8 @@ public class AepSecurityConfig {
                         // 顺序敏感：必须排在通用 /api/v1/** authenticated 之前。
                         // 只放行读；写路径 /api/v1/card/** 仍走登录 + aiavatar 开通。
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/card/p/**").permitAll()
+                        // Only an explicitly published, revocable text snapshot is public. Copy/manage remain authenticated.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/ip-studio/shared/conversations/*").permitAll()
                         .requestMatchers("/api/v1/real-auth/callback").permitAll()
                         // 数字人资产平台（web-aiavatar，v0.51 dap 领域）：/api/v1/** 全部需登录。
                         .requestMatchers("/api/v1/**").authenticated()

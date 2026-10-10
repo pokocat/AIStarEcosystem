@@ -9,6 +9,7 @@ import { render } from "@testing-library/react";
 const boundsMock = vi.fn();
 const geometryMock = vi.fn();
 vi.mock("@/canvas-bridge/models", () => ({
+  nativeVideoModelFor: () => undefined,
   videoDurationBoundsFor: (v?: string | null) => boundsMock(v),
   videoGeometryFor: (v?: string | null) => geometryMock(v),
   endpointIdFor: (v?: string | null) => v,

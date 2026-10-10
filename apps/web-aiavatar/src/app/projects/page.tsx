@@ -22,6 +22,8 @@ import { ToastProvider, useToast } from "@/ip/common/toast";
 import { MockBadge } from "@/ip/common/mock-badge";
 import { CanvasThumb } from "@/ip/canvas-thumb";
 import { formatDateTime } from "@/lib/datetime";
+import { StudioTemplateUse } from "@/ip/studio-template-use";
+import { templateAvailability } from "@/canvas-bridge/template-api";
 
 function ProjectsPageInner() {
   const router = useRouter();
@@ -33,6 +35,7 @@ function ProjectsPageInner() {
   const identity = useIdentity();
   const isOperator = isOperatorRole(identity?.operatorRole);
   const [templates, setTemplates] = React.useState<IpTemplate[]>([]);
+  const [usingTemplate,setUsingTemplate] = React.useState<IpTemplate>();
   const [projects, setProjects] = React.useState<IpProjectSummary[]>([]);
   // 全局实例（带素材的成品）—— 与我的画布并列展示，标「官方示例」
   const [examples, setExamples] = React.useState<IpTemplate[]>([]);
@@ -65,11 +68,13 @@ function ProjectsPageInner() {
     void load();
   }, [load, authState]);
 
-  const create = async (templateId?: string) => {
-    setCreating(templateId ?? "blank");
+  const create = async (templateId?: string, start?: "image"|"script") => {
+    const template=templates.find(t=>t.id===templateId);
+    if(template?.versionId) {setUsingTemplate(template);return;}
+    setCreating(start ?? templateId ?? "blank");
     try {
       const project = await IpStudioApi.createProject(templateId ? { templateId } : {});
-      router.push(`/projects/${project.id}`);
+      router.push(`/projects/${project.id}${start?`?start=${start}`:""}`);
     } catch (e) {
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
       else toast(e instanceof Error ? e.message : "没建成，再试一次", "warn");
@@ -116,14 +121,15 @@ function ProjectsPageInner() {
     // ip-surface：这一页整套视觉都用工作台那份令牌（ledger-card / asset-name /
     // --shadow-card / --primary-soft …）。不套作用域的话它们要么解析成空
     // （实测 --shadow-card 为空 → 卡片没有阴影），要么拿到 aiavatar 那套青色值。
-    <div ref={surfaceRef} className="ip-surface max-w-6xl mx-auto px-6 py-8">
+    <div ref={surfaceRef} data-studio-overlay-root className="ip-surface max-w-6xl mx-auto px-6 py-8">
+      {usingTemplate&&<StudioTemplateUse key={usingTemplate.versionId} template={usingTemplate} onClose={()=>setUsingTemplate(undefined)} onCreated={id=>router.push(`/projects/${id}`)}/>}
       {/* ── 新建 ── */}
-      <section className="mb-10">
+      <section className="mb-10" id="templates">
         <div className="flex items-baseline justify-between gap-4 mb-4">
           <div className="min-w-0">
             <h1 className="asset-name text-[24px]" style={{ color: "var(--ink)" }}>新建画布</h1>
             <p className="text-[12px] mt-1" style={{ color: "var(--ink-2)" }}>
-              挑个模板，节点和提示词都排好了，传张照片就能跑。也可以从空白画布自己搭。
+              在同一画布里打造 IP、写剧本、生成分镜与视频，再合成作品。
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -142,6 +148,11 @@ function ProjectsPageInner() {
           </div>
         </div>
 
+        <div className="grid gap-4 sm:grid-cols-2 mb-5">
+          {([ ["image","打造 IP 形象","从描述或参考图片开始，选定主形象，继续制作造型和视频。"], ["script","制作 IP 短视频","引用已有 IP，写一段短剧本，生成分镜、视频并合成作品。"]] as const).map(([start,title,description])=><button type="button" key={start} disabled={creating!==null} onClick={()=>void create(undefined,start)} className="ledger-card text-left p-5 disabled:opacity-60" style={{border:"1px solid var(--line-2)"}}>
+            <h2 className="asset-name text-[18px]" style={{color:"var(--ink)"}}>{creating===start?"正在创建…":title}</h2><p className="mt-2 text-[12px] leading-relaxed" style={{color:"var(--ink-2)"}}>{description}</p></button>)}
+        </div>
+
         {loading && templates.length === 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
@@ -151,18 +162,19 @@ function ProjectsPageInner() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {templates.map((t) => (
+              <div key={t.id}>
               <button
                 key={t.id}
                 onClick={() => void create(t.id)}
-                disabled={creating !== null}
-                className="ledger-card text-left p-5 transition disabled:opacity-60 hover:-translate-y-0.5"
+                disabled={creating !== null || t.enabled===false}
+                className="ledger-card w-full text-left p-5 transition disabled:opacity-60 hover:-translate-y-0.5"
                 style={{ boxShadow: "var(--shadow-card)" }}
               >
                 {/* 预览：按节点真实坐标画的工作流示意（模板没有素材，见 canvas-thumb.tsx） */}
                 <CanvasThumb doc={t.doc} className="mb-3" />
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="mb-1.5"><OriginTag kind="template" /></div>
+                    <div className="mb-1.5">{t.versionId?<span className="field-label">{t.visibility==='personal'?'个人模板':'官方模板'} · v{t.version}{t.enabled===false?' · 已停用':''}</span>:<OriginTag kind="template" />}</div>
                     <h3 className="asset-name text-[18px] leading-tight" style={{ color: "var(--ink)" }}>{t.name}</h3>
                   </div>
                   <span
@@ -178,14 +190,16 @@ function ProjectsPageInner() {
                   {t.summary}
                 </p>
                 <div className="mt-4 flex items-center gap-3 text-[11px]" style={{ color: "var(--ink-3)" }}>
-                  <span className="inline-flex items-center gap-1">
+                  {!t.versionId&&<span className="inline-flex items-center gap-1">
                     <Layers className="w-3 h-3" /> {t.lookCount} 个造型
-                  </span>
+                  </span>}
                   <span className="inline-flex items-center gap-1 tabular">
-                    <Coins className="w-3 h-3" /> 约 {t.estimatedCredits} 积分
+                    <Coins className="w-3 h-3" /> {t.versionId?'填写输入后查看制作报价':`约 ${t.estimatedCredits} 积分`}
                   </span>
                 </div>
               </button>
+              {t.mine&&t.versionId&&t.visibility==='personal'&&<button type="button" className="mt-2 px-3 py-1.5 text-[12px]" style={{color:'var(--ink-2)'}} onClick={()=>void templateAvailability(t.id,t.enabled===false).then(load).catch(e=>toast(e instanceof Error?e.message:'状态修改失败','warn'))}>{t.enabled===false?'重新启用模板':'停用模板'}</button>}
+              </div>
             ))}
 
             <button
@@ -206,7 +220,7 @@ function ProjectsPageInner() {
                 </span>
               </div>
               <p className="mt-2.5 text-[12px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
-                自己拖节点、自己连线，从一张白纸开始。
+                自由组合素材，也可以用 AI 创作自动生成节点与引用。
               </p>
             </button>
           </div>
@@ -287,7 +301,7 @@ function ProjectsPageInner() {
           <div className="ledger-card p-10 text-center">
             <Sparkles className="w-6 h-6 mx-auto mb-3" style={{ color: "var(--ink-4)" }} />
             <p className="text-[14px] font-semibold mb-1" style={{ color: "var(--ink)" }}>这里还是空的</p>
-            <p className="text-[12px]" style={{ color: "var(--ink-2)" }}>从上面挑个模板开始，或者用空白画布自己搭。</p>
+            <p className="text-[12px]" style={{ color: "var(--ink-2)" }}>选择上方创作入口，也可以从模板或空白画布开始。</p>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

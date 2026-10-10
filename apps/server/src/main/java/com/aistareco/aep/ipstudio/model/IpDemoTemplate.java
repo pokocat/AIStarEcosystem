@@ -67,6 +67,13 @@ public class IpDemoTemplate {
     @Builder.Default
     private String kind = IpDemoTemplate.KIND_EXAMPLE;
 
+    @Column(nullable = false, length = 16)
+    @Builder.Default
+    private String visibility = "official";
+
+    @Column(name = "current_version_id", length = 32)
+    private String currentVersionId;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean enabled = true;

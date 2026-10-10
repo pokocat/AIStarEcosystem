@@ -38,6 +38,7 @@ import java.util.UUID;
  */
 @Service
 public class MaterialVideoJobService {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService generationQueue;
 
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoJobService.class);
 
@@ -60,7 +61,7 @@ public class MaterialVideoJobService {
     public static final String APP_IPSTUDIO = "ipstudio";
     /**
      * 明星带货工作台「AI 创作 → 视频生成」（v0.199，docs/video-studio-plan.md）：
-     * 把 MiniMax H3 的四种原生模式原样开放。只有这个分区的任务可以带原生规格（见 {@link #requireInputsAllowedIn}）。
+     * 把 MiniMax H3 的四种原生模式原样开放。v0.208 的 Studio 也复用此合同，两个分区可带原生规格（见 {@link #requireInputsAllowedIn}）。
      */
     public static final String APP_VIDEO_STUDIO = "video-studio";
 
@@ -164,6 +165,12 @@ public class MaterialVideoJobService {
         modelClient.validateRequest(endpointId, durationSec);
     }
 
+    /** Free canvas/template quote; shares the submit price calculation, without creating a job. */
+    public long quote(String endpointId, int durationSec) {
+        validateRequest(endpointId, durationSec);
+        return itemUnitCost(om.createObjectNode(), endpointId, durationSec);
+    }
+
     /**
      * 所选端点收首帧是不是只认「我方存储 key」（聚算媒体协议，见 {@link MaterialVideoModelClient#firstFrameNeedsStorageKey}）。
      * 是 → 调用方必须把首帧的 key 写进 {@code variant_config.first_frame_key}，否则首帧到不了模型。
@@ -205,7 +212,11 @@ public class MaterialVideoJobService {
             String endpointId = endpointIdOf(item);
             int durationSec = item.path("duration_sec").asInt(0);
             modelClient.validateRequest(endpointId, durationSec);
-            planned.add(new PlannedItem(item, itemUnitCost(item, endpointId, durationSec)));
+            long unit=itemUnitCost(item, endpointId, durationSec);
+            if(APP_IPSTUDIO.equals(normalizeApp(app)) && item.hasNonNull("max_credit_cost")) {
+                com.aistareco.aep.ipstudio.service.IpRunService.requireApprovedCost(item.path("max_credit_cost").asLong(-1),unit);
+            }
+            planned.add(new PlannedItem(item, unit));
         }
 
         // 第二阶段：逐 item 落库 + hold（金额 = 第一阶段算好的 unit，报价与冻结同源）。
@@ -274,6 +285,7 @@ public class MaterialVideoJobService {
      */
     @Transactional
     public boolean expireQueued(String jobId, String userId, String message) {
+        if(generationQueue!=null && generationQueue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId))return false;
         return failQueued(jobId, userId, message, "视频排队超时 · 退回积分");
     }
 
@@ -320,8 +332,8 @@ public class MaterialVideoJobService {
      * 一个分区的任务能在 variant_config 里带哪些生成输入（worker 会把它们原样交给厂商）。
      *
      * <ul>
-     *   <li>原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只属于视频生成区：只有那里的计价
-     *       覆盖得到清晰度与参考图张数，也只有那里在提交前校验过每个 key 的归属。</li>
+     *   <li>原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只允许视频生成区与 Studio：两处均复用原生合同计价，
+     *       在提交前校验规格、媒体和每个 key 的归属；variant_config 均由服务端组装。</li>
      *   <li>首帧参考图 key 只许三个分区带：画布（提交前过 {@code requireOwnedAssetKey}）、视频生成区，和短剧 ——
      *       短剧的 variant_config 全部由服务端逐字段组装（{@code DramaRenderService} / 短剧画布），首帧 key 只在
      *       确认属于本人之后才写进去（2026-09-30 首帧热修：{@code DramaReferenceAssembler.requireOwnedFrameKey}）。</li>
@@ -331,7 +343,9 @@ public class MaterialVideoJobService {
      */
     static void requireInputsAllowedIn(String app, JsonNode variantConfig) {
         VideoGenSpec spec = VideoGenSpec.fromVariantConfig(variantConfig);
-        if (!APP_VIDEO_STUDIO.equals(app) && spec.hasNativeOptions()) {
+        // ipstudio's typed request is validated and priced by StudioVideoService before writing this spec.
+        // Celebrity still forwards raw variant_config and must remain excluded.
+        if (!APP_VIDEO_STUDIO.equals(app) && !APP_IPSTUDIO.equals(app) && spec.hasNativeOptions()) {
             throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "这里不支持指定生成模式、清晰度、尾帧或参考素材");
         }
         if (spec.firstFrameKey() != null && (app == null || !FIRST_FRAME_KEY_APPS.contains(app))) {  // Set.of 不收 null
