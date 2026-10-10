@@ -45,8 +45,8 @@ public final class StudioWorkflowDtos {
     public record VoiceAsset(String id,String name,String avatarId,String status,String demoUrl) {}
     public record PerformerAsset(String avatarId,String ipId,String name,boolean imageReady,String driverStatus,String voiceId) {}
     public record AssetCatalog(List<ProductAsset> products,List<PerformerAsset> performers,List<VoiceAsset> voices,boolean voiceEngineReady,boolean videoLipSyncReady) {}
-    public record TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision) {}
-    public record Capabilities(boolean mock, List<String> operations, long imageCost, long textCost, Long videoCost,List<TextModel> textModels) {}
+    public record TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost) {}
+    public record Capabilities(boolean mock, List<String> operations, long imageCost, long textCost, Long videoCost,List<TextModel> textModels,String textModelMode,String imageModelMode) {}
     public record AdoptRequest(String nodeId, String storageKey, String name, String ipId, String avatarId,
                                String description, String intent, String assetRole) {
         public AdoptRequest(String nodeId,String storageKey,String name,String ipId,String avatarId,String description,String intent) {

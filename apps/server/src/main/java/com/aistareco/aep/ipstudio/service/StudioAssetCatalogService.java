@@ -11,6 +11,7 @@ import java.util.List;
 @Service
 public class StudioAssetCatalogService {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiModelInvocationService models;
+    @org.springframework.beans.factory.annotation.Autowired private StudioPointPricing pricing;
     private final DapProductRepository products;private final DapAvatarRepository avatars;private final DapVoiceRepository voices;
     private final FileStorageService storage;private final ClipProperties clip;
     public StudioAssetCatalogService(DapProductRepository products,DapAvatarRepository avatars,DapVoiceRepository voices,FileStorageService storage,ClipProperties clip) {
@@ -27,8 +28,18 @@ public class StudioAssetCatalogService {
         List<PerformerAsset> performerList=avatars.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(owner).stream()
                 .map(a->new PerformerAsset(a.getId(),a.getIpId(),a.getName(),a.getImageKey()!=null,
                         !engineReady?"unavailable":"shiliu".equals(a.getEngine())&&!a.isMock()?state(a.getEngineRef()==null?null:a.getEngineStatus()):"not_created",a.getVoiceId())).toList();
-        boolean lipReady=models.listCandidates(com.aistareco.aep.model.AiModelPurpose.DAP_LIP_SYNC).stream().anyMatch(r->JusuanLipSyncClient.supports(r.endpoint())&&r.endpoint().isEnabled()&&r.candidate().isEnabled()&&r.candidate().getCreditCostOverride()!=null&&r.candidate().getCreditCostOverride()>=0&&r.endpoint().getBillingMode()==com.aistareco.aep.model.AiModelBillingMode.PER_SECOND);
+        boolean lipReady=models.listCandidates(com.aistareco.aep.model.AiModelPurpose.DAP_LIP_SYNC).stream().anyMatch(this::lipReady);
         return new AssetCatalog(productList,performerList,voiceList,engineReady,lipReady);
+    }
+    private boolean lipReady(com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint resolved) {
+        var endpoint=resolved.endpoint();
+        if(!JusuanLipSyncClient.supports(endpoint)||!endpoint.isEnabled()||!resolved.candidate().isEnabled()
+                ||endpoint.getBillingMode()!=com.aistareco.aep.model.AiModelBillingMode.PER_SECOND)return false;
+        // Match lip-sync preflight: a fixed customer rate takes precedence over a legacy candidate price.
+        var rate=pricing.find(endpoint.getId());
+        if(rate!=null)return rate.platformPointsPerSecond().signum()>=0;
+        Long legacy=resolved.candidate().getCreditCostOverride();
+        return !pricing.enabled()&&legacy!=null&&legacy>=0;
     }
     private static String state(String value) {return List.of("ready","training","failed").contains(value==null?"":value)?value:"not_created";}
 }

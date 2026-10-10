@@ -45,6 +45,8 @@ public class StudioWorkflowService {
     private final ObjectMapper mapper;
     private final StudioIpAssetService ipAssets;
     private final PromptService prompts;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
 
     public StudioWorkflowService(IpProjectService projects, IpRunRepository runs, StudioFixtureProvider fixtures,
             StudioWorkflowWorker worker, DapPricingService pricing, AiModelInvocationService models,
@@ -60,9 +62,13 @@ public class StudioWorkflowService {
 
     public Capabilities capabilities() {
         return new Capabilities(fixtures.enabled(), List.of("script","storyboard","image","video","assemble","assistant"),
-                fixtures.enabled()?0:pricing.ipImage(), fixtures.enabled()?0:pricing.ipIdentity(),
-                fixtures.enabled()?0L:null, models.listCandidates(AiModelPurpose.DAP_PERSONA).stream()
-                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().getName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()))).toList());
+                fixtures.enabled()?0:scenePolicies == null ? pricing.ipImage() : scenePolicies.available("studio","image",pricing.ipImage()).stream().filter(s->s.resolved().isDefault()).findFirst().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost).orElse(pricing.ipImage()), fixtures.enabled()?0:textModelOptions().stream().filter(TextModel::isDefault).findFirst().map(TextModel::creditCost).orElse(pricing.ipIdentity()),
+                fixtures.enabled()?0L:null, textModelOptions(), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","script"), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","image"));
+    }
+    private List<TextModel> textModelOptions() {
+        if(scenePolicies == null) return models.listCandidates(AiModelPurpose.DAP_PERSONA).stream()
+                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().getName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity())).toList();
+        return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().getName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost())).toList();
     }
 
     @Transactional
@@ -125,17 +131,19 @@ public class StudioWorkflowService {
         boolean text=List.of("script","storyboard","assistant").contains(request.operation());
         AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
         PromptService.ResolvedPrompt resolved=null;
+        long textPrice=fixtures.enabled()?0:pricing.ipIdentity();
         String promptKey="assistant".equals(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
         if(!fixtures.enabled() && text) {
-            textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model()).orElseThrow(()->
+            if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model()).orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选剧本模型不可用"));
+            if(scenePolicies != null) {var selection=scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity());textEndpoint=selection.resolved();textPrice=selection.creditCost();}
             resolved=prompts.resolve(promptKey);
             if("code".equals(resolved.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","尚未配置创作提示词");
             if(Boolean.TRUE.equals(request.readVisuals())&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
                 throw bad("STUDIO_VISION_UNAVAILABLE","这个模型未配置图片读取能力，请切换模型或关闭读取画面");
         }
         if(Boolean.TRUE.equals(request.readVisuals())&&fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不读取真实画面，请关闭测试响应");
-        long cost=fixtures.enabled()||!text?0:pricing.ipIdentity();
+        long cost=fixtures.enabled()||!text?0:textPrice;
         IpRunService.requireApprovedCost(request.maxCost(),cost);
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         ObjectNode inputs=mapper.valueToTree(request);
@@ -145,7 +153,7 @@ public class StudioWorkflowService {
             var avatar=avatars.required(userId,ref.avatarId());
             context.addObject().put("name",avatar.getName()).put("description",avatar.getDescPrompt()).put("version",ref.version()==null?avatar.getVersions():ref.version());
         }
-        var execution=inputs.putObject("_exec").put("holdTotal",cost);
+        var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_call");
         var canvasContext=inputs.putArray("appliedCanvasContext");
         if(request.contextNodeIds()!=null) for(String nodeId:request.contextNodeIds()) {
             var node=IpDocs.node(projects.readDoc(project),nodeId);

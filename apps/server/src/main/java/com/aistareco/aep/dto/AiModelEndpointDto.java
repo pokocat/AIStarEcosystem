@@ -35,6 +35,7 @@ public record AiModelEndpointDto(
         List<AiModelEntryDto> models,
         String ownerUserId,
         String billingMode,
+        String supplierBillingMode,
         long promptTokenPriceMicros,
         long completionTokenPriceMicros,
         long unitPriceMicros,
@@ -76,6 +77,8 @@ public record AiModelEndpointDto(
                 parseModels(e.getModelsJson()),
                 e.getOwnerUserId(),
                 e.getBillingMode() != null ? e.getBillingMode().name() : null,
+                e.getSupplierBillingMode() != null ? e.getSupplierBillingMode()
+                        : e.getBillingMode() != null ? e.getBillingMode().name() : "AUTO",
                 Math.max(0L, e.getPromptTokenPriceMicros()),
                 Math.max(0L, e.getCompletionTokenPriceMicros()),
                 Math.max(0L, e.getUnitPriceMicros()),

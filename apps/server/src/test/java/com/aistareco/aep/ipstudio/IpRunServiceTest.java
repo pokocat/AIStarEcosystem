@@ -466,6 +466,22 @@ class IpRunServiceTest {
     }
 
     @Test
+    void scenePolicySalePriceIsFrozenForEntireBatch() throws Exception {
+        seedProject(IpStudioFixtures.chainDoc(null, 0));
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("allowed").enabled(true).build();
+        var resolved=new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true);
+        when(policy.resolve(eq("studio"),eq("image"),org.mockito.ArgumentMatchers.any(),eq(8L))).thenReturn(new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(resolved,13L,"per_image"));
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        var dto=svc.run(USER,PID,"n-gen",null);
+        var execution=OM.readTree(runs.rows.get(dto.id()).getInputJson()).path("_exec");
+        assertEquals(13L,execution.path("unitCost").asLong());
+        assertEquals(26L,execution.path("holdTotal").asLong());
+        assertEquals("allowed",execution.path("endpointId").asText());
+        verify(credits).hold(eq(USER),eq(26L),eq(IpRunService.REF_TYPE),eq(dto.id()),anyString());
+    }
+
+    @Test
     void queueFullOnDispatch_failsTheRunAndReleasesTheHold() {
         // 线程池排满时 @Async 抛 TaskRejectedException：hold 已冻、run 已落库，
         // 不接住就是一个永远 running 的节点 + 三小时后才回来的冻结额

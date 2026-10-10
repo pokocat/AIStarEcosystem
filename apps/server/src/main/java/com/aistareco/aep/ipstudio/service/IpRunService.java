@@ -72,6 +72,8 @@ public class IpRunService {
     private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
     private final com.aistareco.aep.service.AiModelInvocationService aiModels;
     private final ObjectMapper om;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private StudioFixtureProvider studioFixtures;
     private StudioVideoService studioVideo;
     @org.springframework.beans.factory.annotation.Autowired
@@ -444,7 +446,13 @@ public class IpRunService {
         ObjectNode exec = inputs.putObject("_exec");
         exec.set("refKeys", refKeys);
 
-        return new Compiled(IpRun.KIND_GENERATE, pricing.ipImage(), count,
+        // Endpoint IDs are explicit server identifiers; vendor model display names are not IDs.
+        String nodeEndpoint=IpDocs.text(md,"endpointId");
+        if(nodeEndpoint == null) nodeEndpoint=IpDocs.text(md.path("studio").path("request"),"model");
+        if(nodeEndpoint != null) exec.put("endpointId",nodeEndpoint);
+        var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", IpDocs.text(exec, "endpointId"), pricing.ipImage());
+        if(selected != null) exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
                 PromptService.KEY_DAP_IP_CANVAS_IMAGE);
     }
@@ -506,7 +514,9 @@ public class IpRunService {
         exec.set("refKeys", refKeys);
         if (req.model() != null && !req.model().isBlank()) exec.put("endpointId", req.model().trim());
 
-        return new Compiled(IpRun.KIND_GENERATE, pricing.ipImage(), count,
+        var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", IpDocs.text(exec, "endpointId"), pricing.ipImage());
+        if(selected != null) exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
                 PromptService.KEY_DAP_IP_CANVAS_IMAGE);
     }
@@ -581,7 +591,7 @@ public class IpRunService {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_ENGINE_NOT_CONFIGURED",
                     "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 人设」用途绑定一个支持图片输入的模型");
         }
-        if (c.needsImage() && (multimodal.imageModel() == null || multimodal.imageModel().isBlank())) {
+        if (c.needsImage() && !c.inputs().path("_exec").hasNonNull("endpointId") && (multimodal.imageModel() == null || multimodal.imageModel().isBlank())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_ENGINE_NOT_CONFIGURED",
                     "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 图片」用途绑定启用端点");
         }

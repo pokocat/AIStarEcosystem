@@ -52,6 +52,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/ip-studio")
 public class IpStudioController {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private final IpProjectService projects;
     private final IpRunService runs;
     private final IpPublishService publish;
@@ -253,10 +255,13 @@ public class IpStudioController {
             com.aistareco.aep.model.AiModelPurpose purpose, long defaultCost) {
         boolean video = purpose == com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION;
         java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> out = new java.util.ArrayList<>();
-        for (var r : invocation.listCandidates(purpose)) {
+        var selections = !video ? scenePolicies.available("studio","image",defaultCost) : null;
+        var candidates = !video ? selections.stream().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::resolved).toList() : invocation.listCandidates(purpose);
+        for (var r : candidates) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             long cost = r.candidate().getCreditCostOverride() != null
                     ? Math.max(0L, r.candidate().getCreditCostOverride()) : defaultCost;
+            if(!video) cost=selections.stream().filter(s->s.resolved().endpoint().getId().equals(r.endpoint().getId())).findFirst().orElseThrow().creditCost();
             // 视频候选带上**有效**时长区间（协议硬边界 ∩ 候选配置）——
             // 下限只有协议知道（聚算媒体 5 秒起），后台那张表里根本没有这一列。
             // 不给的话画布的时长滑杆是 4–30，用户选个 4 秒点发送就撞 400。

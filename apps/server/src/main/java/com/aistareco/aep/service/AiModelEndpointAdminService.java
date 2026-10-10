@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AdminAiModelEndpointUpsertDto;
+import com.aistareco.aep.dto.AiModelEndpointCostUpsertDto;
 import com.aistareco.aep.dto.AiModelDiscoveryRequestDto;
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEndpointDto;
@@ -175,6 +176,22 @@ public class AiModelEndpointAdminService {
             entity.setUnitPriceMicros(nonNegative(req.unitPriceMicros()));
         }
         if (req.enabled() != null) entity.setEnabled(req.enabled());
+        return AiModelEndpointDto.from(repo.save(entity));
+    }
+
+    public AiModelEndpointDto updateCosts(String id, AiModelEndpointCostUpsertDto req) {
+        if (req == null || req.supplierBillingMode() == null
+                || !java.util.Set.of("AUTO", "TOKENS", "PER_CALL", "PER_SECOND").contains(req.supplierBillingMode())
+                || req.promptTokenPriceMicros() == null || req.promptTokenPriceMicros() < 0
+                || req.completionTokenPriceMicros() == null || req.completionTokenPriceMicros() < 0
+                || req.unitPriceMicros() == null || req.unitPriceMicros() < 0) {
+            throw BusinessException.badRequest("INVALID_SUPPLIER_COST", "供应商成本单位和价格无效");
+        }
+        AiModelEndpoint entity = load(id);
+        entity.setSupplierBillingMode(req.supplierBillingMode());
+        entity.setPromptTokenPriceMicros(req.promptTokenPriceMicros());
+        entity.setCompletionTokenPriceMicros(req.completionTokenPriceMicros());
+        entity.setUnitPriceMicros(req.unitPriceMicros());
         return AiModelEndpointDto.from(repo.save(entity));
     }
 

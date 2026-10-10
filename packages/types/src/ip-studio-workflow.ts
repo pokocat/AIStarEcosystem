@@ -85,7 +85,9 @@ export interface StudioCapabilities {
   imageCost: number;
   textCost: number;
   videoCost: number | null;
-  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean }[];
+  imageModelMode?: "fixed" | "selectable";
+  textModelMode?: "fixed" | "selectable";
+  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; creditCost?: number }[];
 }
 export interface StudioAdoptRequest {
   nodeId: string;

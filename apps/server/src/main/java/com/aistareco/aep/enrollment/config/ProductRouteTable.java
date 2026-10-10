@@ -77,6 +77,8 @@ public final class ProductRouteTable {
      * 所以它只能精确匹配，不能当前缀。
      */
     public static final Set<String> WHITELIST_EXACT = Set.of(
+            // Dedicated signed machine capability; the controller validates its own narrow grant.
+            "/api/service/model-management/v1/command",
             "/api/me",
             "/api/me/messages-overview",
             "/api/me/password",

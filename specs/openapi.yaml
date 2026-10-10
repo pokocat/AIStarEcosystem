@@ -20,6 +20,11 @@ security:
 components:
 
   securitySchemes:
+    modelManagementGrant:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 独立平台管理签名，仅 audience aistar-model-management-v1、30 秒、platform scope、action 和正文哈希有效；不接受普通用户或 INTERNAL 身份。
     bearerAuth:
       type: http
       scheme: bearer
@@ -4338,6 +4343,45 @@ components:
         official: { type: boolean, description: 发布为官方模板（全员可见）；只有运营账号能传 true（服务端查库判定） }
 
 paths:
+  /service/model-management/v1/command:
+    post:
+      operationId: platformModelManagementCommand
+      summary: 统一后台窄范围模型配置管理
+      description: |
+        白名单命令直接调用原 Java 配置服务。原始供应商密钥只写不回显。
+        commandJson 内的版本化命令形状由 aibuzz-platform/packages/contracts/src/platform/aistar-models.ts 维护；
+        无任意 URL 或 admin 路径代理。固定 app+scene 模型白名单和候选积分价首先覆盖 Studio script/image。
+      security:
+        - modelManagementGrant: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commandJson]
+              additionalProperties: false
+              properties:
+                commandJson:
+                  type: string
+                  maxLength: 250000
+                  description: 已由平台严格命令契约解析的 JSON；SHA256 与授权 commandHash 逐字节一致。
+      responses:
+        '200':
+          description: 原配置服务回执，data 形状依命令；凭据只含掩码。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, const: true }
+                  data: {}
+        '400': { description: 未支持命令、配置或正文无效 }
+        '401': { description: 专用授权缺失、过期、篡改或重放 }
+        '404': { description: 配置目标不存在 }
+        '409': { description: 配置冲突 }
+        '503': { description: 专用管理密钥或业务配置未就绪 }
 
   # ── 3.1 Auth ────────────────────────────
 

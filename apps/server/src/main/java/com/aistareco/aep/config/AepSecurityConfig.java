@@ -111,6 +111,7 @@ public class AepSecurityConfig {
                         // 不能挂在 /api/admin/** 下 —— 那里要 staff JWT，而军师 BFF 只有 service token。
                         // 见 ClipServiceAdminController 的类注释（含密钥影响面说明）。
                         // 顺序同样必须早于通用 /api/admin/** 规则。
+                        .requestMatchers("/api/service/model-management/v1/command").permitAll() // Independent, narrow signed delegation; validated by controller.
                         .requestMatchers("/api/service/clip/**").permitAll()
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()

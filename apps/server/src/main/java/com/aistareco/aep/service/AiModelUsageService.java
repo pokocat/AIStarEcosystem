@@ -870,7 +870,7 @@ public class AiModelUsageService {
     private static AiModelBillingMode effectiveBillingMode(AiModelEndpoint endpoint,
                                                            String purpose,
                                                            AiModelBillingMode requested) {
-        if (endpoint != null && endpoint.getBillingMode() != null) return endpoint.getBillingMode();
+        if (endpoint != null && endpoint.effectiveSupplierBillingMode() != null) return endpoint.effectiveSupplierBillingMode();
         if (requested != null) return requested;
         return inferBillingModeForPurpose(purpose);
     }
