@@ -9,6 +9,8 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 `GET /api/admin/users` 未指定 `status` 时排除 `DELETED`，搜索和身份筛选也在分页前排除；显式 `status=deleted` 可查历史。测试账号按精确 ID 注销，身份凭据归档、令牌撤销；账本与钱包保留，不直接修改余额。生产保持 `AEP_SEED_DEV_DATA_ENABLED=false`。
 
+本次精确清理 11 个产品账号与 4 个统一身份，真实后台 API 默认返回 17 个未注销账号；两库备份在 `/var/backups/aistareco/test-account-cleanup-20261010T180720Z/`。原恢复账号及其他账号、钱包、账本逐项核对未变化。
+
 ## 版本日志
 
 ### v0.210 · 2026-10-08 · Studio 多候选视频（本地未发布）
