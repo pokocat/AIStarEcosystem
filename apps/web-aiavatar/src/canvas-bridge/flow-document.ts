@@ -3,7 +3,7 @@ import type { Node, NodeChange, Edge, EdgeChange } from '@xyflow/react';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
 import { studioGenerationPending } from './studio-nodes';
 
-export type StudioFlowNode = Node<{ document: CanvasNodeData }, 'studio'>;
+export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean; onInspect?: (node:CanvasNodeData)=>void }, 'studio'>;
 export function flowNodes(nodes: CanvasNodeData[], selected: Set<string>): StudioFlowNode[] {
   return nodes.map(document => ({ id: document.id, type: 'studio', position: document.position,
     width: document.width, height: document.height, style: { width: document.width, height: document.height },

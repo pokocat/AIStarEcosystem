@@ -1,5 +1,20 @@
 /* Screen-space controls stay outside the zoomed graph. Preserve the Studio navy/wheat palette. */
 .studio-flow-shell { position:relative; width:100%; height:100%; overflow:hidden; background:var(--canvas); color:var(--ink); --studio-context-top:124px; --studio-command-top:72px; }
+/* Template previews reuse the graph, but have no editing toolbar or persistence. */
+.studio-template-preview-modal .ant-modal-container { padding:0; border-radius:0; overflow:hidden; }
+.studio-template-preview { height:100dvh; display:flex; flex-direction:column; color:var(--ink); }
+.studio-template-preview>header { display:flex; align-items:center; gap:20px; min-height:64px; padding:12px 24px; background:var(--surface); border-bottom:1px solid var(--line); }
+.studio-template-preview>header>div { flex:1; min-width:0; display:flex; align-items:center; gap:16px; }
+.studio-template-preview>header strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:16px; }
+.studio-template-preview>header span { display:flex; align-items:center; gap:6px; color:var(--ink-2); font-size:12px; white-space:nowrap; }
+.studio-template-preview>main { position:relative; flex:1; min-height:0; background:var(--canvas); }
+.studio-template-preview-loading { height:100%; display:flex; align-items:center; justify-content:center; gap:12px; color:var(--ink-2); }
+.studio-template-preview-copy.ant-btn-primary { background:var(--action); border-color:var(--action); color:var(--ink); box-shadow:none; }
+.studio-template-preview-copy.ant-btn-primary:not(:disabled):hover { background:var(--action-600); border-color:var(--action-600); color:var(--ink); }
+.studio-template-preview-canvas .studio-flow-controls { left:24px; }
+.studio-template-preview-canvas .studio-flow-drag { cursor:pointer; }
+.studio-template-preview-canvas .react-flow__handle { pointer-events:none; }
+.studio-template-preview-prompt { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.7; }
 .studio-flow-header { position:absolute; inset:0 0 auto; z-index:85; height:60px; padding:0 18px; display:flex; align-items:center; gap:12px; background:var(--surface); border-bottom:1px solid var(--line); }
 .studio-flow-header>a { color:var(--ink-2); display:flex; padding:8px; border-radius:8px; }
 .studio-flow-header>.ant-input { width:220px; font-weight:650; color:var(--ink); }

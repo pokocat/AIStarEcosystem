@@ -69,8 +69,8 @@ function ProjectsPageInner() {
   }, [load, authState]);
 
   const create = async (templateId?: string, start?: "image"|"script") => {
-    const template=templates.find(t=>t.id===templateId);
-    if(template?.versionId) {setUsingTemplate(template);return;}
+    const template=[...templates,...examples].find(t=>t.id===templateId);
+    if(template) {setUsingTemplate(template);return;}
     setCreating(start ?? templateId ?? "blank");
     try {
       const project = await IpStudioApi.createProject(templateId ? { templateId } : {});
@@ -194,7 +194,7 @@ function ProjectsPageInner() {
                     <Layers className="w-3 h-3" /> {t.lookCount} 个造型
                   </span>}
                   <span className="inline-flex items-center gap-1 tabular">
-                    <Coins className="w-3 h-3" /> {t.versionId?'复制到我的画布，生成时确认费用':`约 ${t.estimatedCredits} 积分`}
+                    <Coins className="w-3 h-3" /> 只读预览 · 存为个人副本后编辑
                   </span>
                 </div>
               </button>

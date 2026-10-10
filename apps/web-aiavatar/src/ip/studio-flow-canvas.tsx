@@ -30,32 +30,32 @@ import { createStudioLinkedNode } from '@/canvas-bridge/studio-linked-inputs';
 import { StudioConnectionCreateMenu, type PendingStudioConnection } from './studio-connection-create-menu';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
-function FlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
+export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const node = data.document, meta = node.metadata, Icon = icons[node.type as keyof typeof icons] || FileText;
   if (node.type === CanvasNodeType.Group) return <article className={`studio-flow-group${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · 分组`}>
-    <NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>
-    <header className="studio-flow-drag"><Group size={15}/><span>{node.title}</span></header><Handle type="source" position={Position.Right} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
+    {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
+    <header className="studio-flow-drag"><Group size={15}/><span>{node.title}</span></header><Handle type="source" position={Position.Right} isConnectable={!data.readOnly} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
   </article>;
   // Template input constraints do not turn a plain text node into a script summary.
   const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio && !meta.studio.templateInput;
-  const edit = () => { const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
+  const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
-    <NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>
-    <Handle type="target" position={Position.Left} title="连接参考节点" aria-label="连接参考节点"/><Handle type="source" position={Position.Right} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
+    {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
+    <Handle type="target" position={Position.Left} isConnectable={!data.readOnly} title="连接参考节点" aria-label="连接参考节点"/><Handle type="source" position={Position.Right} isConnectable={!data.readOnly} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
     <header className="studio-flow-drag"><Icon size={15}/><span>{node.title}</span>{meta?.status === 'loading' && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
     <div className={`studio-flow-media ${studioText ? 'studio-flow-business' : ''}`}>
-      {studioText ? <div className="nodrag nopan nowheel"><StudioNodeContent node={node}/></div> : node.type === CanvasNodeType.Image && meta?.content ?
+      {studioText ? <div className="nodrag nopan nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : node.type === CanvasNodeType.Image && meta?.content ?
         <SignedImage src={meta.content} storageKey={meta.storageKey} alt={node.title}/> : node.type === CanvasNodeType.Video && meta?.content ?
         <SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata"/> : node.type === CanvasNodeType.Audio && meta?.content ?
         <div className="studio-flow-audio nodrag nopan"><Music2 size={28}/><SignedAudio src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
-        <div className="studio-flow-text nodrag nopan nowheel">{meta?.content || '双击编辑文字'}</div> :
-        <button className="studio-flow-placeholder nodrag nopan" onClick={edit}><Icon size={28}/><span>{meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button>}
+        <div className="studio-flow-text nodrag nopan nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'双击编辑文字')}</div> :
+        <button className="studio-flow-placeholder nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button>}
     </div>
     {meta?.status === 'loading' && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
     {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<p className="studio-flow-node-error" role="alert">{meta.errorDetails || '生成失败，请查看任务'}</p>)}
   </article>;
 }
-const nodeTypes = { studio: FlowCard };
+const nodeTypes = { studio: StudioFlowCard };
 function ReferenceEdge(props:EdgeProps) {
   const flow=useReactFlow(),[hover,setHover]=useState(false);
   const [path,x,y]=getBezierPath(props);

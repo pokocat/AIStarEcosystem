@@ -23,7 +23,7 @@ export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width
   return {left:clamp(left,leftBound,rightBound),top:clamp(top,topBound,bottomBound)};
 }
 type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number;children:ReactNode;footer?:ReactNode;
-  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string};
+  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string;container?:HTMLElement|null};
 type FloatingEntry={id:symbol;root:HTMLElement;update:(layer:number,active:boolean)=>void};
 // One bounded stack per canvas stage. Popups remain above it; closed entries are removed.
 const floatingStack:FloatingEntry[]=[];
@@ -38,12 +38,12 @@ function raiseFloating(id:symbol) {
   if(floatingStack.filter(item=>item.root===entry.root).at(-1)===entry)return;
   floatingStack.splice(index,1);floatingStack.push(entry);refreshStack(entry.root);
 }
-export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className=''}:Props) {
+export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className='',container}:Props) {
   const revision=useContext(StudioFloatingContext), ref=useRef<HTMLElement>(null);
   const identity=useRef(Symbol('floating-panel')),[layer,setLayer]=useState({z:90,active:false});
   const [root,setRoot]=useState<HTMLElement|null>(null),[position,setPosition]=useState({left:0,top:0}),[docked,setDocked]=useState(false);
   const [manual,setManual]=useState<{left:number;top:number}>(),drag=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
-  useLayoutEffect(()=>{if(open)setRoot(document.querySelector<HTMLElement>('[data-studio-floating-root]')||document.querySelector<HTMLElement>('.ip-surface'));},[open]);
+  useLayoutEffect(()=>{if(open)setRoot(container||document.querySelector<HTMLElement>('[data-studio-floating-root]')||document.querySelector<HTMLElement>('.ip-surface'));},[open,container]);
   useLayoutEffect(()=>{
     if(!open||!root||!ref.current)return;
     const place=()=>{
