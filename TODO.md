@@ -2001,3 +2001,9 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 ### v0.232 · 模板只读预览（2026-10-10）
 
 - [x] ~~浏览模板会反复创建画布草稿~~：统一为只读预览，明确“存为个人副本”才创建可编辑画布；保存防连续点击，预览不持久化、不编辑或生成。替代 v0.231 自动创建入口，节点运行限制及个人发布模板保留。
+
+## 2026-10-10 · 后台账号清理验证
+
+- [x] ~~后台默认列表仍显示已注销验收账号~~ **2026-10-10 完成**：精确归档 11 个测试账号与 4 个统一身份；默认分页、搜索和身份筛选排除 DELETED，显式注销筛选保留历史；后台真实 API 返回 17 个正常账号，原恢复账号与钱包账本不变。
+- [ ] **CI 后端未安装私有 platform-sdk 依赖**：`.github/workflows/impersonation-ci.yml` 在 Maven verify 前未调用 `infra/scripts/prepare-platform-sdk.sh`，`cn.aibuzz:platform-sdk:0.1.0` 不在 Maven Central；跨私有仓 release 读取认证未配置。本次 PR #130 的后端任务因此在运行测试前失败，不能当作回归通过。
+- [ ] **全量后端测试基线需修复**：`ProductRouteTableCoverageTest` 等新 H2 库在 Flyway 阶段缺 `AI_MODEL_PROVIDERS`；`IpDemoAdminTest` 非法 demoId 用例收到空文档 NPE。未修改的主干在相同两类测试中也复现。测试清理分支全量 1914 项：1 failure、80 errors、4 skipped；账号列表独立回归 4 项通过。
