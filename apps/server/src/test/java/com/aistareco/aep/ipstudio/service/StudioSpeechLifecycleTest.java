@@ -102,6 +102,17 @@ class StudioSpeechLifecycleTest {
         verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
         verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
     }
+    @Test void admittedSpeechBindsItsSlotForNestedHttpAndClosesItAfterFailure() {
+        var queue=mock(AiGenerationQueueService.class);var scope=mock(AiGenerationQueueService.Scope.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"queue",queue);
+        when(queue.acquire(AiGenerationQueueService.SPEECH,"r","tts",true)).thenReturn(AiGenerationQueueService.Admission.READY);
+        when(queue.bind(AiGenerationQueueService.SPEECH,"r")).thenReturn(scope);
+        when(client.submit(any(),anyString(),anyString(),anyString(),anyString())).thenAnswer(i->{
+            verify(queue).bind(AiGenerationQueueService.SPEECH,"r");
+            verify(scope,never()).close();throw new IllegalStateException("transient");
+        });
+        worker.step("r");assertEquals("running",run.getStatus());verify(scope).close();verifyNoInteractions(credits);
+    }
     private static class JsonBody {
         static void assertNativeLipBody(ObjectMapper mapper,String body)throws Exception {
             var value=mapper.readTree(body);assertEquals(3,value.size());assertEquals("x-dub",value.path("model").asText());

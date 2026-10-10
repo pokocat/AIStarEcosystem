@@ -48,12 +48,15 @@ public class StudioSpeechWorker {
         });
         if(run==null)return;
         boolean lip="studio-lip-sync".equals(run.getKind());String prefix=lip?"lip-sync":"audio",label=lip?"口型":"配音";
+        AiGenerationQueueService.Scope admissionScope=null;
         try {
             ObjectNode input=read(run.getInputJson());var exec=(ObjectNode)input.path("_exec");
             var endpoint=endpoints.findById(exec.path("endpointId").asText()).orElseThrow();
             if(queue!=null) {
                 var admission=queue.acquire(AiGenerationQueueService.SPEECH,id,endpoint.getId(),true);
                 if(admission!=AiGenerationQueueService.Admission.READY){update(id,e->e.put("leaseUntil",0),"endpoint.queued",0,null,null);return;}
+                // Nested provider HTTP uses this already-owned slot instead of acquiring another.
+                admissionScope=queue.bind(AiGenerationQueueService.SPEECH,id);
             }
             String base=exec.path("baseUrl").asText();
             if(!read(run.getOutputJson()).path("storageKey").asText().isBlank()){finish(id,read(run.getOutputJson()),null,null);return;}
@@ -117,6 +120,8 @@ public class StudioSpeechWorker {
         catch(Exception error) {
             log.warn("[speech] awaiting original task run={} reason={}",id,error.getClass().getSimpleName());
             update(id,e->e.put("leaseUntil",0),prefix+".recovering",run.getPct(),lip?"STUDIO_LIP_SYNC_RECOVERING":"STUDIO_SPEECH_RECOVERING","正在恢复原"+label+"任务，无需重新生成");
+        } finally {
+            if(admissionScope!=null)admissionScope.close();
         }
     }
     private void update(String id,java.util.function.Consumer<ObjectNode> update,String stage,int pct,String code,String message) {
