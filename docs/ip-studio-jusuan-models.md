@@ -36,6 +36,21 @@
 ## 验证
 
 - 聚算账号只读服务发现，确认 Qwen3.6、FLUX、LongCat、ERNIE、H3 可用及请求契约；未产生付费生成。
-- 8 个受影响后端测试类覆盖供应商域名伪装、场景白名单、非聚算提交扣费前拒绝、视频默认端点快照、图片参考资产上传顺序、稳定幂等键、异步轮询、受保护下载、原始提示词与结算。
+- 8 个受影响后端测试类，合计 93 项通过，覆盖供应商域名伪装、场景白名单、非聚算提交扣费前拒绝、视频默认端点快照、图片参考资产上传顺序、稳定幂等键、异步轮询、受保护下载、原始提示词与结算。
 - 提交前执行 workspace/admin typecheck、后端编译、API 契约门。
 - 生产发布与配置验收结果补充在本文件末尾。
+
+## 生产生效记录
+
+- 代码已推送 `codex/unified-ip-studio`，后端运行提交 `8f4f4466a3edf0078c5ab9ef8836fa9747d39121`。
+- 发布包 `20261010-studio-jusuan-8f4f4466` 只含 server，不重发前端或账号中心；前端继续使用已发布品牌版。
+- 本地制品与远端 JAR SHA256 一致：`5cef60d8ae71e9c62984aa6924ae1c717352e195c1f60ae04adbf516546f6dee`。
+- 2026-10-10 17:41 UTC 后端启动，`active`、`NRestarts=0`，Flyway 49 项验证通过；未新增迁移。
+- 线上 `/api/v1/ip-studio/models` 验收：仅三个聚算图片候选，FLUX 为唯一默认、30 积分/张，参考图上限分别 4/1/0；视频仅 H3、40 积分/秒。
+- 线上 `/studio/capabilities` 验收：文本模式 fixed，唯一 Qwen3.6、supportsVision=true、2 积分/次；图片模式 selectable。
+- 线上 `/studio/video-models` 验收：仅 H3，保留四种原生模式、544p/768p 与原价格矩阵。
+- 模型端点与配置通过受限 SSH 和后台配置 API 生效；三条配置带 `updatedBy=ops:studio-model-config`。全局默认绑定和 `celebrity.action-pricing` 前后逐字一致。
+- 备份位于 `/opt/ai-star-eco/backups/studio-jusuan-models-20261010T174039Z`，目录 0700；旧 JAR、模型/候选/绑定/平台配置 SQL 均为 0600。敏感备份只保留在生产受限目录。
+- `verify.sh` 全绿，首页/登录/创作/IP/模板及账号中心公开发现接口正常。未执行真实付费图片、文本或视频生成；异步图片端到端协议由模拟上游覆盖，上线接口与聚算服务发现使用真实请求验收。
+
+本地只读接口证据：`.studio-e2e/jusuan-models/online-models.jsonl`；配置运维脚本位于同目录。制品、证据和脚本均不含明文密钥并且不入 Git。
