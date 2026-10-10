@@ -10,6 +10,7 @@ import type { StudioIpAsset, StudioIpAssetRole, StudioVoiceCatalog } from "@ai-s
 import type { Avatar } from "@/proto/data";
 import { AvatarApi, USE_MOCK } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
+import { HubTabBar } from "@/components/hub/ui";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
 import { classifyStudioIpAsset, listStudioIpAssets, studioVoiceProfiles } from "@/canvas-bridge/studio-api";
@@ -166,5 +167,6 @@ export function IpManagement() {
     <Modal open={!!editing} title="编辑角色设定" onCancel={saving ? undefined : () => { setEditing(undefined); setActionError(""); }} closable={!saving} mask={{ closable: !saving }} footer={null} width={620} className="ip-management-editor" destroyOnHidden>
       {editing && <form onSubmit={e => { e.preventDefault(); void save(); }}><div className="ip-edit-fields"><label>角色名称<input required maxLength={80} value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} /></label><label>一句话简介<input maxLength={200} value={editing.tagline} onChange={e => setEditing({ ...editing, tagline: e.target.value })} /></label><label className="ip-edit-wide">核心设定<textarea rows={5} maxLength={8000} value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} /></label>{([["age", "年龄"], ["temperament", "气质"], ["use", "用途"], ["personality", "性格（用顿号分隔）"], ["clothing", "服饰"]] as const).map(([key, label]) => <label key={key}>{label}<input maxLength={300} value={editing[key]} onChange={e => setEditing({ ...editing, [key]: e.target.value })} /></label>)}</div>{actionError && <p className="ip-brand-error" role="alert">{actionError}</p>}<div className="ip-edit-footer"><button type="button" className="ip-brand-secondary" disabled={saving} onClick={() => { setEditing(undefined); setActionError(""); }}>取消</button><button className="ip-brand-button" disabled={saving || !editing.name.trim()}>{saving && <LoaderCircle size={16} className="ip-loading-icon" />}{saving ? "正在保存" : "保存设定"}</button></div></form>}
     </Modal>
+    <HubTabBar />
   </div>;
 }

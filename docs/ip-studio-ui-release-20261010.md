@@ -51,3 +51,11 @@
 `verify.sh` 全绿；公开首页返回新标题、slogan、完整句号及新 favicon。21 个 JS/CSS/logo 资源与最终发布包逐字节一致；远端 BUILD_ID 与制品同为 `Hnbh9XYqo-Cw8_q-3EgRT`。服务 `active`、`NRestarts=0`，启动时间 2026-10-10 17:24:55 UTC。Chrome 本地桌面与 440px 手机模拟视图、生产首页视觉检查通过；没有充值、创建画布或生成操作。
 
 独立备份：`/opt/ai-star-eco/backups/20261010-studio-brand-4c6a22d0/web-aiavatar.tar.gz`（目录 0700、文件 0600，gzip 检查通过，SHA256 `7baf2e770d7c2c3471f1addbbe670393bb0fa0b2bfefd168d6f2876e6da0ad47`）。最终远端包与 manifest 保存在 `/opt/ai-star-eco/releases/20261010172357-fb4502a2`，部署暂存已清理；HTTP 校验证据为 `.studio-e2e/release-20261010-brand/http-acceptance.json`。
+
+## IP 管理、素材库与账号复查 · 2026-10-10
+
+Chrome 登录态复查 `/ips`、`/assets`、`/me` 及 `/studio#/membership`：常规桌面与 960×650 下账号菜单六项中心均可命中；960×300 下菜单内部滚动可到达末项，没有充值或退出操作。Escape、跳转收起通过。375×812 模拟手机三页没有横向溢出，但 IP 管理缺少底部导航。
+
+本次修复 IP 管理顶栏周围旧蓝灰底色；三页桌面统一暖灰背景、12px 外边距、26px 内容内边距、32px 衬线标题及 13px 卡片圆角。素材库标题与正文归于同一白色内容面，账号工具保留侧栏和隔离层级。手机 IP 管理补回共享底部导航及底部安全区，资产项选中。
+
+提交前 workspace/admin typecheck、Java 17 后端离线编译、API 契约门通过；IP 管理与外壳/菜单定向测试 3 文件 / 21 项通过。API 门仍报告既有其他产品未接 handler 警告，路径与方法检查通过。本轮仅准备发布 web-aiavatar；正式发布标识和修复后浏览器验收追加于下方。

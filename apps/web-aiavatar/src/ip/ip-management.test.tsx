@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(), patch: vi.fn(), assets: vi.fn(), voices: vi.fn(), create: vi.fn(), update: vi.fn(), push: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }), usePathname: () => "/ips" }));
-vi.mock("next/link", () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
+vi.mock("next/link", () => ({ default: ({ children, replace, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock("antd", () => ({ Modal: ({ open, children, title }: any) => open ? <div role="dialog" aria-label={title}>{children}</div> : null }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => null }));
 vi.mock("@/proto/api", () => ({ USE_MOCK: false, AvatarApi: { list: mocks.list, patch: mocks.patch } }));
@@ -37,6 +37,14 @@ async function openPerson() {
   fireEvent.click(await screen.findByRole("button", { name: "查看 IP 小鹿" }));
 }
 describe("IP management user flows", () => {
+  it("keeps shared navigation available when the desktop header is hidden on mobile", async () => {
+    render(<IpManagement />);
+    await screen.findByRole("button", { name: "查看 IP 小鹿" });
+    expect(screen.getByRole("link", { name: "首页", exact: true }).getAttribute("href")).toBe("/dashboard");
+    expect(screen.getByRole("link", { name: "资产", exact: true }).getAttribute("href")).toBe("/assets");
+    expect(screen.getByRole("link", { name: "我的", exact: true }).getAttribute("href")).toBe("/me");
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
   it("saves a renamed character and updates the list and open dossier together", async () => {
     mocks.patch.mockResolvedValue({ ...avatar, name: "新小鹿", tagline: "新简介" });
     await openPerson();

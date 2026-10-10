@@ -25,7 +25,7 @@ typography:
     letterSpacing: "-0.025em"
   headline:
     fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', serif"
-    fontSize: "34px"
+    fontSize: "32px"
     fontWeight: 700
     lineHeight: 1.4
   title:

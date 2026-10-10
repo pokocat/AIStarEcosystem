@@ -120,15 +120,20 @@ html[data-layout="desktop"] :is(.account-workspace,.ip-hub-surface) {
   --r-sm: 8px;
   --r-lg: 13px;
 }
-html[data-layout="desktop"] body:has(:is(.account-workspace,.assets-library)) { background: #f0efec; }
+html[data-layout="desktop"] body:has(:is(.ip-management,.account-workspace,.assets-library)) { background: #f0efec; }
 .assets-library-heading { display: none; }
-html[data-layout="desktop"] .assets-library { max-width: 1600px; padding: 28px 32px 40px; min-height: calc(100dvh - var(--desktop-bar-h)) !important; }
+/* All three management pages start on a white paper surface, inset 12px from
+   the shared header. Keep the heading and its content on the same surface. */
+html[data-layout="desktop"] .assets-library { width: calc(100% - 24px); max-width: 1576px; margin: 0 auto 12px; padding: 26px; background: var(--ip-paper) !important; border-radius: 13px; min-height: calc(100dvh - var(--desktop-bar-h) - 12px) !important; }
 html[data-layout="desktop"] .assets-library-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
 html[data-layout="desktop"] .assets-library-heading h1 { font-family: var(--ip-display); font-size: 32px; line-height: 1.4; }
 html[data-layout="desktop"] .assets-library-heading p { color: var(--ip-muted); margin-top: 6px; }
 html[data-layout="desktop"] .assets-library-mobile-heading { display: none; }
-html[data-layout="desktop"] .assets-library-content { padding: 6px 10px 28px; background: var(--ip-paper); border-radius: 13px; }
-html[data-layout="desktop"] .assets-library-content>section,html[data-layout="desktop"] .assets-library-content>div { margin-top: 24px !important; }
+html[data-layout="desktop"] .assets-library-content { padding: 0; }
+html[data-layout="desktop"] .assets-library-content>section,html[data-layout="desktop"] .assets-library-content>div { margin: 24px 0 0 !important; }
+html[data-layout="desktop"] .assets-library-content>section:first-child { margin-top: 0 !important; }
+html[data-layout="desktop"] .assets-library-content .hub-card { border-radius: 13px !important; box-shadow: none; }
+html[data-layout="desktop"] :is(.assets-library-heading>.ip-brand-button,.account-create-link) { min-height: 36px; padding: 8px 12px; font-size: 12px; }
 html[data-layout="desktop"] .assets-library-content :is(button,summary) { font: inherit; }
 html[data-layout="desktop"] .assets-library-content button { border: 1px solid var(--ip-line); background: var(--ip-soft); padding: 6px 12px; border-radius: 8px; }
 html[data-layout="desktop"] .assets-library-content button:hover { background: var(--ip-selected); }
@@ -207,11 +212,12 @@ html[data-layout="desktop"] body.has-desktop-bar .ip-home { padding-top: 0; }
 
 /* IP management: list stays in place while an adjacent, independently scrollable dossier opens. */
 .ip-management { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; background: var(--ip-bg); padding: 0 12px 12px; min-height: calc(100dvh - var(--desktop-bar-h,84px)); }
+html[data-layout="desktop"] .ip-management { width: 100%; max-width: 1600px; margin-inline: auto; }
 .ip-management:has(.ip-management-detail) { grid-template-columns: minmax(340px,1fr) clamp(360px,36vw,560px); }
-.ip-management-main { border-radius: 13px; background: var(--ip-paper); padding: 25px; min-width: 0; }
+.ip-management-main { border-radius: 13px; background: var(--ip-paper); padding: 26px; min-width: 0; }
 .ip-management-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
-.ip-management-heading h1 { font-size: 34px; font-family: var(--ip-display); font-weight: 700; line-height: 1.4; }
-.ip-management-heading p { color: var(--ip-muted); font-size: 14px; margin-top: 3px; }
+.ip-management-heading h1 { font-size: 32px; font-family: var(--ip-display); font-weight: 700; line-height: 1.4; }
+.ip-management-heading p { color: var(--ip-muted); font-size: 14px; margin-top: 6px; }
 .ip-management-heading>.ip-brand-button { margin-top: 5px; font-size: 12px; padding: 8px 12px; min-height: 36px; }
 .ip-management-demo { margin-bottom: 16px !important; color: var(--ip-gold); font-size: 12px; }
 .ip-management-stats { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border: 1px solid var(--ip-line); border-radius: 10px; padding: 20px 2px; margin-bottom: 22px; }
@@ -369,7 +375,7 @@ html[data-layout="mobile"] .ip-home-section-heading>a { font-size: 11px; }
 html[data-layout="mobile"] .ip-home-stories { margin-top: 28px; }
 html[data-layout="mobile"] .ip-home-story { height: 210px; }
 html[data-layout="mobile"] .ip-home-footer { padding: 20px 16px; flex-wrap: wrap; gap: 10px; }
-html[data-layout="mobile"] .ip-management,html[data-layout="mobile"] .ip-management:has(.ip-management-detail) { grid-template-columns: 1fr; padding: 8px; min-height: 100dvh; }
+html[data-layout="mobile"] .ip-management,html[data-layout="mobile"] .ip-management:has(.ip-management-detail) { grid-template-columns: 1fr; padding: 8px 8px calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 12px); min-height: 100dvh; }
 html[data-layout="mobile"] .ip-management-main { padding: 18px; }
 html[data-layout="mobile"] .ip-management-detail { position: fixed; inset: 8px; z-index: 70; height: auto; }
 html[data-layout="mobile"] .ip-management-cards { grid-template-columns: repeat(2,minmax(0,1fr)); }

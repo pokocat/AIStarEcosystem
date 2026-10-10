@@ -113,7 +113,7 @@ const TABS = [
   { href: "/dashboard", label: "首页", icon: HomeIcon, match: (p: string) => p === "/dashboard" },
   { href: "/discover", label: "发现", icon: CompassIcon, match: (p: string) => p.startsWith("/discover") || p.startsWith("/market") || p.startsWith("/stars") },
   { fab: true as const, href: "/create", label: "创作" },
-  { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") },
+  { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") || p === "/ips" },
   { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
 ];
 
@@ -166,6 +166,7 @@ export function Card({
 }) {
   return (
     <div
+      className="hub-card"
       onClick={onClick}
       style={{
         background: "var(--surface)",
