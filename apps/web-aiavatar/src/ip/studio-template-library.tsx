@@ -22,9 +22,9 @@ export function StudioTemplateLibrary({open,scope,nodes=[],onClose}:{open:boolea
   });
   return <>
     <Modal open={open&&!selected} title={scope==='commerce'?'商品视频模板':scope==='digital'?'数字人视频模板':'画布模板'} getContainer={studioOverlayContainer} onCancel={onClose} footer={<Button onClick={onClose}>返回画布</Button>} width={820} styles={{body:{maxHeight:'70dvh',overflowY:'auto'}}}>
-      <div className="studio-template-form"><p>选择工作流，换成你的人物、商品与创作要求。先看制作计划，再逐步生成；完成后可以发布自己的模板。</p>
+      <div className="studio-template-form"><p>选择模板后，直接打开个人画布副本。在画布里替换素材、修改内容，生成时确认费用。</p>
         <div role="group" aria-label="模板来源"><Button type={tab==='official'?'primary':'default'} onClick={()=>setTab('official')}>官方模板</Button> <Button type={tab==='personal'?'primary':'default'} onClick={()=>setTab('personal')}>我的模板</Button></div>
-        {loading?<Spin aria-label="正在读取模板"/>:error?<Alert type="error" title={error} action={<Button onClick={()=>setRefresh(n=>n+1)}>重试</Button>}/>:items.length?<div className="studio-template-gallery">{items.map(t=><button type="button" key={t.id} className="studio-template-card" onClick={()=>setSelected(t)}><span>v{t.version} · {tab==='official'?'官方':'我的'}</span><strong>{t.name}</strong><p>{t.summary}</p><small>填写输入，预览制作计划 →</small></button>)}</div>:<p>{tab==='personal'?'还没有个人模板，可以在画布顶部发布。':'当前没有可用的官方模板。'}</p>}
+        {loading?<Spin aria-label="正在读取模板"/>:error?<Alert type="error" title={error} action={<Button onClick={()=>setRefresh(n=>n+1)}>重试</Button>}/>:items.length?<div className="studio-template-gallery">{items.map(t=><button type="button" key={t.id} className="studio-template-card" onClick={()=>setSelected(t)}><span>v{t.version} · {tab==='official'?'官方':'我的'}</span><strong>{t.name}</strong><p>{t.summary}</p><small>复制到我的画布 →</small></button>)}</div>:<p>{tab==='personal'?'还没有个人模板，可以在画布顶部发布。':'当前没有可用的官方模板。'}</p>}
       </div>
     </Modal>
     {selected&&open&&<StudioTemplateUse template={selected} nodes={nodes} onClose={()=>setSelected(undefined)} onCreated={id=>{onClose();router.push(`/projects/${id}`);}}/>}

@@ -120,6 +120,10 @@ export interface StudioIpAsset extends Omit<StudioAdoptResult,"ipId"> {
 
 /** Business metadata on generic canvas nodes. Server stores the client document whole. */
 export interface StudioNodeMetadata {
+  /** Template copies use ordinary canvas inputs; constraints are checked when a connected node generates. */
+  templateInput?: { required: boolean; label: string; options?: string[] };
+  /** Authored video defaults for an ordinary copied node; contains no input media or task identity. */
+  videoPreset?: Pick<StudioVideoSettings, "mode" | "resolutionTier" | "seed">;
   /** Display projection refreshed from IpRun; never used as execution or queue authority. */
   task?: { status: "running" | "done" | "failed"; stage: string; pct: number; errorCode?: string;
     queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null };

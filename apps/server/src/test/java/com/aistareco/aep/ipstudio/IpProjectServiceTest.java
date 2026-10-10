@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,6 +62,30 @@ class IpProjectServiceTest {
         org.mockito.Mockito.doAnswer(i -> { history.removeAll(i.getArgument(0)); return null; }).when(revisions).deleteAll(org.mockito.ArgumentMatchers.anyIterable());
         svc = new IpProjectService(projects.repo, runs.repo, new IpCatalogService(OM), IpStudioFixtures.templateResolver(), storage,
                 IpStudioFixtures.props(), videoJobs, OM, revisions);
+    }
+
+    @Test void versionedPersonalTemplateCreatesIndependentOrdinaryCopiesWithoutInputsOrModels() throws Exception {
+        var row = new com.aistareco.aep.ipstudio.model.IpDemoTemplate();
+        row.setId("my-template"); row.setName("个人工作流"); row.setVisibility("personal"); row.setCreatedBy(USER); row.setEnabled(true); row.setCurrentVersionId("release-v1");
+        String source = "{\"nodes\":[{\"id\":\"brief\",\"type\":\"text\",\"title\":\"要求\",\"metadata\":{}},{\"id\":\"image\",\"type\":\"image\",\"title\":\"主形象\",\"metadata\":{}}],\"connections\":[]}";
+        row.setDocJson(source);
+        var recipe = new com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.Recipe(
+            List.of(new com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.Input("brief","brief","要求","text",true,null,null)),
+            List.of(new com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.Step("image","image","主形象","image","创建人物 {{brief}}",List.of(),"768x1365","main",true)));
+        var version = com.aistareco.aep.ipstudio.model.IpTemplateVersion.builder().id("release-v1").templateId(row.getId()).version(1).name(row.getName()).docJson(source).recipeJson(OM.writeValueAsString(recipe)).build();
+        var repository = org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpDemoTemplateRepository.class);
+        var versions = org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpTemplateVersionRepository.class);
+        org.mockito.Mockito.when(repository.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()).thenReturn(List.of(row));
+        org.mockito.Mockito.when(versions.findById("release-v1")).thenReturn(java.util.Optional.of(version));
+        var resolver = new com.aistareco.aep.ipstudio.service.IpTemplateResolver(new IpCatalogService(OM),repository,storage,OM);
+        org.springframework.test.util.ReflectionTestUtils.setField(resolver,"versions",versions);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"templates",resolver);
+        var one = svc.create(USER,new IpCreateProjectRequest(null,row.getId()));
+        var two = svc.create(USER,new IpCreateProjectRequest(null,row.getId()));
+        assertNotNull(one.id()); assertNotEquals(one.id(),two.id()); assertNull(one.templateVersionId());
+        assertNotEquals(one.doc().path("nodes").get(0).path("id").asText(),two.doc().path("nodes").get(0).path("id").asText());
+        assertEquals(1,one.doc().path("connections").size()); assertEquals(source,version.getDocJson()); assertEquals(source,row.getDocJson());
+        assertThrows(BusinessException.class,()->svc.create(OTHER,new IpCreateProjectRequest(null,row.getId())));
     }
 
     // ── 创建 ─────────────────────────────────────────────────

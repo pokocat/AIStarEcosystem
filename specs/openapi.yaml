@@ -11430,7 +11430,7 @@ paths:
     post:
       tags: [ipstudio]
       operationId: ipStudioCreateProject
-      description: '新建项目。带 templateId 时按内置工作流预填整张节点图；不带则是空白画布。'
+      description: '新建个人画布。templateId 可为内置、官方或本人已启用模板，直接免费复制节点图，无前置输入/模型/报价要求；版本模板重建节点与连线编号，保存只修改个人副本。不带则是空白画布。'
       requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string, maxLength: 128 }, templateId: { type: string } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpProject' } } } }

@@ -194,7 +194,7 @@ function ProjectsPageInner() {
                     <Layers className="w-3 h-3" /> {t.lookCount} 个造型
                   </span>}
                   <span className="inline-flex items-center gap-1 tabular">
-                    <Coins className="w-3 h-3" /> {t.versionId?'填写输入后查看制作报价':`约 ${t.estimatedCredits} 积分`}
+                    <Coins className="w-3 h-3" /> {t.versionId?'复制到我的画布，生成时确认费用':`约 ${t.estimatedCredits} 积分`}
                   </span>
                 </div>
               </button>

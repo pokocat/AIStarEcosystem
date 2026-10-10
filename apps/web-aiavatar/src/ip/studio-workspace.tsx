@@ -1,6 +1,7 @@
 "use client";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { inferMediaRatio } from "@/canvas/lib/media-size";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, Modal, Select } from "antd";
@@ -45,7 +46,7 @@ import { StudioIpLibrary } from "./studio-ip-library";
 import { editableIpAssetRoles,ipAssetRole,ipAssetRoles } from "@/canvas-bridge/studio-ip-library";
 import { parseStudioEntry } from "./studio-entry";
 import { IpStudioApi } from "./api";
-import { studioLinkedNodes, studioLinkedText, withStudioLinkedText } from '@/canvas-bridge/studio-linked-inputs';
+import { studioLinkedInputError, studioLinkedNodes, studioLinkedText, withStudioLinkedText } from '@/canvas-bridge/studio-linked-inputs';
 
 type Props = { projectId: string; nodes: CanvasNodeData[]; connections:CanvasConnection[]; selectedNodeIds: Set<string>;
   setNodes: Dispatch<SetStateAction<CanvasNodeData[]>>; setConnections: Dispatch<SetStateAction<CanvasConnection[]>>;
@@ -333,6 +334,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(action==="image") {
         const saved=node?.metadata?.studio?.request;
         setImageCount(saved?.count||node?.metadata?.count||1);
+        if(node?.metadata?.size)setRatio(inferMediaRatio(node.metadata.size,"3:4"));
         setModel(saved?.model||(node?.metadata?.model?endpointIdFor(node.metadata.model)||node.metadata.model:undefined));
         if(saved?.aspectRatio)setRatio(saved.aspectRatio);
       }
@@ -412,6 +414,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(operation==="video"&&legacyVideoError){message.error(legacyVideoError);return;}
     const origin = nodesRef.current.find(n => n.id === originId);
     if(studioGenerationPending(origin)){setTaskList(true);message.info("请等待或确认原任务，当前批次不会重复提交。");return;}
+    const inputError=(operation==="image"||operation==="video")?studioLinkedInputError(originId,nodesRef.current,connectionsRef.current):undefined;
+    if(inputError){message.error(inputError);return;}
     let requestPrompt=prompt.trim();
     try {if(operation==="script"&&!rewriteScope)requestPrompt=studioScriptInput(prompt,scriptMode,scriptSourceNodeId,nodesRef.current);
       requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined);

@@ -960,3 +960,7 @@ POST /api/v1/ip-studio/projects/{id}/story-import，multipart字段file，返回
 配音按正文 Unicode 字符数 + 10 秒（上限 600 秒）确定并显示预冻结上限，生成完成按实际音频时长结算、退回剩余冻结；这是一笔消费上限，不是时长预测。极端慢速音频超出上限则明确失败并释放冻结，不追加扣费。口型同步按已解码驱动音频时长报价。任务保存完整定价快照，重启恢复、同键重放和后台调价不改变原请求；已受理旧任务保留旧快照兼容。
 
 正式发布覆盖后端、AiAvatar 和管理后台；保留个人画布发布模板，整画布分享仍暂缓。发布前已完成生产数据库/旧服务备份，隔离 MySQL 8.0.46 上 V39→V48 九项迁移与重复启动零迁移检查；正式部署与线上验收事实记录在 `docs/ip-studio-production-release.md`。
+
+### v0.231 · 模板复制为普通个人画布（2026-10-10）
+
+`POST /api/v1/ip-studio/projects {templateId}` 支持已发布版本的官方/本人模板；`IpTemplateResolver.resolve(id, userId)` 延续启用与可见范围闸。复制从不可变版本 doc/recipe 产生独立 node/connection id、输入默认值、文字变量连线与图片/视频规格，无供应商/模型预检和积分变化。新画布只记录 templateId 来源，不设置 templateVersionId/templateInstanceJson 执行锁；服务端仍整存整取客户端文档。旧实例与模板执行 API 保留兼容，发布权限和素材剥离不变。无新表、迁移、配置或 API 路径。

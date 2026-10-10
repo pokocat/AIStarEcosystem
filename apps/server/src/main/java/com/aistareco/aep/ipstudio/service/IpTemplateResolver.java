@@ -86,14 +86,29 @@ public class IpTemplateResolver {
      * <p>注意这里查的是**启用中**的示例：目录里下线了的，建项目时也不该还能建出来。
      */
     public Optional<IpTemplateDto> resolve(String id) {
+        return resolve(id, null);
+    }
+
+    public Optional<IpTemplateDto> resolve(String id, String userId) {
         if (id == null || id.isBlank()) return Optional.empty();
         String want = id.trim();
         // 这里**两种都要认**：点一个实例是「照它复制一份到我的画布」，
         // 走的也是「按 id 建项目」这条路。只认模板的话，实例点了就报不存在。
         for (IpDemoTemplate d : demoRepo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()) {
-            if (want.equals(d.getId()) && visible(d,null)) return Optional.of(toDto(d));
+            if (want.equals(d.getId()) && visible(d,userId)) return Optional.of(toDto(d,userId));
         }
         return catalog.template(want);
+    }
+
+    /** A published template opens as ordinary client-owned canvas nodes, without execution locks. */
+    public JsonNode canvasCopy(IpTemplateDto template) {
+        if (template.versionId() == null) return template.doc().deepCopy();
+        var version = versions.findById(template.versionId()).orElseThrow(() ->
+                com.aistareco.common.BusinessException.badRequest("STUDIO_TEMPLATE_VERSION_NOT_FOUND", "模板版本已不可用，请刷新后重试"));
+        try {
+            var recipe = om.readValue(version.getRecipeJson(), com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.Recipe.class);
+            return StudioTemplateCanvasCopy.copy(om, om.readTree(version.getDocJson()), recipe);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException("Invalid template version", e); }
     }
 
     private IpTemplateDto toDto(IpDemoTemplate d) {

@@ -35,3 +35,19 @@ export function createStudioLinkedNode(sourceId:string, type:CanvasNodeType.Imag
   node.position=position;
   return {node:placeStudioNode(node,nodes),operation};
 }
+
+/** A connected empty reference must not silently turn image-to-image/video into an unrelated generation. */
+export function studioLinkedInputError(targetId:string|undefined, nodes:CanvasNodeData[], connections:CanvasConnection[]) {
+  if(!targetId)return undefined;
+  for(const node of studioLinkedNodes(targetId,nodes,connections)) {
+    const input=node.metadata?.studio?.templateInput, label=input?.label||node.title;
+    if(node.type===CanvasNodeType.Image && !(node.metadata?.storageKey||node.metadata?.studio?.adoption?.storageKey))
+      return `请先为「${label}」添加或生成图片`;
+    if(node.type===CanvasNodeType.Text && input) {
+      const text=studioLinkedText(node).trim();
+      if(input.required&&!text)return `请先填写「${label}」`;
+      if(text&&input.options&&!input.options.includes(text))return `「${label}」请选择：${input.options.join('、')}`;
+    }
+  }
+  return undefined;
+}

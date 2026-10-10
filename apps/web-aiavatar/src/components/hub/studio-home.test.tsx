@@ -20,7 +20,7 @@ test('failed home save keeps the brief and retries the original workspace',async
   expect((screen.getByRole('textbox',{name:'创作想法'}) as HTMLTextAreaElement).value).toBe('保留这段创作想法');fireEvent.click(screen.getByRole('button',{name:'继续保存并打开'}));
   await waitFor(()=>expect(api.push).toHaveBeenCalledWith('/projects/p?start=assistant'));expect(api.createProject).toHaveBeenCalledTimes(1);
 });
-test('versioned personal template opens the shared input form without creating a workspace',async()=>{
+test('versioned personal template uses the shared direct-copy entry',async()=>{
   api.listTemplates.mockResolvedValue([{id:'t',versionId:'v',version:2,visibility:'personal',name:'一次设定图',summary:'',doc:{nodes:[],connections:[],viewport:{x:0,y:0,k:1}}}]);render(<StudioHome ready/>);fireEvent.click(screen.getByRole('button',{name:'我的模板'}));
   await waitFor(()=>expect(screen.getByRole('button',{name:/一次设定图/})).toBeDefined());fireEvent.click(screen.getByRole('button',{name:/一次设定图/}));expect(screen.getByRole('dialog').textContent).toContain('一次设定图');expect(api.createProject).not.toHaveBeenCalled();
 });

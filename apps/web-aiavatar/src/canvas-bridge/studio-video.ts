@@ -11,7 +11,7 @@ export type StudioVideoDraft={mode:VideoStudioMode;tier:string;seed?:number;firs
 
 /** Current node controls and connected references own a reopened editor, including edits made after a run. */
 export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:CanvasNodeData[],referenceIds:string[]) {
-  const metadata=node?.type===CanvasNodeType.Video?node.metadata:undefined,request=metadata?.studio?.request,saved=request?.video;
+  const metadata=node?.type===CanvasNodeType.Video?node.metadata:undefined,request=metadata?.studio?.request,saved=request?.video??metadata?.studio?.videoPreset;
   const images=referenceIds.filter(id=>nodes.find(n=>n.id===id)?.type===CanvasNodeType.Image);
   const mode:VideoStudioMode=metadata?.videoMode==="reference"?"universal_reference_video":metadata?.videoMode==="frames"
     ?referenceIds.length===2?"first_last_frame_video":referenceIds.length===1?"i2v":"t2v"

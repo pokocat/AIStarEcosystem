@@ -983,3 +983,8 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 ### v0.230 账号与旧 Studio 外壳 · 2026-10-10
 
 `src/shell/account-workspace.tsx` + `account-navigation.ts` 是桌面 `/me` 与 `/studio` 账号工具的共享外壳/入口映射；样式在 `account-workspace.css`，跟随 `html[data-layout]`。旧根入口转 `/projects`，业务深链、创建参数与 `#/real-auth/{sessionId}` 保留；账号菜单 hashchange/popstate 与旧 SPA 同步。详情与创建继续复用 proto 业务，未新增账号、计费或任务真值。见 `docs/aiavatar-account-unification.md`。
+
+
+### v0.231 · 2026-10-10 · 模板直接复制为普通画布
+
+官方/本人已启用模板经原 projects 创建接口直接免费进入个人副本，取消画布外输入、模型和报价门槛。IpTemplateResolver 按请求人解析；StudioTemplateCanvasCopy 从当前不可变版本重建节点/连线编号、默认文字、实际文本引用和媒体规格。新副本仅记 templateId 来源，不写版本执行锁；保存只改客户端拥有的个人文档，原模板不变，个人发布仍保留。旧版本实例与原任务恢复保持兼容。普通节点缺参考图/必填文本/选项在提交时提示，既有归属、模型、preflight、报价、账本和幂等继续生效。无新迁移/API 路径；新 metadata 由 packages/types 定义，胶水代码不改 vendor 引擎。

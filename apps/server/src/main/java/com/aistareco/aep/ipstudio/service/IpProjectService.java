@@ -131,16 +131,15 @@ public class IpProjectService {
         // 走 IpTemplateResolver 而不是 catalog：目录里列出来的既有内置模板也有全局示例，
         // 只查 catalog 的话，运营存的示例点开必报「内置工作流不存在」（目录列一套、建的时候查另一套）。
         IpTemplateDto tpl = templateId == null ? null
-                : templates.resolve(templateId).orElseThrow(() ->
+                : templates.resolve(templateId, userId).orElseThrow(() ->
                         BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "工作流不存在或已下线：" + templateId));
 
         String name = req == null ? null : trimToNull(req.name());
-        if(tpl != null && tpl.versionId() != null) throw BusinessException.badRequest("STUDIO_TEMPLATE_INPUT_REQUIRED", "请先填写模板输入并预览制作计划");
         if (name == null) name = tpl != null ? tpl.name() : "未命名画布";
         if (name.length() > 128) name = name.substring(0, 128);
 
         JsonNode doc = tpl != null && tpl.doc() != null && tpl.doc().isObject()
-                ? tpl.doc().deepCopy()
+                ? templates.canvasCopy(tpl)
                 : IpDocs.emptyDoc(om);
 
         IpProject p = IpProject.builder()
