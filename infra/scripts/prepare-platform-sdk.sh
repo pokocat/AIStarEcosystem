@@ -13,6 +13,5 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 gh release download java-sdk-v0.1.0 --repo pokocat/aibuzz-platform --dir "$tmp" --pattern "platform-sdk-$version.jar" --pattern "platform-sdk-$version.pom"
 check_hash "$tmp/platform-sdk-$version.jar" "$jar_sha" && check_hash "$tmp/platform-sdk-$version.pom" "$pom_sha" || { echo 'SDK release checksum mismatch' >&2; exit 1; }
-args=()
-[[ -z "${MAVEN_REPO_LOCAL:-}" ]] || args+=("-Dmaven.repo.local=$MAVEN_REPO_LOCAL")
-(cd "$repo_root/apps/server" && ./mvnw -q "${args[@]}" org.apache.maven.plugins:maven-install-plugin:3.1.3:install-file -Dfile="$tmp/platform-sdk-$version.jar" -DpomFile="$tmp/platform-sdk-$version.pom")
+maven_repo="${MAVEN_REPO_LOCAL:-$HOME/.m2/repository}"
+(cd "$repo_root/apps/server" && ./mvnw -q "-Dmaven.repo.local=$maven_repo" org.apache.maven.plugins:maven-install-plugin:3.1.3:install-file -Dfile="$tmp/platform-sdk-$version.jar" -DpomFile="$tmp/platform-sdk-$version.pom")
