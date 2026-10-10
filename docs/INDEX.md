@@ -23,6 +23,7 @@
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划** —— 全配置化终态（ConfigItem / 灰度 / AB 桶 / 17 个字典上移） | 大目标稿；当前 admin 是其 P0 子集 |
 | [`docs/unified-operations-console-plan.md`](unified-operations-console-plan.md) | **统一运营后台建议** —— Platform 统一入口、复用原业务服务、模型定价/任务排查/模板运营三条首期流程，以及沿用原 admin 风格的紧凑视觉建议 | 建议留档，待确定实施范围（2026-10-10）；非已交付状态 |
 | [`docs/unified-identity-plan.md`](unified-identity-plan.md) | **统一账号中心（id.aibuzz.cn）** —— 全生态（本仓 5 web app + 小程序 / 军师 / 公社）统一身份：OIDC + RS256、手机号 + unionid 身份键、五层模型（身份 / 建档 / 开通 / 角色 / 资源）、小程序自定义 grant、合并规则、§8.0 门禁、P0–P5 分期；服务落在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（含其 `deploy/`），本仓只留消费方接入 | P1 服务 + P2 本仓接入完成，**已于 2026-09-05 上线**（last-reviewed 2026-09-06，v0.149） |
+| [统一认证手机号与后台搜索发布验收](identity-phone-release-20261010.md) | `/userinfo` 完整手机号副本、服务端跨分页搜索、指定存量账号补齐、权益不变及账号中心 SOP 更新 | server/admin 已上线；46 项专项测试与真实线上 UI 通过（last-reviewed 2026-10-10） |
 
 ### 1.2 子应用产品 + 设计约束（每 app 一份）
 
