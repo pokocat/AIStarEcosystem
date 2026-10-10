@@ -13,7 +13,7 @@
 
 构建在干净工作树完成，使用 Java 17、pnpm 10.33.2，真实接口与统一账号中心配置：`NEXT_PUBLIC_AUTH_MODE=id`、issuer `https://id.aibuzz.cn`、mock 与开发登录关闭。前端制品不含环境文件、本地身份配置、测试数据库或媒体 fixture。既有生产环境和业务价格配置保持；本次没有运行新的定价配置写入。
 
-构建之后，另一个会话新增品牌名、slogan 与 logo 工作，仍在进行并有独立发布要求。这些晚到的编辑保留在原工作区，不属于此发布包。
+首个发布包不含构建后的品牌迭代；品牌名、slogan 与 logo 已独立发布，最终版本及验收见下方追加记录。
 
 ## 用户可见变化
 
@@ -38,3 +38,16 @@
 线上受限备份：`/opt/ai-star-eco/backups/20261010-studio-unified-2fb9ad5c`，目录 0700、旧 JAR 与前端压缩包 0600，gzip 校验通过。原生产制品和各自校验和已保存。
 
 发布包及 manifest：`dist/deploy/20261010-studio-unified-2fb9ad5c/`；本地 HTTP 与资源证据：`.studio-e2e/release-20261010-unified/http-acceptance.json`。两者均为 gitignored 运维产物。部署临时目录已清理，构建工作树可归档。
+
+## 品牌更新独立发布 · 2026-10-10 17:24 UTC
+
+- 应用代码：`fb4502a26c6607de6bfbf00631c40818b1b4dfad`（品牌提交 `4c6a22d0` + 手机简介标点 `fb4502a2`），已推送同一分支。
+- 最终发布包：`20261010172357-fb4502a2`，仅部署 `web-aiavatar`。
+- 品牌名：「IP Studio · 声量引擎旗下」；slogan：「让灵感成形，让 IP 出圈」。
+- icon 沿用老版数字人多面体侧脸与三角碎片，内置 imagegen 编辑为低饱和蓝灰、深墨配色；首页、旧资产外壳与登录、favicon / Apple 图标统一引用 `/brand/ip-studio-logo.png`。原始文件保留，最终提示词见应用 README。
+
+提交前四门通过；前端全量 66 文件 / 548 项测试通过（存量 React act 提示仍在）。最终标点增量由应用 typecheck 与生产构建再次验证。保留生产 OIDC 构建配置，mock 与开发登录关闭；未改后端、生产环境或数据库，未执行生成任务。同期其他会话的 server/admin 编辑未纳入前端制品。
+
+`verify.sh` 全绿；公开首页返回新标题、slogan、完整句号及新 favicon。21 个 JS/CSS/logo 资源与最终发布包逐字节一致；远端 BUILD_ID 与制品同为 `Hnbh9XYqo-Cw8_q-3EgRT`。服务 `active`、`NRestarts=0`，启动时间 2026-10-10 17:24:55 UTC。Chrome 本地桌面与 440px 手机模拟视图、生产首页视觉检查通过；没有充值、创建画布或生成操作。
+
+独立备份：`/opt/ai-star-eco/backups/20261010-studio-brand-4c6a22d0/web-aiavatar.tar.gz`（目录 0700、文件 0600，gzip 检查通过，SHA256 `7baf2e770d7c2c3471f1addbbe670393bb0fa0b2bfefd168d6f2876e6da0ad47`）。最终远端包与 manifest 保存在 `/opt/ai-star-eco/releases/20261010172357-fb4502a2`，部署暂存已清理；HTTP 校验证据为 `.studio-e2e/release-20261010-brand/http-acceptance.json`。
