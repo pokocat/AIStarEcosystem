@@ -17,3 +17,13 @@ Studio 场景策略 `studio.script` 固定或选择 DAP_PERSONA，`studio.image`
 新控制台路径与完整覆盖/未覆盖清单：平台仓 `docs/aistar-model-migration.md`。原后台入口本轮保留；模型发现、连接检查、真实 test-run/replay、敏感日志正文继续留在原入口，不自动发供应商请求。
 
 本地验收使用独立 loopback 18082 内存 H2、local CDN、log SMS、shadow payment，专用测试密钥和 example.invalid 端点。既有全新库 Flyway 前置表问题只在此隔离 fixture / route coverage 关闭，未修改生产迁移或持久数据库。没有生产部署。
+
+## 2026-10-10 生产发布
+
+模型管理接口与场景开放/定价逻辑已部署，运行提交 `9b111607af57367ffa8fb09a8bdc90c904e1134e`，发布编号 `20261010145313-9b111607`；后台入口 https://ops.aibuzz.cn，运行 Platform `2158e153b8e6332ae51876323052c7aa29030576`。
+
+V49 成功新增可空供应商计量字段；JAR SHA256 `fcb138dd5e6f6e90935f5a0f81863a14d96c2576d63e605163ea7f12724d6960` 与部署产物一致。workspace/后台类型、API 契约、Java 编译与 65 项专项测试通过，正式 verify ALL GREEN。生产配置启用独立短时命令签名通道，已有身份与供应商密钥不变。
+
+实际浏览器可读取 15 个生产模型端点、56 项应用功能及既有用户价格；未保存改价、建立模型或创建付费生成。Studio 剧本/图片专属策略仍未配置，沿用兼容行为；平台定价开关保持原状态。发布前数据库、环境文件及旧 JAR 备份位于受限 `/opt/aibuzz-platform/backups/model-console-20261010T144512Z`。
+
+详细证据见 Platform 仓库 `docs/reviews/2026-10-10-model-management-production-release.md`。Studio 与旧后台前端没有在本轮重新部署。
