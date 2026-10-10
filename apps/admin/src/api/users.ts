@@ -25,7 +25,7 @@ export async function listUsersPage(
   const page = query.page ?? 0;
   const limit = Math.min(Math.max(query.size ?? 20, 1), 100);
   const q = (query.q ?? "").trim().toLowerCase();
-  const rows = ACCOUNTS.filter(u => (!query.status || u.status === query.status)
+  const rows = ACCOUNTS.filter(u => (query.status ? u.status === query.status : u.status !== "deleted")
     && (!query.kind || u.kind === query.kind)
     && (!q || [u.id, u.username, u.displayName, u.phone, u.email].some(value => value?.toLowerCase().includes(q))));
   return mockDelay({ success: true, data: rows.slice(page * limit, (page + 1) * limit), pagination: {
