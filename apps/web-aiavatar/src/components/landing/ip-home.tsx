@@ -60,7 +60,7 @@ export function IpHome({ header = true }: { header?: boolean }) {
         <img className="ip-home-hero-image" src="https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/ip-canvas-hero-v3.png" alt="晨光中回望城市的写实人物，AI 创作示意" fetchPriority="high" />
         <div className="ip-home-hero-copy">
           <h1>让灵感成形<br />让 IP 出圈</h1>
-          <p>从一个灵感开始，创造数字人、图片、视频与故事<br className="ip-home-desktop-break" />让你的 IP 拥有形象、声音与作品。</p>
+          <p>从一个灵感开始，创造数字人、图片、视频与故事。<br className="ip-home-desktop-break" />让你的 IP 拥有形象、声音与作品。</p>
           <button className="ip-brand-button ip-home-start" disabled={!!creating} onClick={() => void start("assistant")}>
             {creating === "assistant" ? <LoaderCircle className="ip-loading-icon" size={19} /> : null}
             {creating === "assistant" ? "正在打开画布" : "开始创作"}<ArrowRight size={22} aria-hidden="true" />
