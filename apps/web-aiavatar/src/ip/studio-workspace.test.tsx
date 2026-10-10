@@ -500,9 +500,9 @@ test('opening and reopening a template draft keeps empty upstream slots and chec
  render(<Host initialNodes={[draft,empty,brief]} initialConnections={[{id:'frame-edge',fromNodeId:'frame',toNodeId:'v'},{id:'brief-edge',fromNodeId:'brief',toNodeId:'v'}]}/>);openVideo();
  await screen.findByRole('button',{name:'移除参考 人物参考'});await screen.findByRole('button',{name:'移除文本引用 创作要求输入'});
  await waitFor(()=>expect(connectionSnapshot).toHaveLength(2));
- fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先为「人物参考」添加或生成图片'));expect(api.submit).not.toHaveBeenCalled();
+ fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先为「人物参考」添加或生成图片'));expect(api.submit).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));await waitFor(()=>expect(screen.queryByRole('dialog',{name:'生成视频'})).toBeNull());openVideo();
  await screen.findByRole('button',{name:'移除参考 人物参考'});expect(connectionSnapshot).toHaveLength(2);
  fireEvent.click(screen.getByRole('button',{name:'移除参考 人物参考'}));await waitFor(()=>expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['brief']));
- fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先填写「创作要求输入」'));expect(api.submit).not.toHaveBeenCalled();
+ fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先填写「创作要求输入」'));expect(api.submit).not.toHaveBeenCalled();
 });
