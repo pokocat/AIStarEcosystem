@@ -117,6 +117,9 @@ class IdentityJwtFilterTest {
         when(repo.findByIdentityUid(anyString()))
                 .thenAnswer(inv -> java.util.Optional.ofNullable(byUid.get(inv.getArgument(0, String.class))));
 
+        when(repo.findByIdForUpdate(anyString())).thenAnswer(inv -> byUid.values().stream()
+                .filter(user -> user.getId().equals(inv.getArgument(0, String.class))).findFirst());
+
         IdentityUserInserter inserter = mock(IdentityUserInserter.class);
         when(inserter.insert(anyString(), anyString())).thenAnswer(inv -> {
             String uid = inv.getArgument(0);

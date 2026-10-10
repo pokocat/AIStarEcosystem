@@ -633,8 +633,7 @@ RS256 分支的进入条件：JOSE 头 `alg=RS256`，或 HS256 验不过但（�
 ### 2.1 手机号展示副本与后台搜索（2026-10-10）
 
 `IdentityPhoneSyncService` 只对已验签且实际授权含 `phone` 的用户令牌，调用固定 issuer 的
-`GET /userinfo`，要求响应 `sub` 与令牌 UID 一致；`syncPhoneFromUserInfo` 行锁后再核对本地
-`identity_uid`，将完整号及验证状态更新到 `aep_users.phone` / `phone_verified`。
+`GET /userinfo`，要求响应 `sub` 与令牌 UID 一致；`syncUserInfo` 行锁后复查本地 UID/ACTIVE 与读取代次，按实际 scope 更新完整号码和昵称/头像。未含 phone 的 profile-only 响应不改号码，未带可选头像保留、明确 null/空值清除。JWT 昵称/头像为签发快照，不再每次覆盖当前资料。
 主体映射、开通、权限和钱包继续使用原有 UID/本地 ID，资料同步不创建第二份账号或钱包。
 
 读取成功最多缓存 5 分钟且不超过 token 有效期；新令牌自动重新读取；失败 15 秒后可重试，
@@ -667,12 +666,13 @@ RS256 分支的进入条件：JOSE 头 `alg=RS256`，或 HS256 验不过但（�
 
 | 事件 | 本地动作 |
 |---|---|
-| `USER_MERGED{fromUid,toUid}` | `toUid` 本地没档案 → 被并方档案改指 `toUid`；已有档案 → 被并方解绑 uid + `SUSPENDED` + WARN（两份业务数据本期**不**自动合并） |
-| `USER_CLOSED{uid}` | 本地档案 `DELETED`，`identity_uid` 保留作墓碑 |
-| `PHONE_CHANGED` | 清除完整号码展示副本，使读取缓存失效；事件中的脱敏号不回填，下次合法用户请求从 `/userinfo` 补齐 |
+| `USER_MERGED{fromUid,toUid}` | `toUid` 本地没档案 → 被并方档案改指 `toUid` 并清旧号，flush 后为旧 UID 留 DELETED 墓碑；已有档案 → 被并方保留旧 UID、清号码、SUSPENDED + WARN，业务数据不自动合并；被并方未建档也留墓碑 |
+| `USER_CLOSED{uid}` | 本地档案 `DELETED`，`identity_uid` 保留作墓碑；首次登录前注销也建无权益墓碑，旧 token 不能重新 JIT |
+| `PHONE_CHANGED` | 清除完整号码展示副本，使缓存及在途读取失效；脱敏号不回填，下次合法用户请求补齐 |
+| `PROFILE_CHANGED` | 更新当前昵称/头像；明确 null/空头像清旧图，使缓存及在途读取失效 |
 
 每条事件一个事务；游标只推进到本批最后一条**处理成功**的事件，中途失败就地停住下轮重放
-（三种处理都是幂等的）。`issuer` 或 `client-secret` 留空 → 轮询直接跳过。
+（处理幂等）。注销/合并须本地事务提交后向中心 PUT outbox receipt（COMPLETED），回执成功才前进；回执失败不按坏事件死信跳过。事件 ID 必须正整数且严格递增，nextAfter 与末条 ID 一致，产品归属匹配或广播 null。机器 HTTP 连接 2 秒/读取 5 秒、禁止重定向。`issuer` 或 `client-secret` 留空 → 轮询直接跳过。
 
 ### 5. 老用户导入（运维一次性）
 
@@ -984,3 +984,7 @@ POST /api/v1/ip-studio/projects/{id}/story-import，multipart字段file，返回
 ### v0.231 · 模板复制为普通个人画布（2026-10-10）
 
 `POST /api/v1/ip-studio/projects {templateId}` 支持已发布版本的官方/本人模板；`IpTemplateResolver.resolve(id, userId)` 延续启用与可见范围闸。复制从不可变版本 doc/recipe 产生独立 node/connection id、输入默认值、文字变量连线与图片/视频规格，无供应商/模型预检和积分变化。新画布只记录 templateId 来源，不设置 templateVersionId/templateInstanceJson 执行锁；服务端仍整存整取客户端文档。旧实例与模板执行 API 保留兼容，发布权限和素材剥离不变。无新表、迁移、配置或 API 路径。
+
+## 统一认证跨应用复核（2026-10-10，本地未发布）
+
+本次共享后端覆盖 music/drama/celebrity/aiavatar（含 Studio）/star 的相同身份代码。资料写入与事件使用行锁并复查 UID/ACTIVE；合并/注销的旧 UID 保留墓碑，避免旧 token 重新建档；注销/合并回执失败停止游标。专项回归及范围见 [跨应用复核记录](../../docs/unified-identity-sop-audit-20261010.md)。本节不改变此前手机号发布记录的线上结论，本轮新增修复尚未部署。

@@ -31,6 +31,85 @@ class IdentityCenterEnvelopeContractTest {
         }
     }
 
+    @Test
+    void machineClientReadsStrictPageAndPostsReceiptWithItsOwnToken() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        var page = new java.util.concurrent.atomic.AtomicReference<>(
+                "{\"success\":true,\"data\":{\"events\":[{\"id\":41,\"eventType\":\"USER_CLOSED\",\"uid\":\"uid-test\",\"productCode\":null,\"payload\":{\"uid\":\"uid-test\"}}],\"nextAfter\":41}}");
+        var receipt = new java.util.concurrent.atomic.AtomicReference<String>();
+        var auth = new java.util.concurrent.atomic.AtomicReference<String>();
+        var method = new java.util.concurrent.atomic.AtomicReference<String>();
+        var tokenCalls = new java.util.concurrent.atomic.AtomicInteger();
+        server.createContext("/oauth2/token", exchange -> {
+            tokenCalls.incrementAndGet();
+            reply(exchange, "{\"access_token\":\"machine-fixture\",\"expires_in\":300}");
+        });
+        server.createContext("/api/products/aistar/outbox", exchange -> {
+            if (exchange.getRequestURI().getPath().endsWith("/receipt")) {
+                method.set(exchange.getRequestMethod());
+                auth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+                receipt.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                reply(exchange, "{\"success\":true,\"data\":{\"recorded\":true}}");
+            } else reply(exchange, page.get());
+        });
+        server.start();
+        try {
+            IdentityCenterClient client = machineClient(server.getAddress().getPort());
+            assertThat(client.fetchOutbox(0, 100)).extracting(IdentityCenterClient.OutboxEvent::id).containsExactly(41L);
+            client.completeOutbox(41);
+            assertThat(method.get()).isEqualTo("PUT");
+            assertThat(auth.get()).isEqualTo("Bearer machine-fixture");
+            assertThat(json(receipt.get()).path("status").asText()).isEqualTo("COMPLETED");
+            assertThat(tokenCalls.get()).isEqualTo(1);
+            page.set(page.get().replace("\"productCode\":null", "\"productCode\":\"foreign-product\""));
+            assertThatThrownBy(() -> client.fetchOutbox(0, 100)).isInstanceOf(IdentityCenterException.class);
+            page.set(page.get().replace("foreign-product", "aistar").replace("\"nextAfter\":41", "\"nextAfter\":42"));
+            assertThatThrownBy(() -> client.fetchOutbox(0, 100)).isInstanceOf(IdentityCenterException.class);
+        } finally { server.stop(0); }
+    }
+
+    @Test
+    void receiptRejectsFakeSuccessAndDoesNotFollowRedirects() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        var response = new java.util.concurrent.atomic.AtomicReference<>("{\"success\":false}");
+        var redirected = new java.util.concurrent.atomic.AtomicInteger();
+        server.createContext("/oauth2/token", exchange -> reply(exchange, "{\"access_token\":\"machine-fixture\",\"expires_in\":300}"));
+        server.createContext("/api/products/aistar/outbox/41/receipt", exchange -> {
+            if (response.get().equals("redirect")) {
+                exchange.getResponseHeaders().add("Location", "/redirected");
+                exchange.sendResponseHeaders(302, -1); exchange.close();
+            } else reply(exchange, response.get());
+        });
+        server.createContext("/redirected", exchange -> {
+            redirected.incrementAndGet(); reply(exchange, "{\"success\":true}");
+        });
+        server.start();
+        try {
+            IdentityCenterClient client = machineClient(server.getAddress().getPort());
+            for (String invalid : List.of("{\"success\":false}", "{\"success\":\"true\"}", "redirect")) {
+                response.set(invalid);
+                assertThatThrownBy(() -> client.completeOutbox(41)).isInstanceOf(RuntimeException.class);
+            }
+            assertThat(redirected.get()).isZero();
+        } finally { server.stop(0); }
+    }
+
+    private static IdentityCenterClient machineClient(int port) {
+        var props = new IdentityProperties();
+        props.setIssuer("http://127.0.0.1:" + port);
+        props.setClientSecret("fixture-secret");
+        props.setProductCode("aistar");
+        return new IdentityCenterClient(props);
+    }
+
+    private static void reply(com.sun.net.httpserver.HttpExchange exchange, String body) throws java.io.IOException {
+        byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (var out = exchange.getResponseBody()) { out.write(bytes); }
+        exchange.close();
+    }
+
     // ── outbox：GET /api/products/{product}/outbox ────────────────────────────
 
     /**
@@ -72,6 +151,15 @@ class IdentityCenterEnvelopeContractTest {
               }
             }
             """;
+
+
+    @Test
+    void nonIntegralOrDecreasingOutboxSequenceIsRejected() {
+        assertThatThrownBy(() -> IdentityCenterClient.parseOutbox(json("[{\"id\":2,\"eventType\":\"PHONE_CHANGED\"},{\"id\":1,\"eventType\":\"PHONE_CHANGED\"}]")))
+                .isInstanceOf(IdentityCenterException.class);
+        assertThatThrownBy(() -> IdentityCenterClient.parseOutbox(json("[{\"id\":1.2,\"eventType\":\"PHONE_CHANGED\"}]")))
+                .isInstanceOf(IdentityCenterException.class);
+    }
 
     @Test
     void parsesTheRealOutboxEnvelope() {

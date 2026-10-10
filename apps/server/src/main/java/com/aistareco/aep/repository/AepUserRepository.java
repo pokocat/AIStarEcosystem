@@ -32,6 +32,11 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
      */
     Optional<AepUser> findByIdentityUid(String identityUid);
 
+    /** Identity events serialize against JIT/profile updates on the same row. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from AepUser u where u.identityUid = :uid")
+    Optional<AepUser> findByIdentityUidForUpdate(@Param("uid") String uid);
+
     /**
      * v0.149+（§12.3 老用户导入）：还没有 uid 但有手机号的账号，按 id 游标升序取一批。
      * 用 id 游标而不是 offset 分页 —— 导入过程中会把命中的行写上 identity_uid，

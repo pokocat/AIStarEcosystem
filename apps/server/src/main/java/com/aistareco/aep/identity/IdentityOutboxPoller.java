@@ -92,6 +92,18 @@ public class IdentityOutboxPoller {
         for (IdentityCenterClient.OutboxEvent event : events) {
             try {
                 handler.handle(event);
+                if ("USER_CLOSED".equals(event.eventType()) || "USER_MERGED".equals(event.eventType())) {
+                    try {
+                        // handle() runs in a separate transaction and has committed.
+                        client.completeOutbox(event.id());
+                    } catch (RuntimeException receiptFailure) {
+                        // Receipt failure must never dead-letter/skip a completed
+                        // local lifecycle change. Replay it until acknowledged.
+                        log.warn("[identity] outbox 回执失败，游标不前进 id={} code={}",
+                                event.id(), receiptFailure.getClass().getSimpleName());
+                        break;
+                    }
+                }
                 lastOk = Math.max(lastOk, event.id());
                 done++;
                 clearFailure(event.id());

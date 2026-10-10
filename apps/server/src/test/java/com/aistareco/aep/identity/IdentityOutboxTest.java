@@ -20,6 +20,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,7 +32,7 @@ import static org.mockito.Mockito.when;
  * <p>覆盖三条真实语义：
  * <ul>
  *   <li>USER_MERGED，存活方本地没有档案 → 被并方档案改指新 uid（数据原样留在本地那一行）</li>
- *   <li>USER_MERGED，存活方本地已有档案 → **不自动合并**：被并方解绑 uid + 停用，等人工处理</li>
+ *   <li>USER_MERGED，存活方本地已有档案 → **不自动合并**：被并方保留 uid 墓碑 + 停用，等人工处理</li>
  *   <li>USER_CLOSED → 本地档案 DELETED，identity_uid 保留作墓碑</li>
  * </ul>
  * 外加游标语义：处理成功才前进；中途失败就地停住，失败那条下轮重放（handler 幂等）。
@@ -48,7 +50,14 @@ class IdentityOutboxTest {
         userRepo = mock(AepUserRepository.class);
         when(userRepo.findByIdentityUid(anyString()))
                 .thenAnswer(inv -> Optional.ofNullable(rows.get(inv.getArgument(0, String.class))));
+        when(userRepo.findByIdentityUidForUpdate(anyString()))
+                .thenAnswer(inv -> Optional.ofNullable(rows.get(inv.getArgument(0, String.class))));
         when(userRepo.save(any(AepUser.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepo.saveAndFlush(any(AepUser.class))).thenAnswer(inv -> {
+            AepUser user = inv.getArgument(0);
+            rows.put(user.getIdentityUid(), user);
+            return user;
+        });
         handler = new IdentityOutboxHandler(userRepo, mock(IdentityPhoneSyncService.class));
     }
 
@@ -68,6 +77,46 @@ class IdentityOutboxTest {
         return user;
     }
 
+
+
+    @Test
+    void closureBeforeFirstLoginAndRepointLeavePermanentOldUidTombstones() {
+        handler.handle(event(1, "USER_CLOSED", "uid-never-seen", "{}"));
+        assertThat(rows.get("uid-never-seen").getStatus()).isEqualTo(AepUser.UserStatus.DELETED);
+        AepUser local = row("local-old", "uid-old");
+        handler.handle(event(2, "USER_MERGED", "uid-old", "{\"fromUid\":\"uid-old\",\"toUid\":\"uid-new\"}"));
+        assertThat(local.getIdentityUid()).isEqualTo("uid-new");
+        assertThat(rows.get("uid-old").getStatus()).isEqualTo(AepUser.UserStatus.DELETED);
+        assertThat(rows.get("uid-old").getId()).isNotEqualTo(local.getId());
+    }
+
+    @Test
+    void receiptFailureDoesNotAdvanceOrDeadLetterLocallyCommittedLifecycle() {
+        IdentityProperties props = new IdentityProperties();
+        IdentityCenterClient client = mock(IdentityCenterClient.class);
+        when(client.fetchOutbox(anyLong(), anyInt())).thenReturn(List.of(event(11, "USER_CLOSED", "uid-r", "{}")));
+        doThrow(new IllegalStateException("unavailable")).when(client).completeOutbox(11);
+        PlatformConfigRepository config = mock(PlatformConfigRepository.class);
+        when(config.findByConfigKey(anyString())).thenReturn(Optional.empty());
+        IdentityOutboxHandler committed = mock(IdentityOutboxHandler.class);
+        IdentityOutboxPoller poller = new IdentityOutboxPoller(props, client, committed, config);
+        for (int i = 0; i < 6; i++) assertThat(poller.pollOnce()).isZero();
+        verify(config, never()).save(any());
+        verify(committed, times(6)).handle(any());
+    }
+
+    @Test
+    void profileEventUpdatesNameAndExplicitlyRemovesAvatar() {
+        AepUser local = row("local-profile", "uid-profile");
+        local.setDisplayName("old");
+        local.setAvatarUrl("https://example.test/old.png");
+        handler.handle(event(1, "PROFILE_CHANGED", "uid-profile",
+                "{\"uid\":\"uid-profile\",\"displayName\":\"new\",\"avatarUrl\":null}"));
+        assertThat(local.getDisplayName()).isEqualTo("new");
+        assertThat(local.getAvatarUrl()).isNull();
+        assertThat(local.getIdentityUid()).isEqualTo("uid-profile");
+    }
+
     @Test
     void merged_repointsLocalUserWhenSurvivorHasNoLocalRow() {
         AepUser local = row("local-a", "uid-a");
@@ -85,7 +134,7 @@ class IdentityOutboxTest {
 
         handler.handle(event(2, "USER_MERGED", "uid-a", "{\"fromUid\":\"uid-a\",\"toUid\":\"uid-b\"}"));
 
-        assertThat(losing.getIdentityUid()).as("解绑，避免两行抢同一个 uid").isNull();
+        assertThat(losing.getIdentityUid()).as("保留旧 UID 墓碑，阻止旧令牌重建账号").isEqualTo("uid-a");
         assertThat(losing.getStatus()).isEqualTo(AepUser.UserStatus.SUSPENDED);
         assertThat(surviving.getStatus()).as("存活方不动").isEqualTo(AepUser.UserStatus.ACTIVE);
     }
@@ -96,9 +145,7 @@ class IdentityOutboxTest {
         var e = event(3, "USER_MERGED", "uid-a", "{\"fromUid\":\"uid-a\",\"toUid\":\"uid-b\"}");
 
         handler.handle(e);
-        rows.remove("uid-a");
-        rows.put("uid-b", local);
-        handler.handle(e);   // 重放：fromUid 已经没有本地档案 → no-op
+        handler.handle(e);   // 重放：fromUid 已有墓碑 → no-op
 
         assertThat(local.getIdentityUid()).isEqualTo("uid-b");
         assertThat(local.getStatus()).isEqualTo(AepUser.UserStatus.ACTIVE);
@@ -321,6 +368,16 @@ class IdentityOutboxTest {
 
         assertThat(poller.readDeadLetters().size()).as("没有任何一条连续失败满 5 轮").isZero();
         assertThat(poller.readCursor()).isEqualTo(0L);
+    }
+
+    @Test
+    void numericMergeUidAndBlankClosedUidAreRejected() {
+        assertThatThrownBy(() -> handler.handle(event(51, "USER_MERGED", null,
+                "{\"fromUid\":123,\"toUid\":\"uid-target\"}")))
+                .isInstanceOf(IdentityOutboxHandler.InvalidEventPayloadException.class);
+        assertThatThrownBy(() -> handler.handle(event(52, "USER_CLOSED", " ", "{}")))
+                .isInstanceOf(IdentityOutboxHandler.InvalidEventPayloadException.class);
+        verify(userRepo, never()).saveAndFlush(any());
     }
 
     /** 极简的内存版 PlatformConfig 仓库：游标 / 死信要能真读回来。 */

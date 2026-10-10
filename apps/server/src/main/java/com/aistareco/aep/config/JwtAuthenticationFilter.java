@@ -220,17 +220,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // getClaimAsString 规避同一问题，这里保持一致。缺 claim 仍按「已验证」处理。
         Boolean claim = jwt.getClaimAsBoolean("phone_verified");
         boolean phoneVerified = claim == null || claim;
-        // 昵称与头像同样以账号中心为准（OIDC 标准 claim）。本地 displayName / avatarUrl
-        // 以前没有任何来源，界面只能显示 JIT 建档时那串 id_xxxx，或各产品自己编一个。
-        // 令牌没带这两个（老版本账号中心）时是 null，下面会保留本地已有的值，不会清空。
-        String name = jwt.getClaimAsString("name");
-        String picture = jwt.getClaimAsString("picture");
+        // 昵称/头像采用当前 /userinfo 和 PROFILE_CHANGED，不能反复写回旧 JWT 快照。
+        // 身份映射或状态在解析期间改变时，当前请求必须拒绝认证。
         try {
-            provisioningService.syncFromIdentityToken(user.getId(), phoneVerified, name, picture);
+            user = provisioningService.syncIdentityVerification(user.getId(), uid, phoneVerified);
         } catch (RuntimeException e) {
-            // 回填只影响展示，失败不该让登录失败（闸门读的是下面这份 details）。
+            // 行锁后身份已改变或存储失败，不能继续授权旧主体。
             log.warn("[auth] 回填账号中心身份字段失败 uid={} localUserId={} err={}",
                     uid, user.getId(), e.toString());
+            return false; // cannot authorize an identity that moved while resolving
         }
 
         phoneSync.sync(user, jwt, token);

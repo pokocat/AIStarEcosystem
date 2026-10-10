@@ -630,12 +630,15 @@ async function doRefresh(startedWith: string, ctx: RefreshContext = { takeover: 
     return !!getAuthToken();
   }
 
+  const currentAccess = getAuthToken();
   try {
     const token = await postToken({
       grant_type: "refresh_token",
       client_id: idClientId(),
       refresh_token: current,
     });
+    // 退出或换账号可能绕过刷新锁；旧成功响应也不能恢复/覆盖已变更的会话。
+    if (getRefreshToken() !== current || getAuthToken() !== currentAccess) return !!getAuthToken();
     // 先落存储、再返回（返回即释放锁）：等锁的标签页醒来时一定读得到新令牌。
     storeTokens(token);
     return true;
@@ -643,7 +646,7 @@ async function doRefresh(startedWith: string, ctx: RefreshContext = { takeover: 
     // 防线 3：`invalid_grant` 往往意味着「别的标签页已经用掉了这个 token」。
     // 只有存储里的 refresh token 仍然是失败的这一个，才是真的过期 / 被吊销。
     const after = getRefreshToken();
-    if (after && after !== current) return !!getAuthToken();
+    if (after !== current || getAuthToken() !== currentAccess) return !!getAuthToken();
     if (isTransientOidcError(e)) {
       // 网络断 / 账号中心 5xx：这次没换成，但令牌未必失效 —— 保留，交给调用方重试。
       throw new OidcError("TRANSIENT", "暂时无法连接账号中心，请稍后重试。", {

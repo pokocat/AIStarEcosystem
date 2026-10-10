@@ -50,7 +50,11 @@ public class IdentityCenterClient {
 
     public IdentityCenterClient(IdentityProperties props) {
         this.props = props;
-        this.http = RestClient.create();
+        var transport = new org.springframework.http.client.JdkClientHttpRequestFactory(
+                java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(2))
+                        .followRedirects(java.net.http.HttpClient.Redirect.NEVER).build());
+        transport.setReadTimeout(java.time.Duration.ofSeconds(5));
+        this.http = RestClient.builder().requestFactory(transport).build();
     }
 
     public boolean isEnabled() {
@@ -103,7 +107,21 @@ public class IdentityCenterClient {
             log.warn("[identity] outbox 拉取失败（本轮跳过，游标不前进） after={} err={}", after, e.toString());
             return List.of();
         }
-        return parseOutbox(body);
+        List<OutboxEvent> events = parseOutbox(body);
+        JsonNode next = body.path("data").path("nextAfter");
+        long expected = events.isEmpty() ? after : events.get(events.size() - 1).id();
+        if (!next.isIntegralNumber() || next.asLong(-1) != expected
+                || (!events.isEmpty() && events.get(0).id() <= after)) {
+            throw new IdentityCenterException("outbox 发布序号或 nextAfter 不合法");
+        }
+        for (JsonNode event : body.path("data").path("events")) {
+            // Broadcast lifecycle events legitimately have productCode=null.
+            if (event.hasNonNull("productCode") && (!event.path("productCode").isTextual()
+                    || !props.getProductCode().equals(event.path("productCode").asText()))) {
+                throw new IdentityCenterException("outbox 产品主体不匹配");
+            }
+        }
+        return events;
     }
 
     /**
@@ -115,9 +133,24 @@ public class IdentityCenterClient {
      *
      * @throws IdentityCenterException 壳不认识、{@code success=false}、或某条事件缺 id / eventType
      */
+    public void completeOutbox(long id) {
+        if (!isEnabled() || id <= 0) throw new IdentityCenterException("outbox 回执缺配置或合法事件 ID");
+        JsonNode result = http.put()
+                .uri(props.baseUrl() + "/api/products/" + props.getProductCode() + "/outbox/" + id + "/receipt")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(java.util.Map.of("status", "COMPLETED"))
+                .retrieve().body(JsonNode.class);
+        if (result == null || !result.isObject() || !result.path("success").isBoolean()
+                || !result.path("success").asBoolean()) {
+            throw new IdentityCenterException("outbox 回执未确认成功");
+        }
+    }
+
     static List<OutboxEvent> parseOutbox(JsonNode body) {
         JsonNode array = arrayOf(body, "events", "outbox");
         List<OutboxEvent> out = new ArrayList<>();
+        long previous = 0;
         for (JsonNode row : array) {
             long id = row.path("id").asLong(0L);
             String type = row.path("eventType").asText(row.path("event_type").asText(""));
@@ -131,12 +164,13 @@ public class IdentityCenterClient {
                 }
             }
             if (payload != null && payload.isNull()) payload = null;
-            if (id <= 0 || type == null || type.isBlank()) {
+            if (!row.path("id").isIntegralNumber() || id <= previous || type == null || type.isBlank()) {
                 // 没有 id 就无法推进游标、也无法去重 —— 这条流已经不可信，整批拒绝。
                 throw new IdentityCenterException(
-                        "outbox 事件缺少 id 或 eventType：" + abbreviate(row));
+                        "outbox 事件缺少 id 或 eventType，或发布序号不是递增整数");
             }
             out.add(new OutboxEvent(id, type, uid, payload));
+            previous = id;
         }
         return out;
     }

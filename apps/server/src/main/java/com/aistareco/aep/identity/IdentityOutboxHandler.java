@@ -17,7 +17,7 @@ import java.util.Optional;
  * <p>独立 bean + {@link Propagation#REQUIRES_NEW}：每条事件一个事务，一条失败不带翻整批。
  *
  * <p>幂等：全部动作都是「按当前状态收敛」——
- * {@code USER_MERGED} 重放时 fromUid 已不再挂在任何本地档案上，直接 no-op；
+ * {@code USER_MERGED} 重放时 fromUid 已是墓碑，直接 no-op；
  * {@code USER_CLOSED} 重放时本地已是 DELETED，再写一次同值。
  *
  * <p><b>坏 payload 不允许被静默确认</b>（v0.150）：认识的事件类型但 payload 不合法（缺
@@ -55,16 +55,45 @@ public class IdentityOutboxHandler {
             case EVENT_USER_MERGED -> handleMerged(event);
             case EVENT_USER_CLOSED -> handleClosed(event);
             case EVENT_PHONE_CHANGED -> handlePhoneChanged(event);
+            case "PROFILE_CHANGED" -> handleProfileChanged(event);
             default -> log.warn("[identity] 未知 outbox 事件类型，跳过 id={} type={}",
                     event.id(), event.eventType());
         }
+    }
+
+    private void handleProfileChanged(IdentityCenterClient.OutboxEvent event) {
+        String uid = event.uid() != null ? event.uid() : text(event, "uid");
+        if (uid == null || uid.isBlank() || event.payload() == null || !event.payload().isObject()) {
+            throw new InvalidEventPayloadException("PROFILE_CHANGED payload 不合法 id=" + event.id());
+        }
+        var payload = event.payload();
+        if (payload.has("uid") && (!payload.path("uid").isTextual() || !uid.equals(payload.path("uid").asText()))) {
+            throw new InvalidEventPayloadException("PROFILE_CHANGED 主体不一致 id=" + event.id());
+        }
+        for (String field : new String[]{"displayName", "avatarUrl"}) {
+            if (payload.has(field) && !payload.path(field).isNull() && !payload.path(field).isTextual()) {
+                throw new InvalidEventPayloadException("PROFILE_CHANGED 字段类型不合法 id=" + event.id());
+            }
+        }
+        phoneSync.invalidate();
+        userRepo.findByIdentityUidForUpdate(uid).ifPresent(user -> {
+            if (payload.hasNonNull("displayName") && !payload.path("displayName").asText().isBlank()) {
+                user.setDisplayName(payload.path("displayName").asText());
+            }
+            if (payload.has("avatarUrl")) {
+                String avatar = payload.path("avatarUrl").isNull() ? null : payload.path("avatarUrl").asText();
+                user.setAvatarUrl(avatar == null || avatar.isBlank() ? null : avatar);
+            }
+            user.setUpdatedAt(Instant.now());
+            userRepo.save(user);
+        });
     }
 
     private void handlePhoneChanged(IdentityCenterClient.OutboxEvent event) {
         String uid = event.uid() != null ? event.uid() : text(event, "uid");
         if (uid == null || uid.isBlank()) throw new InvalidEventPayloadException("PHONE_CHANGED 缺 uid id=" + event.id());
         phoneSync.invalidate();
-        userRepo.findByIdentityUid(uid).ifPresent(user -> {
+        userRepo.findByIdentityUidForUpdate(uid).ifPresent(user -> {
             // 事件只有脱敏号码，不能拿它覆盖完整号码；先清掉旧展示副本，再由 /userinfo 补齐。
             user.setPhone(null);
             user.setUpdatedAt(Instant.now());
@@ -77,7 +106,7 @@ public class IdentityOutboxHandler {
      * <ul>
      *   <li>B 在本地还没有档案 → 把 A 的本地档案 {@code identity_uid} 改指 B（业务数据原样留在 A 行）。</li>
      *   <li>B 在本地已有档案 → 两份本地档案不能自动合并（钱包 / 项目 / 资产各一套）：
-     *       A 的本地档案 {@code identity_uid=null} + {@code status=SUSPENDED}，WARN 出来等人工处理。</li>
+     *       A 的本地档案保留原 {@code identity_uid} 作墓碑 + {@code status=SUSPENDED}，WARN 出来等人工处理。</li>
      * </ul>
      */
     private void handleMerged(IdentityCenterClient.OutboxEvent event) {
@@ -88,41 +117,44 @@ public class IdentityOutboxHandler {
                     "USER_MERGED payload 不合法 id=" + event.id() + " fromUid=" + fromUid + " toUid=" + toUid);
         }
         phoneSync.invalidate();
-        Optional<AepUser> fromLocal = userRepo.findByIdentityUid(fromUid);
+        Optional<AepUser> fromLocal = userRepo.findByIdentityUidForUpdate(fromUid);
         if (fromLocal.isEmpty()) {
-            log.debug("[identity] USER_MERGED 无本地档案，忽略 id={} from={}", event.id(), fromUid);
+            createClosedTombstone(fromUid);
             return;
         }
         AepUser local = fromLocal.get();
+        if (local.getStatus() == AepUser.UserStatus.DELETED) return; // idempotent tombstone replay
         Optional<AepUser> toLocal = userRepo.findByIdentityUid(toUid);
         if (toLocal.isEmpty()) {
             local.setIdentityUid(toUid);
             local.setPhone(null);
             local.setUpdatedAt(Instant.now());
-            userRepo.save(local);
+            userRepo.saveAndFlush(local); // release old UID before its tombstone INSERT
+            createClosedTombstone(fromUid);
             log.info("[identity] USER_MERGED 本地档案改指 localUserId={} {} -> {}",
                     local.getId(), fromUid, toUid);
             return;
         }
-        local.setIdentityUid(null);
+        // Keep the losing UID as a tombstone; clearing it lets an old valid
+        // JWT JIT-provision another account before the token expires.
         local.setPhone(null);
         local.setStatus(AepUser.UserStatus.SUSPENDED);
         local.setUpdatedAt(Instant.now());
         userRepo.save(local);
         log.warn("[identity] USER_MERGED 两侧本地档案都存在，需人工合并业务数据："
-                        + "被并方 localUserId={}（已停用、解绑 uid），存活方 localUserId={} uid {} -> {}",
+                        + "被并方 localUserId={}（已停用、保留旧 uid 墓碑），存活方 localUserId={} uid {} -> {}",
                 local.getId(), toLocal.get().getId(), fromUid, toUid);
     }
 
     /** 账号中心注销：本地档案标 DELETED，{@code identity_uid} 保留作墓碑（同号冷静期内不复活）。 */
     private void handleClosed(IdentityCenterClient.OutboxEvent event) {
         String uid = event.uid() != null ? event.uid() : text(event, "uid");
-        if (uid == null) {
+        if (uid == null || uid.isBlank()) {
             throw new InvalidEventPayloadException("USER_CLOSED payload 缺 uid id=" + event.id());
         }
-        Optional<AepUser> local = userRepo.findByIdentityUid(uid);
+        Optional<AepUser> local = userRepo.findByIdentityUidForUpdate(uid);
         if (local.isEmpty()) {
-            log.debug("[identity] USER_CLOSED 无本地档案，忽略 id={} uid={}", event.id(), uid);
+            createClosedTombstone(uid);
             return;
         }
         AepUser user = local.get();
@@ -132,9 +164,24 @@ public class IdentityOutboxHandler {
         log.info("[identity] USER_CLOSED 本地档案标记删除 localUserId={} uid={}", user.getId(), uid);
     }
 
+    private void createClosedTombstone(String uid) {
+        Instant now = Instant.now();
+        AepUser tombstone = AepUser.builder()
+                .id(java.util.UUID.randomUUID().toString())
+                .username("closed_" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                .identityUid(uid).kind(AepUser.AccountKind.PERSONAL)
+                .status(AepUser.UserStatus.DELETED).platforms("")
+                .emailVerified(false).phoneVerified(false)
+                .createdAt(now).updatedAt(now).build();
+        // Same event transaction: a racing JIT unique-key conflict rolls back
+        // and retries the event; no enrollment, wallet or product link created.
+        userRepo.saveAndFlush(tombstone);
+    }
+
     private static String text(IdentityCenterClient.OutboxEvent event, String field) {
         if (event.payload() == null) return null;
-        String value = event.payload().path(field).asText(null);
+        var node = event.payload().path(field);
+        String value = node.isTextual() ? node.asText() : null;
         return value == null || value.isBlank() ? null : value;
     }
 }
