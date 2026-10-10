@@ -136,7 +136,7 @@ class IdentityJwtFilterTest {
         });
 
         provisioning = new IdentityProvisioningService(repo, inserter, client, noEnrollment());
-        filter = new JwtAuthenticationFilter(jwtUtil, verifier, provisioning, props);
+        filter = new JwtAuthenticationFilter(jwtUtil, verifier, provisioning, props, mock(IdentityPhoneSyncService.class));
     }
 
     @AfterEach

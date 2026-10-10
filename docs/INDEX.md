@@ -121,6 +121,9 @@
 
 ## 5. 部署 / 运维（"上线怎么部署"）
 
+统一认证接入 SOP：[`aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md`](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md)，
+§7.9 / §10.6 包含资料来源、手机号读取、后台搜索、分页、换绑、存量补齐与本地重启验收（last-reviewed 2026-10-10）。
+
 | 文档 | 用途 |
 |---|---|
 | [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引；**§5.1 nginx vhost 硬规则**（每子域必须同时有 80 和 443；443 已有 `000-default-ssl.conf` 兜底）+ **§5.2 www.\* 二级子域**（DNS 泛解析匹配任意层级，TLS 通配符只覆盖一级 —— 客户「链接打开不太对」的真因）+ **§5.3 证书与 certbot+Alidns 自动续期**（到期 2026-12-05）+ 线上 vhost 清单 / 新增子域 checklist（last-reviewed 2026-09-06） |

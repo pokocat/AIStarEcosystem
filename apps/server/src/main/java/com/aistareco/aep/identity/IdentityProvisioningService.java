@@ -144,6 +144,20 @@ public class IdentityProvisioningService {
         return value != null && !value.isBlank();
     }
 
+    /** 只更新展示副本；行锁后重新核对 uid，避免在途请求将旧身份资料写给合并后的账号。 */
+    @Transactional
+    public void syncPhoneFromUserInfo(String localUserId, String uid, String phone, boolean verified) {
+        AepUser user = userRepo.findByIdForUpdate(localUserId)
+                .orElseThrow(() -> new IllegalStateException("本地身份档案已不存在"));
+        if (!uid.equals(user.getIdentityUid())) throw new IllegalStateException("本地身份映射已变更");
+        if (!java.util.Objects.equals(user.getPhone(), phone) || user.isPhoneVerified() != verified) {
+            user.setPhone(phone);
+            user.setPhoneVerified(verified);
+            user.setUpdatedAt(java.time.Instant.now());
+            userRepo.save(user);
+        }
+    }
+
     private void grantForNewUserSafely(String localUserId) {
         try {
             var svc = enrollments.getIfAvailable();

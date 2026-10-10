@@ -47,6 +47,15 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
 
     Page<AepUser> findByStatusAndKind(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable);
 
+    /** 搜索在分页前执行，locate 将 %/_ 当普通字符；uid 仍是统一身份映射依据。 */
+    @Query("select u from AepUser u where (:status is null or u.status = :status) "
+            + "and (:kind is null or u.kind = :kind) and ("
+            + "locate(:q, lower(u.username)) > 0 or locate(:q, lower(coalesce(u.displayName, ''))) > 0 "
+            + "or locate(:q, lower(coalesce(u.phone, ''))) > 0 or locate(:q, lower(coalesce(u.email, ''))) > 0 "
+            + "or locate(:q, lower(u.id)) > 0 or locate(:q, lower(coalesce(u.identityUid, ''))) > 0)")
+    Page<AepUser> search(@Param("q") String q, @Param("status") AepUser.UserStatus status,
+                        @Param("kind") AepUser.AccountKind kind, Pageable pageable);
+
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);

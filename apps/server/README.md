@@ -594,6 +594,9 @@ server 内部 `aep/service/productlink/ProductLinkHandler` 是策略链接口，
 真源：[`docs/unified-identity-plan.md`](../../docs/unified-identity-plan.md) §12.1 / §12.3 / §12.4。
 本节只讲 server 侧这一半：**接受账号中心签发的令牌**、**把 uid 映射成本地档案**、**和账号中心对账**。
 
+统一接入 SOP 真源：[`aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md`](../../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md)
+§7.9 / §10.6（资料消费、后台搜索、存量补齐和真实验收，2026-10-10）。
+
 > **账号中心本身不在本仓**：代码与部署都在独立仓库
 > [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)。本地联调时先 clone 到本仓同级目录
 > （`../aibuzz-id`）并 `./mvnw spring-boot:run` 起在 **8090**，再把本仓的 `AEP_ID_ISSUER`
@@ -627,6 +630,23 @@ RS256 分支的进入条件：JOSE 头 `alg=RS256`，或 HS256 验不过但（�
 **建档 ≠ 开通**：能不能用某个子产品由 enrollment 决定（§12.2）。本地账号 `SUSPENDED` / `DELETED` 时，
 即便令牌合法也直接 401 `ACCOUNT_DISABLED`。
 
+### 2.1 手机号展示副本与后台搜索（2026-10-10）
+
+`IdentityPhoneSyncService` 只对已验签且实际授权含 `phone` 的用户令牌，调用固定 issuer 的
+`GET /userinfo`，要求响应 `sub` 与令牌 UID 一致；`syncPhoneFromUserInfo` 行锁后再核对本地
+`identity_uid`，将完整号及验证状态更新到 `aep_users.phone` / `phone_verified`。
+主体映射、开通、权限和钱包继续使用原有 UID/本地 ID，资料同步不创建第二份账号或钱包。
+
+读取成功最多缓存 5 分钟且不超过 token 有效期；新令牌自动重新读取；失败 15 秒后可重试，
+连接超时 2 秒、请求超时 3 秒，不跟随重定向。进程只缓存 token 的 SHA-256 摘要和时间，
+不缓存明文 token；失败日志只报安全原因码，不打印响应体或完整号码。未授权不覆盖旧号；
+获 phone 授权且成功响应无号码则清除旧号；读取失败保留已有副本，不阻断原有验签登录。
+
+`GET /api/admin/users?q=` 在数据库分页前搜索手机号、昵称、用户名、邮箱、本地 ID 和身份 UID，
+兼容原有 status/kind；size 仍最多 100，返回 PageEnvelope 的真实总数。%/_ 按字面量匹配。
+后台 `/platform/accounts` 使用该服务端搜索和分页；存量账号在下一次合法用户请求时补齐，
+立即补资料的运维动作必须按 UID 核对并记录旧值，不能改变开通或账本。
+
 ### 3. 后台令牌与消费者令牌分离（`typ=admin`）
 
 - `POST /api/admin/auth/login`、`POST /api/admin/auth/operator-login` → `JwtUtil.adminToken(...)`，
@@ -649,7 +669,7 @@ RS256 分支的进入条件：JOSE 头 `alg=RS256`，或 HS256 验不过但（�
 |---|---|
 | `USER_MERGED{fromUid,toUid}` | `toUid` 本地没档案 → 被并方档案改指 `toUid`；已有档案 → 被并方解绑 uid + `SUSPENDED` + WARN（两份业务数据本期**不**自动合并） |
 | `USER_CLOSED{uid}` | 本地档案 `DELETED`，`identity_uid` 保留作墓碑 |
-| `PHONE_CHANGED` | 忽略（本地不存账号中心手机号） |
+| `PHONE_CHANGED` | 清除完整号码展示副本，使读取缓存失效；事件中的脱敏号不回填，下次合法用户请求从 `/userinfo` 补齐 |
 
 每条事件一个事务；游标只推进到本批最后一条**处理成功**的事件，中途失败就地停住下轮重放
 （三种处理都是幂等的）。`issuer` 或 `client-secret` 留空 → 轮询直接跳过。

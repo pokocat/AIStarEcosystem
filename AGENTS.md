@@ -113,6 +113,10 @@ Aisingerecosystem/
 
 ## 2. Daily Commands
 
+**统一认证接入必读 SOP**：[`../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md`](../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md)
+§7.9 / §10.6。登录成功之外，必须验证本人/后台昵称头像手机号、手机号搜索、服务端分页、换绑缓存失效、存量用户和本地重启登录；
+完整手机号仅从获 phone 授权的 `/userinfo` 获取并核对 UID，不能把 `phone_verified` 当号码，也不能改变钱包/开通。
+
 ### 飞书 CLI
 
 - 已配置飞书 CLI app：`cli_aaa471e87738dbdb`（brand: `feishu`）；后续先跑 `lark-cli doctor`，不要重复 `lark-cli config init --new`；禁止记录 `appSecret` / access token / refresh token。

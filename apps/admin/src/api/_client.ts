@@ -3,7 +3,7 @@
 // 通过 NEXT_PUBLIC_USE_MOCK=1 切换为仅使用 mocks/ 数据（无网络）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { ApiResponse, ApiErrorShape } from "@/types/_shared";
+import type { ApiResponse, ApiErrorShape, PaginatedResponse } from "@/types/_shared";
 import { emitGlobalError } from "@/lib/global-errors";
 
 /** 当 NEXT_PUBLIC_USE_MOCK=1 时，API 层直接返回 mocks/ 目录中的静态数据。 */
@@ -101,6 +101,7 @@ interface RequestOptions {
   query?: Record<string, unknown>;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  returnEnvelope?: boolean;
 }
 
 /**
@@ -193,7 +194,18 @@ export async function apiFetch<T>(
     };
     throwApiError(new ApiError(err, res.status), path);
   }
+  if (opts.returnEnvelope) {
+    if (!(parsed as PaginatedResponse<unknown>).pagination) {
+      throwApiError(new ApiError({ code: "BAD_ENVELOPE", message: "分页响应缺少分页信息" }, res.status), path);
+    }
+    return parsed as T;
+  }
   return envelope.data;
+}
+
+/** 分页列表保留 metadata，避免将后台限制的一页误当成全部账号。 */
+export function apiFetchPage<T>(path: string, opts: RequestOptions = {}): Promise<PaginatedResponse<T>> {
+  return apiFetch<PaginatedResponse<T>>(path, { ...opts, returnEnvelope: true });
 }
 
 /** Mock 延迟，模拟真实网络抖动。 */

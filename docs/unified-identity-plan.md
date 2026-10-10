@@ -150,6 +150,12 @@ wx_openid        仅当客户端绑定了 appid 且该 uid 有对应 openid 时�
 
 **不带**：手机号（隐私，走 `/userinfo` scope `phone`）、已开通产品列表（D13）、产品角色。
 
+**产品消费不能停在验签**（2026-10-10）：本仓 `IdentityPhoneSyncService` 从已获 `phone` 授权的
+用户令牌调用 `/userinfo`，核对 `sub` 与行锁后的 `identity_uid`，同步完整号展示副本；读取有界缓存，
+换绑/合并使旧号码与缓存失效。后台 `/admin/users?q=` 在分页前搜索并返回真实分页总数。
+资料展示、搜索、存量补齐及本地持久账号的接入 SOP 真源为
+[`aibuzz-id 接入指南`](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md) §7.9 / §10.6。
+
 ID token 标准 claims + `phone_verified` + `name` / `picture`。Refresh token 不透明。
 
 **昵称是账号中心的唯一真源**（aibuzz-id README §22）。产品**不要**自己生成显示名 ——

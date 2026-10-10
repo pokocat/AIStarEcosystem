@@ -89,15 +89,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final IdentityTokenVerifier identityVerifier;
     private final IdentityProvisioningService provisioningService;
     private final IdentityProperties identityProps;
+    private final com.aistareco.aep.identity.IdentityPhoneSyncService phoneSync;
 
     public JwtAuthenticationFilter(JwtUtil jwtUtil,
                                     IdentityTokenVerifier identityVerifier,
                                     IdentityProvisioningService provisioningService,
-                                    IdentityProperties identityProps) {
+                                    IdentityProperties identityProps,
+                                    com.aistareco.aep.identity.IdentityPhoneSyncService phoneSync) {
         this.jwtUtil = jwtUtil;
         this.identityVerifier = identityVerifier;
         this.provisioningService = provisioningService;
         this.identityProps = identityProps;
+        this.phoneSync = phoneSync;
     }
 
     /**
@@ -229,6 +232,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             log.warn("[auth] 回填账号中心身份字段失败 uid={} localUserId={} err={}",
                     uid, user.getId(), e.toString());
         }
+
+        phoneSync.sync(user, jwt, token);
 
         // RS256 令牌只按账号类型派权限，永不映射后台角色。
         String role = user.getKind() == null

@@ -49,7 +49,7 @@ class IdentityOutboxTest {
         when(userRepo.findByIdentityUid(anyString()))
                 .thenAnswer(inv -> Optional.ofNullable(rows.get(inv.getArgument(0, String.class))));
         when(userRepo.save(any(AepUser.class))).thenAnswer(inv -> inv.getArgument(0));
-        handler = new IdentityOutboxHandler(userRepo);
+        handler = new IdentityOutboxHandler(userRepo, mock(IdentityPhoneSyncService.class));
     }
 
     private IdentityCenterClient.OutboxEvent event(long id, String type, String uid, String payloadJson) {
@@ -115,14 +115,22 @@ class IdentityOutboxTest {
     }
 
     @Test
-    void phoneChangedAndUnknownTypesAreIgnored() {
+    void phoneChangedClearsOldDisplayCopyAndUnknownTypeDoesNotWrite() {
         AepUser local = row("local-d", "uid-d");
+        local.setPhone("13900000001");
 
         handler.handle(event(5, "PHONE_CHANGED", "uid-d", "{\"phone\":\"138****0000\"}"));
         handler.handle(event(6, "SOMETHING_NEW", "uid-d", "{}"));
 
         assertThat(local.getStatus()).isEqualTo(AepUser.UserStatus.ACTIVE);
-        verify(userRepo, times(0)).save(any(AepUser.class));
+        assertThat(local.getPhone()).isNull();
+        verify(userRepo, times(1)).save(local);
+    }
+
+    @Test
+    void phoneChangedWithoutUidIsNotSilentlyAcknowledged() {
+        assertThatThrownBy(() -> handler.handle(event(9, "PHONE_CHANGED", null, "{}")))
+                .isInstanceOf(IdentityOutboxHandler.InvalidEventPayloadException.class);
     }
 
     // -------------------------------------------------------- 坏 payload 不静默确认

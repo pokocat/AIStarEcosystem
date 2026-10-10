@@ -42,9 +42,11 @@ public class IdentityOutboxHandler {
     }
 
     private final AepUserRepository userRepo;
+    private final IdentityPhoneSyncService phoneSync;
 
-    public IdentityOutboxHandler(AepUserRepository userRepo) {
+    public IdentityOutboxHandler(AepUserRepository userRepo, IdentityPhoneSyncService phoneSync) {
         this.userRepo = userRepo;
+        this.phoneSync = phoneSync;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -52,11 +54,22 @@ public class IdentityOutboxHandler {
         switch (event.eventType()) {
             case EVENT_USER_MERGED -> handleMerged(event);
             case EVENT_USER_CLOSED -> handleClosed(event);
-            case EVENT_PHONE_CHANGED -> log.debug("[identity] 忽略 PHONE_CHANGED（本地不存账号中心手机号） id={}",
-                    event.id());
+            case EVENT_PHONE_CHANGED -> handlePhoneChanged(event);
             default -> log.warn("[identity] 未知 outbox 事件类型，跳过 id={} type={}",
                     event.id(), event.eventType());
         }
+    }
+
+    private void handlePhoneChanged(IdentityCenterClient.OutboxEvent event) {
+        String uid = event.uid() != null ? event.uid() : text(event, "uid");
+        if (uid == null || uid.isBlank()) throw new InvalidEventPayloadException("PHONE_CHANGED 缺 uid id=" + event.id());
+        phoneSync.invalidate();
+        userRepo.findByIdentityUid(uid).ifPresent(user -> {
+            // 事件只有脱敏号码，不能拿它覆盖完整号码；先清掉旧展示副本，再由 /userinfo 补齐。
+            user.setPhone(null);
+            user.setUpdatedAt(Instant.now());
+            userRepo.save(user);
+        });
     }
 
     /**
@@ -74,6 +87,7 @@ public class IdentityOutboxHandler {
             throw new InvalidEventPayloadException(
                     "USER_MERGED payload 不合法 id=" + event.id() + " fromUid=" + fromUid + " toUid=" + toUid);
         }
+        phoneSync.invalidate();
         Optional<AepUser> fromLocal = userRepo.findByIdentityUid(fromUid);
         if (fromLocal.isEmpty()) {
             log.debug("[identity] USER_MERGED 无本地档案，忽略 id={} from={}", event.id(), fromUid);
@@ -83,6 +97,7 @@ public class IdentityOutboxHandler {
         Optional<AepUser> toLocal = userRepo.findByIdentityUid(toUid);
         if (toLocal.isEmpty()) {
             local.setIdentityUid(toUid);
+            local.setPhone(null);
             local.setUpdatedAt(Instant.now());
             userRepo.save(local);
             log.info("[identity] USER_MERGED 本地档案改指 localUserId={} {} -> {}",
@@ -90,6 +105,7 @@ public class IdentityOutboxHandler {
             return;
         }
         local.setIdentityUid(null);
+        local.setPhone(null);
         local.setStatus(AepUser.UserStatus.SUSPENDED);
         local.setUpdatedAt(Instant.now());
         userRepo.save(local);

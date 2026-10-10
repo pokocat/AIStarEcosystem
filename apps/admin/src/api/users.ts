@@ -4,16 +4,34 @@
 
 import type { AepUser } from "@/types/account";
 import type { Wallet } from "@/types/wallet";
-import { apiFetch, USE_MOCK, mockDelay } from "./_client";
+import { apiFetch, apiFetchPage, USE_MOCK, mockDelay } from "./_client";
+import type { PaginatedResponse } from "@/types/_shared";
 import { ACCOUNTS } from "@/mocks/accounts";
 
 export async function listUsers(
-  page = 0, size = 20, status?: string, kind?: string
+  page = 0, size = 20, status?: string, kind?: string, q?: string
 ): Promise<AepUser[]> {
   if (USE_MOCK) return mockDelay(ACCOUNTS);
   return apiFetch<AepUser[]>("/admin/users", {
-    query: { page, size, status, kind },
+    query: { page, size, status, kind, q },
   });
+}
+
+export async function listUsersPage(
+  query: { page?: number; size?: number; status?: string; kind?: string; q?: string },
+  signal?: AbortSignal,
+): Promise<PaginatedResponse<AepUser>> {
+  if (!USE_MOCK) return apiFetchPage<AepUser>("/admin/users", { query, signal });
+  const page = query.page ?? 0;
+  const limit = Math.min(Math.max(query.size ?? 20, 1), 100);
+  const q = (query.q ?? "").trim().toLowerCase();
+  const rows = ACCOUNTS.filter(u => (!query.status || u.status === query.status)
+    && (!query.kind || u.kind === query.kind)
+    && (!q || [u.id, u.username, u.displayName, u.phone, u.email].some(value => value?.toLowerCase().includes(q))));
+  return mockDelay({ success: true, data: rows.slice(page * limit, (page + 1) * limit), pagination: {
+    page, limit, total: rows.length, totalPages: Math.ceil(rows.length / limit),
+    hasNext: (page + 1) * limit < rows.length, hasPrev: page > 0,
+  } });
 }
 
 export async function getUser(id: string): Promise<AepUser> {
