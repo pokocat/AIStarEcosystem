@@ -242,6 +242,35 @@ test('reopening reconciles added/removed graph references with the saved draft, 
  expect(snapshot[0].metadata?.storageKey).toBe('old.mp4');expect(api.submit).not.toHaveBeenCalled();
 });
 
+test('a text wired into a video is visible and its current content is snapshotted in the submitted prompt',async()=>{
+ const text:CanvasNodeData={...node,id:'story',type:'text' as never,title:'动作设定',metadata:{content:'人物抬手、转身，镜头保持平稳。'}};
+ render(<Host initialNodes={[node,text]} initialConnections={[{id:'text-edge',fromNodeId:'story',toNodeId:'v'}]}/>);openVideo();
+ await screen.findByRole('button',{name:'移除文本引用 动作设定'});
+ await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ expect(api.submit.mock.calls[0][1].prompt).toContain('【引用文本：动作设定】\n人物抬手、转身，镜头保持平稳。');
+ expect(snapshot[0].metadata?.studio?.request?.prompt).toBe(api.submit.mock.calls[0][1].prompt);
+});
+
+test('removing a wired text from the composer removes its edge before generating',async()=>{
+ const text:CanvasNodeData={...node,id:'story',type:'text' as never,title:'动作设定',metadata:{content:'不再使用的动作'}};
+ render(<Host initialNodes={[node,text]} initialConnections={[{id:'text-edge',fromNodeId:'story',toNodeId:'v'}]}/>);openVideo();
+ fireEvent.click(await screen.findByRole('button',{name:'移除文本引用 动作设定'}));
+ await waitFor(()=>expect(connectionSnapshot).toEqual([]));
+ fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());expect(api.submit.mock.calls[0][1].prompt).not.toContain('不再使用的动作');
+});
+
+test('cutting an incoming media edge updates an open composer without submitting',async()=>{
+ const image:CanvasNodeData={...node,id:'frame',type:'image' as never,title:'首帧',metadata:{storageKey:'frame.png',content:'/frame.png'}};
+ render(<Host initialNodes={[node,image]} initialConnections={[{id:'frame-edge',fromNodeId:'frame',toNodeId:'v'}]}/>);openVideo();
+ await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft?.referenceNodeIds).toContain('frame'));
+ fireEvent(window,new CustomEvent('studio-reference-removed',{detail:{nodeId:'frame',targetId:'v'}}));
+ await waitFor(()=>expect(snapshot[0].metadata?.studio?.composerDraft?.referenceNodeIds).toEqual([]));
+ await waitFor(()=>expect(connectionSnapshot).toEqual([]));expect(api.submit).not.toHaveBeenCalled();
+});
+
 test.each(['image','video'])('a template %s node opens its execution step without opening or submitting the ordinary generator',async operation=>{
  const listener=vi.fn();window.addEventListener('studio-template-step',listener);
  try {

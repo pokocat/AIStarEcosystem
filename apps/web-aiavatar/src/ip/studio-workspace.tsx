@@ -45,6 +45,7 @@ import { StudioIpLibrary } from "./studio-ip-library";
 import { editableIpAssetRoles,ipAssetRole,ipAssetRoles } from "@/canvas-bridge/studio-ip-library";
 import { parseStudioEntry } from "./studio-entry";
 import { IpStudioApi } from "./api";
+import { studioLinkedNodes, studioLinkedText, withStudioLinkedText } from '@/canvas-bridge/studio-linked-inputs';
 
 type Props = { projectId: string; nodes: CanvasNodeData[]; connections:CanvasConnection[]; selectedNodeIds: Set<string>;
   setNodes: Dispatch<SetStateAction<CanvasNodeData[]>>; setConnections: Dispatch<SetStateAction<CanvasConnection[]>>;
@@ -327,10 +328,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       setVideoCount(selection.count);setDuration(selection.seconds);setRatio(selection.ratio);setVideoDraft(selection.draft);setReferenceIds(ids);
       setModel(node?.type===CanvasNodeType.Video?node.metadata?.model?endpointIdFor(node.metadata.model)||node.metadata.model:node.metadata?.studio?.request?.model:undefined);
     } else {
-      const connected=connectionsRef.current.filter(c=>c.toNodeId===node?.id).flatMap(c=>{
-        const ref=nodesRef.current.find(n=>n.id===c.fromNodeId);
-        return ref?.type===CanvasNodeType.Image&&ref.metadata?.storageKey?[ref.id]:[];
-      });
+      const connected=node?studioLinkedNodes(node.id,nodesRef.current,connectionsRef.current).filter(ref=>ref.type===CanvasNodeType.Image&&ref.metadata?.storageKey).map(ref=>ref.id):[];
       setReferenceIds([...new Set([...inheritedIds,...connected])]);
       if(action==="image") {
         const saved=node?.metadata?.studio?.request;
@@ -415,7 +413,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const origin = nodesRef.current.find(n => n.id === originId);
     if(studioGenerationPending(origin)){setTaskList(true);message.info("请等待或确认原任务，当前批次不会重复提交。");return;}
     let requestPrompt=prompt.trim();
-    try {if(operation==="script"&&!rewriteScope)requestPrompt=studioScriptInput(prompt,scriptMode,scriptSourceNodeId,nodesRef.current);if(requestPrompt.length>16000)throw new Error("创作要求与原故事合计超过 16000 字，请按分集创作");}
+    try {if(operation==="script"&&!rewriteScope)requestPrompt=studioScriptInput(prompt,scriptMode,scriptSourceNodeId,nodesRef.current);
+      requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined);
+      if(requestPrompt.length>16000)throw new Error("创作要求与引用文本合计超过 16000 字，请减少引用或按分集创作");}
     catch(e){message.error(e instanceof Error?e.message:"请检查改编素材");return;}
     setBusy(true);
     const submissionEpoch=epoch.current,session=panelSession.current;
@@ -693,6 +693,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(!director)return;const {nodeId,targetId}=(event as CustomEvent<{nodeId:string;targetId?:string}>).detail;
       if(targetId&&targetId!==originId)return;
       const node=nodesRef.current.find(n=>n.id===nodeId);
+      if(targetId&&node?.type===CanvasNodeType.Text)return;
       if(!node?.metadata?.storageKey||nodeId===originId||!(operation==="video"?[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio]:[CanvasNodeType.Image]).includes(node.type as CanvasNodeType)){message.info("请选择可用的参考素材");return;}
       if(operation==="video"&&nativeVideo&&videoDraft.mode!=="universal_reference_video"){
         if(node.type!==CanvasNodeType.Image){message.info("当前模式请选择图片；视频和音频需使用全能参考模式");return;}
@@ -700,9 +701,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       }else if(operation==="video"&&!nativeVideo)setReferenceIds([nodeId]);
       else setReferenceIds(ids=>[...new Set([...ids,nodeId])]);
     };
+    const removed=(event:Event)=>{
+      const {nodeId,targetId}=(event as CustomEvent<{nodeId:string;targetId:string}>).detail;if(!director||targetId!==originId)return;
+      setReferenceIds(ids=>ids.filter(id=>id!==nodeId));
+      setVideoDraft(draft=>({...draft,firstId:draft.firstId===nodeId?undefined:draft.firstId,lastId:draft.lastId===nodeId?undefined:draft.lastId}));
+    };
     const dismiss=()=>{setScriptPreviewId(undefined);if(pickingReferences)setPickingReferences(false);else if(director)void closeDirector();};
-    window.addEventListener("studio-reference-selected",picked);window.addEventListener("studio-dismiss-composer",dismiss);
-    return()=>{window.removeEventListener("studio-reference-selected",picked);window.removeEventListener("studio-dismiss-composer",dismiss);};
+    window.addEventListener("studio-reference-selected",picked);window.addEventListener("studio-reference-removed",removed);window.addEventListener("studio-dismiss-composer",dismiss);
+    return()=>{window.removeEventListener("studio-reference-selected",picked);window.removeEventListener("studio-reference-removed",removed);window.removeEventListener("studio-dismiss-composer",dismiss);};
   },[director,pickingReferences,originId,operation,nativeVideo,videoDraft,busy,directorSaving]);
   const videoAssets=studioVideoReferenceIds(videoDraft,referenceIds)
     .map(id=>{const n=nodes.find(node=>node.id===id);return {storageKey:n?.metadata?.storageKey,mediaType:n?.type===CanvasNodeType.Video?"video" as const:n?.type===CanvasNodeType.Audio?"audio" as const:"image" as const};});
@@ -808,6 +814,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     </section>}
     <StudioFloatingPanel title={labels[operation]} anchorId={originId} open={director&&selectedNodeIds.size<=1&&!(assetPicker&&libraryTarget.kind==="director")} onClose={() => void closeDirector()} closable={!directorSaving&&!busy} className="studio-node-composer" footer={<>{(operation==="image"||operation==="video") && !capabilities?.mock && <label>模型<Select aria-label="生成模型" value={model||chosenModel?.endpointId} onChange={changeGenerationModel} options={candidates.map(m=>({value:m.endpointId,label:m.name}))} placeholder="尚未配置模型"/></label>}<div className="studio-creator-footer"><p className="studio-quote">{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":quote==null?"模型未配置，暂不可生成":`${quote} 积分${operation==="video"?` · ${videoCount} 条，每条 ${videoUnitQuote} 积分`:""}`}</p>{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?"原任务正在生成，请等待结果。":busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" loading={busy||directorSaving} disabled={!prompt.trim()||!capabilities||removedVideoMention||!!legacyVideoError||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||prompt.length>16000||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
       <div className="studio-composer-references"><Button aria-pressed={pickingReferences} onClick={()=>setPickingReferences(value=>!value)}>{pickingReferences?"完成参考选择":"参考"}</Button><Button ref={directorLibraryButton} onClick={()=>openIpLibrary({kind:"director"})}>IP 人物库</Button>
+        {originId&&studioLinkedNodes(originId,nodes,connections).filter(n=>studioLinkedText(n).trim()).map(n=><span className="studio-reference-chip" key={`text-${n.id}`}><FileText size={14}/><span title={studioLinkedText(n)}>{n.title}</span><button aria-label={`移除文本引用 ${n.title}`} onClick={()=>setConnections(edges=>edges.filter(c=>c.toNodeId!==originId||c.fromNodeId!==n.id))}><X size={14}/></button></span>)}
         {(operation==="video"?videoPromptReferences.map(r=>r.nodeId):referenceIds).map(id=>{const node=nodes.find(n=>n.id===id);return node?<span className="studio-reference-chip" key={id}>{node.type===CanvasNodeType.Image&&node.metadata?.content&&<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>}<span>{operation==="video"?`${videoPromptReferences.find(r=>r.nodeId===id)?.label||"未使用"} · ${node.title}`:node.title}</span><button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>removeComposerReference(id)}><X size={13}/></button></span>:null;})}
       </div>
       <div className="studio-composer-node-actions" data-operation={operation}>{contextualActions}</div>

@@ -1,9 +1,9 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
-  useReactFlow, useViewport, useNodesInitialized, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
+  BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, useNodesInitialized, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
 import { App, Button, Dropdown, Input, Modal } from 'antd';
-import { ArrowLeft, Copy, Ellipsis, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, MousePointer2, Music2, Redo2, Search, Trash2, Undo2, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Copy, Ellipsis, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, MousePointer2, Music2, Redo2, Scissors, Search, Trash2, Undo2, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
@@ -26,19 +26,21 @@ import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-pa
 import { StudioWorkspace } from './studio-workspace';
 import { StudioFlowImageTools } from './studio-flow-image-tools';
 import { studioTaskLabel, studioTaskQueued, studioQueueNotice } from '@/canvas-bridge/studio-task-status';
+import { createStudioLinkedNode } from '@/canvas-bridge/studio-linked-inputs';
+import { StudioConnectionCreateMenu, type PendingStudioConnection } from './studio-connection-create-menu';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
 function FlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const node = data.document, meta = node.metadata, Icon = icons[node.type as keyof typeof icons] || FileText;
   if (node.type === CanvasNodeType.Group) return <article className={`studio-flow-group${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · 分组`}>
     <NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>
-    <header className="studio-flow-drag"><Group size={15}/><span>{node.title}</span></header><Handle type="source" position={Position.Right}/>
+    <header className="studio-flow-drag"><Group size={15}/><span>{node.title}</span></header><Handle type="source" position={Position.Right} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
   </article>;
   const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio;
   const edit = () => { const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     <NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>
-    <Handle type="target" position={Position.Left}/><Handle type="source" position={Position.Right}/>
+    <Handle type="target" position={Position.Left} title="连接参考节点" aria-label="连接参考节点"/><Handle type="source" position={Position.Right} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
     <header className="studio-flow-drag"><Icon size={15}/><span>{node.title}</span>{meta?.status === 'loading' && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
     <div className={`studio-flow-media ${studioText ? 'studio-flow-business' : ''}`}>
       {studioText ? <div className="nodrag nopan nowheel"><StudioNodeContent node={node}/></div> : node.type === CanvasNodeType.Image && meta?.content ?
@@ -53,6 +55,17 @@ function FlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   </article>;
 }
 const nodeTypes = { studio: FlowCard };
+function ReferenceEdge(props:EdgeProps) {
+  const flow=useReactFlow(),[hover,setHover]=useState(false);
+  const [path,x,y]=getBezierPath(props);
+  return <g onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
+    <BaseEdge id={props.id} path={path} style={props.style} interactionWidth={24}/>
+    <EdgeLabelRenderer><button type="button" className={`studio-flow-cut-edge nodrag nopan${hover||props.selected?' is-visible':''}`}
+      style={{transform:`translate(-50%, -50%) translate(${x}px,${y}px)`}} aria-label="删除引用连线" title="删除引用连线"
+      onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)} onClick={()=>void flow.deleteElements({edges:[{id:props.id}]})}><Scissors size={16}/></button></EdgeLabelRenderer>
+  </g>;
+}
+const edgeTypes={reference:ReferenceEdge};
 type Snapshot = { nodes: CanvasNodeData[]; connections: CanvasConnection[] };
 
 function FlowWorkspace({ projectId }: { projectId: string }) {
@@ -65,6 +78,9 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const [referencePick,setReferencePick]=useState(false),referenceOrigin=useRef<string|undefined>(undefined);
   const [pendingFocus, setPendingFocus] = useState<string>(), [selectedEdges, setSelectedEdges] = useState(new Set<string>());
   const [context, setContext] = useState<{ x: number; y: number; nodeId?: string }>();
+  const [pendingConnection,setPendingConnection]=useState<PendingStudioConnection>();
+  const [pendingCreator,setPendingCreator]=useState<{id:string;sourceId:string;operation:string}>();
+  const closeConnectionMenu=useCallback(()=>setPendingConnection(undefined),[]);
   const initialized = useNodesInitialized();
   const [reading, setReading] = useState(false), [historyRevision, refreshHistory] = useState(0);
   const history = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
@@ -76,7 +92,10 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   }, [current, projectId]);
   const setConnections: Dispatch<SetStateAction<CanvasConnection[]>> = useCallback(update => {
     const old = current().connections; const next = typeof update === 'function' ? update(old) : update;
-    if (next !== old) useCanvasStore.getState().updateProject(projectId, { connections: next });
+    if (next !== old) {
+      useCanvasStore.getState().updateProject(projectId, { connections: next });
+      for(const removed of old.filter(c=>!next.some(n=>n.fromNodeId===c.fromNodeId&&n.toNodeId===c.toNodeId)))window.dispatchEvent(new CustomEvent('studio-reference-removed',{detail:{nodeId:removed.fromNodeId,targetId:removed.toNodeId}}));
+    }
   }, [current, projectId]);
   useTemplateProjection(projectId, setNodes);
   useFlowLegacyTasks(projectId, setNodes);
@@ -99,6 +118,39 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     refreshHistory(v => v + 1);
   }, [current, projectId]);
   const focusNode = useCallback((id: string) => { setSelected(new Set([id])); setSelectedEdges(new Set()); setPendingFocus(id); }, []);
+  const connectReference=(source:string,target:string)=>{
+    const p=current();if(source===target||!p.nodes.some(n=>n.id===source)||!p.nodes.some(n=>n.id===target)||p.connections.some(c=>c.fromNodeId===source&&c.toNodeId===target))return;
+    checkpoint();setConnections(old=>[...old,{id:nanoid(),fromNodeId:source,toNodeId:target}]);
+    window.dispatchEvent(new CustomEvent('studio-reference-selected',{detail:{nodeId:source,targetId:target}}));
+  };
+  useEffect(()=>{
+    if(!pendingCreator||!project?.nodes.some(n=>n.id===pendingCreator.id))return;
+    const node=project.nodes.find(n=>n.id===pendingCreator.id)!,stage=document.querySelector('.studio-flow-stage')?.getBoundingClientRect();
+    if(stage&&(node.position.x*viewport.zoom+viewport.x<76||(node.position.x+node.width)*viewport.zoom+viewport.x>stage.width-16||node.position.y*viewport.zoom+viewport.y<72||(node.position.y+node.height)*viewport.zoom+viewport.y>stage.height-68))
+      void flow.fitView({nodes:[{id:pendingCreator.sourceId},{id:node.id}],padding:.2,maxZoom:viewport.zoom,duration:260});
+    // Dispatch only after the child workspace receives both the node and its reference edge.
+    dispatchStudioCommand(pendingCreator.operation,pendingCreator.id);setPendingCreator(undefined);
+  },[pendingCreator,project?.nodes,project?.connections,flow,viewport]);
+  const finishConnection:OnConnectEnd<StudioFlowNode>=(event,state)=>{
+    if(state.isValid||state.fromHandle?.type!=='source'||!state.fromNode)return;
+    const point='changedTouches' in event?event.changedTouches[0]:event;
+    if(!point)return;
+    const under=document.elementFromPoint(point.clientX,point.clientY);
+    const target=under?.closest('.react-flow__node')?.getAttribute('data-id');
+    if(target){connectReference(state.fromNode.id,target);return;}
+    if(state.toNode)return;
+    if(!under?.closest('.react-flow__pane'))return;
+    setContext(undefined);setSelected(new Set([state.fromNode.id]));
+    setPendingConnection({sourceId:state.fromNode.id,screen:{x:point.clientX,y:point.clientY},position:flow.screenToFlowPosition({x:point.clientX,y:point.clientY})});
+  };
+  const createReference=(type:CanvasNodeType.Text|CanvasNodeType.Image|CanvasNodeType.Video)=>{
+    if(!pendingConnection)return;const p=current();
+    const result=createStudioLinkedNode(pendingConnection.sourceId,type,pendingConnection.position,p.nodes);
+    if(!result){closeConnectionMenu();return;}checkpoint();
+    useCanvasStore.getState().updateProject(projectId,{nodes:[...p.nodes,result.node],connections:[...p.connections,{id:nanoid(),fromNodeId:pendingConnection.sourceId,toNodeId:result.node.id}]});
+    setSelected(new Set([result.node.id]));setSelectedEdges(new Set());closeConnectionMenu();
+    setPendingCreator({id:result.node.id,sourceId:pendingConnection.sourceId,operation:result.operation});
+  };
   useEffect(() => {
     if (!pendingFocus || !initialized || !flow.viewportInitialized) return;
     const node = project?.nodes.find(n => n.id === pendingFocus); if (!node) return;
@@ -146,9 +198,9 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     window.addEventListener('studio-reference-mode',referenceMode);
     const command = (e: Event) => { const detail = (e as CustomEvent<{ action: string; nodeId?: string }>).detail; setContext(undefined); setRenameId(undefined); if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); } else setTextId(undefined); };
     const keydown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"],.ant-modal,.ant-drawer,.studio-floating-panel')) return;
+      if ((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"],.ant-modal,.ant-drawer,.studio-floating-panel,.studio-flow-reference-menu')) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (e.code === 'Space') { e.preventDefault(); setHand(true); }
+      if (e.code === 'Space') { if((e.target as HTMLElement)?.closest('button'))return;e.preventDefault(); setHand(true); }
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); travel(e.shiftKey ? 'future' : 'past'); }
       if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); copy(); }
       if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); paste(); }
@@ -157,7 +209,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       if (mod && e.key.toLowerCase() === 'g') { e.preventDefault(); group(e.shiftKey); }
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void saveStudioDocument(projectId).catch(error => message.error(error.message)); }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
-      if (e.key === 'Escape') { setSelected(new Set()); setSelectedEdges(new Set()); setFind(false); setTextId(undefined); setContext(undefined); }
+      if (e.key === 'Escape') { setSelected(new Set()); setSelectedEdges(new Set()); setFind(false); setTextId(undefined); setContext(undefined); setPendingConnection(undefined); }
     };
     const keyup = (e: KeyboardEvent) => { if (e.code === 'Space') setHand(false); };
     const blur = () => setHand(false);
@@ -174,7 +226,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     finally { setReading(false); }
   };
   const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected), [project?.nodes, selected]);
-  const graphEdges = useMemo(() => flowEdges(project?.connections || []).map(e => ({ ...e, selected: selectedEdges.has(e.id) })), [project?.connections, selectedEdges]);
+  const graphEdges = useMemo(() => flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })), [project?.connections, selectedEdges]);
   const changeNodes = useCallback((changes: NodeChange<StudioFlowNode>[]) => {
     setNodes(old => changeFlowNodes(old, changes));
     const selection = changes.filter(c => c.type === 'select');
@@ -209,9 +261,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       <HostActionsSlot/>
     </header>
     <div className={`studio-flow-stage${referencePick?' is-picking-reference':''}`} data-studio-floating-root>
-      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes}
+      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         onNodesChange={changeNodes} onEdgesChange={changeEdges} onNodeDragStart={checkpoint}
-        onConnect={c => { if (!c.source || !c.target || c.source === c.target || current().connections.some(e => e.fromNodeId === c.source && e.toNodeId === c.target)) return; checkpoint(); setConnections(old => [...old, { id: nanoid(), fromNodeId: c.source, toNodeId: c.target }]); window.dispatchEvent(new CustomEvent("studio-reference-selected",{detail:{nodeId:c.source,targetId:c.target}})); }}
+        onConnectStart={()=>{closeConnectionMenu();setContext(undefined);}} onConnectEnd={finishConnection}
+        isValidConnection={c=>c.source!==c.target&&!current().connections.some(edge=>edge.fromNodeId===c.source&&edge.toNodeId===c.target)}
+        onConnect={c => {if(c.source&&c.target)connectReference(c.source,c.target);}}
         onNodeClick={(event,n)=>{
           if(referencePick){if(referenceOrigin.current)setSelected(new Set([referenceOrigin.current]));window.dispatchEvent(new CustomEvent('studio-reference-selected',{detail:{nodeId:n.id}}));return;}
           if(hand||event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button,a,input,textarea,audio,video,.react-flow__handle'))return;
@@ -223,14 +277,15 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         onPaneClick={event => { if(event.detail===2) {setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY});} else {setContext(undefined);if(!referencePick)setTextId(undefined);window.dispatchEvent(new Event('studio-dismiss-composer'));} }}
         onPaneContextMenu={event => { event.preventDefault();setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY}); }}
         defaultViewport={{ x: project.viewport.x, y: project.viewport.y, zoom: project.viewport.k }}
-        onMoveEnd={(_, v) => useCanvasStore.getState().updateProject(projectId, { viewport: { x: v.x, y: v.y, k: v.zoom } })}
+        onMoveStart={closeConnectionMenu} onMoveEnd={(_, v) => useCanvasStore.getState().updateProject(projectId, { viewport: { x: v.x, y: v.y, k: v.zoom } })}
         panOnDrag={hand ? true : [1, 2]} panOnScroll selectionOnDrag={!hand} selectionMode={SelectionMode.Partial}
         zoomOnScroll={false} zoomOnPinch zoomOnDoubleClick={false} minZoom={.15} maxZoom={2.5} deleteKeyCode={null}
-        multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null} snapToGrid snapGrid={[8, 8]}
+        multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null} panActivationKeyCode={null} snapToGrid snapGrid={[8, 8]}
         nodesDraggable={!hand} defaultEdgeOptions={{ style: { stroke: 'var(--ink-3)', strokeWidth: 1.5 } }}>
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--line-3)"/>
         {minimap && <MiniMap pannable zoomable position="bottom-right" nodeColor="var(--paper-2)" maskColor="var(--canvas-mask)"/>}
       </ReactFlow>
+      {pendingConnection&&project.nodes.find(n=>n.id===pendingConnection.sourceId)&&<StudioConnectionCreateMenu pending={pendingConnection} source={project.nodes.find(n=>n.id===pendingConnection.sourceId)!} viewport={viewport} onClose={closeConnectionMenu} onCreate={createReference}/>}
       <nav className="studio-flow-tools" aria-label="画布工具">
         <button title="选择工具" aria-label="选择工具" aria-pressed={!hand} onClick={() => setHand(false)}><MousePointer2 size={19}/></button>
         <button title="拖动画布" aria-label="拖动画布" aria-pressed={hand} onClick={() => setHand(v => !v)}><Hand size={19}/></button><hr/>
