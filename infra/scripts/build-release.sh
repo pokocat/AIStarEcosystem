@@ -131,6 +131,7 @@ export_auth_env() {
 }
 
 build_server() {
+  "$REPO_ROOT/infra/scripts/prepare-platform-sdk.sh"
   log "building server jar"
   (cd apps/server && ./mvnw -DskipTests package)
   local jar="apps/server/target/ai-star-eco-server-1.0.0.jar"

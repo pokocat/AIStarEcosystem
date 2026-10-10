@@ -66,13 +66,13 @@ class StudioSpeechServiceTest {
     }
     @Test void supplierPricingFreezesBudgetAndCannotFallbackToOldFlatPrice() throws Exception {
         var pricing=mock(StudioPointPricing.class);org.springframework.test.util.ReflectionTestUtils.setField(service,"pricing",pricing);
-        when(pricing.enabled()).thenReturn(true);
-        when(pricing.find("tts")).thenReturn(new StudioPointPricing.Rate(java.math.BigDecimal.ONE,java.math.BigDecimal.ONE,new java.math.BigDecimal("1.5")));
+        when(pricing.speechEnabled()).thenReturn(true);
+        when(pricing.findSpeech("tts")).thenReturn(new StudioPointPricing.Rate(java.math.BigDecimal.ONE,java.math.BigDecimal.ONE,new java.math.BigDecimal("1.5")));
         var approved=new SpeechRequest("key","node","tts","欢迎。","Vivian",null,20L);
         service.submit("owner","p",approved);assertEquals(20,saved.get().getCost());
         assertEquals(1.5,new ObjectMapper().readTree(saved.get().getInputJson()).path("_exec").path("pointPricing").path("markupMultiplier").asDouble());
         verify(credits).hold(eq("owner"),eq(20L),anyString(),anyString(),anyString());
-        reset(pricing);when(pricing.enabled()).thenReturn(true);
+        reset(pricing);when(pricing.speechEnabled()).thenReturn(true);
         service.submit("owner","p",approved); // replay does not consult a new price
         assertEquals("STUDIO_SPEECH_PRICE_NOT_CONFIGURED",assertThrows(BusinessException.class,()->service.submit("owner","p",new SpeechRequest("other","node","tts","欢迎。","Vivian",null,8L))).getCode());
         verify(credits,times(1)).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
