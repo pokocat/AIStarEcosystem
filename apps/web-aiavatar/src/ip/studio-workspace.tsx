@@ -18,7 +18,6 @@ import { readRun, cancelRun, fetchModels, fetchStudioVideoModels, type IpModels 
 import { studioQueueNotice, studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection } from "@/canvas-bridge/studio-video";
-import { buildNodeGenerationInputs } from "@/canvas/components/canvas/canvas-node-generation";
 import { StudioVideoControls,type StudioVideoDraft } from "./studio-video-controls";
 import { studioNodeCommand } from './studio-node-command';
 import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
@@ -162,7 +161,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     .sort((a,b) => (a.metadata?.studio?.order || 0) - (b.metadata?.studio?.order || 0));
   const clips=allClips.filter(n=>episodeFilter==="all"||(n.metadata?.studio?.episodeNo||1)===episodeFilter);
   const work = nodes.filter(n => n.metadata?.studio?.kind === "work"&&!n.metadata.studio.workDraft&&(episodeFilter==="all"||n.metadata.studio.episodeNo===episodeFilter||n.metadata.studio.episodeNo===undefined&&new Set(allShots.map(s=>s.metadata?.studio?.episodeNo||s.metadata?.studio?.shot?.episodeNo||1)).size<=1));
-  const referenceOptions = nodes.filter(n => n.type === CanvasNodeType.Image && n.metadata?.storageKey || n.metadata?.studio?.adoption || operation==="video"&&referenceIds.includes(n.id));
+  const referenceOptions = nodes.filter(n => n.type === CanvasNodeType.Image && n.metadata?.storageKey || n.metadata?.studio?.adoption || (operation==="video"||n.type===CanvasNodeType.Image)&&referenceIds.includes(n.id));
   const patch = useCallback((id: string, update: (node: CanvasNodeData) => CanvasNodeData) => setNodes(current => current.map(n => n.id === id ? update(n) : n)), [setNodes]);
   const workEpisode=episodeFilter==='all'?undefined:episodeFilter;
   const workDraft=studioWorkDraft(nodes,workEpisode);
@@ -323,13 +322,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       return match ? [match.id] : [];
     });
     if(action==="video") {
-      const inputs=node?.type===CanvasNodeType.Video?buildNodeGenerationInputs(node.id,nodesRef.current,connectionsRef.current):undefined;
-      const ids=inputs?[...new Set(inputs.flatMap(input=>input.type==="group"?input.children:[input]).filter(input=>input.type!=="text").map(input=>input.nodeId))]:inheritedIds;
+      // Empty upstream slots still own their edges; opening an editor must not erase the workflow.
+      const inputs=node?.type===CanvasNodeType.Video?studioLinkedNodes(node.id,nodesRef.current,connectionsRef.current):undefined;
+      const ids=inputs?inputs.filter(input=>[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(input.type as CanvasNodeType)).map(input=>input.id):inheritedIds;
       const selection=studioVideoNodeSelection(node,nodesRef.current,ids);
       setVideoCount(selection.count);setDuration(selection.seconds);setRatio(selection.ratio);setVideoDraft(selection.draft);setReferenceIds(ids);
       setModel(node?.type===CanvasNodeType.Video?node.metadata?.model?endpointIdFor(node.metadata.model)||node.metadata.model:node.metadata?.studio?.request?.model:undefined);
     } else {
-      const connected=node?studioLinkedNodes(node.id,nodesRef.current,connectionsRef.current).filter(ref=>ref.type===CanvasNodeType.Image&&ref.metadata?.storageKey).map(ref=>ref.id):[];
+      const connected=node?studioLinkedNodes(node.id,nodesRef.current,connectionsRef.current).filter(ref=>ref.type===CanvasNodeType.Image).map(ref=>ref.id):[];
       setReferenceIds([...new Set([...inheritedIds,...connected])]);
       if(action==="image") {
         const saved=node?.metadata?.studio?.request;
@@ -346,7 +346,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       setEpisodeNo(draft.episodeNo);setRewriteScope(draft.rewriteScope);setScriptMode(draft.scriptMode||node?.metadata?.studio?.scriptMode||"original");setScriptSourceNodeId(draft.scriptSourceNodeId);
       setPrompt(draft.prompt);setRatio(draft.aspectRatio);setModel(draft.model);setDuration(draft.durationSec);setSettings(draft.settings);
       const incoming=connectionsRef.current.filter(c=>c.toNodeId===node?.id).flatMap(c=>{
-        const ref=nodesRef.current.find(n=>n.id===c.fromNodeId);return ref?.metadata?.storageKey&&[CanvasNodeType.Image,...(action==="video"?[CanvasNodeType.Video,CanvasNodeType.Audio]:[])].includes(ref.type as CanvasNodeType)?[ref.id]:[];
+        const ref=nodesRef.current.find(n=>n.id===c.fromNodeId);return ref&&[CanvasNodeType.Image,...(action==="video"?[CanvasNodeType.Video,CanvasNodeType.Audio]:[])].includes(ref.type as CanvasNodeType)?[ref.id]:[];
       });
       const disconnected=new Set((draft.connectedReferenceNodeIds||[]).filter(id=>!incoming.includes(id)));
       setReferenceIds([...new Set([...draft.referenceNodeIds.filter(id=>!disconnected.has(id)&&nodesRef.current.some(n=>n.id===id)),...incoming])]);
@@ -356,7 +356,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   }, [onClosePanel,projectId,addNode]);
   useEffect(()=>{
     if(!director||!originId)return;
-    const connectedReferenceNodeIds=connectionsRef.current.filter(c=>c.toNodeId===originId&&nodesRef.current.find(n=>n.id===c.fromNodeId)?.metadata?.storageKey).map(c=>c.fromNodeId);
+    const connectedReferenceNodeIds=connectionsRef.current.filter(c=>c.toNodeId===originId&&nodesRef.current.some(n=>n.id===c.fromNodeId&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(n.type as CanvasNodeType))).map(c=>c.fromNodeId);
     const draft={operation,prompt,referenceNodeIds:referenceIds,connectedReferenceNodeIds,aspectRatio:ratio,model,count:operation==="video"?videoCount:imageCount,durationSec:duration,settings,video:videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId};
     patch(originId,n=>({...n,metadata:{...n.metadata,studio:{kind:n.metadata?.studio?.kind||"shot",...n.metadata?.studio,composerDraft:draft}}}));
   },[director,originId,operation,prompt,referenceIds,ratio,model,videoCount,imageCount,duration,settings,videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId,patch]);
@@ -818,8 +818,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     </section>}
     <StudioFloatingPanel title={labels[operation]} anchorId={originId} open={director&&selectedNodeIds.size<=1&&!(assetPicker&&libraryTarget.kind==="director")} onClose={() => void closeDirector()} closable={!directorSaving&&!busy} className="studio-node-composer" footer={<>{(operation==="image"||operation==="video") && !capabilities?.mock && <label>模型<Select aria-label="生成模型" value={model||chosenModel?.endpointId} onChange={changeGenerationModel} options={candidates.map(m=>({value:m.endpointId,label:m.name}))} placeholder="尚未配置模型"/></label>}<div className="studio-creator-footer"><p className="studio-quote">{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":quote==null?"模型未配置，暂不可生成":`${quote} 积分${operation==="video"?` · ${videoCount} 条，每条 ${videoUnitQuote} 积分`:""}`}</p>{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?"原任务正在生成，请等待结果。":busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" loading={busy||directorSaving} disabled={!prompt.trim()||!capabilities||removedVideoMention||!!legacyVideoError||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||prompt.length>16000||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
       <div className="studio-composer-references"><Button aria-pressed={pickingReferences} onClick={()=>setPickingReferences(value=>!value)}>{pickingReferences?"完成参考选择":"参考"}</Button><Button ref={directorLibraryButton} onClick={()=>openIpLibrary({kind:"director"})}>IP 人物库</Button>
-        {originId&&studioLinkedNodes(originId,nodes,connections).filter(n=>studioLinkedText(n).trim()).map(n=><span className="studio-reference-chip" key={`text-${n.id}`}><FileText size={14}/><span title={studioLinkedText(n)}>{n.title}</span><button aria-label={`移除文本引用 ${n.title}`} onClick={()=>setConnections(edges=>edges.filter(c=>c.toNodeId!==originId||c.fromNodeId!==n.id))}><X size={14}/></button></span>)}
-        {(operation==="video"?videoPromptReferences.map(r=>r.nodeId):referenceIds).map(id=>{const node=nodes.find(n=>n.id===id);return node?<span className="studio-reference-chip" key={id}>{node.type===CanvasNodeType.Image&&node.metadata?.content&&<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>}<span>{operation==="video"?`${videoPromptReferences.find(r=>r.nodeId===id)?.label||"未使用"} · ${node.title}`:node.title}</span><button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>removeComposerReference(id)}><X size={13}/></button></span>:null;})}
+        {originId&&studioLinkedNodes(originId,nodes,connections).filter(n=>studioLinkedText(n).trim()||n.type===CanvasNodeType.Text&&n.metadata?.studio?.templateInput).map(n=><span className="studio-reference-chip" key={`text-${n.id}`}><FileText size={14}/><span title={studioLinkedText(n)}>{n.title}</span><button aria-label={`移除文本引用 ${n.title}`} onClick={()=>setConnections(edges=>edges.filter(c=>c.toNodeId!==originId||c.fromNodeId!==n.id))}><X size={14}/></button></span>)}
+        {(operation==="video"?studioVideoReferenceIds(videoDraft,referenceIds):referenceIds).map(id=>{const node=nodes.find(n=>n.id===id);return node?<span className="studio-reference-chip" key={id}>{node.type===CanvasNodeType.Image&&node.metadata?.content&&<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>}<span>{operation==="video"?`${videoPromptReferences.find(r=>r.nodeId===id)?.label||"待补充"} · ${node.title}`:node.title}</span><button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>removeComposerReference(id)}><X size={13}/></button></span>:null;})}
       </div>
       <div className="studio-composer-node-actions" data-operation={operation}>{contextualActions}</div>
       {pickingReferences&&<p className="studio-reference-pick-note" role="status">点击画布素材添加参考，完成后点击“完成参考选择”。</p>}

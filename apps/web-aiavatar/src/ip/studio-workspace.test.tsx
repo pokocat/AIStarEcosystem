@@ -492,3 +492,17 @@ test('task utility stays visible when a node composer opens',async()=>{
   expect(input.getAttribute('data-references')).toBe(JSON.stringify([['r2','@图1']]));
   expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(true);expect(api.submit).not.toHaveBeenCalled();
  });
+
+test('opening and reopening a template draft keeps empty upstream slots and checks them before submission',async()=>{
+ const empty:CanvasNodeData={...node,id:'frame',type:'image' as never,title:'人物参考',metadata:{status:'idle',studio:{templateInput:{required:true,label:'人物参考'}}}};
+ const brief:CanvasNodeData={...node,id:'brief',type:'text' as never,title:'创作要求输入',metadata:{content:'',studio:{templateInput:{required:true,label:'创作要求输入'}}}};
+ const draft={...node,metadata:{prompt:'保持同一人物',status:'idle',studio:{kind:'shot' as const}}};
+ render(<Host initialNodes={[draft,empty,brief]} initialConnections={[{id:'frame-edge',fromNodeId:'frame',toNodeId:'v'},{id:'brief-edge',fromNodeId:'brief',toNodeId:'v'}]}/>);openVideo();
+ await screen.findByRole('button',{name:'移除参考 人物参考'});await screen.findByRole('button',{name:'移除文本引用 创作要求输入'});
+ await waitFor(()=>expect(connectionSnapshot).toHaveLength(2));
+ fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先为「人物参考」添加或生成图片'));expect(api.submit).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));await waitFor(()=>expect(screen.queryByRole('dialog',{name:'生成视频'})).toBeNull());openVideo();
+ await screen.findByRole('button',{name:'移除参考 人物参考'});expect(connectionSnapshot).toHaveLength(2);
+ fireEvent.click(screen.getByRole('button',{name:'移除参考 人物参考'}));await waitFor(()=>expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['brief']));
+ fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先填写「创作要求输入」'));expect(api.submit).not.toHaveBeenCalled();
+});
