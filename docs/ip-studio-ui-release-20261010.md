@@ -59,3 +59,12 @@ Chrome 登录态复查 `/ips`、`/assets`、`/me` 及 `/studio#/membership`：�
 本次修复 IP 管理顶栏周围旧蓝灰底色；三页桌面统一暖灰背景、12px 外边距、26px 内容内边距、32px 衬线标题及 13px 卡片圆角。素材库标题与正文归于同一白色内容面，账号工具保留侧栏和隔离层级。手机 IP 管理补回共享底部导航及底部安全区，资产项选中。
 
 提交前 workspace/admin typecheck、Java 17 后端离线编译、API 契约门通过；IP 管理与外壳/菜单定向测试 3 文件 / 21 项通过。API 门仍报告既有其他产品未接 handler 警告，路径与方法检查通过。本轮仅准备发布 web-aiavatar；正式发布标识和修复后浏览器验收追加于下方。
+
+### 修复后发布与线上验收 · 17:53 UTC
+
+- 界面提交 `f94f024cb` 已推送；干净工作树制品 `20261010175223-4d9764b0`（构建时另一个会话仅追加了账号中心发布文档，manifest SHA `4d9764b0e97da92b19a60350fea539c2c1db51a4`，没有额外前端代码）。仅部署 `web-aiavatar`，保留生产 OIDC、关闭 mock/开发登录。
+- 发布包本地与远端 SHA256 同为 `6ed4e9d78839a756029acb200f51ce23b5a5450857380523d38258f4271e6287`；远端 BUILD_ID 与制品同为 `UsLMW-Sri_f_o7eoAHFyA`；服务 `active`、`NRestarts=0`，17:53:14 UTC 启动，`verify.sh` 全绿。
+- Chrome 登录态 1318×841 三页实际计算背景均为 `rgb(240,239,236)`、标题 32px、水平内容内边距 26px；IP 管理与素材库的菜单六项命中通过。960×650 的我的/会员子页菜单命中通过，IP 详情始于 y=84、顶栏止于 y=72，没有被顶栏盖住。上述页面均无横向溢出。
+- 960×300 会员页菜单底部 y=275，内部滚动 104px 后末项可命中；Escape、外部点击和页面跳转收起通过。375×812 手机 IP 管理五项底部导航均可命中、底部预留 70px、无横向溢出。手机检查为 Chrome 视口模拟，不是实体设备验收；结束后恢复原视口。
+- 截图证据：`.studio-e2e/release-20261010-management/` 的 `ip-management-menu.jpg`、`assets-menu.jpg`、`me.jpg`、`membership-menu-960.jpg` 与 `ip-mobile.jpg`。未创建/编辑资产或画布，没有生成、充值、退出或持久化形态切换。
+- 独立回滚备份：`/opt/ai-star-eco/backups/20261010-studio-management-f94f024c/web-aiavatar.tar.gz`，目录 0700、文件 0600、gzip 校验通过，SHA256 `3ab689fda4a0e310fc87be58ecc4bfb057cdcdd97cad846c147244220c8a7c72`。
