@@ -11,6 +11,7 @@ import "../styles/studio-home.css";
 // Load graph styles before its dynamic chunk mounts, including after a development hot update.
 import "@xyflow/react/dist/style.css";
 import "../styles/studio-flow.css";
+import "../styles/account-workspace.css";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 

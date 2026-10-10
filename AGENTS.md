@@ -979,3 +979,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 连线是生成输入，不是装饰：从右侧输出端口拖到空白处，保留预览线并出现“引用该节点生成”菜单；文本/图片/视频新草稿与输入连接必须一次写入文档，再打开对应创作浮层。连接已有节点支持目标端口及节点内容区；自连、重复连线不新增。剪刀删除、撤销和保存刷新复用文档连接真值。断开媒体引用同步清掉当前创作面板的输入，不修改已受理请求；文字连线使用当前富文本稿快照拼入请求，并显示可移除的文本引用。不要再仅实现 `onConnect` 而遗漏 `onConnectEnd` 空白落点。
 
 2026-10-10 线上 H3 首帧失败已定位为配置的 `api.jusuanhub.com:10443` 连接超时；标准 HTTPS `/v1` 已核实模型及输入资产上传后修正，未重提用户任务。端点密钥、模型、价格与并发限制保持原样。
+
+### v0.230 账号与旧 Studio 外壳 · 2026-10-10
+
+`src/shell/account-workspace.tsx` + `account-navigation.ts` 是桌面 `/me` 与 `/studio` 账号工具的共享外壳/入口映射；样式在 `account-workspace.css`，跟随 `html[data-layout]`。旧根入口转 `/projects`，业务深链、创建参数与 `#/real-auth/{sessionId}` 保留；账号菜单 hashchange/popstate 与旧 SPA 同步。详情与创建继续复用 proto 业务，未新增账号、计费或任务真值。见 `docs/aiavatar-account-unification.md`。

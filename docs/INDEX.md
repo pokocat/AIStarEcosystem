@@ -2,6 +2,7 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
+> last-reviewed：2026-10-10 / v0.230 账号与旧 Studio 外壳统一；验收与发布见账号统一文档及生产发布记录
 > last-reviewed：2026-10-08 / v0.202 统一 Studio 首版本地实现与样例端到端验收完成、V40 请求幂等、V41 配音与 V42 口型用途；未发布（见 VERSION_HISTORY.md）
 > last-reviewed：2026-05-29 / v0.41 合并「AI 模型」+「外部 API Token」为「模型接入端点 + Token」+ AI 应用绑定
 > last-reviewed：2026-05-23 / v0.5.4
@@ -205,3 +206,5 @@ sudo yum install -y ffmpeg ffmpeg-devel
 - [模型接入端点并发与排队](ai-endpoint-generation-queue.md) · v0.220；last-reviewed: 2026-10-09，本地未发布。
 
 - [Studio 生产发布与计价](ip-studio-production-release.md) · v0.228 定价快照、V48 迁移及上线记录；last-reviewed: 2026-10-10。
+
+- [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · v0.230 桌面外壳、旧深链兼容与验收边界；last-reviewed: 2026-10-10。

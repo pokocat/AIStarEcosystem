@@ -1,4 +1,5 @@
 "use client";
+import { studioEntryDestination } from "@/shell/account-navigation";
 // 中枢新界面（P1）· 数据拉取小工具：带 loading / error 的异步 hook。
 // 数据本体仍走 src/proto/api.ts 的域 API（mock/live 双模式行为不变）。
 //
@@ -50,5 +51,6 @@ export function settled(s: AsyncState<unknown>): boolean {
 
 /** 老 SPA（/studio）内各类资产详情的 hash 深链。 */
 export function studioHref(hash: string): string {
-  return `/studio${hash.startsWith("#") ? hash : `#/${hash}`}`;
+  const normalized = hash.startsWith("#") ? hash : `#/${hash}`;
+  return studioEntryDestination(normalized) || `/studio${normalized}`;
 }

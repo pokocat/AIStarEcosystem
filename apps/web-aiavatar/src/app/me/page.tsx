@@ -11,6 +11,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
+import { AccountOverview } from "@/shell/account-workspace";
 
 export default function MePage() {
   const router = useRouter();
@@ -19,11 +20,14 @@ export default function MePage() {
   const noPlatform = authState === "no-platform";
   // 「我是谁」的真源是 /api/me（hook 必须在早退之前调用）。
   const identity = useIdentity();
+  const layout = useLayoutMode();
   if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   const displayName = identity?.displayName || "我的账号";
   const initial = String(displayName).trim().slice(0, 1) || "我";
+
+  if (layout === "desktop") return <AccountOverview name={displayName} phone={identity?.phoneMasked} demo={USE_MOCK || identity?.demo} />;
 
   return (
     <HubScreen tabBar>

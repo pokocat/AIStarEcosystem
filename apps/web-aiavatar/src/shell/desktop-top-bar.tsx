@@ -20,6 +20,8 @@ import { usePathname } from "next/navigation";
 import { Compass, Home, IdCard, Layers, LogOut, Shield, Smartphone, Sparkles, User } from "lucide-react";
 import { auth, useIdentity } from "@/proto/api";
 import { setLayout } from "./layout-mode";
+import { useStudioHash } from "./account-workspace";
+import { accountPageKey } from "./account-navigation";
 
 const NAV = [
   // 「主页」而不是「首页」：根目录 `/` 现在是公开落地页，登录后的门户在 /dashboard。
@@ -39,6 +41,7 @@ const ACCOUNT = [
 
 export function DesktopTopBar() {
   const pathname = usePathname() ?? "";
+  const hash = useStudioHash();
   const identity = useIdentity();
   const name = identity?.displayName ?? "";
 
@@ -91,7 +94,7 @@ export function DesktopTopBar() {
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         {ACCOUNT.map(({ href, label, icon: Icon }) => {
-          const on = pathname.startsWith(href);
+          const on = pathname.startsWith(href) || href === "/me" && pathname === "/studio" && !!accountPageKey(hash);
           return (
             <Link
               key={href}
