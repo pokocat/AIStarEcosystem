@@ -173,9 +173,9 @@ public class VideoStudioService {
         // 这个模型的每秒价：只有「候选配了 override 且端点按秒计费」才算数（与带货线的按秒展开同一个判定）。
         // 模型单价 ≤ 0 当「没定价」而不是「免费」：后台给格子定价要求 ≥ 1，模型单价这条回落路也得同一个口径，
         // 否则运营把某个模型的单价填成 0，视频生成里所有没单独定价的格子就悄悄全免费了（§8.0 依赖没配好要明确报错）。
+        Long override=candidate==null?null:candidate.getCreditCostOverride();
         Long modelRate = "per_second".equals(AiModelInvocationService.videoBillingUnit(ep, candidate))
-                && candidate.getCreditCostOverride() > 0
-                ? candidate.getCreditCostOverride() : null;
+                && override!=null && override > 0 ? override : null;
         return new VideoStudioModel(ep.getId(), ep.getName(), isDefault, selectableById, contract(min, max),
                 VideoStudioPricing.effective(config, modelRate));
     }
@@ -257,6 +257,23 @@ public class VideoStudioService {
      * 素材归属与类型（做同款时模板素材也算）→ 音频合计。全部在冻结积分之前。
      */
     Validated validate(String userId, Draft d) {
+        return validate(userId, d, null);
+    }
+
+    /** Canvas keeps its own asset ownership; mode, geometry, limits and pricing share this validator. */
+    public record CanvasPreparation(VideoGenSpec spec, long credits) {}
+
+    public CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
+            java.util.function.BiConsumer<String, String> requireCanvasAsset) {
+        if (request == null || request.templateId() != null || request.optimizationId() != null)
+            throw inputInvalid("画布视频请直接选择画布素材");
+        Validated v = validate(userId, Draft.of(request), requireCanvasAsset);
+        return new CanvasPreparation(v.spec(), VideoStudioPricing.total(v.model().pricing(), v.mode(),
+                v.tier(), v.seconds(), v.inputs().referenceImages()));
+    }
+
+    private Validated validate(String userId, Draft d,
+            java.util.function.BiConsumer<String, String> requireCanvasAsset) {
         // 1) 模型
         VideoStudioModel model = pickModel(listModels(), d.endpointId());
         VideoStudioContract contract = model.contract();
@@ -318,7 +335,12 @@ public class VideoStudioService {
                             "这个模板已经下架或看不到了，可以点「不做同款了」继续用自己的素材"));
             templateMaterials = templates.materialTypes(template);
         }
-        requireUsableInputs(userId, inputs, templateMaterials);
+        if (requireCanvasAsset == null) requireUsableInputs(userId, inputs, templateMaterials);
+        else {
+            if (inputs.firstFrameKey() != null) requireCanvasAsset.accept("image", inputs.firstFrameKey());
+            if (inputs.lastFrameKey() != null) requireCanvasAsset.accept("image", inputs.lastFrameKey());
+            for (VideoGenSpec.Reference ref : inputs.references()) requireCanvasAsset.accept(ref.mediaType(), ref.key());
+        }
         requireAudioTotal(inputs.references(), modeSpec.references());
 
         return new Validated(model, modeSpec, prompt, tier.tier(), canvas.aspectRatio(), seconds, seed, inputs, template);

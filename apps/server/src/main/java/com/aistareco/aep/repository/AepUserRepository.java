@@ -43,9 +43,23 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
 
     Page<AepUser> findByStatus(AepUser.UserStatus status, Pageable pageable);
 
+    Page<AepUser> findByStatusNot(AepUser.UserStatus status, Pageable pageable);
+
+    Page<AepUser> findByStatusNotAndKind(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable);
+
     Page<AepUser> findByKind(AepUser.AccountKind kind, Pageable pageable);
 
     Page<AepUser> findByStatusAndKind(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable);
+
+    /** 默认排除注销账号；显式 status=DELETED 可查归档。搜索与过滤均在分页前执行。 */
+    @Query("select u from AepUser u where (:status is null or u.status = :status) "
+            + "and (:status is not null or u.status <> 'DELETED') "
+            + "and (:kind is null or u.kind = :kind) and ("
+            + "locate(:q, lower(u.username)) > 0 or locate(:q, lower(coalesce(u.displayName, ''))) > 0 "
+            + "or locate(:q, lower(coalesce(u.phone, ''))) > 0 or locate(:q, lower(coalesce(u.email, ''))) > 0 "
+            + "or locate(:q, lower(u.id)) > 0 or locate(:q, lower(coalesce(u.identityUid, ''))) > 0)")
+    Page<AepUser> search(@Param("q") String q, @Param("status") AepUser.UserStatus status,
+                        @Param("kind") AepUser.AccountKind kind, Pageable pageable);
 
     boolean existsByUsername(String username);
 

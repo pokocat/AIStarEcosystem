@@ -1,302 +1,259 @@
 ---
-name: AiAvatar · 数字人资产平台
-description: A mobile digital-human asset platform, run like a bright atelier with a precise ledger.
+name: IP Studio · 声量引擎旗下
+description: 角色与世界的创作空间，以暖灰、白色与深墨组织人物和内容。
 colors:
-  canvas: "#F7F9FB"
-  canvas-2: "#EEF2F6"
-  surface: "#FFFFFF"
-  surface-2: "#F6F8FB"
-  surface-3: "#EDF1F5"
-  ink: "#14202B"
-  ink-2: "#5A6873"
-  ink-3: "#8A96A1"
-  ink-4: "#BAC4CD"
-  line: "#EBEFF3"
-  line-2: "#E0E6EC"
-  line-3: "#CFD7DF"
-  primary: "#12B3DE"
-  primary-700: "#0C97BE"
-  primary-600: "#10A6CF"
-  primary-500: "#4CCBEC"
-  primary-soft: "#E6F5FA"
-  primary-tint: "#F3FAFD"
-  on-primary: "#FFFFFF"
-  ok: "#1AA06E"
-  ok-soft: "#E2F4EC"
-  warn: "#D9920E"
-  warn-soft: "#FBF0DA"
-  err: "#E0455C"
-  err-soft: "#FBE6EA"
-  info: "#2BA6E8"
-  info-soft: "#E6F2FB"
-  # secondary palette (sanctioned v2): identity + wayfinding only, never decoration
-  app-music: "#7C5CE6"
-  app-commerce: "#E8884A"
-  app-drama: "#3E63C8"
-  path-ai: "#8F6BFF"
-  store-video: "#1AA06E"
-  store-3d: "#D9920E"
-  store-voice: "#8A6BFF"
+  bg: "#f0efec"
+  paper: "#ffffff"
+  soft: "#f6f6f5"
+  ink: "#192229"
+  ink-hover: "#323e45"
+  muted: "#65707e"
+  line: "#e8eaec"
+  selected: "#eeefef"
+  green: "#28694f"
+  green-soft: "#eaf4ee"
+  gold: "#805a27"
+  gold-soft: "#f8eddb"
+  error: "#a43845"
+  error-soft: "#fcf0f1"
 typography:
   display:
-    fontFamily: "Manrope, 'Noto Sans SC', system-ui, -apple-system, sans-serif"
-    fontSize: "17px"
+    fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', serif"
+    fontSize: "clamp(40px, 4.5vw, 70px)"
     fontWeight: 700
-    lineHeight: 1.2
-    letterSpacing: "-0.02em"
+    lineHeight: 1.42
+    letterSpacing: "-0.025em"
+  headline:
+    fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', serif"
+    fontSize: "32px"
+    fontWeight: 700
+    lineHeight: 1.4
   title:
-    fontFamily: "Manrope, 'Noto Sans SC', system-ui, sans-serif"
-    fontSize: "16.5px"
+    fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', serif"
+    fontSize: "27px"
     fontWeight: 700
-    letterSpacing: "-0.01em"
+    lineHeight: 1.35
+  asset-name:
+    fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', serif"
+    fontSize: "18px"
+    fontWeight: 700
+    lineHeight: 1.6
   body:
-    fontFamily: "Manrope, 'Noto Sans SC', system-ui, sans-serif"
+    fontFamily: "'Manrope', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.6
-    letterSpacing: "normal"
-  asset-name:
-    fontFamily: "Newsreader, 'Songti SC', 'Noto Serif SC', Georgia, serif"
-    fontSize: "20px"
-    fontWeight: 500
-    lineHeight: 1.04
-    letterSpacing: "-0.01em"
-  reg:
-    fontFamily: "'JetBrains Mono', ui-monospace, monospace"
-    fontSize: "11px"
-    fontWeight: 500
-    letterSpacing: "0.04em"
   label:
-    fontFamily: "'JetBrains Mono', ui-monospace, monospace"
-    fontSize: "10px"
-    fontWeight: 500
-    letterSpacing: "0.1em"
+    fontFamily: "'Manrope', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    fontSize: "12px"
+    fontWeight: 600
+    lineHeight: 1.6
 rounded:
-  xs: "7px"
-  sm: "9px"
-  md: "12px"
-  lg: "15px"
-  xl: "19px"
-  2xl: "24px"
-  pill: "999px"
+  field: "7px"
+  control: "8px"
+  image-card: "9px"
+  surface: "13px"
+  status: "18px"
+  filter: "20px"
+spacing:
+  compact: "8px"
+  small: "12px"
+  medium: "16px"
+  large: "20px"
+  section: "24px"
 components:
   button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-primary}"
-    rounded: "{rounded.md}"
-    height: "40px"
-    padding: "0 16px"
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.control}"
+    padding: "10px 17px"
   button-primary-hover:
-    backgroundColor: "{colors.primary-700}"
-  button-dark:
-    backgroundColor: "{colors.ink}"
-    textColor: "{colors.on-primary}"
-    rounded: "{rounded.md}"
-  button-soft:
-    backgroundColor: "{colors.primary-soft}"
-    textColor: "{colors.primary}"
-    rounded: "{rounded.md}"
-  button-ghost:
+    backgroundColor: "{colors.ink-hover}"
+  button-secondary:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "10px 17px"
+  button-secondary-hover:
+    backgroundColor: "{colors.soft}"
+  button-text:
     backgroundColor: "transparent"
-    textColor: "{colors.ink-2}"
-    rounded: "{rounded.md}"
-  button-danger:
-    backgroundColor: "{colors.err-soft}"
-    textColor: "{colors.err}"
-    rounded: "{rounded.md}"
-  card:
-    backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.lg}"
-    padding: "18px"
-  badge:
-    backgroundColor: "{colors.surface-3}"
-    textColor: "{colors.ink-2}"
-    rounded: "{rounded.pill}"
-    height: "23px"
-    padding: "0 9px"
-  badge-primary:
-    backgroundColor: "{colors.primary-soft}"
-    textColor: "{colors.primary}"
-    rounded: "{rounded.pill}"
-  input:
-    backgroundColor: "{colors.surface}"
+    padding: "4px 0"
+  search-field:
+    backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.md}"
-    height: "44px"
-    padding: "0 14px"
-  filter-pill:
-    backgroundColor: "{colors.surface-3}"
-    textColor: "{colors.ink-2}"
-    rounded: "{rounded.pill}"
-    height: "34px"
-  filter-pill-active:
+    rounded: "{rounded.control}"
+    padding: "0 12px"
+  filter:
+    backgroundColor: "{colors.soft}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.filter}"
+    padding: "6px 12px"
+  filter-active:
     backgroundColor: "{colors.ink}"
-    textColor: "{colors.on-primary}"
-  modal:
-    backgroundColor: "{colors.surface}"
-    rounded: "{rounded.2xl}"
+    textColor: "{colors.paper}"
+  navigation-active:
+    backgroundColor: "{colors.selected}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.field}"
+    padding: "10px 14px"
+  ip-card:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "3px"
+  dossier:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.surface}"
+  status-finalized:
+    backgroundColor: "{colors.green-soft}"
+    textColor: "{colors.green}"
+    rounded: "{rounded.status}"
+    padding: "3px 11px"
 ---
 
-# Design System: AiAvatar · 数字人资产平台
+# Design System: IP Studio · 声量引擎旗下
 
-## 1. Overview
+## Overview
 
-**Creative North Star: "The Atelier Ledger"**
+**Creative North Star: "角色与世界的创作空间"**
 
-Two voices share one surface. A maker's serif (Newsreader) names each creation with warmth; a registrar's mono (JetBrains Mono) records it with precision; and a calm sans (Manrope) runs the controls in between. The atelier is bright, paper-white, and uncluttered. The ledger is exact: every digital human is an accessioned asset with a serif name, a `REG · DH-2041` number, a version history, a license, and an archival seal. Cyan is the ink reserved for the active entry.
+人物与内容是视觉中心。暖灰承托白色工作面，深墨明确操作，中文衬线给标题和人物名称留出创作的温度；搜索、筛选与设置使用清晰的无衬线字。界面既能容纳完整人物图，也能安静地承载版本、设定和状态，不以装饰代替内容。
 
-This is a mobile-first H5 product surface (a full-screen SPA, capped at a 480px content column on desktop), not a marketing page. It rejects the SaaS dark-dashboard reflex and decorative color in equal measure. An earlier draft sprayed color across every derivative chip; the shipped "清爽" skin pulls that into a disciplined system: one cyan for action and live state, a small sanctioned secondary palette for identity and wayfinding (downstream apps, creation paths, storage breakdown), and calm gray for dense category chips. Color is never decoration.
+本文件记录已实现的首页、IP 管理和共享浅色顶栏系统。适用代码为 `src/styles/ip-brand.css`，令牌限定在 `.ip-brand-surface` 与 `.ip-management-editor`。页面组成和业务行为见 [DESIGN-desktop.md](DESIGN-desktop.md)；首页及管理页的具体设计意图分别见 [.impeccable/ip-home.md](.impeccable/ip-home.md) 与 [.impeccable/ip-management.md](.impeccable/ip-management.md)。
 
-The feel is clinical-warm. The clinical comes from cool-white paper, hairline cool-gray rules, and soft diffuse shadows tuned blue (rgba(20,36,55,...)). The warmth comes from the serif identity layer and rounded corners (12 to 15px on everything you touch). It should feel familiar to anyone fluent in HeyGen or a well-built capture studio: the tool disappears into the task.
+旧青色移动 H5 仍按 [DESIGN-mobile.md](DESIGN-mobile.md) 及 [.impeccable/design-mobile.json](.impeccable/design-mobile.json)；画布内部仍按 `.ip-surface` 的群青与麦黄系统，见 [DESIGN-desktop.md](DESIGN-desktop.md)。这些入口按页面作用域使用，不能把本文件的令牌全局写到 `:root`。
 
 **Key Characteristics:**
-- Cool paper-white surfaces (#F7F9FB canvas, #FFFFFF cards), never pure black-on-white.
-- One cyan accent (#12B3DE), touching under a tenth of any screen.
-- Three type voices with three jobs: serif identity, mono record, sans control.
-- Rounded cards floating on soft, blue-tuned shadows, no harsh elevation.
-- Mobile-native: real safe areas, a bottom 5-tab bar with a raised center create key.
-- Disciplined color: one cyan for action/live, a small sanctioned secondary palette for identity and wayfinding, calm gray for dense category chips.
 
-## 2. Colors
+- 暖灰底、白色表面与细边线，内容平稳地留在工作面上。
+- 深墨主按钮与选中标记，状态色只表达状态。
+- 中文衬线承载标题与人物名，无衬线承载正文与操作。
+- 图像有完整的阅读位置，缺失素材有清楚的占位说明。
+- 常规控件紧凑，详情正文可换行，键盘焦点清晰可见。
 
-A cool, paper-white base of ink-blue-gray, with one cyan for action and a small sanctioned secondary palette for identity and wayfinding.
+## Colors
+
+主色接近黑色，环境保持暖灰与白；绿色、赭金和红色只用于可核验的状态与反馈。色值以前置令牌为准，来源为 `ip-brand.css`。
 
 ### Primary
-- **Studio Cyan** (#12B3DE): The single official ink. Primary buttons, the active tab underline, the current-selection ring, the focus glow, live progress, the "REG" stamp, the raised create key. A settled, slightly desaturated cyan (the V4 skin pulled it back from the brighter #13C0EE of the first draft). Step **Cyan Deep** (#0C97BE, `primary-700`) for hover and press; **Cyan Light** (#4CCBEC, `primary-500`) for light fills.
-- **Cyan Wash** (#E6F5FA, `primary-soft`): Backs soft buttons, primary badges, and the REG-prefix tint. **Cyan Mist** (#F3FAFD, `primary-tint`) is the faintest hover bed.
+
+- **深墨**（`ink`）：标题、正文、主按钮、当前导航、筛选选中与焦点环。主按钮 hover 使用 `ink-hover`，以底色变化提供反馈。
+
+### Secondary
+
+- **定稿绿**（`green` / `green-soft`）：已定稿、保存成功的文字与轻底。
+- **进行中赭金**（`gold` / `gold-soft`）：进行中状态及明确标注的演示模式说明。它不是本系统的主操作色。
+- **错误红**（`error` / `error-soft`）：读取或保存失败；错误说明与重试入口同时出现。
 
 ### Neutral
-- **Deep Slate Ink** (#14202B): Primary text, and the fill of the "dark" high-emphasis button. A near-black tuned blue, never #000.
-- **Muted Slate** (#5A6873, `ink-2`): Secondary text, captions, and (critically) every derivative-category icon.
-- **Cool Gray** (#8A96A1, `ink-3`): Tertiary text, placeholders, group labels, inactive tab glyphs.
-- **Faint Gray** (#BAC4CD, `ink-4`): Disabled glyphs and the faintest spec-sheet field labels.
-- **Paper** (#F7F9FB `canvas`, #FFFFFF `surface`): The two base surfaces. Canvas is the cool floor that lets white cards float; surface is the card. #F6F8FB and #EDF1F5 are the inset and hover-fill steps.
-- **Hairline** (#EBEFF3 `line` to #CFD7DF `line-3`): Three cool-gray rule weights for borders, dividers, and dotted leaders.
 
-### Tertiary (semantic, muted)
-- **Ledger Green** (#1AA06E on #E2F4EC): Done, ready, signed.
-- **Amber** (#D9920E on #FBF0DA): Pending, warning.
-- **Rose** (#E0455C on #FBE6EA): Error, destructive, revoke.
-- **Info Cyan** (#2BA6E8 on #E6F2FB): Neutral information, kept distinct from the brand primary.
+- **暖灰底**（`bg`）：整页环境与列之间的留白。
+- **白纸面**（`paper`）：主内容、详情、顶栏和按钮文字。
+- **浅灰面**（`soft`）：输入周边、标签、空素材区域与次按钮 hover。
+- **次文字灰**（`muted`）：说明、日期、未填写字段与次要导航。
+- **细边线**（`line`）：输入、卡片与详情区块的分隔。
+- **选中浅灰**（`selected`）：网格/列表切换的当前项。
 
-### Secondary (sanctioned: identity + wayfinding)
-A small named palette, allowed only to mark identity and aid wayfinding, never decoration:
-- **Music Violet** (#7C5CE6), **Commerce Orange** (#E8884A), **Drama Blue** (#3E63C8): the three downstream-app identities in the Apps Center.
-- **AI-Original Violet** (#8F6BFF) vs **Real-Person Cyan** (the primary): the two creation paths.
-- **Storage classes** (video #1AA06E, 3D #D9920E, voice #8A6BFF; image = cyan, license = ink): the storage-usage breakdown.
+**The 状态有文字 Rule.** 状态色必须与状态名称并用；绿色的「已定稿」不改写成「已发布」，未知统计使用「—」。
 
-### Named Rules
-**The One Ink Rule.** Cyan (#12B3DE) is reserved for primary action and live/active state. Selection among options (filter pills, view tabs) is ink, not cyan, so the two signals never blur. Cyan is never decoration; on any given screen it touches under a tenth of the pixels. Its rarity is the meaning.
+## Typography
 
-**The Sanctioned Palette Rule.** Beyond cyan, the secondary palette above is permitted, but only as solid icon, bar, and badge fills sized to the role (app identity, creation path, storage breakdown). Dense derivative-category chips in the asset grid stay Muted Slate (#5A6873) + icon for calm: color is earned by top-level identity surfaces, not by every list row.
+**Display Font:** Noto Serif SC，回退到 Songti SC、STSong 与 serif。
 
-**The No-Decorative-Glow Rule.** Secondary colors are solid marks, never full-screen radial-glow beds. No violet or pink blurred blooms behind login, create, or hero screens; at most one faint cyan wash (`var(--primary-tint)`) over paper.
+**Body Font:** Manrope、Noto Sans SC，回退到系统无衬线字体。
 
-**The No-Pure-Black, No-Pure-White Rule.** Text is Deep Slate Ink (#14202B), not #000. Canvas is cool Paper (#F7F9FB), not #FFF. Every neutral is tuned toward the slate-blue hue.
-
-## 3. Typography
-
-**Display / UI Font:** Manrope (with Noto Sans SC for Chinese, system-ui fallback)
-**Asset Identity Font:** Newsreader (with Songti SC, Noto Serif SC, Georgia fallback)
-**Record / Mono Font:** JetBrains Mono (with ui-monospace fallback)
-
-**Character:** Three voices, three jobs. Manrope runs the controls: tight, modern, set at -0.02em on headings. Newsreader gives each digital human a warm serif name, the one editorial gesture in an otherwise functional UI. JetBrains Mono records the facts: registration numbers, field labels, counts, step numbers, percentages. Fonts load browser-side via a Google Fonts `<link>` (not next/font) and degrade gracefully to system stacks offline.
+标题与人物名共享中文衬线，正文和操作共享无衬线。这里没有额外的等宽层；画布与旧移动 H5 的登记号字体仍由其各自文档管理。
 
 ### Hierarchy
-- **Display** (Manrope 700, letter-spacing -0.02em): Screen and section headings (h1 to h4). Top tabs render at 17px; nav titles at 16.5px (-0.01em).
-- **Body** (Manrope 400, 14px, line-height 1.6): Default reading text, with `text-wrap: pretty` on paragraphs. Controls run 13 to 15.5px. Prose caps at 65 to 75ch.
-- **Asset Name** (Newsreader 500, line-height 1.04, letter-spacing -0.01em): The serif identity of a digital human. Scales with context (roughly 18 to 28px). The single warm, editorial type gesture.
-- **Registration No.** (JetBrains Mono 500, 11px, letter-spacing 0.04em): The `REG · DH-2041` asset number, prefixed by a tinted "REG" chip. Color Cool Gray.
-- **Field Label** (JetBrains Mono 500, 10px, letter-spacing 0.1em, UPPERCASE): Spec-sheet field labels in the dossier. Color Faint Gray (#BAC4CD).
 
-### Named Rules
-**The Three-Voice Rule.** Serif names assets, mono records facts, sans runs controls. Never cross them: no serif on a button, no mono in a paragraph, no sans on an asset's identity name.
+- **Display**：首页主标题，使用前置 `display` 规格；两行标题的结构属于首页组成。
+- **Headline**：IP 管理页面标题，使用 `headline`。
+- **Title**：详情人物名，使用 `title`；长名称允许换行。
+- **Asset Name**：人物卡片名称，使用 `asset-name`；卡片单行截断。
+- **Body**：正文基准使用 `body`；详情说明按当前实现使用较紧凑的字号与较松行高。
+- **Label**：详情操作与标签使用 `label`；搜索、筛选和统计辅助文案按当前实现的紧凑密度呈现，不反向缩小正文。
 
-**The Serif-Is-Sacred Rule.** Newsreader appears only as an asset's name. It is the product's one moment of warmth; spending it on headings, buttons, or marketing copy cheapens it.
+Noto Serif SC 为官方可变 WOFF2 Unicode 分片（200–900），在 `src/styles/ip-display-font.css` 声明，`font-display: swap`。字库自托管于 OSS `media/ipstudio/fonts/noto-serif-sc-v36/`，由固定同源 `/ip-fonts/noto-serif-sc/[file]` 路由读取；OFL 与来源清单保留在相同前缀。它沿用官方 Web 字符范围，生僻字继续使用系统衬线回退，不承诺覆盖所有汉字。原有 Manrope、Noto Sans SC、Newsreader 与 JetBrains Mono 的加载方式未重做。
 
-## 4. Elevation
+**The 字体按职责 Rule.** 衬线用于标题与人物名称；按钮、输入、筛选、日期和说明保持无衬线，不能把首页大字的形式扩散到操作控件。
 
-Surfaces are flat paper that float on soft, diffuse, blue-tuned shadows. There are no hard drop-shadows and no harsh borders. Depth comes from a three-step shadow ramp plus a 1px hairline, all with rgba tuned to the slate-blue ink (rgba(20,36,55,...)) rather than neutral black, so cards read as lifted paper on a cool desk. The V4 skin deliberately lightened every shadow and removed the colored "pop" glow of the first draft.
+## Layout
 
-### Shadow Vocabulary
-- **Resting** (`--sh-1`: `0 1px 2px rgba(20,36,55,.035), 0 1px 3px rgba(20,36,55,.04)`): Cards, badges, the default float. Barely there.
-- **Raised** (`--sh-2`: `0 2px 6px rgba(20,36,55,.04), 0 8px 20px rgba(20,36,55,.055)`): Card hover and lifted state.
-- **Overlay** (`--sh-3`: `0 8px 24px rgba(20,36,55,.07), 0 24px 50px rgba(20,36,55,.09)`): Modals, bottom sheets, toasts.
-- **Focus Ring** (`--ring`: `0 0 0 3px rgba(18,179,222,.16)`): The cyan focus glow on inputs and selected cards. The only colored shadow that survived V4.
+留白按已出现的紧凑、小、中、大与区块间距组织，精确值见前置 `spacing`。主要工作面以直线对齐和相邻列建立秩序，卡片内部保持一致的文字、标签与统计位置；图片内容不靠歪斜或重叠建立层次。
 
-### Named Rules
-**The Lift-On-Touch Rule.** Cards rest at Resting shadow and rise to Raised with a -2 to -3px translateY on hover or press. Elevation is a response to interaction, not a permanent decoration.
+设备形态的唯一真值是 `html[data-layout]`：用户显式选择优先，未选择时以 960px 为默认断点。新增桌面形态样式必须接这个属性；媒体查询仅处理真实宽度约束，例如现有 1250px 以下的导航压缩与列宽调整。首页的公共移动适配与 IP 管理的移动覆盖式详情属于当前代码行为；本轮验收为桌面，未完成手机或 1280px 截图验收。
 
-**The Blue-Shadow Rule.** Every shadow uses rgba(20,36,55,...), the slate-blue ink, never neutral black. Black shadows would read as a different, colder product.
+当前共享桌面顶栏离视口四周留出细窄间距，内容让位由 `--desktop-bar-h` 管理。页面尺寸、首页图卡数量、IP 管理列表与相邻详情的布局及滚动边界见桌面文档，不作为所有新页面的固定组成。
 
-## 5. Components
+## Elevation & Depth
 
-Buttons, cards, inputs, and pills share one rounded, paper-on-cyan vocabulary across every screen. Standard affordances, no reinvention.
+主系统不以卡片投影制造浮起感。白色表面、暖灰间隔、细边线和选中描边建立层次；IP 卡片 hover 只增强边线，选中描边保持深墨。账号菜单与相邻详情也按这一平面材料语言组织。
+
+焦点是深墨实线（2px，外偏移 3px），不使用彩色发光。图片区允许局部遮罩帮助文字阅读，首页图片旁的小字有局部文字投影；这些不构成通用容器阴影令牌。
+
+**The 平面工作面 Rule.** 常规卡片和控件保持平稳；交互优先改变边线、底色或文字，不添加常驻悬浮投影。
+
+## Shapes
+
+控件是小圆角矩形，卡片图片与外框分别裁切；主表面使用较缓的圆角。状态与筛选更圆，头像为圆形。前置 `rounded` 记录重复使用的形状，不能据此把所有对象改成同一圆角。
+
+细边线通常为 1px，IP 卡片选中再增加 1px 外轮廓。详情和卡片均隐藏图片溢出；完整设定图使用 contain，人物缩略图使用 cover。图像比例属于具体内容用途，不用拉伸图片凑满格子。
+
+## Components
 
 ### Buttons
-- **Shape:** Rounded rectangle, `--r-md` (12px), weight 700, no letter-spacing. Heights 32 / 40 / 48 (sm / md / lg).
-- **Primary:** Studio Cyan fill, white text, Resting shadow. Hover to Cyan Deep + Raised shadow + translateY(-1px).
-- **Dark:** Deep Slate Ink fill, white text, hover to #000. The high-emphasis confirm.
-- **Soft:** Cyan Wash background, cyan text. The quiet primary.
-- **Line / Ghost:** Surface-3 fill (line) or transparent (ghost), ink text. Secondary actions.
-- **Danger:** Rose-soft background, rose text, hover to a deeper rose. Destructive only.
 
-### Chips & Pills
-- **Filter Pill:** Pill (`--r-pill`), height 34. Inactive is Surface-3 background with ink-2 text. **Active is Deep Slate Ink background with white text**, not cyan: selection among filters reads as ink, action reads as cyan. Optional trailing mono count.
-- **Badge:** Pill, height 23, weight 700, 11.5px. Tones mute / primary / ok / warn / err / info, each a soft-background and saturated-text pair. Optional leading dot.
-- **Segmented (Seg):** Surface-3 track with 3px padding; the active segment is a white pill carrying Resting shadow.
+深墨按钮表达当前主要动作；白底细边线表达次动作；纯文字表达低强调的辅助入口。常规按钮最小高度 42px，图标与文字间隔 9px，前置令牌记录共同的内边距与圆角；首页主 CTA 和管理页紧凑创建按钮有各自尺寸。
 
-### Cards / Containers
-- **Corner:** `--r-lg` (15px).
-- **Background:** Surface white on a cool canvas.
-- **Border:** 1px Hairline; the **selected** state swaps to a cyan border plus the focus ring.
-- **Shadow:** Resting at rest, Raised on hover (see Elevation), with translateY(-2px).
-- **Internal Padding:** 18px default.
+主按钮 hover 到 `ink-hover`，次按钮 hover 到 `soft`，文字按钮 hover 加下划线。可键盘聚焦的操作必须有焦点环；禁用时透明度为 0.5、光标回到默认，加载中显示具体动作并阻止重复提交。
 
 ### Inputs / Fields
-- **Style:** White background, 1px line-2 border, `--r-md` (12px), height 44, 14px text.
-- **Focus:** Border shifts to cyan plus the cyan focus ring (`--ring`). That is the only state change; no other chrome appears.
-- **Field wrapper:** A label (13px, ink-2, weight 600) over the control, with an optional hint (12px, ink-3) and a required asterisk in rose.
+
+搜索为白底细边线、深墨输入、次文字灰占位。搜索区域获得焦点时边线转为深墨；字段保留键盘焦点提示。编辑表单使用较紧凑的字段圆角，textarea 可纵向调整，长设定有足够的阅读行高。
+
+保存失败与输入内容同时保留；不能用关闭表单替代错误反馈。空白必填名称不能提交，保存中禁用重复保存与取消。
 
 ### Navigation
-- **Top bar:** Centered nav title (Manrope 700, 16.5px) with a back chevron at left, sticky on tab screens, on the cool canvas background.
-- **Bottom tab bar:** 5 tabs on a frosted white bar (`rgba(255,255,255,.86)` + blur) with a 1px top hairline. Inactive ink-3, active cyan with a bold label. The center is a **raised create key**: a 56px, 20px-radius floating button on a cyan-shadowed art bed, lifted -20px above the bar.
-- **Mobile model:** A full-screen fixed `app-root` with real `env(safe-area-inset-*)` top and bottom. Content caps at 480px and centers on desktop behind a hairline plus a soft shadow (a content column, not a phone mockup).
 
-### Signature: The Registry Dossier
-The product's defining pattern, expressing the Atelier Ledger North Star directly:
-- **Asset Name** (Newsreader serif 500): the digital human's warm identity name.
-- **Registration No.** (`.reg-no`): `REG · DH-2041` in mono, with a tinted "REG" chip prefix.
-- **Field Label** (`.field-label`): uppercase mono 10px spec-sheet labels.
-- **Leader** (`.leader`): a dotted rule that stretches between a label and its value, aligning the spec sheet like a ledger column.
-- **Archival Seal** (`.seal`): a rotated (-4deg), pill-outlined mono stamp in Ledger Green, animating in with a slight overshoot. Reserved for "archived / ready" milestones.
-- **Dossier Paper** (`.dossier-paper`): a faint 26px grid, radially masked, evoking ledger paper behind a header.
+浅色共享顶栏使用深墨品牌和无衬线导航；当前项为深墨文字加下划线。IP 管理沿用顶栏导航，不重复设置左侧工作空间导航。导航必须保留可见的当前项与中文名称，不靠图标单独识别。
+
+### Filters / Status / Tags
+
+状态筛选是小尺寸圆角按钮，默认浅灰、当前深墨；数量使用等宽数字。网格/列表切换是细边线容器内的浅灰选中块。标签是浅灰小矩形，状态是软底圆角标记，两者不能互相替代。
+
+### Cards / Containers
+
+人物卡以主形象为第一信息，随后是衬线名称、简介、标签与真实资产数量。卡片选择使用 `aria-pressed` 与深墨边线，缺少主图时使用说明占位。列表视图继续使用同一实体与信息顺序。
+
+### Signature: 相邻人物档案
+
+IP 管理的列表保留在原位，选择后显示相邻详情，列表与档案共享同一人物实体。档案包含主图、设定、具体图片版本和已绑定声音；内容独立滚动，底部编辑、进入形象画布与导出操作持续可达。它是本页的签名模式，不扩展为画布抽屉或所有页面的通用布局。
 
 ### Loading & State
-- **Skeleton** (`.m-skel`): a shimmer over Surface-3 while fetching, never a centered spinner inside content.
-- **Progress:** a 6px rounded track with cyan fill and an optional mono percentage.
-- **Pull-to-refresh:** a floating cyan dot at the content top.
 
-## 6. Do's and Don'ts
+加载明确说明正在读取什么；统计未确定时显示「—」。整页读取失败与素材/声音的局部失败分开呈现，已有内容保持可见。空列表和筛选无结果使用不同文案，并分别提供创作入口和清除筛选；缺失图片类别、声音与设定直接说明未归档或未填写。
+
+交互过渡沿用 `--ip-ease`；主按钮底色为 160ms、图片入口箭头为 180ms。减少动态偏好会将 `.ip-brand-surface` 内动画与过渡降至接近即时。
+
+## Do's and Don'ts
 
 ### Do:
-- **Do** keep cyan (#12B3DE) under a tenth of any screen, spent only on active, primary, or live state (The One Ink Rule).
-- **Do** name digital humans in Newsreader serif, and use serif nowhere else (The Serif-Is-Sacred Rule).
-- **Do** keep dense derivative-category chips Muted Slate + icon; reserve the sanctioned secondary palette for identity surfaces (apps, storage, creation paths).
-- **Do** tune every neutral and every shadow toward the slate-blue ink (rgba(20,36,55,...)): text #14202B, canvas #F7F9FB.
-- **Do** rest cards flat at Resting shadow and lift them -2 to -3px on touch.
-- **Do** use real `env(safe-area-inset-*)`; this is a true H5 app, not a framed phone preview.
-- **Do** show skeletons (`.m-skel`) while loading, not spinners mid-content.
-- **Do** route destructive actions through the `Confirm` dialog and report results with toasts.
+
+- **Do** 在首页、IP 管理、桌面素材库、账号工具和共享顶栏使用本系统；旧移动 H5 与画布分别使用明确的设计入口。
+- **Do** 让人物与内容成为视觉中心，保持白面、暖灰间隔和细边线。
+- **Do** 按职责使用衬线与无衬线，并保留系统字体回退。
+- **Do** 同时展示状态名称与状态色，让焦点和选中状态清楚可见。
+- **Do** 为缺失素材、未知统计、加载和错误提供明确说明与可用的下一步。
+- **Do** 按真实实体与具体版本展示人物内容，保存后同步列表与详情。
 
 ### Don't:
-- **Don't** use `#000` or `#fff`; both read as a different, colder product.
-- **Don't** use decorative full-screen radial-glow beds (violet/pink blurred blooms behind login, create, or hero); at most one faint cyan wash over paper (The No-Decorative-Glow Rule).
-- **Don't** color dense derivative-category chips in the asset grid; those stay Muted Slate + icon. Color is for top-level identity surfaces (apps, storage, creation paths), per the Sanctioned Palette Rule.
-- **Don't** use `window.confirm`, `alert`, or `prompt`; use the `Confirm` dialog and toasts (a repo-wide rule).
-- **Don't** put serif on buttons, headings, or body, put mono in paragraphs, or put sans on an asset's identity name.
-- **Don't** add side-stripe borders (`border-left` color accents), gradient text (`background-clip: text`), or decorative glassmorphism. The only blurs are the frosted tab bar and sheet backdrops.
-- **Don't** make the active filter pill cyan; selection among filters is ink, action is cyan.
-- **Don't** use black or hard drop-shadows; depth is soft, diffuse, and blue-tuned.
-- **Don't** revive the iPhone shell or fake WeChat chrome (status bar, capsule, home bar); v0.3 removed them on purpose.
+
+- **Don't** 把作用域令牌写到全局根节点，或将画布群青与麦黄套用到新的浅色主系统。
+- **Don't** 用伪造作品、表情、收藏数、用户照片或通知按钮补满设计图。
+- **Don't** 把「已定稿」显示成「已发布」，或以零值冒充失败接口的真实统计。
+- **Don't** 给平面卡片添加常驻发光、重叠拼贴或强投影。
+- **Don't** 将新中文衬线用于按钮、筛选和字段说明。
+- **Don't** 用媒体查询重新判定设备形态，绕过用户明确选择。

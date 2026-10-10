@@ -47,6 +47,7 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
                                                          @Param("keys") java.util.Collection<String> keys);
 
     long countByStatus(String status);
+    List<MaterialVideoJob> findByStatusIn(java.util.Collection<String> statuses);
 
     long countByStatusIn(java.util.Collection<String> statuses);
 

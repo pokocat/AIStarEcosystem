@@ -76,10 +76,9 @@ class MaterialVideoJobServiceStudioTest {
     }
 
     @Test
-    @DisplayName("原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只许视频生成区带：其它分区在冻结之前 400")
+    @DisplayName("原生规格只许视频生成区和已校验的 IP 画布带：素材运营与短剧在冻结之前 400")
     void nativeOptionsOnlyInVideoStudio() {
-        for (String app : List.of(MaterialVideoJobService.APP_CELEBRITY, MaterialVideoJobService.APP_DRAMA,
-                MaterialVideoJobService.APP_IPSTUDIO)) {
+        for (String app : List.of(MaterialVideoJobService.APP_CELEBRITY, MaterialVideoJobService.APP_DRAMA)) {
             assertRejected("{\"generation_mode\":\"t2v\"}", app);
             assertRejected("{\"resolution_tier\":\"544p\"}", app);
             assertRejected("{\"seed\":1}", app);

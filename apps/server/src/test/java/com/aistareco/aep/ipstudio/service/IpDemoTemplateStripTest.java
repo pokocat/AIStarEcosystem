@@ -145,6 +145,80 @@ class IpDemoTemplateStripTest {
     }
 
     @Test
+    void publishedCharacterCopiesKeepGroupsAndRolesWithoutPrivateAvatarIdentity() throws Exception {
+        ObjectNode doc=busyDoc();var nodes=(ArrayNode)doc.path("nodes");
+        var main=(ObjectNode)nodes.get(0).path("metadata");
+        main.set("studio",IpStudioFixtures.OM.readTree("{\"kind\":\"ip\",\"libraryAssetRole\":\"main\",\"adoption\":{\"avatarId\":\"private-avatar-1\",\"ipId\":\"private-ip\"}}"));
+        var detail=nodes.addObject().put("id","detail").put("type","image").put("title","衣服细节");
+        var md=detail.putObject("metadata").put("storageKey","ipstudio_gen/"+OWNER+"/detail.png");
+        md.set("studio",IpStudioFixtures.OM.readTree("{\"kind\":\"ip\",\"libraryAssetRole\":\"detail\",\"adoption\":{\"avatarId\":\"private-avatar-1\"}}"));
+        var other=nodes.addObject().put("id","other").put("type","image").put("title","另一人物");
+        other.putObject("metadata").put("storageKey","ipstudio_gen/"+OWNER+"/other.png").putObject("studio").put("kind","ip").putObject("adoption").put("avatarId","private-avatar-2");
+        var row=svcWith(doc).publishFromProject(OWNER,PROJECT,null,"角色包",null,IpDemoTemplate.KIND_EXAMPLE);
+        var published=IpStudioFixtures.OM.readTree(row.getDocJson());
+        var byId=byId(published);
+        var mainPublic=byId.get("n-img").path("studio");var detailPublic=byId.get("detail").path("studio");
+        assertEquals(mainPublic.path("libraryCharacterId"),detailPublic.path("libraryCharacterId"));
+        assertFalse(mainPublic.path("libraryCharacterId").equals(byId.get("other").path("studio").path("libraryCharacterId")));
+        assertEquals("主形象",detailPublic.path("libraryCharacterName").asText());
+        assertEquals("detail",detailPublic.path("libraryAssetRole").asText());
+        assertFalse(row.getDocJson().contains("private-avatar"));assertFalse(row.getDocJson().contains("private-ip"));
+        var demos=mock(com.aistareco.aep.ipstudio.repository.IpDemoTemplateRepository.class);
+        when(demos.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()).thenReturn(java.util.List.of(row));
+        var library=new StudioIpAssetService(mock(com.aistareco.aep.dap.repository.DapAvatarRepository.class),mock(com.aistareco.aep.dap.repository.DapAvatarVersionRepository.class),storage,mock(com.aistareco.aep.dap.repository.DapLookRepository.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(library,"officialDemos",demos);
+        var assets=library.officialAssets();assertEquals(3,assets.size());
+        var mainAsset=assets.stream().filter(a->"主形象".equals(a.name())).findFirst().orElseThrow();
+        var detailAsset=assets.stream().filter(a->"衣服细节".equals(a.name())).findFirst().orElseThrow();
+        assertEquals(mainAsset.avatarId(),detailAsset.avatarId());assertEquals("主形象",detailAsset.characterName());assertEquals("detail",detailAsset.assetRole());
+        assertTrue(mainAsset.current());assertFalse(detailAsset.current());assertNull(detailAsset.ipId());
+    }
+
+    @Test
+    void studioPublicationKeepsAuthoredStructureButNoAuthorExecutionOrIdentity() throws Exception {
+        ObjectNode doc=busyDoc();var md=(ObjectNode)doc.path("nodes").get(1).path("metadata");
+        md.set("studio",IpStudioFixtures.OM.readTree("{\"kind\":\"script\",\"settings\":{\"episodeCount\":2},\"script\":{\"title\":\"原稿\"},\"request\":{\"clientRequestId\":\"old-request\"},\"runId\":\"IPR-author\",\"references\":[{\"storageKey\":\"private\",\"avatarId\":\"author-avatar\"}],\"adoption\":{\"ipId\":\"author-ip\"},\"conversation\":{\"turns\":[{\"content\":\"private chat\"}]},\"batch\":{\"approvedCost\":50}}"));
+        var authorStudio=(ObjectNode)md.path("studio");
+        authorStudio.putObject("speechRequest").put("clientRequestId","private-speech-request").put("text","private speech text");
+        authorStudio.putObject("lipSyncRequest").put("clientRequestId","private-lip-request").put("videoStorageKey","private-video-key").put("audioStorageKey","private-audio-key");
+        authorStudio.put("lipSyncNormalized",true);
+        var svc=svcWith(doc);var row=svc.publishFromProject(OWNER,PROJECT,null,"模板",null,IpDemoTemplate.KIND_TEMPLATE);
+        var published=IpStudioFixtures.OM.readTree(row.getDocJson());var studio=published.path("nodes").get(1).path("metadata").path("studio");
+        assertEquals(2,studio.path("settings").path("episodeCount").asInt());assertEquals("原稿",studio.path("script").path("title").asText());
+        for(String value:new String[]{"old-request","IPR-author","author-avatar","author-ip","private chat","approvedCost","private-speech-request","private speech text","private-lip-request","private-video-key","private-audio-key","lipSyncNormalized"})assertFalse(published.toString().contains(value));
+    }
+
+    @Test
+    void exampleRemovesStudioRuntimeWhileRetainingCopiedOutput() throws Exception {
+        ObjectNode doc=busyDoc();var md=(ObjectNode)doc.path("nodes").get(0).path("metadata");
+        md.set("studio",IpStudioFixtures.OM.readTree("{\"kind\":\"shot\",\"shot\":{\"id\":\"shot-1\"},\"runId\":\"IPR-author\",\"request\":{\"clientRequestId\":\"old-request\"},\"adoption\":{\"avatarId\":\"author-avatar\"}}"));
+        var row=svcWith(doc).publishFromProject(OWNER,PROJECT,null,"示例",null,IpDemoTemplate.KIND_EXAMPLE);
+        var published=IpStudioFixtures.OM.readTree(row.getDocJson());var image=published.path("nodes").get(0).path("metadata");
+        assertEquals("shot-1",image.path("studio").path("shot").path("id").asText());assertTrue(image.path("storageKey").asText().startsWith("ipstudio_demo/"));
+        assertFalse(published.toString().contains("IPR-author"));assertFalse(published.toString().contains("author-avatar"));assertFalse(published.toString().contains("old-request"));
+    }
+
+    @Test
+    void templateAndExampleExcludePrivateAssistantTextAndApprovedBatchNodes() throws Exception {
+        for(String kind:java.util.List.of(IpDemoTemplate.KIND_TEMPLATE,IpDemoTemplate.KIND_EXAMPLE)) {
+            ObjectNode doc=busyDoc();var nodes=(ArrayNode)doc.path("nodes");
+            for(String auxiliary:java.util.List.of("assistant","batch")) {
+                var node=nodes.addObject().put("id",auxiliary).put("type","text");
+                var md=node.putObject("metadata").put("prompt","private request").put("content","private reply");
+                md.putObject("studio").put("kind",auxiliary);
+                ((ArrayNode)doc.path("connections")).addObject().put("fromNodeId","n-text").put("toNodeId",auxiliary);
+            }
+            ((ArrayNode)doc.path("connections")).addObject().put("fromNodeId","n-text").put("toNodeId","n-img");
+            ((ObjectNode)nodes.get(1).path("metadata")).putObject("studio").put("kind","script").put("parentNodeId","assistant");
+            var row=svcWith(doc).publishFromProject(OWNER,PROJECT,null,"公开内容",null,kind);
+            var published=IpStudioFixtures.OM.readTree(row.getDocJson());
+            assertEquals(3,published.path("nodes").size());assertEquals(1,published.path("connections").size());
+            assertFalse(published.path("nodes").get(1).path("metadata").path("studio").has("parentNodeId"));
+            assertFalse(published.toString().contains("private request"));assertFalse(published.toString().contains("private reply"));
+        }
+    }
+
+    @Test
     void 模板保留文字正文() {
         JsonNode md = byId(publish(IpDemoTemplate.KIND_TEMPLATE)).get("n-text");
         assertEquals("① 把你的照片拖到这里", md.path("content").asText(),

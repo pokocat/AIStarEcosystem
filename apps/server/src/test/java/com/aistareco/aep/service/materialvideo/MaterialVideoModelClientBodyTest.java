@@ -166,7 +166,7 @@ class MaterialVideoModelClientBodyTest {
     private static final String KEY_URL = "https://cdn.test/ipstudio_gen/u1/a.png";
 
     @Test
-    @DisplayName("短剧请求（prompt 里只有首尾帧标记、没有 key）：三种协议的请求体逐字节不变")
+    @DisplayName("短剧首尾帧标记继续传入三个协议；Agnes 同画布按 9:16 的真实像素和时长组包")
     void dramaMarkerOnlyBodiesUnchanged() {
         var none = MaterialVideoModelClient.UpstreamInputs.NONE;
         assertEquals("{\"model\":\"doubao-seedance-1\",\"content\":[{\"type\":\"text\",\"text\":\"镜头推近\"},"
@@ -174,7 +174,7 @@ class MaterialVideoModelClientBodyTest {
                         + "{\"type\":\"image_url\",\"image_url\":{\"url\":\"https://cdn.x/l.png\"},\"role\":\"last_frame\"}],"
                         + "\"ratio\":\"9:16\",\"duration\":5,\"return_last_frame\":true}",
                 json(client.buildSubmitBody("seedance", "doubao-seedance-1", DRAMA_PROMPT, 5, "9:16", VideoGenSpec.EMPTY, none)));
-        assertEquals("{\"model\":\"agnes-video\",\"prompt\":\"镜头推近\",\"width\":768,\"height\":1152,"
+        assertEquals("{\"model\":\"agnes-video\",\"prompt\":\"镜头推近\",\"size\":\"720x1280\",\"seconds\":\"5\",\"width\":720,\"height\":1280,"
                         + "\"num_frames\":121,\"frame_rate\":24,\"image\":\"https://cdn.x/f.png\"}",
                 json(client.buildSubmitBody("agnes", "agnes-video", DRAMA_PROMPT, 5, "9:16", VideoGenSpec.EMPTY, none)));
         assertEquals("{\"model\":\"some-video\",\"prompt\":\"镜头推近\",\"duration\":5,\"aspect_ratio\":\"9:16\","

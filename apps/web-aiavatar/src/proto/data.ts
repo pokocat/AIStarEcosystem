@@ -316,7 +316,7 @@ export interface VoiceAsset {
   id: string;
   name: string;
   char: string;
-  kind: "clone" | "design";
+  kind: "clone" | "design" | "preset";
   gender: string;
   lang: string;
   tone: string;

@@ -6,6 +6,11 @@
 
 import { apiFetch } from "@ai-star-eco/api-client";
 import type { IpRun as SharedIpRun, IpUploadResult as SharedIpUploadResult } from "@ai-star-eco/types";
+import { studioCapabilities, submitStudioRun } from "./studio-api";
+import type { StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow";
+import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
+
+export const fetchStudioVideoModels = () => apiFetch<VideoStudioModel[]>("/v1/ip-studio/studio/video-models");
 
 export type IpModelOption = {
   endpointId: string;
@@ -87,11 +92,14 @@ export type IpGenerateRequest = {
 };
 
 /** 画布出图：参考图由画布点名，服务端管归属闸、提示词模板、模型白名单、计价与结算。 */
-export const generate = (projectId: string, req: IpGenerateRequest) =>
-  apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/generate`, {
+export const generate = async (projectId: string, req: IpGenerateRequest) => {
+  if((await studioCapabilities()).mock) return submitStudioRun(projectId,{clientRequestId:crypto.randomUUID(),nodeId:req.nodeId || crypto.randomUUID(),operation:"image",
+    prompt:req.prompt,references:(req.refKeys||[]).map(storageKey=>({storageKey,role:"frame"})),count:req.count,size:req.size,model:req.model});
+  return apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/generate`, {
     method: "POST",
     body: req,
   });
+};
 
 export type IpVideoRequest = {
   prompt: string;
@@ -99,18 +107,28 @@ export type IpVideoRequest = {
   durationSec?: number;
   aspectRatio?: string;
   model?: string;
+  video?: StudioVideoSettings;
+  maxCost?: number;
 };
 
 /** 画布出视频 —— 走通用视频链，不依赖数字人形象。返回一张「渲染中」的任务卡。 */
-export const generateVideo = (projectId: string, req: IpVideoRequest) =>
-  apiFetch<IpVideoJob>(
+export const generateVideo = async (projectId: string, req: IpVideoRequest):Promise<IpVideoJob> => {
+  if((await studioCapabilities()).mock) {
+    const run=await submitStudioRun(projectId,{clientRequestId:crypto.randomUUID(),nodeId:crypto.randomUUID(),operation:"video",prompt:req.prompt,
+      references:req.refKey?[{storageKey:req.refKey,role:"frame"}]:[],durationSec:req.durationSec,aspectRatio:req.aspectRatio,model:req.model,video:req.video,maxCost:req.maxCost});
+    return studioVideoCard(run);
+  }
+  return apiFetch<IpVideoJob>(
     `/v1/ip-studio/projects/${encodeURIComponent(projectId)}/generate-video`,
     { method: "POST", body: req },
   );
+};
+const studioVideoCard = (run:IpRun):IpVideoJob => ({run,id:run.id,status:run.status,video_url:run.output.url,video_key:run.output.storageKey,error_message:run.errorMessage});
 
 /** 视频任务状态（与带货 / 短剧同一张表，按 app 分区隔离）。 */
 export type IpVideoJob = {
   id: string; status: string;
+  run?: IpRun;
   video_url?: string;
   /** 成片在我方存储里的 key —— 服务端镜像后给出，画布引用它而不是重新上传。 */
   video_key?: string;
@@ -124,7 +142,7 @@ export type IpVideoJob = {
 // 真实表现是先被开通闸判成「该接口尚未登记子产品归属」403；就算把路由登记了，
 // 后面还是 404。带货线那条同名接口把 app 写死成 celebrity（v0.108 分区），
 // 拿它查画布的任务只会查不到 —— 所以正确做法是 ip-studio 域自己出一条。
-export const readVideoJob = (jobId: string) =>
+export const readVideoJob = async (jobId: string):Promise<IpVideoJob> => jobId.startsWith("IPR-") ? studioVideoCard(await readRun(jobId)) :
   apiFetch<IpVideoJob>(`/v1/ip-studio/videos/${encodeURIComponent(jobId)}`);
 
 /** 跑一个节点。服务端整存整取地收下最新画布，再按这个节点编译、扣费、派发。 */

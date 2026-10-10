@@ -74,17 +74,41 @@ export interface IpProjectDoc {
 }
 
 export type IpRunStatus = "running" | "done" | "failed";
-export type IpRunKind = "identity" | "generate";
+export type IpRunKind = "identity" | "generate" | "studio-adopt" | "studio-audio" | "studio-lip-sync" | `studio-${import("./ip-studio-workflow").StudioOperation}`;
 
 // width / height 是**出图的真实像素**（服务端从文件头读，不整图解码）。
 // 画布拿它算节点尺寸；缺了只能按上限铺成正方形，竖图会被撑成方框。
 export interface IpCandidate { key: string; url: string; width?: number; height?: number }
+export interface IpVideoCandidate {
+  index: number; jobId: string; status: 'running' | 'done' | 'failed'; pct: number;
+  storageKey?: string; url?: string; durationSec: number; errorMessage?: string;
+  queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null;
+}
 export interface IpRunOutput {
+  mock?: boolean;
+  script?: import("./ip-studio-workflow").StudioScript;
+  plan?: import("./ip-studio-workflow").StudioPlan;
+  scriptRevision?: { markdown: string; summary: string };
+  shots?: import("./ip-studio-workflow").StudioShot[];
+  storageKey?: string;
+  url?: string;
+  durationSec?: number;
+  lipSync?: boolean;
+  lipSyncNormalized?: boolean;
+  comparisonStorageKey?: string;
+  comparisonUrl?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  speaker?: string;
   text?: string;                  // identity：中文特征卡
   promptEn?: string;              // identity：英文身份提示词
+  videoCandidates?: IpVideoCandidate[];
   candidates?: IpCandidate[];     // generate：候选图（签名 URL，短期）
 }
 export interface IpRunInputs {
+  /** Explicit Studio input wrapped by the native image pipeline. */
+  studioRequest?: import('./ip-studio-workflow').StudioRunRequest;
   userPrompt?: string;            // 用户原始指令；旧记录可能只有完整模板提示词
   prompt?: string;                // generate：实际送入模型的完整英文提示词（透明可查）
   refs?: { role: "master" | "source" | "reference"; note?: string; applied: boolean; reason?: string }[];
@@ -97,6 +121,7 @@ export interface IpRun {
   errorCode?: string; errorMessage?: string;
   inputs: IpRunInputs; output: IpRunOutput;
   createdAt: string; finishedAt?: string;
+  queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null;
 }
 
 export type IpProjectStatus = "draft" | "published";
@@ -105,6 +130,8 @@ export interface IpProjectSummary {
   coverUrl?: string; publishedAvatarId?: string; createdAt: string; updatedAt: string;
 }
 export interface IpProject extends IpProjectSummary {
+  /** Immutable recipe selected at creation, independent of catalogue updates. */
+  templateVersionId?: string;
   /** 文档指纹 —— 保存时回传，服务端据此判断「我读到的那版还在不在」。 */
   docVersion?: string;
   doc: IpProjectDoc;
@@ -113,6 +140,11 @@ export interface IpProject extends IpProjectSummary {
 }
 
 export interface IpTemplate {
+  versionId?: string;
+  version?: number;
+  visibility?: 'personal' | 'official';
+  mine?: boolean;
+  enabled?: boolean;
   id: string; name: string; summary: string; coverUrl?: string;
   stylePresetId?: string; lookCount: number; estimatedCredits: number;
   doc: IpProjectDoc;              // 预排好的节点图（照片 / 参考图为空待填）
@@ -158,12 +190,13 @@ export interface IpRunNodeRequest { doc?: IpProjectDoc }   // 运行前顺手保
 export interface IpPublishRequest { avatarName: string; masterNodeId: string; lookNodeIds: string[] }
 export interface IpPublishResult { avatarId: string; lookIds: string[] }
 export interface IpUploadResult { key: string; url: string; width?: number; height?: number; fileName: string }
+export interface StudioMediaImportResult { key: string; url: string; mediaType: "image" | "video" | "audio"; mimeType: string; bytes: number; fileName: string; width?: number; height?: number; durationSec?: number }
 
 /** 服务端保留的画布内容版本（最近 50 份；视口移动不产生版本）。 */
 export interface IpRevision { id: string; name: string; createdAt: string; nodeCount: number }
 export interface IpRevisionDetail { name: string; doc: IpProjectDoc }
 export interface IpRunPage { items: IpRun[]; hasMore: boolean }
-export type IpSavedAssetKind = "text" | "image" | "video";
+export type IpSavedAssetKind = "text" | "image" | "video" | "audio";
 type IpSavedAssetBase<T extends IpSavedAssetKind> = {
   id: string; kind: T; title: string; coverUrl: string; tags: string[];
   source?: string; note?: string; createdAt: string; updatedAt: string; metadata?: Record<string, unknown>;
@@ -171,4 +204,5 @@ type IpSavedAssetBase<T extends IpSavedAssetKind> = {
 export type IpTextAsset = IpSavedAssetBase<"text"> & { data: { content: string } };
 export type IpImageAsset = IpSavedAssetBase<"image"> & { data: { dataUrl: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
 export type IpVideoAsset = IpSavedAssetBase<"video"> & { data: { url: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
-export type IpSavedAsset = IpTextAsset | IpImageAsset | IpVideoAsset;
+export type IpAudioAsset = IpSavedAssetBase<"audio"> & { data: { url: string; storageKey?: string; bytes: number; mimeType: string } };
+export type IpSavedAsset = IpTextAsset | IpImageAsset | IpVideoAsset | IpAudioAsset;

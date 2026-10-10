@@ -61,8 +61,15 @@ public class IpRun {
     @Column(nullable = false, length = 64)
     private String nodeId;
 
-    /** identity | generate */
-    @Column(nullable = false, length = 16)
+    /** Studio idempotency key. Old generation records leave these null. */
+    @Column(length = 64)
+    private String clientRequestId;
+
+    @Column(length = 64)
+    private String inputFingerprint;
+
+    /** identity | generate | studio-* */
+    @Column(nullable = false, length = 32)
     private String kind;
 
     /** running | done | failed（wire 三态，与 dap_job 一致）。 */

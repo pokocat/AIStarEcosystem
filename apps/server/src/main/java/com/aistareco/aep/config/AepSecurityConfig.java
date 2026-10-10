@@ -111,6 +111,7 @@ public class AepSecurityConfig {
                         // 不能挂在 /api/admin/** 下 —— 那里要 staff JWT，而军师 BFF 只有 service token。
                         // 见 ClipServiceAdminController 的类注释（含密钥影响面说明）。
                         // 顺序同样必须早于通用 /api/admin/** 规则。
+                        .requestMatchers("/api/service/model-management/v1/command").permitAll() // Independent, narrow signed delegation; validated by controller.
                         .requestMatchers("/api/service/clip/**").permitAll()
                         .requestMatchers("/api/me/**").authenticated()
                         .requestMatchers("/api/mixcut/**").authenticated()
@@ -149,6 +150,8 @@ public class AepSecurityConfig {
                         // 顺序敏感：必须排在通用 /api/v1/** authenticated 之前。
                         // 只放行读；写路径 /api/v1/card/** 仍走登录 + aiavatar 开通。
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/card/p/**").permitAll()
+                        // Only an explicitly published, revocable text snapshot is public. Copy/manage remain authenticated.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/ip-studio/shared/conversations/*").permitAll()
                         .requestMatchers("/api/v1/real-auth/callback").permitAll()
                         // 数字人资产平台（web-aiavatar，v0.51 dap 领域）：/api/v1/** 全部需登录。
                         .requestMatchers("/api/v1/**").authenticated()

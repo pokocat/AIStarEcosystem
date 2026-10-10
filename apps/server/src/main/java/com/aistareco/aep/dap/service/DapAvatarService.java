@@ -162,7 +162,10 @@ public class DapAvatarService {
             def.putAll(req.def());
             a.setDef(def);
         }
-        if (req.voiceName() != null && !req.voiceName().isBlank()) a.setVoiceName(req.voiceName());
+        if (req.voiceName() != null && !req.voiceName().isBlank()) {
+            if (!java.util.Objects.equals(req.voiceName(), a.getVoiceName())) a.setVoiceId(null);
+            a.setVoiceName(req.voiceName());
+        }
         a.setUpdatedAt(Instant.now());
         avatarRepo.save(a);
         return toDto(a);
@@ -435,6 +438,8 @@ public class DapAvatarService {
             throw BusinessException.badRequest("DAP_VOICE_REQUIRED", "缺少音色");
         }
         a.setVoiceName(voiceName);
+        // This legacy path binds a display name only; never retain an unrelated exact Studio version.
+        a.setVoiceId(null);
         a.setUpdatedAt(Instant.now());
         avatarRepo.save(a);
         return toDto(a);

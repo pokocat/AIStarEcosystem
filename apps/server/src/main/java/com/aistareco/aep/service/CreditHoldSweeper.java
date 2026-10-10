@@ -28,11 +28,15 @@ import java.util.List;
 @ConditionalOnProperty(name = "aep.credit.stale-hold-sweeper.enabled", havingValue = "true", matchIfMissing = true)
 public class CreditHoldSweeper {
 
+    @org.springframework.beans.factory.annotation.Autowired private AiGenerationQueueService generationQueue;
+
     private static final Logger log = LoggerFactory.getLogger(CreditHoldSweeper.class);
 
     private final CreditHoldRepository holdRepo;
     private final CreditService creditService;
     private final long ttlMinutes;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.ipstudio.repository.IpRunRepository ipRuns;
 
     public CreditHoldSweeper(CreditHoldRepository holdRepo,
                              CreditService creditService,
@@ -56,6 +60,13 @@ public class CreditHoldSweeper {
         int released = 0;
         for (CreditHold h : stale) {
             try {
+                if(generationQueue!=null && (("ip-run".equals(h.getReferenceType()) &&
+                        (generationQueue.isWaiting(AiGenerationQueueService.IMAGE,h.getReferenceId()) || generationQueue.isWaiting(AiGenerationQueueService.WORKFLOW,h.getReferenceId()))) ||
+                        ("material_video_job".equals(h.getReferenceType()) && generationQueue.isWaiting(AiGenerationQueueService.VIDEO,h.getReferenceId())))) continue;
+                // An accepted audio Job remains recoverable after a long provider outage.
+                // Its hold is owned by the durable speech worker, not an orphan.
+                if(ipRuns!=null && com.aistareco.aep.ipstudio.service.IpRunService.REF_TYPE.equals(h.getReferenceType()) &&
+                        ipRuns.findById(h.getReferenceId()).filter(r->com.aistareco.aep.ipstudio.service.StudioSpeechWorker.manages(r.getKind()) && "running".equals(r.getStatus())).isPresent()) continue;
                 creditService.releaseHold(h.getReferenceType(), h.getReferenceId(),
                         "超时自动释放（hold 超 " + ttlMinutes + " 分钟未结算）");
                 released++;

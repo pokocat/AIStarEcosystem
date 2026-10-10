@@ -77,6 +77,8 @@ public final class ProductRouteTable {
      * 所以它只能精确匹配，不能当前缀。
      */
     public static final Set<String> WHITELIST_EXACT = Set.of(
+            // Dedicated signed machine capability; the controller validates its own narrow grant.
+            "/api/service/model-management/v1/command",
             "/api/me",
             "/api/me/messages-overview",
             "/api/me/password",
@@ -139,6 +141,7 @@ public final class ProductRouteTable {
      * （{@code POST /api/store/items/{type}/{id}/redeem} 真实扣积分）仍走 {@code /api/store/**} 规则。
      */
     public static final List<PublicGet> PUBLIC_GETS = List.of(
+            new PublicGet("/api/v1/ip-studio/shared/conversations/*", "本人明确发布的可撤销对话文字快照，匿名只读；复制和管理不豁免"),
             new PublicGet("/api/store/catalog",
                     "登录前可浏览的公开商品目录：AepSecurityConfig 已 permitAll，"
                             + "StoreController#catalog 显式支持匿名（principal 可为 null）。"

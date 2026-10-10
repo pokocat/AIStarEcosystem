@@ -23,16 +23,24 @@ import java.util.List;
 @Service
 public class IpRunReaper {
 
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
+
     private static final Logger log = LoggerFactory.getLogger(IpRunReaper.class);
 
     private final IpRunRepository runRepo;
     private final CreditService credits;
     private final IpStudioProperties props;
+    private final StudioWorkflowWorker studioWorker;
 
     public IpRunReaper(IpRunRepository runRepo, CreditService credits, IpStudioProperties props) {
+        this(runRepo,credits,props,null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public IpRunReaper(IpRunRepository runRepo,CreditService credits,IpStudioProperties props,StudioWorkflowWorker studioWorker) {
         this.runRepo = runRepo;
         this.credits = credits;
         this.props = props;
+        this.studioWorker=studioWorker;
     }
 
     @Scheduled(fixedDelay = 120_000L, initialDelay = 90_000L)
@@ -50,6 +58,14 @@ public class IpRunReaper {
         List<IpRun> stale = runRepo.findByStatusAndHeartbeatAtBefore(IpRun.STATUS_RUNNING, cutoff);
         int n = 0;
         for (IpRun run : stale) {
+            if(queue!=null && (queue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,run.getId()) ||
+                    queue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW,run.getId()))) continue;
+            // Audio jobs have durable native checkpoints and resume their original provider Job.
+            if(StudioSpeechWorker.manages(run.getKind())) continue;
+            if(run.getKind()!=null && run.getKind().startsWith("studio-") && studioWorker!=null) {
+                if(studioWorker.expire(run.getId(),cutoff)) n++;
+                continue;
+            }
             try {
                 credits.releaseHold(IpRunService.REF_TYPE, run.getId(), "IP 运行超时 · 释放冻结");
             } catch (Exception e) {

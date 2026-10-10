@@ -13,7 +13,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 const api = read("src/ip/api/ip-studio.ts");
 const page = read("src/app/projects/demos/page.tsx");
-const list = read("src/app/projects/page.tsx");
+const list = read("src/ip/studio-template-market.tsx");
 const host = read("src/ip/canvas-host.tsx");
 
 describe("运营后台必须真的接到那四个端点", () => {

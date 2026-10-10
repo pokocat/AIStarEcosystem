@@ -16,6 +16,7 @@ import { AssetCreateSheet, useAssetCreate } from "./asset-create";
 import { MVoice, MApps } from "./screen-voiceapps";
 import { MLicenses, MRealMaterials, MTasks, MMe, MTrash } from "./screen-lictaskme";
 import { MLogin } from "./screen-login";
+import { accountPageKey, STUDIO_NAVIGATION_EVENT } from "@/shell/account-navigation";
 
 const hA : any = React.createElement;
 const { useState: useStateA, useEffect: useEffectA, useRef: useRefA, useCallback: useCallbackA, Suspense: SuspenseA } = React;
@@ -113,7 +114,7 @@ export type StudioStart = "sheet" | "real" | "ai" | "compose";
 
 const TAB_KEYS = ["home", "library", "apps", "me"];
 const TAB_LABEL: any = { home: "首页", library: "资产库", apps: "应用中心", me: "我的" };
-const OVERLAY_LABEL: any = { voice: "声音工作室", licenses: "授权登记", realmaterials: "真人授权素材库", tasks: "任务中心", settings: "设置", security: "账号与安全", membership: "会员与算力", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站", detail: "资产详情", derivview: "衍生查看", looks: "造型档案", designlooks: "设计造型", choosevoice: "选择音色", create: "创建链路", aicreate: "AI 创建", realcapture: "真人素材授权", realauthresume: "本人确认结果", ipdetail: "IP 详情", iplicense: "IP 授权", scenedetail: "场景详情", productdetail: "产品详情", styledetail: "风格模板", compose: "合成工作台", composeresult: "合成结果" };
+const OVERLAY_LABEL: any = { voice: "声音工作室", licenses: "授权登记", realmaterials: "真人授权素材库", tasks: "任务中心", settings: "设置", security: "账号与安全", membership: "会员与积分", storage: "存储用量", voiceclone: "声音克隆", trash: "回收站", detail: "资产详情", derivview: "衍生查看", looks: "造型档案", designlooks: "设计造型", choosevoice: "选择音色", create: "创建链路", aicreate: "AI 创建", realcapture: "真人素材授权", realauthresume: "本人确认结果", ipdetail: "IP 详情", iplicense: "IP 授权", scenedetail: "场景详情", productdetail: "产品详情", styledetail: "风格模板", compose: "合成工作台", composeresult: "合成结果" };
 // 无需实体参数、可从 URL 直接还原的简单覆盖页
 const SIMPLE_OVERLAYS = ["tasks", "licenses", "realmaterials", "voice", "settings", "security", "membership", "storage", "trash", "voiceclone"];
 // 临时流程（创建向导等）：URL 会更新，但冷启动不强行还原（缺上下文 / 会污染状态）
@@ -197,7 +198,7 @@ function parseHash(): { tab: string; screen?: string; id?: string; deriv?: strin
  *                 这些流程属于 FLOW_SCREENS —— 冷启动不按 hash 还原（缺角色上下文），
  *                 所以不能靠 `#/create/real` 深链，必须由外壳显式发起。
  */
-export function App({ embedded = false, start, tabBar }: { embedded?: boolean; start?: StudioStart; tabBar?: any } = {}) {
+export function App({ embedded = false, start, tabBar, onRootBack }: { embedded?: boolean; start?: StudioStart; tabBar?: any; onRootBack?: () => void } = {}) {
   const [authed, setAuthed] = useStateA(USE_MOCK ? true : null as any); // null = 挂载前未知（避免 SSR 闪登录屏）
   // v0.53 平台门禁：null=待检 / true=已开通 / false=未开通（渲染拦截屏）
   const [platformOk, setPlatformOk] = useStateA(USE_MOCK ? true : null as any);
@@ -251,6 +252,7 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
   const depthRef = useRefA(0);          // 上一次同步到 URL 的覆盖深度（stack + sheet）
   const restoringRef = useRefA(false);  // 正在由 popstate / 冷启动还原 → 跳过 URL 回写
   const bootedRef = useRefA(false);
+  const seenHashRef = useRefA("");
 
   // 按 URL 还原视图（冷启动 / 前进键 / 外部粘贴永久链接）。
   const restoreFromHash = useCallbackA(() => {
@@ -306,6 +308,7 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
   useEffectA(() => {
     if (typeof window === "undefined") return;
     restoreFromHash();
+    seenHashRef.current = window.location.hash;
     bootedRef.current = true;
   }, [restoreFromHash]);
 
@@ -319,6 +322,8 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
       if (depth > depthRef.current) history.pushState({ aia: depth }, "", hash);
       else if ((location.hash || "") !== hash) history.replaceState({ aia: depth }, "", hash);
     } catch { /* noop */ }
+    seenHashRef.current = location.hash;
+    window.dispatchEvent(new Event(STUDIO_NAVIGATION_EVENT));
     depthRef.current = depth;
   }, [tab, stack, sheet]);
 
@@ -326,12 +331,22 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
   useEffectA(() => {
     if (typeof window === "undefined") return;
     const onPop = () => {
+      // The following hashchange belongs to this traversal. Preserve in-memory flow props.
+      seenHashRef.current = location.hash;
+      // Account sidebar hash links and history traversal restore the actual target screen.
+      if (accountPageKey(location.hash)) { restoreFromHash(); return; }
       if (sheetRef.current) { restoringRef.current = true; setSheet(false); depthRef.current = Math.max(0, depthRef.current - 1); return; }
       if (stackRef.current.length > 0) { restoringRef.current = true; setStack((s) => s.slice(0, -1)); depthRef.current = Math.max(0, depthRef.current - 1); return; }
       restoreFromHash();   // 根层：来自前进键 / 外部改 hash → 按 URL 还原
     };
+    const onHash = () => {
+      if (seenHashRef.current === location.hash) return;
+      seenHashRef.current = location.hash;
+      restoreFromHash();
+    };
     window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
+    window.addEventListener("hashchange", onHash);
+    return () => { window.removeEventListener("popstate", onPop); window.removeEventListener("hashchange", onHash); };
   }, [restoreFromHash]);
 
   const reload = useCallbackA(() => setReloadKey((k) => k + 1), []);
@@ -393,7 +408,7 @@ export function App({ embedded = false, start, tabBar }: { embedded?: boolean; s
     },
     // v0.149：id 模式下 auth.logout() 会整页跳账号中心统一登出（下面的状态重置不会被看到）。
     logout: () => { auth.logout(); setStack([]); setSheet(false); setTab("home"); if (!USE_MOCK) setAuthed(false); toast("已退出登录", { tone: "ok" }); },
-    back: () => setStack((s) => s.slice(0, -1)),
+    back: () => { if (stack.length === 1 && onRootBack) { onRootBack(); return; } setStack((s) => s.slice(0, -1)); },
     startCreate: (path, char) => { setSheet(false); setStack((s) => [...s, { screen: path === "ai" && !char ? "aicreate" : "create", props: { char: char || freshChar(path, avatars) } }]); setLabel(path === "ai" && !char ? "AI 创建" : "创建链路"); },
     startRealClone: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars), materialOnly: true } }]); setLabel("新增真人素材"); },
     startRealMaterial: (char) => { setSheet(false); setStack((s) => [...s, { screen: "realcapture", props: { char: char || freshChar("real", avatars), materialOnly: true } }]); setLabel("新增真人素材"); },

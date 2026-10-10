@@ -11,6 +11,9 @@ import java.util.Optional;
 
 @Repository
 public interface DapVoiceRepository extends JpaRepository<DapVoice, String> {
+    Optional<DapVoice> findByOwnerUserIdAndAvatarIdAndSourceRunId(String ownerUserId,String avatarId,String sourceRunId);
+    @Query("select coalesce(max(v.profileVersion),0) from DapVoice v where v.ownerUserId=:owner and v.avatarId=:avatar")
+    int lastProfileVersion(@Param("owner") String owner,@Param("avatar") String avatar);
     /**
      * 乐观认领：只有 demoAttempts 仍等于我读到的那个值时才 +1。
      *

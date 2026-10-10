@@ -21,7 +21,7 @@ import java.util.Map;
  * <ul>
  *   <li><b>老路径</b>（画布出视频、脚本视频、短剧）：{@code resolutionTier == null}，至多带一个
  *       {@code firstFrameKey}。组出来的厂商请求体与改动之前逐字段一致。</li>
- *   <li><b>视频生成区</b>：{@code resolutionTier != null}，按 H3 原生合同组包（{@link #isExplicit()}）。</li>
+ *   <li><b>视频生成区 / Studio 原生模式</b>：{@code resolutionTier != null}，按 H3 原生合同组包（{@link #isExplicit()}）。</li>
  * </ul>
  * 解析失败 / 空 JSON = {@link #EMPTY}：与此前「读不出首帧就当文生视频」的行为一致。
  */
@@ -87,7 +87,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
                 text(vc, KEY_FIRST_FRAME), text(vc, KEY_LAST_FRAME), refs);
     }
 
-    /** 视频生成区写出的完整原生规格（有清晰度）。 */
+    /** 视频生成区与 Studio 写出的完整原生规格（有清晰度）。 */
     public boolean isExplicit() {
         return resolutionTier != null;
     }

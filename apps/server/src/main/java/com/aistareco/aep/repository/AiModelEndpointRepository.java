@@ -11,5 +11,9 @@ public interface AiModelEndpointRepository extends JpaRepository<AiModelEndpoint
 
     List<AiModelEndpoint> findByEnabledTrue();
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select e from AiModelEndpoint e where e.id = :id")
+    java.util.Optional<AiModelEndpoint> lockById(@org.springframework.data.repository.query.Param("id") String id);
+
     List<AiModelEndpoint> findAllByOrderByCreatedAtDesc();
 }

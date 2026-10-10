@@ -21,10 +21,10 @@ type CSS = React.CSSProperties;
  * 老 SPA /studio 用的是另一层 `.app-root`（position:fixed + 480px 手机笼子），
  * 不受此影响，按既定双轨逐屏迁出。
  */
-export function HubScreen({ children, tabBar, width = "wide" }: { children: React.ReactNode; tabBar?: boolean; width?: "wide" | "form" }) {
+export function HubScreen({ children, tabBar, width = "wide", className = "" }: { children: React.ReactNode; tabBar?: boolean; width?: "wide" | "form"; className?: string }) {
   return (
     <div
-      className={width === "form" ? "hub-screen hub-screen--form" : "hub-screen"}
+      className={(width === "form" ? "hub-screen hub-screen--form" : "hub-screen") + (className ? " " + className : "")}
       style={{
         minHeight: "100dvh",
         background: "var(--canvas)",
@@ -113,7 +113,7 @@ const TABS = [
   { href: "/dashboard", label: "首页", icon: HomeIcon, match: (p: string) => p === "/dashboard" },
   { href: "/discover", label: "发现", icon: CompassIcon, match: (p: string) => p.startsWith("/discover") || p.startsWith("/market") || p.startsWith("/stars") },
   { fab: true as const, href: "/create", label: "创作" },
-  { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") },
+  { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") || p === "/ips" },
   { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
 ];
 
@@ -166,6 +166,7 @@ export function Card({
 }) {
   return (
     <div
+      className="hub-card"
       onClick={onClick}
       style={{
         background: "var(--surface)",

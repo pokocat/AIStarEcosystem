@@ -295,16 +295,14 @@ public class MaterialVideoModelClient {
                 .appCode(appCode)
                 // 不设这个字段的话 [upstream-io] 那行永远打成 `body=` —— 出片参数（generationMode /
                 // 参考图 assetId / 时长比例）一个都看不到，排「参数到底发出去没有」全靠猜（v0.184 踩过）。
-                .requestBodyJson(bodyJson)
+                .requestBodyJson(auditBody(bodyJson))
                 .client(http)
                 .build();
         HttpResponse<String> resp;
         try {
             resp = upstreamHttp.sendJson(req, ctx);
         } catch (UpstreamCallException ex) {
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                    "视频生成失败，请稍后重试",
-                    "endpoint=" + p.getName() + " err=" + ex.getCause());
+            throw new SubmissionUnknown("endpoint=" + p.getName() + " err=" + ex.getCause());
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             // 上游的原话必须留在日志里（§8.0.1 ①）：internalDetail 只在 HTTP 请求路径上落 ErrorLog，
@@ -333,9 +331,7 @@ public class MaterialVideoModelClient {
                 log.warn("[material-video] submit missing-task-id endpoint={} model={} durationMs={} body={}",
                         p.getName(), model, elapsedMs(startNanos), snippet(resp.body()));
                 upstreamHttp.recordBadOutput(ctx, resp.body(), "VIDEO_SUBMIT_FAILED", elapsedMs(startNanos));
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                        "视频生成失败，请稍后重试",
-                        "missing task/video id; endpoint=" + p.getName() + " body=" + snippet(resp.body()));
+                throw new SubmissionUnknown("missing task/video id; endpoint=" + p.getName() + " body=" + snippet(resp.body()));
             }
             log.info("[material-video] submit ok endpoint={} model={} protocol={} taskId={} videoId={} durationMs={}",
                     p.getName(), model, protocol, taskId, videoId, elapsedMs(startNanos));
@@ -351,9 +347,14 @@ public class MaterialVideoModelClient {
             log.warn("[material-video] submit bad-output endpoint={} model={} durationMs={} err={}",
                     p.getName(), model, elapsedMs(startNanos), e.toString());
             upstreamHttp.recordBadOutput(ctx, resp.body(), "VIDEO_SUBMIT_FAILED", elapsedMs(startNanos));
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                    "视频生成失败，请稍后重试",
-                    "endpoint=" + p.getName() + " err=" + e);
+            throw new SubmissionUnknown("endpoint=" + p.getName() + " err=" + e);
+        }
+    }
+
+    /** A create request may be accepted without a readable reply. It must keep its capacity reservation. */
+    public static class SubmissionUnknown extends BusinessException {
+        public SubmissionUnknown(String detail) {
+            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","视频受理结果尚未确认，请联系运营核对，请勿重新生成",null,detail);
         }
     }
 
@@ -606,7 +607,8 @@ public class MaterialVideoModelClient {
         // 「首帧走上传换 assetId 还是给 URL」只在 usesUploadedFirstFrame 一处判定（2026-09-30 热修收口，§8.0.1 ④）
         if (!usesUploadedFirstFrame(protocol)) {
             return spec.firstFrameKey() == null ? UpstreamInputs.NONE
-                    : UpstreamInputs.firstFrameUrl(requireFetchableUrl(spec.firstFrameKey()));
+                    : UpstreamInputs.firstFrameUrl(PROTOCOL_AGNES.equals(protocol)
+                            ? agnesFirstFrameInput(spec.firstFrameKey()) : requireFetchableUrl(spec.firstFrameKey()));
         }
         if (!spec.isExplicit()) {
             return spec.firstFrameKey() == null ? UpstreamInputs.NONE
@@ -651,6 +653,48 @@ public class MaterialVideoModelClient {
         return url;
     }
 
+    /** Local development has no public CDN. Agnes' image input can carry the owned bytes;
+     * public deployments still use the existing signed fetch URL. Never drop a selected image. */
+    private String agnesFirstFrameInput(String key) {
+        String url = storage == null ? null : storage.upstreamFetchUrl(key);
+        if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+            String host = URI.create(url).getHost();
+            if (host != null && !List.of("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]").contains(host)) return url;
+        }
+        String input = storage == null ? null : new com.aistareco.aep.dap.service.DapImageInput(storage).of(key);
+        if (input == null || !input.startsWith("data:image/"))
+            throw BusinessException.badRequest("VIDEO_REF_UNREADABLE", "参考图无法读取，无法生成视频");
+        return input;
+    }
+
+    /** Keep parameters in audit records while excluding uploaded image bytes. */
+    static String auditBody(String json) {
+        try {
+            JsonNode body = OM.readTree(json);
+            redactInlineImages(body);
+            return OM.writeValueAsString(body);
+        } catch (IOException e) { return "[unreadable request body]"; }
+    }
+    private static void redactInlineImages(JsonNode node) {
+        if (node.isObject()) {
+            var fields = node.fields();
+            while(fields.hasNext()) {
+                var field = fields.next();
+                JsonNode value = field.getValue();
+                if(value.isTextual() && value.asText().startsWith("data:image/"))
+                    ((com.fasterxml.jackson.databind.node.ObjectNode)node).put(field.getKey(), "[inline image, " + value.asText().length() + " characters]");
+                else redactInlineImages(value);
+            }
+        } else if(node.isArray()) {
+            for(int i=0;i<node.size();i++) {
+                JsonNode value=node.get(i);
+                if(value.isTextual() && value.asText().startsWith("data:image/"))
+                    ((com.fasterxml.jackson.databind.node.ArrayNode)node).set(i,OM.getNodeFactory().textNode("[inline image, " + value.asText().length() + " characters]"));
+                else redactInlineImages(value);
+            }
+        }
+    }
+
     Map<String, Object> buildSubmitBody(String protocol, String model, String prompt, int durationSec,
                                         String aspectRatio, VideoGenSpec spec, UpstreamInputs inputs) {
         VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
@@ -690,6 +734,10 @@ public class MaterialVideoModelClient {
 
         if (PROTOCOL_AGNES.equals(protocol)) {
             Dimensions size = dimensionsForAspect(aspectRatio);
+            // The current OpenAI-compatible gateway consumes size/seconds; width/height
+            // alone were silently replaced by its 832x1088 default in real acceptance.
+            body.put("size", size.width() + "x" + size.height());
+            body.put("seconds", String.valueOf(durationSec > 0 ? durationSec : props.getDefaultDurationSec()));
             body.put("width", size.width());
             body.put("height", size.height());
             body.put("num_frames", normalizeFrames((durationSec > 0 ? durationSec : props.getDefaultDurationSec()) * AGNES_FRAME_RATE));
@@ -1093,11 +1141,11 @@ public class MaterialVideoModelClient {
     static Dimensions dimensionsForAspect(String aspectRatio) {
         String ratio = aspectRatio == null ? "" : aspectRatio.trim();
         return switch (ratio) {
-            case "16:9" -> new Dimensions(1152, 768);
+            case "16:9" -> new Dimensions(1280, 720);
             case "1:1" -> new Dimensions(1024, 1024);
             case "4:3" -> new Dimensions(1024, 768);
             case "3:4" -> new Dimensions(768, 1024);
-            default -> new Dimensions(768, 1152); // 9:16 竖屏短视频
+            default -> new Dimensions(720, 1280); // 9:16 竖屏短视频
         };
     }
 

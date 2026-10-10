@@ -4,6 +4,7 @@
 //   人物与形象（自建 + 明星授权给我的）/ 声音 / 素材库
 // ============================================================
 import React from "react";
+import { Plus } from "lucide-react";
 import { SavedCanvasAssets } from "@/ip/saved-canvas-assets";
 import Link from "next/link";
 import { AssetApi, AvatarApi, LicenseApi, VoiceApi } from "@/proto/api";
@@ -42,7 +43,9 @@ export function AssetsLibrary() {
   ];
 
   return (
-    <HubScreen tabBar>
+    <HubScreen tabBar className="ip-brand-surface ip-hub-surface assets-library">
+      <header className="assets-library-heading"><div><h1>素材库</h1><p>管理画布素材、人物形象和声音，随时用于创作。</p></div><Link href="/create" className="ip-brand-button"><Plus size={17} />创建资产</Link></header>
+      <div className="assets-library-mobile-heading">
       <NavBar
         title="资产"
         right={
@@ -68,7 +71,8 @@ export function AssetsLibrary() {
           </Link>
         }
       />
-
+      </div>
+      <div className="assets-library-content">
       <SavedCanvasAssets />
       <div style={{ margin: "6px 16px 0" }}>
         <SectionHeader
@@ -127,7 +131,7 @@ export function AssetsLibrary() {
                   <span style={{ fontFamily: "var(--font-serif)", fontSize: 14.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {v.name}
                   </span>
-                  <RegNo size={9.5}>{`${v.id} · ${v.kind === "clone" ? "克隆声" : "设计声"} · ${v.dur}`}</RegNo>
+                  <RegNo size={9.5}>{`${v.id} · ${v.kind === "clone" ? "克隆声" : v.kind === "preset" ? "预设音色" : "设计声"} · ${v.dur}`}</RegNo>
                 </Card>
               </Link>
             ))}
@@ -136,8 +140,8 @@ export function AssetsLibrary() {
       </div>
 
       <div className="hub-section" style={{ margin: "20px 16px 0" }}>
-        <SectionHeader title="素材库" hint="生成视频时搭配使用" action={<LinkAction href={studioHref("#/library")}>管理 ›</LinkAction>} />
-        <Link href={studioHref("#/library")} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
+        <SectionHeader title="资产分类" hint="生成视频时搭配使用" action={<LinkAction href="#canvas-assets">查看画布素材 ›</LinkAction>} />
+        <div>
           {summary.error ? (
             <Card>
               <EmptyState text={summary.error} />
@@ -154,7 +158,8 @@ export function AssetsLibrary() {
               ))}
             </Card>
           )}
-        </Link>
+        </div>
+      </div>
       </div>
     </HubScreen>
   );

@@ -6,10 +6,11 @@ import { DATA, LicenseApi, AccountApi, WalletApi, AvatarApi, VoiceApi, AuthApi, 
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
+import { useHubData } from "@/components/hub/data";
 
 // ============================================================
 // 移动端 V4 · 其余子页面
-//   设置 / 会员与算力 / 存储用量 / 声音克隆录制（真实麦克风） / 衍生物查看器（真实资产）
+//   设置 / 会员与积分 / 存储用量 / 声音克隆录制（真实麦克风） / 衍生物查看器（真实资产）
 // ============================================================
 const hMM : any = React.createElement;
 const { useState: useStateMM, useEffect: useEffectMM, useRef: useRefMM } = React;
@@ -69,7 +70,7 @@ function MSettings({ ctx }) {
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
         hMM(Row, { icon: Icons.lock, label: '账号与安全', sub: '设置 / 修改登录密码', onClick: () => ctx.go('security') }),
         hMM(Row, { icon: Icons.folder, label: '存储用量', sub: (acct.storageUsedMb ?? 0) + ' / ' + (acct.storageQuotaMb ?? 0) + ' MB', onClick: () => ctx.go('storage') }),
-        hMM(Row, { icon: Icons.gem, label: '会员与算力', sub: (acct.planLabel || 'PRO') + ' · ' + (acct.credits || 0).toLocaleString() + ' 点', onClick: () => ctx.go('membership'), last: true })),
+        hMM(Row, { icon: Icons.gem, label: '会员与积分', sub: (acct.planLabel || '—') + ' · ' + (acct.credits || 0).toLocaleString() + ' 点', onClick: () => ctx.go('membership'), last: true })),
 
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
         hMM(Row, { icon: Icons.info, label: '关于', value: 'v4.1', onClick: () => toast('数字人资产平台 v4.1', { tone: 'ok' }) }),
@@ -85,7 +86,7 @@ function MSettings({ ctx }) {
 }
 
 // ============================================================
-// 会员与算力
+// 会员与积分
 // ============================================================
 const PLANS = [
   { key: 'free', name: '体验版', price: '¥0', credits: '50 点/月', feats: ['基础形象生成', '标准图集', '带水印导出'], cur: false },
@@ -95,8 +96,11 @@ const PLANS = [
 function MMembership({ ctx }) {
   const [pack, setPack] = useStateMM(0);
   const [paying, setPaying] = useStateMM(false);
-  const acct: any = useApi(() => AccountApi.get(), seed.account()) || {};
-  const packages: any[] = useApi(() => WalletApi.packages(), []) || [];
+  const [refresh, setRefresh] = useStateMM(0);
+  const accountState = useHubData(() => AccountApi.get(), seed.account(), [refresh]);
+  const packageState = useHubData(() => WalletApi.packages(), [], [refresh]);
+  const acct: any = accountState.data || {};
+  const packages: any[] = packageState.data || [];
   const sel: any = packages[pack] || packages[0];
   async function payPack() {
     if (!sel || paying) return;
@@ -110,7 +114,7 @@ function MMembership({ ctx }) {
       }
       if (res.payDataType === 'shadow') {
         await WalletApi.confirmShadow(res.orderId, 'success');
-        toast('充值成功 · 算力已到账', { tone: 'ok' });
+        toast('充值成功 · 积分已到账', { tone: 'ok' });
         ctx.reload && ctx.reload();
       } else if (res.payDataType === 'qr') {
         toast('扫码支付待接入，请用网站支付', { tone: 'err' });
@@ -123,23 +127,27 @@ function MMembership({ ctx }) {
       setPaying(false);
     }
   }
-  return hMM('div', { className: 'm-overlay', 'data-screen-label': '会员与算力' },
-    hMM(WxNavMM, { title: '会员与算力', onBack: ctx.back }),
+  return hMM('div', { className: 'm-overlay', 'data-screen-label': '会员与积分' },
+    hMM(WxNavMM, { title: '会员与积分', onBack: ctx.back }),
     hMM('div', { className: 'm-body', style: { padding: '4px 18px 30px' } },
-      hMM('div', { style: { position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-xl)', padding: '18px 20px', background: 'linear-gradient(155deg,#1C2B3A,#14202B)', color: '#fff', boxShadow: 'var(--sh-2)', marginBottom: 22 } },
+      accountState.error && hMM('div', { role: 'alert', style: { marginBottom: 16, color: 'var(--err)' } }, '积分信息加载失败。', hMM(UI.Button, { variant: 'soft', size: 'sm', onClick: () => setRefresh(v => v + 1) }, '重新加载')),
+      hMM('div', { style: { position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-md)', padding: '18px 20px', background: 'var(--primary)', color: '#fff', boxShadow: 'var(--sh-2)', marginBottom: 22 } },
         hMM('div', { style: { position: 'absolute', right: -14, bottom: -18, opacity: .1 } }, hMM(Icons.gem, { size: 110 })),
         hMM('div', { style: { position: 'relative' } },
           hMM('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 } },
-            hMM('span', { style: { fontSize: 12.5, fontWeight: 600, opacity: .85 } }, '当前可用算力'),
-            hMM('span', { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', background: 'rgba(255,255,255,.16)', padding: '3px 8px', borderRadius: 'var(--r-pill)' } }, acct.planLabel || 'PRO')),
+            hMM('span', { style: { fontSize: 12.5, fontWeight: 600, opacity: .85 } }, '当前可用积分'),
+            hMM('span', { style: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', background: 'rgba(255,255,255,.16)', padding: '3px 8px', borderRadius: 'var(--r-pill)' } }, acct.planLabel || '—')),
           hMM('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6 } },
-            hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, letterSpacing: '-.02em' } }, (acct.credits || 0).toLocaleString()),
+            hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, letterSpacing: '-.02em' } }, accountState.loading || accountState.error ? '—' : (acct.credits || 0).toLocaleString()),
             hMM('span', { style: { fontSize: 13, opacity: .85 } }, '点')),
-          hMM('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 } },
+          !accountState.loading && !accountState.error && hMM('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 } },
             hMM('span', { style: { fontSize: 11.5, opacity: .8 } }, '本月赠送 ' + (acct.monthlyGrant || 0).toLocaleString() + ' · 已用 ' + (acct.creditsUsed || 0) + ' · ' + (acct.refreshDate || '') + '刷新'),
             hMM('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700 } }, '约可生成 ' + (acct.generatableEstimate || 0) + ' 个', hMM(Icons.user, { size: 13 }))))),
 
-      hMM(GroupTitle, null, '充值算力'),
+      hMM(GroupTitle, null, '充值积分'),
+      (packageState.loading || packageState.error || !packages.length) && hMM('div', { role: packageState.error ? 'alert' : 'status', style: { padding: '18px 0', color: 'var(--ink-2)', fontSize: 14 } },
+        packageState.loading ? '正在加载充值套餐…' : (packageState.error ? '充值套餐加载失败，请重试。' : '暂无可用充值套餐，请稍后再试。'),
+        !packageState.loading && hMM(UI.Button, { variant: 'soft', size: 'sm', onClick: () => setRefresh(v => v + 1), style: { marginLeft: 12 } }, '重新加载')),
       hMM('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 11, marginBottom: 14 } },
         packages.map((p: any, i: number) => {
           const on = pack === i;
@@ -154,11 +162,11 @@ function MMembership({ ctx }) {
               hMM('span', { style: { fontSize: 12, color: 'var(--ink-3)' } }, '点')),
             hMM('div', { style: { fontSize: 15, fontWeight: 700, color: on ? 'var(--primary)' : 'var(--ink)', marginTop: 6 } }, '¥' + (p.priceCents / 100)));
         })),
-      hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.gem, disabled: paying, onClick: payPack, style: { marginBottom: 8 } }, paying ? '处理中…' : ('立即充值 · ¥' + (sel ? (sel.priceCents / 100) : '—'))),
-      hMM('p', { style: { fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', margin: '0 0 24px' } }, '每月 1 日自动发放 ' + ((acct.monthlyGrant || 1500).toLocaleString()) + ' 点赠送算力'),
+      hMM(UI.Button, { variant: 'primary', full: true, size: 'lg', icon: Icons.gem, disabled: paying || !sel, onClick: payPack, style: { marginBottom: 8 } }, paying ? '处理中…' : ('立即充值 · ¥' + (sel ? (sel.priceCents / 100) : '—'))),
+      hMM('p', { style: { fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', margin: '0 0 24px' } }, '权益及赠送积分以当前账号开通记录为准'),
 
-      hMM(GroupTitle, null, '订阅套餐'),
-      hMM('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+      USE_MOCK && hMM(GroupTitle, null, '订阅套餐 · 演示数据'),
+      USE_MOCK && hMM('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
         PLANS.map(p => hMM('div', { key: p.key, style: {
           position: 'relative', overflow: 'hidden', padding: '16px 17px', borderRadius: 'var(--r-lg)',
           background: 'var(--surface)', border: '1.5px solid ' + (p.cur ? 'var(--primary)' : 'var(--line-2)'), boxShadow: p.cur ? 'var(--sh-2)' : 'var(--sh-1)' } },
@@ -192,7 +200,7 @@ function MStorage({ ctx }) {
         hMM('div', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6, marginBottom: 4 } },
           hMM('span', { className: 'mono', style: { fontSize: 34, fontWeight: 800, color: 'var(--ink)' } }, String(Math.round(Number(used) || 0))),
           hMM('span', { style: { fontSize: 14, color: 'var(--ink-3)' } }, '/ ' + total + ' MB')),
-        hMM('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 16 } }, (acct.planLabel || 'PRO') + ' 会员 · 共 ' + total + ' MB 空间'),
+        hMM('div', { style: { fontSize: 12.5, color: 'var(--ink-3)', marginBottom: 16 } }, (acct.planLabel || '—') + ' 会员 · 共 ' + total + ' MB 空间'),
         hMM('div', { style: { display: 'flex', height: 12, borderRadius: 99, overflow: 'hidden', background: 'var(--surface-3)', marginBottom: 14 } },
           STORAGE.map(s => hMM('div', { key: s.name, style: { width: Math.max(0.5, (s.size / Math.max(1, total)) * 100) + '%', background: s.color } }))),
         hMM(UI.Button, { variant: 'soft', size: 'sm', icon: Icons.gem, onClick: () => ctx.go('membership') }, '扩容空间')),

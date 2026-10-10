@@ -1,0 +1,13 @@
+{
+  "title": "潮玩女孩的城市一日",
+  "outline": "潮玩女孩带着手机出门，在城市中寻找灵感，把普通的一天记录成自己的故事。",
+  "characters": [{"name": "潮玩女孩", "description": "白色针织帽、圆框墨镜、轻松自信的潮玩女孩，形象以所选 IP 主图为准。"}],
+  "scenes": [{"name": "清晨街角", "description": "柔和晨光和干净街景。"}, {"name": "创意空间", "description": "明亮简洁的室内，适合记录生活。"}],
+  "props": [{"name": "手机", "description": "女孩手中的手机，用于记录当天的灵感。"}],
+  "episodes": [{"no": 1, "title": "城市一日", "content": "清晨，潮玩女孩戴上白色针织帽，拿起手机准备出门。她走到街角，停下来观察光影，并用手机记录眼前的瞬间。傍晚，她回到创意空间，翻看今天的记录，微笑着把新的灵感写进自己的故事。"}],
+  "shots": [
+    {"id": "morning", "title": "准备出门", "description": "潮玩女孩戴着白色针织帽和圆框墨镜，拿着手机准备出门。白色背景，柔和晨光，人物形象与 IP 主图一致。", "dialogue": "今天，也值得记录。", "durationSec": 8, "characters": ["潮玩女孩"]},
+    {"id": "street", "title": "记录灵感", "description": "潮玩女孩在明亮的街角举起手机，转头观察光影，动作自然，保持同一人物形象和服装。", "dialogue": "灵感，就藏在身边。", "durationSec": 8, "characters": ["潮玩女孩"]},
+    {"id": "evening", "title": "回顾一天", "description": "潮玩女孩站在简洁的创意空间中查看手机，放松微笑，保持同一人物形象，温暖的傍晚灯光。", "dialogue": "把今天，变成自己的故事。", "durationSec": 8, "characters": ["潮玩女孩"]}
+  ]
+}

@@ -71,6 +71,10 @@ public class AiModelEndpoint {
     @Column(name = "rpm_limit")
     private Integer rpmLimit;
 
+    /** Active generation tasks for this endpoint; null = unlimited. */
+    @Column(name = "concurrency_limit")
+    private Integer concurrencyLimit;
+
     /** 每分钟 token 估算限制；为空表示不限制。 */
     @Column(name = "tpm_limit")
     private Integer tpmLimit;
@@ -95,10 +99,18 @@ public class AiModelEndpoint {
     @Column(name = "owner_user_id")
     private String ownerUserId;
 
-    /** 成本估算口径；null = 自动按用途推断（文本 token / 图片按次 / 视频按秒）。 */
+    /** Legacy operational unit, also consumed by customer candidate pricing. Cost editing must not change it. */
     @Enumerated(EnumType.STRING)
     @Column(name = "billing_mode", length = 32)
     private AiModelBillingMode billingMode;
+
+    /** Supplier cost unit; null preserves legacy billingMode, explicit AUTO infers from the invocation. */
+    @Column(name = "supplier_billing_mode", length = 32)
+    private String supplierBillingMode;
+
+    public AiModelBillingMode effectiveSupplierBillingMode() {
+        return supplierBillingMode == null ? billingMode : AiModelBillingMode.fromWire(supplierBillingMode);
+    }
 
     /** 输入 token 单价，单位：人民币微元 / 1K Token。0 = 未配置成本价。 */
     @ColumnDefault("0")

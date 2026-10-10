@@ -79,6 +79,16 @@ class IpTemplateResolverTest {
     }
 
     @Test
+    void personalTemplateIsResolvableOnlyByItsOwnerWithoutAnInputForm() {
+        var personal = demo("IPD-personal", "我的模板", true, IpDemoTemplate.KIND_TEMPLATE);
+        personal.setVisibility("personal"); personal.setCreatedBy("owner");
+        var r = resolverWith(List.of(personal));
+        assertTrue(r.resolve(personal.getId(), "owner").isPresent());
+        assertTrue(r.resolve(personal.getId(), "other").isEmpty());
+        assertTrue(r.resolve(personal.getId()).isEmpty());
+    }
+
+    @Test
     void 全局示例排在内置模板前面() {
         IpTemplateResolver r = resolverWith(List.of(demo("IPD-abc123", "潮玩模板", true, IpDemoTemplate.KIND_TEMPLATE)));
         assertEquals("IPD-abc123", r.list().get(0).id(), "运营精选的模板应当排在最前");

@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchModelsMock = vi.fn();
-vi.mock("./api", () => ({ fetchModels: (...a: unknown[]) => fetchModelsMock(...a) }));
+vi.mock("./api", () => ({ fetchModels: (...a: unknown[]) => fetchModelsMock(...a), fetchStudioVideoModels: async()=>[] }));
 
 import { useConfigStore } from "./config-store";
 import { endpointIdFor, loadServerModels, SERVER_CHANNEL_ID } from "./models";

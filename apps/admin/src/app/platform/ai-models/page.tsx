@@ -107,6 +107,7 @@ interface FormDefaults {
   defaultMaxTokens?: string;
   defaultTopP?: string;
   rpmLimit?: string;
+  concurrencyLimit?: string;
   tpmLimit?: string;
   dailyTokenQuota?: string;
   dailyCostQuotaYuan?: string;
@@ -133,6 +134,7 @@ interface FormState {
   defaultMaxTokens: string;
   defaultTopP: string;
   rpmLimit: string;
+  concurrencyLimit: string;
   tpmLimit: string;
   dailyTokenQuota: string;
   dailyCostQuotaYuan: string;
@@ -161,6 +163,7 @@ const EMPTY_FORM: FormState = {
   defaultMaxTokens: "",
   defaultTopP: "",
   rpmLimit: "",
+  concurrencyLimit: "",
   tpmLimit: "",
   dailyTokenQuota: "",
   dailyCostQuotaYuan: "",
@@ -222,7 +225,7 @@ const BINDING_GROUPS: Array<{
       "数字人人设解析、图片生成与视频生成的多模态调用。**AI IP 工作台的画布出图走的就是这里的「数字人 / IP 画布 出图」（DAP_IMAGE）** —— "
       + "画布上那个模型下拉列的是它的候选端点，在「AI 短剧 → 图像生成」下加模型不会出现在画布里（那是另一个用途）。"
       + "「真人素材与授权」为七牛 modelink 素材合规接入（刷脸认证 + 素材送审）。",
-    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO", "DAP_REAL_AVATAR"],
+    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO", "DAP_AUDIO", "DAP_LIP_SYNC", "DAP_REAL_AVATAR"],
   },
   {
     key: "creator",
@@ -354,6 +357,7 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
     defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
     dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
     dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -376,6 +380,7 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
       defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
       defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
       rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
       tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
       dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
       dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -404,6 +409,7 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
     defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
     defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
     dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
     dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -425,6 +431,7 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
       defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
       defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
       rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
       tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
       dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
       dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -614,6 +621,7 @@ export default function AdminAiModelsPage() {
     const defaultTemperature = parseOptionalNumber(editing.defaultTemperature, 0, 2);
     const defaultMaxTokens = parseOptionalInt(editing.defaultMaxTokens, 1);
     const defaultTopP = parseOptionalNumber(editing.defaultTopP, 0, 1);
+    const concurrencyLimit = parseOptionalInt(editing.concurrencyLimit, 1);
     const rpmLimit = parseOptionalInt(editing.rpmLimit, 1);
     const tpmLimit = parseOptionalInt(editing.tpmLimit, 1);
     const dailyTokenQuota = parseOptionalLong(editing.dailyTokenQuota, 1);
@@ -636,6 +644,8 @@ export default function AdminAiModelsPage() {
       defaultTemperature === undefined ||
       defaultMaxTokens === undefined ||
       defaultTopP === undefined ||
+      concurrencyLimit === undefined ||
+      (concurrencyLimit != null && concurrencyLimit > 1000) ||
       rpmLimit === undefined ||
       tpmLimit === undefined ||
       dailyTokenQuota === undefined ||
@@ -657,6 +667,7 @@ export default function AdminAiModelsPage() {
         defaultTemperature,
         defaultMaxTokens,
         defaultTopP,
+        concurrencyLimit: concurrencyLimit ?? 0,
         rpmLimit,
         tpmLimit,
         dailyTokenQuota,
@@ -1010,6 +1021,15 @@ export default function AdminAiModelsPage() {
                         placeholder={editing.defaults?.defaultTopP || "留空"}
                       />
                     </Field>
+                    <Field label="生成任务并发上限" hint="此端点的文字、图片、通用视频及 Studio 配音/口型任务共用名额，超出自动排队。留空不限制，修改不打断正在执行的任务。">
+                      <Input
+                        aria-label="生成任务并发上限"
+                        type="number" min="1" max="1000" step="1"
+                        value={editing.concurrencyLimit}
+                        onChange={(e) => setEditing({ ...editing, concurrencyLimit: e.target.value })}
+                        placeholder="不限制"
+                      />
+                    </Field>
                     <Field label="实时限速 RPM / TPM" hint="为空不限制；超过后会直接返回稍后重试">
                       <div className="grid grid-cols-2 gap-2">
                         <Input
@@ -1229,6 +1249,7 @@ export default function AdminAiModelsPage() {
                           <TableCell className="py-3">
                             <div className="truncate font-medium" title={p.name}>{p.name}</div>
                             <div className="truncate font-mono text-[10px] text-muted-foreground" title={p.id}>{p.id}</div>
+                            <div className="text-xs text-muted-foreground">生成并发：{p.concurrencyLimit ?? "不限制"}</div>
                           </TableCell>
                           <TableCell className="py-3">
                             <Badge tone="neutral" className="font-normal">

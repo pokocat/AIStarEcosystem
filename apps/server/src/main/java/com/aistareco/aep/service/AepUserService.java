@@ -23,15 +23,22 @@ public class AepUserService {
     }
 
     public Page<AepUserDto> list(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable) {
+        return list(status, kind, pageable, null);
+    }
+
+    public Page<AepUserDto> list(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable, String q) {
+        if (q != null && !q.isBlank()) {
+            return userRepo.search(q.trim().toLowerCase(java.util.Locale.ROOT), status, kind, pageable).map(AepUserDto::from);
+        }
         Page<AepUser> page;
         if (status != null && kind != null) {
             page = userRepo.findByStatusAndKind(status, kind, pageable);
         } else if (status != null) {
             page = userRepo.findByStatus(status, pageable);
         } else if (kind != null) {
-            page = userRepo.findByKind(kind, pageable);
+            page = userRepo.findByStatusNotAndKind(AepUser.UserStatus.DELETED, kind, pageable);
         } else {
-            page = userRepo.findAll(pageable);
+            page = userRepo.findByStatusNot(AepUser.UserStatus.DELETED, pageable);
         }
         return page.map(AepUserDto::from);
     }

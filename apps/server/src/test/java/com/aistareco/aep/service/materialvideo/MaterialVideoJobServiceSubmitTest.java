@@ -94,6 +94,14 @@ class MaterialVideoJobServiceSubmitTest {
         verify(jobRepo).save(saved.capture());
         assertEquals(600L, saved.getValue().getCreditsHeld());
     }
+    @Test void studioApprovalIsACeilingAndNeverOverridesTheNativePrice() {
+        when(modelClient.resolveCreditCostOverride(isNull(),eq(5))).thenReturn(40L);
+        BusinessException e=assertThrows(BusinessException.class,()->svc.submit(body("{\"items\":[{\"duration_sec\":5,\"max_credit_cost\":30}]}"),"user-1",MaterialVideoJobService.APP_IPSTUDIO));
+        assertEquals("STUDIO_PRICE_CHANGED",e.getCode());verifyNoInteractions(creditService,jobRepo);
+        when(jobRepo.save(any())).thenAnswer(inv->inv.getArgument(0));
+        svc.submit(body("{\"items\":[{\"duration_sec\":5,\"max_credit_cost\":50}]}"),"user-1",MaterialVideoJobService.APP_IPSTUDIO);
+        verify(creditService).hold(eq("user-1"),eq(40L),eq("material_video_job"),any(),any());
+    }
 
     @Test
     void caller_priced_items_are_marked_in_the_payload_so_reconcile_keeps_the_frozen_price() throws Exception {

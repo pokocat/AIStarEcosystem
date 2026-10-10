@@ -16,6 +16,15 @@ import static org.mockito.Mockito.*;
  * 单笔释放失败不阻断整批；无孤儿时不动。
  */
 class CreditHoldSweeperTest {
+    @Test void acceptedSpeechOwnsItsHoldAcrossOutageWhileTrueOrphanIsReleased() {
+        var runs=mock(com.aistareco.aep.ipstudio.repository.IpRunRepository.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(sweeper,"ipRuns",runs);
+        String ref=com.aistareco.aep.ipstudio.service.IpRunService.REF_TYPE;
+        when(holdRepo.findByStatusAndCreatedAtBefore(any(),any())).thenReturn(List.of(hold("speech",ref,"active"),hold("orphan",ref,"missing")));
+        when(runs.findById("active")).thenReturn(java.util.Optional.of(com.aistareco.aep.ipstudio.model.IpRun.builder().kind("studio-audio").status("running").build()));
+        when(runs.findById("missing")).thenReturn(java.util.Optional.empty());
+        sweeper.sweep();verify(creditService,never()).releaseHold(eq(ref),eq("active"),anyString());verify(creditService).releaseHold(eq(ref),eq("missing"),anyString());
+    }
 
     private CreditHoldRepository holdRepo;
     private CreditService creditService;

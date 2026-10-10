@@ -145,6 +145,26 @@ class VideoStudioServiceTest {
                 new VideoStudioPricingConfig(perSecond, freeRefImages, extraPerSecond, optimizationPerCall)));
     }
 
+    @Test void canvasUsesOwnAssetsWithSharedNativeValidationAndPriceWithoutSubmitting() {
+        var keys=new ArrayList<String>();
+        var prepared=svc.prepareCanvas(USER,jr("ep-h3","first_last_frame_video","过渡","544p","3:4",7,42L,
+                "ipstudio/u1/first.png","ipstudio/u1/last.png",List.of()),(type,key)->keys.add(type+":"+key));
+        assertEquals(List.of("image:ipstudio/u1/first.png","image:ipstudio/u1/last.png"),keys);
+        assertEquals(280,prepared.credits());
+        assertEquals("ipstudio/u1/last.png",prepared.spec().lastFrameKey());
+        assertEquals("544p",prepared.spec().resolutionTier());
+        verify(videoJobs,never()).submit(any(),anyString(),anyString());
+    }
+    @Test void canvasDoesNotBypassUnsupportedModelMissingTailOrOwnerRejection() {
+        assertEquals("VIDEO_STUDIO_MODEL_UNSUPPORTED",assertThrows(BusinessException.class,()->svc.prepareCanvas(USER,
+            jr("wrong","t2v","x","768p","9:16",5,null,null,null,List.of()),(type,key)->{})).getCode());
+        assertThrows(BusinessException.class,()->svc.prepareCanvas(USER,
+            jr("ep-h3","first_last_frame_video","x","768p","9:16",5,null,IMG,null,List.of()),(type,key)->{}));
+        assertEquals("IP_ASSET_KEY_INVALID",assertThrows(BusinessException.class,()->svc.prepareCanvas(USER,
+            jr("ep-h3","i2v","x","768p","9:16",5,null,IMG,null,List.of()),(type,key)->{throw BusinessException.badRequest("IP_ASSET_KEY_INVALID","wrong owner");})).getCode());
+        verify(videoJobs,never()).submit(any(),anyString(),anyString());
+    }
+
     // ── 请求构造 ──────────────────────────────────────────────────────────
 
     static VideoStudioJobRequest jr(String endpointId, String mode, String prompt, String tier, String aspect,

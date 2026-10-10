@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Local preview surfaces can use the loopback IP as their request origin.
+  // Allow both loopback hosts so Next's development resource guard does not block page scripts.
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
   output: "standalone",
   poweredByHeader: false,
   // v0.149：统一账号中心接入 —— 复用共享包的 OIDC/PKCE 与开通门（源码需 Next 编译）。

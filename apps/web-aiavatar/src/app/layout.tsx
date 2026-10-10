@@ -6,17 +6,27 @@ import "../styles/globals.css";
 // AI IP 工作台（桌面面）的样式。放在 globals 之后：它的令牌挂在 .ip-surface 作用域内，
 // 不含 Tailwind preflight，因此对移动端外壳零影响（见该文件头注释）。
 import "../styles/ip-desktop.css";
+import "../styles/ip-studio-workflow.css";
+import "../styles/studio-home.css";
+// Load graph styles before its dynamic chunk mounts, including after a development hot update.
+import "@xyflow/react/dist/style.css";
+import "../styles/studio-flow.css";
+import "../styles/account-workspace.css";
+import "../styles/ip-display-font.css";
+import "../styles/ip-brand.css";
+import "../styles/ip-create.css";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
 export const metadata: Metadata = {
-  title: "数字人资产平台 · AiAvatar",
-  description: "真人授权复刻，或者纯 AI 原创。形象、声音、衍生物都存在一处，随时能拿出来用。",
+  title: "IP Studio · 声量引擎旗下",
+  description: "让灵感成形，让 IP 出圈。从一个灵感开始，创造数字人、图片、视频与故事。",
   icons: {
-    icon: "/brand/logo.jpg",
-    shortcut: "/brand/logo.jpg",
+    icon: "/brand/ip-studio-logo.png",
+    shortcut: "/brand/ip-studio-logo.png",
+    apple: "/brand/ip-studio-logo.png",
   },
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "数字人" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "IP Studio" },
   formatDetection: { telephone: false, email: false, address: false },
 };
 
@@ -30,7 +40,8 @@ export const viewport: Viewport = {
 };
 
 // 字体：Manrope（UI/标题）+ Newsreader（资产身份衬线）+ JetBrains Mono（登记号）
-// + Noto Sans SC（中文）。经 React 19 自动提升到 <head>；浏览器无法访问 Google
+// + Noto Sans SC（中文）。新增桌面展示字体 Noto Serif SC 已自托管，见 ip-brand.css。
+// 经 React 19 自动提升到 <head>；浏览器无法访问 Google
 // Fonts 时优雅回退到系统字体（globals.css 的 --font-* 已带 system 回退）。
 const FONTS_HREF =
   "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap";

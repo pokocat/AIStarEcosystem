@@ -15,7 +15,8 @@
 // 传给服务端的是 endpointId（端点主键），显示名与 id 的对应关系留在下面这张表里。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fetchModels, type IpModelOption } from "./api";
+import { fetchModels, fetchStudioVideoModels, type IpModelOption } from "./api";
+import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import {
   decodeChannelModel,
   encodeChannelModel,
@@ -30,6 +31,7 @@ export const SERVER_CHANNEL_ID = "server";
 const endpointIdByName = new Map<string, string>();
 /** endpointId → 单价，属性面板要显示「这一张多少积分」。 */
 const creditByEndpointId = new Map<string, number>();
+const billingByEndpointId = new Map<string, string>();
 /**
  * endpointId → 视频时长可提交区间。
  *
@@ -44,6 +46,10 @@ const durationBoundsByEndpointId = new Map<string, { min?: number; max?: number 
  * 空 = 不受限（agnes / generic 我们自己按比例算宽高，整张比例表都成立）。
  */
 const geometryByEndpointId = new Map<string, { resolutions?: string[]; ratios?: string[] }>();
+const nativeVideoModels = new Map<string,VideoStudioModel>();
+export function nativeVideoModelFor(value:string|undefined|null):VideoStudioModel|undefined {
+  const id=endpointIdFor(value);return id?nativeVideoModels.get(id):undefined;
+}
 
 let loaded = false;
 
@@ -74,6 +80,11 @@ export function creditCostFor(value: string | undefined | null): number | undefi
   return id ? creditByEndpointId.get(id) : undefined;
 }
 
+/** Legacy video quote uses the same billing unit as its server candidate. */
+export function legacyVideoQuoteFor(value:string|undefined,seconds:number):number|null {
+  const id=endpointIdFor(value),rate=creditCostFor(value);
+  return id&&rate!=null?rate*(billingByEndpointId.get(id)==="per_second"?seconds:1):null;
+}
 export function serverModelsLoaded() {
   return loaded;
 }
@@ -105,6 +116,7 @@ function toChannelModels(list: IpModelOption[], capability: ChannelModel["capabi
   return list.map((m) => {
     endpointIdByName.set(m.name, m.endpointId);
     creditByEndpointId.set(m.endpointId, m.creditCost);
+    billingByEndpointId.set(m.endpointId,m.billingUnit||"per_call");
     const min = m.capability?.minDurationSec ?? undefined;
     const max = m.capability?.maxDurationSec ?? undefined;
     if (min != null || max != null) durationBoundsByEndpointId.set(m.endpointId, { min: min ?? undefined, max: max ?? undefined });
@@ -132,14 +144,22 @@ function pickDefault(list: IpModelOption[]): string {
  * 用户点运行会看到「不可用」，而不是选了一个不存在的模型跑起来再失败（§8.0）。
  */
 export async function loadServerModels(): Promise<{ image: number; video: number }> {
-  const models = await fetchModels();
+  const [models,nativeModels] = await Promise.all([fetchModels(),fetchStudioVideoModels()]);
   endpointIdByName.clear();
   creditByEndpointId.clear();
+  billingByEndpointId.clear();
   durationBoundsByEndpointId.clear();
   geometryByEndpointId.clear();
+  nativeVideoModels.clear();
 
   const image = toChannelModels(models.image ?? [], "image");
   const video = toChannelModels(models.video ?? [], "video");
+  for(const model of nativeModels) {
+    nativeVideoModels.set(model.endpointId,model);
+    geometryByEndpointId.set(model.endpointId,{resolutions:model.contract.tiers.map(t=>t.tier.replace(/p$/,"")),
+      ratios:[...new Set(model.contract.tiers.flatMap(t=>t.canvases.map(c=>c.aspectRatio)))]});
+    durationBoundsByEndpointId.set(model.endpointId,{min:model.contract.minSeconds,max:model.contract.maxSeconds});
+  }
 
   const config = useConfigStore.getState().config;
   // 只替换服务端频道，用户自建的频道（如果将来允许）不动

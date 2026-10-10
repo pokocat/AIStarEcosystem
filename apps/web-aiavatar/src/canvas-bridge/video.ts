@@ -9,13 +9,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
-import { endpointIdFor, videoDurationBoundsFor } from "./models";
+import { endpointIdFor, videoDurationBoundsFor, nativeVideoModelFor, legacyVideoQuoteFor } from "./models";
+import { studioVideoSettings, studioVideoError, studioVideoQuote } from "./studio-video";
 import { inferVideoRatio } from "@/canvas/lib/media-size";
+import { submitStudioRun } from './studio-api';
+import { ApiError } from '@ai-star-eco/api-client';
+import { nanoid } from 'nanoid';
+import type { IpRun } from '@ai-star-eco/types';
+import type { StudioRunRequest } from '@ai-star-eco/types/ip-studio-workflow';
 import type { AiConfig } from "./config-store";
 import type { UploadedFile } from "./file-storage";
 import { GenerationCanceled } from "./generation";
 
-export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string; storageKey?: string };
+export type VideoGenerationResult = { blob?: Blob; url?: string; mimeType?: string; storageKey?: string; run?: IpRun };
 export type VideoGenerationTask = { id: string; provider: "openai" | "gemini" | "plugin"; model: string };
 export type VideoGenerationTaskState =
   | { status: "pending" }
@@ -24,17 +30,18 @@ export type VideoGenerationTaskState =
   | { status: "failed"; error: string; ended?: boolean };
 
 export type VideoMediaOptions = {
+  nodeId?: string;
+  beforeSubmit?: (request:StudioRunRequest)=>Promise<void>;
+  onRun?: (run:IpRun)=>void;
   seconds?: string;
   aspectRatio?: string;
   model?: string;
   references?: Array<{ storageKey?: string }>;
   /**
-   * 画布还会把视频 / 音频参考传进来（它支持多模态参考图）。
-   * 本仓的视频链现在只吃首帧图，这两个先收下不用 —— 收着比让调用点报错好，
-   * 将来服务端支持了直接在这里接上。
+   * H3 原生模型接收画布的视频 / 音频参考；旧协议明确拒绝，避免静默丢素材。
    */
-  videos?: unknown[];
-  audios?: unknown[];
+  videos?: Array<{storageKey?:string}>;
+  audios?: Array<{storageKey?:string}>;
   signal?: AbortSignal;
 };
 
@@ -88,11 +95,13 @@ export async function createVideoGenerationTask(
   const projectId = currentProjectId();
   if (!projectId) throw new Error("画布还没打开，稍等一下再试");
   const params = videoParams(config, options);
-  // 「全能参考」画布给得出来，我们的视频链给不出来 —— 它现在只吃**首帧图**。
-  // 照样跑等于把用户选的模式悄悄换成另一个（§8.0），所以直接说清楚。
-  if ((config?.videoMode ?? "frames") === "reference") {
+  // v0.208：按所选模型合同开放全能参考；旧协议不支持时明确拒绝（§8.0）。
+  const modelValue=options?.model || config?.model || config?.videoModel;
+  const nativeModel=nativeVideoModelFor(modelValue);
+  if (!nativeModel && (config?.videoMode ?? "frames") === "reference") {
     throw new Error("这条视频链现在只支持「首帧模式」——参考图会作为视频第一帧。请在参数面板把模式切回首帧");
   }
+  if(!nativeModel && (references.length>1||options?.videos?.length||options?.audios?.length))throw new Error("这个模型只支持一张首帧图，请选择支持首尾帧或全能参考的模型");
   if (!params.durationSec) {
     // 到这一步还没有时长，说明面板的值没传进来 —— 说清楚是哪儿的问题，
     // 别让服务端回一句「请提供视频时长」给一个明明已经选过的用户。
@@ -111,9 +120,36 @@ export async function createVideoGenerationTask(
     const range = `${bounds?.min ?? "?"}–${bounds?.max ?? "?"} 秒`;
     throw new Error(`这个模型只接 ${range}，当前是 ${params.durationSec} 秒。请在参数面板把时长调到区间内再发送`);
   }
+  let video;
+  if(nativeModel) {
+    const assets=[...references.map(r=>({...r,mediaType:"image" as const})),...(options?.videos||[]).map(r=>({...r,mediaType:"video" as const})),...(options?.audios||[]).map(r=>({...r,mediaType:"audio" as const}))];
+    const mode=config?.videoMode==="reference"?"universal_reference_video":assets.length===2?"first_last_frame_video":assets.length===1?"i2v":"t2v";
+    video=studioVideoSettings(mode,`${(config?.vquality||"768").replace(/p$/,"")}p`,assets,config?.videoSeed);
+    const error=studioVideoError(nativeModel,video,prompt,params.aspectRatio||"",params.durationSec);
+    if(error)throw new Error(error);
+  }
+  const count=Number(config?.videoCount||1);
+  if(![1,2,4].includes(count))throw new Error('一次可生成 1、2 或 4 条视频');
+  if(options?.nodeId) {
+    const unit=video?studioVideoQuote(nativeModel!,video,params.durationSec):legacyVideoQuoteFor(modelValue,params.durationSec);
+    if(unit==null)throw new Error('模型尚未定价，请重新加载模型后生成');
+    const request:StudioRunRequest={clientRequestId:nanoid(),nodeId:options.nodeId,operation:'video',prompt,
+      count,video,maxCost:unit*count,...params,references:video?[]:references.map(r=>({storageKey:r.storageKey!,role:'frame' as const}))};
+    await options.beforeSubmit?.(request);
+    let run:IpRun;
+    try { run=await submitStudioRun(projectId,request); }
+    catch(error) {
+      if(error instanceof ApiError&&(typeof error.status==='number'&&error.status>=400&&error.status<500&&error.status!==408||['AI_NOT_CONFIGURED','PROMPT_NOT_CONFIGURED'].includes(error.code)))throw error;
+      throw new VideoSubmissionUnconfirmed(error instanceof Error?error.message:'提交结果尚未确认');
+    }
+    options.onRun?.(run);
+    return {id:run.id,provider:'plugin',model:modelValue||''};
+  }
+  if(count!==1)throw new Error('请在画布视频节点中生成多条候选');
   const job = await generateVideo(projectId, {
     prompt,
-    refKey: firstRefKey({ ...options, references }),
+    refKey: video?undefined:firstRefKey({ ...options, references }),
+    ...(video?{video,maxCost:studioVideoQuote(nativeModel!,video,params.durationSec)!}:{}),
     ...params,
   });
   return { id: job.id, provider: "plugin", model: options?.model || config?.model || config?.videoModel || "" };
@@ -122,15 +158,17 @@ export async function createVideoGenerationTask(
 export async function pollVideoGenerationTask(
   _config: unknown,
   task: VideoGenerationTask,
+  onRun?: (run:IpRun)=>void,
 ): Promise<VideoGenerationTaskState> {
   const job = await readVideoJob(task.id);
+  if(job.run)onRun?.(job.run);
   if (job.status === "ready" || job.status === "done") {
     if (!job.video_url) return { status: "failed", error: "任务说成了，但没有成片地址" };
     return {
       status: "completed",
       // storageKey 由服务端给：成片已经镜像进我方存储了（视频链的既有纪律：
       // 所有时效产物先镜像再交付），画布只需要引用它。
-      result: { url: job.video_url, storageKey: job.video_key, mimeType: "video/mp4" },
+      result: { url: job.video_url, storageKey: job.video_key, mimeType: "video/mp4",run:job.run },
     };
   }
   if (job.status === "failed") {
@@ -142,12 +180,12 @@ export async function pollVideoGenerationTask(
 export async function waitForVideoGenerationTask(
   config: unknown,
   task: VideoGenerationTask,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; onRun?: (run:IpRun)=>void },
 ): Promise<VideoGenerationResult> {
   const started = Date.now();
   for (;;) {
     if (options?.signal?.aborted) throw new GenerationCanceled();
-    const state = await pollVideoGenerationTask(config, task);
+    const state = await pollVideoGenerationTask(config, task,options?.onRun);
     if (state.status === "completed") return state.result;
     if (state.status === "failed") {
       // 服务端说失败 = 这条任务结束了（VideoTaskFailed，任务号可以丢）；
@@ -174,6 +212,10 @@ export async function requestVideoGeneration(
   const task = await createVideoGenerationTask(config, prompt, references, options);
   return waitForVideoGenerationTask(config, task, options);
 }
+
+/** An accepted batch may exist: preserve the request key and confirm it rather than resubmitting. */
+export class VideoSubmissionUnconfirmed extends Error {}
+export function isVideoSubmissionUnconfirmed(error:unknown):boolean {return error instanceof VideoSubmissionUnconfirmed;}
 
 /** 服务端明确说这条任务失败了（冻结额由视频链按规则处理）。 */
 export class VideoTaskFailed extends Error {

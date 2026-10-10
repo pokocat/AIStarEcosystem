@@ -13,11 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useConfirm, useToast } from "@/components/feedback";
-import { listUsers, suspendUser, reactivateUser } from "@/api/users";
+import { listUsersPage, suspendUser, reactivateUser } from "@/api/users";
 import { listStudios } from "@/api/studios";
 import { ACCOUNT_STATUS, STUDIO_KIND } from "@/constants/status";
 import type { AepUser, AccountKind, AccountStatus } from "@/types/account";
 import type { AdminStudio } from "@/types/studio";
+import type { PaginationMeta } from "@/types/_shared";
 import { formatDateCN } from "@/lib/utils";
 import { formatCredits } from "@/lib/format";
 
@@ -27,35 +28,52 @@ export default function AccountsPage() {
   React.useEffect(() => { void getAdminMe().then(u => setCanImpersonate(u.role === "super_admin")).catch(() => setCanImpersonate(false)); }, []);
   const [users, setUsers] = React.useState<AepUser[]>([]);
   const [studios, setStudios] = React.useState<AdminStudio[]>([]);
+  const [studioLoadError, setStudioLoadError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<"all" | AccountKind>("all");
   const [status, setStatus] = React.useState<"all" | AccountStatus>("all");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [page, setPage] = React.useState(0);
+  const [pagination, setPagination] = React.useState<PaginationMeta | null>(null);
+  const requestSeq = React.useRef(0);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const confirm = useConfirm();
   const toast = useToast();
 
-  const reload = React.useCallback(async () => {
+  React.useEffect(() => {
+    const timer = setTimeout(() => { setSearchQuery(query.trim()); setPage(0); }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  React.useEffect(() => {
+    void listStudios(0, 100).then(setStudios).catch(err => setStudioLoadError(err instanceof Error ? err.message : "加载失败"));
+  }, []);
+
+  const reload = React.useCallback(async (signal?: AbortSignal) => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     setLoadError(null);
     try {
-      const [u, s] = await Promise.all([
-        listUsers(0, 200),
-        listStudios(0, 200),
-      ]);
-      setUsers(u);
-      setStudios(s);
+      const result = await listUsersPage({ page, size: 50, q: searchQuery || undefined,
+        status: status === "all" ? undefined : status, kind: kind === "all" ? undefined : kind }, signal);
+      if (signal?.aborted || seq !== requestSeq.current) return;
+      setUsers(result.data);
+      setPagination(result.pagination);
     } catch (err) {
+      if (signal?.aborted || seq !== requestSeq.current) return;
       setLoadError(err instanceof Error ? err.message : "加载失败");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted && seq === requestSeq.current) setLoading(false);
     }
-  }, []);
+  }, [page, searchQuery, kind, status]);
 
   React.useEffect(() => {
-    void reload();
+    const controller = new AbortController();
+    void reload(controller.signal);
+    return () => controller.abort();
   }, [reload]);
 
   async function onSuspend(u: AepUser) {
@@ -116,18 +134,10 @@ export default function AccountsPage() {
     [studios]
   );
 
-  const filtered = users.filter((a) => {
-    if (kind !== "all" && a.kind !== kind) return false;
-    if (status !== "all" && a.status !== status) return false;
-    if (query) {
-      const q = query.toLowerCase();
-      if (!a.username.toLowerCase().includes(q) && !a.displayName.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
+  const filtered = users;
 
   const counts = {
-    total: users.length,
+    total: pagination?.total ?? 0,
     active: users.filter((a) => a.status === "active").length,
     suspended: users.filter((a) => a.status === "suspended").length,
     studio: users.filter((a) => a.kind === "studio").length,
@@ -145,13 +155,14 @@ export default function AccountsPage() {
       />
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="账号总数"        value={counts.total}                      icon={Users}     />
-        <StatCard label="启用中"          value={counts.active}                     icon={UserCheck} tone="success" />
+        <StatCard label={searchQuery || kind !== "all" || status !== "all" ? "匹配账号" : "账号总数"} value={counts.total} icon={Users} />
+        <StatCard label="本页启用中"      value={counts.active}                     icon={UserCheck} tone="success" />
         <StatCard label="经纪公司主体"    value={counts.studioSubjects}             icon={Building2} />
         <StatCard label="经纪公司累计收益" value={formatCredits(counts.revenueCredits)} icon={Coins}     tone="success" />
       </section>
 
       <Card>
+        {studioLoadError && <p role="alert" className="px-4 pt-4 text-sm text-rose-600">经纪公司资料加载失败：{studioLoadError}</p>}
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <CardTitle>账号列表</CardTitle>
@@ -160,12 +171,12 @@ export default function AccountsPage() {
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   className="w-full pl-8 sm:w-[220px]"
-                  placeholder="用户名 / 展示名"
+                  placeholder="手机号 / 昵称 / 用户名 / 邮箱"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
-              <Select value={kind} onValueChange={(v) => setKind(v as "all" | AccountKind)}>
+              <Select value={kind} onValueChange={(v) => { setKind(v as "all" | AccountKind); setPage(0); }}>
                 <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder="身份" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部身份</SelectItem>
@@ -173,10 +184,10 @@ export default function AccountsPage() {
                   <SelectItem value="studio">工作室</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={status} onValueChange={(v) => setStatus(v as "all" | AccountStatus)}>
+              <Select value={status} onValueChange={(v) => { setStatus(v as "all" | AccountStatus); setPage(0); }}>
                 <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder="状态" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="all">未注销</SelectItem>
                   <SelectItem value="active">启用</SelectItem>
                   <SelectItem value="suspended">停用</SelectItem>
                   <SelectItem value="deleted">注销</SelectItem>
@@ -271,6 +282,15 @@ export default function AccountsPage() {
               )}
             </TableBody>
           </Table>
+          {pagination && !loadError && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+              <span className="text-muted-foreground">共 {pagination.total} 个账号 · 第 {pagination.totalPages ? pagination.page + 1 : 0} / {pagination.totalPages} 页</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={loading || !pagination.hasPrev} onClick={() => setPage(p => p - 1)}>上一页</Button>
+                <Button variant="outline" size="sm" disabled={loading || !pagination.hasNext} onClick={() => setPage(p => p + 1)}>下一页</Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

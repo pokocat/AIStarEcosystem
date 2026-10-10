@@ -2,7 +2,8 @@
 
 > 单页地图。任何 agent / 新人进仓库时先开本文。
 > 按"想做什么"组织：先选场景，再跳到对应的真源文档。
-> last-reviewed：2026-10-07 / v0.201 画布历史恢复、云端画布素材，V39（见 VERSION_HISTORY.md）
+> last-reviewed：2026-10-10 / v0.230 账号与旧 Studio 外壳统一；验收与发布见账号统一文档及生产发布记录
+> last-reviewed：2026-10-08 / v0.202 统一 Studio 首版本地实现与样例端到端验收完成、V40 请求幂等、V41 配音与 V42 口型用途；未发布（见 VERSION_HISTORY.md）
 > last-reviewed：2026-05-29 / v0.41 合并「AI 模型」+「外部 API Token」为「模型接入端点 + Token」+ AI 应用绑定
 > last-reviewed：2026-05-23 / v0.5.4
 > last-reviewed：2026-05-21 / v0.21 混剪 / 分发用户视角文案 + 视频库（软删 30 天）+ 官方明星片段
@@ -20,7 +21,9 @@
 | [`product_spec.md`](../product_spec.md) | **AiAvatar / 数字 IP 主线** —— 数字艺人孵化、音乐工坊、内容（影视/综艺/广告/配音）、社群、版权、分发、变现 | v2.7 canonical（2026-05-06） |
 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md) | **AI 明星带货主线** —— 明星市场、授权、模板/脚本、AI 模型、生成器、积分钱包、消息中心、社交账号绑定 profile | v0.17 rolling（2026-05-20） |
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划** —— 全配置化终态（ConfigItem / 灰度 / AB 桶 / 17 个字典上移） | 大目标稿；当前 admin 是其 P0 子集 |
+| [`docs/unified-operations-console-plan.md`](unified-operations-console-plan.md) | **统一运营后台建议** —— Platform 统一入口、复用原业务服务、模型定价/任务排查/模板运营三条首期流程，以及沿用原 admin 风格的紧凑视觉建议 | 建议留档，待确定实施范围（2026-10-10）；非已交付状态 |
 | [`docs/unified-identity-plan.md`](unified-identity-plan.md) | **统一账号中心（id.aibuzz.cn）** —— 全生态（本仓 5 web app + 小程序 / 军师 / 公社）统一身份：OIDC + RS256、手机号 + unionid 身份键、五层模型（身份 / 建档 / 开通 / 角色 / 资源）、小程序自定义 grant、合并规则、§8.0 门禁、P0–P5 分期；服务落在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（含其 `deploy/`），本仓只留消费方接入 | P1 服务 + P2 本仓接入完成，**已于 2026-09-05 上线**（last-reviewed 2026-09-06，v0.149） |
+| [统一认证手机号与后台搜索发布验收](identity-phone-release-20261010.md) | `/userinfo` 完整手机号副本、服务端跨分页搜索、指定存量账号补齐、权益不变及账号中心 SOP 更新 | server/admin 已上线；46 项专项测试与真实线上 UI 通过（last-reviewed 2026-10-10） |
 
 ### 1.2 子应用产品 + 设计约束（每 app 一份）
 
@@ -35,6 +38,7 @@
 | [`apps/web-aiavatar/DESIGN-desktop.md`](../apps/web-aiavatar/DESIGN-desktop.md) ★ | AI IP 工作台桌面面（并入 web-aiavatar） | **该子应用视觉系统真源** —— 低饱和群青 `#495B91` / 麦黄 `#E7D58D` / 纸白 `#F5F4EF` / 墨 `#202C42` 全量 token + 语义映射与实测对比度 + 字体·间距·圆角·阴影·交互 + **landing 与画布应用边界**（含 reject 清单）+ **landing 区块清单与文案纪律**（landing 不讲工作流 / 不讲模型）+ 图集素材契约（4×3 等格、12 格位对照、`AtlasFrame` 1:1 与 `AtlasPortrait` 竖幅两种裁切、禁 SVG 冒充作品、**生产真源在 OSS 绝对地址**、`public/landing/` 仅可选本地副本不入 git）（last-reviewed 2026-09-06，v0.152 含浏览器评审改判与图集上线；v0.151 的单一青色 `#12B3DE` 已退役） |
 | [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) | AiAvatar 平台 | 忠实移植原型 / strict 关闭 / 与 v0.45 server 领域解耦 / 字体策略 / 导航栈 决策记录；v0.104 追加六类资产扩展边界（§G 加类型不重做 · §H 授权只发人物与 IP · §I 作业执行体拆分 · §J mock 回填时机）；v0.105 追加真人刷脸认证边界（§K 假核验退役 · verify 唯一漏斗 · 回调不判定生效 · §L 授权硬闸前移到生成入口 · §M aigc 走平台默认组 + 配额债务）（last-reviewed 2026-08-02） |
 | [`docs/AIAVATAR_PROGRESS.md`](AIAVATAR_PROGRESS.md) | AiAvatar 中心 | 实施进度台账 + 断点续传指引 + 三路 E2E 验证记录 |
+| [`docs/ip-studio-ui-release-20261010.md`](ip-studio-ui-release-20261010.md) | Studio 生产发布 | 统一界面与独立品牌更新的代码 SHA、发布包、备份、线上资源校验与视觉验收；当前前端 `fb4502a2`（last-reviewed 2026-10-10） |
 | [`docs/FACE_BEAUTY_RESEARCH.md`](FACE_BEAUTY_RESEARCH.md) | AiAvatar 平台 | 形象「精调 / 美颜」技术方案调研：浏览器端确定性美颜（推荐）vs 云 API vs Agnes i2i（last-reviewed 2026-06-07） |
 | [`docs/ADMIN_ALIGNMENT_AUDIT.md`](ADMIN_ALIGNMENT_AUDIT.md) | admin / server / 子应用 | 三端配置对齐审计（v0.53 同期）：10 项发现、3 项已随 v0.53 修复、7 项待办含优先级（last-reviewed 2026-06-07） |
 | [`docs/drama-ux-copy-pass.md`](drama-ux-copy-pass.md) ★ | AI 短剧（全站） | **drama 界面文字的术语表**（每个东西只许一种叫法，含「提示词直出 → 粘贴写好的脚本」等改名）+ 导航与用户路径决定 + 响应式规范（断点 / 两栏变页签 / 表格变卡片 / 贴底操作条）+ 共享底座与文件所有权（v0.197）+ §2.7 画布术语（v0.198，last-reviewed 2026-09-30） |
@@ -49,6 +53,18 @@
 | [`docs/ip-ecosystem-integration.md`](ip-ecosystem-integration.md) | **IP 工作台 / 数字资产 / 数字名片 整合方案** | 一条链：造形象 → 登记资产 → 对外发布。§2 打通只靠 `dapDisplayRef` + `DapAssetUsage` 两样现成东西、§3 内置工作流模板「IP 打造」（`ip-launch-female` / `ip-launch-male`，装扮 3 + 表情 3；短动作要发布后到 dap 里跑，画布跑不了）、§4 用户动线、§5 需新增项、§6 三条红线（last-reviewed 2026-09-07） |
 | [`docs/digital-business-card-plan.md`](digital-business-card-plan.md) | **AI 数字名片（`apps/web-aiavatar` 下 `/card` 域）方案真源** | 见客户递一条链接就把人说清楚。一期只做门面（扫码即看 / 形象三档 / 存通讯录），交换与名片夹挂二期。§3 不发新产品码（`/api/v1/**` 兜底到 aiavatar）、§5 形象走 `dapDisplayRef` 引用不拷贝、§6 与 dap / IP 工作台的职责边界、§8 视频层叠三方案与交付清单、§9 需新增项（last-reviewed 2026-09-07） |
 | [`docs/ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) | **IP 工作台通用化提案（v0.153 已落地）** | 形象卡五字段（outfit/pose/expression/details/props）在服务端只是按序拼成一串文本，拆分对出图无增益；改为「一个提示词框 + 内置模板库」，五层一致性锁定与计费纪律不动，零迁移（老画布读取回落）。文末有落地记录（last-reviewed 2026-09-07） |
+| [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
+| [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
+| [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
+| [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
+| [`docs/ip-studio-ui-audit.md`](ip-studio-ui-audit.md) | **Studio 界面与交互审查** | impeccable审查、画布区域分离、统一人物选择与响应式验收；本地未发布（last-reviewed 2026-10-08） |
+| [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
+| [Studio 视频模式](ip-studio-video-modes.md) | 产品 / 实施 | 原生首尾帧、全能参考、模型合同与费用校验；本地验证边界 |
+| [Studio 运镜标签](ip-studio-camera-motion.md) | 产品 / 实施 | 原生面板、展开编辑器与抽屉共用命名指令、光标插入、编辑/移除及正文保存；v0.211 本地 |
+| [Studio 视频特效库](ip-studio-video-effects.md) | 产品 / 实施 | 共用官方描述、本人收藏/最近/个人发布、模型筛选、点选与替换；v0.213 本地，原生供应商效果及完整社区未接 |
+| [`docs/ip-studio-character-library.md`](ip-studio-character-library.md) | **Studio IP 人物库与小云雀对标** | 人物成组浏览、主图/设定图/视角/声音、免费归类、精确版本引用和浏览器验收；V45，本地未发布（last-reviewed 2026-10-08） |
+| [`docs/prompts/ip-character-sheet.md`](prompts/ip-character-sheet.md) | **人物设定图一次出图提示词** | 用户附图版式拆解、可换人物的提示词与整图参考出单独镜头；反推词，不称作者原词（last-reviewed 2026-10-08） |
+| [`docs/ip-studio-unified-canvas-validation.md`](ip-studio-unified-canvas-validation.md) | **统一 Studio 真实 Agnes 与确定性验证记录** | 样例与真实证据分开；三镜/双集/商品包装媒体、平台积分、恢复与下载、测试/构建/手机检查，以及声音和生产未验收边界（last-reviewed 2026-10-09） |
 | [`docs/aiavatar-asset-hub-redesign.md`](aiavatar-asset-hub-redesign.md) | AiAvatar 平台（**中枢重构真源**） | 数字资产升格为生态资产中枢的产品 + 前端重构设计：四动词模型（注册/引用/回流/授权）+ 档案卡 + 两条铁律（不阻塞下游 / 联邦不集中）+ 新 IA 五路由 + /studio 双轨迁移 + P1-P4 分期；P1（真路由读界面）已落地（last-reviewed 2026-08-29） |
 | [`docs/video-studio-plan.md`](video-studio-plan.md) | **视频生成区设计真源**（`apps/web-celebrity` `/studio/video`，v0.199） | 把 MiniMax H3 四种原生模式（文生 / 首帧 / 首尾帧 / 全能参考）原样搬进带货工作台，不做产品化封装。§2 厂商合同（读自 docs.jusuanhub.com + Portal「API 接入」，含 1:1 用 `square` 未实测）、§3 计价（我们自己定、后台按模式 × 清晰度配每秒价，没定价不能提交）、§4 接口与错误码、§5 复用通用视频链（新分区 `video-studio`，`VideoGenSpec` 一处解析）、§8 没做的、§9 智能优化（可选、默认勾上，后台任务 + 同键重试）、§10 模板 / 做同款（官方模板只有运营能发）、§11 后台定价页签、§12 V37 迁移（last-reviewed 2026-10-01） |
 | [`docs/clip-avatar-video-plan.md`](clip-avatar-video-plan.md) | **`clip` 口播视频线**（军师小程序分包） | v0.135：本人素材单次直传、多数字人、逐句字幕与总装；最终音轨两遍归一并为 AAC 峰值回弹留余量，真实文件继续过严格质量门（last-reviewed 2026-08-18）。 |
@@ -105,6 +121,9 @@
 > 共享包暂无独立 README；用法见各 PRODUCT.md「组件分层」段。
 
 ## 5. 部署 / 运维（"上线怎么部署"）
+
+统一认证接入 SOP：[`aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md`](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md)，
+§7.9 / §10.6 包含资料来源、手机号读取、后台搜索、分页、换绑、存量补齐与本地重启验收（last-reviewed 2026-10-10）。
 
 | 文档 | 用途 |
 |---|---|
@@ -188,3 +207,10 @@ sudo yum install -y ffmpeg ffmpeg-devel
   - 本 INDEX 的 last-reviewed 日期
   - 详 [`AGENTS.md` §9 文档同步纪律](../AGENTS.md)
 - **CLAUDE.md ↔ AGENTS.md**：CLAUDE.md 是 symlink，**不要单独修改**；改 AGENTS.md 即同步两者
+
+- Studio 对话快照分享 v0.217：见 [助手范围](ip-studio-assistant-context.md) 与统一验证§28；last-reviewed: 2026-10-08，本地未发布。
+- [模型接入端点并发与排队](ai-endpoint-generation-queue.md) · v0.220；last-reviewed: 2026-10-09，本地未发布。
+
+- [Studio 生产发布与计价](ip-studio-production-release.md) · v0.228 定价快照、V48 迁移及上线记录；last-reviewed: 2026-10-10。
+
+- [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · v0.230 桌面外壳、旧深链兼容与验收边界；last-reviewed: 2026-10-10。

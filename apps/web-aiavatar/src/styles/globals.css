@@ -660,7 +660,7 @@ input, textarea, select { font-family: inherit; }
 @keyframes sealIn { from { opacity: 0; transform: rotate(-4deg) scale(1.3); } to { opacity: .9; transform: rotate(-4deg) scale(1); } }
 @keyframes drawLine { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
+html.anim .seal { animation: sealIn .5s cubic-bezier(.22,1,.36,1) both .2s; }
 
 /* 通用过渡 */
 .tr { transition: all .18s cubic-bezier(.4,0,.2,1); }
@@ -812,7 +812,7 @@ html.anim .seal { animation: sealIn .5s cubic-bezier(.34,1.56,.64,1) both .2s; }
   position: absolute; top: -20px; width: 56px; height: 56px; border-radius: 20px; border: 1px solid rgba(255,255,255,.78); cursor: pointer;
   background: transparent; color: #fff; display: grid; place-items: center; isolation: isolate;
   box-shadow: 0 12px 26px rgba(18,179,222,.24), 0 5px 12px rgba(76,92,125,.10);
-  transition: transform .18s cubic-bezier(.34,1.56,.64,1);
+  transition: transform .18s cubic-bezier(.22,1,.36,1);
 }
 .wx-fab:active { transform: scale(.92); }
 /* FAB：实色品牌青渐变为主，背景图降为去色轻纹理 ——
@@ -1138,14 +1138,12 @@ body, .app-root { overflow-x: hidden; }
    为什么不再用媒体查询：手机浏览器的「请求桌面版网站」会忽略 viewport meta、
    改用约 980px 的布局视口 —— 用户明明选了桌面版，媒体查询（原来卡 1024）
    还是判成手机。宽度只是**默认**判据，不该是唯一判据。
-   真正的宽度约束（比如 studio-hint 要两侧各放得下 260px）仍然写成媒体查询。 */
+   内容内部的真实宽度约束与形态选择分开处理。 */
 :root { --desktop-bar-h: 52px; }
 
-/* 画布页的高度。手机形态整屏都是画布（没有桌面顶栏），桌面形态要给固定顶栏让位。 */
+/* 所有画布详情使用同一全屏工作区；网站导航在 AppChrome 中排除，
+   画布内部保留自己的返回、名称、操作与积分工具栏。 */
 .canvas-page { height: 100dvh; }
-html[data-layout="desktop"] body.has-desktop-bar .canvas-page {
-  height: calc(100dvh - var(--desktop-bar-h));
-}
 
 /* 现代路由的内容列：11 个 App Router 页面全部经 HubScreen，所以这一条就是
    整个资产平台桌面化的总开关。 */
@@ -1229,39 +1227,4 @@ html[data-layout="desktop"] .hub-screen--form { max-width: 720px; }
 html[data-layout="desktop"] .hub-grid-cards {
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 16px;
-}
-
-/* 说明条只在桌面出现：手机上这就是本来的样子，不需要解释。
-   ⚠️ 这条必须排在下面那个 media query **之前** —— 同优先级下后写的赢，
-   放在后面会把桌面的 display:flex 盖掉（本次就这么踩过一次）。 */
-.studio-hint { display: none; }
-
-/* ── /studio 在桌面上的取景框 ────────────────────────────────────────────
-   老 SPA 是按 480 宽写死的分步流程（26 屏、约 11k 行、零测试），按既有双轨
-   逐屏迁出，在那之前桌面上就是一条居中窄列。问题不在「窄」——分步表单本来
-   就该窄——而在于**看起来像坏了**：一大片空白里孤零零一条 480 的柱子。
-
-   所以给它一个明确的取景：两侧铺深一档的底色、内容列加描边与投影，
-   读起来是「一个专注的流程面板」，而不是「没做响应式的页面」。
-   配合 studio-hint 那条说明，用户知道自己在哪、以及为什么这里长得不一样。 */
-html[data-layout="desktop"] body.studio-desktop {
-  background: var(--canvas-2);
-}
-
-html[data-layout="desktop"] body.studio-desktop .app-root {
-  box-shadow: 0 0 0 1px var(--line), 0 18px 50px rgba(20, 36, 55, 0.14);
-  border-radius: 14px;
-  /* 顶栏之下、底部留白之上，让它看起来是被端出来的一块面板 */
-  top: calc(var(--desktop-bar-h) + 18px);
-  bottom: 18px;
-  height: auto;
-  overflow: hidden;
-}
-
-/* 说明区固定在左边距 28、宽 260 → 右缘 288；而 480 宽的面板在 1024 视口下
-   左缘只有 272 —— 会压上去 16px。所以说明区要等两侧真的放得下才出现。
-   1024 + 260*2 + 余量 ≈ 1120。这一条是**真实宽度**约束（不是形态选择），
-   所以留作媒体查询：用户在 980 的窗口里强选桌面版，两侧照样放不下。 */
-@media (min-width: 1120px) {
-  html[data-layout="desktop"] .studio-hint { display: flex; }
 }

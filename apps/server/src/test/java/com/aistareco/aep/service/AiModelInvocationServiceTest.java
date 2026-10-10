@@ -140,6 +140,14 @@ class AiModelInvocationServiceTest {
         assertEquals(2, ((List<?>) sent.get("messages")).size());
     }
 
+    @Test void contentPartsReachTheProviderButMediaPayloadsAreRedactedFromObservation() throws Exception {
+        StubServer server=stub(200,CHAT_OK);var ep=endpoint("vision",server.baseUrl(),AiModelProviderType.OPENAI_COMPATIBLE,"vision","test-key",true);
+        List<Map<String,Object>> parts=List.of(Map.of("type","text","text","read image"),Map.of("type","image_url","image_url",Map.of("url","data:image/png;base64,PRIVATE_BYTES")));
+        List<Map<String,Object>> messages=List.of(Map.of("role","user","content",parts));
+        var response=boundSvc(AiModelPurpose.DAP_PERSONA,ep).invokeChatOnEndpoint(ep,AiModelPurpose.DAP_PERSONA,messages,Map.of("max_tokens",256));assertEquals("你好，我是测试回答。",response.content());
+        assertTrue(server.requests.get(0).body().contains("PRIVATE_BYTES"));String observed=OM.writeValueAsString(AiModelInvocationService.observedChatMessages(messages));assertFalse(observed.contains("PRIVATE_BYTES"));assertTrue(observed.contains("read image"));assertTrue(messages.toString().contains("PRIVATE_BYTES"),"observation must not mutate the real request");
+    }
+
     @Test
     void invokeChatUsesEndpointModelWhenOptionsOmitModel() throws Exception {
         StubServer server = stub(200, CHAT_OK);
