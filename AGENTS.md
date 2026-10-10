@@ -983,3 +983,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 ### v0.230 账号与旧 Studio 外壳 · 2026-10-10
 
 `src/shell/account-workspace.tsx` + `account-navigation.ts` 是桌面 `/me` 与 `/studio` 账号工具的共享外壳/入口映射；样式在 `account-workspace.css`，跟随 `html[data-layout]`。旧根入口转 `/projects`，业务深链、创建参数与 `#/real-auth/{sessionId}` 保留；账号菜单 hashchange/popstate 与旧 SPA 同步。详情与创建继续复用 proto 业务，未新增账号、计费或任务真值。见 `docs/aiavatar-account-unification.md`。
+
+### Studio 平台配音定价（本地实现，2026-10-10）
+
+可选 `aep.studio.platform-pricing.enabled` 默认 false，启用后由独立 aibuzz-platform 发布价驱动 Studio 配音，并通过固定版本 Java SDK 读取。权威成本与积分策略发布快照写入 `_exec.pointPricing`，已受理任务保持原价；钱包仍走 CreditService。缺价或平台错误不回退旧价。采用回执在任务行持久补报，不代表供应商成功。口型及其他图片视频未接入。配置与验收见 `docs/studio-platform-pricing.md`；本次没有生产配置或付费调用。

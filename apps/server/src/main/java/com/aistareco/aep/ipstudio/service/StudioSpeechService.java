@@ -37,9 +37,9 @@ public class StudioSpeechService {
                 available.isEmpty()?List.of():client.voices(available.get(0).endpoint()),600,160);
     }
     private SpeechModel catalogModel(AiModelInvocationService.ResolvedEndpoint r) {
-        var rate=pricing==null?null:pricing.find(r.endpoint().getId());
+        var rate=pricing==null?null:pricing.findSpeech(r.endpoint().getId());
         return new SpeechModel(r.endpoint().getId(),r.endpoint().getName(),r.isDefault(),
-                pricing!=null&&pricing.enabled()?null:r.candidate().getCreditCostOverride(),rate==null?null:rate.platformPointsPerSecond());
+                pricing!=null&&pricing.speechEnabled()?null:r.candidate().getCreditCostOverride(),rate==null?null:rate.platformPointsPerSecond());
     }
     @Transactional
     public IpRunDto submit(String user,String projectId,SpeechRequest request) {
@@ -68,9 +68,9 @@ public class StudioSpeechService {
         } else if(request.avatarId()!=null)profiles.requiredAvatar(user,request.avatarId(),false);
         var resolved=models.resolveEndpoint(AiModelPurpose.DAP_AUDIO,request.model()).orElseThrow(()->bad("ENDPOINT_NOT_ALLOWED","所选配音模型不可用"));
         if(!JusuanSpeechClient.supports(resolved.endpoint()))throw bad("STUDIO_SPEECH_MODEL_UNSUPPORTED","所选模型不支持此配音方式");
-        var rate=pricing==null?null:pricing.find(resolved.endpoint().getId());
+        var rate=pricing==null?null:pricing.findSpeech(resolved.endpoint().getId());
         Long price=rate!=null?Long.valueOf(rate.cost(StudioPointPricing.speechReservationSeconds(request.text().trim()))):
-                pricing!=null&&pricing.enabled()?null:resolved.candidate().getCreditCostOverride();
+                pricing!=null&&pricing.speechEnabled()?null:resolved.candidate().getCreditCostOverride();
         if(price==null || price<0)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_SPEECH_PRICE_NOT_CONFIGURED","配音费用尚未配置");
         IpRunService.requireApprovedCost(request.maxCost(),price);
         if(client.voices(resolved.endpoint()).stream().noneMatch(v->v.speaker().equals(request.speaker())))throw bad("STUDIO_SPEECH_VOICE_INVALID","请选择当前开放的音色");

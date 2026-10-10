@@ -24,6 +24,8 @@
   </properties>
 
   <dependencies>
+    <!-- Versioned platform HTTP SDK; contains no runtime or business wallet code. -->
+    <dependency><groupId>cn.aibuzz</groupId><artifactId>platform-sdk</artifactId><version>0.1.0</version></dependency>
     <!-- Web -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

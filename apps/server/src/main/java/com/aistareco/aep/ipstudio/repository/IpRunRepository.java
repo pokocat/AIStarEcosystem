@@ -43,4 +43,8 @@ public interface IpRunRepository extends JpaRepository<IpRun, String> {
     int claimUnstarted(@org.springframework.data.repository.query.Param("id") String id,@org.springframework.data.repository.query.Param("now") Instant now);
 
     List<IpRun> findByProjectIdAndNodeIdAndStatus(String projectId, String nodeId, String status);
+    /** A persisted accepted task is a durable pricing receipt, including already finished tasks. */
+    @org.springframework.data.jpa.repository.Query("select r from IpRun r where r.kind='studio-audio' and r.inputJson like '%\"platformReleaseId\":\"%' and r.inputJson not like '%\"pricingReported\":true%' order by r.createdAt")
+    org.springframework.data.domain.Page<IpRun> pendingPricingReceipts(org.springframework.data.domain.Pageable pageable);
+
 }
