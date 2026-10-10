@@ -61,3 +61,11 @@ AiAvatar（含 Studio）已追加部署发布包 `20261010-v0229-connections`，
 - 首帧失败任务 `mvj_5f9ff637b901` 的原地址使用 10443，生产主机连接超时；该任务冻结的 200 积分已全额释放。使用相同端点密钥验证标准 HTTPS 端口，并进行一次免费输入图片上传，返回 201/available。经管理端 API 将 `ai-jusuan-minimax-h3` 的 base URL 修正为 `https://api.jusuanhub.com/v1`，密钥、模型、计价、并发和其他限额保持原样。旧配置保存在 `h3-url-before.json`，没有重提用户失败任务。
 
 证据目录 `.studio-e2e/connection-repair/`：`online-acceptance.json`、`online-ready-acceptance.json`、线上菜单/视频浮层截图、`provider-upload.json`、`production-url-fixed.json` 及 `deploy.log`。两份专用线上 QA 画布已软删除，临时账号已软删除并撤销 aiavatar 开通；余额与冻结余额均为零，积分账本新增记录为零。新建 QA 没有钱包记录，验收按钱包缺失且账本为零核对，不发放测试积分。此次证明引用交互和供应商输入图片上传恢复，不宣称重新完成一次真实视频成片生成。
+
+## v0.230 · 账号与旧 Studio 界面统一（2026-10-10）
+
+仅更新 AiAvatar 前端，发布包 `20261010-v0230-account`，代码 SHA `379bb440c0d26bf9bf02f1757379a83d7febb6a1`。真实接口、OIDC `id` 构建配置与 issuer 保持；后端 JAR SHA256 仍为 `5eb4f5f087c463356b02b58315369b4d8be2db2d9c0e637a85b93f4c6852de6a`，后台与数据库未更新。发布包校验和、生产构建、服务 active 与发布脚本 ALL GREEN 通过。旧前端已备份到受限备份目录 `web-aiavatar-before-v0230.tar.gz`，权限 0600。
+
+`/me` 账号总览与旧 Studio 任务/积分/存储/设置等工具共用工作台外壳；旧根入口转自由画布，移除手机取景框。线上 HTTPS 实测菜单切换和选中、浏览器前进后退、根返回、`/studio` 与 `/#studio` 重定向、`?start=real` 创建入口。会员页读取现有真实套餐，画面中四档充值套餐可见，正式静态演示订阅已隐藏。脚本错误为零，充值与模型 POST 为零；附身验收账号的写操作按现有规则禁用，没有尝试付款。
+
+验收账号因旧 AccountApi 的月度赠送逻辑自动获得 1500 赠送积分；结束后通过管理端积分调整收回全部余额，保留赠送/调整两条不可变账本。余额与冻结均为零，未创建项目，账号软删除并撤销 aiavatar 开通。证据在 `.studio-e2e/account-unification/` 的 `online-acceptance.json`、线上截图、`active-release.log`、`deploy.log`、`cleanup.log`；这是界面和导航整合验收，不代表新增权益、全任务聚合或旧设置持久化。
