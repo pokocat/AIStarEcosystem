@@ -1,5 +1,5 @@
 ---
-name: AI IP 画布
+name: IP Studio · 声量引擎旗下
 description: 角色与世界的创作空间，以暖灰、白色与深墨组织人物和内容。
 colors:
   bg: "#f0efec"
@@ -114,7 +114,7 @@ components:
     padding: "3px 11px"
 ---
 
-# Design System: AI IP 画布
+# Design System: IP Studio · 声量引擎旗下
 
 ## Overview
 

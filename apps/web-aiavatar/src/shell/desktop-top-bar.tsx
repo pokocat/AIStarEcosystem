@@ -46,7 +46,7 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
   }, []);
   const name = identity?.displayName || "我的账号";
   return <header className={"desktop-top-bar ip-surface ip-brand-surface" + (publicMode ? " ip-public-top-bar" : "")}>
-    <Link href={authed ? "/dashboard" : "/"} className="ip-brand-logo" aria-label="AI IP 画布首页"><span aria-hidden="true">A</span><strong>AI IP 画布</strong></Link>
+    <Link href={authed ? "/dashboard" : "/"} className="ip-brand-logo" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={38} height={38} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link>
     <nav className="ip-top-navigation" aria-label="主导航">{navigation.map(n => {
       const current = n.href === "/dashboard" ? pathname === "/" || pathname === "/dashboard" : n.href === "/create" ? pathname === "/create" || (pathname.startsWith("/projects") && !pathname.startsWith("/projects/demos")) : n.href === "/templates" ? pathname.startsWith("/templates") || pathname.startsWith("/projects/demos") : pathname.startsWith(n.href);
       return <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}>{n.label}</Link>;

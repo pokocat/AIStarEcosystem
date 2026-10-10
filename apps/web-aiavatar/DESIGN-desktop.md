@@ -1,4 +1,4 @@
-# AI IP 画布 · 桌面界面与作用域
+# IP Studio · 声量引擎旗下 · 桌面界面与作用域
 
 本应用已合并原 AI IP 工作台。当前首页和 IP 管理按用户提供的两张设计图重构，主视觉真源为 [DESIGN.md](DESIGN.md)，实现为 `src/styles/ip-brand.css`；画布内部继续使用 `src/styles/ip-desktop.css` 的群青与麦黄。本文件说明各页面如何应用这些系统，不把首页组成推广为全应用规则。
 
@@ -22,7 +22,7 @@
 
 形态真值为 `html[data-layout]`，由 `src/shell/layout-mode.ts` 统一控制：用户显式选择优先，未选择时按 `matchMedia(min-width: 960px)`。桌面样式接属性；现有 1250px 媒体查询只调整真实空间约束。不要用另一个断点改变用户选定的桌面/手机形态。
 
-桌面共享顶栏为白色，固定在顶部 12px、左右 12px，内部高 60px、圆角 13px；内容让位高度为 `--desktop-bar-h: 84px`。品牌为「AI IP 画布」，主导航依次为「首页 / 创作 / IP 管理 / 模板管理 / 素材库」。创作落在 `/create`，模板管理落在 `/templates` 模板市场；原官方内容管理仍为 `/projects/demos`。
+桌面共享顶栏为白色，固定在顶部 12px、左右 12px，内部高 60px、圆角 13px；内容让位高度为 `--desktop-bar-h: 84px`。品牌为「IP Studio · 声量引擎旗下」，使用原数字人多面体侧脸 icon 的低饱和蓝灰配色版本（`public/brand/ip-studio-logo.png`）；主名称与归属标识分级，窄桌面两行排列。主导航依次为「首页 / 创作 / IP 管理 / 模板管理 / 素材库」。创作落在 `/create`，模板管理落在 `/templates` 模板市场；原官方内容管理仍为 `/projects/demos`。
 
 创作页与模板市场的组成、行为和验证范围分别见 [.impeccable/ip-create.md](.impeccable/ip-create.md) 与 [.impeccable/ip-template-market.md](.impeccable/ip-template-market.md)。
 
@@ -30,7 +30,7 @@
 
 ## 首页：人物、入口与真实近期画布
 
-公开 `/` 与登录后的桌面 `/dashboard` 使用同一个 `IpHome` 组成。主图铺满英雄区，人物留在右侧，左侧为两行中文衬线标题「把想象力 / 变成可被看见的世界」、说明与深墨「开始创作」按钮。英雄区最小高度 610px，左侧内容宽 60%，标题沿用 `DESIGN.md` 的 display 规格；主 CTA 最小高 60px、最小宽 235px。
+公开 `/` 与登录后的桌面 `/dashboard` 使用同一个 `IpHome` 组成。主图铺满英雄区，人物留在右侧，左侧为两行中文衬线标题「让灵感成形 / 让 IP 出圈」、说明与深墨「开始创作」按钮。英雄区最小高度 610px，左侧内容宽 60%，标题沿用 `DESIGN.md` 的 display 规格；主 CTA 最小高 60px、最小宽 235px。
 
 英雄区之后为四张创作方向图卡：「数字人形象 / AI 图片创作 / AI 视频生成 / 短剧创作」。更下方为三张灵感示意卡：「角色的日常 / 角色 × 世界观 / 从形象到短剧」。图区有文字说明和清楚的入口，不使用整张截图充当网页。
 

@@ -54,13 +54,13 @@ export function IpHome({ header = true }: { header?: boolean }) {
     catch (e) { setError(e instanceof Error ? e.message : "画布没有创建成功，请重试"); setCreating(undefined); createLock.current = false; }
   };
   return <div className="ip-brand-surface ip-home">
-    {header && <><DesktopTopBar publicMode /><header className="ip-home-mobile-header"><Link href="/">A <span>AI IP 画布</span></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
+    {header && <><DesktopTopBar publicMode /><header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
     <main>
       <section className="ip-home-hero">
         <img className="ip-home-hero-image" src="https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/ip-canvas-hero-v3.png" alt="晨光中回望城市的写实人物，AI 创作示意" fetchPriority="high" />
         <div className="ip-home-hero-copy">
-          <h1>把想象力<br />变成可被看见的世界</h1>
-          <p>从一个灵感开始，生成数字人、图片、视频、短剧等多元内容<br className="ip-home-desktop-break" />打造属于你的 AI IP 生态。</p>
+          <h1>让灵感成形<br />让 IP 出圈</h1>
+          <p>从一个灵感开始，创造数字人、图片、视频与故事<br className="ip-home-desktop-break" />让你的 IP 拥有形象、声音与作品。</p>
           <button className="ip-brand-button ip-home-start" disabled={!!creating} onClick={() => void start("assistant")}>
             {creating === "assistant" ? <LoaderCircle className="ip-loading-icon" size={19} /> : null}
             {creating === "assistant" ? "正在打开画布" : "开始创作"}<ArrowRight size={22} aria-hidden="true" />
@@ -87,6 +87,6 @@ export function IpHome({ header = true }: { header?: boolean }) {
         </section>
       </div>
     </main>
-    <footer className="ip-home-footer"><span>AI IP 画布</span><p>让每一个灵感，拥有自己的世界。</p><Link href="/ips">管理我的 IP<ArrowRight size={15} /></Link></footer>
+    <footer className="ip-home-footer"><span>IP Studio · 声量引擎旗下</span><p>让灵感成形，让 IP 出圈。</p><Link href="/ips">管理我的 IP<ArrowRight size={15} /></Link></footer>
   </div>;
 }

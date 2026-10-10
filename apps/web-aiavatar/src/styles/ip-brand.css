@@ -58,8 +58,9 @@ html[data-layout="desktop"] .desktop-top-bar.ip-brand-surface {
   overflow: visible;
 }
 .ip-brand-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
-.ip-brand-logo>span { font-size: 39px; line-height: 1; font-weight: 800; letter-spacing: -.03em; }
-.ip-brand-logo strong { font-size: 20px; font-weight: 750; letter-spacing: .01em; }
+.ip-brand-logo>img { display: block; width: 38px; height: 38px; object-fit: contain; }
+.ip-brand-logo strong { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 750; letter-spacing: .01em; white-space: nowrap; }
+.ip-brand-logo small { font-size: 12px; color: var(--ip-muted); font-weight: 500; }
 .ip-top-navigation { display: flex; align-self: stretch; gap: 27px; align-items: center; margin-left: 22px; min-width: 0; }
 .ip-top-navigation a { position: relative; display: inline-flex; align-items: center; height: 100%; color: var(--ip-muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .ip-top-navigation a:hover,.ip-top-navigation a[aria-current="page"] { color: var(--ip-ink); }
@@ -140,8 +141,10 @@ html[data-layout="desktop"] .account-legacy-content .wx-nav .nav-title { font-fa
 .ip-home { background: var(--ip-bg); padding: 12px; min-height: 100dvh; }
 .ip-home>main { background: var(--ip-paper); border-radius: 14px; overflow: hidden; }
 .ip-home-mobile-header { display: flex; justify-content: space-between; align-items: center; min-height: 52px; padding: 0 12px; background: var(--ip-paper); }
-.ip-home-mobile-header>a:first-child { font-size: 27px; font-weight: 800; }
-.ip-home-mobile-header span { font-size: 15px; vertical-align: middle; margin-left: 8px; }
+.ip-home-mobile-header>a:first-child { display: flex; align-items: center; gap: 8px; }
+.ip-home-mobile-header img { display: block; width: 34px; height: 34px; object-fit: contain; }
+.ip-home-mobile-header strong { display: flex; flex-direction: column; font-size: 18px; line-height: 1.3; }
+.ip-home-mobile-header small { font-size: 10px; font-weight: 500; color: var(--ip-muted); }
 html[data-layout="desktop"] .ip-home-mobile-header { display: none; }
 html[data-layout="desktop"] .ip-home:has(.ip-public-top-bar) { padding-top: var(--desktop-bar-h); }
 html[data-layout="desktop"] body.has-desktop-bar .ip-home { padding-top: 0; }
@@ -325,6 +328,8 @@ html[data-layout="desktop"] body.has-desktop-bar .ip-home { padding-top: 0; }
 /* Width constraints resize the composition; they do not decide desktop/mobile mode. */
 @media (max-width: 1250px) {
   html[data-layout="desktop"] .desktop-top-bar.ip-brand-surface { gap: 18px; padding-inline: 20px; }
+  .ip-brand-logo strong { flex-direction: column; align-items: flex-start; gap: 0; font-size: 18px; line-height: 1.3; }
+  .ip-brand-logo small { font-size: 10px; }
   .ip-top-navigation { gap: 17px; margin-left: 0; }
   .ip-top-account { gap: 10px; }
   .ip-management:has(.ip-management-detail) { grid-template-columns: minmax(310px,1fr) 370px; }

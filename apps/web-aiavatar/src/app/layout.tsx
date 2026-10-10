@@ -19,13 +19,14 @@ import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
 export const metadata: Metadata = {
-  title: "AI IP 画布 · AiAvatar",
-  description: "把想象力变成可被看见的世界。从一个灵感开始，创造角色、图片、视频与故事。",
+  title: "IP Studio · 声量引擎旗下",
+  description: "让灵感成形，让 IP 出圈。从一个灵感开始，创造数字人、图片、视频与故事。",
   icons: {
-    icon: "/brand/logo.jpg",
-    shortcut: "/brand/logo.jpg",
+    icon: "/brand/ip-studio-logo.png",
+    shortcut: "/brand/ip-studio-logo.png",
+    apple: "/brand/ip-studio-logo.png",
   },
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "数字人" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "IP Studio" },
   formatDetection: { telephone: false, email: false, address: false },
 };
 

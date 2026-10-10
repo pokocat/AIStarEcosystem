@@ -849,3 +849,13 @@ React Flow 补回拖线到空白处的“引用该节点生成”菜单，文本
 ### v0.232 · 模板只读预览与显式个人副本（2026-10-10）
 
 官方模板点击后先打开只读画布，浏览、缩放和查看节点提示词不创建项目。仅点击“存为个人副本”免费创建一份普通可编辑画布；保存中禁用重复提交，失败保留预览并由用户重试。首页、画布列表与画布内模板库共用这条路径，个人发布模板也按不可变来源预览。预览不挂载项目同步或生成工作台，不能拖动、增删、改写节点及连线；沿用现有节点样式和画布浮层查看设置。个人副本继续在节点内替换输入、编辑和确认生成费用，原模板不变，旧锁定实例保持兼容。本规则替代 v0.231 的“点击即创建”入口。
+
+### 品牌更新 · 2026-10-10
+
+主入口、顶栏、登录页和浏览器标题统一为「IP Studio · 声量引擎旗下」。首页主标题与页脚 slogan 为「让灵感成形，让 IP 出圈」。品牌 icon 保留原数字人多面体侧脸与散开的三角碎片，调整为低饱和蓝灰和深墨，已接入桌面/手机首页、旧资产外壳与登录、favicon 和 Apple 图标。原始 `public/brand/logo.jpg` 保留，当前使用 `public/brand/ip-studio-logo.png`；通过内置 imagegen 编辑，未使用 CLI fallback。
+
+最终生成提示词：
+
+```text
+Edit this existing brand icon. Keep the EXACT original design and composition: the left-facing digital human profile assembled from polygonal triangular facets, the same facial outline, neck shape, all facet boundaries, and the same scattered triangular shards drifting to the upper right. User likes this original icon and wants ONLY a restrained color adjustment to fit the current IP Studio brand, not a redesign. Replace the bright cyan/electric blue/purple palette with a closely related understated slate-blue palette: pale blue-grey #AFC2CC at the crown, slate blue #597887 midtones, deep blue-charcoal #192229 lower-left face, muted dark slate #384D60 lower neck; subtle cool-grey highlights #DCE4E7. Keep the dimensional faceted color differences clearly visible. Remove purple saturation. Preserve the white #FFFFFF background and original tight square composition. No new shapes, no added text, no monogram, no letters, no wave arcs, no star, no border, no tile, no shadows, no change to the human profile or scattered triangles. Clean crisp polygon edges, production-ready icon.
+```
