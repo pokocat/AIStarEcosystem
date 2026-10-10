@@ -95,6 +95,7 @@ public class IdentityOutboxPoller {
                 if ("USER_CLOSED".equals(event.eventType()) || "USER_MERGED".equals(event.eventType())) {
                     try {
                         // handle() runs in a separate transaction and has committed.
+                        if ("USER_MERGED".equals(event.eventType())) handler.mergedSurvivor(event).ifPresent(user -> client.reportLinkStrict(user.getIdentityUid(), user.getId()));
                         client.completeOutbox(event.id());
                     } catch (RuntimeException receiptFailure) {
                         // Receipt failure must never dead-letter/skip a completed
@@ -111,6 +112,7 @@ public class IdentityOutboxPoller {
                 int failures = noteFailure(event.id());
                 if (failures >= MAX_CONSECUTIVE_FAILURES) {
                     parkDeadLetter(event, e);
+                    if (java.util.Set.of("USER_CLOSED", "USER_MERGED", "USER_SUSPENDED", "USER_UNSUSPENDED", "PHONE_CHANGED", "PROFILE_CHANGED").contains(event.eventType())) break;
                     lastOk = Math.max(lastOk, event.id());
                     clearFailure(event.id());
                     log.error("[identity] outbox 事件连续 {} 轮失败，转入死信并放行游标 id={} type={} err={}",

@@ -38,8 +38,8 @@ export NEXT_PUBLIC_SERVER_API_BASE="${NEXT_PUBLIC_SERVER_API_BASE:-http://127.0.
 # 默认 legacy = 现网行为不变；切统一账号中心时显式：
 #   NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn ./build-release.sh all
 # client_id 按 app 逐个取（web-music … web-star），由下面的 export_auth_env 注入。
-export NEXT_PUBLIC_AUTH_MODE="${NEXT_PUBLIC_AUTH_MODE:-legacy}"
-export NEXT_PUBLIC_ID_ISSUER="${NEXT_PUBLIC_ID_ISSUER:-}"
+export NEXT_PUBLIC_AUTH_MODE="${NEXT_PUBLIC_AUTH_MODE:-id}"
+export NEXT_PUBLIC_ID_ISSUER="${NEXT_PUBLIC_ID_ISSUER:-https://id.aibuzz.cn}"
 export COPYFILE_DISABLE="${COPYFILE_DISABLE:-1}"
 export CI="${CI:-true}"
 

@@ -1,6 +1,6 @@
 # 统一认证跨应用 SOP 复核（2026-10-10）
 
-状态：本轮修复和回归在本地完成，未提交或部署。跨产品矩阵、证据、适用边界和未完成项的唯一记录为 [账号中心复核记录](../../aibuzz-id/docs/INTEGRATION-SOP-AUDIT-20261010.md)，验收规则为 [中心 SOP](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md) §7.9 / §10.6。
+状态：本轮修复已分仓提交、推送及部署，生产验收进行中。跨产品矩阵、证据、适用边界和未完成项的唯一记录为 [账号中心复核记录](../../aibuzz-id/docs/INTEGRATION-SOP-AUDIT-20261010.md)，验收规则为 [中心 SOP](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md) §7.9 / §10.6。
 
 ## 本仓共享后端
 
@@ -22,3 +22,12 @@
 ## Follow-up implementation and release (2026-10-10)
 
 User authorized deployment after tests and confirmed ClassVibe existing valid transition configuration. Quickreel BFF durable event consumer, UID tombstones, cursor/receipt ordering and token versions pass 2195 tests (2 existing skips). AI Slides OIDC/auth suite: 270 pass; real SQLite and PostgreSQL upgrades: 3 pass. ClassVibe 915 backend tests, 503 frontend tests and real MySQL/Redis gates pass; release cef916d, V14/V15, active/enabled service and public health verified. Production identity acceptance remains in progress; private media migration is separate.
+
+## 线上验收补漏与构建要求
+
+- 实际浏览器发现首次制品默认 legacy，五个 Web 没走统一登录；生产构建默认改为 id + https://id.aibuzz.cn。必须查 manifest 的 AUTH_MODE/ISSUER 并逐应用验授权回跳，不能只看 HTTP 200。6ceed370 为中间制品，最终使用纠正配置重构建。
+- 独立 V50 新增身份状态、发布事件时钟、令牌撤销时钟。中心停用与产品本地 status 分离，旧解除停用不覆盖新事件，CLOSED/MERGED 不复活；首登前停用写无权益占位。
+- RS256 和关联 UID 的 legacy 用户令牌检查撤销时钟，解除停用不恢复旧票。合并提交后回报存活 UID 业务链接，再回 COMPLETED；已知身份事件连续失败留诊断，但不越过游标。
+- Java17 身份及迁移专项最终 76 项通过，无失败或跳过；包括真实签名旧 JWT、H2 增量 V50 与重放。TypeScript、管理员、API 契约及编译门全通过。生产 V50 前 MySQL 备份 `/opt/ai-star-eco/backups/identity-v50-20261010/database-before-v50.sql`，10,009,264 bytes。
+- 专用非真实账号广播 ID21–27；注销25、合并27已在 aistar、quickreel、aislides、classvibe 四产品收到 COMPLETED。两个旧签名 JWT 访问 AIStar 均401 ACCOUNT_DISABLED，不复活 UID；后续停用场景另验。
+- 回补既有 ACTIVE 中心 UID 的产品档案链接，保留已有 ACTIVE 链接状态，不开通产品、不变更角色、钱包或积分。13939004928 本轮未再次充值。

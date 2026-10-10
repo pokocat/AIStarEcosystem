@@ -162,6 +162,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         // legacy HS256 定义上不可能是「微信游客」：游客只由账号中心的微信登录建出来，
         // 而账号中心从不签 HS256。所以这条链路一律按「已验证」处理，不进只读闸门。
+        if (!adminToken) {
+            AepUser linked = provisioningService.linkedLocalUser(userId);
+            if (linked != null && (linked.getStatus() != AepUser.UserStatus.ACTIVE
+                    || (linked.getIdentityState() != null && !"ACTIVE".equals(linked.getIdentityState()))
+                    || (linked.getIdentityTokensValidAfter() != null && (claims.getIssuedAt() == null || !claims.getIssuedAt().toInstant().isAfter(linked.getIdentityTokensValidAfter()))))) return;
+        }
         applyAuthentication(userId, username, role, adminToken, true);
     }
 
@@ -211,6 +217,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return true;
         }
 
+        if ((user.getIdentityState() != null && !"ACTIVE".equals(user.getIdentityState()))
+                || (user.getIdentityTokensValidAfter() != null && (jwt.getIssuedAt() == null || !jwt.getIssuedAt().isAfter(user.getIdentityTokensValidAfter())))) {
+            SecurityJsonEntryPoint.write(MAPPER, response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "ACCOUNT_STATE_INVALID", "统一账号状态已变更，请重新登录");
+            return true;
+        }
+
         // 手机号是否已验证 —— 真值在令牌里，本地那份只是给 /api/me 用的副本。
         // 缺这个 claim（老版本账号中心签的令牌）按「已验证」处理：微信游客这个概念
         // 是随本次改动一起出现的，更早的令牌不可能属于游客。
@@ -231,6 +244,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return false; // cannot authorize an identity that moved while resolving
         }
 
+        if (user.getIdentityTokensValidAfter() != null && (jwt.getIssuedAt() == null || !jwt.getIssuedAt().isAfter(user.getIdentityTokensValidAfter()))) {
+            SecurityJsonEntryPoint.write(MAPPER, response, HttpServletResponse.SC_UNAUTHORIZED, "ACCOUNT_STATE_INVALID", "统一账号状态已变更，请重新登录");
+            return true;
+        }
         phoneSync.sync(user, jwt, token);
 
         // RS256 令牌只按账号类型派权限，永不映射后台角色。

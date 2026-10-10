@@ -58,6 +58,10 @@ public class IdentityProvisioningService {
         });
     }
 
+    public AepUser linkedLocalUser(String id) {
+        return userRepo.findById(id).filter(user -> user.getIdentityUid() != null).orElse(null);
+    }
+
     /** 已存在则返回，不存在则 JIT 建档。uid 为空 → 抛 IllegalArgumentException。 */
     public AepUser resolveOrProvision(String identityUid) {
         if (identityUid == null || identityUid.isBlank()) {
@@ -148,7 +152,7 @@ public class IdentityProvisioningService {
     public AepUser syncIdentityVerification(String localUserId, String uid, boolean verified) {
         AepUser user = userRepo.findByIdForUpdate(localUserId)
                 .orElseThrow(() -> new IllegalStateException("本地身份档案已不存在"));
-        if (!uid.equals(user.getIdentityUid()) || user.getStatus() != AepUser.UserStatus.ACTIVE) {
+        if (!uid.equals(user.getIdentityUid()) || user.getStatus() != AepUser.UserStatus.ACTIVE || (user.getIdentityState() != null && !"ACTIVE".equals(user.getIdentityState()))) {
             throw new IllegalStateException("本地身份映射或状态已变更");
         }
         if (user.isPhoneVerified() != verified) {
@@ -171,7 +175,7 @@ public class IdentityProvisioningService {
                              java.util.function.BooleanSupplier currentRead) {
         AepUser user = userRepo.findByIdForUpdate(localUserId)
                 .orElseThrow(() -> new IllegalStateException("本地身份档案已不存在"));
-        if (!uid.equals(user.getIdentityUid()) || user.getStatus() != AepUser.UserStatus.ACTIVE) {
+        if (!uid.equals(user.getIdentityUid()) || user.getStatus() != AepUser.UserStatus.ACTIVE || (user.getIdentityState() != null && !"ACTIVE".equals(user.getIdentityState()))) {
             throw new IllegalStateException("本地身份映射或状态已变更");
         }
         if (!currentRead.getAsBoolean()) throw new IllegalStateException("身份事件已使在途资料失效");

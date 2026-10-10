@@ -86,6 +86,11 @@ public class AepUser {
     @Column(length = 32, unique = true)
     private String identityUid;
 
+    @Column(length = 20)
+    private String identityState;
+    private Long identityStateEventId;
+    private Instant identityTokensValidAfter;
+
     private boolean emailVerified;
     private boolean phoneVerified;
     private String langPreference;

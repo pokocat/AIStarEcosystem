@@ -51,14 +51,49 @@ public class IdentityOutboxHandler {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handle(IdentityCenterClient.OutboxEvent event) {
+        if (java.util.Set.of("USER_SUSPENDED", "USER_UNSUSPENDED", "USER_CLOSED", "USER_MERGED", "PHONE_CHANGED", "PROFILE_CHANGED").contains(event.eventType())) {
+            String uid = event.uid() != null ? event.uid() : text(event, "uid");
+            if ("USER_MERGED".equals(event.eventType())) uid = text(event, "fromUid");
+            if (uid == null || uid.isBlank()) throw new InvalidEventPayloadException(event.eventType() + " Missing event UID");
+            var existing = userRepo.findByIdentityUidForUpdate(uid);
+            if (existing.isPresent()) {
+                AepUser local = existing.get();
+                if ((local.getIdentityStateEventId() != null && local.getIdentityStateEventId() >= event.id())
+                        || java.util.Set.of("CLOSED", "MERGED").contains(local.getIdentityState() == null ? "" : local.getIdentityState())
+                        || local.getStatus() == AepUser.UserStatus.DELETED) return;
+                local.setIdentityStateEventId(event.id());
+                if (java.util.Set.of("USER_SUSPENDED", "USER_CLOSED", "USER_MERGED", "PHONE_CHANGED").contains(event.eventType())) local.setIdentityTokensValidAfter(Instant.now());
+                if ("USER_CLOSED".equals(event.eventType())) local.setIdentityState("CLOSED");
+                if ("USER_MERGED".equals(event.eventType())) local.setIdentityState("MERGED");
+            }
+        }
         switch (event.eventType()) {
             case EVENT_USER_MERGED -> handleMerged(event);
             case EVENT_USER_CLOSED -> handleClosed(event);
             case EVENT_PHONE_CHANGED -> handlePhoneChanged(event);
             case "PROFILE_CHANGED" -> handleProfileChanged(event);
+            case "USER_SUSPENDED", "USER_UNSUSPENDED" -> handleSuspension(event);
             default -> log.warn("[identity] 未知 outbox 事件类型，跳过 id={} type={}",
                     event.id(), event.eventType());
         }
+    }
+
+    public Optional<AepUser> mergedSurvivor(IdentityCenterClient.OutboxEvent event) {
+        return userRepo.findByIdentityUid(text(event, "toUid"));
+    }
+
+    private void handleSuspension(IdentityCenterClient.OutboxEvent event) {
+        String uid = event.uid() != null ? event.uid() : text(event, "uid");
+        AepUser user = userRepo.findByIdentityUidForUpdate(uid).orElseGet(() -> {
+            Instant now = Instant.now();
+            return AepUser.builder().id(java.util.UUID.randomUUID().toString()).username("identity_" + java.util.UUID.randomUUID().toString().replace("-", ""))
+                    .identityUid(uid).kind(AepUser.AccountKind.PERSONAL).status(AepUser.UserStatus.ACTIVE).platforms("").createdAt(now).updatedAt(now).build();
+        });
+        user.setIdentityState("USER_SUSPENDED".equals(event.eventType()) ? "SUSPENDED" : "ACTIVE");
+        user.setIdentityStateEventId(event.id());
+        if ("USER_SUSPENDED".equals(event.eventType())) user.setIdentityTokensValidAfter(Instant.now());
+        userRepo.saveAndFlush(user);
+        phoneSync.invalidate();
     }
 
     private void handleProfileChanged(IdentityCenterClient.OutboxEvent event) {
@@ -125,8 +160,11 @@ public class IdentityOutboxHandler {
         AepUser local = fromLocal.get();
         if (local.getStatus() == AepUser.UserStatus.DELETED) return; // idempotent tombstone replay
         Optional<AepUser> toLocal = userRepo.findByIdentityUid(toUid);
+        if (toLocal.isPresent() && (toLocal.get().getStatus() == AepUser.UserStatus.DELETED || java.util.Set.of("CLOSED", "MERGED").contains(toLocal.get().getIdentityState() == null ? "" : toLocal.get().getIdentityState()))) throw new InvalidEventPayloadException("Merge target disabled");
         if (toLocal.isEmpty()) {
             local.setIdentityUid(toUid);
+            local.setIdentityState(null);
+            local.setIdentityStateEventId(null);
             local.setPhone(null);
             local.setUpdatedAt(Instant.now());
             userRepo.saveAndFlush(local); // release old UID before its tombstone INSERT

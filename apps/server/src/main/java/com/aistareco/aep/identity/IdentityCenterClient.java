@@ -81,6 +81,14 @@ public class IdentityCenterClient {
         }
     }
 
+    /** Lifecycle reporting must succeed before acknowledging the merge. */
+    public void reportLinkStrict(String uid, String localSubjectId) {
+        JsonNode body = http.put().uri(props.baseUrl() + "/api/products/" + props.getProductCode() + "/links/" + uid)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken()).contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("localSubjectId", localSubjectId, "status", LINK_PROVISIONED)).retrieve().body(JsonNode.class);
+        if (body == null || !body.path("success").asBoolean(false) || !body.path("data").isObject()) throw new IdentityCenterException("Invalid product link response");
+    }
+
     // --------------------------------------------------------------- outbox
 
     /** 一条账号中心事件。{@code payload} 已归一为 JSON 对象（上游可能给对象或字符串）。 */

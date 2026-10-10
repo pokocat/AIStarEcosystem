@@ -273,8 +273,8 @@ class IdentityOutboxTest {
 
         // 第 5 轮：12 转死信，游标越过它，13 终于被处理
         int done = poller.pollOnce();
-        assertThat(done).as("本轮只有 13 成功").isEqualTo(1);
-        assertThat(poller.readCursor()).isEqualTo(13L);
+        assertThat(done).as("Lifecycle failure stays pending").isZero();
+        assertThat(poller.readCursor()).isEqualTo(11L);
 
         var deadLetters = poller.readDeadLetters();
         assertThat(deadLetters.size()).isEqualTo(1);
@@ -393,4 +393,23 @@ class IdentityOutboxTest {
         });
         return repo;
     }
+    @Test
+    void suspensionReplayAndClosureCannotBeUndone() {
+        AepUser local = row("state-local", "uid-state");
+        rows.put("uid-state", local);
+        handler.handle(event(10, "USER_SUSPENDED", "uid-state", "{}"));
+        assertThat(local.getIdentityState()).isEqualTo("SUSPENDED");
+        java.time.Instant revoked = local.getIdentityTokensValidAfter();
+        handler.handle(event(11, "USER_UNSUSPENDED", "uid-state", "{}"));
+        assertThat(local.getIdentityState()).isEqualTo("ACTIVE");
+        assertThat(local.getIdentityTokensValidAfter()).isEqualTo(revoked);
+        handler.handle(event(12, "USER_SUSPENDED", "uid-state", "{}"));
+        handler.handle(event(11, "USER_UNSUSPENDED", "uid-state", "{}"));
+        assertThat(local.getIdentityState()).isEqualTo("SUSPENDED");
+        handler.handle(event(13, "USER_CLOSED", "uid-state", "{}"));
+        handler.handle(event(14, "USER_UNSUSPENDED", "uid-state", "{}"));
+        assertThat(local.getStatus()).isEqualTo(AepUser.UserStatus.DELETED);
+        assertThat(local.getIdentityState()).isEqualTo("CLOSED");
+    }
+
 }
