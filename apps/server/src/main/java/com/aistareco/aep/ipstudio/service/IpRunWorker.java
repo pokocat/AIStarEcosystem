@@ -42,6 +42,8 @@ public class IpRunWorker {
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
 
+    @org.springframework.beans.factory.annotation.Autowired private JusuanImageClient jusuanImages;
+
     private static final Logger log = LoggerFactory.getLogger(IpRunWorker.class);
 
     private final IpRunRepository runRepo;
@@ -214,8 +216,19 @@ public class IpRunWorker {
             try {
                 // 用户在画布上选的模型 —— 不传下去就等于「选了没用」：
                 // 界面按那个模型标价、也按它扣了钱，实际却跑的默认端点。
-                byte[] bytes = multimodal.generateImage(prompt, size,
-                        refs.isEmpty() ? null : refs, IpDocs.text(exec, "endpointId"));
+                String endpointId=IpDocs.text(exec,"endpointId");
+                final int current=i;
+                byte[] bytes;
+                if(jusuanImages!=null && jusuanImages.supportsEndpoint(endpointId)) {
+                    List<String> keys=new ArrayList<>();
+                    for(JsonNode ref:exec.path("refKeys")) {
+                        int index=ref.path("refIndex").asInt(-1);
+                        if(index>=0 && !inputs.path("refs").path(index).path("applied").asBoolean(true))continue;
+                        String key=ref.isTextual()?ref.asText():ref.path("key").asText(null);
+                        if(key!=null)keys.add(key);
+                    }
+                    bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,run.getId()+"-image-"+i,run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage));
+                } else bytes=multimodal.generateImage(prompt, size, refs.isEmpty() ? null : refs, endpointId);
                 requireDecodableImage(bytes);
                 progress(run, 10 + (int) Math.round(80.0 * (i + 1) / count), "storage.persist");
                 FileStorageService.StoredFile stored = storage.store(

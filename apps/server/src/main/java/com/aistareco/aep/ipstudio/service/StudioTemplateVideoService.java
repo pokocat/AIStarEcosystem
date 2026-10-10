@@ -14,6 +14,8 @@ import java.util.List;
 /** Template adapter: native video contracts/prices stay in the existing video services. */
 @Service
 public class StudioTemplateVideoService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private final AiModelInvocationService models;
     private final MaterialVideoJobService jobs;
     private final StudioVideoService nativeVideos;
@@ -22,7 +24,7 @@ public class StudioTemplateVideoService {
     }
     public record Quote(String model,long cost,boolean nativeMode) {}
     public Quote quote(String owner,Step step,String requestedModel,String prompt) {
-        var endpoint=models.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION,requestedModel).orElseThrow(()->
+        var endpoint=scenePolicies!=null?scenePolicies.resolveStudioVideo(requestedModel):models.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION,requestedModel).orElseThrow(()->
                 new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","请选择可用的视频模型"));
         String model=endpoint.endpoint().getId();
         boolean nativeMode=nativeVideos.models().stream().anyMatch(m->m.endpointId().equals(model));

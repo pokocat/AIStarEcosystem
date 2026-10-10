@@ -34,4 +34,33 @@ class AiAppSceneModelPolicyServiceTest {
         assertThrows(BusinessException.class,()->service.savePrices("studio","image",List.of(new AiAppSceneModelPolicyDto.Candidate("outside",4L,"per_image")),"operator"));
         assertThrows(BusinessException.class,()->service.savePrices("studio","image",List.of(new AiAppSceneModelPolicyDto.Candidate("a",4L,"per_call")),"operator"));
     }
+    void jusuanOnly(){when(config.findByKey(AiAppSceneModelPolicyService.STUDIO_PROVIDER_KEY)).thenReturn(Optional.of(new PlatformConfigDto("key",mapper.valueToTree("jusuan"),1,null,null,null)));}
+    @Test void supplierRestrictionFiltersCatalogAndRejectsExplicitNonJusuanEvenWithMisleadingName(){
+        jusuanOnly();var jusuan=endpoint("a");jusuan.endpoint().setBaseUrl("https://api.jusuanhub.com/v1");
+        var other=endpoint("b");other.endpoint().setBaseUrl("https://api.agnes-ai.cn/v1");other.endpoint().setName("jusuan");
+        when(models.listCandidates(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of(jusuan,other));
+        assertEquals(List.of("a"),service.available("studio","image",30).stream().map(r->r.resolved().endpoint().getId()).toList());
+        assertThrows(BusinessException.class,()->service.resolve("studio","image","b",30));
+        other.endpoint().setBaseUrl("https://api.jusuanhub.com.evil.example/v1");assertFalse(service.allowsStudioProvider(other.endpoint()));
+        other.endpoint().setBaseUrl("https://user@api.jusuanhub.com/v1");assertFalse(service.allowsStudioProvider(other.endpoint()));
+    }
+    @Test void scenePolicyCannotReintroduceAnotherSupplier(){
+        jusuanOnly();var r=endpoint("a");r.endpoint().setBaseUrl("https://other.example/v1");configured(policy("fixed",30L));
+        assertTrue(service.available("studio","image",30).isEmpty());
+        assertThrows(BusinessException.class,()->service.resolve("studio","image",null,30));
+        assertThrows(BusinessException.class,()->service.save("studio","image",policy("fixed",30L),"test"));
+    }
+    @Test void videoDefaultAndSubmissionUseAllowedSupplierWithoutChangingGlobalDefault(){
+        jusuanOnly();var allowed=endpoint("a");allowed.endpoint().setBaseUrl("https://api.jusuanhub.com/v1");
+        var other=endpoint("b");other.endpoint().setBaseUrl("https://other.example/v1");
+        when(models.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(other.endpoint(),other.candidate(),true),allowed));
+        assertEquals(1,service.studioVideoCandidates().size());assertTrue(service.studioVideoCandidates().get(0).isDefault());
+        assertEquals("a",service.resolveStudioVideo(null).endpoint().getId());
+        assertThrows(BusinessException.class,()->service.resolveStudioVideo("b"));
+        allowed.endpoint().setEnabled(false);assertTrue(service.studioVideoCandidates().isEmpty());assertThrows(BusinessException.class,()->service.resolveStudioVideo(null));
+    }
+    @Test void invalidSupplierConfigFailsClosed(){
+        when(config.findByKey(AiAppSceneModelPolicyService.STUDIO_PROVIDER_KEY)).thenReturn(Optional.of(new PlatformConfigDto("key",mapper.valueToTree("unknown"),1,null,null,null)));
+        assertThrows(BusinessException.class,()->service.allowsStudioProvider(endpoint("a").endpoint()));
+    }
 }

@@ -14,6 +14,8 @@ import java.util.List;
 /** Native video inputs on the canvas. Preparation never calls a provider or freezes credits. */
 @Service
 public class StudioVideoService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private final VideoStudioService videos;
     private final IpProjectService projects;
     private final FileStorageService storage;
@@ -21,10 +23,15 @@ public class StudioVideoService {
     public StudioVideoService(VideoStudioService videos,IpProjectService projects,FileStorageService storage,FfmpegRunner ffmpeg) {
         this.videos=videos;this.projects=projects;this.storage=storage;this.ffmpeg=ffmpeg;
     }
-    public List<VideoStudioModel> models() {return videos.listModels();}
+    public List<VideoStudioModel> models() {
+        if(scenePolicies==null)return videos.listModels();
+        var allowed=scenePolicies.studioVideoCandidates().stream().map(r->r.endpoint().getId()).collect(java.util.stream.Collectors.toSet());
+        return videos.listModels().stream().filter(m->allowed.contains(m.endpointId())).toList();
+    }
+    private String model(String requested) {return scenePolicies==null?requested:scenePolicies.resolveStudioVideo(requested).endpoint().getId();}
     public VideoStudioService.CanvasPreparation prepare(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
-        var nativeRequest=new VideoStudioJobRequest(request.model(),v.mode(),request.prompt(),v.resolutionTier(),
+        var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),
                 request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),v.references(),null,null);
         boolean reference=JusuanH3Contract.MODE_UNIVERSAL_REFERENCE.equals(v.mode());
         return videos.prepareCanvas(userId,nativeRequest,(type,key)->requireMedia(userId,type,key,reference));
@@ -33,7 +40,7 @@ public class StudioVideoService {
      * Asset bytes and ownership are verified by prepare() at actual submission, never bypassed there. */
     public long quote(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
-        var nativeRequest=new VideoStudioJobRequest(request.model(),v.mode(),request.prompt(),v.resolutionTier(),
+        var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),
                 request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),v.references(),null,null);
         return videos.prepareCanvas(userId,nativeRequest,(type,key)->{}).credits();
     }

@@ -228,7 +228,8 @@ public class IpRunService {
         // 和 worker（真正调哪个端点）只从这里读 endpoint_id。此前模型 id 写在 item 顶层，
         // 没有任何地方读它：画布上选哪个模型，跑的、校验的、计价的都是后台默认那个。
         ObjectNode variantConfig = om.createObjectNode();
-        if (req.model() != null && !req.model().isBlank()) variantConfig.put("endpoint_id", req.model().trim());
+        if (scenePolicies != null) variantConfig.put("endpoint_id", scenePolicies.resolveStudioVideo(req.model()).endpoint().getId());
+        else if (req.model() != null && !req.model().isBlank()) variantConfig.put("endpoint_id", req.model().trim());
         if (req.video() != null) {
             if (refKey != null) throw BusinessException.badRequest("STUDIO_VIDEO_INPUT_INVALID", "请在视频模式中明确选择首帧或参考素材");
             var prepared=studioVideo.prepare(userId,req);
@@ -451,7 +452,10 @@ public class IpRunService {
         if(nodeEndpoint == null) nodeEndpoint=IpDocs.text(md.path("studio").path("request"),"model");
         if(nodeEndpoint != null) exec.put("endpointId",nodeEndpoint);
         var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", IpDocs.text(exec, "endpointId"), pricing.ipImage());
-        if(selected != null) exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+        if(selected != null) {
+            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size());
+            exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+        }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
                 PromptService.KEY_DAP_IP_CANVAS_IMAGE);
@@ -515,7 +519,10 @@ public class IpRunService {
         if (req.model() != null && !req.model().isBlank()) exec.put("endpointId", req.model().trim());
 
         var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", IpDocs.text(exec, "endpointId"), pricing.ipImage());
-        if(selected != null) exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+        if(selected != null) {
+            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size());
+            exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+        }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
                 PromptService.KEY_DAP_IP_CANVAS_IMAGE);

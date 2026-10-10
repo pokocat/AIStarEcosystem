@@ -256,7 +256,7 @@ public class IpStudioController {
         boolean video = purpose == com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION;
         java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> out = new java.util.ArrayList<>();
         var selections = !video ? scenePolicies.available("studio","image",defaultCost) : null;
-        var candidates = !video ? selections.stream().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::resolved).toList() : invocation.listCandidates(purpose);
+        var candidates = !video ? selections.stream().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::resolved).toList() : scenePolicies.studioVideoCandidates();
         for (var r : candidates) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             long cost = r.candidate().getCreditCostOverride() != null

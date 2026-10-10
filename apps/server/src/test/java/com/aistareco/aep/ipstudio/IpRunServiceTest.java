@@ -538,4 +538,24 @@ class IpRunServiceTest {
         assertEquals("IP_RUN_NOT_FOUND",
                 assertThrows(BusinessException.class, () -> svc.get(OTHER, dto.id())).getCode());
     }
+    @Test void studioSupplierRejectionOccursBeforeSharedVideoSubmissionOrHold() {
+        seedProject(new IpStudioFixtures.Doc());
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        when(policy.resolveStudioVideo("other")).thenThrow(new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","not allowed"));
+        assertEquals("ENDPOINT_NOT_ALLOWED",assertThrows(BusinessException.class,()->svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("wave",null,5,"9:16","other"))).getCode());
+        verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+    }
+    @Test void studioVideoDefaultIsSnapshottedInsteadOfFallingBackToGlobalWorkerBinding() {
+        seedProject(new IpStudioFixtures.Doc());
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("jusuan").build();
+        when(policy.resolveStudioVideo(null)).thenReturn(new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true));
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),eq("ipstudio"))).thenReturn(List.of(OM.createObjectNode().put("id","job")));
+        svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("wave",null,5,"9:16",null));
+        var body=org.mockito.ArgumentCaptor.forClass(JsonNode.class);verify(videoJobs).submit(body.capture(),eq(USER),eq("ipstudio"));
+        assertEquals("jusuan",body.getValue().path("items").path(0).path("variant_config").path("endpoint_id").asText());
+    }
 }
