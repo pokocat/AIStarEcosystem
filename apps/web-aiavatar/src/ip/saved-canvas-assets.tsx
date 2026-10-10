@@ -14,7 +14,7 @@ export function SavedCanvasAssets() {
   const identity = useIdentity();
   const [actionError, setActionError] = React.useState("");
   React.useEffect(() => { const store = useAssetStore.getState(); store.reset(); void store.loadAssets(); return () => store.reset(); }, [identity?.uid]);
-  return <section style={{ margin: "20px 16px 0" }}>
+  return <section id="canvas-assets" style={{ margin: "20px 16px 0", scrollMarginTop: "calc(var(--desktop-bar-h, 84px) + 12px)" }}>
     <SectionHeader title="画布素材" hint="在画布中加入我的资产的图片、视频、音频和文本" count={loading ? undefined : assets.length} />
     {loading ? <LoadingBlock /> : error ? <Card><p role="alert">{error}</p><button onClick={() => void useAssetStore.getState().loadAssets()}>重试</button></Card> : !assets.length ? <Card><EmptyState text="还没有保存的画布素材" actionHref="/projects" actionLabel="打开画布" /></Card> :
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 12 }}>{assets.map((a) => <Card key={a.id}>

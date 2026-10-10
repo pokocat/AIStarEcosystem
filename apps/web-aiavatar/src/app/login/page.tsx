@@ -24,7 +24,7 @@ function LoginInner() {
     return (
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
         <IdCenterLoginScreen
-          brandLabel="数字资产平台"
+          brandLabel="AI IP 画布"
           tagline="登录由账号中心统一处理，一个账号通行全部产品。"
           postLoginPath={next}
           alreadyAuthenticated={auth.isAuthed()}

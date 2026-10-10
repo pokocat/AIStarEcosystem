@@ -29,6 +29,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Monitor, Copy, Check, ArrowLeft, ArrowRight } from "lucide-react";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 
 /** 「这次就在手机上用」的记忆。sessionStorage：本次使用有效，下次重新提示。 */
 const OPT_IN_KEY = "ip-canvas-mobile-optin";
@@ -248,6 +249,8 @@ function Canvas({ projectId, narrow }: { projectId: string; narrow: boolean }) {
 }
 
 export function CanvasGate({ projectId }: { projectId: string }) {
+  // 直达画布也必须先完成统一登录与开通检查，再加载画布和本人项目。
+  const authState = useRequireAuth();
   const wide = useIsDesktopLayout();
   // null = 还没读过 sessionStorage（SSR / 首帧）。与 wide 一样，不知道就先不渲染分支。
   const [optedIn, setOptedIn] = React.useState<boolean | null>(null);
@@ -264,7 +267,8 @@ export function CanvasGate({ projectId }: { projectId: string }) {
     setOptedIn(true);
   }, []);
 
-  if (wide === null || optedIn === null) return <Opening />;
+  if (authState === "no-platform") return <PlatformGateScreen />;
+  if (authState !== "ok" || wide === null || optedIn === null) return <Opening />;
   if (!wide && !optedIn) return <MobileNotice projectId={projectId} onProceed={proceed} />;
   return <Canvas projectId={projectId} narrow={!wide} />;
 }

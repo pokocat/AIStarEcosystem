@@ -19,6 +19,14 @@
 .studio-flow-header>a { color:var(--ink-2); display:flex; padding:8px; border-radius:8px; }
 .studio-flow-header>.ant-input { width:220px; font-weight:650; color:var(--ink); }
 .studio-flow-header .ip-canvas-host-actions { margin-left:auto; flex-wrap:nowrap; overflow-x:auto; }
+.studio-canvas-credit { display:none; }
+html[data-layout="desktop"] .studio-canvas-credit { display:flex; flex-shrink:0; }
+html[data-layout="desktop"] .studio-canvas-credit .desktop-credit-link { color:var(--ink); background:var(--surface-2); border:1px solid var(--line); }
+html[data-layout="desktop"] .studio-canvas-credit .desktop-credit-link:hover { background:var(--paper-2); }
+html[data-layout="desktop"] .studio-canvas-credit .desktop-credit-link svg,
+html[data-layout="desktop"] .studio-canvas-credit .desktop-credit-retry { color:var(--ink-2); }
+html[data-layout="desktop"] .studio-canvas-credit .desktop-credit-retry:hover { background:var(--surface-2); }
+html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 .studio-flow-stage { position:absolute; inset:60px 0 0; }
 .studio-flow-card { display:flex; flex-direction:column; height:100%; background:var(--surface); border:1px solid var(--line-2); border-radius:12px; }
 .studio-flow-card.is-selected { border:2px solid var(--primary); }

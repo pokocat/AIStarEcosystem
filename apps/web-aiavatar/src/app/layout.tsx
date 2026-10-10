@@ -12,12 +12,15 @@ import "../styles/studio-home.css";
 import "@xyflow/react/dist/style.css";
 import "../styles/studio-flow.css";
 import "../styles/account-workspace.css";
+import "../styles/ip-display-font.css";
+import "../styles/ip-brand.css";
+import "../styles/ip-create.css";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
 export const metadata: Metadata = {
-  title: "数字人资产平台 · AiAvatar",
-  description: "真人授权复刻，或者纯 AI 原创。形象、声音、衍生物都存在一处，随时能拿出来用。",
+  title: "AI IP 画布 · AiAvatar",
+  description: "把想象力变成可被看见的世界。从一个灵感开始，创造角色、图片、视频与故事。",
   icons: {
     icon: "/brand/logo.jpg",
     shortcut: "/brand/logo.jpg",
@@ -36,7 +39,8 @@ export const viewport: Viewport = {
 };
 
 // 字体：Manrope（UI/标题）+ Newsreader（资产身份衬线）+ JetBrains Mono（登记号）
-// + Noto Sans SC（中文）。经 React 19 自动提升到 <head>；浏览器无法访问 Google
+// + Noto Sans SC（中文）。新增桌面展示字体 Noto Serif SC 已自托管，见 ip-brand.css。
+// 经 React 19 自动提升到 <head>；浏览器无法访问 Google
 // Fonts 时优雅回退到系统字体（globals.css 的 --font-* 已带 system 回退）。
 const FONTS_HREF =
   "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap";

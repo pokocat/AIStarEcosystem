@@ -17,26 +17,35 @@ export function useRequireAuth(enabled = true): AuthState {
 
   useEffect(() => {
     if (USE_MOCK || !enabled) return;
+    let active = true;
     const toLogin = () => {
       setState("redirecting");
+      const returnPath = typeof window === "undefined" ? (pathname || "/") :
+        `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const showLogin = () => {
+        if (active) router.replace(`/login?next=${encodeURIComponent(returnPath)}`);
+      };
       if (ID_MODE) {
         // 统一账号中心：直接整页跳授权页，回来还落在同一个页面。
         // 不要传 usePathname() —— 它只有路径，search 与 hash 都没有。本 app 的
         // 七牛刷脸回调正是 `#/real-auth/{sessionId}`（见 app/page.tsx 的转发），
         // 传 pathname 等于把用户刚做完的活体认证会话丢掉，得重刷一遍脸。
         // 传 undefined 让 beginLogin 自己读 window.location（pathname+search+hash）。
-        void auth.startIdLogin(typeof window === "undefined" ? (pathname || "/") : undefined);
+        // PKCE or browser navigation can fail. The login screen handles readable errors
+        // and retries; leaving this promise unhandled would keep protected pages blank.
+        void auth.startIdLogin(typeof window === "undefined" ? (pathname || "/") : undefined)
+          .then(started => { if (!started) showLogin(); }, showLogin);
         return;
       }
-      const next = encodeURIComponent(pathname || "/");
-      router.replace(`/login?next=${next}`);
+      showLogin();
     };
     if (!auth.isAuthed()) {
       toLogin();
-      return;
+      return () => { active = false; };
     }
     setState("ok");
-    return onAuthExpired(toLogin);
+    const unsubscribe = onAuthExpired(toLogin);
+    return () => { active = false; unsubscribe(); };
   }, [router, pathname, enabled]);
 
   // v0.53 平台门禁：账号未开通 aiavatar 子产品时给出引导，而不是让人看空货架。

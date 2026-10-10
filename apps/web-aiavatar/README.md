@@ -35,6 +35,36 @@ pnpm build:turbo                   # Turbopack 构建（可选）
 
 无需启动后端：屏幕层直接消费 `src/proto/data.ts` 的样例数据（`NEXT_PUBLIC_USE_MOCK=1`）。
 
+### Studio 统一登录（2026-10-10）
+
+Studio 与数字资产共用 AiAvatar 的 OIDC 授权码 + PKCE、`/auth/callback` 和 `aiavatar` 开通记录。
+首页登录、画布列表、画布直达链接都走统一账号中心；登录后回到原站内路径（保留查询参数与 hash）。
+画布在登录及开通检查完成前不挂载，未开通时显示激活码入口。生产客户端仍为 `web-aiavatar`。
+
+当前本地 Studio 使用 `http://localhost:8098`，在 `.env.local` 配置：
+
+```dotenv
+NEXT_PUBLIC_USE_MOCK=0
+NEXT_PUBLIC_AUTH_MODE=id
+NEXT_PUBLIC_ID_ISSUER=http://localhost:8098
+NEXT_PUBLIC_ID_CLIENT_ID=web-aiavatar-local
+NEXT_PUBLIC_SERVER_API_BASE=http://localhost:18080
+NEXT_PUBLIC_ENABLE_DEV_LOGIN=0
+```
+
+从仓库根运行 `python3 infra/scripts/studio-local-identity.py` 启动同级 `../aibuzz-id`。
+切换旧进程或更新客户端清单时加 `--restart`。该脚本使用本仓
+`infra/local/studio-identity.yml`，明确登记 localhost 与 127.0.0.1 的 3013、3016、3019
+回调、退出回跳与浏览器 CORS；仅监听回环地址，强制 dev profile。
+本地测试账号为 `dev` / `devdevdevdevdev`（dev 重复 5 次），首次启动由既有 import/admin API 初始化。
+账号、UID 和客户端保存到 `.studio-e2e/unified-auth/local-identity/database.mv.db`；
+初始化服务密钥自动生成并单独存本机，均不入 Git。重启保留同一账号，不修改产品权限或积分。
+当前开发预览入口是 `http://localhost:3016/login?next=%2Fdashboard`（3019 须另行启动对应预览包）。
+Studio 后端也须设置 `AEP_ID_ISSUER=http://localhost:8098`
+（或启动参数 `--aep.identity.issuer=http://localhost:8098`），受众保持 `aistar-api`。
+账号中心重启会结束其本地浏览器会话，重新登录即可；不要改回临时内存库，否则测试账号会丢失。
+`NEXT_PUBLIC_*` 在构建时内联，预览生产包必须重新构建后启动。标准独立开发也可使用 8090 + `web-dev`。
+
 > **构建引擎**：Next 16 默认用 Turbopack，但其在部分环境（尤其某些 macOS）会
 > `FATAL ... Turbopack ... panic`。因此本 app 的 `dev` / `build` **默认走 webpack**（稳定），
 > Turbopack 作为 `dev:turbo` / `build:turbo` 可选项。若仍遇 Turbopack panic：先

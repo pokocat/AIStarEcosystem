@@ -60,7 +60,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
     {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={id => router.push(`/projects/${id}`)} />}
     <header className="studio-home-heading">
       <div><h1>AI IP Studio</h1><p>从一个 IP，创作形象、故事和视频。</p></div>
-      <Link className="studio-home-text-link" href="/projects">我的画布 <ArrowRight size={16}/></Link>
+      <Link className="studio-home-text-link" href="/create">我的画布 <ArrowRight size={16}/></Link>
     </header>
 
     <form className="studio-home-composer" onSubmit={e => { e.preventDefault(); void start(mode, brief); }}>
@@ -76,7 +76,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
     <nav className="studio-home-tools" aria-label="主要创作功能">{quickEntries.map(([entry, Icon]) => <button key={entry} type="button" disabled={creating !== undefined || !!pending.current} onClick={() => void start(entry)}>
       <Icon size={22}/><span>{studioEntries[entry].title}</span><small>{studioEntries[entry].description}</small></button>)}</nav>
 
-    <section className="studio-home-section" aria-labelledby="recent-canvases-heading"><div className="studio-home-section-heading"><h2 id="recent-canvases-heading">继续创作</h2><Link href="/projects">全部画布 <ArrowRight size={15}/></Link></div>
+    <section className="studio-home-section" aria-labelledby="recent-canvases-heading"><div className="studio-home-section-heading"><h2 id="recent-canvases-heading">继续创作</h2><Link href="/create">全部画布 <ArrowRight size={15}/></Link></div>
       {projects.error ? <LoadError message={projects.error} retry={() => setRefresh(n => n + 1)}/> : projects.loading ? <div className="studio-home-loading" role="status">正在加载最近画布…</div> : projects.data.length ?
         <div className="studio-home-projects">{projects.data.slice(0, 4).map(project => <Link className="studio-home-project" key={project.id} href={`/projects/${project.id}`}>
           <div className="studio-home-project-cover">{project.coverUrl ? <img src={project.coverUrl} alt="" loading="lazy"/> : <Layers size={30}/>}</div>
@@ -84,13 +84,13 @@ export function StudioHome({ ready }: { ready: boolean }) {
         <div className="studio-home-empty"><p>还没有画布。从上方开始创作，或先选择一套模板。</p><button type="button" disabled={creating !== undefined} onClick={() => void start('blank')}><Plus size={16}/>新建空白画布</button></div>}
     </section>
 
-    <section className="studio-home-section" aria-labelledby="canvas-templates-heading"><div className="studio-home-section-heading"><h2 id="canvas-templates-heading">模板与灵感</h2><Link href="/projects#templates">查看全部 <ArrowRight size={15}/></Link></div>
+    <section className="studio-home-section" aria-labelledby="canvas-templates-heading"><div className="studio-home-section-heading"><h2 id="canvas-templates-heading">模板与灵感</h2><Link href="/templates">查看全部 <ArrowRight size={15}/></Link></div>
       <div className="studio-home-gallery-tabs" role="group" aria-label="模板与灵感分类">{([['official', '官方模板'], ['personal', '我的模板'], ['examples', '精选画布']] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={gallery === value} onClick={() => setGallery(value)}>{label}</button>)}</div>
       {catalogue.error ? <LoadError message={catalogue.error} retry={() => setRefresh(n => n + 1)}/> : catalogue.loading ? <div className="studio-home-loading" role="status">正在加载模板与画布…</div> : items.length ?
         <div className="studio-home-templates">{items.map(t => <button type="button" className="studio-home-template" key={t.id} disabled={creating !== undefined || !!pending.current} onClick={() => void useTemplate(t)}>
           {t.coverUrl ? <img src={t.coverUrl} alt="" loading="lazy"/> : <CanvasThumb doc={t.doc} height={132}/>}
           <div><h3>{t.name}</h3><p>{t.summary}</p><span>只读预览 · 存为个人副本后编辑 <ArrowRight size={14}/></span></div></button>)}</div> :
-        <div className="studio-home-empty"><p>{gallery === 'personal' ? '还没有个人模板。在画布里选择“发布为模板”，以后可以换一个 IP 继续使用。' : gallery === 'examples' ? '精选画布发布后会展示在这里，你可以复制一份继续创作。' : '暂时没有可用的官方模板，可以从空白画布开始。'}</p><Link href="/projects">打开画布目录 <ArrowRight size={15}/></Link></div>}
+        <div className="studio-home-empty"><p>{gallery === 'personal' ? '还没有个人模板。在画布里选择“发布为模板”，以后可以换一个 IP 继续使用。' : gallery === 'examples' ? '精选画布发布后会展示在这里，你可以复制一份继续创作。' : '暂时没有可用的官方模板，可以从空白画布开始。'}</p><Link href="/create">打开画布目录 <ArrowRight size={15}/></Link></div>}
     </section>
   </div>;
 }

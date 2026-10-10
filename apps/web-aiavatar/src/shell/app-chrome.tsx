@@ -6,6 +6,7 @@
 //   /card/p/*      公开名片页 —— 匿名访客看的对外页面，不能套产品导航
 //   /login         登录页
 //   /auth/callback OIDC 回调中转
+//   /projects/{id} 画布工作区 —— 使用原生画布工具栏，全屏不叠加网站导航
 //
 // 这三类之外的应用页，**桌面形态**显示顶栏。手机形态什么都不加，
 // 底部 tab 栏仍由各页面经 HubScreen 渲染（桌面形态下由 globals.css 隐藏）。
@@ -30,7 +31,10 @@ export function AppChrome() {
   // <html data-layout> 跟着改」在每一页都生效（见 shell/layout-mode.ts）。
   useLayoutMode();
   const pathname = usePathname() ?? "";
+  const canvasWorkspace = /^\/projects\/[^/]+\/?$/.test(pathname)
+    && pathname.replace(/\/$/, "") !== "/projects/demos";
   const bare = BARE_EXACT.includes(pathname)
+    || canvasWorkspace
     || BARE_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));
 
   // 顶栏那几个入口全都要登录才进得去 —— 给访客看等于给一排点了就弹登录的链接。
@@ -47,12 +51,15 @@ export function AppChrome() {
     setShow(!bare && (USE_MOCK || auth.isAuthed()) && !forcedLanding);
   }, [bare, pathname]);
 
-  React.useEffect(() => {
+  // Hide the old page's header immediately during a client route transition,
+  // and clear its body offset before the new canvas is painted.
+  const visible = show && !bare;
+  React.useLayoutEffect(() => {
     if (typeof document === "undefined") return;
-    document.body.classList.toggle("has-desktop-bar", show);
+    document.body.classList.toggle("has-desktop-bar", visible);
     return () => document.body.classList.remove("has-desktop-bar");
-  }, [show]);
+  }, [visible]);
 
-  if (!show) return null;
+  if (!visible) return null;
   return <DesktopTopBar />;
 }

@@ -6,6 +6,19 @@
 
 本文件是 AI Star Eco 在阿里云上部署的**单一真值源**。
 
+## Studio 本地账号中心（2026-10-10）
+
+本机运行 `python3 infra/scripts/studio-local-identity.py`；更新本地配置或替换旧进程时加
+`--restart`。脚本仅启动同级 `../aibuzz-id` 的 dev profile，使用
+`infra/local/studio-identity.yml`、回环监听 8098、固定 issuer `http://localhost:8098`。
+浏览器公开客户端 `web-aiavatar-local` 强制 PKCE；3013/3016/3019 的 localhost 与 127.0.0.1
+都有精确回调、退出回跳和 CORS 声明。此配置及脚本不参与生产部署。
+
+测试账号 `dev` / `devdevdevdevdev` 由身份服务既有 API 初始化；H2 文件库及自动生成的初始化
+服务密钥保存在 gitignored `.studio-e2e/unified-auth/local-identity/`，重启保持 UID。
+脚本不操作 Studio 的产品库、开通或积分。Studio 前端与后端配置见
+[`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md#studio-统一登录2026-10-10)。
+
 ## `clip` 军师预发隔离实例（2026-08-11）
 
 军师「快出片」预发不复用 AIStar 生产实例：`aistareco-clip-preprod` 仅监听 `127.0.0.1:8081`，工作目录 `/opt/aistareco-clip-preprod/server`，运行时机密在 `/etc/aistareco/clip-preprod.env`（0600）。军师预发 BFF 从同机 `http://127.0.0.1:8081` 回源；公网只通过 `wxapi.aibuzz.cn/clip_preprod/cdn/` 与 `/files/` 读取作品，不公开 AIStar API。

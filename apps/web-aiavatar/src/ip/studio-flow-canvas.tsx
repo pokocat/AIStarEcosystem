@@ -5,6 +5,8 @@ import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Po
 import { App, Button, Dropdown, Input, Modal } from 'antd';
 import { ArrowLeft, Copy, Ellipsis, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, MousePointer2, Music2, Redo2, Scissors, Search, Trash2, Undo2, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { nanoid } from 'nanoid';
+import { useIdentity } from '@/proto/api';
+import { WalletBadge } from '@/shell/wallet-badge';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
 import { HostActionsSlot } from '@/canvas-bridge/host-actions';
@@ -70,6 +72,7 @@ const edgeTypes={reference:ReferenceEdge};
 type Snapshot = { nodes: CanvasNodeData[]; connections: CanvasConnection[] };
 
 function FlowWorkspace({ projectId }: { projectId: string }) {
+  const identity = useIdentity();
   const project = useCanvasStore(s => s.projects.find(p => p.id === projectId));
   const flow = useReactFlow<StudioFlowNode>(), viewport = useViewport(), { zoom } = viewport, { message } = App.useApp();
   const [selected, setSelected] = useState(new Set<string>()), [hand, setHand] = useState(false), [minimap, setMinimap] = useState(false);
@@ -257,9 +260,10 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     {key:'templates',label:'套用画布模板',onClick:()=>dispatchStudioCommand('templates')},
   ];
   return <StudioFloatingContext.Provider value={{viewport,nodes:project.nodes}}><div className="studio-flow-shell" data-history={historyRevision}>
-    <header className="studio-flow-header"><a href="/projects" aria-label="返回项目"><ArrowLeft size={18}/></a>
+    <header className="studio-flow-header"><a href="/create" aria-label="返回创作"><ArrowLeft size={18}/></a>
       <Input aria-label="画布名称" variant="borderless" value={project.title} maxLength={80} onChange={e => useCanvasStore.getState().renameProject(projectId, e.target.value)}/>
       <HostActionsSlot/>
+      <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`}/></div>
     </header>
     <div className={`studio-flow-stage${referencePick?' is-picking-reference':''}`} data-studio-floating-root>
       <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}

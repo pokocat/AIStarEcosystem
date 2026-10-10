@@ -6,6 +6,13 @@ const models:IpModels={image:[{endpointId:"image",name:"image",isDefault:true,cr
 const cap={mock:false,operations:[],imageCost:8,textCost:2,videoCost:null};
 const shot=()=>{const n=makeStudioNode("image");n.title="第二集镜头";n.metadata!.prompt="小紫挥手";n.metadata!.studio!.episodeNo=2;n.metadata!.studio!.references=[{storageKey:"main.jpg",role:"character"}];return n;};
 describe("approved Studio batches",()=>{
+  it("quotes the selected image sale price and fixed mode ignores stored selection",()=>{
+    const choices={...models,image:[{...models.image[0],creditCost:13},{...models.image[0],endpointId:"second",isDefault:false,creditCost:21}]};
+    expect(createStudioBatch([shot()],"frames",choices,cap,"9:16",5,undefined,{imageModel:"second"}).approvedCost).toBe(21);
+    const fixed=createStudioBatch([shot()],"frames",choices,{...cap,imageModelMode:"fixed"},"9:16",5,undefined,{imageModel:"second"});
+    expect(fixed.imageModel).toBe("image");expect(fixed.approvedCost).toBe(13);
+  });
+
   it("quotes only selected shots and uses the native billing unit for the ceiling",()=>{
     const plan=createStudioBatch([shot()],"work",models,cap,"9:16",5,2);
     expect(plan.steps.map(s=>s.operation)).toEqual(["image","video","assemble"]);expect(plan.approvedCost).toBe(38);expect(plan.episodeNo).toBe(2);

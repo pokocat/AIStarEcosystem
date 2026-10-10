@@ -6,12 +6,12 @@ import {ApiError} from '@ai-star-eco/api-client';
 import type {CanvasNodeData,CanvasConnection} from '@/canvas/types/canvas';
 import {StudioWorkspace} from './studio-workspace';
 import {useCanvasStore} from '@/canvas/stores/canvas/use-canvas-store';
-const api=vi.hoisted(()=>({submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
+const api=vi.hoisted(()=>({capabilities:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
 vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label={title==='生成视频'||title==='生成图片'||title==='创作剧本'||title==='拆分镜头'?'关闭创作面板':`关闭${title}`} onClick={onClose}>关闭</button>{children}{footer}</section>:null}));
 vi.mock('@/canvas-bridge/download-media',()=>({downloadMedia:api.download}));
 vi.mock('./api',()=>({IpStudioApi:{listProjectRuns:api.history}}));
 vi.mock('./studio-template-library',()=>({StudioTemplateLibrary:({open,scope}:any)=>open?<section role="dialog" aria-label="画布模板">{scope}</section>:null}));
-vi.mock('@/canvas-bridge/studio-api',()=>({studioCapabilities:async()=>({mock:false,operations:['video'],videoCost:80}),readStudioProject:api.project,submitStudioRun:api.submit,submitStudioSpeech:api.speech,submitStudioLipSync:api.lip,listStudioIps:async()=>[],listStudioIpAssets:async()=>[]}));
+vi.mock('@/canvas-bridge/studio-api',()=>({studioCapabilities:api.capabilities,readStudioProject:api.project,submitStudioRun:api.submit,submitStudioSpeech:api.speech,submitStudioLipSync:api.lip,listStudioIps:async()=>[],listStudioIpAssets:async()=>[]}));
 vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.save}));
 vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:api.cancel,fetchModels:async()=>({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]}),fetchStudioVideoModels:async()=>[]}));
 vi.mock('@/canvas-bridge/models',()=>({SERVER_CHANNEL_ID:'server',endpointIdFor:()=> 'model'}));
@@ -49,7 +49,7 @@ let connectionSnapshot:CanvasConnection[]=[];
 function Host({initial=node,initialNodes,initialConnections=[]}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 afterEach(cleanup);
-beforeEach(()=>{vi.resetAllMocks();api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
 test('a lost submit response replaces ordinary generation with same-key confirmation even after editing the draft',async()=>{
  api.submit.mockRejectedValueOnce(new TypeError('Failed to fetch'));render(<Host/>);openVideo();
  await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));
@@ -359,7 +359,12 @@ test('an adaptation draft restores its mode, chosen story and settings, then sna
  expect(api.submit.mock.calls[0][1].prompt).toContain('小紫在花园发现一株花。');expect(snapshot[0].metadata).toEqual(story.metadata);expect(connectionSnapshot).toEqual(expect.arrayContaining([expect.objectContaining({fromNodeId:'story',toNodeId:id})]));
 });
 
-test('completed-script settings can be edited without changing the accepted request and are carried into the next split',async()=>{
+test.each([
+ {policy:'selectable',available:true,expectedModel:'model'},
+ {policy:'fixed',available:true,expectedModel:'default-text'},
+ {policy:'selectable',available:false,expectedModel:'default-text'},
+])('completed-script edits preserve the accepted request while the next split respects $policy models (previous model available: $available)',async({policy,available,expectedModel})=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['script','storyboard'],textCost:2,textModelMode:policy,textModels:[{endpointId:'default-text',name:'默认剧本模型',creditCost:2,isDefault:true},...(available?[{endpointId:'model',name:'原剧本模型',creditCost:2}]:[])]});
  const script={title:'花园故事',outline:'发现花朵',characters:[],scenes:[],props:[],episodes:[{no:1,title:'清晨',content:'小紫浇花。'}],shots:[]};
  const accepted={...request,operation:'script',settings:{genre:'都市治愈',core:'old'}};
  render(<Host initial={{...node,type:'text',metadata:{status:'success',studio:{kind:'script',script,settings:accepted.settings,request:accepted}}}}/>);
@@ -372,7 +377,7 @@ test('completed-script settings can be edited without changing the accepted requ
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'split',nodeId:'v'}}));
  expect((await screen.findByRole('textbox',{name:'核心看点'}) as HTMLTextAreaElement).value).toBe('照顾与回馈');
  fireEvent.click(screen.getByRole('button',{name:'拆分镜头',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
- expect(api.submit.mock.calls[0][1].model).toBe(accepted.model);expect(api.submit.mock.calls[0][1].settings.core).toBe('照顾与回馈');expect(api.submit.mock.calls[0][1].prompt).toContain('小紫浇花。');
+ expect(api.submit.mock.calls[0][1].model).toBe(expectedModel);expect(api.submit.mock.calls[0][1].settings.core).toBe('照顾与回馈');expect(api.submit.mock.calls[0][1].prompt).toContain('小紫浇花。');
 });
 
 test('editing or removing a plain story flags its adaptation and retained work without changing an accepted request',async()=>{

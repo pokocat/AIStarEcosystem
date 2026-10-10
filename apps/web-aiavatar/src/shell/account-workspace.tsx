@@ -23,7 +23,7 @@ export function AccountWorkspace({ children, tool = false }: { children: ReactNo
   const hash = useStudioHash();
   const layout = useLayoutMode();
   const active = tool ? accountPageKey(hash) : "me";
-  return <div className={`account-workspace${layout === "desktop" ? " ip-surface" : ""}${tool ? " account-workspace--tool" : ""}`}>
+  return <div className={`account-workspace${layout === "desktop" ? " ip-brand-surface" : ""}${tool ? " account-workspace--tool" : ""}`}>
     <aside className="account-navigation">
       <Link href="/projects" className="account-return"><ArrowLeft size={16} />返回自由画布</Link>
       <nav aria-label="账号中心">

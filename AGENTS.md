@@ -984,13 +984,14 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 `src/shell/account-workspace.tsx` + `account-navigation.ts` 是桌面 `/me` 与 `/studio` 账号工具的共享外壳/入口映射；样式在 `account-workspace.css`，跟随 `html[data-layout]`。旧根入口转 `/projects`，业务深链、创建参数与 `#/real-auth/{sessionId}` 保留；账号菜单 hashchange/popstate 与旧 SPA 同步。详情与创建继续复用 proto 业务，未新增账号、计费或任务真值。见 `docs/aiavatar-account-unification.md`。
 
+### Studio 平台配音定价（本地实现，2026-10-10）
+
+可选 `aep.studio.platform-pricing.enabled` 默认 false，启用后由独立 aibuzz-platform 发布价驱动 Studio 配音，并通过固定版本 Java SDK 读取。权威成本与积分策略发布快照写入 `_exec.pointPricing`，已受理任务保持原价；钱包仍走 CreditService。缺价或平台错误不回退旧价。采用回执在任务行持久补报，不代表供应商成功。口型及其他图片视频未接入。配置与验收见 `docs/studio-platform-pricing.md`；本次没有生产配置或付费调用。
+
 
 ### v0.231 · 2026-10-10 · 模板直接复制为普通画布
 
 官方/本人已启用模板经原 projects 创建接口直接免费进入个人副本，取消画布外输入、模型和报价门槛。IpTemplateResolver 按请求人解析；StudioTemplateCanvasCopy 从当前不可变版本重建节点/连线编号、默认文字、实际文本引用和媒体规格。新副本仅记 templateId 来源，不写版本执行锁；保存只改客户端拥有的个人文档，原模板不变，个人发布仍保留。旧版本实例与原任务恢复保持兼容。普通节点缺参考图/必填文本/选项在提交时提示，既有归属、模型、preflight、报价、账本和幂等继续生效。无新迁移/API 路径；新 metadata 由 packages/types 定义，胶水代码不改 vendor 引擎。
-### Studio 平台配音定价（代码已上线，2026-10-10）
-
-可选 `aep.studio.platform-pricing.enabled` 默认 false，启用后由独立 aibuzz-platform 发布价驱动 Studio 配音，并通过固定版本 Java SDK 读取。权威成本与积分策略发布快照写入 `_exec.pointPricing`，已受理任务保持原价；钱包仍走 CreditService。缺价或平台错误不回退旧价。采用回执在任务行持久补报，不代表供应商成功。口型及其他图片视频未接入。配置与验收见 `docs/studio-platform-pricing.md`；后端 9755be3 已上线，生产开关仍默认关闭，继续原正式计价。平台入口 ops.aibuzz.cn，SDK 已发布固定制品；本次没有付费调用。
 
 ### v0.232 · 模板只读预览与显式个人副本（2026-10-10）
 

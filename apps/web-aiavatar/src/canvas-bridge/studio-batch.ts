@@ -10,12 +10,12 @@ export function studioBatchSnapshot(node:CanvasNodeData):string {
 }
 export function createStudioBatch(shots:CanvasNodeData[],kind:"frames"|"clips"|"work",models:IpModels,cap:StudioCapabilities,ratio:string,duration:number,episodeNo?:number,selection?:{imageModel?:string;videoModel?:string}):StudioBatch {
   if(!shots.length||shots.length>12)throw new Error("请选择 1 到 12 个镜头");
-  const image=selection?.imageModel?models.image.find(m=>m.endpointId===selection.imageModel):models.image.find(m=>m.isDefault)||models.image[0],video=selection?.videoModel?models.video.find(m=>m.endpointId===selection.videoModel):models.video.find(m=>m.isDefault)||models.video[0];
+  const image=cap.imageModelMode==="fixed"?models.image.find(m=>m.isDefault):selection?.imageModel?models.image.find(m=>m.endpointId===selection.imageModel):models.image.find(m=>m.isDefault)||models.image[0],video=selection?.videoModel?models.video.find(m=>m.endpointId===selection.videoModel):models.video.find(m=>m.isDefault)||models.video[0];
   if(!cap.mock&&((kind==="frames"||shots.some(n=>!n.metadata?.storageKey))&&!image || kind!=="frames"&&!video))throw new Error("生成模型尚未配置");
   const steps:StudioBatchStep[]=[];
   for(const shot of shots) {
     const base={sourceNodeId:shot.id,sourceSnapshot:studioBatchSnapshot(shot)};
-    if(kind==="frames"||!shot.metadata?.storageKey)steps.push({...base,id:nanoid(),title:`${shot.title} · 首帧`,targetNodeId:shot.id,operation:"image",maxCost:cap.mock?0:cap.imageCost});
+    if(kind==="frames"||!shot.metadata?.storageKey)steps.push({...base,id:nanoid(),title:`${shot.title} · 首帧`,targetNodeId:shot.id,operation:"image",maxCost:cap.mock?0:image.creditCost});
     if(kind!=="frames")steps.push({...base,sourceFrameKey:shot.metadata?.storageKey,id:nanoid(),title:`${shot.title} · 视频`,targetNodeId:nanoid(),operation:"video",maxCost:cap.mock?0:video.creditCost*(video.billingUnit==="per_second"?duration:1)});
   }
   if(kind==="work")steps.push({id:nanoid(),title:episodeNo?`第 ${episodeNo} 集成片`:"镜头成片",sourceNodeId:shots[0].id,sourceSnapshot:studioBatchSnapshot(shots[0]),targetNodeId:nanoid(),operation:"assemble",maxCost:0});

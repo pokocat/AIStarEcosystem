@@ -17,6 +17,8 @@ During the explicit testing stage, the script defaults `TEST_MEDIA_MODE=true`, w
 
 Unified IP Studio local acceptance uses `aep.ipstudio.fixture-enabled=true` and a local `aep.ipstudio.fixture-directory`. Both are local development settings, default off; `prod`/`production`/`mysql` must reject fixture mode at startup. Never carry fixture settings or `.studio-fixtures` media into a production release. Native provider generation is disabled while this mode is active. Real API acceptance runs with the switch off after the user supplies model configuration.
 
+Studio local identity uses `infra/scripts/studio-local-identity.py` and `infra/local/studio-identity.yml` on loopback port 8098 with a persistent local H2 database. Its fixed `dev` fixture and initialization credentials are local only; never deploy this configuration, database, or startup script to production. See `infra/README.md` for the local login workflow.
+
 ## Services
 
 Current production services are:
