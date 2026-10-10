@@ -36,7 +36,8 @@ function FlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
     <NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>
     <header className="studio-flow-drag"><Group size={15}/><span>{node.title}</span></header><Handle type="source" position={Position.Right} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
   </article>;
-  const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio;
+  // Template input constraints do not turn a plain text node into a script summary.
+  const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio && !meta.studio.templateInput;
   const edit = () => { const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     <NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>
