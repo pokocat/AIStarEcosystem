@@ -88,4 +88,24 @@ class AdminAccountSearchTest {
                 .extracting(AepUser::getId).containsExactly("literal");
         assertThat(repo.search("uid_plain", null, null, PageRequest.of(0, 20)).isEmpty()).isTrue();
     }
+    @Test
+    void deletedAccountsDoNotFillDefaultPagesButRemainExplicitlyQueryable() {
+        row("active", "清理测试", null, AepUser.UserStatus.ACTIVE, 1);
+        row("suspended", "清理测试", null, AepUser.UserStatus.SUSPENDED, 2);
+        for (int i = 0; i < 5; i++) row("deleted-" + i, "清理测试", null, AepUser.UserStatus.DELETED, i + 3);
+        em.flush();
+        var service = new com.aistareco.aep.service.AepUserService(repo);
+        var first = PageRequest.of(0, 1, Sort.by("createdAt").descending());
+        var defaultPage = service.list(null, null, first);
+        assertThat(defaultPage.getTotalElements()).isEqualTo(2);
+        assertThat(defaultPage.getContent()).extracting(com.aistareco.aep.dto.AepUserDto::id)
+                .containsExactly("suspended");
+        assertThat(service.list(null, AepUser.AccountKind.PERSONAL, first).getTotalElements()).isEqualTo(2);
+        assertThat(service.list(null, null, first, "清理测试").getTotalElements()).isEqualTo(2);
+        var archive = service.list(AepUser.UserStatus.DELETED, null, first, "清理测试");
+        assertThat(archive.getTotalElements()).isEqualTo(5);
+        assertThat(archive.getContent()).extracting(com.aistareco.aep.dto.AepUserDto::id)
+                .containsExactly("deleted-4");
+    }
+
 }
