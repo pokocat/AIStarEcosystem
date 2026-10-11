@@ -38,3 +38,15 @@
 - §11：本地 issuer 与 hostname、端口、回调/退出地址、深链、持久数据库与幂等固定测试用户，以及本地配置不得发布。
 
 账号中心本次只发布文档；资源服务器和后台的修复已上线，消费端前台无需重新构建。
+
+## 账号归档与全量测试修复追加（2026-10-10）
+
+[PR #130](https://github.com/pokocat/AIStarEcosystem/pull/130) 已合入当前生产分支 `codex/unified-ip-studio`，合并提交 `e1ffbff805b9589a60c7be38721ff6b25ac76fb5` 与 CI 验证的提交 `8a1abf7ad0e50ef2f750ad54e60ca9319098a02c` tree 相同。PR 比较范围只有本次账号归档与测试/CI 修复，保留 V50 身份状态时钟和 OIDC。发布仅更新 server；后台前端沿用已上线账号归档界面。
+
+- 最终 release：`20261010-test-validation-8a1abf7a`；在线 JAR SHA256 `d8f537a29e2fcea33048b28dd41169bc81583380e2d5b38300159c125aa288ca` 与本地产物一致。服务 active，部署 verify ALL GREEN；V48/V49/V50 成功记录保持不变，没有修改旧迁移。
+- 后端 verify 共 1929 项：1925 通过、0 failures、0 errors、4 项外部环境测试按既有条件跳过（OSS、真实模型、平台定价凭据）。前端 1303 项、workspace/admin 类型检查、离线编译及契约门通过。[CI run 38107196864](https://github.com/pokocat/AIStarEcosystem/actions/runs/38107196864) 的后端、前端及六个构建/浏览器任务全部成功。
+- 固定薄 SDK 在空 Maven 缓存且无有效 GitHub token 下安装成功，篡改制品拒绝安装。H2 测试初始化保留真实 Flyway 迁移；测试类与注册文件没有进入生产 JAR。普通 dev 首次启动与 `cast` 保留字问题仍独立列于 TODO，不能把测试专用初始化当作 dev 修复。
+- 先精确归档 11 个产品测试账号及 4 个关联统一身份，两库备份 `/var/backups/aistareco/test-account-cleanup-20261010T180720Z/`；再补归档 SOP 占位 UID `SOP261010SUSPEND01` 的 1 个产品账号。该 UID 不在真实身份表，产品侧没有开通、钱包、账本、付费订单或作品；操作经已有管理员删除接口，其他产品用户逐项不变。追加数据库备份及前后报告位于 `/var/backups/aistareco/test-account-cleanup-extra-fixture-20261011T030832Z/`，权限 0700/0600。
+- 真实 HTTPS 后台 API 默认 17 个正常账号，无测试账号，分页/手机号搜索/身份筛选在分页前过滤注销；显式注销档案为 15 个（包括既有 SOP 注销/合并墓碑）。原恢复账号手机号与 ACTIVE 状态正常。真实模板发布入口以非法 demoId 调用返回 `400/IP_DEMO_ID_INVALID`，未访问实际项目或复制素材，未提交生成请求。
+
+结构化验收记录在 ECS release 目录的 `account-cleanup-acceptance.json`，权限 0600；维护令牌仅在进程内存使用。后续认证发布曾覆盖默认过滤，本次使用合并后的生产代码补发，避免恢复账号修复和列表过滤互相覆盖。

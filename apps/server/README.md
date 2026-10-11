@@ -11,6 +11,8 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 本次精确清理 11 个产品账号与 4 个统一身份，真实后台 API 默认返回 17 个未注销账号；两库备份在 `/var/backups/aistareco/test-account-cleanup-20261010T180720Z/`。原恢复账号及其他账号、钱包、账本逐项核对未变化。
 
+追加验收：补归档 1 个无真实身份和权益的 SOP 占位账号；当前默认仍为 17 个正常账号，显式注销筛选为 15 个历史档案。最终后端发布 `20261010-test-validation-8a1abf7a` 保留当前生产身份修复，线上校验和、分页/搜索、原账号状态及非法 demoId 的真实 400 错误通过；详见 [追加发布记录](../../docs/identity-phone-release-20261010.md)。
+
 ## CI 与 H2 测试库（2026-10-10）
 
 构建前运行 `../../infra/scripts/prepare-platform-sdk.sh`，安装固定 release 的薄 SDK；制品来源与校验见 [SDK 说明](../../infra/vendor/platform-sdk/README.md)。使用 Java 17 执行 `./mvnw -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify`。

@@ -129,6 +129,7 @@
 | 文档 | 用途 |
 |---|---|
 | [`infra/README.md`](../infra/README.md) | 阿里云 ECS + RDS + OSS 部署的**单一真值源**：拓扑图、一次性环境拉起 SOP、env / nginx / systemd / 脚本一站式索引；**§5.1 nginx vhost 硬规则**（每子域必须同时有 80 和 443；443 已有 `000-default-ssl.conf` 兜底）+ **§5.2 www.\* 二级子域**（DNS 泛解析匹配任意层级，TLS 通配符只覆盖一级 —— 客户「链接打开不太对」的真因）+ **§5.3 证书与 certbot+Alidns 自动续期**（到期 2026-12-05）+ 线上 vhost 清单 / 新增子域 checklist（last-reviewed 2026-09-06） |
+| [`docs/identity-phone-release-20261010.md`](identity-phone-release-20261010.md) | 统一手机号、后台搜索与测试账号归档/全量验证的发布证据；last-reviewed 2026-10-10 |
 | [`infra/vendor/platform-sdk/README.md`](../infra/vendor/platform-sdk/README.md) | Java SDK 固定 release 的制品来源、SHA256 和 CI/部署安装路径；新 runner 无需跨私有仓认证（last-reviewed 2026-10-10） |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | Agent 部署技能入口：本地 artifact 部署、按应用部署、GitHub Actions 流水线部署、验证与排障 |
 | [`docs/ALIPAY_SANDBOX.md`](ALIPAY_SANDBOX.md) | **支付宝直连沙箱联调 Runbook**（v2 §6 driver=alipay）：拿沙箱凭证 → 本机配置 → 纯查单兜底 / 公网回调两种姿势 → 验证 → 上生产换 4 项（last-reviewed 2026-06-27） |
