@@ -35,3 +35,7 @@ V49 成功新增可空供应商计量字段；JAR SHA256 `fcb138dd5e6f6e90935f5a
 模型新增 `endpointTest`、`endpointFetchModels`、`usageRecords`，均委托原服务；连接检查与拉取目录只使用已保存的配置，目录由用户保存端点时落库。调用记录最多 500 条，支持日期窗口、应用、用途、端点、用户、租户、结果和关键词筛选；不返回生成正文、不开放重放。
 
 平台端要求全平台范围：用户查询 `users.read`，联系方式另需 `users.sensitive.read`，状态变更另需 `operations.manage`；模型探测 `models.manage`，调用记录 `modelLogs.read`，成本 `costs.read`。未修改原 admin 的入口或普通应用接口。
+
+## 2026-10-10 第一批管理功能生产发布
+
+用户授权提交部署后，用户窄命令与模型操作通道已随 `76debecff` 推送至 `codex/unified-ip-studio`，只部署 server，发布 `20261011040736-76debecf`。Platform 运行 `bf96d698137bdf40a13073928070aeffa4df7627`，入口仍为 ops.aibuzz.cn。保留原生产身份与测试账号清理修复，没有新增业务表或迁移。平台权限与原 Java 签名分别校验；匿名用户命令 401。线上浏览器已验证原用户分页/档案、15 个端点、概览与调用记录读取；没有生产用户状态变更、价格变更或供应商调用。定向 Java 13 个用例通过，线上 JAR 与本地产物 SHA256 一致。完整发布记录在 aibuzz-platform 的 `docs/reviews/2026-10-10-admin-production-release.md`。
