@@ -108,4 +108,23 @@ class AdminAccountSearchTest {
                 .containsExactly("deleted-4");
     }
 
+    @Test
+    void realJpaMergeReleasesUidBeforeCreatingTombstoneAndClosureBeforeLoginIsRemembered() throws Exception {
+        AepUser original = row("merge-real", "original", "13900000003", AepUser.UserStatus.ACTIVE, 1);
+        em.flush();
+        var handler = new IdentityOutboxHandler(repo, org.mockito.Mockito.mock(IdentityPhoneSyncService.class));
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        handler.handle(new IdentityCenterClient.OutboxEvent(1, "USER_MERGED", "uid-merge-real",
+                mapper.readTree("{\"fromUid\":\"uid-merge-real\",\"toUid\":\"uid-survivor\"}")));
+        em.flush();
+        em.clear();
+        assertThat(repo.findByIdentityUid("uid-survivor").orElseThrow().getId()).isEqualTo(original.getId());
+        assertThat(repo.findByIdentityUid("uid-merge-real").orElseThrow().getStatus()).isEqualTo(AepUser.UserStatus.DELETED);
+        handler.handle(new IdentityCenterClient.OutboxEvent(2, "USER_CLOSED", "uid-not-yet-local", mapper.readTree("{}")));
+        em.flush();
+        em.clear();
+        assertThat(repo.findByIdentityUid("uid-not-yet-local").orElseThrow().getStatus()).isEqualTo(AepUser.UserStatus.DELETED);
+        assertThat(repo.findByIdentityUid("uid-not-yet-local").orElseThrow().getPlatforms()).isEmpty();
+    }
+
 }

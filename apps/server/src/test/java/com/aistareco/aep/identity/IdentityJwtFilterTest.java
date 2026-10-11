@@ -117,6 +117,9 @@ class IdentityJwtFilterTest {
         when(repo.findByIdentityUid(anyString()))
                 .thenAnswer(inv -> java.util.Optional.ofNullable(byUid.get(inv.getArgument(0, String.class))));
 
+        when(repo.findByIdForUpdate(anyString())).thenAnswer(inv -> byUid.values().stream()
+                .filter(user -> user.getId().equals(inv.getArgument(0, String.class))).findFirst());
+
         IdentityUserInserter inserter = mock(IdentityUserInserter.class);
         when(inserter.insert(anyString(), anyString())).thenAnswer(inv -> {
             String uid = inv.getArgument(0);
@@ -293,6 +296,18 @@ class IdentityJwtFilterTest {
     }
 
     // ------------------------------------------------------------ helpers
+
+    @Test
+    void oldIdentityTokenIsRejectedAfterUnsuspension() throws Exception {
+        String uid = "uid-reactivated";
+        String token = mintToken(c -> c.issuer(ISSUER).subject(uid).audience(AUDIENCE).claim("amr", List.of("password")));
+        assertThat(runFilter("/api/me", token)).isNotNull();
+        AepUser local = byUid.get(uid);
+        local.setIdentityState("ACTIVE");
+        local.setIdentityTokensValidAfter(Instant.now().plusSeconds(1));
+        SecurityContextHolder.clearContext();
+        assertThat(runFilter("/api/me", token)).isNull();
+    }
 
     private Authentication runFilter(String path, String token) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", path);

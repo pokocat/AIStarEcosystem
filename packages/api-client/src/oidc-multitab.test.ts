@@ -139,6 +139,36 @@ describe("跨标签页刷新（Web Locks）", () => {
   });
 });
 
+describe("刷新在途的会话变更", () => {
+  it.each([
+    ["退出后旧成功响应", false, true],
+    ["换账号后旧成功响应", true, true],
+    ["退出后旧临时故障", false, false],
+    ["换账号后旧临时故障", true, false],
+  ])("%s 不恢复或覆盖已改变的会话", async (_label, relogin, success) => {
+    vi.stubGlobal("navigator", { locks: fakeLocks() });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {
+      if (relogin) {
+        store.setItem(AUTH_TOKEN_KEY, "AT-new-login");
+        store.setItem(AUTH_REFRESH_TOKEN_KEY, "RT-new-login");
+      } else {
+        store.removeItem(AUTH_TOKEN_KEY);
+        store.removeItem(AUTH_REFRESH_TOKEN_KEY);
+      }
+      return {
+        ok: success, status: success ? 200 : 503,
+        json: async () => success
+          ? { access_token: "AT-stale", refresh_token: "RT-stale", expires_in: 3600 }
+          : { error: "server_error" },
+      };
+    }));
+    const tab = await openTab();
+    await expect(tab.refreshAccessToken()).resolves.toBe(relogin);
+    expect(store.getItem(AUTH_TOKEN_KEY)).toBe(relogin ? "AT-new-login" : null);
+    expect(store.getItem(AUTH_REFRESH_TOKEN_KEY)).toBe(relogin ? "RT-new-login" : null);
+  });
+});
+
 describe("invalid_grant 的清令牌边界", () => {
   it("失效标签页刷新失败时，不清掉别人刚换好的新令牌", async () => {
     vi.stubGlobal("navigator", { locks: fakeLocks() });

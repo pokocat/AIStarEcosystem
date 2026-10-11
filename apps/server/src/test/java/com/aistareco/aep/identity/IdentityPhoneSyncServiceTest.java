@@ -43,11 +43,21 @@ class IdentityPhoneSyncServiceTest {
         IdentityProperties props = new IdentityProperties();
         props.setIssuer("http://127.0.0.1:" + server.getAddress().getPort());
         repo = mock(AepUserRepository.class);
-        user = AepUser.builder().id("local-test").identityUid("uid-test").build();
+        user = AepUser.builder().id("local-test").identityUid("uid-test")
+                .status(AepUser.UserStatus.ACTIVE).build();
         when(repo.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
         var provisioning = new IdentityProvisioningService(repo, mock(IdentityUserInserter.class),
                 mock(IdentityCenterClient.class), mock(org.springframework.beans.factory.ObjectProvider.class));
         sync = new IdentityPhoneSyncService(props, provisioning);
+    }
+
+    @Test
+    void closedLocalUserCannotReceiveLateUserinfo() {
+        user.setStatus(AepUser.UserStatus.DELETED);
+        user.setPhone("13900000002");
+        sync.sync(user, jwt("uid-test", "phone"), "closed-user-token");
+        assertThat(user.getPhone()).isEqualTo("13900000002");
+        verify(repo, never()).save(any());
     }
 
     @AfterEach
@@ -139,4 +149,32 @@ class IdentityPhoneSyncServiceTest {
         assertThat(user.getPhone()).isEqualTo("13900000001");
         verifyNoInteractions(repo);
     }
+    @Test
+    void currentProfileRefreshesWithoutPhoneGrantAndOptionalAbsencePreservesPhone() {
+        user.setPhone("13900000001");
+        user.setDisplayName("old");
+        user.setAvatarUrl("https://example.test/old.png");
+        response = "{\"sub\":\"uid-test\",\"name\":\"new\",\"picture\":null}";
+        sync.sync(user, jwt("uid-test", "openid profile"), "profile-bearer");
+        assertThat(user.getDisplayName()).isEqualTo("new");
+        assertThat(user.getAvatarUrl()).isNull();
+        assertThat(user.getPhone()).isEqualTo("13900000001");
+        response = "{\"sub\":\"uid-test\"}";
+        sync.invalidate();
+        sync.sync(user, jwt("uid-test", "openid profile"), "profile-bearer");
+        assertThat(user.getDisplayName()).isEqualTo("new");
+    }
+
+    @Test
+    void eventDuringUserInfoReadPreventsStaleProfileWrite() {
+        user.setPhone("13900000003");
+        when(repo.findByIdForUpdate(user.getId())).thenAnswer(invocation -> {
+            sync.invalidate();
+            return Optional.of(user);
+        });
+        sync.sync(user, jwt("uid-test", "openid phone"), "stale-bearer");
+        assertThat(user.getPhone()).isEqualTo("13900000003");
+        verify(repo, never()).save(any());
+    }
+
 }

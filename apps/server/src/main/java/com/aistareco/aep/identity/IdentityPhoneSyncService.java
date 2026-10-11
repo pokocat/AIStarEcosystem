@@ -45,8 +45,11 @@ public class IdentityPhoneSyncService {
 
     /** 调用方必须已经完成签名、issuer、audience、过期时间和用户主体校验。 */
     public void sync(AepUser local, Jwt jwt, String token) {
-        if (!props.isEnabled() || !hasPhoneScope(jwt)) return;
-        String key = generation.get() + ":" + digest(token);
+        boolean phoneScope = hasPhoneScope(jwt);
+        boolean profileScope = hasScope(jwt, "profile");
+        if (!props.isEnabled() || (!phoneScope && !profileScope)) return;
+        long readGeneration = generation.get();
+        String key = readGeneration + ":" + digest(token);
         Instant now = Instant.now();
         Instant next = nextReads.get(key);
         if (next != null && now.isBefore(next)) return;
@@ -63,7 +66,7 @@ public class IdentityPhoneSyncService {
             }
             String phone = null;
             boolean verified = false;
-            if (body.hasNonNull("phone_number")) {
+            if (phoneScope && body.hasNonNull("phone_number")) {
                 if (!body.path("phone_number").isTextual() || !body.path("phone_number_verified").isBoolean()) {
                     throw new ProfileFailure("USERINFO_PHONE_SHAPE_INVALID");
                 }
@@ -72,7 +75,20 @@ public class IdentityPhoneSyncService {
                 verified = body.path("phone_number_verified").asBoolean();
             }
             // scope 明确含 phone 的成功响应不带号码，表示当前没有号码；不能保留换绑前的旧号。
-            provisioning.syncPhoneFromUserInfo(local.getId(), jwt.getSubject(), phone, verified);
+            String name = null;
+            String picture = null;
+            boolean hasPicture = profileScope && body.has("picture");
+            if (profileScope && body.has("name")) {
+                if (!body.path("name").isTextual()) throw new ProfileFailure("USERINFO_NAME_INVALID");
+                name = body.path("name").asText();
+            }
+            if (hasPicture && !body.path("picture").isNull()) {
+                if (!body.path("picture").isTextual()) throw new ProfileFailure("USERINFO_PICTURE_INVALID");
+                picture = body.path("picture").asText();
+                if (picture.isBlank()) picture = null;
+            }
+            provisioning.syncUserInfo(local.getId(), jwt.getSubject(), phoneScope, phone, verified,
+                    name, hasPicture, picture, () -> generation.get() == readGeneration);
             remember(key, now.plusSeconds(300), jwt.getExpiresAt());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -100,9 +116,13 @@ public class IdentityPhoneSyncService {
     }
 
     static boolean hasPhoneScope(Jwt jwt) {
+        return hasScope(jwt, "phone");
+    }
+
+    static boolean hasScope(Jwt jwt, String requested) {
         Object scope = jwt.getClaims().get("scope");
-        if (scope instanceof Collection<?> values) return values.contains("phone");
-        return scope instanceof String value && Arrays.asList(value.trim().split("\\s+")).contains("phone");
+        if (scope instanceof Collection<?> values) return values.contains(requested);
+        return scope instanceof String value && Arrays.asList(value.trim().split("\\s+")).contains(requested);
     }
 
     private static String digest(String token) {
