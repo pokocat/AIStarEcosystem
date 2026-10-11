@@ -772,3 +772,7 @@ Chrome 已打开的两个 LibTV 项目实际核对文本/图片/视频三栏、�
 Chrome 在隔离画布 `IPP-12d41489` 的 `brief` 节点提交一次“为这段说明起一个简短标题，保留正文，不要扩写。”。真实免费提供方端点 `studio-live-agnes-text`（不是 fixture）返回 `IPR-2872aa52d6f54dcf871c`，status=done、pct=100、mock=false；生成正文为“节点说明”加原正文，前端原节点与服务端保存一致。保留 10 节点、3 连线，刷新后恢复正文、意图草稿与反馈。仅本地计价 2 积分，余额 742→740；没有改生产价格或付费提供方调用。
 
 视觉确认桌面 1318×875 下底部输入/模型/费用/发送按钮完整位于右侧详情容器内，面板 213px 高，无溢出；保持左侧同类列表与右侧正文预览。截图 `.studio-e2e/upload-acceptance/text-intent-detail.png`，持久化记录 `text-intent-acceptance.json`。日志 `/tmp/studio-text-tests.log`、`studio-text-backend-tests.log`、`studio-text-typecheck.log`、`studio-text-contract.log`。本轮不提交、不部署、不重复测试媒体生成质量。
+
+## 50. 节点交互生产发布（2026-10-11）
+
+§47–49、直接上传/图片替换与类型专属创作已随 `f8a6b795` 发布到后端及 AiAvatar。四道编译门、后端 49 项和前端定向回归通过（一项因暂停超时，单项复核通过）。V51 成功，两服务 active，线上 JAR/包与本地一致；16 个页面 JS/CSS 内容一致。登录态画布原 9 节点/6 连线、类型切换和 AI 意图框完成检查，未提交模型任务，余额显示未变化。正式价格仍消费后台配置，不采用免费 Agnes 本地候选。备份、SHA、浏览器图与具体边界见 [发布记录](ip-studio-node-release-20261011.md)。
