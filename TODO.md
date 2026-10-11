@@ -1541,7 +1541,7 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 ### 本地开发环境（不是代码缺陷，但会让新同事误判）
 
-- [ ] **全新 H2 库启动的 schema 初始化顺序**（2026-10-10 核实）：`db/migration/V48__endpoint_generation_queue.java` 在 Hibernate 首次建模前访问 `ai_model_providers`，全新库会因表不存在拒启；隔离身份链路验收用显式关闭 Flyway 的临时 H2/create-drop，已有产品库和生产本次不改变迁移。另有 `DramaCharacter.cast` 在 H2 建表时命中保留字。需独立补首次建库验收和兼容处理，不修改已经执行的迁移。
+- [ ] **全新 H2 库启动的 schema 初始化顺序**（2026-10-10 核实）：`db/migration/V48__endpoint_generation_queue.java` 在 Hibernate 首次建模前访问 `ai_model_providers`，全新库会因表不存在拒启；隔离身份链路验收用显式关闭 Flyway 的临时 H2/create-drop，已有产品库和生产本次不改变迁移。另有 `DramaCharacter.cast` 在 H2 建表时命中保留字。需独立补首次建库验收和兼容处理，不修改已经执行的迁移。**2026-10-10 测试补充**：test-only ContextCustomizer 已在 Flyway 前设置 H2 的 MySQL 模式并建立旧表骨架，真实迁移继续执行；不进入生产 JAR。正常 dev 首次启动及 `cast` 保留字兼容仍待处理。
 
 - [ ] **本机 `apps/server/.env` 里的 `AEP_CDN_DRIVER=oss` 会让 30 个 `@SpringBootTest` 上下文加载失败**
   （`java.lang.IllegalStateException: aep.cdn.driver=oss 但未配置 aep.cdn.oss.endpoint`）。
@@ -2001,3 +2001,9 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 ### v0.232 · 模板只读预览（2026-10-10）
 
 - [x] ~~浏览模板会反复创建画布草稿~~：统一为只读预览，明确“存为个人副本”才创建可编辑画布；保存防连续点击，预览不持久化、不编辑或生成。替代 v0.231 自动创建入口，节点运行限制及个人发布模板保留。
+
+## 2026-10-10 · 后台账号清理验证
+
+- [x] ~~后台默认列表仍显示已注销验收账号~~ **2026-10-10 完成**：精确归档 11 个测试账号与 4 个统一身份；默认分页、搜索和身份筛选排除 DELETED，显式注销筛选保留历史；后台真实 API 返回 17 个正常账号，原恢复账号与钱包账本不变。
+- [x] ~~**CI 后端未安装私有 platform-sdk 依赖**~~ **2026-10-10 完成**：CI 在 verify 前安装固定 SDK；薄 JAR/POM 镜像已发布私有 release，SHA256 与源制品一致。空 Maven 缓存及无效 GitHub token 下安装通过，篡改制品拒绝安装，不新增跨仓认证密钥。
+- [x] ~~**全量后端测试基线需修复**~~ **2026-10-10 完成**：测试专用 H2 兼容/旧表初始化在 Flyway 前执行，真实迁移继续验证；非法 demoId 在项目读取和素材复制前校验，原断言保留并验证无副作用。此前全量 1914 项出现 1 failure、80 errors；修复后 1915 项 verify：1911 通过、4 项外部环境测试按原条件跳过、失败/错误均为 0。前端 1299 项、全 workspace/admin 类型检查、离线编译与 API 契约通过。

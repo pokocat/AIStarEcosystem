@@ -36,9 +36,9 @@ public class AepUserService {
         } else if (status != null) {
             page = userRepo.findByStatus(status, pageable);
         } else if (kind != null) {
-            page = userRepo.findByKind(kind, pageable);
+            page = userRepo.findByStatusNotAndKind(AepUser.UserStatus.DELETED, kind, pageable);
         } else {
-            page = userRepo.findAll(pageable);
+            page = userRepo.findByStatusNot(AepUser.UserStatus.DELETED, pageable);
         }
         return page.map(AepUserDto::from);
     }

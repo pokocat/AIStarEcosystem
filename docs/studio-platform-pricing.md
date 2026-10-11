@@ -2,7 +2,7 @@
 
 ## 范围与启用
 
-已实现 Studio 配音的发布价读取、任务价格快照及采用回执；端点使用模型 ID，动作 `studio.speech`，应用 `aistar-aiavatar`，单位秒。Java 薄 SDK 固定 `cn.aibuzz:platform-sdk:0.1.0`。开发环境先从同级 aibuzz-platform 的 `sdks/java/pom.xml` 构建安装。正式发布还需 Maven 制品仓库，不能依赖开发机本地仓库。
+已实现 Studio 配音的发布价读取、任务价格快照及采用回执；端点使用模型 ID，动作 `studio.speech`，应用 `aistar-aiavatar`，单位秒。Java 薄 SDK 固定 `cn.aibuzz:platform-sdk:0.1.0`。CI 与部署构建先运行 `infra/scripts/prepare-platform-sdk.sh`，使用随仓保存的源 release JAR/POM 并校验固定 SHA256；缺少随仓制品时才下载同一私有 release。无需依赖开发机 Maven 缓存或新增跨仓密钥，SDK 更新必须显式改版本与哈希。
 
 配置均为服务端配置，不传浏览器：
 

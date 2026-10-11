@@ -8325,7 +8325,7 @@ paths:
       parameters:
         - { name: page, in: query, schema: { type: integer, default: 0 } }
         - { name: size, in: query, schema: { type: integer, default: 20 } }
-        - { name: status, in: query, schema: { type: string, enum: [active, suspended, deleted] } }
+        - { name: status, in: query, description: '未指定时排除注销账号；显式 deleted 查询历史归档', schema: { type: string, enum: [active, suspended, deleted] } }
         - { name: kind, in: query, schema: { type: string, enum: [personal, studio] } }
         - { name: q, in: query, description: '分页前搜索手机号、昵称、用户名、邮箱、本地用户 ID 或身份 UID；大小写不敏感，百分号及下划线按字面量匹配', schema: { type: string } }
       responses: { '200': { description: 'ok（PageEnvelope<AepUser>）' } }

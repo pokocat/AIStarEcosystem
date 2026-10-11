@@ -131,6 +131,10 @@ public class IpDemoTemplateService {
     public IpDemoTemplate publishFromProject(String operatorId, String projectId,
                                              String demoId, String name, String summary,
                                              String kind) {
+        // Validate the storage namespace before reading a project or copying any assets.
+        String id = demoId != null && !demoId.isBlank()
+                ? requireCleanId(demoId.trim())
+                : "IPD-" + IpProjectService.hex8();
         boolean asTemplate = IpDemoTemplate.KIND_TEMPLATE.equals(kind);
         if(demoId != null && !demoId.isBlank())repo.findById(demoId.trim()).ifPresent(existing -> {
             if(existing.getCurrentVersionId()!=null || "personal".equals(existing.getVisibility()))
@@ -141,9 +145,6 @@ public class IpDemoTemplateService {
         JsonNode doc = projects.readDoc(p);
         removeStudioExecutionNodes(doc);
 
-        String id = demoId != null && !demoId.isBlank()
-                ? requireCleanId(demoId.trim())
-                : "IPD-" + IpProjectService.hex8();
         Map<String, String> remap = new HashMap<>();
         String cover = null;
 

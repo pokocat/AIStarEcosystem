@@ -29,7 +29,10 @@ const result = [];
           startBody = route.request().postDataJSON();
           data = { handoffUrl: `${base}${callback}#code=${code}` };
         }
-        await route.fulfill({ json: { success: true, data } });
+        // Account lists use PageEnvelope; keep the browser fixture aligned with the real API.
+        await route.fulfill({ json: { success: true, data, ...(path === '/api/admin/users' ? {
+          pagination: { page: 0, limit: 50, total: data.length, totalPages: 1, hasNext: false, hasPrev: false },
+        } : {}) } });
       });
       await page.goto(base + '/admin/platform/accounts');
       await page.getByRole('button', { name: '附身登录', exact: true }).click();

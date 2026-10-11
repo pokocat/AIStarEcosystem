@@ -187,7 +187,7 @@ export default function AccountsPage() {
               <Select value={status} onValueChange={(v) => { setStatus(v as "all" | AccountStatus); setPage(0); }}>
                 <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder="状态" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="all">未注销</SelectItem>
                   <SelectItem value="active">启用</SelectItem>
                   <SelectItem value="suspended">停用</SelectItem>
                   <SelectItem value="deleted">注销</SelectItem>
