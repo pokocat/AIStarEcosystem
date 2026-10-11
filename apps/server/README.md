@@ -11,6 +11,12 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 本次精确清理 11 个产品账号与 4 个统一身份，真实后台 API 默认返回 17 个未注销账号；两库备份在 `/var/backups/aistareco/test-account-cleanup-20261010T180720Z/`。原恢复账号及其他账号、钱包、账本逐项核对未变化。
 
+## CI 与 H2 测试库（2026-10-10）
+
+构建前运行 `../../infra/scripts/prepare-platform-sdk.sh`，安装固定 release 的薄 SDK；制品来源与校验见 [SDK 说明](../../infra/vendor/platform-sdk/README.md)。使用 Java 17 执行 `./mvnw -DargLine=-Xmx3g -Dspring.test.context.cache.maxSize=2 verify`。
+
+测试 classpath 的 `LegacyH2SchemaCustomizerFactory` 在 Flyway 前为 H2 设置 MySQL 兼容模式并创建旧 `ai_model_providers` 表骨架；仍执行并验证全部真实迁移，随后由 Hibernate 补齐实体字段。该类与注册文件只属于测试，不改变生产或普通 dev 启动，也不修改已执行的迁移。全局模板发布先校验 demoId 再访问项目与素材，非法 ID 直接返回原业务错误。
+
 ## 版本日志
 
 ### v0.210 · 2026-10-08 · Studio 多候选视频（本地未发布）

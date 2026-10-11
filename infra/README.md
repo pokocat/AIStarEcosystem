@@ -799,3 +799,7 @@ ssh <ECS_HOST> 'systemctl restart aistareco-sau-service'
 ### Studio 本地模型响应样例开关（v0.202，2026-10-08）
 
 `aep.ipstudio.fixture-enabled` 缺省 false，`fixture-directory` 缺省 `../../.studio-fixtures`。只在本地隔离 H2 验证显式使用命令行参数开启；prod/production/mysql profile 启动硬拒绝。不要加入生产环境文件或部署包。开关只替换模型返回，存储/数据库/ffmpeg 仍需有效的本地配置；素材准备、启动和验收见 `docs/ip-studio-unified-canvas-validation.md`。
+
+## 后端固定 SDK 构建（2026-10-10）
+
+CI 与发布构建在 Maven 编译前执行 `infra/scripts/prepare-platform-sdk.sh`。`infra/vendor/platform-sdk/` 镜像固定 release 的薄 SDK JAR/POM，校验 SHA256 后安装；不保存凭据或平台业务源码。新 runner 不需要跨私有仓读取权限，详情见该目录 README。

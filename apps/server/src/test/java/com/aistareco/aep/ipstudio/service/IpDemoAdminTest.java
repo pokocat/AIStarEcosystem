@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * 全局内容的**运营后台**（v0.192）。
@@ -249,6 +250,7 @@ class IpDemoAdminTest {
                     "素材目录是拿 demoId 拼的，而 buildKey 会把 / 净化成 _ —— "
                             + "IPD/a 与 IPD_a 会落进同一个目录：" + bad);
         }
+        verifyNoInteractions(projects, repo);
     }
 
     @Test
