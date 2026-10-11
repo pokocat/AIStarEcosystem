@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, useNodesInitialized, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
 import { App, Button, Dropdown, Input, Modal } from 'antd';
-import { ArrowLeft, Copy, Ellipsis, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, MousePointer2, Music2, Redo2, Scissors, Search, Trash2, Undo2, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Copy, Ellipsis, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, MousePointer2, Music2, Redo2, Scissors, Search, Trash2, Undo2, Upload, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useIdentity } from '@/proto/api';
 import { WalletBadge } from '@/shell/wallet-badge';
@@ -30,6 +30,7 @@ import { StudioFlowImageTools } from './studio-flow-image-tools';
 import { studioTaskLabel, studioTaskQueued, studioQueueNotice } from '@/canvas-bridge/studio-task-status';
 import { createStudioLinkedNode } from '@/canvas-bridge/studio-linked-inputs';
 import { StudioConnectionCreateMenu, type PendingStudioConnection } from './studio-connection-create-menu';
+import { replaceStudioImage, STUDIO_IMAGE_UPLOAD_ACCEPT, validateStudioImageUpload } from '@/canvas-bridge/studio-image-upload';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
 export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
@@ -40,17 +41,20 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   </article>;
   // Template input constraints do not turn a plain text node into a script summary.
   const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio && !meta.studio.templateInput;
+  const imageLocked = data.uploading || studioGenerationPending(node);
+  const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
     <Handle type="target" position={Position.Left} isConnectable={!data.readOnly} title="连接参考节点" aria-label="连接参考节点"/><Handle type="source" position={Position.Right} isConnectable={!data.readOnly} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
-    <header className="studio-flow-drag"><Icon size={15}/><span>{node.title}</span>{meta?.status === 'loading' && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
+    <header className="studio-flow-drag"><Icon size={15}/><span>{node.title}</span>{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
     <div className={`studio-flow-media ${studioText ? 'studio-flow-business' : ''}`}>
       {studioText ? <div className="nodrag nopan nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : node.type === CanvasNodeType.Image && meta?.content ?
-        <SignedImage src={meta.content} storageKey={meta.storageKey} alt={node.title}/> : node.type === CanvasNodeType.Video && meta?.content ?
+        <><SignedImage src={meta.content} storageKey={meta.storageKey} alt={node.title}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && meta?.content ?
         <SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata"/> : node.type === CanvasNodeType.Audio && meta?.content ?
         <div className="studio-flow-audio nodrag nopan"><Music2 size={28}/><SignedAudio src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
         <div className="studio-flow-text nodrag nopan nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'双击编辑文字')}</div> :
+        node.type === CanvasNodeType.Image && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder nodrag nopan"><ImagePlus size={28}/><span>上传图片或使用 AI 创作</span><div className="studio-flow-image-actions"><button type="button" disabled={imageLocked} onClick={uploadImage}><Upload size={15}/>{data.uploading?'上传中…':'上传图片'}</button><button type="button" disabled={imageLocked} onClick={edit}><ImagePlus size={15}/>生成图片</button></div></div> :
         <button className="studio-flow-placeholder nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button>}
     </div>
     {meta?.status === 'loading' && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
@@ -87,6 +91,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const closeConnectionMenu=useCallback(()=>setPendingConnection(undefined),[]);
   const initialized = useNodesInitialized();
   const [reading, setReading] = useState(false), [historyRevision, refreshHistory] = useState(0);
+  const [uploadingImageId, setUploadingImageId] = useState<string>();
+  const imageUploadInput = useRef<HTMLInputElement>(null), imageUploadTarget = useRef<string | undefined>(undefined);
   const history = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
   const clipboard = useRef<Snapshot | undefined>(undefined);
   const current = useCallback(() => useCanvasStore.getState().projects.find(p => p.id === projectId)!, [projectId]);
@@ -200,9 +206,21 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   useEffect(() => {
     const referenceMode=(e:Event)=>{const detail=(e as CustomEvent<{active:boolean;originId?:string}>).detail;setReferencePick(detail.active);referenceOrigin.current=detail.originId;};
     window.addEventListener('studio-reference-mode',referenceMode);
-    const command = (e: Event) => { const detail = (e as CustomEvent<{ action: string; nodeId?: string }>).detail; setContext(undefined); setRenameId(undefined); if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); } else setTextId(undefined); };
+    const command = (e: Event) => {
+      const detail = (e as CustomEvent<{ action: string; nodeId?: string }>).detail;
+      setContext(undefined); setRenameId(undefined);
+      if (detail.action === 'upload-image') {
+        const node = current().nodes.find(n => n.id === detail.nodeId);
+        if (reading) { message.info('素材正在上传，请完成后再添加'); return; }
+        if (!node || node.type !== CanvasNodeType.Image) return;
+        if (studioGenerationPending(node)) { message.info('当前节点正在生成，请等待任务完成后再替换图片'); return; }
+        imageUploadTarget.current = node.id; imageUploadInput.current?.click();
+      } else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); } else setTextId(undefined);
+    };
     const keydown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"],.ant-modal,.ant-drawer,.studio-floating-panel,.studio-flow-reference-menu')) return;
+      // Storyboard/work views must not edit a hidden canvas selection through global shortcuts.
+      if (document.querySelector('.studio-focused-view')) return;
       const mod = e.metaKey || e.ctrlKey;
       if (e.code === 'Space') { if((e.target as HTMLElement)?.closest('button'))return;e.preventDefault(); setHand(true); }
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); travel(e.shiftKey ? 'future' : 'past'); }
@@ -219,7 +237,23 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     const blur = () => setHand(false);
     window.addEventListener('studio-command', command); window.addEventListener('studio-canvas-checkpoint', checkpoint); window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('studio-reference-mode',referenceMode); window.removeEventListener('studio-command', command); window.removeEventListener('studio-canvas-checkpoint', checkpoint); window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('blur', blur); };
-  }, [travel, copy, paste, remove, group, checkpoint, current, projectId, message]);
+  }, [travel, copy, paste, remove, group, checkpoint, current, projectId, message, reading]);
+  const uploadImageIntoNode = async (file: File) => {
+    const nodeId = imageUploadTarget.current;
+    if (!nodeId || reading) return;
+    let inserted = false;
+    try {
+      validateStudioImageUpload(file); setReading(true); setUploadingImageId(nodeId);
+      const image = await importStudioMedia(projectId, file, 'image');
+      // Resolve the current document after upload; deletion or a newly started generation must not be overwritten.
+      const nodes = replaceStudioImage(current().nodes, current().connections, nodeId, image);
+      checkpoint(); setNodes(nodes); inserted = true; dispatchStudioCommand('image-uploaded', nodeId);
+      await saveStudioDocument(projectId); focusNode(nodeId); message.success('图片已添加');
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : '图片上传失败，请重试';
+      message.error(inserted ? `图片已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : reason);
+    } finally { setReading(false); setUploadingImageId(undefined); }
+  };
   const importFiles = async (files: File[]) => {
     if (reading) return; setReading(true); checkpoint(); let last: string | undefined;
     try { for (const file of files) {
@@ -229,7 +263,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     } await saveStudioDocument(projectId); if (last) focusNode(last); } catch (e) { message.error(e instanceof Error ? e.message : '保存失败，请重试'); }
     finally { setReading(false); }
   };
-  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected), [project?.nodes, selected]);
+  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId } })), [project?.nodes, selected, uploadingImageId]);
   const graphEdges = useMemo(() => flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })), [project?.connections, selectedEdges]);
   const changeNodes = useCallback((changes: NodeChange<StudioFlowNode>[]) => {
     setNodes(old => changeFlowNodes(old, changes));
@@ -247,6 +281,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const nodeMenu = target ? [
     { key: 'edit', label: target.type === CanvasNodeType.Group ? '编辑分组名称' : '编辑内容', onClick: () => { if (target.type === CanvasNodeType.Group) { checkpoint(); setRenameId(target.id); } else dispatchStudioCommand(studioNodeCommand(target,true)||'edit-text', target.id); } },
     { key: 'rename', label: '重命名', onClick: () => { checkpoint(); setRenameId(target.id); } },
+    ...(target.type === CanvasNodeType.Image ? [{ key: 'upload', label: target.metadata?.storageKey ? '替换图片' : '上传图片', onClick: () => dispatchStudioCommand('upload-image', target.id) }] : []),
     ...(target.type === 'image' && target.metadata?.storageKey ? ['crop', 'mask', 'split-image'].map(action => ({ key: action, label: { crop: '裁剪图片', mask: '局部重绘', 'split-image': '拆分图片' }[action], onClick: () => dispatchStudioCommand(action, target.id) })) : []),
     { key: 'copy', label: '复制节点', onClick: () => paste(true) },
     ...(canGroupSelectedNodes(selected, project.nodes) ? [{ key: 'group', label: '建立分组', onClick: () => group() }] : []),
@@ -292,22 +327,23 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       </ReactFlow>
       {pendingConnection&&project.nodes.find(n=>n.id===pendingConnection.sourceId)&&<StudioConnectionCreateMenu pending={pendingConnection} source={project.nodes.find(n=>n.id===pendingConnection.sourceId)!} viewport={viewport} onClose={closeConnectionMenu} onCreate={createReference}/>}
       <nav className="studio-flow-tools" aria-label="画布工具">
-        <button title="选择工具" aria-label="选择工具" aria-pressed={!hand} onClick={() => setHand(false)}><MousePointer2 size={19}/></button>
-        <button title="拖动画布" aria-label="拖动画布" aria-pressed={hand} onClick={() => setHand(v => !v)}><Hand size={19}/></button><hr/>
-        <button title="添加文字" aria-label="添加文字" onClick={() => add(CanvasNodeType.Text)}><FileText size={19}/></button>
-        <button title="添加图片节点" aria-label="添加图片节点" onClick={() => add(CanvasNodeType.Image)}><ImagePlus size={19}/></button>
-        <button title="添加视频节点" aria-label="添加视频节点" onClick={() => add(CanvasNodeType.Video)}><Video size={19}/></button>
-        <button title="画布配音" aria-label="画布配音" onClick={() => dispatchStudioCommand('speech')}><Music2 size={19}/></button>
-        <button title="查找节点" aria-label="查找节点" aria-pressed={find} onClick={() => setFind(v => !v)}><Search size={19}/></button>
-        <button title="整理画布" aria-label="整理画布" onClick={arrange}><LayoutGrid size={19}/></button>
-        <Dropdown menu={{ items: nodeMenu }} trigger={['click']} disabled={!selected.size}><button title="更多节点操作" aria-label="更多节点操作" disabled={!selected.size}><Ellipsis size={19}/></button></Dropdown>
-        <button title="复制选中节点" aria-label="复制选中节点" disabled={!selected.size} onClick={() => paste(true)}><Copy size={19}/></button>
-        <button title="删除选中节点" aria-label="删除选中节点" disabled={!selected.size && !selectedEdges.size} onClick={remove}><Trash2 size={19}/></button>
-        <StudioAttachmentPicker locked={reading} reading={reading} onFiles={files => void importFiles(files)} onAssets={async assets => {
+        <button aria-label="选择工具" aria-pressed={!hand} onClick={() => setHand(false)}><MousePointer2 size={19}/><span className="studio-flow-tool-label" aria-hidden>选择工具</span></button>
+        <button aria-label="拖动画布" aria-pressed={hand} onClick={() => setHand(v => !v)}><Hand size={19}/><span className="studio-flow-tool-label" aria-hidden>拖动画布</span></button><hr/>
+        <button aria-label="添加文字" onClick={() => add(CanvasNodeType.Text)}><FileText size={19}/><span className="studio-flow-tool-label" aria-hidden>添加文字</span></button>
+        <button aria-label="添加图片节点" onClick={() => add(CanvasNodeType.Image)}><ImagePlus size={19}/><span className="studio-flow-tool-label" aria-hidden>添加图片节点</span></button>
+        <button aria-label="添加视频节点" onClick={() => add(CanvasNodeType.Video)}><Video size={19}/><span className="studio-flow-tool-label" aria-hidden>添加视频节点</span></button>
+        <button aria-label="画布配音" onClick={() => dispatchStudioCommand('speech')}><Music2 size={19}/><span className="studio-flow-tool-label" aria-hidden>画布配音</span></button>
+        <button aria-label="查找节点" aria-pressed={find} onClick={() => setFind(v => !v)}><Search size={19}/><span className="studio-flow-tool-label" aria-hidden>查找节点</span></button>
+        <button aria-label="整理画布" onClick={arrange}><LayoutGrid size={19}/><span className="studio-flow-tool-label" aria-hidden>整理画布</span></button>
+        <Dropdown menu={{ items: nodeMenu }} trigger={['click']} disabled={!selected.size}><button aria-label="更多节点操作" disabled={!selected.size}><Ellipsis size={19}/><span className="studio-flow-tool-label" aria-hidden>更多节点操作</span></button></Dropdown>
+        <button aria-label="复制选中节点" disabled={!selected.size} onClick={() => paste(true)}><Copy size={19}/><span className="studio-flow-tool-label" aria-hidden>复制选中节点</span></button>
+        <button aria-label="删除选中节点" disabled={!selected.size && !selectedEdges.size} onClick={remove}><Trash2 size={19}/><span className="studio-flow-tool-label" aria-hidden>删除选中节点</span></button>
+        <StudioAttachmentPicker variant="canvas" locked={reading} reading={reading} onFiles={files => void importFiles(files)} onAssets={async assets => {
           checkpoint(); let last: string | undefined; for (const asset of assets) { const n = attachmentNode(savedAssetPayload(asset), current().nodes); setNodes(old => old.some(x => x.id === n.id) ? old : [...old, n]); last = n.id; }
           await saveStudioDocument(projectId); if (last) focusNode(last);
         }}/>
       </nav>
+      <input ref={imageUploadInput} type="file" hidden accept={STUDIO_IMAGE_UPLOAD_ACCEPT} aria-label="上传节点图片" onChange={e => { const file=e.target.files?.[0]; e.target.value=''; if(file)void uploadImageIntoNode(file); }}/>
       <div className="studio-flow-controls" aria-label="视图控制"><button title="撤销" aria-label="撤销" disabled={!history.current.past.length} onClick={() => travel('past')}><Undo2 size={17}/></button><button title="重做" aria-label="重做" disabled={!history.current.future.length} onClick={() => travel('future')}><Redo2 size={17}/></button><hr/>
         <button title="缩小画布" aria-label="缩小画布" onClick={() => void flow.zoomOut()}><ZoomOut size={17}/></button><span>{Math.round(zoom * 100)}%</span><button title="放大画布" aria-label="放大画布" onClick={() => void flow.zoomIn()}><ZoomIn size={17}/></button>
         <button title="适应全部节点" aria-label="适应全部节点" onClick={() => void flow.fitView({ padding: .2, duration: 260 })}><Maximize size={17}/></button><button aria-pressed={minimap} onClick={() => setMinimap(v => !v)}>小地图</button>

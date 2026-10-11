@@ -351,6 +351,19 @@ class MaterialVideoModelClientWireTest {
     }
 
     @Test
+    @DisplayName("供应商队列拒绝映射为稳定的平台错误码，其他 503 仍用通用错误码")
+    void createProviderQueueFullHasMappedCode() {
+        useJusuan();
+        createStatus = 503;
+        createBody = "{\"code\":\"video_queue_full\",\"message\":\"video queue is full\"}";
+        BusinessException full = assertThrows(BusinessException.class, () -> client.submit("一只猫", 5, "9:16", "u1",
+                "celebrity", null, VideoGenSpec.EMPTY));
+        assertEquals("VIDEO_PROVIDER_QUEUE_FULL", full.getCode());
+        assertTrue(full.getMessage().contains("模型提供方"));
+        assertFalse(full.getMessage().contains("video queue"));
+    }
+
+    @Test
     @DisplayName("素材上传 4xx：VIDEO_REF_UPLOAD_FAILED + 厂商原话，报错里的名字与任务卡编号一致")
     void uploadRejectionSurfacesVendorMessage() throws Exception {
         useJusuan();

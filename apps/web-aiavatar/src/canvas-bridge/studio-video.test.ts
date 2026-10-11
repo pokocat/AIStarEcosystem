@@ -53,6 +53,14 @@ describe("reopening a native video node in Studio",()=>{
     const image={type:CanvasNodeType.Image,metadata:{studio:{shot:{durationSec:5},request:{operation:"image",count:4,durationSec:8,aspectRatio:"16:9"}}}} as CanvasNodeData;
     expect(studioVideoNodeSelection(image,nodes,["first"])).toMatchObject({count:1,seconds:5,ratio:"16:9",draft:{mode:"i2v",firstId:"first"}});
   });
+  it("does not carry an unsupported 3:4 image ratio into a legacy image-to-video request",()=>{
+    const image={type:CanvasNodeType.Image,metadata:{studio:{request:{aspectRatio:"3:4"}}}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(image,nodes,["first"]).ratio).toBe("9:16");
+    const legacyVideo={type:CanvasNodeType.Video,metadata:{studio:{request:{aspectRatio:"3:4"}}}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(legacyVideo,nodes,[]).ratio).toBe("9:16");
+    const nativeVideo={type:CanvasNodeType.Video,metadata:{videoMode:"frames",studio:{request:{aspectRatio:"3:4"}}}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(nativeVideo,nodes,[]).ratio).toBe("3:4");
+  });
 });
 
 describe("video selection across modes, the IP library and legacy models",()=>{

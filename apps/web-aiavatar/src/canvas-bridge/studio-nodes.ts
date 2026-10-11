@@ -1,13 +1,13 @@
 import { nanoid } from "nanoid";
 import type { IpRun } from "@ai-star-eco/types";
-import type { StudioNodeMetadata, StudioOperation } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioNodeMetadata, StudioOperation, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeVideoTake } from "@/canvas/types/canvas";
 import { markStudioDescendants, mergeStudioRewrite, studioNodeEpisode } from "./studio-script";
 
 export function makeStudioNode(operation: StudioOperation, origin?: CanvasNodeData): CanvasNodeData {
   const type = operation === "image" ? CanvasNodeType.Image : ["video", "assemble"].includes(operation) ? CanvasNodeType.Video : CanvasNodeType.Text;
-  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "合成作品", assistant: "导演对话" }[operation];
-  const studio: StudioNodeMetadata = { kind: operation === "assistant" ? "assistant" : operation === "assemble" ? "work" : ["image", "video"].includes(operation) ? "shot" : "script", includeInWork: operation === "video", episodeNo:["image","video"].includes(operation)?studioNodeEpisode(origin):undefined,order:operation==="video"?origin?.metadata?.studio?.order:undefined };
+  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ text: "文本", script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "合成作品", assistant: "导演对话" }[operation];
+  const studio: StudioNodeMetadata = { kind: operation === "text" ? "text" : operation === "assistant" ? "assistant" : operation === "assemble" ? "work" : ["image", "video"].includes(operation) ? "shot" : "script", includeInWork: operation === "video", episodeNo:["image","video"].includes(operation)?studioNodeEpisode(origin):undefined,order:operation==="video"?origin?.metadata?.studio?.order:undefined };
   return { id: nanoid(), type, title, width: type === CanvasNodeType.Text ? 480 : 320, height: type === CanvasNodeType.Text ? 300 : 400,
     position: { x: origin ? origin.position.x + origin.width + 90 : 100, y: origin?.position.y ?? 120 },
     metadata: { status: "idle", studio } };
@@ -39,6 +39,20 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
   if(run.kind==="studio-video")metadata.videoTaskId=undefined;
   metadata.status = run.status === "failed" ? "error" : "success";
   metadata.errorDetails = run.status === "failed" ? run.errorMessage || "生成失败，请重试" : undefined;
+  if(run.status === "done" && run.output.textRevision && !alreadyApplied) {
+    const request=run.inputs as unknown as StudioRunRequest;
+    const editor=metadata.studio.textEditor;
+    metadata.studio.textEditor={...editor,turns:[...(editor?.turns||[]),
+      {role:"user" as const,content:request.prompt.slice(0,4000)},
+      {role:"assistant" as const,content:run.output.textRevision.summary}].slice(-16)};
+    if((metadata.content||"") === request.textEdit?.content) {
+      metadata.content=run.output.textRevision.content;
+      delete metadata.studio.textEditor.proposal;
+    } else {
+      // A different tab/editor may have changed the body during the accepted request.
+      metadata.studio.textEditor.proposal={...run.output.textRevision,runId:run.id};
+    }
+  }
   if(run.output.plan && metadata.studio.conversation && !alreadyApplied) {
     metadata.studio.conversation={...metadata.studio.conversation,plan:run.output.plan,
       turns: [...metadata.studio.conversation.turns,{role:"assistant" as const,content:run.output.plan.summary}].slice(-16)};

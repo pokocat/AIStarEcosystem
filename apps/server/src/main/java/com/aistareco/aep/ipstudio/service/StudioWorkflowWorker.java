@@ -60,7 +60,7 @@ public class StudioWorkflowWorker {
             ObjectNode output=mapper.createObjectNode(); output.put("mock",mock);
             String operation=input.path("operation").asText();
             switch(operation) {
-                case "script","storyboard","assistant" -> {
+                case "text","script","storyboard","assistant" -> {
                     JsonNode script;
                     if(mock) script=fixtureScript(input);
                     else {
@@ -78,7 +78,12 @@ public class StudioWorkflowWorker {
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",input.path("_exec").path("maxTokens").asInt(8192))).content();
                         script=mapper.readTree(content);
                     }
-                    if("assistant".equals(operation)) {
+                    if("text".equals(operation)) {
+                        if(mock)script=mapper.createObjectNode().put("summary","测试响应：保留原文，不调用真实模型。")
+                                .put("content",input.path("textEdit").path("content").asText().isBlank()?"测试文本样例":input.path("textEdit").path("content").asText());
+                        StudioTextRevision.validateOutput(script);
+                        output.set("textRevision",script);output.put("text",script.path("content").asText());
+                    } else if("assistant".equals(operation)) {
                         if(input.hasNonNull("scriptEdit")) {
                             if(mock)script=mapper.createObjectNode().put("summary","测试响应：保留原稿，可预览并采纳。").put("markdown",input.path("scriptEdit").path("markdown").asText());
                             StudioScriptRevision.validateOutput(script);

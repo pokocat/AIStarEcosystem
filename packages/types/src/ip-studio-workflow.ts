@@ -8,7 +8,7 @@ export interface StudioVideoSettings {
   lastFrameKey?: string;
   references?: VideoStudioReferenceInput[];
 }
-export type StudioOperation = "script" | "storyboard" | "image" | "video" | "assemble" | "assistant";
+export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant";
 export interface StudioScriptSettings { genre?: string; fusionGenres?: string[]; characterBrief?: string; structure?: string; audience?: string; era?: string; core?: string; style?: string; episodeCount?: number; episodeDurationSec?: number }
 export type StudioAssistantMode = "general" | "original" | "adapt" | "director";
 /** Free document text extraction; the imported canvas node owns the resulting text. */
@@ -44,6 +44,8 @@ export interface StudioRunRequest {
   history?: StudioTurn[];
   /** Full document for the in-editor revision path; ordinary assistant plans are unchanged. */
   scriptEdit?: { markdown: string };
+  /** Plain-text node revision: prompt is the intent, content is the immutable source snapshot. */
+  textEdit?: { content: string };
   /** A ceiling, never a caller-defined price. Rejected before any freeze if the price increases. */
   maxCost?: number;
   packaging?: StudioPackaging;
@@ -137,7 +139,7 @@ export interface StudioNodeMetadata {
     episodeNo?: number; rewriteScope?: StudioNodeMetadata['rewriteScope'];
     scriptMode?: "original" | "adapt"; scriptSourceNodeId?: string;
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
-  kind: "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio";
+  kind: "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio";
   speechRequest?: StudioSpeechRequest;
   voiceProfile?: StudioVoiceProfile;
   lipSyncRequest?: StudioLipSyncRequest;
@@ -153,6 +155,11 @@ export interface StudioNodeMetadata {
   script?: StudioScript;
   /** Markdown is canonical after editor save; script is its downstream structured projection. */
   scriptMarkdown?: string;
+  textEditor?: {
+    turns: StudioTurn[];
+    /** A concurrent manual edit keeps the AI result here rather than overwriting the newer body. */
+    proposal?: { content: string; summary: string; runId: string };
+  };
   scriptEditor?: {
     draft?: string;
     turns: StudioTurn[];

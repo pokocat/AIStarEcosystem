@@ -1,6 +1,7 @@
 package com.aistareco.aep.service.materialvideo;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -164,6 +165,32 @@ class MaterialVideoModelClientBodyTest {
     private static final String DRAMA_PROMPT = "镜头推近（严格基于该首帧画面延展动态：https://cdn.x/f.png）"
             + "\n（并以该画面作为结尾帧：https://cdn.x/l.png）";
     private static final String KEY_URL = "https://cdn.test/ipstudio_gen/u1/a.png";
+
+    @Test
+    @DisplayName("Agnes Video 2.5 Flash 用新版 text/keyframe 合同，不携带旧版帧数与像素字段")
+    void agnes25Bodies() {
+        Map<String, Object> text = client.buildSubmitBody("agnes", "agnes-video-2.5-flash", "蓝色陶瓷杯", 5,
+                "9:16", VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE);
+        assertEquals(List.of("model", "prompt", "mode", "seconds", "size", "aspect_ratio", "n"),
+                List.copyOf(text.keySet()));
+        assertEquals("text", text.get("mode"));
+        assertEquals("720P", text.get("size"));
+        assertEquals("9:16", text.get("aspect_ratio"));
+        assertEquals("5", text.get("seconds"));
+        FORBIDDEN.forEach(f -> assertFalse(text.containsKey(f), f));
+
+        Map<String, Object> image = client.buildSubmitBody("agnes", "agnes-video-2.5-flash", "轻轻挥手", 5,
+                "9:16", VideoGenSpec.firstFrameOnly("owned-key"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameUrl(KEY_URL));
+        assertEquals("keyframe", image.get("mode"));
+        assertEquals(KEY_URL, image.get("first_frame"));
+        assertFalse(image.containsKey("image"));
+
+        var bounds = client.protocolDurationBounds(AiModelEndpoint.builder()
+                .name("Agnes 2.5").model("agnes-video-2.5-flash").build());
+        assertEquals(4, bounds.minSec());
+        assertEquals(12, bounds.maxSec());
+    }
 
     @Test
     @DisplayName("短剧首尾帧标记继续传入三个协议；Agnes 同画布按 9:16 的真实像素和时长组包")

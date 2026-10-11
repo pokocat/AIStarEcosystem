@@ -462,6 +462,7 @@ public class MaterialVideoJobService {
             lastFrame = signer.maybeSign(job.getLastFrameUrl());
         }
         if (lastFrame != null) card.put("last_frame_url", lastFrame);
+        if (job.getErrorCode() != null) card.put("error_code", job.getErrorCode());
         if (job.getErrorMessage() != null) card.put("error_message", job.getErrorMessage());
         if (job.getExternalTaskId() != null) card.put("external_task_id", job.getExternalTaskId());
         return card;

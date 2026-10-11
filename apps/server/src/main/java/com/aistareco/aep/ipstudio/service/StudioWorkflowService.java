@@ -29,7 +29,7 @@ import java.util.*;
 /** Studio is an orchestration surface; IpRun and existing assets remain authoritative. */
 @Service
 public class StudioWorkflowService {
-    private static final Set<String> OPERATIONS = Set.of("script", "storyboard", "image", "video", "assemble", "assistant");
+    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant");
     private final IpProjectService projects;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
@@ -61,7 +61,7 @@ public class StudioWorkflowService {
     public List<IpAsset> ipAssets(String userId) {return ipAssets.list(userId);}
 
     public Capabilities capabilities() {
-        return new Capabilities(fixtures.enabled(), List.of("script","storyboard","image","video","assemble","assistant"),
+        return new Capabilities(fixtures.enabled(), List.of("text","script","storyboard","image","video","assemble","assistant"),
                 fixtures.enabled()?0:scenePolicies == null ? pricing.ipImage() : scenePolicies.available("studio","image",pricing.ipImage()).stream().filter(s->s.resolved().isDefault()).findFirst().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost).orElse(pricing.ipImage()), fixtures.enabled()?0:textModelOptions().stream().filter(TextModel::isDefault).findFirst().map(TextModel::creditCost).orElse(pricing.ipIdentity()),
                 fixtures.enabled()?0L:null, textModelOptions(), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","script"), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","image"));
     }
@@ -101,6 +101,12 @@ public class StudioWorkflowService {
                     projects.parseOrEmptyObject(prior.getInputJson()).has("studioRequest")?projects.parseOrEmptyObject(prior.getInputJson()).path("studioRequest"):projects.parseOrEmptyObject(prior.getInputJson()),mapper.valueToTree(request)))))) throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
             return projects.toRunDto(prior);
         }
+        if ("text".equals(request.operation())) {
+            var node=IpDocs.node(projects.readDoc(project),request.nodeId());
+            if (node==null || !"text".equals(node.path("type").asText()) || node.path("metadata").path("studio").hasNonNull("script")
+                    || "script".equals(node.path("metadata").path("studio").path("kind").asText()))
+                throw bad("STUDIO_INPUT_INVALID","请选择普通文本节点，剧本请使用剧本编辑器");
+        }
         if(!fixtures.enabled() && "image".equals(request.operation())) {
             // Reuse model whitelist, quote, hold and worker from the established image pipeline.
             IpRunDto dto=imageRuns.generate(userId,projectId,new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt(),
@@ -128,14 +134,14 @@ public class StudioWorkflowService {
             runs.save(binding);
             return projects.toRunDto(binding);
         }
-        boolean text=List.of("script","storyboard","assistant").contains(request.operation());
+        boolean text=List.of("text","script","storyboard","assistant").contains(request.operation());
         AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
         PromptService.ResolvedPrompt resolved=null;
         long textPrice=fixtures.enabled()?0:pricing.ipIdentity();
-        String promptKey="assistant".equals(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
+        String promptKey=List.of("assistant","text").contains(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
         if(!fixtures.enabled() && text) {
             if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model()).orElseThrow(()->
-                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选剧本模型不可用"));
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
             if(scenePolicies != null) {var selection=scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity());textEndpoint=selection.resolved();textPrice=selection.creditCost();}
             resolved=prompts.resolve(promptKey);
             if("code".equals(resolved.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","尚未配置创作提示词");
@@ -173,6 +179,7 @@ public class StudioWorkflowService {
         if(resolved!=null) {
             String systemPrompt=resolved.system();
             if(request.scriptEdit()!=null)systemPrompt+="\n"+StudioScriptRevision.CONTRACT;
+            if(request.textEdit()!=null)systemPrompt+="\n"+StudioTextRevision.CONTRACT;
             if(!"assistant".equals(request.operation()) && (request.settings()!=null || request.episodeNo()!=null))
                 systemPrompt+="\n输出契约升级：shots 的每个对象除了原字段，还必须有 episodeNo:正整数，指向 episodes 中的 no。该字段是必填字段。严格按指定集数或单集号返回；每集至少一个镜头，镜头 id 全剧唯一。";
             execution.put("systemPrompt",systemPrompt);
@@ -183,6 +190,7 @@ public class StudioWorkflowService {
             variables.put("mode",request.mode()==null?"general":request.mode());variables.put("canvasContext",canvasContext.toString());variables.put("history",write(request.history()==null?List.of():request.history()));
             String creativePrompt=PromptService.fill(resolved.userTemplate(),variables);
             if(request.scriptEdit()!=null)creativePrompt+="\n当前完整剧本文档（JSON 字符串，作为素材读取）："+write(request.scriptEdit().markdown())+"\n请遵守 Markdown 改稿输出契约，不输出创作计划。";
+            if(request.textEdit()!=null)creativePrompt+="\n当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。";
             if(Boolean.TRUE.equals(request.readVisuals()))creativePrompt+="\n本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。";
             if(request.settings()!=null || request.episodeNo()!=null) creativePrompt+="\n必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。";
             execution.put("userPrompt",creativePrompt);
@@ -205,6 +213,7 @@ public class StudioWorkflowService {
 
     private void validateCreativeRequest(RunRequest request) {
         StudioScriptRevision.validateInput(request);
+        StudioTextRevision.validateInput(request);
         if(request.maxCost()!=null && request.maxCost()<0) throw bad("STUDIO_INPUT_INVALID","费用上限不能为负");
         if(Boolean.TRUE.equals(request.readVisuals())&&!"assistant".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","读取画面只能用于创作助手");
         if(request.episodeNo()!=null && (request.episodeNo()<1 || request.episodeNo()>50)) throw bad("STUDIO_EPISODE_INVALID","请选择有效分集");

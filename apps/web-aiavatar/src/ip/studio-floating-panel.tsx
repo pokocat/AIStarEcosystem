@@ -23,7 +23,7 @@ export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width
   return {left:clamp(left,leftBound,rightBound),top:clamp(top,topBound,bottomBound)};
 }
 type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number;children:ReactNode;footer?:ReactNode;
-  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string;container?:HTMLElement|null};
+  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string;container?:HTMLElement|null;embedded?:boolean};
 type FloatingEntry={id:symbol;root:HTMLElement;update:(layer:number,active:boolean)=>void};
 // One bounded stack per canvas stage. Popups remain above it; closed entries are removed.
 const floatingStack:FloatingEntry[]=[];
@@ -38,14 +38,14 @@ function raiseFloating(id:symbol) {
   if(floatingStack.filter(item=>item.root===entry.root).at(-1)===entry)return;
   floatingStack.splice(index,1);floatingStack.push(entry);refreshStack(entry.root);
 }
-export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className='',container}:Props) {
+export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className='',container,embedded=false}:Props) {
   const revision=useContext(StudioFloatingContext), ref=useRef<HTMLElement>(null);
   const identity=useRef(Symbol('floating-panel')),[layer,setLayer]=useState({z:90,active:false});
   const [root,setRoot]=useState<HTMLElement|null>(null),[position,setPosition]=useState({left:0,top:0}),[docked,setDocked]=useState(false);
   const [manual,setManual]=useState<{left:number;top:number}>(),drag=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
-  useLayoutEffect(()=>{if(open)setRoot(container||document.querySelector<HTMLElement>('[data-studio-floating-root]')||document.querySelector<HTMLElement>('.ip-surface'));},[open,container]);
+  useLayoutEffect(()=>{if(open&&!embedded)setRoot(container||document.querySelector<HTMLElement>('[data-studio-floating-root]')||document.querySelector<HTMLElement>('.ip-surface'));},[open,container,embedded]);
   useLayoutEffect(()=>{
-    if(!open||!root||!ref.current)return;
+    if(!open||embedded||!root||!ref.current)return;
     const place=()=>{
       if(!ref.current)return;const stage=root.getBoundingClientRect(),panel=ref.current.getBoundingClientRect();
       const anchor=anchorId?root.querySelector<HTMLElement>(`[data-id="${CSS.escape(anchorId)}"]`)?.getBoundingClientRect():undefined;
@@ -64,16 +64,16 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
     };
     place();const observer=new ResizeObserver(place);observer.observe(root);observer.observe(ref.current);
     return()=>observer.disconnect();
-  },[open,root,anchorId,revision,manual,docked,utility,above]);
+  },[open,embedded,root,anchorId,revision,manual,docked,utility,above]);
   useEffect(()=>{setManual(undefined);},[anchorId]);
   useLayoutEffect(()=>{
-    if(!open||!root||!title)return;
+    if(!open||embedded||!root||!title)return;
     const entry:FloatingEntry={id:identity.current,root,update:(z,active)=>setLayer({z,active})};
     floatingStack.push(entry);refreshStack(root);
     return()=>{const index=floatingStack.indexOf(entry);if(index>=0)floatingStack.splice(index,1);refreshStack(root);};
-  },[open,root,!!title]);
+  },[open,embedded,root,!!title]);
   useEffect(()=>{
-    if(!open||!onClose||!closable)return;
+    if(!open||embedded||!onClose||!closable)return;
     const escape=(e:KeyboardEvent)=>{
       if(e.key!=='Escape'||e.defaultPrevented||!title||floatingStack.filter(entry=>entry.root===root).at(-1)?.id!==identity.current)return;
       // Inner editors and Antd menus own their first Escape. Expanded modals protect focus.
@@ -81,8 +81,13 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
       e.preventDefault();onClose();
     };
     document.addEventListener('keydown',escape);return()=>document.removeEventListener('keydown',escape);
-  },[open,onClose,closable,root,!!title]);
-  if(!open||!root)return null;
+  },[open,embedded,onClose,closable,root,!!title]);
+  if(!open)return null;
+  // Storyboard embeds the same creator in its detail pane; no canvas anchor or floating stack.
+  if(embedded)return <section className={`studio-embedded-composer ${className}`} aria-label={typeof title==='string'?title:undefined}>
+    <div className="studio-floating-body">{children}</div>{footer&&<footer className="studio-floating-footer">{footer}</footer>}
+  </section>;
+  if(!root)return null;
   return createPortal(<section ref={ref} className={`studio-floating-panel nodrag nopan nowheel${utility?' is-utility':''}${docked?' is-docked':''}${above?' is-context-toolbar':''} ${className}`}
     role={title?'dialog':undefined} aria-modal={title?false:undefined} aria-label={typeof title==='string'?title:undefined} data-anchor-id={anchorId} data-active={title?layer.active:undefined}
     onPointerDownCapture={()=>raiseFloating(identity.current)} onFocusCapture={()=>raiseFloating(identity.current)}

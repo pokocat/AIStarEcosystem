@@ -17,6 +17,8 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--base',default='http://localhost:18080')
 parser.add_argument('--stage',choices=['image','script','storyboard','video','assemble','geometry'],default='script')
 parser.add_argument('--out',default='.studio-e2e/real')
+parser.add_argument('--scenario',choices=['three-shot','two-episode'],default='three-shot')
+parser.add_argument('--text-model',default=None,help='Optional configured free Agnes text endpoint')
 parser.add_argument('--retry-failed',action='store_true',help='Start a new request only for a confirmed failed run, preserving its history')
 args=parser.parse_args()
 assert args.base.startswith(('http://localhost:','http://127.0.0.1:')), 'Only an isolated local backend is supported'
@@ -78,12 +80,20 @@ if 'adoption' not in state:
     state['adoption']=call('POST',f'/v1/ip-studio/projects/{project}/adopt',{'nodeId':'live-master','storageKey':key,'name':'小紫 · Agnes 验收','description':'原创3D潮玩少女，浅紫短发和白色卫衣。'});save()
 ref=dict(state['adoption'],role='character')
 if args.stage!='image':
-    script=run('script','script','用选定的小紫制作一条15秒城市灵感短片，恰好3个镜头，每镜5秒。保持浅紫短发、白色卫衣同一人物。大纲和正文完整，镜头有明确动作，只用一个人物。',[ref])
+    text_options={'model':args.text_model} if args.text_model else {}
+    story_settings={'genre':'都市治愈','audience':'年轻创作者','era':'现代城市','core':'发现微小灵感','style':'原创3D潮玩','episodeCount':2,'episodeDurationSec':5}
+    if args.scenario=='two-episode':
+        script_prompt='小紫的两集超短治愈故事。第1集：城市街角，看到一束阳光，小紫抬头微笑。第2集：同一街角，小紫想通了创意，面向镜头挥手。每集恰好1个镜头，每镜5秒，只有小紫一人，浅紫短发、白色卫衣；大纲、人物与分集正文完整。每镜必须标注 episodeNo，镜头ID全剧唯一。'
+        text_options['settings']=story_settings
+    else:
+        script_prompt='用选定的小紫制作一条15秒城市灵感短片，恰好3个镜头，每镜5秒。保持浅紫短发、白色卫衣同一人物。大纲和正文完整，镜头有明确动作，只用一个人物。'
+    script=run('script','script',script_prompt,[ref],**text_options)
     if args.stage in ['storyboard','video','assemble']:
         edited=copy.deepcopy(script['output']['script'])
         edited['episodes'][0]['content']+='\n最后一镜，小紫面向镜头挥手微笑。'
         edited.pop('shots',None)
-        board=run('storyboard','storyboard','按当前已编辑正文拆成恰好3镜，每镜5秒：\n'+json.dumps(edited,ensure_ascii=False),[ref])
+        board_prompt=('按当前已编辑正文拆成2集、每集恰好1镜，每镜5秒：\n' if args.scenario=='two-episode' else '按当前已编辑正文拆成恰好3镜，每镜5秒：\n')+json.dumps(edited,ensure_ascii=False)
+        board=run('storyboard','storyboard',board_prompt,[ref],**text_options)
         if args.stage in ['video','assemble']:
             clips=[]
             for index,shot in enumerate(board['output']['shots'][:3]):

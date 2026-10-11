@@ -9,7 +9,7 @@ import { Plugin } from '@tiptap/pm/state';
 import { scriptRichExtensions } from '@/canvas-bridge/studio-script-rich-extensions';
 
 export type ScriptRichEditorHandle = { jump: (id: string) => void; jumpToTitle: (title: string) => void };
-type Props = { markdown: string; onChange?: (markdown: string) => void; onOutline?: (anchors: TableOfContentData) => void; readOnly?: boolean; toolbarContainer?: HTMLElement | null; toolbarHidden?: boolean };
+type Props = { ariaLabel?: string; markdown: string; onChange?: (markdown: string) => void; onOutline?: (anchors: TableOfContentData) => void; readOnly?: boolean; toolbarContainer?: HTMLElement | null; toolbarHidden?: boolean };
 // TOC IDs are navigation state, not a user edit or part of the AI proposal baseline.
 const documentFingerprint = (document: unknown) => JSON.stringify(document, (key, value) => key === 'id' || key === 'data-toc-id' ? undefined : value);
 const DocumentTableOfContents = TableOfContents.extend({
@@ -23,7 +23,7 @@ const DocumentTableOfContents = TableOfContents.extend({
 });
 
 /** Markdown remains an interchange format; users edit the rendered document. */
-export const StudioScriptRichEditor = forwardRef<ScriptRichEditorHandle, Props>(function StudioScriptRichEditor({ markdown, onChange, onOutline, readOnly = false, toolbarContainer, toolbarHidden = false }, ref) {
+export const StudioScriptRichEditor = forwardRef<ScriptRichEditorHandle, Props>(function StudioScriptRichEditor({ ariaLabel, markdown, onChange, onOutline, readOnly = false, toolbarContainer, toolbarHidden = false }, ref) {
   const lastValue = useRef(markdown), change = useRef(onChange);
   const scroll = useRef<HTMLDivElement>(null), outline = useRef(onOutline);
   const imported = useRef<{ markdown: string; document: string } | null>(null);
@@ -40,7 +40,7 @@ export const StudioScriptRichEditor = forwardRef<ScriptRichEditorHandle, Props>(
     content: markdown,
     contentType: 'markdown',
     editable: !readOnly,
-    editorProps: { attributes: { role: 'textbox', 'aria-label': readOnly ? 'AI 建议剧本' : '剧本文档', 'aria-multiline': 'true', 'aria-readonly': String(readOnly), spellcheck: 'false' } },
+    editorProps: { attributes: { role: 'textbox', 'aria-label': ariaLabel || (readOnly ? 'AI 建议剧本' : '剧本文档'), 'aria-multiline': 'true', 'aria-readonly': String(readOnly), spellcheck: 'false' } },
     onUpdate: ({ editor, transaction }) => {
       if (synchronizing.current) return;
       if (documentFingerprint(transaction.doc.toJSON()) === documentFingerprint(transaction.before.toJSON())) {

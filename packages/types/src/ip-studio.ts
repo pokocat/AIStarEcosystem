@@ -89,6 +89,7 @@ export interface IpRunOutput {
   script?: import("./ip-studio-workflow").StudioScript;
   plan?: import("./ip-studio-workflow").StudioPlan;
   scriptRevision?: { markdown: string; summary: string };
+  textRevision?: { content: string; summary: string };
   shots?: import("./ip-studio-workflow").StudioShot[];
   storageKey?: string;
   url?: string;

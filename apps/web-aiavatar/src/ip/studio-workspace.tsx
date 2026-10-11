@@ -6,7 +6,7 @@ import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, Modal, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { ArrowDown, ArrowUp, BookOpen, Clapperboard, Download, FileText, ImagePlus, Layers, Play, Plus, RefreshCw, Sparkles, UserRound, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookOpen, Clapperboard, Download, FileText, ImagePlus, Layers, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { IpRun } from "@ai-star-eco/types";
 import type { StudioCapabilities, StudioIpAsset, StudioIpAssetRole, StudioVoiceProfile, StudioOperation, StudioReference, StudioRunRequest, StudioScript, StudioScriptSettings, StudioPlan, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
@@ -31,6 +31,7 @@ import { SignedImage } from "@/canvas-bridge/signed-image";
 import { parseStudioCaptions, studioWorkDraft, updateStudioWorkDraft } from "@/canvas-bridge/studio-packaging";
 import { StudioScriptSettingsForm } from "./studio-script-settings";
 import { StudioScriptEditor } from "./studio-script-editor";
+import { StudioTextComposer } from "./studio-text-composer";
 import { scriptToMarkdown } from "@/canvas-bridge/studio-script-markdown";
 import { StudioTemplateLibrary } from "./studio-template-library";
 import { StudioSpeech } from "./studio-speech";
@@ -46,12 +47,14 @@ import { editableIpAssetRoles,ipAssetRole,ipAssetRoles } from "@/canvas-bridge/s
 import { parseStudioEntry } from "./studio-entry";
 import { IpStudioApi } from "./api";
 import { studioLinkedInputError, studioLinkedNodes, studioLinkedText, withStudioLinkedText } from '@/canvas-bridge/studio-linked-inputs';
+import { StudioStoryboard } from './studio-storyboard';
+import { updateStudioStoryboardShot } from '@/canvas-bridge/studio-storyboard';
 
 type Props = { projectId: string; nodes: CanvasNodeData[]; connections:CanvasConnection[]; selectedNodeIds: Set<string>;
   setNodes: Dispatch<SetStateAction<CanvasNodeData[]>>; setConnections: Dispatch<SetStateAction<CanvasConnection[]>>;
   onFocusNode: (id: string) => void; onClosePanel: () => void; onRestorePanel: (id:string) => void; activeComposerId?:string; referencePicking?:boolean };
 const containers = () => document.querySelector<HTMLElement>(".ip-surface") || document.body;
-const labels = { script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
+const labels = { text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
 
 export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds, setNodes, setConnections, onFocusNode, onClosePanel, onRestorePanel, activeComposerId, referencePicking }: Props) {
   const { message } = App.useApp();
@@ -61,6 +64,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [capabilityError, setCapabilityError] = useState("");
   const [mode, setMode] = useState<"canvas" | "storyboard" | "work">("canvas");
   const [director, setDirector] = useState(false);
+  const [storyboardNodeId,setStoryboardNodeId]=useState<string>();
+  const [storyboardChanging,setStoryboardChanging]=useState(false);
+  const [storyboardTextExpanded,setStoryboardTextExpanded]=useState(false);
+  useEffect(()=>{
+    if(storyboardNodeId&&!nodes.some(n=>n.id===storyboardNodeId)){setStoryboardNodeId(undefined);setStoryboardTextExpanded(false);setDirector(false);}
+  },[nodes,storyboardNodeId]);
   const [pickingReferences,setPickingReferences]=useState(false);
   const [operation, setOperation] = useState<StudioOperation>("script");
   const [prompt, setPrompt] = useState("");
@@ -155,8 +164,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const referencedPeople=[...new Set(selectedStudio?.references?.flatMap(r=>r.avatarId?[r.avatarId]:[])||[])];
   const speechAvatarId=selectedStudio?.speechRequest?.avatarId||selectedStudio?.voiceProfile?.avatarId||selectedStudio?.adoption?.avatarId||(referencedPeople.length===1?referencedPeople[0]:undefined);
   const editor = nodes.find(n => n.id === editorId);
-  const allShots = nodes.filter(n => n.metadata?.studio?.shot).sort((a,b) => (a.metadata?.studio?.order || 0) - (b.metadata?.studio?.order || 0));
-  const shots=allShots.filter(n=>episodeFilter==="all"||(n.metadata?.studio?.episodeNo||n.metadata?.studio?.shot?.episodeNo||1)===episodeFilter);
+  const allShots = nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.studio?.shot)
+    .sort((a,b)=>(studioNodeEpisode(a)||1)-(studioNodeEpisode(b)||1)||(a.metadata?.studio?.order||0)-(b.metadata?.studio?.order||0));
+  const shots=allShots.filter(n=>episodeFilter==="all"||(studioNodeEpisode(n)||1)===episodeFilter);
   const allClips = nodes.filter(n => n.type === CanvasNodeType.Video && n.metadata?.storageKey && n.metadata?.studio?.kind !== "work" && (!n.metadata.templateStepId || n.metadata.studio?.templateAccepted===true))
     .sort((a,b) => (a.metadata?.studio?.order || 0) - (b.metadata?.studio?.order || 0));
   const clips=allClips.filter(n=>episodeFilter==="all"||(n.metadata?.studio?.episodeNo||1)===episodeFilter);
@@ -296,9 +306,13 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(speechSaving||busy)return;setSpeechSaving(true);const session=panelSession.current;
     try{await saveStudioDocument(projectId);if(panelSession.current===session)setSpeechOpen(false);}catch(e){message.error(e instanceof Error?e.message:'配音草稿未保存，请重试');}finally{setSpeechSaving(false);}
   };
-  const openDirector = useCallback((action: StudioOperation, node?: CanvasNodeData) => {
+  const openDirector = useCallback((action: StudioOperation, node?: CanvasNodeData, presentation: "canvas" | "storyboard" = "canvas") => {
     panelSession.current++;setScriptPreviewId(undefined);
     pendingScriptImport.current=undefined;
+    // The same creator serves both the canvas float and storyboard detail.
+    setMode(presentation);
+    const focusedNodeId=node?.id;
+    if(focusedNodeId&&presentation==="canvas")setTimeout(()=>onFocusNode(focusedNodeId),0);
     setPickingReferences(false);setEditorId(undefined);setTemplateLibraryOpen(false);setSpeechOpen(false);
     if((action==="image"||action==="video")&&node?.metadata?.templateStepId) {
       setDirector(false);onClosePanel();
@@ -307,14 +321,17 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     }
     // A creator opened from an empty canvas still owns a saved document node.
     // Closing, refreshing and returning must resume the same draft, not a detached form.
-    if(!node && ["script","storyboard","image","video"].includes(action)) {
+    if(!node && ["text","script","storyboard","image","video"].includes(action)) {
       node=makeStudioNode(action);addNode(node);
     }
+    if(presentation==="storyboard")setStoryboardNodeId(node?.id);
     const parent=nodesRef.current.find(n=>n.id===node?.metadata?.studio?.parentNodeId);
     setScriptMode(node?.metadata?.studio?.scriptMode||"original");setScriptSourceNodeId(node?.metadata?.studio?.scriptSourceNodeId);
-    setOperation(action); setOriginId(node?.id);setPasteScript(false);setModel(action==="script"||action==="storyboard"?node?.metadata?.studio?.request?.model:undefined);setRewriteScope(undefined);setMissingPlanRefs([]);setEpisodeNo(undefined);setSettings(node?.metadata?.studio?.settings||{genre:"都市治愈",episodeCount:node?.metadata?.studio?.script?.episodes.length||1,episodeDurationSec:30});setRatio(action==="image"?node?.metadata?.studio?.shot?parent?.metadata?.studio?.request?.aspectRatio||"9:16":"3:4":"9:16");
+    setOperation(action); setOriginId(node?.id);setPasteScript(false);setModel(["text","script","storyboard"].includes(action)?node?.metadata?.studio?.request?.model:undefined);setRewriteScope(undefined);setMissingPlanRefs([]);setEpisodeNo(undefined);setSettings(node?.metadata?.studio?.settings||{genre:"都市治愈",episodeCount:node?.metadata?.studio?.script?.episodes.length||1,episodeDurationSec:30});setRatio(action==="image"?node?.metadata?.studio?.shot?parent?.metadata?.studio?.request?.aspectRatio||"9:16":"3:4":"9:16");
     const script = node?.metadata?.studio?.script;
-    setPrompt(script && (action === "script" || action === "storyboard") ? studioScriptPrompt(script, action === "storyboard" ? "根据当前已编辑的剧本拆分镜头。保留人物设定、台词和顺序。" : "改写当前剧本，保留选定的人物设定。") : action==="video"&&node?.type===CanvasNodeType.Image ? node.metadata?.studio?.shot?.description || "以选中的图片作为首帧，保持主体、服饰和场景。请描述人物动作、镜头运动和节奏，动作自然连贯。" : node?.metadata?.studio?.shot?.description || node?.metadata?.prompt || "");
+    const scriptInstruction=action==="storyboard"?"根据当前已编辑的剧本拆分镜头。保留人物设定、台词和顺序。":"改写当前剧本，保留选定的人物设定。";
+    setPrompt(script && (action === "script" || action === "storyboard") ? presentation==="storyboard"?scriptInstruction:studioScriptPrompt(script,scriptInstruction) : action==="video"&&node?.type===CanvasNodeType.Image ? node.metadata?.studio?.shot?.description || "以选中的图片作为首帧，保持主体、服饰和场景。请描述人物动作、镜头运动和节奏，动作自然连贯。" : node?.metadata?.studio?.shot?.description || node?.metadata?.prompt || "");
+    if(action==="text")setPrompt("");
     const ownKey = node?.type!==CanvasNodeType.Video && (node?.metadata?.storageKey || node?.metadata?.studio?.adoption);
     const inherited = node?.metadata?.studio?.references || [];
     const inheritedIds=ownKey ? [node!.id] : inherited.flatMap(ref => {
@@ -344,7 +361,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       setPasteScript(draft.pasteScript||false);
       // A resumed prompt must keep the selected episode and local rewrite boundary.
       setEpisodeNo(draft.episodeNo);setRewriteScope(draft.rewriteScope);setScriptMode(draft.scriptMode||node?.metadata?.studio?.scriptMode||"original");setScriptSourceNodeId(draft.scriptSourceNodeId);
-      setPrompt(draft.prompt);setRatio(draft.aspectRatio);setModel(draft.model);setDuration(draft.durationSec);setSettings(draft.settings);
+      setPrompt(presentation==="storyboard"&&script&&draft.prompt===studioScriptPrompt(script,scriptInstruction)?scriptInstruction:draft.prompt);setRatio(draft.aspectRatio);setModel(draft.model);setDuration(draft.durationSec);setSettings(draft.settings);
       const incoming=connectionsRef.current.filter(c=>c.toNodeId===node?.id).flatMap(c=>{
         const ref=nodesRef.current.find(n=>n.id===c.fromNodeId);return ref&&[CanvasNodeType.Image,...(action==="video"?[CanvasNodeType.Video,CanvasNodeType.Audio]:[])].includes(ref.type as CanvasNodeType)?[ref.id]:[];
       });
@@ -353,27 +370,67 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(action==="image")setImageCount(draft.count);if(action==="video"){setVideoCount(draft.count);setVideoDraft(draft.video);}
     }
     onClosePanel(); setDirector(true);
-  }, [onClosePanel,projectId,addNode]);
+  }, [onClosePanel,projectId,addNode,onFocusNode]);
   useEffect(()=>{
     if(!director||!originId)return;
     const connectedReferenceNodeIds=connectionsRef.current.filter(c=>c.toNodeId===originId&&nodesRef.current.some(n=>n.id===c.fromNodeId&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(n.type as CanvasNodeType))).map(c=>c.fromNodeId);
     const draft={operation,prompt,referenceNodeIds:referenceIds,connectedReferenceNodeIds,aspectRatio:ratio,model,count:operation==="video"?videoCount:imageCount,durationSec:duration,settings,video:videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId};
-    patch(originId,n=>({...n,metadata:{...n.metadata,studio:{kind:n.metadata?.studio?.kind||"shot",...n.metadata?.studio,composerDraft:draft}}}));
+    patch(originId,n=>({...n,metadata:{...n.metadata,studio:{kind:n.metadata?.studio?.kind||(operation==="text"?"text":"shot"),...n.metadata?.studio,composerDraft:draft}}}));
   },[director,originId,operation,prompt,referenceIds,ratio,model,videoCount,imageCount,duration,settings,videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId,patch]);
   const closeDirector=async()=>{
-    if(busy||directorSaving)return;
+    if(busy||directorSaving)return false;
     setPickingReferences(false);
     setDirectorSaving(true);const session=panelSession.current;
-    try{await saveStudioDocument(projectId);if(panelSession.current===session)setDirector(false);}
-    catch(e){message.error(e instanceof Error?e.message:"创作草稿未保存，请重试关闭");}
+    try{await saveStudioDocument(projectId);if(panelSession.current===session)setDirector(false);return true;}
+    catch(e){message.error(e instanceof Error?e.message:"创作草稿未保存，请重试关闭");return false;}
     finally{setDirectorSaving(false);}
   };
+  // Switching nodes/types must persist the old draft first. A failed save keeps its editor visible.
+  const saveStoryboardSelection=async()=>{
+    if(storyboardChanging||directorSaving||busy)return false;
+    if(director)return closeDirector();
+    if(!storyboardNodeId)return true;
+    setStoryboardChanging(true);
+    try{await saveStudioDocument(projectId);return true;}
+    catch(e){message.error(e instanceof Error?e.message:"节点未保存，请重试");return false;}
+    finally{setStoryboardChanging(false);}
+  };
+  const switchView=async(next:typeof mode)=>{
+    if(mode==="storyboard"&&!await saveStoryboardSelection())return;
+    if(mode!=="storyboard"&&director&&!await closeDirector())return;
+    if(mode==='work'&&next!=='work')await saveWork(next);else setMode(next);
+    if(next!=="storyboard")setStoryboardNodeId(undefined);
+    onClosePanel();
+  };
+  const viewCanvasNode=async(id:string)=>{
+    if(!await saveStoryboardSelection())return;
+    setStoryboardNodeId(undefined);setMode('canvas');onFocusNode(id);
+  };
+  const closeStoryboardDetail=async()=>{
+    if(!await saveStoryboardSelection())return;
+    setStoryboardNodeId(undefined);setStoryboardTextExpanded(false);
+  };
+  const openStoryboardNode=async(node:CanvasNodeData)=>{
+    if(node.id===storyboardNodeId&&director)return;
+    if(!await saveStoryboardSelection())return;
+    setStoryboardNodeId(node.id);setStoryboardTextExpanded(false);onClosePanel();
+    const command=studioNodeCommand(node,true);
+    if(command==="image"||command==="video")openDirector(command,node,"storyboard");
+    else if(command==="editor")openDirector("script",node,"storyboard");
+    else if(command==="edit-text")openDirector("text",node,"storyboard");
+  };
+  const editStoryboardNode=(node:CanvasNodeData)=>{
+    if(node.metadata?.studio?.kind==="script"||node.metadata?.studio?.script)setEditorId(node.id);
+    else setStoryboardTextExpanded(true);
+  };
   const splitScript = useCallback((node: CanvasNodeData) => {
-    openDirector("storyboard", node);
-  }, [openDirector]);
+    openDirector("storyboard", node, mode==="storyboard"?"storyboard":"canvas");
+  }, [openDirector,mode]);
   useEffect(() => {
     const listener = (event: Event) => {
       const { action: requestedAction, nodeId } = (event as CustomEvent<{ action: string; nodeId?: string }>).detail;
+      // Keep the current draft visible if the native file picker is cancelled.
+      if (requestedAction === 'upload-image') return;
       // A newly added Flow node is already in the document store before React updates these props.
       const node = nodesRef.current.find(n => n.id === nodeId)
         || useCanvasStore.getState().projects.find(p=>p.id===projectId)?.nodes.find(n=>n.id===nodeId);
@@ -418,6 +475,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(inputError){message.error(inputError);return;}
     let requestPrompt=prompt.trim();
     try {if(operation==="script"&&!rewriteScope)requestPrompt=studioScriptInput(prompt,scriptMode,scriptSourceNodeId,nodesRef.current);
+      // Storyboard keeps the document in its preview; the actual request snapshots it at submission.
+      if(storyboardNodeId===originId&&origin?.metadata?.studio?.script&&(operation==="script"||operation==="storyboard"))requestPrompt=studioScriptPrompt(origin.metadata.studio.script,requestPrompt);
       requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined);
       if(requestPrompt.length>16000)throw new Error("创作要求与引用文本合计超过 16000 字，请减少引用或按分集创作");}
     catch(e){message.error(e instanceof Error?e.message:"请检查改编素材");return;}
@@ -426,12 +485,13 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     let posted=false;
     // Fill a new draft or storyboard shot; completed scripts keep their editable source.
     const reuseScriptDraft=(operation==="script"||operation==="storyboard")&&origin?.type===CanvasNodeType.Text&&origin.metadata?.studio?.kind==="script"&&!origin.metadata.studio.script;
-    const target = reuseScriptDraft || operation === "image" && origin?.type===CanvasNodeType.Image && (origin.metadata?.studio?.shot || !origin.metadata?.storageKey) || operation === "video" && origin?.type === CanvasNodeType.Video && origin.metadata?.studio?.kind!=="work" ? origin! : makeStudioNode(operation, origin);
+    const target = operation==="text"&&origin?.type===CanvasNodeType.Text || reuseScriptDraft || operation === "image" && origin?.type===CanvasNodeType.Image && (origin.metadata?.studio?.shot || !origin.metadata?.storageKey) || operation === "video" && origin?.type === CanvasNodeType.Video && origin.metadata?.studio?.kind!=="work" ? origin! : makeStudioNode(operation, origin);
     const usedReferenceIds=operation==="video"&&nativeVideo ? videoDraft.mode==="universal_reference_video"?referenceIds:videoDraft.mode==="t2v"?[]:[videoDraft.firstId,...(videoDraft.mode==="first_last_frame_video"?[videoDraft.lastId]:[])].filter((id):id is string=>!!id):referenceIds;
     const references = makeReferences(usedReferenceIds, operation === "video" ? "frame" : "character");
     const requestEpisodeNo=operation==="image"||operation==="video"?studioNodeEpisode(origin):episodeNo;
     const selectedModel=chosenModel;
-    const request: StudioRunRequest = { clientRequestId: nanoid(), nodeId: target.id, operation, prompt: requestPrompt, references:operation==="video"&&nativeVideo?[]:references,video:operation==="video"&&nativeVideo?videoSettings:undefined, aspectRatio: ratio, durationSec: duration, count:operation==="image"?imageCount:operation==="video"?videoCount:undefined,model:capabilities.mock?undefined:(operation==="script"||operation==="storyboard"?(capabilities.textModelMode!=="fixed"&&capabilities.textModels?.some(m=>m.endpointId===model)?model:undefined)||capabilities.textModels?.find(m=>m.isDefault)?.endpointId||capabilities.textModels?.[0]?.endpointId:selectedModel?.endpointId),
+    const request: StudioRunRequest = { clientRequestId: nanoid(), nodeId: target.id, operation, prompt: requestPrompt, references:operation==="video"&&nativeVideo?[]:references,video:operation==="video"&&nativeVideo?videoSettings:undefined, aspectRatio: ratio, durationSec: duration, count:operation==="image"?imageCount:operation==="video"?videoCount:undefined,model:capabilities.mock?undefined:(["text","script","storyboard"].includes(operation)?(capabilities.textModelMode!=="fixed"&&capabilities.textModels?.some(m=>m.endpointId===model)?model:undefined)||capabilities.textModels?.find(m=>m.isDefault)?.endpointId||capabilities.textModels?.[0]?.endpointId:selectedModel?.endpointId),
+      ...(operation==="text"?{textEdit:{content:origin?.metadata?.content||""},history:origin?.metadata?.studio?.textEditor?.turns}:{}),
       episodeNo:requestEpisodeNo,...(operation==="script"||operation==="storyboard"?{settings}:{}),...(operation==="script"?{mode:scriptMode}:{}),maxCost:quote??undefined };
     const pending = { ...target, metadata: { ...target.metadata, prompt: request.prompt, ...(operation==="video"?{videoCount:String(videoCount)}:{}), ...(operation==="video"&&nativeVideo?{videoMode:videoDraft.mode==="universal_reference_video"?"reference":"frames",seconds:String(duration),vquality:videoDraft.tier.replace(/p$/,""),size:computeVideoSize(videoDraft.tier.replace(/p$/,""),ratio),model:encodeChannelModel(SERVER_CHANNEL_ID,selectedModel!.name)}:{}),status: "loading" as const,
       studio: { ...target.metadata!.studio!, request, references, runId:undefined, upstreamChanged:false,...(operation==="script"?{scriptMode,scriptSourceNodeId:scriptMode==="adapt"?scriptSourceNodeId:undefined}:{}),settings:operation==="script"||operation==="storyboard"?settings:undefined,episodeNo:requestEpisodeNo,parentNodeId:target===origin?target.metadata?.studio?.parentNodeId:origin?.id,
@@ -448,12 +508,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       posted=true;
       const run = await submitStudioRun(projectId, request);
       if(epoch.current!==submissionEpoch)return;
-      patch(target.id, n => applyStudioRun(n, run)); if(panelSession.current===session)setDirector(false); void watch(run,target.id);
+      patch(target.id, n => applyStudioRun(n, run)); if(panelSession.current===session){if(mode==="storyboard")setStoryboardNodeId(target.id);else setDirector(false);} void watch(run,target.id);
     } catch (e) {
       if(epoch.current!==submissionEpoch)return;
       message.error(e instanceof Error ? e.message : "提交失败，请重试");
       // Preserve the request key so an uncertain network outcome can recover the original task.
-      const rejected=!posted || e instanceof ApiError && (typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408 || e.code==="AI_NOT_CONFIGURED" || e.code==="PROMPT_NOT_CONFIGURED");
+      const rejected=!posted || e instanceof ApiError && (typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408 || e.code==="AI_NOT_CONFIGURED" || e.code==="PROMPT_NOT_CONFIGURED" || e.code==="ENDPOINT_NOT_ALLOWED");
       patch(target.id,n => ({ ...n, metadata: { ...n.metadata,status:rejected?"error":"loading", errorDetails: rejected?(e instanceof Error?e.message:"提交失败，请重试"):"任务未确认，请确认原任务，避免重复提交" } }));
     } finally { if(epoch.current===submissionEpoch)setBusy(false); }
   };
@@ -611,7 +671,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     else if(start==="library")openIpLibrary();
   },[projectId,openDirector,openSpeech,openIpLibrary,onClosePanel]);
   const finishIpImport=(nodeId:string)=>{
-    setAssetPicker(false);setMode("canvas");
+    setAssetPicker(false);if(libraryTarget.kind!=="director")setMode("canvas");
     if(libraryTarget.kind==="node"&&libraryTarget.nodeId)onRestorePanel(libraryTarget.nodeId);
     else if(libraryTarget.kind==="director") {
       if(operation==="video"&&nativeVideo&&videoDraft.mode!=="universal_reference_video")changeVideoDraft(videoDraft.mode==="first_last_frame_video"&&videoDraft.firstId?{...videoDraft,lastId:nodeId}:{...videoDraft,firstId:nodeId});
@@ -644,7 +704,6 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     addNode(node,parent);setEditorId(undefined);setMode("canvas");openDirector("image",node);
   };
   const selectedTakes = selected?.type===CanvasNodeType.Image?selected.metadata?.images:selected?.metadata?.videos;
-  const activeScripts = useMemo(() => nodes.filter(n => n.metadata?.studio?.script), [nodes]);
   const unconfirmed = nodes.filter(n => n.metadata?.status==="loading" && (n.metadata.studio?.request||n.metadata.studio?.speechRequest||n.metadata.studio?.lipSyncRequest) && !runs.some(r=>r.id===n.metadata?.studio?.runId));
   const candidates=operation==="video"?models.video:models.image;
   const chosenModel=(operation!=="image"||capabilities?.imageModelMode!=="fixed")&&model&&candidates.some(m=>m.endpointId===model)?candidates.find(m=>m.endpointId===model):candidates.find(m=>m.isDefault) || candidates[0];
@@ -725,7 +784,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     (videoUnitQuote==null?null:videoUnitQuote*videoCount):(capabilities?.textModels?.find(m=>m.endpointId===((capabilities.textModelMode!=="fixed"&&capabilities.textModels?.some(m=>m.endpointId===model)?model:undefined)||capabilities.textModels.find(m=>m.isDefault)?.endpointId))?.creditCost??capabilities?.textCost);
   const episodeNumbers=[...new Set([...allShots,...allClips].map(n=>n.metadata?.studio?.episodeNo||n.metadata?.studio?.shot?.episodeNo||1))].sort((a,b)=>a-b);
   const usePlanStep=(step:StudioPlan["steps"][number])=>{const origin=nodesRef.current.find(n=>step.referenceNodeIds.includes(n.id)&&n.metadata?.studio?.script);openDirector(step.operation,origin);setPrompt(step.prompt);setReferenceIds(step.referenceNodeIds.filter(id=>nodesRef.current.find(n=>n.id===id&&n.type===CanvasNodeType.Image&&n.metadata?.storageKey)));setMissingPlanRefs(step.unresolvedReferences||[]);setAssistantOpen(false);};
-  const directorPending=nodes.find(n=>n.id===originId&&studioGenerationPending(n));
+  const directorOrigin=nodes.find(n=>n.id===originId);
+  const directorPending=studioGenerationPending(directorOrigin)?directorOrigin:undefined;
+  const referenceComposer=["script","storyboard","image","video"].includes(operation);
   const contextualActions=selected && selectedNodeIds.size===1 && mode==="canvas" && !referencePicking && !pickingReferences?<div className="studio-context-actions" aria-label="继续创作">
       <span className="studio-selected-name">{selected.title}</span>
       {selected.type===CanvasNodeType.Image && <><button data-studio-command="image" type="button" onClick={() => {
@@ -734,12 +795,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
             setPrompt("以选中的整张人物设定图为角色参考，生成一张单独的镜头画面。保持同一人物特征、服饰和视觉风格。只呈现一个场景，不要多视角拼版、说明文字或边框。请在此补充场景、动作与镜头角度。");setRatio("9:16");
           }
         }}><ImagePlus size={15}/>{selectedStudio?.libraryAssetRole==="sheet"?"生成镜头画面":selected.metadata?.storageKey?"继续改图":"生成图片"}</button>
-        {selectedStudio?.libraryAssetRole==="sheet"?<button type="button" onClick={()=>openDirector("image",selected)}><ImagePlus size={15}/>修改设定图</button>:<button type="button" disabled={!selected.metadata?.storageKey} onClick={() => openDirector("video",selected)}><Play size={15}/>生成视频</button>}
-        <button type="button" disabled={!selected.metadata?.storageKey} onClick={() => openAdopt(selected)}><UserRound size={15}/>{selected.metadata?.studio?.adoption?.lookId?"另存人物素材":selected.metadata?.studio?.adoption?"更新主形象":"加入 IP"}</button></>}
-      {selected.metadata?.studio?.script && <><button type="button" onClick={() => {setEditorId(selected.id);onClosePanel();}}><FileText size={15}/>打开编辑器</button>
+        {!!selected.metadata?.storageKey&&<>{selectedStudio?.libraryAssetRole==="sheet"?<button type="button" onClick={()=>openDirector("image",selected)}><ImagePlus size={15}/>修改设定图</button>:<button type="button" onClick={() => openDirector("video",selected)}><Play size={15}/>引用生成视频</button>}
+        <button type="button" onClick={() => openAdopt(selected)}><UserRound size={15}/>{selected.metadata?.studio?.adoption?.lookId?"另存人物素材":selected.metadata?.studio?.adoption?"更新主形象":"加入 IP"}</button></>}</>}
+      {selected.type===CanvasNodeType.Text&&selected.metadata?.studio?.script && <><button type="button" onClick={() => {setEditorId(selected.id);onClosePanel();}}><FileText size={15}/>打开编辑器</button>
         <button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button></>}
-      {(selected.metadata?.studio?.adoption||selected.metadata?.studio?.references?.some(r=>r.avatarId)) && <button type="button" onClick={() => openDirector("script",selected)}><BookOpen size={15}/>创作剧本</button>}
-      {selected.type===CanvasNodeType.Video && <><button type="button" disabled={!selected.metadata?.storageKey||!!selected.metadata.templateStepId&&selected.metadata.studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>
+      {selected.type===CanvasNodeType.Image&&selected.metadata?.storageKey&&(selected.metadata?.studio?.adoption||selected.metadata?.studio?.references?.some(r=>r.avatarId)) && <button type="button" onClick={() => openDirector("script",selected)}><BookOpen size={15}/>创作剧本</button>}
+      {selected.type===CanvasNodeType.Video && <>{!!selected.metadata?.storageKey&&<button type="button" disabled={!!selected.metadata.templateStepId&&selected.metadata.studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>}
         {selected.metadata?.studio?.kind!=="work" && <button data-studio-command="video" type="button" disabled={selected.metadata?.status==="loading"} onClick={()=>openDirector("video",selected)}>{selected.metadata?.storageKey?"重新生成视频":"生成视频"}</button>}</>}
       {selected.metadata?.studio?.lipSyncRequest&&selected.metadata.storageKey&&!selected.metadata.studio.lipSyncNormalized&&<button type="button" disabled={busy} onClick={()=>void (async()=>{
         if(busy||!selected.metadata?.studio?.runId)return;setBusy(true);const token=epoch.current;
@@ -760,68 +821,18 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       {selected.metadata?.status==="error" && (selected.metadata.studio?.request||selected.metadata.studio?.speechRequest||selected.metadata.studio?.lipSyncRequest) && <button type="button" disabled={busy} onClick={()=>void retry(selected)}>重新生成</button>}
       {selectedTakes && selectedTakes.length>1 && <><button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button><Select aria-label="采用版本" value={selected.type===CanvasNodeType.Image?selected.metadata?.primaryImageId:selected.metadata?.primaryVideoId}
         onChange={id => chooseTake(selected.id,id)} options={selectedTakes.map((v,i) => ({value:v.id,label:v.id.endsWith(":comparison")?"原始对照结果":`版本 ${i+1}${v.status==="loading"?" · 生成中":v.status==="error"?" · 失败":""}`,disabled:v.status!=="success"||!v.storageKey}))}/></>}</div>:null;
-  return <div className="studio-overlay">
-    <div className="studio-command-strip" aria-label="工作台工具">
-      <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布",Layers],["storyboard","故事板",Clapperboard],["work","成片",Play]] as const).map(([value,label,Icon]) =>
-        <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving} onClick={() => {if(mode==='work'&&value!=='work')void saveWork(value);else setMode(value);onClosePanel();}}><Icon size={15}/>{label}</button>)}</nav>
-      <div className="studio-director-launch">
-        <button type="button" className="studio-ip-library" onClick={()=>openIpLibrary()}><UserRound size={15}/>IP 人物库</button>
-        <button type="button" className="studio-template-launch" onClick={()=>openTemplates()}>画布模板</button>
-        <button type="button" onClick={()=>setTaskList(true)} aria-label="查看创作任务" title="创作任务"><RefreshCw size={17}/></button>
-        <Dropdown trigger={["click"]} getPopupContainer={containers} menu={{items:[
-          {key:"commerce",label:"商品视频模板",onClick:()=>openTemplates("commerce")},
-          {key:"digital",label:"数字人视频模板",onClick:()=>openTemplates("digital")},
-          {key:"speech",label:"配音",onClick:()=>openSpeech(selected)},
-          {key:"lip",label:"口型同步",onClick:()=>openLipSync(selected)},
-          {key:"assistant",label:"导演助手",onClick:()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}},
-        ]}}><button type="button" aria-label="更多创作工具">更多创作</button></Dropdown>
-        <button type="button" className="studio-primary" onClick={()=>dispatchStudioCommand("assistant",selected?.metadata?.studio?.conversation?selected.id:undefined)}><Sparkles size={17}/>AI 创作</button>
-      </div>
-    </div>
-    {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
-    {capabilityError && <div className="studio-error-note" role="alert">{capabilityError}<button type="button" onClick={loadCapabilities}>重新加载</button></div>}
-    {!nodes.length&&mode==="canvas"&&<section className="studio-start" aria-label="开始创作"><h2>从一个 IP，开始创作</h2><p>先打造形象，也可以直接写剧本或引用已有 IP。</p>
-      <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>打造 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>制作 IP 短视频</button></div></section>}
-    {!director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} above width={660}>{contextualActions}</StudioFloatingPanel>}
-    {mode!=="canvas" && <section className="studio-focused-view" aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
-      <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving} onClick={() => {if(mode==='work')void saveWork('canvas');else setMode('canvas');}}><X size={18}/></button></header>
-      {!!episodeNumbers.length&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/>{mode==="storyboard"&&<Button onClick={()=>{setBatchNodeId(undefined);setBatchOpen(true);}} disabled={!shots.length}>连续制作所选分集</Button>}</div>}
-      {mode==="storyboard" ? <>
-        <div className="studio-view-intro"><p>逐镜编辑画面、选择首帧，再生成视频片段。</p><button type="button" onClick={() => openDirector("script")}><Plus size={16}/>新建剧本</button></div>
-        {!shots.length && <div className="studio-empty"><Clapperboard size={28}/><h3>从剧本开始制作</h3><p>打开剧本并生成分镜，也可以直接创作图片。</p>{activeScripts.map(n => <Button key={n.id} onClick={() => splitScript(n)}>拆分《{n.title}》</Button>)}</div>}
-        <div className="studio-shot-list">{shots.map((node,index) => <article key={node.id} className="studio-shot-row">
-          <div className="studio-shot-media">{node.metadata?.content?<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt={node.title}/>:<ImagePlus size={30}/>}</div>
-          <div className="studio-shot-body"><div className="studio-shot-heading"><strong>第 {node.metadata?.studio?.episodeNo||1} 集 · {index+1}. {node.title}</strong><span>{node.metadata?.studio?.shot?.durationSec} 秒</span></div>
-            {node.metadata?.studio?.upstreamChanged && <p role="status">来源剧本已修改。此镜头与产物保留，可重新拆分镜头。</p>}
-            <label>画面描述<Input.TextArea aria-label={`镜头 ${index+1} 画面描述`} value={node.metadata?.studio?.shot?.description} autoSize={{minRows:2,maxRows:5}}
-              onChange={e => patch(node.id,n => ({...n,metadata:{...n.metadata,prompt:e.target.value,studio:{...n.metadata!.studio!,shot:{...n.metadata!.studio!.shot!,description:e.target.value}}}}))}/></label>
-            <label>台词<Input aria-label={`镜头 ${index+1} 台词`} value={node.metadata?.studio?.shot?.dialogue}
-              onChange={e => patch(node.id,n => ({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,shot:{...n.metadata!.studio!.shot!,dialogue:e.target.value}}}}))}/></label>
-            <div className="studio-row-actions"><Button onClick={() => openDirector("image",node)} disabled={node.metadata?.status==="loading"}>生成首帧</Button>
-              <Button onClick={() => openDirector("video",node)} disabled={!node.metadata?.storageKey}>生成视频</Button><Button onClick={() => {setMode("canvas");onFocusNode(node.id);}}>在画布中查看</Button>
-              {node.metadata?.status==="loading" && <span>{studioTaskLabel(node.metadata.studio?.task,true)}</span>}{node.metadata?.status==="error" && <span role="alert">{node.metadata.errorDetails}</span>}</div>
-          </div></article>)}</div>
-      </> : <>
-        <div className="studio-view-intro"><p>选择片段并调整顺序，可保留原音轨或采用画布配音。</p><Select aria-label="作品画幅" value={workDraft.aspectRatio} onChange={aspectRatio=>changeWorkDraft({aspectRatio})} options={[{value:"9:16",label:"竖屏 9:16"},{value:"16:9",label:"横屏 16:9"}]}/></div>
-        {!clips.length && <div className="studio-empty"><Play size={28}/><h3>还没有视频片段</h3><p>在画布中上传视频，或先生成片段，再排序、配音和合成。</p><Button onClick={() => setMode("canvas")}>前往画布添加片段</Button><Button onClick={() => openDirector("video")}>创作视频片段</Button><Button onClick={() => setMode("storyboard")}>前往故事板</Button></div>}
-        <div className="studio-clip-list">{clips.map((node,index) => <article key={node.id} className="studio-clip-row">
-          <Checkbox aria-label={`采用片段 ${index+1}`} checked={node.metadata?.studio?.includeInWork!==false} onChange={e => patch(node.id,n => ({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork:e.target.checked}}}))}/>
-          <SignedVideo src={node.metadata?.content} storageKey={node.metadata?.storageKey} controls preload="metadata"/><div><strong>第 {node.metadata?.studio?.episodeNo||1} 集 · {index+1}. {node.title}</strong><p>{node.metadata?.prompt}</p></div>
-          <Button aria-label={`片段 ${index+1} 上移`} disabled={!index} onClick={() => reorder(node,-1)}><ArrowUp size={15}/></Button>
-          <Button aria-label={`片段 ${index+1} 下移`} disabled={index===clips.length-1} onClick={() => reorder(node,1)}><ArrowDown size={15}/></Button></article>)}</div>
-        {!!clips.length&&<label className="studio-packaging-editor">成片配音<Select aria-label="成片配音" allowClear value={voiceoverKey} onChange={voiceoverStorageKey=>changeWorkDraft({voiceoverStorageKey})} placeholder="保留原音轨" options={nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&n.metadata.status==="success").map(n=>({value:n.metadata!.storageKey!,label:n.title}))}/>{workVoiceMissing&&<small role="alert">原配音已移出画布，请重新选择或清除配音。</small>}<small>替换音轨不会重新匹配口型。已制作口型片段时，请保留其原音轨；配音不能长于成片。</small></label>}
-        {!!clips.length&&<div className="studio-packaging-editor"><Checkbox checked={packagingEnabled} onChange={e=>changeWorkDraft({packagingEnabled:e.target.checked})}>添加品牌文字与字幕</Checkbox>{packagingEnabled&&<><div className="studio-settings-grid"><label>品牌<Input aria-label="成片品牌" value={brand} onChange={e=>changeWorkDraft({brand:e.target.value})} maxLength={60}/></label><label>作品标题<Input aria-label="成片标题文字" value={workTitle} onChange={e=>changeWorkDraft({title:e.target.value})} maxLength={120}/></label></div><label>结尾提示<Input aria-label="成片结尾提示" value={cta} onChange={e=>changeWorkDraft({cta:e.target.value})} maxLength={100}/></label><label>字幕（秒）<Input.TextArea aria-label="成片字幕时间与文字" value={captionText} onChange={e=>changeWorkDraft({captionText:e.target.value})} rows={4} placeholder={"0-3: 你要显示的字幕\n3-5: 下一条字幕"}/></label><p>字幕按你确认的时间烧录，当前不自动转写音轨。</p></>}</div>}
-        {!!clips.length && <div className="studio-assembly-actions"><Button loading={workSaving} onClick={()=>void saveWork()}>保存成片配置</Button><Button type="primary" loading={busy} disabled={workSaving||workVoiceMissing} onClick={() => void assemble()}>合成作品</Button><span>{capabilities?.mock?"合成已选片段；测试响应不产生模型费用":"合成已选片段，不额外收取模型积分"}</span></div>}
-        {work.map(node => <article key={node.id} className="studio-work-result"><h3>{node.title}</h3>{node.metadata?.status==="loading"?<p>合成中，可返回画布继续编辑</p>:node.metadata?.content?<><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
-          <Button onClick={() => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e.message))}><Download size={15}/>下载作品</Button></>:<p role="alert">{node.metadata?.errorDetails || "作品待合成"}</p>}</article>)}
-      </>}
-    </section>}
-    <StudioFloatingPanel title={labels[operation]} anchorId={originId} open={director&&selectedNodeIds.size<=1&&!(assetPicker&&libraryTarget.kind==="director")} onClose={() => void closeDirector()} closable={!directorSaving&&!busy} className="studio-node-composer" footer={<>{(operation==="video"||operation==="image"&&capabilities?.imageModelMode!=="fixed") && !capabilities?.mock && <label>模型<Select aria-label="生成模型" value={chosenModel?.endpointId} onChange={changeGenerationModel} options={candidates.map(m=>({value:m.endpointId,label:m.name}))} placeholder="尚未配置模型"/></label>}<div className="studio-creator-footer"><p className="studio-quote">{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":quote==null?"模型未配置，暂不可生成":`${quote} 积分${operation==="video"?` · ${videoCount} 条，每条 ${videoUnitQuote} 积分`:""}`}</p>{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?"原任务正在生成，请等待结果。":busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" loading={busy||directorSaving} disabled={!prompt.trim()||!capabilities||removedVideoMention||!!legacyVideoError||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||prompt.length>16000||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
-      <div className="studio-composer-references"><Button aria-pressed={pickingReferences} onClick={()=>setPickingReferences(value=>!value)}>{pickingReferences?"完成参考选择":"参考"}</Button><Button ref={directorLibraryButton} onClick={()=>openIpLibrary({kind:"director"})}>IP 人物库</Button>
+  const storyboardNode=nodes.find(n=>n.id===storyboardNodeId);
+  const directorPanel = operation==="text" ? <StudioTextComposer open={director} embedded={mode==="storyboard"} nodeId={originId} value={prompt} onChange={setPrompt}
+    model={model} onModelChange={setModel} capabilities={capabilities} cost={quote} busy={busy||directorSaving}
+    pending={directorPending?(directorPending.metadata?.studio?.runId?studioTaskLabel(directorPending.metadata.studio.task):busy?"正在提交修改要求…":"提交结果尚未确认，请确认原任务"):undefined}
+    unknownTask={!!directorPending&&!directorPending.metadata?.studio?.runId&&!busy} onConfirm={()=>{if(directorPending)void retry(directorPending);}}
+    summary={directorOrigin?.metadata?.studio?.textEditor?.turns.at(-1)?.content} onSubmit={()=>void submit()} onClose={()=>void closeDirector()}/>
+    : <StudioFloatingPanel title={labels[operation]} anchorId={originId} embedded={mode==="storyboard"} open={director&&(mode==="storyboard"||selectedNodeIds.size<=1)&&!(assetPicker&&libraryTarget.kind==="director")} onClose={() => void closeDirector()} closable={!directorSaving&&!busy} className="studio-node-composer" footer={<>{(operation==="video"||operation==="image"&&capabilities?.imageModelMode!=="fixed") && !capabilities?.mock && <label>模型<Select aria-label="生成模型" value={chosenModel?.endpointId} onChange={changeGenerationModel} options={candidates.map(m=>({value:m.endpointId,label:m.name}))} placeholder="尚未配置模型"/></label>}<div className="studio-creator-footer"><p className="studio-quote">{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":quote==null?"模型未配置，暂不可生成":`${quote} 积分${operation==="video"?` · ${videoCount} 条，每条 ${videoUnitQuote} 积分`:""}`}</p>{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?"原任务正在生成，请等待结果。":busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" loading={busy||directorSaving} disabled={!prompt.trim()||!capabilities||removedVideoMention||!!legacyVideoError||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||prompt.length>16000||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
+      <div className="studio-composer-references">{referenceComposer&&<><Button aria-pressed={pickingReferences} onClick={()=>{setMode(pickingReferences&&storyboardNodeId?"storyboard":"canvas");setPickingReferences(value=>!value);}}>{pickingReferences?"完成参考选择":"参考"}</Button><Button ref={directorLibraryButton} onClick={()=>openIpLibrary({kind:"director"})}>IP 人物库</Button></>}
+        {operation==="image"&&directorOrigin?.type===CanvasNodeType.Image&&<Button icon={<Upload size={16}/>} disabled={busy||!!directorPending} onClick={()=>dispatchStudioCommand('upload-image',originId)}>{directorOrigin.metadata?.storageKey?'替换图片':'上传图片'}</Button>}
         {originId&&studioLinkedNodes(originId,nodes,connections).filter(n=>studioLinkedText(n).trim()||n.type===CanvasNodeType.Text&&n.metadata?.studio?.templateInput).map(n=><span className="studio-reference-chip" key={`text-${n.id}`}><FileText size={14}/><span title={studioLinkedText(n)}>{n.title}</span><button aria-label={`移除文本引用 ${n.title}`} onClick={()=>setConnections(edges=>edges.filter(c=>c.toNodeId!==originId||c.fromNodeId!==n.id))}><X size={14}/></button></span>)}
         {(operation==="video"?studioVideoReferenceIds(videoDraft,referenceIds):referenceIds).map(id=>{const node=nodes.find(n=>n.id===id);return node?<span className="studio-reference-chip" key={id}>{node.type===CanvasNodeType.Image&&node.metadata?.content&&<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>}<span>{operation==="video"?`${videoPromptReferences.find(r=>r.nodeId===id)?.label||"待补充"} · ${node.title}`:node.title}</span><button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>removeComposerReference(id)}><X size={13}/></button></span>:null;})}
       </div>
-      <div className="studio-composer-node-actions" data-operation={operation}>{contextualActions}</div>
       {pickingReferences&&<p className="studio-reference-pick-note" role="status">点击画布素材添加参考，完成后点击“完成参考选择”。</p>}
         {operation==="video"?<div className="studio-prompt-field"><span>创作要求</span><StudioMotionPrompt videoModel={chosenModel?.endpointId} effectPreviews={nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>({storageKey:n.metadata!.storageKey!,name:n.title}))} ariaLabel="创作要求" references={videoPromptReferences} value={prompt} onChange={setPrompt} disabled={busy} className="studio-motion-drawer-editor" placeholder="描述画面或动作，输入 @ 引用素材"/></div>:<label>创作要求<Input.TextArea aria-label="创作要求" placeholder={operation==="script"?"描述故事、人物、风格和目标时长，也可以粘贴已有剧本":"描述希望生成的画面或动作"} value={prompt} onChange={e => setPrompt(e.target.value)} autoSize={{minRows:3,maxRows:7}} maxLength={16000}/></label>}
       {removedVideoMention&&<p role="alert">提示词中有已移除的参考，请删除该标记或重新引用素材。</p>}
@@ -856,10 +867,72 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
 
       </details>
       {nativeVideo&&videoValidationError&&<p className="studio-composer-validation" role="status">{videoValidationError}</p>}{legacyVideoError&&<p className="studio-composer-validation" role="status">{legacyVideoError}</p>}
-    </StudioFloatingPanel>
+    </StudioFloatingPanel>;
+  return <div className="studio-overlay">
+    <div className="studio-command-strip" aria-label="工作台工具">
+      <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布",Layers],["storyboard","故事板",Clapperboard],["work","成片",Play]] as const).map(([value,label,Icon]) =>
+        <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}><Icon size={15}/>{label}</button>)}</nav>
+      <div className="studio-director-launch">
+        <button type="button" className="studio-ip-library" onClick={()=>openIpLibrary()}><UserRound size={15}/>IP 人物库</button>
+        <button type="button" className="studio-template-launch" onClick={()=>openTemplates()}>画布模板</button>
+        <button type="button" onClick={()=>setTaskList(true)} aria-label="查看创作任务" title="创作任务"><RefreshCw size={17}/></button>
+        <Dropdown trigger={["click"]} getPopupContainer={containers} menu={{items:[
+          {key:"commerce",label:"商品视频模板",onClick:()=>openTemplates("commerce")},
+          {key:"digital",label:"数字人视频模板",onClick:()=>openTemplates("digital")},
+          {key:"speech",label:"配音",onClick:()=>openSpeech(selected)},
+          {key:"lip",label:"口型同步",onClick:()=>openLipSync(selected)},
+          {key:"assistant",label:"导演助手",onClick:()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}},
+        ]}}><button type="button" aria-label="更多创作工具">更多创作</button></Dropdown>
+        <button type="button" className="studio-primary" onClick={()=>dispatchStudioCommand("assistant",selected?.metadata?.studio?.conversation?selected.id:undefined)}><Sparkles size={17}/>AI 创作</button>
+      </div>
+    </div>
+    {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
+    {capabilityError && <div className="studio-error-note" role="alert">{capabilityError}<button type="button" onClick={loadCapabilities}>重新加载</button></div>}
+    {!nodes.length&&mode==="canvas"&&<section className="studio-start" aria-label="开始创作"><h2>从一个 IP，开始创作</h2><p>先打造形象，也可以直接写剧本或引用已有 IP。</p>
+      <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>打造 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>制作 IP 短视频</button></div></section>}
+    {!director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} above width={660}>{contextualActions}</StudioFloatingPanel>}
+    {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
+      <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
+      {mode==="work"&&!!episodeNumbers.length&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}
+      {mode==="storyboard" ? <StudioStoryboard nodes={nodes} connections={connections}
+        selectedNodeId={storyboardNodeId} changing={storyboardChanging||directorSaving||busy}
+        composer={director&&originId===storyboardNodeId?directorPanel:(
+          storyboardNode&&![CanvasNodeType.Text,CanvasNodeType.Image,CanvasNodeType.Video].includes(storyboardNode.type as CanvasNodeType)&&studioNodeCommand(storyboardNode,true)?<Button onClick={()=>dispatchStudioCommand(studioNodeCommand(storyboardNode,true)!,storyboardNode.id)}>打开{storyboardNode.type===CanvasNodeType.Audio?"配音编辑器":"节点工具"}</Button>:null)}
+        onCloseDetail={()=>void closeStoryboardDetail()} onEditNode={editStoryboardNode}
+        onAcceptText={node=>patch(node.id,n=>({...n,metadata:{...n.metadata,content:n.metadata?.studio?.textEditor?.proposal?.content||n.metadata?.content,
+          studio:{...n.metadata!.studio!,textEditor:{...n.metadata!.studio!.textEditor!,proposal:undefined}}}}))}
+        onOpenNode={node=>void openStoryboardNode(node)} onFocusNode={id=>void viewCanvasNode(id)}
+        onCreateScript={()=>openDirector("script",undefined,"storyboard")} onSplitScript={splitScript}
+        onBatch={()=>{setEpisodeFilter('all');setBatchNodeId(undefined);setBatchOpen(true);}}
+        onShotChange={(id,changes)=>setNodes(current=>updateStudioStoryboardShot(current,connections,id,changes))}
+        modelName={node=>{
+          const id=node.metadata?.studio?.composerDraft?.model||node.metadata?.studio?.request?.model||node.metadata?.model;
+          if(!id&&node.metadata?.content&&node.metadata.storageKey)return undefined;
+          const available=node.type===CanvasNodeType.Image?models.image:node.type===CanvasNodeType.Video?models.video:capabilities?.textModels||[];
+          return (id?available.find(m=>m.endpointId===id||m.endpointId===endpointIdFor(id)):available.find(m=>m.isDefault)||available[0])?.name;
+        }}/>
+      : <>
+        <div className="studio-view-intro"><p>选择片段并调整顺序，可保留原音轨或采用画布配音。</p><Select aria-label="作品画幅" value={workDraft.aspectRatio} onChange={aspectRatio=>changeWorkDraft({aspectRatio})} options={[{value:"9:16",label:"竖屏 9:16"},{value:"16:9",label:"横屏 16:9"}]}/></div>
+        {!clips.length && <div className="studio-empty"><Play size={28}/><h3>还没有视频片段</h3><p>在画布中上传视频，或先生成片段，再排序、配音和合成。</p><Button onClick={() => setMode("canvas")}>前往画布添加片段</Button><Button onClick={() => openDirector("video")}>创作视频片段</Button><Button onClick={() => setMode("storyboard")}>前往故事板</Button></div>}
+        <div className="studio-clip-list">{clips.map((node,index) => <article key={node.id} className="studio-clip-row">
+          <Checkbox aria-label={`采用片段 ${index+1}`} checked={node.metadata?.studio?.includeInWork!==false} onChange={e => patch(node.id,n => ({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork:e.target.checked}}}))}/>
+          <SignedVideo src={node.metadata?.content} storageKey={node.metadata?.storageKey} controls preload="metadata"/><div><strong>第 {node.metadata?.studio?.episodeNo||1} 集 · {index+1}. {node.title}</strong><p>{node.metadata?.prompt}</p></div>
+          <Button aria-label={`片段 ${index+1} 上移`} disabled={!index} onClick={() => reorder(node,-1)}><ArrowUp size={15}/></Button>
+          <Button aria-label={`片段 ${index+1} 下移`} disabled={index===clips.length-1} onClick={() => reorder(node,1)}><ArrowDown size={15}/></Button></article>)}</div>
+        {!!clips.length&&<label className="studio-packaging-editor">成片配音<Select aria-label="成片配音" allowClear value={voiceoverKey} onChange={voiceoverStorageKey=>changeWorkDraft({voiceoverStorageKey})} placeholder="保留原音轨" options={nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&n.metadata.status==="success").map(n=>({value:n.metadata!.storageKey!,label:n.title}))}/>{workVoiceMissing&&<small role="alert">原配音已移出画布，请重新选择或清除配音。</small>}<small>替换音轨不会重新匹配口型。已制作口型片段时，请保留其原音轨；配音不能长于成片。</small></label>}
+        {!!clips.length&&<div className="studio-packaging-editor"><Checkbox checked={packagingEnabled} onChange={e=>changeWorkDraft({packagingEnabled:e.target.checked})}>添加品牌文字与字幕</Checkbox>{packagingEnabled&&<><div className="studio-settings-grid"><label>品牌<Input aria-label="成片品牌" value={brand} onChange={e=>changeWorkDraft({brand:e.target.value})} maxLength={60}/></label><label>作品标题<Input aria-label="成片标题文字" value={workTitle} onChange={e=>changeWorkDraft({title:e.target.value})} maxLength={120}/></label></div><label>结尾提示<Input aria-label="成片结尾提示" value={cta} onChange={e=>changeWorkDraft({cta:e.target.value})} maxLength={100}/></label><label>字幕（秒）<Input.TextArea aria-label="成片字幕时间与文字" value={captionText} onChange={e=>changeWorkDraft({captionText:e.target.value})} rows={4} placeholder={"0-3: 你要显示的字幕\n3-5: 下一条字幕"}/></label><p>字幕按你确认的时间烧录，当前不自动转写音轨。</p></>}</div>}
+        {!!clips.length && <div className="studio-assembly-actions"><Button loading={workSaving} onClick={()=>void saveWork()}>保存成片配置</Button><Button type="primary" loading={busy} disabled={workSaving||workVoiceMissing} onClick={() => void assemble()}>合成作品</Button><span>{capabilities?.mock?"合成已选片段；测试响应不产生模型费用":"合成已选片段，不额外收取模型积分"}</span></div>}
+        {work.map(node => <article key={node.id} className="studio-work-result"><h3>{node.title}</h3>{node.metadata?.status==="loading"?<p>合成中，可返回画布继续编辑</p>:node.metadata?.content?<><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
+          <Button onClick={() => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e.message))}><Download size={15}/>下载作品</Button></>:<p role="alert">{node.metadata?.errorDetails || "作品待合成"}</p>}</article>)}
+      </>}
+    </section>}
+    {mode!=="storyboard"&&directorPanel}
     <StudioFloatingPanel title="剧本" anchorId={scriptPreviewId} open={!!scriptPreviewId&&!editorId} onClose={()=>setScriptPreviewId(undefined)} footer={<Button type="primary" onClick={()=>{setEditorId(scriptPreviewId);}}>展开剧本编辑器</Button>}>
       {(()=>{const script=nodes.find(n=>n.id===scriptPreviewId)?.metadata?.studio?.script;return script?<div className="studio-script-inline"><h3>{script.title}</h3><p>{script.outline||script.episodes[0]?.content.slice(0,600)}</p><small>{script.episodes.length} 集 · 在画布中确认内容，展开后编辑大纲、人物与分集正文。</small></div>:null;})()}
     </StudioFloatingPanel>
+    <Modal title="编辑文字" open={storyboardTextExpanded&&!!storyboardNode} onCancel={()=>{void saveStudioDocument(projectId).then(()=>setStoryboardTextExpanded(false)).catch(e=>message.error(e instanceof Error?e.message:"文字未保存，请重试"));}} footer={null} width="90vw" getContainer={containers}>
+      <Input.TextArea aria-label="展开节点文字" rows={18} value={storyboardNode?.metadata?.content||""} onChange={e=>{if(storyboardNode)patch(storyboardNode.id,n=>({...n,metadata:{...n.metadata,content:e.target.value}}));}}/>
+    </Modal>
     {editor&&<StudioScriptEditor key={`${projectId}:${editor.id}`} projectId={projectId} node={editor} capabilities={capabilities}
       onState={scriptEditor=>patch(editor.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,scriptEditor}}}))}
       onSettings={settings=>setNodes(list=>markStudioDescendants(list,editor.id).map(n=>n.id===editor.id?{...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,settings,composerDraft:undefined}}}:n))}
@@ -871,7 +944,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         });
         await saveStudioDocument(projectId);
       }}
-      onClose={()=>{setEditorId(undefined);setScriptPreviewId(editor.id);}}
+      onClose={()=>{setEditorId(undefined);if(mode==="storyboard"){setStoryboardNodeId(editor.id);openDirector("script",nodesRef.current.find(n=>n.id===editor.id)||editor,"storyboard");}else setScriptPreviewId(editor.id);}}
       onVisual={(key,item)=>{const current=nodesRef.current.find(n=>n.id===editor.id);if(current)createVisualReference(current,key,item);}}
       onStoryboard={no=>{const current=nodesRef.current.find(n=>n.id===editor.id);if(current){splitScript(current);setEpisodeNo(no);setEditorId(undefined);}}}/>}
     <StudioTemplateLibrary open={templateLibraryOpen} scope={templateScope} nodes={nodes} onClose={()=>setTemplateLibraryOpen(false)}/>

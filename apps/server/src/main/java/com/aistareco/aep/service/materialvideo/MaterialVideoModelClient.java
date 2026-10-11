@@ -138,12 +138,14 @@ public class MaterialVideoModelClient {
         }
     }
 
-    /** 协议硬时长边界（秒）；未知边界 = null（不臆造）。agnes 上限 = 441 帧 / 24fps ≈ 18 秒。 */
+    /** 协议硬时长边界（秒）；Agnes 2.5 用官方 4..12 秒，旧版仍按帧数限制。 */
     public DurationBounds protocolDurationBounds(AiModelEndpoint endpoint) {
         String protocol = protocolFor(endpoint, modelOf(endpoint));
         if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             return new DurationBounds(JusuanH3Contract.MIN_SECONDS, JusuanH3Contract.MAX_SECONDS);
         }
+        if (PROTOCOL_AGNES.equals(protocol) && isAgnesVideo25(modelOf(endpoint)))
+            return new DurationBounds(4, 12);
         if (PROTOCOL_AGNES.equals(protocol)) return new DurationBounds(null, 441 / AGNES_FRAME_RATE);
         return new DurationBounds(null, null);
     }
@@ -310,8 +312,11 @@ public class MaterialVideoModelClient {
             log.warn("[material-video] submit rejected endpoint={} model={} protocol={} status={} durationMs={} body={}",
                     p.getName(), model, protocol, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
             // 4xx 是「我们请求哪儿不对」，厂商原话直出给用户；5xx 是厂商自己的问题，只给状态码。
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
-                    submitFailureMessage(resp.statusCode(), resp.body()),
+            var mappedError = VideoProviderErrorMapper.submit(resp.statusCode(), resp.body());
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
+                    mappedError.map(VideoProviderErrorMapper.MappedError::code).orElse("VIDEO_SUBMIT_FAILED"),
+                    mappedError.map(VideoProviderErrorMapper.MappedError::message)
+                            .orElseGet(() -> submitFailureMessage(resp.statusCode(), resp.body())),
                     "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
                             + " body=" + snippet(resp.body()));
         }
@@ -733,6 +738,18 @@ public class MaterialVideoModelClient {
         body.put("prompt", nz(stripFrameUrlHint(prompt)));
 
         if (PROTOCOL_AGNES.equals(protocol)) {
+            String image = in.firstFrameUrl() != null ? in.firstFrameUrl() : extractFrameUrlHint(prompt);
+            if (isAgnesVideo25(model)) {
+                // Video 2.5 has a different wire contract from v2.0. In particular it
+                // rejects width/height/frame-count and requires mode + resolution tier.
+                body.put("mode", image == null || image.isBlank() ? "text" : "keyframe");
+                body.put("seconds", String.valueOf(durationSec > 0 ? durationSec : props.getDefaultDurationSec()));
+                body.put("size", "720P");
+                body.put("aspect_ratio", aspectRatio == null || aspectRatio.isBlank() ? "16:9" : aspectRatio);
+                body.put("n", 1);
+                if (image != null && !image.isBlank()) body.put("first_frame", image);
+                return body;
+            }
             Dimensions size = dimensionsForAspect(aspectRatio);
             // The current OpenAI-compatible gateway consumes size/seconds; width/height
             // alone were silently replaced by its 832x1088 default in real acceptance.
@@ -742,7 +759,6 @@ public class MaterialVideoModelClient {
             body.put("height", size.height());
             body.put("num_frames", normalizeFrames((durationSec > 0 ? durationSec : props.getDefaultDurationSec()) * AGNES_FRAME_RATE));
             body.put("frame_rate", AGNES_FRAME_RATE);
-            String image = in.firstFrameUrl() != null ? in.firstFrameUrl() : extractFrameUrlHint(prompt);
             if (image != null && !image.isBlank()) body.put("image", image);
             return body;
         }
@@ -921,6 +937,10 @@ public class MaterialVideoModelClient {
         if (blob.contains("seedance") || blob.contains("doubao-seedance")) return PROTOCOL_SEEDANCE;
         if (blob.contains("jusuanhub")) return PROTOCOL_JUSUAN_MEDIA;
         return blob.contains("agnes") ? PROTOCOL_AGNES : PROTOCOL_GENERIC;
+    }
+
+    private static boolean isAgnesVideo25(String model) {
+        return model != null && model.toLowerCase(java.util.Locale.ROOT).startsWith("agnes-video-2.5");
     }
 
     /** 聚算 H3 当前开放 5..15 秒整数档；在提交前拒绝，避免服务端偷偷改时长或错扣积分。 */

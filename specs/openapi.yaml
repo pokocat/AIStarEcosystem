@@ -101,8 +101,15 @@ components:
       properties:
         clientRequestId: { type: string, minLength: 1, maxLength: 64 }
         nodeId: { type: string, minLength: 1, maxLength: 64 }
-        operation: { type: string, enum: [script, storyboard, image, video, assemble, assistant] }
+        operation: { type: string, enum: [text, script, storyboard, image, video, assemble, assistant] }
         prompt: { type: string, maxLength: 16000 }
+        textEdit:
+          type: object
+          nullable: true
+          description: '仅用于 text；prompt 是修改意图，content 是当前完整正文快照，可为空。返回 output.textRevision {summary,content}，更新原文本节点，沿用端点队列、价格上限与幂等键。'
+          required: [content]
+          properties:
+            content: { type: string, maxLength: 48000 }
         scriptEdit:
           type: object
           nullable: true
@@ -3482,7 +3489,7 @@ components:
         id: { type: string, example: IPR-7b21de40 }
         projectId: { type: string }
         nodeId: { type: string }
-        kind: { type: string, enum: [identity, generate, studio-script, studio-storyboard, studio-image, studio-video, studio-assemble, studio-adopt] }
+        kind: { type: string, enum: [identity, generate, studio-text, studio-script, studio-storyboard, studio-image, studio-video, studio-assemble, studio-adopt] }
         status: { type: string, enum: [running, done, failed] }
         stage: { type: string, nullable: true, description: 'queued / prompt.compile / identity.extract / image.generate.N / storage.persist / done / failed' }
         pct: { type: integer }
@@ -3518,6 +3525,12 @@ components:
             mock: { type: boolean, description: '本地 fixture 返回标识；生产禁用' }
             script: { $ref: '#/components/schemas/StudioScript' }
             plan: { $ref: '#/components/schemas/StudioPlan' }
+            textRevision:
+              type: object
+              required: [summary, content]
+              properties:
+                summary: { type: string, maxLength: 4000 }
+                content: { type: string, minLength: 1, maxLength: 48000 }
             shots: { type: array, items: { type: object }, description: 'Studio 分镜，与 script.shots 同一结果投影' }
             storageKey: { type: string, description: 'Studio 视频及合成文件的存储真值' }
             url: { type: string, description: '短期派生地址，不落库' }

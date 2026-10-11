@@ -108,7 +108,7 @@ public class MaterialVideoWorker {
                     && !(t instanceof MaterialVideoModelClient.SubmissionUnknown)) terminal[0]=true;
             log.error("[material-video] job {} failed", jobId, t);
             String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
-            markFailed(jobId, msg);
+            markFailed(jobId, t instanceof BusinessException business ? business.getCode() : null, msg);
             // 提交阶段（submit）抛错时积分已 hold 但 runGeneration 内部没机会 release；
             // 这里兜底退款。releaseHold 幂等：若内部失败路径已退过，这次是 no-op。
             releaseCredits(job, msg);
@@ -507,6 +507,7 @@ public class MaterialVideoWorker {
             // C-1：末帧 CDN 镜像真值（key，不过期）；镜像失败为 null → 出 wire fallback lastFrameUrl。
             if (lastFrameCdnKey != null && !lastFrameCdnKey.isBlank()) j.setLastFrameCdnKey(lastFrameCdnKey);
             j.setErrorMessage(null);
+            j.setErrorCode(null);
             j.setCompletedAt(OffsetDateTime.now());
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
@@ -514,8 +515,13 @@ public class MaterialVideoWorker {
     }
 
     private void markFailed(String jobId, String message) {
+        markFailed(jobId, null, message);
+    }
+
+    private void markFailed(String jobId, String code, String message) {
         jobRepo.findById(jobId).ifPresent(j -> {
             j.setStatus("failed");
+            j.setErrorCode(code);
             j.setErrorMessage(truncate(message, 1000));
             j.setCompletedAt(OffsetDateTime.now());
             j.setUpdatedAt(OffsetDateTime.now());

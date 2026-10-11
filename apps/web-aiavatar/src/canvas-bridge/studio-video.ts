@@ -17,11 +17,16 @@ export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:Can
     ?referenceIds.length===2?"first_last_frame_video":referenceIds.length===1?"i2v":"t2v"
     :saved?.mode||(!referenceIds.length?"t2v":images.length!==referenceIds.length?"universal_reference_video":images.length>1?"first_last_frame_video":"i2v");
   const ratio=metadata?.size?inferVideoRatio(metadata.size):"auto";
+  const requestedRatio=ratio!=="auto"?ratio:request?.aspectRatio||node?.metadata?.studio?.request?.aspectRatio||"9:16";
+  // A source image may be 3:4, but legacy video endpoints only offer the three
+  // ratios in the video picker. Keep native-video geometry on its own nodes.
+  const videoRatio=metadata?.videoMode||saved?.mode||["9:16","16:9","1:1"].includes(requestedRatio)
+    ?requestedRatio:"9:16";
   return {
     draft:{mode,tier:metadata?.vquality?`${metadata.vquality.replace(/p$/,"")}p`:saved?.resolutionTier||"768p",seed:saved?.seed,firstId:images[0],lastId:images[1]} satisfies StudioVideoDraft,
     count:metadata?.videoCount?Number(metadata.videoCount):request?.count||1,
     seconds:metadata?.seconds?Number(metadata.seconds):request?.durationSec||node?.metadata?.studio?.shot?.durationSec||8,
-    ratio:ratio!=="auto"?ratio:request?.aspectRatio||node?.metadata?.studio?.request?.aspectRatio||"9:16",
+    ratio:videoRatio,
   };
 }
 

@@ -1002,3 +1002,9 @@ POST /api/v1/ip-studio/projects/{id}/story-import，multipart字段file，返回
 ## 统一认证跨应用复核（2026-10-10，本地未发布）
 
 本次共享后端覆盖 music/drama/celebrity/aiavatar（含 Studio）/star 的相同身份代码。资料写入与事件使用行锁并复查 UID/ACTIVE；合并/注销的旧 UID 保留墓碑，避免旧 token 重新建档；注销/合并回执失败停止游标。专项回归及范围见 [跨应用复核记录](../../docs/unified-identity-sop-audit-20261010.md)。本节不改变此前手机号发布记录的线上结论，本轮新增修复尚未部署。
+
+## Studio 文本改稿与视频错误字段（2026-10-11）
+
+既有 Studio run 接口新增 `operation=text` 与 `textEdit.content` 正文快照，输出 `textRevision {summary,content}`；复用 script 场景文本模型、计价、端点队列、afterCommit 派发和积分结算。仅普通文本节点可使用，结构化剧本继续原改稿链。
+
+V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `error_message` 分开；厂商提交错误按 HTTP 状态与厂商错误码映射为平台码，Studio 原生视频投影回传该码。供应商队列满不会显示为平台排队位置。Agnes Video 2.5 使用其独立 mode/seconds/size 协议；生产 Studio 候选仍由后台白名单决定。

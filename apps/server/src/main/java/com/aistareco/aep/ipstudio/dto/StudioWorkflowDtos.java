@@ -10,7 +10,12 @@ public final class StudioWorkflowDtos {
     public record RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
                              List<Reference> references, String model, String size, Integer durationSec,
                              String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
-                             String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit) {
+                             String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit) {
+        public RunRequest(String clientRequestId,String nodeId,String operation,String prompt,List<Reference> references,String model,
+                          String size,Integer durationSec,String aspectRatio,Integer count,ScriptSettings settings,Integer episodeNo,
+                          String mode,List<String> contextNodeIds,List<Turn> history,Long maxCost,Packaging packaging,VideoSettings video,Boolean readVisuals,ScriptEdit scriptEdit) {
+            this(clientRequestId,nodeId,operation,prompt,references,model,size,durationSec,aspectRatio,count,settings,episodeNo,mode,contextNodeIds,history,maxCost,packaging,video,readVisuals,scriptEdit,null);
+        }
         public RunRequest(String clientRequestId,String nodeId,String operation,String prompt,List<Reference> references,String model,
                           String size,Integer durationSec,String aspectRatio,Integer count,ScriptSettings settings,Integer episodeNo,
                           String mode,List<String> contextNodeIds,List<Turn> history,Long maxCost,Packaging packaging,VideoSettings video,Boolean readVisuals) {
@@ -32,6 +37,7 @@ public final class StudioWorkflowDtos {
         }
     }
     public record ScriptEdit(String markdown) {}
+    public record TextEdit(String content) {}
     public record VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
             List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references) {}
     public record Caption(Double start,Double end,String text) {}

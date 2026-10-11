@@ -7,7 +7,7 @@ import type {CanvasNodeData,CanvasConnection} from '@/canvas/types/canvas';
 import {StudioWorkspace} from './studio-workspace';
 import {useCanvasStore} from '@/canvas/stores/canvas/use-canvas-store';
 const api=vi.hoisted(()=>({capabilities:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
-vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label={title==='生成视频'||title==='生成图片'||title==='创作剧本'||title==='拆分镜头'?'关闭创作面板':`关闭${title}`} onClick={onClose}>关闭</button>{children}{footer}</section>:null}));
+vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,children,onClose,footer,embedded}:any)=>open?<section role={embedded?"region":"dialog"} aria-label={title}>{!embedded&&<button aria-label={title==='生成视频'||title==='生成图片'||title==='创作剧本'||title==='拆分镜头'?'关闭创作面板':`关闭${title}`} onClick={onClose}>关闭</button>}{children}{footer}</section>:null}));
 vi.mock('@/canvas-bridge/download-media',()=>({downloadMedia:api.download}));
 vi.mock('./api',()=>({IpStudioApi:{listProjectRuns:api.history}}));
 vi.mock('./studio-template-library',()=>({StudioTemplateLibrary:({open,scope}:any)=>open?<section role="dialog" aria-label="画布模板">{scope}</section>:null}));
@@ -50,6 +50,78 @@ function Host({initial=node,initialNodes,initialConnections=[]}:any){const[nodes
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 afterEach(cleanup);
 beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+test('image composer targets its own upload slot and retains the draft while a picker can be cancelled',async()=>{
+ const image={...node,type:'image' as never,title:'商品参考',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ expect(within(panel).queryByRole('button',{name:'引用生成视频'})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'加入 IP'})).toBeNull();
+ const commands:unknown[]=[];const listener=(e:Event)=>commands.push((e as CustomEvent).detail);
+ window.addEventListener('studio-command',listener);
+ fireEvent.click(within(panel).getByRole('button',{name:'上传图片'}));
+ expect(commands).toContainEqual({action:'upload-image',nodeId:'v'});
+ expect(screen.getByRole('dialog',{name:'生成图片'})).toBeDefined();
+ expect(api.submit).not.toHaveBeenCalled();
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image-uploaded',nodeId:'v'}}));
+ expect(screen.queryByRole('dialog',{name:'生成图片'})).toBeNull();
+ window.removeEventListener('studio-command',listener);
+});
+test('image result actions stay on the image node toolbar rather than its generation form',async()=>{
+ const image={...node,type:'image' as never,title:'商品图',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png',studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ expect(screen.getByRole('button',{name:'引用生成视频'})).toBeDefined();
+ expect(screen.getByRole('button',{name:'加入 IP'})).toBeDefined();
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ expect(within(panel).getByRole('button',{name:'替换图片'})).toBeDefined();
+ expect(within(panel).queryByRole('button',{name:'引用生成视频'})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'加入 IP'})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'下载图片'})).toBeNull();
+ expect(api.submit).not.toHaveBeenCalled();
+});
+test('video generation shows video controls without result or image-upload actions',async()=>{
+ render(<Host/>);openVideo();
+ const panel=await screen.findByRole('dialog',{name:'生成视频'});
+ expect(within(panel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
+ expect(within(panel).queryByRole('button',{name:'加入成片'})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'加入 IP'})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'替换图片'})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'下载视频'})).toBeNull();
+});
+test('script creation can reference characters without image or video result actions',async()=>{
+ const text={...node,type:'text' as never,title:'剧本',metadata:{status:'idle' as const,studio:{kind:'script' as const}}};
+ render(<Host initial={text}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'创作剧本'});
+ expect(within(panel).getByRole('textbox',{name:'创作要求'})).toBeDefined();
+ expect(within(panel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
+ expect(within(panel).getByRole('button',{name:'IP 人物库'})).toBeDefined();
+ expect(within(panel).queryByRole('button',{name:'生成视频',exact:true})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'加入 IP'})).toBeNull();
+ expect(within(panel).queryByRole('button',{name:'上传图片'})).toBeNull();
+});
+test('storyboard script creation stays in detail and canvas reference picking returns with a saved graph edge without generating',async()=>{
+ const image={...node,id:'product',type:'image' as never,title:'商品参考',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png'}};
+ render(<Host initialNodes={[image]}/>);
+ fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
+ expect(screen.getByRole('region',{name:'故事板'})).toBeDefined();
+ fireEvent.click(screen.getByRole('button',{name:'新建剧本'}));
+ let panel=await screen.findByRole('region',{name:'创作剧本'});
+ expect(screen.getByRole('region',{name:'故事板'})).toBeDefined();
+ const scriptId=snapshot.find(n=>n.metadata?.studio?.kind==='script')!.id;
+ fireEvent.click(within(panel).getByRole('button',{name:'参考',exact:true}));
+ fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'product',targetId:scriptId}}));
+ panel=await screen.findByRole('dialog',{name:'创作剧本'});
+ fireEvent.click(within(panel).getByRole('button',{name:'完成参考选择'}));
+ await screen.findByRole('region',{name:'创作剧本'});
+ await waitFor(()=>expect(connectionSnapshot).toContainEqual(expect.objectContaining({fromNodeId:'product',toNodeId:scriptId})));
+ expect(snapshot.find(n=>n.id===scriptId)?.metadata?.studio?.composerDraft?.referenceNodeIds).toEqual(['product']);
+ expect(api.submit).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'关闭节点详情'}));
+ await waitFor(()=>expect(api.save).toHaveBeenCalledOnce());
+ expect(connectionSnapshot).toContainEqual(expect.objectContaining({fromNodeId:'product',toNodeId:scriptId}));
+});
 test('a lost submit response replaces ordinary generation with same-key confirmation even after editing the draft',async()=>{
  api.submit.mockRejectedValueOnce(new TypeError('Failed to fetch'));render(<Host/>);openVideo();
  await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));
@@ -74,8 +146,8 @@ test('refresh with an active accepted batch offers its existing task rather than
 test('refresh of an unknown outcome confirms the original body; repeated network failures do not unlock a new key',async()=>{
  api.submit.mockRejectedValue(new TypeError('network'));render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request}}}}/>);openVideo();fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('network'));expect(api.submit.mock.calls[0][1]).toEqual(request);expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();expect(snapshot[0].metadata?.studio?.request?.clientRequestId).toBe('original-key');
 });
-test('a definite unaccepted server rejection permits an edited request with a new key',async()=>{
- api.submit.mockRejectedValueOnce(new ApiError({code:'STUDIO_PRICE_CHANGED',message:'price changed'},409));render(<Host/>);openVideo();await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('price changed'));const old=api.submit.mock.calls[0][1];fireEvent.change(screen.getByRole('textbox'),{target:{value:'edited after rejection'}});fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1].clientRequestId).not.toBe(old.clientRequestId);expect(api.submit.mock.calls[1][1].prompt).toBe('edited after rejection');
+test.each([['STUDIO_PRICE_CHANGED',409],['ENDPOINT_NOT_ALLOWED',503]] as const)('a definite unaccepted %s server rejection permits an edited request with a new key',async(code,status)=>{
+ api.submit.mockRejectedValueOnce(new ApiError({code,message:'price changed'},status));render(<Host/>);openVideo();await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('price changed'));const old=api.submit.mock.calls[0][1];fireEvent.change(screen.getByRole('textbox'),{target:{value:'edited after rejection'}});fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1].clientRequestId).not.toBe(old.clientRequestId);expect(api.submit.mock.calls[1][1].prompt).toBe('edited after rejection');
 });
 test('polling failure on an accepted batch keeps the original task locked without posting a replacement',async()=>{
  const active={...done,status:'running',pct:20,output:{videoCandidates:[{index:0,jobId:'job',status:'running',pct:20,durationSec:8}]}};
@@ -510,4 +582,128 @@ test('opening and reopening a template draft keeps empty upstream slots and chec
  await screen.findByRole('button',{name:'移除参考 人物参考'});expect(connectionSnapshot).toHaveLength(2);
  fireEvent.click(screen.getByRole('button',{name:'移除参考 人物参考'}));await waitFor(()=>expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['brief']));
  fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);await waitFor(()=>expect(api.error).toHaveBeenCalledWith('请先填写「创作要求输入」'));expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('storyboard opens an ordinary image in an embedded creator without leaving the typed list, copying or generating',async()=>{
+ const image={...node,type:'image' as never,title:'商品参考',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png'}};
+ render(<Host initial={image}/>);
+ fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
+ const item=screen.getByRole('article',{name:'故事板节点 商品参考'});
+ fireEvent.click(within(item).getByRole('button',{name:'打开节点 商品参考'}));
+ expect(await screen.findByRole('region',{name:'生成图片'})).toBeDefined();
+ expect(screen.getByRole('region',{name:'故事板'})).toBeDefined();
+ expect(screen.getByRole('region',{name:'图片节点列表'})).toBeDefined();
+ expect(screen.queryByRole('dialog',{name:'生成图片'})).toBeNull();
+ expect(snapshot.map(n=>n.id)).toEqual(['v']);
+ expect(snapshot[0].metadata?.storageKey).toBe('product.png');
+ expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('view switching saves a creator draft; a failed save retains its editor for retry',async()=>{
+ render(<Host/>);openVideo();
+ await screen.findByRole('dialog',{name:'生成视频'});
+ fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'保留这份视频草稿'}});
+ api.save.mockRejectedValueOnce(new Error('保存失败'));
+ fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存失败'));
+ expect(screen.getByRole('dialog',{name:'生成视频'})).toBeDefined();
+ expect(screen.queryByRole('region',{name:'故事板'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
+ await screen.findByRole('region',{name:'故事板'});
+ expect(screen.queryByRole('dialog',{name:'生成视频'})).toBeNull();
+ expect(snapshot[0].metadata?.studio?.composerDraft?.prompt).toBe('保留这份视频草稿');
+ expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('storyboard node switching persists the original creator draft and a failed save retains the selected node',async()=>{
+ const image={...node,id:'image',type:'image' as never,title:'图片参考',metadata:{status:'idle' as const}};
+ render(<Host initialNodes={[node,image]}/>);
+ fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'打开节点 old adopted'}));
+ await screen.findByRole('region',{name:'生成视频'});
+ fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'必须保留的视频创作要求'}});
+ api.save.mockRejectedValueOnce(new Error('保存失败，保留当前节点'));
+ fireEvent.change(screen.getByRole('combobox',{name:'节点类型'}),{target:{value:'image'}});
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存失败，保留当前节点'));
+ expect(screen.getByRole('region',{name:'节点详情 old adopted'})).toBeDefined();
+ expect(screen.getByRole('textbox',{name:'创作要求'})).toHaveProperty('value','必须保留的视频创作要求');
+ fireEvent.change(screen.getByRole('combobox',{name:'节点类型'}),{target:{value:'image'}});
+ await screen.findByRole('region',{name:'节点详情 图片参考'});
+ expect(screen.getByRole('region',{name:'生成图片'})).toBeDefined();
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.prompt).toBe('必须保留的视频创作要求');
+ expect(snapshot.map(n=>n.id)).toEqual(['v','image']);
+ expect(api.submit).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'返回全部节点'}));
+ await waitFor(()=>expect(screen.queryByRole('region',{name:'生成图片'})).toBeNull());
+ expect(screen.getByRole('region',{name:'视频节点列表'})).toBeDefined();
+});
+
+test('plain text detail edits the original node, follows incoming reference thumbnails and saves before returning to canvas',async()=>{
+ const text={...node,id:'text',type:'text' as never,title:'商品卖点',metadata:{content:'原卖点'}};
+ const image={...node,id:'image',type:'image' as never,title:'商品参考',metadata:{status:'idle' as const}};
+ const edges=[{id:'ref',fromNodeId:'text',toNodeId:'image'}];
+ render(<Host initialNodes={[text,image]} initialConnections={edges}/>);
+ fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'查看引用 商品卖点'}));
+ await screen.findByRole('region',{name:'节点详情 商品卖点'});
+ expect(screen.getByRole('region',{name:'文本节点列表'})).toBeDefined();
+ fireEvent.click(screen.getByRole('button',{name:'展开编辑 商品卖点'}));
+ fireEvent.change(screen.getByRole('textbox',{name:'展开节点文字'}),{target:{value:'修改后的商品卖点'}});
+ fireEvent.click(screen.getByRole('button',{name:'关闭编辑文字'}));
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'编辑文字'})).toBeNull());
+ expect(snapshot.find(n=>n.id==='text')?.metadata?.content).toBe('修改后的商品卖点');
+ api.save.mockRejectedValueOnce(new Error('文字保存失败'));
+ fireEvent.click(screen.getByRole('button',{name:'返回画布'}));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('文字保存失败'));
+ expect(screen.getByRole('region',{name:'节点详情 商品卖点'})).toBeDefined();
+ fireEvent.click(screen.getByRole('button',{name:'返回画布'}));
+ await waitFor(()=>expect(screen.queryByRole('region',{name:'故事板'})).toBeNull());
+ expect(snapshot.map(n=>n.id)).toEqual(['text','image']);
+ expect(connectionSnapshot).toEqual(edges);
+ expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('storyboard script composer shows instructions while the submitted request snapshots the current formatted document',async()=>{
+ const script={title:'当前剧本',outline:'当前大纲',characters:[],scenes:[],props:[],episodes:[{no:1,title:'第一集',content:'当前正文'}],shots:[]};
+ const source={...node,type:'text' as never,title:script.title,metadata:{status:'success' as const,studio:{kind:'script' as const,script}}};
+ api.capabilities.mockResolvedValue({mock:true,operations:['script'],textCost:2});
+ render(<Host initial={source}/>);
+ fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'打开节点 当前剧本'}));
+ const composer=await screen.findByRole('region',{name:'创作剧本'});
+ expect(within(composer).getByRole('textbox',{name:'创作要求'})).toHaveProperty('value','改写当前剧本，保留选定的人物设定。');
+ fireEvent.change(within(composer).getByRole('textbox',{name:'创作要求'}),{target:{value:'把开场改得更有悬念'}});
+ fireEvent.click(within(composer).getByRole('button',{name:'创作剧本',exact:true}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ const request=api.submit.mock.calls[0][1];
+ expect(request.prompt).toContain('把开场改得更有悬念');
+ expect(request.prompt).toContain('当前大纲');
+ expect(request.prompt).toContain('当前正文');
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.script).toEqual(script);
+ expect(screen.getByRole('region',{name:'故事板'})).toBeDefined();
+});
+
+test('text intent uses the chosen model and rewrites the original node without replacing its body with the instruction or making copies',async()=>{
+ const text={...node,id:'text',type:'text' as never,title:'商品卖点',metadata:{content:'原商品卖点'}};
+ api.capabilities.mockResolvedValue({mock:false,operations:['text'],textCost:2,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,creditCost:2},{endpointId:'b',name:'文本 B',isDefault:false,creditCost:3}]});
+ api.submit.mockImplementation(async(_:string,request:any)=>({...done,id:'text-run',nodeId:'text',kind:'studio-text',cost:3,inputs:request,output:{textRevision:{summary:'添加了标题',content:'便携好物\n原商品卖点'}}}));
+ render(<Host initialNodes={[text]}/>);fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));fireEvent.click(screen.getByRole('button',{name:'打开节点 商品卖点'}));
+ const input=await screen.findByRole('textbox',{name:'AI 修改要求'});expect(input).toHaveProperty('value','');
+ fireEvent.change(input,{target:{value:'起一个标题'}});fireEvent.change(screen.getByRole('combobox',{name:'文本模型'}),{target:{value:'b'}});
+ expect(snapshot[0].metadata?.content).toBe('原商品卖点');
+ fireEvent.click(screen.getByRole('button',{name:'发送修改要求'}));await waitFor(()=>expect(snapshot[0].metadata?.content).toBe('便携好物\n原商品卖点'));
+ expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'text',operation:'text',prompt:'起一个标题',textEdit:{content:'原商品卖点'},model:'b',maxCost:3});
+ expect(snapshot.map(n=>n.id)).toEqual(['text']);expect(snapshot[0].metadata?.studio?.textEditor?.turns).toEqual([{role:'user',content:'起一个标题'},{role:'assistant',content:'添加了标题'}]);
+ expect(screen.getByRole('region',{name:'节点详情 商品卖点'}).textContent).toContain('便携好物');expect(api.save).toHaveBeenCalled();
+});
+
+test('queued text edits keep the body, show queue position and prohibit duplicate submits',async()=>{
+ const request={clientRequestId:'text-key',nodeId:'text',operation:'text',prompt:'起标题',model:'a',textEdit:{content:'原文'},maxCost:2};
+ const queued={...done,id:'text-run',nodeId:'text',kind:'studio-text',status:'running',stage:'endpoint.queued',pct:0,inputs:request,output:{},queue:{position:3,waiting:3,running:1,concurrencyLimit:1}};
+ api.capabilities.mockResolvedValue({mock:false,operations:['text'],textCost:2,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,creditCost:2}]});
+ api.project.mockResolvedValue({runsById:{'text-run':queued}});api.read.mockResolvedValue(queued);
+ const text={...node,id:'text',type:'text' as never,title:'文本',metadata:{content:'原文',status:'loading',studio:{kind:'text',runId:'text-run',request,task:{status:'running',stage:'endpoint.queued',pct:0,queue:queued.queue}}}};
+ render(<Host initialNodes={[text]}/>);fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));fireEvent.click(screen.getByRole('button',{name:'打开节点 文本'}));
+ await screen.findByRole('textbox',{name:'AI 修改要求'});expect(screen.getByRole('button',{name:'发送修改要求'})).toHaveProperty('disabled',true);
+ expect(screen.getAllByRole('status').some(n=>n.textContent?.includes('你目前排在第 3 位'))).toBe(true);expect(snapshot[0].metadata?.content).toBe('原文');expect(api.submit).not.toHaveBeenCalled();
 });

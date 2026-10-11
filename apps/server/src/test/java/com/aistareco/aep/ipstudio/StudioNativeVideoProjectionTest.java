@@ -24,7 +24,11 @@ class StudioNativeVideoProjectionTest {
         assertEquals("running",service.toRunDto(binding).status());assertEquals(320,service.toRunDto(binding).cost());
         job.setStatus("succeeded");job.setVideoUrl("/cdn/material-videos/job/video.mp4");job.setDurationSec(8);
         assertEquals("done",service.toRunDto(binding).status());assertEquals("material-videos/job/video.mp4",service.toRunDto(binding).output().path("storageKey").asText());
-        job.setStatus("failed");assertEquals(0,service.toRunDto(binding).cost());
+        job.setStatus("failed");job.setErrorCode("VIDEO_PROVIDER_QUEUE_FULL");job.setErrorMessage("模型提供方的视频任务队列已满");
+        var failed=service.toRunDto(binding);
+        assertEquals(0,failed.cost());
+        assertEquals("VIDEO_PROVIDER_QUEUE_FULL",failed.errorCode());
+        assertEquals("VIDEO_PROVIDER_QUEUE_FULL",failed.output().path("videoCandidates").get(0).path("errorCode").asText());
         assertEquals("done",binding.getStatus());assertEquals(0,binding.getCost());
         verify(repository,never()).save(any());
         job.setApp("celebrity");assertThrows(BusinessException.class,()->service.toRunDto(binding));

@@ -580,7 +580,7 @@ public class IpProjectService {
         String type=switch(run.getKind()) {
             case "generate","identity","studio-image" -> com.aistareco.aep.service.AiGenerationQueueService.IMAGE;
             case "studio-audio","studio-lip-sync" -> com.aistareco.aep.service.AiGenerationQueueService.SPEECH;
-            case "studio-script","studio-storyboard","studio-assistant" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
+            case "studio-text","studio-script","studio-storyboard","studio-assistant" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
             default -> null;
         };
         return type==null?null:generationQueue.position(type,run.getId());
@@ -596,7 +596,7 @@ public class IpProjectService {
         ObjectNode output=om.createObjectNode();output.put("mock",false);
         if(ids.size()==1)output.put("nativeVideoJobId",ids.get(0));
         var candidates=output.putArray("videoCandidates");
-        boolean active=false,allQueued=true;int successes=0,pct=0;long cost=0;Instant finished=null;String firstError=null;
+        boolean active=false,allQueued=true;int successes=0,pct=0;long cost=0;Instant finished=null;String firstError=null,firstErrorCode=null;
         com.aistareco.aep.dto.AiGenerationQueuePositionDto firstQueue=null;
         for(int index=0;index<ids.size();index++) {
             String id=ids.get(index);
@@ -621,7 +621,11 @@ public class IpProjectService {
                 candidate.put("storageKey",key).put("url",storage.signedUrl(key));successes++;
                 if(!output.has("storageKey")) output.put("storageKey",key).put("url",candidate.path("url").asText()).put("durationSec",job.getDurationSec());
             }
-            if(error!=null) {candidate.put("errorMessage",error);if(firstError==null)firstError=error;}
+            if(error!=null) {
+                candidate.put("errorMessage",error);
+                if(job.getErrorCode()!=null)candidate.put("errorCode",job.getErrorCode());
+                if(firstError==null) {firstError=error;firstErrorCode=job.getErrorCode();}
+            }
             active|=!done&&!failed;pct+=done||failed?100:job.getProgress();
             if(!"queued".equals(job.getStatus()))allQueued=false;
             if(!"failed".equals(job.getStatus()))cost+=job.getCreditsHeld();
@@ -630,7 +634,8 @@ public class IpProjectService {
         boolean allFailed=!active&&successes==0;
         String stage=active?allQueued?"endpoint.queued":"视频生成中":allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
         return new IpRunDto(r.getId(),r.getProjectId(),r.getNodeId(),r.getKind(),active?"running":allFailed?"failed":"done",
-                stage,pct/ids.size(),cost,allFailed?"STUDIO_VIDEO_FAILED":null,allFailed?firstError:null,inputs,output,
+                stage,pct/ids.size(),cost,allFailed?(firstErrorCode==null?"STUDIO_VIDEO_FAILED":firstErrorCode):null,
+                allFailed?firstError:null,inputs,output,
                 iso(r.getCreatedAt()),active||finished==null?null:finished.toString(),active&&allQueued?firstQueue:null);
     }
 

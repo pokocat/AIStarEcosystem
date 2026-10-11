@@ -861,3 +861,7 @@ React Flow 补回拖线到空白处的“引用该节点生成”菜单，文本
 ```text
 Edit this existing brand icon. Keep the EXACT original design and composition: the left-facing digital human profile assembled from polygonal triangular facets, the same facial outline, neck shape, all facet boundaries, and the same scattered triangular shards drifting to the upper right. User likes this original icon and wants ONLY a restrained color adjustment to fit the current IP Studio brand, not a redesign. Replace the bright cyan/electric blue/purple palette with a closely related understated slate-blue palette: pale blue-grey #AFC2CC at the crown, slate blue #597887 midtones, deep blue-charcoal #192229 lower-left face, muted dark slate #384D60 lower neck; subtle cool-grey highlights #DCE4E7. Keep the dimensional faceted color differences clearly visible. Remove purple saturation. Preserve the white #FFFFFF background and original tight square composition. No new shapes, no added text, no monogram, no letters, no wave arcs, no star, no border, no tile, no shadows, no change to the human profile or scattered triangles. Clean crisp polygon edges, production-ready icon.
 ```
+
+## Studio 节点交互增量（2026-10-11）
+
+素材菜单支持直接上传；图片节点可上传或替换素材并保留连线。创作面板按节点类型提供操作，素材库使用画布侧栏。故事板直接投影原画布节点，三栏总览和同类型详情共用原节点及任务；文本详情底部输入修改意图，AI 返回完整正文，结果更新原节点，手改冲突保留为待采纳建议。发布与线上验收见 [发布记录](../../docs/ip-studio-node-release-20261011.md)。

@@ -130,3 +130,14 @@ describe('video batch adoption and recovery',()=>{
     expect(failed.metadata?.videos).toHaveLength(3);expect(failed.metadata?.status).toBe('error');
   });
 });
+
+it('text revisions update once and preserve later manual edits across task refreshes',()=>{
+ const n={...makeStudioNode('text'),metadata:{content:'原文',status:'loading' as const,studio:{kind:'text' as const}}};
+ const result={...run('text-run','unused'),kind:'studio-text' as const,inputs:{operation:'text',prompt:'起标题',textEdit:{content:'原文'}} as any,output:{textRevision:{summary:'添加标题',content:'新标题\n原文'}}};
+ const updated=applyStudioRun(n,result);expect(updated.metadata?.content).toBe('新标题\n原文');expect(updated.id).toBe(n.id);
+ const manuallyEdited={...updated,metadata:{...updated.metadata,content:'后来手动修改'}};
+ const refreshed=applyStudioRun(manuallyEdited,result);expect(refreshed.metadata?.content).toBe('后来手动修改');expect(refreshed.metadata?.studio?.textEditor?.turns).toHaveLength(2);
+ const concurrent=applyStudioRun({...n,metadata:{...n.metadata,content:'生成期间手动修改'}},result);
+ expect(concurrent.metadata?.content).toBe('生成期间手动修改');expect(concurrent.metadata?.studio?.textEditor?.proposal).toMatchObject({content:'新标题\n原文',runId:'text-run'});
+ const failed=applyStudioRun(n,{...result,status:'failed',output:{},errorMessage:'模型服务暂不可用'});expect(failed.metadata?.content).toBe('原文');expect(failed.metadata?.status).toBe('error');
+});

@@ -119,6 +119,10 @@ public class MaterialVideoJob {
     @Column(name = "error_message", length = 1024)
     private String errorMessage;
 
+    /** Stable platform error code; provider-specific codes are normalized before persistence. */
+    @Column(name = "error_code", length = 64)
+    private String errorCode;
+
     @Column(name = "provider_used", length = 128)
     private String providerUsed;
 
