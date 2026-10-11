@@ -21,6 +21,16 @@ class ModelManagementIdentityTest {
     private static final String AUDIENCE = "aistar-model-management-v1";
 
     @Test
+    void userManagementAudienceIsIsolatedFromModelCommands() throws Exception {
+        var identity = new ModelManagementIdentity(KEY);
+        String body = "{\"action\":\"users\"}";
+        String authorization = token("users", "users", body, ISSUER, "aistar-user-management-v1", Instant.now());
+        unauthorized(() -> identity.require(authorization, body, "users"));
+        assertEquals("operator-1", identity.require(authorization, body, "users", "aistar-user-management-v1").getSubject());
+        unauthorized(() -> identity.require(authorization, body, "users", "aistar-user-management-v1"));
+    }
+
+    @Test
     void acceptsMatchingActionAndBodyHash() throws Exception {
         var identity = new ModelManagementIdentity(KEY);
         var claims = identity.require(token("valid", "endpoints", BODY, ISSUER, AUDIENCE, Instant.now()), BODY, "endpoints");

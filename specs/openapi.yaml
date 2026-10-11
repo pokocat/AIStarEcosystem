@@ -25,6 +25,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: 独立平台管理签名，仅 audience aistar-model-management-v1、30 秒、platform scope、action 和正文哈希有效；不接受普通用户或 INTERNAL 身份。
+    userManagementGrant:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 独立平台管理签名，仅 audience aistar-user-management-v1、30 秒、platform scope、action 和正文哈希有效；不可与模型管理令牌互换。
     bearerAuth:
       type: http
       scheme: bearer
@@ -4351,6 +4356,7 @@ paths:
         白名单命令直接调用原 Java 配置服务。原始供应商密钥只写不回显。
         commandJson 内的版本化命令形状由 aibuzz-platform/packages/contracts/src/platform/aistar-models.ts 维护；
         无任意 URL 或 admin 路径代理。固定 app+scene 模型白名单和候选积分价首先覆盖 Studio script/image。
+        endpointTest / endpointFetchModels 使用已保存的端点配置；usageRecords 返回筛选后的调用元数据，最多 500 条，不返回原始请求/响应正文。
       security:
         - modelManagementGrant: []
       requestBody:
@@ -4382,6 +4388,46 @@ paths:
         '404': { description: 配置目标不存在 }
         '409': { description: 配置冲突 }
         '503': { description: 专用管理密钥或业务配置未就绪 }
+
+  /service/user-management/v1/command:
+    post:
+      operationId: platformUserManagementCommand
+      summary: 统一后台复用原用户查询与状态管理
+      description: |
+        users / user / userSuspend / userReactivate 白名单命令调用原 AepUserService。
+        停用必须填写原因；恢复沿用原状态规则。状态变更与原审计记录同事务。
+        字段形状由 aibuzz-platform 的 aistar-users.ts 契约维护；平台按敏感资料权限移除联系方式。
+      security:
+        - userManagementGrant: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commandJson]
+              additionalProperties: false
+              properties:
+                commandJson:
+                  type: string
+                  maxLength: 5000
+                  description: 严格解析后的命令 JSON；签名哈希与正文逐字节一致。
+      responses:
+        '200':
+          description: 原用户服务回执，data 为原用户详情或分页结果。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, const: true }
+                  data: {}
+        '400': { description: 命令或原因无效 }
+        '401': { description: 专用授权缺失、过期、篡改或重放 }
+        '404': { description: 用户不存在 }
+        '409': { description: 状态不允许该变更 }
+        '503': { description: 专用管理密钥未配置 }
 
   # ── 3.1 Auth ────────────────────────────
 

@@ -79,6 +79,7 @@ public final class ProductRouteTable {
     public static final Set<String> WHITELIST_EXACT = Set.of(
             // Dedicated signed machine capability; the controller validates its own narrow grant.
             "/api/service/model-management/v1/command",
+            "/api/service/user-management/v1/command",
             "/api/me",
             "/api/me/messages-overview",
             "/api/me/password",

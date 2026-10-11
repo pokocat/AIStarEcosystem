@@ -22,11 +22,15 @@ public class ModelManagementIdentity {
         key = value.isEmpty() ? null : HexFormat.of().parseHex(value);
     }
     public synchronized Claims require(String authorization, String commandJson, String action) {
+        return require(authorization, commandJson, action, "aistar-model-management-v1");
+    }
+    public synchronized Claims require(String authorization, String commandJson, String action, String audience) {
+        if (!java.util.Set.of("aistar-model-management-v1", "aistar-user-management-v1").contains(audience)) throw new IllegalArgumentException("Unsupported management audience");
         if (key == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "MODEL_MANAGEMENT_NOT_CONFIGURED", "模型配置服务暂不可用");
         try {
             if (authorization == null || !authorization.startsWith("Bearer ")) throw new IllegalArgumentException();
             var signed = Jwts.parser().verifyWith(Keys.hmacShaKeyFor(key)).requireIssuer("aibuzz-platform")
-                    .requireAudience("aistar-model-management-v1").build().parseSignedClaims(authorization.substring(7));
+                    .requireAudience(audience).build().parseSignedClaims(authorization.substring(7));
             if (!"HS256".equals(signed.getHeader().getAlgorithm())) throw new IllegalArgumentException();
             Claims c = signed.getPayload();
             long now = System.currentTimeMillis();

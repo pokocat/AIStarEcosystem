@@ -27,3 +27,11 @@ V49 成功新增可空供应商计量字段；JAR SHA256 `fcb138dd5e6f6e90935f5a
 实际浏览器可读取 15 个生产模型端点、56 项应用功能及既有用户价格；未保存改价、建立模型或创建付费生成。Studio 剧本/图片专属策略仍未配置，沿用兼容行为；平台定价开关保持原状态。发布前数据库、环境文件及旧 JAR 备份位于受限 `/opt/aibuzz-platform/backups/model-console-20261010T144512Z`。
 
 详细证据见 Platform 仓库 `docs/reviews/2026-10-10-model-management-production-release.md`。Studio 与旧后台前端没有在本轮重新部署。
+
+## 用户管理与模型运营第一批（本地实现，尚未发布）
+
+用户命令走 `POST /api/service/user-management/v1/command`，复用同一独立管理密钥，但 audience 为 `aistar-user-management-v1`，与模型令牌隔离。白名单仅查询、详情、停用和恢复；委托给原 `AepUserService`，状态变更及原 `audit_log` 写入在同一事务。未增加用户表、钱包、积分结算或模型配置真源。原停用行为不撤销已签发的用户 JWT，本轮保留该既有语义。
+
+模型新增 `endpointTest`、`endpointFetchModels`、`usageRecords`，均委托原服务；连接检查与拉取目录只使用已保存的配置，目录由用户保存端点时落库。调用记录最多 500 条，支持日期窗口、应用、用途、端点、用户、租户、结果和关键词筛选；不返回生成正文、不开放重放。
+
+平台端要求全平台范围：用户查询 `users.read`，联系方式另需 `users.sensitive.read`，状态变更另需 `operations.manage`；模型探测 `models.manage`，调用记录 `modelLogs.read`，成本 `costs.read`。未修改原 admin 的入口或普通应用接口。
