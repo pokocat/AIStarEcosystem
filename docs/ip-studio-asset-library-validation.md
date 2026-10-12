@@ -60,3 +60,14 @@
 追查号 `TQLG3LYW566A` 对应 `IPP-738bf268` 的 `IP_LIBRARY_CHANGED`。生产只读核对：当前正文与已受理任务 `IPR-e947509c02e04745be10` 的不可变输入均为 2958 字、同一 SHA-256；画布 `assetExtraction.sourceHash` 却仍为更早的指纹。前端提交前保存文档后未把接口返回的指纹写入任务元数据，刷新时又使用旧元数据恢复。
 
 修复：新受理任务持久化接口返回的 sourceHash；整剧历史任务从不可变 scriptEdit.markdown 计算原始指纹，恢复已有候选，不调用模型。真正改变正文时仍携原任务指纹，服务端继续拒绝保存；分集任务只存分集正文，不能用分集哈希替换整剧校验，旧记录缺输入也保留原校验。回归覆盖刷新后保存、正文确实变化、受理前后的指纹差异及分集/旧任务。
+
+### 本轮生产验收
+
+发布 `20261012-studio-frontend-214fe182`，代码 SHA `214fe1827e97edf68be9622c4604a40d25822eb3`，范围 server / web-aiavatar / admin。包含文件夹修复、提取指纹恢复，以及此前已提交的全操作文本计费。备份在 `/opt/ai-star-eco/backups/20261012-studio-frontend-214fe182`；未修改生产环境配置。
+
+- 本地与生产 JAR SHA256 均为 `a7271aa821b6957525ab819df8050d928dbfa572f3ab85870a9a283c2e7f0045`；AiAvatar BUILD_ID `wrgKDUQIk7o_J0_tshDwFQ`、admin BUILD_ID `uXFiZR8neavc6UgeHMXI` 均与构建一致。
+- 三服务 active、NRestarts=0；生产部署 verify ALL GREEN；正式域创作/资产/登录/API 配置、兼容 aiavatar 域及后台页面检查通过。
+- 线上刷新 `IPP-738bf268`，剧本编辑器“素材处理”恢复原任务的 6 个候选，保存文件夹下拉完整显示“池边的界限”。10 项缺少可靠原文依据的提示仍是筛选结果，不阻止其余 6 项保存。
+- 在浏览器发出前临时拦截保存请求，确认 6 个 items、原节点 ID，以及 sourceHash `6cefe483fc8c45af9ef32d773991797d07eb89fae5ac3ef71cdcb457839f0483` 与已受理正文/当前正文完全一致。随后取消请求并清除拦截，没有替用户写入资产库，也没有新增模型调用；此项是线上请求验证，不声称实际保存入库验收。
+
+新增提取恢复回归 6 例通过，全 workspace/admin 类型与 API 契约检查通过。既有前端全套 6 例失败仍单独记录。证据位于 `.studio-e2e/frontend-folder-release/`：build-final.log、deploy.log、production-runtime.txt、online-request-proof.json、extraction-recovery-tests.log；线上截图位于 Codex 本次可视化目录的 `frontend-folder/online-extraction.png`。
