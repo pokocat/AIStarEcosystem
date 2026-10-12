@@ -1313,3 +1313,7 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 持久化使用 V52 `ip_library_record`（folder/object/binding/preference/receipt），原媒体仍用 `ip_saved_asset`，原生成、积分与画布文档继续各自为真值。接口为 `/api/v1/ip-studio/library/**` 与 `projects/{id}/library/{extract,save-extraction,folder}`；分页直接返回 PageEnvelope，资源返回 ApiResponse。跨子产品的音乐/短剧/带货资产统一、团队共享及自动项目归属不在本轮范围。
 
 发布与本地/生产验收范围见 `docs/ip-studio-asset-library-validation.md`（2026-10-11）；本地样例不自动迁移到生产。
+
+## Studio AI 对话 Token 结算（2026-10-12）
+
+仅 operation=assistant 在 `ai.chat-token-pricing` 配置存在时启用实际 Token 计费。新请求必须提供 capabilities 文本模型 tokenPricing.maxCost 作为批准上限；缺价或超过批准额在 hold 前拒绝。费率与预算随任务冻结，服务端按真实 prompt_tokens/completion_tokens 合计费用后向上取整。不得按估算Token结算；缺少/异常/超预算用量、无效内容、失败与取消释放冻结。成功时同事务 commit 实际额、release 余量、写 billing 和终态；重放原幂等键不再取价或扣费。非对话动作及既有无 tokenPricing 的任务沿用原按次快照。

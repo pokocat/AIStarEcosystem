@@ -709,12 +709,6 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(libraryTarget.kind==="node"&&libraryTarget.nodeId)setConnections(current=>[...current,{id:nanoid(),fromNodeId:node.id,toNodeId:libraryTarget.nodeId!}]);
     await saveStudioDocument(projectId);pendingIpImport.current=undefined;finishIpImport(node.id);
   };
-  const createVisualReference = (parent:CanvasNodeData,key:"characters"|"scenes"|"props",item:{name:string;description:string}) => {
-    const node=makeStudioNode("image",parent);node.title=item.name;
-    node.metadata={status:"idle",prompt:`${key==="characters"?"人物参考图，单人形象":key==="scenes"?"场景参考图，干净空场景，不含人物":"道具参考图，清晰展示物品"}：${item.name}。${item.description}`,
-      studio:{kind:"shot",parentNodeId:parent.id,assetRole:key==="characters"?"character":key==="scenes"?"scene":"product",references:key==="characters"?parent.metadata?.studio?.references:[]}};
-    addNode(node,parent);setEditorId(undefined);setMode("canvas");openDirector("image",node);
-  };
   const selectedTakes = selected?.type===CanvasNodeType.Image?selected.metadata?.images:selected?.metadata?.videos;
   const unconfirmed = nodes.filter(n => n.metadata?.status==="loading" && (n.metadata.studio?.request||n.metadata.studio?.speechRequest||n.metadata.studio?.lipSyncRequest) && !runs.some(r=>r.id===n.metadata?.studio?.runId));
   const candidates=operation==="video"?models.video:models.image;
@@ -948,7 +942,6 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     </Modal>
     {editor&&<StudioScriptEditor key={`${projectId}:${editor.id}`} projectId={projectId} node={editor} capabilities={capabilities}
       onState={scriptEditor=>patch(editor.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,scriptEditor}}}))}
-      onSettings={settings=>setNodes(list=>markStudioDescendants(list,editor.id).map(n=>n.id===editor.id?{...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,settings,composerDraft:undefined}}}:n))}
       onCommit={async(markdown,script)=>{
         setNodes(list=>{
           const current=list.find(n=>n.id===editor.id)?.metadata?.studio;
@@ -958,8 +951,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         await saveStudioDocument(projectId);
       }}
       onClose={()=>{setEditorId(undefined);if(mode==="storyboard"){setStoryboardNodeId(editor.id);openDirector("script",nodesRef.current.find(n=>n.id===editor.id)||editor,"storyboard");}else setScriptPreviewId(editor.id);}}
-      onVisual={(key,item)=>{const current=nodesRef.current.find(n=>n.id===editor.id);if(current)createVisualReference(current,key,item);}}
-      onExtract={()=>void openExtraction(editor.id)}
+      onExtract={()=>openExtraction(editor.id)}
       onStoryboard={no=>{const current=nodesRef.current.find(n=>n.id===editor.id);if(current){splitScript(current);setEpisodeNo(no);setEditorId(undefined);}}}/>}
     {extractionId&&nodes.find(n=>n.id===extractionId)&&<LibraryExtractionPanel projectId={projectId} node={nodes.find(n=>n.id===extractionId)!} onClose={()=>setExtractionId(undefined)} onTask={async assetExtraction=>{patch(extractionId,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,assetExtraction}}}));await saveStudioDocument(projectId);}} onUse={async asset=>{await insertLibrary([libraryObjectAsset(asset)]);}}/>}
     <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>{setLibraryQuery(undefined);libraryMention.current=undefined;}} onAssets={insertLibrary}/>

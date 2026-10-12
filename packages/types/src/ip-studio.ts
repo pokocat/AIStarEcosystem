@@ -87,6 +87,7 @@ export interface IpVideoCandidate {
   queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null;
 }
 export interface IpRunOutput {
+  billing?: import("./ip-studio-workflow").StudioTokenBilling;
   assetExtraction?: { warnings?:string[];items: import('./ip-asset-library').LibraryCandidate[] };
   mock?: boolean;
   script?: import("./ip-studio-workflow").StudioScript;

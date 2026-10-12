@@ -12,6 +12,7 @@ vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.saveStudioDoc
 vi.mock('@/canvas-bridge/api',()=>({readRun:api.readRun}));
 vi.mock('./studio-conversation-share',()=>({StudioConversationShare:()=>null}));
 vi.mock('./studio-attachment-picker',()=>({StudioAttachmentPicker:({locked,reading,onFiles,onAssets}:any)=><div><button disabled={locked}>{reading?'正在导入附件':'添加附件'}</button><input type="file" aria-label="上传创作附件" multiple onChange={e=>onFiles(Array.from(e.target.files||[]))}/><button disabled={locked} onClick={()=>void onAssets([{id:'saved-c',kind:'image',title:'已存角色',data:{storageKey:'own',dataUrl:'/own'}}]).catch(()=>{})}>测试素材库添加</button></div>}));
+vi.mock('./library-reference-picker',()=>({LibraryReferencePicker:()=>null}));
 vi.mock('antd',()=>({App:{useApp:()=>({message:{success:api.success,error:api.error}})},Drawer:({open,children}:any)=>open?<div role="dialog">{children}</div>:null,
   Button:({loading,icon,...p}:any)=><button {...p} disabled={p.disabled||loading}>{icon}{p.children}</button>,
   Input:{TextArea:forwardRef(({autoSize,...p}:any,ref)=>{const el=useRef<HTMLTextAreaElement>(null);useImperativeHandle(ref,()=>({focus:()=>el.current?.focus()}));return <textarea ref={el} {...p}/>;})},

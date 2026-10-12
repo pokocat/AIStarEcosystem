@@ -69,3 +69,13 @@ Studio 的 Qwen3.6 剧本请求在生产返回 HTTP 400：聚算依次指出 `te
 - 代码提交 `9ecd20cf0246d3dfc385edad4e0984f1721bbd8f`，发布包 `20261012-chat-capabilities-9ecd20cf`，只重发 server 与 admin。运行 JAR 的本地/线上 SHA256 同为 `3dde41115dbe84482fac92e97f54734fcc09ed7aa2cd4589afb886268a1e811a`，admin 包同为 `5eff58413d2ff111cd7e2f57ae16931410209a5424631f6b5077d01fa7d0f040`。
 - Flyway V53 线上执行成功。只读核验：`ai-0495ccde-b38`（Qwen3.5）的 temperature/response_format 为 0、输出上限 4096；`ai-studio-jusuan-qwen36`（Qwen3.6）的 temperature/response_format 为 0、输出上限 NULL；两者 top_p 为 NULL（保持原行为）。其他 17 个端点的新字段均为 NULL。端点限制由统一聊天调用层执行，后台可维护。
 - 本地聊天调用测试 25 项、迁移测试 1 项通过；workspace/admin typecheck、后端离线编译、API 契约检查通过。部署后 `verify.sh` 全绿，server/admin active 且 `NRestarts=0`。本次未重复执行计费生成，剧本与改稿的真实线上成功验收见上一节。
+
+## 2026-10-12 · AI 对话拆分与 Token 实际结算
+
+全屏剧本编辑器的侧栏仅保留 AI 对话，删除「创作设定 / 素材」tab；「素材处理」为独立入口，先保存当前稿，再进入提取、核对、入库及图片完善流程。空框架不会直接提供参考图生成。分集制作移至顶部菜单，仍先保存、按精确集号拆分。AI 建议需用户采纳，等待期间的手改不被覆盖；处理中显示停止按钮，结果未知时才显示确认原任务。
+
+AI 对话（operation=assistant，包括全屏改稿与画布创作助手）使用持久化平台配置 `ai.chat-token-pricing`，按端点 ID 管理输入/输出积分每千 Token 与输入/输出预算。后台「基础数据 → 预设 → AI 对话计费」可编辑。价格不是前端常量。统一调用层返回供应商 prompt_tokens / completion_tokens；受理时把费率快照写入 `_exec.tokenPricing`，按最大预算冻结，完成时 `ceil((输入Token×输入单价 + 输出Token×输出单价)/1000)` 一次取整。部分 commit 与剩余 release、任务终态在同一事务，重复恢复只读原任务。无用量、负数、超出批准预算、无效输出及取消都不按固定价格冒充结算。旧已受理任务保留原按次快照；script/storyboard/text/asset-extract 等非对话动作继续原报价。
+
+2026-10-12 实时核价：[聚算 Qwen3.6 页面](https://portal.jusuanhub.com/models/pub-fibiyjy3vbkcc) 当前活动价输入 90、输出 540 供应商积分/百万 Token；用户指定 2 倍，沿用已有供应商/平台积分 1:1 换算，得到输入 0.18、输出 1.08 平台积分/千 Token。供应商合同输入上限 65536、输出上限 8192，保守最大冻结为 21 积分，UI 明示上限与实际结算。价格依据带日期保存为 supplierReference，供应商活动变化不会偷偷更改已公布用户售价；改价需重新核实、更新配置。新模型缺价拒绝新对话，不套用旧模型价格。
+
+验收：114 项前端回归通过；统一模型用量解析、Token 精确取整/缺失用量、过时报价拒绝、任务结算/退款与幂等恢复通过。全 workspace/admin 类型和 API 契约检查通过。本地 1440px 桌面、390px 手机对话及独立提取面板已验收，未发送付费生成请求。发布结果另记下文。

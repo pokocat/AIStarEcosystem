@@ -13,7 +13,9 @@ export interface StudioScriptSettings { genre?: string; fusionGenres?: string[];
 export type StudioAssistantMode = "general" | "original" | "adapt" | "director";
 /** Free document text extraction; the imported canvas node owns the resulting text. */
 export interface StudioStoryImportResult { text: string; format: "pdf" | "doc" | "docx" }
-export interface StudioTurn { role: "user" | "assistant"; content: string }
+export interface StudioTokenPricing { inputCreditsPerK:number; outputCreditsPerK:number; maxInputTokens:number; maxOutputTokens:number; maxCost:number }
+export interface StudioTokenBilling { inputTokens:number; outputTokens:number; credits:number; inputCreditsPerK:number; outputCreditsPerK:number }
+export interface StudioTurn { billing?:StudioTokenBilling; role: "user" | "assistant"; content: string }
 export interface StudioPlan {
   notes?:string[]; summary: string; steps: {id:string;operation:"script"|"storyboard"|"image"|"video";title:string;prompt:string;referenceNodeIds:string[];unresolvedReferences?:string[]}[]; questions: string[] }
 export interface StudioReference {
@@ -89,7 +91,7 @@ export interface StudioCapabilities {
   videoCost: number | null;
   imageModelMode?: "fixed" | "selectable";
   textModelMode?: "fixed" | "selectable";
-  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; creditCost?: number }[];
+  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; creditCost?: number; tokenPricing?:StudioTokenPricing }[];
 }
 export interface StudioAdoptRequest {
   nodeId: string;

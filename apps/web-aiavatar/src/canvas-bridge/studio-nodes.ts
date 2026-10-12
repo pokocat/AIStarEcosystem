@@ -55,7 +55,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
   }
   if(run.output.plan && metadata.studio.conversation && !alreadyApplied) {
     metadata.studio.conversation={...metadata.studio.conversation,plan:run.output.plan,
-      turns: [...metadata.studio.conversation.turns,{role:"assistant" as const,content:run.output.plan.summary}].slice(-16)};
+      turns: [...metadata.studio.conversation.turns,{role:"assistant" as const,content:run.output.plan.summary,...(run.output.billing?{billing:run.output.billing}:{})}].slice(-16)};
     metadata.content=run.output.plan.summary;
   }
   if (run.output.script && !alreadyApplied) {

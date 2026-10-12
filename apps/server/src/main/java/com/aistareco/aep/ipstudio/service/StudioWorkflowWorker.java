@@ -78,6 +78,12 @@ public class StudioWorkflowWorker {
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",input.path("_exec").path("maxTokens").asInt(8192)));
                         if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
                         script=mapper.readTree(reply.content());
+                        if(input.path("_exec").has("tokenPricing")) {
+                            var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),com.aistareco.aep.service.AiChatTokenPricing.Rate.class);
+                            long actual=rate.settle(reply.promptTokens(),reply.completionTokens());
+                            output.putObject("billing").put("inputTokens",reply.promptTokens()).put("outputTokens",reply.completionTokens())
+                                    .put("credits",actual).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
+                        }
                     }
                     if("asset-extract".equals(operation)) {
                         String source=input.path("scriptEdit").path("markdown").asText();
@@ -189,7 +195,11 @@ public class StudioWorkflowWorker {
         boolean cancelled=run.isCancelRequested();
         long cost=run.getCost();
         if(error==null&&!cancelled) {
-            if(cost>0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),cost,"Studio 剧本创作");
+            long actual=output.has("billing")?output.path("billing").path("credits").longValue():cost;
+            if(actual<0||actual>cost)throw new IllegalStateException("Token settlement exceeds reservation");
+            if(actual>0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),actual,"Studio 创作实际结算");
+            if(actual<cost) credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 实际用量结算 · 退回余量");
+            run.setCost(actual);
             try {run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception e){throw new IllegalStateException(e);}
             if("studio-assemble".equals(run.getKind())) {
                 try {

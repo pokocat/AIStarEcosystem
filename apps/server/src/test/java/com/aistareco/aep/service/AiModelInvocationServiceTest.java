@@ -123,6 +123,8 @@ class AiModelInvocationServiceTest {
         assertEquals("你好，我是测试回答。", resp.content());
         assertEquals("stop", resp.finishReason());
         assertEquals(42L, resp.tokensUsed().longValue());
+        assertEquals(10L, resp.promptTokens());
+        assertEquals(32L, resp.completionTokens());
         assertEquals("stub-ep1", resp.endpointUsed());
         assertEquals("override-model", resp.modelUsed());
 

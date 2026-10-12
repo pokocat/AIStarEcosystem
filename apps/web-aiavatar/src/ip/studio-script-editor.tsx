@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
-import { App, Button, Input, Modal, Select, Segmented } from 'antd';
-import { ArrowLeft, Download, Plus, Save, Send, Undo2, Sparkles } from 'lucide-react';
+import { App, Button, Dropdown, Input, Modal, Select } from 'antd';
+import { ArrowLeft, ArrowUp, ChevronDown, Clapperboard, Download, FolderOpen, Save, Square, Undo2, Sparkles, X } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { ApiError } from '@ai-star-eco/api-client';
 import type { IpRun } from '@ai-star-eco/types';
-import type { StudioCapabilities, StudioNodeMetadata, StudioScript, StudioScriptSettings } from '@ai-star-eco/types/ip-studio-workflow';
+import type { StudioCapabilities, StudioNodeMetadata, StudioScript } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { readRun, cancelRun } from '@/canvas-bridge/api';
 import { submitStudioRun } from '@/canvas-bridge/studio-api';
@@ -13,29 +13,26 @@ import { saveStudioDocument } from '@/canvas-bridge/studio-save';
 import { studioQueueNotice } from '@/canvas-bridge/studio-task-status';
 import { applyScriptProposal, markdownToScript, scriptFramework, scriptMarkdownError, scriptToMarkdown } from '@/canvas-bridge/studio-script-markdown';
 import { StudioScriptRichEditor, type ScriptRichEditorHandle } from './studio-script-rich-editor';
-import { StudioScriptSettingsForm } from './studio-script-settings';
 
 type EditorState=NonNullable<StudioNodeMetadata['scriptEditor']>;
 type Props={projectId:string;node:CanvasNodeData;capabilities?:StudioCapabilities;
-  onState:(state:EditorState)=>void;onSettings:(settings:StudioScriptSettings)=>void;
+  onState:(state:EditorState)=>void;
   onCommit:(markdown:string,script:StudioScript)=>Promise<void>;onClose:()=>void;
-  onVisual:(key:'characters'|'scenes'|'props',item:{name:string;description:string})=>void;
-  onStoryboard:(episodeNo:number)=>void;onExtract:()=>void};
-const rejectedCodes=new Set(['STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_CONTEXT_LIMIT']);
+  onStoryboard:(episodeNo:number)=>void;onExtract:()=>void|Promise<void>};
+const rejectedCodes=new Set(['AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_CONTEXT_LIMIT']);
 const container=()=>document.querySelector<HTMLElement>('.ip-surface')||document.body;
 
 /** A focused document task. Its chat produces proposals, never a second script canvas node. */
-export function StudioScriptEditor({projectId,node,capabilities,onState,onSettings,onCommit,onClose,onVisual,onStoryboard,onExtract}:Props) {
+export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit,onClose,onStoryboard,onExtract}:Props) {
   const {message}=App.useApp();
   const initial=node.metadata?.studio;
   const [state,setState]=useState<EditorState>(()=>({...initial?.scriptEditor,turns:initial?.scriptEditor?.turns||[],draft:initial?.scriptEditor?.draft??initial?.scriptMarkdown??(initial?.script?scriptToMarkdown(initial.script):node.metadata?.content?.trim()?scriptFramework(node.title).replace('故事背景：',node.metadata.content+'\n\n故事背景：'):scriptFramework(node.title))}));
-  const [side,setSide]=useState('AI 改稿'),[saving,setSaving]=useState(false),[busy,setBusy]=useState(false),[status,setStatus]=useState(''),[previewProposal,setPreviewProposal]=useState(false);
+  const [saving,setSaving]=useState(false),[busy,setBusy]=useState(false),[status,setStatus]=useState(''),[previewProposal,setPreviewProposal]=useState(false);
   // Parent nodes update optimistically; only a confirmed save advances this editor's saved baseline.
   const [savedMarkdown,setSavedMarkdown]=useState(initial?.scriptMarkdown??(initial?.script?scriptToMarkdown(initial.script):''));
   const [saveError,setSaveError]=useState('');
   const [assistantOpen,setAssistantOpen]=useState(false),[toolbarContainer,setToolbarContainer]=useState<HTMLDivElement|null>(null);
   const [undo,setUndo]=useState<string>();
-  const [episode,setEpisode]=useState(initial?.script?.episodes[0]?.no||1);
   const source=useRef<ScriptRichEditorHandle>(null),live=useRef(state),alive=useRef(true),inFlight=useRef(false);
   live.current=state;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -44,6 +41,9 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onSettin
   const dirty=markdown!==savedMarkdown;
   const pending=state.pending,proposal=state.proposal;
   const model=(capabilities?.textModelMode!=="fixed"&&capabilities?.textModels?.some(m=>m.endpointId===state.model)?state.model:undefined)||capabilities?.textModels?.find(m=>m.isDefault)?.endpointId||capabilities?.textModels?.[0]?.endpointId;
+  const selectedModel=capabilities?.textModels?.find(m=>m.endpointId===model);
+  const tokenPrice=selectedModel?.tokenPricing;
+  const cost=capabilities?.mock?0:tokenPrice?.maxCost??selectedModel?.creditCost??capabilities?.textCost;
   const commit=async(close=false)=>{
     if(saving)return false;
     const value=live.current.draft??'',invalid=scriptMarkdownError(value);
@@ -72,7 +72,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onSettin
           if(run.status==='failed'){patch({pending:undefined,error:run.errorMessage||'AI 改稿未完成，原稿已保留'});await saveStudioDocument(projectId);return;}
           const result=run.output.scriptRevision,invalid=result?scriptMarkdownError(result.markdown):'AI 未返回完整剧本文档，原稿已保留';
           if(!result||invalid){patch({pending:undefined,error:invalid});await saveStudioDocument(projectId);return;}
-          patch({pending:undefined,proposal:{...result,baseMarkdown:snapshot.baseMarkdown,runId:run.id},turns:[...live.current.turns,{role:'assistant' as const,content:result.summary}].slice(-16)});
+          patch({pending:undefined,proposal:{...result,baseMarkdown:snapshot.baseMarkdown,runId:run.id},turns:[...live.current.turns,{role:'assistant' as const,content:result.summary,billing:run.output.billing}].slice(-16)});
           setPreviewProposal(true);await saveStudioDocument(projectId);return;
         }
         await new Promise(resolve=>setTimeout(resolve,1500));if(!alive.current)break;
@@ -91,7 +91,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onSettin
     if(inFlight.current||live.current.pending||!live.current.chatDraft?.trim()||!capabilities)return;
     const invalid=scriptMarkdownError(live.current.draft??'');if(invalid){patch({error:invalid});return;}
     if(live.current.proposal){patch({error:'请先采纳或放弃当前 AI 版本，再继续改稿'});return;}
-    const snapshot={baseMarkdown:live.current.draft??'',request:{clientRequestId:nanoid(),nodeId:node.id,operation:'assistant' as const,mode:'general' as const,prompt:live.current.chatDraft.trim(),scriptEdit:{markdown:live.current.draft??''},model,maxCost:capabilities.textModels?.find(m=>m.endpointId===model)?.creditCost??capabilities.textCost,history:live.current.turns.slice(-14).map(t=>({...t,content:t.content.slice(0,4000)}))}};
+    const snapshot={baseMarkdown:live.current.draft??'',request:{clientRequestId:nanoid(),nodeId:node.id,operation:'assistant' as const,mode:'general' as const,prompt:live.current.chatDraft.trim(),scriptEdit:{markdown:live.current.draft??''},model,maxCost:cost,history:live.current.turns.slice(-14).map(t=>({role:t.role,content:t.content.slice(0,4000)}))}};
     patch({pending:snapshot,chatDraft:'',turns:[...live.current.turns,{role:'user' as const,content:snapshot.request.prompt}].slice(-16)});
     await reconcile(snapshot,true);
   };
@@ -113,7 +113,11 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onSettin
           {undo!==undefined&&<Button type="text" icon={<Undo2 size={15}/>} onClick={()=>{const previous=undo;setUndo(undefined);edit(previous);}}>撤销采纳</Button>}
           {proposal&&<Button className="studio-script-preview-toggle" aria-pressed={previewProposal} onClick={()=>setPreviewProposal(!previewProposal)}>{previewProposal?'查看当前稿':'预览 AI 版本'}</Button>}
           <Button type="text" aria-label="导出剧本" title="导出剧本" icon={<Download size={16}/>} onClick={()=>{const blob=new Blob([markdown],{type:'text/markdown;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`${script.title.replace(/[\\/:*?"<>|]/g,'_')}.md`;link.click();URL.revokeObjectURL(url);}}/>
-          <Button aria-label="创作面板" aria-expanded={assistantOpen} icon={<Sparkles size={16}/>} onClick={()=>setAssistantOpen(!assistantOpen)}>{busy?'AI 改稿中':state.error?'AI 改稿待确认':'AI 改稿'}</Button>
+          <Button icon={<FolderOpen size={16}/>} disabled={!!error||saving} onClick={async()=>{if(await commit())await onExtract();}}>素材处理</Button>
+          <Dropdown trigger={['click']} menu={{items:[{key:'append',label:'添加一集'},{type:'divider'},...script.episodes.map(e=>({key:String(e.no),label:`第 ${e.no} 集 · 生成分镜`,disabled:!!error||saving}))],onClick:async({key})=>{if(key==='append')appendEpisode();else if(await commit())onStoryboard(Number(key));}}}>
+            <Button icon={<Clapperboard size={16}/>} disabled={saving}>分集制作<ChevronDown size={13}/></Button>
+          </Dropdown>
+          <Button aria-label="AI 对话" aria-expanded={assistantOpen} icon={<Sparkles size={16}/>} onClick={()=>setAssistantOpen(!assistantOpen)}>{busy?'正在改稿':'AI 对话'}</Button>
           <Button type="primary" icon={<Save size={16}/>} loading={saving} onClick={()=>void commit()}>保存剧本</Button>
         </div>
       </header>
@@ -128,20 +132,26 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onSettin
             {previewProposal&&proposal&&<StudioScriptRichEditor markdown={proposal.markdown} readOnly/>}
           </div>
         </main>
-        {assistantOpen&&<aside className="studio-script-assistant" aria-label="剧本创作面板">
-          <Segmented value={side} options={['AI 改稿','创作设定','素材']} onChange={setSide}/>
-          {side==='AI 改稿'?<><div className="studio-script-chat">
-            {!state.turns.length&&<div className="studio-script-chat-welcome"><h2>和 AI 一起改剧本</h2><p>告诉 AI 你的修改要求，预览后采纳。它会保留完整的剧本框架。</p><Button onClick={()=>patch({chatDraft:'按照现有框架完善故事大纲、人物小传和第 1 集正文，突出主角的目标与开场冲突。'})}>完善当前剧本</Button><Button onClick={()=>patch({chatDraft:'保留其他内容，只把第 1 集的对白改得更自然，并加强结尾的悬念。'})}>优化对白与悬念</Button></div>}
-            {state.turns.map((turn,i)=><div key={i} className={`studio-script-chat-turn ${turn.role}`}><small>{turn.role==='user'?'你':'Studio'}</small><p>{turn.content}</p></div>)}
-            {busy&&<p role="status">{status||'正在提交改稿任务…'}</p>}
-            {pending?.runId&&<Button onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e instanceof Error?e.message:'停止失败，请确认原任务');}}}>停止改稿</Button>}
+        {assistantOpen&&<aside className="studio-script-assistant" aria-label="剧本 AI 对话">
+          <header className="studio-script-chat-header"><strong>AI 对话</strong><Button type="text" aria-label="关闭 AI 对话" icon={<X size={16}/>} onClick={()=>setAssistantOpen(false)}/></header>
+          <div className="studio-script-chat" role="log" aria-label="改稿对话记录" aria-live="polite">
+            {!state.turns.length&&<div className="studio-script-chat-welcome"><Sparkles size={22}/><h2>继续打磨你的故事</h2><p>说说你的想法，AI 会基于当前剧本给出修改稿，由你决定是否采纳。</p><Button type="text" onClick={()=>patch({chatDraft:'按照现有框架完善故事大纲、人物小传和第 1 集正文，突出主角的目标与开场冲突。'})}>完善故事与人物</Button><Button type="text" onClick={()=>patch({chatDraft:'保留其他内容，只把第 1 集的对白改得更自然，并加强结尾的悬念。'})}>让对白更自然</Button></div>}
+            {state.turns.map((turn,i)=><div key={i} className={`studio-script-chat-turn ${turn.role}`}><small>{turn.role==='user'?'你':'Studio'}</small><p>{turn.content}</p>{turn.billing&&<small>输入 {turn.billing.inputTokens} · 输出 {turn.billing.outputTokens} Token · 实扣 {turn.billing.credits} 积分</small>}</div>)}
+            {busy&&<p className="studio-script-chat-progress" role="status">{status||'正在提交改稿任务…'}</p>}
             {state.error&&<p role="alert" className="studio-script-chat-error">{state.error}</p>}
-            {pending&&<Button loading={busy} onClick={()=>void reconcile(pending,true)}>确认原改稿任务</Button>}
-            {proposal&&<div className="studio-script-proposal-actions"><p>{proposal.baseMarkdown===markdown?'AI 版本不会自动覆盖正文。':'正文在等待回复时有了新修改，请先比较当前稿和 AI 版本。'}</p><Button onClick={()=>{setPreviewProposal(true);}}>预览 AI 版本</Button><Button type="primary" disabled={proposal.baseMarkdown!==markdown} onClick={adopt}>采纳修改</Button>{proposal.baseMarkdown!==markdown&&<Button onClick={forceAdopt}>用 AI 版本替换当前稿</Button>}<Button onClick={()=>{patch({proposal:undefined,error:undefined});setPreviewProposal(false);}}>保留当前稿</Button></div>}
-          </div><div className="studio-script-chat-composer"><Input.TextArea aria-label="剧本改稿要求" placeholder="如：保留其他集，只加强第 1 集的冲突…" value={state.chatDraft||''} maxLength={4000} autoSize={{minRows:3,maxRows:6}} disabled={!!pending||busy} onChange={e=>patch({chatDraft:e.target.value})} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/>
-            {capabilities?.textModelMode!=="fixed"&&<Select aria-label="剧本改稿模型" value={model} disabled={!!pending||busy} placeholder="选择创作模型" options={capabilities?.textModels?.map(m=>({value:m.endpointId,label:m.name}))} onChange={value=>patch({model:value})}/> }<Button type="primary" icon={<Send size={15}/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities} onClick={()=>void send()}>发送 · {capabilities?.mock?'测试响应':`${capabilities?.textModels?.find(m=>m.endpointId===model)?.creditCost??capabilities?.textCost??'—'} 积分`}</Button></div></>
-            :side==='创作设定'?<div className="studio-script-side-scroll"><p>设定用于之后的改写与拆镜。故事内容以当前剧本为准。</p><StudioScriptSettingsForm value={initial?.settings||{episodeCount:script.episodes.length}} onChange={onSettings}/></div>
-            :<div className="studio-script-side-scroll"><section className="studio-script-production"><h2>本剧资产</h2><p>把人物、场景和道具保存到个人资产库，补图后可在其他画布引用。</p><Button disabled={!!error||saving} onClick={async()=>{if(await commit())onExtract();}}>提取资产 / 完善本剧资产</Button></section><section className="studio-script-production"><h2>分集制作</h2><Button icon={<Plus size={15}/>} onClick={appendEpisode}>添加一集</Button><Select aria-label="生成分镜的分集" value={script.episodes.some(e=>e.no===episode)?episode:script.episodes[0]?.no} options={script.episodes.map(e=>({value:e.no,label:`第 ${e.no} 集`}))} onChange={setEpisode}/><Button disabled={!!error||saving} onClick={async()=>{if(await commit())onStoryboard(script.episodes.some(e=>e.no===episode)?episode:script.episodes[0]?.no||1);}}>生成分镜</Button></section><p>先保存当前正文，再为设定生成参考图。</p>{(['characters','scenes','props'] as const).map((key,index)=><section key={key}><h2>{['人物','场景','道具'][index]}</h2>{script[key].map((item,i)=><div key={i} className="studio-script-asset"><strong>{item.name}</strong><p>{item.description||'补充设定后生成参考图'}</p><Button disabled={!item.name.trim()||saving||!!error} onClick={async()=>{if(await commit())onVisual(key,item);}}>生成参考图</Button></div>)}</section>)}</div>}
+            {pending&&!busy&&<Button onClick={()=>void reconcile(pending,true)}>确认原改稿任务</Button>}
+            {proposal&&<div className="studio-script-proposal-actions"><p>{proposal.baseMarkdown===markdown?'修改稿已准备好，可在正文区预览。':'正文在等待回复时有了新修改，请先比较两个版本。'}</p><Button onClick={()=>setPreviewProposal(true)}>预览修改稿</Button><Button type="primary" disabled={proposal.baseMarkdown!==markdown} onClick={adopt}>采纳修改</Button>{proposal.baseMarkdown!==markdown&&<Button onClick={forceAdopt}>用 AI 版本替换当前稿</Button>}<Button onClick={()=>{patch({proposal:undefined,error:undefined});setPreviewProposal(false);}}>保留当前稿</Button></div>}
+          </div>
+          <div className="studio-script-chat-composer">
+            <div className="studio-script-chat-input">
+              <Input.TextArea aria-label="剧本改稿要求" placeholder="输入你的剧本想法或修改要求…" value={state.chatDraft||''} maxLength={4000} autoSize={{minRows:3,maxRows:6}} disabled={!!pending||busy} onChange={e=>patch({chatDraft:e.target.value})} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/>
+              <div className="studio-script-chat-controls">
+                {capabilities?.textModelMode!=="fixed"?<Select aria-label="剧本改稿模型" variant="borderless" value={model} disabled={!!pending||busy} placeholder="选择创作模型" options={capabilities?.textModels?.map(m=>({value:m.endpointId,label:m.name}))} onChange={value=>patch({model:value})}/>:<span className="studio-script-chat-model" title={selectedModel?.name}>{selectedModel?.name||'模型加载中'}</span>}
+                {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e instanceof Error?e.message:'停止失败，请确认原任务');}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="发送改稿要求" icon={<ArrowUp size={18}/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
+              </div>
+            </div>
+            <p className="studio-script-chat-price">{capabilities?.mock?'测试响应，不扣积分':tokenPrice?`输入 ${tokenPrice.inputCreditsPerK} / 输出 ${tokenPrice.outputCreditsPerK} 积分 / 千 Token · 最多冻结 ${cost} 积分，按实际用量结算`:cost===undefined?'正在读取模型价格':`本次 ${cost} 积分`}</p>
+          </div>
         </aside>}
       </div>
     </div>

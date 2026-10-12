@@ -6,7 +6,7 @@ import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { StudioNodeMetadata } from '@ai-star-eco/types/ip-studio-workflow';
 import { scriptFramework, markdownToScript } from '@/canvas-bridge/studio-script-markdown';
 import { StudioScriptEditor } from './studio-script-editor';
-const api=vi.hoisted(()=>({submit:vi.fn(),read:vi.fn(),save:vi.fn(),commit:vi.fn(),close:vi.fn(),visual:vi.fn(),storyboard:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn()}));
+const api=vi.hoisted(()=>({submit:vi.fn(),read:vi.fn(),save:vi.fn(),commit:vi.fn(),close:vi.fn(),extract:vi.fn(),storyboard:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn()}));
 vi.mock('@/canvas-bridge/studio-api',()=>({submitStudioRun:api.submit}));
 vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:vi.fn()}));
 vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.save}));
@@ -19,8 +19,9 @@ vi.mock('antd',()=>{
  const Input=({autoSize,...p}:any)=><input {...p}/>;Input.TextArea=({autoSize,...p}:any)=><textarea {...p}/>;
  return {App:{useApp:()=>({message:{error:api.error,info:api.info,success:api.success}})},Input,
  Modal:({children}:any)=><section role="dialog" aria-label="剧本编辑器">{children}</section>,
- Button:({icon,loading,type,size,...p}:any)=><button {...p} disabled={loading||p.disabled}>{p.children}</button>,
- Select:({options,value,onChange,...p}:any)=><select {...p} value={value||''} onChange={e=>onChange(e.target.value)}>{options?.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
+ Button:({icon,loading,type,size,variant,...p}:any)=><button {...p} disabled={loading||p.disabled}>{p.children}</button>,
+ Select:({options,value,onChange,variant,...p}:any)=><select {...p} value={value||''} onChange={e=>onChange(e.target.value)}>{options?.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
+ Dropdown:({children}:any)=><div>{children}</div>,
  Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>};
 });
 const document=scriptFramework('雨夜');
@@ -28,18 +29,18 @@ const accepted={clientRequestId:'original-script-generation',nodeId:'script',ope
 const original:CanvasNodeData={id:'script',type:'text' as never,title:'雨夜',position:{x:35,y:74},width:480,height:300,metadata:{status:'success',studio:{kind:'script',script:markdownToScript(document),scriptMarkdown:document,request:accepted}}};
 const done=(markdown=document.replace('核心冲突：','核心冲突：丢失的钥匙。'))=>({id:'revision-1',projectId:'p',nodeId:'script',kind:'studio-assistant',status:'done',stage:'done',pct:100,cost:2,inputs:{},output:{scriptRevision:{summary:'增强了开场冲突。',markdown}},createdAt:''});
 let snapshot:CanvasNodeData;
-function Host({initial=original}: {initial?:CanvasNodeData}) {
+function Host({initial=original,tokenPricing}: {initial?:CanvasNodeData;tokenPricing?:any}) {
  const[node,setNode]=useState(initial);snapshot=node;
- return <StudioScriptEditor projectId="p" node={node} capabilities={{mock:false,operations:['assistant'],imageCost:8,textCost:2,videoCost:40,textModels:[{endpointId:'text',name:'文本模型',isDefault:true}]}}
+ return <StudioScriptEditor projectId="p" node={node} capabilities={{mock:false,operations:['assistant'],imageCost:8,textCost:2,videoCost:40,textModels:[{endpointId:'text',name:'文本模型',isDefault:true,tokenPricing}]}}
  onState={state=>setNode(n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,scriptEditor:state}}}))}
- onSettings={()=>{}} onCommit={async(markdown,script)=>{setNode(n=>({...n,title:script.title,metadata:{...n.metadata,studio:{...n.metadata!.studio!,script,scriptMarkdown:markdown}}}));await api.commit(markdown,script);}}
- onClose={api.close} onVisual={api.visual} onStoryboard={api.storyboard}/>;
+ onCommit={async(markdown,script)=>{setNode(n=>({...n,title:script.title,metadata:{...n.metadata,studio:{...n.metadata!.studio!,script,scriptMarkdown:markdown}}}));await api.commit(markdown,script);}}
+ onClose={api.close} onExtract={api.extract} onStoryboard={api.storyboard}/>;
 }
 beforeEach(()=>{vi.resetAllMocks();api.submit.mockResolvedValue(done());api.save.mockResolvedValue(undefined);api.commit.mockResolvedValue(undefined);vi.stubGlobal('requestAnimationFrame',(callback:FrameRequestCallback)=>setTimeout(callback,0));});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
-const openAssistant=()=>{const toggle=screen.getByRole('button',{name:'创作面板'});if(toggle.getAttribute('aria-expanded')!=='true')fireEvent.click(toggle);};
+const openAssistant=()=>{const toggle=screen.getByRole('button',{name:'AI 对话',exact:true});if(toggle.getAttribute('aria-expanded')!=='true')fireEvent.click(toggle);};
 const composer=()=>{openAssistant();return screen.getByRole('textbox',{name:'剧本改稿要求'});};
-const send=async()=>{fireEvent.change(composer(),{target:{value:'加强第 1 集开场冲突，保留其他章节。'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());};
+const send=async()=>{fireEvent.change(composer(),{target:{value:'加强第 1 集开场冲突，保留其他章节。'}});fireEvent.click(screen.getByRole('button',{name:'发送改稿要求'}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());};
 test('blank nodes open the full document framework; saving updates the same node and keeps its position and accepted task',async()=>{
  render(<Host initial={{...original,metadata:{studio:{kind:'script',request:accepted}}}}/>);
  expect((screen.getByRole('textbox',{name:'剧本文档'}) as HTMLTextAreaElement).value).toContain('## 人物小传');
@@ -67,8 +68,9 @@ test('accepted jobs resume by run ID without submitting or charging another task
 test('draft-only return preserves incomplete Markdown and leaves the saved script intact',async()=>{
  render(<Host/>);fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:'# 草稿\n\n正在重写'}});fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(api.close).toHaveBeenCalledOnce());expect(api.commit).not.toHaveBeenCalled();expect(snapshot.metadata?.studio?.scriptMarkdown).toBe(document);expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('正在重写');
 });
-test('reference-image actions save the edited projection first and carry the exact asset description',async()=>{
- render(<Host/>);openAssistant();fireEvent.click(screen.getByRole('button',{name:'素材',exact:true}));fireEvent.click(screen.getAllByRole('button',{name:'生成参考图'})[0]);await waitFor(()=>expect(api.visual).toHaveBeenCalledOnce());expect(api.visual).toHaveBeenCalledWith('characters',expect.objectContaining({name:'主角',description:expect.stringContaining('性格与目标')}));expect(api.commit.mock.invocationCallOrder[0]).toBeLessThan(api.visual.mock.invocationCallOrder[0]);
+test('material processing is separate from chat and saves the document before opening extraction',async()=>{
+ render(<Host/>);openAssistant();expect(screen.queryByRole('button',{name:'创作设定'})).toBeNull();expect(screen.queryByRole('button',{name:'生成参考图'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'素材处理'}));await waitFor(()=>expect(api.extract).toHaveBeenCalledOnce());expect(api.commit.mock.invocationCallOrder[0]).toBeLessThan(api.extract.mock.invocationCallOrder[0]);
 });
 test('invalid model output leaves the original draft available and releases the UI lock',async()=>{
  api.submit.mockResolvedValue(done('# 不完整的稿子'));render(<Host/>);await send();await screen.findByRole('alert');expect(snapshot.metadata?.studio?.scriptEditor?.pending).toBeUndefined();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);expect(snapshot.metadata?.studio?.scriptEditor?.proposal).toBeUndefined();
@@ -80,9 +82,16 @@ test('a legacy node copy cannot recover a revision task belonging to its source 
 });
 
 test('the document opens without a creation panel, and toggling that panel preserves the document and chat draft',()=>{
- render(<Host/>);expect(screen.queryByRole('complementary',{name:'剧本创作面板'})).toBeNull();
+ render(<Host/>);expect(screen.queryByRole('complementary',{name:'剧本 AI 对话'})).toBeNull();
  fireEvent.change(composer(),{target:{value:'保留这条未发送的改稿要求'}});
- fireEvent.click(screen.getByRole('button',{name:'创作面板'}));expect(screen.queryByRole('textbox',{name:'剧本改稿要求'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'AI 对话',exact:true}));expect(screen.queryByRole('textbox',{name:'剧本改稿要求'})).toBeNull();
  openAssistant();expect((composer() as HTMLTextAreaElement).value).toBe('保留这条未发送的改稿要求');
  expect((screen.getByRole('textbox',{name:'剧本文档'}) as HTMLTextAreaElement).value).toBe(document);expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('token rates authorize the reservation and display actual usage from the accepted result',async()=>{
+ const tokenPricing={inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21};
+ api.submit.mockResolvedValue({...done(),output:{...done().output,billing:{inputTokens:1000,outputTokens:1000,credits:2,inputCreditsPerK:0.18,outputCreditsPerK:1.08}}});
+ render(<Host tokenPricing={tokenPricing}/>);openAssistant();expect(screen.getByText(/最多冻结 21 积分/)).toBeDefined();await send();
+ expect(api.submit.mock.calls[0][1].maxCost).toBe(21);expect(await screen.findByText(/实扣 2 积分/)).toBeDefined();
 });

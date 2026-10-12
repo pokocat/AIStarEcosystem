@@ -75,6 +75,7 @@ public class PlatformConfigService {
         if (key == null || key.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "configKey 必填");
         }
+        if(AiChatTokenPricing.KEY.equals(key))AiChatTokenPricing.validate(value);
         PlatformConfig existing = repo.findByConfigKey(key).orElse(null);
         String json = serialize(value);
         Instant now = Instant.now();

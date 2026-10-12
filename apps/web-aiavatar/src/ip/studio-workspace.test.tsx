@@ -28,7 +28,7 @@ vi.mock('antd',()=>{
  Drawer:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label="关闭创作面板" onClick={onClose}>关闭</button>{children}{footer}</section>:null,
  Modal:({open,title,children,onCancel}:any)=>open?<section role="dialog" aria-label={title||'剧本编辑器'}>{onCancel&&<button aria-label={`关闭${title}`} onClick={onCancel}>关闭</button>}{children}</section>:null,
  Select:({options,value,onChange,mode,...p}:any)=><select multiple={mode==='multiple'} aria-label={p['aria-label']} value={value??(mode==='multiple'?[]:'')} onChange={e=>onChange(mode==='multiple'?Array.from(e.target.selectedOptions).map(o=>o.value):options.find((o:any)=>String(o.value)===e.target.value)?.value)}>{(options||[]).map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
- Checkbox:({children,...p}:any)=><label><input type="checkbox" {...p}/>{children}</label>,Dropdown:({children}:any)=>children,Tabs:({items}:any)=><>{items.map((item:any)=><section key={item.key}>{item.children}</section>)}</>};
+ Checkbox:({children,...p}:any)=><label><input type="checkbox" {...p}/>{children}</label>,Dropdown:({children,menu}:any)=><div>{children}{menu?.items?.map((item:any)=><button key={item.key} onClick={()=>menu.onClick({key:item.key})}>{item.label}</button>)}</div>,Tabs:({items}:any)=><>{items.map((item:any)=><section key={item.key}>{item.children}</section>)}</>};
 });
 vi.mock('./studio-commerce',()=>({StudioCommerce:()=>null}));
 vi.mock('./studio-speech',()=>({StudioSpeech:()=>null}));
@@ -398,10 +398,7 @@ test('selected episode survives saving the Markdown editor, closing and remounti
  const script={title:'Two episodes',outline:'Original outline',characters:[{name:'小紫',description:'Same character'}],scenes:[],props:[],episodes:[{no:1,title:'One',content:'First episode stays'},{no:2,title:'Two',content:'Second episode to edit'}],shots:[]};
  render(<Host initial={{...node,type:'text',metadata:{status:'success',studio:{kind:'script',script}}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'editor',nodeId:'v'}}));
- fireEvent.click(await screen.findByRole('button',{name:'创作面板'}));
- fireEvent.click(screen.getByRole('button',{name:'素材',exact:true}));
- fireEvent.change(await screen.findByRole('combobox',{name:'生成分镜的分集'}),{target:{value:'2'}});
- fireEvent.click(within(screen.getByRole('dialog',{name:'剧本编辑器'})).getByRole('button',{name:'生成分镜',exact:true}));
+ fireEvent.click(await screen.findByRole('button',{name:'第 2 集 · 生成分镜',exact:true}));
  fireEvent.change(await screen.findByRole('textbox',{name:'创作要求'}),{target:{value:'Only split episode two; preserve episode one.'}});
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'拆分镜头'})).toBeNull());
@@ -441,13 +438,12 @@ test.each([
  const accepted={...request,operation:'script',settings:{genre:'都市治愈',core:'old'}};
  render(<Host initial={{...node,type:'text',metadata:{status:'success',studio:{kind:'script',script,settings:accepted.settings,request:accepted}}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'editor',nodeId:'v'}}));
- fireEvent.click(await screen.findByRole('button',{name:'创作面板'}));
- fireEvent.click(screen.getByRole('button',{name:'创作设定',exact:true}));
- fireEvent.change(await screen.findByRole('textbox',{name:'核心看点'}),{target:{value:'照顾与回馈'}});
+ fireEvent.click(await screen.findByRole('button',{name:'AI 对话',exact:true}));
+ expect(screen.queryByRole('button',{name:'创作设定',exact:true})).toBeNull();
  expect(snapshot[0].metadata?.studio?.request).toEqual(accepted);expect(snapshot[0].metadata?.studio?.script).toEqual(script);
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(screen.queryByRole('dialog',{name:'剧本编辑器'})).toBeNull());
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'split',nodeId:'v'}}));
- expect((await screen.findByRole('textbox',{name:'核心看点'}) as HTMLTextAreaElement).value).toBe('照顾与回馈');
+ fireEvent.change(await screen.findByRole('textbox',{name:'核心看点'}),{target:{value:'照顾与回馈'}});
  fireEvent.click(screen.getByRole('button',{name:'拆分镜头',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  expect(api.submit.mock.calls[0][1].model).toBe(expectedModel);expect(api.submit.mock.calls[0][1].settings.core).toBe('照顾与回馈');expect(api.submit.mock.calls[0][1].prompt).toContain('小紫浇花。');
 });

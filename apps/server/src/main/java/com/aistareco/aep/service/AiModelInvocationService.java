@@ -450,7 +450,7 @@ public class AiModelInvocationService {
                 completionTokens,
                 content == null ? 0 : content.length(),
                 elapsedMs(startNanos));
-        return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model);
+        return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model, promptTokens, completionTokens);
     }
 
     private static Long asLong(Object o) {
@@ -564,6 +564,8 @@ public class AiModelInvocationService {
             String finishReason,
             Long tokensUsed,
             String endpointUsed,
-            String modelUsed
-    ) {}
+            String modelUsed, Long promptTokens, Long completionTokens
+    ) {
+        public AiModelResponse(String content,String finishReason,Long tokensUsed,String endpointUsed,String modelUsed){this(content,finishReason,tokensUsed,endpointUsed,modelUsed,null,null);}
+    }
 }

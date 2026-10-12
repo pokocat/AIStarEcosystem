@@ -47,6 +47,8 @@ public class StudioWorkflowService {
     private final PromptService prompts;
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.aistareco.aep.service.AiChatTokenPricing tokenPricing;
 
     public StudioWorkflowService(IpProjectService projects, IpRunRepository runs, StudioFixtureProvider fixtures,
             StudioWorkflowWorker worker, DapPricingService pricing, AiModelInvocationService models,
@@ -67,8 +69,12 @@ public class StudioWorkflowService {
     }
     private List<TextModel> textModelOptions() {
         if(scenePolicies == null) return models.listCandidates(AiModelPurpose.DAP_PERSONA).stream()
-                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().getName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity())).toList();
-        return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().getName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost())).toList();
+                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().getName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity(),chatRate(r.endpoint().getId()))).toList();
+        return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().getName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost(),chatRate(s.resolved().endpoint().getId()))).toList();
+    }
+
+    private com.aistareco.aep.service.AiChatTokenPricing.Rate chatRate(String endpointId) {
+        return fixtures.enabled()||tokenPricing==null?null:tokenPricing.find(endpointId);
     }
 
     @Transactional
@@ -149,7 +155,9 @@ public class StudioWorkflowService {
                 throw bad("STUDIO_VISION_UNAVAILABLE","这个模型未配置图片读取能力，请切换模型或关闭读取画面");
         }
         if(Boolean.TRUE.equals(request.readVisuals())&&fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不读取真实画面，请关闭测试响应");
-        long cost=fixtures.enabled()||!text?0:textPrice;
+        var chatRate=!fixtures.enabled()&&"assistant".equals(request.operation())?chatRate(textEndpoint.endpoint().getId()):null;
+        long cost=chatRate==null?(fixtures.enabled()||!text?0:textPrice):chatRate.maxCost();
+        if(chatRate!=null&&request.maxCost()==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","请刷新模型价格并确认本次冻结上限");
         IpRunService.requireApprovedCost(request.maxCost(),cost);
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         ObjectNode inputs=mapper.valueToTree(request);
@@ -197,6 +205,13 @@ public class StudioWorkflowService {
             execution.put("userPrompt",creativePrompt);
             execution.put("temperature",resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):resolved.params().maxTokensOrDefault());
             inputs.put("promptKey",promptKey);
+        }
+        if(chatRate!=null) {
+            execution.set("tokenPricing",mapper.valueToTree(chatRate));
+            execution.put("billingUnit","per_token");
+            int budget=Math.min(execution.path("maxTokens").asInt(8192),chatRate.maxOutputTokens());
+            if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)budget=Math.min(budget,textEndpoint.endpoint().getChatMaxOutputTokens());
+            execution.put("maxTokens",budget);
         }
         if(cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 创作");
         IpRun run=IpRun.builder().id(id).projectId(projectId).ownerUserId(userId).nodeId(request.nodeId())

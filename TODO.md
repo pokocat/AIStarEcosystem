@@ -1,5 +1,8 @@
 # 待修清单 / Known Issues
 
+- [x] **Studio 剧本对话与素材处理分离、Token 实际计费**（2026-10-12）：删除侧栏设定/素材 tab 和空框架直接出图入口；独立提取确认后完善素材。AI 对话使用后台模型费率，按供应商实际输入/输出 Token 结算、退回冻结余量；Qwen3.6 按核实供应商活动价的 2 倍配置。验收与发布见 `docs/ip-studio-jusuan-models.md`。
+
+
 本文件记录已定位但暂未修复的问题，方便后续排期。动手修时请勾掉对应条目并在代码里落实。
 
 - [x] ~~Studio 固定 Qwen3.6 写剧本请求被聚算拒绝~~ **2026-10-12 修复并上线**：线上依次返回 `temperature is platform-controlled for vision_chat` 和 `response_format is reserved for trusted orchestration`；统一模型调用层对 Qwen3.6 不传这两个参数，保留原输出预算，靠提示词约束 JSON；增加请求体回归。原失败任务的 2 积分已释放，正式画布的剧本生成和编辑器 AI 改稿均已验收成功；详见 `docs/ip-studio-jusuan-models.md`。

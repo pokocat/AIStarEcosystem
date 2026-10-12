@@ -366,6 +366,27 @@ components:
               name: { type: string }
               isDefault: { type: boolean }
               supportsVision: { type: boolean, description: '来自端点models列表中实际model对应的明确声明，缺省false，不按模型名称猜测。' }
+              creditCost: {type: integer, minimum: 0, description: 非对话文本任务的按次价格}
+              tokenPricing: {$ref: '#/components/schemas/StudioTokenPricing'}
+    StudioTokenPricing:
+      type: object
+      description: Studio AI 对话实际 Token 计费；冻结最大输入与输出预算，完成后合计费用向上取整，退回余量。
+      required: [inputCreditsPerK, outputCreditsPerK, maxInputTokens, maxOutputTokens, maxCost]
+      properties:
+        inputCreditsPerK: {type: number, minimum: 0}
+        outputCreditsPerK: {type: number, minimum: 0}
+        maxInputTokens: {type: integer, minimum: 1}
+        maxOutputTokens: {type: integer, minimum: 1}
+        maxCost: {type: integer, minimum: 0}
+    StudioTokenBilling:
+      type: object
+      required: [inputTokens, outputTokens, credits, inputCreditsPerK, outputCreditsPerK]
+      properties:
+        inputTokens: {type: integer, minimum: 0}
+        outputTokens: {type: integer, minimum: 0}
+        credits: {type: integer, minimum: 0}
+        inputCreditsPerK: {type: number, minimum: 0}
+        outputCreditsPerK: {type: number, minimum: 0}
     StudioAdoptRequest:
       type: object
       required: [nodeId, storageKey, name]

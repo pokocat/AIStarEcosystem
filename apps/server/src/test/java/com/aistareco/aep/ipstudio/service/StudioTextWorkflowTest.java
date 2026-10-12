@@ -41,6 +41,36 @@ class StudioTextWorkflowTest {
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
+    @Test void assistantFreezesTokenRateAndRejectsAnOutdatedCeilingBeforeHolding() throws Exception {
+        var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);
+        var credits=mock(CreditService.class);var pricing=mock(DapPricingService.class);var prompts=mock(PromptService.class);var worker=mock(StudioWorkflowWorker.class);
+        var project=IpProject.builder().id("p").build();when(projects.requiredForUpdate("u","p")).thenReturn(project);
+        when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"原文\"}}]}"));
+        when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
+        var endpoint=AiModelEndpoint.builder().id("agnes-text").enabled(true).build();
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_ASSISTANT)).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
+        var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
+        var tokenPricing=mock(AiChatTokenPricing.class);
+        var rate=new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192);
+        when(tokenPricing.find("agnes-text")).thenReturn(rate);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"tokenPricing",tokenPricing);
+        var request=json.readValue("{\"clientRequestId\":\"key\",\"nodeId\":\"text\",\"operation\":\"assistant\",\"prompt\":\"起一个标题\",\"model\":\"agnes-text\",\"maxCost\":21}",RunRequest.class);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            var stale=json.valueToTree(request);((com.fasterxml.jackson.databind.node.ObjectNode)stale).put("maxCost",2);
+            assertThrows(com.aistareco.common.BusinessException.class,()->service.submit("u","p",json.treeToValue(stale,RunRequest.class)));
+            verifyNoInteractions(credits);
+            service.submit("u","p",request);verifyNoInteractions(worker);
+            var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());var run=capture.getValue();var input=json.readTree(run.getInputJson());
+            assertEquals("studio-assistant",run.getKind());assertEquals(21,run.getCost());
+            assertEquals("per_token",input.path("_exec").path("billingUnit").asText());
+            assertEquals(21,input.path("_exec").path("tokenPricing").path("maxCost").asInt());
+            assertTrue(input.path("_exec").path("maxTokens").asInt()<=8192);
+            verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
+            TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
+        } finally {TransactionSynchronizationManager.clearSynchronization();}
+    }
     @Test void providerRevisionSettlesOnceAndBadOutputReleasesTheHold() throws Exception {
         for(boolean invalid:new boolean[]{false,true}) {
             var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);var credits=mock(CreditService.class);var tx=mock(PlatformTransactionManager.class);
@@ -55,4 +85,24 @@ class StudioTextWorkflowTest {
             else {assertEquals("done",run.getStatus());assertEquals("雨夜\n原文",json.readTree(run.getOutputJson()).path("textRevision").path("content").asText());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString());}
         }
     }
+    @Test void tokenUsageSettlesAcceptedSnapshotOnceAndRefundsTheRemainder() throws Exception {
+        for(boolean missingUsage:new boolean[]{false,true}) {
+            var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);var credits=mock(CreditService.class);var tx=mock(PlatformTransactionManager.class);
+            when(tx.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+            var input=json.createObjectNode().put("operation","text");input.putObject("textEdit").put("content","原文");
+            var execution=input.putObject("_exec").put("systemPrompt","text").put("userPrompt","修改").put("endpointId","text");
+            execution.set("tokenPricing",json.valueToTree(new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192)));
+            var run=IpRun.builder().id("r").kind("studio-text").status("running").cost(21).inputJson(input.toString()).build();
+            when(runs.findById("r")).thenReturn(Optional.of(run));when(runs.lockById("r")).thenReturn(Optional.of(run));
+            var endpoint=AiModelEndpoint.builder().id("text").enabled(true).build();when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+            when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap())).thenReturn(new AiModelInvocationService.AiModelResponse("{\"summary\":\"完成\",\"content\":\"新正文\"}","stop",2000L,"text","text",missingUsage?null:1000L,1000L));
+            var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),mock(FileStorageService.class),models,mock(DramaAssembleService.class),credits,json,tx,mock(DapAssetService.class));
+            worker.runBlocking("r");worker.runBlocking("r");
+            verify(models,times(1)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap());
+            verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
+            if(missingUsage){assertEquals("failed",run.getStatus());assertEquals("AI_USAGE_MISSING",run.getErrorCode());assertEquals(0,run.getCost());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());}
+            else {assertEquals("done",run.getStatus());assertEquals(2,run.getCost());assertEquals(1000,json.readTree(run.getOutputJson()).path("billing").path("inputTokens").asInt());verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString());}
+        }
+    }
+
 }
