@@ -1,6 +1,6 @@
 # 画布个人资产库本地验收 · 2026-10-11
 
-状态：实际应用本地实现，未提交、未部署。AiAvatar 3013 / 后端 18080，独立本地 H2 数据，测试账号 Luna。
+状态：实际应用已于 2026-10-11（America/Los_Angeles）提交并生产部署；本地与生产验收分别记录。AiAvatar 3013 / 后端 18080，独立本地 H2 数据，测试账号 Luna。
 
 ## 用户动线
 
@@ -25,3 +25,24 @@
 本轮范围是 AiAvatar 画布与 Studio 生成；未统一 music / drama / celebrity 的跨应用素材，也未实测付费图片生成质量。数据库增加 V52 personal asset library，不修改已执行迁移。不改生产、账户权限或直接修改积分余额。验收完成已关闭本地图片测试响应并恢复真实模型配置；已保存的样例版本仍标注为测试图片。文档收尾确认属于现有 Operate 界面的普通扩展，既有设计文档与 sidecar 漂移保留，核对记录见 .studio-e2e/asset-library/documenter-note.md。
 
 本地证据：.studio-e2e/asset-library/rules-proof.json、extraction-success.json、all-types.log、tests.log、contract.log。界面截图：.impeccable/review/asset-library/。
+
+
+## 生产发布 · 2026-10-11（America/Los_Angeles）
+
+功能提交 `50ffb4ba6`、历史素材命名补丁 `bb99a3d86` 均已推送 `codex/unified-ip-studio`。以干净独立工作树构建；原型目录及本地验收数据库/图片未进入 Git 提交或生产制品。生产配置不变，真实 OIDC / 实际模型 / 关闭 mock 与开发登录。
+
+- 首包 `20261011-personal-assets-50ffb4ba` 发布 server / web-aiavatar；后端补丁 `20261011-asset-history-bb99a3d8` 仅发布 server。
+- 备份 `/opt/ai-star-eco/backups/20261011-personal-assets-043849`：数据库压缩转储、旧 JAR、旧前端包；权限 0700/0600，gzip 校验通过。日期前缀为本地工作日，备份时刻 UTC 2026-10-12 04:38:49。
+- 前端 BUILD_ID `QMwpqzVibtdBQ2GMmbe9j`；前端包 SHA256 `c389c3c260c1e1f3d220d59f869644c85166a20a4d721871bd9073c919301680`；最终 JAR SHA256 `0b8819594aae733669fb648637c07e53fd5d3c81ae2132ff1a0615312a807d89`，生产与本地一致。
+- 两服务 active、NRestarts=0；V52 成功、失败迁移 0。上线时自动归集产生 95 个回执与 74 份全库素材；当前验收账号能看到其本人 33 份素材，每页 24 项。
+- 正式 [资产库](https://aistar.aibuzz.cn/assets)、创作、登录、API 配置和兼容 aiavatar 域检查通过，两次部署 verify 均 ALL GREEN。
+
+登录态在现有《池边的界限》画布 `IPP-aa81ea7d` 验证：选中剧本节点看到提取资产入口；已有结构化人物/场景/道具免费整理为 5 项，核对后保存至手工文件夹“池边的界限”。快速完善显示 0/5、生产图片端点与 30 积分报价；只保存林远的提示词，没有提交生成。原文与描述保留，MySQL 读取确认 5 对象、5 绑定、1 文件夹。
+
+从资产库“在新画布使用”创建 `IPP-7009070a`，无图角色以文字设定引用；数据库确认具体 objectId/描述/来源快照和文件夹偏好持久化。来源画布仍是 2 节点，新画布 1 节点；新画布选择器默认“池边的界限”，5 项可选择。余额持续 1,303；本次线上没有新增模型调用或付费生成。
+
+历史原节点已移除的素材曾显示 `generate · IPR-...`；补丁仅归一服务自动生成的默认名称，手工改名写入豁免标志；未来入库优先节点/项目名称，搜索和普通/不可读 DTO 使用同一名称。Astra 对两文件静态复核未见实际缺陷；未重复广泛测试。
+
+《废市》17 项及测试图片属于本地验收，没有迁移到生产。付费图片质量、跨子产品资产统一及完整无障碍不作为本次上线结论。
+
+发布证据位于 `.studio-e2e/asset-library/`：release-backup.json、release-artifacts.json、release-final-runtime.txt、production-proof.json、两次 build/deploy 日志、online-library.jpg、online-editor.jpg、online-new-canvas.jpg。

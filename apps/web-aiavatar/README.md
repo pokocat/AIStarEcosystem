@@ -870,3 +870,5 @@ Edit this existing brand icon. Keep the EXACT original design and composition: t
 ### 2026-10-11 · 个人资产库（本地实现，未发布）
 
 剧本节点提取 → 核对入库 → 快速完善 → 新画布引用共用实际产品。前端新增 personal-asset-library、library-extraction-panel、library-asset-editor、library-reference-picker，胶水在 canvas-bridge/asset-library 与 library-reference。后端 V52 新建 ip_library_record，IpLibraryCollector 从持久任务归集，上传与原资产文件库复用。边界及验收见 [方案](../../docs/ip-studio-personal-asset-library-plan.md) 与 [验收](../../docs/ip-studio-asset-library-validation.md)。
+
+个人资产库已于 2026-10-11 发布，server/web-aiavatar 与 V52 验收见 [资产库发布记录](../../docs/ip-studio-asset-library-validation.md)。

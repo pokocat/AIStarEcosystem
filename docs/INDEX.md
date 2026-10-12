@@ -65,7 +65,7 @@
 | [Studio 运镜标签](ip-studio-camera-motion.md) | 产品 / 实施 | 原生面板、展开编辑器与抽屉共用命名指令、光标插入、编辑/移除及正文保存；v0.211 本地 |
 | [Studio 视频特效库](ip-studio-video-effects.md) | 产品 / 实施 | 共用官方描述、本人收藏/最近/个人发布、模型筛选、点选与替换；v0.213 本地，原生供应商效果及完整社区未接 |
 | [`docs/ip-studio-character-library.md`](ip-studio-character-library.md) | **Studio IP 人物库与小云雀对标** | 人物成组浏览、主图/设定图/视角/声音、免费归类、精确版本引用和浏览器验收；V45，本地未发布（last-reviewed 2026-10-08） |
-| [个人资产库与快速编辑方案](ip-studio-personal-asset-library-plan.md) | **实际产品方案，本地验收通过** | 贴合现有 `/assets`、画布、人物详情及剧本素材面板；提取/快速完善不进一级导航；自动归集与跨画布引用（last-reviewed 2026-10-11） |
+| [个人资产库与快速编辑方案](ip-studio-personal-asset-library-plan.md) | **实际产品方案，已生产发布** | 贴合现有 `/assets`、画布、人物详情及剧本素材面板；提取/快速完善不进一级导航；自动归集与跨画布引用（last-reviewed 2026-10-11） |
 | [`docs/prompts/ip-character-sheet.md`](prompts/ip-character-sheet.md) | **人物设定图一次出图提示词** | 用户附图版式拆解、可换人物的提示词与整图参考出单独镜头；反推词，不称作者原词（last-reviewed 2026-10-08） |
 | [`docs/ip-studio-unified-canvas-validation.md`](ip-studio-unified-canvas-validation.md) | **统一 Studio 真实 Agnes 与确定性验证记录** | 样例与真实证据分开；三镜/双集/商品包装媒体、平台积分、恢复与下载、测试/构建/手机检查，以及声音和生产未验收边界（last-reviewed 2026-10-09） |
 | [`docs/aiavatar-asset-hub-redesign.md`](aiavatar-asset-hub-redesign.md) | AiAvatar 平台（**中枢重构真源**） | 数字资产升格为生态资产中枢的产品 + 前端重构设计：四动词模型（注册/引用/回流/授权）+ 档案卡 + 两条铁律（不阻塞下游 / 联邦不集中）+ 新 IA 五路由 + /studio 双轨迁移 + P1-P4 分期；P1（真路由读界面）已落地（last-reviewed 2026-08-29） |
@@ -220,4 +220,4 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 - [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · v0.230 桌面外壳、旧深链兼容与验收边界；last-reviewed: 2026-10-10。
 
-- [个人资产库闭环验收](ip-studio-asset-library-validation.md) · 剧本内提取、快速完善与新画布引用；本地验收通过，发布状态见本文生产记录；last-reviewed: 2026-10-11。
+- [个人资产库闭环验收](ip-studio-asset-library-validation.md) · 剧本内提取、快速完善与新画布引用；本地与生产验收通过，含 V52 和发布制品记录；last-reviewed: 2026-10-11。

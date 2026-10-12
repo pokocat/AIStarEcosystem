@@ -1302,7 +1302,7 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 - 画布节点提交前提示缺失的连入图片与必填文字/选项；实际后端生成仍须模型白名单、素材归属、preflight、maxCost、积分冻结/结算及幂等。断开连线是用户显式改变引用；发布模板仍剥离作者私有素材和任务。
 
 
-## 个人资产库增量（2026-10-11，本地实现）
+## 个人资产库增量（2026-10-11，已生产发布）
 
 现有 `/assets` 升级为资产库，一级导航只放资产库；提取属于画布剧本/文本节点及剧本编辑器「素材 → 本剧资产」。核对人物、场景和道具后入库，即使没有图片也保留为草稿。已有结构化设定免费整理，正文分析沿用配置的创作模型和明确报价；原文与任务先保存，同键确认原任务，不采纳未确认的 AI 改稿。
 
@@ -1311,3 +1311,5 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 成功的 IpRun 图片候选、视频、音频及完整文本在服务端持续归集，包括未采用候选；上传媒体自动保存。关闭页面不影响归集。库按本人、文件夹、名称/来源、状态/媒体类型分页。新画布可从资产库添加，创作输入的 @ 菜单保留画布候选并可搜索个人资产；同名候选展示来源，图片明确选择版本，无图对象以文字设定引用。原人物形象和声音入口保留。删除文件夹内容移到未分类；删除对象不删除旧画布文件。
 
 持久化使用 V52 `ip_library_record`（folder/object/binding/preference/receipt），原媒体仍用 `ip_saved_asset`，原生成、积分与画布文档继续各自为真值。接口为 `/api/v1/ip-studio/library/**` 与 `projects/{id}/library/{extract,save-extraction,folder}`；分页直接返回 PageEnvelope，资源返回 ApiResponse。跨子产品的音乐/短剧/带货资产统一、团队共享及自动项目归属不在本轮范围。
+
+发布与本地/生产验收范围见 `docs/ip-studio-asset-library-validation.md`（2026-10-11）；本地样例不自动迁移到生产。
