@@ -60,7 +60,7 @@ public class StudioWorkflowWorker {
             ObjectNode output=mapper.createObjectNode(); output.put("mock",mock);
             String operation=input.path("operation").asText();
             switch(operation) {
-                case "text","script","storyboard","assistant" -> {
+                case "text","script","storyboard","assistant","asset-extract" -> {
                     JsonNode script;
                     if(mock) script=fixtureScript(input);
                     else {
@@ -74,11 +74,20 @@ public class StudioWorkflowWorker {
                             if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","创作模型的图片读取能力已停用");
                             userContent=new StudioVisualContext(storage).parts(user,visual);
                         }
-                        String content=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
-                                Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",input.path("_exec").path("maxTokens").asInt(8192))).content();
-                        script=mapper.readTree(content);
+                        var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
+                                Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",input.path("_exec").path("maxTokens").asInt(8192)));
+                        if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
+                        script=mapper.readTree(reply.content());
                     }
-                    if("text".equals(operation)) {
+                    if("asset-extract".equals(operation)) {
+                        String source=input.path("scriptEdit").path("markdown").asText();
+                        if(mock) {
+                            var extracted=mapper.createObjectNode();var items=extracted.putArray("items");
+                            StudioAssetExtraction.structured(source).forEach(item->items.add(mapper.valueToTree(item)));
+                            script=extracted;
+                        }
+                        var validated=StudioAssetExtraction.validate(script,source);var extraction=mapper.createObjectNode();extraction.set("items",mapper.valueToTree(validated));int omitted=script.path("items").size()-validated.size();if(omitted>0)extraction.putArray("warnings").add("有 "+omitted+" 项缺少可靠的原文依据，未加入建议列表，请在剧本中补充设定后重新整理。");output.set("assetExtraction",extraction);
+                    } else if("text".equals(operation)) {
                         if(mock)script=mapper.createObjectNode().put("summary","测试响应：保留原文，不调用真实模型。")
                                 .put("content",input.path("textEdit").path("content").asText().isBlank()?"测试文本样例":input.path("textEdit").path("content").asText());
                         StudioTextRevision.validateOutput(script);

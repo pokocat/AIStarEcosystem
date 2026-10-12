@@ -10,6 +10,8 @@ import java.util.Optional;
 
 @Repository
 public interface IpRunRepository extends JpaRepository<IpRun, String> {
+    @org.springframework.data.jpa.repository.Query("select r from IpRun r where r.status in ('done','failed') and not exists (select x from IpLibraryRecord x where x.id=concat('ILC-',r.id)) order by r.createdAt")
+    List<IpRun> uncollectedLibraryRuns(org.springframework.data.domain.Pageable pageable);
 
     Optional<IpRun> findByProjectIdAndClientRequestId(String projectId, String clientRequestId);
 

@@ -13,6 +13,7 @@ import { saveStudioDocument } from "@/canvas-bridge/studio-save";
 import { ASSISTANT_CONTEXT_LIMIT, assistantContextIds, assistantContextNodes, assistantMentionQuery, insertAssistantMention } from "@/canvas-bridge/studio-assistant-context";
 import type { IpSavedAsset } from '@ai-star-eco/types';
 import { attachmentNode, savedAssetPayload, readAssistantAttachment } from '@/canvas-bridge/studio-attachments';
+import { LibraryReferencePicker } from './library-reference-picker';
 import { StudioAttachmentPicker } from './studio-attachment-picker';
 import { StudioConversationShare } from './studio-conversation-share';
 import { AtSign, Scan, X } from 'lucide-react';
@@ -26,6 +27,8 @@ type AssistantDraft={prompt:string;contextIds:string[];model?:string;mode:Studio
 const preflightErrors=new Set(['STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_CONTEXT_NOT_FOUND','STUDIO_CONTEXT_LIMIT','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_VISION_UNAVAILABLE','STUDIO_VISUAL_MISSING','STUDIO_VISUAL_LIMIT','IP_ASSET_KEY_INVALID']);
 export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabilities,open,initialNodeId,initialPrompt,initialMode,onClose,selectedIds,onUseStep}:Props) {
   const {message}=App.useApp();const [mode,setMode]=useState<StudioAssistantMode>("general"),[prompt,setPrompt]=useState(""),[conversationId,setConversationId]=useState<string>(),[contextIds,setContextIds]=useState<string[]>([]),[model,setModel]=useState<string>(),[busy,setBusy]=useState(false);
+  const [libraryQuery,setLibraryQuery]=useState<string>();
+  const libraryMention=useRef<ReturnType<typeof assistantMentionQuery>>(undefined);
   const [caret,setCaret]=useState(0),[mentionOpen,setMentionOpen]=useState(false),[mentionIndex,setMentionIndex]=useState(0),[reading,setReading]=useState(false),[contextError,setContextError]=useState('');
   const [readVisuals,setReadVisuals]=useState(true),[attachmentsUnsaved,setAttachmentsUnsaved]=useState(false);
   // UI drafts belong to their conversation, independent of accepted run requests.
@@ -183,9 +186,10 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
           else if(query&&suggestions.length&&['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();setMentionIndex(i=>(i+(e.key==='ArrowDown'?1:-1)+suggestions.length)%suggestions.length);}
           else if(query&&suggestions.length&&e.key==='Enter'){e.preventDefault();chooseMention(suggestions[mentionIndex%suggestions.length]);}
         }} rows={4} maxLength={4000}/>
-        {query&&<div id="studio-assistant-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">{suggestions.length?suggestions.map((node,index)=><button key={node.id} id={`studio-assistant-mention-${node.id}`} type="button" role="option" aria-selected={index===mentionIndex%suggestions.length} onMouseDown={e=>e.preventDefault()} onClick={()=>chooseMention(node)}><span>{node.title}</span><small>{node.type==='text'?'文字':'素材设定'}</small></button>):<p>没有匹配的节点，换个名称试试</p>}</div>}
+        {query&&<div id="studio-assistant-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">{suggestions.length?suggestions.map((node,index)=><button key={node.id} id={`studio-assistant-mention-${node.id}`} type="button" role="option" aria-selected={index===mentionIndex%suggestions.length} onMouseDown={e=>e.preventDefault()} onClick={()=>chooseMention(node)}><span>{node.title}</span><small>{node.type==='text'?'文字':'素材设定'}</small></button>):<p>当前画布没有匹配节点</p>}<button type="button" onMouseDown={e=>e.preventDefault()} onClick={()=>{libraryMention.current=query;setLibraryQuery(query.query);setMentionOpen(false);}}>从个人资产库选择</button></div>}
         <div className="studio-assistant-context-actions"><Button icon={<AtSign size={16}/>} disabled={locked} onClick={()=>{const value=prompt+(prompt&&!/\s$/.test(prompt)?' ':'')+'@';setPrompt(value);setCaret(value.length);setMentionOpen(true);setMentionIndex(0);composer.current?.focus();}}>引用节点</Button><Button icon={<Scan size={16}/>} disabled={locked||!contextNodes.length} onClick={()=>{const ids=contextNodes.slice(0,16).map(n=>n.id);setContextIds(ids);setContextError(contextNodes.length>16?'已引用前 16 个对象，可移除或用 @ 换选其他节点':'');}}>感知画布</Button></div>
-        <StudioAttachmentPicker locked={locked} reading={reading} onFiles={files=>void addAttachments(files).catch(()=>{})} onAssets={addAttachments}/>
+        <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>setLibraryQuery(undefined)} onAssets={async assets=>{await addAttachments(assets);const mention=libraryMention.current;if(mention)setPrompt(value=>insertAssistantMention(value,mention,assets.map(a=>a.title).join("、")));libraryMention.current=undefined;}}/>
+        <StudioAttachmentPicker projectId={projectId} locked={locked} reading={reading} onFiles={files=>void addAttachments(files).catch(()=>{})} onAssets={addAttachments}/>
         {attachmentsUnsaved&&<Button disabled={locked} onClick={()=>void retryAttachmentSave()}>重试保存附件</Button>}
         <details className="studio-helper-note"><summary>附件与读取说明</summary><p id="studio-assistant-context-note">可多选图片、视频、音频和故事；导入免费，加入画布后可编辑和复用。图片 8 MB，MP4 视频 128 MB / 60 秒，音频 25 MB / 10 分钟。TXT / Markdown 256 KB，PDF / Word 8 MB，正文最多 24000 字；扫描件需先识别文字。</p></details>
         <label className="studio-helper-note"><input type="checkbox" checked={readingVisuals} disabled={locked||!canReadVisuals} onChange={e=>setReadVisuals(e.target.checked)}/> 读取图片与视频画面</label>

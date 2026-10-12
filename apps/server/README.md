@@ -1008,3 +1008,14 @@ POST /api/v1/ip-studio/projects/{id}/story-import，multipart字段file，返回
 既有 Studio run 接口新增 `operation=text` 与 `textEdit.content` 正文快照，输出 `textRevision {summary,content}`；复用 script 场景文本模型、计价、端点队列、afterCommit 派发和积分结算。仅普通文本节点可使用，结构化剧本继续原改稿链。
 
 V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `error_message` 分开；厂商提交错误按 HTTP 状态与厂商错误码映射为平台码，Studio 原生视频投影回传该码。供应商队列满不会显示为平台排队位置。Agnes Video 2.5 使用其独立 mode/seconds/size 协议；生产 Studio 候选仍由后台白名单决定。
+
+
+## 个人资产库增量（2026-10-11，本地实现）
+
+现有 `/assets` 升级为资产库，一级导航只放资产库；提取属于画布剧本/文本节点及剧本编辑器「素材 → 本剧资产」。核对人物、场景和道具后入库，即使没有图片也保留为草稿。已有结构化设定免费整理，正文分析沿用配置的创作模型和明确报价；原文与任务先保存，同键确认原任务，不采纳未确认的 AI 改稿。
+
+文件夹为本人手工建立的单层组织，不引入正式项目。名称不作为身份：不同来源同名默认独立，复用已有资产必须显式选择。一个对象可保存多个剧本依据、描述、生成提示词、上传参考图和图片版本；快速完善支持逐项编辑和按缺图批量提交，已有主图/运行中的项跳过，失败项独立重试。新版本不覆盖旧画布引用，引用保存 objectId/versionId 与文件 key、描述快照。
+
+成功的 IpRun 图片候选、视频、音频及完整文本在服务端持续归集，包括未采用候选；上传媒体自动保存。关闭页面不影响归集。库按本人、文件夹、名称/来源、状态/媒体类型分页。新画布可从资产库添加，创作输入的 @ 菜单保留画布候选并可搜索个人资产；同名候选展示来源，图片明确选择版本，无图对象以文字设定引用。原人物形象和声音入口保留。删除文件夹内容移到未分类；删除对象不删除旧画布文件。
+
+持久化使用 V52 `ip_library_record`（folder/object/binding/preference/receipt），原媒体仍用 `ip_saved_asset`，原生成、积分与画布文档继续各自为真值。接口为 `/api/v1/ip-studio/library/**` 与 `projects/{id}/library/{extract,save-extraction,folder}`；分页直接返回 PageEnvelope，资源返回 ApiResponse。跨子产品的音乐/短剧/带货资产统一、团队共享及自动项目归属不在本轮范围。

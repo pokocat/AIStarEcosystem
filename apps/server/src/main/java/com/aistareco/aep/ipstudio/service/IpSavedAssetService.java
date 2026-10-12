@@ -22,7 +22,9 @@ public class IpSavedAssetService {
     public List<JsonNode> list(String user) {
         return repo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(user).stream().map(r -> wire(r,user)).toList();
     }
-    @Transactional public JsonNode save(String user,JsonNode request) {
+    @Transactional public JsonNode save(String user,JsonNode request) {return saveInternal(user,request,false);}
+    @Transactional public JsonNode saveAutomatic(String user,JsonNode request) {return saveInternal(user,request,true);}
+    private JsonNode saveInternal(String user,JsonNode request,boolean automatic) {
         if(request==null || !request.isObject()) throw invalid();
         String kind=request.path("kind").asText();
         if(!Set.of("image","video","audio","text").contains(kind)) throw invalid();
@@ -33,7 +35,7 @@ public class IpSavedAssetService {
         // Rebuild the payload; no client URLs, ids, timestamps, or unbounded nested metadata enter storage.
         ObjectNode payload=om.createObjectNode();
         payload.put("kind",kind);payload.put("title",request.path("title").asText("画布素材").substring(0,Math.min(128,request.path("title").asText("画布素材").length())));
-        payload.set("tags",om.createArrayNode());payload.put("source","Canvas");payload.put("coverUrl","");
+        payload.set("tags",om.createArrayNode());payload.put("source",automatic?request.path("source").asText("AI 生成"):"Canvas");payload.put("coverUrl","");
         ObjectNode data=payload.putObject("data");
         if("text".equals(kind)) data.put("content",value);
         else {
@@ -47,6 +49,10 @@ public class IpSavedAssetService {
         String prompt=request.path("metadata").path("prompt").asText("");
         if(prompt.length()>100000) throw invalid();
         meta.put("prompt",prompt);
+        if(automatic)for(String field:List.of("folderId","objectId","runId","projectId","nodeId")) {
+            String valueField=request.path("metadata").path(field).asText(null);
+            if(valueField!=null&&valueField.length()<=128)meta.put(field,valueField);
+        }
         String id;
         try {
             id="IPA-"+HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest((user+"\0"+kind+"\0"+value).getBytes(StandardCharsets.UTF_8))).substring(0,28);
@@ -55,10 +61,42 @@ public class IpSavedAssetService {
         var existing=repo.findById(id);
         var row=existing.orElseGet(() -> IpSavedAsset.builder().id(id).ownerUserId(user).createdAt(Instant.now()).build());
         // A deleted asset can be saved again. Existing identical content is idempotent.
-        if(existing.isPresent() && row.getDeletedAt()==null) return wire(row,user);
+        // Automatic backfill must respect an explicit deletion, including after process restart.
+        if(existing.isPresent() && (row.getDeletedAt()==null || automatic)) {
+            if(automatic&&row.getDeletedAt()==null){
+                try{ObjectNode old=(ObjectNode)om.readTree(row.getPayloadJson());ObjectNode oldMeta=old.with("metadata");
+                    // Enrich provenance once; repeated collectors never undo manual folder moves or edits.
+                    for(String field:List.of("folderId","objectId","runId","projectId","nodeId","prompt"))if(!(field.equals("folderId")&&oldMeta.path("folderAssigned").asBoolean())&&(!oldMeta.hasNonNull(field)||oldMeta.path(field).asText().isBlank()))if(meta.hasNonNull(field)&&!meta.path(field).asText().isBlank())oldMeta.set(field,meta.get(field));
+                    row.setPayloadJson(old.toString());repo.save(row);
+                }catch(Exception e){throw new IllegalStateException(e);}
+            }
+            return safeWire(row,user);
+        }
         row.setDeletedAt(null);row.setPayloadJson(payload.toString());repo.save(row);
         return wire(row,user);
     }
+    public com.aistareco.aep.ipstudio.dto.IpLibraryDtos.LibraryPage<JsonNode> page(String user,String folder,String query,String kind,int page) {
+        if(page<0||page>100000)throw invalid();
+        var rows=repo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(user).stream().filter(row->{
+            try {var data=om.readTree(row.getPayloadJson());String f=data.path("metadata").path("folderId").asText();
+                return (folder==null||folder.isBlank()||folder.equals("all")||(folder.equals("unfiled")?f.isBlank():folder.equals(f)))
+                    &&(kind==null||kind.equals("all")||kind.equals(data.path("kind").asText()))
+                    &&(query==null||(data.path("title").asText()+" "+data.path("source").asText()+" "+data.path("metadata").path("prompt").asText()).toLowerCase(java.util.Locale.ROOT).contains(query.toLowerCase(java.util.Locale.ROOT)));
+            }catch(Exception e){return false;}
+        }).toList();
+        int start=Math.min(rows.size(),page*24),end=Math.min(rows.size(),start+24);
+        return new com.aistareco.aep.ipstudio.dto.IpLibraryDtos.LibraryPage<>(rows.subList(start,end).stream().map(r->safeWire(r,user)).toList(),page,rows.size(),end<rows.size());
+    }
+    @Transactional public JsonNode edit(String user,String id,JsonNode body) {
+        lockOwner(user);var row=repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id,user).orElseThrow(()->BusinessException.notFound("IP_ASSET_NOT_FOUND","素材不存在"));
+        try {ObjectNode data=(ObjectNode)om.readTree(row.getPayloadJson());
+            if(body.has("title")){String title=body.path("title").asText().strip();if(title.isBlank()||title.length()>128)throw invalid();data.put("title",title);}
+            if(body.has("folderId")){var meta=data.with("metadata").put("folderAssigned",true);String folder=body.path("folderId").asText(null);if(folder==null||folder.isBlank())meta.remove("folderId");else meta.put("folderId",folder);}
+            row.setPayloadJson(data.toString());repo.save(row);return safeWire(row,user);
+        }catch(BusinessException e){throw e;}catch(Exception e){throw new IllegalStateException(e);}
+    }
+    @Transactional public void clearFolder(String user,String folder){for(var row:repo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(user))try{ObjectNode data=(ObjectNode)om.readTree(row.getPayloadJson());if(folder.equals(data.path("metadata").path("folderId").asText())){data.with("metadata").remove("folderId");row.setPayloadJson(data.toString());repo.save(row);}}catch(Exception e){throw new IllegalStateException(e);}}
+    private JsonNode safeWire(IpSavedAsset row,String user){try{return wire(row,user);}catch(BusinessException e){try{ObjectNode data=(ObjectNode)om.readTree(row.getPayloadJson());data.put("id",row.getId()).put("createdAt",row.getCreatedAt().toString()).put("updatedAt",row.getCreatedAt().toString());data.with("metadata").put("unavailable",true);data.with("data").put("url","").put("dataUrl","");return data;}catch(Exception ignored){throw e;}}}
     @Transactional public void remove(String user,String id) {
         lockOwner(user);
         var r=repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id,user).orElseThrow(() -> BusinessException.notFound("IP_ASSET_NOT_FOUND","这个素材不存在"));

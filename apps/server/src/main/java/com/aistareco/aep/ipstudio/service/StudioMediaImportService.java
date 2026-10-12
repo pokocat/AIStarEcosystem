@@ -21,6 +21,8 @@ public class StudioMediaImportService {
     private final FileStorageService storage;
     private final StorageQuotaService quota;
     private final FfmpegRunner ffmpeg;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private IpSavedAssetService savedAssets;
+    @org.springframework.beans.factory.annotation.Autowired private com.fasterxml.jackson.databind.ObjectMapper mapper;
     public record MediaImportResult(String key, String url, String mediaType, String mimeType,
                                     long bytes, String fileName, Integer width, Integer height, Double durationSec) {}
     public StudioMediaImportService(FileStorageService storage, StorageQuotaService quota, FfmpegRunner ffmpeg) {
@@ -78,6 +80,7 @@ public class StudioMediaImportService {
         name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "").strip();
         if (name.isBlank()) name = "画布附件";
         name = name.substring(0, name.offsetByCodePoints(0, Math.min(100, name.codePointCount(0, name.length()))));
+        if(savedAssets!=null){var asset=mapper.createObjectNode().put("kind",type).put("title",name).put("source","用户上传");asset.putObject("data").put("storageKey",stored.key()).put("mimeType",format.mime()).put("bytes",stored.bytes());savedAssets.saveAutomatic(user,asset);}
         return new MediaImportResult(stored.key(), storage.signedUrl(stored.key()), type, format.mime(), stored.bytes(), name, width, height, duration);
     }
     private BusinessException invalid(String message) { return BusinessException.badRequest("STUDIO_MEDIA_INVALID", message); }

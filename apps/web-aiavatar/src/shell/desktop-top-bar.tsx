@@ -14,7 +14,7 @@ const navigation = [
   { href: "/create", label: "创作" },
   { href: "/ips", label: "IP 管理" },
   { href: "/templates", label: "模板管理" },
-  { href: "/assets", label: "素材库" },
+  { href: "/assets", label: "资产库" },
 ];
 
 /** The canvas keeps its native tools; this shared product navigation uses the approved light shell. */

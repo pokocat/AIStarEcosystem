@@ -4,22 +4,23 @@ import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
 import { readAssistantStory, assistantContextNodes } from './studio-assistant-context';
 
 export const ATTACHMENT_ACCEPT = '.txt,.md,.markdown,.pdf,.doc,.docx,.jpg,.jpeg,.png,.mp4,.mp3,.wav,.m4a';
-export type InsertAssetPayload = { kind: 'text'; content: string; title: string } |
+export type InsertAssetPayload = ({ kind: 'text'; content: string; title: string } |
   { kind: 'image'; dataUrl: string; title: string; storageKey?: string } |
   { kind: 'video'; url: string; title: string; storageKey?: string; width?: number; height?: number } |
-  { kind: 'audio'; url: string; title: string; storageKey?: string; mimeType?: string };
+  { kind: 'audio'; url: string; title: string; storageKey?: string; mimeType?: string }) & { libraryReference?:import('@ai-star-eco/types/ip-studio-workflow').StudioNodeMetadata['libraryReference'] };
 
 /** Shared projection for canvas assets and assistant attachments. */
 export function savedAssetPayload(asset: IpSavedAsset): InsertAssetPayload {
-  if (asset.kind === 'text') return { kind: 'text', content: asset.data.content, title: asset.title };
-  if (asset.kind === 'image') return { kind: 'image', dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title };
-  if (asset.kind === 'video') return { kind: 'video', url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height };
-  return { kind: 'audio', url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, mimeType: asset.data.mimeType };
+  const libraryReference=asset.metadata?.libraryReference as InsertAssetPayload['libraryReference'];
+  if (asset.kind === 'text') return { kind: 'text', content: asset.data.content, title: asset.title,libraryReference };
+  if (asset.kind === 'image') return { kind: 'image', dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title,libraryReference };
+  if (asset.kind === 'video') return { kind: 'video', url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height,libraryReference };
+  return { kind: 'audio', url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, mimeType: asset.data.mimeType,libraryReference };
 }
 
 export function attachmentNode(payload: InsertAssetPayload, nodes: CanvasNodeData[]): CanvasNodeData {
   const media = payload.kind !== 'text';
-  const existing = assistantContextNodes(nodes).find(n => n.type === payload.kind && (payload.kind === 'text' ? n.metadata?.content === payload.content :
+  const existing = assistantContextNodes(nodes).find(n => n.type === payload.kind && (!payload.libraryReference||n.metadata?.studio?.libraryReference?.objectId===payload.libraryReference.objectId&&n.metadata?.studio?.libraryReference?.versionId===payload.libraryReference.versionId) && (payload.kind === 'text' ? n.metadata?.content === payload.content :
     !!payload.storageKey && n.metadata?.storageKey === payload.storageKey));
   if (existing) return existing;
   const type = { text: CanvasNodeType.Text, image: CanvasNodeType.Image, video: CanvasNodeType.Video, audio: CanvasNodeType.Audio }[payload.kind];
@@ -28,6 +29,7 @@ export function attachmentNode(payload: InsertAssetPayload, nodes: CanvasNodeDat
     position: { x: Math.max(20, ...nodes.map(n => n.position.x + n.width)) + 80, y: 120 },
     metadata: { content: payload.kind === 'text' ? payload.content : payload.kind === 'image' ? payload.dataUrl : payload.url,
       storageKey: media ? payload.storageKey : undefined, status: media ? 'success' : 'idle',
+      ...(payload.libraryReference?{studio:{kind:media?'ip':'text',libraryReference:payload.libraryReference}}:{}),
       ...(payload.kind === 'audio' ? { mimeType: payload.mimeType } : {}),
       ...(payload.kind === 'video' ? { naturalWidth: payload.width, naturalHeight: payload.height } : {}) } };
 }

@@ -30,7 +30,8 @@ export async function readAssistantStory(file: File, nodes: CanvasNodeData[], ex
     catch { throw new Error('无法读取故事，请将文件保存为 UTF-8 编码'); }
   }
   if (!text || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text)) throw new Error('文件没有可用的文字内容');
-  if (text.length > ASSISTANT_STORY_LIMIT) throw new Error('单份故事最多 24000 字，请按章节拆分');
+  // Asset extraction accepts a full screenplay; assistant submission still enforces its own context budget.
+  if (text.length > 48000) throw new Error('单份剧本最多 48000 字，请按章节拆分');
   return { id: nanoid(), type: CanvasNodeType.Text, title: file.name.replace(/\.(txt|md|markdown|pdf|doc|docx)$/i, ''), width: 480, height: 300,
     position: { x: Math.max(20, ...nodes.map(n => n.position.x + n.width)) + 80, y: 120 }, metadata: { content: text, status: 'idle' } };
 }

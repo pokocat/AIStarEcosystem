@@ -8,6 +8,11 @@ import { App, Button, Checkbox, Dropdown, Input, Modal, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
 import { ArrowDown, ArrowUp, BookOpen, Clapperboard, Download, FileText, ImagePlus, Layers, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
 import { nanoid } from "nanoid";
+import { LibraryExtractionPanel } from "./library-extraction-panel";
+import { LibraryReferencePicker } from "./library-reference-picker";
+import { attachmentNode, savedAssetPayload } from "@/canvas-bridge/studio-attachments";
+import { libraryObjectAsset } from "@/canvas-bridge/library-reference";
+import type { IpSavedAsset } from "@ai-star-eco/types";
 import type { IpRun } from "@ai-star-eco/types";
 import type { StudioCapabilities, StudioIpAsset, StudioIpAssetRole, StudioVoiceProfile, StudioOperation, StudioReference, StudioRunRequest, StudioScript, StudioScriptSettings, StudioPlan, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
@@ -21,6 +26,7 @@ import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoRefere
 import { StudioVideoControls,type StudioVideoDraft } from "./studio-video-controls";
 import { studioNodeCommand } from './studio-node-command';
 import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
+import { StudioAssetMentionInput } from "./studio-asset-mention-input";
 import { StudioMotionPrompt } from "./studio-motion-prompt";
 import { encodeChannelModel } from "@/canvas-bridge/config-store";
 import { SERVER_CHANNEL_ID, endpointIdFor } from "@/canvas-bridge/models";
@@ -79,6 +85,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [busy, setBusy] = useState(false);
   const [directorSaving,setDirectorSaving]=useState(false);
   const [editorId, setEditorId] = useState<string>();
+  const [extractionId,setExtractionId]=useState<string>();
+  const [libraryQuery,setLibraryQuery]=useState<string>();
+  const libraryMention=useRef<{start:number;end:number}|undefined>(undefined);
+  const openLibrary=(query:string)=>{const start=prompt.lastIndexOf("@"+query);libraryMention.current=start>=0?{start,end:start+query.length+1}:undefined;setLibraryQuery(query);};
+  const openExtraction=async(id:string)=>{try{await saveStudioDocument(projectId);setExtractionId(id);}catch(e){message.error(e instanceof Error?e.message:"请先保存剧本");}};
+  const insertLibrary=async(assets:IpSavedAsset[])=>{const chosen:string[]=[];setNodes(list=>{const next=[...list];for(const a of assets){const n=attachmentNode(savedAssetPayload(a),next);if(!next.some(x=>x.id===n.id))next.push(n);chosen.push(n.id);}return next;});await saveStudioDocument(projectId);setReferenceIds(ids=>[...new Set([...ids,...chosen])]);const mention=libraryMention.current;if(mention)setPrompt(value=>value.slice(0,mention.start)+assets.map(a=>"@"+a.title).join(" ")+value.slice(mention.end));libraryMention.current=undefined;};
   const [scriptPreviewId,setScriptPreviewId]=useState<string>();
   const panelSession=useRef(0);
   const [adoptId, setAdoptId] = useState<string>();
@@ -798,7 +810,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {!!selected.metadata?.storageKey&&<>{selectedStudio?.libraryAssetRole==="sheet"?<button type="button" onClick={()=>openDirector("image",selected)}><ImagePlus size={15}/>修改设定图</button>:<button type="button" onClick={() => openDirector("video",selected)}><Play size={15}/>引用生成视频</button>}
         <button type="button" onClick={() => openAdopt(selected)}><UserRound size={15}/>{selected.metadata?.studio?.adoption?.lookId?"另存人物素材":selected.metadata?.studio?.adoption?"更新主形象":"加入 IP"}</button></>}</>}
       {selected.type===CanvasNodeType.Text&&selected.metadata?.studio?.script && <><button type="button" onClick={() => {setEditorId(selected.id);onClosePanel();}}><FileText size={15}/>打开编辑器</button>
-        <button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button></>}
+        <button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button><button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button></>}
+      {selected.type===CanvasNodeType.Text&&!selected.metadata?.studio?.script&&!selected.metadata?.studio?.libraryReference&&<button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button>}
       {selected.type===CanvasNodeType.Image&&selected.metadata?.storageKey&&(selected.metadata?.studio?.adoption||selected.metadata?.studio?.references?.some(r=>r.avatarId)) && <button type="button" onClick={() => openDirector("script",selected)}><BookOpen size={15}/>创作剧本</button>}
       {selected.type===CanvasNodeType.Video && <>{!!selected.metadata?.storageKey&&<button type="button" disabled={!!selected.metadata.templateStepId&&selected.metadata.studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>}
         {selected.metadata?.studio?.kind!=="work" && <button data-studio-command="video" type="button" disabled={selected.metadata?.status==="loading"} onClick={()=>openDirector("video",selected)}>{selected.metadata?.storageKey?"重新生成视频":"生成视频"}</button>}</>}
@@ -834,7 +847,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {(operation==="video"?studioVideoReferenceIds(videoDraft,referenceIds):referenceIds).map(id=>{const node=nodes.find(n=>n.id===id);return node?<span className="studio-reference-chip" key={id}>{node.type===CanvasNodeType.Image&&node.metadata?.content&&<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>}<span>{operation==="video"?`${videoPromptReferences.find(r=>r.nodeId===id)?.label||"待补充"} · ${node.title}`:node.title}</span><button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>removeComposerReference(id)}><X size={13}/></button></span>:null;})}
       </div>
       {pickingReferences&&<p className="studio-reference-pick-note" role="status">点击画布素材添加参考，完成后点击“完成参考选择”。</p>}
-        {operation==="video"?<div className="studio-prompt-field"><span>创作要求</span><StudioMotionPrompt videoModel={chosenModel?.endpointId} effectPreviews={nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>({storageKey:n.metadata!.storageKey!,name:n.title}))} ariaLabel="创作要求" references={videoPromptReferences} value={prompt} onChange={setPrompt} disabled={busy} className="studio-motion-drawer-editor" placeholder="描述画面或动作，输入 @ 引用素材"/></div>:<label>创作要求<Input.TextArea aria-label="创作要求" placeholder={operation==="script"?"描述故事、人物、风格和目标时长，也可以粘贴已有剧本":"描述希望生成的画面或动作"} value={prompt} onChange={e => setPrompt(e.target.value)} autoSize={{minRows:3,maxRows:7}} maxLength={16000}/></label>}
+        {operation==="video"?<div className="studio-prompt-field"><span>创作要求</span><StudioMotionPrompt onLibraryRequest={openLibrary} videoModel={chosenModel?.endpointId} effectPreviews={nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>({storageKey:n.metadata!.storageKey!,name:n.title}))} ariaLabel="创作要求" references={videoPromptReferences} value={prompt} onChange={setPrompt} disabled={busy} className="studio-motion-drawer-editor" placeholder="描述画面或动作，输入 @ 引用素材"/></div>:<label>创作要求<StudioAssetMentionInput nodes={nodes} onLibraryRequest={openLibrary} onCanvasReference={id=>setReferenceIds(ids=>[...new Set([...ids,id])])} placeholder={operation==="script"?"描述故事、人物、风格和目标时长，也可以粘贴已有剧本":"描述希望生成的画面或动作"} value={prompt} onChange={setPrompt}/></label>}
       {removedVideoMention&&<p role="alert">提示词中有已移除的参考，请删除该标记或重新引用素材。</p>}
       <details className="studio-composer-settings" key={`${originId}-${operation}`}><summary>{ratio}{operation==="image"?` · ${imageCount} 张`:operation==="video"?` · ${duration} 秒 · ${videoCount} 条`:" · 创作设定"}<span>参数设置</span></summary>
       <div className="studio-director-form">
@@ -946,7 +959,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       }}
       onClose={()=>{setEditorId(undefined);if(mode==="storyboard"){setStoryboardNodeId(editor.id);openDirector("script",nodesRef.current.find(n=>n.id===editor.id)||editor,"storyboard");}else setScriptPreviewId(editor.id);}}
       onVisual={(key,item)=>{const current=nodesRef.current.find(n=>n.id===editor.id);if(current)createVisualReference(current,key,item);}}
+      onExtract={()=>void openExtraction(editor.id)}
       onStoryboard={no=>{const current=nodesRef.current.find(n=>n.id===editor.id);if(current){splitScript(current);setEpisodeNo(no);setEditorId(undefined);}}}/>}
+    {extractionId&&nodes.find(n=>n.id===extractionId)&&<LibraryExtractionPanel projectId={projectId} node={nodes.find(n=>n.id===extractionId)!} onClose={()=>setExtractionId(undefined)} onTask={async assetExtraction=>{patch(extractionId,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,assetExtraction}}}));await saveStudioDocument(projectId);}} onUse={async asset=>{await insertLibrary([libraryObjectAsset(asset)]);}}/>}
+    <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>{setLibraryQuery(undefined);libraryMention.current=undefined;}} onAssets={insertLibrary}/>
     <StudioTemplateLibrary open={templateLibraryOpen} scope={templateScope} nodes={nodes} onClose={()=>setTemplateLibraryOpen(false)}/>
     <StudioLipSync open={lipSyncOpen} onClose={()=>setLipSyncOpen(false)} projectId={projectId} nodes={nodes} initialNodeId={lipOriginId} busy={busy} onSubmit={createLipSync}/>
     <StudioSpeech anchorId={speechOriginId} key={speechOriginId} initialDraft={speechOrigin?.metadata?.studio?.speechDraft} onDraft={updateSpeechDraft} initialVoiceId={speechOrigin?.metadata?.studio?.speechRequest?.voiceId||speechOrigin?.metadata?.studio?.voiceProfile?.voiceId} initialAvatarId={speechOrigin?.metadata?.studio?.speechRequest?.avatarId||speechOrigin?.metadata?.studio?.voiceProfile?.avatarId||speechOrigin?.metadata?.studio?.references?.find(r=>r.avatarId)?.avatarId||speechAvatarId} open={speechOpen} onClose={()=>void closeSpeech()} initialText={speechOrigin?.metadata?.studio?.speechRequest?.text||speechOrigin?.metadata?.prompt||""} busy={busy||speechSaving} pending={studioGenerationPending(speechOrigin)?{confirmed:!!speechOrigin?.metadata?.studio?.runId}:undefined} onConfirm={()=>{if(speechOrigin?.metadata?.studio?.runId){setSpeechOpen(false);setTaskList(true);}else if(speechOrigin)void retry(speechOrigin);}} onSubmit={createSpeech}/>

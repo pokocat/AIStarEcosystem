@@ -18,6 +18,8 @@ export type CanvasPromptChipInputProps = {
     references: CanvasResourceReference[];
     onChange: (value: string) => void;
     onSubmit?: () => void;
+    // 本仓：host opens the personal library; the vendor input never queries product APIs.
+    onLibraryRequest?: (query:string) => void;
     className?: string;
     style?: CSSProperties;
     placeholder?: string;
@@ -38,7 +40,7 @@ type Token =
 
 // Prompt-panel contentEditable input: @ references embed thumbnail chips instead of plain label text.
 // Serialization converts chips back to reference labels so the generated value matches the former textarea semantics.
-export function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, style, placeholder, ariaLabel, commands = [], ref }: CanvasPromptChipInputProps) {
+export function CanvasPromptChipInput({ value, references, onChange, onSubmit, onLibraryRequest, className, style, placeholder, ariaLabel, commands = [], ref }: CanvasPromptChipInputProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
@@ -181,7 +183,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const syncMention = () => {
         const text = textBeforeCaret();
         const match = /@([^\s@]*)$/.exec(text);
-        if (!match || !activeReferences.length) {
+        if (!match || !activeReferences.length&&!onLibraryRequest) {
             closeMention();
             return;
         }
@@ -318,15 +320,15 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
                 }}
                 onBlur={() => { rememberCaret(); window.setTimeout(closeMention, 120); }}
             />
-            {mention && candidates.length ? (
-                <MentionMenu rect={mention.rect} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} />
+            {mention && (candidates.length||onLibraryRequest) ? (
+                <MentionMenu rect={mention.rect} references={candidates} activeIndex={Math.min(activeIndex, candidates.length - 1)} theme={theme} onSelect={insertReference} onLibraryRequest={onLibraryRequest?()=>{onLibraryRequest(mention.query);setMention(null);}:undefined} />
             ) : null}
             {imagePreview ? <Image src={imagePreview} alt={i18n.t("canvas.composer.imagePreview")} style={{ display: "none" }} preview={{ visible: true, src: imagePreview, onVisibleChange: (visible) => !visible && setImagePreview(null) }} /> : null}
         </div>
     );
 }
 
-function MentionMenu({ rect, references, activeIndex, theme, onSelect }: { rect: DOMRect | null; references: CanvasResourceReference[]; activeIndex: number; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onSelect: (reference: CanvasResourceReference) => void }) {
+function MentionMenu({ rect, references, activeIndex, theme, onSelect, onLibraryRequest }: { rect: DOMRect | null; references: CanvasResourceReference[]; activeIndex: number; theme: (typeof canvasThemes)[keyof typeof canvasThemes]; onSelect: (reference: CanvasResourceReference) => void; onLibraryRequest?:()=>void }) {
     const selectedRef = useRef(false);
     const activeItemRef = useRef<HTMLButtonElement | null>(null);
 
@@ -384,6 +386,7 @@ function MentionMenu({ rect, references, activeIndex, theme, onSelect }: { rect:
                     </span>
                 </button>
             ))}
+            {onLibraryRequest&&<button type="button" className="w-full px-3 py-2 text-left text-sm" onMouseDown={e=>e.preventDefault()} onClick={onLibraryRequest}>从个人资产库选择</button>}
         </div>,
         document.body,
     );

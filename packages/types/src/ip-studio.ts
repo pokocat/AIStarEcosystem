@@ -68,13 +68,15 @@ export interface IpConnection { id: string; fromNodeId: string; toNodeId: string
 
 /** 画布文档 —— **客户端拥有**：服务端整存整取、不改内容。 */
 export interface IpProjectDoc {
+  /** Explicit organization preference for newly created assets; never a project identity. */
+  libraryFolderId?: string;
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;
 }
 
 export type IpRunStatus = "running" | "done" | "failed";
-export type IpRunKind = "identity" | "generate" | "studio-adopt" | "studio-audio" | "studio-lip-sync" | `studio-${import("./ip-studio-workflow").StudioOperation}`;
+export type IpRunKind = "identity" | "generate" | "studio-adopt" | "studio-audio" | "studio-lip-sync" | "studio-asset-extract" | `studio-${import("./ip-studio-workflow").StudioOperation}`;
 
 // width / height 是**出图的真实像素**（服务端从文件头读，不整图解码）。
 // 画布拿它算节点尺寸；缺了只能按上限铺成正方形，竖图会被撑成方框。
@@ -85,6 +87,7 @@ export interface IpVideoCandidate {
   queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null;
 }
 export interface IpRunOutput {
+  assetExtraction?: { warnings?:string[];items: import('./ip-asset-library').LibraryCandidate[] };
   mock?: boolean;
   script?: import("./ip-studio-workflow").StudioScript;
   plan?: import("./ip-studio-workflow").StudioPlan;

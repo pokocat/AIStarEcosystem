@@ -338,7 +338,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         <Dropdown menu={{ items: nodeMenu }} trigger={['click']} disabled={!selected.size}><button aria-label="更多节点操作" disabled={!selected.size}><Ellipsis size={19}/><span className="studio-flow-tool-label" aria-hidden>更多节点操作</span></button></Dropdown>
         <button aria-label="复制选中节点" disabled={!selected.size} onClick={() => paste(true)}><Copy size={19}/><span className="studio-flow-tool-label" aria-hidden>复制选中节点</span></button>
         <button aria-label="删除选中节点" disabled={!selected.size && !selectedEdges.size} onClick={remove}><Trash2 size={19}/><span className="studio-flow-tool-label" aria-hidden>删除选中节点</span></button>
-        <StudioAttachmentPicker variant="canvas" locked={reading} reading={reading} onFiles={files => void importFiles(files)} onAssets={async assets => {
+        <StudioAttachmentPicker projectId={projectId} variant="canvas" locked={reading} reading={reading} onFiles={files => void importFiles(files)} onAssets={async assets => {
           checkpoint(); let last: string | undefined; for (const asset of assets) { const n = attachmentNode(savedAssetPayload(asset), current().nodes); setNodes(old => old.some(x => x.id === n.id) ? old : [...old, n]); last = n.id; }
           await saveStudioDocument(projectId); if (last) focusNode(last);
         }}/>

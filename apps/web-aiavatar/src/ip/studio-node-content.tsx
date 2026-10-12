@@ -7,6 +7,8 @@ import { studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 /** Only business summaries are inside scaled nodes; editors remain on the screen layer. */
 export function StudioNodeContent({ node, readOnly=false }: { node: CanvasNodeData; readOnly?:boolean }) {
   const studio = node.metadata?.studio;
+  // Extraction receipts and text asset references do not turn ordinary text into a generated script.
+  if(node.type==="text"&&!studio?.script&&!studio?.workDraft&&(!studio?.kind||studio.kind==="text"))return <div className="studio-flow-text">{node.metadata?.content||"双击编辑文字"}</div>;
   if(studio?.workDraft)return <div className="studio-node-summary"><Play size={24}/><strong>{studio.workDraft.title||node.title}</strong><p>{node.metadata?.content}</p>
     <button disabled={readOnly} type="button" onMouseDown={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()} onClick={()=>dispatchStudioCommand('work',node.id)}>编辑成片方案</button></div>;
   if(studio?.kind==="assistant" || studio?.kind==="batch")return <div className="studio-node-summary"><Clapperboard size={24}/><strong>{node.title}</strong><p>{studio.conversation?.plan?.summary||`${studio.batch?.steps.length||0} 个制作步骤 · 最多 ${studio.batch?.approvedCost||0} 积分`}</p><button disabled={readOnly} type="button" onMouseDown={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()} onClick={()=>dispatchStudioCommand(studio.kind,node.id)}>打开{studio.kind==="assistant"?"对话":"制作计划"}</button></div>;

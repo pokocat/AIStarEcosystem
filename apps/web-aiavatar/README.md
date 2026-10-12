@@ -865,3 +865,8 @@ Edit this existing brand icon. Keep the EXACT original design and composition: t
 ## Studio 节点交互增量（2026-10-11）
 
 素材菜单支持直接上传；图片节点可上传或替换素材并保留连线。创作面板按节点类型提供操作，素材库使用画布侧栏。故事板直接投影原画布节点，三栏总览和同类型详情共用原节点及任务；文本详情底部输入修改意图，AI 返回完整正文，结果更新原节点，手改冲突保留为待采纳建议。发布与线上验收见 [发布记录](../../docs/ip-studio-node-release-20261011.md)。
+
+
+### 2026-10-11 · 个人资产库（本地实现，未发布）
+
+剧本节点提取 → 核对入库 → 快速完善 → 新画布引用共用实际产品。前端新增 personal-asset-library、library-extraction-panel、library-asset-editor、library-reference-picker，胶水在 canvas-bridge/asset-library 与 library-reference。后端 V52 新建 ip_library_record，IpLibraryCollector 从持久任务归集，上传与原资产文件库复用。边界及验收见 [方案](../../docs/ip-studio-personal-asset-library-plan.md) 与 [验收](../../docs/ip-studio-asset-library-validation.md)。

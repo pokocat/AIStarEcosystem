@@ -12025,3 +12025,129 @@ paths:
       responses:
         '200': { description: 补齐后的配置, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioPricingConfig' } } } }
         '400': { description: VIDEO_STUDIO_PRICING_INVALID }
+
+  /v1/ip-studio/library/folders:
+    get:
+      tags: [ip-studio]
+      summary: Personal library get library/folders
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+    post:
+      tags: [ip-studio]
+      summary: Personal library post library/folders
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/folders/{id}:
+    put:
+      tags: [ip-studio]
+      summary: Personal library put library/folders/{id}
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+    delete:
+      tags: [ip-studio]
+      summary: Personal library delete library/folders/{id}
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/objects:
+    get:
+      tags: [ip-studio]
+      summary: Personal library get library/objects
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+    post:
+      tags: [ip-studio]
+      summary: Personal library post library/objects
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/objects/{id}:
+    get:
+      tags: [ip-studio]
+      summary: Personal library get library/objects/{id}
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+    patch:
+      tags: [ip-studio]
+      summary: Personal library patch library/objects/{id}
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+    delete:
+      tags: [ip-studio]
+      summary: Personal library delete library/objects/{id}
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/objects/{id}/versions:
+    post:
+      tags: [ip-studio]
+      summary: Personal library post library/objects/{id}/versions
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/objects/{id}/generate:
+    post:
+      tags: [ip-studio]
+      summary: Personal library post library/objects/{id}/generate
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/materials:
+    get:
+      tags: [ip-studio]
+      summary: Personal library get library/materials
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/materials/{id}:
+    patch:
+      tags: [ip-studio]
+      summary: Personal library patch library/materials/{id}
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/library/uploads:
+    post:
+      tags: [ip-studio]
+      summary: Personal library post library/uploads
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/projects/{id}/library/folder:
+    put:
+      tags: [IP Studio]
+      summary: Set canvas preferred personal asset folder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folderId: { type: string, nullable: true }
+      responses:
+        '200':
+          description: ApiResponse
+    get:
+      tags: [ip-studio]
+      summary: Personal library get projects/{id}/library/folder
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/projects/{id}/library/extract:
+    post:
+      tags: [ip-studio]
+      summary: Personal library post projects/{id}/library/extract
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/projects/{id}/library/save-extraction:
+    post:
+      tags: [ip-studio]
+      summary: Personal library post projects/{id}/library/save-extraction
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }

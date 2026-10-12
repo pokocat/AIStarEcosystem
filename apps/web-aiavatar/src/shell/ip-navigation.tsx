@@ -8,7 +8,7 @@ export const ipNavigation = [
   { href: "/create", label: "创作", icon: SquarePen },
   { href: "/ips", label: "IP 管理", icon: UserRound },
   { href: "/templates", label: "模板管理", icon: LayoutTemplate },
-  { href: "/assets", label: "素材库", icon: FolderOpen },
+  { href: "/assets", label: "资产库", icon: FolderOpen },
 ];
 
 export function IpNavigation() {

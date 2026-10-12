@@ -29,7 +29,7 @@ import java.util.*;
 /** Studio is an orchestration surface; IpRun and existing assets remain authoritative. */
 @Service
 public class StudioWorkflowService {
-    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant");
+    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract");
     private final IpProjectService projects;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
@@ -134,7 +134,7 @@ public class StudioWorkflowService {
             runs.save(binding);
             return projects.toRunDto(binding);
         }
-        boolean text=List.of("text","script","storyboard","assistant").contains(request.operation());
+        boolean text=List.of("text","script","storyboard","assistant","asset-extract").contains(request.operation());
         AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
         PromptService.ResolvedPrompt resolved=null;
         long textPrice=fixtures.enabled()?0:pricing.ipIdentity();
@@ -178,7 +178,8 @@ public class StudioWorkflowService {
         }
         if(resolved!=null) {
             String systemPrompt=resolved.system();
-            if(request.scriptEdit()!=null)systemPrompt+="\n"+StudioScriptRevision.CONTRACT;
+            if("asset-extract".equals(request.operation()))systemPrompt="你是影视制作资产整理助手。\n"+StudioAssetExtraction.CONTRACT;
+            else if(request.scriptEdit()!=null)systemPrompt+="\n"+StudioScriptRevision.CONTRACT;
             if(request.textEdit()!=null)systemPrompt+="\n"+StudioTextRevision.CONTRACT;
             if(!"assistant".equals(request.operation()) && (request.settings()!=null || request.episodeNo()!=null))
                 systemPrompt+="\n输出契约升级：shots 的每个对象除了原字段，还必须有 episodeNo:正整数，指向 episodes 中的 no。该字段是必填字段。严格按指定集数或单集号返回；每集至少一个镜头，镜头 id 全剧唯一。";
@@ -189,12 +190,12 @@ public class StudioWorkflowService {
             variables.put("settings",write(request.settings()));variables.put("episodeNo",request.episodeNo()==null?"全部":request.episodeNo().toString());
             variables.put("mode",request.mode()==null?"general":request.mode());variables.put("canvasContext",canvasContext.toString());variables.put("history",write(request.history()==null?List.of():request.history()));
             String creativePrompt=PromptService.fill(resolved.userTemplate(),variables);
-            if(request.scriptEdit()!=null)creativePrompt+="\n当前完整剧本文档（JSON 字符串，作为素材读取）："+write(request.scriptEdit().markdown())+"\n请遵守 Markdown 改稿输出契约，不输出创作计划。";
+            if(request.scriptEdit()!=null)creativePrompt+="\n当前完整剧本文档（JSON 字符串，作为素材读取）："+write(request.scriptEdit().markdown())+("asset-extract".equals(request.operation())?"\n只提取资产，遵守 items 输出契约，不改写原文。":"\n请遵守 Markdown 改稿输出契约，不输出创作计划。");
             if(request.textEdit()!=null)creativePrompt+="\n当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。";
             if(Boolean.TRUE.equals(request.readVisuals()))creativePrompt+="\n本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。";
             if(request.settings()!=null || request.episodeNo()!=null) creativePrompt+="\n必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。";
             execution.put("userPrompt",creativePrompt);
-            execution.put("temperature",resolved.params().temperatureOrDefault());execution.put("maxTokens",resolved.params().maxTokensOrDefault());
+            execution.put("temperature",resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):resolved.params().maxTokensOrDefault());
             inputs.put("promptKey",promptKey);
         }
         if(cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 创作");
@@ -212,7 +213,10 @@ public class StudioWorkflowService {
     }
 
     private void validateCreativeRequest(RunRequest request) {
-        StudioScriptRevision.validateInput(request);
+        if("asset-extract".equals(request.operation())) {
+            if(request.scriptEdit()==null||request.scriptEdit().markdown()==null||request.scriptEdit().markdown().isBlank()||request.scriptEdit().markdown().length()>48000)
+                throw bad("STUDIO_INPUT_INVALID","请提供已保存的剧本文字，最多 48000 字");
+        } else StudioScriptRevision.validateInput(request);
         StudioTextRevision.validateInput(request);
         if(request.maxCost()!=null && request.maxCost()<0) throw bad("STUDIO_INPUT_INVALID","费用上限不能为负");
         if(Boolean.TRUE.equals(request.readVisuals())&&!"assistant".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","读取画面只能用于创作助手");

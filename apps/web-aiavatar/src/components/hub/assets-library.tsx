@@ -5,7 +5,7 @@
 // ============================================================
 import React from "react";
 import { Plus } from "lucide-react";
-import { SavedCanvasAssets } from "@/ip/saved-canvas-assets";
+import { PersonalAssetLibrary } from "@/ip/personal-asset-library";
 import Link from "next/link";
 import { AssetApi, AvatarApi, LicenseApi, VoiceApi } from "@/proto/api";
 import type { AssetSummary, Avatar, License, StarGrant, VoiceAsset } from "@/proto/data";
@@ -44,7 +44,7 @@ export function AssetsLibrary() {
 
   return (
     <HubScreen tabBar className="ip-brand-surface ip-hub-surface assets-library">
-      <header className="assets-library-heading"><div><h1>素材库</h1><p>管理画布素材、人物形象和声音，随时用于创作。</p></div><Link href="/create" className="ip-brand-button"><Plus size={17} />创建资产</Link></header>
+      <header className="assets-library-heading"><div><h1>资产库</h1><p>生成的素材和剧本资产都在这里，随时用于新的创作。</p></div><Link href="/create" className="ip-brand-button"><Plus size={17} />创建资产</Link></header>
       <div className="assets-library-mobile-heading">
       <NavBar
         title="资产"
@@ -73,7 +73,7 @@ export function AssetsLibrary() {
       />
       </div>
       <div className="assets-library-content">
-      <SavedCanvasAssets />
+      <PersonalAssetLibrary />
       <div style={{ margin: "6px 16px 0" }}>
         <SectionHeader
           title="人物与形象"
@@ -140,7 +140,7 @@ export function AssetsLibrary() {
       </div>
 
       <div className="hub-section" style={{ margin: "20px 16px 0" }}>
-        <SectionHeader title="资产分类" hint="生成视频时搭配使用" action={<LinkAction href="#canvas-assets">查看画布素材 ›</LinkAction>} />
+        <SectionHeader title="资产分类" hint="生成视频时搭配使用" action={<LinkAction href="#personal-assets">查看画布素材 ›</LinkAction>} />
         <div>
           {summary.error ? (
             <Card>

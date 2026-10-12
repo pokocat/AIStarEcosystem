@@ -1004,3 +1004,8 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 ### Studio 节点交互增量 · 2026-10-11
 
 故事板只投影画布原节点和连线，同屏详情复用原创作组件；普通文本 `operation=text` 的 `textEdit.content` 是受理正文快照，prompt 是修改意图，结果回写原节点，较新手改保留待采纳建议。任务仍走原端点队列、幂等与账本。V51 新增 `material_video_job.error_code`，用于厂商错误规范映射，不能用供应商队列拒绝冒充平台排队。发布状态见 `docs/ip-studio-node-release-20261011.md`。
+
+
+### 个人资产库 · 2026-10-11（本地实现，未发布）
+
+现有 /assets 为统一个人资产入口；剧本节点/编辑器素材面板负责提取，快速完善为任务内弹窗。V52 ip_library_record 保存对象身份、文件夹、来源绑定、画布文件夹偏好和归集回执，不使用假 finalized DapAvatar 承载无图草稿。名字不合并身份，引用锁具体版本，移动文件夹不复制对象。IpRun 与 ip_saved_asset 继续作为任务/文件真值，定时归集不调用模型或修改结算；生成与计费复用原 Studio 链。合同见 specs/openapi.yaml、specs/BUSINESS_RULES.md；方案与实际验收见 docs/ip-studio-personal-asset-library-plan.md、docs/ip-studio-asset-library-validation.md。

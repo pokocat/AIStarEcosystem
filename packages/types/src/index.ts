@@ -19,6 +19,7 @@ export * from "./film";
 export * from "./finance";
 export * from "./generation";
 export * from "./ip-studio";
+export * from "./ip-asset-library";
 export * from "./license";
 export * from "./material-ops";
 export * from "./music";
