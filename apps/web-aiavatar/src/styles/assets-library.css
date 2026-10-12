@@ -56,7 +56,8 @@
 .assets-library .library-card:hover { border-color: #bcc1c3; }
 .assets-library .library-card.is-selected { border-color: var(--ip-ink); box-shadow: 0 0 0 1px var(--ip-ink); }
 .assets-library .library-card-visual { aspect-ratio: 4/3; position: relative; overflow: hidden; background: #f1f1ee; display: grid; place-items: center; }
-.assets-library .library-card-visual > img { width: 100%; height: 100%; object-fit: contain; transition: scale .45s cubic-bezier(.22,1,.36,1); }
+/* An absolute image resolves 100% height against the preview, including portrait sources. */
+.assets-library .library-card-visual > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; transition: scale .45s cubic-bezier(.22,1,.36,1); }
 .assets-library .library-card:has(button:hover) .library-card-visual > img { scale: 1.025; }
 .assets-library .library-object-placeholder,.assets-library .library-media-placeholder { display: grid; place-items: center; gap: 12px; width: 100%; height: 100%; font-size: 12px; color: #63736e; }
 .assets-library .library-object-placeholder > small { font-size: 10px; color: #7d8782; margin-top: -8px; }
