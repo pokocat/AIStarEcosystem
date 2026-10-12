@@ -46,3 +46,11 @@
 《废市》17 项及测试图片属于本地验收，没有迁移到生产。付费图片质量、跨子产品资产统一及完整无障碍不作为本次上线结论。
 
 发布证据位于 `.studio-e2e/asset-library/`：release-backup.json、release-artifacts.json、release-final-runtime.txt、production-proof.json、两次 build/deploy 日志、online-library.jpg、online-editor.jpg、online-new-canvas.jpg。
+
+## 文件夹选择器修复 · 2026-10-12（Asia/Shanghai）
+
+提取资产弹窗的保存文件夹选择器改为占用操作行剩余宽度，选中名称和下拉选项完整换行；支持按名称搜索，读取/保存期间禁用。下拉菜单仍挂在 Studio 的令牌作用域中，窄屏限制菜单宽度、按钮自动换行。没有新增 API、数据迁移或模型调用。
+
+本地真实组件预览检查了桌面、375px 移动布局视口、约 100 字名称、搜索与键盘选择；菜单修复后位于视口内，页面宽度为 375px。全 workspace/admin 类型检查、后端离线编译与 API 契约门通过；前端提取/助手/剧本/工作台定向 101 例、后端文本计费与工作流 10 例通过。额外前端全套测试为 574 通过、6 失败：附件选择器 4 例缺少 antd Modal mock、助手文档读取 2 例断言失败，未声称全套测试通过。
+
+发布前核对生产仍是 `20261012-studio-model-alias-c8c54f35`；本次发布范围为 server、web-aiavatar、admin，包含最新文本计费提交与文件夹修复。停止迭代的独立原型和本地测试页不进入正式应用制品。实际发布编号、制品与线上验收在部署完成后补记。
