@@ -142,8 +142,8 @@ public class IpLibraryService {
         var dto=projects.toRunDto(run);var output=dto.output();String user=run.getOwnerUserId();
         var target=records.findByIdAndOwnerUserIdAndDeletedAtIsNull(run.getNodeId(),user).filter(r->"object".equals(r.getRecordType())).orElse(null);
         ObjectNode data=target==null?null:json(target);
-        var p=om.createObjectNode();String title=run.getKind()+" · "+run.getId();String folder=null;
-        try {var project=projects.required(user,run.getProjectId());var doc=projects.readDoc(project);folder=canvasFolder(user,run.getProjectId());if(folder==null)folder=doc.path("libraryFolderId").asText(null);var node=IpDocs.node(doc,run.getNodeId());if(node!=null)title=node.path("title").asText(title);}catch(BusinessException ignored){}
+        var p=om.createObjectNode();String title=run.getKind().contains("video")?"生成视频":run.getKind().contains("audio")?"生成配音":"生成素材";String folder=null;
+        try {var project=projects.required(user,run.getProjectId());var doc=projects.readDoc(project);title=project.getName();folder=canvasFolder(user,run.getProjectId());if(folder==null)folder=doc.path("libraryFolderId").asText(null);var node=IpDocs.node(doc,run.getNodeId());if(node!=null)title=node.path("title").asText(title);}catch(BusinessException ignored){}
         if(data!=null){title=data.path("name").asText();folder=data.path("folderId").asText(null);}
         if(folder!=null&&!folder.isBlank()&&records.findByIdAndOwnerUserIdAndDeletedAtIsNull(folder,user).isEmpty())folder=null;
         int n=0;

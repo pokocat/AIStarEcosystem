@@ -78,7 +78,7 @@ public class IpSavedAssetService {
     public com.aistareco.aep.ipstudio.dto.IpLibraryDtos.LibraryPage<JsonNode> page(String user,String folder,String query,String kind,int page) {
         if(page<0||page>100000)throw invalid();
         var rows=repo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(user).stream().filter(row->{
-            try {var data=om.readTree(row.getPayloadJson());String f=data.path("metadata").path("folderId").asText();
+            try {var data=om.readTree(row.getPayloadJson());readableTitle((ObjectNode)data);String f=data.path("metadata").path("folderId").asText();
                 return (folder==null||folder.isBlank()||folder.equals("all")||(folder.equals("unfiled")?f.isBlank():folder.equals(f)))
                     &&(kind==null||kind.equals("all")||kind.equals(data.path("kind").asText()))
                     &&(query==null||(data.path("title").asText()+" "+data.path("source").asText()+" "+data.path("metadata").path("prompt").asText()).toLowerCase(java.util.Locale.ROOT).contains(query.toLowerCase(java.util.Locale.ROOT)));
@@ -90,13 +90,13 @@ public class IpSavedAssetService {
     @Transactional public JsonNode edit(String user,String id,JsonNode body) {
         lockOwner(user);var row=repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id,user).orElseThrow(()->BusinessException.notFound("IP_ASSET_NOT_FOUND","素材不存在"));
         try {ObjectNode data=(ObjectNode)om.readTree(row.getPayloadJson());
-            if(body.has("title")){String title=body.path("title").asText().strip();if(title.isBlank()||title.length()>128)throw invalid();data.put("title",title);}
+            if(body.has("title")){String title=body.path("title").asText().strip();if(title.isBlank()||title.length()>128)throw invalid();data.put("title",title);data.with("metadata").put("titleAssigned",true);}
             if(body.has("folderId")){var meta=data.with("metadata").put("folderAssigned",true);String folder=body.path("folderId").asText(null);if(folder==null||folder.isBlank())meta.remove("folderId");else meta.put("folderId",folder);}
             row.setPayloadJson(data.toString());repo.save(row);return safeWire(row,user);
         }catch(BusinessException e){throw e;}catch(Exception e){throw new IllegalStateException(e);}
     }
     @Transactional public void clearFolder(String user,String folder){for(var row:repo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(user))try{ObjectNode data=(ObjectNode)om.readTree(row.getPayloadJson());if(folder.equals(data.path("metadata").path("folderId").asText())){data.with("metadata").remove("folderId");row.setPayloadJson(data.toString());repo.save(row);}}catch(Exception e){throw new IllegalStateException(e);}}
-    private JsonNode safeWire(IpSavedAsset row,String user){try{return wire(row,user);}catch(BusinessException e){try{ObjectNode data=(ObjectNode)om.readTree(row.getPayloadJson());data.put("id",row.getId()).put("createdAt",row.getCreatedAt().toString()).put("updatedAt",row.getCreatedAt().toString());data.with("metadata").put("unavailable",true);data.with("data").put("url","").put("dataUrl","");return data;}catch(Exception ignored){throw e;}}}
+    private JsonNode safeWire(IpSavedAsset row,String user){try{return wire(row,user);}catch(BusinessException e){try{ObjectNode data=(ObjectNode)om.readTree(row.getPayloadJson());data.put("id",row.getId()).put("createdAt",row.getCreatedAt().toString()).put("updatedAt",row.getCreatedAt().toString());readableTitle(data);data.with("metadata").put("unavailable",true);data.with("data").put("url","").put("dataUrl","");return data;}catch(Exception ignored){throw e;}}}
     @Transactional public void remove(String user,String id) {
         lockOwner(user);
         var r=repo.findByIdAndOwnerUserIdAndDeletedAtIsNull(id,user).orElseThrow(() -> BusinessException.notFound("IP_ASSET_NOT_FOUND","这个素材不存在"));
@@ -105,7 +105,7 @@ public class IpSavedAssetService {
     }
     private JsonNode wire(IpSavedAsset row,String user) {
         try {
-            ObjectNode out=(ObjectNode)om.readTree(row.getPayloadJson());
+            ObjectNode out=(ObjectNode)om.readTree(row.getPayloadJson());readableTitle(out);
             out.put("id",row.getId());out.put("createdAt",row.getCreatedAt().toString());out.put("updatedAt",row.getCreatedAt().toString());
             if(!"text".equals(out.path("kind").asText())) {
                 String key=out.path("data").path("storageKey").asText();
@@ -117,6 +117,14 @@ public class IpSavedAssetService {
             return out;
         } catch(BusinessException e) {throw e;}
         catch(Exception e) {throw new IllegalStateException("Saved asset payload is invalid",e);}
+    }
+    /** Only normalize this collector's machine fallback, never a title supplied by a user. */
+    private static void readableTitle(ObjectNode out) {
+        var meta=out.path("metadata");String run=meta.path("runId").asText(),title=out.path("title").asText();
+        if(meta.path("titleAssigned").asBoolean()||!"AI 生成".equals(out.path("source").asText())||!run.startsWith("IPR-"))return;
+        if(!title.matches("[a-z-]+ · "+java.util.regex.Pattern.quote(run)+"(?: · [0-9]+)?"))return;
+        String label=switch(out.path("kind").asText()){case "image"->"生成图片";case "video"->"生成视频";case "audio"->"生成配音";default->"生成文本";};
+        out.put("title",label+title.substring(title.indexOf(run)+run.length()));
     }
     private void lockOwner(String user) {
         users.findByIdForUpdate(user).orElseThrow(() -> BusinessException.notFound("USER_NOT_FOUND","账号不存在"));
