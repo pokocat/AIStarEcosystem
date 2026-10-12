@@ -54,3 +54,11 @@
 - `verify.sh` 全绿，首页/登录/创作/IP/模板及账号中心公开发现接口正常。未执行真实付费图片、文本或视频生成；异步图片端到端协议由模拟上游覆盖，上线接口与聚算服务发现使用真实请求验收。
 
 本地只读接口证据：`.studio-e2e/jusuan-models/online-models.jsonl`；配置运维脚本位于同目录。制品、证据和脚本均不含明文密钥并且不入 Git。
+
+## 2026-10-12 · Qwen3.6 写剧本参数热修
+
+Studio 的 Qwen3.6 剧本请求在生产返回 HTTP 400：聚算依次指出 `temperature is platform-controlled for vision_chat`、`response_format is reserved for trusted orchestration`。统一调用层原本只对 Qwen3.5 省略这两个参数，Qwen3.6 仍从 Studio 的执行快照带出它们。现对 Qwen3.6 同样省略两项，保留原有 `max_tokens` 预算，并由剧本提示词要求 JSON 输出；Qwen3.5 独有的 4096 上限不扩展到 Qwen3.6。
+
+- 原失败运行 `IPR-b465d7a76838445990e3` 的 2 积分在失败后释放。专项 `AiModelInvocationServiceTest` 23 项通过，workspace/admin typecheck、后端编译和 API 契约检查通过。
+- 只发布 server：`20261012-studio-qwen36-01c6d95d`，运行提交 `01c6d95db52321b25cc254459fc7880d2abd7700`；线上 JAR 与发布制品 SHA256 均为 `d01c84825c8748827f137baa4509a0b1d6e83fee990305bd4a3ba26f8432b785`，`verify.sh` 全绿。
+- 后台重放原失败请求 `aic-e0b3dd33-be09-45`，新请求 `aic-19c0cb1a-bdae-4f` 收到供应商 HTTP 200、`finish=stop`、2343 Token。随后在正式画布 `IPP-c6dc8e48` 新生成一集可编辑剧本（运行 `IPR-9bc8df83b7c846dba480`），并在全屏编辑器完成“只改标题”的 AI 改稿预览（运行 `IPR-4dfbda52b2e24bc08654`）；两次各 2 积分正常 commit，原稿未被 AI 版本自动覆盖。

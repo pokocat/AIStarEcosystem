@@ -2,7 +2,7 @@
 
 本文件记录已定位但暂未修复的问题，方便后续排期。动手修时请勾掉对应条目并在代码里落实。
 
-- [x] ~~Studio 固定 Qwen3.6 写剧本请求被聚算拒绝~~ **2026-10-12 修复**：线上依次返回 `temperature is platform-controlled for vision_chat` 和 `response_format is reserved for trusted orchestration`；统一模型调用层对 Qwen3.6 不传这两个参数，保留原输出预算，靠提示词约束 JSON；增加请求体回归。原失败任务的 2 积分已释放。
+- [x] ~~Studio 固定 Qwen3.6 写剧本请求被聚算拒绝~~ **2026-10-12 修复并上线**：线上依次返回 `temperature is platform-controlled for vision_chat` 和 `response_format is reserved for trusted orchestration`；统一模型调用层对 Qwen3.6 不传这两个参数，保留原输出预算，靠提示词约束 JSON；增加请求体回归。原失败任务的 2 积分已释放，正式画布的剧本生成和编辑器 AI 改稿均已验收成功；详见 `docs/ip-studio-jusuan-models.md`。
 
 > 状态注（2026-05-27 / v0.34 部署基础设施落地后审计）：
 > - **2026-04-21 admin auth 块部分完成**：admin `apiFetch` Authorization 头 ✅（`AUTH_TOKEN_KEY` + `Bearer ${token}` 在 `apps/admin/src/api/_client.ts:18-97`）、admin login 页 + AuthContext ✅、MDC ✅（v0.30+ 改名 `traceId`，pattern `%X{traceId:-}` 已生效）。**剩一项未做**：`DevAutoAuthFilter` 仍 `@Profile("dev")`（未按 `aep.dev-auth.enabled` property 门控）。`SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler` 已于 2026-06-10 落地（401/403 JSON body 带 traceId）。
