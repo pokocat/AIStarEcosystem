@@ -119,3 +119,15 @@
 定向 25 例通过（个人库 6、提取恢复 14、新人物／声音 5），全 workspace/admin 类型、后端离线编译与 API 契约门通过；测试替身的 Antd 属性警告和契约的既有 orphan 提示仍存在。本轮未重跑全套前端测试，不覆盖此前记录的 6 个既有失败。
 
 本地合成数据实际组件验收 2560×1440、3840×1600 与 390×844；检查四分类内容对齐、网格列数、手机横向溢出与减少动态效果。声音有数据的布局用合成样例验证，不能冒充当前生产声音数据。临时预览页在提交和构建前移除。证据 `.studio-e2e/asset-library-unified/`，生产发布与正式域验收另补于下节。
+
+### 本轮生产发布与实际入口验收
+
+最终代码 `5cc44c23242458d8fba7b3e7a131a53acdc30d72` 已推送，干净工作树构建并发布 `20261012-asset-library-unified-5cc44c23`，仅更新 web-aiavatar。制品 SHA256 `2543886f2182d150de2833150491eee3de28aaffec2643da8835971c0de9c622`、BUILD_ID `UogTqUaaL_1MLT7G26yDB` 本地与生产一致；服务 active、NRestarts=0，正式 OIDC、mock 与开发登录关闭，部署 verify ALL GREEN。原布局备份在 `/opt/ai-star-eco/backups/20261012-asset-library-unified-eb90e7c6`，最终竖图修正前的备份在 `/opt/ai-star-eco/backups/20261012-asset-library-unified-5cc44c23`；目录 0700、压缩包 0600。后端 JAR SHA256 仍为 `a7271aa821b6957525ab819df8050d928dbfa572f3ab85870a9a283c2e7f0045`。
+
+正式域 `/assets` 四入口逐一验收：2560px 视口下主体宽 2525px、主列宽 2245px；3840px 下主体宽 3805px、主列宽 3525px。所有入口主体 x=12、主列 x=262，标题、搜索、网格或空状态的边界一致；11px 为纵向滚动条保留宽度。真实数量仍为剧本资产 11、素材 37、人物 3、声音 0。人物搜索“男主播”返回 1 项，人物入口全集数量仍为 3；真人形象分类为空时可清除筛选返回三项，三个原详情链接保留。
+
+首次线上图片验收发现竖图按内在比例撑高、被预览区裁切；最终 CSS 将图片定位在预览框内，contain 完整显示。正式数据的 1664×2224 与 768×1024 三张人物图加载成功，图片实际框高与预览框均为 197.15625px。素材同用此修正，未改变原文件。
+
+线上 390×844 四入口均为 mobile 形态，主列宽 358px、scrollWidth=390，侧栏换成分类选择器。减少动态效果下采样卡片 opacity=1、transform=none，素材／人物列表未自动挂载音视频播放器；生产声音集合为空，有数据声音布局仍以本地合成验收为证。验收只使用读取、搜索和分类切换，没有编辑资产、生成、播放预览请求或新画布写入。临时视口与动态效果模拟已清除。
+
+证据 `.studio-e2e/asset-library-unified/{build-final.log,deploy-final.log,production-runtime-final.txt,online-proof.json}`；线上截图在本会话可视化目录 `asset-library-unified/{avatars-wide.png,avatars-mobile.png}`，为最终版本的真实人物集合。构建路由不含临时预览页；原型目录及其索引修改未纳入提交和部署。
