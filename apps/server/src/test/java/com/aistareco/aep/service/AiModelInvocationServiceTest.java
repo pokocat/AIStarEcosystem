@@ -193,7 +193,7 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
-    void qwen36OmitsTemperatureButKeepsJsonModeAndOutputBudget() throws Exception {
+    void qwen36OmitsUnsupportedParametersButKeepsOutputBudget() throws Exception {
         StubServer server = stub(200, CHAT_OK);
         AiModelEndpoint ep = endpoint("ep-qwen36", server.baseUrl(),
                 AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-6-35b-a3b", "sk-x", true);
@@ -209,7 +209,7 @@ class AiModelInvocationServiceTest {
         Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
         assertFalse(sent.containsKey("temperature"), "Qwen 3.6 vision_chat 不接受显式 temperature");
         assertEquals(8192, ((Number) sent.get("max_tokens")).intValue());
-        assertEquals(Map.of("type", "json_object"), sent.get("response_format"));
+        assertFalse(sent.containsKey("response_format"), "Qwen 3.6 不接受显式 response_format");
     }
 
     @Test

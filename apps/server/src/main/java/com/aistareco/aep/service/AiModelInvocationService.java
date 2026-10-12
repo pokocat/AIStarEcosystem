@@ -298,18 +298,18 @@ public class AiModelInvocationService {
         body.put("model", model);
         body.put("messages", messages);
         if (options != null) {
-            if (options.get("temperature") != null && !rejectsExplicitTemperature(model)) {
+            if (options.get("temperature") != null && !usesPlatformControlledSampling(model)) {
                 body.put("temperature", options.get("temperature"));
             }
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
             if (options.get("top_p") != null) body.put("top_p", options.get("top_p"));
-            // 聚算 Qwen 3.5 明确拒绝 response_format，须依靠 prompt 约束纯 JSON；其他端点照常透传。
+            // 聚算 Qwen 3.5 / 3.6 拒绝 response_format，须依靠 prompt 约束纯 JSON。
             if (options.get("response_format") != null && !usesPlatformControlledSampling(model)) {
                 body.put("response_format", options.get("response_format"));
             }
         }
         if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
-                && !rejectsExplicitTemperature(model)) {
+                && !usesPlatformControlledSampling(model)) {
             body.put("temperature", e.getDefaultTemperature());
         }
         if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
@@ -455,26 +455,22 @@ public class AiModelInvocationService {
     }
 
     /**
-     * 聚算 Qwen 3.5 chat 路由由平台托管采样参数；显式传 temperature 会被上游以 400 拒绝。
-     * 该路由同时拒绝 response_format，JSON 只能由 prompt 约束；max_tokens 仍按 prompt 配置发送。
+     * 聚算 Qwen 3.5 / 3.6 chat 路由拒绝显式 temperature 和 response_format。
+     * JSON 由 prompt 约束；两者的输出预算分别按各自已知限制处理。
      */
     private static boolean usesPlatformControlledSampling(String model) {
         if (model == null) return false;
         String normalized = model.toLowerCase(Locale.ROOT);
-        return normalized.contains("qwen3-5") || normalized.contains("qwen3.5");
+        return isQwen35(normalized) || normalized.contains("qwen3-6") || normalized.contains("qwen3.6");
     }
 
-    /** 聚算 Qwen 3.6 vision_chat 同样拒绝显式 temperature，但仍保留 JSON 模式和输出预算。 */
-    private static boolean rejectsExplicitTemperature(String model) {
-        if (model == null) return false;
-        String normalized = model.toLowerCase(Locale.ROOT);
-        return usesPlatformControlledSampling(model)
-                || normalized.contains("qwen3-6") || normalized.contains("qwen3.6");
+    private static boolean isQwen35(String model) {
+        return model.contains("qwen3-5") || model.contains("qwen3.5");
     }
 
     /** 聚算 Qwen 3.5 路由的输出预算上限为 4096，是否传 response_format 都执行该限制。 */
     private static void clampQwen35OutputBudget(String model, Map<String, Object> body) {
-        if (!usesPlatformControlledSampling(model)) return;
+        if (model == null || !isQwen35(model.toLowerCase(Locale.ROOT))) return;
         Object configured = body.get("max_tokens");
         if (configured instanceof Number n && n.longValue() > 4096L) {
             body.put("max_tokens", 4096);
