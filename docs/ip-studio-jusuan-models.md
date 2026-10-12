@@ -98,3 +98,5 @@ AI 对话（operation=assistant，包括全屏改稿与画布创作助手）使�
 ## 2026-10-12 · 模型展示别名
 
 Studio 文本、图像、普通/原生视频、配音和口型同步模型目录只返回后台 `modelAlias` 作为展示名；未设置别名显示“未命名模型”，不回退到供应商端点名称。助手模型选项不附加“可看图/文字”后缀。画布平台模型的内部选择值改为 endpointId，别名只作标签，避免同别名候选和后台改名改变请求目标。已有受理请求仍按原 endpointId 恢复。
+
+已发布 `server,web-aiavatar`，release `20261012-studio-model-alias-c8c54f35`，代码 SHA `c8c54f35f`。96 项前端、61 项后端回归及提交门通过，生产部署验证全绿。线上目录逐项对照数据库 model_alias：文本 qwen3-6-35b-a3b；图像 flux2-klein-4b / longcat-image-edit / ernie-Image；普通/原生视频 minimax-h3；配音 qwen3-tts；口型 x-dub。浏览器已确认剧本对话当前模型只显示别名，截图 `.studio-e2e/chat-token-ui/online-model-alias.jpg`。本次无付费生成。
