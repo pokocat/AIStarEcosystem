@@ -71,3 +71,26 @@
 - 在浏览器发出前临时拦截保存请求，确认 6 个 items、原节点 ID，以及 sourceHash `6cefe483fc8c45af9ef32d773991797d07eb89fae5ac3ef71cdcb457839f0483` 与已受理正文/当前正文完全一致。随后取消请求并清除拦截，没有替用户写入资产库，也没有新增模型调用；此项是线上请求验证，不声称实际保存入库验收。
 
 新增提取恢复回归 6 例通过，全 workspace/admin 类型与 API 契约检查通过。既有前端全套 6 例失败仍单独记录。证据位于 `.studio-e2e/frontend-folder-release/`：build-final.log、deploy.log、production-runtime.txt、online-request-proof.json、extraction-recovery-tests.log；线上截图位于 Codex 本次可视化目录的 `frontend-folder/online-extraction.png`。
+
+## 剧本素材直接展示已保存资产 · 2026-10-12（Asia/Shanghai，已上线）
+
+本节记录后续的素材入口调整，不能沿用上节发布编号作为本次已上线证明。打开素材时，有已保存对象默认展示「已保存资产」，不再经由「完善」按钮才能看到；数量和类型筛选、名称、描述、文件夹、主图及配图状态直接可见。缺图显示「待配图／暂无配图」，不会误称没有资产；原文字设定继续可用。来源剧本的对象读取所有分页，本地回归覆盖第 25 项。
+
+提取保留为独立的「提取与核对」页，没有已保存对象时默认进入提取。核对候选、原文依据、显式复用、文件夹保存、原请求恢复与实际文本计费继续使用既有链路。保存后回到已保存集合；进入逐项编辑或批量配图后，关闭编辑器返回集合并刷新。读取或保存期间锁定候选字段，避免保存中的改动丢失。
+
+本地证据与结果：
+
+- `library-extraction-panel.test.tsx` 定向 14 例通过，覆盖打开即见已保存对象、保存返回集合、编辑后刷新、全部分页、分析设置失败和文件夹／偏好失败时保留可用对象，以及提取指纹恢复、计费行为和 StrictMode 取消旧初始化后不重复追加恢复消息。日志为 `.studio-e2e/script-assets-redesign/tests.log`；测试中的 Antd 替身有 DOM 属性警告，不代表真实浏览器的控件验收。
+- 全 workspace 类型检查、admin 类型检查、后端离线编译与 API 契约门通过，日志为同目录 `all-types.log`、`admin-types.log`、`backend-compile.log`、`contract.log`。契约检查仍报告其他产品线的既有 handler/orphan 提示，不能据此声称所有 API 均已实装；本次未重复全套前端测试。
+- 本地真实组件预览使用明确标注的合成数据，不调用模型。桌面 CSS 视口 1440×900、手机 390×844，检查已保存集合与提取页；桌面双列、手机单列，集合独立滚动，恢复提示和底部动作位于集合之外。截图位于 `.impeccable/review/script-assets/`；`.studio-e2e/script-assets-redesign/capture-proof.json` 当前记录 PNG 像素尺寸、CSS 视口和验收样例关闭动画的状态，不记录底部位置几何。这些截图不代表生产账号的数据或生产入口验收。
+- 独立 finish review 初次结论为 `fix`，要求可选文件夹／偏好失败不隐藏已成功读取的集合。第一次修复复核为 `partial`：读取依赖已解决，恢复提示仍在手机上重叠、桌面上重复。后续修复使用 Antd 6 的实际内容滚动容器，恢复区不参与压缩，旧初始化取消后不再追加错误；14 例回归通过。同一 reviewer 最终结论为 `ship`，将可选文件夹依赖、手机恢复区重叠、重复错误消息三项均评分为 `resolved`，六张截图有效。该 verdict 只覆盖列出的修复项，依据源码和本地合成验收截图，不代表重新完整审查界面、生产完成或更广的端到端验收；reviewer 没有独立重跑测试。结果见 `.studio-e2e/script-assets-redesign/review-verdict.md`。
+
+这是既有 Operate 界面的普通扩展：复用 `.ip-surface` 令牌、Antd、签名图片与现有资产对象；形态读取 `html[data-layout]`，没有新增视觉系统、依赖、后端接口、迁移或计费变化。本地测试页和合成数据不进入生产制品，完整键盘／无障碍不作为结论。原设计文档、sidecar 与其他未提交的索引／原型内容保留，文档核对见 `.studio-e2e/script-assets-redesign/documenter.md`。
+
+### 本轮生产发布与实际入口验收
+
+代码 `539511cf7e963adc2f8bd40837bbe397864d244d` 已推送。干净独立工作树构建并发布 `20261012-script-materials-539511cf`，仅更新 web-aiavatar，正式 OIDC、关闭 mock 与开发登录。制品 SHA256 `f49d5dd7785fc9da4d1803a4c736fa10d66dfb7f789d53f0b8e1a86da2453913`，本地与生产一致；BUILD_ID `-EFXPx6zkfzbQMV7dKaJz`，运行服务 active、NRestarts=0。旧前端备份在 `/opt/ai-star-eco/backups/20261012-script-materials-539511cf`，目录 0700、压缩包 0600。
+
+部署 verify ALL GREEN，正式域创作、资产、登录及配置路线、兼容 aiavatar 域和服务检查通过。登录态打开正式域的 `IPP-738bf268`：剧本编辑器点击“素材处理”直接选中“已保存资产 6”，显示原 6 个对象，真实状态为 1 个已有主图、5 个待配图。角色筛选显示 3 个角色及原有梵高主图；进入该角色编辑再返回集合，关闭并再次打开素材仍默认看到 6 项。验收没有修改资产信息，也没有提交 AI 分析或配图任务。
+
+移除临时预览页后，本机开发缓存残留了对应类型文件；仅清理该生成文件，最终 AiAvatar 类型检查通过。构建日志、部署日志、运行与制品核对、真实入口断言分别见 `.studio-e2e/script-assets-redesign/{build.log,deploy.log,production-runtime.txt,online-proof.json}`。线上截图保存在本会话可视化目录 `script-materials/online-materials.png`，截图处于角色筛选状态，不冒充默认全部列表。
