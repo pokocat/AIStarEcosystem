@@ -106,3 +106,7 @@ Studio 文本、图像、普通/原生视频、配音和口型同步模型目录
 此前仅 assistant 按 Token 结算；本次扩展到 text/script/storyboard/asset-extract，沿用同一后台端点费率（Qwen3.6 的供应商价格 2 倍配置）与受理快照。新文本任务缺少按量价格返回 AI_TOKEN_PRICE_NOT_CONFIGURED，不回落到 2 积分/次。已受理旧任务仍按原快照完成/恢复。五类文本入口预算统一读取 tokenPricing.maxCost，用户界面不显示固定报价、费率或冻结值；终态显示“已消耗 X 积分”。素材提取被明确拒绝报价时清除未受理请求，未知提交结果仍保留原请求键。
 
 新增统一 AI 图标，标记实际模型发送/生成、素材分析、配音、口型、连续制作、缺图补全及重新生成按钮。打开编辑器、保存信息、导入/上传、采纳、整理原结果与本地裁剪/合成不标为付费模型调用。后台配置分组改为“AI 文本计费”，描述明确覆盖全部文本操作。
+
+已发布 `server,web-aiavatar,admin`，release `20261012-studio-text-metering-4419c021`，运行代码 SHA `4419c021501e0b17cfdca9e2dbc4cf25110ba0d5`（包含 cba22356 全文本计费与 AI 标记、a0c0d650 契约同步，并纳入已提交的文件夹完整展示修复）。独立工作树构建，未纳入未完成原型。124 项前端、21 项后端回归及 workspace/admin 类型、离线编译、API 契约通过；新增售价缺失拒绝、五类文本预算快照、同键恢复不重复冻结和提取报价拒绝恢复覆盖。生产部署验证全绿，三服务 active/running、NRestarts=0，线上 JAR 与制品 SHA256 一致：848e0b1e528207e9e652029d093f4968c4f86142abc881e6c7052038d63ec73f。
+
+生产配置复核仍为输入 0.18 / 输出 1.08 积分每千 Token，后台 2 倍供应商价配置保留。线上桌面与 390px 手机提取面板仅显示 AI 图标和“从正文分析提取”，无固定报价；保存按钮不带收费标记。只打开面板及查看已有结果，本轮未新提交付费生成。截图 `.studio-e2e/chat-token-ui/online-text-metering.jpg` 与 `online-text-metering-mobile.jpg`。此前无 tokenPricing 的已受理任务保留原结算快照；本规则用于新受理文本任务。
