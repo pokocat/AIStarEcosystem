@@ -46,7 +46,7 @@ export function GallerySearch({ value, onChange, label, placeholder }: {
 export function TemplateCard({ template, onOpen, children }: {
   template: IpTemplate; onOpen: (template: IpTemplate) => void; children?: React.ReactNode;
 }) {
-  return <article className="studio-template-card">
+  return <article className="studio-gallery-template-card">
     <button type="button" className="studio-template-open" disabled={template.enabled === false} onClick={() => onOpen(template)} aria-label={`预览模板 ${template.name}`}>
       <div className="studio-gallery-preview"><CanvasThumb doc={template.doc} height={146} /><span className="studio-gallery-preview-label"><LayoutTemplate size={12} />{template.doc.nodes.length} 个节点</span></div>
       <div className="studio-template-copy"><h3>{template.name}</h3><p>{template.summary || "从这套画布流程开始创作。"}</p><div className="studio-template-meta"><span>{template.visibility === "personal" ? "个人模板" : "官方模板"}</span><span>{template.enabled === false ? "已停用" : "只读预览"}</span><ArrowRight size={15} aria-hidden="true" /></div></div>

@@ -53,8 +53,8 @@
 .studio-gallery-pagination button:not(:disabled):hover { background: var(--ip-soft); }
 .studio-gallery-pagination button.studio-preview-retry { width: auto; border: 0; padding: 0 8px; background: transparent; }
 .studio-template-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
-.studio-template-card { min-width: 0; border-radius: 9px; border: 1px solid var(--ip-line); background: var(--ip-paper); overflow: hidden; transition: border-color 160ms var(--ip-ease); }
-.studio-template-card:hover { border-color: #aeb7bd; }
+.studio-gallery-template-card { min-width: 0; border-radius: 9px; border: 1px solid var(--ip-line); background: var(--ip-paper); overflow: hidden; transition: border-color 160ms var(--ip-ease); }
+.studio-gallery-template-card:hover { border-color: #aeb7bd; }
 .studio-template-open { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; text-align: left; }
 .studio-template-open:focus-visible { outline-offset: -3px; }
 .studio-template-copy { padding: 13px 13px 12px; }
@@ -85,7 +85,7 @@
 .studio-template-manage { padding: 0 13px 10px; }
 .studio-template-manage button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; font-size: 11px; color: var(--ip-muted); padding: 5px 0; }
 .studio-template-manage button:not(:disabled):hover { text-decoration: underline; }
-.studio-template-card:has(.studio-template-manage) .studio-template-open { height: auto; }
+.studio-gallery-template-card:has(.studio-template-manage) .studio-template-open { height: auto; }
 .studio-market-coming { padding: 72px 24px 84px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 18px; }
 .studio-market-coming-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 13px; background: var(--ip-soft); color: var(--ip-muted); }
 .studio-market-coming h2 { font-size: 24px; font-weight: 650; }
