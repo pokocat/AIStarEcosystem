@@ -16,6 +16,7 @@ import { SignedVideo } from '@/canvas-bridge/signed-video';
 import { LibraryAssetEditor } from './library-asset-editor';
 import { LibraryFolderSelect } from './library-folder-select';
 import { LibraryGridMotion } from './library-grid-motion';
+import { LibraryWorkspace } from './library-workspace';
 import { studioOverlayContainer } from './studio-overlay';
 
 const objectLabels = { character: '角色', scene: '场景', prop: '道具' };
@@ -114,13 +115,12 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
   const selection = objects.filter(a => selected.includes(a.id));
   const filtered = query.trim() || folder !== 'all' || (tab === 'objects' ? status !== 'all' : kind !== 'all');
 
-  const libraryContent = <div className="library-workspace">
+  const libraryContent = <LibraryWorkspace navigation={
     <aside className="library-folders" aria-label="文件夹导航">
       <div className="library-folders-heading"><h2>文件夹</h2><button aria-label="新建文件夹" onClick={() => setFolderDialog({ name: '' })}><Plus size={17}/></button></div>
       <nav>{folderOptions.map(f => <button key={f.value} aria-current={folder === f.value ? 'true' : undefined} onClick={() => changeFolder(f.value)}>{f.value === 'all' ? <Images size={17}/> : f.value === 'unfiled' ? <FolderOpen size={17}/> : <Folder size={17}/>}<span>{f.label}</span></button>)}</nav>
       <p className="library-folder-hint">按作品或主题整理，下一次创作更好找。</p>
-    </aside>
-    <div className="library-main">
+    </aside>}>
       <div className="library-mobile-folder"><LibraryFolderSelect folders={folders} value={folder} options={folderOptions} ariaLabel="资产范围" onChange={changeFolder}/><Button aria-label="新建文件夹" icon={<Plus size={16}/>} onClick={() => setFolderDialog({ name: '' })}/></div>
       {folderError && <div role="alert" className="library-notice">文件夹读取失败：{folderError}<Button size="small" onClick={refresh}>重新读取文件夹</Button></div>}
       <div className="library-section-heading">
@@ -154,8 +154,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
         })}
       </LibraryGridMotion>}
       {!loading && !listError && total > 0 && <div className="library-pagination"><span>每页 24 项</span><div><Button disabled={page === 0} onClick={() => setPage(n => n - 1)}>上一页</Button><span>{page + 1} / {Math.max(1, Math.ceil(total / 24))}</span><Button disabled={!more} onClick={() => setPage(n => n + 1)}>下一页</Button></div></div>}
-    </div>
-  </div>;
+  </LibraryWorkspace>;
 
   const navLabel = (label: string, icon: ReactNode, count?: number) => <span className="library-category-label">{icon}<span>{label}</span><small>{count ?? '—'}</small></span>;
   return <section id="personal-assets" className="personal-library library-redesign" aria-label="个人资产库">
