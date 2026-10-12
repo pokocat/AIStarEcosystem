@@ -63,3 +63,9 @@ Studio 的 Qwen3.6 剧本请求在生产返回 HTTP 400：聚算依次指出 `te
 - 原失败运行 `IPR-b465d7a76838445990e3` 的 2 积分在失败后释放。专项 `AiModelInvocationServiceTest` 23 项通过，workspace/admin typecheck、后端编译和 API 契约检查通过。
 - 只发布 server：`20261012-studio-qwen36-01c6d95d`，运行提交 `01c6d95db52321b25cc254459fc7880d2abd7700`；线上 JAR 与发布制品 SHA256 均为 `d01c84825c8748827f137baa4509a0b1d6e83fee990305bd4a3ba26f8432b785`，`verify.sh` 全绿。
 - 后台重放原失败请求 `aic-e0b3dd33-be09-45`，新请求 `aic-19c0cb1a-bdae-4f` 收到供应商 HTTP 200、`finish=stop`、2343 Token。随后在正式画布 `IPP-c6dc8e48` 新生成一集可编辑剧本（运行 `IPR-9bc8df83b7c846dba480`），并在全屏编辑器完成“只改标题”的 AI 改稿预览（运行 `IPR-4dfbda52b2e24bc08654`）；两次各 2 积分正常 commit，原稿未被 AI 版本自动覆盖。
+
+## 2026-10-12 · 聊天模型参数能力持久化
+
+- 代码提交 `9ecd20cf0246d3dfc385edad4e0984f1721bbd8f`，发布包 `20261012-chat-capabilities-9ecd20cf`，只重发 server 与 admin。运行 JAR 的本地/线上 SHA256 同为 `3dde41115dbe84482fac92e97f54734fcc09ed7aa2cd4589afb886268a1e811a`，admin 包同为 `5eff58413d2ff111cd7e2f57ae16931410209a5424631f6b5077d01fa7d0f040`。
+- Flyway V53 线上执行成功。只读核验：`ai-0495ccde-b38`（Qwen3.5）的 temperature/response_format 为 0、输出上限 4096；`ai-studio-jusuan-qwen36`（Qwen3.6）的 temperature/response_format 为 0、输出上限 NULL；两者 top_p 为 NULL（保持原行为）。其他 17 个端点的新字段均为 NULL。端点限制由统一聊天调用层执行，后台可维护。
+- 本地聊天调用测试 25 项、迁移测试 1 项通过；workspace/admin typecheck、后端离线编译、API 契约检查通过。部署后 `verify.sh` 全绿，server/admin active 且 `NRestarts=0`。本次未重复执行计费生成，剧本与改稿的真实线上成功验收见上一节。
