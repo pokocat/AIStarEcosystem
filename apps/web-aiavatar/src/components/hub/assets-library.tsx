@@ -5,6 +5,7 @@ import { App, ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { PersonalAssetLibrary } from "@/ip/personal-asset-library";
 import { AvatarLibrary, VoiceLibrary } from "@/ip/supplementary-asset-library";
+import { StudioPage } from '@/ip/studio-page';
 import { studioOverlayContainer } from "@/ip/studio-overlay";
 import Link from "next/link";
 import { AssetApi, AvatarApi, LicenseApi, VoiceApi } from "@/proto/api";
@@ -31,11 +32,7 @@ export function AssetsLibrary() {
   const activeGrants = settled(grants) ? grants.data.filter((g) => g.status === "authorized") : [];
 
   return (
-    <HubScreen tabBar className="ip-brand-surface ip-hub-surface assets-library">
-      <header className="assets-library-heading">
-        <div><h1>资产库</h1><p>你的角色、场景与创作素材，都在这里。</p></div>
-        <Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16} /></Link>
-      </header>
+    <StudioPage title="资产库" description="你的角色、场景与创作素材，都在这里。" className="assets-library" actions={<Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16}/></Link>}>
       <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{ token: { colorPrimary: '#192229', controlItemBgActive: '#eeefef', controlItemBgHover: '#f6f6f5', borderRadius: 8, fontFamily: 'var(--ip-ui)' } }}>
       <App className="assets-library-content" data-studio-overlay-root>
       <PersonalAssetLibrary supplementaryTabs={[
@@ -52,6 +49,6 @@ export function AssetsLibrary() {
       ]}/>
       </App>
       </ConfigProvider>
-    </HubScreen>
+    </StudioPage>
   );
 }

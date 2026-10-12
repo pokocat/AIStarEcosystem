@@ -90,7 +90,7 @@ describe("IP management user flows", () => {
   });
   it("clears the open dossier when its character is removed by a search filter", async () => {
     await openPerson();
-    fireEvent.change(screen.getByRole("textbox", { name: "搜索 IP 名称、标签或关键词" }), { target: { value: "不存在的人物" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 IP 名称、标签或关键词" }), { target: { value: "不存在的人物" } });
     await waitFor(() => expect(screen.queryByRole("complementary", { name: "小鹿的 IP 详情" })).toBeNull());
     expect(screen.getByRole("heading", { name: "没有找到符合条件的 IP" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
@@ -101,8 +101,8 @@ describe("IP management user flows", () => {
     mocks.assets.mockRejectedValue(new Error("素材服务未返回"));
     render(<IpManagement />);
     await screen.findByRole("button", { name: "查看 IP 小鹿" });
-    expect(screen.getAllByText("形象素材")[0].parentElement?.textContent).toContain("—");
-    expect(screen.getByText("已绑定声音").parentElement?.textContent).toContain("—");
+    expect(screen.getByLabelText("IP 资产概览").textContent).toContain("形象素材 —");
+    expect(screen.getByLabelText("IP 资产概览").textContent).toContain("已绑定声音 —");
     expect(screen.queryByText("演示模式 · 以下为示例数据")).toBeNull();
   });
 });

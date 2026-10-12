@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, LayoutTemplate, Loader2, Search } from "lucide-react";
+import { ArrowRight, LayoutTemplate, Loader2 } from "lucide-react";
 import type { IpProjectDoc, IpProjectSummary, IpTemplate } from "@ai-star-eco/types";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
 import { IpStudioApi } from "./api";
 import { CanvasThumb } from "./canvas-thumb";
+import { StudioPageSearch } from './studio-page';
 
 /** Each catalogue can fail independently: unavailable templates must not hide personal canvases. */
 export function useStudioList<T>(load: () => Promise<T[]>, ready: boolean) {
@@ -39,7 +40,7 @@ export function GalleryState({ loading, error, retry, children }: {
 export function GallerySearch({ value, onChange, label, placeholder }: {
   value: string; onChange: (value: string) => void; label: string; placeholder: string;
 }) {
-  return <label className="studio-gallery-search"><Search size={17} aria-hidden="true" /><input type="search" aria-label={label} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} /></label>;
+  return <StudioPageSearch value={value} onChange={onChange} label={label} placeholder={placeholder}/>;
 }
 
 export function TemplateCard({ template, onOpen, children }: {

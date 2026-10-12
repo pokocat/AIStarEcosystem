@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Modal } from "antd";
-import { ArrowRight, Camera, Check, Download, FileText, FolderOpen, Grid2X2, Image as ImageIcon, List, LoaderCircle, Pencil, Plus, RefreshCw, Search, Sparkles, UserRound, UsersRound, Volume2, X } from "lucide-react";
+import { ArrowRight, Camera, Check, Download, FileText, FolderOpen, Grid2X2, List, LoaderCircle, Pencil, Plus, RefreshCw, Sparkles, UserRound, Volume2, X } from "lucide-react";
 import type { IpProject } from "@ai-star-eco/types";
 import type { StudioIpAsset, StudioIpAssetRole, StudioVoiceCatalog } from "@ai-star-eco/types/ip-studio-workflow";
 import type { Avatar } from "@/proto/data";
 import { AvatarApi, USE_MOCK } from "@/proto/api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
-import { HubTabBar } from "@/components/hub/ui";
+import { StudioPage, StudioPageFilters, StudioPageSearch } from "./studio-page";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
 import { classifyStudioIpAsset, listStudioIpAssets, studioVoiceProfiles } from "@/canvas-bridge/studio-api";
@@ -131,21 +131,19 @@ export function IpManagement() {
   };
   if (authState === "no-platform") return <PlatformGateScreen />;
   if (!ready) return <div className="ip-brand-surface"><div className="ip-brand-state" role="status"><LoaderCircle className="ip-loading-icon" size={23} />正在打开 IP 管理…</div></div>;
-  return <div className="ip-brand-surface ip-management">
-    <main className="ip-management-main">
-      <header className="ip-management-heading"><div><h1>IP 管理</h1><p>管理你的 IP 角色与内容资产，让每一个灵感持续生长。</p></div><Link className="ip-brand-button" href="/create"><Plus size={17} />创建 IP</Link></header>
+  return <StudioPage title="IP 管理" description="管理你的 IP 角色与内容资产，让每一个灵感持续生长。" className="ip-management-page" actions={<Link className="ip-brand-button" href="/create"><Plus size={16}/>创建 IP</Link>}>
+    <div className="ip-management"><section className="ip-management-main">
       {USE_MOCK && <p className="ip-management-demo">演示模式 · 以下为示例数据</p>}
-      <div className="ip-management-stats" aria-label="IP 资产概览">
-        {[{ icon: UsersRound, value: all.length, label: "IP 总数" }, { icon: Sparkles, value: counts("active"), label: "进行中" }, { icon: ImageIcon, value: all.reduce((n, p) => n + managedIpImages(p), 0), label: "形象素材", unknown: !!assetError }, { icon: Volume2, value: voices?.performers.filter(p => !!p.voiceId).length || 0, label: "已绑定声音", unknown: !!voiceError }].map(s => <div key={s.label}><s.icon size={22} aria-hidden="true" /><section><strong>{loading || error || s.unknown ? "—" : s.value}</strong><span>{s.label}</span></section></div>)}
-      </div>
-      <div className="ip-management-toolbar"><label className="ip-management-search"><Search size={17} aria-hidden="true" /><input ref={searchRef} aria-label="搜索 IP 名称、标签或关键词" placeholder="搜索 IP 名称、标签或关键词…" value={query} onChange={e => setQuery(e.target.value)} />{query && <button onClick={() => setQuery("")} aria-label="清除搜索"><X size={15} /></button>}</label><select aria-label="IP 排序" value={order} onChange={e => setOrder(e.target.value)}><option value="updated">最近更新</option><option value="name">名称排序</option><option value="images">素材最多</option></select><div className="ip-management-view"><button aria-label="网格视图" aria-pressed={view === "grid"} onClick={() => setView("grid")}><Grid2X2 size={18} /></button><button aria-label="列表视图" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={19} /></button></div></div>
-      <div className="ip-management-filters" aria-label="筛选 IP 状态">{Object.entries(ipStatusLabels).map(([key, label]) => <button key={key} aria-pressed={status === key} onClick={() => setStatus(key as IpStatusFilter)}>{label}<span>{loading || error ? "—" : counts(key as IpStatusFilter)}</span></button>)}<select aria-label="筛选 IP 标签" value={tag} onChange={e => setTag(e.target.value)}><option value="">全部标签</option>{[...new Set(all.flatMap(managedIpTags))].map(t => <option key={t}>{t}</option>)}</select><button className="ip-management-refresh" aria-label="刷新 IP 列表" disabled={loading || saving || creating} onClick={() => setRevision(v => v + 1)}><RefreshCw size={16} /></button></div>
+      <StudioPageFilters label="筛选 IP 状态" value={status} onChange={v => setStatus(v as IpStatusFilter)} items={Object.entries(ipStatusLabels).map(([value,label]) => ({value,label,count:loading || error ? undefined : counts(value as IpStatusFilter)}))}/>
+      <div className="studio-gallery-panel-heading"><div><h2>我的 IP</h2><p>选择角色，查看设定、形象版本与内容资产。</p></div></div>
+      <div className="studio-page-toolbar ip-management-toolbar"><StudioPageSearch inputRef={searchRef} label="搜索 IP 名称、标签或关键词" placeholder="搜索 IP 名称、标签或关键词…" value={query} onChange={setQuery}/><select aria-label="筛选 IP 标签" value={tag} onChange={e => setTag(e.target.value)}><option value="">全部标签</option>{[...new Set(all.flatMap(managedIpTags))].map(t => <option key={t}>{t}</option>)}</select><select aria-label="IP 排序" value={order} onChange={e => setOrder(e.target.value)}><option value="updated">最近更新</option><option value="name">名称排序</option><option value="images">素材最多</option></select><div className="ip-management-view" role="group" aria-label="IP 显示方式"><button aria-label="网格视图" aria-pressed={view === "grid"} onClick={() => setView("grid")}><Grid2X2 size={18}/></button><button aria-label="列表视图" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={19}/></button></div><button type="button" className="studio-page-refresh" aria-label="刷新 IP 列表" disabled={loading || saving || creating} onClick={() => setRevision(v => v + 1)}><RefreshCw size={16}/></button></div>
+      <div className="studio-page-result ip-management-result"><span aria-live="polite">{loading ? '正在读取 IP…' : error ? '暂时无法读取 IP' : `${shown.length} 个${query.trim() || status !== 'all' || tag ? '匹配' : ''} IP`}</span><div aria-label="IP 资产概览"><span>形象素材 {loading || error || assetError ? '—' : all.reduce((n,p) => n + managedIpImages(p),0)}</span><span>已绑定声音 {loading || error || voiceError ? '—' : voices?.performers.filter(p => !!p.voiceId).length || 0}</span></div></div>
       {loading ? <div className="ip-brand-state" role="status"><LoaderCircle className="ip-loading-icon" size={23} />正在读取你的 IP…</div> : error ? <div className="ip-brand-error" role="alert">{error}<button onClick={() => setRevision(v => v + 1)}>重新加载</button></div> : shown.length ? <div className={"ip-management-cards is-" + view + (person ? " has-detail" : "")}>{shown.map(ip => <button key={ip.avatar.id} className="ip-management-card" aria-label={"查看 IP " + ip.avatar.name} aria-pressed={person?.avatar.id === ip.avatar.id} disabled={creating} onClick={() => selectPerson(ip.avatar.id)}>
         <div className="ip-management-card-image">{image(ip)}<span className={"ip-status is-" + managedIpStatus(ip.avatar.status)}>{ipStatusLabels[managedIpStatus(ip.avatar.status)]}</span></div>
         <div className="ip-management-card-body"><h2>{ip.avatar.name}</h2><p>{ip.avatar.tagline || ip.avatar.archetype || "尚未填写角色简介"}</p><div className="ip-tags">{managedIpTags(ip).slice(0, 3).map(t => <span key={t}>{t}</span>)}</div><div className="ip-card-numbers"><span><strong>{assetError ? "—" : managedIpImages(ip)}</strong>形象素材</span><span><strong>{ip.avatar.counts?.video || 0}</strong>视频</span><span><strong>{ip.avatar.versions || 1}</strong>形象版本</span></div></div>
       </button>)}</div> : <div className="ip-brand-state"><UserRound size={30} /><h2>{all.length ? "没有找到符合条件的 IP" : "为你的第一个角色留一个位置"}</h2><p>{all.length ? "换个关键词，或清除当前筛选。" : "在画布里创作并归档形象，就能在这里管理角色、视角与设定。"}</p>{all.length ? <button className="ip-brand-text-button" onClick={() => { setQuery(""); setStatus("all"); setTag(""); }}>清除筛选</button> : <Link className="ip-brand-button" href="/create">开始创作<ArrowRight size={17} /></Link>}</div>}
       {assetError && !error && <div className="ip-brand-error" role="alert">形象素材：{assetError}<button onClick={() => setRevision(v => v + 1)}>重新读取</button></div>}
-    </main>
+    </section>
     {person && <aside className="ip-management-detail" aria-label={person.avatar.name + "的 IP 详情"}>
       <button className="ip-detail-close" aria-label="关闭 IP 详情" disabled={creating} onClick={() => setSelectedId(undefined)}><X size={20} /></button>
       <div className="ip-detail-scroll">
@@ -164,9 +162,9 @@ export function IpManagement() {
       </div>
       <footer className="ip-detail-actions">{actionError && <p role="alert">{actionError}</p>}{saved && <p className="ip-detail-saved" role="status"><Check size={14} />角色设定已保存</p>}{pending && <Link href={"/projects/" + encodeURIComponent(pending.project.id)} onClick={() => setPending(undefined)}>打开已创建的画布继续</Link>}<div><button className="ip-brand-secondary" onClick={beginEdit} disabled={creating}><Pencil size={17} />编辑设定</button><button className="ip-brand-button" onClick={() => void create()} disabled={creating || saving}>{creating ? <LoaderCircle className="ip-loading-icon" size={17} /> : <Sparkles size={17} />}{creating ? "正在打开" : "生成形象"}</button><button className="ip-brand-secondary" onClick={exportSettings} disabled={creating}><Download size={17} />导出设定</button></div><small>免费进入画布。生成前在节点里确认模型、参考与积分。</small></footer>
     </aside>}
+    </div>
     <Modal open={!!editing} title="编辑角色设定" onCancel={saving ? undefined : () => { setEditing(undefined); setActionError(""); }} closable={!saving} mask={{ closable: !saving }} footer={null} width={620} className="ip-management-editor" destroyOnHidden>
       {editing && <form onSubmit={e => { e.preventDefault(); void save(); }}><div className="ip-edit-fields"><label>角色名称<input required maxLength={80} value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} /></label><label>一句话简介<input maxLength={200} value={editing.tagline} onChange={e => setEditing({ ...editing, tagline: e.target.value })} /></label><label className="ip-edit-wide">核心设定<textarea rows={5} maxLength={8000} value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} /></label>{([["age", "年龄"], ["temperament", "气质"], ["use", "用途"], ["personality", "性格（用顿号分隔）"], ["clothing", "服饰"]] as const).map(([key, label]) => <label key={key}>{label}<input maxLength={300} value={editing[key]} onChange={e => setEditing({ ...editing, [key]: e.target.value })} /></label>)}</div>{actionError && <p className="ip-brand-error" role="alert">{actionError}</p>}<div className="ip-edit-footer"><button type="button" className="ip-brand-secondary" disabled={saving} onClick={() => { setEditing(undefined); setActionError(""); }}>取消</button><button className="ip-brand-button" disabled={saving || !editing.name.trim()}>{saving && <LoaderCircle size={16} className="ip-loading-icon" />}{saving ? "正在保存" : "保存设定"}</button></div></form>}
     </Modal>
-    <HubTabBar />
-  </div>;
+  </StudioPage>;
 }

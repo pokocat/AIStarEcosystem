@@ -61,10 +61,7 @@ export function IpHome({ header = true }: { header?: boolean }) {
         <div className="ip-home-hero-copy">
           <h1>让灵感成形<br />让 IP 出圈</h1>
           <p>从一个灵感开始，创造数字人、图片、视频与故事。<br className="ip-home-desktop-break" />让你的 IP 拥有形象、声音与作品。</p>
-          <button className="ip-brand-button ip-home-start" disabled={!!creating} onClick={() => void start("assistant")}>
-            {creating === "assistant" ? <LoaderCircle className="ip-loading-icon" size={19} /> : null}
-            {creating === "assistant" ? "正在打开画布" : "开始创作"}<ArrowRight size={22} aria-hidden="true" />
-          </button>
+          <Link className="ip-brand-button ip-home-start" href="/create">开始创作<ArrowRight size={22} aria-hidden="true"/></Link>
           <div className="ip-home-paths" aria-label="创作方向">{features.map(f => <button key={f.title} disabled={!!creating} onClick={() => void start(f.entry)}><f.icon size={18} aria-hidden="true" /><strong>{f.title.replace("AI ", "")}</strong><span>{f.entry === "image" ? "创造形象" : f.entry === "video" ? "让角色动起来" : "编写新故事"}</span></button>)}</div>
         </div>
         <span className="ip-home-hero-note">一个角色，无限可能</span>
