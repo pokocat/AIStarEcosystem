@@ -134,9 +134,6 @@ html[data-layout="desktop"] .assets-library-content>section,html[data-layout="de
 html[data-layout="desktop"] .assets-library-content>section:first-child { margin-top: 0 !important; }
 html[data-layout="desktop"] .assets-library-content .hub-card { border-radius: 13px !important; box-shadow: none; }
 html[data-layout="desktop"] :is(.assets-library-heading>.ip-brand-button,.account-create-link) { min-height: 36px; padding: 8px 12px; font-size: 12px; }
-html[data-layout="desktop"] .assets-library-content :is(button,summary) { font: inherit; }
-html[data-layout="desktop"] .assets-library-content button { border: 1px solid var(--ip-line); background: var(--ip-soft); padding: 6px 12px; border-radius: 8px; }
-html[data-layout="desktop"] .assets-library-content button:hover { background: var(--ip-selected); }
 html[data-layout="desktop"] .account-navigation a[aria-current="page"] { background: var(--ip-selected); color: var(--ip-ink); }
 html[data-layout="desktop"] .account-create-link { color: var(--ip-paper); }
 html[data-layout="desktop"] .account-legacy-content .wx-nav { min-height: 62px; }

@@ -880,3 +880,7 @@ Edit this existing brand icon. Keep the EXACT original design and composition: t
 Studio 模型目录的 `name` 投影后台 `modelAlias`，端点名称留在管理端。画布平台频道使用 endpointId 作内部选择值、别名作显示文字；对话、图片/视频、配音和口型同步共用别名口径。
 
 2026-10-12 文本计费收尾：Studio 五类文本 operation 全部复用 ai.chat-token-pricing 与实际用量结算；UI 隐藏文本固定价，受理预算来自 tokenPricing.maxCost，历史任务恢复保持原价。所有实际模型调用按钮使用 StudioAiIcon；素材提取及文本改稿回显实际消耗，任务列表只在终态显示消耗。
+
+### 2026-10-12 · 资产库分类与文件夹浏览
+
+资产库默认展示剧本资产；生成／上传、人物形象、声音为独立分类，数量取服务端全集。桌面文件夹侧栏、手机长名称选择器、缺图设定状态、完整文本与按需媒体预览统一在暖灰／深墨页面中。分页与筛选清空旧选择，文件夹错误不会被成功列表请求覆盖。新增 `gsap` 与 `@gsap/react` 实现有减少动态效果保护的轻量入场，样式限定在资产库。定向回归与生产发布结果见 `docs/ip-studio-asset-library-validation.md`。

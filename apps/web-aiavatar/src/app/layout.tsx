@@ -15,6 +15,7 @@ import "../styles/account-workspace.css";
 import "../styles/ip-display-font.css";
 import "../styles/ip-brand.css";
 import "../styles/ip-create.css";
+import "../styles/assets-library.css";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 

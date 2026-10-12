@@ -122,7 +122,7 @@ components:
 
 人物与内容是视觉中心。暖灰承托白色工作面，深墨明确操作，中文衬线给标题和人物名称留出创作的温度；搜索、筛选与设置使用清晰的无衬线字。界面既能容纳完整人物图，也能安静地承载版本、设定和状态，不以装饰代替内容。
 
-本文件记录已实现的首页、IP 管理和共享浅色顶栏系统。适用代码为 `src/styles/ip-brand.css`，令牌限定在 `.ip-brand-surface` 与 `.ip-management-editor`。页面组成和业务行为见 [DESIGN-desktop.md](DESIGN-desktop.md)；首页及管理页的具体设计意图分别见 [.impeccable/ip-home.md](.impeccable/ip-home.md) 与 [.impeccable/ip-management.md](.impeccable/ip-management.md)。
+本文件记录已实现的首页、IP 管理、资产库和共享浅色顶栏系统。适用代码为 `src/styles/ip-brand.css`，令牌限定在 `.ip-brand-surface` 与 `.ip-management-editor`。页面组成和业务行为见 [DESIGN-desktop.md](DESIGN-desktop.md)；首页及管理页的具体设计意图分别见 [.impeccable/ip-home.md](.impeccable/ip-home.md) 与 [.impeccable/ip-management.md](.impeccable/ip-management.md)。
 
 旧青色移动 H5 仍按 [DESIGN-mobile.md](DESIGN-mobile.md) 及 [.impeccable/design-mobile.json](.impeccable/design-mobile.json)；画布内部仍按 `.ip-surface` 的群青与麦黄系统，见 [DESIGN-desktop.md](DESIGN-desktop.md)。这些入口按页面作用域使用，不能把本文件的令牌全局写到 `:root`。
 
@@ -257,3 +257,9 @@ IP 管理的列表保留在原位，选择后显示相邻详情，列表与档�
 - **Don't** 给平面卡片添加常驻发光、重叠拼贴或强投影。
 - **Don't** 将新中文衬线用于按钮、筛选和字段说明。
 - **Don't** 用媒体查询重新判定设备形态，绕过用户明确选择。
+
+## 资产库
+
+`src/styles/assets-library.css` 复用本文件的暖灰、白纸面与深墨令牌。资产分类在标题下并列，当前项以墨色底线与数量块标识；桌面文件夹在侧栏，手机使用可换行选择器。资产名称沿用中文衬线，搜索与操作使用无衬线；Cabinet Grotesk 为可选本机字体，未安装时回退现有 Manrope／中文字体，不依赖新增外部字库请求。卡片图片使用 contain，缺图以角色／场景／道具设定占位，状态保留文字。
+
+卡片不使用常驻浮起投影；GSAP 当前页轻量错开入场、图片进视口缩放，hover 仅轻微缩放真实图片。减少动态效果时不设置 GSAP 入场，CSS 也关闭图片 hover 动画；完整内容始终可读。此页的手机底栏创作入口使用深墨，与其余页面的旧移动 H5 样式按作用域分开。桌面 1440×900、手机 390×844 的本地合成组件验收通过，生产证据另见资产库验证记录。

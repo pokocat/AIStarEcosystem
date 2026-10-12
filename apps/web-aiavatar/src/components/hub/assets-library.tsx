@@ -4,17 +4,18 @@
 //   人物与形象（自建 + 明星授权给我的）/ 声音 / 素材库
 // ============================================================
 import React from "react";
-import { Plus } from "lucide-react";
+import { ArrowUpRight, Mic, Users } from "lucide-react";
+import { App, ConfigProvider } from "antd";
+import zhCN from "antd/locale/zh_CN";
 import { PersonalAssetLibrary } from "@/ip/personal-asset-library";
+import { studioOverlayContainer } from "@/ip/studio-overlay";
 import Link from "next/link";
 import { AssetApi, AvatarApi, LicenseApi, VoiceApi } from "@/proto/api";
-import type { AssetSummary, Avatar, License, StarGrant, VoiceAsset } from "@/proto/data";
+import type { Avatar, License, StarGrant, VoiceAsset } from "@/proto/data";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
 import { AvatarCard, StarGrantCard } from "@/components/hub/asset-cards";
-import { Card, EmptyState, HubScreen, LinkAction, LoadingBlock, NavBar, RegNo, SectionHeader } from "@/components/hub/ui";
-
-const EMPTY_SUMMARY: AssetSummary = { totalCount: 0, totalBytes: 0, totalSizeLabel: "0 MB", types: [], recent: [] };
+import { Card, EmptyState, HubScreen, LinkAction, LoadingBlock, RegNo, SectionHeader } from "@/components/hub/ui";
 
 export function AssetsLibrary() {
   const authState = useRequireAuth();
@@ -23,7 +24,6 @@ export function AssetsLibrary() {
 
   const avatars = useHubData<Avatar[]>(() => AvatarApi.list("mine"), [], [], ready);
   const voices = useHubData<VoiceAsset[]>(() => VoiceApi.mine(), [], [], ready);
-  const summary = useHubData<AssetSummary>(() => AssetApi.summary(), EMPTY_SUMMARY, [], ready);
   const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [], ready);
   const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [], ready);
 
@@ -34,47 +34,17 @@ export function AssetsLibrary() {
   const licenseByChar = new Map(licenses.data.filter((l) => l.char).map((l) => [l.char as string, l]));
   const activeGrants = settled(grants) ? grants.data.filter((g) => g.status === "authorized") : [];
 
-  const tile = (key: string) => summary.data.types.find((t) => t.key === key)?.count ?? 0;
-  const materialTiles = [
-    { label: "场景", n: tile("scene") },
-    { label: "产品", n: tile("product") },
-    { label: "风格", n: tile("style") },
-    { label: "IP", n: tile("ip") },
-  ];
-
   return (
     <HubScreen tabBar className="ip-brand-surface ip-hub-surface assets-library">
-      <header className="assets-library-heading"><div><h1>资产库</h1><p>生成的素材和剧本资产都在这里，随时用于新的创作。</p></div><Link href="/create" className="ip-brand-button"><Plus size={17} />创建资产</Link></header>
-      <div className="assets-library-mobile-heading">
-      <NavBar
-        title="资产"
-        right={
-          <Link
-            href="/create"
-            aria-label="创建资产"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              background: "var(--primary)",
-              display: "grid",
-              placeItems: "center",
-              color: "#fff",
-              boxShadow: "0 2px 8px rgba(18,179,222,.35)",
-              textDecoration: "none",
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </Link>
-        }
-      />
-      </div>
-      <div className="assets-library-content">
-      <PersonalAssetLibrary />
-      <div style={{ margin: "6px 16px 0" }}>
+      <header className="assets-library-heading">
+        <div><h1>资产库</h1><p>你的角色、场景与创作素材，都在这里。</p></div>
+        <Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16} /></Link>
+      </header>
+      <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{ token: { colorPrimary: '#192229', controlItemBgActive: '#eeefef', controlItemBgHover: '#f6f6f5', borderRadius: 8, fontFamily: 'var(--ip-ui)' } }}>
+      <App className="assets-library-content" data-studio-overlay-root>
+      <PersonalAssetLibrary supplementaryTabs={[
+        { key: 'avatars', label: '人物形象', icon: <Users size={17}/>, count: avatars.loading || grants.loading || avatars.error || grants.error ? undefined : avatars.data.length + activeGrants.length, children:
+      <div className="assets-library-secondary">
         <SectionHeader
           title="人物与形象"
           hint="都可以直接拿去创作视频"
@@ -107,7 +77,10 @@ export function AssetsLibrary() {
         )}
       </div>
 
-      <div className="hub-section" style={{ margin: "20px 16px 0" }}>
+        },
+        { key: 'voices', label: '专属声音', icon: <Mic size={17}/>, count: voices.loading || voices.error ? undefined : voices.data.length, children:
+      <div className="assets-library-secondary">
+
         <SectionHeader
           title="声音"
           count={voices.loading ? undefined : voices.data.length}
@@ -125,7 +98,7 @@ export function AssetsLibrary() {
           </Card>
         ) : (
           <div className="hub-grid-2">
-            {voices.data.slice(0, 4).map((v) => (
+            {voices.data.map((v) => (
               <Link key={v.id} href={studioHref("#/voice")} style={{ textDecoration: "none", color: "inherit" }}>
                 <Card radius={13} pad={12} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <span style={{ fontFamily: "var(--font-serif)", fontSize: 14.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -139,28 +112,10 @@ export function AssetsLibrary() {
         )}
       </div>
 
-      <div className="hub-section" style={{ margin: "20px 16px 0" }}>
-        <SectionHeader title="资产分类" hint="生成视频时搭配使用" action={<LinkAction href="#personal-assets">查看画布素材 ›</LinkAction>} />
-        <div>
-          {summary.error ? (
-            <Card>
-              <EmptyState text={summary.error} />
-            </Card>
-          ) : (
-            <Card style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-              {materialTiles.map((t) => (
-                <div key={t.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                  <span className="mono" style={{ fontSize: 17, fontWeight: 700 }}>
-                    {summary.loading ? "—" : t.n}
-                  </span>
-                  <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{t.label}</span>
-                </div>
-              ))}
-            </Card>
-          )}
-        </div>
-      </div>
-      </div>
+        },
+      ]} />
+      </App>
+      </ConfigProvider>
     </HubScreen>
   );
 }

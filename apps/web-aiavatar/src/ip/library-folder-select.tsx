@@ -5,14 +5,16 @@ import type { LibraryFolder } from '@ai-star-eco/types';
 import { studioOverlayContainer } from './studio-overlay';
 
 /** Folder names can contain 100 characters; keep them readable in both states. */
-export function LibraryFolderSelect({ folders, value, onChange, disabled }: {
+export function LibraryFolderSelect({ folders, value, onChange, disabled, ariaLabel = '提取资产保存文件夹', options }: {
   folders: LibraryFolder[];
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  ariaLabel?: string;
+  options?: { value: string; label: string }[];
 }) {
   return <Select
-    aria-label="提取资产保存文件夹"
+    aria-label={ariaLabel}
     className="personal-folder-select"
     value={value}
     onChange={onChange}
@@ -24,6 +26,6 @@ export function LibraryFolderSelect({ folders, value, onChange, disabled }: {
     notFoundContent="没有匹配的文件夹"
     classNames={{ content: 'personal-folder-select-content', popup: { root: 'personal-folder-select-popup' } }}
     labelRender={({ label }) => <span className="personal-folder-name">{label}</span>}
-    options={[{ value: '', label: '未分类' }, ...folders.map(f => ({ value: f.id, label: f.name }))]}
+    options={options || [{ value: '', label: '未分类' }, ...folders.map(f => ({ value: f.id, label: f.name }))]}
   />;
 }
