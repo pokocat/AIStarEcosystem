@@ -102,4 +102,12 @@
 - 定向 20 例回归通过（个人库 6 例 + 提取恢复 14 例），覆盖默认可见、独立错误、搜索选择清空、异步旧请求忽略、完整文本预览与第 25 项分页。日志 `.studio-e2e/asset-library-redesign/targeted-tests.log`。
 - 全 workspace/admin 类型、后端离线编译与 API 契约门通过。误用 pnpm test 的参数分隔导致跑了全套；新增库用例已修正断言并通过，既有附件上下文 2 例与附件选择器 4 例失败仍存在，本轮不宣称全套绿色。
 - 本地实际组件使用合成数据验收 1440×900 和 390×844，标题一行、按钮对比度、文件夹长名、完整文本详情、资产编辑返回、局部文件夹失败保留六对象及无横向溢出。截图 `.studio-e2e/asset-library-redesign/{desktop.png,mobile.png,folder-error-mobile.png}` 仅证明组件与布局，不能冒充生产数据。
-- 新版给资产库挂载 Antd App/ConfigProvider，保证消息／确认弹窗有提供者，主题和弹出层留在当前页面作用域。临时本地预览路由与合成数据在提交前删除。生产发布与实际入口验收待下节记录。
+- 新版给资产库挂载 Antd App/ConfigProvider，保证消息／确认弹窗有提供者，主题和弹出层留在当前页面作用域。临时本地预览路由与合成数据在提交前删除。生产发布与实际入口验收见下节。
+
+### 本轮生产发布与实际入口验收
+
+代码 `7db0cabbb36709aa28c3e194ac30f198aa297954` 已推送，干净工作树构建并发布 `20261012-asset-library-7db0cabb`，仅更新 web-aiavatar。制品 SHA256 `a64b259dd6e7b3162058f116a354e938bf586ee830530edb15340e32d20e3347`、BUILD_ID `i2utM0CmlQfnXsecVpLSI` 本地与生产一致；服务 active、NRestarts=0，部署 verify ALL GREEN。旧前端备份 `/opt/ai-star-eco/backups/20261012-asset-library-7db0cabb`，目录 0700／压缩包 0600；未修改运行环境，后端 JAR SHA256 仍为 `a7271aa821b6957525ab819df8050d928dbfa572f3ab85870a9a283c2e7f0045`。
+
+正式域 `/assets` 刷新后默认选中剧本资产并显示当前真实 11 对象，其他入口数量为素材 37、人物 3、声音 0。精确人物名搜索返回 1 项匹配，全集数量仍是 11；进入文森特资产详情再返回，列表仍可见。素材卡片不挂播放器，打开「新剧本」预览完整保留 2958 字正文。人物分类保留三个现有详情链接，声音为空时保留工作室入口。验收没有编辑资产信息，也没有提交 AI 分析／配图或新画布创建。
+
+线上手机 390×844：默认剧本资产、双列网格，scrollWidth=390；模拟减少动态效果后卡片 opacity=1、transform=none，全部 11 项可见。临时浏览器模拟已清除。线上截图在本会话可视化目录 `asset-library/{desktop.png,mobile.png}`，默认分类真实数据；证据 `.studio-e2e/asset-library-redesign/{build.log,deploy.log,production-runtime.txt,online-proof.json}`。生产路由清单不含临时本地预览页；本机预览类型缓存清理后最终类型检查通过。
