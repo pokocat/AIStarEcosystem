@@ -298,7 +298,7 @@ public class AiModelInvocationService {
         body.put("model", model);
         body.put("messages", messages);
         if (options != null) {
-            if (options.get("temperature") != null && !usesPlatformControlledSampling(model)) {
+            if (options.get("temperature") != null && !rejectsExplicitTemperature(model)) {
                 body.put("temperature", options.get("temperature"));
             }
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
@@ -309,7 +309,7 @@ public class AiModelInvocationService {
             }
         }
         if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
-                && !usesPlatformControlledSampling(model)) {
+                && !rejectsExplicitTemperature(model)) {
             body.put("temperature", e.getDefaultTemperature());
         }
         if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
@@ -462,6 +462,14 @@ public class AiModelInvocationService {
         if (model == null) return false;
         String normalized = model.toLowerCase(Locale.ROOT);
         return normalized.contains("qwen3-5") || normalized.contains("qwen3.5");
+    }
+
+    /** 聚算 Qwen 3.6 vision_chat 同样拒绝显式 temperature，但仍保留 JSON 模式和输出预算。 */
+    private static boolean rejectsExplicitTemperature(String model) {
+        if (model == null) return false;
+        String normalized = model.toLowerCase(Locale.ROOT);
+        return usesPlatformControlledSampling(model)
+                || normalized.contains("qwen3-6") || normalized.contains("qwen3.6");
     }
 
     /** 聚算 Qwen 3.5 路由的输出预算上限为 4096，是否传 response_format 都执行该限制。 */

@@ -2,6 +2,8 @@
 
 本文件记录已定位但暂未修复的问题，方便后续排期。动手修时请勾掉对应条目并在代码里落实。
 
+- [x] ~~Studio 固定 Qwen3.6 写剧本请求被聚算以 `temperature is platform-controlled for vision_chat` 拒绝~~ **2026-10-12 修复**：统一模型调用层对 Qwen3.6 不传显式或端点默认 temperature，保留 JSON 模式与原输出预算；增加请求体回归。线上失败任务的 2 积分已释放。
+
 > 状态注（2026-05-27 / v0.34 部署基础设施落地后审计）：
 > - **2026-04-21 admin auth 块部分完成**：admin `apiFetch` Authorization 头 ✅（`AUTH_TOKEN_KEY` + `Bearer ${token}` 在 `apps/admin/src/api/_client.ts:18-97`）、admin login 页 + AuthContext ✅、MDC ✅（v0.30+ 改名 `traceId`，pattern `%X{traceId:-}` 已生效）。**剩一项未做**：`DevAutoAuthFilter` 仍 `@Profile("dev")`（未按 `aep.dev-auth.enabled` property 门控）。`SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler` 已于 2026-06-10 落地（401/403 JSON body 带 traceId）。
 > - **角色拆分 `SUPER_ADMIN/OPERATOR → PLATFORM_OPERATOR/FINANCE_ADMIN` 已反向决策不做**（v0.31 改在 `aep_users` 加 `operatorRole` 复用现有命名 — 见 `AGENTS.md` v0.31 B 节）。

@@ -193,6 +193,26 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void qwen36OmitsTemperatureButKeepsJsonModeAndOutputBudget() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("ep-qwen36", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-6-35b-a3b", "sk-x", true);
+        ep.setDefaultTemperature(0.6);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.DAP_PERSONA, ep);
+
+        svc.invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                List.of(Map.of("role", "user", "content", "写一个短剧剧本")),
+                Map.of("temperature", 0.7, "max_tokens", 8192,
+                        "response_format", Map.of("type", "json_object")));
+
+        assertEquals(1, server.requests.size());
+        Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
+        assertFalse(sent.containsKey("temperature"), "Qwen 3.6 vision_chat 不接受显式 temperature");
+        assertEquals(8192, ((Number) sent.get("max_tokens")).intValue());
+        assertEquals(Map.of("type", "json_object"), sent.get("response_format"));
+    }
+
+    @Test
     void unboundPurposeThrowsAiNotConfigured() {
         // 用途无绑定 → 503 AI_NOT_CONFIGURED（不发 HTTP）。
         AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
