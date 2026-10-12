@@ -269,7 +269,7 @@ public class IpStudioController {
                     ? capabilityWithDuration(r)
                     : com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
-                    r.endpoint().getId(), r.endpoint().getName(), r.isDefault(),
+                    r.endpoint().getId(), r.endpoint().publicModelName(), r.isDefault(),
                     caps, cost, video ? com.aistareco.aep.service.AiModelInvocationService.videoBillingUnit(r.endpoint(), r.candidate()) : "per_image"));
         }
         return out;

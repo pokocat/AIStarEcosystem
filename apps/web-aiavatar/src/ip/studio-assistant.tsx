@@ -167,7 +167,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     finally {if(mounted.current&&live.current.projectId===project)setBusy(false);}
   };
   return <StudioFloatingPanel title="Studio 创作助手" open={open} onClose={()=>{rememberDraft();onClose();}} width={420} utility dockable footer={<div className="studio-assistant-footer">
-    {capabilities?.textModelMode!=="fixed"&&!!textModels.length&&<Select aria-label="助手模型" disabled={locked} value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m=>({value:m.endpointId,label:m.name+(m.supportsVision?' · 可看图':' · 文字')}))}/>}
+    {capabilities?.textModelMode!=="fixed"&&!!textModels.length&&<Select aria-label="助手模型" disabled={locked} value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m=>({value:m.endpointId,label:m.name}))}/>}
     <Button className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}>发送</Button>
   </div>}>
     <div className="studio-assistant">

@@ -10,9 +10,8 @@
 // 于是必须把两头接上，否则就是 v0.157 之后生产上的样子：下拉里列着我们根本没有的
 // 模型，选哪个 preflight 都回 503 ENDPOINT_NOT_ALLOWED —— 画布出不了图。
 //
-// **模型名直接对外**：下拉里显示的就是后台配的端点名（agnes-image、MiniMax H3 · 768P），
-// 不做遮掩 —— 用户有权知道自己在用哪个模型、按什么价扣费。藏起来的只有 Key。
-// 传给服务端的是 endpointId（端点主键），显示名与 id 的对应关系留在下面这张表里。
+// 对外只显示后台 modelAlias；供应商端点名称仅用于管理和运维。
+// 选择值使用 endpointId，别名重复或改名不会把请求发到另一模型。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { fetchModels, fetchStudioVideoModels, type IpModelOption } from "./api";
@@ -114,7 +113,8 @@ export function videoDurationBoundsFor(value: string | undefined | null): { min?
 
 function toChannelModels(list: IpModelOption[], capability: ChannelModel["capability"]): ChannelModel[] {
   return list.map((m) => {
-    endpointIdByName.set(m.name, m.endpointId);
+    endpointIdByName.set(m.endpointId, m.endpointId);
+    if (!endpointIdByName.has(m.name)) endpointIdByName.set(m.name, m.endpointId);
     creditByEndpointId.set(m.endpointId, m.creditCost);
     billingByEndpointId.set(m.endpointId,m.billingUnit||"per_call");
     const min = m.capability?.minDurationSec ?? undefined;
@@ -128,13 +128,13 @@ function toChannelModels(list: IpModelOption[], capability: ChannelModel["capabi
         ratios: ratios?.length ? ratios : undefined,
       });
     }
-    return { name: m.name, capability };
+    return { name: m.endpointId, displayName: m.name, capability };
   });
 }
 
 function pickDefault(list: IpModelOption[]): string {
   const chosen = list.find((m) => m.isDefault) ?? list[0];
-  return chosen ? encodeChannelModel(SERVER_CHANNEL_ID, chosen.name) : "";
+  return chosen ? encodeChannelModel(SERVER_CHANNEL_ID, chosen.endpointId) : "";
 }
 
 /**

@@ -188,4 +188,9 @@ public class AiModelEndpoint {
     void onUpdate() {
         updatedAt = Instant.now();
     }
+    /** Customer-facing model label; internal endpoint names may identify the supplier. */
+    public String publicModelName() {
+        return modelAlias == null || modelAlias.isBlank() ? "未命名模型" : modelAlias.trim();
+    }
+
 }

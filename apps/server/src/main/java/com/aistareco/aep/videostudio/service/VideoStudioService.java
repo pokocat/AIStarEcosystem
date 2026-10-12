@@ -176,7 +176,7 @@ public class VideoStudioService {
         Long override=candidate==null?null:candidate.getCreditCostOverride();
         Long modelRate = "per_second".equals(AiModelInvocationService.videoBillingUnit(ep, candidate))
                 && override!=null && override > 0 ? override : null;
-        return new VideoStudioModel(ep.getId(), ep.getName(), isDefault, selectableById, contract(min, max),
+        return new VideoStudioModel(ep.getId(), ep.publicModelName(), isDefault, selectableById, contract(min, max),
                 VideoStudioPricing.effective(config, modelRate));
     }
 

@@ -38,7 +38,7 @@ public class StudioSpeechService {
     }
     private SpeechModel catalogModel(AiModelInvocationService.ResolvedEndpoint r) {
         var rate=pricing==null?null:pricing.findSpeech(r.endpoint().getId());
-        return new SpeechModel(r.endpoint().getId(),r.endpoint().getName(),r.isDefault(),
+        return new SpeechModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),
                 pricing!=null&&pricing.speechEnabled()?null:r.candidate().getCreditCostOverride(),rate==null?null:rate.platformPointsPerSecond());
     }
     @Transactional

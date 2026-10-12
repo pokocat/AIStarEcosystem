@@ -105,4 +105,21 @@ class StudioTextWorkflowTest {
         }
     }
 
+    @Test void customerCatalogUsesOnlyConfiguredAliasesInBothPolicyPaths() {
+        var models=mock(AiModelInvocationService.class);var pricing=mock(DapPricingService.class);
+        var endpoint=AiModelEndpoint.builder().id("text").name("供应商 · 内部端点")
+                .modelAlias("qwen3-6-35b-a3b").enabled(true).build();
+        var candidate=AiAppEndpointCandidate.builder().enabled(true).build();
+        var resolved=new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true);
+        when(models.listCandidates(AiModelPurpose.DAP_PERSONA)).thenReturn(List.of(resolved));
+        var service=new StudioWorkflowService(null,null,mock(StudioFixtureProvider.class),null,pricing,models,null,null,null,null,null,null,json,null,null);
+        assertEquals("qwen3-6-35b-a3b",service.capabilities().textModels().get(0).name());
+        var policies=mock(AiAppSceneModelPolicyService.class);
+        when(policies.available(eq("studio"),eq("script"),anyLong())).thenReturn(List.of(new AiAppSceneModelPolicyService.Selection(resolved,2L,"per_call")));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"scenePolicies",policies);
+        assertEquals("qwen3-6-35b-a3b",service.capabilities().textModels().get(0).name());
+        endpoint.setModelAlias(null);
+        assertEquals("未命名模型",service.capabilities().textModels().get(0).name());
+    }
+
 }

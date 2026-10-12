@@ -112,7 +112,7 @@ class VideoStudioServiceTest {
         svc = new VideoStudioService(invocation, modelClient, videoJobs, jobRepo, fileStorage, signer, ffmpeg, om,
                 pricing, templates, optimizationRepo);
 
-        h3 = AiModelEndpoint.builder().id("ep-h3").name("MiniMax H3").baseUrl("https://api.jusuanhub.com/v1")
+        h3 = AiModelEndpoint.builder().id("ep-h3").name("内部供应商 · MiniMax H3").modelAlias("MiniMax H3").baseUrl("https://api.jusuanhub.com/v1")
                 .model("minimax-h3").billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
         h3Candidate = AiAppEndpointCandidate.builder().endpointId("ep-h3").enabled(true).creditCostOverride(40L).build();
         listCandidates(new AiModelInvocationService.ResolvedEndpoint(h3, h3Candidate, true));

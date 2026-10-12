@@ -33,7 +33,7 @@ public class StudioLipSyncService {
     public LipSyncCatalog catalog() {
         return new LipSyncCatalog(models.listCandidates(AiModelPurpose.DAP_LIP_SYNC).stream()
                 .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()&&JusuanLipSyncClient.supports(r.endpoint()))
-                .map(r->new LipSyncModel(r.endpoint().getId(),r.endpoint().getName(),r.isDefault(),catalogRate(r.endpoint().getId(),r.candidate().getCreditCostOverride()))).toList(),60);
+                .map(r->new LipSyncModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),catalogRate(r.endpoint().getId(),r.candidate().getCreditCostOverride()))).toList(),60);
     }
     private java.math.BigDecimal catalogRate(String endpointId,Long legacy) {
         var rate=pricing==null?null:pricing.find(endpointId);
