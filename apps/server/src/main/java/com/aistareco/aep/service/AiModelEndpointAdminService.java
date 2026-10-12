@@ -94,6 +94,7 @@ public class AiModelEndpointAdminService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "NAME_REQUIRED", "name 必填");
         }
         validateConcurrency(req.concurrencyLimit());
+        validateChatMaxOutputTokens(req.chatMaxOutputTokens());
         if (req.baseUrl() == null || req.baseUrl().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "BASE_URL_REQUIRED", "baseUrl 必填");
         }
@@ -120,6 +121,10 @@ public class AiModelEndpointAdminService {
                 .defaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0))
                 .defaultMaxTokens(req.defaultMaxTokens() != null && req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null)
                 .defaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0))
+                .chatSupportsTemperature(req.chatSupportsTemperature())
+                .chatSupportsTopP(req.chatSupportsTopP())
+                .chatSupportsResponseFormat(req.chatSupportsResponseFormat())
+                .chatMaxOutputTokens(req.chatMaxOutputTokens() != null && req.chatMaxOutputTokens() > 0 ? req.chatMaxOutputTokens() : null)
                 .concurrencyLimit(req.concurrencyLimit() != null && req.concurrencyLimit() > 0 ? req.concurrencyLimit() : null)
                 .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
                 .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
@@ -141,6 +146,7 @@ public class AiModelEndpointAdminService {
 
     public AiModelEndpointDto update(String id, AdminAiModelEndpointUpsertDto req) {
         validateConcurrency(req.concurrencyLimit());
+        validateChatMaxOutputTokens(req.chatMaxOutputTokens());
         AiModelEndpoint entity = load(id);
         if (req.concurrencyLimit() != null) entity.setConcurrencyLimit(req.concurrencyLimit() == 0 ? null : req.concurrencyLimit());
         if (req.name() != null) entity.setName(req.name());
@@ -155,6 +161,10 @@ public class AiModelEndpointAdminService {
         if (req.defaultTemperature() != null) entity.setDefaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0));
         if (req.defaultMaxTokens() != null) entity.setDefaultMaxTokens(req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null);
         if (req.defaultTopP() != null) entity.setDefaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0));
+        if (req.chatSupportsTemperature() != null) entity.setChatSupportsTemperature(req.chatSupportsTemperature());
+        if (req.chatSupportsTopP() != null) entity.setChatSupportsTopP(req.chatSupportsTopP());
+        if (req.chatSupportsResponseFormat() != null) entity.setChatSupportsResponseFormat(req.chatSupportsResponseFormat());
+        if (req.chatMaxOutputTokens() != null) entity.setChatMaxOutputTokens(req.chatMaxOutputTokens() == 0 ? null : req.chatMaxOutputTokens());
         entity.setRpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null);
         entity.setTpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null);
         entity.setDailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null);
@@ -244,6 +254,11 @@ public class AiModelEndpointAdminService {
     private static void validateConcurrency(Integer value) {
         if(value != null && (value < 0 || value > 1000))
             throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CONCURRENCY_LIMIT", "并发上限须为 0–1000 的整数，0 表示不限制");
+    }
+
+    private static void validateChatMaxOutputTokens(Integer value) {
+        if (value != null && value < 0)
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CHAT_MAX_OUTPUT_TOKENS", "输出 Token 上限须为正整数，0 表示不限制");
     }
 
     private static String serializeModels(List<AiModelEntryDto> models) {

@@ -1543,6 +1543,8 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 ### 本地开发环境（不是代码缺陷，但会让新同事误判）
 
+- [x] **聊天模型参数能力统一持久化**（2026-10-12）：V53 将 temperature、top_p、response_format 支持情况和输出 Token 上限保存到固定模型端点；Qwen3.5/3.6 存量行回填已验证限制，统一调用层和后台表单读取同一真值。见 `docs/ip-studio-jusuan-models.md`。
+
 - [ ] **全新 H2 库启动的 schema 初始化顺序**（2026-10-10 核实）：`db/migration/V48__endpoint_generation_queue.java` 在 Hibernate 首次建模前访问 `ai_model_providers`，全新库会因表不存在拒启；隔离身份链路验收用显式关闭 Flyway 的临时 H2/create-drop，已有产品库和生产本次不改变迁移。另有 `DramaCharacter.cast` 在 H2 建表时命中保留字。需独立补首次建库验收和兼容处理，不修改已经执行的迁移。**2026-10-10 测试补充**：test-only ContextCustomizer 已在 Flyway 前设置 H2 的 MySQL 模式并建立旧表骨架，真实迁移继续执行；不进入生产 JAR。正常 dev 首次启动及 `cast` 保留字兼容仍待处理。
 
 - [ ] **本机 `apps/server/.env` 里的 `AEP_CDN_DRIVER=oss` 会让 30 个 `@SpringBootTest` 上下文加载失败**

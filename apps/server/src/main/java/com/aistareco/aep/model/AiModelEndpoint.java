@@ -67,6 +67,20 @@ public class AiModelEndpoint {
     @Column(name = "default_top_p")
     private Double defaultTopP;
 
+    /** Chat wire capabilities belong to this fixed supplier/model endpoint, not to a caller. Null = supported (legacy). */
+    @Column(name = "chat_supports_temperature")
+    private Boolean chatSupportsTemperature;
+
+    @Column(name = "chat_supports_top_p")
+    private Boolean chatSupportsTopP;
+
+    @Column(name = "chat_supports_response_format")
+    private Boolean chatSupportsResponseFormat;
+
+    /** Supplier-specific upper bound; null means no endpoint cap. */
+    @Column(name = "chat_max_output_tokens")
+    private Integer chatMaxOutputTokens;
+
     /** 每分钟请求数限制；为空表示不限制。 */
     @Column(name = "rpm_limit")
     private Integer rpmLimit;

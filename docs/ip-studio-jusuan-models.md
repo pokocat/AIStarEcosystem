@@ -13,6 +13,7 @@
 ## 配置真值
 
 - `ai_model_providers`：单个模型的接入端点，Studio 新端点统一 `https://api.jusuanhub.com/v1`，并发上限 2。复用已有平台 Account API Key 的加密值，不新增或暴露密钥。
+- Chat 请求参数能力也保存在该固定模型端点：`chatSupportsTemperature`、`chatSupportsTopP`、`chatSupportsResponseFormat` 和 `chatMaxOutputTokens`。所有使用 `AiModelInvocationService` 的应用按端点能力组装请求，业务 Prompt 的参数无法重新开启已禁用的字段。V53 将存量 Qwen3.5 的 temperature/response_format 设为不发送、输出上限设为 4096；Qwen3.6 的 temperature/response_format 设为不发送、输出上限留空。其他端点保持原请求行为。后台「AI 模型与用量 → 编辑端点」可查看和修改，新增同型号端点需按实际供应商接口配置。
 - `ai_app_endpoint_candidate`：对应 `DAP_PERSONA`、`DAP_IMAGE` 的启用候选。视频仍复用 `VIDEO_GENERATION` 候选及原有价格。
 - `ai.scene-policy.studio.script`：`mode=fixed`，仅含 Qwen3.6。
 - `ai.scene-policy.studio.image`：`mode=selectable`，上述三个图片端点各 30 积分/张，默认 FLUX。

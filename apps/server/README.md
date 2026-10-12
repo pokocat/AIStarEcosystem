@@ -987,6 +987,8 @@ POST /api/v1/ip-studio/projects/{id}/story-import，multipart字段file，返回
 
 `AiModelEndpoint.concurrencyLimit` 经现有 admin 端点配置，V48 新增字段和 `ai_generation_queue` 票据表。端点行锁保证跨进程准入，按票据顺序排队；Studio 与通用视频等待不占工作线程，同步文字/图片请求也共用额度。视频、配音/口型保留名额到上游终态，重启仅恢复原任务；排队取消退回原冻结、等待不算生成超时，端点有活跃票据时禁止删除。配置省略/null 保留，0 清空，1–1000 限制，不中断原任务。其他独立协议和人工处理未知受理容量的边界见 [`ai-endpoint-generation-queue.md`](../../docs/ai-endpoint-generation-queue.md)。
 
+V53 为每个固定聊天模型端点保存 `chat_supports_temperature`、`chat_supports_top_p`、`chat_supports_response_format` 与 `chat_max_output_tokens`。`AiModelInvocationService` 是内部聊天用途的请求参数执行点：能力列为 null 时沿用原先发送行为，false 时调用方和默认配置均不得发送该参数；输出上限在组装请求后收敛。有限制的端点拒绝调用方改用另一模型，防止把此模型规则误套到别的模型。迁移将存量 Qwen3.5/3.6 的已验证限制写入端点行，运行时代码不按模型名猜能力。管理端可修改；输出上限更新请求省略/null 保留，0 清空。媒体协议仍由对应客户端及候选能力配置负责。
+
 ### v0.228 · Studio 供应商积分计价与上线收尾（2026-10-10）
 
 按用户确认，新增配音、口型同步暂以 1 聚算积分 = 1 平台积分，加 50% 溢价；人民币换算后续统一调整。配置 `ipstudio.supplier-point-pricing` 分开保存供应商每秒积分、换算比例和溢价，不混用端点的人民币微元字段。先对供应商计费秒数向上取整，再对整笔平台积分向上取整，避免每秒取整造成额外溢价。生产确认成本前不开放模型，旧验收单价不作为正式售价。

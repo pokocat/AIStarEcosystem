@@ -173,6 +173,9 @@ class AiModelInvocationServiceTest {
         AiModelEndpoint ep = endpoint("ep-qwen35", server.baseUrl(),
                 AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-5-9b", "sk-x", true);
         ep.setDefaultTemperature(0.6);
+        ep.setChatSupportsTemperature(false);
+        ep.setChatSupportsResponseFormat(false);
+        ep.setChatMaxOutputTokens(4096);
         AiModelInvocationService svc = boundSvc(AiModelPurpose.DRAMA_SCRIPT_DRAFT, ep);
 
         svc.invokeChat(
@@ -198,6 +201,8 @@ class AiModelInvocationServiceTest {
         AiModelEndpoint ep = endpoint("ep-qwen36", server.baseUrl(),
                 AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-6-35b-a3b", "sk-x", true);
         ep.setDefaultTemperature(0.6);
+        ep.setChatSupportsTemperature(false);
+        ep.setChatSupportsResponseFormat(false);
         AiModelInvocationService svc = boundSvc(AiModelPurpose.DAP_PERSONA, ep);
 
         svc.invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
@@ -210,6 +215,40 @@ class AiModelInvocationServiceTest {
         assertFalse(sent.containsKey("temperature"), "Qwen 3.6 vision_chat 不接受显式 temperature");
         assertEquals(8192, ((Number) sent.get("max_tokens")).intValue());
         assertFalse(sent.containsKey("response_format"), "Qwen 3.6 不接受显式 response_format");
+    }
+
+    @Test
+    void chatWireCapabilitiesAreEndpointSpecificNotModelNameRules() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("ep-custom", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "custom-chat", "sk-x", true);
+        ep.setChatSupportsTopP(false);
+        ep.setChatSupportsResponseFormat(false);
+        ep.setChatMaxOutputTokens(2000);
+        ep.setDefaultTopP(0.7);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
+        svc.invokeChat(AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")),
+                Map.of("top_p", 0.5, "response_format", Map.of("type", "json_object"),
+                        "temperature", 0.2, "max_tokens", 3000));
+        Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
+        assertFalse(sent.containsKey("top_p"));
+        assertFalse(sent.containsKey("response_format"));
+        assertEquals(0.2, ((Number) sent.get("temperature")).doubleValue());
+        assertEquals(2000, ((Number) sent.get("max_tokens")).intValue());
+    }
+
+    @Test
+    void configuredEndpointRejectsOverrideToAnotherModel() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("ep-configured", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-6-35b-a3b", "sk-x", true);
+        ep.setChatSupportsTemperature(false);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.invokeChat(
+                AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")),
+                Map.of("model", "other-chat")));
+        assertEquals("MODEL_MISMATCH_FOR_ENDPOINT", ex.getCode());
+        assertEquals(0, server.requests.size());
     }
 
     @Test

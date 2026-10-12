@@ -63,6 +63,10 @@ export interface AiModelEndpoint extends AiModelConcurrencyConfig {
   defaultTemperature?: number;
   defaultMaxTokens?: number;
   defaultTopP?: number;
+  chatSupportsTemperature?: boolean;
+  chatSupportsTopP?: boolean;
+  chatSupportsResponseFormat?: boolean;
+  chatMaxOutputTokens?: number | null;
   rpmLimit?: number;
   tpmLimit?: number;
   dailyTokenQuota?: number;
@@ -101,6 +105,11 @@ export interface AdminAiModelEndpointUpsert extends AiModelConcurrencyConfig {
   defaultTemperature?: number | null;
   defaultMaxTokens?: number | null;
   defaultTopP?: number | null;
+  chatSupportsTemperature?: boolean;
+  chatSupportsTopP?: boolean;
+  chatSupportsResponseFormat?: boolean;
+  /** 0 清空上限；省略保持不变。 */
+  chatMaxOutputTokens?: number | null;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
   dailyTokenQuota?: number | null;

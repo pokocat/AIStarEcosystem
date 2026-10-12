@@ -294,31 +294,34 @@ public class AiModelInvocationService {
         }
         String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
         String model = resolveModel(e, options);
+        if (hasExplicitChatCapabilities(e) && e.getModel() != null && !e.getModel().isBlank()
+                && !e.getModel().equals(model)) {
+            throw BusinessException.badRequest("MODEL_MISMATCH_FOR_ENDPOINT", "该端点的聊天参数能力仅适用于配置的固定模型");
+        }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages);
         if (options != null) {
-            if (options.get("temperature") != null && !usesPlatformControlledSampling(model)) {
+            if (options.get("temperature") != null && supports(e.getChatSupportsTemperature())) {
                 body.put("temperature", options.get("temperature"));
             }
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
-            if (options.get("top_p") != null) body.put("top_p", options.get("top_p"));
-            // 聚算 Qwen 3.5 / 3.6 拒绝 response_format，须依靠 prompt 约束纯 JSON。
-            if (options.get("response_format") != null && !usesPlatformControlledSampling(model)) {
+            if (options.get("top_p") != null && supports(e.getChatSupportsTopP())) body.put("top_p", options.get("top_p"));
+            if (options.get("response_format") != null && supports(e.getChatSupportsResponseFormat())) {
                 body.put("response_format", options.get("response_format"));
             }
         }
         if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
-                && !usesPlatformControlledSampling(model)) {
+                && supports(e.getChatSupportsTemperature())) {
             body.put("temperature", e.getDefaultTemperature());
         }
         if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
             body.put("max_tokens", e.getDefaultMaxTokens());
         }
-        if (!body.containsKey("top_p") && e.getDefaultTopP() != null) {
+        if (!body.containsKey("top_p") && e.getDefaultTopP() != null && supports(e.getChatSupportsTopP())) {
             body.put("top_p", e.getDefaultTopP());
         }
-        clampQwen35OutputBudget(model, body);
+        clampOutputBudget(e.getChatMaxOutputTokens(), body);
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
@@ -344,8 +347,8 @@ public class AiModelInvocationService {
                 type == null ? null : type.wire(),
                 model,
                 messages == null ? 0 : messages.size(),
-                options == null ? null : options.get("max_tokens"),
-                hasJsonMode(options));
+                body.get("max_tokens"),
+                hasJsonMode(body));
         // 发给大模型的最终提示词全文（排查用）。独立 logger，默认 INFO，可单独降级/落盘。
         if (ioLog.isInfoEnabled()) {
             try {
@@ -454,26 +457,22 @@ public class AiModelInvocationService {
         return o instanceof Number n ? n.longValue() : null;
     }
 
-    /**
-     * 聚算 Qwen 3.5 / 3.6 chat 路由拒绝显式 temperature 和 response_format。
-     * JSON 由 prompt 约束；两者的输出预算分别按各自已知限制处理。
-     */
-    private static boolean usesPlatformControlledSampling(String model) {
-        if (model == null) return false;
-        String normalized = model.toLowerCase(Locale.ROOT);
-        return isQwen35(normalized) || normalized.contains("qwen3-6") || normalized.contains("qwen3.6");
+    private static boolean supports(Boolean capability) {
+        return !Boolean.FALSE.equals(capability);
     }
 
-    private static boolean isQwen35(String model) {
-        return model.contains("qwen3-5") || model.contains("qwen3.5");
+    private static boolean hasExplicitChatCapabilities(AiModelEndpoint endpoint) {
+        return Boolean.FALSE.equals(endpoint.getChatSupportsTemperature())
+                || Boolean.FALSE.equals(endpoint.getChatSupportsTopP())
+                || Boolean.FALSE.equals(endpoint.getChatSupportsResponseFormat())
+                || endpoint.getChatMaxOutputTokens() != null;
     }
 
-    /** 聚算 Qwen 3.5 路由的输出预算上限为 4096，是否传 response_format 都执行该限制。 */
-    private static void clampQwen35OutputBudget(String model, Map<String, Object> body) {
-        if (model == null || !isQwen35(model.toLowerCase(Locale.ROOT))) return;
+    private static void clampOutputBudget(Integer cap, Map<String, Object> body) {
+        if (cap == null || cap <= 0) return;
         Object configured = body.get("max_tokens");
-        if (configured instanceof Number n && n.longValue() > 4096L) {
-            body.put("max_tokens", 4096);
+        if (configured instanceof Number n && n.longValue() > cap) {
+            body.put("max_tokens", cap);
         }
     }
 
