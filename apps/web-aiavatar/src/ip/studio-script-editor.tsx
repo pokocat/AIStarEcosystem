@@ -136,7 +136,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
           <header className="studio-script-chat-header"><strong>AI 对话</strong><Button type="text" aria-label="关闭 AI 对话" icon={<X size={16}/>} onClick={()=>setAssistantOpen(false)}/></header>
           <div className="studio-script-chat" role="log" aria-label="改稿对话记录" aria-live="polite">
             {!state.turns.length&&<div className="studio-script-chat-welcome"><Sparkles size={22}/><h2>继续打磨你的故事</h2><p>说说你的想法，AI 会基于当前剧本给出修改稿，由你决定是否采纳。</p><Button type="text" onClick={()=>patch({chatDraft:'按照现有框架完善故事大纲、人物小传和第 1 集正文，突出主角的目标与开场冲突。'})}>完善故事与人物</Button><Button type="text" onClick={()=>patch({chatDraft:'保留其他内容，只把第 1 集的对白改得更自然，并加强结尾的悬念。'})}>让对白更自然</Button></div>}
-            {state.turns.map((turn,i)=><div key={i} className={`studio-script-chat-turn ${turn.role}`}><small>{turn.role==='user'?'你':'Studio'}</small><p>{turn.content}</p>{turn.billing&&<small>输入 {turn.billing.inputTokens} · 输出 {turn.billing.outputTokens} Token · 实扣 {turn.billing.credits} 积分</small>}</div>)}
+            {state.turns.map((turn,i)=><div key={i} className={`studio-script-chat-turn ${turn.role}`}><small>{turn.role==='user'?'你':'Studio'}</small><p>{turn.content}</p>{turn.billing&&<small>已消耗 {turn.billing.credits} 积分</small>}</div>)}
             {busy&&<p className="studio-script-chat-progress" role="status">{status||'正在提交改稿任务…'}</p>}
             {state.error&&<p role="alert" className="studio-script-chat-error">{state.error}</p>}
             {pending&&!busy&&<Button onClick={()=>void reconcile(pending,true)}>确认原改稿任务</Button>}
@@ -150,7 +150,6 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
                 {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e instanceof Error?e.message:'停止失败，请确认原任务');}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="发送改稿要求" icon={<ArrowUp size={18}/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
               </div>
             </div>
-            <p className="studio-script-chat-price">{capabilities?.mock?'测试响应，不扣积分':tokenPrice?`输入 ${tokenPrice.inputCreditsPerK} / 输出 ${tokenPrice.outputCreditsPerK} 积分 / 千 Token · 最多冻结 ${cost} 积分，按实际用量结算`:cost===undefined?'正在读取模型价格':`本次 ${cost} 积分`}</p>
           </div>
         </aside>}
       </div>

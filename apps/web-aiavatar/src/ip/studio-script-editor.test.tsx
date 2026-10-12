@@ -89,9 +89,9 @@ test('the document opens without a creation panel, and toggling that panel prese
  expect((screen.getByRole('textbox',{name:'剧本文档'}) as HTMLTextAreaElement).value).toBe(document);expect(api.submit).not.toHaveBeenCalled();
 });
 
-test('token rates authorize the reservation and display actual usage from the accepted result',async()=>{
+test('chat hides pricing internals and updates actual credits after completion',async()=>{
  const tokenPricing={inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21};
  api.submit.mockResolvedValue({...done(),output:{...done().output,billing:{inputTokens:1000,outputTokens:1000,credits:2,inputCreditsPerK:0.18,outputCreditsPerK:1.08}}});
- render(<Host tokenPricing={tokenPricing}/>);openAssistant();expect(screen.getByText(/最多冻结 21 积分/)).toBeDefined();await send();
- expect(api.submit.mock.calls[0][1].maxCost).toBe(21);expect(await screen.findByText(/实扣 2 积分/)).toBeDefined();
+ render(<Host tokenPricing={tokenPricing}/>);openAssistant();expect(screen.queryByText(/Token|冻结|21 积分/)).toBeNull();expect(screen.queryByText(/已消耗/)).toBeNull();await send();
+ expect(api.submit.mock.calls[0][1].maxCost).toBe(21);expect(await screen.findByText('已消耗 2 积分')).toBeDefined();expect(screen.queryByText(/Token|冻结|21 积分/)).toBeNull();
 });

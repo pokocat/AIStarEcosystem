@@ -875,4 +875,4 @@ Edit this existing brand icon. Keep the EXACT original design and composition: t
 
 ### 2026-10-12 · 对话与素材处理分离
 
-剧本侧栏改为纯 AI 对话；素材从顶部独立处理，分集制作进入菜单。全屏改稿及画布助手读取后台 Token 价格与冻结上限，展示供应商实际用量和实扣积分。配置、计费快照及验收见 `docs/ip-studio-jusuan-models.md` 同日增量。
+剧本侧栏改为纯 AI 对话；素材从顶部独立处理，分集制作进入菜单。全屏改稿及画布助手读取后台计费配置，每次回复完成后只展示“已消耗 X 积分”；费率、Token 明细和冻结上限不在用户界面展示。配置、计费快照及验收见 `docs/ip-studio-jusuan-models.md` 同日增量。

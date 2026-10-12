@@ -572,7 +572,6 @@ html[data-layout="desktop"] .ip-surface .studio-document-reading-layout { displa
 .ip-surface .studio-script-chat-controls .ant-select { flex: 1; min-width: 0; }
 .ip-surface .studio-script-chat-model { flex: 1; min-width: 0; padding-left: 6px; font-size: 12px; color: var(--ink-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ip-surface .studio-script-send.ant-btn { flex: none; width: 36px; height: 36px; border-radius: 12px; }
-.ip-surface .studio-script-chat-price { margin: 8px 4px 0; font-size: 11px; line-height: 1.6; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .ip-surface .studio-script-chat-progress { margin-top: 12px; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
 @container studio-editor (max-width: 680px) {
   html[data-layout="desktop"] .ip-surface .studio-script-layout.assistant-open { grid-template-columns: minmax(0,1fr); }

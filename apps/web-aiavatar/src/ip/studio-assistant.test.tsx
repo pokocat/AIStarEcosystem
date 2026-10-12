@@ -27,7 +27,7 @@ test('history restores its exact reference and model before sending the next tur
   render(<Host/>);fireEvent.change(screen.getByRole('combobox',{name:'对话历史'}),{target:{value:'h'}});
   expect(screen.getByRole('button',{name:'移除引用 故事 B'})).toBeDefined();expect(screen.queryByRole('button',{name:'移除引用 角色 A'})).toBeNull();
   expect((screen.getByRole('combobox',{name:'助手模型'}) as HTMLSelectElement).value).toBe('two');
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1]).toMatchObject({nodeId:'h',contextNodeIds:['t'],model:'two',mode:'director',prompt:'继续讨论',history:[{role:'user',content:'讨论'},{role:'assistant',content:'建议'}]});
 });
 const visualCapabilities={mock:false,operations:['assistant'],imageCost:8,textCost:2,videoCost:null,textModels:[{endpointId:'vision',name:'看图模型',isDefault:true,supportsVision:true},{endpointId:'text',name:'文字模型',isDefault:false,supportsVision:false}]};
@@ -36,7 +36,7 @@ test('a copied conversation opens with its history, no source bindings and a fre
   render(<Host initial={[copied]} initialNodeId="copy" selectedIds={['copy']}/>);
   expect(screen.getByText('建议')).toBeDefined();expect(screen.queryByText('已删除的画布对象')).toBeNull();
   expect(screen.queryByRole('button',{name:/移除引用/})).toBeNull();
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续这个对话'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续这个对话'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());
   expect(api.submitStudioRun.mock.calls[0][1]).toMatchObject({nodeId:'copy',contextNodeIds:[],model:'one',history:history.metadata!.studio!.conversation!.turns});
   expect(api.submitStudioRun.mock.calls[0][1].clientRequestId).not.toBe('old');
@@ -46,7 +46,7 @@ test('new conversations exclude selected conversation nodes while preserving val
   expect(screen.queryByText('已删除的画布对象')).toBeNull();
   expect(screen.getByRole('button',{name:'移除引用 角色 A'})).toBeDefined();
   fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'讨论所选角色'}});
-  fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());
   expect(api.submitStudioRun.mock.calls[0][1].contextNodeIds).toEqual(['c']);
 });
@@ -55,7 +55,7 @@ test('visual mode is explicit, labels actual reading and sends the chosen readin
   render(<Host capabilities={visualCapabilities} initial={[character,video,audio]} selectedIds={['c','v','a']}/>);
   const check=screen.getByRole('checkbox',{name:'读取图片与视频画面'}) as HTMLInputElement;expect(check.checked).toBe(true);
   expect(screen.getByText(/视频 4 帧/)).toBeDefined();expect(screen.getByText(/音频只读取文字设定/)).toBeDefined();
-  fireEvent.click(check);expect(check.checked).toBe(false);fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'只讨论设定'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1].readVisuals).toBe(false);
+  fireEvent.click(check);expect(check.checked).toBe(false);fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'只讨论设定'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1].readVisuals).toBe(false);
 });
 test('visual history restores exact reading intent and unsupported models visibly become text-only',async()=>{
   const saved={...history,metadata:{...history.metadata,studio:{...history.metadata!.studio!,request:{...history.metadata!.studio!.request!,model:'vision',readVisuals:true}}}};
@@ -63,30 +63,30 @@ test('visual history restores exact reading intent and unsupported models visibl
   const check=screen.getByRole('checkbox',{name:'读取图片与视频画面'}) as HTMLInputElement;expect(check.checked).toBe(true);
   fireEvent.change(screen.getByRole('combobox',{name:'助手模型'}),{target:{value:'text'}});expect(check.disabled).toBe(true);expect(check.checked).toBe(false);expect(screen.getByText(/当前模型仅读取文字和设定/)).toBeDefined();
   fireEvent.change(screen.getByRole('combobox',{name:'助手模型'}),{target:{value:'vision'}});expect(check.checked).toBe(true);
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'看图讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1]).toMatchObject({readVisuals:true,model:'vision'});
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'看图讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1]).toMatchObject({readVisuals:true,model:'vision'});
 });
 test('a vision preflight rejection preserves the draft and can be corrected without recovering an unknown request',async()=>{
   api.submitStudioRun.mockRejectedValueOnce(new ApiError({code:'STUDIO_VISUAL_MISSING',message:'所选对象还没有可读画面'},400));render(<Host capabilities={visualCapabilities}/>);
-  const input=screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement;fireEvent.change(input,{target:{value:'看图分析'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('没有可读画面'));
-  expect(input.value).toBe('看图分析');expect(screen.queryByRole('button',{name:'确认原对话任务'})).toBeNull();fireEvent.click(screen.getByRole('checkbox',{name:'读取图片与视频画面'}));fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledTimes(2));expect(api.submitStudioRun.mock.calls[1][1].readVisuals).toBe(false);expect(api.submitStudioRun.mock.calls[1][1].clientRequestId).not.toBe(api.submitStudioRun.mock.calls[0][1].clientRequestId);
+  const input=screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement;fireEvent.change(input,{target:{value:'看图分析'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('没有可读画面'));
+  expect(input.value).toBe('看图分析');expect(screen.queryByRole('button',{name:'确认原对话任务'})).toBeNull();fireEvent.click(screen.getByRole('checkbox',{name:'读取图片与视频画面'}));fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledTimes(2));expect(api.submitStudioRun.mock.calls[1][1].readVisuals).toBe(false);expect(api.submitStudioRun.mock.calls[1][1].clientRequestId).not.toBe(api.submitStudioRun.mock.calls[0][1].clientRequestId);
 });
 test('keyboard @ selection adds one exact reference and removal changes the submitted IDs',async()=>{
   render(<Host/>);const input=screen.getByRole('textbox',{name:'给创作助手的消息'});
   fireEvent.change(input,{target:{value:'@故事',selectionStart:3}});fireEvent.keyDown(input,{key:'Enter'});
   expect((input as HTMLTextAreaElement).value).toBe('@故事 B ');expect(screen.getByRole('button',{name:'移除引用 故事 B'})).toBeDefined();
   fireEvent.change(input,{target:{value:'@故事 B 继续改编',selectionStart:10}});expect(screen.queryByRole('listbox')).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'移除引用 角色 A'}));fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1].contextNodeIds).toEqual(['t']);
+  fireEvent.click(screen.getByRole('button',{name:'移除引用 角色 A'}));fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1].contextNodeIds).toEqual(['t']);
 });
 test('a deleted reference blocks submission until explicitly removed',()=>{
   render(<Host initial={[character,{...history,metadata:{...history.metadata,studio:{...history.metadata!.studio!,request:{...history.metadata!.studio!.request!,contextNodeIds:['missing']}}}}]} initialNodeId="h"/>);
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续'}});expect(screen.getByRole('alert').textContent).toContain('已从画布删除');expect((screen.getByRole('button',{name:'发送 · 2 积分'}) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button',{name:'移除引用 missing'}));expect((screen.getByRole('button',{name:'发送 · 2 积分'}) as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续'}});expect(screen.getByRole('alert').textContent).toContain('已从画布删除');expect((screen.getByRole('button',{name:'发送'}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'移除引用 missing'}));expect((screen.getByRole('button',{name:'发送'}) as HTMLButtonElement).disabled).toBe(false);
 });
 test('story attachment is saved and its node ID is submitted; save failure retains a retryable source',async()=>{
   api.saveStudioDocument.mockRejectedValueOnce(new Error('保存失败，请重试'));render(<Host/>);
   const file=new File(['角色在森林相遇'],'原作.txt',{type:'text/plain'});Object.defineProperty(file,'arrayBuffer',{value:async()=>new TextEncoder().encode('角色在森林相遇').buffer});
   fireEvent.change(screen.getByLabelText('上传创作附件'),{target:{files:[file]}});await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('保存失败'));
-  expect(screen.getByRole('button',{name:'移除引用 原作'})).toBeDefined();fireEvent.click(screen.getByRole('button',{name:'重试保存附件'}));await waitFor(()=>expect(screen.queryByRole('button',{name:'重试保存附件'})).toBeNull());fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'改编这个原作'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  expect(screen.getByRole('button',{name:'移除引用 原作'})).toBeDefined();fireEvent.click(screen.getByRole('button',{name:'重试保存附件'}));await waitFor(()=>expect(screen.queryByRole('button',{name:'重试保存附件'})).toBeNull());fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'改编这个原作'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.saveStudioDocument).toHaveBeenCalledTimes(4);expect(api.submitStudioRun.mock.calls[0][1].contextNodeIds).toHaveLength(2);
 });
 test('pending recovery reuses the accepted request rather than the edited draft',async()=>{
@@ -122,7 +122,7 @@ test('a definite context-limit rejection restores draft, references and previous
   render(<Host initial={[...chapters,text,history]} initialNodeId="h"/>);
   fireEvent.click(screen.getByRole('button',{name:'感知画布'}));
   const input=screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement;
-  fireEvent.change(input,{target:{value:'讨论这三份长故事'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.change(input,{target:{value:'讨论这三份长故事'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('上下文过长'));
   await waitFor(()=>expect((screen.getByRole('button',{name:'移除引用 章节 3'}) as HTMLButtonElement).disabled).toBe(false));
   expect(input.value).toBe('讨论这三份长故事');expect(input.disabled).toBe(false);
@@ -131,14 +131,14 @@ test('a definite context-limit rejection restores draft, references and previous
   expect((screen.getByRole('combobox',{name:'助手模型'}) as HTMLSelectElement).disabled).toBe(false);
   const rejectedRequest=api.submitStudioRun.mock.calls[0][1];
   fireEvent.click(screen.getByRole('button',{name:'移除引用 章节 3'}));fireEvent.change(input,{target:{value:'只讨论前两章'}});
-  fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledTimes(2));
   expect(api.submitStudioRun.mock.calls[1][1]).toMatchObject({prompt:'只讨论前两章',contextNodeIds:['chapter-0','chapter-1','t'],history:history.metadata!.studio!.conversation!.turns});
   expect(api.submitStudioRun.mock.calls[1][1].clientRequestId).not.toBe(rejectedRequest.clientRequestId);
 });
 test('an unknown network outcome keeps the draft locked and recovers the exact original request',async()=>{
   api.submitStudioRun.mockRejectedValueOnce(new TypeError('Failed to fetch'));render(<Host/>);
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续讨论角色'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续讨论角色'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.error).toHaveBeenCalledWith('Failed to fetch'));
   expect((screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement).disabled).toBe(true);
   expect((screen.getByRole('button',{name:'移除引用 角色 A'}) as HTMLButtonElement).disabled).toBe(true);
@@ -148,7 +148,7 @@ test('an unknown network outcome keeps the draft locked and recovers the exact o
 });
 test('save failure before a new submission restores its draft without submitting a run',async()=>{
   api.saveStudioDocument.mockRejectedValueOnce(new Error('画布保存失败'));render(<Host/>);
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'先讨论故事'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'先讨论故事'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('画布保存失败'));
   await waitFor(()=>expect((screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement).disabled).toBe(false));
   expect((screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement).value).toBe('先讨论故事');expect(api.submitStudioRun).not.toHaveBeenCalled();
@@ -165,7 +165,7 @@ test('a rejected new turn restores all 16 visible messages and the previous plan
   const previous={mode:'director' as const,turns:Array.from({length:16},(_,i)=>({role:i%2?'assistant' as const:'user' as const,content:`原消息 ${i}`})),plan:{summary:'已有建议',questions:['保留之前的节奏建议'],steps:[]}};
   api.submitStudioRun.mockRejectedValueOnce(new ApiError({code:'STUDIO_CONTEXT_LIMIT',message:'上下文过长'},400));
   render(<Host initial={[text,{...history,metadata:{studio:{...history.metadata!.studio!,conversation:previous}}}]} initialNodeId="h"/>);
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'新一轮讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'新一轮讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('上下文过长'));
   expect(screen.getByText('原消息 0')).toBeDefined();expect(screen.getByText('原消息 1')).toBeDefined();expect(screen.getByText('原消息 15')).toBeDefined();
   expect(screen.getByText('保留之前的节奏建议')).toBeDefined();expect(api.submitStudioRun.mock.calls[0][1].history).toHaveLength(14);
@@ -175,7 +175,7 @@ test('recovery rejection restores the full previous conversation from its persis
   let actualNodes:CanvasNodeData[]=[];
   api.submitStudioRun.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockRejectedValueOnce(new ApiError({code:'STUDIO_CONTEXT_LIMIT',message:'上下文过长'},400));
   const first=render(<Host initial={[text,{...history,metadata:{studio:{...history.metadata!.studio!,conversation:previous}}}]} onSnapshot={(nodes:CanvasNodeData[])=>{actualNodes=nodes;}} initialNodeId="h"/>);
-  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'待确认消息'}});fireEvent.click(screen.getByRole('button',{name:'发送 · 2 积分'}));
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'待确认消息'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.error).toHaveBeenCalledWith('Failed to fetch'));
   const persisted=JSON.parse(JSON.stringify(actualNodes));const request=api.submitStudioRun.mock.calls[0][1];
   expect(persisted.find((n:CanvasNodeData)=>n.id==='h').metadata.studio.assistantPreviousConversation).toEqual(previous);
@@ -203,9 +203,9 @@ test('failed attachment save retries the same canvas without reupload and blocks
   fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'保留草稿'}});
   fireEvent.change(screen.getByLabelText('上传创作附件'),{target:{files:[new File(['v'],'声音.wav')]}});
   await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('画布保存失败'));
-  expect(snapshot.find(n=>n.title==='声音.wav')?.type).toBe('audio');expect((screen.getByRole('button',{name:'发送 · 2 积分'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(snapshot.find(n=>n.title==='声音.wav')?.type).toBe('audio');expect((screen.getByRole('button',{name:'发送'}) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('button',{name:'重试保存附件'}));await waitFor(()=>expect(screen.queryByRole('button',{name:'重试保存附件'})).toBeNull());
-  expect(api.importStudioMedia).toHaveBeenCalledOnce();expect(api.saveStudioDocument).toHaveBeenCalledTimes(2);expect(api.submitStudioRun).not.toHaveBeenCalled();expect((screen.getByRole('button',{name:'发送 · 2 积分'}) as HTMLButtonElement).disabled).toBe(false);
+  expect(api.importStudioMedia).toHaveBeenCalledOnce();expect(api.saveStudioDocument).toHaveBeenCalledTimes(2);expect(api.submitStudioRun).not.toHaveBeenCalled();expect((screen.getByRole('button',{name:'发送'}) as HTMLButtonElement).disabled).toBe(false);
 });
 test('saved media already on the canvas is referenced without inserting another node',async()=>{
   let snapshot:CanvasNodeData[]=[];render(<Host initial={[{...character,metadata:{storageKey:'own',content:'/own'}},text]} selectedIds={[]} onSnapshot={(nodes:CanvasNodeData[])=>snapshot=nodes}/>);
@@ -247,4 +247,18 @@ test('switching history preserves separate unsent drafts, references and models'
  expect(input.value).toBe('导演对话的另一份草稿');expect(modelSelect.value).toBe('one');
  expect(screen.getByRole('button',{name:'导演执导'}).getAttribute('aria-pressed')).toBe('true');
  expect(screen.queryByRole('button',{name:/移除引用/})).toBeNull();expect(api.submitStudioRun).not.toHaveBeenCalled();
+});
+
+test('actual credits appear on completion without token rates or reserved credits',async()=>{
+  let finish!:(value:any)=>void;
+  api.submitStudioRun.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  render(<Host capabilities={{...visualCapabilities,textModels:[{endpointId:'vision',name:'看图模型',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]}}/>);
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续写故事'}});
+  fireEvent.click(screen.getByRole('button',{name:'发送',exact:true}));
+  await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());
+  expect(api.submitStudioRun.mock.calls[0][1].maxCost).toBe(21);
+  expect(screen.queryByText(/已消耗|Token|冻结|21 积分/)).toBeNull();
+  finish({id:'run',status:'done',output:{plan:{summary:'先整理故事',steps:[],questions:[]},billing:{inputTokens:1000,outputTokens:1000,credits:2,inputCreditsPerK:0.18,outputCreditsPerK:1.08}}});
+  expect(await screen.findByText('已消耗 2 积分')).toBeDefined();
+  expect(screen.queryByText(/Token|冻结|21 积分/)).toBeNull();
 });
