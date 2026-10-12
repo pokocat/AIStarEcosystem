@@ -79,3 +79,12 @@ AI 对话（operation=assistant，包括全屏改稿与画布创作助手）使�
 2026-10-12 实时核价：[聚算 Qwen3.6 页面](https://portal.jusuanhub.com/models/pub-fibiyjy3vbkcc) 当前活动价输入 90、输出 540 供应商积分/百万 Token；用户指定 2 倍，沿用已有供应商/平台积分 1:1 换算，得到输入 0.18、输出 1.08 平台积分/千 Token。供应商合同输入上限 65536、输出上限 8192，保守最大冻结为 21 积分，UI 明示上限与实际结算。价格依据带日期保存为 supplierReference，供应商活动变化不会偷偷更改已公布用户售价；改价需重新核实、更新配置。新模型缺价拒绝新对话，不套用旧模型价格。
 
 验收：114 项前端回归通过；统一模型用量解析、Token 精确取整/缺失用量、过时报价拒绝、任务结算/退款与幂等恢复通过。全 workspace/admin 类型和 API 契约检查通过。本地 1440px 桌面、390px 手机对话及独立提取面板已验收，未发送付费生成请求。发布结果另记下文。
+
+### 本次生产发布结果
+
+- 代码 `5f2bef3c992323fb516413ed41273e935f85b947`，制品 `20261012-studio-chat-5f2bef3c`，范围 server / web-aiavatar / admin。已推送 `codex/unified-ip-studio`；无新表迁移。
+- `ai.chat-token-pricing` 已通过管理 API 保存（Qwen3.6：0.18 / 1.08 积分每千 Token，65536 / 8192 预算，最大冻结 21）。供应商来源、核价日期、成本90/540每百万、换算1:1、倍率2保存在 supplierReference。另将该模型的共享 `chat_max_output_tokens` 从 NULL 更新为已核实的 8192，所有调用应用统一执行。改前配置保存在 `/opt/ai-star-eco/backups/studio-chat-token-20261012`。
+- 生产能力接口与浏览器均显示上述费率和冻结上限。原生产验收剧本 `IPP-c6dc8e48` 打开新编辑器，历史对话与未采纳建议保留，侧栏无设定/素材 tab，素材处理在顶部。仅查看，未新建付费任务、未采纳旧建议。
+- 38 项定向后端测试、114 项前端测试及类型/契约门通过；实际账本调用由确定性测试验证，本次没有新增真实供应商扣费样本。
+- 初次 verify 将 PUBLIC_BASE 设为 AiAvatar 子域，统一脚本的 `/admin` 探针得到预期的跨站 404；改用部署 SOP 的 `http://47.98.162.120` 后全绿。server / web-aiavatar / admin 均 active/running、NRestarts=0。远端与制品 JAR SHA256 均为 `10913e9d3e93aca687d6cf086d3c4928914506d8e5d0979c385fd9c0a8869b69`。
+- 本地和线上截图在 gitignored `.studio-e2e/chat-token-ui/`，分别记录桌面、手机、独立素材面板和生产对话。生产截图中的旧回复早于本次 Token 改价，不作为新计费实测凭证。
