@@ -49,7 +49,7 @@ let connectionSnapshot:CanvasConnection[]=[];
 function Host({initial=node,initialNodes,initialConnections=[]}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 afterEach(cleanup);
-beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
 test('image composer targets its own upload slot and retains the draft while a picker can be cancelled',async()=>{
  const image={...node,type:'image' as never,title:'商品参考',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
  render(<Host initial={image}/>);
@@ -296,7 +296,7 @@ test('task history retains a replaced failure after refresh and paginates withou
  api.history.mockResolvedValueOnce({items:[latest,previous],hasMore:true}).mockResolvedValueOnce({items:[{...done,id:'older-history',createdAt:'2026-10-07T00:00:00Z'}],hasMore:false});
  render(<Host initial={{...node,metadata:{...node.metadata,studio:{...node.metadata!.studio,runId:'accepted'}}}}/>);
  fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
- await screen.findByText('生成失败');expect(screen.getByText('0 积分')).toBeDefined();expect(screen.queryByRole('button',{name:'重新生成',exact:true})).toBeNull();
+ await screen.findByText('生成失败');expect(screen.getByText('已消耗 0 积分')).toBeDefined();expect(screen.queryByRole('button',{name:'重新生成',exact:true})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'加载更多任务'}));
  await waitFor(()=>expect(api.history).toHaveBeenLastCalledWith('p',1));
  await waitFor(()=>expect(screen.queryByRole('button',{name:'加载更多任务'})).toBeNull());expect(api.submit).not.toHaveBeenCalled();
@@ -433,7 +433,7 @@ test.each([
  {policy:'fixed',available:true,expectedModel:'default-text'},
  {policy:'selectable',available:false,expectedModel:'default-text'},
 ])('completed-script edits preserve the accepted request while the next split respects $policy models (previous model available: $available)',async({policy,available,expectedModel})=>{
- api.capabilities.mockResolvedValue({mock:false,operations:['script','storyboard'],textCost:2,textModelMode:policy,textModels:[{endpointId:'default-text',name:'默认剧本模型',creditCost:2,isDefault:true},...(available?[{endpointId:'model',name:'原剧本模型',creditCost:2}]:[])]});
+ api.capabilities.mockResolvedValue({mock:false,operations:['script','storyboard'],textCost:2,textModelMode:policy,textModels:[{endpointId:'default-text',name:'默认剧本模型',tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21},creditCost:2,isDefault:true},...(available?[{endpointId:'model',name:'原剧本模型',tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21},creditCost:2}]:[])]});
  const script={title:'花园故事',outline:'发现花朵',characters:[],scenes:[],props:[],episodes:[{no:1,title:'清晨',content:'小紫浇花。'}],shots:[]};
  const accepted={...request,operation:'script',settings:{genre:'都市治愈',core:'old'}};
  render(<Host initial={{...node,type:'text',metadata:{status:'success',studio:{kind:'script',script,settings:accepted.settings,request:accepted}}}}/>);
@@ -681,14 +681,14 @@ test('storyboard script composer shows instructions while the submitted request 
 
 test('text intent uses the chosen model and rewrites the original node without replacing its body with the instruction or making copies',async()=>{
  const text={...node,id:'text',type:'text' as never,title:'商品卖点',metadata:{content:'原商品卖点'}};
- api.capabilities.mockResolvedValue({mock:false,operations:['text'],textCost:2,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,creditCost:2},{endpointId:'b',name:'文本 B',isDefault:false,creditCost:3}]});
+ api.capabilities.mockResolvedValue({mock:false,operations:['text'],textCost:2,textModels:[{endpointId:'a',name:'文本 A',tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21},isDefault:true,creditCost:2},{endpointId:'b',name:'文本 B',tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21},isDefault:false,creditCost:3}]});
  api.submit.mockImplementation(async(_:string,request:any)=>({...done,id:'text-run',nodeId:'text',kind:'studio-text',cost:3,inputs:request,output:{textRevision:{summary:'添加了标题',content:'便携好物\n原商品卖点'}}}));
  render(<Host initialNodes={[text]}/>);fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));fireEvent.click(screen.getByRole('button',{name:'打开节点 商品卖点'}));
  const input=await screen.findByRole('textbox',{name:'AI 修改要求'});expect(input).toHaveProperty('value','');
  fireEvent.change(input,{target:{value:'起一个标题'}});fireEvent.change(screen.getByRole('combobox',{name:'文本模型'}),{target:{value:'b'}});
  expect(snapshot[0].metadata?.content).toBe('原商品卖点');
  fireEvent.click(screen.getByRole('button',{name:'发送修改要求'}));await waitFor(()=>expect(snapshot[0].metadata?.content).toBe('便携好物\n原商品卖点'));
- expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'text',operation:'text',prompt:'起一个标题',textEdit:{content:'原商品卖点'},model:'b',maxCost:3});
+ expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'text',operation:'text',prompt:'起一个标题',textEdit:{content:'原商品卖点'},model:'b',maxCost:21});
  expect(snapshot.map(n=>n.id)).toEqual(['text']);expect(snapshot[0].metadata?.studio?.textEditor?.turns).toEqual([{role:'user',content:'起一个标题'},{role:'assistant',content:'添加了标题'}]);
  expect(screen.getByRole('region',{name:'节点详情 商品卖点'}).textContent).toContain('便携好物');expect(api.save).toHaveBeenCalled();
 });
@@ -696,7 +696,7 @@ test('text intent uses the chosen model and rewrites the original node without r
 test('queued text edits keep the body, show queue position and prohibit duplicate submits',async()=>{
  const request={clientRequestId:'text-key',nodeId:'text',operation:'text',prompt:'起标题',model:'a',textEdit:{content:'原文'},maxCost:2};
  const queued={...done,id:'text-run',nodeId:'text',kind:'studio-text',status:'running',stage:'endpoint.queued',pct:0,inputs:request,output:{},queue:{position:3,waiting:3,running:1,concurrencyLimit:1}};
- api.capabilities.mockResolvedValue({mock:false,operations:['text'],textCost:2,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,creditCost:2}]});
+ api.capabilities.mockResolvedValue({mock:false,operations:['text'],textCost:2,textModels:[{endpointId:'a',name:'文本 A',tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21},isDefault:true,creditCost:2}]});
  api.project.mockResolvedValue({runsById:{'text-run':queued}});api.read.mockResolvedValue(queued);
  const text={...node,id:'text',type:'text' as never,title:'文本',metadata:{content:'原文',status:'loading',studio:{kind:'text',runId:'text-run',request,task:{status:'running',stage:'endpoint.queued',pct:0,queue:queued.queue}}}};
  render(<Host initialNodes={[text]}/>);fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));fireEvent.click(screen.getByRole('button',{name:'打开节点 文本'}));

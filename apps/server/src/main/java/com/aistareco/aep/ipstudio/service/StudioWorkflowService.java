@@ -155,9 +155,10 @@ public class StudioWorkflowService {
                 throw bad("STUDIO_VISION_UNAVAILABLE","这个模型未配置图片读取能力，请切换模型或关闭读取画面");
         }
         if(Boolean.TRUE.equals(request.readVisuals())&&fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不读取真实画面，请关闭测试响应");
-        var chatRate=!fixtures.enabled()&&"assistant".equals(request.operation())?chatRate(textEndpoint.endpoint().getId()):null;
+        var chatRate=!fixtures.enabled()&&text?chatRate(textEndpoint.endpoint().getId()):null;
+        if(!fixtures.enabled()&&text&&chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
         long cost=chatRate==null?(fixtures.enabled()||!text?0:textPrice):chatRate.maxCost();
-        if(chatRate!=null&&request.maxCost()==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","请刷新模型价格并确认本次冻结上限");
+        if(chatRate!=null&&request.maxCost()==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型计费配置已更新，请刷新后重试");
         IpRunService.requireApprovedCost(request.maxCost(),cost);
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         ObjectNode inputs=mapper.valueToTree(request);

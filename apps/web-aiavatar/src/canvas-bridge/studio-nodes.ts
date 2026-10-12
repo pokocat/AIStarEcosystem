@@ -44,7 +44,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
     const editor=metadata.studio.textEditor;
     metadata.studio.textEditor={...editor,turns:[...(editor?.turns||[]),
       {role:"user" as const,content:request.prompt.slice(0,4000)},
-      {role:"assistant" as const,content:run.output.textRevision.summary}].slice(-16)};
+      {role:"assistant" as const,content:run.output.textRevision.summary,...(run.output.billing?{billing:run.output.billing}:{})}].slice(-16)};
     if((metadata.content||"") === request.textEdit?.content) {
       metadata.content=run.output.textRevision.content;
       delete metadata.studio.textEditor.proposal;

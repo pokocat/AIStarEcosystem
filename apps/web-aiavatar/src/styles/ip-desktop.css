@@ -591,3 +591,5 @@ html[data-layout="mobile"] .ip-surface .studio-script-layout { display: grid; gr
 html[data-layout="mobile"] .ip-surface .studio-script-layout.assistant-open .studio-script-document,
 html[data-layout="mobile"] .ip-surface .studio-script-fullscreen-layout:has(.assistant-open) .studio-script-format-tools { display: none; }
 html[data-layout="mobile"] .ip-surface .studio-script-chat-composer { padding-bottom: max(12px,env(safe-area-inset-bottom)); }
+
+.ip-surface .studio-ai-icon { flex: none; display: inline-block; vertical-align: middle; }

@@ -1,7 +1,8 @@
 "use client";
+import { StudioAiIcon } from "./studio-ai-icon";
 import { useEffect, useRef, useState } from 'react';
 import { App, Button, Dropdown, Input, Modal, Select } from 'antd';
-import { ArrowLeft, ArrowUp, ChevronDown, Clapperboard, Download, FolderOpen, Save, Square, Undo2, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Clapperboard, Download, FolderOpen, Save, Square, Undo2, Sparkles, X } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { ApiError } from '@ai-star-eco/api-client';
 import type { IpRun } from '@ai-star-eco/types';
@@ -43,7 +44,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
   const model=(capabilities?.textModelMode!=="fixed"&&capabilities?.textModels?.some(m=>m.endpointId===state.model)?state.model:undefined)||capabilities?.textModels?.find(m=>m.isDefault)?.endpointId||capabilities?.textModels?.[0]?.endpointId;
   const selectedModel=capabilities?.textModels?.find(m=>m.endpointId===model);
   const tokenPrice=selectedModel?.tokenPricing;
-  const cost=capabilities?.mock?0:tokenPrice?.maxCost??selectedModel?.creditCost??capabilities?.textCost;
+  const cost=capabilities?.mock?0:tokenPrice?.maxCost;
   const commit=async(close=false)=>{
     if(saving)return false;
     const value=live.current.draft??'',invalid=scriptMarkdownError(value);
@@ -147,7 +148,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
               <Input.TextArea aria-label="剧本改稿要求" placeholder="输入你的剧本想法或修改要求…" value={state.chatDraft||''} maxLength={4000} autoSize={{minRows:3,maxRows:6}} disabled={!!pending||busy} onChange={e=>patch({chatDraft:e.target.value})} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/>
               <div className="studio-script-chat-controls">
                 {capabilities?.textModelMode!=="fixed"?<Select aria-label="剧本改稿模型" variant="borderless" value={model} disabled={!!pending||busy} placeholder="选择创作模型" options={capabilities?.textModels?.map(m=>({value:m.endpointId,label:m.name}))} onChange={value=>patch({model:value})}/>:<span className="studio-script-chat-model" title={selectedModel?.name}>{selectedModel?.name||'模型加载中'}</span>}
-                {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e instanceof Error?e.message:'停止失败，请确认原任务');}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="发送改稿要求" icon={<ArrowUp size={18}/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
+                {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e instanceof Error?e.message:'停止失败，请确认原任务');}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="AI 处理，会消耗积分" icon={<StudioAiIcon/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
               </div>
             </div>
           </div>

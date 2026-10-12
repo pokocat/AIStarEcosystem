@@ -878,3 +878,5 @@ Edit this existing brand icon. Keep the EXACT original design and composition: t
 剧本侧栏改为纯 AI 对话；素材从顶部独立处理，分集制作进入菜单。全屏改稿及画布助手读取后台计费配置，每次回复完成后只展示“已消耗 X 积分”；费率、Token 明细和冻结上限不在用户界面展示。配置、计费快照及验收见 `docs/ip-studio-jusuan-models.md` 同日增量。
 
 Studio 模型目录的 `name` 投影后台 `modelAlias`，端点名称留在管理端。画布平台频道使用 endpointId 作内部选择值、别名作显示文字；对话、图片/视频、配音和口型同步共用别名口径。
+
+2026-10-12 文本计费收尾：Studio 五类文本 operation 全部复用 ai.chat-token-pricing 与实际用量结算；UI 隐藏文本固定价，受理预算来自 tokenPricing.maxCost，历史任务恢复保持原价。所有实际模型调用按钮使用 StudioAiIcon；素材提取及文本改稿回显实际消耗，任务列表只在终态显示消耗。

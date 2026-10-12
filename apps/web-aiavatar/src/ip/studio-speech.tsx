@@ -1,4 +1,5 @@
 "use client";
+import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState } from "react";
 import { Button, Input, Select } from "antd";
@@ -31,7 +32,7 @@ export function StudioSpeech({anchorId,open,onClose,initialText,initialAvatarId,
   const selectProfile=(id?:string)=>{const v=profiles?.profiles.find(v=>v.voiceId===id);setVoiceId(v?.voiceId);if(v){setSpeaker(v.speaker);setInstruct(v.instruct||"");}};
   const selectPerson=(id?:string)=>{setAvatarId(id);selectProfile(profiles?.performers.find(a=>a.avatarId===id)?.voiceId);setNotice("");};
   return <StudioFloatingPanel title="人物配音" open={open} onClose={busy||binding?undefined:onClose} width={520} anchorId={anchorId} footer={<div className="studio-speech-footer">
-    {pending?<><p role="status">{pending.confirmed?'原配音任务正在生成，请等待结果。':'配音提交结果尚未确认，请确认原任务。'}</p><Button type="primary" loading={busy} onClick={onConfirm}>{pending.confirmed?'查看原任务':'确认原任务'}</Button></>:<Button type="primary" loading={busy} disabled={loading||binding||!!error||!selected||!voice||cost==null||!text.trim()} onClick={()=>{if(selected&&cost!=null)void onSubmit({model:selected.endpointId,speaker,text:text.trim(),instruct:instruct.trim()||undefined,maxCost:cost,...(avatarId?{avatarId}:{}),...(profile?{voiceId:profile.voiceId}:{})});}}>
+    {pending?<><p role="status">{pending.confirmed?'原配音任务正在生成，请等待结果。':'配音提交结果尚未确认，请确认原任务。'}</p><Button type="primary" loading={busy} onClick={onConfirm}>{pending.confirmed?'查看原任务':'确认原任务'}</Button></>:<Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" type="primary" loading={busy} disabled={loading||binding||!!error||!selected||!voice||cost==null||!text.trim()} onClick={()=>{if(selected&&cost!=null)void onSubmit({model:selected.endpointId,speaker,text:text.trim(),instruct:instruct.trim()||undefined,maxCost:cost,...(avatarId?{avatarId}:{}),...(profile?{voiceId:profile.voiceId}:{})});}}>
       {cost==null?"配音费用未配置":rate==null?`生成配音 · ${cost} 积分`:`生成配音 · 预冻结 ${cost} 积分`}
     </Button>}
   </div>}>

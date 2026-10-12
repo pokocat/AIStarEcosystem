@@ -10,6 +10,8 @@ import com.aistareco.aep.service.*;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.*;
@@ -27,9 +29,12 @@ class StudioTextWorkflowTest {
         when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
         var endpoint=AiModelEndpoint.builder().id("agnes-text").enabled(true).build();
         when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
-        when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_ASSISTANT)).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
+        when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
-        var request=json.readValue("{\"clientRequestId\":\"key\",\"nodeId\":\"text\",\"operation\":\"text\",\"prompt\":\"起一个标题\",\"model\":\"agnes-text\",\"maxCost\":2,\"textEdit\":{\"content\":\"原文\"}}",RunRequest.class);
+        var prices=mock(AiChatTokenPricing.class);
+        when(prices.find("agnes-text")).thenReturn(new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"tokenPricing",prices);
+        var request=json.readValue("{\"clientRequestId\":\"key\",\"nodeId\":\"text\",\"operation\":\"text\",\"prompt\":\"起一个标题\",\"model\":\"agnes-text\",\"maxCost\":21,\"textEdit\":{\"content\":\"原文\"}}",RunRequest.class);
         TransactionSynchronizationManager.initSynchronization();
         try {
             service.submit("u","p",request);verifyNoInteractions(worker);
@@ -37,11 +42,12 @@ class StudioTextWorkflowTest {
             assertEquals("text",run.getNodeId());assertEquals("studio-text",run.getKind());assertEquals("原文",input.path("textEdit").path("content").asText());
             assertEquals("agnes-text",input.path("_exec").path("endpointId").asText());assertTrue(input.path("_exec").path("userPrompt").asText().contains("起一个标题"));
             assertTrue(input.path("_exec").path("userPrompt").asText().contains("原文"));assertTrue(input.path("_exec").path("systemPrompt").asText().contains(StudioTextRevision.CONTRACT));
-            verify(credits).hold(eq("u"),eq(2L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
+            verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
-    @Test void assistantFreezesTokenRateAndRejectsAnOutdatedCeilingBeforeHolding() throws Exception {
+    @ParameterizedTest @ValueSource(strings={"text","script","storyboard","assistant","asset-extract"})
+    void everyTextOperationFreezesTokenRateAndRejectsUnpricedOrOutdatedRequests(String operation) throws Exception {
         var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);
         var credits=mock(CreditService.class);var pricing=mock(DapPricingService.class);var prompts=mock(PromptService.class);var worker=mock(StudioWorkflowWorker.class);
         var project=IpProject.builder().id("p").build();when(projects.requiredForUpdate("u","p")).thenReturn(project);
@@ -49,25 +55,39 @@ class StudioTextWorkflowTest {
         when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
         var endpoint=AiModelEndpoint.builder().id("agnes-text").enabled(true).build();
         when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
-        when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_ASSISTANT)).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
+        when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
         var tokenPricing=mock(AiChatTokenPricing.class);
         var rate=new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192);
         when(tokenPricing.find("agnes-text")).thenReturn(rate);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"tokenPricing",tokenPricing);
         var request=json.readValue("{\"clientRequestId\":\"key\",\"nodeId\":\"text\",\"operation\":\"assistant\",\"prompt\":\"起一个标题\",\"model\":\"agnes-text\",\"maxCost\":21}",RunRequest.class);
+        var body=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(request);
+        body.put("operation",operation);
+        if("text".equals(operation))body.putObject("textEdit").put("content","原文");
+        if("asset-extract".equals(operation))body.putObject("scriptEdit").put("markdown","剧本正文");
+        request=json.treeToValue(body,RunRequest.class);
         TransactionSynchronizationManager.initSynchronization();
         try {
+            when(tokenPricing.find("agnes-text")).thenReturn(null);
+            var missing=request;
+            assertEquals("AI_TOKEN_PRICE_NOT_CONFIGURED",assertThrows(com.aistareco.common.BusinessException.class,()->service.submit("u","p",missing)).getCode());
+            verifyNoInteractions(credits);
+            when(tokenPricing.find("agnes-text")).thenReturn(rate);
             var stale=json.valueToTree(request);((com.fasterxml.jackson.databind.node.ObjectNode)stale).put("maxCost",2);
             assertThrows(com.aistareco.common.BusinessException.class,()->service.submit("u","p",json.treeToValue(stale,RunRequest.class)));
             verifyNoInteractions(credits);
             service.submit("u","p",request);verifyNoInteractions(worker);
             var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());var run=capture.getValue();var input=json.readTree(run.getInputJson());
-            assertEquals("studio-assistant",run.getKind());assertEquals(21,run.getCost());
+            assertEquals("studio-"+operation,run.getKind());assertEquals(21,run.getCost());
             assertEquals("per_token",input.path("_exec").path("billingUnit").asText());
             assertEquals(21,input.path("_exec").path("tokenPricing").path("maxCost").asInt());
             assertTrue(input.path("_exec").path("maxTokens").asInt()<=8192);
             verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
+            when(runs.findByProjectIdAndClientRequestId("p","key")).thenReturn(Optional.of(run));
+            when(tokenPricing.find("agnes-text")).thenReturn(null);
+            service.submit("u","p",request);
+            verify(credits,times(1)).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }

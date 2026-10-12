@@ -15,7 +15,7 @@ public class AiChatTokenPricing {
     public AiChatTokenPricing(PlatformConfigService configs){this.configs=configs;}
     public Rate find(String endpointId) {
         var config=configs.findByKey(KEY);
-        if(config.isEmpty())return null; // Existing installations retain their accepted per-call contract.
+        if(config.isEmpty())return null; // Caller rejects unpriced new text runs; accepted snapshots remain valid.
         var node=config.get().value().path("endpoints").path(endpointId);
         if(node.isMissingNode())throw unavailable("AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置 Token 积分售价");
         return parse(node);

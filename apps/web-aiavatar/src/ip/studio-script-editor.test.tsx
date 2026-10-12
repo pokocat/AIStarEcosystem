@@ -29,7 +29,7 @@ const accepted={clientRequestId:'original-script-generation',nodeId:'script',ope
 const original:CanvasNodeData={id:'script',type:'text' as never,title:'雨夜',position:{x:35,y:74},width:480,height:300,metadata:{status:'success',studio:{kind:'script',script:markdownToScript(document),scriptMarkdown:document,request:accepted}}};
 const done=(markdown=document.replace('核心冲突：','核心冲突：丢失的钥匙。'))=>({id:'revision-1',projectId:'p',nodeId:'script',kind:'studio-assistant',status:'done',stage:'done',pct:100,cost:2,inputs:{},output:{scriptRevision:{summary:'增强了开场冲突。',markdown}},createdAt:''});
 let snapshot:CanvasNodeData;
-function Host({initial=original,tokenPricing}: {initial?:CanvasNodeData;tokenPricing?:any}) {
+function Host({initial=original,tokenPricing={inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}: {initial?:CanvasNodeData;tokenPricing?:any}) {
  const[node,setNode]=useState(initial);snapshot=node;
  return <StudioScriptEditor projectId="p" node={node} capabilities={{mock:false,operations:['assistant'],imageCost:8,textCost:2,videoCost:40,textModels:[{endpointId:'text',name:'文本模型',isDefault:true,tokenPricing}]}}
  onState={state=>setNode(n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,scriptEditor:state}}}))}
@@ -50,7 +50,7 @@ test('save errors retain the editor and latest local draft instead of closing it
  api.commit.mockRejectedValue(new Error('保存冲突'));render(<Host/>);fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:document+'\n手动补充。'}});fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存冲突'));expect(api.close).not.toHaveBeenCalled();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('手动补充');expect(screen.getByText(/保存失败，草稿保留/)).toBeDefined();expect(screen.queryByText(/^已保存到画布/)).toBeNull();
 });
 test('AI produces a persisted proposal with quote and bounded history, and only explicit adoption changes the draft',async()=>{
- render(<Host/>);await send();await screen.findByText('AI 建议版本 · 尚未采纳');expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'script',operation:'assistant',scriptEdit:{markdown:document},maxCost:2,model:'text'});expect(api.save.mock.invocationCallOrder[0]).toBeLessThan(api.submit.mock.invocationCallOrder[0]);expect(snapshot.metadata?.studio?.scriptMarkdown).toBe(document);expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);
+ render(<Host/>);await send();await screen.findByText('AI 建议版本 · 尚未采纳');expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'script',operation:'assistant',scriptEdit:{markdown:document},maxCost:21,model:'text'});expect(api.save.mock.invocationCallOrder[0]).toBeLessThan(api.submit.mock.invocationCallOrder[0]);expect(snapshot.metadata?.studio?.scriptMarkdown).toBe(document);expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);
  fireEvent.click(screen.getByRole('button',{name:'采纳修改'}));expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('丢失的钥匙');expect(snapshot.metadata?.studio?.scriptMarkdown).toBe(document);
  fireEvent.click(screen.getByRole('button',{name:'撤销采纳'}));expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);
 });

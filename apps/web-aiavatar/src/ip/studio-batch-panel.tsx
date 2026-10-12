@@ -1,4 +1,5 @@
 "use client";
+import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { App, Button, Checkbox, Select } from "antd";
@@ -78,8 +79,8 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
   const video=videoModel?models.video.find(m=>m.endpointId===videoModel):models.video.find(m=>m.isDefault)||models.video[0];
   const durations=capabilities?.mock?[8]:[5,6,8,10,12,15].filter(v=>(!video?.capability?.minDurationSec||v>=video.capability.minDurationSec)&&(!video?.capability?.maxDurationSec||v<=video.capability.maxDurationSec));
   useEffect(()=>{if(durations.length&&!durations.includes(duration))setDuration(durations[0]);},[video?.endpointId,capabilities?.mock]);
-  return <StudioFloatingPanel title="连续制作" utility open={open} onClose={()=>{stop.current=true;onClose();}} footer={batch?<div className="studio-row-actions"><Button type="primary" loading={busy} disabled={allDone} onClick={()=>void execute()}>{allDone?"计划已完成":current?"继续已确认计划":"确认费用并开始"}</Button><Button disabled={!busy} onClick={()=>{stop.current=true;setError("已请求暂停，当前任务完成后停止后续提交。");}}>暂停后续制作</Button>
-          {batch.steps.some(s=>runMap[s.id]?.status==="failed")&&<Button disabled={busy} onClick={()=>void execute(true)}>只重试失败步骤并继续</Button>}</div>:null} width={660}>
+  return <StudioFloatingPanel title="连续制作" utility open={open} onClose={()=>{stop.current=true;onClose();}} footer={batch?<div className="studio-row-actions"><Button icon={allDone?undefined:<StudioAiIcon/>} title={allDone?undefined:"AI 处理，会消耗积分"} type="primary" loading={busy} disabled={allDone} onClick={()=>void execute()}>{allDone?"计划已完成":current?"继续已确认计划":"确认费用并开始"}</Button><Button disabled={!busy} onClick={()=>{stop.current=true;setError("已请求暂停，当前任务完成后停止后续提交。");}}>暂停后续制作</Button>
+          {batch.steps.some(s=>runMap[s.id]?.status==="failed")&&<Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" disabled={busy} onClick={()=>void execute(true)}>只重试失败步骤并继续</Button>}</div>:null} width={660}>
     <div className="studio-batch-panel"><p>确认所选镜头、模型与费用后按顺序执行。暂停会停止后续提交，已经受理的任务仍会完成。刷新后请从保存的计划继续。</p>
       <Select aria-label="已保存的制作计划" placeholder="新制作计划" allowClear value={activeId} disabled={busy} onChange={id=>{setActiveId(id);setPlan(undefined);setError("");}} options={saved.map(n=>({value:n.id,label:n.title}))}/>
       {!current&&<><Select aria-label="连续制作范围" value={kind} onChange={v=>{setKind(v);setPlan(undefined);}} options={[{value:"frames",label:"生成所选首帧"},{value:"clips",label:"补首帧并生成视频"},{value:"work",label:"补首帧、视频并合成"}]}/>

@@ -1,4 +1,5 @@
 "use client";
+import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState, type ComponentRef, type Dispatch, type SetStateAction } from "react";
 import { App, Button, Input, Select } from "antd";
@@ -131,7 +132,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
         target=target||makeStudioNode("assistant");
         const turns=[...(conversation?.turns||[]),{role:"user" as const,content:prompt.trim()}].slice(-15);
         request={clientRequestId:nanoid(),nodeId:target.id,operation:"assistant",prompt:prompt.trim(),mode,contextNodeIds:contextIds,
-          history:(conversation?.turns||[]).slice(-14).map(t=>({role:t.role,content:t.content})),model:(capabilities?.textModelMode!=="fixed"&&textModels.some(m=>m.endpointId===model)?model:undefined)||textModels.find(m=>m.isDefault)?.endpointId||textModels[0]?.endpointId,maxCost:capabilities.mock?0:selectedModel?.tokenPricing?.maxCost??selectedModel?.creditCost??capabilities.textCost,readVisuals:readingVisuals};
+          history:(conversation?.turns||[]).slice(-14).map(t=>({role:t.role,content:t.content})),model:(capabilities?.textModelMode!=="fixed"&&textModels.some(m=>m.endpointId===model)?model:undefined)||textModels.find(m=>m.isDefault)?.endpointId||textModels[0]?.endpointId,maxCost:capabilities.mock?0:selectedModel?.tokenPricing?.maxCost,readVisuals:readingVisuals};
         const next={...target,title:modeNames[mode],metadata:{...target.metadata,status:"loading" as const,errorDetails:undefined,studio:{kind:"assistant" as const,request,assistantPreviousConversation:conversation||{mode,turns:[]},conversation:{...conversation,mode,turns}}}};
         if(current)patch(next.id,()=>next);else {setNodes(list=>[...list,next]);setConnections(list=>[...list,...contextIds.map(id=>({id:nanoid(),fromNodeId:id,toNodeId:next.id}))]);}
         drafts.current.delete(`${projectId}:${conversationId||'new'}`);
@@ -168,7 +169,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
   };
   return <StudioFloatingPanel title="Studio 创作助手" open={open} onClose={()=>{rememberDraft();onClose();}} width={420} utility dockable footer={<div className="studio-assistant-footer">
     {capabilities?.textModelMode!=="fixed"&&!!textModels.length&&<Select aria-label="助手模型" disabled={locked} value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m=>({value:m.endpointId,label:m.name}))}/>}
-    <Button className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}>发送</Button>
+    <Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||!capabilities.mock&&!selectedModel?.tokenPricing||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}>发送</Button>
   </div>}>
     <div className="studio-assistant">
       <div className="studio-mode-tabs" role="group" aria-label="助手模式">{(Object.keys(modeNames) as StudioAssistantMode[]).map(value=><button key={value} type="button" disabled={locked} aria-pressed={mode===value} onClick={()=>{rememberDraft();setMode(value);setConversationId(undefined);}}>{modeNames[value]}</button>)}</div>

@@ -100,3 +100,9 @@ AI 对话（operation=assistant，包括全屏改稿与画布创作助手）使�
 Studio 文本、图像、普通/原生视频、配音和口型同步模型目录只返回后台 `modelAlias` 作为展示名；未设置别名显示“未命名模型”，不回退到供应商端点名称。助手模型选项不附加“可看图/文字”后缀。画布平台模型的内部选择值改为 endpointId，别名只作标签，避免同别名候选和后台改名改变请求目标。已有受理请求仍按原 endpointId 恢复。
 
 已发布 `server,web-aiavatar`，release `20261012-studio-model-alias-c8c54f35`，代码 SHA `c8c54f35f`。96 项前端、61 项后端回归及提交门通过，生产部署验证全绿。线上目录逐项对照数据库 model_alias：文本 qwen3-6-35b-a3b；图像 flux2-klein-4b / longcat-image-edit / ernie-Image；普通/原生视频 minimax-h3；配音 qwen3-tts；口型 x-dub。浏览器已确认剧本对话当前模型只显示别名，截图 `.studio-e2e/chat-token-ui/online-model-alias.jpg`。本次无付费生成。
+
+## 2026-10-12 · 全部文本操作按量计费与 AI 操作标记
+
+此前仅 assistant 按 Token 结算；本次扩展到 text/script/storyboard/asset-extract，沿用同一后台端点费率（Qwen3.6 的供应商价格 2 倍配置）与受理快照。新文本任务缺少按量价格返回 AI_TOKEN_PRICE_NOT_CONFIGURED，不回落到 2 积分/次。已受理旧任务仍按原快照完成/恢复。五类文本入口预算统一读取 tokenPricing.maxCost，用户界面不显示固定报价、费率或冻结值；终态显示“已消耗 X 积分”。素材提取被明确拒绝报价时清除未受理请求，未知提交结果仍保留原请求键。
+
+新增统一 AI 图标，标记实际模型发送/生成、素材分析、配音、口型、连续制作、缺图补全及重新生成按钮。打开编辑器、保存信息、导入/上传、采纳、整理原结果与本地裁剪/合成不标为付费模型调用。后台配置分组改为“AI 文本计费”，描述明确覆盖全部文本操作。
