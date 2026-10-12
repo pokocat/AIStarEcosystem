@@ -1314,6 +1314,8 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 
 发布与本地/生产验收范围见 `docs/ip-studio-asset-library-validation.md`（2026-10-11）；本地样例不自动迁移到生产。
 
-## Studio AI 对话 Token 结算（2026-10-12）
+## Studio 全部文本 AI 操作 Token 结算（2026-10-12）
 
-仅 operation=assistant 在 `ai.chat-token-pricing` 配置存在时启用实际 Token 计费。新请求必须提供 capabilities 文本模型 tokenPricing.maxCost 作为批准上限；缺价或超过批准额在 hold 前拒绝。费率与预算随任务冻结，服务端按真实 prompt_tokens/completion_tokens 合计费用后向上取整。不得按估算Token结算；缺少/异常/超预算用量、无效内容、失败与取消释放冻结。成功时同事务 commit 实际额、release 余量、写 billing 和终态；重放原幂等键不再取价或扣费。非对话动作及既有无 tokenPricing 的任务沿用原按次快照。
+operation=text/script/storyboard/assistant/asset-extract 的新任务全部使用 `ai.chat-token-pricing` 按实际 Token 计费（本地 fixture 模式除外）。新请求必须提供 capabilities 文本模型 tokenPricing.maxCost 作为批准上限；缺价或超过批准额在 hold 前拒绝，不回退到按次价格。费率与预算随任务冻结，服务端按真实 prompt_tokens/completion_tokens 合计费用后向上取整。不得按估算 Token 结算；缺少/异常/超预算用量、无效内容、失败与取消释放冻结。成功时同事务 commit 实际额、release 余量、写 billing 和终态；重放原幂等键不再取价或扣费。既有无 tokenPricing 的已受理任务沿用原按次快照。
+
+文本用户界面只展示完成后的实际积分，不展示固定报价、费率或冻结值。实际提交模型工作的操作按钮带 AI 图标与费用提示；本地保存、上传、采纳和任务查询不标为付费模型调用。
