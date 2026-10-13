@@ -3,6 +3,8 @@ import { StudioErrorNotice, studioNodeError, studioRunError, studioErrorMetadata
 import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState, type ComponentRef, type Dispatch, type SetStateAction } from "react";
+import { gsap } from 'gsap';
+import { useGSAP } from '@gsap/react';
 import { App, Button, Input, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
 import { nanoid } from "nanoid";
@@ -43,6 +45,8 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
   const rememberDraft=(project=projectId)=>drafts.current.set(`${project}:${conversationId||'new'}`,{prompt,contextIds:[...contextIds],model,mode,readVisuals});
   const restoreDraft=(draft:AssistantDraft)=>{setPrompt(draft.prompt);setContextIds(draft.contextIds);setModel(draft.model);setMode(draft.mode);setReadVisuals(draft.readVisuals);};
   const composer=useRef<ComponentRef<typeof Input.TextArea>>(null);
+  const composerFrame=useRef<HTMLDivElement>(null);
+  const {contextSafe}=useGSAP({scope:composerFrame});
   const live=useRef({nodes,projectId});live.current={nodes,projectId};const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   useEffect(()=>{setConversationId(undefined);setContextIds([]);setPrompt("");setBusy(false);setReading(false);setAttachmentsUnsaved(false);},[projectId]);
@@ -75,6 +79,16 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
   const readingVisuals=readVisuals&&canReadVisuals;
   const contextNodes=assistantContextNodes(nodes),missingIds=contextIds.filter(id=>!contextNodes.some(n=>n.id===id));
   const locked=busy||reading||current?.metadata?.status==='loading';
+  const useSuggestion=contextSafe((question:string)=>{
+    if(locked)return;
+    const value=question.trim();
+    const next=prompt.includes(value)?prompt:prompt.trim()?`${prompt}${prompt.endsWith('\n')?'':'\n'}${value}`:value;
+    setPrompt(next);setCaret(next.length);setMentionOpen(false);
+    composer.current?.focus({cursor:'end'});
+    if(composerFrame.current&&typeof window.matchMedia==='function'&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      gsap.fromTo(composerFrame.current,{backgroundColor:'#e8eaec'},{backgroundColor:'#f6f6f5',duration:.35,ease:'expo.out',clearProps:'backgroundColor',overwrite:'auto'});
+    }
+  });
   const query=mentionOpen?assistantMentionQuery(prompt,caret):undefined;
   const suggestions=query?contextNodes.filter(n=>n.title.toLocaleLowerCase().includes(query.query.toLocaleLowerCase())).slice(0,12):[];
   const chooseMention=(node:CanvasNodeData)=>{
@@ -215,7 +229,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     ['搭建创作流程','帮我搭建从角色描述、多视角设定图、细节参考图到场景视频的创作流程。',Workflow],
   ] as const;
   return <StudioFloatingPanel title="Studio 创作助手" className="studio-assistant-panel" open={open} onClose={()=>{rememberDraft();onClose();}} width={448} utility dockable footer={
-      <div className="studio-assistant-composer">
+      <div ref={composerFrame} className="studio-assistant-composer">
         <div className="studio-assistant-references" aria-label="本次引用">{contextIds.map(id=>{const n=contextNodes.find(n=>n.id===id);return <div key={id} className="studio-assistant-reference"><span>{n?.title||'已删除的画布对象'}{n&&<small> · {readingVisuals&&n.type==='image'?'图片':readingVisuals&&n.type==='video'?'视频 4 帧':n.type==='text'?'文字':'文字设定'}</small>}</span><button type="button" disabled={locked} aria-label={`移除引用 ${n?.title||id}`} onClick={()=>setContextIds(ids=>ids.filter(value=>value!==id))}><X size={14}/></button></div>;})}</div>
         <Input.TextArea ref={composer} aria-label="给创作助手的消息" aria-describedby={toolsOpen?"studio-assistant-context-note":undefined} aria-autocomplete="list" aria-controls={query?'studio-assistant-mentions':undefined} aria-activedescendant={query&&suggestions.length?`studio-assistant-mention-${suggestions[mentionIndex%suggestions.length].id}`:undefined} placeholder="想创作什么？输入 @ 引用画布内容" value={prompt} disabled={locked} onChange={e=>{const value=e.target.value;setPrompt(value);setCaret(e.target.selectionStart);setMentionOpen(mentionOpen||(value.match(/@/g)?.length||0)>(prompt.match(/@/g)?.length||0));setMentionIndex(0);}} onSelect={e=>setCaret(e.currentTarget.selectionStart)} onKeyDown={e=>{
           if(e.nativeEvent.isComposing)return;
@@ -225,11 +239,14 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
           else if(query&&suggestions.length&&e.key==='Enter'){e.preventDefault();chooseMention(suggestions[mentionIndex%suggestions.length]);}
         }} autoSize={{minRows:2,maxRows:5}} maxLength={4000}/>
         {query&&<div id="studio-assistant-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">{suggestions.length?suggestions.map((node,index)=><button key={node.id} id={`studio-assistant-mention-${node.id}`} type="button" role="option" aria-selected={index===mentionIndex%suggestions.length} onMouseDown={e=>e.preventDefault()} onClick={()=>chooseMention(node)}><span>{node.title}</span><small>{node.type==='text'?'文字':'素材设定'}</small></button>):<p>当前画布没有匹配节点</p>}<button type="button" onMouseDown={e=>e.preventDefault()} onClick={()=>{libraryMention.current=query;setLibraryQuery(query.query);setMentionOpen(false);}}>从个人资产库选择</button></div>}
-        <div className="studio-assistant-context-actions"><Button icon={<AtSign size={16}/>} disabled={locked} onClick={()=>{const value=prompt+(prompt&&!/\s$/.test(prompt)?' ':'')+'@';setPrompt(value);setCaret(value.length);setMentionOpen(true);setMentionIndex(0);composer.current?.focus();}}>引用节点</Button><StudioAttachmentPicker projectId={projectId} locked={locked} reading={reading} onFiles={files=>void addAttachments(files).catch(()=>{})} onAssets={addAttachments}/></div>
+        <div className="studio-assistant-composer-toolbar">
+          <div className="studio-assistant-context-actions"><Button icon={<AtSign size={16}/>} disabled={locked} onClick={()=>{const value=prompt+(prompt&&!/\s$/.test(prompt)?' ':'')+'@';setPrompt(value);setCaret(value.length);setMentionOpen(true);setMentionIndex(0);composer.current?.focus();}}>引用节点</Button><StudioAttachmentPicker projectId={projectId} locked={locked} reading={reading} onFiles={files=>void addAttachments(files).catch(()=>{})} onAssets={addAttachments}/></div>
+          <Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||!capabilities.mock&&!selectedModel?.tokenPricing||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}>发送</Button>
+        </div>
         <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>setLibraryQuery(undefined)} onAssets={async assets=>{await addAttachments(assets);const mention=libraryMention.current;if(mention)setPrompt(value=>insertAssistantMention(value,mention,assets.map(a=>a.title).join("、")));libraryMention.current=undefined;}}/>
         {attachmentsUnsaved&&<Button disabled={locked} onClick={()=>void retryAttachmentSave()}>重试保存附件</Button>}
 
-        <div className="studio-assistant-send-row"><span>⌘ / Ctrl + Enter 发送</span><Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||!capabilities.mock&&!selectedModel?.tokenPricing||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}>发送</Button></div>
+        <p className="studio-assistant-send-hint">⌘ / Ctrl + Enter 发送</p>
         {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p className="studio-assistant-error"><StudioErrorNotice error={missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError || (current ? studioNodeError(current) : undefined)}/></p>}
       </div>}>
     <div className="studio-assistant">
@@ -247,7 +264,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
       <div className="studio-conversation" role="log" aria-label="创作对话记录" aria-live="polite">{conversation?.turns.map((turn,i)=><div className={`studio-turn studio-turn-${turn.role}`} key={i}><small>{turn.role==="user"?"你":"Studio"}</small><p>{turn.content}</p>{turn.billing&&<small>已消耗 {turn.billing.credits} 积分</small>}</div>)}</div>
       {conversation?.plan&&current?.metadata?.status!=='loading'&&<>
         <StudioAssistantPlan key={`${current?.id}-${current?.metadata?.studio?.runId||'draft'}`} plan={conversation.plan} nodes={nodes} contextIds={contextIds} selectedIds={selectedIds} locked={!!locked} onEdit={editStep} onApply={applyStep}/>
-        {!!conversation.plan.questions.length&&<div className="studio-assistant-questions"><span>还需要你的想法</span>{conversation.plan.questions.map((q,i)=><p key={i}>{q}</p>)}</div>}
+        {!!conversation.plan.questions.length&&<section className="studio-assistant-questions" aria-label="还需要你的想法"><h4>还需要你的想法</h4><p>点击带入输入框，补充后发送</p><div>{conversation.plan.questions.map((q,i)=><button type="button" key={i} disabled={locked} onClick={()=>useSuggestion(q)}><span>{q}</span><ArrowUp size={16} aria-hidden="true"/></button>)}</div></section>}
         {!!conversation.plan.notes?.length&&<details className="studio-helper-note"><summary>补充建议</summary>{conversation.plan.notes.map((note,i)=><p key={i}>{note}</p>)}</details>}
       </>}
       {current?.metadata?.status==='loading'&&<div className="studio-assistant-pending" role="status"><p>{busy?'正在整理你的想法…':'对话任务尚未完成'}</p>{!busy&&<Button onClick={()=>void send(true)}>确认原对话任务</Button>}</div>}
