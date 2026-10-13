@@ -11762,7 +11762,7 @@ paths:
         不再被引用的素材副本，避免每覆盖一次多一组找不回来的孤儿文件。
       responses:
         "200": { description: "{ id, name, enabled, kind }" }
-        "400": { description: IP_DEMO_TOO_MANY_ASSETS 素材太多 · IP_DEMO_ID_INVALID demoId 形状不合法 }
+        "400": { description: IP_DEMO_TOO_MANY_ASSETS 素材太多 · IP_DEMO_ID_INVALID demoId 形状不合法 · STUDIO_TEMPLATE_VERSIONED 已发布配方不能覆盖，请发布新版本 }
         "403": { description: 非超级管理员（SUPER_ADMIN_ONLY） }
   /v1/ip-studio/assets/content:
     get:
@@ -11790,7 +11790,7 @@ paths:
         想重新上线只能自己记住 demoId。不带 doc（整份画布文档几百 KB，一屏几十条会撑爆
         响应体），改为回 nodeCount / assetCount 两个概览数字。
       responses:
-        "200": { description: IpDemoAdminDto 列表（模板在前，各自按 sortOrder） }
+        "200": { description: IpDemoAdminDto 列表（模板在前，各自按 sortOrder；currentVersionId 非空的配方只能通过发布模板入口新增版本） }
         "403": { description: 非平台运营 }
   /v1/ip-studio/demos/{demoId}:
     post:

@@ -110,6 +110,17 @@ class IpDemoAdminTest {
     }
 
     @Test
+    void 管理列表暴露已发布版本标识并继续禁止配方覆盖() {
+        var recipe = seed("IPD-recipe", IpDemoTemplate.KIND_TEMPLATE, true, 0, docWith());
+        recipe.setCurrentVersionId("IPV-v1");
+        assertEquals("IPV-v1", svc.listForAdmin().get(0).currentVersionId());
+        var error = assertThrows(BusinessException.class, () -> svc.publishFromProject("operator", "project", "IPD-recipe", "修改模板", "", "template"));
+        assertEquals("STUDIO_TEMPLATE_VERSIONED", error.getCode());
+        assertEquals("IPV-v1", recipe.getCurrentVersionId());
+        verifyNoInteractions(storage);
+    }
+
+    @Test
     void 改展示信息_传null的字段不动() {
         IpDemoTemplate r = seed("IPD-1", IpDemoTemplate.KIND_EXAMPLE, true, 0, docWith());
         r.setSummary("原说明");

@@ -26,6 +26,7 @@ import { registerStudioSave } from "@/canvas-bridge/studio-save";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { ProjectHistory } from "@/ip/project-history";
 import { StudioTemplatePublish } from "@/ip/studio-template-publish";
+import { StudioOfficialContentTarget } from './studio-official-content-target';
 import { StudioTemplateSource } from "@/ip/studio-template-source";
 import { USE_MOCK } from "@ai-star-eco/api-client";
 import { useAssetStore } from "@/canvas/stores/use-asset-store";
@@ -50,6 +51,7 @@ function Host({ projectId }: { projectId: string }) {
   React.useEffect(() => registerStudioSave(projectId, saveNow), [projectId, saveNow]);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const [templateOpen, setTemplateOpen] = React.useState(false);
+  const [templateVisibility, setTemplateVisibility] = React.useState<'personal'|'official'>('personal');
   const { message } = useStudioApp();
 
   // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
@@ -113,6 +115,9 @@ function Host({ projectId }: { projectId: string }) {
   const saveAsDemo = React.useCallback(async () => {
     const name = demoName.trim();
     if (!name) return;
+    if (existingDemos.some(d => d.id === demoTarget && d.currentVersionId)) {
+      setDemoOpen(false); setTemplateVisibility('official'); setTemplateOpen(true); return;
+    }
     setSavingDemo(true);
     try {
       // 先把当前画布存下来再快照，**存不上就不发**（同发布资产那条闸，见 publish-gate.ts）：
@@ -136,7 +141,7 @@ function Host({ projectId }: { projectId: string }) {
     } finally {
       setSavingDemo(false);
     }
-  }, [projectId, saveNow, message, demoName, demoSummary, demoKind, demoTarget]);
+  }, [projectId, saveNow, message, demoName, demoSummary, demoKind, demoTarget, existingDemos]);
 
   React.useEffect(() => {
     if (state !== "ready") return;
@@ -203,7 +208,7 @@ function Host({ projectId }: { projectId: string }) {
     <>
       <ProjectHistory projectId={projectId} saveNow={saveNow} />
       <LastRunPanel />
-      {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>setTemplateOpen(true)} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>发布为模板</button></>}
+      {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>发布为模板</button></>}
       {isOperator && (
         <button
           onClick={openDemoDialog}
@@ -298,7 +303,7 @@ function Host({ projectId }: { projectId: string }) {
   return (
     <div className="h-full relative">
       <StudioFlowCanvas projectId={projectId}/>
-      {templateOpen && <StudioTemplatePublish projectId={projectId} superAdmin={isOperator} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
+      {templateOpen && <StudioTemplatePublish projectId={projectId} superAdmin={isOperator} initialVisibility={templateVisibility} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
 
       <PublishDialog
         open={publishOpen}
@@ -349,30 +354,7 @@ function Host({ projectId }: { projectId: string }) {
         <p style={{ fontSize: 12, lineHeight: 1.7, color: "var(--ink-3)", margin: "0 0 14px" }}>
           原项目不受影响 —— 之后你改它、甚至删它，都不会动到这份。
         </p>
-        {existingDemos.length > 0 && (
-          <>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
-              新建还是覆盖
-            </label>
-            <select
-              value={demoTarget}
-              onChange={(e) => {
-                setDemoTarget(e.target.value);
-                const hit = existingDemos.find((d) => d.id === e.target.value);
-                if (hit) { setDemoName(hit.name); setDemoSummary(hit.summary); setDemoKind(hit.kind); }
-              }}
-              style={{ ...DEMO_FIELD, marginBottom: 12 }}
-            >
-              <option value="">新建一条</option>
-              {existingDemos.map((d) => (
-                <option key={d.id} value={d.id}>
-                  覆盖「{d.name}」（{d.kind === "template" ? "模板" : "示例"}
-                  {d.enabled ? "" : " · 已下线"}）
-                </option>
-              ))}
-            </select>
-          </>
-        )}
+        <StudioOfficialContentTarget items={existingDemos} value={demoTarget} disabled={savingDemo} onChange={hit=>{setDemoTarget(hit?.id||'');if(hit){setDemoName(hit.name);setDemoSummary(hit.summary);setDemoKind(hit.kind);}}} onVersion={()=>{setDemoOpen(false);setTemplateVisibility('official');setTemplateOpen(true);}}/>
         {autoTitled.length > 0 && (
           <div style={{
             display: "flex", gap: 8, padding: "9px 11px", marginBottom: 14, borderRadius: "var(--r-sm)",

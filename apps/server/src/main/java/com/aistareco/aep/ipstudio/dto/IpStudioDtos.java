@@ -85,7 +85,7 @@ public final class IpStudioDtos {
                                  boolean enabled, int sortOrder, String coverUrl,
                                  String sourceProjectId, String createdBy,
                                  String createdAt, String updatedAt,
-                                 int nodeCount, int assetCount) {}
+                                 int nodeCount, int assetCount, String currentVersionId) {}
 
     /** 内置风格预设（resources/ipstudio/styles.json）。 */
     public record IpStylePresetDto(String id, String name, String summary,

@@ -46,7 +46,7 @@ class StudioTemplateServiceTest {
         when(versions.findById(anyString())).thenAnswer(i->Optional.ofNullable(releases.get(i.getArgument(0))));
         when(versions.findByTemplateIdOrderByVersionDesc(anyString())).thenAnswer(i->releases.values().stream().filter(v->v.getTemplateId().equals(i.getArgument(0))).toList());
         var endpoint=AiModelEndpoint.builder().id("live-image").enabled(true).build();
-        when(models.resolveEndpoint(eq(AiModelPurpose.DAP_IMAGE),any())).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(models.resolveEndpoint(eq(AiModelPurpose.DAP_IMAGE),any(),eq("studio"))).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(images.compileExplicit(eq("owner"),any())).thenReturn(new IpRunService.Compiled("generate",8,1,"image",om.createObjectNode(),false,true,"template"));
         when(projects.requireOwnedAssetKey(eq("owner"),anyString())).thenAnswer(i->{String key=i.getArgument(1);if(!key.startsWith("own/"))throw BusinessException.badRequest("IP_ASSET_KEY_INVALID","foreign");return key;});
         Path image=dir.resolve("image.png");javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",image.toFile());
@@ -100,7 +100,7 @@ class StudioTemplateServiceTest {
         assertThrows(BusinessException.class,()->service.preview("owner",mismatch));verify(projects,never()).create(any(),any());
     }
     @Test void unavailableEngineOrPromptFailsWithoutCreatingAnInstance() {
-        var v=publish(null);when(models.resolveEndpoint(eq(AiModelPurpose.DAP_IMAGE),any())).thenReturn(Optional.empty());
+        var v=publish(null);when(models.resolveEndpoint(eq(AiModelPurpose.DAP_IMAGE),any(),eq("studio"))).thenReturn(Optional.empty());
         assertEquals("ENDPOINT_NOT_ALLOWED",assertThrows(BusinessException.class,()->service.instantiate("owner",use(v.id(),"own/one.png"))).getCode());verify(projects,never()).create(any(),any());
     }
     @Test void cyclicOrUndeclaredPrivateDependenciesCannotPublish() {

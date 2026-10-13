@@ -172,6 +172,7 @@ export interface IpDemoAdmin {
   coverUrl?: string; sourceProjectId?: string; createdBy?: string;
   createdAt?: string; updatedAt?: string;
   nodeCount: number; assetCount: number;
+  currentVersionId?: string;
 }
 
 export interface IpStylePreset { id: string; name: string; summary: string; promptEn: string; negativeEn?: string; coverUrl?: string }

@@ -10,9 +10,9 @@ import { publishTemplateVersion } from '@/canvas-bridge/template-api';
 import { publishWithLatestDoc } from '@/canvas-bridge/publish-gate';
 import type { SaveOutcome } from '@/canvas-bridge/project-sync';
 
-export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose}:{projectId:string;superAdmin:boolean;saveNow:()=>Promise<SaveOutcome>;onClose:()=>void}) {
+export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose,initialVisibility='personal'}:{projectId:string;superAdmin:boolean;saveNow:()=>Promise<SaveOutcome>;onClose:()=>void;initialVisibility?:'personal'|'official'}) {
   const [doc,setDoc]=useState<IpProjectDoc>(),[name,setName]=useState(''),[summary,setSummary]=useState('');
-  const [templates,setTemplates]=useState<IpTemplate[]>([]),[target,setTarget]=useState<string>(),[visibility,setVisibility]=useState<'personal'|'official'>('personal');
+  const [templates,setTemplates]=useState<IpTemplate[]>([]),[target,setTarget]=useState<string>(),[visibility,setVisibility]=useState<'personal'|'official'>(superAdmin?initialVisibility:'personal');
   const [inputs,setInputs]=useState<StudioTemplateInput[]>([]),[steps,setSteps]=useState<StudioTemplateStep[]>([]);
   const [busy,setBusy]=useState(false),[error,setError]=useStudioErrorState(),[done,setDone]=useState('');
   useEffect(()=>{let active=true;publishWithLatestDoc(saveNow,()=>Promise.all([readStudioProject(projectId),IpStudioApi.listTemplates()])).then(([p,t])=>{

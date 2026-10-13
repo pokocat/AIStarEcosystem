@@ -9,7 +9,7 @@ import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, Modal, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { ArrowDown, ArrowUp, BookOpen, ChevronDown, Clapperboard, Download, FileText, ImagePlus, Layers, ListChecks, PanelsTopLeft, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookOpen, ChevronDown, Clapperboard, Download, FileText, ImagePlus, Images, Layers, ListChecks, PanelsTopLeft, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { LibraryExtractionPanel } from "./library-extraction-panel";
 import { LibraryReferencePicker } from "./library-reference-picker";
@@ -54,6 +54,7 @@ import { useStudioConversations } from "@/canvas-bridge/studio-conversations";
 import { StudioBatchPanel } from "./studio-batch-panel";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { StudioIpLibrary } from "./studio-ip-library";
+import { StudioMaterialLibrary } from './studio-material-library';
 import { editableIpAssetRoles,ipAssetRole,ipAssetRoles } from "@/canvas-bridge/studio-ip-library";
 import { parseStudioEntry } from "./studio-entry";
 import { IpStudioApi } from "./api";
@@ -918,7 +919,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}><Icon size={15}/>{label}</button>)}</nav>
       <div className="studio-director-launch">
         <div className="studio-resource-tools" role="group" aria-label="素材入口">
-        <button type="button" className="studio-ip-library" onClick={()=>openIpLibrary()}><UserRound size={15}/>IP 人物库</button>
+        <button type="button" className="studio-ip-library" onClick={()=>openIpLibrary()}><Images size={15}/>素材库</button>
         <button type="button" className="studio-template-launch" onClick={()=>openTemplates()}><PanelsTopLeft size={15}/>画布模板</button>
         </div>
         <div className="studio-utility-tools" role="group" aria-label="任务与更多工具">
@@ -1021,7 +1022,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {adoptIntent==="look"&&<label>素材类别<Select aria-label="归档素材类别" value={adoptRole} onChange={setAdoptRole} options={editableIpAssetRoles.map(value=>({value,label:ipAssetRoles[value]}))}/></label>}
         <p>主形象更新会保留旧版本；造型归入所选人物，不改变正式主形象。</p></div>
     </Modal>
-    <StudioIpLibrary actionLabel={libraryTarget.kind==="canvas"?undefined:"引用选中素材"} open={assetPicker} assets={ipAssets} loading={assetsLoading} error={assetError} onClose={closeIpLibrary} onRefresh={loadIpAssets} onImport={importIpAsset} onAssetChange={asset=>setIpAssets(current=>current.map(a=>a.lookId===asset.lookId&&a.avatarId===asset.avatarId?asset:a))}/>
+    {libraryTarget.kind==='canvas' ? <StudioMaterialLibrary projectId={projectId} open={assetPicker} assets={ipAssets} loading={assetsLoading} error={assetError} onClose={closeIpLibrary} onRefresh={loadIpAssets} onImport={importIpAsset} onAssets={insertLibrary} onAssetChange={asset=>setIpAssets(current=>current.map(a=>a.lookId===asset.lookId&&a.avatarId===asset.avatarId?asset:a))}/> : <StudioIpLibrary actionLabel="引用选中素材" open={assetPicker} assets={ipAssets} loading={assetsLoading} error={assetError} onClose={closeIpLibrary} onRefresh={loadIpAssets} onImport={importIpAsset} onAssetChange={asset=>setIpAssets(current=>current.map(a=>a.lookId===asset.lookId&&a.avatarId===asset.avatarId?asset:a))}/>}
     <StudioFloatingPanel title="创作任务" open={taskList} onClose={() => setTaskList(false)} width={480} utility className="studio-task-panel">
       <StudioTaskList runs={taskRuns} nodes={[...nodes,...conversations]} unconfirmed={unconfirmed} loading={tasksLoading} busy={busy}
         hasMore={taskMore} error={taskError} refreshErrors={refreshErrors}

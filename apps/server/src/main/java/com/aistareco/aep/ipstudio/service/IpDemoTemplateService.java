@@ -368,7 +368,7 @@ public class IpDemoTemplateService {
                 d.getSourceProjectId(), d.getCreatedBy(),
                 d.getCreatedAt() == null ? null : d.getCreatedAt().toString(),
                 d.getUpdatedAt() == null ? null : d.getUpdatedAt().toString(),
-                nodes, assets);
+                nodes, assets, d.getCurrentVersionId());
     }
 
     private static int countAssetKeys(JsonNode md) {
