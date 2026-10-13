@@ -65,12 +65,14 @@ class StudioTemplateServiceTest {
         when(storage.store(any(byte[].class),anyString(),anyString(),anyString(),anyString())).thenAnswer(i->new FileStorageService.StoredFile(i.<String>getArgument(1).replace('/','_')+"/"+i.getArgument(2)+"/"+UUID.randomUUID()+"."+i.getArgument(3),null,null,null,10,"image/png"));
     }
     @Test void fullCanvasPublicationPreservesAllAuthoredNodesTextMediaAndEdgesWithoutARecipe() throws Exception {
-        fullCanvasSource();var v=service.publish("owner","source",new PublishRequest(null,"完整画布","","official",null));
+        fullCanvasSource();((com.fasterxml.jackson.databind.node.ArrayNode)IpDocs.node(doc,"image").path("metadata").path("images")).addObject().put("id","failed").put("status","error");
+        var v=service.publish("owner","source",new PublishRequest(null,"完整画布","","official",null));
         assertEquals(4,v.doc().path("nodes").size());assertEquals(2,v.doc().path("connections").size());assertEquals("完整角色正文",IpDocs.node(v.doc(),"text").path("metadata").path("content").asText());
         assertEquals(34,IpDocs.node(v.doc(),"text").path("position").path("y").asInt());assertEquals(0.8,v.doc().path("viewport").path("k").asDouble());
         assertTrue(IpDocs.node(v.doc(),"image").path("metadata").path("storageKey").asText().startsWith("ipstudio_demo/"+v.id()+"/"));
         assertTrue(IpDocs.node(v.doc(),"video").path("metadata").path("storageKey").asText().endsWith(".mp4"));
         String persisted=releases.get(v.id()).getDocJson();for(String privateValue:List.of("own/","signed-","private-key","private-run","private-task","assistantConversations"))assertFalse(persisted.contains(privateValue),privateValue);
+        assertEquals(1,IpDocs.node(v.doc(),"image").path("metadata").path("images").size());assertFalse(v.doc().toString().contains("failed"));
         assertTrue(v.recipe().steps().isEmpty());assertTrue(v.recipe().inputs().isEmpty());verifyNoInteractions(images,models,videos);
         assertEquals(5,doc.path("nodes").size());assertTrue(doc.has("assistantConversations"));
     }

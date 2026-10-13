@@ -123,6 +123,8 @@ public class IpDemoTemplateService {
             for (String field : CANDIDATE_FIELDS) {
                 ArrayNode candidates = om.createArrayNode();
                 for (JsonNode candidate : clean.path(field)) {
+                    // Pending/failed execution placeholders are not generated canvas assets.
+                    if (IpDocs.text(candidate, "storageKey") == null) continue;
                     ObjectNode retained = candidates.addObject();
                     for (String attribute : List.of("id", "storageKey", "prompt", "width", "height", "durationMs", "createdAt"))
                         if (candidate.has(attribute)) retained.set(attribute, candidate.get(attribute).deepCopy());
