@@ -328,3 +328,19 @@ test('dependent image step waits for text adoption then passes the exact output 
   expect(useStep.mock.calls[0][0].referenceNodeIds).toEqual([snapshot.find(n=>n.title==='末世英雄')!.id]);
   expect(api.submitStudioRun).not.toHaveBeenCalled();
 });
+
+test('reopening an adopted result passes resolved dependencies to the generation composer without duplicating nodes',async()=>{
+  const image={...character,metadata:{status:'success' as const,storageKey:'own/image'}};
+  const video={...image,id:'v',type:'video' as const,title:'动作视频',metadata:{status:'success' as const,storageKey:'own/video'}};
+  const plan={summary:'流程',questions:[],steps:[
+    {id:'sheet',operation:'image',title:'角色图',prompt:'角色',referenceNodeIds:[],resultNodeId:'c'},
+    {id:'video',operation:'video',title:'动作视频',prompt:'挥手',referenceNodeIds:[],dependsOn:['sheet'],unresolvedReferences:['sheet'],resultNodeId:'v'}]};
+  const useStep=vi.fn();let snapshot:CanvasNodeData[]=[];
+  render(<Host initial={[image,video,withPlan(plan)]} initialNodeId="h" onUseStep={useStep} onSnapshot={(n:CanvasNodeData[])=>snapshot=n}/>);
+  fireEvent.click(screen.getByRole('button',{name:'下一个步骤'}));
+  fireEvent.click(screen.getByRole('button',{name:'打开节点继续创作'}));
+  await waitFor(()=>expect(useStep).toHaveBeenCalledWith(expect.objectContaining({referenceNodeIds:['c'],unresolvedReferences:[],resultNodeId:'v'})));
+  expect(snapshot).toHaveLength(3);
+  expect(snapshot.find(n=>n.id==='h')?.metadata?.studio?.conversation?.plan?.steps[1].unresolvedReferences).toEqual([]);
+  expect(api.submitStudioRun).not.toHaveBeenCalled();
+});

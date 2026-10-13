@@ -19,7 +19,7 @@ import { StudioAttachmentPicker } from './studio-attachment-picker';
 import { StudioConversationShare } from './studio-conversation-share';
 import { AtSign, Scan, X, SlidersHorizontal, Plus, ArrowUp, FileText, Image, Video, Workflow } from 'lucide-react';
 import { StudioAssistantPlan } from './studio-assistant-plan';
-import { assistantStepReferences, assistantWritableText } from '@/canvas-bridge/studio-assistant-plan';
+import { assistantStepReferences, assistantUnresolvedReferences, assistantWritableText } from '@/canvas-bridge/studio-assistant-plan';
 import { placeStudioNode } from '@/canvas-bridge/flow-document';
 import { markStudioDescendants } from '@/canvas-bridge/studio-script';
 
@@ -181,9 +181,10 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     if(!saved||!latest)throw new Error('方案已更新，请重新打开结果');
     const refs=assistantStepReferences(saved,latest,live.current.nodes);
     if(refs.waiting.length)throw new Error('请先完成前置内容，再继续这一步');
+    const resolved={...saved,referenceNodeIds:refs.ids,unresolvedReferences:assistantUnresolvedReferences(saved,latest)};
     const existing=live.current.nodes.find(n=>n.id===saved.resultNodeId);
     // Retry saving the same adopted node; never duplicate a result after a transport failure.
-    if(existing){await saveStudioDocument(projectId);if(step.operation!=='text')onUseStep({...saved,referenceNodeIds:refs.ids});return;}
+    if(existing){editStep({...saved,unresolvedReferences:resolved.unresolvedReferences});await saveStudioDocument(projectId);if(step.operation!=='text')onUseStep(resolved);return;}
     let resultId:string|void;
     if(step.operation==='text') {
       if(!saved.content?.trim())throw new Error('请先填写文字内容');
@@ -196,8 +197,8 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
       setNodes(list=>target?markStudioDescendants(list,target.id).map(n=>n.id===target.id?node:n):[...list,placeStudioNode(node,list)]);
       // Replacement retains the user's existing graph; only new nodes inherit reference edges.
       if(!target)setConnections(list=>[...list,...refs.ids.filter(id=>id!==node.id).map(id=>({id:nanoid(),fromNodeId:id,toNodeId:node.id}))]);
-    } else resultId=onUseStep({...saved,referenceNodeIds:refs.ids});
-    if(resultId)editStep({...saved,resultNodeId:resultId});
+    } else resultId=onUseStep(resolved);
+    if(resultId)editStep({...saved,unresolvedReferences:resolved.unresolvedReferences,resultNodeId:resultId});
     await saveStudioDocument(projectId);
     if(step.operation==='text')message.success(replacement?'已更新文字节点':'文字已放入画布');
   };
