@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import type { StudioScript, StudioReference } from "@ai-star-eco/types/ip-studio-workflow";
-import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
+import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 
 /** Older pending image requests can retain the episode only in their authored shot. */
 export function studioNodeEpisode(node?: CanvasNodeData): number | undefined {
@@ -59,14 +59,14 @@ export function reorderStudioClips(nodes: CanvasNodeData[], orderedIds: string[]
 }
 
 /** Editing upstream content keeps its existing outputs and marks the whole dependent chain. */
-export function markStudioDescendants(nodes: CanvasNodeData[], parentId: string): CanvasNodeData[] {
+export function markStudioDescendants(nodes: CanvasNodeData[], parentId: string, connections: CanvasConnection[] = []): CanvasNodeData[] {
   const affected = new Set([parentId]);
   let changed = true;
   while (changed) {
     changed = false;
     const keys=new Set(nodes.filter(n=>affected.has(n.id)).map(n=>n.metadata?.storageKey).filter(Boolean));
     for (const node of nodes) {
-      if (!affected.has(node.id) && (node.metadata?.studio?.parentNodeId && affected.has(node.metadata.studio.parentNodeId) || node.metadata?.studio?.scriptSourceNodeId && affected.has(node.metadata.studio.scriptSourceNodeId) || node.metadata?.studio?.references?.some(ref=>keys.has(ref.storageKey)))) {
+      if (!affected.has(node.id) && (node.metadata?.studio?.parentNodeId && affected.has(node.metadata.studio.parentNodeId) || node.metadata?.studio?.scriptSourceNodeId && affected.has(node.metadata.studio.scriptSourceNodeId) || node.metadata?.studio?.references?.some(ref=>keys.has(ref.storageKey)) || connections.some(edge=>edge.toNodeId===node.id&&affected.has(edge.fromNodeId)))) {
         affected.add(node.id); changed = true;
       }
     }

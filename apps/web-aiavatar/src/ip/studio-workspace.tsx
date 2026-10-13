@@ -17,7 +17,7 @@ import type { IpSavedAsset } from "@ai-star-eco/types";
 import type { IpRun } from "@ai-star-eco/types";
 import type { StudioCapabilities, StudioIpAsset, StudioIpAssetRole, StudioVoiceProfile, StudioOperation, StudioReference, StudioRunRequest, StudioScript, StudioScriptSettings, StudioPlan, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
-import { applyStudioRun, makeStudioNode, adoptStudioTake, studioGenerationPending, dispatchStudioCommand } from "@/canvas-bridge/studio-nodes";
+import { applyStudioRun, applyStudioRunToDocument, makeStudioNode, adoptStudioTake, studioGenerationPending, dispatchStudioCommand } from "@/canvas-bridge/studio-nodes";
 import { adoptStudioImage, listStudioIpAssets, listStudioIps, readStudioProject, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { markStudioDescendants, reorderStudioClips, studioNodeEpisode, studioNodeReferences, studioScriptPrompt, studioScriptInput, studioShotNodes } from "@/canvas-bridge/studio-script";
 import { readRun, cancelRun, fetchModels, fetchStudioVideoModels, type IpModels } from "@/canvas-bridge/api";
@@ -227,7 +227,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     try {
       while (alive.current && epoch.current === token) {
         current=terminalRuns.current.get(current.id)||current;
-        if(targetId)patch(targetId, node => node.metadata?.studio?.runId&&node.metadata.studio.runId!==current.id?node:applyStudioRun(node, current));
+        if(targetId)setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,targetId!,current));
         setRuns(list => [current, ...list.filter(r => r.id !== current.id)]);
         if (current.status !== "running") {
           setRefreshErrors(old=>{const next={...old};delete next[current.id];return next;});
@@ -251,7 +251,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         }
       }
     } finally { watching.current.delete(watchKey); }
-  }, [patch, message, projectId, materializeStoryboard]);
+  }, [setNodes, message, projectId, materializeStoryboard]);
 
   useEffect(() => {
     let cancelled = false;
@@ -502,7 +502,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     let posted=false;
     // Fill a new draft or storyboard shot; completed scripts keep their editable source.
     const reuseScriptDraft=(operation==="script"||operation==="storyboard")&&origin?.type===CanvasNodeType.Text&&origin.metadata?.studio?.kind==="script"&&!origin.metadata.studio.script;
-    const target = operation==="text"&&origin?.type===CanvasNodeType.Text || reuseScriptDraft || operation === "image" && origin?.type===CanvasNodeType.Image && (origin.metadata?.studio?.shot || !origin.metadata?.storageKey) || operation === "video" && origin?.type === CanvasNodeType.Video && origin.metadata?.studio?.kind!=="work" ? origin! : makeStudioNode(operation, origin);
+    const target = operation==="text"&&origin?.type===CanvasNodeType.Text || reuseScriptDraft || operation === "image" && origin?.type===CanvasNodeType.Image || operation === "video" && origin?.type === CanvasNodeType.Video && origin.metadata?.studio?.kind!=="work" ? origin! : makeStudioNode(operation, origin);
     const usedReferenceIds=operation==="video"&&nativeVideo ? videoDraft.mode==="universal_reference_video"?referenceIds:videoDraft.mode==="t2v"?[]:[videoDraft.firstId,...(videoDraft.mode==="first_last_frame_video"?[videoDraft.lastId]:[])].filter((id):id is string=>!!id):referenceIds;
     const references = makeReferences(usedReferenceIds, operation === "video" ? "frame" : "character");
     const requestEpisodeNo=operation==="image"||operation==="video"?studioNodeEpisode(origin):episodeNo;
@@ -525,7 +525,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       posted=true;
       const run = await submitStudioRun(projectId, request);
       if(epoch.current!==submissionEpoch)return;
-      patch(target.id, n => applyStudioRun(n, run)); if(panelSession.current===session){if(mode==="storyboard")setStoryboardNodeId(target.id);else setDirector(false);} void watch(run,target.id);
+      setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,target.id,run)); if(panelSession.current===session){if(mode==="storyboard")setStoryboardNodeId(target.id);else setDirector(false);} void watch(run,target.id);
     } catch (e) {
       if(epoch.current!==submissionEpoch)return;
       message.error(e);
@@ -1027,7 +1027,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           if(epoch.current!==token||!alive.current)return;
           if(result.status!=='running')terminalRuns.current.set(result.id,result);
           setRuns(old=>old.map(r=>r.id===result.id?result:r));
-          if(nodesRef.current.some(n=>n.id===result.nodeId&&n.metadata?.studio?.runId===result.id))patch(result.nodeId,n=>applyStudioRun(n,result));
+          if(nodesRef.current.some(n=>n.id===result.nodeId&&n.metadata?.studio?.runId===result.id))
+            setNodes(nodes=>applyStudioRunToDocument(nodes,connectionsRef.current,result.nodeId,result));
           message.info(result.status==='running'?"已请求停止创作":"已停止排队");
         }).catch(e=>message.error(e));}}>{studioTaskQueued(run)?"停止排队":"停止"}</Button>:run.status==="failed"&&run.errorCode!=="IP_RUN_CANCELLED"&&nodes.find(n=>n.id===run.nodeId)?.metadata?.studio?.runId===run.id?<Button size="small" onClick={() => {const node=nodesRef.current.find(n => n.id===run.nodeId);if(node)void retry(node);}}>重新生成</Button>:null}</article>)}
       {taskMore&&<Button block loading={tasksLoading} onClick={()=>void loadTasks(taskPage+1)}>加载更多任务</Button>}

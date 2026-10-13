@@ -107,6 +107,28 @@ test('image result actions stay on the image node toolbar rather than its genera
  expect(within(panel).queryByRole('button',{name:'下载图片'})).toBeNull();
  expect(api.submit).not.toHaveBeenCalled();
 });
+test('editing reference images on an existing image generates in that node without appending a child',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
+ api.models.mockResolvedValue({image:[{endpointId:'ernie',name:'图片模型',isDefault:true,creditCost:30,capability:{imageRatios:['3:4']}}],video:[]});
+ const image={...node,type:'image' as never,title:'④ IP 主题海报',metadata:{status:'success' as const,prompt:'旧要求',storageKey:'old.jpg',content:'/old.jpg',primaryImageId:'old-run',images:[{id:'old-run',status:'success' as const,storageKey:'old.jpg',content:'/old.jpg',naturalWidth:0,naturalHeight:0,bytes:0,mimeType:'image/jpeg'}],studio:{kind:'shot' as const,runId:'old-run'}}};
+ const reference={...image,id:'reference',title:'③ 全身动作参考图',metadata:{...image.metadata,storageKey:'reference.jpg',content:'/reference.jpg',images:undefined,studio:{kind:'shot' as const}}};
+ const video={...node,id:'next-video',title:'⑤ 服装细节视频',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
+ const result={...done,id:'new-run',nodeId:'v',kind:'studio-image',cost:30,inputs:{clientRequestId:'new-key',nodeId:'v',operation:'image',prompt:'新要求'},output:{candidates:[{key:'new.jpg',url:'/new.jpg'}]}};
+ api.submit.mockResolvedValue(result);api.read.mockResolvedValue(result);
+ render(<Host initialNodes={[reference,image,video]} initialConnections={[{id:'ref-edge',fromNodeId:'reference',toNodeId:'v'},{id:'video-edge',fromNodeId:'v',toNodeId:'next-video'}]}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(false));
+ fireEvent.change(within(panel).getByRole('textbox',{name:'创作要求'}),{target:{value:'新要求'}});
+ fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalled());
+ expect(api.submit.mock.calls[0][1].nodeId).toBe('v');
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.storageKey).toBe('new.jpg'));
+ expect(snapshot.map(n=>n.id)).toEqual(['reference','v','next-video']);
+ expect(connectionSnapshot.map(c=>c.id)).toEqual(['ref-edge','video-edge']);
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.images?.map(t=>t.storageKey)).toEqual(['old.jpg','new.jpg']);
+ expect(snapshot.find(n=>n.id==='next-video')?.metadata?.studio?.upstreamChanged).toBe(true);
+});
 test('video generation shows video controls without result or image-upload actions',async()=>{
  render(<Host/>);openVideo();
  const panel=await screen.findByRole('dialog',{name:'生成视频'});

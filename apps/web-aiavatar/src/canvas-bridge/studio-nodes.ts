@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import type { IpRun } from "@ai-star-eco/types";
 import type { StudioNodeMetadata, StudioOperation, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
-import { CanvasNodeType, type CanvasNodeData, type CanvasNodeVideoTake } from "@/canvas/types/canvas";
+import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeVideoTake } from "@/canvas/types/canvas";
 import { markStudioDescendants, mergeStudioRewrite, studioNodeEpisode } from "./studio-script";
 
 export function makeStudioNode(operation: StudioOperation, origin?: CanvasNodeData): CanvasNodeData {
@@ -75,6 +75,13 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       naturalWidth: 0, naturalHeight: 0, bytes: 0, mimeType: "image/jpeg" }];
     if (!metadata.storageKey) { metadata.storageKey = image.key; metadata.content = image.url; metadata.primaryImageId = id; }
   }
+  // A completed in-place edit becomes the visible version; older takes remain selectable.
+  // A failed or partly completed batch keeps the previous adopted image.
+  if (node.type === CanvasNodeType.Image && run.status === "done" && !alreadyApplied && run.output.candidates?.[0]) {
+    metadata.storageKey = run.output.candidates[0].key;
+    metadata.content = run.output.candidates[0].url;
+    metadata.primaryImageId = run.id;
+  }
   if (!run.output.videoCandidates?.length && run.output.storageKey && run.output.url) {
     if (node.type === CanvasNodeType.Audio) {
       metadata.storageKey = run.output.storageKey; metadata.content = run.output.url;
@@ -88,6 +95,16 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
     if (!metadata.storageKey || run.output.lipSyncNormalized&&metadata.primaryVideoId===run.id) { metadata.storageKey = run.output.storageKey; metadata.content = run.output.url; metadata.primaryVideoId = run.id; }
   }
   return { ...node, metadata };
+}
+
+/** Keep the accepted task on its authored node and invalidate inputs that used the old visible image. */
+export function applyStudioRunToDocument(nodes: CanvasNodeData[], connections: CanvasConnection[], nodeId: string, run: IpRun): CanvasNodeData[] {
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node || node.metadata?.studio?.runId && node.metadata.studio.runId !== run.id) return nodes;
+  const updated = applyStudioRun(node, run);
+  const changedImage = node.type === CanvasNodeType.Image && node.metadata?.storageKey !== updated.metadata?.storageKey;
+  const current = changedImage ? markStudioDescendants(nodes, nodeId, connections) : nodes;
+  return current.map(n => n.id === nodeId ? updated : n);
 }
 
 export function selectStudioTake(node: CanvasNodeData, id: string): CanvasNodeData {

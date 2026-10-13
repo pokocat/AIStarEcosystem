@@ -82,13 +82,14 @@ describe("Studio adoption and recovery", () => {
     const first=applyStudioRun(n,r),restored=applyStudioRun(first,r);
     expect(restored.metadata?.studio?.conversation?.turns).toEqual([{role:"user",content:"建议"},{role:"assistant",content:"建议内容"}]);
   });
-  it("keeps the selected image while adding another generated version", () => {
+  it("shows a completed in-place edit and keeps the previous image as a selectable version", () => {
     const first=applyStudioRun(makeStudioNode("image"),run("r1","first.jpg"));
     const second=applyStudioRun(first,run("r2","second.jpg"));
-    expect(second.metadata?.storageKey).toBe("first.jpg");
+    expect(second.metadata?.storageKey).toBe("second.jpg");
     expect(second.metadata?.images).toHaveLength(2);
     expect(selectStudioTake(second,"r2").metadata?.storageKey).toBe("second.jpg");
     expect(selectStudioTake(second,"r1").metadata?.content).toBe("/cdn/first.jpg");
+    expect(applyStudioRun(second,run("r2","second.jpg")).metadata?.storageKey).toBe("second.jpg");
   });
   it("does not erase the previous adopted image on a failed retry", () => {
     const first=applyStudioRun(makeStudioNode("image"),run("r1","first.jpg"));
