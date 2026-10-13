@@ -9,21 +9,22 @@
 // node.storageKey=…b0e522b8.png（旧），images[0]=…107b2d32.png（这次刚出的，没人看）。
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { healDanglingPrimary } from "./project-sync";
+import { prepareStudioImageRegeneration, selectStudioTake } from "./studio-nodes";
+import { applyCandidateToNode } from "@/canvas/lib/canvas/canvas-generation-helpers";
 
 const node = (metadata: Record<string, unknown>) =>
   ({ id: "n-master", type: "image", title: "主形象", position: { x: 0, y: 0 }, width: 340, height: 240, metadata }) as never;
 
 describe("就地重出", () => {
-  it("重出时必须清掉旧的 primaryImageId —— 否则新图只进候选、节点还显示旧的那张", () => {
-    const src = readFileSync(
-      join(__dirname, "../canvas/pages/canvas/project.tsx"),
-      "utf8",
-    );
-    // 就地重出那条分支（isEmptyImageNode）合并 metadata 时必须显式抹掉旧 primary
-    expect(src).toContain("primaryImageId: undefined, errorDetails: undefined");
+  it("新批次完成时显示新图，同一个节点仍可选回旧图", () => {
+    const previous=node({storageKey:'old.jpg',content:'/old.jpg',primaryImageId:'old',status:'success'});
+    const pending=prepareStudioImageRegeneration(previous,{status:'loading',images:[{id:'new',status:'loading',content:'',naturalWidth:0,naturalHeight:0,bytes:0,mimeType:'image/jpeg'}]});
+    expect(pending.metadata?.storageKey).toBe('old.jpg');
+    const [complete]=applyCandidateToNode([pending],previous.id,'new',{url:'/new.jpg',storageKey:'new.jpg',width:340,height:240,bytes:100,mimeType:'image/jpeg'},'new-run',340);
+    expect(complete.id).toBe(previous.id);expect(complete.metadata?.primaryImageId).toBe('new');expect(complete.metadata?.storageKey).toBe('new.jpg');
+    expect(complete.metadata?.images?.map(t=>t.storageKey)).toEqual(['old.jpg','new.jpg']);
+    expect(selectStudioTake(complete,'old').metadata?.storageKey).toBe('old.jpg');
   });
 });
 

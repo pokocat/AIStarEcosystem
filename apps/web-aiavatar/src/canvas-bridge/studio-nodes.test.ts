@@ -130,6 +130,26 @@ describe('video batch adoption and recovery',()=>{
     expect(failed.metadata?.storageKey).toBe('old.mp4');expect(failed.metadata?.primaryVideoId).toBe('old');
     expect(failed.metadata?.videos).toHaveLength(3);expect(failed.metadata?.status).toBe('error');
   });
+  it('shows the newly completed batch in the same node and keeps the previous clip selectable',()=>{
+    const old=applyStudioRun(makeStudioNode('video'),{...run('old','unused'),kind:'studio-video',output:{storageKey:'old.mp4',url:'/cdn/old.mp4'}});
+    const pending=applyStudioRun(old,batch('running',['running','running']));
+    expect(pending.metadata?.storageKey).toBe('old.mp4');
+    const complete=applyStudioRun(pending,batch('done',['done','done']));
+    expect(complete.id).toBe(old.id);expect(complete.metadata?.storageKey).toBe('take0.mp4');
+    expect(complete.metadata?.videos).toHaveLength(3);expect(complete.metadata?.status).toBe('success');
+    const selectedOld=selectStudioTake(complete,'old');
+    expect(applyStudioRun(selectedOld,batch('done',['done','done'])).metadata?.storageKey).toBe('old.mp4');
+  });
+});
+
+it.each(['image','video'] as const)('keeps a plain imported %s as a version when generating on it',operation=>{
+  const old={...makeStudioNode(operation),metadata:{status:'success' as const,storageKey:`imported.${operation}`,content:'/imported'}};
+  const result={...run('new','new.jpg'),...(operation==='video'?{kind:'studio-video',output:{storageKey:'new.mp4',url:'/new.mp4'}}:{})};
+  const complete=applyStudioRun(old,result);
+  expect(complete.id).toBe(old.id);
+  const takes=operation==='image'?complete.metadata?.images:complete.metadata?.videos;
+  expect(takes?.map(t=>t.storageKey)).toEqual([`imported.${operation}`,operation==='image'?'new.jpg':'new.mp4']);
+  expect(selectStudioTake(complete,takes![0].id).metadata?.storageKey).toBe(`imported.${operation}`);
 });
 
 it('text revisions update once and preserve later manual edits across task refreshes',()=>{

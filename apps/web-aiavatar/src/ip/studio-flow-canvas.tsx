@@ -34,7 +34,7 @@ import { StudioConnectionCreateMenu, type PendingStudioConnection } from './stud
 import { replaceStudioImage, STUDIO_IMAGE_UPLOAD_ACCEPT, validateStudioImageUpload } from '@/canvas-bridge/studio-image-upload';
 import { placeNodeInViewport } from '@/canvas-bridge/viewport-placement';
 import { StudioNodeTitle } from './studio-node-title';
-import { StudioImageGenerationState } from './studio-image-generation-state';
+import { StudioMediaGenerationState } from './studio-media-generation-state';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
 export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
@@ -54,16 +54,16 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   // Template input constraints do not turn a plain text node into a script summary.
   const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio && !meta.studio.templateInput;
   const imageLocked = data.uploading || studioGenerationPending(node);
-  const imageGenerating = node.type === CanvasNodeType.Image && meta?.status === 'loading';
+  const mediaGenerating = (node.type===CanvasNodeType.Image||node.type===CanvasNodeType.Video) && meta?.status === 'loading';
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
     {port('target')}{port('source')}
-    <header className="studio-flow-drag"><Icon size={15}/>{title}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !imageGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
-    <div className={`studio-flow-media${studioText ? ' studio-flow-business' : ''}${imageGenerating ? ' is-generating-image' : ''}`}>
-      {studioText ? <div className="nodrag nopan nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : imageGenerating ?
-        <>{meta?.content && <SignedImage src={meta.content} storageKey={meta.storageKey} alt={node.title}/>}<StudioImageGenerationState task={meta?.studio?.task} confirmed={!!meta?.studio?.runId}/></> : node.type === CanvasNodeType.Image && meta?.content ?
+    <header className="studio-flow-drag"><Icon size={15}/>{title}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
+    <div className={`studio-flow-media${studioText ? ' studio-flow-business' : ''}${mediaGenerating ? ' is-generating-media' : ''}`}>
+      {studioText ? <div className="nodrag nopan nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : mediaGenerating ?
+        <>{meta?.content && (node.type===CanvasNodeType.Video ? <SignedVideo src={meta.content} storageKey={meta.storageKey} preload="metadata"/> : <SignedImage src={meta.content} storageKey={meta.storageKey} alt={node.title}/>)}<StudioMediaGenerationState media={node.type===CanvasNodeType.Video?'video':'image'} task={meta?.studio?.task} confirmed={!!(meta?.studio?.runId||meta?.runId||meta?.videoTaskId||meta?.images?.some(t=>t.runId))}/></> : node.type === CanvasNodeType.Image && meta?.content ?
         <><SignedImage src={meta.content} storageKey={meta.storageKey} alt={node.title}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && meta?.content ?
         <SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata"/> : node.type === CanvasNodeType.Audio && meta?.content ?
         <div className="studio-flow-audio nodrag nopan"><Music2 size={28}/><SignedAudio src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
@@ -71,7 +71,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         node.type === CanvasNodeType.Image && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder nodrag nopan"><ImagePlus size={28}/><span>上传图片或使用 AI 创作</span><div className="studio-flow-image-actions"><button type="button" disabled={imageLocked} onClick={uploadImage}><Upload size={15}/>{data.uploading?'上传中…':'上传图片'}</button><button type="button" disabled={imageLocked} onClick={edit}><ImagePlus size={15}/>生成图片</button></div></div> :
         <button className="studio-flow-placeholder nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button>}
     </div>
-    {meta?.status === 'loading' && !imageGenerating && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
+    {meta?.status === 'loading' && !mediaGenerating && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
     {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<div className="studio-flow-node-error"><StudioErrorNotice error={studioNodeError(node)} once={`run:${meta.studio?.runId || meta.runId || node.id}`} label="生成失败 · 查看错误"/></div>)}
   </article>;
 }

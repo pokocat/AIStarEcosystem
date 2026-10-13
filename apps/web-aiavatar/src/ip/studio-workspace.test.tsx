@@ -138,6 +138,21 @@ test('video generation shows video controls without result or image-upload actio
  expect(within(panel).queryByRole('button',{name:'替换图片'})).toBeNull();
  expect(within(panel).queryByRole('button',{name:'下载视频'})).toBeNull();
 });
+test.each(['shot','work',undefined] as const)('regenerating an existing %s video keeps its node, connections and old version',async kind=>{
+ const video={...node,metadata:{...node.metadata,prompt:'旧动作',seconds:'8',videos:undefined,primaryVideoId:undefined,studio:kind?{...node.metadata!.studio!,kind}:undefined}};
+ const reference={...node,id:'ref',type:'image' as never,title:'新参考素材',metadata:{status:'success' as const,storageKey:'new-reference.jpg',content:'/reference.jpg'}};
+ render(<Host initialNodes={[reference,video]} initialConnections={[{id:'edge',fromNodeId:'ref',toNodeId:'v'}]}/>);
+ openVideo();const panel=await screen.findByRole('dialog',{name:'生成视频'});
+ fireEvent.change(within(panel).getByRole('textbox',{name:'创作要求'}),{target:{value:'修改后的动作与镜头'}});
+ await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成视频'}).disabled).toBe(false));
+ fireEvent.click(within(panel).getByRole('button',{name:'生成视频'}));
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.storageKey).toBe('new.mp4'));
+ expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'v',prompt:'修改后的动作与镜头',references:[{storageKey:'new-reference.jpg'}]});
+ expect(snapshot.map(n=>n.id)).toEqual(['ref','v']);expect(connectionSnapshot).toEqual([{id:'edge',fromNodeId:'ref',toNodeId:'v'}]);
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.videos?.map(t=>t.storageKey)).toEqual(['old.mp4','new.mp4']);
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.videos?.[0]).toMatchObject({prompt:'旧动作',seconds:'8'});
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.status).toBe('success');
+});
 test('script creation can reference characters without image or video result actions',async()=>{
  const text={...node,type:'text' as never,title:'剧本',metadata:{status:'idle' as const,studio:{kind:'script' as const}}};
  render(<Host initial={text}/>);
@@ -178,7 +193,7 @@ test('a lost submit response replaces ordinary generation with same-key confirma
  expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();const original=api.submit.mock.calls[0][1];expect(snapshot[0].metadata?.storageKey).toBe('old.mp4');expect(snapshot[0].metadata?.studio?.request).toEqual(original);
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'changed after timeout'}});
  fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1]).toEqual(original);
- await waitFor(()=>expect(snapshot[0].metadata?.status).toBe('success'));expect(snapshot[0].metadata).toMatchObject({storageKey:'old.mp4',primaryVideoId:'old'});expect(snapshot[0].metadata?.studio).toMatchObject({episodeNo:2,order:3,includeInWork:false});
+ await waitFor(()=>expect(snapshot[0].metadata?.status).toBe('success'));expect(snapshot[0].metadata).toMatchObject({storageKey:'new.mp4',primaryVideoId:'accepted'});expect(snapshot[0].metadata?.videos?.map(t=>t.storageKey)).toEqual(['old.mp4','new.mp4']);expect(snapshot[0].metadata?.studio).toMatchObject({episodeNo:2,order:3,includeInWork:false});
 });
 test('refresh restores cancelled queue semantics without replaying adopted results or submitting work',async()=>{
  const cancelled={...done,status:'failed',stage:'cancelled',pct:0,errorCode:'IP_RUN_CANCELLED',errorMessage:'已停止排队'};

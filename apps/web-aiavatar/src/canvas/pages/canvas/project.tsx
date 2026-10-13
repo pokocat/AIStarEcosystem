@@ -1,5 +1,5 @@
 // 本仓 v0.210：native video composer delegates to the same idempotent Studio batch as the drawer.
-import { applyStudioRun, adoptStudioTake, deleteStudioVideoTake, prepareStudioVideoRegeneration, studioGenerationPending, dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
+import { applyStudioRun, adoptStudioTake, deleteStudioVideoTake, prepareStudioImageRegeneration, prepareStudioVideoRegeneration, studioGenerationPending, dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
 import { saveStudioDocument } from '@/canvas-bridge/studio-save';
 import { currentProjectId, cancelRun } from '@/canvas-bridge/api';
 import { isVideoSubmissionUnconfirmed } from '@/canvas-bridge/video';
@@ -2527,21 +2527,9 @@ function InfiniteCanvasPage() {
                                             width: rootNode.width,
                                             height: rootNode.height,
                                             title: rootNode.title,
-                                            // 本仓改动（v0.175）：就地重出必须把旧的 primaryImageId 清掉。
-                                            //
-                                            // 下面写回成图那段是这样的：
-                                            //   if (node.metadata?.primaryImageId) 只更新 images[]，直接 return
-                                            // 而节点显示的是 metadata.content。上游只让**空**图片节点就地填充，
-                                            // 空节点没有 primaryImageId，所以从没走到过这条早返回；v0.166 把
-                                            // 「已经有图的也就地重出」也走这条路之后，旧的 primaryImageId 还在，
-                                            // 于是新图只进了候选数组，content / storageKey 一直是第一次那张 ——
-                                            // 表现就是**换了参考图、换了提示词，画布上还是同一张图**
-                                            // （服务端每次都真出了新图、也真扣了钱）。
-                                            //
-                                            // images 已经整个换成这次的占位项了，旧的 primary 指向一个不存在的 id，
-                                            // 留着它没有任何意义。content / storageKey 先留着，生成期间画面不至于空掉，
-                                            // 第一张成功时会被覆盖；失败时旧图还在，也比空白好。
-                                            metadata: { ...node.metadata, ...rootNode.metadata, primaryImageId: undefined, errorDetails: undefined },
+                                            // 本仓：retain every previous take; the first new success becomes primary.
+                                            // Keep the previous content visible while the new candidates are pending.
+                                            metadata: prepareStudioImageRegeneration(node, rootNode.metadata).metadata,
                                         }
                                       : isImageNode
                                         ? {

@@ -13,10 +13,36 @@ export function makeStudioNode(operation: StudioOperation, origin?: CanvasNodeDa
     metadata: { status: "idle", studio } };
 }
 
-/** Applying a new result retains previously adopted media and records every take. */
+/** Imported and older media may have no take list yet; retain their current output before editing. */
+export function retainStudioMediaVersions(node: CanvasNodeData): CanvasNodeData {
+  const metadata = node.metadata;
+  if (!metadata?.storageKey) return node;
+  if (node.type === CanvasNodeType.Image && !metadata.images?.some(t=>t.storageKey===metadata.storageKey)) {
+    return {...node,metadata:{...metadata,images:[...(metadata.images||[]),{
+      id:metadata.primaryImageId||`stored:image:${metadata.storageKey}`,status:'success',storageKey:metadata.storageKey,content:metadata.content||'',
+      naturalWidth:metadata.naturalWidth||0,naturalHeight:metadata.naturalHeight||0,bytes:metadata.bytes||0,mimeType:metadata.mimeType||'image/jpeg',
+    }]}};
+  }
+  if (node.type === CanvasNodeType.Video && !metadata.videos?.some(t=>t.storageKey===metadata.storageKey)) {
+    return {...node,metadata:{...metadata,videos:[...(metadata.videos||[]),{
+      id:metadata.primaryVideoId||`stored:video:${metadata.storageKey}`,status:'success',storageKey:metadata.storageKey,content:metadata.content,
+      prompt:metadata.prompt,seconds:metadata.seconds,mimeType:metadata.mimeType||'video/mp4',
+    }]}};
+  }
+  return node;
+}
+
+/** A new image batch retains its old takes while allowing the first new success to become primary. */
+export function prepareStudioImageRegeneration(node: CanvasNodeData, update: CanvasNodeData['metadata']): CanvasNodeData {
+  return {...node,metadata:{...node.metadata,...update,
+    images:[...(retainStudioMediaVersions(node).metadata?.images||[]),...(update?.images||[])],
+    primaryImageId:undefined,errorDetails:undefined}};
+}
+
+/** Applying a new result retains previous media and records every take. */
 export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData {
   const alreadyApplied=node.metadata?.studio?.runId===run.id && node.metadata?.status==="success";
-  const metadata = { ...node.metadata };
+  const metadata = { ...retainStudioMediaVersions(node).metadata };
   metadata.studio = { ...metadata.studio!, runId: run.id, mock: run.output.mock,
     task: { status: run.status, stage: run.stage, pct: run.pct, errorCode:run.errorCode,errorMessage:run.errorMessage,logId:run.logId||run.output.logId, queue: run.status==='running'?run.queue:null } };
   if(run.output.lipSyncNormalized)metadata.studio.lipSyncNormalized=true;
@@ -31,7 +57,7 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
     metadata.videos=[...existing.filter(v=>!incoming.some(t=>t.id===v.id)),...incoming];
     const first=incoming.find(t=>t.status==='success'&&t.storageKey);
     const adopted=incoming.find(t=>t.id===metadata.primaryVideoId&&t.storageKey);
-    if(adopted||!metadata.storageKey&&first) {
+    if(adopted||first&&(!metadata.storageKey||run.status==='done'&&!alreadyApplied)) {
       const take=adopted||first!;metadata.storageKey=take.storageKey;metadata.content=take.content;metadata.primaryVideoId=take.id;
     }
   }
@@ -92,18 +118,18 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       content: run.output.url, mimeType: "video/mp4", seconds: String(run.output.durationSec || 0) }];
     if(run.output.comparisonStorageKey&&run.output.comparisonUrl)metadata.videos=[...metadata.videos.filter(v=>v.id!==`${run.id}:comparison`),{
       id:`${run.id}:comparison`,status:"success",storageKey:run.output.comparisonStorageKey,content:run.output.comparisonUrl,mimeType:"video/mp4",seconds:String(run.output.durationSec||0)}];
-    if (!metadata.storageKey || run.output.lipSyncNormalized&&metadata.primaryVideoId===run.id) { metadata.storageKey = run.output.storageKey; metadata.content = run.output.url; metadata.primaryVideoId = run.id; }
+    if (!metadata.storageKey || run.status==='done'&&!alreadyApplied || run.output.lipSyncNormalized&&metadata.primaryVideoId===run.id) { metadata.storageKey = run.output.storageKey; metadata.content = run.output.url; metadata.primaryVideoId = run.id; }
   }
   return { ...node, metadata };
 }
 
-/** Keep the accepted task on its authored node and invalidate inputs that used the old visible image. */
+/** Keep the accepted task on its authored node and invalidate inputs that used its previous media. */
 export function applyStudioRunToDocument(nodes: CanvasNodeData[], connections: CanvasConnection[], nodeId: string, run: IpRun): CanvasNodeData[] {
   const node = nodes.find(n => n.id === nodeId);
   if (!node || node.metadata?.studio?.runId && node.metadata.studio.runId !== run.id) return nodes;
   const updated = applyStudioRun(node, run);
-  const changedImage = node.type === CanvasNodeType.Image && node.metadata?.storageKey !== updated.metadata?.storageKey;
-  const current = changedImage ? markStudioDescendants(nodes, nodeId, connections) : nodes;
+  const changedMedia = (node.type===CanvasNodeType.Image||node.type===CanvasNodeType.Video) && node.metadata?.storageKey !== updated.metadata?.storageKey;
+  const current = changedMedia ? markStudioDescendants(nodes, nodeId, connections) : nodes;
   return current.map(n => n.id === nodeId ? updated : n);
 }
 
