@@ -5,7 +5,7 @@ import { ArrowUpRight, Check, ChevronLeft, ChevronRight, FileText, Image, Video,
 import { gsap } from 'gsap';
 import type { StudioPlan, StudioPlanStep } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { assistantOutputReady, assistantStepReferences, assistantWritableText } from '@/canvas-bridge/studio-assistant-plan';
+import { assistantOutputReady, assistantStepReferences, assistantUnresolvedReferences, assistantWritableText } from '@/canvas-bridge/studio-assistant-plan';
 
 const labels={text:'文字',image:'图片',video:'视频',script:'剧本',storyboard:'分镜'};
 const icons={text:FileText,image:Image,video:Video,script:Clapperboard,storyboard:Clapperboard};
@@ -34,11 +34,12 @@ export function StudioAssistantPlan({plan,nodes,contextIds,locked,onEdit,onApply
   if(!step)return null;
   const Icon=icons[step.operation];
   const refs=assistantStepReferences(step,plan,nodes);
+  const unresolved=assistantUnresolvedReferences(step,plan);
   const result=nodes.find(n=>n.id===step.resultNodeId);
   const replacements=nodes.filter(n=>contextIds.includes(n.id)&&assistantWritableText(n));
   const apply=async()=>{
     if(applying.current)return;applying.current=true;setSaving(true);setError('');
-    try{await onApply({...step,referenceNodeIds:refs.ids},target);}catch(e){setError(e instanceof Error?e.message:'未能保存，请重试');}
+    try{await onApply({...step,referenceNodeIds:refs.ids,unresolvedReferences:unresolved.length?unresolved:undefined},target);}catch(e){setError(e instanceof Error?e.message:'未能保存，请重试');}
     finally{applying.current=false;setSaving(false);}
   };
   return <section className="studio-assistant-results" aria-label="创作结果">
@@ -52,7 +53,7 @@ export function StudioAssistantPlan({plan,nodes,contextIds,locked,onEdit,onApply
         <><p className="studio-assistant-result-intent">{step.prompt}</p><details><summary>编辑生成描述</summary><Input.TextArea aria-label={`方案 ${step.title}`} value={step.prompt} disabled={locked||saving||!!result} autoSize={{minRows:3,maxRows:8}} maxLength={16000} onChange={e=>onEdit({...step,prompt:e.target.value})}/></details></>}
       {!!refs.ids.length&&<p className="studio-assistant-result-references">参考：{refs.ids.map(id=>nodes.find(n=>n.id===id)?.title).join('、')}</p>}
       {!!refs.waiting.length&&<p role="status" className="studio-helper-note">先完成「{refs.waiting.join('」、「')}」，再继续这一步。</p>}
-      {!!step.unresolvedReferences?.length&&<p role="status" className="studio-helper-note">这一步需要补选参考素材，打开后请选择实际节点。</p>}
+      {!!unresolved.length&&<p role="status" className="studio-helper-note">这一步需要补选参考素材，打开后请选择实际节点。</p>}
       {step.operation==='text'&&!result&&!!replacements.length&&<Select aria-label="文字放置位置" value={target?.id||'new'} disabled={locked||saving} options={[{value:'new',label:'新建文字节点'},...replacements.map(n=>({value:n.id,label:`写入「${n.title}」`}))]} onChange={id=>{const n=replacements.find(n=>n.id===id);setTarget(n?{id:n.id,content:n.metadata?.content||''}:undefined);}}/>}
       {target&&!result&&<details className="studio-assistant-original"><summary>将替换该节点正文 · 查看原文</summary><p>{target.content||'当前节点为空'}</p></details>}
       <Button className="studio-assistant-primary" icon={result&&step.operation==='text'?<Check size={16}/>:<ArrowUpRight size={16}/>} loading={saving} disabled={locked||!!refs.waiting.length||step.operation==='text'&&(!step.content?.trim()||!!result&&!error)} onClick={()=>void apply()}>

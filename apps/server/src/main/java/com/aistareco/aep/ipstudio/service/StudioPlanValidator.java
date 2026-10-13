@@ -36,11 +36,21 @@ public final class StudioPlanValidator {
     }
     public static void isolateUnresolvedReferences(JsonNode plan,JsonNode contextIds) {
         Set<String> allowed=new HashSet<>();if(contextIds!=null)contextIds.forEach(id->allowed.add(id.asText()));
-        for(var step:plan.path("steps"))if(step.isObject() && step.path("referenceNodeIds").isArray()) {
-            var object=(com.fasterxml.jackson.databind.node.ObjectNode)step;
-            var known=object.arrayNode();var missing=object.arrayNode();
-            for(var ref:step.path("referenceNodeIds")) {if(ref.isTextual()&&allowed.contains(ref.asText()))known.add(ref);else missing.add(ref);}
-            object.set("referenceNodeIds",known);if(!missing.isEmpty())object.set("unresolvedReferences",missing);
+        Set<String> previous=new HashSet<>();
+        for(var step:plan.path("steps")) {
+            if(step.isObject() && step.path("referenceNodeIds").isArray()) {
+                var object=(com.fasterxml.jackson.databind.node.ObjectNode)step;
+                var known=object.arrayNode();var missing=object.arrayNode();
+                Set<String> dependencies=new HashSet<>();
+                if(step.path("dependsOn").isArray())step.path("dependsOn").forEach(id->dependencies.add(id.asText()));
+                for(var ref:step.path("referenceNodeIds")) {
+                    if(ref.isTextual()&&allowed.contains(ref.asText()))known.add(ref);
+                    // A duplicated explicit prior dependency will resolve through its adopted output.
+                    else if(!ref.isTextual()||!previous.contains(ref.asText())||!dependencies.contains(ref.asText()))missing.add(ref);
+                }
+                object.set("referenceNodeIds",known);if(!missing.isEmpty())object.set("unresolvedReferences",missing);
+            }
+            previous.add(step.path("id").asText());
         }
     }
     public static void validate(JsonNode plan,JsonNode contextIds) {

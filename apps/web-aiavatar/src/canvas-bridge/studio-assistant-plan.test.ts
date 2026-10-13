@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { StudioPlan } from '@ai-star-eco/types/ip-studio-workflow';
 import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
-import { assistantStepReferences, assistantWritableText } from './studio-assistant-plan';
+import { assistantStepReferences, assistantUnresolvedReferences, assistantWritableText } from './studio-assistant-plan';
 const plan:StudioPlan={summary:'计划',questions:[],steps:[
   {id:'image',operation:'image',title:'设定图',prompt:'画图',referenceNodeIds:[],resultNodeId:'output'},
   {id:'video',operation:'video',title:'视频',prompt:'做视频',referenceNodeIds:[],dependsOn:['image']},
@@ -18,4 +18,10 @@ test('ordinary text can be selected for replacement but script, conversation and
   expect(assistantWritableText({...text,metadata:{status:'loading'}})).toBe(false);
   expect(assistantWritableText({...text,metadata:{studio:{kind:'assistant',conversation:{mode:'general',turns:[]}}}})).toBe(false);
   expect(assistantWritableText({...text,metadata:{studio:{kind:'script'}}})).toBe(false);
+});
+
+test('explicit earlier dependencies do not ask for another reference, while unknown names remain unresolved',()=>{
+  const step={...plan.steps[1],unresolvedReferences:['image','missing']};
+  expect(assistantUnresolvedReferences(step,plan)).toEqual(['missing']);
+  expect(assistantUnresolvedReferences({...plan.steps[0],dependsOn:['video'],unresolvedReferences:['video']},plan)).toEqual(['video']);
 });

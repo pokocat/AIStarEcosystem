@@ -26,3 +26,9 @@ export function assistantWritableText(node:CanvasNodeData) {
     !node.metadata?.studio?.conversation&&!node.metadata?.studio?.script&&
     (!node.metadata?.studio?.kind||node.metadata.studio.kind==='text');
 }
+
+/** Older model plans sometimes repeat an explicit dependency in their missing-reference list. */
+export function assistantUnresolvedReferences(step:StudioPlanStep,plan:StudioPlan) {
+  const previous=new Set(plan.steps.slice(0,plan.steps.findIndex(s=>s.id===step.id)).map(s=>s.id));
+  return (step.unresolvedReferences||[]).filter(id=>!previous.has(id)||!step.dependsOn?.includes(id));
+}

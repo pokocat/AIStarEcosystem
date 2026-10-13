@@ -46,4 +46,16 @@ class StudioPlanValidatorTest {
         ((com.fasterxml.jackson.databind.node.ObjectNode)plan.path("steps").get(0)).remove("content");
         assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
     }
+
+    @Test void duplicatedPriorDependencyDoesNotRequirePickingAnotherAsset() throws Exception {
+        var plan=mapper.readTree("""
+          {"summary":"流程","steps":[
+            {"id":"image","operation":"image","title":"图","prompt":"画图","referenceNodeIds":[]},
+            {"id":"video","operation":"video","title":"视频","prompt":"动作","referenceNodeIds":["image","missing"],"dependsOn":["image"]}],"questions":[]}
+          """);
+        var context=mapper.readTree("[]");StudioPlanValidator.isolateUnresolvedReferences(plan,context);
+        assertEquals("missing",plan.path("steps").get(1).path("unresolvedReferences").get(0).asText());
+        assertEquals(1,plan.path("steps").get(1).path("unresolvedReferences").size());
+        assertDoesNotThrow(()->StudioPlanValidator.validate(plan,context));
+    }
 }
