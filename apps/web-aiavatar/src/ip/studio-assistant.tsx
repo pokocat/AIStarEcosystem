@@ -1,6 +1,5 @@
 "use client";
 import { StudioErrorNotice, studioNodeError, studioRunError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
-import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState, type ComponentRef, type Dispatch, type SetStateAction } from "react";
 import { gsap } from 'gsap';
@@ -45,6 +44,8 @@ export function StudioAssistant({projectId,conversations,setConversations,nodes,
   const rememberDraft=(project=projectId)=>drafts.current.set(`${project}:${conversationId||'new'}`,{prompt,contextIds:[...contextIds],model,mode,readVisuals});
   const restoreDraft=(draft:AssistantDraft)=>{setPrompt(draft.prompt);setContextIds(draft.contextIds);setModel(draft.model);setMode(draft.mode);setReadVisuals(draft.readVisuals);};
   const composer=useRef<ComponentRef<typeof Input.TextArea>>(null);
+  const [sendShortcut,setSendShortcut]=useState('Ctrl Enter');
+  useEffect(()=>{if(/Mac|iPhone|iPad|iPod/.test(navigator.platform))setSendShortcut('⌘ Enter');},[]);
   const composerFrame=useRef<HTMLDivElement>(null);
   const {contextSafe}=useGSAP({scope:composerFrame});
   const live=useRef({nodes,conversations,projectId});live.current={nodes,conversations,projectId};const mounted=useRef(true);
@@ -245,12 +246,12 @@ export function StudioAssistant({projectId,conversations,setConversations,nodes,
         {query&&<div id="studio-assistant-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">{suggestions.length?suggestions.map((node,index)=><button key={node.id} id={`studio-assistant-mention-${node.id}`} type="button" role="option" aria-selected={index===mentionIndex%suggestions.length} onMouseDown={e=>e.preventDefault()} onClick={()=>chooseMention(node)}><span>{node.title}</span><small>{node.type==='text'?'文字':'素材设定'}</small></button>):<p>当前画布没有匹配节点</p>}<button type="button" onMouseDown={e=>e.preventDefault()} onClick={()=>{libraryMention.current=query;setLibraryQuery(query.query);setMentionOpen(false);}}>从个人资产库选择</button></div>}
         <div className="studio-assistant-composer-toolbar">
           <div className="studio-assistant-context-actions"><Button icon={<AtSign size={16}/>} disabled={locked} onClick={()=>{const value=prompt+(prompt&&!/\s$/.test(prompt)?' ':'')+'@';setPrompt(value);setCaret(value.length);setMentionOpen(true);setMentionIndex(0);composer.current?.focus();}}>引用节点</Button><StudioAttachmentPicker projectId={projectId} locked={locked} reading={reading} onFiles={files=>void addAttachments(files).catch(()=>{})} onAssets={addAttachments}/></div>
-          <Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||!capabilities.mock&&!selectedModel?.tokenPricing||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}>发送</Button>
+          <Button aria-label="发送" aria-keyshortcuts="Control+Enter Meta+Enter" title="发送（⌘ / Ctrl + Enter）；处理会消耗积分" className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||!capabilities.mock&&!selectedModel?.tokenPricing||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}><span className="studio-assistant-send-label">发送<kbd className="studio-assistant-send-shortcut" aria-hidden="true">{sendShortcut}</kbd></span></Button>
         </div>
         <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>setLibraryQuery(undefined)} onAssets={async assets=>{await addAttachments(assets);const mention=libraryMention.current;if(mention)setPrompt(value=>insertAssistantMention(value,mention,assets.map(a=>a.title).join("、")));libraryMention.current=undefined;}}/>
         {attachmentsUnsaved&&<Button disabled={locked} onClick={()=>void retryAttachmentSave()}>重试保存附件</Button>}
 
-        <p className="studio-assistant-send-hint">对话存入历史，采用后才修改画布 · ⌘ / Ctrl + Enter 发送</p>
+        <p className="studio-assistant-send-hint">对话存入历史，采用后才修改画布</p>
         {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p className="studio-assistant-error"><StudioErrorNotice error={missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError || (current ? studioNodeError(current) : undefined)}/></p>}
       </div>}>
     <div className="studio-assistant">
