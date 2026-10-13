@@ -814,3 +814,11 @@ Chrome 在隔离画布 `IPP-12d41489` 的 `brief` 节点提交一次“为这段
 `ReactFlow.nodesDraggable` 从跟随持久工具改为只受临时空格平移影响。默认手形工具仍平移空白区域，节点标题栏可直接移动；选择工具继续提供框选。只读模板的投影不变。
 
 本地定向回归 53 项通过（助手、方案依赖、画布文档），全部 629 项前端测试通过；全仓类型检查、admin 类型检查、Java 17 离线编译及 API 契约通过。真实 React Flow 40% 缩放：标题栏拖动使文字节点 `(450,350)→(624,440)`，视口保持 `(0,0,.4)`；空白拖动使视口改为 `(80,40,.4)`，节点位置不变。真实结果组件默认显示“写入「角色描述」”，采用后原文字更新、节点仍为 4 个。临时本地验收页不进入提交和发布包。证据 `.studio-e2e/canvas-followup/local.json`、`local.png` 与 `tests-*.log`、编译门日志。
+
+### 正式发布与验收
+
+代码 `9d671f26fee8c7f57f923b4000ee6d6b1d585b1e` 已推送；干净工作树构建制品 `20261013-canvas-followup-9d671f26` 只发布 web-aiavatar。线上/本地 BUILD_ID `MFRpqNLW_AXe8cknKXGfc`、包 SHA256 `7312c978067eb6c9d9d2262ccbcc1d9518a90e79fa62dc3ebf6e2400046317d6` 一致。服务于 2026-10-13 16:49:22（北京时间）启动，active、NRestarts=0，verify 全绿；回滚制品 `20261013-port-motion-fa151a9e` 保留。
+
+正式画布 `IPP-d455a776` 默认手形模式下，原文字节点从 `(-312,824)→(-216,888)`，视口保持 `translate(105.937px,-398.224px) scale(.575297)`。撤销、保存并刷新后位置、尺寸、视口和原 10 节点/9 连线全部恢复。
+
+在既有验收画布 `IPP-e0e7afa6` 临时复制已生成对话，复用原文方案，引用并选中现有“小巡角色设定文案”后，正式版自动将目标从新建改成“写入「小巡角色设定文案」”，操作按钮为“替换节点正文”。仅验证默认目标，没有执行覆盖或模型请求；临时副本及编辑检查点均撤销，保存刷新后原 4 节点/2 连线和视口恢复。验收前后余额为 1030。证据 `.studio-e2e/canvas-followup/online-target.json`、`online-target.png`、`online-drag.json`、`online-restored.json`、`online-plan-restored.json`、`online-runtime.txt` 与 `deploy.log`。
