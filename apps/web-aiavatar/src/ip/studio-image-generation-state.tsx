@@ -20,7 +20,7 @@ export function StudioImageGenerationState({ task, confirmed }: { task?: Task; c
     <span className="studio-flow-generation-detail">{detail}</span>
     {progress !== undefined && <div className="studio-flow-generation-progress">
       <div className="studio-flow-generation-track" role="progressbar" aria-label="图片任务进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
-        <span style={{ width: `${progress}%` }}/>
+        <span style={{ transform: `scaleX(${progress / 100})` }}/>
       </div>
       <span className="studio-flow-generation-percent">{progress}%</span>
     </div>}

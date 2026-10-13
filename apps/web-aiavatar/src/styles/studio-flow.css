@@ -55,7 +55,7 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 .studio-flow-generation-detail { max-width:280px; font-size:13px; line-height:1.5; color:var(--ink-2); }
 .studio-flow-generation-progress { display:flex; align-items:center; gap:10px; width:min(240px,100%); margin-top:6px; }
 .studio-flow-generation-track { height:7px; flex:1; overflow:hidden; border-radius:99px; background:var(--line-2); }
-.studio-flow-generation-track>span { position:relative; display:block; height:100%; border-radius:inherit; background:var(--primary); transition:width 450ms ease-out; }
+.studio-flow-generation-track>span { position:relative; display:block; width:100%; height:100%; border-radius:inherit; background:var(--primary); transform-origin:left center; transition:transform 450ms ease-out; }
 .studio-flow-generation-track>span::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent); animation:studio-flow-generation-sheen 1.8s ease-in-out infinite; }
 .studio-flow-generation-percent { width:36px; color:var(--primary); font-size:13px; font-variant-numeric:tabular-nums; text-align:right; }
 @keyframes studio-flow-generation-spin { to { transform:rotate(360deg); } }
