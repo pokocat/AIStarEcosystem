@@ -17,7 +17,7 @@ export function SignedVideo({ storageKey, src, ...props }: React.VideoHTMLAttrib
     try { const next = await refreshImageUrl(storageKey); if (current === epoch.current) { setUrl(next); setFailed(false); setReloadKey(key=>key+1); } }
     catch (error) { if (current === epoch.current) { setFailed(true); reportStudioError(error, { once: `media:${storageKey}`, fallback: '视频重新加载失败，请重试' }); } }
   };
-  if (failed) return <div role="status"><button type="button" onClick={() => void renew()}>视频加载失败 · 重新加载</button></div>;
+  if (failed) return <div role="status"><button type="button" className="nodrag nopan" onClick={() => void renew()}>视频加载失败 · 重新加载</button></div>;
   // Local or still-valid signatures may return the same URL; remount to retry the media load once.
   return <video key={reloadKey} {...props} src={url} onError={() => { if (renewed.current) { setFailed(true); reportStudioError({code:'MEDIA_LOAD_FAILED',message:'视频未能加载，请重新选择素材'}, {once:`media:${storageKey || src}`}); return; } renewed.current = true; void renew(); }} />;
 }

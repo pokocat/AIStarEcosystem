@@ -272,6 +272,17 @@ test('actual credits appear on completion without token rates or reserved credit
 
 const textPlan={summary:'已补全角色设定，可直接采用。',steps:[{id:'description',operation:'text' as const,title:'末世英雄',prompt:'生成角色描述',content:'林岚，短银发，旧风衣，沉着的废土信使。',referenceNodeIds:['t']}],questions:[]};
 const withPlan=(plan:any=textPlan)=>({...history,metadata:{...history.metadata,status:'success',studio:{...history.metadata!.studio!,conversation:{...history.metadata!.studio!.conversation!,plan}}}} as CanvasNodeData);
+test('plan suggestions append to an editable draft, focus it, and never send or duplicate automatically',()=>{
+  const question='是否需要指定具体的电影风格参考（如《沙丘》的宏大荒凉感）？';
+  render(<Host initial={[text,withPlan({...textPlan,questions:[question]})]} initialNodeId="h"/>);
+  const input=screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement;
+  fireEvent.change(input,{target:{value:'保留暖色调'}});
+  fireEvent.click(screen.getByRole('button',{name:question}));
+  expect(input.value).toBe(`保留暖色调\n${question}`);expect(document.activeElement).toBe(input);
+  fireEvent.click(screen.getByRole('button',{name:question}));expect(input.value).toBe(`保留暖色调\n${question}`);
+  expect(screen.getByRole('button',{name:'移除引用 故事 B'})).toBeDefined();
+  expect(api.submitStudioRun).not.toHaveBeenCalled();expect(api.saveStudioDocument).not.toHaveBeenCalled();
+});
 test('default view keeps settings folded and starter actions only prepare an editable message',()=>{
   render(<Host initial={[text]} selectedIds={[]}/>);
   expect(screen.queryByRole('combobox',{name:'对话历史'})).toBeNull();
