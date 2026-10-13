@@ -346,7 +346,7 @@ html[data-layout="mobile"] .studio-commerce-launch { top:121px; left:130px; righ
   .studio-reference-hint { top:164px; }
 }
 @container (max-width:540px) {
-  .ip-surface .studio-command-strip .studio-director-launch { flex-wrap:wrap; overflow:visible; justify-content:center; gap:6px; }
+  .ip-surface .studio-command-strip .studio-director-launch { flex-wrap:wrap; overflow:visible; justify-content:flex-end; gap:6px; }
   .ip-surface .studio-resource-tools { flex-basis:100%; justify-content:center; }
   .studio-canvas-stage > .studio-overlay,.studio-flow-shell > .studio-overlay { --studio-context-top:244px; --studio-node-tools-top:300px; }
   .studio-node-toolbar { top:300px; }
@@ -359,7 +359,7 @@ html[data-layout="mobile"] .studio-commerce-launch { top:121px; left:130px; righ
 html[data-layout="mobile"] .studio-canvas-stage { --studio-command-top:88px; --studio-context-top:208px; --studio-node-tools-top:264px; }
 html[data-layout="mobile"] .studio-canvas-stage > .studio-overlay,html[data-layout="mobile"] .studio-flow-shell > .studio-overlay { --studio-context-top:248px; --studio-node-tools-top:304px; }
 html[data-layout="mobile"] .studio-command-strip { left:8px; right:8px; }
-html[data-layout="mobile"] .studio-command-strip .studio-director-launch { justify-content:flex-start; }
+html[data-layout="mobile"] .studio-command-strip .studio-director-launch { justify-content:flex-end; }
 html[data-layout="mobile"] .studio-command-strip .studio-director-launch button { font-size:12px; min-height:40px; padding-inline:10px; }
 html[data-layout="mobile"] .studio-context-actions { left:8px; right:8px; transform:none; max-width:none; }
 html[data-layout="mobile"] .studio-node-toolbar { top:304px; padding-inline:8px; }
