@@ -6,14 +6,14 @@ import {ApiError} from '@ai-star-eco/api-client';
 import type {CanvasNodeData,CanvasConnection} from '@/canvas/types/canvas';
 import {StudioWorkspace} from './studio-workspace';
 import {useCanvasStore} from '@/canvas/stores/canvas/use-canvas-store';
-const api=vi.hoisted(()=>({capabilities:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
+const api=vi.hoisted(()=>({capabilities:vi.fn(),models:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
 vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,children,onClose,footer,embedded}:any)=>open?<section role={embedded?"region":"dialog"} aria-label={title}>{!embedded&&<button aria-label={title==='生成视频'||title==='生成图片'||title==='创作剧本'||title==='拆分镜头'?'关闭创作面板':`关闭${title}`} onClick={onClose}>关闭</button>}{children}{footer}</section>:null}));
 vi.mock('@/canvas-bridge/download-media',()=>({downloadMedia:api.download}));
 vi.mock('./api',()=>({IpStudioApi:{listProjectRuns:api.history}}));
 vi.mock('./studio-template-library',()=>({StudioTemplateLibrary:({open,scope}:any)=>open?<section role="dialog" aria-label="画布模板">{scope}</section>:null}));
 vi.mock('@/canvas-bridge/studio-api',()=>({studioCapabilities:api.capabilities,readStudioProject:api.project,submitStudioRun:api.submit,submitStudioSpeech:api.speech,submitStudioLipSync:api.lip,listStudioIps:async()=>[],listStudioIpAssets:async()=>[]}));
 vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.save}));
-vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:api.cancel,fetchModels:async()=>({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]}),fetchStudioVideoModels:async()=>[]}));
+vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:api.cancel,fetchModels:api.models,fetchStudioVideoModels:async()=>[]}));
 vi.mock('@/canvas-bridge/models',()=>({SERVER_CHANNEL_ID:'server',endpointIdFor:()=> 'model'}));
 vi.mock('@/canvas-bridge/config-store',()=>({encodeChannelModel:(_:string,m:string)=>m}));
 vi.mock('./studio-script-rich-editor',async()=>{
@@ -49,7 +49,7 @@ let connectionSnapshot:CanvasConnection[]=[];
 function Host({initial=node,initialNodes,initialConnections=[],textEditingNodeId,renderTextEditor}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}} textEditingNodeId={textEditingNodeId} renderTextEditor={renderTextEditor}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 afterEach(cleanup);
-beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
 test('plain text editing keeps extraction and body in one panel without a second context toolbar',async()=>{
  const text={...node,type:'text' as never,title:'文字',metadata:{content:'原文',status:'idle' as const}};
  render(<Host initial={text} textEditingNodeId="v" renderTextEditor={(actions:any)=><section role="dialog" aria-label="编辑文字">{actions}<textarea aria-label="节点文字" defaultValue="原文"/></section>}/>);
@@ -76,6 +76,21 @@ test('image composer targets its own upload slot and retains the draft while a p
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image-uploaded',nodeId:'v'}}));
  expect(screen.queryByRole('dialog',{name:'生成图片'})).toBeNull();
  window.removeEventListener('studio-command',listener);
+});
+test('image composer only offers ratios stored on the selected model and blocks an old unsupported draft',async()=>{
+ api.models.mockResolvedValue({image:[{endpointId:'ernie',name:'ERNIE',isDefault:true,creditCost:30,capability:{imageRatios:['1:1','9:16','16:9']}}],video:[]});
+ const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ await waitFor(()=>expect(within(panel).getByRole('combobox',{name:'生成模型'})).toHaveProperty('value','ernie'));
+ const ratio=within(panel).getByRole('combobox',{name:'创作画幅'}) as HTMLSelectElement;
+ expect(ratio.value).toBe('3:4');
+ expect(within(panel).getByText('当前模型不支持 3:4，请在画幅中选择可用比例。')).toBeDefined();
+ expect([...ratio.options].map(option=>option.value)).toEqual(['3:4','1:1','9:16','16:9']);
+ fireEvent.change(ratio,{target:{value:'1:1'}});
+ expect(within(panel).queryByText('当前模型不支持 3:4，请在画幅中选择可用比例。')).toBeNull();
+ expect(api.submit).not.toHaveBeenCalled();
 });
 test('image result actions stay on the image node toolbar rather than its generation form',async()=>{
  const image={...node,type:'image' as never,title:'商品图',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png',studio:{kind:'shot' as const}}};

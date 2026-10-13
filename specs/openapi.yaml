@@ -8487,7 +8487,7 @@ paths:
   # 端点 = 固定 {上游密钥 + 单模型 + 地址}，仅供平台内部 AI 应用绑定（ai_app_binding）调用。
   /admin/ai-models:
     get:  { tags: [admin-ai-models], operationId: adminListAiModelEndpoints,  responses: { '200': { description: ok } } }
-    post: { tags: [admin-ai-models], operationId: adminCreateAiModelEndpoint, description: 'concurrencyLimit 可选整数 0–1000；0/null 表示不限制。chatSupportsTemperature/chatSupportsTopP/chatSupportsResponseFormat 控制 chat 请求参数；chatMaxOutputTokens 为输出上限，0 清空，省略时保留旧值。', responses: { '201': { description: created } } }
+    post: { tags: [admin-ai-models], operationId: adminCreateAiModelEndpoint, description: 'concurrencyLimit 可选整数 0–1000；0/null 表示不限制。chatSupportsTemperature/chatSupportsTopP/chatSupportsResponseFormat 控制 chat 请求参数；chatMaxOutputTokens 为输出上限，0 清空，省略时保留旧值。imageRequestSpec 保存此端点的图片请求合法规格，clearImageRequestSpec 可清空。', responses: { '201': { description: created } } }
   /admin/ai-models/presets:
     get: { tags: [admin-ai-models], operationId: adminListAiModelPresets, responses: { '200': { description: 内置常见服务商预设（火山方舟 / Kimi / DeepSeek / 千问 / OpenAI） } } }
   /admin/ai-models/usage:

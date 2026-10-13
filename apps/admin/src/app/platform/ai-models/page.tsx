@@ -51,6 +51,7 @@ import type {
   AiModelAlert,
   AiModelFailureStat,
   AdminAiModelEndpointUpsert,
+  AiImageRequestSpec,
   AiAppEndpointCandidate,
 } from "@/api/ai-models";
 
@@ -137,6 +138,7 @@ interface FormState {
   chatSupportsTopP: boolean;
   chatSupportsResponseFormat: boolean;
   chatMaxOutputTokens: string;
+  imageRequestSpecJson: string;
   rpmLimit: string;
   concurrencyLimit: string;
   tpmLimit: string;
@@ -170,6 +172,7 @@ const EMPTY_FORM: FormState = {
   chatSupportsTopP: true,
   chatSupportsResponseFormat: true,
   chatMaxOutputTokens: "",
+  imageRequestSpecJson: "",
   rpmLimit: "",
   concurrencyLimit: "",
   tpmLimit: "",
@@ -368,6 +371,7 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     chatSupportsTopP: p.chatSupportsTopP !== false,
     chatSupportsResponseFormat: p.chatSupportsResponseFormat !== false,
     chatMaxOutputTokens: p.chatMaxOutputTokens != null ? String(p.chatMaxOutputTokens) : "",
+    imageRequestSpecJson: p.imageRequestSpec ? JSON.stringify(p.imageRequestSpec, null, 2) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
     concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
@@ -424,6 +428,7 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
     chatSupportsTopP: p.chatSupportsTopP !== false,
     chatSupportsResponseFormat: p.chatSupportsResponseFormat !== false,
     chatMaxOutputTokens: p.chatMaxOutputTokens != null ? String(p.chatMaxOutputTokens) : "",
+    imageRequestSpecJson: p.imageRequestSpec ? JSON.stringify(p.imageRequestSpec, null, 2) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
     concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
@@ -638,6 +643,11 @@ export default function AdminAiModelsPage() {
     const defaultMaxTokens = parseOptionalInt(editing.defaultMaxTokens, 1);
     const defaultTopP = parseOptionalNumber(editing.defaultTopP, 0, 1);
     const chatMaxOutputTokens = parseOptionalInt(editing.chatMaxOutputTokens, 1);
+    let imageRequestSpec: AiImageRequestSpec | undefined;
+    if (editing.imageRequestSpecJson.trim()) {
+      try { imageRequestSpec = JSON.parse(editing.imageRequestSpecJson) as AiImageRequestSpec; }
+      catch { toast.warning({ title: "图片请求规格不是有效 JSON" }); return; }
+    }
     const concurrencyLimit = parseOptionalInt(editing.concurrencyLimit, 1);
     const rpmLimit = parseOptionalInt(editing.rpmLimit, 1);
     const tpmLimit = parseOptionalInt(editing.tpmLimit, 1);
@@ -689,6 +699,8 @@ export default function AdminAiModelsPage() {
         chatSupportsTopP: editing.chatSupportsTopP,
         chatSupportsResponseFormat: editing.chatSupportsResponseFormat,
         chatMaxOutputTokens: chatMaxOutputTokens ?? 0,
+        ...(imageRequestSpec ? { imageRequestSpec } : {}),
+        ...(!imageRequestSpec && editing.id ? { clearImageRequestSpec: true } : {}),
         concurrencyLimit: concurrencyLimit ?? 0,
         rpmLimit,
         tpmLimit,
@@ -887,7 +899,7 @@ export default function AdminAiModelsPage() {
                   >
                     <Select
                       value={editing.providerType}
-                      onValueChange={(v) => setEditing({ ...editing, providerType: v as AiModelProviderType })}
+                      onValueChange={(v) => setEditing({ ...editing, providerType: v as AiModelProviderType, imageRequestSpecJson: v===editing.providerType?editing.imageRequestSpecJson:"" })}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -909,7 +921,7 @@ export default function AdminAiModelsPage() {
                   <Field label="调用地址" hint="服务商提供的 API base URL">
                     <Input
                       value={editing.baseUrl}
-                      onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })}
+                      onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value, imageRequestSpecJson: e.target.value===editing.baseUrl?editing.imageRequestSpecJson:"" })}
                       placeholder={placeholderFor(editing, "baseUrl", "https://api.openai.com/v1")}
                     />
                   </Field>
@@ -936,7 +948,7 @@ export default function AdminAiModelsPage() {
                   <Field label="固定模型" hint="本端点固定调用的模型，例如 gpt-4o / qwen-plus / doubao-1-5-pro-32k">
                     <Input
                       value={editing.model}
-                      onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+                      onChange={(e) => setEditing({ ...editing, model: e.target.value, imageRequestSpecJson: e.target.value===editing.model?editing.imageRequestSpecJson:"" })}
                       placeholder={placeholderFor(editing, "model", "gpt-4o")}
                     />
                   </Field>
@@ -981,7 +993,7 @@ export default function AdminAiModelsPage() {
                           <button
                             key={m.id}
                             type="button"
-                            onClick={() => setEditing({ ...editing, model: m.id })}
+                            onClick={() => setEditing({ ...editing, model: m.id, imageRequestSpecJson: m.id===editing.model?editing.imageRequestSpecJson:"" })}
                             aria-pressed={active}
                             title={m.label && m.label !== m.id ? m.label : undefined}
                             className={cn(
@@ -1058,6 +1070,12 @@ export default function AdminAiModelsPage() {
                         </Field>
                       </div>
                     </div>
+                    <Field label="图片请求规格（模型级）" hint="填写此模型支持的提示词长度、参考图数量及各画幅的供应商请求字段；所有应用读取同一配置。留空表示此模型未配置图片能力。">
+                      <textarea aria-label="图片请求规格 JSON" rows={10} value={editing.imageRequestSpecJson}
+                        onChange={(e) => setEditing({ ...editing, imageRequestSpecJson: e.target.value })}
+                        className="w-full rounded-md border border-border bg-background p-3 font-mono text-xs"
+                        placeholder='{"promptMaxChars":500,"minReferenceImages":0,"maxReferenceImages":5,"referenceField":"multiple","outputs":[]}' />
+                    </Field>
                     <Field label="生成任务并发上限" hint="此端点的文字、图片、通用视频及 Studio 配音/口型任务共用名额，超出自动排队。留空不限制，修改不打断正在执行的任务。">
                       <Input
                         aria-label="生成任务并发上限"

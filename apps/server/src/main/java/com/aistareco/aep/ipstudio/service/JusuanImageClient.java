@@ -40,29 +40,36 @@ public class JusuanImageClient {
         try {
             URI uri=URI.create(endpoint.getBaseUrl());
             return "https".equals(uri.getScheme()) && "api.jusuanhub.com".equals(uri.getHost()) && uri.getUserInfo()==null
-                    && uri.getQuery()==null && uri.getFragment()==null && Set.of("flux2-klein-4b","longcat-image-edit","ernie-Image").contains(endpoint.getModel());
+                    && uri.getQuery()==null && uri.getFragment()==null;
         }catch(RuntimeException e){return false;}
     }
     public boolean supportsEndpoint(String id) {return id!=null && models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,id).map(r->supports(r.endpoint())).orElse(false);}
-    public static void validate(AiModelEndpoint endpoint,String prompt,int references) {
+    public static void validate(AiModelEndpoint endpoint,String prompt,int references,String size) {
+        validate(endpoint,prompt,references,size,null);
+    }
+    private static void validate(AiModelEndpoint endpoint,String prompt,int references,String size,AiImageRequestSpec snapshot) {
         if(!supports(endpoint))return;
-        int limit=switch(endpoint.getModel()){case "flux2-klein-4b"->500;case "longcat-image-edit"->1200;default->2048;};
-        int max=switch(endpoint.getModel()){case "flux2-klein-4b"->5;case "longcat-image-edit"->1;default->0;};
-        if(prompt.codePointCount(0,prompt.length())>limit)throw BusinessException.badRequest("STUDIO_IMAGE_PROMPT_TOO_LONG","当前图片模型的提示词最多 "+limit+" 字，请缩短后再生成");
-        if(references>max || "longcat-image-edit".equals(endpoint.getModel())&&references!=1)
-            throw BusinessException.badRequest("STUDIO_IMAGE_REFERENCES_INVALID","当前图片模型"+(max==0?"仅支持文生图":"最多支持 "+max+" 张参考图")+("longcat-image-edit".equals(endpoint.getModel())?"，请选择一张参考图":""));
+        var spec=snapshot==null?requiredSpec(endpoint):snapshot;
+        if(prompt.codePointCount(0,prompt.length())>spec.promptMaxChars())throw BusinessException.badRequest("STUDIO_IMAGE_PROMPT_TOO_LONG","当前图片模型的提示词最多 "+spec.promptMaxChars()+" 字，请缩短后再生成");
+        if(references<spec.minReferenceImages() || references>spec.maxReferenceImages())
+            throw BusinessException.badRequest("STUDIO_IMAGE_REFERENCES_INVALID",spec.maxReferenceImages()==0?"当前图片模型仅支持文生图":
+                    "当前图片模型需要 "+spec.minReferenceImages()+" 至 "+spec.maxReferenceImages()+" 张参考图");
+        if(spec.output(size)==null)throw BusinessException.badRequest("STUDIO_IMAGE_SIZE_UNSUPPORTED","当前图片模型不支持所选画幅，请更换画幅或图片模型");
     }
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress) {
+        return generate(endpointId,prompt,size,keys,requestId,owner,progress,null);
+    }
+    public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress,AiImageRequestSpec snapshot) {
         var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId).orElseThrow(()->failure("图片模型已停用")).endpoint();
-        validate(endpoint,prompt,keys.size());
+        validate(endpoint,prompt,keys.size(),size,snapshot);
         if(!supports(endpoint))throw failure("图片模型不支持聚算图片协议");
+        var spec=snapshot==null?requiredSpec(endpoint):snapshot;
         ObjectNode body=mapper.createObjectNode().put("model",endpoint.getModel()).put("prompt",prompt);
-        if("flux2-klein-4b".equals(endpoint.getModel()))body.put("size",fluxSize(size));
-        else if("ernie-Image".equals(endpoint.getModel()))body.put("resolutionTier","720p").put("orientation",orientation(size)).put("imageCount",1);
+        spec.output(size).providerFields().forEach((field,value)->body.set(field,mapper.valueToTree(value)));
         List<String> assets=new ArrayList<>();
         for(int i=0;i<keys.size();i++)assets.add(upload(endpoint,keys.get(i),requestId+"-ref-"+i,owner));
-        if("flux2-klein-4b".equals(endpoint.getModel())&&!assets.isEmpty())assets.forEach(body.putArray("input_image_asset_ids")::add);
-        if("longcat-image-edit".equals(endpoint.getModel()))body.put("input_image_asset_id",assets.get(0));
+        if("multiple".equals(spec.referenceField())&&!assets.isEmpty())assets.forEach(body.putArray("input_image_asset_ids")::add);
+        if("single".equals(spec.referenceField()))body.put("input_image_asset_id",assets.get(0));
         JsonNode accepted=json(endpoint,"/images/generations",body.toString(),requestId,owner);
         String id=accepted.path("id").asText(accepted.path("jobId").asText());requireId(id);
         org.slf4j.LoggerFactory.getLogger(getClass()).info("[studio-jusuan-image] accepted request={} endpoint={} job={}",requestId,endpointId,id);
@@ -130,8 +137,11 @@ public class JusuanImageClient {
         return null;
     }
     private static String assetIdNested(JsonNode node){for(String field:List.of("outputAssetId","output_asset_id","assetId","asset_id"))if(node.hasNonNull(field))return node.path(field).asText();return null;}
-    static String fluxSize(String size) {return switch(size==null?"":size){case "768x1024"->"864x1152";case "768x1365"->"768x1376";case "1365x768"->"1376x768";default->"1024x1024";};}
-    private static String orientation(String size){return size!=null&&size.startsWith("768x")?"portrait":size!=null&&size.startsWith("1365x")?"landscape":"square";}
+    private static AiImageRequestSpec requiredSpec(AiModelEndpoint endpoint){
+        AiImageRequestSpec spec=AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
+        if(spec==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_IMAGE_SPEC_NOT_CONFIGURED","当前图片模型尚未配置合法请求规格");
+        return spec;
+    }
     private static void requireId(String id){if(id==null || !id.matches("[a-zA-Z0-9_-]{1,128}"))throw failure("聚算图片任务或产物编号无效");}
     private static BusinessException failure(String message){return new BusinessException(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message);}
 }

@@ -535,7 +535,7 @@ class IpRunWorkerTest {
         var run=seedGenerateRun(1,30L,30L,"source");var input=(ObjectNode)OM.readTree(run.getInputJson());
         input.put("prompt","legacy template ".repeat(100)).put("userPrompt","保持同一个人物，生成三视图");((ObjectNode)input.path("_exec")).put("endpointId","jusuan");
         run.setInputJson(input.toString());runs.repo.save(run);when(nativeImages.supportsEndpoint("jusuan")).thenReturn(true);
-        when(nativeImages.generate(eq("jusuan"),eq("保持同一个人物，生成三视图"),eq("768x1024"),anyList(),eq(RID+"-image-0"),eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+        when(nativeImages.generate(eq("jusuan"),eq("保持同一个人物，生成三视图"),eq("768x1024"),anyList(),eq(RID+"-image-0"),eq(USER),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.isNull())).thenReturn(IpStudioFixtures.pngBytes());
         worker.runBlocking(RID);assertEquals(IpRun.STATUS_DONE,reload().getStatus());assertEquals(30,reload().getCost());
         verify(credits).commitHold(eq(IpRunService.REF_TYPE),eq(RID),eq(30L),anyString());
         verify(multimodal,never()).generateImage(anyString(),anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any());

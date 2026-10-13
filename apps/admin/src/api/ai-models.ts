@@ -50,6 +50,15 @@ export interface AiModelEntry {
   supportsVision?: boolean;
 }
 
+/** 图片模型合法请求规格，保存在固定模型端点记录中。 */
+export interface AiImageRequestSpec {
+  promptMaxChars: number;
+  minReferenceImages: number;
+  maxReferenceImages: number;
+  referenceField: "none" | "single" | "multiple";
+  outputs: { canvasSize: string; aspectRatio: string; providerFields: Record<string, string | number> }[];
+}
+
 /** 模型接入端点读 DTO（上游 apiKey 不返回明文）。 */
 export interface AiModelEndpoint extends AiModelConcurrencyConfig {
   id: string;
@@ -67,6 +76,7 @@ export interface AiModelEndpoint extends AiModelConcurrencyConfig {
   chatSupportsTopP?: boolean;
   chatSupportsResponseFormat?: boolean;
   chatMaxOutputTokens?: number | null;
+  imageRequestSpec?: AiImageRequestSpec | null;
   rpmLimit?: number;
   tpmLimit?: number;
   dailyTokenQuota?: number;
@@ -110,6 +120,8 @@ export interface AdminAiModelEndpointUpsert extends AiModelConcurrencyConfig {
   chatSupportsResponseFormat?: boolean;
   /** 0 清空上限；省略保持不变。 */
   chatMaxOutputTokens?: number | null;
+  imageRequestSpec?: AiImageRequestSpec | null;
+  clearImageRequestSpec?: boolean;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
   dailyTokenQuota?: number | null;

@@ -28,10 +28,26 @@ public record EndpointCapabilityDto(
          */
         java.util.List<String> videoResolutions,
         /** 出视频**真正能出**的比例（如 ["16:9","9:16"]）；null = 不受限。 */
-        java.util.List<String> videoRatios
+        java.util.List<String> videoRatios,
+        /** 出图真正可选的比例；null = 未限制。 */
+        java.util.List<String> imageRatios
 ) {
+    public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
+                                 Boolean supportsSubjectReference, Integer maxDurationSec,
+                                 Integer minDurationSec, Integer minImagePixels,
+                                 java.util.List<String> videoResolutions, java.util.List<String> videoRatios) {
+        this(maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,
+                minImagePixels,videoResolutions,videoRatios,null);
+    }
     public static EndpointCapabilityDto from(AiAppEndpointCandidate c) {
         return from(c, null, null, null);
+    }
+
+    public static EndpointCapabilityDto image(AiAppEndpointCandidate c, java.util.List<String> ratios) {
+        EndpointCapabilityDto base=from(c);
+        return new EndpointCapabilityDto(base.maxRefImages(),base.supportsFirstLastFrame(),
+                base.supportsSubjectReference(),base.maxDurationSec(),base.minDurationSec(),
+                base.minImagePixels(),base.videoResolutions(),base.videoRatios(),ratios);
     }
 
     /** 带**有效**时长区间（协议硬边界 ∩ 候选配置）+ 可出画幅的版本；视频用途用它。 */
@@ -39,9 +55,9 @@ public record EndpointCapabilityDto(
                                              com.aistareco.aep.service.materialvideo.MaterialVideoModelClient.VideoGeometry geo) {
         java.util.List<String> res = geo == null ? null : geo.resolutions();
         java.util.List<String> ratios = geo == null ? null : geo.ratios();
-        if (c == null) return new EndpointCapabilityDto(null, null, null, maxSec, minSec, null, res, ratios);
+        if (c == null) return new EndpointCapabilityDto(null, null, null, maxSec, minSec, null, res, ratios, null);
         return new EndpointCapabilityDto(c.getMaxRefImages(), c.getSupportsFirstLastFrame(),
                 c.getSupportsSubjectReference(),
-                maxSec != null ? maxSec : c.getMaxDurationSec(), minSec, c.getMinImagePixels(), res, ratios);
+                maxSec != null ? maxSec : c.getMaxDurationSec(), minSec, c.getMinImagePixels(), res, ratios, null);
     }
 }

@@ -95,6 +95,8 @@ public class AiModelEndpointAdminService {
         }
         validateConcurrency(req.concurrencyLimit());
         validateChatMaxOutputTokens(req.chatMaxOutputTokens());
+        if(Boolean.TRUE.equals(req.clearImageRequestSpec()) && req.imageRequestSpec()!=null)
+            throw BusinessException.badRequest("IMAGE_REQUEST_SPEC_INVALID","不能同时设置和清空图片请求规格");
         if (req.baseUrl() == null || req.baseUrl().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "BASE_URL_REQUIRED", "baseUrl 必填");
         }
@@ -125,6 +127,7 @@ public class AiModelEndpointAdminService {
                 .chatSupportsTopP(req.chatSupportsTopP())
                 .chatSupportsResponseFormat(req.chatSupportsResponseFormat())
                 .chatMaxOutputTokens(req.chatMaxOutputTokens() != null && req.chatMaxOutputTokens() > 0 ? req.chatMaxOutputTokens() : null)
+                .imageRequestSpecJson(req.imageRequestSpec() == null ? null : req.imageRequestSpec().json())
                 .concurrencyLimit(req.concurrencyLimit() != null && req.concurrencyLimit() > 0 ? req.concurrencyLimit() : null)
                 .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
                 .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
@@ -147,7 +150,12 @@ public class AiModelEndpointAdminService {
     public AiModelEndpointDto update(String id, AdminAiModelEndpointUpsertDto req) {
         validateConcurrency(req.concurrencyLimit());
         validateChatMaxOutputTokens(req.chatMaxOutputTokens());
+        if(Boolean.TRUE.equals(req.clearImageRequestSpec()) && req.imageRequestSpec()!=null)
+            throw BusinessException.badRequest("IMAGE_REQUEST_SPEC_INVALID","不能同时设置和清空图片请求规格");
         AiModelEndpoint entity = load(id);
+        boolean supplierChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
+                || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()))
+                || (req.model()!=null && !req.model().equals(entity.getModel()));
         if (req.concurrencyLimit() != null) entity.setConcurrencyLimit(req.concurrencyLimit() == 0 ? null : req.concurrencyLimit());
         if (req.name() != null) entity.setName(req.name());
         if (req.providerType() != null) entity.setProviderType(AiModelProviderType.fromWire(req.providerType()));
@@ -157,6 +165,7 @@ public class AiModelEndpointAdminService {
         }
         if (req.apiVersion() != null) entity.setApiVersion(req.apiVersion());
         if (req.model() != null) entity.setModel(req.model());
+        if (supplierChanged && req.imageRequestSpec()==null) entity.setImageRequestSpecJson(null);
         if (req.modelAlias() != null) entity.setModelAlias(blankToNull(req.modelAlias()));
         if (req.defaultTemperature() != null) entity.setDefaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0));
         if (req.defaultMaxTokens() != null) entity.setDefaultMaxTokens(req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null);
@@ -165,6 +174,8 @@ public class AiModelEndpointAdminService {
         if (req.chatSupportsTopP() != null) entity.setChatSupportsTopP(req.chatSupportsTopP());
         if (req.chatSupportsResponseFormat() != null) entity.setChatSupportsResponseFormat(req.chatSupportsResponseFormat());
         if (req.chatMaxOutputTokens() != null) entity.setChatMaxOutputTokens(req.chatMaxOutputTokens() == 0 ? null : req.chatMaxOutputTokens());
+        if (req.imageRequestSpec() != null) entity.setImageRequestSpecJson(req.imageRequestSpec().json());
+        if (Boolean.TRUE.equals(req.clearImageRequestSpec())) entity.setImageRequestSpecJson(null);
         entity.setRpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null);
         entity.setTpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null);
         entity.setDailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null);

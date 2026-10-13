@@ -92,7 +92,9 @@ public class StudioWorkflowService {
             throw bad("STUDIO_CLIPS_REQUIRED", "请先选择要合成的视频片段");
         if (request.video()!=null && !"video".equals(request.operation())) throw bad("STUDIO_VIDEO_INPUT_INVALID","视频参数只能用于生成视频");
         if (request.video()!=null && fixtures.enabled()) throw bad("STUDIO_VIDEO_MODE_UNAVAILABLE","测试响应不支持原生视频模式，请关闭测试响应后使用");
-        if (request.aspectRatio()!=null && request.video()==null && !("image".equals(request.operation())?List.of("9:16","3:4","16:9","1:1"):List.of("9:16","16:9","1:1")).contains(request.aspectRatio()))
+        if (request.aspectRatio()!=null && request.video()==null && !("image".equals(request.operation())
+                ? request.aspectRatio().matches("[1-9][0-9]?:[1-9][0-9]?")
+                : List.of("9:16","16:9","1:1").contains(request.aspectRatio())))
             throw bad("STUDIO_RATIO_INVALID", "请选择可用画幅");
         validateCreativeRequest(request);
         StudioPackagingService.validate(request.packaging());
@@ -337,12 +339,29 @@ public class StudioWorkflowService {
         if(value==null||value.isBlank()||value.length()>max) throw bad("STUDIO_INPUT_INVALID",label+"不能为空且不能超过 "+max+" 字");
     }
     private String imageSize(RunRequest request) {
+        String ratio=request.aspectRatio()==null?"3:4":request.aspectRatio();
+        if(scenePolicies!=null) {
+            var endpoint=scenePolicies.resolve("studio","image",request.model(),pricing.ipImage()).resolved().endpoint();
+            if(JusuanImageClient.supports(endpoint)) {
+                var spec=com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
+                if(spec==null)throw bad("STUDIO_IMAGE_SPEC_NOT_CONFIGURED","当前图片模型尚未配置可用规格");
+                if(request.size()!=null && !request.size().isBlank()) {
+                    var output=spec.output(request.size());
+                    if(output!=null && (request.aspectRatio()==null || ratio.equals(output.aspectRatio())))return request.size();
+                    throw bad("STUDIO_IMAGE_SIZE_UNSUPPORTED","当前图片模型不支持所选画幅，请更换画幅或图片模型");
+                }
+                return spec.outputs().stream().filter(output->ratio.equals(output.aspectRatio()))
+                        .map(com.aistareco.aep.model.AiImageRequestSpec.Output::canvasSize).findFirst()
+                        .orElseThrow(()->bad("STUDIO_IMAGE_SIZE_UNSUPPORTED","当前图片模型不支持所选画幅，请更换画幅或图片模型"));
+            }
+        }
         if(request.size()!=null && !request.size().isBlank()) return request.size();
-        return switch(request.aspectRatio()==null?"3:4":request.aspectRatio()) {
+        return switch(ratio) {
             case "9:16" -> "768x1365";
             case "16:9" -> "1365x768";
             case "1:1" -> "1024x1024";
-            default -> "768x1024";
+            case "3:4" -> "768x1024";
+            default -> throw bad("STUDIO_IMAGE_SIZE_UNSUPPORTED","当前图片模型不支持所选画幅，请更换画幅或图片模型");
         };
     }
     private BusinessException bad(String code,String message) {return BusinessException.badRequest(code,message);}

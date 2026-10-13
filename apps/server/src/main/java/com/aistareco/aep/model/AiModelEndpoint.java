@@ -81,6 +81,10 @@ public class AiModelEndpoint {
     @Column(name = "chat_max_output_tokens")
     private Integer chatMaxOutputTokens;
 
+    /** Legal image request limits and canvas-to-wire presets for this fixed supplier model. */
+    @Column(name = "image_request_spec_json", columnDefinition = "LONGTEXT")
+    private String imageRequestSpecJson;
+
     /** 每分钟请求数限制；为空表示不限制。 */
     @Column(name = "rpm_limit")
     private Integer rpmLimit;

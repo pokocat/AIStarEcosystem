@@ -227,7 +227,9 @@ public class IpRunWorker {
                         String key=ref.isTextual()?ref.asText():ref.path("key").asText(null);
                         if(key!=null)keys.add(key);
                     }
-                    bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,run.getId()+"-image-"+i,run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage));
+                    var imageSpec=exec.hasNonNull("imageRequestSpec")
+                            ? com.aistareco.aep.model.AiImageRequestSpec.read(exec.path("imageRequestSpec").toString()):null;
+                    bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,run.getId()+"-image-"+i,run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage),imageSpec);
                 } else bytes=multimodal.generateImage(prompt, size, refs.isEmpty() ? null : refs, endpointId);
                 requireDecodableImage(bytes);
                 progress(run, 10 + (int) Math.round(80.0 * (i + 1) / count), "storage.persist");

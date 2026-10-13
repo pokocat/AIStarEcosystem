@@ -25,6 +25,7 @@ import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static com.aistareco.aep.ipstudio.IpStudioFixtures.OM;
 import static com.aistareco.aep.ipstudio.IpStudioFixtures.OTHER;
@@ -479,6 +480,27 @@ class IpRunServiceTest {
         assertEquals(26L,execution.path("holdTotal").asLong());
         assertEquals("allowed",execution.path("endpointId").asText());
         verify(credits).hold(eq(USER),eq(26L),eq(IpRunService.REF_TYPE),eq(dto.id()),anyString());
+    }
+
+    @Test void configuredImagePresetRejectsUnsupportedCanvasBeforeHoldAndSnapshotsAcceptedPreset() throws Exception {
+        seedProject(new IpStudioFixtures.Doc());
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        var spec=new com.aistareco.aep.model.AiImageRequestSpec(2048,0,0,"none",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("1024x1024","1:1",Map.of("resolutionTier","hd","orientation","square","imageCount",1))));
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("ernie").model("ernie-Image")
+                .baseUrl("https://api.jusuanhub.com/v1").imageRequestSpecJson(spec.json()).enabled(true).build();
+        var resolved=new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true);
+        when(policy.resolve(eq("studio"),eq("image"),eq("ernie"),eq(8L)))
+                .thenReturn(new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(resolved,30L,"per_image"));
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        var unsupported=new IpRunService.IpGenerateRequest("adhoc","character",List.of(),1,"768x1024","ernie",30L);
+        assertEquals("STUDIO_IMAGE_SIZE_UNSUPPORTED",assertThrows(BusinessException.class,()->svc.generate(USER,PID,unsupported)).getCode());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        var accepted=new IpRunService.IpGenerateRequest("adhoc","character",List.of(),1,"1024x1024","ernie",30L);
+        var result=svc.generate(USER,PID,accepted);
+        var execution=OM.readTree(runs.rows.get(result.id()).getInputJson()).path("_exec");
+        assertEquals("hd",execution.path("imageRequestSpec").path("outputs").path(0).path("providerFields").path("resolutionTier").asText());
+        verify(credits).hold(eq(USER),eq(30L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString());
     }
 
     @Test

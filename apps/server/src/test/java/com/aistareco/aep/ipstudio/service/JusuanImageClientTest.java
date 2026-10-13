@@ -19,14 +19,26 @@ class JusuanImageClientTest {
     final UpstreamModelHttp upstream=mock(UpstreamModelHttp.class);
     final HttpClient http=mock(HttpClient.class);
     final JusuanImageClient client=new JusuanImageClient(models,storage,upstream,mapper,http,()->{});
-    AiModelEndpoint endpoint(String model){return AiModelEndpoint.builder().id("ep").name("Jusuan").baseUrl("https://api.jusuanhub.com/v1").model(model).upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).enabled(true).build();}
+    AiModelEndpoint endpoint(String model){
+        AiImageRequestSpec spec=switch(model){
+            case "flux2-klein-4b" -> new AiImageRequestSpec(500,0,5,"multiple",
+                    List.of(new AiImageRequestSpec.Output("768x1365","9:16",Map.of("size","768x1376"))));
+            case "longcat-image-edit" -> new AiImageRequestSpec(1200,1,1,"single",
+                    List.of(new AiImageRequestSpec.Output("768x1365","9:16",Map.of())));
+            default -> new AiImageRequestSpec(2048,0,0,"none",
+                    List.of(new AiImageRequestSpec.Output("1024x1024","1:1",Map.of("resolutionTier","hd","orientation","square","imageCount",1))));
+        };
+        return AiModelEndpoint.builder().id("ep").name("Jusuan").baseUrl("https://api.jusuanhub.com/v1").model(model)
+                .imageRequestSpecJson(spec.json()).upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).enabled(true).build();
+    }
     HttpResponse<String> json(String value){var r=mock(HttpResponse.class);when(r.statusCode()).thenReturn(200);when(r.body()).thenReturn(value);return r;}
     @Test void unsupportedGeometryIsTranslatedAndModelLimitsFailBeforeCallingProvider(){
-        assertEquals("768x1376",JusuanImageClient.fluxSize("768x1365"));
-        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("flux2-klein-4b"),"x".repeat(501),0));
-        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("flux2-klein-4b"),"x",6));
-        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("ernie-Image"),"x",1));
-        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("longcat-image-edit"),"x",0));
+        assertEquals("768x1376",AiImageRequestSpec.read(endpoint("flux2-klein-4b").getImageRequestSpecJson()).output("768x1365").providerFields().get("size"));
+        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("flux2-klein-4b"),"x".repeat(501),0,"768x1365"));
+        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("flux2-klein-4b"),"x",6,"768x1365"));
+        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("ernie-Image"),"x",1,"1024x1024"));
+        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("ernie-Image"),"x",0,"768x1024"));
+        assertThrows(BusinessException.class,()->JusuanImageClient.validate(endpoint("longcat-image-edit"),"x",0,"768x1365"));
         verifyNoInteractions(upstream);
     }
     @Test void asyncGenerationUploadsRefsKeepsOrderPollsAndDownloadsWithModelScope() throws Exception {
@@ -52,6 +64,19 @@ class JusuanImageClientTest {
         var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
         var accepted=json("{\"id\":\"job\"}");var failed=json("{\"status\":\"failed\"}");when(upstream.sendJson(any(),any())).thenReturn(accepted,failed);
         assertThrows(BusinessException.class,()->client.generate("ep","x","1024x1024",List.of(),"run","owner",s->{}));verifyNoInteractions(http);
+    }
+    @Test void squareRequestUsesPersistedHdPresetAndMissingConfigFailsBeforeProvider() throws Exception {
+        var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var accepted=json("{\"id\":\"job1\"}");var failed=json("{\"status\":\"failed\"}");
+        when(upstream.sendJson(any(),any())).thenReturn(accepted,failed);
+        assertThrows(BusinessException.class,()->client.generate("ep","square","1024x1024",List.of(),"run-image-0","owner",s->{}));
+        var contexts=org.mockito.ArgumentCaptor.forClass(ModelCallCtx.class);verify(upstream,times(2)).sendJson(any(),contexts.capture());
+        var body=mapper.readTree(contexts.getAllValues().get(0).requestBodyJson());
+        assertEquals("hd",body.path("resolutionTier").asText());assertEquals("square",body.path("orientation").asText());
+        assertEquals(1,body.path("imageCount").asInt());
+        ep.setImageRequestSpecJson(null);
+        assertThrows(BusinessException.class,()->client.generate("ep","square","1024x1024",List.of(),"another","owner",s->{}));
+        verify(upstream,times(2)).sendJson(any(),any());
     }
     @Test void outputContentUrlYieldsOnlyValidatedAssetIdentifier()throws Exception {
         assertEquals("a1",JusuanImageClient.assetId(mapper.readTree("{\"outputs\":[{\"contentUrl\":\"https://api.jusuanhub.com/v1/assets/a1/content?model=flux2-klein-4b\"}]}")));

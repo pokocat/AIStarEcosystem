@@ -259,6 +259,8 @@ public class IpStudioController {
         var candidates = !video ? selections.stream().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::resolved).toList() : scenePolicies.studioVideoCandidates();
         for (var r : candidates) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
+            var imageSpec=video?null:com.aistareco.aep.model.AiImageRequestSpec.read(r.endpoint().getImageRequestSpecJson());
+            if(!video && com.aistareco.aep.ipstudio.service.JusuanImageClient.supports(r.endpoint()) && imageSpec==null)continue;
             long cost = r.candidate().getCreditCostOverride() != null
                     ? Math.max(0L, r.candidate().getCreditCostOverride()) : defaultCost;
             if(!video) cost=selections.stream().filter(s->s.resolved().endpoint().getId().equals(r.endpoint().getId())).findFirst().orElseThrow().creditCost();
@@ -267,7 +269,8 @@ public class IpStudioController {
             // 不给的话画布的时长滑杆是 4–30，用户选个 4 秒点发送就撞 400。
             var caps = video
                     ? capabilityWithDuration(r)
-                    : com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
+                    : com.aistareco.aep.dto.EndpointCapabilityDto.image(r.candidate(),
+                            imageSpec==null?null:imageSpec.ratios());
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
                     r.endpoint().getId(), r.endpoint().publicModelName(), r.isDefault(),
                     caps, cost, video ? com.aistareco.aep.service.AiModelInvocationService.videoBillingUnit(r.endpoint(), r.candidate()) : "per_image"));

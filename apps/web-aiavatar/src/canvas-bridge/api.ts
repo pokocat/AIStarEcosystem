@@ -25,6 +25,8 @@ export type IpModelOption = {
     /** 这个模型**真正能出**的清晰度短边 / 比例；null = 不受限，面板保留完整选项 */
     videoResolutions?: string[] | null;
     videoRatios?: string[] | null;
+    /** 图片模型真正可选的比例；null = 不受限。 */
+    imageRatios?: string[] | null;
   } | null;
   creditCost: number;
   billingUnit: string;

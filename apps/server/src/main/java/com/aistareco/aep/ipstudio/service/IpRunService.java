@@ -453,8 +453,17 @@ public class IpRunService {
         if(nodeEndpoint != null) exec.put("endpointId",nodeEndpoint);
         var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", IpDocs.text(exec, "endpointId"), pricing.ipImage());
         if(selected != null) {
-            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size());
+            if(JusuanImageClient.supports(selected.resolved().endpoint())) {
+                var spec=com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
+                if(spec!=null) {
+                    String requested=IpDocs.text(md,"size");
+                    size=requested==null?spec.outputs().get(0).canvasSize():requested;
+                    inputs.put("size",size);
+                }
+            }
+            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size(), size);
             exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+            if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
@@ -520,8 +529,16 @@ public class IpRunService {
 
         var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", IpDocs.text(exec, "endpointId"), pricing.ipImage());
         if(selected != null) {
-            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size());
+            if(JusuanImageClient.supports(selected.resolved().endpoint())) {
+                var spec=com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
+                if(spec!=null) {
+                    size=req.size()==null||req.size().isBlank()?spec.outputs().get(0).canvasSize():req.size();
+                    inputs.put("size",size);
+                }
+            }
+            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size(), size);
             exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+            if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
