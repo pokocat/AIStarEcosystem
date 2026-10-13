@@ -1,9 +1,9 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, useNodesInitialized, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
 import { App, Button, Dropdown, Input, Modal } from 'antd';
-import { ArrowLeft, Copy, Ellipsis, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, MousePointer2, Music2, Redo2, Scissors, Search, Trash2, Undo2, Upload, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Copy, Ellipsis, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, MousePointer2, Music2, Plus, Redo2, Scissors, Search, Trash2, Undo2, Upload, Video, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useIdentity } from '@/proto/api';
 import { WalletBadge } from '@/shell/wallet-badge';
@@ -31,13 +31,23 @@ import { studioTaskLabel, studioTaskQueued, studioQueueNotice } from '@/canvas-b
 import { createStudioLinkedNode } from '@/canvas-bridge/studio-linked-inputs';
 import { StudioConnectionCreateMenu, type PendingStudioConnection } from './studio-connection-create-menu';
 import { replaceStudioImage, STUDIO_IMAGE_UPLOAD_ACCEPT, validateStudioImageUpload } from '@/canvas-bridge/studio-image-upload';
+import { placeNodeInViewport } from '@/canvas-bridge/viewport-placement';
+import { StudioNodeTitle } from './studio-node-title';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
 export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const node = data.document, meta = node.metadata, Icon = icons[node.type as keyof typeof icons] || FileText;
+  const { zoom } = useViewport();
+  // Scale the visual/hit area, not the measured Handle: React Flow's edge anchor must remain stable.
+  const port = (type: 'source' | 'target') => <Handle type={type} position={type === 'source' ? Position.Right : Position.Left} isConnectable={!data.readOnly}
+    className={data.readOnly ? undefined : 'studio-flow-port'} style={data.readOnly ? undefined : { '--studio-port-scale': Math.max(1, 1 / zoom) } as CSSProperties}
+    title={type === 'source' ? '拖出连线引用此节点' : '连接参考节点'} aria-label={type === 'source' ? '拖出连线引用此节点' : '连接参考节点'}>
+    {!data.readOnly && <span className="studio-flow-port-icon" aria-hidden><Plus size={16}/></span>}
+  </Handle>;
+  const title = <StudioNodeTitle title={node.title} onRename={!data.readOnly && data.onRename ? value => data.onRename!(node.id, value) : undefined}/>;
   if (node.type === CanvasNodeType.Group) return <article className={`studio-flow-group${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · 分组`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
-    <header className="studio-flow-drag"><Group size={15}/><span>{node.title}</span></header><Handle type="source" position={Position.Right} isConnectable={!data.readOnly} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
+    <header className="studio-flow-drag"><Group size={15}/>{title}</header>{port('source')}
   </article>;
   // Template input constraints do not turn a plain text node into a script summary.
   const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio && !meta.studio.templateInput;
@@ -46,8 +56,8 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
-    <Handle type="target" position={Position.Left} isConnectable={!data.readOnly} title="连接参考节点" aria-label="连接参考节点"/><Handle type="source" position={Position.Right} isConnectable={!data.readOnly} title="拖出连线引用此节点" aria-label="拖出连线引用此节点"/>
-    <header className="studio-flow-drag"><Icon size={15}/><span>{node.title}</span>{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
+    {port('target')}{port('source')}
+    <header className="studio-flow-drag"><Icon size={15}/>{title}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && <small title={studioTaskLabel(meta.studio?.task)}>{studioTaskLabel(meta.studio?.task,true)}</small>}</header>
     <div className={`studio-flow-media ${studioText ? 'studio-flow-business' : ''}`}>
       {studioText ? <div className="nodrag nopan nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : node.type === CanvasNodeType.Image && meta?.content ?
         <><SignedImage src={meta.content} storageKey={meta.storageKey} alt={node.title}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && meta?.content ?
@@ -79,7 +89,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const identity = useIdentity();
   const project = useCanvasStore(s => s.projects.find(p => p.id === projectId));
   const flow = useReactFlow<StudioFlowNode>(), viewport = useViewport(), { zoom } = viewport, { message } = App.useApp();
-  const [selected, setSelected] = useState(new Set<string>()), [hand, setHand] = useState(false), [minimap, setMinimap] = useState(false);
+  const [selected, setSelected] = useState(new Set<string>()), [handTool, setHandTool] = useState(true), [spaceHeld, setSpaceHeld] = useState(false), [minimap, setMinimap] = useState(false);
+  const hand = handTool || spaceHeld;
   const [find, setFind] = useState(false), [query, setQuery] = useState(''), [textId, setTextId] = useState<string>(), [renameId, setRenameId] = useState<string>();
   const [textExpanded,setTextExpanded]=useState(false);
   useEffect(()=>{setTextExpanded(false);},[textId]);
@@ -87,7 +98,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const [pendingFocus, setPendingFocus] = useState<string>(), [selectedEdges, setSelectedEdges] = useState(new Set<string>());
   const [context, setContext] = useState<{ x: number; y: number; nodeId?: string }>();
   const [pendingConnection,setPendingConnection]=useState<PendingStudioConnection>();
-  const [pendingCreator,setPendingCreator]=useState<{id:string;sourceId:string;operation:string}>();
+  const [pendingCreator,setPendingCreator]=useState<{id:string;sourceId?:string;operation:string}>();
   const closeConnectionMenu=useCallback(()=>setPendingConnection(undefined),[]);
   const initialized = useNodesInitialized();
   const [reading, setReading] = useState(false), [historyRevision, refreshHistory] = useState(0);
@@ -119,7 +130,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     // Keep task results current while undoing layout/content; never resurrect a removed accepted run.
     const active = new Map(p.nodes.filter(n => n.metadata?.studio?.runId || studioGenerationPending(n)).map(n => [n.id, n]));
     history.current[direction === 'past' ? 'future' : 'past'].push(structuredClone({ nodes: p.nodes, connections: p.connections }));
-    const restored = next.nodes.map(n => active.has(n.id) ? { ...active.get(n.id)!, position: n.position, width: n.width, height: n.height } : n);
+    const restored = next.nodes.map(n => active.has(n.id) ? { ...active.get(n.id)!, title: n.title, position: n.position, width: n.width, height: n.height } : n);
     for (const n of p.nodes) if (studioGenerationPending(n) && !restored.some(r => r.id === n.id)) restored.push(n);
     const ids = new Set(restored.map(n => n.id));
     useCanvasStore.getState().updateProject(projectId, { nodes: restored, connections: next.connections.filter(c => ids.has(c.fromNodeId) && ids.has(c.toNodeId)) });
@@ -127,6 +138,10 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     setSelectedEdges(new Set());
     refreshHistory(v => v + 1);
   }, [current, projectId]);
+  const renameNode = useCallback((id: string, title: string) => {
+    if (!title.trim() || current().nodes.find(n => n.id === id)?.title === title.trim()) return;
+    checkpoint(); setNodes(old => old.map(n => n.id === id ? { ...n, title: title.trim() } : n));
+  }, [current, checkpoint, setNodes]);
   const focusNode = useCallback((id: string) => { setSelected(new Set([id])); setSelectedEdges(new Set()); setPendingFocus(id); }, []);
   const connectReference=(source:string,target:string)=>{
     const p=current();if(source===target||!p.nodes.some(n=>n.id===source)||!p.nodes.some(n=>n.id===target)||p.connections.some(c=>c.fromNodeId===source&&c.toNodeId===target))return;
@@ -136,7 +151,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   useEffect(()=>{
     if(!pendingCreator||!project?.nodes.some(n=>n.id===pendingCreator.id))return;
     const node=project.nodes.find(n=>n.id===pendingCreator.id)!,stage=document.querySelector('.studio-flow-stage')?.getBoundingClientRect();
-    if(stage&&(node.position.x*viewport.zoom+viewport.x<76||(node.position.x+node.width)*viewport.zoom+viewport.x>stage.width-16||node.position.y*viewport.zoom+viewport.y<72||(node.position.y+node.height)*viewport.zoom+viewport.y>stage.height-68))
+    if(pendingCreator.sourceId&&stage&&(node.position.x*viewport.zoom+viewport.x<76||(node.position.x+node.width)*viewport.zoom+viewport.x>stage.width-16||node.position.y*viewport.zoom+viewport.y<72||(node.position.y+node.height)*viewport.zoom+viewport.y>stage.height-68))
       void flow.fitView({nodes:[{id:pendingCreator.sourceId},{id:node.id}],padding:.2,maxZoom:viewport.zoom,duration:260});
     // Dispatch only after the child workspace receives both the node and its reference edge.
     dispatchStudioCommand(pendingCreator.operation,pendingCreator.id);setPendingCreator(undefined);
@@ -168,14 +183,21 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     setPendingFocus(undefined);
   }, [pendingFocus, initialized, flow, project?.nodes]);
   const closePanel = useCallback(() => { setTextId(undefined); setRenameId(undefined); setContext(undefined); }, []);
+  const modalContainer = () => document.querySelector<HTMLElement>('.studio-flow-shell')?.closest<HTMLElement>('.ip-surface') || document.body;
+  const placeVisibleNode = (node: CanvasNodeData, existing: CanvasNodeData[], at?: {x:number;y:number}) => {
+    const rect = document.querySelector('.studio-flow-stage')?.getBoundingClientRect();
+    const left = (rect?.left || 0) + 80, top = (rect?.top || 0) + 72;
+    const start = flow.screenToFlowPosition({ x: left, y: top });
+    const end = flow.screenToFlowPosition({ x: (rect?.right || 900) - 24, y: (rect?.bottom || 700) - 68 });
+    return placeNodeInViewport(node, existing, { ...start, width: Math.max(0, end.x - start.x), height: Math.max(0, end.y - start.y) }, at && flow.screenToFlowPosition(at));
+  };
   const add = (type: CanvasNodeType, at?: {x:number;y:number}) => {
     checkpoint(); const node = makeStudioNode(type === CanvasNodeType.Video ? 'video' : type === CanvasNodeType.Text ? 'script' : 'image');
     node.type = type; node.title = type === CanvasNodeType.Text ? '文字' : type === CanvasNodeType.Video ? '视频' : '图片';
     if (type === CanvasNodeType.Text) node.metadata = { content: '', status: 'idle' };
-    const rect = document.querySelector('.studio-flow-stage')?.getBoundingClientRect();
-    node.position = flow.screenToFlowPosition(at || { x: (rect?.left || 0) + (rect?.width || 900) / 2 - 160, y: (rect?.top || 0) + (rect?.height || 700) / 2 - 180 });
-    setNodes(old => [...old, placeStudioNode(node,old)]); focusNode(node.id);
-    if (type === CanvasNodeType.Text) setTextId(node.id); else dispatchStudioCommand(type, node.id);
+    setNodes(old => [...old, placeVisibleNode(node, old, at)]);
+    setSelected(new Set([node.id])); setSelectedEdges(new Set()); setPendingFocus(undefined);
+    if (type === CanvasNodeType.Text) setTextId(node.id); else setPendingCreator({ id: node.id, operation: type });
   };
   const copy = useCallback(() => {
     const p = current(), groups = new Set(p.nodes.filter(n => selected.has(n.id) && n.type === CanvasNodeType.Group).map(n => n.id));
@@ -222,7 +244,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       // Storyboard/work views must not edit a hidden canvas selection through global shortcuts.
       if (document.querySelector('.studio-focused-view')) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (e.code === 'Space') { if((e.target as HTMLElement)?.closest('button'))return;e.preventDefault(); setHand(true); }
+      if (e.code === 'Space') { if((e.target as HTMLElement)?.closest('button'))return;e.preventDefault(); setSpaceHeld(true); }
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); travel(e.shiftKey ? 'future' : 'past'); }
       if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); copy(); }
       if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); paste(); }
@@ -233,8 +255,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
       if (e.key === 'Escape') { setSelected(new Set()); setSelectedEdges(new Set()); setFind(false); setTextId(undefined); setContext(undefined); setPendingConnection(undefined); }
     };
-    const keyup = (e: KeyboardEvent) => { if (e.code === 'Space') setHand(false); };
-    const blur = () => setHand(false);
+    const keyup = (e: KeyboardEvent) => { if (e.code === 'Space') setSpaceHeld(false); };
+    const blur = () => setSpaceHeld(false);
     window.addEventListener('studio-command', command); window.addEventListener('studio-canvas-checkpoint', checkpoint); window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('studio-reference-mode',referenceMode); window.removeEventListener('studio-command', command); window.removeEventListener('studio-canvas-checkpoint', checkpoint); window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('blur', blur); };
   }, [travel, copy, paste, remove, group, checkpoint, current, projectId, message, reading]);
@@ -258,12 +280,12 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     if (reading) return; setReading(true); checkpoint(); let last: string | undefined;
     try { for (const file of files) {
       try { const node = await readAssistantAttachment(file, current().nodes, f => importStudioStory(projectId, f), (f, type) => importStudioMedia(projectId, f, type));
-        setNodes(old => old.some(n => n.id === node.id) ? old : [...old, node]); last = node.id;
+        setNodes(old => old.some(n => n.id === node.id) ? old : [...old, placeVisibleNode(node, old)]); last = node.id;
       } catch (e) { message.error(e instanceof Error ? `${file.name}：${e.message}` : '导入失败'); }
     } await saveStudioDocument(projectId); if (last) focusNode(last); } catch (e) { message.error(e instanceof Error ? e.message : '保存失败，请重试'); }
     finally { setReading(false); }
   };
-  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId } })), [project?.nodes, selected, uploadingImageId]);
+  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, onRename: renameNode } })), [project?.nodes, selected, uploadingImageId, renameNode]);
   const graphEdges = useMemo(() => flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })), [project?.connections, selectedEdges]);
   const changeNodes = useCallback((changes: NodeChange<StudioFlowNode>[]) => {
     setNodes(old => changeFlowNodes(old, changes));
@@ -308,11 +330,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         onConnect={c => {if(c.source&&c.target)connectReference(c.source,c.target);}}
         onNodeClick={(event,n)=>{
           if(referencePick){if(referenceOrigin.current)setSelected(new Set([referenceOrigin.current]));window.dispatchEvent(new CustomEvent('studio-reference-selected',{detail:{nodeId:n.id}}));return;}
-          if(hand||event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button,a,input,textarea,audio,video,.react-flow__handle'))return;
+          if(event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button,a,input,textarea,audio,video,.react-flow__handle'))return;
           const node=n.data.document;if(node.type==='group')return;
           const action=studioNodeCommand(node);if(action)dispatchStudioCommand(action,n.id);
         }}
-        onNodeDoubleClick={(_, n) => { if (n.data.document.type === 'group') { checkpoint(); setRenameId(n.id); } else dispatchStudioCommand(studioNodeCommand(n.data.document,true)||'edit-text', n.id); }}
+        onNodeDoubleClick={(event, n) => { if ((event.target as HTMLElement).closest('.studio-flow-title,.studio-flow-title-input')) return; if (n.data.document.type === 'group') { checkpoint(); setRenameId(n.id); } else dispatchStudioCommand(studioNodeCommand(n.data.document,true)||'edit-text', n.id); }}
         onNodeContextMenu={(event, n) => { event.preventDefault(); if (!selected.has(n.id)) setSelected(new Set([n.id])); setContext({ x: event.clientX, y: event.clientY, nodeId: n.id }); }}
         onPaneClick={event => { if(event.detail===2) {setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY});} else {setContext(undefined);if(!referencePick)setTextId(undefined);window.dispatchEvent(new Event('studio-dismiss-composer'));} }}
         onPaneContextMenu={event => { event.preventDefault();setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY}); }}
@@ -327,8 +349,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       </ReactFlow>
       {pendingConnection&&project.nodes.find(n=>n.id===pendingConnection.sourceId)&&<StudioConnectionCreateMenu pending={pendingConnection} source={project.nodes.find(n=>n.id===pendingConnection.sourceId)!} viewport={viewport} onClose={closeConnectionMenu} onCreate={createReference}/>}
       <nav className="studio-flow-tools" aria-label="画布工具">
-        <button aria-label="选择工具" aria-pressed={!hand} onClick={() => setHand(false)}><MousePointer2 size={19}/><span className="studio-flow-tool-label" aria-hidden>选择工具</span></button>
-        <button aria-label="拖动画布" aria-pressed={hand} onClick={() => setHand(v => !v)}><Hand size={19}/><span className="studio-flow-tool-label" aria-hidden>拖动画布</span></button><hr/>
+        <button aria-label="拖动画布" aria-pressed={hand} onClick={() => setHandTool(true)}><Hand size={19}/><span className="studio-flow-tool-label" aria-hidden>拖动画布</span></button>
+        <button aria-label="选择工具" aria-pressed={!hand} onClick={() => setHandTool(false)}><MousePointer2 size={19}/><span className="studio-flow-tool-label" aria-hidden>选择工具</span></button><hr/>
         <button aria-label="添加文字" onClick={() => add(CanvasNodeType.Text)}><FileText size={19}/><span className="studio-flow-tool-label" aria-hidden>添加文字</span></button>
         <button aria-label="添加图片节点" onClick={() => add(CanvasNodeType.Image)}><ImagePlus size={19}/><span className="studio-flow-tool-label" aria-hidden>添加图片节点</span></button>
         <button aria-label="添加视频节点" onClick={() => add(CanvasNodeType.Video)}><Video size={19}/><span className="studio-flow-tool-label" aria-hidden>添加视频节点</span></button>
@@ -339,7 +361,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         <button aria-label="复制选中节点" disabled={!selected.size} onClick={() => paste(true)}><Copy size={19}/><span className="studio-flow-tool-label" aria-hidden>复制选中节点</span></button>
         <button aria-label="删除选中节点" disabled={!selected.size && !selectedEdges.size} onClick={remove}><Trash2 size={19}/><span className="studio-flow-tool-label" aria-hidden>删除选中节点</span></button>
         <StudioAttachmentPicker projectId={projectId} variant="canvas" locked={reading} reading={reading} onFiles={files => void importFiles(files)} onAssets={async assets => {
-          checkpoint(); let last: string | undefined; for (const asset of assets) { const n = attachmentNode(savedAssetPayload(asset), current().nodes); setNodes(old => old.some(x => x.id === n.id) ? old : [...old, n]); last = n.id; }
+          checkpoint(); let last: string | undefined; for (const asset of assets) { const n = attachmentNode(savedAssetPayload(asset), current().nodes); setNodes(old => old.some(x => x.id === n.id) ? old : [...old, placeVisibleNode(n, old)]); last = n.id; }
           await saveStudioDocument(projectId); if (last) focusNode(last);
         }}/>
       </nav>
@@ -353,7 +375,16 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       {find && <aside className="studio-flow-find"><header><strong>查找节点</strong><button title="关闭节点查找" aria-label="关闭节点查找" onClick={() => setFind(false)}><X size={16}/></button></header><Input autoFocus aria-label="搜索画布节点" placeholder="搜索名称或提示词" value={query} onChange={e => setQuery(e.target.value)}/>{project.nodes.filter(n => `${n.title} ${n.metadata?.prompt || ''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(n => <button key={n.id} onClick={() => focusNode(n.id)}>{n.title}</button>)}</aside>}
     </div>
     <StudioWorkspace projectId={projectId} nodes={project.nodes} connections={project.connections} selectedNodeIds={selected} setNodes={setNodes} setConnections={setConnections}
-      onFocusNode={focusNode} onClosePanel={closePanel} onRestorePanel={id=>setSelected(new Set([id]))}/>
+      onFocusNode={focusNode} onClosePanel={closePanel} onRestorePanel={id=>setSelected(new Set([id]))}
+      textEditingNodeId={text?.id} renderTextEditor={actions => <>
+        <StudioFloatingPanel title="编辑文字" anchorId={textId} open={!!text&&!textExpanded} className="studio-plain-text-editor" footer={<><Button onClick={()=>setTextExpanded(true)}>展开编辑</Button><Button type="primary" onClick={() => setTextId(undefined)}>完成</Button></>} onClose={() => setTextId(undefined)}>
+          {actions}
+          <Input.TextArea aria-label="节点文字" rows={5} value={text?.metadata?.content || ''} onChange={e => setNodes(old => old.map(n => n.id === textId ? { ...n, metadata: { ...n.metadata, content: e.target.value } } : n))}/>
+        </StudioFloatingPanel>
+        <Modal title="展开文字编辑" open={!!text&&textExpanded} width={960} onCancel={()=>setTextExpanded(false)} footer={<Button type="primary" onClick={()=>setTextExpanded(false)}>收起编辑</Button>} getContainer={modalContainer}>
+          <Input.TextArea aria-label="展开节点文字" rows={18} value={text?.metadata?.content||''} onChange={e=>setNodes(old=>old.map(n=>n.id===textId?{...n,metadata:{...n.metadata,content:e.target.value}}:n))}/>
+        </Modal>
+      </>}/>
     <StudioFlowImageTools nodes={project.nodes} onInsert={async (nodes, connections) => {
       checkpoint(); const p = current(), placed=[...p.nodes];
       // Crop, split and redraw share the same collision avoidance as other automatic additions.
@@ -363,14 +394,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       // The inserted result survives a save failure; closing the editor prevents re-uploading it on retry.
       try { await saveStudioDocument(projectId); } catch (e) { message.error(e instanceof Error ? `${e.message}；编辑结果已保留，可按 Ctrl/Cmd+S 重试保存` : '编辑结果已保留，请重试保存画布'); }
     }}/>
-    <Modal title="重命名节点" open={!!named} onCancel={() => setRenameId(undefined)} footer={<Button type="primary" onClick={() => setRenameId(undefined)}>完成</Button>} getContainer={() => document.querySelector<HTMLElement>('.ip-surface') || document.body}>
+    <Modal title="重命名节点" open={!!named} onCancel={() => setRenameId(undefined)} footer={<Button type="primary" onClick={() => setRenameId(undefined)}>完成</Button>} getContainer={modalContainer}>
       <Input aria-label="节点名称" value={named?.title || ''} maxLength={128} onChange={e => setNodes(old => old.map(n => n.id === renameId ? { ...n, title: e.target.value } : n))}/>
-    </Modal>
-    <StudioFloatingPanel title="编辑文字" anchorId={textId} open={!!text&&!textExpanded} footer={<><Button onClick={()=>setTextExpanded(true)}>展开编辑</Button><Button type="primary" onClick={() => setTextId(undefined)}>完成</Button></>} onClose={() => setTextId(undefined)}>
-      <Input.TextArea aria-label="节点文字" rows={5} value={text?.metadata?.content || ''} onChange={e => setNodes(old => old.map(n => n.id === textId ? { ...n, metadata: { ...n.metadata, content: e.target.value } } : n))}/>
-    </StudioFloatingPanel>
-    <Modal title="展开文字编辑" open={!!text&&textExpanded} width={960} onCancel={()=>setTextExpanded(false)} footer={<Button type="primary" onClick={()=>setTextExpanded(false)}>收起编辑</Button>} getContainer={()=>document.querySelector<HTMLElement>('.ip-surface')||document.body}>
-      <Input.TextArea aria-label="展开节点文字" rows={18} value={text?.metadata?.content||''} onChange={e=>setNodes(old=>old.map(n=>n.id===textId?{...n,metadata:{...n.metadata,content:e.target.value}}:n))}/>
     </Modal>
   </div></StudioFloatingContext.Provider>;
 }

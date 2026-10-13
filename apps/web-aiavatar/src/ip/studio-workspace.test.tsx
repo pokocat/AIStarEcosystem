@@ -46,10 +46,20 @@ const request={clientRequestId:'original-key',nodeId:'v',operation:'video' as co
 const done={id:'accepted',projectId:'p',nodeId:'v',kind:'studio-video',status:'done',pct:100,cost:320,inputs:request,output:{videoCandidates:[{index:0,jobId:'job',status:'done',pct:100,durationSec:8,storageKey:'new.mp4',url:'/new.mp4'}]},createdAt:''};
 let snapshot:CanvasNodeData[]=[];
 let connectionSnapshot:CanvasConnection[]=[];
-function Host({initial=node,initialNodes,initialConnections=[]}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}}/>;}
+function Host({initial=node,initialNodes,initialConnections=[],textEditingNodeId,renderTextEditor}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}} textEditingNodeId={textEditingNodeId} renderTextEditor={renderTextEditor}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 afterEach(cleanup);
 beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+test('plain text editing keeps extraction and body in one panel without a second context toolbar',async()=>{
+ const text={...node,type:'text' as never,title:'文字',metadata:{content:'原文',status:'idle' as const}};
+ render(<Host initial={text} textEditingNodeId="v" renderTextEditor={(actions:any)=><section role="dialog" aria-label="编辑文字">{actions}<textarea aria-label="节点文字" defaultValue="原文"/></section>}/>);
+ await waitFor(()=>expect(api.capabilities).toHaveBeenCalled());
+ const panel=screen.getByRole('dialog',{name:'编辑文字'});
+ expect(within(panel).getByRole('button',{name:'提取资产'})).toBeDefined();
+ expect(within(panel).getByRole('textbox',{name:'节点文字'})).toBeDefined();
+ expect(screen.getAllByRole('dialog')).toHaveLength(1);
+ expect(api.submit).not.toHaveBeenCalled();
+});
 test('image composer targets its own upload slot and retains the draft while a picker can be cancelled',async()=>{
  const image={...node,type:'image' as never,title:'商品参考',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
  render(<Host initial={image}/>);

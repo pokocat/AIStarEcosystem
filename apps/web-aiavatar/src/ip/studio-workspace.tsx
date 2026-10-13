@@ -1,6 +1,6 @@
 "use client";
 import { StudioFloatingPanel } from "./studio-floating-panel";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
 import { inferMediaRatio } from "@/canvas/lib/media-size";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
@@ -59,11 +59,12 @@ import { updateStudioStoryboardShot } from '@/canvas-bridge/studio-storyboard';
 
 type Props = { projectId: string; nodes: CanvasNodeData[]; connections:CanvasConnection[]; selectedNodeIds: Set<string>;
   setNodes: Dispatch<SetStateAction<CanvasNodeData[]>>; setConnections: Dispatch<SetStateAction<CanvasConnection[]>>;
-  onFocusNode: (id: string) => void; onClosePanel: () => void; onRestorePanel: (id:string) => void; activeComposerId?:string; referencePicking?:boolean };
+  onFocusNode: (id: string) => void; onClosePanel: () => void; onRestorePanel: (id:string) => void; activeComposerId?:string; referencePicking?:boolean;
+  textEditingNodeId?:string; renderTextEditor?:(actions:ReactNode)=>ReactNode };
 const containers = () => document.querySelector<HTMLElement>(".ip-surface") || document.body;
 const labels = { text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
 
-export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds, setNodes, setConnections, onFocusNode, onClosePanel, onRestorePanel, activeComposerId, referencePicking }: Props) {
+export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds, setNodes, setConnections, onFocusNode, onClosePanel, onRestorePanel, activeComposerId, referencePicking, textEditingNodeId, renderTextEditor }: Props) {
   const { message } = App.useApp();
   const [missingPlanRefs,setMissingPlanRefs]=useState<string[]>([]);
   const [workSaving,setWorkSaving]=useState(false);
@@ -919,7 +920,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {capabilityError && <div className="studio-error-note" role="alert">{capabilityError}<button type="button" onClick={loadCapabilities}>重新加载</button></div>}
     {!nodes.length&&mode==="canvas"&&<section className="studio-start" aria-label="开始创作"><h2>从一个 IP，开始创作</h2><p>先打造形象，也可以直接写剧本或引用已有 IP。</p>
       <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>打造 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>制作 IP 短视频</button></div></section>}
-    {!director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} above width={660}>{contextualActions}</StudioFloatingPanel>}
+    {/* Plain text actions and editing share one screen-space surface. */}
+    {textEditingNodeId && mode==="canvas" ? renderTextEditor?.(selected?.id===textEditingNodeId?contextualActions:null)
+      : !director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} above width={660}>{contextualActions}</StudioFloatingPanel>}
     {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
       <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
       {mode==="work"&&!!episodeNumbers.length&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}
