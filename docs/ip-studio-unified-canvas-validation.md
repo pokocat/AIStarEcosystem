@@ -870,3 +870,5 @@ Chrome 在隔离画布 `IPP-12d41489` 的 `brief` 节点提交一次“为这段
 36 项现有助手回归通过。实际组件桌面发送按钮宽 109px，三项操作均为 40px 高且 top=701；390px 下三项仍同排，320px 下两项引用工具同排、发送另起一行，两种窄屏均无横向溢出。独立快捷键段落数量为 0。只编辑本地样例草稿，未点击发送或调用模型；临时样例路由已移除。截图及日志保存在 `.studio-e2e/assistant-send-button/`。
 
 提交 a14e924258d96001ab9efc13c2ef7d2b6b29d069 已推送并发布为 20261013-assistant-send-a14e9242，仅更新 web-aiavatar。全部提交前编译门、生产构建和发布 verify 通过；制品 BUILD_ID OAGMyyVevDHiuZMXkHWnV 与线上一致，包 SHA256 3831076e069cdd8a6ede2083717023365a4fb60d0772e389046eec053755fffa，服务 active、NRestarts=0。正式画布 IPP-e0e7afa6 打开原对话，发送按钮没有 AI 图标，⌘ Enter 位于按钮内，独立提示段落为 0；三项按钮 top=701、height=40。输入临时草稿后按钮可用，清空后禁用，没有点击发送，原 4 节点/2 连线保持不变。
+
+随后并行对话历史增量已发布 20261013-assistant-history-tasks-9dc80535；最终现场 BUILD_ID WtBQ9btgREJhW1e_x9bxO，服务 active。9dc80535 包含本次代码提交，发送文案、键帽和移除独立提示的代码均保留，未回滚该增量。正常可用按钮文字颜色 rgb(32,44,66)、背景 rgb(231,213,141)；截图 online-send-button.png 保存的是稳定状态。
