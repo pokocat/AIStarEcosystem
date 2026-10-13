@@ -171,7 +171,8 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 | 文档 | 用途 |
 |---|---|
-| [`TODO.md`](../TODO.md) | 已定位但未修的问题清单 + **v0.6 候选**（engine-pricing 落表 / WebSocket / OSS 上传 / 配置中心 / 角色拆分 等）+ **三子产品 web app 待办**（CG-* / M-* / D-* / C-*） |
+| [`TODO.md`](../TODO.md) | 当前未完成问题与候选计划；按 Studio、已定位问题、早期候选组织，重复条目已归并（last-reviewed 2026-10-13） |
+| [TODO 历史记录 · 2026-10-13](archive/todo-2026-10-13.md) | 整理前完整快照、已完成记录、过时状态核对与重复条目去向；当前排期以根目录 TODO 为准（last-reviewed 2026-10-13） |
 | [`docs/MATERIAL_OPS_AI_TEXT_PLAN.md`](MATERIAL_OPS_AI_TEXT_PLAN.md) | **已落地（v0.40）**：素材运营文本三件（脚本生成/卖点/变量抽取）接真 LLM —— 复用 `AiModelInvocationService.invokeChat`，prompt 建 `prompt_template` 表配置化；不引 agent 框架（last-reviewed 2026-05-29） |
 
 **v0.10 候选**（mixcut 真素材化后的下一步）：
@@ -197,7 +198,7 @@ sudo yum install -y ffmpeg ffmpeg-devel
 | 看 AI 明星带货某功能怎么实现 | [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md)（找对应版本节）→ `apps/server/src/main/java/com/aistareco/aep/service/`（具体 service） |
 | 看混剪专区怎么实现 | [`apps/web-celebrity/PRODUCT.md` §5](../apps/web-celebrity/PRODUCT.md) → `apps/server/src/main/java/com/aistareco/aep/service/mixcut/` |
 | 部署到生产 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) → [`infra/README.md`](../infra/README.md)；使用 `build-release.sh` / `deploy.sh` / GitHub Actions artifact 部署链路 |
-| 修 admin auth/403 问题 | [`TODO.md`](../TODO.md) 第一节 |
+| 修 admin auth/403 问题 | [`TODO.md`](../TODO.md) 的「安全 / Auth」待办；历史根因与修复过程见 [TODO 历史记录](archive/todo-2026-10-13.md) |
 | 加新 LLM provider | `apps/server/.../service/AiModelInvocationService.java`（v0.5 仅 OPENAI/OPENAI_COMPATIBLE） |
 | 配置 / 上下架 / 调价 | 进 admin（端口 3003），见 [`apps/admin/README.md`](../apps/admin/README.md) 当前可用菜单段 |
 | 加新子产品（第 4 个 web-X） | 先看现有三个 PRODUCT.md（music / drama / celebrity）取经；走 pnpm workspace + Next 16 + Tailwind v4 模板 |
