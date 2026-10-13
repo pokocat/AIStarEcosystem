@@ -121,3 +121,20 @@
 - 私有验收模板 `IPD-7c82eb4ddc2c47e582ec` 实际保存 v1，修改图片指令后发布 v2，两次 API 200、相同模板 ID、不同版本 ID；「我的模板」显示 v2。发布文档仅含两个配方节点，无私人助手历史。未调用付费媒体生成。
 
 本次积分始终 **295**，新增消耗 **0**。忽略目录 `.studio-e2e/material-library-official-publish/` 保存脱敏 `acceptance.json`、桌面/手机两个标签截图、官方入口前后对照、版本目标与 v2 保存截图；无签名 URL 或凭据。测试日志 `/tmp/material-library-final-tests.log`、`/tmp/material-library-backend-tests.log`，构建/部署日志 `/tmp/material-library-{final-,}{build,deploy}.log`。
+
+
+## 2026-10-13 · 完整画布模板，简化保存
+
+用户纠正模板意图：直接展示整张画布和已有成品。旧发布器保存生成配方，只保留配置的输入/步骤，还会清空待填文字与媒体，导致用户看到少量节点。新「保存为模板」与「存为官方内容」共用完整画布保存表单，只填名称、可选说明、可见范围和保存位置；不再配置输入、生成步骤、模型或费用。更新已有模板在后台自动追加不可变版本，界面无需先理解版本规则。旧配方读取与执行仍兼容。
+
+完整快照保留节点、尺寸位置、视图、连线、文字正文、提示词和成品图片/视频；素材复制到模板自己的存储，签名 URL 按读取重新生成。个人模板使用本人存储空间，官方模板使用平台模板空间。失败/排队候选、助手历史和原任务身份不进入模板。先校验所有素材归属再复制，任一复制失败则报错并清理本次副本，原画布及旧版本不变。保存/预览/复制没有模型调用和积分结算。
+
+- 前端代码 `f6d602c4`，release `20261013-canvas-snapshot-f6d602c4`；后端最终代码 `f23a5fa5`，release `20261013-canvas-snapshot-media-final`。已推送 `codex/unified-ip-studio`，只发布 server/web-aiavatar，排除另一会话的视频端点修改。
+- 83 个前端文件 / 682 项测试全通过；模板发布、存储清理、管理、解析、个人副本等 50 项后端测试通过，末次过滤失败候选后重跑 15 项发布测试通过。不是全后端套件。全 workspace/admin 类型、后端离线 compile、API 契约与生产构建通过；其它产品线已有契约警告未扩展处理。
+- 两次 deploy verify ALL GREEN。最终后端线上/制品 JAR SHA256 一致：`ee9210f11287aa78d5773de2298344a481f8ea4a38ee09a3fea820b3592e0a3a`；前端线上/本地 BUILD_ID 一致：`ZVKAIPZj_GHlJigf4R7V5`，两服务 active。部署期间手机验收遇到一次服务重启 502，部署结束通过产品「重新加载」恢复，最终请求成功。
+- 原画布 `IPP-d455a776` 有 10 节点、9 连线、6 成品图片、3 成品视频。从实际「存为官方内容」选择更新原模板 `IPD-db64292d22174af9ba74`，保存为完整 v3 `IPV-35fb7a4da9664541961c`。没有创建另一张重复官方卡。
+- 目录显示官方 10 个节点；只读预览真实加载全部 6 图片与 3 视频，视频均 readyState 4 / 5.175 秒 / 无错误。实际通过原生播放器按键播放并读到 ended=true/currentTime=5.175；节点只读详情展示保留的提示词。
+- 发布响应与原文档逐节点比对：角色正文、提示词、位置保持一致，9 连线保留，成品媒体指向独立平台副本；原失败视频候选不再出现。
+- 实际「存为个人副本」建 `IPP-60d7d82b`，刷新后 10 节点 / 9 连线 / 6 已加载图片 / 3 可播视频仍在；正文、媒体 key 与模板一致，节点 ID 全部独立，副本为普通可编辑节点。
+- 390×844 手机保存表单在页面内（left=8/right=382/bottom=610.88，scrollWidth=clientWidth=374）；验收后恢复桌面视口。积分始终 295，本轮新增消耗 0。
+- 截图与脱敏结果在 `.studio-e2e/canvas-template-snapshot/`：`simple-save-desktop.png`、`simple-save-mobile.png`、`official-full-preview.png`、`complete-personal-copy.png`、`acceptance.json`。不存签名地址或凭据。
