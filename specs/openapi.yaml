@@ -3663,13 +3663,13 @@ components:
         videoModel: { type: string, description: 平台当前 VIDEO_GENERATION 候选端点 id }
     StudioTemplatePublishRequest:
       type: object
-      required: [name, visibility, recipe]
+      required: [name, visibility]
       properties:
         templateId: { type: string }
         name: { type: string, maxLength: 128 }
         summary: { type: string, maxLength: 1024 }
         visibility: { type: string, enum: [personal, official] }
-        recipe: { $ref: '#/components/schemas/StudioTemplateRecipe' }
+        recipe: { $ref: '#/components/schemas/StudioTemplateRecipe', description: 可选；不传时保存完整画布、正文、连线和素材快照 }
     StudioTemplatePlan:
       type: object
       required: [versionId, version, totalCost, imageCount, steps]

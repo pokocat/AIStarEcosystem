@@ -316,6 +316,7 @@ test('a lost script rewrite response confirms its successor request instead of c
  await waitFor(()=>expect(api.error).toHaveBeenCalledWith('script response lost'));
  const original=api.submit.mock.calls[0][1];expect(original.nodeId).not.toBe('v');expect(snapshot).toHaveLength(2);
  expect(screen.queryByRole('button',{name:'创作剧本',exact:true})).toBeNull();
+ await waitFor(()=>expect(screen.getAllByRole('button',{name:'确认原任务'})[0].hasAttribute('disabled')).toBe(false));
  fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);
  await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1]).toEqual(original);
  expect(snapshot).toHaveLength(2);expect(snapshot[0].metadata?.studio?.script).toEqual(script);

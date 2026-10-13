@@ -17,22 +17,36 @@ vi.mock('antd',()=>({
  Alert:({title}:any)=><p>{title}</p>,
 }));
 beforeEach(()=>{
- vi.resetAllMocks();api.list.mockResolvedValue([]);api.publish.mockResolvedValue({templateId:'template',version:1});
- api.read.mockResolvedValue({name:'角色创作',doc:{nodes:[{id:'brief',type:'text',title:'角色描述'},{id:'ref',type:'image',title:'人物参考'},{id:'output',type:'image',title:'形象图',metadata:{prompt:'根据 {{input1}} 生成形象'}}],connections:[{fromNodeId:'brief',toNodeId:'output'},{fromNodeId:'ref',toNodeId:'output'}]}});
+ vi.resetAllMocks();api.list.mockResolvedValue([]);
+ const doc={nodes:[{id:'brief',type:'text',title:'角色描述',metadata:{content:'原角色正文'}},{id:'ref',type:'image',title:'人物参考',metadata:{storageKey:'reference'}},{id:'output',type:'image',title:'形象图',metadata:{storageKey:'output'}},{id:'video',type:'video',title:'场景视频',metadata:{storageKey:'video'}}],connections:[{fromNodeId:'brief',toNodeId:'output'},{fromNodeId:'ref',toNodeId:'output'}]};
+ api.read.mockResolvedValue({name:'完整角色画布',doc});api.publish.mockResolvedValue({templateId:'template',version:1,doc});
 });
 afterEach(cleanup);
-test('publishing retains text variables but only auto-binds image references from canvas edges',async()=>{
+test('saving a full canvas requires no input or step configuration and sends no recipe',async()=>{
  render(<StudioTemplatePublish projectId="project" superAdmin saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
- await screen.findByDisplayValue('角色创作');
- fireEvent.change(screen.getByRole('combobox',{name:'添加模板输入'}),{target:{value:'brief'}});
- fireEvent.change(screen.getByRole('combobox',{name:'添加模板输入'}),{target:{value:'ref'}});
- fireEvent.change(screen.getByRole('combobox',{name:'添加模板步骤'}),{target:{value:'output'}});
- fireEvent.click(screen.getByRole('button',{name:'保存个人模板'}));
- await waitFor(()=>expect(api.publish).toHaveBeenCalledWith('project',expect.objectContaining({recipe:expect.objectContaining({steps:[expect.objectContaining({references:['input2'],prompt:'根据 {{input1}} 生成形象'})]})})));
- await screen.findByText(/已保存个人模板 v1/);
+ await screen.findByDisplayValue('完整角色画布');
+ expect(screen.queryByRole('combobox',{name:'添加模板输入'})).toBeNull();
+ expect(screen.queryByRole('combobox',{name:'添加模板步骤'})).toBeNull();
+ expect(screen.getByText('4 个节点 · 2 张图片 · 1 个视频')).toBeDefined();
+ fireEvent.click(screen.getByRole('button',{name:'保存完整画布'}));
+ await waitFor(()=>expect(api.publish).toHaveBeenCalledWith('project',{templateId:undefined,name:'完整角色画布',summary:'',visibility:'personal'}));
+ await screen.findByText(/已保存完整画布：4 个节点/);
 });
-test('the official-content handoff opens with the official visibility selected',async()=>{
+test('official saving opens directly with all-user visibility',async()=>{
  render(<StudioTemplatePublish projectId="project" superAdmin initialVisibility="official" saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
- await screen.findByDisplayValue('角色创作');expect((screen.getByRole('combobox',{name:/可见范围/}) as HTMLSelectElement).value).toBe('official');
- expect(screen.getByRole('button',{name:'发布官方模板'})).toBeDefined();
+ await screen.findByDisplayValue('完整角色画布');expect((screen.getByRole('combobox',{name:/谁可以看到/}) as HTMLSelectElement).value).toBe('official');
+ fireEvent.click(screen.getByRole('button',{name:'保存完整画布'}));
+ await waitFor(()=>expect(api.publish).toHaveBeenCalledWith('project',expect.objectContaining({visibility:'official'})));
+});
+test('saving a selected template creates a new full-canvas version and prevents duplicate submissions',async()=>{
+ api.list.mockResolvedValue([{id:'existing',versionId:'v1',mine:true,visibility:'personal',name:'原模板'}]);
+ let resolve:(v:any)=>void=()=>{};api.publish.mockImplementation(()=>new Promise(r=>{resolve=r;}));
+ render(<StudioTemplatePublish projectId="project" superAdmin saveNow={vi.fn().mockResolvedValue({})} onClose={vi.fn()}/>);
+ await screen.findByDisplayValue('完整角色画布');
+ fireEvent.change(screen.getByRole('combobox',{name:/保存位置/}),{target:{value:'existing'}});
+ const save=screen.getByRole('button',{name:'保存完整画布'});fireEvent.click(save);fireEvent.click(save);
+ await waitFor(()=>expect(api.publish).toHaveBeenCalledOnce());
+ expect(api.publish).toHaveBeenCalledWith('project',expect.objectContaining({templateId:'existing'}));
+ expect((screen.getByRole('button',{name:'取消'}) as HTMLButtonElement).disabled).toBe(true);
+ resolve({templateId:'existing',doc:{nodes:[{id:'n'}]}});await screen.findByText(/已保存完整画布：1 个节点/);
 });

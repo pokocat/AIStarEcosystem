@@ -52,7 +52,8 @@ export interface StudioTemplatePublishRequest {
   name: string;
   summary?: string;
   visibility: 'personal' | 'official';
-  recipe: StudioTemplateRecipe;
+  /** Omit to save the complete canvas and its media. Existing recipes remain readable. */
+  recipe?: StudioTemplateRecipe;
 }
 export interface StudioTemplateValue {
   text?: string;

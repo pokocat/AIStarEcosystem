@@ -102,6 +102,66 @@ public class IpDemoTemplateService {
         }
     }
 
+    /** Complete canvas publication; each immutable version owns independent media copies. */
+    public ObjectNode snapshotForTemplate(String owner, String versionId, boolean official, JsonNode source) {
+        ObjectNode doc = (ObjectNode) source.deepCopy();
+        removeStudioExecutionNodes(doc);
+        preparePublishedCharacters(doc);
+        Set<String> keys = new LinkedHashSet<>();
+        for (JsonNode node : IpDocs.nodes(doc)) {
+            ObjectNode metadata = node.path("metadata") instanceof ObjectNode original ? original : om.createObjectNode();
+            stripStudioExecution(metadata);
+            ObjectNode clean = om.createObjectNode();
+            for (String field : List.of("prompt", "storageKey", "images", "videos", "primaryImageId", "primaryVideoId",
+                    "size", "aspectRatio", "seconds", "model", "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight", "studio"))
+                if (metadata.has(field)) clean.set(field, metadata.get(field).deepCopy());
+            if (IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && metadata.has("content")) clean.set("content", metadata.get("content").deepCopy());
+            String key = IpDocs.text(clean, "storageKey");
+            if (key == null && !IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && !metadata.path("content").asText("").isBlank())
+                throw BusinessException.badRequest("STUDIO_TEMPLATE_ASSET_NOT_SAVED", "请先完成素材上传，再保存画布模板");
+            if (key != null) keys.add(key);
+            for (String field : CANDIDATE_FIELDS) {
+                ArrayNode candidates = om.createArrayNode();
+                for (JsonNode candidate : clean.path(field)) {
+                    ObjectNode retained = candidates.addObject();
+                    for (String attribute : List.of("id", "storageKey", "prompt", "width", "height", "durationMs", "createdAt"))
+                        if (candidate.has(attribute)) retained.set(attribute, candidate.get(attribute).deepCopy());
+                    String candidateKey = IpDocs.text(retained, "storageKey");
+                    if (candidateKey != null) keys.add(candidateKey);
+                }
+                if (clean.has(field)) clean.set(field, candidates);
+            }
+            clean.put("status", key == null ? "idle" : "success");
+            ((ObjectNode) node).set("metadata", clean);
+        }
+        if (keys.size() > MAX_ASSETS) throw BusinessException.badRequest("IP_DEMO_TOO_MANY_ASSETS", "画布素材最多 " + MAX_ASSETS + " 个");
+        // Validate all references before the first file write, including historical candidates.
+        keys.forEach(key -> projects.requireOwnedAssetKey(owner, key));
+        Map<String, String> copied = new HashMap<>();
+        try {
+            for (String key : keys) {
+                byte[] bytes = Files.readAllBytes(storage.openForRead(key));
+                String ext = extOf(key);
+                var file = storage.store(bytes, official ? CATEGORY_DEMO : IpProjectService.CATEGORY_SOURCE,
+                        official ? versionId : owner, ext, contentTypeOf(ext));
+                copied.put(key, file.key());
+            }
+            for (JsonNode node : IpDocs.nodes(doc)) {
+                ObjectNode metadata = (ObjectNode) node.path("metadata");
+                String key = IpDocs.text(metadata, "storageKey");
+                if (key != null) metadata.put("storageKey", copied.get(key));
+                for (String field : CANDIDATE_FIELDS) for (JsonNode candidate : metadata.path(field)) {
+                    String candidateKey = IpDocs.text(candidate, "storageKey");
+                    if (candidateKey != null) ((ObjectNode) candidate).put("storageKey", copied.get(candidateKey));
+                }
+            }
+            return doc;
+        } catch (Exception error) {
+            for (String key : copied.values()) try { storage.delete(key); } catch (Exception ignored) { log.warn("[ipstudio] snapshot cleanup failed version={}", versionId); }
+            throw BusinessException.badRequest("STUDIO_TEMPLATE_ASSET_COPY_FAILED", "画布素材未能完整保存，请重试；原画布不受影响");
+        }
+    }
+
     /**
      * 从项目建 / 更新一个示例。{@code demoId} 传已有 id 就是更新（素材重新复制一份，旧的留着不删 ——
      * 万一新的一版有问题，回滚只要把 doc 换回去）。

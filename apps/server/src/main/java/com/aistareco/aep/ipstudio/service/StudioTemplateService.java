@@ -41,11 +41,13 @@ public class StudioTemplateService {
     private final FileStorageService storage;
     private final EntityManager em;
     private final ObjectMapper mapper;
+    private final IpDemoTemplateService snapshots;
     public StudioTemplateService(IpDemoTemplateRepository templates,IpTemplateVersionRepository versions,
             IpProjectService projects,IpRunService images,AiModelInvocationService models,DapAvatarRepository avatars,
-            StudioIpAssetService assets,FileStorageService storage,EntityManager em,ObjectMapper mapper,StudioTemplateVideoService videos) {
+            StudioIpAssetService assets,FileStorageService storage,EntityManager em,ObjectMapper mapper,StudioTemplateVideoService videos,IpDemoTemplateService snapshots) {
         this.templates=templates;this.versions=versions;this.projects=projects;this.images=images;this.models=models;
         this.avatars=avatars;this.assets=assets;this.storage=storage;this.em=em;this.mapper=mapper;this.videos=videos;
+        this.snapshots=snapshots;
     }
 
     @Transactional
@@ -56,7 +58,8 @@ public class StudioTemplateService {
         if(!Set.of("personal","official").contains(req.visibility()==null?"":req.visibility()))invalid("请选择模板可见范围");
         var project=projects.requiredForUpdate(owner,projectId);
         JsonNode source=projects.readDoc(project);
-        Recipe recipe=validateRecipe(req.recipe(),source);
+        boolean fullCanvas=req.recipe()==null;
+        Recipe recipe=fullCanvas?new Recipe(List.of(),List.of()):validateRecipe(req.recipe(),source);
         IpDemoTemplate row;
         if(req.templateId()!=null && !req.templateId().isBlank()) {
             row=templates.findById(req.templateId()).orElseThrow(StudioTemplateService::notFound);
@@ -66,13 +69,15 @@ public class StudioTemplateService {
             if(!Objects.equals(row.getVisibility(),req.visibility()))invalid("可见范围不可改，请另存为新模板");
         } else row=IpDemoTemplate.builder().id(id("IPD-")).createdBy(owner).createdAt(Instant.now()).kind("template").visibility(req.visibility()).build();
         int number=versions.findByTemplateIdOrderByVersionDesc(row.getId()).stream().mapToInt(IpTemplateVersion::getVersion).max().orElse(0)+1;
-        ObjectNode clean=cleanDoc(source,recipe);
-        var release=IpTemplateVersion.builder().id(id("IPV-")).templateId(row.getId()).version(number)
+        String versionId=id("IPV-");
+        ObjectNode clean=fullCanvas?snapshots.snapshotForTemplate(owner,versionId,"official".equals(req.visibility()),source):cleanDoc(source,recipe);
+        var release=IpTemplateVersion.builder().id(versionId).templateId(row.getId()).version(number)
                 .name(req.name().trim()).summary(req.summary()==null?"":req.summary().trim()).recipeJson(write(recipe))
                 .docJson(write(clean)).createdAt(Instant.now()).build();
         versions.save(release);
         row.setName(release.getName());row.setSummary(release.getSummary());row.setDocJson(release.getDocJson());
-        row.setCoverKey(null);row.setCurrentVersionId(release.getId());row.setSourceProjectId(projectId);
+        String cover=null;for(var node:clean.path("nodes"))if("image".equals(node.path("type").asText())&&node.path("metadata").hasNonNull("storageKey")){cover=node.path("metadata").path("storageKey").asText();break;}
+        row.setCoverKey(cover);row.setCurrentVersionId(release.getId());row.setSourceProjectId(projectId);
         row.setUpdatedAt(Instant.now());templates.save(row);
         return view(row,release);
     }
@@ -296,7 +301,7 @@ public class StudioTemplateService {
     }
     private IpTemplateVersion version(String id) {return versions.findById(id).orElseThrow(StudioTemplateService::notFound);}
     private Recipe recipe(IpTemplateVersion release) {try{return mapper.readValue(release.getRecipeJson(),Recipe.class);}catch(Exception e){throw new IllegalStateException("Invalid published recipe",e);}}
-    private Version view(IpDemoTemplate row,IpTemplateVersion release) {return new Version(release.getId(),release.getTemplateId(),release.getVersion(),release.getName(),release.getSummary(),row.getVisibility(),recipe(release),parse(release.getDocJson()),release.getCreatedAt().toString());}
+    private Version view(IpDemoTemplate row,IpTemplateVersion release) {return new Version(release.getId(),release.getTemplateId(),release.getVersion(),release.getName(),release.getSummary(),row.getVisibility(),recipe(release),projects.resignDocAssetUrls(parse(release.getDocJson()),row.getCreatedBy()),release.getCreatedAt().toString());}
     private String write(Object value) {try{return mapper.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException(e);}}
     private JsonNode parse(String value) {try{return mapper.readTree(value);}catch(Exception e){throw new IllegalStateException(e);}}
     private static double clamp(double value,double min,double max){return Double.isFinite(value)?Math.max(min,Math.min(max,value)):min;}

@@ -33,7 +33,8 @@ class StudioTemplateServiceTest {
     @TempDir Path dir;
     final StudioTemplateVideoService videos=mock(StudioTemplateVideoService.class);
     @BeforeEach void setup() throws Exception {
-        service=new StudioTemplateService(templates,versions,projects,images,models,avatars,assets,storage,mock(EntityManager.class),om,videos);
+        service=new StudioTemplateService(templates,versions,projects,images,models,avatars,assets,storage,mock(EntityManager.class),om,videos,new IpDemoTemplateService(templates,projects,storage,om));
+        when(projects.resignDocAssetUrls(any(),anyString())).thenAnswer(i->i.getArgument(0));
         doc=(ObjectNode)om.readTree("{\"nodes\":[{\"id\":\"a\",\"type\":\"image\",\"title\":\"Private source\",\"metadata\":{\"storageKey\":\"author/private.jpg\",\"content\":\"https://secret-url\",\"studio\":{\"adoption\":{\"avatarId\":\"author-person\"}}}},{\"id\":\"b\",\"type\":\"image\",\"title\":\"main\",\"metadata\":{\"runId\":\"author-run\",\"videoTaskId\":\"task\",\"images\":[{\"storageKey\":\"private-history\"}],\"apiKey\":\"secret-key\"}},{\"id\":\"c\",\"type\":\"image\",\"title\":\"side\"},{\"id\":\"chat\",\"type\":\"text\",\"metadata\":{\"content\":\"private conversation\"}}],\"connections\":[{\"fromNodeId\":\"a\",\"toNodeId\":\"b\"},{\"fromNodeId\":\"b\",\"toNodeId\":\"c\"}]}");
         recipe=new Recipe(List.of(new Input("character","a","人物","character",true,null,null)),List.of(
             new Step("main","b","主形象","image","主形象指令",List.of("character"),"768x1024","main",true),
@@ -58,6 +59,40 @@ class StudioTemplateServiceTest {
     }
     IpProjectDto dto(IpProject p) throws Exception {return new IpProjectDto(p.getId(),p.getName(),p.getTemplateId(),"draft",null,null,null,null,null,p.getDocJson()==null?IpDocs.emptyDoc(om):om.readTree(p.getDocJson()),Map.of(),Map.of(),p.getTemplateVersionId());}
     Version publish(String id) {return service.publish("owner","source",new PublishRequest(id,"人物包","描述","personal",recipe));}
+    void fullCanvasSource() throws Exception {
+        doc=(ObjectNode)om.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"title\":\"描述\",\"position\":{\"x\":12,\"y\":34},\"metadata\":{\"content\":\"完整角色正文\",\"apiKey\":\"private-key\"}},{\"id\":\"image\",\"type\":\"image\",\"metadata\":{\"storageKey\":\"own/image.png\",\"content\":\"signed-source\",\"prompt\":\"角色图指令\",\"images\":[{\"id\":\"old\",\"storageKey\":\"own/old.png\",\"content\":\"signed-history\",\"runId\":\"private-run\"}]}},{\"id\":\"video\",\"type\":\"video\",\"metadata\":{\"storageKey\":\"own/video.mp4\",\"content\":\"signed-video\",\"videoTaskId\":\"private-task\"}},{\"id\":\"note\",\"type\":\"text\",\"metadata\":{\"content\":\"说明文字也保留\"}},{\"id\":\"chat\",\"type\":\"text\",\"metadata\":{\"studio\":{\"kind\":\"assistant\"}}}],\"connections\":[{\"id\":\"edge\",\"fromNodeId\":\"text\",\"toNodeId\":\"image\"},{\"fromNodeId\":\"image\",\"toNodeId\":\"video\"},{\"fromNodeId\":\"chat\",\"toNodeId\":\"text\"}],\"assistantConversations\":[{\"private\":true}],\"viewport\":{\"x\":1,\"y\":2,\"k\":0.8}}");
+        author.setDocJson(doc.toString());
+        when(storage.store(any(byte[].class),anyString(),anyString(),anyString(),anyString())).thenAnswer(i->new FileStorageService.StoredFile(i.<String>getArgument(1).replace('/','_')+"/"+i.getArgument(2)+"/"+UUID.randomUUID()+"."+i.getArgument(3),null,null,null,10,"image/png"));
+    }
+    @Test void fullCanvasPublicationPreservesAllAuthoredNodesTextMediaAndEdgesWithoutARecipe() throws Exception {
+        fullCanvasSource();var v=service.publish("owner","source",new PublishRequest(null,"完整画布","","official",null));
+        assertEquals(4,v.doc().path("nodes").size());assertEquals(2,v.doc().path("connections").size());assertEquals("完整角色正文",IpDocs.node(v.doc(),"text").path("metadata").path("content").asText());
+        assertEquals(34,IpDocs.node(v.doc(),"text").path("position").path("y").asInt());assertEquals(0.8,v.doc().path("viewport").path("k").asDouble());
+        assertTrue(IpDocs.node(v.doc(),"image").path("metadata").path("storageKey").asText().startsWith("ipstudio_demo/"+v.id()+"/"));
+        assertTrue(IpDocs.node(v.doc(),"video").path("metadata").path("storageKey").asText().endsWith(".mp4"));
+        String persisted=releases.get(v.id()).getDocJson();for(String privateValue:List.of("own/","signed-","private-key","private-run","private-task","assistantConversations"))assertFalse(persisted.contains(privateValue),privateValue);
+        assertTrue(v.recipe().steps().isEmpty());assertTrue(v.recipe().inputs().isEmpty());verifyNoInteractions(images,models,videos);
+        assertEquals(5,doc.path("nodes").size());assertTrue(doc.has("assistantConversations"));
+    }
+    @Test void fullCanvasUpdatesKeepPriorMediaAndPersonalCopiesRemainOwnerScoped() throws Exception {
+        fullCanvasSource();var first=service.publish("owner","source",new PublishRequest(null,"完整画布","","personal",null));String prior=releases.get(first.id()).getDocJson();
+        var next=service.publish("owner","source",new PublishRequest(first.templateId(),"完整画布","","personal",null));
+        assertEquals(2,next.version());assertEquals(prior,releases.get(first.id()).getDocJson());
+        String key=IpDocs.node(next.doc(),"image").path("metadata").path("storageKey").asText();assertTrue(key.startsWith("ipstudio_source/owner/"));
+        assertNotEquals(key,IpDocs.node(first.doc(),"image").path("metadata").path("storageKey").asText());
+        assertThrows(BusinessException.class,()->service.read("other",next.id()));verify(storage,never()).delete(anyString());
+    }
+    @Test void failedFullCanvasMediaCopyDoesNotPublishAPartialVersionAndCleansItsOwnCopies() throws Exception {
+        fullCanvasSource();when(storage.openForRead("own/video.mp4")).thenThrow(new IllegalStateException("media unavailable"));
+        var error=assertThrows(BusinessException.class,()->service.publish("owner","source",new PublishRequest(null,"完整画布","","official",null)));
+        assertEquals("STUDIO_TEMPLATE_ASSET_COPY_FAILED",error.getCode());verify(versions,never()).save(any());verify(templates,never()).save(any());
+        verify(storage,atLeastOnce()).delete(startsWith("ipstudio_demo/"));assertEquals("own/video.mp4",IpDocs.node(doc,"video").path("metadata").path("storageKey").asText());
+    }
+    @Test void foreignCanvasMediaFailsBeforeAnyFileCopy() throws Exception {
+        fullCanvasSource();((ObjectNode)IpDocs.node(doc,"video").path("metadata")).put("storageKey","foreign/video.mp4");author.setDocJson(doc.toString());
+        assertEquals("IP_ASSET_KEY_INVALID",assertThrows(BusinessException.class,()->service.publish("owner","source",new PublishRequest(null,"完整画布","","official",null))).getCode());
+        verify(storage,never()).store(any(byte[].class),anyString(),anyString(),anyString(),anyString());verify(versions,never()).save(any());
+    }
     UseRequest use(String id,String key) {return new UseRequest("mine",id,Map.of("character",new Value(null,new Reference(null,null,null,key,"character",null))),"live-image");}
 
     @Test void sanitizedReleaseCannotCarryMediaIdentityRunsOrChats() {
