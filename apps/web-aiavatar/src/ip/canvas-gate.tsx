@@ -25,6 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { reportStudioError } from "./studio-errors";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Monitor, Copy, Check, ArrowLeft, ArrowRight } from "lucide-react";
@@ -76,7 +77,8 @@ function useCopyLink(projectId: string) {
       setFailed(false);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
+    } catch (error) {
+      reportStudioError(error, { fallback: "复制画布链接失败，请手动复制下方地址" });
       setCopied(false);
       setFailed(true);
     }

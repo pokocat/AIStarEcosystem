@@ -1,5 +1,5 @@
 "use client";
-import { useStudioApp } from './studio-errors';
+import { StudioErrorNotice, useStudioApp } from './studio-errors';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 画布宿主 —— 把搬来的画布（src/canvas）接到本仓的路由、账号与服务端上。
@@ -153,7 +153,7 @@ function Host({ projectId }: { projectId: string }) {
       void saveNow().then((outcome) => {
         if (outcome === "failed" || outcome === "conflict") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
         else window.location.assign(dest.href);
-      }).catch(() => { message.error("画布保存失败，请重试"); leaving = false; });
+      }).catch((e) => { message.error(e); leaving = false; });
     };
     document.addEventListener("click", guard, true);
     return () => document.removeEventListener("click", guard, true);
@@ -189,11 +189,9 @@ function Host({ projectId }: { projectId: string }) {
   // 设计。本仓的 Key 在服务端，用户在那个表单里什么也做不了，只会以为是自己没配好。
   React.useEffect(() => {
     setModelsUnavailableHandler(() => {
-      message.warning(
-        serverModelsLoaded()
+      message.error({ code: serverModelsLoaded() ? "STUDIO_MODEL_NOT_CONFIGURED" : "STUDIO_MODELS_UNAVAILABLE", message: serverModelsLoaded()
           ? "平台还没配可用的模型，现在生成不了。找管理员在后台加一个。"
-          : "模型列表没加载上，刷新页面再试",
-      );
+          : "模型列表没加载上，刷新页面再试" });
     });
     return () => setModelsUnavailableHandler(null);
   }, [message]);
@@ -281,7 +279,8 @@ function Host({ projectId }: { projectId: string }) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 px-8 text-center">
         <AlertCircle className="w-6 h-6" style={{ color: "var(--err)" }} />
-        <p className="text-[13px] max-w-sm" style={{ color: "var(--ink-2)" }}>{error}</p>
+        <p className="text-[13px] max-w-sm" style={{ color: "var(--ink-2)" }}>画布暂时无法打开</p>
+        <StudioErrorNotice error={error}/>
         <button
           onClick={() => window.location.reload()}
           className="px-4 py-2 rounded-xl text-[12.5px] font-bold transition hover:brightness-95"

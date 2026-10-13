@@ -26,6 +26,7 @@ vi.mock("./api", () => ({
 
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { useProjectSync } from "./project-sync";
+import { subscribeStudioErrors } from "@/ip/studio-errors";
 
 const serverDoc = {
   nodes: [{ id: "n-1", type: "image", title: "招牌形象", position: { x: 0, y: 0 }, width: 300, height: 400, metadata: { prompt: "画一个" } }],
@@ -40,6 +41,17 @@ beforeEach(() => {
 });
 
 describe("加载", () => {
+  it("加载失败通知保留服务端错误码和真实追查号，仍不创建空画布", async () => {
+    const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
+    getProjectMock.mockRejectedValue(Object.assign(new Error("画布不存在"), { code: "IP_PROJECT_NOT_FOUND", logId: "ABCDEF234567" }));
+    const view = renderHook(() => useProjectSync("IPP-missing"));
+    try {
+      await waitFor(() => expect(view.result.current.state).toBe("error"));
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_NOT_FOUND", message: "画布不存在", logId: "ABCDEF234567" }));
+      expect(useCanvasStore.getState().projects).toHaveLength(0);
+      expect(updateProjectMock).not.toHaveBeenCalled();
+    } finally { view.unmount(); unsubscribe(); }
+  });
   it("把服务端的文档灌进画布，ready 之后才允许渲染", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc, updatedAt: "2026-09-07T00:00:00Z" });
 
@@ -64,6 +76,22 @@ describe("加载", () => {
 });
 
 describe("自动保存", () => {
+  it("保存失败通知保留服务端诊断，原文档和失败状态仍可恢复", async () => {
+    const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
+    getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });
+    updateProjectMock.mockRejectedValue(Object.assign(new Error("保存失败"), { code: "IP_PROJECT_SAVE_FAILED", logId: "ABCDEF234567" }));
+    const view = renderHook(() => useProjectSync("IPP-1"));
+    try {
+      await waitFor(() => expect(view.result.current.state).toBe("ready"));
+      act(() => useCanvasStore.getState().updateProject("IPP-1", { title: "新标题" }));
+      let outcome: string | undefined;
+      await act(async () => { outcome = await view.result.current.saveNow(); });
+      expect(outcome).toBe("failed");
+      expect(view.result.current.saveState).toBe("failed");
+      expect(useCanvasStore.getState().projects[0]?.title).toBe("新标题");
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_SAVE_FAILED", message: "保存失败", logId: "ABCDEF234567" }));
+    } finally { view.unmount(); unsubscribe(); }
+  });
   it("加载完成之前的任何改动都不回存", async () => {
     // 最危险的一条：画布挂载得比加载快，此时 store 里是空的。
     // 存下去就是把服务端上真正的内容覆盖成空文档。
