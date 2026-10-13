@@ -6,22 +6,32 @@ import { ArrowUpRight, Check, ChevronLeft, ChevronRight, FileText, Image, Video,
 import { gsap } from 'gsap';
 import type { StudioPlan, StudioPlanStep } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { assistantOutputReady, assistantStepReferences, assistantUnresolvedReferences, assistantWritableText } from '@/canvas-bridge/studio-assistant-plan';
+import { assistantOutputReady, assistantStepReferences, assistantUnresolvedReferences, assistantWritableText, assistantEditableFields, assistantFieldValue, type AssistantReplacement, type AssistantEditField } from '@/canvas-bridge/studio-assistant-plan';
 
 const labels={text:'文字',image:'图片',video:'视频',script:'剧本',storyboard:'分镜'};
 const icons={text:FileText,image:Image,video:Video,script:Clapperboard,storyboard:Clapperboard};
-export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,locked,onEdit,onApply}: {
-  plan:StudioPlan;nodes:CanvasNodeData[];contextIds:string[];selectedIds:string[];locked:boolean;
+export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,snapshots,locked,onEdit,onApply}: {
+  plan:StudioPlan;nodes:CanvasNodeData[];contextIds:string[];selectedIds:string[];snapshots?:Record<string,Partial<Record<AssistantEditField,string>>>;locked:boolean;
   onEdit:(step:StudioPlanStep)=>void;
-  onApply:(step:StudioPlanStep,target?:{id:string;content:string})=>Promise<void>;
+  onApply:(step:StudioPlanStep,target?:AssistantReplacement)=>Promise<void>;
 }) {
-  const [index,setIndex]=useState(()=>Math.max(0,plan.steps.findIndex(s=>!assistantOutputReady(nodes.find(n=>n.id===s.resultNodeId))))),[target,setTarget]=useState<{id:string;content:string}>(),[saving,setSaving]=useState(false),[error,setError]=useStudioErrorState();
+  const [index,setIndex]=useState(()=>Math.max(0,plan.steps.findIndex(s=>!assistantOutputReady(nodes.find(n=>n.id===s.resultNodeId))))),[target,setTarget]=useState<AssistantReplacement>(),[saving,setSaving]=useState(false),[error,setError]=useStudioErrorState();
   const card=useRef<HTMLDivElement>(null),applying=useRef(false);
   const step=plan.steps[Math.min(index,Math.max(0,plan.steps.length-1))];
-  const selectedText=nodes.filter(n=>selectedIds.includes(n.id)&&contextIds.includes(n.id)&&assistantWritableText(n));
-  const defaultTarget=step?.operation==='text'&&selectedText.length===1?selectedText[0]:undefined;
-  // Capture the original body once per selection/step. Later edits must still trigger the adoption conflict guard.
-  useEffect(()=>{setTarget(defaultTarget?{id:defaultTarget.id,content:defaultTarget.metadata?.content||''}:undefined);setError('');},[step?.id,defaultTarget?.id]);
+  const replacements=nodes.filter(n=>contextIds.includes(n.id)&&assistantEditableFields(n).length&&
+    (step?.operation==='text'||n.type===step?.operation||step?.operation==='script'&&!!n.metadata?.studio?.script));
+  const selected=replacements.filter(n=>selectedIds.includes(n.id));
+  const requested=replacements.find(n=>n.id===step?.editTarget?.nodeId);
+  const defaultTarget=requested||(selected.length===1?selected[0]:undefined);
+  const fieldFor=(node:CanvasNodeData):AssistantEditField=>{
+    const fields=assistantEditableFields(node);
+    return node.id===step?.editTarget?.nodeId&&fields.includes(step.editTarget.field)?step.editTarget.field:
+      step?.operation==='text'?fields[0]:'prompt';
+  };
+  const capture=(node:CanvasNodeData,field=fieldFor(node)):AssistantReplacement=>({id:node.id,field,
+    content:snapshots?.[node.id]?.[field]??assistantFieldValue(node,field)});
+  // A response never overwrites edits made since the paid turn began.
+  useEffect(()=>{setTarget(defaultTarget?capture(defaultTarget):undefined);setError('');},[step?.id,defaultTarget?.id]);
   useEffect(()=>{
     if(!card.current)return;
     const body=card.current.closest<HTMLElement>('.studio-floating-body');
@@ -40,7 +50,10 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,locked,on
   const refs=assistantStepReferences(step,plan,nodes);
   const unresolved=assistantUnresolvedReferences(step,plan);
   const result=nodes.find(n=>n.id===step.resultNodeId);
-  const replacements=nodes.filter(n=>contextIds.includes(n.id)&&assistantWritableText(n));
+  const targetNode=nodes.find(n=>n.id===target?.id);
+  const targetField=target?.field||'content';
+  const fieldLabels={content:'正文',prompt:'提示词',script:'剧本正文'};
+  const appliedEdit=!!result&&!!step.editTarget;
   const apply=async()=>{
     if(applying.current)return;applying.current=true;setSaving(true);setError('');
     try{await onApply({...step,referenceNodeIds:refs.ids,unresolvedReferences:unresolved.length?unresolved:undefined},target);}catch(e){setError(e);}
@@ -58,13 +71,14 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,locked,on
       {!!refs.ids.length&&<p className="studio-assistant-result-references">参考：{refs.ids.map(id=>nodes.find(n=>n.id===id)?.title).join('、')}</p>}
       {!!refs.waiting.length&&<p role="status" className="studio-helper-note">先完成「{refs.waiting.join('」、「')}」，再继续这一步。</p>}
       {!!unresolved.length&&<p role="status" className="studio-helper-note">这一步需要补选参考素材，打开后请选择实际节点。</p>}
-      {step.operation==='text'&&!result&&!!replacements.length&&<Select aria-label="文字放置位置" value={target?.id||'new'} disabled={locked||saving} options={[{value:'new',label:'新建文字节点'},...replacements.map(n=>({value:n.id,label:`写入「${n.title}」`}))]} onChange={id=>{const n=replacements.find(n=>n.id===id);setTarget(n?{id:n.id,content:n.metadata?.content||''}:undefined);}}/>}
-      {target&&!result&&<details className="studio-assistant-original"><summary>将替换该节点正文 · 查看原文</summary><p>{target.content||'当前节点为空'}</p></details>}
-      <Button className="studio-assistant-primary" icon={result&&step.operation==='text'?<Check size={16}/>:<ArrowUpRight size={16}/>} loading={saving} disabled={locked||!!refs.waiting.length||step.operation==='text'&&(!step.content?.trim()||!!result&&!error)} onClick={()=>void apply()}>
-        {error?'重试保存':step.operation==='text'?result?'已放入画布':target?'替换节点正文':'放入画布':result?'打开节点继续创作':`创建${labels[step.operation]}节点`}
+      {!result&&!!replacements.length&&<Select aria-label={step.operation==='text'?'文字放置位置':'采用位置'} value={target?.id||'new'} disabled={locked||saving} options={[{value:'new',label:`新建${labels[step.operation]}节点`},...replacements.map(n=>({value:n.id,label:`写回「${n.title}」`}))]} onChange={id=>{const n=replacements.find(n=>n.id===id);setTarget(n?capture(n):undefined);}}/>}
+      {targetNode&&!result&&assistantEditableFields(targetNode).length>1&&<Select aria-label="修改字段" value={targetField} disabled={locked||saving} options={assistantEditableFields(targetNode).map(field=>({value:field,label:fieldLabels[field]}))} onChange={field=>setTarget(capture(targetNode,field))}/>}
+      {target&&!result&&<details className="studio-assistant-original"><summary>将替换该节点{fieldLabels[targetField]} · 查看原文</summary><p>{target.content||'当前节点为空'}</p></details>}
+      <Button className="studio-assistant-primary" icon={result&&step.operation==='text'?<Check size={16}/>:<ArrowUpRight size={16}/>} loading={saving} disabled={locked||!!refs.waiting.length||step.operation==='text'&&!step.content?.trim()||!!result&&(appliedEdit||step.operation==='text')&&!error} onClick={()=>void apply()}>
+        {error?'重试保存':appliedEdit?step.editTarget!.field==='content'?'已放入画布':`已更新${fieldLabels[step.editTarget!.field]}`:target?`替换节点${fieldLabels[targetField]}`:step.operation==='text'?result?'已放入画布':'放入画布':result?'打开节点继续创作':`创建${labels[step.operation]}节点`}
       </Button>
-      {result&&step.operation!=='text'&&<p className="studio-helper-note">{assistantOutputReady(result)?'画布节点已生成，可打开继续调整。':result.metadata?.status==='loading'?'节点正在生成，完成后可继续下一步。':result.metadata?.status==='error'?'节点生成未完成，请打开查看原因。':'节点已创建，等待确认参数并生成。'}</p>}
-      <small className="studio-assistant-result-note">{step.operation==='text'?'采用文字无需再次生成，不另扣积分。':'先创建节点并确认参数，生成时再扣积分。'}</small>
+      {result&&step.operation!=='text'&&!appliedEdit&&<p className="studio-helper-note">{assistantOutputReady(result)?'画布节点已生成，可打开继续调整。':result.metadata?.status==='loading'?'节点正在生成，完成后可继续下一步。':result.metadata?.status==='error'?'节点生成未完成，请打开查看原因。':'节点已创建，等待确认参数并生成。'}</p>}
+      <small className="studio-assistant-result-note">{target||appliedEdit?'采用后写回原节点，保留素材和连线，不启动生成、不另扣积分。':step.operation==='text'?'采用文字无需再次生成，不另扣积分。':'先创建节点并确认参数，生成时再扣积分。'}</small>
       {error&&<p className="studio-assistant-error"><StudioErrorNotice error={error}/></p>}
     </div>
   </section>;

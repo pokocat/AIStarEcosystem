@@ -34,15 +34,18 @@ export async function createStudioEntry(entry: StudioEntry, brief = '', existing
   try {
     if (existing) {
       project = await IpStudioApi.getProject(existing.id);
-      const saved = project.doc.nodes.find(n => n.id === `${project.id}-brief`);
+      const saved = [...project.doc.nodes,...project.doc.assistantConversations||[]].find(n => n.id === `${project.id}-brief`);
       if (saved) {
         if (saved.metadata?.studioStart === entry && saved.metadata?.prompt === text) return project;
         throw new Error('创作想法已在画布中修改，请打开已有画布继续');
       }
     }
-    const doc = { ...project.doc, nodes: [...project.doc.nodes, { id: `${project.id}-brief`, type: 'text', title: '创作想法',
+    const assistant=entry==='assistant'||entry==='director';
+    const input={ id: `${project.id}-brief`, type: 'text', title: '创作想法',
       position: { x: 100, y: 120 }, width: 480, height: 260,
-      metadata: { content: text, prompt: text, studioStart: entry } }] };
+      metadata: { content: text, prompt: text, studioStart: entry,
+        ...(assistant?{studio:{kind:'assistant' as const,conversation:{mode:entry==='director'?'director' as const:'general' as const,turns:[]}}}:{}) } };
+    const doc = { ...project.doc, ...(assistant?{assistantConversations:[...project.doc.assistantConversations||[],input]}:{nodes:[...project.doc.nodes,input]}) };
     return await IpStudioApi.updateProject(project.id, { doc, baseDocVersion: project.docVersion });
   }
   catch (error) {

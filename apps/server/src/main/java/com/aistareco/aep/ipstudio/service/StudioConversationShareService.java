@@ -73,7 +73,7 @@ public class StudioConversationShareService {
         requireLive(s);
         var snapshot=parse(s.getSnapshotJson());
         var p=projects.create(owner,new IpCreateProjectRequest(snapshot.path("title").asText()+" · 继续创作",null));
-        var doc=IpDocs.emptyDoc(om);var node=doc.withArray("nodes").addObject();
+        var doc=IpDocs.emptyDoc(om);var node=doc.putArray("assistantConversations").addObject();
         node.put("id","conversation-"+UUID.randomUUID().toString().replace("-","").substring(0,16));node.put("type","text");node.put("title",snapshot.path("title").asText());
         node.putObject("position").put("x",80).put("y",80);node.put("width",420).put("height",300);
         var meta=node.putObject("metadata");meta.put("status","idle");meta.put("studioStart","assistant");
@@ -103,7 +103,7 @@ public class StudioConversationShareService {
     private String hash(JsonNode json){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(write(json).getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     /** Only the visible text and authored suggestions cross the publication boundary. Bounds reject rather than silently truncate the approved content. */
     ObjectNode snapshot(JsonNode doc,String nodeId) {
-        var node=IpDocs.node(doc,nodeId);var meta=node==null?om.createObjectNode():node.path("metadata");
+        var node=IpDocs.conversation(doc,nodeId);var meta=node==null?om.createObjectNode():node.path("metadata");
         var c=meta.path("studio").path("conversation");var turns=c.path("turns");var mode=c.path("mode").asText();
         if(!"assistant".equals(meta.path("studio").path("kind").asText())||"loading".equals(meta.path("status").asText())||!Set.of("general","original","adapt","director").contains(mode)
             ||!turns.isArray()||turns.size()<2||turns.size()>16||!"assistant".equals(turns.get(turns.size()-1).path("role").asText()))

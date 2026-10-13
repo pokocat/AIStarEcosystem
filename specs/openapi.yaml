@@ -3471,6 +3471,7 @@ components:
       description: '客户端拥有的通用画布文档：nodes[{id,type,title,position,width,height,metadata}]、connections[{id,fromNodeId,toNodeId}]、viewport{x,y,k}。服务端整存整取不改内容；运行与发布结果另存 IpRun/dap 资产。'
       required: [nodes, connections]
       properties:
+        assistantConversations: { type: array, items: { type: object }, description: '项目私有助手历史，与画布 nodes 分离；保留请求幂等键、对话和采用绑定，不参与布局和连线。' }
         nodes: { type: array, items: { type: object } }
         connections: { type: array, items: { type: object } }
         viewport: { type: object, properties: { x: { type: number }, y: { type: number }, k: { type: number } } }

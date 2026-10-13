@@ -22,6 +22,8 @@ export interface StudioPlanStep {
   id:string; operation:"text"|"script"|"storyboard"|"image"|"video"; title:string; prompt:string;
   /** Ready-to-adopt text, generated in the assistant's existing paid turn. */
   content?:string;
+  /** An editable proposal for a referenced node; applying it still requires user adoption. */
+  editTarget?: { nodeId:string; field:"content"|"prompt"|"script" };
   referenceNodeIds:string[]; unresolvedReferences?:string[];
   /** Earlier steps only; canvas IDs are resolved after their output exists. */
   dependsOn?:string[];
@@ -163,6 +165,8 @@ export interface StudioNodeMetadata {
   scriptSourceNodeId?: string;
   episodeNo?: number;
   conversation?: { mode: StudioAssistantMode; turns: StudioTurn[]; plan?: StudioPlan };
+  /** Original values at send time; adoption rejects concurrent manual edits. */
+  assistantEditSnapshots?: Record<string, Partial<Record<"content"|"prompt"|"script",string>>>;
   /** Client-owned rollback snapshot; model request.history is only a bounded context. */
   assistantPreviousConversation?: NonNullable<StudioNodeMetadata["conversation"]>;
   batch?: StudioBatch;

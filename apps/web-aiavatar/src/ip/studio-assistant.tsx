@@ -22,18 +22,18 @@ import { StudioAttachmentPicker } from './studio-attachment-picker';
 import { StudioConversationShare } from './studio-conversation-share';
 import { AtSign, Scan, X, SlidersHorizontal, Plus, ArrowUp, FileText, Image, Video, Workflow } from 'lucide-react';
 import { StudioAssistantPlan } from './studio-assistant-plan';
-import { assistantStepReferences, assistantUnresolvedReferences, assistantWritableText } from '@/canvas-bridge/studio-assistant-plan';
+import { assistantStepReferences, assistantUnresolvedReferences, assistantEditableFields, assistantFieldValue, assistantReplacementNode, type AssistantReplacement } from '@/canvas-bridge/studio-assistant-plan';
 import { placeStudioNode } from '@/canvas-bridge/flow-document';
 import { markStudioDescendants } from '@/canvas-bridge/studio-script';
 
-type Props={projectId:string;nodes:CanvasNodeData[];setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
+type Props={projectId:string;conversations:CanvasNodeData[];setConversations:Dispatch<SetStateAction<CanvasNodeData[]>>;nodes:CanvasNodeData[];setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
   capabilities?:StudioCapabilities;open:boolean;initialNodeId?:string;initialPrompt?:string;initialMode?:StudioAssistantMode;onClose:()=>void;selectedIds:string[];onUseStep:(step:StudioPlan["steps"][number])=>string|void};
 const modeNames={general:"全能创作",original:"原创剧本",adapt:"故事改编",director:"导演执导"};
 type AssistantDraft={prompt:string;contextIds:string[];model?:string;mode:StudioAssistantMode;readVisuals:boolean};
 // These business errors occur before a run is accepted. Unknown transport/server
 // errors keep the original request key; a timeout must never create another paid run.
 const preflightErrors=new Set(['AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_CONTEXT_NOT_FOUND','STUDIO_CONTEXT_LIMIT','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_VISION_UNAVAILABLE','STUDIO_VISUAL_MISSING','STUDIO_VISUAL_LIMIT','IP_ASSET_KEY_INVALID']);
-export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabilities,open,initialNodeId,initialPrompt,initialMode,onClose,selectedIds,onUseStep}:Props) {
+export function StudioAssistant({projectId,conversations,setConversations,nodes,setNodes,setConnections,capabilities,open,initialNodeId,initialPrompt,initialMode,onClose,selectedIds,onUseStep}:Props) {
   const {message}=useStudioApp();const [mode,setMode]=useState<StudioAssistantMode>("general"),[prompt,setPrompt]=useState(""),[conversationId,setConversationId]=useState<string>(),[contextIds,setContextIds]=useState<string[]>([]),[model,setModel]=useState<string>(),[busy,setBusy]=useState(false);
   const [toolsOpen,setToolsOpen]=useState(false);
   const [libraryQuery,setLibraryQuery]=useState<string>();
@@ -47,7 +47,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
   const composer=useRef<ComponentRef<typeof Input.TextArea>>(null);
   const composerFrame=useRef<HTMLDivElement>(null);
   const {contextSafe}=useGSAP({scope:composerFrame});
-  const live=useRef({nodes,projectId});live.current={nodes,projectId};const mounted=useRef(true);
+  const live=useRef({nodes,conversations,projectId});live.current={nodes,conversations,projectId};const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   useEffect(()=>{setConversationId(undefined);setContextIds([]);setPrompt("");setBusy(false);setReading(false);setAttachmentsUnsaved(false);},[projectId]);
   const resumed=useRef<{projectId:string;initialNodeId?:string}|undefined>(undefined);
@@ -55,7 +55,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     if(resumed.current?.projectId===projectId&&resumed.current?.initialNodeId===initialNodeId)return;
     if(resumed.current)rememberDraft(resumed.current.projectId);
     resumed.current={projectId,initialNodeId};
-    const node=live.current.nodes.find(n=>n.id===initialNodeId),c=node?.metadata?.studio?.conversation;
+    const node=[...live.current.nodes,...live.current.conversations].find(n=>n.id===initialNodeId),c=node?.metadata?.studio?.conversation;
     setConversationId(c?node!.id:undefined);setContextError('');setMentionOpen(false);
     const draft=drafts.current.get(`${projectId}:${c?node!.id:'new'}`);
     if(draft){restoreDraft(draft);return;}
@@ -69,9 +69,8 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     if(c)setModel(node?.metadata?.studio?.request?.model);
     setReadVisuals(c?node?.metadata?.studio?.request?.readVisuals===true:true);
     if(node?.metadata?.status==='error'&&c)setPrompt(node.metadata.studio?.request?.prompt||'');
-    else setPrompt(!c?initialPrompt||'':'');
+    else setPrompt(!c?.turns.length?initialPrompt||node?.metadata?.prompt||'':'');
   }},[open,initialNodeId,projectId]);
-  const conversations=nodes.filter(n=>n.metadata?.studio?.conversation);
   const current=conversations.find(n=>n.id===conversationId),conversation=current?.metadata?.studio?.conversation;
   const textModels=capabilities?.textModels||[];
   const selectedModel=textModels.find(m=>m.endpointId===((capabilities?.textModelMode!=="fixed"&&textModels.some(m=>m.endpointId===model)?model:undefined)||textModels.find(m=>m.isDefault)?.endpointId||textModels[0]?.endpointId));
@@ -141,7 +140,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     finally{importLock.current=false;if(mounted.current&&live.current.projectId===project)setReading(false);}
   };
   const retryAttachmentSave=async()=>{const project=projectId;setReading(true);try{await saveAttachments(project);setContextError('');message.success('附件已保存，可继续创作');}catch(e){setContextError(e);}finally{if(mounted.current&&live.current.projectId===project)setReading(false);}};
-  const patch=(id:string,update:(node:CanvasNodeData)=>CanvasNodeData)=>setNodes(list=>list.map(n=>n.id===id?update(n):n));
+  const patch=(id:string,update:(node:CanvasNodeData)=>CanvasNodeData)=>setConversations(list=>list.map(n=>n.id===id?update(n):n));
   const send=async(recover=false)=>{
     if(busy||reading||attachmentsUnsaved||!capabilities||!recover&&(!prompt.trim()||missingIds.length||current?.metadata?.status==='loading'))return;
     setBusy(true);const project=projectId;
@@ -153,8 +152,8 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
         const turns=[...(conversation?.turns||[]),{role:"user" as const,content:prompt.trim()}].slice(-15);
         request={clientRequestId:nanoid(),nodeId:target.id,operation:"assistant",prompt:prompt.trim(),mode,contextNodeIds:contextIds,
           history:(conversation?.turns||[]).slice(-14).map(t=>({role:t.role,content:t.content})),model:(capabilities?.textModelMode!=="fixed"&&textModels.some(m=>m.endpointId===model)?model:undefined)||textModels.find(m=>m.isDefault)?.endpointId||textModels[0]?.endpointId,maxCost:capabilities.mock?0:selectedModel?.tokenPricing?.maxCost,readVisuals:readingVisuals};
-        const next={...target,title:modeNames[mode],metadata:{...target.metadata,status:"loading" as const,errorDetails:undefined,studio:{kind:"assistant" as const,request,assistantPreviousConversation:conversation||{mode,turns:[]},conversation:{...conversation,mode,turns}}}};
-        if(current)patch(next.id,()=>next);else {setNodes(list=>[...list,next]);setConnections(list=>[...list,...contextIds.map(id=>({id:nanoid(),fromNodeId:id,toNodeId:next.id}))]);}
+        const next={...target,title:modeNames[mode],metadata:{...target.metadata,status:"loading" as const,errorDetails:undefined,studio:{kind:"assistant" as const,request,assistantPreviousConversation:conversation||{mode,turns:[]},assistantEditSnapshots:Object.fromEntries(live.current.nodes.filter(n=>contextIds.includes(n.id)).map(n=>[n.id,Object.fromEntries(assistantEditableFields(n).map(field=>[field,assistantFieldValue(n,field)]))])),conversation:{...conversation,mode,turns}}}};
+        if(current)patch(next.id,()=>next);else setConversations(list=>[...list,next]);
         drafts.current.delete(`${projectId}:${conversationId||'new'}`);
         setConversationId(next.id);target=next;setPrompt("");
       }
@@ -188,9 +187,9 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     finally {if(mounted.current&&live.current.projectId===project)setBusy(false);}
   };
   const editStep=(step:StudioPlan["steps"][number])=>current&&patch(current.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,conversation:{...n.metadata!.studio!.conversation!,plan:{...n.metadata!.studio!.conversation!.plan!,steps:n.metadata!.studio!.conversation!.plan!.steps.map(s=>s.id===step.id?step:s)}}}}}));
-  const applyStep=async(step:StudioPlan["steps"][number],replacement?:{id:string;content:string})=>{
+  const applyStep=async(step:StudioPlan["steps"][number],replacement?:AssistantReplacement)=>{
     if(!current||!conversation?.plan)return;
-    const source=live.current.nodes.find(n=>n.id===current.id);
+    const source=live.current.conversations.find(n=>n.id===current.id);
     const latest=source?.metadata?.studio?.conversation?.plan;
     const saved=latest?.steps.find(s=>s.id===step.id);
     if(!saved||!latest)throw new Error('方案已更新，请重新打开结果');
@@ -199,23 +198,28 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     const resolved={...saved,referenceNodeIds:refs.ids,unresolvedReferences:assistantUnresolvedReferences(saved,latest)};
     const existing=live.current.nodes.find(n=>n.id===saved.resultNodeId);
     // Retry saving the same adopted node; never duplicate a result after a transport failure.
-    if(existing){editStep({...saved,unresolvedReferences:resolved.unresolvedReferences});await saveStudioDocument(projectId);if(step.operation!=='text')onUseStep(resolved);return;}
+    if(existing){editStep({...saved,unresolvedReferences:resolved.unresolvedReferences});await saveStudioDocument(projectId);if(step.operation!=='text'&&!saved.editTarget)onUseStep(resolved);return;}
     let resultId:string|void;
-    if(step.operation==='text') {
+    const value=step.operation==='text'?saved.content:saved.prompt;
+    if(replacement) {
+      const target=live.current.nodes.find(n=>n.id===replacement.id),field=replacement.field||'content';
+      if(!target||!contextIds.includes(target.id)||!assistantEditableFields(target).includes(field))throw new Error('目标节点已不可编辑，请重新选择');
+      if(assistantFieldValue(target,field)!==replacement.content)throw new Error('节点内容已有修改，请重新发送并核对修改稿');
+      if(!value?.trim())throw new Error('请先填写修改后的内容');
+      const node=assistantReplacementNode(target,field,value);
+      resultId=target.id;
+      setNodes(list=>markStudioDescendants(list,target.id).map(n=>n.id===target.id?node:n));
+      resolved.editTarget={nodeId:target.id,field};
+    } else if(step.operation==='text') {
       if(!saved.content?.trim())throw new Error('请先填写文字内容');
-      const target=replacement?live.current.nodes.find(n=>n.id===replacement.id):undefined;
-      if(replacement&&(!target||!assistantWritableText(target)||!contextIds.includes(target.id)))throw new Error('目标文字节点已不可编辑，请重新选择');
-      if(target&&(target.metadata?.content||'')!==replacement!.content)throw new Error('节点正文已有修改，请重新选择目标，核对原文后再采用');
-      const node=target?{...target,metadata:{...target.metadata,content:saved.content}}:
-        {...makeStudioNode('text',live.current.nodes.find(n=>refs.ids.includes(n.id))),title:saved.title,metadata:{content:saved.content,status:'success' as const,studio:{kind:'text' as const}}};
+      const node={...makeStudioNode('text',live.current.nodes.find(n=>refs.ids.includes(n.id))),title:saved.title,metadata:{content:saved.content,status:'success' as const,studio:{kind:'text' as const}}};
       resultId=node.id;
-      setNodes(list=>target?markStudioDescendants(list,target.id).map(n=>n.id===target.id?node:n):[...list,placeStudioNode(node,list)]);
-      // Replacement retains the user's existing graph; only new nodes inherit reference edges.
-      if(!target)setConnections(list=>[...list,...refs.ids.filter(id=>id!==node.id).map(id=>({id:nanoid(),fromNodeId:id,toNodeId:node.id}))]);
+      setNodes(list=>[...list,placeStudioNode(node,list)]);
+      setConnections(list=>[...list,...refs.ids.filter(id=>id!==node.id).map(id=>({id:nanoid(),fromNodeId:id,toNodeId:node.id}))]);
     } else resultId=onUseStep(resolved);
-    if(resultId)editStep({...saved,unresolvedReferences:resolved.unresolvedReferences,resultNodeId:resultId});
+    if(resultId)editStep({...saved,editTarget:replacement?resolved.editTarget:undefined,unresolvedReferences:resolved.unresolvedReferences,resultNodeId:resultId});
     await saveStudioDocument(projectId);
-    if(step.operation==='text')message.success(replacement?'已更新文字节点':'文字已放入画布');
+    if(replacement)message.success(replacement.field==='prompt'?'已更新节点提示词':'已更新节点内容');else if(step.operation==='text')message.success('文字已放入画布');
   };
   const starterPrompts=contextIds.length>1?[
     ['整理所选内容','整理这些节点的内容，生成一份可直接使用的文字摘要。',FileText],
@@ -223,8 +227,8 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
     ['规划场景视频','基于所选素材，规划一条场景视频，保留人物和场景特征。',Video],
     ['串成创作流程','根据这些节点，规划接下来需要的文字、图片和视频节点及引用关系。',Workflow],
   ] as const:[
-    ['写一段文字',contextIds.length?'基于所选节点生成一版可直接使用的文字内容，保留核心设定。':'生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。',FileText],
-    ['创作一张图片',contextIds.length?'基于所选内容，设计一张新的形象图片。':'设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。',Image],
+    [contextIds.length?'修改节点内容':'写一段文字',contextIds.length?'修改所选节点的内容，保留核心设定，给我一版可以写回原节点的完整修改稿。':'生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。',FileText],
+    [contextIds.length?'优化节点提示词':'创作一张图片',contextIds.length?'优化所选节点的提示词，保留主体和核心设定，直接给出完整的新提示词供我写回原节点，不生成新素材。':'设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。',Image],
     ['制作一段视频',contextIds.length?'以所选素材为参考，设计一段五秒的场景视频。':'设计一段五秒的场景视频，给出画面和运镜方案。',Video],
     ['搭建创作流程','帮我搭建从角色描述、多视角设定图、细节参考图到场景视频的创作流程。',Workflow],
   ] as const;
@@ -246,7 +250,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
         <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>setLibraryQuery(undefined)} onAssets={async assets=>{await addAttachments(assets);const mention=libraryMention.current;if(mention)setPrompt(value=>insertAssistantMention(value,mention,assets.map(a=>a.title).join("、")));libraryMention.current=undefined;}}/>
         {attachmentsUnsaved&&<Button disabled={locked} onClick={()=>void retryAttachmentSave()}>重试保存附件</Button>}
 
-        <p className="studio-assistant-send-hint">⌘ / Ctrl + Enter 发送</p>
+        <p className="studio-assistant-send-hint">对话存入历史，采用后才修改画布 · ⌘ / Ctrl + Enter 发送</p>
         {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p className="studio-assistant-error"><StudioErrorNotice error={missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError || (current ? studioNodeError(current) : undefined)}/></p>}
       </div>}>
     <div className="studio-assistant">
@@ -260,10 +264,10 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
         <p className="studio-helper-note">{readingVisuals?'读取所选图片；60 秒内视频取 4 帧，不含音轨。最多 16 张画面，每段视频占 4 张。音频只读取文字设定。':canReadVisuals?'本次仅读取文字和设定，勾选后可读取所选图片与视频采样帧。':'当前模型仅读取文字和设定。切换到支持看图的模型后可读取画面。'}</p>
 
       </section>}
-      {!conversation?.turns.length&&<div className="studio-assistant-welcome"><p className="studio-assistant-eyebrow">从一个想法开始</p><h3 className="w-full max-w-full">说出想法，<br/>一起放进画布。</h3><p>{contextIds.length?`已引用 ${contextIds.length} 个节点。可以接着创作，也可以衍生新的内容。`:'写文字、做图片、制作视频，或搭建一整套创作流程。'}</p><div className="studio-assistant-starters">{starterPrompts.map(([title,value,Icon])=><button key={title} type="button" disabled={locked} onClick={()=>{setPrompt(value);composer.current?.focus();}}><Icon size={18}/><span>{title}</span><ArrowUp size={14}/></button>)}</div></div>}
+      {!conversation?.turns.length&&<div className="studio-assistant-welcome"><p className="studio-assistant-eyebrow">从一个想法开始</p><h3 className="w-full max-w-full">说出想法，<br/>一起完成创作。</h3><p>{contextIds.length?`已引用 ${contextIds.length} 个节点。可以修改节点内容和提示词，也可以衍生新的内容。`:'写文字、做图片、制作视频，或搭建一整套创作流程。'}</p><div className="studio-assistant-starters">{starterPrompts.map(([title,value,Icon])=><button key={title} type="button" disabled={locked} onClick={()=>{setPrompt(value);composer.current?.focus();}}><Icon size={18}/><span>{title}</span><ArrowUp size={14}/></button>)}</div></div>}
       <div className="studio-conversation" role="log" aria-label="创作对话记录" aria-live="polite">{conversation?.turns.map((turn,i)=><div className={`studio-turn studio-turn-${turn.role}`} key={i}><small>{turn.role==="user"?"你":"Studio"}</small><p>{turn.content}</p>{turn.billing&&<small>已消耗 {turn.billing.credits} 积分</small>}</div>)}</div>
       {conversation?.plan&&current?.metadata?.status!=='loading'&&<>
-        <StudioAssistantPlan key={`${current?.id}-${current?.metadata?.studio?.runId||'draft'}`} plan={conversation.plan} nodes={nodes} contextIds={contextIds} selectedIds={selectedIds} locked={!!locked} onEdit={editStep} onApply={applyStep}/>
+        <StudioAssistantPlan key={`${current?.id}-${current?.metadata?.studio?.runId||'draft'}`} plan={conversation.plan} nodes={nodes} contextIds={contextIds} selectedIds={selectedIds} snapshots={current?.metadata?.studio?.assistantEditSnapshots} locked={!!locked} onEdit={editStep} onApply={applyStep}/>
         {!!conversation.plan.questions.length&&<section className="studio-assistant-questions" aria-label="还需要你的想法"><h4>还需要你的想法</h4><p>点击带入输入框，补充后发送</p><div>{conversation.plan.questions.map((q,i)=><button type="button" key={i} disabled={locked} onClick={()=>useSuggestion(q)}><span>{q}</span><ArrowUp size={16} aria-hidden="true"/></button>)}</div></section>}
         {!!conversation.plan.notes?.length&&<details className="studio-helper-note"><summary>补充建议</summary>{conversation.plan.notes.map((note,i)=><p key={i}>{note}</p>)}</details>}
       </>}

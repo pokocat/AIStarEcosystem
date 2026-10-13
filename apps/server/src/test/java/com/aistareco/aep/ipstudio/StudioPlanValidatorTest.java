@@ -58,4 +58,15 @@ class StudioPlanValidatorTest {
         assertEquals(1,plan.path("steps").get(1).path("unresolvedReferences").size());
         assertDoesNotThrow(()->StudioPlanValidator.validate(plan,context));
     }
+    @Test void editProposalsRequireASelectedTargetAndSupportedField() throws Exception {
+        var plan=mapper.readTree("""
+          {"summary":"优化提示词","steps":[{"id":"edit","operation":"text","title":"新提示词","prompt":"优化","content":"保持主体，侧光","referenceNodeIds":["selected"],"editTarget":{"nodeId":"selected","field":"prompt"}}],"questions":[]}
+          """);
+        var ids=mapper.readTree("[\"selected\"]");
+        assertDoesNotThrow(()->StudioPlanValidator.validate(plan,ids));
+        var edit=(com.fasterxml.jackson.databind.node.ObjectNode)plan.at("/steps/0/editTarget");
+        edit.put("nodeId","not-selected");assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,ids));
+        edit.put("nodeId","selected").put("field","storageKey");assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,ids));
+        edit.put("field","script");assertDoesNotThrow(()->StudioPlanValidator.validate(plan,ids));
+    }
 }

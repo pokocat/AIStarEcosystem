@@ -248,6 +248,7 @@ public class IpDemoTemplateService {
      * <b>作者的</b>运行，被归属闸正确地拒掉 —— 一个干净的模板变成一堆报错节点。
      */
     private static void removeStudioExecutionNodes(JsonNode doc) {
+        if(doc instanceof ObjectNode object)object.remove("assistantConversations");
         // Assistant summaries and approved batches are private execution records, not reusable authored steps.
         Set<String> removed=new java.util.HashSet<>();
         if(doc.path("nodes") instanceof ArrayNode nodes)for(int i=nodes.size()-1;i>=0;i--) {

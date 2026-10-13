@@ -175,9 +175,10 @@ public class StudioWorkflowService {
         if(request.contextNodeIds()!=null) for(String nodeId:request.contextNodeIds()) {
             var node=IpDocs.node(projects.readDoc(project),nodeId);
             if(node==null) throw bad("STUDIO_CONTEXT_NOT_FOUND","引用的画布内容不存在，请重新选择");
-            var item=canvasContext.addObject().put("id",nodeId).put("title",node.path("title").asText());
+            var item=canvasContext.addObject().put("id",nodeId).put("title",node.path("title").asText()).put("type",node.path("type").asText());
             var md=node.path("metadata");
-            item.put("prompt",md.path("prompt").asText());
+            item.put("prompt",md.path("studio").path("composerDraft").has("prompt")?md.path("studio").path("composerDraft").path("prompt").asText():md.path("prompt").asText());
+            if(md.path("studio").has("scriptMarkdown"))item.set("scriptMarkdown",md.path("studio").path("scriptMarkdown"));
             if(md.path("studio").has("script"))item.set("script",md.path("studio").path("script"));
             if(md.path("studio").has("shot"))item.set("shot",md.path("studio").path("shot"));
             if("text".equals(node.path("type").asText()))item.put("text",md.path("content").asText());

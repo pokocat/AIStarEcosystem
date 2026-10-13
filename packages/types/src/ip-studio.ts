@@ -70,6 +70,8 @@ export interface IpConnection { id: string; fromNodeId: string; toNodeId: string
 export interface IpProjectDoc {
   /** Explicit organization preference for newly created assets; never a project identity. */
   libraryFolderId?: string;
+  /** Assistant records are project history, never canvas nodes or edges. */
+  assistantConversations?: IpNode[];
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;

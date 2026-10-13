@@ -72,11 +72,17 @@ class StudioConversationShareServiceTest {
         var created=new IpProjectDto("new-project","copy",null,"draft",null,null,null,null,"v",om.createObjectNode(),Map.of(),Map.of());when(projects.create(eq("reader"),any())).thenReturn(created);
         var req=new StudioConversationShareService.CopyRequest("request123");assertEquals("new-project",service.copy("reader",row.getToken(),req));
         var update=ArgumentCaptor.forClass(IpUpdateProjectRequest.class);verify(projects).update(eq("reader"),eq("new-project"),update.capture());
-        var copied=update.getValue().doc();assertFalse(copied.toString().contains("private"));assertFalse(copied.toString().contains("paid-request"));assertTrue(copied.at("/nodes/0/id").asText().startsWith("conversation-"));
-        assertEquals(0,copied.path("connections").size());assertEquals("assistant",copied.at("/nodes/0/metadata/studio/kind").asText());
-        assertEquals("assistant",copied.at("/nodes/0/metadata/studioStart").asText());assertTrue(copied.at("/nodes/0/metadata/studio/request").isMissingNode());
+        var copied=update.getValue().doc();assertFalse(copied.toString().contains("private"));assertFalse(copied.toString().contains("paid-request"));assertTrue(copied.at("/assistantConversations/0/id").asText().startsWith("conversation-"));
+        assertEquals(0,copied.path("nodes").size());assertEquals(0,copied.path("connections").size());assertEquals("assistant",copied.at("/assistantConversations/0/metadata/studio/kind").asText());
+        assertEquals("assistant",copied.at("/assistantConversations/0/metadata/studioStart").asText());assertTrue(copied.at("/assistantConversations/0/metadata/studio/request").isMissingNode());
         when(copies.findByOwnerUserIdAndClientRequestId("reader","request123")).thenReturn(Optional.of(IpConversationCopy.builder().token(row.getToken()).projectId("new-project").build()));
         when(projects.required("reader","new-project")).thenReturn(project);row.setRevokedAt(Instant.now());assertEquals("new-project",service.copy("reader",row.getToken(),req));verify(projects,times(1)).create(eq("reader"),any());
+    }
+    @Test void detachedHistoryIsShareableButNeverReferenceableAsACanvasNode() {
+        var detached=om.createObjectNode();detached.putArray("nodes");detached.putArray("connections");
+        detached.set("assistantConversations",doc.path("nodes"));when(projects.readDoc(project)).thenReturn(detached);
+        assertEquals("讨论故事",service.preview("owner","p","n").snapshot().path("title").asText());
+        assertNull(IpDocs.node(detached,"n"));assertNotNull(IpDocs.conversation(detached,"n"));
     }
     private IpConversationShare stored(String token,StudioConversationShareService.Preview p){return IpConversationShare.builder().token(token).ownerUserId("owner").projectId("p").nodeId("n").snapshotHash(p.snapshotHash()).snapshotJson(p.snapshot().toString()).createdAt(Instant.parse("2026-10-08T00:00:00Z")).build();}
 }

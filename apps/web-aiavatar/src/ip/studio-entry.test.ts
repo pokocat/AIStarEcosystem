@@ -30,3 +30,10 @@ test('unknown save response recovers a previously saved brief without a duplicat
   const saved=await createStudioEntry('script','故事');api.getProject.mockResolvedValue(saved);api.updateProject.mockClear();
   expect(await createStudioEntry('script','故事',empty)).toBe(saved);expect(api.updateProject).not.toHaveBeenCalled();
 });
+test.each(['assistant','director'] as const)('a %s brief is saved in assistant history, never a canvas placeholder',async entry=>{
+  const saved=await createStudioEntry(entry,'角色的想法');
+  expect(saved.doc.nodes).toHaveLength(0);expect(saved.doc.assistantConversations).toHaveLength(1);
+  expect(saved.doc.assistantConversations![0].metadata).toMatchObject({prompt:'角色的想法',studioStart:entry,studio:{kind:'assistant',conversation:{turns:[]}}});
+  api.getProject.mockResolvedValue(saved);api.updateProject.mockClear();
+  expect(await createStudioEntry(entry,'角色的想法',empty)).toBe(saved);expect(api.updateProject).not.toHaveBeenCalled();
+});

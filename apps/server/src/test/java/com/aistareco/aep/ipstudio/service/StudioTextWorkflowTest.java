@@ -28,7 +28,7 @@ class StudioTextWorkflowTest {
         when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"原文\"}}]}"));
         when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
         var endpoint=AiModelEndpoint.builder().id("agnes-text").enabled(true).build();
-        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
         var prices=mock(AiChatTokenPricing.class);
@@ -54,7 +54,7 @@ class StudioTextWorkflowTest {
         when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"原文\"}}]}"));
         when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
         var endpoint=AiModelEndpoint.builder().id("agnes-text").enabled(true).build();
-        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
         var tokenPricing=mock(AiChatTokenPricing.class);
@@ -97,7 +97,7 @@ class StudioTextWorkflowTest {
             when(tx.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
             var run=IpRun.builder().id("r").kind("studio-text").status("running").cost(2).inputJson("{\"operation\":\"text\",\"textEdit\":{\"content\":\"原文\"},\"_exec\":{\"systemPrompt\":\"text\",\"userPrompt\":\"起标题 + 原文\",\"endpointId\":\"text\"}}").build();
             when(runs.findById("r")).thenReturn(Optional.of(run));when(runs.lockById("r")).thenReturn(Optional.of(run));
-            var endpoint=AiModelEndpoint.builder().id("text").enabled(true).build();when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+            var endpoint=AiModelEndpoint.builder().id("text").enabled(true).build();when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
             when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap())).thenReturn(new AiModelInvocationService.AiModelResponse(invalid?"{}":"{\"summary\":\"添加标题\",\"content\":\"雨夜\\n原文\"}","stop",12L,"text","text"));
             var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),mock(FileStorageService.class),models,mock(DramaAssembleService.class),credits,json,tx,mock(DapAssetService.class));
             worker.runBlocking("r");worker.runBlocking("r");verify(models,times(1)).invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap());
@@ -114,7 +114,7 @@ class StudioTextWorkflowTest {
             execution.set("tokenPricing",json.valueToTree(new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192)));
             var run=IpRun.builder().id("r").kind("studio-text").status("running").cost(21).inputJson(input.toString()).build();
             when(runs.findById("r")).thenReturn(Optional.of(run));when(runs.lockById("r")).thenReturn(Optional.of(run));
-            var endpoint=AiModelEndpoint.builder().id("text").enabled(true).build();when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"text")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+            var endpoint=AiModelEndpoint.builder().id("text").enabled(true).build();when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
             when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap())).thenReturn(new AiModelInvocationService.AiModelResponse("{\"summary\":\"完成\",\"content\":\"新正文\"}","stop",2000L,"text","text",missingUsage?null:1000L,1000L));
             var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),mock(FileStorageService.class),models,mock(DramaAssembleService.class),credits,json,tx,mock(DapAssetService.class));
             worker.runBlocking("r");worker.runBlocking("r");
@@ -131,7 +131,7 @@ class StudioTextWorkflowTest {
                 .modelAlias("qwen3-6-35b-a3b").enabled(true).build();
         var candidate=AiAppEndpointCandidate.builder().enabled(true).build();
         var resolved=new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true);
-        when(models.listCandidates(AiModelPurpose.DAP_PERSONA)).thenReturn(List.of(resolved));
+        when(models.listCandidates(AiModelPurpose.DAP_PERSONA,"studio")).thenReturn(List.of(resolved));
         var service=new StudioWorkflowService(null,null,mock(StudioFixtureProvider.class),null,pricing,models,null,null,null,null,null,null,json,null,null);
         assertEquals("qwen3-6-35b-a3b",service.capabilities().textModels().get(0).name());
         var policies=mock(AiAppSceneModelPolicyService.class);

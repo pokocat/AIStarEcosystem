@@ -1,5 +1,6 @@
 "use client";
 import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
+import { StudioTaskList } from "./studio-task-list";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
 import { inferMediaRatio } from "@/canvas/lib/media-size";
@@ -48,6 +49,7 @@ import { StudioLipSync } from "./studio-lip-sync";
 import { submitStudioSpeech, submitStudioLipSync, extractStudioLipSync } from "@/canvas-bridge/studio-api";
 import type { StudioSpeechRequest, StudioLipSyncRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { StudioAssistant } from "./studio-assistant";
+import { useStudioConversations } from "@/canvas-bridge/studio-conversations";
 import { StudioBatchPanel } from "./studio-batch-panel";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { StudioIpLibrary } from "./studio-ip-library";
@@ -67,6 +69,7 @@ const labels = { text: "AI 修改文本", script: "创作剧本", storyboard: "�
 
 export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds, setNodes, setConnections, onFocusNode, onClosePanel, onRestorePanel, activeComposerId, referencePicking, textEditingNodeId, renderTextEditor }: Props) {
   const { message } = useStudioApp();
+  const {conversations,setConversations}=useStudioConversations(projectId);
   const [missingPlanRefs,setMissingPlanRefs]=useState<string[]>([]);
   const [workSaving,setWorkSaving]=useState(false);
   const [capabilities, setCapabilities] = useState<StudioCapabilities>();
@@ -676,7 +679,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(startOpened.current===projectId)return;
     const start=parseStudioEntry(new URLSearchParams(window.location.search).get("start"));
     if(!start||start==="blank")return;
-    const source=nodesRef.current.find(n=>n.metadata?.studioStart===start);
+    const source=[...nodesRef.current,...conversations].find(n=>n.metadata?.studioStart===start);
     // Existing work never gets reopened into a fresh creation flow on refresh.
     if(nodesRef.current.length && (nodesRef.current.length!==1||!source))return;
     startOpened.current=projectId;
@@ -923,7 +926,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           {key:"lip",label:"口型同步",onClick:()=>openLipSync(selected)},
           {key:"assistant",label:"导演助手",onClick:()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}},
         ]}}><button type="button" aria-label="更多创作工具">更多创作</button></Dropdown>
-        <button type="button" className="studio-primary" onClick={()=>dispatchStudioCommand("assistant",selected?.metadata?.studio?.conversation?selected.id:undefined)}><Sparkles size={17}/>AI 创作</button>
+        <button type="button" className="studio-primary" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><Sparkles size={17}/>AI 创作</button>
       </div>
     </div>
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
@@ -996,7 +999,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {(()=>{const audio=nodes.find(n=>n.id===voiceAdoptId);return <StudioVoiceAdopt open={!!voiceAdoptId} projectId={projectId} runId={audio?.metadata?.studio?.runId} title={audio?.metadata?.studio?.voiceProfile?.name||audio?.title} initialAvatarId={audio?.metadata?.studio?.voiceProfile?.avatarId||audio?.metadata?.studio?.speechRequest?.avatarId} audioUrl={audio?.metadata?.content} audioKey={audio?.metadata?.storageKey} onClose={()=>setVoiceAdoptId(undefined)} onAdopt={async profile=>{
       if(!audio)return;const {demoUrl: _demoUrl,...snapshot}=profile;patch(audio.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,voiceProfile:snapshot}}}));await saveStudioDocument(projectId);message.success(`已保存 ${profile.name} · v${profile.version}；未再次扣积分`);
     }}/>;})()}
-    <StudioAssistant projectId={projectId} nodes={nodes} setNodes={setNodes} setConnections={setConnections} capabilities={capabilities} open={assistantOpen} initialNodeId={assistantNodeId} initialMode={entryAssistantMode} initialPrompt={nodes.find(n=>n.id===assistantNodeId)?.metadata?.studioStart==='assistant'?entryBrief:undefined} onClose={()=>{setAssistantOpen(false);setEntryAssistantMode(undefined);}} selectedIds={[...selectedNodeIds]} onUseStep={usePlanStep}/>
+    <StudioAssistant projectId={projectId} conversations={conversations} setConversations={setConversations} nodes={nodes} setNodes={setNodes} setConnections={setConnections} capabilities={capabilities} open={assistantOpen} initialNodeId={assistantNodeId} initialMode={entryAssistantMode} initialPrompt={[...nodes,...conversations].find(n=>n.id===assistantNodeId)?.metadata?.studioStart==='assistant'?entryBrief:undefined} onClose={()=>{setAssistantOpen(false);setEntryAssistantMode(undefined);}} selectedIds={[...selectedNodeIds]} onUseStep={usePlanStep}/>
     <StudioBatchPanel projectId={projectId} nodes={nodes} shots={shots} setNodes={setNodes} setConnections={setConnections} models={models} capabilities={capabilities} open={batchOpen} initialNodeId={batchNodeId} onClose={()=>setBatchOpen(false)} ratio={ratio} episodeNo={episodeFilter==="all"?undefined:episodeFilter}/>
     <Modal title="比较并采用版本" open={!!takePicker} onCancel={()=>setTakePicker(undefined)} footer={null} width={720} getContainer={containers}>
       <div className="studio-take-grid">{(()=>{const node=nodes.find(n=>n.id===takePicker);const adopted=node?.type===CanvasNodeType.Image?node.metadata?.primaryImageId:node?.metadata?.primaryVideoId;return (node?.type===CanvasNodeType.Image?node.metadata?.images:node?.metadata?.videos)?.map((take,index)=><article className="studio-take" key={take.id}>
@@ -1014,25 +1017,20 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         <p>主形象更新会保留旧版本；造型归入所选人物，不改变正式主形象。</p></div>
     </Modal>
     <StudioIpLibrary actionLabel={libraryTarget.kind==="canvas"?undefined:"引用选中素材"} open={assetPicker} assets={ipAssets} loading={assetsLoading} error={assetError} onClose={closeIpLibrary} onRefresh={loadIpAssets} onImport={importIpAsset} onAssetChange={asset=>setIpAssets(current=>current.map(a=>a.lookId===asset.lookId&&a.avatarId===asset.avatarId?asset:a))}/>
-    <StudioFloatingPanel title="创作任务" open={taskList} onClose={() => setTaskList(false)} width={420} utility>
-      {runs.some(r=>r.status==='running')&&<p className="studio-task-polling">队列位置和任务状态自动更新</p>}
-      {taskError&&<p><StudioErrorNotice error={taskError}/> <Button onClick={()=>void loadTasks(taskPage)} disabled={tasksLoading}>重试加载任务</Button></p>}
-      {unconfirmed.map(n=><article className="studio-task-row" key={n.id}><strong>{n.title}</strong><span>提交结果尚未确认</span><Button disabled={busy} onClick={()=>void retry(n)}>确认原任务</Button></article>)}
-      {!runs.length&&!unconfirmed.length?<p>还没有创作任务</p>:taskRuns.map(run => <article className="studio-task-row" key={run.id}><strong>{nodes.find(n => n.id===run.nodeId)?.title || labels[(run.inputs as unknown as StudioRunRequest).operation] || "IP 定稿"}</strong>
-        <span>{run.status==="running"?studioTaskLabel(run):run.status==="done"?run.stage==="部分视频生成失败"?"部分完成":"已完成":run.errorCode==="IP_RUN_CANCELLED"?"已停止":"生成失败"}</span><small>{run.output.mock?"测试响应":run.status==='running'?"":`已消耗 ${run.cost} 积分`}</small>
-        {studioTaskQueued(run)&&run.queue&&<small>前面还有 {run.queue.position-1} 项 · 正在执行 {run.queue.running} 项</small>}
-        {run.status==='running'&&refreshErrors[run.id]&&<small role="status">任务状态暂未更新，正在重试…</small>}
-        <Button size="small" onClick={()=>setRunDetail(run)}>查看输入</Button>
-        {nodes.some(n=>n.id===run.nodeId)&&<Button size="small" onClick={()=>{setTaskList(false);setMode("canvas");onFocusNode(run.nodeId);}}>查看画布结果</Button>}
-        {run.status==="running"?run.kind==="studio-video"&&!studioTaskQueued(run)?<small>等待原视频任务结果</small>:<Button size="small" onClick={() => {const token=epoch.current;void cancelRun(run.id).then(result => {
+    <StudioFloatingPanel title="创作任务" open={taskList} onClose={() => setTaskList(false)} width={480} utility className="studio-task-panel">
+      <StudioTaskList runs={taskRuns} nodes={[...nodes,...conversations]} unconfirmed={unconfirmed} loading={tasksLoading} busy={busy}
+        hasMore={taskMore} error={taskError} refreshErrors={refreshErrors}
+        titleFor={run=>[...nodes,...conversations].find(n=>n.id===run.nodeId)?.title||labels[(run.inputs as unknown as StudioRunRequest).operation]||"IP 定稿"}
+        onInput={setRunDetail} onLocate={node=>{setTaskList(false);if(node.metadata?.studio?.conversation){setAssistantNodeId(node.id);setAssistantOpen(true);}else{setMode("canvas");onFocusNode(node.id);}}}
+        onRetry={node=>{if(node.metadata?.studio?.conversation){setAssistantNodeId(node.id);setAssistantOpen(true);}else void retry(node);}} onReload={()=>void loadTasks(taskPage)} onMore={()=>void loadTasks(taskPage+1)}
+        onCancel={run=>{const token=epoch.current;void cancelRun(run.id).then(result=>{
           if(epoch.current!==token||!alive.current)return;
           if(result.status!=='running')terminalRuns.current.set(result.id,result);
           setRuns(old=>old.map(r=>r.id===result.id?result:r));
           if(nodesRef.current.some(n=>n.id===result.nodeId&&n.metadata?.studio?.runId===result.id))
             setNodes(nodes=>applyStudioRunToDocument(nodes,connectionsRef.current,result.nodeId,result));
           message.info(result.status==='running'?"已请求停止创作":"已停止排队");
-        }).catch(e=>message.error(e));}}>{studioTaskQueued(run)?"停止排队":"停止"}</Button>:run.status==="failed"&&run.errorCode!=="IP_RUN_CANCELLED"&&nodes.find(n=>n.id===run.nodeId)?.metadata?.studio?.runId===run.id?<Button size="small" onClick={() => {const node=nodesRef.current.find(n => n.id===run.nodeId);if(node)void retry(node);}}>重新生成</Button>:null}</article>)}
-      {taskMore&&<Button block loading={tasksLoading} onClick={()=>void loadTasks(taskPage+1)}>加载更多任务</Button>}
+        }).catch(e=>message.error(e));}}/>
     </StudioFloatingPanel>
     <Modal title="本次创作输入" open={!!runDetail} onCancel={()=>setRunDetail(undefined)} footer={null} width={720} getContainer={containers}>
       {runDetail&&<div className="studio-director-form"><p>{runDetail.output.mock||Boolean((runDetail.inputs as unknown as {mock?:boolean}).mock)?"测试响应：使用已有样例，本次未向模型发送请求。":"此处保留提交时的输入快照。"}</p>

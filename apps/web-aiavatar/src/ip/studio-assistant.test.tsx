@@ -6,6 +6,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {ApiError} from '@ai-star-eco/api-client';
 import {StudioAssistant} from './studio-assistant';
+import {splitStudioConversations} from '@/canvas-bridge/studio-conversations';
 import type {CanvasNodeData} from '@/canvas/types/canvas';
 const api=vi.hoisted(()=>({importStudioStory:vi.fn(),importStudioMedia:vi.fn(),submitStudioRun:vi.fn(),saveStudioDocument:vi.fn(),readRun:vi.fn(),success:vi.fn(),error:vi.fn()}));
 vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label={title==='生成视频'||title==='生成图片'||title==='创作剧本'||title==='拆分镜头'?'关闭创作面板':`关闭${title}`} onClick={onClose}>关闭</button>{children}{footer}</section>:null}));
@@ -29,7 +30,7 @@ beforeEach(()=>{vi.clearAllMocks();api.saveStudioDocument.mockResolvedValue(unde
 const character={id:'c',type:'image',title:'角色 A',position:{x:20,y:20},width:320,height:400,metadata:{prompt:'紫发角色'}} as CanvasNodeData;
 const text={...character,id:'t',type:'text',title:'故事 B',metadata:{content:'在森林里相遇'}} as CanvasNodeData;
 const history={...text,id:'h',title:'导演执导',metadata:{studio:{kind:'assistant',request:{clientRequestId:'old',nodeId:'h',operation:'assistant',prompt:'讨论',contextNodeIds:['t'],model:'two',maxCost:2},conversation:{mode:'director',turns:[{role:'user',content:'讨论'},{role:'assistant',content:'建议'}]}}}} as CanvasNodeData;
-function Host({initial=[character,text,history],onSnapshot,...p}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initial);useEffect(()=>{onSnapshot?.(nodes);},[nodes,onSnapshot]);return <StudioAssistant projectId="p" open nodes={nodes} setNodes={setNodes} setConnections={()=>{}} capabilities={{mock:false,operations:['assistant'],imageCost:8,textCost:2,videoCost:null,textModels:[{endpointId:'one',name:'模型一',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}},{endpointId:'two',name:'模型二',isDefault:false,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]}} onClose={()=>{}} selectedIds={['c']} onUseStep={()=>{}} {...p}/>;}
+function Host({initial=[character,text,history],onSnapshot,onCanvasSnapshot,...p}:any){const split=splitStudioConversations(initial);const[nodes,setNodes]=useState<CanvasNodeData[]>(split.nodes),[conversations,setConversations]=useState<CanvasNodeData[]>(split.assistantConversations);useEffect(()=>{onSnapshot?.([...nodes,...conversations]);onCanvasSnapshot?.(nodes,conversations);},[nodes,conversations,onSnapshot,onCanvasSnapshot]);return <StudioAssistant projectId="p" open conversations={conversations} setConversations={setConversations} nodes={nodes} setNodes={setNodes} setConnections={()=>{}} capabilities={{mock:false,operations:['assistant'],imageCost:8,textCost:2,videoCost:null,textModels:[{endpointId:'one',name:'模型一',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}},{endpointId:'two',name:'模型二',isDefault:false,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]}} onClose={()=>{}} selectedIds={['c']} onUseStep={()=>{}} {...p}/>;}
 test('history restores its exact reference and model before sending the next turn',async()=>{
   render(<Host/>);fireEvent.change(settingsControl('combobox','对话历史'),{target:{value:'h'}});
   expect(screen.getByRole('button',{name:'移除引用 故事 B'})).toBeDefined();expect(screen.queryByRole('button',{name:'移除引用 角色 A'})).toBeNull();
@@ -390,3 +391,50 @@ test('reopening an adopted result passes resolved dependencies to the generation
 });
 
 beforeEach(() => { mountStudioErrorNotifications(api.error); });
+
+test('sending and reopening history never adds canvas nodes or reference edges until adoption',async()=>{
+  let canvas:CanvasNodeData[]=[],records:CanvasNodeData[]=[];const edges=vi.fn();
+  const plan={...textPlan,steps:[{...textPlan.steps[0],referenceNodeIds:[]}]};
+  api.submitStudioRun.mockResolvedValueOnce({id:'run',status:'done',output:{plan}});
+  const view=render(<Host initial={[text]} selectedIds={[]} setConnections={edges} onCanvasSnapshot={(n:CanvasNodeData[],h:CanvasNodeData[])=>{canvas=n;records=h;}}/>);
+  fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'生成角色描述'}});
+  fireEvent.click(screen.getByRole('button',{name:'发送'}));
+  await screen.findByRole('button',{name:'放入画布'});
+  expect(canvas.map(n=>n.id)).toEqual(['t']);expect(records).toHaveLength(1);expect(edges).not.toHaveBeenCalled();
+  const saved=structuredClone([...canvas,...records]);const id=records[0].id;view.unmount();
+  render(<Host initial={saved} initialNodeId={id} selectedIds={[]} onCanvasSnapshot={(n:CanvasNodeData[],h:CanvasNodeData[])=>{canvas=n;records=h;}}/>);
+  expect(screen.getByText('生成角色描述')).toBeDefined();expect(canvas).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button',{name:'放入画布'}));
+  await waitFor(()=>expect(canvas).toHaveLength(2));expect(records[0].metadata?.studio?.conversation?.plan?.steps[0].resultNodeId).toBe(canvas[1].id);
+  expect(api.submitStudioRun).toHaveBeenCalledOnce();
+});
+test.each(['image','video','audio'])('selected %s prompt can be adopted in place preserving media, accepted request and graph',async type=>{
+  const original={...character,type,metadata:{content:'/existing',storageKey:'own/media',prompt:'旧提示词',studio:{kind:'shot',request:{clientRequestId:'paid',prompt:'受理时提示词'}}}} as CanvasNodeData;
+  const plan={summary:'已优化',questions:[],steps:[{...textPlan.steps[0],content:'保持人物，缓缓向镜头挥手。',referenceNodeIds:['c'],editTarget:{nodeId:'c',field:'prompt'}}]};
+  const record=withPlan(plan);record.metadata!.studio!.request={...record.metadata!.studio!.request!,contextNodeIds:['c']};
+  let canvas:CanvasNodeData[]=[];const edges=vi.fn();
+  render(<Host initial={[original,record]} initialNodeId="h" selectedIds={['c']} setConnections={edges} onCanvasSnapshot={(n:CanvasNodeData[])=>canvas=n}/>);
+  expect(screen.getByText('将替换该节点提示词 · 查看原文')).toBeDefined();
+  fireEvent.click(screen.getByRole('button',{name:'替换节点提示词'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
+  expect(canvas).toHaveLength(1);expect(canvas[0]).toMatchObject({id:'c',type,metadata:{prompt:plan.steps[0].content,content:'/existing',storageKey:'own/media',studio:{request:{prompt:'受理时提示词'}}}});
+  expect(edges).not.toHaveBeenCalled();expect(api.submitStudioRun).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'已更新提示词'})).toBeDefined();
+});
+test('original send snapshot blocks overwriting a prompt manually changed while AI was responding',async()=>{
+  const plan={summary:'优化',questions:[],steps:[{...textPlan.steps[0],content:'AI 新提示词',referenceNodeIds:['c'],editTarget:{nodeId:'c',field:'prompt'}}]};
+  const record=withPlan(plan);record.metadata!.studio!.request={...record.metadata!.studio!.request!,contextNodeIds:['c']};record.metadata!.studio!.assistantEditSnapshots={c:{prompt:'发送时原提示词'}};
+  let canvas:CanvasNodeData[]=[];
+  render(<Host initial={[{...character,metadata:{prompt:'用户刚改的提示词'}},record]} initialNodeId="h" selectedIds={['c']} onCanvasSnapshot={(n:CanvasNodeData[])=>canvas=n}/>);
+  fireEvent.click(screen.getByRole('button',{name:'替换节点提示词'}));
+  await waitFor(()=>expect(screen.getAllByRole('alert').some(n=>n.textContent?.includes('节点内容已有修改'))).toBe(true));
+  expect(canvas[0].metadata?.prompt).toBe('用户刚改的提示词');expect(api.saveStudioDocument).not.toHaveBeenCalled();
+});
+test('text node adoption can explicitly write its prompt instead of replacing its body',async()=>{
+  const plan={...textPlan,steps:[{...textPlan.steps[0],content:'优化后的生成指令',editTarget:{nodeId:'t',field:'prompt'}}]};
+  let canvas:CanvasNodeData[]=[];
+  render(<Host initial={[text,withPlan(plan)]} initialNodeId="h" selectedIds={['t']} onCanvasSnapshot={(n:CanvasNodeData[])=>canvas=n}/>);
+  expect((screen.getByRole('combobox',{name:'修改字段'}) as HTMLSelectElement).value).toBe('prompt');
+  fireEvent.click(screen.getByRole('button',{name:'替换节点提示词'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
+  expect(canvas[0].metadata).toMatchObject({content:text.metadata?.content,prompt:'优化后的生成指令'});expect(canvas).toHaveLength(1);
+});

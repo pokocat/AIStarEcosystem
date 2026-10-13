@@ -86,6 +86,13 @@ public final class IpDocs {
         return null;
     }
 
+    /** Assistant history lookup is deliberately separate from referenceable canvas nodes. */
+    public static JsonNode conversation(JsonNode doc, String id) {
+        if (doc != null && id != null) for (JsonNode record : doc.path("assistantConversations"))
+            if (id.equals(record.path("id").asText())) return record;
+        return node(doc,id); // Legacy saved conversation cards.
+    }
+
     public static String typeOf(JsonNode node) {
         return node == null ? null : node.path("type").asText(null);
     }

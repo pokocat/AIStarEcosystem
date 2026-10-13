@@ -545,7 +545,7 @@ test('a queued video shows waiting instead of fake progress and can be stopped w
  const waiting={...done,status:'running',stage:'endpoint.queued',pct:0,output:{}};
  api.history.mockResolvedValue({items:[waiting],hasMore:false});api.cancel.mockResolvedValue({...waiting,status:'failed',errorCode:'IP_RUN_CANCELLED',cost:0});
  render(<Host/>);fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
- expect(await screen.findByText('排队中 · 有空位后自动开始')).toBeDefined();
+ expect(await screen.findByText('排队中')).toBeDefined();
  expect(screen.queryByText('生成中 0%')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'停止排队'}));
  await waitFor(()=>expect(api.cancel).toHaveBeenCalledWith('accepted'));expect(api.submit).not.toHaveBeenCalled();
 });
@@ -557,8 +557,8 @@ test('queue polling advances the displayed position and stops after the original
  api.cancel.mockResolvedValue({...queued,status:'failed',errorCode:'IP_RUN_CANCELLED',cost:0,queue:null});
  const pendingNode={...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,runId:'accepted'}}};
  render(<Host initial={pendingNode}/>);fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
- expect(await screen.findByText('排队提醒：当前模型请求量较高，你目前排在第 3 位。')).toBeDefined();
- expect(await screen.findByText('排队提醒：当前模型请求量较高，你目前排在第 1 位。',{}, {timeout:3000})).toBeDefined();
+ expect(await screen.findByText('排队第 3 位')).toBeDefined();
+ expect(await screen.findByText('排队第 1 位',{}, {timeout:3000})).toBeDefined();
  expect(snapshot[0].metadata?.studio?.task?.queue?.position).toBe(1);
  fireEvent.click(screen.getByRole('button',{name:'停止排队'}));
  expect(await screen.findByText('已停止')).toBeDefined();

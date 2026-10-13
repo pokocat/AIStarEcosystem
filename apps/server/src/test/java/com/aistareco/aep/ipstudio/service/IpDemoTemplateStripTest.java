@@ -146,7 +146,7 @@ class IpDemoTemplateStripTest {
 
     @Test
     void publishedCharacterCopiesKeepGroupsAndRolesWithoutPrivateAvatarIdentity() throws Exception {
-        ObjectNode doc=busyDoc();var nodes=(ArrayNode)doc.path("nodes");
+        ObjectNode doc=busyDoc();doc.putArray("assistantConversations").addObject().put("content","private history");var nodes=(ArrayNode)doc.path("nodes");
         var main=(ObjectNode)nodes.get(0).path("metadata");
         main.set("studio",IpStudioFixtures.OM.readTree("{\"kind\":\"ip\",\"libraryAssetRole\":\"main\",\"adoption\":{\"avatarId\":\"private-avatar-1\",\"ipId\":\"private-ip\"}}"));
         var detail=nodes.addObject().put("id","detail").put("type","image").put("title","衣服细节");
@@ -201,7 +201,7 @@ class IpDemoTemplateStripTest {
     @Test
     void templateAndExampleExcludePrivateAssistantTextAndApprovedBatchNodes() throws Exception {
         for(String kind:java.util.List.of(IpDemoTemplate.KIND_TEMPLATE,IpDemoTemplate.KIND_EXAMPLE)) {
-            ObjectNode doc=busyDoc();var nodes=(ArrayNode)doc.path("nodes");
+            ObjectNode doc=busyDoc();doc.putArray("assistantConversations").addObject().put("content","private history");var nodes=(ArrayNode)doc.path("nodes");
             for(String auxiliary:java.util.List.of("assistant","batch")) {
                 var node=nodes.addObject().put("id",auxiliary).put("type","text");
                 var md=node.putObject("metadata").put("prompt","private request").put("content","private reply");
@@ -214,7 +214,7 @@ class IpDemoTemplateStripTest {
             var published=IpStudioFixtures.OM.readTree(row.getDocJson());
             assertEquals(3,published.path("nodes").size());assertEquals(1,published.path("connections").size());
             assertFalse(published.path("nodes").get(1).path("metadata").path("studio").has("parentNodeId"));
-            assertFalse(published.toString().contains("private request"));assertFalse(published.toString().contains("private reply"));
+            assertFalse(published.has("assistantConversations"));assertFalse(published.toString().contains("private history"));assertFalse(published.toString().contains("private request"));assertFalse(published.toString().contains("private reply"));
         }
     }
 

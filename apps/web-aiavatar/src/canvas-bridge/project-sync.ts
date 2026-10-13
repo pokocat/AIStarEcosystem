@@ -20,6 +20,8 @@ import { setCurrentProjectId } from "./api";
 import { recordRun, useLastRun } from "./last-run";
 import { loadServerModels } from "./models";
 
+import { splitStudioConversations } from "./studio-conversations";
+
 const SAVE_DEBOUNCE_MS = 900;
 
 /**
@@ -86,7 +88,7 @@ export async function awaitPendingSaves(projectId: string): Promise<"drained" | 
   return "timeout";
 }
 
-type IpDoc = { nodes?: CanvasNodeData[]; connections?: CanvasConnection[]; viewport?: ViewportTransform };
+type IpDoc = { assistantConversations?: CanvasNodeData[]; nodes?: CanvasNodeData[]; connections?: CanvasConnection[]; viewport?: ViewportTransform };
 
 const EMPTY_VIEWPORT: ViewportTransform = { x: 0, y: 0, k: 1 };
 
@@ -135,8 +137,7 @@ function toCanvasProject(id: string, name: string, doc: IpDoc | null | undefined
     title: name || "未命名 IP",
     createdAt: updatedAt || new Date().toISOString(),
     updatedAt: updatedAt || new Date().toISOString(),
-    nodes: healDanglingPrimary(doc?.nodes ?? []),
-    connections: doc?.connections ?? [],
+    ...splitStudioConversations(healDanglingPrimary(doc?.nodes ?? []),doc?.assistantConversations,doc?.connections),
     chatSessions: [],
     activeChatId: null,
     backgroundMode: "lines",
@@ -318,7 +319,7 @@ export function useProjectSync(projectId: string) {
     return {
       id: project.id,
       title: project.title,
-      doc: { nodes: project.nodes, connections: project.connections, viewport: project.viewport },
+      doc: { ...splitStudioConversations(project.nodes,project.assistantConversations,project.connections), viewport: project.viewport },
       base: baseRef.current,
     };
   }, [projectId]);
@@ -417,7 +418,7 @@ export function useProjectSync(projectId: string) {
       const a = cur.projects.find((p) => p.id === projectId);
       const b = prev.projects.find((p) => p.id === projectId);
       // 只认内容变化：拖动视口也算（用户下次打开希望还在原来那个位置）
-      if (!a || (b && a.nodes === b.nodes && a.connections === b.connections
+      if (!a || (b && a.assistantConversations === b.assistantConversations && a.nodes === b.nodes && a.connections === b.connections
                  && a.viewport === b.viewport && a.title === b.title)) return;
       markDirty();
       if (timerRef.current) clearTimeout(timerRef.current);

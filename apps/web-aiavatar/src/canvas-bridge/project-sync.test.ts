@@ -444,3 +444,17 @@ describe("等补存落地也要有上限", () => {
     }
   });
 });
+
+it('loads legacy conversation nodes into separate history and persists history-only changes without adding graph nodes',async()=>{
+  const legacy={...serverDoc.nodes[0],id:'history',type:'text',metadata:{studio:{kind:'assistant',request:{clientRequestId:'original-paid-request'},conversation:{mode:'general',turns:[{role:'user',content:'原对话'}]}}}};
+  getProjectMock.mockResolvedValue({id:'IPP-history',name:'历史画布',doc:{...serverDoc,nodes:[...serverDoc.nodes,legacy],connections:[{id:'legacy-edge',fromNodeId:'n-1',toNodeId:'history'}]},docVersion:'old'});
+  const view=renderHook(()=>useProjectSync('IPP-history'));
+  await waitFor(()=>expect(view.result.current.state).toBe('ready'));
+  const project=useCanvasStore.getState().projects[0];
+  expect(project.nodes.map(n=>n.id)).toEqual(['n-1']);expect(project.connections).toEqual([]);
+  expect(project.assistantConversations?.[0].metadata?.studio?.request?.clientRequestId).toBe('original-paid-request');
+  await act(async()=>{useCanvasStore.getState().updateProject('IPP-history',{assistantConversations:project.assistantConversations!.map(n=>({...n,title:'更新后的对话'}))});await view.result.current.saveNow();});
+  const payload=updateProjectMock.mock.calls.at(-1)![1];
+  expect(payload.doc.nodes.map((n:{id:string})=>n.id)).toEqual(['n-1']);expect(payload.doc.assistantConversations[0].title).toBe('更新后的对话');
+  view.unmount();
+});

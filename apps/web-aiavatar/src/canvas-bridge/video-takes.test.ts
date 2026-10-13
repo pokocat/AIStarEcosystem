@@ -28,12 +28,12 @@ describe('mixed native video candidates',()=>{
  });
 });
 describe('native regeneration and persisted submit state',()=>{
- it.each(['running','done','failed'] as const)('preserves adoption and Studio context across a %s replacement batch',status=>{
+ it.each(['running','done','failed'] as const)('preserves existing media until %s replacement completes, then selects its new result',status=>{
   const pending=prepareStudioVideoRegeneration(node,{status:'loading',prompt:'new prompt',videoCount:'4'},takes);
   const request={clientRequestId:'same-key',nodeId:'v',operation:'video' as const,prompt:'new prompt',count:4,maxCost:1280};
   pending.metadata!.studio={...pending.metadata!.studio!,request,runId:undefined};
   const run:IpRun={id:'batch',projectId:'p',nodeId:'v',kind:'studio-video',status,stage:'',pct:0,cost:0,inputs:{},output:{videoCandidates:[{index:0,jobId:'job',status:status==='done'?'done':status==='failed'?'failed':'running',pct:0,durationSec:8,...(status==='done'?{storageKey:'new.mp4',url:'/new.mp4'}:{})}]},createdAt:''};
-  const updated=applyStudioRun(pending,run);expect(updated.metadata).toMatchObject({storageKey:'fourth.mp4',primaryVideoId:'fourth',content:'/fourth.mp4'});expect(updated.metadata?.studio).toMatchObject({episodeNo:2,order:3,includeInWork:false,references:[{storageKey:'character',role:'character'}],request});expect(updated.metadata?.videos).toHaveLength(5);
+  const updated=applyStudioRun(pending,run);expect(updated.metadata).toMatchObject(status==='done'?{storageKey:'new.mp4',primaryVideoId:'batch',content:'/new.mp4'}:{storageKey:'fourth.mp4',primaryVideoId:'fourth',content:'/fourth.mp4'});expect(updated.metadata?.videos).toContainEqual(expect.objectContaining({id:'fourth',storageKey:'fourth.mp4'}));expect(updated.metadata?.studio).toMatchObject({episodeNo:2,order:3,includeInWork:false,references:[{storageKey:'character',role:'character'}],request});expect(updated.metadata?.videos).toHaveLength(5);
  });
  it('unknown and known active requests remain blocked after serialization; terminal failure reopens normal generation',()=>{
   const pending={...node,metadata:{...node.metadata,status:'loading' as const,studio:{...node.metadata!.studio!,request:{clientRequestId:'original',nodeId:'v',operation:'video' as const,prompt:'saved'}}}};
