@@ -68,7 +68,7 @@ public class StudioWorkflowWorker {
                         String system=input.path("_exec").path("systemPrompt").asText(),user=input.path("_exec").path("userPrompt").asText();
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
-                        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,endpointId).orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用"));
+                        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用"));
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
                         if(visual.isArray()&&!visual.isEmpty()) {

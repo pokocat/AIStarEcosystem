@@ -5,6 +5,7 @@ import com.aistareco.aep.ipstudio.model.*;
 import com.aistareco.aep.ipstudio.repository.*;
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.AiAppSceneModelPolicyService;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,13 +21,13 @@ class StudioEffectServiceTest {
     final IpVideoEffectRepository effects=mock(IpVideoEffectRepository.class);
     final IpVideoEffectActivityRepository activity=mock(IpVideoEffectActivityRepository.class);
     final IpProjectService projects=mock(IpProjectService.class);
-    final AiModelInvocationService models=mock(AiModelInvocationService.class);
+    final AiAppSceneModelPolicyService scenePolicies=mock(AiAppSceneModelPolicyService.class);
     final FileStorageService storage=mock(FileStorageService.class);
     final EntityManager em=mock(EntityManager.class);
     final Map<String,IpVideoEffect> catalog=new LinkedHashMap<>();final Map<String,IpVideoEffectActivity> states=new HashMap<>();
     StudioEffectService service;@TempDir Path dir;
     @BeforeEach void setup()throws Exception {
-        service=new StudioEffectService(effects,activity,projects,models,storage,em,new ObjectMapper());
+        service=new StudioEffectService(effects,activity,projects,scenePolicies,storage,em,new ObjectMapper());
         when(effects.save(any())).thenAnswer(i->{IpVideoEffect e=i.getArgument(0);catalog.put(e.getId(),e);return e;});
         when(effects.findById(anyString())).thenAnswer(i->Optional.ofNullable(catalog.get(i.getArgument(0))));
         when(effects.accessible(anyString())).thenAnswer(i->catalog.values().stream().filter(e->"official".equals(e.getVisibility())||e.getOwnerUserId().equals(i.getArgument(0))).toList());
@@ -34,8 +35,9 @@ class StudioEffectServiceTest {
         when(activity.findByOwnerUserIdAndEffectId(anyString(),anyString())).thenAnswer(i->Optional.ofNullable(states.get(i.getArgument(0)+":"+i.getArgument(1))));
         when(activity.findByOwnerUserId(anyString())).thenAnswer(i->states.values().stream().filter(a->a.getOwnerUserId().equals(i.getArgument(0))).toList());
         var user=AepUser.builder().id("owner").displayName("本人名称").build();when(em.find(AepUser.class,"owner")).thenReturn(user);when(em.find(AepUser.class,"owner",LockModeType.PESSIMISTIC_WRITE)).thenReturn(user);
-        var endpoint=AiModelEndpoint.builder().id("h3").enabled(true).build();when(models.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION,"h3")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
-        when(models.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION,"other")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        var endpoint=AiModelEndpoint.builder().id("h3").enabled(true).build();
+        var other=AiModelEndpoint.builder().id("other").enabled(true).build();
+        when(scenePolicies.studioVideoCandidates()).thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true),new AiModelInvocationService.ResolvedEndpoint(other,null,false)));
         when(projects.requireOwnedAssetKey(eq("owner"),anyString())).thenAnswer(i->{String key=i.getArgument(1);if(!key.startsWith("own/"))throw BusinessException.badRequest("IP_ASSET_KEY_INVALID","foreign");return key;});
         var file=dir.resolve("preview.png");javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",file.toFile());when(storage.openForRead("own/preview")).thenReturn(file);when(storage.signedUrl(anyString())).thenReturn("signed-temporary-url");
     }

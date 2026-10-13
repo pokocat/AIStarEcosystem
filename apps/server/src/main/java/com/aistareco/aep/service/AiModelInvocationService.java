@@ -61,6 +61,7 @@ public class AiModelInvocationService {
     private final AiModelUsageService usage;
     private final AiModelGuardService guard;
     private final UpstreamModelHttp upstreamHttp;
+    private final AiModelAccessPolicyService accessPolicy;
 
     @Value("${aep.llm.chat-timeout-seconds:90}")
     private long chatTimeoutSeconds = 90;
@@ -70,20 +71,27 @@ public class AiModelInvocationService {
                                     AiAppEndpointCandidateRepository candidateRepo,
                                     AiModelUsageService usage,
                                     AiModelGuardService guard,
-                                    UpstreamModelHttp upstreamHttp) {
+                                    UpstreamModelHttp upstreamHttp,
+                                    AiModelAccessPolicyService accessPolicy) {
         this.endpointRepo = endpointRepo;
         this.bindingRepo = bindingRepo;
         this.candidateRepo = candidateRepo;
         this.usage = usage;
         this.guard = guard;
         this.upstreamHttp = upstreamHttp;
+        this.accessPolicy = accessPolicy;
     }
 
     /** purpose → 绑定端点（启用）。无绑定 / 端点停用 / 端点不存在 → empty。行为零变化（D-11 仍读 AiAppBinding）。 */
     public Optional<AiModelEndpoint> resolveEndpoint(AiModelPurpose purpose) {
+        return resolveDefaultEndpoint(purpose, null);
+    }
+
+    public Optional<AiModelEndpoint> resolveDefaultEndpoint(AiModelPurpose purpose, String appCode) {
         return bindingRepo.findById(purpose)
                 .flatMap(b -> endpointRepo.findById(b.getEndpointId()))
-                .filter(AiModelEndpoint::isEnabled);
+                .filter(AiModelEndpoint::isEnabled)
+                .filter(endpoint -> accessPolicy.allows(endpoint, appCode));
     }
 
     /**
@@ -92,24 +100,34 @@ public class AiModelInvocationService {
      * {@code ENDPOINT_NOT_ALLOWED}，§8.0：不静默回退默认、不扣费）。
      */
     public Optional<ResolvedEndpoint> resolveEndpoint(AiModelPurpose purpose, String endpointId) {
+        return resolveEndpoint(purpose, endpointId, null);
+    }
+
+    public Optional<ResolvedEndpoint> resolveEndpoint(AiModelPurpose purpose, String endpointId, String appCode) {
         if (endpointId == null || endpointId.isBlank()) {
-            return resolveEndpoint(purpose).map(ep -> new ResolvedEndpoint(ep,
+            return resolveDefaultEndpoint(purpose, appCode).map(ep -> new ResolvedEndpoint(ep,
                     candidateRepo.findByPurposeAndEndpointId(purpose, ep.getId()).orElse(null), true));
         }
         return candidateRepo.findByPurposeAndEndpointId(purpose, endpointId)
                 .filter(AiAppEndpointCandidate::isEnabled)
                 .flatMap(c -> endpointRepo.findById(c.getEndpointId())
                         .filter(AiModelEndpoint::isEnabled)
+                        .filter(ep -> accessPolicy.allows(ep, appCode))
                         .map(ep -> new ResolvedEndpoint(ep, c, isDefaultEndpoint(purpose, ep.getId()))));
     }
 
     /** D-11：列出某用途全部候选（含 capability + 默认标记），给 /render/models 与 admin。端点已删的孤儿候选跳过。 */
     public List<ResolvedEndpoint> listCandidates(AiModelPurpose purpose) {
+        return listCandidates(purpose, null);
+    }
+
+    public List<ResolvedEndpoint> listCandidates(AiModelPurpose purpose, String appCode) {
         String defaultEndpointId = bindingRepo.findById(purpose).map(b -> b.getEndpointId()).orElse(null);
         List<ResolvedEndpoint> out = new ArrayList<>();
         for (AiAppEndpointCandidate c : candidateRepo.findByPurposeOrderBySortOrderAscCreatedAtAsc(purpose)) {
             AiModelEndpoint ep = endpointRepo.findById(c.getEndpointId()).orElse(null);
             if (ep == null) continue; // 孤儿候选（端点已删）→ 不展示
+            if (appCode != null && !accessPolicy.allows(ep, appCode)) continue;
             out.add(new ResolvedEndpoint(ep, c, c.getEndpointId().equals(defaultEndpointId)));
         }
         return out;
@@ -135,13 +153,22 @@ public class AiModelInvocationService {
 
     /** 是否已为该用途绑定可用端点（上层在调用前判断「未配置」并给明确提示）。 */
     public boolean hasEndpointFor(AiModelPurpose purpose) {
-        return resolveEndpoint(purpose).isPresent();
+        return hasEndpointFor(purpose, null);
+    }
+
+    public boolean hasEndpointFor(AiModelPurpose purpose, String appCode) {
+        return resolveDefaultEndpoint(purpose, appCode).isPresent();
     }
 
     /** 简易 chat：messages = [{role, content}, ...]。单端点，无兜底。 */
     public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
                                       Map<String, Object> options) {
-        AiModelEndpoint endpoint = resolveEndpoint(purpose).orElse(null);
+        return invokeChat(purpose, messages, options, null);
+    }
+
+    public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
+                                      Map<String, Object> options, String appCode) {
+        AiModelEndpoint endpoint = resolveDefaultEndpoint(purpose, appCode).orElse(null);
         if (endpoint == null) {
             log.warn("[ai-chat] blocked purpose={} reason=no-enabled-endpoint", purpose == null ? null : purpose.wire());
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",

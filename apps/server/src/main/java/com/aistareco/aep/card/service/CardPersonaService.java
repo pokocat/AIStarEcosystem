@@ -126,7 +126,7 @@ public class CardPersonaService {
     // ── 内部 ────────────────────────────────────────────────────────────────
 
     private void requireEngine() {
-        if (!invocation.hasEndpointFor(AiModelPurpose.DAP_PERSONA)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DAP_PERSONA, "aiavatar")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "人设对话还没接入大模型：请在管理后台把「数字人 · 人设/翻译」用途绑定一个模型端点后再试。");
         }
@@ -151,7 +151,7 @@ public class CardPersonaService {
 
         AiModelInvocationService.AiModelResponse res;
         try {
-            res = invocation.invokeChat(AiModelPurpose.DAP_PERSONA, messages, options);
+            res = invocation.invokeChat(AiModelPurpose.DAP_PERSONA, messages, options, "aiavatar");
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

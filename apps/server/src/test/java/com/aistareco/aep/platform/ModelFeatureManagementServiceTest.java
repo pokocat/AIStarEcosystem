@@ -23,7 +23,7 @@ class ModelFeatureManagementServiceTest {
     final AiModelEndpointAdminService endpoints=mock(AiModelEndpointAdminService.class);
     final CelebrityZoneService zone=mock(CelebrityZoneService.class);
     final MusicGenProperties music=new MusicGenProperties();
-    ModelFeatureManagementService service(){return new ModelFeatureManagementService(bindings,prices,config,mock(VideoStudioPricingService.class),mapper,music,zone,platform,mock(DapPricingService.class),point,endpoints,mock(AiAppSceneModelPolicyService.class),20);}
+    ModelFeatureManagementService service(){var access=mock(AiModelAccessPolicyService.class);when(access.allows(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenReturn(true);return new ModelFeatureManagementService(bindings,prices,config,mock(VideoStudioPricingService.class),mapper,music,zone,platform,mock(DapPricingService.class),point,endpoints,mock(AiAppSceneModelPolicyService.class),access,20);}
     AiAppEndpointCandidateDto candidate(String id){return new AiAppEndpointCandidateDto("DAP_LIP_SYNC","lip",id,"模型",true,false,1,true,null,12L,null);}
     PlatformConfigDto row(String key,JsonNode value){return new PlatformConfigDto(key,value,1,null,null,null);}
     @Test void registryRejectsUnknownAndAcknowledgesAllSharedConsumers(){

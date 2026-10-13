@@ -231,7 +231,7 @@ public class IpRunWorker {
                     var imageSpec=exec.hasNonNull("imageRequestSpec")
                             ? com.aistareco.aep.model.AiImageRequestSpec.read(exec.path("imageRequestSpec").toString()):null;
                     bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,run.getId()+"-image-"+i,run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage),imageSpec);
-                } else bytes=multimodal.generateImage(prompt, size, refs.isEmpty() ? null : refs, endpointId);
+                } else bytes=multimodal.generateImage(prompt, size, refs.isEmpty() ? null : refs, endpointId, "studio");
                 requireDecodableImage(bytes);
                 progress(run, 10 + (int) Math.round(80.0 * (i + 1) / count), "storage.persist");
                 FileStorageService.StoredFile stored = storage.store(

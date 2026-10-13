@@ -2,8 +2,6 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AiAppSceneModelPolicyDto;
 import com.aistareco.aep.model.AiModelPurpose;
-import com.aistareco.aep.model.AiModelEndpoint;
-import java.net.URI;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -15,7 +13,8 @@ import java.util.*;
 @Service
 public class AiAppSceneModelPolicyService {
     private static final String PREFIX="ai.scene-policy.";
-    public static final String STUDIO_PROVIDER_KEY="ipstudio.model-provider";
+    private static final String STUDIO_VIDEO_GROUP_KEY="ai.app-model-group.studio.video";
+    public record VideoGroup(String defaultEndpointId,List<String> endpointIds) {}
     private final PlatformConfigService config;
     private final AiModelInvocationService models;
     private final ObjectMapper mapper;
@@ -43,7 +42,7 @@ public class AiAppSceneModelPolicyService {
         Set<String> ids=new HashSet<>();
         for(var c:body.candidates()) {
             if(c==null || c.endpointId()==null || c.endpointId().isBlank() || !ids.add(c.endpointId()) || c.creditCost()==null || c.creditCost()<0 || !unit(scene).equals(c.billingUnit()))throw bad("候选模型、积分售价或计量单位无效");
-            requireEndpoint(purpose,c.endpointId());
+            requireEndpoint(purpose,c.endpointId(),appCode);
         }
         if(!ids.contains(body.defaultEndpointId()))throw bad("默认模型必须在可用候选内");
         config.upsert(PREFIX+appCode+"."+scene,mapper.valueToTree(body),"应用场景模型开放与积分售价",updatedBy);
@@ -68,54 +67,57 @@ public class AiAppSceneModelPolicyService {
     public record Selection(AiModelInvocationService.ResolvedEndpoint resolved,long creditCost,String billingUnit) {}
     public Selection resolve(String appCode,String scene,String endpointId,long legacyCost) {
         var purpose=purpose(appCode,scene);var policy=get(appCode,scene);
-        if(policy.isEmpty())return new Selection(requireLegacyEndpoint(purpose,endpointId),legacyCost,unit(scene));
+        if(policy.isEmpty())return new Selection(requireEndpoint(purpose,endpointId,appCode),legacyCost,unit(scene));
         var p=policy.get();String selected=endpointId==null||endpointId.isBlank()?p.defaultEndpointId():endpointId.trim();
         if("fixed".equals(p.mode())&&!Objects.equals(selected,p.defaultEndpointId()))throw unavailable("ENDPOINT_NOT_ALLOWED","此场景使用固定模型");
         var candidate=p.candidates().stream().filter(c->Objects.equals(c.endpointId(),selected)).findFirst().orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","所选模型不在场景开放范围内"));
         if(candidate.creditCost()==null || candidate.creditCost()<0 || !unit(scene).equals(candidate.billingUnit()))throw unavailable("AI_SCENE_PRICE_NOT_CONFIGURED","场景积分售价尚未配置");
-        return new Selection(requireEndpoint(purpose,selected),candidate.creditCost(),candidate.billingUnit());
+        return new Selection(requireEndpoint(purpose,selected,appCode),candidate.creditCost(),candidate.billingUnit());
     }
     public List<Selection> available(String appCode,String scene,long legacyCost) {
         var purpose=purpose(appCode,scene);var policy=get(appCode,scene);
-        if(policy.isEmpty())return models.listCandidates(purpose).stream().filter(this::legacyAvailableEndpoint).map(r->new Selection(r,legacyCost,unit(scene))).toList();
+        if(policy.isEmpty())return models.listCandidates(purpose,appCode).stream().filter(this::availableEndpoint).map(r->new Selection(r,legacyCost,unit(scene))).toList();
         var p=policy.get();List<Selection> out=new ArrayList<>();
         for(var c:p.candidates()) {
-            var r=models.resolveEndpoint(purpose,c.endpointId());
+            var r=models.resolveEndpoint(purpose,c.endpointId(),appCode);
             if(r.isEmpty()||!availableEndpoint(r.get())||c.creditCost()==null||c.creditCost()<0||!unit(scene).equals(c.billingUnit()))continue;
             out.add(new Selection(new AiModelInvocationService.ResolvedEndpoint(r.get().endpoint(),r.get().candidate(),Objects.equals(p.defaultEndpointId(),c.endpointId())),c.creditCost(),c.billingUnit()));
         }
         return out;
     }
-    private AiModelInvocationService.ResolvedEndpoint requireEndpoint(AiModelPurpose purpose,String id) {
-        return models.resolveEndpoint(purpose,id).orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","模型已停用或未绑定到对应能力用途"));
-    }
-    private AiModelInvocationService.ResolvedEndpoint requireLegacyEndpoint(AiModelPurpose purpose,String id) {
-        var resolved=requireEndpoint(purpose,id);
-        if(!allowsStudioProvider(resolved.endpoint()))throw unavailable("ENDPOINT_NOT_ALLOWED","模型不在 Studio 旧配置的供应商范围内");
-        return resolved;
-    }
-    /** Supplier scope applies to unconfigured legacy scenes and video; configured scenes use their own policy. */
-    public boolean allowsStudioProvider(AiModelEndpoint endpoint) {
-        var restriction=config.findByKey(STUDIO_PROVIDER_KEY);
-        if(restriction.isEmpty())return true;
-        if(!restriction.get().value().isTextual() || !"jusuan".equals(restriction.get().value().asText()))
-            throw unavailable("AI_SCENE_POLICY_INVALID","Studio 供应商配置无效");
-        try {
-            URI uri=URI.create(endpoint.getBaseUrl());
-            return "https".equalsIgnoreCase(uri.getScheme()) && "api.jusuanhub.com".equalsIgnoreCase(uri.getHost())
-                    && uri.getUserInfo()==null && uri.getQuery()==null && uri.getFragment()==null;
-        } catch(RuntimeException e){return false;}
+    private AiModelInvocationService.ResolvedEndpoint requireEndpoint(AiModelPurpose purpose,String id,String appCode) {
+        return models.resolveEndpoint(purpose,id,appCode).orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","模型已停用或未绑定到对应能力用途"));
     }
     private boolean availableEndpoint(AiModelInvocationService.ResolvedEndpoint r) {
         return r.endpoint().isEnabled() && r.candidate()!=null && r.candidate().isEnabled();
     }
-    private boolean legacyAvailableEndpoint(AiModelInvocationService.ResolvedEndpoint r) {
-        return availableEndpoint(r) && allowsStudioProvider(r.endpoint());
+    public Optional<VideoGroup> studioVideoGroup() {
+        return config.findByKey(STUDIO_VIDEO_GROUP_KEY).map(saved -> {
+            try {
+                VideoGroup group=mapper.treeToValue(saved.value(),VideoGroup.class);
+                if(group==null || group.endpointIds()==null || group.endpointIds().isEmpty()
+                        || group.endpointIds().size()!=new HashSet<>(group.endpointIds()).size()
+                        || !group.endpointIds().contains(group.defaultEndpointId()))throw new IllegalArgumentException();
+                return group;
+            } catch(Exception exception){throw unavailable("AI_SCENE_POLICY_INVALID","Studio 视频模型配置无效");}
+        });
+    }
+    @Transactional
+    public VideoGroup saveStudioVideoGroup(VideoGroup group,String actor) {
+        if(group==null || group.endpointIds()==null || group.endpointIds().isEmpty()
+                || group.endpointIds().size()>64 || group.endpointIds().size()!=new HashSet<>(group.endpointIds()).size()
+                || !group.endpointIds().contains(group.defaultEndpointId()))throw bad("Studio 视频模型配置无效");
+        for(String id:group.endpointIds())requireEndpoint(AiModelPurpose.VIDEO_GENERATION,id,"studio");
+        config.lockExisting(STUDIO_VIDEO_GROUP_KEY);
+        config.upsert(STUDIO_VIDEO_GROUP_KEY,mapper.valueToTree(group),"Studio 视频开放模型",actor);
+        return group;
     }
     public List<AiModelInvocationService.ResolvedEndpoint> studioVideoCandidates() {
-        var candidates=models.listCandidates(AiModelPurpose.VIDEO_GENERATION).stream().filter(this::legacyAvailableEndpoint).toList();
-        String selected=candidates.stream().filter(AiModelInvocationService.ResolvedEndpoint::isDefault).findFirst()
-                .or(()->candidates.stream().findFirst()).map(r->r.endpoint().getId()).orElse(null);
+        var group=studioVideoGroup();
+        if(group.isEmpty())return List.of();
+        var candidates=models.listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio").stream()
+                .filter(this::availableEndpoint).filter(r->group.get().endpointIds().contains(r.endpoint().getId())).toList();
+        String selected=group.get().defaultEndpointId();
         return candidates.stream().map(r->new AiModelInvocationService.ResolvedEndpoint(r.endpoint(),r.candidate(),Objects.equals(selected,r.endpoint().getId()))).toList();
     }
     public AiModelInvocationService.ResolvedEndpoint resolveStudioVideo(String endpointId) {

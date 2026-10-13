@@ -49,6 +49,38 @@ import static org.mockito.Mockito.when;
  * AiModelUsageService 用 mock（用量流水是 best-effort 副作用，与解析/路由断言无关）。
  */
 class AiModelInvocationServiceTest {
+    @Test
+    void endpointAvailabilityUsesTheCallingApplicationForAnyModel() {
+        var endpoints = mock(AiModelEndpointRepository.class);
+        var bindings = mock(AiAppBindingRepository.class);
+        var candidates = mock(AiAppEndpointCandidateRepository.class);
+        var access = mock(AiModelAccessPolicyService.class);
+        var endpoint = AiModelEndpoint.builder().id("generic-image-model").enabled(true).build();
+        var candidate = AiAppEndpointCandidate.builder().endpointId(endpoint.getId()).enabled(true).build();
+        var binding = new AiAppBinding();
+        binding.setPurpose(AiModelPurpose.DAP_IMAGE);
+        binding.setEndpointId(endpoint.getId());
+        when(bindings.findById(AiModelPurpose.DAP_IMAGE)).thenReturn(Optional.of(binding));
+        when(endpoints.findById(endpoint.getId())).thenReturn(Optional.of(endpoint));
+        when(candidates.findByPurposeAndEndpointId(AiModelPurpose.DAP_IMAGE, endpoint.getId())).thenReturn(Optional.of(candidate));
+        when(candidates.findByPurposeOrderBySortOrderAscCreatedAtAsc(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of(candidate));
+        when(access.allows(endpoint, "studio")).thenReturn(true);
+        var service = new AiModelInvocationService(endpoints, bindings, candidates,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), access);
+        assertTrue(service.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpoint.getId(), "studio").isPresent());
+        assertTrue(service.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpoint.getId(), "drama").isEmpty());
+        assertEquals(1, service.listCandidates(AiModelPurpose.DAP_IMAGE, "studio").size());
+        assertTrue(service.listCandidates(AiModelPurpose.DAP_IMAGE, "drama").isEmpty());
+    }
+
+    private static AiModelAccessPolicyService allowAllAccess() {
+        var policy = mock(AiModelAccessPolicyService.class);
+        when(policy.allows(org.mockito.ArgumentMatchers.any(AiModelEndpoint.class),
+                org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+        return policy;
+    }
+
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -103,7 +135,7 @@ class AiModelInvocationServiceTest {
         when(endpointRepo.findById(ep.getId())).thenReturn(Optional.of(ep));
         return new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess());
     }
 
     @Test
@@ -263,7 +295,7 @@ class AiModelInvocationServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).invokeChat(
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).invokeChat(
                         AiModelPurpose.SCRIPT_DRAFT,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
@@ -369,7 +401,7 @@ class AiModelInvocationServiceTest {
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pX");
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).testConnection("pX");
 
         assertEquals(true, result.get("ok"));
         assertEquals(200, result.get("statusCode"));
@@ -392,7 +424,7 @@ class AiModelInvocationServiceTest {
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pY");
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).testConnection("pY");
         assertEquals(false, result.get("ok"));
         assertEquals("AZURE_OPENAI", result.get("providerType"));
     }
@@ -406,7 +438,7 @@ class AiModelInvocationServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("nope"));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
         assertEquals("ENDPOINT_NOT_FOUND", ex.getCode());
     }
@@ -465,7 +497,7 @@ class AiModelInvocationServiceTest {
                 mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),
                 mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess());
     }
 
     // ── D-11：resolveEndpoint(purpose, endpointId) 白名单 + listCandidates ──────────
@@ -495,7 +527,7 @@ class AiModelInvocationServiceTest {
         when(candidateRepo.findByPurposeOrderBySortOrderAscCreatedAtAsc(purpose)).thenReturn(candidates);
         return new AiModelInvocationService(endpointRepo, bindingRepo, candidateRepo,
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess());
     }
 
     private static AiAppEndpointCandidate candidate(AiModelPurpose purpose, String endpointId,

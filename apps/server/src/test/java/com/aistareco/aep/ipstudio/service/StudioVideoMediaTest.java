@@ -12,7 +12,7 @@ class StudioVideoMediaTest {
  @TempDir Path dir;
  @Test void ownershipIsCheckedBeforeReadingAndMediaCannotMasqueradeAsAnotherType() throws Exception {
   var projects=mock(IpProjectService.class);var storage=mock(FileStorageService.class);
-  var service=new StudioVideoService(mock(VideoStudioService.class),projects,storage,mock(FfmpegRunner.class));
+  var service=new StudioVideoService(mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class),mock(VideoStudioService.class),projects,storage,mock(FfmpegRunner.class));
   when(projects.requireOwnedAssetKey("u","foreign")).thenThrow(BusinessException.badRequest("IP_ASSET_KEY_INVALID","foreign"));
   assertThrows(BusinessException.class,()->service.requireMedia("u","image","foreign",false));verifyNoInteractions(storage);
   var image=dir.resolve("image.png");Files.write(image,new byte[]{(byte)137,80,78,71,13,10,26,10,0,0,0,0});
@@ -22,7 +22,7 @@ class StudioVideoMediaTest {
  }
  @Test void frameAndUniversalReferenceHaveDifferentImageLimits() throws Exception {
   var projects=mock(IpProjectService.class);var storage=mock(FileStorageService.class);
-  var service=new StudioVideoService(mock(VideoStudioService.class),projects,storage,mock(FfmpegRunner.class));
+  var service=new StudioVideoService(mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class),mock(VideoStudioService.class),projects,storage,mock(FfmpegRunner.class));
   var image=dir.resolve("large.png");Files.write(image,new byte[]{(byte)137,80,78,71,13,10,26,10,0,0,0,0});
   try(var file=new java.io.RandomAccessFile(image.toFile(),"rw")){file.setLength(17*1024*1024);}
   when(storage.openForRead("large")).thenReturn(image);

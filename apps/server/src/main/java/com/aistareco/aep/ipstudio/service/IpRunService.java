@@ -623,7 +623,7 @@ public class IpRunService {
         // 运行行已经落库，用户看到的是一次「跑起来又失败」而不是「这个模型不能选」。
         // 不在白名单不静默回退默认（D-11 纪律）—— 他是按那个模型的价付的钱。
         String endpointId = IpDocs.text(c.inputs().path("_exec"), "endpointId");
-        if (endpointId != null && aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpointId).isEmpty()) {
+        if (endpointId != null && aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpointId,"studio").isEmpty()) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
                     "选择的出图模型不可用，请在下拉里重新选一个");
         }

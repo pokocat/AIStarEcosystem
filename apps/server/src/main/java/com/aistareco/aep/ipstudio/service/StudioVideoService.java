@@ -14,21 +14,19 @@ import java.util.List;
 /** Native video inputs on the canvas. Preparation never calls a provider or freezes credits. */
 @Service
 public class StudioVideoService {
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
+    private final com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private final VideoStudioService videos;
     private final IpProjectService projects;
     private final FileStorageService storage;
     private final FfmpegRunner ffmpeg;
-    public StudioVideoService(VideoStudioService videos,IpProjectService projects,FileStorageService storage,FfmpegRunner ffmpeg) {
-        this.videos=videos;this.projects=projects;this.storage=storage;this.ffmpeg=ffmpeg;
+    public StudioVideoService(com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies,VideoStudioService videos,IpProjectService projects,FileStorageService storage,FfmpegRunner ffmpeg) {
+        this.scenePolicies=scenePolicies;this.videos=videos;this.projects=projects;this.storage=storage;this.ffmpeg=ffmpeg;
     }
     public List<VideoStudioModel> models() {
-        if(scenePolicies==null)return videos.listModels();
         var allowed=scenePolicies.studioVideoCandidates().stream().map(r->r.endpoint().getId()).collect(java.util.stream.Collectors.toSet());
         return videos.listModels().stream().filter(m->allowed.contains(m.endpointId())).toList();
     }
-    private String model(String requested) {return scenePolicies==null?requested:scenePolicies.resolveStudioVideo(requested).endpoint().getId();}
+    private String model(String requested) {return scenePolicies.resolveStudioVideo(requested).endpoint().getId();}
     public VideoStudioService.CanvasPreparation prepare(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
         var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),

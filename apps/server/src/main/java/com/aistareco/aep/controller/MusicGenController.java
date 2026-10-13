@@ -74,7 +74,7 @@ public class MusicGenController {
     @GetMapping("/models")
     public ApiResponse<List<Map<String, Object>>> models() {
         List<Map<String, Object>> out = new ArrayList<>();
-        for (var c : invocation.listCandidates(AiModelPurpose.MUSIC_GENERATION)) {
+        for (var c : invocation.listCandidates(AiModelPurpose.MUSIC_GENERATION, "music")) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("endpointId", c.endpoint().getId());
             m.put("name", c.endpoint().getName());

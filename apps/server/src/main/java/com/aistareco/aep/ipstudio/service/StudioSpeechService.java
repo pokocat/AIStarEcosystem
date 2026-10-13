@@ -31,7 +31,7 @@ public class StudioSpeechService {
         this.projects=projects;this.runs=runs;this.models=models;this.client=client;this.worker=worker;this.credits=credits;this.mapper=mapper;
     }
     public SpeechCatalog catalog() {
-        var available=models.listCandidates(AiModelPurpose.DAP_AUDIO).stream()
+        var available=models.listCandidates(AiModelPurpose.DAP_AUDIO,"studio").stream()
                 .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()&&JusuanSpeechClient.supports(r.endpoint())).toList();
         return new SpeechCatalog(available.stream().map(r->catalogModel(r)).toList(),
                 available.isEmpty()?List.of():client.voices(available.get(0).endpoint()),600,160);
@@ -66,7 +66,7 @@ public class StudioSpeechService {
             if(!Objects.equals(profile.getEngineRef(),request.speaker())||!Objects.equals(profile.getStylePrompt(),StudioVoiceService.style(request.instruct())))
                 throw bad("STUDIO_VOICE_REQUEST_CHANGED","音色或风格与声音版本不一致，请重新选择");
         } else if(request.avatarId()!=null)profiles.requiredAvatar(user,request.avatarId(),false);
-        var resolved=models.resolveEndpoint(AiModelPurpose.DAP_AUDIO,request.model()).orElseThrow(()->bad("ENDPOINT_NOT_ALLOWED","所选配音模型不可用"));
+        var resolved=models.resolveEndpoint(AiModelPurpose.DAP_AUDIO,request.model(),"studio").orElseThrow(()->bad("ENDPOINT_NOT_ALLOWED","所选配音模型不可用"));
         if(!JusuanSpeechClient.supports(resolved.endpoint()))throw bad("STUDIO_SPEECH_MODEL_UNSUPPORTED","所选模型不支持此配音方式");
         var rate=pricing==null?null:pricing.findSpeech(resolved.endpoint().getId());
         Long price=rate!=null?Long.valueOf(rate.cost(StudioPointPricing.speechReservationSeconds(request.text().trim()))):

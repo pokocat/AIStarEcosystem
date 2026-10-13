@@ -117,7 +117,7 @@ public class MaterialVideoJobService {
     @Transactional(readOnly = true)
     public MaterialVideoModelsDto listModels() {
         List<MaterialVideoModelsDto.VideoModelOptionDto> out = new ArrayList<>();
-        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)) {
+        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity")) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             // 缺 baseUrl / 有效 apiKey 的端点提交时必吃 VIDEO_NOT_CONFIGURED —— 不作为可用模型出 wire，
             // 否则前端会放开报价与提交、用户走到最后一步才失败。
@@ -125,7 +125,7 @@ public class MaterialVideoJobService {
             out.add(toModelOption(r.endpoint(), r.candidate(), r.isDefault()));
         }
         if (out.isEmpty()) {
-            invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)
+            invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION, "celebrity")
                     .filter(modelClient::isEndpointReady)
                     .ifPresent(ep -> out.add(toModelOption(ep, null, true)));
         }
@@ -153,7 +153,7 @@ public class MaterialVideoJobService {
     /** 默认视频端点的有效时长区间；视频能力未配置时返回 null（起稿等旁路消费方自行回落默认值）。 */
     @Transactional(readOnly = true)
     public MaterialVideoModelClient.DurationBounds defaultDurationBounds() {
-        return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null)
+        return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity")
                 .map(r -> MaterialVideoModelClient.intersect(
                         modelClient.protocolDurationBounds(r.endpoint()), r.candidate()))
                 .orElse(null);
@@ -165,10 +165,18 @@ public class MaterialVideoJobService {
         modelClient.validateRequest(endpointId, durationSec);
     }
 
+    public void validateRequest(String endpointId, int durationSec, String appCode) {
+        modelClient.validateRequest(endpointId, durationSec, appCode);
+    }
+
     /** Free canvas/template quote; shares the submit price calculation, without creating a job. */
     public long quote(String endpointId, int durationSec) {
-        validateRequest(endpointId, durationSec);
-        return itemUnitCost(om.createObjectNode(), endpointId, durationSec);
+        return quote(endpointId, durationSec, "celebrity");
+    }
+
+    public long quote(String endpointId, int durationSec, String appCode) {
+        validateRequest(endpointId, durationSec, appCode);
+        return itemUnitCost(om.createObjectNode(), endpointId, durationSec, appCode);
     }
 
     /**
@@ -177,6 +185,10 @@ public class MaterialVideoJobService {
      */
     public boolean firstFrameNeedsStorageKey(String endpointId) {
         return modelClient.firstFrameNeedsStorageKey(endpointId);
+    }
+
+    public boolean firstFrameNeedsStorageKey(String endpointId, String appCode) {
+        return modelClient.firstFrameNeedsStorageKey(endpointId, appCode);
     }
 
     /**
@@ -197,7 +209,7 @@ public class MaterialVideoJobService {
         if (items.isEmpty()) return List.of();
 
         // 失败快：未配 token 直接抛明确错误（不静默兜底，对齐 MaterialAiService）。
-        modelClient.ensureConfigured();
+        modelClient.ensureConfigured(modelAppCode(app));
 
         boolean billable = billable(userId);
 
@@ -211,8 +223,8 @@ public class MaterialVideoJobService {
             requireInputsAllowedIn(normalizeApp(app), item == null ? null : item.get("variant_config"));
             String endpointId = endpointIdOf(item);
             int durationSec = item.path("duration_sec").asInt(0);
-            modelClient.validateRequest(endpointId, durationSec);
-            long unit=itemUnitCost(item, endpointId, durationSec);
+            modelClient.validateRequest(endpointId, durationSec, modelAppCode(app));
+            long unit=itemUnitCost(item, endpointId, durationSec, modelAppCode(app));
             if(APP_IPSTUDIO.equals(normalizeApp(app)) && item.hasNonNull("max_credit_cost")) {
                 com.aistareco.aep.ipstudio.service.IpRunService.requireApprovedCost(item.path("max_credit_cost").asLong(-1),unit);
             }
@@ -326,6 +338,15 @@ public class MaterialVideoJobService {
     /** 未显式传 app 时按带货线处理（本表的原始归属），杜绝 null 分区行。 */
     static String normalizeApp(String app) {
         return app != null && !app.isBlank() ? app : APP_CELEBRITY;
+    }
+
+    static String modelAppCode(String app) {
+        return switch (normalizeApp(app)) {
+            case APP_IPSTUDIO -> "studio";
+            case APP_DRAMA -> "drama";
+            case APP_CELEBRITY, APP_VIDEO_STUDIO -> "celebrity";
+            default -> throw BusinessException.badRequest("VIDEO_APP_INVALID", "视频任务所属应用无效");
+        };
     }
 
     /**
@@ -491,10 +512,10 @@ public class MaterialVideoJobService {
     }
 
     /** 单条视频单价：调用方在 item 里显式传 credit_cost（≥0）则用它（app 维度独立定价，解耦本带货线），否则回落带货线定价。 */
-    private long itemUnitCost(JsonNode item, String endpointId, int durationSec) {
+    private long itemUnitCost(JsonNode item, String endpointId, int durationSec, String appCode) {
         long override = item.path("credit_cost").asLong(-1L);
         if (override >= 0) return override;
-        Long modelOverride = modelClient.resolveCreditCostOverride(endpointId, durationSec);
+        Long modelOverride = modelClient.resolveCreditCostOverride(endpointId, durationSec, appCode);
         if (modelOverride != null) return modelOverride;
         return defaultUnitCost();
     }

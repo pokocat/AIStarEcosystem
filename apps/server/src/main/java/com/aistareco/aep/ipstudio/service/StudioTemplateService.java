@@ -151,7 +151,7 @@ public class StudioTemplateService {
 
     private Plan plan(String owner,IpTemplateVersion release,Recipe recipe,Map<String,Value> values,String requestedModel,String requestedVideoModel,Map<String,String> nodeIds) {
         String model=null,videoModel=requestedVideoModel;
-        if(recipe.steps().stream().anyMatch(s->"image".equals(s.operation())))model=scenePolicies!=null?scenePolicies.resolve("studio","image",requestedModel,0).resolved().endpoint().getId():models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,requestedModel).orElseThrow(()->
+        if(recipe.steps().stream().anyMatch(s->"image".equals(s.operation())))model=scenePolicies!=null?scenePolicies.resolve("studio","image",requestedModel,0).resolved().endpoint().getId():models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,requestedModel,"studio").orElseThrow(()->
                 new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","请选择可用的图片模型")).endpoint().getId();
         var stepsById=new HashMap<String,Step>();recipe.steps().forEach(s->stepsById.put(s.id(),s));
         List<PlanStep> result=new ArrayList<>();long total=0;int imageCount=0,videoCount=0;

@@ -134,7 +134,7 @@ public class VideoStudioService {
     public List<VideoStudioModel> listModels() {
         VideoStudioPricingConfig config = pricingConfig.current();
         List<VideoStudioModel> out = new ArrayList<>();
-        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)) {
+        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity")) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             if (!modelClient.isEndpointReady(r.endpoint()) || !modelClient.isJusuanMedia(r.endpoint())) continue;
             VideoStudioModel m = toModel(r.endpoint(), r.candidate(), r.isDefault(), true, config);
@@ -144,7 +144,7 @@ public class VideoStudioService {
             // 只在默认端点**根本没有候选行**时合成默认项。候选行在、只是被后台停用了，说明运营是有意下线它：
             // 此时再合成一条就等于绕过停用。
             AiModelInvocationService.ResolvedEndpoint def =
-                    invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null).orElse(null);
+                    invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity").orElse(null);
             AiModelEndpoint ep = def == null ? null : def.endpoint();
             if (ep != null && def.candidate() == null
                     && modelClient.isEndpointReady(ep) && modelClient.isJusuanMedia(ep)) {

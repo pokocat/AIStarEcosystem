@@ -24,14 +24,25 @@ public class ModelManagementService {
  private final PromptService prompts; private final AgentBotProviderAdminService agents;
  private final CelebrityActionPricingService prices; private final VideoStudioPricingService videoPrices;
  private final AiAppSceneModelPolicyService scenePolicies;
+ private final AiModelAccessPolicyService modelAccess;
  private final ModelFeatureManagementService features;
  private final AiModelUsageService usage; private final AuditLogRepository audit; private final ObjectMapper mapper;
- public ModelManagementService(AiModelEndpointAdminService endpoints,AiAppBindingService bindings,PromptService prompts,AgentBotProviderAdminService agents,CelebrityActionPricingService prices,VideoStudioPricingService videoPrices,AiModelUsageService usage,AiAppSceneModelPolicyService scenePolicies,ModelFeatureManagementService features,AuditLogRepository audit,ObjectMapper mapper) {this.endpoints=endpoints;this.bindings=bindings;this.prompts=prompts;this.agents=agents;this.prices=prices;this.videoPrices=videoPrices;this.usage=usage;this.scenePolicies=scenePolicies;this.features=features;this.audit=audit;this.mapper=mapper;}
+ public ModelManagementService(AiModelEndpointAdminService endpoints,AiAppBindingService bindings,PromptService prompts,AgentBotProviderAdminService agents,CelebrityActionPricingService prices,VideoStudioPricingService videoPrices,AiModelUsageService usage,AiAppSceneModelPolicyService scenePolicies,AiModelAccessPolicyService modelAccess,ModelFeatureManagementService features,AuditLogRepository audit,ObjectMapper mapper) {this.endpoints=endpoints;this.bindings=bindings;this.prompts=prompts;this.agents=agents;this.prices=prices;this.videoPrices=videoPrices;this.usage=usage;this.scenePolicies=scenePolicies;this.modelAccess=modelAccess;this.features=features;this.audit=audit;this.mapper=mapper;}
  @Transactional(rollbackFor=Exception.class)
  public Object execute(JsonNode c,String actor) throws Exception {
   String a=c.path("action").asText(); Object before=null,result;
   switch(a) {
    case "scenePolicies": return scenePolicies.list();
+   case "studioVideoGroup": return scenePolicies.studioVideoGroup().orElse(null);
+   case "studioVideoGroupSave": {
+    onlyFields(c,Set.of("action","value"));before=scenePolicies.studioVideoGroup().orElse(null);
+    result=scenePolicies.saveStudioVideoGroup(dto(c.path("value"),AiAppSceneModelPolicyService.VideoGroup.class),actor);break;
+   }
+   case "modelAccessCatalog": return endpoints.list().stream().map(endpoint -> Map.of("endpointId",endpoint.id(),"name",endpoint.name(),"policy",modelAccess.get(endpoint.id()))).toList();
+   case "modelAccessSave": {
+    onlyFields(c,Set.of("action","endpointId","value"));String id=text(c,"endpointId");before=modelAccess.get(id);
+    result=modelAccess.save(id,dto(c.path("value"),AiModelAccessPolicyService.Policy.class),actor);break;
+   }
    case "functionCatalog": return features.catalog();
    case "functionPricingCatalog": return features.pricingCatalog();
    case "functionPrices": return features.pricing(text(c,"appCode"),text(c,"feature"));
@@ -43,10 +54,10 @@ public class ModelManagementService {
     onlyFields(c,Set.of("action","appCode","feature","creditPrice"));String app=text(c,"appCode"),feature=text(c,"feature");features.lockConfig(app,feature);before=features.pricing(app,feature);features.saveConfig(app,feature,c.path("creditPrice").longValue(),actor);result=features.pricing(app,feature);break;
    }
    case "functionDefaultSave": {
-    onlyFields(c,Set.of("action","appCode","feature","endpointId","acknowledgedAffectedFeatures"));var f=registered(c);requireShared(f);acknowledge(f,c);if(bindings.listCandidates(f.purpose()).stream().noneMatch(x->x.endpointId().equals(text(c,"endpointId"))&&Boolean.TRUE.equals(x.enabled())&&Boolean.TRUE.equals(x.endpointEnabled())))throw BusinessException.badRequest("MODEL_FEATURE_ROUTE_INVALID","请先在当前功能补全并启用此模型候选");before=bindings.list();result=bindings.bind(f.purpose(),text(c,"endpointId"));break;
+    onlyFields(c,Set.of("action","appCode","feature","endpointId","acknowledgedAffectedFeatures"));var f=registered(c);requireShared(f);acknowledge(f,c);requireAppAccess(text(c,"endpointId"),f.appCode());if(bindings.listCandidates(f.purpose()).stream().noneMatch(x->x.endpointId().equals(text(c,"endpointId"))&&Boolean.TRUE.equals(x.enabled())&&Boolean.TRUE.equals(x.endpointEnabled())))throw BusinessException.badRequest("MODEL_FEATURE_ROUTE_INVALID","请先在当前功能补全并启用此模型候选");before=bindings.list();result=bindings.bind(f.purpose(),text(c,"endpointId"));break;
    }
    case "functionCandidatePrepare": {
-    onlyFields(c,Set.of("action","appCode","feature","endpointId","value","acknowledgedAffectedFeatures"));var f=registered(c);requireShared(f);acknowledge(f,c);String id=text(c,"endpointId");
+    onlyFields(c,Set.of("action","appCode","feature","endpointId","value","acknowledgedAffectedFeatures"));var f=registered(c);requireShared(f);acknowledge(f,c);String id=text(c,"endpointId");requireAppAccess(id,f.appCode());
     ObjectNode v=(ObjectNode)c.path("value").deepCopy();onlyFields(v,Set.of("sortOrder","enabled","maxRefImages","supportsFirstLastFrame","supportsSubjectReference","maxDurationSec","minImagePixels"));v.put("endpointId",id);
     var old=bindings.listCandidates(f.purpose()).stream().filter(x->x.endpointId().equals(id)).findFirst();before=old.orElse(null);
     if(old.isPresent()){v.set("creditCostOverride",mapper.valueToTree(old.get().creditCostOverride()));result=bindings.updateCandidate(f.purpose(),id,dto(v,AiAppEndpointCandidateUpsert.class));}else result=bindings.addCandidate(f.purpose(),dto(v,AiAppEndpointCandidateUpsert.class));break;
@@ -71,7 +82,7 @@ public class ModelManagementService {
     result=scenePolicies.savePrices(app,scene,updates,actor);break;
    }
    case "sceneCandidatePrepare": {
-    onlyFields(c,Set.of("action","appCode","scene","endpointId","value"));var p=scenePolicies.registeredPurpose(text(c,"appCode"),text(c,"scene"));String id=text(c,"endpointId");
+    onlyFields(c,Set.of("action","appCode","scene","endpointId","value"));var p=scenePolicies.registeredPurpose(text(c,"appCode"),text(c,"scene"));String id=text(c,"endpointId");requireAppAccess(id,"studio");
     ObjectNode v=(ObjectNode)c.path("value").deepCopy();onlyFields(v,Set.of("sortOrder","enabled","maxRefImages","supportsFirstLastFrame","supportsSubjectReference","maxDurationSec","minImagePixels"));v.put("endpointId",id);
     var old=bindings.listCandidates(p).stream().filter(x->x.endpointId().equals(id)).findFirst();before=old.orElse(null);
     if(old.isPresent()){v.set("creditCostOverride",mapper.valueToTree(old.get().creditCostOverride()));result=bindings.updateCandidate(p,id,dto(v,AiAppEndpointCandidateUpsert.class));}
@@ -103,7 +114,7 @@ public class ModelManagementService {
     before=endpoints.get(text(c,"id"));onlyFields(c.path("value"),Set.of("supplierBillingMode","promptTokenPriceMicros","completionTokenPriceMicros","unitPriceMicros"));result=endpoints.updateCosts(text(c,"id"),dto(c.path("value"),AiModelEndpointCostUpsertDto.class));break;
    }
    case "endpointDelete": before=endpoints.get(text(c,"id"));endpoints.delete(text(c,"id"));result=Map.of("deleted",true);break;
-   case "bind": before=bindings.list();result=bindings.bind(purpose(c),text(c,"endpointId"));break;
+   case "bind": requireAppAccess(text(c,"endpointId"),null);before=bindings.list();result=bindings.bind(purpose(c),text(c,"endpointId"));break;
    case "unbind": before=bindings.list();bindings.unbind(purpose(c));result=Map.of("deleted",true);break;
    case "candidateSave": {
     var p=purpose(c);ObjectNode v=(ObjectNode)c.path("value").deepCopy();rejectFields(v,Set.of("creditCostOverride"));
@@ -131,20 +142,21 @@ public class ModelManagementService {
   return result;
  }
  private ModelFeatureRegistry.Feature registered(JsonNode c){return ModelFeatureRegistry.require(text(c,"appCode"),text(c,"feature"));}
+ private void requireAppAccess(String endpointId,String appCode){if(!modelAccess.allows(endpointId,appCode))throw BusinessException.badRequest("MODEL_ACCESS_INVALID","此模型未向当前应用开放");}
  private void requireShared(ModelFeatureRegistry.Feature f){if(!"shared_purpose".equals(f.routingKind())||f.purpose()==null)throw BusinessException.badRequest("MODEL_FEATURE_ROUTE_INVALID","此功能使用独立场景或专属引擎配置");}
  private void acknowledge(ModelFeatureRegistry.Feature f,JsonNode c){var keys=new ArrayList<String>();c.path("acknowledgedAffectedFeatures").forEach(x->keys.add(x.asText()));ModelFeatureRegistry.acknowledge(f,keys);}
  private List<Object> sceneCatalog() {
-  var out=new ArrayList<Object>();var all=endpoints.list();
+  var out=new ArrayList<Object>();var all=endpoints.list().stream().filter(e->modelAccess.allows(e.id(),"studio")).toList();
   for(String scene:List.of("script","image")) {
-   var p=scenePolicies.registeredPurpose("studio",scene);var policy=scenePolicies.get("studio",scene);var candidates=bindings.listCandidates(p);String status=policy.isEmpty()?"unconfigured":"available";
+   var p=scenePolicies.registeredPurpose("studio",scene);var policy=scenePolicies.get("studio",scene);var candidates=bindings.listCandidates(p).stream().filter(c->modelAccess.allows(c.endpointId(),"studio")).toList();String status=policy.isEmpty()?"unconfigured":"available";
    if(policy.isPresent() && policy.get().candidates().stream().anyMatch(c->c.creditCost()==null || c.creditCost()<0 || !scenePolicies.billingUnit(scene).equals(c.billingUnit()) || candidates.stream().noneMatch(x->x.endpointId().equals(c.endpointId()) && Boolean.TRUE.equals(x.endpointEnabled()) && Boolean.TRUE.equals(x.enabled()))))status="unavailable";
    var row=new LinkedHashMap<String,Object>();row.put("appCode","studio");row.put("scene",scene);row.put("purpose",p.name());row.put("billingUnit",scenePolicies.billingUnit(scene));row.put("policy",policy.orElse(null));row.put("status",status);row.put("candidates",candidates);row.put("endpoints",all);out.add(row);
   }return out;
  }
  private List<Object> scenePrices() {
-  var out=new ArrayList<Object>();var all=endpoints.list();
+  var out=new ArrayList<Object>();var all=endpoints.list().stream().filter(e->modelAccess.allows(e.id(),"studio")).toList();
   for(String scene:List.of("script","image")) {
-   var policy=scenePolicies.get("studio",scene);var purpose=scenePolicies.registeredPurpose("studio",scene);var readyCandidates=bindings.listCandidates(purpose);var row=new LinkedHashMap<String,Object>();row.put("appCode","studio");row.put("scene",scene);row.put("billingUnit",scenePolicies.billingUnit(scene));row.put("configured",policy.isPresent());
+   var policy=scenePolicies.get("studio",scene);var purpose=scenePolicies.registeredPurpose("studio",scene);var readyCandidates=bindings.listCandidates(purpose).stream().filter(c->modelAccess.allows(c.endpointId(),"studio")).toList();var row=new LinkedHashMap<String,Object>();row.put("appCode","studio");row.put("scene",scene);row.put("billingUnit",scenePolicies.billingUnit(scene));row.put("configured",policy.isPresent());
    var candidates=new ArrayList<Object>();
    for(var c:policy.map(AiAppSceneModelPolicyDto::candidates).orElse(List.of())) {
     var e=all.stream().filter(x->x.id().equals(c.endpointId())).findFirst();var v=new LinkedHashMap<String,Object>();v.put("endpointId",c.endpointId());v.put("creditCost",c.creditCost());v.put("billingUnit",c.billingUnit());v.put("endpointName",e.map(AiModelEndpointDto::name).orElse(null));v.put("endpointEnabled",e.map(AiModelEndpointDto::enabled).orElse(false));v.put("available",e.map(AiModelEndpointDto::enabled).orElse(false) && readyCandidates.stream().anyMatch(x->x.endpointId().equals(c.endpointId()) && Boolean.TRUE.equals(x.enabled())));candidates.add(v);

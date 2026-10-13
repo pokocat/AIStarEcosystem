@@ -28,7 +28,7 @@ public class StudioAssetCatalogService {
         List<PerformerAsset> performerList=avatars.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(owner).stream()
                 .map(a->new PerformerAsset(a.getId(),a.getIpId(),a.getName(),a.getImageKey()!=null,
                         !engineReady?"unavailable":"shiliu".equals(a.getEngine())&&!a.isMock()?state(a.getEngineRef()==null?null:a.getEngineStatus()):"not_created",a.getVoiceId())).toList();
-        boolean lipReady=models.listCandidates(com.aistareco.aep.model.AiModelPurpose.DAP_LIP_SYNC).stream().anyMatch(this::lipReady);
+        boolean lipReady=models.listCandidates(com.aistareco.aep.model.AiModelPurpose.DAP_LIP_SYNC,"studio").stream().anyMatch(this::lipReady);
         return new AssetCatalog(productList,performerList,voiceList,engineReady,lipReady);
     }
     private boolean lipReady(com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint resolved) {

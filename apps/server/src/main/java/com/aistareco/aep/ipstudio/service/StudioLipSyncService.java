@@ -31,7 +31,7 @@ public class StudioLipSyncService {
         this.projects=projects;this.runs=runs;this.models=models;this.media=media;this.storage=storage;this.worker=worker;this.credits=credits;this.mapper=mapper;
     }
     public LipSyncCatalog catalog() {
-        return new LipSyncCatalog(models.listCandidates(AiModelPurpose.DAP_LIP_SYNC).stream()
+        return new LipSyncCatalog(models.listCandidates(AiModelPurpose.DAP_LIP_SYNC,"studio").stream()
                 .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()&&JusuanLipSyncClient.supports(r.endpoint()))
                 .map(r->new LipSyncModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),catalogRate(r.endpoint().getId(),r.candidate().getCreditCostOverride()))).toList(),60);
     }
@@ -44,7 +44,7 @@ public class StudioLipSyncService {
         if(input==null)throw bad("请选择人物视频和驱动配音");
         required(input.model(),128);required(input.videoStorageKey(),1000);required(input.audioStorageKey(),1000);
         String video=projects.requireOwnedAssetKey(user,input.videoStorageKey()),audio=projects.requireOwnedAssetKey(user,input.audioStorageKey());
-        var r=models.resolveEndpoint(AiModelPurpose.DAP_LIP_SYNC,input.model()).orElseThrow(()->bad("所选口型模型不可用"));
+        var r=models.resolveEndpoint(AiModelPurpose.DAP_LIP_SYNC,input.model(),"studio").orElseThrow(()->bad("所选口型模型不可用"));
         if(!JusuanLipSyncClient.supports(r.endpoint()))throw bad("所选模型不支持口型同步");
         var snapshot=pricing==null?null:pricing.find(r.endpoint().getId());
         var rate=catalogRate(r.endpoint().getId(),r.candidate().getCreditCostOverride());
@@ -75,7 +75,7 @@ public class StudioLipSyncService {
         }
         var p=preflight(user,new LipSyncInput(request.model(),request.videoStorageKey(),request.audioStorageKey()));var price=quote(p);
         IpRunService.requireApprovedCost(request.maxCost(),price.cost());
-        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_LIP_SYNC,request.model()).orElseThrow().endpoint();
+        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_LIP_SYNC,request.model(),"studio").orElseThrow().endpoint();
         String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);ObjectNode input=mapper.valueToTree(request);
         input.putObject("_exec").put("endpointId",endpoint.getId()).put("baseUrl",endpoint.getBaseUrl().replaceAll("/$",""))
                 .put("holdTotal",price.cost()).put("billableSeconds",price.billableSeconds()).put("audioDurationSec",price.audioDurationSec()).put("creditCostPerSecond",p.rate());

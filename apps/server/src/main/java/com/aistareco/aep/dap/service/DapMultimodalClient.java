@@ -97,11 +97,15 @@ public class DapMultimodalClient {
      * 用户在画布上选了模型却被悄悄换成另一个，比报错更糟：他按那个模型的价付了钱。
      */
     private Target resolveTarget(AiModelPurpose purpose, String endpointId) {
+        return resolveTarget(purpose, endpointId, "aiavatar");
+    }
+
+    private Target resolveTarget(AiModelPurpose purpose, String endpointId, String appCode) {
         var resolved = (endpointId == null || endpointId.isBlank())
                 ? java.util.Optional.<com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint>empty()
-                : aiModels.resolveEndpoint(purpose, endpointId);
+                : aiModels.resolveEndpoint(purpose, endpointId,appCode);
         AiModelEndpoint e = (endpointId == null || endpointId.isBlank())
-                ? aiModels.resolveEndpoint(purpose).orElse(null)
+                ? aiModels.resolveDefaultEndpoint(purpose,appCode).orElse(null)
                 : resolved.map(r -> r.endpoint()).orElse(null);
         Integer minPixels = resolved.map(r -> r.candidate() == null ? null : r.candidate().getMinImagePixels()).orElse(null);
         if (e == null) return null;
@@ -133,8 +137,8 @@ public class DapMultimodalClient {
 
     /** 图片 + 文本任一通道可用即视为已配置(视频是衍生能力,运行链路按各自通道再精确判定)。 */
     public boolean isConfigured() {
-        return aiModels.hasEndpointFor(AiModelPurpose.DAP_IMAGE)
-                || aiModels.hasEndpointFor(AiModelPurpose.DAP_PERSONA);
+        return aiModels.hasEndpointFor(AiModelPurpose.DAP_IMAGE,"aiavatar")
+                || aiModels.hasEndpointFor(AiModelPurpose.DAP_PERSONA,"aiavatar");
     }
 
     public String imageModel() {
@@ -259,7 +263,12 @@ public class DapMultimodalClient {
 
     /** 同上，但用指定端点（画布上的模型下拉；null = 后台默认端点）。 */
     public byte[] generateImage(String prompt, String size, List<String> inputImages, String endpointId) {
-        Target t = require(resolveTarget(AiModelPurpose.DAP_IMAGE, endpointId), "image");
+        return generateImage(prompt, size, inputImages, endpointId, "aiavatar");
+    }
+
+    /** Shared image transport takes the actual calling application for endpoint access checks. */
+    public byte[] generateImage(String prompt, String size, List<String> inputImages, String endpointId, String appCode) {
+        Target t = require(resolveTarget(AiModelPurpose.DAP_IMAGE, endpointId, appCode), "image");
         String requestId = "dap-img-" + UUID.randomUUID().toString().substring(0, 12);
         long startNanos = System.nanoTime();
         ObjectNode body = OM.createObjectNode();
