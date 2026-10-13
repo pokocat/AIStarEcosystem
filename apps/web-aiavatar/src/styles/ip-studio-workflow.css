@@ -333,7 +333,7 @@ html[data-layout="mobile"] .studio-commerce-launch { top:121px; left:130px; righ
 .studio-character-use { position:sticky; bottom:-24px; background:var(--surface); padding-block:16px; }
 .studio-test-note,.studio-error-note { top:var(--studio-context-top); }
 @container (max-width:1100px) {
-  .studio-canvas-stage > .studio-overlay { --studio-context-top:164px; --studio-node-tools-top:220px; }
+  .studio-canvas-stage > .studio-overlay,.studio-flow-shell > .studio-overlay { --studio-context-top:164px; --studio-node-tools-top:220px; }
   .studio-command-strip { flex-wrap:wrap; gap:8px; }
   .studio-command-strip .studio-view-switch { margin-inline:auto; }
   .studio-command-strip .studio-director-launch { width:100%; justify-content:center; overflow-x:auto; padding-bottom:4px; }
@@ -348,7 +348,7 @@ html[data-layout="mobile"] .studio-commerce-launch { top:121px; left:130px; righ
 @container (max-width:540px) {
   .ip-surface .studio-command-strip .studio-director-launch { flex-wrap:wrap; overflow:visible; justify-content:center; gap:6px; }
   .ip-surface .studio-resource-tools { flex-basis:100%; justify-content:center; }
-  .studio-canvas-stage > .studio-overlay { --studio-context-top:244px; --studio-node-tools-top:300px; }
+  .studio-canvas-stage > .studio-overlay,.studio-flow-shell > .studio-overlay { --studio-context-top:244px; --studio-node-tools-top:300px; }
   .studio-node-toolbar { top:300px; }
   .studio-reference-hint { top:244px; }
   .studio-composer-actions { flex-wrap:wrap; }
@@ -357,7 +357,7 @@ html[data-layout="mobile"] .studio-commerce-launch { top:121px; left:130px; righ
   .studio-node-composer [contenteditable="true"] { min-height:100px; height:120px; }
 }
 html[data-layout="mobile"] .studio-canvas-stage { --studio-command-top:88px; --studio-context-top:208px; --studio-node-tools-top:264px; }
-html[data-layout="mobile"] .studio-canvas-stage > .studio-overlay { --studio-context-top:248px; --studio-node-tools-top:304px; }
+html[data-layout="mobile"] .studio-canvas-stage > .studio-overlay,html[data-layout="mobile"] .studio-flow-shell > .studio-overlay { --studio-context-top:248px; --studio-node-tools-top:304px; }
 html[data-layout="mobile"] .studio-command-strip { left:8px; right:8px; }
 html[data-layout="mobile"] .studio-command-strip .studio-director-launch { justify-content:flex-start; }
 html[data-layout="mobile"] .studio-command-strip .studio-director-launch button { font-size:12px; min-height:40px; padding-inline:10px; }
