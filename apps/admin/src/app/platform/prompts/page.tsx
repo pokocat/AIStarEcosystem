@@ -174,6 +174,7 @@ export default function PromptsPage() {
   const [jsonMode, setJsonMode] = React.useState(true);
   const [enabled, setEnabled] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const editVersion = React.useRef<number | null>(null);
 
   // 试运行
   const [sampleVars, setSampleVars] = React.useState("{}");
@@ -224,6 +225,7 @@ export default function PromptsPage() {
   // 选中 prompt 时把编辑态灌进表单
   React.useEffect(() => {
     if (!active) return;
+    editVersion.current = active.version;
     setSystemPrompt(active.systemPrompt ?? "");
     setUserTemplate(active.userTemplate ?? "");
     setTemperature(active.params?.temperature != null ? String(active.params.temperature) : "");
@@ -246,10 +248,10 @@ export default function PromptsPage() {
   }, [activeKey]);
 
   const save = async () => {
-    if (!activeKey) return;
+    if (!activeKey || !active || editVersion.current === null) return;
     setSaving(true);
     try {
-      await PromptsApi.upsertPrompt(activeKey, {
+      const saved = await PromptsApi.upsertPrompt(activeKey, {
         systemPrompt,
         userTemplate,
         params: {
@@ -259,7 +261,8 @@ export default function PromptsPage() {
         },
         enabled,
         changeNote: "admin save",
-      });
+      }, editVersion.current);
+      editVersion.current = saved.version;
       toast.success({ title: "已保存", description: "1 分钟内全节点生效" });
       await load();
     } catch (e) {
@@ -315,7 +318,15 @@ export default function PromptsPage() {
   const rollback = async (version: number) => {
     if (!activeKey) return;
     try {
-      await PromptsApi.rollbackPrompt(activeKey, version);
+      if (!active) return;
+      const restored = await PromptsApi.rollbackPrompt(activeKey, version, active.version);
+      editVersion.current = restored.version;
+      setSystemPrompt(restored.systemPrompt ?? "");
+      setUserTemplate(restored.userTemplate ?? "");
+      setTemperature(restored.params?.temperature != null ? String(restored.params.temperature) : "");
+      setMaxTokens(restored.params?.maxTokens != null ? String(restored.params.maxTokens) : "");
+      setJsonMode(restored.params?.jsonMode !== false);
+      setEnabled(restored.enabled);
       toast.success({ title: `已回滚到 v${version}` });
       await load();
     } catch (e) {

@@ -41,9 +41,10 @@ public class AdminPromptController {
     @PutMapping("/{key}")
     public ApiResponse<PromptTemplateDto> upsert(@PathVariable String key,
                                                  @RequestBody PromptTemplateUpsertDto body,
+                                                 @RequestParam(required = false) Integer expectedVersion,
                                                  Principal principal) {
         String by = principal != null ? principal.getName() : "admin";
-        return ApiResponse.of(promptService.upsert(key, body, by));
+        return ApiResponse.of(promptService.upsert(key, body, by, expectedVersion));
     }
 
     /** 试运行：用样例参数 fill 出最终 messages（不真调模型）。 */
@@ -68,8 +69,9 @@ public class AdminPromptController {
     @PostMapping("/{key}/versions/{version}/rollback")
     public ApiResponse<PromptTemplateDto> rollback(@PathVariable String key,
                                                    @PathVariable int version,
-                                                   Principal principal) {
+                                                   @RequestParam(required = false) Integer expectedVersion,
+                                                 Principal principal) {
         String by = principal != null ? principal.getName() : "admin";
-        return ApiResponse.of(promptService.rollback(key, version, by));
+        return ApiResponse.of(promptService.rollback(key, version, by, expectedVersion));
     }
 }

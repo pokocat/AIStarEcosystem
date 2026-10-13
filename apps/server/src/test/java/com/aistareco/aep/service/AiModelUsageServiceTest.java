@@ -329,4 +329,27 @@ class AiModelUsageServiceTest {
         assertEquals(0, report.byProvider().size());
         assertEquals(0, report.byModel().size());
     }
+    @Test void paginatesBeyondFiveHundredWithServerSideModelAndLegacyAppFilters() {
+        Instant asOf = Instant.now().minusSeconds(1);
+        for (int n = 0; n < 612; n++) repo.save(AiModelUsageRecord.builder()
+                .id(String.format("page-%04d", n)).providerId("page-endpoint").model("Needle_100%")
+                .purpose("DRAMA_SCRIPT_DRAFT").appCode(n % 2 == 0 ? null : " DRAMA ")
+                .success(true).createdAt(asOf.minusSeconds(10)).build());
+        for (int n = 0; n < 800; n++) repo.save(AiModelUsageRecord.builder()
+                .id("other-" + n).providerId("page-endpoint").model("other")
+                .purpose("GENERAL").appCode("studio").success(true).createdAt(asOf.minusSeconds(2)).build());
+        repo.flush();
+        var first = service.recordsPage(30, 0, 200, asOf, "drama", null, null, null, null, "needle_100%", true, null);
+        assertEquals(612, first.total()); assertEquals(200, first.items().size());
+        var last = service.recordsPage(30, 3, 200, first.asOf(), "drama", null, null, null, null, "needle_100%", true, null);
+        assertEquals(612, last.total()); assertEquals(12, last.items().size());
+        assertEquals("page-0011", last.items().get(0).id());
+        assertEquals("page-0000", last.items().get(11).id());
+        // New calls after the query upper bound cannot shift later pages or totals.
+        repo.saveAndFlush(AiModelUsageRecord.builder().id("newest").providerId("page-endpoint")
+                .model("Needle_100%").purpose("DRAMA_SCRIPT_DRAFT").success(true).createdAt(Instant.now()).build());
+        assertEquals(612, service.recordsPage(30, 1, 200, asOf, "drama", null, null, null, null, "needle_100%", true, null).total());
+        assertEquals(0, service.recordsPage(30, 0, 20, asOf, "drama", "absent", null, null, null, null, true, null).total());
+    }
+
 }

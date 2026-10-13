@@ -32,4 +32,25 @@ class ModelOperationsServiceTest {
   when(usage.records(30,"studio",null,null,null,null,false,null,500)).thenReturn(List.of(record));var result=mapper.valueToTree(service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"appCode\":\"studio\",\"success\":false}"))).get(0);assertEquals("r",result.path("id").asText());assertFalse(result.has("requestBodyJson"));assertFalse(result.has("responseBodyJson"));
  }
  @Test void malformedFiltersCannotTriggerProviderOrQuery(){assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"size\":501}")));assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointTest\",\"id\":\"e\",\"url\":\"https://arbitrary.example\"}")));verifyNoInteractions(endpoints,usage);}
+ @Test void paginatedCommandRejectsMalformedPagingBeforeQuery() {
+  for(String json : List.of("{\"action\":\"usageRecordsPage\",\"page\":-1}", "{\"action\":\"usageRecordsPage\",\"size\":201}", "{\"action\":\"usageRecordsPage\",\"asOf\":\"bad\"}"))
+   assertThrows(BusinessException.class,()->service.execute(mapper.readTree(json)));
+  verifyNoInteractions(endpoints,usage);
+ }
+
+ @Test void draftProbeUsesCurrentValuesAndDoesNotExposeVendorErrors() throws Exception {
+  var req = new com.aistareco.aep.dto.AiModelDiscoveryRequestDto("OPENAI", "https://8.8.8.8/v1", "fixture-key");
+  when(endpoints.probeDraft(null, req)).thenReturn(AiModelDiscoveryResultDto.ok(200,List.of(new AiModelEntryDto("m","Model",null,null))));
+  var command=mapper.readTree("{\"action\":\"endpointProbe\",\"providerType\":\"OPENAI\",\"baseUrl\":\"https://8.8.8.8/v1\",\"apiKey\":\"fixture-key\"}");
+  var result=mapper.valueToTree(service.execute(command));
+  assertTrue(result.path("ok").asBoolean()); assertEquals("m",result.path("models").get(0).path("id").asText());
+  assertTrue(result.path("latencyMs").asLong()>=0); verifyNoInteractions(usage);
+  when(endpoints.probeDraft(null, req)).thenReturn(AiModelDiscoveryResultDto.fail(401,"fixture-key echoed by vendor"));
+  result=mapper.valueToTree(service.execute(command)); assertFalse(result.toString().contains("fixture-key")); assertEquals(401,result.path("statusCode").asInt());
+ }
+ @Test void malformedDraftProbeCannotSendArbitraryHeaders() {
+  assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointProbe\",\"providerType\":\"OPENAI\",\"baseUrl\":\"https://a.example/v1\",\"headers\":{}}")));
+  verifyNoInteractions(endpoints, usage);
+ }
+
 }

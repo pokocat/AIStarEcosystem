@@ -250,6 +250,39 @@ public class AiModelEndpointAdminService {
         return invocation.listModels(type, req.baseUrl(), req.apiKey());
     }
 
+    /** Preview current form values without creating an endpoint or writing a credential. */
+    public AiModelDiscoveryResultDto probeDraft(String id, AiModelDiscoveryRequestDto req) {
+        if (req == null) throw BusinessException.badRequest("MODEL_MANAGEMENT_COMMAND_INVALID", "检测配置无效");
+        java.net.URI target;
+        try {
+            target = java.net.URI.create(req.baseUrl());
+            if (!"https".equalsIgnoreCase(target.getScheme()) || target.getHost() == null
+                    || target.getUserInfo() != null || target.getQuery() != null || target.getFragment() != null)
+                throw new IllegalArgumentException();
+            for (java.net.InetAddress address : java.net.InetAddress.getAllByName(target.getHost())) {
+                byte[] ip = address.getAddress();
+                boolean reservedV4 = ip.length == 4 && ((ip[0] & 255) == 0 || (ip[0] & 255) >= 224
+                        || ((ip[0] & 255) == 100 && (ip[1] & 255) >= 64 && (ip[1] & 255) <= 127));
+                boolean privateV6 = ip.length == 16 && (ip[0] & 254) == 252;
+                if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
+                        || address.isSiteLocalAddress() || address.isMulticastAddress() || reservedV4 || privateV6)
+                    throw new IllegalArgumentException();
+            }
+        } catch (Exception invalid) {
+            return AiModelDiscoveryResultDto.fail(null, "供应商地址无效或不可访问，请使用公网 HTTPS 地址");
+        }
+        String key = req.apiKey();
+        if (key == null || key.isBlank()) {
+            if (id == null || id.isBlank()) throw BusinessException.badRequest("API_KEY_REQUIRED", "请填写上游密钥");
+            AiModelEndpoint saved = load(id);
+            java.net.URI original = java.net.URI.create(saved.getBaseUrl());
+            if (!java.util.Objects.equals(original.getHost(), target.getHost()) || original.getPort() != target.getPort())
+                throw BusinessException.badRequest("API_KEY_REQUIRED", "更换供应商地址后请重新填写密钥");
+            key = AepCryptoUtil.decrypt(saved.getUpstreamApiKeyEncrypted());
+        }
+        return discoverModels(new AiModelDiscoveryRequestDto(req.providerType(), req.baseUrl(), key));
+    }
+
     /** 已存端点：用落库（解密后）的 apiKey 拉取可用模型（不落库；前端拉回后由保存写入）。 */
     public AiModelDiscoveryResultDto fetchModels(String id) {
         AiModelEndpoint entity = load(id);

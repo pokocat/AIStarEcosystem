@@ -4397,7 +4397,9 @@ paths:
         白名单命令直接调用原 Java 配置服务。原始供应商密钥只写不回显。
         commandJson 内的版本化命令形状由 aibuzz-platform/packages/contracts/src/platform/aistar-models.ts 维护；
         无任意 URL 或 admin 路径代理。固定 app+scene 模型白名单和候选积分价首先覆盖 Studio script/image。
-        endpointTest / endpointFetchModels 使用已保存的端点配置；usageRecords 返回筛选后的调用元数据，最多 500 条，不返回原始请求/响应正文。
+        endpointTest / endpointFetchModels 使用已保存配置；endpointProbe 使用当前表单 providerType/baseUrl/apiKey，编辑时可带 id 保留同供应商密钥，只请求模型目录，不落库、不生成。返回 ok/statusCode/models/latencyMs，供应商原始错误脱敏。旧 usageRecords 保留最多 500 条的兼容形状。
+        usageRecordsPage 在原库过滤 / 计数后返回 items/total/page/size/asOf，单页最多 200 条，总数无 500 条截断，不返回生成正文。
+        promptSaveVersioned / promptRollbackVersioned 必须带 expectedVersion，由原 PromptService 原子条件更新；冲突返回 409。
       security:
         - modelManagementGrant: []
       requestBody:
@@ -8601,7 +8603,14 @@ paths:
   /admin/prompts/{key}:
     parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
     get: { tags: [admin-prompts], operationId: adminGetPrompt,    responses: { '200': { description: ok } } }
-    put: { tags: [admin-prompts], operationId: adminUpsertPrompt, responses: { '200': { description: upsert（version 自增，1min 缓存立即失效） } } }
+    put:
+      tags: [admin-prompts]
+      operationId: adminUpsertPrompt
+      parameters:
+        - { name: expectedVersion, in: query, required: false, schema: { type: integer, minimum: 0 }, description: 编辑时版本；条件更新不匹配返回 409，旧客户端可省略 }
+      responses:
+        '200': { description: 原模板与新版本快照同事务保存，提交后失效缓存 }
+        '409': { description: PROMPT_VERSION_CONFLICT，当前内容与历史均不改变 }
   /admin/prompts/{key}/dry-run:
     parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
     post: { tags: [admin-prompts], operationId: adminDryRunPrompt, responses: { '200': { description: 用样例参数 fill 出最终 messages（不真调模型），返回变量列表与缺失变量 } } }
@@ -8615,7 +8624,14 @@ paths:
     parameters:
       - { name: key, in: path, required: true, schema: { type: string } }
       - { name: version, in: path, required: true, schema: { type: integer } }
-    post: { tags: [admin-prompts], operationId: adminRollbackPromptVersion, responses: { '200': { description: 回滚到历史版本，并追加一个新的当前版本快照 } } }
+    post:
+      tags: [admin-prompts]
+      operationId: adminRollbackPrompt
+      parameters:
+        - { name: expectedVersion, in: query, required: false, schema: { type: integer, minimum: 0 }, description: 当前编辑版本；不匹配返回 409 }
+      responses:
+        '200': { description: 恢复历史内容并创建新版本；原模板与历史同事务保存 }
+        '409': { description: PROMPT_VERSION_CONFLICT }
 
 
   # ── 素材运营 · 文本类 AI（v0.40 新增；接真 LLM，失败降级，见 MaterialAiService） ──────────

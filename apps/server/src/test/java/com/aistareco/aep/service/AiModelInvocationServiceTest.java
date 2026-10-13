@@ -492,6 +492,16 @@ class AiModelInvocationServiceTest {
         assertNotNull(result.error());
     }
 
+    @Test
+    void modelDiscoveryRejectsInvalid200AndDeduplicatesModelIds() throws Exception {
+        StubServer malformed = stub(200, "{\"error\":\"not a catalog\"}");
+        assertFalse(bareSvc().listModels(AiModelProviderType.OPENAI, malformed.baseUrl(), "fixture").ok());
+        StubServer valid = stub(200, "{\"data\":[{\"id\":\" m \"},{\"id\":\"m\"},{\"id\":1},{\"id\":\"\"}]}");
+        var result = bareSvc().listModels(AiModelProviderType.OPENAI, valid.baseUrl(), "fixture");
+        assertTrue(result.ok()); assertEquals(List.of("m"),result.models().stream().map(AiModelEntryDto::id).toList());
+        assertEquals(1,valid.requests.size());
+    }
+
     private static AiModelInvocationService bareSvc() {
         return new AiModelInvocationService(
                 mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),

@@ -266,24 +266,25 @@ public class AiModelInvocationService {
         try {
             URI uri = URI.create(rstrip(baseUrl, "/") + "/models");
             HttpRequest req = HttpRequest.newBuilder(uri)
-                    .timeout(Duration.ofSeconds(15))
+                    .timeout(Duration.ofSeconds(10))
                     .header("Authorization", "Bearer " + apiKey)
                     .GET()
                     .build();
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-                log.warn("[ai-model] discover-models failed providerType={} baseUrl={} status={} body={}",
-                        type == null ? null : type.wire(), baseUrl, resp.statusCode(), snippet(resp.body()));
+                log.warn("[ai-model] discover-models failed providerType={} status={}",
+                        type == null ? null : type.wire(), resp.statusCode());
                 return AiModelDiscoveryResultDto.fail(resp.statusCode(),
                         "HTTP " + resp.statusCode() + ": " + snippet(resp.body()));
             }
             List<AiModelEntryDto> models = parseModelsResponse(resp.body());
-            log.info("[ai-model] discover-models ok providerType={} baseUrl={} status={} count={}",
-                    type == null ? null : type.wire(), baseUrl, resp.statusCode(), models.size());
+            log.info("[ai-model] discover-models ok providerType={} status={} count={}",
+                    type == null ? null : type.wire(), resp.statusCode(), models.size());
             return AiModelDiscoveryResultDto.ok(resp.statusCode(), models);
         } catch (Exception e) {
-            log.warn("[ai-model] discover-models exception providerType={} baseUrl={} err={}",
-                    type == null ? null : type.wire(), baseUrl, e.toString());
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.warn("[ai-model] discover-models exception providerType={} type={}",
+                    type == null ? null : type.wire(), e.getClass().getSimpleName());
             return AiModelDiscoveryResultDto.fail(null, e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
@@ -515,20 +516,26 @@ public class AiModelInvocationService {
     /** 解析 OpenAI /models 响应 data[]；过滤 status=Shutdown/Retiring（火山方舟会带 status）。 */
     private static List<AiModelEntryDto> parseModelsResponse(String body) throws Exception {
         Map<?, ?> parsed = OM.readValue(body, Map.class);
+        if (!(parsed.get("data") instanceof List<?>)) throw new IllegalArgumentException("模型目录格式无效");
         List<AiModelEntryDto> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
         if (parsed.get("data") instanceof List<?> list) {
             for (Object o : list) {
                 if (!(o instanceof Map<?, ?> m)) continue;
                 Object id = m.get("id");
-                if (id == null) continue;
+                if (!(id instanceof String nameId) || nameId.isBlank()) continue;
+                String modelId = nameId.trim();
+                if (modelId.length() > 200 || !seen.add(modelId)) continue;
                 Object status = m.get("status");
                 if (status != null) {
                     String s = String.valueOf(status);
                     if (s.equalsIgnoreCase("Shutdown") || s.equalsIgnoreCase("Retiring")) continue;
                 }
                 Object name = m.get("name");
-                String label = name != null ? String.valueOf(name) : String.valueOf(id);
-                out.add(new AiModelEntryDto(String.valueOf(id), label, null, null));
+                String label = name instanceof String text ? text : modelId;
+                if (label.length() > 200) label = label.substring(0, 200);
+                out.add(new AiModelEntryDto(modelId, label, null, null));
+                if (out.size() > 1000) throw new IllegalArgumentException("模型目录超过支持范围");
             }
         }
         return out;

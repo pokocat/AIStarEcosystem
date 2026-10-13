@@ -128,6 +128,15 @@ public class ModelManagementService {
     result=bindings.updateCandidate(p,old.endpointId(),new AiAppEndpointCandidateUpsert(old.endpointId(),old.sortOrder(),old.enabled(),cap.maxRefImages(),cap.supportsFirstLastFrame(),cap.supportsSubjectReference(),cap.maxDurationSec(),cap.minImagePixels(),price));break;
    }
    case "candidateDelete": before=candidate(purpose(c),text(c,"endpointId"));bindings.removeCandidate(purpose(c),text(c,"endpointId"));result=Map.of("deleted",true);break;
+   case "promptSaveVersioned": {
+    onlyFields(c,Set.of("action","key","value","expectedVersion"));int expected=promptExpected(c);
+    before=prompts.getForAdmin(text(c,"key"));result=prompts.upsert(text(c,"key"),dto(c.path("value"),PromptTemplateUpsertDto.class),actor,expected);break;
+   }
+   case "promptRollbackVersioned": {
+    onlyFields(c,Set.of("action","key","version","expectedVersion"));int expected=promptExpected(c);
+    if(!c.path("version").isIntegralNumber() || !c.path("version").canConvertToInt() || c.path("version").asInt()<1)throw BusinessException.badRequest("MODEL_MANAGEMENT_COMMAND_INVALID","版本无效");
+    before=prompts.getForAdmin(text(c,"key"));result=prompts.rollback(text(c,"key"),c.path("version").asInt(),actor,expected);break;
+   }
    case "promptSave": before=prompts.getForAdmin(text(c,"key"));result=prompts.upsert(text(c,"key"),dto(c.path("value"),PromptTemplateUpsertDto.class),actor);break;
    case "promptRollback": before=prompts.getForAdmin(text(c,"key"));result=prompts.rollback(text(c,"key"),c.path("version").asInt(),actor);break;
    case "agentSave": if(c.has("id")) {before=agents.get(text(c,"id"));result=agents.update(text(c,"id"),dto(c.path("value"),AgentBotProviderUpsertDto.class));} else result=agents.create(dto(c.path("value"),AgentBotProviderUpsertDto.class));break;
@@ -140,6 +149,11 @@ public class ModelManagementService {
   // Snapshot DTOs contain only masked credentials; no request body is persisted.
   audit.save(AuditLog.builder().id(UUID.randomUUID().toString()).userId(actor).username(actor).action("platform.model."+a).resourceType("model-config").resourceId(c.path("id").asText(c.path("key").asText(c.path("purpose").asText("global")))).appCode("platform-console").result(AuditLog.AuditResult.SUCCESS).detail(mapper.writeValueAsString(detail)).createdAt(Instant.now()).build());
   return result;
+ }
+ private static int promptExpected(JsonNode c) {
+  if(!c.path("expectedVersion").isIntegralNumber() || !c.path("expectedVersion").canConvertToInt() || c.path("expectedVersion").asInt()<0)
+   throw BusinessException.badRequest("MODEL_MANAGEMENT_COMMAND_INVALID","当前版本必填");
+  return c.path("expectedVersion").asInt();
  }
  private ModelFeatureRegistry.Feature registered(JsonNode c){return ModelFeatureRegistry.require(text(c,"appCode"),text(c,"feature"));}
  private void requireAppAccess(String endpointId,String appCode){if(!modelAccess.allows(endpointId,appCode))throw BusinessException.badRequest("MODEL_ACCESS_INVALID","此模型未向当前应用开放");}
