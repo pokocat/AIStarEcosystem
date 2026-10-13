@@ -1,6 +1,6 @@
-import { StudioErrorNotice, studioNodeError } from './studio-errors';
 "use client";
 
+import { StudioErrorNotice, studioNodeError } from './studio-errors';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Input } from 'antd';
 import type { StudioShot } from '@ai-star-eco/types/ip-studio-workflow';
