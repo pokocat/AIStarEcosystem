@@ -19,7 +19,8 @@ export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose,init
     if(!active)return;setDoc(p.doc);setName(p.name);setTemplates(t.filter(t=>t.mine&&t.versionId));
   }).catch(e=>{if(active)setError(e);});return()=>{active=false;};},[projectId]);
   const nodes=doc?.nodes.filter(n=>!['assistant','batch'].includes(String((n.metadata?.studio as {kind?:string}|undefined)?.kind??'')))??[];
-  const ids=new Map<string,string>([...inputs.map(i=>[i.nodeId,i.id] as const),...steps.map(s=>[s.nodeId,s.id] as const)]);
+  // Canvas text edges supply prompt variables, never image reference keys.
+  const ids=new Map<string,string>([...inputs.filter(i=>i.type==='character'||i.type==='image').map(i=>[i.nodeId,i.id] as const),...steps.filter(s=>s.operation==='image').map(s=>[s.nodeId,s.id] as const)]);
   const selectInput=(nodeId:string)=>{
     const node=nodes.find(n=>n.id===nodeId);if(!node)return;
     const used=new Set(inputs.map(i=>i.id));let index=1;while(used.has(`input${index}`))index++;

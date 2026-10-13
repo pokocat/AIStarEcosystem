@@ -716,6 +716,7 @@ test('plain text detail edits the original node, follows incoming reference thum
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));
  await waitFor(()=>expect(api.error).toHaveBeenCalledWith('文字保存失败'));
  expect(screen.getByRole('region',{name:'节点详情 商品卖点'})).toBeDefined();
+ await waitFor(()=>expect((screen.getByRole('button',{name:'返回画布'}) as HTMLButtonElement).disabled).toBe(false));
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));
  await waitFor(()=>expect(screen.queryByRole('region',{name:'故事板'})).toBeNull());
  expect(snapshot.map(n=>n.id)).toEqual(['text','image']);
