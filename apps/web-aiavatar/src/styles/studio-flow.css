@@ -41,6 +41,12 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 .studio-flow-title-input { width:100%; padding:3px 5px; border:1px solid var(--primary); border-radius:4px; background:var(--surface); outline:2px solid var(--primary-soft); }
 .studio-flow-queue { flex-shrink:0; margin:0; padding:10px 12px; font-size:12px; line-height:1.5; color:var(--ink-2); overflow-wrap:anywhere; }
 .studio-flow-media { position:relative; flex:1; min-height:0; overflow:hidden; border-radius:0 0 10px 10px; background:var(--surface-2); }
+.react-flow__node.draggable .studio-flow-media,.react-flow__node.draggable .studio-flow-placeholder { cursor:grab; }
+.react-flow__node.dragging .studio-flow-media { cursor:grabbing; }
+.studio-flow-media video,.studio-flow-audio audio { cursor:auto; }
+.studio-flow-media-action { display:flex; flex-direction:column; align-items:center; gap:12px; padding:12px; border:0; border-radius:8px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+.studio-flow-media-action:hover { background:var(--surface-3); }
+.studio-flow-media-action:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 .studio-flow-media.is-generating-image { container-type:size; }
 .studio-flow-media>img,.studio-flow-media>video { width:100%; height:100%; object-fit:contain; display:block; }
 .studio-flow-media.studio-flow-business { background:var(--surface); }

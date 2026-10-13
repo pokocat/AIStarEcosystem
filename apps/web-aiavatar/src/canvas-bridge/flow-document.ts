@@ -7,7 +7,7 @@ export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean
 export function flowNodes(nodes: CanvasNodeData[], selected: Set<string>): StudioFlowNode[] {
   return nodes.map(document => ({ id: document.id, type: 'studio', position: document.position,
     width: document.width, height: document.height, style: { width: document.width, height: document.height },
-    dragHandle: '.studio-flow-drag', zIndex: document.type === CanvasNodeType.Group ? -1 : 0,
+    zIndex: document.type === CanvasNodeType.Group ? -1 : 0,
     selected: selected.has(document.id), data: { document } }));
 }
 /** React Flow is an interaction projection; saved documents keep the existing wire shape. */
