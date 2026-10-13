@@ -800,3 +800,7 @@ Chrome 在隔离画布 `IPP-12d41489` 的 `brief` 节点提交一次“为这段
 正式入口 `https://aistar.aibuzz.cn/projects/IPP-30fb3d4c` 浏览器确认默认拖动置顶、全部节点标题可原地编辑；手柄进入/离开为 8→28→8。新增文字完整出现在屏幕 x445..925、y302.5..602.5，视口始终 `translate(213px,-279.5px) scale(1)`。正文及提取资产共用一个浮层，临时节点标题保存成功，展开后收起回原浮层。两次撤销恢复原节点，服务端保存完成后刷新仍为原 9 节点、6 连线，余额显示 1031 不变。没有提交模型生成、上传或调整媒体任务；既有聚算图片 403 状态保留。
 
 证据：`.studio-e2e/canvas-usability/` 下 `tests.log`、`typecheck-all.log`、`typecheck-admin.log`、`server-compile.log`、`api-contract.log`、`build-release.log`、`deploy-reapply.log`、`online-runtime-final.txt`，及 `online-hover.png`、`online-text-floating.png`。临时验收节点已撤销，不作为用户作品保留。
+
+### 悬停动画性能补丁
+
+设计钩子发现新样式曾对 width/height 做动画，确认属于本轮实现后改为固定 8px/28px 圆圈、transform 缩放与 opacity 交替显示，并支持减少动态偏好。没有添加任何检测忽略。检测的 layout-transition 结果为空；40% 缩放下本地浏览器验证 idle→hover→leave 状态正确，锚点边界不变，标记容器固定 28px，实际动画属性仅 transform/opacity。全仓类型检查、admin 类型检查、Java 17 离线编译及 API 契约通过。证据为 `motion-local.json`、`motion-detect.json` 与 `motion-*.log`。

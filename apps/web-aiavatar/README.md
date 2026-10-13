@@ -905,4 +905,6 @@ StudioPage、StudioPageFilters、StudioPageSearch 与 studio-page.css 统一四�
 
 `studio-node-title.tsx` 提供全部可编辑节点标题的双击原地改名、Enter/失焦提交与 Esc 取消，只读模板保持只读。`StudioWorkspace` 的正文编辑插槽复用上下文动作，普通文字只保留一层；展开弹窗挂到画布自己的作用域，收起返回原浮层。连线平时显示 8px 小圆点，进入操作区或连线时扩大为 28px 加号，离开后收回；命中区保持 44px。原 Handle 保持固定小尺寸，避免逆缩放破坏 React Flow 的连线坐标。
 
+悬停动画用固定尺寸的两层圆圈，仅以 `transform` 和 `opacity` 切换，不对宽高逐帧插值；减少动态偏好下立即切换。节点、锚点和隐形命中区的几何尺寸不随动画变化。
+
 提交 `ae85e83b` 已部署到 AiAvatar 前端，BUILD_ID `lVy5ExpwBGAihzknkH57b`。85 项定向回归、编译门与正式包构建通过；线上验证标题编辑、悬停放大及单文字浮层，新增临时节点撤销并保存后刷新恢复原 9 节点/6 连线，余额未变。验证范围与截图见统一验证 §51；没有调用收费模型，原有媒体失败状态未重新提交。
