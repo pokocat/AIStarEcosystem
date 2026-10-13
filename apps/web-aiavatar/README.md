@@ -899,10 +899,10 @@ StudioPage、StudioPageFilters、StudioPageSearch 与 studio-page.css 统一四�
 
 `StudioPlan` 新增 `text`、`content`、`dependsOn`。服务端在管理员提示词后附加 `StudioPlanValidator.CONTRACT`，兼容已有存储提示词并校验仅向前依赖；`resultNodeId` 仅由客户端采用后写入 doc。分享快照重新映射步骤 ID、不携带输出节点绑定。前后端需一起发布；线上完整流程验收记录见 `docs/ip-studio-assistant-production-acceptance.md`。
 
-### 2026-10-13 · 画布操作优化（本地，未部署）
+### 2026-10-13 · 画布操作优化（已部署）
 
 默认工具改为拖动画布并置顶，空格临时拖动不再改变用户选定的工具。用户从工具栏或右键添加节点时，用 `canvas-bridge/viewport-placement.ts` 在当前视野内寻找附近空位，不推到整张画布最右侧，也不自动改变缩放。上传及资产选择新增的节点同样使用可见区域定位；重复素材继续复用原节点。
 
 `studio-node-title.tsx` 提供全部可编辑节点标题的双击原地改名、Enter/失焦提交与 Esc 取消，只读模板保持只读。`StudioWorkspace` 的正文编辑插槽复用上下文动作，普通文字只保留一层；展开弹窗挂到画布自己的作用域，收起返回原浮层。连线平时显示 8px 小圆点，进入操作区或连线时扩大为 28px 加号，离开后收回；命中区保持 44px。原 Handle 保持固定小尺寸，避免逆缩放破坏 React Flow 的连线坐标。
 
-验证范围与截图见统一验证 §51；本次没有生成或部署，未将临时样例当作云端保存验收。
+提交 `ae85e83b` 已部署到 AiAvatar 前端，BUILD_ID `lVy5ExpwBGAihzknkH57b`。85 项定向回归、编译门与正式包构建通过；线上验证标题编辑、悬停放大及单文字浮层，新增临时节点撤销并保存后刷新恢复原 9 节点/6 连线，余额未变。验证范围与截图见统一验证 §51；没有调用收费模型，原有媒体失败状态未重新提交。
