@@ -548,7 +548,7 @@ public class DramaBrainstormService {
     }
 
     private void requireLlm() {
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "AI 故事助手还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
@@ -581,7 +581,7 @@ public class DramaBrainstormService {
         options.put("max_tokens", pc.maxTokens());
         if (pc.jsonMode()) options.put("response_format", Map.of("type", "json_object"));
         try {
-            return invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            return invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

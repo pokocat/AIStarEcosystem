@@ -60,7 +60,7 @@ public class HttpModelinkGateway implements ModelinkGateway {
     record Target(String baseUrl, String apiKey, String model, String endpointName) {}
 
     Target resolveTarget() {
-        AiModelEndpoint e = aiModels.resolveEndpoint(AiModelPurpose.DAP_REAL_AVATAR).orElse(null);
+        AiModelEndpoint e = aiModels.resolveDefaultEndpoint(AiModelPurpose.DAP_REAL_AVATAR,"aiavatar").orElse(null);
         if (e == null) return null;
         try {
             String key = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());

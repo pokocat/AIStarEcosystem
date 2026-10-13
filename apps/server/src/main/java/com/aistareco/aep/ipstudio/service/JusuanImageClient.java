@@ -43,7 +43,7 @@ public class JusuanImageClient {
                     && uri.getQuery()==null && uri.getFragment()==null;
         }catch(RuntimeException e){return false;}
     }
-    public boolean supportsEndpoint(String id) {return id!=null && models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,id).map(r->supports(r.endpoint())).orElse(false);}
+    public boolean supportsEndpoint(String id) {return id!=null && models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,id,"studio").map(r->supports(r.endpoint())).orElse(false);}
     public static void validate(AiModelEndpoint endpoint,String prompt,int references,String size) {
         validate(endpoint,prompt,references,size,null);
     }
@@ -60,7 +60,7 @@ public class JusuanImageClient {
         return generate(endpointId,prompt,size,keys,requestId,owner,progress,null);
     }
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress,AiImageRequestSpec snapshot) {
-        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId).orElseThrow(()->failure("图片模型已停用")).endpoint();
+        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio").orElseThrow(()->failure("图片模型已停用")).endpoint();
         validate(endpoint,prompt,keys.size(),size,snapshot);
         if(!supports(endpoint))throw failure("图片模型不支持聚算图片协议");
         var spec=snapshot==null?requiredSpec(endpoint):snapshot;
@@ -122,7 +122,7 @@ public class JusuanImageClient {
     }
     private ModelCallCtx context(AiModelEndpoint endpoint,String id,String owner,String body) {
         return ModelCallCtx.builder(AiModelPurpose.DAP_IMAGE).endpoint(endpoint.getId(),endpoint.getName()).model(endpoint.getModel()).requestId(id).ownerUserId(owner)
-                .appCode("aiavatar").client(http).requestBodyJson(body).recordFailureUsage(body!=null).maxAttempts(1).build();
+                .appCode("studio").client(http).requestBodyJson(body).recordFailureUsage(body!=null).maxAttempts(1).build();
     }
     private JsonNode checked(HttpResponse<String> response) {
         if(response.statusCode()/100!=2)throw failure("聚算图片接口暂时不可用（"+response.statusCode()+"）");

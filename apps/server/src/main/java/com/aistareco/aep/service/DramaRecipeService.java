@@ -240,7 +240,7 @@ public class DramaRecipeService {
     /** 调 LLM 把一部项目蒸馏成 Recipe 并落库。owner 取项目归属；invitedBy 非空=运营邀请。 */
     private DramaRecipe distillAndSave(DramaProject project, String status, String origin,
                                        String authorName, String invitedBy) {
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "发布成模板还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
@@ -286,7 +286,7 @@ public class DramaRecipeService {
 
         AiModelInvocationService.AiModelResponse resp;
         try {
-            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -333,7 +333,7 @@ public class DramaRecipeService {
     /** 调 LLM 把一条完成短视频蒸馏成单集 Recipe 并落库。sourceProjectId 复用为来源作品 id（dvs_*）。 */
     private DramaRecipe distillAndSaveShort(String shortId, String userId, JsonNode meta, JsonNode data,
                                             String status, String origin, String authorName) {
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "发布成模板还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
@@ -372,7 +372,7 @@ public class DramaRecipeService {
 
         AiModelInvocationService.AiModelResponse resp;
         try {
-            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

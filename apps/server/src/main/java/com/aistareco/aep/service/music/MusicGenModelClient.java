@@ -67,14 +67,14 @@ public class MusicGenModelClient {
     /** 指定 endpointId 时必须命中候选白名单；未命中一律 503，绝不静默回退默认端点。 */
     private AiModelEndpoint pickEndpoint(String endpointId) {
         if (endpointId != null && !endpointId.isBlank()) {
-            return invocation.resolveEndpoint(AiModelPurpose.MUSIC_GENERATION, endpointId)
+            return invocation.resolveEndpoint(AiModelPurpose.MUSIC_GENERATION, endpointId, "music")
                     .map(AiModelInvocationService.ResolvedEndpoint::endpoint)
                     .filter(e -> e.getBaseUrl() != null && !e.getBaseUrl().isBlank())
                     .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
                             ERR_ENDPOINT_NOT_ALLOWED,
                             "所选音乐模型不在该用途的可用列表里，请重新选择。"));
         }
-        return invocation.resolveEndpoint(AiModelPurpose.MUSIC_GENERATION)
+        return invocation.resolveDefaultEndpoint(AiModelPurpose.MUSIC_GENERATION, "music")
                 .filter(e -> e.getBaseUrl() != null && !e.getBaseUrl().isBlank())
                 .orElse(null);
     }
@@ -136,7 +136,7 @@ public class MusicGenModelClient {
     public void validateRequest(String endpointId, int durationSec, boolean instrumental) {
         requireEndpoint(endpointId);
         int max = instrumental ? props.getMaxInstrumentalDurationSec() : props.getMaxDurationSec();
-        Integer capMax = invocation.resolveEndpoint(AiModelPurpose.MUSIC_GENERATION, endpointId)
+        Integer capMax = invocation.resolveEndpoint(AiModelPurpose.MUSIC_GENERATION, endpointId, "music")
                 .map(AiModelInvocationService.ResolvedEndpoint::candidate)
                 .map(c -> c == null ? null : c.getMaxDurationSec())
                 .orElse(null);
@@ -155,7 +155,7 @@ public class MusicGenModelClient {
      * 「每秒积分」，PER_CALL 是「每次积分」。未配则回落全局默认每秒单价。
      */
     public long resolveCreditCost(String endpointId, int durationSec) {
-        var resolved = invocation.resolveEndpoint(AiModelPurpose.MUSIC_GENERATION, endpointId).orElse(null);
+        var resolved = invocation.resolveEndpoint(AiModelPurpose.MUSIC_GENERATION, endpointId, "music").orElse(null);
         Long override = resolved == null || resolved.candidate() == null
                 ? null : resolved.candidate().getCreditCostOverride();
         long rate = override != null ? Math.max(0L, override) : props.getDefaultCreditsPerSecond();

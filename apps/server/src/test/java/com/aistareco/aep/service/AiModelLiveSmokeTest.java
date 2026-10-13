@@ -46,6 +46,13 @@ import static org.mockito.Mockito.when;
  *   mvn -Dtest=AiModelLiveSmokeTest test
  */
 class AiModelLiveSmokeTest {
+    private static AiModelAccessPolicyService allowAllAccess() {
+        var policy = mock(AiModelAccessPolicyService.class);
+        when(policy.allows(org.mockito.ArgumentMatchers.any(AiModelEndpoint.class),
+                org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+        return policy;
+    }
+
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -81,7 +88,7 @@ class AiModelLiveSmokeTest {
         AiModelInvocationService.AiModelResponse resp =
                 new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                        new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)))
+                        new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess())
                         .invokeChat(AiModelPurpose.GENERAL, messages, options);
 
         assertNotNull(resp, "response 不应为 null");
@@ -121,7 +128,7 @@ class AiModelLiveSmokeTest {
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                        new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)))
+                        new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess())
                 .testConnection("live-conn");
         Path file = record("connection", baseUrl, model, result);
         System.out.println("[AiModelLiveSmokeTest] testConnection result=" + result

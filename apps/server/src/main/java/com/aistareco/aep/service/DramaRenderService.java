@@ -244,11 +244,11 @@ public class DramaRenderService {
     public ImagePlan resolveImagePlan(String endpointId, String action) {
         AiModelInvocationService.ResolvedEndpoint resolved;
         if (endpointId != null && !endpointId.isBlank()) {
-            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, endpointId)
+            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, endpointId, "drama")
                     .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
                             "选的模型现在用不了，刷新页面后重新选一个。"));
         } else {
-            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, null)
+            resolved = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION, null, "drama")
                     .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
                             action + "还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         }
@@ -672,7 +672,7 @@ public class DramaRenderService {
         ClipPlan plan = resolveClipPlan(text(body, "endpoint_id"), durationSec);
         // 2026-09-30 热修：聚算 H3 收首帧只认存储 key（worker 读 variant_config.first_frame_key 上传换 assetId），
         // 提示词里的首帧 URL 标记在那条协议下会被剥掉。判定只在 MaterialVideoModelClient 一处。
-        boolean firstFrameByKey = videoJobs.firstFrameNeedsStorageKey(plan.endpointId());
+        boolean firstFrameByKey = videoJobs.firstFrameNeedsStorageKey(plan.endpointId(), "drama");
 
         // C-3：服务端参考装配（视频线）。shot_ref 时服务端派生首/末帧（本镜已锁首帧 → 同场上一镜真实末帧；
         // 本镜末帧 → 同场下一镜开场首帧），无 shot_ref 时退回显式 frame_url/last_frame_url。
@@ -747,11 +747,11 @@ public class DramaRenderService {
         Boolean capFirstLastFrame = null;
         Boolean capSubjectReference = null;
         AiModelInvocationService.ResolvedEndpoint resolved = explicit
-                ? invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
+                ? invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, "drama")
                         .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
                                 "选的模型现在用不了，刷新页面后重新选一个。"))
                 // 默认端点：不强制存在（worker 提交时解析；此处仅取 capability 用于首尾帧判定与 applied_refs 回报）。
-                : invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null).orElse(null);
+                : invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "drama").orElse(null);
         if (resolved != null) {
             chosenVideoEp = resolved.endpoint();
             AiAppEndpointCandidate candidate = resolved.candidate();
@@ -836,7 +836,7 @@ public class DramaRenderService {
      * 调用方（DramaAssetService）在 creditService.hold 之前调用。
      */
     public void preflightCharacterReferenceSheet(String userId) {
-        invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
+        invocation.resolveDefaultEndpoint(AiModelPurpose.IMAGE_GENERATION, "drama")
                 .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
                         "生成角色参考图还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
@@ -857,7 +857,7 @@ public class DramaRenderService {
      */
     public String renderCharacterReferenceFrame(String userId, Map<String, String> vars,
                                                 String ratio, List<String> lockRefImages) {
-        AiModelEndpoint ep = invocation.resolveEndpoint(AiModelPurpose.IMAGE_GENERATION)
+        AiModelEndpoint ep = invocation.resolveDefaultEndpoint(AiModelPurpose.IMAGE_GENERATION, "drama")
                 .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
                         "生成角色参考图还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
@@ -920,7 +920,7 @@ public class DramaRenderService {
     private List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> renderModelOptions(
             AiModelPurpose purpose, long defaultCost) {
         List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> out = new java.util.ArrayList<>();
-        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(purpose)) {
+        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(purpose, "drama")) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             long cost = r.candidate().getCreditCostOverride() != null ? r.candidate().getCreditCostOverride() : defaultCost;
             String billingUnit = candidateBillingUnit(purpose, r.endpoint(), r.candidate());

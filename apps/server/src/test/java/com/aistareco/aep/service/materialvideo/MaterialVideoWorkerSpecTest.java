@@ -179,8 +179,9 @@ class MaterialVideoWorkerSpecTest {
         assertEquals("带货视频生成", MaterialVideoWorker.creditLabelOf(
                 MaterialVideoJob.builder().payloadJson("{broken").build()));
 
-        assertEquals("drama", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().kind("drama-shot").build()));
-        assertEquals("celebrity", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().kind("studio-t2v").build()));
+        assertEquals("drama", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().app(MaterialVideoJobService.APP_DRAMA).kind("drama-shot").build()));
+        assertEquals("studio", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().app(MaterialVideoJobService.APP_IPSTUDIO).kind("studio-t2v").build()));
+        assertEquals("celebrity", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().app(MaterialVideoJobService.APP_VIDEO_STUDIO).kind("studio-t2v").build()));
         assertEquals("分镜视频", MaterialVideoWorker.storageCategoryOf(MaterialVideoJob.builder().kind("drama-episode").build()));
         assertEquals("视频生成", MaterialVideoWorker.storageCategoryOf(MaterialVideoJob.builder().kind("studio-flf").build()));
         assertEquals("素材视频", MaterialVideoWorker.storageCategoryOf(MaterialVideoJob.builder().kind("variant").build()));

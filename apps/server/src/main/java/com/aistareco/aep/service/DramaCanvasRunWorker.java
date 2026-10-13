@@ -443,7 +443,7 @@ public class DramaCanvasRunWorker {
             RuntimeException err;
             try {
                 AiModelInvocationService.AiModelResponse resp =
-                        invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+                        invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
                 return resp;
             } catch (RuntimeException e) {
                 err = e;

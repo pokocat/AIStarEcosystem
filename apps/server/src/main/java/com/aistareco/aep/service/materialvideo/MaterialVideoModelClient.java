@@ -91,7 +91,11 @@ public class MaterialVideoModelClient {
 
     /** 失败快：未绑定端点 / 无 apiKey 时抛 VIDEO_NOT_CONFIGURED（带明确提示）。 */
     public void ensureConfigured() {
-        requireKey(requireEndpoint(null));
+        ensureConfigured("celebrity");
+    }
+
+    public void ensureConfigured(String appCode) {
+        requireKey(requireEndpoint(null, appCode));
     }
 
     /** 端点是否具备提交条件（有 baseUrl + 可解密的 apiKey）——models 列表据此过滤不可提交项。 */
@@ -124,13 +128,17 @@ public class MaterialVideoModelClient {
      * H3 的 requireJusuanDuration 仍保留在 submit 路径做最后防线。
      */
     public void validateRequest(String endpointId, int durationSec) {
-        AiModelEndpoint endpoint = requireEndpoint(endpointId);
+        validateRequest(endpointId, durationSec, "celebrity");
+    }
+
+    public void validateRequest(String endpointId, int durationSec, String appCode) {
+        AiModelEndpoint endpoint = requireEndpoint(endpointId, appCode);
         requireKey(endpoint);
         if (durationSec <= 0) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_REQUIRED",
                     "请提供视频时长（整数秒）后再提交生成。");
         }
-        DurationBounds bounds = effectiveDurationBounds(endpointId, endpoint);
+        DurationBounds bounds = effectiveDurationBounds(endpointId, endpoint, appCode);
         if ((bounds.minSec() != null && durationSec < bounds.minSec())
                 || (bounds.maxSec() != null && durationSec > bounds.maxSec())) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_UNSUPPORTED",
@@ -152,9 +160,13 @@ public class MaterialVideoModelClient {
 
     /** 某端点的有效时长区间 = 协议硬边界 ∩ candidate.maxDurationSec（capability 未配置 → 只剩协议边界）。 */
     public DurationBounds effectiveDurationBounds(String endpointId, AiModelEndpoint endpoint) {
+        return effectiveDurationBounds(endpointId, endpoint, "celebrity");
+    }
+
+    public DurationBounds effectiveDurationBounds(String endpointId, AiModelEndpoint endpoint, String appCode) {
         DurationBounds protocol = protocolDurationBounds(endpoint);
         AiModelInvocationService.ResolvedEndpoint resolved =
-                invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId).orElse(null);
+                invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, appCode).orElse(null);
         return intersect(protocol, resolved == null ? null : resolved.candidate());
     }
 
@@ -212,8 +224,12 @@ public class MaterialVideoModelClient {
      * PER_SECOND 端点按请求秒数展开，PER_CALL/旧端点仍按次，避免把存量候选价格语义整体改写。
      */
     public Long resolveCreditCostOverride(String endpointId, int durationSec) {
+        return resolveCreditCostOverride(endpointId, durationSec, "celebrity");
+    }
+
+    public Long resolveCreditCostOverride(String endpointId, int durationSec, String appCode) {
         AiModelInvocationService.ResolvedEndpoint resolved =
-                invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId).orElse(null);
+                invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, appCode).orElse(null);
         if (resolved == null || resolved.candidate() == null
                 || resolved.candidate().getCreditCostOverride() == null) {
             return null;
@@ -229,14 +245,18 @@ public class MaterialVideoModelClient {
 
     /** 重新接管一个已经由上游受理的异步任务；只构造轮询上下文，绝不再次提交生成。 */
     public SubmitResult resumeExistingTask(String taskId, String endpointId, String providerUsed, String modelUsed) {
-        AiModelEndpoint endpoint = requireEndpoint(endpointId);
+        return resumeExistingTask(taskId, endpointId, providerUsed, modelUsed, "celebrity");
+    }
+
+    public SubmitResult resumeExistingTask(String taskId, String endpointId, String providerUsed, String modelUsed, String appCode) {
+        AiModelEndpoint endpoint = requireEndpoint(endpointId, appCode);
         String model = modelUsed != null && !modelUsed.isBlank()
                 ? modelUsed
                 : (endpoint.getModel() != null && !endpoint.getModel().isBlank()
                 ? endpoint.getModel() : props.getDefaultModel());
         return new SubmitResult(taskId, null,
                 providerUsed != null && !providerUsed.isBlank() ? providerUsed : endpoint.getName(),
-                model, protocolFor(endpoint, model), endpoint.getId());
+                model, protocolFor(endpoint, model), endpoint.getId(), appCode);
     }
 
     /**
@@ -255,7 +275,7 @@ public class MaterialVideoModelClient {
     public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId,
                                String appCode, String endpointId, VideoGenSpec spec) {
         VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
-        AiModelEndpoint p = requireEndpoint(endpointId);
+        AiModelEndpoint p = requireEndpoint(endpointId, appCode);
         String apiKey = requireKey(p);
         String model = modelOf(p);
         String protocol = protocolFor(p, model);
@@ -344,7 +364,7 @@ public class MaterialVideoModelClient {
                     (taskId != null && !taskId.isBlank()) ? taskId : videoId,
                     elapsedMs(startNanos), null, null);
             // 无论调用方是否显式选端点，都冻结实际 endpoint id；轮询/受保护资产读取不可随默认绑定漂移。
-            return new SubmitResult(taskId, videoId, p.getName(), model, protocol, p.getId());
+            return new SubmitResult(taskId, videoId, p.getName(), model, protocol, p.getId(), appCode);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -412,7 +432,7 @@ public class MaterialVideoModelClient {
     /** 轮询一个任务的状态。失败抛 BusinessException（含 HTTP 详情）。
      *  D-11：用 submit 时选定的同一端点轮询（submit.endpointId()），确保 baseUrl/apiKey 一致。 */
     public PollResult poll(SubmitResult submit) {
-        AiModelEndpoint p = requireEndpoint(submit.endpointId());
+        AiModelEndpoint p = requireEndpoint(submit.endpointId(), submit.appCode());
         String apiKey = requireKey(p);
         String idForLog = submit.externalId();
         URI uri = pollUri(p, submit);
@@ -485,20 +505,28 @@ public class MaterialVideoModelClient {
 
     /** D-11：endpointId 为空 → 默认端点（旧行为不变）；指定 → 候选端点白名单，未命中抛 ENDPOINT_NOT_ALLOWED。 */
     private AiModelEndpoint pickEndpoint(String endpointId) {
+        return pickEndpoint(endpointId, "celebrity");
+    }
+
+    private AiModelEndpoint pickEndpoint(String endpointId, String appCode) {
         if (endpointId != null && !endpointId.isBlank()) {
-            return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
+            return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, appCode)
                     .map(AiModelInvocationService.ResolvedEndpoint::endpoint)
                     .filter(p -> p.getBaseUrl() != null && !p.getBaseUrl().isBlank())
                     .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
                             "所选出片模型不可用或未在「视频生成」候选池内，请刷新后重选。"));
         }
-        return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)
+        return invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION, appCode)
                 .filter(p -> p.getBaseUrl() != null && !p.getBaseUrl().isBlank())
                 .orElse(null);
     }
 
     private AiModelEndpoint requireEndpoint(String endpointId) {
-        AiModelEndpoint p = pickEndpoint(endpointId);
+        return requireEndpoint(endpointId, "celebrity");
+    }
+
+    private AiModelEndpoint requireEndpoint(String endpointId, String appCode) {
+        AiModelEndpoint p = pickEndpoint(endpointId, appCode);
         if (p == null) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_NOT_CONFIGURED",
                     "未为「视频生成」绑定 AI 模型端点。请到 管理后台 → 平台与配置 → AI 模型与 Key →"
@@ -919,7 +947,11 @@ public class MaterialVideoModelClient {
      * <p>端点解析与 {@link #submit} 同一条（{@code requireEndpoint}），判定与 submit 同一处（{@link #usesUploadedFirstFrame}）。
      */
     public boolean firstFrameNeedsStorageKey(String endpointId) {
-        AiModelEndpoint p = requireEndpoint(endpointId);
+        return firstFrameNeedsStorageKey(endpointId, "celebrity");
+    }
+
+    public boolean firstFrameNeedsStorageKey(String endpointId, String appCode) {
+        AiModelEndpoint p = requireEndpoint(endpointId, appCode);
         String model = (p.getModel() != null && !p.getModel().isBlank())
                 ? p.getModel() : props.getDefaultModel();
         return usesUploadedFirstFrame(protocolFor(p, model));
@@ -1076,7 +1108,7 @@ public class MaterialVideoModelClient {
         if (submit == null || !submit.isJusuanMedia() || assetId == null || assetId.isBlank()) {
             throw new IOException("protected output asset is not available");
         }
-        AiModelEndpoint endpoint = requireEndpoint(submit.endpointId());
+        AiModelEndpoint endpoint = requireEndpoint(submit.endpointId(), submit.appCode());
         String apiKey = requireKey(endpoint);
         URI uri = jusuanScopedUri(endpoint.getBaseUrl(), "/assets/" + encodeQuery(assetId) + "/content",
                 modelForScopedRequest(endpoint, submit));
@@ -1278,7 +1310,11 @@ public class MaterialVideoModelClient {
     // ── 结果记录 ────────────────────────────────────────────────────────────────
 
     public record SubmitResult(String taskId, String videoId, String providerUsed, String modelUsed, String protocol,
-                               String endpointId) {
+                               String endpointId, String appCode) {
+        public SubmitResult(String taskId, String videoId, String providerUsed, String modelUsed, String protocol,
+                            String endpointId) {
+            this(taskId, videoId, providerUsed, modelUsed, protocol, endpointId, "celebrity");
+        }
         String externalId() {
             return (taskId != null && !taskId.isBlank()) ? taskId : videoId;
         }

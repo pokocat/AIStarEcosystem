@@ -4,7 +4,7 @@ import com.aistareco.aep.ipstudio.dto.StudioEffectDtos.*;
 import com.aistareco.aep.ipstudio.model.*;
 import com.aistareco.aep.ipstudio.repository.*;
 import com.aistareco.aep.model.*;
-import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.AiAppSceneModelPolicyService;
 import com.aistareco.aep.service.storage.*;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -21,13 +21,13 @@ public class StudioEffectService {
     private final IpVideoEffectRepository effects;
     private final IpVideoEffectActivityRepository activity;
     private final IpProjectService projects;
-    private final AiModelInvocationService models;
+    private final AiAppSceneModelPolicyService scenePolicies;
     private final FileStorageService storage;
     private final EntityManager em;
     private final ObjectMapper mapper;
     public StudioEffectService(IpVideoEffectRepository effects,IpVideoEffectActivityRepository activity,IpProjectService projects,
-            AiModelInvocationService models,FileStorageService storage,EntityManager em,ObjectMapper mapper) {
-        this.effects=effects;this.activity=activity;this.projects=projects;this.models=models;this.storage=storage;this.em=em;this.mapper=mapper;
+            AiAppSceneModelPolicyService scenePolicies,FileStorageService storage,EntityManager em,ObjectMapper mapper) {
+        this.effects=effects;this.activity=activity;this.projects=projects;this.scenePolicies=scenePolicies;this.storage=storage;this.em=em;this.mapper=mapper;
     }
     @Transactional(readOnly=true) public List<Effect> list(String owner) {
         var states=new HashMap<String,IpVideoEffectActivity>();activity.findByOwnerUserId(owner).forEach(a->states.put(a.getEffectId(),a));
@@ -76,7 +76,7 @@ public class StudioEffectService {
                 .orElseThrow(()->BusinessException.notFound("STUDIO_EFFECT_NOT_FOUND","特效不存在或不属于你"));
     }
     private void requireModel(String model) {
-        if(model==null || model.isBlank() || models.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION,model).isEmpty())
+        if(model==null || model.isBlank() || scenePolicies.studioVideoCandidates().stream().noneMatch(c -> model.equals(c.endpoint().getId())))
             throw BusinessException.badRequest("STUDIO_EFFECT_MODEL_UNAVAILABLE","请选择已配置的视频模型");
     }
     private Effect view(IpVideoEffect e,IpVideoEffectActivity a) {

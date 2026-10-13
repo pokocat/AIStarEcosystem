@@ -153,7 +153,7 @@ public class MaterialVideoWorker {
         String endpointId = queue==null?extractEndpointId(job.getVariantConfigJson()):queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
         if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit = modelClient.resumeExistingTask(
-                job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed());
+                job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed(), appCodeOf(job));
         MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
         if (!poll.succeeded()) {
             throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUCCEEDED_UPSTREAM",
@@ -237,7 +237,7 @@ public class MaterialVideoWorker {
         // 出来的片跟参考图毫无关系。
         VideoGenSpec spec = VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
-                accepted?modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed()):modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
+                accepted?modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed(),appCode):modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
                         job.getOwnerUserId(), appCode, endpointId, spec);
         markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
 
@@ -576,7 +576,7 @@ public class MaterialVideoWorker {
 
     /** 用量归属子应用：短剧（kind=drama-*）记 drama，其余记 celebrity。 */
     static String appCodeOf(MaterialVideoJob job) {
-        return job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
+        return MaterialVideoJobService.modelAppCode(job.getApp());
     }
 
     /** 存储用量里的分类名：短剧「分镜视频」、视频生成区（kind=studio-*）「视频生成」、其余「素材视频」。 */

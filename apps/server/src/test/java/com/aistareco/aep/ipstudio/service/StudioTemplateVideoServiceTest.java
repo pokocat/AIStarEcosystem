@@ -3,6 +3,7 @@ package com.aistareco.aep.ipstudio.service;
 import com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.*;
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.service.AiAppSceneModelPolicyService;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel;
 import com.aistareco.common.BusinessException;
@@ -12,19 +13,19 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class StudioTemplateVideoServiceTest {
-    final AiModelInvocationService models=mock(AiModelInvocationService.class);
+    final AiAppSceneModelPolicyService scenePolicies=mock(AiAppSceneModelPolicyService.class);
     final MaterialVideoJobService jobs=mock(MaterialVideoJobService.class);
     final StudioVideoService nativeVideos=mock(StudioVideoService.class);
-    final StudioTemplateVideoService service=new StudioTemplateVideoService(models,jobs,nativeVideos);
+    final StudioTemplateVideoService service=new StudioTemplateVideoService(scenePolicies,jobs,nativeVideos);
     Step step(List<String> refs,Video video) {return new Step("v","node","video","video","prompt",refs,null,"video",true,5,"9:16",video);}
     void model(String id,boolean nativeMode) {
-        when(models.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION),any())).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(AiModelEndpoint.builder().id(id).build(),null,true)));
+        when(scenePolicies.resolveStudioVideo(any())).thenReturn(new AiModelInvocationService.ResolvedEndpoint(AiModelEndpoint.builder().id(id).build(),null,true));
         when(nativeVideos.models()).thenReturn(nativeMode?List.of(new VideoStudioModel(id,"H3",true,true,null,null)):List.of());
     }
     @Test void legacyQuoteUsesTheExactSubmitPriceAndDoesNotCreateJobs() {
-        model("legacy",false);when(jobs.quote("legacy",5)).thenReturn(40L);
+        model("legacy",false);when(jobs.quote("legacy",5,"studio")).thenReturn(40L);
         var quote=service.quote("owner",step(List.of("frame"),null),"legacy","prompt");assertEquals(40,quote.cost());assertFalse(quote.nativeMode());
-        verify(jobs).quote("legacy",5);verify(jobs,never()).submit(any(),any(),any());
+        verify(jobs).quote("legacy",5,"studio");verify(jobs,never()).submit(any(),any(),any());
         assertThrows(BusinessException.class,()->service.quote("owner",step(List.of("first","last"),new Video("first_last_frame_video","768p",null)),"legacy","prompt"));
     }
     @Test void nativeQuoteAndSubmissionSettingsPreserveOrderedFramesTierAndSeed() {

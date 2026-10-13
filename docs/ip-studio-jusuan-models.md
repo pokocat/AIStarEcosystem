@@ -1,5 +1,7 @@
 # Studio 聚算模型配置
 
+> 历史说明（2026-10-13）：下文记录 2026-10-10 的聚算配置与上线事实，之后的代码级聚算限制已被模型类型、应用开放范围和 Studio 功能候选配置取代。当前规则见 [模型开放范围](model-access-policy.md)。`ipstudio.model-provider` 只保留历史值，不再参与 Studio 选模。
+
 2026-10-10，Studio 文本、图片、视频只使用聚算 JusuanHub。模型端点和选择范围继续由后端配置管理，浏览器不持有供应商密钥。短剧、带货与旧数字资产用途的全局默认绑定保持原值。
 
 | 能力 | 开放方式 | 生产端点 | 售价 |
@@ -17,7 +19,7 @@
 - `ai_app_endpoint_candidate`：对应 `DAP_PERSONA`、`DAP_IMAGE` 的启用候选。视频仍复用 `VIDEO_GENERATION` 候选及原有价格。
 - `ai.scene-policy.studio.script`：`mode=fixed`，仅含 Qwen3.6。
 - `ai.scene-policy.studio.image`：`mode=selectable`，上述三个图片端点各 30 积分/张，默认 FLUX。
-- `ipstudio.model-provider`：JSON 字符串 `"jusuan"`，限制 Studio 三类模型的供应商；按 HTTPS 的真实域名 `api.jusuanhub.com` 校验，名称中含 jusuan 不作为依据。
+- `ipstudio.model-provider`：JSON 字符串 `"jusuan"`，限制未配置场景策略时的旧模型路径与 Studio 视频；按 HTTPS 的真实域名 `api.jusuanhub.com` 校验，名称中含 jusuan 不作为依据。已配置的剧本、图片功能由各自场景策略决定开放模型。
 
 场景模型与售价可在模型运营的 Studio 场景中维护；供应商限制位于平台配置。未设置供应商限制的环境保留原有模型绑定。列表、生成提交、视频报价和模板制作计划均应用同一 Studio 范围。用户提交隐藏模型 ID、旧画布保存的其他供应商模型 ID，在冻结积分前被拒绝；不自动替换用户显式选定的模型。未传模型时使用 Studio 默认，并将实际端点保存到任务快照。
 

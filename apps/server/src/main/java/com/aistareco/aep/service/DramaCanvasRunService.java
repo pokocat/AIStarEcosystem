@@ -412,10 +412,10 @@ public class DramaCanvasRunService {
             // 时长上限（协议 ∩ 候选；未知按 10 秒）—— 超了是 400 且不冻结
             String endpointId = body.endpointId() == null || body.endpointId().isBlank() ? null : body.endpointId().trim();
             AiModelInvocationService.ResolvedEndpoint re = endpointId != null
-                    ? invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId)
+                    ? invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, "drama")
                             .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
                                     "选的模型现在用不了，刷新页面后重新选一个。"))
-                    : invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null)
+                    : invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "drama")
                             .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_NOT_CONFIGURED",
                                     "生成视频还没接入视频模型：请在管理后台为「视频生成」用途绑定一个模型端点后再试。"));
             MaterialVideoModelClient.DurationBounds bounds = videoModels.effectiveDurationBounds(endpointId, re.endpoint());
@@ -800,7 +800,7 @@ public class DramaCanvasRunService {
     }
 
     private void requireLlm() {
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "AI 写作还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }

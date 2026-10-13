@@ -1,6 +1,8 @@
 package com.aistareco.aep.platform;
 import com.aistareco.aep.dto.*;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiAppEndpointCandidate;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.service.*;
 import com.aistareco.aep.config.MusicGenProperties;
 import com.aistareco.aep.ipstudio.service.*;
@@ -21,11 +23,31 @@ class ModelFeatureManagementServiceTest {
     final StudioPlatformPricing platform=mock(StudioPlatformPricing.class);
     final StudioPointPricing point=mock(StudioPointPricing.class);
     final AiModelEndpointAdminService endpoints=mock(AiModelEndpointAdminService.class);
+    final AiAppSceneModelPolicyService scenePolicies=mock(AiAppSceneModelPolicyService.class);
     final CelebrityZoneService zone=mock(CelebrityZoneService.class);
     final MusicGenProperties music=new MusicGenProperties();
-    ModelFeatureManagementService service(){return new ModelFeatureManagementService(bindings,prices,config,mock(VideoStudioPricingService.class),mapper,music,zone,platform,mock(DapPricingService.class),point,endpoints,mock(AiAppSceneModelPolicyService.class),20);}
+    ModelFeatureManagementService service(){var access=mock(AiModelAccessPolicyService.class);when(access.allows(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenReturn(true);return new ModelFeatureManagementService(bindings,prices,config,mock(VideoStudioPricingService.class),mapper,music,zone,platform,mock(DapPricingService.class),point,endpoints,scenePolicies,access,20);}
     AiAppEndpointCandidateDto candidate(String id){return new AiAppEndpointCandidateDto("DAP_LIP_SYNC","lip",id,"模型",true,false,1,true,null,12L,null);}
     PlatformConfigDto row(String key,JsonNode value){return new PlatformConfigDto(key,value,1,null,null,null);}
+    @Test void studioVideoCatalogKeepsTheSharedCandidateContractAndStudioDefault(){
+        var endpoint=AiModelEndpoint.builder().id("model-a").name("视频模型 A").build();
+        var candidate=AiAppEndpointCandidate.builder().purpose(AiModelPurpose.VIDEO_GENERATION).endpointId("model-a").build();
+        var shared=new AiAppEndpointCandidateDto("VIDEO_GENERATION","视频生成","model-a","视频模型 A",true,false,0,true,
+                new EndpointCapabilityDto(null,null,null,null,null,null,null,null,null),null,null);
+        when(bindings.list()).thenReturn(List.of());
+        when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(shared));
+        when(scenePolicies.studioVideoGroup()).thenReturn(Optional.of(new AiAppSceneModelPolicyService.VideoGroup("model-a",List.of("model-a"))));
+        when(scenePolicies.studioVideoCandidates()).thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
+        var rows=mapper.valueToTree(service().catalog());
+        var row=java.util.stream.StreamSupport.stream(rows.spliterator(),false)
+                .filter(value->"studio".equals(value.path("appCode").asText())&&"video".equals(value.path("feature").asText()))
+                .findFirst().orElseThrow();
+        var value=row.path("candidates").get(0);
+        assertEquals("VIDEO_GENERATION",value.path("purpose").asText());
+        assertTrue(value.path("isDefault").asBoolean());
+        assertTrue(value.path("capability").isObject());
+        assertTrue(value.path("enabled").asBoolean());
+    }
     @Test void registryRejectsUnknownAndAcknowledgesAllSharedConsumers(){
         assertThrows(Exception.class,()->ModelFeatureRegistry.require("star","generate"));
         var appearance=ModelFeatureRegistry.require("music","appearance-forge");assertTrue(ModelFeatureRegistry.affected(appearance).contains("drama.appearance-forge"));

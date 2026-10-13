@@ -25,10 +25,11 @@ public class ModelFeatureManagementService {
     private final com.aistareco.aep.ipstudio.service.StudioPointPricing point;
     private final AiModelEndpointAdminService endpoints;
     private final AiAppSceneModelPolicyService scenePolicies;
+    private final AiModelAccessPolicyService modelAccess;
     private final long defaultUploadCost;
 
-    public ModelFeatureManagementService(AiAppBindingService bindings,CelebrityActionPricingService prices,PlatformConfigService config,VideoStudioPricingService videoPrices,ObjectMapper mapper,com.aistareco.aep.config.MusicGenProperties music,CelebrityZoneService zone,com.aistareco.aep.ipstudio.service.StudioPlatformPricing platform,com.aistareco.aep.dap.service.DapPricingService dap,com.aistareco.aep.ipstudio.service.StudioPointPricing point,AiModelEndpointAdminService endpoints,AiAppSceneModelPolicyService scenePolicies,@org.springframework.beans.factory.annotation.Value("${sau.default-upload-cost:20}") long defaultUploadCost) {
-        this.bindings=bindings;this.prices=prices;this.config=config;this.videoPrices=videoPrices;this.mapper=mapper;this.music=music;this.zone=zone;this.platform=platform;this.dap=dap;this.point=point;this.endpoints=endpoints;this.scenePolicies=scenePolicies;this.defaultUploadCost=defaultUploadCost;
+    public ModelFeatureManagementService(AiAppBindingService bindings,CelebrityActionPricingService prices,PlatformConfigService config,VideoStudioPricingService videoPrices,ObjectMapper mapper,com.aistareco.aep.config.MusicGenProperties music,CelebrityZoneService zone,com.aistareco.aep.ipstudio.service.StudioPlatformPricing platform,com.aistareco.aep.dap.service.DapPricingService dap,com.aistareco.aep.ipstudio.service.StudioPointPricing point,AiModelEndpointAdminService endpoints,AiAppSceneModelPolicyService scenePolicies,AiModelAccessPolicyService modelAccess,@org.springframework.beans.factory.annotation.Value("${sau.default-upload-cost:20}") long defaultUploadCost) {
+        this.bindings=bindings;this.prices=prices;this.config=config;this.videoPrices=videoPrices;this.mapper=mapper;this.music=music;this.zone=zone;this.platform=platform;this.dap=dap;this.point=point;this.endpoints=endpoints;this.scenePolicies=scenePolicies;this.modelAccess=modelAccess;this.defaultUploadCost=defaultUploadCost;
     }
     public List<Object> catalog() {
         var allBindings=bindings.list();var rows=new ArrayList<Object>();
@@ -39,13 +40,25 @@ public class ModelFeatureManagementService {
             row.set("secondaryPurposes",mapper.valueToTree(ModelFeatureRegistry.secondary(f).stream().map(Enum::name).toList()));
             row.set("affectedFeatures",mapper.valueToTree(ModelFeatureRegistry.affected(f)));
             var binding=f.purpose()==null?null:allBindings.stream().filter(b->b.purpose().equals(f.purpose().wire())).findFirst().orElse(null);
-            var candidates=f.purpose()==null?List.<AiAppEndpointCandidateDto>of():bindings.listCandidates(f.purpose());
+            var candidates=f.purpose()==null?List.<AiAppEndpointCandidateDto>of():bindings.listCandidates(f.purpose()).stream().filter(c->modelAccess.allows(c.endpointId(),"scene_policy".equals(f.routingKind())?"studio":f.appCode())).toList();
             row.set("binding",mapper.valueToTree(binding));row.set("candidates",mapper.valueToTree(candidates));
             String status=f.purpose()==null?("none".equals(f.routingKind())?"not_required":"external"):
-                binding==null || binding.endpointId()==null?"unconfigured":Boolean.TRUE.equals(binding.endpointEnabled())?"configured":"unavailable";
+                binding==null || binding.endpointId()==null?"unconfigured":Boolean.TRUE.equals(binding.endpointEnabled()) && modelAccess.allows(binding.endpointId(),f.appCode())?"configured":"unavailable";
             if("scene_policy".equals(f.routingKind())) {
                 String scene="script".equals(f.feature())?"script":"image";var policy=scenePolicies.get("studio",scene);row.put("scenePolicyAppCode","studio");row.put("scenePolicyScene",scene);
                 status=policy.isEmpty()?"unconfigured":policy.get().candidates().stream().anyMatch(c->candidates.stream().noneMatch(x->x.endpointId().equals(c.endpointId())&&Boolean.TRUE.equals(x.enabled())&&Boolean.TRUE.equals(x.endpointEnabled())))?"unavailable":"configured";
+            }
+            if("video_group".equals(f.routingKind())) {
+                var group=scenePolicies.studioVideoGroup();
+                var videoCandidates=scenePolicies.studioVideoCandidates();
+                var sharedCandidates=bindings.listCandidates(f.purpose());
+                row.set("candidates",mapper.valueToTree(videoCandidates.stream().map(c->{
+                    var candidate=sharedCandidates.stream().filter(x->x.endpointId().equals(c.endpoint().getId())).findFirst().orElseThrow();
+                    var value=mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(candidate);
+                    value.put("isDefault",c.isDefault());
+                    return value;
+                }).toList()));
+                status=group.isEmpty()?"unconfigured":videoCandidates.stream().noneMatch(AiModelInvocationService.ResolvedEndpoint::isDefault)?"unavailable":"configured";
             }
             row.put("status",status);rows.add(row);
         }return rows;
@@ -69,16 +82,16 @@ public class ModelFeatureManagementService {
             case "engine_matrix": {var safe=new LinkedHashMap<String,Object>();zone.getEnginePricing().forEach((key,v)->safe.put(key,Map.of("creditPrice",v.creditPrice())));row.put("value",safe);break;}
             case "supplier_points": {
                 var entries=new ArrayList<Object>();var current=config.findByKey(com.aistareco.aep.ipstudio.service.StudioPointPricing.KEY).map(PlatformConfigDto::value).orElse(null);
-                for(var c:bindings.listCandidates(f.purpose())) {var v=new LinkedHashMap<String,Object>();var rate=point.find(c.endpointId());boolean fixed=current!=null&&current.path("customerPrices").path(c.endpointId()).isNumber();v.put("endpointId",c.endpointId());v.put("endpointName",c.endpointName());v.put("endpointEnabled",c.endpointEnabled());v.put("available",Boolean.TRUE.equals(c.endpointEnabled())&&Boolean.TRUE.equals(c.enabled()));v.put("creditPrice",rate==null?(current==null?c.creditCostOverride():null):rate.platformPointsPerSecond());v.put("priceSource",fixed?"fixed":rate==null?(current==null&&c.creditCostOverride()!=null?"legacy_candidate":"unconfigured"):"legacy_conversion");entries.add(v);}row.put("value",entries);break;
+                for(var c:bindings.listCandidates(f.purpose())) {if(!modelAccess.allows(c.endpointId(),app))continue;var v=new LinkedHashMap<String,Object>();var rate=point.find(c.endpointId());boolean fixed=current!=null&&current.path("customerPrices").path(c.endpointId()).isNumber();v.put("endpointId",c.endpointId());v.put("endpointName",c.endpointName());v.put("endpointEnabled",c.endpointEnabled());v.put("available",Boolean.TRUE.equals(c.endpointEnabled())&&Boolean.TRUE.equals(c.enabled()));v.put("creditPrice",rate==null?(current==null?c.creditCostOverride():null):rate.platformPointsPerSecond());v.put("priceSource",fixed?"fixed":rate==null?(current==null&&c.creditCostOverride()!=null?"legacy_candidate":"unconfigured"):"legacy_conversion");entries.add(v);}row.put("value",entries);break;
             }
             case "config": row.put("value",config.findByKey(f.priceKey()).map(PlatformConfigDto::value).orElse(null));row.put("fallback",dramaFallback(f.feature()));break;
             case "candidate": {
-                var entries=new ArrayList<Object>();for(var c:bindings.listCandidates(f.purpose())) {
+                var entries=new ArrayList<Object>();for(var c:bindings.listCandidates(f.purpose())) {if(!modelAccess.allows(c.endpointId(),app))continue;
                     var v=new LinkedHashMap<String,Object>();v.put("endpointId",c.endpointId());v.put("endpointName",c.endpointName());v.put("endpointEnabled",c.endpointEnabled());v.put("available",Boolean.TRUE.equals(c.endpointEnabled())&&Boolean.TRUE.equals(c.enabled()));v.put("creditCostOverride",c.creditCostOverride());v.put("billingUnit","endpoint".equals(f.billingUnit())?endpoints.list().stream().filter(e->e.id().equals(c.endpointId())).findFirst().map(e->"PER_SECOND".equals(e.billingMode())?"per_second":"per_call").orElse("per_call"):f.billingUnit());entries.add(v);
                 }row.put("value",entries);row.put("fallback",f.priceKey().isEmpty()?("music".equals(app)?music.getDefaultCreditsPerSecond():null):config.getLong(f.priceKey(),dramaFallback(f.feature())));break;
             }
             case "scene_policy": {
-                String scene="script".equals(f.feature())?"script":"image";var policy=scenePolicies.get("studio",scene);var value=new LinkedHashMap<String,Object>();value.put("configured",policy.isPresent());var entries=new ArrayList<Object>();var models=endpoints.list();var shared=bindings.listCandidates(f.purpose());
+                String scene="script".equals(f.feature())?"script":"image";var policy=scenePolicies.get("studio",scene);var value=new LinkedHashMap<String,Object>();value.put("configured",policy.isPresent());var entries=new ArrayList<Object>();var models=endpoints.list();var shared=bindings.listCandidates(f.purpose()).stream().filter(c->modelAccess.allows(c.endpointId(),"studio")).toList();
                 for(var c:policy.map(AiAppSceneModelPolicyDto::candidates).orElse(List.of())){var v=new LinkedHashMap<String,Object>();var e=models.stream().filter(x->x.id().equals(c.endpointId())).findFirst();v.put("endpointId",c.endpointId());v.put("endpointName",e.map(AiModelEndpointDto::name).orElse(null));v.put("endpointEnabled",e.map(AiModelEndpointDto::enabled).orElse(false));v.put("available",e.map(AiModelEndpointDto::enabled).orElse(false)&&shared.stream().anyMatch(x->x.endpointId().equals(c.endpointId())&&Boolean.TRUE.equals(x.enabled())));v.put("creditCost",c.creditCost());v.put("billingUnit",c.billingUnit());entries.add(v);}value.put("candidates",entries);row.put("value",value);break;
             }
             case "video_matrix": row.put("value",videoPrices.current());break;
