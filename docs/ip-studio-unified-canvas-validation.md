@@ -859,6 +859,6 @@ Chrome 在隔离画布 `IPP-12d41489` 的 `brief` 节点提交一次“为这段
 
 在既有验收画布 IPP-e0e7afa6 打开真实“小巡”对话，输入区背景 rgb(241,243,247)，三个操作按钮同为 40px 高且 top=669.8046875；没有发送消息。该对话原本没有 questions，建议按钮的行为通过本地实际组件和专项测试验证，没有为生成追问调用模型。
 
-默认手形模式下，正式文字节点 nUUzz6wDaEbwoF0-oEmbE 从正文区拖动，位置 (628,120)→(696,160)；视口保持 translate(49.8249px,197.94px) scale(.601751)。撤销、保存后刷新，原位置、4 节点/2 连线和视口全部恢复。未点击发送、模型生成或上传；账户同期其它操作导致可见余额变化，因此不以账户余额作为本轮零调用证据。
+默认手形模式下，正式文字节点 nUUzz6wDaEbwoF0-oEmbE 从正文区拖动，位置 (628,120)→(696,160)；视口保持 translate(49.8249px,197.94px) scale(.601751)。撤销、保存后刷新，原位置、4 节点/2 连线和视口全部恢复。未点击发送、模型生成或上传；账户同期可见余额有变化，不以账户余额作为本轮零调用证据。
 
 证据 `.studio-e2e/assistant-composer-ui/` 包含 local-desktop.png、local-mobile.png、online-assistant.png、card-drag-local.json/png、card-drag-online.json、card-drag-restored.json，及测试、编译门、检测、构建、发布、online-runtime.txt。两份正式制品保存在主工作区 dist/deploy，临时样例源码仅在忽略的证据目录。
