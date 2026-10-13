@@ -342,9 +342,11 @@ components:
             required: [id, operation, title, prompt, referenceNodeIds]
             properties:
               id: { type: string }
-              operation: { type: string, enum: [script, storyboard, image, video] }
+              operation: { type: string, enum: [text, script, storyboard, image, video] }
               title: { type: string }
               prompt: { type: string, maxLength: 16000 }
+              content: { type: string, maxLength: 16000, description: text 步骤必填的完整文字初稿，采用时不再次调用模型。 }
+              dependsOn: { type: array, maxItems: 12, items: { type: string }, description: 仅引用本方案中更早的步骤 ID，采用后由客户端解析为真实节点。 }
               referenceNodeIds: { type: array, items: { type: string } }
               unresolvedReferences: { type: array, maxItems: 16, items: { type: string }, description: 模型使用的未知名称，需要用户明确补选，服务端不猜测映射。 }
     StudioCapabilities:

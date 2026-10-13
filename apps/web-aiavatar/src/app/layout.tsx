@@ -46,7 +46,7 @@ export const viewport: Viewport = {
 // 经 React 19 自动提升到 <head>；浏览器无法访问 Google
 // Fonts 时优雅回退到系统字体（globals.css 的 --font-* 已带 system 回退）。
 const FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap";
+  "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

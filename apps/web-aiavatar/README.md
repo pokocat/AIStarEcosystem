@@ -892,3 +892,9 @@ Studio 模型目录的 `name` 投影后台 `modelAlias`，端点名称留在管�
 ### 2026-10-12 · 工作页结构统一与首页创作入口
 
 StudioPage、StudioPageFilters、StudioPageSearch 与 studio-page.css 统一四页的外框、标题、分类和搜索，移除对应旧样式。公开／桌面／手机首页的主入口进入 `/create`；想法输入迁入 StudioCreationBrief，保存失败保留正文并复用同一项目。创作列表每页 24 项、预览仍限两路并发。定向 32 例通过，渲染与发布证据见资产库验证文档的工作页一致性增量。
+
+### 2026-10-12 · 全能创作面板与节点采用
+
+`studio-assistant.tsx` 保留原会话请求/重试/附件链，将低频配置折叠、输入区移到浮窗 footer。`studio-assistant-plan.tsx` 展示单个可编辑结果；`canvas-bridge/studio-assistant-plan.ts` 按实际产物解析前置依赖。文字采用只保存文档；媒体建议交给 `studio-workspace` 创建草稿节点后进入现有参数/计价面板，不隐式生成。
+
+`StudioPlan` 新增 `text`、`content`、`dependsOn`。服务端在管理员提示词后附加 `StudioPlanValidator.CONTRACT`，兼容已有存储提示词并校验仅向前依赖；`resultNodeId` 仅由客户端采用后写入 doc。分享快照重新映射步骤 ID、不携带输出节点绑定。前后端需一起发布；线上完整流程验收记录见 `docs/ip-studio-assistant-production-acceptance.md`。

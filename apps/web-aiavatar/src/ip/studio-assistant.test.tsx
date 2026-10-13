@@ -17,6 +17,11 @@ vi.mock('antd',()=>({App:{useApp:()=>({message:{success:api.success,error:api.er
   Button:({loading,icon,...p}:any)=><button {...p} disabled={p.disabled||loading}>{icon}{p.children}</button>,
   Input:{TextArea:forwardRef(({autoSize,...p}:any,ref)=>{const el=useRef<HTMLTextAreaElement>(null);useImperativeHandle(ref,()=>({focus:()=>el.current?.focus()}));return <textarea ref={el} {...p}/>;})},
   Select:({options,value,allowClear,placeholder,onChange,...p}:any)=><select {...p} value={value||''} onChange={e=>onChange(e.target.value||undefined)}><option value="">{placeholder}</option>{options.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>}));
+function settingsControl(role:string,name:string) {
+  const toggle=screen.getByRole('button',{name:'创作设置与历史'});
+  if(toggle.getAttribute('aria-expanded')!=='true')fireEvent.click(toggle);
+  return screen.getByRole(role,{name});
+}
 afterEach(cleanup);
 beforeEach(()=>{vi.clearAllMocks();api.saveStudioDocument.mockResolvedValue(undefined);api.submitStudioRun.mockResolvedValue({id:'run',status:'done',output:{plan:{summary:'先整理故事',steps:[],questions:[]}}});});
 const character={id:'c',type:'image',title:'角色 A',position:{x:20,y:20},width:320,height:400,metadata:{prompt:'紫发角色'}} as CanvasNodeData;
@@ -24,9 +29,9 @@ const text={...character,id:'t',type:'text',title:'故事 B',metadata:{content:'
 const history={...text,id:'h',title:'导演执导',metadata:{studio:{kind:'assistant',request:{clientRequestId:'old',nodeId:'h',operation:'assistant',prompt:'讨论',contextNodeIds:['t'],model:'two',maxCost:2},conversation:{mode:'director',turns:[{role:'user',content:'讨论'},{role:'assistant',content:'建议'}]}}}} as CanvasNodeData;
 function Host({initial=[character,text,history],onSnapshot,...p}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initial);useEffect(()=>{onSnapshot?.(nodes);},[nodes,onSnapshot]);return <StudioAssistant projectId="p" open nodes={nodes} setNodes={setNodes} setConnections={()=>{}} capabilities={{mock:false,operations:['assistant'],imageCost:8,textCost:2,videoCost:null,textModels:[{endpointId:'one',name:'模型一',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}},{endpointId:'two',name:'模型二',isDefault:false,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]}} onClose={()=>{}} selectedIds={['c']} onUseStep={()=>{}} {...p}/>;}
 test('history restores its exact reference and model before sending the next turn',async()=>{
-  render(<Host/>);fireEvent.change(screen.getByRole('combobox',{name:'对话历史'}),{target:{value:'h'}});
+  render(<Host/>);fireEvent.change(settingsControl('combobox','对话历史'),{target:{value:'h'}});
   expect(screen.getByRole('button',{name:'移除引用 故事 B'})).toBeDefined();expect(screen.queryByRole('button',{name:'移除引用 角色 A'})).toBeNull();
-  expect((screen.getByRole('combobox',{name:'助手模型'}) as HTMLSelectElement).value).toBe('two');
+  expect((settingsControl('combobox','助手模型') as HTMLSelectElement).value).toBe('two');
   fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'继续讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1]).toMatchObject({nodeId:'h',contextNodeIds:['t'],model:'two',mode:'director',prompt:'继续讨论',history:[{role:'user',content:'讨论'},{role:'assistant',content:'建议'}]});
 });
@@ -53,22 +58,22 @@ test('new conversations exclude selected conversation nodes while preserving val
 test('visual mode is explicit, labels actual reading and sends the chosen reading mode',async()=>{
   const video={...character,id:'v',type:'video',title:'短片'},audio={...character,id:'a',type:'audio',title:'配音'};
   render(<Host capabilities={visualCapabilities} initial={[character,video,audio]} selectedIds={['c','v','a']}/>);
-  const check=screen.getByRole('checkbox',{name:'读取图片与视频画面'}) as HTMLInputElement;expect(check.checked).toBe(true);
+  const check=settingsControl('checkbox','读取图片与视频画面') as HTMLInputElement;expect(check.checked).toBe(true);
   expect(screen.getByText(/视频 4 帧/)).toBeDefined();expect(screen.getByText(/音频只读取文字设定/)).toBeDefined();
   fireEvent.click(check);expect(check.checked).toBe(false);fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'只讨论设定'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1].readVisuals).toBe(false);
 });
 test('visual history restores exact reading intent and unsupported models visibly become text-only',async()=>{
   const saved={...history,metadata:{...history.metadata,studio:{...history.metadata!.studio!,request:{...history.metadata!.studio!.request!,model:'vision',readVisuals:true}}}};
   render(<Host capabilities={visualCapabilities} initial={[character,text,saved]} initialNodeId="h"/>);
-  const check=screen.getByRole('checkbox',{name:'读取图片与视频画面'}) as HTMLInputElement;expect(check.checked).toBe(true);
-  fireEvent.change(screen.getByRole('combobox',{name:'助手模型'}),{target:{value:'text'}});expect(check.disabled).toBe(true);expect(check.checked).toBe(false);expect(screen.getByText(/当前模型仅读取文字和设定/)).toBeDefined();
-  fireEvent.change(screen.getByRole('combobox',{name:'助手模型'}),{target:{value:'vision'}});expect(check.checked).toBe(true);
+  const check=settingsControl('checkbox','读取图片与视频画面') as HTMLInputElement;expect(check.checked).toBe(true);
+  fireEvent.change(settingsControl('combobox','助手模型'),{target:{value:'text'}});expect(check.disabled).toBe(true);expect(check.checked).toBe(false);expect(screen.getByText(/当前模型仅读取文字和设定/)).toBeDefined();
+  fireEvent.change(settingsControl('combobox','助手模型'),{target:{value:'vision'}});expect(check.checked).toBe(true);
   fireEvent.change(screen.getByRole('textbox',{name:'给创作助手的消息'}),{target:{value:'看图讨论'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledOnce());expect(api.submitStudioRun.mock.calls[0][1]).toMatchObject({readVisuals:true,model:'vision'});
 });
 test('a vision preflight rejection preserves the draft and can be corrected without recovering an unknown request',async()=>{
   api.submitStudioRun.mockRejectedValueOnce(new ApiError({code:'STUDIO_VISUAL_MISSING',message:'所选对象还没有可读画面'},400));render(<Host capabilities={visualCapabilities}/>);
   const input=screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement;fireEvent.change(input,{target:{value:'看图分析'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('没有可读画面'));
-  expect(input.value).toBe('看图分析');expect(screen.queryByRole('button',{name:'确认原对话任务'})).toBeNull();fireEvent.click(screen.getByRole('checkbox',{name:'读取图片与视频画面'}));fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledTimes(2));expect(api.submitStudioRun.mock.calls[1][1].readVisuals).toBe(false);expect(api.submitStudioRun.mock.calls[1][1].clientRequestId).not.toBe(api.submitStudioRun.mock.calls[0][1].clientRequestId);
+  expect(input.value).toBe('看图分析');expect(screen.queryByRole('button',{name:'确认原对话任务'})).toBeNull();fireEvent.click(settingsControl('checkbox','读取图片与视频画面'));fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(api.submitStudioRun).toHaveBeenCalledTimes(2));expect(api.submitStudioRun.mock.calls[1][1].readVisuals).toBe(false);expect(api.submitStudioRun.mock.calls[1][1].clientRequestId).not.toBe(api.submitStudioRun.mock.calls[0][1].clientRequestId);
 });
 test('keyboard @ selection adds one exact reference and removal changes the submitted IDs',async()=>{
   render(<Host/>);const input=screen.getByRole('textbox',{name:'给创作助手的消息'});
@@ -120,7 +125,7 @@ test('a definite context-limit rejection restores draft, references and previous
   api.submitStudioRun.mockRejectedValueOnce(new ApiError({code:'STUDIO_CONTEXT_LIMIT',message:'画布上下文过长，请减少引用或按集创作'},400));
   const chapters=Array.from({length:3},(_,i)=>({...text,id:`chapter-${i}`,title:`章节 ${i+1}`,metadata:{content:'字'.repeat(20010)}}));
   render(<Host initial={[...chapters,text,history]} initialNodeId="h"/>);
-  fireEvent.click(screen.getByRole('button',{name:'感知画布'}));
+  fireEvent.click(settingsControl('button','感知画布'));
   const input=screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement;
   fireEvent.change(input,{target:{value:'讨论这三份长故事'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));
   await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('上下文过长'));
@@ -128,7 +133,7 @@ test('a definite context-limit rejection restores draft, references and previous
   expect(input.value).toBe('讨论这三份长故事');expect(input.disabled).toBe(false);
   expect(screen.queryByRole('button',{name:'确认原对话任务'})).toBeNull();expect(screen.getByText('建议')).toBeDefined();
   expect(screen.queryByText('讨论这三份长故事',{selector:'.studio-turn p'})).toBeNull();
-  expect((screen.getByRole('combobox',{name:'助手模型'}) as HTMLSelectElement).disabled).toBe(false);
+  expect((settingsControl('combobox','助手模型') as HTMLSelectElement).disabled).toBe(false);
   const rejectedRequest=api.submitStudioRun.mock.calls[0][1];
   fireEvent.click(screen.getByRole('button',{name:'移除引用 章节 3'}));fireEvent.change(input,{target:{value:'只讨论前两章'}});
   fireEvent.click(screen.getByRole('button',{name:'发送'}));
@@ -231,8 +236,8 @@ test('closing and reopening an unsent assistant retains prompt and manually chos
 test('switching history preserves separate unsent drafts, references and models',()=>{
  render(<Host/>);
  const input=screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement;
- const historySelect=screen.getByRole('combobox',{name:'对话历史'});
- const modelSelect=screen.getByRole('combobox',{name:'助手模型'}) as HTMLSelectElement;
+ const historySelect=settingsControl('combobox','对话历史');
+ const modelSelect=settingsControl('combobox','助手模型') as HTMLSelectElement;
  fireEvent.change(input,{target:{value:'新对话的未发送草稿'}});
  fireEvent.click(screen.getByRole('button',{name:'移除引用 角色 A'}));
  fireEvent.change(modelSelect,{target:{value:'two'}});
@@ -261,4 +266,65 @@ test('actual credits appear on completion without token rates or reserved credit
   finish({id:'run',status:'done',output:{plan:{summary:'先整理故事',steps:[],questions:[]},billing:{inputTokens:1000,outputTokens:1000,credits:2,inputCreditsPerK:0.18,outputCreditsPerK:1.08}}});
   expect(await screen.findByText('已消耗 2 积分')).toBeDefined();
   expect(screen.queryByText(/Token|冻结|21 积分/)).toBeNull();
+});
+
+const textPlan={summary:'已补全角色设定，可直接采用。',steps:[{id:'description',operation:'text' as const,title:'末世英雄',prompt:'生成角色描述',content:'林岚，短银发，旧风衣，沉着的废土信使。',referenceNodeIds:['t']}],questions:[]};
+const withPlan=(plan:any=textPlan)=>({...history,metadata:{...history.metadata,status:'success',studio:{...history.metadata!.studio!,conversation:{...history.metadata!.studio!.conversation!,plan}}}} as CanvasNodeData);
+test('default view keeps settings folded and starter actions only prepare an editable message',()=>{
+  render(<Host initial={[text]} selectedIds={[]}/>);
+  expect(screen.queryByRole('combobox',{name:'对话历史'})).toBeNull();
+  expect(screen.queryByRole('checkbox',{name:'读取图片与视频画面'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'搭建创作流程'}));
+  expect((screen.getByRole('textbox',{name:'给创作助手的消息'}) as HTMLTextAreaElement).value).toContain('多视角');
+  expect(api.submitStudioRun).not.toHaveBeenCalled();
+});
+test('adopting an edited text result creates one connected node without another paid generation',async()=>{
+  let snapshot:CanvasNodeData[]=[];let edges:any[]=[];
+  render(<Host initial={[text,withPlan()]} initialNodeId="h" onSnapshot={(n:CanvasNodeData[])=>snapshot=n} setConnections={(fn:any)=>{edges=fn(edges);}}/>);
+  fireEvent.change(screen.getByRole('textbox',{name:'结果 末世英雄'}),{target:{value:'修改后的角色设定'}});
+  fireEvent.click(screen.getByRole('button',{name:'放入画布'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
+  const added=snapshot.find(n=>n.title==='末世英雄')!;
+  expect(added.metadata?.content).toBe('修改后的角色设定');
+  expect(snapshot.find(n=>n.id==='t')?.metadata?.content).toBe('在森林里相遇');
+  expect(edges).toEqual([expect.objectContaining({fromNodeId:'t',toNodeId:added.id})]);
+  expect(snapshot.find(n=>n.id==='h')?.metadata?.studio?.conversation?.plan?.steps[0].resultNodeId).toBe(added.id);
+  expect((screen.getByRole('button',{name:'已放入画布'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(api.submitStudioRun).not.toHaveBeenCalled();
+});
+test('explicit text replacement preserves the node identity and writes only the selected text',async()=>{
+  let snapshot:CanvasNodeData[]=[];
+  render(<Host initial={[text,withPlan()]} initialNodeId="h" onSnapshot={(n:CanvasNodeData[])=>snapshot=n}/>);
+  fireEvent.change(screen.getByRole('combobox',{name:'文字放置位置'}),{target:{value:'t'}});
+  expect(screen.getByText('将替换该节点正文 · 查看原文')).toBeDefined();
+  fireEvent.click(screen.getByRole('button',{name:'替换节点正文'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
+  expect(snapshot).toHaveLength(2);expect(snapshot.find(n=>n.id==='t')?.metadata?.content).toBe(textPlan.steps[0].content);
+  expect(api.submitStudioRun).not.toHaveBeenCalled();
+});
+test('failed adoption save retries the same node without duplication',async()=>{
+  api.saveStudioDocument.mockRejectedValueOnce(new Error('画布保存失败'));
+  let snapshot:CanvasNodeData[]=[];
+  render(<Host initial={[text,withPlan()]} initialNodeId="h" onSnapshot={(n:CanvasNodeData[])=>snapshot=n}/>);
+  fireEvent.click(screen.getByRole('button',{name:'放入画布'}));
+  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('画布保存失败'));
+  const id=snapshot.find(n=>n.title==='末世英雄')?.id;
+  fireEvent.click(screen.getByRole('button',{name:'重试保存'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledTimes(2));
+  expect(snapshot.filter(n=>n.title==='末世英雄').map(n=>n.id)).toEqual([id]);
+  expect(api.submitStudioRun).not.toHaveBeenCalled();
+});
+test('dependent image step waits for text adoption then passes the exact output node to creation',async()=>{
+  const plan={...textPlan,steps:[...textPlan.steps,{id:'sheet',operation:'image',title:'多视角设定图',prompt:'绘制角色三视图',referenceNodeIds:[],dependsOn:['description']}]};
+  const useStep=vi.fn((_step:any)=>undefined);let snapshot:CanvasNodeData[]=[];
+  render(<Host initial={[text,withPlan(plan)]} initialNodeId="h" onUseStep={useStep} onSnapshot={(n:CanvasNodeData[])=>snapshot=n}/>);
+  fireEvent.click(screen.getByRole('button',{name:'下一个步骤'}));
+  expect((screen.getByRole('button',{name:'创建图片节点'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole('status').textContent).toContain('末世英雄');
+  fireEvent.click(screen.getByRole('button',{name:'上一个步骤'}));fireEvent.click(screen.getByRole('button',{name:'放入画布'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole('button',{name:'下一个步骤'}));fireEvent.click(screen.getByRole('button',{name:'创建图片节点'}));
+  await waitFor(()=>expect(useStep).toHaveBeenCalledOnce());
+  expect(useStep.mock.calls[0][0].referenceNodeIds).toEqual([snapshot.find(n=>n.title==='末世英雄')!.id]);
+  expect(api.submitStudioRun).not.toHaveBeenCalled();
 });

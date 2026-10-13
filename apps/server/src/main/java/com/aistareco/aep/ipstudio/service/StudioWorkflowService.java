@@ -189,6 +189,7 @@ public class StudioWorkflowService {
             String systemPrompt=resolved.system();
             if("asset-extract".equals(request.operation()))systemPrompt="你是影视制作资产整理助手。\n"+StudioAssetExtraction.CONTRACT;
             else if(request.scriptEdit()!=null)systemPrompt+="\n"+StudioScriptRevision.CONTRACT;
+            else if("assistant".equals(request.operation()))systemPrompt+="\n"+StudioPlanValidator.CONTRACT;
             if(request.textEdit()!=null)systemPrompt+="\n"+StudioTextRevision.CONTRACT;
             if(!"assistant".equals(request.operation()) && (request.settings()!=null || request.episodeNo()!=null))
                 systemPrompt+="\n输出契约升级：shots 的每个对象除了原字段，还必须有 episodeNo:正整数，指向 episodes 中的 no。该字段是必填字段。严格按指定集数或单集号返回；每集至少一个镜头，镜头 id 全剧唯一。";

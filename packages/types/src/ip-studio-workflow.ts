@@ -17,7 +17,17 @@ export interface StudioTokenPricing { inputCreditsPerK:number; outputCreditsPerK
 export interface StudioTokenBilling { inputTokens:number; outputTokens:number; credits:number; inputCreditsPerK:number; outputCreditsPerK:number }
 export interface StudioTurn { billing?:StudioTokenBilling; role: "user" | "assistant"; content: string }
 export interface StudioPlan {
-  notes?:string[]; summary: string; steps: {id:string;operation:"script"|"storyboard"|"image"|"video";title:string;prompt:string;referenceNodeIds:string[];unresolvedReferences?:string[]}[]; questions: string[] }
+  notes?:string[]; summary: string; steps: StudioPlanStep[]; questions: string[] }
+export interface StudioPlanStep {
+  id:string; operation:"text"|"script"|"storyboard"|"image"|"video"; title:string; prompt:string;
+  /** Ready-to-adopt text, generated in the assistant's existing paid turn. */
+  content?:string;
+  referenceNodeIds:string[]; unresolvedReferences?:string[];
+  /** Earlier steps only; canvas IDs are resolved after their output exists. */
+  dependsOn?:string[];
+  /** Client-owned adoption binding. Never supplied by the model or copied in shares. */
+  resultNodeId?:string;
+}
 export interface StudioReference {
   ipId?: string;
   avatarId?: string;

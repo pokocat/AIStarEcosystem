@@ -3,7 +3,7 @@ import type { Node, NodeChange, Edge, EdgeChange } from '@xyflow/react';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
 import { studioGenerationPending } from './studio-nodes';
 
-export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean; uploading?: boolean; onInspect?: (node:CanvasNodeData)=>void }, 'studio'>;
+export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean; uploading?: boolean; onInspect?: (node:CanvasNodeData)=>void; onRename?: (id:string,title:string)=>void }, 'studio'>;
 export function flowNodes(nodes: CanvasNodeData[], selected: Set<string>): StudioFlowNode[] {
   return nodes.map(document => ({ id: document.id, type: 'studio', position: document.position,
     width: document.width, height: document.height, style: { width: document.width, height: document.height },
@@ -66,6 +66,11 @@ export function copyFlowSelection(nodes: CanvasNodeData[], connections: CanvasCo
         }
         if(clone.metadata.studio.scriptSourceNodeId)clone.metadata.studio.scriptSourceNodeId=idMap.get(clone.metadata.studio.scriptSourceNodeId)||clone.metadata.studio.scriptSourceNodeId;
         delete clone.metadata.studio.runId; delete clone.metadata.studio.request;
+        // Copied assistant plans must never reopen or overwrite the source plan's outputs.
+        for(const step of clone.metadata.studio.conversation?.plan?.steps||[]) {
+          step.resultNodeId=step.resultNodeId?idMap.get(step.resultNodeId):undefined;
+          step.referenceNodeIds=step.referenceNodeIds.map(id=>idMap.get(id)||id);
+        }
         delete clone.metadata.studio.speechRequest; delete clone.metadata.studio.lipSyncRequest;
         if(clone.metadata.studio.scriptEditor) {
           delete clone.metadata.studio.scriptEditor.pending;

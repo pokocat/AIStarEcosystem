@@ -19,7 +19,7 @@ test('unsupported, oversized, binary, empty and overlong attachments never creat
   await expect(readAssistantStory(story('故事.txt','文字',300000),[])).rejects.toThrow('256 KB');
   await expect(readAssistantStory(story('故事.txt','\0二进制'),[])).rejects.toThrow('可用的文字');
   await expect(readAssistantStory(story('故事.txt',' '),[])).rejects.toThrow('可用的文字');
-  await expect(readAssistantStory(story('故事.txt','字'.repeat(24001)),[])).rejects.toThrow('24000');
+  await expect(readAssistantStory(story('故事.txt','字'.repeat(48001)),[])).rejects.toThrow('48000');
   await expect(readAssistantStory({name:'坏编码.txt',size:2,arrayBuffer:async()=>new Uint8Array([255,255]).buffer} as File,[])).rejects.toThrow('UTF-8');
 });
 
@@ -34,5 +34,11 @@ test('document failures and oversized documents never become text placeholders',
   await expect(readAssistantStory(story('故事.pdf','bytes',8*1024*1024+1),[],async()=>({text:'文字'}))).rejects.toThrow('8 MB');
   await expect(readAssistantStory(story('故事.docx','bytes'),[],async()=>{throw new Error('文件受密码保护');})).rejects.toThrow('密码');
   await expect(readAssistantStory(story('故事.pdf','bytes'),[],async()=>({text:''}))).rejects.toThrow('可用的文字');
-  await expect(readAssistantStory(story('故事.doc','bytes'),[],async()=>({text:'字'.repeat(24001)}))).rejects.toThrow('24000');
+  await expect(readAssistantStory(story('故事.doc','bytes'),[],async()=>({text:'字'.repeat(48001)}))).rejects.toThrow('48000');
+});
+
+test('full screenplays up to 48000 characters remain editable for later context selection',async()=>{
+  const content='字'.repeat(48000);
+  expect((await readAssistantStory(story('完整剧本.txt',content),[])).metadata?.content).toBe(content);
+  expect((await readAssistantStory(story('完整剧本.docx','bytes'),[],async()=>({text:content}))).metadata?.content).toBe(content);
 });

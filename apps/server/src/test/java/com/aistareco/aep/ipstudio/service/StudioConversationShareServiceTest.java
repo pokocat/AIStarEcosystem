@@ -28,6 +28,16 @@ class StudioConversationShareServiceTest {
         assertEquals(0,p.snapshot().at("/plan/steps/0/referenceNodeIds").size());assertEquals(1,p.snapshot().at("/plan/steps/0/unresolvedReferences").size());
         assertEquals(64,p.snapshotHash().length());verify(shares,never()).save(any());
     }
+    @Test void textDraftSharesContentAndRemapsDependenciesWithoutOutputBindings() {
+        var plan=(com.fasterxml.jackson.databind.node.ObjectNode)doc.at("/nodes/0/metadata/studio/conversation/plan");
+        var steps=plan.putArray("steps");
+        var text=steps.addObject().put("id","private-description").put("operation","text").put("title","人物").put("prompt","写人物").put("content","可采用的完整正文").put("resultNodeId","private-output");text.putArray("referenceNodeIds");
+        var image=steps.addObject().put("id","private-image").put("operation","image").put("title","设定图").put("prompt","画人物");image.putArray("referenceNodeIds");image.putArray("dependsOn").add("private-description");
+        var snapshot=service.preview("owner","p","n").snapshot();
+        assertEquals("可采用的完整正文",snapshot.at("/plan/steps/0/content").asText());
+        assertEquals("shared-step-1",snapshot.at("/plan/steps/1/dependsOn/0").asText());
+        assertFalse(snapshot.toString().contains("private"));assertFalse(snapshot.toString().contains("resultNodeId"));
+    }
     @Test void changingContentAfterApprovalRejectsWithoutCreatingALink() {
         var hash=service.preview("owner","p","n").snapshotHash();((com.fasterxml.jackson.databind.node.ObjectNode)doc.at("/nodes/0/metadata/studio/conversation/turns/1")).put("content","新答案");
         assertThrows(BusinessException.class,()->service.create("owner","p","n",new StudioConversationShareService.CreateRequest(hash)));

@@ -28,4 +28,22 @@ class StudioPlanValidatorTest {
         assertEquals("角色名称",plan.path("steps").get(0).path("unresolvedReferences").get(0).asText());
         assertEquals(1,plan.path("steps").get(0).path("referenceNodeIds").size());assertDoesNotThrow(()->StudioPlanValidator.validate(plan,selected));
     }
+    @Test void textDraftAndPriorStepDependenciesAreValidatedAndModelCannotBindCanvasOutputs() throws Exception {
+        var plan=mapper.readTree("""
+          {"summary":"已生成初稿","steps":[
+            {"id":"description","operation":"text","title":"角色","prompt":"生成描述","content":"废土信使","referenceNodeIds":[],"resultNodeId":"forged"},
+            {"id":"sheet","operation":"image","title":"设定图","prompt":"三视图","referenceNodeIds":[],"dependsOn":["description"]}],"questions":[]}
+          """);
+        StudioPlanValidator.isolateUnsupportedSteps(plan);
+        assertFalse(plan.path("steps").get(0).has("resultNodeId"));
+        assertDoesNotThrow(()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
+        var image=(com.fasterxml.jackson.databind.node.ObjectNode)plan.path("steps").get(1);
+        image.putArray("dependsOn").add("sheet");
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
+        image.putArray("dependsOn").add("unknown");
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
+        image.putArray("dependsOn").add("description");
+        ((com.fasterxml.jackson.databind.node.ObjectNode)plan.path("steps").get(0)).remove("content");
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
+    }
 }

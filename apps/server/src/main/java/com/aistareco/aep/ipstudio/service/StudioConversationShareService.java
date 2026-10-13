@@ -114,9 +114,13 @@ public class StudioConversationShareService {
         if(!user)throw invalid();
         var p=c.path("plan");if(p.isObject()) {
             var plan=out.putObject("plan");plan.put("summary",text(p,"summary",4000));texts(p,"notes",plan,8);texts(p,"questions",plan,8);
-            var steps=p.path("steps");if(!steps.isArray()||steps.size()>12)throw invalid();var dest=plan.putArray("steps");int i=0;
-            for(var step:steps){var op=step.path("operation").asText();if(!Set.of("script","storyboard","image","video").contains(op))throw invalid();
-                var item=dest.addObject();item.put("id","shared-step-"+(++i));item.put("operation",op);item.put("title",text(step,"title",128));item.put("prompt",text(step,"prompt",4000));item.putArray("referenceNodeIds");
+            var steps=p.path("steps");if(!steps.isArray()||steps.size()>12)throw invalid();var dest=plan.putArray("steps");int i=0;var stepIds=new java.util.HashMap<String,String>();
+            for(var step:steps){var op=step.path("operation").asText();if(!Set.of("text","script","storyboard","image","video").contains(op))throw invalid();
+                var item=dest.addObject();String sharedId="shared-step-"+(++i);item.put("id",sharedId);item.put("operation",op);item.put("title",text(step,"title",128));item.put("prompt",text(step,"prompt",4000));item.putArray("referenceNodeIds");
+                if("text".equals(op))item.put("content",text(step,"content",16000));
+                var dependencies=item.putArray("dependsOn");
+                for(var dependency:step.path("dependsOn")){var mapped=stepIds.get(dependency.asText());if(mapped==null)throw invalid();dependencies.add(mapped);}
+                stepIds.put(step.path("id").asText(),sharedId);
                 // Source bindings cannot authorize assets in the recipient's account.
                 var unresolved=item.putArray("unresolvedReferences");if(step.path("referenceNodeIds").size()>0||step.path("unresolvedReferences").size()>0)unresolved.add("请在自己的画布重新选择参考素材");
             }

@@ -791,7 +791,26 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const quote=capabilities?.mock?0:operation==="image"?((chosenModel?.creditCost ?? capabilities?.imageCost ?? 0)*imageCount):operation==="video"?
     (videoUnitQuote==null?null:videoUnitQuote*videoCount):(capabilities?.textModels?.find(m=>m.endpointId===((capabilities.textModelMode!=="fixed"&&capabilities.textModels?.some(m=>m.endpointId===model)?model:undefined)||capabilities.textModels.find(m=>m.isDefault)?.endpointId||capabilities.textModels[0]?.endpointId))?.tokenPricing?.maxCost);
   const episodeNumbers=[...new Set([...allShots,...allClips].map(n=>n.metadata?.studio?.episodeNo||n.metadata?.studio?.shot?.episodeNo||1))].sort((a,b)=>a-b);
-  const usePlanStep=(step:StudioPlan["steps"][number])=>{const origin=nodesRef.current.find(n=>step.referenceNodeIds.includes(n.id)&&n.metadata?.studio?.script);openDirector(step.operation,origin);setPrompt(step.prompt);setReferenceIds(step.referenceNodeIds.filter(id=>nodesRef.current.find(n=>n.id===id&&n.type===CanvasNodeType.Image&&n.metadata?.storageKey)));setMissingPlanRefs(step.unresolvedReferences||[]);setAssistantOpen(false);};
+  const usePlanStep=(step:StudioPlan["steps"][number])=>{
+    // An assistant action creates a draft first; generation keeps the existing quote/confirmation flow.
+    const existing=nodesRef.current.find(n=>n.id===step.resultNodeId);
+    const upstream=nodesRef.current.find(n=>step.referenceNodeIds.includes(n.id));
+    const node=existing||{...makeStudioNode(step.operation,upstream),title:step.title,metadata:{prompt:step.prompt,studio:{kind:["script","storyboard"].includes(step.operation)?"script" as const:"shot" as const}}};
+    if(!existing) {
+      addNode(node);
+      setConnections(list=>[...list,...step.referenceNodeIds.filter(id=>id!==node.id&&nodesRef.current.some(n=>n.id===id)).map(id=>({id:nanoid(),fromNodeId:id,toNodeId:node.id}))]);
+    }
+    openDirector(step.operation,node);
+    if(!existing) {
+      setPrompt(step.prompt);
+      const refs=step.referenceNodeIds.filter(id=>nodesRef.current.some(n=>n.id===id&&(step.operation==='video'?[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(n.type as CanvasNodeType):n.type===CanvasNodeType.Image)&&n.metadata?.storageKey));
+      setReferenceIds(refs);
+      if(step.operation==='video'&&refs[0])setVideoDraft(draft=>({...draft,mode:refs.length===1&&nodesRef.current.find(n=>n.id===refs[0])?.type===CanvasNodeType.Image?'i2v':'universal_reference_video',firstId:refs[0]}));
+    }
+    setMissingPlanRefs(step.unresolvedReferences?.length?['参考素材']:[]);
+    setAssistantOpen(false);
+    return node.id;
+  };
   const directorOrigin=nodes.find(n=>n.id===originId);
   const directorPending=studioGenerationPending(directorOrigin)?directorOrigin:undefined;
   const referenceComposer=["script","storyboard","image","video"].includes(operation);

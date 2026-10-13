@@ -1319,3 +1319,7 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 operation=text/script/storyboard/assistant/asset-extract 的新任务全部使用 `ai.chat-token-pricing` 按实际 Token 计费（本地 fixture 模式除外）。新请求必须提供 capabilities 文本模型 tokenPricing.maxCost 作为批准上限；缺价或超过批准额在 hold 前拒绝，不回退到按次价格。费率与预算随任务冻结，服务端按真实 prompt_tokens/completion_tokens 合计费用后向上取整。不得按估算 Token 结算；缺少/异常/超预算用量、无效内容、失败与取消释放冻结。成功时同事务 commit 实际额、release 余量、写 billing 和终态；重放原幂等键不再取价或扣费。既有无 tokenPricing 的已受理任务沿用原按次快照。
 
 文本用户界面只展示完成后的实际积分，不展示固定报价、费率或冻结值。实际提交模型工作的操作按钮带 AI 图标与费用提示；本地保存、上传、采纳和任务查询不标为付费模型调用。
+
+#### Studio 全能创作节点采用补充（2026-10-12）
+
+助手 `steps` 支持 `text`：必须带完整 `content`，前端采用时仅保存画布，不再次调用模型或扣积分。`dependsOn` 只能引用同方案更早的步骤；后续生成使用已采用且有可用产物的真实节点 ID，不能把步骤 ID 当素材 ID。模型回传的 `resultNodeId` 被剥离，该绑定仅由客户端在用户采用后保存。用户必须明确选择已有普通文字节点才可替换，且校验选择时原文快照；默认新建，保留来源节点。图片/视频等动作先创建草稿与引用连线，再走现有生成确认和计价。保存失败重试同一节点。分享剥离源画布绑定并重新映射步骤依赖。
