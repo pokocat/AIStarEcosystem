@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
@@ -18,7 +19,7 @@ import { placeStudioNode } from "@/canvas-bridge/flow-document";
 type Props={projectId:string;nodes:CanvasNodeData[];shots:CanvasNodeData[];setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
   models:IpModels;capabilities?:StudioCapabilities;open:boolean;initialNodeId?:string;onClose:()=>void;ratio:string;episodeNo?:number};
 export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,models,capabilities,open,initialNodeId,onClose,ratio,episodeNo}:Props) {
-  const {message}=App.useApp();const [selected,setSelected]=useState<string[]>([]),[kind,setKind]=useState<"frames"|"clips"|"work">("work"),[duration,setDuration]=useState(5),[plan,setPlan]=useState<StudioBatch>(),[busy,setBusy]=useState(false),[error,setError]=useState(""),[runMap,setRunMap]=useState<Record<string,IpRun>>({}),[activeId,setActiveId]=useState<string>();
+  const {message}=useStudioApp();const [selected,setSelected]=useState<string[]>([]),[kind,setKind]=useState<"frames"|"clips"|"work">("work"),[duration,setDuration]=useState(5),[plan,setPlan]=useState<StudioBatch>(),[busy,setBusy]=useState(false),[error,setError]=useStudioErrorState(),[runMap,setRunMap]=useState<Record<string,IpRun>>({}),[activeId,setActiveId]=useState<string>();
   const [imageModel,setImageModel]=useState<string>(),[videoModel,setVideoModel]=useState<string>(),[batchRatio,setBatchRatio]=useState(ratio);
   const stop=useRef(false),live=useRef({nodes,projectId});live.current={nodes,projectId};const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;stop.current=true;};},[]);
@@ -29,7 +30,7 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
   const current=saved.find(n=>n.id===activeId),batch=current?.metadata?.studio?.batch||plan;
   const patch=(id:string,update:(node:CanvasNodeData)=>CanvasNodeData)=>setNodes(list=>list.map(n=>n.id===id?update(n):n));
   useEffect(()=>{if(!open||!current)return;let dead=false;for(const s of current.metadata!.studio!.batch!.steps)if(s.runId)void readRun(s.runId).then(r=>{if(!dead)setRunMap(map=>({...map,[s.id]:r}));}).catch(()=>{});return()=>{dead=true;};},[open,activeId]);
-  const prepare=()=>{try{if(!capabilities)return;setPlan(createStudioBatch(shots.filter(s=>selected.includes(s.id)),kind,models,capabilities,batchRatio,duration,episodeNo,{imageModel,videoModel}));setActiveId(undefined);setError("");}catch(e){setError(e instanceof Error?e.message:"计划未准备完成");}};
+  const prepare=()=>{try{if(!capabilities)return;setPlan(createStudioBatch(shots.filter(s=>selected.includes(s.id)),kind,models,capabilities,batchRatio,duration,episodeNo,{imageModel,videoModel}));setActiveId(undefined);setError("");}catch(e){setError(e);}};
   const execute=async(retryFailed=false)=>{
     if(!batch||busy)return;
     const project=projectId;let approval=current;
@@ -72,7 +73,7 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
         await persist();
         if(run.status==="failed")throw new Error(run.errorMessage||"生成失败，后续步骤已暂停");
       }
-    }catch(e){if(mounted.current&&live.current.projectId===project){const text=e instanceof Error?e.message:"制作暂停，请确认原任务";setError(text);message.error(text);}}
+    }catch(e){if(mounted.current&&live.current.projectId===project){const text=e instanceof Error?e.message:"制作暂停，请确认原任务";setError(text);message.error(e);}}
     finally{if(mounted.current&&live.current.projectId===project){setBusy(false);stop.current=true;}}
   };
   const allDone=!!batch?.steps.length&&batch.steps.every(s=>runMap[s.id]?.status==="done");
@@ -92,7 +93,7 @@ export function StudioBatchPanel({projectId,nodes,shots,setNodes,setConnections,
       {batch&&<><p className="studio-quote">共 {batch.steps.length} 步 · 最多 {batch.approvedCost} 积分 · {batch.aspectRatio}</p><p>图片模型：{models.image.find(m=>m.endpointId===batch.imageModel)?.name||"测试响应"}；视频模型：{models.video.find(m=>m.endpointId===batch.videoModel)?.name||"测试响应"}</p>
         <ol className="studio-batch-steps">{batch.steps.map(s=><li key={s.id}><strong>{s.title}</strong><span>{s.maxCost} 积分 · {runMap[s.id]?.status==="done"?"已完成":runMap[s.id]?.status==="failed"?"失败":runMap[s.id]?.status==="running"?studioTaskLabel(runMap[s.id]):s.request?"待确认原任务":"待执行"}</span></li>)}</ol>
 </>}
-      {error&&<p role="alert">{error}</p>}
+      {error&&<p><StudioErrorNotice error={error}/></p>}
     </div>
   </StudioFloatingPanel>;
 }

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -106,3 +108,5 @@ describe("IP management user flows", () => {
     expect(screen.queryByText("演示模式 · 以下为示例数据")).toBeNull();
   });
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

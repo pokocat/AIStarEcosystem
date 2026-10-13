@@ -1,4 +1,5 @@
 'use client';
+import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Input, Select } from 'antd';
 import { ArrowUpRight, Check, ChevronLeft, ChevronRight, FileText, Image, Video, Clapperboard } from 'lucide-react';
@@ -14,7 +15,7 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,locked,on
   onEdit:(step:StudioPlanStep)=>void;
   onApply:(step:StudioPlanStep,target?:{id:string;content:string})=>Promise<void>;
 }) {
-  const [index,setIndex]=useState(()=>Math.max(0,plan.steps.findIndex(s=>!assistantOutputReady(nodes.find(n=>n.id===s.resultNodeId))))),[target,setTarget]=useState<{id:string;content:string}>(),[saving,setSaving]=useState(false),[error,setError]=useState('');
+  const [index,setIndex]=useState(()=>Math.max(0,plan.steps.findIndex(s=>!assistantOutputReady(nodes.find(n=>n.id===s.resultNodeId))))),[target,setTarget]=useState<{id:string;content:string}>(),[saving,setSaving]=useState(false),[error,setError]=useStudioErrorState();
   const card=useRef<HTMLDivElement>(null),applying=useRef(false);
   const step=plan.steps[Math.min(index,Math.max(0,plan.steps.length-1))];
   const selectedText=nodes.filter(n=>selectedIds.includes(n.id)&&contextIds.includes(n.id)&&assistantWritableText(n));
@@ -42,7 +43,7 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,locked,on
   const replacements=nodes.filter(n=>contextIds.includes(n.id)&&assistantWritableText(n));
   const apply=async()=>{
     if(applying.current)return;applying.current=true;setSaving(true);setError('');
-    try{await onApply({...step,referenceNodeIds:refs.ids,unresolvedReferences:unresolved.length?unresolved:undefined},target);}catch(e){setError(e instanceof Error?e.message:'未能保存，请重试');}
+    try{await onApply({...step,referenceNodeIds:refs.ids,unresolvedReferences:unresolved.length?unresolved:undefined},target);}catch(e){setError(e);}
     finally{applying.current=false;setSaving(false);}
   };
   return <section className="studio-assistant-results" aria-label="创作结果">
@@ -64,7 +65,7 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,locked,on
       </Button>
       {result&&step.operation!=='text'&&<p className="studio-helper-note">{assistantOutputReady(result)?'画布节点已生成，可打开继续调整。':result.metadata?.status==='loading'?'节点正在生成，完成后可继续下一步。':result.metadata?.status==='error'?'节点生成未完成，请打开查看原因。':'节点已创建，等待确认参数并生成。'}</p>}
       <small className="studio-assistant-result-note">{step.operation==='text'?'采用文字无需再次生成，不另扣积分。':'先创建节点并确认参数，生成时再扣积分。'}</small>
-      {error&&<p role="alert" className="studio-assistant-error">{error}</p>}
+      {error&&<p className="studio-assistant-error"><StudioErrorNotice error={error}/></p>}
     </div>
   </section>;
 }

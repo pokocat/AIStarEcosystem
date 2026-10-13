@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, studioNodeError, studioRunError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState, type ComponentRef, type Dispatch, type SetStateAction } from "react";
@@ -31,11 +32,11 @@ type AssistantDraft={prompt:string;contextIds:string[];model?:string;mode:Studio
 // errors keep the original request key; a timeout must never create another paid run.
 const preflightErrors=new Set(['AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_CONTEXT_NOT_FOUND','STUDIO_CONTEXT_LIMIT','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_VISION_UNAVAILABLE','STUDIO_VISUAL_MISSING','STUDIO_VISUAL_LIMIT','IP_ASSET_KEY_INVALID']);
 export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabilities,open,initialNodeId,initialPrompt,initialMode,onClose,selectedIds,onUseStep}:Props) {
-  const {message}=App.useApp();const [mode,setMode]=useState<StudioAssistantMode>("general"),[prompt,setPrompt]=useState(""),[conversationId,setConversationId]=useState<string>(),[contextIds,setContextIds]=useState<string[]>([]),[model,setModel]=useState<string>(),[busy,setBusy]=useState(false);
+  const {message}=useStudioApp();const [mode,setMode]=useState<StudioAssistantMode>("general"),[prompt,setPrompt]=useState(""),[conversationId,setConversationId]=useState<string>(),[contextIds,setContextIds]=useState<string[]>([]),[model,setModel]=useState<string>(),[busy,setBusy]=useState(false);
   const [toolsOpen,setToolsOpen]=useState(false);
   const [libraryQuery,setLibraryQuery]=useState<string>();
   const libraryMention=useRef<ReturnType<typeof assistantMentionQuery>>(undefined);
-  const [caret,setCaret]=useState(0),[mentionOpen,setMentionOpen]=useState(false),[mentionIndex,setMentionIndex]=useState(0),[reading,setReading]=useState(false),[contextError,setContextError]=useState('');
+  const [caret,setCaret]=useState(0),[mentionOpen,setMentionOpen]=useState(false),[mentionIndex,setMentionIndex]=useState(0),[reading,setReading]=useState(false),[contextError,setContextError]=useStudioErrorState();
   const [readVisuals,setReadVisuals]=useState(true),[attachmentsUnsaved,setAttachmentsUnsaved]=useState(false);
   // UI drafts belong to their conversation, independent of accepted run requests.
   const drafts=useRef(new Map<string,AssistantDraft>());
@@ -122,10 +123,10 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
       }
       if(added){await saveAttachments(project);if(mounted.current&&live.current.projectId===project)message.success(`已添加并引用 ${added} 项，可编辑后发送`);}
       if(failures.length)throw new Error(failures.join('；'));
-    }catch(e){if(mounted.current&&live.current.projectId===project){setContextError(e instanceof Error?e.message:'附件未导入，请重试');throw e;}}
+    }catch(e){if(mounted.current&&live.current.projectId===project){setContextError(e);throw e;}}
     finally{importLock.current=false;if(mounted.current&&live.current.projectId===project)setReading(false);}
   };
-  const retryAttachmentSave=async()=>{const project=projectId;setReading(true);try{await saveAttachments(project);setContextError('');message.success('附件已保存，可继续创作');}catch(e){setContextError(e instanceof Error?e.message:'画布保存失败，请重试');}finally{if(mounted.current&&live.current.projectId===project)setReading(false);}};
+  const retryAttachmentSave=async()=>{const project=projectId;setReading(true);try{await saveAttachments(project);setContextError('');message.success('附件已保存，可继续创作');}catch(e){setContextError(e);}finally{if(mounted.current&&live.current.projectId===project)setReading(false);}};
   const patch=(id:string,update:(node:CanvasNodeData)=>CanvasNodeData)=>setNodes(list=>list.map(n=>n.id===id?update(n):n));
   const send=async(recover=false)=>{
     if(busy||reading||attachmentsUnsaved||!capabilities||!recover&&(!prompt.trim()||missingIds.length||current?.metadata?.status==='loading'))return;
@@ -152,7 +153,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
       accepted=true;
       while(mounted.current&&live.current.projectId===project) {
         patch(target.id,n=>{const next=applyStudioRun(n,run);return run.status==='running'?next:{...next,metadata:{...next.metadata,studio:{...next.metadata!.studio!,assistantPreviousConversation:undefined}}};});
-        if(run.status!=="running") {await saveStudioDocument(project);if(run.status==="failed")throw new Error(run.errorMessage||"对话未完成");return;}
+        if(run.status!=="running") {await saveStudioDocument(project);if(run.status==="failed")throw Object.assign(new Error(run.errorMessage||"对话未完成"),studioRunError(run));return;}
         await new Promise(resolve=>setTimeout(resolve,1200));
         try{run=await readRun(run.id);}catch{await new Promise(resolve=>setTimeout(resolve,2000));}
       }
@@ -164,11 +165,11 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
         // Restoring from request.history would drop the oldest two visible turns.
         // Save this full snapshot in the doc so recovery after a reload is identical.
         const previous=target.metadata?.studio?.assistantPreviousConversation||(!recover?conversation:undefined)||{mode:target.metadata!.studio!.conversation!.mode,turns:draft.history||[]};
-        patch(target.id,n=>({...n,metadata:{...n.metadata,status:'error',errorDetails:error,studio:{...n.metadata!.studio!,conversation:previous,assistantPreviousConversation:undefined}}}));
-        setPrompt(draft.prompt||'');setContextError(error);
+        patch(target.id,n=>({...n,metadata:{...n.metadata,status:'error',...studioErrorMetadata(e),errorDetails:error,studio:{...n.metadata!.studio!,conversation:previous,assistantPreviousConversation:undefined}}}));
+        setPrompt(draft.prompt||'');setContextError(e);
         try{await saveStudioDocument(project);}catch{if(mounted.current&&live.current.projectId===project)setContextError(`${error}。恢复的草稿尚未保存，请重试保存后再发送`);}
       }else if(!accepted)setContextError('提交结果尚未确认，请用“确认原对话任务”获取结果，避免重复提交');
-      message.error(error);
+      message.error(e);
     }}
     finally {if(mounted.current&&live.current.projectId===project)setBusy(false);}
   };
@@ -229,7 +230,7 @@ export function StudioAssistant({projectId,nodes,setNodes,setConnections,capabil
         {attachmentsUnsaved&&<Button disabled={locked} onClick={()=>void retryAttachmentSave()}>重试保存附件</Button>}
 
         <div className="studio-assistant-send-row"><span>⌘ / Ctrl + Enter 发送</span><Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||!capabilities.mock&&!selectedModel?.tokenPricing||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}>发送</Button></div>
-        {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p role="alert" className="studio-assistant-error">{missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError||current?.metadata?.errorDetails}</p>}
+        {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p className="studio-assistant-error"><StudioErrorNotice error={missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError || (current ? studioNodeError(current) : undefined)}/></p>}
       </div>}>
     <div className="studio-assistant">
       <div className="studio-assistant-toolbar"><span>{modeNames[mode]}</span><div><Button icon={<Plus size={15}/>} disabled={busy||reading} onClick={()=>selectConversation()}>新对话</Button><Button aria-label="创作设置与历史" aria-expanded={toolsOpen} icon={<SlidersHorizontal size={16}/>} onClick={()=>setToolsOpen(v=>!v)}/></div></div>

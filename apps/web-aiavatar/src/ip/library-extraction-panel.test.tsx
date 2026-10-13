@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client';
 import { createHash, webcrypto } from 'node:crypto';
 import { StrictMode } from 'react';
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { LibraryExtractionPanel } from './library-extraction-panel';
 import { extractionSourceHash } from './library-extraction-source';
 const api=vi.hoisted(()=>({extract:vi.fn(),task:vi.fn(),save:vi.fn(),read:vi.fn(),objects:vi.fn(),folders:vi.fn(),preference:vi.fn()}));
@@ -156,3 +158,5 @@ test('a cancelled StrictMode initialization does not duplicate the recovery mess
  const alert=await screen.findByRole('alert');
  expect(alert.textContent?.split('文件夹名称暂时无法读取').length).toBe(2);
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

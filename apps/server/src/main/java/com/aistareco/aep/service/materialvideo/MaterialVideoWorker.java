@@ -38,6 +38,7 @@ import java.util.Locale;
  */
 @Service
 public class MaterialVideoWorker {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.ErrorLogService errorLogs;
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoWorker.class);
@@ -522,7 +523,12 @@ public class MaterialVideoWorker {
         jobRepo.findById(jobId).ifPresent(j -> {
             j.setStatus("failed");
             j.setErrorCode(code);
-            j.setErrorMessage(truncate(message, 1000));
+            String visible = truncate(message, 900);
+            if (MaterialVideoJobService.APP_IPSTUDIO.equals(j.getApp()) && errorLogs != null) {
+                String logId = errorLogs.recordTask(new IllegalStateException(message), code == null ? "STUDIO_VIDEO_FAILED" : code, j.getOwnerUserId(), j.getId());
+                if (logId != null) visible += " · 追查号 " + logId;
+            }
+            j.setErrorMessage(visible);
             j.setCompletedAt(OffsetDateTime.now());
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);

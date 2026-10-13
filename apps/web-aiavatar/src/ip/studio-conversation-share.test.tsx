@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,expect,test,vi } from 'vitest';
 import { StudioConversationShare } from './studio-conversation-share';
@@ -20,3 +22,5 @@ test('failed save does not preview or publish and a retry preserves the exact so
 test('new or locked conversations cannot open sharing',()=>{
  render(<StudioConversationShare projectId="p" disabled/>);expect((screen.getByRole('button',{name:'分享对话'}) as HTMLButtonElement).disabled).toBe(true);expect(api.preview).not.toHaveBeenCalled();
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

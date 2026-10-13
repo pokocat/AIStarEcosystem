@@ -664,6 +664,7 @@ components:
           type: string
           description: 用户友好错误信息（中文）
           example: 歌手不存在
+        logId: { type: string, nullable: true, description: 后台 ErrorLog 追查号；未记录的预期错误不返回 }
         messageEn:
           type: string
           example: Singer not found
@@ -3523,6 +3524,7 @@ components:
         cost: { type: integer }
         errorCode: { type: string, nullable: true, description: 'IP_IDENTITY_EXTRACT_FAILED / IP_IMAGE_FAILED / IP_RUN_CANCELLED / IP_RUN_TIMEOUT / IP_NODE_INPUT_MISSING / DAP_MODEL_*' }
         errorMessage: { type: string, nullable: true }
+        logId: { type: string, nullable: true, description: 异步失败的 ErrorLog 追查号；历史任务可能为空 }
         inputs:
           type: object
           description: '实际请求输入透明可查；本人参考的 key/版本可查。私有 _exec（模板执行快照、凭据及端点内部参数）不出 wire。'
@@ -3555,6 +3557,7 @@ components:
                 summary: { type: string, maxLength: 4000 }
                 content: { type: string, minLength: 1, maxLength: 48000 }
             shots: { type: array, items: { type: object }, description: 'Studio 分镜，与 script.shots 同一结果投影' }
+            logId: { type: string, nullable: true, description: 异步失败的真实 ErrorLog 追查号 }
             storageKey: { type: string, description: 'Studio 视频及合成文件的存储真值' }
             url: { type: string, description: '短期派生地址，不落库' }
             durationSec: { type: number }
@@ -3575,6 +3578,8 @@ components:
                   storageKey: { type: string, nullable: true }
                   url: { type: string, nullable: true }
                   errorMessage: { type: string, nullable: true }
+                  errorCode: { type: string, nullable: true }
+                  logId: { type: string, nullable: true }
                   queue:
                     allOf: [{ $ref: '#/components/schemas/AiGenerationQueuePosition' }]
                     nullable: true

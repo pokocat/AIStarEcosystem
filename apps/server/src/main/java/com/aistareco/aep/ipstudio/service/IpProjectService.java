@@ -623,6 +623,11 @@ public class IpProjectService {
             }
             if(error!=null) {
                 candidate.put("errorMessage",error);
+                var logIdMatch = java.util.regex.Pattern.compile("追查号\\s+([A-Z2-9]{12})").matcher(error);
+                if (logIdMatch.find()) {
+                    candidate.put("logId", logIdMatch.group(1));
+                    if (!output.has("logId")) output.put("logId", logIdMatch.group(1));
+                }
                 if(job.getErrorCode()!=null)candidate.put("errorCode",job.getErrorCode());
                 if(firstError==null) {firstError=error;firstErrorCode=job.getErrorCode();}
             }

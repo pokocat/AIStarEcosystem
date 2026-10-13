@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { createPortal } from 'react-dom';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -63,11 +65,13 @@ test('load and insertion failures preserve selection for an explicit retry',asyn
   const insert=vi.fn().mockRejectedValueOnce(new Error('画布保存失败')).mockResolvedValueOnce(undefined);
   render(<StudioAttachmentPicker locked={false} reading={false} onFiles={()=>{}} onAssets={insert}/>);
   fireEvent.click(screen.getByRole('button',{name:'资产库添加'}));fireEvent.click(screen.getByRole('button',{name:'生成与上传素材'}));
-  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('暂时不可用'));
+  await waitFor(()=>expect(screen.getAllByRole('alert').map(element=>element.textContent).join(' ')).toContain('暂时不可用'));
   fireEvent.click(screen.getByRole('button',{name:'重试'}));await waitFor(()=>expect(screen.getByText('声音 A')).toBeDefined());
   fireEvent.click(screen.getByRole('checkbox',{name:'引用资产 声音 A'}));fireEvent.click(screen.getByRole('button',{name:'添加并引用 1'}));
-  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('画布保存失败'));
+  await waitFor(()=>expect(screen.getAllByRole('alert').map(element=>element.textContent).join(' ')).toContain('画布保存失败'));
   expect((screen.getByRole('checkbox',{name:'引用资产 声音 A'}) as HTMLInputElement).checked).toBe(true);expect(screen.getByRole('dialog')).toBeDefined();
   fireEvent.click(screen.getByRole('button',{name:'添加并引用 1'}));await waitFor(()=>expect(insert).toHaveBeenCalledTimes(2));
   await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

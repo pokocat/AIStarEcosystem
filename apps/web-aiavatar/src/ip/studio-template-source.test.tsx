@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,expect,test,vi } from 'vitest';
 import type { StudioTemplateExecution,StudioTemplateInstance } from '@ai-star-eco/types';
@@ -51,3 +53,5 @@ test('video results preview and adopt as videos, with no character archive or im
   await waitFor(()=>expect(api.acceptTemplateStep).toHaveBeenCalledWith('p','video',{runId:'video-run',storageKey:'own/video.mp4',accepted:true}));expect(api.executeTemplateStep).not.toHaveBeenCalled();
   await waitFor(()=>expect((screen.getByRole('button',{name:'整理成片'}) as HTMLButtonElement).disabled).toBe(false));
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

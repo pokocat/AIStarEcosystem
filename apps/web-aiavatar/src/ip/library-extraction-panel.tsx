@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 
 import { useEffect, useRef, useState } from 'react';
 import { App, Button, Checkbox, Input, Modal, Select, Skeleton, Tabs } from 'antd';
@@ -36,7 +37,7 @@ export function LibraryExtractionPanel({ projectId, node, onClose, onTask, onUse
   onTask: (value: StudioNodeMetadata['assetExtraction']) => Promise<void>;
   onUse: (asset: LibraryObject) => Promise<void>;
 }) {
-  const { message } = App.useApp();
+  const { message } = useStudioApp();
   const [result, setResult] = useState<LibraryExtraction>();
   const [candidates, setCandidates] = useState<LibraryCandidate[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -45,7 +46,7 @@ export function LibraryExtractionPanel({ projectId, node, onClose, onTask, onUse
   const [caps, setCaps] = useState<StudioCapabilities>();
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useStudioErrorState();
   const [editing, setEditing] = useState<LibraryObject[]>();
   const [existing, setExisting] = useState<LibraryObject[]>([]);
   const [model, setModel] = useState<string>();
@@ -115,7 +116,7 @@ export function LibraryExtractionPanel({ projectId, node, onClose, onTask, onUse
           await wait({ sourceHash: task.current.sourceHash, title: task.current.title, items: [], run }, active);
         }
       })
-      .catch(e => active() && setError(e.message))
+      .catch(e => active() && setError(e))
       .finally(() => { if (active()) { setBusy(false); setLoading(false); } });
     return () => { cancelled = true; alive.current = false; };
   }, [node.id, projectId, revision]);
@@ -124,14 +125,14 @@ export function LibraryExtractionPanel({ projectId, node, onClose, onTask, onUse
     try {
       const items = await readScriptAssets(projectId, node.id);
       if (alive.current) setLinked(items);
-    } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '资产读取失败，请重试'); }
+    } catch (e) { if (alive.current) setError(e); }
   };
   const action = async (fn: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
     setError('');
     try { await fn(); }
-    catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '操作未完成'); }
+    catch (e) { if (alive.current) setError(e); }
     finally { if (alive.current) setBusy(false); }
   };
   const cost = caps?.mock ? 0 : caps?.textModels?.find(item => item.endpointId === model)?.tokenPricing?.maxCost;
@@ -196,7 +197,7 @@ export function LibraryExtractionPanel({ projectId, node, onClose, onTask, onUse
         ]} />
 
       </>}
-      {error && <p role="alert" className="studio-error">{error} <Button size="small" disabled={busy} onClick={() => setRevision(value => value + 1)}>重新读取</Button></p>}
+      {error && <p className="studio-error"><StudioErrorNotice error={error}/> <Button size="small" disabled={busy} onClick={() => setRevision(value => value + 1)}>重新读取</Button></p>}
       {!loading && <div className="script-assets-bottom">{view === 'extract' ? <>
         <label className="script-extraction-folder">保存到文件夹<LibraryFolderSelect folders={folders} value={folder} onChange={setFolder} disabled={busy} /></label>
         <Button disabled={busy} onClick={() => setNewFolder('')}>新建文件夹</Button>

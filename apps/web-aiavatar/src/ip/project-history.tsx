@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from './studio-errors';
 import * as React from "react";
 import { App, Button, Empty, Modal, Spin, Tabs } from "antd";
 import { SignedImage } from "@/canvas-bridge/signed-image";
@@ -20,20 +21,20 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
   const [more, setMore] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const { message, modal } = App.useApp();
+  const [error, setError] = useStudioErrorState();
+  const { message, modal } = useStudioApp();
   const load = async (next = 0) => {
     setLoading(true); setError("");
     try {
       const [result, history] = await Promise.all([IpStudioApi.listProjectRuns(projectId, next), IpStudioApi.listProjectHistory(projectId)]);
       setRuns((prev) => next ? [...new Map([...prev, ...result.items].map((r) => [r.id, r])).values()] : result.items);
       setVersions(history); setPage(next); setMore(result.hasMore);
-    } catch (e) { setError(e instanceof Error ? e.message : "历史记录加载失败"); }
+    } catch (e) { setError(e); }
     finally { setLoading(false); }
   };
   const act = async (task: () => Promise<void>) => {
     setBusy(true);
-    try { await task(); } catch (e) { message.error(e instanceof Error ? e.message : "操作失败，请重试"); }
+    try { await task(); } catch (e) { message.error(e); }
     finally { setBusy(false); }
   };
   const add = async (run: IpRun, image: IpCandidate) => {
@@ -67,13 +68,13 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
   return <>
     <button type="button" onClick={() => { setOpen(true); void load(); }} className="ip-canvas-history h-8 px-3 rounded-full text-[12px] font-semibold whitespace-nowrap" style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}>历史记录</button>
     <Modal title="历史记录" open={open} onCancel={() => setOpen(false)} footer={null} width={760} getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}>
-      {error && <div role="alert" style={{ color: "var(--err)", marginBottom: 12 }}>{error} <Button onClick={() => void load()} disabled={loading}>重试</Button></div>}
+      {error && <div style={{ color: "var(--err)", marginBottom: 12 }}><StudioErrorNotice error={error}/> <Button onClick={() => void load()} disabled={loading}>重试</Button></div>}
       <Tabs items={[
         { key: "runs", label: "生成记录", children: <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
           {!loading && !error && !runs.length && <Empty description="还没有生成记录" />}
           {runs.map((run) => <article key={run.id} style={{ padding: "14px 0", borderBottom: "1px solid var(--line-2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}><span>{time(run.createdAt)}</span><span>{run.status === "done" ? "已完成" : run.status === "failed" ? "生成失败" : "生成中"} · {run.cost} 积分</span></div>
-            {run.errorMessage && <p role="alert">{run.errorMessage}</p>}
+            {run.errorMessage && <StudioErrorNotice error={studioRunError(run)} once={`run:${run.id}`}/>}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12 }}>{(run.output.candidates ?? []).map((image) => <div key={image.key} style={{ width: 180 }}>
               <SignedImage storageKey={image.key} src={image.url} alt="历史生成图片" style={{ width: "100%", height: 150, objectFit: "contain", background: "var(--surface-2)", borderRadius: 8 }} />
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}><Button size="small" disabled={busy} onClick={() => void act(() => add(run, image))}>添加到画布</Button><Button size="small" disabled={busy} onClick={() => void act(async () => {

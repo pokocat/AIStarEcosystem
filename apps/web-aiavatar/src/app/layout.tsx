@@ -17,6 +17,7 @@ import "../styles/ip-brand.css";
 import "../styles/ip-create.css";
 import "../styles/assets-library.css";
 import "../styles/studio-page.css";
+import { StudioNotifications } from '@/ip/studio-errors';
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
@@ -72,6 +73,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="stylesheet" href={FONTS_HREF} />
         {/* 桌面顶栏（桌面形态才显示；公开名片页与登录页不挂）—— 见 shell/app-chrome.tsx */}
         <ImpersonationBridge>
+          <StudioNotifications />
           <AppChrome />
           <ImpersonationBar />
           {children}

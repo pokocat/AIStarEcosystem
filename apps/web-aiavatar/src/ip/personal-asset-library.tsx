@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
@@ -24,7 +25,7 @@ const mediaLabels = { image: '图片', video: '视频', audio: '音频', text: '
 type SupplementaryTab = { key: string; label: string; icon: ReactNode; count?: number; children: ReactNode };
 
 export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementaryTabs?: SupplementaryTab[] }) {
-  const { message, modal } = App.useApp();
+  const { message, modal } = useStudioApp();
   const router = useRouter();
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [folder, setFolder] = useState('all');
@@ -38,9 +39,9 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
   const [total, setTotal] = useState(0);
   const [more, setMore] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [listError, setListError] = useState('');
-  const [folderError, setFolderError] = useState('');
-  const [actionError, setActionError] = useState('');
+  const [listError, setListError] = useStudioErrorState();
+  const [folderError, setFolderError] = useStudioErrorState();
+  const [actionError, setActionError] = useStudioErrorState();
   const [counts, setCounts] = useState<{ objects?: number; materials?: number }>({});
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -61,7 +62,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
   useEffect(() => {
     let valid = true;
     libraryFolders().then(f => { if (valid) { setFolders(f); setFolderError(''); } })
-      .catch(e => valid && setFolderError(e.message || '文件夹读取失败'));
+      .catch(e => valid && setFolderError(e));
     return () => { valid = false; };
   }, [revision]);
 
@@ -87,7 +88,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
           setTotal(result.total); setMore(result.hasMore);
           if (tab === 'objects') setObjects(result.items as LibraryObject[]);
           else setMaterials(result.items as LibraryMaterial[]);
-        }).catch(e => id === epoch.current && setListError(e.message || '资产读取失败'))
+        }).catch(e => id === epoch.current && setListError(e))
         .finally(() => id === epoch.current && setLoading(false));
     }, 180);
     return () => { clearTimeout(timer); epoch.current++; };
@@ -97,7 +98,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
     if (actionPending.current) return;
     actionPending.current = true; setBusy(true); setActionError('');
     try { await action(); refresh(); }
-    catch (e) { setActionError(e instanceof Error ? e.message : '操作失败，请重试'); }
+    catch (e) { setActionError(e); }
     finally { actionPending.current = false; setBusy(false); }
   };
   const folderName = (id?: string) => id ? folders.find(f => f.id === id)?.name || '文件夹名称暂不可用' : '未分类';
@@ -122,7 +123,7 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
       <p className="library-folder-hint">按作品或主题整理，下一次创作更好找。</p>
     </aside>}>
       <div className="library-mobile-folder"><LibraryFolderSelect folders={folders} value={folder} options={folderOptions} ariaLabel="资产范围" onChange={changeFolder}/><Button aria-label="新建文件夹" icon={<Plus size={16}/>} onClick={() => setFolderDialog({ name: '' })}/></div>
-      {folderError && <div role="alert" className="library-notice">文件夹读取失败：{folderError}<Button size="small" onClick={refresh}>重新读取文件夹</Button></div>}
+      {folderError && <div className="library-notice">文件夹读取失败：<StudioErrorNotice error={folderError}/><Button size="small" onClick={refresh}>重新读取文件夹</Button></div>}
       <div className="library-section-heading">
         <div><div className="library-section-title"><h2>{folder === 'all' ? tab === 'objects' ? '剧本资产' : '生成与上传' : folder === 'unfiled' ? '未分类' : folderName(folder)}</h2>{folders.some(f => f.id === folder) && <Dropdown getPopupContainer={studioOverlayContainer} menu={{ items: [{ key: 'rename', label: '重命名文件夹' }, { key: 'delete', label: '删除文件夹' }], onClick: ({ key }) => key === 'rename' ? setFolderDialog({ id: folder, name: folderName(folder) }) : modal.confirm({ title: '删除文件夹？', content: '内容会保留并移到未分类，画布引用不受影响。', okText: '保留内容并删除', onOk: () => act(async () => { await deleteLibraryFolder(folder); changeFolder('all'); }) }) }}><Button type="text" aria-label="管理文件夹" icon={<MoreHorizontal size={17}/>}/></Dropdown>}</div><p>{tab === 'objects' ? '角色、场景与道具的设定和图片版本。' : '每次生成的结果与上传素材，都保存在这里。'}</p></div>
         <div className="library-create-actions"><Button icon={<Upload size={16}/>} disabled={busy} onClick={() => upload.current?.click()}>上传素材</Button>{tab === 'objects' && <Button type="primary" icon={<Plus size={16}/>} disabled={busy} onClick={showNewObject}>新建资产</Button>}</div>
@@ -133,8 +134,8 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
         <Button aria-label="刷新资产" title="刷新资产" icon={<RefreshCw size={16}/>} onClick={refresh}/>
       </div>
       <div className="library-result-bar"><span aria-live="polite">{loading ? '正在读取资产…' : listError ? '暂时无法读取资产' : `${total} 项${filtered ? '匹配资产' : '资产'}`}</span>{tab === 'objects' && (selected.length ? <div><span>已选择 {selection.length} 项</span><button onClick={() => setSelected([])}>取消选择</button><Button size="small" onClick={() => setEditing(selection)}>编辑与配图</Button></div> : <span>选择资产，可批量编辑与配图</span>)}</div>
-      {actionError && <div role="alert" className="library-notice">{actionError}<button aria-label="关闭操作提示" onClick={() => setActionError('')}><X size={16}/></button></div>}
-      {loading ? <div className="library-grid library-loading" aria-label="正在加载资产">{Array.from({ length: 6 }, (_, i) => <div className="library-skeleton" key={i}><div/><span/><span/></div>)}</div> : listError ? <div role="alert" className="library-empty"><FolderOpen size={32}/><h3>资产读取失败</h3><p>{listError}</p><Button onClick={refresh}>重新读取资产</Button></div> : !total ? <div className="library-empty"><FolderOpen size={32}/><h3>{filtered ? '没有找到匹配资产' : '从第一份素材开始'}</h3><p>{filtered ? '试试其他名称或筛选条件。' : tab === 'objects' ? '在剧本中提取角色、场景和道具，也可以从这里新建。' : '生成结果会自动入库，也可以上传自己的图片、视频、音频或文本。'}</p>{filtered ? <Button onClick={() => { setQuery(''); setStatus('all'); setKind('all'); changeFolder('all'); }}>清除筛选</Button> : <Button type="primary" onClick={tab === 'objects' ? showNewObject : () => upload.current?.click()}>{tab === 'objects' ? '新建资产' : '上传素材'}</Button>}</div> : <LibraryGridMotion motionKey={`${tab}-${page}-${revision}-${query}-${folder}-${status}-${kind}`}>
+      {actionError && <div className="library-notice"><StudioErrorNotice error={actionError}/><button aria-label="关闭操作提示" onClick={() => setActionError('')}><X size={16}/></button></div>}
+      {loading ? <div className="library-grid library-loading" aria-label="正在加载资产">{Array.from({ length: 6 }, (_, i) => <div className="library-skeleton" key={i}><div/><span/><span/></div>)}</div> : listError ? <div className="library-empty"><FolderOpen size={32}/><h3>资产读取失败</h3><p><StudioErrorNotice error={listError}/></p><Button onClick={refresh}>重新读取资产</Button></div> : !total ? <div className="library-empty"><FolderOpen size={32}/><h3>{filtered ? '没有找到匹配资产' : '从第一份素材开始'}</h3><p>{filtered ? '试试其他名称或筛选条件。' : tab === 'objects' ? '在剧本中提取角色、场景和道具，也可以从这里新建。' : '生成结果会自动入库，也可以上传自己的图片、视频、音频或文本。'}</p>{filtered ? <Button onClick={() => { setQuery(''); setStatus('all'); setKind('all'); changeFolder('all'); }}>清除筛选</Button> : <Button type="primary" onClick={tab === 'objects' ? showNewObject : () => upload.current?.click()}>{tab === 'objects' ? '新建资产' : '上传素材'}</Button>}</div> : <LibraryGridMotion motionKey={`${tab}-${page}-${revision}-${query}-${folder}-${status}-${kind}`}>
         {tab === 'objects' ? objects.map(a => {
           const version = mainLibraryVersion(a);
           const Icon = a.kind === 'character' ? UserRound : a.kind === 'scene' ? MapPin : Box;
@@ -167,9 +168,9 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
     <Modal open={!!preview} title={preview?.title} footer={null} width={960} getContainer={studioOverlayContainer} className="library-preview-modal" onCancel={() => setPreview(undefined)} destroyOnHidden>
       {preview && <div className="library-full-preview">{preview.kind === 'image' ? <SignedImage storageKey={preview.data.storageKey} src={preview.data.dataUrl} alt={preview.title}/> : preview.kind === 'video' ? <SignedVideo storageKey={preview.data.storageKey} src={preview.data.url} controls preload="metadata"/> : preview.kind === 'audio' ? <SignedAudio storageKey={preview.data.storageKey} src={preview.data.url} controls/> : <pre>{preview.data.content}</pre>}{typeof preview.metadata?.prompt === 'string' && <details><summary>生成指令</summary><p>{preview.metadata.prompt}</p></details>}</div>}
     </Modal>
-    <Modal open={!!folderDialog} title={folderDialog?.id ? '重命名文件夹' : '新建文件夹'} getContainer={studioOverlayContainer} confirmLoading={busy} okButtonProps={{ disabled: !folderDialog?.name.trim() }} onCancel={() => !busy && setFolderDialog(undefined)} onOk={() => void act(async () => { if (!folderDialog) return; const f = folderDialog.id ? await renameLibraryFolder(folderDialog.id, folderDialog.name) : await createLibraryFolder(folderDialog.name); changeFolder(f.id); setFolderDialog(undefined); })}><Input aria-label="文件夹名称" value={folderDialog?.name || ''} maxLength={100} onChange={e => setFolderDialog({ ...folderDialog, name: e.target.value })}/>{actionError && <p role="alert" className="library-form-error">{actionError}</p>}</Modal>
-    <Modal open={!!newObject} title="新建可复用资产" getContainer={studioOverlayContainer} confirmLoading={busy} okButtonProps={{ disabled: !newObject?.name.trim() }} onCancel={() => !busy && setNewObject(undefined)} onOk={() => void act(async () => { if (!newObject) return; let a = await createLibraryObject({ name: newObject.name, kind: newObject.kind, description: newObject.description, folderId: folder === 'all' || folder === 'unfiled' ? undefined : folder }); if (newObject.storageKey) a = await addLibraryVersion(a.id, newObject.storageKey); setNewObject(undefined); setTab('objects'); setPage(0); setEditing([a]); })}><div className="personal-editor-fields"><label>名称<Input aria-label="新资产名称" value={newObject?.name || ''} onChange={e => newObject && setNewObject({ ...newObject, name: e.target.value })}/></label><label>类别<Select aria-label="新资产类别" value={newObject?.kind} options={Object.entries(objectLabels).map(([value, label]) => ({ value, label }))} onChange={kind => newObject && setNewObject({ ...newObject, kind })}/></label><label>描述<Input.TextArea aria-label="新资产描述" value={newObject?.description || ''} onChange={e => newObject && setNewObject({ ...newObject, description: e.target.value })}/></label></div>{actionError && <p role="alert" className="library-form-error">{actionError}</p>}</Modal>
-    <Modal open={!!organize} title="整理素材" getContainer={studioOverlayContainer} confirmLoading={busy} onCancel={() => !busy && setOrganize(undefined)} onOk={() => void act(async () => { if (organize) await editLibraryMaterial(organize.id, { folderId: moveFolder || null }); setOrganize(undefined); })}><LibraryFolderSelect folders={folders} value={moveFolder} ariaLabel="素材整理文件夹" onChange={setMoveFolder}/>{actionError && <p role="alert" className="library-form-error">{actionError}</p>}</Modal>
+    <Modal open={!!folderDialog} title={folderDialog?.id ? '重命名文件夹' : '新建文件夹'} getContainer={studioOverlayContainer} confirmLoading={busy} okButtonProps={{ disabled: !folderDialog?.name.trim() }} onCancel={() => !busy && setFolderDialog(undefined)} onOk={() => void act(async () => { if (!folderDialog) return; const f = folderDialog.id ? await renameLibraryFolder(folderDialog.id, folderDialog.name) : await createLibraryFolder(folderDialog.name); changeFolder(f.id); setFolderDialog(undefined); })}><Input aria-label="文件夹名称" value={folderDialog?.name || ''} maxLength={100} onChange={e => setFolderDialog({ ...folderDialog, name: e.target.value })}/>{actionError && <p className="library-form-error"><StudioErrorNotice error={actionError}/></p>}</Modal>
+    <Modal open={!!newObject} title="新建可复用资产" getContainer={studioOverlayContainer} confirmLoading={busy} okButtonProps={{ disabled: !newObject?.name.trim() }} onCancel={() => !busy && setNewObject(undefined)} onOk={() => void act(async () => { if (!newObject) return; let a = await createLibraryObject({ name: newObject.name, kind: newObject.kind, description: newObject.description, folderId: folder === 'all' || folder === 'unfiled' ? undefined : folder }); if (newObject.storageKey) a = await addLibraryVersion(a.id, newObject.storageKey); setNewObject(undefined); setTab('objects'); setPage(0); setEditing([a]); })}><div className="personal-editor-fields"><label>名称<Input aria-label="新资产名称" value={newObject?.name || ''} onChange={e => newObject && setNewObject({ ...newObject, name: e.target.value })}/></label><label>类别<Select aria-label="新资产类别" value={newObject?.kind} options={Object.entries(objectLabels).map(([value, label]) => ({ value, label }))} onChange={kind => newObject && setNewObject({ ...newObject, kind })}/></label><label>描述<Input.TextArea aria-label="新资产描述" value={newObject?.description || ''} onChange={e => newObject && setNewObject({ ...newObject, description: e.target.value })}/></label></div>{actionError && <p className="library-form-error"><StudioErrorNotice error={actionError}/></p>}</Modal>
+    <Modal open={!!organize} title="整理素材" getContainer={studioOverlayContainer} confirmLoading={busy} onCancel={() => !busy && setOrganize(undefined)} onOk={() => void act(async () => { if (organize) await editLibraryMaterial(organize.id, { folderId: moveFolder || null }); setOrganize(undefined); })}><LibraryFolderSelect folders={folders} value={moveFolder} ariaLabel="素材整理文件夹" onChange={setMoveFolder}/>{actionError && <p className="library-form-error"><StudioErrorNotice error={actionError}/></p>}</Modal>
     <input ref={upload} hidden type="file" accept=".jpg,.jpeg,.png,.mp4,.mp3,.wav,.m4a,.md,.txt" aria-label="上传个人库素材" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void act(async () => { if (/\.(md|txt)$/i.test(f.name)) { const saved = await saveAsset({ kind: 'text', title: f.name, coverUrl: '', tags: [], data: { content: await f.text() } }); if (folder !== 'all' && folder !== 'unfiled') await editLibraryMaterial(saved.id, { folderId: folder }); } else await uploadLibraryMedia(f, /\.mp4$/i.test(f.name) ? 'video' : /\.(mp3|wav|m4a)$/i.test(f.name) ? 'audio' : 'image', folder === 'all' || folder === 'unfiled' ? undefined : folder); setTab('materials'); setPage(0); message.success('素材已保存'); }); }}/>
   </section>;
 }

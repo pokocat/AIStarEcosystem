@@ -39,6 +39,7 @@ import java.util.List;
  */
 @Service
 public class IpRunWorker {
+    @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
 
@@ -111,7 +112,7 @@ public class IpRunWorker {
             // 运维要能顺着它在日志里看到栈，否则「可追查」只是个说法
             log.warn("[ipstudio] 运行异常 run={}", runId, e);
             release(run, "IP 运行失败 · 释放冻结");
-            failWithoutSpend(run, codeOf(e), friendly(e, run.getId()));
+            failWithoutSpend(run, codeOf(e), friendly(e, run.getId()), e);
         } finally {
             if(context!=null)context.close();
             if(queue!=null)queue.finish(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);
@@ -149,7 +150,7 @@ public class IpRunWorker {
             release(run, "IP 特征卡 · 抽取失败，释放冻结");
             failWithoutSpend(run, "IP_IDENTITY_EXTRACT_FAILED",
                     "看图抽取特征卡失败：当前形象引擎可能不支持图片输入。"
-                            + "请在后台给「数字人 · 人设」用途绑定支持看图的模型，或手动填写特征卡");
+                            + "请在后台给「数字人 · 人设」用途绑定支持看图的模型，或手动填写特征卡", e);
             return;
         }
 
@@ -201,7 +202,7 @@ public class IpRunWorker {
             refs = materializeRefs(run, inputs, exec);
         } catch (UnreadableIdentityRefException e) {
             release(run, "IP 出图 · 身份参考图不可读，释放冻结");
-            failWithoutSpend(run, "IP_REF_UNREADABLE", e.getMessage());
+            failWithoutSpend(run, "IP_REF_UNREADABLE", e.getMessage(), e);
             return;
         }
 
@@ -268,7 +269,7 @@ public class IpRunWorker {
                 fail(run, "IP_RUN_CANCELLED", "已取消");
             } else {
                 log.warn("[ipstudio] 出图全部失败 run={}", run.getId(), lastErr);
-                fail(run, codeOf(lastErr), friendly(lastErr, run.getId()));
+                fail(run, codeOf(lastErr), friendly(lastErr, run.getId()), lastErr);
             }
             return;
         }
@@ -279,7 +280,7 @@ public class IpRunWorker {
             // 已出的图归用户，但这次运行不是完整的 —— 如实标成失败态并说明原因
             fail(run, "IP_RUN_CANCELLED", "已取消（已生成的 " + committed + " 张仍可使用）");
         } else if (lastErr != null) {
-            fail(run, codeOf(lastErr), friendly(lastErr, run.getId()) + "（已生成 " + committed + " 张）");
+            fail(run, codeOf(lastErr), friendly(lastErr, run.getId()) + "（已生成 " + committed + " 张）", lastErr);
         } else {
             finish(run);
         }
@@ -426,16 +427,24 @@ public class IpRunWorker {
     }
 
     /** 一次都没 commit 就失败：{@code cost} 必须归零 —— 建行时写的是冻结额，失败后留着就是虚报花费。 */
+    private void failWithoutSpend(IpRun run, String code, String message, Throwable cause) {
+        run.setCost(0);
+        fail(run, code, message, cause);
+    }
+
     private void failWithoutSpend(IpRun run, String code, String message) {
         run.setCost(0);
         fail(run, code, message);
     }
 
-    private void fail(IpRun run, String code, String message) {
+    private void fail(IpRun run, String code, String message) { fail(run, code, message, null); }
+
+    private void fail(IpRun run, String code, String message, Throwable cause) {
         run.setStatus(IpRun.STATUS_FAILED);
         run.setStage("failed");
         run.setErrorCode(code);
         run.setErrorMessage(message);
+        if (errorLog != null) errorLog.attach(run, cause);
         run.setHeartbeatAt(Instant.now());
         run.setFinishedAt(Instant.now());
         runRepo.save(run);
@@ -464,17 +473,16 @@ public class IpRunWorker {
      * 一律显示「生成失败，请稍后重试」。厂商超时、网络中断、HTTP 5xx、镜像失败全被抹成这一句 ——
      * 用户看不出该重试、该换模型、还是该找运维，我们自己也无从判断（用户复述不出任何信息）。
      *
-     * <p>现在的分寸：我们写过文案的异常直出；没写过的**不直出技术串**（那种「409 CONFLICT
-     * hold 已是终态」是天书），但一定给出**异常类型 + 追查号** —— 用户把追查号报过来，
-     * 运维就能在 ErrorLog / 日志里定位到这一次。有信息可查，比一句正确的废话有用。
+     * <p>友好信息与追查号分开：结构化 output.logId 指向真实 ErrorLog，runId 只作为任务号。
+     * 未知异常不向客户端直出内部响应体；原异常和供应商细节由 StudioRunErrorLog 保留。
      */
     private static String friendly(RuntimeException e, String runId) {
-        if (e == null) return "生成失败，请稍后重试 · 追查号 " + runId;
+        if (e == null) return "生成失败，请稍后重试";
         if (e instanceof DapModelException || e instanceof com.aistareco.common.BusinessException) {
             String m = e.getMessage();
             if (m != null && !m.isBlank()) return m;
         }
-        return "生成失败（" + e.getClass().getSimpleName() + "）· 追查号 " + runId + " —— 把这个号报给运维可以定位原因";
+        return "生成失败（" + e.getClass().getSimpleName() + "），请稍后重试";
     }
 
     private static String textOf(JsonNode n, String field) {

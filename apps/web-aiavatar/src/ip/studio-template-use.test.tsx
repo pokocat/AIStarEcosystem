@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { StrictMode } from 'react';
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { StudioTemplateUse } from './studio-template-use';
@@ -47,6 +49,7 @@ test('copy failure stays in the preview and retries only when explicitly saved a
   await screen.findByLabelText('只读模板画布'); fireEvent.click(screen.getByRole('button', { name: '存为个人副本' }));
   await screen.findByText('模板已下线'); expect(created).not.toHaveBeenCalled();
   expect(IpStudioApi.createProject).toHaveBeenCalledOnce();
+  await waitFor(() => expect((screen.getByRole('button', { name: '存为个人副本' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: '存为个人副本' }));
   await waitFor(() => expect(created).toHaveBeenCalledWith('copy'));
 });
@@ -61,3 +64,5 @@ test('legacy official templates also preview without creating a draft', async ()
   render(<StudioTemplateUse template={{ ...template, versionId: undefined }} onClose={() => {}} onCreated={() => {}}/>);
   await screen.findByLabelText('只读模板画布'); expect(readTemplateVersion).not.toHaveBeenCalled(); expect(IpStudioApi.createProject).not.toHaveBeenCalled();
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

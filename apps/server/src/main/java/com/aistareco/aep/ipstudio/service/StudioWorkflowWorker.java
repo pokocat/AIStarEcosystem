@@ -21,6 +21,7 @@ import java.util.*;
 
 @Service
 public class StudioWorkflowWorker {
+    @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
     @org.springframework.beans.factory.annotation.Autowired private AiGenerationQueueService queue;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
     private final IpRunRepository runs;
@@ -215,8 +216,9 @@ public class StudioWorkflowWorker {
             credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 失败或取消 · 释放冻结");
             run.setCost(0);run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");
             run.setErrorCode(cancelled?"IP_RUN_CANCELLED":error instanceof BusinessException b?b.getCode():"STUDIO_RUN_FAILED");
-            run.setErrorMessage(cancelled?"已停止创作":error instanceof BusinessException?error.getMessage():"这次创作没有完成，请重试。追查号："+run.getId());
+            run.setErrorMessage(cancelled?"已停止创作":error instanceof BusinessException?error.getMessage():"这次创作没有完成，请重试");
         }
+        if (error != null && errorLog != null) errorLog.attach(run, error);
         run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);
     }
 }

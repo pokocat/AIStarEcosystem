@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {StudioIpLibrary} from './studio-ip-library';
@@ -22,7 +24,7 @@ test('a character opens its real dossier; whole-sheet selection imports the exac
 });
 test('an import save failure remains actionable and does not silently close the library',async()=>{
   const p=props();p.onImport.mockRejectedValue(new Error('保存失败'));render(<StudioIpLibrary {...p}/>);fireEvent.click(screen.getByRole('button',{name:'查看人物 小紫'}));fireEvent.click(screen.getByRole('button',{name:'添加选中素材到画布'}));
-  await waitFor(()=>expect(screen.getByRole('alert').textContent).toBe('保存失败'));expect(p.onClose).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'添加选中素材到画布'}).disabled).toBe(false);
+  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('保存失败'));expect(p.onClose).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'添加选中素材到画布'}).disabled).toBe(false);
 });
 test('classification updates only the selected existing look and never starts generation',async()=>{
   const p=props();api.classifyStudioIpAsset.mockResolvedValue({...sheet,assetRole:'detail'});render(<StudioIpLibrary {...p}/>);fireEvent.click(screen.getByRole('button',{name:'查看人物 小紫'}));fireEvent.click(screen.getByRole('button',{name:'选择人物设定图 · 人物设定图'}));
@@ -38,3 +40,5 @@ test('My IP and Official IP show distinct real records and import the selected o
   fireEvent.click(screen.getByRole('button',{name:'添加选中素材到画布'}));
   await waitFor(()=>expect(p.onImport).toHaveBeenCalledWith(official,undefined));
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

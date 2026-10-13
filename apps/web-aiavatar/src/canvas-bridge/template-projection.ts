@@ -13,7 +13,7 @@ export function projectTemplateResults(nodes:CanvasNodeData[],execution:StudioTe
       !!node.metadata.studio.upstreamChanged===(step.status==='stale')&&
       node.metadata.studio.libraryAssetRole===assetRole&&
       node.metadata.studio.templateAccepted===step.accepted&&
-      JSON.stringify(node.metadata.studio.task)===JSON.stringify({status:step.run.status,stage:step.run.stage,pct:step.run.pct,errorCode:step.run.errorCode,queue:step.run.status==='running'?step.run.queue:null})&&
+      JSON.stringify(node.metadata.studio.task)===JSON.stringify({status:step.run.status,stage:step.run.stage,pct:step.run.pct,errorCode:step.run.errorCode,errorMessage:step.run.errorMessage,logId:step.run.logId||step.run.output.logId,queue:step.run.status==='running'?step.run.queue:null})&&
       JSON.stringify(node.metadata.studio.adoption)===JSON.stringify(step.adoption))return node;
     let changed=applyStudioRun(node,step.run);
     if(step.storageKey) {

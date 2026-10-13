@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioAiIcon } from "./studio-ai-icon";
 import { useEffect, useRef, useState } from 'react';
 import { App, Button, Dropdown, Input, Modal, Select } from 'antd';
@@ -25,13 +26,13 @@ const container=()=>document.querySelector<HTMLElement>('.ip-surface')||document
 
 /** A focused document task. Its chat produces proposals, never a second script canvas node. */
 export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit,onClose,onStoryboard,onExtract}:Props) {
-  const {message}=App.useApp();
+  const {message}=useStudioApp();
   const initial=node.metadata?.studio;
   const [state,setState]=useState<EditorState>(()=>({...initial?.scriptEditor,turns:initial?.scriptEditor?.turns||[],draft:initial?.scriptEditor?.draft??initial?.scriptMarkdown??(initial?.script?scriptToMarkdown(initial.script):node.metadata?.content?.trim()?scriptFramework(node.title).replace('故事背景：',node.metadata.content+'\n\n故事背景：'):scriptFramework(node.title))}));
   const [saving,setSaving]=useState(false),[busy,setBusy]=useState(false),[status,setStatus]=useState(''),[previewProposal,setPreviewProposal]=useState(false);
   // Parent nodes update optimistically; only a confirmed save advances this editor's saved baseline.
   const [savedMarkdown,setSavedMarkdown]=useState(initial?.scriptMarkdown??(initial?.script?scriptToMarkdown(initial.script):''));
-  const [saveError,setSaveError]=useState('');
+  const [saveError,setSaveError]=useStudioErrorState();
   const [assistantOpen,setAssistantOpen]=useState(false),[toolbarContainer,setToolbarContainer]=useState<HTMLDivElement|null>(null);
   const [undo,setUndo]=useState<string>();
   const source=useRef<ScriptRichEditorHandle>(null),live=useRef(state),alive=useRef(true),inFlight=useRef(false);
@@ -49,13 +50,13 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
     if(saving)return false;
     const value=live.current.draft??'',invalid=scriptMarkdownError(value);
     if(invalid){
-      if(close){setSaving(true);try{patch({draft:value});await saveStudioDocument(projectId);message.info('已保存草稿；完善框架后可生成分镜');onClose();return true;}catch(e){message.error(e instanceof Error?e.message:'草稿未保存，请重试');}finally{if(alive.current)setSaving(false);}}
+      if(close){setSaving(true);try{patch({draft:value});await saveStudioDocument(projectId);message.info('已保存草稿；完善框架后可生成分镜');onClose();return true;}catch(e){message.error(e);}finally{if(alive.current)setSaving(false);}}
       else message.error(invalid);
       return false;
     }
     setSaving(true);setSaveError('');
     try{await onCommit(value,markdownToScript(value,initial?.script));if(alive.current)setSavedMarkdown(value);if(close)onClose();else message.success('剧本已保存到原节点');return true;}
-    catch(e){const text=e instanceof Error?e.message:'剧本未保存，请重试';setSaveError(text);message.error(text);return false;}
+    catch(e){const text=e instanceof Error?e.message:'剧本未保存，请重试';setSaveError(e);message.error(e);return false;}
     finally{if(alive.current)setSaving(false);}
   };
   const edit=(value:string)=>patch({draft:value,error:undefined});
@@ -70,7 +71,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
       while(alive.current) {
         setStatus(run.queue?studioQueueNotice(run.queue):run.status==='running'?'AI 正在修改剧本…':'');
         if(run.status!=='running') {
-          if(run.status==='failed'){patch({pending:undefined,error:run.errorMessage||'AI 改稿未完成，原稿已保留'});await saveStudioDocument(projectId);return;}
+          if(run.status==='failed'){message.error({errorCode:run.errorCode,errorMessage:run.errorMessage,logId:run.logId||run.output?.logId,taskId:run.id});patch({pending:undefined,error:run.errorMessage||'AI 改稿未完成，原稿已保留'});await saveStudioDocument(projectId);return;}
           const result=run.output.scriptRevision,invalid=result?scriptMarkdownError(result.markdown):'AI 未返回完整剧本文档，原稿已保留';
           if(!result||invalid){patch({pending:undefined,error:invalid});await saveStudioDocument(projectId);return;}
           patch({pending:undefined,proposal:{...result,baseMarkdown:snapshot.baseMarkdown,runId:run.id},turns:[...live.current.turns,{role:'assistant' as const,content:result.summary,billing:run.output.billing}].slice(-16)});
@@ -85,7 +86,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
         patch({pending:undefined,chatDraft:snapshot.request.prompt,error:text,turns:live.current.turns.at(-1)?.role==='user'?live.current.turns.slice(0,-1):live.current.turns});
       } else patch({error:accepted?'改稿任务已受理，请确认原任务继续获取结果':'提交结果尚未确认，请确认原任务，避免重复提交'});
       try{await saveStudioDocument(projectId);}catch{patch({error:`${live.current.error||text}。对话状态尚未保存，请重试保存`});}
-      if(alive.current)message.error(text);
+      if(alive.current)message.error(e);
     }finally{inFlight.current=false;if(alive.current)setBusy(false);}
   };
   const send=async()=>{
@@ -126,7 +127,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
         <main className="studio-script-document">
           {previewProposal&&proposal&&<div className="studio-script-proposal-bar" role="status"><span>AI 建议版本 · 尚未采纳</span><Button size="small" disabled={proposal.baseMarkdown!==markdown} onClick={adopt}>采纳此版本</Button></div>}
           {initial?.upstreamChanged&&<p className="studio-script-validation" role="status">来源内容已修改。当前剧本和成片保留，可基于新内容再次改编。</p>}
-          {saveError&&<p className="studio-script-validation" role="alert">{saveError}。正文仍保留，请点击“保存剧本”重试。</p>}
+          {saveError&&<p className="studio-script-validation"><StudioErrorNotice error={saveError}/>。正文仍保留，请点击“保存剧本”重试。</p>}
           {error&&<p className="studio-script-validation" role="status">{error}。草稿仍保留。</p>}
           <div className="studio-script-document-body">
             <div className="studio-script-current-document" hidden={previewProposal&&!!proposal}><StudioScriptRichEditor ref={source} markdown={markdown} onChange={edit} toolbarContainer={toolbarContainer} toolbarHidden={previewProposal&&!!proposal}/></div>
@@ -139,7 +140,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
             {!state.turns.length&&<div className="studio-script-chat-welcome"><Sparkles size={22}/><h2>继续打磨你的故事</h2><p>说说你的想法，AI 会基于当前剧本给出修改稿，由你决定是否采纳。</p><Button type="text" onClick={()=>patch({chatDraft:'按照现有框架完善故事大纲、人物小传和第 1 集正文，突出主角的目标与开场冲突。'})}>完善故事与人物</Button><Button type="text" onClick={()=>patch({chatDraft:'保留其他内容，只把第 1 集的对白改得更自然，并加强结尾的悬念。'})}>让对白更自然</Button></div>}
             {state.turns.map((turn,i)=><div key={i} className={`studio-script-chat-turn ${turn.role}`}><small>{turn.role==='user'?'你':'Studio'}</small><p>{turn.content}</p>{turn.billing&&<small>已消耗 {turn.billing.credits} 积分</small>}</div>)}
             {busy&&<p className="studio-script-chat-progress" role="status">{status||'正在提交改稿任务…'}</p>}
-            {state.error&&<p role="alert" className="studio-script-chat-error">{state.error}</p>}
+            {state.error&&<StudioErrorNotice error={state.error}/>}
             {pending&&!busy&&<Button onClick={()=>void reconcile(pending,true)}>确认原改稿任务</Button>}
             {proposal&&<div className="studio-script-proposal-actions"><p>{proposal.baseMarkdown===markdown?'修改稿已准备好，可在正文区预览。':'正文在等待回复时有了新修改，请先比较两个版本。'}</p><Button onClick={()=>setPreviewProposal(true)}>预览修改稿</Button><Button type="primary" disabled={proposal.baseMarkdown!==markdown} onClick={adopt}>采纳修改</Button>{proposal.baseMarkdown!==markdown&&<Button onClick={forceAdopt}>用 AI 版本替换当前稿</Button>}<Button onClick={()=>{patch({proposal:undefined,error:undefined});setPreviewProposal(false);}}>保留当前稿</Button></div>}
           </div>
@@ -148,7 +149,7 @@ export function StudioScriptEditor({projectId,node,capabilities,onState,onCommit
               <Input.TextArea aria-label="剧本改稿要求" placeholder="输入你的剧本想法或修改要求…" value={state.chatDraft||''} maxLength={4000} autoSize={{minRows:3,maxRows:6}} disabled={!!pending||busy} onChange={e=>patch({chatDraft:e.target.value})} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.nativeEvent.isComposing){e.preventDefault();void send();}}}/>
               <div className="studio-script-chat-controls">
                 {capabilities?.textModelMode!=="fixed"?<Select aria-label="剧本改稿模型" variant="borderless" value={model} disabled={!!pending||busy} placeholder="选择创作模型" options={capabilities?.textModels?.map(m=>({value:m.endpointId,label:m.name}))} onChange={value=>patch({model:value})}/>:<span className="studio-script-chat-model" title={selectedModel?.name}>{selectedModel?.name||'模型加载中'}</span>}
-                {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e instanceof Error?e.message:'停止失败，请确认原任务');}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="AI 处理，会消耗积分" icon={<StudioAiIcon/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
+                {pending?.runId&&busy?<Button className="studio-script-send" aria-label="停止改稿" title="停止改稿" icon={<Square size={15}/>} onClick={async()=>{try{await cancelRun(pending.runId!);message.info('已请求停止改稿，原稿保留');}catch(e){message.error(e);}}}/>:<Button className="studio-script-send" type="primary" aria-label="发送改稿要求" title="AI 处理，会消耗积分" icon={<StudioAiIcon/>} loading={busy} disabled={!state.chatDraft?.trim()||!!pending||!!proposal||!!error||!capabilities||cost===undefined} onClick={()=>void send()}/>}
               </div>
             </div>
           </div>

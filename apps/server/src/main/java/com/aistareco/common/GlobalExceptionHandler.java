@@ -33,7 +33,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Map<String, Object>> handleBusiness(BusinessException ex, HttpServletRequest request) {
         String logId = errorLogService.record(ex, ex.getCode(), ex.getStatus().value(), request);
-        return json(ex.getStatus(), ex.getCode(), appendLogId(ex.getMessage(), logId), ex.getDetails());
+        return json(ex.getStatus(), ex.getCode(), appendLogId(ex.getMessage(), logId), ex.getDetails(), logId);
     }
 
     @ExceptionHandler(ResponseStatusException.class)
@@ -44,7 +44,7 @@ public class GlobalExceptionHandler {
         String logId = shouldRecordStatus(status)
                 ? errorLogService.record(ex, status.name(), status.value(), request)
                 : null;
-        return json(status, status.name(), appendLogId(message, logId));
+        return json(status, status.name(), appendLogId(message, logId), null, logId);
     }
 
     @ExceptionHandler(AuthenticationException.class)
@@ -103,6 +103,7 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", Map.of(
                         "code", "MISSING_ASSETS",
                         "message", appendLogId(ex.getMessage(), logId),
+                        "logId", logId == null ? "" : logId,
                         "details", Map.of("missing_assets", ex.getMissingAssets())
                 )));
     }
@@ -113,7 +114,7 @@ public class GlobalExceptionHandler {
         log.error("未处理异常被 GlobalExceptionHandler 兜底", ex);
         String logId = errorLogService.record(ex, "INTERNAL_ERROR", 500, request);
         return json(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
-                appendLogId("服务器处理请求失败，请稍后重试", logId));
+                appendLogId("服务器处理请求失败，请稍后重试", logId), null, logId);
     }
 
     /**
@@ -147,9 +148,14 @@ public class GlobalExceptionHandler {
     }
 
     private static ResponseEntity<Map<String, Object>> json(HttpStatus status, String code, String message, Object details) {
+        return json(status, code, message, details, null);
+    }
+
+    private static ResponseEntity<Map<String, Object>> json(HttpStatus status, String code, String message, Object details, String logId) {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("code", code);
         error.put("message", message);
+        if (logId != null) error.put("logId", logId);
         if (details != null) {
             error.put("details", details);
         }

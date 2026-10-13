@@ -18,14 +18,14 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
   const alreadyApplied=node.metadata?.studio?.runId===run.id && node.metadata?.status==="success";
   const metadata = { ...node.metadata };
   metadata.studio = { ...metadata.studio!, runId: run.id, mock: run.output.mock,
-    task: { status: run.status, stage: run.stage, pct: run.pct, errorCode:run.errorCode, queue: run.status==='running'?run.queue:null } };
+    task: { status: run.status, stage: run.stage, pct: run.pct, errorCode:run.errorCode,errorMessage:run.errorMessage,logId:run.logId||run.output.logId, queue: run.status==='running'?run.queue:null } };
   if(run.output.lipSyncNormalized)metadata.studio.lipSyncNormalized=true;
   if(metadata.studio.episodeNo===undefined)metadata.studio.episodeNo=studioNodeEpisode(node);
   if (run.output.videoCandidates?.length) {
     const incoming=run.output.videoCandidates.map(candidate=>({
       id:candidate.index===0?run.id:`${run.id}:${candidate.index}`,
       status:candidate.status==='done'?'success' as const:candidate.status==='failed'?'error' as const:'loading' as const,
-      storageKey:candidate.storageKey,content:candidate.url,mimeType:'video/mp4',seconds:String(candidate.durationSec),errorDetails:candidate.errorMessage,queue:candidate.queue,
+      storageKey:candidate.storageKey,content:candidate.url,mimeType:'video/mp4',seconds:String(candidate.durationSec),errorDetails:candidate.errorMessage,errorCode:candidate.errorCode,errorLogId:candidate.logId,queue:candidate.queue,
     }));
     const existing=metadata.videos||[];
     metadata.videos=[...existing.filter(v=>!incoming.some(t=>t.id===v.id)),...incoming];

@@ -1,4 +1,5 @@
 "use client";
+import { useStudioApp } from './studio-errors';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 画布宿主 —— 把搬来的画布（src/canvas）接到本仓的路由、账号与服务端上。
@@ -49,7 +50,7 @@ function Host({ projectId }: { projectId: string }) {
   React.useEffect(() => registerStudioSave(projectId, saveNow), [projectId, saveNow]);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const [templateOpen, setTemplateOpen] = React.useState(false);
-  const { message } = AntdApp.useApp();
+  const { message } = useStudioApp();
 
   // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
@@ -131,7 +132,7 @@ function Host({ projectId }: { projectId: string }) {
         : `官方示例「${demo.name}」，所有人在画布列表里都能打开`;
       message.success(demoTarget ? `已更新${what}` : `已存为${what}`);
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "没存上，再试一次");
+      message.error(e);
     } finally {
       setSavingDemo(false);
     }

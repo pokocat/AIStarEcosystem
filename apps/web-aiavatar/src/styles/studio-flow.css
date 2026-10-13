@@ -326,3 +326,15 @@ html[data-layout="desktop"] .studio-storyboard-text-proposal button { border:1px
 html[data-layout="desktop"] .studio-text-spinner { animation:studio-text-spin 1s linear infinite; }
 @keyframes studio-text-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .studio-text-spinner { animation:none; } }
+
+/* Global diagnostics remain screen-sized and selectable at every canvas zoom. */
+.studio-error-notification.ant-notification-notice { width: 100%; max-height: calc(100dvh - 96px); overflow-y: auto; }
+.studio-error-details { color: #192229; user-select: text; -webkit-user-select: text; }
+.studio-error-details dl { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 10px 12px; margin: 12px 0 18px; font-size: 14px; line-height: 1.6; }
+.studio-error-details dt { color: #65707e; }
+.studio-error-details dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.studio-error-details small { display: block; color: #65707e; }
+.studio-error-details p { margin: 10px 0 0; }
+.studio-error-link { padding: 4px 8px; border: 0; background: transparent; color: #a43845; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.studio-error-link:hover { color: #323e45; background: #fcf0f1; }
+.studio-error-link:focus-visible { outline: 2px solid #192229; outline-offset: 2px; }

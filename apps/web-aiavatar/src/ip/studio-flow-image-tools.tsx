@@ -1,4 +1,5 @@
 'use client';
+import { useStudioApp } from './studio-errors';
 import { useEffect, useState } from 'react';
 import { App, Modal, Spin } from 'antd';
 import { nanoid } from 'nanoid';
@@ -15,7 +16,7 @@ import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
 type Edit = { operation: 'crop' | 'mask' | 'split-image'; source: CanvasNodeData; url?: string };
 export function StudioFlowImageTools({ nodes, onInsert }: { nodes: CanvasNodeData[]; onInsert: (nodes: CanvasNodeData[], connections: CanvasConnection[]) => Promise<void> }) {
   const [edit, setEdit] = useState<Edit>(), [busy, setBusy] = useState(false);
-  const { message } = App.useApp();
+  const { message } = useStudioApp();
   useEffect(() => {
     const listener = (event: Event) => {
       const { action, nodeId } = (event as CustomEvent<{ action: string; nodeId?: string }>).detail;
@@ -34,12 +35,12 @@ export function StudioFlowImageTools({ nodes, onInsert }: { nodes: CanvasNodeDat
     void fetchAssetBlob(edit.source.metadata!.storageKey!).then(blob => {
       if (!active) return; objectUrl = URL.createObjectURL(blob);
       setEdit(current => current && current.source.id === edit.source.id && current.operation === edit.operation ? { ...current, url: objectUrl } : current);
-    }).catch(e => { if (active) { message.error(e.message); setEdit(undefined); } });
+    }).catch(e => { if (active) { message.error(e); setEdit(undefined); } });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [edit?.source.id, edit?.operation, message]);
   const run = async (operation: () => Promise<void>) => {
     if (busy) return; setBusy(true);
-    try { await operation(); setEdit(undefined); } catch (e) { message.error(e instanceof Error ? e.message : '图片编辑失败，请重试'); }
+    try { await operation(); setEdit(undefined); } catch (e) { message.error(e); }
     finally { setBusy(false); }
   };
   const imageNode = async (url: string, title: string, x: number, y: number, width: number): Promise<CanvasNodeData> => {

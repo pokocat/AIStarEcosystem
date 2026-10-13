@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice } from './studio-errors';
 
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
@@ -62,7 +63,7 @@ function AssetCollection(props: CollectionProps) {
       <Button aria-label={`刷新${props.title}`} title={`刷新${props.title}`} icon={<RefreshCw size={16}/>} onClick={props.refresh}/>
     </div>
     <div className="library-result-bar"><span aria-live="polite">{loading ? `正在读取${props.title}…` : errors.length ? `已读取 ${matches.length} 项，部分内容暂不可用` : `${matches.length} 项${filtered ? '匹配资产' : '资产'}`}</span><span>{props.voice ? '进入声音工作室管理音色' : '打开形象查看设定、版本与授权'}</span></div>
-    {errors.map(e => <div key={e.category} role="alert" className="library-notice">{e.message}<Button size="small" onClick={props.refresh}>重新读取</Button></div>)}
+    {errors.map(e => <div key={e.category} className="library-notice"><StudioErrorNotice error={e.message}/><Button size="small" onClick={props.refresh}>重新读取</Button></div>)}
     {loading ? <div className="library-grid library-loading" aria-label={`正在加载${props.title}`}>{Array.from({ length: 6 }, (_, i) => <div className="library-skeleton" key={i}><div/><span/><span/></div>)}</div>
       : !matches.length ? <div className="library-empty">{props.voice ? <Mic size={32}/> : <Users size={32}/>}<h3>{errors.length ? `${props.title}暂不可读取` : filtered ? '没有找到匹配资产' : `还没有${props.title}`}</h3><p>{errors.length ? '读取恢复后，这里的资产会重新显示。' : filtered ? '试试其他名称或筛选条件。' : props.emptyDescription}</p>{errors.length ? <Button onClick={props.refresh}>重新读取资产</Button> : filtered ? <Button onClick={clear}>清除筛选</Button> : <Link href={props.actionHref} className="ip-brand-button">{props.actionLabel}<ArrowUpRight size={16}/></Link>}</div>
       : <LibraryGridMotion motionKey={`${props.title}-${category}-${query}-${type}-${currentPage}-${visible.map(i => i.id).join(',')}`}>

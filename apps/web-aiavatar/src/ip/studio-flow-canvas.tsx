@@ -1,4 +1,5 @@
 'use client';
+import { useStudioApp, StudioErrorNotice, studioNodeError } from './studio-errors';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, useNodesInitialized, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
@@ -68,7 +69,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         <button className="studio-flow-placeholder nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button>}
     </div>
     {meta?.status === 'loading' && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
-    {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<p className="studio-flow-node-error" role="alert">{meta.errorDetails || '生成失败，请查看任务'}</p>)}
+    {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<div className="studio-flow-node-error"><StudioErrorNotice error={studioNodeError(node)} once={`run:${meta.studio?.runId || meta.runId || node.id}`} label="生成失败 · 查看错误"/></div>)}
   </article>;
 }
 const nodeTypes = { studio: StudioFlowCard };
@@ -88,7 +89,7 @@ type Snapshot = { nodes: CanvasNodeData[]; connections: CanvasConnection[] };
 function FlowWorkspace({ projectId }: { projectId: string }) {
   const identity = useIdentity();
   const project = useCanvasStore(s => s.projects.find(p => p.id === projectId));
-  const flow = useReactFlow<StudioFlowNode>(), viewport = useViewport(), { zoom } = viewport, { message } = App.useApp();
+  const flow = useReactFlow<StudioFlowNode>(), viewport = useViewport(), { zoom } = viewport, { message } = useStudioApp();
   const [selected, setSelected] = useState(new Set<string>()), [handTool, setHandTool] = useState(true), [spaceHeld, setSpaceHeld] = useState(false), [minimap, setMinimap] = useState(false);
   const hand = handTool || spaceHeld;
   const [find, setFind] = useState(false), [query, setQuery] = useState(''), [textId, setTextId] = useState<string>(), [renameId, setRenameId] = useState<string>();
@@ -251,7 +252,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); paste(true); }
       if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); setSelected(new Set(current().nodes.map(n => n.id))); }
       if (mod && e.key.toLowerCase() === 'g') { e.preventDefault(); group(e.shiftKey); }
-      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void saveStudioDocument(projectId).catch(error => message.error(error.message)); }
+      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void saveStudioDocument(projectId).catch(error => message.error(error)); }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
       if (e.key === 'Escape') { setSelected(new Set()); setSelectedEdges(new Set()); setFind(false); setTextId(undefined); setContext(undefined); setPendingConnection(undefined); }
     };
@@ -282,7 +283,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       try { const node = await readAssistantAttachment(file, current().nodes, f => importStudioStory(projectId, f), (f, type) => importStudioMedia(projectId, f, type));
         setNodes(old => old.some(n => n.id === node.id) ? old : [...old, placeVisibleNode(node, old)]); last = node.id;
       } catch (e) { message.error(e instanceof Error ? `${file.name}：${e.message}` : '导入失败'); }
-    } await saveStudioDocument(projectId); if (last) focusNode(last); } catch (e) { message.error(e instanceof Error ? e.message : '保存失败，请重试'); }
+    } await saveStudioDocument(projectId); if (last) focusNode(last); } catch (e) { message.error(e); }
     finally { setReading(false); }
   };
   const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, onRename: renameNode } })), [project?.nodes, selected, uploadingImageId, renameNode]);
