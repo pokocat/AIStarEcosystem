@@ -1,6 +1,7 @@
 "use client";
 import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioTaskList } from "./studio-task-list";
+import { studioTaskPresentation } from '@/canvas-bridge/studio-task-title';
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
 import { inferMediaRatio } from "@/canvas/lib/media-size";
@@ -8,7 +9,7 @@ import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, Modal, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { ArrowDown, ArrowUp, BookOpen, Clapperboard, Download, FileText, ImagePlus, Layers, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookOpen, ChevronDown, Clapperboard, Download, FileText, ImagePlus, Layers, ListChecks, PanelsTopLeft, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { LibraryExtractionPanel } from "./library-extraction-panel";
 import { LibraryReferencePicker } from "./library-reference-picker";
@@ -916,16 +917,20 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布",Layers],["storyboard","故事板",Clapperboard],["work","成片",Play]] as const).map(([value,label,Icon]) =>
         <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}><Icon size={15}/>{label}</button>)}</nav>
       <div className="studio-director-launch">
+        <div className="studio-resource-tools" role="group" aria-label="素材入口">
         <button type="button" className="studio-ip-library" onClick={()=>openIpLibrary()}><UserRound size={15}/>IP 人物库</button>
-        <button type="button" className="studio-template-launch" onClick={()=>openTemplates()}>画布模板</button>
-        <button type="button" onClick={()=>setTaskList(true)} aria-label="查看创作任务" title="创作任务"><RefreshCw size={17}/></button>
+        <button type="button" className="studio-template-launch" onClick={()=>openTemplates()}><PanelsTopLeft size={15}/>画布模板</button>
+        </div>
+        <div className="studio-utility-tools" role="group" aria-label="任务与更多工具">
+        <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(true)} aria-label="查看创作任务" aria-pressed={taskList}><ListChecks size={16}/>创作任务{runs.some(run=>run.status==='running')&&<span className="studio-tasks-active" aria-label="有进行中的任务"/>}</button>
         <Dropdown trigger={["click"]} getPopupContainer={containers} menu={{items:[
           {key:"commerce",label:"商品视频模板",onClick:()=>openTemplates("commerce")},
           {key:"digital",label:"数字人视频模板",onClick:()=>openTemplates("digital")},
           {key:"speech",label:"配音",onClick:()=>openSpeech(selected)},
           {key:"lip",label:"口型同步",onClick:()=>openLipSync(selected)},
           {key:"assistant",label:"导演助手",onClick:()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}},
-        ]}}><button type="button" aria-label="更多创作工具">更多创作</button></Dropdown>
+        ]}}><button type="button" aria-label="更多创作工具">更多<ChevronDown size={13}/></button></Dropdown>
+        </div>
         <button type="button" className="studio-primary" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><Sparkles size={17}/>AI 创作</button>
       </div>
     </div>
@@ -1020,7 +1025,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     <StudioFloatingPanel title="创作任务" open={taskList} onClose={() => setTaskList(false)} width={480} utility className="studio-task-panel">
       <StudioTaskList runs={taskRuns} nodes={[...nodes,...conversations]} unconfirmed={unconfirmed} loading={tasksLoading} busy={busy}
         hasMore={taskMore} error={taskError} refreshErrors={refreshErrors}
-        titleFor={run=>[...nodes,...conversations].find(n=>n.id===run.nodeId)?.title||labels[(run.inputs as unknown as StudioRunRequest).operation]||"IP 定稿"}
+        titleFor={run=>studioTaskPresentation(run,[...nodes,...conversations]).title}
+        detailFor={run=>studioTaskPresentation(run,[...nodes,...conversations]).detail}
         onInput={setRunDetail} onLocate={node=>{setTaskList(false);if(node.metadata?.studio?.conversation){setAssistantNodeId(node.id);setAssistantOpen(true);}else{setMode("canvas");onFocusNode(node.id);}}}
         onRetry={node=>{if(node.metadata?.studio?.conversation){setAssistantNodeId(node.id);setAssistantOpen(true);}else void retry(node);}} onReload={()=>void loadTasks(taskPage)} onMore={()=>void loadTasks(taskPage+1)}
         onCancel={run=>{const token=epoch.current;void cancelRun(run.id).then(result=>{

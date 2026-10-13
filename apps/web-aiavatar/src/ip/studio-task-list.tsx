@@ -9,11 +9,11 @@ type Filter = 'all' | 'active' | 'failed' | 'done';
 type Props = {
   runs: IpRun[]; nodes: CanvasNodeData[]; unconfirmed: CanvasNodeData[];
   loading: boolean; busy: boolean; hasMore: boolean; error?: string; refreshErrors: Record<string, boolean>;
-  titleFor: (run: IpRun) => string; onInput: (run: IpRun) => void; onLocate: (node: CanvasNodeData) => void;
+  titleFor: (run: IpRun) => string; detailFor?: (run: IpRun) => string; onInput: (run: IpRun) => void; onLocate: (node: CanvasNodeData) => void;
   onCancel: (run: IpRun) => void; onRetry: (node: CanvasNodeData) => void; onReload: () => void; onMore: () => void;
 };
 const failed = (run: IpRun) => run.status === 'failed' && run.errorCode !== 'IP_RUN_CANCELLED';
-export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMore, error, refreshErrors, titleFor, onInput, onLocate, onCancel, onRetry, onReload, onMore }: Props) {
+export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMore, error, refreshErrors, titleFor, detailFor, onInput, onLocate, onCancel, onRetry, onReload, onMore }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
   const filters: { id: Filter; label: string; count: number }[] = [
     { id: 'all', label: '全部', count: runs.length + unconfirmed.length },
@@ -37,11 +37,13 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
       const state = run.status === 'running' ? queued ? 'queued' : 'running' : stopped ? 'stopped' : failed(run) ? 'failed' : run.stage === '部分视频生成失败' ? 'partial' : 'done';
       const label = run.status === 'running' ? studioTaskLabel(run, true) : stopped ? '已停止' : state === 'failed' ? '生成失败' : state === 'partial' ? '部分完成' : '已完成';
       const pct = Math.max(0, Math.min(100, Number.isFinite(run.pct) ? run.pct : 0));
+      const title = titleFor(run), detail = detailFor?.(run);
       const date = new Date(run.createdAt), timestamp = Number.isNaN(date.getTime()) ? run.createdAt : date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       return <article className="studio-task-item" key={run.id} data-task-id={run.id}>
-        <div className="studio-task-heading"><strong>{titleFor(run)}</strong><span className="studio-task-status" data-status={state}>{label}</span></div>
+        <div className="studio-task-heading"><strong title={title}>{title}</strong><span className="studio-task-status" data-status={state}>{label}</span></div>
+        {detail && <p className="studio-task-brief" title={detail}>{detail}</p>}
         <div className="studio-task-meta"><time dateTime={run.createdAt}>{timestamp}</time><span title={run.id}>#{run.id.slice(-6)}</span><span>{run.output.mock ? '测试响应' : run.status === 'running' ? `冻结 ${run.cost} 积分` : `已消耗 ${run.cost} 积分`}</span></div>
-        {state === 'running' && <div className="studio-task-progress" role="progressbar" aria-label={`${titleFor(run)}生成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ transform: `scaleX(${pct / 100})` }}/></div>}
+        {state === 'running' && <div className="studio-task-progress" role="progressbar" aria-label={`${title}生成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ transform: `scaleX(${pct / 100})` }}/></div>}
         {queued && run.queue && <p className="studio-task-note">前面还有 {Math.max(0, run.queue.position - 1)} 项 · 有空位后自动开始</p>}
         {run.status === 'running' && refreshErrors[run.id] && <p className="studio-task-note" role="status">任务状态暂未更新，正在重试…</p>}
         {(state === 'failed' || state === 'partial') && <div className="studio-task-failure"><p>{run.errorMessage || run.output.videoCandidates?.find(c => c.status === 'failed')?.errorMessage || '本次创作未完成，可查看错误详情'}</p><button type="button" onClick={() => reportStudioError(studioRunError(run))}>查看错误详情</button></div>}
