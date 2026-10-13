@@ -51,7 +51,13 @@ public class ModelFeatureManagementService {
             if("video_group".equals(f.routingKind())) {
                 var group=scenePolicies.studioVideoGroup();
                 var videoCandidates=scenePolicies.studioVideoCandidates();
-                row.set("candidates",mapper.valueToTree(videoCandidates.stream().map(c->Map.of("endpointId",c.endpoint().getId(),"endpointName",c.endpoint().getName(),"isDefault",c.isDefault())).toList()));
+                var sharedCandidates=bindings.listCandidates(f.purpose());
+                row.set("candidates",mapper.valueToTree(videoCandidates.stream().map(c->{
+                    var candidate=sharedCandidates.stream().filter(x->x.endpointId().equals(c.endpoint().getId())).findFirst().orElseThrow();
+                    var value=mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(candidate);
+                    value.put("isDefault",c.isDefault());
+                    return value;
+                }).toList()));
                 status=group.isEmpty()?"unconfigured":videoCandidates.stream().noneMatch(AiModelInvocationService.ResolvedEndpoint::isDefault)?"unavailable":"configured";
             }
             row.put("status",status);rows.add(row);
