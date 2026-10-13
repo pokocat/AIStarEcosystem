@@ -143,7 +143,7 @@ export interface StudioNodeMetadata {
   /** Authored video defaults for an ordinary copied node; contains no input media or task identity. */
   videoPreset?: Pick<StudioVideoSettings, "mode" | "resolutionTier" | "seed">;
   /** Display projection refreshed from IpRun; never used as execution or queue authority. */
-  task?: { status: "running" | "done" | "failed"; stage: string; pct: number; errorCode?: string;
+  task?: { status: "running" | "done" | "failed"; stage: string; pct: number; errorCode?: string; errorMessage?: string; logId?: string;
     queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null };
   workDraft?: StudioWorkDraft;
   speechDraft?: Omit<StudioSpeechRequest,'clientRequestId'|'nodeId'|'maxCost'>;

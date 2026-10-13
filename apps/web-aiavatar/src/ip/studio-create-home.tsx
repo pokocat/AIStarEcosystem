@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -41,13 +42,13 @@ export function StudioCreateHome() {
   const [creating, setCreating] = useState<StudioEntry>();
   const creatingRef = useRef(false);
   const [pendingStart, setPendingStart] = useState<{ project: IpProject; entry: StudioEntry; brief: string }>();
-  const [actionError, setActionError] = useState("");
+  const [actionError, setActionError] = useStudioErrorState();
   const [notEnrolled, setNotEnrolled] = useState(false);
   const [usingTemplate, setUsingTemplate] = useState<IpTemplate>();
   const [pendingDelete, setPendingDelete] = useState<IpProjectSummary>();
   const [deleting, setDeleting] = useState(false);
   const deleteRef = useRef(false);
-  const [deleteError, setDeleteError] = useState("");
+  const [deleteError, setDeleteError] = useStudioErrorState();
   const surface = useRef<HTMLDivElement>(null);
   const filtered = useMemo(() => projects.data.filter(p =>
     (status === "all" || p.status === status) && p.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
@@ -70,7 +71,7 @@ export function StudioCreateHome() {
     } catch (e) {
       if (e instanceof StudioEntrySaveError) setPendingStart({ project: e.project, entry: pendingStart?.entry ?? entry, brief: pendingStart?.brief ?? brief });
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
-      else setActionError(e instanceof Error ? e.message : "画布没有创建成功，请重试");
+      else setActionError(e);
       setCreating(undefined); creatingRef.current = false;
     }
   };
@@ -81,7 +82,7 @@ export function StudioCreateHome() {
       await IpStudioApi.deleteProject(pendingDelete.id);
       projects.setData(items => items.filter(p => p.id !== pendingDelete.id));
       setPendingDelete(undefined);
-    } catch (e) { setDeleteError(e instanceof Error ? e.message : "删除失败，请重试"); }
+    } catch (e) { setDeleteError(e); }
     finally { deleteRef.current = false; setDeleting(false); }
   };
 
@@ -90,7 +91,7 @@ export function StudioCreateHome() {
 
   return <StudioPage title="创作" description="管理画布，选择创作方式，把灵感变成作品。" contentRef={surface} className="studio-gallery-page studio-create-page" actions={<a className="ip-brand-button" href="#start-creation"><Plus size={16}/>新建创作</a>}>
     {usingTemplate && <StudioTemplateUse key={usingTemplate.versionId || usingTemplate.id} template={usingTemplate} onClose={() => setUsingTemplate(undefined)} onCreated={id => router.push(`/projects/${id}`)} />}
-    {actionError && <div className="studio-gallery-action-error" role="alert">{actionError}{pendingStart && <><span> · 画布已创建，重试会继续保存到同一张画布。</span><Link href={`/projects/${pendingStart.project.id}`}>打开已创建的画布</Link></>}</div>}
+    {actionError && <div className="studio-gallery-action-error"><StudioErrorNotice error={actionError}/>{pendingStart && <><span> · 画布已创建，重试会继续保存到同一张画布。</span><Link href={`/projects/${pendingStart.project.id}`}>打开已创建的画布</Link></>}</div>}
     <StudioPageFilters label="画布状态" value={status} onChange={v => { setStatus(v as typeof status); setPage(1); }} items={([ ["all", "全部画布"], ["draft", "草稿"], ["published", "已发布"] ] as const).map(([value, label]) => ({ value, label, count: projects.loading || projects.error ? undefined : value === "all" ? projects.data.length : projects.data.filter(p => p.status === value).length }))}/>
 
     <section className="studio-gallery-panel" aria-labelledby="my-canvases-heading">
@@ -135,7 +136,7 @@ export function StudioCreateHome() {
     </section>
 
     <Modal open={!!pendingDelete} title="删除画布" footer={null} onCancel={() => { if (!deleting) setPendingDelete(undefined); }} closable={!deleting} keyboard={!deleting} mask={{ closable: !deleting }} getContainer={() => surface.current || document.body} className="ip-management-editor studio-gallery-delete" centered>
-      <p>确认删除「{pendingDelete?.name}」？画布内的节点和连线将一并删除，此操作无法撤销。</p>{deleteError && <p className="studio-gallery-action-error" role="alert">{deleteError}</p>}<div className="studio-gallery-delete-actions"><button type="button" className="ip-brand-secondary" disabled={deleting} onClick={() => setPendingDelete(undefined)}>取消</button><button type="button" className="ip-brand-button" disabled={deleting} onClick={() => void remove()}>{deleting && <Loader2 size={16} className="studio-gallery-spinner" />}{deleting ? "正在删除…" : "确认删除"}</button></div>
+      <p>确认删除「{pendingDelete?.name}」？画布内的节点和连线将一并删除，此操作无法撤销。</p>{deleteError && <p className="studio-gallery-action-error"><StudioErrorNotice error={deleteError}/></p>}<div className="studio-gallery-delete-actions"><button type="button" className="ip-brand-secondary" disabled={deleting} onClick={() => setPendingDelete(undefined)}>取消</button><button type="button" className="ip-brand-button" disabled={deleting} onClick={() => void remove()}>{deleting && <Loader2 size={16} className="studio-gallery-spinner" />}{deleting ? "正在删除…" : "确认删除"}</button></div>
     </Modal>
   </StudioPage>;
 }

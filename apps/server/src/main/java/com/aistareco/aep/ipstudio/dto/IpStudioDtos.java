@@ -55,6 +55,8 @@ public final class IpStudioDtos {
                            JsonNode inputs, JsonNode output,
                            String createdAt, String finishedAt,
                            com.aistareco.aep.dto.AiGenerationQueuePositionDto queue) {
+        @com.fasterxml.jackson.annotation.JsonProperty("logId")
+        public String logId() { return output == null ? null : output.path("logId").asText(null); }
         public IpRunDto(String id,String projectId,String nodeId,String kind,String status,String stage,int pct,long cost,
                 String errorCode,String errorMessage,JsonNode inputs,JsonNode output,String createdAt,String finishedAt) {
             this(id,projectId,nodeId,kind,status,stage,pct,cost,errorCode,errorMessage,inputs,output,createdAt,finishedAt,null);

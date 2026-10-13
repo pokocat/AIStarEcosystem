@@ -37,6 +37,9 @@ export type CanvasNodeVideoTake = {
     seconds?: string;
     mimeType?: string;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
     // 本仓 Studio：每条视频候选的实时排队投影，不是客户端调度真值。
     queue?: import("@ai-star-eco/types").AiGenerationQueuePosition | null;
 };
@@ -45,6 +48,9 @@ export type CanvasNodeImage = {
     id: string;
     status: CanvasNodeStatus;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
     content: string;
     storageKey?: string;
     /**
@@ -64,6 +70,9 @@ export type CanvasNodeText = {
     id: string;
     status: CanvasNodeStatus;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
     content: string;
 };
 
@@ -80,6 +89,9 @@ export type CanvasNodeMetadata = {
     prompt?: string;
     status?: CanvasNodeStatus;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
     fontSize?: number;
     generationMode?: CanvasGenerationMode;
     generationType?: CanvasImageGenerationType;

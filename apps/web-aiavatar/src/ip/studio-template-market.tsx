@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 
 import { useRef, useState } from "react";
 import Link from "next/link";
@@ -24,7 +25,7 @@ export function StudioTemplateMarket() {
   const [usingTemplate, setUsingTemplate] = useState<IpTemplate>();
   const [changing, setChanging] = useState<string>();
   const changingRef = useRef(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useStudioErrorState();
   const matches = (t: IpTemplate) => `${t.name} ${t.summary}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const official = templates.data.filter(t => t.visibility !== "personal" && t.enabled !== false);
   const personal = templates.data.filter(t => t.visibility === "personal");
@@ -37,7 +38,7 @@ export function StudioTemplateMarket() {
     try {
       await templateAvailability(template.id, enabled);
       templates.setData(items => items.map(t => t.id === template.id ? { ...t, enabled } : t));
-    } catch (e) { setError(e instanceof Error ? e.message : "模板状态修改失败，请重试"); }
+    } catch (e) { setError(e); }
     finally { changingRef.current = false; setChanging(undefined); }
   };
   if (authState === "no-platform" || templates.notEnrolled || examples.notEnrolled) return <PlatformGateScreen />;
@@ -49,7 +50,7 @@ export function StudioTemplateMarket() {
     <section className="studio-gallery-panel" aria-label="模板目录">
       <div className="studio-gallery-panel-heading"><div><h2>{tab === 'personal' ? '我的模板' : tab === 'community' ? '用户发布模板' : '官方模板'}</h2><p>{tab === 'personal' ? '保存自己的工作流，下一次创作从这里开始。' : '先预览创作流程，存为个人副本后编辑。'}</p></div></div>
       {tab !== 'community' && <><div className="studio-page-toolbar"><GallerySearch value={query} onChange={setQuery} label="搜索模板" placeholder="搜索模板名称、创作流程…"/><button type="button" className="studio-page-refresh" disabled={templates.loading || examples.loading} onClick={() => { templates.reload(); examples.reload(); }} aria-label="刷新模板"><RefreshCw size={16}/></button></div><div className="studio-page-result" aria-live="polite">{templates.loading ? '正在读取模板…' : templates.error ? '暂时无法读取模板' : `${items.length} 项${query.trim() ? '匹配' : ''}模板`}</div></>}
-      {error && <div className="studio-gallery-action-error" role="alert">{error}</div>}
+      {error && <div className="studio-gallery-action-error"><StudioErrorNotice error={error}/></div>}
       {tab === "community" ? <div className="studio-market-coming"><div className="studio-market-coming-icon"><Clock3 size={30} strokeWidth={1.5} /></div><h2>用户模板市场，正在建设</h2><p>未来，你可以在这里发现其他创作者发布的画布流程。<br />现在可以在个人画布中“发布为模板”，保存并复用自己的创作流程。</p><button type="button" className="ip-brand-secondary" onClick={() => setTab("personal")}>查看我的模板 <ArrowRight size={16} /></button></div> : <>
 
         {templates.error ? <GalleryState error={templates.error} retry={templates.reload} /> : templates.loading ? <GalleryState loading /> : items.length ? <div className="studio-template-grid">{items.map(t => <TemplateCard key={t.id} template={t} onOpen={setUsingTemplate}>

@@ -83,10 +83,12 @@ export type IpRunKind = "identity" | "generate" | "studio-adopt" | "studio-audio
 export interface IpCandidate { key: string; url: string; width?: number; height?: number }
 export interface IpVideoCandidate {
   index: number; jobId: string; status: 'running' | 'done' | 'failed'; pct: number;
-  storageKey?: string; url?: string; durationSec: number; errorMessage?: string;
+  storageKey?: string; url?: string; durationSec: number; errorMessage?: string; errorCode?: string; logId?: string;
   queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null;
 }
 export interface IpRunOutput {
+  /** Persisted async ErrorLog lookup ID, alongside partial output when applicable. */
+  logId?: string;
   billing?: import("./ip-studio-workflow").StudioTokenBilling;
   assetExtraction?: { warnings?:string[];items: import('./ip-asset-library').LibraryCandidate[] };
   mock?: boolean;
@@ -123,7 +125,7 @@ export interface IpRun {
   id: string; projectId: string; nodeId: string; kind: IpRunKind;
   status: IpRunStatus; stage: string; pct: number;
   cost: number;                   // 实际提交（commit）的积分；running 时为冻结额
-  errorCode?: string; errorMessage?: string;
+  errorCode?: string; errorMessage?: string; logId?: string;
   inputs: IpRunInputs; output: IpRunOutput;
   createdAt: string; finishedAt?: string;
   queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null;

@@ -1,3 +1,4 @@
+import { reportStudioError } from '@/ip/studio-errors';
 import { useEffect, type Dispatch, type SetStateAction } from 'react';
 import { nanoid } from 'nanoid';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
@@ -41,8 +42,9 @@ export function useFlowLegacyTasks(projectId: string, setNodes: Dispatch<SetStat
           }
         } catch (error) {
           if (controller.signal.aborted) return;
+          const diagnostic = reportStudioError(error);
           // A network observation failure never discards the original task identity.
-          setNodes(current => current.map(n => n.id === node.id ? { ...n, metadata: { ...n.metadata, status: 'error', errorDetails: error instanceof Error ? error.message : '原任务暂未读取，请刷新后继续确认' } } : n));
+          setNodes(current => current.map(n => n.id === node.id ? { ...n, metadata: { ...n.metadata, status: 'error', errorDetails: diagnostic.message, errorCode: diagnostic.code, errorLogId: diagnostic.logId } } : n));
         }
       })();
     }

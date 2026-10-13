@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import {useEffect,useState} from 'react';
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import type {StudioVideoEffect} from '@ai-star-eco/types';
@@ -68,3 +70,5 @@ test('a saved prompt with multiple effects converges to one selection and leaves
 test('a customized effect description remains authored text when choosing another effect',async()=>{
  const custom='侧光快速扫过我的产品，保持中文商标。';render(<Host initial={`主体 @图1 ${custom} 末尾`}/>);await open();fireEvent.click(screen.getByRole('button',{name:'选用特效 产品光影'}));await waitFor(()=>expect(latest).toContain(effect.prompt));expect(latest).toContain(custom);
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

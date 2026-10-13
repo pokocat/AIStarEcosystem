@@ -22,6 +22,7 @@ import java.util.List;
  */
 @Service
 public class IpRunReaper {
+    @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
 
@@ -75,6 +76,7 @@ public class IpRunReaper {
             run.setStage("failed");
             run.setErrorCode("IP_RUN_TIMEOUT");
             run.setErrorMessage("生成超时，未产生结果，已退回冻结积分，请重试");
+            if (errorLog != null) errorLog.attach(run, null);
             run.setCost(0);
             run.setFinishedAt(Instant.now());
             run.setHeartbeatAt(Instant.now());

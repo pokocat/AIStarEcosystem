@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { AvatarLibrary, VoiceLibrary } from './supplementary-asset-library';
@@ -40,7 +42,7 @@ test('failed grants do not hide successful avatars and unknown licenses do not b
   fireEvent.click(screen.getByRole('button', { name: '重新读取' }));
   expect(refresh).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: /真人形象/ }));
-  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain('明星授权读取失败'); // Notifications remain until dismissed; the recovered library is usable.
   expect(screen.getByText('1 项匹配资产')).toBeDefined();
 });
 
@@ -72,3 +74,5 @@ test('voice load failure is a single retryable error rather than an empty asset 
   expect(screen.queryByText('还没有专属声音')).toBeNull();
   expect(screen.getByRole('button', { name: '重新读取资产' })).toBeDefined();
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

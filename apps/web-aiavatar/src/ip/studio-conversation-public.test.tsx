@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {ApiError} from '@ai-star-eco/api-client';
@@ -17,3 +19,5 @@ test('copy failure and remount retry the same key and only navigate after accept
 test('revoked link is a terminal empty state and cannot copy',async()=>{
  api.read.mockRejectedValue(new ApiError({code:'STUDIO_SHARE_NOT_FOUND',message:'revoked'},404));render(<StudioConversationPublic token="abc"/>);await screen.findByRole('heading',{name:'分享链接已失效'});expect(screen.queryByRole('button',{name:'在 Studio 中继续创作'})).toBeNull();expect(api.copy).not.toHaveBeenCalled();
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

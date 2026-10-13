@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
 import { inferMediaRatio } from "@/canvas/lib/media-size";
@@ -65,11 +66,11 @@ const containers = () => document.querySelector<HTMLElement>(".ip-surface") || d
 const labels = { text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
 
 export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds, setNodes, setConnections, onFocusNode, onClosePanel, onRestorePanel, activeComposerId, referencePicking, textEditingNodeId, renderTextEditor }: Props) {
-  const { message } = App.useApp();
+  const { message } = useStudioApp();
   const [missingPlanRefs,setMissingPlanRefs]=useState<string[]>([]);
   const [workSaving,setWorkSaving]=useState(false);
   const [capabilities, setCapabilities] = useState<StudioCapabilities>();
-  const [capabilityError, setCapabilityError] = useState("");
+  const [capabilityError, setCapabilityError] = useStudioErrorState();
   const [mode, setMode] = useState<"canvas" | "storyboard" | "work">("canvas");
   const [director, setDirector] = useState(false);
   const [storyboardNodeId,setStoryboardNodeId]=useState<string>();
@@ -91,7 +92,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [libraryQuery,setLibraryQuery]=useState<string>();
   const libraryMention=useRef<{start:number;end:number}|undefined>(undefined);
   const openLibrary=(query:string)=>{const start=prompt.lastIndexOf("@"+query);libraryMention.current=start>=0?{start,end:start+query.length+1}:undefined;setLibraryQuery(query);};
-  const openExtraction=async(id:string)=>{try{await saveStudioDocument(projectId);setExtractionId(id);}catch(e){message.error(e instanceof Error?e.message:"请先保存剧本");}};
+  const openExtraction=async(id:string)=>{try{await saveStudioDocument(projectId);setExtractionId(id);}catch(e){message.error(e);}};
   const insertLibrary=async(assets:IpSavedAsset[])=>{const chosen:string[]=[];setNodes(list=>{const next=[...list];for(const a of assets){const n=attachmentNode(savedAssetPayload(a),next);if(!next.some(x=>x.id===n.id))next.push(n);chosen.push(n.id);}return next;});await saveStudioDocument(projectId);setReferenceIds(ids=>[...new Set([...ids,...chosen])]);const mention=libraryMention.current;if(mention)setPrompt(value=>value.slice(0,mention.start)+assets.map(a=>"@"+a.title).join(" ")+value.slice(mention.end));libraryMention.current=undefined;};
   const [scriptPreviewId,setScriptPreviewId]=useState<string>();
   const panelSession=useRef(0);
@@ -111,12 +112,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   }),[runs]);
   const [refreshErrors,setRefreshErrors]=useState<Record<string,boolean>>({});
   const terminalRuns=useRef(new Map<string,IpRun>());
-  const [taskPage,setTaskPage]=useState(0),[taskMore,setTaskMore]=useState(false),[tasksLoading,setTasksLoading]=useState(false),[taskError,setTaskError]=useState("");
+  const [taskPage,setTaskPage]=useState(0),[taskMore,setTaskMore]=useState(false),[tasksLoading,setTasksLoading]=useState(false),[taskError,setTaskError]=useStudioErrorState();
   const [assetPicker, setAssetPicker] = useState(false);
   const directorLibraryButton = useRef<HTMLButtonElement>(null);
   const [libraryTarget,setLibraryTarget]=useState<{kind:"canvas"|"node"|"director";nodeId?:string;returnNodeId?:string}>({kind:"canvas"});
   const [ipAssets, setIpAssets] = useState<StudioIpAsset[]>([]);
-  const [assetError, setAssetError] = useState("");
+  const [assetError, setAssetError] = useStudioErrorState();
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [pasteScript, setPasteScript] = useState(false);
   const [scriptMode,setScriptMode]=useState<"original"|"adapt">("original");
@@ -132,7 +133,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [assistantNodeId,setAssistantNodeId]=useState<string>(),[batchNodeId,setBatchNodeId]=useState<string>();
   const [templateLibraryOpen,setTemplateLibraryOpen]=useState(false),[assistantOpen,setAssistantOpen]=useState(false),[batchOpen,setBatchOpen]=useState(false);
   const [templateScope,setTemplateScope]=useState<"all"|"commerce"|"digital">("all");
-  const openTemplates=async(scope:typeof templateScope="all")=>{try {await saveStudioDocument(projectId);setTemplateScope(scope);setTemplateLibraryOpen(true);onClosePanel();}catch(e){message.error(e instanceof Error?e.message:"画布未保存，请重试");}};
+  const openTemplates=async(scope:typeof templateScope="all")=>{try {await saveStudioDocument(projectId);setTemplateScope(scope);setTemplateLibraryOpen(true);onClosePanel();}catch(e){message.error(e);}};
   const [entryBrief,setEntryBrief]=useState("");
   const [entryAssistantMode,setEntryAssistantMode]=useState<"general"|"director">();
   const [lipSyncOpen,setLipSyncOpen]=useState(false);
@@ -194,16 +195,16 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const saveWork=async(nextMode?:typeof mode)=>{
     if(workSaving)return;setWorkSaving(true);
     try{await saveStudioDocument(projectId);if(nextMode)setMode(nextMode);else message.success('成片配置已保存');}
-    catch(e){message.error(e instanceof Error?e.message:'成片配置未保存，请重试');}
+    catch(e){message.error(e);}
     finally{setWorkSaving(false);}
   };
   const workVoiceMissing=!!voiceoverKey&&!nodes.some(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===voiceoverKey&&n.metadata.status==='success');
   const chooseTake=(id:string,takeId:string)=>setNodes(current=>adoptStudioTake(current,id,takeId));
   const loadCapabilities = useCallback(() => {
-    setCapabilityError(""); void studioCapabilities().then(setCapabilities).catch(e => setCapabilityError(e.message || "创作功能未加载，请重试"));
+    setCapabilityError(""); void studioCapabilities().then(setCapabilities).catch(e => setCapabilityError(e));
   }, []);
   useEffect(() => { loadCapabilities(); }, [loadCapabilities]);
-  useEffect(() => {void Promise.all([fetchModels(),fetchStudioVideoModels()]).then(([basic,native])=>{setModels(basic);setNativeVideoModels(native);}).catch(e=>message.error(e.message || "模型列表未加载"));}, [message]);
+  useEffect(() => {void Promise.all([fetchModels(),fetchStudioVideoModels()]).then(([basic,native])=>{setModels(basic);setNativeVideoModels(native);}).catch(e=>message.error(e));}, [message]);
   useEffect(() => { alive.current = true; epoch.current++;terminalRuns.current.clear();setRefreshErrors({}); return () => { alive.current = false; epoch.current++; }; }, [projectId]);
   const materializeStoryboard = useCallback((parentId: string, script: StudioScript) => {
     const parent = nodesRef.current.find(n => n.id === parentId);
@@ -232,8 +233,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           setRefreshErrors(old=>{const next={...old};delete next[current.id];return next;});
           if (targetId && nodesRef.current.some(n=>n.id===targetId&&n.metadata?.studio?.runId===current.id) && current.status === "done" && current.kind === "studio-storyboard" && current.output.script) materializeStoryboard(targetId, current.output.script);
           if (current.status === "done"&&current.output.billing) message.success(`已消耗 ${current.output.billing.credits} 积分`);
-          if (current.status === "failed"&&current.errorCode!=="IP_RUN_CANCELLED") message.error(current.errorMessage || "生成失败，请重试");
-          void saveStudioDocument(projectId).catch(e => message.error(e.message));
+          reportStudioRunFailures(current);
+          void saveStudioDocument(projectId).catch(e => message.error(e));
           return;
         }
         await new Promise(resolve => setTimeout(resolve, 1200));
@@ -265,16 +266,17 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         if (node.metadata?.status !== "loading") {
           // Restore authoritative terminal semantics in older documents without replaying media or edited script results.
           if (match && match.status !== "running" && (studio?.runId === match.id || node.metadata?.runId === match.id)) {
+            reportStudioRunFailures(match);
             patch(node.id, current => current.metadata?.studio?.runId === match.id || current.metadata?.runId === match.id
               ? { ...current, metadata: { ...current.metadata, studio: { ...current.metadata.studio!, task: {
-                status: match.status, stage: match.stage, pct: match.pct, errorCode: match.errorCode, queue: null,
+                status: match.status, stage: match.stage, pct: match.pct, errorCode: match.errorCode, errorMessage: match.errorMessage, logId: match.logId || match.output.logId, queue: null,
               } } } } : current);
           }
           continue;
         }
         if (match) void watch(match, node.id);
       }
-    }).catch(e => message.error(e.message || "任务记录未加载，请刷新重试"));
+    }).catch(e => message.error(e));
     return () => { cancelled = true; };
   }, [projectId, watch, patch, message]);
 
@@ -296,7 +298,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       setRuns(current=>[...new Map([...current,...result.items].map(run=>[run.id,run])).values()].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)||b.id.localeCompare(a.id)));
       setTaskPage(page);setTaskMore(result.hasMore);
       for(const run of result.items)if(run.status==='running')void watch(run,nodesRef.current.some(n=>n.id===run.nodeId&&n.metadata?.studio?.runId===run.id)?run.nodeId:undefined);
-    }catch(e){if(epoch.current===token)setTaskError(e instanceof Error?e.message:"任务记录未加载，请重试");}
+    }catch(e){if(epoch.current===token)setTaskError(e);}
     finally{if(epoch.current===token)setTasksLoading(false);}
   },[projectId,watch]);
   useEffect(()=>{if(taskList)void loadTasks();},[taskList,loadTasks]);
@@ -319,7 +321,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   },[speechOriginId,patch]);
   const closeSpeech=async()=>{
     if(speechSaving||busy)return;setSpeechSaving(true);const session=panelSession.current;
-    try{await saveStudioDocument(projectId);if(panelSession.current===session)setSpeechOpen(false);}catch(e){message.error(e instanceof Error?e.message:'配音草稿未保存，请重试');}finally{setSpeechSaving(false);}
+    try{await saveStudioDocument(projectId);if(panelSession.current===session)setSpeechOpen(false);}catch(e){message.error(e);}finally{setSpeechSaving(false);}
   };
   const openDirector = useCallback((action: StudioOperation, node?: CanvasNodeData, presentation: "canvas" | "storyboard" = "canvas") => {
     panelSession.current++;setScriptPreviewId(undefined);
@@ -397,7 +399,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     setPickingReferences(false);
     setDirectorSaving(true);const session=panelSession.current;
     try{await saveStudioDocument(projectId);if(panelSession.current===session)setDirector(false);return true;}
-    catch(e){message.error(e instanceof Error?e.message:"创作草稿未保存，请重试关闭");return false;}
+    catch(e){message.error(e);return false;}
     finally{setDirectorSaving(false);}
   };
   // Switching nodes/types must persist the old draft first. A failed save keeps its editor visible.
@@ -407,7 +409,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(!storyboardNodeId)return true;
     setStoryboardChanging(true);
     try{await saveStudioDocument(projectId);return true;}
-    catch(e){message.error(e instanceof Error?e.message:"节点未保存，请重试");return false;}
+    catch(e){message.error(e);return false;}
     finally{setStoryboardChanging(false);}
   };
   const switchView=async(next:typeof mode)=>{
@@ -494,7 +496,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(storyboardNodeId===originId&&origin?.metadata?.studio?.script&&(operation==="script"||operation==="storyboard"))requestPrompt=studioScriptPrompt(origin.metadata.studio.script,requestPrompt);
       requestPrompt=withStudioLinkedText(requestPrompt,originId,nodesRef.current,connectionsRef.current,operation==='script'&&scriptMode==='adapt'?scriptSourceNodeId:undefined);
       if(requestPrompt.length>16000)throw new Error("创作要求与引用文本合计超过 16000 字，请减少引用或按分集创作");}
-    catch(e){message.error(e instanceof Error?e.message:"请检查改编素材");return;}
+    catch(e){message.error(e);return;}
     setBusy(true);
     const submissionEpoch=epoch.current,session=panelSession.current;
     let posted=false;
@@ -526,10 +528,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       patch(target.id, n => applyStudioRun(n, run)); if(panelSession.current===session){if(mode==="storyboard")setStoryboardNodeId(target.id);else setDirector(false);} void watch(run,target.id);
     } catch (e) {
       if(epoch.current!==submissionEpoch)return;
-      message.error(e instanceof Error ? e.message : "提交失败，请重试");
+      message.error(e);
       // Preserve the request key so an uncertain network outcome can recover the original task.
       const rejected=!posted || e instanceof ApiError && (typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408 || e.code==="AI_NOT_CONFIGURED" || e.code==="PROMPT_NOT_CONFIGURED" || e.code==="ENDPOINT_NOT_ALLOWED" || e.code==="AI_TOKEN_PRICE_NOT_CONFIGURED" || e.code==="AI_TOKEN_PRICE_INVALID");
-      patch(target.id,n => ({ ...n, metadata: { ...n.metadata,status:rejected?"error":"loading", errorDetails: rejected?(e instanceof Error?e.message:"提交失败，请重试"):"任务未确认，请确认原任务，避免重复提交" } }));
+      patch(target.id,n => ({ ...n, metadata: { ...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading", errorDetails: rejected?(e instanceof Error?e.message:"提交失败，请重试"):"任务未确认，请确认原任务，避免重复提交" } }));
     } finally { if(epoch.current===submissionEpoch)setBusy(false); }
   };
   const importScript = async () => {
@@ -547,7 +549,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(prior||node.id===origin?.id)patch(node.id,()=>node);else addNode(node,origin);
     pendingScriptImport.current=node.id;
     try {await saveStudioDocument(projectId);pendingScriptImport.current=undefined;if(panelSession.current===session){setDirector(false);setEditorId(node.id);}}
-    catch(e){message.error(e instanceof Error?e.message:"剧本保存失败，请重试保存");}finally{setBusy(false);}
+    catch(e){message.error(e);}finally{setBusy(false);}
   };
   const retry = async (node: CanvasNodeData) => {
     if(node.metadata?.studio?.scriptEditor?.pending){setDirector(false);setEditorId(node.id);onClosePanel();return;}
@@ -574,8 +576,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(epoch.current!==submissionEpoch)return;
       // A failed local save cannot reject an earlier possibly accepted request.
       const rejected=!posted ? !confirmingPendingRequest : !confirmingKnownRun&&e instanceof ApiError && typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
-      patch(node.id,n=>({...n,metadata:{...n.metadata,status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"任务未确认，请确认原任务"}}));
-      message.error(e instanceof Error?e.message:"重试失败");
+      patch(node.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"任务未确认，请确认原任务"}}));
+      message.error(e);
     } finally {if(epoch.current===submissionEpoch)setBusy(false);}
   };
   const sendNative = async (node:CanvasNodeData,request:StudioSpeechRequest|StudioLipSyncRequest,confirmingRequest=false) => {
@@ -594,8 +596,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if(epoch.current!==submissionEpoch)return;
       // Saving offline cannot reject an earlier possibly accepted speech/lip task.
       const rejected=!posted?!confirmingPendingRequest:!confirmingKnownRun&&e instanceof ApiError&&typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
-      patch(node.id,n=>({...n,metadata:{...n.metadata,status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"生成任务未确认，请确认原任务"}}));
-      message.error(e instanceof Error?e.message:"生成提交未确认");
+      patch(node.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"生成任务未确认，请确认原任务"}}));
+      message.error(e);
     } finally {if(epoch.current===submissionEpoch)setBusy(false);}
   };
   const createSpeech = async (value:Omit<StudioSpeechRequest,"clientRequestId"|"nodeId">) => {
@@ -629,15 +631,15 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       if (!node.metadata.studio?.adoption) addNode({ id: nanoid(), type: CanvasNodeType.Text, title: adoptName.trim(), width: 340, height: 240,
         position: { x: node.position.x, y: node.position.y - 310 }, metadata: { content: node.metadata.prompt, studio: { kind: "ip", adoption: result } } },node);
       setAdoptId(undefined); message.success(adoptIntent==="look"?"造型已加入人物档案":"IP 主形象已定稿"); await saveStudioDocument(projectId);
-    } catch(e) {message.error(e instanceof Error?e.message:"形象保存失败");} finally {setBusy(false);}
+    } catch(e) {message.error(e);} finally {setBusy(false);}
   };
   const openAdopt = (node: CanvasNodeData) => {
     const source=node.metadata?.studio?.adoption || node.metadata?.studio?.references?.find(r=>r.avatarId);
     setAdoptId(node.id);setAdoptName(node.title);setAdoptIp(source?.ipId);setAdoptAvatar(source?.avatarId);setAdoptIntent(source?.lookId?"look":"main");setAdoptRole(node.metadata?.studio?.libraryAssetRole&&editableIpAssetRoles.includes(node.metadata.studio.libraryAssetRole)?node.metadata.studio.libraryAssetRole:"look");
-    void listStudioIps().then(setIps).catch(e => message.error(e.message));void listStudioIpAssets().then(setIpAssets).catch(e=>message.error(e.message));onClosePanel();};
+    void listStudioIps().then(setIps).catch(e => message.error(e));void listStudioIpAssets().then(setIpAssets).catch(e=>message.error(e));onClosePanel();};
   const assemble = async () => {
     if(workVoiceMissing){message.error('原配音已移出画布，请重新选择配音或保留原音轨');return;}
-    if(packagingEnabled){try{parseStudioCaptions(captionText);if(!brand.trim()&&!workTitle.trim()&&!cta.trim()&&!captionText.trim())throw new Error("请填写品牌文字或字幕");}catch(e){message.error(e instanceof Error?e.message:"字幕格式不正确");return;}}
+    if(packagingEnabled){try{parseStudioCaptions(captionText);if(!brand.trim()&&!workTitle.trim()&&!cta.trim()&&!captionText.trim())throw new Error("请填写品牌文字或字幕");}catch(e){message.error(e);return;}}
     const selectedClips = clips.filter(n => n.metadata?.studio?.includeInWork !== false);
     if (!selectedClips.length || busy) return;
     setBusy(true);const submissionEpoch=epoch.current;let posted=false; const target = makeStudioNode("assemble",selectedClips[selectedClips.length-1]);
@@ -654,8 +656,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     } catch(e){
       if(epoch.current!==submissionEpoch)return;
       const rejected=!posted||e instanceof ApiError&&typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
-      patch(target.id,n=>({...n,metadata:{...n.metadata,status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"合成提交未确认，请确认原任务"}}));
-      message.error(e instanceof Error?e.message:"合成提交失败");
+      patch(target.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"合成提交未确认，请确认原任务"}}));
+      message.error(e);
     } finally{if(epoch.current===submissionEpoch)setBusy(false);}
   };
   const reorder = (node: CanvasNodeData, offset: number) => {
@@ -664,7 +666,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   };
   const loadIpAssets = () => {
     setAssetsLoading(true);setAssetError("");
-    void listStudioIpAssets().then(setIpAssets).catch(e=>setAssetError(e.message || "IP 形象未加载，请重试")).finally(()=>setAssetsLoading(false));
+    void listStudioIpAssets().then(setIpAssets).catch(e=>setAssetError(e)).finally(()=>setAssetsLoading(false));
   };
   const openIpLibrary=(target:typeof libraryTarget={kind:"canvas"})=>{setLibraryTarget({...target,returnNodeId:target.nodeId||(target.kind==="director"?originId:activeComposerId)});setAssetPicker(true);loadIpAssets();if(target.kind==="canvas"||target.kind==="node")onClosePanel();};
   const restoreDirectorLibraryFocus=()=>{if(libraryTarget.kind==="director")setTimeout(()=>directorLibraryButton.current?.focus(),0);};
@@ -843,7 +845,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         try{const run=await extractStudioLipSync(projectId,selected.metadata.studio.runId);if(epoch.current!==token)return;
           patch(selected.id,n=>applyStudioRun(n,run));setRuns(current=>[run,...current.filter(r=>r.id!==run.id)]);await saveStudioDocument(projectId);
           message.success("口型片段已提取，原始对照视频保留在版本中；未再次扣积分");}
-        catch(e){if(epoch.current===token)message.error(e instanceof Error?e.message:"口型片段暂未整理完成");}
+        catch(e){if(epoch.current===token)message.error(e);}
         finally{if(epoch.current===token)setBusy(false);}
       })()}>提取口型片段 · 免费</button>}
       {selected.metadata?.studio?.lipSyncRequest&&selected.metadata.storageKey&&selected.metadata.studio.lipSyncNormalized&&!selected.metadata.primaryVideoId?.endsWith(":comparison")&&<button type="button" onClick={()=>{
@@ -852,7 +854,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       }}>采用口型片段</button>}
       {selected.type===CanvasNodeType.Audio && selected.metadata?.studio?.speechRequest && selected.metadata?.studio?.runId && selected.metadata?.status==="success" && <button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>}
       {selected.type===CanvasNodeType.Audio && selected.metadata?.content && <button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey)}>下载配音</button>}
-      {(selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&selected.metadata?.storageKey&&selected.metadata.content&&<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e instanceof Error?e.message:"下载失败，请重试"))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>}
+      {(selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&selected.metadata?.storageKey&&selected.metadata.content&&<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>}
       {selected.metadata?.status==="loading" && (selected.metadata.studio?.request||selected.metadata.studio?.speechRequest||selected.metadata.studio?.lipSyncRequest) && !selected.metadata.studio.runId && <button type="button" disabled={busy} onClick={()=>void retry(selected)}>确认原任务</button>}
       {selected.metadata?.status==="error" && (selected.metadata.studio?.request||selected.metadata.studio?.speechRequest||selected.metadata.studio?.lipSyncRequest) && <button title="AI 处理，会消耗积分" type="button" disabled={busy} onClick={()=>void retry(selected)}><StudioAiIcon/>重新生成</button>}
       {selectedTakes && selectedTakes.length>1 && <><button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button><Select aria-label="采用版本" value={selected.type===CanvasNodeType.Image?selected.metadata?.primaryImageId:selected.metadata?.primaryVideoId}
@@ -872,7 +874,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       </div>
       {pickingReferences&&<p className="studio-reference-pick-note" role="status">点击画布素材添加参考，完成后点击“完成参考选择”。</p>}
         {operation==="video"?<div className="studio-prompt-field"><span>创作要求</span><StudioMotionPrompt onLibraryRequest={openLibrary} videoModel={chosenModel?.endpointId} effectPreviews={nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>({storageKey:n.metadata!.storageKey!,name:n.title}))} ariaLabel="创作要求" references={videoPromptReferences} value={prompt} onChange={setPrompt} disabled={busy} className="studio-motion-drawer-editor" placeholder="描述画面或动作，输入 @ 引用素材"/></div>:<label>创作要求<StudioAssetMentionInput nodes={nodes} onLibraryRequest={openLibrary} onCanvasReference={id=>setReferenceIds(ids=>[...new Set([...ids,id])])} placeholder={operation==="script"?"描述故事、人物、风格和目标时长，也可以粘贴已有剧本":"描述希望生成的画面或动作"} value={prompt} onChange={setPrompt}/></label>}
-      {removedVideoMention&&<p role="alert">提示词中有已移除的参考，请删除该标记或重新引用素材。</p>}
+      {removedVideoMention&&<StudioErrorNotice error="提示词中有已移除的参考，请删除该标记或重新引用素材。"/>}
       <details className="studio-composer-settings" key={`${originId}-${operation}`}><summary>{ratio}{operation==="image"?` · ${imageCount} 张`:operation==="video"?` · ${duration} 秒 · ${videoCount} 条`:" · 创作设定"}<span>参数设置</span></summary>
       <div className="studio-director-form">
 
@@ -886,7 +888,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           libraryButtonRef={directorLibraryButton} onLibrary={()=>openIpLibrary({kind:"director"})}/>}
         {(operation==="script"||operation==="storyboard")&&<>
           {operation==="script"&&!rewriteScope&&<label>剧本创作模式<Select aria-label="剧本创作模式" value={scriptMode} onChange={setScriptMode} options={[{value:"original",label:"原创剧本"},{value:"adapt",label:"故事改编"}]}/></label>}
-          {operation==="script"&&scriptMode==="adapt"&&!rewriteScope&&<><label>改编素材<Select aria-label="改编素材" allowClear value={scriptSourceNodeId} onChange={setScriptSourceNodeId} placeholder="在创作要求中粘贴故事，或选择画布正文" options={nodes.filter(n=>n.type===CanvasNodeType.Text&&n.id!==originId&&(n.metadata?.content||n.metadata?.studio?.script)).map(n=>({value:n.id,label:n.title}))}/></label><p>使用所选故事的当前正文。改编要求与人物版本会随本次请求保存。</p>{scriptSourceNodeId&&!nodes.some(n=>n.id===scriptSourceNodeId)&&<p role="alert">原故事已移出画布，请重新选择素材。</p>}</>}
+          {operation==="script"&&scriptMode==="adapt"&&!rewriteScope&&<><label>改编素材<Select aria-label="改编素材" allowClear value={scriptSourceNodeId} onChange={setScriptSourceNodeId} placeholder="在创作要求中粘贴故事，或选择画布正文" options={nodes.filter(n=>n.type===CanvasNodeType.Text&&n.id!==originId&&(n.metadata?.content||n.metadata?.studio?.script)).map(n=>({value:n.id,label:n.title}))}/></label><p>使用所选故事的当前正文。改编要求与人物版本会随本次请求保存。</p>{scriptSourceNodeId&&!nodes.some(n=>n.id===scriptSourceNodeId)&&<StudioErrorNotice error="原故事已移出画布，请重新选择素材。"/>}</>}
           <StudioScriptSettingsForm value={settings} onChange={setSettings}/>
           {operation==="storyboard"&&originId&&<label>拆分范围<Select aria-label="拆分分集" allowClear value={episodeNo} placeholder="全部分集" onChange={setEpisodeNo} options={(nodes.find(n=>n.id===originId)?.metadata?.studio?.script?.episodes||[]).map(e=>({value:e.no,label:`第 ${e.no} 集 · ${e.title}`}))}/></label>}
           {capabilities?.textModelMode!=="fixed"&&!!capabilities?.textModels?.length&&<label>剧本模型<Select aria-label="剧本模型" value={capabilities.textModels.find(m=>m.endpointId===model)?.endpointId||capabilities.textModels.find(m=>m.isDefault)?.endpointId||capabilities.textModels[0]?.endpointId} onChange={setModel} options={capabilities.textModels.map(m=>({value:m.endpointId,label:m.name}))}/></label>}</>}
@@ -899,7 +901,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {legacyVideoError&&<p role="status">{legacyVideoError}</p>}
         {operation==="script" && <Checkbox checked={pasteScript} onChange={e=>setPasteScript(e.target.checked)}>直接保存已有剧本</Checkbox>}
         {operation==="script"&&rewriteScope&&<p>此次只改写{rewriteScope.field==="outline"?"大纲":`第 ${rewriteScope.episodeNo} 集正文`}，结果生成新剧本，其他内容保留。</p>}
-        {prompt.length>16000 && <p role="alert">剧本超过 16000 字，请按分集分别创作。</p>}
+        {prompt.length>16000 && <StudioErrorNotice error="剧本超过 16000 字，请按分集分别创作。"/>}
       </div>
 
       </details>
@@ -924,7 +926,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       </div>
     </div>
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
-    {capabilityError && <div className="studio-error-note" role="alert">{capabilityError}<button type="button" onClick={loadCapabilities}>重新加载</button></div>}
+    {capabilityError && <div className="studio-error-note"><StudioErrorNotice error={capabilityError}/><button type="button" onClick={loadCapabilities}>重新加载</button></div>}
     {!nodes.length&&mode==="canvas"&&<section className="studio-start" aria-label="开始创作"><h2>从一个 IP，开始创作</h2><p>先打造形象，也可以直接写剧本或引用已有 IP。</p>
       <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>打造 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>制作 IP 短视频</button></div></section>}
     {/* Plain text actions and editing share one screen-space surface. */}
@@ -958,18 +960,18 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           <SignedVideo src={node.metadata?.content} storageKey={node.metadata?.storageKey} controls preload="metadata"/><div><strong>第 {node.metadata?.studio?.episodeNo||1} 集 · {index+1}. {node.title}</strong><p>{node.metadata?.prompt}</p></div>
           <Button aria-label={`片段 ${index+1} 上移`} disabled={!index} onClick={() => reorder(node,-1)}><ArrowUp size={15}/></Button>
           <Button aria-label={`片段 ${index+1} 下移`} disabled={index===clips.length-1} onClick={() => reorder(node,1)}><ArrowDown size={15}/></Button></article>)}</div>
-        {!!clips.length&&<label className="studio-packaging-editor">成片配音<Select aria-label="成片配音" allowClear value={voiceoverKey} onChange={voiceoverStorageKey=>changeWorkDraft({voiceoverStorageKey})} placeholder="保留原音轨" options={nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&n.metadata.status==="success").map(n=>({value:n.metadata!.storageKey!,label:n.title}))}/>{workVoiceMissing&&<small role="alert">原配音已移出画布，请重新选择或清除配音。</small>}<small>替换音轨不会重新匹配口型。已制作口型片段时，请保留其原音轨；配音不能长于成片。</small></label>}
+        {!!clips.length&&<label className="studio-packaging-editor">成片配音<Select aria-label="成片配音" allowClear value={voiceoverKey} onChange={voiceoverStorageKey=>changeWorkDraft({voiceoverStorageKey})} placeholder="保留原音轨" options={nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&n.metadata.status==="success").map(n=>({value:n.metadata!.storageKey!,label:n.title}))}/>{workVoiceMissing&&<StudioErrorNotice error="原配音已移出画布，请重新选择或清除配音。"/>}<small>替换音轨不会重新匹配口型。已制作口型片段时，请保留其原音轨；配音不能长于成片。</small></label>}
         {!!clips.length&&<div className="studio-packaging-editor"><Checkbox checked={packagingEnabled} onChange={e=>changeWorkDraft({packagingEnabled:e.target.checked})}>添加品牌文字与字幕</Checkbox>{packagingEnabled&&<><div className="studio-settings-grid"><label>品牌<Input aria-label="成片品牌" value={brand} onChange={e=>changeWorkDraft({brand:e.target.value})} maxLength={60}/></label><label>作品标题<Input aria-label="成片标题文字" value={workTitle} onChange={e=>changeWorkDraft({title:e.target.value})} maxLength={120}/></label></div><label>结尾提示<Input aria-label="成片结尾提示" value={cta} onChange={e=>changeWorkDraft({cta:e.target.value})} maxLength={100}/></label><label>字幕（秒）<Input.TextArea aria-label="成片字幕时间与文字" value={captionText} onChange={e=>changeWorkDraft({captionText:e.target.value})} rows={4} placeholder={"0-3: 你要显示的字幕\n3-5: 下一条字幕"}/></label><p>字幕按你确认的时间烧录，当前不自动转写音轨。</p></>}</div>}
         {!!clips.length && <div className="studio-assembly-actions"><Button loading={workSaving} onClick={()=>void saveWork()}>保存成片配置</Button><Button type="primary" loading={busy} disabled={workSaving||workVoiceMissing} onClick={() => void assemble()}>合成作品</Button><span>{capabilities?.mock?"合成已选片段；测试响应不产生模型费用":"合成已选片段，不额外收取模型积分"}</span></div>}
         {work.map(node => <article key={node.id} className="studio-work-result"><h3>{node.title}</h3>{node.metadata?.status==="loading"?<p>合成中，可返回画布继续编辑</p>:node.metadata?.content?<><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
-          <Button onClick={() => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e.message))}><Download size={15}/>下载作品</Button></>:<p role="alert">{node.metadata?.errorDetails || "作品待合成"}</p>}</article>)}
+          <Button onClick={() => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}><Download size={15}/>下载作品</Button></>:<>{node.metadata?.status === "error" ? <StudioErrorNotice error={studioNodeError(node)} once={`run:${node.metadata.studio?.runId || node.id}`}/> : <p>作品待合成</p>}</>}</article>)}
       </>}
     </section>}
     {mode!=="storyboard"&&directorPanel}
     <StudioFloatingPanel title="剧本" anchorId={scriptPreviewId} open={!!scriptPreviewId&&!editorId} onClose={()=>setScriptPreviewId(undefined)} footer={<Button type="primary" onClick={()=>{setEditorId(scriptPreviewId);}}>展开剧本编辑器</Button>}>
       {(()=>{const script=nodes.find(n=>n.id===scriptPreviewId)?.metadata?.studio?.script;return script?<div className="studio-script-inline"><h3>{script.title}</h3><p>{script.outline||script.episodes[0]?.content.slice(0,600)}</p><small>{script.episodes.length} 集 · 在画布中确认内容，展开后编辑大纲、人物与分集正文。</small></div>:null;})()}
     </StudioFloatingPanel>
-    <Modal title="编辑文字" open={storyboardTextExpanded&&!!storyboardNode} onCancel={()=>{void saveStudioDocument(projectId).then(()=>setStoryboardTextExpanded(false)).catch(e=>message.error(e instanceof Error?e.message:"文字未保存，请重试"));}} footer={null} width="90vw" getContainer={containers}>
+    <Modal title="编辑文字" open={storyboardTextExpanded&&!!storyboardNode} onCancel={()=>{void saveStudioDocument(projectId).then(()=>setStoryboardTextExpanded(false)).catch(e=>message.error(e));}} footer={null} width="90vw" getContainer={containers}>
       <Input.TextArea aria-label="展开节点文字" rows={18} value={storyboardNode?.metadata?.content||""} onChange={e=>{if(storyboardNode)patch(storyboardNode.id,n=>({...n,metadata:{...n.metadata,content:e.target.value}}));}}/>
     </Modal>
     {editor&&<StudioScriptEditor key={`${projectId}:${editor.id}`} projectId={projectId} node={editor} capabilities={capabilities}
@@ -998,8 +1000,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     <Modal title="比较并采用版本" open={!!takePicker} onCancel={()=>setTakePicker(undefined)} footer={null} width={720} getContainer={containers}>
       <div className="studio-take-grid">{(()=>{const node=nodes.find(n=>n.id===takePicker);const adopted=node?.type===CanvasNodeType.Image?node.metadata?.primaryImageId:node?.metadata?.primaryVideoId;return (node?.type===CanvasNodeType.Image?node.metadata?.images:node?.metadata?.videos)?.map((take,index)=><article className="studio-take" key={take.id}>
         <div className="studio-take-heading"><strong>版本 {index+1}</strong><span>{take.id===adopted?"已采用":take.status==="loading"?'queue' in take&&take.queue?`排队第 ${take.queue.position} 位`:"生成中":take.status==="error"?"生成失败":"可采用"}</span></div>
-        {take.status==="success"&&take.storageKey?(node?.type===CanvasNodeType.Image?<SignedImage src={take.content} storageKey={take.storageKey} alt={`版本 ${index+1}`}/>:<SignedVideo src={take.content} storageKey={take.storageKey} controls preload="metadata"/>):<p className="studio-take-placeholder" role="status">{take.status==="error"?take.errorDetails||"本条生成失败，其他候选可继续采用。":'queue' in take&&take.queue?studioQueueNotice(take.queue):"正在生成，完成后可预览并采用。"}</p>}
-        <Button disabled={take.status!=="success"||!take.storageKey||take.id===adopted} onClick={()=>{if(node)chooseTake(node.id,take.id);void saveStudioDocument(projectId).catch(e=>message.error(e.message));}}>{take.id===adopted?"已采用此版本":`采用版本 ${index+1}`}</Button></article>);})()}</div>
+        {take.status==="success"&&take.storageKey?(node?.type===CanvasNodeType.Image?<SignedImage src={take.content} storageKey={take.storageKey} alt={`版本 ${index+1}`}/>:<SignedVideo src={take.content} storageKey={take.storageKey} controls preload="metadata"/>):<p className="studio-take-placeholder" role="status">{take.status==="error"?<StudioErrorNotice error={{code: take.errorCode || "STUDIO_VIDEO_FAILED",message: take.errorDetails || "本条生成失败，其他候选可继续采用。",logId: take.errorLogId,taskId: take.id}} once={`take:${take.id}`}/>:'queue' in take&&take.queue?studioQueueNotice(take.queue):"正在生成，完成后可预览并采用。"}</p>}
+        <Button disabled={take.status!=="success"||!take.storageKey||take.id===adopted} onClick={()=>{if(node)chooseTake(node.id,take.id);void saveStudioDocument(projectId).catch(e=>message.error(e));}}>{take.id===adopted?"已采用此版本":`采用版本 ${index+1}`}</Button></article>);})()}</div>
 
     </Modal>
     <Modal title="加入 IP 档案" open={!!adoptId} onCancel={() => !busy && setAdoptId(undefined)} onOk={() => void adopt()} confirmLoading={busy} okText="保存" cancelText="取消" getContainer={containers}>
@@ -1013,7 +1015,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     <StudioIpLibrary actionLabel={libraryTarget.kind==="canvas"?undefined:"引用选中素材"} open={assetPicker} assets={ipAssets} loading={assetsLoading} error={assetError} onClose={closeIpLibrary} onRefresh={loadIpAssets} onImport={importIpAsset} onAssetChange={asset=>setIpAssets(current=>current.map(a=>a.lookId===asset.lookId&&a.avatarId===asset.avatarId?asset:a))}/>
     <StudioFloatingPanel title="创作任务" open={taskList} onClose={() => setTaskList(false)} width={420} utility>
       {runs.some(r=>r.status==='running')&&<p className="studio-task-polling">队列位置和任务状态自动更新</p>}
-      {taskError&&<p role="alert">{taskError} <Button onClick={()=>void loadTasks(taskPage)} disabled={tasksLoading}>重试加载任务</Button></p>}
+      {taskError&&<p><StudioErrorNotice error={taskError}/> <Button onClick={()=>void loadTasks(taskPage)} disabled={tasksLoading}>重试加载任务</Button></p>}
       {unconfirmed.map(n=><article className="studio-task-row" key={n.id}><strong>{n.title}</strong><span>提交结果尚未确认</span><Button disabled={busy} onClick={()=>void retry(n)}>确认原任务</Button></article>)}
       {!runs.length&&!unconfirmed.length?<p>还没有创作任务</p>:taskRuns.map(run => <article className="studio-task-row" key={run.id}><strong>{nodes.find(n => n.id===run.nodeId)?.title || labels[(run.inputs as unknown as StudioRunRequest).operation] || "IP 定稿"}</strong>
         <span>{run.status==="running"?studioTaskLabel(run):run.status==="done"?run.stage==="部分视频生成失败"?"部分完成":"已完成":run.errorCode==="IP_RUN_CANCELLED"?"已停止":"生成失败"}</span><small>{run.output.mock?"测试响应":run.status==='running'?"":`已消耗 ${run.cost} 积分`}</small>
@@ -1027,7 +1029,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           setRuns(old=>old.map(r=>r.id===result.id?result:r));
           if(nodesRef.current.some(n=>n.id===result.nodeId&&n.metadata?.studio?.runId===result.id))patch(result.nodeId,n=>applyStudioRun(n,result));
           message.info(result.status==='running'?"已请求停止创作":"已停止排队");
-        }).catch(e=>message.error(e.message));}}>{studioTaskQueued(run)?"停止排队":"停止"}</Button>:run.status==="failed"&&run.errorCode!=="IP_RUN_CANCELLED"&&nodes.find(n=>n.id===run.nodeId)?.metadata?.studio?.runId===run.id?<Button size="small" onClick={() => {const node=nodesRef.current.find(n => n.id===run.nodeId);if(node)void retry(node);}}>重新生成</Button>:null}</article>)}
+        }).catch(e=>message.error(e));}}>{studioTaskQueued(run)?"停止排队":"停止"}</Button>:run.status==="failed"&&run.errorCode!=="IP_RUN_CANCELLED"&&nodes.find(n=>n.id===run.nodeId)?.metadata?.studio?.runId===run.id?<Button size="small" onClick={() => {const node=nodesRef.current.find(n => n.id===run.nodeId);if(node)void retry(node);}}>重新生成</Button>:null}</article>)}
       {taskMore&&<Button block loading={tasksLoading} onClick={()=>void loadTasks(taskPage+1)}>加载更多任务</Button>}
     </StudioFloatingPanel>
     <Modal title="本次创作输入" open={!!runDetail} onCancel={()=>setRunDetail(undefined)} footer={null} width={720} getContainer={containers}>

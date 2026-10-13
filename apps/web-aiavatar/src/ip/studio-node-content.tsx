@@ -20,7 +20,6 @@ export function StudioNodeContent({ node, readOnly=false }: { node: CanvasNodeDa
   const script = studio?.script;
   if (!script) return <div className="studio-node-summary"><FileText size={24} /><strong>{node.metadata?.status === "loading" ? studioTaskQueued(studio?.task)?"剧本排队中":"剧本生成中" : "剧本待创作"}</strong>
     {studio?.composerDraft?.prompt&&<p>{studio.composerDraft.prompt}</p>}
-    {node.metadata?.status === "error" && <p role="alert">{node.metadata.errorDetails}</p>}
     <button disabled={readOnly} type="button" onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()} onClick={() => dispatchStudioCommand("editor", node.id)}>编辑剧本</button>
     <button disabled={readOnly} type="button" onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()} onClick={() => dispatchStudioCommand("script", node.id)}>AI 起草剧本</button></div>;
   return <div className="studio-script-summary">

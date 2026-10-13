@@ -20,6 +20,7 @@ import java.time.Instant;
 /** Audio and lip-sync share one leased IpRun lifecycle. Accepted jobs only poll after restart. */
 @Service
 public class StudioSpeechWorker {
+    @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
     @org.springframework.beans.factory.annotation.Autowired private AiGenerationQueueService queue;
     private static final Logger log=LoggerFactory.getLogger(StudioSpeechWorker.class);
     private final IpRunRepository runs; private final AiModelEndpointRepository endpoints;
@@ -155,6 +156,7 @@ public class StudioSpeechWorker {
         } else {
             credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 生成失败或取消 · 释放冻结");run.setCost(0);
             run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");run.setErrorCode(code);run.setErrorMessage(message);
+            if (errorLog != null) errorLog.attach(run, null);
         }
         run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);
         if(queue!=null)org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(

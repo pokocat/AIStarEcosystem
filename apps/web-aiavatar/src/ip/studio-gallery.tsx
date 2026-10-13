@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, LayoutTemplate, Loader2 } from "lucide-react";
@@ -12,7 +13,7 @@ import { StudioPageSearch } from './studio-page';
 export function useStudioList<T>(load: () => Promise<T[]>, ready: boolean) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useStudioErrorState();
   const [notEnrolled, setNotEnrolled] = useState(false);
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -22,7 +23,7 @@ export function useStudioList<T>(load: () => Promise<T[]>, ready: boolean) {
     void load().then(items => { if (active) setData(items); }).catch(e => {
       if (!active) return;
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);
-      else setError(e instanceof Error ? e.message : "暂时没加载出来，请重试");
+      else setError(e);
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [load, ready, revision]);
@@ -32,8 +33,8 @@ export function useStudioList<T>(load: () => Promise<T[]>, ready: boolean) {
 export function GalleryState({ loading, error, retry, children }: {
   loading?: boolean; error?: string; retry?: () => void; children?: React.ReactNode;
 }) {
-  return <div className="studio-gallery-state" role={error ? "alert" : loading ? "status" : undefined}>
-    {loading ? <><Loader2 size={22} className="studio-gallery-spinner" /><p>正在加载…</p></> : error ? <><p>{error}</p><button type="button" className="ip-brand-secondary" onClick={retry}>重新加载</button></> : children}
+  return <div className="studio-gallery-state" role={loading ? "status" : undefined}>
+    {loading ? <><Loader2 size={22} className="studio-gallery-spinner" /><p>正在加载…</p></> : error ? <><p><StudioErrorNotice error={error}/></p><button type="button" className="ip-brand-secondary" onClick={retry}>重新加载</button></> : children}
   </div>;
 }
 

@@ -56,11 +56,13 @@ export function registerUnauthorizedHandler(fn: UnauthorizedHandler | null) {
 
 export class ApiError extends Error {
   code: string;
+  logId?: string;
   details?: unknown;
   status?: number;
   constructor(shape: ApiErrorShape, status?: number) {
     super(shape.message);
     this.code = shape.code;
+    this.logId = shape.logId;
     this.details = shape.details;
     this.status = status;
   }

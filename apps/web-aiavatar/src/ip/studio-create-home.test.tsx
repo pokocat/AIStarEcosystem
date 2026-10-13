@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IpProjectSummary, IpTemplate } from "@ai-star-eco/types";
@@ -68,7 +70,8 @@ describe("Creation catalogue", () => {
     mocks.templates.mockRejectedValue(new Error("模板服务不可用"));
     render(<StudioCreateHome />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
-    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "模板服务不可用重新加载");
+    expect((await screen.findByRole("alert")).textContent).toContain("模板服务不可用");
+    expect(screen.getByRole("button", {name: "重新加载"})).toBeDefined();
   });
   it("keeps a failed delete reviewable and removes the card only after a successful retry", async () => {
     mocks.remove.mockRejectedValueOnce(new Error("删除未成功"));
@@ -134,3 +137,5 @@ describe("Creation idea moved from home", () => {
     expect(mocks.create).toHaveBeenCalledOnce();
   });
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

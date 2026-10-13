@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 import { useEffect, useState } from "react";
 import { App, Button, Drawer, Input, Select } from "antd";
 import type { StudioAssetCatalog } from "@ai-star-eco/types/ip-studio-workflow";
@@ -9,10 +10,10 @@ import { SignedImage } from "@/canvas-bridge/signed-image";
 
 type Props={initialCharacterId?:string;onOpenIpLibrary:()=>void;open:boolean;onClose:()=>void;nodes:CanvasNodeData[];onDraft:(prompt:string,characterNodeId:string,productNodeId?:string,product?:StudioAssetCatalog["products"][number])=>void};
 export function StudioCommerce({initialCharacterId,onOpenIpLibrary,open,onClose,nodes,onDraft}:Props) {
-  const {message}=App.useApp();const [catalog,setCatalog]=useState<StudioAssetCatalog>(),[error,setError]=useState(""),[characterId,setCharacterId]=useState<string>(),[productId,setProductId]=useState<string>(),[name,setName]=useState(""),[points,setPoints]=useState(""),[template,setTemplate]=useState("实物介绍");
+  const {message}=useStudioApp();const [catalog,setCatalog]=useState<StudioAssetCatalog>(),[error,setError]=useStudioErrorState(),[characterId,setCharacterId]=useState<string>(),[productId,setProductId]=useState<string>(),[name,setName]=useState(""),[points,setPoints]=useState(""),[template,setTemplate]=useState("实物介绍");
   const characters=nodes.filter(n=>n.type===CanvasNodeType.Image&&(n.metadata?.studio?.adoption||n.metadata?.studio?.references?.some(r=>r.avatarId)));
   const images=nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey&&!characters.some(c=>c.id===n.id));
-  const reload=()=>{setError("");void studioAssetCatalog().then(setCatalog).catch(e=>setError(e.message||"商品与声音状态未加载"));};
+  const reload=()=>{setError("");void studioAssetCatalog().then(setCatalog).catch(e=>setError(e));};
   useEffect(()=>{if(open)reload();},[open]);
   useEffect(()=>{if(initialCharacterId)setCharacterId(initialCharacterId);},[initialCharacterId]);
   const product=catalog?.products.find(p=>"asset:"+p.id===productId),productNode=images.find(n=>n.id===productId),character=characters.find(n=>n.id===characterId);
@@ -21,7 +22,7 @@ export function StudioCommerce({initialCharacterId,onOpenIpLibrary,open,onClose,
   const persona=catalog?.performers.find(p=>p.avatarId===avatarId);
   return <Drawer title="IP 商品视频" open={open} onClose={onClose} size={520} getContainer={()=>document.querySelector<HTMLElement>(".ip-surface")||document.body}>
     <div className="studio-director-form"><p>确认角色、商品与卖点，先生成可修改的脚本，再进入同一故事板制作。</p>
-      {error&&<p role="alert">{error}<Button onClick={reload}>重新加载</Button></p>}
+      {error&&<p><StudioErrorNotice error={error}/><Button onClick={reload}>重新加载</Button></p>}
       <Button onClick={onOpenIpLibrary}>从 IP 人物库选择出镜人物</Button>
       <label>画布出镜人物<Select aria-label="商品视频出镜 IP" value={characterId} onChange={setCharacterId} options={characters.map(n=>({value:n.id,label:n.title}))} placeholder="先在画布引用或定稿 IP"/></label>
       {character?.metadata?.content&&<SignedImage src={character.metadata.content} storageKey={character.metadata.storageKey} alt={character.title} style={{height:150,objectFit:"contain"}}/>}

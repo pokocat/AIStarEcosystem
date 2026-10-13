@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
@@ -59,7 +61,7 @@ test('manual edits during an AI response disable ordinary adoption; explicit rep
  fireEvent.click(screen.getByRole('button',{name:'用 AI 版本替换当前稿'}));fireEvent.click(screen.getByRole('button',{name:'撤销采纳'}));expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(edited);
 });
 test('an unknown submission result recovers with the original key and document despite later draft edits and reload',async()=>{
- api.submit.mockRejectedValueOnce(new TypeError('网络中断'));render(<Host/>);await send();await screen.findByRole('alert');const pending=snapshot.metadata!.studio!.scriptEditor!.pending!;expect(pending.runId).toBeUndefined();const persisted=structuredClone(snapshot);cleanup();render(<Host initial={persisted}/>);openAssistant();fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:document+'\n后续手改。'}});fireEvent.click(screen.getByRole('button',{name:'确认原改稿任务'}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1]).toEqual(pending.request);await screen.findByText('AI 建议版本 · 尚未采纳');expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('后续手改');expect(snapshot.metadata?.studio?.request).toEqual(accepted);
+ api.submit.mockRejectedValueOnce(new TypeError('网络中断'));render(<Host/>);await send();(await screen.findAllByRole('alert'))[0];const pending=snapshot.metadata!.studio!.scriptEditor!.pending!;expect(pending.runId).toBeUndefined();const persisted=structuredClone(snapshot);cleanup();mountStudioErrorNotifications(api.error);render(<Host initial={persisted}/>);openAssistant();fireEvent.change(screen.getByRole('textbox',{name:'剧本文档'}),{target:{value:document+'\n后续手改。'}});fireEvent.click(screen.getByRole('button',{name:'确认原改稿任务'}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1]).toEqual(pending.request);await screen.findByText('AI 建议版本 · 尚未采纳');expect(snapshot.metadata?.studio?.scriptEditor?.draft).toContain('后续手改');expect(snapshot.metadata?.studio?.request).toEqual(accepted);
 });
 test('accepted jobs resume by run ID without submitting or charging another task',async()=>{
  const state:NonNullable<StudioNodeMetadata['scriptEditor']>={draft:document,turns:[{role:'user',content:'增强冲突'}],pending:{request:{...accepted,operation:'assistant',scriptEdit:{markdown:document}},baseMarkdown:document,runId:'revision-1'}};
@@ -73,12 +75,12 @@ test('material processing is separate from chat and saves the document before op
  fireEvent.click(screen.getByRole('button',{name:'素材处理'}));await waitFor(()=>expect(api.extract).toHaveBeenCalledOnce());expect(api.commit.mock.invocationCallOrder[0]).toBeLessThan(api.extract.mock.invocationCallOrder[0]);
 });
 test('invalid model output leaves the original draft available and releases the UI lock',async()=>{
- api.submit.mockResolvedValue(done('# 不完整的稿子'));render(<Host/>);await send();await screen.findByRole('alert');expect(snapshot.metadata?.studio?.scriptEditor?.pending).toBeUndefined();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);expect(snapshot.metadata?.studio?.scriptEditor?.proposal).toBeUndefined();
+ api.submit.mockResolvedValue(done('# 不完整的稿子'));render(<Host/>);await send();(await screen.findAllByRole('alert'))[0];expect(snapshot.metadata?.studio?.scriptEditor?.pending).toBeUndefined();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);expect(snapshot.metadata?.studio?.scriptEditor?.proposal).toBeUndefined();
 });
 test('a legacy node copy cannot recover a revision task belonging to its source node',async()=>{
  const pending={request:{...accepted,operation:'assistant' as const},baseMarkdown:document,runId:'source-task'};
  render(<Host initial={{...original,id:'copy',metadata:{...original.metadata,studio:{...original.metadata!.studio!,scriptEditor:{draft:document,turns:[],pending}}}}}/>);
- openAssistant();await screen.findByRole('alert');expect(api.read).not.toHaveBeenCalled();expect(api.submit).not.toHaveBeenCalled();expect(snapshot.metadata?.studio?.scriptEditor?.pending).toBeUndefined();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);
+ openAssistant();(await screen.findAllByRole('alert'))[0];expect(api.read).not.toHaveBeenCalled();expect(api.submit).not.toHaveBeenCalled();expect(snapshot.metadata?.studio?.scriptEditor?.pending).toBeUndefined();expect(snapshot.metadata?.studio?.scriptEditor?.draft).toBe(document);
 });
 
 test('the document opens without a creation panel, and toggling that panel preserves the document and chat draft',()=>{
@@ -95,3 +97,5 @@ test('chat hides pricing internals and updates actual credits after completion',
  render(<Host tokenPricing={tokenPricing}/>);openAssistant();expect(screen.queryByText(/Token|冻结|21 积分/)).toBeNull();expect(screen.queryByText(/已消耗/)).toBeNull();await send();
  expect(api.submit.mock.calls[0][1].maxCost).toBe(21);expect(await screen.findByText('已消耗 2 积分')).toBeDefined();expect(screen.queryByText(/Token|冻结|21 积分/)).toBeNull();
 });
+
+beforeEach(() => { mountStudioErrorNotifications(api.error); });

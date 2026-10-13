@@ -1,5 +1,6 @@
 "use client";
 
+import { StudioErrorNotice, studioNodeError } from './studio-errors';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Input } from 'antd';
 import type { StudioShot } from '@ai-star-eco/types/ip-studio-workflow';
@@ -88,7 +89,7 @@ export function StudioStoryboard({ nodes, connections, selectedNodeId, changing,
               <div className="studio-storyboard-node-heading"><button type="button" aria-label={`打开节点 ${node.title}`} aria-current={selectedNodeId === node.id ? true : undefined} disabled={changing} onClick={() => onOpenNode(node)}>{group.type === 'text' && <span className="studio-storyboard-text-icon"><Icon size={17}/></span>}<span>{node.title}</span></button></div>
               {group.type === 'text' && node.metadata?.status === 'loading' && <span className="studio-storyboard-text-status" role="status">{studioStoryboardStatus(node)}</span>}
               {group.type !== 'text' && <>{preview(node)}{meta(node)}{references(node)}
-                {node.metadata?.status === 'error' && node.metadata.errorDetails && <p className="studio-storyboard-error" role="alert">{node.metadata.errorDetails}</p>}</>}
+                {node.metadata?.status === 'error' && node.metadata.errorDetails && <StudioErrorNotice error={studioNodeError(node)} once={`run:${node.metadata.studio?.runId || node.id}`}/>}</>}
             </article>)}
           </div>
         </section>;
@@ -103,7 +104,7 @@ export function StudioStoryboard({ nodes, connections, selectedNodeId, changing,
           {preview(selected, true)}
           {selected.metadata?.studio?.textEditor?.proposal&&<details className="studio-storyboard-text-proposal" open><summary>正文已被修改，AI 结果尚未覆盖原文</summary>
             <div>{selected.metadata.studio.textEditor.proposal.content}</div><button type="button" disabled={changing} onClick={()=>onAcceptText?.(selected)}>采用 AI 修改</button></details>}
-          {selected.metadata?.status === 'error' && selected.metadata.errorDetails && <p className="studio-storyboard-error" role="alert">{selected.metadata.errorDetails}</p>}
+          {selected.metadata?.status === 'error' && selected.metadata.errorDetails && <StudioErrorNotice error={studioNodeError(selected)} once={`run:${selected.metadata.studio?.runId || selected.id}`}/>}
           {selected.metadata?.studio?.upstreamChanged && <p className="studio-storyboard-note">引用内容已修改，已有产物保留。</p>}
           {selected.metadata?.studio?.shot && <details className="studio-storyboard-shot"><summary>镜头信息</summary>
             <label>画面描述<Input.TextArea aria-label={`${selected.title} 画面描述`} value={selected.metadata.studio.shot.description} autoSize={{ minRows: 2, maxRows: 6 }} onChange={e => onShotChange(selected.id, { description: e.target.value })}/></label>

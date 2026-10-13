@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Modal, Select, Skeleton } from 'antd';
 import { ArrowLeft, Heart, Info, Plus, Search, Sparkles } from 'lucide-react';
@@ -18,7 +19,7 @@ export function StudioEffectLibrary({model,disabled,hasEffect=false,onRememberCa
   model:string;disabled?:boolean;hasEffect?:boolean;onRememberCaret:()=>void;onApply:(effect:StudioVideoEffect,catalogue:StudioVideoEffect[])=>void;
   onCatalog:(effects:StudioVideoEffect[])=>void;previews?:StudioEffectPreview[];
 }) {
-  const [open,setOpen]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const [open,setOpen]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useStudioErrorState();
   const [items,setItems]=useState<StudioVideoEffect[]>([]),[models,setModels]=useState<IpModelOption[]>([]);
   const [scope,setScope]=useState<Scope>('square'),[query,setQuery]=useState(''),[tag,setTag]=useState('全部'),[compatibleOnly,setCompatibleOnly]=useState(true);
   const [selectedId,setSelectedId]=useState<string>(),[busy,setBusy]=useState(false),[publishing,setPublishing]=useState(false);
@@ -28,7 +29,7 @@ export function StudioEffectLibrary({model,disabled,hasEffect=false,onRememberCa
   const load=useCallback(async()=>{
     setLoading(true);setError('');
     try {const [catalog,configured]=await Promise.all([listVideoEffects(),fetchModels()]);setItems(catalog);setModels(configured.video);}
-    catch(e){setError(e instanceof Error?e.message:'特效库未加载，请重试');}finally{setLoading(false);}
+    catch(e){setError(e);}finally{setLoading(false);}
   },[]);
   useEffect(()=>{void load();},[load]);
   useEffect(()=>{onCatalog(items);},[items,onCatalog]);
@@ -41,19 +42,19 @@ export function StudioEffectLibrary({model,disabled,hasEffect=false,onRememberCa
     `${e.name} ${e.author} ${e.tags.join(' ')} ${e.models.map(modelName).join(' ')}`.toLocaleLowerCase().includes(needle))
     .sort((a,b)=>scope==='recent'?(b.lastUsedAt||'').localeCompare(a.lastUsedAt||''):b.createdAt.localeCompare(a.createdAt));
   const categories=['全部',...new Set(scoped.flatMap(e=>e.tags))];
-  const favorite=async(effect:StudioVideoEffect)=>{setBusy(true);setError('');try{update(await favoriteVideoEffect(effect.id,!effect.favorite));}catch(e){setError(e instanceof Error?e.message:'收藏未保存，请重试');}finally{setBusy(false);}};
+  const favorite=async(effect:StudioVideoEffect)=>{setBusy(true);setError('');try{update(await favoriteVideoEffect(effect.id,!effect.favorite));}catch(e){setError(e);}finally{setBusy(false);}};
   const apply=async(selected:StudioVideoEffect)=>{
     if(!effectMatchesModel(selected,model)||busy||disabled)return;
     setBusy(true);setError('');
     try {const effect=await applyVideoEffect(selected.id,model);update(effect);pendingApply.current=effect;setOpen(false);}
-    catch(e){setError(e instanceof Error?e.message:'特效未应用，请重试');}finally{setBusy(false);}
+    catch(e){setError(e);}finally{setBusy(false);}
   };
   const publish=async()=>{
     setBusy(true);setError('');
     try {const effect=await publishVideoEffect({name,summary,prompt,tags:tags.split(/[，,]/).map(v=>v.trim()).filter(Boolean),models:general?[]:allowed,visibility:'personal',previewKey});
       update(effect);setPublishing(false);setScope('personal');setQuery('');setTag('全部');setCompatibleOnly(false);setSelectedId(effect.id);
       setName('');setSummary('');setPrompt('');setTags('');setPreviewKey(undefined);setAllowed([]);setGeneral(true);
-    }catch(e){setError(e instanceof Error?e.message:'特效未保存，请重试');}finally{setBusy(false);}
+    }catch(e){setError(e);}finally{setBusy(false);}
   };
   return <>
     <Button disabled={disabled} type="text" size="small" aria-label="打开视频特效库" aria-expanded={open}
@@ -63,7 +64,7 @@ export function StudioEffectLibrary({model,disabled,hasEffect=false,onRememberCa
       afterClose={()=>{const effect=pendingApply.current;pendingApply.current=null;if(effect)onApply(effect,items);}}>
       <div className="studio-effects" data-canvas-no-zoom onPointerDown={e=>e.stopPropagation()} onPointerUp={e=>e.stopPropagation()}
         onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onWheel={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
-        {error&&<Alert type="error" showIcon title={error} action={!busy&&<Button onClick={()=>void load()}>重新加载</Button>}/>}
+        {error&&<div className="studio-error-recovery"><StudioErrorNotice error={error}/>{!busy&&<Button onClick={()=>void load()}>重新加载</Button>}</div>}
         {publishing?<div className="studio-effect-authoring">
           <div className="studio-effect-authoring-header"><Button type="text" icon={<ArrowLeft size={16}/>} disabled={busy} onClick={()=>{setPublishing(false);setError('');}}>返回特效库</Button>
           <h3>保存我的特效</h3><p>保存效果描述，下次在任意画布中调用。仅自己可见。</p>

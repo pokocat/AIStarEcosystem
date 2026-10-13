@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioErrorState } from '../studio-errors';
 
 // 发布对话框 —— 选主形象节点 + 勾选要一起带上的造型 + 资产名；
 // 成功后展示 DH- 编号与「去数字资产平台查看」。
@@ -58,10 +59,10 @@ export function PublishDialog({
   const [lookIds, setLookIds] = React.useState<string[]>([]);
   const [avatarName, setAvatarName] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = useStudioErrorState();
   const [result, setResult] = React.useState<IpPublishResult | null>(null);
   const [cardBusy, setCardBusy] = React.useState(false);
-  const [cardError, setCardError] = React.useState<string | null>(null);
+  const [cardError, setCardError] = useStudioErrorState();
 
   /**
    * 建草稿 → 直接把人送到名片编辑页去填联系方式。
@@ -123,7 +124,7 @@ export function PublishDialog({
       });
       setResult(res);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发布没能完成，请稍后重试。");
+      setError(e);
     } finally {
       setSubmitting(false);
     }
@@ -227,7 +228,7 @@ export function PublishDialog({
               </button>
               {cardError && (
                 <div className="mt-2 text-[12px]" style={{ color: "var(--err)", overflowWrap: "anywhere" }}>
-                  {cardError}
+                  <StudioErrorNotice error={cardError}/>
                 </div>
               )}
             </div>
@@ -338,7 +339,7 @@ export function PublishDialog({
 
             {error && (
               <p className="text-[12px] leading-relaxed px-3 py-2 rounded-lg" style={{ background: "var(--err-soft)", color: "var(--err)" }}>
-                {error}
+                <StudioErrorNotice error={error}/>
               </p>
             )}
           </div>

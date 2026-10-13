@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioAiIcon } from "./studio-ai-icon";
 import { useEffect, useRef, useState } from 'react';
 import { App, Button, Input, Modal, Select, Skeleton, Checkbox } from 'antd';
@@ -13,18 +14,18 @@ import { SignedImage } from '@/canvas-bridge/signed-image';
 import { studioOverlayContainer } from './studio-overlay';
 import { LibraryFolderSelect } from './library-folder-select';
 export function LibraryAssetEditor({assets,folders,onClose,onChange,onUse}: {assets:LibraryObject[];folders:LibraryFolder[];onClose:()=>void;onChange:()=>void;onUse?:(asset:LibraryObject)=>Promise<void>}) {
-  const {message}=App.useApp();const [items,setItems]=useState(assets),[index,setIndex]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const {message}=useStudioApp();const [items,setItems]=useState(assets),[index,setIndex]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useStudioErrorState();
   const [models,setModels]=useState<IpModels>(),[caps,setCaps]=useState<StudioCapabilities>(),[model,setModel]=useState<string>(),[ratio,setRatio]=useState('3:4'),[batchOpen,setBatchOpen]=useState(false),[selected,setSelected]=useState<string[]>(assets.filter(a=>!a.mainVersionId).map(a=>a.id));
   const [form,setForm]=useState({name:'',description:'',prompt:'',folderId:''}),[dirty,setDirty]=useState(false);
   const file=useRef<HTMLInputElement>(null),uploadMode=useRef<'main'|'reference'>('main'),alive=useRef(true),requestIds=useRef(new Map<string,string>());
   const asset=items[index],v=asset&&mainLibraryVersion(asset);
   const chosen=models?.image.find(m=>m.endpointId===model)||models?.image.find(m=>m.isDefault)||models?.image[0];const cost=caps?.mock?0:chosen?.creditCost;
-  useEffect(()=>{alive.current=true;Promise.all([fetchModels(),studioCapabilities()]).then(([m,c])=>{if(alive.current){setModels(m);setCaps(c);setModel(m.image.find(x=>x.isDefault)?.endpointId||m.image[0]?.endpointId);}}).catch(e=>setError(e.message));return()=>{alive.current=false;};},[]);
+  useEffect(()=>{alive.current=true;Promise.all([fetchModels(),studioCapabilities()]).then(([m,c])=>{if(alive.current){setModels(m);setCaps(c);setModel(m.image.find(x=>x.isDefault)?.endpointId||m.image[0]?.endpointId);}}).catch(e=>setError(e));return()=>{alive.current=false;};},[]);
   useEffect(()=>{if(asset){setForm({name:asset.name,description:asset.description,prompt:asset.prompt,folderId:asset.folderId||''});setDirty(false);}},[asset?.id]);
   const update=(value:LibraryObject)=>{if(!alive.current)return;setItems(current=>current.map(a=>a.id===value.id?value:a));};
-  useEffect(()=>{const pending=items.filter(a=>a.pendingRun?.status==='running'||a.pendingRun?.status==='done'&&!a.versions.some(v=>v.runId===a.pendingRun?.id));if(!pending.length)return;const timer=setInterval(()=>{pending.forEach(a=>void readLibraryObject(a.id).then(update).catch(e=>setError(e.message)));},2500);return()=>clearInterval(timer);},[items]);
+  useEffect(()=>{const pending=items.filter(a=>a.pendingRun?.status==='running'||a.pendingRun?.status==='done'&&!a.versions.some(v=>v.runId===a.pendingRun?.id));if(!pending.length)return;const timer=setInterval(()=>{pending.forEach(a=>void readLibraryObject(a.id).then(update).catch(e=>setError(e)));},2500);return()=>clearInterval(timer);},[items]);
   const save=async()=>{if(!asset)throw new Error('资产已移除');if(!dirty)return asset;const next=await editLibraryObject(asset.id,{...form,folderId:form.folderId||null,updatedAt:asset.updatedAt});update(next);setDirty(false);return next;};
-  const guard=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setError('');try{await action();onChange();}catch(e){setError(e instanceof Error?e.message:'操作未完成，请重试');}finally{if(alive.current)setBusy(false);}};
+  const guard=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setError('');try{await action();onChange();}catch(e){setError(e);}finally{if(alive.current)setBusy(false);}};
   const generate=async(a:LibraryObject)=>{if(cost===undefined)throw new Error('图片模型尚未配置');const key=requestIds.current.get(a.id)||nanoid();requestIds.current.set(a.id,key);try{await generateLibraryObject(a.id,{clientRequestId:key,model:chosen?.endpointId,aspectRatio:ratio,maxCost:cost});update(await readLibraryObject(a.id));requestIds.current.delete(a.id);}catch(e){await readLibraryObject(a.id).then(update).catch(()=>{});throw e;}};
   const switchTo=(n:number)=>void guard(async()=>{await save();setIndex(n);});
   const close=()=>void guard(async()=>{await save();onClose();});
@@ -40,7 +41,7 @@ export function LibraryAssetEditor({assets,folders,onClose,onChange,onUse}: {ass
       <div className="personal-editor-actions"><Button icon={<Upload size={16}/>} disabled={busy} onClick={()=>{uploadMode.current='main';file.current?.click();}}>上传作为主图</Button><Button disabled={busy} onClick={()=>{uploadMode.current='reference';file.current?.click();}}>{asset.referenceKey?'替换参考图':'上传参考图'}</Button>{asset.referenceKey&&<Button disabled={busy} onClick={()=>void guard(async()=>{await save();update(await editLibraryObject(asset.id,{referenceKey:null}));})}>移除参考</Button>}<Button loading={busy} onClick={()=>void guard(async()=>{await save();message.success('资产已保存');})}>保存信息</Button></div>
       {asset.referenceKey&&<SignedImage className="personal-editor-reference" storageKey={asset.referenceKey} src={asset.referenceUrl||''} alt="生成参考图"/>}
       {asset.sources.map(source=><details key={source.id} className="personal-editor-source"><summary>剧本依据 · {source.title}</summary><p>{source.evidence||source.description}</p><small>原文依据与生成提示词分别保存。</small></details>)}
-      {error&&<p role="alert" className="studio-error">{error}</p>}{asset.pendingRun?.status==='failed'&&<p role="alert">{asset.pendingRun.errorMessage||'生成未完成，可单独重试'}</p>}
+      {error&&<p className="studio-error"><StudioErrorNotice error={error}/></p>}{asset.pendingRun?.status==='failed'&&<p><StudioErrorNotice error={studioRunError(asset.pendingRun)} once={`run:${asset.pendingRun.id}`}/></p>}
       <div className="personal-editor-generate"><Select aria-label="资产图片模型" value={chosen?.endpointId} options={models?.image.map(m=>({value:m.endpointId,label:m.name}))} onChange={setModel} disabled={busy||caps?.imageModelMode==='fixed'}/><Select aria-label="资产图片比例" value={ratio} onChange={setRatio} options={['3:4','9:16','1:1','16:9'].map(value=>({value,label:value}))}/><Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" type="primary" loading={busy||asset.pendingRun?.status==='running'} disabled={!form.prompt.trim()||cost===undefined||asset.pendingRun?.status==='running'} onClick={()=>void guard(async()=>{const a=await save();await generate(a);})}>{asset.mainVersionId?'生成新版本':'生成主图'} · {cost===undefined?'未配置':`${cost} 积分`}</Button>{onUse&&<Button disabled={busy} onClick={()=>void guard(async()=>{const a=await save();await onUse(a);onClose();})}>添加到当前画布</Button>}</div><p className="studio-helper-note">新版本不会替换已有画布的引用。生成任务关闭后仍继续，所有候选自动入库。</p>
     </section></div>
     <input ref={file} hidden type="file" accept=".jpg,.jpeg,.png" aria-label="上传资产图片" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)void guard(async()=>{await save();const result=await uploadLibraryMedia(f);update(uploadMode.current==='main'?await addLibraryVersion(asset.id,result.key):await editLibraryObject(asset.id,{referenceKey:result.key}));});}}/>

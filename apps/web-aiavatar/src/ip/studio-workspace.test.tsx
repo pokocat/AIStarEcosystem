@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import {useState} from 'react';
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {ApiError} from '@ai-star-eco/api-client';
@@ -384,7 +386,7 @@ test('blank and unaccepted template videos cannot enter assembly; server accepta
  expect((screen.getByRole('button',{name:'加入成片'}) as HTMLButtonElement).disabled).toBe(true);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect(screen.getByText('还没有视频片段')).toBeDefined();expect(screen.queryByRole('button',{name:'合成作品'})).toBeNull();
- cleanup();render(<Host initial={{...pending,metadata:{...pending.metadata,studio:{...pending.metadata.studio,kind:'shot',templateAccepted:true}}}}/>);
+ cleanup();mountStudioErrorNotifications(api.error);render(<Host initial={{...pending,metadata:{...pending.metadata,studio:{...pending.metadata.studio,kind:'shot',templateAccepted:true}}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect(screen.getByRole('button',{name:'合成作品'})).toBeDefined();expect(api.submit).not.toHaveBeenCalled();
 });
@@ -395,7 +397,7 @@ test('work settings survive remount without assembly, and a failed save keeps th
  fireEvent.change(screen.getByRole('textbox',{name:'成片标题文字'}),{target:{value:'新商品介绍'}});
  fireEvent.change(screen.getByRole('textbox',{name:'成片字幕时间与文字'}),{target:{value:'0-5: 日常随行'}});
  fireEvent.change(screen.getByRole('combobox',{name:'作品画幅'}),{target:{value:'16:9'}});
- const persisted=JSON.parse(JSON.stringify(snapshot));cleanup();render(<Host initialNodes={persisted}/>);
+ const persisted=JSON.parse(JSON.stringify(snapshot));cleanup();mountStudioErrorNotifications(api.error);render(<Host initialNodes={persisted}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect((screen.getByRole('textbox',{name:'成片标题文字'}) as HTMLInputElement).value).toBe('新商品介绍');
  expect((screen.getByRole('textbox',{name:'成片字幕时间与文字'}) as HTMLInputElement).value).toBe('0-5: 日常随行');
@@ -427,7 +429,7 @@ test('selected episode survives saving the Markdown editor, closing and remounti
  fireEvent.change(await screen.findByRole('textbox',{name:'创作要求'}),{target:{value:'Only split episode two; preserve episode one.'}});
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'拆分镜头'})).toBeNull());
- const persisted=JSON.parse(JSON.stringify(snapshot));cleanup();render(<Host initialNodes={persisted}/>);
+ const persisted=JSON.parse(JSON.stringify(snapshot));cleanup();mountStudioErrorNotifications(api.error);render(<Host initialNodes={persisted}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'storyboard',nodeId:'v'}}));
  expect((await screen.findByRole('combobox',{name:'拆分分集'}) as HTMLSelectElement).value).toBe('2');
  expect((screen.getByRole('textbox',{name:'创作要求'}) as HTMLTextAreaElement).value).toBe('Only split episode two; preserve episode one.');
@@ -728,3 +730,5 @@ test('queued text edits keep the body, show queue position and prohibit duplicat
  await screen.findByRole('textbox',{name:'AI 修改要求'});expect(screen.getByRole('button',{name:'发送修改要求'})).toHaveProperty('disabled',true);
  expect(screen.getAllByRole('status').some(n=>n.textContent?.includes('你目前排在第 3 位'))).toBe(true);expect(snapshot[0].metadata?.content).toBe('原文');expect(api.submit).not.toHaveBeenCalled();
 });
+
+beforeEach(() => { mountStudioErrorNotifications(api.error); });

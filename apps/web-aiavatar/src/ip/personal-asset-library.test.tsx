@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { PersonalAssetLibrary } from './personal-asset-library';
@@ -41,7 +43,7 @@ test('successful list loading does not clear a folder failure or mislabel a know
   api.folders.mockRejectedValue(new Error('暂不可用'));
   render(<PersonalAssetLibrary/>);
   await screen.findByRole('article', { name: '剧本资产 画家' });
-  expect(screen.getByRole('alert').textContent).toContain('文件夹读取失败');
+  expect(screen.getByRole('alert').textContent).toContain('暂不可用');
   expect(screen.getByText('文件夹名称暂不可用')).toBeDefined();
   expect(screen.getByRole('button', { name: '重新读取文件夹' })).toBeDefined();
 });
@@ -90,3 +92,5 @@ test('pagination requests the next server page while category totals stay global
   expect(screen.getByRole('tab', { name: /剧本资产.*25/ })).toBeDefined();
   expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
 });
+
+beforeEach(() => { mountStudioErrorNotifications(); });

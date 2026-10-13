@@ -1025,3 +1025,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 持久化使用 V52 `ip_library_record`（folder/object/binding/preference/receipt），原媒体仍用 `ip_saved_asset`，原生成、积分与画布文档继续各自为真值。接口为 `/api/v1/ip-studio/library/**` 与 `projects/{id}/library/{extract,save-extraction,folder}`；分页直接返回 PageEnvelope，资源返回 ApiResponse。跨子产品的音乐/短剧/带货资产统一、团队共享及自动项目归属不在本轮范围。
 
 发布与本地/生产验收范围见 `docs/ip-studio-asset-library-validation.md`（2026-10-11）；本地样例不自动迁移到生产。
+
+### Studio 错误追查（2026-10-13）
+
+同步错误响应增加可选 error.logId；原 message 后缀保持兼容。异步 Studio 失败由 StudioRunErrorLog 关联现有 ErrorLog，把 ID 保存在 IpRun.output.logId 并投影 IpRunDto.logId；保存部分产物，取消不记录为故障。视频原 Job 失败信息保存真实追查号，videoCandidates 返回 errorCode/logId。ErrorLogService.recordTask 用独立事务和明确 owner/task 上下文，记录失败不得回滚任务或积分结算。无数据库迁移，历史任务不补造故障记录。

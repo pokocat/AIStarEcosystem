@@ -1,4 +1,5 @@
 'use client';
+import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 
 import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Input, Modal, Select } from 'antd';
@@ -13,10 +14,10 @@ export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose}:{pr
   const [doc,setDoc]=useState<IpProjectDoc>(),[name,setName]=useState(''),[summary,setSummary]=useState('');
   const [templates,setTemplates]=useState<IpTemplate[]>([]),[target,setTarget]=useState<string>(),[visibility,setVisibility]=useState<'personal'|'official'>('personal');
   const [inputs,setInputs]=useState<StudioTemplateInput[]>([]),[steps,setSteps]=useState<StudioTemplateStep[]>([]);
-  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[done,setDone]=useState('');
+  const [busy,setBusy]=useState(false),[error,setError]=useStudioErrorState(),[done,setDone]=useState('');
   useEffect(()=>{let active=true;publishWithLatestDoc(saveNow,()=>Promise.all([readStudioProject(projectId),IpStudioApi.listTemplates()])).then(([p,t])=>{
     if(!active)return;setDoc(p.doc);setName(p.name);setTemplates(t.filter(t=>t.mine&&t.versionId));
-  }).catch(e=>{if(active)setError(e instanceof Error?e.message:'加载失败');});return()=>{active=false;};},[projectId]);
+  }).catch(e=>{if(active)setError(e);});return()=>{active=false;};},[projectId]);
   const nodes=doc?.nodes.filter(n=>!['assistant','batch'].includes(String((n.metadata?.studio as {kind?:string}|undefined)?.kind??'')))??[];
   const ids=new Map<string,string>([...inputs.map(i=>[i.nodeId,i.id] as const),...steps.map(s=>[s.nodeId,s.id] as const)]);
   const selectInput=(nodeId:string)=>{
@@ -37,7 +38,7 @@ export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose}:{pr
       const version=await publishWithLatestDoc(saveNow,()=>publishTemplateVersion(projectId,{templateId:target,name:name.trim(),summary,visibility,recipe}));
       setTarget(version.templateId);setDone(`已保存${visibility==='personal'?'个人':'官方'}模板 v${version.version}。后续修改会发布新版本，已套用的画布保留原版本。`);
       const fresh=await IpStudioApi.listTemplates();setTemplates(fresh.filter(t=>t.mine&&t.versionId));
-    }catch(e){setError(e instanceof Error?e.message:'发布失败');}finally{setBusy(false);}
+    }catch(e){setError(e);}finally{setBusy(false);}
   };
   const refOptions=[...inputs.filter(i=>i.type==='character'||i.type==='image').map(i=>({value:i.id,label:`输入 · ${i.label}`})),...steps.filter(s=>s.operation==='image').map(s=>({value:s.id,label:`步骤 · ${s.title}`}))];
   return <Modal open title="发布为模板" onCancel={onClose} footer={<Button type="primary" loading={busy} disabled={!doc||!name.trim()||!steps.length||!!done} onClick={()=>void save()}>{target?'发布新版本':visibility==='personal'?'保存个人模板':'发布官方模板'}</Button>} styles={{body:{maxHeight:'70dvh',overflowY:'auto'}}} width={820} mask={{closable:!busy}} keyboard={!busy} closable={!busy}>
@@ -76,7 +77,7 @@ export function StudioTemplatePublish({projectId,superAdmin,saveNow,onClose}:{pr
         <Checkbox checked={s.requiresAdoption} onChange={e=>{setSteps(old=>old.map(x=>x.id===s.id?{...x,requiresAdoption:e.target.checked}:x));setDone('');}}>需要用户采用后，下游才继续</Checkbox>
         <Button onClick={()=>{setSteps(old=>old.filter(x=>x.id!==s.id));setDone('');}}>移除步骤</Button>
       </div>)}
-      {error&&<Alert type="error" title={error} showIcon/>}{done&&<Alert type="success" title={done} showIcon/>}
+      {error&&<StudioErrorNotice error={error}/>}{done&&<Alert type="success" title={done} showIcon/>}
     </div>
   </Modal>;
 }
