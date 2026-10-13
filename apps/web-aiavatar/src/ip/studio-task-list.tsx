@@ -47,7 +47,7 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
         {(state === 'failed' || state === 'partial') && <div className="studio-task-failure"><p>{run.errorMessage || run.output.videoCandidates?.find(c => c.status === 'failed')?.errorMessage || '本次创作未完成，可查看错误详情'}</p><button type="button" onClick={() => reportStudioError(studioRunError(run))}>查看错误详情</button></div>}
         <div className="studio-task-actions">
           {node && <button type="button" className={run.status === 'done' && current ? 'is-primary' : ''} onClick={() => onLocate(node)}>{node.metadata?.studio?.conversation ? '打开对话' : run.status === 'done' && current ? '查看结果' : '定位节点'}</button>}
-          {failed(run) && current && node && <button type="button" className="is-primary" disabled={busy} onClick={() => onRetry(node)}>重新生成</button>}
+          {failed(run) && current && node && !node.metadata?.studio?.conversation && <button type="button" className="is-primary" disabled={busy} onClick={() => onRetry(node)}>重新生成</button>}
           <button type="button" onClick={() => onInput(run)}>查看输入</button>
           {run.status === 'running' && (run.kind === 'studio-video' && !queued ? <span className="studio-task-note">视频生成中</span> : <button type="button" onClick={() => onCancel(run)}>{queued ? '停止排队' : '停止'}</button>)}
         </div>

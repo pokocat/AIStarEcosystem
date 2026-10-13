@@ -35,3 +35,9 @@ test('history conversations open the assistant and partial jobs show the specifi
   fireEvent.click(screen.getByRole('button', { name: '打开对话' })); expect(props.onLocate).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: '进行中0' })); expect(screen.getByText('当前没有进行中的任务')).toBeDefined();
 });
+
+test('failed assistant tasks offer reopening the conversation without a misleading automatic regeneration action', () => {
+  const props = { ...makeProps(), runs: [run('failure456', 'failed', { errorMessage: '方案不完整' })], nodes: [{ ...makeProps().nodes[0], metadata: { studio: { conversation: {}, runId: 'failure456' } } }] as never }; render(<StudioTaskList {...props}/>);
+  expect(screen.queryByRole('button', { name: '重新生成' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '打开对话' })); expect(props.onLocate).toHaveBeenCalledOnce(); expect(props.onRetry).not.toHaveBeenCalled();
+});
