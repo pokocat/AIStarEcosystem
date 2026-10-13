@@ -855,7 +855,7 @@ Chrome 在隔离画布 `IPP-12d41489` 的 `brief` 节点提交一次“为这段
 
 ### 正式发布与验收
 
-助手 UI 提交 ebfcd188d4afd13f54a9182cc27e55c4d9474a6d 发布为 20261013-assistant-composer-ebfcd188，合入同时提交的所选节点重出修复。整卡拖动补丁 bae1eacc9113cf06cdfdf256371849a4d345df1f 发布为 20261013-card-content-drag-bae1eacc，仅更新 web-aiavatar。最终 BUILD_ID bH5au0zo-83eKbYm2xacO，前端包 SHA256 ca4350a22319324a784b5247190cff9abaea356406fe41129bbe283bf882be8e；线上值与本地一致。服务于 2026-10-13 20:16:25（北京时间）启动，active、NRestarts=0，verify 全绿。没有修改其它应用、生产环境文件或账号中心。
+助手 UI 提交 ebfcd188d4afd13f54a9182cc27e55c4d9474a6d 发布为 20261013-assistant-composer-ebfcd188，合入同时提交的所选节点重出修复。整卡拖动补丁 bae1eacc9113cf06cdfdf256371849a4d345df1f 发布为 20261013-card-content-drag-bae1eacc，仅更新 web-aiavatar。本轮制品 BUILD_ID bH5au0zo-83eKbYm2xacO，前端包 SHA256 ca4350a22319324a784b5247190cff9abaea356406fe41129bbe283bf882be8e；线上值与本地一致。服务于 2026-10-13 20:16:25（北京时间）启动，active、NRestarts=0，verify 全绿。随后并行媒体增量已发布 20261013-studio-media-inplace-0ed2dbe4，最终现场 BUILD_ID FrlpLfykKUxBL0LN29zH9；该提交包含本次两项代码提交，整卡拖动及助手布局保留，没有回滚该增量。没有修改其它应用、生产环境文件或账号中心。
 
 在既有验收画布 IPP-e0e7afa6 打开真实“小巡”对话，输入区背景 rgb(241,243,247)，三个操作按钮同为 40px 高且 top=669.8046875；没有发送消息。该对话原本没有 questions，建议按钮的行为通过本地实际组件和专项测试验证，没有为生成追问调用模型。
 
