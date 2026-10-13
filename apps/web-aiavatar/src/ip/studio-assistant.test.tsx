@@ -302,6 +302,37 @@ test('explicit text replacement preserves the node identity and writes only the 
   expect(snapshot).toHaveLength(2);expect(snapshot.find(n=>n.id==='t')?.metadata?.content).toBe(textPlan.steps[0].content);
   expect(api.submitStudioRun).not.toHaveBeenCalled();
 });
+test('the selected referenced text is the default adoption target and retains its existing graph',async()=>{
+  let snapshot:CanvasNodeData[]=[];const setConnections=vi.fn();
+  render(<Host initial={[text,withPlan()]} initialNodeId="h" selectedIds={['t']} setConnections={setConnections} onSnapshot={(n:CanvasNodeData[])=>snapshot=n}/>);
+  expect((screen.getByRole('combobox',{name:'文字放置位置'}) as HTMLSelectElement).value).toBe('t');
+  expect(screen.getByText('将替换该节点正文 · 查看原文')).toBeDefined();
+  fireEvent.click(screen.getByRole('button',{name:'替换节点正文'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
+  expect(snapshot).toHaveLength(2);
+  expect(snapshot.find(n=>n.id==='t')).toMatchObject({title:text.title,position:text.position,metadata:{content:textPlan.steps[0].content}});
+  expect(snapshot.find(n=>n.id==='h')?.metadata?.studio?.conversation?.plan?.steps[0].resultNodeId).toBe('t');
+  expect(setConnections).not.toHaveBeenCalled();expect(api.submitStudioRun).not.toHaveBeenCalled();
+});
+test('explicitly choosing a new text node survives result edits despite an eligible selection',async()=>{
+  let snapshot:CanvasNodeData[]=[];
+  render(<Host initial={[text,withPlan()]} initialNodeId="h" selectedIds={['t']} onSnapshot={(n:CanvasNodeData[])=>snapshot=n}/>);
+  fireEvent.change(screen.getByRole('combobox',{name:'文字放置位置'}),{target:{value:'new'}});
+  fireEvent.change(screen.getByRole('textbox',{name:'结果 末世英雄'}),{target:{value:'独立的新设定'}});
+  expect((screen.getByRole('combobox',{name:'文字放置位置'}) as HTMLSelectElement).value).toBe('new');
+  fireEvent.click(screen.getByRole('button',{name:'放入画布'}));
+  await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
+  expect(snapshot).toHaveLength(3);expect(snapshot.find(n=>n.id==='t')?.metadata?.content).toBe(text.metadata?.content);
+  expect(snapshot.find(n=>n.title==='末世英雄')?.metadata?.content).toBe('独立的新设定');
+});
+test('multiple selected writable texts keep new-node placement until the user picks one',()=>{
+  const other={...text,id:'other',title:'另一段故事'};
+  const original=withPlan();
+  const saved={...original,metadata:{...original.metadata,studio:{...original.metadata!.studio!,request:{...original.metadata!.studio!.request!,contextNodeIds:['t','other']}}}};
+  render(<Host initial={[text,other,saved]} initialNodeId="h" selectedIds={['t','other']}/>);
+  expect((screen.getByRole('combobox',{name:'文字放置位置'}) as HTMLSelectElement).value).toBe('new');
+  expect(screen.queryByText('将替换该节点正文 · 查看原文')).toBeNull();
+});
 test('failed adoption save retries the same node without duplication',async()=>{
   api.saveStudioDocument.mockRejectedValueOnce(new Error('画布保存失败'));
   let snapshot:CanvasNodeData[]=[];

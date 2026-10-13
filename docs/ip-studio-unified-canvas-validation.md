@@ -806,3 +806,11 @@ Chrome 在隔离画布 `IPP-12d41489` 的 `brief` 节点提交一次“为这段
 设计钩子发现新样式曾对 width/height 做动画，确认属于本轮实现后改为固定 8px/28px 圆圈、transform 缩放与 opacity 交替显示，并支持减少动态偏好。没有添加任何检测忽略。检测的 layout-transition 结果为空；40% 缩放下本地浏览器验证 idle→hover→leave 状态正确，锚点边界不变，标记容器固定 28px，实际动画属性仅 transform/opacity。全仓类型检查、admin 类型检查、Java 17 离线编译及 API 契约通过。证据为 `motion-local.json`、`motion-detect.json` 与 `motion-*.log`。
 
 动画补丁提交 `fa151a9e036b7a66da524d6c96fcb32c695bd381` 已推送，干净工作树制品 `20261013-port-motion-fa151a9e` 只发布 web-aiavatar。BUILD_ID `zrbqZUHbFsYIKyr7g2dRo`、包 SHA256 `3f94147445bad3ae80e9e4acabb97ac1e1b3fad1e1aed55b984f78948f494934` 线上与本地一致；2026-10-13 15:28:24（北京时间）启动，active、NRestarts=0，verify 全绿。正式画布原 9 节点/6 连线未改，余额仍 1031；悬停切换中锚点始终 1×1px，标记容器始终 28px，圆圈透明度与缩放正确切换，仅 transform/opacity 动画。没有忽略或遗留本条问题；证据 `motion-online.json`、`motion-online-hover.png`、`motion-online-runtime.txt` 与 `motion-deploy-release.log`。未提交模型生成。
+
+## 52. 2026-10-13 · 所选文字默认写入与节点拖动恢复
+
+用户反馈已经选中文字节点，助手结果仍默认新建；默认拖动画布模式也使节点不能移动。`StudioAssistantPlan` 现以当前选中的引用中唯一可编辑文字节点作为默认采用目标，多选文字或无合适节点时保留新建。手动切回新建、编辑结果后仍保留用户选择。原文只在切换步骤或默认目标时取快照，后续正文变更仍触发原有冲突保护；采用仍由用户点击确认，既有节点身份、位置和连接不变。
+
+`ReactFlow.nodesDraggable` 从跟随持久工具改为只受临时空格平移影响。默认手形工具仍平移空白区域，节点标题栏可直接移动；选择工具继续提供框选。只读模板的投影不变。
+
+本地定向回归 53 项通过（助手、方案依赖、画布文档），全部 629 项前端测试通过；全仓类型检查、admin 类型检查、Java 17 离线编译及 API 契约通过。真实 React Flow 40% 缩放：标题栏拖动使文字节点 `(450,350)→(624,440)`，视口保持 `(0,0,.4)`；空白拖动使视口改为 `(80,40,.4)`，节点位置不变。真实结果组件默认显示“写入「角色描述」”，采用后原文字更新、节点仍为 4 个。临时本地验收页不进入提交和发布包。证据 `.studio-e2e/canvas-followup/local.json`、`local.png` 与 `tests-*.log`、编译门日志。

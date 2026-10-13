@@ -343,7 +343,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         panOnDrag={hand ? true : [1, 2]} panOnScroll selectionOnDrag={!hand} selectionMode={SelectionMode.Partial}
         zoomOnScroll={false} zoomOnPinch zoomOnDoubleClick={false} minZoom={.15} maxZoom={2.5} deleteKeyCode={null}
         multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null} panActivationKeyCode={null} snapToGrid snapGrid={[8, 8]}
-        nodesDraggable={!hand} defaultEdgeOptions={{ style: { stroke: 'var(--ink-3)', strokeWidth: 1.5 } }}>
+        nodesDraggable={!spaceHeld /* Pan the background with the hand tool; reserve whole-canvas panning for Space. */} defaultEdgeOptions={{ style: { stroke: 'var(--ink-3)', strokeWidth: 1.5 } }}>
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--line-3)"/>
         {minimap && <MiniMap pannable zoomable position="bottom-right" nodeColor="var(--paper-2)" maskColor="var(--canvas-mask)"/>}
       </ReactFlow>

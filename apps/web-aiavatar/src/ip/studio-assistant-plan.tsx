@@ -9,15 +9,18 @@ import { assistantOutputReady, assistantStepReferences, assistantUnresolvedRefer
 
 const labels={text:'文字',image:'图片',video:'视频',script:'剧本',storyboard:'分镜'};
 const icons={text:FileText,image:Image,video:Video,script:Clapperboard,storyboard:Clapperboard};
-export function StudioAssistantPlan({plan,nodes,contextIds,locked,onEdit,onApply}: {
-  plan:StudioPlan;nodes:CanvasNodeData[];contextIds:string[];locked:boolean;
+export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,locked,onEdit,onApply}: {
+  plan:StudioPlan;nodes:CanvasNodeData[];contextIds:string[];selectedIds:string[];locked:boolean;
   onEdit:(step:StudioPlanStep)=>void;
   onApply:(step:StudioPlanStep,target?:{id:string;content:string})=>Promise<void>;
 }) {
   const [index,setIndex]=useState(()=>Math.max(0,plan.steps.findIndex(s=>!assistantOutputReady(nodes.find(n=>n.id===s.resultNodeId))))),[target,setTarget]=useState<{id:string;content:string}>(),[saving,setSaving]=useState(false),[error,setError]=useState('');
   const card=useRef<HTMLDivElement>(null),applying=useRef(false);
   const step=plan.steps[Math.min(index,Math.max(0,plan.steps.length-1))];
-  useEffect(()=>{setTarget(undefined);setError('');},[step?.id]);
+  const selectedText=nodes.filter(n=>selectedIds.includes(n.id)&&contextIds.includes(n.id)&&assistantWritableText(n));
+  const defaultTarget=step?.operation==='text'&&selectedText.length===1?selectedText[0]:undefined;
+  // Capture the original body once per selection/step. Later edits must still trigger the adoption conflict guard.
+  useEffect(()=>{setTarget(defaultTarget?{id:defaultTarget.id,content:defaultTarget.metadata?.content||''}:undefined);setError('');},[step?.id,defaultTarget?.id]);
   useEffect(()=>{
     if(!card.current)return;
     const body=card.current.closest<HTMLElement>('.studio-floating-body');
