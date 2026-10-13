@@ -69,4 +69,25 @@ class StudioPlanValidatorTest {
         edit.put("nodeId","selected").put("field","storageKey");assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,ids));
         edit.put("field","script");assertDoesNotThrow(()->StudioPlanValidator.validate(plan,ids));
     }
+    @Test void readyTextEditWithMissingIntentUsesItsTitleWithoutChangingTheResult() throws Exception {
+        var plan=mapper.readTree("""
+          {"summary":"提示词待采用","steps":[{"id":"edit","operation":"text","title":"优化小巡全身形象图提示词","content":"白色圆润机器人，左前方柔光，浅米白背景","referenceNodeIds":["selected"],"editTarget":{"nodeId":"selected","field":"prompt"}}],"questions":[]}
+          """);
+        StudioPlanValidator.isolateUnsupportedSteps(plan);
+        assertEquals("优化小巡全身形象图提示词",plan.at("/steps/0/prompt").asText());
+        assertEquals("白色圆润机器人，左前方柔光，浅米白背景",plan.at("/steps/0/content").asText());
+        assertDoesNotThrow(()->StudioPlanValidator.validate(plan,mapper.readTree("[\"selected\"]")));
+    }
+    @Test void textIntentNormalizationCannotInventContentOrMediaGenerationInstructions() throws Exception {
+        for(var operation:new String[]{"text","image"}) {
+            var plan=mapper.readTree("""
+              {"summary":"建议","steps":[{"id":"a","operation":"text","title":"创作","referenceNodeIds":[]}],"questions":[]}
+              """);
+            var step=(com.fasterxml.jackson.databind.node.ObjectNode)plan.at("/steps/0");step.put("operation",operation);
+            if("image".equals(operation))step.put("content","这不是生成指令");
+            StudioPlanValidator.isolateUnsupportedSteps(plan);
+            assertThrows(BusinessException.class,()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
+        }
+    }
+
 }

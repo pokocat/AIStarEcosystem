@@ -25,7 +25,18 @@ public final class StudioPlanValidator {
         if(plan.path("notes").isArray())plan.path("notes").forEach(notes::add);
         for(var step:plan.path("steps")) {
             if(Set.of("text","script","storyboard","image","video").contains(step.path("operation").asText())) {
-                if(step.isObject())((com.fasterxml.jackson.databind.node.ObjectNode)step).remove("resultNodeId");
+                if(step.isObject()) {
+                    var suggestion=(com.fasterxml.jackson.databind.node.ObjectNode)step;
+                    suggestion.remove("resultNodeId");
+                    // Ready-to-adopt text has its complete content; prompt is only an intent label.
+                    // Some models omit that redundant label when editing a media prompt.
+                    var intent=step.path("prompt");
+                    if("text".equals(step.path("operation").asText()) && step.path("content").isTextual()
+                            && !step.path("content").asText().isBlank() && step.path("title").isTextual()
+                            && !step.path("title").asText().isBlank()
+                            && (intent.isMissingNode()||intent.isNull()||intent.isTextual()&&intent.asText().isBlank()))
+                        suggestion.put("prompt",step.path("title").asText());
+                }
                 supported.add(step);
             }
             else if(step.path("title").isTextual()&&step.path("prompt").isTextual()&&step.path("prompt").asText().length()<=16000)
