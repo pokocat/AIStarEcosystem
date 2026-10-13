@@ -907,4 +907,6 @@ StudioPage、StudioPageFilters、StudioPageSearch 与 studio-page.css 统一四�
 
 悬停动画用固定尺寸的两层圆圈，仅以 `transform` 和 `opacity` 切换，不对宽高逐帧插值；减少动态偏好下立即切换。节点、锚点和隐形命中区的几何尺寸不随动画变化。
 
+该动画补丁 `fa151a9e` 已于 2026-10-13 发布到前端，当前 BUILD_ID 为 `zrbqZUHbFsYIKyr7g2dRo`。检测未再报 layout-transition，线上 idle/hover/leave 的锚点与容器尺寸保持不变；没有添加忽略规则。
+
 提交 `ae85e83b` 已部署到 AiAvatar 前端，BUILD_ID `lVy5ExpwBGAihzknkH57b`。85 项定向回归、编译门与正式包构建通过；线上验证标题编辑、悬停放大及单文字浮层，新增临时节点撤销并保存后刷新恢复原 9 节点/6 连线，余额未变。验证范围与截图见统一验证 §51；没有调用收费模型，原有媒体失败状态未重新提交。
