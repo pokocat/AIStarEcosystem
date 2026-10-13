@@ -28,6 +28,9 @@ public final class StudioPlanValidator {
                 if(step.isObject()) {
                     var suggestion=(com.fasterxml.jackson.databind.node.ObjectNode)step;
                     suggestion.remove("resultNodeId");
+                    // JSON null for an optional target/dependency means there is no binding.
+                    for(var optional: new String[]{"editTarget","dependsOn"})
+                        if(suggestion.path(optional).isNull())suggestion.remove(optional);
                     // Ready-to-adopt text has its complete content; prompt is only an intent label.
                     // Some models omit that redundant label when editing a media prompt.
                     var intent=step.path("prompt");
@@ -75,12 +78,12 @@ public final class StudioPlanValidator {
                     || !step.path("title").isTextual() || !step.path("prompt").isTextual() || step.path("prompt").asText().isBlank()
                     || step.path("prompt").asText().length()>16000 || !step.path("referenceNodeIds").isArray()) fail();
             if("text".equals(step.path("operation").asText()) && (!step.path("content").isTextual() || step.path("content").asText().isBlank() || step.path("content").asText().length()>16000))fail();
-            if(step.has("editTarget")) {
+            if(step.hasNonNull("editTarget")) {
                 var edit=step.path("editTarget");
                 if(!"text".equals(step.path("operation").asText())||!edit.isObject()||!edit.path("nodeId").isTextual()
                         ||!allowed.contains(edit.path("nodeId").asText())||!Set.of("content","prompt","script").contains(edit.path("field").asText()))fail();
             }
-            if(step.has("dependsOn")) {
+            if(step.hasNonNull("dependsOn")) {
                 if(!step.path("dependsOn").isArray() || step.path("dependsOn").size()>12)fail();
                 for(var dependency:step.path("dependsOn"))if(!dependency.isTextual() || !ids.contains(dependency.asText()))fail();
             }

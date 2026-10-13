@@ -90,4 +90,14 @@ class StudioPlanValidatorTest {
         }
     }
 
+    @Test void newTextResultMayUseNullForOptionalEditBindingAndDependencies() throws Exception {
+        var plan=mapper.readTree("""
+          {"summary":"欢迎语初稿","steps":[{"id":"welcome","operation":"text","title":"小巡欢迎语","prompt":"创作欢迎语","content":"嗨，我是小巡！一起探索街区的惊喜吧。","editTarget":null,"dependsOn":null,"referenceNodeIds":[]}],"questions":[]}
+          """);
+        assertDoesNotThrow(()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
+        StudioPlanValidator.isolateUnsupportedSteps(plan);
+        assertFalse(plan.at("/steps/0").has("editTarget"));assertFalse(plan.at("/steps/0").has("dependsOn"));
+        assertDoesNotThrow(()->StudioPlanValidator.validate(plan,mapper.readTree("[]")));
+    }
+
 }
