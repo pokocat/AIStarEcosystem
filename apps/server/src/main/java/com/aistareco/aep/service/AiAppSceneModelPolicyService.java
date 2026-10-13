@@ -68,7 +68,7 @@ public class AiAppSceneModelPolicyService {
     public record Selection(AiModelInvocationService.ResolvedEndpoint resolved,long creditCost,String billingUnit) {}
     public Selection resolve(String appCode,String scene,String endpointId,long legacyCost) {
         var purpose=purpose(appCode,scene);var policy=get(appCode,scene);
-        if(policy.isEmpty())return new Selection(requireEndpoint(purpose,endpointId),legacyCost,unit(scene));
+        if(policy.isEmpty())return new Selection(requireLegacyEndpoint(purpose,endpointId),legacyCost,unit(scene));
         var p=policy.get();String selected=endpointId==null||endpointId.isBlank()?p.defaultEndpointId():endpointId.trim();
         if("fixed".equals(p.mode())&&!Objects.equals(selected,p.defaultEndpointId()))throw unavailable("ENDPOINT_NOT_ALLOWED","此场景使用固定模型");
         var candidate=p.candidates().stream().filter(c->Objects.equals(c.endpointId(),selected)).findFirst().orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","所选模型不在场景开放范围内"));
@@ -77,7 +77,7 @@ public class AiAppSceneModelPolicyService {
     }
     public List<Selection> available(String appCode,String scene,long legacyCost) {
         var purpose=purpose(appCode,scene);var policy=get(appCode,scene);
-        if(policy.isEmpty())return models.listCandidates(purpose).stream().filter(this::availableEndpoint).map(r->new Selection(r,legacyCost,unit(scene))).toList();
+        if(policy.isEmpty())return models.listCandidates(purpose).stream().filter(this::legacyAvailableEndpoint).map(r->new Selection(r,legacyCost,unit(scene))).toList();
         var p=policy.get();List<Selection> out=new ArrayList<>();
         for(var c:p.candidates()) {
             var r=models.resolveEndpoint(purpose,c.endpointId());
@@ -87,9 +87,14 @@ public class AiAppSceneModelPolicyService {
         return out;
     }
     private AiModelInvocationService.ResolvedEndpoint requireEndpoint(AiModelPurpose purpose,String id) {
-        return models.resolveEndpoint(purpose,id).filter(r->allowsStudioProvider(r.endpoint())).orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","模型已停用或未绑定到对应能力用途"));
+        return models.resolveEndpoint(purpose,id).orElseThrow(()->unavailable("ENDPOINT_NOT_ALLOWED","模型已停用或未绑定到对应能力用途"));
     }
-    /** Studio has its own supplier scope; shared drama/commerce candidate bindings stay intact. */
+    private AiModelInvocationService.ResolvedEndpoint requireLegacyEndpoint(AiModelPurpose purpose,String id) {
+        var resolved=requireEndpoint(purpose,id);
+        if(!allowsStudioProvider(resolved.endpoint()))throw unavailable("ENDPOINT_NOT_ALLOWED","模型不在 Studio 旧配置的供应商范围内");
+        return resolved;
+    }
+    /** Supplier scope applies to unconfigured legacy scenes and video; configured scenes use their own policy. */
     public boolean allowsStudioProvider(AiModelEndpoint endpoint) {
         var restriction=config.findByKey(STUDIO_PROVIDER_KEY);
         if(restriction.isEmpty())return true;
@@ -102,10 +107,13 @@ public class AiAppSceneModelPolicyService {
         } catch(RuntimeException e){return false;}
     }
     private boolean availableEndpoint(AiModelInvocationService.ResolvedEndpoint r) {
-        return r.endpoint().isEnabled() && r.candidate()!=null && r.candidate().isEnabled() && allowsStudioProvider(r.endpoint());
+        return r.endpoint().isEnabled() && r.candidate()!=null && r.candidate().isEnabled();
+    }
+    private boolean legacyAvailableEndpoint(AiModelInvocationService.ResolvedEndpoint r) {
+        return availableEndpoint(r) && allowsStudioProvider(r.endpoint());
     }
     public List<AiModelInvocationService.ResolvedEndpoint> studioVideoCandidates() {
-        var candidates=models.listCandidates(AiModelPurpose.VIDEO_GENERATION).stream().filter(this::availableEndpoint).toList();
+        var candidates=models.listCandidates(AiModelPurpose.VIDEO_GENERATION).stream().filter(this::legacyAvailableEndpoint).toList();
         String selected=candidates.stream().filter(AiModelInvocationService.ResolvedEndpoint::isDefault).findFirst()
                 .or(()->candidates.stream().findFirst()).map(r->r.endpoint().getId()).orElse(null);
         return candidates.stream().map(r->new AiModelInvocationService.ResolvedEndpoint(r.endpoint(),r.candidate(),Objects.equals(selected,r.endpoint().getId()))).toList();

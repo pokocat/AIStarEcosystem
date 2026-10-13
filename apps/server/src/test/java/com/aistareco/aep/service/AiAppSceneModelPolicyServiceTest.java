@@ -44,11 +44,19 @@ class AiAppSceneModelPolicyServiceTest {
         other.endpoint().setBaseUrl("https://api.jusuanhub.com.evil.example/v1");assertFalse(service.allowsStudioProvider(other.endpoint()));
         other.endpoint().setBaseUrl("https://user@api.jusuanhub.com/v1");assertFalse(service.allowsStudioProvider(other.endpoint()));
     }
-    @Test void scenePolicyCannotReintroduceAnotherSupplier(){
-        jusuanOnly();var r=endpoint("a");r.endpoint().setBaseUrl("https://other.example/v1");configured(policy("fixed",30L));
+    @Test void configuredImageSceneCanUseAgnesWithoutChangingLegacyOrVideoSupplierScope(){
+        jusuanOnly();var agnes=endpoint("a");agnes.endpoint().setBaseUrl("https://api.agnes-ai.cn/v1");
+        when(models.listCandidates(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of(agnes));
         assertTrue(service.available("studio","image",30).isEmpty());
-        assertThrows(BusinessException.class,()->service.resolve("studio","image",null,30));
-        assertThrows(BusinessException.class,()->service.save("studio","image",policy("fixed",30L),"test"));
+        assertThrows(BusinessException.class,()->service.resolve("studio","image","a",30));
+        var saved=service.save("studio","image",policy("fixed",30L),"test");
+        assertEquals("a",saved.defaultEndpointId());
+        configured(saved);
+        assertEquals(List.of("a"),service.available("studio","image",30).stream().map(r->r.resolved().endpoint().getId()).toList());
+        assertEquals("a",service.resolve("studio","image",null,30).resolved().endpoint().getId());
+        assertEquals(30,service.resolve("studio","image","a",30).creditCost());
+        when(models.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(agnes));
+        assertTrue(service.studioVideoCandidates().isEmpty());
     }
     @Test void videoDefaultAndSubmissionUseAllowedSupplierWithoutChangingGlobalDefault(){
         jusuanOnly();var allowed=endpoint("a");allowed.endpoint().setBaseUrl("https://api.jusuanhub.com/v1");
