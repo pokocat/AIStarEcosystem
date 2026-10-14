@@ -8,6 +8,7 @@ import com.aistareco.aep.config.MusicGenProperties;
 import com.aistareco.aep.ipstudio.service.*;
 import com.aistareco.aep.dap.service.DapPricingService;
 import com.aistareco.aep.videostudio.service.VideoStudioPricingService;
+import com.aistareco.aep.videostudio.service.VideoStudioService;
 import com.fasterxml.jackson.databind.*;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,9 +25,10 @@ class ModelFeatureManagementServiceTest {
     final StudioPointPricing point=mock(StudioPointPricing.class);
     final AiModelEndpointAdminService endpoints=mock(AiModelEndpointAdminService.class);
     final AiAppSceneModelPolicyService scenePolicies=mock(AiAppSceneModelPolicyService.class);
+    final VideoStudioService videoModels=mock(VideoStudioService.class);
     final CelebrityZoneService zone=mock(CelebrityZoneService.class);
     final MusicGenProperties music=new MusicGenProperties();
-    ModelFeatureManagementService service(){var access=mock(AiModelAccessPolicyService.class);when(access.allows(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenReturn(true);return new ModelFeatureManagementService(bindings,prices,config,mock(VideoStudioPricingService.class),mapper,music,zone,platform,mock(DapPricingService.class),point,endpoints,scenePolicies,access,20);}
+    ModelFeatureManagementService service(){var access=mock(AiModelAccessPolicyService.class);when(access.allows(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenReturn(true);return new ModelFeatureManagementService(bindings,prices,config,mock(VideoStudioPricingService.class),videoModels,mapper,music,zone,platform,mock(DapPricingService.class),point,endpoints,scenePolicies,access,20);}
     AiAppEndpointCandidateDto candidate(String id){return new AiAppEndpointCandidateDto("DAP_LIP_SYNC","lip",id,"模型",true,false,1,true,null,12L,null);}
     PlatformConfigDto row(String key,JsonNode value){return new PlatformConfigDto(key,value,1,null,null,null);}
     @Test void studioVideoCatalogKeepsTheSharedCandidateContractAndStudioDefault(){
@@ -36,8 +38,10 @@ class ModelFeatureManagementServiceTest {
                 new EndpointCapabilityDto(null,null,null,null,null,null,null,null,null),null,null);
         when(bindings.list()).thenReturn(List.of());
         when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(shared));
-        when(scenePolicies.studioVideoGroup()).thenReturn(Optional.of(new AiAppSceneModelPolicyService.VideoGroup("model-a",List.of("model-a"))));
+        when(scenePolicies.studioVideoGroup()).thenReturn(Optional.of(
+                new AiAppSceneModelPolicyService.VideoGroup("model-a", List.of("model-a"))));
         when(scenePolicies.studioVideoCandidates()).thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
+        when(videoModels.listModels("studio")).thenReturn(List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel("model-a","视频模型 A",true,true,null,null)));
         var rows=mapper.valueToTree(service().catalog());
         var row=java.util.stream.StreamSupport.stream(rows.spliterator(),false)
                 .filter(value->"studio".equals(value.path("appCode").asText())&&"video".equals(value.path("feature").asText()))
@@ -47,6 +51,29 @@ class ModelFeatureManagementServiceTest {
         assertTrue(value.path("isDefault").asBoolean());
         assertTrue(value.path("capability").isObject());
         assertTrue(value.path("enabled").asBoolean());
+        assertTrue(value.path("available").asBoolean());
+        assertEquals("configured",row.path("status").asText());
+        assertEquals("video_matrix",row.path("pricingKind").asText());
+        assertEquals("celebrity.video-studio-pricing",row.path("priceKey").asText());
+        assertEquals(List.of("celebrity.video-studio", "studio.video"),
+                ModelFeatureRegistry.priceAffected(ModelFeatureRegistry.require("studio", "video")));
+        assertTrue(row.path("binding").isNull());
+        when(videoModels.listModels("studio")).thenReturn(List.of());
+        row=java.util.stream.StreamSupport.stream(mapper.valueToTree(service().catalog()).spliterator(),false)
+                .filter(item->"studio".equals(item.path("appCode").asText())&&"video".equals(item.path("feature").asText()))
+                .findFirst().orElseThrow();
+        assertEquals("unavailable",row.path("status").asText());
+        assertFalse(row.path("candidates").get(0).path("available").asBoolean());
+    }
+    @Test void studioVideoCatalogWithoutOpenGroupIsUnconfigured(){
+        when(scenePolicies.studioVideoGroup()).thenReturn(Optional.empty());
+        when(scenePolicies.studioVideoCandidates()).thenReturn(List.of());
+        var rows=mapper.valueToTree(service().catalog());
+        var row=java.util.stream.StreamSupport.stream(rows.spliterator(),false)
+                .filter(value->"studio".equals(value.path("appCode").asText())&&"video".equals(value.path("feature").asText()))
+                .findFirst().orElseThrow();
+        assertEquals("unconfigured",row.path("status").asText());
+        assertTrue(row.path("candidates").isEmpty());
     }
     @Test void registryRejectsUnknownAndAcknowledgesAllSharedConsumers(){
         assertThrows(Exception.class,()->ModelFeatureRegistry.require("star","generate"));
@@ -86,6 +113,44 @@ class ModelFeatureManagementServiceTest {
         when(bindings.listCandidates(any())).thenReturn(List.of());when(prices.getAll()).thenReturn(Map.of());when(config.findByKey(anyString())).thenReturn(Optional.empty());
         var rows=mapper.valueToTree(service().pricingCatalog());assertTrue(rows.size()>40);for(var row:rows){assertTrue(row.path("binding").isNull());assertTrue(row.path("candidates").isEmpty());assertTrue(row.has("pricing"));assertFalse(row.toString().contains("baseUrl"));}
         verify(bindings,never()).list();
+    }
+    @Test void studioVideoPricingProjectsSharedCandidateRatesWithoutModelManagementRead(){
+        var shared=new AiAppEndpointCandidateDto("VIDEO_GENERATION","视频生成","seedance","Seedance 2.0",true,false,0,true,
+                new EndpointCapabilityDto(null,null,null,null,null,null,null,null,null),30L,null);
+        when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(shared));
+        when(endpoints.list()).thenReturn(List.of(AiModelEndpointDto.from(AiModelEndpoint.builder()
+                .id("seedance").name("Seedance 2.0").billingMode(com.aistareco.aep.model.AiModelBillingMode.PER_SECOND).build())));
+        var pricing=mapper.valueToTree(service().pricing("studio","video"));
+        var rate=pricing.path("candidatePrices").get(0);
+        assertEquals("seedance",rate.path("endpointId").asText());
+        assertEquals(30,rate.path("creditCostOverride").intValue());
+        assertEquals("per_second",rate.path("billingUnit").asText());
+        assertFalse(pricing.toString().contains("baseUrl"));
+        assertTrue(mapper.valueToTree(service().pricing("celebrity","video-studio")).path("candidatePrices").isMissingNode());
+    }
+    @Test void videoPricingUsesConfiguredEndpointDimensionsWithoutExposingConnection(){
+        var contract=new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec(
+                        "reference_video",false,false,null,null,"参考视频")),
+                List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier("720p",
+                        List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas("16:9",1280,720)))),
+                4,15,2000,4294967295L);
+        // The price reader sees only public dimensions; it never returns the endpoint address or credential.
+        var spec=new com.aistareco.aep.model.AiVideoRequestSpec("json-template",contract,"/tasks","/tasks/{id}",
+                Map.of(),null,null,Map.of("reference_video",Map.of("prompt","${prompt}")));
+        var endpoint=AiModelEndpoint.builder().id("seedance").name("Seedance")
+                .baseUrl("https://private-provider.example").videoRequestSpecJson(spec.json()).enabled(true).build();
+        var disabled=AiModelEndpoint.builder().id("disabled").name("Disabled")
+                .videoRequestSpecJson(spec.json()).enabled(false).build();
+        when(endpoints.list()).thenReturn(List.of(AiModelEndpointDto.from(endpoint),AiModelEndpointDto.from(disabled)));
+        var result=mapper.valueToTree(service().pricing("studio","video"));
+        var dimensions=result.path("videoDimensions");
+        assertEquals("reference_video",dimensions.path("modes").get(0).path("mode").asText());
+        assertEquals("参考视频",dimensions.path("modes").get(0).path("label").asText());
+        assertEquals("720p",dimensions.path("tiers").get(0).asText());
+        assertEquals(1,dimensions.path("modes").size());
+        assertFalse(result.toString().contains("private-provider.example"));
+        assertFalse(result.toString().contains("requestTemplates"));
     }
     @Test void absentGlobalSeedPreventsFirstSupplierWrite(){
         when(bindings.listCandidates(AiModelPurpose.DAP_LIP_SYNC)).thenReturn(List.of(candidate("a")));doThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE)).when(config).lockRequired(CelebrityActionPricingService.ACTION_PRICING_CONFIG_KEY);

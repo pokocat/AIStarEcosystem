@@ -5,7 +5,9 @@ import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.service.AiModelInvocationService;
+import com.aistareco.aep.videostudio.service.VideoStudioService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -183,7 +185,7 @@ class MaterialVideoModelClientTest {
         AiModelInvocationService invocation = mock(AiModelInvocationService.class);
         AiModelEndpoint endpoint = AiModelEndpoint.builder().id("h3").billingMode(AiModelBillingMode.PER_SECOND).build();
         AiAppEndpointCandidate candidate = AiAppEndpointCandidate.builder().creditCostOverride(40L).build();
-        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3")))
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3"), eq("celebrity")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
         MaterialVideoModelClient client = new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null, null);
 
@@ -198,6 +200,11 @@ class MaterialVideoModelClientTest {
                 .thenReturn(Optional.of(endpoint));
         when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION),
+                org.mockito.ArgumentMatchers.<String>nullable(String.class), eq("celebrity")))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
+        when(invocation.resolveDefaultEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("celebrity")))
+                .thenReturn(Optional.of(endpoint));
         return new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null, null);
     }
 
@@ -320,6 +327,190 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
+    void configuredSeedanceSupportsNativeStudioModesAndReferenceWire() {
+        var configured = new AiVideoRequestSpec("seedance", VideoStudioService.contract(4, 15),
+                "/api/v3/contents/generations/tasks", "/api/v3/contents/generations/tasks/{id}",
+                java.util.Map.of("generate_audio", true), "/v1/models");
+        assertEquals(configured, AiVideoRequestSpec.read(configured.json()));
+        var spec = new VideoGenSpec("universal_reference_video", "768p", null, null, null,
+                java.util.List.of(new VideoGenSpec.Reference("image", "reference.png")));
+        MaterialVideoModelClient.requireProtocolSupports("seedance", spec, "16:9", configured);
+        var client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+        var body = client.buildSubmitBody("seedance", "seedance-2.0", "雨夜街道", 8, "16:9", spec,
+                new MaterialVideoModelClient.UpstreamInputs(null, null, null,
+                        java.util.List.of(new MaterialVideoModelClient.ReferenceAsset("image", "https://cdn.example/ref.png"))));
+        var content = (com.fasterxml.jackson.databind.node.ArrayNode) body.get("content");
+        assertEquals("reference_image", content.get(1).get("role").asText());
+        assertEquals("https://cdn.example/ref.png", content.get(1).get("image_url").get("url").asText());
+        assertEquals("768p", body.get("resolution"));
+        assertEquals(8, body.get("duration"));
+    }
+
+    @Test
+    void configuredJusuanUsesItsSavedCanvasAndDurationInsteadOfLegacyH3Table() {
+        var legacy = VideoStudioService.contract(5, 15);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                legacy.modes(), java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier(
+                "custom", java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas(
+                "100:71", 10000, 7100, "provider-custom-100x71")))), 20, 30, 7000, 2147483647L);
+        var configured = new AiVideoRequestSpec("jusuan-media", contract,
+                "/media/generations", "/media/generations/{id}", java.util.Map.of());
+        var spec = new VideoGenSpec("t2v", "custom", null, null, null, java.util.List.of());
+        MaterialVideoModelClient.requireProtocolSupports("jusuan-media", spec, "100:71", configured);
+        var client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+        var body = client.buildSubmitBody("jusuan-media", "custom-model", "雨夜街道", 20, "100:71",
+                spec, MaterialVideoModelClient.UpstreamInputs.NONE, configured);
+        assertEquals("custom", body.get("resolutionTier"));
+        assertEquals("100:71", body.get("aspectRatio"));
+        assertEquals("landscape", body.get("orientation"));
+        assertEquals("provider-custom-100x71", body.get("outputSizeCode"));
+        assertEquals(20, body.get("seconds"));
+        var optimized = MaterialVideoModelClient.buildOptimizationBody("request-123", "custom-model",
+                "雨夜街道", 20, "100:71", spec, MaterialVideoModelClient.UpstreamInputs.NONE, configured);
+        var mediaSpec = (java.util.Map<?, ?>) optimized.get("mediaSpec");
+        assertEquals("provider-custom-100x71", mediaSpec.get("outputSizeCode"));
+        assertEquals(20, mediaSpec.get("seconds"));
+    }
+
+    @Test
+    void configuredJusuanLegacyCanvasUsesSavedContractForTextAndFirstFrame() {
+        var legacy = VideoStudioService.contract(5, 15);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                legacy.modes(), java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier(
+                "custom", java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas(
+                "100:71", 10000, 7100, "provider-custom-100x71")))), 20, 30, 7000, 2147483647L);
+        var configured = new AiVideoRequestSpec("jusuan-media", contract,
+                "/media/generations", "/media/generations/{id}", java.util.Map.of());
+        var client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+        var textBody = client.buildSubmitBody("jusuan-media", "custom-model", "雨夜街道", 20, "100:71",
+                VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE, configured);
+        assertEquals("custom", textBody.get("resolutionTier"));
+        assertEquals("provider-custom-100x71", textBody.get("outputSizeCode"));
+        assertEquals(20, textBody.get("seconds"));
+        assertEquals("t2v", textBody.get("generationMode"));
+
+        var imageBody = client.buildSubmitBody("jusuan-media", "custom-model", "让她眨眼", 25, "100:71",
+                VideoGenSpec.firstFrameOnly("local.png"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameAsset("uploaded-asset"), configured);
+        assertEquals("i2v", imageBody.get("generationMode"));
+        assertEquals("uploaded-asset", imageBody.get("input_image_asset_id"));
+        assertEquals("custom", imageBody.get("resolutionTier"));
+        assertEquals(25, imageBody.get("seconds"));
+        assertThrows(BusinessException.class, () -> client.buildSubmitBody("jusuan-media", "custom-model",
+                "雨夜街道", 20, "9:16", VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE, configured));
+        assertThrows(BusinessException.class, () -> client.buildSubmitBody("jusuan-media", "custom-model",
+                "雨夜街道", 20, "100:71", new VideoGenSpec("i2v", null, null, "local.png", null, java.util.List.of()),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameAsset("uploaded-asset"), configured));
+        var textOnly = new AiVideoRequestSpec("jusuan-media",
+                new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                        java.util.List.of(legacy.modes().get(0)), contract.tiers(), 20, 30, 7000, 2147483647L),
+                "/media/generations", "/media/generations/{id}", java.util.Map.of());
+        assertThrows(BusinessException.class, () -> client.buildSubmitBody("jusuan-media", "custom-model",
+                "让她眨眼", 25, "100:71", VideoGenSpec.firstFrameOnly("local.png"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameAsset("uploaded-asset"), textOnly));
+    }
+
+    @Test
+    void configuredSeedanceLegacyCanvasHonorsOpenModesAndResolution() {
+        var legacy = VideoStudioService.contract(4, 15);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                java.util.List.of(legacy.modes().get(0), legacy.modes().get(1)),
+                java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier(
+                        "custom", java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas(
+                        "100:71", 1000, 710)))), 4, 15, 2000, 4294967295L);
+        var configured = new AiVideoRequestSpec("seedance", contract,
+                "/tasks", "/tasks/{id}", java.util.Map.of());
+        var client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+        var body = client.buildSubmitBody("seedance", "seedance-model", "让她眨眼", 8, "100:71",
+                VideoGenSpec.firstFrameOnly("local.png"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameUrl("https://example.com/local.png"), configured);
+        assertEquals("custom", body.get("resolution"));
+        var textOnly = new AiVideoRequestSpec("seedance",
+                new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                        java.util.List.of(legacy.modes().get(0)), contract.tiers(), 4, 15, 2000, 4294967295L),
+                "/tasks", "/tasks/{id}", java.util.Map.of());
+        assertThrows(BusinessException.class, () -> client.buildSubmitBody("seedance", "seedance-model",
+                "让她眨眼", 8, "100:71", VideoGenSpec.firstFrameOnly("local.png"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameUrl("https://example.com/local.png"), textOnly));
+    }
+
+    @Test
+    void configuredJsonTemplateLegacyTextUsesItsSavedModeAndTemplate() {
+        var legacy = VideoStudioService.contract(4, 15);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                java.util.List.of(legacy.modes().get(0)),
+                java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier(
+                        "custom", java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas(
+                        "100:71", 1000, 710)))), 4, 15, 2000, 4294967295L);
+        var configured = new AiVideoRequestSpec("json-template", contract, "/tasks", "/tasks/{id}",
+                java.util.Map.of(), "", null, java.util.Map.of("t2v", java.util.Map.of(
+                        "prompt", "${prompt}", "seconds", "${seconds}", "ratio", "${aspectRatio}")));
+        var client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+        var body = client.buildSubmitBody("json-template", "internal-model", "雨夜街道", 8, "100:71",
+                VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE, configured);
+        assertEquals("雨夜街道", body.get("prompt"));
+        assertEquals(8, body.get("seconds"));
+        assertEquals("100:71", body.get("ratio"));
+        assertThrows(BusinessException.class, () -> client.buildSubmitBody("json-template", "internal-model",
+                "雨夜街道", 8, "100:71", VideoGenSpec.firstFrameOnly("local.png"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameUrl("https://example.com/local.png"), configured));
+    }
+
+    @Test
+    void configuredJusuanUsesItsSavedFrameUploadLimit() {
+        var legacy = VideoStudioService.contract(5, 15);
+        var frame = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit(
+                "image", 1, 24L * 1024 * 1024, java.util.List.of("PNG"), null, null);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec(
+                        "i2v", true, false, frame, null)),
+                java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier(
+                        "custom", java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas(
+                        "100:71", 10000, 7100, "provider-custom-100x71")))),
+                20, 30, legacy.promptMaxChars(), legacy.seedMax());
+        var configured = new AiVideoRequestSpec("jusuan-media", contract,
+                "/media/generations", "/media/generations/{id}", java.util.Map.of());
+        assertEquals(16L * 1024 * 1024,
+                MaterialVideoModelClient.materialMaxBytes(null, "i2v", "image", true));
+        assertEquals(24L * 1024 * 1024,
+                MaterialVideoModelClient.materialMaxBytes(configured, "i2v", "image", true));
+        assertEquals(java.util.List.of("PNG", "JPEG", "WEBP"),
+                MaterialVideoModelClient.materialFormats(null, "i2v", "image", true));
+        assertEquals(java.util.List.of("PNG"),
+                MaterialVideoModelClient.materialFormats(configured, "i2v", "image", true));
+    }
+
+    @Test
+    void acceptedTaskKeepsItsConfiguredPollRouteAfterEndpointEdit() {
+        var accepted = new AiVideoRequestSpec("seedance", VideoStudioService.contract(4, 15),
+                "/api/v3/contents/generations/tasks", "/api/v3/contents/generations/tasks/{id}",
+                java.util.Map.of());
+        var endpoint = AiModelEndpoint.builder().baseUrl("https://new.example")
+                .videoRequestSpecJson(new AiVideoRequestSpec("seedance", VideoStudioService.contract(4, 15),
+                        "/new", "/new/{id}", java.util.Map.of()).json()).build();
+        var submitted = new MaterialVideoModelClient.SubmitResult("task-123", null, "OneToken",
+                "seedance-2.0", "seedance", "ep-sd", "studio", "https://old.example", accepted.json());
+        var client = new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+        assertEquals("https://old.example/api/v3/contents/generations/tasks/task-123",
+                client.pollUri(endpoint, submitted).toString());
+    }
+
+    @Test
+    void acceptedTaskCanResumeAfterEndpointIsDisabled() {
+        var invocation = mock(AiModelInvocationService.class);
+        var endpoint = AiModelEndpoint.builder().id("ep-sd").name("OneToken")
+                .baseUrl("https://api.example").model("seedance-2.0").enabled(false).build();
+        when(invocation.storedEndpoint("ep-sd")).thenReturn(Optional.of(endpoint));
+        var client = new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null, null);
+
+        var resumed = client.resumeExistingTask("task-123", "ep-sd", null, null, "studio",
+                "https://accepted.example", null);
+        assertEquals("ep-sd", resumed.endpointId());
+        assertEquals("https://accepted.example", resumed.baseUrlSnapshot());
+        assertEquals("OneToken", resumed.providerUsed());
+    }
+
+    @Test
     @DisplayName("按文件名给出正确的 Content-Type —— 传错类型上游会拒")
     void picksContentTypeByExtension() {
         assertEquals("image/jpeg", MaterialVideoModelClient.contentTypeOf("a.JPG"));
@@ -364,6 +555,41 @@ class MaterialVideoModelClientTest {
                 .name("agnes-video").model("agnes-video").baseUrl("https://agnes.example.com").build();
         assertNull(client.videoGeometry(agnes));
         assertNull(client.videoGeometry(null));
+    }
+
+    @Test
+    void videoGeometry_usesSavedContractForConfiguredEndpoints() {
+        MaterialVideoModelClient client =
+                new MaterialVideoModelClient(null, new MaterialVideoProperties(), null, null, null);
+        var base = VideoStudioService.contract(4, 15);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                base.modes(), java.util.List.of(
+                    new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier("720p", java.util.List.of(
+                        new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas("3:4", 720, 960))),
+                    new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier("cinema", java.util.List.of(
+                        new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas("21:9", 1680, 720)))),
+                base.minSeconds(), base.maxSeconds(), base.promptMaxChars(), base.seedMax());
+        AiModelEndpoint seedance = AiModelEndpoint.builder().model("seedance-2")
+                .baseUrl("https://video.example.com")
+                .videoRequestSpecJson(new AiVideoRequestSpec("seedance", contract,
+                        "/tasks", "/tasks/{id}", java.util.Map.of()).json()).build();
+
+        var geometry = client.videoGeometry(seedance);
+        assertEquals(java.util.List.of("720", "cinema"), geometry.resolutions());
+        assertEquals(java.util.List.of("3:4", "21:9"), geometry.ratios());
+
+        var jusuanContract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                base.modes(), java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier(
+                    "custom", java.util.List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas(
+                        "100:71", 10000, 7100, "vendor-custom")))),
+                base.minSeconds(), base.maxSeconds(), base.promptMaxChars(), base.seedMax());
+        AiModelEndpoint jusuan = AiModelEndpoint.builder().model("minimax-h3")
+                .baseUrl("https://api.jusuanhub.com:10443/v1")
+                .videoRequestSpecJson(new AiVideoRequestSpec("jusuan-media", jusuanContract,
+                        "/media/generations", "/jobs/{id}", java.util.Map.of()).json()).build();
+        var configuredGeometry = client.videoGeometry(jusuan);
+        assertEquals(java.util.List.of("custom"), configuredGeometry.resolutions());
+        assertEquals(java.util.List.of("100:71"), configuredGeometry.ratios());
     }
 
     @Test

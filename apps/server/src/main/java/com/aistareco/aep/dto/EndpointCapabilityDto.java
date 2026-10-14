@@ -30,8 +30,28 @@ public record EndpointCapabilityDto(
         /** 出视频**真正能出**的比例（如 ["16:9","9:16"]）；null = 不受限。 */
         java.util.List<String> videoRatios,
         /** 出图真正可选的比例；null = 未限制。 */
-        java.util.List<String> imageRatios
+        java.util.List<String> imageRatios,
+        /** 当前图片端点的提示词上限；null 表示沿用旧生成链的上限。 */
+        Integer imagePromptMaxChars,
+        /** 当前图片端点允许的一次生成候选数；null 表示旧链路。 */
+        java.util.List<Integer> imageBatchCounts
 ) {
+    public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
+                                 Boolean supportsSubjectReference, Integer maxDurationSec,
+                                 Integer minDurationSec, Integer minImagePixels,
+                                 java.util.List<String> videoResolutions, java.util.List<String> videoRatios,
+                                 java.util.List<String> imageRatios, Integer imagePromptMaxChars) {
+        this(maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,
+                minImagePixels,videoResolutions,videoRatios,imageRatios,imagePromptMaxChars,null);
+    }
+    public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
+                                 Boolean supportsSubjectReference, Integer maxDurationSec,
+                                 Integer minDurationSec, Integer minImagePixels,
+                                 java.util.List<String> videoResolutions, java.util.List<String> videoRatios,
+                                 java.util.List<String> imageRatios) {
+        this(maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,
+                minImagePixels,videoResolutions,videoRatios,imageRatios,null);
+    }
     public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
                                  Boolean supportsSubjectReference, Integer maxDurationSec,
                                  Integer minDurationSec, Integer minImagePixels,
@@ -43,11 +63,12 @@ public record EndpointCapabilityDto(
         return from(c, null, null, null);
     }
 
-    public static EndpointCapabilityDto image(AiAppEndpointCandidate c, java.util.List<String> ratios) {
+    public static EndpointCapabilityDto image(AiAppEndpointCandidate c, com.aistareco.aep.model.AiImageRequestSpec spec) {
         EndpointCapabilityDto base=from(c);
-        return new EndpointCapabilityDto(base.maxRefImages(),base.supportsFirstLastFrame(),
+        return new EndpointCapabilityDto(spec==null?base.maxRefImages():spec.maxReferenceImages(),base.supportsFirstLastFrame(),
                 base.supportsSubjectReference(),base.maxDurationSec(),base.minDurationSec(),
-                base.minImagePixels(),base.videoResolutions(),base.videoRatios(),ratios);
+                base.minImagePixels(),base.videoResolutions(),base.videoRatios(),spec==null?null:spec.ratios(),
+                spec==null?null:spec.promptMaxChars(),spec==null?null:spec.allowedBatchCounts());
     }
 
     /** 带**有效**时长区间（协议硬边界 ∩ 候选配置）+ 可出画幅的版本；视频用途用它。 */

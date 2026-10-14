@@ -270,7 +270,7 @@ public class IpStudioController {
             var caps = video
                     ? capabilityWithDuration(r)
                     : com.aistareco.aep.dto.EndpointCapabilityDto.image(r.candidate(),
-                            imageSpec==null?null:imageSpec.ratios());
+                            imageSpec);
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
                     r.endpoint().getId(), r.endpoint().publicModelName(), r.isDefault(),
                     caps, cost, video ? com.aistareco.aep.service.AiModelInvocationService.videoBillingUnit(r.endpoint(), r.candidate()) : "per_image"));
@@ -282,9 +282,7 @@ public class IpStudioController {
             com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint r) {
         try {
             var b = videoModels.effectiveDurationBounds(r.endpoint().getId(), r.endpoint());
-            // 画幅同理：聚算协议只有 768p + 横/竖两档，界面却照搬了上游的
-            // 480p/720p/1080p × 六种比例 —— 不告诉前端的话，用户选「720p·3:4」
-            // 拿回来的是 768×1376，而没有任何地方说过为什么（v0.184）。
+            // 已保存视频规格按端点的画布清单返回；旧聚算协议仍只有 768p + 横/竖两档。
             return com.aistareco.aep.dto.EndpointCapabilityDto.from(
                     r.candidate(), b.minSec(), b.maxSec(), videoModels.videoGeometry(r.endpoint()));
         } catch (RuntimeException e) {

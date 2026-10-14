@@ -8,6 +8,7 @@ import { getGroupResourceNodes } from "@/canvas/lib/canvas/canvas-resource-refer
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { useConfigStore } from "@/canvas-bridge/config-store";
+import { nativeVideoModelFor } from "@/canvas-bridge/models";
 
 export function CanvasNodeReferenceBar({ nodeId, nodes, connectedNodes, onDisconnect, onStartSelection }: { nodeId: string; nodes: CanvasNodeData[]; connectedNodes: CanvasNodeData[]; onDisconnect?: (fromNodeId: string, toNodeId: string) => void; onStartSelection?: (nodeId: string) => void }) {
     const { t } = useTranslation();
@@ -16,11 +17,18 @@ export function CanvasNodeReferenceBar({ nodeId, nodes, connectedNodes, onDiscon
     // 本仓：display the same ordered frame/reference roles that the video bridge submits.
     const target=nodes.find(n=>n.id===nodeId);
     const config=useConfigStore(state=>state.config);
-    const frameMode=(target?.metadata?.videoMode||config.videoMode)!=="reference";
+    const selectedMode=target?.metadata?.videoMode||config.videoMode;
+    const model=nativeVideoModelFor(target?.metadata?.model||config.model||config.videoModel);
+    const configured=model?.contract.modes.find(mode=>mode.mode===selectedMode);
+    const frameLabels=configured
+        ? [configured.needsFirstFrame?"首帧":null,configured.needsLastFrame?"尾帧":null].filter((label):label is string=>!!label)
+        : selectedMode==="reference"?[]:["首帧","尾帧"];
     const counts={image:0,video:0,audio:0};
     const labeled=references.map(ref=>{const kind=getNodeDefinition(ref.node.type)?.resource?.(ref.node)?.kind;
       const number=kind&&kind in counts?++counts[kind as keyof typeof counts]:0;
-      const label=target?.type===CanvasNodeType.Video&&number?frameMode&&kind==="image"?(number===1?"首帧":number===2?"尾帧":`多余图${number}`):`${kind==="image"?"图":kind==="video"?"视频":"音频"}${number}`:undefined;
+      const label=target?.type===CanvasNodeType.Video&&number?
+        kind==="image"&&number<=frameLabels.length?frameLabels[number-1]:
+        `${kind==="image"?"图":kind==="video"?"视频":"音频"}${kind==="image"?number-frameLabels.length:number}`:undefined;
       return {...ref,label};});
     return (
         <div className="mb-2">

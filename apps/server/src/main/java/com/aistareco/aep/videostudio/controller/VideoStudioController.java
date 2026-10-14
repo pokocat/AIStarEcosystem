@@ -72,8 +72,17 @@ public class VideoStudioController {
     @PostMapping(value = "/uploads", consumes = "multipart/form-data")
     public ApiResponse<VideoStudioUpload> upload(Principal principal,
                                                  @RequestParam(value = "file", required = false) MultipartFile file,
-                                                 @RequestParam(value = "mediaType", required = false) String mediaType) {
-        return ApiResponse.of(uploads.upload(uid(principal), file, mediaType));
+                                                 @RequestParam(value = "mediaType", required = false) String mediaType,
+                                                 @RequestParam(value = "endpointId", required = false) String endpointId,
+                                                 @RequestParam(value = "mode", required = false) String mode,
+                                                 @RequestParam(value = "frame", required = false) Boolean frame) {
+        String userId = uid(principal);
+        if ((endpointId != null || Boolean.TRUE.equals(frame)) && (mode == null || mode.isBlank())) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "上传素材前请先选择视频模式");
+        }
+        var rule = mode == null || mode.isBlank() ? null
+                : studio.uploadRule(endpointId, mode, mediaType, Boolean.TRUE.equals(frame));
+        return ApiResponse.of(uploads.upload(userId, file, mediaType, rule));
     }
 
     @PostMapping("/jobs")

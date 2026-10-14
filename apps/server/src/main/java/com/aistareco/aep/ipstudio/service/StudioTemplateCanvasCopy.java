@@ -42,7 +42,7 @@ final class StudioTemplateCanvasCopy {
             if ("video".equals(step.operation())) {
                 md.put("seconds", step.durationSec()); md.put("size", step.aspectRatio());
                 if (step.video() != null) {
-                    md.put("videoMode", "universal_reference_video".equals(step.video().mode()) ? "reference" : "frames");
+                    md.put("videoMode", step.video().mode());
                     md.put("vquality", step.video().resolutionTier());
                     var preset = md.withObject("/studio").putObject("videoPreset");
                     preset.put("mode", step.video().mode()).put("resolutionTier", step.video().resolutionTier());

@@ -80,13 +80,13 @@ describe("出图", () => {
     expect(generateMock).toHaveBeenCalledWith("IPP-test", expect.objectContaining({ refKeys: [] }));
   });
 
-  it("张数被夹在 1–4 之间", async () => {
+  it("把所选张数交给端点规格校验，不在客户端静默截断", async () => {
     generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
     readRunMock.mockResolvedValue(done([{ key: "k", url: "u" }]));
 
     await requestEdit({ ...cfg, count: "99" } as unknown as AiConfig, "很多张", []);
 
-    expect(generateMock).toHaveBeenCalledWith("IPP-test", expect.objectContaining({ count: 4 }));
+    expect(generateMock).toHaveBeenCalledWith("IPP-test", expect.objectContaining({ count: 99 }));
   });
 });
 

@@ -42,7 +42,7 @@ class AiAppSceneModelPolicyServiceTest {
         assertThrows(BusinessException.class,()->service.resolve("studio","image","b",30));
         assertThrows(BusinessException.class,()->service.save("studio","image",new AiAppSceneModelPolicyDto("studio","image","fixed","b",List.of(new AiAppSceneModelPolicyDto.Candidate("b",30L,"per_image"))),"test"));
     }
-    @Test void configuredImageSceneCanUseAgnesWithoutChangingLegacyOrVideoSupplierScope(){
+    @Test void configuredImageSceneCanUseAgnesWithoutOpeningUnconfiguredStudioVideo(){
         var agnes=endpoint("a");agnes.endpoint().setBaseUrl("https://api.agnes-ai.cn/v1");
         when(models.listCandidates(AiModelPurpose.DAP_IMAGE,"studio")).thenReturn(List.of(agnes));
         var saved=service.save("studio","image",policy("fixed",30L),"test");
@@ -53,16 +53,18 @@ class AiAppSceneModelPolicyServiceTest {
         assertEquals(30,service.resolve("studio","image","a",30).creditCost());
         when(models.listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio")).thenReturn(List.of(agnes));
         assertTrue(service.studioVideoCandidates().isEmpty());
+        assertThrows(BusinessException.class,()->service.resolveStudioVideo("a"));
+        verify(models,never()).listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio");
     }
-    @Test void videoGroupControlsCatalogAndSubmissionWithoutChangingGlobalDefault(){
+    @Test void videoGroupControlsStudioOpenRangeAndDefault(){
         var allowed=endpoint("a");var other=endpoint("b");
         var group=new AiAppSceneModelPolicyService.VideoGroup("a",List.of("a"));
         when(config.findByKey("ai.app-model-group.studio.video")).thenReturn(Optional.of(new PlatformConfigDto("key",mapper.valueToTree(group),1,null,null,null)));
         when(models.listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio")).thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(other.endpoint(),other.candidate(),true),allowed));
-        assertEquals(1,service.studioVideoCandidates().size());assertTrue(service.studioVideoCandidates().get(0).isDefault());
+        assertEquals(List.of("a"),service.studioVideoCandidates().stream().map(r->r.endpoint().getId()).toList());assertTrue(service.studioVideoCandidates().get(0).isDefault());
         assertEquals("a",service.resolveStudioVideo(null).endpoint().getId());
         assertThrows(BusinessException.class,()->service.resolveStudioVideo("b"));
-        allowed.endpoint().setEnabled(false);assertTrue(service.studioVideoCandidates().isEmpty());assertThrows(BusinessException.class,()->service.resolveStudioVideo(null));
+        allowed.endpoint().setEnabled(false);assertThrows(BusinessException.class,()->service.resolveStudioVideo(null));
     }
     @Test void invalidVideoGroupFailsClosed(){
         when(config.findByKey("ai.app-model-group.studio.video")).thenReturn(Optional.of(new PlatformConfigDto("key",mapper.valueToTree(new AiAppSceneModelPolicyService.VideoGroup("outside",List.of("a"))),1,null,null,null)));

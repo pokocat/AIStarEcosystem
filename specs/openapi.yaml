@@ -4112,35 +4112,35 @@ components:
     # 所有 `T | null` 字段出 wire 都是显式的 null（DTO 标了 @JsonInclude(ALWAYS)），不是省略。
     VideoStudioMode:
       type: string
-      description: 生成模式，取值即厂商 wire 值（MiniMax H3 generationMode）。
-      enum: [t2v, i2v, first_last_frame_video, universal_reference_video]
+      description: 生成模式标识来自所选模型的 contract.modes；请求字段由端点协议适配器映射。
     VideoStudioMediaType:
       type: string
       enum: [image, video, audio]
     VideoStudioCanvas:
       type: object
-      description: 一个受控画布：比例 + 像素（厂商固定的六种之一）。
-      required: [aspectRatio, width, height]
+      description: 端点配置的画布；聚算协议的 outputSizeCode 是该画布的供应商尺寸编码。
+      required: [aspectRatio, width, height, outputSizeCode]
       properties:
-        aspectRatio: { type: string, enum: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'] }
+        aspectRatio: { type: string, example: '16:9' }
         width: { type: integer, example: 768 }
         height: { type: integer, example: 1344 }
+        outputSizeCode: { type: string, nullable: true, example: 'h3-768-16x9' }
     VideoStudioTier:
       type: object
       required: [tier, canvases]
       properties:
-        tier: { type: string, enum: [768p, 544p] }
+        tier: { type: string, example: 768p }
         canvases: { type: array, items: { $ref: '#/components/schemas/VideoStudioCanvas' } }
     VideoStudioMediaLimit:
       type: object
       required: [mediaType, maxCount, maxBytes, formats, minDurationSec, maxDurationSec]
       properties:
         mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
-        maxCount: { type: integer, description: 本类最多几个（全能参考：图 9 / 视频 1 / 音频 3；帧图 1） }
+        maxCount: { type: integer, description: 本类最多几个；由端点模式的素材规则决定 }
         maxBytes: { type: integer, format: int64, description: 单个文件上限（字节） }
         formats: { type: array, items: { type: string }, example: [PNG, JPEG, WEBP] }
-        minDurationSec: { type: integer, nullable: true, description: 单段时长下限（秒）；null = 不限。音频为 2 }
-        maxDurationSec: { type: integer, nullable: true, description: 单段时长上限（秒）；null = 不限。音频为 15 }
+        minDurationSec: { type: integer, nullable: true, description: 单段时长下限（秒）；null = 不限 }
+        maxDurationSec: { type: integer, nullable: true, description: 单段时长上限（秒）；null = 不限 }
     VideoStudioReferenceRules:
       type: object
       description: 全能参考模式的组合限制。
@@ -4149,15 +4149,17 @@ components:
         image: { $ref: '#/components/schemas/VideoStudioMediaLimit' }
         video: { $ref: '#/components/schemas/VideoStudioMediaLimit' }
         audio: { $ref: '#/components/schemas/VideoStudioMediaLimit' }
-        maxImagesWithVideo: { type: integer, description: 带了视频时图片最多几张（H3 为 8） }
-        maxTotal: { type: integer, description: 素材总数上限（H3 为 12） }
-        minVisual: { type: integer, description: 视觉素材（图 + 视频）至少几个（H3 为 1） }
-        maxAudioTotalSec: { type: integer, description: 所有音频加起来最长几秒（H3 为 15） }
+        maxImagesWithVideo: { type: integer, description: 带了视频时图片最多几张 }
+        maxTotal: { type: integer, description: 素材总数上限 }
+        minVisual: { type: integer, description: 视觉素材（图 + 视频）至少几个 }
+        maxAudioTotalSec: { type: integer, description: 所有音频加起来最长几秒 }
     VideoStudioModeSpec:
       type: object
       required: [mode, needsFirstFrame, needsLastFrame, frameImage, references]
       properties:
         mode: { $ref: '#/components/schemas/VideoStudioMode' }
+        label: { type: string, description: 端点配置的模式名称；未配置时使用内置显示名 }
+        promptRequired: { type: boolean, nullable: true, description: false 时该模式可提交空提示词；未配置时必填 }
         needsFirstFrame: { type: boolean }
         needsLastFrame: { type: boolean }
         frameImage:
@@ -4165,19 +4167,19 @@ components:
           nullable: true
           allOf: [{ $ref: '#/components/schemas/VideoStudioMediaLimit' }]
         references:
-          description: 参考素材规则；只有全能参考非 null。
+          description: 参考素材规则；该模式不用参考素材时为 null。
           nullable: true
           allOf: [{ $ref: '#/components/schemas/VideoStudioReferenceRules' }]
     VideoStudioContract:
       type: object
-      description: 一个模型的完整合同（服务端下发，前端不写死；数字全部来自 JusuanH3Contract）。
+      description: 一个模型的完整合同，由端点保存的视频规格和当前候选能力得出。
       required: [modes, tiers, minSeconds, maxSeconds, promptMaxChars, seedMax]
       properties:
         modes: { type: array, items: { $ref: '#/components/schemas/VideoStudioModeSpec' } }
         tiers: { type: array, items: { $ref: '#/components/schemas/VideoStudioTier' } }
         minSeconds: { type: integer, description: 有效时长下限（秒，整数）= 厂商硬边界 ∩ 后台候选配置 }
         maxSeconds: { type: integer, description: 有效时长上限（秒，整数） }
-        promptMaxChars: { type: integer, description: 去掉首尾空白后按 Unicode 字符数计（H3 为 7000） }
+        promptMaxChars: { type: integer, description: 去掉首尾空白后按 Unicode 字符数计 }
         seedMax: { type: integer, format: int64, description: 随机种子上限（含）；下限为 0 }
     VideoStudioPricing:
       type: object
@@ -4190,13 +4192,13 @@ components:
       required: [perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall]
       properties:
         perSecond: { $ref: '#/components/schemas/VideoStudioPerSecondGrid' }
-        freeRefImages: { type: integer, minimum: 0, maximum: 9, description: 全能参考里前几张参考图不加价 }
+        freeRefImages: { type: integer, minimum: 0, description: 配有参考素材规则的模式中，前几张参考图不加价 }
         extraRefImagePerSecond: { type: integer, format: int64, minimum: 0, description: 第 freeRefImages+1 张起每张每秒加价（0 = 不加） }
         promptOptimizationPerCall: { type: integer, format: int64, minimum: 0, description: 智能优化每次多少积分（0 = 不收费） }
     VideoStudioPerSecondGrid:
       type: object
       description: >-
-        每秒价表：模式 → 清晰度（768p / 544p）→ 积分 / 秒。四种模式、两档清晰度的键总是都在，未定价的格子值为 null
+        每秒价表：模式 → 清晰度 → 积分 / 秒。可用键来自已启用端点的合同；未定价的格子值为 null
         （显式 null，不是省略）。
       additionalProperties:
         type: object
@@ -4211,22 +4213,24 @@ components:
       description: >-
         后台「明星带货 → 引擎定价 → 视频生成」编辑的配置（PlatformConfig key celebrity.video-studio-pricing，整份替换，
         60 秒缓存在保存时立即失效）。perSecond 的 null 格子 = 不单独定价、按后台给模型配的每秒价（候选 creditCostOverride
-        且端点按秒计费）；格子 1..100000，freeRefImages 0..9，extraRefImagePerSecond / promptOptimizationPerCall 0..100000，
+        且端点按秒计费）；格子为正整数，freeRefImages 非负，extraRefImagePerSecond / promptOptimizationPerCall 为非负整数，
         越界、缺标量、模式或清晰度不认识 → 400 VIDEO_STUDIO_PRICING_INVALID。首次启动写入全 null / 0。
       required: [perSecond, freeRefImages, extraRefImagePerSecond, promptOptimizationPerCall]
       properties:
         perSecond: { $ref: '#/components/schemas/VideoStudioPerSecondGrid' }
-        freeRefImages: { type: integer, minimum: 0, maximum: 9 }
-        extraRefImagePerSecond: { type: integer, format: int64, minimum: 0, maximum: 100000 }
-        promptOptimizationPerCall: { type: integer, format: int64, minimum: 0, maximum: 100000 }
+        freeRefImages: { type: integer, minimum: 0 }
+        extraRefImagePerSecond: { type: integer, format: int64, minimum: 0 }
+        promptOptimizationPerCall: { type: integer, format: int64, minimum: 0 }
     VideoStudioModel:
       type: object
-      required: [endpointId, name, isDefault, selectableById, contract, pricing]
+      required: [endpointId, name, isDefault, selectableById, supportsPromptOptimization, contract, pricing, batchCounts]
       properties:
         endpointId: { type: string }
         name: { type: string, description: 展示名（后台端点名） }
         isDefault: { type: boolean }
         selectableById: { type: boolean, description: false = 合成的默认项（无候选行），提交时必须省略 endpointId }
+        supportsPromptOptimization: { type: boolean, description: 当前端点协议是否支持提交前提示词智能优化 }
+        batchCounts: { type: array, items: { type: integer, minimum: 1 }, description: 当前端点每次生成可选候选数 }
         contract: { $ref: '#/components/schemas/VideoStudioContract' }
         pricing: { $ref: '#/components/schemas/VideoStudioPricing' }
     VideoStudioUpload:
@@ -4255,11 +4259,11 @@ components:
       properties:
         endpointId: { type: string, nullable: true, description: 省略 = 默认端点；selectableById=false 的模型必须省略 }
         mode: { $ref: '#/components/schemas/VideoStudioMode' }
-        prompt: { type: string, description: 去首尾空白后 1–7000 个 Unicode 字符 }
-        resolutionTier: { type: string, enum: [768p, 544p] }
-        aspectRatio: { type: string, enum: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'] }
-        seconds: { type: integer, minimum: 5, maximum: 15 }
-        seed: { type: integer, format: int64, minimum: 0, maximum: 2147483647, nullable: true, description: 不传 = 随机 }
+        prompt: { type: string, description: 必填与否取自所选模式 promptRequired；上限取自所选模型 contract.promptMaxChars }
+        resolutionTier: { type: string, description: 须是所选模型 contract.tiers 中的标识 }
+        aspectRatio: { type: string, description: '须是所选清晰度下 contract.tiers[].canvases 中的比例' }
+        seconds: { type: integer, description: 范围取自所选模型 contract.minSeconds / maxSeconds }
+        seed: { type: integer, format: int64, minimum: 0, nullable: true, description: 不传 = 随机；上限取自所选模型 contract.seedMax }
         firstFrameKey: { type: string, nullable: true, description: i2v / 首尾帧必填 }
         lastFrameKey: { type: string, nullable: true, description: 首尾帧必填 }
         references:
@@ -4321,9 +4325,9 @@ components:
         endpointId: { type: string, nullable: true }
         mode: { $ref: '#/components/schemas/VideoStudioMode' }
         prompt: { type: string }
-        resolutionTier: { type: string, enum: [768p, 544p] }
-        aspectRatio: { type: string, enum: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'] }
-        seconds: { type: integer, minimum: 5, maximum: 15 }
+        resolutionTier: { type: string, description: 须是所选模型 contract.tiers 中的标识 }
+        aspectRatio: { type: string, description: '须是所选清晰度下 contract.tiers[].canvases 中的比例' }
+        seconds: { type: integer, description: 范围取自所选模型 contract.minSeconds / maxSeconds }
         firstFrameKey: { type: string, nullable: true }
         lastFrameKey: { type: string, nullable: true }
         references:
@@ -11900,9 +11904,10 @@ paths:
       tags: [celebrity, video-studio]
       operationId: videoStudioUpload
       description: >-
-        上传一个素材。上限：图 30MB / 视频 50MB / 音频 15MB。格式**按字节判**（后缀用判出来的，不信文件名）：
+        上传一个素材。传 mode 时按所选模型的素材规格校验；旧调用未传 mode 时沿用 H3 上限：图 30MB / 视频 50MB / 音频 15MB。
+        格式**按字节判**（后缀用判出来的，不信文件名）：
         图 PNG / JPEG / WEBP；视频 MP4（ftyp 且品牌不是 QuickTime）；音频 WAV / MP3 / FLAC / OGG / AAC(ADTS) / M4A / MOV。
-        音视频过 ffprobe：视频必须有画面，音频必须有声音且单段 2–15 秒。存储分类 video-studio-<mediaType>，
+        音视频过 ffprobe：视频必须有画面，音频必须有声音；旧调用的音频单段 2–15 秒，新调用按所选模型规则。存储分类 video-studio-<mediaType>，
         key 里的分类就是验过的类型，提交时据此判归属与类型。计入 celebrity 存储配额（超额 402 STORAGE_QUOTA_EXCEEDED）。
       requestBody:
         required: true
@@ -11914,9 +11919,12 @@ paths:
               properties:
                 file: { type: string, format: binary }
                 mediaType: { $ref: '#/components/schemas/VideoStudioMediaType' }
+                endpointId: { type: string, description: 可选模型 ID；省略时使用当前默认模型 }
+                mode: { type: string, description: 生成模式；提供后按所选模型校验素材 }
+                frame: { type: boolean, description: true 表示首帧或尾帧，false 表示多参考素材 }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/VideoStudioUpload' } } } }
-        '400': { description: 'VIDEO_STUDIO_FORMAT_UNSUPPORTED / VIDEO_STUDIO_FILE_EMPTY / VIDEO_STUDIO_FILE_TOO_LARGE / VIDEO_STUDIO_MEDIA_UNREADABLE / VIDEO_STUDIO_AUDIO_DURATION_INVALID' }
+        '400': { description: 'VIDEO_STUDIO_MODE_INVALID / VIDEO_STUDIO_FORMAT_UNSUPPORTED / VIDEO_STUDIO_FILE_EMPTY / VIDEO_STUDIO_FILE_TOO_LARGE / VIDEO_STUDIO_MEDIA_UNREADABLE / VIDEO_STUDIO_AUDIO_DURATION_INVALID / VIDEO_STUDIO_MEDIA_DURATION_INVALID' }
         '402': { description: STORAGE_QUOTA_EXCEEDED }
   /me/celebrity/video-studio/jobs:
     get:

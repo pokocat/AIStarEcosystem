@@ -4,12 +4,14 @@ import com.aistareco.aep.config.MaterialVideoProperties;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.AiModelUsageService;
 import com.aistareco.aep.service.ai.ModelCallCtx;
 import com.aistareco.aep.service.ai.UpstreamCallException;
 import com.aistareco.aep.service.ai.UpstreamModelHttp;
 import com.aistareco.aep.service.storage.MediaBytes;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -61,6 +63,7 @@ public class MaterialVideoModelClient {
     private static final String PROTOCOL_AGNES = "agnes";
     private static final String PROTOCOL_SEEDANCE = "seedance";
     private static final String PROTOCOL_JUSUAN_MEDIA = "jusuan-media";
+    private static final String PROTOCOL_JSON_TEMPLATE = "json-template";
     private static final int AGNES_FRAME_RATE = 24;
 
     private final AiModelInvocationService invocation;
@@ -100,9 +103,16 @@ public class MaterialVideoModelClient {
 
     /** 端点是否具备提交条件（有 baseUrl + 可解密的 apiKey）——models 列表据此过滤不可提交项。 */
     public boolean isEndpointReady(AiModelEndpoint endpoint) {
-        return endpoint != null
-                && endpoint.getBaseUrl() != null && !endpoint.getBaseUrl().isBlank()
-                && decryptKey(endpoint) != null;
+        if (endpoint == null || endpoint.getBaseUrl() == null || endpoint.getBaseUrl().isBlank()
+                || decryptKey(endpoint) == null) return false;
+        try {
+            AiVideoRequestSpec spec = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+            return spec == null || !spec.requiresModelIdentifier()
+                    || endpoint.getModel() != null && !endpoint.getModel().isBlank();
+        } catch (BusinessException invalid) {
+            log.warn("[material-video] invalid video request spec endpointId={}", endpoint.getId());
+            return false;
+        }
     }
 
     /**
@@ -113,10 +123,16 @@ public class MaterialVideoModelClient {
         return endpoint != null && PROTOCOL_JUSUAN_MEDIA.equals(protocolFor(endpoint, modelOf(endpoint)));
     }
 
-    /** 端点实际调用的模型名：端点上配了就用它，没配回落 aep.material.video.default-model。 */
+    /** 视频规格使用端点自己的模型编号；未配置规格的旧路径保留全局默认值。 */
     private String modelOf(AiModelEndpoint endpoint) {
-        return endpoint.getModel() != null && !endpoint.getModel().isBlank()
-                ? endpoint.getModel() : props.getDefaultModel();
+        if (endpoint.getModel() != null && !endpoint.getModel().isBlank()) return endpoint.getModel();
+        AiVideoRequestSpec spec = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        if (spec != null) {
+            if (spec.requiresModelIdentifier())
+                throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频端点需要填写模型标识");
+            return endpoint.getId(); // Stable internal task label; the custom wire template never sends it.
+        }
+        return props.getDefaultModel();
     }
 
     /**
@@ -146,8 +162,22 @@ public class MaterialVideoModelClient {
         }
     }
 
+    /** Legacy canvas jobs have no tier field; resolve their configured wire before reserving credits. */
+    public void validateConfiguredLegacySubmission(String endpointId, String appCode,
+                                                   VideoGenSpec spec, String aspectRatio) {
+        AiModelEndpoint endpoint = requireEndpoint(endpointId, appCode);
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        if (configured != null && (spec == null || !spec.isExplicit())) {
+            configuredLegacySpec(spec, aspectRatio, configured);
+        }
+    }
+
     /** 协议硬时长边界（秒）；Agnes 2.5 用官方 4..12 秒，旧版仍按帧数限制。 */
     public DurationBounds protocolDurationBounds(AiModelEndpoint endpoint) {
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        if (configured != null) {
+            return new DurationBounds(configured.contract().minSeconds(), configured.contract().maxSeconds());
+        }
         String protocol = protocolFor(endpoint, modelOf(endpoint));
         if (PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             return new DurationBounds(JusuanH3Contract.MIN_SECONDS, JusuanH3Contract.MAX_SECONDS);
@@ -195,7 +225,7 @@ public class MaterialVideoModelClient {
     public record DurationBounds(Integer minSec, Integer maxSec) {}
 
     /**
-     * 这个端点**真正能出**的画幅（协议决定，不是后台能填的）。
+     * 这个端点**真正能出**的画幅：已保存视频规格按规格返回，旧端点按协议返回。
      *
      * <p>为什么需要：画布的参数面板照搬了上游的通用选项 —— 清晰度 480p/720p/1080p、
      * 比例 1:1 / 3:4 / 4:3 / 16:9 / 9:16 / 21:9。而聚算媒体协议里**根本没有宽高字段**：
@@ -204,17 +234,27 @@ public class MaterialVideoModelClient {
      * 「768p · portrait」，回来的是 768×1376（≈9:16）—— 选的和拿到的对不上，
      * 而界面上没有任何地方说过这件事（v0.184 用户实测报的）。
      *
-     * <p>返回 null = 该协议没有这层限制（agnes / generic 我们自己按比例算宽高，
-     * 整张比例表都成立），前端保留完整选项。
+     * <p>已配置视频规格的端点直接使用其清晰度和画布比例；没有保存规格的旧聚算端点
+     * 沿用原协议的横/竖两档。其他旧协议返回 null，前端保留通用选项。
      */
     public VideoGeometry videoGeometry(AiModelEndpoint endpoint) {
+        if (endpoint == null) return null;
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        if (configured != null) {
+            var tiers = configured.contract().tiers();
+            return new VideoGeometry(
+                    tiers.stream().map(t -> t.tier().matches("[0-9]+p")
+                            ? t.tier().substring(0, t.tier().length() - 1) : t.tier()).distinct().toList(),
+                    tiers.stream().flatMap(t -> t.canvases().stream())
+                            .map(VideoStudioCanvas::aspectRatio).distinct().toList());
+        }
         if (!isJusuanMedia(endpoint)) return null;
         // 协议只给横 / 竖两档；标成最接近的通用比例，别报一个我们并不能保证的精确值。
         return new VideoGeometry(java.util.List.of("768"), java.util.List.of("16:9", "9:16"));
     }
 
     /**
-     * 端点能出的画幅。{@code resolutions} 是清晰度短边（"768"），{@code ratios} 是比例。
+     * 端点能出的画幅。{@code resolutions} 是配置档位名（数字 p 档省略 p），{@code ratios} 是比例。
      * 两者都非空即表示「只有这些可选」；字段为 null 表示该维度不受限。
      */
     public record VideoGeometry(java.util.List<String> resolutions, java.util.List<String> ratios) {}
@@ -249,14 +289,21 @@ public class MaterialVideoModelClient {
     }
 
     public SubmitResult resumeExistingTask(String taskId, String endpointId, String providerUsed, String modelUsed, String appCode) {
-        AiModelEndpoint endpoint = requireEndpoint(endpointId, appCode);
+        return resumeExistingTask(taskId, endpointId, providerUsed, modelUsed, appCode, null, null);
+    }
+
+    public SubmitResult resumeExistingTask(String taskId, String endpointId, String providerUsed, String modelUsed,
+                                           String appCode, String baseUrlSnapshot, String requestSpecSnapshotJson) {
+        AiModelEndpoint endpoint = acceptedEndpoint(endpointId, appCode);
         String model = modelUsed != null && !modelUsed.isBlank()
                 ? modelUsed
                 : (endpoint.getModel() != null && !endpoint.getModel().isBlank()
                 ? endpoint.getModel() : props.getDefaultModel());
+        AiVideoRequestSpec acceptedSpec = AiVideoRequestSpec.read(requestSpecSnapshotJson);
         return new SubmitResult(taskId, null,
                 providerUsed != null && !providerUsed.isBlank() ? providerUsed : endpoint.getName(),
-                model, protocolFor(endpoint, model), endpoint.getId(), appCode);
+                model, acceptedSpec == null ? protocolFor(endpoint, model) : acceptedSpec.adapter(),
+                endpoint.getId(), appCode, baseUrlSnapshot, requestSpecSnapshotJson);
     }
 
     /**
@@ -279,15 +326,36 @@ public class MaterialVideoModelClient {
         String apiKey = requireKey(p);
         String model = modelOf(p);
         String protocol = protocolFor(p, model);
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(p.getVideoRequestSpecJson());
+        if (configured != null && !genSpec.isExplicit()) {
+            ConfiguredLegacySpec selected = configuredLegacySpec(genSpec, aspectRatio, configured);
+            genSpec = selected.spec();
+            aspectRatio = selected.aspectRatio();
+            prompt = stripFrameUrlHint(prompt);
+        }
         // 先判能不能表达，再动素材：组不出来的包不该先把素材传给厂商。
-        requireProtocolSupports(protocol, genSpec, aspectRatio);
+        requireProtocolSupports(protocol, genSpec, aspectRatio, configured);
+        if (configured != null && (durationSec < configured.contract().minSeconds()
+                || durationSec > configured.contract().maxSeconds())) {
+            throw BusinessException.badRequest("VIDEO_DURATION_UNSUPPORTED", "视频时长不在所选模型的配置范围内");
+        }
 
-        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec);
-        Map<String, Object> body = buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, genSpec, inputs);
-
-        URI uri = URI.create(joinUrl(p.getBaseUrl(), submitPathFor(protocol)));
-        long startNanos = System.nanoTime();
+        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec, configured);
         String requestId = "vid-" + UUID.randomUUID().toString().substring(0, 16);
+        Map<String, Object> body = buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, genSpec, inputs,
+                configured, requestId);
+        if (configured != null) {
+            for (var field : configured.requestFields().entrySet()) {
+                if (body.containsKey(field.getKey()))
+                    throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "附加请求字段不能覆盖视频请求模板字段");
+                body.put(field.getKey(), field.getValue());
+            }
+        }
+
+        URI uri = configured == null
+                ? URI.create(joinUrl(p.getBaseUrl(), submitPathFor(protocol)))
+                : configuredRoute(p.getBaseUrl(), configured.submitPath(), null, model);
+        long startNanos = System.nanoTime();
         log.info("[material-video] submit start endpoint={} model={} protocol={} path={} durationSec={} aspectRatio={} generationMode={} tier={} refs={} promptLength={}",
                 p.getName(), model, protocol, uri.getPath(), durationSec, aspectRatio, genSpec.generationMode(),
                 genSpec.resolutionTier(), genSpec.references().size(), prompt == null ? 0 : prompt.length());
@@ -296,12 +364,16 @@ public class MaterialVideoModelClient {
         String bodyJson;
         try {
             bodyJson = OM.writeValueAsString(body);
-            req = HttpRequest.newBuilder(uri)
+            HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(bodyJson))
-                    .build();
+                    .header(configured == null ? "Authorization" : configured.credentialHeaderName(),
+                            configured == null ? "Bearer " + apiKey : configured.credentialHeaderValue(apiKey))
+                    .header("Content-Type", "application/json");
+            String idempotencyHeader = configured == null
+                    ? PROTOCOL_SEEDANCE.equals(protocol) ? "Idempotency-Key" : null
+                    : configured.idempotencyHeaderName();
+            if (idempotencyHeader != null) request.header(idempotencyHeader, requestId);
+            req = request.POST(HttpRequest.BodyPublishers.ofString(bodyJson)).build();
         } catch (Exception e) {
             recordVideoUsage(p, model, durationSec, false, ownerUserId, appCode, requestId, null, elapsedMs(startNanos),
                     e.getClass().getSimpleName(), e.getMessage());
@@ -342,13 +414,17 @@ public class MaterialVideoModelClient {
         }
         try {
             JsonNode root = OM.readTree(resp.body());
-            String taskId = firstText(root, "id", "job_id", "task_id", "request_id", "jobId", "taskId");
-            String videoId = firstText(root, "video_id", "videoId");
-            if (taskId == null) {
+            AiVideoRequestSpec.ResponseSpec responseSpec = configured == null ? null : configured.responseSpec();
+            String idPointer = responseSpec == null ? null : responseSpec.submitId();
+            String taskId = idPointer == null
+                    ? firstText(root, "id", "job_id", "task_id", "request_id", "jobId", "taskId")
+                    : pointerText(root, idPointer);
+            String videoId = idPointer == null ? firstText(root, "video_id", "videoId") : null;
+            if (taskId == null && idPointer == null) {
                 JsonNode data = root.get("data");
                 if (data != null) taskId = firstText(data, "id", "job_id", "task_id", "request_id", "jobId", "taskId");
             }
-            if (videoId == null) {
+            if (videoId == null && idPointer == null) {
                 JsonNode data = root.get("data");
                 if (data != null) videoId = firstText(data, "video_id", "videoId");
             }
@@ -364,7 +440,8 @@ public class MaterialVideoModelClient {
                     (taskId != null && !taskId.isBlank()) ? taskId : videoId,
                     elapsedMs(startNanos), null, null);
             // 无论调用方是否显式选端点，都冻结实际 endpoint id；轮询/受保护资产读取不可随默认绑定漂移。
-            return new SubmitResult(taskId, videoId, p.getName(), model, protocol, p.getId(), appCode);
+            return new SubmitResult(taskId, videoId, p.getName(), model, protocol, p.getId(), appCode,
+                    p.getBaseUrl(), p.getVideoRequestSpecJson());
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -432,26 +509,42 @@ public class MaterialVideoModelClient {
     /** 轮询一个任务的状态。失败抛 BusinessException（含 HTTP 详情）。
      *  D-11：用 submit 时选定的同一端点轮询（submit.endpointId()），确保 baseUrl/apiKey 一致。 */
     public PollResult poll(SubmitResult submit) {
-        AiModelEndpoint p = requireEndpoint(submit.endpointId(), submit.appCode());
+        AiModelEndpoint p = acceptedEndpoint(submit.endpointId(), submit.appCode());
         String apiKey = requireKey(p);
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(submit.requestSpecSnapshotJson() == null
+                ? p.getVideoRequestSpecJson() : submit.requestSpecSnapshotJson());
         String idForLog = submit.externalId();
         URI uri = pollUri(p, submit);
         long startNanos = System.nanoTime();
+        String pollBodyJson = null;
+        if (configured != null && "POST".equals(configured.pollMethodOrDefault())) {
+            Map<String, Object> body = configured.pollRequestTemplate() == null ? Map.of()
+                    : renderPollRequestTemplate(configured.pollRequestTemplate(), idForLog,
+                            modelForScopedRequest(p, submit));
+            try {
+                pollBodyJson = OM.writeValueAsString(body);
+            } catch (Exception e) {
+                throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频任务查询配置无效");
+            }
+        }
         // 轮询不落失败用量（沿用历史行为，避免每隔几秒的瞬时 poll 失败刷爆用量表）；原始日志仍统一走原语。
         ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.VIDEO_GENERATION)
                 .endpoint(p.getId(), p.getName())
                 .model(submit.modelUsed())
                 .requestId("vid-poll-" + UUID.randomUUID().toString().substring(0, 12))
+                .requestBodyJson(pollBodyJson)
                 .client(http)
                 .recordFailureUsage(false)
                 .build();
         HttpResponse<String> resp;
         try {
-            HttpRequest req = HttpRequest.newBuilder(uri)
+            HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(props.getHttpTimeoutSeconds()))
-                    .header("Authorization", "Bearer " + apiKey)
-                    .GET()
-                    .build();
+                    .header(configured == null ? "Authorization" : configured.credentialHeaderName(),
+                            configured == null ? "Bearer " + apiKey : configured.credentialHeaderValue(apiKey));
+            HttpRequest req = pollBodyJson == null ? request.GET().build()
+                    : request.header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(pollBodyJson)).build();
             resp = upstreamHttp.sendJson(req, ctx);
         } catch (UpstreamCallException ex) {
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
@@ -466,18 +559,30 @@ public class MaterialVideoModelClient {
         }
         try {
             JsonNode root = OM.readTree(resp.body());
-            String rawStatus = firstText(root, "task_status", "status", "state");
-            if (rawStatus == null) {
+            AiVideoRequestSpec.ResponseSpec responseSpec = configured == null ? null : configured.responseSpec();
+            String statusPointer = responseSpec == null ? null : responseSpec.status();
+            String rawStatus = statusPointer == null
+                    ? firstText(root, "task_status", "status", "state") : pointerText(root, statusPointer);
+            if (rawStatus == null && statusPointer == null) {
                 JsonNode data = root.get("data");
                 if (data != null) rawStatus = firstText(data, "task_status", "status", "state");
             }
-            String status = normalizeStatus(rawStatus);
-            String videoUrl = extractVideoUrl(root);
+            if (rawStatus == null && statusPointer != null) {
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
+                        "视频任务状态暂时无法读取，请稍后再试",
+                        "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " missing status pointer=" + statusPointer);
+            }
+            String status = normalizeConfiguredStatus(rawStatus, responseSpec);
+            String videoUrl = responseSpec != null && responseSpec.videoUrl() != null
+                    ? pointerText(root, responseSpec.videoUrl()) : extractVideoUrl(root);
             String thumb = extractThumb(root);
             String lastFrameUrl = extractLastFrameUrl(root);
             String outputAssetId = extractOutputAssetId(root);
             Integer progressPct = extractProgressPct(root);
-            String failReason = "failed".equals(status) ? extractFailReason(root) : null;
+            String failReason = "failed".equals(status)
+                    ? responseSpec != null && responseSpec.error() != null
+                        ? pointerText(root, responseSpec.error()) : extractFailReason(root)
+                    : null;
             if ("failed".equals(status)) {
                 // 上游判失败：记原始响应体，方便排查（agnes 等可能不给结构化原因字段）。
                 log.warn("[material-video] poll FAILED endpoint={} protocol={} taskId={} rawStatus={} progress={} failReason={} durationMs={} body={}",
@@ -535,6 +640,15 @@ public class MaterialVideoModelClient {
         return p;
     }
 
+    private AiModelEndpoint acceptedEndpoint(String endpointId, String appCode) {
+        if (endpointId == null || endpointId.isBlank()) {
+            return requireEndpoint(null, appCode);
+        }
+        return invocation.storedEndpoint(endpointId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "VIDEO_NOT_CONFIGURED", "已受理视频任务的模型端点不存在，暂时无法查询结果。"));
+    }
+
     private String decryptKey(AiModelEndpoint p) {
         try {
             String k = AepCryptoUtil.decrypt(p.getUpstreamApiKeyEncrypted());
@@ -580,6 +694,33 @@ public class MaterialVideoModelClient {
     /** 全能参考的一项素材，已上传到聚算。 */
     record ReferenceAsset(String mediaType, String assetId) {}
 
+    private record ConfiguredLegacySpec(VideoGenSpec spec, String aspectRatio) {}
+
+    /** Select the first configured tier that can express a legacy job's ratio and input mode. */
+    private static ConfiguredLegacySpec configuredLegacySpec(VideoGenSpec legacy, String aspectRatio,
+                                                             AiVideoRequestSpec configured) {
+        VideoGenSpec input = legacy == null ? VideoGenSpec.EMPTY : legacy;
+        if (input.hasNativeOptions()) {
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "视频参数不完整，缺少清晰度，无法提交");
+        }
+        boolean hasFirstFrame = input.firstFrameKey() != null;
+        String mode = configured.contract().modes().stream()
+                .filter(candidate -> candidate.needsFirstFrame() == hasFirstFrame
+                        && !candidate.needsLastFrame() && candidate.references() == null)
+                .map(candidate -> candidate.mode()).findFirst()
+                .orElseThrow(() -> BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED",
+                        "所选视频模型不支持当前任务的生成模式"));
+        String ratio = aspectRatio == null || aspectRatio.isBlank()
+                ? configured.contract().tiers().get(0).canvases().get(0).aspectRatio()
+                : aspectRatio.trim();
+        String tier = configured.contract().tiers().stream()
+                .filter(candidate -> candidate.canvases().stream().anyMatch(canvas -> ratio.equals(canvas.aspectRatio())))
+                .map(candidate -> candidate.tier()).findFirst()
+                .orElseThrow(() -> BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
+                        "所选视频模型不支持当前任务的画面比例"));
+        return new ConfiguredLegacySpec(new VideoGenSpec(mode, tier, null, input.firstFrameKey(), null, List.of()), ratio);
+    }
+
     /**
      * 这个协议能不能表达这份规格。表达不了就在动任何素材之前 400，**不静默丢参数**（§8.0）：
      * <ul>
@@ -591,6 +732,35 @@ public class MaterialVideoModelClient {
      * </ul>
      */
     static void requireProtocolSupports(String protocol, VideoGenSpec spec, String aspectRatio) {
+        requireProtocolSupports(protocol, spec, aspectRatio, null);
+    }
+
+    static void requireProtocolSupports(String protocol, VideoGenSpec spec, String aspectRatio,
+                                        AiVideoRequestSpec configured) {
+        if (configured != null && spec.isExplicit()) {
+            var mode = configured.contract().modes().stream()
+                    .filter(m -> m.mode().equals(spec.generationMode())).findFirst().orElse(null);
+            boolean canvas = configured.contract().tiers().stream()
+                    .filter(t -> t.tier().equals(spec.resolutionTier()))
+                    .flatMap(t -> t.canvases().stream())
+                    .anyMatch(c -> c.aspectRatio().equals(aspectRatio));
+            if (mode == null || !canvas) throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID",
+                    "所选视频模型不支持这组生成参数");
+            if (PROTOCOL_SEEDANCE.equals(protocol) || PROTOCOL_JUSUAN_MEDIA.equals(protocol)
+                    || PROTOCOL_JSON_TEMPLATE.equals(protocol)) {
+                requireInput(mode.needsFirstFrame() == (spec.firstFrameKey() != null),
+                        mode.needsFirstFrame() ? "当前模式缺少首帧图" : "当前模式不使用首帧图");
+                requireInput(mode.needsLastFrame() == (spec.lastFrameKey() != null),
+                        mode.needsLastFrame() ? "当前模式缺少尾帧图" : "当前模式不使用尾帧图");
+                requireInput(mode.references() != null || spec.references().isEmpty(), "当前模式不使用参考素材");
+                if (mode.references() != null && mode.references().minVisual() > 0)
+                    requireInput(!spec.references().isEmpty(), "当前模式缺少参考素材");
+                return;
+            }
+        }
+        if (PROTOCOL_JSON_TEMPLATE.equals(protocol)) {
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "此模型需要完整的视频生成规格");
+        }
         if (!PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
             if (spec.hasNativeOptions()) {
                 throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED",
@@ -636,28 +806,39 @@ public class MaterialVideoModelClient {
      * 画布能选这些模型以后，只认 prompt 里的首帧标记就等于把用户连进来的参考图悄悄丢掉（§8.0）。
      */
     private UpstreamInputs resolveUpstreamInputs(AiModelEndpoint p, String apiKey, String model,
-                                                 String protocol, VideoGenSpec spec) {
+                                                 String protocol, VideoGenSpec spec,
+                                                 AiVideoRequestSpec configured) {
         // 「首帧走上传换 assetId 还是给 URL」只在 usesUploadedFirstFrame 一处判定（2026-09-30 热修收口，§8.0.1 ④）
         if (!usesUploadedFirstFrame(protocol)) {
-            return spec.firstFrameKey() == null ? UpstreamInputs.NONE
-                    : UpstreamInputs.firstFrameUrl(PROTOCOL_AGNES.equals(protocol)
-                            ? agnesFirstFrameInput(spec.firstFrameKey()) : requireFetchableUrl(spec.firstFrameKey()));
+            String first = spec.firstFrameKey() == null ? null : PROTOCOL_AGNES.equals(protocol)
+                    ? agnesFirstFrameInput(spec.firstFrameKey()) : requireFetchableUrl(spec.firstFrameKey());
+            if ((PROTOCOL_SEEDANCE.equals(protocol) || PROTOCOL_JSON_TEMPLATE.equals(protocol)) && spec.isExplicit()) {
+                String last = spec.lastFrameKey() == null ? null : requireFetchableUrl(spec.lastFrameKey());
+                List<ReferenceAsset> urls = new ArrayList<>();
+                for (VideoGenSpec.Reference ref : spec.references())
+                    urls.add(new ReferenceAsset(ref.mediaType(), requireFetchableUrl(ref.key())));
+                return new UpstreamInputs(first, null, last, urls);
+            }
+            return first == null ? UpstreamInputs.NONE : UpstreamInputs.firstFrameUrl(first);
         }
         if (!spec.isExplicit()) {
             return spec.firstFrameKey() == null ? UpstreamInputs.NONE
                     : UpstreamInputs.firstFrameAsset(uploadInputAsset(p, apiKey, model, spec.firstFrameKey(),
-                            JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.FRAME_IMAGE_MAX_BYTES, "参考图"));
+                            JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.FRAME_IMAGE_MAX_BYTES,
+                            JusuanH3Contract.formatsOf("image"), "参考图"));
         }
         String mode = spec.generationMode();
         String first = null;
         String last = null;
         if (JusuanH3Contract.MODE_I2V.equals(mode) || JusuanH3Contract.MODE_FIRST_LAST_FRAME.equals(mode)) {
             first = uploadInputAsset(p, apiKey, model, spec.firstFrameKey(),
-                    JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.FRAME_IMAGE_MAX_BYTES, "首帧图");
+                    JusuanH3Contract.MEDIA_IMAGE, materialMaxBytes(configured, mode, "image", true),
+                    materialFormats(configured, mode, "image", true), "首帧图");
         }
         if (JusuanH3Contract.MODE_FIRST_LAST_FRAME.equals(mode)) {
             last = uploadInputAsset(p, apiKey, model, spec.lastFrameKey(),
-                    JusuanH3Contract.MEDIA_IMAGE, JusuanH3Contract.FRAME_IMAGE_MAX_BYTES, "尾帧图");
+                    JusuanH3Contract.MEDIA_IMAGE, materialMaxBytes(configured, mode, "image", true),
+                    materialFormats(configured, mode, "image", true), "尾帧图");
         }
         List<ReferenceAsset> refs = new ArrayList<>();
         if (JusuanH3Contract.MODE_UNIVERSAL_REFERENCE.equals(mode)) {
@@ -668,11 +849,39 @@ public class MaterialVideoModelClient {
                     throw BusinessException.badRequest("VIDEO_STUDIO_INPUT_INVALID", "参考素材的类型只能是图片、视频或音频");
                 }
                 String assetId = uploadInputAsset(p, apiKey, model, r.key(), r.mediaType(),
-                        JusuanH3Contract.referenceMaxBytes(r.mediaType()), labels.get(i));
+                        materialMaxBytes(configured, mode, r.mediaType(), false),
+                        materialFormats(configured, mode, r.mediaType(), false), labels.get(i));
                 refs.add(new ReferenceAsset(r.mediaType(), assetId));
             }
         }
         return new UpstreamInputs(null, first, last, refs);
+    }
+
+    static long materialMaxBytes(AiVideoRequestSpec configured, String mode, String type, boolean frame) {
+        if (configured == null) return frame ? JusuanH3Contract.FRAME_IMAGE_MAX_BYTES
+                : JusuanH3Contract.referenceMaxBytes(type);
+        var rule = configured.contract().modes().stream().filter(m -> m.mode().equals(mode))
+                .findFirst().orElseThrow(() -> BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "视频素材规则未配置"));
+        if (frame) return rule.frameImage().maxBytes();
+        return switch (type) {
+            case "image" -> rule.references().image().maxBytes();
+            case "video" -> rule.references().video().maxBytes();
+            case "audio" -> rule.references().audio().maxBytes();
+            default -> throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "视频素材类型无效");
+        };
+    }
+
+    static List<String> materialFormats(AiVideoRequestSpec configured, String mode, String type, boolean frame) {
+        if (configured == null) return JusuanH3Contract.formatsOf(type);
+        var rule = configured.contract().modes().stream().filter(m -> m.mode().equals(mode))
+                .findFirst().orElseThrow(() -> BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "视频素材规则未配置"));
+        if (frame) return rule.frameImage().formats();
+        return switch (type) {
+            case "image" -> rule.references().image().formats();
+            case "video" -> rule.references().video().formats();
+            case "audio" -> rule.references().audio().formats();
+            default -> throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "视频素材类型无效");
+        };
     }
 
     /** 首帧交给厂商去抓的地址；拿到的不是绝对 http(s) 地址（无 CDN 的本机路径）就报错，不假装传了图。 */
@@ -730,9 +939,33 @@ public class MaterialVideoModelClient {
 
     Map<String, Object> buildSubmitBody(String protocol, String model, String prompt, int durationSec,
                                         String aspectRatio, VideoGenSpec spec, UpstreamInputs inputs) {
+        return buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, spec, inputs, null);
+    }
+
+    Map<String, Object> buildSubmitBody(String protocol, String model, String prompt, int durationSec,
+                                        String aspectRatio, VideoGenSpec spec, UpstreamInputs inputs,
+                                        AiVideoRequestSpec configured) {
+        return buildSubmitBody(protocol, model, prompt, durationSec, aspectRatio, spec, inputs, configured, null);
+    }
+
+    Map<String, Object> buildSubmitBody(String protocol, String model, String prompt, int durationSec,
+                                        String aspectRatio, VideoGenSpec spec, UpstreamInputs inputs,
+                                        AiVideoRequestSpec configured, String requestId) {
         VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
         UpstreamInputs in = inputs == null ? UpstreamInputs.NONE : inputs;
         Map<String, Object> body = new LinkedHashMap<>();
+        if (configured != null && !genSpec.isExplicit()) {
+            ConfiguredLegacySpec selected = configuredLegacySpec(genSpec, aspectRatio, configured);
+            genSpec = selected.spec();
+            aspectRatio = selected.aspectRatio();
+            prompt = stripFrameUrlHint(prompt);
+        }
+        if (PROTOCOL_JSON_TEMPLATE.equals(protocol)) {
+            if (configured == null || !genSpec.isExplicit())
+                throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频请求模板缺少完整规格");
+            return renderRequestTemplate(configured, model, stripFrameUrlHint(prompt), durationSec,
+                    aspectRatio, genSpec, in, requestId);
+        }
         body.put("model", model);
 
         // v0.97 P2：seedance（火山方舟）首+尾帧关键帧 i2v —— content 数组承载文本 + 首/尾帧
@@ -747,18 +980,24 @@ public class MaterialVideoModelClient {
             // 显式首帧（画布连进来的图）优先于 prompt 里的首帧标记（短剧那条路才有标记）。
             String first = in.firstFrameUrl() != null ? in.firstFrameUrl() : extractFrameUrlHint(prompt);
             if (first != null && !first.isBlank()) content.add(seedanceImage(first, "first_frame"));
-            String last = extractLastFrameUrlHint(prompt);
+            String last = genSpec.isExplicit() ? in.lastFrameAssetId() : extractLastFrameUrlHint(prompt);
             if (last != null && !last.isBlank()) content.add(seedanceImage(last, "last_frame"));
+            if (genSpec.isExplicit()) {
+                for (ReferenceAsset ref : in.references()) content.add(seedanceReference(ref.mediaType(), ref.assetId()));
+                body.put("resolution", genSpec.resolutionTier());
+                if (genSpec.seed() != null) body.put("seed", genSpec.seed());
+            }
             body.put("content", content);
             if (aspectRatio != null && !aspectRatio.isBlank()) body.put("ratio", aspectRatio);
             if (durationSec > 0) body.put("duration", durationSec);
-            body.put("return_last_frame", true);
+            if (configured == null || !configured.requestFields().containsKey("return_last_frame"))
+                body.put("return_last_frame", true);
             return body;
         }
 
         // 视频生成区：完整的 H3 原生规格，按 Portal 生成的调用示例组包（字段集与顺序照抄）。
         if (PROTOCOL_JUSUAN_MEDIA.equals(protocol) && genSpec.isExplicit()) {
-            return jusuanNativeBody(body, prompt, durationSec, aspectRatio, genSpec, in);
+            return jusuanNativeBody(body, prompt, durationSec, aspectRatio, genSpec, in, configured);
         }
 
         // 首/尾帧 marker 由 vars 拼进 prompt（DramaRenderService），这里抽出来作结构化入参，
@@ -833,6 +1072,100 @@ public class MaterialVideoModelClient {
         return body;
     }
 
+    /** Render one configured JSON body for the selected Studio mode without evaluating code or string expressions. */
+    private static Map<String, Object> renderRequestTemplate(AiVideoRequestSpec configured, String model,
+                                                              String prompt, int seconds, String aspectRatio,
+                                                              VideoGenSpec spec, UpstreamInputs inputs,
+                                                              String requestId) {
+        Map<String, Object> template = configured.requestTemplates().get(spec.generationMode());
+        if (template == null) throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "当前模式没有视频请求模板");
+        VideoStudioCanvas canvas = configured.contract().tiers().stream()
+                .filter(t -> t.tier().equals(spec.resolutionTier()))
+                .flatMap(t -> t.canvases().stream())
+                .filter(c -> c.aspectRatio().equals(aspectRatio)).findFirst()
+                .orElseThrow(() -> BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "画面规格未配置"));
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("model", model);
+        variables.put("prompt", prompt);
+        variables.put("seconds", seconds);
+        variables.put("aspectRatio", aspectRatio);
+        variables.put("resolutionTier", spec.resolutionTier());
+        variables.put("generationMode", spec.generationMode());
+        variables.put("seed", spec.seed());
+        variables.put("width", canvas.width());
+        variables.put("height", canvas.height());
+        variables.put("outputSizeCode", canvas.outputSizeCode());
+        variables.put("firstFrameUrl", inputs.firstFrameUrl());
+        variables.put("lastFrameUrl", inputs.lastFrameAssetId());
+        List<Map<String, Object>> references = new ArrayList<>();
+        for (int index = 0; index < inputs.references().size(); index++) {
+            ReferenceAsset reference = inputs.references().get(index);
+            Map<String, Object> itemTemplate = configured.referenceTemplates() == null ? null
+                    : configured.referenceTemplates().get(reference.mediaType());
+            if (itemTemplate == null) itemTemplate = configured.referenceItemTemplate();
+            if (itemTemplate == null) {
+                references.add(Map.of("mediaType", reference.mediaType(), "url", reference.assetId()));
+            } else {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> item = (Map<String, Object>) renderTemplateValue(
+                        itemTemplate, Map.of("url", reference.assetId(),
+                                "mediaType", reference.mediaType(), "index", index));
+                references.add(item);
+            }
+        }
+        variables.put("references", references);
+        variables.put("requestId", requestId);
+        if (spec.seed() != null && !templateContains(template, "seed"))
+            throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "请求模板没有映射随机种子");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) renderTemplateValue(template, variables);
+        return body;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> renderPollRequestTemplate(Map<String, Object> template,
+                                                                  String taskId, String model) {
+        return (Map<String, Object>) renderTemplateValue(template, Map.of("id", taskId, "model", model));
+    }
+
+    private static boolean templateContains(Object value, String variable) {
+        if (value instanceof String text) return text.equals("${" + variable + "}");
+        if (value instanceof Map<?, ?> map) return map.values().stream().anyMatch(item -> templateContains(item, variable));
+        if (value instanceof List<?> list) return list.stream().anyMatch(item -> templateContains(item, variable));
+        return false;
+    }
+
+    private static final Object OMIT_TEMPLATE_VALUE = new Object();
+
+    private static Object renderTemplateValue(Object template, Map<String, Object> variables) {
+        if (template instanceof String text && text.startsWith("${") && text.endsWith("}")) {
+            Object value = variables.get(text.substring(2, text.length() - 1));
+            return value == null ? OMIT_TEMPLATE_VALUE : value;
+        }
+        if (template instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (var item : map.entrySet()) {
+                Object value = renderTemplateValue(item.getValue(), variables);
+                if (value != OMIT_TEMPLATE_VALUE) result.put((String) item.getKey(), value);
+            }
+            return result;
+        }
+        if (template instanceof List<?> list) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : list) {
+                if ("${...references}".equals(item)) {
+                    Object references = variables.get("references");
+                    if (references instanceof List<?> entries) result.addAll(entries);
+                    continue;
+                }
+                Object value = renderTemplateValue(item, variables);
+                if (value != OMIT_TEMPLATE_VALUE) result.add(value);
+            }
+            return result;
+        }
+        return template;
+    }
+
     /**
      * H3 原生请求体。字段集与顺序照抄 Portal「API 接入」生成的示例：
      * {@code model, generationMode, prompt, resolutionTier, orientation, aspectRatio, outputSizeCode, seconds,
@@ -840,17 +1173,26 @@ public class MaterialVideoModelClient {
      * 厂商明确不许传的 fps / frames / width / height / steps 一个都不带。
      */
     private static Map<String, Object> jusuanNativeBody(Map<String, Object> body, String prompt, int durationSec,
-                                                        String aspectRatio, VideoGenSpec spec, UpstreamInputs in) {
-        requireProtocolSupports(PROTOCOL_JUSUAN_MEDIA, spec, aspectRatio);
-        JusuanH3Contract.Canvas canvas = JusuanH3Contract.canvas(spec.resolutionTier(), aspectRatio);
+                                                        String aspectRatio, VideoGenSpec spec, UpstreamInputs in,
+                                                        AiVideoRequestSpec configured) {
+        requireProtocolSupports(PROTOCOL_JUSUAN_MEDIA, spec, aspectRatio, configured);
+        var canvas = configured == null ? null : configured.contract().tiers().stream()
+                .filter(t -> t.tier().equals(spec.resolutionTier()))
+                .flatMap(t -> t.canvases().stream())
+                .filter(c -> c.aspectRatio().equals(aspectRatio)).findFirst().orElse(null);
+        var legacyCanvas = configured == null ? JusuanH3Contract.canvas(spec.resolutionTier(), aspectRatio) : null;
+        String orientation = canvas == null ? JusuanH3Contract.orientation(legacyCanvas)
+                : canvas.width() > canvas.height() ? "landscape" : canvas.width() < canvas.height() ? "portrait" : "square";
         body.put("generationMode", spec.generationMode());
         // 用户原文照发（服务端已去首尾空白），不做首帧标记剥离 —— 那是短剧路径的内部约定。
         body.put("prompt", nz(prompt));
         body.put("resolutionTier", spec.resolutionTier());
-        body.put("orientation", JusuanH3Contract.orientation(canvas));
-        body.put("aspectRatio", canvas.aspectRatio());
-        body.put("outputSizeCode", JusuanH3Contract.outputSizeCode(spec.resolutionTier(), canvas.aspectRatio()));
-        body.put("seconds", requireJusuanDuration(durationSec));
+        body.put("orientation", orientation);
+        body.put("aspectRatio", aspectRatio);
+        body.put("outputSizeCode", canvas == null
+                ? JusuanH3Contract.outputSizeCode(spec.resolutionTier(), aspectRatio)
+                : canvas.outputSizeCode());
+        body.put("seconds", configured == null ? requireJusuanDuration(durationSec) : durationSec);
         if (spec.seed() != null) body.put("seed", spec.seed());
         switch (spec.generationMode()) {
             case JusuanH3Contract.MODE_I2V ->
@@ -893,6 +1235,22 @@ public class MaterialVideoModelClient {
         return item;
     }
 
+    private static com.fasterxml.jackson.databind.node.ObjectNode seedanceReference(String mediaType, String url) {
+        com.fasterxml.jackson.databind.node.ObjectNode item = OM.createObjectNode();
+        String type = switch (mediaType) {
+            case "image" -> "image_url";
+            case "video" -> "video_url";
+            case "audio" -> "audio_url";
+            default -> throw BusinessException.badRequest("VIDEO_STUDIO_INPUT_INVALID", "参考素材类型无效");
+        };
+        item.put("type", type);
+        com.fasterxml.jackson.databind.node.ObjectNode source = OM.createObjectNode();
+        source.put("url", url);
+        item.set(type, source);
+        item.put("role", "reference_" + mediaType);
+        return item;
+    }
+
     private static String nz(String s) {
         return s == null ? "" : s;
     }
@@ -910,10 +1268,17 @@ public class MaterialVideoModelClient {
         return props.getSubmitPath();
     }
 
-    private URI pollUri(AiModelEndpoint p, SubmitResult submit) {
+    URI pollUri(AiModelEndpoint p, SubmitResult submit) {
         if (submit == null || submit.externalId() == null) {
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
                     "视频生成失败，请稍后重试", "poll missing task/video id");
+        }
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(submit.requestSpecSnapshotJson() == null
+                ? p.getVideoRequestSpecJson() : submit.requestSpecSnapshotJson());
+        String baseUrl = submit.baseUrlSnapshot() == null ? p.getBaseUrl() : submit.baseUrlSnapshot();
+        if (configured != null) {
+            return configuredRoute(baseUrl, configured.pollPathTemplate(), submit.externalId(),
+                    modelForScopedRequest(p, submit));
         }
         if (submit.isAgnes() && isDefaultPollPath(props.getPollPathTemplate())) {
             if (submit.videoId() != null && !submit.videoId().isBlank()) {
@@ -921,19 +1286,19 @@ public class MaterialVideoModelClient {
                 if (submit.modelUsed() != null && !submit.modelUsed().isBlank()) {
                     query += "&model_name=" + encodeQuery(submit.modelUsed());
                 }
-                return URI.create(apiRoot(p.getBaseUrl()) + "/agnesapi?" + query);
+                return URI.create(apiRoot(baseUrl) + "/agnesapi?" + query);
             }
-            return URI.create(joinUrl(p.getBaseUrl(), "/videos/" + submit.externalId()));
+            return URI.create(joinUrl(baseUrl, "/videos/" + submit.externalId()));
         }
         if (submit.isSeedance() && isDefaultPollPath(props.getPollPathTemplate())) {
-            return URI.create(joinUrl(p.getBaseUrl(), "/contents/generations/tasks/" + submit.externalId()));
+            return URI.create(joinUrl(baseUrl, "/contents/generations/tasks/" + submit.externalId()));
         }
         if (submit.isJusuanMedia() && isDefaultPollPath(props.getPollPathTemplate())) {
-            return jusuanScopedUri(p.getBaseUrl(), "/jobs/" + submit.externalId(),
+            return jusuanScopedUri(baseUrl, "/jobs/" + submit.externalId(),
                     modelForScopedRequest(p, submit));
         }
         String path = props.getPollPathTemplate().replace("{id}", submit.externalId());
-        return URI.create(joinUrl(p.getBaseUrl(), path));
+        return URI.create(joinUrl(baseUrl, path));
     }
 
     /**
@@ -963,6 +1328,8 @@ public class MaterialVideoModelClient {
     }
 
     static String protocolFor(AiModelEndpoint p, String model) {
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(p.getVideoRequestSpecJson());
+        if (configured != null) return configured.adapter();
         String blob = ((p.getName() == null ? "" : p.getName()) + " "
                 + (p.getBaseUrl() == null ? "" : p.getBaseUrl()) + " "
                 + (model == null ? "" : model)).toLowerCase();
@@ -1005,6 +1372,25 @@ public class MaterialVideoModelClient {
             case "fail", "failed", "error", "cancelled", "canceled" -> "failed";
             default -> "processing"; // PROCESSING / RUNNING / SUBMITTED / QUEUED / pending …
         };
+    }
+
+    private static String normalizeConfiguredStatus(String raw, AiVideoRequestSpec.ResponseSpec mapping) {
+        if (mapping != null && raw != null) {
+            if (matchesStatus(mapping.succeeded(), raw)) return "succeeded";
+            if (matchesStatus(mapping.failed(), raw)) return "failed";
+        }
+        return normalizeStatus(raw);
+    }
+
+    private static boolean matchesStatus(List<String> values, String raw) {
+        return values != null && values.stream().anyMatch(value -> value.equalsIgnoreCase(raw.trim()));
+    }
+
+    private static String pointerText(JsonNode root, String pointer) {
+        JsonNode value = root == null ? null : root.at(pointer);
+        if (value == null || !value.isValueNode() || value.isNull()) return null;
+        String text = value.asText("").trim();
+        return text.isEmpty() ? null : text;
     }
 
     /**
@@ -1108,7 +1494,7 @@ public class MaterialVideoModelClient {
         if (submit == null || !submit.isJusuanMedia() || assetId == null || assetId.isBlank()) {
             throw new IOException("protected output asset is not available");
         }
-        AiModelEndpoint endpoint = requireEndpoint(submit.endpointId(), submit.appCode());
+        AiModelEndpoint endpoint = acceptedEndpoint(submit.endpointId(), submit.appCode());
         String apiKey = requireKey(endpoint);
         URI uri = jusuanScopedUri(endpoint.getBaseUrl(), "/assets/" + encodeQuery(assetId) + "/content",
                 modelForScopedRequest(endpoint, submit));
@@ -1282,6 +1668,17 @@ public class MaterialVideoModelClient {
         return b + p;
     }
 
+    /** Relative provider route with URL-encoded accepted task/model values; query fields stay in the saved spec. */
+    private static URI configuredRoute(String baseUrl, String path, String taskId, String model) {
+        String route = path.replace("{model}", encodeRouteValue(model));
+        if (taskId != null) route = route.replace("{id}", encodeRouteValue(taskId));
+        return URI.create(joinUrl(baseUrl, route));
+    }
+
+    private static String encodeRouteValue(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
     private static String apiRoot(String base) {
         String b = rstrip(base, "/");
         return b.endsWith("/v1") ? b.substring(0, b.length() - 3) : b;
@@ -1310,10 +1707,14 @@ public class MaterialVideoModelClient {
     // ── 结果记录 ────────────────────────────────────────────────────────────────
 
     public record SubmitResult(String taskId, String videoId, String providerUsed, String modelUsed, String protocol,
-                               String endpointId, String appCode) {
+                               String endpointId, String appCode, String baseUrlSnapshot, String requestSpecSnapshotJson) {
+        public SubmitResult(String taskId, String videoId, String providerUsed, String modelUsed, String protocol,
+                            String endpointId, String appCode) {
+            this(taskId, videoId, providerUsed, modelUsed, protocol, endpointId, appCode, null, null);
+        }
         public SubmitResult(String taskId, String videoId, String providerUsed, String modelUsed, String protocol,
                             String endpointId) {
-            this(taskId, videoId, providerUsed, modelUsed, protocol, endpointId, "celebrity");
+            this(taskId, videoId, providerUsed, modelUsed, protocol, endpointId, "celebrity", null, null);
         }
         String externalId() {
             return (taskId != null && !taskId.isBlank()) ? taskId : videoId;
@@ -1354,7 +1755,7 @@ public class MaterialVideoModelClient {
     // 与 seedance（火山）那条完全不同：那边是把图片 URL 塞进 content 数组。
 
     /** 判格式只需要文件头这么多字节；大文件不整个读进内存。 */
-    private static final int SNIFF_HEAD_BYTES = 64;
+    private static final int SNIFF_HEAD_BYTES = 4096;
 
     /**
      * 把一个素材传给聚算，返回 assetId。传不上去就**抛**，不静默退回文生视频 ——
@@ -1365,7 +1766,7 @@ public class MaterialVideoModelClient {
      * @param label     报错里怎么称呼它（首帧图 / 尾帧图 / 图2 / 音频1 …），和任务卡上的编号一致
      */
     private String uploadInputAsset(AiModelEndpoint p, String apiKey, String model, String key,
-                                    String mediaType, long maxBytes, String label) {
+                                    String mediaType, long maxBytes, List<String> allowedFormats, String label) {
         Path local;
         long size;
         byte[] head;
@@ -1387,10 +1788,10 @@ public class MaterialVideoModelClient {
         // （v0.184 实测：一张 JPEG 顶着 .png 传过去，聚算按我们声明的 image/png 解码，
         // 400 input image cannot be decoded）。store() 那边已经改成按字节存，但**存量文件仍是错的**，
         // 这里再判一次，老图不用重跑也能用。
-        MediaBytes.Format fmt = MediaBytes.sniff(mediaType, head);
-        if (fmt == null) {
+        MediaBytes.Format fmt = MediaBytes.sniffConfigured(mediaType, head);
+        if (!MediaBytes.allowed(fmt, allowedFormats)) {
             throw BusinessException.badRequest("VIDEO_REF_FORMAT_UNSUPPORTED",
-                    label + "的格式不支持，请换成 " + String.join(" / ", JusuanH3Contract.formatsOf(mediaType)));
+                    label + "的格式不支持，请换成 " + String.join(" / ", allowedFormats));
         }
         String filename = withExtension(local.getFileName().toString(), fmt.ext());
 
@@ -1539,15 +1940,20 @@ public class MaterialVideoModelClient {
         if (!genSpec.isExplicit()) {
             throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "智能优化缺少清晰度，无法提交");
         }
-        requireProtocolSupports(protocol, genSpec, aspectRatio);
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(p.getVideoRequestSpecJson());
+        requireProtocolSupports(protocol, genSpec, aspectRatio, configured);
+        if (configured != null && (seconds < configured.contract().minSeconds()
+                || seconds > configured.contract().maxSeconds())) {
+            throw BusinessException.badRequest("VIDEO_DURATION_UNSUPPORTED", "视频时长不在所选模型的配置范围内");
+        }
 
         // 预算从上传素材之前就开始算：最多 13 个素材、每个按 http-timeout 等，若只给「优化调用」计时，
         // 上传慢 + 重试满就可能超过兜底回收的 20 分钟。从这里算起，整个 worker 的耗时不超过 max(预算, 上传耗时)。
         long deadline = optimizeNanoClock.getAsLong() + optimizeBudget.toNanos();
         // 素材只上传一次：重发必须是「同一正文同一键」，换了 assetId 就不是同一个请求了。
-        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec);
+        UpstreamInputs inputs = resolveUpstreamInputs(p, apiKey, model, protocol, genSpec, configured);
         Map<String, Object> body = buildOptimizationBody(idempotencyKey, model, originalPrompt, seconds, aspectRatio,
-                genSpec, inputs);
+                genSpec, inputs, configured);
         String bodyJson;
         try {
             bodyJson = OM.writeValueAsString(body);
@@ -1682,11 +2088,21 @@ public class MaterialVideoModelClient {
     static Map<String, Object> buildOptimizationBody(String clientRequestId, String model, String originalPrompt,
                                                      int seconds, String aspectRatio, VideoGenSpec spec,
                                                      UpstreamInputs in) {
-        requireProtocolSupports(PROTOCOL_JUSUAN_MEDIA, spec, aspectRatio);
+        return buildOptimizationBody(clientRequestId, model, originalPrompt, seconds, aspectRatio, spec, in, null);
+    }
+
+    static Map<String, Object> buildOptimizationBody(String clientRequestId, String model, String originalPrompt,
+                                                     int seconds, String aspectRatio, VideoGenSpec spec,
+                                                     UpstreamInputs in, AiVideoRequestSpec configured) {
+        requireProtocolSupports(PROTOCOL_JUSUAN_MEDIA, spec, aspectRatio, configured);
         if (!spec.isExplicit()) {
             throw BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "智能优化缺少清晰度，无法提交");
         }
-        JusuanH3Contract.Canvas canvas = JusuanH3Contract.canvas(spec.resolutionTier(), aspectRatio);
+        var canvas = configured == null ? null : configured.contract().tiers().stream()
+                .filter(t -> t.tier().equals(spec.resolutionTier()))
+                .flatMap(t -> t.canvases().stream())
+                .filter(c -> c.aspectRatio().equals(aspectRatio)).findFirst().orElse(null);
+        var legacyCanvas = configured == null ? JusuanH3Contract.canvas(spec.resolutionTier(), aspectRatio) : null;
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("clientRequestId", clientRequestId);
         body.put("model", model);
@@ -1694,10 +2110,13 @@ public class MaterialVideoModelClient {
         body.put("originalPrompt", nz(originalPrompt));
         Map<String, Object> mediaSpec = new LinkedHashMap<>();
         mediaSpec.put("resolutionTier", spec.resolutionTier());
-        mediaSpec.put("orientation", JusuanH3Contract.orientation(canvas));
-        mediaSpec.put("aspectRatio", canvas.aspectRatio());
-        mediaSpec.put("seconds", requireJusuanDuration(seconds));
-        mediaSpec.put("outputSizeCode", JusuanH3Contract.outputSizeCode(spec.resolutionTier(), canvas.aspectRatio()));
+        mediaSpec.put("orientation", canvas == null ? JusuanH3Contract.orientation(legacyCanvas)
+                : canvas.width() > canvas.height() ? "landscape" : canvas.width() < canvas.height() ? "portrait" : "square");
+        mediaSpec.put("aspectRatio", aspectRatio);
+        mediaSpec.put("seconds", configured == null ? requireJusuanDuration(seconds) : seconds);
+        mediaSpec.put("outputSizeCode", canvas == null
+                ? JusuanH3Contract.outputSizeCode(spec.resolutionTier(), aspectRatio)
+                : canvas.outputSizeCode());
         body.put("mediaSpec", mediaSpec);
         List<Map<String, Object>> refs = new ArrayList<>();
         boolean hasAudio = false;

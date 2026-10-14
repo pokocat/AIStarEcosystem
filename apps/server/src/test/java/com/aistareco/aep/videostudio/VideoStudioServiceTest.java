@@ -14,10 +14,16 @@ import com.aistareco.aep.service.materialvideo.MaterialVideoModelClient;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioJob;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioJobRequest;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioPricingConfig;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceRules;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier;
 import com.aistareco.aep.videostudio.model.StudioPromptOptimization;
 import com.aistareco.aep.videostudio.model.StudioTemplate;
 import com.aistareco.aep.videostudio.repository.StudioPromptOptimizationRepository;
@@ -33,9 +39,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -129,6 +137,7 @@ class VideoStudioServiceTest {
 
     private void listCandidates(AiModelInvocationService.ResolvedEndpoint... rows) {
         when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(rows));
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity")).thenReturn(List.of(rows));
     }
 
     private void ready(AiModelEndpoint ep) {
@@ -145,14 +154,28 @@ class VideoStudioServiceTest {
                 new VideoStudioPricingConfig(perSecond, freeRefImages, extraPerSecond, optimizationPerCall)));
     }
 
+    @Test void uploadRuleUsesSelectedModelModeAndRejectsUnrelatedMedia() {
+        assertEquals(16L * 1024 * 1024, svc.uploadRule("ep-h3", "i2v", "image", true).maxBytes());
+        assertEquals(50L * 1024 * 1024,
+                svc.uploadRule("ep-h3", "universal_reference_video", "video", false).maxBytes());
+        assertEquals("VIDEO_STUDIO_MODE_INVALID", assertThrows(BusinessException.class,
+                () -> svc.uploadRule("ep-h3", "t2v", "image", true)).getCode());
+    }
+
     @Test void canvasUsesOwnAssetsWithSharedNativeValidationAndPriceWithoutSubmitting() {
         var keys=new ArrayList<String>();
         var prepared=svc.prepareCanvas(USER,jr("ep-h3","first_last_frame_video","过渡","544p","3:4",7,42L,
-                "ipstudio/u1/first.png","ipstudio/u1/last.png",List.of()),(type,key)->keys.add(type+":"+key));
-        assertEquals(List.of("image:ipstudio/u1/first.png","image:ipstudio/u1/last.png"),keys);
+                "ipstudio/u1/first.png","ipstudio/u1/last.png",List.of()),
+                (type,key,frame)->keys.add(type+":"+frame+":"+key));
+        assertEquals(List.of("image:true:ipstudio/u1/first.png","image:true:ipstudio/u1/last.png"),keys);
         assertEquals(280,prepared.credits());
         assertEquals("ipstudio/u1/last.png",prepared.spec().lastFrameKey());
         assertEquals("544p",prepared.spec().resolutionTier());
+        keys.clear();
+        svc.prepareCanvas(USER,jr("ep-h3","universal_reference_video","参考图","768p","9:16",5,null,
+                null,null,List.of(r("image","ipstudio/u1/reference.png"))),
+                (type,key,frame)->keys.add(type+":"+frame+":"+key));
+        assertEquals(List.of("image:false:ipstudio/u1/reference.png"),keys);
         verify(videoJobs,never()).submit(any(),anyString(),anyString());
     }
     @Test void canvasDoesNotBypassUnsupportedModelMissingTailOrOwnerRejection() {
@@ -318,7 +341,7 @@ class VideoStudioServiceTest {
         @DisplayName("没有候选行时合成默认项：selectableById=false；它没有模型每秒价，只认配置")
         void synthesizedDefault() {
             listCandidates();
-            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null))
+            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity"))
                     .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(h3, null, true)));
             VideoStudioModel m = svc.listModels().get(0);
             assertFalse(m.selectableById());
@@ -331,7 +354,7 @@ class VideoStudioServiceTest {
         void disabledDefaultCandidateIsNotResurrected() {
             h3Candidate.setEnabled(false);
             listCandidates(new AiModelInvocationService.ResolvedEndpoint(h3, h3Candidate, true));
-            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null))
+            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity"))
                     .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(h3, h3Candidate, true)));
             assertTrue(svc.listModels().isEmpty());
             assertEquals("VIDEO_NOT_CONFIGURED", code(t2v()));
@@ -359,6 +382,108 @@ class VideoStudioServiceTest {
             h3Candidate.setMaxDurationSec(3);
             assertTrue(svc.listModels().isEmpty());
         }
+
+        @Test
+        void studioListsConfiguredSeedanceUsingStudioScopeAndItsOwnContract() {
+            var contract = new VideoStudioContract(
+                    List.of(new VideoStudioModeSpec("t2v", false, false, null, null)),
+                    List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas("16:9", 1280, 720)))),
+                    4, 15, 2000, 4294967295L);
+            AiModelEndpoint seedance = AiModelEndpoint.builder().id("ep-sd").name("Seedance 2.0")
+                    .baseUrl("https://api.onetoken.love").model("seedance-2.0")
+                    .videoRequestSpecJson(new com.aistareco.aep.model.AiVideoRequestSpec("seedance", contract,
+                            "/api/v3/contents/generations/tasks", "/api/v3/contents/generations/tasks/{id}", Map.of()).json())
+                    .billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
+            var candidate = AiAppEndpointCandidate.builder().endpointId("ep-sd")
+                    .enabled(true).creditCostOverride(30L).build();
+            when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "studio"))
+                    .thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(seedance, candidate, true)));
+            when(modelClient.isEndpointReady(seedance)).thenReturn(true);
+            when(modelClient.protocolDurationBounds(seedance))
+                    .thenReturn(new MaterialVideoModelClient.DurationBounds(4, 15));
+            var models = svc.listModels("studio");
+            assertEquals(List.of("ep-sd"), models.stream().map(VideoStudioModel::endpointId).toList());
+            assertFalse(models.get(0).supportsPromptOptimization());
+            assertEquals(List.of("t2v"), models.get(0).contract().modes().stream().map(VideoStudioModeSpec::mode).toList());
+            assertEquals(30L, models.get(0).pricing().perSecond().get("t2v").get("720p"));
+        }
+
+        @Test
+        void configuredCanvasIsSnapshottedOnSubmission() {
+            var contract = new VideoStudioContract(
+                    List.of(new VideoStudioModeSpec("t2v", false, false, null, null)),
+                    List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas("100:71", 10000, 7100)))),
+                    4, 15, 2000, 4294967295L);
+            var endpoint = AiModelEndpoint.builder().id("ep-sd").name("Seedance")
+                    .baseUrl("https://api.example.test").model("supplier-model")
+                    .videoRequestSpecJson(new com.aistareco.aep.model.AiVideoRequestSpec("seedance", contract,
+                            "/tasks", "/tasks/{id}", Map.of()).json())
+                    .billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
+            var candidate = AiAppEndpointCandidate.builder().endpointId("ep-sd")
+                    .enabled(true).creditCostOverride(30L).build();
+            listCandidates(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true));
+            when(modelClient.isEndpointReady(endpoint)).thenReturn(true);
+            when(modelClient.protocolDurationBounds(endpoint))
+                    .thenReturn(new MaterialVideoModelClient.DurationBounds(4, 15));
+            JsonNode item = submittedItem(jr("ep-sd", "t2v", "一只猫", "720p", "100:71", 4,
+                    null, null, null, List.of()));
+            assertEquals(10000, item.path("variant_config").path("display_width").asInt());
+            assertEquals(7100, item.path("variant_config").path("display_height").asInt());
+        }
+
+        @Test
+        void customModeUsesConfiguredLabelAndShortJobKind() {
+            var mode = "motion_control_with_a_long_supplier_specific_name";
+            var contract = new VideoStudioContract(
+                    List.of(new VideoStudioModeSpec(mode, false, false, null, null, "动作控制")),
+                    List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas("16:9", 1280, 720)))),
+                    4, 15, 2000, 4294967295L);
+            var requestSpec = new com.aistareco.aep.model.AiVideoRequestSpec("json-template", contract,
+                    "/tasks", "/tasks/{id}", Map.of(), null, null,
+                    Map.of(mode, Map.of("prompt", "${prompt}", "mode", "${generationMode}")));
+            var endpoint = AiModelEndpoint.builder().id("ep-custom").name("动作视频")
+                    .baseUrl("https://api.example.test").model("supplier-model")
+                    .videoRequestSpecJson(requestSpec.json())
+                    .billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
+            var candidate = AiAppEndpointCandidate.builder().endpointId("ep-custom")
+                    .enabled(true).creditCostOverride(30L).build();
+            listCandidates(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true));
+            when(modelClient.isEndpointReady(endpoint)).thenReturn(true);
+            when(modelClient.protocolDurationBounds(endpoint))
+                    .thenReturn(new MaterialVideoModelClient.DurationBounds(4, 15));
+
+            JsonNode item = submittedItem(jr("ep-custom", mode, "跑起来", "720p", "16:9", 4,
+                    null, null, null, List.of()));
+            assertEquals("动作控制 · 720p · 16:9 · 4 秒", item.path("name").asText());
+            assertEquals("studio-custom", item.path("kind").asText());
+            assertEquals(mode, item.path("variant_config").path("generation_mode").asText());
+            assertEquals(120L, item.path("credit_cost").asLong());
+        }
+
+        @Test
+        void configuredOptionalPromptModeCanSubmitAnEmptyPrompt() {
+            var mode = new VideoStudioModeSpec("t2v", false, false, null, null, null, false);
+            var contract = new VideoStudioContract(List.of(mode),
+                    List.of(new VideoStudioTier("720p", List.of(new VideoStudioCanvas("16:9", 1280, 720)))),
+                    4, 15, 2000, 4294967295L);
+            var requestSpec = new com.aistareco.aep.model.AiVideoRequestSpec("json-template", contract,
+                    "/tasks", "/tasks/{id}", Map.of(), null, null,
+                    Map.of("t2v", Map.of("duration", "${seconds}")));
+            var endpoint = AiModelEndpoint.builder().id("ep-optional-prompt").name("无提示词视频")
+                    .baseUrl("https://api.example.test").videoRequestSpecJson(requestSpec.json())
+                    .billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
+            var candidate = AiAppEndpointCandidate.builder().endpointId(endpoint.getId())
+                    .enabled(true).creditCostOverride(30L).build();
+            listCandidates(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true));
+            when(modelClient.isEndpointReady(endpoint)).thenReturn(true);
+            when(modelClient.protocolDurationBounds(endpoint))
+                    .thenReturn(new MaterialVideoModelClient.DurationBounds(4, 15));
+
+            JsonNode item = submittedItem(jr(endpoint.getId(), "t2v", "  ", "720p", "16:9", 4,
+                    null, null, null, List.of()));
+            assertEquals("", item.path("prompt").asText());
+            assertEquals(120L, item.path("credit_cost").asLong());
+        }
     }
 
     // ── 提交：交给通用视频链的 item ─────────────────────────────────────────
@@ -377,8 +502,12 @@ class VideoStudioServiceTest {
             assertEquals("9:16", item.path("aspect_ratio").asText());
             assertEquals(200L, item.path("credit_cost").asLong());
             assertEquals("视频生成", item.path("credit_label").asText());
-            assertEquals("{\"endpoint_id\":\"ep-h3\",\"generation_mode\":\"t2v\",\"resolution_tier\":\"768p\"}",
-                    item.path("variant_config").toString());
+            JsonNode accepted = item.path("variant_config");
+            assertEquals("ep-h3", accepted.path("endpoint_id").asText());
+            assertEquals("t2v", accepted.path("generation_mode").asText());
+            assertEquals("768p", accepted.path("resolution_tier").asText());
+            assertEquals(768, accepted.path("display_width").asInt());
+            assertEquals(1344, accepted.path("display_height").asInt());
         }
 
         @Test
@@ -430,16 +559,22 @@ class VideoStudioServiceTest {
             assertEquals("首尾帧生视频 · 768p · 16:9 · 10 秒", item.path("name").asText());
             assertEquals("studio-flf", item.path("kind").asText());
             assertEquals(400L, item.path("credit_cost").asLong());
-            assertEquals("{\"endpoint_id\":\"ep-h3\",\"generation_mode\":\"first_last_frame_video\",\"resolution_tier\":\"768p\","
-                    + "\"seed\":42,\"first_frame_key\":\"" + IMG + "\",\"last_frame_key\":\"" + IMG2 + "\"}",
-                    item.path("variant_config").toString());
+            JsonNode accepted = item.path("variant_config");
+            assertEquals("ep-h3", accepted.path("endpoint_id").asText());
+            assertEquals("first_last_frame_video", accepted.path("generation_mode").asText());
+            assertEquals("768p", accepted.path("resolution_tier").asText());
+            assertEquals(42, accepted.path("seed").asLong());
+            assertEquals(IMG, accepted.path("first_frame_key").asText());
+            assertEquals(IMG2, accepted.path("last_frame_key").asText());
+            assertEquals(1344, accepted.path("display_width").asInt());
+            assertEquals(768, accepted.path("display_height").asInt());
         }
 
         @Test
         @DisplayName("合成的默认项：variant_config 不写 endpoint_id；价格只能来自配置")
         void synthesizedDefaultOmitsEndpointId() {
             listCandidates();
-            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null))
+            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity"))
                     .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(h3, null, true)));
             config(Map.of("t2v:544p", 30L), 0, 0L, 0L);
             JsonNode item = submittedItem(with(t2v(), "resolutionTier", "544p"));
@@ -575,11 +710,11 @@ class VideoStudioServiceTest {
             assertEquals("VIDEO_STUDIO_MODEL_UNSUPPORTED", code(t2v()));
 
             listCandidates();
-            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null))
+            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity"))
                     .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(h3, null, true)));
             assertEquals("VIDEO_STUDIO_MODEL_UNSUPPORTED", code(with(t2v(), "endpointId", "ep-h3")));
 
-            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null)).thenReturn(Optional.empty());
+            when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity")).thenReturn(Optional.empty());
             assertEquals("VIDEO_NOT_CONFIGURED", code(t2v()));
         }
 
@@ -741,6 +876,125 @@ class VideoStudioServiceTest {
             submittedItem(ref(List.of(r("image", IMG), r("audio", AUD))));
             verify(fileStorage, never()).openForRead(anyString());
         }
+
+        @Test
+        @DisplayName("自定义总时长短于单段上限时，一段音频也按总时长校验")
+        void configuredSingleAudioTotalIsEnforced(@TempDir Path temp) throws Exception {
+            VideoStudioContract baseline = VideoStudioService.contract(4, 15);
+            var referenceMode = baseline.modes().stream()
+                    .filter(mode -> "universal_reference_video".equals(mode.mode())).findFirst().orElseThrow();
+            var original = referenceMode.references();
+            var restricted = new VideoStudioReferenceRules(original.image(), original.video(), original.audio(),
+                    original.maxImagesWithVideo(), original.maxTotal(), original.minVisual(), 5);
+            var contract = new VideoStudioContract(
+                    List.of(new VideoStudioModeSpec("universal_reference_video", false, false, null, restricted)),
+                    baseline.tiers(), 4, 15, baseline.promptMaxChars(), baseline.seedMax());
+            var endpoint = AiModelEndpoint.builder().id("ep-audio-limit").name("音频总时长模型")
+                    .baseUrl("https://api.example.test").model("supplier-model")
+                    .videoRequestSpecJson(new com.aistareco.aep.model.AiVideoRequestSpec("seedance", contract,
+                            "/tasks", "/tasks/{id}", Map.of()).json())
+                    .billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
+            var candidate = AiAppEndpointCandidate.builder().endpointId(endpoint.getId())
+                    .enabled(true).creditCostOverride(30L).build();
+            listCandidates(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true));
+            when(modelClient.isEndpointReady(endpoint)).thenReturn(true);
+            when(modelClient.protocolDurationBounds(endpoint))
+                    .thenReturn(new MaterialVideoModelClient.DurationBounds(4, 15));
+            Path image = temp.resolve("image.png");
+            Path audio = temp.resolve("audio.mp3");
+            Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 0});
+            Files.write(audio, new byte[]{'I', 'D', '3', 0, 0, 0, 0, 0, 0, 0, 0, 0});
+            when(fileStorage.openForRead(IMG)).thenReturn(image);
+            when(fileStorage.openForRead(AUD)).thenReturn(audio);
+            when(ffmpeg.probeMedia(audio.toFile()))
+                    .thenReturn(new FfmpegRunner.MediaProbe(6.0, "mp3", null, "mp3", 0, 0, 44100, 2, true));
+
+            VideoStudioJobRequest request = jr(endpoint.getId(), "universal_reference_video", "配乐",
+                    "768p", "9:16", 5, null, null, null,
+                    List.of(r("image", IMG), r("audio", AUD)));
+            assertEquals("VIDEO_STUDIO_INPUT_INVALID", code(request));
+
+            when(ffmpeg.probeMedia(audio.toFile()))
+                    .thenReturn(new FfmpegRunner.MediaProbe(5.0, "mp3", null, "mp3", 0, 0, 44100, 2, true));
+            submittedItem(request);
+        }
+
+        @Test
+        @DisplayName("切换模型后，已上传首帧按当前模型的大小和实际格式重新校验")
+        void configuredFrameRulesApplyToExistingAsset(@TempDir Path temp) throws Exception {
+            Path image = temp.resolve("old-upload.png");
+            Files.write(image, new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 0});
+            when(fileStorage.openForRead(IMG)).thenReturn(image);
+            var endpoint = AiModelEndpoint.builder().id("ep-current-rules").name("当前模型")
+                    .baseUrl("https://api.example.test").model("supplier-model")
+                    .billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
+            var candidate = AiAppEndpointCandidate.builder().endpointId(endpoint.getId())
+                    .enabled(true).creditCostOverride(30L).build();
+            listCandidates(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true));
+            when(modelClient.isEndpointReady(endpoint)).thenReturn(true);
+            when(modelClient.protocolDurationBounds(endpoint))
+                    .thenReturn(new MaterialVideoModelClient.DurationBounds(4, 15));
+            VideoStudioJobRequest request = jr(endpoint.getId(), "i2v", "首帧",
+                    "768p", "9:16", 5, null, IMG, null, List.of());
+
+            endpoint.setVideoRequestSpecJson(frameSpec(12, "PNG"));
+            assertEquals("VIDEO_STUDIO_INPUT_INVALID", code(request));
+            endpoint.setVideoRequestSpecJson(frameSpec(100, "JPEG"));
+            assertEquals("VIDEO_STUDIO_INPUT_INVALID", code(request));
+            endpoint.setVideoRequestSpecJson(frameSpec(100, "PNG"));
+            submittedItem(request);
+        }
+
+        @Test
+        @DisplayName("切换模型后，已上传参考视频按当前模型的时长重新校验")
+        void configuredReferenceDurationAppliesToExistingAsset(@TempDir Path temp) throws Exception {
+            Path video = temp.resolve("old-upload.mp4");
+            Files.write(video, new byte[]{0, 0, 0, 12, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'});
+            when(fileStorage.openForRead(VID)).thenReturn(video);
+            when(ffmpeg.probeMedia(video.toFile()))
+                    .thenReturn(new FfmpegRunner.MediaProbe(5.0, "mp4", "h264", null,
+                            1280, 720, 0, 0, true));
+            VideoStudioContract baseline = VideoStudioService.contract(4, 15);
+            var original = baseline.modes().stream()
+                    .filter(mode -> "universal_reference_video".equals(mode.mode()))
+                    .findFirst().orElseThrow().references();
+            var videoRule = new VideoStudioMediaLimit("video", original.video().maxCount(),
+                    original.video().maxBytes(), List.of("MP4"), null, 3);
+            var rules = new VideoStudioReferenceRules(original.image(), videoRule, original.audio(),
+                    original.maxImagesWithVideo(), original.maxTotal(), original.minVisual(),
+                    original.maxAudioTotalSec());
+            var contract = new VideoStudioContract(
+                    List.of(new VideoStudioModeSpec("universal_reference_video", false, false, null, rules)),
+                    baseline.tiers(), 4, 15, baseline.promptMaxChars(), baseline.seedMax());
+            var endpoint = AiModelEndpoint.builder().id("ep-video-limit").name("参考视频模型")
+                    .baseUrl("https://api.example.test").model("supplier-model")
+                    .videoRequestSpecJson(new com.aistareco.aep.model.AiVideoRequestSpec("seedance", contract,
+                            "/tasks", "/tasks/{id}", Map.of()).json())
+                    .billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
+            var candidate = AiAppEndpointCandidate.builder().endpointId(endpoint.getId())
+                    .enabled(true).creditCostOverride(30L).build();
+            listCandidates(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true));
+            when(modelClient.isEndpointReady(endpoint)).thenReturn(true);
+            when(modelClient.protocolDurationBounds(endpoint))
+                    .thenReturn(new MaterialVideoModelClient.DurationBounds(4, 15));
+            VideoStudioJobRequest request = jr(endpoint.getId(), "universal_reference_video", "参考视频",
+                    "768p", "9:16", 5, null, null, null, List.of(r("video", VID)));
+            assertEquals("VIDEO_STUDIO_INPUT_INVALID", code(request));
+            when(ffmpeg.probeMedia(video.toFile()))
+                    .thenReturn(new FfmpegRunner.MediaProbe(3.0, "mp4", "h264", null,
+                            1280, 720, 0, 0, true));
+            submittedItem(request);
+        }
+
+        private String frameSpec(long maxBytes, String format) {
+            VideoStudioContract baseline = VideoStudioService.contract(4, 15);
+            var frame = new VideoStudioMediaLimit("image", 1, maxBytes, List.of(format), null, null);
+            var contract = new VideoStudioContract(
+                    List.of(new VideoStudioModeSpec("i2v", true, false, frame, null)),
+                    baseline.tiers(), 4, 15, baseline.promptMaxChars(), baseline.seedMax());
+            return new com.aistareco.aep.model.AiVideoRequestSpec("seedance", contract,
+                    "/tasks", "/tasks/{id}", Map.of()).json();
+        }
     }
 
     // ── 归属闸 ──────────────────────────────────────────────────────────────
@@ -830,6 +1084,18 @@ class VideoStudioServiceTest {
             assertEquals("vst_1", j.templateId());
             assertEquals("2026-09-30T20:15+08:00", j.createdAt());
             assertEquals("2026-09-30T20:17:30+08:00", j.completedAt());
+        }
+
+        @Test
+        void configuredCanvasDimensionsSurviveEndpointChanges() {
+            MaterialVideoJob accepted = job("queued");
+            accepted.setVariantConfigJson("{\"generation_mode\":\"t2v\",\"resolution_tier\":\"720p\","
+                    + "\"display_width\":1278,\"display_height\":718}");
+            accepted.setAspectRatio("16:9");
+            when(jobRepo.findById("mvj_9")).thenReturn(Optional.of(accepted));
+            VideoStudioJob dto = svc.getJob(USER, "mvj_9");
+            assertEquals(1278, dto.width());
+            assertEquals(718, dto.height());
         }
 
         @Test

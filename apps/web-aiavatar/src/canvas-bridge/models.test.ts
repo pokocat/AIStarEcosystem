@@ -11,7 +11,7 @@ const fetchModelsMock = vi.fn();
 vi.mock("./api", () => ({ fetchModels: (...a: unknown[]) => fetchModelsMock(...a), fetchStudioVideoModels: async()=>[] }));
 
 import { modelOptionLabel, useConfigStore } from "./config-store";
-import { endpointIdFor, loadServerModels, SERVER_CHANNEL_ID } from "./models";
+import { endpointIdFor, imageBatchCountsFor, loadServerModels, SERVER_CHANNEL_ID } from "./models";
 
 const serverModels = {
   image: [
@@ -37,6 +37,13 @@ describe("默认配置不能带假模型", () => {
 });
 
 describe("灌入服务端候选", () => {
+  it("画布图片候选数按端点能力提供", async () => {
+    fetchModelsMock.mockResolvedValue({...serverModels,image:[
+      {...serverModels.image[0],capability:{imageBatchCounts:[1,3,5]}},
+    ]});
+    await loadServerModels();
+    expect(imageBatchCountsFor("ai-7f6cce37-778")).toEqual([1,3,5]);
+  });
   it("下拉只显示后台别名，选择值保留端点 ID", async () => {
     fetchModelsMock.mockResolvedValue(serverModels);
     await loadServerModels();

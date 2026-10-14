@@ -4,6 +4,7 @@ import { Settings2 } from "lucide-react";
 import { Button } from "antd";
 
 import { effectiveVideoGeometry, effectiveVideoSeconds, VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsLabel, videoSizeLabel } from "@/canvas/components/video-settings-panel";
+import { nativeVideoModelFor } from "@/canvas-bridge/models";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import type { AiConfig } from "@/canvas-bridge/config-store";
@@ -57,20 +58,25 @@ export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClass
     const storedSeconds = String(config.videoSeconds || "6");
     const outOfRange = String(effective.seconds) !== storedSeconds;
     // 本仓 v0.208：摘要按所选模型显示可用的帧参考能力。
-    const summary = `${videoResolutionLabel(config.vquality)} · ${videoSizeLabel(config.size)} · ${videoSecondsLabel(storedSeconds)} · ${config.videoCount||"1"} 条 · ${videoModeLabel(config.videoMode, config.model || config.videoModel)}`;
+    const native=nativeVideoModelFor(config.model || config.videoModel);
+    const nativeTier=native?.contract.tiers.find(tier=>tier.tier===config.vquality||tier.tier===`${config.vquality}p`);
+    const nativeCanvas=nativeTier?.canvases.find(canvas=>config.size===canvas.aspectRatio||config.size===`${canvas.width}x${canvas.height}`);
+    const summary = `${nativeTier?.tier??videoResolutionLabel(config.vquality)} · ${nativeCanvas?.aspectRatio??videoSizeLabel(config.size)} · ${videoSecondsLabel(storedSeconds)} · ${config.videoCount||"1"} 条 · ${videoModeLabel(config.videoMode, config.model || config.videoModel)}`;
 
     // 画幅跟时长不一样：超区间的时长会被服务端**拒**，而选不了的画幅会被**悄悄换掉**
     // —— 用户选 720p·3:4，聚算按 768p·portrait 出，回来 768×1376，没有任何地方报错（v0.184）。
     // 面板打开时会夹 + 回写，但没打开过的节点存的还是老值，所以这行得如实说会出成什么样。
     const geometry = effectiveVideoGeometry(config);
-    const geometryMismatch =
-        geometry.constrained &&
-        (videoResolutionLabel(config.vquality) !== `${geometry.resolution}p` || videoSizeLabel(config.size) !== geometry.ratio);
+    const geometryMismatch = native
+        ? !nativeTier || nativeTier.tier!==geometry.resolution && nativeTier.tier!==`${geometry.resolution}p`
+            || !nativeCanvas || nativeCanvas.aspectRatio!==geometry.ratio
+        : geometry.constrained &&
+            (videoResolutionLabel(config.vquality) !== `${geometry.resolution}p` || videoSizeLabel(config.size) !== geometry.ratio);
 
     const hint = outOfRange
         ? `${summary}（这个模型只接 ${effective.min}–${effective.max} 秒，现在这样发会被拒 —— 点开改一下）`
         : geometryMismatch
-            ? `${summary}（这个模型只出 ${geometry.resolution}p，实际会按 ${geometry.ratio} 出 —— 点开改一下）`
+            ? `${summary}（这个模型只出 ${nativeTier?.tier??`${geometry.resolution}p`}，实际会按 ${geometry.ratio} 出 —— 点开改一下）`
             : summary;
 
     return (

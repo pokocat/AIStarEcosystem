@@ -48,7 +48,7 @@ class MaterialVideoQueueAdmissionTest {
     @Test void originalJobRecoveryNeverSubmitsAnotherGeneration(){
         job.setStatus("failed");job.setExternalTaskId("original");
         var submitted=new MaterialVideoModelClient.SubmitResult("original",null,"provider","model","generic","e");
-        when(client.resumeExistingTask(any(),any(),any(),any())).thenReturn(submitted);
+        when(client.resumeExistingTask(any(),any(),any(),any(),any(),any(),any())).thenReturn(submitted);
         when(client.poll(submitted)).thenReturn(new MaterialVideoModelClient.PollResult("failed",null,null,"failed",100,"rejected",null,null));
         worker.recoverQueuedGeneration("job");verify(client,never()).submit(any(),anyInt(),any(),any(),any(),any(),any());
         verify(queue).finish(AiGenerationQueueService.VIDEO,"job");verifyNoInteractions(credits);

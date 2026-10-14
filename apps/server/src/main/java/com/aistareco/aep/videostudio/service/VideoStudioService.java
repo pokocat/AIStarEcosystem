@@ -3,6 +3,7 @@ package com.aistareco.aep.videostudio.service;
 import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.model.MaterialVideoJob;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.service.AiModelInvocationService;
@@ -13,6 +14,7 @@ import com.aistareco.aep.service.materialvideo.MaterialVideoModelClient;
 import com.aistareco.aep.service.materialvideo.VideoGenSpec;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
+import com.aistareco.aep.service.storage.MediaBytes;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioJob;
@@ -39,9 +41,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -125,45 +130,68 @@ public class VideoStudioService {
     // ── 模型列表 ──────────────────────────────────────────────────────────────
 
     /**
-     * 「视频生成」用途下能在本区用的模型：启用候选 × 启用端点 × 可提交（有 baseUrl + Key）× 聚算媒体协议。
+     * 「视频生成」用途下能在本区用的模型：应用开放的启用候选 × 可提交端点 × 视频请求规格。
      * 一个候选都没有时，默认绑定的端点若也满足条件就合成一条（{@code selectableById=false}，提交时必须省略
      * endpointId），与 {@link MaterialVideoJobService#listModels} 同一个口径。
      * 每个模型的计价 = 后台配置那一格 ?? 这个模型的每秒价 ?? 未定价（{@link VideoStudioPricing#effective}）。
      */
     @Transactional(readOnly = true)
     public List<VideoStudioModel> listModels() {
+        return listModels("celebrity");
+    }
+
+    /** Each app resolves its own candidate/access scope; the endpoint holds the video contract. */
+    @Transactional(readOnly = true)
+    public List<VideoStudioModel> listModels(String appCode) {
+        return resolvedModels(appCode).stream().map(ResolvedVideoModel::model).toList();
+    }
+
+    private record ResolvedVideoModel(VideoStudioModel model, AiVideoRequestSpec configured) {}
+
+    private List<ResolvedVideoModel> resolvedModels(String appCode) {
         VideoStudioPricingConfig config = pricingConfig.current();
-        List<VideoStudioModel> out = new ArrayList<>();
-        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity")) {
+        List<ResolvedVideoModel> out = new ArrayList<>();
+        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, appCode)) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
-            if (!modelClient.isEndpointReady(r.endpoint()) || !modelClient.isJusuanMedia(r.endpoint())) continue;
+            if (!modelClient.isEndpointReady(r.endpoint()) || !hasVideoContract(r.endpoint())) continue;
             VideoStudioModel m = toModel(r.endpoint(), r.candidate(), r.isDefault(), true, config);
-            if (m != null) out.add(m);
+            if (m != null) out.add(new ResolvedVideoModel(m,
+                    AiVideoRequestSpec.read(r.endpoint().getVideoRequestSpecJson())));
         }
-        if (out.isEmpty()) {
+        if (out.isEmpty() && "celebrity".equals(appCode)) {
             // 只在默认端点**根本没有候选行**时合成默认项。候选行在、只是被后台停用了，说明运营是有意下线它：
             // 此时再合成一条就等于绕过停用。
             AiModelInvocationService.ResolvedEndpoint def =
-                    invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity").orElse(null);
+                    invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, appCode).orElse(null);
             AiModelEndpoint ep = def == null ? null : def.endpoint();
             if (ep != null && def.candidate() == null
-                    && modelClient.isEndpointReady(ep) && modelClient.isJusuanMedia(ep)) {
+                    && modelClient.isEndpointReady(ep) && hasVideoContract(ep)) {
                 VideoStudioModel m = toModel(ep, null, true, false, config);
-                if (m != null) out.add(m);
+                if (m != null) out.add(new ResolvedVideoModel(m,
+                        AiVideoRequestSpec.read(ep.getVideoRequestSpecJson())));
             }
         }
         return out;
     }
 
+    private boolean hasVideoContract(AiModelEndpoint endpoint) {
+        return AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson()) != null
+                || modelClient.isJusuanMedia(endpoint); // Existing H3 endpoints until their editable rows are seeded.
+    }
+
     private VideoStudioModel toModel(AiModelEndpoint ep, AiAppEndpointCandidate candidate, boolean isDefault,
                                      boolean selectableById, VideoStudioPricingConfig config) {
+        AiVideoRequestSpec configured = AiVideoRequestSpec.read(ep.getVideoRequestSpecJson());
+        VideoStudioContract videoContract = configured == null ? null : configured.contract();
         MaterialVideoModelClient.DurationBounds protocol = modelClient.protocolDurationBounds(ep);
         MaterialVideoModelClient.DurationBounds bounds = MaterialVideoModelClient.intersect(
                 protocol != null ? protocol
                         : new MaterialVideoModelClient.DurationBounds(JusuanH3Contract.MIN_SECONDS, JusuanH3Contract.MAX_SECONDS),
                 candidate);
-        int min = Math.max(JusuanH3Contract.MIN_SECONDS, bounds.minSec() == null ? JusuanH3Contract.MIN_SECONDS : bounds.minSec());
-        int max = Math.min(JusuanH3Contract.MAX_SECONDS, bounds.maxSec() == null ? JusuanH3Contract.MAX_SECONDS : bounds.maxSec());
+        int contractMin = videoContract == null ? JusuanH3Contract.MIN_SECONDS : videoContract.minSeconds();
+        int contractMax = videoContract == null ? JusuanH3Contract.MAX_SECONDS : videoContract.maxSeconds();
+        int min = Math.max(contractMin, bounds.minSec() == null ? contractMin : bounds.minSec());
+        int max = Math.min(contractMax, bounds.maxSec() == null ? contractMax : bounds.maxSec());
         if (min > max) {
             // 后台把候选的最长时长配得比厂商下限还短：任何时长都提交不了，列出来只会让用户走到最后一步才失败。
             log.warn("[video-studio] 端点「{}」的有效时长区间为空（{}–{} 秒），不列出。请检查候选的最长时长配置",
@@ -176,8 +204,13 @@ public class VideoStudioService {
         Long override=candidate==null?null:candidate.getCreditCostOverride();
         Long modelRate = "per_second".equals(AiModelInvocationService.videoBillingUnit(ep, candidate))
                 && override!=null && override > 0 ? override : null;
-        return new VideoStudioModel(ep.getId(), ep.publicModelName(), isDefault, selectableById, contract(min, max),
-                VideoStudioPricing.effective(config, modelRate));
+        VideoStudioContract effectiveContract = videoContract == null ? contract(min, max)
+                : new VideoStudioContract(videoContract.modes(), videoContract.tiers(), min, max,
+                        videoContract.promptMaxChars(), videoContract.seedMax());
+        return new VideoStudioModel(ep.getId(), ep.publicModelName(), isDefault, selectableById,
+                modelClient.isJusuanMedia(ep), effectiveContract,
+                VideoStudioPricing.effective(config, modelRate, effectiveContract),
+                configured==null?List.of(1,2,4):configured.allowedBatchCounts());
     }
 
     /** H3 合同出 wire（数字全部来自 {@link JusuanH3Contract}）；时长区间按端点算。 */
@@ -261,21 +294,51 @@ public class VideoStudioService {
     }
 
     /** Canvas keeps its own asset ownership; mode, geometry, limits and pricing share this validator. */
-    public record CanvasPreparation(VideoGenSpec spec, long credits) {}
+    public record CanvasPreparation(VideoGenSpec spec, long credits, long seedMax) {
+        public CanvasPreparation(VideoGenSpec spec, long credits) {
+            this(spec, credits, 2_147_483_647L);
+        }
+    }
+
+    @FunctionalInterface
+    public interface CanvasAssetValidator {
+        void accept(String mediaType, String key, boolean frame);
+    }
 
     public CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
             java.util.function.BiConsumer<String, String> requireCanvasAsset) {
+        return prepareCanvas(userId, request,
+                requireCanvasAsset == null ? null : (type, key, frame) -> requireCanvasAsset.accept(type, key),
+                "celebrity");
+    }
+
+    public CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
+            CanvasAssetValidator requireCanvasAsset) {
+        return prepareCanvas(userId, request, requireCanvasAsset, "celebrity");
+    }
+
+    public CanvasPreparation prepareCanvas(String userId, VideoStudioJobRequest request,
+            CanvasAssetValidator requireCanvasAsset, String appCode) {
         if (request == null || request.templateId() != null || request.optimizationId() != null)
             throw inputInvalid("画布视频请直接选择画布素材");
-        Validated v = validate(userId, Draft.of(request), requireCanvasAsset);
+        Validated v = validate(userId, Draft.of(request), requireCanvasAsset, appCode);
         return new CanvasPreparation(v.spec(), VideoStudioPricing.total(v.model().pricing(), v.mode(),
-                v.tier(), v.seconds(), v.inputs().referenceImages()));
+                v.tier(), v.seconds(), v.inputs().referenceImages(), v.modeSpec().references() != null),
+                v.model().contract().seedMax());
     }
 
     private Validated validate(String userId, Draft d,
             java.util.function.BiConsumer<String, String> requireCanvasAsset) {
+        return validate(userId, d,
+                requireCanvasAsset == null ? null : (type, key, frame) -> requireCanvasAsset.accept(type, key),
+                "celebrity");
+    }
+
+    private Validated validate(String userId, Draft d,
+            CanvasAssetValidator requireCanvasAsset, String appCode) {
         // 1) 模型
-        VideoStudioModel model = pickModel(listModels(), d.endpointId());
+        ResolvedVideoModel selectedModel = pickResolvedModel(resolvedModels(appCode), d.endpointId());
+        VideoStudioModel model = selectedModel.model();
         VideoStudioContract contract = model.contract();
 
         // 2) 模式
@@ -283,12 +346,13 @@ public class VideoStudioService {
                 .filter(m -> m.mode().equals(d.mode())).findFirst().orElse(null);
         if (d.mode() == null || modeSpec == null) {
             throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID",
-                    "生成模式只能是文生视频、首帧生视频、首尾帧生视频或全能参考");
+                    "所选模型不支持这个生成模式，请重新选择");
         }
 
-        // 3) 提示词：去首尾空白后 1..7000 个 Unicode 字符
+        // 3) 提示词：是否必填写在当前模式的端点合同中；长度上限也由合同决定。
         String prompt = stripBlank(d.prompt());
-        if (prompt.isEmpty()) throw BusinessException.badRequest("VIDEO_STUDIO_PROMPT_REQUIRED", "请先写提示词");
+        if (prompt.isEmpty() && !Boolean.FALSE.equals(modeSpec.promptRequired()))
+            throw BusinessException.badRequest("VIDEO_STUDIO_PROMPT_REQUIRED", "请先写提示词");
         int promptChars = prompt.codePointCount(0, prompt.length());
         if (promptChars > contract.promptMaxChars()) {
             throw BusinessException.badRequest("VIDEO_STUDIO_PROMPT_TOO_LONG",
@@ -335,13 +399,18 @@ public class VideoStudioService {
                             "这个模板已经下架或看不到了，可以点「不做同款了」继续用自己的素材"));
             templateMaterials = templates.materialTypes(template);
         }
-        if (requireCanvasAsset == null) requireUsableInputs(userId, inputs, templateMaterials);
-        else {
-            if (inputs.firstFrameKey() != null) requireCanvasAsset.accept("image", inputs.firstFrameKey());
-            if (inputs.lastFrameKey() != null) requireCanvasAsset.accept("image", inputs.lastFrameKey());
-            for (VideoGenSpec.Reference ref : inputs.references()) requireCanvasAsset.accept(ref.mediaType(), ref.key());
+        Map<String, Double> audioDurations = Map.of();
+        if (requireCanvasAsset == null) {
+            requireUsableInputs(userId, inputs, templateMaterials);
+            if (selectedModel.configured() != null) audioDurations = requireConfiguredInputs(inputs, modeSpec);
         }
-        requireAudioTotal(inputs.references(), modeSpec.references());
+        else {
+            if (inputs.firstFrameKey() != null) requireCanvasAsset.accept("image", inputs.firstFrameKey(), true);
+            if (inputs.lastFrameKey() != null) requireCanvasAsset.accept("image", inputs.lastFrameKey(), true);
+            for (VideoGenSpec.Reference ref : inputs.references())
+                requireCanvasAsset.accept(ref.mediaType(), ref.key(), false);
+        }
+        requireAudioTotal(inputs.references(), modeSpec.references(), audioDurations);
 
         return new Validated(model, modeSpec, prompt, tier.tier(), canvas.aspectRatio(), seconds, seed, inputs, template);
     }
@@ -355,11 +424,12 @@ public class VideoStudioService {
 
         // 价格（与 GET /models 下发的是同一组数）。这一格没定价 → 503，冻结之前。
         long price = VideoStudioPricing.total(v.model().pricing(), v.mode(), v.tier(), v.seconds(),
-                v.inputs().referenceImages());
+                v.inputs().referenceImages(), v.modeSpec().references() != null);
 
         ObjectNode item = om.createObjectNode();
-        item.put("name", MODE_NAMES.get(v.mode()) + " · " + v.tier() + " · " + v.aspectRatio() + " · " + v.seconds() + " 秒");
-        item.put("kind", MODE_KINDS.get(v.mode()));
+        item.put("name", configuredModeName(v.modeSpec()) + " · " + v.tier() + " · " + v.aspectRatio() + " · " + v.seconds() + " 秒");
+        // The database kind column is short; the full configurable mode lives in variant_config.
+        item.put("kind", MODE_KINDS.getOrDefault(v.mode(), "studio-custom"));
         item.put("prompt", v.prompt());
         item.put("duration_sec", v.seconds());
         item.put("aspect_ratio", v.aspectRatio());
@@ -370,6 +440,13 @@ public class VideoStudioService {
         // 不能随「默认绑定」在提交与派发之间漂走。合成的默认项没有候选行，写了编号会被白名单拒，所以不写。
         if (v.model().selectableById()) vc.put("endpoint_id", v.model().endpointId());
         v.spec().writeTo(vc);
+        VideoStudioCanvas selectedCanvas = v.model().contract().tiers().stream()
+                .filter(t -> t.tier().equals(v.tier()))
+                .flatMap(t -> t.canvases().stream())
+                .filter(c -> c.aspectRatio().equals(v.aspectRatio()))
+                .findFirst().orElseThrow(); // validate() already selected this canvas.
+        vc.put("display_width", selectedCanvas.width());
+        vc.put("display_height", selectedCanvas.height());
         // 以下几个键 worker 不读，只用于回显（做同款来源、用了智能优化时的原提示词）。
         if (v.template() != null) vc.put(VC_TEMPLATE_ID, v.template().getId());
         if (optimization != null) {
@@ -409,24 +486,44 @@ public class VideoStudioService {
     }
 
     /** 省略 endpointId = 用默认那一个；给了就必须是列表里能按编号选的那一个。 */
-    private static VideoStudioModel pickModel(List<VideoStudioModel> models, String endpointId) {
+    private static ResolvedVideoModel pickResolvedModel(List<ResolvedVideoModel> models, String endpointId) {
         if (models.isEmpty()) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_NOT_CONFIGURED",
                     "视频模型暂未开通，暂时不能生成");
         }
         String id = endpointId == null ? null : endpointId.trim();
         if (id == null || id.isEmpty()) {
-            return models.stream().filter(VideoStudioModel::isDefault).findFirst()
+            return models.stream().filter(m -> m.model().isDefault()).findFirst()
                     .orElseThrow(() -> BusinessException.badRequest("VIDEO_STUDIO_MODEL_UNSUPPORTED", "请先选择一个视频模型"));
         }
-        return models.stream().filter(m -> m.selectableById() && m.endpointId().equals(id)).findFirst()
+        return models.stream().filter(m -> m.model().selectableById() && m.model().endpointId().equals(id)).findFirst()
                 .orElseThrow(() -> BusinessException.badRequest("VIDEO_STUDIO_MODEL_UNSUPPORTED",
                         "所选视频模型不能在这里用，请刷新后重新选择"));
     }
 
+    /** Resolve upload limits from the same selectable model and mode used by submission. */
+    @Transactional(readOnly = true)
+    public VideoStudioMediaLimit uploadRule(String endpointId, String mode, String mediaType, boolean frame) {
+        if (mediaType == null) throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "请选择素材类型");
+        VideoStudioModel model = pickResolvedModel(resolvedModels("celebrity"), endpointId).model();
+        VideoStudioModeSpec selected = model.contract().modes().stream()
+                .filter(item -> item.mode().equals(mode)).findFirst()
+                .orElseThrow(() -> BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选视频模式暂不可用"));
+        VideoStudioMediaLimit limit = frame ? selected.frameImage() : selected.references() == null ? null
+                : switch (mediaType) {
+                    case "image" -> selected.references().image();
+                    case "video" -> selected.references().video();
+                    case "audio" -> selected.references().audio();
+                    default -> null;
+                };
+        if (limit == null || !mediaType.equals(limit.mediaType()))
+            throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选视频模式不支持该素材");
+        return limit;
+    }
+
     /** 素材与模式是否匹配。每一条报错都说清是哪一条（缺首帧、带了不该带的、超数量、没有视觉素材、重复…）。 */
     private static Inputs requireInputsForMode(VideoStudioModeSpec spec, Draft d) {
-        String name = MODE_NAMES.get(spec.mode());
+        String name = configuredModeName(spec);
         String first = blankToNull(d.firstFrameKey());
         String last = blankToNull(d.lastFrameKey());
         List<VideoStudioReferenceInput> refs = d.references() == null ? List.of() : d.references();
@@ -434,11 +531,11 @@ public class VideoStudioService {
 
         if (spec.needsFirstFrame() && first == null) throw inputInvalid(name + "需要一张首帧图");
         if (!spec.needsFirstFrame() && first != null) {
-            throw inputInvalid(referenceMode ? "全能参考不用单独传首帧图，请把它放进参考素材" : name + "不用传首帧图");
+            throw inputInvalid(name + "不用传首帧图");
         }
         if (spec.needsLastFrame() && last == null) throw inputInvalid(name + "需要一张尾帧图");
         if (!spec.needsLastFrame() && last != null) {
-            throw inputInvalid(referenceMode ? "全能参考不用单独传尾帧图，请把它放进参考素材" : name + "不用传尾帧图");
+            throw inputInvalid(name + "不用传尾帧图");
         }
         if (!referenceMode) {
             if (!refs.isEmpty()) throw inputInvalid(name + "不用传参考素材");
@@ -446,7 +543,8 @@ public class VideoStudioService {
         }
 
         VideoStudioReferenceRules rules = spec.references();
-        if (refs.isEmpty()) throw inputInvalid("全能参考至少要一个参考素材");
+        if (refs.isEmpty() && rules.minVisual() > 0)
+            throw inputInvalid(name + "至少要 " + rules.minVisual() + " 个参考图片或视频素材");
         if (refs.size() > rules.maxTotal()) {
             throw inputInvalid("参考素材最多 " + rules.maxTotal() + " 个，现在是 " + refs.size() + " 个");
         }
@@ -481,8 +579,9 @@ public class VideoStudioService {
         if (videos > 0 && images > rules.maxImagesWithVideo()) {
             throw inputInvalid("带了参考视频时，参考图片最多 " + rules.maxImagesWithVideo() + " 张，现在是 " + images + " 张");
         }
-        if (images + videos < rules.minVisual()) throw inputInvalid("至少要有一张参考图片或一段参考视频");
-        return new Inputs(null, null, out);
+        if (images + videos < rules.minVisual())
+            throw inputInvalid("参考图片和视频合计至少要 " + rules.minVisual() + " 个");
+        return new Inputs(first, last, out);
     }
 
     /** 每个 key 都得用得上：本人在本区上传的同类素材，或这次做同款的模板自带的同类素材（首帧 / 尾帧只能是图片）。 */
@@ -531,18 +630,78 @@ public class VideoStudioService {
         throw BusinessException.badRequest("VIDEO_STUDIO_ASSET_INVALID", label + "不是在这里上传的素材，请重新上传");
     }
 
-    /**
-     * 音频加起来不能超过合同上限（H3 为 15 秒）。单段音频上传时已验过 2–15 秒，所以只有一段时不用再读；
-     * 两段以上重新探一次时长（与上传时同一个 ffprobe，数和前端拿到的 durationSec 一致）。
-     */
-    private void requireAudioTotal(List<VideoGenSpec.Reference> references, VideoStudioReferenceRules rules) {
+    /** Recheck stored bytes against the chosen model; an asset may have been uploaded for a looser model. */
+    private Map<String, Double> requireConfiguredInputs(Inputs inputs, VideoStudioModeSpec mode) {
+        Map<String, Double> audioDurations = new HashMap<>();
+        if (inputs.firstFrameKey() != null)
+            requireConfiguredMedia(inputs.firstFrameKey(), "image", mode.frameImage(), "首帧图", audioDurations);
+        if (inputs.lastFrameKey() != null)
+            requireConfiguredMedia(inputs.lastFrameKey(), "image", mode.frameImage(), "尾帧图", audioDurations);
+        List<String> labels = VideoGenSpec.referenceLabels(inputs.references());
+        for (int i = 0; i < inputs.references().size(); i++) {
+            VideoGenSpec.Reference ref = inputs.references().get(i);
+            VideoStudioReferenceRules rules = mode.references();
+            VideoStudioMediaLimit limit = rules == null ? null : switch (ref.mediaType()) {
+                case "image" -> rules.image();
+                case "video" -> rules.video();
+                case "audio" -> rules.audio();
+                default -> null;
+            };
+            requireConfiguredMedia(ref.key(), ref.mediaType(), limit, labels.get(i), audioDurations);
+        }
+        return audioDurations;
+    }
+
+    private void requireConfiguredMedia(String key, String type, VideoStudioMediaLimit rule, String label,
+                                        Map<String, Double> audioDurations) {
+        if (rule == null || !type.equals(rule.mediaType()))
+            throw inputInvalid(label + "不符合当前模型的素材规则");
+        Path path;
+        long bytes;
+        byte[] header;
+        try {
+            path = fileStorage.openForRead(key);
+            bytes = Files.size(path);
+            try (InputStream in = Files.newInputStream(path)) {
+                header = in.readNBytes(4096);
+            }
+        } catch (Exception e) {
+            log.warn("[video-studio] 素材读取失败 key={} err={}", key, e.toString());
+            throw BusinessException.badRequest("VIDEO_STUDIO_ASSET_INVALID", label + "已不可用，请重新上传");
+        }
+        if (bytes < 1 || bytes > rule.maxBytes())
+            throw inputInvalid(label + "超过当前模型的文件大小上限，请重新选择");
+        if (!MediaBytes.allowed(MediaBytes.sniffConfigured(type, header), rule.formats()))
+            throw inputInvalid(label + "的实际格式不符合当前模型要求，请重新选择");
+        if ("image".equals(type)) return;
+        FfmpegRunner.MediaProbe probe = ffmpeg.probeMedia(path.toFile());
+        if (probe == null || !probe.readable() || "video".equals(type) && !probe.hasVideo()
+                || "audio".equals(type) && !probe.hasAudio())
+            throw BusinessException.badRequest("VIDEO_STUDIO_ASSET_INVALID", label + "读不出来，请重新上传");
+        double duration = probe.durationSec();
+        if ("audio".equals(type) && (!Double.isFinite(duration) || duration <= 0))
+            throw BusinessException.badRequest("VIDEO_STUDIO_ASSET_INVALID", label + "的时长读不出来，请重新上传");
+        if ((rule.minDurationSec() != null || rule.maxDurationSec() != null)
+                && (!Double.isFinite(duration) || duration <= 0
+                    || rule.minDurationSec() != null && duration < rule.minDurationSec()
+                    || rule.maxDurationSec() != null && duration > rule.maxDurationSec()))
+            throw inputInvalid(label + "的时长不符合当前模型要求");
+        if ("audio".equals(type)) audioDurations.put(key, duration);
+    }
+
+    /** 音频总时长按当前模型合同校验；当总上限低于单段上限时，一段也需要重新探测。 */
+    private void requireAudioTotal(List<VideoGenSpec.Reference> references, VideoStudioReferenceRules rules,
+                                   Map<String, Double> knownDurations) {
         if (rules == null) return;
         List<String> audioKeys = references.stream()
                 .filter(r -> JusuanH3Contract.MEDIA_AUDIO.equals(r.mediaType()))
                 .map(VideoGenSpec.Reference::key).toList();
-        if (audioKeys.size() < 2) return;
+        if (audioKeys.isEmpty()) return;
+        Integer singleMax = rules.audio().maxDurationSec();
+        if (audioKeys.size() == 1 && singleMax != null && rules.maxAudioTotalSec() >= singleMax) return;
         double total = 0;
-        for (String key : audioKeys) total += probeAudioSeconds(key);
+        for (String key : audioKeys) total += knownDurations.containsKey(key)
+                ? knownDurations.get(key) : probeAudioSeconds(key);
         if (total > rules.maxAudioTotalSec()) {
             throw inputInvalid("参考音频加起来不能超过 " + rules.maxAudioTotalSec() + " 秒，现在是 "
                     + VideoStudioUploadService.oneDecimal(total) + " 秒");
@@ -564,6 +723,10 @@ public class VideoStudioService {
     static String modeName(String mode) {
         String name = mode == null ? null : MODE_NAMES.get(mode);
         return name == null ? "视频生成" : name;
+    }
+
+    private static String configuredModeName(VideoStudioModeSpec spec) {
+        return spec.label() == null ? MODE_NAMES.getOrDefault(spec.mode(), spec.mode()) : spec.label();
     }
 
     // ── 查询 ─────────────────────────────────────────────────────────────────
@@ -595,7 +758,16 @@ public class VideoStudioService {
         JsonNode vc = readTree(job.getVariantConfigJson());
         VideoGenSpec spec = VideoGenSpec.fromVariantConfig(vc);
         String mode = spec.generationMode() != null ? spec.generationMode() : modeOfKind(job.getKind());
-        JusuanH3Contract.Canvas canvas = JusuanH3Contract.canvas(spec.resolutionTier(), job.getAspectRatio());
+        // Current endpoint settings may change while a task runs. Use dimensions accepted with this job.
+        int configuredWidth = vc == null ? 0 : vc.path("display_width").asInt(0);
+        int configuredHeight = vc == null ? 0 : vc.path("display_height").asInt(0);
+        boolean hasCanvasSnapshot = configuredWidth > 0 && configuredHeight > 0;
+        JusuanH3Contract.Canvas legacyCanvas = hasCanvasSnapshot ? null
+                : JusuanH3Contract.canvas(spec.resolutionTier(), job.getAspectRatio());
+        Integer width = hasCanvasSnapshot ? Integer.valueOf(configuredWidth)
+                : legacyCanvas == null ? null : Integer.valueOf(legacyCanvas.width());
+        Integer height = hasCanvasSnapshot ? Integer.valueOf(configuredHeight)
+                : legacyCanvas == null ? null : Integer.valueOf(legacyCanvas.height());
         String status = wireStatus(job.getStatus());
         return new VideoStudioJob(
                 job.getId(),
@@ -603,8 +775,8 @@ public class VideoStudioService {
                 nz(job.getPrompt()),
                 nz(spec.resolutionTier()),
                 nz(job.getAspectRatio()),
-                canvas == null ? null : canvas.width(),
-                canvas == null ? null : canvas.height(),
+                width,
+                height,
                 job.getDurationSec(),
                 spec.seed(),
                 modelName(job),
@@ -653,6 +825,7 @@ public class VideoStudioService {
         for (Map.Entry<String, String> e : MODE_KINDS.entrySet()) {
             if (e.getValue().equals(kind)) return e.getKey();
         }
+        if (kind != null && kind.startsWith("studio-")) return kind.substring("studio-".length());
         return null;
     }
 

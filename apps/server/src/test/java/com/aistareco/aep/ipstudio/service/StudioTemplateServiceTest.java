@@ -166,13 +166,25 @@ class StudioTemplateServiceTest {
         var instance=service.instantiate("owner",use);var node=IpDocs.node(instance.project().doc(),instance.plan().steps().get(1).nodeId());
         assertEquals("video",node.path("type").asText());assertEquals(5,node.path("metadata").path("seconds").asInt());verify(images,never()).generate(any(),any(),any());
     }
-    @Test void videoOnlyRecipeDoesNotRequireAnImageModelAndRejectsDroppedFrameReferences() {
+    @Test void videoOnlyRecipeDoesNotRequireAnImageModelAndDefersModeLimitsToTheSelectedModel() {
         doc.withArray("nodes").addObject().put("id","v").put("type","video");author.setDocJson(doc.toString());
         recipe=new Recipe(List.of(),List.of(new Step("video","v","文生视频","video","A cinematic street",List.of(),null,"video",true,5,"16:9",null)));
         when(videos.quote(eq("owner"),any(),any(),anyString())).thenReturn(new StudioTemplateVideoService.Quote("video-model",20,false));
         var version=publish(null);var plan=service.preview("owner",new UseRequest("mine",version.id(),Map.of(),null,"video-model"));
         assertNull(plan.model());assertEquals(0,plan.imageCount());assertEquals(1,plan.videoCount());verifyNoInteractions(images,models);
-        var invalid=new Recipe(List.of(new Input("person","a","person","image",true,null,null)),List.of(new Step("video","v","video","video","prompt",List.of("person"),null,"video",true,5,"9:16",new Video("t2v","768p",null))));
-        assertThrows(BusinessException.class,()->StudioTemplateService.validateRecipe(invalid,doc));
+        var modelDefined=new Recipe(List.of(new Input("person","a","person","image",true,null,null)),List.of(new Step("video","v","video","video","prompt",List.of("person"),null,"video",true,5,"9:16",new Video("t2v","768p",null))));
+        assertEquals(modelDefined,StudioTemplateService.validateRecipe(modelDefined,doc));
+    }
+    @Test void customVideoRecipeKeepsItsModeTierAndModelBoundInputs() {
+        doc.withArray("nodes").addObject().put("id","v").put("type","video");
+        var custom=new Recipe(List.of(new Input("person","a","person","image",true,null,null)),
+                List.of(new Step("video","v","商品视频","video","",List.of("person"),null,"video",true,
+                        40,"2:3",new Video("product-shot","portraitX",Long.MAX_VALUE))));
+        var validated=StudioTemplateService.validateRecipe(custom,doc);
+        var copy=StudioTemplateCanvasCopy.copy(om,StudioTemplateService.cleanDoc(doc,validated),validated);
+        var metadata=copy.path("nodes").get(1).path("metadata");
+        assertEquals("product-shot",metadata.path("videoMode").asText());
+        assertEquals("portraitX",metadata.path("vquality").asText());
+        assertEquals("2:3",metadata.path("size").asText());
     }
 }

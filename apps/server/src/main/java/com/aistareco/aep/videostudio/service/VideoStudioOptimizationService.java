@@ -104,6 +104,9 @@ public class VideoStudioOptimizationService {
 
     private String createInTx(String userId, String clientRequestId, VideoStudioOptimizationRequest req) {
         VideoStudioService.Validated v = studio.validate(userId, VideoStudioService.Draft.of(req));
+        if (!v.model().supportsPromptOptimization()) {
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "所选视频模型不支持智能优化，请直接生成");
+        }
         long price = Math.max(0L, v.model().pricing().promptOptimizationPerCall());
         String id = "vso_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
         Instant now = Instant.now();

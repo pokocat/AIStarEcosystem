@@ -129,7 +129,8 @@ public class MaterialVideoWorker {
             if(isTerminal(job.getStatus())) {
                 String endpointId=queue==null?null:queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
                 if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
-                var submit=modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed());
+                var submit=modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed(),
+                        appCodeOf(job),job.getUpstreamBaseUrlSnapshot(),job.getVideoRequestSpecSnapshotJson());
                 var poll=modelClient.poll(submit);terminal[0]=poll.succeeded()||poll.failed();
             } else runGeneration(job,terminal);
         } catch(Exception error){log.warn("[material-video] original task recovery pending job={}",jobId);}
@@ -153,7 +154,8 @@ public class MaterialVideoWorker {
         String endpointId = queue==null?extractEndpointId(job.getVariantConfigJson()):queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
         if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit = modelClient.resumeExistingTask(
-                job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed(), appCodeOf(job));
+                job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed(), appCodeOf(job),
+                job.getUpstreamBaseUrlSnapshot(), job.getVideoRequestSpecSnapshotJson());
         MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
         if (!poll.succeeded()) {
             throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUCCEEDED_UPSTREAM",
@@ -237,9 +239,10 @@ public class MaterialVideoWorker {
         // 出来的片跟参考图毫无关系。
         VideoGenSpec spec = VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
-                accepted?modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed(),appCode):modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
+                accepted?modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed(),appCode,
+                        job.getUpstreamBaseUrlSnapshot(),job.getVideoRequestSpecSnapshotJson()):modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
                         job.getOwnerUserId(), appCode, endpointId, spec);
-        markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
+        markGenerating(jobId, submit);
 
         long start = System.currentTimeMillis();
         long maxWaitMs = props.getMaxWaitSeconds() * 1000L;
@@ -485,13 +488,15 @@ public class MaterialVideoWorker {
         });
     }
 
-    private void markGenerating(String jobId, String taskId, String provider, String model) {
+    private void markGenerating(String jobId, MaterialVideoModelClient.SubmitResult submit) {
         jobRepo.findById(jobId).ifPresent(j -> {
             j.setStatus("generating");
             j.setProgress(Math.max(j.getProgress(), 10));
-            j.setExternalTaskId(taskId);
-            j.setProviderUsed(provider);
-            j.setModelUsed(model);
+            j.setExternalTaskId(submit.taskId());
+            j.setProviderUsed(submit.providerUsed());
+            j.setModelUsed(submit.modelUsed());
+            if(submit.baseUrlSnapshot()!=null)j.setUpstreamBaseUrlSnapshot(submit.baseUrlSnapshot());
+            if(submit.requestSpecSnapshotJson()!=null)j.setVideoRequestSpecSnapshotJson(submit.requestSpecSnapshotJson());
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
         });

@@ -20,8 +20,8 @@ import java.util.Map;
  * <p>两种形态：
  * <ul>
  *   <li><b>老路径</b>（画布出视频、脚本视频、短剧）：{@code resolutionTier == null}，至多带一个
- *       {@code firstFrameKey}。组出来的厂商请求体与改动之前逐字段一致。</li>
- *   <li><b>视频生成区 / Studio 原生模式</b>：{@code resolutionTier != null}，按 H3 原生合同组包（{@link #isExplicit()}）。</li>
+ *       {@code firstFrameKey}。未配置端点规格时保留原请求体；已配置端点由保存的模式和画幅规格组包。</li>
+ *   <li><b>视频生成区 / Studio 完整规格</b>：{@code resolutionTier != null}，按端点的视频协议组包（{@link #isExplicit()}）。</li>
  * </ul>
  * 解析失败 / 空 JSON = {@link #EMPTY}：与此前「读不出首帧就当文生视频」的行为一致。
  */
@@ -87,13 +87,13 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
                 text(vc, KEY_FIRST_FRAME), text(vc, KEY_LAST_FRAME), refs);
     }
 
-    /** 视频生成区与 Studio 写出的完整原生规格（有清晰度）。 */
+    /** 视频生成区与 Studio 写出的完整规格（有清晰度）。 */
     public boolean isExplicit() {
         return resolutionTier != null;
     }
 
     /**
-     * 带了只有聚算 H3 原生协议才认得的参数（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）。
+     * 带了完整视频规格的参数（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）。
      * 首帧参考图不算：老路径的画布出视频也会带它。
      */
     public boolean hasNativeOptions() {

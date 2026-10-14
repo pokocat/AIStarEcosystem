@@ -2,6 +2,7 @@ package com.aistareco.aep.videostudio;
 
 import com.aistareco.aep.videostudio.controller.VideoStudioController;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioJobRequest;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioOptimizationRequest;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTemplateCreateRequest;
 import com.aistareco.aep.videostudio.service.VideoStudioOptimizationService;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /** 路由挂在 /api/me/celebrity/**（开通闸按 celebrity 判）；没有登录身份一律 401，不往下走。 */
 class VideoStudioControllerTest {
@@ -46,7 +48,7 @@ class VideoStudioControllerTest {
     void anonymousIsRejected() {
         for (Runnable call : List.<Runnable>of(
                 () -> controller.models(null),
-                () -> controller.upload(null, null, "image"),
+                () -> controller.upload(null, null, "image", null, null, null),
                 () -> controller.submit(null, null),
                 () -> controller.jobs(null),
                 () -> controller.job(null, "mvj_1"),
@@ -75,11 +77,11 @@ class VideoStudioControllerTest {
         controller.submit(alice, req);
         controller.jobs(alice);
         controller.job(alice, "mvj_1");
-        controller.upload(alice, null, "audio");
+        controller.upload(alice, null, "audio", null, null, null);
         verify(studio).submit("u1", req);
         verify(studio).listJobs("u1");
         verify(studio).getJob("u1", "mvj_1");
-        verify(uploads).upload("u1", null, "audio");
+        verify(uploads).upload("u1", null, "audio", null);
 
         VideoStudioOptimizationRequest opt = new VideoStudioOptimizationRequest("crid-0001", null, "t2v", "p", "768p",
                 "9:16", 5, null, null, null, null);
@@ -97,5 +99,13 @@ class VideoStudioControllerTest {
         verify(templates).list("u1");
         verify(templates).get("u1", "vst_1");
         verify(templates).withdraw("u1", "vst_1");
+    }
+
+    @Test void uploadUsesSelectedModelRule() {
+        var rule = new VideoStudioMediaLimit("image", 1, 24 * 1024 * 1024L,
+                List.of("PNG"), null, null);
+        when(studio.uploadRule("ep-1", "i2v", "image", true)).thenReturn(rule);
+        controller.upload(alice, null, "image", "ep-1", "i2v", true);
+        verify(uploads).upload("u1", null, "image", rule);
     }
 }

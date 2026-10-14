@@ -99,13 +99,15 @@ class VideoStudioPricingTest {
                 VideoStudioPricing.validate(config(cells("t2v", "544p", 20L), 6, 10L, 0L)), 40L);
 
         @Test
-        @DisplayName("(每秒价 + 超出张数 × 加价) × 秒数；加价只算全能参考")
+        @DisplayName("(每秒价 + 超出张数 × 加价) × 秒数；加价由模式素材规则决定")
         void formula() {
-            assertEquals(200L, VideoStudioPricing.total(pricing, "t2v", "768p", 5, 0));
-            assertEquals(100L, VideoStudioPricing.total(pricing, "t2v", "544p", 5, 0));
-            assertEquals(300L, VideoStudioPricing.total(pricing, "universal_reference_video", "768p", 5, 8));
-            assertEquals(200L, VideoStudioPricing.total(pricing, "universal_reference_video", "768p", 5, 6));
-            assertEquals(200L, VideoStudioPricing.total(pricing, "i2v", "768p", 5, 9), "非全能参考不加价");
+            assertEquals(200L, VideoStudioPricing.total(pricing, "t2v", "768p", 5, 0, false));
+            assertEquals(100L, VideoStudioPricing.total(pricing, "t2v", "544p", 5, 0, false));
+            assertEquals(300L, VideoStudioPricing.total(pricing, "universal_reference_video", "768p", 5, 8, true));
+            assertEquals(200L, VideoStudioPricing.total(pricing, "universal_reference_video", "768p", 5, 6, true));
+            assertEquals(200L, VideoStudioPricing.total(pricing, "i2v", "768p", 5, 9, false), "无多参考规则不加价");
+            assertEquals(350L, VideoStudioPricing.total(pricing, "i2v", "768p", 5, 9, true),
+                    "自定义协议即使复用旧模式名，也按配置的参考素材规则加价");
         }
 
         @Test
@@ -113,12 +115,12 @@ class VideoStudioPricingTest {
         void unpricedAndOverflow() {
             VideoStudioDtos.VideoStudioPricing unpriced = VideoStudioPricing.effective(VideoStudioPricing.defaults(), null);
             assertEquals("VIDEO_STUDIO_PRICE_NOT_CONFIGURED", assertThrows(BusinessException.class,
-                    () -> VideoStudioPricing.total(unpriced, "t2v", "768p", 5, 0)).getCode());
+                    () -> VideoStudioPricing.total(unpriced, "t2v", "768p", 5, 0, false)).getCode());
             assertEquals("VIDEO_STUDIO_PRICE_NOT_CONFIGURED", assertThrows(BusinessException.class,
-                    () -> VideoStudioPricing.total(pricing, "nope", "768p", 5, 0)).getCode());
+                    () -> VideoStudioPricing.total(pricing, "nope", "768p", 5, 0, false)).getCode());
             VideoStudioDtos.VideoStudioPricing huge = VideoStudioPricing.effective(VideoStudioPricing.defaults(), Long.MAX_VALUE / 2);
             assertEquals("VIDEO_PRICE_OVERFLOW", assertThrows(BusinessException.class,
-                    () -> VideoStudioPricing.total(huge, "t2v", "768p", 5, 0)).getCode());
+                    () -> VideoStudioPricing.total(huge, "t2v", "768p", 5, 0, false)).getCode());
         }
     }
 
@@ -130,34 +132,59 @@ class VideoStudioPricingTest {
         }
 
         @Test
-        @DisplayName("后台保存：格子不在 1..100000、免费张数不在 0..9、加价 / 优化单价越界或缺、模式 / 清晰度不认识 → VIDEO_STUDIO_PRICING_INVALID")
+        @DisplayName("后台保存：负数、缺项及非法模式或清晰度 → VIDEO_STUDIO_PRICING_INVALID")
         void rejects() {
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(null));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(null, 0, 0L, 0L)));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(cells("t2v", "768p", 0L), 0, 0L, 0L)));
-            assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(cells("t2v", "768p", 100_001L), 0, 0L, 0L)));
-            assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(cells("t2v", "1080p", 10L), 0, 0L, 0L)));
-            assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(cells("v2v", "768p", 10L), 0, 0L, 0L)));
-            assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), 10, 0L, 0L)));
+            assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(cells("t2v", "bad tier", 10L), 0, 0L, 0L)));
+            assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(cells("bad mode", "768p", 10L), 0, 0L, 0L)));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), -1, 0L, 0L)));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), null, 0L, 0L)));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), 0, -1L, 0L)));
-            assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), 0, 100_001L, 0L)));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), 0, null, 0L)));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), 0, 0L, -1L)));
             assertEquals("VIDEO_STUDIO_PRICING_INVALID", code(config(Map.of(), 0, 0L, null)));
         }
 
         @Test
-        @DisplayName("合法值补齐成四模式 × 两档（缺的格子 = null）；边界值 1 / 100000 / 9 放行")
+        @DisplayName("合法值补齐旧模式与清晰度，且不限制运营配置的单价和免费参考图数量")
         void normalizes() {
             VideoStudioPricingConfig out = VideoStudioPricing.validate(
-                    config(cells("i2v", "544p", 1L, "t2v", "768p", 100_000L), 9, 100_000L, 0L));
+                    config(cells("i2v", "544p", 1L, "t2v", "768p", 100_001L), 12, 100_001L, 100_001L));
             assertEquals(4, out.perSecond().size());
             assertEquals(1L, out.perSecond().get("i2v").get("544p"));
             assertNull(out.perSecond().get("i2v").get("768p"));
-            assertEquals(100_000L, out.perSecond().get("t2v").get("768p"));
-            assertEquals(9, out.freeRefImages());
+            assertEquals(100_001L, out.perSecond().get("t2v").get("768p"));
+            assertEquals(12, out.freeRefImages());
+            assertEquals(100_001L, out.extraRefImagePerSecond());
+            assertEquals(100_001L, out.promptOptimizationPerCall());
+        }
+
+        @Test
+        void keepsConfiguredSeedanceResolutionPrice() {
+            var out = VideoStudioPricing.validate(config(cells("t2v", "720p", 25L), 0, 0L, 0L));
+            assertEquals(25L, out.perSecond().get("t2v").get("720p"));
+            var contract = new VideoStudioDtos.VideoStudioContract(
+                    java.util.List.of(new VideoStudioDtos.VideoStudioModeSpec("t2v", false, false, null, null)),
+                    java.util.List.of(new VideoStudioDtos.VideoStudioTier("720p",
+                            java.util.List.of(new VideoStudioDtos.VideoStudioCanvas("16:9", 1280, 720)))),
+                    4, 15, 2000, 4294967295L);
+            assertEquals(25L, VideoStudioPricing.effective(out, null, contract).perSecond().get("t2v").get("720p"));
+        }
+
+        @Test
+        void keepsCustomModePriceForConfiguredContract() {
+            var out = VideoStudioPricing.validate(config(cells("custom_motion", "720p", 25L), 1, 3L, 0L));
+            var contract = new VideoStudioDtos.VideoStudioContract(
+                    java.util.List.of(new VideoStudioDtos.VideoStudioModeSpec("custom_motion", false, false, null, null,
+                            "运动参考")),
+                    java.util.List.of(new VideoStudioDtos.VideoStudioTier("720p",
+                            java.util.List.of(new VideoStudioDtos.VideoStudioCanvas("16:9", 1280, 720)))),
+                    4, 15, 2000, 4294967295L);
+            var effective = VideoStudioPricing.effective(out, null, contract);
+            assertEquals(25L, effective.perSecond().get("custom_motion").get("720p"));
+            assertEquals(125L, VideoStudioPricing.total(effective, "custom_motion", "720p", 5, 0, false));
         }
     }
 
@@ -197,7 +224,7 @@ class VideoStudioPricingTest {
                     + "\"extraRefImagePerSecond\":10,\"promptOptimizationPerCall\":2,\"futureField\":1}");
             VideoStudioPricingConfig c = fresh.current();
             assertEquals(30L, c.perSecond().get("t2v").get("768p"));
-            assertTrue(!c.perSecond().containsKey("gone_mode"), "不认识的模式忽略，不让整个区停摆");
+            assertEquals(5L, c.perSecond().get("gone_mode").get("768p"), "自定义模式从存储中读回");
             assertEquals(2L, c.promptOptimizationPerCall());
             fresh.current();
             verify(platformConfig, times(2)).findByKey(VideoStudioPricingService.CONFIG_KEY);

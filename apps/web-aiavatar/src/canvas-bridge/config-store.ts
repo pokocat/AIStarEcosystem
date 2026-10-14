@@ -291,7 +291,8 @@ export const useConfigStore = create<ConfigStore>()(
                         vquality: config.vquality || "720",
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
-                        videoMode: config.videoMode === "reference" ? "reference" : "frames",
+                        videoMode: typeof config.videoMode === "string" && config.videoMode.trim()
+                            ? config.videoMode : "frames",
                         canvasImageCount: config.canvasImageCount || "1",
                     },
                 };

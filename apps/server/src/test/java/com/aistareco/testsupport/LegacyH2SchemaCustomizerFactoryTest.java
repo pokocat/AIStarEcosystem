@@ -37,9 +37,16 @@ class LegacyH2SchemaCustomizerFactoryTest {
                         "SELECT concurrency_limit, supplier_billing_mode FROM ai_model_providers")) {
                     assertThat(result.getMetaData().getColumnCount()).isEqualTo(2);
                 }
+                try (var result = statement.executeQuery("SELECT video_request_spec_json FROM ai_model_providers")) {
+                    assertThat(result.getMetaData().getColumnCount()).isEqualTo(1);
+                }
                 try (var result = statement.executeQuery("SELECT COUNT(*) FROM ai_generation_queue")) {
                     assertThat(result.next()).isTrue();
                     assertThat(result.getLong(1)).isZero();
+                }
+                try (var result = statement.executeQuery(
+                        "SELECT upstream_base_url_snapshot, video_request_spec_snapshot_json FROM material_video_job")) {
+                    assertThat(result.getMetaData().getColumnCount()).isEqualTo(2);
                 }
             }
         }

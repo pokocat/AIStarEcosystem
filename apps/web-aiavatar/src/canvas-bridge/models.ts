@@ -31,6 +31,10 @@ const endpointIdByName = new Map<string, string>();
 /** endpointId → 单价，属性面板要显示「这一张多少积分」。 */
 const creditByEndpointId = new Map<string, number>();
 const billingByEndpointId = new Map<string, string>();
+const imageBatchCountsByEndpointId = new Map<string, number[]>();
+export function imageBatchCountsFor(value: string | undefined | null): number[] | undefined {
+  const id=endpointIdFor(value);return id?imageBatchCountsByEndpointId.get(id):undefined;
+}
 /**
  * endpointId → 视频时长可提交区间。
  *
@@ -117,6 +121,8 @@ function toChannelModels(list: IpModelOption[], capability: ChannelModel["capabi
     if (!endpointIdByName.has(m.name)) endpointIdByName.set(m.name, m.endpointId);
     creditByEndpointId.set(m.endpointId, m.creditCost);
     billingByEndpointId.set(m.endpointId,m.billingUnit||"per_call");
+    if(capability==="image")imageBatchCountsByEndpointId.set(m.endpointId,
+      m.capability?.imageBatchCounts?.length?m.capability.imageBatchCounts:[1,2,4]);
     const min = m.capability?.minDurationSec ?? undefined;
     const max = m.capability?.maxDurationSec ?? undefined;
     if (min != null || max != null) durationBoundsByEndpointId.set(m.endpointId, { min: min ?? undefined, max: max ?? undefined });
@@ -148,6 +154,7 @@ export async function loadServerModels(): Promise<{ image: number; video: number
   endpointIdByName.clear();
   creditByEndpointId.clear();
   billingByEndpointId.clear();
+  imageBatchCountsByEndpointId.clear();
   durationBoundsByEndpointId.clear();
   geometryByEndpointId.clear();
   nativeVideoModels.clear();
@@ -156,7 +163,7 @@ export async function loadServerModels(): Promise<{ image: number; video: number
   const video = toChannelModels(models.video ?? [], "video");
   for(const model of nativeModels) {
     nativeVideoModels.set(model.endpointId,model);
-    geometryByEndpointId.set(model.endpointId,{resolutions:model.contract.tiers.map(t=>t.tier.replace(/p$/,"")),
+    geometryByEndpointId.set(model.endpointId,{resolutions:model.contract.tiers.map(t=>/^\d+p$/.test(t.tier)?t.tier.slice(0,-1):t.tier),
       ratios:[...new Set(model.contract.tiers.flatMap(t=>t.canvases.map(c=>c.aspectRatio)))]});
     durationBoundsByEndpointId.set(model.endpointId,{min:model.contract.minSeconds,max:model.contract.maxSeconds});
   }

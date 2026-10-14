@@ -99,6 +99,14 @@ public class MaterialVideoJob {
     @Column(name = "external_task_id", length = 256)
     private String externalTaskId;
 
+    /** Accepted task's request route; later endpoint edits must not redirect its poll. */
+    @Column(name = "upstream_base_url_snapshot", length = 2000)
+    private String upstreamBaseUrlSnapshot;
+
+    @Lob
+    @Column(name = "video_request_spec_snapshot_json", columnDefinition = "LONGTEXT")
+    private String videoRequestSpecSnapshotJson;
+
     /** 出片 URL（status=succeeded 时非空）。 */
     @Column(name = "video_url", length = 1024)
     private String videoUrl;

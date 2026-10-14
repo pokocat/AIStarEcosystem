@@ -5,6 +5,8 @@ import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings;
 import com.aistareco.aep.service.AiAppSceneModelPolicyService;
 import com.aistareco.aep.service.materialvideo.MaterialVideoJobService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec;
 import com.aistareco.common.BusinessException;
 import org.springframework.stereotype.Service;
 import java.util.List;
@@ -22,11 +24,12 @@ public class StudioTemplateVideoService {
     public Quote quote(String owner,Step step,String requestedModel,String prompt) {
         var endpoint=scenePolicies.resolveStudioVideo(requestedModel);
         String model=endpoint.endpoint().getId();
-        boolean nativeMode=nativeVideos.models().stream().anyMatch(m->m.endpointId().equals(model));
+        VideoStudioModel nativeModel=nativeVideos.models().stream().filter(m->m.endpointId().equals(model)).findFirst().orElse(null);
+        boolean nativeMode=nativeModel!=null;
         long cost;
         if(nativeMode) {
             // The keys here are recipe IDs for count/slot validation, never a media-access claim.
-            var video=settings(step,step.references());
+            var video=settings(step,step.references(),nativeModel);
             cost=nativeVideos.quote(owner,new IpRunService.IpVideoRequest(prompt,null,step.durationSec(),step.aspectRatio(),model,null,video));
         } else {
             if(step.video()!=null || step.references().size()>1)throw BusinessException.badRequest("STUDIO_TEMPLATE_VIDEO_MODE_UNAVAILABLE","所选模型只支持文生或一张首帧图，请更换模型或调整模板的视频模式");
@@ -35,15 +38,28 @@ public class StudioTemplateVideoService {
         }
         return new Quote(model,cost,nativeMode);
     }
-    public VideoSettings settings(Step step,List<String> keys) {
-        var spec=step.video();String mode=spec==null?(keys.isEmpty()?"t2v":"i2v"):spec.mode();
-        String tier=spec==null?"768p":spec.resolutionTier();Long seed=spec==null?null:spec.seed();
-        return switch(mode) {
-            case "t2v" -> new VideoSettings(mode,tier,seed,null,null,List.of());
-            case "i2v" -> new VideoSettings(mode,tier,seed,keys.isEmpty()?null:keys.get(0),null,List.of());
-            case "first_last_frame_video" -> new VideoSettings(mode,tier,seed,keys.isEmpty()?null:keys.get(0),keys.size()<2?null:keys.get(1),List.of());
-            case "universal_reference_video" -> new VideoSettings(mode,tier,seed,null,null,keys.stream().map(k->new VideoStudioReferenceInput("image",k)).toList());
-            default -> throw BusinessException.badRequest("STUDIO_TEMPLATE_VIDEO_MODE_INVALID","请选择模板的视频生成模式");
-        };
+    public VideoSettings settings(Step step,List<String> keys,String modelId) {
+        VideoStudioModel model=nativeVideos.models().stream().filter(m->m.endpointId().equals(modelId)).findFirst()
+                .orElseThrow(()->BusinessException.badRequest("STUDIO_TEMPLATE_VIDEO_MODE_INVALID","所选视频模型已不可用"));
+        return settings(step,keys,model);
+    }
+    private VideoSettings settings(Step step,List<String> keys,VideoStudioModel model) {
+        var contract=model.contract();
+        var spec=step.video();
+        VideoStudioModeSpec mode=spec==null?contract.modes().stream()
+                .filter(m->{
+                    int frames=(m.needsFirstFrame()?1:0)+(m.needsLastFrame()?1:0);
+                    return m.references()==null?keys.size()==frames:keys.size()>=frames;
+                }).findFirst().orElse(null):contract.modes().stream().filter(m->m.mode().equals(spec.mode())).findFirst().orElse(null);
+        if(mode==null)throw BusinessException.badRequest("STUDIO_TEMPLATE_VIDEO_MODE_INVALID","所选模型不支持模板的视频模式或引用数量");
+        String tier=spec==null?contract.tiers().get(0).tier():spec.resolutionTier();
+        Long seed=spec==null?null:spec.seed();
+        int index=0;
+        String first=mode.needsFirstFrame()&&index<keys.size()?keys.get(index++):null;
+        String last=mode.needsLastFrame()&&index<keys.size()?keys.get(index++):null;
+        if(mode.references()==null&&index!=keys.size())throw BusinessException.badRequest("STUDIO_TEMPLATE_VIDEO_MODE_INVALID","视频模式与引用数量不一致");
+        List<VideoStudioReferenceInput> references=mode.references()==null?List.of():keys.subList(index,keys.size()).stream()
+                .map(key->new VideoStudioReferenceInput("image",key)).toList();
+        return new VideoSettings(mode.mode(),tier,seed,first,last,references);
     }
 }

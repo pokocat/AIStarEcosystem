@@ -102,6 +102,16 @@ describe("画布视频提交", () => {
 
 describe("native video canvas submission",()=>{
   const native={contract:{modes:[{mode:"first_last_frame_video",needsFirstFrame:true,needsLastFrame:true},{mode:"universal_reference_video",references:{image:{maxCount:9},video:{maxCount:1},audio:{maxCount:3},maxTotal:12,maxImagesWithVideo:8,minVisual:1}}],tiers:[{tier:"544p",canvases:[{aspectRatio:"9:16"}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:2147483647},pricing:{perSecond:{first_last_frame_video:{"544p":40},universal_reference_video:{"544p":40}},freeRefImages:0,extraRefImagePerSecond:0}};
+  it("uses this endpoint's batch choices before submitting",async()=>{
+    nativeModelMock.mockReturnValue({...native,batchCounts:[1,3,5]});
+    submitStudioMock.mockResolvedValue({id:'IPR-three',status:'running',output:{}});
+    await expect(createVideoGenerationTask({...cfg,vquality:'544',videoCount:'2'} as never,'transition',
+      [{storageKey:'first'},{storageKey:'last'}],{nodeId:'node'})).rejects.toThrow('1、3、5');
+    expect(submitStudioMock).not.toHaveBeenCalled();
+    await createVideoGenerationTask({...cfg,vquality:'544',videoCount:'3'} as never,'transition',
+      [{storageKey:'first'},{storageKey:'last'}],{nodeId:'node'});
+    expect(submitStudioMock.mock.calls[0][1].count).toBe(3);
+  });
   it("native frame mode sends two keys, quality, seed and an approved cost",async()=>{
     nativeModelMock.mockReturnValue(native);
     await createVideoGenerationTask({...cfg,vquality:"544",videoSeed:42} as never,"transition",[{storageKey:"first"},{storageKey:"last"}]);
@@ -112,6 +122,21 @@ describe("native video canvas submission",()=>{
     nativeModelMock.mockReturnValue(native);
     await createVideoGenerationTask({...cfg,vquality:"544",videoMode:"reference"} as never,"references",[{storageKey:"image"}],{videos:[{storageKey:"video"}],audios:[{storageKey:"audio"}]});
     expect(generateVideoMock.mock.calls[0][1].video.references).toEqual([{mediaType:"image",key:"image"},{mediaType:"video",key:"video"},{mediaType:"audio",key:"audio"}]);
+  });
+  it("submits a configured custom mode, tier, canvas and optional prompt exactly as selected",async()=>{
+    nativeModelMock.mockReturnValue({contract:{modes:[{mode:"product-shot",label:"商品镜头",promptRequired:false,
+      needsFirstFrame:true,needsLastFrame:false,references:{image:{maxCount:0},video:{maxCount:1},audio:{maxCount:0},
+        maxTotal:1,maxImagesWithVideo:0,minVisual:1,maxAudioTotalSec:0}}],
+      tiers:[{tier:"portraitX",canvases:[{aspectRatio:"2:3",width:600,height:900}]}],
+      minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},
+      pricing:{perSecond:{"product-shot":{portraitX:11}},freeRefImages:0,extraRefImagePerSecond:0}});
+    await createVideoGenerationTask({...cfg,videoMode:"product-shot",vquality:"portraitX",size:"600x900"} as never,
+      "",[{storageKey:"frame"}],{videos:[{storageKey:"reference-video"}]});
+    const body=generateVideoMock.mock.calls[0][1];
+    expect(body.aspectRatio).toBe("2:3");
+    expect(body.video).toMatchObject({mode:"product-shot",resolutionTier:"portraitX",firstFrameKey:"frame",
+      references:[{mediaType:"video",key:"reference-video"}]});
+    expect(body.maxCost).toBe(88);
   });
   it("legacy models reject the second reference without submitting a partial request",async()=>{
     await expect(createVideoGenerationTask(cfg,"x",[{storageKey:"first"},{storageKey:"last"}])).rejects.toThrow(/一张/);

@@ -3,6 +3,7 @@ package com.aistareco.aep.videostudio.service;
 import com.aistareco.aep.service.materialvideo.JusuanH3Contract;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.service.storage.MediaBytes;
 import com.aistareco.aep.service.storage.StorageQuotaService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioUpload;
@@ -58,20 +59,27 @@ public class VideoStudioUploadService {
         return "video-studio-" + mediaType;
     }
 
-    /** 上传单个文件的上限：图 30 MiB / 视频 50 MiB / 音频 15 MiB（厂商全能参考的单项上限）。 */
+    /** 旧上传请求未指明模型与模式时，沿用 H3 的单文件上限。 */
     static long maxBytesOf(String mediaType) {
         return JusuanH3Contract.referenceMaxBytes(mediaType);
     }
 
     public VideoStudioUpload upload(String userId, MultipartFile file, String mediaType) {
+        return upload(userId, file, mediaType, null);
+    }
+
+    public VideoStudioUpload upload(String userId, MultipartFile file, String mediaType, VideoStudioMediaLimit rule) {
         String type = mediaType == null ? "" : mediaType.trim().toLowerCase(Locale.ROOT);
         if (!JusuanH3Contract.isMediaType(type)) {
             throw BusinessException.badRequest("VIDEO_STUDIO_FORMAT_UNSUPPORTED", "素材类型只能是图片、视频或音频");
         }
+        if (rule != null && !type.equals(rule.mediaType())) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选视频模式不支持该素材");
+        }
         if (file == null || file.isEmpty()) {
             throw BusinessException.badRequest("VIDEO_STUDIO_FILE_EMPTY", "文件是空的，请重新选择");
         }
-        long limit = maxBytesOf(type);
+        long limit = rule == null ? maxBytesOf(type) : rule.maxBytes();
         // 先看声明大小再读字节：超限的大文件不必整个读进内存。
         if (file.getSize() > limit) throw tooLarge(type, file.getSize(), limit);
         byte[] bytes;
@@ -86,10 +94,11 @@ public class VideoStudioUploadService {
         }
         if (bytes.length > limit) throw tooLarge(type, bytes.length, limit);
 
-        MediaBytes.Format fmt = MediaBytes.sniff(type, bytes);
-        if (fmt == null) {
+        MediaBytes.Format fmt = rule == null ? MediaBytes.sniff(type, bytes) : MediaBytes.sniffConfigured(type, bytes);
+        var allowedFormats = rule == null ? JusuanH3Contract.formatsOf(type) : rule.formats();
+        if (!MediaBytes.allowed(fmt, allowedFormats)) {
             throw BusinessException.badRequest("VIDEO_STUDIO_FORMAT_UNSUPPORTED",
-                    typeName(type) + "只支持 " + String.join("、", JusuanH3Contract.formatsOf(type)) + " 格式");
+                    typeName(type) + "只支持 " + String.join("、", allowedFormats) + " 格式");
         }
 
         Double durationSec = null;
@@ -111,6 +120,7 @@ public class VideoStudioUploadService {
                     throw BusinessException.badRequest("VIDEO_STUDIO_MEDIA_UNREADABLE", "这个视频里没有画面，请换一个文件");
                 }
                 if (probe.durationSec() > 0) durationSec = probe.durationSec();
+                if (rule != null) requireConfiguredDuration(type, probe.durationSec(), rule);
                 if (probe.width() > 0 && probe.height() > 0) {
                     width = probe.width();
                     height = probe.height();
@@ -120,7 +130,8 @@ public class VideoStudioUploadService {
                     throw BusinessException.badRequest("VIDEO_STUDIO_MEDIA_UNREADABLE", "这个文件里没有声音，请换一个文件");
                 }
                 double d = probe.durationSec();
-                if (d < JusuanH3Contract.AUDIO_MIN_SECONDS || d > JusuanH3Contract.AUDIO_MAX_SECONDS) {
+                if (rule != null) requireConfiguredDuration(type, d, rule);
+                else if (d < JusuanH3Contract.AUDIO_MIN_SECONDS || d > JusuanH3Contract.AUDIO_MAX_SECONDS) {
                     throw BusinessException.badRequest("VIDEO_STUDIO_AUDIO_DURATION_INVALID",
                             "每段音频要在 " + JusuanH3Contract.AUDIO_MIN_SECONDS + " 到 " + JusuanH3Contract.AUDIO_MAX_SECONDS
                                     + " 秒之间，这段是 " + oneDecimal(d) + " 秒");
@@ -137,6 +148,16 @@ public class VideoStudioUploadService {
                 userId, type, fmt.ext(), stored.bytes(), stored.key());
         return new VideoStudioUpload(stored.key(), fileStorage.signedUrl(stored.key()), type, stored.bytes(),
                 displayName(file.getOriginalFilename(), type), durationSec, width, height);
+    }
+
+    private static void requireConfiguredDuration(String type, double seconds, VideoStudioMediaLimit rule) {
+        if (rule.minDurationSec() == null && rule.maxDurationSec() == null) return;
+        if (!Double.isFinite(seconds) || seconds <= 0
+                || rule.minDurationSec() != null && seconds < rule.minDurationSec()
+                || rule.maxDurationSec() != null && seconds > rule.maxDurationSec()) {
+            throw BusinessException.badRequest("VIDEO_STUDIO_MEDIA_DURATION_INVALID",
+                    "这个" + typeName(type) + "的时长不符合所选模型要求");
+        }
     }
 
     // ── 探测 ────────────────────────────────────────────────────────────────

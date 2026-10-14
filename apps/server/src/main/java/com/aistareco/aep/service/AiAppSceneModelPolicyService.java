@@ -9,7 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
-/** Only registered, consumed scenes can be saved; absent policy preserves legacy bindings. */
+/** Only registered, consumed scenes can be saved; absent image/script policy preserves legacy bindings.
+ * Studio video requires an explicit open group. */
 @Service
 public class AiAppSceneModelPolicyService {
     private static final String PREFIX="ai.scene-policy.";
@@ -116,9 +117,13 @@ public class AiAppSceneModelPolicyService {
         var group=studioVideoGroup();
         if(group.isEmpty())return List.of();
         var candidates=models.listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio").stream()
-                .filter(this::availableEndpoint).filter(r->group.get().endpointIds().contains(r.endpoint().getId())).toList();
-        String selected=group.get().defaultEndpointId();
-        return candidates.stream().map(r->new AiModelInvocationService.ResolvedEndpoint(r.endpoint(),r.candidate(),Objects.equals(selected,r.endpoint().getId()))).toList();
+                .filter(this::availableEndpoint)
+                .filter(r->group.get().endpointIds().contains(r.endpoint().getId()))
+                .toList();
+        String preferred=group.get().defaultEndpointId();
+        String defaultId=candidates.stream().anyMatch(r -> Objects.equals(preferred,r.endpoint().getId()))
+                ? preferred : candidates.isEmpty()?null:candidates.get(0).endpoint().getId();
+        return candidates.stream().map(r->new AiModelInvocationService.ResolvedEndpoint(r.endpoint(),r.candidate(),Objects.equals(defaultId,r.endpoint().getId()))).toList();
     }
     public AiModelInvocationService.ResolvedEndpoint resolveStudioVideo(String endpointId) {
         var candidates=studioVideoCandidates();

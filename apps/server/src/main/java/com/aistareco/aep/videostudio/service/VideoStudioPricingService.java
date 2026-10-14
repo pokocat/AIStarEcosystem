@@ -94,7 +94,7 @@ public class VideoStudioPricingService {
     }
 
     /**
-     * 解析库里的配置：不认识的模式 / 清晰度忽略（以后删了一个模式，旧配置不至于让整个区停摆），
+     * 解析库里的配置：保留合法的自定义模式与清晰度，非法名称忽略，
      * 缺的标量按 0；但**值越界一律不收**（抛出，由 {@link #load} 转成 503）。
      */
     static VideoStudioPricingConfig parseStored(JsonNode stored) throws Exception {
@@ -102,10 +102,10 @@ public class VideoStudioPricingService {
         Map<String, Map<String, Long>> known = new LinkedHashMap<>();
         if (raw.perSecond() != null) {
             for (Map.Entry<String, Map<String, Long>> row : raw.perSecond().entrySet()) {
-                if (!JusuanH3Contract.isMode(row.getKey()) || row.getValue() == null) continue;
+                if (!VideoStudioPricing.validModeKey(row.getKey()) || row.getValue() == null) continue;
                 Map<String, Long> cells = new LinkedHashMap<>();
                 row.getValue().forEach((tier, v) -> {
-                    if (JusuanH3Contract.TIERS.contains(tier)) cells.put(tier, v);
+                    if (tier.matches("[A-Za-z0-9_.-]{1,32}")) cells.put(tier, v);
                 });
                 known.put(row.getKey(), cells);
             }

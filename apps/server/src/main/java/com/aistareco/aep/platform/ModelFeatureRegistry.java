@@ -18,7 +18,7 @@ public final class ModelFeatureRegistry {
         new Feature("celebrity","engine-pricing","旧数字人引擎售价",null,"external_engine","engine_matrix","celebrity.engine-pricing","per_call","engine_fallback",List.of()),
         new Feature("studio","script","剧本生成",AiModelPurpose.DAP_PERSONA,"scene_policy","scene_policy","","per_call","explicit_zero",List.of("dap.ip_studio_script")),
         new Feature("studio","image","图片生成",AiModelPurpose.DAP_IMAGE,"scene_policy","scene_policy","","per_image","explicit_zero",List.of("dap.ip_canvas_image")),
-        new Feature("studio","video","视频生成",AiModelPurpose.VIDEO_GENERATION,"video_group","none","","per_call","not_billed",List.of()),
+        new Feature("studio","video","视频生成",AiModelPurpose.VIDEO_GENERATION,"video_group","video_matrix","celebrity.video-studio-pricing","matrix","explicit_zero",List.of()),
         new Feature("studio","speech","AI配音",AiModelPurpose.DAP_AUDIO,"shared_purpose","supplier_points","ipstudio.supplier-point-pricing","per_second","explicit_zero",List.of()),
         new Feature("studio","lip-sync","口型同步",AiModelPurpose.DAP_LIP_SYNC,"shared_purpose","supplier_points","ipstudio.supplier-point-pricing","per_second","explicit_zero",List.of()),
         new Feature("music","generate","歌曲与纯音乐生成",AiModelPurpose.MUSIC_GENERATION,"shared_purpose","candidate","","endpoint","explicit_zero",List.of()),

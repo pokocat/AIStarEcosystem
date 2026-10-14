@@ -130,7 +130,7 @@ class VideoStudioOptimizationTransactionTest {
                 .model("minimax-h3").billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
         AiAppEndpointCandidate candidate = AiAppEndpointCandidate.builder().endpointId("ep-h3").enabled(true)
                 .creditCostOverride(40L).build();
-        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION))
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity"))
                 .thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(h3, candidate, true)));
         when(modelClient.isEndpointReady(any())).thenReturn(true);
         when(modelClient.isJusuanMedia(any())).thenReturn(true);

@@ -95,7 +95,7 @@ export function perSecondPrice(pricing: VideoStudioPricing, mode: VideoStudioMod
  * 调用方此时写「这个规格还没定价」、不许提交，**绝不回落任何写死的价**（报价必须与服务端冻结的金额同源）。
  *
  *   总价 = (perSecond[模式][清晰度] + 超出张数 × extraRefImagePerSecond) × 秒数
- *   超出张数 = max(0, 全能参考的图片张数 − freeRefImages)，其他模式为 0
+ *   超出张数由所选模式的参考素材规则决定；没有多参考规则的模式不收此加价
  */
 export function quote(
   pricing: VideoStudioPricing,
@@ -103,6 +103,7 @@ export function quote(
   seconds: number,
   mode: VideoStudioMode,
   refImageCount: number,
+  hasReferenceRules: boolean,
 ): VideoStudioQuote | null {
   const base = perSecondPrice(pricing, mode, tier);
   if (base === null) return null;
@@ -110,7 +111,7 @@ export function quote(
 
   const free = isNonNegativeInt(pricing.freeRefImages) ? pricing.freeRefImages : 0;
   const count = Number.isFinite(refImageCount) ? Math.max(0, Math.trunc(refImageCount)) : 0;
-  const extraImages = mode === "universal_reference_video" ? Math.max(0, count - free) : 0;
+  const extraImages = hasReferenceRules ? Math.max(0, count - free) : 0;
   const extraPer = isNonNegativeInt(pricing.extraRefImagePerSecond) ? pricing.extraRefImagePerSecond : 0;
   const perSecond = base + extraImages * extraPer;
   const total = perSecond * seconds;
@@ -328,7 +329,10 @@ const FORMAT_ACCEPT: Record<string, readonly string[]> = {
   JPEG: ["image/jpeg", ".jpg", ".jpeg"],
   JPG: ["image/jpeg", ".jpg", ".jpeg"],
   WEBP: ["image/webp", ".webp"],
+  GIF: ["image/gif", ".gif"],
+  BMP: ["image/bmp", ".bmp"],
   MP4: ["video/mp4", ".mp4"],
+  WEBM: [".webm"],
   WAV: ["audio/wav", "audio/x-wav", ".wav"],
   MP3: ["audio/mpeg", ".mp3"],
   FLAC: ["audio/flac", ".flac"],
@@ -412,7 +416,7 @@ export function preflight(contract: VideoStudioContract, input: VideoStudioPrefl
   if (!spec) push(CODE_MODE, "invalid", "当前模型不支持这种生成模式，请换一种");
 
   const chars = countPromptChars(input.prompt);
-  if (chars === 0) push(CODE_PROMPT_REQUIRED, "missing", "请填写提示词");
+  if (chars === 0 && spec?.promptRequired !== false) push(CODE_PROMPT_REQUIRED, "missing", "请填写提示词");
   else if (chars > contract.promptMaxChars) {
     push(CODE_PROMPT_TOO_LONG, "invalid", `提示词最多 ${contract.promptMaxChars} 字，现在 ${chars} 字`);
   }

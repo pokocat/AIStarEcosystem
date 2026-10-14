@@ -1,12 +1,28 @@
 import { describe,it,expect } from "vitest";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
-import {studioVideoSettings,studioVideoQuote,studioVideoError,changeStudioVideoDraft,studioVideoReferenceIds,studioVideoDraftFromReferences,studioVideoNodeSelection,type StudioVideoDraft} from "./studio-video";
+import {studioVideoSettings,studioVideoQuote,studioVideoError,studioVideoModeName,changeStudioVideoDraft,studioVideoReferenceIds,studioVideoDraftFromReferences,studioVideoNodeSelection,type StudioVideoDraft} from "./studio-video";
 import {CanvasNodeType,type CanvasNodeData} from "@/canvas/types/canvas";
 const model={contract:{modes:[{mode:"t2v"},{mode:"i2v",needsFirstFrame:true},{mode:"first_last_frame_video",needsFirstFrame:true,needsLastFrame:true},
   {mode:"universal_reference_video",references:{image:{maxCount:9},video:{maxCount:1},audio:{maxCount:3},maxTotal:12,maxImagesWithVideo:8,minVisual:1,maxAudioTotalSec:15}}],
   tiers:[{tier:"768p",canvases:[{aspectRatio:"9:16"}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:2147483647},
   pricing:{perSecond:{first_last_frame_video:{"768p":40},universal_reference_video:{"768p":45},i2v:{"768p":40}},freeRefImages:1,extraRefImagePerSecond:2}} as VideoStudioModel;
 describe("video modes preserve every chosen reference",()=>{
+  it("uses a configured custom mode for frames, references, label, optional prompt and price",()=>{
+    const customMode={mode:"product-shot",label:"商品镜头",promptRequired:false,needsFirstFrame:true,needsLastFrame:true,
+      references:{image:{maxCount:2},video:{maxCount:1},audio:{maxCount:0},maxTotal:3,maxImagesWithVideo:2,minVisual:1,maxAudioTotalSec:0}} as VideoStudioModel["contract"]["modes"][number];
+    const customModel={...model,contract:{...model.contract,modes:[customMode]},pricing:{...model.pricing,
+      perSecond:{"product-shot":{"768p":10}},freeRefImages:0,extraRefImagePerSecond:2}} as VideoStudioModel;
+    const draft={mode:"product-shot",tier:"768p",firstId:"first",lastId:"last"};
+    expect(studioVideoModeName(customMode)).toBe("商品镜头");
+    expect(studioVideoReferenceIds(draft,["first","last","image","video"],customMode)).toEqual(["first","last","image","video"]);
+    const video=studioVideoSettings(customMode.mode,"768p",[
+      {mediaType:"image",storageKey:"first"},{mediaType:"image",storageKey:"last"},
+      {mediaType:"image",storageKey:"image"},{mediaType:"video",storageKey:"video"}],undefined,customMode);
+    expect(video).toMatchObject({firstFrameKey:"first",lastFrameKey:"last",references:[
+      {mediaType:"image",key:"image"},{mediaType:"video",key:"video"}]});
+    expect(studioVideoQuote(customModel,video,5)).toBe(60);
+    expect(studioVideoError(customModel,video,"","9:16",5)).toBeUndefined();
+  });
   it("sends ordered first and last keys and the chosen seed",()=>{
     const v=studioVideoSettings("first_last_frame_video","768p",[{mediaType:"image",storageKey:"first"},{mediaType:"image",storageKey:"last"}],42);
     expect(v.firstFrameKey).toBe("first");expect(v.lastFrameKey).toBe("last");expect(v.seed).toBe(42);
@@ -37,6 +53,22 @@ describe("reopening a native video node in Studio",()=>{
     const node={type:CanvasNodeType.Video,metadata:{videoCount:"4",seconds:"8",vquality:"544",size:"544x967",videoMode:"frames"}} as CanvasNodeData;
     const selection=studioVideoNodeSelection(node,nodes,["last","first"]);
     expect(selection).toEqual({count:4,seconds:8,ratio:"9:16",draft:{mode:"first_last_frame_video",tier:"544p",firstId:"last",lastId:"first",seed:undefined}});
+  });
+  it("reopens the exact custom mode, tier and canvas from the accepted request",()=>{
+    const node={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"600x900",
+      studio:{request:{aspectRatio:"2:3",video:{mode:"product-shot",resolutionTier:"portraitX"}}}}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(node,nodes,[])).toMatchObject({ratio:"2:3",
+      draft:{mode:"product-shot",tier:"portraitX"}});
+  });
+  it("reopens an authored template with a custom ratio before any request",()=>{
+    const node={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"2:3",
+      studio:{videoPreset:{mode:"product-shot",resolutionTier:"portraitX"}}}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(node,nodes,[])).toMatchObject({ratio:"2:3",
+      draft:{mode:"product-shot",tier:"portraitX"}});
+  });
+  it("keeps a custom tier when only the native video node metadata remains",()=>{
+    const node={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"2:3"}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(node,nodes,[])).toMatchObject({ratio:"2:3",draft:{mode:"product-shot",tier:"portraitX"}});
   });
   it("uses current control edits and keeps mixed references without resurrecting disconnected frames",()=>{
     const node={type:CanvasNodeType.Video,metadata:{videoCount:"2",seconds:"10",size:"16:9",videoMode:"reference",studio:{request:{count:4,durationSec:8,aspectRatio:"9:16",video:{mode:"first_last_frame_video",resolutionTier:"768p",firstFrameKey:"old",lastFrameKey:"old-tail",seed:42}}}}} as CanvasNodeData;

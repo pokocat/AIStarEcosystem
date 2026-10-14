@@ -103,8 +103,11 @@ describe("用户能点的东西真的接到了接口", () => {
   });
 
   test("首帧 / 尾帧 / 参考素材都走上传接口", () => {
-    assert.ok(form.includes('VideoStudioApi.upload(file, "image")'));
-    assert.ok(form.includes("VideoStudioApi.upload(accepted[i], mediaType)"));
+    assert.ok(form.includes('VideoStudioApi.upload(file, "image", {'));
+    assert.ok(form.includes("VideoStudioApi.upload(accepted[i], mediaType, {"));
+    assert.ok(form.includes("VideoStudioApi.upload(file, mediaType, {"));
+    assert.ok(form.includes("endpointId: model.selectableById ? model.endpointId : null"));
+    assert.ok(form.includes("mode: sel.mode"));
     assert.match(form, /onPick=\{\(f\) => void pickFrame\("first", f\)\}/);
     assert.match(form, /onPick=\{\(f\) => void pickFrame\("last", f\)\}/);
     assert.match(form, /onAdd=\{addReferences\}/);
@@ -148,7 +151,8 @@ describe("智能优化接上了（plan §9）", () => {
 
   test("提示词下面有「智能优化」勾选框，默认勾上、记在本机（读写都包 try/catch）", () => {
     assert.match(form, /checked=\{optimizeOn\}\s*onChange=\{\(e\) => toggleOptimize\(e\.target\.checked\)\}/);
-    assert.ok(form.includes("智能优化\n          </label>"), "勾选框的字是「智能优化」");
+    assert.match(form, /智能优化\s*<\/label>/);
+    assert.match(form, /model\.supportsPromptOptimization \? \(\s*<label/);
     assert.match(form, /useState<boolean>\(readOptimizePref\)/);
     assert.match(form, /return v === null \? true : v === "1";/);
     assert.match(form, /try \{\s*const v = window\.localStorage\.getItem\(VIDEO_STUDIO_OPTIMIZE_PREF_KEY\);/);
@@ -156,8 +160,9 @@ describe("智能优化接上了（plan §9）", () => {
   });
 
   test("勾上时按钮是「优化并继续」，点了走发起优化接口", () => {
-    assert.match(form, /optimizeOn \? "优化并继续" : "生成"/);
-    assert.match(form, /if \(optimizeOn\) startOptimization\(null\);/);
+    assert.match(form, /effectiveOptimizeOn \? "优化并继续" : "生成"/);
+    assert.match(form, /if \(effectiveOptimizeOn\) startOptimization\(null\);/);
+    assert.match(form, /const effectiveOptimizeOn = model\.supportsPromptOptimization && optimizeOn;/);
     assert.match(form, /buildOptimizationRequest\(model, draftWith\(prompt, null\), reuseRequestId \?\? newClientRequestId\(\)\)/);
     assert.match(form, /optimization\.start\(request\);/);
     assert.ok(hook.includes("VideoStudioApi.createOptimization(request)"));

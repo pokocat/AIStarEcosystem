@@ -10,7 +10,7 @@
 
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
 import { endpointIdFor, videoDurationBoundsFor, nativeVideoModelFor, legacyVideoQuoteFor } from "./models";
-import { studioVideoSettings, studioVideoError, studioVideoQuote } from "./studio-video";
+import { studioVideoSettings, studioVideoError, studioVideoQuote, studioVideoModeForAssets, studioVideoTierForConfig, studioVideoCanvasForConfig } from "./studio-video";
 import { inferVideoRatio } from "@/canvas/lib/media-size";
 import { submitStudioRun } from './studio-api';
 import { ApiError } from '@ai-star-eco/api-client';
@@ -123,13 +123,16 @@ export async function createVideoGenerationTask(
   let video;
   if(nativeModel) {
     const assets=[...references.map(r=>({...r,mediaType:"image" as const})),...(options?.videos||[]).map(r=>({...r,mediaType:"video" as const})),...(options?.audios||[]).map(r=>({...r,mediaType:"audio" as const}))];
-    const mode=config?.videoMode==="reference"?"universal_reference_video":assets.length===2?"first_last_frame_video":assets.length===1?"i2v":"t2v";
-    video=studioVideoSettings(mode,`${(config?.vquality||"768").replace(/p$/,"")}p`,assets,config?.videoSeed);
+    const mode=studioVideoModeForAssets(nativeModel,config?.videoMode,assets);
+    const tier=studioVideoTierForConfig(nativeModel,config?.vquality);
+    params.aspectRatio=studioVideoCanvasForConfig(nativeModel,tier,options?.aspectRatio||config?.size).aspectRatio;
+    video=studioVideoSettings(mode.mode,tier,assets,config?.videoSeed,mode);
     const error=studioVideoError(nativeModel,video,prompt,params.aspectRatio||"",params.durationSec);
     if(error)throw new Error(error);
   }
   const count=Number(config?.videoCount||1);
-  if(![1,2,4].includes(count))throw new Error('一次可生成 1、2 或 4 条视频');
+  const allowedCounts=nativeModel?.batchCounts?.length?nativeModel.batchCounts:[1,2,4];
+  if(!allowedCounts.includes(count))throw new Error(`当前视频模型每次可生成 ${allowedCounts.join('、')} 条`);
   if(options?.nodeId) {
     const unit=video?studioVideoQuote(nativeModel!,video,params.durationSec):legacyVideoQuoteFor(modelValue,params.durationSec);
     if(unit==null)throw new Error('模型尚未定价，请重新加载模型后生成');

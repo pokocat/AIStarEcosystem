@@ -224,6 +224,8 @@ public class MaterialVideoJobService {
             String endpointId = endpointIdOf(item);
             int durationSec = item.path("duration_sec").asInt(0);
             modelClient.validateRequest(endpointId, durationSec, modelAppCode(app));
+            modelClient.validateConfiguredLegacySubmission(endpointId, modelAppCode(app),
+                    VideoGenSpec.fromVariantConfig(item.path("variant_config")), text(item, "aspect_ratio"));
             long unit=itemUnitCost(item, endpointId, durationSec, modelAppCode(app));
             if(APP_IPSTUDIO.equals(normalizeApp(app)) && item.hasNonNull("max_credit_cost")) {
                 com.aistareco.aep.ipstudio.service.IpRunService.requireApprovedCost(item.path("max_credit_cost").asLong(-1),unit);

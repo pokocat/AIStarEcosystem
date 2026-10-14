@@ -24,6 +24,8 @@ public record AdminAiModelEndpointUpsertDto(
         Integer chatMaxOutputTokens,
         com.aistareco.aep.model.AiImageRequestSpec imageRequestSpec,
         Boolean clearImageRequestSpec,
+        com.aistareco.aep.model.AiVideoRequestSpec videoRequestSpec,
+        Boolean clearVideoRequestSpec,
         Integer rpmLimit,
         Integer concurrencyLimit,
         Integer tpmLimit,

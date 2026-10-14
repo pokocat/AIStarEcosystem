@@ -112,6 +112,7 @@ class VideoStudioDtosContractTest {
         assertTrue(m.path("isDefault").asBoolean());
         assertFalse(m.has("default"));
         assertFalse(m.path("selectableById").asBoolean());
+        assertTrue(m.path("supportsPromptOptimization").asBoolean());
         JsonNode t2vCells = m.path("pricing").path("perSecond").path("t2v");
         assertTrue(t2vCells.has("768p") && t2vCells.get("768p").isNull(), t2vCells.toString());
         assertTrue(t2vCells.has("544p") && t2vCells.get("544p").isNull(), t2vCells.toString());
@@ -121,6 +122,10 @@ class VideoStudioDtosContractTest {
         JsonNode t2v = m.path("contract").path("modes").get(0);
         assertTrue(t2v.has("frameImage") && t2v.get("frameImage").isNull());
         assertTrue(t2v.has("references") && t2v.get("references").isNull());
+        assertFalse(t2v.has("promptRequired"));
+        JsonNode optionalPrompt = springLike.readTree(springLike.writeValueAsString(
+                new VideoStudioDtos.VideoStudioModeSpec("t2v", false, false, null, null, null, false)));
+        assertFalse(optionalPrompt.path("promptRequired").asBoolean(true));
 
         VideoStudioUpload up = new VideoStudioUpload("k", "u", "image", 3, "a.png", null, null, null);
         JsonNode u = springLike.readTree(springLike.writeValueAsString(up));

@@ -308,6 +308,7 @@ function StudioForm({
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   // 只在浏览器里渲染（模型列表是进页面后才拉的），这里直接读本机记住的选择
   const [optimizeOn, setOptimizeOn] = React.useState<boolean>(readOptimizePref);
+  const effectiveOptimizeOn = model.supportsPromptOptimization && optimizeOn;
 
   // ── 素材 ──
   const [frames, setFrames] = React.useState<Record<FrameSide, FrameSlotState>>({
@@ -335,7 +336,7 @@ function StudioForm({
   const creditsChanged = React.useCallback(() => void refreshWallet(), [refreshWallet]);
   const optimization = usePromptOptimization(creditsChanged);
   const optView = optimization.view;
-  const panelOpen = optView.phase !== "idle";
+  const panelOpen = model.supportsPromptOptimization && optView.phase !== "idle";
 
   React.useEffect(() => {
     if (!submitNote) return;
@@ -370,7 +371,8 @@ function StudioForm({
     });
   const problems = preflightFor(prompt);
   const shownProblems = problems.filter((p) => attempted || p.kind === "invalid");
-  const price = modelsError ? null : quote(model.pricing, sel.resolutionTier, sel.seconds, sel.mode, refLists.image.length);
+  const price = modelsError ? null : quote(model.pricing, sel.resolutionTier, sel.seconds, sel.mode,
+    refRules ? refLists.image.length : 0, refRules !== null);
   const optPrice = optimizationPrice(model.pricing);
   // 生成本身能不能提交（不管是从底部按钮还是从优化那一块点的）
   const generationBlocked = modelsError
@@ -382,7 +384,7 @@ function StudioForm({
         : null;
   const blocked =
     generationBlocked ??
-    (optimizeOn && optPrice === null
+    (effectiveOptimizeOn && optPrice === null
       ? "智能优化暂时没有报价，可以先取消勾选直接生成"
       : panelOpen
         ? optView.phase === "starting" || optView.phase === "running"
@@ -424,7 +426,11 @@ function StudioForm({
     const mine = frameSeq.current[side];
     setFrame(side, (s) => ({ ...s, uploading: true, uploadingName: file.name, error: null }));
     try {
-      const upload = await VideoStudioApi.upload(file, "image");
+      const upload = await VideoStudioApi.upload(file, "image", {
+        endpointId: model.selectableById ? model.endpointId : null,
+        mode: sel.mode,
+        frame: true,
+      });
       if (frameSeq.current[side] !== mine) return;
       setFrame(side, () => ({ material: materialFromUpload(upload), uploading: false, uploadingName: null, error: null }));
     } catch (e) {
@@ -484,7 +490,11 @@ function StudioForm({
     }));
     setRefLists((prev) => withList(prev, mediaType, [...prev[mediaType], ...items]));
     items.forEach((item, i) => {
-      VideoStudioApi.upload(accepted[i], mediaType)
+      VideoStudioApi.upload(accepted[i], mediaType, {
+        endpointId: model.selectableById ? model.endpointId : null,
+        mode: sel.mode,
+        frame: false,
+      })
         .then((upload) => setRefMaterial(mediaType, item.id, materialFromUpload(upload)))
         .catch((e) => {
           if (removedRefIds.current.has(item.id)) return;
@@ -509,7 +519,11 @@ function StudioForm({
     setRefLists((prev) =>
       withList(prev, mediaType, prev[mediaType].map((r) => (r.id === id ? { ...r, uploading: true } : r))),
     );
-    VideoStudioApi.upload(file, mediaType)
+    VideoStudioApi.upload(file, mediaType, {
+      endpointId: model.selectableById ? model.endpointId : null,
+      mode: sel.mode,
+      frame: false,
+    })
       .then((upload) => {
         if (removedRefIds.current.has(id)) return;
         setRefLists((prev) =>
@@ -680,7 +694,7 @@ function StudioForm({
       if (seedInvalid) setAdvancedOpen(true);
       return;
     }
-    if (optimizeOn) startOptimization(null);
+    if (effectiveOptimizeOn) startOptimization(null);
     else void submitGeneration(prompt, null, "footer");
   };
 
@@ -695,7 +709,7 @@ function StudioForm({
   };
 
   const needsFrames = !!modeSpec && (modeSpec.needsFirstFrame || modeSpec.needsLastFrame);
-  const walletNeed = (price?.total ?? 0) + (optimizeOn && optPrice ? optPrice : 0);
+  const walletNeed = (price?.total ?? 0) + (effectiveOptimizeOn && optPrice ? optPrice : 0);
   const panelSubmitError = submitError?.source === "panel" ? submitError : null;
   const footerSubmitError = submitError?.source === "footer" ? submitError : null;
 
@@ -740,6 +754,7 @@ function StudioForm({
             onValueChange={(v) => {
               setModelChoice(v);
               setModelGoneNote(null);
+              optimization.dismiss();
             }}
           >
             <SelectTrigger
@@ -778,7 +793,7 @@ function StudioForm({
         <div className="grid grid-cols-2 gap-2">
           {contract.modes.map((m) => {
             const selected = m.mode === sel.mode;
-            const label = VIDEO_STUDIO_MODE_LABEL[m.mode] ?? "其他模式";
+            const label = m.label ?? VIDEO_STUDIO_MODE_LABEL[m.mode] ?? m.mode;
             const desc = VIDEO_STUDIO_MODE_DESC[m.mode] ?? "";
             return (
               <ChoiceButton
@@ -857,17 +872,19 @@ function StudioForm({
       ) : null}
 
       {/* 提示词 + 智能优化 */}
-      <FormSection title="提示词">
+      <FormSection title={modeSpec?.promptRequired === false ? "提示词（选填）" : "提示词"}>
         <div className="relative">
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             readOnly={panelOpen}
             rows={5}
-            aria-label="提示词"
+            aria-label={modeSpec?.promptRequired === false ? "提示词（选填）" : "提示词"}
             aria-invalid={promptOver}
             title={panelOpen ? "智能优化进行中，提示词先锁住；在下面选好用哪一版之后就能改" : undefined}
-            placeholder={VIDEO_STUDIO_PROMPT_PLACEHOLDER[sel.mode] ?? "描述想要的画面"}
+            placeholder={modeSpec?.promptRequired === false
+              ? "可选填画面描述"
+              : (VIDEO_STUDIO_PROMPT_PLACEHOLDER[sel.mode] ?? "描述想要的画面")}
             className={cn(
               "block min-h-[120px] w-full resize-y rounded-[10px] border bg-zinc-100 px-3 pb-7 pt-2.5 text-[13.5px] leading-relaxed text-zinc-900 outline-none",
               "transition-[border-color,box-shadow,background-color] placeholder:text-zinc-400 focus:bg-white focus:shadow-[0_0_0_3px_var(--accent-soft)]",
@@ -888,40 +905,47 @@ function StudioForm({
           <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-400">
             {panelOpen ? "智能优化进行中，提示词先锁住" : ""}
           </span>
-          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12.5px] text-zinc-700" title={VIDEO_STUDIO_OPTIMIZE_HINT}>
-            <input
-              type="checkbox"
-              checked={optimizeOn}
-              onChange={(e) => toggleOptimize(e.target.checked)}
-              className="h-4 w-4 accent-violet-500"
-            />
-            <Wand2 className="h-3.5 w-3.5 text-violet-600" />
-            智能优化
-          </label>
+          {model.supportsPromptOptimization ? (
+            <label
+              className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12.5px] text-zinc-700"
+              title={VIDEO_STUDIO_OPTIMIZE_HINT}
+            >
+              <input
+                type="checkbox"
+                checked={optimizeOn}
+                onChange={(e) => toggleOptimize(e.target.checked)}
+                className="h-4 w-4 accent-violet-500"
+              />
+              <Wand2 className="h-3.5 w-3.5 text-violet-600" />
+              智能优化
+            </label>
+          ) : null}
         </div>
-        <OptimizePanel
-          view={optView}
-          promptMaxChars={contract.promptMaxChars}
-          submitting={submitting}
-          submitError={panelSubmitError}
-          problems={panelOpen ? shownProblems.map((p) => p.message) : []}
-          onDraftChange={optimization.setDraft}
-          onToggleOriginal={optimization.toggleOriginal}
-          onUseOptimized={() => {
-            if (optView.phase === "succeeded") void submitGeneration(optView.draft, optView.optimization.id, "panel");
-          }}
-          onUseOriginal={() => void submitGeneration(prompt, null, "panel")}
-          onRetry={retryOptimization}
-          onDismiss={optimization.dismiss}
-          blockedReason={generationBlocked}
-        />
+        {model.supportsPromptOptimization ? (
+          <OptimizePanel
+            view={optView}
+            promptMaxChars={contract.promptMaxChars}
+            submitting={submitting}
+            submitError={panelSubmitError}
+            problems={panelOpen ? shownProblems.map((p) => p.message) : []}
+            onDraftChange={optimization.setDraft}
+            onToggleOriginal={optimization.toggleOriginal}
+            onUseOptimized={() => {
+              if (optView.phase === "succeeded") void submitGeneration(optView.draft, optView.optimization.id, "panel");
+            }}
+            onUseOriginal={() => void submitGeneration(prompt, null, "panel")}
+            onRetry={retryOptimization}
+            onDismiss={optimization.dismiss}
+            blockedReason={generationBlocked}
+          />
+        ) : null}
       </FormSection>
 
       {/* 规格 */}
       <FormSection title="规格">
         <div className="flex flex-col gap-1.5">
           <span className="text-[12px] font-medium text-zinc-700">清晰度</span>
-          <div className="grid auto-cols-fr grid-flow-col gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {contract.tiers.map((t) => {
               const perSecond = perSecondPrice(model.pricing, sel.mode, t.tier);
               const selected = t.tier === sel.resolutionTier;
@@ -1039,7 +1063,7 @@ function StudioForm({
 
       {/* 报价 + 按钮 */}
       <div className="flex flex-col gap-2.5 rounded-b-[15px] border-t border-zinc-200 bg-zinc-50 px-4 py-4">
-        <QuoteLine price={price} unavailable={!!modelsError} optimizeOn={optimizeOn} optPrice={optPrice} />
+        <QuoteLine price={price} unavailable={!!modelsError} optimizeOn={effectiveOptimizeOn} optPrice={optPrice} />
         {price && wallet && walletNeed > wallet.totalBalance ? (
           <p className="text-[11.5px] leading-relaxed text-amber-700">
             当前可用 {formatCredits(wallet.totalBalance)} 积分，不够这一条。
@@ -1101,12 +1125,12 @@ function StudioForm({
         >
           {submitting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
-          ) : optimizeOn ? (
+          ) : effectiveOptimizeOn ? (
             <Wand2 className="h-4 w-4" />
           ) : (
             <Sparkles className="h-4 w-4" />
           )}
-          {submitting ? "提交中…" : uploadsInFlight ? "素材上传中…" : optimizeOn ? "优化并继续" : "生成"}
+          {submitting ? "提交中…" : uploadsInFlight ? "素材上传中…" : effectiveOptimizeOn ? "优化并继续" : "生成"}
         </button>
         {blocked && !uploadsInFlight ? <p className="text-center text-[11px] text-zinc-500">{blocked}</p> : null}
       </div>

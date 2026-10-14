@@ -95,7 +95,7 @@ class IpRunServiceTest {
         aiModels = mock(com.aistareco.aep.service.AiModelInvocationService.class);
         // 默认：任何端点 id 都在白名单里（不关心端点的用例不必逐个 stub）。
         // ResolvedEndpoint 是 record，mock 不了，给个真实例。
-        when(aiModels.resolveEndpoint(org.mockito.ArgumentMatchers.any(), anyString()))
+        when(aiModels.resolveEndpoint(org.mockito.ArgumentMatchers.any(), anyString(), eq("studio")))
                 .thenReturn(java.util.Optional.of(
                         new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(
                                 null, null, true)));
@@ -212,6 +212,20 @@ class IpRunServiceTest {
         assertEquals("544p",item.path("variant_config").path("resolution_tier").asText());
         assertEquals(42,item.path("variant_config").path("seed").asLong());
     }
+    @Test void nativeVideoWithOptionalPromptDoesNotRequireTextBeforeModeValidation() {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(
+                new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(
+                        new com.aistareco.aep.service.materialvideo.VideoGenSpec("silent-mode","custom",null,null,null,List.of()),5));
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(List.of(OM.createObjectNode().put("id","optional")));
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("silent-mode","custom",null,null,null,List.of());
+        svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest(null,null,5,"9:16","ep-custom",5L,settings));
+        var body=org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(videoJobs).submit(body.capture(),eq(USER),eq("ipstudio"));
+        assertEquals("",body.getValue().path("items").get(0).path("prompt").asText());
+        verify(nativeVideo).prepare(eq(USER),org.mockito.ArgumentMatchers.any());
+    }
     @Test void changedNativePriceCannotSubmitOrFreeze() {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
@@ -239,6 +253,24 @@ class IpRunServiceTest {
         verify(nativeVideo,org.mockito.Mockito.times(1)).prepare(eq(USER),org.mockito.ArgumentMatchers.any());
         verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
     }
+    @Test void batchSeedWrapsAtTheConfiguredModelLimit() {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
+        var spec=new com.aistareco.aep.service.materialvideo.VideoGenSpec("custom-mode","custom-tier",1L,null,null,List.of());
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(
+                new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,5,1));
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(
+                java.util.stream.IntStream.range(0,4).mapToObj(i->(JsonNode)OM.createObjectNode().put("id","job"+i)).toList());
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("custom-mode","custom-tier",1L,null,null,List.of());
+        svc.generateVideoBatch(USER,PID,new IpRunService.IpVideoRequest("动作",null,5,"9:16","ep-custom",20L,settings),4);
+        var body=org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(videoJobs).submit(body.capture(),eq(USER),eq("ipstudio"));
+        var items=body.getValue().path("items");
+        assertEquals(1,items.get(0).path("variant_config").path("seed").asLong());
+        assertEquals(0,items.get(1).path("variant_config").path("seed").asLong());
+        assertEquals(1,items.get(2).path("variant_config").path("seed").asLong());
+        assertEquals(0,items.get(3).path("variant_config").path("seed").asLong());
+    }
     @Test void batchRejectsAnUnderquotedTotalAndInvalidQuantityBeforeSubmission() {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
@@ -248,6 +280,32 @@ class IpRunServiceTest {
         assertThrows(BusinessException.class,()->svc.generateVideoBatch(USER,PID,request,2));
         assertEquals("STUDIO_VIDEO_COUNT_INVALID",assertThrows(BusinessException.class,()->svc.generateVideoBatch(USER,PID,request,3)).getCode());
         verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
+    }
+
+    @Test void configuredVideoBatchCountsReplaceTheLegacyChoices() throws Exception {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        var spec=new com.aistareco.aep.model.AiVideoRequestSpec("seedance",
+                com.aistareco.aep.videostudio.service.VideoStudioService.contract(5,15),
+                "/tasks","/tasks/{id}",Map.of());
+        var configured=(ObjectNode)OM.readTree(spec.json());
+        configured.putArray("batchCounts").add(1).add(3).add(5);
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("video")
+                .videoRequestSpecJson(configured.toString())
+                .enabled(true).build();
+        when(policy.resolveStudioVideo("video")).thenReturn(new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true));
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(
+                new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,20));
+        when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(
+                java.util.stream.IntStream.range(0,3).mapToObj(i->(JsonNode)OM.createObjectNode().put("id","job"+i)).toList());
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of());
+        var request=new IpRunService.IpVideoRequest("动作",null,7,"9:16","video",60L,settings);
+        assertEquals("STUDIO_VIDEO_COUNT_INVALID",assertThrows(BusinessException.class,
+                ()->svc.generateVideoBatch(USER,PID,request,2)).getCode());
+        verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
+        assertEquals(3,svc.generateVideoBatch(USER,PID,request,3).size());
     }
 
     @Test
@@ -488,7 +546,7 @@ class IpRunServiceTest {
         var spec=new com.aistareco.aep.model.AiImageRequestSpec(2048,0,0,"none",List.of(
                 new com.aistareco.aep.model.AiImageRequestSpec.Output("1024x1024","1:1",Map.of("resolutionTier","hd","orientation","square","imageCount",1))));
         var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("ernie").model("ernie-Image")
-                .baseUrl("https://api.jusuanhub.com/v1").imageRequestSpecJson(spec.json()).enabled(true).build();
+                .baseUrl("https://image-proxy.example/v1").imageRequestSpecJson(spec.json()).enabled(true).build();
         var resolved=new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true);
         when(policy.resolve(eq("studio"),eq("image"),eq("ernie"),eq(8L)))
                 .thenReturn(new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(resolved,30L,"per_image"));
@@ -501,6 +559,60 @@ class IpRunServiceTest {
         var execution=OM.readTree(runs.rows.get(result.id()).getInputJson()).path("_exec");
         assertEquals("hd",execution.path("imageRequestSpec").path("outputs").path(0).path("providerFields").path("resolutionTier").asText());
         verify(credits).hold(eq(USER),eq(30L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString());
+    }
+
+    @Test void configuredImageKeepsReferencesBeyondLegacyCanvasLimit() throws Exception {
+        seedProject(new IpStudioFixtures.Doc());
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        var spec=new com.aistareco.aep.model.AiImageRequestSpec(30000,0,6,"multiple",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("1024x1024","1:1",Map.of())));
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("image").model("image-model")
+                .baseUrl("https://image-proxy.example/v1").imageRequestSpecJson(spec.json()).enabled(true).build();
+        var resolved=new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true);
+        when(policy.resolve(eq("studio"),eq("image"),eq("image"),eq(8L)))
+                .thenReturn(new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(resolved,30L,"per_image"));
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        var refs=java.util.stream.IntStream.range(0,5).mapToObj(i->IpStudioFixtures.sourceKey(USER,"ref-"+i+".png")).toList();
+        var request=new IpRunService.IpGenerateRequest("adhoc","portrait",refs,1,"1024x1024","image",30L);
+        var result=svc.generate(USER,PID,request);
+        var inputs=OM.readTree(runs.rows.get(result.id()).getInputJson());
+        assertEquals(5,inputs.path("_exec").path("refKeys").size());
+        assertEquals(5,inputs.path("refs").size());
+    }
+    @Test void configuredImageBatchCountsDrivePreflightInsteadOfClampingToFour() throws Exception {
+        seedProject(new IpStudioFixtures.Doc());
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        var spec=new com.aistareco.aep.model.AiImageRequestSpec(2048,0,0,"none",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("1024x1024","1:1",Map.of())),null,List.of(1,3,5));
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("image").model("image-model")
+                .baseUrl("https://image-proxy.example/v1").imageRequestSpecJson(spec.json()).enabled(true).build();
+        var resolved=new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true);
+        when(policy.resolve(eq("studio"),eq("image"),eq("image"),eq(8L)))
+                .thenReturn(new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(resolved,30L,"per_image"));
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        assertEquals("STUDIO_IMAGE_COUNT_INVALID",assertThrows(BusinessException.class,()->svc.generate(USER,PID,
+                new IpRunService.IpGenerateRequest("adhoc","portrait",List.of(),4,"1024x1024","image",120L))).getCode());
+        verify(credits,never()).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+        var result=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc","portrait",List.of(),5,"1024x1024","image",150L));
+        assertEquals(5,OM.readTree(runs.rows.get(result.id()).getInputJson()).path("count").asInt());
+        verify(credits).hold(eq(USER),eq(150L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString());
+    }
+    @Test void configuredImageCanvasKeepsReferencesBeyondLegacyCanvasLimit() throws Exception {
+        var document=IpStudioFixtures.chainDoc(null,5);
+        document.data("n-gen").put("endpointId","image");
+        seedProject(document);
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        var spec=new com.aistareco.aep.model.AiImageRequestSpec(30000,0,8,"multiple",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("768x1024","3:4",Map.of())));
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("image").model("image-model")
+                .baseUrl("https://image-proxy.example/v1").imageRequestSpecJson(spec.json()).enabled(true).build();
+        var resolved=new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true);
+        when(policy.resolve(eq("studio"),eq("image"),eq("image"),eq(8L)))
+                .thenReturn(new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(resolved,30L,"per_image"));
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+        var result=svc.run(USER,PID,"n-gen",null);
+        var inputs=OM.readTree(runs.rows.get(result.id()).getInputJson());
+        assertTrue(inputs.path("_exec").path("refKeys").size()>4);
     }
 
     @Test

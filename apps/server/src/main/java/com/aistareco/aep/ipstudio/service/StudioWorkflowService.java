@@ -83,8 +83,15 @@ public class StudioWorkflowService {
         if (request == null || !OPERATIONS.contains(request.operation())) throw bad("STUDIO_OPERATION_INVALID", "请选择创作方式");
         requireText(request.clientRequestId(), 64, "请求编号");
         requireText(request.nodeId(), 64, "创作对象");
-        if (!"assemble".equals(request.operation())) requireText(request.prompt(), 16000, "创作内容");
-        if (request.references()!=null && request.references().size()>32) throw bad("STUDIO_REFERENCES_LIMIT", "一次最多使用 32 份参考素材");
+        boolean configuredImage = "image".equals(request.operation()) && !fixtures.enabled() && scenePolicies != null
+                && JusuanImageClient.supports(scenePolicies.resolve("studio", "image", request.model(), pricing.ipImage()).resolved().endpoint());
+        // Native video validates promptRequired against the selected endpoint mode in StudioVideoService.
+        if (!"assemble".equals(request.operation())
+                && !("video".equals(request.operation()) && request.video() != null) && !configuredImage)
+            requireText(request.prompt(), 16000, "创作内容");
+        if (configuredImage && (request.prompt()==null || request.prompt().isBlank()))
+            throw bad("STUDIO_INPUT_INVALID", "请填写创作内容");
+        if (!configuredImage && request.references()!=null && request.references().size()>32) throw bad("STUDIO_REFERENCES_LIMIT", "一次最多使用 32 份参考素材");
         if(request.count()!=null && !Set.of(1,2,4).contains(request.count())) throw bad("video".equals(request.operation())?"STUDIO_VIDEO_COUNT_INVALID":"STUDIO_IMAGE_COUNT_INVALID","video".equals(request.operation())?"一次可生成 1、2 或 4 条视频":"一次可生成 1、2 或 4 张图片");
         List<Reference> references = request.references()==null?List.of():request.references();
         for (Reference reference:references) requireReference(userId, reference);
@@ -93,7 +100,7 @@ public class StudioWorkflowService {
         if (request.video()!=null && !"video".equals(request.operation())) throw bad("STUDIO_VIDEO_INPUT_INVALID","视频参数只能用于生成视频");
         if (request.video()!=null && fixtures.enabled()) throw bad("STUDIO_VIDEO_MODE_UNAVAILABLE","测试响应不支持原生视频模式，请关闭测试响应后使用");
         if (request.aspectRatio()!=null && request.video()==null && !("image".equals(request.operation())
-                ? request.aspectRatio().matches("[1-9][0-9]?:[1-9][0-9]?")
+                ? request.aspectRatio().matches(configuredImage?"[1-9][0-9]*:[1-9][0-9]*":"[1-9][0-9]?:[1-9][0-9]?")
                 : List.of("9:16","16:9","1:1").contains(request.aspectRatio())))
             throw bad("STUDIO_RATIO_INVALID", "请选择可用画幅");
         validateCreativeRequest(request);

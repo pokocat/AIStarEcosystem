@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -87,5 +88,28 @@ class MediaBytesTest {
         assertThat(MediaBytes.sniff("audio", ascii("fLaC\u0000"))).isEqualTo(MediaBytes.FLAC);
         assertThat(MediaBytes.sniff("audio", png)).isNull();
         assertThat(MediaBytes.sniff("document", png)).isNull();
+    }
+
+    @Test
+    @DisplayName("已配置端点识别新增格式，旧 H3 格式识别保持不变")
+    void configuredFormats() {
+        byte[] gif = ascii("GIF89a");
+        byte[] bmp = ascii("BM");
+        byte[] mov = ftyp("qt  ");
+        byte[] webm = bytes(0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x82, 0x84, 'w', 'e', 'b', 'm');
+        assertThat(MediaBytes.sniff("image", gif)).isNull();
+        assertThat(MediaBytes.sniffConfigured("image", gif)).isEqualTo(new MediaBytes.Format("gif", "image/gif"));
+        assertThat(MediaBytes.sniffConfigured("image", bmp)).isEqualTo(new MediaBytes.Format("bmp", "image/bmp"));
+        assertThat(MediaBytes.sniff("video", mov)).isNull();
+        assertThat(MediaBytes.sniffConfigured("video", mov)).isEqualTo(MediaBytes.MOV);
+        assertThat(MediaBytes.sniffConfigured("video", webm)).isEqualTo(MediaBytes.WEBM_VIDEO);
+        assertThat(MediaBytes.sniffConfigured("audio", webm)).isEqualTo(MediaBytes.WEBM_AUDIO);
+        byte[] lateWebm = new byte[128];
+        System.arraycopy(webm, 0, lateWebm, 0, 4);
+        System.arraycopy(webm, 5, lateWebm, 80, 7);
+        assertThat(MediaBytes.sniffConfigured("video", lateWebm)).isEqualTo(MediaBytes.WEBM_VIDEO);
+        assertThat(MediaBytes.sniffConfigured("video", bytes(0x1A, 0x45, 0xDF, 0xA3))).isNull();
+        assertThat(MediaBytes.allowed(MediaBytes.sniffConfigured("image", gif), List.of("PNG"))).isFalse();
+        assertThat(MediaBytes.allowed(new MediaBytes.Format("jpg", "image/jpeg"), List.of("JPEG"))).isTrue();
     }
 }

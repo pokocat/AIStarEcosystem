@@ -25,9 +25,13 @@ public final class VideoStudioDtos {
 
     private VideoStudioDtos() {}
 
-    /** 一个受控画布：比例 + 像素（厂商固定的六种之一）。 */
+    /** 一个画布：比例、像素及可选的供应商尺寸编码。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
-    public record VideoStudioCanvas(String aspectRatio, int width, int height) {}
+    public record VideoStudioCanvas(String aspectRatio, int width, int height, String outputSizeCode) {
+        public VideoStudioCanvas(String aspectRatio, int width, int height) {
+            this(aspectRatio, width, height, null);
+        }
+    }
 
     /** 一档清晰度及其可选画布。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -47,7 +51,18 @@ public final class VideoStudioDtos {
     /** 某个模式要什么输入。{@code frameImage} / {@code references} 不适用时为 null。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record VideoStudioModeSpec(String mode, boolean needsFirstFrame, boolean needsLastFrame,
-                                      VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references) {}
+                                      VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references,
+                                      @JsonInclude(JsonInclude.Include.NON_NULL) String label,
+                                      @JsonInclude(JsonInclude.Include.NON_NULL) Boolean promptRequired) {
+        public VideoStudioModeSpec(String mode, boolean needsFirstFrame, boolean needsLastFrame,
+                                   VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references) {
+            this(mode, needsFirstFrame, needsLastFrame, frameImage, references, null, null);
+        }
+        public VideoStudioModeSpec(String mode, boolean needsFirstFrame, boolean needsLastFrame,
+                                   VideoStudioMediaLimit frameImage, VideoStudioReferenceRules references, String label) {
+            this(mode, needsFirstFrame, needsLastFrame, frameImage, references, label, null);
+        }
+    }
 
     /** 一个模型的完整合同（服务端下发，前端不写死）。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -78,7 +93,17 @@ public final class VideoStudioDtos {
     /** 可选模型（GET /me/celebrity/video-studio/models 的一项）。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record VideoStudioModel(String endpointId, String name, boolean isDefault, boolean selectableById,
-                                   VideoStudioContract contract, VideoStudioPricing pricing) {}
+                                   boolean supportsPromptOptimization, VideoStudioContract contract, VideoStudioPricing pricing,
+                                   List<Integer> batchCounts) {
+        public VideoStudioModel(String endpointId, String name, boolean isDefault, boolean selectableById,
+                                boolean supportsPromptOptimization, VideoStudioContract contract, VideoStudioPricing pricing) {
+            this(endpointId, name, isDefault, selectableById, supportsPromptOptimization, contract, pricing, List.of(1,2,4));
+        }
+        public VideoStudioModel(String endpointId, String name, boolean isDefault, boolean selectableById,
+                                VideoStudioContract contract, VideoStudioPricing pricing) {
+            this(endpointId, name, isDefault, selectableById, true, contract, pricing, List.of(1,2,4));
+        }
+    }
 
     /** 上传一个素材的结果（POST /me/celebrity/video-studio/uploads）。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)

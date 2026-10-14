@@ -45,6 +45,37 @@ class ModelManagementServiceTest {
   svc.execute(mapper.readTree("{\"action\":\"sceneCandidatePrepare\",\"appCode\":\"studio\",\"scene\":\"image\",\"endpointId\":\"a\",\"value\":{\"maxRefImages\":2}}"),"operator");
   var cap=ArgumentCaptor.forClass(AiAppEndpointCandidateUpsert.class);verify(bindings).updateCandidate(eq(AiModelPurpose.DAP_IMAGE),eq("a"),cap.capture());assertEquals(12L,cap.getValue().creditCostOverride());assertEquals(2,cap.getValue().maxRefImages());verify(bindings,never()).bind(any(),any());verify(audit).save(any());
  }
+ @Test void studioVideoCandidateCanBeConfiguredFromItsFunctionEditor() throws Exception {
+  var command=mapper.createObjectNode();command.put("action","functionCandidatePrepare");command.put("appCode","studio");command.put("feature","video");command.put("endpointId","seedance");command.set("value",mapper.readTree("{\"enabled\":true,\"sortOrder\":1}"));
+  command.set("acknowledgedAffectedFeatures",mapper.valueToTree(ModelFeatureRegistry.affected(ModelFeatureRegistry.require("studio","video"))));
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of());
+  service().execute(command,"operator");
+  verify(bindings).addCandidate(eq(AiModelPurpose.VIDEO_GENERATION),argThat(value->"seedance".equals(value.endpointId())&&Boolean.TRUE.equals(value.enabled())));
+  verify(bindings,never()).bind(any(),any());
+ }
+ @Test void studioVideoRateCanBeEditedWithPricingPermissionAndSharedImpactConfirmation() throws Exception {
+  var old=new AiAppEndpointCandidateDto("VIDEO_GENERATION","视频生成","seedance","Seedance 2.0",true,false,0,true,
+    new EndpointCapabilityDto(null,null,null,null,null,null,null,null,null),null,null);
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(old));
+  when(bindings.updateCandidate(eq(AiModelPurpose.VIDEO_GENERATION),eq("seedance"),any())).thenReturn(old);
+  var command=mapper.createObjectNode();command.put("action","functionCandidatePriceSave");command.put("appCode","studio");command.put("feature","video");command.put("endpointId","seedance");command.put("creditCostOverride",30);
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+  verify(bindings,never()).updateCandidate(any(),any(),any());
+  command.set("acknowledgedAffectedFeatures",mapper.valueToTree(ModelFeatureRegistry.affected(ModelFeatureRegistry.require("studio","video"))));
+  service().execute(command,"operator");
+  verify(bindings).updateCandidate(eq(AiModelPurpose.VIDEO_GENERATION),eq("seedance"),argThat(value->Long.valueOf(30).equals(value.creditCostOverride())));
+  command.put("creditCostOverride",0);
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+ }
+ @Test void studioVideoOpenRangeDoesNotChangeTheSharedVideoBinding() throws Exception {
+  var policies=mock(AiAppSceneModelPolicyService.class);
+  var group=new AiAppSceneModelPolicyService.VideoGroup("seedance",List.of("seedance"));
+  when(policies.saveStudioVideoGroup(eq(group),eq("operator"))).thenReturn(group);
+  var svc=new ModelManagementService(endpoints,bindings,mock(PromptService.class),mock(AgentBotProviderAdminService.class),mock(CelebrityActionPricingService.class),mock(VideoStudioPricingService.class),mock(AiModelUsageService.class),policies,access,mock(ModelFeatureManagementService.class),audit,mapper);
+  svc.execute(mapper.readTree("{\"action\":\"studioVideoGroupSave\",\"value\":{\"defaultEndpointId\":\"seedance\",\"endpointIds\":[\"seedance\"]}}"),"operator");
+  verify(policies).saveStudioVideoGroup(eq(group),eq("operator"));
+  verify(bindings,never()).bind(any(),any());
+ }
  @Test void priceOnlyReadProjectsNameAndDisabledStateWithoutEndpointSecrets() throws Exception {
   var policies=mock(AiAppSceneModelPolicyService.class);
   when(policies.get("studio","script")).thenReturn(java.util.Optional.empty());when(policies.get("studio","image")).thenReturn(java.util.Optional.of(new AiAppSceneModelPolicyDto("studio","image","fixed","a",List.of(new AiAppSceneModelPolicyDto.Candidate("a",null,"per_image")))));

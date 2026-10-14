@@ -57,15 +57,15 @@ public class ModelManagementService {
     onlyFields(c,Set.of("action","appCode","feature","endpointId","acknowledgedAffectedFeatures"));var f=registered(c);requireShared(f);acknowledge(f,c);requireAppAccess(text(c,"endpointId"),f.appCode());if(bindings.listCandidates(f.purpose()).stream().noneMatch(x->x.endpointId().equals(text(c,"endpointId"))&&Boolean.TRUE.equals(x.enabled())&&Boolean.TRUE.equals(x.endpointEnabled())))throw BusinessException.badRequest("MODEL_FEATURE_ROUTE_INVALID","请先在当前功能补全并启用此模型候选");before=bindings.list();result=bindings.bind(f.purpose(),text(c,"endpointId"));break;
    }
    case "functionCandidatePrepare": {
-    onlyFields(c,Set.of("action","appCode","feature","endpointId","value","acknowledgedAffectedFeatures"));var f=registered(c);requireShared(f);acknowledge(f,c);String id=text(c,"endpointId");requireAppAccess(id,f.appCode());
+    onlyFields(c,Set.of("action","appCode","feature","endpointId","value","acknowledgedAffectedFeatures"));var f=registered(c);requireCandidateRoute(f);acknowledge(f,c);String id=text(c,"endpointId");requireAppAccess(id,f.appCode());
     ObjectNode v=(ObjectNode)c.path("value").deepCopy();onlyFields(v,Set.of("sortOrder","enabled","maxRefImages","supportsFirstLastFrame","supportsSubjectReference","maxDurationSec","minImagePixels"));v.put("endpointId",id);
     var old=bindings.listCandidates(f.purpose()).stream().filter(x->x.endpointId().equals(id)).findFirst();before=old.orElse(null);
     if(old.isPresent()){v.set("creditCostOverride",mapper.valueToTree(old.get().creditCostOverride()));result=bindings.updateCandidate(f.purpose(),id,dto(v,AiAppEndpointCandidateUpsert.class));}else result=bindings.addCandidate(f.purpose(),dto(v,AiAppEndpointCandidateUpsert.class));break;
    }
    case "functionCandidatePriceSave": {
-    onlyFields(c,Set.of("action","appCode","feature","endpointId","creditCostOverride","acknowledgedAffectedFeatures"));var f=registered(c);requireShared(f);acknowledge(f,c);
-    if(!"candidate".equals(f.pricingKind()))throw BusinessException.badRequest("MODEL_FEATURE_PRICE_INVALID","此功能不消费共享候选售价");
-    var old=candidate(f.purpose(),text(c,"endpointId"));before=old;var cap=old.capability();Long price=c.path("creditCostOverride").isNull()?null:c.path("creditCostOverride").longValue();if(price!=null&&price<0)throw new IllegalArgumentException();
+    onlyFields(c,Set.of("action","appCode","feature","endpointId","creditCostOverride","acknowledgedAffectedFeatures"));var f=registered(c);requireCandidateRoute(f);acknowledge(f,c);
+    if(!"candidate".equals(f.pricingKind())&&!("video_group".equals(f.routingKind())&&"video_matrix".equals(f.pricingKind())))throw BusinessException.badRequest("MODEL_FEATURE_PRICE_INVALID","此功能不消费共享候选售价");
+    var old=candidate(f.purpose(),text(c,"endpointId"));before=old;var cap=old.capability();Long price=c.path("creditCostOverride").isNull()?null:c.path("creditCostOverride").longValue();if(price!=null&&(price<0||"video_group".equals(f.routingKind())&&price<1))throw new IllegalArgumentException();
     result=bindings.updateCandidate(f.purpose(),old.endpointId(),new AiAppEndpointCandidateUpsert(old.endpointId(),old.sortOrder(),old.enabled(),cap.maxRefImages(),cap.supportsFirstLastFrame(),cap.supportsSubjectReference(),cap.maxDurationSec(),cap.minImagePixels(),price));break;
    }
    case "functionSupplierPointPriceSave": {
@@ -144,6 +144,7 @@ public class ModelManagementService {
  private ModelFeatureRegistry.Feature registered(JsonNode c){return ModelFeatureRegistry.require(text(c,"appCode"),text(c,"feature"));}
  private void requireAppAccess(String endpointId,String appCode){if(!modelAccess.allows(endpointId,appCode))throw BusinessException.badRequest("MODEL_ACCESS_INVALID","此模型未向当前应用开放");}
  private void requireShared(ModelFeatureRegistry.Feature f){if(!"shared_purpose".equals(f.routingKind())||f.purpose()==null)throw BusinessException.badRequest("MODEL_FEATURE_ROUTE_INVALID","此功能使用独立场景或专属引擎配置");}
+ private void requireCandidateRoute(ModelFeatureRegistry.Feature f){if(f.purpose()==null||!Set.of("shared_purpose","video_group").contains(f.routingKind()))throw BusinessException.badRequest("MODEL_FEATURE_ROUTE_INVALID","此功能使用独立场景或专属引擎配置");}
  private void acknowledge(ModelFeatureRegistry.Feature f,JsonNode c){var keys=new ArrayList<String>();c.path("acknowledgedAffectedFeatures").forEach(x->keys.add(x.asText()));ModelFeatureRegistry.acknowledge(f,keys);}
  private List<Object> sceneCatalog() {
   var out=new ArrayList<Object>();var all=endpoints.list().stream().filter(e->modelAccess.allows(e.id(),"studio")).toList();

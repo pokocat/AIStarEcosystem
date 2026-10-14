@@ -94,6 +94,30 @@ test('image composer only offers ratios stored on the selected model and blocks 
  expect(within(panel).queryByText('当前模型不支持 3:4，请在画幅中选择可用比例。')).toBeNull();
  expect(api.submit).not.toHaveBeenCalled();
 });
+test('image composer uses the selected endpoint prompt limit instead of the legacy 16000 characters',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
+ api.models.mockResolvedValue({image:[{endpointId:'image',name:'图片模型',isDefault:true,creditCost:30,capability:{imageRatios:['3:4'],imagePromptMaxChars:20000}}],video:[]});
+ const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ await waitFor(()=>expect(within(panel).getByRole('combobox',{name:'生成模型'})).toHaveProperty('value','image'));
+ const prompt=within(panel).getByRole('textbox',{name:'创作要求'});
+ fireEvent.change(prompt,{target:{value:'a'.repeat(16001)}});
+ expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(false);
+ fireEvent.change(prompt,{target:{value:'a'.repeat(20001)}});
+ expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(true);
+ expect(within(panel).getByRole('button',{name:'查看错误详情'})).toBeDefined();
+});
+test('image composer lists only batch sizes returned for the selected endpoint',async()=>{
+ api.models.mockResolvedValue({image:[{endpointId:'image',name:'图片模型',isDefault:true,creditCost:30,capability:{imageBatchCounts:[1,3,5]}}],video:[]});
+ const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ const count=within(panel).getByRole('combobox',{name:'候选数量'}) as HTMLSelectElement;
+ await waitFor(()=>expect([...count.options].map(option=>option.value)).toEqual(['1','3','5']));
+});
 test('image result actions stay on the image node toolbar rather than its generation form',async()=>{
  const image={...node,type:'image' as never,title:'商品图',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png',studio:{kind:'shot' as const}}};
  render(<Host initial={image}/>);

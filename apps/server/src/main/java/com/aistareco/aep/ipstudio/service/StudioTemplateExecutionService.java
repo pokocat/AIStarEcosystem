@@ -53,12 +53,14 @@ public class StudioTemplateExecutionService {
         } else if(req.replaceRunId()!=null)throw conflict("STUDIO_TEMPLATE_REPLACE_CHANGED","任务已变化，请刷新");
         List<Reference> refs=references(owner,projectId,instance,step,snapshot,true);
         Map<String,Value> values=values(snapshot);
-        String prompt=req.prompt()==null?StudioTemplateService.render(step.prompt(),values):req.prompt().trim();
-        if(prompt.isBlank() || prompt.length()>16000)throw bad("STUDIO_TEMPLATE_PROMPT_INVALID","创作指令应为 1 到 16000 字");
+        String prompt=req.prompt()==null?StudioTemplateService.render(step.prompt(),values,"video".equals(step.operation())):req.prompt().trim();
+        if(!"video".equals(step.operation()) && (prompt.isBlank() || prompt.length()>16000))
+            throw bad("STUDIO_TEMPLATE_PROMPT_INVALID","创作指令应为 1 到 16000 字");
         String model=instance.plan().model();VideoSettings video=null;
         if("video".equals(step.operation())) {
             var quote=videos.quote(owner,step,instance.plan().videoModel(),prompt);model=quote.model();IpRunService.requireApprovedCost(req.maxCost(),quote.cost());
-            if(quote.nativeMode())video=videos.settings(step,refs.stream().map(Reference::storageKey).toList());
+            if(quote.nativeMode())video=videos.settings(step,refs.stream().map(Reference::storageKey).toList(),model);
+            else if(prompt.isBlank())throw bad("STUDIO_TEMPLATE_PROMPT_INVALID","请填写创作指令");
         } else {
             var compiled=images.compileExplicit(owner,new IpRunService.IpGenerateRequest(null,prompt,refs.stream().map(Reference::storageKey).toList(),1,step.size(),model));
             images.preflight(compiled);IpRunService.requireApprovedCost(req.maxCost(),compiled.unitCost());
@@ -111,7 +113,7 @@ public class StudioTemplateExecutionService {
             boolean stale=job!=null && stale(owner,project.getId(),instance,step,snapshot);
             if(job!=null)status=stale?"stale":job.status();
             if(refs!=null)try {
-                String prompt=StudioTemplateService.render(step.prompt(),values(snapshot));
+                String prompt=StudioTemplateService.render(step.prompt(),values(snapshot),"video".equals(step.operation()));
                 if("video".equals(step.operation()))cost=videos.quote(owner,step,instance.plan().videoModel(),prompt).cost();
                 else {var c=images.compileExplicit(owner,new IpRunService.IpGenerateRequest(null,prompt,refs.stream().map(Reference::storageKey).toList(),1,step.size(),instance.plan().model()));images.preflight(c);cost=c.unitCost();}
             }catch(BusinessException ignored){/* Existing jobs remain recoverable when a model is unavailable. Submit will fail before hold. */}

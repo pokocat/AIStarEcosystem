@@ -6,7 +6,7 @@ import { Button, Modal, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { endpointIdFor, legacyVideoQuoteFor, nativeVideoModelFor } from '@/canvas-bridge/models';
-import { studioVideoQuote, studioVideoSettings } from '@/canvas-bridge/studio-video';
+import { studioVideoQuote, studioVideoSettings, studioVideoModeForAssets, studioVideoTierForConfig, studioVideoCanvasForConfig } from '@/canvas-bridge/studio-video';
 import { ModelPicker } from "@/canvas/components/model-picker";
 import { defaultConfig, resolveModelForCapability, useConfigStore, useEffectiveConfig, type AiConfig } from "@/canvas-bridge/config-store";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
@@ -51,11 +51,16 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning: localRunning, on
     const config = buildNodeConfig(globalConfig, node, mode);
     // 本仓：display the entire video batch price before Send, using the selected model and connected media.
     let videoUnitQuote:number|null=null;
+    let videoPromptOptional=false;
     if(mode==='video') {
         const native=nativeVideoModelFor(config.model||config.videoModel);
         if(native)try {
             const assets=connectedNodes.filter(n=>[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].some(type=>type===n.type)).map(n=>({storageKey:n.metadata?.storageKey,mediaType:n.type===CanvasNodeType.Video?'video' as const:n.type===CanvasNodeType.Audio?'audio' as const:'image' as const}));
-            const video=studioVideoSettings(config.videoMode==='reference'?'universal_reference_video':assets.length===2?'first_last_frame_video':assets.length===1?'i2v':'t2v',`${config.vquality}p`,assets,config.videoSeed);
+            const selected=studioVideoModeForAssets(native,config.videoMode,assets);
+            videoPromptOptional=selected.promptRequired===false;
+            const tier=studioVideoTierForConfig(native,config.vquality);
+            studioVideoCanvasForConfig(native,tier,config.size);
+            const video=studioVideoSettings(selected.mode,tier,assets,config.videoSeed,selected);
             videoUnitQuote=studioVideoQuote(native,video,Number(config.videoSeconds));
         } catch {/* The existing reference validator explains incomplete selections on Send. */}
         else videoUnitQuote=legacyVideoQuoteFor(config.model||config.videoModel,Number(config.videoSeconds));
@@ -84,7 +89,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning: localRunning, on
     const unconfirmed=studioGenerationPending(node)&&!node.metadata?.studio?.runId;
     const submit = () => {
         const text = prompt.trim();
-        if (!text || isRunning) return;
+        if ((!text&&!videoPromptOptional) || isRunning) return;
         onGenerate(node.id, mode, text);
     };
 
@@ -166,7 +171,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning: localRunning, on
                     type="primary"
                     className="!h-10 !min-w-16 shrink-0 !rounded-full !px-3"
                     danger={isRunning&&!unconfirmed}
-                    disabled={!isRunning && !prompt.trim()}
+                    disabled={!isRunning && !prompt.trim() && !videoPromptOptional}
                     onClick={() => (isRunning ? onStop(node.id) : submit())}
                     aria-label={unconfirmed?"确认原任务":t(isRunning ? "canvas.promptPanel.stopGeneration" : "canvas.promptPanel.generate")}
                 >

@@ -14,6 +14,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class StudioVideoBatchBindingTest {
+    @Test void nativeVideoLetsTheSelectedModeDecideWhetherPromptIsRequired() throws Exception {
+        var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);
+        var nativeRuns=mock(IpRunService.class);var fixtures=mock(StudioFixtureProvider.class);
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        when(projects.requiredForUpdate("owner","p")).thenReturn(IpProject.builder().id("p").build());
+        when(runs.findByProjectIdAndClientRequestId("p","optional")).thenReturn(Optional.empty());
+        when(nativeRuns.generateVideoBatch(eq("owner"),eq("p"),any(),eq(1)))
+                .thenReturn(List.of(mapper.createObjectNode().put("id","job")));
+        when(runs.save(any())).thenAnswer(call->call.getArgument(0));
+        when(projects.toRunDto(any())).thenAnswer(call->{IpRun r=call.getArgument(0);return new IpRunDto(
+                r.getId(),"p","n","studio-video","running","video",0,0,null,null,
+                mapper.readTree(r.getInputJson()),mapper.createObjectNode(),null,null);});
+        var service=new StudioWorkflowService(projects,runs,fixtures,null,null,null,nativeRuns,null,null,null,null,null,mapper,null,null);
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings(
+                "silent-mode","custom",null,null,null,List.of());
+        var request=new RunRequest("optional","n","video",null,List.of(),"ep",null,5,"9:16",1,
+                null,null,null,null,null,5L,null,settings);
+        service.submit("owner","p",request);
+        verify(nativeRuns).generateVideoBatch(eq("owner"),eq("p"),argThat(input->input.prompt()==null),eq(1));
+    }
     @Test void repeatedRequestRecoversTheSameBatchAndChangedQuantityCannotResubmit() throws Exception {
         var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);
         var nativeRuns=mock(IpRunService.class);var fixtures=mock(StudioFixtureProvider.class);

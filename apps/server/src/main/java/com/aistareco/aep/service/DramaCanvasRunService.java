@@ -456,7 +456,7 @@ public class DramaCanvasRunService {
                     String url = signer.signKey(frameKey);
                     boolean fetchable = url != null && DramaReferenceAssembler.isFetchableImageRef(url);
                     // 聚算 H3 由服务端按 key 读图上传，不依赖地址能不能被外部访问
-                    boolean keyProtocol = videoModels.videoGeometry(re.endpoint()) != null;
+                    boolean keyProtocol = videoModels.isJusuanMedia(re.endpoint());
                     if (fetchable) markerUrl = url;
                     if (fetchable || keyProtocol) {
                         applied = 1;

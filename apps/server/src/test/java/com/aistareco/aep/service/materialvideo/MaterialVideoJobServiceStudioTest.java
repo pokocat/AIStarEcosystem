@@ -114,6 +114,19 @@ class MaterialVideoJobServiceStudioTest {
     }
 
     @Test
+    void configuredLegacyVideoSpecIsCheckedBeforeHoldingCredits() {
+        org.mockito.Mockito.doThrow(BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "不支持当前画幅"))
+                .when(modelClient).validateConfiguredLegacySubmission(eq("ep"), eq("studio"),
+                        any(VideoGenSpec.class), org.mockito.ArgumentMatchers.isNull());
+        var error = assertThrows(BusinessException.class, () -> svc.submit(
+                body("{\"endpoint_id\":\"ep\",\"first_frame_key\":\"ipstudio_gen/u1/a.png\"}"),
+                "u1", MaterialVideoJobService.APP_IPSTUDIO));
+        assertEquals("VIDEO_STUDIO_SPEC_INVALID", error.getCode());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(jobRepo, never()).save(any());
+    }
+
+    @Test
     @DisplayName("视频生成区：完整原生规格放行；credit_label 存进 payload、冻结文案用它，卡片上不出现")
     void videoStudioSubmitPersistsCreditLabel() {
         List<JsonNode> cards = svc.submit(body("""

@@ -3,6 +3,7 @@ package com.aistareco.aep.platform;
 import com.aistareco.aep.dto.*;
 import com.aistareco.aep.service.*;
 import com.aistareco.aep.videostudio.service.VideoStudioPricingService;
+import com.aistareco.aep.videostudio.service.VideoStudioService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ public class ModelFeatureManagementService {
     private final CelebrityActionPricingService prices;
     private final PlatformConfigService config;
     private final VideoStudioPricingService videoPrices;
+    private final VideoStudioService videoModels;
     private final ObjectMapper mapper;
     private final com.aistareco.aep.config.MusicGenProperties music;
     private final CelebrityZoneService zone;
@@ -28,8 +30,8 @@ public class ModelFeatureManagementService {
     private final AiModelAccessPolicyService modelAccess;
     private final long defaultUploadCost;
 
-    public ModelFeatureManagementService(AiAppBindingService bindings,CelebrityActionPricingService prices,PlatformConfigService config,VideoStudioPricingService videoPrices,ObjectMapper mapper,com.aistareco.aep.config.MusicGenProperties music,CelebrityZoneService zone,com.aistareco.aep.ipstudio.service.StudioPlatformPricing platform,com.aistareco.aep.dap.service.DapPricingService dap,com.aistareco.aep.ipstudio.service.StudioPointPricing point,AiModelEndpointAdminService endpoints,AiAppSceneModelPolicyService scenePolicies,AiModelAccessPolicyService modelAccess,@org.springframework.beans.factory.annotation.Value("${sau.default-upload-cost:20}") long defaultUploadCost) {
-        this.bindings=bindings;this.prices=prices;this.config=config;this.videoPrices=videoPrices;this.mapper=mapper;this.music=music;this.zone=zone;this.platform=platform;this.dap=dap;this.point=point;this.endpoints=endpoints;this.scenePolicies=scenePolicies;this.modelAccess=modelAccess;this.defaultUploadCost=defaultUploadCost;
+    public ModelFeatureManagementService(AiAppBindingService bindings,CelebrityActionPricingService prices,PlatformConfigService config,VideoStudioPricingService videoPrices,VideoStudioService videoModels,ObjectMapper mapper,com.aistareco.aep.config.MusicGenProperties music,CelebrityZoneService zone,com.aistareco.aep.ipstudio.service.StudioPlatformPricing platform,com.aistareco.aep.dap.service.DapPricingService dap,com.aistareco.aep.ipstudio.service.StudioPointPricing point,AiModelEndpointAdminService endpoints,AiAppSceneModelPolicyService scenePolicies,AiModelAccessPolicyService modelAccess,@org.springframework.beans.factory.annotation.Value("${sau.default-upload-cost:20}") long defaultUploadCost) {
+        this.bindings=bindings;this.prices=prices;this.config=config;this.videoPrices=videoPrices;this.videoModels=videoModels;this.mapper=mapper;this.music=music;this.zone=zone;this.platform=platform;this.dap=dap;this.point=point;this.endpoints=endpoints;this.scenePolicies=scenePolicies;this.modelAccess=modelAccess;this.defaultUploadCost=defaultUploadCost;
     }
     public List<Object> catalog() {
         var allBindings=bindings.list();var rows=new ArrayList<Object>();
@@ -51,14 +53,18 @@ public class ModelFeatureManagementService {
             if("video_group".equals(f.routingKind())) {
                 var group=scenePolicies.studioVideoGroup();
                 var videoCandidates=scenePolicies.studioVideoCandidates();
+                var selectable=videoModels.listModels("studio");
+                var selectableIds=selectable.stream().map(com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel::endpointId).collect(java.util.stream.Collectors.toSet());
                 var sharedCandidates=bindings.listCandidates(f.purpose());
                 row.set("candidates",mapper.valueToTree(videoCandidates.stream().map(c->{
                     var candidate=sharedCandidates.stream().filter(x->x.endpointId().equals(c.endpoint().getId())).findFirst().orElseThrow();
                     var value=mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(candidate);
                     value.put("isDefault",c.isDefault());
+                    value.put("available",selectableIds.contains(c.endpoint().getId()));
                     return value;
                 }).toList()));
-                status=group.isEmpty()?"unconfigured":videoCandidates.stream().noneMatch(AiModelInvocationService.ResolvedEndpoint::isDefault)?"unavailable":"configured";
+                row.putNull("binding");
+                status=videoCandidates.isEmpty()?(group.isPresent()?"unavailable":"unconfigured"):videoCandidates.stream().anyMatch(c->selectableIds.contains(c.endpoint().getId()))?"configured":"unavailable";
             }
             row.put("status",status);rows.add(row);
         }return rows;
@@ -73,6 +79,22 @@ public class ModelFeatureManagementService {
             if("scene_policy".equals(f.routingKind())){row.put("scenePolicyAppCode","studio");row.put("scenePolicyScene","script".equals(f.feature())?"script":"image");if(!p.path("value").path("configured").asBoolean())status="unconfigured";}
             row.put("status",status);rows.add(row);
         }return rows;
+    }
+    /** Only pricing dimensions cross to pricing-only operators; endpoint routes and credentials stay private. */
+    private Map<String,Object> videoPricingDimensions() {
+        Map<String,String> modes=new LinkedHashMap<>();Set<String> tiers=new LinkedHashSet<>();
+        for(var endpoint:endpoints.list()) {
+            if(!endpoint.enabled() || endpoint.videoRequestSpec()==null
+                    || !modelAccess.allows(endpoint.id(),"studio")
+                       && !modelAccess.allows(endpoint.id(),"celebrity")) continue;
+            var contract=endpoint.videoRequestSpec().contract();
+            for(var mode:contract.modes()) modes.putIfAbsent(mode.mode(),
+                    mode.label()==null || mode.label().isBlank()?mode.mode():mode.label());
+            for(var tier:contract.tiers()) tiers.add(tier.tier());
+        }
+        return Map.of("modes",modes.entrySet().stream()
+                .map(entry->Map.of("mode",entry.getKey(),"label",entry.getValue())).toList(),
+                "tiers",List.copyOf(tiers));
     }
     /** Only sale data plus endpoint display fields; credentials and addresses are never projected. */
     public Object pricing(String app,String feature) {
@@ -94,7 +116,27 @@ public class ModelFeatureManagementService {
                 String scene="script".equals(f.feature())?"script":"image";var policy=scenePolicies.get("studio",scene);var value=new LinkedHashMap<String,Object>();value.put("configured",policy.isPresent());var entries=new ArrayList<Object>();var models=endpoints.list();var shared=bindings.listCandidates(f.purpose()).stream().filter(c->modelAccess.allows(c.endpointId(),"studio")).toList();
                 for(var c:policy.map(AiAppSceneModelPolicyDto::candidates).orElse(List.of())){var v=new LinkedHashMap<String,Object>();var e=models.stream().filter(x->x.id().equals(c.endpointId())).findFirst();v.put("endpointId",c.endpointId());v.put("endpointName",e.map(AiModelEndpointDto::name).orElse(null));v.put("endpointEnabled",e.map(AiModelEndpointDto::enabled).orElse(false));v.put("available",e.map(AiModelEndpointDto::enabled).orElse(false)&&shared.stream().anyMatch(x->x.endpointId().equals(c.endpointId())&&Boolean.TRUE.equals(x.enabled())));v.put("creditCost",c.creditCost());v.put("billingUnit",c.billingUnit());entries.add(v);}value.put("candidates",entries);row.put("value",value);break;
             }
-            case "video_matrix": row.put("value",videoPrices.current());break;
+            case "video_matrix": {
+                row.put("value",videoPrices.current());
+                row.put("videoDimensions",videoPricingDimensions());
+                if("studio".equals(app)&&"video".equals(feature)){
+                    var endpointUnits=new HashMap<String,String>();
+                    for(var endpoint:endpoints.list())endpointUnits.put(endpoint.id(),"PER_SECOND".equals(endpoint.billingMode())?"per_second":"per_call");
+                    var entries=new ArrayList<Object>();
+                    for(var candidate:bindings.listCandidates(f.purpose())){
+                        if(!modelAccess.allows(candidate.endpointId(),app))continue;
+                        var entry=new LinkedHashMap<String,Object>();
+                        entry.put("endpointId",candidate.endpointId());
+                        entry.put("endpointName",candidate.endpointName());
+                        entry.put("creditCostOverride",candidate.creditCostOverride());
+                        entry.put("available",Boolean.TRUE.equals(candidate.endpointEnabled())&&Boolean.TRUE.equals(candidate.enabled()));
+                        entry.put("billingUnit",endpointUnits.getOrDefault(candidate.endpointId(),"per_call"));
+                        entries.add(entry);
+                    }
+                    row.put("candidatePrices",entries);
+                }
+                break;
+            }
             // Existing scene-policy and published Runtime pricing keep their dedicated editors.
             default: row.put("value",null);
         }return row;

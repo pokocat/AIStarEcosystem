@@ -7,6 +7,7 @@ import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.repository.AiAppBindingRepository;
 import com.aistareco.aep.repository.AiAppEndpointCandidateRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
@@ -49,6 +50,16 @@ import static org.mockito.Mockito.when;
  * AiModelUsageService 用 mock（用量流水是 best-effort 副作用，与解析/路由断言无关）。
  */
 class AiModelInvocationServiceTest {
+    @org.junit.jupiter.api.Test
+    void configuredVideoCatalogPathUsesSupplierRootWhileLegacyPathKeepsBasePrefix() {
+        org.junit.jupiter.api.Assertions.assertEquals("https://api.onetoken.love/v1/models",
+                AiModelInvocationService.modelCatalogUri("https://api.onetoken.love", "/v1/models").toString());
+        org.junit.jupiter.api.Assertions.assertEquals("https://api.onetoken.love/v1/models?category=video",
+                AiModelInvocationService.modelCatalogUri("https://api.onetoken.love",
+                        "/v1/models?category=video").toString());
+        org.junit.jupiter.api.Assertions.assertEquals("https://vendor.example/v1/models",
+                AiModelInvocationService.modelCatalogUri("https://vendor.example/v1", null).toString());
+    }
     @Test
     void endpointAvailabilityUsesTheCallingApplicationForAnyModel() {
         var endpoints = mock(AiModelEndpointRepository.class);
@@ -405,7 +416,6 @@ class AiModelInvocationServiceTest {
 
         assertEquals(true, result.get("ok"));
         assertEquals(200, result.get("statusCode"));
-        assertTrue(String.valueOf(result.get("snippet")).contains("gpt-4o"));
 
         StubServer.Recorded r = server.requests.get(0);
         assertEquals("GET", r.method());
@@ -414,8 +424,28 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void testConnectionReturnsSafeReasonOnCatalogFailure() throws Exception {
+        StubServer server = stub(404, "{\"error\":\"upstream private detail\"}");
+        AiModelEndpoint ep = endpoint("p404", server.baseUrl(),
+                AiModelProviderType.OPENAI, "video-model", "sk-conn", true);
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        when(endpointRepo.findById("p404")).thenReturn(Optional.of(ep));
+
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, mock(AiAppBindingRepository.class),
+                mock(AiAppEndpointCandidateRepository.class), mock(AiModelUsageService.class),
+                mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)),
+                allowAllAccess()).testConnection("p404");
+
+        assertEquals(false, result.get("ok"));
+        assertEquals(404, result.get("statusCode"));
+        assertTrue(String.valueOf(result.get("error")).contains("404"));
+        assertFalse(result.containsKey("snippet"));
+    }
+
+    @Test
     void testConnectionRejectsUnsupportedType() {
-        // AZURE_OPENAI 走独立 wire → 不做连通测试，直接返回 ok=false（不发 HTTP）。
+        // 未填写目录规则时不猜供应商的目录地址或鉴权方式。
         AiModelEndpoint ep = endpoint("pY", "http://127.0.0.1:1/v1",
                 AiModelProviderType.AZURE_OPENAI, "gpt-4o", "sk-x", true);
         AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
@@ -427,6 +457,49 @@ class AiModelInvocationServiceTest {
                 new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).testConnection("pY");
         assertEquals(false, result.get("ok"));
         assertEquals("AZURE_OPENAI", result.get("providerType"));
+    }
+
+    @Test
+    void testConnectionUsesConfiguredCatalogForOtherProviderTypes() throws Exception {
+        StubServer server = stub(200, "{\"payload\":{\"models\":[]}}");
+        AiModelEndpoint ep = endpoint("custom-catalog", server.baseUrl(),
+                AiModelProviderType.AZURE_OPENAI, "video-model", "catalog-key", true);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec(
+                        "t2v", false, false, null, null)),
+                List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier("720p",
+                        List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas("16:9", 1280, 720)))),
+                4, 15, 2000, 4294967295L);
+        ep.setVideoRequestSpecJson(new AiVideoRequestSpec("seedance", contract,
+                "/tasks", "/tasks/{id}", Map.of(), "/v1/custom/models", null, null,
+                new AiVideoRequestSpec.AuthHeader("api-key", ""),
+                new AiVideoRequestSpec.CatalogSpec("/payload/models", "/code", null, null),
+                null, null, null, null, null).json());
+        AiModelEndpointRepository endpoints = mock(AiModelEndpointRepository.class);
+        when(endpoints.findById(ep.getId())).thenReturn(Optional.of(ep));
+        var result = new AiModelInvocationService(endpoints, mock(AiAppBindingRepository.class),
+                mock(AiAppEndpointCandidateRepository.class), mock(AiModelUsageService.class),
+                mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)),
+                allowAllAccess()).testConnection(ep.getId());
+        assertEquals(true, result.get("ok"));
+        assertEquals("/v1/custom/models", server.requests.get(0).path());
+    }
+
+    @Test
+    void testConnectionDoesNotReturnInvalidAddressOrCredential() {
+        AiModelEndpoint ep = endpoint("bad-address", "http://bad host/sk-never-show-this",
+                AiModelProviderType.OPENAI, "video-model", "secret-key", true);
+        AiModelEndpointRepository endpoints = mock(AiModelEndpointRepository.class);
+        when(endpoints.findById(ep.getId())).thenReturn(Optional.of(ep));
+        var result = new AiModelInvocationService(endpoints, mock(AiAppBindingRepository.class),
+                mock(AiAppEndpointCandidateRepository.class), mock(AiModelUsageService.class),
+                mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)),
+                allowAllAccess()).testConnection(ep.getId());
+        assertEquals(false, result.get("ok"));
+        assertFalse(String.valueOf(result.get("error")).contains("sk-never-show-this"));
+        assertFalse(String.valueOf(result.get("error")).contains("secret-key"));
     }
 
     @Test
@@ -473,6 +546,31 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void listModelsUsesConfiguredCatalogPointersAndRejectsWrongListShape() throws Exception {
+        var spec = new AiVideoRequestSpec.CatalogSpec("/payload/models", "/model/id",
+                "/display/name", null);
+        StubServer server = stub(200, "{\"payload\":{\"models\":[{\"model\":{\"id\":\"seedance\"},\"display\":{\"name\":\"Seedance 2.0\"}}]}}");
+        var result = bareSvc().listModels(AiModelProviderType.OPENAI_COMPATIBLE, server.baseUrl(),
+                "secret", "/v1/models", null, spec);
+        assertTrue(result.ok());
+        assertEquals("seedance", result.models().get(0).id());
+        assertEquals("Seedance 2.0", result.models().get(0).label());
+
+        StubServer malformed = stub(200, "{\"payload\":{\"models\":{}}}");
+        var failure = bareSvc().listModels(AiModelProviderType.OPENAI_COMPATIBLE,
+                malformed.baseUrl(), "secret", "/v1/models", null, spec);
+        assertFalse(failure.ok());
+        assertEquals("模型目录路径或返回结构无效，请检查目录路径与字段映射", failure.error());
+
+        StubServer invalidJson = stub(200, "{\"private\":\"sk-never-show-this\",");
+        var invalid = bareSvc().listModels(AiModelProviderType.OPENAI_COMPATIBLE,
+                invalidJson.baseUrl(), "secret", "/v1/models", null, spec);
+        assertFalse(invalid.ok());
+        assertEquals("模型目录返回内容不是有效 JSON，请检查目录路径", invalid.error());
+        assertFalse(invalid.error().contains("sk-never-show-this"));
+    }
+
+    @Test
     void listModelsReturnsFailOnNon2xx() throws Exception {
         StubServer server = stub(401, "{\"error\":\"unauthorized\"}");
         AiModelDiscoveryResultDto result = bareSvc().listModels(
@@ -489,7 +587,18 @@ class AiModelInvocationServiceTest {
         AiModelDiscoveryResultDto result = bareSvc().listModels(
                 AiModelProviderType.ANTHROPIC, "http://127.0.0.1:1/v1", "sk-x");
         assertFalse(result.ok());
-        assertNotNull(result.error());
+        assertTrue(result.error().contains("请先配置供应商的模型目录"));
+    }
+
+    @Test
+    void configuredCatalogCanBeReadRegardlessOfProviderType() throws Exception {
+        StubServer server = stub(200, "{\"payload\":{\"models\":[{\"code\":\"custom-video\"}]}}");
+        var result = bareSvc().listModels(AiModelProviderType.AZURE_OPENAI, server.baseUrl(),
+                "catalog-key", "/v1/custom/models", new AiVideoRequestSpec.AuthHeader("api-key", ""),
+                new AiVideoRequestSpec.CatalogSpec("/payload/models", "/code", null, null));
+        assertTrue(result.ok());
+        assertEquals("custom-video", result.models().get(0).id());
+        assertEquals("/v1/custom/models", server.requests.get(0).path());
     }
 
     private static AiModelInvocationService bareSvc() {

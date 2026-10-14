@@ -85,6 +85,10 @@ public class AiModelEndpoint {
     @Column(name = "image_request_spec_json", columnDefinition = "LONGTEXT")
     private String imageRequestSpecJson;
 
+    /** Editable video modes, dimensions and wire adapter for this fixed supplier model. */
+    @Column(name = "video_request_spec_json", columnDefinition = "LONGTEXT")
+    private String videoRequestSpecJson;
+
     /** 每分钟请求数限制；为空表示不限制。 */
     @Column(name = "rpm_limit")
     private Integer rpmLimit;

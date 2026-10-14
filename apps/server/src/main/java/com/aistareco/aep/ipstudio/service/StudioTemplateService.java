@@ -131,7 +131,7 @@ public class StudioTemplateService {
         }
         for(Step step:recipe.steps()) {
             var node=IpDocs.node(doc,nodeIds.get(step.nodeId()));var md=(ObjectNode)node.path("metadata");
-            md.put("prompt",render(step.prompt(),values));md.put("templateStepId",step.id());
+            md.put("prompt",render(step.prompt(),values,"video".equals(step.operation())));md.put("templateStepId",step.id());
             if("video".equals(step.operation())) {md.put("seconds",step.durationSec());md.put("aspectRatio",step.aspectRatio());md.put("model",approved.videoModel());}
             md.putObject("studio").put("kind","main".equals(step.outputRole())?"character":"shot").put("assetRole",step.outputRole());
         }
@@ -161,7 +161,7 @@ public class StudioTemplateService {
         var stepsById=new HashMap<String,Step>();recipe.steps().forEach(s->stepsById.put(s.id(),s));
         List<PlanStep> result=new ArrayList<>();long total=0;int imageCount=0,videoCount=0;
         for(Step step:recipe.steps()) {
-            String prompt=render(step.prompt(),values);long cost;
+            String prompt=render(step.prompt(),values,"video".equals(step.operation()));long cost;
             if("video".equals(step.operation())) {var quote=videos.quote(owner,step,videoModel,prompt);videoModel=quote.model();cost=quote.cost();videoCount++;}
             else {
                 var refs=step.references().stream().map(values::get).filter(Objects::nonNull).filter(v->v.reference()!=null).map(v->v.reference().storageKey()).toList();
@@ -242,16 +242,18 @@ public class StudioTemplateService {
             normalized.add(new Input(input.id(),input.nodeId(),input.label().trim(),input.type(),input.required(),choices,defaultText));
         }
         for(Step step:recipe.steps()) {
-            if(step==null)invalid("步骤不完整");identifier(step.id());text(step.nodeId(),64,"步骤节点");text(step.title(),128,"步骤名称");text(step.prompt(),12000,"图片指令");
+            if(step==null)invalid("步骤不完整");identifier(step.id());text(step.nodeId(),64,"步骤节点");text(step.title(),128,"步骤名称");
             boolean video="video".equals(step.operation());
+            if(video){if(step.prompt()==null)invalid("视频指令不能为空值");}
+            else text(step.prompt(),12000,"图片指令");
             if(!ids.add(step.id()) || !nodes.add(step.nodeId()) || !Set.of("image","video").contains(step.operation()==null?"":step.operation()) || (video?!"video".equals(step.outputRole()):!SIZES.contains(step.size()==null?"":step.size()) || !ROLES.contains(step.outputRole()==null?"":step.outputRole())))invalid("步骤重复或能力/输出规格不支持");
             var node=IpDocs.node(source,step.nodeId());if(node==null || !step.operation().equals(node.path("type").asText()))invalid("步骤必须来自对应的图片或视频节点");
-            if(step.references()==null || step.references().stream().anyMatch(Objects::isNull) || step.references().size()>(video?9:4) || new HashSet<>(step.references()).size()!=step.references().size())invalid("图片最多引用 4 个来源，视频最多引用 9 张图片");
+            if(step.references()==null || step.references().stream().anyMatch(Objects::isNull) || !video&&step.references().size()>4 || new HashSet<>(step.references()).size()!=step.references().size())invalid("图片最多引用 4 个来源，引用不能重复");
             if(video) {
-                if(step.durationSec()==null || step.durationSec()<1 || step.durationSec()>30 || !Set.of("9:16","16:9","1:1","3:4","4:3","21:9").contains(step.aspectRatio()==null?"":step.aspectRatio()))invalid("请配置视频时长及画幅");
-                var v=step.video();String mode=v==null?(step.references().isEmpty()?"t2v":"i2v"):v.mode();int count=step.references().size();
-                if(!Set.of("t2v","i2v","first_last_frame_video","universal_reference_video").contains(mode==null?"":mode) || ("t2v".equals(mode)&&count!=0) || ("i2v".equals(mode)&&count!=1) || ("first_last_frame_video".equals(mode)&&count!=2) || ("universal_reference_video".equals(mode)&&count<1))invalid("视频模式与引用数量不一致：首尾帧按引用顺序使用");
-                if(v!=null && (!Set.of("768p","544p").contains(v.resolutionTier()==null?"":v.resolutionTier()) || v.seed()!=null&&(v.seed()<0||v.seed()>2147483647L)))invalid("视频清晰度或随机种子无效");
+                if(step.durationSec()==null || step.durationSec()<1 || step.aspectRatio()==null || !step.aspectRatio().matches("[1-9][0-9]*:[1-9][0-9]*"))invalid("请配置视频时长及画幅");
+                var v=step.video();String mode=v==null?(step.references().isEmpty()?"t2v":"i2v"):v.mode();
+                if(mode==null || !mode.matches("[A-Za-z][A-Za-z0-9_-]{0,63}"))invalid("视频模式标识无效");
+                if(v!=null && (v.resolutionTier()==null || !v.resolutionTier().matches("[A-Za-z0-9_.-]{1,32}") || v.seed()!=null&&v.seed()<0))invalid("视频清晰度或随机种子无效");
             } else if(step.video()!=null || step.durationSec()!=null)invalid("图片步骤不能包含视频参数");
             var matcher=VARIABLE.matcher(step.prompt());while(matcher.find())if(!textInputs.contains(matcher.group(1)))invalid("指令变量必须对应文字或选项输入："+matcher.group(1));
         }
@@ -284,10 +286,11 @@ public class StudioTemplateService {
         }
         return clean;
     }
-    static String render(String prompt,Map<String,Value> values) {
+    static String render(String prompt,Map<String,Value> values) {return render(prompt,values,false);}
+    static String render(String prompt,Map<String,Value> values,boolean video) {
         var matcher=VARIABLE.matcher(prompt);var result=new StringBuffer();
         while(matcher.find())matcher.appendReplacement(result,java.util.regex.Matcher.quoteReplacement(values.get(matcher.group(1)).text()));
-        matcher.appendTail(result);if(result.length()>16000)inputInvalid("填入后的创作指令超过长度限制");return result.toString();
+        matcher.appendTail(result);if(!video && result.length()>16000)inputInvalid("填入后的创作指令超过长度限制");return result.toString();
     }
     private IpTemplateVersion requireUse(String owner,UseRequest request) {
         if(request==null || request.versionId()==null)inputInvalid("请选择模板版本");

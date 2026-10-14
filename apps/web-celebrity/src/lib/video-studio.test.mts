@@ -163,15 +163,15 @@ const messages = (c: VideoStudioContract, i: VideoStudioPreflightInput) => prefl
 
 describe("quote（plan §3：我们自己定、按模式 × 清晰度配）", () => {
   test("768p 40 积分/秒 × 5 秒 = 200；544p 20 × 5 = 100", () => {
-    const q = quote(RATE_40, "768p", 5, "t2v", 0);
+    const q = quote(RATE_40, "768p", 5, "t2v", 0, false);
     assert.equal(q?.total, 200);
     assert.equal(q?.perSecond, 40);
     assert.equal(q?.seconds, 5);
-    assert.equal(quote(RATE_40, "544p", 5, "i2v", 0)?.total, 100);
+    assert.equal(quote(RATE_40, "544p", 5, "i2v", 0, false)?.total, 100);
   });
 
   test("全能参考 8 张图、前 6 张不加价：(40 + 2 × 10) × 5 = 300", () => {
-    const q = quote(RATE_40, "768p", 5, "universal_reference_video", 8);
+    const q = quote(RATE_40, "768p", 5, "universal_reference_video", 8, true);
     assert.equal(q?.total, 300);
     assert.equal(q?.extraImages, 2);
     assert.equal(q?.perSecond, 60);
@@ -181,49 +181,58 @@ describe("quote（plan §3：我们自己定、按模式 × 清晰度配）", ()
   });
 
   test("免费张数以内不加价", () => {
-    assert.equal(quote(RATE_40, "768p", 5, "universal_reference_video", 6)?.total, 200);
-    assert.equal(quote(RATE_40, "768p", 5, "universal_reference_video", 0)?.total, 200);
+    assert.equal(quote(RATE_40, "768p", 5, "universal_reference_video", 6, true)?.total, 200);
+    assert.equal(quote(RATE_40, "768p", 5, "universal_reference_video", 0, true)?.total, 200);
   });
 
   test("一张都不免费时每张图都加价", () => {
     const p = pricing({ freeRefImages: 0 });
-    assert.equal(quote(p, "768p", 5, "universal_reference_video", 3)?.total, (40 + 3 * 10) * 5);
+    assert.equal(quote(p, "768p", 5, "universal_reference_video", 3, true)?.total, (40 + 3 * 10) * 5);
   });
 
-  test("加价只算全能参考：其他模式带着图片张数也不加", () => {
-    assert.equal(quote(RATE_40, "768p", 5, "i2v", 9)?.total, 200);
-    assert.equal(quote(RATE_40, "768p", 5, "first_last_frame_video", 9)?.extraImages, 0);
+  test("加价取决于该模式的参考素材规则，与模式名称无关", () => {
+    assert.equal(quote(RATE_40, "768p", 5, "i2v", 9, false)?.total, 200);
+    assert.equal(quote(RATE_40, "768p", 5, "first_last_frame_video", 9, false)?.extraImages, 0);
+    assert.equal(quote(RATE_40, "768p", 5, "i2v", 9, true)?.total, 350);
+  });
+
+  test("自定义参考模式的报价与服务端同样计算超额图片", () => {
+    const p = pricing();
+    p.perSecond.motion_control = { "768p": 40 };
+    p.freeRefImages = 1;
+    p.extraRefImagePerSecond = 10;
+    assert.equal(quote(p, "768p", 5, "motion_control", 3, true)?.total, 300);
   });
 
   test("每个模式各有各的价", () => {
     const p = pricing();
     p.perSecond.first_last_frame_video = { "768p": 45, "544p": 25 };
-    assert.equal(quote(p, "768p", 6, "first_last_frame_video", 0)?.total, 270);
-    assert.equal(quote(p, "768p", 6, "i2v", 0)?.total, 240);
+    assert.equal(quote(p, "768p", 6, "first_last_frame_video", 0, false)?.total, 270);
+    assert.equal(quote(p, "768p", 6, "i2v", 0, false)?.total, 240);
   });
 
   test("直接用下发的数，不在前端按厂商比例换算 544p", () => {
     const p = pricing();
     p.perSecond.t2v = { "768p": 45, "544p": 30 };
-    assert.equal(quote(p, "544p", 7, "t2v", 0)?.total, 210);
+    assert.equal(quote(p, "544p", 7, "t2v", 0, false)?.total, 210);
   });
 
   test("15 秒上限", () => {
-    assert.equal(quote(RATE_40, "768p", 15, "t2v", 0)?.total, 600);
+    assert.equal(quote(RATE_40, "768p", 15, "t2v", 0, false)?.total, 600);
   });
 
   test("没定价的格子（null / 缺这一格）→ null，不回落任何价", () => {
     const p = pricing();
     p.perSecond.universal_reference_video = { "768p": 50, "544p": null };
-    assert.equal(quote(p, "544p", 5, "universal_reference_video", 0), null);
-    assert.equal(quote(p, "768p", 5, "universal_reference_video", 0)?.total, 250);
-    assert.equal(quote(p, "1080p", 5, "t2v", 0), null);
-    assert.equal(quote(pricing({ perSecond: {} as VideoStudioPricing["perSecond"] }), "768p", 5, "t2v", 0), null);
+    assert.equal(quote(p, "544p", 5, "universal_reference_video", 0, true), null);
+    assert.equal(quote(p, "768p", 5, "universal_reference_video", 0, true)?.total, 250);
+    assert.equal(quote(p, "1080p", 5, "t2v", 0, false), null);
+    assert.equal(quote(pricing({ perSecond: {} as VideoStudioPricing["perSecond"] }), "768p", 5, "t2v", 0, false), null);
   });
 
   test("秒数不是正整数 → null", () => {
-    assert.equal(quote(RATE_40, "768p", 5.5, "t2v", 0), null);
-    assert.equal(quote(RATE_40, "768p", 0, "t2v", 0), null);
+    assert.equal(quote(RATE_40, "768p", 5.5, "t2v", 0, false), null);
+    assert.equal(quote(RATE_40, "768p", 0, "t2v", 0, false), null);
   });
 
   test("perSecondPrice：按模式、清晰度取一格", () => {
@@ -311,6 +320,11 @@ describe("preflight：通用", () => {
     assert.equal(p[0].kind, "missing");
     assert.equal(p[0].code, "VIDEO_STUDIO_PROMPT_REQUIRED");
     assert.equal(p[0].message, "请填写提示词");
+  });
+
+  test("端点模式允许空提示词时，预检按该模式放行", () => {
+    const c = contract({ modes: [{ ...contract().modes[0]!, promptRequired: false }] });
+    assert.deepEqual(preflight(c, input({ prompt: "  " })), []);
   });
 
   test("提示词超长按码点算：7000 个 emoji 可以，7001 个不行", () => {
@@ -471,6 +485,7 @@ describe("buildJobRequest", () => {
     name: "MiniMax H3",
     isDefault: true,
     selectableById,
+    supportsPromptOptimization: true,
     contract: contract(),
     pricing: RATE_40,
   });
@@ -692,6 +707,7 @@ describe("存模板与做同款", () => {
     name: endpointId,
     isDefault,
     selectableById: true,
+    supportsPromptOptimization: true,
     contract: contract(),
     pricing: RATE_40,
   });
@@ -840,6 +856,10 @@ describe("小工具", () => {
       mediaAccept({ ...frameImage, mediaType: "video", formats: ["MP4", "新格式"] }),
       "video/mp4,.mp4,video/*",
     );
+    assert.equal(
+      mediaAccept({ ...frameImage, mediaType: "audio", formats: ["WEBM", "M4A"] }),
+      ".webm,audio/mp4,audio/x-m4a,.m4a",
+    );
   });
 });
 
@@ -908,11 +928,11 @@ describe("演示数据（mocks/video-studio.ts）照 plan §2 / §3 / §10", () 
       }
     }
     assert.equal(perSecondPrice(h3.pricing, "universal_reference_video", "544p"), null);
-    assert.equal(quote(h3.pricing, "544p", 5, "universal_reference_video", 1), null);
+    assert.equal(quote(h3.pricing, "544p", 5, "universal_reference_video", 1, true), null);
     assert.equal(optimizationPrice(h3.pricing), h3.pricing.promptOptimizationPerCall);
     const d = defaultSelection(h3.contract);
     assert.deepEqual(d, { mode: "t2v", resolutionTier: "768p", aspectRatio: "9:16", seconds: 5 });
-    assert.equal(quote(h3.pricing, d.resolutionTier, d.seconds, d.mode, 0)?.total, 200);
+    assert.equal(quote(h3.pricing, d.resolutionTier, d.seconds, d.mode, 0, false)?.total, 200);
   });
 
   test("各模式的素材限制", () => {
@@ -937,7 +957,8 @@ describe("演示数据（mocks/video-studio.ts）照 plan §2 / §3 / §10", () 
       if (j.completedAt) assert.match(j.completedAt, iso, j.id);
       assert.equal(j.completedAt === null, j.status === "queued" || j.status === "running", j.id);
       const images = j.inputs.filter((i) => i.mediaType === "image" && /^图\d+$/.test(i.label)).length;
-      assert.equal(j.credits, quote(h3.pricing, j.resolutionTier, j.seconds, j.mode, images)?.total, j.id);
+      assert.equal(j.credits, quote(h3.pricing, j.resolutionTier, j.seconds, j.mode, images,
+        h3.contract.modes.some((mode) => mode.mode === j.mode && mode.references !== null))?.total, j.id);
     }
     const times = MOCK_VIDEO_STUDIO_JOBS.map((j) => Date.parse(j.createdAt));
     assert.deepEqual(times, [...times].sort((a, b) => b - a));

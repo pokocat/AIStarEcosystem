@@ -27,6 +27,8 @@ export type IpModelOption = {
     videoRatios?: string[] | null;
     /** 图片模型真正可选的比例；null = 不受限。 */
     imageRatios?: string[] | null;
+    imagePromptMaxChars?: number | null;
+    imageBatchCounts?: number[] | null;
   } | null;
   creditCost: number;
   billingUnit: string;

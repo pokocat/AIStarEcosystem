@@ -10,7 +10,7 @@ import org.springframework.test.context.MergedContextConfiguration;
 import java.sql.SQLException;
 import java.util.List;
 
-/** Test-only bootstrap for the legacy Hibernate-owned table that V48/V49 alter. */
+/** Test-only bootstrap for Hibernate-owned tables altered by real Flyway migrations. */
 public final class LegacyH2SchemaCustomizerFactory implements ContextCustomizerFactory {
     @Override
     public ContextCustomizer createContextCustomizer(Class<?> testClass,
@@ -32,10 +32,12 @@ public final class LegacyH2SchemaCustomizerFactory implements ContextCustomizerF
                             // @DataJpaTest replaces the configured datasource with plain H2.
                             // Keep those fresh databases compatible with our real MySQL SQL too.
                             statement.execute("SET MODE MySQL");
-                            // Production already owns this base table. On fresh test databases,
-                            // establish it before Flyway; Hibernate adds the remaining entity fields.
+                            // Production already owns these base tables. On fresh test databases,
+                            // establish them before Flyway; Hibernate adds the remaining entity fields.
                             statement.execute("CREATE TABLE IF NOT EXISTS ai_model_providers "
-                                    + "(id VARCHAR(255) PRIMARY KEY)");
+                                    + "(id VARCHAR(255) PRIMARY KEY, default_model VARCHAR(255), base_url VARCHAR(2000))");
+                            statement.execute("CREATE TABLE IF NOT EXISTS material_video_job "
+                                    + "(id VARCHAR(160) PRIMARY KEY)");
                         }
                     }
                 } catch (SQLException e) {
