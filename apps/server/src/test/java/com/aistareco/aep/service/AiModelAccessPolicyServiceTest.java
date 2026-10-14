@@ -20,6 +20,7 @@ class AiModelAccessPolicyServiceTest {
         assertTrue(service.allows("model", "studio"));
         assertTrue(service.allows("model", "drama"));
         assertEquals(List.of("unclassified"), service.get("model").categories());
+        assertFalse(service.explicitlyOpensStudioVideo("model"));
     }
 
     @Test void selectedAppsApplyToNewCallsAndCategoryCanBeMultimodal() {
@@ -39,5 +40,18 @@ class AiModelAccessPolicyServiceTest {
         assertThrows(BusinessException.class, () -> service.save("model", new AiModelAccessPolicyService.Policy(List.of("image"), "all", List.of("studio")), "operator"));
         assertThrows(BusinessException.class, () -> service.save("model", new AiModelAccessPolicyService.Policy(List.of("image"), "selected", List.of("unknown-app")), "operator"));
         verify(config, never()).upsert(anyString(), any(), anyString(), anyString());
+    }
+
+    @Test void studioVideoRequiresBothVideoCategoryAndStudioScope() {
+        var key="ai.model-access.model";
+        var image=new AiModelAccessPolicyService.Policy(List.of("image"),"selected",List.of("studio"));
+        when(config.findByKey(key)).thenReturn(Optional.of(new PlatformConfigDto(key,mapper.valueToTree(image),1,null,null,null)));
+        assertFalse(service.explicitlyOpensStudioVideo("model"));
+        var otherApp=new AiModelAccessPolicyService.Policy(List.of("video"),"selected",List.of("drama"));
+        when(config.findByKey(key)).thenReturn(Optional.of(new PlatformConfigDto(key,mapper.valueToTree(otherApp),1,null,null,null)));
+        assertFalse(service.explicitlyOpensStudioVideo("model"));
+        var studio=new AiModelAccessPolicyService.Policy(List.of("video"),"selected",List.of("studio"));
+        when(config.findByKey(key)).thenReturn(Optional.of(new PlatformConfigDto(key,mapper.valueToTree(studio),1,null,null,null)));
+        assertTrue(service.explicitlyOpensStudioVideo("model"));
     }
 }

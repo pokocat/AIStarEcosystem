@@ -40,8 +40,36 @@ public class ModelManagementService {
    }
    case "modelAccessCatalog": return endpoints.list().stream().map(endpoint -> Map.of("endpointId",endpoint.id(),"name",endpoint.name(),"policy",modelAccess.get(endpoint.id()))).toList();
    case "modelAccessSave": {
-    onlyFields(c,Set.of("action","endpointId","value"));String id=text(c,"endpointId");before=modelAccess.get(id);
-    result=modelAccess.save(id,dto(c.path("value"),AiModelAccessPolicyService.Policy.class),actor);break;
+    onlyFields(c,Set.of("action","endpointId","value","acknowledgedAffectedFeatures"));String id=text(c,"endpointId");before=modelAccess.get(id);
+    var policy=dto(c.path("value"),AiModelAccessPolicyService.Policy.class);
+    boolean studioVideo=policy.categories()!=null && policy.categories().contains("video")
+      && ("all".equals(policy.scope()) || policy.appCodes()!=null && policy.appCodes().contains("studio"));
+    var oldCandidate=studioVideo?bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION).stream()
+      .filter(x->id.equals(x.endpointId())).findFirst():Optional.<AiAppEndpointCandidateDto>empty();
+    if(studioVideo) {
+      var endpoint=endpoints.get(id);
+      boolean legacy=oldCandidate.isPresent() && Boolean.TRUE.equals(oldCandidate.get().enabled())
+        && scenePolicies.studioVideoGroup().map(group->group.endpointIds().contains(id)).orElse(false);
+      if(endpoint.videoRequestSpec()==null && !legacy)
+        throw BusinessException.badRequest("STUDIO_VIDEO_SPEC_REQUIRED","请先为视频模型选择已核实的视频协议并保存");
+    }
+    if(studioVideo && (oldCandidate.isEmpty() || !Boolean.TRUE.equals(oldCandidate.get().enabled()))) {
+      var feature=ModelFeatureRegistry.require("studio","video");acknowledge(feature,c);
+    }
+    result=modelAccess.save(id,policy,actor);
+    if(studioVideo && (oldCandidate.isEmpty() || !Boolean.TRUE.equals(oldCandidate.get().enabled()))) {
+      var previous=oldCandidate.orElse(null);
+      var value=new AiAppEndpointCandidateUpsert(id,previous==null?null:previous.sortOrder(),true,
+        null,null,null,null,null,null);
+      var prepared=previous==null?bindings.addCandidate(AiModelPurpose.VIDEO_GENERATION,value)
+        :bindings.updateCandidate(AiModelPurpose.VIDEO_GENERATION,id,value);
+      ObjectNode candidateDetail=mapper.createObjectNode();candidateDetail.set("before",mapper.valueToTree(previous));candidateDetail.set("after",mapper.valueToTree(prepared));
+      audit.save(AuditLog.builder().id(UUID.randomUUID().toString()).userId(actor).username(actor)
+        .action("platform.model.studioVideoCandidatePrepare").resourceType("model-config").resourceId(id)
+        .appCode("platform-console").result(AuditLog.AuditResult.SUCCESS)
+        .detail(mapper.writeValueAsString(candidateDetail)).createdAt(Instant.now()).build());
+    }
+    break;
    }
    case "functionCatalog": return features.catalog();
    case "functionPricingCatalog": return features.pricingCatalog();
@@ -138,7 +166,7 @@ public class ModelManagementService {
   }
   ObjectNode detail=mapper.createObjectNode();detail.set("before",mapper.valueToTree(before));detail.set("after",mapper.valueToTree(result));
   // Snapshot DTOs contain only masked credentials; no request body is persisted.
-  audit.save(AuditLog.builder().id(UUID.randomUUID().toString()).userId(actor).username(actor).action("platform.model."+a).resourceType("model-config").resourceId(c.path("id").asText(c.path("key").asText(c.path("purpose").asText("global")))).appCode("platform-console").result(AuditLog.AuditResult.SUCCESS).detail(mapper.writeValueAsString(detail)).createdAt(Instant.now()).build());
+  audit.save(AuditLog.builder().id(UUID.randomUUID().toString()).userId(actor).username(actor).action("platform.model."+a).resourceType("model-config").resourceId(c.path("id").asText(c.path("endpointId").asText(c.path("key").asText(c.path("purpose").asText("global"))))).appCode("platform-console").result(AuditLog.AuditResult.SUCCESS).detail(mapper.writeValueAsString(detail)).createdAt(Instant.now()).build());
   return result;
  }
  private ModelFeatureRegistry.Feature registered(JsonNode c){return ModelFeatureRegistry.require(text(c,"appCode"),text(c,"feature"));}

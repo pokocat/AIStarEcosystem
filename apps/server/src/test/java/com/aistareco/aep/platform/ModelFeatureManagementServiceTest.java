@@ -31,15 +31,13 @@ class ModelFeatureManagementServiceTest {
     ModelFeatureManagementService service(){var access=mock(AiModelAccessPolicyService.class);when(access.allows(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenReturn(true);return new ModelFeatureManagementService(bindings,prices,config,mock(VideoStudioPricingService.class),videoModels,mapper,music,zone,platform,mock(DapPricingService.class),point,endpoints,scenePolicies,access,20);}
     AiAppEndpointCandidateDto candidate(String id){return new AiAppEndpointCandidateDto("DAP_LIP_SYNC","lip",id,"模型",true,false,1,true,null,12L,null);}
     PlatformConfigDto row(String key,JsonNode value){return new PlatformConfigDto(key,value,1,null,null,null);}
-    @Test void studioVideoCatalogKeepsTheSharedCandidateContractAndStudioDefault(){
+    @Test void studioVideoCatalogUsesAvailableModelsWithoutASeparateGroup(){
         var endpoint=AiModelEndpoint.builder().id("model-a").name("视频模型 A").build();
         var candidate=AiAppEndpointCandidate.builder().purpose(AiModelPurpose.VIDEO_GENERATION).endpointId("model-a").build();
         var shared=new AiAppEndpointCandidateDto("VIDEO_GENERATION","视频生成","model-a","视频模型 A",true,false,0,true,
                 new EndpointCapabilityDto(null,null,null,null,null,null,null,null,null),null,null);
         when(bindings.list()).thenReturn(List.of());
         when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(shared));
-        when(scenePolicies.studioVideoGroup()).thenReturn(Optional.of(
-                new AiAppSceneModelPolicyService.VideoGroup("model-a", List.of("model-a"))));
         when(scenePolicies.studioVideoCandidates()).thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
         when(videoModels.listModels("studio")).thenReturn(List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel("model-a","视频模型 A",true,true,null,null)));
         var rows=mapper.valueToTree(service().catalog());
@@ -65,8 +63,7 @@ class ModelFeatureManagementServiceTest {
         assertEquals("unavailable",row.path("status").asText());
         assertFalse(row.path("candidates").get(0).path("available").asBoolean());
     }
-    @Test void studioVideoCatalogWithoutOpenGroupIsUnconfigured(){
-        when(scenePolicies.studioVideoGroup()).thenReturn(Optional.empty());
+    @Test void studioVideoCatalogWithoutCandidatesIsUnconfigured(){
         when(scenePolicies.studioVideoCandidates()).thenReturn(List.of());
         var rows=mapper.valueToTree(service().catalog());
         var row=java.util.stream.StreamSupport.stream(rows.spliterator(),false)

@@ -52,6 +52,7 @@ class ModelManagementServiceTest {
   service().execute(command,"operator");
   verify(bindings).addCandidate(eq(AiModelPurpose.VIDEO_GENERATION),argThat(value->"seedance".equals(value.endpointId())&&Boolean.TRUE.equals(value.enabled())));
   verify(bindings,never()).bind(any(),any());
+  verify(audit).save(any());
  }
  @Test void studioVideoRateCanBeEditedWithPricingPermissionAndSharedImpactConfirmation() throws Exception {
   var old=new AiAppEndpointCandidateDto("VIDEO_GENERATION","视频生成","seedance","Seedance 2.0",true,false,0,true,
@@ -75,6 +76,29 @@ class ModelManagementServiceTest {
   svc.execute(mapper.readTree("{\"action\":\"studioVideoGroupSave\",\"value\":{\"defaultEndpointId\":\"seedance\",\"endpointIds\":[\"seedance\"]}}"),"operator");
   verify(policies).saveStudioVideoGroup(eq(group),eq("operator"));
   verify(bindings,never()).bind(any(),any());
+ }
+ @Test void modelScopePreparesStudioVideoCandidateInTheSameCommand() throws Exception {
+  var endpoint=mapper.readValue("{\"videoRequestSpec\":{}}",AiModelEndpointDto.class);
+  when(endpoints.get("seedance")).thenReturn(endpoint);
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of());
+  var command=mapper.createObjectNode();command.put("action","modelAccessSave");command.put("endpointId","seedance");
+  command.set("value",mapper.readTree("{\"categories\":[\"video\"],\"scope\":\"selected\",\"appCodes\":[\"studio\"]}"));
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+  verify(access,never()).save(anyString(),any(),anyString());
+  command.set("acknowledgedAffectedFeatures",mapper.valueToTree(ModelFeatureRegistry.affected(ModelFeatureRegistry.require("studio","video"))));
+  service().execute(command,"operator");
+  verify(access).save(eq("seedance"),any(),eq("operator"));
+  verify(bindings).addCandidate(eq(AiModelPurpose.VIDEO_GENERATION),argThat(value->"seedance".equals(value.endpointId())&&Boolean.TRUE.equals(value.enabled())));
+  verify(bindings,never()).bind(any(),any());
+  verify(audit,times(2)).save(any());
+ }
+ @Test void modelScopeCannotOpenStudioVideoWithoutVerifiedProtocol() throws Exception {
+  when(endpoints.get("seedance")).thenReturn(mapper.readValue("{}",AiModelEndpointDto.class));
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of());
+  var command=mapper.readTree("{\"action\":\"modelAccessSave\",\"endpointId\":\"seedance\",\"value\":{\"categories\":[\"video\"],\"scope\":\"selected\",\"appCodes\":[\"studio\"]}}");
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+  verify(access,never()).save(anyString(),any(),anyString());
+  verify(bindings,never()).addCandidate(any(),any());
  }
  @Test void priceOnlyReadProjectsNameAndDisabledStateWithoutEndpointSecrets() throws Exception {
   var policies=mock(AiAppSceneModelPolicyService.class);

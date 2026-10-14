@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
 /** Only registered, consumed scenes can be saved; absent image/script policy preserves legacy bindings.
- * Studio video requires an explicit open group. */
+ * Studio video follows explicit model access, with the old group retained for default and legacy rows. */
 @Service
 public class AiAppSceneModelPolicyService {
     private static final String PREFIX="ai.scene-policy.";
@@ -18,9 +18,10 @@ public class AiAppSceneModelPolicyService {
     public record VideoGroup(String defaultEndpointId,List<String> endpointIds) {}
     private final PlatformConfigService config;
     private final AiModelInvocationService models;
+    private final AiModelAccessPolicyService access;
     private final ObjectMapper mapper;
-    public AiAppSceneModelPolicyService(PlatformConfigService config,AiModelInvocationService models,ObjectMapper mapper) {
-        this.config=config;this.models=models;this.mapper=mapper;
+    public AiAppSceneModelPolicyService(PlatformConfigService config,AiModelInvocationService models,AiModelAccessPolicyService access,ObjectMapper mapper) {
+        this.config=config;this.models=models;this.access=access;this.mapper=mapper;
     }
     public List<AiAppSceneModelPolicyDto> list() {
         return List.of("script","image").stream().flatMap(scene->get("studio",scene).stream()).toList();
@@ -115,12 +116,13 @@ public class AiAppSceneModelPolicyService {
     }
     public List<AiModelInvocationService.ResolvedEndpoint> studioVideoCandidates() {
         var group=studioVideoGroup();
-        if(group.isEmpty())return List.of();
         var candidates=models.listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio").stream()
                 .filter(this::availableEndpoint)
-                .filter(r->group.get().endpointIds().contains(r.endpoint().getId()))
+                .filter(r->{String id=r.endpoint().getId();return access.hasExplicitPolicy(id)
+                        ? access.explicitlyOpensStudioVideo(id)
+                        : group.isPresent() && group.get().endpointIds().contains(id);})
                 .toList();
-        String preferred=group.get().defaultEndpointId();
+        String preferred=group.map(VideoGroup::defaultEndpointId).orElse(null);
         String defaultId=candidates.stream().anyMatch(r -> Objects.equals(preferred,r.endpoint().getId()))
                 ? preferred : candidates.isEmpty()?null:candidates.get(0).endpoint().getId();
         return candidates.stream().map(r->new AiModelInvocationService.ResolvedEndpoint(r.endpoint(),r.candidate(),Objects.equals(defaultId,r.endpoint().getId()))).toList();

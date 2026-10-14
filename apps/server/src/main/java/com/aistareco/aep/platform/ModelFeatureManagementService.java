@@ -51,7 +51,6 @@ public class ModelFeatureManagementService {
                 status=policy.isEmpty()?"unconfigured":policy.get().candidates().stream().anyMatch(c->candidates.stream().noneMatch(x->x.endpointId().equals(c.endpointId())&&Boolean.TRUE.equals(x.enabled())&&Boolean.TRUE.equals(x.endpointEnabled())))?"unavailable":"configured";
             }
             if("video_group".equals(f.routingKind())) {
-                var group=scenePolicies.studioVideoGroup();
                 var videoCandidates=scenePolicies.studioVideoCandidates();
                 var selectable=videoModels.listModels("studio");
                 var selectableIds=selectable.stream().map(com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel::endpointId).collect(java.util.stream.Collectors.toSet());
@@ -64,7 +63,7 @@ public class ModelFeatureManagementService {
                     return value;
                 }).toList()));
                 row.putNull("binding");
-                status=videoCandidates.isEmpty()?(group.isPresent()?"unavailable":"unconfigured"):videoCandidates.stream().anyMatch(c->selectableIds.contains(c.endpoint().getId()))?"configured":"unavailable";
+                status=videoCandidates.isEmpty()?"unconfigured":videoCandidates.stream().anyMatch(c->selectableIds.contains(c.endpoint().getId()))?"configured":"unavailable";
             }
             row.put("status",status);rows.add(row);
         }return rows;

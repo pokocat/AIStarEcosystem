@@ -2,6 +2,7 @@ package com.aistareco.aep.service;
 
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
+import com.aistareco.aep.dto.PlatformConfigDto;
 import com.aistareco.aep.platform.ModelFeatureRegistry;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,15 +29,8 @@ public class AiModelAccessPolicyService {
     }
 
     public Policy get(String endpointId) {
-        return config.findByKey(PREFIX + endpointId).map(saved -> {
-            try {
-                Policy policy = mapper.treeToValue(saved.value(), Policy.class);
-                validate(policy);
-                return policy;
-            } catch (Exception exception) {
-                throw BusinessException.badRequest("MODEL_ACCESS_INVALID", "模型开放范围配置无效");
-            }
-        }).orElse(new Policy(List.of("unclassified"), "all", List.of()));
+        return config.findByKey(PREFIX + endpointId).map(this::parse)
+                .orElse(new Policy(List.of("unclassified"), "all", List.of()));
     }
 
     public boolean allows(AiModelEndpoint endpoint, String appCode) {
@@ -46,6 +40,29 @@ public class AiModelAccessPolicyService {
     public boolean allows(String endpointId, String appCode) {
         Policy policy = get(endpointId);
         return "all".equals(policy.scope()) || appCode != null && policy.appCodes().contains(appCode);
+    }
+
+    /** An absent legacy policy is not an explicit grant to Studio video. */
+    public boolean explicitlyOpensStudioVideo(String endpointId) {
+        return config.findByKey(PREFIX + endpointId).map(saved -> {
+            Policy policy = parse(saved);
+            return policy.categories().contains("video")
+                    && ("all".equals(policy.scope()) || policy.appCodes().contains("studio"));
+        }).orElse(false);
+    }
+
+    public boolean hasExplicitPolicy(String endpointId) {
+        return config.findByKey(PREFIX + endpointId).isPresent();
+    }
+
+    private Policy parse(PlatformConfigDto saved) {
+        try {
+            Policy policy = mapper.treeToValue(saved.value(), Policy.class);
+            validate(policy);
+            return policy;
+        } catch (Exception exception) {
+            throw BusinessException.badRequest("MODEL_ACCESS_INVALID", "模型开放范围配置无效");
+        }
     }
 
     @Transactional

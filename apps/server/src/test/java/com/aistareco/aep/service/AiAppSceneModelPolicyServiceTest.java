@@ -10,8 +10,9 @@ import static org.mockito.Mockito.*;
 class AiAppSceneModelPolicyServiceTest {
     final PlatformConfigService config=mock(PlatformConfigService.class);
     final AiModelInvocationService models=mock(AiModelInvocationService.class);
+    final AiModelAccessPolicyService access=mock(AiModelAccessPolicyService.class);
     final ObjectMapper mapper=new ObjectMapper();
-    final AiAppSceneModelPolicyService service=new AiAppSceneModelPolicyService(config,models,mapper);
+    final AiAppSceneModelPolicyService service=new AiAppSceneModelPolicyService(config,models,access,mapper);
     AiModelInvocationService.ResolvedEndpoint endpoint(String id) {
         var ep=AiModelEndpoint.builder().id(id).enabled(true).build();
         var candidate=AiAppEndpointCandidate.builder().endpointId(id).enabled(true).build();
@@ -54,7 +55,7 @@ class AiAppSceneModelPolicyServiceTest {
         when(models.listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio")).thenReturn(List.of(agnes));
         assertTrue(service.studioVideoCandidates().isEmpty());
         assertThrows(BusinessException.class,()->service.resolveStudioVideo("a"));
-        verify(models,never()).listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio");
+        verify(models,times(2)).listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio");
     }
     @Test void videoGroupControlsStudioOpenRangeAndDefault(){
         var allowed=endpoint("a");var other=endpoint("b");
@@ -69,5 +70,18 @@ class AiAppSceneModelPolicyServiceTest {
     @Test void invalidVideoGroupFailsClosed(){
         when(config.findByKey("ai.app-model-group.studio.video")).thenReturn(Optional.of(new PlatformConfigDto("key",mapper.valueToTree(new AiAppSceneModelPolicyService.VideoGroup("outside",List.of("a"))),1,null,null,null)));
         assertThrows(BusinessException.class,service::studioVideoCandidates);
+    }
+    @Test void explicitVideoScopeReplacesGroupMembershipAndPreservesDefault(){
+        var legacy=endpoint("legacy");var opened=endpoint("opened");
+        var group=new AiAppSceneModelPolicyService.VideoGroup("legacy",List.of("legacy"));
+        when(config.findByKey("ai.app-model-group.studio.video")).thenReturn(Optional.of(new PlatformConfigDto("key",mapper.valueToTree(group),1,null,null,null)));
+        when(models.listCandidates(AiModelPurpose.VIDEO_GENERATION,"studio")).thenReturn(List.of(legacy,opened));
+        when(access.hasExplicitPolicy("legacy")).thenReturn(true);
+        when(access.hasExplicitPolicy("opened")).thenReturn(true);
+        when(access.explicitlyOpensStudioVideo("opened")).thenReturn(true);
+        var selected=service.studioVideoCandidates();
+        assertEquals(List.of("opened"),selected.stream().map(r->r.endpoint().getId()).toList());
+        assertTrue(selected.get(0).isDefault());
+        assertThrows(BusinessException.class,()->service.resolveStudioVideo("legacy"));
     }
 }
