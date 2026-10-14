@@ -65,7 +65,9 @@ public record EndpointCapabilityDto(
 
     public static EndpointCapabilityDto image(AiAppEndpointCandidate c, com.aistareco.aep.model.AiImageRequestSpec spec) {
         EndpointCapabilityDto base=from(c);
-        return new EndpointCapabilityDto(spec==null?base.maxRefImages():spec.maxReferenceImages(),base.supportsFirstLastFrame(),
+        Integer maxRefImages=base.maxRefImages();
+        if(spec!=null)maxRefImages=spec.maxReferenceImages();
+        return new EndpointCapabilityDto(maxRefImages,base.supportsFirstLastFrame(),
                 base.supportsSubjectReference(),base.maxDurationSec(),base.minDurationSec(),
                 base.minImagePixels(),base.videoResolutions(),base.videoRatios(),spec==null?null:spec.ratios(),
                 spec==null?null:spec.promptMaxChars(),spec==null?null:spec.allowedBatchCounts());

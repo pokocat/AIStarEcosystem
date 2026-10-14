@@ -80,6 +80,9 @@ class AiModelEndpointImageSpecTest {
         assertEquals(2048,capability.imagePromptMaxChars());
         assertEquals(0,capability.maxRefImages());
 
+        var legacyCapability=com.aistareco.aep.dto.EndpointCapabilityDto.image(null,null);
+        assertNull(legacyCapability.maxRefImages());
+
         var changeModel = MAPPER.readValue("{\"model\":\"other-image\"}",AdminAiModelEndpointUpsertDto.class);
         service.update("ernie",changeModel);
         assertNull(endpoint.getImageRequestSpecJson());
